@@ -85,14 +85,25 @@ impl Menu {
         let e = |v: i32| (v as f32 * escala).round() as i32;
         let mut ancho = e(ANCHO_MINIMO);
         for en in &self.entradas {
-            let atajo = if en.atajo.is_empty() { 0 } else { ancho_de(&en.atajo) + e(20) };
+            let atajo = if en.atajo.is_empty() {
+                0
+            } else {
+                ancho_de(&en.atajo) + e(20)
+            };
             ancho = ancho.max(e(44) + ancho_de(&en.texto) + atajo + e(16));
         }
         if let Some(p) = &self.pista {
             ancho = ancho.max(ancho_de(p) + e(28));
         }
-        let pista = if self.pista.is_some() { e(ALTO_PISTA) } else { 0 };
-        (ancho, 2 * e(AIRE) + self.entradas.len() as i32 * e(ALTO_ENTRADA) + pista)
+        let pista = if self.pista.is_some() {
+            e(ALTO_PISTA)
+        } else {
+            0
+        };
+        (
+            ancho,
+            2 * e(AIRE) + self.entradas.len() as i32 * e(ALTO_ENTRADA) + pista,
+        )
     }
 
     /// La caja de la entrada `i` dentro del menu.
@@ -114,7 +125,12 @@ impl Menu {
 
 /// Donde sale: debajo del punto pedido, o encima si abajo no cabe, y
 /// dentro de la pantalla de lado.
-pub fn colocar(ancla: (i32, i32), alto_ancla: i32, tamano: (i32, i32), pantalla: (i32, i32, i32, i32)) -> (i32, i32) {
+pub fn colocar(
+    ancla: (i32, i32),
+    alto_ancla: i32,
+    tamano: (i32, i32),
+    pantalla: (i32, i32, i32, i32),
+) -> (i32, i32) {
     let (px, py, pan, pal) = pantalla;
     let x = ancla.0.min(px + pan - tamano.0).max(px);
     let abajo = ancla.1 + alto_ancla;
@@ -194,13 +210,25 @@ pub fn pintar(hdc: HDC, v: &Vista, origen: (i32, i32), alto: i32) {
                 match color {
                     Some(x) => f.redondo(m, 4.0, x),
                     // Sin color: el hueco con su raya cruzada.
-                    None => f.raya(m.x + 2, m.abajo() - 2, m.derecha() - 2, m.y + 2, v.tema.tenue),
+                    None => f.raya(
+                        m.x + 2,
+                        m.abajo() - 2,
+                        m.derecha() - 2,
+                        m.y + 2,
+                        v.tema.tenue,
+                    ),
                 }
                 f.borde(m, 4.0, 1.0, v.tema.raya);
             }
         }
         if v.menu.pista.is_some() {
-            f.raya(caja.x + 1, pista_y, caja.derecha() - 1, pista_y, v.tema.raya);
+            f.raya(
+                caja.x + 1,
+                pista_y,
+                caja.derecha() - 1,
+                pista_y,
+                v.tema.raya,
+            );
         }
     });
     for (i, en_) in v.menu.entradas.iter().enumerate() {
@@ -212,7 +240,8 @@ pub fn pintar(hdc: HDC, v: &Vista, origen: (i32, i32), alto: i32) {
                 an: e(26),
                 al: c.al,
             };
-            v.pintor.texto(hdc, v.pintor.letra_chica, t, ic, v.tema.texto, true);
+            v.pintor
+                .texto(hdc, v.pintor.letra_chica, t, ic, v.tema.texto, true);
         }
         if let Dibujo::Tinta(color) = en_.dibujo {
             let ic = Caja {
@@ -221,8 +250,14 @@ pub fn pintar(hdc: HDC, v: &Vista, origen: (i32, i32), alto: i32) {
                 an: e(26),
                 al: c.al,
             };
-            v.pintor
-                .texto(hdc, v.pintor.letra_negrita, "A", ic, color.unwrap_or(v.tema.texto), true);
+            v.pintor.texto(
+                hdc,
+                v.pintor.letra_negrita,
+                "A",
+                ic,
+                color.unwrap_or(v.tema.texto),
+                true,
+            );
         }
         let texto = Caja {
             x: c.x + e(34),
@@ -230,7 +265,8 @@ pub fn pintar(hdc: HDC, v: &Vista, origen: (i32, i32), alto: i32) {
             an: c.an - e(40),
             al: c.al,
         };
-        v.pintor.texto(hdc, v.pintor.letra, &en_.texto, texto, v.tema.texto, false);
+        v.pintor
+            .texto(hdc, v.pintor.letra, &en_.texto, texto, v.tema.texto, false);
         if !en_.atajo.is_empty() {
             let an = v.pintor.medir(hdc, v.pintor.letra_chica, &en_.atajo);
             let a = Caja {
@@ -239,7 +275,14 @@ pub fn pintar(hdc: HDC, v: &Vista, origen: (i32, i32), alto: i32) {
                 an,
                 al: c.al,
             };
-            v.pintor.texto(hdc, v.pintor.letra_chica, &en_.atajo, a, v.tema.tenue, false);
+            v.pintor.texto(
+                hdc,
+                v.pintor.letra_chica,
+                &en_.atajo,
+                a,
+                v.tema.tenue,
+                false,
+            );
         }
     }
     if let Some(p) = &v.menu.pista {
@@ -249,7 +292,8 @@ pub fn pintar(hdc: HDC, v: &Vista, origen: (i32, i32), alto: i32) {
             an: caja.an - e(20),
             al: e(ALTO_PISTA),
         };
-        v.pintor.texto(hdc, v.pintor.letra_chica, p, c, v.tema.tenue, false);
+        v.pintor
+            .texto(hdc, v.pintor.letra_chica, p, c, v.tema.tenue, false);
     }
 }
 
@@ -274,7 +318,10 @@ unsafe extern "system" fn procedimiento(h: HWND, m: u32, w: WPARAM, l: LPARAM) -
             LRESULT(0)
         }
         WM_MOUSEMOVE | WM_LBUTTONUP => {
-            let (x, y) = ((l.0 & 0xffff) as i16 as i32, ((l.0 >> 16) & 0xffff) as i16 as i32);
+            let (x, y) = (
+                (l.0 & 0xffff) as i16 as i32,
+                ((l.0 >> 16) & 0xffff) as i16 as i32,
+            );
             let i = VISTA.with(|v| {
                 let mut v = v.borrow_mut();
                 let v = v.as_mut()?;
@@ -344,7 +391,15 @@ pub fn crear(dueno: HWND) -> windows::core::Result<HWND> {
 pub fn ensenar(h: HWND, x: i32, y: i32, an: i32, al: i32) {
     // SAFETY: ventana propia.
     unsafe {
-        let _ = SetWindowPos(h, Some(HWND_TOPMOST), x, y, an, al, SWP_NOACTIVATE | SWP_SHOWWINDOW);
+        let _ = SetWindowPos(
+            h,
+            Some(HWND_TOPMOST),
+            x,
+            y,
+            an,
+            al,
+            SWP_NOACTIVATE | SWP_SHOWWINDOW,
+        );
         let _ = InvalidateRect(Some(h), None, false);
     }
 }
@@ -358,7 +413,9 @@ pub fn esconder(h: HWND) {
 
 /// El rectangulo de trabajo de la pantalla donde cae un punto.
 pub fn pantalla_de(p: POINT) -> (i32, i32, i32, i32) {
-    use windows::Win32::Graphics::Gdi::{GetMonitorInfoW, MONITOR_DEFAULTTONEAREST, MONITORINFO, MonitorFromPoint};
+    use windows::Win32::Graphics::Gdi::{
+        GetMonitorInfoW, MONITOR_DEFAULTTONEAREST, MONITORINFO, MonitorFromPoint,
+    };
     let mut info = MONITORINFO {
         cbSize: std::mem::size_of::<MONITORINFO>() as u32,
         ..Default::default()
@@ -387,7 +444,11 @@ mod pruebas {
 
     fn menu() -> Menu {
         Menu {
-            entradas: vec![entrada(1, "Lista"), entrada(2, "Casillas"), entrada(3, "Fecha")],
+            entradas: vec![
+                entrada(1, "Lista"),
+                entrada(2, "Casillas"),
+                entrada(3, "Fecha"),
+            ],
             pista: Some("Escribe / para mas".into()),
             elegida: 0,
         }
@@ -429,7 +490,11 @@ mod pruebas {
         assert_eq!(an, ANCHO_MINIMO);
         assert_eq!(al, 2 * AIRE + 3 * ALTO_ENTRADA + ALTO_PISTA);
         assert_eq!(m.entrada_en(20, AIRE + ALTO_ENTRADA + 3, an, 1.0), Some(1));
-        assert_eq!(m.entrada_en(20, al - 5, an, 1.0), None, "la pista no es una entrada");
+        assert_eq!(
+            m.entrada_en(20, al - 5, an, 1.0),
+            None,
+            "la pista no es una entrada"
+        );
     }
 
     #[test]

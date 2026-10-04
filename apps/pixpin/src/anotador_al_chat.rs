@@ -144,9 +144,23 @@ pub fn que_hacer(guardada: Option<&[Elemento]>, ahora: &[Elemento]) -> Paso {
 /// ahora (en pixeles de la captura, que mide `medidas`). Ni captura nueva ni
 /// mensaje nuevo: la foto de fondo es la de la primera vez, que es sobre la
 /// que se dibujo.
-pub fn poner_al_dia(raiz: &Path, g: &Guardado, medidas: (u32, u32), tinta: &[Elemento]) -> io::Result<Guardado> {
-    let trazos = pixpin_proyecto::lienzo_de_la_foto::cambiar_dibujo(raiz, &g.proyecto, &g.lienzo, medidas, tinta)?;
-    Ok(Guardado { trazos, ..g.clone() })
+pub fn poner_al_dia(
+    raiz: &Path,
+    g: &Guardado,
+    medidas: (u32, u32),
+    tinta: &[Elemento],
+) -> io::Result<Guardado> {
+    let trazos = pixpin_proyecto::lienzo_de_la_foto::cambiar_dibujo(
+        raiz,
+        &g.proyecto,
+        &g.lienzo,
+        medidas,
+        tinta,
+    )?;
+    Ok(Guardado {
+        trazos,
+        ..g.clone()
+    })
 }
 
 /// **El guardado de UNA sesion del anotador** en «Mensajes guardados».
@@ -186,8 +200,19 @@ impl EnElChat {
             let aparato = pixpin_proyecto::identidad::Identidad::leer_o_crear(&raiz, "PC")
                 .map(|i| i.yo.codigo())
                 .unwrap_or_default();
-            let hecho = guardar(&raiz, &aparato, &sesion, pixpin_shell::entorno::ahora_utc_ms());
-            avisar(hecho, t0, (sesion.foto.ancho, sesion.foto.alto), hwnd, &globo)
+            let hecho = guardar(
+                &raiz,
+                &aparato,
+                &sesion,
+                pixpin_shell::entorno::ahora_utc_ms(),
+            );
+            avisar(
+                hecho,
+                t0,
+                (sesion.foto.ancho, sesion.foto.alto),
+                hwnd,
+                &globo,
+            )
         });
     }
 
@@ -199,10 +224,24 @@ impl EnElChat {
         self.hilo = lanzar(move || {
             let t0 = std::time::Instant::now();
             let Some(g) = previo.and_then(|h| h.join().ok().flatten()) else {
-                tracing::warn!("la pantalla anotada no llego a guardarse: no hay lienzo que poner al dia");
-                return avisar(Err(io::Error::other("sin guardado previo")), t0, medidas, hwnd, &globo);
+                tracing::warn!(
+                    "la pantalla anotada no llego a guardarse: no hay lienzo que poner al dia"
+                );
+                return avisar(
+                    Err(io::Error::other("sin guardado previo")),
+                    t0,
+                    medidas,
+                    hwnd,
+                    &globo,
+                );
             };
-            avisar(poner_al_dia(&raiz, &g, medidas, &tinta), t0, medidas, hwnd, &globo)
+            avisar(
+                poner_al_dia(&raiz, &g, medidas, &tinta),
+                t0,
+                medidas,
+                hwnd,
+                &globo,
+            )
         });
     }
 
@@ -443,7 +482,10 @@ mod pruebas {
     #[test]
     fn la_regla_de_guardar_primero_crea_luego_pone_al_dia_y_sin_cambios_no_hace_nada() {
         let una = vec![raya(&[(1.0, 1.0), (5.0, 5.0)])];
-        let dos = vec![raya(&[(1.0, 1.0), (5.0, 5.0)]), raya(&[(9.0, 9.0), (2.0, 2.0)])];
+        let dos = vec![
+            raya(&[(1.0, 1.0), (5.0, 5.0)]),
+            raya(&[(9.0, 9.0), (2.0, 2.0)]),
+        ];
         assert_eq!(que_hacer(None, &una), Paso::Nuevo);
         assert_eq!(que_hacer(Some(&una), &dos), Paso::AlDia);
         // Limpiar lo ya guardado tambien se lleva al lienzo.
@@ -454,7 +496,8 @@ mod pruebas {
     }
 
     #[test]
-    fn salir_con_tinta_guarda_la_foto_en_mensajes_guardados_con_la_tinta_editable_encima_de_la_foto_bloqueada() {
+    fn salir_con_tinta_guarda_la_foto_en_mensajes_guardados_con_la_tinta_editable_encima_de_la_foto_bloqueada()
+     {
         let r = raiz("salir");
         let tinta = vec![
             raya(&[(10.0, 4.0), (50.0, 14.0)]),
@@ -477,7 +520,10 @@ mod pruebas {
         assert_eq!(mensajes[0].clase, Some(cuaderno::Clase::Imagen));
         assert_eq!(mensajes[0].referencia.as_deref(), Some(g.lienzo.as_str()));
         assert_eq!(els.len(), 3, "la foto y los dos trazos");
-        assert!(matches!(els[0].figura, Figura::Imagen { .. }) && els[0].bloqueado, "la foto primero y bloqueada");
+        assert!(
+            matches!(els[0].figura, Figura::Imagen { .. }) && els[0].bloqueado,
+            "la foto primero y bloqueada"
+        );
         assert!(els[1..].iter().all(|e| !e.bloqueado), "la tinta, editable");
         // Salir otra vez sin haber tocado nada no guarda otra.
         assert_eq!(chat.paso(&tinta), Paso::Nada);
@@ -520,7 +566,11 @@ mod pruebas {
         assert_eq!(g.trazos, 3);
         let (mensajes, els) = lo_guardado(&r, &g);
         assert_eq!(mensajes.len(), 1, "el mismo mensaje, no otro");
-        assert_eq!(els.len(), 4, "la foto y los tres trazos, sin duplicar el primero");
+        assert_eq!(
+            els.len(),
+            4,
+            "la foto y los tres trazos, sin duplicar el primero"
+        );
         assert!(els[0].bloqueado);
         // Y otra puesta al dia tras esperar sigue yendo al mismo sitio.
         tinta.pop();
@@ -535,18 +585,27 @@ mod pruebas {
     fn poner_al_dia_sin_un_guardado_previo_que_llegara_no_inventa_un_mensaje() {
         let r = raiz("al-dia-sin-previo");
         let mut chat = EnElChat::default();
-        chat.poner_al_dia(r.clone(), vec![raya(&[(1.0, 1.0), (2.0, 2.0)])], 0, globo_mudo());
+        chat.poner_al_dia(
+            r.clone(),
+            vec![raya(&[(1.0, 1.0), (2.0, 2.0)])],
+            0,
+            globo_mudo(),
+        );
         assert_eq!(chat.esperar(), None);
         assert!(almacen::Indice::leer(&r).proyectos.is_empty());
         let _ = std::fs::remove_dir_all(&r);
     }
 
     #[test]
-    fn abrir_la_burbuja_da_el_lienzo_con_la_foto_bloqueada_debajo_y_la_tinta_editable_que_se_guarda_al_cerrar() {
+    fn abrir_la_burbuja_da_el_lienzo_con_la_foto_bloqueada_debajo_y_la_tinta_editable_que_se_guarda_al_cerrar()
+     {
         let r = raiz("abrir");
         let s = Sesion {
             foto: pantalla(64, 18),
-            tinta: vec![raya(&[(10.0, 4.0), (50.0, 14.0)]), flecha((5.0, 15.0), (60.0, 2.0))],
+            tinta: vec![
+                raya(&[(10.0, 4.0), (50.0, 14.0)]),
+                flecha((5.0, 15.0), (60.0, 2.0)),
+            ],
         };
         let g = guardar(&r, "PC01", &s, 7).unwrap();
         let c = cuaderno::Cuaderno::leer_de(&almacen::carpeta(&r, &g.proyecto)).unwrap();
@@ -565,7 +624,10 @@ mod pruebas {
             .expect("se abre su lienzo");
         let els: Vec<&Elemento> = abierta.visibles().collect();
         assert_eq!(els.len(), 3);
-        assert!(matches!(els[0].figura, Figura::Imagen { .. }), "la foto primero");
+        assert!(
+            matches!(els[0].figura, Figura::Imagen { .. }),
+            "la foto primero"
+        );
         assert!(els[0].bloqueado, "la foto bloqueada");
         assert!(els[1..].iter().all(|e| !e.bloqueado), "la tinta editable");
         // La foto tiene su fichero, que el editor carga.
@@ -578,10 +640,15 @@ mod pruebas {
         assert_eq!(despues.len(), 2, "la foto y la flecha");
         assert!(despues[0].bloqueado && matches!(despues[0].figura, Figura::Imagen { .. }));
         assert!(matches!(despues[1].figura, Figura::Flecha { .. }));
-        assert!((despues[1].trazo.b - azul.b).abs() < 0.01 && (despues[1].trazo.r - azul.r).abs() < 0.01, "el color nuevo");
+        assert!(
+            (despues[1].trazo.b - azul.b).abs() < 0.01
+                && (despues[1].trazo.r - azul.r).abs() < 0.01,
+            "el color nuevo"
+        );
         assert!((despues[1].x - (els[2].x + 20.0)).abs() < 1e-3);
         // Caso negativo: abrir y cerrar sin tocar no reescribe el lienzo.
-        let (_, _, otra) = crate::ventana_chat::hoja_abierta_y_guardada(&r, &g.proyecto, m, |_| {}).unwrap();
+        let (_, _, otra) =
+            crate::ventana_chat::hoja_abierta_y_guardada(&r, &g.proyecto, m, |_| {}).unwrap();
         assert!(!otra);
         let _ = std::fs::remove_dir_all(&r);
     }
@@ -619,14 +686,17 @@ mod pruebas {
         let g = chat.esperar().unwrap();
         let c = cuaderno::Cuaderno::leer_de(&almacen::carpeta(&r, &g.proyecto)).unwrap();
         let m = c.mensajes[0].clone();
-        let (antes, fotos, _) = crate::ventana_chat::hoja_abierta_y_guardada(&r, &g.proyecto, &m, |e| {
-            let ids: Vec<u64> = e.visibles().map(|x| x.id).collect();
-            e.borrar_apuntando(ids[2]);
-            e.mover(ids[1], 0.0, 60.0);
-            e.buscar_mut(ids[1]).unwrap().trazo = pixpin_motor2d::ColorRgba::opaco(0.1, 0.35, 0.95);
-        })
-        .unwrap();
-        let (despues, _, _) = crate::ventana_chat::hoja_abierta_y_guardada(&r, &g.proyecto, &m, |_| {}).unwrap();
+        let (antes, fotos, _) =
+            crate::ventana_chat::hoja_abierta_y_guardada(&r, &g.proyecto, &m, |e| {
+                let ids: Vec<u64> = e.visibles().map(|x| x.id).collect();
+                e.borrar_apuntando(ids[2]);
+                e.mover(ids[1], 0.0, 60.0);
+                e.buscar_mut(ids[1]).unwrap().trazo =
+                    pixpin_motor2d::ColorRgba::opaco(0.1, 0.35, 0.95);
+            })
+            .unwrap();
+        let (despues, _, _) =
+            crate::ventana_chat::hoja_abierta_y_guardada(&r, &g.proyecto, &m, |_| {}).unwrap();
         // La foto del lienzo mide lo del movil (1600 ya cabe): una unidad por
         // pixel. Dos paneles, uno encima del otro, a la mitad.
         let escala = 0.5;
@@ -653,17 +723,31 @@ mod pruebas {
                     p.poner_vista((12.0, y0), escala, (0.0, 0.0));
                     let vista = (0.0, 0.0, w as f32, h as f32);
                     for o in pixpin_motor2d::ordenes_de_escena(escena) {
-                        crate::dibujo::pintar::dibujar_orden(p, &o, vista, None, &imagenes, escala, None);
+                        crate::dibujo::pintar::dibujar_orden(
+                            p, &o, vista, None, &imagenes, escala, None,
+                        );
                     }
                     p.desplazar(0.0, 0.0);
                     for e in escena.visibles() {
-                        let Some((x0, y0e, x1, y1)) = pixpin_motor2d::biblioteca::caja_de(std::slice::from_ref(e)) else {
+                        let Some((x0, y0e, x1, y1)) =
+                            pixpin_motor2d::biblioteca::caja_de(std::slice::from_ref(e))
+                        else {
                             continue;
                         };
                         let color = if e.bloqueado {
-                            pixpin_render::Color { r: 0.9, g: 0.1, b: 0.1, a: 1.0 }
+                            pixpin_render::Color {
+                                r: 0.9,
+                                g: 0.1,
+                                b: 0.1,
+                                a: 1.0,
+                            }
                         } else {
-                            pixpin_render::Color { r: 0.1, g: 0.7, b: 0.2, a: 1.0 }
+                            pixpin_render::Color {
+                                r: 0.1,
+                                g: 0.7,
+                                b: 0.2,
+                                a: 1.0,
+                            }
                         };
                         p.trazar(
                             pixpin_render::RectF {

@@ -517,15 +517,27 @@ mod pruebas {
     #[test]
     #[ignore = "necesita GPU y sesion de escritorio (crea ventanas ocultas)"]
     fn la_pastilla_es_de_la_ventana_del_anotador_y_queda_siempre_encima_de_ella() {
-        use windows::Win32::UI::WindowsAndMessaging::{WS_EX_NOACTIVATE, WS_EX_TOPMOST, WS_EX_TRANSPARENT};
+        use windows::Win32::UI::WindowsAndMessaging::{
+            WS_EX_NOACTIVATE, WS_EX_TOPMOST, WS_EX_TRANSPARENT,
+        };
         let d = pixpin_capture::enumerar_monitores().expect("monitores");
         let principal = *d.principal().expect("principal");
         let disp = pixpin_capture::Dispositivo::nuevo().expect("GPU real");
         let motor = pixpin_render::MotorRender::nuevo(disp.d3d()).expect("motor");
         let anotador = VentanaOverlay::nueva(d.escritorio_virtual()).expect("anotador");
-        let ps = Pastilla::nueva(&motor, disp.d3d(), &principal, ("a".into(), "b".into()), anotador.handle())
-            .expect("pastilla");
-        assert_eq!(ps.ventana.dueno(), Some(anotador.handle()), "poseida por el anotador");
+        let ps = Pastilla::nueva(
+            &motor,
+            disp.d3d(),
+            &principal,
+            ("a".into(), "b".into()),
+            anotador.handle(),
+        )
+        .expect("pastilla");
+        assert_eq!(
+            ps.ventana.dueno(),
+            Some(anotador.handle()),
+            "poseida por el anotador"
+        );
         let e = ps.ventana.estilo_extendido();
         assert!(e & WS_EX_TOPMOST.0 != 0, "TOPMOST como el anotador");
         assert!(e & WS_EX_NOACTIVATE.0 != 0, "no coge el foco");
@@ -537,7 +549,10 @@ mod pruebas {
         // Dentro del area de trabajo del principal (no fuera de pantalla).
         let r = ps.ventana.area();
         let t = principal.area_trabajo;
-        assert!(r.x >= t.x && r.x + r.ancho as i32 <= t.x + t.ancho as i32, "{r:?} en {t:?}");
+        assert!(
+            r.x >= t.x && r.x + r.ancho as i32 <= t.x + t.ancho as i32,
+            "{r:?} en {t:?}"
+        );
         assert!(r.y >= t.y && r.abajo() <= t.abajo(), "{r:?} en {t:?}");
         // Caso negativo: una ventana sin dueno no dice tenerlo.
         assert_eq!(anotador.dueno(), None);

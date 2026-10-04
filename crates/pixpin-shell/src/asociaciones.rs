@@ -47,10 +47,14 @@ pub const IMAGENES: [&str; 15] = [
     "avif", "jxl", "jxr",
 ];
 /// Los videos que el pin reproduce (`pixpin_pin::contenido`).
-pub const VIDEOS: [&str; 10] = ["mp4", "mkv", "webm", "mov", "avi", "m4v", "wmv", "mpg", "mpeg", "ts"];
+pub const VIDEOS: [&str; 10] = [
+    "mp4", "mkv", "webm", "mov", "avi", "m4v", "wmv", "mpg", "mpeg", "ts",
+];
 /// Los audios que suenan en el reproductor flotante (los mismos que el
 /// plugin de Flow Launcher, `pixpin_lanzador::resultados::es_audio`).
-pub const AUDIOS: [&str; 10] = ["mp3", "m4a", "wav", "aac", "flac", "ogg", "opus", "wma", "3gp", "amr"];
+pub const AUDIOS: [&str; 10] = [
+    "mp3", "m4a", "wav", "aac", "flac", "ogg", "opus", "wma", "3gp", "amr",
+];
 
 /// Si `ruta` es un audio de [`AUDIOS`], por su extension (sin tocar disco).
 pub fn es_audio(ruta: &Path) -> bool {
@@ -138,8 +142,16 @@ pub fn entradas(exe: &Path) -> Vec<(String, String, String)> {
     );
     for (tipo, _, exts) in TIPOS {
         for ext in exts {
-            e(&format!(r"Software\Classes\.{ext}\OpenWithProgids"), tipo, "");
-            e(&format!(r"{CAPACIDADES}\FileAssociations"), &format!(".{ext}"), tipo);
+            e(
+                &format!(r"Software\Classes\.{ext}\OpenWithProgids"),
+                tipo,
+                "",
+            );
+            e(
+                &format!(r"{CAPACIDADES}\FileAssociations"),
+                &format!(".{ext}"),
+                tipo,
+            );
         }
     }
     e(r"Software\RegisteredApplications", NOMBRE, CAPACIDADES);
@@ -171,7 +183,11 @@ pub fn quitar() {
     let valor = |ruta: &str, nombre: &str| {
         // SAFETY: las dos cadenas viven en HSTRING propios durante la llamada.
         let _ = unsafe {
-            RegDeleteKeyValueW(HKEY_CURRENT_USER, &HSTRING::from(ruta), &HSTRING::from(nombre))
+            RegDeleteKeyValueW(
+                HKEY_CURRENT_USER,
+                &HSTRING::from(ruta),
+                &HSTRING::from(nombre),
+            )
         };
     };
     for (tipo, _, _) in TIPOS {
@@ -191,7 +207,10 @@ pub fn quitar() {
 /// Abre Configuracion en la pagina de PixPin Max, donde el usuario la hace
 /// predeterminada con un boton.
 pub fn abrir_configuracion() {
-    let uri = format!("ms-settings:defaultapps?registeredAppUser={}", NOMBRE.replace(' ', "%20"));
+    let uri = format!(
+        "ms-settings:defaultapps?registeredAppUser={}",
+        NOMBRE.replace(' ', "%20")
+    );
     if let Err(e) = crate::abrir::abrir(Path::new(&uri)) {
         tracing::warn!(?e, "no se pudo abrir Configuracion de apps predeterminadas");
     }
@@ -213,12 +232,27 @@ mod pruebas {
             valor(r"Software\Classes\PixPinMax.Imagen\shell\open\command", ""),
             Some(r#""C:\Apps\PixPinMax\pixpinmax.exe" "%1""#)
         );
-        assert_eq!(valor(&format!(r"{CAPACIDADES}\FileAssociations"), ".png"), Some(IMAGEN));
-        assert_eq!(valor(&format!(r"{CAPACIDADES}\FileAssociations"), ".mp4"), Some(VIDEO));
-        assert_eq!(valor(r"Software\RegisteredApplications", NOMBRE), Some(CAPACIDADES));
+        assert_eq!(
+            valor(&format!(r"{CAPACIDADES}\FileAssociations"), ".png"),
+            Some(IMAGEN)
+        );
+        assert_eq!(
+            valor(&format!(r"{CAPACIDADES}\FileAssociations"), ".mp4"),
+            Some(VIDEO)
+        );
+        assert_eq!(
+            valor(r"Software\RegisteredApplications", NOMBRE),
+            Some(CAPACIDADES)
+        );
         // Caso negativo: un PDF o un texto no se toman (tienen su programa).
-        assert_eq!(valor(&format!(r"{CAPACIDADES}\FileAssociations"), ".pdf"), None);
-        assert_eq!(valor(&format!(r"{CAPACIDADES}\FileAssociations"), ".txt"), None);
+        assert_eq!(
+            valor(&format!(r"{CAPACIDADES}\FileAssociations"), ".pdf"),
+            None
+        );
+        assert_eq!(
+            valor(&format!(r"{CAPACIDADES}\FileAssociations"), ".txt"),
+            None
+        );
     }
 
     #[test]
@@ -264,7 +298,10 @@ mod pruebas {
     #[test]
     fn ninguna_extension_esta_en_dos_tipos() {
         // Una extension en dos tipos dejaria a Windows elegir uno al azar.
-        let todas: Vec<&str> = TIPOS.iter().flat_map(|(_, _, e)| e.iter().copied()).collect();
+        let todas: Vec<&str> = TIPOS
+            .iter()
+            .flat_map(|(_, _, e)| e.iter().copied())
+            .collect();
         let mut unicas = todas.clone();
         unicas.sort_unstable();
         unicas.dedup();

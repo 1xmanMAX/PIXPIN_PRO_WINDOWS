@@ -26,7 +26,12 @@ const PORTATIL: &str = "pixpin:files/";
 /// Donde esta `pixpinmax.exe` instalado (`herramientas/instalar.ps1`).
 pub fn exe_instalado() -> Option<PathBuf> {
     let local = std::env::var_os("LOCALAPPDATA")?;
-    Some(PathBuf::from(local).join("Programs").join("PixPinMax").join("pixpinmax.exe"))
+    Some(
+        PathBuf::from(local)
+            .join("Programs")
+            .join("PixPinMax")
+            .join("pixpinmax.exe"),
+    )
 }
 
 /// La raiz de datos: la carpeta del exe instalado si a su lado hay un
@@ -91,12 +96,20 @@ impl Mensaje {
     /// Si lleva una leccion aprendida (`LeccionesStore.esLeccion`): un
     /// `ARCHIVO` cuya ruta acaba en `.leccion`.
     pub fn es_leccion(&self) -> bool {
-        self.clase == "ARCHIVO" && self.ruta.as_deref().is_some_and(pixpin_lecciones::leccion::es_ruta_de_leccion)
+        self.clase == "ARCHIVO"
+            && self
+                .ruta
+                .as_deref()
+                .is_some_and(pixpin_lecciones::leccion::es_ruta_de_leccion)
     }
     /// Si es una leccion o una foto o audio suyo: lo que el chat no ensena
     /// (`LeccionesStore.sinLecciones`).
     pub fn es_de_leccion(&self) -> bool {
-        self.es_leccion() || self.responde_a.as_deref().is_some_and(|r| r.starts_with(pixpin_lecciones::leccion::PREFIJO))
+        self.es_leccion()
+            || self
+                .responde_a
+                .as_deref()
+                .is_some_and(|r| r.starts_with(pixpin_lecciones::leccion::PREFIJO))
     }
     pub fn texto(&self) -> &str {
         self.texto.as_deref().unwrap_or("")
@@ -165,7 +178,9 @@ pub struct LeccionLeida {
 /// `lecciones::almacen::archivo_de` de la app).
 pub fn ruta_de_leccion(carpeta: &Path, ruta: &str) -> Option<PathBuf> {
     match ruta.split_once("/files/") {
-        Some((_, rel)) if !ruta.starts_with(PORTATIL) => ruta_en(carpeta, &format!("{PORTATIL}{rel}")),
+        Some((_, rel)) if !ruta.starts_with(PORTATIL) => {
+            ruta_en(carpeta, &format!("{PORTATIL}{rel}"))
+        }
         _ => ruta_en(carpeta, ruta),
     }
 }
@@ -179,10 +194,12 @@ fn ruta_en(carpeta: &Path, ruta: &str) -> Option<PathBuf> {
         // Lo nacido en este PC y enlazado desde un texto (las imagenes
         // de una tarea): `guardados/pc/<chat>/<ruta>`, en su propia
         // carpeta (`pixpin_proyecto::vista`, `Disco::ruta`).
-        Some(rel) if rel.starts_with("guardados/pc/") => match rel["guardados/pc/".len()..].split_once('/') {
-            Some((_, resto)) => (carpeta.to_path_buf(), resto),
-            None => return None,
-        },
+        Some(rel) if rel.starts_with("guardados/pc/") => {
+            match rel["guardados/pc/".len()..].split_once('/') {
+                Some((_, resto)) => (carpeta.to_path_buf(), resto),
+                None => return None,
+            }
+        }
         Some(rel) => (carpeta.join("android"), rel),
         None => {
             if Path::new(ruta).is_absolute() || ruta.starts_with('/') || ruta.contains(':') {
@@ -302,7 +319,13 @@ pub fn leer_tareas(documento: &str) -> Vec<Tarea> {
         .map(|(indice, (texto, hecha))| {
             let (texto, creada) = partir_fecha(&texto);
             let (texto, imagenes) = sin_imagenes(&texto);
-            Tarea { indice, texto, hecha, creada, imagenes }
+            Tarea {
+                indice,
+                texto,
+                hecha,
+                creada,
+                imagenes,
+            }
         })
         .collect()
 }
@@ -318,15 +341,23 @@ pub fn partir_fecha(texto: &str) -> (String, Option<i64>) {
     }
     let (antes, fecha) = t.split_at(t.len() - 10);
     let b = fecha.as_bytes();
-    let num = |r: &[u8]| -> Option<i64> { r.iter().try_fold(0i64, |a, c| c.is_ascii_digit().then(|| a * 10 + i64::from(c - b'0'))) };
+    let num = |r: &[u8]| -> Option<i64> {
+        r.iter().try_fold(0i64, |a, c| {
+            c.is_ascii_digit().then(|| a * 10 + i64::from(c - b'0'))
+        })
+    };
     if b[4] != b'-' || b[7] != b'-' {
         return entero();
     }
-    let (Some(a), Some(m), Some(d)) = (num(&b[0..4]), num(&b[5..7]), num(&b[8..10])) else { return entero() };
+    let (Some(a), Some(m), Some(d)) = (num(&b[0..4]), num(&b[5..7]), num(&b[8..10])) else {
+        return entero();
+    };
     if !(1..=12).contains(&m) || !(1..=31).contains(&d) {
         return entero();
     }
-    let Some(resto) = antes.trim_end().strip_suffix('\u{2795}') else { return entero() };
+    let Some(resto) = antes.trim_end().strip_suffix('\u{2795}') else {
+        return entero();
+    };
     if !resto.is_empty() && !resto.ends_with(char::is_whitespace) {
         return entero();
     }
@@ -429,16 +460,23 @@ impl Vigia {
     fn nuevo(carpeta: &Path) -> Option<Vigia> {
         use std::os::windows::ffi::OsStrExt;
         use windows::Win32::Storage::FileSystem::{
-            FindFirstChangeNotificationW, FILE_NOTIFY_CHANGE_DIR_NAME, FILE_NOTIFY_CHANGE_FILE_NAME,
-            FILE_NOTIFY_CHANGE_LAST_WRITE, FILE_NOTIFY_CHANGE_SIZE,
+            FILE_NOTIFY_CHANGE_DIR_NAME, FILE_NOTIFY_CHANGE_FILE_NAME,
+            FILE_NOTIFY_CHANGE_LAST_WRITE, FILE_NOTIFY_CHANGE_SIZE, FindFirstChangeNotificationW,
         };
-        let ancho: Vec<u16> = carpeta.as_os_str().encode_wide().chain(std::iter::once(0)).collect();
+        let ancho: Vec<u16> = carpeta
+            .as_os_str()
+            .encode_wide()
+            .chain(std::iter::once(0))
+            .collect();
         let filtro = FILE_NOTIFY_CHANGE_FILE_NAME
             | FILE_NOTIFY_CHANGE_DIR_NAME
             | FILE_NOTIFY_CHANGE_SIZE
             | FILE_NOTIFY_CHANGE_LAST_WRITE;
         // SAFETY: `ancho` acaba en cero y vive durante la llamada.
-        let h = unsafe { FindFirstChangeNotificationW(windows::core::PCWSTR(ancho.as_ptr()), true, filtro) }.ok()?;
+        let h = unsafe {
+            FindFirstChangeNotificationW(windows::core::PCWSTR(ancho.as_ptr()), true, filtro)
+        }
+        .ok()?;
         if h.is_invalid() {
             return None;
         }
@@ -509,7 +547,9 @@ pub fn existe(ruta: &Path) -> bool {
 }
 
 fn ms(t: SystemTime) -> i64 {
-    t.duration_since(SystemTime::UNIX_EPOCH).map(|d| d.as_millis() as i64).unwrap_or(0)
+    t.duration_since(SystemTime::UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0)
 }
 
 /// Las fechas de los ficheros de los que sale un proyecto: si alguna cambia,
@@ -656,7 +696,9 @@ impl Datos {
     /// Guarda la cache de disco si hay algo nuevo (y nada adelantado que la
     /// app aun no escribio). De un tiron: se escribe aparte y se renombra.
     pub fn guardar_cache(&mut self) {
-        let Some(ruta) = self.ruta_cache.clone() else { return };
+        let Some(ruta) = self.ruta_cache.clone() else {
+            return;
+        };
         if self.retocado {
             return;
         }
@@ -668,11 +710,19 @@ impl Datos {
                 HashMap::new()
             }
         });
-        let heredados = self.existentes_heredados.as_ref().map(|h| h.0.len()).unwrap_or(0);
+        let heredados = self
+            .existentes_heredados
+            .as_ref()
+            .map(|h| h.0.len())
+            .unwrap_or(0);
         if !self.sucio && existentes.len() <= heredados {
             return;
         }
-        let desde = if self.existentes_desde > 0 { self.existentes_desde } else { ahora_ms() };
+        let desde = if self.existentes_desde > 0 {
+            self.existentes_desde
+        } else {
+            ahora_ms()
+        };
         let c = CacheDisco {
             version: VERSION_CACHE,
             raiz: self.raiz.clone(),
@@ -702,13 +752,18 @@ impl Datos {
         let ahora = ahora_ms();
         let pedir: Vec<String> = faltan
             .into_iter()
-            .filter(|e| self.iconos_pedidos.get(e).is_none_or(|t| ahora - t >= REPETIR_ICONO_MS))
+            .filter(|e| {
+                self.iconos_pedidos
+                    .get(e)
+                    .is_none_or(|t| ahora - t >= REPETIR_ICONO_MS)
+            })
             .collect();
         for e in &pedir {
             self.iconos_pedidos.insert(e.clone(), ahora);
             self.sucio = true;
         }
-        self.iconos_pedidos.retain(|_, t| ahora - *t < REPETIR_ICONO_MS);
+        self.iconos_pedidos
+            .retain(|_, t| ahora - *t < REPETIR_ICONO_MS);
         pedir
     }
 
@@ -736,11 +791,14 @@ impl Datos {
         if self.ultima.is_none() {
             return false;
         }
-        let Some(vigia) = &self.vigia else { return false };
+        let Some(vigia) = &self.vigia else {
+            return false;
+        };
         if vigia.salto() {
             return false;
         }
-        self.revisado.is_some_and(|t| t.elapsed() < self.revision_forzosa)
+        self.revisado
+            .is_some_and(|t| t.elapsed() < self.revision_forzosa)
     }
 
     /// Los proyectos, al dia con el disco. En un proceso que se queda vivo lo
@@ -784,7 +842,9 @@ impl Datos {
         if f.is_none() || f != self.fecha_indice {
             self.indice = std::fs::read_to_string(&ruta_indice)
                 .ok()
-                .and_then(|t| serde_json::from_str::<IndiceCrudo>(t.trim_start_matches('\u{feff}')).ok())
+                .and_then(|t| {
+                    serde_json::from_str::<IndiceCrudo>(t.trim_start_matches('\u{feff}')).ok()
+                })
                 .map(|i| i.proyectos)
                 .unwrap_or_default();
             self.fecha_indice = f;
@@ -807,17 +867,38 @@ impl Datos {
             // (el titulo sale de dentro, y editarla no cambia la carpeta).
             let notas = dentro.get("notas").filter(|n| n.carpeta).and_then(|n| {
                 let lista = listar(&carpeta.join("notas"));
-                let tamano = lista.values().filter_map(|h| h.huella).fold((lista.len() as u64) << 40, |a, (_, t)| a.wrapping_add(t));
-                let mas_nueva = lista.values().filter_map(|h| h.huella).map(|(f, _)| f).chain(n.huella.map(|(f, _)| f)).max();
+                let tamano = lista
+                    .values()
+                    .filter_map(|h| h.huella)
+                    .fold((lista.len() as u64) << 40, |a, (_, t)| a.wrapping_add(t));
+                let mas_nueva = lista
+                    .values()
+                    .filter_map(|h| h.huella)
+                    .map(|(f, _)| f)
+                    .chain(n.huella.map(|(f, _)| f))
+                    .max();
                 mas_nueva.map(|f| (f, tamano))
             });
             // Las lecciones, igual: cuantas, cuanto ocupan y la mas nueva.
             let lecciones = dentro.get("android").filter(|a| a.carpeta).and_then(|_| {
                 let lista = listar(&carpeta.join("android").join("guardados").join("lecciones"));
-                let tamano = lista.values().filter_map(|h| h.huella).fold((lista.len() as u64) << 40, |a, (_, t)| a.wrapping_add(t));
-                lista.values().filter_map(|h| h.huella).map(|(f, _)| f).max().map(|f| (f, tamano))
+                let tamano = lista
+                    .values()
+                    .filter_map(|h| h.huella)
+                    .fold((lista.len() as u64) << 40, |a, (_, t)| a.wrapping_add(t));
+                lista
+                    .values()
+                    .filter_map(|h| h.huella)
+                    .map(|(f, _)| f)
+                    .max()
+                    .map(|f| (f, tamano))
             });
-            let fechas = Fechas { guardados: h("guardados.jsonl"), proyecto: h("proyecto.json"), notas, lecciones };
+            let fechas = Fechas {
+                guardados: h("guardados.jsonl"),
+                proyecto: h("proyecto.json"),
+                notas,
+                lecciones,
+            };
             let nueva = !self.cache.contains_key(&p.id);
             let entrada = self.cache.entry(p.id.clone()).or_default();
             if nueva || entrada.fechas != fechas {
@@ -828,7 +909,11 @@ impl Datos {
             }
             salida.push(Proyecto {
                 id: p.id.clone(),
-                nombre: if p.guardados { NOMBRE_GUARDADOS.to_string() } else { p.nombre.trim().to_string() },
+                nombre: if p.guardados {
+                    NOMBRE_GUARDADOS.to_string()
+                } else {
+                    p.nombre.trim().to_string()
+                },
                 tocado: p.tocado,
                 hojas: p.hojas,
                 guardados: p.guardados,
@@ -850,7 +935,12 @@ impl Datos {
     /// Cambia en la cache el texto de un mensaje (lo que se espera que la
     /// app escriba). Se pierde en cuanto el fichero cambie de fecha: entonces
     /// manda lo que haya en el disco. Nunca se guarda en la cache de disco.
-    pub fn retocar(&mut self, proyecto: &str, codigo: &str, cambio: impl FnOnce(&str) -> String) -> bool {
+    pub fn retocar(
+        &mut self,
+        proyecto: &str,
+        codigo: &str,
+        cambio: impl FnOnce(&str) -> String,
+    ) -> bool {
         let Some(e) = self.cache.get_mut(proyecto) else {
             return false;
         };
@@ -876,7 +966,10 @@ impl Datos {
 
     /// El id del proyecto de «Mensajes guardados», si lo hay.
     pub fn id_de_guardados(&mut self) -> Option<String> {
-        self.proyectos().into_iter().find(|p| p.guardados).map(|p| p.id)
+        self.proyectos()
+            .into_iter()
+            .find(|p| p.guardados)
+            .map(|p| p.id)
     }
 }
 
@@ -892,11 +985,22 @@ struct Hijo {
 /// carpeta en vez de una apertura por fichero (que el antivirus mira).
 fn listar(carpeta: &Path) -> HashMap<String, Hijo> {
     let mut hijos = HashMap::new();
-    let Ok(dir) = std::fs::read_dir(carpeta) else { return hijos };
+    let Ok(dir) = std::fs::read_dir(carpeta) else {
+        return hijos;
+    };
     for e in dir.flatten() {
         let Ok(m) = e.metadata() else { continue };
-        let huella = m.modified().ok().map(|t| (t, if m.is_dir() { 0 } else { m.len() }));
-        hijos.insert(e.file_name().to_string_lossy().to_string(), Hijo { huella, carpeta: m.is_dir() });
+        let huella = m
+            .modified()
+            .ok()
+            .map(|t| (t, if m.is_dir() { 0 } else { m.len() }));
+        hijos.insert(
+            e.file_name().to_string_lossy().to_string(),
+            Hijo {
+                huella,
+                carpeta: m.is_dir(),
+            },
+        );
     }
     hijos
 }
@@ -922,16 +1026,30 @@ fn leer_proyecto(carpeta: &Path) -> Entrada {
     if let Ok(dir) = std::fs::read_dir(carpeta.join("notas")) {
         for e in dir.flatten() {
             let ruta = e.path();
-            if ruta.extension().and_then(|x| x.to_str()).is_none_or(|x| !x.eq_ignore_ascii_case("md")) {
+            if ruta
+                .extension()
+                .and_then(|x| x.to_str())
+                .is_none_or(|x| !x.eq_ignore_ascii_case("md"))
+            {
                 continue;
             }
             let titulo = titulo_de_md(&ruta);
             let cuando = fecha(&ruta).map(ms).unwrap_or(0);
-            notas_md.push(NotaMd { ruta, titulo, cuando });
+            notas_md.push(NotaMd {
+                ruta,
+                titulo,
+                cuando,
+            });
         }
     }
     let lecciones = leer_lecciones(carpeta, &mensajes);
-    Entrada { fechas: Fechas::default(), mensajes, hojas, notas_md, lecciones }
+    Entrada {
+        fechas: Fechas::default(),
+        mensajes,
+        hojas,
+        notas_md,
+        lecciones,
+    }
 }
 
 /// Las lecciones del chat: el `.leccion` de cada mensaje que lleva una. Una
@@ -944,9 +1062,14 @@ fn leer_lecciones(carpeta: &Path, mensajes: &[Mensaje]) -> Vec<LeccionLeida> {
         .filter_map(|m| {
             let ruta = ruta_de_leccion(carpeta, m.ruta.as_deref()?)?;
             let texto = std::fs::read_to_string(&ruta).ok()?;
-            let json: serde_json::Value = serde_json::from_str(texto.trim_start_matches('\u{feff}')).ok()?;
+            let json: serde_json::Value =
+                serde_json::from_str(texto.trim_start_matches('\u{feff}')).ok()?;
             pixpin_lecciones::Leccion::de_valor(&json)?;
-            Some(LeccionLeida { mensaje: m.id.clone(), ruta, json })
+            Some(LeccionLeida {
+                mensaje: m.id.clone(),
+                ruta,
+                json,
+            })
         })
         .collect()
 }
@@ -960,15 +1083,23 @@ fn titulo_de_md(ruta: &Path) -> String {
         let _ = f.take(4096).read_to_end(&mut trozo);
     }
     let texto = String::from_utf8_lossy(&trozo);
-    primera_linea(&texto)
-        .unwrap_or_else(|| ruta.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default())
+    primera_linea(&texto).unwrap_or_else(|| {
+        ruta.file_stem()
+            .map(|s| s.to_string_lossy().to_string())
+            .unwrap_or_default()
+    })
 }
 
 /// La primera linea con texto, sin `#` delante ni enlaces de imagen.
 pub fn primera_linea(texto: &str) -> Option<String> {
     texto
         .lines()
-        .map(|l| l.trim().trim_start_matches('\u{feff}').trim_start_matches('#').trim())
+        .map(|l| {
+            l.trim()
+                .trim_start_matches('\u{feff}')
+                .trim_start_matches('#')
+                .trim()
+        })
         .find(|l| !l.is_empty() && !l.starts_with("!["))
         .map(|l| {
             let l: String = l.chars().take(90).collect();
@@ -991,8 +1122,26 @@ mod pruebas {
         assert_eq!(titulo_del_documento(d), "Compra");
         let t = leer_tareas(d);
         assert_eq!(t.len(), 3);
-        assert_eq!(t[0], Tarea { indice: 0, texto: "pan".into(), hecha: false, creada: None, imagenes: vec![] });
-        assert_eq!(t[2], Tarea { indice: 2, texto: "sal".into(), hecha: true, creada: None, imagenes: vec![] });
+        assert_eq!(
+            t[0],
+            Tarea {
+                indice: 0,
+                texto: "pan".into(),
+                hecha: false,
+                creada: None,
+                imagenes: vec![]
+            }
+        );
+        assert_eq!(
+            t[2],
+            Tarea {
+                indice: 2,
+                texto: "sal".into(),
+                hecha: true,
+                creada: None,
+                imagenes: vec![]
+            }
+        );
     }
 
     #[test]
@@ -1007,18 +1156,29 @@ mod pruebas {
         let d = "# L\n\n- [x] a\n- [ ] b";
         assert_eq!(con_tarea_marcada(d, 1, true), "# L\n\n- [x] a\n- [x] b");
         assert_eq!(con_tarea_marcada(d, 0, false), "# L\n\n- [ ] a\n- [ ] b");
-        assert_eq!(con_tarea_anadida(d, " c "), "# L\n\n- [x] a\n- [ ] b\n- [ ] c");
+        assert_eq!(
+            con_tarea_anadida(d, " c "),
+            "# L\n\n- [x] a\n- [ ] b\n- [ ] c"
+        );
         assert_eq!(con_tarea_anadida("", "c"), "- [ ] c");
     }
 
     #[test]
     fn rutas_del_movil_y_relativas() {
-        let p = Proyecto { carpeta: PathBuf::from(r"C:\d\proyectos\X"), ..Default::default() };
+        let p = Proyecto {
+            carpeta: PathBuf::from(r"C:\d\proyectos\X"),
+            ..Default::default()
+        };
         assert_eq!(
             p.ruta_real("pixpin:files/guardados/voz_1.m4a"),
-            Some(PathBuf::from(r"C:\d\proyectos\X\android\guardados\voz_1.m4a"))
+            Some(PathBuf::from(
+                r"C:\d\proyectos\X\android\guardados\voz_1.m4a"
+            ))
         );
-        assert_eq!(p.ruta_real("archivos/a b.pdf"), Some(PathBuf::from(r"C:\d\proyectos\X\archivos\a b.pdf")));
+        assert_eq!(
+            p.ruta_real("archivos/a b.pdf"),
+            Some(PathBuf::from(r"C:\d\proyectos\X\archivos\a b.pdf"))
+        );
         assert_eq!(p.ruta_real("/storage/emulated/0/x.jpg"), None);
         assert_eq!(p.ruta_real(r"C:\x.jpg"), None);
         assert_eq!(p.ruta_real("archivos/../../fuera"), None);
@@ -1026,16 +1186,30 @@ mod pruebas {
         // Una leccion: la portatil, y la absoluta de un movil viejo por lo de
         // detras de `files/`.
         let x = Path::new(r"C:\d\proyectos\X");
-        let esperada = Some(PathBuf::from(r"C:\d\proyectos\X\android\guardados\lecciones\k.leccion"));
-        assert_eq!(ruta_de_leccion(x, "pixpin:files/guardados/lecciones/k.leccion"), esperada);
-        assert_eq!(ruta_de_leccion(x, "/data/user/0/com.forge.pixpin/files/guardados/lecciones/k.leccion"), esperada);
+        let esperada = Some(PathBuf::from(
+            r"C:\d\proyectos\X\android\guardados\lecciones\k.leccion",
+        ));
+        assert_eq!(
+            ruta_de_leccion(x, "pixpin:files/guardados/lecciones/k.leccion"),
+            esperada
+        );
+        assert_eq!(
+            ruta_de_leccion(
+                x,
+                "/data/user/0/com.forge.pixpin/files/guardados/lecciones/k.leccion"
+            ),
+            esperada
+        );
         // Caso negativo: no se sale de la carpeta.
         assert_eq!(ruta_de_leccion(x, "/data/files/../../k.leccion"), None);
     }
 
     #[test]
     fn la_primera_linea_salta_titulos_vacios_e_imagenes() {
-        assert_eq!(primera_linea("\n# \n![a](b)\n## Hola\nmas").as_deref(), Some("Hola"));
+        assert_eq!(
+            primera_linea("\n# \n![a](b)\n## Hola\nmas").as_deref(),
+            Some("Hola")
+        );
         assert_eq!(primera_linea("  \n"), None);
     }
 }
@@ -1052,10 +1226,16 @@ mod pruebas_de_fecha {
         assert_eq!(dias_civiles(1970, 1, 1), 0);
         assert_eq!(dias_civiles(2026, 10, 2) - dias_civiles(2026, 9, 30), 2);
         // Sin la marca, o pegada a una palabra, todo es texto.
-        assert_eq!(partir_fecha("pan 2026-10-02"), ("pan 2026-10-02".into(), None));
+        assert_eq!(
+            partir_fecha("pan 2026-10-02"),
+            ("pan 2026-10-02".into(), None)
+        );
         assert_eq!(partir_fecha("pan➕ 2026-10-02").1, None);
         assert_eq!(leer_tareas("- [ ] pan ➕ 2026-10-02")[0].texto, "pan");
-        assert_eq!((hace_dias(0), hace_dias(1), hace_dias(5)), ("hoy".into(), "hace 1 día".into(), "hace 5 días".into()));
+        assert_eq!(
+            (hace_dias(0), hace_dias(1), hace_dias(5)),
+            ("hoy".into(), "hace 1 día".into(), "hace 5 días".into())
+        );
     }
 }
 
@@ -1066,7 +1246,10 @@ mod pruebas_de_cache {
 
     /// Dos proyectos con un mensaje cada uno y una nota en el primero.
     fn raiz(etiqueta: &str) -> PathBuf {
-        let r = std::env::temp_dir().join(format!("pixpin-lanzador-cache-{etiqueta}-{}", std::process::id()));
+        let r = std::env::temp_dir().join(format!(
+            "pixpin-lanzador-cache-{etiqueta}-{}",
+            std::process::id()
+        ));
         let _ = fs::remove_dir_all(&r);
         let p = r.join("proyectos");
         fs::create_dir_all(p.join("A/notas")).unwrap();
@@ -1076,8 +1259,16 @@ mod pruebas_de_cache {
             r#"{"proyectos":[{"id":"A","nombre":"Uno","tocado":2},{"id":"B","nombre":"Dos","tocado":1}]}"#,
         )
         .unwrap();
-        fs::write(p.join("A/guardados.jsonl"), "{\"id\":\"a1\",\"cuando\":1,\"clase\":\"NOTA\",\"texto\":\"hola\"}\n").unwrap();
-        fs::write(p.join("B/guardados.jsonl"), "{\"id\":\"b1\",\"cuando\":1,\"clase\":\"NOTA\",\"texto\":\"adios\"}\n").unwrap();
+        fs::write(
+            p.join("A/guardados.jsonl"),
+            "{\"id\":\"a1\",\"cuando\":1,\"clase\":\"NOTA\",\"texto\":\"hola\"}\n",
+        )
+        .unwrap();
+        fs::write(
+            p.join("B/guardados.jsonl"),
+            "{\"id\":\"b1\",\"cuando\":1,\"clase\":\"NOTA\",\"texto\":\"adios\"}\n",
+        )
+        .unwrap();
         fs::write(p.join("A/notas/n.md"), "# Titulo viejo\n").unwrap();
         r
     }
@@ -1113,7 +1304,11 @@ mod pruebas_de_cache {
         }
         assert_eq!((d.revisiones, d.relecturas), (revisiones, 2));
         // Un mensaje nuevo en B: el vigia salta y solo se relee B.
-        anadir(&r, "B", r#"{"id":"b2","cuando":2,"clase":"NOTA","texto":"otra"}"#);
+        anadir(
+            &r,
+            "B",
+            r#"{"id":"b2","cuando":2,"clase":"NOTA","texto":"otra"}"#,
+        );
         let mut ps = d.proyectos();
         // El aviso de Windows llega casi siempre antes de volver de escribir;
         // por si tarda, se le da un margen.
@@ -1135,8 +1330,16 @@ mod pruebas_de_cache {
         d.vigilar = false;
         d.proyectos();
         d.proyectos();
-        assert_eq!((d.revisiones, d.relecturas), (2, 2), "se mira cada vez, pero no se relee lo que no cambio");
-        anadir(&r, "A", r#"{"id":"a2","cuando":2,"clase":"NOTA","texto":"x"}"#);
+        assert_eq!(
+            (d.revisiones, d.relecturas),
+            (2, 2),
+            "se mira cada vez, pero no se relee lo que no cambio"
+        );
+        anadir(
+            &r,
+            "A",
+            r#"{"id":"a2","cuando":2,"clase":"NOTA","texto":"x"}"#,
+        );
         assert_eq!(d.proyectos()[0].mensajes.len(), 2);
         assert_eq!(d.relecturas, 3);
     }
@@ -1159,7 +1362,11 @@ mod pruebas_de_cache {
         assert_eq!(ps[0].notas_md[0].titulo, "Titulo viejo");
 
         // Cambia B: el siguiente relee solo B.
-        anadir(&r, "B", r#"{"id":"b2","cuando":2,"clase":"NOTA","texto":"otra"}"#);
+        anadir(
+            &r,
+            "B",
+            r#"{"id":"b2","cuando":2,"clase":"NOTA","texto":"otra"}"#,
+        );
         let mut d = sin_vigia(&r, &ruta);
         let ps = d.proyectos();
         assert_eq!(d.relecturas, 1);
@@ -1168,9 +1375,16 @@ mod pruebas_de_cache {
 
         // Editar una nota cambia su titulo aunque la carpeta no cambie.
         std::thread::sleep(Duration::from_millis(20));
-        fs::write(r.join("proyectos/A/notas/n.md"), "# Titulo nuevo y mas largo\n").unwrap();
+        fs::write(
+            r.join("proyectos/A/notas/n.md"),
+            "# Titulo nuevo y mas largo\n",
+        )
+        .unwrap();
         let mut d = sin_vigia(&r, &ruta);
-        assert_eq!(d.proyectos()[0].notas_md[0].titulo, "Titulo nuevo y mas largo");
+        assert_eq!(
+            d.proyectos()[0].notas_md[0].titulo,
+            "Titulo nuevo y mas largo"
+        );
         assert_eq!(d.relecturas, 1);
     }
 
@@ -1206,7 +1420,11 @@ mod pruebas_de_cache {
         assert_eq!(d.proyectos()[0].mensajes[0].texto(), "adelantado");
         d.guardar_cache();
         let mut d = sin_vigia(&r, &ruta);
-        assert_eq!(d.proyectos()[0].mensajes[0].texto(), "hola", "manda el disco, no lo adelantado");
+        assert_eq!(
+            d.proyectos()[0].mensajes[0].texto(),
+            "hola",
+            "manda el disco, no lo adelantado"
+        );
     }
 
     #[test]
@@ -1226,7 +1444,11 @@ mod pruebas_de_cache {
         d.proyectos();
         assert!(existe(&f), "heredado de la cache de disco");
         // Caso negativo: si algo cambio, lo heredado no vale.
-        anadir(&r, "B", r#"{"id":"b2","cuando":2,"clase":"NOTA","texto":"otra"}"#);
+        anadir(
+            &r,
+            "B",
+            r#"{"id":"b2","cuando":2,"clase":"NOTA","texto":"otra"}"#,
+        );
         let mut d = sin_vigia(&r, &ruta);
         d.proyectos();
         assert!(!existe(&f));
@@ -1238,12 +1460,18 @@ mod pruebas_de_cache {
         let ruta = r.join("cache").join(NOMBRE_CACHE);
         let mut d = sin_vigia(&r, &ruta);
         d.proyectos();
-        assert_eq!(d.iconos_que_pedir(vec!["pdf".into(), "dwg".into()]), ["pdf", "dwg"]);
+        assert_eq!(
+            d.iconos_que_pedir(vec!["pdf".into(), "dwg".into()]),
+            ["pdf", "dwg"]
+        );
         // Caso negativo: en seguida, no se vuelve a pedir.
         assert!(d.iconos_que_pedir(vec!["pdf".into()]).is_empty());
         d.guardar_cache();
         let mut d = sin_vigia(&r, &ruta);
         d.proyectos();
-        assert_eq!(d.iconos_que_pedir(vec!["pdf".into(), "zip".into()]), ["zip"]);
+        assert_eq!(
+            d.iconos_que_pedir(vec!["pdf".into(), "zip".into()]),
+            ["zip"]
+        );
     }
 }

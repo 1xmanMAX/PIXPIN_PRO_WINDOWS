@@ -108,7 +108,10 @@ pub(super) fn hay_repetidas(teclas: &[Tecla]) -> bool {
             otra => otra,
         })
         .collect();
-    reales.iter().enumerate().any(|(n, t)| reales[..n].contains(t))
+    reales
+        .iter()
+        .enumerate()
+        .any(|(n, t)| reales[..n].contains(t))
 }
 
 /// Un menu (o su submenu) ya colocado.
@@ -130,7 +133,11 @@ fn e(v: u32, escala: u32) -> u32 {
 /// Lo ancho y lo alto del recuadro, dado lo que necesita cada fila (su
 /// rotulo y sus chapitas, ya medidos con la fuente).
 pub(super) fn medidas(necesita: &[f32], separado: &[bool], escala: u32) -> (u32, u32) {
-    let mas_ancha = necesita.iter().fold(0.0f32, |a, b| a.max(*b)).max(0.0).ceil() as u32;
+    let mas_ancha = necesita
+        .iter()
+        .fold(0.0f32, |a, b| a.max(*b))
+        .max(0.0)
+        .ceil() as u32;
     let natural = mas_ancha + e(TEXTO_X + DERECHA + 2 * RELLENO, escala);
     let ancho = natural.clamp(e(ANCHO_MIN, escala), e(ANCHO_MAX, escala));
     let seps = separado
@@ -138,7 +145,9 @@ pub(super) fn medidas(necesita: &[f32], separado: &[bool], escala: u32) -> (u32,
         .enumerate()
         .filter(|(n, s)| **s && *n > 0)
         .count() as u32;
-    let alto = e(FILA, escala) * necesita.len() as u32 + e(SEPARADOR, escala) * seps + 2 * e(RELLENO, escala);
+    let alto = e(FILA, escala) * necesita.len() as u32
+        + e(SEPARADOR, escala) * seps
+        + 2 * e(RELLENO, escala);
     (ancho, alto)
 }
 
@@ -306,7 +315,14 @@ mod pruebas {
     #[test]
     fn las_filas_miden_40_y_los_separadores_las_apartan() {
         let separado = [false, false, true, false, true];
-        let c = colocar(Punto { x: 100, y: 100 }, limite(), &[80.0; 5], &separado, 0, 100);
+        let c = colocar(
+            Punto { x: 100, y: 100 },
+            limite(),
+            &[80.0; 5],
+            &separado,
+            0,
+            100,
+        );
         assert_eq!(c.filas.len(), 5);
         assert!(c.filas.iter().all(|f| f.alto == FILA));
         assert_eq!(c.separadores.len(), 2);
@@ -317,7 +333,14 @@ mod pruebas {
         // Todo dentro del recuadro.
         assert!(c.filas.last().unwrap().abajo() <= c.caja.abajo());
         // Caso negativo: un separador en la primera fila no se pinta.
-        let c = colocar(Punto { x: 0, y: 0 }, limite(), &[80.0; 2], &[true, false], 0, 100);
+        let c = colocar(
+            Punto { x: 0, y: 0 },
+            limite(),
+            &[80.0; 2],
+            &[true, false],
+            0,
+            100,
+        );
         assert!(c.separadores.is_empty());
         assert_eq!(c.filas[0].y, RELLENO as i32);
     }
@@ -336,7 +359,11 @@ mod pruebas {
     fn junto_al_borde_se_da_la_vuelta_sin_salirse() {
         let ancla = Punto { x: 990, y: 790 };
         let c = colocar(ancla, limite(), &[100.0; 6], &[false; 6], 6, 100);
-        assert!(c.caja.derecha() <= 1000 && c.caja.abajo() <= 800, "{:?}", c.caja);
+        assert!(
+            c.caja.derecha() <= 1000 && c.caja.abajo() <= 800,
+            "{:?}",
+            c.caja
+        );
         // La fila de etiquetas va encima del recuadro, sin pisarlo.
         assert_eq!(c.emojis.len(), 6);
         assert!(c.emojis.iter().all(|r| r.abajo() <= c.caja.y));
@@ -348,25 +375,63 @@ mod pruebas {
 
     #[test]
     fn se_acierta_la_fila_y_el_relleno_no_es_ninguna() {
-        let c = colocar(Punto { x: 0, y: 0 }, limite(), &[80.0; 3], &[false, true, false], 3, 100);
+        let c = colocar(
+            Punto { x: 0, y: 0 },
+            limite(),
+            &[80.0; 3],
+            &[false, true, false],
+            3,
+            100,
+        );
         let f = c.filas[1];
-        assert_eq!(c.fila_en(Punto { x: f.x + 4, y: f.y + 4 }), Some(1));
-        assert_eq!(c.emoji_en(Punto { x: c.emojis[2].x + 2, y: c.emojis[2].y + 2 }), Some(2));
+        assert_eq!(
+            c.fila_en(Punto {
+                x: f.x + 4,
+                y: f.y + 4
+            }),
+            Some(1)
+        );
+        assert_eq!(
+            c.emoji_en(Punto {
+                x: c.emojis[2].x + 2,
+                y: c.emojis[2].y + 2
+            }),
+            Some(2)
+        );
         // Casos negativos: el relleno de arriba y la raya de separar.
-        let arriba = Punto { x: c.caja.x + 3, y: c.caja.y + 2 };
+        let arriba = Punto {
+            x: c.caja.x + 3,
+            y: c.caja.y + 2,
+        };
         assert_eq!(c.fila_en(arriba), None);
         assert!(c.contiene(arriba), "el relleno es del menu: no lo cierra");
-        let raya = Punto { x: f.x + 4, y: c.separadores[0] };
+        let raya = Punto {
+            x: f.x + 4,
+            y: c.separadores[0],
+        };
         assert_eq!(c.fila_en(raya), None);
         assert!(!c.contiene(Punto { x: 999, y: 799 }));
     }
 
     #[test]
     fn el_submenu_va_a_la_derecha_o_a_la_izquierda_si_no_cabe() {
-        let madre = Rect { x: 100, y: 100, ancho: 300, alto: 400 };
-        let fila = Rect { x: 106, y: 300, ancho: 288, alto: 40 };
+        let madre = Rect {
+            x: 100,
+            y: 100,
+            ancho: 300,
+            alto: 400,
+        };
+        let fila = Rect {
+            x: 106,
+            y: 300,
+            ancho: 288,
+            alto: 40,
+        };
         let s = colocar_al_lado(madre, fila, limite(), &[100.0; 4], &[false; 4], 100);
-        assert!(s.caja.x > madre.x && s.caja.x < madre.derecha(), "se monta un poco");
+        assert!(
+            s.caja.x > madre.x && s.caja.x < madre.derecha(),
+            "se monta un poco"
+        );
         assert_eq!(s.filas[0].y, fila.y, "su primera fila a la altura de «Más»");
         // Caso negativo: pegada al borde derecho, sale por la izquierda.
         let madre = Rect { x: 690, ..madre };
@@ -394,7 +459,11 @@ mod pruebas {
 
     #[test]
     fn se_ven_las_teclas_repetidas() {
-        assert!(!hay_repetidas(&[Tecla::Letra('r'), Tecla::Letra('p'), Tecla::Ctrl('c')]));
+        assert!(!hay_repetidas(&[
+            Tecla::Letra('r'),
+            Tecla::Letra('p'),
+            Tecla::Ctrl('c')
+        ]));
         // Las de solo ensenar no cuentan.
         assert!(!hay_repetidas(&[Tecla::Sub, Tecla::Sub, Tecla::CtrlClic]));
         // Caso negativo: dos R, aunque una sea mayuscula.

@@ -225,7 +225,11 @@ pub fn pintar_barra(
         } else if sobre == Some(*boton) {
             p.rellenar_redondeado(caja, 8.0 * e, t.hover);
         }
-        let color = if elegido || abierto { t.activo_icono } else { t.icono };
+        let color = if elegido || abierto {
+            t.activo_icono
+        } else {
+            t.icono
+        };
         let lado = 16.0 * e;
         p.icono(
             icono(cara),
@@ -255,7 +259,11 @@ pub fn pintar_barra(
                 caja.x + caja.ancho - 4.0 * e - w,
                 caja.y + caja.alto - 2.0 * e - h,
                 tam,
-                if elegido || abierto { t.activo_icono } else { t.tecla },
+                if elegido || abierto {
+                    t.activo_icono
+                } else {
+                    t.tecla
+                },
             );
         }
     }
@@ -284,7 +292,11 @@ pub fn pintar_barra(
                     ancho: lado,
                     alto: lado,
                 },
-                if elegida { t.menu_icono_elegido } else { t.icono },
+                if elegida {
+                    t.menu_icono_elegido
+                } else {
+                    t.icono
+                },
             );
             let nombre = crate::dibujo::permitidas::nombre_visible(*b, textos);
             let tam = 14.0 * e;
@@ -438,18 +450,11 @@ pub fn pintar_pista(
     // (Salir va al final, y el globo de los ultimos se cortaria).
     let centro = r.x as f32 + r.ancho as f32 / 2.0;
     let derecha = (barra.marco.x + barra.marco.ancho as i32) as f32;
-    let x = (centro - ancho / 2.0).min(derecha - ancho).max(barra.marco.x as f32);
+    let x = (centro - ancho / 2.0)
+        .min(derecha - ancho)
+        .max(barra.marco.x as f32);
     let y = (barra.marco.y + barra.marco.alto as i32) as f32 + 6.0 * e;
-    p.rellenar_redondeado(
-        RectF {
-            x,
-            y,
-            ancho,
-            alto,
-        },
-        6.0 * e,
-        GLOBO,
-    );
+    p.rellenar_redondeado(RectF { x, y, ancho, alto }, 6.0 * e, GLOBO);
     p.texto(&texto, x + px, y + py, tam, CLARO.isla);
 }
 
@@ -473,8 +478,9 @@ mod pruebas {
     ) -> Imagen {
         let d = pixpin_capture::Dispositivo::nuevo().expect("GPU");
         let motor = pixpin_render::MotorRender::nuevo(d.d3d()).expect("motor");
-        let destino = pixpin_render::fuera_de_pantalla::FueraDePantalla::nuevo(&motor, d.d3d(), w, h)
-            .expect("textura");
+        let destino =
+            pixpin_render::fuera_de_pantalla::FueraDePantalla::nuevo(&motor, d.d3d(), w, h)
+                .expect("textura");
         let papel = if noche {
             pixpin_motor2d::ColorRgba {
                 r: 0.12,
@@ -579,9 +585,15 @@ mod pruebas {
             alto: 200,
         };
         let barra = CajaHerramientas::barra_superior(zona, 100, &BOTONES_EDITOR);
-        let sacar = barra.rect_de_boton(BotonCaja::Grupo(GrupoBarra::Sacar)).unwrap();
+        let sacar = barra
+            .rect_de_boton(BotonCaja::Grupo(GrupoBarra::Sacar))
+            .unwrap();
         // Justo antes de deshacer.
-        let i = barra.botones().iter().position(|b| *b == BotonCaja::Grupo(GrupoBarra::Sacar)).unwrap();
+        let i = barra
+            .botones()
+            .iter()
+            .position(|b| *b == BotonCaja::Grupo(GrupoBarra::Sacar))
+            .unwrap();
         assert_eq!(barra.botones()[i + 1], BotonCaja::Deshacer);
         let abierta = barra.con_desplegado(Some(GrupoBarra::Sacar));
         assert!(abierta.rect_de_boton(BotonCaja::Imprimir).is_some());
@@ -589,12 +601,26 @@ mod pruebas {
 
         let sin = pintar_fuera(&barra, Herramienta::Mano, 100, None, (1920, 120), false);
         assert_eq!(oscuros_bajo(&sin, &barra), 0, "sin raton no hay globo");
-        let con = pintar_fuera(&barra, Herramienta::Mano, 100, Some(centro(sacar)), (1920, 120), false);
+        let con = pintar_fuera(
+            &barra,
+            Herramienta::Mano,
+            100,
+            Some(centro(sacar)),
+            (1920, 120),
+            false,
+        );
         assert!(oscuros_bajo(&con, &barra) > 500, "no salio el globo");
         guardar(&con, "barra-globo-sacar.png");
         // Caso negativo: con las hermanas abiertas el globo no sale (caeria
         // encima de ellas, que ya llevan su nombre).
-        let abierto = pintar_fuera(&abierta, Herramienta::Mano, 100, Some(centro(sacar)), (1920, 200), false);
+        let abierto = pintar_fuera(
+            &abierta,
+            Herramienta::Mano,
+            100,
+            Some(centro(sacar)),
+            (1920, 200),
+            false,
+        );
         let bajo_menu = abierta.menu().unwrap().marco.derecha() + 20;
         let mut negros = 0;
         for y in (barra.marco.abajo() + 8)..(barra.marco.abajo() + 22) {
@@ -619,8 +645,16 @@ mod pruebas {
         let todas = pixpin_store::herramientas::Herramientas::default();
         let viva = botones_con(Anfitrion::PantallaViva, &todas);
         assert!(viva.contains(&BotonCaja::Atravesar));
-        for otro in [Anfitrion::PantallaCongelada, Anfitrion::Lienzo, Anfitrion::Lector, Anfitrion::Pin] {
-            assert!(!botones_con(otro, &todas).contains(&BotonCaja::Atravesar), "{otro:?}");
+        for otro in [
+            Anfitrion::PantallaCongelada,
+            Anfitrion::Lienzo,
+            Anfitrion::Lector,
+            Anfitrion::Pin,
+        ] {
+            assert!(
+                !botones_con(otro, &todas).contains(&BotonCaja::Atravesar),
+                "{otro:?}"
+            );
         }
         let zona = Rect {
             x: 0,
@@ -628,12 +662,25 @@ mod pruebas {
             ancho: 1920,
             alto: 200,
         };
-        let barra = CajaHerramientas::barra_superior(zona, 100, crate::dibujo::permitidas::botones(Anfitrion::PantallaViva));
-        let boton = barra.rect_de_boton(BotonCaja::Atravesar).expect("suelto en la barra, no en un grupo");
+        let barra = CajaHerramientas::barra_superior(
+            zona,
+            100,
+            crate::dibujo::permitidas::botones(Anfitrion::PantallaViva),
+        );
+        let boton = barra
+            .rect_de_boton(BotonCaja::Atravesar)
+            .expect("suelto en la barra, no en un grupo");
         let t = pixpin_store::Catalogo::nuevo(pixpin_store::Idioma::Espanol);
         let pista = rotulo_de_boton(BotonCaja::Atravesar, &t).unwrap();
         assert!(pista.starts_with("Clic a través"), "{pista}");
-        let img = pintar_fuera(&barra, Herramienta::Lapiz, 100, Some(centro(boton)), (1920, 120), false);
+        let img = pintar_fuera(
+            &barra,
+            Herramienta::Lapiz,
+            100,
+            Some(centro(boton)),
+            (1920, 120),
+            false,
+        );
         assert!(oscuros_bajo(&img, &barra) > 500, "sin globo");
         guardar(&img, "barra-anotador-atravesar.png");
     }
@@ -664,26 +711,45 @@ mod pruebas {
         assert_eq!(pixel(&clara, x, y), [0xff, 0xff, 0xff]);
         let [r, g, b] = pixel(&oscura, x, y);
         assert!(
-            (r as i32 - 0x23).abs() <= 2 && (g as i32 - 0x23).abs() <= 2 && (b as i32 - 0x29).abs() <= 2,
+            (r as i32 - 0x23).abs() <= 2
+                && (g as i32 - 0x23).abs() <= 2
+                && (b as i32 - 0x29).abs() <= 2,
             "isla oscura: {r:x} {g:x} {b:x}"
         );
 
         // Las formas desplegadas, con el raton sobre el rombo.
         let abierta = barra.con_desplegado(Some(GrupoBarra::Formas));
         let menu = abierta.menu().expect("abierto");
-        let rombo = abierta.rect_de_boton(BotonCaja::Elegir(Herramienta::Rombo)).unwrap();
+        let rombo = abierta
+            .rect_de_boton(BotonCaja::Elegir(Herramienta::Rombo))
+            .unwrap();
         let alto = (menu.marco.abajo() + 20) as u32;
         let tam = (1366, alto);
-        let desplegada =
-            pintar_fuera(&abierta, Herramienta::Rectangulo, 125, Some(centro(rombo)), tam, false);
-        let desplegada_noche =
-            pintar_fuera(&abierta, Herramienta::Rectangulo, 125, Some(centro(rombo)), tam, true);
+        let desplegada = pintar_fuera(
+            &abierta,
+            Herramienta::Rectangulo,
+            125,
+            Some(centro(rombo)),
+            tam,
+            false,
+        );
+        let desplegada_noche = pintar_fuera(
+            &abierta,
+            Herramienta::Rectangulo,
+            125,
+            Some(centro(rombo)),
+            tam,
+            true,
+        );
         guardar(&desplegada, "barra-formas-desplegadas-clara.png");
         guardar(&desplegada_noche, "barra-formas-desplegadas-oscura.png");
         // Dentro de la isla del desplegable hay isla, y hay texto (los
         // nombres): pixeles oscuros a la derecha de los iconos.
         let m = menu.marco;
-        assert_eq!(pixel(&desplegada, m.x + m.ancho as i32 / 2, m.abajo() - 2), [0xff, 0xff, 0xff]);
+        assert_eq!(
+            pixel(&desplegada, m.x + m.ancho as i32 / 2, m.abajo() - 2),
+            [0xff, 0xff, 0xff]
+        );
         let fila = menu.filas[1].1; // la elipse, sin raton ni elegida
         let mut letra = 0;
         for yy in fila.y..fila.abajo() {

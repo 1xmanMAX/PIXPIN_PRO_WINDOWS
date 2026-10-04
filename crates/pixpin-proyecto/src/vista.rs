@@ -424,7 +424,10 @@ pub fn anotar_borrados(
         .collect();
     // Lo anotado sobre ellos se va con ellos (`MensajesStore.borrarAdjunto(m)`, v0.96).
     // De una nota, sus comentarios (30-sep).
-    for m in portatiles.iter().filter(|m| pixpin_sincro::anotado::lleva_anotado(m)) {
+    for m in portatiles
+        .iter()
+        .filter(|m| pixpin_sincro::anotado::lleva_anotado(m))
+    {
         d.borrar_anotado(&chat, &kotlin::unico(m));
     }
     disco::anotar_marcas_en(&d.sincro(), &disco::marcas_de(&chat, &portatiles, cuando))
@@ -575,7 +578,8 @@ impl Disco for DiscoPc {
         if let Some(p) = self.proyecto_portatil(chat)? {
             let nombre = kotlin::cadena(&p, "nombre").unwrap_or_default().to_string();
             for campo in ["pdfOrigen", "pdfLimpio"] {
-                if let Some(rel) = kotlin::cadena(&p, campo).and_then(|r| r.strip_prefix(PORTATIL)) {
+                if let Some(rel) = kotlin::cadena(&p, campo).and_then(|r| r.strip_prefix(PORTATIL))
+                {
                     poner(rel, nombre.clone());
                 }
             }
@@ -614,7 +618,10 @@ impl Disco for DiscoPc {
         };
         self.marcas_tras_aplicar(chat, &llegan, borrar, &quitados, ahora)?;
         // Lo anotado sobre lo que se fue, con el (`Disco.aplicarMensajes`, v0.96).
-        for m in quitados.iter().filter(|m| pixpin_sincro::anotado::lleva_anotado(m)) {
+        for m in quitados
+            .iter()
+            .filter(|m| pixpin_sincro::anotado::lleva_anotado(m))
+        {
             self.borrar_anotado(chat, &kotlin::unico(m));
         }
         // La ficha, al dia: la lista del chat ensena lo ultimo.
@@ -780,8 +787,14 @@ impl Disco for DiscoPc {
                 }
             }
         }
-        for n in nombres(carpeta.join("android").join(pixpin_sincro::anotado::CARPETA)) {
-            if !n.ends_with(".excalidraw.gz") && pixpin_sincro::anotado::uid_del_nombre(&n).is_some() {
+        for n in nombres(
+            carpeta
+                .join("android")
+                .join(pixpin_sincro::anotado::CARPETA),
+        ) {
+            if !n.ends_with(".excalidraw.gz")
+                && pixpin_sincro::anotado::uid_del_nombre(&n).is_some()
+            {
                 salida.push(format!("{}/{n}", pixpin_sincro::anotado::CARPETA));
             }
         }
@@ -865,11 +878,18 @@ mod pruebas {
         let origen = kotlin::cadena(&p, "pdfOrigen").unwrap().to_string();
         assert_eq!(
             origen,
-            format!("{PORTATIL}guardados/pc/{}/archivos/doc-7.pdf", limpio(&chat))
+            format!(
+                "{PORTATIL}guardados/pc/{}/archivos/doc-7.pdf",
+                limpio(&chat)
+            )
         );
         // Y el fichero entra en lo que se manda con el chat.
         let alcance = d.alcance(&chat).unwrap();
-        assert!(alcance.iter().any(|(r, _)| r.ends_with("archivos/doc-7.pdf")));
+        assert!(
+            alcance
+                .iter()
+                .any(|(r, _)| r.ends_with("archivos/doc-7.pdf"))
+        );
         // La hoja conserva su pagina y su mensaje, con los nombres del movil.
         let texto = p.a_texto();
         assert!(texto.contains("\"pagina\":0") && texto.contains("\"deMensaje\":\"m1\""));
@@ -914,10 +934,16 @@ mod pruebas {
         let del_pc = r#"{"type":"excalidraw","elements":[{"id":"t","type":"freedraw","x":0,"y":0,"width":2,"height":2,"seed":3,"points":[[0,0],[2,2]]}]}"#;
         let sale = d.a_portatil("pr-1", "pins/draw/d1.excalidraw.gz", del_pc.to_string());
         let v: serde_json::Value = serde_json::from_str(&sale).unwrap();
-        assert_eq!(v["elements"][0]["points"][1], serde_json::json!({"x": 2, "y": 2}));
+        assert_eq!(
+            v["elements"][0]["points"][1],
+            serde_json::json!({"x": 2, "y": 2})
+        );
         // Lo que no es un lienzo no se toca aunque lo parezca.
         let tabla = r#"{"elements":[{"id":"t","type":"x","points":[[0,0]]}]}"#;
-        assert_eq!(d.a_portatil("pr-1", "tablas/t.json", tabla.to_string()), tabla);
+        assert_eq!(
+            d.a_portatil("pr-1", "tablas/t.json", tabla.to_string()),
+            tabla
+        );
     }
 
     #[test]

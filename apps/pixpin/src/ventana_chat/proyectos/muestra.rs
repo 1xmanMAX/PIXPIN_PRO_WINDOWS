@@ -18,8 +18,8 @@ use pixpin_render::fuera_de_pantalla::FueraDePantalla;
 use pixpin_store::{Catalogo, Idioma, Ubicacion};
 
 use super::super::{
-    Abierto, CLARO, Lista, OSCURO, Pinta, Tema, abrir_proyecto, filtrar, fotos_del_historial, papel_de,
-    pintar as pintar_chat, pintar_cabecera, pintar_historial, pintar_redaccion,
+    Abierto, CLARO, Lista, OSCURO, Pinta, Tema, abrir_proyecto, filtrar, fotos_del_historial,
+    papel_de, pintar as pintar_chat, pintar_cabecera, pintar_historial, pintar_redaccion,
 };
 use super::{VistaProyectos, cargar};
 
@@ -89,7 +89,10 @@ fn lienzo(ruta: &Path, elementos: Vec<Elemento>) {
     for e in elementos {
         escena.anadir(e);
     }
-    let l = pixpin_motor2d::excalidraw::con_escena(&pixpin_motor2d::excalidraw::Lienzo::vacio(), &escena);
+    let l = pixpin_motor2d::excalidraw::con_escena(
+        &pixpin_motor2d::excalidraw::Lienzo::vacio(),
+        &escena,
+    );
     std::fs::create_dir_all(ruta.parent().unwrap()).unwrap();
     std::fs::write(ruta, pixpin_motor2d::excalidraw::escribir(&l)).unwrap();
 }
@@ -138,7 +141,8 @@ fn linea(puntos: &[(f32, f32)], trazo: ColorRgba) -> Elemento {
 /// anotada), un lienzo y una nota; una oficina con dos lienzos; y una tienda
 /// archivada sin hojas. Mas «Mensajes guardados», que no debe salir.
 fn almacen_de_ejemplo() -> (Ubicacion, Vec<Ficha>) {
-    let raiz = std::env::temp_dir().join(format!("pixpin-muestra-proyectos-{}", std::process::id()));
+    let raiz =
+        std::env::temp_dir().join(format!("pixpin-muestra-proyectos-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&raiz);
     std::fs::create_dir_all(&raiz).unwrap();
     let u = Ubicacion::Portable { raiz: raiz.clone() };
@@ -160,7 +164,12 @@ fn almacen_de_ejemplo() -> (Ubicacion, Vec<Ficha>) {
     let mut hojas = Vec::new();
     for n in 0..6u32 {
         let png = pixpin_codec::imagen::codificar_png(&pagina_de_plano(n)).unwrap();
-        std::fs::write(obra.join("archivos").join(format!("pagina-{:02}.png", n + 1)), png).unwrap();
+        std::fs::write(
+            obra.join("archivos")
+                .join(format!("pagina-{:02}.png", n + 1)),
+            png,
+        )
+        .unwrap();
         let mut h = hoja(&format!("pag{n}"), &format!("Pág. {}", n + 1));
         h.pagina = Some(n);
         if n == 1 {
@@ -169,7 +178,14 @@ fn almacen_de_ejemplo() -> (Ubicacion, Vec<Ficha>) {
             lienzo(
                 &almacen::lienzo(&raiz, "obra", "dib-pag2"),
                 vec![
-                    caja(Figura::Elipse, 330.0, 470.0, 140.0, 140.0, color(0.85, 0.2, 0.2)),
+                    caja(
+                        Figura::Elipse,
+                        330.0,
+                        470.0,
+                        140.0,
+                        140.0,
+                        color(0.85, 0.2, 0.2),
+                    ),
                     linea(&[(90.0, 655.0), (530.0, 665.0)], color(0.85, 0.2, 0.2)),
                 ],
             );
@@ -196,7 +212,14 @@ fn almacen_de_ejemplo() -> (Ubicacion, Vec<Ficha>) {
                 ],
                 color(0.1, 0.1, 0.1),
             ),
-            caja(Figura::Rectangulo, 20.0, 430.0, 360.0, 40.0, color(0.12, 0.45, 0.8)),
+            caja(
+                Figura::Rectangulo,
+                20.0,
+                430.0,
+                360.0,
+                40.0,
+                color(0.12, 0.45, 0.8),
+            ),
         ],
     );
     hojas.push(detalle);
@@ -224,9 +247,30 @@ fn almacen_de_ejemplo() -> (Ubicacion, Vec<Ficha>) {
     lienzo(
         &almacen::lienzo(&raiz, "oficina", "dib-planta"),
         vec![
-            caja(Figura::Rectangulo, 0.0, 0.0, 600.0, 400.0, color(0.1, 0.1, 0.1)),
-            caja(Figura::Rectangulo, 20.0, 20.0, 200.0, 160.0, color(0.18, 0.66, 0.31)),
-            caja(Figura::Elipse, 380.0, 220.0, 160.0, 120.0, color(0.88, 0.5, 0.23)),
+            caja(
+                Figura::Rectangulo,
+                0.0,
+                0.0,
+                600.0,
+                400.0,
+                color(0.1, 0.1, 0.1),
+            ),
+            caja(
+                Figura::Rectangulo,
+                20.0,
+                20.0,
+                200.0,
+                160.0,
+                color(0.18, 0.66, 0.31),
+            ),
+            caja(
+                Figura::Elipse,
+                380.0,
+                220.0,
+                160.0,
+                120.0,
+                color(0.88, 0.5, 0.23),
+            ),
         ],
     );
     let mut b = hoja("of2", "Muebles");
@@ -234,8 +278,22 @@ fn almacen_de_ejemplo() -> (Ubicacion, Vec<Ficha>) {
     lienzo(
         &almacen::lienzo(&raiz, "oficina", "dib-muebles"),
         vec![
-            caja(Figura::Rombo, 0.0, 0.0, 200.0, 200.0, color(0.61, 0.35, 0.82)),
-            caja(Figura::Rectangulo, 240.0, 40.0, 200.0, 120.0, color(0.07, 0.65, 0.65)),
+            caja(
+                Figura::Rombo,
+                0.0,
+                0.0,
+                200.0,
+                200.0,
+                color(0.61, 0.35, 0.82),
+            ),
+            caja(
+                Figura::Rectangulo,
+                240.0,
+                40.0,
+                200.0,
+                120.0,
+                color(0.07, 0.65, 0.65),
+            ),
         ],
     );
     escribir(
@@ -339,14 +397,17 @@ impl Banco {
             ancho,
             alto,
             escala,
-            s.ancho_lista.unwrap_or(pixpin_ui::chat::ancho_inicial(ancho, escala)),
+            s.ancho_lista
+                .unwrap_or(pixpin_ui::chat::ancho_inicial(ancho, escala)),
             vista,
         );
         let (cw, ch) = crate::tema_cosmos::tamano_de(&d);
         crate::tema_cosmos::preparar(&self.motor, cw, ch);
         let marcados = Default::default();
         let orden = filtrar(s.fichas, s.busqueda);
-        let elegida = s.elegido.and_then(|id| s.fichas.iter().position(|f| f.id == id));
+        let elegida = s
+            .elegido
+            .and_then(|id| s.fichas.iter().position(|f| f.id == id));
         v.seguir(s.elegido);
         if s.chat.is_some() {
             v.ver_chat();
@@ -387,7 +448,16 @@ impl Banco {
             };
             self.motor
                 .dibujar(&destino.destino, |p| {
-                    pintar_chat(p, &d, tema, papel_de(0, claro), escala, &textos, None, &lista);
+                    pintar_chat(
+                        p,
+                        &d,
+                        tema,
+                        papel_de(0, claro),
+                        escala,
+                        &textos,
+                        None,
+                        &lista,
+                    );
                     match (s.chat, elegida) {
                         (Some(a), _) => {
                             a.zonas.borrow_mut().clear();
@@ -444,7 +514,11 @@ fn cargar_todo(v: &mut VistaProyectos, u: &Ubicacion, fichas: &[Ficha]) {
 fn muestra_de_proyectos() {
     let (u, _) = almacen_de_ejemplo();
     // La lista como la lee la ventana: el indice en su orden.
-    let fichas: Vec<Ficha> = Indice::leer(u.raiz()).ordenadas().into_iter().cloned().collect();
+    let fichas: Vec<Ficha> = Indice::leer(u.raiz())
+        .ordenadas()
+        .into_iter()
+        .cloned()
+        .collect();
     let b = Banco::nuevo();
     let mut v = VistaProyectos::nueva(&u);
     cargar_todo(&mut v, &u, &fichas);
@@ -463,32 +537,69 @@ fn muestra_de_proyectos() {
     let estrecha = (480, 820);
     // La portada en la pagina anotada.
     v.con_tarjeta("obra", |t| t.en_foco = 1);
-    guardar("proyectos-ancha-claro", b.foto(&mut v, &escena(ancha, true, Some("obra"))));
-    guardar("proyectos-ancha-oscuro", b.foto(&mut v, &escena(ancha, false, Some("obra"))));
+    guardar(
+        "proyectos-ancha-claro",
+        b.foto(&mut v, &escena(ancha, true, Some("obra"))),
+    );
+    guardar(
+        "proyectos-ancha-oscuro",
+        b.foto(&mut v, &escena(ancha, false, Some("obra"))),
+    );
     // La rejilla.
     v.con_tarjeta("obra", |t| t.rejilla = true);
-    guardar("proyectos-rejilla-oscuro", b.foto(&mut v, &escena(ancha, false, Some("obra"))));
+    guardar(
+        "proyectos-rejilla-oscuro",
+        b.foto(&mut v, &escena(ancha, false, Some("obra"))),
+    );
     // Dos paginas marcadas con el derecho (E9: se fusionan desde aqui).
     let marcar: Vec<String> = v
         .datos("obra")
-        .map(|d| d.hojas.iter().filter(|h| h.mensaje.pagina.is_some()).take(2).map(|h| h.id.clone()).collect())
+        .map(|d| {
+            d.hojas
+                .iter()
+                .filter(|h| h.mensaje.pagina.is_some())
+                .take(2)
+                .map(|h| h.id.clone())
+                .collect()
+        })
         .unwrap_or_default();
     v.con_tarjeta("obra", |t| t.marcadas = marcar.into_iter().collect());
-    guardar("proyectos-rejilla-marcadas-claro", b.foto(&mut v, &escena(ancha, true, Some("obra"))));
+    guardar(
+        "proyectos-rejilla-marcadas-claro",
+        b.foto(&mut v, &escena(ancha, true, Some("obra"))),
+    );
     v.con_tarjeta("obra", |t| {
         t.marcadas.clear();
         t.rejilla = false;
     });
     // Otro proyecto elegido en la lista.
-    guardar("proyectos-oficina-claro", b.foto(&mut v, &escena(ancha, true, Some("oficina"))));
+    guardar(
+        "proyectos-oficina-claro",
+        b.foto(&mut v, &escena(ancha, true, Some("oficina"))),
+    );
     // Sin proyecto elegido: el «Elige un proyecto» del chat.
-    guardar("proyectos-sin-elegir-claro", b.foto(&mut v, &escena(ancha, true, None)));
+    guardar(
+        "proyectos-sin-elegir-claro",
+        b.foto(&mut v, &escena(ancha, true, None)),
+    );
     // Una ventana muy apaisada y baja: tarjeta en dos columnas.
-    guardar("proyectos-apaisada-claro", b.foto(&mut v, &escena((1400, 560), true, Some("obra"))));
+    guardar(
+        "proyectos-apaisada-claro",
+        b.foto(&mut v, &escena((1400, 560), true, Some("obra"))),
+    );
     // Estrecha: la lista sola, y al elegir, la tarjeta sola con volver.
-    guardar("proyectos-estrecha-lista-claro", b.foto(&mut v, &escena(estrecha, true, None)));
-    guardar("proyectos-estrecha-tarjeta-claro", b.foto(&mut v, &escena(estrecha, true, Some("obra"))));
-    guardar("proyectos-estrecha-tarjeta-oscuro", b.foto(&mut v, &escena(estrecha, false, Some("obra"))));
+    guardar(
+        "proyectos-estrecha-lista-claro",
+        b.foto(&mut v, &escena(estrecha, true, None)),
+    );
+    guardar(
+        "proyectos-estrecha-tarjeta-claro",
+        b.foto(&mut v, &escena(estrecha, true, Some("obra"))),
+    );
+    guardar(
+        "proyectos-estrecha-tarjeta-oscuro",
+        b.foto(&mut v, &escena(estrecha, false, Some("obra"))),
+    );
     // Y el mismo proyecto en modo Chat, con el interruptor en «Chat».
     let obra = fichas.iter().find(|f| f.id == "obra").unwrap();
     let a = abrir_proyecto(&u, obra);
@@ -525,7 +636,11 @@ fn muestra_de_proyectos() {
 #[ignore = "necesita GPU y sesion de escritorio"]
 fn muestra_de_la_lista_de_chats() {
     let (u, _) = almacen_de_ejemplo();
-    let pocas: Vec<Ficha> = Indice::leer(u.raiz()).ordenadas().into_iter().cloned().collect();
+    let pocas: Vec<Ficha> = Indice::leer(u.raiz())
+        .ordenadas()
+        .into_iter()
+        .cloned()
+        .collect();
     // Muchas: las de verdad y treinta mas sin carpeta, solo en el indice.
     let mut muchas = pocas.clone();
     for n in 0..30 {
@@ -544,7 +659,11 @@ fn muestra_de_la_lista_de_chats() {
     let ancha = (1100, 720);
     let estrecha = (480, 820);
     for (nombre_fichas, fichas) in [("pocos", &pocas), ("muchos", &muchas)] {
-        for (tema, claro, cosmos) in [("claro", true, false), ("oscuro", false, false), ("cosmos", false, true)] {
+        for (tema, claro, cosmos) in [
+            ("claro", true, false),
+            ("oscuro", false, false),
+            ("cosmos", false, true),
+        ] {
             for (busca, busqueda) in [("", ""), ("-busca", "casa"), ("-nada", "zzz")] {
                 let base = Escena {
                     u: &u,
@@ -559,15 +678,47 @@ fn muestra_de_la_lista_de_chats() {
                 };
                 let n = |que: &str| format!("lista-{nombre_fichas}-{que}-{tema}{busca}");
                 guardar(&n("proyectos-ancha"), b.foto(&mut v, &base));
-                guardar(&n("chat-ancha"), b.foto(&mut v, &Escena { chat: Some(&a), ..base }));
-                guardar(&n("sin-elegir-ancha"), b.foto(&mut v, &Escena { elegido: None, ..base }));
+                guardar(
+                    &n("chat-ancha"),
+                    b.foto(
+                        &mut v,
+                        &Escena {
+                            chat: Some(&a),
+                            ..base
+                        },
+                    ),
+                );
+                guardar(
+                    &n("sin-elegir-ancha"),
+                    b.foto(
+                        &mut v,
+                        &Escena {
+                            elegido: None,
+                            ..base
+                        },
+                    ),
+                );
                 guardar(
                     &n("estrecha"),
-                    b.foto(&mut v, &Escena { elegido: None, tamano: estrecha, ..base }),
+                    b.foto(
+                        &mut v,
+                        &Escena {
+                            elegido: None,
+                            tamano: estrecha,
+                            ..base
+                        },
+                    ),
                 );
                 guardar(
                     &n("plegada"),
-                    b.foto(&mut v, &Escena { ancho_lista: Some(66), chat: Some(&a), ..base }),
+                    b.foto(
+                        &mut v,
+                        &Escena {
+                            ancho_lista: Some(66),
+                            chat: Some(&a),
+                            ..base
+                        },
+                    ),
                 );
             }
         }
@@ -585,7 +736,11 @@ fn muestra_de_la_lista_de_chats() {
 #[ignore = "necesita GPU y sesion de escritorio"]
 fn muestra_de_la_lista_con_un_resumen_de_varias_lineas() {
     let (u, _) = almacen_de_ejemplo();
-    let mut fichas: Vec<Ficha> = Indice::leer(u.raiz()).ordenadas().into_iter().cloned().collect();
+    let mut fichas: Vec<Ficha> = Indice::leer(u.raiz())
+        .ordenadas()
+        .into_iter()
+        .cloned()
+        .collect();
     fichas[0].resumen = "DESCRIPCION \tMONTO\r\nALQUILER \t690\r\n\t687.5\r\n\t685.4\r\nCELULAR\t39.95\r\n\t19.9\r\nLUZ \t29.6\r\nINTERNET\t64.99\r\n\t\r\n\t2517.34".into();
     let b = Banco::nuevo();
     let mut v = VistaProyectos::nueva(&u);
@@ -609,7 +764,13 @@ fn muestra_de_la_lista_con_un_resumen_de_varias_lineas() {
             // de la suya, se ve ahi.
             let mut corta = fichas.clone();
             corta[0].resumen = "DESCRIPCION".into();
-            let sin_tabla = b.foto(&mut v, &Escena { fichas: &corta, ..s });
+            let sin_tabla = b.foto(
+                &mut v,
+                &Escena {
+                    fichas: &corta,
+                    ..s
+                },
+            );
             let d = pixpin_ui::chat::Disposicion::calcular(
                 tamano.0,
                 tamano.1,
@@ -620,10 +781,15 @@ fn muestra_de_la_lista_con_un_resumen_de_varias_lineas() {
             let desde = d.fila(1, 0, 100).y.max(0) as u32;
             let (ancho, alto, a) = (&con_tabla.0, &con_tabla.1, &con_tabla.2);
             let distintos = (desde..*alto)
-                .flat_map(|y| (0..d.lista.ancho.min(*ancho)).map(move |x| ((y * ancho + x) * 4) as usize))
+                .flat_map(|y| {
+                    (0..d.lista.ancho.min(*ancho)).map(move |x| ((y * ancho + x) * 4) as usize)
+                })
                 .filter(|&i| a[i..i + 4] != sin_tabla.2[i..i + 4])
                 .count();
-            guardar(&format!("lista-resumen-varias-lineas-{forma}-{tema}"), con_tabla);
+            guardar(
+                &format!("lista-resumen-varias-lineas-{forma}-{tema}"),
+                con_tabla,
+            );
             assert_eq!(
                 distintos, 0,
                 "{forma} {tema}: el resumen de la primera fila pinta {distintos} pixeles en las de abajo"

@@ -58,12 +58,18 @@ thread_local! {
 /// Lo que no se ve del control a la izquierda del papel, en pixeles de la
 /// pantalla (0 sin tablas anchas).
 pub fn hueco() -> i32 {
-    ABIERTO.with(|a| a.get()).map_or(0, |ppp| hueco_twips() * ppp / 1440)
+    ABIERTO
+        .with(|a| a.get())
+        .map_or(0, |ppp| hueco_twips() * ppp / 1440)
 }
 
 /// Ese hueco en veinteavos: lo que los parrafos llevan de sangria de mas.
 pub fn hueco_twips() -> i32 {
-    if ABIERTO.with(|a| a.get()).is_some() { (HUECO_TWIPS - SOBRA.with(|s| s.get())).max(0) } else { 0 }
+    if ABIERTO.with(|a| a.get()).is_some() {
+        (HUECO_TWIPS - SOBRA.with(|s| s.get())).max(0)
+    } else {
+        0
+    }
 }
 
 /// La sangria de lo escrito (y de una tabla ancha sin desplazar) desde el
@@ -160,13 +166,27 @@ pub fn colocar(ancho: i32, visible: i32, hueco: i32, desplazamiento: i32) -> Col
 /// hueco que no se ve. Una ancha sin desplazar empieza donde el texto y se
 /// puede correr hasta que su borde derecho llegue al del texto; la que
 /// cabe va centrada (con la sangria del hueco, ver [`Colocacion`]).
-pub fn colocar_en_columna(ancho: i32, columna: i32, lleno: i32, oculto: i32, desplazamiento: i32) -> Colocacion {
+pub fn colocar_en_columna(
+    ancho: i32,
+    columna: i32,
+    lleno: i32,
+    oculto: i32,
+    desplazamiento: i32,
+) -> Colocacion {
     if ancho <= columna || lleno <= 0 {
-        return Colocacion { sangria: oculto.max(0), desplazamiento: 0, maximo: 0 };
+        return Colocacion {
+            sangria: oculto.max(0),
+            desplazamiento: 0,
+            maximo: 0,
+        };
     }
     let maximo = (ancho - columna).min(lleno);
     let d = desplazamiento.clamp(0, maximo);
-    Colocacion { sangria: lleno - d, desplazamiento: d, maximo }
+    Colocacion {
+        sangria: lleno - d,
+        desplazamiento: d,
+        maximo,
+    }
 }
 
 /// **El pulgar de la barra**: su x y su ancho dentro de la barra que va de
@@ -215,7 +235,14 @@ mod pruebas {
     #[test]
     fn una_tabla_que_cabe_va_centrada_y_no_lleva_barra() {
         let c = colocar(500, 900, 0, 0);
-        assert_eq!(c, Colocacion { sangria: 0, desplazamiento: 0, maximo: 0 });
+        assert_eq!(
+            c,
+            Colocacion {
+                sangria: 0,
+                desplazamiento: 0,
+                maximo: 0
+            }
+        );
         assert!(!c.ancha());
         // Con hueco, centrada con el hueco de sangria (corre la mitad).
         assert_eq!(colocar(500, 900, 1440, 0).sangria, 1440);
@@ -261,15 +288,27 @@ mod pruebas {
         let medio = colocar(2000, 1000, 1440, 500);
         let (px, _) = pulgar(100, 1000, 2000, &medio, 30);
         assert_eq!(desde_pulgar(px, 100, 1000, 2000, &medio, 30), 500);
-        assert_eq!(desde_pulgar(-500, 100, 1000, 2000, &medio, 30), 0, "no se sale por la izquierda");
-        assert_eq!(desde_pulgar(5000, 100, 1000, 2000, &medio, 30), 1000, "ni por la derecha");
+        assert_eq!(
+            desde_pulgar(-500, 100, 1000, 2000, &medio, 30),
+            0,
+            "no se sale por la izquierda"
+        );
+        assert_eq!(
+            desde_pulgar(5000, 100, 1000, 2000, &medio, 30),
+            1000,
+            "ni por la derecha"
+        );
     }
 
     #[test]
     fn para_ver_mueve_lo_justo_y_no_mueve_si_ya_se_ve() {
         let c = colocar(2000, 1000, 1440, 0);
         assert_eq!(para_ver(&c, 200, 400, 0, 1000), 0, "ya se ve");
-        assert_eq!(para_ver(&c, 1100, 1200, 0, 1000), 200, "a la derecha: lo justo");
+        assert_eq!(
+            para_ver(&c, 1100, 1200, 0, 1000),
+            200,
+            "a la derecha: lo justo"
+        );
         let d = colocar(2000, 1000, 1440, 600);
         assert_eq!(para_ver(&d, -300, -100, 0, 1000), 300, "a la izquierda");
         // Caso negativo: no pasa del maximo.

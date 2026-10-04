@@ -161,7 +161,10 @@ mod pruebas {
     #[test]
     fn sin_nombre_el_icono_sale_de_la_ruta_como_en_el_movil() {
         let m = mensaje(Clase::Archivo, "  ", Some("archivos/planta.dwg"));
-        assert_eq!(nombre_para_el_icono(&m).as_deref(), Some("archivos/planta.dwg"));
+        assert_eq!(
+            nombre_para_el_icono(&m).as_deref(),
+            Some("archivos/planta.dwg")
+        );
         assert_eq!(ce::de("archivos/planta.dwg"), ce::PLANO);
     }
 
@@ -191,7 +194,11 @@ mod pruebas {
         assert!(vacios > 0, "el fondo tiene que ser transparente");
         // La hoja es roja (la de los PDF): en el centro manda el rojo.
         let centro = ((LADO_PNG / 2 + 12) * LADO_PNG + 8) as usize * 4;
-        assert!(img.pixeles[centro] > img.pixeles[centro + 2], "{:?}", &img.pixeles[centro..centro + 4]);
+        assert!(
+            img.pixeles[centro] > img.pixeles[centro + 2],
+            "{:?}",
+            &img.pixeles[centro..centro + 4]
+        );
         // La segunda vez ya esta y no se repinta.
         assert_eq!(pintar_los_que_faltan(&raiz, &pedidas).unwrap(), 0);
         let _ = std::fs::remove_dir_all(&raiz);
@@ -223,7 +230,10 @@ mod pruebas {
             "datos.xyz",
             "LEEME",
         ];
-        for (etiqueta, tema) in [("claro", &super::super::CLARO), ("oscuro", &super::super::OSCURO)] {
+        for (etiqueta, tema) in [
+            ("claro", &super::super::CLARO),
+            ("oscuro", &super::super::OSCURO),
+        ] {
             let (ancho, fila) = (360u32, 56.0f32);
             let alto = (fila * nombres.len() as f32 + 16.0) as u32;
             crate::ventanita::muestra(&format!("icono-de-tipo-{etiqueta}"), ancho, alto, |p, _| {
@@ -231,11 +241,25 @@ mod pruebas {
                 for (i, n) in nombres.iter().enumerate() {
                     let y = 8.0 + i as f32 * fila;
                     p.rellenar_redondeado(
-                        RectF { x: 8.0, y, ancho: 300.0, alto: fila - 6.0 },
+                        RectF {
+                            x: 8.0,
+                            y,
+                            ancho: 300.0,
+                            alto: fila - 6.0,
+                        },
                         12.0,
                         tema.burbuja_otra,
                     );
-                    pintar(p, n, RectF { x: 14.0, y: y + 3.0, ancho: 44.0, alto: 44.0 });
+                    pintar(
+                        p,
+                        n,
+                        RectF {
+                            x: 14.0,
+                            y: y + 3.0,
+                            ancho: 44.0,
+                            alto: 44.0,
+                        },
+                    );
                     p.texto(n, 70.0, y + 14.0, 14.0, tema.texto);
                 }
             });

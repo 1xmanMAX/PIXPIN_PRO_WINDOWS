@@ -101,7 +101,13 @@ impl ClaveMedible {
     fn de(e: &Elemento, escala: Option<&Escala>, coma: char, papel: ColorRgba) -> Self {
         ClaveMedible {
             version: e.version,
-            escala: escala.map(|x| (x.unidades_por_pixel.to_bits(), x.unidad.clone(), x.decimales)),
+            escala: escala.map(|x| {
+                (
+                    x.unidades_por_pixel.to_bits(),
+                    x.unidad.clone(),
+                    x.decimales,
+                )
+            }),
             coma,
             papel: bits(papel),
         }
@@ -178,7 +184,13 @@ impl Cache {
     ///
     /// Una figura que no mide no se guarda: son casi todas, y no tiene
     /// sentido llenar el mapa de listas vacias.
-    pub fn medibles(&mut self, e: &Elemento, escala: Option<&Escala>, coma: char, papel: ColorRgba) -> &[Orden] {
+    pub fn medibles(
+        &mut self,
+        e: &Elemento,
+        escala: Option<&Escala>,
+        coma: char,
+        papel: ColorRgba,
+    ) -> &[Orden] {
         if e.borrado || !matches!(e.figura, Figura::Cota { .. } | Figura::EscalaGrafica) {
             return &[];
         }
@@ -219,8 +231,7 @@ impl Cache {
     /// escena entera. Lo borrado que vuelva con un Ctrl+Z se recalcula una
     /// vez, que es lo mismo que cuesta pintarlo por primera vez.
     pub fn podar(&mut self, escena: &crate::escena::Escena) {
-        let vivos: std::collections::HashSet<u64> =
-            escena.visibles().map(|e| e.id).collect();
+        let vivos: std::collections::HashSet<u64> = escena.visibles().map(|e| e.id).collect();
         self.mapa.retain(|id, _| vivos.contains(id));
         self.medibles.retain(|id, _| vivos.contains(id));
     }
@@ -426,8 +437,18 @@ mod pruebas {
         }
     }
 
-    const BLANCO: ColorRgba = ColorRgba { r: 1.0, g: 1.0, b: 1.0, a: 1.0 };
-    const NOCHE: ColorRgba = ColorRgba { r: 0.07, g: 0.07, b: 0.07, a: 1.0 };
+    const BLANCO: ColorRgba = ColorRgba {
+        r: 1.0,
+        g: 1.0,
+        b: 1.0,
+        a: 1.0,
+    };
+    const NOCHE: ColorRgba = ColorRgba {
+        r: 0.07,
+        g: 0.07,
+        b: 0.07,
+        a: 1.0,
+    };
 
     #[test]
     fn la_cota_cacheada_es_identica_a_la_recalculada() {
@@ -437,7 +458,10 @@ mod pruebas {
             for papel in [BLANCO, NOCHE] {
                 let esperado = ordenes_medibles(&e, escala.as_ref(), ',', papel);
                 assert!(!esperado.is_empty());
-                assert_eq!(cache.medibles(&e, escala.as_ref(), ',', papel), esperado.as_slice());
+                assert_eq!(
+                    cache.medibles(&e, escala.as_ref(), ',', papel),
+                    esperado.as_slice()
+                );
                 assert_eq!(
                     cache.medibles(&e, escala.as_ref(), ',', papel),
                     esperado.as_slice(),
@@ -480,12 +504,31 @@ mod pruebas {
         let con = cache.medibles(&e, Some(&cm(0.0166)), ',', BLANCO).to_vec();
         let otra = cache.medibles(&e, Some(&cm(0.5)), ',', BLANCO).to_vec();
         let otra_unidad = cache
-            .medibles(&e, Some(&crate::medida::Escala { unidad: "m".into(), ..cm(0.5) }), ',', BLANCO)
+            .medibles(
+                &e,
+                Some(&crate::medida::Escala {
+                    unidad: "m".into(),
+                    ..cm(0.5)
+                }),
+                ',',
+                BLANCO,
+            )
             .to_vec();
         assert_ne!(sin, con);
         assert_ne!(con, otra);
         assert_ne!(otra, otra_unidad);
-        assert_eq!(otra_unidad, ordenes_medibles(&e, Some(&crate::medida::Escala { unidad: "m".into(), ..cm(0.5) }), ',', BLANCO));
+        assert_eq!(
+            otra_unidad,
+            ordenes_medibles(
+                &e,
+                Some(&crate::medida::Escala {
+                    unidad: "m".into(),
+                    ..cm(0.5)
+                }),
+                ',',
+                BLANCO
+            )
+        );
     }
 
     #[test]
@@ -510,9 +553,16 @@ mod pruebas {
         cache.medibles(&c, None, ',', BLANCO);
         assert_eq!(cache.cuantos_medibles(), 1);
         c.borrado = true;
-        assert!(cache.medibles(&c, None, ',', BLANCO).is_empty(), "borrada no pinta");
+        assert!(
+            cache.medibles(&c, None, ',', BLANCO).is_empty(),
+            "borrada no pinta"
+        );
         cache.olvidar(9);
-        assert_eq!(cache.cuantos_medibles(), 0, "olvidar saca tambien su numero");
+        assert_eq!(
+            cache.cuantos_medibles(),
+            0,
+            "olvidar saca tambien su numero"
+        );
     }
 
     #[test]

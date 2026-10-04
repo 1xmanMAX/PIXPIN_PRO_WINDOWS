@@ -171,7 +171,12 @@ const TAM_CAB: f32 = 11.0;
 const TAM_TECLA: f32 = 11.0;
 
 fn negrita() -> Letra<'static> {
-    Letra { familia: "Segoe UI", negrita: true, cursiva: false, interlineado: None }
+    Letra {
+        familia: "Segoe UI",
+        negrita: true,
+        cursiva: false,
+        interlineado: None,
+    }
 }
 
 fn dentro(r: RectF, p: (f32, f32)) -> bool {
@@ -187,7 +192,12 @@ fn ancho_tecla(p: &Pintor, t: &str, e: f32) -> f32 {
 /// `cy`. Devuelve su ancho.
 fn tecla(p: &Pintor, t: &str, x: f32, cy: f32, e: f32, pal: &Paleta, sobre_azul: bool) -> f32 {
     let (w, h) = p.medir_texto(t, TAM_TECLA * e);
-    let caja = RectF { x, y: cy - 10.0 * e, ancho: w + 12.0 * e, alto: 20.0 * e };
+    let caja = RectF {
+        x,
+        y: cy - 10.0 * e,
+        ancho: w + 12.0 * e,
+        alto: 20.0 * e,
+    };
     let (fondo, borde, color) = if sobre_azul {
         (rgba(0x000000, 0.25), rgba(0xFFFFFF, 0.12), rgb(0xE5E5EA))
     } else {
@@ -202,19 +212,47 @@ fn tecla(p: &Pintor, t: &str, x: f32, cy: f32, e: f32, pal: &Paleta, sobre_azul:
 /// Una tecla grande y en monoespaciada (la letra rapida).
 fn tecla_grande(p: &Pintor, t: &str, x: f32, cy: f32, e: f32, pal: &Paleta) {
     let lado = 26.0 * e;
-    let caja = RectF { x, y: cy - lado / 2.0, ancho: lado, alto: lado };
+    let caja = RectF {
+        x,
+        y: cy - lado / 2.0,
+        ancho: lado,
+        alto: lado,
+    };
     p.rellenar_redondeado(caja, 5.0 * e, pal.tecla);
     p.trazar(caja, 1.0, pal.tecla_borde);
-    let letra = Letra { familia: "Cascadia Mono", negrita: true, cursiva: false, interlineado: None };
+    let letra = Letra {
+        familia: "Cascadia Mono",
+        negrita: true,
+        cursiva: false,
+        interlineado: None,
+    };
     let (w, h) = p.medir_con_letra(t, 13.0 * e, SIN_PARTIR, &letra);
-    p.texto_con_letra(t, x + (lado - w) / 2.0, cy - h / 2.0, 13.0 * e, SIN_PARTIR, &letra, pal.texto);
+    p.texto_con_letra(
+        t,
+        x + (lado - w) / 2.0,
+        cy - h / 2.0,
+        13.0 * e,
+        SIN_PARTIR,
+        &letra,
+        pal.texto,
+    );
 }
 
 /// Un texto con sus letras resaltadas (las que coinciden con lo buscado),
 /// en una linea con «…» si no cabe. `posiciones`: en UTF-16, como las da
 /// el plugin.
 #[allow(clippy::too_many_arguments)]
-fn texto_resaltado(p: &Pintor, t: &str, posiciones: &[usize], x: f32, y: f32, tam: f32, ancho: f32, color: Color, marca: Color) {
+fn texto_resaltado(
+    p: &Pintor,
+    t: &str,
+    posiciones: &[usize],
+    x: f32,
+    y: f32,
+    tam: f32,
+    ancho: f32,
+    color: Color,
+    marca: Color,
+) {
     if !posiciones.is_empty() {
         let mut tramos: Vec<(u32, u32)> = Vec::new();
         for &i in posiciones {
@@ -223,17 +261,30 @@ fn texto_resaltado(p: &Pintor, t: &str, posiciones: &[usize], x: f32, y: f32, ta
                 _ => tramos.push((i as u32, 1)),
             }
         }
-        p.con_recorte(RectF { x, y: y - 2.0, ancho, alto: tam * 2.0 }, |p| {
-            for (ini, largo) in tramos {
-                for c in p.cajas_de_trozo(t, tam, SIN_PARTIR, &[], ini, largo) {
-                    p.rellenar_redondeado(
-                        RectF { x: x + c.x - 1.0, y: y + c.y, ancho: c.ancho + 2.0, alto: c.alto },
-                        3.0,
-                        marca,
-                    );
+        p.con_recorte(
+            RectF {
+                x,
+                y: y - 2.0,
+                ancho,
+                alto: tam * 2.0,
+            },
+            |p| {
+                for (ini, largo) in tramos {
+                    for c in p.cajas_de_trozo(t, tam, SIN_PARTIR, &[], ini, largo) {
+                        p.rellenar_redondeado(
+                            RectF {
+                                x: x + c.x - 1.0,
+                                y: y + c.y,
+                                ancho: c.ancho + 2.0,
+                                alto: c.alto,
+                            },
+                            3.0,
+                            marca,
+                        );
+                    }
                 }
-            }
-        });
+            },
+        );
     }
     p.texto_linea(t, x, y, tam, ancho, color);
 }
@@ -280,15 +331,31 @@ fn extension(r: &Resultado) -> Option<String> {
 /// **El cuadrado de la izquierda de una fila**: la foto si es una captura,
 /// las letras de la extension si es un archivo, o el icono en el color de
 /// su clase (verde tarea, amarillo leccion…).
-fn cuadro(p: &Pintor, r: &Resultado, c: RectF, e: f32, pal: &Paleta, fotos: &HashMap<String, (ID2D1Bitmap1, u32, u32)>) {
+fn cuadro(
+    p: &Pintor,
+    r: &Resultado,
+    c: RectF,
+    e: f32,
+    pal: &Paleta,
+    fotos: &HashMap<String, (ID2D1Bitmap1, u32, u32)>,
+) {
     let radio = 8.0 * e;
-    let foto = r.vista_previa.as_deref().or(r.icono.as_deref()).and_then(|f| fotos.get(f));
+    let foto = r
+        .vista_previa
+        .as_deref()
+        .or(r.icono.as_deref())
+        .and_then(|f| fotos.get(f));
     if let Some((b, w, h)) = foto {
         p.rellenar_redondeado(c, radio, pal.foto);
         // Llenar el cuadro recortando lo que sobra (como `object-fit: cover`).
         let (w, h) = (*w as f32, *h as f32);
         let lado = w.min(h);
-        let fuente = RectF { x: (w - lado) / 2.0, y: (h - lado) / 2.0, ancho: lado, alto: lado };
+        let fuente = RectF {
+            x: (w - lado) / 2.0,
+            y: (h - lado) / 2.0,
+            ancho: lado,
+            alto: lado,
+        };
         p.con_recorte(c, |p| p.bitmap(b, c, Some(fuente), false));
         return;
     }
@@ -306,14 +373,27 @@ fn cuadro(p: &Pintor, r: &Resultado, c: RectF, e: f32, pal: &Paleta, fotos: &Has
             let letra = negrita();
             let tam = 10.0 * e;
             let (w, h) = p.medir_con_letra(&ext, tam, SIN_PARTIR, &letra);
-            p.texto_con_letra(&ext, c.x + (c.ancho - w) / 2.0, c.y + (c.alto - h) / 2.0, tam, SIN_PARTIR, &letra, color);
+            p.texto_con_letra(
+                &ext,
+                c.x + (c.ancho - w) / 2.0,
+                c.y + (c.alto - h) / 2.0,
+                tam,
+                SIN_PARTIR,
+                &letra,
+                color,
+            );
             return;
         }
     }
     let lado = 18.0 * e;
     p.icono(
         icono_de_glifo(r.glifo),
-        RectF { x: c.x + (c.ancho - lado) / 2.0, y: c.y + (c.alto - lado) / 2.0, ancho: lado, alto: lado },
+        RectF {
+            x: c.x + (c.ancho - lado) / 2.0,
+            y: c.y + (c.alto - lado) / 2.0,
+            ancho: lado,
+            alto: lado,
+        },
         color,
     );
 }
@@ -360,7 +440,13 @@ fn ancho_boton(p: &Pintor, b: Boton, r: &Resultado, textos: &Catalogo, e: f32) -
         return 34.0 * e;
     }
     let (rotulo, t) = rotulo_y_tecla(b, r, textos);
-    10.0 * e + 15.0 * e + 7.0 * e + p.medir_texto(&rotulo, 13.0 * e).0 + 7.0 * e + ancho_tecla(p, t, e) + 10.0 * e
+    10.0 * e
+        + 15.0 * e
+        + 7.0 * e
+        + p.medir_texto(&rotulo, 13.0 * e).0
+        + 7.0 * e
+        + ancho_tecla(p, t, e)
+        + 10.0 * e
 }
 
 fn rotulo_pestana(p: Pestana, e: &Estado, textos: &Catalogo) -> (String, Option<String>) {
@@ -371,7 +457,15 @@ fn rotulo_pestana(p: Pestana, e: &Estado, textos: &Catalogo) -> (String, Option<
 
 /// **Pinta el buscador entero.** `ancho` y `alto` en pixeles; `e`, la
 /// escala.
-pub fn pintar(p: &Pintor, v: &Vista, pal: &Paleta, textos: &Catalogo, ancho: f32, alto: f32, e: f32) -> Disposicion {
+pub fn pintar(
+    p: &Pintor,
+    v: &Vista,
+    pal: &Paleta,
+    textos: &Catalogo,
+    ancho: f32,
+    alto: f32,
+    e: f32,
+) -> Disposicion {
     let est = v.estado;
     // Medir lo que hace falta para colocar.
     let anchos_pestanas: Vec<f32> = Pestana::TODAS
@@ -420,11 +514,24 @@ pub fn pintar(p: &Pintor, v: &Vista, pal: &Paleta, textos: &Catalogo, ancho: f32
 
     // El fondo: la ventana entera redondeada, con su borde.
     p.limpiar_transparente();
-    let todo = RectF { x: 0.0, y: 0.0, ancho, alto };
+    let todo = RectF {
+        x: 0.0,
+        y: 0.0,
+        ancho,
+        alto,
+    };
     p.rellenar_redondeado(todo, 18.0 * e, pal.fondo);
     // El panel de la derecha (sus esquinas de abajo las tapa el pie).
     p.con_recorte(d.panel, |p| p.rellenar(d.panel, pal.panel));
-    p.rellenar(RectF { x: d.panel.x, y: d.panel.y, ancho: 1.0, alto: d.panel.alto }, pal.raya);
+    p.rellenar(
+        RectF {
+            x: d.panel.x,
+            y: d.panel.y,
+            ancho: 1.0,
+            alto: d.panel.alto,
+        },
+        pal.raya,
+    );
 
     pintar_campo(p, v, pal, textos, &d, e);
     pintar_pestanas(p, v, pal, textos, &d, e);
@@ -438,7 +545,16 @@ pub fn pintar(p: &Pintor, v: &Vista, pal: &Paleta, textos: &Catalogo, ancho: f32
     if let Some(a) = v.aviso {
         pintar_aviso(p, a, v, pal, textos, &d, e);
     }
-    p.trazar(RectF { x: 0.5, y: 0.5, ancho: ancho - 1.0, alto: alto - 1.0 }, 1.0, pal.borde);
+    p.trazar(
+        RectF {
+            x: 0.5,
+            y: 0.5,
+            ancho: ancho - 1.0,
+            alto: alto - 1.0,
+        },
+        1.0,
+        pal.borde,
+    );
     d
 }
 
@@ -446,23 +562,51 @@ fn pintar_campo(p: &Pintor, v: &Vista, pal: &Paleta, textos: &Catalogo, d: &Disp
     let est = v.estado;
     let c = d.campo;
     let lado = 22.0 * e;
-    p.icono(&mi::SEARCH, RectF { x: 18.0 * e, y: c.y + (c.alto - lado) / 2.0, ancho: lado, alto: lado }, pal.apagado);
+    p.icono(
+        &mi::SEARCH,
+        RectF {
+            x: 18.0 * e,
+            y: c.y + (c.alto - lado) / 2.0,
+            ancho: lado,
+            alto: lado,
+        },
+        pal.apagado,
+    );
     let x = 18.0 * e + lado + 12.0 * e;
     let tam = if est.consulta.is_empty() { 20.0 } else { 22.0 } * e;
     // A la derecha: «Esc» en el inicio; la cuenta y el ✕ con resultados.
     let mut derecha = c.ancho - 18.0 * e;
     if let Some(b) = d.borrar {
         let encima = dentro(b, v.raton);
-        p.rellenar_redondeado(b, 8.0 * e, if encima { pal.boton_encima } else { pal.boton });
+        p.rellenar_redondeado(
+            b,
+            8.0 * e,
+            if encima { pal.boton_encima } else { pal.boton },
+        );
         let l = 14.0 * e;
-        p.icono(&mi::CLOSE, RectF { x: b.x + (b.ancho - l) / 2.0, y: b.y + (b.alto - l) / 2.0, ancho: l, alto: l }, pal.suave);
+        p.icono(
+            &mi::CLOSE,
+            RectF {
+                x: b.x + (b.ancho - l) / 2.0,
+                y: b.y + (b.alto - l) / 2.0,
+                ancho: l,
+                alto: l,
+            },
+            pal.suave,
+        );
         derecha = b.x - 12.0 * e;
         let n = est.cuenta(est.pestana);
         let mut args = fluent_bundle::FluentArgs::new();
         args.set("n", n);
         let cuenta = textos.t_args("buscar-todo-resultados", &args);
         let (w, h) = p.medir_texto(&cuenta, TAM_SUB * e);
-        p.texto(&cuenta, derecha - w, c.y + (c.alto - h) / 2.0, TAM_SUB * e, pal.apagado);
+        p.texto(
+            &cuenta,
+            derecha - w,
+            c.y + (c.alto - h) / 2.0,
+            TAM_SUB * e,
+            pal.apagado,
+        );
         derecha -= w + 12.0 * e;
     } else {
         let w = ancho_tecla(p, "Esc", e);
@@ -479,23 +623,62 @@ fn pintar_campo(p: &Pintor, v: &Vista, pal: &Paleta, textos: &Catalogo, d: &Disp
     let (w, h) = p.medir_texto(&texto, tam);
     let y = c.y + (c.alto - h) / 2.0;
     if est.consulta.is_empty() {
-        p.rellenar(RectF { x: x - 2.0 * e, y: c.y + (c.alto - 26.0 * e) / 2.0, ancho: 2.0 * e, alto: 26.0 * e }, pal.azul);
+        p.rellenar(
+            RectF {
+                x: x - 2.0 * e,
+                y: c.y + (c.alto - 26.0 * e) / 2.0,
+                ancho: 2.0 * e,
+                alto: 26.0 * e,
+            },
+            pal.azul,
+        );
         p.texto_linea(&texto, x + 6.0 * e, y, tam, hueco - 6.0 * e, color);
     } else {
         // Lo escrito largo se ve por el final, que es donde se escribe.
         let desplazado = (w - hueco + 4.0 * e).max(0.0);
-        p.con_recorte(RectF { x, y: c.y, ancho: hueco, alto: c.alto }, |p| {
-            p.texto(&texto, x - desplazado, y, tam, color);
-        });
+        p.con_recorte(
+            RectF {
+                x,
+                y: c.y,
+                ancho: hueco,
+                alto: c.alto,
+            },
+            |p| {
+                p.texto(&texto, x - desplazado, y, tam, color);
+            },
+        );
         let xc = x + w.min(hueco - 4.0 * e) + 1.0;
-        p.rellenar(RectF { x: xc, y: c.y + (c.alto - 26.0 * e) / 2.0, ancho: 2.0 * e, alto: 26.0 * e }, pal.azul);
+        p.rellenar(
+            RectF {
+                x: xc,
+                y: c.y + (c.alto - 26.0 * e) / 2.0,
+                ancho: 2.0 * e,
+                alto: 26.0 * e,
+            },
+            pal.azul,
+        );
     }
 }
 
-fn pintar_pestanas(p: &Pintor, v: &Vista, pal: &Paleta, textos: &Catalogo, d: &Disposicion, e: f32) {
+fn pintar_pestanas(
+    p: &Pintor,
+    v: &Vista,
+    pal: &Paleta,
+    textos: &Catalogo,
+    d: &Disposicion,
+    e: f32,
+) {
     let est = v.estado;
     let b = d.barra_pestanas;
-    p.rellenar(RectF { x: 0.0, y: b.y + b.alto - 1.0, ancho: b.ancho, alto: 1.0 }, pal.raya);
+    p.rellenar(
+        RectF {
+            x: 0.0,
+            y: b.y + b.alto - 1.0,
+            ancho: b.ancho,
+            alto: 1.0,
+        },
+        pal.raya,
+    );
     for (pe, r) in &d.pestanas {
         let on = *pe == est.pestana;
         if on {
@@ -507,24 +690,57 @@ fn pintar_pestanas(p: &Pintor, v: &Vista, pal: &Paleta, textos: &Catalogo, d: &D
         let (t, n) = rotulo_pestana(*pe, est, textos);
         let (w, h) = p.medir_texto(&t, 13.0 * e);
         let x = r.x + 12.0 * e;
-        p.texto(&t, x, r.y + (r.alto - h) / 2.0, 13.0 * e, if on { pal.texto } else { pal.suave });
+        p.texto(
+            &t,
+            x,
+            r.y + (r.alto - h) / 2.0,
+            13.0 * e,
+            if on { pal.texto } else { pal.suave },
+        );
         if let Some(n) = n {
             let letra = negrita();
             let (wn, hn) = p.medir_con_letra(&n, 11.0 * e, SIN_PARTIR, &letra);
-            let chapa = RectF { x: x + w + 6.0 * e, y: r.y + (r.alto - 18.0 * e) / 2.0, ancho: wn + 12.0 * e, alto: 18.0 * e };
+            let chapa = RectF {
+                x: x + w + 6.0 * e,
+                y: r.y + (r.alto - 18.0 * e) / 2.0,
+                ancho: wn + 12.0 * e,
+                alto: 18.0 * e,
+            };
             p.rellenar_redondeado(chapa, 8.0 * e, if on { pal.azul_boton } else { pal.tecla });
-            p.texto_con_letra(&n, chapa.x + 6.0 * e, chapa.y + (chapa.alto - hn) / 2.0, 11.0 * e, SIN_PARTIR, &letra, if on { pal.sobre_azul } else { pal.apagado });
+            p.texto_con_letra(
+                &n,
+                chapa.x + 6.0 * e,
+                chapa.y + (chapa.alto - hn) / 2.0,
+                11.0 * e,
+                SIN_PARTIR,
+                &letra,
+                if on { pal.sobre_azul } else { pal.apagado },
+            );
         }
     }
     // «Ctrl Tab cambia», a la derecha.
     let rotulo = textos.t("buscar-todo-cambia");
     let (w, h) = p.medir_texto(&rotulo, TAM_SUB * e);
     let x = b.ancho - 14.0 * e - w;
-    p.texto(&rotulo, x, b.y + (b.alto - h) / 2.0, TAM_SUB * e, pal.apagado);
+    p.texto(
+        &rotulo,
+        x,
+        b.y + (b.alto - h) / 2.0,
+        TAM_SUB * e,
+        pal.apagado,
+    );
     let wt = ancho_tecla(p, "Ctrl Tab", e);
     let ultima = d.pestanas.last().map_or(0.0, |(_, r)| r.x + r.ancho);
     if x - 6.0 * e - wt > ultima + 8.0 * e {
-        tecla(p, "Ctrl Tab", x - 6.0 * e - wt, b.y + b.alto / 2.0, e, pal, false);
+        tecla(
+            p,
+            "Ctrl Tab",
+            x - 6.0 * e - wt,
+            b.y + b.alto / 2.0,
+            e,
+            pal,
+            false,
+        );
     }
 }
 
@@ -532,15 +748,37 @@ fn cabecera(p: &Pintor, t: &str, r: RectF, e: f32, pal: &Paleta) {
     let letra = negrita();
     let t = t.to_uppercase();
     let (_, h) = p.medir_con_letra(&t, TAM_CAB * e, SIN_PARTIR, &letra);
-    p.texto_con_letra(&t, r.x + 12.0 * e, r.y + (r.alto - h) / 2.0 + 2.0 * e, TAM_CAB * e, SIN_PARTIR, &letra, pal.apagado);
+    p.texto_con_letra(
+        &t,
+        r.x + 12.0 * e,
+        r.y + (r.alto - h) / 2.0 + 2.0 * e,
+        TAM_CAB * e,
+        SIN_PARTIR,
+        &letra,
+        pal.apagado,
+    );
 }
 
 /// Una fila de resultado: cuadro, titulo con lo buscado resaltado y
 /// subtitulo. `derecha`: lo que ocupa lo de su derecha.
 #[allow(clippy::too_many_arguments)]
-fn fila(p: &Pintor, r: &Resultado, caja: RectF, alto_fila: f32, derecha: f32, e: f32, pal: &Paleta, fotos: &HashMap<String, (ID2D1Bitmap1, u32, u32)>) {
+fn fila(
+    p: &Pintor,
+    r: &Resultado,
+    caja: RectF,
+    alto_fila: f32,
+    derecha: f32,
+    e: f32,
+    pal: &Paleta,
+    fotos: &HashMap<String, (ID2D1Bitmap1, u32, u32)>,
+) {
     let lado = 34.0 * e;
-    let c = RectF { x: caja.x + 12.0 * e, y: caja.y + (alto_fila - lado) / 2.0, ancho: lado, alto: lado };
+    let c = RectF {
+        x: caja.x + 12.0 * e,
+        y: caja.y + (alto_fila - lado) / 2.0,
+        ancho: lado,
+        alto: lado,
+    };
     cuadro(p, r, c, e, pal, fotos);
     let x = c.x + lado + 12.0 * e;
     let ancho = (caja.x + caja.ancho - 12.0 * e - derecha - x).max(10.0);
@@ -548,8 +786,25 @@ fn fila(p: &Pintor, r: &Resultado, caja: RectF, alto_fila: f32, derecha: f32, e:
     let (_, hs) = p.medir_texto("Ág", TAM_SUB * e);
     let y = caja.y + (alto_fila - ht - hs - 2.0 * e) / 2.0;
     let titulo = pixpin_render::lienzo::en_una_linea(&r.titulo);
-    texto_resaltado(p, &titulo, &r.resaltado, x, y, TAM * e, ancho, pal.texto, con_alfa(pal.azul, 0.28));
-    p.texto_linea(&pixpin_render::lienzo::en_una_linea(&r.subtitulo), x, y + ht + 2.0 * e, TAM_SUB * e, ancho, pal.apagado);
+    texto_resaltado(
+        p,
+        &titulo,
+        &r.resaltado,
+        x,
+        y,
+        TAM * e,
+        ancho,
+        pal.texto,
+        con_alfa(pal.azul, 0.28),
+    );
+    p.texto_linea(
+        &pixpin_render::lienzo::en_una_linea(&r.subtitulo),
+        x,
+        y + ht + 2.0 * e,
+        TAM_SUB * e,
+        ancho,
+        pal.apagado,
+    );
 }
 
 fn pintar_inicio(p: &Pintor, v: &Vista, pal: &Paleta, textos: &Catalogo, d: &Disposicion, e: f32) {
@@ -559,26 +814,54 @@ fn pintar_inicio(p: &Pintor, v: &Vista, pal: &Paleta, textos: &Catalogo, d: &Dis
         if let Some(b) = d.borrar_todas {
             let t = textos.t("buscar-todo-borrar-todas");
             let (w, h) = p.medir_texto(&t, TAM_SUB * e);
-            p.texto(&t, b.x + b.ancho - w - 12.0 * e, b.y + (b.alto - h) / 2.0 + 2.0 * e, TAM_SUB * e, pal.enlace);
+            p.texto(
+                &t,
+                b.x + b.ancho - w - 12.0 * e,
+                b.y + (b.alto - h) / 2.0 + 2.0 * e,
+                TAM_SUB * e,
+                pal.enlace,
+            );
         }
     }
     for (i, f, x) in &d.fichas {
         let encima = dentro(*f, v.raton);
-        p.rellenar_redondeado(*f, f.alto / 2.0, if encima { pal.ficha_encima } else { pal.ficha });
+        p.rellenar_redondeado(
+            *f,
+            f.alto / 2.0,
+            if encima { pal.ficha_encima } else { pal.ficha },
+        );
         let t = &v.busquedas[*i];
         let (_, h) = p.medir_texto(t, 13.0 * e);
-        p.texto_linea(t, f.x + 12.0 * e, f.y + (f.alto - h) / 2.0, 13.0 * e, (x.x - f.x - 16.0 * e).max(4.0), pal.texto2);
+        p.texto_linea(
+            t,
+            f.x + 12.0 * e,
+            f.y + (f.alto - h) / 2.0,
+            13.0 * e,
+            (x.x - f.x - 16.0 * e).max(4.0),
+            pal.texto2,
+        );
         if dentro(disposicion::agrandada(*x, 28.0), v.raton) {
             p.rellenar_redondeado(*x, x.alto / 2.0, pal.boton_encima);
         }
         let l = 10.0 * e;
-        p.icono(&mi::CLOSE, RectF { x: x.x + (x.ancho - l) / 2.0, y: x.y + (x.alto - l) / 2.0, ancho: l, alto: l }, pal.apagado);
+        p.icono(
+            &mi::CLOSE,
+            RectF {
+                x: x.x + (x.ancho - l) / 2.0,
+                y: x.y + (x.alto - l) / 2.0,
+                ancho: l,
+                alto: l,
+            },
+            pal.apagado,
+        );
     }
     if let Some(c) = d.cabecera_abiertos {
         cabecera(p, &textos.t("buscar-todo-abierto-hace-poco"), c, e, pal);
     }
     for (i, caja) in &d.lineas {
-        let Some(Linea::Fila(ix)) = est.lineas().get(*i).copied() else { continue };
+        let Some(Linea::Fila(ix)) = est.lineas().get(*i).copied() else {
+            continue;
+        };
         let r = &est.resultados[ix];
         let elegida = *i == est.elegido;
         if elegida {
@@ -593,9 +876,23 @@ fn pintar_inicio(p: &Pintor, v: &Vista, pal: &Paleta, textos: &Catalogo, d: &Dis
             let verbo = textos.t(modelo::rotulo_principal(&r.accion));
             let (wv, hv) = p.medir_texto(&verbo, TAM_SUB * e);
             let xv = caja.x + caja.ancho - 12.0 * e - wv;
-            p.texto(&verbo, xv, caja.y + (caja.alto - hv) / 2.0, TAM_SUB * e, pal.apagado);
+            p.texto(
+                &verbo,
+                xv,
+                caja.y + (caja.alto - hv) / 2.0,
+                TAM_SUB * e,
+                pal.apagado,
+            );
             let wt = ancho_tecla(p, "Intro", e);
-            tecla(p, "Intro", xv - 6.0 * e - wt, caja.y + caja.alto / 2.0, e, pal, false);
+            tecla(
+                p,
+                "Intro",
+                xv - 6.0 * e - wt,
+                caja.y + caja.alto / 2.0,
+                e,
+                pal,
+                false,
+            );
             derecha = wv + wt + 18.0 * e;
         }
         fila(p, r, *caja, caja.alto, derecha, e, pal, v.fotos);
@@ -604,7 +901,16 @@ fn pintar_inicio(p: &Pintor, v: &Vista, pal: &Paleta, textos: &Catalogo, d: &Dis
         p.rellenar_redondeado(pista, 12.0 * e, con_alfa(pal.azul, 0.06));
         p.trazar_discontinuo(pista, 1.5 * e, con_alfa(pal.azul, 0.45));
         let l = 22.0 * e;
-        p.icono(&mi::IMAGE, RectF { x: pista.x + 12.0 * e, y: pista.y + (pista.alto - l) / 2.0, ancho: l, alto: l }, pal.enlace);
+        p.icono(
+            &mi::IMAGE,
+            RectF {
+                x: pista.x + 12.0 * e,
+                y: pista.y + (pista.alto - l) / 2.0,
+                ancho: l,
+                alto: l,
+            },
+            pal.enlace,
+        );
         let x = pista.x + 12.0 * e + l + 12.0 * e;
         let t1 = textos.t("buscar-todo-pegar");
         let (w1, h1) = p.medir_texto(&t1, 13.0 * e);
@@ -612,7 +918,14 @@ fn pintar_inicio(p: &Pintor, v: &Vista, pal: &Paleta, textos: &Catalogo, d: &Dis
         p.texto(&t1, x, y1, 13.0 * e, pal.texto2);
         let wt = tecla(p, "Ctrl V", x + w1 + 6.0 * e, y1 + h1 / 2.0, e, pal, false);
         let t2 = textos.t("buscar-todo-pegar-2");
-        p.texto_linea(&t2, x + w1 + 12.0 * e + wt, y1, 13.0 * e, pista.x + pista.ancho - (x + w1 + 12.0 * e + wt) - 8.0 * e, pal.texto2);
+        p.texto_linea(
+            &t2,
+            x + w1 + 12.0 * e + wt,
+            y1,
+            13.0 * e,
+            pista.x + pista.ancho - (x + w1 + 12.0 * e + wt) - 8.0 * e,
+            pal.texto2,
+        );
         let ejemplo = textos.t("buscar-todo-pegar-ejemplo");
         let mono = Letra::de("Cascadia Mono");
         let y2 = y1 + h1 + 6.0 * e;
@@ -620,9 +933,22 @@ fn pintar_inicio(p: &Pintor, v: &Vista, pal: &Paleta, textos: &Catalogo, d: &Dis
         p.texto_con_letra(&ejemplo, x, y2, 12.0 * e, SIN_PARTIR, &mono, pal.texto);
         let ficha = "[img 01]";
         let (wf, hf) = p.medir_con_letra(ficha, 12.0 * e, SIN_PARTIR, &mono);
-        let cf = RectF { x: x + we + 6.0 * e, y: y2 - 1.0 * e, ancho: wf + 12.0 * e, alto: hf.max(he) + 2.0 * e };
+        let cf = RectF {
+            x: x + we + 6.0 * e,
+            y: y2 - 1.0 * e,
+            ancho: wf + 12.0 * e,
+            alto: hf.max(he) + 2.0 * e,
+        };
         p.rellenar_redondeado(cf, 5.0 * e, pal.azul_boton);
-        p.texto_con_letra(ficha, cf.x + 6.0 * e, y2, 12.0 * e, SIN_PARTIR, &mono, pal.sobre_azul);
+        p.texto_con_letra(
+            ficha,
+            cf.x + 6.0 * e,
+            y2,
+            12.0 * e,
+            SIN_PARTIR,
+            &mono,
+            pal.sobre_azul,
+        );
     }
     // Las letras.
     if let Some(c) = d.cabecera_letras {
@@ -632,7 +958,14 @@ fn pintar_inicio(p: &Pintor, v: &Vista, pal: &Paleta, textos: &Catalogo, d: &Dis
         if dentro(*caja, v.raton) {
             p.rellenar_redondeado(*caja, 10.0 * e, pal.encima);
         }
-        tecla_grande(p, &l.letra.to_string(), caja.x + 12.0 * e, caja.y + caja.alto / 2.0, e, pal);
+        tecla_grande(
+            p,
+            &l.letra.to_string(),
+            caja.x + 12.0 * e,
+            caja.y + caja.alto / 2.0,
+            e,
+            pal,
+        );
         let x = caja.x + 12.0 * e + 26.0 * e + 12.0 * e;
         let mut derecha = caja.x + caja.ancho - 12.0 * e;
         if let Some(a) = &l.atajo {
@@ -644,22 +977,55 @@ fn pintar_inicio(p: &Pintor, v: &Vista, pal: &Paleta, textos: &Catalogo, d: &Dis
         let (_, hs) = p.medir_texto("Ág", TAM_SUB * e);
         let y = caja.y + (caja.alto - ht - hs - 2.0 * e) / 2.0;
         p.texto_linea(&l.titulo, x, y, TAM * e, derecha - x, pal.texto);
-        p.texto_linea(&l.sub, x, y + ht + 2.0 * e, TAM_SUB * e, derecha - x, pal.apagado);
+        p.texto_linea(
+            &l.sub,
+            x,
+            y + ht + 2.0 * e,
+            TAM_SUB * e,
+            derecha - x,
+            pal.apagado,
+        );
     }
 }
 
 #[allow(clippy::too_many_arguments)]
-fn pintar_lista(p: &Pintor, v: &Vista, pal: &Paleta, textos: &Catalogo, d: &Disposicion, lineas: &[Linea], e: f32) {
+fn pintar_lista(
+    p: &Pintor,
+    v: &Vista,
+    pal: &Paleta,
+    textos: &Catalogo,
+    d: &Disposicion,
+    lineas: &[Linea],
+    e: f32,
+) {
     let est = v.estado;
     if lineas.is_empty() {
         // Nada: lo dice, y como seguir.
         let mut args = fluent_bundle::FluentArgs::new();
         args.set("consulta", est.consulta.trim().to_string());
-        let t = if est.consulta.trim().is_empty() { textos.t("buscar-todo-vacia") } else { textos.t_args("buscar-todo-ninguno", &args) };
+        let t = if est.consulta.trim().is_empty() {
+            textos.t("buscar-todo-vacia")
+        } else {
+            textos.t_args("buscar-todo-ninguno", &args)
+        };
         let sub = textos.t("buscar-todo-ninguno-pista");
         let x = d.lista.x + 24.0 * e;
-        p.texto_linea(&t, x, d.lista.y + 28.0 * e, 15.0 * e, d.lista.ancho - 48.0 * e, pal.texto);
-        p.texto_linea(&sub, x, d.lista.y + 54.0 * e, TAM_SUB * e, d.lista.ancho - 48.0 * e, pal.apagado);
+        p.texto_linea(
+            &t,
+            x,
+            d.lista.y + 28.0 * e,
+            15.0 * e,
+            d.lista.ancho - 48.0 * e,
+            pal.texto,
+        );
+        p.texto_linea(
+            &sub,
+            x,
+            d.lista.y + 54.0 * e,
+            TAM_SUB * e,
+            d.lista.ancho - 48.0 * e,
+            pal.apagado,
+        );
         return;
     }
     let visibles = est.visibles().len();
@@ -672,7 +1038,11 @@ fn pintar_lista(p: &Pintor, v: &Vista, pal: &Paleta, textos: &Catalogo, d: &Disp
                 Linea::Fila(ix) => {
                     let r = &est.resultados[ix];
                     let tarjeta = d.tarjeta.is_some_and(|t| t.y == caja.y);
-                    let alto_fila = if tarjeta { disposicion::FILA_ELEGIDA * e } else { caja.alto };
+                    let alto_fila = if tarjeta {
+                        disposicion::FILA_ELEGIDA * e
+                    } else {
+                        caja.alto
+                    };
                     if tarjeta {
                         p.rellenar_redondeado(*caja, 12.0 * e, pal.azul_fondo);
                         p.trazar(*caja, 1.5 * e, pal.azul);
@@ -687,13 +1057,27 @@ fn pintar_lista(p: &Pintor, v: &Vista, pal: &Paleta, textos: &Catalogo, d: &Disp
                         args.set("total", visibles);
                         let t = textos.t_args("buscar-todo-n-de-m", &args);
                         let (w, h) = p.medir_texto(&t, TAM_SUB * e);
-                        p.texto(&t, caja.x + caja.ancho - 12.0 * e - w, caja.y + (alto_fila - h) / 2.0, TAM_SUB * e, pal.apagado);
+                        p.texto(
+                            &t,
+                            caja.x + caja.ancho - 12.0 * e - w,
+                            caja.y + (alto_fila - h) / 2.0,
+                            TAM_SUB * e,
+                            pal.apagado,
+                        );
                         derecha = w + 8.0 * e;
                     } else if modelo::pestana_de(r) == Pestana::Acciones {
                         // La letra de la funcion, si tiene (la «t» de apuntar).
                         if let Some(l) = letra_de(r) {
                             let w = ancho_tecla(p, &l.to_string(), e);
-                            tecla(p, &l.to_string(), caja.x + caja.ancho - 12.0 * e - w, caja.y + alto_fila / 2.0, e, pal, false);
+                            tecla(
+                                p,
+                                &l.to_string(),
+                                caja.x + caja.ancho - 12.0 * e - w,
+                                caja.y + alto_fila / 2.0,
+                                e,
+                                pal,
+                                false,
+                            );
                             derecha = w + 8.0 * e;
                         }
                     }
@@ -714,18 +1098,48 @@ fn pintar_lista(p: &Pintor, v: &Vista, pal: &Paleta, textos: &Catalogo, d: &Disp
                 p.rellenar_redondeado(*caja, 8.0 * e, fondo);
                 let color = if azul { pal.sobre_azul } else { pal.texto };
                 let l = 15.0 * e;
-                let icono = if azul { icono_principal(r) } else { icono_de_boton(*b) };
+                let icono = if azul {
+                    icono_principal(r)
+                } else {
+                    icono_de_boton(*b)
+                };
                 if *b == Boton::Mas {
-                    p.icono(icono, RectF { x: caja.x + (caja.ancho - l) / 2.0, y: caja.y + (caja.alto - l) / 2.0, ancho: l, alto: l }, color);
+                    p.icono(
+                        icono,
+                        RectF {
+                            x: caja.x + (caja.ancho - l) / 2.0,
+                            y: caja.y + (caja.alto - l) / 2.0,
+                            ancho: l,
+                            alto: l,
+                        },
+                        color,
+                    );
                     continue;
                 }
                 let x = caja.x + 10.0 * e;
-                p.icono(icono, RectF { x, y: caja.y + (caja.alto - l) / 2.0, ancho: l, alto: l }, color);
+                p.icono(
+                    icono,
+                    RectF {
+                        x,
+                        y: caja.y + (caja.alto - l) / 2.0,
+                        ancho: l,
+                        alto: l,
+                    },
+                    color,
+                );
                 let (rotulo, t) = rotulo_y_tecla(*b, r, textos);
                 let (w, h) = p.medir_texto(&rotulo, 13.0 * e);
                 let xr = x + l + 7.0 * e;
                 p.texto(&rotulo, xr, caja.y + (caja.alto - h) / 2.0, 13.0 * e, color);
-                tecla(p, t, xr + w + 7.0 * e, caja.y + caja.alto / 2.0, e, pal, azul);
+                tecla(
+                    p,
+                    t,
+                    xr + w + 7.0 * e,
+                    caja.y + caja.alto / 2.0,
+                    e,
+                    pal,
+                    azul,
+                );
             }
         }
     });
@@ -745,7 +1159,9 @@ pub fn letra_de(r: &Resultado) -> Option<char> {
         return de_clave;
     }
     // Lo que crea algo con lo escrito: la letra que lo hace directo.
-    let Accion::Pedido(p) = &r.accion else { return None };
+    let Accion::Pedido(p) = &r.accion else {
+        return None;
+    };
     match p.get("accion").and_then(serde_json::Value::as_str)? {
         "anadir_tarea" => Some('t'),
         "nota_nueva" => Some('n'),
@@ -764,8 +1180,23 @@ fn pintar_panel(p: &Pintor, v: &Vista, pal: &Paleta, textos: &Catalogo, d: &Disp
     if let Some(m) = &est.menu {
         if let Some(c) = d.cabecera_menu {
             let letra = negrita();
-            p.texto_con_letra(&textos.t("buscar-todo-mas"), c.x, c.y + 4.0 * e, 15.0 * e, SIN_PARTIR, &letra, pal.texto);
-            p.texto_linea(&m.titulo, c.x, c.y + 28.0 * e, TAM_SUB * e, c.ancho, pal.apagado);
+            p.texto_con_letra(
+                &textos.t("buscar-todo-mas"),
+                c.x,
+                c.y + 4.0 * e,
+                15.0 * e,
+                SIN_PARTIR,
+                &letra,
+                pal.texto,
+            );
+            p.texto_linea(
+                &m.titulo,
+                c.x,
+                c.y + 28.0 * e,
+                TAM_SUB * e,
+                c.ancho,
+                pal.apagado,
+            );
         }
         for (i, caja) in &d.opciones_menu {
             let o = &m.opciones[*i];
@@ -776,10 +1207,26 @@ fn pintar_panel(p: &Pintor, v: &Vista, pal: &Paleta, textos: &Catalogo, d: &Disp
                 p.rellenar_redondeado(*caja, 10.0 * e, pal.encima);
             }
             let l = 18.0 * e;
-            p.icono(icono_de_glifo(o.glifo), RectF { x: caja.x + 10.0 * e, y: caja.y + (caja.alto - l) / 2.0, ancho: l, alto: l }, pal.suave);
+            p.icono(
+                icono_de_glifo(o.glifo),
+                RectF {
+                    x: caja.x + 10.0 * e,
+                    y: caja.y + (caja.alto - l) / 2.0,
+                    ancho: l,
+                    alto: l,
+                },
+                pal.suave,
+            );
             let xt = caja.x + 10.0 * e + l + 10.0 * e;
             let (_, h) = p.medir_texto(&o.titulo, 13.0 * e);
-            p.texto_linea(&o.titulo, xt, caja.y + (caja.alto - h) / 2.0, 13.0 * e, caja.x + caja.ancho - xt - 8.0 * e, pal.texto);
+            p.texto_linea(
+                &o.titulo,
+                xt,
+                caja.y + (caja.alto - h) / 2.0,
+                13.0 * e,
+                caja.x + caja.ancho - xt - 8.0 * e,
+                pal.texto,
+            );
         }
         return;
     }
@@ -794,57 +1241,158 @@ fn pintar_panel(p: &Pintor, v: &Vista, pal: &Paleta, textos: &Catalogo, d: &Disp
         let k = (ancho / w).max(alto / h);
         let fuente_w = ancho / k;
         let fuente_h = alto / k;
-        let fuente = RectF { x: (w - fuente_w) / 2.0, y: (h - fuente_h) / 2.0, ancho: fuente_w, alto: fuente_h };
+        let fuente = RectF {
+            x: (w - fuente_w) / 2.0,
+            y: (h - fuente_h) / 2.0,
+            ancho: fuente_w,
+            alto: fuente_h,
+        };
         p.con_recorte(marco, |p| p.bitmap(b, marco, Some(fuente), false));
         y += alto + 10.0 * e;
     } else {
         let lado = 56.0 * e;
-        cuadro(p, r, RectF { x, y, ancho: lado, alto: lado }, e * 1.6, pal, v.fotos);
+        cuadro(
+            p,
+            r,
+            RectF {
+                x,
+                y,
+                ancho: lado,
+                alto: lado,
+            },
+            e * 1.6,
+            pal,
+            v.fotos,
+        );
         y += lado + 12.0 * e;
     }
     let letra = negrita();
     let titulo = pixpin_render::lienzo::en_una_linea(&r.titulo);
     let (_, h) = p.medir_con_letra("Ág", 15.0 * e, SIN_PARTIR, &letra);
-    p.con_recorte(RectF { x, y, ancho, alto: h + 2.0 }, |p| {
-        p.texto_con_letra(&titulo, x, y, 15.0 * e, SIN_PARTIR, &letra, pal.texto);
-    });
+    p.con_recorte(
+        RectF {
+            x,
+            y,
+            ancho,
+            alto: h + 2.0,
+        },
+        |p| {
+            p.texto_con_letra(&titulo, x, y, 15.0 * e, SIN_PARTIR, &letra, pal.texto);
+        },
+    );
     y += h + 3.0 * e;
-    let sub = v.detalle.medidas.clone().unwrap_or_else(|| r.subtitulo.clone());
+    let sub = v
+        .detalle
+        .medidas
+        .clone()
+        .unwrap_or_else(|| r.subtitulo.clone());
     let (_, hs) = p.medir_texto_ajustado(&sub, TAM_SUB * e, ancho);
     let hs = hs.min(48.0 * e);
-    p.con_recorte(RectF { x, y, ancho, alto: hs }, |p| p.texto_ajustado(&sub, x, y, TAM_SUB * e, ancho, pal.apagado));
+    p.con_recorte(
+        RectF {
+            x,
+            y,
+            ancho,
+            alto: hs,
+        },
+        |p| p.texto_ajustado(&sub, x, y, TAM_SUB * e, ancho, pal.apagado),
+    );
     y += hs + 10.0 * e;
     // El texto entero (la ayuda del subtitulo: lo que dice la leccion, la
     // tarea, el mensaje), en su tarjeta.
-    let tope_abajo = d.panel.y + d.panel.alto - 70.0 * e - if d.conservar.is_some() || v.detalle.caducidad.is_some() { 50.0 * e } else { 0.0 };
-    if let Some(t) = r.ayuda_subtitulo.as_deref().filter(|t| !t.trim().is_empty() && *t != r.subtitulo) {
+    let tope_abajo = d.panel.y + d.panel.alto
+        - 70.0 * e
+        - if d.conservar.is_some() || v.detalle.caducidad.is_some() {
+            50.0 * e
+        } else {
+            0.0
+        };
+    if let Some(t) = r
+        .ayuda_subtitulo
+        .as_deref()
+        .filter(|t| !t.trim().is_empty() && *t != r.subtitulo)
+    {
         let alto_max = (tope_abajo - y - 20.0 * e).max(0.0);
         if alto_max > 30.0 * e {
             let (_, ht) = p.medir_texto_ajustado(t, 13.0 * e, ancho - 24.0 * e);
             let alto = (ht + 20.0 * e).min(alto_max);
             let tarjeta = RectF { x, y, ancho, alto };
             p.rellenar_redondeado(tarjeta, 10.0 * e, pal.ficha);
-            p.con_recorte(RectF { x: x + 12.0 * e, y: y + 10.0 * e, ancho: ancho - 24.0 * e, alto: alto - 20.0 * e }, |p| {
-                p.texto_ajustado(t, x + 12.0 * e, y + 10.0 * e, 13.0 * e, ancho - 24.0 * e, pal.texto2);
-            });
+            p.con_recorte(
+                RectF {
+                    x: x + 12.0 * e,
+                    y: y + 10.0 * e,
+                    ancho: ancho - 24.0 * e,
+                    alto: alto - 20.0 * e,
+                },
+                |p| {
+                    p.texto_ajustado(
+                        t,
+                        x + 12.0 * e,
+                        y + 10.0 * e,
+                        13.0 * e,
+                        ancho - 24.0 * e,
+                        pal.texto2,
+                    );
+                },
+            );
         }
     }
     // La caducidad de una captura.
     if let Some((t, se_puede)) = &v.detalle.caducidad {
-        let banda_y = d.conservar.map_or(d.panel.y + d.panel.alto - 114.0 * e, |c| c.y - 4.0 * e);
-        let banda = RectF { x, y: banda_y, ancho, alto: 40.0 * e };
+        let banda_y = d
+            .conservar
+            .map_or(d.panel.y + d.panel.alto - 114.0 * e, |c| c.y - 4.0 * e);
+        let banda = RectF {
+            x,
+            y: banda_y,
+            ancho,
+            alto: 40.0 * e,
+        };
         p.rellenar_redondeado(banda, 10.0 * e, con_alfa(pal.naranja, 0.10));
         let l = 16.0 * e;
-        p.icono(&mi::ALARM, RectF { x: banda.x + 10.0 * e, y: banda.y + (banda.alto - l) / 2.0, ancho: l, alto: l }, pal.naranja);
+        p.icono(
+            &mi::ALARM,
+            RectF {
+                x: banda.x + 10.0 * e,
+                y: banda.y + (banda.alto - l) / 2.0,
+                ancho: l,
+                alto: l,
+            },
+            pal.naranja,
+        );
         let xt = banda.x + 10.0 * e + l + 8.0 * e;
-        let fin = d.conservar.map_or(banda.x + banda.ancho - 8.0 * e, |c| c.x - 8.0 * e);
+        let fin = d
+            .conservar
+            .map_or(banda.x + banda.ancho - 8.0 * e, |c| c.x - 8.0 * e);
         let (_, h) = p.medir_texto(t, TAM_SUB * e);
-        p.texto_linea(t, xt, banda.y + (banda.alto - h) / 2.0, TAM_SUB * e, fin - xt, pal.naranja_texto);
+        p.texto_linea(
+            t,
+            xt,
+            banda.y + (banda.alto - h) / 2.0,
+            TAM_SUB * e,
+            fin - xt,
+            pal.naranja_texto,
+        );
         if let (Some(c), true) = (d.conservar, *se_puede) {
-            p.rellenar_redondeado(c, 8.0 * e, if dentro(c, v.raton) { pal.boton_encima } else { pal.boton });
+            p.rellenar_redondeado(
+                c,
+                8.0 * e,
+                if dentro(c, v.raton) {
+                    pal.boton_encima
+                } else {
+                    pal.boton
+                },
+            );
             let t = textos.t("buscar-todo-conservar");
             let (w, h) = p.medir_texto(&t, TAM_SUB * e);
-            p.texto(&t, c.x + (c.ancho - w) / 2.0, c.y + (c.alto - h) / 2.0, TAM_SUB * e, pal.texto);
+            p.texto(
+                &t,
+                c.x + (c.ancho - w) / 2.0,
+                c.y + (c.alto - h) / 2.0,
+                TAM_SUB * e,
+                pal.texto,
+            );
         }
     }
     // Abajo, las teclas de lo demas.
@@ -854,7 +1402,14 @@ fn pintar_panel(p: &Pintor, v: &Vista, pal: &Paleta, textos: &Catalogo, d: &Disp
         let w = tecla(p, tecla_t, x, yb + 10.0 * e, e, pal, false);
         let t = textos.t(clave);
         let (_, h) = p.medir_texto(&t, TAM_SUB * e);
-        p.texto_linea(&t, x + w + 6.0 * e, yb + 10.0 * e - h / 2.0, TAM_SUB * e, ancho - w - 6.0 * e, pal.apagado);
+        p.texto_linea(
+            &t,
+            x + w + 6.0 * e,
+            yb + 10.0 * e - h / 2.0,
+            TAM_SUB * e,
+            ancho - w - 6.0 * e,
+            pal.apagado,
+        );
     };
     if modelo::ruta_de_captura(r).is_some() {
         pista("Supr", "buscar-todo-borrar");
@@ -867,7 +1422,15 @@ fn pintar_panel(p: &Pintor, v: &Vista, pal: &Paleta, textos: &Catalogo, d: &Disp
 fn pintar_pie(p: &Pintor, v: &Vista, pal: &Paleta, textos: &Catalogo, d: &Disposicion, e: f32) {
     let est = v.estado;
     let pie = d.pie;
-    p.rellenar(RectF { x: 0.0, y: pie.y, ancho: pie.ancho, alto: 1.0 }, pal.raya);
+    p.rellenar(
+        RectF {
+            x: 0.0,
+            y: pie.y,
+            ancho: pie.ancho,
+            alto: 1.0,
+        },
+        pal.raya,
+    );
     let cy = pie.y + pie.alto / 2.0;
     let mut x = 18.0 * e;
     let texto = |p: &Pintor, x: &mut f32, t: &str| {
@@ -879,7 +1442,9 @@ fn pintar_pie(p: &Pintor, v: &Vista, pal: &Paleta, textos: &Catalogo, d: &Dispos
     x += tecla(p, "↓", x, cy, e, pal, false) + 6.0 * e;
     texto(p, &mut x, &textos.t("buscar-todo-pie-moverse"));
     let verbo = match est.elegido() {
-        Some(r) if !est.es_inicio() && est.menu.is_none() => textos.t(modelo::rotulo_principal(&r.accion)),
+        Some(r) if !est.es_inicio() && est.menu.is_none() => {
+            textos.t(modelo::rotulo_principal(&r.accion))
+        }
         _ => textos.t("buscar-todo-pie-abrir"),
     };
     x += tecla(p, "Intro", x, cy, e, pal, false) + 6.0 * e;
@@ -895,7 +1460,11 @@ fn pintar_pie(p: &Pintor, v: &Vista, pal: &Paleta, textos: &Catalogo, d: &Dispos
         texto(p, &mut x, &textos.t("buscar-todo-pie-mas"));
     }
     x += tecla(p, "Esc", x, cy, e, pal, false) + 6.0 * e;
-    let cerrar = if est.consulta.is_empty() { "buscar-todo-pie-cerrar" } else { "buscar-todo-pie-borrar" };
+    let cerrar = if est.consulta.is_empty() {
+        "buscar-todo-pie-cerrar"
+    } else {
+        "buscar-todo-pie-borrar"
+    };
     texto(p, &mut x, &textos.t(cerrar));
     // A la derecha: Flow y el atajo propio, si lo tiene.
     let mut derecha = pie.ancho - 18.0 * e;
@@ -912,23 +1481,58 @@ fn pintar_pie(p: &Pintor, v: &Vista, pal: &Paleta, textos: &Catalogo, d: &Dispos
 }
 
 #[allow(clippy::too_many_arguments)]
-fn pintar_aviso(p: &Pintor, a: &str, v: &Vista, pal: &Paleta, textos: &Catalogo, d: &Disposicion, e: f32) {
+fn pintar_aviso(
+    p: &Pintor,
+    a: &str,
+    v: &Vista,
+    pal: &Paleta,
+    textos: &Catalogo,
+    d: &Disposicion,
+    e: f32,
+) {
     let (w, h) = p.medir_texto(a, 13.0 * e);
     let deshacer = d.deshacer;
     let extra = deshacer.map_or(0.0, |r| r.ancho + 8.0 * e);
     let ancho = w + 32.0 * e + extra;
     let fin = d.lista.x + d.lista.ancho - 16.0 * e;
-    let caja = RectF { x: fin - ancho, y: d.pie.y - disposicion::AVISO_ARRIBA * e, ancho, alto: 44.0 * e };
+    let caja = RectF {
+        x: fin - ancho,
+        y: d.pie.y - disposicion::AVISO_ARRIBA * e,
+        ancho,
+        alto: 44.0 * e,
+    };
     p.rellenar_redondeado(caja, 12.0 * e, pal.ficha_encima);
     p.trazar(caja, 1.0, pal.borde);
-    p.texto(a, caja.x + 16.0 * e, caja.y + (caja.alto - h) / 2.0, 13.0 * e, pal.texto);
+    p.texto(
+        a,
+        caja.x + 16.0 * e,
+        caja.y + (caja.alto - h) / 2.0,
+        13.0 * e,
+        pal.texto,
+    );
     if let Some(r) = deshacer {
-        p.rellenar_redondeado(r, 8.0 * e, if dentro(r, v.raton) { pal.boton_encima } else { pal.boton });
+        p.rellenar_redondeado(
+            r,
+            8.0 * e,
+            if dentro(r, v.raton) {
+                pal.boton_encima
+            } else {
+                pal.boton
+            },
+        );
         let t = textos.t("buscar-todo-deshacer");
         let (wt, ht) = p.medir_texto(&t, 13.0 * e);
         let wk = ancho_tecla(p, "Ctrl Z", e);
         let x = r.x + (r.ancho - wt - 6.0 * e - wk) / 2.0;
         p.texto(&t, x, r.y + (r.alto - ht) / 2.0, 13.0 * e, pal.enlace);
-        tecla(p, "Ctrl Z", x + wt + 6.0 * e, r.y + r.alto / 2.0, e, pal, false);
+        tecla(
+            p,
+            "Ctrl Z",
+            x + wt + 6.0 * e,
+            r.y + r.alto / 2.0,
+            e,
+            pal,
+            false,
+        );
     }
 }

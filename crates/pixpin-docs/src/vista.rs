@@ -103,8 +103,16 @@ pub fn con_espacio(espacios: u8, lado: u8) -> u8 {
 pub fn espacios_del_pdf(espacios: u8) -> (f32, f32) {
     let m = ANCHO_HOJA * MARGEN_DEL_PDF;
     (
-        if espacios & ESPACIO_IZQUIERDA != 0 { m } else { 0.0 },
-        if espacios & ESPACIO_DERECHA != 0 { m } else { 0.0 },
+        if espacios & ESPACIO_IZQUIERDA != 0 {
+            m
+        } else {
+            0.0
+        },
+        if espacios & ESPACIO_DERECHA != 0 {
+            m
+        } else {
+            0.0
+        },
     )
 }
 
@@ -468,7 +476,11 @@ mod pruebas {
         let s = h.sitio(y);
         assert!((s - 1.5).abs() < 1e-4);
         assert!((h.y_de(s) - y).abs() < 0.01);
-        assert_eq!(h.y_de(99.0), h.arriba[2] + h.altos[2], "una hoja que ya no esta cae en la ultima");
+        assert_eq!(
+            h.y_de(99.0),
+            h.arriba[2] + h.altos[2],
+            "una hoja que ya no esta cae en la ultima"
+        );
         assert_eq!(h.y_de(f64::NAN), 0.0);
         assert_eq!(Hojas::default().sitio(100.0), 0.0);
     }
@@ -487,19 +499,31 @@ mod pruebas {
         // la letra escrita en la mitad de abajo de la hoja 0 llega en
         // x -766..1994, y 2542..4887, fuera de una hoja de 1400 x 1980.
         let (k, dx) = capa_del_movil(0);
-        assert!((k - 2.5).abs() < 1e-6 && (dx + 1050.0).abs() < 1e-3, "{k} {dx}");
+        assert!(
+            (k - 2.5).abs() < 1e-6 && (dx + 1050.0).abs() < 1e-3,
+            "{k} {dx}"
+        );
         let en_la_hoja = |x: f32, y: f32| ((x - dx) / k, y / k);
         let (x0, y0) = en_la_hoja(-766.0, 2542.0);
         let (x1, y1) = en_la_hoja(1994.0, 4887.0);
-        assert!(x0 > 0.0 && x1 < ANCHO_HOJA && y0 > 990.0 && y1 < 1980.0, "{x0} {y0} {x1} {y1}");
+        assert!(
+            x0 > 0.0 && x1 < ANCHO_HOJA && y0 > 990.0 && y1 < 1980.0,
+            "{x0} {y0} {x1} {y1}"
+        );
     }
 
     #[test]
     fn con_un_solo_espacio_la_hoja_queda_a_un_lado_de_la_capa() {
         let (k, dx) = capa_del_movil(ESPACIO_DERECHA);
-        assert!((k - 2.5 / 1.75).abs() < 1e-5 && (dx + 1050.0).abs() < 1e-3, "{k} {dx}");
+        assert!(
+            (k - 2.5 / 1.75).abs() < 1e-5 && (dx + 1050.0).abs() < 1e-3,
+            "{k} {dx}"
+        );
         let (k, dx) = capa_del_movil(ESPACIO_IZQUIERDA);
-        assert!((k - 2.5 / 1.75).abs() < 1e-5 && (dx - 450.0).abs() < 1e-3, "{k} {dx}");
+        assert!(
+            (k - 2.5 / 1.75).abs() < 1e-5 && (dx - 450.0).abs() < 1e-3,
+            "{k} {dx}"
+        );
         // Caso negativo: los bits que no son espacios no cuentan.
         assert_eq!(capa_del_movil(3 | 8), (1.0, 0.0));
         assert_eq!(capa_del_movil(4), capa_del_movil(0));

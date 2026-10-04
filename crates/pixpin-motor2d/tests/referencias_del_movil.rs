@@ -14,9 +14,9 @@ const JSON: &str = r##"{"type":"excalidraw","elements":[
 
 fn alfa(o: &Orden) -> f32 {
     match o {
-        Orden::Polilinea { color, .. } | Orden::Poligono { color, .. } | Orden::Tinta { color, .. } => {
-            color.a
-        }
+        Orden::Polilinea { color, .. }
+        | Orden::Poligono { color, .. }
+        | Orden::Tinta { color, .. } => color.a,
         _ => 1.0,
     }
 }
@@ -26,13 +26,25 @@ fn una_referencia_del_movil_se_pinta_translucida_y_el_dibujo_no() {
     let lienzo = excalidraw::leer(JSON).unwrap();
     let e = lienzo.elementos();
     assert!(e[0].extras.referencia);
-    assert!(!e[1].extras.referencia, "caso negativo: el dibujo no es referencia");
+    assert!(
+        !e[1].extras.referencia,
+        "caso negativo: el dibujo no es referencia"
+    );
     let guia: Vec<f32> = pintado::ordenes(&e[0]).iter().map(alfa).collect();
     let trazo: Vec<f32> = pintado::ordenes(&e[1]).iter().map(alfa).collect();
-    assert!(!guia.is_empty() && guia.iter().all(|a| (a - 0.35).abs() < 1e-3), "{guia:?}");
+    assert!(
+        !guia.is_empty() && guia.iter().all(|a| (a - 0.35).abs() < 1e-3),
+        "{guia:?}"
+    );
     assert!(trazo.iter().all(|a| (a - 1.0).abs() < 1e-3), "{trazo:?}");
-    let lejos: Vec<f32> = pintado::ordenes_a_distancia(&e[0], 0.05).iter().map(alfa).collect();
-    assert!(lejos.iter().all(|a| (a - 0.35).abs() < 1e-3), "de lejos tambien: {lejos:?}");
+    let lejos: Vec<f32> = pintado::ordenes_a_distancia(&e[0], 0.05)
+        .iter()
+        .map(alfa)
+        .collect();
+    assert!(
+        lejos.iter().all(|a| (a - 0.35).abs() < 1e-3),
+        "de lejos tambien: {lejos:?}"
+    );
 }
 
 #[test]

@@ -118,5 +118,7 @@ fn foto_del_escritorio(
             .context("no se pudo bajar la captura a memoria")?;
         fotos.push((m.area, img));
     }
-    Ok(crate::ventana_editor::pantalla::unir_fotos(escritorio, &fotos))
+    Ok(crate::ventana_editor::pantalla::unir_fotos(
+        escritorio, &fotos,
+    ))
 }

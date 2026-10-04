@@ -314,9 +314,13 @@ pub fn mover(d: &Disposicion, i: usize, f: Flecha) -> usize {
             let fila_y = |y: f32| -> Option<f32> {
                 let candidatas = d.celdas.iter().map(|o| o.y);
                 if f == Flecha::Arriba {
-                    candidatas.filter(|&oy| oy < y - 0.5).fold(None, |m: Option<f32>, oy| Some(m.map_or(oy, |m| m.max(oy))))
+                    candidatas
+                        .filter(|&oy| oy < y - 0.5)
+                        .fold(None, |m: Option<f32>, oy| Some(m.map_or(oy, |m| m.max(oy))))
                 } else {
-                    candidatas.filter(|&oy| oy > y + 0.5).fold(None, |m: Option<f32>, oy| Some(m.map_or(oy, |m| m.min(oy))))
+                    candidatas
+                        .filter(|&oy| oy > y + 0.5)
+                        .fold(None, |m: Option<f32>, oy| Some(m.map_or(oy, |m| m.min(oy))))
                 }
             };
             let Some(y) = fila_y(c.y) else {
@@ -326,9 +330,7 @@ pub fn mover(d: &Disposicion, i: usize, f: Flecha) -> usize {
                 .iter()
                 .enumerate()
                 .filter(|(_, o)| (o.y - y).abs() < 0.5)
-                .min_by(|(_, a), (_, b)| {
-                    (a.x - c.x).abs().total_cmp(&(b.x - c.x).abs())
-                })
+                .min_by(|(_, a), (_, b)| (a.x - c.x).abs().total_cmp(&(b.x - c.x).abs()))
                 .map(|(k, _)| k)
                 .unwrap_or(i)
         }
@@ -384,7 +386,12 @@ mod pruebas {
         assert_eq!(en(-2), Plazo::Hoy);
     }
 
-    fn ficha(ext: &'static str, cuando: i64, se_va: Option<i64>, texto: Option<&'static str>) -> Ficha<'static> {
+    fn ficha(
+        ext: &'static str,
+        cuando: i64,
+        se_va: Option<i64>,
+        texto: Option<&'static str>,
+    ) -> Ficha<'static> {
         Ficha {
             extension: ext,
             cuando,
@@ -402,7 +409,9 @@ mod pruebas {
         assert!(pasa(Filtro::Todas, &vieja, ahora));
         assert!(pasa(Filtro::Hoy, &hoy, ahora) && !pasa(Filtro::Hoy, &vieja, ahora));
         assert!(pasa(Filtro::Semana, &hoy, ahora) && !pasa(Filtro::Semana, &vieja, ahora));
-        assert!(pasa(Filtro::Conservadas, &video, ahora) && !pasa(Filtro::Conservadas, &hoy, ahora));
+        assert!(
+            pasa(Filtro::Conservadas, &video, ahora) && !pasa(Filtro::Conservadas, &hoy, ahora)
+        );
         assert!(pasa(Filtro::Pronto, &vieja, ahora) && !pasa(Filtro::Pronto, &hoy, ahora));
         assert!(pasa(Filtro::Gif, &vieja, ahora) && !pasa(Filtro::Gif, &hoy, ahora));
         assert!(pasa(Filtro::Videos, &video, ahora));
@@ -414,7 +423,10 @@ mod pruebas {
 
     #[test]
     fn la_busqueda_no_mira_tildes_ni_mayusculas_y_pide_todas_las_palabras() {
-        let campos = [plegar("captura-0012.png"), plegar("Presupuesto Obra MIRAFLORES · Acero")];
+        let campos = [
+            plegar("captura-0012.png"),
+            plegar("Presupuesto Obra MIRAFLORES · Acero"),
+        ];
         let c: Vec<&str> = campos.iter().map(String::as_str).collect();
         assert!(encaja(&plegar("miraflores"), &c));
         assert!(encaja(&plegar("acéro 0012"), &c));
@@ -430,7 +442,10 @@ mod pruebas {
         assert_eq!(d.columnas, 3);
         assert_eq!(d.grupos.len(), 2);
         assert_eq!((d.grupos[0].desde, d.grupos[0].hasta), (0, 4));
-        assert_eq!(d.celdas[3].x, d.celdas[0].x, "la cuarta abre la segunda fila");
+        assert_eq!(
+            d.celdas[3].x, d.celdas[0].x,
+            "la cuarta abre la segunda fila"
+        );
         assert!(d.celdas[3].y > d.celdas[0].y);
         // La primera de ayer, en fila nueva y debajo del titulo de su dia.
         assert_eq!(d.celdas[4].x, d.celdas[0].x);
@@ -451,7 +466,10 @@ mod pruebas {
         let fondo = d.visibles(d.alto_total - 600.0, d.alto_total);
         assert_eq!(fondo.end, 300);
         // Caso negativo: muy por debajo de todo, nada.
-        assert!(d.visibles(d.alto_total + 10.0, d.alto_total + 500.0).is_empty());
+        assert!(
+            d.visibles(d.alto_total + 10.0, d.alto_total + 500.0)
+                .is_empty()
+        );
     }
 
     #[test]
@@ -459,8 +477,16 @@ mod pruebas {
         // Hoy 4 (dos filas: 3 + 1), ayer 3.
         let d = disponer(&[5, 5, 5, 5, 4, 4, 4], 684.0, 1.0);
         assert_eq!(mover(&d, 0, Flecha::Derecha), 1);
-        assert_eq!(mover(&d, 1, Flecha::Abajo), 3, "a la fila de abajo, la mas cercana");
-        assert_eq!(mover(&d, 3, Flecha::Abajo), 4, "de la ultima de hoy a la primera de ayer");
+        assert_eq!(
+            mover(&d, 1, Flecha::Abajo),
+            3,
+            "a la fila de abajo, la mas cercana"
+        );
+        assert_eq!(
+            mover(&d, 3, Flecha::Abajo),
+            4,
+            "de la ultima de hoy a la primera de ayer"
+        );
         assert_eq!(mover(&d, 5, Flecha::Arriba), 3);
         assert_eq!(mover(&d, 3, Flecha::Derecha), 4, "derecha sigue el orden");
         // Casos negativos: en los bordes se queda donde esta.

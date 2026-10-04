@@ -72,7 +72,8 @@ pub fn proyecto_por_nombre(frase: &str, proyectos: &[(String, String)]) -> Optio
         let comunes = casan.len();
         // Una palabra larga basta (un sitio: «Miraflores»); una corta y
         // comun («obra») sola no.
-        let vale = comunes == suyas.len() || comunes >= 2 || casan.iter().any(|r| r.chars().count() >= 6);
+        let vale =
+            comunes == suyas.len() || comunes >= 2 || casan.iter().any(|r| r.chars().count() >= 6);
         if vale && mejor.is_none_or(|(_, n)| comunes > n) {
             mejor = Some((ficha, comunes));
         }
@@ -82,18 +83,40 @@ pub fn proyecto_por_nombre(frase: &str, proyectos: &[(String, String)]) -> Optio
 
 /// La leccion que sale de la frase con lo propuesto (y lo que se haya
 /// cambiado a mano encima: `area`, `gravedad`).
-pub fn leccion(frase: &str, id: &str, ahora: i64, propuesta: &Propuesta, area: Option<&str>, gravedad: i64) -> Leccion {
+pub fn leccion(
+    frase: &str,
+    id: &str,
+    ahora: i64,
+    propuesta: &Propuesta,
+    area: Option<&str>,
+    gravedad: i64,
+) -> Leccion {
     let escritas = etiquetador::escritas(frase);
     let limpio = etiquetador::sin_etiquetas(frase);
     let c = dictado::repartir(&limpio);
-    let auto: Vec<String> = propuesta.etiquetas.iter().filter(|e| !escritas.contains(e)).cloned().collect();
+    let auto: Vec<String> = propuesta
+        .etiquetas
+        .iter()
+        .filter(|e| !escritas.contains(e))
+        .cloned()
+        .collect();
     Leccion {
         titulo: c.titulo.trim().to_string(),
         que_paso: c.que_paso.trim().to_string(),
         por_que: c.por_que.trim().to_string(),
-        proxima: if c.proxima != c.titulo { c.proxima.trim().to_string() } else { String::new() },
-        tipo: propuesta.tipo.clone().unwrap_or_else(|| TIPO_LECCION.to_string()),
-        area: area.map(str::to_string).or_else(|| propuesta.area.clone()).unwrap_or_default(),
+        proxima: if c.proxima != c.titulo {
+            c.proxima.trim().to_string()
+        } else {
+            String::new()
+        },
+        tipo: propuesta
+            .tipo
+            .clone()
+            .unwrap_or_else(|| TIPO_LECCION.to_string()),
+        area: area
+            .map(str::to_string)
+            .or_else(|| propuesta.area.clone())
+            .unwrap_or_default(),
         gravedad: gravedad.clamp(1, 3),
         etiquetas: escritas,
         etiquetas_auto: auto,
@@ -101,4 +124,3 @@ pub fn leccion(frase: &str, id: &str, ahora: i64, propuesta: &Propuesta, area: O
         ..Leccion::nueva(id, ahora, "")
     }
 }
-

@@ -338,7 +338,9 @@ fn lo_tiraria(v: &Value) -> bool {
     if LISTA_DE_PUNTOS
         .iter()
         .any(|k| e.get(*k).is_some_and(|l| !lista_de_pt(l)))
-        || PUNTO_SUELTO.iter().any(|k| e.get(*k).is_some_and(|p| !es_pt(p)))
+        || PUNTO_SUELTO
+            .iter()
+            .any(|k| e.get(*k).is_some_and(|p| !es_pt(p)))
         || e.get("huecos").is_some_and(|h| {
             !h.is_null() && !h.as_array().is_some_and(|l| l.iter().all(lista_de_pt))
         })
@@ -346,7 +348,10 @@ fn lo_tiraria(v: &Value) -> bool {
         return true;
     }
     let entero = |x: &Value| x.is_null() || x.as_i64().is_some_and(|n| i32::try_from(n).is_ok());
-    if ENTEROS.iter().any(|k| e.get(*k).is_some_and(|x| !entero(x))) {
+    if ENTEROS
+        .iter()
+        .any(|k| e.get(*k).is_some_and(|x| !entero(x)))
+    {
         return true;
     }
     ENUMERADOS.iter().any(|(k, palabras)| match e.get(*k) {
@@ -492,7 +497,10 @@ mod pruebas {
 
     #[test]
     fn un_lienzo_del_pc_con_puntos_en_lista_sale_legible_para_el_movil() {
-        assert!(como_lo_lee_el_movil(DEL_PC).is_err(), "sin arreglar, el movil lo tira");
+        assert!(
+            como_lo_lee_el_movil(DEL_PC).is_err(),
+            "sin arreglar, el movil lo tira"
+        );
         let arreglado = lienzo_legible(DEL_PC).expect("habia que arreglarlo");
         como_lo_lee_el_movil(&arreglado).expect("el movil lo lee");
         let v: Value = serde_json::from_str(&arreglado).unwrap();
@@ -529,11 +537,24 @@ mod pruebas {
     /// Un trazo como lo escribia el lector del PC (`anot-52U5AB5GUF-p0` de
     /// los datos del usuario): caja a 0, puntos relativos y separados.
     fn trazo_del_pc(puntos_como_objetos: bool) -> String {
-        let pts: Vec<(f64, f64)> =
-            vec![(0.0, 0.0), (-16.8, -8.4), (-50.4, -14.9), (-113.9, -14.9), (-191.3, 4.7), (-261.3, 36.4), (-393.9, 110.1)];
+        let pts: Vec<(f64, f64)> = vec![
+            (0.0, 0.0),
+            (-16.8, -8.4),
+            (-50.4, -14.9),
+            (-113.9, -14.9),
+            (-191.3, 4.7),
+            (-261.3, 36.4),
+            (-393.9, 110.1),
+        ];
         let puntos: Vec<String> = pts
             .iter()
-            .map(|(x, y)| if puntos_como_objetos { format!(r#"{{"x":{x},"y":{y}}}"#) } else { format!("[{x},{y}]") })
+            .map(|(x, y)| {
+                if puntos_como_objetos {
+                    format!(r#"{{"x":{x},"y":{y}}}"#)
+                } else {
+                    format!("[{x},{y}]")
+                }
+            })
             .collect();
         format!(
             r#"{{"type":"excalidraw","elements":[{{"id":"pc1","type":"freedraw","x":475.07,"y":1130.93,"width":0.0,"height":0.0,
@@ -561,8 +582,15 @@ mod pruebas {
             let xy = |q: &Value| (q["x"].as_f64().unwrap(), q["y"].as_f64().unwrap());
             assert_eq!(xy(&p[0]), (0.0, 0.0));
             assert_eq!(xy(&p[6]), (-393.9, 110.1));
-            assert_eq!((e["x"].as_f64(), e["y"].as_f64()), (Some(475.07), Some(1130.93)));
-            assert_eq!(lienzo_legible(&arreglado), None, "una vez arreglado ya no se toca");
+            assert_eq!(
+                (e["x"].as_f64(), e["y"].as_f64()),
+                (Some(475.07), Some(1130.93))
+            );
+            assert_eq!(
+                lienzo_legible(&arreglado),
+                None,
+                "una vez arreglado ya no se toca"
+            );
         }
     }
 

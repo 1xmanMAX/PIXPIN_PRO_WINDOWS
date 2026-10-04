@@ -74,7 +74,9 @@ pub fn letra_sobre(fondo: Rgb) -> Rgb {
 /// Lo que se ve de una celda: sin las marcas del Markdown (el formato en
 /// vivo las esconde).
 fn sin_marcas(s: &str) -> String {
-    s.chars().filter(|c| !matches!(c, '*' | '`' | '~' | '_' | '$')).collect()
+    s.chars()
+        .filter(|c| !matches!(c, '*' | '`' | '~' | '_' | '$'))
+        .collect()
 }
 
 /// Lo que mide un texto con la letra media del cuerpo (sin ventana).
@@ -114,7 +116,10 @@ pub fn anchos_con(t: &Tabla, columna_px: i32, medir: &dyn Fn(&str) -> i32) -> Ve
                 }
             }
             let minimo = MINIMO_PX.max(palabra + RELLENO_PX);
-            ((linea + RELLENO_PX).clamp(minimo, MAXIMO_PX.max(minimo)), minimo)
+            (
+                (linea + RELLENO_PX).clamp(minimo, MAXIMO_PX.max(minimo)),
+                minimo,
+            )
         })
         .collect();
     let mut natural: Vec<i32> = medidas.iter().map(|m| m.0).collect();
@@ -167,7 +172,12 @@ pub fn escapar(s: &str) -> String {
 }
 
 fn color(c: Rgb) -> String {
-    format!("\\red{}\\green{}\\blue{};", (c >> 16) & 0xff, (c >> 8) & 0xff, c & 0xff)
+    format!(
+        "\\red{}\\green{}\\blue{};",
+        (c >> 16) & 0xff,
+        (c >> 8) & 0xff,
+        c & 0xff
+    )
 }
 
 /// La tabla de colores: los tres del tema (1 raya, 2 cabecera, 3 letra) y
@@ -202,7 +212,10 @@ pub fn rtf_con(t: &Tabla, estilo: &EstiloTabla, medir: &dyn Fn(&str) -> i32) -> 
     let alto = ALTO_FILA_PX * TWIPS;
     let mut cuerpo = String::new();
     for (f, fila) in t.filas.iter().enumerate() {
-        cuerpo.push_str(&format!("\\trowd\\trqc\\trgaph{}\\trrh{alto}", AIRE_PX * TWIPS));
+        cuerpo.push_str(&format!(
+            "\\trowd\\trqc\\trgaph{}\\trrh{alto}",
+            AIRE_PX * TWIPS
+        ));
         let mut x = 0;
         for (c, a) in anchos.iter().enumerate().take(n) {
             let (af, ac) = t.ancla(f, c);
@@ -213,8 +226,14 @@ pub fn rtf_con(t: &Tabla, estilo: &EstiloTabla, medir: &dyn Fn(&str) -> i32) -> 
             if manda.filas > 1 {
                 cuerpo.push_str(if f == af { "\\clvmgf" } else { "\\clvmrg" });
             }
-            cuerpo.push_str(if manda.vertical == Vertical::Abajo { "\\clvertalb" } else { "\\clvertalc" });
-            cuerpo.push_str(&format!("\\clbrdrt{raya}\\clbrdrl{raya}\\clbrdrb{raya}\\clbrdrr{raya}"));
+            cuerpo.push_str(if manda.vertical == Vertical::Abajo {
+                "\\clvertalb"
+            } else {
+                "\\clvertalc"
+            });
+            cuerpo.push_str(&format!(
+                "\\clbrdrt{raya}\\clbrdrl{raya}\\clbrdrb{raya}\\clbrdrr{raya}"
+            ));
             match manda.fondo {
                 Some(fondo) => cuerpo.push_str(&format!("\\clcbpat{}", colores.indice(fondo))),
                 None if t.es_cabecera(af, ac) => cuerpo.push_str("\\clcbpat2"),
@@ -231,7 +250,10 @@ pub fn rtf_con(t: &Tabla, estilo: &EstiloTabla, medir: &dyn Fn(&str) -> i32) -> 
                 Alineacion::Centro => "\\qc",
                 Alineacion::Derecha => "\\qr",
             };
-            let letra = manda.letra.or(manda.fondo.map(letra_sobre)).unwrap_or(estilo.texto);
+            let letra = manda
+                .letra
+                .or(manda.fondo.map(letra_sobre))
+                .unwrap_or(estilo.texto);
             let cf = colores.indice(letra);
             let texto = if (af, ac) == (f, c) {
                 fila.get(c).map(String::as_str).unwrap_or("")
@@ -242,7 +264,10 @@ pub fn rtf_con(t: &Tabla, estilo: &EstiloTabla, medir: &dyn Fn(&str) -> i32) -> 
             // salto de renglon dentro del mismo parrafo (`\line`): partir la
             // celda en dos parrafos le romperia el renglon de la fila.
             let texto: Vec<String> = texto.split('\n').map(escapar).collect();
-            cuerpo.push_str(&format!("\\pard\\intbl{q}\\f0\\cf{cf} {}\\cell ", texto.join("\\line ")));
+            cuerpo.push_str(&format!(
+                "\\pard\\intbl{q}\\f0\\cf{cf} {}\\cell ",
+                texto.join("\\line ")
+            ));
         }
         cuerpo.push_str("\\row ");
     }
@@ -289,8 +314,15 @@ mod pruebas {
         ))
         .unwrap();
         let a = anchos(&t, COLUMNA_PX);
-        assert!(a.iter().sum::<i32>() > COLUMNA_PX, "no se encoge a la columna");
-        assert_eq!(a[1], largo.len() as i32 * LETRA_PX + RELLENO_PX, "su texto en una linea, sin apinar");
+        assert!(
+            a.iter().sum::<i32>() > COLUMNA_PX,
+            "no se encoge a la columna"
+        );
+        assert_eq!(
+            a[1],
+            largo.len() as i32 * LETRA_PX + RELLENO_PX,
+            "su texto en una linea, sin apinar"
+        );
         assert!(a[0] < a[1]);
         assert!(a[4] >= MINIMO_PX);
     }
@@ -304,11 +336,21 @@ mod pruebas {
     fn cada_columna_mide_su_texto_en_una_linea_hasta_cuarenta_em() {
         let corto = "Juicio de expertos";
         let largo = "palabra ".repeat(120);
-        let t = leer_gfm(&format!("| a | b | c |\n|---|---|---|\n| {corto} | {largo} | WWWW |")).unwrap();
+        let t = leer_gfm(&format!(
+            "| a | b | c |\n|---|---|---|\n| {corto} | {largo} | WWWW |"
+        ))
+        .unwrap();
         let a = anchos_con(&t, COLUMNA_PX, &medir);
         assert_eq!(a[0], medir(corto) + RELLENO_PX);
-        assert_eq!(a[1], MAXIMO_PX, "un parrafo entero se parte en renglones de 40 em");
-        assert_eq!(a[2], MINIMO_PX.max(80 + RELLENO_PX), "se mide con la letra de verdad");
+        assert_eq!(
+            a[1], MAXIMO_PX,
+            "un parrafo entero se parte en renglones de 40 em"
+        );
+        assert_eq!(
+            a[2],
+            MINIMO_PX.max(80 + RELLENO_PX),
+            "se mide con la letra de verdad"
+        );
         assert_eq!(MAXIMO_PX, 40 * 16);
     }
 
@@ -329,12 +371,23 @@ mod pruebas {
     fn una_tabla_enorme_se_queda_en_el_tope_sin_partir_palabras() {
         let celda = "uno dos tres cuatro cinco seis siete ocho nueve diez once doce trece catorce";
         let fila = vec![celda; 8].join(" | ");
-        let t = leer_gfm(&format!("|{}\n|{}\n| {fila} |", " h |".repeat(8), "---|".repeat(8))).unwrap();
+        let t = leer_gfm(&format!(
+            "|{}\n|{}\n| {fila} |",
+            " h |".repeat(8),
+            "---|".repeat(8)
+        ))
+        .unwrap();
         let a = anchos_con(&t, COLUMNA_PX, &medir);
         let total: i32 = a.iter().sum();
         assert!(total <= crate::tabla_ancha::TOPE_TABLA_PX, "{total}");
-        assert!(total > crate::tabla_ancha::TOPE_TABLA_PX - 8, "se usa el tope entero: {total}");
-        assert!(a.iter().all(|x| *x >= medir("catorce") + RELLENO_PX), "{a:?}");
+        assert!(
+            total > crate::tabla_ancha::TOPE_TABLA_PX - 8,
+            "se usa el tope entero: {total}"
+        );
+        assert!(
+            a.iter().all(|x| *x >= medir("catorce") + RELLENO_PX),
+            "{a:?}"
+        );
     }
 
     #[test]
@@ -351,7 +404,11 @@ mod pruebas {
         let r = rtf(&t, &estilo());
         assert_eq!(r.matches("\\row").count(), 3);
         assert_eq!(r.matches("\\cell ").count(), 6);
-        assert_eq!(r.matches("\\clcbpat2").count(), 2, "solo la cabecera va sombreada");
+        assert_eq!(
+            r.matches("\\clcbpat2").count(),
+            2,
+            "solo la cabecera va sombreada"
+        );
         assert!(r.contains("\\qc\\f0\\cf3 a\\cell"));
         assert!(r.contains("\\qr\\f0\\cf3 2\\cell"));
         assert!(!r.contains("\\clmgf"), "sin combinadas");
@@ -369,8 +426,15 @@ mod pruebas {
         assert!(r.contains("\\clmrg\\clvmgf"));
         assert!(r.contains("\\clmgf\\clvmrg"));
         assert!(r.contains("\\clmrg\\clvmrg"));
-        assert_eq!(r.matches("\\cell ").count(), 9, "las tapadas siguen siendo celdas");
-        assert!(r.contains("\\cf3 1\\line 2\\line 4\\line 5\\cell"), "el texto junto, en renglones");
+        assert_eq!(
+            r.matches("\\cell ").count(),
+            9,
+            "las tapadas siguen siendo celdas"
+        );
+        assert!(
+            r.contains("\\cf3 1\\line 2\\line 4\\line 5\\cell"),
+            "el texto junto, en renglones"
+        );
     }
 
     #[test]
@@ -384,12 +448,22 @@ mod pruebas {
         // la cabecera (4), su letra clara (5), el rosa (6), la letra oscura
         // sobre el rosa (7) y el rojo (8).
         assert!(r.contains("\\clcbpat4\\cellx"));
-        assert!(r.contains("\\cf5 b\\cell"), "sobre un fondo oscuro, letra clara");
+        assert!(
+            r.contains("\\cf5 b\\cell"),
+            "sobre un fondo oscuro, letra clara"
+        );
         assert!(r.contains("\\red255\\green201\\blue201;"));
         assert!(r.contains("\\clcbpat6"));
         assert!(r.contains("\\cf8 2\\cell"), "la suya");
-        assert!(r.contains("\\cf7 1\\cell"), "sobre un fondo claro, letra oscura");
-        assert_eq!(r.matches("\\clcbpat2").count(), 1, "la cabecera con color no lleva el gris");
+        assert!(
+            r.contains("\\cf7 1\\cell"),
+            "sobre un fondo claro, letra oscura"
+        );
+        assert_eq!(
+            r.matches("\\clcbpat2").count(),
+            1,
+            "la cabecera con color no lleva el gris"
+        );
     }
 
     #[test]

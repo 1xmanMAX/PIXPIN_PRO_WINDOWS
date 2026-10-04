@@ -103,7 +103,8 @@ pub fn ejecutar(args: &[String]) -> i32 {
             silenciar_panicos();
             let datos = datos::Datos::nuevo(raiz);
             let stdout = std::io::stdout().lock();
-            let mut plugin = rpc::Plugin::nuevo(datos, pedido::Windows, stdout, icono_por_defecto());
+            let mut plugin =
+                rpc::Plugin::nuevo(datos, pedido::Windows, stdout, icono_por_defecto());
             plugin.portapapeles = imagenes::WINDOWS;
             rpc::bucle(&mut plugin, std::io::stdin().lock());
             0
@@ -150,7 +151,8 @@ pub fn ejecutar(args: &[String]) -> i32 {
                 return 3;
             };
             let datos = datos_de_un_proceso(raiz.clone());
-            let mut plugin = rpc::Plugin::nuevo(datos, pedido::Windows, Vec::new(), icono_por_defecto());
+            let mut plugin =
+                rpc::Plugin::nuevo(datos, pedido::Windows, Vec::new(), icono_por_defecto());
             plugin.registro.ruta = Some(raiz_del_registro());
             plugin.diferir_avisos = true;
             plugin.portapapeles = imagenes::WINDOWS;
@@ -169,7 +171,9 @@ pub fn ejecutar(args: &[String]) -> i32 {
             0
         }
         Some(otro) => {
-            eprintln!("orden desconocida: {otro}\nuso: pixpin-lanzador [buscar <texto> | pedido <json>]");
+            eprintln!(
+                "orden desconocida: {otro}\nuso: pixpin-lanzador [buscar <texto> | pedido <json>]"
+            );
             3
         }
     }

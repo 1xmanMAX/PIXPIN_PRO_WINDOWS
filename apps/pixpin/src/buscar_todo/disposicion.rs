@@ -111,7 +111,40 @@ pub struct Disposicion {
     pub deshacer: Option<RectF>,
     pub scroll: f32,
 }
-const CERO: RectF = RectF { x: 0.0, y: 0.0, ancho: 0.0, alto: 0.0 };impl Default for Disposicion {    fn default() -> Self {        Disposicion {            campo: CERO,            borrar: None,            barra_pestanas: CERO,            pestanas: Vec::new(),            lista: CERO,            panel: CERO,            pie: CERO,            lineas: Vec::new(),            tarjeta: None,            botones: Vec::new(),            cabecera_recientes: None,            fichas: Vec::new(),            borrar_todas: None,            cabecera_abiertos: None,            pista_pegar: None,            cabecera_letras: None,            letras: Vec::new(),            cabecera_menu: None,            opciones_menu: Vec::new(),            conservar: None,            deshacer: None,            scroll: 0.0,        }    }}
+const CERO: RectF = RectF {
+    x: 0.0,
+    y: 0.0,
+    ancho: 0.0,
+    alto: 0.0,
+};
+impl Default for Disposicion {
+    fn default() -> Self {
+        Disposicion {
+            campo: CERO,
+            borrar: None,
+            barra_pestanas: CERO,
+            pestanas: Vec::new(),
+            lista: CERO,
+            panel: CERO,
+            pie: CERO,
+            lineas: Vec::new(),
+            tarjeta: None,
+            botones: Vec::new(),
+            cabecera_recientes: None,
+            fichas: Vec::new(),
+            borrar_todas: None,
+            cabecera_abiertos: None,
+            pista_pegar: None,
+            cabecera_letras: None,
+            letras: Vec::new(),
+            cabecera_menu: None,
+            opciones_menu: Vec::new(),
+            conservar: None,
+            deshacer: None,
+            scroll: 0.0,
+        }
+    }
+}
 
 fn caja(x: f32, y: f32, ancho: f32, alto: f32) -> RectF {
     RectF { x, y, ancho, alto }
@@ -121,7 +154,12 @@ fn caja(x: f32, y: f32, ancho: f32, alto: f32) -> RectF {
 pub fn agrandada(r: RectF, minimo: f32) -> RectF {
     let ancho = r.ancho.max(minimo);
     let alto = r.alto.max(minimo);
-    caja(r.x - (ancho - r.ancho) / 2.0, r.y - (alto - r.alto) / 2.0, ancho, alto)
+    caja(
+        r.x - (ancho - r.ancho) / 2.0,
+        r.y - (alto - r.alto) / 2.0,
+        ancho,
+        alto,
+    )
 }
 
 fn dentro(r: RectF, p: (f32, f32)) -> bool {
@@ -136,7 +174,12 @@ pub fn colocar(en: &Entrada) -> Disposicion {
     d.campo = caja(0.0, 0.0, w, ALTO_CAMPO * e);
     if !en.inicio {
         let lado = 32.0 * e;
-        d.borrar = Some(caja(w - 18.0 * e - lado, (ALTO_CAMPO * e - lado) / 2.0, lado, lado));
+        d.borrar = Some(caja(
+            w - 18.0 * e - lado,
+            (ALTO_CAMPO * e - lado) / 2.0,
+            lado,
+            lado,
+        ));
     }
     d.barra_pestanas = caja(0.0, ALTO_CAMPO * e, w, ALTO_PESTANAS * e);
     let mut x = 14.0 * e;
@@ -164,7 +207,12 @@ pub fn colocar(en: &Entrada) -> Disposicion {
         // Pegado a la derecha del aviso de abajo, dentro de el.
         let a = 150.0 * e;
         let fin = d.lista.x + d.lista.ancho - 16.0 * e;
-        d.deshacer = Some(caja(fin - a - 4.0 * e, d.pie.y - (AVISO_ARRIBA - 4.0) * e, a, 36.0 * e));
+        d.deshacer = Some(caja(
+            fin - a - 4.0 * e,
+            d.pie.y - (AVISO_ARRIBA - 4.0) * e,
+            a,
+            36.0 * e,
+        ));
     }
     d
 }
@@ -199,7 +247,12 @@ fn colocar_inicio(en: &Entrada, d: &mut Disposicion) {
             }
             let f = caja(x, y, a, ALTO_FICHA * e);
             let lado = 22.0 * e;
-            let quitar = caja(f.x + f.ancho - 6.0 * e - lado, f.y + (f.alto - lado) / 2.0, lado, lado);
+            let quitar = caja(
+                f.x + f.ancho - 6.0 * e - lado,
+                f.y + (f.alto - lado) / 2.0,
+                lado,
+                lado,
+            );
             d.fichas.push((i, f, quitar));
             x += a + HUECO_FICHA * e;
         }
@@ -278,7 +331,11 @@ fn colocar_lista(en: &Entrada, d: &mut Disposicion) {
     let mut scroll = en.scroll.clamp(0.0, (total - vista).max(0.0));
     if let Some(i) = elegida_linea {
         let (ye, alto) = ys[i];
-        let arriba = if i > 0 && matches!(en.lineas[i - 1], Linea::Cabecera(_)) { ys[i - 1].0 } else { ye };
+        let arriba = if i > 0 && matches!(en.lineas[i - 1], Linea::Cabecera(_)) {
+            ys[i - 1].0
+        } else {
+            ye
+        };
         if arriba < scroll {
             scroll = arriba - 4.0 * e;
         }
@@ -319,7 +376,8 @@ fn colocar_panel(en: &Entrada, d: &mut Disposicion) {
             if y + OPCION_MENU * e > d.panel.y + d.panel.alto {
                 break;
             }
-            d.opciones_menu.push((i, caja(px - 8.0 * e, y, pancho + 16.0 * e, OPCION_MENU * e)));
+            d.opciones_menu
+                .push((i, caja(px - 8.0 * e, y, pancho + 16.0 * e, OPCION_MENU * e)));
             y += OPCION_MENU * e;
         }
         return;
@@ -328,7 +386,12 @@ fn colocar_panel(en: &Entrada, d: &mut Disposicion) {
         // La banda «Caduca en…» la coloca quien pinta (depende de la foto);
         // el boton va siempre a su derecha, a esta altura desde abajo.
         let a = 92.0 * e;
-        d.conservar = Some(caja(px + pancho - a - 6.0 * e, d.panel.y + d.panel.alto - 110.0 * e, a, 32.0 * e));
+        d.conservar = Some(caja(
+            px + pancho - a - 6.0 * e,
+            d.panel.y + d.panel.alto - 110.0 * e,
+            a,
+            32.0 * e,
+        ));
     }
 }
 
@@ -399,7 +462,12 @@ impl Disposicion {
         if !matches!(lineas.get(*i), Some(Linea::Fila(_))) {
             return None;
         }
-        Some(lineas[..*i].iter().filter(|l| matches!(l, Linea::Fila(_))).count())
+        Some(
+            lineas[..*i]
+                .iter()
+                .filter(|l| matches!(l, Linea::Fila(_)))
+                .count(),
+        )
     }
 }
 
@@ -433,8 +501,12 @@ mod pruebas {
         v
     }
 
-    const BOTONES: [(Boton, f32); 4] =
-        [(Boton::Principal, 110.0), (Boton::VerEnChat, 170.0), (Boton::Copiar, 110.0), (Boton::Mas, 34.0)];
+    const BOTONES: [(Boton, f32); 4] = [
+        (Boton::Principal, 110.0),
+        (Boton::VerEnChat, 170.0),
+        (Boton::Copiar, 110.0),
+        (Boton::Mas, 34.0),
+    ];
 
     #[test]
     fn filas_de_44_o_mas_y_objetivos_de_40_o_mas_a_cualquier_escala() {
@@ -482,14 +554,21 @@ mod pruebas {
         en.elegido = 30;
         let d = colocar(&en);
         let t = d.tarjeta.expect("la elegida se ve");
-        assert!(t.y >= d.lista.y && t.y + t.alto <= d.lista.y + d.lista.alto + 0.5, "{t:?} en {:?}", d.lista);
+        assert!(
+            t.y >= d.lista.y && t.y + t.alto <= d.lista.y + d.lista.alto + 0.5,
+            "{t:?} en {:?}",
+            d.lista
+        );
         assert!(d.scroll > 0.0);
         // Volver arriba vuelve a 0 y ensena la cabecera del grupo.
         en.elegido = 0;
         en.scroll = d.scroll;
         let d = colocar(&en);
         assert_eq!(d.scroll, 0.0);
-        assert!(d.lineas.iter().any(|(i, _)| *i == 0), "la cabecera «Mejor resultado» se ve");
+        assert!(
+            d.lineas.iter().any(|(i, _)| *i == 0),
+            "la cabecera «Mejor resultado» se ve"
+        );
     }
 
     #[test]
@@ -500,12 +579,18 @@ mod pruebas {
         let d = colocar(&en);
         // Un boton de la elegida gana a la fila.
         let (_, b) = d.botones[1];
-        assert_eq!(d.zona_en((b.x + 4.0, b.y + 4.0)), Some(Zona::Boton(Boton::VerEnChat)));
+        assert_eq!(
+            d.zona_en((b.x + 4.0, b.y + 4.0)),
+            Some(Zona::Boton(Boton::VerEnChat))
+        );
         // La fila de abajo.
         let (_, r) = d.lineas.iter().find(|(i, _)| *i == 3).copied().unwrap();
         assert_eq!(d.fila_en(&l, (r.x + 30.0, r.y + 10.0)), Some(2));
         let (_, p) = d.pestanas[2];
-        assert_eq!(d.zona_en((p.x + 2.0, p.y + 2.0)), Some(Zona::Pestana(Pestana::Tareas)));
+        assert_eq!(
+            d.zona_en((p.x + 2.0, p.y + 2.0)),
+            Some(Zona::Pestana(Pestana::Tareas))
+        );
         // Caso negativo: la cabecera no es una fila; el pie no es nada.
         let (_, c) = d.lineas[0];
         assert_eq!(d.fila_en(&l, (c.x + 5.0, c.y + 5.0)), None);
@@ -523,7 +608,8 @@ mod pruebas {
         en.anchos_fichas = &fichas;
         en.letras = &letras;
         let d = colocar(&en);
-        let renglones: std::collections::BTreeSet<i32> = d.fichas.iter().map(|(_, f, _)| f.y as i32).collect();
+        let renglones: std::collections::BTreeSet<i32> =
+            d.fichas.iter().map(|(_, f, _)| f.y as i32).collect();
         assert_eq!(renglones.len(), 2, "dos renglones");
         assert!(d.fichas.len() < 12, "lo que no cabe no se pinta");
         assert_eq!(d.letras.len(), 7, "caben las siete letras");
@@ -537,9 +623,15 @@ mod pruebas {
         }
         // El ✕ de una ficha gana a la ficha.
         let (_, f, x) = d.fichas[0];
-        assert_eq!(d.zona_en((x.x + x.ancho / 2.0, x.y + x.alto / 2.0)), Some(Zona::QuitarFicha(0)));
+        assert_eq!(
+            d.zona_en((x.x + x.ancho / 2.0, x.y + x.alto / 2.0)),
+            Some(Zona::QuitarFicha(0))
+        );
         assert_eq!(d.zona_en((f.x + 8.0, f.y + 8.0)), Some(Zona::Ficha(0)));
-        assert_eq!(d.zona_en((d.letras[0].1.x + 50.0, d.letras[0].1.y + 10.0)), Some(Zona::Letra('t')));
+        assert_eq!(
+            d.zona_en((d.letras[0].1.x + 50.0, d.letras[0].1.y + 10.0)),
+            Some(Zona::Letra('t'))
+        );
         // Caso negativo: sin busquedas recientes no hay cabecera ni «Borrar
         // todas», y en el inicio no hay ✕ de borrar lo escrito.
         en.anchos_fichas = &[];

@@ -13,7 +13,7 @@
 //! Solo se lee: conservar, copiar o borrar es un pedido a la app.
 
 use crate::normalizar::{normalizar, puntuar};
-use crate::resultados::{glifo, pedido, pedido_ventana, Accion, Contexto, Resultado, MAXIMO};
+use crate::resultados::{Accion, Contexto, MAXIMO, Resultado, glifo, pedido, pedido_ventana};
 use serde::Deserialize;
 use serde_json::json;
 use std::path::{Path, PathBuf};
@@ -45,7 +45,10 @@ pub struct Captura {
 
 impl Captura {
     pub fn es_video(&self) -> bool {
-        self.ruta.extension().and_then(|e| e.to_str()).is_some_and(|e| e.eq_ignore_ascii_case("mp4"))
+        self.ruta
+            .extension()
+            .and_then(|e| e.to_str())
+            .is_some_and(|e| e.eq_ignore_ascii_case("mp4"))
     }
 }
 
@@ -60,12 +63,19 @@ pub fn se_va_el(cuando: i64, desde: i64, conservada: bool) -> Option<i64> {
 
 /// Como [`se_va_el`], con la prorroga apuntada si la hay: gana la fecha mas
 /// tarde (prorrogar nunca acorta).
-pub fn se_va_con_prorroga(cuando: i64, desde: i64, conservada: bool, prorroga: Option<i64>) -> Option<i64> {
+pub fn se_va_con_prorroga(
+    cuando: i64,
+    desde: i64,
+    conservada: bool,
+    prorroga: Option<i64>,
+) -> Option<i64> {
     se_va_el(cuando, desde, conservada).map(|t| prorroga.map_or(t, |p| t.max(p)))
 }
 
 fn ms(t: std::time::SystemTime) -> i64 {
-    t.duration_since(std::time::SystemTime::UNIX_EPOCH).map(|d| d.as_millis() as i64).unwrap_or(0)
+    t.duration_since(std::time::SystemTime::UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0)
 }
 
 /// Las capturas, la mas nueva primero. Sin registro de caducidad (la app aun
@@ -78,7 +88,11 @@ pub fn leer(raiz: &Path, ahora: i64) -> Vec<Captura> {
         .ok()
         .and_then(|t| serde_json::from_str::<Registro>(t.trim_start_matches('\u{feff}')).ok());
     let registro = registro.unwrap_or_default();
-    let desde = if registro.desde > 0 { registro.desde } else { ahora };
+    let desde = if registro.desde > 0 {
+        registro.desde
+    } else {
+        ahora
+    };
     let (conservadas, prorrogadas) = (registro.conservadas, registro.prorrogadas);
     let mut v: Vec<Captura> = dir
         .flatten()
@@ -87,14 +101,26 @@ pub fn leer(raiz: &Path, ahora: i64) -> Vec<Captura> {
             let meta = e.metadata().ok()?;
             let ext = ruta.extension().and_then(|x| x.to_str())?;
             // Una ruta reservada y aun vacia es una captura escribiendose.
-            if !meta.is_file() || meta.len() == 0 || !EXTENSIONES.iter().any(|x| x.eq_ignore_ascii_case(ext)) {
+            if !meta.is_file()
+                || meta.len() == 0
+                || !EXTENSIONES.iter().any(|x| x.eq_ignore_ascii_case(ext))
+            {
                 return None;
             }
             let nombre = ruta.file_name()?.to_string_lossy().to_string();
             let cuando = meta.modified().map(ms).unwrap_or(0);
-            let se_va =
-                se_va_con_prorroga(cuando, desde, conservadas.contains(&nombre), prorrogadas.get(&nombre).copied());
-            Some(Captura { ruta, nombre, cuando, se_va })
+            let se_va = se_va_con_prorroga(
+                cuando,
+                desde,
+                conservadas.contains(&nombre),
+                prorrogadas.get(&nombre).copied(),
+            );
+            Some(Captura {
+                ruta,
+                nombre,
+                cuando,
+                se_va,
+            })
         })
         .collect();
     // Como la galeria: por fecha y, a igual hora, el nombre al reves.
@@ -114,16 +140,30 @@ pub fn subtitulo(c: &Captura, ahora: i64) -> String {
             d => format!("se borra el {d}"),
         },
     };
-    [tipo, cuando.as_str(), fin.as_str()].iter().filter(|t| !t.is_empty()).copied().collect::<Vec<_>>().join(" · ")
+    [tipo, cuando.as_str(), fin.as_str()]
+        .iter()
+        .filter(|t| !t.is_empty())
+        .copied()
+        .collect::<Vec<_>>()
+        .join(" · ")
 }
 
 /// Una captura como resultado: Intro la saca como pin (un video se abre).
 pub fn resultado(c: &Captura, ctx: &Contexto) -> Resultado {
     let ruta = c.ruta.to_string_lossy().to_string();
     let (glifo, accion) = if c.es_video() {
-        (glifo::VIDEO, Accion::Pedido(pedido("abrir", json!({ "que": { "tipo": "fichero", "ruta": ruta } }))))
+        (
+            glifo::VIDEO,
+            Accion::Pedido(pedido(
+                "abrir",
+                json!({ "que": { "tipo": "fichero", "ruta": ruta } }),
+            )),
+        )
     } else {
-        (glifo::IMAGEN, Accion::Pedido(pedido("pinear", json!({ "ruta": ruta }))))
+        (
+            glifo::IMAGEN,
+            Accion::Pedido(pedido("pinear", json!({ "ruta": ruta }))),
+        )
     };
     let mut r = Resultado::nuevo(&c.nombre, subtitulo(c, ctx.ahora), glifo, accion);
     if !c.es_video() {
@@ -152,7 +192,10 @@ pub fn resultado_galeria() -> Resultado {
 /// Las capturas que encajan con `filtro` (todas si esta vacio), de la mas
 /// nueva a la mas vieja; si no hay, una fila que lo dice.
 pub fn lista(ctx: &Contexto, filtro: &str) -> Vec<Resultado> {
-    let todas = ctx.raiz_de_datos().map(|r| leer(&r, ctx.ahora)).unwrap_or_default();
+    let todas = ctx
+        .raiz_de_datos()
+        .map(|r| leer(&r, ctx.ahora))
+        .unwrap_or_default();
     let q = normalizar(filtro.trim());
     let v: Vec<Resultado> = todas
         .iter()
@@ -200,7 +243,10 @@ mod pruebas {
     #[test]
     fn la_prorroga_alarga_y_nunca_acorta() {
         let regla = 1000 + 7 * DIA_MS;
-        assert_eq!(se_va_con_prorroga(1000, 0, false, Some(regla + DIA_MS)), Some(regla + DIA_MS));
+        assert_eq!(
+            se_va_con_prorroga(1000, 0, false, Some(regla + DIA_MS)),
+            Some(regla + DIA_MS)
+        );
         // Caso negativo: una prorroga anterior a la regla no adelanta nada,
         // y a una conservada no la hace caducar.
         assert_eq!(se_va_con_prorroga(1000, 0, false, Some(5)), Some(regla));
@@ -209,7 +255,8 @@ mod pruebas {
 
     #[test]
     fn lee_el_registro_con_y_sin_prorrogas() {
-        let raiz = std::env::temp_dir().join(format!("pixpin-lanzador-capturas-{}", std::process::id()));
+        let raiz =
+            std::env::temp_dir().join(format!("pixpin-lanzador-capturas-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&raiz);
         std::fs::create_dir_all(carpeta(&raiz)).unwrap();
         std::fs::write(carpeta(&raiz).join("a.png"), b"x").unwrap();
@@ -224,9 +271,16 @@ mod pruebas {
         let a = v.iter().find(|c| c.nombre == "a.png").unwrap();
         let b = v.iter().find(|c| c.nombre == "b.png").unwrap();
         assert_eq!(a.se_va, Some(lejos));
-        assert!(b.se_va.unwrap() < lejos, "caso negativo: la prorroga de a no vale para b");
+        assert!(
+            b.se_va.unwrap() < lejos,
+            "caso negativo: la prorroga de a no vale para b"
+        );
         // Un registro de antes, sin el campo, se sigue leyendo.
-        std::fs::write(raiz.join("capturas-caducidad.json"), r#"{"desde": 1, "conservadas": ["a.png"]}"#).unwrap();
+        std::fs::write(
+            raiz.join("capturas-caducidad.json"),
+            r#"{"desde": 1, "conservadas": ["a.png"]}"#,
+        )
+        .unwrap();
         let v = leer(&raiz, 0);
         assert_eq!(v.iter().find(|c| c.nombre == "a.png").unwrap().se_va, None);
         let _ = std::fs::remove_dir_all(&raiz);

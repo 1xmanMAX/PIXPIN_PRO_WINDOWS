@@ -126,9 +126,8 @@ pub fn lanzar(idioma: Idioma, texto: String, destino: PathBuf) -> Receiver<Lectu
         .name("telepronter".into())
         .spawn(move || {
             let _com = pixpin_shell::ComDelHilo::iniciar();
-            let hecho =
-                Recursos::nuevos()
-                    .and_then(|r| abrir(&r, idioma, &texto, &destino, &enviar, junto_a));
+            let hecho = Recursos::nuevos()
+                .and_then(|r| abrir(&r, idioma, &texto, &destino, &enviar, junto_a));
             if let Err(e) = hecho {
                 tracing::warn!(?e, "no se pudo abrir el telepronter");
             }
@@ -991,16 +990,28 @@ mod pruebas {
     fn con_dos_monitores_se_lee_en_el_que_no_tiene_el_chat() {
         let m = [monitor(0, 0, true), monitor(1, 1920, false)];
         let chat_en_el_principal = Some(m[0].area);
-        assert_eq!(monitor_para_leer(&m, chat_en_el_principal).map(|m| m.id), Some(1));
+        assert_eq!(
+            monitor_para_leer(&m, chat_en_el_principal).map(|m| m.id),
+            Some(1)
+        );
         let chat_en_el_segundo = Some(m[1].area);
-        assert_eq!(monitor_para_leer(&m, chat_en_el_segundo).map(|m| m.id), Some(0));
+        assert_eq!(
+            monitor_para_leer(&m, chat_en_el_segundo).map(|m| m.id),
+            Some(0)
+        );
     }
 
     #[test]
     fn con_un_monitor_se_lee_en_ese_y_sin_saber_donde_esta_el_chat_no_se_elige() {
         let m = [monitor(0, 0, true)];
-        assert_eq!(monitor_para_leer(&m, Some(m[0].area)).map(|m| m.id), Some(0));
-        assert!(monitor_para_leer(&m, None).is_none(), "quien llama cae al principal");
+        assert_eq!(
+            monitor_para_leer(&m, Some(m[0].area)).map(|m| m.id),
+            Some(0)
+        );
+        assert!(
+            monitor_para_leer(&m, None).is_none(),
+            "quien llama cae al principal"
+        );
     }
 
     /// `cargo test -p pixpin --bin pixpinmax muestra_del_telepronter --
@@ -1009,7 +1020,12 @@ mod pruebas {
     #[ignore = "necesita GPU; genera PNG para mirarlos"]
     fn muestra_del_telepronter() {
         let textos = Catalogo::nuevo(Idioma::Espanol);
-        let marco = Rect { x: 0, y: 0, ancho: 1280, alto: 720 };
+        let marco = Rect {
+            x: 0,
+            y: 0,
+            ancho: 1280,
+            alto: 720,
+        };
         let parrafos = telepronter::parrafos_de(
             "Buenos dias a todos.\n\nHoy vamos a hablar de la obra de la cocina y del presupuesto.\n\nDespues, las ventanas del salon.\n\nY para terminar, las fechas.",
         );

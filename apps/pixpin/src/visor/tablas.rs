@@ -60,7 +60,9 @@ pub(crate) fn rectangulos(c: &Colocado, k: &Caja, linea: f32) -> Vec<(RectF, Col
     if k.relleno {
         v.push((r, CRISTAL));
     }
-    let mut raya = |x: f32, y: f32, ancho: f32, alto: f32| v.push((RectF { x, y, ancho, alto }, RAYA_DE_CELDA));
+    let mut raya = |x: f32, y: f32, ancho: f32, alto: f32| {
+        v.push((RectF { x, y, ancho, alto }, RAYA_DE_CELDA))
+    };
     raya(r.x, r.y, linea, r.alto);
     raya(r.x + r.ancho - linea, r.y, linea, r.alto);
     if k.arriba {
@@ -84,12 +86,31 @@ mod pruebas {
     #[test]
     fn una_celda_unida_hacia_abajo_no_raya_por_donde_sigue() {
         let c = super::super::pruebas::colocado("x", 10.0);
-        let k = Caja { x: 0.0, ancho: 100.0, y: 10.0, alto: 40.0, arriba: true, abajo: false, relleno: false };
+        let k = Caja {
+            x: 0.0,
+            ancho: 100.0,
+            y: 10.0,
+            alto: 40.0,
+            arriba: true,
+            abajo: false,
+            relleno: false,
+        };
         let r = rectangulos(&c, &k, 1.0);
         assert_eq!(r.len(), 3, "dos lados y arriba");
-        assert!(r.iter().all(|(x, _)| x.y + x.alto <= 50.0 + 1e-3 && x.y >= 10.0));
+        assert!(
+            r.iter()
+                .all(|(x, _)| x.y + x.alto <= 50.0 + 1e-3 && x.y >= 10.0)
+        );
         // Con fondo, el velo va primero (debajo de las rayas).
-        let r = rectangulos(&c, &Caja { relleno: true, abajo: true, ..k }, 1.0);
+        let r = rectangulos(
+            &c,
+            &Caja {
+                relleno: true,
+                abajo: true,
+                ..k
+            },
+            1.0,
+        );
         assert_eq!(r.len(), 5);
         assert_eq!(r[0].1, CRISTAL);
     }

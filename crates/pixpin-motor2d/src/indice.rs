@@ -236,7 +236,8 @@ impl Rejilla {
         // `contains` antes de meter cada uno, y eso es cuadratico en lo que
         // se ve: con cientos de trazos en pantalla era la parte mas cara de
         // decidir que pintar.
-        fuera.sort_unstable_by_key(|id| (self.posicion.get(id).copied().unwrap_or(usize::MAX), *id));
+        fuera
+            .sort_unstable_by_key(|id| (self.posicion.get(id).copied().unwrap_or(usize::MAX), *id));
         fuera.dedup();
         fuera
     }
@@ -496,7 +497,11 @@ mod pruebas {
         sel.poner(a);
         crate::organizar::al_frente(&mut escena, &sel);
         rejilla.sincronizar(&escena);
-        assert_eq!(rejilla.candidatos(caja), vec![b, a], "a tiene que ir encima");
+        assert_eq!(
+            rejilla.candidatos(caja),
+            vec![b, a],
+            "a tiene que ir encima"
+        );
 
         // Caso negativo: editar a `b` (que la reapunta al final de su celda)
         // no la sube por encima de `a`, que sigue delante en la escena.

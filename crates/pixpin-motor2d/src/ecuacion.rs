@@ -122,7 +122,9 @@ impl Caja {
 
     /// La caja pintada con su esquina en `(x, y)`, como elementos del lienzo.
     pub fn elementos(&self, x: f32, y: f32, estilo: &Estilo) -> Vec<Elemento> {
-        self.piezas_en(x, y).map(|p| a_elemento(p, estilo)).collect()
+        self.piezas_en(x, y)
+            .map(|p| a_elemento(p, estilo))
+            .collect()
     }
 }
 
@@ -227,7 +229,13 @@ pub fn caja_de_la_ecuacion(nombre: &str, formula: &Compilada, t: f32, medir: Med
         .collect();
     let col = columna(filas, t * 0.35);
     let alto = col.alto;
-    fila(vec![cabeza, hueco(t * 0.3), llave(alto, t), hueco(t * 0.2), col])
+    fila(vec![
+        cabeza,
+        hueco(t * 0.3),
+        llave(alto, t),
+        hueco(t * 0.2),
+        col,
+    ])
 }
 
 /// La ecuacion como elementos, con su esquina en `(x, y)`.
@@ -270,7 +278,13 @@ fn componer(n: &Nodo, t: f32, medir: Medir<'_>) -> Caja {
 }
 
 fn binaria(op: char, a: &Nodo, b: &Nodo, implicita: bool, t: f32, medir: Medir<'_>) -> Caja {
-    let signo = |s: &str| fila(vec![hueco(t * 0.22), letra(s, t, false, medir), hueco(t * 0.22)]);
+    let signo = |s: &str| {
+        fila(vec![
+            hueco(t * 0.22),
+            letra(s, t, false, medir),
+            hueco(t * 0.22),
+        ])
+    };
     let entre = |s: &str| fila(vec![componer(a, t, medir), signo(s), componer(b, t, medir)]);
     match op {
         '+' => entre("+"),
@@ -279,11 +293,19 @@ fn binaria(op: char, a: &Nodo, b: &Nodo, implicita: bool, t: f32, medir: Medir<'
             signo("−"),
             con_parentesis_si_suma(b, t, medir),
         ]),
-        '*' if implicita => fila(vec![componer(a, t, medir), hueco(t * 0.08), componer(b, t, medir)]),
+        '*' if implicita => fila(vec![
+            componer(a, t, medir),
+            hueco(t * 0.08),
+            componer(b, t, medir),
+        ]),
         '*' => entre("·"),
         '/' => fraccion(componer(a, t, medir), componer(b, t, medir), t),
         '%' => entre("mod"),
-        '^' => potencia(con_parentesis_si_compuesto(a, t, medir), componer(b, menor(t), medir), t),
+        '^' => potencia(
+            con_parentesis_si_compuesto(a, t, medir),
+            componer(b, menor(t), medir),
+            t,
+        ),
         '<' => entre("<"),
         '>' => entre(">"),
         'l' => entre("≤"),
@@ -302,7 +324,11 @@ fn funcion(nombre: &str, args: &[Nodo], t: f32, medir: Medir<'_>) -> Caja {
             t,
         ),
         "abs" => entre_barras(componer(&args[0], t, medir), t),
-        "exp" => potencia(letra("e", t, true, medir), componer(&args[0], menor(t), medir), t),
+        "exp" => potencia(
+            letra("e", t, true, medir),
+            componer(&args[0], menor(t), medir),
+            t,
+        ),
         "pow" => potencia(
             con_parentesis_si_compuesto(&args[0], t, medir),
             componer(&args[1], menor(t), medir),
@@ -320,7 +346,11 @@ fn funcion(nombre: &str, args: &[Nodo], t: f32, medir: Medir<'_>) -> Caja {
             componer(&args[2], t, medir),
         ]),
         "log2" => fila(vec![
-            subindice(letra("log", t, false, medir), letra("2", menor(t), false, medir), t),
+            subindice(
+                letra("log", t, false, medir),
+                letra("2", menor(t), false, medir),
+                t,
+            ),
             entre_parentesis(componer(&args[0], t, medir), t, medir),
         ]),
         _ => {
@@ -463,7 +493,9 @@ fn fraccion(arriba: Caja, abajo: Caja, t: f32) -> Caja {
     let hueco = t * 0.18;
     let alto = arriba.alto + hueco * 2.0 + abajo.alto;
     let eje = arriba.alto + hueco;
-    let mut piezas: Vec<Pieza> = arriba.piezas_en((ancho - arriba.ancho) / 2.0, 0.0).collect();
+    let mut piezas: Vec<Pieza> = arriba
+        .piezas_en((ancho - arriba.ancho) / 2.0, 0.0)
+        .collect();
     piezas.push(raya(&[(0.0, eje), (ancho, eje)], t));
     piezas.extend(abajo.piezas_en((ancho - abajo.ancho) / 2.0, eje + hueco));
     Caja {
@@ -493,7 +525,9 @@ fn potencia(base: Caja, exponente: Caja, t: f32) -> Caja {
 /// La base con un indice pequeno y bajado.
 fn subindice(base: Caja, indice: Caja, t: f32) -> Caja {
     let bajada = indice.alto * 0.5;
-    let alto = base.alto.max(base.alto - base.eje + indice.alto - bajada + base.eje);
+    let alto = base
+        .alto
+        .max(base.alto - base.eje + indice.alto - bajada + base.eje);
     let mut piezas: Vec<Pieza> = base.piezas_en(0.0, 0.0).collect();
     piezas.extend(indice.piezas_en(base.ancho + t * 0.05, base.alto - bajada));
     Caja {
@@ -625,7 +659,9 @@ mod pruebas {
     }
 
     fn rayas(v: &[Elemento]) -> usize {
-        v.iter().filter(|e| matches!(e.figura, Figura::Linea { .. })).count()
+        v.iter()
+            .filter(|e| matches!(e.figura, Figura::Linea { .. }))
+            .count()
     }
 
     #[test]
@@ -633,8 +669,22 @@ mod pruebas {
         let f = compilar("1/x").unwrap();
         let v = elementos("y", &f, 0.0, 0.0, &estilo(), &medir);
         assert_eq!(rayas(&v), 1, "la barra");
-        let uno = v.iter().find(|e| textos(std::slice::from_ref(e)).first().is_some_and(|t| t.0 == "1")).unwrap();
-        let x = v.iter().find(|e| textos(std::slice::from_ref(e)).first().is_some_and(|t| t.0 == "x")).unwrap();
+        let uno = v
+            .iter()
+            .find(|e| {
+                textos(std::slice::from_ref(e))
+                    .first()
+                    .is_some_and(|t| t.0 == "1")
+            })
+            .unwrap();
+        let x = v
+            .iter()
+            .find(|e| {
+                textos(std::slice::from_ref(e))
+                    .first()
+                    .is_some_and(|t| t.0 == "x")
+            })
+            .unwrap();
         assert!(x.y > uno.y + 10.0, "la x va debajo del 1");
         // La x de la ecuacion va en cursiva y el numero no.
         assert!(x.extras.cursiva && !uno.extras.cursiva);
@@ -646,8 +696,14 @@ mod pruebas {
         let v = elementos("y", &f, 0.0, 0.0, &estilo(), &medir);
         let t = textos(&v);
         assert!(t.iter().all(|(s, ..)| !s.contains('^')));
-        let dos = v.iter().find(|e| matches!(&e.figura, Figura::Texto { texto, .. } if texto == "2")).unwrap();
-        let x = v.iter().find(|e| matches!(&e.figura, Figura::Texto { texto, .. } if texto == "x")).unwrap();
+        let dos = v
+            .iter()
+            .find(|e| matches!(&e.figura, Figura::Texto { texto, .. } if texto == "2"))
+            .unwrap();
+        let x = v
+            .iter()
+            .find(|e| matches!(&e.figura, Figura::Texto { texto, .. } if texto == "x"))
+            .unwrap();
         assert!(matches!(dos.figura, Figura::Texto { tam, .. } if tam < 20.0));
         assert!(dos.y < x.y, "el 2 va mas alto que la x");
         assert!(dos.x > x.x);
@@ -659,7 +715,10 @@ mod pruebas {
         let c = caja_de_la_ecuacion("y", &f, 20.0, &medir);
         let v = c.elementos(0.0, 0.0, &estilo());
         assert_eq!(rayas(&v), 1);
-        let signo = v.iter().find(|e| matches!(e.figura, Figura::Linea { .. })).unwrap();
+        let signo = v
+            .iter()
+            .find(|e| matches!(e.figura, Figura::Linea { .. }))
+            .unwrap();
         let mas_a_la_derecha = v
             .iter()
             .filter(|e| matches!(e.figura, Figura::Texto { .. }))
@@ -677,7 +736,10 @@ mod pruebas {
         assert_eq!(textos(&v).iter().filter(|(s, ..)| s == "si").count(), 2);
         assert!(textos(&v).iter().any(|(s, ..)| s == "≥"));
         // La llave: una raya de siete puntos.
-        assert!(v.iter().any(|e| matches!(&e.figura, Figura::Linea { puntos } if puntos.len() == 7)));
+        assert!(
+            v.iter()
+                .any(|e| matches!(&e.figura, Figura::Linea { puntos } if puntos.len() == 7))
+        );
     }
 
     #[test]

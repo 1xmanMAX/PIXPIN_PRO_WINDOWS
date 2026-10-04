@@ -118,7 +118,11 @@ impl Fila {
     }
 
     pub fn alto(&self) -> f32 {
-        if self.es_grupo() { GRUPO_ALTO } else { FILA_ALTO }
+        if self.es_grupo() {
+            GRUPO_ALTO
+        } else {
+            FILA_ALTO
+        }
     }
 }
 
@@ -397,7 +401,10 @@ pub fn partes_de_fila(fila: &Fila, r: Recta) -> Vec<(Parte, Recta)> {
         }
     }
     if fila.cambiado {
-        v.push((Parte::Restablecer, caja(r, derecha, CONTROL_ALTO, CONTROL_ALTO)));
+        v.push((
+            Parte::Restablecer,
+            caja(r, derecha, CONTROL_ALTO, CONTROL_ALTO),
+        ));
     }
     v
 }
@@ -639,7 +646,10 @@ mod pruebas {
         assert_eq!(golpe(x, &filas(), &e), Some(Golpe::Buscador));
         e.busqueda = "gif".into();
         assert_eq!(golpe(x, &filas(), &e), Some(Golpe::BorrarBusqueda));
-        let izquierda = Punto { x: 40, y: (BUSCADOR_Y + 20.0) as i32 };
+        let izquierda = Punto {
+            x: 40,
+            y: (BUSCADOR_Y + 20.0) as i32,
+        };
         assert_eq!(golpe(izquierda, &filas(), &e), Some(Golpe::Buscador));
     }
 
@@ -649,9 +659,21 @@ mod pruebas {
         let (deshacer, listo) = botones_del_pie(ALTO);
         assert!(listo.y + listo.alto <= ALTO && listo.y > deshacer.y);
         assert_eq!(golpe(punto_en(listo), &filas(), &e), Some(Golpe::Listo));
-        assert_eq!(golpe(punto_en(deshacer), &filas(), &e), Some(Golpe::Deshacer));
+        assert_eq!(
+            golpe(punto_en(deshacer), &filas(), &e),
+            Some(Golpe::Deshacer)
+        );
         // Caso negativo: sin nada que deshacer, ese hueco no hace nada.
-        let sin = golpe_en(punto_en(deshacer), ANCHO, ALTO, 9, &filas(), &e, false, None);
+        let sin = golpe_en(
+            punto_en(deshacer),
+            ANCHO,
+            ALTO,
+            9,
+            &filas(),
+            &e,
+            false,
+            None,
+        );
         assert_eq!(sin, None);
     }
 
@@ -665,8 +687,14 @@ mod pruebas {
         let mas = partes.iter().find(|(p, _)| *p == Parte::Mas).unwrap().1;
         assert!(menos.x + menos.ancho < mas.x, "el valor va entre los dos");
         let e = Estado::default();
-        assert_eq!(golpe(punto_en(menos), &f, &e), Some(Golpe::Fila(1, Parte::Menos)));
-        assert_eq!(golpe(punto_en(mas), &f, &e), Some(Golpe::Fila(1, Parte::Mas)));
+        assert_eq!(
+            golpe(punto_en(menos), &f, &e),
+            Some(Golpe::Fila(1, Parte::Menos))
+        );
+        assert_eq!(
+            golpe(punto_en(mas), &f, &e),
+            Some(Golpe::Fila(1, Parte::Mas))
+        );
         // Caso negativo: entre los dos (donde se lee el valor) no se pulsa nada.
         let entre = Punto {
             x: ((menos.x + menos.ancho + mas.x) / 2.0) as i32,
@@ -688,7 +716,10 @@ mod pruebas {
         let e = Estado::default();
         for (i, (_, c)) in partes.iter().enumerate() {
             assert!(c.ancho >= 44.0);
-            assert_eq!(golpe(punto_en(*c), &f, &e), Some(Golpe::Fila(2, Parte::Elegir(i))));
+            assert_eq!(
+                golpe(punto_en(*c), &f, &e),
+                Some(Golpe::Fila(2, Parte::Elegir(i)))
+            );
         }
     }
 
@@ -702,7 +733,10 @@ mod pruebas {
             x: (r.x + 40.0) as i32,
             y: (r.y + 20.0) as i32,
         };
-        assert_eq!(golpe(etiqueta, &f, &e), Some(Golpe::Fila(3, Parte::Alternar)));
+        assert_eq!(
+            golpe(etiqueta, &f, &e),
+            Some(Golpe::Fila(3, Parte::Alternar))
+        );
         // Caso negativo: la etiqueta de un numero no hace nada.
         let r1 = rect_de_fila(&f, 1, 0, zona);
         let etiqueta1 = Punto {
@@ -718,12 +752,22 @@ mod pruebas {
         let zona = contenido(ANCHO, ALTO);
         let r = rect_de_fila(&f, 1, 0, zona);
         // Caso negativo: de fabrica no hay boton.
-        assert!(!partes_de_fila(&f[1], r).iter().any(|(p, _)| *p == Parte::Restablecer));
+        assert!(
+            !partes_de_fila(&f[1], r)
+                .iter()
+                .any(|(p, _)| *p == Parte::Restablecer)
+        );
         f[1].cambiado = true;
         let partes = partes_de_fila(&f[1], r);
-        let (_, vuelta) = partes.iter().find(|(p, _)| *p == Parte::Restablecer).unwrap();
+        let (_, vuelta) = partes
+            .iter()
+            .find(|(p, _)| *p == Parte::Restablecer)
+            .unwrap();
         let menos = partes.iter().find(|(p, _)| *p == Parte::Menos).unwrap().1;
-        assert!(vuelta.x + vuelta.ancho <= menos.x, "a la izquierda del control");
+        assert!(
+            vuelta.x + vuelta.ancho <= menos.x,
+            "a la izquierda del control"
+        );
         assert!(vuelta.ancho >= 36.0);
         assert_eq!(
             golpe(punto_en(*vuelta), &f, &Estado::default()),
@@ -738,13 +782,22 @@ mod pruebas {
         let e = Estado::default();
         let r = rect_de_fila(&f, 5, 0, zona);
         let (_, q) = partes_de_fila(&f[5], r)[0];
-        assert_eq!(golpe(punto_en(q), &f, &e), Some(Golpe::Fila(5, Parte::Quitar)));
+        assert_eq!(
+            golpe(punto_en(q), &f, &e),
+            Some(Golpe::Fila(5, Parte::Quitar))
+        );
         let r = rect_de_fila(&f, 6, 0, zona);
         let partes = partes_de_fila(&f[6], r);
         assert_eq!(partes[0].0, Parte::Escribir);
         assert_eq!(partes[1].0, Parte::Pulsar);
-        assert_eq!(golpe(punto_en(partes[0].1), &f, &e), Some(Golpe::Fila(6, Parte::Escribir)));
-        assert_eq!(golpe(punto_en(partes[1].1), &f, &e), Some(Golpe::Fila(6, Parte::Pulsar)));
+        assert_eq!(
+            golpe(punto_en(partes[0].1), &f, &e),
+            Some(Golpe::Fila(6, Parte::Escribir))
+        );
+        assert_eq!(
+            golpe(punto_en(partes[1].1), &f, &e),
+            Some(Golpe::Fila(6, Parte::Pulsar))
+        );
         // Caso negativo: un titulo de grupo no tiene partes ni se pulsa.
         assert!(partes_de_fila(&f[4], rect_de_fila(&f, 4, 0, zona)).is_empty());
         assert_eq!(golpe(punto_en(rect_de_fila(&f, 4, 0, zona)), &f, &e), None);
@@ -770,7 +823,10 @@ mod pruebas {
             ..Estado::default()
         };
         let b = boton_restablecer_seccion(ANCHO, "Restablecer Captura");
-        assert_eq!(golpe(punto_en(b), &muchas, &e), Some(Golpe::RestablecerSeccion));
+        assert_eq!(
+            golpe(punto_en(b), &muchas, &e),
+            Some(Golpe::RestablecerSeccion)
+        );
         // Caso negativo: sin boton (buscando) ese sitio no hace nada.
         let sin = golpe_en(punto_en(b), ANCHO, ALTO, 9, &muchas, &e, true, None);
         assert_eq!(sin, None);

@@ -500,7 +500,10 @@ pub fn imagenes_de(visible: &str) -> (String, Vec<String>) {
         desde = todo.end;
     }
     limpio.push_str(&visible[desde..]);
-    (limpio.split_whitespace().collect::<Vec<_>>().join(" "), enlaces)
+    (
+        limpio.split_whitespace().collect::<Vec<_>>().join(" "),
+        enlaces,
+    )
 }
 
 /// El texto con sus imagenes detras, numeradas desde 1: lo contrario de
@@ -1020,7 +1023,15 @@ mod pruebas {
         assert_eq!(Fecha::leer("2026-10-02"), Some(f(2026, 10, 2)));
         assert_eq!(Fecha::leer("2024-02-29"), Some(f(2024, 2, 29)), "bisiesto");
         // Casos negativos: lo que no es un dia no se lee como otro.
-        for mal in ["2026-02-30", "2025-02-29", "2026-13-01", "2026-00-10", "2026-1-02", "26-10-02xx", "abcd-ef-gh"] {
+        for mal in [
+            "2026-02-30",
+            "2025-02-29",
+            "2026-13-01",
+            "2026-00-10",
+            "2026-1-02",
+            "26-10-02xx",
+            "abcd-ef-gh",
+        ] {
             assert_eq!(Fecha::leer(mal), None, "{mal}");
         }
         // Medianoche: el ultimo milisegundo del dia sigue siendo ese dia.
@@ -1032,14 +1043,38 @@ mod pruebas {
     fn la_fecha_se_separa_solo_si_va_al_final_con_su_marca() {
         assert_eq!(partir("pan ➕ 2026-10-02"), ("pan", Some(f(2026, 10, 2))));
         assert_eq!(partir("➕ 2026-10-02"), ("", Some(f(2026, 10, 2))));
-        assert_eq!(partir("pan ➕2026-10-02"), ("pan", Some(f(2026, 10, 2))), "sin blanco tras la marca");
+        assert_eq!(
+            partir("pan ➕2026-10-02"),
+            ("pan", Some(f(2026, 10, 2))),
+            "sin blanco tras la marca"
+        );
         // Casos negativos: se queda todo como texto.
         assert_eq!(partir("pan"), ("pan", None));
-        assert_eq!(partir("pan 2026-10-02"), ("pan 2026-10-02", None), "sin marca no");
-        assert_eq!(partir("pan➕ 2026-10-02"), ("pan➕ 2026-10-02", None), "pegada a la palabra");
-        assert_eq!(partir("➕ 2026-10-02 pan"), ("➕ 2026-10-02 pan", None), "en medio no");
-        assert_eq!(partir("pan ➕ 2026-02-30"), ("pan ➕ 2026-02-30", None), "un dia que no existe");
-        assert_eq!(partir("ñandú ★"), ("ñandú ★", None), "letras de varios bytes no revientan");
+        assert_eq!(
+            partir("pan 2026-10-02"),
+            ("pan 2026-10-02", None),
+            "sin marca no"
+        );
+        assert_eq!(
+            partir("pan➕ 2026-10-02"),
+            ("pan➕ 2026-10-02", None),
+            "pegada a la palabra"
+        );
+        assert_eq!(
+            partir("➕ 2026-10-02 pan"),
+            ("➕ 2026-10-02 pan", None),
+            "en medio no"
+        );
+        assert_eq!(
+            partir("pan ➕ 2026-02-30"),
+            ("pan ➕ 2026-02-30", None),
+            "un dia que no existe"
+        );
+        assert_eq!(
+            partir("ñandú ★"),
+            ("ñandú ★", None),
+            "letras de varios bytes no revientan"
+        );
         assert_eq!(con_fecha("pan", f(2026, 10, 2)), "pan ➕ 2026-10-02");
     }
 
@@ -1050,7 +1085,11 @@ mod pruebas {
         assert_eq!(dias_desde(f(2026, 10, 1), hoy), 1);
         assert_eq!(dias_desde(f(2026, 9, 2), hoy), 30);
         assert_eq!(dias_desde(f(2025, 10, 2), hoy), 365);
-        assert_eq!(dias_desde(f(2026, 10, 5), hoy), 0, "del futuro cuenta como hoy");
+        assert_eq!(
+            dias_desde(f(2026, 10, 5), hoy),
+            0,
+            "del futuro cuenta como hoy"
+        );
     }
 
     #[test]
@@ -1070,7 +1109,10 @@ mod pruebas {
         // Marcar, mover y borrar otra tampoco.
         let d2 = alternar(&d, 1);
         assert_eq!(d2, "# Compra\n\n- [ ] sal\n- [x] pan ➕ 2026-10-02");
-        assert_eq!(mover(&d2, 1, 0), "# Compra\n\n- [x] pan ➕ 2026-10-02\n- [ ] sal");
+        assert_eq!(
+            mover(&d2, 1, 0),
+            "# Compra\n\n- [x] pan ➕ 2026-10-02\n- [ ] sal"
+        );
         // Lo vacio sigue sin entrar, ni siquiera con fecha.
         assert_eq!(anadir_el(&d, "   ", hoy), d);
         assert_eq!(anadir_el(&d, "➕ 2026-01-01", hoy), d);
@@ -1082,11 +1124,17 @@ mod pruebas {
     #[test]
     fn corregir_una_tarea_no_le_cambia_la_fecha() {
         let d = "# L\n\n- [ ] pna ➕ 2026-09-01\n- [x] vieja";
-        assert_eq!(renombrar(d, 0, "pan"), "# L\n\n- [ ] pan ➕ 2026-09-01\n- [x] vieja");
+        assert_eq!(
+            renombrar(d, 0, "pan"),
+            "# L\n\n- [ ] pan ➕ 2026-09-01\n- [x] vieja"
+        );
         // La misma palabra: nada que guardar.
         assert_eq!(renombrar(d, 0, "pna"), d);
         // Una de antes, sin fecha, sigue sin ella: no se inventa.
-        assert_eq!(renombrar(d, 1, "antigua"), "# L\n\n- [ ] pna ➕ 2026-09-01\n- [x] antigua");
+        assert_eq!(
+            renombrar(d, 1, "antigua"),
+            "# L\n\n- [ ] pna ➕ 2026-09-01\n- [x] antigua"
+        );
         assert_eq!(renombrar(d, 0, "  "), d);
     }
 
@@ -1112,12 +1160,18 @@ mod pruebas {
         let texto = fichas_a_imagenes("comprar yeso [img 01]", &[(1, FOTO.into())]);
         assert_eq!(texto, format!("comprar yeso ![img 01]({FOTO})"));
         let d = anadir_el("# Inbox\n\n", &texto, hoy);
-        assert_eq!(d, format!("# Inbox\n\n- [ ] comprar yeso ![img 01]({FOTO}) ➕ 2026-10-03"));
+        assert_eq!(
+            d,
+            format!("# Inbox\n\n- [ ] comprar yeso ![img 01]({FOTO}) ➕ 2026-10-03")
+        );
         // La fecha se sigue encontrando al final, y la imagen sale aparte.
         let t = &leer_tareas(&d)[0];
         let (visible, creada) = partir(&t.texto);
         assert_eq!(creada, Some(hoy));
-        assert_eq!(imagenes_de(visible), ("comprar yeso".to_string(), vec![FOTO.to_string()]));
+        assert_eq!(
+            imagenes_de(visible),
+            ("comprar yeso".to_string(), vec![FOTO.to_string()])
+        );
         // Ida y vuelta por el escritor del movil: identica.
         assert_eq!(escribir_tareas("Inbox", &leer_tareas(&d)), d);
         // Y en medio del texto tambien: los blancos se juntan.
@@ -1125,17 +1179,26 @@ mod pruebas {
             imagenes_de(&format!("yeso ![img 01]({FOTO}) y arena")),
             ("yeso y arena".to_string(), vec![FOTO.to_string()])
         );
-        assert_eq!(con_imagenes("pan", &["a.png".into(), "b.png".into()]), "pan ![img 01](a.png) ![img 02](b.png)");
+        assert_eq!(
+            con_imagenes("pan", &["a.png".into(), "b.png".into()]),
+            "pan ![img 01](a.png) ![img 02](b.png)"
+        );
     }
 
     #[test]
     fn una_ficha_sin_imagen_se_queda_y_una_imagen_sin_ficha_va_al_final() {
         // La 2 no tiene ficha: va detras. La 3 no tiene imagen: es texto.
-        let t = fichas_a_imagenes("[img 01] mira [img 03]", &[(1, "a.png".into()), (2, "b.png".into())]);
+        let t = fichas_a_imagenes(
+            "[img 01] mira [img 03]",
+            &[(1, "a.png".into()), (2, "b.png".into())],
+        );
         assert_eq!(t, "![img 01](a.png) mira [img 03] ![img 02](b.png)");
         // Solo imagenes, sin palabras: vale, y se lee vacia de texto.
         let solo = fichas_a_imagenes("", &[(1, "a.png".into())]);
-        assert_eq!(imagenes_de(&solo), (String::new(), vec!["a.png".to_string()]));
+        assert_eq!(
+            imagenes_de(&solo),
+            (String::new(), vec!["a.png".to_string()])
+        );
         // Con la fecha ya puesta, las imagenes entran delante de ella.
         assert_eq!(
             fichas_a_imagenes("pan ➕ 2026-10-01", &[(1, "a.png".into())]),
@@ -1148,7 +1211,10 @@ mod pruebas {
         let t = "a ![img 01](x.png) b ![img 02](y.png) ➕ 2026-10-03";
         let n = cambiar_enlaces(t, |e| (e == "x.png").then(|| "z.png".to_string()));
         assert_eq!(n, "a ![img 01](z.png) b ![img 02](y.png) ➕ 2026-10-03");
-        assert_eq!(cambiar_enlaces("sin nada", |_| Some("q".into())), "sin nada");
+        assert_eq!(
+            cambiar_enlaces("sin nada", |_| Some("q".into())),
+            "sin nada"
+        );
     }
 
     #[test]
@@ -1161,7 +1227,14 @@ mod pruebas {
             "! [separada](x.png)",
             "![alt sin parentesis] x",
         ] {
-            assert_eq!(imagenes_de(raro), (raro.split_whitespace().collect::<Vec<_>>().join(" "), Vec::new()), "{raro}");
+            assert_eq!(
+                imagenes_de(raro),
+                (
+                    raro.split_whitespace().collect::<Vec<_>>().join(" "),
+                    Vec::new()
+                ),
+                "{raro}"
+            );
         }
         // Y una tarea de antes, sin imagenes, se lee igual que siempre.
         assert_eq!(imagenes_de("pan"), ("pan".to_string(), Vec::new()));

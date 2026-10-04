@@ -4,7 +4,8 @@ use std::io::Write;
 fn zip(entradas: &[(&str, &str)]) -> Vec<u8> {
     let mut z = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
     for (n, t) in entradas {
-        z.start_file(*n, zip::write::SimpleFileOptions::default()).unwrap();
+        z.start_file(*n, zip::write::SimpleFileOptions::default())
+            .unwrap();
         z.write_all(t.as_bytes()).unwrap();
     }
     z.finish().unwrap().into_inner()
@@ -54,7 +55,11 @@ fn un_xlsx_con_dos_hojas_visibles_estilos_fechas_y_formulas() {
     // dicho donde cambia.
     let hojas = leer_bytes(&libro_de_prueba(), "Cuentas 2026.xlsx", "", 7).unwrap();
     let nombres: Vec<&str> = hojas.iter().map(|h| h.nombre.as_str()).collect();
-    assert_eq!(nombres, ["Cuentas 2026 · Gastos", "Cuentas 2026 · Resumen"], "la oculta no entra");
+    assert_eq!(
+        nombres,
+        ["Cuentas 2026 · Gastos", "Cuentas 2026 · Resumen"],
+        "la oculta no entra"
+    );
     let t = &hojas[0].tabla;
     assert_eq!(t.nombre, "Cuentas 2026 · Gastos");
     assert_eq!(t.tocado, 7);
@@ -63,7 +68,11 @@ fn un_xlsx_con_dos_hojas_visibles_estilos_fechas_y_formulas() {
     assert!(e.n);
     assert_eq!(e.a.as_deref(), Some("c"));
     assert_eq!(e.f.as_deref(), Some("#ffff00"));
-    assert_eq!(crudo(t, "B1"), "'00123", "un texto que parece numero sigue siendo texto");
+    assert_eq!(
+        crudo(t, "B1"),
+        "'00123",
+        "un texto que parece numero sigue siendo texto"
+    );
     assert_eq!(ver(t, "B1"), "00123");
     assert_eq!(ver(t, "C1"), "=no es fórmula");
     assert_eq!(crudo(t, "A2"), "0.3", "diecisiete cifras, a quince");
@@ -78,8 +87,16 @@ fn un_xlsx_con_dos_hojas_visibles_estilos_fechas_y_formulas() {
     assert_eq!(ver(t, "B5"), "34");
     // Aqui no hay XLOOKUP (en el movil si): se queda con su valor.
     assert_eq!(crudo(t, "C5"), "14");
-    assert_eq!(crudo(t, "D5"), "99", "la funcion que aqui no hay se queda con su valor");
-    assert_eq!(crudo(t, "E5"), "=D5+1", "y la que depende de ella sigue siendo formula");
+    assert_eq!(
+        crudo(t, "D5"),
+        "99",
+        "la funcion que aqui no hay se queda con su valor"
+    );
+    assert_eq!(
+        crudo(t, "E5"),
+        "=D5+1",
+        "y la que depende de ella sigue siendo formula"
+    );
     assert_eq!(ver(t, "E5"), "100");
     assert_eq!(ver(t, "F5"), "ab");
     assert_eq!(ver(t, "G5"), "VERDADERO");
@@ -104,7 +121,9 @@ fn un_csv_de_la_excel_espanola() {
 #[test]
 fn un_csv_de_windows_en_latin1_no_sale_roto() {
     // «Año;Señal» en Latin-1: no es UTF-8 valido.
-    let bytes = [b'A', 0xF1, b'o', b';', b'S', b'e', 0xF1, b'a', b'l', b'\r', b'\n', b'1', b';', b'2'];
+    let bytes = [
+        b'A', 0xF1, b'o', b';', b'S', b'e', 0xF1, b'a', b'l', b'\r', b'\n', b'1', b';', b'2',
+    ];
     let hojas = leer_bytes(&bytes, "raro.csv", "", 0).unwrap();
     assert_eq!(ver(&hojas[0].tabla, "A1"), "Año");
     assert_eq!(ver(&hojas[0].tabla, "B1"), "Señal");
@@ -149,7 +168,10 @@ fn un_xls_antiguo_se_reconoce_y_se_dice_que_no_se_lee() {
     assert!(!es_libro("foto.png"));
     assert!(!es_libro("sin-extension"));
     let firma = [0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1];
-    assert_eq!(leer_bytes(&firma, "viejo.xls", "", 0), Err(NoSeLee::XlsAntiguo));
+    assert_eq!(
+        leer_bytes(&firma, "viejo.xls", "", 0),
+        Err(NoSeLee::XlsAntiguo)
+    );
     // Y sin extension, por su firma.
     assert_eq!(leer_bytes(&firma, "", "blob", 0), Err(NoSeLee::XlsAntiguo));
     assert!(NoSeLee::XlsAntiguo.to_string().contains(".xlsx"));
@@ -158,12 +180,21 @@ fn un_xls_antiguo_se_reconoce_y_se_dice_que_no_se_lee() {
 #[test]
 fn un_zip_que_no_es_un_libro_o_un_libro_vacio_se_dicen() {
     let otro = zip(&[("hola.txt", "no")]);
-    assert_eq!(leer_bytes(&otro, "x.xlsx", "", 0), Err(NoSeLee::NoEsUnLibro));
-    assert_eq!(leer_bytes(b"no soy zip", "x.xlsx", "", 0), Err(NoSeLee::NoEsUnLibro));
+    assert_eq!(
+        leer_bytes(&otro, "x.xlsx", "", 0),
+        Err(NoSeLee::NoEsUnLibro)
+    );
+    assert_eq!(
+        leer_bytes(b"no soy zip", "x.xlsx", "", 0),
+        Err(NoSeLee::NoEsUnLibro)
+    );
     let vacio = zip(&[
         ("xl/workbook.xml", LIBRO),
         ("xl/_rels/workbook.xml.rels", RELS),
-        ("xl/worksheets/sheet1.xml", "<worksheet><sheetData/></worksheet>"),
+        (
+            "xl/worksheets/sheet1.xml",
+            "<worksheet><sheetData/></worksheet>",
+        ),
     ]);
     assert_eq!(leer_bytes(&vacio, "x.xlsx", "", 0), Err(NoSeLee::SinHojas));
     assert_eq!(leer_bytes(b"", "x.csv", "", 0), Err(NoSeLee::SinHojas));
@@ -191,7 +222,10 @@ fn copiar_una_formula_mueve_lo_que_no_lleva_dolar() {
 
 #[test]
 fn las_referencias_de_una_formula_se_leen_con_sus_rangos() {
-    assert_eq!(referencias("=SUM(B3:B4)+D5"), vec![(1, 2, 1, 3), (3, 4, 3, 4)]);
+    assert_eq!(
+        referencias("=SUM(B3:B4)+D5"),
+        vec![(1, 2, 1, 3), (3, 4, 3, 4)]
+    );
     assert_eq!(referencias("=LOG10(2)"), vec![]);
     assert!(referencias("no es formula").is_empty());
 }

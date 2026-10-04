@@ -178,7 +178,12 @@ pub fn disponer(m: &Medidas) -> Marco {
     // La barra: tabla, imagen, casillas | + ▾ | los de la tabla.
     let y = barra.y + (barra.al - e(BOTON)) / 2;
     let mut x = e(LADO);
-    for b in [Boton::Tabla, Boton::Imagen, Boton::Casillas, Boton::Comentar] {
+    for b in [
+        Boton::Tabla,
+        Boton::Imagen,
+        Boton::Casillas,
+        Boton::Comentar,
+    ] {
         botones.push((b, cuadrado(x, y)));
         x += e(BOTON) + e(4);
     }
@@ -291,7 +296,10 @@ mod pruebas {
         md.ancho_titulo = 2000;
         let m = disponer(&md);
         let g = m.caja(Boton::Comentarios).unwrap();
-        assert!(m.caja(Boton::TituloMenu).unwrap().derecha() < g.x, "un titulo largo no lo pisa");
+        assert!(
+            m.caja(Boton::TituloMenu).unwrap().derecha() < g.x,
+            "un titulo largo no lo pisa"
+        );
         assert!(g.derecha() < m.caja(Boton::Compartir).unwrap().x);
         let c = m.caja(Boton::Comentar).unwrap();
         assert!(c.x > m.caja(Boton::Casillas).unwrap().derecha());

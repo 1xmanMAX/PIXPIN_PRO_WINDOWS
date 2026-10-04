@@ -56,7 +56,10 @@ pub fn medida_en_el_lienzo((ancho, alto): (u32, u32)) -> (f32, f32) {
         muestra *= 2;
     }
     // El descodificador de JPEG redondea hacia arriba al reducir.
-    (ancho.div_ceil(muestra) as f32, alto.div_ceil(muestra) as f32)
+    (
+        ancho.div_ceil(muestra) as f32,
+        alto.div_ceil(muestra) as f32,
+    )
 }
 
 /// Lo que hizo [`asegurar`].
@@ -186,7 +189,11 @@ pub fn cambiar_dibujo(
         .visibles()
         .find(|e| e.bloqueado && matches!(e.figura, Figura::Imagen { .. }))
         .map(|e| e.id);
-    let viejos: Vec<u64> = destino.visibles().map(|e| e.id).filter(|id| Some(*id) != la_foto).collect();
+    let viejos: Vec<u64> = destino
+        .visibles()
+        .map(|e| e.id)
+        .filter(|id| Some(*id) != la_foto)
+        .collect();
     for id in viejos {
         destino.borrar(id);
     }
@@ -204,7 +211,14 @@ pub fn cambiar_dibujo(
 }
 
 /// El lienzo nuevo, con la foto dentro y nada mas.
-fn crear(raiz: &Path, proyecto: &str, ruta: &Path, foto: &Path, medidas: (u32, u32), ahora: i64) -> io::Result<()> {
+fn crear(
+    raiz: &Path,
+    proyecto: &str,
+    ruta: &Path,
+    foto: &Path,
+    medidas: (u32, u32),
+    ahora: i64,
+) -> io::Result<()> {
     let bytes = std::fs::read(foto)?;
     let carpeta = almacen::carpeta(raiz, proyecto);
     let imagenes = carpeta.join("imagenes");
@@ -219,7 +233,12 @@ fn crear(raiz: &Path, proyecto: &str, ruta: &Path, foto: &Path, medidas: (u32, u
         t += 1;
     };
     std::fs::write(imagenes.join(&fichero), &bytes)?;
-    let texto = lienzo_con_foto(&fichero, tipo_de(&bytes, foto), medida_en_el_lienzo(medidas), ahora);
+    let texto = lienzo_con_foto(
+        &fichero,
+        tipo_de(&bytes, foto),
+        medida_en_el_lienzo(medidas),
+        ahora,
+    );
     if let Some(dir) = ruta.parent() {
         std::fs::create_dir_all(dir)?;
     }
@@ -269,7 +288,21 @@ fn tipo_de(bytes: &[u8], foto: &Path) -> &'static str {
         [0xFF, 0xD8, ..] => "image/jpeg",
         [0x89, b'P', b'N', b'G', ..] => "image/png",
         [b'G', b'I', b'F', b'8', ..] => "image/gif",
-        [b'R', b'I', b'F', b'F', _, _, _, _, b'W', b'E', b'B', b'P', ..] => "image/webp",
+        [
+            b'R',
+            b'I',
+            b'F',
+            b'F',
+            _,
+            _,
+            _,
+            _,
+            b'W',
+            b'E',
+            b'B',
+            b'P',
+            ..,
+        ] => "image/webp",
         [b'B', b'M', ..] => "image/bmp",
         _ => match foto
             .extension()
@@ -335,7 +368,11 @@ fn adoptar(ruta: &Path, foto: &Path, medidas: (u32, u32), ahora: i64) -> io::Res
 /// cuenta al reves de la que hace la burbuja del chat para ensenarlo. La
 /// foto del lienzo es la primera imagen (la que se puso al crearlo); sin
 /// ella, se deja tal cual.
-fn a_unidades_del_lienzo(del_lienzo: &[Elemento], dibujados: &[Elemento], (w, h): (u32, u32)) -> Vec<Elemento> {
+fn a_unidades_del_lienzo(
+    del_lienzo: &[Elemento],
+    dibujados: &[Elemento],
+    (w, h): (u32, u32),
+) -> Vec<Elemento> {
     let la_foto = del_lienzo
         .iter()
         .find(|e| !e.borrado && matches!(e.figura, Figura::Imagen { .. }));
@@ -354,17 +391,23 @@ fn a_unidades_del_lienzo(del_lienzo: &[Elemento], dibujados: &[Elemento], (w, h)
         })
         .collect();
     let s = sx.min(sy);
-    pixpin_motor2d::estirar_bloque::escalar_desde(&sueltos, Punto2::nuevo(0.0, 0.0), sx, sy, Punto2::nuevo(ox, oy))
-        .into_iter()
-        .zip(dibujados)
-        .map(|(mut e, original)| {
-            e.bloqueado = original.bloqueado;
-            // El grosor, con la misma escala: la raya se ve igual de gorda
-            // sobre la foto aqui y alli.
-            e.grosor *= s;
-            e
-        })
-        .collect()
+    pixpin_motor2d::estirar_bloque::escalar_desde(
+        &sueltos,
+        Punto2::nuevo(0.0, 0.0),
+        sx,
+        sy,
+        Punto2::nuevo(ox, oy),
+    )
+    .into_iter()
+    .zip(dibujados)
+    .map(|(mut e, original)| {
+        e.bloqueado = original.bloqueado;
+        // El grosor, con la misma escala: la raya se ve igual de gorda
+        // sobre la foto aqui y alli.
+        e.grosor *= s;
+        e
+    })
+    .collect()
 }
 
 /// Al lado y luego de un tiron: un corte a mitad no deja el lienzo roto.
@@ -392,7 +435,10 @@ mod pruebas {
     use crate::cuaderno::{Clase, Sello};
 
     fn raiz(etiqueta: &str) -> PathBuf {
-        let r = std::env::temp_dir().join(format!("pixpin-lienzo-foto-{etiqueta}-{}", std::process::id()));
+        let r = std::env::temp_dir().join(format!(
+            "pixpin-lienzo-foto-{etiqueta}-{}",
+            std::process::id()
+        ));
         let _ = std::fs::remove_dir_all(&r);
         std::fs::create_dir_all(almacen::carpeta(&r, "p1").join("archivos")).unwrap();
         r
@@ -427,7 +473,8 @@ mod pruebas {
     }
 
     fn json_del_lienzo(r: &Path, id: &str) -> serde_json::Value {
-        serde_json::from_str(&std::fs::read_to_string(almacen::lienzo(r, "p1", id)).unwrap()).unwrap()
+        serde_json::from_str(&std::fs::read_to_string(almacen::lienzo(r, "p1", id)).unwrap())
+            .unwrap()
     }
 
     fn raya(puntos: &[(f32, f32)], grosor: f32) -> Elemento {
@@ -474,7 +521,10 @@ mod pruebas {
         assert_eq!(e["type"], "image");
         assert_eq!(e["locked"], true);
         assert_eq!((e["x"].as_f64(), e["y"].as_f64()), (Some(0.0), Some(0.0)));
-        assert_eq!((e["width"].as_f64(), e["height"].as_f64()), (Some(2000.0), Some(1500.0)));
+        assert_eq!(
+            (e["width"].as_f64(), e["height"].as_f64()),
+            (Some(2000.0), Some(1500.0))
+        );
         let fichero = e["fileId"].as_str().unwrap();
         let f = &v["files"][fichero];
         assert_eq!(f["mimeType"], "image/jpeg");
@@ -486,7 +536,10 @@ mod pruebas {
         // Y el mensaje apunta a su lienzo, como el del movil.
         assert_eq!(cuaderno_de(&r)[0].referencia.as_deref(), Some("foto-m1"));
         // Lo lee el lector del PC.
-        let l = pixpin_motor2d::excalidraw::leer(&std::fs::read_to_string(almacen::lienzo(&r, "p1", "foto-m1")).unwrap()).unwrap();
+        let l = pixpin_motor2d::excalidraw::leer(
+            &std::fs::read_to_string(almacen::lienzo(&r, "p1", "foto-m1")).unwrap(),
+        )
+        .unwrap();
         assert!(matches!(l.elementos()[0].figura, Figura::Imagen { .. }));
         let _ = std::fs::remove_dir_all(&r);
     }
@@ -497,21 +550,41 @@ mod pruebas {
         let foto = poner_foto(&r, "foto.jpg");
         // Una raya en pixeles de una foto de 4000x3000: en el lienzo, a la mitad.
         let viejo = pixpin2d_de(&foto);
-        pixpin_motor2d::guardar(&viejo, &escena_con(vec![raya(&[(1000.0, 800.0), (3000.0, 2200.0)], 8.0)])).unwrap();
+        pixpin_motor2d::guardar(
+            &viejo,
+            &escena_con(vec![raya(&[(1000.0, 800.0), (3000.0, 2200.0)], 8.0)]),
+        )
+        .unwrap();
         let m = mensaje(&r, "m2", None);
         let h = asegurar(&r, "p1", &m, &foto, (4000, 3000), 1_790_000_000_600).unwrap();
         assert_eq!(h.adoptados, 1);
-        let l = pixpin_motor2d::excalidraw::leer(&std::fs::read_to_string(almacen::lienzo(&r, "p1", "foto-m2")).unwrap()).unwrap();
+        let l = pixpin_motor2d::excalidraw::leer(
+            &std::fs::read_to_string(almacen::lienzo(&r, "p1", "foto-m2")).unwrap(),
+        )
+        .unwrap();
         let els = l.elementos();
         assert_eq!(els.len(), 2, "la foto y la raya");
-        assert!(matches!(els[0].figura, Figura::Imagen { .. }), "la foto sigue debajo");
+        assert!(
+            matches!(els[0].figura, Figura::Imagen { .. }),
+            "la foto sigue debajo"
+        );
         let Figura::Lapiz { puntos, .. } = &els[1].figura else {
             panic!("la raya: {:?}", els[1].figura)
         };
         let (a, b) = (puntos.first().unwrap(), puntos.last().unwrap());
-        assert!((a.x - 500.0).abs() < 1.0 && (a.y - 400.0).abs() < 1.0, "{a:?}");
-        assert!((b.x - 1500.0).abs() < 1.0 && (b.y - 1100.0).abs() < 1.0, "{b:?}");
-        assert!((els[1].grosor - 4.0).abs() < 1e-3, "el grosor, a la misma escala: {}", els[1].grosor);
+        assert!(
+            (a.x - 500.0).abs() < 1.0 && (a.y - 400.0).abs() < 1.0,
+            "{a:?}"
+        );
+        assert!(
+            (b.x - 1500.0).abs() < 1.0 && (b.y - 1100.0).abs() < 1.0,
+            "{b:?}"
+        );
+        assert!(
+            (els[1].grosor - 4.0).abs() < 1e-3,
+            "el grosor, a la misma escala: {}",
+            els[1].grosor
+        );
         // El `.pixpin2d` no se borra: se aparta.
         assert!(!viejo.exists());
         let mut apartado = viejo.clone().into_os_string();
@@ -520,8 +593,14 @@ mod pruebas {
         // Caso negativo: la vez siguiente no vuelve a pasar nada ni se duplica.
         let m = cuaderno_de(&r).remove(0);
         let h2 = asegurar(&r, "p1", &m, &foto, (4000, 3000), 1_790_000_000_700).unwrap();
-        assert_eq!((h2.creado, h2.adoptados, h2.referencia_puesta), (false, 0, false));
-        let l = pixpin_motor2d::excalidraw::leer(&std::fs::read_to_string(almacen::lienzo(&r, "p1", "foto-m2")).unwrap()).unwrap();
+        assert_eq!(
+            (h2.creado, h2.adoptados, h2.referencia_puesta),
+            (false, 0, false)
+        );
+        let l = pixpin_motor2d::excalidraw::leer(
+            &std::fs::read_to_string(almacen::lienzo(&r, "p1", "foto-m2")).unwrap(),
+        )
+        .unwrap();
         assert_eq!(l.elementos().len(), 2);
         let _ = std::fs::remove_dir_all(&r);
     }
@@ -538,24 +617,50 @@ mod pruebas {
         borrada.borrado = true;
         let tinta = vec![raya(&[(2000.0, 100.0), (3800.0, 1000.0)], 6.0), borrada];
         let h = con_dibujo(&r, "p1", &m, &foto, (3840, 1080), &tinta, 11).unwrap();
-        assert_eq!((h.id.as_str(), h.creado, h.adoptados, h.referencia_puesta), ("foto-m7", true, 1, true));
-        let l = pixpin_motor2d::excalidraw::leer(&std::fs::read_to_string(almacen::lienzo(&r, "p1", "foto-m7")).unwrap()).unwrap();
+        assert_eq!(
+            (h.id.as_str(), h.creado, h.adoptados, h.referencia_puesta),
+            ("foto-m7", true, 1, true)
+        );
+        let l = pixpin_motor2d::excalidraw::leer(
+            &std::fs::read_to_string(almacen::lienzo(&r, "p1", "foto-m7")).unwrap(),
+        )
+        .unwrap();
         let els = l.elementos();
         assert_eq!(els.len(), 2, "la foto y la raya viva");
         assert!(matches!(els[0].figura, Figura::Imagen { .. }));
         assert!(els[0].bloqueado, "la foto, bloqueada debajo");
         assert_eq!((els[0].ancho, els[0].alto), (1920.0, 540.0));
         assert!(!els[1].bloqueado, "la tinta, editable");
-        let Figura::Lapiz { puntos, .. } = &els[1].figura else { panic!("{:?}", els[1].figura) };
+        let Figura::Lapiz { puntos, .. } = &els[1].figura else {
+            panic!("{:?}", els[1].figura)
+        };
         let (a, b) = (puntos.first().unwrap(), puntos.last().unwrap());
-        assert!((a.x - 1000.0).abs() < 1.0 && (a.y - 50.0).abs() < 1.0, "{a:?}");
-        assert!((b.x - 1900.0).abs() < 1.0 && (b.y - 500.0).abs() < 1.0, "{b:?}");
+        assert!(
+            (a.x - 1000.0).abs() < 1.0 && (a.y - 50.0).abs() < 1.0,
+            "{a:?}"
+        );
+        assert!(
+            (b.x - 1900.0).abs() < 1.0 && (b.y - 500.0).abs() < 1.0,
+            "{b:?}"
+        );
         assert!((els[1].grosor - 3.0).abs() < 1e-3);
         assert_eq!(cuaderno_de(&r)[0].referencia.as_deref(), Some("foto-m7"));
         // Caso negativo: si el lienzo ya estaba, no se le duplica la tinta.
-        let h2 = con_dibujo(&r, "p1", &cuaderno_de(&r)[0], &foto, (3840, 1080), &tinta, 12).unwrap();
+        let h2 = con_dibujo(
+            &r,
+            "p1",
+            &cuaderno_de(&r)[0],
+            &foto,
+            (3840, 1080),
+            &tinta,
+            12,
+        )
+        .unwrap();
         assert_eq!((h2.creado, h2.adoptados), (false, 0));
-        let l = pixpin_motor2d::excalidraw::leer(&std::fs::read_to_string(almacen::lienzo(&r, "p1", "foto-m7")).unwrap()).unwrap();
+        let l = pixpin_motor2d::excalidraw::leer(
+            &std::fs::read_to_string(almacen::lienzo(&r, "p1", "foto-m7")).unwrap(),
+        )
+        .unwrap();
         assert_eq!(l.elementos().len(), 2);
         let _ = std::fs::remove_dir_all(&r);
     }
@@ -571,22 +676,50 @@ mod pruebas {
         let mut ahora = primera.clone();
         ahora.push(raya(&[(300.0, 300.0), (400.0, 350.0)], 4.0));
         ahora.push(raya(&[(10.0, 900.0), (900.0, 10.0)], 4.0));
-        assert_eq!(cambiar_dibujo(&r, "p1", "foto-m9", (1920, 1080), &ahora).unwrap(), 3);
-        let l = pixpin_motor2d::excalidraw::leer(&std::fs::read_to_string(almacen::lienzo(&r, "p1", "foto-m9")).unwrap()).unwrap();
+        assert_eq!(
+            cambiar_dibujo(&r, "p1", "foto-m9", (1920, 1080), &ahora).unwrap(),
+            3
+        );
+        let l = pixpin_motor2d::excalidraw::leer(
+            &std::fs::read_to_string(almacen::lienzo(&r, "p1", "foto-m9")).unwrap(),
+        )
+        .unwrap();
         let els = l.elementos();
-        assert_eq!(els.len(), 4, "la foto y las tres rayas, sin duplicar la primera");
+        assert_eq!(
+            els.len(),
+            4,
+            "la foto y las tres rayas, sin duplicar la primera"
+        );
         assert!(matches!(els[0].figura, Figura::Imagen { .. }) && els[0].bloqueado);
-        assert!(els[1..].iter().all(|e| !e.bloqueado && matches!(e.figura, Figura::Lapiz { .. })));
+        assert!(
+            els[1..]
+                .iter()
+                .all(|e| !e.bloqueado && matches!(e.figura, Figura::Lapiz { .. }))
+        );
         // Lo de antes queda en el fichero marcado como borrado (para el movil).
         let json = json_del_lienzo(&r, "foto-m9");
-        let borrados = json["elements"].as_array().unwrap().iter().filter(|e| e["isDeleted"] == true).count();
+        let borrados = json["elements"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|e| e["isDeleted"] == true)
+            .count();
         assert_eq!(borrados, 1);
         // Y la foto es la misma de antes: mismo fichero.
-        assert_eq!(json["elements"][0]["fileId"], json_del_lienzo(&r, "foto-m9")["elements"][0]["fileId"]);
+        assert_eq!(
+            json["elements"][0]["fileId"],
+            json_del_lienzo(&r, "foto-m9")["elements"][0]["fileId"]
+        );
         assert_eq!(json["files"].as_object().unwrap().len(), 1);
         // Limpiar todo y salir deja la foto sola.
-        assert_eq!(cambiar_dibujo(&r, "p1", "foto-m9", (1920, 1080), &[]).unwrap(), 0);
-        let l = pixpin_motor2d::excalidraw::leer(&std::fs::read_to_string(almacen::lienzo(&r, "p1", "foto-m9")).unwrap()).unwrap();
+        assert_eq!(
+            cambiar_dibujo(&r, "p1", "foto-m9", (1920, 1080), &[]).unwrap(),
+            0
+        );
+        let l = pixpin_motor2d::excalidraw::leer(
+            &std::fs::read_to_string(almacen::lienzo(&r, "p1", "foto-m9")).unwrap(),
+        )
+        .unwrap();
         assert_eq!(l.elementos().len(), 1);
         // Un solo mensaje en el cuaderno: poner al dia no manda otro.
         assert_eq!(cuaderno_de(&r).len(), 1);
@@ -609,7 +742,13 @@ mod pruebas {
         let m = mensaje(&r, "m8", None);
         let h = con_dibujo(&r, "p1", &m, &foto, (1920, 1080), &[], 13).unwrap();
         assert_eq!((h.creado, h.adoptados), (true, 0));
-        assert_eq!(json_del_lienzo(&r, "foto-m8")["elements"].as_array().unwrap().len(), 1);
+        assert_eq!(
+            json_del_lienzo(&r, "foto-m8")["elements"]
+                .as_array()
+                .unwrap()
+                .len(),
+            1
+        );
         let _ = std::fs::remove_dir_all(&r);
     }
 
@@ -622,25 +761,38 @@ mod pruebas {
         std::fs::write(almacen::lienzo(&r, "p1", "foto-m3"), del_movil).unwrap();
         let m = mensaje(&r, "m3", None);
         let h = asegurar(&r, "p1", &m, &foto, (3200, 2400), 5).unwrap();
-        assert_eq!((h.id.as_str(), h.creado, h.adoptados), ("foto-m3", false, 0));
+        assert_eq!(
+            (h.id.as_str(), h.creado, h.adoptados),
+            ("foto-m3", false, 0)
+        );
         assert_eq!(
             std::fs::read_to_string(almacen::lienzo(&r, "p1", "foto-m3")).unwrap(),
             del_movil,
             "sin nada que pasar, el lienzo del movil no cambia ni un byte"
         );
-        assert!(!almacen::carpeta(&r, "p1").join("imagenes").exists(), "ni se copia la foto");
+        assert!(
+            !almacen::carpeta(&r, "p1").join("imagenes").exists(),
+            "ni se copia la foto"
+        );
         // La referencia se apunta igual, como hace el movil al abrirla.
         assert!(h.referencia_puesta);
         assert_eq!(cuaderno_de(&r)[0].referencia.as_deref(), Some("foto-m3"));
         // Y con un `.pixpin2d` viejo, lo suyo va encima de lo del movil, a la
         // escala de SU foto (1600 de 3200: la mitad).
-        pixpin_motor2d::guardar(&pixpin2d_de(&foto), &escena_con(vec![raya(&[(200.0, 200.0), (400.0, 600.0)], 2.0)])).unwrap();
+        pixpin_motor2d::guardar(
+            &pixpin2d_de(&foto),
+            &escena_con(vec![raya(&[(200.0, 200.0), (400.0, 600.0)], 2.0)]),
+        )
+        .unwrap();
         let h = asegurar(&r, "p1", &cuaderno_de(&r)[0], &foto, (3200, 2400), 6).unwrap();
         assert_eq!((h.creado, h.adoptados), (false, 1));
         let v = json_del_lienzo(&r, "foto-m3");
         assert_eq!(v["elements"].as_array().unwrap().len(), 2);
         assert_eq!(v["elements"][0]["fileId"], "AbC");
-        assert_eq!(v["backgroundColor"], "#14213d", "el papel del movil se queda");
+        assert_eq!(
+            v["backgroundColor"], "#14213d",
+            "el papel del movil se queda"
+        );
         let _ = std::fs::remove_dir_all(&r);
     }
 
@@ -649,9 +801,13 @@ mod pruebas {
         let r = raiz("referencia");
         let foto = poner_foto(&r, "foto.png");
         let m = mensaje(&r, "m4", Some("dib-antiguo"));
-        let antes = std::fs::read_to_string(almacen::carpeta(&r, "p1").join("guardados.jsonl")).unwrap();
+        let antes =
+            std::fs::read_to_string(almacen::carpeta(&r, "p1").join("guardados.jsonl")).unwrap();
         let h = asegurar(&r, "p1", &m, &foto, (800, 600), 7).unwrap();
-        assert_eq!((h.id.as_str(), h.creado, h.referencia_puesta), ("dib-antiguo", true, false));
+        assert_eq!(
+            (h.id.as_str(), h.creado, h.referencia_puesta),
+            ("dib-antiguo", true, false)
+        );
         assert!(almacen::lienzo(&r, "p1", "dib-antiguo").is_file());
         assert!(!almacen::lienzo(&r, "p1", "foto-m4").exists());
         assert_eq!(
@@ -667,7 +823,9 @@ mod pruebas {
         // Caso negativo: la foto no llego (se borro o sigue en el movil).
         let r = raiz("sinfoto");
         let m = mensaje(&r, "m5", None);
-        let falta = almacen::carpeta(&r, "p1").join("archivos").join("no-esta.jpg");
+        let falta = almacen::carpeta(&r, "p1")
+            .join("archivos")
+            .join("no-esta.jpg");
         assert!(asegurar(&r, "p1", &m, &falta, (800, 600), 8).is_err());
         assert!(!almacen::lienzo(&r, "p1", "foto-m5").exists());
         assert_eq!(cuaderno_de(&r)[0].referencia, None);
@@ -683,13 +841,23 @@ mod pruebas {
         let m = mensaje(&r, "m6", None);
         let h = asegurar(&r, "p1", &m, &foto, (800, 600), 9).unwrap();
         assert_eq!((h.creado, h.adoptados), (true, 0));
-        assert_eq!(std::fs::read_to_string(&viejo).unwrap(), "{no es json", "no se pierde");
+        assert_eq!(
+            std::fs::read_to_string(&viejo).unwrap(),
+            "{no es json",
+            "no se pierde"
+        );
         // Uno sin nada visible (todo borrado) se aparta y el lienzo sigue con la foto sola.
         pixpin_motor2d::guardar(&viejo, &pixpin_motor2d::Escena::nueva()).unwrap();
         let h = asegurar(&r, "p1", &cuaderno_de(&r)[0], &foto, (800, 600), 10).unwrap();
         assert_eq!(h.adoptados, 0);
         assert!(!viejo.exists());
-        assert_eq!(json_del_lienzo(&r, "foto-m6")["elements"].as_array().unwrap().len(), 1);
+        assert_eq!(
+            json_del_lienzo(&r, "foto-m6")["elements"]
+                .as_array()
+                .unwrap()
+                .len(),
+            1
+        );
         let _ = std::fs::remove_dir_all(&r);
     }
 
@@ -698,7 +866,10 @@ mod pruebas {
         let p = Path::new("x.jpg");
         assert_eq!(tipo_de(&[0x89, b'P', b'N', b'G', 0], p), "image/png");
         assert_eq!(tipo_de(b"RIFF\0\0\0\0WEBPVP8", p), "image/webp");
-        assert_eq!(tipo_de(&[0xFF, 0xD8, 0xFF], Path::new("x.png")), "image/jpeg");
+        assert_eq!(
+            tipo_de(&[0xFF, 0xD8, 0xFF], Path::new("x.png")),
+            "image/jpeg"
+        );
         // Caso negativo: bytes que no se reconocen, manda la extension.
         assert_eq!(tipo_de(b"????", Path::new("x.PNG")), "image/png");
         assert_eq!(tipo_de(b"????", Path::new("x")), "image/jpeg");

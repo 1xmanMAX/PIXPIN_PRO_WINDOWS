@@ -50,20 +50,47 @@ pub(super) fn tipos(medios: &[Medio], comentarios: bool) -> String {
         let ext = m.formato.extension();
         if !vistas.contains(&ext) {
             vistas.push(ext);
-            s.push_str(&format!(r#"<Default Extension="{ext}" ContentType="{}"/>"#, m.formato.mime()));
+            s.push_str(&format!(
+                r#"<Default Extension="{ext}" ContentType="{}"/>"#,
+                m.formato.mime()
+            ));
         }
     }
     let mut partes = vec![
-        ("/word/document.xml", "application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"),
-        ("/word/styles.xml", "application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"),
-        ("/word/numbering.xml", "application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml"),
-        ("/word/settings.xml", "application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml"),
-        ("/word/fontTable.xml", "application/vnd.openxmlformats-officedocument.wordprocessingml.fontTable+xml"),
-        ("/docProps/core.xml", "application/vnd.openxmlformats-package.core-properties+xml"),
-        ("/docProps/app.xml", "application/vnd.openxmlformats-officedocument.extended-properties+xml"),
+        (
+            "/word/document.xml",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml",
+        ),
+        (
+            "/word/styles.xml",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml",
+        ),
+        (
+            "/word/numbering.xml",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml",
+        ),
+        (
+            "/word/settings.xml",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml",
+        ),
+        (
+            "/word/fontTable.xml",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.fontTable+xml",
+        ),
+        (
+            "/docProps/core.xml",
+            "application/vnd.openxmlformats-package.core-properties+xml",
+        ),
+        (
+            "/docProps/app.xml",
+            "application/vnd.openxmlformats-officedocument.extended-properties+xml",
+        ),
     ];
     if comentarios {
-        partes.push(("/word/comments.xml", "application/vnd.openxmlformats-officedocument.wordprocessingml.comments+xml"));
+        partes.push((
+            "/word/comments.xml",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.comments+xml",
+        ));
         partes.push((
             "/word/commentsExtended.xml",
             "application/vnd.openxmlformats-officedocument.wordprocessingml.commentsExtended+xml",
@@ -85,7 +112,11 @@ pub(super) const RELS_RAIZ: &str = concat!(
     "</Relationships>"
 );
 
-pub(super) fn rels_documento(medios: &[Medio], enlaces: &[(String, String)], comentarios: bool) -> String {
+pub(super) fn rels_documento(
+    medios: &[Medio],
+    enlaces: &[(String, String)],
+    comentarios: bool,
+) -> String {
     let mut s = format!(r#"{CABECERA}<Relationships xmlns="{RELS}">"#);
     let mut fijas = vec![
         ("rId1", "styles", "styles.xml"),
@@ -97,7 +128,9 @@ pub(super) fn rels_documento(medios: &[Medio], enlaces: &[(String, String)], com
         fijas.push(("rId5", "comments", "comments.xml"));
     }
     for (id, tipo, destino) in fijas {
-        s.push_str(&format!(r#"<Relationship Id="{id}" Type="{R}/{tipo}" Target="{destino}"/>"#));
+        s.push_str(&format!(
+            r#"<Relationship Id="{id}" Type="{R}/{tipo}" Target="{destino}"/>"#
+        ));
     }
     if comentarios {
         s.push_str(r#"<Relationship Id="rId6" Type="http://schemas.microsoft.com/office/2011/relationships/commentsExtended" Target="commentsExtended.xml"/>"#);
@@ -146,7 +179,11 @@ pub(super) fn fecha(ms: i64) -> String {
 }
 
 pub(super) fn core(titulo: &str, autor: &str, ms: i64) -> String {
-    let autor = if autor.trim().is_empty() { "PixPin" } else { autor.trim() };
+    let autor = if autor.trim().is_empty() {
+        "PixPin"
+    } else {
+        autor.trim()
+    };
     let f = fecha(ms);
     format!(
         concat!(
@@ -208,7 +245,14 @@ pub(super) fn sustituta(nombre: &str) -> (Option<&'static str>, &'static str, &'
 /// `word/fontTable.xml`: cada letra usada con su sustituta.
 pub(super) fn letras(l: &Letra) -> String {
     let mut s = format!(r#"{CABECERA}<w:fonts xmlns:w="{W}">"#);
-    let nombres: Vec<&str> = vec![l.cuerpo.as_str(), l.titulos.as_str(), CODIGO, "Cambria Math", "Segoe UI Symbol", "Arial"];
+    let nombres: Vec<&str> = vec![
+        l.cuerpo.as_str(),
+        l.titulos.as_str(),
+        CODIGO,
+        "Cambria Math",
+        "Segoe UI Symbol",
+        "Arial",
+    ];
     let mut vistas: Vec<&str> = Vec::new();
     for n in nombres {
         if vistas.contains(&n) {
@@ -223,7 +267,11 @@ pub(super) fn letras(l: &Letra) -> String {
         if !panose.is_empty() {
             s.push_str(&format!(r#"<w:panose1 w:val="{panose}"/>"#));
         }
-        let paso = if familia == "modern" { "fixed" } else { "variable" };
+        let paso = if familia == "modern" {
+            "fixed"
+        } else {
+            "variable"
+        };
         s.push_str(&format!(r#"<w:charset w:val="00"/><w:family w:val="{familia}"/><w:pitch w:val="{paso}"/></w:font>"#));
     }
     s.push_str("</w:fonts>");
@@ -303,7 +351,9 @@ pub(super) fn estilos(l: &Letra) -> String {
 pub(super) fn numeracion(rachas: &[u32]) -> String {
     let mut s = format!(r#"{CABECERA}<w:numbering xmlns:w="{W}">"#);
     let vinetas = ["\u{2022}", "\u{25E6}", "\u{25AA}"];
-    s.push_str(r#"<w:abstractNum w:abstractNumId="0"><w:multiLevelType w:val="hybridMultilevel"/>"#);
+    s.push_str(
+        r#"<w:abstractNum w:abstractNumId="0"><w:multiLevelType w:val="hybridMultilevel"/>"#,
+    );
     for i in 0..9u32 {
         s.push_str(&format!(
             r#"<w:lvl w:ilvl="{i}"><w:start w:val="1"/><w:numFmt w:val="bullet"/><w:lvlText w:val="{}"/><w:lvlJc w:val="left"/><w:pPr><w:ind w:left="{}" w:hanging="360"/></w:pPr><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:cs="Arial" w:hint="default"/></w:rPr></w:lvl>"#,
@@ -313,7 +363,9 @@ pub(super) fn numeracion(rachas: &[u32]) -> String {
     }
     s.push_str("</w:abstractNum>");
     let formatos = ["decimal", "lowerLetter", "lowerRoman"];
-    s.push_str(r#"<w:abstractNum w:abstractNumId="1"><w:multiLevelType w:val="hybridMultilevel"/>"#);
+    s.push_str(
+        r#"<w:abstractNum w:abstractNumId="1"><w:multiLevelType w:val="hybridMultilevel"/>"#,
+    );
     for i in 0..9u32 {
         s.push_str(&format!(
             r#"<w:lvl w:ilvl="{i}"><w:start w:val="1"/><w:numFmt w:val="{}"/><w:lvlText w:val="%{}."/><w:lvlJc w:val="left"/><w:pPr><w:ind w:left="{}" w:hanging="360"/></w:pPr></w:lvl>"#,
@@ -327,10 +379,15 @@ pub(super) fn numeracion(rachas: &[u32]) -> String {
     for (k, inicio) in rachas.iter().enumerate() {
         // Cada racha se reinicia (si no, Word seguiria contando desde la
         // anterior con el mismo `abstractNum`).
-        s.push_str(&format!(r#"<w:num w:numId="{}"><w:abstractNumId w:val="1"/>"#, k + 2));
+        s.push_str(&format!(
+            r#"<w:num w:numId="{}"><w:abstractNumId w:val="1"/>"#,
+            k + 2
+        ));
         for i in 0..9 {
             let v = if i == 0 { *inicio } else { 1 };
-            s.push_str(&format!(r#"<w:lvlOverride w:ilvl="{i}"><w:startOverride w:val="{v}"/></w:lvlOverride>"#));
+            s.push_str(&format!(
+                r#"<w:lvlOverride w:ilvl="{i}"><w:startOverride w:val="{v}"/></w:lvlOverride>"#
+            ));
         }
         s.push_str("</w:num>");
     }
@@ -343,7 +400,11 @@ pub(super) fn numeracion(rachas: &[u32]) -> String {
 
 /// Las iniciales de un nombre («PC de Max» → «PdM»), hasta tres.
 fn iniciales(n: &str) -> String {
-    let i: String = n.split_whitespace().filter_map(|p| p.chars().next()).take(3).collect();
+    let i: String = n
+        .split_whitespace()
+        .filter_map(|p| p.chars().next())
+        .take(3)
+        .collect();
     if i.is_empty() { "P".into() } else { i }
 }
 
@@ -356,10 +417,18 @@ fn para_id(id: usize) -> String {
 
 /// `word/comments.xml` y `word/commentsExtended.xml`.
 pub(super) fn comentarios(hilos: &[ComentarioW]) -> (String, String) {
-    let mut c = format!(r#"{CABECERA}<w:comments xmlns:w="{W}" xmlns:w14="{W14}" xmlns:mc="{MC}" mc:Ignorable="w14">"#);
-    let mut ex = format!(r#"{CABECERA}<w15:commentsEx xmlns:w15="{W15}" xmlns:mc="{MC}" mc:Ignorable="w15">"#);
+    let mut c = format!(
+        r#"{CABECERA}<w:comments xmlns:w="{W}" xmlns:w14="{W14}" xmlns:mc="{MC}" mc:Ignorable="w14">"#
+    );
+    let mut ex = format!(
+        r#"{CABECERA}<w15:commentsEx xmlns:w15="{W15}" xmlns:mc="{MC}" mc:Ignorable="w15">"#
+    );
     for h in hilos {
-        let autor = if h.autor.trim().is_empty() { "PixPin" } else { h.autor.trim() };
+        let autor = if h.autor.trim().is_empty() {
+            "PixPin"
+        } else {
+            h.autor.trim()
+        };
         c.push_str(&format!(
             r#"<w:comment w:id="{}" w:author="{}" w:date="{}" w:initials="{}">"#,
             h.id,
@@ -367,10 +436,18 @@ pub(super) fn comentarios(hilos: &[ComentarioW]) -> (String, String) {
             fecha(h.cuando.max(0)),
             esc(&iniciales(autor))
         ));
-        let renglones: Vec<&str> = h.texto.split('\n').map(|r| r.trim_end_matches('\r')).collect();
+        let renglones: Vec<&str> = h
+            .texto
+            .split('\n')
+            .map(|r| r.trim_end_matches('\r'))
+            .collect();
         let ultimo = renglones.len() - 1;
         for (i, r) in renglones.iter().enumerate() {
-            let pid = if i == ultimo { para_id(h.id) } else { format!("{:08X}", 0x2000_0000 + (h.id as u32) * 64 + i as u32 % 64) };
+            let pid = if i == ultimo {
+                para_id(h.id)
+            } else {
+                format!("{:08X}", 0x2000_0000 + (h.id as u32) * 64 + i as u32 % 64)
+            };
             c.push_str(&format!(
                 r#"<w:p w14:paraId="{pid}" w14:textId="77777777"><w:pPr><w:pStyle w:val="CommentText"/></w:pPr>"#
             ));
@@ -378,7 +455,10 @@ pub(super) fn comentarios(hilos: &[ComentarioW]) -> (String, String) {
                 c.push_str(r#"<w:r><w:rPr><w:rStyle w:val="CommentReference"/></w:rPr><w:annotationRef/></w:r>"#);
             }
             if !r.is_empty() {
-                c.push_str(&format!(r#"<w:r><w:t xml:space="preserve">{}</w:t></w:r>"#, esc(r)));
+                c.push_str(&format!(
+                    r#"<w:r><w:t xml:space="preserve">{}</w:t></w:r>"#,
+                    esc(r)
+                ));
             }
             c.push_str("</w:p>");
         }

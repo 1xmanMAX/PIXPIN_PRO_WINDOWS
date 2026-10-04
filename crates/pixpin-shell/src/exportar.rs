@@ -409,7 +409,10 @@ pub struct EntradaMenu {
 /// y el de Windows ya sabe de teclado, de accesibilidad y de bordes de
 /// pantalla.
 pub fn menu_emergente(propietaria: HWND, x: i32, y: i32, entradas: &[EntradaMenu]) -> Option<u32> {
-    let textos: Vec<HSTRING> = entradas.iter().map(|e| HSTRING::from(e.texto.as_str())).collect();
+    let textos: Vec<HSTRING> = entradas
+        .iter()
+        .map(|e| HSTRING::from(e.texto.as_str()))
+        .collect();
     // SAFETY: menu propio que se destruye antes de salir; las cadenas viven
     // durante la llamada. Se suelta la captura del raton (la cogio el boton
     // derecho) porque con ella puesta el menu no recibe los clics.

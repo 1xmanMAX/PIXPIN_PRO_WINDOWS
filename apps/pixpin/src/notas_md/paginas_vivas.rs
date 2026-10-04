@@ -83,7 +83,11 @@ pub(super) fn mensajes_de(raiz: &Path, f: &Ficha) -> Vec<Mensaje> {
     let mut v = Cuaderno::leer_de(&almacen::carpeta(raiz, &f.id))
         .map(|c| c.mensajes)
         .unwrap_or_default();
-    v.extend(almacen::hojas_para_ensenar(raiz, &f.id, f.aparato.as_deref().unwrap_or_default()));
+    v.extend(almacen::hojas_para_ensenar(
+        raiz,
+        &f.id,
+        f.aparato.as_deref().unwrap_or_default(),
+    ));
     v.retain(|m| !m.en_buzon);
     v
 }
@@ -93,7 +97,9 @@ fn se_pinta(m: &Mensaje) -> bool {
     match m.clase {
         // Con algo que pintar: una hoja sin dibujo ni pagina no es nada.
         Some(Clase::Dibujo) => m.referencia.as_deref().is_some_and(|r| !r.is_empty()),
-        Some(Clase::Pagina) => m.pagina.is_some() || m.referencia.as_deref().is_some_and(|r| !r.is_empty()),
+        Some(Clase::Pagina) => {
+            m.pagina.is_some() || m.referencia.as_deref().is_some_and(|r| !r.is_empty())
+        }
         Some(Clase::Imagen) => true,
         Some(Clase::MiniApp) => m.miniapp.as_deref() == Some(pixpin_proyecto::tabla::MINIAPP),
         Some(Clase::Nota) => m.miniapp.is_none(),
@@ -168,7 +174,12 @@ pub(super) fn codigo_de_proyecto(f: &Ficha) -> String {
 pub(super) fn ficha_de(indice: &Indice, proyecto: &str) -> Option<Ficha> {
     indice
         .buscar(proyecto)
-        .or_else(|| indice.proyectos.iter().find(|f| codigo_de_proyecto(f) == proyecto))
+        .or_else(|| {
+            indice
+                .proyectos
+                .iter()
+                .find(|f| codigo_de_proyecto(f) == proyecto)
+        })
         .cloned()
 }
 
@@ -252,7 +263,11 @@ pub fn insertar(raiz: &Path, destino: &Destino, clave: &str, como_enlace: bool) 
     let h = buscar(raiz, Some(proyecto), codigo)?;
     if como_enlace {
         let f = ficha_de(&Indice::leer(raiz), &h.proyecto)?;
-        return Some(md_imagen::enlace_a_hoja(&h.nombre, &codigo_de_proyecto(&f), &h.codigo));
+        return Some(md_imagen::enlace_a_hoja(
+            &h.nombre,
+            &codigo_de_proyecto(&f),
+            &h.codigo,
+        ));
     }
     renglon_vivo(raiz, destino, &h)
 }
@@ -328,7 +343,13 @@ pub fn pintar(raiz: &Path, h: &HojaDeProyecto, t: &Catalogo) -> Result<ImagenRgb
     )?;
     let clave = match p.piezas.iter().find(|x| x.pagina.clave == h.mensaje.id) {
         Some(x) => x.pagina.clave.clone(),
-        None => p.piezas.first().context("la hoja no tiene nada que pintar")?.pagina.clave.clone(),
+        None => p
+            .piezas
+            .first()
+            .context("la hoja no tiene nada que pintar")?
+            .pagina
+            .clave
+            .clone(),
     };
     if let Some(papel) = papel_del_lienzo(raiz, h) {
         for x in p.piezas.iter_mut().filter(|x| x.pagina.clave == clave) {
@@ -337,14 +358,21 @@ pub fn pintar(raiz: &Path, h: &HojaDeProyecto, t: &Catalogo) -> Result<ImagenRgb
             x.hoja.ordenes = crate::dibujo::tema::ordenes_como_en_el_lienzo(ordenes, papel);
         }
     }
-    let carpeta = std::env::temp_dir().join("PixPin").join("vivas").join(format!(
-        "{}-{}",
-        std::process::id(),
-        SystemTime::now()
-            .duration_since(SystemTime::UNIX_EPOCH)
-            .map_or(0, |d| d.as_nanos())
-    ));
-    let fondo = p.piezas.iter().find(|x| x.pagina.clave == clave).map(|x| x.fondo);
+    let carpeta = std::env::temp_dir()
+        .join("PixPin")
+        .join("vivas")
+        .join(format!(
+            "{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(SystemTime::UNIX_EPOCH)
+                .map_or(0, |d| d.as_nanos())
+        ));
+    let fondo = p
+        .piezas
+        .iter()
+        .find(|x| x.pagina.clave == clave)
+        .map(|x| x.fondo);
     let salida = compartir::generar(&p, compartir::PNG, &[clave], &carpeta);
     let _ = std::fs::remove_dir_all(&carpeta);
     let img = salida?.imagen.context("sin imagen")?;
@@ -375,7 +403,8 @@ fn con_margen(img: ImagenRgba, papel: pixpin_motor2d::ColorRgba) -> ImagenRgba {
     for y in 0..img.alto {
         let o = ((y * img.ancho) * 4) as usize;
         let d = (((y + m) * an + m) * 4) as usize;
-        px[d..d + (img.ancho * 4) as usize].copy_from_slice(&img.pixeles[o..o + (img.ancho * 4) as usize]);
+        px[d..d + (img.ancho * 4) as usize]
+            .copy_from_slice(&img.pixeles[o..o + (img.ancho * 4) as usize]);
     }
     ImagenRgba {
         ancho: an,
@@ -405,7 +434,8 @@ pub fn escribir_png(destino: &Path, img: &ImagenRgba) -> Result<()> {
     tmp.push(".tmp");
     let tmp = PathBuf::from(tmp);
     std::fs::write(&tmp, png)?;
-    std::fs::rename(&tmp, destino).with_context(|| format!("no se pudo poner {}", destino.display()))?;
+    std::fs::rename(&tmp, destino)
+        .with_context(|| format!("no se pudo poner {}", destino.display()))?;
     Ok(())
 }
 
@@ -457,21 +487,28 @@ impl Vigia {
         let hechas = std::mem::take(&mut c.hechas);
         if !c.trabajando && !rutas.is_empty() {
             c.trabajando = true;
-            let (raiz, destino, rutas, comun, idioma) =
-                (self.raiz.clone(), destino.clone(), rutas.to_vec(), self.comun.clone(), self.idioma);
-            let lanzado = std::thread::Builder::new().name("paginas-vivas".into()).spawn(move || {
-                let _com = pixpin_shell::ComDelHilo::iniciar();
-                let t = Catalogo::nuevo(idioma);
-                for r in &rutas {
-                    let cambio = renovar(&raiz, &destino, r, &t, &comun);
-                    if let (Some(v), Ok(mut c)) = (cambio, comun.lock()) {
-                        c.hechas.push((r.clone(), v));
+            let (raiz, destino, rutas, comun, idioma) = (
+                self.raiz.clone(),
+                destino.clone(),
+                rutas.to_vec(),
+                self.comun.clone(),
+                self.idioma,
+            );
+            let lanzado = std::thread::Builder::new()
+                .name("paginas-vivas".into())
+                .spawn(move || {
+                    let _com = pixpin_shell::ComDelHilo::iniciar();
+                    let t = Catalogo::nuevo(idioma);
+                    for r in &rutas {
+                        let cambio = renovar(&raiz, &destino, r, &t, &comun);
+                        if let (Some(v), Ok(mut c)) = (cambio, comun.lock()) {
+                            c.hechas.push((r.clone(), v));
+                        }
                     }
-                }
-                if let Ok(mut c) = comun.lock() {
-                    c.trabajando = false;
-                }
-            });
+                    if let Ok(mut c) = comun.lock() {
+                        c.trabajando = false;
+                    }
+                });
             if lanzado.is_err() {
                 c.trabajando = false;
             }
@@ -492,7 +529,13 @@ impl Vigia {
 }
 
 /// Mira una pagina viva y la repinta si hace falta. Dice lo que cambio.
-fn renovar(raiz: &Path, destino: &Destino, ruta: &str, t: &Catalogo, comun: &Mutex<Comun>) -> Option<Viva> {
+fn renovar(
+    raiz: &Path,
+    destino: &Destino,
+    ruta: &str,
+    t: &Catalogo,
+    comun: &Mutex<Comun>,
+) -> Option<Viva> {
     let codigo = md_imagen::hoja_de_viva(ruta)?;
     let png = adjuntos::resolver(raiz, destino, ruta).or_else(|| {
         adjuntos::sitio(raiz, destino, &md_imagen::fichero_de_viva(&codigo))
@@ -500,10 +543,16 @@ fn renovar(raiz: &Path, destino: &Destino, ruta: &str, t: &Catalogo, comun: &Mut
             .map(|(p, _)| p)
     })?;
     let Some(h) = buscar(raiz, proyecto_de(destino), &codigo) else {
-        let nueva = comun.lock().map(|mut c| c.sin_hoja.insert(ruta.to_string())).unwrap_or(false);
+        let nueva = comun
+            .lock()
+            .map(|mut c| c.sin_hoja.insert(ruta.to_string()))
+            .unwrap_or(false);
         return nueva.then_some(Viva::SinHoja);
     };
-    let volvio = comun.lock().map(|mut c| c.sin_hoja.remove(ruta)).unwrap_or(false);
+    let volvio = comun
+        .lock()
+        .map(|mut c| c.sin_hoja.remove(ruta))
+        .unwrap_or(false);
     let hoja = fecha_de_la_hoja(raiz, &h);
     let suya = fecha(&png);
     let vieja = match (hoja, suya) {
@@ -514,7 +563,10 @@ fn renovar(raiz: &Path, destino: &Destino, ruta: &str, t: &Catalogo, comun: &Mut
     let mut hace_falta = vieja;
     if vieja && suya.is_some() && de_texto(&h.mensaje) {
         // El cuaderno cambio, pero quiza por otro mensaje.
-        let antes = comun.lock().ok().and_then(|c| c.huellas.get(&codigo).copied());
+        let antes = comun
+            .lock()
+            .ok()
+            .and_then(|c| c.huellas.get(&codigo).copied());
         hace_falta = antes != Some(huella(&h.mensaje));
     }
     if !hace_falta {
@@ -549,18 +601,25 @@ pub fn poner_opciones_del_lienzo(o: crate::ventana_chat::OpcionesLienzo) {
 }
 
 pub(super) fn opciones_del_lienzo() -> crate::ventana_chat::OpcionesLienzo {
-    OPCIONES.lock().ok().and_then(|g| *g).unwrap_or(crate::ventana_chat::OpcionesLienzo {
-        enganche: Default::default(),
-        nivel: pixpin_nivel::Nivel::Ligero,
-        medir_fotogramas: false,
-    })
+    OPCIONES
+        .lock()
+        .ok()
+        .and_then(|g| *g)
+        .unwrap_or(crate::ventana_chat::OpcionesLienzo {
+            enganche: Default::default(),
+            nivel: pixpin_nivel::Nivel::Ligero,
+            medir_fotogramas: false,
+        })
 }
 
 /// Que se hace al abrir algo desde una nota.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Apertura {
     /// La hoja, en su editor.
-    Hoja { proyecto: String, codigo: String },
+    Hoja {
+        proyecto: String,
+        codigo: String,
+    },
     /// Un fichero de este equipo (una foto; una pagina viva sin hoja: su
     /// ultima copia), con lo de Windows.
     Fichero(PathBuf),
@@ -618,26 +677,35 @@ pub fn abrir(idioma: pixpin_store::Idioma, ubicacion: &Ubicacion, destino: &Dest
                 Some(Clase::Nota) => super::abrir(
                     idioma,
                     ubicacion.clone(),
-                    Destino::Mensaje {
-                        proyecto,
-                        codigo,
-                    },
+                    Destino::Mensaje { proyecto, codigo },
                 ),
                 Some(Clase::Dibujo) | Some(Clase::Pagina) => {
                     // La referencia del dibujo, o el codigo de una pagina
                     // que aun no lo tiene (`abrir_hoja` sabe de las dos).
-                    let referencia = m.referencia.clone().filter(|r| !r.is_empty()).unwrap_or(codigo);
+                    let referencia = m
+                        .referencia
+                        .clone()
+                        .filter(|r| !r.is_empty())
+                        .unwrap_or(codigo);
                     let opciones = opciones_del_lienzo();
-                    let lanzado = std::thread::Builder::new().name("lienzo-desde-nota".into()).spawn(move || {
-                        let _com = pixpin_shell::ComDelHilo::iniciar();
-                        crate::abrir_hoja::abrir_hoja(&raiz, &proyecto, &referencia, opciones);
-                        crate::ventana_chat::refrescar();
-                    });
+                    let lanzado = std::thread::Builder::new()
+                        .name("lienzo-desde-nota".into())
+                        .spawn(move || {
+                            let _com = pixpin_shell::ComDelHilo::iniciar();
+                            crate::abrir_hoja::abrir_hoja(&raiz, &proyecto, &referencia, opciones);
+                            crate::ventana_chat::refrescar();
+                        });
                     if let Err(e) = lanzado {
                         tracing::warn!(?e, "no se pudo lanzar el lienzo desde la nota");
                     }
                 }
-                _ => crate::ventana_chat::ir_a(idioma, ubicacion.clone(), opciones_del_lienzo(), proyecto, Some(codigo)),
+                _ => crate::ventana_chat::ir_a(
+                    idioma,
+                    ubicacion.clone(),
+                    opciones_del_lienzo(),
+                    proyecto,
+                    Some(codigo),
+                ),
             }
         }
     }
@@ -675,15 +743,27 @@ pub fn integracion(
 ) -> pixpin_notas::integracion::Integracion {
     let raiz = ubicacion.raiz().to_path_buf();
     let vigia = Vigia::nuevo(raiz.clone(), idioma);
-    let (a1, a2, a3, a4, a5) = (actual.clone(), actual.clone(), actual.clone(), actual.clone(), actual.clone());
+    let (a1, a2, a3, a4, a5) = (
+        actual.clone(),
+        actual.clone(),
+        actual.clone(),
+        actual.clone(),
+        actual.clone(),
+    );
     let (r1, r2) = (raiz.clone(), raiz);
     let ub = ubicacion.clone();
     let inicial = inicial.clone();
     pixpin_notas::integracion::Integracion {
         hojas: Some(Box::new(move || grupos(&r1, &a1.borrow()))),
-        insertar_hoja: Some(Box::new(move |clave: &str, enlace: bool| insertar(&r2, &a2.borrow(), clave, enlace))),
-        vigilar: Some(Box::new(move |rutas: &[String]| vigia.mirar(&a3.borrow(), rutas))),
-        abrir: Some(Box::new(move |ruta: &str| abrir(idioma, &ub, &a4.borrow(), ruta))),
+        insertar_hoja: Some(Box::new(move |clave: &str, enlace: bool| {
+            insertar(&r2, &a2.borrow(), clave, enlace)
+        })),
+        vigilar: Some(Box::new(move |rutas: &[String]| {
+            vigia.mirar(&a3.borrow(), rutas)
+        })),
+        abrir: Some(Box::new(move |ruta: &str| {
+            abrir(idioma, &ub, &a4.borrow(), ruta)
+        })),
         pendientes: Some(Box::new(move || recoger(&a5.borrow(), &inicial))),
         ..Default::default()
     }
@@ -701,7 +781,9 @@ pub fn recoger(actual: &Destino, inicial: &Destino) -> Vec<String> {
     let Ok(mut v) = PENDIENTES.lock() else {
         return Vec::new();
     };
-    let (suyos, resto): (Vec<_>, Vec<_>) = std::mem::take(&mut *v).into_iter().partition(|(d, _)| d == actual || d == inicial);
+    let (suyos, resto): (Vec<_>, Vec<_>) = std::mem::take(&mut *v)
+        .into_iter()
+        .partition(|(d, _)| d == actual || d == inicial);
     *v = resto;
     suyos.into_iter().map(|(_, r)| r).collect()
 }
@@ -710,7 +792,12 @@ pub fn recoger(actual: &Destino, inicial: &Destino) -> Vec<String> {
 /// pagina viva, o lo demas como su burbuja o su audio (`incrustados`), en
 /// la ultima nota abierta de su proyecto o en una nota nueva del proyecto
 /// si no hay ninguna abierta. `false` si no hay nada que meter.
-pub fn insertar_en_nota(idioma: pixpin_store::Idioma, ubicacion: &Ubicacion, proyecto: &str, m: &Mensaje) -> bool {
+pub fn insertar_en_nota(
+    idioma: pixpin_store::Idioma,
+    ubicacion: &Ubicacion,
+    proyecto: &str,
+    m: &Mensaje,
+) -> bool {
     let raiz = ubicacion.raiz();
     let abierta = super::ABIERTAS.lock().ok().and_then(|v| {
         v.iter()
@@ -718,20 +805,30 @@ pub fn insertar_en_nota(idioma: pixpin_store::Idioma, ubicacion: &Ubicacion, pro
             .find(|(d, _)| proyecto_de(d) == Some(proyecto))
             .map(|(d, h)| (d.clone(), *h))
     });
-    let destino = abierta.as_ref().map(|(d, _)| d.clone()).unwrap_or(Destino::Nueva {
-        proyecto: proyecto.to_string(),
-    });
+    let destino = abierta
+        .as_ref()
+        .map(|(d, _)| d.clone())
+        .unwrap_or(Destino::Nueva {
+            proyecto: proyecto.to_string(),
+        });
     // Una hoja que se pinta, como su pagina viva; lo demas del chat (un
     // archivo, una nota de voz, un texto), como su burbuja o su audio
     // (`incrustados`).
     let viva = if se_pinta(m) && m.clase != Some(Clase::Nota) {
-        buscar(raiz, Some(proyecto), &m.codigo_unico()).and_then(|h| renglon_vivo(raiz, &destino, &h))
+        buscar(raiz, Some(proyecto), &m.codigo_unico())
+            .and_then(|h| renglon_vivo(raiz, &destino, &h))
     } else {
         None
     };
     let renglon = viva.or_else(|| {
-        let f = ficha_de(&Indice::leer(raiz), proyecto).filter(|_| super::incrustados::se_puede_enlazar(m))?;
-        Some(super::incrustados::bloque_de(raiz, &f, m, &Catalogo::nuevo(idioma)))
+        let f = ficha_de(&Indice::leer(raiz), proyecto)
+            .filter(|_| super::incrustados::se_puede_enlazar(m))?;
+        Some(super::incrustados::bloque_de(
+            raiz,
+            &f,
+            m,
+            &Catalogo::nuevo(idioma),
+        ))
     });
     let Some(renglon) = renglon else {
         return false;
@@ -743,7 +840,9 @@ pub fn insertar_en_nota(idioma: pixpin_store::Idioma, ubicacion: &Ubicacion, pro
         Some((_, hwnd)) => {
             // Si ya no existe, lo pendiente se recoge al abrirla otra vez.
             pixpin_notas::integracion::tocar(hwnd);
-            pixpin_shell::overlay::VentanaOverlay::restaurar_de_hwnd(windows::Win32::Foundation::HWND(hwnd as *mut _));
+            pixpin_shell::overlay::VentanaOverlay::restaurar_de_hwnd(
+                windows::Win32::Foundation::HWND(hwnd as *mut _),
+            );
         }
         None => super::abrir(idioma, ubicacion.clone(), destino),
     }

@@ -55,8 +55,11 @@ pub enum AccionMiniatura {
     Borrar,
 }
 
-pub const ACCIONES_MINIATURA: [AccionMiniatura; 3] =
-    [AccionMiniatura::Pinear, AccionMiniatura::Copiar, AccionMiniatura::Borrar];
+pub const ACCIONES_MINIATURA: [AccionMiniatura; 3] = [
+    AccionMiniatura::Pinear,
+    AccionMiniatura::Copiar,
+    AccionMiniatura::Borrar,
+];
 
 /// Que se ensena debajo del buscador.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -139,7 +142,9 @@ pub fn dentro(c: RectF, p: (f32, f32)) -> bool {
 /// Reparte `n` columnas iguales en `ancho` con `hueco` entre ellas.
 fn columnas(x: f32, y: f32, ancho: f32, alto: f32, n: usize, hueco: f32) -> Vec<RectF> {
     let w = (ancho - hueco * (n as f32 - 1.0)) / n as f32;
-    (0..n).map(|i| r(x + i as f32 * (w + hueco), y, w, alto)).collect()
+    (0..n)
+        .map(|i| r(x + i as f32 * (w + hueco), y, w, alto))
+        .collect()
 }
 
 pub fn disponer(v: &Vista) -> Disposicion {
@@ -252,7 +257,10 @@ pub fn disponer(v: &Vista) -> Disposicion {
             let filas = celdas.div_ceil(4).max(1);
             for fila in 0..filas {
                 let fila_y = y + fila as f32 * (FAVORITO * e + h);
-                for (col, c) in columnas(m, fila_y, util, FAVORITO * e, 4, h).into_iter().enumerate() {
+                for (col, c) in columnas(m, fila_y, util, FAVORITO * e, 4, h)
+                    .into_iter()
+                    .enumerate()
+                {
                     let i = fila * 4 + col;
                     if i < v.favoritos {
                         zonas.push((c, Zona::Favorito(i)));
@@ -330,7 +338,9 @@ pub fn disponer(v: &Vista) -> Disposicion {
 /// Los tres botones que salen encima de una miniatura (pinear, copiar,
 /// borrar), centrados. 28 en la maqueta; aqui 32 para que se acierten.
 pub fn acciones_de_miniatura(c: RectF, escala: f32) -> [RectF; 3] {
-    let lado = (32.0 * escala).min(c.alto - 4.0 * escala).min((c.ancho - 8.0 * escala) / 3.0);
+    let lado = (32.0 * escala)
+        .min(c.alto - 4.0 * escala)
+        .min((c.ancho - 8.0 * escala) / 3.0);
     let hueco = 4.0 * escala;
     let total = 3.0 * lado + 2.0 * hueco;
     let x0 = c.x + (c.ancho - total) / 2.0;
@@ -346,7 +356,10 @@ impl Disposicion {
             && let Some(c) = self.miniaturas.get(i)
             && dentro(*c, p)
         {
-            for (b, a) in acciones_de_miniatura(*c, self.escala).iter().zip(ACCIONES_MINIATURA) {
+            for (b, a) in acciones_de_miniatura(*c, self.escala)
+                .iter()
+                .zip(ACCIONES_MINIATURA)
+            {
                 if dentro(*b, p) {
                     return Some(Zona::AccionMiniatura(i, a));
                 }
@@ -354,7 +367,11 @@ impl Disposicion {
         }
         // La ultima apuntada gana: «Editar» y «Ver la galeria» se apuntan
         // despues de lo que pisan.
-        self.zonas.iter().rev().find(|(c, _)| dentro(*c, p)).map(|(_, z)| *z)
+        self.zonas
+            .iter()
+            .rev()
+            .find(|(c, _)| dentro(*c, p))
+            .map(|(_, z)| *z)
     }
 }
 
@@ -373,7 +390,10 @@ pub fn colocar(
     let ancho = ancho.min(trabajo.ancho.saturating_sub(2 * margen as u32).max(1));
     let alto = alto.min(trabajo.alto.saturating_sub(2 * margen as u32).max(1));
     let (tx0, ty0) = (trabajo.x, trabajo.y);
-    let (tx1, ty1) = (trabajo.x + trabajo.ancho as i32, trabajo.y + trabajo.alto as i32);
+    let (tx1, ty1) = (
+        trabajo.x + trabajo.ancho as i32,
+        trabajo.y + trabajo.alto as i32,
+    );
     // La barra esta donde el area de trabajo se aparta del monitor.
     let arriba = trabajo.y > monitor.y;
     let izquierda = trabajo.x > monitor.x && trabajo.alto >= monitor.alto;
@@ -384,12 +404,16 @@ pub fn colocar(
         tx1 - margen - ancho as i32
     } else {
         // Abajo o arriba: centrado bajo el raton, sin salirse.
-        (raton.x - ancho as i32 / 2).clamp(tx0 + margen, (tx1 - margen - ancho as i32).max(tx0 + margen))
+        (raton.x - ancho as i32 / 2).clamp(
+            tx0 + margen,
+            (tx1 - margen - ancho as i32).max(tx0 + margen),
+        )
     };
     let y = if arriba {
         ty0 + margen
     } else if izquierda || derecha {
-        (raton.y - alto as i32 / 2).clamp(ty0 + margen, (ty1 - margen - alto as i32).max(ty0 + margen))
+        (raton.y - alto as i32 / 2)
+            .clamp(ty0 + margen, (ty1 - margen - alto as i32).max(ty0 + margen))
     } else {
         ty1 - margen - alto as i32
     };
@@ -420,13 +444,31 @@ mod pruebas {
         let d = disponer(&vista(Modo::Normal));
         assert_eq!(d.zona_en(centro(d.capturar), None), Some(Zona::Capturar));
         assert_eq!(d.zona_en(centro(d.modos[5]), None), Some(Zona::Modo(5)));
-        assert_eq!(d.zona_en(centro(d.favoritos[2]), None), Some(Zona::Favorito(2)));
-        assert_eq!(d.zona_en(centro(d.anadir.unwrap()), None), Some(Zona::Anadir));
-        assert_eq!(d.zona_en(centro(d.interruptores[2]), None), Some(Zona::Interruptor(2)));
-        assert_eq!(d.zona_en(centro(d.ventanas[3]), None), Some(Zona::Ventana(3)));
+        assert_eq!(
+            d.zona_en(centro(d.favoritos[2]), None),
+            Some(Zona::Favorito(2))
+        );
+        assert_eq!(
+            d.zona_en(centro(d.anadir.unwrap()), None),
+            Some(Zona::Anadir)
+        );
+        assert_eq!(
+            d.zona_en(centro(d.interruptores[2]), None),
+            Some(Zona::Interruptor(2))
+        );
+        assert_eq!(
+            d.zona_en(centro(d.ventanas[3]), None),
+            Some(Zona::Ventana(3))
+        );
         assert_eq!(d.zona_en(centro(d.salir), None), Some(Zona::Salir));
-        assert_eq!(d.zona_en(centro(d.sincronizar), None), Some(Zona::Sincronizar));
-        assert_eq!(d.zona_en(centro(d.ver_galeria), None), Some(Zona::VerGaleria));
+        assert_eq!(
+            d.zona_en(centro(d.sincronizar), None),
+            Some(Zona::Sincronizar)
+        );
+        assert_eq!(
+            d.zona_en(centro(d.ver_galeria), None),
+            Some(Zona::VerGaleria)
+        );
         // Cabe en la maqueta (820 de alto) con una fila de favoritos.
         assert!(d.alto_total <= 820.0, "{}", d.alto_total);
     }
@@ -439,13 +481,24 @@ mod pruebas {
         let entre = (a.x + a.ancho + 3.0, a.y + a.alto / 2.0);
         assert_eq!(d.zona_en(entre, None), None);
         assert_eq!(d.zona_en((-5.0, 100.0), None), None);
-        assert_eq!(d.zona_en((5.0, 5.0), None), None, "el margen no es de nadie");
+        assert_eq!(
+            d.zona_en((5.0, 5.0), None),
+            None,
+            "el margen no es de nadie"
+        );
     }
 
     #[test]
     fn los_objetivos_miden_al_menos_40_y_las_filas_44() {
         let d = disponer(&vista(Modo::Normal));
-        let mut todos = vec![d.capturar, d.sincronizar, d.ajustes, d.editar, d.ver_galeria, d.salir];
+        let mut todos = vec![
+            d.capturar,
+            d.sincronizar,
+            d.ajustes,
+            d.editar,
+            d.ver_galeria,
+            d.salir,
+        ];
         todos.extend(d.modos.iter().copied());
         todos.extend(d.favoritos.iter().copied());
         todos.extend(d.ventanas.iter().copied());
@@ -483,7 +536,10 @@ mod pruebas {
         v.scroll = 44.0;
         let d2 = disponer(&v);
         assert_eq!(d2.filas[1].y, d.filas[1].y - 44.0);
-        assert_eq!(d2.alto_total, d.alto_total, "el alto no cambia al desplazar");
+        assert_eq!(
+            d2.alto_total, d.alto_total,
+            "el alto no cambia al desplazar"
+        );
     }
 
     #[test]
@@ -506,19 +562,51 @@ mod pruebas {
     #[test]
     fn el_panel_sale_junto_a_la_barra_de_tareas() {
         use pixpin_geom::{Punto, Rect};
-        let monitor = Rect { x: 0, y: 0, ancho: 1920, alto: 1080 };
+        let monitor = Rect {
+            x: 0,
+            y: 0,
+            ancho: 1920,
+            alto: 1080,
+        };
         // Barra abajo: pegado abajo, bajo el raton y sin salirse a la derecha.
-        let abajo = Rect { x: 0, y: 0, ancho: 1920, alto: 1032 };
+        let abajo = Rect {
+            x: 0,
+            y: 0,
+            ancho: 1920,
+            alto: 1032,
+        };
         let c = colocar(monitor, abajo, Punto { x: 1850, y: 1050 }, 440, 800, 12);
         assert_eq!((c.x, c.y), (1920 - 12 - 440, 1032 - 12 - 800));
         // Barra arriba: pegado arriba.
-        let arriba = Rect { x: 0, y: 48, ancho: 1920, alto: 1032 };
+        let arriba = Rect {
+            x: 0,
+            y: 48,
+            ancho: 1920,
+            alto: 1032,
+        };
         let c = colocar(monitor, arriba, Punto { x: 900, y: 20 }, 440, 800, 12);
         assert_eq!((c.x, c.y), (900 - 220, 60));
         // Caso negativo: un area mas baja que el panel no lo deja salirse;
         // se queda con lo que hay.
-        let bajita = Rect { x: 0, y: 0, ancho: 1366, alto: 600 };
-        let c = colocar(Rect { x: 0, y: 0, ancho: 1366, alto: 648 }, bajita, Punto { x: 1300, y: 630 }, 440, 800, 12);
+        let bajita = Rect {
+            x: 0,
+            y: 0,
+            ancho: 1366,
+            alto: 600,
+        };
+        let c = colocar(
+            Rect {
+                x: 0,
+                y: 0,
+                ancho: 1366,
+                alto: 648,
+            },
+            bajita,
+            Punto { x: 1300, y: 630 },
+            440,
+            800,
+            12,
+        );
         assert_eq!(c.alto, 600 - 24);
         assert!(c.y >= 12);
     }

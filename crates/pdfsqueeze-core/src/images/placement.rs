@@ -66,14 +66,27 @@ pub fn scan(doc: &Document) -> HashMap<ObjectId, Placement> {
             Err(_) => continue,
         };
         let media = page_box(doc, page).unwrap_or([0.0, 0.0, 612.0, 792.0]);
-        let page_area = ((media[2] - media[0]) * (media[3] - media[1])).abs().max(1.0);
+        let page_area = ((media[2] - media[0]) * (media[3] - media[1]))
+            .abs()
+            .max(1.0);
         let content = match doc.get_page_content(page_id) {
             Ok(c) => c,
             Err(_) => continue,
         };
         let resources = resolve_resources(doc, page.get(b"Resources").ok());
         let mut visited = HashSet::new();
-        walk(doc, &content, resources.as_ref(), [1.0, 0.0, 0.0, 1.0, 0.0, 0.0], page_id, page_area, true, &mut out, &mut visited, 0);
+        walk(
+            doc,
+            &content,
+            resources.as_ref(),
+            [1.0, 0.0, 0.0, 1.0, 0.0, 0.0],
+            page_id,
+            page_area,
+            true,
+            &mut out,
+            &mut visited,
+            0,
+        );
     }
     out
 }
@@ -83,15 +96,26 @@ fn page_box(doc: &Document, page: &Dictionary) -> Option<[f32; 4]> {
     let mut node: Option<&Dictionary> = Some(page);
     let mut guard = 0;
     while let Some(d) = node {
-        if let Ok(arr) = d.get(b"MediaBox").and_then(|o| doc.dereference(o).map(|(_, o)| o)).and_then(Object::as_array) {
+        if let Ok(arr) = d
+            .get(b"MediaBox")
+            .and_then(|o| doc.dereference(o).map(|(_, o)| o))
+            .and_then(Object::as_array)
+        {
             if arr.len() == 4 {
-                let v: Vec<f32> = arr.iter().filter_map(|o| doc.dereference(o).ok().and_then(|(_, o)| num(o))).collect();
+                let v: Vec<f32> = arr
+                    .iter()
+                    .filter_map(|o| doc.dereference(o).ok().and_then(|(_, o)| num(o)))
+                    .collect();
                 if v.len() == 4 {
                     return Some([v[0], v[1], v[2], v[3]]);
                 }
             }
         }
-        node = d.get(b"Parent").ok().and_then(|p| doc.dereference(p).ok()).and_then(|(_, o)| o.as_dict().ok());
+        node = d
+            .get(b"Parent")
+            .ok()
+            .and_then(|p| doc.dereference(p).ok())
+            .and_then(|(_, o)| o.as_dict().ok());
         guard += 1;
         if guard > 64 {
             break;
@@ -164,12 +188,19 @@ fn walk(
                     Some(s) => s,
                     None => continue,
                 };
-                let subtype = stream.dict.get(b"Subtype").and_then(Object::as_name).unwrap_or(b"");
+                let subtype = stream
+                    .dict
+                    .get(b"Subtype")
+                    .and_then(Object::as_name)
+                    .unwrap_or(b"");
                 if subtype == b"Image" {
                     let w = (ctm[0] * ctm[0] + ctm[1] * ctm[1]).sqrt();
                     let h = (ctm[2] * ctm[2] + ctm[3] * ctm[3]).sqrt();
                     let cov = (w * h / page_area).min(1.0);
-                    let p = out.entry(id).or_insert(Placement { only_direct: true, ..Default::default() });
+                    let p = out.entry(id).or_insert(Placement {
+                        only_direct: true,
+                        ..Default::default()
+                    });
                     p.count += 1;
                     if !direct {
                         p.only_direct = false;
@@ -192,8 +223,22 @@ fn walk(
                     }
                     let form_res = resolve_resources(doc, stream.dict.get(b"Resources").ok());
                     let res = form_res.as_ref().or(resources);
-                    if let Ok(data) = stream.decompressed_content().or_else(|_| Ok::<_, lopdf::Error>(stream.content.clone())) {
-                        walk(doc, &data, res, inner, page_id, page_area, false, out, visited, depth + 1);
+                    if let Ok(data) = stream
+                        .decompressed_content()
+                        .or_else(|_| Ok::<_, lopdf::Error>(stream.content.clone()))
+                    {
+                        walk(
+                            doc,
+                            &data,
+                            res,
+                            inner,
+                            page_id,
+                            page_area,
+                            false,
+                            out,
+                            visited,
+                            depth + 1,
+                        );
                     }
                     visited.remove(&id);
                 }

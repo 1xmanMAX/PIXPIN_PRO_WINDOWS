@@ -171,7 +171,9 @@ impl Comentarios {
         let usados: HashSet<&str> = self
             .comentarios
             .iter()
-            .flat_map(|h| std::iter::once(h.id.as_str()).chain(h.respuestas.iter().map(|r| r.id.as_str())))
+            .flat_map(|h| {
+                std::iter::once(h.id.as_str()).chain(h.respuestas.iter().map(|r| r.id.as_str()))
+            })
             .collect();
         let aparato = if aparato.is_empty() { "x" } else { aparato };
         (0..)
@@ -181,7 +183,13 @@ impl Comentarios {
     }
 
     /// Un comentario nuevo. `None` si el texto esta vacio o la cita tambien.
-    pub fn nuevo(&mut self, ancla: Ancla, quien: &Quien, cuando: i64, texto: &str) -> Option<String> {
+    pub fn nuevo(
+        &mut self,
+        ancla: Ancla,
+        quien: &Quien,
+        cuando: i64,
+        texto: &str,
+    ) -> Option<String> {
         let texto = limpio(texto)?;
         if ancla.cita.trim().is_empty() {
             return None;
@@ -201,7 +209,13 @@ impl Comentarios {
 
     /// Una respuesta al hilo `hilo`. Responder a uno resuelto lo reabre,
     /// como en Google Docs: si se sigue hablando, no esta resuelto.
-    pub fn responder(&mut self, hilo: &str, quien: &Quien, cuando: i64, texto: &str) -> Option<String> {
+    pub fn responder(
+        &mut self,
+        hilo: &str,
+        quien: &Quien,
+        cuando: i64,
+        texto: &str,
+    ) -> Option<String> {
         let texto = limpio(texto)?;
         let id = self.id_nuevo(&quien.aparato, cuando);
         let h = self.hilo_mut(hilo)?;
@@ -273,7 +287,10 @@ impl Comentarios {
     /// donde cae cada uno, en el orden de los hilos; `None` es sin ancla (el
     /// ancla vieja se queda como estaba, por si el texto vuelve).
     pub fn reanclar(&mut self, texto: &[u16]) -> Vec<Option<(usize, usize)>> {
-        self.comentarios.iter_mut().map(|h| reanclar(texto, &mut h.ancla)).collect()
+        self.comentarios
+            .iter_mut()
+            .map(|h| reanclar(texto, &mut h.ancla))
+            .collect()
     }
 }
 
@@ -349,7 +366,11 @@ fn apariciones(texto: &[u16], aguja: &[u16]) -> Vec<usize> {
 
 /// Cuantas unidades coinciden contando desde el final de los dos.
 fn comun_detras(a: &[u16], b: &[u16]) -> usize {
-    a.iter().rev().zip(b.iter().rev()).take_while(|(x, y)| x == y).count()
+    a.iter()
+        .rev()
+        .zip(b.iter().rev())
+        .take_while(|(x, y)| x == y)
+        .count()
 }
 
 fn comun_delante(a: &[u16], b: &[u16]) -> usize {
@@ -368,7 +389,9 @@ pub fn ubicar(texto: &[u16], a: &Ancla) -> Option<(usize, usize)> {
     let antes = u16s(&a.antes);
     let despues = u16s(&a.despues);
     let exacta = apariciones(texto, &cita).into_iter().max_by(|&x, &y| {
-        let contexto = |i: usize| comun_detras(&texto[..i], &antes) + comun_delante(&texto[i + cita.len()..], &despues);
+        let contexto = |i: usize| {
+            comun_detras(&texto[..i], &antes) + comun_delante(&texto[i + cita.len()..], &despues)
+        };
         contexto(x)
             .cmp(&contexto(y))
             .then(y.abs_diff(a.pos).cmp(&x.abs_diff(a.pos)))
@@ -386,7 +409,13 @@ pub fn ubicar(texto: &[u16], a: &Ancla) -> Option<(usize, usize)> {
     };
     for na in largos(antes.len()) {
         for nd in largos(despues.len()) {
-            let r = por_contexto(texto, a.pos, &cita, &antes[antes.len() - na..], &despues[..nd]);
+            let r = por_contexto(
+                texto,
+                a.pos,
+                &cita,
+                &antes[antes.len() - na..],
+                &despues[..nd],
+            );
             if r.is_some() {
                 return r;
             }
@@ -400,7 +429,13 @@ pub fn ubicar(texto: &[u16], a: &Ancla) -> Option<(usize, usize)> {
 /// el borde del texto (la cita empezaba o acababa la nota), ese lado es el
 /// borde. Contextos de menos de 8 letras en total no bastan: encontrarian
 /// cualquier cosa.
-fn por_contexto(texto: &[u16], pos: usize, cita: &[u16], antes: &[u16], despues: &[u16]) -> Option<(usize, usize)> {
+fn por_contexto(
+    texto: &[u16],
+    pos: usize,
+    cita: &[u16],
+    antes: &[u16],
+    despues: &[u16],
+) -> Option<(usize, usize)> {
     if antes.len() + despues.len() < 8 {
         return None;
     }
@@ -412,14 +447,19 @@ fn por_contexto(texto: &[u16], pos: usize, cita: &[u16], antes: &[u16], despues:
         }
         vec![0]
     } else {
-        apariciones(texto, antes).into_iter().map(|i| i + antes.len()).collect()
+        apariciones(texto, antes)
+            .into_iter()
+            .map(|i| i + antes.len())
+            .collect()
     };
     for inicio in inicios {
         let fin = if despues.is_empty() {
             Some(texto.len()).filter(|f| f - inicio <= limite)
         } else {
             let hasta = (inicio + limite + despues.len()).min(texto.len());
-            apariciones(&texto[inicio..hasta], despues).first().map(|d| inicio + d)
+            apariciones(&texto[inicio..hasta], despues)
+                .first()
+                .map(|d| inicio + d)
         };
         if let Some(fin) = fin
             && fin > inicio
@@ -450,7 +490,9 @@ pub fn reanclar(texto: &[u16], a: &mut Ancla) -> Option<(usize, usize)> {
 /// La palabra bajo `pos` (comentar sin elegir nada comenta la palabra).
 pub fn palabra_en(texto: &[u16], pos: usize) -> Option<(usize, usize)> {
     let letra = |c: u16| {
-        alta(c) || baja(c) || char::from_u32(c as u32).is_some_and(|c| c.is_alphanumeric() || c == '_')
+        alta(c)
+            || baja(c)
+            || char::from_u32(c as u32).is_some_and(|c| c.is_alphanumeric() || c == '_')
     };
     let pos = pos.min(texto.len());
     let mut a = pos;
@@ -469,8 +511,16 @@ pub fn palabra_en(texto: &[u16], pos: usize) -> Option<(usize, usize)> {
 
 /// Lo ultimo que le paso a un hilo, para elegir entre dos versiones.
 fn ultimo(h: &Hilo) -> i64 {
-    let r = h.respuestas.iter().map(|r| r.editado.unwrap_or(r.cuando)).max().unwrap_or(0);
-    h.cuando.max(h.editado.unwrap_or(0)).max(h.resuelto_cuando.unwrap_or(0)).max(r)
+    let r = h
+        .respuestas
+        .iter()
+        .map(|r| r.editado.unwrap_or(r.cuando))
+        .max()
+        .unwrap_or(0);
+    h.cuando
+        .max(h.editado.unwrap_or(0))
+        .max(h.resuelto_cuando.unwrap_or(0))
+        .max(r)
 }
 
 /// Junta por id tres listas: lo que habia al abrir (`base`), lo de aqui
@@ -528,10 +578,24 @@ pub fn fusionar(base: &Comentarios, mio: &Comentarios, disco: &Comentarios) -> C
         &disco.comentarios,
         |h| h.id.as_str(),
         |b, m, d| {
-            let mut h = if ultimo(d) > ultimo(m) { d.clone() } else { m.clone() };
-            h.respuestas = juntar(&b.respuestas, &m.respuestas, &d.respuestas, |r| r.id.as_str(), |_, m, d| {
-                if d.editado.unwrap_or(d.cuando) > m.editado.unwrap_or(m.cuando) { d.clone() } else { m.clone() }
-            });
+            let mut h = if ultimo(d) > ultimo(m) {
+                d.clone()
+            } else {
+                m.clone()
+            };
+            h.respuestas = juntar(
+                &b.respuestas,
+                &m.respuestas,
+                &d.respuestas,
+                |r| r.id.as_str(),
+                |_, m, d| {
+                    if d.editado.unwrap_or(d.cuando) > m.editado.unwrap_or(m.cuando) {
+                        d.clone()
+                    } else {
+                        m.clone()
+                    }
+                },
+            );
             h
         },
     );
@@ -566,7 +630,8 @@ mod pruebas {
         }
     }
 
-    const NOTA: &str = "# Obra\nLa losa del segundo piso ya esta hormigonada.\nFalta el curado de la losa.\n";
+    const NOTA: &str =
+        "# Obra\nLa losa del segundo piso ya esta hormigonada.\nFalta el curado de la losa.\n";
 
     fn ancla(texto: &str, cita: &str, n: usize) -> Ancla {
         let t = u(texto);
@@ -582,10 +647,15 @@ mod pruebas {
         assert_eq!(a.cita, "segundo piso");
         assert_eq!(a.antes, "# Obra\nLa losa del ");
         assert_eq!(a.despues, " ya esta hormigonada.\nFalta el c");
-        let id = c.nuevo(a, &yo(), 1_000, "  ¿Seguro que es el segundo?  ").unwrap();
+        let id = c
+            .nuevo(a, &yo(), 1_000, "  ¿Seguro que es el segundo?  ")
+            .unwrap();
         let h = c.hilo(&id).unwrap();
         assert_eq!(h.texto, "¿Seguro que es el segundo?");
-        assert_eq!((h.autor.as_str(), h.aparato.as_str(), h.cuando), ("Portátil", "K7Q2", 1_000));
+        assert_eq!(
+            (h.autor.as_str(), h.aparato.as_str(), h.cuando),
+            ("Portátil", "K7Q2", 1_000)
+        );
         assert_eq!(c.abiertos(), 1);
     }
 
@@ -594,7 +664,10 @@ mod pruebas {
         let mut c = Comentarios::default();
         assert!(c.nuevo(ancla(NOTA, "losa", 0), &yo(), 1, "   ").is_none());
         assert!(c.nuevo(Ancla::default(), &yo(), 1, "hola").is_none());
-        assert!(ancla_de(&u("a   b"), 1, 4).is_none(), "solo blancos no es cita");
+        assert!(
+            ancla_de(&u("a   b"), 1, 4).is_none(),
+            "solo blancos no es cita"
+        );
         assert!(ancla_de(&u("abc"), 2, 2).is_none());
         assert!(c.comentarios.is_empty());
     }
@@ -612,7 +685,9 @@ mod pruebas {
     #[test]
     fn responder_editar_resolver_y_borrar_un_hilo() {
         let mut c = Comentarios::default();
-        let h = c.nuevo(ancla(NOTA, "curado", 0), &yo(), 10, "¿Cuantos dias?").unwrap();
+        let h = c
+            .nuevo(ancla(NOTA, "curado", 0), &yo(), 10, "¿Cuantos dias?")
+            .unwrap();
         let r = c.responder(&h, &movil(), 20, "Siete").unwrap();
         assert_ne!(r, h, "cada cosa con su id");
         assert!(c.editar(&r, "Siete, regando", 30));
@@ -621,7 +696,10 @@ mod pruebas {
         assert_eq!(hilo.respuestas[0].editado, Some(30));
         assert!(c.resolver(&h, true, &yo(), 40));
         assert_eq!(c.abiertos(), 0);
-        assert_eq!(c.hilo(&h).unwrap().resuelto_por.as_deref(), Some("Portátil"));
+        assert_eq!(
+            c.hilo(&h).unwrap().resuelto_por.as_deref(),
+            Some("Portátil")
+        );
         // Contestar a uno resuelto lo reabre.
         c.responder(&h, &yo(), 50, "Al final ocho").unwrap();
         assert!(!c.hilo(&h).unwrap().resuelto);
@@ -639,7 +717,10 @@ mod pruebas {
         assert!(c.responder("nadie", &yo(), 1, "hola").is_none());
         assert!(c.responder(&h, &yo(), 1, "  ").is_none());
         assert!(!c.editar("nadie", "y", 1));
-        assert!(!c.editar(&h, "", 1), "un texto vacio no borra el comentario");
+        assert!(
+            !c.editar(&h, "", 1),
+            "un texto vacio no borra el comentario"
+        );
         assert!(!c.borrar("nadie"));
         assert!(!c.resolver("nadie", true, &yo(), 1));
         assert_eq!(c.hilo(&h).unwrap().texto, "x");
@@ -656,7 +737,9 @@ mod pruebas {
     #[test]
     fn el_json_va_y_vuelve_y_conserva_lo_que_no_entiende() {
         let mut c = Comentarios::default();
-        let h = c.nuevo(ancla(NOTA, "curado", 0), &yo(), 10, "¿Cuantos dias?").unwrap();
+        let h = c
+            .nuevo(ancla(NOTA, "curado", 0), &yo(), 10, "¿Cuantos dias?")
+            .unwrap();
         c.responder(&h, &movil(), 20, "Siete").unwrap();
         let json = escribir(&c);
         assert!(json.contains("\"comentarios\""));
@@ -703,7 +786,10 @@ mod pruebas {
         let nuevo = NOTA.replace("ya esta hormigonada", "ya esta casi del todo hormigonada");
         let t = u(&nuevo);
         let (x, y) = reanclar(&t, &mut a).unwrap();
-        assert_eq!(String::from_utf16_lossy(&t[x..y]), "ya esta casi del todo hormigonada");
+        assert_eq!(
+            String::from_utf16_lossy(&t[x..y]),
+            "ya esta casi del todo hormigonada"
+        );
         assert_eq!(a.cita, "ya esta casi del todo hormigonada");
         assert_eq!(a.pos, x);
         // Y la siguiente vez ya se encuentra tal cual.
@@ -719,7 +805,10 @@ mod pruebas {
             .replace("ya esta hormigonada", "ya esta casi hormigonada");
         let t = u(&nuevo);
         let (x, y) = reanclar(&t, &mut a).unwrap();
-        assert_eq!(String::from_utf16_lossy(&t[x..y]), "ya esta casi hormigonada");
+        assert_eq!(
+            String::from_utf16_lossy(&t[x..y]),
+            "ya esta casi hormigonada"
+        );
     }
 
     #[test]
@@ -728,7 +817,10 @@ mod pruebas {
         let sin = NOTA.replace("del segundo piso ", "");
         assert_eq!(reanclar(&u(&sin), &mut a), None);
         assert_eq!(a.cita, "del segundo piso", "el ancla vieja se queda");
-        assert!(reanclar(&u(NOTA), &mut a).is_some(), "deshacer la trae de vuelta");
+        assert!(
+            reanclar(&u(NOTA), &mut a).is_some(),
+            "deshacer la trae de vuelta"
+        );
     }
 
     #[test]
@@ -751,7 +843,10 @@ mod pruebas {
         assert_eq!(a.antes, "");
         let t = u(&texto.replace("Primera", "Una primerisima"));
         let (x, y) = reanclar(&t, &mut a).unwrap();
-        assert_eq!((x, String::from_utf16_lossy(&t[x..y]).as_str()), (0, "Una primerisima"));
+        assert_eq!(
+            (x, String::from_utf16_lossy(&t[x..y]).as_str()),
+            (0, "Una primerisima")
+        );
         let mut b = ancla(texto, "aqui.", 0);
         let t = u(&texto.replace("aqui.", "alli, al final."));
         let (x, y) = reanclar(&t, &mut b).unwrap();
@@ -781,11 +876,17 @@ mod pruebas {
         let mut disco = base.clone();
         disco.responder(&b, &movil(), 12, "desde el movil").unwrap();
         disco.resolver(&b, true, &movil(), 13);
-        let d = disco.nuevo(ancla(NOTA, "piso", 0), &movil(), 14, "d").unwrap();
+        let d = disco
+            .nuevo(ancla(NOTA, "piso", 0), &movil(), 14, "d")
+            .unwrap();
 
         let j = fusionar(&base, &mio, &disco);
         let ids: Vec<&str> = j.comentarios.iter().map(|h| h.id.as_str()).collect();
-        assert_eq!(ids, [b.as_str(), c.as_str(), d.as_str()], "a se borro aqui y no vuelve");
+        assert_eq!(
+            ids,
+            [b.as_str(), c.as_str(), d.as_str()],
+            "a se borro aqui y no vuelve"
+        );
         let hb = j.hilo(&b).unwrap();
         assert_eq!(hb.respuestas.len(), 2, "las dos respuestas");
         assert!(hb.resuelto, "lo ultimo fue resolverlo en el movil");
@@ -801,7 +902,11 @@ mod pruebas {
         let disco = Comentarios::default();
         let j = fusionar(&base, &mio, &disco);
         assert!(j.hilo(&a).is_none(), "borrado alli y sin tocar aqui: fuera");
-        assert_eq!(j.hilo(&b).unwrap().texto, "b cambiado", "cambiado aqui: se queda");
+        assert_eq!(
+            j.hilo(&b).unwrap().texto,
+            "b cambiado",
+            "cambiado aqui: se queda"
+        );
         // Sin cambios en ningun lado, juntar no cambia nada.
         assert_eq!(fusionar(&base, &base, &base), base);
     }

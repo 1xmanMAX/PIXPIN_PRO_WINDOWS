@@ -213,7 +213,10 @@ pub fn con_largo_y_angulo(e: &mut Elemento, largo_px: f32, grados: f32) {
         return;
     };
     let rad = (-normalizar_grados(grados)).to_radians();
-    let fin = Punto2::nuevo(inicio.x + largo_px * rad.cos(), inicio.y + largo_px * rad.sin());
+    let fin = Punto2::nuevo(
+        inicio.x + largo_px * rad.cos(),
+        inicio.y + largo_px * rad.sin(),
+    );
     // El giro va ya en los puntos: con el angulo puesto se contaria dos veces.
     e.angulo = 0.0;
     poner_extremos(e, inicio, fin);
@@ -579,7 +582,11 @@ mod pruebas_dictar {
         let p = c.puntos().unwrap();
         assert_eq!(p[0], Punto2::nuevo(10.0, 10.0), "se movio el principio");
         // Noventa grados es hacia ARRIBA, como en un plano.
-        assert!((p[1].x - 10.0).abs() < 1e-3 && (p[1].y + 40.0).abs() < 1e-3, "{:?}", p[1]);
+        assert!(
+            (p[1].x - 10.0).abs() < 1e-3 && (p[1].y + 40.0).abs() < 1e-3,
+            "{:?}",
+            p[1]
+        );
         assert!((longitud_de(&c) - 50.0).abs() < 1e-3);
         assert!((angulo_de(&c) - 90.0).abs() < 1e-3);
     }

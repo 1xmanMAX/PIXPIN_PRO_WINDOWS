@@ -387,8 +387,7 @@ fn ordenes_de_relleno(e: &Elemento, elipse: bool) -> Vec<Orden> {
     // temblor se lo pone despues rough.js (`doubleLine` del relleno del
     // movil), con los extremos quietos: antes se sacudian los extremos hasta
     // 4 px y las rayas se salian del contorno.
-    let rough_relleno = (e.rugosidad > 0.0
-        && e.estilo_relleno != EstiloRelleno::LineasPixpin)
+    let rough_relleno = (e.rugosidad > 0.0 && e.estilo_relleno != EstiloRelleno::LineasPixpin)
         .then(|| crate::rough::Opciones::nuevas(rugosidad_ajustada(e), vertices_quietos(e), false));
     let mut rough_rayas = rough_relleno.map(|o| crate::rough::Rough::con_azar(o, azar.clone()));
     crate::relleno::lineas_de_rayado(
@@ -632,7 +631,8 @@ pub fn ordenes(e: &Elemento) -> Vec<Orden> {
             // extremos apenas sacudidos, no la raya torcida de `formas::linea`.
             let curva_recta = !*codos && e.redondo && puntos.len() == 2;
             if curva.is_some() || curva_recta {
-                for pasada in crate::curva::pasadas_a_mano(puntos, rugosidad_ajustada(e), &mut azar) {
+                for pasada in crate::curva::pasadas_a_mano(puntos, rugosidad_ajustada(e), &mut azar)
+                {
                     salida.push(Orden::Polilinea {
                         puntos: pasada,
                         color,
@@ -642,7 +642,10 @@ pub fn ordenes(e: &Elemento) -> Vec<Orden> {
                 }
             }
             let (rug, preservar) = (rugosidad_ajustada(e), vertices_quietos(e));
-            for par in trazado.windows(2).filter(|_| curva.is_none() && !curva_recta) {
+            for par in trazado
+                .windows(2)
+                .filter(|_| curva.is_none() && !curva_recta)
+            {
                 for pasada in formas::linea_rough(par[0], par[1], rug, preservar, &mut azar) {
                     salida.push(Orden::Polilinea {
                         puntos: pasada,
@@ -737,7 +740,14 @@ pub fn ordenes(e: &Elemento) -> Vec<Orden> {
             // fabrica del movil trae `roundness`, asi que un rombo pide
             // puntas redondeadas desde el primer dia.
             let pasadas = if e.redondo {
-                formas::rombo_redondo_a_mano(e.x, e.y, e.ancho, e.alto, opciones_rough(e), &mut azar)
+                formas::rombo_redondo_a_mano(
+                    e.x,
+                    e.y,
+                    e.ancho,
+                    e.alto,
+                    opciones_rough(e),
+                    &mut azar,
+                )
             } else {
                 formas::rombo_a_mano(e.x, e.y, e.ancho, e.alto, opciones_rough(e), &mut azar)
             };
@@ -1045,10 +1055,17 @@ pub fn ordenes(e: &Elemento) -> Vec<Orden> {
             if radio > 0.0 {
                 let (cx, cy) = (e.x + e.ancho / 2.0, e.y + e.alto / 2.0);
                 let mut lisa = Azar::nuevo(e.semilla);
-                let disco = formas::elipse(cx - radio, cy - radio, radio * 2.0, radio * 2.0, 0.0, &mut lisa)
-                    .into_iter()
-                    .next()
-                    .unwrap_or_default();
+                let disco = formas::elipse(
+                    cx - radio,
+                    cy - radio,
+                    radio * 2.0,
+                    radio * 2.0,
+                    0.0,
+                    &mut lisa,
+                )
+                .into_iter()
+                .next()
+                .unwrap_or_default();
                 salida.push(Orden::Relleno {
                     puntos: disco,
                     color,
@@ -1171,9 +1188,12 @@ pub fn ordenes_de_escena(escena: &Escena) -> Vec<Orden> {
     escena
         .visibles()
         .flat_map(|e| {
-            ordenes(e)
-                .into_iter()
-                .chain(ordenes_medibles(e, escena.escala.as_ref(), ',', escena.fondo))
+            ordenes(e).into_iter().chain(ordenes_medibles(
+                e,
+                escena.escala.as_ref(),
+                ',',
+                escena.fondo,
+            ))
         })
         .collect()
 }
@@ -1286,7 +1306,12 @@ pub fn ordenes_de_escena_vista(
         .flat_map(|e| {
             ordenes_a_distancia(e, camara.zoom)
                 .into_iter()
-                .chain(ordenes_medibles(e, escena.escala.as_ref(), ',', escena.fondo))
+                .chain(ordenes_medibles(
+                    e,
+                    escena.escala.as_ref(),
+                    ',',
+                    escena.fondo,
+                ))
         })
         .collect()
 }
@@ -1343,8 +1368,12 @@ fn cota_entera(
     let texto = crate::medida::texto_de_cota(e, escala, coma);
     let tam = e.extras.tam_letra.unwrap_or(TAM_ROTULO_COTA);
     let familia = letra_de_rotulo(e);
-    let (ancho_texto, alto_texto) =
-        crate::texto::medida(&texto, tam.max(0.0), &familia, crate::texto::EstiloDeTexto::default());
+    let (ancho_texto, alto_texto) = crate::texto::medida(
+        &texto,
+        tam.max(0.0),
+        &familia,
+        crate::texto::EstiloDeTexto::default(),
+    );
 
     // **La raya se abre en el medio para dejar sitio al numero**, como se
     // acota en un plano. Si no cabe, entera y el numero encima.
@@ -1396,7 +1425,10 @@ fn cota_entera(
             let giro = ang + s * 20f32.to_radians();
             trazo(
                 en,
-                Punto2::nuevo(en.x + largo_punta * giro.cos(), en.y + largo_punta * giro.sin()),
+                Punto2::nuevo(
+                    en.x + largo_punta * giro.cos(),
+                    en.y + largo_punta * giro.sin(),
+                ),
             );
         }
     }
@@ -1627,9 +1659,16 @@ mod pruebas {
             ..base()
         };
         // Sin decir nada, una sola orden como siempre.
-        assert_eq!(textos_con_sitio(&ordenes(&e)), vec![("abcd\nab".into(), 10.0, 10.0)]);
+        assert_eq!(
+            textos_con_sitio(&ordenes(&e)),
+            vec![("abcd\nab".into(), 10.0, 10.0)]
+        );
         e.extras.alineacion = Some(AlineacionTexto::Izquierda);
-        assert_eq!(textos_con_sitio(&ordenes(&e)).len(), 1, "a la izquierda no se reparte");
+        assert_eq!(
+            textos_con_sitio(&ordenes(&e)).len(),
+            1,
+            "a la izquierda no se reparte"
+        );
 
         e.extras.alineacion = Some(AlineacionTexto::Centro);
         let t = textos_con_sitio(&ordenes(&e));
@@ -1735,7 +1774,10 @@ mod pruebas {
     /// Si `q` queda dentro del contorno convexo `c` (cerrado), con una
     /// centesima de holgura por el redondeo de los flotantes.
     fn dentro_de(c: &[Punto2], q: Punto2) -> bool {
-        let area: f32 = c.windows(2).map(|w| w[0].x * w[1].y - w[1].x * w[0].y).sum();
+        let area: f32 = c
+            .windows(2)
+            .map(|w| w[0].x * w[1].y - w[1].x * w[0].y)
+            .sum();
         c.windows(2).all(|w| {
             let cruz = (w[1].x - w[0].x) * (q.y - w[0].y) - (w[1].y - w[0].y) * (q.x - w[0].x);
             let largo = w[0].distancia(w[1]).max(1e-6);
@@ -1790,7 +1832,10 @@ mod pruebas {
                 .flatten()
                 .map(|p| p.distancia(esquina))
                 .fold(f32::MAX, f32::min);
-            assert!(cerca > 2.0, "rugosidad {rugosidad}: el trazo llega al pico ({cerca})");
+            assert!(
+                cerca > 2.0,
+                "rugosidad {rugosidad}: el trazo llega al pico ({cerca})"
+            );
         }
     }
 
@@ -1859,7 +1904,10 @@ mod pruebas {
         let rayas = rayas_de(&e);
         assert!(!rayas.is_empty());
         for q in rayas.iter().flatten() {
-            assert!(dentro_de(&contorno, *q), "una raya del rombo redondo se sale: {q:?}");
+            assert!(
+                dentro_de(&contorno, *q),
+                "una raya del rombo redondo se sale: {q:?}"
+            );
         }
     }
 
@@ -1885,7 +1933,10 @@ mod pruebas {
             assert!(r.len() >= 2);
             let (a, b) = (r[0], *r.last().unwrap());
             for q in r {
-                assert!(crate::vector::distancia_a_segmento(*q, a, b) < 3.0, "la raya se tuerce");
+                assert!(
+                    crate::vector::distancia_a_segmento(*q, a, b) < 3.0,
+                    "la raya se tuerce"
+                );
             }
         }
         // Y van antes del contorno, como el relleno solido.
@@ -2005,7 +2056,11 @@ mod pruebas {
         };
         match &ordenes(&e)[0] {
             Orden::Tinta { color, .. } => {
-                assert!((color.a - 0.40).abs() < 1e-6, "HIGHLIGHTER_OPACITY es 40: alfa {}", color.a)
+                assert!(
+                    (color.a - 0.40).abs() < 1e-6,
+                    "HIGHLIGHTER_OPACITY es 40: alfa {}",
+                    color.a
+                )
             }
             otra => panic!("el resaltador deberia ser tinta, es {otra:?}"),
         }
@@ -2145,7 +2200,10 @@ mod pruebas {
         // que oscurecia hasta el borde de la ventana).
         let (puntos, color) = anillo(&foco(false));
         for p in &puntos {
-            assert!(p.x >= 10.0 && p.x <= 110.0 && p.y >= 20.0 && p.y <= 70.0, "{p:?} fuera del marco");
+            assert!(
+                p.x >= 10.0 && p.x <= 110.0 && p.y >= 20.0 && p.y <= 70.0,
+                "{p:?} fuera del marco"
+            );
         }
         // Lleva las cuatro esquinas del marco y las cuatro del hueco.
         for esquina in [(10.0, 20.0), (110.0, 70.0), (40.0, 35.0), (80.0, 55.0)] {
@@ -2162,7 +2220,12 @@ mod pruebas {
         let (recto, _) = anillo(&foco(false));
         let (redondo, _) = anillo(&foco(true));
         // Un ovalo lleva muchos mas vertices que un recuadro.
-        assert!(redondo.len() > recto.len() + 16, "{} frente a {}", redondo.len(), recto.len());
+        assert!(
+            redondo.len() > recto.len() + 16,
+            "{} frente a {}",
+            redondo.len(),
+            recto.len()
+        );
     }
 
     #[test]
@@ -2388,7 +2451,6 @@ mod pruebas {
             .collect()
     }
 
-
     #[test]
     fn el_rotulo_dice_pixeles_sin_escala_y_unidades_con_ella() {
         let c = cota_de(Punto2::nuevo(0.0, 0.0), Punto2::nuevo(100.0, 0.0));
@@ -2427,7 +2489,6 @@ mod pruebas {
         let b = textos_de(&ordenes_medibles(&c, Some(&metros(0.02)), ',', BLANCO));
         assert_ne!(a, b, "otra escala, otro rotulo");
     }
-
 
     #[test]
     fn una_barra_sin_escala_no_dibuja_cuadros() {
@@ -2499,8 +2560,6 @@ mod pruebas {
     fn una_figura_que_no_mide_no_produce_ordenes_medibles() {
         assert!(ordenes_medibles(&base(), Some(&metros(0.01)), ',', BLANCO).is_empty());
     }
-
-
 
     #[test]
     fn una_barra_girada_dibuja_sus_cuadros_girados() {
@@ -2663,11 +2722,17 @@ mod pruebas {
     #[test]
     fn la_cota_entera_sale_de_ordenes_medibles_y_no_de_la_cache() {
         let c = cota_de(Punto2::nuevo(0.0, 0.0), Punto2::nuevo(400.0, 0.0));
-        assert!(ordenes(&c).is_empty(), "su tinta depende del papel: fuera de la cache");
+        assert!(
+            ordenes(&c).is_empty(),
+            "su tinta depende del papel: fuera de la cache"
+        );
         let o = ordenes_medibles(&c, None, ',', BLANCO);
         // Dos trozos de raya, dos banderines y cuatro medias puntas, cada uno
         // con sus dos pasadas a mano.
-        let rayas = o.iter().filter(|x| matches!(x, Orden::Polilinea { .. })).count();
+        let rayas = o
+            .iter()
+            .filter(|x| matches!(x, Orden::Polilinea { .. }))
+            .count();
         assert_eq!(rayas, (2 + 2 + 4) * 2, "{rayas}");
         rotulo_de(&o);
     }
@@ -2677,15 +2742,27 @@ mod pruebas {
         let c = cota_de(Punto2::nuevo(0.0, 0.0), Punto2::nuevo(400.0, 0.0));
         let o = ordenes_medibles(&c, Some(&metros(0.01)), ',', BLANCO);
         let (_, _, _, _, centro, _) = rotulo_de(&o);
-        assert_eq!(centro, Punto2::nuevo(200.0, 0.0), "el numero, en medio de la raya");
-        let rayas: Vec<Orden> = o.iter().filter(|x| matches!(x, Orden::Polilinea { .. })).cloned().collect();
+        assert_eq!(
+            centro,
+            Punto2::nuevo(200.0, 0.0),
+            "el numero, en medio de la raya"
+        );
+        let rayas: Vec<Orden> = o
+            .iter()
+            .filter(|x| matches!(x, Orden::Polilinea { .. }))
+            .cloned()
+            .collect();
         let cerca_del_medio = puntos_de(&rayas).iter().any(|p| (p.x - 200.0).abs() < 20.0);
         assert!(!cerca_del_medio, "la raya deja el hueco del numero");
 
         // Una de 40 px no cabe: raya entera y el numero encima.
         let corta = cota_de(Punto2::nuevo(0.0, 0.0), Punto2::nuevo(40.0, 0.0));
         let o = ordenes_medibles(&corta, Some(&metros(0.01)), ',', BLANCO);
-        assert!(puntos_de(&o).iter().any(|p| (p.x - 20.0).abs() < 2.0 && p.y.abs() < 3.0));
+        assert!(
+            puntos_de(&o)
+                .iter()
+                .any(|p| (p.x - 20.0).abs() < 2.0 && p.y.abs() < 3.0)
+        );
     }
 
     #[test]
@@ -2717,7 +2794,11 @@ mod pruebas {
         c.trazo = hex(0x0edeff);
         c.extras.tam_letra = Some(9.0);
         let (_, color, halo, grosor, _, _) = rotulo_de(&ordenes_medibles(&c, None, ',', BLANCO));
-        assert_eq!(halo, hex(0xffffff), "tinta oscura (ya adaptada), halo blanco");
+        assert_eq!(
+            halo,
+            hex(0xffffff),
+            "tinta oscura (ya adaptada), halo blanco"
+        );
         assert!((grosor - 9.0 * 0.22).abs() < 1e-4, "{grosor}");
         assert_ne!(color, halo);
         // Sin `fontSize`, el tamano de fabrica del movil (20).
@@ -2737,7 +2818,10 @@ mod pruebas {
         for escala in [None, Some(metros(0.01))] {
             let o = ordenes_medibles(&c, escala.as_ref(), ',', BLANCO);
             let (_, color, _, _, _, _) = rotulo_de(&o);
-            assert_eq!(color, adaptado, "ni gris sin escala ni el cian claro tal cual");
+            assert_eq!(
+                color, adaptado,
+                "ni gris sin escala ni el cian claro tal cual"
+            );
             for x in &o {
                 if let Orden::Polilinea { color, .. } = x {
                     assert_eq!(*color, adaptado, "la raya, de la misma tinta que el numero");
@@ -2759,14 +2843,24 @@ mod pruebas {
         let o = ordenes_medibles(&c, Some(&metros(0.01)), ',', BLANCO);
         let (texto, _, _, _, centro, angulo) = rotulo_de(&o);
         let esperado = Punto2::nuevo(50.0, 0.0).girar(giro, c.angulo);
-        assert!(centro.distancia(esperado) < 1e-3, "{centro:?} vs {esperado:?}");
-        assert!((grados(angulo) - 90.0).abs() < 0.1, "a lo largo de la raya girada");
+        assert!(
+            centro.distancia(esperado) < 1e-3,
+            "{centro:?} vs {esperado:?}"
+        );
+        assert!(
+            (grados(angulo) - 90.0).abs() < 0.1,
+            "a lo largo de la raya girada"
+        );
         // Y la caja del renglon se lleva con su centro.
-        let Some(Orden::Rotulo { x, y, .. }) = o.iter().find(|x| matches!(x, Orden::Rotulo { .. })) else {
+        let Some(Orden::Rotulo { x, y, .. }) = o.iter().find(|x| matches!(x, Orden::Rotulo { .. }))
+        else {
             panic!()
         };
-        let (ancho, alto) = crate::texto::medida(&texto, 20.0, &letra_de_rotulo(&c), Default::default());
-        assert!((x + ancho / 2.0 - centro.x).abs() < 1e-3 && (y + alto / 2.0 - centro.y).abs() < 1e-3);
+        let (ancho, alto) =
+            crate::texto::medida(&texto, 20.0, &letra_de_rotulo(&c), Default::default());
+        assert!(
+            (x + ancho / 2.0 - centro.x).abs() < 1e-3 && (y + alto / 2.0 - centro.y).abs() < 1e-3
+        );
     }
 
     #[test]
@@ -2816,7 +2910,16 @@ mod imagen_girada {
 
     fn la_imagen(e: &Elemento) -> (f32, f32, f32, f32, f32) {
         match ordenes(e).as_slice() {
-            [Orden::Imagen { x, y, ancho, alto, angulo, .. }] => (*x, *y, *ancho, *alto, *angulo),
+            [
+                Orden::Imagen {
+                    x,
+                    y,
+                    ancho,
+                    alto,
+                    angulo,
+                    ..
+                },
+            ] => (*x, *y, *ancho, *alto, *angulo),
             otras => panic!("una imagen es una orden de imagen: {otras:?}"),
         }
     }
@@ -2825,9 +2928,15 @@ mod imagen_girada {
     fn una_imagen_girada_lleva_su_angulo_y_su_caja_sin_girar_en_su_sitio() {
         let giro = std::f32::consts::FRAC_PI_2 + 0.01;
         let (x, y, ancho, alto, angulo) = la_imagen(&foto(giro));
-        assert!((angulo - giro).abs() < 1e-6, "el angulo llega a quien pinta");
+        assert!(
+            (angulo - giro).abs() < 1e-6,
+            "el angulo llega a quien pinta"
+        );
         // La caja es la del elemento: el giro va alrededor de su centro.
-        assert!((x - 100.0).abs() < 1e-3 && (y - 50.0).abs() < 1e-3, "({x}, {y})");
+        assert!(
+            (x - 100.0).abs() < 1e-3 && (y - 50.0).abs() < 1e-3,
+            "({x}, {y})"
+        );
         assert_eq!((ancho, alto), (400.0, 200.0));
     }
 
@@ -2852,9 +2961,22 @@ mod imagen_girada {
             angulo: 0.1,
         };
         girar_orden(&mut o, Punto2::nuevo(0.0, 0.0), std::f32::consts::PI);
-        let Orden::Imagen { x, y, ancho, alto, angulo, .. } = o else { unreachable!() };
+        let Orden::Imagen {
+            x,
+            y,
+            ancho,
+            alto,
+            angulo,
+            ..
+        } = o
+        else {
+            unreachable!()
+        };
         // El centro (10, 5) da media vuelta hasta (-10, -5).
-        assert!((x + 20.0).abs() < 1e-3 && (y + 10.0).abs() < 1e-3, "({x}, {y})");
+        assert!(
+            (x + 20.0).abs() < 1e-3 && (y + 10.0).abs() < 1e-3,
+            "({x}, {y})"
+        );
         assert_eq!((ancho, alto), (20.0, 10.0));
         assert!((angulo - (0.1 + std::f32::consts::PI)).abs() < 1e-5);
     }

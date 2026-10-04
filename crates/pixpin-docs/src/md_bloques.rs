@@ -22,14 +22,20 @@ pub struct Bloque {
 }
 
 fn sangria(r: &str) -> usize {
-    r.chars().take_while(|c| *c == ' ' || *c == '\t').map(|c| if c == '\t' { 4 } else { 1 }).sum()
+    r.chars()
+        .take_while(|c| *c == ' ' || *c == '\t')
+        .map(|c| if c == '\t' { 4 } else { 1 })
+        .sum()
 }
 
 fn es_de_lista(r: &str) -> bool {
     let t = r.trim_start();
-    let vineta = t.len() >= 2 && matches!(t.as_bytes()[0], b'-' | b'*' | b'+') && t.as_bytes()[1] == b' ';
+    let vineta =
+        t.len() >= 2 && matches!(t.as_bytes()[0], b'-' | b'*' | b'+') && t.as_bytes()[1] == b' ';
     let cifras = t.bytes().take_while(u8::is_ascii_digit).count();
-    let numero = cifras > 0 && matches!(t.as_bytes().get(cifras), Some(b'.' | b')')) && t.as_bytes().get(cifras + 1) == Some(&b' ');
+    let numero = cifras > 0
+        && matches!(t.as_bytes().get(cifras), Some(b'.' | b')'))
+        && t.as_bytes().get(cifras + 1) == Some(&b' ');
     vineta || numero
 }
 
@@ -80,7 +86,10 @@ pub fn bloques(texto: &str) -> Vec<Bloque> {
 
 /// El bloque que tiene el renglon `linea`, si lo hay.
 pub fn bloque_en(bloques: &[Bloque], linea: usize) -> Option<Bloque> {
-    bloques.iter().copied().find(|b| b.desde <= linea && linea <= b.hasta)
+    bloques
+        .iter()
+        .copied()
+        .find(|b| b.desde <= linea && linea <= b.hasta)
 }
 
 /// **Donde se puede soltar**: delante de cada bloque y detras del ultimo
@@ -101,11 +110,19 @@ pub fn sitios(bloques: &[Bloque], movido: Bloque) -> Vec<usize> {
 pub fn mover(texto: &str, b: Bloque, antes_de: usize) -> Option<(String, usize)> {
     let mut renglones: Vec<&str> = texto.split('\n').collect();
     let n = renglones.len();
-    if b.hasta >= n || b.desde > b.hasta || antes_de > n || (b.desde..=b.hasta + 1).contains(&antes_de) {
+    if b.hasta >= n
+        || b.desde > b.hasta
+        || antes_de > n
+        || (b.desde..=b.hasta + 1).contains(&antes_de)
+    {
         return None;
     }
     let movidos: Vec<&str> = renglones.drain(b.desde..=b.hasta).collect();
-    let destino = if antes_de > b.hasta { antes_de - movidos.len() } else { antes_de };
+    let destino = if antes_de > b.hasta {
+        antes_de - movidos.len()
+    } else {
+        antes_de
+    };
     renglones.splice(destino..destino, movidos);
     Some((renglones.join("\n"), destino))
 }
@@ -114,14 +131,18 @@ pub fn mover(texto: &str, b: Bloque, antes_de: usize) -> Option<(String, usize)>
 mod pruebas {
     use super::*;
 
-    const NOTA: &str = "# Titulo\nUn parrafo.\n\n- uno\n  - de uno\n- dos\n```\ncodigo\n```\n![foto](a.png)\nFin.";
+    const NOTA: &str =
+        "# Titulo\nUn parrafo.\n\n- uno\n  - de uno\n- dos\n```\ncodigo\n```\n![foto](a.png)\nFin.";
 
     #[test]
     fn cada_parrafo_titulo_foto_codigo_y_lista_es_un_bloque() {
         let b = bloques(NOTA);
         let rangos: Vec<(usize, usize)> = b.iter().map(|b| (b.desde, b.hasta)).collect();
         // El renglon vacio no es un bloque; «uno» se lleva lo que cuelga.
-        assert_eq!(rangos, [(0, 0), (1, 1), (3, 4), (5, 5), (6, 8), (9, 9), (10, 10)]);
+        assert_eq!(
+            rangos,
+            [(0, 0), (1, 1), (3, 4), (5, 5), (6, 8), (9, 9), (10, 10)]
+        );
         assert_eq!(bloque_en(&b, 7), Some(Bloque { desde: 6, hasta: 8 }));
         assert_eq!(bloque_en(&b, 2), None, "el aire no se coge");
     }
@@ -131,7 +152,15 @@ mod pruebas {
         let (t, donde) = mover(NOTA, Bloque { desde: 1, hasta: 1 }, 11).unwrap();
         assert!(t.ends_with("Fin.\nUn parrafo."), "{t}");
         assert_eq!(donde, 10);
-        let (t, donde) = mover(&t, Bloque { desde: 10, hasta: 10 }, 1).unwrap();
+        let (t, donde) = mover(
+            &t,
+            Bloque {
+                desde: 10,
+                hasta: 10,
+            },
+            1,
+        )
+        .unwrap();
         assert_eq!(t, NOTA);
         assert_eq!(donde, 1);
         // La lista con lo que cuelga va entera.
@@ -140,7 +169,17 @@ mod pruebas {
         // Casos negativos: soltarlo pegado a si mismo no mueve nada.
         assert_eq!(mover(NOTA, Bloque { desde: 3, hasta: 4 }, 3), None);
         assert_eq!(mover(NOTA, Bloque { desde: 3, hasta: 4 }, 5), None);
-        assert_eq!(mover(NOTA, Bloque { desde: 3, hasta: 40 }, 0), None);
+        assert_eq!(
+            mover(
+                NOTA,
+                Bloque {
+                    desde: 3,
+                    hasta: 40
+                },
+                0
+            ),
+            None
+        );
     }
 
     #[test]

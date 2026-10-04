@@ -116,7 +116,11 @@ pub(crate) fn medidas_de(doc: &Documento, colocados: &[Colocado], alto: f32, bas
                 tops.push(c.y);
                 let (_, aire, _) = crate::visor::pinta(b.clase);
                 // Una raya ocupa su aire detras, no su pixel.
-                abajo = if c.texto.is_empty() && c.caja.is_none() { c.y + base * aire } else { c.y + c.alto };
+                abajo = if c.texto.is_empty() && c.caja.is_none() {
+                    c.y + base * aire
+                } else {
+                    c.y + c.alto
+                };
             }
             None => {
                 let (_, aire, _) = crate::visor::pinta(b.clase);
@@ -157,7 +161,11 @@ pub(crate) fn guardar_medidas(
     if let Some(c) = ruta.parent() {
         std::fs::create_dir_all(c)?;
     }
-    let tops: Vec<f64> = medidas.tops.iter().map(|t| (*t as f64 * 10.0).round() / 10.0).collect();
+    let tops: Vec<f64> = medidas
+        .tops
+        .iter()
+        .map(|t| (*t as f64 * 10.0).round() / 10.0)
+        .collect();
     let json = serde_json::json!({
         "t": tops,
         "h": medidas.alto,
@@ -171,7 +179,10 @@ pub(crate) fn guardar_medidas(
 /// si son de esta letra y, con la letra fijada, de esta columna. Sin tinta
 /// la columna es la que cabia en la pantalla del lector: se exporta con
 /// ella, que es como se estaba leyendo cuando se puso cada marcador.
-pub(crate) fn medidas_guardadas(documento: &Path, ajustes: &lectura::Ajustes) -> Option<(f32, Medidas)> {
+pub(crate) fn medidas_guardadas(
+    documento: &Path,
+    ajustes: &lectura::Ajustes,
+) -> Option<(f32, Medidas)> {
     let texto = std::fs::read_to_string(ruta_de_medidas(documento)).ok()?;
     let v: serde_json::Value = serde_json::from_str(&texto).ok()?;
     if v.get("l")?.as_str()? != letra_de(ajustes) {
@@ -193,14 +204,30 @@ pub(crate) fn medidas_guardadas(documento: &Path, ajustes: &lectura::Ajustes) ->
 
 /// **Mide el documento ahora**, con el mismo DirectWrite que el lector y
 /// fuera de un fotograma: la misma disposicion que la pantalla.
-fn medir_ahora(doc: &Documento, ajustes: &lectura::Ajustes, columna: f32, hoja: crate::visor::Hoja) -> Result<Medidas> {
-    let dispositivo = pixpin_capture::Dispositivo::nuevo().context("sin dispositivo para medir el texto")?;
-    let motor = pixpin_render::MotorRender::nuevo(dispositivo.d3d()).context("sin motor para medir el texto")?;
-    let mide = |texto: &str, tam: f32, ancho: f32, tramos: &[pixpin_render::Tramo], letra: &crate::visor::Letra| {
+fn medir_ahora(
+    doc: &Documento,
+    ajustes: &lectura::Ajustes,
+    columna: f32,
+    hoja: crate::visor::Hoja,
+) -> Result<Medidas> {
+    let dispositivo =
+        pixpin_capture::Dispositivo::nuevo().context("sin dispositivo para medir el texto")?;
+    let motor = pixpin_render::MotorRender::nuevo(dispositivo.d3d())
+        .context("sin motor para medir el texto")?;
+    let mide = |texto: &str,
+                tam: f32,
+                ancho: f32,
+                tramos: &[pixpin_render::Tramo],
+                letra: &crate::visor::Letra| {
         motor.medir_de_lectura(texto, tam, ancho, tramos, &letra.para_pintar())
     };
     let (colocados, alto) = crate::visor::colocar(doc, ajustes, columna, hoja, &mide);
-    Ok(medidas_de(doc, &colocados, alto, crate::visor::tamano_base(ajustes)))
+    Ok(medidas_de(
+        doc,
+        &colocados,
+        alto,
+        crate::visor::tamano_base(ajustes),
+    ))
 }
 
 // ---------------------------------------------------------------------------
@@ -210,7 +237,11 @@ fn medir_ahora(doc: &Documento, ajustes: &lectura::Ajustes, columna: f32, hoja: 
 /// mismo SVG (`porAnclas` del movil). `ancla` dice a que bloque va un trazo
 /// por la altura de su centro; `(dx, dy, k)` lleva sus unidades a las de la
 /// pagina (desplazar y escalar).
-pub(crate) fn piezas_de(escena: &Escena, ancla: &dyn Fn(f32) -> i32, (dx, dy, k): (f64, f64, f64)) -> Vec<Pieza> {
+pub(crate) fn piezas_de(
+    escena: &Escena,
+    ancla: &dyn Fn(f32) -> i32,
+    (dx, dy, k): (f64, f64, f64),
+) -> Vec<Pieza> {
     let mut grupos: BTreeMap<i32, Vec<u64>> = BTreeMap::new();
     for e in escena.visibles() {
         let (_, y0, _, y1) = e.caja();
@@ -218,13 +249,23 @@ pub(crate) fn piezas_de(escena: &Escena, ancla: &dyn Fn(f32) -> i32, (dx, dy, k)
     }
     let mut piezas = Vec::with_capacity(grupos.len());
     for (a, ids) in grupos {
-        let Some(hoja) = ex::hojas(escena, Alcance::Seleccion, &ids, None).into_iter().next() else {
+        let Some(hoja) = ex::hojas(escena, Alcance::Seleccion, &ids, None)
+            .into_iter()
+            .next()
+        else {
             continue;
         };
         if hoja.ordenes.is_empty() {
             continue;
         }
-        let svg = exportar_svg::svg(&hoja, OpcionesSvg { fondo: None, marcos: false }, &|_| None);
+        let svg = exportar_svg::svg(
+            &hoja,
+            OpcionesSvg {
+                fondo: None,
+                marcos: false,
+            },
+            &|_| None,
+        );
         let (x0, y0, _, _) = hoja.caja;
         piezas.push(Pieza {
             svg,
@@ -253,13 +294,22 @@ fn hex(c: pixpin_render::Color) -> String {
 /// Un numero de pixeles para el CSS, con un decimal.
 fn px(v: f32) -> String {
     let r = (v * 10.0).round() / 10.0;
-    if r == r.trunc() { format!("{}", r as i64) } else { format!("{r}") }
+    if r == r.trunc() {
+        format!("{}", r as i64)
+    } else {
+        format!("{r}")
+    }
 }
 
 /// **Lo que se imprime**: la columna y, de los margenes, solo hasta donde
 /// hay algo anotado. Imprimir los dos margenes enteros dejaria el texto en
 /// un tercio del papel.
-fn estilo_de_impresion(columna: f32, margen: f32, piezas: &[Pieza], con_marcadores: bool) -> String {
+fn estilo_de_impresion(
+    columna: f32,
+    margen: f32,
+    piezas: &[Pieza],
+    con_marcadores: bool,
+) -> String {
     let mut izq = margen;
     let mut der = margen + columna + if con_marcadores { 32.0 } else { 0.0 };
     for p in piezas {
@@ -283,7 +333,13 @@ fn estilo_de_impresion(columna: f32, margen: f32, piezas: &[Pieza], con_marcador
 /// de DirectWrite y el aire delante de cada bloque (`visor::pinta`). Cuanto
 /// mas se parezca, menos tiene que correr el guion lo anotado; lo que no
 /// case lo corrige el ancla.
-fn estilo_de_texto(ajustes: &lectura::Ajustes, columna: f32, margen: f32, piezas: &[Pieza], con_marcadores: bool) -> String {
+fn estilo_de_texto(
+    ajustes: &lectura::Ajustes,
+    columna: f32,
+    margen: f32,
+    piezas: &[Pieza],
+    con_marcadores: bool,
+) -> String {
     use crate::lector::{APAGADO, FONDO, RAYA, TEXTO};
     use pixpin_docs::documento::Clase;
     let b = crate::visor::tamano_base(ajustes);
@@ -333,7 +389,12 @@ fn estilo_de_texto(ajustes: &lectura::Ajustes, columna: f32, margen: f32, piezas
         hr_alto = px((b * crate::visor::pinta(Clase::Regla).1 - 1.0).max(0.0)),
         regla = aire(Clase::Regla),
     ));
-    s.push_str(&estilo_de_impresion(columna, margen, piezas, con_marcadores));
+    s.push_str(&estilo_de_impresion(
+        columna,
+        margen,
+        piezas,
+        con_marcadores,
+    ));
     s
 }
 
@@ -353,9 +414,15 @@ pub(crate) fn hoja_de_texto(
 ) -> HojaDocumento {
     let columna = columna.round().max(1.0);
     let margen = vista::margen_de(columna).round();
-    let tops: Vec<f64> = medidas.map(|m| m.tops.iter().map(|t| *t as f64).collect()).unwrap_or_default();
+    let tops: Vec<f64> = medidas
+        .map(|m| m.tops.iter().map(|t| *t as f64).collect())
+        .unwrap_or_default();
     let alto = medidas.map_or(0.0, |m| m.alto as f64);
-    let piezas = piezas_de(escena, &|y| dw::ancla_de(y as f64, &tops, HOLGURA), (margen as f64, 0.0, 1.0));
+    let piezas = piezas_de(
+        escena,
+        &|y| dw::ancla_de(y as f64, &tops, HOLGURA),
+        (margen as f64, 0.0, 1.0),
+    );
     let senales: Vec<Senal> = ajustes
         .marcadores
         .iter()
@@ -364,7 +431,11 @@ pub(crate) fn hoja_de_texto(
             Senal {
                 emoji: m.emoji.clone(),
                 y,
-                ancla: if alto > 0.0 { dw::ancla_de(y, &tops, HOLGURA) } else { -1 },
+                ancla: if alto > 0.0 {
+                    dw::ancla_de(y, &tops, HOLGURA)
+                } else {
+                    -1
+                },
                 // Con medidas, la altura manda aunque no haya bloque
                 // encima (un marcador en la cabecera): la fraccion es solo
                 // para cuando nunca se midio.
@@ -392,7 +463,13 @@ pub(crate) fn hoja_de_texto(
 pub(crate) fn pagina(hojas: &[HojaDocumento], titulo: &str) -> Option<String> {
     let mixtas: Vec<HojaDeLaPagina<'_>> = hojas.iter().map(HojaDeLaPagina::Documento).collect();
     let nombre = format!("{} (anotado)", exportar_html::nombre_de_fichero(titulo));
-    exportar_html::paginas_mixtas(&mixtas, titulo, &nombre, exportar_html::Opciones::default(), None)
+    exportar_html::paginas_mixtas(
+        &mixtas,
+        titulo,
+        &nombre,
+        exportar_html::Opciones::default(),
+        None,
+    )
 }
 
 /// **La pagina web de un Word o un libro con lo anotado**, leyendo todo del
@@ -414,17 +491,30 @@ pub(crate) fn web_de_texto_con(
     let columna = if ajustes.letra_fijada() {
         ajustes.columna as f32
     } else {
-        guardadas.as_ref().map_or(super::COLUMNA_SIN_ANOTAR, |(c, _)| *c)
+        guardadas
+            .as_ref()
+            .map_or(super::COLUMNA_SIN_ANOTAR, |(c, _)| *c)
     };
     let medidas = match medir(&doc, &ajustes, columna, crate::visor::Hoja::de(ruta)) {
         Ok(m) => Some(m),
         Err(e) => {
-            tracing::info!(?e, "no se pudo medir el documento; se usan las medidas que dejo el lector");
+            tracing::info!(
+                ?e,
+                "no se pudo medir el documento; se usan las medidas que dejo el lector"
+            );
             guardadas.map(|(_, m)| m)
         }
     };
     let titulo = pixpin_docs::sin_extension(&pixpin_docs::nombre(ruta));
-    let hoja = hoja_de_texto(&titulo, &doc, &ajustes, &capa.escena, columna, medidas.as_ref(), &imagen_para_la_web);
+    let hoja = hoja_de_texto(
+        &titulo,
+        &doc,
+        &ajustes,
+        &capa.escena,
+        columna,
+        medidas.as_ref(),
+        &imagen_para_la_web,
+    );
     pagina(&[hoja], &titulo).context("sin hoja")
 }
 
@@ -442,7 +532,10 @@ fn foto_para_la_web(img: &ImagenRgba, calidad: u8) -> Option<String> {
         let bytes = pixpin_codec::imagen::codificar_jpg(img, calidad).ok()?;
         return Some(data_uri("image/jpeg", &bytes));
     }
-    Some(data_uri("image/png", &pixpin_codec::codificar_png(img).ok()?))
+    Some(data_uri(
+        "image/png",
+        &pixpin_codec::codificar_png(img).ok()?,
+    ))
 }
 
 /// **Las fotos del documento, dentro de la pagina y a dieta**
@@ -457,7 +550,12 @@ pub(crate) fn imagen_para_la_web(im: &Imagen) -> Option<String> {
     if im.datos.len() <= FOTO_LIGERA || im.mime.contains("svg") {
         return Some(data_uri(&im.mime, &im.datos));
     }
-    let extension = im.mime.rsplit('/').next().unwrap_or("png").replace("jpeg", "jpg");
+    let extension = im
+        .mime
+        .rsplit('/')
+        .next()
+        .unwrap_or("png")
+        .replace("jpeg", "jpg");
     let temporal = std::env::temp_dir().join(format!(
         "pixpin-foto-web-{}-{}.{extension}",
         std::process::id(),
@@ -468,7 +566,8 @@ pub(crate) fn imagen_para_la_web(im: &Imagen) -> Option<String> {
         .and_then(|_| pixpin_codec::cargar(&temporal).ok())
         .and_then(|img| {
             let img = if img.ancho > ANCHO_DE_FOTO {
-                let alto = ((img.alto as u64 * ANCHO_DE_FOTO as u64) / img.ancho as u64).max(1) as u32;
+                let alto =
+                    ((img.alto as u64 * ANCHO_DE_FOTO as u64) / img.ancho as u64).max(1) as u32;
                 pixpin_codec::imagen::redimensionar(img, ANCHO_DE_FOTO, alto).ok()?
             } else {
                 img
@@ -569,7 +668,10 @@ pub(crate) fn hoja_de_pdf(nombre: &str, hojas: &[HojaPdf], marcas_texto: &str) -
         let ancla = n as i32;
         tops.push(y);
         piezas.extend(piezas_de(&h.tinta, &|_| ancla, (margen as f64, y, k)));
-        for m in marcas.iter().filter(|m| pixpin_motor2d::marcas::pagina_de(m) == h.pagina) {
+        for m in marcas
+            .iter()
+            .filter(|m| pixpin_motor2d::marcas::pagina_de(m) == h.pagina)
+        {
             let dentro = pixpin_motor2d::marcas::alto_en_la_pagina(m);
             senales.push(Senal {
                 emoji: m.emoji.clone(),
@@ -600,7 +702,12 @@ pub(crate) fn hoja_de_pdf(nombre: &str, hojas: &[HojaPdf], marcas_texto: &str) -
          .texto-pdf ::selection{{background:rgba(0,90,255,.25)}}",
         ENTRE_HOJAS as u32
     );
-    estilo.push_str(&estilo_de_impresion(columna, margen, &piezas, !senales.is_empty()));
+    estilo.push_str(&estilo_de_impresion(
+        columna,
+        margen,
+        &piezas,
+        !senales.is_empty(),
+    ));
     HojaDocumento {
         nombre: nombre.to_string(),
         estilo,
@@ -622,7 +729,11 @@ const BLOQUES_PDF: &str = ".hoja-pdf";
 /// Un numero corto para el estilo de la capa de texto: tres decimales como mucho.
 fn n3(v: f64) -> String {
     let r = (v * 1000.0).round() / 1000.0;
-    if r == r.trunc() { format!("{}", r as i64) } else { format!("{r}") }
+    if r == r.trunc() {
+        format!("{}", r as i64)
+    } else {
+        format!("{r}")
+    }
 }
 
 /// **Las lineas de texto de la hoja, invisibles, en su sitio sobre la foto**
@@ -646,7 +757,11 @@ pub(crate) fn capa_de_texto(plano: &pixpin_pdf::plano::Plano, columna: f64) -> S
         n3(plano.alto * k)
     );
     for t in plano.textos.iter().filter(|t| !t.texto.trim().is_empty()) {
-        let texto = t.texto.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;");
+        let texto = t
+            .texto
+            .replace('&', "&amp;")
+            .replace('<', "&lt;")
+            .replace('>', "&gt;");
         // La letra a 100 y encogida con `scale(0.01)`, como en el guion de
         // las hojas en lineas: con un tamano pequeno de verdad algunos
         // navegadores la subirian a su minimo.
@@ -661,7 +776,10 @@ pub(crate) fn capa_de_texto(plano: &pixpin_pdf::plano::Plano, columna: f64) -> S
             t.familia.replace("-condensed", "")
         ));
         if t.ancho > 0.0 {
-            s.push_str(&format!(" textLength=\"{}\" lengthAdjust=\"spacingAndGlyphs\"", n3(t.ancho * 100.0)));
+            s.push_str(&format!(
+                " textLength=\"{}\" lengthAdjust=\"spacingAndGlyphs\"",
+                n3(t.ancho * 100.0)
+            ));
         }
         s.push('>');
         s.push_str(&texto);
@@ -735,7 +853,11 @@ fn webp_sin_perdida(img: &ImagenRgba) -> Option<Vec<u8>> {
 /// v0.98.1): puesto, cada hoja que se deja leer va en lineas con su texto;
 /// quitado, **todas como imagen** con el texto invisible encima, que en un
 /// plano escaneado o con mucho sombreado puede verse mejor.
-pub(crate) fn web_de_pdf(ruta: &Path, paginas: Option<&[usize]>, con_texto: bool) -> Result<String> {
+pub(crate) fn web_de_pdf(
+    ruta: &Path,
+    paginas: Option<&[usize]>,
+    con_texto: bool,
+) -> Result<String> {
     let doc = pixpin_pdf::Documento::abrir(ruta).map_err(|e| anyhow::anyhow!("{e}"))?;
     let colocadas = vista::Hojas::colocar(&doc.medidas());
     let todas: Vec<usize> = (0..colocadas.cuantas()).collect();
@@ -759,7 +881,10 @@ pub(crate) fn web_de_pdf(ruta: &Path, paginas: Option<&[usize]>, con_texto: bool
     let mut leidas: Vec<(Option<String>, String)> = Vec::with_capacity(cuales.len());
     match std::fs::read(ruta) {
         Ok(b) => pixpin_pdf::plano::con_cada(&b, &cuales, |_, p| {
-            let texto = p.as_ref().map(|p| capa_de_texto(p, COLUMNA_PDF as f64)).unwrap_or_default();
+            let texto = p
+                .as_ref()
+                .map(|p| capa_de_texto(p, COLUMNA_PDF as f64))
+                .unwrap_or_default();
             let lineas = p
                 .filter(|p| con_texto && p.se_manda_como_lineas())
                 .map(|p| pixpin_pdf::plano_web::a_json(&p, COLUMNA_PDF as f64));
@@ -779,14 +904,26 @@ pub(crate) fn web_de_pdf(ruta: &Path, paginas: Option<&[usize]>, con_texto: bool
                 None
             } else {
                 doc.renderizar(i as u32, ancho)
-                    .inspect_err(|e| tracing::warn!(?e, hoja = i, "hoja del PDF que no se pudo dibujar para la web"))
+                    .inspect_err(|e| {
+                        tracing::warn!(
+                            ?e,
+                            hoja = i,
+                            "hoja del PDF que no se pudo dibujar para la web"
+                        )
+                    })
                     .ok()
                     .and_then(|img| hoja_como_imagen(&img))
             };
-            let texto = if plano.is_some() { String::new() } else { texto };
+            let texto = if plano.is_some() {
+                String::new()
+            } else {
+                texto
+            };
             let capa = donde.para_leer(ruta, i);
             let tinta = if capa.is_file() {
-                donde.leer_capa(ruta, i, espacios, colocadas.altos[i]).escena
+                donde
+                    .leer_capa(ruta, i, espacios, colocadas.altos[i])
+                    .escena
             } else {
                 Escena::nueva()
             };

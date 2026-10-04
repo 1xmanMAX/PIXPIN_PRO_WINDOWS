@@ -41,7 +41,12 @@ pub(super) fn copiar(h: &HojaAbierta) {
     let hecho = match &h.edicion {
         Some(t) => pixpin_codec::portapapeles::copiar_texto(t),
         None => {
-            let (tsv, html) = portapapeles_tabla::copiar(&h.tabla, h.sel, h.sel, pixpin_shell::entorno::separador_decimal());
+            let (tsv, html) = portapapeles_tabla::copiar(
+                &h.tabla,
+                h.sel,
+                h.sel,
+                pixpin_shell::entorno::separador_decimal(),
+            );
             pixpin_codec::portapapeles::tabla::copiar_tabla(&tsv, &html)
         }
     };

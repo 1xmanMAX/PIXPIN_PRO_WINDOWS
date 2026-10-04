@@ -173,9 +173,11 @@ pub(crate) fn tecla_a_herramienta(c: char) -> Option<Herramienta> {
 /// inversa de `tecla_a_herramienta`: si alguna vez se separan, la barra
 /// ensenaria una tecla que no hace nada, y la prueba lo vigila.
 pub(crate) fn tecla_de(h: Herramienta) -> Option<char> {
-    ['M', 'L', 'R', 'T', 'F', 'Q', 'B', 'A', 'E', 'G', 'P', 'Z', 'J']
-        .into_iter()
-        .find(|c| tecla_a_herramienta(*c) == Some(h))
+    [
+        'M', 'L', 'R', 'T', 'F', 'Q', 'B', 'A', 'E', 'G', 'P', 'Z', 'J',
+    ]
+    .into_iter()
+    .find(|c| tecla_a_herramienta(*c) == Some(h))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]

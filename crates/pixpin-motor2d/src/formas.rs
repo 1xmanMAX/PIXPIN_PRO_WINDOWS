@@ -764,7 +764,10 @@ pub fn rombo_redondo_a_mano(
 /// contorno abollado, peor que lo que habia. La de Excalidraw es la que el
 /// usuario tiene por referencia y la que se ve lisa.
 fn tramos_a_mano(tramos: &[Tramo], o: rough::Opciones, azar: &mut Azar) -> Vec<Vec<Punto2>> {
-    let o = rough::Opciones { preservar: true, ..o };
+    let o = rough::Opciones {
+        preservar: true,
+        ..o
+    };
     let pt = |p: Punto2| rough::Pt::nuevo(p.x as f64, p.y as f64);
     let mut r = rough::Rough::con_azar(o, azar.clone());
     let mut ops = Vec::new();
@@ -852,7 +855,10 @@ pub fn elipse_a_mano(
     *azar = r.azar();
     (
         rough::a_pasadas(&ops),
-        nucleo.iter().map(|p| Punto2::nuevo(p.x as f32, p.y as f32)).collect(),
+        nucleo
+            .iter()
+            .map(|p| Punto2::nuevo(p.x as f32, p.y as f32))
+            .collect(),
     )
 }
 
@@ -931,10 +937,17 @@ mod raya_de_rough {
         for semilla in [1, 7, 950_731_993, 123_456] {
             let pasadas = linea_rough(a, b, 1.0, true, &mut Azar::nuevo(semilla));
             assert_eq!(pasadas.len(), 2, "dos pasadas, como rough.js");
-            assert!(peor_desvio(&pasadas, a, b) < 5.0, "semilla {semilla}: {}", peor_desvio(&pasadas, a, b));
+            assert!(
+                peor_desvio(&pasadas, a, b) < 5.0,
+                "semilla {semilla}: {}",
+                peor_desvio(&pasadas, a, b)
+            );
             // Y la de antes, con la misma semilla, se torcia mas.
             let antes = linea(a, b, 1.0, &mut Azar::nuevo(semilla));
-            assert!(peor_desvio(&antes, a, b) > peor_desvio(&pasadas, a, b), "semilla {semilla}");
+            assert!(
+                peor_desvio(&antes, a, b) > peor_desvio(&pasadas, a, b),
+                "semilla {semilla}"
+            );
         }
     }
 
@@ -954,7 +967,10 @@ mod raya_de_rough {
         let (a, b) = (Punto2::nuevo(0.0, 0.0), Punto2::nuevo(120.0, 0.0));
         let corta = linea_rough(a, b, 1.0, true, &mut Azar::nuevo(3));
         assert!(peor_desvio(&corta, a, b) > 0.05, "a mano, no a regla");
-        assert_eq!(linea_rough(a, b, 0.0, true, &mut Azar::nuevo(3)), vec![vec![a, b]]);
+        assert_eq!(
+            linea_rough(a, b, 0.0, true, &mut Azar::nuevo(3)),
+            vec![vec![a, b]]
+        );
     }
 }
 

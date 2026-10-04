@@ -102,7 +102,16 @@ mod pruebas {
         std::fs::write(&rota, b"esto no es una imagen").unwrap();
         assert!(bytes_de_foto(&rota).is_none());
         assert!(bytes_de_foto(&dir.join("no-existe.png")).is_none());
-        let (_, nombre) = exportar("\n\n", "Nota nueva", &Vista::default(), None, &|_| None, "", 0).unwrap();
+        let (_, nombre) = exportar(
+            "\n\n",
+            "Nota nueva",
+            &Vista::default(),
+            None,
+            &|_| None,
+            "",
+            0,
+        )
+        .unwrap();
         assert_eq!(nombre, "Nota nueva");
         std::fs::remove_dir_all(&dir).ok();
     }

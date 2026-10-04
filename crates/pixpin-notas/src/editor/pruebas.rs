@@ -55,12 +55,24 @@ fn estilos() -> Estilos {
 fn una_marca_se_esconde_siempre_tambien_en_el_renglon_del_cursor() {
     let s = estilos();
     for activo in [false, true] {
-        for estilo in [Estilo::Marca, Estilo::Numero, Estilo::Casilla { hecha: true }, Estilo::Regla] {
-            assert_eq!(formato_de(estilo, activo, &s).Base.dwEffects, CFE_HIDDEN, "{estilo:?}");
+        for estilo in [
+            Estilo::Marca,
+            Estilo::Numero,
+            Estilo::Casilla { hecha: true },
+            Estilo::Regla,
+        ] {
+            assert_eq!(
+                formato_de(estilo, activo, &s).Base.dwEffects,
+                CFE_HIDDEN,
+                "{estilo:?}"
+            );
         }
     }
     // Caso negativo: el texto de una negrita no se esconde.
-    assert_eq!(formato_de(Estilo::Negrita, true, &s).Base.dwEffects.0 & CFE_HIDDEN.0, 0);
+    assert_eq!(
+        formato_de(Estilo::Negrita, true, &s).Base.dwEffects.0 & CFE_HIDDEN.0,
+        0
+    );
 }
 
 #[test]
@@ -69,7 +81,13 @@ fn la_vineta_la_pone_windows_siempre_y_respeta_la_columna() {
     let fuera = parrafo_de(Estilo::Vineta, false, &s).unwrap();
     assert_eq!(fuera.Base.wNumbering, PFN_BULLET);
     assert_eq!(fuera.Base.dxStartIndent, 300 + SANGRIA / 2);
-    assert_eq!(parrafo_de(Estilo::Vineta, true, &s).unwrap().Base.wNumbering, PFN_BULLET);
+    assert_eq!(
+        parrafo_de(Estilo::Vineta, true, &s)
+            .unwrap()
+            .Base
+            .wNumbering,
+        PFN_BULLET
+    );
     assert!(parrafo_de(Estilo::Negrita, false, &s).is_none());
 }
 
@@ -77,10 +95,16 @@ fn la_vineta_la_pone_windows_siempre_y_respeta_la_columna() {
 fn los_titulos_van_en_la_letra_de_titulos() {
     let s = estilos();
     let f = formato_de(Estilo::Titulo(1), false, &s);
-    assert_eq!(String::from_utf16_lossy(&f.Base.szFaceName).trim_end_matches('\0'), "Georgia");
+    assert_eq!(
+        String::from_utf16_lossy(&f.Base.szFaceName).trim_end_matches('\0'),
+        "Georgia"
+    );
     assert!(f.Base.yHeight > BASE);
     // El texto de una foto se esconde fuera del cursor, como una marca.
-    assert_eq!(formato_de(Estilo::Imagen, false, &s).Base.dwEffects, CFE_HIDDEN);
+    assert_eq!(
+        formato_de(Estilo::Imagen, false, &s).Base.dwEffects,
+        CFE_HIDDEN
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -144,7 +168,12 @@ pub(crate) fn abrir_con(p: Pedido, claro: bool, tamano: (i32, i32)) -> Estado {
 }
 
 pub(crate) fn escribir(e: &Estado, s: &str) {
-    enviar(e.edit, EM_REPLACESEL, 1, ancho_nulo(&s.replace('\n', "\r")).as_ptr() as isize);
+    enviar(
+        e.edit,
+        EM_REPLACESEL,
+        1,
+        ancho_nulo(&s.replace('\n', "\r")).as_ptr() as isize,
+    );
 }
 
 const CON_TABLA: &str = "# Plan\nAntes de la tabla.\n| Objetivo | Tecnica |\n|:---|:---|\n| OE1 | **Pareto** |\n| OE2 | Likert 1\\|5 |\nDespues.\n";
@@ -205,7 +234,10 @@ fn filas_y_columnas_se_ponen_y_se_quitan_desde_la_celda_del_cursor() {
     // El cursor quedo en la fila nueva.
     assert_eq!(celda_del_cursor(&e).map(|(_, f, c)| (f, c)), Some((2, 0)));
     operar_tabla(&mut e, OpTabla::ColDerecha);
-    assert_eq!(markdown(&e), "| a |  | b |\n|:---|:---|:---|\n| 1 |  | 2 |\n|  |  |  |\n");
+    assert_eq!(
+        markdown(&e),
+        "| a |  | b |\n|:---|:---|:---|\n| 1 |  | 2 |\n|  |  |  |\n"
+    );
     operar_tabla(&mut e, OpTabla::QuitarCol);
     operar_tabla(&mut e, OpTabla::QuitarFila);
     assert_eq!(markdown(&e), "| a | b |\n|:---|:---|\n| 1 | 2 |\n");
@@ -242,7 +274,16 @@ fn el_menu_de_la_barra_filtra_lo_tecleado_y_elige_con_intro() {
     escribir(&e, "/cas");
     actualizar_barra(&mut e);
     assert!(matches!(e.abierto, Some(Abierto::Barra(5))));
-    let ids: Vec<u16> = menu::VISTA.with(|v| v.borrow().as_ref().unwrap().menu.entradas.iter().map(|x| x.id).collect());
+    let ids: Vec<u16> = menu::VISTA.with(|v| {
+        v.borrow()
+            .as_ref()
+            .unwrap()
+            .menu
+            .entradas
+            .iter()
+            .map(|x| x.id)
+            .collect()
+    });
     assert_eq!(ids.len(), 1);
     elegir_del_menu(&mut e, &mut |_| true);
     assert_eq!(markdown(&e), "hola\n- [ ] ");
@@ -263,7 +304,10 @@ fn la_tabla_y_la_fecha_tambien_se_ponen_desde_la_barra() {
     actualizar_barra(&mut e);
     elegir_del_menu(&mut e, &mut |_| true);
     let (d, m, a) = md_comandos::dia_de(pixpin_shell::entorno::ahora_local_ms());
-    let meses = "ene feb mar abr may jun jul ago sept oct nov dic".split(' ').nth(m as usize - 1).unwrap();
+    let meses = "ene feb mar abr may jun jul ago sept oct nov dic"
+        .split(' ')
+        .nth(m as usize - 1)
+        .unwrap();
     assert_eq!(markdown(&e), format!("{d} {meses} {a}"));
     desmontar(e);
 }
@@ -341,11 +385,25 @@ fn los_botones_de_la_tabla_salen_con_el_cursor_dentro() {
     let mut e = abrir("hola\n| a |\n|:---|\n| 1 |\n");
     elegir(e.edit, 0, 0);
     actualizar_en_tabla(&mut e);
-    assert!(VISTA.with(|v| v.borrow().as_ref().unwrap().disp.caja(Boton::FilaMas).is_none()));
+    assert!(VISTA.with(|v| {
+        v.borrow()
+            .as_ref()
+            .unwrap()
+            .disp
+            .caja(Boton::FilaMas)
+            .is_none()
+    }));
     let t = md_tabla::tablas_en_control(&leer(e.edit)).remove(0);
     ir_a_celda(&e, t.desde, 1, 0);
     actualizar_en_tabla(&mut e);
-    assert!(VISTA.with(|v| v.borrow().as_ref().unwrap().disp.caja(Boton::FilaMas).is_some()));
+    assert!(VISTA.with(|v| {
+        v.borrow()
+            .as_ref()
+            .unwrap()
+            .disp
+            .caja(Boton::FilaMas)
+            .is_some()
+    }));
     desmontar(e);
 }
 
@@ -402,7 +460,8 @@ fn una_foto_que_no_esta_se_queda_como_texto() {
 fn insertar_una_foto_la_pone_en_su_renglon_con_la_ruta_de_adjuntar() {
     let ruta = foto_de_prueba("alzado.png", 400, 300);
     let mut p = pedido("texto");
-    p.adjuntar = Box::new(|_: &Path| Some("pixpin:files/guardados/pc/p1/notas/9-alzado.png".into()));
+    p.adjuntar =
+        Box::new(|_: &Path| Some("pixpin:files/guardados/pc/p1/notas/9-alzado.png".into()));
     let e = abrir_con(p, false, (1000, 760));
     // Lo que haria C_IMAGEN tras el dialogo.
     let md = (|| Some("pixpin:files/guardados/pc/p1/notas/9-alzado.png".to_string()))().unwrap();
@@ -538,7 +597,6 @@ fn medir_repintado() {
     desmontar(e);
 }
 
-
 #[test]
 #[ignore]
 fn muestra_foto() {
@@ -547,7 +605,10 @@ fn muestra_foto() {
     let texto = "# Visita de obra\nLa losa ya esta hormigonada:\n![losa del segundo piso](obra2.png)\nFalta el curado.";
     let mut p = pedido(texto);
     p.resolver = Box::new(move |_: &str| Some(foto.clone()));
-    for (claro, activa, nombre) in [(false, false, "nota-md-foto.png"), (true, true, "nota-md-foto-cursor-clara.png")] {
+    for (claro, activa, nombre) in [
+        (false, false, "nota-md-foto.png"),
+        (true, true, "nota-md-foto-cursor-clara.png"),
+    ] {
         let mut e = abrir_con(
             Pedido {
                 texto: p.texto.clone(),

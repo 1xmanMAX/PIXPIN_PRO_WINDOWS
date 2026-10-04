@@ -59,7 +59,9 @@ pub fn hex(c: Rgb) -> String {
 }
 
 fn escapar(s: &str) -> String {
-    s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;")
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
 }
 
 /// La tabla en el HTML de `Tablas.aHtml` del movil (sin salto al final).
@@ -178,7 +180,10 @@ fn atributo(atributos: &str, nombre: &str) -> Option<String> {
         let valor = tras.trim_start()[1..].trim_start();
         let crudo = match valor.chars().next() {
             Some(q @ ('"' | '\'')) => valor[1..].split(q).next().unwrap_or(""),
-            _ => valor.split(|c: char| c.is_whitespace() || c == '>').next().unwrap_or(""),
+            _ => valor
+                .split(|c: char| c.is_whitespace() || c == '>')
+                .next()
+                .unwrap_or(""),
         };
         return Some(entidades(crudo));
     }
@@ -197,14 +202,21 @@ fn declaraciones(css: &str) -> Vec<(String, String)> {
 }
 
 fn valor<'a>(decl: &'a [(String, String)], clave: &str) -> Option<&'a str> {
-    decl.iter().rev().find(|(k, _)| k == clave).map(|(_, v)| v.as_str())
+    decl.iter()
+        .rev()
+        .find(|(k, _)| k == clave)
+        .map(|(_, v)| v.as_str())
 }
 
 /// Un color de CSS o de atributo: `#rgb`, `#rrggbb`, `rgb(…)` y los
 /// nombres de siempre. `None` con lo que no es un color de verdad
 /// (`transparent`, `auto`, `windowtext`…).
 pub fn color(v: &str) -> Option<Rgb> {
-    let v = v.trim().trim_end_matches("!important").trim().to_ascii_lowercase();
+    let v = v
+        .trim()
+        .trim_end_matches("!important")
+        .trim()
+        .to_ascii_lowercase();
     // `background: #FFC000 none` de Excel: el primer trozo que sea color.
     if v.contains(' ') && !v.starts_with("rgb") {
         return v.split_whitespace().find_map(color);
@@ -221,11 +233,21 @@ pub fn color(v: &str) -> Option<Rgb> {
         };
     }
     if let Some(dentro) = v.strip_prefix("rgba(").or_else(|| v.strip_prefix("rgb(")) {
-        let partes: Vec<&str> = dentro.trim_end_matches(')').split(',').map(str::trim).collect();
+        let partes: Vec<&str> = dentro
+            .trim_end_matches(')')
+            .split(',')
+            .map(str::trim)
+            .collect();
         if partes.len() == 4 && partes[3].parse::<f32>().ok()? == 0.0 {
             return None;
         }
-        let n = |i: usize| partes.get(i)?.parse::<f32>().ok().map(|x| x.clamp(0.0, 255.0) as u32);
+        let n = |i: usize| {
+            partes
+                .get(i)?
+                .parse::<f32>()
+                .ok()
+                .map(|x| x.clamp(0.0, 255.0) as u32)
+        };
         return Some((n(0)? << 16) | (n(1)? << 8) | n(2)?);
     }
     Some(match v.as_str() {
@@ -266,9 +288,9 @@ fn sin_ruido(html: &str) -> String {
     for bloque in ["style", "script", "head"] {
         loop {
             let bajo = s.to_ascii_lowercase();
-            let Some(a) = buscar(&bajo, &format!("<{bloque}"), 0)
-                .filter(|&a| bajo[a + 1 + bloque.len()..].starts_with(|c: char| c == '>' || c.is_whitespace()))
-            else {
+            let Some(a) = buscar(&bajo, &format!("<{bloque}"), 0).filter(|&a| {
+                bajo[a + 1 + bloque.len()..].starts_with(|c: char| c == '>' || c.is_whitespace())
+            }) else {
                 break;
             };
             let cierre = format!("</{bloque}>");
@@ -286,7 +308,9 @@ fn clases(html: &str) -> HashMap<String, Vec<(String, String)>> {
     let bajo = html.to_ascii_lowercase();
     let mut desde = 0;
     while let Some(a) = buscar(&bajo, "<style", desde) {
-        let Some(abre) = buscar(&bajo, ">", a) else { break };
+        let Some(abre) = buscar(&bajo, ">", a) else {
+            break;
+        };
         let b = buscar(&bajo, "</style>", abre).unwrap_or(html.len());
         let css = html[abre + 1..b].replace("<!--", " ").replace("-->", " ");
         for regla in css.split('}') {
@@ -298,7 +322,9 @@ fn clases(html: &str) -> HashMap<String, Vec<(String, String)>> {
                 let sel = sel.trim();
                 if let Some((_, clase)) = sel.rsplit_once('.')
                     && !clase.is_empty()
-                    && clase.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+                    && clase
+                        .chars()
+                        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
                 {
                     sal.insert(clase.to_ascii_lowercase(), decl.clone());
                 }
@@ -314,7 +340,8 @@ fn clases(html: &str) -> HashMap<String, Vec<(String, String)>> {
 fn etiqueta(bajo: &str, nombre: &str, mut desde: usize) -> Option<usize> {
     loop {
         let i = buscar(bajo, nombre, desde)?;
-        if bajo[i + nombre.len()..].starts_with(|c: char| c == '>' || c == '/' || c.is_whitespace()) {
+        if bajo[i + nombre.len()..].starts_with(|c: char| c == '>' || c == '/' || c.is_whitespace())
+        {
             return Some(i);
         }
         desde = i + 1;
@@ -339,9 +366,13 @@ fn filas_html(html: &str) -> Vec<Vec<CeldaHtml>> {
             desde = tr + 3;
             continue;
         }
-        let Some(abre_fin) = buscar(&bajo, ">", tr) else { break };
+        let Some(abre_fin) = buscar(&bajo, ">", tr) else {
+            break;
+        };
         let siguiente = buscar(&bajo, "<tr", abre_fin).unwrap_or(html.len());
-        let cierra = buscar(&bajo, "</tr>", abre_fin).unwrap_or(html.len()).min(siguiente);
+        let cierra = buscar(&bajo, "</tr>", abre_fin)
+            .unwrap_or(html.len())
+            .min(siguiente);
         let dentro = &html[abre_fin + 1..cierra];
         let dentro_bajo = &bajo[abre_fin + 1..cierra];
         let mut fila = Vec::new();
@@ -349,13 +380,20 @@ fn filas_html(html: &str) -> Vec<Vec<CeldaHtml>> {
         loop {
             let td = etiqueta(dentro_bajo, "<td", k);
             let th = etiqueta(dentro_bajo, "<th", k);
-            let Some(c0) = [td, th].into_iter().flatten().min() else { break };
-            let Some(c1) = buscar(dentro_bajo, ">", c0) else { break };
-            let fin = [buscar(dentro_bajo, "</td>", c1), buscar(dentro_bajo, "</th>", c1)]
-                .into_iter()
-                .flatten()
-                .min()
-                .unwrap_or(dentro.len());
+            let Some(c0) = [td, th].into_iter().flatten().min() else {
+                break;
+            };
+            let Some(c1) = buscar(dentro_bajo, ">", c0) else {
+                break;
+            };
+            let fin = [
+                buscar(dentro_bajo, "</td>", c1),
+                buscar(dentro_bajo, "</th>", c1),
+            ]
+            .into_iter()
+            .flatten()
+            .min()
+            .unwrap_or(dentro.len());
             fila.push(CeldaHtml {
                 cabecera: th == Some(c0),
                 atributos: dentro[c0 + 3..c1].to_string(),
@@ -501,14 +539,23 @@ pub fn leer_de_nota(html: &str) -> Option<Tabla> {
                 letra: valor(&estilo, "color").and_then(color),
                 alineacion: atributo(a, "align").as_deref().and_then(alineacion_de),
                 cabecera: Some(celda.cabecera),
-                vertical: match atributo(a, "valign").unwrap_or_default().to_ascii_lowercase().as_str() {
+                vertical: match atributo(a, "valign")
+                    .unwrap_or_default()
+                    .to_ascii_lowercase()
+                    .as_str()
+                {
                     "middle" => Vertical::Medio,
                     "bottom" => Vertical::Abajo,
                     _ => Vertical::Arriba,
                 },
                 ..Formato::default()
             };
-            sal.push((entidades(&sin_etiquetas(&celda.interior)).trim().to_string(), x));
+            sal.push((
+                entidades(&sin_etiquetas(&celda.interior))
+                    .trim()
+                    .to_string(),
+                x,
+            ));
         }
         leidas.push(sal);
     }
@@ -535,7 +582,10 @@ fn texto_pegado(html: &str) -> String {
     while i < html.len() {
         if html[i..].starts_with('<') {
             let fin = html[i..].find('>').map_or(html.len(), |k| i + k + 1);
-            if bajo[i..].starts_with("<br") || bajo[i..].starts_with("<p") || bajo[i..].starts_with("</p") {
+            if bajo[i..].starts_with("<br")
+                || bajo[i..].starts_with("<p")
+                || bajo[i..].starts_with("</p")
+            {
                 s.push(' ');
             }
             i = fin;
@@ -545,7 +595,10 @@ fn texto_pegado(html: &str) -> String {
         s.push_str(&html[i..fin]);
         i = fin;
     }
-    entidades(&s).split_whitespace().collect::<Vec<_>>().join(" ")
+    entidades(&s)
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 fn es_negrita(decl: &[(String, String)]) -> Option<bool> {
@@ -554,7 +607,11 @@ fn es_negrita(decl: &[(String, String)]) -> Option<bool> {
 }
 
 fn es_cursiva(decl: &[(String, String)]) -> Option<bool> {
-    Some(valor(decl, "font-style")?.to_ascii_lowercase().starts_with("italic"))
+    Some(
+        valor(decl, "font-style")?
+            .to_ascii_lowercase()
+            .starts_with("italic"),
+    )
 }
 
 /// Todos los `style` de las etiquetas de dentro de una celda, en orden.
@@ -563,7 +620,9 @@ fn estilos_de_dentro(interior: &str) -> Vec<(String, Vec<(String, String)>)> {
     let mut sal = Vec::new();
     let mut i = 0;
     while let Some(a) = buscar(&bajo, "<", i) {
-        let Some(b) = buscar(&bajo, ">", a) else { break };
+        let Some(b) = buscar(&bajo, ">", a) else {
+            break;
+        };
         let etiqueta = &interior[a + 1..b];
         if !etiqueta.starts_with('/') {
             let nombre: String = etiqueta
@@ -635,7 +694,8 @@ pub fn leer_pegado(fragmento: &str, entero: Option<&str>) -> Option<Tabla> {
             let mut letra = valor(&decl, "color").and_then(color);
             let mut alineacion = valor(&decl, "text-align").and_then(alineacion_de);
             for (nombre, d) in &dentro {
-                negrita |= matches!(nombre.as_str(), "b" | "strong") || es_negrita(d).unwrap_or(false);
+                negrita |=
+                    matches!(nombre.as_str(), "b" | "strong") || es_negrita(d).unwrap_or(false);
                 cursiva |= matches!(nombre.as_str(), "i" | "em") || es_cursiva(d).unwrap_or(false);
                 if let Some(c) = valor(d, "color").and_then(color) {
                     letra = Some(c);
@@ -683,10 +743,10 @@ pub fn leer_pegado(fragmento: &str, entero: Option<&str>) -> Option<Tabla> {
         alin_celdas.push(alin);
     }
     // Las filas de rellenar del final (Sheets deja alguna) fuera.
-    while leidas
-        .last()
-        .is_some_and(|f| f.iter().all(|(t, x)| t.is_empty() && x.fondo.is_none() && x.filas == 1))
-    {
+    while leidas.last().is_some_and(|f| {
+        f.iter()
+            .all(|(t, x)| t.is_empty() && x.fondo.is_none() && x.filas == 1)
+    }) {
         leidas.pop();
         alin_celdas.pop();
     }
@@ -714,8 +774,14 @@ pub fn leer_pegado(fragmento: &str, entero: Option<&str>) -> Option<Tabla> {
         }
     }
     for (c, v) in votos.iter().enumerate() {
-        let mejor = (0..3).max_by_key(|i| (v[*i], usize::from(*i == 0))).unwrap_or(0);
-        t.alineaciones[c] = [Alineacion::Izquierda, Alineacion::Centro, Alineacion::Derecha][mejor];
+        let mejor = (0..3)
+            .max_by_key(|i| (v[*i], usize::from(*i == 0)))
+            .unwrap_or(0);
+        t.alineaciones[c] = [
+            Alineacion::Izquierda,
+            Alineacion::Centro,
+            Alineacion::Derecha,
+        ][mejor];
     }
     for fila in &mut t.formato {
         for (c, x) in fila.iter_mut().enumerate() {
@@ -768,7 +834,10 @@ pub fn leer_tsv(texto: &str) -> Option<Tabla> {
         al_principio = false;
     }
     filas.last_mut()?.push(actual);
-    while filas.last().is_some_and(|f| f.iter().all(|x| x.trim().is_empty())) {
+    while filas
+        .last()
+        .is_some_and(|f| f.iter().all(|x| x.trim().is_empty()))
+    {
         filas.pop();
     }
     let n = filas.first()?.len();
@@ -827,7 +896,11 @@ mod pruebas {
 
     fn lee_como_el_movil(texto: &str) -> Vec<Vec<DelMovil>> {
         let bajo = texto.to_lowercase();
-        let desescapar = |s: &str| s.replace("&lt;", "<").replace("&gt;", ">").replace("&amp;", "&");
+        let desescapar = |s: &str| {
+            s.replace("&lt;", "<")
+                .replace("&gt;", ">")
+                .replace("&amp;", "&")
+        };
         let mut filas = Vec::new();
         let mut pos = 0;
         while let Some(abre) = bajo[pos..].find("<tr").map(|i| i + pos) {
@@ -840,9 +913,13 @@ mod pruebas {
             loop {
                 let th = fila_b[p..].find("<th").map(|i| i + p);
                 let td = fila_b[p..].find("<td").map(|i| i + p);
-                let Some(a) = [th, td].into_iter().flatten().min() else { break };
+                let Some(a) = [th, td].into_iter().flatten().min() else {
+                    break;
+                };
                 let es_th = Some(a) == th;
-                let Some(fin) = fila[a..].find('>').map(|i| i + a) else { break };
+                let Some(fin) = fila[a..].find('>').map(|i| i + a) else {
+                    break;
+                };
                 let attrs = &fila[a..fin];
                 let cierre = if es_th { "</th>" } else { "</td>" };
                 let c = fila_b[fin..].find(cierre).map(|i| i + fin);
@@ -850,13 +927,20 @@ mod pruebas {
                 celdas.push(DelMovil {
                     texto: desescapar(sin_etiquetas(&fila[fin + 1..h]).trim()),
                     cabecera: es_th,
-                    alineacion: match atributo_del_movil(attrs, "align").map(|x| x.to_lowercase()).as_deref() {
+                    alineacion: match atributo_del_movil(attrs, "align")
+                        .map(|x| x.to_lowercase())
+                        .as_deref()
+                    {
                         Some("center") => "centro",
                         Some("right") => "derecha",
                         _ => "izquierda",
                     },
-                    colspan: atributo_del_movil(attrs, "colspan").and_then(|x| x.parse().ok()).unwrap_or(1),
-                    rowspan: atributo_del_movil(attrs, "rowspan").and_then(|x| x.parse().ok()).unwrap_or(1),
+                    colspan: atributo_del_movil(attrs, "colspan")
+                        .and_then(|x| x.parse().ok())
+                        .unwrap_or(1),
+                    rowspan: atributo_del_movil(attrs, "rowspan")
+                        .and_then(|x| x.parse().ok())
+                        .unwrap_or(1),
                 });
                 p = c.map_or(fila.len(), |c| c + cierre.len());
             }
@@ -868,7 +952,13 @@ mod pruebas {
         filas
     }
 
-    fn movil(texto: &str, cabecera: bool, alineacion: &'static str, colspan: usize, rowspan: usize) -> DelMovil {
+    fn movil(
+        texto: &str,
+        cabecera: bool,
+        alineacion: &'static str,
+        colspan: usize,
+        rowspan: usize,
+    ) -> DelMovil {
         DelMovil {
             texto: texto.into(),
             cabecera,
@@ -922,7 +1012,9 @@ mod pruebas {
                 ],
             ]
         );
-        assert!(html.contains("<td rowspan=\"2\" style=\"background:#ffc9c9;color:#e03131\">Obra gruesa</td>"));
+        assert!(html.contains(
+            "<td rowspan=\"2\" style=\"background:#ffc9c9;color:#e03131\">Obra gruesa</td>"
+        ));
     }
 
     #[test]
@@ -963,7 +1055,9 @@ mod pruebas {
 
     #[test]
     fn lo_que_no_es_una_tabla_entera_no_se_lee_de_la_nota() {
-        assert!(leer_de_nota("<table><caption>Plan</caption><tr><td>a</td></tr></table>").is_none());
+        assert!(
+            leer_de_nota("<table><caption>Plan</caption><tr><td>a</td></tr></table>").is_none()
+        );
         assert!(leer_de_nota("<table><tr><td>a</td></tr></table> y texto").is_none());
         assert!(leer_de_nota("<table></table>").is_none());
         assert!(leer_de_nota("<p>hola</p>").is_none());
@@ -978,7 +1072,15 @@ mod pruebas {
         assert_eq!(color("yellow"), Some(0xffff00));
         assert_eq!(color("red !important"), Some(0xff0000));
         // Lo que no es un color de verdad.
-        for v in ["transparent", "windowtext", "auto", "#12", "rgba(0,0,0,0)", "", "inherit"] {
+        for v in [
+            "transparent",
+            "windowtext",
+            "auto",
+            "#12",
+            "rgba(0,0,0,0)",
+            "",
+            "inherit",
+        ] {
             assert_eq!(color(v), None, "{v}");
         }
         assert_eq!(hex(0xa5d8ff), "#a5d8ff");
@@ -1022,13 +1124,20 @@ mod pruebas {
         assert_eq!(t.formato(0, 0).letra, Some(0xffffff));
         assert_eq!(t.formato(2, 0).fondo, Some(0xffc000));
         assert_eq!(t.formato(1, 0).fondo, None);
-        assert_eq!(t.alineaciones, vec![Alineacion::Izquierda, Alineacion::Derecha]);
-        assert!(t.formato.iter().flatten().all(|x| x.alineacion.is_none()), "una alineacion por columna");
+        assert_eq!(
+            t.alineaciones,
+            vec![Alineacion::Izquierda, Alineacion::Derecha]
+        );
+        assert!(
+            t.formato.iter().flatten().all(|x| x.alineacion.is_none()),
+            "una alineacion por columna"
+        );
     }
 
     #[test]
     fn pegar_una_tabla_sin_colores_ni_combinadas_se_guarda_con_barras() {
-        let html = "<table><tr><td>a</td><td>b</td></tr><tr><td>1</td><td align=right>2</td></tr></table>";
+        let html =
+            "<table><tr><td>a</td><td>b</td></tr><tr><td>1</td><td align=right>2</td></tr></table>";
         let t = leer_pegado(html, None).unwrap();
         assert!(!t.es_avanzada());
         assert_eq!(a_texto(&t), "| a | b |\n|:---|---:|\n| 1 | 2 |");
@@ -1055,7 +1164,13 @@ mod pruebas {
         // Una sola celda: se pega como texto.
         assert!(leer_pegado("<table><tr><td>12</td></tr></table>", None).is_none());
         // Media pagina con una tabla dentro: tambien, que se perderia lo demas.
-        assert!(leer_pegado("<p>Antes</p><table><tr><td>a</td><td>b</td></tr></table>", None).is_none());
+        assert!(
+            leer_pegado(
+                "<p>Antes</p><table><tr><td>a</td><td>b</td></tr></table>",
+                None
+            )
+            .is_none()
+        );
         assert!(leer_pegado("<b>sin tabla</b>", None).is_none());
         assert!(leer_pegado("", None).is_none());
     }

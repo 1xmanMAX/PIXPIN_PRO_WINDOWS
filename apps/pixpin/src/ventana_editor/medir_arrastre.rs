@@ -147,7 +147,9 @@ fn punto_que_agarra(escena: &Escena, gesto: &Gesto, escala: f32) -> Punto2 {
     // Ni el borde de la caja ni un tirador: ahi se estira, no se mueve.
     let tiradores = gesto.tiradores(escena, escala);
     for id in gesto.seleccion.ids() {
-        let Some(e) = escena.buscar(*id) else { continue };
+        let Some(e) = escena.buscar(*id) else {
+            continue;
+        };
         let (x0, y0, x1, y1) = e.caja();
         // Un marco solo se coge por su raya: la de arriba, lejos de los
         // tiradores.
@@ -191,7 +193,16 @@ fn arrastrar(
     cache_tinta.fijar_escala(camara.zoom);
     let escala = 1.0 / camara.zoom;
     // Calentar: la escena entera una vez, como la ve el usuario antes.
-    b.escena_en(&b.destino, escena, &rejilla, &mut cache, &mut cache_tinta, camara, true, &|_| true);
+    b.escena_en(
+        &b.destino,
+        escena,
+        &rejilla,
+        &mut cache,
+        &mut cache_tinta,
+        camara,
+        true,
+        &|_| true,
+    );
     let _ = lupas::pasar(
         &mut b.motor,
         &b.destino.destino,
@@ -227,7 +238,10 @@ fn arrastrar(
     let mut capa_lista = false;
     let mut zona_antes: Option<(i32, i32, i32, i32)> = None;
     for i in 1..=AVISOS {
-        let q = Punto2::nuevo(desde.x + i as f32 * 6.0 * escala, desde.y + i as f32 * 3.0 * escala);
+        let q = Punto2::nuevo(
+            desde.x + i as f32 * 6.0 * escala,
+            desde.y + i as f32 * 3.0 * escala,
+        );
         let t = Instant::now();
         gesto.evento(
             EventoGesto::Mover {
@@ -247,16 +261,23 @@ fn arrastrar(
             let r = caja_en_pantalla(camara, c, 16.0);
             r.0 >= 0 && r.1 >= 0 && r.2 <= ANCHO as i32 && r.3 <= ALTO as i32
         });
-        let compone = en_capa
-            || (gesto.moviendo() && gesto.flechas_que_siguen().is_empty() && dentro);
+        let compone =
+            en_capa || (gesto.moviendo() && gesto.flechas_que_siguen().is_empty() && dentro);
         if compone {
             if !en_capa {
                 // Empezar: lo elegido, una vez, en su capa.
                 let t = Instant::now();
                 let sel = gesto.seleccion.clone();
-                b.escena_en(&b.tinta, escena, &rejilla, &mut cache, &mut cache_tinta, camara, true, &|id| {
-                    sel.contiene(id)
-                });
+                b.escena_en(
+                    &b.tinta,
+                    escena,
+                    &rejilla,
+                    &mut cache,
+                    &mut cache_tinta,
+                    camara,
+                    true,
+                    &|id| sel.contiene(id),
+                );
                 b.tinta.esperar_gpu().expect("GPU");
                 a.empezar_ms = t.elapsed().as_secs_f64() * 1000.0;
                 en_capa = true;
@@ -270,9 +291,16 @@ fn arrastrar(
         rejilla.sincronizar(escena);
         if !capa_lista {
             let sel = gesto.seleccion.clone();
-            b.escena_en(&b.capa, escena, &rejilla, &mut cache, &mut cache_tinta, camara, true, &|id| {
-                !sel.contiene(id)
-            });
+            b.escena_en(
+                &b.capa,
+                escena,
+                &rejilla,
+                &mut cache,
+                &mut cache_tinta,
+                camara,
+                true,
+                &|id| !sel.contiene(id),
+            );
             b.capa.esperar_gpu().expect("GPU");
             capa_lista = true;
         }
@@ -281,7 +309,9 @@ fn arrastrar(
         // (`congelar::zona_al_transformar`), como el bucle del editor.
         let ahora = congelar::zona_al_transformar(escena, &gesto, camara, &mut cache);
         let zona = match (ahora, zona_antes) {
-            (Some(z), Some(p)) if capa_lista => Some((p.0.min(z.0), p.1.min(z.1), p.2.max(z.2), p.3.max(z.3))),
+            (Some(z), Some(p)) if capa_lista => {
+                Some((p.0.min(z.0), p.1.min(z.1), p.2.max(z.2), p.3.max(z.3)))
+            }
             _ => None,
         };
         zona_antes = ahora;
@@ -294,11 +324,21 @@ fn arrastrar(
             .dibujar(&b.destino.destino, |p| {
                 let origen = camara.a_pantalla(Punto2::nuevo(0.0, 0.0));
                 p.poner_vista((0.0, 0.0), camara.zoom, (origen.x, origen.y));
-                for e in escena.elementos.iter().filter(|e| sel.contiene(e.id) && !e.borrado) {
+                for e in escena
+                    .elementos
+                    .iter()
+                    .filter(|e| sel.contiene(e.id) && !e.borrado)
+                {
                     let grano = pixpin_motor2d::pintado::grano_de(e);
-                    por_cada_orden(&mut cache, e, camara.zoom, escena.escala.as_ref(), |orden| {
-                        dibujar_orden(p, orden, vista, None, imagenes, camara.zoom, grano);
-                    });
+                    por_cada_orden(
+                        &mut cache,
+                        e,
+                        camara.zoom,
+                        escena.escala.as_ref(),
+                        |orden| {
+                            dibujar_orden(p, orden, vista, None, imagenes, camara.zoom, grano);
+                        },
+                    );
                 }
             })
             .expect("lo elegido");
@@ -347,7 +387,11 @@ fn lamina(b: &Banco) -> Lamina {
     let medir = figuras::medidor(&b.motor, pixpin_motor2d::texto::nombre_de_familia(None));
     let estilo = figuras::estilo_del_pincel(&gesto);
     let p = Peticion {
-        formulas: vec!["sin(x)/x".into(), "sqrt(x+4) - 1".into(), "x^2/4 si x < 0; -x/2 si x >= 0".into()],
+        formulas: vec![
+            "sin(x)/x".into(),
+            "sqrt(x+4) - 1".into(),
+            "x^2/4 si x < 0; -x/2 si x >= 0".into(),
+        ],
         x_desde: -6.0,
         x_hasta: 6.0,
         y_desde: -3.0,
@@ -355,18 +399,40 @@ fn lamina(b: &Banco) -> Lamina {
         escala: 50.0,
     };
     let v = grafica::elementos(&p, &estilo, &medir).expect("grafica");
-    figuras::estampar_en_la_vista(&mut escena, &mut gesto, Punto2::nuevo(700.0, 500.0), "grafica", &v);
+    figuras::estampar_en_la_vista(
+        &mut escena,
+        &mut gesto,
+        Punto2::nuevo(700.0, 500.0),
+        "grafica",
+        &v,
+    );
     let grafica = gesto.seleccion.ids().to_vec();
     let filas: Vec<Vec<String>> = (0..8)
         .map(|f| (0..5).map(|c| format!("celda {f},{c}")).collect())
         .collect();
-    let v = pixpin_motor2d::tabla_dibujada::elementos_de_tabla(&filas, &estilo, Punto2::nuevo(0.0, 0.0), &medir, true);
-    figuras::estampar_en_la_vista(&mut escena, &mut gesto, Punto2::nuevo(1500.0, 500.0), "tabla", &v);
+    let v = pixpin_motor2d::tabla_dibujada::elementos_de_tabla(
+        &filas,
+        &estilo,
+        Punto2::nuevo(0.0, 0.0),
+        &medir,
+        true,
+    );
+    figuras::estampar_en_la_vista(
+        &mut escena,
+        &mut gesto,
+        Punto2::nuevo(1500.0, 500.0),
+        "tabla",
+        &v,
+    );
     let tabla = gesto.seleccion.ids().to_vec();
     let mut piezas = Vec::new();
     for i in 0..40 {
         let mut e = Elemento {
-            figura: if i % 2 == 0 { Figura::Rectangulo } else { Figura::Elipse },
+            figura: if i % 2 == 0 {
+                Figura::Rectangulo
+            } else {
+                Figura::Elipse
+            },
             x: (i % 8) as f32 * 40.0,
             y: (i / 8) as f32 * 40.0,
             ancho: 34.0,
@@ -379,7 +445,13 @@ fn lamina(b: &Banco) -> Lamina {
         e.semilla = 7 + i;
         piezas.push(e);
     }
-    figuras::estampar_en_la_vista(&mut escena, &mut gesto, Punto2::nuevo(700.0, 1000.0), "grupo", &piezas);
+    figuras::estampar_en_la_vista(
+        &mut escena,
+        &mut gesto,
+        Punto2::nuevo(700.0, 1000.0),
+        "grupo",
+        &piezas,
+    );
     let grupo = gesto.seleccion.ids().to_vec();
     let suelta = escena.anadir(Elemento {
         figura: Figura::Rectangulo,
@@ -448,12 +520,32 @@ fn medir_el_arrastre_de_lupa_grafica_tabla_grupo_y_sueltas() {
     let mut escena = l.escena.clone();
     // La pasada de las lupas con nada cambiado: solo copiar lo de dentro.
     {
-        let _ = lupas::pasar(&mut b.motor, &b.destino.destino, &escena, &l.camara, None, &b.imagenes, ANCHO, ALTO, &|_| false);
+        let _ = lupas::pasar(
+            &mut b.motor,
+            &b.destino.destino,
+            &escena,
+            &l.camara,
+            None,
+            &b.imagenes,
+            ANCHO,
+            ALTO,
+            &|_| false,
+        );
         b.destino.esperar_gpu().expect("GPU");
         let antes = lupas::rehechas();
         let t = Instant::now();
         for _ in 0..AVISOS {
-            let _ = lupas::pasar(&mut b.motor, &b.destino.destino, &escena, &l.camara, None, &b.imagenes, ANCHO, ALTO, &|_| false);
+            let _ = lupas::pasar(
+                &mut b.motor,
+                &b.destino.destino,
+                &escena,
+                &l.camara,
+                None,
+                &b.imagenes,
+                ANCHO,
+                ALTO,
+                &|_| false,
+            );
             b.destino.esperar_gpu().expect("GPU");
         }
         println!(
@@ -499,7 +591,11 @@ fn medir_el_arrastre_de_lupa_grafica_tabla_grupo_y_sueltas() {
             }
             assert!(!escena.alfileres.is_empty());
         }
-        let clavos = if con_clavos { "con clavo lejos" } else { "sin clavo" };
+        let clavos = if con_clavos {
+            "con clavo lejos"
+        } else {
+            "sin clavo"
+        };
         for (que, ids) in &casos {
             let a = arrastrar(&mut b, &mut escena, ids, &l.camara, false);
             escribir(&format!("mover {que} ({clavos})"), &a);
@@ -529,12 +625,40 @@ fn apuntar_la_lupa(b: &mut Banco, escena: &mut Escena, id: u64, camara: &Camara)
     let mut cache = Cache::nueva();
     let mut cache_tinta = pixpin_render::CacheTinta::nueva();
     cache_tinta.fijar_escala(camara.zoom);
-    b.escena_en(&b.destino, escena, &rejilla, &mut cache, &mut cache_tinta, camara, true, &|_| true);
-    let _ = lupas::pasar(&mut b.motor, &b.destino.destino, escena, camara, None, &b.imagenes, ANCHO, ALTO, &|_| false);
+    b.escena_en(
+        &b.destino,
+        escena,
+        &rejilla,
+        &mut cache,
+        &mut cache_tinta,
+        camara,
+        true,
+        &|_| true,
+    );
+    let _ = lupas::pasar(
+        &mut b.motor,
+        &b.destino.destino,
+        escena,
+        camara,
+        None,
+        &b.imagenes,
+        ANCHO,
+        ALTO,
+        &|_| false,
+    );
     b.destino.esperar_gpu().expect("GPU");
     let con_capa = ventana_editor_apunta_con_capa();
     if con_capa {
-        b.escena_en(&b.capa, escena, &rejilla, &mut cache, &mut cache_tinta, camara, true, &|x| x != id);
+        b.escena_en(
+            &b.capa,
+            escena,
+            &rejilla,
+            &mut cache,
+            &mut cache_tinta,
+            camara,
+            true,
+            &|x| x != id,
+        );
         b.capa.esperar_gpu().expect("GPU");
     }
     let mut a = Arrastre::default();
@@ -555,17 +679,53 @@ fn apuntar_la_lupa(b: &mut Banco, escena: &mut Escena, id: u64, camara: &Camara)
         if con_capa {
             // Solo el trozo de la lupa, el de antes y el de ahora.
             let ahora = lupas::huella_elegida(escena, &[id], camara);
-            let u = [antes, ahora].into_iter().flatten().fold((f32::MAX, f32::MAX, f32::MIN, f32::MIN), |s, c| {
-                (s.0.min(c.0), s.1.min(c.1), s.2.max(c.2), s.3.max(c.3))
-            });
-            let zona = (u.0.max(0.0) as i32, u.1.max(0.0) as i32, (u.2 as i32).min(ANCHO as i32), (u.3 as i32).min(ALTO as i32));
+            let u = [antes, ahora]
+                .into_iter()
+                .flatten()
+                .fold((f32::MAX, f32::MAX, f32::MIN, f32::MIN), |s, c| {
+                    (s.0.min(c.0), s.1.min(c.1), s.2.max(c.2), s.3.max(c.3))
+                });
+            let zona = (
+                u.0.max(0.0) as i32,
+                u.1.max(0.0) as i32,
+                (u.2 as i32).min(ANCHO as i32),
+                (u.3 as i32).min(ALTO as i32),
+            );
             b.destino.copiar_desde(&b.capa, Some(zona)).expect("volcar");
-            b.escena_en(&b.destino, escena, &rejilla, &mut cache, &mut cache_tinta, camara, false, &|x| x == id);
+            b.escena_en(
+                &b.destino,
+                escena,
+                &rejilla,
+                &mut cache,
+                &mut cache_tinta,
+                camara,
+                false,
+                &|x| x == id,
+            );
         } else {
-            b.escena_en(&b.destino, escena, &rejilla, &mut cache, &mut cache_tinta, camara, true, &|_| true);
+            b.escena_en(
+                &b.destino,
+                escena,
+                &rejilla,
+                &mut cache,
+                &mut cache_tinta,
+                camara,
+                true,
+                &|_| true,
+            );
         }
         let tl = Instant::now();
-        let _ = lupas::pasar(&mut b.motor, &b.destino.destino, escena, camara, None, &b.imagenes, ANCHO, ALTO, &|_| false);
+        let _ = lupas::pasar(
+            &mut b.motor,
+            &b.destino.destino,
+            escena,
+            camara,
+            None,
+            &b.imagenes,
+            ANCHO,
+            ALTO,
+            &|_| false,
+        );
         b.destino.esperar_gpu().expect("GPU");
         a.lupas_ms += tl.elapsed().as_secs_f64() * 1000.0;
         let f = t.elapsed().as_secs_f64() * 1000.0;
@@ -637,7 +797,9 @@ fn lamina_de_cotas(b: &Banco) -> LaminaDeCotas {
         cotas.push(escena.anadir(cota_de(a, b, 40 + i)));
     }
     let marco = |x: f32, y: f32| Elemento {
-        figura: Figura::Marco { nombre: "Lamina".into() },
+        figura: Figura::Marco {
+            nombre: "Lamina".into(),
+        },
         x,
         y,
         ancho: 420.0,
@@ -648,7 +810,11 @@ fn lamina_de_cotas(b: &Banco) -> LaminaDeCotas {
     let marco_vacio = escena.anadir(marco(2200.0, 1250.0));
     let marco_lleno = escena.anadir(marco(100.0, 1250.0));
     // Lo de dentro: una cota y unas figuras, lo que hay en una lamina.
-    escena.anadir(cota_de(Punto2::nuevo(140.0, 1300.0), Punto2::nuevo(400.0, 1300.0), 99));
+    escena.anadir(cota_de(
+        Punto2::nuevo(140.0, 1300.0),
+        Punto2::nuevo(400.0, 1300.0),
+        99,
+    ));
     for i in 0..6 {
         escena.anadir(Elemento {
             figura: Figura::Rectangulo,
@@ -675,7 +841,13 @@ fn lamina_de_cotas(b: &Banco) -> LaminaDeCotas {
 /// hornea la capa congelada sin lo que nace (`congelar::hornear`), y cada
 /// aviso copia de ella el trozo sucio (`Region::Caja` del gesto, el de antes
 /// y el de ahora) y repinta encima lo que se esta trazando.
-fn trazar(b: &mut Banco, escena: &mut Escena, herramienta: Herramienta, desde: Punto2, camara: &Camara) -> Arrastre {
+fn trazar(
+    b: &mut Banco,
+    escena: &mut Escena,
+    herramienta: Herramienta,
+    desde: Punto2,
+    camara: &Camara,
+) -> Arrastre {
     let copia = escena.clone();
     let mut gesto = Gesto::nuevo();
     gesto.herramienta = herramienta;
@@ -685,7 +857,16 @@ fn trazar(b: &mut Banco, escena: &mut Escena, herramienta: Herramienta, desde: P
     let mut cache_tinta = pixpin_render::CacheTinta::nueva();
     cache_tinta.fijar_escala(camara.zoom);
     let escala = 1.0 / camara.zoom;
-    b.escena_en(&b.destino, escena, &rejilla, &mut cache, &mut cache_tinta, camara, true, &|_| true);
+    b.escena_en(
+        &b.destino,
+        escena,
+        &rejilla,
+        &mut cache,
+        &mut cache_tinta,
+        camara,
+        true,
+        &|_| true,
+    );
     b.destino.esperar_gpu().expect("GPU");
     gesto.evento(
         EventoGesto::Pulsar {
@@ -702,12 +883,24 @@ fn trazar(b: &mut Banco, escena: &mut Escena, herramienta: Herramienta, desde: P
     // Hornear la capa sin lo que nace, como `congelar::hornear`.
     let t = Instant::now();
     rejilla.sincronizar(escena);
-    b.escena_en(&b.capa, escena, &rejilla, &mut cache, &mut cache_tinta, camara, true, &|id| id != nuevo);
+    b.escena_en(
+        &b.capa,
+        escena,
+        &rejilla,
+        &mut cache,
+        &mut cache_tinta,
+        camara,
+        true,
+        &|id| id != nuevo,
+    );
     b.capa.esperar_gpu().expect("GPU");
     a.empezar_ms = t.elapsed().as_secs_f64() * 1000.0;
     let mut zona_antes: Option<(i32, i32, i32, i32)> = None;
     for i in 1..=AVISOS {
-        let q = Punto2::nuevo(desde.x + i as f32 * 11.0 * escala, desde.y + i as f32 * 5.0 * escala);
+        let q = Punto2::nuevo(
+            desde.x + i as f32 * 11.0 * escala,
+            desde.y + i as f32 * 5.0 * escala,
+        );
         let t = Instant::now();
         let r = gesto.evento(
             EventoGesto::Mover {
@@ -736,7 +929,14 @@ fn trazar(b: &mut Banco, escena: &mut Escena, herramienta: Herramienta, desde: P
         };
         zona_antes = ahora;
         a.en_zona += zona.is_some() as usize;
-        let zona = zona.map(|z| (z.0.max(0), z.1.max(0), z.2.min(ANCHO as i32), z.3.min(ALTO as i32)));
+        let zona = zona.map(|z| {
+            (
+                z.0.max(0),
+                z.1.max(0),
+                z.2.min(ANCHO as i32),
+                z.3.min(ALTO as i32),
+            )
+        });
         b.destino.copiar_desde(&b.capa, zona).expect("volcar");
         let vista = camara.ventana(ANCHO as f32, ALTO as f32);
         let imagenes = &b.imagenes;
@@ -754,9 +954,15 @@ fn trazar(b: &mut Banco, escena: &mut Escena, herramienta: Herramienta, desde: P
                 p.poner_vista((0.0, 0.0), camara.zoom, (origen.x, origen.y));
                 if let Some(e) = escena.buscar(nuevo) {
                     let grano = pixpin_motor2d::pintado::grano_de(e);
-                    por_cada_orden(&mut cache, e, camara.zoom, escena.escala.as_ref(), |orden| {
-                        dibujar_orden(p, orden, vista, None, imagenes, camara.zoom, grano);
-                    });
+                    por_cada_orden(
+                        &mut cache,
+                        e,
+                        camara.zoom,
+                        escena.escala.as_ref(),
+                        |orden| {
+                            dibujar_orden(p, orden, vista, None, imagenes, camara.zoom, grano);
+                        },
+                    );
                 }
                 p.desplazar(0.0, 0.0);
                 if zona.is_some() {
@@ -782,11 +988,29 @@ fn escena_entera(b: &mut Banco, escena: &Escena, camara: &Camara) -> f64 {
     let mut cache = Cache::nueva();
     let mut cache_tinta = pixpin_render::CacheTinta::nueva();
     cache_tinta.fijar_escala(camara.zoom);
-    b.escena_en(&b.destino, escena, &rejilla, &mut cache, &mut cache_tinta, camara, true, &|_| true);
+    b.escena_en(
+        &b.destino,
+        escena,
+        &rejilla,
+        &mut cache,
+        &mut cache_tinta,
+        camara,
+        true,
+        &|_| true,
+    );
     b.destino.esperar_gpu().expect("GPU");
     let t = Instant::now();
     for _ in 0..AVISOS {
-        b.escena_en(&b.destino, escena, &rejilla, &mut cache, &mut cache_tinta, camara, true, &|_| true);
+        b.escena_en(
+            &b.destino,
+            escena,
+            &rejilla,
+            &mut cache,
+            &mut cache_tinta,
+            camara,
+            true,
+            &|_| true,
+        );
         b.destino.esperar_gpu().expect("GPU");
     }
     t.elapsed().as_secs_f64() * 1000.0 / AVISOS as f64
@@ -802,7 +1026,12 @@ fn desglose_de_la_cota(b: &Banco, escena: &Escena, cotas: &[u64], camara: &Camar
     let papel = ColorRgba::opaco(1.0, 1.0, 1.0);
     let t = Instant::now();
     for _ in 0..vueltas {
-        std::hint::black_box(pixpin_motor2d::pintado::ordenes_medibles(&e, escena.escala.as_ref(), ',', papel));
+        std::hint::black_box(pixpin_motor2d::pintado::ordenes_medibles(
+            &e,
+            escena.escala.as_ref(),
+            ',',
+            papel,
+        ));
     }
     let total = t.elapsed().as_secs_f64() * 1000.0 / vueltas as f64;
     let texto = pixpin_motor2d::medida::texto_de_cota(&e, escena.escala.as_ref(), ',');
@@ -832,7 +1061,9 @@ fn desglose_de_la_cota(b: &Banco, escena: &Escena, cotas: &[u64], camara: &Camar
     let ordenes: Vec<Orden> = cotas
         .iter()
         .filter_map(|id| escena.buscar(*id))
-        .flat_map(|e| pixpin_motor2d::pintado::ordenes_medibles(e, escena.escala.as_ref(), ',', papel))
+        .flat_map(|e| {
+            pixpin_motor2d::pintado::ordenes_medibles(e, escena.escala.as_ref(), ',', papel)
+        })
         .collect();
     let vista = camara.ventana(ANCHO as f32, ALTO as f32);
     let pasar = |filtro: &dyn Fn(&Orden) -> Option<Orden>| {
@@ -876,7 +1107,10 @@ fn medir_el_arrastre_de_cotas_y_marcos() {
     let l = lamina_de_cotas(&b);
     let mut escena = l.escena.clone();
     desglose_de_la_cota(&b, &escena, &l.cotas, &l.camara);
-    println!("escena entera con 20 cotas: {:.2} ms/fotograma", escena_entera(&mut b, &escena, &l.camara));
+    println!(
+        "escena entera con 20 cotas: {:.2} ms/fotograma",
+        escena_entera(&mut b, &escena, &l.camara)
+    );
     {
         let mut sin = escena.clone();
         for id in &l.cotas {
@@ -884,11 +1118,26 @@ fn medir_el_arrastre_de_cotas_y_marcos() {
                 e.borrado = true;
             }
         }
-        println!("escena entera sin las cotas: {:.2} ms/fotograma", escena_entera(&mut b, &sin, &l.camara));
+        println!(
+            "escena entera sin las cotas: {:.2} ms/fotograma",
+            escena_entera(&mut b, &sin, &l.camara)
+        );
     }
-    let a = trazar(&mut b, &mut escena, Herramienta::Cota, Punto2::nuevo(1300.0, 700.0), &l.camara);
+    let a = trazar(
+        &mut b,
+        &mut escena,
+        Herramienta::Cota,
+        Punto2::nuevo(1300.0, 700.0),
+        &l.camara,
+    );
     escribir("trazar una cota nueva", &a);
-    let a = trazar(&mut b, &mut escena, Herramienta::Marco, Punto2::nuevo(1300.0, 700.0), &l.camara);
+    let a = trazar(
+        &mut b,
+        &mut escena,
+        Herramienta::Marco,
+        Punto2::nuevo(1300.0, 700.0),
+        &l.camara,
+    );
     escribir("trazar un marco nuevo", &a);
     for (que, id) in [
         ("una cota", l.cotas[7]),

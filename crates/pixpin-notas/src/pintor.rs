@@ -112,7 +112,8 @@ impl Pintor {
         // SAFETY: crear la fabrica y el objetivo no toma punteros ajenos; las
         // propiedades son locales.
         unsafe {
-            let fabrica: ID2D1Factory = D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, None).ok()?;
+            let fabrica: ID2D1Factory =
+                D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, None).ok()?;
             let props = D2D1_RENDER_TARGET_PROPERTIES {
                 r#type: D2D1_RENDER_TARGET_TYPE_DEFAULT,
                 pixelFormat: D2D1_PIXEL_FORMAT {
@@ -158,7 +159,8 @@ impl Pintor {
                 return;
             }
             self.objetivo.BeginDraw();
-            self.objetivo.SetAntialiasMode(D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
+            self.objetivo
+                .SetAntialiasMode(D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
             let f = Formas {
                 rt: &self.objetivo,
                 trazo: self.trazo.as_ref(),
@@ -186,7 +188,15 @@ impl Pintor {
 
     /// Un texto en una caja: centrado en alto; `centrado` tambien a lo ancho.
     /// Lo que no cabe acaba en «…».
-    pub fn texto(&self, hdc: HDC, letra: HFONT, texto: &str, caja: Caja, tinta: Rgb, centrado: bool) {
+    pub fn texto(
+        &self,
+        hdc: HDC,
+        letra: HFONT,
+        texto: &str,
+        caja: Caja,
+        tinta: Rgb,
+        centrado: bool,
+    ) {
         // `DrawTextW` con `DT_END_ELLIPSIS` y un texto vacio se sale de la
         // memoria (visto el 30-sep con un rotulo sin traducir): nada que pintar.
         if texto.is_empty() {
@@ -199,7 +209,11 @@ impl Pintor {
             right: caja.derecha(),
             bottom: caja.abajo(),
         };
-        let formato = DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS | DT_NOPREFIX | if centrado { DT_CENTER } else { DT_LEFT };
+        let formato = DT_SINGLELINE
+            | DT_VCENTER
+            | DT_END_ELLIPSIS
+            | DT_NOPREFIX
+            | if centrado { DT_CENTER } else { DT_LEFT };
         // SAFETY: HDC y letra vivos; el texto es un bufer propio.
         unsafe {
             let vieja = SelectObject(hdc, HGDIOBJ(letra.0));
@@ -285,7 +299,10 @@ impl Formas<'_> {
         let at = |x: f32, y: f32| punto(x0 + x * k, y0 + y * k);
         let linea = |a: (f32, f32), b: (f32, f32)| {
             // SAFETY: dentro del dibujo; pincel y trazo vivos.
-            unsafe { self.rt.DrawLine(at(a.0, a.1), at(b.0, b.1), &p, g, self.trazo) };
+            unsafe {
+                self.rt
+                    .DrawLine(at(a.0, a.1), at(b.0, b.1), &p, g, self.trazo)
+            };
         };
         let quebrada = |ps: &[(f32, f32)]| {
             for w in ps.windows(2) {
@@ -332,7 +349,13 @@ impl Formas<'_> {
             Icono::Imagen => {
                 marco(2.0, 3.0, 12.0, 10.0, 1.5);
                 circulo(10.3, 6.2, 1.1, false);
-                quebrada(&[(2.5, 11.5), (6.0, 8.0), (9.0, 11.0), (10.8, 9.4), (13.5, 11.8)]);
+                quebrada(&[
+                    (2.5, 11.5),
+                    (6.0, 8.0),
+                    (9.0, 11.0),
+                    (10.8, 9.4),
+                    (13.5, 11.8),
+                ]);
             }
             Icono::Casillas => {
                 quebrada(&[(2.0, 5.0), (3.4, 6.4), (5.8, 3.6)]);
@@ -370,7 +393,13 @@ impl Formas<'_> {
             Icono::Numerada => {
                 linea((3.2, 2.6), (3.2, 5.6));
                 quebrada(&[(2.2, 7.2), (4.0, 7.2), (4.0, 8.5), (2.2, 9.6), (4.2, 9.6)]);
-                quebrada(&[(2.2, 11.4), (4.1, 11.4), (3.0, 12.6), (4.2, 13.2), (2.2, 14.2)]);
+                quebrada(&[
+                    (2.2, 11.4),
+                    (4.1, 11.4),
+                    (3.0, 12.6),
+                    (4.2, 13.2),
+                    (2.2, 14.2),
+                ]);
                 for y in [4.0, 8.4, 12.8] {
                     linea((6.5, y), (14.0, y));
                 }
@@ -398,7 +427,14 @@ impl Formas<'_> {
                 linea((5.0, 11.5), (11.0, 11.5));
             }
             Icono::Lapiz => {
-                quebrada(&[(3.0, 13.0), (3.6, 10.2), (10.8, 3.0), (13.0, 5.2), (5.8, 12.4), (3.0, 13.0)]);
+                quebrada(&[
+                    (3.0, 13.0),
+                    (3.6, 10.2),
+                    (10.8, 3.0),
+                    (13.0, 5.2),
+                    (5.8, 12.4),
+                    (3.0, 13.0),
+                ]);
                 linea((9.4, 4.4), (11.6, 6.6));
             }
             Icono::Disco => {
@@ -409,7 +445,13 @@ impl Formas<'_> {
             }
             Icono::Copia => {
                 marco(5.0, 5.0, 9.0, 9.0, 1.5);
-                quebrada(&[(3.5, 10.5), (2.0, 10.5), (2.0, 2.0), (10.5, 2.0), (10.5, 3.5)]);
+                quebrada(&[
+                    (3.5, 10.5),
+                    (2.0, 10.5),
+                    (2.0, 2.0),
+                    (10.5, 2.0),
+                    (10.5, 3.5),
+                ]);
             }
             Icono::Pagina => {
                 marco(2.5, 2.0, 9.0, 12.0, 1.5);
@@ -458,7 +500,14 @@ impl Formas<'_> {
                 }
             }
             Icono::Documento => {
-                quebrada(&[(3.5, 2.0), (9.5, 2.0), (12.5, 5.0), (12.5, 14.0), (3.5, 14.0), (3.5, 2.0)]);
+                quebrada(&[
+                    (3.5, 2.0),
+                    (9.5, 2.0),
+                    (12.5, 5.0),
+                    (12.5, 14.0),
+                    (3.5, 14.0),
+                    (3.5, 2.0),
+                ]);
                 quebrada(&[(9.5, 2.0), (9.5, 5.0), (12.5, 5.0)]);
                 linea((5.8, 8.5), (10.2, 8.5));
                 linea((5.8, 11.0), (9.0, 11.0));
@@ -491,4 +540,3 @@ impl Formas<'_> {
         };
     }
 }
-

@@ -128,7 +128,11 @@ mod pruebas {
     #[test]
     fn dos_mensajes_seguidos_nunca_comparten_hora() {
         assert_eq!(siguiente_hora(1000, 0), 1000);
-        assert_eq!(siguiente_hora(1000, 1000), 1001, "mismo milisegundo, uno mas");
+        assert_eq!(
+            siguiente_hora(1000, 1000),
+            1001,
+            "mismo milisegundo, uno mas"
+        );
         // Caso negativo: un reloj que va hacia atras tampoco repite.
         assert_eq!(siguiente_hora(900, 1001), 1002);
         let a = hora_sin_repetir();

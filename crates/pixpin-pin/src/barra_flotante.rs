@@ -115,14 +115,23 @@ fn registrar_clase() {
 /// bajo el raton. Crece y encoge con el aviso para no tapar el pin cuando no
 /// hace falta.
 fn tamano(i: &Interno) -> (u32, u32) {
-    let aviso = if i.encima.is_some_and(|a| texto_de(&i.textos, a, &i.datos).is_some()) {
+    let aviso = if i
+        .encima
+        .is_some_and(|a| texto_de(&i.textos, a, &i.datos).is_some())
+    {
         barra::AVISO_LOGICO * i.escala + 4.0 * i.escala
     } else {
         0.0
     };
     // El aviso puede ser mas ancho que una barra corta.
-    let ancho = i.disposicion.ancho.max(if aviso > 0.0 { 260.0 * i.escala } else { 0.0 });
-    (ancho.ceil() as u32, (i.disposicion.alto + aviso).ceil() as u32)
+    let ancho = i
+        .disposicion
+        .ancho
+        .max(if aviso > 0.0 { 260.0 * i.escala } else { 0.0 });
+    (
+        ancho.ceil() as u32,
+        (i.disposicion.alto + aviso).ceil() as u32,
+    )
 }
 
 fn recolocar_ventana(hwnd: HWND, i: &Interno) {
@@ -178,10 +187,7 @@ pub(crate) fn mostrar(
             // vez por hilo y no se destruye: se esconde.
             let h = unsafe {
                 CreateWindowExW(
-                    WS_EX_TOPMOST
-                        | WS_EX_NOREDIRECTIONBITMAP
-                        | WS_EX_TOOLWINDOW
-                        | WS_EX_NOACTIVATE,
+                    WS_EX_TOPMOST | WS_EX_NOREDIRECTIONBITMAP | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE,
                     w!("PixPinBarraPin"),
                     w!(""),
                     WS_POPUP,
@@ -383,7 +389,10 @@ fn texto_de(t: &TextosPin, a: AccionBarra, datos: &DatosBarra) -> Option<(String
     if nombre.is_empty() {
         return None;
     }
-    Some((nombre.to_string(), tecla.filter(|s| !s.is_empty()).map(str::to_string)))
+    Some((
+        nombre.to_string(),
+        tecla.filter(|s| !s.is_empty()).map(str::to_string),
+    ))
 }
 
 const fn rgba(r: u8, g: u8, b: u8, a: f32) -> Color {
@@ -499,9 +508,7 @@ fn pintar_barra(p: &Pintor, i: &Interno) {
                 );
             }
             Pieza::Rotulo(rotulo) => match rotulo {
-                Rotulo::Zoom => {
-                    texto_centrado(&format!("{} %", i.datos.zoom_por_cien), r, tinta)
-                }
+                Rotulo::Zoom => texto_centrado(&format!("{} %", i.datos.zoom_por_cien), r, tinta),
                 Rotulo::Pagina => {
                     let t = match i.datos.pagina {
                         Some((pag, total)) => format!("{} / {}", pag + 1, total),
@@ -564,7 +571,11 @@ fn pintar_barra(p: &Pintor, i: &Interno) {
                     }
                     AccionBarra::PaginaAnterior | AccionBarra::PaginaSiguiente => {
                         let (cx, cy) = (r.x + r.ancho / 2.0, r.y + r.alto / 2.0);
-                        let s = if a == AccionBarra::PaginaAnterior { 1.0 } else { -1.0 };
+                        let s = if a == AccionBarra::PaginaAnterior {
+                            1.0
+                        } else {
+                            -1.0
+                        };
                         p.polilinea(
                             &[
                                 (cx + 3.0 * e * s, cy - 6.0 * e),
@@ -578,7 +589,11 @@ fn pintar_barra(p: &Pintor, i: &Interno) {
                     AccionBarra::PinearPagina => p.icono(&PUSH_PIN, icono_en(r), color),
                     AccionBarra::Reproducir => {
                         let jugando = video.is_some_and(|v| v.reproduciendo);
-                        p.icono(if jugando { &PAUSE } else { &PLAY_ARROW }, icono_en(r), color);
+                        p.icono(
+                            if jugando { &PAUSE } else { &PLAY_ARROW },
+                            icono_en(r),
+                            color,
+                        );
                     }
                     AccionBarra::Saltar => {
                         let y = r.y + r.alto / 2.0;
@@ -645,15 +660,9 @@ fn pintar_barra(p: &Pintor, i: &Interno) {
         let ancho = 20.0 * e + wn + if wt > 0.0 { 8.0 * e + wt } else { 0.0 };
         let alto = barra::AVISO_LOGICO * e - 4.0 * e;
         let (total, _) = tamano(i);
-        let x = (r.x + r.ancho / 2.0 - ancho / 2.0)
-            .clamp(0.0, (total as f32 - ancho).max(0.0));
+        let x = (r.x + r.ancho / 2.0 - ancho / 2.0).clamp(0.0, (total as f32 - ancho).max(0.0));
         let y = b.alto + 4.0 * e;
-        let caja = RectF {
-            x,
-            y,
-            ancho,
-            alto,
-        };
+        let caja = RectF { x, y, ancho, alto };
         p.rellenar_redondeado(caja, 8.0 * e, rgba(0x3A, 0x3A, 0x3C, 1.0));
         p.texto_linea(
             &nombre,

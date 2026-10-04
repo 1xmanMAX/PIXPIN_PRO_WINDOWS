@@ -72,12 +72,22 @@ mod pruebas {
 
     #[test]
     fn un_md_suelto_lleva_los_comentarios_a_su_lado() {
-        assert_eq!(junto_a(Path::new(r"C:\a\apuntes.md")), PathBuf::from(r"C:\a\apuntes.comentarios.json"));
-        assert_eq!(junto_a(Path::new(r"C:\a\v1.2.md")), PathBuf::from(r"C:\a\v1.2.comentarios.json"));
-        let raiz = std::env::temp_dir().join(format!("pixpin-coment-suelto-{}", std::process::id()));
+        assert_eq!(
+            junto_a(Path::new(r"C:\a\apuntes.md")),
+            PathBuf::from(r"C:\a\apuntes.comentarios.json")
+        );
+        assert_eq!(
+            junto_a(Path::new(r"C:\a\v1.2.md")),
+            PathBuf::from(r"C:\a\v1.2.comentarios.json")
+        );
+        let raiz =
+            std::env::temp_dir().join(format!("pixpin-coment-suelto-{}", std::process::id()));
         // Fuera de todo almacen: a su lado.
         let md = raiz.join("fuera").join("x.md");
-        assert_eq!(del_md(&raiz, &md), raiz.join("fuera").join("x.comentarios.json"));
+        assert_eq!(
+            del_md(&raiz, &md),
+            raiz.join("fuera").join("x.comentarios.json")
+        );
     }
 
     #[test]
@@ -94,7 +104,11 @@ mod pruebas {
         assert_eq!(leer(&f).as_deref(), Some(""));
         escribir(&f, "{}\n").unwrap();
         assert_eq!(leer(&f).as_deref(), Some("{}\n"));
-        assert!(!d.join("sub").join("anot-ABCDE23456.comentarios.json.tmp").exists());
+        assert!(
+            !d.join("sub")
+                .join("anot-ABCDE23456.comentarios.json.tmp")
+                .exists()
+        );
         // Una carpeta en su sitio no se lee como vacio: no se pisaria.
         let carpeta = d.join("carpeta.comentarios.json");
         std::fs::create_dir_all(&carpeta).unwrap();

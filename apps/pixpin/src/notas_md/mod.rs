@@ -188,7 +188,12 @@ pub fn abrir(idioma: pixpin_store::Idioma, ubicacion: Ubicacion, destino: Destin
 /// `NOTA` del proyecto (el del cuaderno si lo hay, o uno hecho con su texto
 /// si es una hoja del movil o un `.md` suelto), que la hoja sabe sacar como
 /// texto, PDF, imagen o pagina web.
-fn compartir(idioma: pixpin_store::Idioma, ubicacion: &Ubicacion, destino: &Destino, aparato: &str) {
+fn compartir(
+    idioma: pixpin_store::Idioma,
+    ubicacion: &Ubicacion,
+    destino: &Destino,
+    aparato: &str,
+) {
     use pixpin_proyecto::{almacen, cuaderno};
     let raiz = ubicacion.raiz().to_path_buf();
     let Some(texto) = guardar::leer_texto(&raiz, destino) else {
@@ -233,7 +238,12 @@ fn compartir(idioma: pixpin_store::Idioma, ubicacion: &Ubicacion, destino: &Dest
     );
 }
 
-fn correr(textos: &Catalogo, idioma: pixpin_store::Idioma, ubicacion: &Ubicacion, destino: Destino) {
+fn correr(
+    textos: &Catalogo,
+    idioma: pixpin_store::Idioma,
+    ubicacion: &Ubicacion,
+    destino: Destino,
+) {
     use crate::grupos_ventanas::{self, Clase};
     use std::cell::RefCell;
     use std::rc::Rc;
@@ -268,7 +278,9 @@ fn correr(textos: &Catalogo, idioma: pixpin_store::Idioma, ubicacion: &Ubicacion
             rotulos: rotulos(textos),
             nombre_de_fichero,
             colocacion,
-            resolver: Box::new(move |ruta: &str| adjuntos::resolver(&r1, &a_resolver.borrow(), ruta)),
+            resolver: Box::new(move |ruta: &str| {
+                adjuntos::resolver(&r1, &a_resolver.borrow(), ruta)
+            }),
             adjuntar: Box::new(move |origen: &std::path::Path| {
                 let ahora = pixpin_shell::entorno::ahora_utc_ms();
                 adjuntos::adjuntar(&r2, &a_adjuntar.borrow(), origen, ahora)
@@ -283,7 +295,9 @@ fn correr(textos: &Catalogo, idioma: pixpin_store::Idioma, ubicacion: &Ubicacion
                 // La letra y el tamano con que se lee (no van en el `.md`).
                 i.ajustes_vista = Some(raiz.join(FICHERO_VISTA));
                 // Documentos, mensajes del chat y audios (`incrustados`).
-                i.medios = Some(Box::new(incrustados::MediosDeLaNota::nuevo(idioma, ubicacion, &actual)));
+                i.medios = Some(Box::new(incrustados::MediosDeLaNota::nuevo(
+                    idioma, ubicacion, &actual,
+                )));
                 let a = actual.clone();
                 i.clave_vista = Some(Box::new(move || clave_de_vista(&a.borrow())));
                 i
@@ -351,7 +365,9 @@ mod pruebas {
         };
         assert_eq!(clave_de_vista(&f), "fichero:C:\\notas\\plan.md");
         // Caso negativo: dos notas distintas no comparten clave.
-        let n = Destino::Nueva { proyecto: "Casa Lima".into() };
+        let n = Destino::Nueva {
+            proyecto: "Casa Lima".into(),
+        };
         assert_ne!(clave_de_vista(&n), clave_de_vista(&m));
     }
 
@@ -369,8 +385,14 @@ mod pruebas {
         };
         assert!(!se_edita(&mini, None));
         let archivo = Mensaje::default();
-        assert!(se_edita(&archivo, Some(std::path::Path::new("C:\\a\\Apuntes.MD"))));
-        assert!(!se_edita(&archivo, Some(std::path::Path::new("C:\\a\\plano.pdf"))));
+        assert!(se_edita(
+            &archivo,
+            Some(std::path::Path::new("C:\\a\\Apuntes.MD"))
+        ));
+        assert!(!se_edita(
+            &archivo,
+            Some(std::path::Path::new("C:\\a\\plano.pdf"))
+        ));
         assert!(!se_edita(&archivo, None));
     }
 

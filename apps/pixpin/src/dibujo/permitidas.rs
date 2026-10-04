@@ -151,7 +151,11 @@ pub fn secciones_de_ajustes() -> Vec<(Option<pixpin_ui::GrupoBarra>, Vec<&'stati
     v.push((None, sueltas));
     for b in pixpin_ui::BARRA_AGRUPADA {
         if let BotonCaja::Grupo(g) = b {
-            let nombres = g.miembros().iter().filter_map(|m| nombre_de_boton(*m)).collect();
+            let nombres = g
+                .miembros()
+                .iter()
+                .filter_map(|m| nombre_de_boton(*m))
+                .collect();
             v.push((Some(g), nombres));
         }
     }
@@ -220,9 +224,7 @@ impl Anfitrion {
             // sentido. La lupa si: alli es la lupa viva de la capa vieja
             // (`pantalla::LupaViva`), que amplia la pantalla de verdad. El
             // laser tambien: senalar en la pantalla es para lo que se abre.
-            Anfitrion::PantallaCongelada => {
-                !matches!(h, H::Escalar | H::Emoji | H::Zona | H::Nudo)
-            }
+            Anfitrion::PantallaCongelada => !matches!(h, H::Escalar | H::Emoji | H::Zona | H::Nudo),
             // Con la pantalla viva debajo, ademas, el mosaico no tiene que
             // tapar: la escena es transparente y la pasada leeria vacio.
             Anfitrion::PantallaViva => {
@@ -388,10 +390,19 @@ mod pruebas {
         let a = con_apagadas(&["lazo", "grafito"]);
         for anf in TODOS {
             let v = botones_con(anf, &a);
-            assert!(!v.contains(&BotonCaja::Elegir(Herramienta::Lazo)), "{anf:?}");
-            assert!(!v.contains(&BotonCaja::Elegir(Herramienta::Grafito)), "{anf:?}");
+            assert!(
+                !v.contains(&BotonCaja::Elegir(Herramienta::Lazo)),
+                "{anf:?}"
+            );
+            assert!(
+                !v.contains(&BotonCaja::Elegir(Herramienta::Grafito)),
+                "{anf:?}"
+            );
             // Caso negativo: lo demas sigue, y las acciones tambien.
-            assert!(v.contains(&BotonCaja::Elegir(Herramienta::Lapiz)), "{anf:?}");
+            assert!(
+                v.contains(&BotonCaja::Elegir(Herramienta::Lapiz)),
+                "{anf:?}"
+            );
             assert!(v.contains(&BotonCaja::Elegir(Herramienta::Mano)), "{anf:?}");
             assert!(v.contains(&BotonCaja::Deshacer) && v.contains(&BotonCaja::Salir));
         }
@@ -406,7 +417,11 @@ mod pruebas {
     #[test]
     fn el_lector_no_ofrece_lo_que_no_sabe_hacer_sobre_un_documento() {
         let v = botones_con(Anfitrion::Lector, &Herramientas::default());
-        for h in [Herramienta::Lupa, Herramienta::Escalar, Herramienta::Mosaico] {
+        for h in [
+            Herramienta::Lupa,
+            Herramienta::Escalar,
+            Herramienta::Mosaico,
+        ] {
             assert!(!v.contains(&BotonCaja::Elegir(h)), "{h:?}");
         }
         for h in [
@@ -426,21 +441,41 @@ mod pruebas {
     #[test]
     fn la_pantalla_viva_no_ofrece_mosaico_y_la_congelada_si() {
         let d = Herramientas::default();
-        assert!(!permitida_con(Anfitrion::PantallaViva, Herramienta::Mosaico, &d));
-        assert!(permitida_con(Anfitrion::PantallaCongelada, Herramienta::Mosaico, &d));
+        assert!(!permitida_con(
+            Anfitrion::PantallaViva,
+            Herramienta::Mosaico,
+            &d
+        ));
+        assert!(permitida_con(
+            Anfitrion::PantallaCongelada,
+            Herramienta::Mosaico,
+            &d
+        ));
     }
 
     #[test]
     fn la_lupa_viva_es_del_anotador_de_pantalla_y_no_de_los_documentos() {
         let d = Herramientas::default();
-        assert!(permitida_con(Anfitrion::PantallaViva, Herramienta::Lupa, &d));
-        assert!(permitida_con(Anfitrion::PantallaCongelada, Herramienta::Lupa, &d));
+        assert!(permitida_con(
+            Anfitrion::PantallaViva,
+            Herramienta::Lupa,
+            &d
+        ));
+        assert!(permitida_con(
+            Anfitrion::PantallaCongelada,
+            Herramienta::Lupa,
+            &d
+        ));
         // Caso negativo: sobre un documento o un pin no hay pantalla que
         // ampliar; y apagada en los ajustes no sale tampoco en la pantalla.
         assert!(!permitida_con(Anfitrion::Lector, Herramienta::Lupa, &d));
         assert!(!permitida_con(Anfitrion::Pin, Herramienta::Lupa, &d));
         let sin = con_apagadas(&["lupa"]);
-        assert!(!permitida_con(Anfitrion::PantallaViva, Herramienta::Lupa, &sin));
+        assert!(!permitida_con(
+            Anfitrion::PantallaViva,
+            Herramienta::Lupa,
+            &sin
+        ));
     }
 
     #[test]
@@ -457,18 +492,38 @@ mod pruebas {
         }
         for anf in [Anfitrion::Lector, Anfitrion::Pin] {
             let v = botones_con(anf, &d);
-            assert!(!v.contains(&BotonCaja::Imagen) && !v.contains(&BotonCaja::Figuras), "{anf:?}");
-            assert!(!v.contains(&BotonCaja::Elegir(Herramienta::Zona)), "{anf:?}");
-            assert!(!v.contains(&BotonCaja::Elegir(Herramienta::Laser)), "{anf:?}");
+            assert!(
+                !v.contains(&BotonCaja::Imagen) && !v.contains(&BotonCaja::Figuras),
+                "{anf:?}"
+            );
+            assert!(
+                !v.contains(&BotonCaja::Elegir(Herramienta::Zona)),
+                "{anf:?}"
+            );
+            assert!(
+                !v.contains(&BotonCaja::Elegir(Herramienta::Laser)),
+                "{anf:?}"
+            );
         }
-        assert!(permitida_con(Anfitrion::PantallaViva, Herramienta::Laser, &d));
-        assert!(!permitida_con(Anfitrion::PantallaViva, Herramienta::Zona, &d));
+        assert!(permitida_con(
+            Anfitrion::PantallaViva,
+            Herramienta::Laser,
+            &d
+        ));
+        assert!(!permitida_con(
+            Anfitrion::PantallaViva,
+            Herramienta::Zona,
+            &d
+        ));
         // Y se apagan desde los ajustes como las demas.
         let sin = con_apagadas(&["imagen", "laser"]);
         let v = botones_con(Anfitrion::Lienzo, &sin);
         assert!(!v.contains(&BotonCaja::Imagen));
         assert!(!v.contains(&BotonCaja::Elegir(Herramienta::Laser)));
-        assert!(v.contains(&BotonCaja::Figuras), "caso negativo: lo demas sigue");
+        assert!(
+            v.contains(&BotonCaja::Figuras),
+            "caso negativo: lo demas sigue"
+        );
     }
 
     #[test]
@@ -488,15 +543,25 @@ mod pruebas {
             assert_eq!(herramienta_de_letra(anf, 'l'), None, "{anf:?}");
             assert_eq!(herramienta_de_letra(anf, 'T'), None, "{anf:?}");
             // Caso negativo: el resaltador sigue respondiendo a su R.
-            assert_eq!(herramienta_de_letra(anf, 'r'), Some(Herramienta::Resaltador));
+            assert_eq!(
+                herramienta_de_letra(anf, 'r'),
+                Some(Herramienta::Resaltador)
+            );
             assert!(!botones(anf).contains(&BotonCaja::Elegir(Herramienta::Lapiz)));
         }
         let mut g = Gesto::nuevo();
         g.tomar_herramienta(Herramienta::Lapiz);
         asegurar(Anfitrion::Lector, &mut g);
-        assert_eq!(g.herramienta, Herramienta::Mano, "abre con la mano, no con la apagada");
+        assert_eq!(
+            g.herramienta,
+            Herramienta::Mano,
+            "abre con la mano, no con la apagada"
+        );
         fijar(Herramientas::default());
-        assert_eq!(herramienta_de_letra(Anfitrion::Lienzo, 'l'), Some(Herramienta::Lapiz));
+        assert_eq!(
+            herramienta_de_letra(Anfitrion::Lienzo, 'l'),
+            Some(Herramienta::Lapiz)
+        );
     }
 
     #[test]
@@ -522,7 +587,11 @@ mod pruebas {
             );
             assert!(!nombre_visible(b, &t).starts_with("barra-"), "{b:?}");
         }
-        assert!(rotulo_de_boton(BotonCaja::Deshacer, &t).unwrap().contains("Ctrl+Z"));
+        assert!(
+            rotulo_de_boton(BotonCaja::Deshacer, &t)
+                .unwrap()
+                .contains("Ctrl+Z")
+        );
         // Caso negativo: el color, que no sale en ninguna barra, no lleva.
         assert_eq!(rotulo_de_boton(BotonCaja::Color, &t), None);
     }

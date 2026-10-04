@@ -568,7 +568,10 @@ fn pintar(
     // rotulo 10 por encima, como el movil.
     let tam = 13.0 * escala;
     let rotulos_min: Vec<String> = VOLVER_EN.iter().map(|&m| rotulo_de_volver(m)).collect();
-    let anchos: Vec<f32> = rotulos_min.iter().map(|t| p.medir_texto(t, tam).0).collect();
+    let anchos: Vec<f32> = rotulos_min
+        .iter()
+        .map(|t| p.medir_texto(t, tam).0)
+        .collect();
     let arriba_de_los_redondos = h - 90.0 * escala - 36.0 * escala;
     let pastillas = fila_de_volver(w, arriba_de_los_redondos - 34.0 * escala, &anchos, escala);
     if let Some(primera) = pastillas.first() {
@@ -839,10 +842,8 @@ mod pruebas {
     /// Una conversacion propia de cada prueba: el fichero de quien llama
     /// vive en la raiz y no puede pisarse entre pruebas.
     fn carpeta_propia(etiqueta: &str) -> PathBuf {
-        let raiz = std::env::temp_dir().join(format!(
-            "pixpin-llamada-{etiqueta}-{}",
-            std::process::id()
-        ));
+        let raiz =
+            std::env::temp_dir().join(format!("pixpin-llamada-{etiqueta}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&raiz);
         let c = raiz.join("proyectos").join("p1");
         std::fs::create_dir_all(c.join("archivos")).unwrap();
@@ -873,7 +874,10 @@ mod pruebas {
         assert_eq!(quien_llama(raiz, "m1").as_deref(), Some("Mama"));
         let l = de_un_cuaderno(&cu, &c, "m1").unwrap();
         assert_eq!(l.nombre, "Mama");
-        assert_eq!((l.carpeta.as_path(), l.mensaje.as_str()), (c.as_path(), "m1"));
+        assert_eq!(
+            (l.carpeta.as_path(), l.mensaje.as_str()),
+            (c.as_path(), "m1")
+        );
         // Caso negativo: la otra nota sigue con su nombre.
         assert_eq!(de_un_cuaderno(&cu, &c, "m2").unwrap().nombre, "otra");
         // En blanco se olvida y vuelve el de la nota.
@@ -912,7 +916,10 @@ mod pruebas {
             for par in v.windows(2) {
                 assert!(par[0].x + par[0].ancho <= par[1].x + 0.01, "{par:?}");
             }
-            assert!(v[0].x >= 0.0 && v[4].x + v[4].ancho <= ancho + 0.01, "{ancho}: {v:?}");
+            assert!(
+                v[0].x >= 0.0 && v[4].x + v[4].ancho <= ancho + 0.01,
+                "{ancho}: {v:?}"
+            );
             assert!(v.iter().all(|c| c.y + c.alto <= 360.0 * escala + 0.01));
         }
         // Caso negativo: sin minutos, ninguna.

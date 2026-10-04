@@ -79,13 +79,20 @@ pub fn separador_decimal_de(region: Option<&str>) -> char {
     let escritos = unsafe {
         match &nombre {
             Some(n) => GetLocaleInfoEx(n, LOCALE_SDECIMAL, Some(&mut buffer)),
-            None => GetLocaleInfoEx(windows::core::PCWSTR::null(), LOCALE_SDECIMAL, Some(&mut buffer)),
+            None => GetLocaleInfoEx(
+                windows::core::PCWSTR::null(),
+                LOCALE_SDECIMAL,
+                Some(&mut buffer),
+            ),
         }
     };
     if escritos <= 1 {
         return '.';
     }
-    match String::from_utf16_lossy(&buffer[..escritos as usize - 1]).chars().next() {
+    match String::from_utf16_lossy(&buffer[..escritos as usize - 1])
+        .chars()
+        .next()
+    {
         // Solo los dos que se entienden al volver a leer un numero.
         Some(',') => ',',
         _ => '.',

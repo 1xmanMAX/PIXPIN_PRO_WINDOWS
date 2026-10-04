@@ -97,7 +97,8 @@ impl Base {
     /// La huella de su tinta de ahora (ver [`Base::resumen_de_la_tinta`]):
     /// con la que se comprueba un marco del PC del 29-sep que la trae.
     pub fn huella(&self) -> Option<String> {
-        self.resumen_de_la_tinta().map(|r| r[..a::CIFRAS_DE_LA_HUELLA].to_string())
+        self.resumen_de_la_tinta()
+            .map(|r| r[..a::CIFRAS_DE_LA_HUELLA].to_string())
     }
 
     /// **Deja el marco que ya hay en las dos lineas de Android**, con su
@@ -119,7 +120,9 @@ impl Base {
 pub fn raiz_de(fichero: &Path) -> Option<PathBuf> {
     fichero
         .ancestors()
-        .find(|x| x.file_name().is_some_and(|n| n == "proyectos") && x.join("indice.json").is_file())
+        .find(|x| {
+            x.file_name().is_some_and(|n| n == "proyectos") && x.join("indice.json").is_file()
+        })
         .and_then(Path::parent)
         .map(Path::to_path_buf)
 }
@@ -216,9 +219,7 @@ pub fn base_del_pdf(raiz: &Path, pdf: &Path, ficha_del_proyecto: Option<&str>) -
 /// (`anot-<uid>-p<i>`); `None` si no es un adjunto.
 pub fn hoja_del_pdf(raiz: &Path, pdf: &Path, i: u32) -> Option<PathBuf> {
     let x = adjunto_de(raiz, pdf)?;
-    Some(
-        DiscoPc::nuevo(raiz).ruta(&x.chat, &a::rel(&a::de_pagina(&x.uid, i), ".excalidraw.gz")),
-    )
+    Some(DiscoPc::nuevo(raiz).ruta(&x.chat, &a::rel(&a::de_pagina(&x.uid, i), ".excalidraw.gz")))
 }
 
 /// **El marco de la tinta de la hoja `i`** de un PDF suelto del chat
@@ -239,7 +240,13 @@ pub fn adjuntos_del_chat(raiz: &Path, chat: &str, ficha: &str) -> Vec<(Adjunto, 
         .iter()
         .filter_map(|m| {
             let real = vista::ruta_real(raiz, ficha, kotlin::cadena(m, "ruta")?)?;
-            Some((Adjunto { chat: chat.to_string(), uid: kotlin::unico(m) }, real))
+            Some((
+                Adjunto {
+                    chat: chat.to_string(),
+                    uid: kotlin::unico(m),
+                },
+                real,
+            ))
         })
         .collect()
 }
@@ -323,7 +330,11 @@ pub fn poner_marcos(
             let Some((base, uid, que)) = tinta_del_nombre(&rel) else {
                 continue;
             };
-            let b = Base { raiz: raiz.to_path_buf(), chat: chat.clone(), base };
+            let b = Base {
+                raiz: raiz.to_path_buf(),
+                chat: chat.clone(),
+                base,
+            };
             if let Some(texto) = leer(&b.marco()) {
                 match a::MarcoDeLaHoja::de_texto_con_huella(&texto) {
                     Some((_, None)) => {
@@ -331,12 +342,16 @@ pub fn poner_marcos(
                         continue;
                     }
                     Some((_, Some(h)))
-                        if b.resumen_de_la_tinta().is_some_and(|r| a::huella_coincide(&h, &r)) =>
+                        if b.resumen_de_la_tinta()
+                            .is_some_and(|r| a::huella_coincide(&h, &r)) =>
                     {
                         match b.quitar_la_huella() {
                             Ok(()) => p.sin_huella += 1,
                             Err(e) => {
-                                p.avisos.push(format!("{}: no se pudo quitar la huella al marco: {e}", b.base));
+                                p.avisos.push(format!(
+                                    "{}: no se pudo quitar la huella al marco: {e}",
+                                    b.base
+                                ));
                                 p.sin_calcular += 1;
                             }
                         }
@@ -345,7 +360,8 @@ pub fn poner_marcos(
                     // Con la huella de otra tinta: se calcula como sin marco.
                     Some((_, Some(_))) => {}
                     None => {
-                        p.avisos.push(format!("{}: marco que no se entiende, no se toca", b.base));
+                        p.avisos
+                            .push(format!("{}: marco que no se entiende, no se toca", b.base));
                         p.sin_calcular += 1;
                         continue;
                     }
@@ -356,11 +372,17 @@ pub fn poner_marcos(
                 continue;
             }
             let docs = docs.get_or_insert_with(|| {
-                adjuntos_del_chat(raiz, &chat, &ficha.id).into_iter().map(|(x, r)| (x.uid, r)).collect()
+                adjuntos_del_chat(raiz, &chat, &ficha.id)
+                    .into_iter()
+                    .map(|(x, r)| (x.uid, r))
+                    .collect()
             });
             let t = TintaSinMarco {
                 doc: docs.get(&uid).cloned(),
-                adjunto: Adjunto { chat: chat.clone(), uid },
+                adjunto: Adjunto {
+                    chat: chat.clone(),
+                    uid,
+                },
                 base: b,
                 que,
             };
@@ -368,7 +390,10 @@ pub fn poner_marcos(
                 Some(m) => match t.base.escribir_marco(&m) {
                     Ok(()) => p.escritos += 1,
                     Err(e) => {
-                        p.avisos.push(format!("{}: no se pudo escribir el marco: {e}", t.base.base));
+                        p.avisos.push(format!(
+                            "{}: no se pudo escribir el marco: {e}",
+                            t.base.base
+                        ));
                         p.sin_calcular += 1;
                     }
                 },
@@ -385,7 +410,10 @@ pub fn poner_marcos(
 /// chat del almacen.
 pub fn marcas_del_lienzo(lienzo: &Path) -> Option<PathBuf> {
     let d = lienzo.file_name()?.to_str()?.strip_suffix(".excalidraw")?;
-    let carpeta = lienzo.parent().filter(|p| p.file_name().is_some_and(|n| n == "lienzos"))?.parent()?;
+    let carpeta = lienzo
+        .parent()
+        .filter(|p| p.file_name().is_some_and(|n| n == "lienzos"))?
+        .parent()?;
     let ficha = carpeta.file_name()?.to_str()?;
     let raiz = raiz_de(carpeta)?;
     if Indice::leer(&raiz).buscar(ficha).is_none() {
@@ -462,7 +490,9 @@ pub fn juntar_tinta(viejo: &str, nuevo: &str, dx: f64) -> Option<String> {
     };
     let mismos = |a: &[(f64, f64)], b: &[(f64, f64)]| {
         a.len() == b.len()
-            && a.iter().zip(b).all(|(p, q)| (p.0 - q.0).abs() < 1e-4 && (p.1 - q.1).abs() < 1e-4)
+            && a.iter()
+                .zip(b)
+                .all(|(p, q)| (p.0 - q.0).abs() < 1e-4 && (p.1 - q.1).abs() < 1e-4)
     };
     // Lo que no lleva puntos (un texto, un ovalo) se reconoce por su tipo,
     // su tamano y su texto; la x no, que en un Word va corrida.
@@ -494,10 +524,14 @@ pub fn juntar_tinta(viejo: &str, nuevo: &str, dx: f64) -> Option<String> {
         let Some(id) = e.get("id").and_then(Value::as_str).map(str::to_string) else {
             continue;
         };
-        if ya.iter().any(|x| x.get("id").and_then(Value::as_str) == Some(id.as_str())) {
-            let libre = (1..)
-                .map(|n| format!("{id}-antes{n}"))
-                .find(|c| !ya.iter().any(|x| x.get("id").and_then(Value::as_str) == Some(c.as_str())))?;
+        if ya
+            .iter()
+            .any(|x| x.get("id").and_then(Value::as_str) == Some(id.as_str()))
+        {
+            let libre = (1..).map(|n| format!("{id}-antes{n}")).find(|c| {
+                !ya.iter()
+                    .any(|x| x.get("id").and_then(Value::as_str) == Some(c.as_str()))
+            })?;
             e["id"] = Value::String(libre);
         }
         if dx != 0.0 {
@@ -507,7 +541,9 @@ pub fn juntar_tinta(viejo: &str, nuevo: &str, dx: f64) -> Option<String> {
         ya.push(e);
         anadidos += 1;
     }
-    (anadidos > 0).then(|| serde_json::to_string(&nuevo).ok()).flatten()
+    (anadidos > 0)
+        .then(|| serde_json::to_string(&nuevo).ok())
+        .flatten()
 }
 
 /// La marca de que la tinta de `viejo` ya se paso a su mensaje: una vez
@@ -565,7 +601,8 @@ mod pruebas {
     use crate::cuaderno::{self, Clase, Mensaje, Sello};
 
     fn raiz(etiqueta: &str) -> PathBuf {
-        let r = std::env::temp_dir().join(format!("pixpin-anotado-{etiqueta}-{}", std::process::id()));
+        let r =
+            std::env::temp_dir().join(format!("pixpin-anotado-{etiqueta}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&r);
         std::fs::create_dir_all(&r).unwrap();
         r
@@ -583,7 +620,12 @@ mod pruebas {
             "informe.docx",
             &ruta,
             2,
-            &Sello { cuando: 10, numero: 1, aparato: "PC01".into(), proyecto: ficha.id.clone() },
+            &Sello {
+                cuando: 10,
+                numero: 1,
+                aparato: "PC01".into(),
+                proyecto: ficha.id.clone(),
+            },
         );
         let carpeta = almacen::carpeta(r, &ficha.id);
         cuaderno::anadir(&carpeta, &m).unwrap();
@@ -595,10 +637,15 @@ mod pruebas {
         let r = raiz("word");
         let (ficha, doc, m) = con_un_word(&r);
         let b = base_del_documento(&r, &doc).expect("es un adjunto");
-        let uid = kotlin::unico(&pixpin_sincro::canonico::Json::de_valor(&serde_json::to_value(&m).unwrap()));
+        let uid = kotlin::unico(&pixpin_sincro::canonico::Json::de_valor(
+            &serde_json::to_value(&m).unwrap(),
+        ));
         assert_eq!(b.base, format!("anot-{uid}"));
         let carpeta = almacen::carpeta(&r, &ficha.id);
-        assert_eq!(b.tinta(), carpeta.join(format!("lienzos/anot-{uid}.excalidraw")));
+        assert_eq!(
+            b.tinta(),
+            carpeta.join(format!("lienzos/anot-{uid}.excalidraw"))
+        );
         assert_eq!(
             b.fichero(".maqueta"),
             carpeta.join(format!("android/pins/draw/anot-{uid}.maqueta"))
@@ -607,7 +654,12 @@ mod pruebas {
         escribir(&b.fichero(".marcas"), "1:0.5:⭐").unwrap();
         let chat = vista::chat_de_ficha(&r, &ficha.id).unwrap();
         let alcance = DiscoPc::nuevo(&r).alcance(&chat).unwrap();
-        assert!(alcance.iter().any(|(x, _)| *x == format!("pins/draw/anot-{uid}.marcas")), "{alcance:?}");
+        assert!(
+            alcance
+                .iter()
+                .any(|(x, _)| *x == format!("pins/draw/anot-{uid}.marcas")),
+            "{alcance:?}"
+        );
         let _ = std::fs::remove_dir_all(&r);
     }
 
@@ -636,8 +688,14 @@ mod pruebas {
             Some(almacen::carpeta(&r, &ficha.id).join("android/pins/draw/d9.marcas"))
         );
         // Caso negativo: un dibujo fuera del almacen, o de una ficha que no esta.
-        assert_eq!(marcas_del_lienzo(Path::new("C:/dibujos/d9.excalidraw")), None);
-        assert_eq!(marcas_del_lienzo(&almacen::lienzo(&r, "no-esta", "d9")), None);
+        assert_eq!(
+            marcas_del_lienzo(Path::new("C:/dibujos/d9.excalidraw")),
+            None
+        );
+        assert_eq!(
+            marcas_del_lienzo(&almacen::lienzo(&r, "no-esta", "d9")),
+            None
+        );
         let _ = std::fs::remove_dir_all(&r);
     }
 
@@ -677,11 +735,22 @@ mod pruebas {
         let v: serde_json::Value = serde_json::from_str(&junto).unwrap();
         let els = v["elements"].as_array().unwrap();
         let ids: Vec<&str> = els.iter().map(|e| e["id"].as_str().unwrap()).collect();
-        assert_eq!(ids, ["Xa9", "pc1", "pc1-antes1", "pc2"], "lo del movil primero y ninguno pisado");
-        assert_eq!(els[2]["x"].as_f64(), Some(266.0), "corrido al borde de la pagina");
+        assert_eq!(
+            ids,
+            ["Xa9", "pc1", "pc1-antes1", "pc2"],
+            "lo del movil primero y ninguno pisado"
+        );
+        assert_eq!(
+            els[2]["x"].as_f64(),
+            Some(266.0),
+            "corrido al borde de la pagina"
+        );
         assert_eq!(els[3]["x"].as_f64(), Some(286.0));
         assert_eq!(els[2]["points"].as_array().unwrap().len(), 3);
-        assert!(v.get("files").is_some(), "lo demas del lienzo del movil se queda");
+        assert!(
+            v.get("files").is_some(),
+            "lo demas del lienzo del movil se queda"
+        );
     }
 
     #[test]
@@ -734,7 +803,10 @@ mod pruebas {
         let tinta = r#"{"elements":[{"id":"m1","type":"freedraw","x":300,"y":10,"width":4,"height":4,"points":[{"x":0.0,"y":0.0},{"x":4.0,"y":4.0}]}],"files":{}}"#;
         std::fs::write(b.tinta(), tinta).unwrap();
         // Lo de un PDF leido como texto: el PC no lo abre, no se inventa.
-        let texto = Base { base: format!("{}-texto", b.base), ..b.clone() };
+        let texto = Base {
+            base: format!("{}-texto", b.base),
+            ..b.clone()
+        };
         std::fs::write(texto.tinta(), tinta).unwrap();
         let regla_vieja = a::MarcoDeLaHoja::nuevo(256.0, 0.0, 640.0, 384.0);
         let mut vistos = Vec::new();
@@ -742,27 +814,49 @@ mod pruebas {
             vistos.push((t.que, t.doc.clone()));
             Some(regla_vieja)
         });
-        assert_eq!((p.escritos, p.sin_calcular, p.ya_estaban), (1, 1, 0), "{p:?}");
+        assert_eq!(
+            (p.escritos, p.sin_calcular, p.ya_estaban),
+            (1, 1, 0),
+            "{p:?}"
+        );
         assert_eq!(vistos, vec![(QueTinta::Documento, Some(doc.clone()))]);
         // Dos lineas, como Android: una tercera la ignoraria.
         assert_eq!(leer(&b.marco()).as_deref(), Some("256,0,640,384\nv1\n"));
-        assert_eq!(std::fs::read_to_string(b.tinta()).unwrap(), tinta, "la tinta, byte a byte");
+        assert_eq!(
+            std::fs::read_to_string(b.tinta()).unwrap(),
+            tinta,
+            "la tinta, byte a byte"
+        );
         assert!(!texto.marco().exists());
         // Otra vez: nada que hacer, ni la fecha del marco cambia.
         let fecha = std::fs::metadata(b.marco()).unwrap().modified().unwrap();
         std::thread::sleep(std::time::Duration::from_millis(20));
         let p = poner_marcos(&r, &mut |_| panic!("ya tiene marco"));
         assert_eq!((p.escritos, p.sin_huella, p.ya_estaban), (0, 0, 1));
-        assert_eq!(std::fs::metadata(b.marco()).unwrap().modified().unwrap(), fecha);
+        assert_eq!(
+            std::fs::metadata(b.marco()).unwrap().modified().unwrap(),
+            fecha
+        );
         // Uno con la huella del PC del 29-sep, de esta tinta: pasa a dos
         // lineas con sus mismos numeros.
         let h = a::huella_de_tinta(tinta);
-        escribir(&b.marco(), &format!("-1050.0,0.0,2450.0,4950.0\nv1\ntinta {h}\n")).unwrap();
+        escribir(
+            &b.marco(),
+            &format!("-1050.0,0.0,2450.0,4950.0\nv1\ntinta {h}\n"),
+        )
+        .unwrap();
         let p = poner_marcos(&r, &mut |_| panic!("tiene marco que vale"));
         assert_eq!(p.sin_huella, 1);
-        assert_eq!(leer(&b.marco()).as_deref(), Some("-1050.0,0.0,2450.0,4950.0\nv1\n"));
+        assert_eq!(
+            leer(&b.marco()).as_deref(),
+            Some("-1050.0,0.0,2450.0,4950.0\nv1\n")
+        );
         // Caso negativo: con la huella de otra tinta miente, y se calcula.
-        escribir(&b.marco(), "-1050,0,2450,4950\nv1\ntinta 0123456789abcdef\n").unwrap();
+        escribir(
+            &b.marco(),
+            "-1050,0,2450,4950\nv1\ntinta 0123456789abcdef\n",
+        )
+        .unwrap();
         let p = poner_marcos(&r, &mut |_| Some(regla_vieja));
         assert_eq!((p.escritos, p.sin_huella), (1, 0), "{p:?}");
         assert_eq!(leer(&b.marco()).as_deref(), Some("256,0,640,384\nv1\n"));
@@ -789,7 +883,10 @@ mod pruebas {
         let chat = vista::chat_de_ficha(&r, &ficha.id).unwrap();
         let d = DiscoPc::nuevo(&r);
         let rel = a::rel(&b.base, ".excalidraw.gz");
-        assert_eq!(b.resumen_de_la_tinta(), d.resumen_de_archivo(&chat, &rel).ok());
+        assert_eq!(
+            b.resumen_de_la_tinta(),
+            d.resumen_de_archivo(&chat, &rel).ok()
+        );
         let _ = std::fs::remove_dir_all(&r);
     }
 

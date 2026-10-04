@@ -763,7 +763,12 @@ fn medir_el_trazo_vivo_segun_su_largo() {
             _ => unreachable!(),
         };
         let q = efectiva.a_pantalla(fin);
-        let zona = (q.x as i32 - 60, q.y as i32 - 60, q.x as i32 + 60, q.y as i32 + 60);
+        let zona = (
+            q.x as i32 - 60,
+            q.y as i32 - 60,
+            q.x as i32 + 60,
+            q.y as i32 + 60,
+        );
         for _ in 0..VUELTAS {
             e.tocar();
             let t = Instant::now();
@@ -914,7 +919,8 @@ fn la_escena_sintetica_trae_de_todo_y_la_mitad_son_trazos() {
 /// escribe `unsafe` y no hace falta para una medicion.
 fn memoria_del_proceso() -> (f64, f64) {
     let pid = std::process::id();
-    let orden = format!("$p=Get-Process -Id {pid}; \"$($p.PrivateMemorySize64) $($p.WorkingSet64)\"");
+    let orden =
+        format!("$p=Get-Process -Id {pid}; \"$($p.PrivateMemorySize64) $($p.WorkingSet64)\"");
     let salida = std::process::Command::new("powershell")
         .args(["-NoProfile", "-Command", &orden])
         .output();
@@ -1120,9 +1126,13 @@ impl Sesion {
     fn arrastre_por_zona(&mut self, m: &mut Minuto, atras: (f32, f32)) {
         self.rejilla.sincronizar(&self.escena);
         for (fuera, atras) in [(true, atras), (false, (0.0, 0.0))] {
-            let Some(zv) =
-                zona_de_seleccion(&self.escena, &self.gesto, &self.efectiva, &mut self.cache, atras)
-            else {
+            let Some(zv) = zona_de_seleccion(
+                &self.escena,
+                &self.gesto,
+                &self.efectiva,
+                &mut self.cache,
+                atras,
+            ) else {
                 m.zona_no += 1;
                 continue;
             };
@@ -1487,7 +1497,14 @@ fn lo_mejor_de(n: usize, mut f: impl FnMut() -> f64) -> f64 {
 fn escena_para_puerta(
     b: &Banco,
     cuantos: usize,
-) -> (Escena, Rejilla, Cache, pixpin_render::CacheTinta, Camara, Camara) {
+) -> (
+    Escena,
+    Rejilla,
+    Cache,
+    pixpin_render::CacheTinta,
+    Camara,
+    Camara,
+) {
     let camara = camara_de(&escena_sintetica(2_000), 1.0);
     let efectiva = crate::navegacion::vista_efectiva(&camara, ESCALA);
     let escena = escena_sintetica(cuantos);
@@ -1496,7 +1513,14 @@ fn escena_para_puerta(
     let mut cache = Cache::nueva();
     let mut cache_tinta = pixpin_render::CacheTinta::nueva();
     cache_tinta.fijar_escala(efectiva.zoom);
-    b.fotograma(&escena, &rejilla, &mut cache, &mut cache_tinta, &camara, true);
+    b.fotograma(
+        &escena,
+        &rejilla,
+        &mut cache,
+        &mut cache_tinta,
+        &camara,
+        true,
+    );
     (escena, rejilla, cache, cache_tinta, camara, efectiva)
 }
 
@@ -1509,7 +1533,10 @@ fn escena_entera(
     cache_tinta: &mut pixpin_render::CacheTinta,
     camara: &Camara,
 ) -> f64 {
-    lo_mejor_de(5, || b.fotograma(escena, rejilla, cache, cache_tinta, camara, true).2)
+    lo_mejor_de(5, || {
+        b.fotograma(escena, rejilla, cache, cache_tinta, camara, true)
+            .2
+    })
 }
 
 #[test]
@@ -1550,8 +1577,7 @@ fn soltar_el_lapiz_cuesta_lo_mismo_con_dos_mil_elementos_a_la_vista_que_con_cinc
             b.destino.esperar_gpu().expect("GPU");
             t.elapsed().as_secs_f64() * 1000.0
         });
-        let entera =
-            escena_entera(&b, &escena, &rejilla, &mut cache, &mut cache_tinta, &camara);
+        let entera = escena_entera(&b, &escena, &rejilla, &mut cache, &mut cache_tinta, &camara);
         (soltar, entera)
     };
     let (chico, entera_chica) = medir(50);
@@ -1573,7 +1599,7 @@ fn soltar_el_lapiz_cuesta_lo_mismo_con_dos_mil_elementos_a_la_vista_que_con_cinc
 #[test]
 #[ignore = "necesita GPU real; puerta: ejecutar en --release con --ignored"]
 fn empezar_y_acabar_de_arrastrar_cuesta_lo_mismo_con_dos_mil_elementos_a_la_vista_que_con_cincuenta()
-{
+ {
     let b = Banco::nuevo();
     let medir = |cuantos: usize| -> (f64, usize, f64) {
         let (escena, rejilla, mut cache, mut cache_tinta, camara, efectiva) =
@@ -1617,8 +1643,7 @@ fn empezar_y_acabar_de_arrastrar_cuesta_lo_mismo_con_dos_mil_elementos_a_la_vist
             });
             zonas = zonas.max(visibles);
         }
-        let entera =
-            escena_entera(&b, &escena, &rejilla, &mut cache, &mut cache_tinta, &camara);
+        let entera = escena_entera(&b, &escena, &rejilla, &mut cache, &mut cache_tinta, &camara);
         (costo, zonas, 2.0 * entera)
     };
     let (chico, vis_chico, antes_chico) = medir(50);
@@ -1692,7 +1717,12 @@ fn de_donde_sale_la_memoria_que_crece_al_dibujar() {
     // distintos, como 400 sueltas del lapiz.
     let mut escena = Escena::nueva();
     for i in 0..400u64 {
-        let t = trazo(i + 10, 50.0 + (i % 20) as f32 * 90.0, 50.0 + (i / 20) as f32 * 60.0, 150);
+        let t = trazo(
+            i + 10,
+            50.0 + (i % 20) as f32 * 90.0,
+            50.0 + (i / 20) as f32 * 60.0,
+            150,
+        );
         escena.elementos.push(t);
         let e = escena.elementos.last().expect("trazo");
         let Some(zona) = zona_del_horneado(e, &efectiva, 0.0, ANCHO, ALTO) else {
@@ -1738,7 +1768,14 @@ fn de_donde_sale_la_memoria_que_crece_al_dibujar() {
     let mut rejilla = Rejilla::nueva();
     rejilla.sincronizar(&escena);
     for _ in 0..300usize {
-        b.fotograma(&escena, &rejilla, &mut cache, &mut cache_tinta, &camara, true);
+        b.fotograma(
+            &escena,
+            &rejilla,
+            &mut cache,
+            &mut cache_tinta,
+            &camara,
+            true,
+        );
     }
     let m4a = memoria(&b);
     fase("300 escenas enteras sin mover nada", m4, m4a);
@@ -1746,7 +1783,14 @@ fn de_donde_sale_la_memoria_que_crece_al_dibujar() {
         let i = k % escena.elementos.len();
         escena.elementos[i].mover(1.0, 0.0);
         rejilla.sincronizar(&escena);
-        b.fotograma(&escena, &rejilla, &mut cache, &mut cache_tinta, &camara, true);
+        b.fotograma(
+            &escena,
+            &rejilla,
+            &mut cache,
+            &mut cache_tinta,
+            &camara,
+            true,
+        );
     }
     let m5 = memoria(&b);
     fase("300 escenas enteras moviendo uno cada vez", m4a, m5);
@@ -1767,7 +1811,10 @@ fn de_donde_sale_la_memoria_que_crece_al_dibujar() {
     b.motor.devolver_memoria(b.dispositivo.d3d());
     let m6 = memoria(&b);
     fase("vaciar y devolver otra vez", m5, m6);
-    println!("total: priv {:.1} -> {:.1} MB, video {:.1} -> {:.1} MB", m0.0, m6.0, m0.1, m6.1);
+    println!(
+        "total: priv {:.1} -> {:.1} MB, video {:.1} -> {:.1} MB",
+        m0.0, m6.0, m0.1, m6.1
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -1812,7 +1859,9 @@ fn medir_anotador(w: u32, h: u32) -> MedidaAnotador {
     let dispositivo = pixpin_capture::Dispositivo::nuevo().expect("GPU real");
     let mut motor = MotorRender::nuevo(dispositivo.d3d()).expect("motor");
     let (priv0, _) = memoria_del_proceso();
-    let video0 = mb(pixpin_render::fuera_de_pantalla::memoria_de_video(dispositivo.d3d()));
+    let video0 = mb(pixpin_render::fuera_de_pantalla::memoria_de_video(
+        dispositivo.d3d(),
+    ));
     let mut memoria = Vec::new();
     let mut apuntar = |que: &'static str, d: &pixpin_capture::Dispositivo| {
         let (p, _) = memoria_del_proceso();
@@ -1828,15 +1877,9 @@ fn medir_anotador(w: u32, h: u32) -> MedidaAnotador {
     };
     // La ventana existe (sin ella no hay composicion) pero no se ensena.
     let ventana = VentanaOverlay::nueva(area).expect("ventana sin ensenar");
-    let superficie = Superficie::nueva_con_capas(
-        &motor,
-        dispositivo.d3d(),
-        ventana.handle(),
-        w,
-        h,
-        1,
-    )
-    .expect("superficie con capas");
+    let superficie =
+        Superficie::nueva_con_capas(&motor, dispositivo.d3d(), ventana.handle(), w, h, 1)
+            .expect("superficie con capas");
     apuntar("superficie", &dispositivo);
     superficie.encender_tinta(&motor).expect("capa de tinta");
     apuntar("+ capa de tinta", &dispositivo);
@@ -1861,13 +1904,13 @@ fn medir_anotador(w: u32, h: u32) -> MedidaAnotador {
         CajaHerramientas::barra_superior(area, 100, permitidas::botones(Anfitrion::PantallaViva));
 
     let entero = |motor: &mut MotorRender,
-                      fondo: &mut Option<FondoLienzo>,
-                      gesto: &Gesto,
-                      escena: &Escena,
-                      rejilla: &mut Rejilla,
-                      cache: &mut Cache,
-                      cache_tinta: &mut pixpin_render::CacheTinta,
-                      imagenes: &mut ImagenesLienzo| {
+                  fondo: &mut Option<FondoLienzo>,
+                  gesto: &Gesto,
+                  escena: &Escena,
+                  rejilla: &mut Rejilla,
+                  cache: &mut Cache,
+                  cache_tinta: &mut pixpin_render::CacheTinta,
+                  imagenes: &mut ImagenesLienzo| {
         rejilla.sincronizar(escena);
         let t = Instant::now();
         pintar(

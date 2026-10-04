@@ -26,10 +26,29 @@ const PNG: &[u8] = b"\x89PNG\r\n\x1a\n-una-foto-de-mentira";
 
 /// `ElementType` (`Element.kt:27-222`).
 const TIPOS: &[&str] = &[
-    "rectangle", "diamond", "ellipse", "arrow", "line", "freedraw", "text", "image",
-    "pixpin-mosaic", "pixpin-spotlight", "pixpin-lupa", "pixpin-serial", "pixpin-measure",
-    "pixpin-arc", "pixpin-region", "pixpin-scalebar", "frame", "pixpin-point", "pixpin-axes",
-    "pixpin-number-line", "pixpin-space", "pixpin-solid", "pixpin-gantt",
+    "rectangle",
+    "diamond",
+    "ellipse",
+    "arrow",
+    "line",
+    "freedraw",
+    "text",
+    "image",
+    "pixpin-mosaic",
+    "pixpin-spotlight",
+    "pixpin-lupa",
+    "pixpin-serial",
+    "pixpin-measure",
+    "pixpin-arc",
+    "pixpin-region",
+    "pixpin-scalebar",
+    "frame",
+    "pixpin-point",
+    "pixpin-axes",
+    "pixpin-number-line",
+    "pixpin-space",
+    "pixpin-solid",
+    "pixpin-gantt",
 ];
 
 fn entero32(v: &Value) -> bool {
@@ -55,7 +74,10 @@ fn como_lo_lee_el_movil(json: &str) -> Result<(), String> {
         return Err("backgroundColor no es texto".into());
     }
     for e in elementos {
-        let id = e.get("id").and_then(Value::as_str).ok_or("elemento sin id")?;
+        let id = e
+            .get("id")
+            .and_then(Value::as_str)
+            .ok_or("elemento sin id")?;
         let tipo = e.get("type").and_then(Value::as_str).ok_or("sin type")?;
         if !TIPOS.contains(&tipo) {
             return Err(format!("{id}: type «{tipo}» no existe en ElementType"));
@@ -69,7 +91,15 @@ fn como_lo_lee_el_movil(json: &str) -> Result<(), String> {
         if !e.get("seed").is_some_and(entero32) {
             return Err(format!("{id}: seed no es Int"));
         }
-        for k in ["roughness", "opacity", "version", "versionNonce", "fontFamily", "periodos", "oscurecer"] {
+        for k in [
+            "roughness",
+            "opacity",
+            "version",
+            "versionNonce",
+            "fontFamily",
+            "periodos",
+            "oscurecer",
+        ] {
             if let Some(x) = e.get(k).filter(|x| !x.is_null())
                 && !entero32(x)
             {
@@ -77,13 +107,55 @@ fn como_lo_lee_el_movil(json: &str) -> Result<(), String> {
             }
         }
         let enums: &[(&str, &[&str])] = &[
-            ("fillStyle", &["hachure", "cross-hatch", "solid", "zigzag", "pixpin-lines"]),
+            (
+                "fillStyle",
+                &["hachure", "cross-hatch", "solid", "zigzag", "pixpin-lines"],
+            ),
             ("strokeStyle", &["solid", "dashed", "dotted"]),
             ("textAlign", &["left", "center", "right"]),
             ("verticalAlign", &["top", "middle", "bottom"]),
-            ("startArrowhead", &["arrow", "bar", "circle", "circle_outline", "triangle", "triangle_outline", "diamond", "diamond_outline"]),
-            ("endArrowhead", &["arrow", "bar", "circle", "circle_outline", "triangle", "triangle_outline", "diamond", "diamond_outline"]),
-            ("material", &["lisa", "luz", "hdr", "rayado", "cruzado", "puntos", "tiza", "lapiz2b", "seco", "trama", "cuadritos"]),
+            (
+                "startArrowhead",
+                &[
+                    "arrow",
+                    "bar",
+                    "circle",
+                    "circle_outline",
+                    "triangle",
+                    "triangle_outline",
+                    "diamond",
+                    "diamond_outline",
+                ],
+            ),
+            (
+                "endArrowhead",
+                &[
+                    "arrow",
+                    "bar",
+                    "circle",
+                    "circle_outline",
+                    "triangle",
+                    "triangle_outline",
+                    "diamond",
+                    "diamond_outline",
+                ],
+            ),
+            (
+                "material",
+                &[
+                    "lisa",
+                    "luz",
+                    "hdr",
+                    "rayado",
+                    "cruzado",
+                    "puntos",
+                    "tiza",
+                    "lapiz2b",
+                    "seco",
+                    "trama",
+                    "cuadritos",
+                ],
+            ),
         ];
         for (k, palabras) in enums {
             match e.get(*k) {
@@ -100,7 +172,11 @@ fn como_lo_lee_el_movil(json: &str) -> Result<(), String> {
             // `Renderer.sePierdeDePequeno`: un trazo, una linea o una flecha
             // con la caja por debajo de dos pixeles se pinta como la raya de
             // su primer punto al ultimo. El que se extiende no puede llegar asi.
-            let eje = |k: &str| l.iter().filter_map(|q| q[k].as_f64()).fold((f64::MAX, f64::MIN), |(a, b), v| (a.min(v), b.max(v)));
+            let eje = |k: &str| {
+                l.iter()
+                    .filter_map(|q| q[k].as_f64())
+                    .fold((f64::MAX, f64::MIN), |(a, b), v| (a.min(v), b.max(v)))
+            };
             let ((x1, x2), (y1, y2)) = (eje("x"), eje("y"));
             let num = |k: &str| e.get(k).and_then(Value::as_f64).unwrap_or(0.0);
             if ["freedraw", "line", "arrow"].contains(&tipo)
@@ -108,7 +184,9 @@ fn como_lo_lee_el_movil(json: &str) -> Result<(), String> {
                 && (x2 - x1) + (y2 - y1) >= 2.0
                 && num("width") + num("height") < 2.0
             {
-                return Err(format!("{id}: caja a cero, se pintaria como una raya recta"));
+                return Err(format!(
+                    "{id}: caja a cero, se pintaria como una raya recta"
+                ));
             }
         }
         if let Some(p) = e.get("lastCommittedPoint").filter(|p| !p.is_null())
@@ -149,8 +227,15 @@ fn como_lo_lee_el_movil(json: &str) -> Result<(), String> {
 fn lienzo_del_pc() -> String {
     let mut escena = pixpin_motor2d::Escena::nueva();
     escena.anadir(Pieza {
-        figura: Figura::Texto { texto: "Hola movil".into(), tam: 20.0, familia: "Virgil".into() },
-        x: 10.0, y: 10.0, ancho: 120.0, alto: 24.0,
+        figura: Figura::Texto {
+            texto: "Hola movil".into(),
+            tam: 20.0,
+            familia: "Virgil".into(),
+        },
+        x: 10.0,
+        y: 10.0,
+        ancho: 120.0,
+        alto: 24.0,
         ..Pieza::default()
     });
     escena.anadir(Pieza {
@@ -160,12 +245,17 @@ fn lienzo_del_pc() -> String {
             punta_fin: TipoPunta::Flecha,
             codos: false,
         },
-        x: 10.0, y: 60.0, ancho: 190.0, alto: 30.0,
+        x: 10.0,
+        y: 60.0,
+        ancho: 190.0,
+        alto: 30.0,
         ..Pieza::default()
     });
     escena.anadir(Pieza {
         figura: Figura::Lapiz {
-            puntos: (0..12).map(|i| Punto2::nuevo(20.0 + i as f32 * 5.0, 150.0 + (i % 3) as f32 * 4.0)).collect(),
+            puntos: (0..12)
+                .map(|i| Punto2::nuevo(20.0 + i as f32 * 5.0, 150.0 + (i % 3) as f32 * 4.0))
+                .collect(),
             presiones: Vec::new(),
             opciones: Some(Default::default()),
         },
@@ -174,29 +264,46 @@ fn lienzo_del_pc() -> String {
         ..Pieza::default()
     });
     escena.anadir(Pieza {
-        figura: Figura::Foco { cristal: Default::default() },
-        x: 0.0, y: 0.0, ancho: 50.0, alto: 50.0,
+        figura: Figura::Foco {
+            cristal: Default::default(),
+        },
+        x: 0.0,
+        y: 0.0,
+        ancho: 50.0,
+        alto: 50.0,
         ..Pieza::default()
     });
     escena.anadir(Pieza {
-        figura: Figura::Cota { puntos: vec![Punto2::nuevo(0.0, 300.0), Punto2::nuevo(100.0, 300.0)] },
-        x: 0.0, y: 300.0, ancho: 100.0, alto: 0.0,
+        figura: Figura::Cota {
+            puntos: vec![Punto2::nuevo(0.0, 300.0), Punto2::nuevo(100.0, 300.0)],
+        },
+        x: 0.0,
+        y: 300.0,
+        ancho: 100.0,
+        alto: 0.0,
         ..Pieza::default()
     });
-    let lienzo = pixpin_motor2d::excalidraw::con_escena(&pixpin_motor2d::excalidraw::Lienzo::vacio(), &escena);
-    let mut v: Value = serde_json::from_str(&pixpin_motor2d::excalidraw::escribir(&lienzo)).unwrap();
+    let lienzo = pixpin_motor2d::excalidraw::con_escena(
+        &pixpin_motor2d::excalidraw::Lienzo::vacio(),
+        &escena,
+    );
+    let mut v: Value =
+        serde_json::from_str(&pixpin_motor2d::excalidraw::escribir(&lienzo)).unwrap();
     // La foto como la apunta el PC (`pdf_en_chat`, `fusionar_paginas`): su
     // `fileId` y una entrada de `files` con la ruta dentro del proyecto. Va
     // a mano porque asi la escriben ellos: el motor no la emite desde la
     // escena (una `Figura::Imagen` nueva no sale en `escribir`).
-    v["elements"].as_array_mut().unwrap().push(serde_json::json!({
-        "id": "foto1", "type": "image", "x": 220.0, "y": 20.0, "width": 100.0, "height": 80.0,
-        "angle": 0, "strokeColor": "transparent", "backgroundColor": "transparent",
-        "fillStyle": "solid", "strokeWidth": 1, "strokeStyle": "solid", "roughness": 0,
-        "opacity": 100, "groupIds": [], "seed": 1, "version": 1, "versionNonce": 1,
-        "isDeleted": false, "boundElements": null, "locked": true, "fileId": "f7",
-        "status": "saved", "scale": [1, 1]
-    }));
+    v["elements"]
+        .as_array_mut()
+        .unwrap()
+        .push(serde_json::json!({
+            "id": "foto1", "type": "image", "x": 220.0, "y": 20.0, "width": 100.0, "height": 80.0,
+            "angle": 0, "strokeColor": "transparent", "backgroundColor": "transparent",
+            "fillStyle": "solid", "strokeWidth": 1, "strokeStyle": "solid", "roughness": 0,
+            "opacity": 100, "groupIds": [], "seed": 1, "version": 1, "versionNonce": 1,
+            "isDeleted": false, "boundElements": null, "locked": true, "fileId": "f7",
+            "status": "saved", "scale": [1, 1]
+        }));
     v["files"] = serde_json::json!({"f7": {"id": "f7", "mimeType": "image/png", "path": "imagenes/f7", "created": 1}});
     // Y algo que el movil no conoce (un tipo de una version futura del PC).
     v["elements"].as_array_mut().unwrap().push(serde_json::json!({
@@ -224,7 +331,12 @@ fn proyecto_del_pc(raiz: &Path) -> (String, PathBuf) {
         &format!("{dibujo}.excalidraw"),
         &format!("lienzos/{dibujo}.excalidraw"),
         10,
-        &cuaderno::Sello { cuando: 1_758_000_000_500, numero: 3, aparato: "6ARJ".into(), proyecto: ficha.id.clone() },
+        &cuaderno::Sello {
+            cuando: 1_758_000_000_500,
+            numero: 3,
+            aparato: "6ARJ".into(),
+            proyecto: ficha.id.clone(),
+        },
     );
     m.referencia = Some(dibujo.into());
     cuaderno::anadir(&carpeta, &m).unwrap();
@@ -252,11 +364,17 @@ fn un_lienzo_del_pc_sale_como_lienzo_de_una_hoja_y_no_como_archivo() {
     assert_eq!(e.tipo, envio::LIENZO);
     assert_eq!(e.mime.as_deref(), Some("application/zip"));
     assert_eq!(e.identidad, format!("lienzo:{fid}:d-pc-1"));
-    assert_eq!(e.proyecto.as_deref(), Some(format!("proyecto:{fid}").as_str()));
+    assert_eq!(
+        e.proyecto.as_deref(),
+        Some(format!("proyecto:{fid}").as_str())
+    );
     assert_eq!(e.proyecto_nombre.as_deref(), Some("Obra"));
     assert_eq!(e.nombre, "Lienzo", "el id no se ensena como nombre");
     assert_eq!(e.creado, 1_758_000_000_500, "la hora de su mensaje");
-    assert!(e.uid.is_some() && e.codigo_de_chat.is_some(), "con sus codigos");
+    assert!(
+        e.uid.is_some() && e.codigo_de_chat.is_some(),
+        "con sus codigos"
+    );
     assert_eq!(e.bytes, bytes.len() as i64);
     assert!(nombre_del_paquete(&e).ends_with(".pixpin"));
     assert!(!nombre_del_paquete(&e).contains(".excalidraw"));
@@ -264,22 +382,44 @@ fn un_lienzo_del_pc_sale_como_lienzo_de_una_hoja_y_no_como_archivo() {
     // El paquete, como lo abre `PaquetePixpin.abrir`.
     let p = Paquete::desde_bytes(&bytes).unwrap();
     let manifiesto = String::from_utf8_lossy(p.entrada("manifest.json").unwrap()).into_owned();
-    assert!(manifiesto.contains("\"pixpin\""), "sin esto abrir() da null: {manifiesto}");
+    assert!(
+        manifiesto.contains("\"pixpin\""),
+        "sin esto abrir() da null: {manifiesto}"
+    );
     assert_eq!(p.proyecto.hojas.len(), 1);
     let hoja = &p.proyecto.hojas[0];
     assert_eq!(hoja.dibujo.as_deref(), Some("d-pc-1"));
     assert_eq!(p.proyecto.nombre, "Obra");
 
     // Y la escena de dentro, como la lee su `Scene`.
-    let escena = String::from_utf8_lossy(p.entrada("lienzos/d-pc-1.excalidraw").unwrap()).into_owned();
+    let escena =
+        String::from_utf8_lossy(p.entrada("lienzos/d-pc-1.excalidraw").unwrap()).into_owned();
     como_lo_lee_el_movil(&escena).unwrap();
     let v: Value = serde_json::from_str(&escena).unwrap();
-    let tipos: Vec<&str> = v["elements"].as_array().unwrap().iter().map(|e| e["type"].as_str().unwrap()).collect();
-    for t in ["text", "arrow", "freedraw", "image", "pixpin-spotlight", "pixpin-measure"] {
+    let tipos: Vec<&str> = v["elements"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|e| e["type"].as_str().unwrap())
+        .collect();
+    for t in [
+        "text",
+        "arrow",
+        "freedraw",
+        "image",
+        "pixpin-spotlight",
+        "pixpin-measure",
+    ] {
         assert!(tipos.contains(&t), "falta {t} en {tipos:?}");
     }
-    assert!(!tipos.contains(&"pixpin-tabla-del-futuro"), "lo que alla no existe se queda fuera");
-    assert_eq!(v["backgroundColor"], "#fff8e1", "el papel donde lo lee el movil");
+    assert!(
+        !tipos.contains(&"pixpin-tabla-del-futuro"),
+        "lo que alla no existe se queda fuera"
+    );
+    assert_eq!(
+        v["backgroundColor"], "#fff8e1",
+        "el papel donde lo lee el movil"
+    );
     assert_eq!(v["files"]["f7"]["path"], "imagenes/f7");
     assert_eq!(p.entrada("imagenes/f7"), Some(PNG), "la foto viaja dentro");
 }
@@ -304,7 +444,8 @@ fn un_excalidraw_suelto_con_la_foto_incrustada_sale_como_proyecto_nuevo() {
     assert_eq!(e.proyecto_nombre.as_deref(), Some("Plano de casa"));
     let p = Paquete::desde_bytes(&bytes).unwrap();
     let d = p.proyecto.hojas[0].dibujo.clone().unwrap();
-    let escena = String::from_utf8_lossy(p.entrada(&format!("lienzos/{d}.excalidraw")).unwrap()).into_owned();
+    let escena = String::from_utf8_lossy(p.entrada(&format!("lienzos/{d}.excalidraw")).unwrap())
+        .into_owned();
     como_lo_lee_el_movil(&escena).unwrap();
     assert_eq!(p.entrada("imagenes/f1"), Some(&b"hello"[..]));
     // Caso negativo: una foto sin bytes no llega como `SceneFile` a medias.
@@ -313,7 +454,13 @@ fn un_excalidraw_suelto_con_la_foto_incrustada_sale_como_proyecto_nuevo() {
 
 #[test]
 fn lo_que_no_es_un_lienzo_sigue_saliendo_como_archivo() {
-    for n in ["foto.png", "notas.md", "proyecto.pixpin", "dibujo.pixpin2d", "sin-extension"] {
+    for n in [
+        "foto.png",
+        "notas.md",
+        "proyecto.pixpin",
+        "dibujo.pixpin2d",
+        "sin-extension",
+    ] {
         assert!(!es_lienzo(Path::new(n)), "{n}");
     }
     assert!(es_lienzo(Path::new("x/Plano.EXCALIDRAW")));
@@ -328,7 +475,10 @@ fn paquete_del_movil(hoja: &str, dibujo: &str, nombre: &str) -> (Elemento, Vec<u
     }))
     .unwrap();
     let mut p = Paquete::nuevo(
-        pixpin_proyecto::Manifiesto { aplicacion: "pixpin-android".into(), ..Default::default() },
+        pixpin_proyecto::Manifiesto {
+            aplicacion: "pixpin-android".into(),
+            ..Default::default()
+        },
         proyecto,
     );
     // El `Scene` del movil: papel arriba, puntos como objetos, foto por ruta.
@@ -383,18 +533,25 @@ fn un_lienzo_del_movil_crea_su_proyecto_y_se_abre_en_el_lienzo_del_pc() {
     let (e, bytes) = paquete_del_movil("h1", "d1", "Plano");
     let r = raiz.join("llego.pixpin");
     std::fs::write(&r, bytes).unwrap();
-    let Llegada::ProyectoNuevo(fid) = guardar(&raiz, &e, &r, "6ARJ", false, 10, &sin_copia).unwrap() else {
+    let Llegada::ProyectoNuevo(fid) =
+        guardar(&raiz, &e, &r, "6ARJ", false, 10, &sin_copia).unwrap()
+    else {
         panic!("tenia que crear el proyecto");
     };
     assert_eq!(Indice::leer(&raiz).buscar(&fid).unwrap().nombre, "Tesis");
     let m = lienzos_de(&raiz, &fid);
     assert_eq!(m.len(), 1, "un mensaje de lienzo en su chat");
     // Lo abre el lector del lienzo del PC, con su foto y su papel.
-    let texto = std::fs::read_to_string(almacen::carpeta(&raiz, &fid).join(m[0].ruta.as_deref().unwrap())).unwrap();
+    let texto =
+        std::fs::read_to_string(almacen::carpeta(&raiz, &fid).join(m[0].ruta.as_deref().unwrap()))
+            .unwrap();
     let l = pixpin_motor2d::excalidraw::leer(&texto).unwrap();
     assert_eq!(l.elementos().len(), 2);
     let papel = pixpin_motor2d::excalidraw::fondo(&l);
-    assert!((papel.g - 0xf5 as f32 / 255.0).abs() < 0.01, "el papel del movil: {papel:?}");
+    assert!(
+        (papel.g - 0xf5 as f32 / 255.0).abs() < 0.01,
+        "el papel del movil: {papel:?}"
+    );
     assert!(almacen::carpeta(&raiz, &fid).join("imagenes/f1").is_file());
 }
 
@@ -404,7 +561,9 @@ fn el_segundo_lienzo_del_mismo_proyecto_cae_en_el_mismo_y_repetirlo_lo_pone_al_d
     let (e1, b1) = paquete_del_movil("h1", "d1", "Plano");
     let r1 = raiz.join("1.pixpin");
     std::fs::write(&r1, b1).unwrap();
-    let Llegada::ProyectoNuevo(fid) = guardar(&raiz, &e1, &r1, "6ARJ", false, 10, &sin_copia).unwrap() else {
+    let Llegada::ProyectoNuevo(fid) =
+        guardar(&raiz, &e1, &r1, "6ARJ", false, 10, &sin_copia).unwrap()
+    else {
         panic!()
     };
 
@@ -416,19 +575,31 @@ fn el_segundo_lienzo_del_mismo_proyecto_cae_en_el_mismo_y_repetirlo_lo_pone_al_d
         copias.set(copias.get() + 1);
         Ok(())
     };
-    assert_eq!(guardar(&raiz, &e2, &r2, "6ARJ", false, 11, &contar).unwrap(), Llegada::Anadido(fid.clone()));
+    assert_eq!(
+        guardar(&raiz, &e2, &r2, "6ARJ", false, 11, &contar).unwrap(),
+        Llegada::Anadido(fid.clone())
+    );
     assert_eq!(copias.get(), 1, "copia antes de tocar el que ya habia");
     assert_eq!(lienzos_de(&raiz, &fid).len(), 2);
-    assert_eq!(Indice::leer(&raiz).proyectos.len(), 1, "no crea otro proyecto");
+    assert_eq!(
+        Indice::leer(&raiz).proyectos.len(),
+        1,
+        "no crea otro proyecto"
+    );
 
     // El mismo otra vez: en su sitio, sin otra burbuja.
     std::fs::write(&r2, &b2).unwrap();
-    assert_eq!(guardar(&raiz, &e2, &r2, "6ARJ", false, 12, &sin_copia).unwrap(), Llegada::AlDia(fid.clone()));
+    assert_eq!(
+        guardar(&raiz, &e2, &r2, "6ARJ", false, 12, &sin_copia).unwrap(),
+        Llegada::AlDia(fid.clone())
+    );
     assert_eq!(lienzos_de(&raiz, &fid).len(), 2);
 
     // Caso negativo: «crear como nuevo» no toca el que habia.
     std::fs::write(&r2, &b2).unwrap();
-    let Llegada::ProyectoNuevo(otro) = guardar(&raiz, &e2, &r2, "6ARJ", true, 13, &sin_copia).unwrap() else {
+    let Llegada::ProyectoNuevo(otro) =
+        guardar(&raiz, &e2, &r2, "6ARJ", true, 13, &sin_copia).unwrap()
+    else {
         panic!("como nuevo va aparte")
     };
     assert_ne!(otro, fid);
@@ -441,7 +612,9 @@ fn si_la_copia_de_seguridad_falla_no_se_escribe_nada() {
     let (e1, b1) = paquete_del_movil("h1", "d1", "Plano");
     let r = raiz.join("1.pixpin");
     std::fs::write(&r, b1).unwrap();
-    let Llegada::ProyectoNuevo(fid) = guardar(&raiz, &e1, &r, "6ARJ", false, 10, &sin_copia).unwrap() else {
+    let Llegada::ProyectoNuevo(fid) =
+        guardar(&raiz, &e1, &r, "6ARJ", false, 10, &sin_copia).unwrap()
+    else {
         panic!()
     };
     let (e2, b2) = paquete_del_movil("h2", "d2", "Alzado");
@@ -470,14 +643,23 @@ fn un_lienzo_del_pc_vuelve_al_pc_y_se_abre_igual() {
     let destino = carpeta_temporal("vuelta");
     let r = destino.join("l.pixpin");
     std::fs::write(&r, bytes).unwrap();
-    let Llegada::ProyectoNuevo(fid) = guardar(&destino, &e, &r, "ZZZZ", false, 2, &sin_copia).unwrap() else {
+    let Llegada::ProyectoNuevo(fid) =
+        guardar(&destino, &e, &r, "ZZZZ", false, 2, &sin_copia).unwrap()
+    else {
         panic!()
     };
     let m = lienzos_de(&destino, &fid);
     assert_eq!(m.len(), 1);
-    let texto = std::fs::read_to_string(almacen::carpeta(&destino, &fid).join(m[0].ruta.as_deref().unwrap())).unwrap();
+    let texto = std::fs::read_to_string(
+        almacen::carpeta(&destino, &fid).join(m[0].ruta.as_deref().unwrap()),
+    )
+    .unwrap();
     let l = pixpin_motor2d::excalidraw::leer(&texto).unwrap();
-    assert_eq!(l.elementos().len(), 6, "texto, flecha, trazo, foto, foco y cota");
+    assert_eq!(
+        l.elementos().len(),
+        6,
+        "texto, flecha, trazo, foto, foco y cota"
+    );
 }
 
 #[test]
@@ -494,7 +676,11 @@ fn los_puntos_raros_y_las_palabras_que_no_existen_alla_se_arreglan_o_se_quitan()
     assert_eq!(informe, Informe::default());
     let v: Value = serde_json::from_str(&out).unwrap();
     let a = &v["elements"][0];
-    assert_eq!(a["points"].as_array().unwrap().len(), 2, "lo que no es punto se quita");
+    assert_eq!(
+        a["points"].as_array().unwrap().len(),
+        2,
+        "lo que no es punto se quita"
+    );
     assert!(a.get("endArrowhead").is_none() && a.get("fillStyle").is_none());
     assert_eq!(a["boundElements"].as_array().unwrap().len(), 1);
     assert!(a.get("startBinding").is_none());

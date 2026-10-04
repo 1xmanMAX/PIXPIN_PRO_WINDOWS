@@ -93,7 +93,11 @@ pub fn congelar(pid: u32, congelado: bool) -> bool {
             if e.th32OwnerProcessID == pid
                 && let Ok(h) = OpenThread(THREAD_SUSPEND_RESUME, false, e.th32ThreadID)
             {
-                let r = if congelado { SuspendThread(h) } else { ResumeThread(h) };
+                let r = if congelado {
+                    SuspendThread(h)
+                } else {
+                    ResumeThread(h)
+                };
                 alguno |= r != u32::MAX;
                 let _ = CloseHandle(h);
             }
@@ -114,7 +118,11 @@ mod pruebas {
     #[test]
     fn un_hilo_se_puede_poner_por_debajo_de_lo_normal() {
         // En un hilo propio: el de la prueba lo comparten otras.
-        assert!(std::thread::spawn(super::hilo_por_debajo_de_lo_normal).join().unwrap());
+        assert!(
+            std::thread::spawn(super::hilo_por_debajo_de_lo_normal)
+                .join()
+                .unwrap()
+        );
     }
 
     #[test]

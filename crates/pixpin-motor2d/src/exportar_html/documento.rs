@@ -133,7 +133,13 @@ fn num(v: f64) -> String {
 /// `svg.ppa` con `data-i` (su bloque) y `data-y` (donde estaba); cada
 /// marcador, un `span.ppm` en el canto derecho de la columna. `clave`
 /// distingue los ids si hubiera dos documentos en la misma pagina.
-pub fn capa_de(piezas: &[Pieza], senales: &[Senal], columna: u32, margen: u32, clave: &str) -> String {
+pub fn capa_de(
+    piezas: &[Pieza],
+    senales: &[Senal],
+    columna: u32,
+    margen: u32,
+    clave: &str,
+) -> String {
     let mut s = String::new();
     for p in piezas {
         let svg = sin_cabecera(&p.svg);
@@ -232,7 +238,8 @@ pub fn acotar(css: &str, raiz: &str) -> String {
                     let u = uno.trim();
                     for base in ["html", "body"] {
                         if let Some(resto) = u.strip_prefix(base)
-                            && !resto.starts_with(|c: char| c.is_alphanumeric() || c == '-' || c == '_')
+                            && !resto
+                                .starts_with(|c: char| c.is_alphanumeric() || c == '-' || c == '_')
                         {
                             return format!("{raiz}{resto}");
                         }
@@ -277,7 +284,8 @@ mod pruebas {
     #[test]
     fn cada_pieza_y_cada_marcador_llevan_su_bloque_y_el_riel_salta_a_ellos() {
         let piezas = [Pieza {
-            svg: "<?xml version=\"1.0\"?>\n<svg xmlns=\"x\" viewBox=\"0 0 5 5\"><path/></svg>".into(),
+            svg: "<?xml version=\"1.0\"?>\n<svg xmlns=\"x\" viewBox=\"0 0 5 5\"><path/></svg>"
+                .into(),
             x: 400.0,
             y: 120.25,
             ancho: 50.0,
@@ -285,8 +293,18 @@ mod pruebas {
             ancla: 3,
         }];
         let senales = [
-            Senal { emoji: "⭐".into(), y: 300.0, ancla: 4, fraccion: 0.5 },
-            Senal { emoji: "🔖".into(), y: 10.0, ancla: -1, fraccion: 0.1 },
+            Senal {
+                emoji: "⭐".into(),
+                y: 300.0,
+                ancla: 4,
+                fraccion: 0.5,
+            },
+            Senal {
+                emoji: "🔖".into(),
+                y: 10.0,
+                ancla: -1,
+                fraccion: 0.1,
+            },
         ];
         let capa = capa_de(&piezas, &senales, 600, 400, "d");
         assert!(capa.contains("<svg class=\"ppa\" data-i=\"3\" data-y=\"120.3\" style=\"left:400px;top:120.3px;width:50px;height:10px\" xmlns=\"x\""));

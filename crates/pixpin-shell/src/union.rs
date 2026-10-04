@@ -83,7 +83,12 @@ fn poner_reparse(enlace: &Path, destino: &Path) -> io::Result<()> {
     b.extend_from_slice(&bytes_sust.to_le_bytes());
     b.extend_from_slice(&(bytes_sust + 2).to_le_bytes()); // del de mostrar
     b.extend_from_slice(&bytes_most.to_le_bytes());
-    for u in sustituto.iter().chain([&0u16]).chain(mostrar.iter()).chain([&0u16]) {
+    for u in sustituto
+        .iter()
+        .chain([&0u16])
+        .chain(mostrar.iter())
+        .chain([&0u16])
+    {
         b.extend_from_slice(&u.to_le_bytes());
     }
     let fichero = std::fs::OpenOptions::new()
@@ -173,7 +178,11 @@ fn unidad_de_red(texto: &str) -> bool {
 pub fn sin_prefijo_largo(ruta: &Path) -> PathBuf {
     let texto = ruta.to_string_lossy();
     match texto.strip_prefix(r"\\?\") {
-        Some(resto) if !resto.get(..4).is_some_and(|p| p.eq_ignore_ascii_case(r"UNC\")) => {
+        Some(resto)
+            if !resto
+                .get(..4)
+                .is_some_and(|p| p.eq_ignore_ascii_case(r"UNC\")) =>
+        {
             PathBuf::from(resto)
         }
         _ => ruta.to_path_buf(),
@@ -185,10 +194,8 @@ mod pruebas {
     use super::*;
 
     fn temporal(etiqueta: &str) -> PathBuf {
-        let d = std::env::temp_dir().join(format!(
-            "pixpin-union-{etiqueta}-{}",
-            std::process::id()
-        ));
+        let d =
+            std::env::temp_dir().join(format!("pixpin-union-{etiqueta}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&d);
         std::fs::create_dir_all(&d).unwrap();
         d

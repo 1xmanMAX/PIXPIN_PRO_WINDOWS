@@ -627,7 +627,11 @@ impl Lector {
                 .unwrap_or_default();
             let voz: ISpVoice = CoCreateInstance(&SpVoice, None, CLSCTX_ALL).ok()?;
             voz.SetVoice(&ficha).ok()?;
-            Some(Lector { voz, nombre, pausado: std::cell::Cell::new(false) })
+            Some(Lector {
+                voz,
+                nombre,
+                pausado: std::cell::Cell::new(false),
+            })
         }
     }
 

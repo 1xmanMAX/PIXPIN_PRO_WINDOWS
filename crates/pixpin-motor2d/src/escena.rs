@@ -454,7 +454,11 @@ impl Escena {
     /// como `apuntar_escala`. Fuera de un paso no hace nada.
     pub fn apuntar_alfileres(&mut self) {
         let Some(paso) = &self.en_curso else { return };
-        if paso.cambios.iter().any(|c| matches!(c, Cambio::Alfileres(_))) {
+        if paso
+            .cambios
+            .iter()
+            .any(|c| matches!(c, Cambio::Alfileres(_)))
+        {
             return;
         }
         let cambio = Cambio::Alfileres(self.alfileres.clone());

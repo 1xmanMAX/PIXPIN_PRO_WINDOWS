@@ -169,9 +169,23 @@ mod pruebas {
         let textos = ["El Árbol de la ciencia", "un arbol", "ARBOLEDA"];
         let c = buscar(textos, "árbol");
         assert_eq!(c.len(), 3);
-        assert_eq!(c[0], Coincidencia { texto: 0, inicio: 3, largo: 5 });
+        assert_eq!(
+            c[0],
+            Coincidencia {
+                texto: 0,
+                inicio: 3,
+                largo: 5
+            }
+        );
         assert_eq!(c[1].texto, 1);
-        assert_eq!(c[2], Coincidencia { texto: 2, inicio: 0, largo: 5 });
+        assert_eq!(
+            c[2],
+            Coincidencia {
+                texto: 2,
+                inicio: 0,
+                largo: 5
+            }
+        );
         // Y al reves: escribir con tilde encuentra lo escrito sin ella.
         assert_eq!(buscar(["arbol"], "ÁRBOL").len(), 1);
     }
@@ -207,7 +221,10 @@ mod pruebas {
         assert!(buscar(["hola"], "").is_empty());
         assert!(buscar(["hola que tal"], "   ").is_empty());
         assert!(buscar(["hola"], "adios").is_empty());
-        assert!(buscar(["ho"], "hola").is_empty(), "una aguja mas larga que el texto");
+        assert!(
+            buscar(["ho"], "hola").is_empty(),
+            "una aguja mas larga que el texto"
+        );
         let vacio: [&str; 0] = [];
         assert!(buscar(vacio, "hola").is_empty());
     }
@@ -223,8 +240,16 @@ mod pruebas {
         assert_eq!(b.cuenta(), Some((1, 3)));
         assert_eq!(b.siguiente().map(|c| c.texto), Some(1));
         assert_eq!(b.siguiente().map(|c| c.texto), Some(2));
-        assert_eq!(b.siguiente().map(|c| c.texto), Some(0), "del final a la primera");
-        assert_eq!(b.anterior().map(|c| c.texto), Some(2), "de la primera a la ultima");
+        assert_eq!(
+            b.siguiente().map(|c| c.texto),
+            Some(0),
+            "del final a la primera"
+        );
+        assert_eq!(
+            b.anterior().map(|c| c.texto),
+            Some(2),
+            "de la primera a la ultima"
+        );
         assert_eq!(b.cuenta(), Some((3, 3)));
     }
 

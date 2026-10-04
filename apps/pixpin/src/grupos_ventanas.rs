@@ -43,7 +43,10 @@ pub enum Clase {
     /// Una hoja dibujada de un proyecto: su proyecto y la referencia de su
     /// dibujo (o el codigo unico de la pagina que aun no lo tiene), que es
     /// como la busca el universo (`abrir_hoja::abrir_hoja`).
-    Lienzo { proyecto: String, referencia: String },
+    Lienzo {
+        proyecto: String,
+        referencia: String,
+    },
     /// Un documento en su lector: PDF, Word, libro o pagina.
     Lector { ruta: PathBuf },
     /// Una nota Markdown en su editor.
@@ -622,7 +625,10 @@ mod pruebas {
         assert_eq!(e[0].0, ID_NADA);
         let g = con_grupo(&[], "Obra", vec![lector("a.pdf")], 1, "Grupo");
         let e = entradas(2, &g, &t);
-        assert_eq!(e.iter().map(|x| x.0).collect::<Vec<_>>(), vec![ID_GUARDAR, ID_ABRIR, ID_BORRAR]);
+        assert_eq!(
+            e.iter().map(|x| x.0).collect::<Vec<_>>(),
+            vec![ID_GUARDAR, ID_ABRIR, ID_BORRAR]
+        );
         assert!(e[1].1.contains("Obra"));
     }
 

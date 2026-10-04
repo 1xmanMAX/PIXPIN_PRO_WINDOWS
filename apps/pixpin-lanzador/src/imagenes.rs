@@ -88,11 +88,18 @@ fn no() -> bool {
 }
 
 /// El de las pruebas y el de por defecto: nunca hay imagen.
-pub const SIN_PORTAPAPELES: Portapapeles = Portapapeles { imagen: nunca, leer: no_leer, pega_la_app: no };
+pub const SIN_PORTAPAPELES: Portapapeles = Portapapeles {
+    imagen: nunca,
+    leer: no_leer,
+    pega_la_app: no,
+};
 
 /// El de Windows.
-pub const WINDOWS: Portapapeles =
-    Portapapeles { imagen: win::imagen, leer: win::leer, pega_la_app: crate::pedido::app_abierta };
+pub const WINDOWS: Portapapeles = Portapapeles {
+    imagen: win::imagen,
+    leer: win::leer,
+    pega_la_app: crate::pedido::app_abierta,
+};
 
 /// **La huella del contenido** de una imagen (FNV-1a de 64 bits de sus
 /// bytes): lo que dice que dos pegadas son la misma imagen aunque se
@@ -145,7 +152,11 @@ pub fn fichas(texto: &str) -> Vec<Ficha> {
             continue;
         }
         let fin = inicio + 6 + digitos;
-        v.push(Ficha { numero, inicio, fin });
+        v.push(Ficha {
+            numero,
+            inicio,
+            fin,
+        });
         i = fin;
     }
     v
@@ -214,11 +225,23 @@ pub fn apuntar(raiz: &Path, numero: u32, ruta: &Path, secuencia: Option<u32>, ah
     apuntar_con_huella(raiz, numero, ruta, secuencia, None, ahora)
 }
 
-fn apuntar_con_huella(raiz: &Path, numero: u32, ruta: &Path, secuencia: Option<u32>, h: Option<u64>, ahora: i64) -> bool {
-    let mut b = if numero <= 1 { Borrador::default() } else { leer_borrador(raiz, ahora).unwrap_or_default() };
+fn apuntar_con_huella(
+    raiz: &Path,
+    numero: u32,
+    ruta: &Path,
+    secuencia: Option<u32>,
+    h: Option<u64>,
+    ahora: i64,
+) -> bool {
+    let mut b = if numero <= 1 {
+        Borrador::default()
+    } else {
+        leer_borrador(raiz, ahora).unwrap_or_default()
+    };
     b.tocado = ahora;
     b.apuntar_secuencia(secuencia);
-    b.imagenes.insert(numero, ruta.to_string_lossy().to_string());
+    b.imagenes
+        .insert(numero, ruta.to_string_lossy().to_string());
     if let Some(h) = h {
         b.huellas.insert(numero, h);
     }
@@ -228,7 +251,9 @@ fn apuntar_con_huella(raiz: &Path, numero: u32, ruta: &Path, secuencia: Option<u
 fn escribir_borrador(raiz: &Path, b: &Borrador) -> bool {
     let dir = carpeta(raiz);
     let _ = std::fs::create_dir_all(&dir);
-    let Ok(texto) = serde_json::to_string(b) else { return false };
+    let Ok(texto) = serde_json::to_string(b) else {
+        return false;
+    };
     std::fs::write(dir.join(BORRADOR), texto).is_ok()
 }
 
@@ -249,9 +274,18 @@ pub enum Pegado {
 /// tecleado) o como la siguiente del borrador (`None`: la app). Una imagen,
 /// un nombre: si su contenido ya esta en el borrador no se guarda otra vez
 /// y se dice cual es su ficha.
-pub fn pegar_en_borrador(raiz: &Path, pp: &Portapapeles, numero: Option<u32>, ahora: i64) -> Pegado {
-    let Some(secuencia) = (pp.imagen)() else { return Pegado::Nada };
-    let Some(copiada) = (pp.leer)() else { return Pegado::Nada };
+pub fn pegar_en_borrador(
+    raiz: &Path,
+    pp: &Portapapeles,
+    numero: Option<u32>,
+    ahora: i64,
+) -> Pegado {
+    let Some(secuencia) = (pp.imagen)() else {
+        return Pegado::Nada;
+    };
+    let Some(copiada) = (pp.leer)() else {
+        return Pegado::Nada;
+    };
     let h = huella(&copiada.bytes);
     let previo = leer_borrador(raiz, ahora);
     let numero = numero.unwrap_or_else(|| previo.as_ref().map_or(1, Borrador::siguiente));
@@ -287,7 +321,9 @@ pub const GRACIA_PODAR_MS: i64 = 3_000;
 /// imagen de una ficha borrada se puede pegar de nuevo. Nada justo despues
 /// de pegar (ver [`GRACIA_PODAR_MS`]). Solo escribe si cambia algo.
 pub fn podar(raiz: &Path, texto: &str, ahora: i64) {
-    let Some(mut b) = leer_borrador(raiz, ahora) else { return };
+    let Some(mut b) = leer_borrador(raiz, ahora) else {
+        return;
+    };
     if ahora - b.tocado < GRACIA_PODAR_MS {
         return;
     }
@@ -316,13 +352,19 @@ pub fn olvidar_borrador(raiz: &Path) {
 
 /// Borra las imagenes de mas de un dia.
 pub fn limpiar(raiz: &Path) {
-    let Ok(dir) = std::fs::read_dir(carpeta(raiz)) else { return };
+    let Ok(dir) = std::fs::read_dir(carpeta(raiz)) else {
+        return;
+    };
     let viejo = std::time::Duration::from_millis(LIMPIAR_MS as u64);
     for e in dir.flatten() {
         if e.file_name() == BORRADOR {
             continue;
         }
-        let edad = e.metadata().and_then(|m| m.modified()).ok().and_then(|m| m.elapsed().ok());
+        let edad = e
+            .metadata()
+            .and_then(|m| m.modified())
+            .ok()
+            .and_then(|m| m.elapsed().ok());
         if edad.is_some_and(|t| t > viejo) {
             let _ = std::fs::remove_file(e.path());
         }
@@ -348,8 +390,16 @@ pub struct Adjuntas {
 
 pub fn resolver(texto: &str, borrador: Option<&Borrador>) -> Adjuntas {
     let fs = fichas(texto);
-    let ruta_de = |n: u32| borrador.and_then(|b| b.imagenes.get(&n)).filter(|r| Path::new(r.as_str()).is_file());
-    let mut conocidas: Vec<u32> = fs.iter().map(|f| f.numero).filter(|n| ruta_de(*n).is_some()).collect();
+    let ruta_de = |n: u32| {
+        borrador
+            .and_then(|b| b.imagenes.get(&n))
+            .filter(|r| Path::new(r.as_str()).is_file())
+    };
+    let mut conocidas: Vec<u32> = fs
+        .iter()
+        .map(|f| f.numero)
+        .filter(|n| ruta_de(*n).is_some())
+        .collect();
     conocidas.sort_unstable();
     conocidas.dedup();
     let mut a = Adjuntas::default();
@@ -369,7 +419,10 @@ pub fn resolver(texto: &str, borrador: Option<&Borrador>) -> Adjuntas {
         desde = f.fin;
     }
     a.texto.push_str(&texto[desde..]);
-    a.rutas = conocidas.iter().filter_map(|n| ruta_de(*n).cloned()).collect();
+    a.rutas = conocidas
+        .iter()
+        .filter_map(|n| ruta_de(*n).cloned())
+        .collect();
     a.conocidas = conocidas;
     a
 }
@@ -378,7 +431,10 @@ pub fn resolver(texto: &str, borrador: Option<&Borrador>) -> Adjuntas {
 /// cuyo numero esta en `numeros`.
 pub fn resaltado(titulo: &str, numeros: &[u32]) -> Vec<usize> {
     let mut v = Vec::new();
-    for f in fichas(titulo).into_iter().filter(|f| numeros.contains(&f.numero)) {
+    for f in fichas(titulo)
+        .into_iter()
+        .filter(|f| numeros.contains(&f.numero))
+    {
         let inicio = titulo[..f.inicio].encode_utf16().count();
         let largo = titulo[f.inicio..f.fin].encode_utf16().count();
         v.extend(inicio..inicio + largo);
@@ -394,7 +450,9 @@ pub fn con_imagenes(r: &mut Resultado, texto: &str, ctx: &Contexto) {
     if fichas(texto).is_empty() {
         return;
     }
-    let borrador = ctx.raiz_de_datos().and_then(|raiz| leer_borrador(&raiz, ctx.ahora));
+    let borrador = ctx
+        .raiz_de_datos()
+        .and_then(|raiz| leer_borrador(&raiz, ctx.ahora));
     let a = resolver(texto.trim(), borrador.as_ref());
     if let Accion::Pedido(p) | Accion::PedirYSeguir { pedido: p, .. } = &mut r.accion {
         if !a.rutas.is_empty() {
@@ -410,7 +468,10 @@ pub fn con_imagenes(r: &mut Resultado, texto: &str, ctx: &Contexto) {
     let aviso = match a.desconocidas.as_slice() {
         [] => String::new(),
         [una] => format!("⚠ {una} no se encuentra: se queda como texto"),
-        varias => format!("⚠ {} no se encuentran: se quedan como texto", varias.join(" ")),
+        varias => format!(
+            "⚠ {} no se encuentran: se quedan como texto",
+            varias.join(" ")
+        ),
     };
     let previo = std::mem::take(&mut r.subtitulo);
     r.subtitulo = [cuenta.as_str(), aviso.as_str(), previo.as_str()]
@@ -446,14 +507,22 @@ pub fn resultado_pegar(busqueda: &str, ctx: &Contexto) -> Option<Resultado> {
     }
     let f = ficha(numero);
     let consulta = ctx.consulta(&format!("{} {f} ", busqueda.trim_end()));
-    use crate::consulta::{analizar, Funcion, Modo};
+    use crate::consulta::{Funcion, Modo, analizar};
     let en = match analizar(busqueda) {
-        Modo::Verbo { funcion: Funcion::Leccion, .. } => "la lección, como foto",
+        Modo::Verbo {
+            funcion: Funcion::Leccion,
+            ..
+        } => "la lección, como foto",
         _ => "la tarea",
     };
     let sub = format!("Intro: la imagen del portapapeles va en {en}; sigue escribiendo detrás");
     let titulo = format!("📎 Pegar la imagen copiada → {f}");
-    let mut r = Resultado::nuevo(&titulo, sub, crate::resultados::glifo::ADJUNTAR, Accion::PegarImagen { consulta, numero });
+    let mut r = Resultado::nuevo(
+        &titulo,
+        sub,
+        crate::resultados::glifo::ADJUNTAR,
+        Accion::PegarImagen { consulta, numero },
+    );
     r.resaltado = resaltado(&titulo, &[numero]);
     Some(r)
 }
@@ -465,15 +534,15 @@ mod win {
     //! abre; solo un fichero copiado (`CF_HDROP`) obliga a abrirlo, un
     //! momento, para ver si es una imagen.
 
-    use super::{es_imagen_pegable, Copiada};
-    use std::path::PathBuf;
-    use ::windows::core::w;
+    use super::{Copiada, es_imagen_pegable};
     use ::windows::Win32::Foundation::{HANDLE, HGLOBAL};
     use ::windows::Win32::System::DataExchange::{
-        CloseClipboard, GetClipboardData, GetClipboardSequenceNumber, IsClipboardFormatAvailable, OpenClipboard,
-        RegisterClipboardFormatW,
+        CloseClipboard, GetClipboardData, GetClipboardSequenceNumber, IsClipboardFormatAvailable,
+        OpenClipboard, RegisterClipboardFormatW,
     };
     use ::windows::Win32::System::Memory::{GlobalLock, GlobalSize, GlobalUnlock};
+    use ::windows::core::w;
+    use std::path::PathBuf;
 
     const CF_DIB: u32 = 8;
     const CF_HDROP: u32 = 15;
@@ -482,7 +551,12 @@ mod win {
     /// Los formatos PNG con nombre (Chrome, Edge, Recortes: «PNG»; algunos,
     /// «image/png»).
     fn formatos_png() -> [u32; 2] {
-        unsafe { [RegisterClipboardFormatW(w!("PNG")), RegisterClipboardFormatW(w!("image/png"))] }
+        unsafe {
+            [
+                RegisterClipboardFormatW(w!("PNG")),
+                RegisterClipboardFormatW(w!("image/png")),
+            ]
+        }
     }
 
     fn hay(formato: u32) -> bool {
@@ -490,7 +564,10 @@ mod win {
     }
 
     pub fn imagen() -> Option<u32> {
-        let mapa = formatos_png().into_iter().chain([CF_DIBV5, CF_DIB]).any(hay);
+        let mapa = formatos_png()
+            .into_iter()
+            .chain([CF_DIBV5, CF_DIB])
+            .any(hay);
         if mapa || (hay(CF_HDROP) && fichero_copiado().is_some()) {
             return Some(unsafe { GetClipboardSequenceNumber() });
         }
@@ -530,17 +607,27 @@ mod win {
     /// La primera imagen de los ficheros copiados (en el Explorador).
     fn fichero_copiado() -> Option<PathBuf> {
         let bytes = Abierto::abrir()?.bytes(CF_HDROP)?;
-        ficheros_de_drop(&bytes).into_iter().find(|f| es_imagen_pegable(f) && f.is_file())
+        ficheros_de_drop(&bytes)
+            .into_iter()
+            .find(|f| es_imagen_pegable(f) && f.is_file())
     }
 
     /// Las rutas de un `DROPFILES` (`pFiles` en el byte 0, `fWide` en el 16).
     pub(crate) fn ficheros_de_drop(b: &[u8]) -> Vec<PathBuf> {
-        let leer_u32 = |i: usize| b.get(i..i + 4).map(|s| u32::from_le_bytes([s[0], s[1], s[2], s[3]]));
-        let (Some(desde), Some(ancho)) = (leer_u32(0), leer_u32(16)) else { return Vec::new() };
+        let leer_u32 = |i: usize| {
+            b.get(i..i + 4)
+                .map(|s| u32::from_le_bytes([s[0], s[1], s[2], s[3]]))
+        };
+        let (Some(desde), Some(ancho)) = (leer_u32(0), leer_u32(16)) else {
+            return Vec::new();
+        };
         let resto = b.get(desde as usize..).unwrap_or(&[]);
         let mut v = Vec::new();
         if ancho != 0 {
-            let u: Vec<u16> = resto.chunks_exact(2).map(|c| u16::from_le_bytes([c[0], c[1]])).collect();
+            let u: Vec<u16> = resto
+                .chunks_exact(2)
+                .map(|c| u16::from_le_bytes([c[0], c[1]]))
+                .collect();
             for trozo in u.split(|c| *c == 0) {
                 if trozo.is_empty() {
                     break;
@@ -560,12 +647,21 @@ mod win {
 
     /// Un `.bmp` a partir de un `CF_DIB`: su cabecera de fichero delante.
     pub(crate) fn bmp_de_dib(dib: &[u8]) -> Option<Vec<u8>> {
-        let u32_en = |i: usize| dib.get(i..i + 4).map(|s| u32::from_le_bytes([s[0], s[1], s[2], s[3]]));
+        let u32_en = |i: usize| {
+            dib.get(i..i + 4)
+                .map(|s| u32::from_le_bytes([s[0], s[1], s[2], s[3]]))
+        };
         let tam_cabecera = u32_en(0)? as usize;
         let bits = u16::from_le_bytes([*dib.get(14)?, *dib.get(15)?]) as u32;
         let compresion = u32_en(16)?;
         let usados = u32_en(32).unwrap_or(0);
-        let paleta = if usados > 0 { usados } else if bits <= 8 { 1 << bits } else { 0 } as usize;
+        let paleta = if usados > 0 {
+            usados
+        } else if bits <= 8 {
+            1 << bits
+        } else {
+            0
+        } as usize;
         // BI_BITFIELDS (3) y BI_ALPHABITFIELDS (6) con la cabecera corta
         // llevan las mascaras detras.
         let mascaras = match (tam_cabecera, compresion) {
@@ -590,17 +686,30 @@ mod win {
     pub fn leer() -> Option<Copiada> {
         if let Some(f) = fichero_copiado() {
             let extension = f.extension()?.to_string_lossy().to_ascii_lowercase();
-            return Some(Copiada { extension, bytes: std::fs::read(&f).ok()? });
+            return Some(Copiada {
+                extension,
+                bytes: std::fs::read(&f).ok()?,
+            });
         }
         // Copiado mientras esta abierto; lo demas, ya cerrado.
         let dib = {
             let a = Abierto::abrir()?;
-            if let Some(png) = formatos_png().into_iter().filter(|f| hay(*f)).find_map(|f| a.bytes(f)) {
-                return Some(Copiada { extension: "png".into(), bytes: png });
+            if let Some(png) = formatos_png()
+                .into_iter()
+                .filter(|f| hay(*f))
+                .find_map(|f| a.bytes(f))
+            {
+                return Some(Copiada {
+                    extension: "png".into(),
+                    bytes: png,
+                });
             }
             a.bytes(CF_DIB)?
         };
-        Some(Copiada { extension: "bmp".into(), bytes: bmp_de_dib(&dib)? })
+        Some(Copiada {
+            extension: "bmp".into(),
+            bytes: bmp_de_dib(&dib)?,
+        })
     }
 }
 

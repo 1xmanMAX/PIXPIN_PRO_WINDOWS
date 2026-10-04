@@ -721,7 +721,10 @@ mod pruebas {
         }
         // Y los nombres del TOML no cambian.
         assert_eq!(Comando::Anotar.descriptor().nombre, "anotar");
-        assert_eq!(Comando::AnotarCongelada.descriptor().nombre, "anotar-congelada");
+        assert_eq!(
+            Comando::AnotarCongelada.descriptor().nombre,
+            "anotar-congelada"
+        );
     }
 
     #[test]

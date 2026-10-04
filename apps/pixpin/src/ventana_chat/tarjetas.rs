@@ -175,14 +175,20 @@ mod pruebas {
 
     #[test]
     fn la_puntuacion_del_final_no_entra_en_la_direccion() {
-        assert_eq!(e("mira https://ejemplo.com/cosa.").url, "https://ejemplo.com/cosa");
+        assert_eq!(
+            e("mira https://ejemplo.com/cosa.").url,
+            "https://ejemplo.com/cosa"
+        );
         assert_eq!(e("https://ejemplo.com, y luego").url, "https://ejemplo.com");
         assert_eq!(e("https://ejemplo.com: mira").url, "https://ejemplo.com");
     }
 
     #[test]
     fn el_parentesis_de_la_frase_se_queda_fuera_y_el_de_dentro_no() {
-        assert_eq!(e("lo puse (https://ejemplo.com/x) ahí").url, "https://ejemplo.com/x");
+        assert_eq!(
+            e("lo puse (https://ejemplo.com/x) ahí").url,
+            "https://ejemplo.com/x"
+        );
         assert_eq!(
             e("https://es.wikipedia.org/wiki/Pin_(sujeción))").url,
             "https://es.wikipedia.org/wiki/Pin_(sujeción)"

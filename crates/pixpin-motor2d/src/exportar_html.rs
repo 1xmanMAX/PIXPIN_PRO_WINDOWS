@@ -280,7 +280,12 @@ fn barra(varias: bool, o: &Opciones, tabla: bool) -> String {
     s.push_str("<div class=\"grupo\">");
     s.push_str(&boton("menos", "Alejar (−)", "M5 12h14", "solo-raton"));
     s.push_str(&boton("encajar", "Encajar (0)", ENCAJAR, ""));
-    s.push_str(&boton("mas", "Acercar (+)", "M12 5v14M5 12h14", "solo-raton"));
+    s.push_str(&boton(
+        "mas",
+        "Acercar (+)",
+        "M12 5v14M5 12h14",
+        "solo-raton",
+    ));
     s.push_str("</div>");
     if tabla {
         // **La tabla**: negrita, Σ, y el portapapeles con boton, que en un
@@ -289,18 +294,48 @@ fn barra(varias: bool, o: &Opciones, tabla: bool) -> String {
         // tambien las celdas (`barra` del movil, rama `tabla`).
         let mut primeros = String::new();
         if o.deshacer && !pinta {
-            primeros.push_str(&boton("t-deshacer", "Deshacer (Ctrl+Z)", "M9 14L4 9l5-5M4 9h9a6 6 0 0 1 0 12h-3", ""));
-            primeros.push_str(&boton("t-rehacer", "Rehacer (Ctrl+Y)", "M15 14l5-5-5-5M20 9h-9a6 6 0 0 0 0 12h3", ""));
+            primeros.push_str(&boton(
+                "t-deshacer",
+                "Deshacer (Ctrl+Z)",
+                "M9 14L4 9l5-5M4 9h9a6 6 0 0 1 0 12h-3",
+                "",
+            ));
+            primeros.push_str(&boton(
+                "t-rehacer",
+                "Rehacer (Ctrl+Y)",
+                "M15 14l5-5-5-5M20 9h-9a6 6 0 0 0 0 12h3",
+                "",
+            ));
         }
-        primeros.push_str(&boton("t-negrita", "Negrita (Ctrl+B)", "M7 5h6a4 4 0 0 1 0 8H7zM7 13h7a4 4 0 0 1 0 8H7z", ""));
+        primeros.push_str(&boton(
+            "t-negrita",
+            "Negrita (Ctrl+B)",
+            "M7 5h6a4 4 0 0 1 0 8H7zM7 13h7a4 4 0 0 1 0 8H7z",
+            "",
+        ));
         primeros.push_str(&boton("t-suma", "Autosuma", "M18 5H6l6 7-6 7h12", ""));
         s.push_str("<div class=\"grupo solo-tabla\">");
         s.push_str(&primeros);
         s.push_str("</div>");
         s.push_str("<div class=\"grupo solo-tabla\">");
-        s.push_str(&boton("t-copiar", "Copiar (Ctrl+C)", "M9 9h11v11H9zM5 15H4V4h11v1", ""));
-        s.push_str(&boton("t-pegar", "Pegar (Ctrl+V)", "M9 3h6v4H9zM7 5H5v16h14V5h-2M9 12h6M9 16h4", ""));
-        s.push_str(&boton("t-csv", "Bajar CSV", "M12 4v11M7 10l5 5 5-5M5 20h14", ""));
+        s.push_str(&boton(
+            "t-copiar",
+            "Copiar (Ctrl+C)",
+            "M9 9h11v11H9zM5 15H4V4h11v1",
+            "",
+        ));
+        s.push_str(&boton(
+            "t-pegar",
+            "Pegar (Ctrl+V)",
+            "M9 3h6v4H9zM7 5H5v16h14V5h-2M9 12h6M9 16h4",
+            "",
+        ));
+        s.push_str(&boton(
+            "t-csv",
+            "Bajar CSV",
+            "M12 4v11M7 10l5 5 5-5M5 20h14",
+            "",
+        ));
         s.push_str("</div>");
     }
     if o.guardar || o.compartir {
@@ -390,7 +425,9 @@ fn caja_de_documento(d: &HojaDocumento, s: &mut String) {
 /// Guardar la pagina reescribe las dos ultimas.
 fn caja_de_tabla(t: &HojaTabla, s: &mut String) {
     s.push_str("<div class=\"tabla-fx\"><span class=\"tabla-dir\">A1</span>");
-    s.push_str("<input class=\"tabla-fx-in\" type=\"text\" spellcheck=\"false\" autocomplete=\"off\" ");
+    s.push_str(
+        "<input class=\"tabla-fx-in\" type=\"text\" spellcheck=\"false\" autocomplete=\"off\" ",
+    );
     s.push_str("autocapitalize=\"off\" aria-label=\"Contenido de la celda\" placeholder=\"Valor o =SUMA(A1:A3)\"/></div>\n");
     s.push_str(&format!(
         "<div class=\"tabla-caja\" tabindex=\"0\"><svg class=\"tinta\"><g class=\"origen\"><g id=\"{ID_DEL_CROQUIS}\"></g></g></svg>"
@@ -546,10 +583,14 @@ pub fn paginas_mixtas(
     ));
     // El separador decimal de las tablas (el de la primera): el motor de
     // formulas lo lee de aqui al ensenar un numero calculado.
-    if let Some(HojaDeLaPagina::Tabla(t)) = hojas.iter().find(|h| matches!(h, HojaDeLaPagina::Tabla(_)))
+    if let Some(HojaDeLaPagina::Tabla(t)) =
+        hojas.iter().find(|h| matches!(h, HojaDeLaPagina::Tabla(_)))
         && t.decimal != '.'
     {
-        s.push_str(&format!(" data-decimal=\"{}\"", escapar(&t.decimal.to_string())));
+        s.push_str(&format!(
+            " data-decimal=\"{}\"",
+            escapar(&t.decimal.to_string())
+        ));
     }
     if oscuro {
         s.push_str(" class=\"oscuro\"");
@@ -610,7 +651,11 @@ pub fn paginas_mixtas(
         s.push_str("\n</div>\n");
     }
     s.push_str("</div>\n");
-    s.push_str(&barra(hojas.len() > 1 && opciones.paginas, &opciones, hay_tabla));
+    s.push_str(&barra(
+        hojas.len() > 1 && opciones.paginas,
+        &opciones,
+        hay_tabla,
+    ));
     if let Some(json) = excalidraw {
         s.push_str("<script type=\"application/json\" class=\"excalidraw\">");
         s.push_str(&como_datos(json));
@@ -671,8 +716,14 @@ mod pruebas {
 
     #[test]
     fn una_hoja_sola_no_lleva_indice_ni_se_esconde() {
-        let html = paginas(&[hoja("")], "Mi dibujo", "Mi dibujo", Opciones::default(), None)
-            .expect("hay hoja");
+        let html = paginas(
+            &[hoja("")],
+            "Mi dibujo",
+            "Mi dibujo",
+            Opciones::default(),
+            None,
+        )
+        .expect("hay hoja");
         assert!(html.starts_with("<!DOCTYPE html>\n<html lang=\"es\">"));
         assert_eq!(cuantas(&html, "class=\"hoja\""), 1);
         assert!(!html.contains("class=\"varias\""));
@@ -701,9 +752,11 @@ mod pruebas {
         assert!(html.contains("data-nombre=\"Alzado\" hidden>"));
         assert!(!html.contains("data-nombre=\"Planta\" hidden>"));
         assert!(html.contains("<div id=\"pizarra\" class=\"varias\">"));
-        assert!(html.contains(
-            "<span class=\"titulo\">Planta</span><span class=\"cuenta\">1 / 3</span>"
-        ));
+        assert!(
+            html.contains(
+                "<span class=\"titulo\">Planta</span><span class=\"cuenta\">1 / 3</span>"
+            )
+        );
         assert!(html.contains("href=\"#hoja-2\""));
         assert!(html.contains("data-nombre=\"Hoja 3\""));
         // Solo en el lienzo: el armazon tambien nombra el grupo en su texto.
@@ -715,12 +768,23 @@ mod pruebas {
     fn la_pagina_lleva_el_visor_y_el_armazon_del_movil_enteros() {
         let html = paginas(&[hoja("")], "t", "t", Opciones::default(), None).expect("hoja");
         assert!(html.contains("function crearDibujo(caja, api){"));
-        assert!(html.contains("var PLANTILLA='<!DOCTYPE html>\\n'+document.documentElement.outerHTML;"));
+        assert!(
+            html.contains("var PLANTILLA='<!DOCTYPE html>\\n'+document.documentElement.outerHTML;")
+        );
         assert!(html.contains("window.paginaAnotada=paginaAnotada;"));
         // El fondo de la hoja de estilo, puesto.
         assert!(!html.contains("FONDO"));
         // Los mandos de dibujar con los ids que busca el armazon.
-        for id in ["lapiz", "marcador", "goma", "medir", "deshacer", "guardar", "imprimir", "presentar"] {
+        for id in [
+            "lapiz",
+            "marcador",
+            "goma",
+            "medir",
+            "deshacer",
+            "guardar",
+            "imprimir",
+            "presentar",
+        ] {
             assert!(html.contains(&format!("id=\"{id}\"")), "falta {id}");
         }
         // Ningun retorno de carro: la pagina es la del movil.
@@ -768,8 +832,8 @@ mod pruebas {
 
     #[test]
     fn el_titulo_y_los_nombres_van_escapados() {
-        let html = paginas(&[hoja("<b>")], "a & b", "x\"y", Opciones::default(), None)
-            .expect("hoja");
+        let html =
+            paginas(&[hoja("<b>")], "a & b", "x\"y", Opciones::default(), None).expect("hoja");
         assert!(html.contains("<title>a &amp; b</title>"));
         assert!(html.contains("data-nombre=\"x&quot;y\""));
         assert!(html.contains("data-nombre=\"&lt;b&gt;\""));
@@ -812,7 +876,9 @@ mod pruebas {
         // Su estilo, en la cabecera; y el papel oscuro, en la pagina.
         assert!(html.contains("\n.doc p{margin:0}</style>"));
         assert!(html.contains("class=\"oscuro\""));
-        for id in ["lapiz", "marcador", "goma", "deshacer", "guardar", "imprimir", "mas", "menos"] {
+        for id in [
+            "lapiz", "marcador", "goma", "deshacer", "guardar", "imprimir", "mas", "menos",
+        ] {
             assert!(html.contains(&format!("id=\"{id}\"")), "falta {id}");
         }
         // Caso negativo: un documento no es un dibujo, ni lleva su grupo suelto.
@@ -831,7 +897,9 @@ mod pruebas {
             None,
         )
         .expect("hojas");
-        assert!(html.contains("data-tipo=\"dibujo\" data-fondo=\"#ffffff\" data-oscuro=\"0\" data-nombre=\"Plano\">"));
+        assert!(html.contains(
+            "data-tipo=\"dibujo\" data-fondo=\"#ffffff\" data-oscuro=\"0\" data-nombre=\"Plano\">"
+        ));
         assert!(html.contains("data-tipo=\"nota\" data-fondo=\"#121316\" data-oscuro=\"1\" data-nombre=\"Apuntes\" hidden>"));
         // La pagina toma el papel de la primera.
         assert!(!html.contains("<body data-nombre=\"t\" data-herramientas=\"mano lapiz marcador goma medir girar mover\" class=\"oscuro\""));
@@ -850,12 +918,24 @@ mod pruebas {
     #[test]
     fn una_tabla_va_con_su_barra_de_formula_su_json_y_el_motor_que_sigue_calculando() {
         let t = tabla_web();
-        let html = paginas_mixtas(&[HojaDeLaPagina::Tabla(&t)], "Gastos", "Gastos", Opciones::default(), None)
-            .expect("hoja");
-        assert!(html.contains("data-tipo=\"tabla\" data-fondo=\"#ffffff\" data-oscuro=\"0\" data-nombre=\"Gastos\">"));
+        let html = paginas_mixtas(
+            &[HojaDeLaPagina::Tabla(&t)],
+            "Gastos",
+            "Gastos",
+            Opciones::default(),
+            None,
+        )
+        .expect("hoja");
+        assert!(html.contains(
+            "data-tipo=\"tabla\" data-fondo=\"#ffffff\" data-oscuro=\"0\" data-nombre=\"Gastos\">"
+        ));
         assert!(html.contains("<div class=\"tabla-fx\"><span class=\"tabla-dir\">A1</span>"));
         assert!(html.contains("<div class=\"tabla-caja\" tabindex=\"0\"><svg class=\"tinta\"><g class=\"origen\"><g id=\"croquis\"></g></g></svg><table class=\"calc\">"));
-        assert!(html.contains("<script type=\"application/json\" class=\"tabla\">{\"nombre\":\"Gastos\""));
+        assert!(
+            html.contains(
+                "<script type=\"application/json\" class=\"tabla\">{\"nombre\":\"Gastos\""
+            )
+        );
         // El motor de formulas y el visor del movil, y su hoja de estilo.
         assert!(html.contains("var Calculo=(function(){"));
         assert!(html.contains("function crearTabla(d,api){"));
@@ -864,7 +944,13 @@ mod pruebas {
             assert!(html.contains(&format!("id=\"{id}\"")), "falta {id}");
         }
         // Lo escrito no puede cerrar su `script`: ningun `</` dentro del JSON.
-        let json = html.split("class=\"tabla\">").nth(1).unwrap().split("</script>").next().unwrap();
+        let json = html
+            .split("class=\"tabla\">")
+            .nth(1)
+            .unwrap()
+            .split("</script>")
+            .next()
+            .unwrap();
         assert!(!json.contains('<'));
         // La coma del usuario va a la pagina, y el motor la usa al ensenar.
         assert!(html.contains("<body data-nombre=\"Gastos\" data-herramientas=\""));
@@ -873,7 +959,14 @@ mod pruebas {
         // Caso negativo: con punto no se escribe nada (es lo de siempre).
         let mut en = tabla_web();
         en.decimal = '.';
-        let html = paginas_mixtas(&[HojaDeLaPagina::Tabla(&en)], "G", "G", Opciones::default(), None).unwrap();
+        let html = paginas_mixtas(
+            &[HojaDeLaPagina::Tabla(&en)],
+            "G",
+            "G",
+            Opciones::default(),
+            None,
+        )
+        .unwrap();
         assert!(!html.contains(" data-decimal=\""));
     }
 

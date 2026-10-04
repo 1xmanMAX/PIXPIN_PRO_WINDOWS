@@ -62,7 +62,12 @@ impl Abierto {
     /// entiende (de una version vieja).
     pub fn resultado(&self) -> Option<Resultado> {
         let accion = Accion::de_valor(&self.accion)?;
-        let mut r = modelo::resultado(&self.titulo, &self.subtitulo, modelo::glifo_estatico(&self.glifo), accion);
+        let mut r = modelo::resultado(
+            &self.titulo,
+            &self.subtitulo,
+            modelo::glifo_estatico(&self.glifo),
+            accion,
+        );
         r.clave = self.clave.clone();
         r.contexto = self.contexto.clone();
         r.vista_previa = self.vista_previa.clone();
@@ -101,7 +106,9 @@ impl Recientes {
     }
 
     pub fn guardar(&self, raiz: &Path) {
-        let Ok(t) = serde_json::to_string_pretty(self) else { return };
+        let Ok(t) = serde_json::to_string_pretty(self) else {
+            return;
+        };
         let ruta = Self::ruta(raiz);
         let tmp = ruta.with_extension("json.tmp");
         if std::fs::write(&tmp, t).is_ok() && std::fs::rename(&tmp, &ruta).is_err() {
@@ -151,10 +158,12 @@ pub fn vale_como_abierto(r: &Resultado) -> bool {
     };
     match &r.accion {
         Accion::Copiar(_) | Accion::PegarImagen { .. } => false,
-        Accion::Pedido(p) => !matches!(
-            p.get("accion").and_then(Value::as_str),
-            Some("anadir_tarea" | "chat" | "borrar_captura" | "conservar_captura")
-        ) && !clave.is_empty(),
+        Accion::Pedido(p) => {
+            !matches!(
+                p.get("accion").and_then(Value::as_str),
+                Some("anadir_tarea" | "chat" | "borrar_captura" | "conservar_captura")
+            ) && !clave.is_empty()
+        }
         _ => !clave.is_empty(),
     }
 }
@@ -166,14 +175,22 @@ mod pruebas {
     use serde_json::json;
 
     fn temporal(nombre: &str) -> PathBuf {
-        let d = std::env::temp_dir().join(format!("pixpin-buscar-recientes-{nombre}-{}", std::process::id()));
+        let d = std::env::temp_dir().join(format!(
+            "pixpin-buscar-recientes-{nombre}-{}",
+            std::process::id()
+        ));
         let _ = std::fs::remove_dir_all(&d);
         std::fs::create_dir_all(&d).unwrap();
         d
     }
 
     fn captura(n: &str) -> Resultado {
-        let mut r = modelo::resultado(n, "Captura · hoy", glifo::IMAGEN, Accion::Pedido(pedido("pinear", json!({ "ruta": n }))));
+        let mut r = modelo::resultado(
+            n,
+            "Captura · hoy",
+            glifo::IMAGEN,
+            Accion::Pedido(pedido("pinear", json!({ "ruta": n }))),
+        );
         r.clave = Some(format!("captura/{n}"));
         r.vista_previa = Some(n.into());
         r
@@ -214,7 +231,11 @@ mod pruebas {
         let leido = Recientes::leer(&raiz);
         assert_eq!(leido, r);
         let titulos: Vec<String> = leido.abiertos.iter().map(|a| a.titulo.clone()).collect();
-        assert_eq!(titulos, vec!["a.png", "b.png"], "sin repetir y lo ultimo primero");
+        assert_eq!(
+            titulos,
+            vec!["a.png", "b.png"],
+            "sin repetir y lo ultimo primero"
+        );
         let vuelto = leido.abiertos[0].resultado().unwrap();
         assert_eq!(vuelto.accion, captura("a.png").accion);
         assert_eq!(vuelto.glifo, glifo::IMAGEN);
@@ -228,7 +249,10 @@ mod pruebas {
         std::fs::write(Recientes::ruta(&raiz), "{ esto no es json").unwrap();
         assert_eq!(Recientes::leer(&raiz), Recientes::default());
         // Y una accion que ya no se entiende no sale.
-        let a = Abierto { accion: json!({ "metodo": "otro" }), ..Abierto::de(&captura("x")) };
+        let a = Abierto {
+            accion: json!({ "metodo": "otro" }),
+            ..Abierto::de(&captura("x"))
+        };
         assert!(a.resultado().is_none());
         let _ = std::fs::remove_dir_all(&raiz);
     }
@@ -236,7 +260,12 @@ mod pruebas {
     #[test]
     fn lo_que_crea_algo_no_se_recuerda_como_abierto() {
         let mut r = Recientes::default();
-        let apuntar = modelo::resultado("Apuntar tarea: pan", "", glifo::ANADIR, Accion::Pedido(pedido("anadir_tarea", json!({ "texto": "pan" }))));
+        let apuntar = modelo::resultado(
+            "Apuntar tarea: pan",
+            "",
+            glifo::ANADIR,
+            Accion::Pedido(pedido("anadir_tarea", json!({ "texto": "pan" }))),
+        );
         r.apuntar_abierto(&apuntar);
         let mut copiar = modelo::resultado("Copiar", "", glifo::COPIAR, Accion::Copiar("x".into()));
         copiar.clave = Some("x".into());

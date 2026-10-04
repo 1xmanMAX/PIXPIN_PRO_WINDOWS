@@ -50,7 +50,10 @@ pub fn race(img: &RawImage, ctx: &RaceContext) -> Option<RaceResult> {
     let opts = ctx.opts;
     // Phase 1 races with plain deflate; phase 2 zopfli-squeezes only the winner.
     let full_effort = ctx.effort;
-    let ctx = &RaceContext { effort: Effort::fast(), ..ctx.clone() };
+    let ctx = &RaceContext {
+        effort: Effort::fast(),
+        ..ctx.clone()
+    };
     let mut cands: Vec<(Encoded, Option<f64>)> = Vec::new();
     let orig_cs = ctx.orig_cs.clone().unwrap_or_else(|| device_cs(img.cs));
     let orig_luma = img.luma();
@@ -59,9 +62,18 @@ pub fn race(img: &RawImage, ctx: &RaceContext) -> Option<RaceResult> {
 
     // ---- exact candidates -------------------------------------------------
     if exact_ok {
-        if img.is_mask || (stats.kind == Kind::Bilevel && (img.channels == 1 || stats.is_gray_exact)) {
-            let g = if img.channels == 1 { img.data.clone() } else { orig_luma.clone() };
-            cands.push((encode::bilevel_flate(&g, img.width, img.height, ctx.effort, img.is_mask), None));
+        if img.is_mask
+            || (stats.kind == Kind::Bilevel && (img.channels == 1 || stats.is_gray_exact))
+        {
+            let g = if img.channels == 1 {
+                img.data.clone()
+            } else {
+                orig_luma.clone()
+            };
+            cands.push((
+                encode::bilevel_flate(&g, img.width, img.height, ctx.effort, img.is_mask),
+                None,
+            ));
             if let Some(c) = encode::ccitt_g4(&g, img.width, img.height, img.is_mask) {
                 cands.push((c, None));
             }
@@ -75,7 +87,9 @@ pub fn race(img: &RawImage, ctx: &RaceContext) -> Option<RaceResult> {
                     cands.push((c, None));
                 }
                 if stats.kind == Kind::Palette {
-                    if let Some(c) = encode::indexed(&g, ctx.effort, device_cs(super::ColorKind::Gray)) {
+                    if let Some(c) =
+                        encode::indexed(&g, ctx.effort, device_cs(super::ColorKind::Gray))
+                    {
                         cands.push((c, None));
                     }
                 }
@@ -94,7 +108,11 @@ pub fn race(img: &RawImage, ctx: &RaceContext) -> Option<RaceResult> {
     }
 
     // ---- lossy candidates -------------------------------------------------
-    let lossy_allowed = opts.allow_lossy && !img.is_mask && !ctx.color_key_mask && stats.kind != Kind::Bilevel && img.cs != super::ColorKind::Other3;
+    let lossy_allowed = opts.allow_lossy
+        && !img.is_mask
+        && !ctx.color_key_mask
+        && stats.kind != Kind::Bilevel
+        && img.cs != super::ColorKind::Other3;
     let mut best_ssim: Option<f64> = None;
     if lossy_allowed {
         // Downsample plan from the effective DPI.
@@ -106,7 +124,20 @@ pub fn race(img: &RawImage, ctx: &RaceContext) -> Option<RaceResult> {
                 let nw = ((img.width as f32 * s).round() as u32).max(16);
                 let nh = ((img.height as f32 * s).round() as u32).max(16);
                 if nw < img.width && nh < img.height {
-                    work = RawImage { width: nw, height: nh, channels: img.channels, data: resample::downscale(&img.data, img.width, img.height, img.channels, nw, nh), ..img.clone() };
+                    work = RawImage {
+                        width: nw,
+                        height: nh,
+                        channels: img.channels,
+                        data: resample::downscale(
+                            &img.data,
+                            img.width,
+                            img.height,
+                            img.channels,
+                            nw,
+                            nh,
+                        ),
+                        ..img.clone()
+                    };
                     scaled = true;
                 }
             }
@@ -116,7 +147,11 @@ pub fn race(img: &RawImage, ctx: &RaceContext) -> Option<RaceResult> {
         }
         // Keep the original colour space object (ICC profiles included) whenever
         // the channel count is unchanged; resampling does not alter colour semantics.
-        let work_cs = if work.channels == img.channels { orig_cs.clone() } else { device_cs(work.cs) };
+        let work_cs = if work.channels == img.channels {
+            orig_cs.clone()
+        } else {
+            device_cs(work.cs)
+        };
         // Gray/downsampled Flate candidates for flat content.
         let wstats = classify::stats(&work);
         if wstats.kind == Kind::Palette && (scaled || work.channels != img.channels) {
@@ -137,11 +172,24 @@ pub fn race(img: &RawImage, ctx: &RaceContext) -> Option<RaceResult> {
         }
         // Near-bilevel gray → true bilevel, gated.
         if work.channels == 1 && wstats.extreme_frac > 0.85 {
-            let bits: Vec<u8> = work.data.iter().map(|&v| if v >= 128 { 255 } else { 0 }).collect();
-            let bw = RawImage { data: bits.clone(), ..work.clone() };
+            let bits: Vec<u8> = work
+                .data
+                .iter()
+                .map(|&v| if v >= 128 { 255 } else { 0 })
+                .collect();
+            let bw = RawImage {
+                data: bits.clone(),
+                ..work.clone()
+            };
             let s = reference.gate(&bw);
             if s >= opts.min_ssim {
-                cands.push((lossy_of(encode::bilevel_flate(&bits, work.width, work.height, ctx.effort, false), bw.clone()), Some(s)));
+                cands.push((
+                    lossy_of(
+                        encode::bilevel_flate(&bits, work.width, work.height, ctx.effort, false),
+                        bw.clone(),
+                    ),
+                    Some(s),
+                ));
                 if let Some(c) = encode::ccitt_g4(&bits, work.width, work.height, false) {
                     cands.push((lossy_of(c, bw.clone()), Some(s)));
                 }
@@ -157,7 +205,14 @@ pub fn race(img: &RawImage, ctx: &RaceContext) -> Option<RaceResult> {
                 if sub && work.channels == 1 {
                     continue;
                 }
-                match jpeg_search(&work, &reference, opts, sub, work_cs.clone(), ctx.size_budget) {
+                match jpeg_search(
+                    &work,
+                    &reference,
+                    opts,
+                    sub,
+                    work_cs.clone(),
+                    ctx.size_budget,
+                ) {
                     Search::Found(c, s) => {
                         best_ssim = Some(best_ssim.map_or(s, |b: f64| b.max(s)));
                         cands.push((c, Some(s)));
@@ -178,8 +233,23 @@ pub fn race(img: &RawImage, ctx: &RaceContext) -> Option<RaceResult> {
             }
             // Downsampling might have been what killed quality: retry at full size.
             if scaled && !over_budget && cands.iter().all(|(c, _)| !c.lossy) {
-                let full = if stats.is_gray && img.channels == 3 { encode::to_gray(img) } else { img.clone() };
-                if let Search::Found(c, s) = jpeg_search(&full, &reference, opts, true, if full.channels == img.channels { orig_cs.clone() } else { device_cs(full.cs) }, ctx.size_budget) {
+                let full = if stats.is_gray && img.channels == 3 {
+                    encode::to_gray(img)
+                } else {
+                    img.clone()
+                };
+                if let Search::Found(c, s) = jpeg_search(
+                    &full,
+                    &reference,
+                    opts,
+                    true,
+                    if full.channels == img.channels {
+                        orig_cs.clone()
+                    } else {
+                        device_cs(full.cs)
+                    },
+                    ctx.size_budget,
+                ) {
                     cands.push((c, Some(s)));
                 }
             }
@@ -191,9 +261,37 @@ pub fn race(img: &RawImage, ctx: &RaceContext) -> Option<RaceResult> {
     let t_sq = std::time::Instant::now();
     encode::squeeze(&mut best, full_effort);
     best.raw = None;
-    log::debug!("race {}x{} kind={:?}: {} candidates, best={} {}B, squeeze {} ms, total {} ms", img.width, img.height, stats.kind, candidates, best.label, best.len(), t_sq.elapsed().as_millis(), t0.elapsed().as_millis());
-    let action = format!("{}{}", best.label, if best.width != img.width { format!(" {}x{}→{}x{}", img.width, img.height, best.width, best.height) } else { String::new() });
-    Some(RaceResult { best, ssim, candidates, kind: stats.kind, stats, action })
+    log::debug!(
+        "race {}x{} kind={:?}: {} candidates, best={} {}B, squeeze {} ms, total {} ms",
+        img.width,
+        img.height,
+        stats.kind,
+        candidates,
+        best.label,
+        best.len(),
+        t_sq.elapsed().as_millis(),
+        t0.elapsed().as_millis()
+    );
+    let action = format!(
+        "{}{}",
+        best.label,
+        if best.width != img.width {
+            format!(
+                " {}x{}→{}x{}",
+                img.width, img.height, best.width, best.height
+            )
+        } else {
+            String::new()
+        }
+    );
+    Some(RaceResult {
+        best,
+        ssim,
+        candidates,
+        kind: stats.kind,
+        stats,
+        action,
+    })
 }
 
 fn lossy_of(mut c: Encoded, decoded: RawImage) -> Encoded {
@@ -217,17 +315,41 @@ impl Reference {
         const CAP: u64 = 1_500_000;
         let n = w as u64 * h as u64;
         if n <= CAP {
-            return Reference { luma: orig_luma.to_vec(), w, h };
+            return Reference {
+                luma: orig_luma.to_vec(),
+                w,
+                h,
+            };
         }
         let f = ((n as f64 / CAP as f64).sqrt()).ceil() as u32;
         let (nw, nh) = ((w / f).max(8), (h / f).max(8));
-        Reference { luma: resample::resize(orig_luma, w, h, 1, nw, nh, image::imageops::FilterType::Triangle), w: nw, h: nh }
+        Reference {
+            luma: resample::resize(
+                orig_luma,
+                w,
+                h,
+                1,
+                nw,
+                nh,
+                image::imageops::FilterType::Triangle,
+            ),
+            w: nw,
+            h: nh,
+        }
     }
 
     fn gate(&self, cand: &RawImage) -> f64 {
         let l = cand.luma();
         let l = if cand.width != self.w || cand.height != self.h {
-            resample::resize(&l, cand.width, cand.height, 1, self.w, self.h, image::imageops::FilterType::Triangle)
+            resample::resize(
+                &l,
+                cand.width,
+                cand.height,
+                1,
+                self.w,
+                self.h,
+                image::imageops::FilterType::Triangle,
+            )
         } else {
             l
         };
@@ -243,31 +365,66 @@ enum Search {
     Failed,
 }
 
-fn jpeg_search(work: &RawImage, reference: &Reference, opts: &Options, sub420: bool, cs: Object, budget: Option<usize>) -> Search {
+fn jpeg_search(
+    work: &RawImage,
+    reference: &Reference,
+    opts: &Options,
+    sub420: bool,
+    cs: Object,
+    budget: Option<usize>,
+) -> Search {
     let t0 = std::time::Instant::now();
     let mut steps = 1u32;
-    let (mut lo, mut hi) = (opts.jpeg_min_quality.min(opts.jpeg_max_quality), opts.jpeg_max_quality);
+    let (mut lo, mut hi) = (
+        opts.jpeg_min_quality.min(opts.jpeg_max_quality),
+        opts.jpeg_max_quality,
+    );
     // Probe the floor first: the lowest quality is the smallest JPEG we can
     // make. If it passes the gate it is the answer; if it is already larger
     // than the budget, no higher quality can win either.
-    let floor = match encode::jpeg(work, lo, sub420, cs.clone()) { Some(e) => e, None => return Search::Failed };
+    let floor = match encode::jpeg(work, lo, sub420, cs.clone()) {
+        Some(e) => e,
+        None => return Search::Failed,
+    };
     if let Some(b) = budget {
         if floor.len() >= b {
-            log::debug!("  jpeg-{} {}x{}: floor {}B ≥ budget {}B, skipped", if sub420 { "420" } else { "444" }, work.width, work.height, floor.len(), b);
+            log::debug!(
+                "  jpeg-{} {}x{}: floor {}B ≥ budget {}B, skipped",
+                if sub420 { "420" } else { "444" },
+                work.width,
+                work.height,
+                floor.len(),
+                b
+            );
             return Search::OverBudget;
         }
     }
-    let s_floor = match floor.decoded.as_ref() { Some(d) => reference.gate(d), None => return Search::Failed };
+    let s_floor = match floor.decoded.as_ref() {
+        Some(d) => reference.gate(d),
+        None => return Search::Failed,
+    };
     if s_floor >= opts.min_ssim {
-        log::debug!("  jpeg-{} {}x{}: floor q{} passes, 1 step", if sub420 { "420" } else { "444" }, work.width, work.height, lo);
+        log::debug!(
+            "  jpeg-{} {}x{}: floor q{} passes, 1 step",
+            if sub420 { "420" } else { "444" },
+            work.width,
+            work.height,
+            lo
+        );
         let mut c = floor;
         c.decoded = None;
         return Search::Found(c, s_floor);
     }
     // Then the ceiling; if even that fails, bail early.
-    let top = match encode::jpeg(work, hi, sub420, cs.clone()) { Some(e) => e, None => return Search::Failed };
+    let top = match encode::jpeg(work, hi, sub420, cs.clone()) {
+        Some(e) => e,
+        None => return Search::Failed,
+    };
     steps += 1;
-    let s = match top.decoded.as_ref() { Some(d) => reference.gate(d), None => return Search::Failed };
+    let s = match top.decoded.as_ref() {
+        Some(d) => reference.gate(d),
+        None => return Search::Failed,
+    };
     if s < opts.min_ssim {
         return Search::Failed;
     }
@@ -278,9 +435,15 @@ fn jpeg_search(work: &RawImage, reference: &Reference, opts: &Options, sub420: b
         if mid == hi {
             break;
         }
-        let c = match encode::jpeg(work, mid, sub420, cs.clone()) { Some(e) => e, None => break };
+        let c = match encode::jpeg(work, mid, sub420, cs.clone()) {
+            Some(e) => e,
+            None => break,
+        };
         steps += 1;
-        let s = match c.decoded.as_ref() { Some(d) => reference.gate(d), None => break };
+        let s = match c.decoded.as_ref() {
+            Some(d) => reference.gate(d),
+            None => break,
+        };
         if s >= opts.min_ssim {
             hi = mid;
             best = Some((c, s));
@@ -288,7 +451,14 @@ fn jpeg_search(work: &RawImage, reference: &Reference, opts: &Options, sub420: b
             lo = mid + 1;
         }
     }
-    log::debug!("  jpeg-{} {}x{}: {} steps, {} ms", if sub420 { "420" } else { "444" }, work.width, work.height, steps, t0.elapsed().as_millis());
+    log::debug!(
+        "  jpeg-{} {}x{}: {} steps, {} ms",
+        if sub420 { "420" } else { "444" },
+        work.width,
+        work.height,
+        steps,
+        t0.elapsed().as_millis()
+    );
     match best {
         Some((mut c, s)) => {
             c.decoded = None;
@@ -297,4 +467,3 @@ fn jpeg_search(work: &RawImage, reference: &Reference, opts: &Options, sub420: b
         None => Search::Failed,
     }
 }
-

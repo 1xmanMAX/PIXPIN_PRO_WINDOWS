@@ -27,7 +27,12 @@ pub struct Encoded {
 
 impl Encoded {
     pub fn len(&self) -> usize {
-        self.data.len() + self.decode_parms.as_ref().map(|d| crate::writer::serialized_len(&Object::Dictionary(d.clone()))).unwrap_or(0)
+        self.data.len()
+            + self
+                .decode_parms
+                .as_ref()
+                .map(|d| crate::writer::serialized_len(&Object::Dictionary(d.clone())))
+                .unwrap_or(0)
     }
     pub fn is_empty(&self) -> bool {
         self.data.is_empty()
@@ -94,7 +99,11 @@ pub fn png_predict(data: &[u8], width: usize, bpp: usize) -> Vec<u8> {
     let mut buf = vec![0u8; row_len];
     for r in 0..rows {
         let cur = &data[r * row_len..(r + 1) * row_len];
-        let prev = if r == 0 { &zero[..] } else { &data[(r - 1) * row_len..r * row_len] };
+        let prev = if r == 0 {
+            &zero[..]
+        } else {
+            &data[(r - 1) * row_len..r * row_len]
+        };
         let mut best_score = u64::MAX;
         let mut best_type = 0u8;
         for t in 0..5u8 {
@@ -144,7 +153,16 @@ fn paeth(a: u8, b: u8, c: u8) -> u8 {
 
 /// Gray conversion (lossless when exact, otherwise lossy) followed by Flate.
 pub fn to_gray(img: &RawImage) -> RawImage {
-    RawImage { width: img.width, height: img.height, channels: 1, data: img.luma(), cs: ColorKind::Gray, is_mask: false, orig_bpc: 8, lossy_decode: false }
+    RawImage {
+        width: img.width,
+        height: img.height,
+        channels: 1,
+        data: img.luma(),
+        cs: ColorKind::Gray,
+        is_mask: false,
+        orig_bpc: 8,
+        lossy_decode: false,
+    }
 }
 
 /// Indexed palette (≤256 colours) at the smallest bit depth that fits.
@@ -174,7 +192,15 @@ pub fn indexed(img: &RawImage, effort: Effort, base: Object) -> Option<Encoded> 
         };
         indices.push(idx);
     }
-    let bpc: u8 = if palette.len() <= 2 { 1 } else if palette.len() <= 4 { 2 } else if palette.len() <= 16 { 4 } else { 8 };
+    let bpc: u8 = if palette.len() <= 2 {
+        1
+    } else if palette.len() <= 4 {
+        2
+    } else if palette.len() <= 16 {
+        4
+    } else {
+        8
+    };
     let packed = pack_bits(&indices, img.width as usize, img.height as usize, bpc);
     let data = deflate::zlib(&packed, effort);
     let raw = Some(packed);
@@ -185,7 +211,19 @@ pub fn indexed(img: &RawImage, effort: Effort, base: Object) -> Option<Encoded> 
         Object::Integer(palette.len() as i64 - 1),
         Object::String(lookup, lopdf::StringFormat::Hexadecimal),
     ]);
-    Some(Encoded { label: "indexed", data, filter: Some("FlateDecode"), decode_parms: None, colorspace: Some(cs), bpc, width: img.width, height: img.height, lossy: false, decoded: None, raw })
+    Some(Encoded {
+        label: "indexed",
+        data,
+        filter: Some("FlateDecode"),
+        decode_parms: None,
+        colorspace: Some(cs),
+        bpc,
+        width: img.width,
+        height: img.height,
+        lossy: false,
+        decoded: None,
+        raw,
+    })
 }
 
 pub fn pack_bits(samples: &[u8], w: usize, h: usize, bpc: u8) -> Vec<u8> {
@@ -215,7 +253,11 @@ pub fn bilevel_flate(gray: &[u8], w: u32, h: u32, effort: Effort, is_mask: bool)
         data: deflate::zlib(&packed, effort),
         filter: Some("FlateDecode"),
         decode_parms: None,
-        colorspace: if is_mask { None } else { Some(Object::Name(b"DeviceGray".to_vec())) },
+        colorspace: if is_mask {
+            None
+        } else {
+            Some(Object::Name(b"DeviceGray".to_vec()))
+        },
         bpc: 1,
         width: w,
         height: h,
@@ -233,7 +275,13 @@ pub fn ccitt_g4(gray: &[u8], w: u32, h: u32, is_mask: bool) -> Option<Encoded> {
     for y in 0..h as usize {
         let row = &gray[y * w as usize..(y + 1) * w as usize];
         // BlackIs1=false (default): 0 bits are black. Gray 0 → black.
-        let pels = row.iter().map(|&v| if v < 128 { fax::Color::Black } else { fax::Color::White });
+        let pels = row.iter().map(|&v| {
+            if v < 128 {
+                fax::Color::Black
+            } else {
+                fax::Color::White
+            }
+        });
         enc.encode_line(pels, w as u16).ok()?;
     }
     let data = enc.finish().ok()?.finish();
@@ -246,7 +294,11 @@ pub fn ccitt_g4(gray: &[u8], w: u32, h: u32, is_mask: bool) -> Option<Encoded> {
         data,
         filter: Some("CCITTFaxDecode"),
         decode_parms: Some(parms),
-        colorspace: if is_mask { None } else { Some(Object::Name(b"DeviceGray".to_vec())) },
+        colorspace: if is_mask {
+            None
+        } else {
+            Some(Object::Name(b"DeviceGray".to_vec()))
+        },
         bpc: 1,
         width: w,
         height: h,
@@ -264,14 +316,22 @@ pub fn jbig2(gray: &[u8], w: u32, h: u32, is_mask: bool) -> Option<Encoded> {
     }
     // JBIG2 1 = black; the /JBIG2Decode filter inverts, so DeviceGray 0 (black) ↔ JBIG2 1.
     let bits: Vec<u8> = gray.iter().map(|&v| (v < 128) as u8).collect();
-    let bm = crate::jbig2::Bitmap { width: w, height: h, bits };
+    let bm = crate::jbig2::Bitmap {
+        width: w,
+        height: h,
+        bits,
+    };
     let data = crate::jbig2::encode_pdf_stream(&bm, true);
     Some(Encoded {
         label: "jbig2",
         data,
         filter: Some("JBIG2Decode"),
         decode_parms: None,
-        colorspace: if is_mask { None } else { Some(Object::Name(b"DeviceGray".to_vec())) },
+        colorspace: if is_mask {
+            None
+        } else {
+            Some(Object::Name(b"DeviceGray".to_vec()))
+        },
         bpc: 1,
         width: w,
         height: h,
@@ -292,7 +352,11 @@ pub fn jpeg(img: &RawImage, quality: u8, subsample_420: bool, cs: Object) -> Opt
         4 => jpeg_encoder::ColorType::Cmyk,
         _ => return None,
     };
-    let sampling = if subsample_420 && img.channels == 3 { jpeg_encoder::SamplingFactor::F_2_2 } else { jpeg_encoder::SamplingFactor::F_1_1 };
+    let sampling = if subsample_420 && img.channels == 3 {
+        jpeg_encoder::SamplingFactor::F_2_2
+    } else {
+        jpeg_encoder::SamplingFactor::F_1_1
+    };
     let mut buf = Vec::with_capacity(img.data.len() / 8);
     let mut decoded = None;
     // Optimised Huffman tables save a few percent, but the encoder occasionally
@@ -303,7 +367,8 @@ pub fn jpeg(img: &RawImage, quality: u8, subsample_420: bool, cs: Object) -> Opt
         let mut enc = jpeg_encoder::Encoder::new(&mut buf, quality);
         enc.set_optimized_huffman_tables(optimized);
         enc.set_sampling_factor(sampling);
-        enc.encode(&img.data, img.width as u16, img.height as u16, ct).ok()?;
+        enc.encode(&img.data, img.width as u16, img.height as u16, ct)
+            .ok()?;
         if let Some(d) = decode_jpeg(&buf, img) {
             decoded = Some(d);
             break;
@@ -312,7 +377,11 @@ pub fn jpeg(img: &RawImage, quality: u8, subsample_420: bool, cs: Object) -> Opt
     // Decode back for the quality gate (what the reader will actually show).
     let decoded = decoded?;
     Some(Encoded {
-        label: if subsample_420 { "jpeg-420" } else { "jpeg-444" },
+        label: if subsample_420 {
+            "jpeg-420"
+        } else {
+            "jpeg-444"
+        },
         data: buf,
         filter: Some("DCTDecode"),
         decode_parms: None,
@@ -335,7 +404,12 @@ fn decode_jpeg(buf: &[u8], like: &RawImage) -> Option<RawImage> {
     let px = match dec.decode() {
         Ok(p) => p,
         Err(e) => {
-            log::debug!("jpeg round-trip decode failed ({}x{} ch={}): {e:?}", like.width, like.height, like.channels);
+            log::debug!(
+                "jpeg round-trip decode failed ({}x{} ch={}): {e:?}",
+                like.width,
+                like.height,
+                like.channels
+            );
             return None;
         }
     };
@@ -347,9 +421,17 @@ fn decode_jpeg(buf: &[u8], like: &RawImage) -> Option<RawImage> {
     if ch != like.channels {
         return None;
     }
-    Some(RawImage { width: like.width, height: like.height, channels: ch, data: px, cs: like.cs, is_mask: false, orig_bpc: 8, lossy_decode: false })
+    Some(RawImage {
+        width: like.width,
+        height: like.height,
+        channels: ch,
+        data: px,
+        cs: like.cs,
+        is_mask: false,
+        orig_bpc: 8,
+        lossy_decode: false,
+    })
 }
-
 
 /// Re-squeeze a Flate candidate with the (expensive) effort after it has won.
 pub fn squeeze(e: &mut Encoded, effort: Effort) {

@@ -233,7 +233,11 @@ impl Leccion {
             que_paso: cadena("quePaso")?,
             por_que: cadena("porQue")?,
             proxima: cadena("proxima")?,
-            tipo: if o.contains_key("tipo") { tipo } else { TIPO_LECCION.to_string() },
+            tipo: if o.contains_key("tipo") {
+                tipo
+            } else {
+                TIPO_LECCION.to_string()
+            },
             area: cadena("area")?,
             gravedad: entero("gravedad")?.unwrap_or(1),
             etiquetas: lista("etiquetas")?,
@@ -280,7 +284,10 @@ impl Leccion {
         );
         o.insert(
             "deMensaje".into(),
-            self.de_mensaje.clone().map(Value::String).unwrap_or(Value::Null),
+            self.de_mensaje
+                .clone()
+                .map(Value::String)
+                .unwrap_or(Value::Null),
         );
         o.insert("caja".into(), self.caja.into());
         o.insert("repasar".into(), self.repasar.into());
@@ -331,12 +338,21 @@ impl Leccion {
         }
         if !self.adjuntos.is_empty() {
             let n = self.adjuntos.len();
-            s.push_str(&format!("\n📎 {n}{}", if n == 1 { " adjunto" } else { " adjuntos" }));
+            s.push_str(&format!(
+                "\n📎 {n}{}",
+                if n == 1 { " adjunto" } else { " adjuntos" }
+            ));
         }
         let etiquetas = self.todas_las_etiquetas();
         if !etiquetas.is_empty() {
             s.push('\n');
-            s.push_str(&etiquetas.iter().map(|e| format!("#{e}")).collect::<Vec<_>>().join(" "));
+            s.push_str(
+                &etiquetas
+                    .iter()
+                    .map(|e| format!("#{e}"))
+                    .collect::<Vec<_>>()
+                    .join(" "),
+            );
         }
         s
     }
@@ -365,7 +381,8 @@ pub fn nuevo_id(ahora: i64) -> String {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.subsec_nanos() as u64)
         .unwrap_or(0);
-    let mut x = nanos ^ (ahora as u64).rotate_left(17) ^ CONTADOR.fetch_add(0x9e37_79b9, Ordering::Relaxed);
+    let mut x =
+        nanos ^ (ahora as u64).rotate_left(17) ^ CONTADOR.fetch_add(0x9e37_79b9, Ordering::Relaxed);
     let mut s = base36(ahora);
     for _ in 0..3 {
         // xorshift: basta para no chocar con otra leccion del mismo milisegundo.
@@ -442,7 +459,11 @@ impl Repaso {
     pub fn repetida(l: &Leccion, ahora: i64) -> Leccion {
         let mut veces = l.repeticiones.clone();
         veces.push(ahora);
-        let gravedad = if veces.len() >= 2 { l.gravedad.max(3) } else { l.gravedad.max(2) };
+        let gravedad = if veces.len() >= 2 {
+            l.gravedad.max(3)
+        } else {
+            l.gravedad.max(2)
+        };
         Leccion {
             repeticiones: veces,
             gravedad,
@@ -483,7 +504,11 @@ impl Repaso {
 
     /// Las que tocan hoy, primero las graves y las que mas se repiten.
     pub fn de_hoy(todas: &[Leccion], ahora: i64, cuantas: usize) -> Vec<Leccion> {
-        let mut v: Vec<Leccion> = todas.iter().filter(|l| Repaso::toca(l, ahora)).cloned().collect();
+        let mut v: Vec<Leccion> = todas
+            .iter()
+            .filter(|l| Repaso::toca(l, ahora))
+            .cloned()
+            .collect();
         v.sort_by(|a, b| {
             b.gravedad
                 .cmp(&a.gravedad)

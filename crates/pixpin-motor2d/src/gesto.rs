@@ -544,7 +544,10 @@ impl Gesto {
     /// lo elegido** y las flechas que lo siguen: la ventana rehace entonces
     /// solo ese trozo encima de la capa congelada.
     pub fn transformando(&self) -> bool {
-        matches!(self.estado, Estado::Escalando { .. } | Estado::Girando { .. })
+        matches!(
+            self.estado,
+            Estado::Escalando { .. } | Estado::Girando { .. }
+        )
     }
 
     /// El trazo a mano que se esta dibujando ahora. La ventana lo excluye de
@@ -754,11 +757,11 @@ impl Gesto {
                 // en cualquier rincon del dibujo para que cada aviso del
                 // raton rehiciera la escena entera.
                 if self.con_clavos && self.clavo_en_mano.is_none() {
-                    self.con_clavos = self
-                        .seleccion
-                        .ids()
-                        .iter()
-                        .any(|&id| crate::nudos::alfileres_de(&escena.alfileres, id).next().is_some());
+                    self.con_clavos = self.seleccion.ids().iter().any(|&id| {
+                        crate::nudos::alfileres_de(&escena.alfileres, id)
+                            .next()
+                            .is_some()
+                    });
                 }
                 r
             }
@@ -849,7 +852,9 @@ impl Gesto {
         match self.estado {
             // El punto que hace nacer una figura.
             Estado::Reposo => match self.herramienta {
-                Herramienta::Lapiz | Herramienta::Resaltador | Herramienta::Grafito => Some(Faena::AMano),
+                Herramienta::Lapiz | Herramienta::Resaltador | Herramienta::Grafito => {
+                    Some(Faena::AMano)
+                }
                 // `Mano` selecciona y mueve; `Lupa` es una vista y no deja
                 // rastro; el `Borrador` quita, no coloca. Ninguna de las
                 // tres pone un punto que merezca engancharse.
@@ -861,7 +866,9 @@ impl Gesto {
             // del movil al enderezar o abrir el compas).
             Estado::Dibujando { .. } if self.forma_por_gesto => Some(Faena::Trazando),
             Estado::Dibujando { .. } => match self.herramienta {
-                Herramienta::Lapiz | Herramienta::Resaltador | Herramienta::Grafito => Some(Faena::AMano),
+                Herramienta::Lapiz | Herramienta::Resaltador | Herramienta::Grafito => {
+                    Some(Faena::AMano)
+                }
                 _ => Some(Faena::Trazando),
             },
             // Calibrar es trazar una raya de dos puntos, y es donde mas
@@ -907,14 +914,8 @@ impl Gesto {
         };
         let moviendo = matches!(self.estado, Estado::Moviendo { .. });
         let excluye = |id: u64| dibujando == Some(id) || (moviendo && seleccion.contiene(id));
-        let encontrado = crate::enganche::sitio_con(
-            &escena.elementos,
-            p,
-            zoom,
-            faena,
-            &self.enganche,
-            &excluye,
-        );
+        let encontrado =
+            crate::enganche::sitio_con(&escena.elementos, p, zoom, faena, &self.enganche, &excluye);
         self.anclaje_activo = encontrado;
         encontrado.map_or(p, |a| a.punto)
     }
@@ -1054,7 +1055,9 @@ impl Gesto {
                 radio: 14.0,
             },
             // No nace arrastrando: es una varita (`dibujo::lupa`), como la lupa.
-            Herramienta::Foco => Figura::Foco { cristal: Default::default() },
+            Herramienta::Foco => Figura::Foco {
+                cristal: Default::default(),
+            },
             Herramienta::Cota => Figura::Cota {
                 puntos: reservados(),
             },
@@ -1113,7 +1116,10 @@ impl Gesto {
             // La flecha recta nace curva si ese es el tipo «actual»: en una
             // flecha, `roundness` es la curva (`curva.rs`).
             redondo: (self.estilo.redondo
-                && matches!(self.herramienta, Herramienta::Rectangulo | Herramienta::Rombo))
+                && matches!(
+                    self.herramienta,
+                    Herramienta::Rectangulo | Herramienta::Rombo
+                ))
                 || (self.estilo.curva
                     && !self.estilo.codos
                     && self.herramienta == Herramienta::Flecha),
@@ -1131,7 +1137,10 @@ impl Gesto {
                 }
             } else if matches!(
                 self.herramienta,
-                Herramienta::Serie | Herramienta::Cota | Herramienta::Punto | Herramienta::EscalaGrafica
+                Herramienta::Serie
+                    | Herramienta::Cota
+                    | Herramienta::Punto
+                    | Herramienta::EscalaGrafica
             ) {
                 // **La letra del pincel, si se eligio una** (`fontFamily`, como
                 // la cota del movil): sin elegir, su letra de siempre.
@@ -1229,7 +1238,8 @@ impl Gesto {
         //    lo que atraviesa (`nudos::mover_clavo`).
         if selecciona
             && self.con_clavos
-            && let Some(i) = crate::nudos::clavo_en(escena, p, crate::nudos::RADIO_DEL_CLAVO * escala)
+            && let Some(i) =
+                crate::nudos::clavo_en(escena, p, crate::nudos::RADIO_DEL_CLAVO * escala)
         {
             self.clavo_en_mano = Some(i);
             self.estado = Estado::Moviendo { anterior: p };
@@ -1311,11 +1321,10 @@ impl Gesto {
         if selecciona
             && !shift
             && let [id] = self.seleccion.ids()
-            && let Some(plan) = escena.buscar(*id).filter(|e| {
-                !e.bloqueado && matches!(e.figura, Figura::Cronograma { .. })
-            })
-            && let Some((indice, mano)) =
-                crate::cronograma::toque_en_barra(plan, p, 4.0 * escala)
+            && let Some(plan) = escena
+                .buscar(*id)
+                .filter(|e| !e.bloqueado && matches!(e.figura, Figura::Cronograma { .. }))
+            && let Some((indice, mano)) = crate::cronograma::toque_en_barra(plan, p, 4.0 * escala)
         {
             let id = *id;
             let col = crate::cronograma::ancho_de_columna(plan);
@@ -1746,7 +1755,9 @@ impl Gesto {
                         escena.apuntar_edicion(id);
                     }
                     for e in escena.elementos.iter_mut() {
-                        if self.seleccion.contiene(e.id) || self.del_marco.binary_search(&e.id).is_ok() {
+                        if self.seleccion.contiene(e.id)
+                            || self.del_marco.binary_search(&e.id).is_ok()
+                        {
                             e.mover(dx, dy);
                         }
                     }
@@ -1789,7 +1800,8 @@ impl Gesto {
                     );
                     for n in nuevos {
                         if let Some(e) = escena.buscar_mut(n.id) {
-                            (e.figura, e.x, e.y, e.ancho, e.alto) = (n.figura, n.x, n.y, n.ancho, n.alto);
+                            (e.figura, e.x, e.y, e.ancho, e.alto) =
+                                (n.figura, n.x, n.y, n.ancho, n.alto);
                             e.extras.tam_letra = n.extras.tam_letra;
                             e.tocar();
                         }
@@ -2028,7 +2040,11 @@ impl Gesto {
     /// nada (la cota ya no esta, o los numeros no valen).
     pub fn dictar_cota(escena: &mut Escena, id: u64, largo: f32, grados: f32) -> bool {
         let largo_px = crate::medida::largo_en_pixeles(largo, escena.escala.as_ref());
-        let Some(antes) = escena.buscar(id).filter(|e| !e.borrado && !e.bloqueado).cloned() else {
+        let Some(antes) = escena
+            .buscar(id)
+            .filter(|e| !e.borrado && !e.bloqueado)
+            .cloned()
+        else {
             return false;
         };
         let mut nueva = antes.clone();
@@ -2256,7 +2272,8 @@ impl Gesto {
             cursiva: e.extras.cursiva,
             tachado: false,
         };
-        let paso = tam * crate::texto::interlineado_de(familia).unwrap_or(crate::texto::INTERLINEADO);
+        let paso =
+            tam * crate::texto::interlineado_de(familia).unwrap_or(crate::texto::INTERLINEADO);
         let fila = edicion.fila();
         // Centrado o a la derecha, el renglon empieza donde lo aparta
         // `pintado` (la misma cuenta).
@@ -2265,9 +2282,16 @@ impl Gesto {
             .alineacion
             .filter(|a| *a != crate::texto::AlineacionTexto::Izquierda)
             .and_then(|a| {
-                crate::texto::apartados_de_renglones(edicion.texto(), *tam, familia, estilo, e.ancho, a)
-                    .get(fila)
-                    .copied()
+                crate::texto::apartados_de_renglones(
+                    edicion.texto(),
+                    *tam,
+                    familia,
+                    estilo,
+                    e.ancho,
+                    a,
+                )
+                .get(fila)
+                .copied()
             })
             .unwrap_or(0.0);
         let x = e.x + apartado + crate::texto::ancho_real(edicion.prefijo(), *tam, familia, estilo);

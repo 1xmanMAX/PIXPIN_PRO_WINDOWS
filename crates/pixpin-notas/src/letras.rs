@@ -59,7 +59,12 @@ pub fn nombre_gdi(familia: &str, reserva: &str) -> String {
             let mut cuantas = 0u32;
             // SAFETY: GDI copia los datos; el bufer vive durante la llamada.
             let h = unsafe {
-                windows::Win32::Graphics::Gdi::AddFontMemResourceEx(f.as_ptr().cast(), f.len() as u32, None, &mut cuantas)
+                windows::Win32::Graphics::Gdi::AddFontMemResourceEx(
+                    f.as_ptr().cast(),
+                    f.len() as u32,
+                    None,
+                    &mut cuantas,
+                )
             };
             if !h.is_invalid() && cuantas > 0 && nombre.is_none() {
                 nombre = familia_gdi(&f);
@@ -85,7 +90,12 @@ fn be16(d: &[u8], i: usize) -> Option<u16> {
 }
 
 fn be32(d: &[u8], i: usize) -> Option<u32> {
-    Some(u32::from_be_bytes([*d.get(i)?, *d.get(i + 1)?, *d.get(i + 2)?, *d.get(i + 3)?]))
+    Some(u32::from_be_bytes([
+        *d.get(i)?,
+        *d.get(i + 1)?,
+        *d.get(i + 2)?,
+        *d.get(i + 3)?,
+    ]))
 }
 
 /// El nombre de familia de Windows (plataforma 3, nombre 1) de un TTF/OTF.
@@ -104,7 +114,10 @@ pub fn familia_gdi(fichero: &[u8]) -> Option<String> {
             let largo = be16(fichero, r + 8)? as usize;
             let desde = cadenas + be16(fichero, r + 10)? as usize;
             let bytes = fichero.get(desde..desde + largo)?;
-            let u: Vec<u16> = bytes.chunks_exact(2).map(|c| u16::from_be_bytes([c[0], c[1]])).collect();
+            let u: Vec<u16> = bytes
+                .chunks_exact(2)
+                .map(|c| u16::from_be_bytes([c[0], c[1]]))
+                .collect();
             return Some(String::from_utf16_lossy(&u));
         }
     }
@@ -160,7 +173,10 @@ mod pruebas_de_la_vista {
     #[test]
     fn una_letra_que_no_es_del_lienzo_se_pide_por_su_nombre_y_la_de_siempre_no_cambia() {
         // Una del sistema (como Courier New) va por su nombre: GDI la busca.
-        assert_eq!(nombre_gdi("Familia Que No Existe", "Segoe UI"), "Familia Que No Existe");
+        assert_eq!(
+            nombre_gdi("Familia Que No Existe", "Segoe UI"),
+            "Familia Que No Existe"
+        );
         let v = crate::vista::Vista::default();
         assert_eq!(de_vista(&v), registrar());
     }

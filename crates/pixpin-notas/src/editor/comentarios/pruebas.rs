@@ -4,11 +4,14 @@ use std::cell::RefCell;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
-use super::super::{Opciones, Pedido, Rotulos, aplicar_cambio, desmontar, elegir, leer, markdown, montar, muestra};
+use super::super::{
+    Opciones, Pedido, Rotulos, aplicar_cambio, desmontar, elegir, leer, markdown, montar, muestra,
+};
 use super::*;
 use crate::panel_comentarios::RotulosComentarios;
 
-const NOTA: &str = "# Obra\nLa losa del segundo piso ya esta hormigonada.\nFalta el curado de la losa.\n";
+const NOTA: &str =
+    "# Obra\nLa losa del segundo piso ya esta hormigonada.\nFalta el curado de la losa.\n";
 
 /// El «disco» de la prueba: lo que hay en el fichero y cuantas veces se
 /// escribio.
@@ -61,7 +64,9 @@ fn de(d: &Disco, autor: &str) -> DeComentarios {
     DeComentarios {
         autor: autor.into(),
         aparato: "K7Q2".into(),
-        leer: Some(Box::new(move || Some(l.texto.borrow().clone().unwrap_or_default()))),
+        leer: Some(Box::new(move || {
+            Some(l.texto.borrow().clone().unwrap_or_default())
+        })),
         guardar: Some(Box::new(move |t: &str| {
             *g.texto.borrow_mut() = Some(t.to_string());
             *g.escrituras.borrow_mut() += 1;
@@ -122,25 +127,40 @@ fn comentar_con(e: &mut Estado, texto: &str) {
 }
 
 fn tarjeta(id: &str) -> Option<crate::disposicion::Caja> {
-    panel::VISTA.with(|v| v.borrow().as_ref()?.tarjetas.iter().find(|(x, _)| x == id).map(|(_, c)| *c))
+    panel::VISTA.with(|v| {
+        v.borrow()
+            .as_ref()?
+            .tarjetas
+            .iter()
+            .find(|(x, _)| x == id)
+            .map(|(_, c)| *c)
+    })
 }
-
 
 #[test]
 fn comentar_lo_elegido_abre_el_panel_resalta_y_guarda_fuera_del_markdown() {
     let d = Disco::default();
     let mut e = abrir(NOTA, &d);
-    assert!(!panel::ABIERTO.with(|a| a.get()), "sin comentarios, el panel nace cerrado");
+    assert!(
+        !panel::ABIERTO.with(|a| a.get()),
+        "sin comentarios, el panel nace cerrado"
+    );
     let (a, b) = elegir_texto(&e, "segundo piso", 0);
     comentar(&mut e);
     assert!(panel::ABIERTO.with(|x| x.get()), "comentar abre el panel");
-    assert!(matches!(e.comentarios.borrador, Some(Borrador::Nuevo { .. })));
+    assert!(matches!(
+        e.comentarios.borrador,
+        Some(Borrador::Nuevo { .. })
+    ));
     assert!(e.comentarios.compositor.is_some());
     escribir_en_el_cuadro(&e, "¿Seguro que es el segundo?");
     enviar_borrador(&mut e);
     assert!(e.comentarios.compositor.is_none() && e.comentarios.borrador.is_none());
     let h = &e.comentarios.datos.comentarios[0];
-    assert_eq!((h.ancla.cita.as_str(), h.texto.as_str(), h.autor.as_str()), ("segundo piso", "¿Seguro que es el segundo?", "Portátil"));
+    assert_eq!(
+        (h.ancla.cita.as_str(), h.texto.as_str(), h.autor.as_str()),
+        ("segundo piso", "¿Seguro que es el segundo?", "Portátil")
+    );
     assert_eq!(e.comentarios.rangos, [Some((a, b))]);
     assert_eq!(e.comentarios.activo.as_deref(), Some(h.id.as_str()));
     assert_eq!(panel::CONTADOR.with(|c| c.get()), 1);
@@ -153,7 +173,17 @@ fn comentar_lo_elegido_abre_el_panel_resalta_y_guarda_fuera_del_markdown() {
     // El texto comentado tiene fondo; el de al lado no.
     let fondo_en = |p: usize| -> i32 {
         // SAFETY: documento de la prueba.
-        unsafe { e.doc.as_ref().unwrap().Range(p as i32, p as i32 + 1).unwrap().GetFont().unwrap().GetBackColor().unwrap() }
+        unsafe {
+            e.doc
+                .as_ref()
+                .unwrap()
+                .Range(p as i32, p as i32 + 1)
+                .unwrap()
+                .GetFont()
+                .unwrap()
+                .GetBackColor()
+                .unwrap()
+        }
     };
     let co = panel::colores(&e.estilos.tema);
     assert_eq!(fondo_en(a + 1), bgr(co.resaltado_activo) as i32);
@@ -186,7 +216,10 @@ fn un_comentario_vacio_no_se_envia_y_cancelar_no_deja_rastro() {
     comentar(&mut e);
     escribir_en_el_cuadro(&e, "   ");
     enviar_borrador(&mut e);
-    assert!(e.comentarios.datos.comentarios.is_empty(), "vacio no se crea");
+    assert!(
+        e.comentarios.datos.comentarios.is_empty(),
+        "vacio no se crea"
+    );
     assert!(e.comentarios.compositor.is_some(), "y se sigue escribiendo");
     cancelar(&mut e);
     assert!(e.comentarios.compositor.is_none() && e.comentarios.borrador.is_none());
@@ -221,7 +254,10 @@ fn intro_envia_y_esc_cancela_en_el_cuadro() {
     assert!(tecla(&mut e, &esc));
     assert_eq!(e.comentarios.datos.comentarios.len(), 1);
     // Una tecla de la nota no es del cuadro.
-    let otra = MSG { hwnd: e.edit, ..intro };
+    let otra = MSG {
+        hwnd: e.edit,
+        ..intro
+    };
     assert!(!tecla(&mut e, &otra));
     desmontar(e);
 }
@@ -240,8 +276,15 @@ fn responder_editar_resolver_y_ver_los_resueltos() {
     editar(&mut e, &r);
     escribir_en_el_cuadro(&e, "Siete, regando");
     hacer(&mut e, Accion::Enviar);
-    assert_eq!(e.comentarios.datos.comentarios[0].respuestas[0].texto, "Siete, regando");
-    assert!(e.comentarios.datos.comentarios[0].respuestas[0].editado.is_some());
+    assert_eq!(
+        e.comentarios.datos.comentarios[0].respuestas[0].texto,
+        "Siete, regando"
+    );
+    assert!(
+        e.comentarios.datos.comentarios[0].respuestas[0]
+            .editado
+            .is_some()
+    );
 
     hacer(&mut e, Accion::Resolver(id.clone()));
     assert!(e.comentarios.datos.comentarios[0].resuelto);
@@ -257,7 +300,10 @@ fn responder_editar_resolver_y_ver_los_resueltos() {
     assert!(e.comentarios.datos.comentarios[0].respuestas.is_empty());
     borrar(&mut e, &id);
     assert!(e.comentarios.datos.comentarios.is_empty());
-    assert!(d.leido().comentarios.is_empty(), "borrado tambien en disco (no vuelve al sincronizar)");
+    assert!(
+        d.leido().comentarios.is_empty(),
+        "borrado tambien en disco (no vuelve al sincronizar)"
+    );
     desmontar(e);
 }
 
@@ -269,18 +315,28 @@ fn el_comentario_sigue_a_su_texto_al_escribir_y_se_guarda_al_dia() {
     comentar_con(&mut e, "¿Seguro?");
     // Se escribe delante y dentro de la cita.
     let viejo = leer(e.edit);
-    let nuevo = viejo.replace("# Obra\n", "# Obra en Lima\nIntro nueva.\n").replace("ya esta hormigonada", "ya esta casi hormigonada");
+    let nuevo = viejo
+        .replace("# Obra\n", "# Obra en Lima\nIntro nueva.\n")
+        .replace("ya esta hormigonada", "ya esta casi hormigonada");
     aplicar_cambio(e.edit, &viejo, &nuevo);
     pintar(&mut e, None);
     let (a, b) = e.comentarios.rangos[0].expect("sigue anclado");
     let u: Vec<u16> = leer(e.edit).encode_utf16().collect();
-    assert_eq!(String::from_utf16_lossy(&u[a..b]), "ya esta casi hormigonada");
+    assert_eq!(
+        String::from_utf16_lossy(&u[a..b]),
+        "ya esta casi hormigonada"
+    );
     // Al guardar, el ancla va al dia en el fichero.
     let md = markdown(&e);
     guardar(&mut e, &md);
     let h = &d.leido().comentarios[0];
     assert_eq!(h.ancla.cita, "ya esta casi hormigonada");
-    assert_eq!(h.ancla.pos, md[..md.find("ya esta casi").unwrap()].encode_utf16().count());
+    assert_eq!(
+        h.ancla.pos,
+        md[..md.find("ya esta casi").unwrap()]
+            .encode_utf16()
+            .count()
+    );
     desmontar(e);
 }
 
@@ -300,7 +356,11 @@ fn si_su_texto_se_borra_el_comentario_queda_arriba_sin_ancla_y_no_se_pierde() {
     assert!(c.abajo() <= zona.y, "arriba, en la parte de los sin ancla");
     let md = markdown(&e);
     guardar(&mut e, &md);
-    assert_eq!(d.leido().comentarios[0].ancla.cita, "del segundo piso", "con su cita de siempre");
+    assert_eq!(
+        d.leido().comentarios[0].ancla.cita,
+        "del segundo piso",
+        "con su cita de siempre"
+    );
     desmontar(e);
 }
 
@@ -314,7 +374,9 @@ fn con_comentarios_abiertos_la_nota_abre_el_panel_y_los_resalta() {
         autor: "Teléfono".into(),
         aparato: "MOVI".into(),
     };
-    previo.nuevo(md::ancla_de(&t, a, a + 6).unwrap(), &quien, 1, "del movil").unwrap();
+    previo
+        .nuevo(md::ancla_de(&t, a, a + 6).unwrap(), &quien, 1, "del movil")
+        .unwrap();
     let d = Disco::con(&md::escribir(&previo));
     let e = abrir(NOTA, &d);
     // Las tarjetas no salen solas (1-oct): solo con el boton, que dice
@@ -337,7 +399,13 @@ fn con_dos(texto: &str, que: [&str; 2], tamano: (i32, i32)) -> (Estado, [String;
     let mut c = md::Comentarios::default();
     let ids = que.map(|q| {
         let a = texto[..texto.find(q).unwrap()].encode_utf16().count();
-        c.nuevo(md::ancla_de(&t, a, a + q.encode_utf16().count()).unwrap(), &quien, 1, &format!("sobre {q}")).unwrap()
+        c.nuevo(
+            md::ancla_de(&t, a, a + q.encode_utf16().count()).unwrap(),
+            &quien,
+            1,
+            &format!("sobre {q}"),
+        )
+        .unwrap()
     });
     let d = Disco::con(&md::escribir(&c));
     (abrir_con(texto, de(&d, "Portátil"), false, tamano), ids)
@@ -354,20 +422,38 @@ fn las_tarjetas_solo_salen_con_el_boton_y_cada_una_a_la_altura_de_su_frase() {
     assert!(!panel::ABIERTO.with(|x| x.get()), "sin el boton no se ven");
     assert!(tarjeta(&a).is_none());
     // El boton de la cabecera las ensena (conmutador).
-    super::super::clic(&mut e, crate::disposicion::Boton::Comentarios, &mut |_| true);
+    super::super::clic(&mut e, crate::disposicion::Boton::Comentarios, &mut |_| {
+        true
+    });
     assert!(panel::ABIERTO.with(|x| x.get()));
-    assert_eq!(ancho_del_papel(), entero, "con sitio, van encima del margen del papel, sin quitarle nada");
+    assert_eq!(
+        ancho_del_papel(),
+        entero,
+        "con sitio, van encima del margen del papel, sin quitarle nada"
+    );
     let (ta, tb) = (tarjeta(&a).unwrap(), tarjeta(&b).unwrap());
     let rango = |i: usize| e.comentarios.rangos[i].unwrap().0;
     assert_eq!(ta.y, alto_de(&e, rango(0)), "a la altura de su frase");
-    assert!(tb.y >= alto_de(&e, rango(1)) && ta.abajo() <= tb.y, "la de debajo baja, sin solaparse");
+    assert!(
+        tb.y >= alto_de(&e, rango(1)) && ta.abajo() <= tb.y,
+        "la de debajo baja, sin solaparse"
+    );
     // En el margen derecho del papel, a la derecha de lo escrito.
     let caja = panel::CAJA.with(|c| c.get()).unwrap();
-    assert!(ta.x >= caja.x - crate::panel_comentarios::ADELANTE_PX * 2 && tb.x >= caja.x - crate::panel_comentarios::ADELANTE_PX * 2);
+    assert!(
+        ta.x >= caja.x - crate::panel_comentarios::ADELANTE_PX * 2
+            && tb.x >= caja.x - crate::panel_comentarios::ADELANTE_PX * 2
+    );
     // Otra vez el boton: se van, y el papel vuelve a ser entero.
-    super::super::clic(&mut e, crate::disposicion::Boton::Comentarios, &mut |_| true);
+    super::super::clic(&mut e, crate::disposicion::Boton::Comentarios, &mut |_| {
+        true
+    });
     assert!(!panel::ABIERTO.with(|x| x.get()));
-    assert_eq!(ancho_del_papel(), entero, "sin tarjetas no se reserva margen");
+    assert_eq!(
+        ancho_del_papel(),
+        entero,
+        "sin tarjetas no se reserva margen"
+    );
     desmontar(e);
 }
 
@@ -375,7 +461,9 @@ fn las_tarjetas_solo_salen_con_el_boton_y_cada_una_a_la_altura_de_su_frase() {
 fn un_clic_en_una_tarjeta_desliza_la_nota_hasta_su_texto_y_lo_resalta() {
     let mut nota = String::from("# Larga\n");
     for i in 0..45 {
-        nota.push_str(&format!("Renglon {i} de relleno para que la nota no quepa.\n"));
+        nota.push_str(&format!(
+            "Renglon {i} de relleno para que la nota no quepa.\n"
+        ));
     }
     nota.push_str("Aqui va la losa del final.\n");
     for i in 45..90 {
@@ -389,20 +477,38 @@ fn un_clic_en_una_tarjeta_desliza_la_nota_hasta_su_texto_y_lo_resalta() {
     let (p, _) = e.comentarios.rangos[0].unwrap();
     let y_del_texto = |e: &Estado| {
         let mut q = POINT::default();
-        enviar(e.edit, EM_POSFROMCHAR, &mut q as *mut _ as usize, p as isize);
+        enviar(
+            e.edit,
+            EM_POSFROMCHAR,
+            &mut q as *mut _ as usize,
+            p as isize,
+        );
         q.y
     };
     let (visible, _) = crate::imagenes::medidas(e.edit);
     assert!(y_del_texto(&e) > visible, "al principio su texto no se ve");
     hacer(&mut e, Accion::Tarjeta(a.clone()));
     let y = y_del_texto(&e);
-    assert!(y > 0 && y < visible * 3 / 4, "la nota fue hasta su texto: {y} de {visible}");
+    assert!(
+        y > 0 && y < visible * 3 / 4,
+        "la nota fue hasta su texto: {y} de {visible}"
+    );
     assert_eq!(seleccion(e.edit), (p, p));
     assert_eq!(e.comentarios.activo.as_deref(), Some(a.as_str()));
     // Resaltado como el elegido, y su tarjeta sigue al texto.
     let co = panel::colores(&e.estilos.tema);
     // SAFETY: documento de la prueba.
-    let fondo = unsafe { e.doc.as_ref().unwrap().Range(p as i32, p as i32 + 1).unwrap().GetFont().unwrap().GetBackColor().unwrap() };
+    let fondo = unsafe {
+        e.doc
+            .as_ref()
+            .unwrap()
+            .Range(p as i32, p as i32 + 1)
+            .unwrap()
+            .GetFont()
+            .unwrap()
+            .GetBackColor()
+            .unwrap()
+    };
     assert_eq!(fondo, bgr(co.resaltado_activo) as i32);
     assert_eq!(tarjeta(&a).unwrap().y, alto_de(&e, p));
     desmontar(e);
@@ -439,7 +545,10 @@ fn con_la_ventana_estrecha_las_tarjetas_van_en_un_cajon_encima_del_texto() {
     assert_eq!(ancho_del_papel(), entero, "el papel no pierde nada");
     let caja = panel::CAJA.with(|c| c.get()).unwrap();
     let papel = super::super::VISTA.with(|v| v.borrow().as_ref().unwrap().disp.cuerpo);
-    assert!(caja.x < papel.derecha() && caja.x > papel.x, "encima del texto, por la derecha");
+    assert!(
+        caja.x < papel.derecha() && caja.x > papel.x,
+        "encima del texto, por la derecha"
+    );
     assert!(tarjeta(&a).is_some());
     // Su cabecera lo cierra.
     hacer(&mut e, Accion::CerrarPanel);
@@ -456,7 +565,10 @@ fn un_fichero_de_comentarios_roto_no_se_pisa() {
     let md = markdown(&e);
     guardar(&mut e, &md);
     assert_eq!(*d.escrituras.borrow(), 0);
-    assert_eq!(d.texto.borrow().as_deref(), Some("{\"comentarios\": [ roto"));
+    assert_eq!(
+        d.texto.borrow().as_deref(),
+        Some("{\"comentarios\": [ roto")
+    );
     desmontar(e);
 }
 
@@ -474,7 +586,9 @@ fn guardar_junta_lo_que_llego_del_movil_mientras_tanto() {
         autor: "Teléfono".into(),
         aparato: "MOVI".into(),
     };
-    en_disco.nuevo(md::ancla_de(&t, i, i + 6).unwrap(), &quien, 5, "del movil").unwrap();
+    en_disco
+        .nuevo(md::ancla_de(&t, i, i + 6).unwrap(), &quien, 5, "del movil")
+        .unwrap();
     *d.texto.borrow_mut() = Some(md::escribir(&en_disco));
     // Y aqui se responde al de antes.
     let id = e.comentarios.datos.comentarios[0].id.clone();
@@ -484,7 +598,11 @@ fn guardar_junta_lo_que_llego_del_movil_mientras_tanto() {
     let j = d.leido();
     assert_eq!(j.comentarios.len(), 2, "los dos, sin pisar el del movil");
     assert_eq!(j.comentarios[0].respuestas.len(), 1);
-    assert_eq!(e.comentarios.datos.comentarios.len(), 2, "y el del movil ya se ve aqui");
+    assert_eq!(
+        e.comentarios.datos.comentarios.len(),
+        2,
+        "y el del movil ya se ve aqui"
+    );
     desmontar(e);
 }
 
@@ -496,7 +614,10 @@ fn un_clic_en_el_comentario_lleva_a_su_texto_y_el_cursor_en_el_texto_elige_el_co
     comentar_con(&mut e, "uno");
     let (a2, _) = elegir_texto(&e, "curado", 0);
     comentar_con(&mut e, "dos");
-    let (id1, id2) = (e.comentarios.datos.comentarios[0].id.clone(), e.comentarios.datos.comentarios[1].id.clone());
+    let (id1, id2) = (
+        e.comentarios.datos.comentarios[0].id.clone(),
+        e.comentarios.datos.comentarios[1].id.clone(),
+    );
     hacer(&mut e, Accion::Tarjeta(id1.clone()));
     assert_eq!(seleccion(e.edit), (a1, a1));
     assert_eq!(e.comentarios.activo.as_deref(), Some(id1.as_str()));
@@ -520,7 +641,8 @@ fn un_clic_en_el_comentario_lleva_a_su_texto_y_el_cursor_en_el_texto_elige_el_co
 fn abrir_el_panel_deja_el_papel_entero_y_aparta_la_columna_y_cerrarlo_la_devuelve() {
     let d = Disco::default();
     let mut e = abrir(NOTA, &d);
-    let ancho = |_: &Estado| super::super::VISTA.with(|v| v.borrow().as_ref().unwrap().disp.cuerpo.an);
+    let ancho =
+        |_: &Estado| super::super::VISTA.with(|v| v.borrow().as_ref().unwrap().disp.cuerpo.an);
     // Donde acaba lo escrito por la derecha (el margen de la columna).
     let derecha = |e: &mut Estado| {
         e.estilos.margen = super::super::margen_de(e);
@@ -571,7 +693,9 @@ fn muestra_de(claro: bool, nombre: &str, tamano: (i32, i32)) {
     let _com = pixpin_shell::ComDelHilo::iniciar();
     let t: Vec<u16> = NOTA_DE_MUESTRA.encode_utf16().collect();
     let ancla = |que: &str| {
-        let i = NOTA_DE_MUESTRA[..NOTA_DE_MUESTRA.find(que).unwrap()].encode_utf16().count();
+        let i = NOTA_DE_MUESTRA[..NOTA_DE_MUESTRA.find(que).unwrap()]
+            .encode_utf16()
+            .count();
         md::ancla_de(&t, i, i + que.encode_utf16().count()).unwrap()
     };
     let movil = Quien {
@@ -584,19 +708,53 @@ fn muestra_de(claro: bool, nombre: &str, tamano: (i32, i32)) {
     };
     let hoy = pixpin_shell::entorno::ahora_utc_ms();
     let mut c = md::Comentarios::default();
-    let a = c.nuevo(ancla("línea base"), &pc, hoy - 7_200_000, "¿La línea base es de 2024 o de este año? Conviene decirlo.").unwrap();
-    c.responder(&a, &movil, hoy - 3_600_000, "De 2024, con los partes diarios de obra.").unwrap();
-    c.responder(&a, &pc, hoy - 600_000, "Perfecto, lo pongo.").unwrap();
-    c.nuevo(ancla("juicio de expertos"), &movil, hoy - 5_000_000, "¿Cuántos expertos? La asesora pidió al menos cinco.").unwrap();
-    c.nuevo(ancla("corte al 80 %"), &pc, hoy - 4_000_000, "Citar a Juran para el 80/20.").unwrap();
-    let r = c.nuevo(ancla("Pedir la grúa"), &movil, hoy - 90_000_000, "Hecho el lunes.").unwrap();
+    let a = c
+        .nuevo(
+            ancla("línea base"),
+            &pc,
+            hoy - 7_200_000,
+            "¿La línea base es de 2024 o de este año? Conviene decirlo.",
+        )
+        .unwrap();
+    c.responder(
+        &a,
+        &movil,
+        hoy - 3_600_000,
+        "De 2024, con los partes diarios de obra.",
+    )
+    .unwrap();
+    c.responder(&a, &pc, hoy - 600_000, "Perfecto, lo pongo.")
+        .unwrap();
+    c.nuevo(
+        ancla("juicio de expertos"),
+        &movil,
+        hoy - 5_000_000,
+        "¿Cuántos expertos? La asesora pidió al menos cinco.",
+    )
+    .unwrap();
+    c.nuevo(
+        ancla("corte al 80 %"),
+        &pc,
+        hoy - 4_000_000,
+        "Citar a Juran para el 80/20.",
+    )
+    .unwrap();
+    let r = c
+        .nuevo(
+            ancla("Pedir la grúa"),
+            &movil,
+            hoy - 90_000_000,
+            "Hecho el lunes.",
+        )
+        .unwrap();
     c.resolver(&r, true, &pc, hoy - 80_000_000);
     // Uno cuyo texto ya no esta en la nota.
     let mut perdido = ancla("OE5");
     perdido.cita = "el cronograma de la actividad 9".into();
     perdido.antes = "zzz no esta ".into();
     perdido.despues = " zzz tampoco".into();
-    c.nuevo(perdido, &movil, hoy - 100_000_000, "Esto ya no aplica.").unwrap();
+    c.nuevo(perdido, &movil, hoy - 100_000_000, "Esto ya no aplica.")
+        .unwrap();
     let d = Disco::con(&md::escribir(&c));
     let mut e = abrir_con(NOTA_DE_MUESTRA, de(&d, "MAXBOOK"), claro, tamano);
     // Las tarjetas salen con el boton de la cabecera.

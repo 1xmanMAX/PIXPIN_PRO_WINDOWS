@@ -25,12 +25,12 @@ use super::teclas::{
 };
 use crate::imagenes_lienzo::ImagenesLienzo;
 use pixpin_geom::{Punto, Rect};
+use pixpin_motor2d::Elemento;
 use pixpin_motor2d::camara::Camara;
 use pixpin_motor2d::escena::Escena;
 use pixpin_motor2d::gesto::{EventoGesto, Gesto, Herramienta, Respuesta};
 use pixpin_motor2d::seleccion::OrdenEditor;
 use pixpin_motor2d::vector::Punto2;
-use pixpin_motor2d::Elemento;
 use pixpin_shell::overlay::EventoOverlay;
 use pixpin_ui::{BotonCaja, CajaHerramientas, DestinoClic};
 
@@ -98,7 +98,11 @@ impl Repinte {
     };
 
     fn si(cambio: bool) -> Repinte {
-        if cambio { Repinte::DIBUJO } else { Repinte::NADA }
+        if cambio {
+            Repinte::DIBUJO
+        } else {
+            Repinte::NADA
+        }
     }
 
     pub fn algo(self) -> bool {
@@ -497,7 +501,9 @@ impl Mano {
                 || v == b'D' as u32
                 || v == b'G' as u32)
         {
-            let hecho = self.portapapeles_y_grupos(vk, shift, gesto, escena, imagenes, vista, ancho_px, alto_px);
+            let hecho = self.portapapeles_y_grupos(
+                vk, shift, gesto, escena, imagenes, vista, ancho_px, alto_px,
+            );
             return Atendido::suyo(Repinte::si(hecho));
         }
 
@@ -526,8 +532,8 @@ impl Mano {
                         // precisa (ver `ModoLazo`). Un lazo de dos puntos
                         // —un clic suelto— no atrapa nada y deja la seleccion
                         // vacia, que es lo mismo que pulsar en el aire.
-                        let cogidos =
-                            l.atrapados(&escena.elementos, pixpin_motor2d::lazo::ModoLazo::Encerrar);
+                        let cogidos = l
+                            .atrapados(&escena.elementos, pixpin_motor2d::lazo::ModoLazo::Encerrar);
                         gesto.seleccion.poner_todos(cogidos);
                         cambio = true;
                     }
@@ -551,7 +557,10 @@ impl Mano {
             let radio = pixpin_motor2d::bolita::RADIO_DE_LA_BOLITA / vista.camara.zoom.max(0.0001);
             // Sin barrido, mover el raton no repinta nada (la HD 4000).
             let repintar = gesto.bolita.centro.is_some()
-                || matches!(ev, EventoOverlay::BotonPulsado(_) | EventoOverlay::BotonSoltado(_));
+                || matches!(
+                    ev,
+                    EventoOverlay::BotonPulsado(_) | EventoOverlay::BotonSoltado(_)
+                );
             match *ev {
                 EventoOverlay::BotonPulsado(p) => {
                     gesto.bolita.empezar();
@@ -649,10 +658,9 @@ impl Mano {
                     true
                 }
                 EventoOverlay::RatonMovido(p) => gesto.laser.mover(vista.al_documento(p)),
-                EventoOverlay::Muestra(m) => gesto.laser.mover(vista.camara.a_mundo(Punto2::nuevo(
-                    m.x() - vista.area.x as f32,
-                    m.y() - vista.area.y as f32,
-                ))),
+                EventoOverlay::Muestra(m) => gesto.laser.mover(vista.camara.a_mundo(
+                    Punto2::nuevo(m.x() - vista.area.x as f32, m.y() - vista.area.y as f32),
+                )),
                 EventoOverlay::BotonSoltado(_) => {
                     gesto.laser.soltar();
                     true
@@ -816,8 +824,8 @@ impl Mano {
         // pulsar: tres de ellas no dibujan nada -miran lo que ya hay y lo
         // cambian- y la cuarta remata el punto que el gesto acaba de hacer
         // nacer, asi que antes no existiria.
-        let construido = pulsado
-            .is_some_and(|p| super::construir::al_pulsar(escena, gesto, p, camara.zoom));
+        let construido =
+            pulsado.is_some_and(|p| super::construir::al_pulsar(escena, gesto, p, camara.zoom));
         Paso {
             r,
             pulsado,
@@ -897,38 +905,39 @@ impl Mano {
                 } else {
                     None
                 };
-                let nuevos = match img::decidir_pegado(!self.portapapeles.is_empty(), del_sistema) {
-                    img::Pegado::Elementos => pp::pegar(
-                        escena,
-                        &self.portapapeles,
-                        pp::DESPLAZAMIENTO,
-                        pp::DESPLAZAMIENTO,
-                    ),
-                    img::Pegado::Imagen(bruta) => match imagenes {
-                        None => Vec::new(),
-                        Some(imagenes) => {
-                            let v = vista.camara.ventana(ancho_px, alto_px);
-                            match imagenes.guardar(bruta) {
-                                None => Vec::new(),
-                                Some(id_objeto) => {
-                                    // El tamano se toma de lo que de verdad
-                                    // se subio: si la GPU obligo a reducir,
-                                    // la caja tiene que seguir a los pixeles
-                                    // o la imagen saldria estirada.
-                                    let (w, h) =
-                                        imagenes.tamano(id_objeto).expect("recien guardada");
-                                    let (ancho, alto) =
-                                        img::tamano_al_pegar(w, h, v.2 - v.0, v.3 - v.1);
-                                    let (x, y) = img::esquina_centrada(v, ancho, alto);
-                                    vec![escena.anadir(img::elemento_imagen(
-                                        id_objeto, x, y, ancho, alto,
-                                    ))]
+                let nuevos =
+                    match img::decidir_pegado(!self.portapapeles.is_empty(), del_sistema) {
+                        img::Pegado::Elementos => pp::pegar(
+                            escena,
+                            &self.portapapeles,
+                            pp::DESPLAZAMIENTO,
+                            pp::DESPLAZAMIENTO,
+                        ),
+                        img::Pegado::Imagen(bruta) => match imagenes {
+                            None => Vec::new(),
+                            Some(imagenes) => {
+                                let v = vista.camara.ventana(ancho_px, alto_px);
+                                match imagenes.guardar(bruta) {
+                                    None => Vec::new(),
+                                    Some(id_objeto) => {
+                                        // El tamano se toma de lo que de verdad
+                                        // se subio: si la GPU obligo a reducir,
+                                        // la caja tiene que seguir a los pixeles
+                                        // o la imagen saldria estirada.
+                                        let (w, h) =
+                                            imagenes.tamano(id_objeto).expect("recien guardada");
+                                        let (ancho, alto) =
+                                            img::tamano_al_pegar(w, h, v.2 - v.0, v.3 - v.1);
+                                        let (x, y) = img::esquina_centrada(v, ancho, alto);
+                                        vec![escena.anadir(img::elemento_imagen(
+                                            id_objeto, x, y, ancho, alto,
+                                        ))]
+                                    }
                                 }
                             }
-                        }
-                    },
-                    img::Pegado::Nada => Vec::new(),
-                };
+                        },
+                        img::Pegado::Nada => Vec::new(),
+                    };
                 let hubo = !nuevos.is_empty();
                 if hubo {
                     // Queda elegido lo pegado, como en Excalidraw: asi se
@@ -1020,7 +1029,15 @@ mod pruebas {
         assert_eq!(gesto.herramienta, Herramienta::Mano);
         assert!(!a.consumido || a.paso.is_none());
         // La S del lazo es un atajo del motor: consumida, pero sin elegirlo.
-        mano.herramienta(&tecla(b'S' as u32), &mut gesto, &mut escena, None, vista_de(&camara), 1600.0, 900.0);
+        mano.herramienta(
+            &tecla(b'S' as u32),
+            &mut gesto,
+            &mut escena,
+            None,
+            vista_de(&camara),
+            1600.0,
+            900.0,
+        );
         assert_eq!(gesto.herramienta, Herramienta::Mano);
         // Caso negativo: la R del resaltador sigue valiendo.
         mano.herramienta(
@@ -1035,7 +1052,15 @@ mod pruebas {
         assert_eq!(gesto.herramienta, Herramienta::Resaltador);
         permitidas::fijar(Default::default());
         // Encendida otra vez, la S elige el lazo.
-        mano.herramienta(&tecla(b'S' as u32), &mut gesto, &mut escena, None, vista_de(&camara), 1600.0, 900.0);
+        mano.herramienta(
+            &tecla(b'S' as u32),
+            &mut gesto,
+            &mut escena,
+            None,
+            vista_de(&camara),
+            1600.0,
+            900.0,
+        );
         assert_eq!(gesto.herramienta, Herramienta::Lazo);
     }
 
@@ -1095,11 +1120,28 @@ mod pruebas {
             y: r.y + r.alto as i32 / 2,
         };
         let clic = |mano: &mut Mano, gesto: &mut Gesto, escena: &mut Escena, p: Punto| {
-            let a = mano.interfaz(&EventoOverlay::BotonPulsado(p), gesto, escena, Some(&caja), false, v);
-            let b = mano.interfaz(&EventoOverlay::BotonSoltado(p), gesto, escena, Some(&caja), false, v);
+            let a = mano.interfaz(
+                &EventoOverlay::BotonPulsado(p),
+                gesto,
+                escena,
+                Some(&caja),
+                false,
+                v,
+            );
+            let b = mano.interfaz(
+                &EventoOverlay::BotonSoltado(p),
+                gesto,
+                escena,
+                Some(&caja),
+                false,
+                v,
+            );
             (a, b)
         };
-        let flechas = centro(caja.rect_de_boton(BotonCaja::Grupo(GrupoBarra::Flechas)).unwrap());
+        let flechas = centro(
+            caja.rect_de_boton(BotonCaja::Grupo(GrupoBarra::Flechas))
+                .unwrap(),
+        );
         let (a, _) = clic(&mut mano, &mut gesto, &mut escena, flechas);
         assert!(a.consumido && a.eligio);
         assert_eq!(gesto.herramienta, Herramienta::Flecha, "la cara del grupo");
@@ -1111,7 +1153,10 @@ mod pruebas {
                 .unwrap(),
         );
         let (a, b) = clic(&mut mano, &mut gesto, &mut escena, linea);
-        assert!(a.consumido && b.consumido, "ni el pulsar ni el soltar son del lienzo");
+        assert!(
+            a.consumido && b.consumido,
+            "ni el pulsar ni el soltar son del lienzo"
+        );
         assert_eq!(gesto.herramienta, Herramienta::Linea);
         assert_eq!(mano.desplegado, None, "elegir una hermana las cierra");
         assert_eq!(escena.cuantos_visibles(), 0);
@@ -1157,7 +1202,10 @@ mod pruebas {
         let e = escena.visibles().next().expect("trazo");
         // (200/2 + 100, 200/2 + 50): donde cae el raton en el documento.
         let (x0, y0, _, _) = e.caja();
-        assert!((x0 - 200.0).abs() < 3.0 && (y0 - 150.0).abs() < 3.0, "{x0} {y0}");
+        assert!(
+            (x0 - 200.0).abs() < 3.0 && (y0 - 150.0).abs() < 3.0,
+            "{x0} {y0}"
+        );
         assert!(escena.deshacer());
         assert_eq!(escena.cuantos_visibles(), 0);
     }

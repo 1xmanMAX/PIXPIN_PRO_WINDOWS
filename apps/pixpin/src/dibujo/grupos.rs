@@ -115,8 +115,19 @@ mod pruebas {
         assert_eq!(r.desplegado, Some(GrupoBarra::Formas));
         // Pulsado otra vez, abierto y con su herramienta ya puesta: se
         // cierra y no cambia nada.
-        let r = pulsar(&c, GrupoBarra::Formas, Herramienta::Rectangulo, Some(GrupoBarra::Formas));
-        assert_eq!(r, ClicGrupo { elegir: None, desplegado: None });
+        let r = pulsar(
+            &c,
+            GrupoBarra::Formas,
+            Herramienta::Rectangulo,
+            Some(GrupoBarra::Formas),
+        );
+        assert_eq!(
+            r,
+            ClicGrupo {
+                elegir: None,
+                desplegado: None
+            }
+        );
         // Se usa el rombo (por el desplegable o su letra): se queda de cara
         // aunque luego se coja el lapiz.
         assert_eq!(
@@ -133,7 +144,18 @@ mod pruebas {
         );
         // Caso negativo: el grupo de sacar no imprime ni comparte al pulsarlo,
         // solo se abre; y abrir otro grupo cierra el que hubiera.
-        let r = pulsar(&c, GrupoBarra::Sacar, Herramienta::Lapiz, Some(GrupoBarra::Formas));
-        assert_eq!(r, ClicGrupo { elegir: None, desplegado: Some(GrupoBarra::Sacar) });
+        let r = pulsar(
+            &c,
+            GrupoBarra::Sacar,
+            Herramienta::Lapiz,
+            Some(GrupoBarra::Formas),
+        );
+        assert_eq!(
+            r,
+            ClicGrupo {
+                elegir: None,
+                desplegado: Some(GrupoBarra::Sacar)
+            }
+        );
     }
 }

@@ -80,7 +80,12 @@ pub fn sitios(tamanos: &[(f64, f64)], fila: bool) -> Vec<Sitio> {
     tamanos
         .iter()
         .map(|&(an, al)| {
-            let s = Sitio { x, y, ancho: an, alto: al };
+            let s = Sitio {
+                x,
+                y,
+                ancho: an,
+                alto: al,
+            };
             if fila {
                 x += an + hueco;
             } else {
@@ -100,13 +105,23 @@ pub fn anchos(medidas: &[(f64, f64)]) -> Vec<u32> {
         return Vec::new();
     }
     let area: f64 = medidas.iter().map(|m| m.0.max(1.0) * m.1.max(1.0)).sum();
-    let mut k = if area > 0.0 { (PIXELES_EN_TOTAL / area).sqrt() } else { 1.0 };
+    let mut k = if area > 0.0 {
+        (PIXELES_EN_TOTAL / area).sqrt()
+    } else {
+        1.0
+    };
     let mas_ancha = medidas.iter().map(|m| m.0.max(1.0)).fold(0.0, f64::max);
-    let mas_estrecha = medidas.iter().map(|m| m.0.max(1.0)).fold(f64::MAX, f64::min);
+    let mas_estrecha = medidas
+        .iter()
+        .map(|m| m.0.max(1.0))
+        .fold(f64::MAX, f64::min);
     k = k.min(ANCHO_MAXIMO / mas_ancha);
     // Pasarse de pixeles se aguanta; no ver lo que pone, no.
     k = k.max(ANCHO_MINIMO / mas_estrecha);
-    medidas.iter().map(|m| ((m.0.max(1.0) * k) as u32).max(1)).collect()
+    medidas
+        .iter()
+        .map(|m| ((m.0.max(1.0) * k) as u32).max(1))
+        .collect()
 }
 
 /// «3 a 5» si van seguidas; «3, 5 y 8» si no (desde 0 → desde 1).
@@ -118,7 +133,11 @@ fn cuales(paginas: &[u32]) -> String {
         _ if n.windows(2).all(|w| w[1] == w[0] + 1) => format!("{} a {}", n[0], n[n.len() - 1]),
         [antes @ .., ultimo] => format!(
             "{} y {ultimo}",
-            antes.iter().map(u32::to_string).collect::<Vec<_>>().join(", ")
+            antes
+                .iter()
+                .map(u32::to_string)
+                .collect::<Vec<_>>()
+                .join(", ")
         ),
     }
 }
@@ -160,7 +179,10 @@ pub fn de(pdf: Option<PathBuf>, ficha: &str, elegidos: &[&Mensaje]) -> Option<Pe
     let mut paginas = Vec::new();
     for m in elegidos {
         // Un lienzo con marco, una nota o una tabla no son «la pagina».
-        if ["marco", "nota", "tabla"].iter().any(|k| m.resto.get(*k).is_some_and(|v| !v.is_null())) {
+        if ["marco", "nota", "tabla"]
+            .iter()
+            .any(|k| m.resto.get(*k).is_some_and(|v| !v.is_null()))
+        {
             return None;
         }
         paginas.push(m.pagina?);
@@ -192,7 +214,10 @@ fn terminadas_() -> &'static Mutex<Vec<Terminada>> {
 
 /// Lo que ha terminado desde la ultima vez.
 pub fn terminadas() -> Vec<Terminada> {
-    terminadas_().lock().map(|mut t| std::mem::take(&mut *t)).unwrap_or_default()
+    terminadas_()
+        .lock()
+        .map(|mut t| std::mem::take(&mut *t))
+        .unwrap_or_default()
 }
 
 /// **Empieza a montar el lienzo en su hilo**: son varias paginas pintadas, y
@@ -230,7 +255,11 @@ pub fn en_un_lienzo(raiz: &Path, peticion: &Peticion, ahora: i64) -> Result<Stri
     let medidas: Vec<(f64, f64)> = peticion
         .paginas
         .iter()
-        .map(|&p| todas.get(p as usize).map_or((595.0, 842.0), |m| (m.0 as f64, m.1 as f64)))
+        .map(|&p| {
+            todas
+                .get(p as usize)
+                .map_or((595.0, 842.0), |m| (m.0 as f64, m.1 as f64))
+        })
         .collect();
     let anchos = anchos(&medidas);
     let carpeta = almacen::carpeta(raiz, &peticion.ficha);
@@ -259,7 +288,8 @@ pub fn en_un_lienzo(raiz: &Path, peticion: &Peticion, ahora: i64) -> Result<Stri
     let sitios = sitios(&tamanos, en_fila(&tamanos));
     let dibujo = format!("dib-fus-{ahora}");
     let texto = lienzo(&peticion.paginas, &hechas, &sitios, ahora);
-    std::fs::write(almacen::lienzo(raiz, &peticion.ficha, &dibujo), texto).map_err(|e| e.to_string())?;
+    std::fs::write(almacen::lienzo(raiz, &peticion.ficha, &dibujo), texto)
+        .map_err(|e| e.to_string())?;
     let nombre = nombre(&peticion.paginas);
     anadir_hoja(raiz, &peticion.ficha, &nombre, &dibujo, ahora)?;
     Ok(nombre)
@@ -269,7 +299,12 @@ pub fn en_un_lienzo(raiz: &Path, peticion: &Peticion, ahora: i64) -> Result<Stri
 /// la foto de la pagina dentro, las dos con candado (lo pidio el usuario el
 /// 14-sep-2026: son el papel, y un arrastre sin querer movia la pagina con
 /// lo ya dibujado encima).
-fn lienzo(paginas: &[u32], hechas: &[(u32, String, f64, f64)], sitios: &[Sitio], ahora: i64) -> String {
+fn lienzo(
+    paginas: &[u32],
+    hechas: &[(u32, String, f64, f64)],
+    sitios: &[Sitio],
+    ahora: i64,
+) -> String {
     let mut elementos = Vec::new();
     let mut ficheros = serde_json::Map::new();
     for (i, ((pagina, foto, _, _), s)) in hechas.iter().zip(sitios).enumerate() {
@@ -310,7 +345,13 @@ fn lienzo(paginas: &[u32], hechas: &[(u32, String, f64, f64)], sitios: &[Sitio],
 }
 
 /// Anade la hoja al `proyecto.json`, de un tiron (al lado y luego el nombre).
-fn anadir_hoja(raiz: &Path, ficha: &str, nombre: &str, dibujo: &str, ahora: i64) -> Result<(), String> {
+fn anadir_hoja(
+    raiz: &Path,
+    ficha: &str,
+    nombre: &str,
+    dibujo: &str,
+    ahora: i64,
+) -> Result<(), String> {
     let carpeta = almacen::carpeta(raiz, ficha);
     let ruta = carpeta.join("proyecto.json");
     let mut p: Proyecto = std::fs::read_to_string(&ruta)
@@ -329,7 +370,11 @@ fn anadir_hoja(raiz: &Path, ficha: &str, nombre: &str, dibujo: &str, ahora: i64)
     p.hojas.push(h);
     p.tocado = ahora;
     let temporal = carpeta.join("proyecto.json.fus.tmp");
-    std::fs::write(&temporal, serde_json::to_string(&p).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
+    std::fs::write(
+        &temporal,
+        serde_json::to_string(&p).map_err(|e| e.to_string())?,
+    )
+    .map_err(|e| e.to_string())?;
     std::fs::rename(&temporal, &ruta).map_err(|e| e.to_string())
 }
 

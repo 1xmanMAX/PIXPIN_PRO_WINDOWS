@@ -29,7 +29,12 @@ pub fn id_del_lienzo(m: &Mensaje) -> String {
 /// regla vive en `pixpin_proyecto::lienzo_de_la_foto`; aqui solo se mide la
 /// foto y se deja constancia. `false` si no se pudo (la foto no esta, o no
 /// se deja leer): quien llama sigue como antes, con el `.pixpin2d`.
-pub fn asegurar_lienzo(raiz: &Path, proyecto: &str, mensajes: &mut [Mensaje], indice: usize) -> bool {
+pub fn asegurar_lienzo(
+    raiz: &Path,
+    proyecto: &str,
+    mensajes: &mut [Mensaje],
+    indice: usize,
+) -> bool {
     let Some(m) = mensajes.get(indice) else {
         return false;
     };
@@ -60,7 +65,11 @@ pub fn asegurar_lienzo(raiz: &Path, proyecto: &str, mensajes: &mut [Mensaje], in
                 referencia = h.referencia_puesta,
                 "lienzo de la foto"
             );
-            if mensajes[indice].referencia.as_deref().is_none_or(str::is_empty) {
+            if mensajes[indice]
+                .referencia
+                .as_deref()
+                .is_none_or(str::is_empty)
+            {
                 mensajes[indice].referencia = Some(h.id);
             }
             true
@@ -112,12 +121,18 @@ pub fn dibujo_de_la_foto(
 ) -> Option<DibujoDeLaFoto> {
     let (_, ruta) = lienzo_de_la_foto(raiz, proyecto, m)?;
     let texto = std::fs::read_to_string(&ruta)
-        .inspect_err(|e| tracing::warn!(?e, ruta = %ruta.display(), "lienzo de foto que no se pudo leer"))
+        .inspect_err(
+            |e| tracing::warn!(?e, ruta = %ruta.display(), "lienzo de foto que no se pudo leer"),
+        )
         .ok()?;
     let lienzo = pixpin_motor2d::excalidraw::leer(&texto)
         .inspect_err(|e| tracing::warn!(?e, "lienzo de foto que no se entiende"))
         .ok()?;
-    dibujo_encima(&lienzo.elementos(), doc, pixpin_motor2d::excalidraw::fondo(&lienzo))
+    dibujo_encima(
+        &lienzo.elementos(),
+        doc,
+        pixpin_motor2d::excalidraw::fondo(&lienzo),
+    )
 }
 
 /// La cuenta, sin disco: todo lo que no es la foto, pasado de unidades del
@@ -137,13 +152,24 @@ fn dibujo_encima(
         .iter()
         .copied()
         .filter(es_foto)
-        .find(|e| e.extras.id_de_fichero.as_deref().is_some_and(|i| i.starts_with("foto-")))
+        .find(|e| {
+            e.extras
+                .id_de_fichero
+                .as_deref()
+                .is_some_and(|i| i.starts_with("foto-"))
+        })
         .or_else(|| visibles.iter().copied().find(es_foto));
     let mut escena = Escena::nueva();
-    for e in visibles.iter().filter(|e| la_foto.is_none_or(|f| !std::ptr::eq(**e, f))) {
+    for e in visibles
+        .iter()
+        .filter(|e| la_foto.is_none_or(|f| !std::ptr::eq(**e, f)))
+    {
         escena.anadir((*e).clone());
     }
-    let ordenes = crate::dibujo::tema::ordenes_como_en_el_lienzo(pixpin_motor2d::ordenes_de_escena(&escena), papel);
+    let ordenes = crate::dibujo::tema::ordenes_como_en_el_lienzo(
+        pixpin_motor2d::ordenes_de_escena(&escena),
+        papel,
+    );
     if ordenes.is_empty() {
         return None;
     }
@@ -156,7 +182,10 @@ fn dibujo_encima(
     };
     let llevar = |p: Punto2| Punto2::nuevo((p.x - ox) * sx, (p.y - oy) * sy);
     let s = (sx + sy) / 2.0;
-    let ordenes = ordenes.into_iter().map(|o| llevar_orden(o, &llevar, s, (sx, sy))).collect();
+    let ordenes = ordenes
+        .into_iter()
+        .map(|o| llevar_orden(o, &llevar, s, (sx, sy)))
+        .collect();
     let trazos = escena.caja().map(|(x0, y0, x1, y1)| {
         let (a, b) = (llevar(Punto2::nuevo(x0, y0)), llevar(Punto2::nuevo(x1, y1)));
         (a.x, a.y, b.x, b.y)
@@ -166,13 +195,30 @@ fn dibujo_encima(
 
 /// Una orden pasada a otra escala: los puntos por `llevar`, los grosores y
 /// la letra por `s`.
-fn llevar_orden(o: Orden, llevar: &impl Fn(Punto2) -> Punto2, s: f32, (sx, sy): (f32, f32)) -> Orden {
+fn llevar_orden(
+    o: Orden,
+    llevar: &impl Fn(Punto2) -> Punto2,
+    s: f32,
+    (sx, sy): (f32, f32),
+) -> Orden {
     let todos = |v: Vec<Punto2>| v.into_iter().map(llevar).collect::<Vec<_>>();
     match o {
-        Orden::Poligono { puntos, color } => Orden::Poligono { puntos: todos(puntos), color },
-        Orden::Tinta { contorno, color } => Orden::Tinta { contorno: todos(contorno), color },
-        Orden::Relleno { puntos, color } => Orden::Relleno { puntos: todos(puntos), color },
-        Orden::Velo { hueco, color } => Orden::Velo { hueco: todos(hueco), color },
+        Orden::Poligono { puntos, color } => Orden::Poligono {
+            puntos: todos(puntos),
+            color,
+        },
+        Orden::Tinta { contorno, color } => Orden::Tinta {
+            contorno: todos(contorno),
+            color,
+        },
+        Orden::Relleno { puntos, color } => Orden::Relleno {
+            puntos: todos(puntos),
+            color,
+        },
+        Orden::Velo { hueco, color } => Orden::Velo {
+            hueco: todos(hueco),
+            color,
+        },
         Orden::Polilinea {
             puntos,
             color,
@@ -274,10 +320,12 @@ pub fn caja_girada(caja: (f32, f32, f32, f32), angulo: f32) -> (f32, f32, f32, f
     }
     let (x0, y0, x1, y1) = caja;
     let centro = Punto2::nuevo((x0 + x1) / 2.0, (y0 + y1) / 2.0);
-    let esquinas = [(x0, y0), (x1, y0), (x1, y1), (x0, y1)].map(|(x, y)| Punto2::nuevo(x, y).girar(centro, angulo));
-    esquinas.iter().fold((f32::MAX, f32::MAX, f32::MIN, f32::MIN), |(a, b, c, d), p| {
-        (a.min(p.x), b.min(p.y), c.max(p.x), d.max(p.y))
-    })
+    let esquinas = [(x0, y0), (x1, y0), (x1, y1), (x0, y1)]
+        .map(|(x, y)| Punto2::nuevo(x, y).girar(centro, angulo));
+    esquinas.iter().fold(
+        (f32::MAX, f32::MAX, f32::MIN, f32::MIN),
+        |(a, b, c, d), p| (a.min(p.x), b.min(p.y), c.max(p.x), d.max(p.y)),
+    )
 }
 
 /// Abre en el lienzo el dibujo que el movil hizo sobre la foto `indice`, si
@@ -342,7 +390,10 @@ mod pruebas {
       "referenciasVisibles":true,"alfileres":[],"vista":"cero"}"##;
 
     fn raiz(etiqueta: &str) -> PathBuf {
-        let r = std::env::temp_dir().join(format!("pixpin-foto-anotada-{etiqueta}-{}", std::process::id()));
+        let r = std::env::temp_dir().join(format!(
+            "pixpin-foto-anotada-{etiqueta}-{}",
+            std::process::id()
+        ));
         let _ = std::fs::remove_dir_all(&r);
         std::fs::create_dir_all(r.join("proyectos").join("p1").join("lienzos")).unwrap();
         r
@@ -376,11 +427,15 @@ mod pruebas {
             .iter()
             .flat_map(|o| match o {
                 Orden::Poligono { puntos, .. }
-                | Orden::Tinta { contorno: puntos, .. }
+                | Orden::Tinta {
+                    contorno: puntos, ..
+                }
                 | Orden::Polilinea { puntos, .. }
                 | Orden::Relleno { puntos, .. }
                 | Orden::Velo { hueco: puntos, .. } => puntos.clone(),
-                Orden::Texto { x, y, .. } | Orden::Imagen { x, y, .. } => vec![Punto2::nuevo(*x, *y)],
+                Orden::Texto { x, y, .. } | Orden::Imagen { x, y, .. } => {
+                    vec![Punto2::nuevo(*x, *y)]
+                }
                 Orden::Rotulo { centro, .. } => vec![*centro],
             })
             .collect()
@@ -400,10 +455,19 @@ mod pruebas {
         );
         // La elipse (400..600, 300..400) y la raya (800..900, 600..650), al doble.
         let (x0, y0, x1, y1) = d.trazos.expect("con caja");
-        assert!((x0 - 800.0).abs() < 30.0 && (y0 - 600.0).abs() < 30.0, "{x0} {y0}");
-        assert!((x1 - 1800.0).abs() < 30.0 && (y1 - 1300.0).abs() < 30.0, "{x1} {y1}");
+        assert!(
+            (x0 - 800.0).abs() < 30.0 && (y0 - 600.0).abs() < 30.0,
+            "{x0} {y0}"
+        );
+        assert!(
+            (x1 - 1800.0).abs() < 30.0 && (y1 - 1300.0).abs() < 30.0,
+            "{x1} {y1}"
+        );
         for p in puntos(&d.ordenes) {
-            assert!(p.x > 700.0 && p.y > 500.0, "todo cae sobre lo anotado: {p:?}");
+            assert!(
+                p.x > 700.0 && p.y > 500.0,
+                "todo cae sobre lo anotado: {p:?}"
+            );
         }
         let _ = std::fs::remove_dir_all(&r);
     }
@@ -435,7 +499,8 @@ mod pruebas {
     fn en_la_burbuja_la_tinta_negra_de_un_lienzo_de_pizarra_se_ve_clara_como_en_el_lienzo() {
         let r = raiz("pizarra");
         poner(&r, "foto-m7", &con_papel_y_raya_negra("#000000"));
-        let d = dibujo_de_la_foto(&r, "p1", &foto("m7", None), (1600.0, 1200.0)).expect("con dibujo");
+        let d =
+            dibujo_de_la_foto(&r, "p1", &foto("m7", None), (1600.0, 1200.0)).expect("con dibujo");
         let c = colores(&d.ordenes);
         assert!(!c.is_empty());
         // La raya negra sale clara (como la pinta el lienzo) y la elipse
@@ -445,10 +510,17 @@ mod pruebas {
         }
         // Caso negativo: el mismo dibujo en papel blanco no cambia su tinta.
         poner(&r, "foto-m7", &con_papel_y_raya_negra("#ffffff"));
-        let d = dibujo_de_la_foto(&r, "p1", &foto("m7", None), (1600.0, 1200.0)).expect("con dibujo");
+        let d =
+            dibujo_de_la_foto(&r, "p1", &foto("m7", None), (1600.0, 1200.0)).expect("con dibujo");
         let c = colores(&d.ordenes);
-        assert!(c.iter().any(|k| (k.r - 30.0 / 255.0).abs() < 0.01), "la raya sigue negra: {c:?}");
-        assert!(c.iter().any(|k| k.r > 0.99 && k.g > 0.99), "la elipse sigue blanca: {c:?}");
+        assert!(
+            c.iter().any(|k| (k.r - 30.0 / 255.0).abs() < 0.01),
+            "la raya sigue negra: {c:?}"
+        );
+        assert!(
+            c.iter().any(|k| k.r > 0.99 && k.g > 0.99),
+            "la elipse sigue blanca: {c:?}"
+        );
         let _ = std::fs::remove_dir_all(&r);
     }
 
@@ -519,7 +591,11 @@ mod pruebas {
                 pixeles.extend_from_slice(&[c[0], c[1], c[2], 255]);
             }
         }
-        pixpin_codec::imagen::ImagenRgba { ancho, alto, pixeles }
+        pixpin_codec::imagen::ImagenRgba {
+            ancho,
+            alto,
+            pixeles,
+        }
     }
 
     /// Pinta sin ventana y guarda el PNG en `PIXPIN_MUESTRAS` (o el temporal).
@@ -539,11 +615,17 @@ mod pruebas {
             assert!(imagenes.guardar_con_id(id, img));
         }
         imagenes.asegurar(&motor);
-        motor.dibujar(&fuera.destino, |p| pintar(p, &imagenes)).expect("pintar");
+        motor
+            .dibujar(&fuera.destino, |p| pintar(p, &imagenes))
+            .expect("pintar");
         fuera.esperar_gpu().expect("esperar");
         let (_, _, pixeles) = fuera.leer_rgba().expect("leer");
-        let png = pixpin_codec::imagen::codificar_png(&pixpin_codec::imagen::ImagenRgba { ancho, alto, pixeles })
-            .expect("codificar");
+        let png = pixpin_codec::imagen::codificar_png(&pixpin_codec::imagen::ImagenRgba {
+            ancho,
+            alto,
+            pixeles,
+        })
+        .expect("codificar");
         let carpeta = std::env::var_os("PIXPIN_MUESTRAS")
             .map(PathBuf::from)
             .unwrap_or_else(std::env::temp_dir);
@@ -582,21 +664,26 @@ mod pruebas {
         let escena = pixpin_motor2d::excalidraw::a_escena(&lienzo);
         let (id_foto, _) = pixpin_motor2d::excalidraw::ficheros(&lienzo)[0].clone();
         let papel = escena.fondo;
-        a_png("lienzo-del-movil-girado", (600, 620), vec![(id_foto, foto_de_cuartos(400, 300))], |p, imagenes| {
-            p.limpiar(crate::dibujo::pintar::a_color(papel));
-            let mut cache = pixpin_motor2d::cache::Cache::nueva();
-            let mut tinta = pixpin_render::CacheTinta::nueva();
-            crate::dibujo::pintar::pintar_escena(
-                p,
-                &escena,
-                &mut cache,
-                &mut tinta,
-                imagenes,
-                (0.0, 0.0, 600.0, 620.0),
-                1.0,
-                |_| false,
-            );
-        });
+        a_png(
+            "lienzo-del-movil-girado",
+            (600, 620),
+            vec![(id_foto, foto_de_cuartos(400, 300))],
+            |p, imagenes| {
+                p.limpiar(crate::dibujo::pintar::a_color(papel));
+                let mut cache = pixpin_motor2d::cache::Cache::nueva();
+                let mut tinta = pixpin_render::CacheTinta::nueva();
+                crate::dibujo::pintar::pintar_escena(
+                    p,
+                    &escena,
+                    &mut cache,
+                    &mut tinta,
+                    imagenes,
+                    (0.0, 0.0, 600.0, 620.0),
+                    1.0,
+                    |_| false,
+                );
+            },
+        );
     }
 
     /// **La burbuja de una foto anotada en el movil**: la foto (a su tamano
@@ -608,27 +695,43 @@ mod pruebas {
         let r = raiz("muestra");
         poner(&r, "foto-m9", LIENZO_DE_FOTO);
         let (w, h) = (1600u32, 1200u32);
-        let d = dibujo_de_la_foto(&r, "p1", &foto("m9", None), (w as f32 * 2.0, h as f32 * 2.0)).unwrap();
+        let d = dibujo_de_la_foto(
+            &r,
+            "p1",
+            &foto("m9", None),
+            (w as f32 * 2.0, h as f32 * 2.0),
+        )
+        .unwrap();
         let escala = 0.25;
-        a_png("foto-anotada-en-burbuja", (800, 600), vec![(1, foto_de_cuartos(w * 2, h * 2))], |p, imagenes| {
-            p.limpiar(pixpin_render::Color { r: 1.0, g: 1.0, b: 1.0, a: 1.0 });
-            p.poner_vista((0.0, 0.0), escala, (0.0, 0.0));
-            let vista = (0.0, 0.0, w as f32 * 2.0, h as f32 * 2.0);
-            let foto = Orden::Imagen {
-                id_objeto: 1,
-                x: 0.0,
-                y: 0.0,
-                ancho: w as f32 * 2.0,
-                alto: h as f32 * 2.0,
-                opacidad: 1.0,
-                recorte: None,
-                angulo: 0.0,
-            };
-            crate::dibujo::pintar::dibujar_orden(p, &foto, vista, None, imagenes, escala, None);
-            for o in &d.ordenes {
-                crate::dibujo::pintar::dibujar_orden(p, o, vista, None, imagenes, escala, None);
-            }
-        });
+        a_png(
+            "foto-anotada-en-burbuja",
+            (800, 600),
+            vec![(1, foto_de_cuartos(w * 2, h * 2))],
+            |p, imagenes| {
+                p.limpiar(pixpin_render::Color {
+                    r: 1.0,
+                    g: 1.0,
+                    b: 1.0,
+                    a: 1.0,
+                });
+                p.poner_vista((0.0, 0.0), escala, (0.0, 0.0));
+                let vista = (0.0, 0.0, w as f32 * 2.0, h as f32 * 2.0);
+                let foto = Orden::Imagen {
+                    id_objeto: 1,
+                    x: 0.0,
+                    y: 0.0,
+                    ancho: w as f32 * 2.0,
+                    alto: h as f32 * 2.0,
+                    opacidad: 1.0,
+                    recorte: None,
+                    angulo: 0.0,
+                };
+                crate::dibujo::pintar::dibujar_orden(p, &foto, vista, None, imagenes, escala, None);
+                for o in &d.ordenes {
+                    crate::dibujo::pintar::dibujar_orden(p, o, vista, None, imagenes, escala, None);
+                }
+            },
+        );
         let _ = std::fs::remove_dir_all(&r);
     }
 
@@ -684,14 +787,33 @@ mod pruebas {
         // Y entra en lo que se sincroniza, con su foto.
         let d = pixpin_proyecto::vista::DiscoPc::nuevo(&r);
         let chat = pixpin_proyecto::vista::chat_de_ficha(&r, "p1").unwrap();
-        let alcance: Vec<String> = d.alcance(&chat).unwrap().into_iter().map(|(x, _)| x).collect();
-        assert!(alcance.contains(&"pins/draw/foto-m10.excalidraw.gz".to_string()), "{alcance:?}");
-        assert!(alcance.iter().any(|x| x.contains("/imagenes/foto")), "{alcance:?}");
+        let alcance: Vec<String> = d
+            .alcance(&chat)
+            .unwrap()
+            .into_iter()
+            .map(|(x, _)| x)
+            .collect();
+        assert!(
+            alcance.contains(&"pins/draw/foto-m10.excalidraw.gz".to_string()),
+            "{alcance:?}"
+        );
+        assert!(
+            alcance.iter().any(|x| x.contains("/imagenes/foto")),
+            "{alcance:?}"
+        );
         // Caso negativo: la segunda vez no crea otro ni reescribe el cuaderno.
         let antes = std::fs::read_to_string(r.join("proyectos/p1/guardados.jsonl")).unwrap();
         assert!(asegurar_lienzo(&r, "p1", &mut mensajes, 0));
-        assert_eq!(std::fs::read_to_string(r.join("proyectos/p1/guardados.jsonl")).unwrap(), antes);
-        assert_eq!(std::fs::read_dir(r.join("proyectos/p1/imagenes")).unwrap().count(), 1);
+        assert_eq!(
+            std::fs::read_to_string(r.join("proyectos/p1/guardados.jsonl")).unwrap(),
+            antes
+        );
+        assert_eq!(
+            std::fs::read_dir(r.join("proyectos/p1/imagenes"))
+                .unwrap()
+                .count(),
+            1
+        );
         let _ = std::fs::remove_dir_all(&r);
     }
 
@@ -715,9 +837,13 @@ mod pruebas {
         assert!(asegurar_lienzo(&r, "p1", &mut mensajes, 0));
         assert!(!viejo.exists(), "el .pixpin2d se aparta");
         // La burbuja lo lee ahora del lienzo, y cae donde estaba en la foto.
-        let d = dibujo_de_la_foto(&r, "p1", &mensajes[0], (4200.0, 100.0)).expect("lo adoptado se ve");
+        let d =
+            dibujo_de_la_foto(&r, "p1", &mensajes[0], (4200.0, 100.0)).expect("lo adoptado se ve");
         let (x0, y0, x1, y1) = d.trazos.unwrap();
-        assert!((x0 - 1000.0).abs() < 60.0 && (x1 - 3000.0).abs() < 60.0, "{x0} {x1}");
+        assert!(
+            (x0 - 1000.0).abs() < 60.0 && (x1 - 3000.0).abs() < 60.0,
+            "{x0} {x1}"
+        );
         assert!(y0 > 0.0 && y1 < 100.0 + 40.0, "{y0} {y1}");
         let _ = std::fs::remove_dir_all(&r);
     }
@@ -743,7 +869,12 @@ mod pruebas {
             y: 200.0,
             ancho: 1800.0,
             alto: 1200.0,
-            trazo: pixpin_motor2d::ColorRgba { r: 0.9, g: 0.1, b: 0.1, a: 1.0 },
+            trazo: pixpin_motor2d::ColorRgba {
+                r: 0.9,
+                g: 0.1,
+                b: 0.1,
+                a: 1.0,
+            },
             grosor: 30.0,
             ..Elemento::default()
         });
@@ -755,33 +886,54 @@ mod pruebas {
             y: 1600.0,
             ancho: 1800.0,
             alto: 1400.0,
-            trazo: pixpin_motor2d::ColorRgba { r: 0.1, g: 0.2, b: 0.9, a: 1.0 },
+            trazo: pixpin_motor2d::ColorRgba {
+                r: 0.1,
+                g: 0.2,
+                b: 0.9,
+                a: 1.0,
+            },
             grosor: 40.0,
             ..Elemento::default()
         });
-        pixpin_motor2d::guardar(&pixpin_proyecto::lienzo_de_la_foto::pixpin2d_de(&foto), &escena).unwrap();
+        pixpin_motor2d::guardar(
+            &pixpin_proyecto::lienzo_de_la_foto::pixpin2d_de(&foto),
+            &escena,
+        )
+        .unwrap();
         assert!(asegurar_lienzo(&r, "p1", &mut mensajes, 0));
         let d = dibujo_de_la_foto(&r, "p1", &mensajes[0], (w as f32, h as f32)).unwrap();
         let escala = 0.2;
-        a_png("foto-adoptada-en-burbuja", (880, 640), vec![(1, foto_de_cuartos(w, h))], |p, imagenes| {
-            p.limpiar(pixpin_render::Color { r: 1.0, g: 1.0, b: 1.0, a: 1.0 });
-            p.poner_vista((0.0, 0.0), escala, (0.0, 0.0));
-            let vista = (0.0, 0.0, w as f32, h as f32);
-            let fondo = Orden::Imagen {
-                id_objeto: 1,
-                x: 0.0,
-                y: 0.0,
-                ancho: w as f32,
-                alto: h as f32,
-                opacidad: 1.0,
-                recorte: None,
-                angulo: 0.0,
-            };
-            crate::dibujo::pintar::dibujar_orden(p, &fondo, vista, None, imagenes, escala, None);
-            for o in &d.ordenes {
-                crate::dibujo::pintar::dibujar_orden(p, o, vista, None, imagenes, escala, None);
-            }
-        });
+        a_png(
+            "foto-adoptada-en-burbuja",
+            (880, 640),
+            vec![(1, foto_de_cuartos(w, h))],
+            |p, imagenes| {
+                p.limpiar(pixpin_render::Color {
+                    r: 1.0,
+                    g: 1.0,
+                    b: 1.0,
+                    a: 1.0,
+                });
+                p.poner_vista((0.0, 0.0), escala, (0.0, 0.0));
+                let vista = (0.0, 0.0, w as f32, h as f32);
+                let fondo = Orden::Imagen {
+                    id_objeto: 1,
+                    x: 0.0,
+                    y: 0.0,
+                    ancho: w as f32,
+                    alto: h as f32,
+                    opacidad: 1.0,
+                    recorte: None,
+                    angulo: 0.0,
+                };
+                crate::dibujo::pintar::dibujar_orden(
+                    p, &fondo, vista, None, imagenes, escala, None,
+                );
+                for o in &d.ordenes {
+                    crate::dibujo::pintar::dibujar_orden(p, o, vista, None, imagenes, escala, None);
+                }
+            },
+        );
         let _ = std::fs::remove_dir_all(&r);
     }
 
@@ -814,7 +966,10 @@ mod pruebas {
         poner(&r, "foto-m5", &v.to_string());
         let d = dibujo_de_la_foto(&r, "p1", &foto("m5", None), (3200.0, 2400.0)).unwrap();
         let (x0, _, x1, _) = d.trazos.unwrap();
-        assert!((x0 - 400.0).abs() < 15.0 && (x1 - 900.0).abs() < 15.0, "{x0} {x1}");
+        assert!(
+            (x0 - 400.0).abs() < 15.0 && (x1 - 900.0).abs() < 15.0,
+            "{x0} {x1}"
+        );
         let _ = std::fs::remove_dir_all(&r);
     }
 }

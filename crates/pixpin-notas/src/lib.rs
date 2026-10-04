@@ -8,17 +8,17 @@
 pub mod barra_flotante;
 pub mod disposicion;
 pub mod editor;
+mod imagenes;
 pub mod incrustados;
 pub mod integracion;
-mod imagenes;
 mod letras;
-pub mod vista;
 mod menu;
 pub mod panel_comentarios;
 mod pintor;
 pub mod tabla_ancha;
 pub mod tabla_rtf;
 pub mod tema;
+pub mod vista;
 /// Exportar la nota a Word (H12, 1-oct): el editor y la hoja de compartir.
 pub mod word;
 

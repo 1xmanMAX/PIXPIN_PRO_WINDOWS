@@ -171,8 +171,16 @@ impl EstadoOverlay {
         } else {
             ((ay as u64 * pa as u64 / pb as u64) as u32, ay)
         };
-        let x = if dx < 0 { ancla.x - ancho as i32 } else { ancla.x };
-        let y = if dy < 0 { ancla.y - alto as i32 } else { ancla.y };
+        let x = if dx < 0 {
+            ancla.x - ancho as i32
+        } else {
+            ancla.x
+        };
+        let y = if dy < 0 {
+            ancla.y - alto as i32
+        } else {
+            ancla.y
+        };
         Some(Rect { x, y, ancho, alto })
     }
 

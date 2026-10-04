@@ -74,7 +74,10 @@ fn buscar(texto: &str, frase: &str) -> Vec<(usize, usize)> {
             }
         }
         if ok
-            && !texto[..i].chars().next_back().is_some_and(char::is_alphabetic)
+            && !texto[..i]
+                .chars()
+                .next_back()
+                .is_some_and(char::is_alphabetic)
             && !texto[j..].chars().next().is_some_and(char::is_alphabetic)
         {
             v.push((i, j));
@@ -126,13 +129,21 @@ pub fn repartir(dicho: &str) -> Campos {
         if titulo.is_empty() {
             titulo = delante;
         } else {
-            paso = [delante, paso].into_iter().filter(|s| !s.is_empty()).collect::<Vec<_>>().join(". ");
+            paso = [delante, paso]
+                .into_iter()
+                .filter(|s| !s.is_empty())
+                .collect::<Vec<_>>()
+                .join(". ");
         }
     }
     let proxima = trozos.get(&Campo::Proxima).cloned().unwrap_or_default();
     // Sin frase de lo aprendido, lo que se hara distinto lo resume mejor.
     if titulo.is_empty() {
-        titulo = if proxima.is_empty() { paso.clone() } else { proxima.clone() };
+        titulo = if proxima.is_empty() {
+            paso.clone()
+        } else {
+            proxima.clone()
+        };
     }
     Campos {
         titulo: mayuscula(&titulo),

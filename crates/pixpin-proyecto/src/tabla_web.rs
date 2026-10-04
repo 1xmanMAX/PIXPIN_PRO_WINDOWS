@@ -40,11 +40,15 @@ pub fn marco(t: &Tabla) -> (u32, u32, u32, u32) {
 }
 
 fn letras(columna: u32) -> String {
-    ref_a(Ref { columna, fila: 0 }).trim_end_matches('1').to_string()
+    ref_a(Ref { columna, fila: 0 })
+        .trim_end_matches('1')
+        .to_string()
 }
 
 fn escapar(s: &str) -> String {
-    s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;")
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
 }
 
 fn es_color(c: &str) -> bool {
@@ -71,7 +75,10 @@ pub fn estatica(t: &Tabla, max_filas: u32, max_cols: u32, decimal: char) -> Stri
     for f in f0..=f1 {
         s.push_str(&format!("<tr><th>{}</th>", f + 1));
         for c in c0..=c1 {
-            let dir = ref_a(Ref { columna: c, fila: f });
+            let dir = ref_a(Ref {
+                columna: c,
+                fila: f,
+            });
             let crudo = t.celdas.get(&dir).map_or("", String::as_str);
             let valor = valores.get(&dir);
             // Como `texto` del motor del movil: lo escrito a mano se ensena tal
@@ -126,13 +133,18 @@ pub fn estatica(t: &Tabla, max_filas: u32, max_cols: u32, decimal: char) -> Stri
 /// Si la tabla esta protegida (`TablaDeCalculo.protegida` del movil; aqui
 /// viaja entre lo que no se entiende).
 fn protegida(t: &Tabla) -> bool {
-    t.resto.get("protegida").and_then(|v| v.as_bool()).unwrap_or(false)
+    t.resto
+        .get("protegida")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false)
 }
 
 /// **El JSON de la tabla, sin un solo `<`** (`VisorTabla.json`): asi nunca
 /// cierra el `script` que lo lleva. Compacto: la pagina se manda por el chat.
 pub fn json(t: &Tabla) -> String {
-    serde_json::to_string(t).unwrap_or_else(|_| "{}".into()).replace('<', "\\u003c")
+    serde_json::to_string(t)
+        .unwrap_or_else(|_| "{}".into())
+        .replace('<', "\\u003c")
 }
 
 #[cfg(test)]
@@ -154,13 +166,23 @@ mod pruebas {
     #[test]
     fn el_marco_es_lo_escrito_con_una_fila_y_una_columna_de_margen() {
         assert_eq!(marco(&Tabla::default()), (0, 0, 1, 1), "vacia: A1:B2");
-        assert_eq!(marco(&tabla(&[("A1", "1")])), (0, 0, 1, 1), "el margen no pasa de A1");
+        assert_eq!(
+            marco(&tabla(&[("A1", "1")])),
+            (0, 0, 1, 1),
+            "el margen no pasa de A1"
+        );
         assert_eq!(marco(&tabla(&[("C3", "1"), ("D5", "2")])), (1, 1, 5, 4));
     }
 
     #[test]
     fn la_tabla_estatica_ya_trae_los_totales_con_sus_clases() {
-        let mut t = tabla(&[("A1", "Pan"), ("B1", "2,5"), ("B2", "=B1*2"), ("B3", "=1/0"), ("A3", "<b>")]);
+        let mut t = tabla(&[
+            ("A1", "Pan"),
+            ("B1", "2,5"),
+            ("B2", "=B1*2"),
+            ("B3", "=1/0"),
+            ("A3", "<b>"),
+        ]);
         t.anchos.insert("A".into(), 150);
         t.estilos.insert(
             "A1".into(),
@@ -173,9 +195,15 @@ mod pruebas {
         let html = estatica(&t, 2000, 200, '.');
         assert!(html.starts_with("<table class=\"calc\"><thead><tr><th class=\"esq\"></th><th style=\"width:150px\">A</th><th style=\"width:96px\">B</th><th style=\"width:96px\">C</th></tr>"));
         assert!(html.contains("<tr><th>1</th><td class=\"n\" style=\"background:#fff2cc\">Pan</td><td class=\"d\">2,5</td>"));
-        assert!(html.contains("<td class=\"d f\">5</td>"), "la formula ya calculada, a la derecha");
+        assert!(
+            html.contains("<td class=\"d f\">5</td>"),
+            "la formula ya calculada, a la derecha"
+        );
         assert!(html.contains("<td class=\"c err f\">#¡DIV/0!</td>"));
-        assert!(html.contains("<td>&lt;b&gt;</td>"), "lo escrito no se cuela como HTML");
+        assert!(
+            html.contains("<td>&lt;b&gt;</td>"),
+            "lo escrito no se cuela como HTML"
+        );
         // Hasta la fila 4: una de margen.
         assert!(html.contains("<tr><th>4</th>"));
         assert!(!html.contains("<tr><th>5</th>"));
@@ -184,7 +212,12 @@ mod pruebas {
     #[test]
     fn lo_calculado_sale_con_el_separador_decimal_del_usuario_como_lo_escrito() {
         // La captura del 24-sep: «12,5» y «7» escritos y el total en «19.5».
-        let t = tabla(&[("B1", "12,5"), ("B2", "7"), ("B3", "=SUMA(B1:B2)"), ("B4", "'007")]);
+        let t = tabla(&[
+            ("B1", "12,5"),
+            ("B2", "7"),
+            ("B3", "=SUMA(B1:B2)"),
+            ("B4", "'007"),
+        ]);
         let es = estatica(&t, 100, 100, ',');
         assert!(es.contains("<td class=\"d\">12,5</td>"));
         assert!(es.contains("<td class=\"d f\">19,5</td>"), "es-ES: coma");
@@ -201,7 +234,10 @@ mod pruebas {
         let t = tabla(&[("A1", "1"), ("A5000", "2")]);
         let html = estatica(&t, 10, 3, '.');
         assert!(html.contains("<tr><th>10</th>"));
-        assert!(!html.contains("<tr><th>11</th>"), "caso negativo: no mas de diez filas");
+        assert!(
+            !html.contains("<tr><th>11</th>"),
+            "caso negativo: no mas de diez filas"
+        );
     }
 
     #[test]
@@ -212,7 +248,11 @@ mod pruebas {
         // Y se vuelve a leer igual.
         let vuelta = Tabla::leer(&j.replace("\\u003c", "<")).unwrap();
         assert_eq!(vuelta.celdas, t.celdas);
-        assert_eq!(Tabla::leer(&j).unwrap().celdas, t.celdas, "el \\u003c es JSON valido");
+        assert_eq!(
+            Tabla::leer(&j).unwrap().celdas,
+            t.celdas,
+            "el \\u003c es JSON valido"
+        );
     }
 
     /// Una pagina de muestra para mirarla en un navegador: `PIXPIN_MUESTRA`
@@ -265,7 +305,8 @@ mod pruebas {
     #[test]
     fn una_celda_protegida_editable_se_marca() {
         let mut t = tabla(&[("A1", "1")]);
-        t.resto.insert("protegida".into(), serde_json::Value::Bool(true));
+        t.resto
+            .insert("protegida".into(), serde_json::Value::Bool(true));
         t.estilos.insert(
             "A1".into(),
             EstiloDeCelda {

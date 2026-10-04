@@ -43,7 +43,13 @@ pub(crate) enum Modo {
 }
 
 impl Modo {
-    pub const TODOS: [Modo; 5] = [Modo::Pasar, Modo::Laser, Modo::Lapiz, Modo::Resaltador, Modo::Goma];
+    pub const TODOS: [Modo; 5] = [
+        Modo::Pasar,
+        Modo::Laser,
+        Modo::Lapiz,
+        Modo::Resaltador,
+        Modo::Goma,
+    ];
 
     /// La herramienta del motor que hace el trabajo (`ponerModoDePresentacion`).
     pub fn herramienta(self) -> Herramienta {
@@ -121,7 +127,11 @@ pub(crate) fn hojas_de(escena: &Escena) -> Vec<(f32, f32, f32, f32)> {
 }
 
 impl Presentacion {
-    pub fn empezar(escena: &Escena, camara: Camara, herramienta: Herramienta) -> Option<Presentacion> {
+    pub fn empezar(
+        escena: &Escena,
+        camara: Camara,
+        herramienta: Herramienta,
+    ) -> Option<Presentacion> {
         let hojas = hojas_de(escena);
         (!hojas.is_empty()).then_some(Presentacion {
             hojas,
@@ -224,7 +234,11 @@ impl Presentacion {
 
 /// Los botones de la pastilla y donde van, en pixeles de la ventana: una
 /// isla abajo en el centro, como la del movil.
-pub(crate) fn pastilla(ancho_px: f32, alto_px: f32, escala_por_cien: u32) -> (RectF, Vec<(Boton, RectF)>) {
+pub(crate) fn pastilla(
+    ancho_px: f32,
+    alto_px: f32,
+    escala_por_cien: u32,
+) -> (RectF, Vec<(Boton, RectF)>) {
     let k = escala_por_cien as f32 / 100.0;
     let lado = 36.0 * k;
     let hueco = 4.0 * k;
@@ -235,10 +249,7 @@ pub(crate) fn pastilla(ancho_px: f32, alto_px: f32, escala_por_cien: u32) -> (Re
         .chain(Modo::TODOS.iter().map(|m| Boton::Modo(*m)))
         .chain(std::iter::once(Boton::Salir))
         .collect();
-    let ancho = hueco * 2.0
-        + botones.len() as f32 * (lado + hueco)
-        + contador
-        + separador * 2.0;
+    let ancho = hueco * 2.0 + botones.len() as f32 * (lado + hueco) + contador + separador * 2.0;
     let alto = lado + hueco * 2.0;
     let isla = RectF {
         x: (ancho_px - ancho) / 2.0,
@@ -271,7 +282,13 @@ pub(crate) fn pastilla(ancho_px: f32, alto_px: f32, escala_por_cien: u32) -> (Re
 }
 
 /// El boton de la pastilla bajo un punto de la ventana.
-pub(crate) fn boton_en(x: f32, y: f32, ancho_px: f32, alto_px: f32, escala_por_cien: u32) -> Option<Boton> {
+pub(crate) fn boton_en(
+    x: f32,
+    y: f32,
+    ancho_px: f32,
+    alto_px: f32,
+    escala_por_cien: u32,
+) -> Option<Boton> {
     let (isla, v) = pastilla(ancho_px, alto_px, escala_por_cien);
     let dentro = |r: &RectF| x >= r.x && x <= r.x + r.ancho && y >= r.y && y <= r.y + r.alto;
     if !dentro(&isla) {
@@ -281,7 +298,13 @@ pub(crate) fn boton_en(x: f32, y: f32, ancho_px: f32, alto_px: f32, escala_por_c
 }
 
 /// Si un punto cae en la isla de la pastilla (aunque no en un boton).
-pub(crate) fn en_la_pastilla(x: f32, y: f32, ancho_px: f32, alto_px: f32, escala_por_cien: u32) -> bool {
+pub(crate) fn en_la_pastilla(
+    x: f32,
+    y: f32,
+    ancho_px: f32,
+    alto_px: f32,
+    escala_por_cien: u32,
+) -> bool {
     let (isla, _) = pastilla(ancho_px, alto_px, escala_por_cien);
     x >= isla.x && x <= isla.x + isla.ancho && y >= isla.y && y <= isla.y + isla.alto
 }
@@ -416,7 +439,13 @@ pub(crate) fn pintar(
 }
 
 /// La etiqueta del modo visualizacion, arriba en el centro.
-pub(crate) fn pintar_solo_mirar(p: &Pintor<'_>, base: (f32, f32), ancho_px: f32, escala_por_cien: u32, texto: &str) {
+pub(crate) fn pintar_solo_mirar(
+    p: &Pintor<'_>,
+    base: (f32, f32),
+    ancho_px: f32,
+    escala_por_cien: u32,
+    texto: &str,
+) {
     p.desplazar(base.0, base.1);
     let k = escala_por_cien as f32 / 100.0;
     let tam = 13.0 * k;
@@ -437,7 +466,13 @@ pub(crate) fn pintar_solo_mirar(p: &Pintor<'_>, base: (f32, f32), ancho_px: f32,
             a: 0.62,
         },
     );
-    p.texto(texto, caja.x + 14.0 * k, caja.y + 7.0 * k, tam, Color::BLANCO);
+    p.texto(
+        texto,
+        caja.x + 14.0 * k,
+        caja.y + 7.0 * k,
+        tam,
+        Color::BLANCO,
+    );
 }
 
 /// **Arrastrar para mover** en el modo visualizacion: la mano de Excalidraw
@@ -489,9 +524,15 @@ mod pruebas {
 
     #[test]
     fn cada_marco_es_una_diapositiva_en_el_orden_del_cuaderno() {
-        let e = escena_con(vec![marco(0.0, 900.0, 800.0, 600.0), marco(0.0, 0.0, 800.0, 600.0)]);
+        let e = escena_con(vec![
+            marco(0.0, 900.0, 800.0, 600.0),
+            marco(0.0, 0.0, 800.0, 600.0),
+        ]);
         let h = hojas_de(&e);
-        assert_eq!(h, vec![(0.0, 0.0, 800.0, 600.0), (0.0, 900.0, 800.0, 1500.0)]);
+        assert_eq!(
+            h,
+            vec![(0.0, 0.0, 800.0, 600.0), (0.0, 900.0, 800.0, 1500.0)]
+        );
     }
 
     #[test]
@@ -506,7 +547,9 @@ mod pruebas {
         let h = hojas_de(&escena_con(vec![r]));
         assert_eq!(h.len(), 1);
         assert!(h[0].0 < 10.0 && h[0].2 > 110.0);
-        assert!(Presentacion::empezar(&Escena::nueva(), Camara::nueva(), Herramienta::Lapiz).is_none());
+        assert!(
+            Presentacion::empezar(&Escena::nueva(), Camara::nueva(), Herramienta::Lapiz).is_none()
+        );
     }
 
     #[test]
@@ -525,7 +568,10 @@ mod pruebas {
 
     #[test]
     fn pasar_no_se_sale_de_las_diapositivas() {
-        let e = escena_con(vec![marco(0.0, 0.0, 10.0, 10.0), marco(0.0, 20.0, 10.0, 10.0)]);
+        let e = escena_con(vec![
+            marco(0.0, 0.0, 10.0, 10.0),
+            marco(0.0, 20.0, 10.0, 10.0),
+        ]);
         let mut pr = Presentacion::empezar(&e, Camara::nueva(), Herramienta::Lapiz).unwrap();
         assert!(!pr.pasar(-1), "antes de la primera no hay nada");
         assert!(pr.pasar(1));
@@ -542,7 +588,10 @@ mod pruebas {
         assert_eq!(Presentacion::tecla(0x27), Some(Accion::Pasar(1)));
         assert_eq!(Presentacion::tecla(b'B' as u32), Some(Accion::Negro));
         assert_eq!(Presentacion::tecla(0x1B), Some(Accion::Salir));
-        assert_eq!(Presentacion::tecla(b'J' as u32), Some(Accion::Modo(Modo::Laser)));
+        assert_eq!(
+            Presentacion::tecla(b'J' as u32),
+            Some(Accion::Modo(Modo::Laser))
+        );
         // Caso negativo: una letra sin papel no es de la presentacion.
         assert_eq!(Presentacion::tecla(b'Q' as u32), None);
         let e = escena_con(vec![marco(0.0, 0.0, 10.0, 10.0)]);
@@ -554,9 +603,18 @@ mod pruebas {
 
     #[test]
     fn un_clic_en_los_tercios_pasa_o_vuelve_y_en_el_medio_esconde_la_pastilla() {
-        assert_eq!(Presentacion::clic_para_pasar(1800.0, 1920.0), Accion::Pasar(1));
-        assert_eq!(Presentacion::clic_para_pasar(100.0, 1920.0), Accion::Pasar(-1));
-        assert_eq!(Presentacion::clic_para_pasar(960.0, 1920.0), Accion::Pastilla);
+        assert_eq!(
+            Presentacion::clic_para_pasar(1800.0, 1920.0),
+            Accion::Pasar(1)
+        );
+        assert_eq!(
+            Presentacion::clic_para_pasar(100.0, 1920.0),
+            Accion::Pasar(-1)
+        );
+        assert_eq!(
+            Presentacion::clic_para_pasar(960.0, 1920.0),
+            Accion::Pastilla
+        );
     }
 
     #[test]

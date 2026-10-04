@@ -29,7 +29,10 @@ pub fn local(ms: i64) -> Option<Local> {
         return None;
     }
     let t = t as u64;
-    let ft = FILETIME { dwLowDateTime: t as u32, dwHighDateTime: (t >> 32) as u32 };
+    let ft = FILETIME {
+        dwLowDateTime: t as u32,
+        dwHighDateTime: (t >> 32) as u32,
+    };
     let mut utc = SYSTEMTIME::default();
     let mut aqui = SYSTEMTIME::default();
     // SAFETY: punteros a variables locales que viven toda la llamada.
@@ -37,10 +40,18 @@ pub fn local(ms: i64) -> Option<Local> {
         FileTimeToSystemTime(&ft, &mut utc).ok()?;
         SystemTimeToTzSpecificLocalTime(None, &utc, &mut aqui).ok()?;
     }
-    Some(Local { anio: aqui.wYear, mes: aqui.wMonth, dia: aqui.wDay, hora: aqui.wHour, minuto: aqui.wMinute })
+    Some(Local {
+        anio: aqui.wYear,
+        mes: aqui.wMonth,
+        dia: aqui.wDay,
+        hora: aqui.wHour,
+        minuto: aqui.wMinute,
+    })
 }
 
-const MESES: [&str; 12] = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
+const MESES: [&str; 12] = [
+    "ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic",
+];
 
 /// Como lo dice el chat, comparando con `ahora` en el calendario local.
 pub fn momento(ms: i64, ahora: i64) -> String {
@@ -61,7 +72,10 @@ pub fn dia_y_mes(ms: i64) -> String {
 
 /// Lo de [`dia_y_mes`], sin Windows.
 pub fn dia_y_mes_de(l: &Local) -> String {
-    let mes = MESES.get(usize::from(l.mes.max(1)) - 1).copied().unwrap_or("");
+    let mes = MESES
+        .get(usize::from(l.mes.max(1)) - 1)
+        .copied()
+        .unwrap_or("");
     format!("{} {mes}", l.dia)
 }
 
@@ -89,7 +103,10 @@ pub fn formatear(l: &Local, ahora: &Local, ayer: Option<&Local>) -> String {
     if ayer.is_some_and(|y| l.mismo_dia(y)) {
         return format!("ayer {hora}");
     }
-    let mes = MESES.get(usize::from(l.mes.max(1)) - 1).copied().unwrap_or("");
+    let mes = MESES
+        .get(usize::from(l.mes.max(1)) - 1)
+        .copied()
+        .unwrap_or("");
     if l.anio == ahora.anio {
         format!("{} {mes}, {hora}", l.dia)
     } else {
@@ -102,17 +119,35 @@ mod pruebas {
     use super::*;
 
     fn en(anio: u16, mes: u16, dia: u16, hora: u16, minuto: u16) -> Local {
-        Local { anio, mes, dia, hora, minuto }
+        Local {
+            anio,
+            mes,
+            dia,
+            hora,
+            minuto,
+        }
     }
 
     #[test]
     fn hoy_ayer_este_anio_y_otro() {
         let ahora = en(2026, 10, 2, 12, 0);
         let ayer = en(2026, 10, 1, 12, 0);
-        assert_eq!(formatear(&en(2026, 10, 2, 9, 5), &ahora, Some(&ayer)), "hoy 09:05");
-        assert_eq!(formatear(&en(2026, 10, 1, 23, 59), &ahora, Some(&ayer)), "ayer 23:59");
-        assert_eq!(formatear(&en(2026, 9, 12, 18, 5), &ahora, Some(&ayer)), "12 sep, 18:05");
-        assert_eq!(formatear(&en(2025, 3, 3, 1, 0), &ahora, Some(&ayer)), "3 mar 2025");
+        assert_eq!(
+            formatear(&en(2026, 10, 2, 9, 5), &ahora, Some(&ayer)),
+            "hoy 09:05"
+        );
+        assert_eq!(
+            formatear(&en(2026, 10, 1, 23, 59), &ahora, Some(&ayer)),
+            "ayer 23:59"
+        );
+        assert_eq!(
+            formatear(&en(2026, 9, 12, 18, 5), &ahora, Some(&ayer)),
+            "12 sep, 18:05"
+        );
+        assert_eq!(
+            formatear(&en(2025, 3, 3, 1, 0), &ahora, Some(&ayer)),
+            "3 mar 2025"
+        );
     }
 
     #[test]

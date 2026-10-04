@@ -95,7 +95,10 @@ pub struct Disposicion {
 
 impl Disposicion {
     pub fn boton_en(&self, x: i32, y: i32) -> Option<BotonBarra> {
-        self.botones.iter().find(|(_, c)| c.contiene(x, y)).map(|(b, _)| *b)
+        self.botones
+            .iter()
+            .find(|(_, c)| c.contiene(x, y))
+            .map(|(b, _)| *b)
     }
 
     pub fn caja(&self, b: BotonBarra) -> Option<Caja> {
@@ -224,18 +227,52 @@ pub fn pintar(hdc: HDC, v: &Vista, origen: (i32, i32)) {
         for (b, c) in &v.disp.botones {
             let c = en(*c);
             if v.hover == Some(*b) || v.puestos.contains(b) {
-                f.redondo(c, 6.0, if v.puestos.contains(b) { t.elegido } else { t.pastilla });
+                f.redondo(
+                    c,
+                    6.0,
+                    if v.puestos.contains(b) {
+                        t.elegido
+                    } else {
+                        t.pastilla
+                    },
+                );
             }
             match b {
                 BotonBarra::Comentar => f.icono(Icono::Comentar, c, 16.0, t.texto),
                 BotonBarra::Codigo => f.icono(Icono::Codigo, c, 16.0, t.texto),
                 BotonBarra::Enlace => f.icono(Icono::Enlace, c, 16.0, t.texto),
                 BotonBarra::Listas => {
-                    f.icono(Icono::Lista, Caja { an: c.an - e(12), ..c }, 16.0, t.texto);
-                    f.icono(Icono::Flecha, Caja { x: c.derecha() - e(16), an: e(14), ..c }, 10.0, t.tenue);
+                    f.icono(
+                        Icono::Lista,
+                        Caja {
+                            an: c.an - e(12),
+                            ..c
+                        },
+                        16.0,
+                        t.texto,
+                    );
+                    f.icono(
+                        Icono::Flecha,
+                        Caja {
+                            x: c.derecha() - e(16),
+                            an: e(14),
+                            ..c
+                        },
+                        10.0,
+                        t.tenue,
+                    );
                 }
                 BotonBarra::Formato => {
-                    f.icono(Icono::Flecha, Caja { x: c.derecha() - e(16), an: e(14), ..c }, 10.0, t.tenue);
+                    f.icono(
+                        Icono::Flecha,
+                        Caja {
+                            x: c.derecha() - e(16),
+                            an: e(14),
+                            ..c
+                        },
+                        10.0,
+                        t.tenue,
+                    );
                 }
                 // La raya del tachado, encima de su «S» (que va con las letras).
                 BotonBarra::Tachado => {
@@ -244,7 +281,13 @@ pub fn pintar(hdc: HDC, v: &Vista, origen: (i32, i32)) {
                 }
                 // Quitar formato: una «T» tachada en diagonal.
                 BotonBarra::QuitarFormato => {
-                    f.raya(c.x + e(9), c.abajo() - e(9), c.derecha() - e(9), c.y + e(9), t.tenue);
+                    f.raya(
+                        c.x + e(9),
+                        c.abajo() - e(9),
+                        c.derecha() - e(9),
+                        c.y + e(9),
+                        t.tenue,
+                    );
                 }
                 _ => {}
             }
@@ -255,7 +298,17 @@ pub fn pintar(hdc: HDC, v: &Vista, origen: (i32, i32)) {
         let c = en(*c);
         match b {
             BotonBarra::Emoji => p.texto(hdc, p.letra, "\u{263A}", c, t.texto, true),
-            BotonBarra::Formato => p.texto(hdc, p.letra, "Aa", Caja { an: c.an - e(12), ..c }, t.texto, true),
+            BotonBarra::Formato => p.texto(
+                hdc,
+                p.letra,
+                "Aa",
+                Caja {
+                    an: c.an - e(12),
+                    ..c
+                },
+                t.texto,
+                true,
+            ),
             BotonBarra::Negrita => p.texto(hdc, p.letra_negrita, "B", c, t.texto, true),
             BotonBarra::Cursiva => cursiva(hdc, p, c, t),
             BotonBarra::Tachado => p.texto(hdc, p.letra, "S", c, t.texto, true),
@@ -292,7 +345,12 @@ fn cursiva(hdc: HDC, p: &Pintor, c: Caja, t: &Tema) {
 }
 
 unsafe extern "system" fn procedimiento(h: HWND, m: u32, w: WPARAM, l: LPARAM) -> LRESULT {
-    let punto = || ((l.0 & 0xffff) as i16 as i32, ((l.0 >> 16) & 0xffff) as i16 as i32);
+    let punto = || {
+        (
+            (l.0 & 0xffff) as i16 as i32,
+            ((l.0 >> 16) & 0xffff) as i16 as i32,
+        )
+    };
     match m {
         // Que un clic no le quite el foco (ni lo elegido) a la nota.
         WM_MOUSEACTIVATE => LRESULT(MA_NOACTIVATE as isize),
@@ -315,7 +373,11 @@ unsafe extern "system" fn procedimiento(h: HWND, m: u32, w: WPARAM, l: LPARAM) -
             let cambio = VISTA.with(|v| {
                 let mut v = v.borrow_mut();
                 let v = v.as_mut()?;
-                let b = if m == WM_MOUSELEAVE { None } else { v.disp.boton_en(x, y) };
+                let b = if m == WM_MOUSELEAVE {
+                    None
+                } else {
+                    v.disp.boton_en(x, y)
+                };
                 (v.hover != b).then(|| v.hover = b)
             });
             if m == WM_MOUSEMOVE {
@@ -340,7 +402,8 @@ unsafe extern "system" fn procedimiento(h: HWND, m: u32, w: WPARAM, l: LPARAM) -
         }
         WM_LBUTTONUP => {
             let (x, y) = punto();
-            if let Some(b) = VISTA.with(|v| v.borrow().as_ref().and_then(|v| v.disp.boton_en(x, y))) {
+            if let Some(b) = VISTA.with(|v| v.borrow().as_ref().and_then(|v| v.disp.boton_en(x, y)))
+            {
                 CLIC.with(|c| c.set(Some(b)));
                 // Que el bucle del editor se entere ya (no hay otro mensaje
                 // en su cola hasta que se mueva algo).
@@ -403,7 +466,15 @@ pub fn crear(dueno: HWND) -> windows::core::Result<HWND> {
 pub fn ensenar(h: HWND, x: i32, y: i32, an: i32, al: i32) {
     // SAFETY: ventana propia.
     unsafe {
-        let _ = SetWindowPos(h, Some(HWND_TOP), x, y, an, al, SWP_NOACTIVATE | SWP_SHOWWINDOW);
+        let _ = SetWindowPos(
+            h,
+            Some(HWND_TOP),
+            x,
+            y,
+            an,
+            al,
+            SWP_NOACTIVATE | SWP_SHOWWINDOW,
+        );
         let _ = InvalidateRect(Some(h), None, false);
     }
 }

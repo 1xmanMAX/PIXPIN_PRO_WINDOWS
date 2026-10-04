@@ -39,15 +39,23 @@ fn el_dictado_de_corrido_se_reparte_en_sus_campos() {
 
 #[test]
 fn lo_que_va_delante_de_las_marcas_es_el_titulo() {
-    let c = dictado::repartir("Pedir todo por escrito. Pasó que el cliente cambió el acuerdo de palabra");
+    let c = dictado::repartir(
+        "Pedir todo por escrito. Pasó que el cliente cambió el acuerdo de palabra",
+    );
     assert_eq!(c.titulo, "Pedir todo por escrito");
     assert_eq!(c.que_paso, "El cliente cambió el acuerdo de palabra");
 }
 
 #[test]
 fn las_palabras_se_comparan_sin_acentos_ni_plurales() {
-    assert_eq!(texto::raiz(&texto::normal("Estructuras")), texto::raiz(&texto::normal("estructura")));
-    assert_eq!(texto::raiz(&texto::normal("hormigón")), texto::raiz("hormigon"));
+    assert_eq!(
+        texto::raiz(&texto::normal("Estructuras")),
+        texto::raiz(&texto::normal("estructura"))
+    );
+    assert_eq!(
+        texto::raiz(&texto::normal("hormigón")),
+        texto::raiz("hormigon")
+    );
     assert_eq!(texto::raiz("construccion"), texto::raiz("construcciones"));
     assert_eq!(texto::normal("Ñandú"), "ñandu");
 }
@@ -60,8 +68,16 @@ fn propone_etiquetas_area_tipo_y_causas() {
         &[],
     );
     assert!(p.etiquetas.contains(&"obra".into()), "{:?}", p.etiquetas);
-    assert!(p.etiquetas.contains(&"concreto".into()), "{:?}", p.etiquetas);
-    assert!(p.etiquetas.contains(&"encofrado".into()), "{:?}", p.etiquetas);
+    assert!(
+        p.etiquetas.contains(&"concreto".into()),
+        "{:?}",
+        p.etiquetas
+    );
+    assert!(
+        p.etiquetas.contains(&"encofrado".into()),
+        "{:?}",
+        p.etiquetas
+    );
     assert_eq!(p.area.as_deref(), Some("Construcción"));
     assert_eq!(p.tipo.as_deref(), Some(TIPO_ERROR));
     assert!(p.causas.contains(&"No revisé".into()), "{:?}", p.causas);
@@ -70,13 +86,21 @@ fn propone_etiquetas_area_tipo_y_causas() {
 
 #[test]
 fn mal_no_salta_dentro_de_otra_palabra() {
-    let p = etiquetador::proponer("El resultado normal del animal", &etiquetador::Aprendido::default(), &[]);
+    let p = etiquetador::proponer(
+        "El resultado normal del animal",
+        &etiquetador::Aprendido::default(),
+        &[],
+    );
     assert_eq!(p.tipo, None);
 }
 
 #[test]
 fn lo_quitado_no_vuelve() {
-    let p = etiquetador::proponer("la losa se fisuró", &etiquetador::Aprendido::default(), &["concreto".into()]);
+    let p = etiquetador::proponer(
+        "la losa se fisuró",
+        &etiquetador::Aprendido::default(),
+        &["concreto".into()],
+    );
     assert!(!p.etiquetas.contains(&"concreto".into()));
 }
 
@@ -86,21 +110,43 @@ fn aprende_las_etiquetas_de_cada_uno() {
         con("1", "Revisar puntales del encofrado", &["losas"], "", 0),
         con("2", "Encofrado con puntales firmes", &["losas"], "", 0),
     ];
-    let p = etiquetador::proponer("Los puntales del encofrado cedieron", &etiquetador::aprender(&hechas), &[]);
+    let p = etiquetador::proponer(
+        "Los puntales del encofrado cedieron",
+        &etiquetador::aprender(&hechas),
+        &[],
+    );
     assert!(p.etiquetas.contains(&"losas".into()), "{:?}", p.etiquetas);
 }
 
 #[test]
 fn las_etiquetas_dichas_se_recogen_y_se_quitan_del_texto() {
-    assert_eq!(etiquetador::escritas("Mandar el capítulo #Tesis etiqueta asesor"), vec!["tesis", "asesor"]);
-    assert_eq!(etiquetador::sin_etiquetas("Mandar el capítulo #Tesis etiqueta asesor"), "Mandar el capítulo");
+    assert_eq!(
+        etiquetador::escritas("Mandar el capítulo #Tesis etiqueta asesor"),
+        vec!["tesis", "asesor"]
+    );
+    assert_eq!(
+        etiquetador::sin_etiquetas("Mandar el capítulo #Tesis etiqueta asesor"),
+        "Mandar el capítulo"
+    );
 }
 
 fn todas() -> Vec<Indice> {
     vec![
-        con("a", "Revisar la escala antes de imprimir los planos", &["planos"], "", 0),
+        con(
+            "a",
+            "Revisar la escala antes de imprimir los planos",
+            &["planos"],
+            "",
+            0,
+        ),
         con("b", "Pedir todo por escrito al cliente", &[], "Trabajo", 0),
-        con("c", "Revisar puntales del encofrado antes del vaciado", &[], "Construcción", 0),
+        con(
+            "c",
+            "Revisar puntales del encofrado antes del vaciado",
+            &[],
+            "Construcción",
+            0,
+        ),
         con("d", "Dormir antes del examen final", &[], "Estudio", 0),
     ]
     .into_iter()
@@ -157,7 +203,9 @@ fn el_repaso_se_aleja_al_recordar_y_vuelve_al_olvidar_o_repetirse() {
 
 #[test]
 fn el_archivo_se_lee_aunque_traiga_campos_de_una_version_nueva() {
-    let txt = l("j", "Algo").escribir().replace("\"titulo\"", "\"campoNuevo\": 1, \"titulo\"");
+    let txt = l("j", "Algo")
+        .escribir()
+        .replace("\"titulo\"", "\"campoNuevo\": 1, \"titulo\"");
     let leida = Leccion::leer(&txt).expect("se lee");
     assert_eq!(leida.titulo, "Algo");
     // Y al reescribirla, lo desconocido sigue ahi.
@@ -183,7 +231,13 @@ fn un_archivo_del_movil_se_lee_con_sus_valores_por_defecto() {
 #[test]
 fn el_json_usa_los_nombres_de_kotlin() {
     let t = l("j", "Algo").escribir();
-    for campo in ["\"quePaso\"", "\"porQue\"", "\"etiquetasAuto\"", "\"deMensaje\": null", "\"enLista\": true"] {
+    for campo in [
+        "\"quePaso\"",
+        "\"porQue\"",
+        "\"etiquetasAuto\"",
+        "\"deMensaje\": null",
+        "\"enLista\": true",
+    ] {
         assert!(t.contains(campo), "falta {campo} en {t}");
     }
     assert!(!t.contains("que_paso"));
@@ -215,14 +269,28 @@ fn el_id_nuevo_lleva_la_hora_en_base_36() {
     let id = leccion::nuevo_id(1_790_000_000_000);
     assert!(id.starts_with(&leccion::base36(1_790_000_000_000)));
     assert_eq!(id.len(), leccion::base36(1_790_000_000_000).len() + 3);
-    assert_ne!(leccion::nuevo_id(1), leccion::nuevo_id(1), "dos del mismo instante no chocan");
+    assert_ne!(
+        leccion::nuevo_id(1),
+        leccion::nuevo_id(1),
+        "dos del mismo instante no chocan"
+    );
 }
 
 #[test]
 fn las_de_hoy_van_primero_las_graves() {
-    let a = Leccion { gravedad: 1, ..l("a", "a") };
-    let b = Leccion { gravedad: 3, ..l("b", "b") };
-    let lejos = Leccion { repasar: 10 * DIA, gravedad: 3, ..l("c", "c") };
+    let a = Leccion {
+        gravedad: 1,
+        ..l("a", "a")
+    };
+    let b = Leccion {
+        gravedad: 3,
+        ..l("b", "b")
+    };
+    let lejos = Leccion {
+        repasar: 10 * DIA,
+        gravedad: 3,
+        ..l("c", "c")
+    };
     let hoy = Repaso::de_hoy(&[a, b, lejos], 2 * DIA, 5);
     let ids: Vec<_> = hoy.iter().map(|x| x.id.as_str()).collect();
     assert_eq!(ids, ["b", "a"]);
@@ -237,9 +305,16 @@ fn la_fusion_junta_las_repeticiones_y_el_repaso_mas_reciente() {
     // repeticion propia.
     let pc = Repaso::recordada(&Repaso::repetida(&base, 9 * DIA), 12 * DIA);
     let junta = fusion::fusionar(&pc, &movil, fusion::Modo::Suave);
-    assert_eq!(junta.repeticiones, vec![9 * DIA, 10 * DIA], "ninguna se pierde");
+    assert_eq!(
+        junta.repeticiones,
+        vec![9 * DIA, 10 * DIA],
+        "ninguna se pierde"
+    );
     assert_eq!(junta.gravedad, 3, "dos veces: grave");
-    assert_eq!(junta.repasar, pc.repasar, "el repaso del PC es el mas reciente");
+    assert_eq!(
+        junta.repasar, pc.repasar,
+        "el repaso del PC es el mas reciente"
+    );
     assert_eq!(junta.tocada, 10 * DIA);
 }
 
@@ -260,13 +335,19 @@ fn la_fusion_completa_une_etiquetas_y_los_textos_son_del_mas_nuevo() {
         etiquetas_auto: vec!["planos".into()],
         ..base
     };
-    llega.resto.insert("campoNuevo".into(), serde_json::json!(7));
+    llega
+        .resto
+        .insert("campoNuevo".into(), serde_json::json!(7));
     let txt = fusion::al_llegar(&aqui.escribir(), &llega.escribir()).expect("hay que juntar");
     let j = Leccion::leer(&txt).unwrap();
     assert_eq!(j.titulo, "Nuevo de aqui");
     assert_eq!(j.etiquetas, vec!["obra", "tesis"]);
     assert!(j.etiquetas_auto.is_empty(), "la quitada aqui no vuelve");
-    assert_eq!(j.resto.get("campoNuevo"), Some(&serde_json::json!(7)), "lo desconocido de alli se queda");
+    assert_eq!(
+        j.resto.get("campoNuevo"),
+        Some(&serde_json::json!(7)),
+        "lo desconocido de alli se queda"
+    );
 }
 
 #[test]
@@ -297,7 +378,10 @@ fn lo_que_llega_y_ya_lo_trae_todo_no_se_toca() {
 fn el_repaso_de_tres_botones_dice_cuando_vuelve() {
     use crate::leccion::Nota;
     // Caja 3 (14 dias): recordar la lleva a 30, a medias a 7, olvidar a 1.
-    let x = Leccion { caja: 3, ..l("a", "Sellar grietas") };
+    let x = Leccion {
+        caja: 3,
+        ..l("a", "Sellar grietas")
+    };
     assert_eq!(Repaso::dias_hasta(&x, Nota::Recordaba), 30);
     assert_eq!(Repaso::dias_hasta(&x, Nota::AMedias), 7);
     assert_eq!(Repaso::dias_hasta(&x, Nota::Olvide), 1);
@@ -322,11 +406,20 @@ fn el_repaso_de_tres_botones_dice_cuando_vuelve() {
 #[test]
 fn la_gravedad_se_propone_por_lo_que_cuenta() {
     use crate::etiquetador::proponer_gravedad;
-    assert_eq!(proponer_gravedad("La escalera del sótano resbala con el polvo de yeso", None), 2);
-    assert_eq!(proponer_gravedad("Casi hay un accidente con la amoladora", None), 3);
+    assert_eq!(
+        proponer_gravedad("La escalera del sótano resbala con el polvo de yeso", None),
+        2
+    );
+    assert_eq!(
+        proponer_gravedad("Casi hay un accidente con la amoladora", None),
+        3
+    );
     assert_eq!(proponer_gravedad("Algo cualquiera", Some(TIPO_ERROR)), 2);
     // Caso negativo: una frase neutra se queda en leve.
-    assert_eq!(proponer_gravedad("Revisar la escala antes de imprimir", None), 1);
+    assert_eq!(
+        proponer_gravedad("Revisar la escala antes de imprimir", None),
+        1
+    );
     // Ni «malo» por «mal» ni «gravedad» por «grave»: palabras enteras.
     assert_eq!(proponer_gravedad("La gravedad del asunto es baja", None), 1);
 }
@@ -338,7 +431,13 @@ fn la_barra_rapida_rellena_area_gravedad_y_proyecto() {
         ("f1".to_string(), "Obra Miraflores".to_string()),
         ("f2".to_string(), "Tesis".to_string()),
     ];
-    let previa = con("p", "Sellar grietas del muro antes de pintar", &[], "Construcción", 0);
+    let previa = con(
+        "p",
+        "Sellar grietas del muro antes de pintar",
+        &[],
+        "Construcción",
+        0,
+    );
     let indices = vec![Indice::nuevo(previa)];
     let de_quien = |id: &str| (id == "p").then(|| "f1".to_string());
     let r = rapida::rellenar(
@@ -349,14 +448,33 @@ fn la_barra_rapida_rellena_area_gravedad_y_proyecto() {
         &de_quien,
     );
     assert_eq!(r.gravedad, 2);
-    assert_eq!(r.proyecto.as_deref(), Some("f1"), "el nombre sale en la frase");
+    assert_eq!(
+        r.proyecto.as_deref(),
+        Some("f1"),
+        "el nombre sale en la frase"
+    );
     // Sin nombre, el de la que mas se parece.
-    let r2 = rapida::rellenar("Pintar el muro con grietas sin sellar", &Default::default(), &indices, &proyectos, &de_quien);
+    let r2 = rapida::rellenar(
+        "Pintar el muro con grietas sin sellar",
+        &Default::default(),
+        &indices,
+        &proyectos,
+        &de_quien,
+    );
     assert_eq!(r2.proyecto.as_deref(), Some("f1"));
     // Caso negativo: nada parecido ni nombrado, sin proyecto.
-    let r3 = rapida::rellenar("Dormir antes del examen", &Default::default(), &indices, &proyectos, &de_quien);
+    let r3 = rapida::rellenar(
+        "Dormir antes del examen",
+        &Default::default(),
+        &indices,
+        &proyectos,
+        &de_quien,
+    );
     assert_eq!(r3.proyecto, None);
-    assert_eq!(rapida::rellenar("  ", &Default::default(), &indices, &proyectos, &de_quien).gravedad, 1);
+    assert_eq!(
+        rapida::rellenar("  ", &Default::default(), &indices, &proyectos, &de_quien).gravedad,
+        1
+    );
 }
 
 #[test]

@@ -537,7 +537,9 @@ mod pruebas {
                 tam: 20.0,
                 familia: "Segoe UI".into(),
             },
-            Figura::Foco { cristal: Default::default() },
+            Figura::Foco {
+                cristal: Default::default(),
+            },
             Figura::Punto {
                 letra: "A".into(),
                 angulo: 0.0,

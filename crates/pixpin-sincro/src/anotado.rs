@@ -79,7 +79,12 @@ pub fn hojas_quitadas(antes: Option<&Json>, despues: &Json) -> Vec<String> {
             .unwrap_or_default()
     };
     let quedan = codigos(despues);
-    antes.map(codigos).unwrap_or_default().into_iter().filter(|c| !quedan.contains(c)).collect()
+    antes
+        .map(codigos)
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|c| !quedan.contains(c))
+        .collect()
 }
 
 /// La base de la tinta de la pagina `pagina` (desde 0) de un PDF.
@@ -139,7 +144,10 @@ pub fn por_uid<'a>(rels: impl IntoIterator<Item = &'a str>) -> BTreeMap<String, 
             continue;
         }
         if let Some(uid) = uid_del_nombre(nombre) {
-            salida.entry(uid.to_string()).or_default().push(r.to_string());
+            salida
+                .entry(uid.to_string())
+                .or_default()
+                .push(r.to_string());
         }
     }
     salida
@@ -288,7 +296,9 @@ impl MarcoDeLaHoja {
 
     /// Un marco con que encajar: numeros de verdad y con area.
     pub fn valido(&self) -> bool {
-        [self.x0, self.y0, self.x1, self.y1].iter().all(|v| v.is_finite())
+        [self.x0, self.y0, self.x1, self.y1]
+            .iter()
+            .all(|v| v.is_finite())
             && self.ancho() > 1e-3
             && self.alto() > 1e-3
     }
@@ -309,9 +319,14 @@ impl MarcoDeLaHoja {
     /// Escribir un marco que ya dice esto no toca el fichero: una ida y
     /// vuelta sin cambios no provoca otro envio.
     pub fn casi_igual(&self, o: &MarcoDeLaHoja) -> bool {
-        [self.x0 - o.x0, self.y0 - o.y0, self.x1 - o.x1, self.y1 - o.y1]
-            .iter()
-            .all(|d| d.abs() < 0.01)
+        [
+            self.x0 - o.x0,
+            self.y0 - o.y0,
+            self.x1 - o.x1,
+            self.y1 - o.y1,
+        ]
+        .iter()
+        .all(|d| d.abs() < 0.01)
     }
 
     /// **La hoja de un PDF tal como la mide el editor** (`Marco.deHoja`):
@@ -328,7 +343,12 @@ impl MarcoDeLaHoja {
     /// en unidades que dependian de los espacios puestos (1 = izquierda,
     /// 2 = derecha). Es la cuenta de `pixpin_docs::vista::capa_del_movil`:
     /// sin espacios `-1050,0,2450,…`; con los dos, la hoja tal cual.
-    pub fn del_lector_viejo(espacios: u8, ancho: f32, margen: f32, proporcion: f32) -> MarcoDeLaHoja {
+    pub fn del_lector_viejo(
+        espacios: u8,
+        ancho: f32,
+        margen: f32,
+        proporcion: f32,
+    ) -> MarcoDeLaHoja {
         let izq = if espacios & 1 != 0 { 1.0 } else { 0.0 };
         let der = if espacios & 2 != 0 { 1.0 } else { 0.0 };
         let k = (1.0 + 2.0 * margen) / (1.0 + margen * (izq + der));
@@ -411,9 +431,18 @@ mod pruebas {
     fn los_nombres_son_los_del_movil() {
         assert_eq!(de_pagina("ABCDE23456", 2), "anot-ABCDE23456-p2");
         assert_eq!(del_pdf("ABCDE23456"), "anot-ABCDE23456");
-        assert_eq!(del_documento("ABCDE23456", "2_informe.docx"), "anot-ABCDE23456");
-        assert_eq!(del_documento("ABCDE23456", "Plano.PDF"), "anot-ABCDE23456-texto");
-        assert_eq!(rel("anot-ABCDE23456", ".marcas"), "pins/draw/anot-ABCDE23456.marcas");
+        assert_eq!(
+            del_documento("ABCDE23456", "2_informe.docx"),
+            "anot-ABCDE23456"
+        );
+        assert_eq!(
+            del_documento("ABCDE23456", "Plano.PDF"),
+            "anot-ABCDE23456-texto"
+        );
+        assert_eq!(
+            rel("anot-ABCDE23456", ".marcas"),
+            "pins/draw/anot-ABCDE23456.marcas"
+        );
     }
 
     #[test]
@@ -436,7 +465,10 @@ mod pruebas {
                 "pins/draw/anot-ABCDE23456.marcas".into()
             ]
         );
-        assert_eq!(uid_del_nombre("anot-ABCDE23456-texto.maqueta"), Some("ABCDE23456"));
+        assert_eq!(
+            uid_del_nombre("anot-ABCDE23456-texto.maqueta"),
+            Some("ABCDE23456")
+        );
         assert_eq!(uid_del_nombre("anot-ABCDE23456.pdf"), None);
     }
 
@@ -457,10 +489,20 @@ mod pruebas {
         let m = Maqueta::de_texto("420,280,280,100,1,0").unwrap();
         assert_eq!(
             m,
-            Maqueta { columna: 420, izq: 280, der: 280, tamano: 100, grosor: 1, tipo: 0 }
+            Maqueta {
+                columna: 420,
+                izq: 280,
+                der: 280,
+                tamano: 100,
+                grosor: 1,
+                tipo: 0
+            }
         );
         assert_eq!(m.a_texto(), "420,280,280,100,1,0");
-        assert_eq!(Maqueta::de_texto(" 384, 256,256,100,1,0\n").map(|m| m.columna), Some(384));
+        assert_eq!(
+            Maqueta::de_texto(" 384, 256,256,100,1,0\n").map(|m| m.columna),
+            Some(384)
+        );
         // Casos negativos del movil.
         assert_eq!(Maqueta::de_texto("0,1,2,3,4,5"), None);
         assert_eq!(Maqueta::de_texto("420,x,2,3,4,5"), None);
@@ -480,10 +522,16 @@ mod pruebas {
         ];
         let m = por_uid(rels);
         assert_eq!(m["ABCDE23456"].len(), 3, "{m:?}");
-        assert_eq!(uid_del_nombre("anot-ABCDE23456-p12.hoja"), Some("ABCDE23456"));
+        assert_eq!(
+            uid_del_nombre("anot-ABCDE23456-p12.hoja"),
+            Some("ABCDE23456")
+        );
         // Caso negativo: el temporal no viaja.
         assert_eq!(uid_del_nombre("anot-ABCDE23456-p0.hoja.tmp"), None);
-        assert_eq!(rel(&de_pagina("ABCDE23456", 3), HOJA), "pins/draw/anot-ABCDE23456-p3.hoja");
+        assert_eq!(
+            rel(&de_pagina("ABCDE23456", 3), HOJA),
+            "pins/draw/anot-ABCDE23456-p3.hoja"
+        );
     }
 
     #[test]
@@ -528,19 +576,35 @@ mod pruebas {
         // Es el principio del resumen con que la sincronizacion compara el
         // fichero: el mismo JSON escrito de otra manera da la misma.
         assert!(crate::canonico::resumen(tinta).starts_with(&h));
-        assert_eq!(huella_de_tinta("{ \"files\":{},\"elements\":[{\"x\":1.0,\"id\":\"a\"}]}"), h);
+        assert_eq!(
+            huella_de_tinta("{ \"files\":{},\"elements\":[{\"x\":1.0,\"id\":\"a\"}]}"),
+            h
+        );
         // Lo que escribio el PC el 29-sep se sigue leyendo.
         let t = format!("-1050,0,2450,4950\nv1\ntinta {h}\n");
-        assert_eq!(MarcoDeLaHoja::de_texto_con_huella(&t), Some((m, Some(h.clone()))));
+        assert_eq!(
+            MarcoDeLaHoja::de_texto_con_huella(&t),
+            Some((m, Some(h.clone())))
+        );
         assert_eq!(MarcoDeLaHoja::de_texto(&t), Some(m));
         // Sin huella (lo que el PC escribio antes) sigue valiendo.
-        assert_eq!(MarcoDeLaHoja::de_texto_con_huella(&m.a_texto()), Some((m, None)));
+        assert_eq!(
+            MarcoDeLaHoja::de_texto_con_huella(&m.a_texto()),
+            Some((m, None))
+        );
         // Una huella entera (64) de Kotlin, en mayusculas, tambien.
         let entera = crate::canonico::resumen(tinta).to_ascii_uppercase();
-        let (_, leida) = MarcoDeLaHoja::de_texto_con_huella(&format!("0,0,1,1\nv1\ntinta {entera}")).unwrap();
-        assert!(huella_coincide(&leida.unwrap(), &crate::canonico::resumen(tinta)));
+        let (_, leida) =
+            MarcoDeLaHoja::de_texto_con_huella(&format!("0,0,1,1\nv1\ntinta {entera}")).unwrap();
+        assert!(huella_coincide(
+            &leida.unwrap(),
+            &crate::canonico::resumen(tinta)
+        ));
         // Caso negativo: la huella de otra tinta no coincide.
-        assert!(!huella_coincide(&h, &crate::canonico::resumen(r#"{"elements":[]}"#)));
+        assert!(!huella_coincide(
+            &h,
+            &crate::canonico::resumen(r#"{"elements":[]}"#)
+        ));
         assert!(!huella_coincide("abcdef0123456789", "abcd"));
     }
 
@@ -558,11 +622,21 @@ mod pruebas {
         }
         // Quitar la huella deja la primera linea tal cual y `v1`.
         assert_eq!(
-            MarcoDeLaHoja::sin_huella(" 500.0,300.0,4700.0,6240.0\r\nv1\r\ntinta 0123456789abcdef\r\n").as_deref(),
+            MarcoDeLaHoja::sin_huella(
+                " 500.0,300.0,4700.0,6240.0\r\nv1\r\ntinta 0123456789abcdef\r\n"
+            )
+            .as_deref(),
             Some("500.0,300.0,4700.0,6240.0\nv1\n")
         );
-        assert_eq!(MarcoDeLaHoja::sin_huella("1,2,3,4").as_deref(), Some("1,2,3,4\nv1\n"));
-        assert_eq!(MarcoDeLaHoja::sin_huella("1,2,3,4\nv2\n"), None, "lo que no se entiende no se toca");
+        assert_eq!(
+            MarcoDeLaHoja::sin_huella("1,2,3,4").as_deref(),
+            Some("1,2,3,4\nv1\n")
+        );
+        assert_eq!(
+            MarcoDeLaHoja::sin_huella("1,2,3,4\nv2\n"),
+            None,
+            "lo que no se entiende no se toca"
+        );
     }
 
     /// Lo que escribe Android v0.98.0 (`MarcoDeLaHojaTest`): dos lineas, y
@@ -572,10 +646,21 @@ mod pruebas {
         let m = MarcoDeLaHoja::nuevo(-1050.0, 0.0, 2450.0, 4950.0);
         let t = m.a_texto();
         assert_eq!(t, "-1050,0,2450,4950\nv1\n");
-        assert_eq!(t.lines().count(), 2, "una tercera linea haria que Android lo ignorase");
-        assert_eq!(MarcoDeLaHoja::nuevo(0.5, -0.0, 1414.2857, 2.0).a_texto(), "0.5,0,1414.286,2\nv1\n");
+        assert_eq!(
+            t.lines().count(),
+            2,
+            "una tercera linea haria que Android lo ignorase"
+        );
+        assert_eq!(
+            MarcoDeLaHoja::nuevo(0.5, -0.0, 1414.2857, 2.0).a_texto(),
+            "0.5,0,1414.286,2\nv1\n"
+        );
         // Lo que escribe Android: `deHoja` de un A4 y los decimales de Kotlin.
-        for android in ["0,0,1400,1979.899\nv1\n", "1400.0,0.0,2800.0,1980.0", "-1050,0,2450,4950\nv1\n"] {
+        for android in [
+            "0,0,1400,1979.899\nv1\n",
+            "1400.0,0.0,2800.0,1980.0",
+            "-1050,0,2450,4950\nv1\n",
+        ] {
             assert!(MarcoDeLaHoja::de_texto(android).is_some(), "{android:?}");
         }
     }
@@ -584,13 +669,21 @@ mod pruebas {
     fn la_regla_del_lector_de_antes_es_la_misma_que_en_android() {
         let cerca = |a: MarcoDeLaHoja, b: MarcoDeLaHoja| {
             assert!(
-                [a.x0 - b.x0, a.y0 - b.y0, a.x1 - b.x1, a.y1 - b.y1].iter().all(|d| d.abs() < 1e-2),
+                [a.x0 - b.x0, a.y0 - b.y0, a.x1 - b.x1, a.y1 - b.y1]
+                    .iter()
+                    .all(|d| d.abs() < 1e-2),
                 "{a:?} frente a {b:?}"
             )
         };
         let p = 1400.0 / 1980.0;
-        cerca(MarcoDeLaHoja::del_lector_viejo(0, 1400.0, 0.75, p), MarcoDeLaHoja::nuevo(-1050.0, 0.0, 2450.0, 4950.0));
-        cerca(MarcoDeLaHoja::del_lector_viejo(3, 1400.0, 0.75, p), MarcoDeLaHoja::nuevo(0.0, 0.0, 1400.0, 1980.0));
+        cerca(
+            MarcoDeLaHoja::del_lector_viejo(0, 1400.0, 0.75, p),
+            MarcoDeLaHoja::nuevo(-1050.0, 0.0, 2450.0, 4950.0),
+        );
+        cerca(
+            MarcoDeLaHoja::del_lector_viejo(3, 1400.0, 0.75, p),
+            MarcoDeLaHoja::nuevo(0.0, 0.0, 1400.0, 1980.0),
+        );
         let k = 2.5 / 1.75;
         cerca(
             MarcoDeLaHoja::del_lector_viejo(2, 1400.0, 0.75, p),
@@ -598,14 +691,25 @@ mod pruebas {
         );
         cerca(
             MarcoDeLaHoja::del_lector_viejo(1, 1400.0, 0.75, p),
-            MarcoDeLaHoja::nuevo(1050.0 * k - 1050.0, 0.0, 1050.0 * k - 1050.0 + 1400.0 * k, 1980.0 * k),
+            MarcoDeLaHoja::nuevo(
+                1050.0 * k - 1050.0,
+                0.0,
+                1050.0 * k - 1050.0 + 1400.0 * k,
+                1980.0 * k,
+            ),
         );
-        cerca(MarcoDeLaHoja::de_hoja(1400.0, p), MarcoDeLaHoja::nuevo(0.0, 0.0, 1400.0, 1980.0));
+        cerca(
+            MarcoDeLaHoja::de_hoja(1400.0, p),
+            MarcoDeLaHoja::nuevo(0.0, 0.0, 1400.0, 1980.0),
+        );
         // Es la cuenta de `capa_del_movil` del PC: ancho `1400·k`, cero en `dx`.
         for e in 0..4u8 {
             let viejo = MarcoDeLaHoja::del_lector_viejo(e, 1400.0, 0.75, p);
             let (k, dx) = pixpin_docs_capa_del_movil(e);
-            cerca(viejo, MarcoDeLaHoja::nuevo(dx, 0.0, dx + 1400.0 * k, 1980.0 * k));
+            cerca(
+                viejo,
+                MarcoDeLaHoja::nuevo(dx, 0.0, dx + 1400.0 * k, 1980.0 * k),
+            );
         }
     }
 
@@ -648,7 +752,10 @@ mod pruebas {
         ];
         let m = por_uid(rels);
         assert_eq!(m.len(), 1);
-        assert_eq!(m["ABCDE23456"], ["pins/draw/anot-ABCDE23456.comentarios.json"]);
+        assert_eq!(
+            m["ABCDE23456"],
+            ["pins/draw/anot-ABCDE23456.comentarios.json"]
+        );
         assert_eq!(rel(&del_pdf("ABCDE23456"), COMENTARIOS), rels[0]);
     }
 
@@ -658,10 +765,18 @@ mod pruebas {
 
     #[test]
     fn lo_anotado_va_con_los_adjuntos_y_las_notas_y_no_con_lo_demas() {
-        assert!(lleva_anotado(&j(serde_json::json!({"id": "a", "clase": "ARCHIVO", "ruta": "x"}))));
-        assert!(lleva_anotado(&j(serde_json::json!({"id": "n", "clase": "NOTA", "texto": "# Hola"}))));
-        assert!(!lleva_anotado(&j(serde_json::json!({"id": "d", "clase": "DIBUJO", "referencia": "d1"}))));
-        assert!(!lleva_anotado(&j(serde_json::json!({"id": "t", "texto": "hola"}))));
+        assert!(lleva_anotado(&j(
+            serde_json::json!({"id": "a", "clase": "ARCHIVO", "ruta": "x"})
+        )));
+        assert!(lleva_anotado(&j(
+            serde_json::json!({"id": "n", "clase": "NOTA", "texto": "# Hola"})
+        )));
+        assert!(!lleva_anotado(&j(
+            serde_json::json!({"id": "d", "clase": "DIBUJO", "referencia": "d1"})
+        )));
+        assert!(!lleva_anotado(&j(
+            serde_json::json!({"id": "t", "texto": "hola"})
+        )));
     }
 
     #[test]

@@ -162,7 +162,11 @@ fn leer_fila_entera(doc: &ITextDocument, pos: usize) -> Option<(i32, bool, i32)>
             let _ = fila.SetCellIndex(c);
             ancho += fila.GetCellWidth().unwrap_or(0);
         }
-        Some((fila.GetIndent().unwrap_or(0), fila.GetAlignment().unwrap_or(1) == 0, ancho))
+        Some((
+            fila.GetIndent().unwrap_or(0),
+            fila.GetAlignment().unwrap_or(1) == 0,
+            ancho,
+        ))
     }
 }
 
@@ -240,7 +244,10 @@ pub(in crate::editor) fn colocar_todas(e: &Estado, pedido: Option<(usize, i32)>)
     let (vis_izq, vis_der) = visible(e.edit);
     // Lo que manda es la columna de texto: hasta donde se corre la tabla.
     let visible_px = columna(e.edit);
-    let medidas: Vec<Option<(i32, bool, i32)>> = tablas.iter().map(|tc| leer_fila_entera(doc, tc.desde)).collect();
+    let medidas: Vec<Option<(i32, bool, i32)>> = tablas
+        .iter()
+        .map(|tc| leer_fila_entera(doc, tc.desde))
+        .collect();
     let px = |tw: i32| tw * e.ppp / 1440;
     // Una tabla que no cabe y aun no hay hueco: se abre, y el texto se
     // vuelve a sangrar con el (ver `margen_de`).
@@ -261,7 +268,11 @@ pub(in crate::editor) fn colocar_todas(e: &Estado, pedido: Option<(usize, i32)>)
         let quiere = pedido.filter(|p| p.0 == k).map_or(ahora, |p| p.1);
         let c = tabla_ancha::colocar_en_columna(ancho, visible_px, lleno, oculto, quiere);
         // Ancha, a la izquierda; si cabe, centrada (ver `Colocacion`).
-        let tw = if c.ancha() { c.sangria * 1440 / e.ppp } else { tabla_ancha::hueco_twips() };
+        let tw = if c.ancha() {
+            c.sangria * 1440 / e.ppp
+        } else {
+            tabla_ancha::hueco_twips()
+        };
         if izquierda != c.ancha() || (tw - sangria).abs() > 20 {
             sangrar(e, tc, c.ancha(), tw);
         }
@@ -319,7 +330,12 @@ fn invalidar(edit: HWND) {
 pub(in crate::editor) fn seguir(e: &Estado) {
     colocar_todas(e, None);
     let (a, b) = seleccion(e.edit);
-    let Some(v) = VISTAS.with(|v| v.borrow().iter().copied().find(|x| x.desde <= b && b < x.hasta)) else {
+    let Some(v) = VISTAS.with(|v| {
+        v.borrow()
+            .iter()
+            .copied()
+            .find(|x| x.desde <= b && b < x.hasta)
+    }) else {
         return;
     };
     // Arrastrando una eleccion que sale de la tabla, no se persigue.
@@ -327,7 +343,12 @@ pub(in crate::editor) fn seguir(e: &Estado) {
         return;
     }
     let mut p = POINT::default();
-    enviar(e.edit, EM_POSFROMCHAR, &mut p as *mut _ as usize, b as isize);
+    enviar(
+        e.edit,
+        EM_POSFROMCHAR,
+        &mut p as *mut _ as usize,
+        b as isize,
+    );
     let aire = esc(e, AIRE_CURSOR_PX);
     let d = tabla_ancha::para_ver(&v.c, p.x - aire, p.x + aire, v.vis_izq, v.vis_der);
     if d != v.c.desplazamiento {
@@ -338,7 +359,9 @@ pub(in crate::editor) fn seguir(e: &Estado) {
 /// Desplaza la tabla que empieza en `desde` a `d` (y coloca las demas).
 pub(in crate::editor) fn desplazar(e: &Estado, desde: usize, d: i32) {
     let texto = leer(e.edit);
-    let k = md_tabla::tablas_en_control(&texto).iter().position(|t| t.desde == desde);
+    let k = md_tabla::tablas_en_control(&texto)
+        .iter()
+        .position(|t| t.desde == desde);
     colocar_todas(e, k.map(|k| (k, d)));
 }
 
@@ -360,8 +383,18 @@ fn colores_de(t: &Tema) -> (Rgb, Rgb) {
 fn caja_de(edit: HWND, v: &Vista, ppp: i32) -> (i32, i32, i32, i32) {
     let mut arriba = POINT::default();
     let mut abajo = POINT::default();
-    enviar(edit, EM_POSFROMCHAR, &mut arriba as *mut _ as usize, v.desde as isize);
-    enviar(edit, EM_POSFROMCHAR, &mut abajo as *mut _ as usize, v.hasta as isize);
+    enviar(
+        edit,
+        EM_POSFROMCHAR,
+        &mut arriba as *mut _ as usize,
+        v.desde as isize,
+    );
+    enviar(
+        edit,
+        EM_POSFROMCHAR,
+        &mut abajo as *mut _ as usize,
+        v.hasta as isize,
+    );
     let y = abajo.y + SEPARACION_PX * ppp / 96;
     (arriba.y, abajo.y, y, v.vis_der - v.vis_izq)
 }
@@ -413,7 +446,8 @@ pub(in crate::editor) fn pintar_encima(edit: HWND, hdc: HDC) {
             let _ = FillRect(hdc, &izq, fondo);
             let _ = FillRect(hdc, &der, fondo);
             let grueso = GRUESO_PX * ppp / 96;
-            let (px, largo) = tabla_ancha::pulgar(v.vis_izq, an, v.ancho, &v.c, PULGAR_MINIMO_PX * ppp / 96);
+            let (px, largo) =
+                tabla_ancha::pulgar(v.vis_izq, an, v.ancho, &v.c, PULGAR_MINIMO_PX * ppp / 96);
             let _ = RoundRect(hdc, px, y, px + largo + 1, y + grueso + 1, grueso, grueso);
         }
         SelectObject(hdc, viejo_pincel);
@@ -493,7 +527,11 @@ pub(in crate::editor) fn raton(e: &Estado, m: &MSG) -> bool {
             // Rueda abajo (negativa) con Mayus: a la derecha, como en el
             // navegador; la de lado, positiva a la derecha.
             let paso = giro * esc(e, PASO_PX) / 120;
-            let d = if de_lado { v.c.desplazamiento + paso } else { v.c.desplazamiento - paso };
+            let d = if de_lado {
+                v.c.desplazamiento + paso
+            } else {
+                v.c.desplazamiento - paso
+            };
             desplazar(e, v.desde, d);
             true
         }
@@ -505,7 +543,11 @@ pub(in crate::editor) fn raton(e: &Estado, m: &MSG) -> bool {
             let minimo = esc(e, PULGAR_MINIMO_PX);
             let (px, largo) = tabla_ancha::pulgar(v.vis_izq, an, v.ancho, &v.c, minimo);
             // Fuera del pulgar: salta para que quede centrado donde se pulso.
-            let agarre = if x >= px && x < px + largo { x - px } else { largo / 2 };
+            let agarre = if x >= px && x < px + largo {
+                x - px
+            } else {
+                largo / 2
+            };
             let d = tabla_ancha::desde_pulgar(x - agarre, v.vis_izq, an, v.ancho, &v.c, minimo);
             ARRASTRE.with(|a| a.set(Some((v.desde, agarre))));
             // SAFETY: ventana propia.
@@ -519,11 +561,19 @@ pub(in crate::editor) fn raton(e: &Estado, m: &MSG) -> bool {
             let Some((desde, agarre)) = ARRASTRE.with(|a| a.get()) else {
                 return false;
             };
-            let Some(v) = VISTAS.with(|v| v.borrow().iter().copied().find(|v| v.desde == desde)) else {
+            let Some(v) = VISTAS.with(|v| v.borrow().iter().copied().find(|v| v.desde == desde))
+            else {
                 return true;
             };
             let an = v.vis_der - v.vis_izq;
-            let d = tabla_ancha::desde_pulgar(x - agarre, v.vis_izq, an, v.ancho, &v.c, esc(e, PULGAR_MINIMO_PX));
+            let d = tabla_ancha::desde_pulgar(
+                x - agarre,
+                v.vis_izq,
+                an,
+                v.ancho,
+                &v.c,
+                esc(e, PULGAR_MINIMO_PX),
+            );
             if d != v.c.desplazamiento {
                 desplazar(e, v.desde, d);
             }

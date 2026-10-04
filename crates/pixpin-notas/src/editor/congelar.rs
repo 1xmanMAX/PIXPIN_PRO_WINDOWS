@@ -58,7 +58,11 @@ pub(super) enum Pintado {
 
 /// **Hace `f` con el control congelado** y le pone el formato antes de
 /// soltarlo. Si ya se esta dentro de uno, `f` sin mas: el de fuera pinta.
-pub(super) fn congelado<R>(e: &mut Estado, pintado: Pintado, f: impl FnOnce(&mut Estado) -> R) -> R {
+pub(super) fn congelado<R>(
+    e: &mut Estado,
+    pintado: Pintado,
+    f: impl FnOnce(&mut Estado) -> R,
+) -> R {
     if DENTRO.with(Cell::get) {
         return f(e);
     }
@@ -161,7 +165,11 @@ pub(super) fn fotograma(edit: HWND) {
     } else {
         // SAFETY: la interfaz la da el control con una referencia de mas, que
         // suelta el `IUnknown` al salir.
-        unsafe { windows::core::IUnknown::from_raw(ole).cast::<ITextDocument>().ok() }
+        unsafe {
+            windows::core::IUnknown::from_raw(ole)
+                .cast::<ITextDocument>()
+                .ok()
+        }
     };
     let texto = leer(edit);
     let marcas = md_edicion::marcas(&texto);
@@ -173,14 +181,21 @@ pub(super) fn fotograma(edit: HWND) {
             .map(|(p, _)| p)
             // SAFETY: rango del documento vivo del control.
             .filter(|p| unsafe {
-                d.Range(*p as i32, *p as i32 + 1).and_then(|r| r.GetFont()).and_then(|f| f.GetHidden()).unwrap_or(0) == 0
+                d.Range(*p as i32, *p as i32 + 1)
+                    .and_then(|r| r.GetFont())
+                    .and_then(|f| f.GetHidden())
+                    .unwrap_or(0)
+                    == 0
             })
             .collect(),
         None => Vec::new(),
     };
     ESPIA.with(|s| {
         if let Some(v) = s.borrow_mut().as_mut() {
-            v.push(Fotograma { texto, marcas_a_la_vista: a_la_vista });
+            v.push(Fotograma {
+                texto,
+                marcas_a_la_vista: a_la_vista,
+            });
         }
     });
 }
@@ -189,7 +204,15 @@ pub(super) fn fotograma(edit: HWND) {
 pub(super) fn cambia_lo_que_se_ve(m: u32) -> bool {
     matches!(
         m,
-        EM_REPLACESEL | EM_SETTEXTEX | WM_SETTEXT | EM_PASTESPECIAL | WM_PASTE | WM_CHAR | WM_KEYDOWN | WM_CUT | WM_CLEAR
+        EM_REPLACESEL
+            | EM_SETTEXTEX
+            | WM_SETTEXT
+            | EM_PASTESPECIAL
+            | WM_PASTE
+            | WM_CHAR
+            | WM_KEYDOWN
+            | WM_CUT
+            | WM_CLEAR
     ) || m == DESHACER_EM
         || m == REHACER_EM
         || m == WM_UNDO
@@ -204,7 +227,10 @@ pub(super) const REHACER_EM: u32 = 0x0454;
 /// hacen aqui, congelados, para que lo que vuelva (unos `**`) vuelva ya
 /// escondido.
 pub(super) fn es_deshacer(m: &MSG, ctrl: bool, alt: bool) -> bool {
-    m.message == WM_KEYDOWN && ctrl && !alt && (m.wParam.0 == b'Z' as usize || m.wParam.0 == b'Y' as usize)
+    m.message == WM_KEYDOWN
+        && ctrl
+        && !alt
+        && (m.wParam.0 == b'Z' as usize || m.wParam.0 == b'Y' as usize)
 }
 
 /// Deshace (o rehace) un paso. `true` si habia algo.

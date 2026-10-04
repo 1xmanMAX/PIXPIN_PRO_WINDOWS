@@ -76,12 +76,24 @@ pub fn estirar(
     }
     // El eje que el tirador no toca no se escala, y pasado el ancla no se
     // voltea: se queda en lo minimo, como en el movil.
-    let mut sx = if mueve_x { (nx1 - nx0).max(MINIMO) / ancho } else { 1.0 };
-    let mut sy = if mueve_y { (ny1 - ny0).max(MINIMO) / alto } else { 1.0 };
+    let mut sx = if mueve_x {
+        (nx1 - nx0).max(MINIMO) / ancho
+    } else {
+        1.0
+    };
+    let mut sy = if mueve_y {
+        (ny1 - ny0).max(MINIMO) / alto
+    } else {
+        1.0
+    };
     if proporcional.unwrap_or(mueve_x && mueve_y) {
         // Manda el eje que mas ha cambiado: si no, la seleccion «resbala»
         // cuando el cursor va casi en diagonal.
-        let s = if (sx - 1.0).abs() > (sy - 1.0).abs() { sx } else { sy };
+        let s = if (sx - 1.0).abs() > (sy - 1.0).abs() {
+            sx
+        } else {
+            sy
+        };
         sx = s;
         sy = s;
     }
@@ -94,8 +106,19 @@ pub fn estirar(
 /// quien tiene que encajar algo en un sitio (una figura en la celda de una
 /// tabla). Las trazas escalan sus puntos, los textos su letra con la menor
 /// de las dos escalas, y lo bloqueado no se toca.
-pub fn escalar_desde(originales: &[Elemento], ancla: Punto2, sx: f32, sy: f32, destino: Punto2) -> Vec<Elemento> {
-    let mapa = |q: Punto2| Punto2::nuevo(destino.x + (q.x - ancla.x) * sx, destino.y + (q.y - ancla.y) * sy);
+pub fn escalar_desde(
+    originales: &[Elemento],
+    ancla: Punto2,
+    sx: f32,
+    sy: f32,
+    destino: Punto2,
+) -> Vec<Elemento> {
+    let mapa = |q: Punto2| {
+        Punto2::nuevo(
+            destino.x + (q.x - ancla.x) * sx,
+            destino.y + (q.y - ancla.y) * sy,
+        )
+    };
     let letra = sx.min(sy);
     originales
         .iter()

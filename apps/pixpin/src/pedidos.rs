@@ -265,7 +265,9 @@ impl Fallo {
             Fallo::Disco(e) => format!("disco: {e}"),
             Fallo::TareaCambio => "la tarea ya no estaba donde se vio".into(),
             Fallo::SinCapturas => "no hay capturas".into(),
-            Fallo::FueraDeCapturas(r) => format!("fuera de la carpeta de capturas: {}", r.display()),
+            Fallo::FueraDeCapturas(r) => {
+                format!("fuera de la carpeta de capturas: {}", r.display())
+            }
             Fallo::NoEsImagen(r) => format!("no es una imagen: {}", r.display()),
             Fallo::Imagen(e) => format!("imagen: {e}"),
             Fallo::SinImagen(r) => format!("no existe la imagen {}", r.display()),
@@ -402,7 +404,11 @@ fn hacer(p: Pedido, cx: &Contexto) -> Result<Hecho, Fallo> {
                 let m = mensaje_de(raiz, &f.id, &codigo)?;
                 // Una leccion abre su ficha, no el chat (no se ve en el).
                 if let Some(id) = crate::lecciones::almacen::es_leccion(&m)
-                    .then(|| m.ruta.as_deref().and_then(|r| crate::lecciones::id_del_archivo(Path::new(r))))
+                    .then(|| {
+                        m.ruta
+                            .as_deref()
+                            .and_then(|r| crate::lecciones::id_del_archivo(Path::new(r)))
+                    })
                     .flatten()
                 {
                     crate::lecciones::editar(cx.ubicacion.clone(), cx.idioma, cx.aparato, &id);
@@ -453,18 +459,31 @@ fn hacer(p: Pedido, cx: &Contexto) -> Result<Hecho, Fallo> {
                 });
             }
         },
-        Pedido::Chat { texto, proyecto, imagenes } => {
+        Pedido::Chat {
+            texto,
+            proyecto,
+            imagenes,
+        } => {
             let f = ficha_de(raiz, proyecto.as_deref(), cx.aparato, ahora)?;
             chat_con_imagenes(raiz, &f.id, cx.aparato, &texto, &imagenes, ahora)?;
             crate::ventana_chat::refrescar();
             return Ok(aviso("pedido-escrito", &[("proyecto", f.nombre)]));
         }
-        Pedido::NotaNueva { texto, proyecto, imagenes } => {
+        Pedido::NotaNueva {
+            texto,
+            proyecto,
+            imagenes,
+        } => {
             let f = ficha_de(raiz, proyecto.as_deref(), cx.aparato, ahora)?;
-            let numeradas: Vec<(u32, PathBuf)> =
-                imagenes.iter().enumerate().map(|(i, r)| (i as u32 + 1, r.clone())).collect();
+            let numeradas: Vec<(u32, PathBuf)> = imagenes
+                .iter()
+                .enumerate()
+                .map(|(i, r)| (i as u32 + 1, r.clone()))
+                .collect();
             let texto = match texto {
-                Some(t) if !numeradas.is_empty() => Some(crate::tareas::con_imagenes_guardadas(raiz, &f.id, &t, &numeradas)?),
+                Some(t) if !numeradas.is_empty() => Some(crate::tareas::con_imagenes_guardadas(
+                    raiz, &f.id, &t, &numeradas,
+                )?),
                 t => t,
             };
             // El editor no sabe nacer con texto: con texto, la nota se
@@ -517,7 +536,8 @@ fn hacer(p: Pedido, cx: &Contexto) -> Result<Hecho, Fallo> {
             proyecto,
             codigo,
         } => {
-            let ruta = fichero_a_pinear(raiz, ruta, proyecto.as_deref(), codigo, cx.aparato, ahora)?;
+            let ruta =
+                fichero_a_pinear(raiz, ruta, proyecto.as_deref(), codigo, cx.aparato, ahora)?;
             // Al `main`, como el chat (`Accion::Pinear` se lo manda por
             // `enviar_ficheros`): es quien tiene los pines.
             return Ok(Hecho {
@@ -552,13 +572,27 @@ fn hacer(p: Pedido, cx: &Contexto) -> Result<Hecho, Fallo> {
             );
         }
         // Las lecciones: su ventana es la respuesta.
-        Pedido::LeccionNueva { texto, proyecto, imagenes } => {
+        Pedido::LeccionNueva {
+            texto,
+            proyecto,
+            imagenes,
+        } => {
             let f = ficha_de(raiz, proyecto.as_deref(), cx.aparato, ahora)?;
             // Se leen ya: el borrador de Flow se vacia solo, y la ficha puede
             // quedarse abierta un buen rato antes de guardar.
             let fotos = leer_imagenes(&imagenes, "leccion", ahora)?;
-            let texto = texto.map(|t| sin_fichas_de_imagen(&t, imagenes.len())).filter(|t| !t.is_empty());
-            crate::lecciones::nueva_con_fotos(cx.ubicacion.clone(), cx.idioma, cx.aparato, texto, None, Some(f.id), fotos);
+            let texto = texto
+                .map(|t| sin_fichas_de_imagen(&t, imagenes.len()))
+                .filter(|t| !t.is_empty());
+            crate::lecciones::nueva_con_fotos(
+                cx.ubicacion.clone(),
+                cx.idioma,
+                cx.aparato,
+                texto,
+                None,
+                Some(f.id),
+                fotos,
+            );
         }
         Pedido::Lecciones { proyecto, consulta } => {
             let ficha = match proyecto.as_deref().map(str::trim).filter(|p| !p.is_empty()) {
@@ -671,7 +705,9 @@ fn hacer(p: Pedido, cx: &Contexto) -> Result<Hecho, Fallo> {
             imagen_a_copiar(&ruta)?;
             pixpin_codec::imagen::cargar(&ruta)
                 .map_err(|e| Fallo::Imagen(e.to_string()))
-                .and_then(|img| pixpin_codec::copiar_imagen(&img).map_err(|e| Fallo::Imagen(e.to_string())))?;
+                .and_then(|img| {
+                    pixpin_codec::copiar_imagen(&img).map_err(|e| Fallo::Imagen(e.to_string()))
+                })?;
             return Ok(aviso("galeria-copiada", &[]));
         }
     }
@@ -726,7 +762,9 @@ fn captura_de(raiz: &Path, ruta: &Path) -> Result<PathBuf, Fallo> {
     // Comparadas ya resueltas: `..`, mayusculas de la unidad o un enlace no
     // cuelan un fichero de fuera.
     let dentro = match (ruta.canonicalize(), carpeta.canonicalize()) {
-        (Ok(r), Ok(c)) => r.parent() == Some(c.as_path()) && crate::galeria_capturas::es_captura(&r),
+        (Ok(r), Ok(c)) => {
+            r.parent() == Some(c.as_path()) && crate::galeria_capturas::es_captura(&r)
+        }
         _ => false,
     };
     if dentro {
@@ -794,7 +832,11 @@ pub(crate) fn ficha_de(
 }
 
 /// Un mensaje del proyecto por su `id` o por su codigo unico.
-pub(crate) fn mensaje_de(raiz: &Path, proyecto: &str, codigo: &str) -> Result<cuaderno::Mensaje, Fallo> {
+pub(crate) fn mensaje_de(
+    raiz: &Path,
+    proyecto: &str,
+    codigo: &str,
+) -> Result<cuaderno::Mensaje, Fallo> {
     let c = match cuaderno::Cuaderno::leer_de(&almacen::carpeta(raiz, proyecto)) {
         Ok(c) => c,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Default::default(),
@@ -830,7 +872,8 @@ fn fichero_a_pinear(
     };
     let f = ficha_de(raiz, proyecto, aparato, ahora)?;
     let m = mensaje_de(raiz, &f.id, &codigo)?;
-    crate::ventana_chat::fichero_del_mensaje(raiz, &f.id, &m).ok_or(Fallo::MensajeSinFichero(codigo))
+    crate::ventana_chat::fichero_del_mensaje(raiz, &f.id, &m)
+        .ok_or(Fallo::MensajeSinFichero(codigo))
 }
 
 /// Una nota de texto nueva en el chat, sellada como las de la caja, y el
@@ -884,7 +927,11 @@ fn chat_con_imagenes(
 /// Las imagenes de un pedido, leidas y con nombre (`<prefijo>-<ms>-NN.ext`),
 /// listas para meterlas en un chat. Un BMP pasa a PNG. Todas o ninguna: una
 /// que falte o no sea imagen es un fallo del pedido entero.
-fn leer_imagenes(imagenes: &[PathBuf], prefijo: &str, ahora: i64) -> Result<Vec<(String, Vec<u8>)>, Fallo> {
+fn leer_imagenes(
+    imagenes: &[PathBuf],
+    prefijo: &str,
+    ahora: i64,
+) -> Result<Vec<(String, Vec<u8>)>, Fallo> {
     let mut fotos = Vec::with_capacity(imagenes.len());
     for (i, r) in imagenes.iter().enumerate() {
         if !r.is_file() {
@@ -900,7 +947,8 @@ fn leer_imagenes(imagenes: &[PathBuf], prefijo: &str, ahora: i64) -> Result<Vec<
             .to_ascii_lowercase();
         let (ext, bytes) = if ext == "bmp" {
             let img = pixpin_codec::imagen::cargar(r).map_err(|e| Fallo::Imagen(e.to_string()))?;
-            let png = pixpin_codec::imagen::codificar_png(&img).map_err(|e| Fallo::Imagen(e.to_string()))?;
+            let png = pixpin_codec::imagen::codificar_png(&img)
+                .map_err(|e| Fallo::Imagen(e.to_string()))?;
             ("png".to_string(), png)
         } else {
             (ext, std::fs::read(r)?)
@@ -1008,7 +1056,9 @@ pub(crate) fn anadir_tarea(
     }
     let mut m = lista_para_anadir(raiz, proyecto, aparato, codigo, titulo_nueva)?;
     // Con la fecha de hoy, como al anadirla en el chat (`mini::anadir_el`).
-    let hoy = mini::Fecha::de_ms_locales(pixpin_shell::entorno::ahora_utc_ms() + pixpin_shell::entorno::desfase_local_ms());
+    let hoy = mini::Fecha::de_ms_locales(
+        pixpin_shell::entorno::ahora_utc_ms() + pixpin_shell::entorno::desfase_local_ms(),
+    );
     m.texto = mini::anadir_el(&m.texto, texto, hoy);
     reescribir(raiz, proyecto, &m)?;
     Ok(m)
@@ -1196,10 +1246,7 @@ mod pruebas {
             "ventana_principal",
             r#"{"pixpin":1,"accion":"ventana_principal"}"#,
         ),
-        (
-            "pinear",
-            r#"{"pixpin":1,"accion":"pinear","codigo":"1"}"#,
-        ),
+        ("pinear", r#"{"pixpin":1,"accion":"pinear","codigo":"1"}"#),
         (
             "iconos",
             r#"{"pixpin":1,"accion":"iconos","extensiones":["pdf","docx"]}"#,
@@ -1218,7 +1265,10 @@ mod pruebas {
             "mover_tarea",
             r#"{"pixpin":1,"accion":"mover_tarea","codigo":"1","indice":0,"a_codigo":"2"}"#,
         ),
-        ("ventana", r#"{"pixpin":1,"accion":"ventana","cual":"tareas"}"#),
+        (
+            "ventana",
+            r#"{"pixpin":1,"accion":"ventana","cual":"tareas"}"#,
+        ),
         ("capturar", r#"{"pixpin":1,"accion":"capturar"}"#),
         ("pinear_ultima", r#"{"pixpin":1,"accion":"pinear_ultima"}"#),
         (
@@ -1318,17 +1368,35 @@ mod pruebas {
         let (raiz, f) = almacen_de_prueba("chat-imagenes");
         let png = raiz.join("pegada.png");
         std::fs::write(&png, b"\x89PNG\r\n\x1a\nfalsa").unwrap();
-        chat_con_imagenes(&raiz, &f.id, "PC01", "mira esto [img 01]", &[png.clone()], 5).unwrap();
+        chat_con_imagenes(
+            &raiz,
+            &f.id,
+            "PC01",
+            "mira esto [img 01]",
+            &[png.clone()],
+            5,
+        )
+        .unwrap();
         let v = cuaderno_de(&raiz, &f.id);
         assert_eq!(v.len(), 2, "{v:#?}");
         assert_eq!(v[0].texto, "mira esto", "el texto, sin la ficha");
         assert_eq!(v[1].clase, Some(cuaderno::Clase::Imagen));
         let ruta = v[1].ruta.clone().unwrap();
-        assert!(almacen::carpeta(&raiz, &f.id).join(&ruta).is_file(), "{ruta}");
+        assert!(
+            almacen::carpeta(&raiz, &f.id).join(&ruta).is_file(),
+            "{ruta}"
+        );
         // Caso negativo: una imagen que no esta no deja nada escrito.
         let antes = cuaderno_de(&raiz, &f.id).len();
         assert!(matches!(
-            chat_con_imagenes(&raiz, &f.id, "PC01", "otra [img 01]", &[raiz.join("no.png")], 6),
+            chat_con_imagenes(
+                &raiz,
+                &f.id,
+                "PC01",
+                "otra [img 01]",
+                &[raiz.join("no.png")],
+                6
+            ),
             Err(Fallo::SinImagen(_))
         ));
         assert_eq!(cuaderno_de(&raiz, &f.id).len(), antes);
@@ -1354,7 +1422,10 @@ mod pruebas {
             leer(r#"{"pixpin":1,"accion":"leccion_nueva"}"#),
             Ok(Pedido::LeccionNueva { imagenes, .. }) if imagenes.is_empty()
         ));
-        assert_eq!(sin_fichas_de_imagen("Mirar el plano [img 01] antes [img 02]", 2), "Mirar el plano antes");
+        assert_eq!(
+            sin_fichas_de_imagen("Mirar el plano [img 01] antes [img 02]", 2),
+            "Mirar el plano antes"
+        );
         // Una ficha de mas (sin su imagen) se queda: no es de ninguna foto.
         assert_eq!(sin_fichas_de_imagen("a [img 02]", 1), "a [img 02]");
         let (raiz, _) = almacen_de_prueba("leccion-imagenes");
@@ -1366,10 +1437,16 @@ mod pruebas {
         assert_eq!(fotos[1].0, "leccion-7-02.png");
         assert!(fotos[0].1.starts_with(b"\x89PNG"));
         // Caso negativo: una que falta o que no es imagen tumba el pedido.
-        assert!(matches!(leer_imagenes(&[raiz.join("no.png")], "leccion", 7), Err(Fallo::SinImagen(_))));
+        assert!(matches!(
+            leer_imagenes(&[raiz.join("no.png")], "leccion", 7),
+            Err(Fallo::SinImagen(_))
+        ));
         let txt = raiz.join("nota.txt");
         std::fs::write(&txt, b"hola").unwrap();
-        assert!(matches!(leer_imagenes(&[txt], "leccion", 7), Err(Fallo::NoEsImagen(_))));
+        assert!(matches!(
+            leer_imagenes(&[txt], "leccion", 7),
+            Err(Fallo::NoEsImagen(_))
+        ));
         let _ = std::fs::remove_dir_all(&raiz);
     }
 
@@ -1539,12 +1616,29 @@ mod pruebas {
             Err(Fallo::SinFichero(_))
         ));
         // Un adjunto por su codigo.
-        let adjunto =
-            crate::ventana_chat::adjuntar_en_proyecto(&raiz, &f.id, "PC01", "plano.pdf", b"%PDF", 1)
-                .unwrap();
-        let ruta = fichero_a_pinear(&raiz, None, Some(&f.id), Some(adjunto.id.clone()), "PC01", 1)
-            .unwrap();
-        assert!(ruta.is_file() && ruta.starts_with(&carpeta), "{}", ruta.display());
+        let adjunto = crate::ventana_chat::adjuntar_en_proyecto(
+            &raiz,
+            &f.id,
+            "PC01",
+            "plano.pdf",
+            b"%PDF",
+            1,
+        )
+        .unwrap();
+        let ruta = fichero_a_pinear(
+            &raiz,
+            None,
+            Some(&f.id),
+            Some(adjunto.id.clone()),
+            "PC01",
+            1,
+        )
+        .unwrap();
+        assert!(
+            ruta.is_file() && ruta.starts_with(&carpeta),
+            "{}",
+            ruta.display()
+        );
         // Un lienzo de la lista, sin `ruta` y solo con su `referencia`.
         let lienzo = cuaderno::Mensaje {
             id: "lz".into(),
@@ -1599,7 +1693,17 @@ mod pruebas {
     #[test]
     fn anadir_sin_chat_ni_lista_va_al_inbox_de_mensajes_guardados() {
         let (raiz, f) = almacen_de_prueba("inbox");
-        let l = anadir_pedida(&raiz, None, None, "PC01", "llamar al fontanero", &[], "Tareas", 1).unwrap();
+        let l = anadir_pedida(
+            &raiz,
+            None,
+            None,
+            "PC01",
+            "llamar al fontanero",
+            &[],
+            "Tareas",
+            1,
+        )
+        .unwrap();
         let l2 = anadir_pedida(&raiz, Some("  "), None, "PC01", "pan", &[], "Tareas", 2).unwrap();
         assert_eq!(l.id, l2.id, "las dos al mismo Inbox");
         assert_eq!(nombre_de_lista(&l2), crate::tareas::INBOX);
@@ -1620,7 +1724,9 @@ mod pruebas {
     fn anadir_tarea_con_imagenes_las_copia_al_chat_de_la_lista() {
         // El campo se lee; sin el, la lista vacia (los pedidos de antes).
         let p = leer(r#"{"pixpin":1,"accion":"anadir_tarea","texto":"yeso [img 01]","imagenes":["C:\\a\\x.png"]}"#).unwrap();
-        assert!(matches!(&p, Pedido::AnadirTarea { imagenes, .. } if imagenes == &[PathBuf::from("C:\\a\\x.png")]));
+        assert!(
+            matches!(&p, Pedido::AnadirTarea { imagenes, .. } if imagenes == &[PathBuf::from("C:\\a\\x.png")])
+        );
         let p = leer(r#"{"pixpin":1,"accion":"anadir_tarea","texto":"pan"}"#).unwrap();
         assert!(matches!(&p, Pedido::AnadirTarea { imagenes, .. } if imagenes.is_empty()));
 
@@ -1638,15 +1744,31 @@ mod pruebas {
             r
         };
         let (a, b) = (foto("a.png"), foto("b b.png"));
-        let l = anadir_pedida(&raiz, Some(&f.id), None, "PC01", "[img 02] yeso", &[a.clone(), b], "Tareas", 1).unwrap();
+        let l = anadir_pedida(
+            &raiz,
+            Some(&f.id),
+            None,
+            "PC01",
+            "[img 02] yeso",
+            &[a.clone(), b],
+            "Tareas",
+            1,
+        )
+        .unwrap();
         let t = &mini::leer_tareas(&l.texto)[0];
         let (visible, creada) = mini::partir(&t.texto);
         assert!(creada.is_some(), "la fecha sigue al final: {}", t.texto);
         let (lee, enlaces) = mini::imagenes_de(visible);
         assert_eq!(lee, "yeso");
         assert_eq!(enlaces.len(), 2);
-        assert!(visible.starts_with("![img 02]("), "la 2 en su ficha: {visible}");
-        assert!(visible.contains("yeso ![img 01]("), "la 1, sin ficha, al final: {visible}");
+        assert!(
+            visible.starts_with("![img 02]("),
+            "la 2 en su ficha: {visible}"
+        );
+        assert!(
+            visible.contains("yeso ![img 01]("),
+            "la 1, sin ficha, al final: {visible}"
+        );
         for e in &enlaces {
             let r = crate::tareas::ruta_de_imagen(&raiz, &f.id, e).unwrap();
             assert!(r.starts_with(almacen::carpeta(&raiz, &f.id).join("archivos")));
@@ -1656,8 +1778,19 @@ mod pruebas {
 
         // Casos negativos: una imagen que no esta, o algo que no es una
         // imagen, no apuntan nada ni dejan ficheros copiados.
-        let antes = std::fs::read_dir(almacen::carpeta(&raiz, &f.id).join("archivos")).unwrap().count();
-        let falta = anadir_pedida(&raiz, Some(&f.id), None, "PC01", "x", &[a.clone(), fuera.join("no.png")], "Tareas", 2);
+        let antes = std::fs::read_dir(almacen::carpeta(&raiz, &f.id).join("archivos"))
+            .unwrap()
+            .count();
+        let falta = anadir_pedida(
+            &raiz,
+            Some(&f.id),
+            None,
+            "PC01",
+            "x",
+            &[a.clone(), fuera.join("no.png")],
+            "Tareas",
+            2,
+        );
         assert!(matches!(falta, Err(Fallo::SinImagen(_))), "{falta:?}");
         let txt = fuera.join("t.txt");
         std::fs::write(&txt, "x").unwrap();
@@ -1666,16 +1799,38 @@ mod pruebas {
             Err(Fallo::NoEsImagen(_))
         ));
         // Una lista pedida que no es lista tampoco copia nada.
-        let nota = crate::ventana_chat::escribir_nota(&raiz, &f.id, "PC01", "nota", 4, 50, None).unwrap();
+        let nota =
+            crate::ventana_chat::escribir_nota(&raiz, &f.id, "PC01", "nota", 4, 50, None).unwrap();
         assert!(matches!(
-            anadir_pedida(&raiz, Some(&f.id), Some(&nota.id), "PC01", "x", &[a], "Tareas", 5),
+            anadir_pedida(
+                &raiz,
+                Some(&f.id),
+                Some(&nota.id),
+                "PC01",
+                "x",
+                &[a],
+                "Tareas",
+                5
+            ),
             Err(Fallo::NoEsLista)
         ));
-        assert_eq!(std::fs::read_dir(almacen::carpeta(&raiz, &f.id).join("archivos")).unwrap().count(), antes);
-        assert_eq!(mini::leer_tareas(&mensaje_de(&raiz, &f.id, &l.id).unwrap().texto).len(), 1);
+        assert_eq!(
+            std::fs::read_dir(almacen::carpeta(&raiz, &f.id).join("archivos"))
+                .unwrap()
+                .count(),
+            antes
+        );
+        assert_eq!(
+            mini::leer_tareas(&mensaje_de(&raiz, &f.id, &l.id).unwrap().texto).len(),
+            1
+        );
         // El aviso dice que imagen falta.
         let t = Catalogo::nuevo(pixpin_store::Idioma::Espanol);
-        assert!(Fallo::SinImagen(PathBuf::from("C:\\x\\foto.png")).aviso(&t).contains("foto.png"));
+        assert!(
+            Fallo::SinImagen(PathBuf::from("C:\\x\\foto.png"))
+                .aviso(&t)
+                .contains("foto.png")
+        );
         let _ = std::fs::remove_dir_all(&raiz);
     }
 
@@ -1686,16 +1841,28 @@ mod pruebas {
         let obra = nueva_lista(&raiz, &f.id, "PC01", "Obra").unwrap();
         anadir_tarea(&raiz, &f.id, "PC01", Some(&compra.id), "pan", "Tareas").unwrap();
         anadir_tarea(&raiz, &f.id, "PC01", Some(&compra.id), "yeso", "Tareas").unwrap();
-        let (tarea, lista) =
-            mover_tarea(&raiz, "PC01", 1, (Some(&f.id), &compra.id, 1), (Some(&f.id), &obra.id))
-                .unwrap();
+        let (tarea, lista) = mover_tarea(
+            &raiz,
+            "PC01",
+            1,
+            (Some(&f.id), &compra.id, 1),
+            (Some(&f.id), &obra.id),
+        )
+        .unwrap();
         assert_eq!((tarea.as_str(), lista.as_str()), ("yeso", "Obra"));
         let doc = |id: &str| sin_fechas(&mensaje_de(&raiz, &f.id, id).unwrap().texto);
         assert_eq!(doc(&compra.id), "# Compra\n\n- [ ] pan");
         assert_eq!(doc(&obra.id), "# Obra\n\n- [ ] yeso");
         // Al Inbox de «Mensajes guardados», sin `a_proyecto`.
         let inbox = crate::tareas::apuntar(&raiz, "PC01", "otra").unwrap();
-        mover_tarea(&raiz, "PC01", 1, (Some(&f.id), &compra.id, 0), (None, &inbox.id)).unwrap();
+        mover_tarea(
+            &raiz,
+            "PC01",
+            1,
+            (Some(&f.id), &compra.id, 0),
+            (None, &inbox.id),
+        )
+        .unwrap();
         let g = ficha_de(&raiz, None, "PC01", 1).unwrap();
         assert_eq!(
             sin_fechas(&mensaje_de(&raiz, &g.id, &inbox.id).unwrap().texto),
@@ -1705,12 +1872,24 @@ mod pruebas {
         // lista, no tocan nada.
         let antes = doc(&obra.id);
         assert!(matches!(
-            mover_tarea(&raiz, "PC01", 1, (Some(&f.id), &obra.id, 5), (Some(&f.id), &compra.id)),
+            mover_tarea(
+                &raiz,
+                "PC01",
+                1,
+                (Some(&f.id), &obra.id, 5),
+                (Some(&f.id), &compra.id)
+            ),
             Err(Fallo::SinTarea(5))
         ));
         let nota = escribir_en_el_chat(&raiz, &f.id, "PC01", "una nota", 9).unwrap();
         assert!(matches!(
-            mover_tarea(&raiz, "PC01", 1, (Some(&f.id), &obra.id, 0), (Some(&f.id), &nota.id)),
+            mover_tarea(
+                &raiz,
+                "PC01",
+                1,
+                (Some(&f.id), &obra.id, 0),
+                (Some(&f.id), &nota.id)
+            ),
             Err(Fallo::NoEsLista)
         ));
         assert_eq!(doc(&obra.id), antes);
@@ -1721,7 +1900,9 @@ mod pruebas {
     fn ventana_capturar_y_los_de_capturas_se_leen() {
         assert_eq!(
             leer(r#"{"pixpin":1,"accion":"ventana","cual":"galeria"}"#).unwrap(),
-            Pedido::Ventana { cual: Cual::Galeria }
+            Pedido::Ventana {
+                cual: Cual::Galeria
+            }
         );
         assert_eq!(
             leer(r#"{"pixpin":1,"accion":"capturar","modo":"zona"}"#).unwrap(),
@@ -1806,7 +1987,9 @@ mod pruebas {
         // este dentro, uno colado con `..` y uno que no esta.
         let fuera = raiz.join("captura-0009.png");
         std::fs::write(&fuera, b"x").unwrap();
-        let colado = crate::galeria_capturas::carpeta_en(&raiz).join("..").join("captura-0009.png");
+        let colado = crate::galeria_capturas::carpeta_en(&raiz)
+            .join("..")
+            .join("captura-0009.png");
         for ruta in [&fuera, &r[1], &colado] {
             assert!(
                 matches!(captura_de(&raiz, ruta), Err(Fallo::FueraDeCapturas(_))),
@@ -1829,14 +2012,29 @@ mod pruebas {
         let reg = crate::galeria_capturas::conservar(&raiz, &r[0]).unwrap();
         assert!(reg.conservadas.contains(&nombre));
         let g = ficha_de(&raiz, None, "PC01", 1).unwrap();
-        assert_eq!(cuaderno_de(&raiz, &g.id).len(), 1, "entra en Mensajes guardados");
-        let reg = crate::galeria_capturas::borrar(&raiz, &r[0]).unwrap().unwrap();
+        assert_eq!(
+            cuaderno_de(&raiz, &g.id).len(),
+            1,
+            "entra en Mensajes guardados"
+        );
+        let reg = crate::galeria_capturas::borrar(&raiz, &r[0])
+            .unwrap()
+            .unwrap();
         assert!(!reg.conservadas.contains(&nombre), "su nombre queda libre");
         assert!(!r[0].exists());
-        assert!(raiz.join("papelera").join("capturas").join("captura-0001.png").is_file());
+        assert!(
+            raiz.join("papelera")
+                .join("capturas")
+                .join("captura-0001.png")
+                .is_file()
+        );
         // Caso negativo: una que no estaba conservada no cambia el registro.
         let r2 = capturas_de_prueba(&raiz, &["captura-0002.png"]);
-        assert!(crate::galeria_capturas::borrar(&raiz, &r2[0]).unwrap().is_none());
+        assert!(
+            crate::galeria_capturas::borrar(&raiz, &r2[0])
+                .unwrap()
+                .is_none()
+        );
         let _ = std::fs::remove_dir_all(&raiz);
     }
 

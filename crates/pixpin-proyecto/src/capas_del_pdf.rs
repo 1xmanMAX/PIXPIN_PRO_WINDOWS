@@ -139,7 +139,10 @@ pub fn fichero(raiz: &Path, ficha: &str, dibujo: &str) -> PathBuf {
 fn con_algo(v: &Value) -> bool {
     v.get("elements")
         .and_then(Value::as_array)
-        .is_some_and(|l| l.iter().any(|e| e.get("isDeleted") != Some(&Value::Bool(true))))
+        .is_some_and(|l| {
+            l.iter()
+                .any(|e| e.get("isDeleted") != Some(&Value::Bool(true)))
+        })
 }
 
 /// **Adopta lo anotado antes en la carpeta hermana** (`suelta`, la
@@ -216,7 +219,10 @@ pub fn al_proyecto(
         return Ok(d.ficha);
     }
     if paginas == 0 || !pdf.is_file() {
-        return Err(io::Error::new(io::ErrorKind::InvalidInput, "no es un PDF con hojas"));
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "no es un PDF con hojas",
+        ));
     }
     let identidad = crate::identidad::Identidad::leer_o_crear(raiz, "PixPin Max")?;
     let aparato = identidad.yo.codigo();
@@ -348,7 +354,10 @@ mod pruebas {
     use crate::almacen::Ficha;
 
     fn raiz(etiqueta: &str) -> PathBuf {
-        let r = std::env::temp_dir().join(format!("pixpin-capas-pdf-{etiqueta}-{}", std::process::id()));
+        let r = std::env::temp_dir().join(format!(
+            "pixpin-capas-pdf-{etiqueta}-{}",
+            std::process::id()
+        ));
         let _ = std::fs::remove_dir_all(&r);
         std::fs::create_dir_all(&r).unwrap();
         r
@@ -376,7 +385,11 @@ mod pruebas {
         let p = Proyecto {
             id: ficha.id.clone(),
             nombre: "Obra".into(),
-            hojas: vec![hoja("h0", 0, Some("dib-1")), hoja("h1", 1, None), hoja("h5", 5, None)],
+            hojas: vec![
+                hoja("h0", 0, Some("dib-1")),
+                hoja("h1", 1, None),
+                hoja("h5", 5, None),
+            ],
             tocado: 10,
             pdf_origen: Some("archivos/doc-7.pdf".into()),
             pdf_limpio: Some("archivos/limpio-7.pdf".into()),
@@ -472,7 +485,10 @@ mod pruebas {
         let suelta0 = hermana.join("hoja-1.excalidraw");
         std::fs::write(
             &suelta0,
-            TRAZO.replace(r#"}],"files""#, r#"},{"id":"t2","type":"line","x":5}],"files""#),
+            TRAZO.replace(
+                r#"}],"files""#,
+                r#"},{"id":"t2","type":"line","x":5}],"files""#,
+            ),
         )
         .unwrap();
         assert!(adoptar(&r, &ficha.id, 0, "abc", &suelta0, 60).unwrap());
@@ -506,7 +522,10 @@ mod pruebas {
     }
 
     fn suelta_de(pdf: &Path) -> impl Fn(u32) -> PathBuf + '_ {
-        move |i| pdf.with_file_name("informe.pdf.pixpin-anotado").join(format!("hoja-{}.excalidraw", i + 1))
+        move |i| {
+            pdf.with_file_name("informe.pdf.pixpin-anotado")
+                .join(format!("hoja-{}.excalidraw", i + 1))
+        }
     }
 
     #[test]
@@ -517,22 +536,40 @@ mod pruebas {
         let ficha = al_proyecto(&r, &pdf, "Informe", 3, 700, &suelta_de(&pdf)).unwrap();
         let p = leer_proyecto(&r, &ficha).unwrap();
         assert_eq!(p.hojas.len(), 3);
-        assert_eq!(p.hojas.iter().map(|h| h.pagina).collect::<Vec<_>>(), [Some(0), Some(1), Some(2)]);
+        assert_eq!(
+            p.hojas.iter().map(|h| h.pagina).collect::<Vec<_>>(),
+            [Some(0), Some(1), Some(2)]
+        );
         // El documento es el mismo adjunto, en la forma que entiende el movil.
-        assert_eq!(p.pdf_origen.as_deref(), Some("pixpin:files/guardados/pc/general/archivos/informe.pdf"));
+        assert_eq!(
+            p.pdf_origen.as_deref(),
+            Some("pixpin:files/guardados/pc/general/archivos/informe.pdf")
+        );
         assert_eq!(p.pdf_limpio.as_deref(), Some("archivos/limpio-700.pdf"));
         // Y el lector lo reconoce desde ya como de ese proyecto.
         assert_eq!(de_este_pdf(&r, &pdf).map(|d| d.ficha), Some(ficha.clone()));
         // Lo anotado esta en las hojas 0 y 2; la 1 sigue sin dibujo.
         let h = huella(&pdf.to_string_lossy());
-        assert_eq!(p.hojas[0].dibujo.as_deref(), Some(format!("pdf-{h}-p0").as_str()));
+        assert_eq!(
+            p.hojas[0].dibujo.as_deref(),
+            Some(format!("pdf-{h}-p0").as_str())
+        );
         assert_eq!(p.hojas[1].dibujo, None);
-        assert_eq!(p.hojas[2].dibujo.as_deref(), Some(format!("pdf-{h}-p2").as_str()));
+        assert_eq!(
+            p.hojas[2].dibujo.as_deref(),
+            Some(format!("pdf-{h}-p2").as_str())
+        );
         // Su chat empieza con el PDF, ya unido.
         let chat = crate::cuaderno::Cuaderno::leer_de(&almacen::carpeta(&r, &ficha)).unwrap();
         assert_eq!(chat.mensajes.len(), 1);
-        assert_eq!(chat.mensajes[0].ruta.as_deref(), Some("archivos/limpio-700.pdf"));
-        assert_eq!(chat.mensajes[0].resto.get("unido"), Some(&Value::Bool(true)));
+        assert_eq!(
+            chat.mensajes[0].ruta.as_deref(),
+            Some("archivos/limpio-700.pdf")
+        );
+        assert_eq!(
+            chat.mensajes[0].resto.get("unido"),
+            Some(&Value::Bool(true))
+        );
         // Lo que manda la sincronizacion con ese proyecto: las dos hojas
         // anotadas, legibles para el movil, y los dos PDF.
         let d = vista::DiscoPc::nuevo(&r);
@@ -545,10 +582,18 @@ mod pruebas {
         ] {
             assert!(rutas.contains(&esperada), "{esperada} en {rutas:?}");
         }
-        let hoja0 = d.texto_de(&c, &format!("pins/draw/pdf-{h}-p0.excalidraw.gz")).unwrap();
-        assert!(hoja0.contains(r#""x":0"#) && !hoja0.contains("[[0,0]"), "{hoja0}");
+        let hoja0 = d
+            .texto_de(&c, &format!("pins/draw/pdf-{h}-p0.excalidraw.gz"))
+            .unwrap();
+        assert!(
+            hoja0.contains(r#""x":0"#) && !hoja0.contains("[[0,0]"),
+            "{hoja0}"
+        );
         // Pedirlo otra vez no crea otro.
-        assert_eq!(al_proyecto(&r, &pdf, "Informe", 3, 800, &suelta_de(&pdf)).unwrap(), ficha);
+        assert_eq!(
+            al_proyecto(&r, &pdf, "Informe", 3, 800, &suelta_de(&pdf)).unwrap(),
+            ficha
+        );
         assert_eq!(Indice::leer(&r).proyectos.len(), 2);
         let _ = std::fs::remove_dir_all(&r);
     }
@@ -563,7 +608,11 @@ mod pruebas {
         let ficha = al_proyecto(&r, &fuera, "plano.pdf", 1, 5, &nada).unwrap();
         let p = leer_proyecto(&r, &ficha).unwrap();
         assert_eq!(p.pdf_origen.as_deref(), Some("archivos/doc-5.pdf"));
-        assert!(almacen::carpeta(&r, &ficha).join("archivos/doc-5.pdf").is_file());
+        assert!(
+            almacen::carpeta(&r, &ficha)
+                .join("archivos/doc-5.pdf")
+                .is_file()
+        );
         // Casos negativos: sin hojas, o un PDF que no esta, no crean nada.
         let r2 = raiz("al-proyecto-nada");
         assert!(al_proyecto(&r2, &fuera, "x", 0, 5, &nada).is_err());

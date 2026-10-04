@@ -450,7 +450,11 @@ impl VentanaOverlay {
         // SAFETY: lee y escribe el estilo extendido de una ventana propia.
         unsafe {
             let actual = GetWindowLongPtrW(self.hwnd, GWL_EXSTYLE) as u32;
-            SetWindowLongPtrW(self.hwnd, GWL_EXSTYLE, (actual | WS_EX_NOACTIVATE.0) as isize);
+            SetWindowLongPtrW(
+                self.hwnd,
+                GWL_EXSTYLE,
+                (actual | WS_EX_NOACTIVATE.0) as isize,
+            );
         }
     }
 
@@ -479,7 +483,9 @@ impl VentanaOverlay {
     pub fn dueno(&self) -> Option<HWND> {
         use windows::Win32::UI::WindowsAndMessaging::{GW_OWNER, GetWindow};
         // SAFETY: consulta de solo lectura sobre una ventana propia.
-        unsafe { GetWindow(self.hwnd, GW_OWNER) }.ok().filter(|h| !h.is_invalid())
+        unsafe { GetWindow(self.hwnd, GW_OWNER) }
+            .ok()
+            .filter(|h| !h.is_invalid())
     }
 
     /// Coloca la ventana de composicion del IME donde se escribe (D57):
@@ -705,7 +711,10 @@ impl VentanaOverlay {
         ) {
             Ok(g) => Some(g),
             Err(err) => {
-                tracing::warn!(?err, "sin DirectManipulation: el panel tactil ira como rueda");
+                tracing::warn!(
+                    ?err,
+                    "sin DirectManipulation: el panel tactil ira como rueda"
+                );
                 None
             }
         };

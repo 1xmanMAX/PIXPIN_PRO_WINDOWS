@@ -15,8 +15,8 @@ use pixpin_render::letras::Letra;
 use pixpin_render::{Color, Pintor, RectF};
 
 use super::disposicion::{
-    Accion, BarraAcciones, BarraAnotar, BarraModos, COLORES, EnAnotar, EnSelector,
-    Modo, PanelLupa, Proporcion, Selector, Util,
+    Accion, BarraAcciones, BarraAnotar, BarraModos, COLORES, EnAnotar, EnSelector, Modo, PanelLupa,
+    Proporcion, Selector, Util,
 };
 use super::{Campo, EstadoSelector, Sesion, Textos};
 
@@ -129,7 +129,11 @@ pub fn chapa(p: &Pintor, texto: &str, x: f32, cy: f32, e: f32, sobre_azul: bool)
         alto,
     };
     let (fondo, borde, color) = if sobre_azul {
-        (rgba(255, 255, 255, 0.22), rgba(255, 255, 255, 0.30), Color::BLANCO)
+        (
+            rgba(255, 255, 255, 0.22),
+            rgba(255, 255, 255, 0.30),
+            Color::BLANCO,
+        )
     } else {
         (CHAPA_FONDO, CHAPA_BORDE, TEXTO2)
     };
@@ -199,15 +203,24 @@ const ICONO_ZONA: Icono = Icono {
 };
 const ICONO_VENTANA: Icono = Icono {
     vista: (0.0, 0.0, 24.0, 24.0),
-    trazos: &[trazo("M5 5h14a2 2 0 0 1 2 2v10a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2v-10a2 2 0 0 1 2 -2zM3 9h18", 2.0)],
+    trazos: &[trazo(
+        "M5 5h14a2 2 0 0 1 2 2v10a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2v-10a2 2 0 0 1 2 -2zM3 9h18",
+        2.0,
+    )],
 };
 const ICONO_PANTALLA: Icono = Icono {
     vista: (0.0, 0.0, 24.0, 24.0),
-    trazos: &[trazo("M4 4h16a2 2 0 0 1 2 2v10a2 2 0 0 1 -2 2h-16a2 2 0 0 1 -2 -2v-10a2 2 0 0 1 2 -2zM8 21h8M12 18v3", 2.0)],
+    trazos: &[trazo(
+        "M4 4h16a2 2 0 0 1 2 2v10a2 2 0 0 1 -2 2h-16a2 2 0 0 1 -2 -2v-10a2 2 0 0 1 2 -2zM8 21h8M12 18v3",
+        2.0,
+    )],
 };
 const ICONO_SCROLL: Icono = Icono {
     vista: (0.0, 0.0, 24.0, 24.0),
-    trazos: &[trazo("M8 2h8a2 2 0 0 1 2 2v16a2 2 0 0 1 -2 2h-8a2 2 0 0 1 -2 -2v-16a2 2 0 0 1 2 -2zM12 7v10M9 14l3 3l3 -3", 2.0)],
+    trazos: &[trazo(
+        "M8 2h8a2 2 0 0 1 2 2v16a2 2 0 0 1 -2 2h-8a2 2 0 0 1 -2 -2v-16a2 2 0 0 1 2 -2zM12 7v10M9 14l3 3l3 -3",
+        2.0,
+    )],
 };
 const ICONO_GIF: Icono = Icono {
     vista: (0.0, 0.0, 24.0, 24.0),
@@ -227,11 +240,17 @@ const ICONO_PIN: Icono = Icono {
 };
 const ICONO_CHAT: Icono = Icono {
     vista: (0.0, 0.0, 24.0, 24.0),
-    trazos: &[trazo("M21 12a8 8 0 0 1 -11.6 7.1L4 20l1 -4.6A8 8 0 1 1 21 12z", 2.0)],
+    trazos: &[trazo(
+        "M21 12a8 8 0 0 1 -11.6 7.1L4 20l1 -4.6A8 8 0 1 1 21 12z",
+        2.0,
+    )],
 };
 const ICONO_COPIAR: Icono = Icono {
     vista: (0.0, 0.0, 24.0, 24.0),
-    trazos: &[trazo("M10 8h9a2 2 0 0 1 2 2v9a2 2 0 0 1 -2 2h-9a2 2 0 0 1 -2 -2v-9a2 2 0 0 1 2 -2zM16 8V5a2 2 0 0 0 -2 -2H5a2 2 0 0 0 -2 2v9a2 2 0 0 0 2 2h3", 2.0)],
+    trazos: &[trazo(
+        "M10 8h9a2 2 0 0 1 2 2v9a2 2 0 0 1 -2 2h-9a2 2 0 0 1 -2 -2v-9a2 2 0 0 1 2 -2zM16 8V5a2 2 0 0 0 -2 -2H5a2 2 0 0 0 -2 2v9a2 2 0 0 0 2 2h3",
+        2.0,
+    )],
 };
 const ICONO_GUARDAR: Icono = Icono {
     vista: (0.0, 0.0, 24.0, 24.0),
@@ -344,7 +363,14 @@ pub fn pintar_modos(
                 Color::BLANCO,
             );
         } else {
-            chapa(p, &letra, rf.x + rf.ancho - 6.0 * e - w, rf.y + 16.0 * e, e, false);
+            chapa(
+                p,
+                &letra,
+                rf.x + rf.ancho - 6.0 * e - w,
+                rf.y + 16.0 * e,
+                e,
+                false,
+            );
         }
     }
     // La raya entre los de capturar y los de hacer otra cosa.
@@ -407,13 +433,21 @@ pub fn pintar_modos(
         let rf = l.r(*r);
         let on = s.proporcion == *pr;
         let encima = r.contiene(raton);
-        let fondo = if encima && !on { rgba(0x3A, 0x3A, 0x3C, 1.0) } else { CAMPO_FONDO };
+        let fondo = if encima && !on {
+            rgba(0x3A, 0x3A, 0x3C, 1.0)
+        } else {
+            CAMPO_FONDO
+        };
         if on {
             caja(p, rf, 10.0 * e, ELEGIDO, AZUL, 1.0 * e);
         } else {
             caja(p, rf, 10.0 * e, fondo, BORDE, 1.0 * e);
         }
-        let rotulo = if *pr == Proporcion::Libre { t.libre.as_str() } else { pr.rotulo() };
+        let rotulo = if *pr == Proporcion::Libre {
+            t.libre.as_str()
+        } else {
+            pr.rotulo()
+        };
         let (tw, th) = p.medir_texto(rotulo, 13.0 * e);
         p.texto(
             rotulo,
@@ -428,11 +462,24 @@ pub fn pintar_modos(
     if let Some(r) = b.repetir {
         let rf = l.r(r);
         let sep_x = rf.x - 6.0 * e;
-        p.linea((sep_x, rf.y + 4.0 * e), (sep_x, rf.y + rf.alto - 4.0 * e), 1.0 * e, BORDE);
-        let fondo = if r.contiene(raton) { rgba(0x3A, 0x3A, 0x3C, 1.0) } else { CAMPO_FONDO };
+        p.linea(
+            (sep_x, rf.y + 4.0 * e),
+            (sep_x, rf.y + rf.alto - 4.0 * e),
+            1.0 * e,
+            BORDE,
+        );
+        let fondo = if r.contiene(raton) {
+            rgba(0x3A, 0x3A, 0x3C, 1.0)
+        } else {
+            CAMPO_FONDO
+        };
         caja(p, rf, 10.0 * e, fondo, BORDE, 1.0 * e);
         let cy = rf.y + rf.alto / 2.0;
-        p.icono(&ICONO_REPETIR, cuadro_icono(rf.x + 22.0 * e, cy, 18.0 * e), TEXTO);
+        p.icono(
+            &ICONO_REPETIR,
+            cuadro_icono(rf.x + 22.0 * e, cy, 18.0 * e),
+            TEXTO,
+        );
         let w_chapa = ancho_chapa(p, "R", e);
         let max = rf.ancho - 44.0 * e - w_chapa - 14.0 * e;
         let rotulo = caber(p, &t.repetir, 13.0 * e, max);
@@ -551,7 +598,15 @@ pub fn pintar_lupa(
     let (_, th) = p.medir_con_letra(&principal, 15.0 * e, 1.0e6, &SEMI);
     let max = img.ancho - 30.0 * e - 70.0 * e;
     let principal = caber(p, &principal, 15.0 * e, max);
-    p.texto_con_letra(&principal, img.x + 30.0 * e, cy - th / 2.0, 15.0 * e, 1.0e6, &SEMI, TEXTO);
+    p.texto_con_letra(
+        &principal,
+        img.x + 30.0 * e,
+        cy - th / 2.0,
+        15.0 * e,
+        1.0e6,
+        &SEMI,
+        TEXTO,
+    );
     let coords = format!("{}, {}", cursor.x, cursor.y);
     let (cw, _) = p.medir_texto(&coords, 12.0 * e);
     texto_centrado_v(p, &coords, img.x + img.ancho - cw, cy, 12.0 * e, GRIS);
@@ -573,13 +628,24 @@ pub fn pintar_lupa(
 
 /// La etiqueta de lo resaltado: el nombre de la ventana, lo que mide y la
 /// pista de que hace el clic.
-pub fn pintar_etiqueta(p: &Pintor, l: Local, r: Rect, titulo: &str, medidas: (u32, u32), pista: &str) {
+pub fn pintar_etiqueta(
+    p: &Pintor,
+    l: Local,
+    r: Rect,
+    titulo: &str,
+    medidas: (u32, u32),
+    pista: &str,
+) {
     let e = l.e;
     let rf = l.r(r);
     panel(p, rf, 10.0 * e, e);
     let cy = rf.y + rf.alto / 2.0;
     let mut x = rf.x + 12.0 * e;
-    p.icono(&ICONO_VENTANA, cuadro_icono(x + 8.0 * e, cy, 16.0 * e), AZUL);
+    p.icono(
+        &ICONO_VENTANA,
+        cuadro_icono(x + 8.0 * e, cy, 16.0 * e),
+        AZUL,
+    );
     x += 26.0 * e;
     let tam = 13.0 * e;
     let m = format!("{} × {}", medidas.0, medidas.1);
@@ -600,7 +666,9 @@ pub fn pintar_etiqueta(p: &Pintor, l: Local, r: Rect, titulo: &str, medidas: (u3
 pub fn ancho_etiqueta(p: &Pintor, e: f32, titulo: &str, medidas: (u32, u32), pista: &str) -> u32 {
     let tam = 13.0 * e;
     let t = p.medir_texto(titulo, tam).0.min(420.0 * e);
-    let m = p.medir_texto(&format!("{} × {}", medidas.0, medidas.1), tam).0;
+    let m = p
+        .medir_texto(&format!("{} × {}", medidas.0, medidas.1), tam)
+        .0;
     let w = p.medir_texto(pista, tam).0;
     let extra = if titulo.is_empty() { 0.0 } else { 10.0 * e };
     (12.0 * e + 26.0 * e + t + extra + m + 30.0 * e + w + 14.0 * e) as u32
@@ -624,7 +692,14 @@ pub fn pintar_despues(
     let tam = l.r(anotar.tamano);
     let m = format!("{} × {}", medidas.0, medidas.1);
     let (mw, _) = p.medir_texto(&m, 13.0 * e);
-    texto_centrado_v(p, &m, tam.x + (tam.ancho - mw) / 2.0, tam.y + tam.alto / 2.0, 13.0 * e, GRIS);
+    texto_centrado_v(
+        p,
+        &m,
+        tam.x + (tam.ancho - mw) / 2.0,
+        tam.y + tam.alto / 2.0,
+        13.0 * e,
+        GRIS,
+    );
     let sep = |x: i32| {
         let rf = l.r(anotar.panel);
         let sx = l.x(x);
@@ -649,7 +724,11 @@ pub fn pintar_despues(
             p.rellenar_redondeado(rf, 10.0 * e, ENCIMA);
         }
         let color = if on { Color::BLANCO } else { TEXTO2 };
-        p.icono(icono_util(*u), cuadro_icono(rf.x + rf.ancho / 2.0, rf.y + rf.alto / 2.0, 22.0 * e), color);
+        p.icono(
+            icono_util(*u),
+            cuadro_icono(rf.x + rf.ancho / 2.0, rf.y + rf.alto / 2.0, 22.0 * e),
+            color,
+        );
         let n = u.numero().to_string();
         let (nw, nh) = p.medir_con_letra(&n, 10.0 * e, 1.0e6, &SEMI);
         p.texto_con_letra(
@@ -659,7 +738,11 @@ pub fn pintar_despues(
             10.0 * e,
             1.0e6,
             &SEMI,
-            if on { rgba(0xBF, 0xDC, 0xFF, 1.0) } else { GRIS },
+            if on {
+                rgba(0xBF, 0xDC, 0xFF, 1.0)
+            } else {
+                GRIS
+            },
         );
     }
     for (i, r) in anotar.colores.iter().enumerate() {
@@ -696,7 +779,12 @@ pub fn pintar_despues(
     let hay = s.anotacion.as_ref().is_some_and(|a| !a.vacia());
     for (r, icono, activo, que) in [
         (anotar.deshacer, &ix::UNDO_ICON, hay, EnAnotar::Deshacer),
-        (anotar.rehacer, &ix::REDO_ICON, s.anotacion.is_some(), EnAnotar::Rehacer),
+        (
+            anotar.rehacer,
+            &ix::REDO_ICON,
+            s.anotacion.is_some(),
+            EnAnotar::Rehacer,
+        ),
     ] {
         let rf = l.r(r);
         if activo && encima_de == Some(que) {
@@ -770,7 +858,11 @@ pub fn pintar_despues(
         x += tw + 8.0 * e;
         x += chapa(p, a.atajo(), x, cy, e, primaria);
         if flechita > 0.0 {
-            p.icono(&ICONO_FLECHITA, cuadro_icono(x + 10.0 * e, cy, 12.0 * e), color);
+            p.icono(
+                &ICONO_FLECHITA,
+                cuadro_icono(x + 10.0 * e, cy, 12.0 * e),
+                color,
+            );
         }
     }
 }
@@ -779,15 +871,34 @@ pub fn pintar_despues(
 pub fn pintar_confirmar(p: &Pintor, l: Local, r: Rect, rotulo: &str, raton: Punto) {
     let e = l.e;
     let rf = l.r(r);
-    let fondo = if r.contiene(raton) { PRIMARIO_ENCIMA } else { PRIMARIO };
+    let fondo = if r.contiene(raton) {
+        PRIMARIO_ENCIMA
+    } else {
+        PRIMARIO
+    };
     p.rellenar_redondeado(rf, 10.0 * e, fondo);
     let cy = rf.y + rf.alto / 2.0;
     let w_chapa = ancho_chapa(p, "Enter", e);
     let max = rf.ancho - 28.0 * e - w_chapa - 8.0 * e;
     let rotulo = caber(p, rotulo, 14.0 * e, max);
     let (_, th) = p.medir_con_letra(&rotulo, 14.0 * e, 1.0e6, &SEMI);
-    p.texto_con_letra(&rotulo, rf.x + 14.0 * e, cy - th / 2.0, 14.0 * e, 1.0e6, &SEMI, Color::BLANCO);
-    chapa(p, "Enter", rf.x + rf.ancho - 12.0 * e - w_chapa, cy, e, true);
+    p.texto_con_letra(
+        &rotulo,
+        rf.x + 14.0 * e,
+        cy - th / 2.0,
+        14.0 * e,
+        1.0e6,
+        &SEMI,
+        Color::BLANCO,
+    );
+    chapa(
+        p,
+        "Enter",
+        rf.x + rf.ancho - 12.0 * e - w_chapa,
+        cy,
+        e,
+        true,
+    );
 }
 
 /// El selector de proyecto de «Al chat».
@@ -815,7 +926,11 @@ pub fn pintar_selector(
         1.0 * e,
     );
     let cy = b.y + b.alto / 2.0;
-    p.icono(&ix::SEARCH_ICON, cuadro_icono(b.x + 18.0 * e, cy, 16.0 * e), GRIS);
+    p.icono(
+        &ix::SEARCH_ICON,
+        cuadro_icono(b.x + 18.0 * e, cy, 16.0 * e),
+        GRIS,
+    );
     let tx = b.x + 34.0 * e;
     if es.busqueda.is_empty() {
         texto_centrado_v(p, &t.buscar_proyecto, tx, cy, 14.0 * e, GRIS);
@@ -825,7 +940,12 @@ pub fn pintar_selector(
     } else {
         let w = texto_centrado_v(p, &es.busqueda, tx, cy, 14.0 * e, TEXTO);
         if !es.en_comentario {
-            p.linea((tx + w + 1.0 * e, cy - 9.0 * e), (tx + w + 1.0 * e, cy + 9.0 * e), 1.5 * e, AZUL);
+            p.linea(
+                (tx + w + 1.0 * e, cy - 9.0 * e),
+                (tx + w + 1.0 * e, cy + 9.0 * e),
+                1.5 * e,
+                AZUL,
+            );
         }
     }
     // Recientes.
@@ -839,17 +959,33 @@ pub fn pintar_selector(
     let visibles = es.visibles(proyectos);
     if visibles.is_empty() {
         let y = l.y(sel.rotulo_y) + 28.0 * e;
-        texto_centrado_v(p, &t.sin_proyectos, b.x + 12.0 * e, y + 22.0 * e, 14.0 * e, GRIS);
+        texto_centrado_v(
+            p,
+            &t.sin_proyectos,
+            b.x + 12.0 * e,
+            y + 22.0 * e,
+            14.0 * e,
+            GRIS,
+        );
     }
     let sobre = sel.en(raton);
-    for (i, ((id, nombre), r)) in visibles.iter().map(|x| (&x.0, &x.1)).zip(&sel.filas).enumerate() {
+    for (i, ((id, nombre), r)) in visibles
+        .iter()
+        .map(|x| (&x.0, &x.1))
+        .zip(&sel.filas)
+        .enumerate()
+    {
         let rf = l.r(*r);
         let elegida = i == es.elegida.min(visibles.len().saturating_sub(1));
         if elegida || sobre == Some(EnSelector::Fila(i)) {
             p.rellenar_redondeado(rf, 9.0 * e, rgba(10, 132, 255, 0.20));
         }
         let cy = rf.y + rf.alto / 2.0;
-        p.icono(&ICONO_CHAT, cuadro_icono(rf.x + 20.0 * e, cy, 16.0 * e), AZUL);
+        p.icono(
+            &ICONO_CHAT,
+            cuadro_icono(rf.x + 20.0 * e, cy, 16.0 * e),
+            AZUL,
+        );
         let n = (i + 1).to_string();
         let w_chapa = ancho_chapa(p, &n, e);
         let es_ultimo = ultimo == Some(id.as_str());
@@ -890,7 +1026,12 @@ pub fn pintar_selector(
         if es.comentario.is_empty() {
             texto_centrado_v(p, &t.comentario, c.x + 10.0 * e, cy, 13.0 * e, GRIS);
             if es.en_comentario {
-                p.linea((c.x + 10.0 * e, cy - 9.0 * e), (c.x + 10.0 * e, cy + 9.0 * e), 1.5 * e, AZUL);
+                p.linea(
+                    (c.x + 10.0 * e, cy - 9.0 * e),
+                    (c.x + 10.0 * e, cy + 9.0 * e),
+                    1.5 * e,
+                    AZUL,
+                );
             }
         } else {
             // Lo ultimo escrito siempre a la vista: si no cabe, se corre.
@@ -898,7 +1039,12 @@ pub fn pintar_selector(
             let x = (c.x + 10.0 * e).min(c.x + c.ancho - 12.0 * e - w);
             texto_centrado_v(p, &es.comentario, x, cy, 13.0 * e, TEXTO);
             if es.en_comentario {
-                p.linea((x + w + 1.0 * e, cy - 9.0 * e), (x + w + 1.0 * e, cy + 9.0 * e), 1.5 * e, AZUL);
+                p.linea(
+                    (x + w + 1.0 * e, cy - 9.0 * e),
+                    (x + w + 1.0 * e, cy + 9.0 * e),
+                    1.5 * e,
+                    AZUL,
+                );
             }
         }
     });

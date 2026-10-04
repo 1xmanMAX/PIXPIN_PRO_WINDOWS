@@ -747,7 +747,9 @@ fn lienzo_dibujado_en_el_pc() -> String {
     let mut escena = pixpin_motor2d::Escena::nueva();
     escena.anadir(Elemento {
         figura: Figura::Lapiz {
-            puntos: (0..6).map(|i| Punto2::nuevo(i as f32 * 4.0, i as f32 * 2.0)).collect(),
+            puntos: (0..6)
+                .map(|i| Punto2::nuevo(i as f32 * 4.0, i as f32 * 2.0))
+                .collect(),
             presiones: Vec::new(),
             opciones: Some(Default::default()),
         },
@@ -780,7 +782,10 @@ fn un_lienzo_dibujado_en_el_pc_llega_al_movil_con_puntos_que_su_scene_lee() {
     let obra = proyecto_del_pc(&p);
     let carpeta = almacen::carpeta(&p.raiz(), &obra.id);
     let texto = lienzo_dibujado_en_el_pc();
-    assert!(!puntos_del_movil(&texto), "el PC escribe listas: es el fallo");
+    assert!(
+        !puntos_del_movil(&texto),
+        "el PC escribe listas: es el fallo"
+    );
     std::fs::write(carpeta.join("lienzos/d9.excalidraw"), &texto).unwrap();
 
     p.vuelta_desde_pc();
@@ -834,7 +839,13 @@ fn foto_anotada_en_el_pc(p: &Par) -> (Ficha, Mensaje, String) {
         aparato: p.aparato_pc(),
         proyecto: ficha.id.clone(),
     };
-    let m = Mensaje::adjunto(Clase::Imagen, "fachada.jpg", &ruta, jpg.len() as i64, &sello);
+    let m = Mensaje::adjunto(
+        Clase::Imagen,
+        "fachada.jpg",
+        &ruta,
+        jpg.len() as i64,
+        &sello,
+    );
     cuaderno::anadir(&carpeta, &m).unwrap();
     // Lo que el PC dibujo antes, en pixeles de la foto (4000x3000).
     let foto = carpeta.join(&ruta);
@@ -852,9 +863,15 @@ fn foto_anotada_en_el_pc(p: &Par) -> (Ficha, Mensaje, String) {
     });
     let viejo = pixpin_proyecto::lienzo_de_la_foto::pixpin2d_de(&foto);
     pixpin_motor2d::guardar(&viejo, &escena).unwrap();
-    let hecho =
-        pixpin_proyecto::lienzo_de_la_foto::asegurar(&raiz, &ficha.id, &m, &foto, (4000, 3000), p.reloj.tic())
-            .unwrap();
+    let hecho = pixpin_proyecto::lienzo_de_la_foto::asegurar(
+        &raiz,
+        &ficha.id,
+        &m,
+        &foto,
+        (4000, 3000),
+        p.reloj.tic(),
+    )
+    .unwrap();
     assert!(hecho.creado && hecho.referencia_puesta && hecho.adoptados == 1);
     let m = p.mensajes_pc(&ficha.id).remove(0);
     (ficha, m, hecho.id)
@@ -877,8 +894,16 @@ fn una_foto_anotada_en_el_pc_llega_al_movil_con_su_lienzo_su_foto_y_su_referenci
     let foto = &v["elements"][0];
     assert_eq!(foto["type"], "image");
     assert_eq!(foto["locked"], true);
-    assert_eq!(foto["width"].as_f64(), Some(2000.0), "a su ancho del movil, no a sus pixeles");
-    assert_eq!(v["elements"].as_array().unwrap().len(), 2, "la foto y la raya");
+    assert_eq!(
+        foto["width"].as_f64(),
+        Some(2000.0),
+        "a su ancho del movil, no a sus pixeles"
+    );
+    assert_eq!(
+        v["elements"].as_array().unwrap().len(),
+        2,
+        "la foto y la raya"
+    );
     // Su foto viaja con el, y el lienzo la senala donde queda alli.
     let fichero = foto["fileId"].as_str().unwrap();
     let rel = format!("guardados/pc/{chat}/imagenes/{fichero}");
@@ -918,9 +943,19 @@ fn una_foto_sin_anotar_no_manda_ningun_lienzo() {
     let m = Mensaje::adjunto(Clase::Imagen, "sola.jpg", &ruta, 3, &sello);
     cuaderno::anadir(&almacen::carpeta(&raiz, &ficha.id), &m).unwrap();
     p.vuelta_desde_pc();
-    assert!(!p.movil.raiz().join(format!("pins/draw/foto-{}.excalidraw.gz", m.id)).exists());
+    assert!(
+        !p.movil
+            .raiz()
+            .join(format!("pins/draw/foto-{}.excalidraw.gz", m.id))
+            .exists()
+    );
     let chat = vista::chat_de_ficha(&raiz, &ficha.id).unwrap();
-    assert!(p.movil.raiz().join(format!("guardados/pc/{chat}/{ruta}")).is_file());
+    assert!(
+        p.movil
+            .raiz()
+            .join(format!("guardados/pc/{chat}/{ruta}"))
+            .is_file()
+    );
 }
 
 // ------------------------------------------- lo anotado viaja (v0.96 del movil)
@@ -936,7 +971,9 @@ fn fig_movil(id: &str) -> String {
 fn dibujo_movil(p: &Par, base: &str, figuras: &[&str]) {
     let figs: Vec<String> = figuras.iter().map(|f| fig_movil(f)).collect();
     gz(
-        &p.movil.raiz().join(format!("pins/draw/{base}.excalidraw.gz")),
+        &p.movil
+            .raiz()
+            .join(format!("pins/draw/{base}.excalidraw.gz")),
         &format!(r#"{{"elements":[{}],"files":{{}}}}"#, figs.join(",")),
     );
 }
@@ -982,13 +1019,22 @@ fn leer_movil(p: &Par, rel: &str) -> Option<String> {
 /// mismo largo en el mismo milisegundo se tomarian por la misma.
 fn adelantar(f: &Path) {
     let t = std::time::SystemTime::now() + std::time::Duration::from_secs(60);
-    std::fs::OpenOptions::new().write(true).open(f).unwrap().set_modified(t).unwrap();
+    std::fs::OpenOptions::new()
+        .write(true)
+        .open(f)
+        .unwrap()
+        .set_modified(t)
+        .unwrap();
 }
 
 /// Donde esta en el PC el adjunto del movil `id` (la ruta que su mensaje senala).
 fn doc_en_pc(p: &Par, id: &str) -> PathBuf {
     let g = p.pc.ficha_de(GENERAL).unwrap();
-    let m = p.mensajes_pc(&g.id).into_iter().find(|m| m.id == id).unwrap();
+    let m = p
+        .mensajes_pc(&g.id)
+        .into_iter()
+        .find(|m| m.id == id)
+        .unwrap();
     vista::ruta_real(&p.raiz(), &g.id, m.ruta.as_deref().unwrap()).unwrap()
 }
 
@@ -1000,10 +1046,18 @@ fn lo_anotado_sobre_un_pdf_un_word_y_un_libro_del_chat_viaja_con_el_codigo_del_m
     let u_docx = adjunto_movil(&p, "d", "2_informe.docx", b"PK docx");
     let u_epub = adjunto_movil(&p, "e", "3_libro.epub", b"PK epub");
     dibujo_movil(&p, &format!("anot-{u_pdf}-p2"), &["trazo-pdf"]);
-    escribir_movil(&p, &format!("pins/draw/anot-{u_pdf}.marcas"), "m1:0.5:2.25:⭐");
+    escribir_movil(
+        &p,
+        &format!("pins/draw/anot-{u_pdf}.marcas"),
+        "m1:0.5:2.25:⭐",
+    );
     escribir_movil(&p, &format!("pins/draw/anot-{u_pdf}.espacios"), "3");
     dibujo_movil(&p, &format!("anot-{u_docx}"), &["trazo-docx"]);
-    escribir_movil(&p, &format!("pins/draw/anot-{u_docx}.maqueta"), "420,280,280,100,1,0");
+    escribir_movil(
+        &p,
+        &format!("pins/draw/anot-{u_docx}.maqueta"),
+        "420,280,280,100,1,0",
+    );
     dibujo_movil(&p, &format!("anot-{u_epub}"), &["trazo-epub"]);
     escribir_movil(&p, &format!("pins/draw/anot-{u_epub}.marcas"), "0.3:📌");
     // Un temporal a medias no viaja.
@@ -1017,20 +1071,43 @@ fn lo_anotado_sobre_un_pdf_un_word_y_un_libro_del_chat_viaja_con_el_codigo_del_m
     let (pdf, docx, epub) = (doc_en_pc(&p, "p"), doc_en_pc(&p, "d"), doc_en_pc(&p, "e"));
     assert_eq!(anotado::adjunto_de(&raiz, &pdf).unwrap().uid, u_pdf);
     let hoja = anotado::hoja_del_pdf(&raiz, &pdf, 2).unwrap();
-    assert_eq!(figuras(&std::fs::read_to_string(&hoja).unwrap()), ["trazo-pdf".to_string()].into());
-    let b_pdf = anotado::base_del_pdf(&raiz, &pdf, None).unwrap();
-    assert_eq!(anotado::leer(&b_pdf.fichero(".marcas")).as_deref(), Some("m1:0.5:2.25:⭐"));
-    assert_eq!(anotado::leer(&b_pdf.fichero(".espacios")).as_deref(), Some("3"));
-    assert!(!b_pdf.fichero(".marcas.tmp").exists(), "el temporal no viaja");
-    let b_docx = anotado::base_del_documento(&raiz, &docx).unwrap();
-    assert_eq!(figuras(&std::fs::read_to_string(b_docx.tinta()).unwrap()), ["trazo-docx".to_string()].into());
     assert_eq!(
-        pixpin_sincro::anotado::Maqueta::de_texto(&anotado::leer(&b_docx.fichero(".maqueta")).unwrap()),
+        figuras(&std::fs::read_to_string(&hoja).unwrap()),
+        ["trazo-pdf".to_string()].into()
+    );
+    let b_pdf = anotado::base_del_pdf(&raiz, &pdf, None).unwrap();
+    assert_eq!(
+        anotado::leer(&b_pdf.fichero(".marcas")).as_deref(),
+        Some("m1:0.5:2.25:⭐")
+    );
+    assert_eq!(
+        anotado::leer(&b_pdf.fichero(".espacios")).as_deref(),
+        Some("3")
+    );
+    assert!(
+        !b_pdf.fichero(".marcas.tmp").exists(),
+        "el temporal no viaja"
+    );
+    let b_docx = anotado::base_del_documento(&raiz, &docx).unwrap();
+    assert_eq!(
+        figuras(&std::fs::read_to_string(b_docx.tinta()).unwrap()),
+        ["trazo-docx".to_string()].into()
+    );
+    assert_eq!(
+        pixpin_sincro::anotado::Maqueta::de_texto(
+            &anotado::leer(&b_docx.fichero(".maqueta")).unwrap()
+        ),
         pixpin_sincro::anotado::Maqueta::de_texto("420,280,280,100,1,0")
     );
     let b_epub = anotado::base_del_documento(&raiz, &epub).unwrap();
-    assert_eq!(figuras(&std::fs::read_to_string(b_epub.tinta()).unwrap()), ["trazo-epub".to_string()].into());
-    assert_eq!(anotado::leer(&b_epub.fichero(".marcas")).as_deref(), Some("0.3:📌"));
+    assert_eq!(
+        figuras(&std::fs::read_to_string(b_epub.tinta()).unwrap()),
+        ["trazo-epub".to_string()].into()
+    );
+    assert_eq!(
+        anotado::leer(&b_epub.fichero(".marcas")).as_deref(),
+        Some("0.3:📌")
+    );
 
     // Y de vuelta: lo que se cambia en el PC llega al movil con el mismo
     // nombre y en la forma que su `Scene` lee.
@@ -1045,9 +1122,19 @@ fn lo_anotado_sobre_un_pdf_un_word_y_un_libro_del_chat_viaja_con_el_codigo_del_m
     std::fs::write(&hoja, con_otro).unwrap();
     adelantar(&hoja);
     p.vuelta_desde_pc();
-    assert_eq!(leer_movil(&p, &format!("pins/draw/anot-{u_pdf}.espacios")).as_deref(), Some("1"));
-    let alli = de_gz(&p.movil.raiz().join(format!("pins/draw/anot-{u_pdf}-p2.excalidraw.gz")));
-    assert_eq!(figuras(&alli), ["trazo-pdf".to_string(), "otro".into()].into());
+    assert_eq!(
+        leer_movil(&p, &format!("pins/draw/anot-{u_pdf}.espacios")).as_deref(),
+        Some("1")
+    );
+    let alli = de_gz(
+        &p.movil
+            .raiz()
+            .join(format!("pins/draw/anot-{u_pdf}-p2.excalidraw.gz")),
+    );
+    assert_eq!(
+        figuras(&alli),
+        ["trazo-pdf".to_string(), "otro".into()].into()
+    );
     assert!(puntos_del_movil(&alli), "{alli}");
     p.quieto(GENERAL);
 }
@@ -1059,7 +1146,12 @@ fn un_word_anotado_en_el_pc_llega_al_movil_con_los_nombres_y_textos_exactos() {
     let g = p.guardados();
     let raiz = p.raiz();
     let ruta = almacen::guardar_adjunto(&raiz, &g.id, "acta.docx", b"PK acta").unwrap();
-    let sello = Sello { cuando: p.reloj.tic(), numero: 1, aparato: p.aparato_pc(), proyecto: g.id.clone() };
+    let sello = Sello {
+        cuando: p.reloj.tic(),
+        numero: 1,
+        aparato: p.aparato_pc(),
+        proyecto: g.id.clone(),
+    };
     let m = Mensaje::adjunto(Clase::Archivo, "acta.docx", &ruta, 7, &sello);
     let carpeta = almacen::carpeta(&raiz, &g.id);
     cuaderno::anadir(&carpeta, &m).unwrap();
@@ -1073,27 +1165,45 @@ fn un_word_anotado_en_el_pc_llega_al_movil_con_los_nombres_y_textos_exactos() {
     anotado::escribir(&b.fichero(".marcas"), "1790218080412:0.34022403:📌").unwrap();
     anotado::escribir(&b.fichero(".sitio"), "0.6239229").unwrap();
     // Caso negativo: lo de un documento que no es del chat se queda aqui.
-    std::fs::write(carpeta.join("archivos/suelto.docx.pixpin-lectura"), "marcadores 1:0.1:⭐").unwrap();
+    std::fs::write(
+        carpeta.join("archivos/suelto.docx.pixpin-lectura"),
+        "marcadores 1:0.1:⭐",
+    )
+    .unwrap();
 
     p.vuelta_desde_pc();
 
     let base = &b.base;
-    assert!(base.starts_with("anot-") && base.len() == "anot-".len() + 10, "{base}");
-    let alli = de_gz(&p.movil.raiz().join(format!("pins/draw/{base}.excalidraw.gz")));
+    assert!(
+        base.starts_with("anot-") && base.len() == "anot-".len() + 10,
+        "{base}"
+    );
+    let alli = de_gz(
+        &p.movil
+            .raiz()
+            .join(format!("pins/draw/{base}.excalidraw.gz")),
+    );
     assert!(puntos_del_movil(&alli), "{alli}");
     for (t, esperado) in [
         (".maqueta", "860,573,573,100,1,1"),
         (".marcas", "1790218080412:0.34022403:📌"),
         (".sitio", "0.6239229"),
     ] {
-        assert_eq!(leer_movil(&p, &format!("pins/draw/{base}{t}")).as_deref(), Some(esperado), "{t}");
+        assert_eq!(
+            leer_movil(&p, &format!("pins/draw/{base}{t}")).as_deref(),
+            Some(esperado),
+            "{t}"
+        );
     }
     let nombres: Vec<String> = std::fs::read_dir(p.movil.raiz().join("pins/draw"))
         .unwrap()
         .flatten()
         .map(|e| e.file_name().to_string_lossy().to_string())
         .collect();
-    assert!(nombres.iter().all(|n| !n.contains("pixpin-lectura")), "{nombres:?}");
+    assert!(
+        nombres.iter().all(|n| !n.contains("pixpin-lectura")),
+        "{nombres:?}"
+    );
     // Y el movil encuentra el mensaje por su codigo.
     let alla = p
         .movil
@@ -1133,15 +1243,24 @@ fn los_marcadores_de_un_lienzo_la_voz_el_sitio_y_los_del_pdf_de_un_proyecto_tamb
     p.desde_movil(&["pr-1"]);
     let bp = anotado::base_del_pdf(&raiz, Path::new("no-hace-falta.pdf"), Some("pr-1")).unwrap();
     assert_eq!(bp.base, format!("anot-{u_p}"));
-    assert_eq!(anotado::leer(&bp.fichero(".marcas")).as_deref(), Some("m:0.1:0.5:⭐"));
-    assert_eq!(anotado::leer(&bp.fichero(".espacios")).as_deref(), Some("2"));
+    assert_eq!(
+        anotado::leer(&bp.fichero(".marcas")).as_deref(),
+        Some("m:0.1:0.5:⭐")
+    );
+    assert_eq!(
+        anotado::leer(&bp.fichero(".espacios")).as_deref(),
+        Some("2")
+    );
 
     // Y al reves: marcadores puestos en el lienzo del PC llegan al movil.
     p.reloj.saltar(10_000);
     anotado::escribir(&marcas, "k:10.0:20.0:🏠|z:5.0:6.0:⭐").unwrap();
     adelantar(&marcas);
     p.vuelta_desde_pc();
-    assert_eq!(leer_movil(&p, "pins/draw/d1.marcas").as_deref(), Some("k:10.0:20.0:🏠|z:5.0:6.0:⭐"));
+    assert_eq!(
+        leer_movil(&p, "pins/draw/d1.marcas").as_deref(),
+        Some("k:10.0:20.0:🏠|z:5.0:6.0:⭐")
+    );
     p.quieto("pr-1");
     p.quieto(GENERAL);
 }
@@ -1159,28 +1278,44 @@ fn borrar_el_mensaje_se_lleva_lo_anotado_en_los_dos_aparatos() {
     let raiz = p.raiz();
     let pdf = doc_en_pc(&p, "p");
     let hoja = anotado::hoja_del_pdf(&raiz, &pdf, 0).unwrap();
-    let marcas = anotado::base_del_pdf(&raiz, &pdf, None).unwrap().fichero(".marcas");
+    let marcas = anotado::base_del_pdf(&raiz, &pdf, None)
+        .unwrap()
+        .fichero(".marcas");
     assert!(hoja.is_file() && marcas.is_file());
 
     // Borrado en el movil (lo que hace su chat): fuera el mensaje, su marca
     // y lo anotado.
-    let (ido, quedan): (Vec<Json>, Vec<Json>) =
-        p.movil.leer_mensajes().into_iter().partition(|m| kotlin::cadena(m, "id") == Some("p"));
+    let (ido, quedan): (Vec<Json>, Vec<Json>) = p
+        .movil
+        .leer_mensajes()
+        .into_iter()
+        .partition(|m| kotlin::cadena(m, "id") == Some("p"));
     p.movil.escribir_mensajes(&quedan).unwrap();
     p.movil
-        .anotar_borrados(&pixpin_sincro::disco::marcas_de(GENERAL, &ido, p.reloj.tic()))
+        .anotar_borrados(&pixpin_sincro::disco::marcas_de(
+            GENERAL,
+            &ido,
+            p.reloj.tic(),
+        ))
         .unwrap();
     p.movil.borrar_anotado(GENERAL, &u);
     p.vuelta_desde_pc();
     assert!(!hoja.exists() && !marcas.exists(), "se fue con su mensaje");
     // Caso negativo: lo del otro mensaje sigue.
     let otro = anotado::base_del_pdf(&raiz, &doc_en_pc(&p, "q"), None).unwrap();
-    assert_eq!(anotado::leer(&otro.fichero(".espacios")).as_deref(), Some("1"));
+    assert_eq!(
+        anotado::leer(&otro.fichero(".espacios")).as_deref(),
+        Some("1")
+    );
 
     // Y borrado en el PC, como lo borra su chat: llega al movil y se lleva lo suyo.
     let g = p.pc.ficha_de(GENERAL).unwrap();
     let carpeta = almacen::carpeta(&raiz, &g.id);
-    let q = p.mensajes_pc(&g.id).into_iter().find(|m| m.id == "q").unwrap();
+    let q = p
+        .mensajes_pc(&g.id)
+        .into_iter()
+        .find(|m| m.id == "q")
+        .unwrap();
     let quedan: Vec<String> = std::fs::read_to_string(carpeta.join("guardados.jsonl"))
         .unwrap()
         .lines()
@@ -1189,10 +1324,21 @@ fn borrar_el_mensaje_se_lleva_lo_anotado_en_los_dos_aparatos() {
         .collect();
     std::fs::write(carpeta.join("guardados.jsonl"), quedan.join("\n") + "\n").unwrap();
     vista::anotar_borrados(&raiz, &g.id, std::slice::from_ref(&q), p.reloj.tic()).unwrap();
-    assert!(!otro.fichero(".espacios").exists(), "en el PC tambien se va");
+    assert!(
+        !otro.fichero(".espacios").exists(),
+        "en el PC tambien se va"
+    );
     p.vuelta_desde_pc();
-    assert!(p.movil.leer_mensajes().iter().all(|m| kotlin::cadena(m, "id") != Some("q")));
-    assert_eq!(leer_movil(&p, &format!("pins/draw/anot-{u_queda}.espacios")), None);
+    assert!(
+        p.movil
+            .leer_mensajes()
+            .iter()
+            .all(|m| kotlin::cadena(m, "id") != Some("q"))
+    );
+    assert_eq!(
+        leer_movil(&p, &format!("pins/draw/anot-{u_queda}.espacios")),
+        None
+    );
 }
 
 /// **El marco de la tinta** (`anot-<uid>-p<n>.hoja`, `anot-<uid>.hoja`,
@@ -1205,12 +1351,20 @@ fn el_marco_de_la_tinta_viaja_con_ella_y_se_va_con_su_mensaje() {
     let u = adjunto_movil(&p, "p", "7_plano.pdf", b"%PDF");
     let u_w = adjunto_movil(&p, "w", "8_acta.docx", b"PK");
     dibujo_movil(&p, &format!("anot-{u}-p1"), &["t"]);
-    escribir_movil(&p, &format!("pins/draw/anot-{u}-p1.hoja"), "-1050.0,0.0,2450.0,4950.0
+    escribir_movil(
+        &p,
+        &format!("pins/draw/anot-{u}-p1.hoja"),
+        "-1050.0,0.0,2450.0,4950.0
 v1
-");
+",
+    );
     dibujo_movil(&p, &format!("anot-{u_w}"), &["w"]);
-    escribir_movil(&p, &format!("pins/draw/anot-{u_w}.hoja"), "280,0,700,420
-");
+    escribir_movil(
+        &p,
+        &format!("pins/draw/anot-{u_w}.hoja"),
+        "280,0,700,420
+",
+    );
     // Un temporal a medias no viaja.
     escribir_movil(&p, &format!("pins/draw/anot-{u}-p1.hoja.tmp"), "?");
     p.vuelta_desde_pc();
@@ -1218,37 +1372,68 @@ v1
     let raiz = p.raiz();
     let pdf = doc_en_pc(&p, "p");
     let marco = anotado::marco_del_pdf(&raiz, &pdf, 1).unwrap();
-    assert_eq!(anotado::leer(&marco).as_deref(), Some("-1050.0,0.0,2450.0,4950.0
+    assert_eq!(
+        anotado::leer(&marco).as_deref(),
+        Some(
+            "-1050.0,0.0,2450.0,4950.0
 v1
-"), "llega tal cual");
-    assert!(!marco.with_extension("hoja.tmp").exists(), "el temporal no viaja");
+"
+        ),
+        "llega tal cual"
+    );
+    assert!(
+        !marco.with_extension("hoja.tmp").exists(),
+        "el temporal no viaja"
+    );
     let b_w = anotado::base_del_documento(&raiz, &doc_en_pc(&p, "w")).unwrap();
-    assert_eq!(anotado::leer(&b_w.fichero(".hoja")).as_deref(), Some("280,0,700,420
-"));
+    assert_eq!(
+        anotado::leer(&b_w.fichero(".hoja")).as_deref(),
+        Some(
+            "280,0,700,420
+"
+        )
+    );
 
     // De vuelta: el que escribe el PC llega con el mismo nombre y texto.
     p.reloj.saltar(10_000);
-    anotado::escribir(&marco, "-1050,0,2450,4950
+    anotado::escribir(
+        &marco,
+        "-1050,0,2450,4950
 v1
-").unwrap();
+",
+    )
+    .unwrap();
     adelantar(&marco);
     p.vuelta_desde_pc();
     assert_eq!(
         leer_movil(&p, &format!("pins/draw/anot-{u}-p1.hoja")).as_deref(),
-        Some("-1050,0,2450,4950
+        Some(
+            "-1050,0,2450,4950
 v1
-")
+"
+        )
     );
 
     // Y se va con su mensaje; el del otro mensaje (caso negativo) se queda.
-    let (ido, quedan): (Vec<Json>, Vec<Json>) =
-        p.movil.leer_mensajes().into_iter().partition(|m| kotlin::cadena(m, "id") == Some("p"));
+    let (ido, quedan): (Vec<Json>, Vec<Json>) = p
+        .movil
+        .leer_mensajes()
+        .into_iter()
+        .partition(|m| kotlin::cadena(m, "id") == Some("p"));
     p.movil.escribir_mensajes(&quedan).unwrap();
     p.movil
-        .anotar_borrados(&pixpin_sincro::disco::marcas_de(GENERAL, &ido, p.reloj.tic()))
+        .anotar_borrados(&pixpin_sincro::disco::marcas_de(
+            GENERAL,
+            &ido,
+            p.reloj.tic(),
+        ))
         .unwrap();
     p.movil.borrar_anotado(GENERAL, &u);
-    assert_eq!(leer_movil(&p, &format!("pins/draw/anot-{u}-p1.hoja")), None, "en el movil se va");
+    assert_eq!(
+        leer_movil(&p, &format!("pins/draw/anot-{u}-p1.hoja")),
+        None,
+        "en el movil se va"
+    );
     p.vuelta_desde_pc();
     assert!(!marco.exists(), "y en el PC tambien");
     assert!(b_w.fichero(".hoja").is_file());
@@ -1271,7 +1456,9 @@ fn los_marcos_que_pone_la_pasada_viajan_una_vez_en_las_dos_lineas_de_android() {
     let tinta = anotado::hoja_del_pdf(&raiz, &doc_en_pc(&p, "p"), 0).unwrap();
     let antes = std::fs::read(&tinta).unwrap();
 
-    let pasada = anotado::poner_marcos(&raiz, &mut |_| Some(MarcoDeLaHoja::nuevo(-1050.0, 0.0, 2450.0, 4950.0)));
+    let pasada = anotado::poner_marcos(&raiz, &mut |_| {
+        Some(MarcoDeLaHoja::nuevo(-1050.0, 0.0, 2450.0, 4950.0))
+    });
     assert_eq!(pasada.escritos, 1, "{pasada:?}");
     assert_eq!(std::fs::read(&tinta).unwrap(), antes, "la tinta no se toca");
     let rel = format!("pins/draw/anot-{u}-p0.hoja");
@@ -1291,8 +1478,15 @@ fn los_marcos_que_pone_la_pasada_viajan_una_vez_en_las_dos_lineas_de_android() {
     dibujo_movil(&p, &format!("anot-{u}-p0"), &["t1", "t2", "t3"]);
     escribir_movil(&p, &rel, "0,0,1400,1979.899\nv1\n");
     p.vuelta_desde_pc();
-    let b = anotado::Base::de_pagina(&raiz, &anotado::adjunto_de(&raiz, &doc_en_pc(&p, "p")).unwrap(), 0);
-    assert_eq!(anotado::leer(&b.marco()).as_deref(), Some("0,0,1400,1979.899\nv1\n"));
+    let b = anotado::Base::de_pagina(
+        &raiz,
+        &anotado::adjunto_de(&raiz, &doc_en_pc(&p, "p")).unwrap(),
+        0,
+    );
+    assert_eq!(
+        anotado::leer(&b.marco()).as_deref(),
+        Some("0,0,1400,1979.899\nv1\n")
+    );
     let otra = anotado::poner_marcos(&raiz, &mut |_| panic!("ya tiene marco"));
     assert_eq!((otra.ya_estaban, otra.escritos), (1, 0));
 }
@@ -1315,14 +1509,21 @@ fn anotar_como_el_lector(hoja: &Path, n: usize, desde: f32) {
         .map(|i| {
             let t = i as f32 / (n - 1) as f32;
             // Media vuelta de circulo: nada que se parezca a una recta.
-            Punto2::nuevo(desde + 200.0 * (t * std::f32::consts::PI).cos(), 300.0 + 200.0 * (t * std::f32::consts::PI).sin())
+            Punto2::nuevo(
+                desde + 200.0 * (t * std::f32::consts::PI).cos(),
+                300.0 + 200.0 * (t * std::f32::consts::PI).sin(),
+            )
         })
         .collect();
     // Como lo deja el gesto del raton: el origen en el primer punto.
     escena.anadir(Elemento {
         x: puntos[0].x,
         y: puntos[0].y,
-        figura: Figura::Lapiz { puntos, presiones: Vec::new(), opciones: Some(Default::default()) },
+        figura: Figura::Lapiz {
+            puntos,
+            presiones: Vec::new(),
+            opciones: Some(Default::default()),
+        },
         grosor: 1.0,
         ..Elemento::default()
     });
@@ -1349,10 +1550,17 @@ fn trazos(texto: &str) -> Vec<usize> {
             let xs: Vec<f64> = p.iter().map(|q| q["x"].as_f64().unwrap()).collect();
             let ys: Vec<f64> = p.iter().map(|q| q["y"].as_f64().unwrap()).collect();
             let ancho = |l: &[f64]| {
-                l.iter().cloned().fold(f64::MIN, f64::max) - l.iter().cloned().fold(f64::MAX, f64::min)
+                l.iter().cloned().fold(f64::MIN, f64::max)
+                    - l.iter().cloned().fold(f64::MAX, f64::min)
             };
-            assert!((e["width"].as_f64().unwrap() - ancho(&xs)).abs() < 1e-3, "caja: {e}");
-            assert!((e["height"].as_f64().unwrap() - ancho(&ys)).abs() < 1e-3, "caja: {e}");
+            assert!(
+                (e["width"].as_f64().unwrap() - ancho(&xs)).abs() < 1e-3,
+                "caja: {e}"
+            );
+            assert!(
+                (e["height"].as_f64().unwrap() - ancho(&ys)).abs() < 1e-3,
+                "caja: {e}"
+            );
             assert_eq!((xs[0], ys[0]), (0.0, 0.0), "relativos a su x/y: {e}");
             p.len()
         })
@@ -1369,7 +1577,9 @@ fn lo_que_el_pc_anota_en_un_pdf_que_el_movil_ya_tiene_le_llega_en_cada_vuelta() 
     let pdf = doc_en_pc(&p, "p");
     let hoja = anotado::hoja_del_pdf(&raiz, &pdf, 0).unwrap();
     let alli = |p: &Par| {
-        leer_gz_movil(p, &format!("pins/draw/anot-{u}-p0.excalidraw.gz")).map(|t| trazos(&t)).unwrap_or_default()
+        leer_gz_movil(p, &format!("pins/draw/anot-{u}-p0.excalidraw.gz"))
+            .map(|t| trazos(&t))
+            .unwrap_or_default()
     };
 
     // Lo que el PC ya tenia escrito como antes (caja a 0, puntos `[x, y]`):
@@ -1384,10 +1594,18 @@ fn lo_que_el_pc_anota_en_un_pdf_que_el_movil_ya_tiene_le_llega_en_cada_vuelta() 
     // Primera vez: la hoja no tenia nada.
     anotar_como_el_lector(&hoja, 40, 100.0);
     p.vuelta_desde_pc();
-    assert_eq!(alli(&p), vec![40], "la primera anotacion llega con sus 40 puntos");
+    assert_eq!(
+        alli(&p),
+        vec![40],
+        "la primera anotacion llega con sus 40 puntos"
+    );
     let p1 = leer_gz_movil(&p, &format!("pins/draw/anot-{u}-p1.excalidraw.gz")).unwrap();
     assert_eq!(trazos(&p1), vec![5], "la de antes llega con su caja");
-    assert_eq!(std::fs::read_to_string(&vieja).unwrap(), antes, "en el PC no se reescribe");
+    assert_eq!(
+        std::fs::read_to_string(&vieja).unwrap(),
+        antes,
+        "en el PC no se reescribe"
+    );
 
     // Segunda, enseguida: la vuelta tiene que ver el cambio.
     anotar_como_el_lector(&hoja, 25, 500.0);
@@ -1405,7 +1623,11 @@ fn lo_que_el_pc_anota_en_un_pdf_que_el_movil_ya_tiene_le_llega_en_cada_vuelta() 
     p.vuelta_desde_pc();
     anotar_como_el_lector(&hoja, 30, 900.0);
     p.vuelta_desde_pc();
-    assert_eq!(alli(&p), vec![40, 25, 30], "y la tercera, tras pasar por el movil");
+    assert_eq!(
+        alli(&p),
+        vec![40, 25, 30],
+        "y la tercera, tras pasar por el movil"
+    );
     p.quieto(GENERAL);
 }
 
@@ -1439,8 +1661,15 @@ fn los_comentarios_de_una_nota_viajan_con_ella_y_se_van_con_ella() {
     p.vuelta_desde_pc();
     let rel = format!("pins/draw/anot-{}.comentarios.json", n.codigo_unico());
     let rel_otra = format!("pins/draw/anot-{}.comentarios.json", otra.codigo_unico());
-    assert_eq!(leer_movil(&p, &rel).as_deref(), Some(COMENTARIOS), "llega tal cual");
-    assert!(leer_movil(&p, &format!("{rel}.tmp")).is_none(), "el temporal no viaja");
+    assert_eq!(
+        leer_movil(&p, &rel).as_deref(),
+        Some(COMENTARIOS),
+        "llega tal cual"
+    );
+    assert!(
+        leer_movil(&p, &format!("{rel}.tmp")).is_none(),
+        "el temporal no viaja"
+    );
 
     // Respondido en el movil: vuelve al PC.
     p.reloj.saltar(10_000);
@@ -1451,9 +1680,16 @@ fn los_comentarios_de_una_nota_viajan_con_ella_y_se_van_con_ella() {
     escribir_movil(&p, &rel, &respondido);
     adelantar(&p.movil.raiz().join(&rel));
     p.vuelta_desde_pc();
-    assert_eq!(cn::leer(&f).as_deref(), Some(respondido.as_str()), "la respuesta llega al PC");
+    assert_eq!(
+        cn::leer(&f).as_deref(),
+        Some(respondido.as_str()),
+        "la respuesta llega al PC"
+    );
     let leidos: serde_json::Value = serde_json::from_str(&cn::leer(&f).unwrap()).unwrap();
-    assert_eq!(leidos["comentarios"][0]["respuestas"][0]["texto"], "El lunes");
+    assert_eq!(
+        leidos["comentarios"][0]["respuestas"][0]["texto"],
+        "El lunes"
+    );
 
     // Borrada la nota en el PC, como la borra su chat: fuera sus comentarios
     // aqui y, tras la vuelta, en el movil.
@@ -1475,7 +1711,12 @@ fn los_comentarios_de_una_nota_viajan_con_ella_y_se_van_con_ella() {
     p.quieto(GENERAL);
 }
 
-fn proyecto_con_notas_en_el_movil(p: &Par, hojas: serde_json::Value, quitadas: &[&str], tocado: i64) {
+fn proyecto_con_notas_en_el_movil(
+    p: &Par,
+    hojas: serde_json::Value,
+    quitadas: &[&str],
+    tocado: i64,
+) {
     p.movil
         .guardar_proyecto(
             &kotlin::normalizar_proyecto(&Json::de_valor(&json!({
@@ -1498,14 +1739,26 @@ fn los_comentarios_de_una_hoja_nota_del_movil_viajan_y_se_van_con_la_hoja() {
         {"id": "n-2", "uid": "OOOOOOOOOO", "nota": "otra"},
     ]);
     proyecto_con_notas_en_el_movil(&p, dos, &[], 5);
-    escribir_movil(&p, "pins/draw/anot-NNNNNNNNNN.comentarios.json", COMENTARIOS);
-    escribir_movil(&p, "pins/draw/anot-OOOOOOOOOO.comentarios.json", "{\"version\":1,\"comentarios\":[]}\n");
+    escribir_movil(
+        &p,
+        "pins/draw/anot-NNNNNNNNNN.comentarios.json",
+        COMENTARIOS,
+    );
+    escribir_movil(
+        &p,
+        "pins/draw/anot-OOOOOOOOOO.comentarios.json",
+        "{\"version\":1,\"comentarios\":[]}\n",
+    );
     p.vuelta_desde_pc();
     let raiz = p.raiz();
     let ficha = p.pc.ficha_de("pr-n").unwrap();
     let f = cn::de_la_nota(&raiz, &ficha.id, "NNNNNNNNNN").unwrap();
     let f_otra = cn::de_la_nota(&raiz, &ficha.id, "OOOOOOOOOO").unwrap();
-    assert_eq!(cn::leer(&f).as_deref(), Some(COMENTARIOS), "llegan junto a su hoja");
+    assert_eq!(
+        cn::leer(&f).as_deref(),
+        Some(COMENTARIOS),
+        "llegan junto a su hoja"
+    );
     assert!(f_otra.is_file());
 
     // El movil quita la hoja n-1 a mano (con su marca `quitadas`, como su
@@ -1514,7 +1767,11 @@ fn los_comentarios_de_una_hoja_nota_del_movil_viajan_y_se_van_con_la_hoja() {
     p.reloj.saltar(10_000);
     let una = json!([{"id": "n-2", "uid": "OOOOOOOOOO", "nota": "otra"}]);
     proyecto_con_notas_en_el_movil(&p, una, &["n-1"], p.reloj.tic());
-    assert_eq!(leer_movil(&p, "pins/draw/anot-NNNNNNNNNN.comentarios.json"), None, "en el movil");
+    assert_eq!(
+        leer_movil(&p, "pins/draw/anot-NNNNNNNNNN.comentarios.json"),
+        None,
+        "en el movil"
+    );
     p.vuelta_desde_pc();
     assert!(!f.exists(), "en el PC tambien");
     // Caso negativo: los de la hoja que sigue no se tocan.
@@ -1555,7 +1812,9 @@ fn abrir_en_el_movil(p: &Par, id: &str) -> Option<Vec<u8>> {
         .find(|m| kotlin::cadena(m, "id") == Some(id))
         .expect("el mensaje llego al movil");
     let ruta = kotlin::cadena(&m, "ruta").unwrap().to_string();
-    let rel = ruta.strip_prefix(&p.movil.absoluta("")).expect("ruta de su carpeta files");
+    let rel = ruta
+        .strip_prefix(&p.movil.absoluta(""))
+        .expect("ruta de su carpeta files");
     std::fs::read(p.movil.raiz().join(rel)).ok()
 }
 
@@ -1587,16 +1846,32 @@ fn los_md_con_parentesis_de_un_proyecto_del_pc_se_abren_en_el_movil() {
     // Un tercero sin parentesis, de control.
     let tres = md_en_proyecto_del_pc(&p, &ficha, "notas.md", "# Notas");
     // Y un fichero suelto en `archivos/` que ningun mensaje senala: no viaja.
-    std::fs::write(almacen::carpeta(&raiz, &ficha.id).join("archivos/suelto (9).md"), "x").unwrap();
+    std::fs::write(
+        almacen::carpeta(&raiz, &ficha.id).join("archivos/suelto (9).md"),
+        "x",
+    )
+    .unwrap();
 
     p.vuelta_desde_pc();
 
-    assert_eq!(abrir_en_el_movil(&p, &uno.id).as_deref(), Some(&b"# Objetivos\nuno"[..]));
-    assert_eq!(abrir_en_el_movil(&p, &dos.id).as_deref(), Some(&b"# Objetivos\ndos"[..]));
-    assert_eq!(abrir_en_el_movil(&p, &tres.id).as_deref(), Some(&b"# Notas"[..]));
+    assert_eq!(
+        abrir_en_el_movil(&p, &uno.id).as_deref(),
+        Some(&b"# Objetivos\nuno"[..])
+    );
+    assert_eq!(
+        abrir_en_el_movil(&p, &dos.id).as_deref(),
+        Some(&b"# Objetivos\ndos"[..])
+    );
+    assert_eq!(
+        abrir_en_el_movil(&p, &tres.id).as_deref(),
+        Some(&b"# Notas"[..])
+    );
     let chat = vista::chat_de_ficha(&raiz, &ficha.id).unwrap();
     assert!(
-        !p.movil.raiz().join(format!("guardados/pc/{chat}/archivos/suelto (9).md")).exists(),
+        !p.movil
+            .raiz()
+            .join(format!("guardados/pc/{chat}/archivos/suelto (9).md"))
+            .exists(),
         "lo que no senala ningun mensaje no viaja"
     );
     // Mientras el movil no liste el fichero por su ruta exacta (ver
@@ -1604,7 +1879,10 @@ fn los_md_con_parentesis_de_un_proyecto_del_pc_se_abren_en_el_movil() {
     // el PC se lo vuelve a ofrecer en cada vuelta. Molesta pero no rompe:
     // otra vuelta no borra nada en ningun lado y sigue abriendose.
     p.vuelta_desde_pc();
-    assert_eq!(abrir_en_el_movil(&p, &uno.id).as_deref(), Some(&b"# Objetivos\nuno"[..]));
+    assert_eq!(
+        abrir_en_el_movil(&p, &uno.id).as_deref(),
+        Some(&b"# Objetivos\nuno"[..])
+    );
     let en_pc = vista::ruta_real(&raiz, &ficha.id, uno.ruta.as_deref().unwrap()).unwrap();
     assert_eq!(std::fs::read(en_pc).unwrap(), b"# Objetivos\nuno");
 }
@@ -1620,5 +1898,8 @@ fn cuando_dirige_el_movil_tambien_se_lleva_los_md_con_parentesis() {
     let m = md_en_proyecto_del_pc(&p, &ficha, "capitulo (3).md", "# Tres");
     let chat = vista::chat_de_ficha(&raiz, &ficha.id).unwrap();
     p.desde_movil(&[chat.as_str()]);
-    assert_eq!(abrir_en_el_movil(&p, &m.id).as_deref(), Some(&b"# Tres"[..]));
+    assert_eq!(
+        abrir_en_el_movil(&p, &m.id).as_deref(),
+        Some(&b"# Tres"[..])
+    );
 }

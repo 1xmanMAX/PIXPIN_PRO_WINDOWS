@@ -45,7 +45,14 @@ impl Default for MqEncoder {
 
 impl MqEncoder {
     pub fn new() -> Self {
-        MqEncoder { out: Vec::new(), a: 0x8000, c: 0, ct: 12, b: 0, first: true }
+        MqEncoder {
+            out: Vec::new(),
+            a: 0x8000,
+            c: 0,
+            ct: 12,
+            b: 0,
+            first: true,
+        }
     }
 
     fn emit(&mut self) {
@@ -159,7 +166,14 @@ pub struct MqDecoder<'a> {
 
 impl<'a> MqDecoder<'a> {
     pub fn new(data: &'a [u8]) -> Self {
-        let mut d = MqDecoder { data, bp: 0, chigh: 0, clow: 0, a: 0, ct: 0 };
+        let mut d = MqDecoder {
+            data,
+            bp: 0,
+            chigh: 0,
+            clow: 0,
+            a: 0,
+            ct: 0,
+        };
         d.chigh = ((d.byte(0) as u32) << 8) | d.byte(1) as u32;
         // INITDEC (software conventions, as in pdf.js): C = B<<16; BYTEIN; C <<= 7; CT -= 7; A = 0x8000
         d.chigh = d.byte(0) as u32;
@@ -188,7 +202,11 @@ impl<'a> MqDecoder<'a> {
             }
         } else {
             self.bp += 1;
-            self.clow += if self.bp < self.data.len() { (self.byte(self.bp) as u32) << 8 } else { 0xFF00 };
+            self.clow += if self.bp < self.data.len() {
+                (self.byte(self.bp) as u32) << 8
+            } else {
+                0xFF00
+            };
             self.ct = 8;
         }
         if self.clow > 0xFFFF {
@@ -333,7 +351,11 @@ pub fn decode_generic(data: &[u8], width: u32, height: u32, tpgdon: bool) -> Bit
             bits[y * w + x] = dec.decode(&mut cx[c]);
         }
     }
-    Bitmap { width, height, bits }
+    Bitmap {
+        width,
+        height,
+        bits,
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -398,7 +420,13 @@ pub fn decode_pdf_stream(data: &[u8], width: u32, height: u32) -> Option<Bitmap>
         }
         p += 1;
         let number = u32::from_be_bytes(data[pos..pos + 4].try_into().ok()?);
-        let ref_size = if number <= 256 { 1 } else if number <= 65536 { 2 } else { 4 };
+        let ref_size = if number <= 256 {
+            1
+        } else if number <= 65536 {
+            2
+        } else {
+            4
+        };
         p += count * ref_size;
         p += if page_assoc_4 { 4 } else { 1 };
         let len = u32::from_be_bytes(data.get(p..p + 4)?.try_into().ok()?) as usize;
@@ -413,7 +441,11 @@ pub fn decode_pdf_stream(data: &[u8], width: u32, height: u32) -> Option<Bitmap>
                 if w != width || (h != height && h != 0xFFFF_FFFF) {
                     return None;
                 }
-                page = Some(Bitmap { width, height, bits: vec![default_pixel; (width * height) as usize] });
+                page = Some(Bitmap {
+                    width,
+                    height,
+                    bits: vec![default_pixel; (width * height) as usize],
+                });
             }
             36 | 38 | 39 => {
                 let w = u32::from_be_bytes(body.get(0..4)?.try_into().ok()?);
@@ -432,7 +464,11 @@ pub fn decode_pdf_stream(data: &[u8], width: u32, height: u32) -> Option<Bitmap>
                     return None; // non-nominal AT pixels
                 }
                 let region = decode_generic(&body[26..], w, h, tpgdon);
-                let pg = page.get_or_insert_with(|| Bitmap { width, height, bits: vec![0; (width * height) as usize] });
+                let pg = page.get_or_insert_with(|| Bitmap {
+                    width,
+                    height,
+                    bits: vec![0; (width * height) as usize],
+                });
                 for ry in 0..h as usize {
                     let py = y as usize + ry;
                     if py >= height as usize {
@@ -466,7 +502,11 @@ mod tests {
                 bits[(y * w + x) as usize] = on as u8;
             }
         }
-        Bitmap { width: w, height: h, bits }
+        Bitmap {
+            width: w,
+            height: h,
+            bits,
+        }
     }
 
     #[test]

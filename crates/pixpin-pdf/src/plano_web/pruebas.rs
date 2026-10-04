@@ -41,7 +41,9 @@ fn deshacer(json: &str) -> (serde_json::Value, Vec<(Vec<u8>, Vec<(i32, i32)>)>) 
     let v: serde_json::Value = serde_json::from_str(json).expect("es JSON");
     let datos = de_base64(v["datos"].as_str().unwrap());
     let mut d = Vec::new();
-    flate2::read::DeflateDecoder::new(&datos[..]).read_to_end(&mut d).unwrap();
+    flate2::read::DeflateDecoder::new(&datos[..])
+        .read_to_end(&mut d)
+        .unwrap();
     fn varint(d: &[u8], p: &mut usize) -> i32 {
         let (mut r, mut s) = (0u32, 0);
         loop {
@@ -84,7 +86,11 @@ fn deshacer(json: &str) -> (serde_json::Value, Vec<(Vec<u8>, Vec<(i32, i32)>)>) 
 
 #[test]
 fn lo_que_entra_vuelve_a_salir_punto_por_punto() {
-    let p = plano(vec![brocha(vec![MOVER, LINEA, LINEA], &[(10, 20), (300, -40), (5, 5)], false)]);
+    let p = plano(vec![brocha(
+        vec![MOVER, LINEA, LINEA],
+        &[(10, 20), (300, -40), (5, 5)],
+        false,
+    )]);
     let (_, b) = deshacer(&a_json(&p, 100.0));
     assert_eq!(b[0].0, vec![MOVER, LINEA, LINEA]);
     assert_eq!(b[0].1, vec![(10, 20), (300, -40), (5, 5)]);
@@ -92,7 +98,11 @@ fn lo_que_entra_vuelve_a_salir_punto_por_punto() {
 
 #[test]
 fn una_curva_viaja_con_sus_tres_puntos() {
-    let p = plano(vec![brocha(vec![MOVER, CURVA], &[(0, 0), (1, 2), (3, 4), (5, 6)], false)]);
+    let p = plano(vec![brocha(
+        vec![MOVER, CURVA],
+        &[(0, 0), (1, 2), (3, 4), (5, 6)],
+        false,
+    )]);
     let (_, b) = deshacer(&a_json(&p, 100.0));
     assert_eq!(b[0].1.len(), 4);
     assert_eq!(b[0].1[3], (5, 6));
@@ -102,7 +112,11 @@ fn una_curva_viaja_con_sus_tres_puntos() {
 /// orden de mover desaparece.
 #[test]
 fn los_tramos_que_se_tocan_se_cosen_en_un_solo_camino() {
-    let p = plano(vec![brocha(vec![MOVER, LINEA, MOVER, LINEA], &[(0, 0), (10, 0), (10, 0), (10, 10)], false)]);
+    let p = plano(vec![brocha(
+        vec![MOVER, LINEA, MOVER, LINEA],
+        &[(0, 0), (10, 0), (10, 0), (10, 10)],
+        false,
+    )]);
     let (_, b) = deshacer(&a_json(&p, 100.0));
     assert_eq!(b[0].0, vec![MOVER, LINEA, LINEA]);
     assert_eq!(b[0].1, vec![(0, 0), (10, 0), (10, 10)]);
@@ -110,7 +124,11 @@ fn los_tramos_que_se_tocan_se_cosen_en_un_solo_camino() {
 
 #[test]
 fn dos_tramos_que_no_se_tocan_siguen_siendo_dos_caminos() {
-    let p = plano(vec![brocha(vec![MOVER, LINEA, MOVER, LINEA], &[(0, 0), (10, 0), (50, 50), (60, 60)], false)]);
+    let p = plano(vec![brocha(
+        vec![MOVER, LINEA, MOVER, LINEA],
+        &[(0, 0), (10, 0), (50, 50), (60, 60)],
+        false,
+    )]);
     let (_, b) = deshacer(&a_json(&p, 100.0));
     assert_eq!(b[0].0.iter().filter(|o| **o == MOVER).count(), 2);
 }
@@ -142,8 +160,14 @@ fn las_manchas_conservan_el_orden_en_que_se_pintaron() {
 fn la_cabecera_lleva_la_escala_el_papel_y_las_capas() {
     let mut p = plano(vec![brocha(vec![MOVER, LINEA], &[(0, 0), (256, 0)], false)]);
     p.capas = vec![
-        Capa { nombre: "Muros".into(), encendida: true },
-        Capa { nombre: "Cotas".into(), encendida: false },
+        Capa {
+            nombre: "Muros".into(),
+            encendida: true,
+        },
+        Capa {
+            nombre: "Cotas".into(),
+            encendida: false,
+        },
     ];
     let (v, _) = deshacer(&a_json(&p, 1400.0));
     assert_eq!(v["a"], 1400);
@@ -159,7 +183,10 @@ fn la_cabecera_lleva_la_escala_el_papel_y_las_capas() {
 #[test]
 fn un_nombre_de_capa_no_puede_cerrar_la_etiqueta() {
     let mut p = plano(vec![brocha(vec![MOVER, LINEA], &[(0, 0), (1, 0)], false)]);
-    p.capas = vec![Capa { nombre: "</script><b>\"x\"".into(), encendida: true }];
+    p.capas = vec![Capa {
+        nombre: "</script><b>\"x\"".into(),
+        encendida: true,
+    }];
     let j = a_json(&p, 100.0);
     assert!(!j.contains("</script"));
     let (v, _) = deshacer(&j);
@@ -218,7 +245,11 @@ fn un_pdf_que_es_solo_una_imagen_no_se_manda_como_plano() {
         b"q 100 0 0 100 0 0 cm /Im1 Do Q",
         Pagina {
             recursos: "/XObject << /Im1 5 0 R >>",
-            mas: vec![crate::plano::pruebas::flujo(5, b"xxxx", " /Type /XObject /Subtype /Image /Width 2 /Height 2")],
+            mas: vec![crate::plano::pruebas::flujo(
+                5,
+                b"xxxx",
+                " /Type /XObject /Subtype /Image /Width 2 /Height 2",
+            )],
             ..Default::default()
         },
     );

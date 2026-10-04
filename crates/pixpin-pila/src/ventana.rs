@@ -391,7 +391,12 @@ fn pintar_icono(p: &Pintor, pila: &Pila, bitmaps: &[ID2D1Bitmap1], d: &Disposici
         alto: caja.alto - 2.0 * hueco,
     };
     if let (Some(c), Some(b)) = (pila.ultima(), bitmaps.last()) {
-        p.bitmap(b, encajar(dentro, c.miniatura.ancho, c.miniatura.alto), None, false);
+        p.bitmap(
+            b,
+            encajar(dentro, c.miniatura.ancho, c.miniatura.alto),
+            None,
+            false,
+        );
     }
     if pila.armada() {
         pintar_halo(p, caja, e);
@@ -480,7 +485,12 @@ fn pintar_panel(
                 ancho: celda.ancho - 2.0 * hueco,
                 alto: celda.alto - 2.0 * hueco,
             };
-            p.bitmap(b, encajar(dentro, c.miniatura.ancho, c.miniatura.alto), None, false);
+            p.bitmap(
+                b,
+                encajar(dentro, c.miniatura.ancho, c.miniatura.alto),
+                None,
+                false,
+            );
         }
         // Marcada: aro de acento alrededor y un punto lleno abajo a la
         // izquierda. Dos senales y no una porque el aro solo se distingue mal
@@ -785,10 +795,7 @@ fn recolocar(hwnd: HWND, i: &PilaInterno) {
         LADO_ICONO_LOGICO,
         MARGEN_ICONO_LOGICO,
     );
-    let derecha = matches!(
-        i.esquina,
-        Esquina::ArribaDerecha | Esquina::AbajoDerecha
-    );
+    let derecha = matches!(i.esquina, Esquina::ArribaDerecha | Esquina::AbajoDerecha);
     let abajo = matches!(i.esquina, Esquina::AbajoIzquierda | Esquina::AbajoDerecha);
     let x = if derecha {
         ancla.x + ancla.ancho as i32 - d.ancho as i32
@@ -1053,12 +1060,11 @@ mod pruebas {
         // Caso negativo con el panel lleno: nada puede quedarse fuera de la
         // ventana, porque lo que cae fuera no recibe clics.
         let d = disponer(true, crate::pila::TOPE_CAPTURAS, 150);
-        for r in d
-            .celdas
-            .iter()
-            .chain(d.quitar_una.iter())
-            .chain([&d.copiar_elegidas, &d.copiar_todas, &d.quitar_todas])
-        {
+        for r in d.celdas.iter().chain(d.quitar_una.iter()).chain([
+            &d.copiar_elegidas,
+            &d.copiar_todas,
+            &d.quitar_todas,
+        ]) {
             assert!(r.x >= 0.0 && r.y >= 0.0, "nada empieza fuera: {r:?}");
             assert!(
                 r.x + r.ancho <= d.ancho as f32 + 1.0 && r.y + r.alto <= d.alto as f32 + 1.0,

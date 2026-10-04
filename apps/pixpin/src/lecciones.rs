@@ -38,7 +38,15 @@ pub fn nueva(
     de_mensaje: Option<String>,
     ficha: Option<String>,
 ) {
-    nueva_con_fotos(ubicacion, idioma, aparato, texto, de_mensaje, ficha, Vec::new());
+    nueva_con_fotos(
+        ubicacion,
+        idioma,
+        aparato,
+        texto,
+        de_mensaje,
+        ficha,
+        Vec::new(),
+    );
 }
 
 /// Como [`nueva`], con fotos que se guardan con ella (pedido
@@ -82,7 +90,13 @@ pub fn editar(ubicacion: Ubicacion, idioma: Idioma, aparato: &str, id: &str) {
 }
 
 /// Abre la lista. Con `proyecto` (la ficha de un chat), las suyas primero.
-pub fn lista(ubicacion: Ubicacion, idioma: Idioma, aparato: &str, proyecto: Option<String>, consulta: Option<String>) {
+pub fn lista(
+    ubicacion: Ubicacion,
+    idioma: Idioma,
+    aparato: &str,
+    proyecto: Option<String>,
+    consulta: Option<String>,
+) {
     lista::abrir(lista::Pedido {
         ubicacion,
         idioma,
@@ -105,10 +119,17 @@ pub fn id_del_archivo(ruta: &std::path::Path) -> Option<String> {
 /// **El aviso en el momento justo** (`AvisoDeLecciones.kt`): las lecciones
 /// que tocan al entrar en el chat de un proyecto —las suyas y las que hablan
 /// de lo mismo que su nombre—, la mas grave primero. Vacio si no hay.
-pub fn del_proyecto(raiz: &std::path::Path, ficha: &str, nombre: &str) -> Vec<pixpin_lecciones::Leccion> {
+pub fn del_proyecto(
+    raiz: &std::path::Path,
+    ficha: &str,
+    nombre: &str,
+) -> Vec<pixpin_lecciones::Leccion> {
     let todas = almacen::listar(raiz);
-    let mut suyas: Vec<pixpin_lecciones::Leccion> =
-        todas.iter().filter(|e| e.ficha == ficha).map(|e| e.leccion.clone()).collect();
+    let mut suyas: Vec<pixpin_lecciones::Leccion> = todas
+        .iter()
+        .filter(|e| e.ficha == ficha)
+        .map(|e| e.leccion.clone())
+        .collect();
     let fuera: Vec<buscador::Indice> = todas
         .iter()
         .filter(|e| e.ficha != ficha)
@@ -119,7 +140,11 @@ pub fn del_proyecto(raiz: &std::path::Path, ficha: &str, nombre: &str) -> Vec<pi
             suyas.push(l);
         }
     }
-    suyas.sort_by(|a, b| b.gravedad.cmp(&a.gravedad).then(b.repeticiones.len().cmp(&a.repeticiones.len())));
+    suyas.sort_by(|a, b| {
+        b.gravedad
+            .cmp(&a.gravedad)
+            .then(b.repeticiones.len().cmp(&a.repeticiones.len()))
+    });
     suyas
 }
 
@@ -137,7 +162,8 @@ struct Calculado {
     aviso: Option<Aviso>,
 }
 
-static AVISOS: std::sync::Mutex<Option<std::collections::HashMap<String, Calculado>>> = std::sync::Mutex::new(None);
+static AVISOS: std::sync::Mutex<Option<std::collections::HashMap<String, Calculado>>> =
+    std::sync::Mutex::new(None);
 static CALCULANDO: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
 
 /// **El aviso para el chat de un proyecto, sin esperar**: lo ultimo que se
@@ -163,31 +189,40 @@ pub fn aviso(raiz: &std::path::Path, ficha: &str, nombre: &str) -> Option<Aviso>
             calculando.push(ficha.to_string());
             let id = ficha.to_string();
             let (raiz, ficha, nombre) = (raiz.to_path_buf(), ficha.to_string(), nombre.to_string());
-            let lanzado = std::thread::Builder::new().name("aviso-de-lecciones".into()).spawn(move || {
-                let v = del_proyecto(&raiz, &ficha, &nombre);
-                let aviso = v.first().map(|l| Aviso {
-                    cuantas: v.len(),
-                    linea: if l.proxima.trim().is_empty() { l.titulo.clone() } else { l.proxima.clone() },
-                });
-                let antes = {
-                    let mut g = AVISOS.lock().unwrap_or_else(|e| e.into_inner());
-                    let m = g.get_or_insert_with(Default::default);
-                    let antes = m.get(&ficha).map(|c| c.aviso.clone());
-                    m.insert(
-                        ficha.clone(),
-                        Calculado {
-                            cambios,
-                            cuando: std::time::Instant::now(),
-                            aviso: aviso.clone(),
+            let lanzado = std::thread::Builder::new()
+                .name("aviso-de-lecciones".into())
+                .spawn(move || {
+                    let v = del_proyecto(&raiz, &ficha, &nombre);
+                    let aviso = v.first().map(|l| Aviso {
+                        cuantas: v.len(),
+                        linea: if l.proxima.trim().is_empty() {
+                            l.titulo.clone()
+                        } else {
+                            l.proxima.clone()
                         },
-                    );
-                    antes
-                };
-                CALCULANDO.lock().unwrap_or_else(|e| e.into_inner()).retain(|f| *f != ficha);
-                if antes != Some(aviso.clone()) && (antes.is_some() || aviso.is_some()) {
-                    crate::ventana_chat::refrescar();
-                }
-            });
+                    });
+                    let antes = {
+                        let mut g = AVISOS.lock().unwrap_or_else(|e| e.into_inner());
+                        let m = g.get_or_insert_with(Default::default);
+                        let antes = m.get(&ficha).map(|c| c.aviso.clone());
+                        m.insert(
+                            ficha.clone(),
+                            Calculado {
+                                cambios,
+                                cuando: std::time::Instant::now(),
+                                aviso: aviso.clone(),
+                            },
+                        );
+                        antes
+                    };
+                    CALCULANDO
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .retain(|f| *f != ficha);
+                    if antes != Some(aviso.clone()) && (antes.is_some() || aviso.is_some()) {
+                        crate::ventana_chat::refrescar();
+                    }
+                });
             if lanzado.is_err() {
                 calculando.retain(|f| *f != id);
             }

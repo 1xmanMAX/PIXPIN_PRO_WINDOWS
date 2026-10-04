@@ -108,10 +108,8 @@ mod pruebas {
 
     #[test]
     fn mandar_deja_la_foto_con_su_pie_en_el_chat_del_proyecto() {
-        let raiz = std::env::temp_dir().join(format!(
-            "pixpin-captura2-alchat-{}",
-            std::process::id()
-        ));
+        let raiz =
+            std::env::temp_dir().join(format!("pixpin-captura2-alchat-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&raiz);
         std::fs::create_dir_all(&raiz).unwrap();
         let f = almacen::Ficha::nueva("Tesis", 1, "PC01");

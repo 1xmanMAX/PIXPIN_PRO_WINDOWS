@@ -107,7 +107,11 @@ impl Valor {
 /// [`general`] con otro separador decimal.
 pub fn general_con(d: f64, decimal: char) -> String {
     let s = general(d);
-    if decimal == '.' { s } else { s.replace('.', &decimal.to_string()) }
+    if decimal == '.' {
+        s
+    } else {
+        s.replace('.', &decimal.to_string())
+    }
 }
 
 /// Lo que vale una celda: su contenido, o el resultado de su formula.
@@ -252,7 +256,10 @@ pub fn numero_escrito(texto: &str) -> Option<f64> {
         por_ciento = true;
         t = r.trim();
     }
-    let mut s: String = t.chars().filter(|c| !matches!(c, ' ' | '\u{a0}' | '\u{202f}')).collect();
+    let mut s: String = t
+        .chars()
+        .filter(|c| !matches!(c, ' ' | '\u{a0}' | '\u{202f}'))
+        .collect();
     if let Some(r) = s.strip_prefix('-') {
         negativo = !negativo;
         s = r.to_string();
@@ -264,11 +271,15 @@ pub fn numero_escrito(texto: &str) -> Option<f64> {
     };
     let exp_bien = exponente.is_empty() || {
         let r = exponente[1..].trim_start_matches(['+', '-']);
-        !r.is_empty() && r.chars().all(|c| c.is_ascii_digit()) && exponente[1..].len() - r.len() <= 1
+        !r.is_empty()
+            && r.chars().all(|c| c.is_ascii_digit())
+            && exponente[1..].len() - r.len() <= 1
     };
     let mut cs = cuerpo.chars();
     let cifras_bien = match cs.next() {
-        Some(c) if c.is_ascii_digit() => cuerpo.chars().all(|c| c.is_ascii_digit() || c == '.' || c == ','),
+        Some(c) if c.is_ascii_digit() => cuerpo
+            .chars()
+            .all(|c| c.is_ascii_digit() || c == '.' || c == ','),
         Some('.' | ',') => {
             let resto: String = cs.collect();
             !resto.is_empty() && resto.chars().all(|c| c.is_ascii_digit())
@@ -353,14 +364,24 @@ pub fn general(d: f64) -> String {
             mantisa
         };
         let e: i32 = exp.parse().unwrap_or(0);
-        return format!("{signo}{mantisa}E{}{:02}", if e < 0 { '-' } else { '+' }, e.abs());
+        return format!(
+            "{signo}{mantisa}E{}{:02}",
+            if e < 0 { '-' } else { '+' },
+            e.abs()
+        );
     }
     let s = format!("{a:.9e}");
-    let e: i32 = s.split_once('e').and_then(|(_, e)| e.parse().ok()).unwrap_or(0);
+    let e: i32 = s
+        .split_once('e')
+        .and_then(|(_, e)| e.parse().ok())
+        .unwrap_or(0);
     let decimales = (9 - e).max(0) as usize;
     let mut plano = format!("{a:.decimales$}");
     if plano.contains('.') {
-        plano = plano.trim_end_matches('0').trim_end_matches('.').to_string();
+        plano = plano
+            .trim_end_matches('0')
+            .trim_end_matches('.')
+            .to_string();
     }
     format!("{signo}{plano}")
 }
@@ -450,11 +471,14 @@ fn trocear(texto: &str) -> Result<Vec<Pieza>, ErrorFormula> {
 
         // El `$` de `$A$1` solo fija la celda al copiar la formula; al
         // calcular no cambia nada, y un libro de Excel lo trae a cada paso.
-        if c.is_alphabetic() || (c == '$' && letras.get(i + 1).is_some_and(|s| s.is_ascii_alphabetic())) {
+        if c.is_alphabetic()
+            || (c == '$' && letras.get(i + 1).is_some_and(|s| s.is_ascii_alphabetic()))
+        {
             let empieza = i;
             while i < letras.len()
                 && (letras[i].is_alphanumeric()
-                    || (letras[i] == '$' && letras.get(i + 1).is_some_and(|s| s.is_ascii_alphanumeric())))
+                    || (letras[i] == '$'
+                        && letras.get(i + 1).is_some_and(|s| s.is_ascii_alphanumeric())))
             {
                 i += 1;
             }
@@ -694,7 +718,11 @@ fn celdas_del_rango(tabla: &Tabla, a: Ref, b: Ref, indice: &mut Option<Vec<Ref>>
     // un rango se busca con dos saltos por columna en vez de mirar la
     // tabla entera por cada `SUMA` de cada fila.
     let indice = indice.get_or_insert_with(|| {
-        let mut v: Vec<Ref> = tabla.celdas.keys().filter_map(|clave| ref_de(clave)).collect();
+        let mut v: Vec<Ref> = tabla
+            .celdas
+            .keys()
+            .filter_map(|clave| ref_de(clave))
+            .collect();
         v.sort_by_key(|r| (r.columna, r.fila));
         v
     });
@@ -844,7 +872,17 @@ mod pruebas {
             assert_eq!(numero_escrito(texto), Some(esperado), "{texto}");
         }
         // Casos negativos: nada de esto es un numero.
-        for malo in ["", "abc", "12a", "e5", "1e", "inf", "NaN", "--", "1.234,5,6"] {
+        for malo in [
+            "",
+            "abc",
+            "12a",
+            "e5",
+            "1e",
+            "inf",
+            "NaN",
+            "--",
+            "1.234,5,6",
+        ] {
             assert_eq!(numero_escrito(malo), None, "{malo}");
         }
         let t = tabla(&[("B2", "1.234,50"), ("B3", "3,20"), ("B4", "=SUMA(B2:B3)")]);
@@ -871,11 +909,33 @@ mod pruebas {
         // profundidad. Con memoria, cada celda encuentra hecha la anterior.
         let mut t = Tabla::default();
         for f in 0..1000u32 {
-            t.poner(Ref { columna: 0, fila: f }, "1");
-            let saldo = if f == 0 { "=A1".to_string() } else { format!("=B{}+A{}", f, f + 1) };
-            t.poner(Ref { columna: 1, fila: f }, &saldo);
+            t.poner(
+                Ref {
+                    columna: 0,
+                    fila: f,
+                },
+                "1",
+            );
+            let saldo = if f == 0 {
+                "=A1".to_string()
+            } else {
+                format!("=B{}+A{}", f, f + 1)
+            };
+            t.poner(
+                Ref {
+                    columna: 1,
+                    fila: f,
+                },
+                &saldo,
+            );
             // Y un total que suma todo lo de encima, fila a fila.
-            t.poner(Ref { columna: 2, fila: f }, &format!("=SUMA($A$1:A{})", f + 1));
+            t.poner(
+                Ref {
+                    columna: 2,
+                    fila: f,
+                },
+                &format!("=SUMA($A$1:A{})", f + 1),
+            );
         }
         let t0 = std::time::Instant::now();
         let v = evaluar_todo(&t);
@@ -904,7 +964,13 @@ mod pruebas {
 
     #[test]
     fn el_resultado_se_ensena_con_la_coma_del_usuario_y_se_guarda_con_punto() {
-        let t = tabla(&[("B2", "12,5"), ("B3", "7"), ("B4", "=SUMA(B2:B3)"), ("B5", "=1/0"), ("B6", "=B4*100000000000000000000")]);
+        let t = tabla(&[
+            ("B2", "12,5"),
+            ("B3", "7"),
+            ("B4", "=SUMA(B2:B3)"),
+            ("B5", "=1/0"),
+            ("B6", "=B4*100000000000000000000"),
+        ]);
         let total = valor(&t, "B4");
         assert_eq!(total.mostrar(','), "19,5", "es-ES");
         assert_eq!(total.mostrar('.'), "19.5", "en-US");
@@ -922,7 +988,12 @@ mod pruebas {
         // Es la marca del movil (y de Excel) para «esto es texto tal cual»:
         // el codigo postal 007 no es un 7, ni «=hola» una formula. Se ensena
         // sin el apostrofo.
-        let t = tabla(&[("A1", "'007"), ("A2", "'=hola"), ("A3", "=SUMA(A1:A2)"), ("A4", "'")]);
+        let t = tabla(&[
+            ("A1", "'007"),
+            ("A2", "'=hola"),
+            ("A3", "=SUMA(A1:A2)"),
+            ("A4", "'"),
+        ]);
         assert_eq!(valor(&t, "A1"), Valor::Texto("007".into()));
         assert_eq!(valor(&t, "A2"), Valor::Texto("=hola".into()));
         // Y como texto no suma.
@@ -935,7 +1006,12 @@ mod pruebas {
     fn las_referencias_con_dolar_de_excel_valen_igual() {
         // `$A$1` fija la celda al copiar la formula; al calcular es la A1. Un
         // libro de Excel las trae a cada paso, y sin esto cada una daba error.
-        let t = tabla(&[("A1", "2"), ("A2", "3"), ("B1", "=$A$1*A$2+$A2"), ("B2", "=SUMA($A$1:$A2)")]);
+        let t = tabla(&[
+            ("A1", "2"),
+            ("A2", "3"),
+            ("B1", "=$A$1*A$2+$A2"),
+            ("B2", "=SUMA($A$1:$A2)"),
+        ]);
         assert_eq!(numero(&t, "B1"), 9.0);
         assert_eq!(numero(&t, "B2"), 5.0);
         // Caso negativo: un dolar suelto no es nada.

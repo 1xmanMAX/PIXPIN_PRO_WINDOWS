@@ -67,7 +67,15 @@ impl Funcion {
     pub fn alias(self) -> &'static [&'static str] {
         match self {
             Funcion::Chat => &["chat", "mensaje", "escribir", "message"],
-            Funcion::Tareas => &["tareas", "tarea", "todo", "todos", "tasks", "task", "pendientes"],
+            Funcion::Tareas => &[
+                "tareas",
+                "tarea",
+                "todo",
+                "todos",
+                "tasks",
+                "task",
+                "pendientes",
+            ],
             Funcion::Lienzo => &["lienzo", "canvas", "dibujo", "dibujar", "pizarra"],
             Funcion::Nota => &["nota", "note", "notas"],
             Funcion::Grabar => &["grabar", "audio", "voz", "record", "grabacion"],
@@ -127,7 +135,9 @@ impl Funcion {
 
     pub fn de_palabra(palabra: &str) -> Option<Funcion> {
         let p = normalizar(palabra);
-        Funcion::TODAS.into_iter().find(|f| f.alias().contains(&p.as_str()))
+        Funcion::TODAS
+            .into_iter()
+            .find(|f| f.alias().contains(&p.as_str()))
     }
 }
 
@@ -136,15 +146,30 @@ impl Funcion {
 pub enum Modo {
     Vacio,
     /// Buscar en todo. `proyecto` es lo escrito detras de `@`.
-    Buscar { texto: String, proyecto: Option<String> },
+    Buscar {
+        texto: String,
+        proyecto: Option<String>,
+    },
     /// Una funcion y lo que va detras (sin el `@proyecto`).
-    Verbo { funcion: Funcion, resto: String, proyecto: Option<String> },
+    Verbo {
+        funcion: Funcion,
+        resto: String,
+        proyecto: Option<String>,
+    },
     /// Dentro de una lista de tareas: `tareas <lista> > <filtro>`.
-    Lista { lista: String, filtro: String },
+    Lista {
+        lista: String,
+        filtro: String,
+    },
     /// Dentro del chat de un proyecto: `<proyecto> > <filtro>`.
-    Proyecto { proyecto: String, filtro: String },
+    Proyecto {
+        proyecto: String,
+        filtro: String,
+    },
     /// `t <texto>`: apuntar una tarea en el Inbox.
-    Apuntar { texto: String },
+    Apuntar {
+        texto: String,
+    },
 }
 
 /// El separador entre la lista y la tarea, y entre el proyecto y lo que se
@@ -167,27 +192,46 @@ pub fn analizar(busqueda: &str) -> Modo {
             let texto = resto.trim();
             if funcion == Funcion::Tareas {
                 if let Some((lista, filtro)) = resto.split_once(SEPARADOR) {
-                    return Modo::Lista { lista: lista.trim().to_string(), filtro: filtro.trim().to_string() };
+                    return Modo::Lista {
+                        lista: lista.trim().to_string(),
+                        filtro: filtro.trim().to_string(),
+                    };
                 }
                 if !texto.is_empty() {
-                    return Modo::Apuntar { texto: texto.to_string() };
+                    return Modo::Apuntar {
+                        texto: texto.to_string(),
+                    };
                 }
             }
             let (resto, proyecto) = separar_proyecto(resto);
-            return Modo::Verbo { funcion, resto, proyecto };
+            return Modo::Verbo {
+                funcion,
+                resto,
+                proyecto,
+            };
         }
     }
     if let Some(funcion) = Funcion::de_palabra(primera) {
         if funcion == Funcion::Tareas {
             if let Some((lista, filtro)) = resto.split_once(SEPARADOR) {
-                return Modo::Lista { lista: lista.trim().to_string(), filtro: filtro.trim().to_string() };
+                return Modo::Lista {
+                    lista: lista.trim().to_string(),
+                    filtro: filtro.trim().to_string(),
+                };
             }
         }
         let (resto, proyecto) = separar_proyecto(resto);
-        return Modo::Verbo { funcion, resto, proyecto };
+        return Modo::Verbo {
+            funcion,
+            resto,
+            proyecto,
+        };
     }
     if let Some((proyecto, filtro)) = t.split_once(SEPARADOR) {
-        return Modo::Proyecto { proyecto: proyecto.trim().to_string(), filtro: filtro.trim().to_string() };
+        return Modo::Proyecto {
+            proyecto: proyecto.trim().to_string(),
+            filtro: filtro.trim().to_string(),
+        };
     }
     let (texto, proyecto) = separar_proyecto(t);
     Modo::Buscar { texto, proyecto }
@@ -205,7 +249,10 @@ pub fn separar_proyecto(texto: &str) -> (String, Option<String>) {
         anterior = Some(c);
     }
     match corte {
-        Some(i) => (texto[..i].trim().to_string(), Some(texto[i + 1..].trim().to_string())),
+        Some(i) => (
+            texto[..i].trim().to_string(),
+            Some(texto[i + 1..].trim().to_string()),
+        ),
         None => (texto.trim().to_string(), None),
     }
 }
@@ -215,10 +262,17 @@ mod pruebas {
     use super::*;
 
     fn buscar(t: &str, p: Option<&str>) -> Modo {
-        Modo::Buscar { texto: t.into(), proyecto: p.map(Into::into) }
+        Modo::Buscar {
+            texto: t.into(),
+            proyecto: p.map(Into::into),
+        }
     }
     fn verbo(f: Funcion, r: &str, p: Option<&str>) -> Modo {
-        Modo::Verbo { funcion: f, resto: r.into(), proyecto: p.map(Into::into) }
+        Modo::Verbo {
+            funcion: f,
+            resto: r.into(),
+            proyecto: p.map(Into::into),
+        }
     }
 
     #[test]
@@ -232,49 +286,101 @@ mod pruebas {
 
     #[test]
     fn los_verbos_en_espanol_e_ingles_y_con_tildes() {
-        assert_eq!(analizar("chat hola que tal"), verbo(Funcion::Chat, "hola que tal", None));
+        assert_eq!(
+            analizar("chat hola que tal"),
+            verbo(Funcion::Chat, "hola que tal", None)
+        );
         assert_eq!(analizar("todo"), verbo(Funcion::Tareas, "", None));
-        assert_eq!(analizar("Canvas plano"), verbo(Funcion::Lienzo, "plano", None));
-        assert_eq!(analizar("grabación clase 3"), verbo(Funcion::Grabar, "clase 3", None));
+        assert_eq!(
+            analizar("Canvas plano"),
+            verbo(Funcion::Lienzo, "plano", None)
+        );
+        assert_eq!(
+            analizar("grabación clase 3"),
+            verbo(Funcion::Grabar, "clase 3", None)
+        );
         assert_eq!(analizar("note idea"), verbo(Funcion::Nota, "idea", None));
         assert_eq!(analizar("grabar "), verbo(Funcion::Grabar, "", None));
-        assert_eq!(analizar("Añadir thesis"), verbo(Funcion::Soltar, "thesis", None));
+        assert_eq!(
+            analizar("Añadir thesis"),
+            verbo(Funcion::Soltar, "thesis", None)
+        );
         assert_eq!(analizar("drop"), verbo(Funcion::Soltar, "", None));
-        assert_eq!(analizar("adjuntar ges"), verbo(Funcion::Soltar, "ges", None));
+        assert_eq!(
+            analizar("adjuntar ges"),
+            verbo(Funcion::Soltar, "ges", None)
+        );
     }
 
     #[test]
     fn la_arroba_elige_proyecto_pero_no_en_un_correo() {
-        assert_eq!(analizar("chat hola @Gestión de pro"), verbo(Funcion::Chat, "hola", Some("Gestión de pro")));
-        assert_eq!(analizar("chat escribe a max@x.com"), verbo(Funcion::Chat, "escribe a max@x.com", None));
+        assert_eq!(
+            analizar("chat hola @Gestión de pro"),
+            verbo(Funcion::Chat, "hola", Some("Gestión de pro"))
+        );
+        assert_eq!(
+            analizar("chat escribe a max@x.com"),
+            verbo(Funcion::Chat, "escribe a max@x.com", None)
+        );
         assert_eq!(analizar("lienzo @"), verbo(Funcion::Lienzo, "", Some("")));
-        assert_eq!(analizar("nota a @uno @dos"), verbo(Funcion::Nota, "a @uno", Some("dos")));
+        assert_eq!(
+            analizar("nota a @uno @dos"),
+            verbo(Funcion::Nota, "a @uno", Some("dos"))
+        );
     }
 
     #[test]
     fn las_letras_solas_son_atajos() {
-        assert_eq!(analizar("t comprar pan"), Modo::Apuntar { texto: "comprar pan".into() });
-        assert_eq!(analizar("T  llamar a Ana @casa "), Modo::Apuntar { texto: "llamar a Ana @casa".into() });
+        assert_eq!(
+            analizar("t comprar pan"),
+            Modo::Apuntar {
+                texto: "comprar pan".into()
+            }
+        );
+        assert_eq!(
+            analizar("T  llamar a Ana @casa "),
+            Modo::Apuntar {
+                texto: "llamar a Ana @casa".into()
+            }
+        );
         assert_eq!(analizar("t"), verbo(Funcion::Tareas, "", None));
         assert_eq!(analizar("t "), verbo(Funcion::Tareas, "", None));
         assert_eq!(analizar("n idea"), verbo(Funcion::Nota, "idea", None));
-        assert_eq!(analizar("l plano @thesis"), verbo(Funcion::Lienzo, "plano", Some("thesis")));
+        assert_eq!(
+            analizar("l plano @thesis"),
+            verbo(Funcion::Lienzo, "plano", Some("thesis"))
+        );
         assert_eq!(analizar("g"), verbo(Funcion::Galeria, "", None));
         assert_eq!(analizar("c"), verbo(Funcion::Capturar, "", None));
         assert_eq!(analizar("u"), verbo(Funcion::Ultima, "", None));
-        assert_eq!(analizar("capturas capt"), verbo(Funcion::Capturas, "capt", None));
+        assert_eq!(
+            analizar("capturas capt"),
+            verbo(Funcion::Capturas, "capt", None)
+        );
         assert_eq!(analizar("galería"), verbo(Funcion::Galeria, "", None));
         assert_eq!(analizar("última"), verbo(Funcion::Ultima, "", None));
         // La `a` es «aprendi»: una leccion nueva.
-        assert_eq!(analizar("a revisar la escala @thesis"), verbo(Funcion::Leccion, "revisar la escala", Some("thesis")));
+        assert_eq!(
+            analizar("a revisar la escala @thesis"),
+            verbo(Funcion::Leccion, "revisar la escala", Some("thesis"))
+        );
         assert_eq!(analizar("a"), verbo(Funcion::Leccion, "", None));
     }
 
     #[test]
     fn las_lecciones_una_nueva_buscarlas_y_repasar() {
-        assert_eq!(analizar("lección no cargar de noche"), verbo(Funcion::Leccion, "no cargar de noche", None));
-        assert_eq!(analizar("aprendí algo"), verbo(Funcion::Leccion, "algo", None));
-        assert_eq!(analizar("lecciones encofrado"), verbo(Funcion::Lecciones, "encofrado", None));
+        assert_eq!(
+            analizar("lección no cargar de noche"),
+            verbo(Funcion::Leccion, "no cargar de noche", None)
+        );
+        assert_eq!(
+            analizar("aprendí algo"),
+            verbo(Funcion::Leccion, "algo", None)
+        );
+        assert_eq!(
+            analizar("lecciones encofrado"),
+            verbo(Funcion::Lecciones, "encofrado", None)
+        );
         assert_eq!(analizar("lessons"), verbo(Funcion::Lecciones, "", None));
         assert_eq!(analizar("repasar"), verbo(Funcion::Repasar, "", None));
         assert_eq!(analizar("repaso "), verbo(Funcion::Repasar, "", None));
@@ -292,23 +398,47 @@ mod pruebas {
         // Una letra sin atajo, tampoco.
         assert_eq!(analizar("x algo"), buscar("x algo", None));
         // «t lista > filtro» sigue siendo entrar en una lista, no apuntar.
-        assert_eq!(analizar("t Compra > pan"), Modo::Lista { lista: "Compra".into(), filtro: "pan".into() });
+        assert_eq!(
+            analizar("t Compra > pan"),
+            Modo::Lista {
+                lista: "Compra".into(),
+                filtro: "pan".into()
+            }
+        );
     }
 
     #[test]
     fn dentro_de_una_lista_con_el_separador() {
-        assert_eq!(analizar("tareas Compra > "), Modo::Lista { lista: "Compra".into(), filtro: "".into() });
+        assert_eq!(
+            analizar("tareas Compra > "),
+            Modo::Lista {
+                lista: "Compra".into(),
+                filtro: "".into()
+            }
+        );
         assert_eq!(
             analizar("tasks Compra · Casa > leche @casa"),
-            Modo::Lista { lista: "Compra · Casa".into(), filtro: "leche @casa".into() }
+            Modo::Lista {
+                lista: "Compra · Casa".into(),
+                filtro: "leche @casa".into()
+            }
         );
         // El separador solo vale detras de «tareas».
         assert_eq!(analizar("chat a > b"), verbo(Funcion::Chat, "a > b", None));
         // Sin verbo delante es el chat de un proyecto.
         assert_eq!(
             analizar("Mensajes guardados > foto"),
-            Modo::Proyecto { proyecto: "Mensajes guardados".into(), filtro: "foto".into() }
+            Modo::Proyecto {
+                proyecto: "Mensajes guardados".into(),
+                filtro: "foto".into()
+            }
         );
-        assert_eq!(analizar("Thesis >"), Modo::Proyecto { proyecto: "Thesis".into(), filtro: "".into() });
+        assert_eq!(
+            analizar("Thesis >"),
+            Modo::Proyecto {
+                proyecto: "Thesis".into(),
+                filtro: "".into()
+            }
+        );
     }
 }

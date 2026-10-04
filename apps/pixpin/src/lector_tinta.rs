@@ -43,7 +43,6 @@ use crate::dibujo::mano::{Atendido, Mano, Vista};
 use crate::dibujo::permitidas::{self, Anfitrion};
 use crate::imagenes_lienzo::ImagenesLienzo;
 use pixpin_geom::{Punto, Rect};
-use pixpin_sincro::anotado::MarcoDeLaHoja;
 use pixpin_motor2d::cache::Cache;
 use pixpin_motor2d::camara::Camara;
 use pixpin_motor2d::elemento::{Elemento, Figura};
@@ -53,6 +52,7 @@ use pixpin_motor2d::vector::Punto2;
 use pixpin_motor2d::{ColorRgba, Escena};
 use pixpin_render::{Color, Pintor};
 use pixpin_shell::overlay::EventoOverlay;
+use pixpin_sincro::anotado::MarcoDeLaHoja;
 use pixpin_ui::CajaHerramientas;
 use std::path::{Path, PathBuf};
 
@@ -114,12 +114,22 @@ const PROPORCION_TOLERADA: f32 = 0.01;
 
 impl Unidades {
     /// Las mismas: lo que solo escribe y lee el PC.
-    pub const DEL_PC: Unidades = Unidades { ex: 1.0, ey: 1.0, dx: 0.0, dy: 0.0 };
+    pub const DEL_PC: Unidades = Unidades {
+        ex: 1.0,
+        ey: 1.0,
+        dx: 0.0,
+        dy: 0.0,
+    };
 
     /// La misma escala en los dos ejes y el cero corrido solo a lo ancho: la
     /// regla de antes del marco.
     pub fn uniformes(escala: f32, dx: f32) -> Unidades {
-        Unidades { ex: escala, ey: escala, dx, dy: 0.0 }
+        Unidades {
+            ex: escala,
+            ey: escala,
+            dx,
+            dy: 0.0,
+        }
     }
 
     /// La tinta de un Word del movil cuenta desde el borde de su pagina: la
@@ -179,7 +189,12 @@ impl Unidades {
 
     /// Las que deshacen estas: `lector = fichero * (1/e) - d/e`.
     pub fn inversas(&self) -> Unidades {
-        Unidades { ex: 1.0 / self.ex, ey: 1.0 / self.ey, dx: -self.dx / self.ex, dy: -self.dy / self.ey }
+        Unidades {
+            ex: 1.0 / self.ex,
+            ey: 1.0 / self.ey,
+            dx: -self.dx / self.ex,
+            dy: -self.dy / self.ey,
+        }
     }
 
     /// Casi las mismas: la que sale de un marco escrito con tres decimales
@@ -262,9 +277,10 @@ fn llevar(e: &mut Elemento, u: Unidades) {
         | Figura::Linea { puntos }
         | Figura::Flecha { puntos, .. }
         | Figura::Cota { puntos } => puntos.iter_mut().for_each(mapa),
-        Figura::Region { contorno, huecos } => {
-            contorno.iter_mut().chain(huecos.iter_mut().flatten()).for_each(mapa)
-        }
+        Figura::Region { contorno, huecos } => contorno
+            .iter_mut()
+            .chain(huecos.iter_mut().flatten())
+            .for_each(mapa),
         Figura::Texto { tam, .. } => *tam *= k,
         _ => {}
     }
@@ -465,7 +481,9 @@ impl Capa {
                 .wrapping_add(e.id ^ ((e.version as u64) << 1) ^ e.borrado as u64);
         }
         let f = self.escena.fondo;
-        h.wrapping_add(((f.r * 255.0) as u64) << 16 | ((f.g * 255.0) as u64) << 8 | (f.b * 255.0) as u64)
+        h.wrapping_add(
+            ((f.r * 255.0) as u64) << 16 | ((f.g * 255.0) as u64) << 8 | (f.b * 255.0) as u64,
+        )
     }
 }
 
@@ -653,7 +671,14 @@ impl Tinta {
         };
         let antes = capa.huella();
         let mut hecho = Hecho::default();
-        let a = self.mano.interfaz(ev, &mut self.gesto, &mut capa.escena, Some(&caja), true, vista);
+        let a = self.mano.interfaz(
+            ev,
+            &mut self.gesto,
+            &mut capa.escena,
+            Some(&caja),
+            true,
+            vista,
+        );
         let a = if a.consumido || a.salir {
             a
         } else {
@@ -708,7 +733,9 @@ impl Tinta {
 
     /// El gesto de pararse (forma rapida). `true` si hay que repintar.
     pub fn forma_rapida(&mut self, capa: &mut Capa, zoom: f32) -> bool {
-        let hecho = self.mano.forma_rapida(&mut self.gesto, &mut capa.escena, zoom);
+        let hecho = self
+            .mano
+            .forma_rapida(&mut self.gesto, &mut capa.escena, zoom);
         if hecho {
             capa.sucia = true;
         }
@@ -750,30 +777,32 @@ impl Tinta {
         // El grafito de cada hoja, en su espacio del horno: por lo mismo que
         // las caches van por hoja (sus ids se repiten de una a otra).
         let espacio = self.espacio + hoja as u64;
-        pixpin_motor2d::tinta::grafito::en_espacio(espacio, || crate::dibujo::tema::con_papel(Some(papel), || {
-            crate::dibujo::pintar::pintar_escena(
-                p,
-                &capa.escena,
-                cache,
-                cache_tinta,
-                imagenes,
-                vista,
-                zoom,
-                |id| activa && gesto.elemento_en_curso().is_some_and(|(en, _)| en == id),
-            );
-            if activa {
-                crate::dibujo::pintar::pintar_encima(
+        pixpin_motor2d::tinta::grafito::en_espacio(espacio, || {
+            crate::dibujo::tema::con_papel(Some(papel), || {
+                crate::dibujo::pintar::pintar_escena(
                     p,
-                    gesto,
                     &capa.escena,
+                    cache,
+                    cache_tinta,
+                    imagenes,
                     vista,
                     zoom,
-                    imagenes,
-                    false,
-                    false,
+                    |id| activa && gesto.elemento_en_curso().is_some_and(|(en, _)| en == id),
                 );
-            }
-        }));
+                if activa {
+                    crate::dibujo::pintar::pintar_encima(
+                        p,
+                        gesto,
+                        &capa.escena,
+                        vista,
+                        zoom,
+                        imagenes,
+                        false,
+                        false,
+                    );
+                }
+            })
+        });
         // Lo borrado y compactado no se queda en la cache para siempre. Con
         // la escena de SU hoja: la de otra le tiraria todo.
         if cache.sobran(capa.escena.cuantos_visibles()) {
@@ -791,7 +820,10 @@ impl Tinta {
     /// Cuantos bitmaps de grafito se han subido a la GPU, en todas las hojas.
     #[cfg(test)]
     pub fn subidas_de_grafito(&self) -> u64 {
-        self.calculado.values().map(|c| c.tinta.grano.grafito.subidas()).sum()
+        self.calculado
+            .values()
+            .map(|c| c.tinta.grano.grafito.subidas())
+            .sum()
     }
 
     /// **Suelta lo calculado de todas las hojas.** Las caches validan con la
@@ -813,7 +845,13 @@ impl Tinta {
     /// La barra y el panel de propiedades, en pixeles de la ventana (quien
     /// llama ya quito la transformada del documento). `capa` es la activa:
     /// el panel ensena lo que hay elegido en ella.
-    pub fn pintar_interfaz(&self, p: &Pintor, capa: Option<&Capa>, area: Rect, escala_por_cien: u32) {
+    pub fn pintar_interfaz(
+        &self,
+        p: &Pintor,
+        capa: Option<&Capa>,
+        area: Rect,
+        escala_por_cien: u32,
+    ) {
         let caja = Tinta::caja(area, escala_por_cien).con_desplegado(self.mano.desplegado);
         // La caja y el panel viven en coordenadas del escritorio (son las de
         // los clics); se pintan en las de la ventana.
@@ -976,7 +1014,8 @@ mod pruebas {
     /// palabra, y el del PC viajaba sin correr.
     #[test]
     fn la_tinta_corrida_mueve_sus_puntos_y_lo_que_no_se_toca_vuelve_igual_al_fichero() {
-        let dir = std::env::temp_dir().join(format!("pixpin-corrida-puntos-{}", std::process::id()));
+        let dir =
+            std::env::temp_dir().join(format!("pixpin-corrida-puntos-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let ruta = dir.join("anot.excalidraw");
@@ -986,25 +1025,46 @@ mod pruebas {
         let e = c.escena.visibles().next().unwrap().clone();
         let sin = Capa::leer(&ruta).escena.visibles().next().unwrap().caja();
         let (x0, _, x1, _) = e.caja();
-        assert!((sin.0 - x0 - 256.0).abs() < 1e-3 && (sin.2 - x1 - 256.0).abs() < 1e-3, "la caja entera, corrida: {sin:?} {x0} {x1}");
+        assert!(
+            (sin.0 - x0 - 256.0).abs() < 1e-3 && (sin.2 - x1 - 256.0).abs() < 1e-3,
+            "la caja entera, corrida: {sin:?} {x0} {x1}"
+        );
         assert_eq!(e.version, 3, "correr al leer no es cambiar");
         // Un trazo nuevo del PC en la columna (x 10..30) va al fichero corrido.
         let mut t = tinta_de_prueba(Herramienta::Lapiz);
-        t.trazar(&mut c, &[Punto2::nuevo(10.0, 50.0), Punto2::nuevo(30.0, 50.0)]);
+        t.trazar(
+            &mut c,
+            &[Punto2::nuevo(10.0, 50.0), Punto2::nuevo(30.0, 50.0)],
+        );
         c.guardar_corrida(&ruta, 256.0).unwrap();
-        let v: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&ruta).unwrap()).unwrap();
+        let v: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&ruta).unwrap()).unwrap();
         let els = v["elements"].as_array().unwrap();
-        assert_eq!(els[0]["x"].as_f64(), Some(364.1875), "el del movil, tal cual");
+        assert_eq!(
+            els[0]["x"].as_f64(),
+            Some(364.1875),
+            "el del movil, tal cual"
+        );
         assert_eq!(els[0]["version"].as_u64(), Some(3));
         let nuevo = &els[1];
         let x = nuevo["x"].as_f64().unwrap();
-        let p0 = nuevo["points"][0][0].as_f64().or_else(|| nuevo["points"][0]["x"].as_f64()).unwrap();
-        assert!((x + p0 - 266.0).abs() < 0.5, "el del PC, en unidades de la pagina: {x} + {p0}");
+        let p0 = nuevo["points"][0][0]
+            .as_f64()
+            .or_else(|| nuevo["points"][0]["x"].as_f64())
+            .unwrap();
+        assert!(
+            (x + p0 - 266.0).abs() < 0.5,
+            "el del PC, en unidades de la pagina: {x} + {p0}"
+        );
         // Y al volver a leerlo cae donde se dibujo.
         let otra = Capa::leer_corrida(&ruta, 256.0);
         let n = otra.escena.visibles().nth(1).unwrap();
         let hecho = c.escena.visibles().nth(1).unwrap().caja();
-        assert!((n.caja().0 - hecho.0).abs() < 0.01, "{:?} {hecho:?}", n.caja());
+        assert!(
+            (n.caja().0 - hecho.0).abs() < 0.01,
+            "{:?} {hecho:?}",
+            n.caja()
+        );
         // Caso negativo: sin corrida (un documento suelto) nada se mueve.
         let quieta = Capa::leer_corrida(&ruta, 0.0);
         assert!((quieta.escena.visibles().next().unwrap().caja().0 - sin.0).abs() < 1e-3);
@@ -1019,7 +1079,8 @@ mod pruebas {
     const HOJA_DEL_MOVIL: &str = r##"{"alfileres":[],"backgroundColor":"#ffffff","elements":[{"angle":0.0,"backgroundColor":"transparent","fillStyle":"solid","groupIds":[],"height":151.4812893337671,"id":"jDNyxAFkaxm2qZ-KsluKG","isDeleted":false,"locked":false,"material":"lisa","opacity":100,"points":[{"x":0.0,"y":0.0},{"x":-3.574230052806797,"y":-8.85823567708303},{"x":17.0,"y":142.6}],"presionFirme":false,"pressures":[0.5,0.6,0.7],"roughness":0,"scale":[1.0,1.0],"seed":656548593,"simulatePressure":true,"strokeColor":"#f08c00","strokeStyle":"solid","strokeWidth":1.0,"type":"freedraw","updated":1790717124003,"version":1,"versionNonce":-1460576999,"width":20.561416060836336,"x":844.1965456362125,"y":3080.10412145544},{"angle":0.0,"backgroundColor":"transparent","fillStyle":"solid","fontFamily":5,"fontSize":138.863841869213,"groupIds":[],"height":173.57980233651622,"id":"feE_wn2xlXlpKLQ278O5D","isDeleted":false,"locked":false,"opacity":100,"roughness":0,"seed":716826725,"strokeColor":"#f08c00","strokeStyle":"solid","strokeWidth":2.0,"text":"upc","textAlign":"left","type":"text","updated":1790717160057,"version":6,"versionNonce":1013548572,"verticalAlign":"top","width":231.41507749204288,"x":648.0419300220633,"y":167.14183666087965}],"files":{},"viewport":{"scrollX":1050.0,"scrollY":0.0,"zoom":0.30857142857142855},"vista":"cero"}"##;
 
     fn hoja_del_movil_en(etiqueta: &str) -> (PathBuf, PathBuf) {
-        let dir = std::env::temp_dir().join(format!("pixpin-unidades-{etiqueta}-{}", std::process::id()));
+        let dir =
+            std::env::temp_dir().join(format!("pixpin-unidades-{etiqueta}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let ruta = dir.join("anot-VRQH2DA7AB-p1.excalidraw");
@@ -1028,7 +1089,8 @@ mod pruebas {
     }
 
     fn elementos(ruta: &Path) -> Vec<serde_json::Value> {
-        let v: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(ruta).unwrap()).unwrap();
+        let v: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(ruta).unwrap()).unwrap();
         v["elements"].as_array().unwrap().clone()
     }
 
@@ -1041,14 +1103,33 @@ mod pruebas {
         let (dir, ruta) = hoja_del_movil_en("leer");
         let tal_cual = Capa::leer(&ruta);
         let c = Capa::leer_en(&ruta, Unidades::de_la_capa_del_movil(0));
-        let trazo = |c: &Capa| c.escena.visibles().find(|e| matches!(e.figura, Figura::Lapiz { .. })).unwrap().clone();
+        let trazo = |c: &Capa| {
+            c.escena
+                .visibles()
+                .find(|e| matches!(e.figura, Figura::Lapiz { .. }))
+                .unwrap()
+                .clone()
+        };
         let (a, b) = (trazo(&tal_cual), trazo(&c));
         let (ca, cb) = (a.caja(), b.caja());
-        assert!(((ca.0 + 1050.0) / 2.5 - cb.0).abs() < 0.01, "a lo ancho: {ca:?} {cb:?}");
+        assert!(
+            ((ca.0 + 1050.0) / 2.5 - cb.0).abs() < 0.01,
+            "a lo ancho: {ca:?} {cb:?}"
+        );
         assert!((ca.1 / 2.5 - cb.1).abs() < 0.01, "a lo alto: {ca:?} {cb:?}");
         let alto = |c: (f32, f32, f32, f32)| c.3 - c.1;
-        assert!((alto(ca) / alto(cb) - 2.5).abs() < 0.01, "el trazo, a su tamano: {} {}", alto(ca), alto(cb));
-        assert!((b.grosor * 2.5 - a.grosor).abs() < 1e-4, "y a su grosor: {} {}", a.grosor, b.grosor);
+        assert!(
+            (alto(ca) / alto(cb) - 2.5).abs() < 0.01,
+            "el trazo, a su tamano: {} {}",
+            alto(ca),
+            alto(cb)
+        );
+        assert!(
+            (b.grosor * 2.5 - a.grosor).abs() < 1e-4,
+            "y a su grosor: {} {}",
+            a.grosor,
+            b.grosor
+        );
         assert_eq!(b.version, a.version, "leer en otras unidades no es cambiar");
         // La letra, igual: 139 del movil son 55,5 de la hoja.
         let letra = |c: &Capa| {
@@ -1080,12 +1161,27 @@ mod pruebas {
         let antes = elementos(&ruta);
         let mut c = Capa::leer_en(&ruta, u);
         let mut t = tinta_de_prueba(Herramienta::Lapiz);
-        t.trazar(&mut c, &[Punto2::nuevo(100.0, 500.0), Punto2::nuevo(200.0, 520.0), Punto2::nuevo(300.0, 500.0)]);
+        t.trazar(
+            &mut c,
+            &[
+                Punto2::nuevo(100.0, 500.0),
+                Punto2::nuevo(200.0, 520.0),
+                Punto2::nuevo(300.0, 500.0),
+            ],
+        );
         let dibujado = c.escena.visibles().last().unwrap().clone();
         c.guardar(&ruta).unwrap();
         let despues = elementos(&ruta);
         for (a, d) in antes.iter().zip(despues.iter()) {
-            for k in ["x", "y", "width", "height", "strokeWidth", "fontSize", "version"] {
+            for k in [
+                "x",
+                "y",
+                "width",
+                "height",
+                "strokeWidth",
+                "fontSize",
+                "version",
+            ] {
                 assert_eq!(a[k], d[k], "{k} del movil, tal cual");
             }
             assert_eq!(a["points"], d["points"], "los puntos del movil, tal cual");
@@ -1094,13 +1190,19 @@ mod pruebas {
         let nuevo = &despues[2];
         let x = nuevo["x"].as_f64().unwrap();
         assert!((x - (100.0 * 2.5 - 1050.0)).abs() < 3.0, "{x}");
-        assert!((nuevo["strokeWidth"].as_f64().unwrap() - f64::from(dibujado.grosor) * 2.5).abs() < 1e-3);
+        assert!(
+            (nuevo["strokeWidth"].as_f64().unwrap() - f64::from(dibujado.grosor) * 2.5).abs()
+                < 1e-3
+        );
         // Y vuelve igual, guardando una y otra vez.
         for _ in 0..4 {
             let mut otra = Capa::leer_en(&ruta, u);
             let e = otra.escena.visibles().last().unwrap().clone();
             let (a, b) = (e.caja(), dibujado.caja());
-            assert!((a.0 - b.0).abs() < 0.01 && (a.3 - b.3).abs() < 0.01, "{a:?} {b:?}");
+            assert!(
+                (a.0 - b.0).abs() < 0.01 && (a.3 - b.3).abs() < 0.01,
+                "{a:?} {b:?}"
+            );
             assert!((e.grosor - dibujado.grosor).abs() < 1e-4);
             otra.sucia = true;
             otra.guardar(&ruta).unwrap();
@@ -1122,9 +1224,16 @@ mod pruebas {
     #[test]
     fn en_el_lector_se_dibujan_tambien_formas_flechas_y_texto_del_lienzo() {
         let mut c = Capa::default();
-        for h in [Herramienta::Rectangulo, Herramienta::Flecha, Herramienta::Elipse] {
+        for h in [
+            Herramienta::Rectangulo,
+            Herramienta::Flecha,
+            Herramienta::Elipse,
+        ] {
             let mut t = tinta_de_prueba(h);
-            t.trazar(&mut c, &[Punto2::nuevo(100.0, 100.0), Punto2::nuevo(180.0, 160.0)]);
+            t.trazar(
+                &mut c,
+                &[Punto2::nuevo(100.0, 100.0), Punto2::nuevo(180.0, 160.0)],
+            );
         }
         let figuras: Vec<&Figura> = c.escena.visibles().map(|e| &e.figura).collect();
         assert!(matches!(figuras[0], Figura::Rectangulo));
@@ -1136,7 +1245,10 @@ mod pruebas {
     fn la_goma_del_lienzo_se_lleva_el_trazo_que_toca_y_no_el_de_al_lado() {
         let mut c = capa_con_un_trazo();
         let mut t = tinta_de_prueba(Herramienta::Lapiz);
-        t.trazar(&mut c, &[Punto2::nuevo(500.0, 500.0), Punto2::nuevo(520.0, 500.0)]);
+        t.trazar(
+            &mut c,
+            &[Punto2::nuevo(500.0, 500.0), Punto2::nuevo(520.0, 500.0)],
+        );
         assert_eq!(c.escena.cuantos_visibles(), 2);
         // La goma va por la mano (no es del motor), con eventos de ventana.
         let mut goma = tinta_de_prueba(Herramienta::Borrador);
@@ -1149,12 +1261,42 @@ mod pruebas {
         };
         // Lejos de la barra, que esta arriba.
         let en = |x: i32, y: i32| Punto { x, y };
-        goma.evento(&EventoOverlay::BotonPulsado(en(30, 12 + 400)), &mut c, &Camara { y: -400.0, ..camara }, area, 100);
-        goma.evento(&EventoOverlay::BotonSoltado(en(30, 412)), &mut c, &Camara { y: -400.0, ..camara }, area, 100);
+        goma.evento(
+            &EventoOverlay::BotonPulsado(en(30, 12 + 400)),
+            &mut c,
+            &Camara {
+                y: -400.0,
+                ..camara
+            },
+            area,
+            100,
+        );
+        goma.evento(
+            &EventoOverlay::BotonSoltado(en(30, 412)),
+            &mut c,
+            &Camara {
+                y: -400.0,
+                ..camara
+            },
+            area,
+            100,
+        );
         assert_eq!(c.escena.cuantos_visibles(), 1);
         // Caso negativo: lejos de todo no borra nada.
-        goma.evento(&EventoOverlay::BotonPulsado(en(1200, 800)), &mut c, &camara, area, 100);
-        goma.evento(&EventoOverlay::BotonSoltado(en(1200, 800)), &mut c, &camara, area, 100);
+        goma.evento(
+            &EventoOverlay::BotonPulsado(en(1200, 800)),
+            &mut c,
+            &camara,
+            area,
+            100,
+        );
+        goma.evento(
+            &EventoOverlay::BotonSoltado(en(1200, 800)),
+            &mut c,
+            &camara,
+            area,
+            100,
+        );
         assert_eq!(c.escena.cuantos_visibles(), 1);
         c.deshacer();
         assert_eq!(c.escena.cuantos_visibles(), 2);
@@ -1180,7 +1322,10 @@ mod pruebas {
                 .contains(&pixpin_ui::BotonCaja::Elegir(Herramienta::Rectangulo))
         );
         // Caso negativo: el resto de las formas sigue en su grupo.
-        assert!(caja.miembros(pixpin_ui::GrupoBarra::Formas).contains(&pixpin_ui::BotonCaja::Elegir(Herramienta::Elipse)));
+        assert!(
+            caja.miembros(pixpin_ui::GrupoBarra::Formas)
+                .contains(&pixpin_ui::BotonCaja::Elegir(Herramienta::Elipse))
+        );
         let mut t = tinta_de_prueba(Herramienta::Lapiz);
         let mut c = Capa::default();
         let area = Rect {
@@ -1191,13 +1336,25 @@ mod pruebas {
         };
         // La «r» elige el resaltador (su letra) y no hay letra que llegue al
         // rectangulo; pero un atajo que lo eligiera tampoco valdria.
-        t.evento(&EventoOverlay::Caracter('r'), &mut c, &Camara::nueva(), area, 100);
+        t.evento(
+            &EventoOverlay::Caracter('r'),
+            &mut c,
+            &Camara::nueva(),
+            area,
+            100,
+        );
         assert_eq!(t.gesto.herramienta, Herramienta::Resaltador);
         // Caso negativo con una que si tiene letra: apagada, su letra no hace nada.
         permitidas::fijar(pixpin_store::herramientas::Herramientas {
             apagadas: vec!["texto".into()],
         });
-        let h = t.evento(&EventoOverlay::Caracter('t'), &mut c, &Camara::nueva(), area, 100);
+        let h = t.evento(
+            &EventoOverlay::Caracter('t'),
+            &mut c,
+            &Camara::nueva(),
+            area,
+            100,
+        );
         assert_ne!(t.gesto.herramienta, Herramienta::Texto);
         assert!(!h.cambio);
         permitidas::fijar(Default::default());
@@ -1205,20 +1362,27 @@ mod pruebas {
 
     #[test]
     fn el_resaltador_se_guarda_al_35_por_ciento_y_la_version_de_antes_lo_lee_igual() {
-        let dir = std::env::temp_dir().join(format!("pixpin-lector-resaltador-{}", std::process::id()));
+        let dir =
+            std::env::temp_dir().join(format!("pixpin-lector-resaltador-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let ruta = ruta_de_capa(&dir.join("libro.epub"));
         let mut c = capa_con_un_trazo();
         let mut t = tinta_de_prueba(Herramienta::Resaltador);
-        t.trazar(&mut c, &[Punto2::nuevo(0.0, 50.0), Punto2::nuevo(120.0, 50.0)]);
+        t.trazar(
+            &mut c,
+            &[Punto2::nuevo(0.0, 50.0), Punto2::nuevo(120.0, 50.0)],
+        );
         let r = c.escena.visibles().nth(1).unwrap();
         assert_eq!(r.grosor, GROSOR_RESALTADOR, "cubre un renglon, como antes");
         c.guardar(&ruta).unwrap();
         // En el fichero, con la opacidad con la que se ve: asi lo ven el
         // movil y excalidraw.com.
         let texto = std::fs::read_to_string(&ruta).unwrap();
-        assert!(texto.contains("\"opacity\": 40") || texto.contains("\"opacity\":40"), "{texto}");
+        assert!(
+            texto.contains("\"opacity\": 40") || texto.contains("\"opacity\":40"),
+            "{texto}"
+        );
         let leida = Capa::leer(&ruta);
         let figuras: Vec<bool> = leida
             .escena
@@ -1232,7 +1396,10 @@ mod pruebas {
 
     #[test]
     fn lo_anotado_se_guarda_en_el_mismo_fichero_de_siempre_y_se_lee_igual() {
-        let dir = std::env::temp_dir().join(format!("pixpin-lector-tinta-guardar-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!(
+            "pixpin-lector-tinta-guardar-{}",
+            std::process::id()
+        ));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let doc = dir.join("apuntes.docx");
@@ -1241,15 +1408,26 @@ mod pruebas {
         assert!(ruta.ends_with("capa.excalidraw"));
         let mut c = capa_con_un_trazo();
         let mut t = tinta_de_prueba(Herramienta::Flecha);
-        t.trazar(&mut c, &[Punto2::nuevo(0.0, 0.0), Punto2::nuevo(80.0, 40.0)]);
+        t.trazar(
+            &mut c,
+            &[Punto2::nuevo(0.0, 0.0), Punto2::nuevo(80.0, 40.0)],
+        );
         c.guardar(&ruta).unwrap();
         assert!(!c.sucia);
         let texto = std::fs::read_to_string(&ruta).unwrap();
-        assert!(texto.contains("\"type\": \"excalidraw\"") || texto.contains("\"type\":\"excalidraw\""));
-        assert!(texto.contains("\"arrow\""), "la flecha viaja como la del lienzo");
+        assert!(
+            texto.contains("\"type\": \"excalidraw\"") || texto.contains("\"type\":\"excalidraw\"")
+        );
+        assert!(
+            texto.contains("\"arrow\""),
+            "la flecha viaja como la del lienzo"
+        );
         let leida = Capa::leer(&ruta);
         assert_eq!(leida.escena.cuantos_visibles(), 2);
-        assert!(!ruta.with_extension("excalidraw.tmp").exists(), "no queda el temporal");
+        assert!(
+            !ruta.with_extension("excalidraw.tmp").exists(),
+            "no queda el temporal"
+        );
         // Guardar sin cambios no escribe.
         let mut otra = Capa::leer(&ruta);
         std::fs::remove_file(&ruta).unwrap();
@@ -1281,7 +1459,8 @@ mod pruebas {
 
     #[test]
     fn una_capa_rota_o_que_no_existe_empieza_vacia() {
-        let dir = std::env::temp_dir().join(format!("pixpin-lector-tinta-rota-{}", std::process::id()));
+        let dir =
+            std::env::temp_dir().join(format!("pixpin-lector-tinta-rota-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let ruta = dir.join("capa.excalidraw");
@@ -1294,7 +1473,10 @@ mod pruebas {
     #[test]
     fn las_hojas_del_pdf_se_nombran_desde_uno() {
         let r = ruta_de_hoja(Path::new("C:/planos/casa.pdf"), 0);
-        assert_eq!(r.file_name().unwrap().to_string_lossy(), "hoja-1.excalidraw");
+        assert_eq!(
+            r.file_name().unwrap().to_string_lossy(),
+            "hoja-1.excalidraw"
+        );
         assert_eq!(
             r.parent().unwrap().file_name().unwrap().to_string_lossy(),
             "casa.pdf.pixpin-anotado"
@@ -1313,7 +1495,10 @@ mod pruebas {
         c
     }
 
-    fn ordenes_por_la_cache(cache: &mut Cache, e: &pixpin_motor2d::Elemento) -> Vec<pixpin_motor2d::pintado::Orden> {
+    fn ordenes_por_la_cache(
+        cache: &mut Cache,
+        e: &pixpin_motor2d::Elemento,
+    ) -> Vec<pixpin_motor2d::pintado::Orden> {
         let mut v = Vec::new();
         crate::dibujo::pintar::por_cada_orden(cache, e, 1.0, None, |o| v.push(o.clone()));
         v
@@ -1336,13 +1521,21 @@ mod pruebas {
         // Como en cada fotograma del lector: una hoja y luego la otra.
         for _ in 0..3 {
             assert_eq!(ordenes_por_la_cache(t.geometria_de(0), &ea), solo_a);
-            assert_eq!(ordenes_por_la_cache(t.geometria_de(1), &eb), solo_b, "la hoja 2 pinta lo suyo");
+            assert_eq!(
+                ordenes_por_la_cache(t.geometria_de(1), &eb),
+                solo_b,
+                "la hoja 2 pinta lo suyo"
+            );
         }
         // Caso negativo, el fallo de antes: con una cache para las dos, la
         // segunda hoja pinta la forma de la primera.
         let mut una = Cache::nueva();
         assert_eq!(ordenes_por_la_cache(&mut una, &ea), solo_a);
-        assert_eq!(ordenes_por_la_cache(&mut una, &eb), solo_a, "una cache compartida confunde las hojas");
+        assert_eq!(
+            ordenes_por_la_cache(&mut una, &eb),
+            solo_a,
+            "una cache compartida confunde las hojas"
+        );
     }
 
     #[test]
@@ -1351,7 +1544,11 @@ mod pruebas {
         for hoja in 0..HOJAS_CALCULADAS + 4 {
             t.geometria_de(hoja);
         }
-        assert_eq!(t.calculado.len(), HOJAS_CALCULADAS, "no crece con cada hoja que se ve");
+        assert_eq!(
+            t.calculado.len(),
+            HOJAS_CALCULADAS,
+            "no crece con cada hoja que se ve"
+        );
         // Las ultimas vistas siguen; la primera ya no.
         assert!(t.calculado.contains_key(&(HOJAS_CALCULADAS + 3)));
         assert!(!t.calculado.contains_key(&0));
@@ -1367,7 +1564,11 @@ mod pruebas {
         let mut capas: Vec<Capa> = (0..3).map(|_| Capa::default()).collect();
         for (h, capa) in capas.iter_mut().enumerate() {
             for k in 0..n {
-                let h_ = if k % 2 == 0 { Herramienta::Lapiz } else { Herramienta::Grafito };
+                let h_ = if k % 2 == 0 {
+                    Herramienta::Lapiz
+                } else {
+                    Herramienta::Grafito
+                };
                 crate::dibujo::teclas::elegir_herramienta(&mut t.gesto, h_);
                 let (x, y) = ((k * 37 % 1200) as f32, (k * 53 % 1800) as f32 + h as f32);
                 let puntos: Vec<Punto2> = (0..40)
@@ -1377,7 +1578,9 @@ mod pruebas {
             }
         }
         crate::dibujo::teclas::elegir_herramienta(&mut t.gesto, Herramienta::Grafito);
-        let inicio: Vec<Punto2> = (0..20).map(|i| Punto2::nuevo(100.0 + i as f32 * 3.0, 900.0)).collect();
+        let inicio: Vec<Punto2> = (0..20)
+            .map(|i| Punto2::nuevo(100.0 + i as f32 * 3.0, 900.0))
+            .collect();
         t.empezar_trazo(&mut capas[0], &inicio);
         t.hoja = Some(0);
         capas
@@ -1407,7 +1610,10 @@ mod pruebas {
                 let mut capas = tres_hojas_anotadas(&mut t, n);
                 let fotograma = |t: &mut Tinta, capas: &mut [Capa], k: usize| {
                     // El trazo en curso crece un punto por fotograma.
-                    t.seguir_trazo(&mut capas[0], Punto2::nuevo(160.0 + k as f32 * 3.0, 900.0 + (k % 7) as f32));
+                    t.seguir_trazo(
+                        &mut capas[0],
+                        Punto2::nuevo(160.0 + k as f32 * 3.0, 900.0 + (k % 7) as f32),
+                    );
                     motor
                         .dibujar(&fuera.destino, |p| {
                             for (h, capa) in capas.iter().enumerate() {
@@ -1421,7 +1627,11 @@ mod pruebas {
                 // Dos para calentar: lo quieto se tesela y se sube una vez.
                 fotograma(&mut t, &mut capas, 0);
                 fotograma(&mut t, &mut capas, 1);
-                let (r0, s0, c0) = (t.realizaciones(), t.subidas_de_grafito(), grafito::cocciones());
+                let (r0, s0, c0) = (
+                    t.realizaciones(),
+                    t.subidas_de_grafito(),
+                    grafito::cocciones(),
+                );
                 let reloj = std::time::Instant::now();
                 for k in 2..2 + FOTOGRAMAS {
                     fotograma(&mut t, &mut capas, k);
@@ -1434,15 +1644,25 @@ mod pruebas {
                 );
                 println!(
                     "{n} trazos por hoja, {}: {ms:.2} ms/fotograma; en {FOTOGRAMAS} fotogramas: {r} teselados, {s} bitmaps de grafito subidos, {c} cocciones",
-                    if como_antes { "como antes (una cache)" } else { "una por hoja" }
+                    if como_antes {
+                        "como antes (una cache)"
+                    } else {
+                        "una por hoja"
+                    }
                 );
                 if !como_antes {
                     assert_eq!(r, 0, "con {n}: se teselo de nuevo lo que no cambio");
                     assert_eq!(s, 0, "con {n}: se subieron de nuevo bitmaps quietos");
-                    assert_eq!(c, 0, "con {n}: se recocio grafito quieto (o el trazo en curso entero)");
+                    assert_eq!(
+                        c, 0,
+                        "con {n}: se recocio grafito quieto (o el trazo en curso entero)"
+                    );
                 } else if n >= 50 {
                     // El caso negativo: asi iba, y es lo que se arregla.
-                    assert!(r + s + c > FOTOGRAMAS as u64, "como antes deberia rehacer: {r} {s} {c}");
+                    assert!(
+                        r + s + c > FOTOGRAMAS as u64,
+                        "como antes deberia rehacer: {r} {s} {c}"
+                    );
                 }
             }
         }
@@ -1451,7 +1671,10 @@ mod pruebas {
     #[test]
     fn escape_es_de_la_tinta_solo_si_hay_algo_que_soltar() {
         let mut t = tinta_de_prueba(Herramienta::Lapiz);
-        assert!(!t.quiere_escape(), "sin nada, Escape es del lector: dejar de anotar");
+        assert!(
+            !t.quiere_escape(),
+            "sin nada, Escape es del lector: dejar de anotar"
+        );
         t.gesto.seleccion.poner(7);
         assert!(t.quiere_escape());
     }

@@ -38,8 +38,8 @@ use std::time::{Duration, Instant};
 
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
 use windows::Win32::UI::Input::KeyboardAndMouse::{
-    GetAsyncKeyState, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYEVENTF_KEYUP, KEYEVENTF_UNICODE,
-    SendInput, VIRTUAL_KEY, VK_CONTROL, VK_LWIN, VK_MENU, VK_RWIN,
+    GetAsyncKeyState, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYEVENTF_KEYUP,
+    KEYEVENTF_UNICODE, SendInput, VIRTUAL_KEY, VK_CONTROL, VK_LWIN, VK_MENU, VK_RWIN,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     CallNextHookEx, GetForegroundWindow, HC_ACTION, HHOOK, KBDLLHOOKSTRUCT, SetWindowsHookExW,
@@ -118,14 +118,21 @@ fn es_flow(hwnd: HWND) -> bool {
 /// Las extensiones de un fichero copiado que cuentan como imagen (las de
 /// `pixpin_lanzador::imagenes::es_imagen_pegable`).
 pub fn es_imagen_pegable(ruta: &str) -> bool {
-    let ext = ruta.rsplit_once('.').map(|(_, e)| e.to_ascii_lowercase()).unwrap_or_default();
-    matches!(ext.as_str(), "png" | "jpg" | "jpeg" | "bmp" | "gif" | "webp")
+    let ext = ruta
+        .rsplit_once('.')
+        .map(|(_, e)| e.to_ascii_lowercase())
+        .unwrap_or_default();
+    matches!(
+        ext.as_str(),
+        "png" | "jpg" | "jpeg" | "bmp" | "gif" | "webp"
+    )
 }
 
 /// Que hay en el portapapeles, sin abrirlo salvo para un fichero copiado.
 fn contenido() -> Contenido {
     use windows::Win32::System::DataExchange::{
-        CloseClipboard, GetClipboardData, IsClipboardFormatAvailable, OpenClipboard, RegisterClipboardFormatW,
+        CloseClipboard, GetClipboardData, IsClipboardFormatAvailable, OpenClipboard,
+        RegisterClipboardFormatW,
     };
     use windows::Win32::UI::Shell::{DragQueryFileW, HDROP};
     use windows::core::w;
@@ -140,7 +147,12 @@ fn contenido() -> Contenido {
         return (false, true);
     }
     // SAFETY: registrar un nombre ya registrado solo devuelve su numero.
-    let png = unsafe { [RegisterClipboardFormatW(w!("PNG")), RegisterClipboardFormatW(w!("image/png"))] };
+    let png = unsafe {
+        [
+            RegisterClipboardFormatW(w!("PNG")),
+            RegisterClipboardFormatW(w!("image/png")),
+        ]
+    };
     if [CF_DIBV5, CF_DIB, png[0], png[1]].into_iter().any(hay) {
         return (true, false);
     }
@@ -197,7 +209,11 @@ extern "system" fn procedimiento(codigo: i32, wparam: WPARAM, lparam: LPARAM) ->
                 };
                 // SAFETY: sin precondiciones; puede ser nula.
                 let delante = unsafe { GetForegroundWindow() };
-                let si = interceptar(p, || es_flow(delante).then(|| EXE_FLOW.to_string()), contenido);
+                let si = interceptar(
+                    p,
+                    || es_flow(delante).then(|| EXE_FLOW.to_string()),
+                    contenido,
+                );
                 if si {
                     let enviado = TRABAJO
                         .lock()
@@ -227,7 +243,9 @@ impl GanchoPegarEnFlow {
     /// que se traga un Ctrl+V: guarda la imagen y devuelve lo que hay que
     /// escribir en Flow (` [img 01] `), o `None` para no escribir nada (la
     /// imagen ya estaba: una imagen, un nombre).
-    pub fn instalar(al_pegar: impl Fn() -> Option<String> + Send + 'static) -> windows::core::Result<Self> {
+    pub fn instalar(
+        al_pegar: impl Fn() -> Option<String> + Send + 'static,
+    ) -> windows::core::Result<Self> {
         use windows::Win32::System::Threading::GetCurrentThreadId;
         use windows::Win32::UI::WindowsAndMessaging::{GetMessageW, MSG};
 
@@ -246,7 +264,9 @@ impl GanchoPegarEnFlow {
             .spawn(move || {
                 // SAFETY: gancho global de bajo nivel con un procedimiento de
                 // este modulo; corre en ESTE hilo, que bombea justo debajo.
-                let gancho: HHOOK = match unsafe { SetWindowsHookExW(WH_KEYBOARD_LL, Some(procedimiento), None, 0) } {
+                let gancho: HHOOK = match unsafe {
+                    SetWindowsHookExW(WH_KEYBOARD_LL, Some(procedimiento), None, 0)
+                } {
                     Ok(g) => g,
                     Err(e) => {
                         let _ = listo_tx.send(Err(e));
@@ -266,7 +286,10 @@ impl GanchoPegarEnFlow {
             })
             .map_err(|e| error(e.to_string()))?;
         let id_hilo = listo_rx.recv().map_err(|e| error(e.to_string()))??;
-        Ok(Self { hilo: Some(hilo), id_hilo })
+        Ok(Self {
+            hilo: Some(hilo),
+            id_hilo,
+        })
     }
 }
 
@@ -316,7 +339,11 @@ fn tecla(vk: VIRTUAL_KEY, arriba: bool) -> INPUT {
             ki: KEYBDINPUT {
                 wVk: vk,
                 wScan: 0,
-                dwFlags: if arriba { KEYEVENTF_KEYUP } else { Default::default() },
+                dwFlags: if arriba {
+                    KEYEVENTF_KEYUP
+                } else {
+                    Default::default()
+                },
                 time: 0,
                 dwExtraInfo: MARCA_PROPIA,
             },
@@ -343,7 +370,11 @@ pub fn escribir(texto: &str) {
                     ki: KEYBDINPUT {
                         wVk: VIRTUAL_KEY(0),
                         wScan: u,
-                        dwFlags: if arriba { KEYEVENTF_UNICODE | KEYEVENTF_KEYUP } else { KEYEVENTF_UNICODE },
+                        dwFlags: if arriba {
+                            KEYEVENTF_UNICODE | KEYEVENTF_KEYUP
+                        } else {
+                            KEYEVENTF_UNICODE
+                        },
                         time: 0,
                         dwExtraInfo: MARCA_PROPIA,
                     },
@@ -360,7 +391,12 @@ mod pruebas {
     use std::cell::Cell;
 
     fn ctrl_v() -> Pulsacion {
-        Pulsacion { vk: VK_V, ctrl: true, alt: false, win: false }
+        Pulsacion {
+            vk: VK_V,
+            ctrl: true,
+            alt: false,
+            win: false,
+        }
     }
 
     /// La tabla de verdad, contando a quien se pregunta.
@@ -382,7 +418,10 @@ mod pruebas {
 
     #[test]
     fn ctrl_v_en_flow_con_una_imagen_y_sin_texto_se_traga() {
-        assert_eq!(decide(ctrl_v(), Some("flow.launcher.exe"), true, false), (true, 1, 1));
+        assert_eq!(
+            decide(ctrl_v(), Some("flow.launcher.exe"), true, false),
+            (true, 1, 1)
+        );
         // El nombre, sin distinguir mayusculas.
         assert!(decide(ctrl_v(), Some("Flow.Launcher.exe"), true, false).0);
     }
@@ -402,13 +441,53 @@ mod pruebas {
             (ctrl_v(), Some("notepad.exe"), true, false, (false, 1, 0)),
             (ctrl_v(), None, true, false, (false, 1, 0)),
             // Otra tecla, o la V con otros modificadores: no se pregunta nada.
-            (Pulsacion { vk: 0x43, ..ctrl_v() }, flow, true, false, (false, 0, 0)),
-            (Pulsacion { ctrl: false, ..ctrl_v() }, flow, true, false, (false, 0, 0)),
-            (Pulsacion { alt: true, ..ctrl_v() }, flow, true, false, (false, 0, 0)),
-            (Pulsacion { win: true, ..ctrl_v() }, flow, true, false, (false, 0, 0)),
+            (
+                Pulsacion {
+                    vk: 0x43,
+                    ..ctrl_v()
+                },
+                flow,
+                true,
+                false,
+                (false, 0, 0),
+            ),
+            (
+                Pulsacion {
+                    ctrl: false,
+                    ..ctrl_v()
+                },
+                flow,
+                true,
+                false,
+                (false, 0, 0),
+            ),
+            (
+                Pulsacion {
+                    alt: true,
+                    ..ctrl_v()
+                },
+                flow,
+                true,
+                false,
+                (false, 0, 0),
+            ),
+            (
+                Pulsacion {
+                    win: true,
+                    ..ctrl_v()
+                },
+                flow,
+                true,
+                false,
+                (false, 0, 0),
+            ),
         ];
         for (p, exe, imagen, texto, esperado) in casos {
-            assert_eq!(decide(p, exe, imagen, texto), esperado, "{p:?} {exe:?} imagen={imagen} texto={texto}");
+            assert_eq!(
+                decide(p, exe, imagen, texto),
+                esperado,
+                "{p:?} {exe:?} imagen={imagen} texto={texto}"
+            );
         }
     }
 }

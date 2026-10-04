@@ -38,7 +38,11 @@ pub struct Indice {
 impl Indice {
     pub fn nuevo(leccion: Leccion) -> Indice {
         let de = |s: &str| texto::raices(s).into_iter().collect::<HashSet<_>>();
-        let de_lista = |v: &[String]| v.iter().flat_map(|s| texto::raices(s)).collect::<HashSet<_>>();
+        let de_lista = |v: &[String]| {
+            v.iter()
+                .flat_map(|s| texto::raices(s))
+                .collect::<HashSet<_>>()
+        };
         let mut porque = de(&leccion.por_que);
         porque.extend(de_lista(&leccion.causas));
         let campos = vec![
@@ -51,7 +55,11 @@ impl Indice {
             (de(&leccion.que_paso), PASO),
         ];
         let todas = campos.iter().flat_map(|(c, _)| c.iter().cloned()).collect();
-        Indice { leccion, campos, todas }
+        Indice {
+            leccion,
+            campos,
+            todas,
+        }
     }
 }
 
@@ -95,9 +103,11 @@ fn consulta(texto_buscado: &str) -> Consulta {
         raices
             .iter()
             .flat_map(|r| {
-                etiquetador::conceptos_de(r)
-                    .into_iter()
-                    .flat_map(|c| texto::raices(c.etiqueta).into_iter().chain(texto::raices(c.area)))
+                etiquetador::conceptos_de(r).into_iter().flat_map(|c| {
+                    texto::raices(c.etiqueta)
+                        .into_iter()
+                        .chain(texto::raices(c.area))
+                })
             })
             .collect(),
     )
@@ -114,7 +124,11 @@ fn consulta(texto_buscado: &str) -> Consulta {
 }
 
 fn ordenar(v: &mut [Resultado]) {
-    v.sort_by(|a, b| b.puntos.partial_cmp(&a.puntos).unwrap_or(std::cmp::Ordering::Equal));
+    v.sort_by(|a, b| {
+        b.puntos
+            .partial_cmp(&a.puntos)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
 }
 
 pub fn buscar(indices: &[Indice], texto_buscado: &str) -> Vec<Resultado> {
@@ -152,7 +166,11 @@ pub fn buscar(indices: &[Indice], texto_buscado: &str) -> Vec<Resultado> {
             continue;
         }
         // Las palabras buscadas que no salen restan.
-        let cubre = if q.cuantas == 0 { 1.0 } else { halladas as f64 / q.cuantas as f64 };
+        let cubre = if q.cuantas == 0 {
+            1.0
+        } else {
+            halladas as f64 / q.cuantas as f64
+        };
         if q.cuantas > 0 && halladas == 0 {
             // Solo caso por concepto: vale, pero va detras.
             puntos *= 0.5;
@@ -177,7 +195,12 @@ pub fn buscar(indices: &[Indice], texto_buscado: &str) -> Vec<Resultado> {
 /// le parecen. Si se parece mucho, lo que toca es apuntar que **volvio a
 /// pasar**. Parecido = proporcion de raices del texto nuevo que salen en la
 /// leccion (y al reves).
-pub fn parecidas(indices: &[Indice], texto_nuevo: &str, minimo: f64, cuantas: usize) -> Vec<Resultado> {
+pub fn parecidas(
+    indices: &[Indice],
+    texto_nuevo: &str,
+    minimo: f64,
+    cuantas: usize,
+) -> Vec<Resultado> {
     let nuevas: HashSet<String> = texto::raices(texto_nuevo).into_iter().collect();
     if nuevas.len() < 2 {
         return Vec::new();
@@ -228,7 +251,12 @@ pub fn relacionadas(indices: &[Indice], l: &Leccion, cuantas: usize) -> Vec<Lecc
         .filter(|ix| ix.leccion.id != l.id)
         .map(|ix| {
             let comunes = ix.todas.iter().filter(|x| mia.contains(*x)).count();
-            let mismas = ix.leccion.todas_las_etiquetas().iter().filter(|e| etiquetas.contains(*e)).count();
+            let mismas = ix
+                .leccion
+                .todas_las_etiquetas()
+                .iter()
+                .filter(|e| etiquetas.contains(*e))
+                .count();
             (ix.leccion.clone(), comunes + 2 * mismas)
         })
         .filter(|(_, n)| *n >= 3)

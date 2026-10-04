@@ -656,15 +656,24 @@ mod pruebas {
         .unwrap()
         .unwrap();
         assert_eq!(hecho.texto, "# L\n\n- [ ] pan\n- [ ] sal");
-        assert_eq!(Cuaderno::leer_de(&d).unwrap().mensajes[0].texto, hecho.texto);
+        assert_eq!(
+            Cuaderno::leer_de(&d).unwrap().mensajes[0].texto,
+            hecho.texto
+        );
         // Sin cambio no se reescribe: el fichero sigue siendo el mismo.
         let antes = std::fs::read_to_string(d.join("guardados.jsonl")).unwrap();
         let igual = cambiar(&d, "l1", |_| false).unwrap().unwrap();
         assert_eq!(igual.texto, hecho.texto);
-        assert_eq!(std::fs::read_to_string(d.join("guardados.jsonl")).unwrap(), antes);
+        assert_eq!(
+            std::fs::read_to_string(d.join("guardados.jsonl")).unwrap(),
+            antes
+        );
         // Caso negativo: uno que ya no esta no se inventa ni escribe nada.
         assert!(cambiar(&d, "borrado", |_| true).unwrap().is_none());
-        assert_eq!(std::fs::read_to_string(d.join("guardados.jsonl")).unwrap(), antes);
+        assert_eq!(
+            std::fs::read_to_string(d.join("guardados.jsonl")).unwrap(),
+            antes
+        );
         let _ = std::fs::remove_dir_all(&d);
     }
 
@@ -1087,12 +1096,29 @@ mod pruebas_lineas {
     fn las_lineas_hechas_fuera_quedan_igual_que_anadir_una_a_una() {
         let d = std::env::temp_dir().join(format!("pixpin-lineas-{}", std::process::id()));
         let (a, b) = (d.join("a"), d.join("b"));
-        let m1 = Mensaje::nota("uno", &Sello { cuando: 1, numero: 1, aparato: "K".into(), proyecto: "p".into() });
-        let m2 = Mensaje::nota("dos", &Sello { cuando: 2, numero: 2, aparato: "K".into(), proyecto: "p".into() });
+        let m1 = Mensaje::nota(
+            "uno",
+            &Sello {
+                cuando: 1,
+                numero: 1,
+                aparato: "K".into(),
+                proyecto: "p".into(),
+            },
+        );
+        let m2 = Mensaje::nota(
+            "dos",
+            &Sello {
+                cuando: 2,
+                numero: 2,
+                aparato: "K".into(),
+                proyecto: "p".into(),
+            },
+        );
         anadir(&a, &m1).unwrap();
         anadir(&a, &m2).unwrap();
         anadir_lineas(&b, &[linea_de(&m1).unwrap(), linea_de(&m2).unwrap()]).unwrap();
-        let leer = |c: &std::path::Path| std::fs::read_to_string(c.join("guardados.jsonl")).unwrap();
+        let leer =
+            |c: &std::path::Path| std::fs::read_to_string(c.join("guardados.jsonl")).unwrap();
         assert_eq!(leer(&a), leer(&b));
         // Caso negativo: ninguna linea no escribe nada raro.
         anadir_lineas(&b, &[]).unwrap();

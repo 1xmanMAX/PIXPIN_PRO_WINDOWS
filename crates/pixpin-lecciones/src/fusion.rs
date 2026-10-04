@@ -55,13 +55,26 @@ fn unir(a: &[String], b: &[String]) -> Vec<String> {
 /// sincronizacion).
 pub fn fusionar(aqui: &Leccion, llega: &Leccion, modo: Modo) -> Leccion {
     // Los textos, del tocado mas tarde; a igualdad, lo que llega.
-    let (base, otra) = if aqui.tocada > llega.tocada { (aqui, llega) } else { (llega, aqui) };
+    let (base, otra) = if aqui.tocada > llega.tocada {
+        (aqui, llega)
+    } else {
+        (llega, aqui)
+    };
     let mut r = base.clone();
     r.tocada = aqui.tocada.max(llega.tocada);
-    let repeticiones: BTreeSet<i64> = aqui.repeticiones.iter().chain(&llega.repeticiones).copied().collect();
+    let repeticiones: BTreeSet<i64> = aqui
+        .repeticiones
+        .iter()
+        .chain(&llega.repeticiones)
+        .copied()
+        .collect();
     r.repeticiones = repeticiones.into_iter().collect();
     r.adjuntos = unir(&base.adjuntos, &otra.adjuntos);
-    let repaso = if momento_del_repaso(otra) > momento_del_repaso(base) { otra } else { base };
+    let repaso = if momento_del_repaso(otra) > momento_del_repaso(base) {
+        otra
+    } else {
+        base
+    };
     r.caja = repaso.caja;
     r.repasar = repaso.repasar;
     if modo == Modo::Completa {
@@ -74,7 +87,11 @@ pub fn fusionar(aqui: &Leccion, llega: &Leccion, modo: Modo) -> Leccion {
         r.gravedad = aqui.gravedad.max(llega.gravedad);
     }
     if r.repeticiones.len() > base.repeticiones.len() {
-        r.gravedad = if r.repeticiones.len() >= 2 { r.gravedad.max(3) } else { r.gravedad.max(2) };
+        r.gravedad = if r.repeticiones.len() >= 2 {
+            r.gravedad.max(3)
+        } else {
+            r.gravedad.max(2)
+        };
     }
     if r.de_mensaje.is_none() {
         r.de_mensaje = otra.de_mensaje.clone();
@@ -97,7 +114,11 @@ pub fn al_llegar(aqui: &str, llega: &str) -> Option<String> {
     if a.id != b.id {
         return None;
     }
-    let modo = if a.tocada > b.tocada { Modo::Completa } else { Modo::Suave };
+    let modo = if a.tocada > b.tocada {
+        Modo::Completa
+    } else {
+        Modo::Suave
+    };
     let junta = fusionar(&a, &b, modo);
     (junta != b).then(|| junta.escribir())
 }

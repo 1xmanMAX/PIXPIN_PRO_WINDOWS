@@ -90,12 +90,23 @@ fn imprimir_a_microsoft_print_to_pdf_deja_un_pdf_en_el_fichero() {
                     a: 1.0,
                 },
             );
-            p.texto_ajustado(&format!("Hoja {}", i + 1), 100.0, 340.0, 32.0, 600.0, Color::NEGRO);
+            p.texto_ajustado(
+                &format!("Hoja {}", i + 1),
+                100.0,
+                340.0,
+                32.0,
+                600.0,
+                Color::NEGRO,
+            );
         },
     )
     .expect("imprime");
     assert_eq!(vistas, [0, 1]);
     let bytes = std::fs::read(&ruta).expect("hay fichero");
     assert!(bytes.len() > 100, "{} bytes", bytes.len());
-    eprintln!("salida: {} bytes, empieza por {:?}", bytes.len(), &bytes[..8.min(bytes.len())]);
+    eprintln!(
+        "salida: {} bytes, empieza por {:?}",
+        bytes.len(),
+        &bytes[..8.min(bytes.len())]
+    );
 }

@@ -13,18 +13,18 @@ use pixpin_geom::Rect;
 use pixpin_motor2d::elemento::{ColorRgba, EstiloTrazo};
 use pixpin_motor2d::escena::Escena;
 use pixpin_motor2d::estilo::{CambioEstilo, CambioForma, NivelGrosor, TipoFlecha};
-use pixpin_motor2d::texto::{AlineacionTexto, AlineacionVertical};
-use pixpin_shell::overlay::EventoOverlay;
 use pixpin_motor2d::formas::TipoPunta;
 use pixpin_motor2d::gesto::{EventoGesto, Gesto, Herramienta};
 use pixpin_motor2d::organizar::{self, Alineacion, Reparto};
 use pixpin_motor2d::puntos_etiquetados::SerieDePunto;
 use pixpin_motor2d::relleno::EstiloRelleno;
 use pixpin_motor2d::seleccion::Seleccion;
+use pixpin_motor2d::texto::{AlineacionTexto, AlineacionVertical};
 use pixpin_motor2d::texto::{FUENTE_COMIC_SHANNS, FUENTE_NUNITO};
 use pixpin_motor2d::tinta::{MaterialTinta, Variabilidad};
 use pixpin_render::iconos_excalidraw as i;
 use pixpin_render::{Color, Pintor, RectF};
+use pixpin_shell::overlay::EventoOverlay;
 use pixpin_store::{Catalogo, Idioma};
 use pixpin_ui::panel_lateral::{
     self as pl, AccionPanel, Capa, ContextoPanel, Control, Desplegable, EdicionHex, Mandos,
@@ -138,7 +138,9 @@ pub fn tecla_del_hex(ev: &EventoOverlay, gesto: &mut Gesto, escena: &mut Escena)
         // Los mandos (Intro, Esc, Retroceso) llegan tambien como caracter;
         // se atienden por su tecla, que es donde se distinguen bien.
         EventoOverlay::Caracter(c) if c >= ' ' => editar(&mut |e| e.escribir(c)),
-        EventoOverlay::Tecla { vk: VK_RETROCESO, .. } => editar(&mut |e| e.borrar()),
+        EventoOverlay::Tecla {
+            vk: VK_RETROCESO, ..
+        } => editar(&mut |e| e.borrar()),
         EventoOverlay::Tecla { vk: VK_ESCAPE, .. } => {
             HEX.with(|h| h.borrow_mut().take());
             true
@@ -164,9 +166,9 @@ pub fn tecla_del_hex(ev: &EventoOverlay, gesto: &mut Gesto, escena: &mut Escena)
                 None => false,
             }
         }
-        EventoOverlay::Caracter(_) | EventoOverlay::Tecla { .. } | EventoOverlay::TeclaSoltada(_) => {
-            false
-        }
+        EventoOverlay::Caracter(_)
+        | EventoOverlay::Tecla { .. }
+        | EventoOverlay::TeclaSoltada(_) => false,
         _ => return None,
     })
 }
@@ -782,7 +784,11 @@ fn pintar_controles(p: &Pintor, controles: &[Control], e: f32) {
                     // El aumento de la lupa y desenfocar se dicen con letras:
                     // «x2» se entiende sin icono, y no hay icono de «borroso».
                     // Un signo solo (el de borroso) va mas grande, como un icono.
-                    let tam = if muestra.chars().count() == 1 { 18.0 } else { 11.0 } * e;
+                    let tam = if muestra.chars().count() == 1 {
+                        18.0
+                    } else {
+                        11.0
+                    } * e;
                     let (w, h) = p.medir_texto(&muestra, tam);
                     p.texto(
                         &muestra,
@@ -1102,10 +1108,17 @@ mod pruebas {
         gesto.herramienta = Herramienta::Mano;
         gesto.seleccion.poner(caja);
         // Sin escribir, el teclado no es del panel: sigue hacia el lienzo.
-        assert_eq!(tecla_del_hex(&EventoOverlay::Caracter('r'), &mut gesto, &mut escena), None);
+        assert_eq!(
+            tecla_del_hex(&EventoOverlay::Caracter('r'), &mut gesto, &mut escena),
+            None
+        );
 
         // Se abre la paleta y se pulsa el campo, por donde lo pulsa el raton.
-        aplicar(AccionPanel::Abrir(Desplegable::ColorTrazo), &mut gesto, &mut escena);
+        aplicar(
+            AccionPanel::Abrir(Desplegable::ColorTrazo),
+            &mut gesto,
+            &mut escena,
+        );
         let panel = panel_para(&gesto, &escena, area(), 100).unwrap();
         let campo = panel
             .emergente
@@ -1128,25 +1141,45 @@ mod pruebas {
         // Con almohadilla, y una «r» por medio que no es un digito: no
         // cambia de herramienta ni se escribe.
         teclear("#e0r3131", &mut gesto, &mut escena);
-        assert_eq!(gesto.herramienta, Herramienta::Mano, "la r no es la del rectangulo");
+        assert_eq!(
+            gesto.herramienta,
+            Herramienta::Mano,
+            "la r no es la del rectangulo"
+        );
         assert_eq!(escena.buscar(caja).unwrap().trazo, de_fabrica);
-        assert_eq!(tecla_del_hex(&tecla(0x0D), &mut gesto, &mut escena), Some(true));
+        assert_eq!(
+            tecla_del_hex(&tecla(0x0D), &mut gesto, &mut escena),
+            Some(true)
+        );
         assert!(!escribiendo_hex(), "Intro termina");
         assert_eq!(escena.buscar(caja).unwrap().trazo, pl::COLORES_TRAZO[1]);
-        assert_eq!(gesto.estilo.trazo, pl::COLORES_TRAZO[1], "y queda como actual");
-        assert!(escena.deshacer(), "un paso de deshacer, como cualquier color");
+        assert_eq!(
+            gesto.estilo.trazo,
+            pl::COLORES_TRAZO[1],
+            "y queda como actual"
+        );
+        assert!(
+            escena.deshacer(),
+            "un paso de deshacer, como cualquier color"
+        );
 
         // Esc: lo escrito no se aplica.
         clic(&mut gesto, &mut escena);
         teclear("2f9e44", &mut gesto, &mut escena);
-        assert_eq!(tecla_del_hex(&tecla(0x1B), &mut gesto, &mut escena), Some(true));
+        assert_eq!(
+            tecla_del_hex(&tecla(0x1B), &mut gesto, &mut escena),
+            Some(true)
+        );
         assert!(!escribiendo_hex());
         assert_eq!(escena.buscar(caja).unwrap().trazo, de_fabrica);
 
         // Caso negativo: Intro a medio escribir no aplica nada y deja seguir.
         clic(&mut gesto, &mut escena);
         teclear("2f9", &mut gesto, &mut escena);
-        assert_eq!(tecla_del_hex(&tecla(0x0D), &mut gesto, &mut escena), Some(false));
+        assert_eq!(
+            tecla_del_hex(&tecla(0x0D), &mut gesto, &mut escena),
+            Some(false)
+        );
         assert!(escribiendo_hex(), "se sigue escribiendo para corregirlo");
         // Y un clic en el lienzo lo suelta sin aplicar.
         let lejos = Punto { x: 1200, y: 800 };
@@ -1164,7 +1197,11 @@ mod pruebas {
         let de_fabrica = escena.buscar(caja).unwrap().trazo;
         let mut gesto = Gesto::default();
         gesto.seleccion.poner(caja);
-        aplicar(AccionPanel::Abrir(Desplegable::ColorFondo), &mut gesto, &mut escena);
+        aplicar(
+            AccionPanel::Abrir(Desplegable::ColorFondo),
+            &mut gesto,
+            &mut escena,
+        );
         aplicar(AccionPanel::EditarHex, &mut gesto, &mut escena);
         teclear("a5d8ff", &mut gesto, &mut escena);
         tecla_del_hex(&tecla(0x0D), &mut gesto, &mut escena);
@@ -1380,7 +1417,8 @@ mod pruebas {
             (CambioForma::TamanoLetra(t), Figura::Texto { tam, .. }) => (*tam - t).abs() < 0.01,
             // Lo que rotula sin ser un texto: su letra en los extras.
             (CambioForma::Familia(n), _) => {
-                e.extras.familia.as_deref() == Some(pixpin_motor2d::texto::nombre_de_familia(Some(n)))
+                e.extras.familia.as_deref()
+                    == Some(pixpin_motor2d::texto::nombre_de_familia(Some(n)))
             }
             (CambioForma::TamanoLetra(t), Figura::Serie { .. }) => {
                 (e.ancho - pixpin_motor2d::serie::diametro(t)).abs() < 0.01
@@ -1518,8 +1556,12 @@ mod pruebas {
                     _ if ya_esta(capa, antes, elegidos) => despues.elementos == antes.elementos,
                     Capa::Frente => posiciones.iter().all(|p| *p >= n - k),
                     Capa::Fondo => posiciones.iter().all(|p| *p < k),
-                    Capa::Adelante => elegidos.iter().any(|id| pos(despues, *id) > pos(antes, *id)),
-                    Capa::Atras => elegidos.iter().any(|id| pos(despues, *id) < pos(antes, *id)),
+                    Capa::Adelante => elegidos
+                        .iter()
+                        .any(|id| pos(despues, *id) > pos(antes, *id)),
+                    Capa::Atras => elegidos
+                        .iter()
+                        .any(|id| pos(despues, *id) < pos(antes, *id)),
                 };
                 if !ok {
                     return Err(format!("orden {posiciones:?}"));
@@ -1576,8 +1618,10 @@ mod pruebas {
                 if despues.visibles().count() != antes.visibles().count() + elegidos.len() {
                     return Err("no hay tantas copias como elegidos".into());
                 }
-                let grupos_viejos: Vec<&String> =
-                    elegidos.iter().flat_map(|id| a(*id).grupos.iter()).collect();
+                let grupos_viejos: Vec<&String> = elegidos
+                    .iter()
+                    .flat_map(|id| a(*id).grupos.iter())
+                    .collect();
                 for id in &nuevos {
                     if d(*id).grupos.iter().any(|g| grupos_viejos.contains(&g)) {
                         return Err("la copia se metio en el grupo del original".into());
@@ -1585,7 +1629,10 @@ mod pruebas {
                 }
             }
             AccionPanel::Borrar => {
-                if elegidos.iter().any(|id| despues.visibles().any(|e| e.id == *id)) {
+                if elegidos
+                    .iter()
+                    .any(|id| despues.visibles().any(|e| e.id == *id))
+                {
                     return Err("sigue ahi".into());
                 }
             }
@@ -1620,7 +1667,10 @@ mod pruebas {
                 }
             }
             AccionPanel::Desagrupar => {
-                if elegidos.iter().any(|id| d(*id).grupos.len() + 1 != a(*id).grupos.len()) {
+                if elegidos
+                    .iter()
+                    .any(|id| d(*id).grupos.len() + 1 != a(*id).grupos.len())
+                {
                     return Err("no se deshizo el grupo".into());
                 }
             }
@@ -1657,7 +1707,9 @@ mod pruebas {
             Capa::Frente | Capa::Adelante => n - k..n,
             Capa::Fondo | Capa::Atras => 0..k,
         };
-        escena.elementos[rango].iter().all(|e| elegidos.contains(&e.id))
+        escena.elementos[rango]
+            .iter()
+            .all(|e| elegidos.contains(&e.id))
     }
 
     /// Si pulsar esto sobre lo elegido cambia la escena (pulsar el color que
@@ -1680,7 +1732,17 @@ mod pruebas {
     #[test]
     fn cada_boton_del_panel_pulsado_como_en_la_ventana_cambia_lo_que_debe_y_se_deshace() {
         let (base, ids) = escena_con_de_todo();
-        let [caja, rombo, ovalo, rotulo, flecha, trazo, raya, rotulo_en_caja] = ids[..] else {
+        let [
+            caja,
+            rombo,
+            ovalo,
+            rotulo,
+            flecha,
+            trazo,
+            raya,
+            rotulo_en_caja,
+        ] = ids[..]
+        else {
             panic!("ocho figuras");
         };
         // Las selecciones que sacan todas las secciones: todo junto, las dos
@@ -1809,7 +1871,12 @@ mod pruebas {
         }
         cerrar_desplegable();
         assert!(pulsados > 150, "se pulsaron muy pocos: {pulsados}");
-        assert!(fallos.is_empty(), "{} fallos:\n{}", fallos.len(), fallos.join("\n"));
+        assert!(
+            fallos.is_empty(),
+            "{} fallos:\n{}",
+            fallos.len(),
+            fallos.join("\n")
+        );
     }
 
     /// Dibuja con la herramienta puesta de (400, 300) a (560, 420) y
@@ -1906,7 +1973,12 @@ mod pruebas {
         }
         cerrar_desplegable();
         assert!(pulsados > 100, "se pulsaron muy pocos: {pulsados}");
-        assert!(fallos.is_empty(), "{} fallos:\n{}", fallos.len(), fallos.join("\n"));
+        assert!(
+            fallos.is_empty(),
+            "{} fallos:\n{}",
+            fallos.len(),
+            fallos.join("\n")
+        );
     }
 
     #[test]

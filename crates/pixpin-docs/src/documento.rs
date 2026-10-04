@@ -514,7 +514,9 @@ pub fn cuerpo_para_anotar(d: &Documento, imagen: &dyn Fn(&Imagen) -> Option<Stri
 /// Cuantos elementos marca [`cuerpo_para_anotar`]: la cabecera y un bloque
 /// cada uno. Quien mide tiene que dar exactamente estas alturas.
 pub fn bloques_para_anotar(d: &Documento) -> usize {
-    usize::from(!d.titulo.trim().is_empty()) + usize::from(!d.autor.trim().is_empty()) + d.bloques.len()
+    usize::from(!d.titulo.trim().is_empty())
+        + usize::from(!d.autor.trim().is_empty())
+        + d.bloques.len()
 }
 
 #[cfg(test)]
@@ -679,13 +681,23 @@ mod pruebas_para_anotar {
     #[test]
     fn cada_bloque_sale_marcado_y_en_el_orden_del_lector() {
         let d = doc();
-        let html = cuerpo_para_anotar(&d, &|im| Some(format!("data:{};base64,{}", im.mime, base64(&im.datos))));
+        let html = cuerpo_para_anotar(&d, &|im| {
+            Some(format!("data:{};base64,{}", im.mime, base64(&im.datos)))
+        });
         assert_eq!(html.matches("data-b").count(), bloques_para_anotar(&d));
         assert_eq!(bloques_para_anotar(&d), 7, "titulo y seis bloques");
-        let orden: Vec<usize> = ["<h1 data-b>Libro", "<h2 data-b>Uno", "class=\"vacio\"", "<img", "class=\"fila\"", "<hr data-b>", "&lt;fin&gt;"]
-            .iter()
-            .map(|a| html.find(a).unwrap_or_else(|| panic!("falta {a}")))
-            .collect();
+        let orden: Vec<usize> = [
+            "<h1 data-b>Libro",
+            "<h2 data-b>Uno",
+            "class=\"vacio\"",
+            "<img",
+            "class=\"fila\"",
+            "<hr data-b>",
+            "&lt;fin&gt;",
+        ]
+        .iter()
+        .map(|a| html.find(a).unwrap_or_else(|| panic!("falta {a}")))
+        .collect();
         assert!(orden.windows(2).all(|w| w[0] < w[1]), "{orden:?}");
         assert!(html.contains("src=\"data:image/png;base64,AQID\""));
         // Caso negativo: una fila no se vuelve tabla, que mediria distinto.

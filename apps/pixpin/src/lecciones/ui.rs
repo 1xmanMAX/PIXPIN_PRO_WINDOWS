@@ -11,7 +11,7 @@
 use pixpin_render::{Color, Pintor, RectF};
 
 use crate::caja_dibujo::hex;
-use crate::ventanita::{APAGADO, CRISTAL, Botones, TEXTO};
+use crate::ventanita::{APAGADO, Botones, CRISTAL, TEXTO};
 
 pub const VK_RETROCESO: u32 = 0x08;
 pub const VK_TAB: u32 = 0x09;
@@ -61,7 +61,12 @@ fn hsv(h: f32, s: f32, v: f32) -> Color {
         4 => (x, 0.0, c),
         _ => (c, 0.0, x),
     };
-    Color { r: r + m, g: g + m, b: b + m, a: 1.0 }
+    Color {
+        r: r + m,
+        g: g + m,
+        b: b + m,
+        a: 1.0,
+    }
 }
 
 pub fn con_alfa(c: Color, a: f32) -> Color {
@@ -90,17 +95,26 @@ impl Campo {
     }
 
     pub fn escribir(&mut self, s: &str) {
-        let s: String = s.chars().filter(|c| *c == '\n' || !c.is_control()).collect();
+        let s: String = s
+            .chars()
+            .filter(|c| *c == '\n' || !c.is_control())
+            .collect();
         self.texto.insert_str(self.cursor, &s);
         self.cursor += s.len();
     }
 
     fn anterior(&self) -> usize {
-        self.texto[..self.cursor].char_indices().next_back().map_or(0, |(i, _)| i)
+        self.texto[..self.cursor]
+            .char_indices()
+            .next_back()
+            .map_or(0, |(i, _)| i)
     }
 
     fn siguiente(&self) -> usize {
-        self.texto[self.cursor..].chars().next().map_or(self.cursor, |c| self.cursor + c.len_utf8())
+        self.texto[self.cursor..]
+            .chars()
+            .next()
+            .map_or(self.cursor, |c| self.cursor + c.len_utf8())
     }
 
     /// Atiende una tecla. `multilinea`: si Intro (con Mayusculas) parte el
@@ -136,19 +150,27 @@ impl Campo {
                 true
             }
             VK_INICIO => {
-                self.cursor = if ctrl { 0 } else { self.texto[..self.cursor].rfind('\n').map_or(0, |i| i + 1) };
+                self.cursor = if ctrl {
+                    0
+                } else {
+                    self.texto[..self.cursor].rfind('\n').map_or(0, |i| i + 1)
+                };
                 true
             }
             VK_FIN => {
                 self.cursor = if ctrl {
                     self.texto.len()
                 } else {
-                    self.texto[self.cursor..].find('\n').map_or(self.texto.len(), |i| self.cursor + i)
+                    self.texto[self.cursor..]
+                        .find('\n')
+                        .map_or(self.texto.len(), |i| self.cursor + i)
                 };
                 true
             }
             VK_V if ctrl => {
-                if let Some(pixpin_codec::ContenidoPortapapeles::Texto(t)) = pixpin_codec::portapapeles::leer() {
+                if let Some(pixpin_codec::ContenidoPortapapeles::Texto(t)) =
+                    pixpin_codec::portapapeles::leer()
+                {
                     let t = t.replace("\r\n", "\n");
                     let t = if multilinea { t } else { t.replace('\n', " ") };
                     self.escribir(&t);
@@ -176,7 +198,16 @@ impl Campo {
     /// Pinta la caja en `caja` (de alto lo que devuelve [`alto`]) con la
     /// `pista` si esta vacia y el cursor si tiene el foco.
     #[allow(clippy::too_many_arguments)] // caja, tamano, foco, pista, color y escala
-    pub fn pintar(&self, p: &Pintor, caja: RectF, tam: f32, foco: bool, pista: &str, reserva: f32, e: f32) {
+    pub fn pintar(
+        &self,
+        p: &Pintor,
+        caja: RectF,
+        tam: f32,
+        foco: bool,
+        pista: &str,
+        reserva: f32,
+        e: f32,
+    ) {
         let fondo = if foco { hex(0x30303a) } else { CRISTAL };
         if foco {
             p.rellenar_redondeado(caja, 12.0 * e, con_alfa(PUESTO, 0.65));
@@ -192,7 +223,17 @@ impl Campo {
     /// Solo el texto (o la pista) y el cursor, sin la caja: para quien pone
     /// el fondo por su cuenta (la pastilla del buscador).
     #[allow(clippy::too_many_arguments)] // sitio, ancho, tamano, foco, pista y escala
-    pub fn pintar_texto(&self, p: &Pintor, x0: f32, y0: f32, ancho: f32, tam: f32, foco: bool, pista: &str, e: f32) {
+    pub fn pintar_texto(
+        &self,
+        p: &Pintor,
+        x0: f32,
+        y0: f32,
+        ancho: f32,
+        tam: f32,
+        foco: bool,
+        pista: &str,
+        e: f32,
+    ) {
         if self.texto.is_empty() {
             p.texto_ajustado(pista, x0, y0, tam, ancho, APAGADO);
         } else {
@@ -217,14 +258,26 @@ impl Campo {
     }
 
     /// Lo que mide la caja con este texto y al menos `lineas` renglones.
-    pub fn alto(&self, p: &Pintor, ancho: f32, tam: f32, lineas: usize, reserva: f32, e: f32) -> f32 {
+    pub fn alto(
+        &self,
+        p: &Pintor,
+        ancho: f32,
+        tam: f32,
+        lineas: usize,
+        reserva: f32,
+        e: f32,
+    ) -> f32 {
         let pad = 10.0 * e;
         let (_, alto_linea) = p.medir_texto("Ag", tam);
         let (_, h) = if self.texto.is_empty() {
             (0.0, alto_linea)
         } else {
             // Un renglon que acaba en salto no lo cuenta DirectWrite.
-            let t = if self.texto.ends_with('\n') { format!("{}.", self.texto) } else { self.texto.clone() };
+            let t = if self.texto.ends_with('\n') {
+                format!("{}.", self.texto)
+            } else {
+                self.texto.clone()
+            };
             p.medir_texto_ajustado(&t, tam, (ancho - 2.0 * pad - reserva).max(10.0))
         };
         h.max(alto_linea * lineas as f32) + 2.0 * pad
@@ -267,7 +320,11 @@ pub fn ficha<A: Copy>(
         p.rellenar_redondeado(caja, radio, PUESTO_FONDO);
     } else {
         p.rellenar_redondeado(caja, radio, hex(0x4a4a52));
-        p.rellenar_redondeado(encoger(caja, 1.0 * e), radio - 1.0, if encima { hex(0x34343c) } else { FICHA });
+        p.rellenar_redondeado(
+            encoger(caja, 1.0 * e),
+            radio - 1.0,
+            if encima { hex(0x34343c) } else { FICHA },
+        );
     }
     let (_, th) = p.medir_texto(rotulo, tam);
     let mut tx = caja.x + 12.0 * e;
@@ -275,7 +332,13 @@ pub fn ficha<A: Copy>(
         p.circulo((tx + 5.0 * e, caja.y + caja.alto / 2.0), 5.0 * e, c);
         tx += 16.0 * e;
     }
-    p.texto_color(rotulo, tx, caja.y + (caja.alto - th) / 2.0, tam, if puesta { PUESTO } else { TEXTO });
+    p.texto_color(
+        rotulo,
+        tx,
+        caja.y + (caja.alto - th) / 2.0,
+        tam,
+        if puesta { PUESTO } else { TEXTO },
+    );
     if con_x {
         let x = caja.x + caja.ancho - 18.0 * e;
         let cy = caja.y + caja.alto / 2.0;
@@ -328,7 +391,23 @@ pub fn fila_con_puntos<A: Copy>(
             x = x0;
             y += alto + hueco;
         }
-        ficha(p, botones, RectF { x, y, ancho: w, alto }, *que, rotulo, *puesta, *con_x, punto, tam, e);
+        ficha(
+            p,
+            botones,
+            RectF {
+                x,
+                y,
+                ancho: w,
+                alto,
+            },
+            *que,
+            rotulo,
+            *puesta,
+            *con_x,
+            punto,
+            tam,
+            e,
+        );
         x += w + hueco;
     }
     if fichas.is_empty() { y0 } else { y + alto }
@@ -348,10 +427,25 @@ pub fn boton<A: Copy>(
     e: f32,
 ) {
     let encima = crate::ventanita::dentro(caja, botones.raton);
-    let f = if encima { Color { r: (fondo.r + 0.06).min(1.0), g: (fondo.g + 0.06).min(1.0), b: (fondo.b + 0.06).min(1.0), a: fondo.a } } else { fondo };
+    let f = if encima {
+        Color {
+            r: (fondo.r + 0.06).min(1.0),
+            g: (fondo.g + 0.06).min(1.0),
+            b: (fondo.b + 0.06).min(1.0),
+            a: fondo.a,
+        }
+    } else {
+        fondo
+    };
     p.rellenar_redondeado(caja, 10.0 * e, f);
     let (w, h) = p.medir_texto(rotulo, tam);
-    p.texto_color(rotulo, caja.x + (caja.ancho - w) / 2.0, caja.y + (caja.alto - h) / 2.0, tam, tinta);
+    p.texto_color(
+        rotulo,
+        caja.x + (caja.ancho - w) / 2.0,
+        caja.y + (caja.alto - h) / 2.0,
+        tam,
+        tinta,
+    );
     botones.zona(caja, que);
 }
 
@@ -365,8 +459,22 @@ pub fn aviso(p: &Pintor, texto: &str, ancho: f32, alto: f32, e: f32) {
         ancho: tw + 28.0 * e,
         alto: th + 16.0 * e,
     };
-    p.rellenar_redondeado(caja, 8.0 * e, Color { a: 0.92, ..Color::NEGRO });
-    p.texto_ajustado(texto, caja.x + 14.0 * e, caja.y + 8.0 * e, tam, tw + 2.0, TEXTO);
+    p.rellenar_redondeado(
+        caja,
+        8.0 * e,
+        Color {
+            a: 0.92,
+            ..Color::NEGRO
+        },
+    );
+    p.texto_ajustado(
+        texto,
+        caja.x + 14.0 * e,
+        caja.y + 8.0 * e,
+        tam,
+        tw + 2.0,
+        TEXTO,
+    );
 }
 
 /// Hasta `n` letras, con «…» si se corta.
@@ -487,7 +595,12 @@ pub fn chapa(p: &Pintor, tecla: &str, x: f32, cy: f32, tinta: Color, fondo: Colo
     let tam = 11.5 * e;
     let w = ancho_de_chapa(p, tecla, e);
     let h = 20.0 * e;
-    let caja = RectF { x, y: cy - h / 2.0, ancho: w, alto: h };
+    let caja = RectF {
+        x,
+        y: cy - h / 2.0,
+        ancho: w,
+        alto: h,
+    };
     p.rellenar_redondeado(caja, 5.0 * e, con_alfa(v2::BLANCO, 0.12));
     p.rellenar_redondeado(encoger(caja, 1.0 * e), 4.0 * e, fondo);
     let (tw, th) = p.medir_texto(tecla, tam);
@@ -534,7 +647,16 @@ pub fn boton_v2<A: Copy>(
     let mut x = caja.x + ((caja.ancho - ancho) / 2.0).max(0.0) + 14.0 * e;
     let cy = caja.y + caja.alto / 2.0;
     if let Some(i) = icono {
-        p.icono(i, RectF { x, y: cy - 9.0 * e, ancho: 18.0 * e, alto: 18.0 * e }, tinta);
+        p.icono(
+            i,
+            RectF {
+                x,
+                y: cy - 9.0 * e,
+                ancho: 18.0 * e,
+                alto: 18.0 * e,
+            },
+            tinta,
+        );
         x += 26.0 * e;
     }
     let (tw, th) = p.medir_texto(rotulo, 14.0 * e);
@@ -542,7 +664,11 @@ pub fn boton_v2<A: Copy>(
     x += tw + 8.0 * e;
     if let Some(t) = tecla {
         let azul = fondo.is_some_and(|c| c == v2::AZUL);
-        let fondo_chapa = if azul { aclarar(v2::AZUL, 0.12) } else { hex(0x2a2a2d) };
+        let fondo_chapa = if azul {
+            aclarar(v2::AZUL, 0.12)
+        } else {
+            hex(0x2a2a2d)
+        };
         let tinta_chapa = if azul { v2::BLANCO } else { v2::SUAVE };
         chapa(p, t, x, cy, tinta_chapa, fondo_chapa, e);
     }

@@ -43,7 +43,12 @@ fn abrir(texto: &str) -> Estado {
 
 fn x_de(e: &Estado, pos: usize) -> i32 {
     let mut pt = POINT::default();
-    enviar(e.edit, EM_POSFROMCHAR, &mut pt as *mut _ as usize, pos as isize);
+    enviar(
+        e.edit,
+        EM_POSFROMCHAR,
+        &mut pt as *mut _ as usize,
+        pos as isize,
+    );
     pt.x
 }
 
@@ -70,8 +75,16 @@ fn ancho_de(e: &Estado, k: usize) -> i32 {
 fn una_tabla_ancha_conserva_su_ancho_y_el_texto_no_se_mueve() {
     let e = abrir(&dos_anchas());
     let (vi, vd) = visible(e.edit);
-    assert!(tabla_ancha::hueco() > 0, "con tablas anchas se abre el hueco");
-    assert!(ancho_de(&e, 0) > vd - vi, "no se encoge a la ventana: {} > {}", ancho_de(&e, 0), vd - vi);
+    assert!(
+        tabla_ancha::hueco() > 0,
+        "con tablas anchas se abre el hueco"
+    );
+    assert!(
+        ancho_de(&e, 0) > vd - vi,
+        "no se encoge a la ventana: {} > {}",
+        ancho_de(&e, 0),
+        vd - vi
+    );
     // El texto sigue donde estaria sin tablas anchas.
     let x_texto = x_de(&e, leer(e.edit).find("antes").unwrap()) - tabla_ancha::hueco();
     desmontar(e);
@@ -97,7 +110,10 @@ fn una_tabla_ancha_empieza_donde_el_texto_y_lleva_barra() {
     desplazar(&e, v.desde, 1_000_000);
     let v = VISTAS.with(|v| v.borrow()[0]);
     let derecha_tabla = x_texto - v.c.desplazamiento + v.ancho;
-    assert!((derecha_tabla - (x_texto + columna(e.edit))).abs() <= 2, "{derecha_tabla}");
+    assert!(
+        (derecha_tabla - (x_texto + columna(e.edit))).abs() <= 2,
+        "{derecha_tabla}"
+    );
     assert_eq!(VISTAS.with(|v| v.borrow().len()), 2, "las dos llevan barra");
     desmontar(e);
 }
@@ -121,7 +137,11 @@ fn desplazar_una_tabla_no_mueve_la_otra_ni_el_texto_y_se_guarda_igual() {
     let e = abrir(&md);
     let texto = leer(e.edit);
     let p_entre = texto.find("entre las dos").unwrap();
-    let antes = (x_celda(&e, 0, 1, 2), x_celda(&e, 1, 1, 2), x_de(&e, p_entre));
+    let antes = (
+        x_celda(&e, 0, 1, 2),
+        x_celda(&e, 1, 1, 2),
+        x_de(&e, p_entre),
+    );
     desplazar(&e, tablas_de(&e)[0].desde, 300);
     assert_eq!(desp(&e, 0), 300);
     assert_eq!(x_celda(&e, 0, 1, 2), antes.0 - 300, "la primera se corre");
@@ -219,7 +239,12 @@ fn la_rueda_de_lado_sobre_una_tabla_la_desplaza_y_fuera_no() {
     let e = abrir(&dos_anchas());
     let tc = &tablas_de(&e)[0];
     let mut p = POINT::default();
-    enviar(e.edit, EM_POSFROMCHAR, &mut p as *mut _ as usize, tc.celdas[1][1] as isize);
+    enviar(
+        e.edit,
+        EM_POSFROMCHAR,
+        &mut p as *mut _ as usize,
+        tc.celdas[1][1] as isize,
+    );
     // SAFETY: conversion de coordenadas de una ventana propia.
     unsafe {
         let _ = ClientToScreen(e.edit, &mut p);
@@ -247,7 +272,8 @@ fn arrastrar_la_barra_desplaza_su_tabla() {
     let v = VISTAS.with(|v| v.borrow()[0]);
     let (_, abajo, y, an) = caja_de(e.edit, &v, e.ppp);
     assert!(y > abajo);
-    let (px, largo) = tabla_ancha::pulgar(v.vis_izq, an, v.ancho, &v.c, PULGAR_MINIMO_PX * e.ppp / 96);
+    let (px, largo) =
+        tabla_ancha::pulgar(v.vis_izq, an, v.ancho, &v.c, PULGAR_MINIMO_PX * e.ppp / 96);
     let x = px + largo / 2;
     assert!(raton(&e, &mensaje(&e, WM_LBUTTONDOWN, 1, x, y + 2)));
     assert_eq!(desp(&e, 0), 0, "pulsar en el pulgar no lo mueve");
@@ -273,7 +299,12 @@ fn cambiar_el_tamano_de_la_ventana_recoloca_las_tablas() {
     }
     colocar_todas(&e, None);
     let (vi, vd) = visible(e.edit);
-    assert!(ancho_de(&e, 0) <= vd - vi, "{} {}", ancho_de(&e, 0), vd - vi);
+    assert!(
+        ancho_de(&e, 0) <= vd - vi,
+        "{} {}",
+        ancho_de(&e, 0),
+        vd - vi
+    );
     assert_eq!(VISTAS.with(|v| v.borrow().len()), 0);
     assert_eq!(desp(&e, 0), 0);
     desmontar(e);
@@ -317,7 +348,10 @@ fn medir_desplazar() {
     for i in 0..20 {
         desplazar(&e, desde, i * 30);
     }
-    println!("tabla de 61 filas: un paso de desplazamiento {:?}", t.elapsed() / 20);
+    println!(
+        "tabla de 61 filas: un paso de desplazamiento {:?}",
+        t.elapsed() / 20
+    );
     let t = std::time::Instant::now();
     for _ in 0..20 {
         seguir(&e);
@@ -325,4 +359,3 @@ fn medir_desplazar() {
     println!("seguir al cursor sin mover nada {:?}", t.elapsed() / 20);
     desmontar(e);
 }
-

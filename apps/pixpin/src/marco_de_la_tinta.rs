@@ -45,7 +45,8 @@ pub fn marca(raiz: &Path) -> PathBuf {
 }
 
 fn es_pdf(doc: &Path) -> bool {
-    doc.extension().is_some_and(|e| e.eq_ignore_ascii_case("pdf"))
+    doc.extension()
+        .is_some_and(|e| e.eq_ignore_ascii_case("pdf"))
 }
 
 /// **Lo que el PC anoto junto al documento, a su mensaje**, como se hace al
@@ -92,7 +93,11 @@ fn hojas_de_antes(pdf: &Path) -> Vec<usize> {
         .flatten()
         .filter_map(|f| {
             let n = f.file_name().to_string_lossy().to_string();
-            n.strip_prefix("hoja-")?.strip_suffix(".excalidraw")?.parse::<usize>().ok()?.checked_sub(1)
+            n.strip_prefix("hoja-")?
+                .strip_suffix(".excalidraw")?
+                .parse::<usize>()
+                .ok()?
+                .checked_sub(1)
         })
         .collect();
     hojas.sort_unstable();
@@ -125,7 +130,9 @@ pub fn marco_de_antes(
 ) -> Option<MarcoDeLaHoja> {
     let doc = t.doc.as_deref()?;
     match t.que {
-        QueTinta::Documento if !es_pdf(doc) => crate::anotado_del_adjunto::marco_de_antes_del_documento(doc, &t.base),
+        QueTinta::Documento if !es_pdf(doc) => {
+            crate::anotado_del_adjunto::marco_de_antes_del_documento(doc, &t.base)
+        }
         QueTinta::Pagina(i) if es_pdf(doc) => {
             // El PDF de un proyecto lleva la tinta en sus hojas (sin marco).
             if !doc.is_file() || pixpin_proyecto::capas_del_pdf::de_este_pdf(raiz, doc).is_some() {
@@ -133,7 +140,8 @@ pub fn marco_de_antes(
             }
             let i = usize::try_from(i).ok()?;
             let alto = *altos_de(doc, altos)?.get(i)?;
-            let u = Unidades::de_la_capa_del_movil(crate::anotado_del_adjunto::espacios_de_ahora(doc));
+            let u =
+                Unidades::de_la_capa_del_movil(crate::anotado_del_adjunto::espacios_de_ahora(doc));
             crate::anotado_del_adjunto::lo_del_pc_a_la_capa_del_movil(doc, i, &t.base.tinta(), u);
             Some(u.marco_de(&crate::lector_pdf_proyecto::hoja_propia(alto)))
         }
@@ -147,7 +155,10 @@ pub fn pasada(raiz: &Path, lo_de_antes: bool) -> Pasada {
     if lo_de_antes {
         let n = pasar_lo_de_antes(raiz);
         if n > 0 {
-            tracing::info!(documentos = n, "tinta de junto a los documentos pasada a sus mensajes");
+            tracing::info!(
+                documentos = n,
+                "tinta de junto a los documentos pasada a sus mensajes"
+            );
         }
     }
     let mut altos = HashMap::new();
@@ -178,25 +189,30 @@ fn en_segundo_plano(raiz: PathBuf, lo_de_antes: bool) {
         OTRA_VEZ.store(true, Ordering::SeqCst);
         return;
     }
-    let hilo = std::thread::Builder::new().name("marco-de-la-tinta".into()).spawn(move || {
-        let mut lo_de_antes = lo_de_antes;
-        loop {
-            OTRA_VEZ.store(false, Ordering::SeqCst);
-            pasada(&raiz, lo_de_antes);
-            if lo_de_antes {
-                let m = marca(&raiz);
-                let puesta = m.parent().map_or(Ok(()), std::fs::create_dir_all).and_then(|()| std::fs::write(&m, b""));
-                if let Err(e) = puesta {
-                    tracing::warn!(?e, "no se pudo dejar la marca de la pasada del marco");
+    let hilo = std::thread::Builder::new()
+        .name("marco-de-la-tinta".into())
+        .spawn(move || {
+            let mut lo_de_antes = lo_de_antes;
+            loop {
+                OTRA_VEZ.store(false, Ordering::SeqCst);
+                pasada(&raiz, lo_de_antes);
+                if lo_de_antes {
+                    let m = marca(&raiz);
+                    let puesta = m
+                        .parent()
+                        .map_or(Ok(()), std::fs::create_dir_all)
+                        .and_then(|()| std::fs::write(&m, b""));
+                    if let Err(e) = puesta {
+                        tracing::warn!(?e, "no se pudo dejar la marca de la pasada del marco");
+                    }
+                    lo_de_antes = false;
                 }
-                lo_de_antes = false;
+                if !OTRA_VEZ.load(Ordering::SeqCst) {
+                    break;
+                }
             }
-            if !OTRA_VEZ.load(Ordering::SeqCst) {
-                break;
-            }
-        }
-        EN_MARCHA.store(false, Ordering::SeqCst);
-    });
+            EN_MARCHA.store(false, Ordering::SeqCst);
+        });
     if let Err(e) = hilo {
         EN_MARCHA.store(false, Ordering::SeqCst);
         tracing::warn!(?e, "no se pudo lanzar la pasada del marco de la tinta");
@@ -239,8 +255,16 @@ mod pruebas {
         let p = pasada(&r, false);
         assert_eq!(p.escritos, 1, "{p:?}");
         assert_eq!(an::leer(&b.marco()).as_deref(), Some("280,0,700,420\nv1\n"));
-        assert_eq!(std::fs::read_to_string(b.tinta()).unwrap(), tinta, "la tinta, byte a byte");
-        assert_eq!(crate::anotado_del_adjunto::leer_capa(&doc).escena.caja(), caja_antes, "en el mismo sitio");
+        assert_eq!(
+            std::fs::read_to_string(b.tinta()).unwrap(),
+            tinta,
+            "la tinta, byte a byte"
+        );
+        assert_eq!(
+            crate::anotado_del_adjunto::leer_capa(&doc).escena.caja(),
+            caja_antes,
+            "en el mismo sitio"
+        );
         assert_eq!(x.uid, b.base.trim_start_matches("anot-"));
         let _ = std::fs::remove_dir_all(&r);
     }
@@ -257,7 +281,11 @@ mod pruebas {
         std::fs::write(&tinta, TINTA).unwrap();
         let p = pasada(&r, true);
         assert_eq!((p.escritos, p.sin_calcular), (0, 1), "{p:?}");
-        let b = crate::anotado_del_adjunto::base_de_la_hoja_del_pdf(crate::anotado_del_adjunto::adjunto_del_pdf(&pdf).as_ref(), 0).unwrap();
+        let b = crate::anotado_del_adjunto::base_de_la_hoja_del_pdf(
+            crate::anotado_del_adjunto::adjunto_del_pdf(&pdf).as_ref(),
+            0,
+        )
+        .unwrap();
         assert!(!b.marco().exists());
         assert_eq!(std::fs::read_to_string(&tinta).unwrap(), TINTA);
         let _ = std::fs::remove_dir_all(&r);
@@ -273,35 +301,66 @@ mod pruebas {
         let pdf = con_adjunto(&r, "plano.pdf", &bytes);
         let medidas = pixpin_pdf::Documento::abrir(&pdf).unwrap().medidas();
         let alto = pixpin_docs::vista::Hojas::colocar(&medidas).altos[0];
-        let b = crate::anotado_del_adjunto::base_de_la_hoja_del_pdf(crate::anotado_del_adjunto::adjunto_del_pdf(&pdf).as_ref(), 0).unwrap();
-        an::escribir(&an::base_del_pdf(&r, &pdf, None).unwrap().fichero(".espacios"), "1").unwrap();
+        let b = crate::anotado_del_adjunto::base_de_la_hoja_del_pdf(
+            crate::anotado_del_adjunto::adjunto_del_pdf(&pdf).as_ref(),
+            0,
+        )
+        .unwrap();
+        an::escribir(
+            &an::base_del_pdf(&r, &pdf, None)
+                .unwrap()
+                .fichero(".espacios"),
+            "1",
+        )
+        .unwrap();
         std::fs::create_dir_all(b.tinta().parent().unwrap()).unwrap();
         std::fs::write(b.tinta(), TINTA).unwrap();
         let d = DondeVa::de(&r, &pdf, 1);
         // Leida sin escribir (como compartir): el lector ya le apuntaria el marco.
-        let antes = DondeVa::solo_leer(&pdf).leer_capa(&pdf, 0, 1, alto).escena.caja().unwrap();
+        let antes = DondeVa::solo_leer(&pdf)
+            .leer_capa(&pdf, 0, 1, alto)
+            .escena
+            .caja()
+            .unwrap();
         let p = pasada(&r, true);
         assert_eq!(p.escritos, 1, "{p:?}");
         let (m, h) = MarcoDeLaHoja::de_texto_con_huella(&an::leer(&b.marco()).unwrap()).unwrap();
         assert_eq!(h, None, "dos lineas, como Android");
-        assert_eq!(m, Unidades::de_la_capa_del_movil(1).marco_de(&crate::lector_pdf_proyecto::hoja_propia(alto)));
-        assert_eq!(std::fs::read_to_string(b.tinta()).unwrap(), TINTA, "la tinta, byte a byte");
+        assert_eq!(
+            m,
+            Unidades::de_la_capa_del_movil(1)
+                .marco_de(&crate::lector_pdf_proyecto::hoja_propia(alto))
+        );
+        assert_eq!(
+            std::fs::read_to_string(b.tinta()).unwrap(),
+            TINTA,
+            "la tinta, byte a byte"
+        );
         // Ya con marco, aunque cambien los espacios cae en el mismo sitio.
         let despues = d.leer_capa(&pdf, 0, 3, alto).escena.caja().unwrap();
         let cerca = |a: (f32, f32, f32, f32), b: (f32, f32, f32, f32)| {
-            [(a.0, b.0), (a.1, b.1), (a.2, b.2), (a.3, b.3)].iter().all(|(x, y)| (x - y).abs() < 0.01)
+            [(a.0, b.0), (a.1, b.1), (a.2, b.2), (a.3, b.3)]
+                .iter()
+                .all(|(x, y)| (x - y).abs() < 0.01)
         };
         assert!(cerca(antes, despues), "{antes:?} {despues:?}");
         let fecha = std::fs::metadata(b.marco()).unwrap().modified().unwrap();
         let p = pasada(&r, true);
         assert_eq!((p.escritos, p.ya_estaban), (0, 1));
-        assert_eq!(std::fs::metadata(b.marco()).unwrap().modified().unwrap(), fecha);
+        assert_eq!(
+            std::fs::metadata(b.marco()).unwrap().modified().unwrap(),
+            fecha
+        );
         let _ = std::fs::remove_dir_all(&r);
     }
 
     /// Un PDF de verdad de una hoja de 20 x 30 (Windows lo abre y lo mide).
     fn pdf_de_muestra() -> Option<Vec<u8>> {
-        let img = pixpin_codec::ImagenRgba { ancho: 20, alto: 30, pixeles: [7, 90, 200, 255].repeat(600) };
+        let img = pixpin_codec::ImagenRgba {
+            ancho: 20,
+            alto: 30,
+            pixeles: [7, 90, 200, 255].repeat(600),
+        };
         pixpin_pdf::union::de_imagenes(&[img])
     }
 
@@ -309,7 +368,14 @@ mod pruebas {
     fn la_pasada_de_una_vez_pasa_la_tinta_de_junto_al_documento_y_le_pone_su_marco() {
         let r = raiz("pasada-antes");
         let doc = con_adjunto(&r, "notas.docx", b"PK");
-        pixpin_docs::lectura::escribir(&doc, &pixpin_docs::lectura::Ajustes { columna: 600, ..Default::default() }).unwrap();
+        pixpin_docs::lectura::escribir(
+            &doc,
+            &pixpin_docs::lectura::Ajustes {
+                columna: 600,
+                ..Default::default()
+            },
+        )
+        .unwrap();
         let vieja = crate::lector_tinta::ruta_de_capa(&doc);
         std::fs::create_dir_all(vieja.parent().unwrap()).unwrap();
         std::fs::write(&vieja, r#"{"type":"excalidraw","elements":[{"id":"pc1","type":"freedraw","x":10,"y":40,"width":2,"height":2,"points":[[0,0],[2,2]]}]}"#).unwrap();
@@ -331,7 +397,12 @@ mod pruebas {
 
     #[test]
     fn la_marca_va_en_la_carpeta_de_sincronizar_del_almacen() {
-        assert_eq!(marca(Path::new("C:/a")), Path::new("C:/a").join("sincro").join("marcos-de-la-tinta-v2.hecho"));
+        assert_eq!(
+            marca(Path::new("C:/a")),
+            Path::new("C:/a")
+                .join("sincro")
+                .join("marcos-de-la-tinta-v2.hecho")
+        );
     }
 }
 
@@ -355,7 +426,9 @@ mod con_datos_reales {
                     continue;
                 }
                 if es_pdf(&doc) {
-                    let Ok(d) = pixpin_pdf::Documento::abrir(&doc) else { continue };
+                    let Ok(d) = pixpin_pdf::Documento::abrir(&doc) else {
+                        continue;
+                    };
                     let altos = pixpin_docs::vista::Hojas::colocar(&d.medidas()).altos;
                     let donde = if como_al_abrir {
                         crate::lector_pdf_proyecto::DondeVa::de(raiz, &doc, 1)
@@ -370,7 +443,10 @@ mod con_datos_reales {
                         }
                     }
                 } else if an::base_del_documento(raiz, &doc).is_some_and(|b| b.tinta().is_file()) {
-                    salida.push((x.uid.clone(), crate::anotado_del_adjunto::leer_capa(&doc).escena.caja()));
+                    salida.push((
+                        x.uid.clone(),
+                        crate::anotado_del_adjunto::leer_capa(&doc).escena.caja(),
+                    ));
                 }
             }
         }
@@ -386,7 +462,10 @@ mod con_datos_reales {
         let n = pasar_lo_de_antes(&raiz);
         println!("documentos con tinta de antes: {n}");
         let antes = cajas(&raiz, true);
-        let tintas_antes: Vec<(PathBuf, Vec<u8>)> = tintas(&raiz).into_iter().map(|t| (t.clone(), std::fs::read(&t).unwrap())).collect();
+        let tintas_antes: Vec<(PathBuf, Vec<u8>)> = tintas(&raiz)
+            .into_iter()
+            .map(|t| (t.clone(), std::fs::read(&t).unwrap()))
+            .collect();
         let p = pasada(&raiz, true);
         println!("{p:?}");
         let despues = cajas(&raiz, false);
@@ -403,7 +482,12 @@ mod con_datos_reales {
             assert!(d.iter().all(|x| *x < 0.01), "{a}: {ca:?} -> {cd:?}");
         }
         for (t, bytes) in &tintas_antes {
-            assert_eq!(&std::fs::read(t).unwrap(), bytes, "tinta tocada: {}", t.display());
+            assert_eq!(
+                &std::fs::read(t).unwrap(),
+                bytes,
+                "tinta tocada: {}",
+                t.display()
+            );
         }
         // Cada tinta de un mensaje (menos las de un PDF leido como texto)
         // tiene su `.hoja` en dos lineas.
@@ -412,7 +496,9 @@ mod con_datos_reales {
         let mut sin = Vec::new();
         for (chat, _) in d.mapa() {
             for rel in d.anotado(&chat) {
-                let Some(base) = rel.strip_suffix(".excalidraw.gz") else { continue };
+                let Some(base) = rel.strip_suffix(".excalidraw.gz") else {
+                    continue;
+                };
                 if base.ends_with("-texto") {
                     continue;
                 }

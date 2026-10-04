@@ -82,11 +82,16 @@ impl Letra {
     /// `None` si falta alguna de las imprescindibles o no se entiende: una
     /// letra CFF (`.otf`, sin `glyf`) no se sabe subconjuntar aqui, y
     /// entonces el PDF vuelve a Helvetica en vez de salir roto.
-    pub fn desde_tablas(nombre: &str, tabla: &dyn Fn(&Etiqueta) -> Option<Vec<u8>>) -> Option<Letra> {
+    pub fn desde_tablas(
+        nombre: &str,
+        tabla: &dyn Fn(&Etiqueta) -> Option<Vec<u8>>,
+    ) -> Option<Letra> {
         let mut tablas = BTreeMap::new();
-        for t in [b"head", b"maxp", b"hmtx", b"loca", b"glyf", b"cmap", b"post"]
-            .into_iter()
-            .chain(COPIADAS)
+        for t in [
+            b"head", b"maxp", b"hmtx", b"loca", b"glyf", b"cmap", b"post",
+        ]
+        .into_iter()
+        .chain(COPIADAS)
         {
             if let Some(d) = tabla(t) {
                 tablas.insert(*t, d);
@@ -153,7 +158,10 @@ impl Letra {
             mil(i16_en(head, 42)? as i32),
         ];
         Some(Letra {
-            nombre: nombre.chars().filter(|c| c.is_ascii_alphanumeric()).collect(),
+            nombre: nombre
+                .chars()
+                .filter(|c| c.is_ascii_alphanumeric())
+                .collect(),
             tablas,
             unidades,
             avances,
@@ -186,7 +194,8 @@ impl Letra {
     }
 
     fn glifo_crudo(&self, g: u16) -> &[u8] {
-        let (Some(&a), Some(&b)) = (self.loca.get(g as usize), self.loca.get(g as usize + 1)) else {
+        let (Some(&a), Some(&b)) = (self.loca.get(g as usize), self.loca.get(g as usize + 1))
+        else {
             return &[];
         };
         self.tablas
@@ -233,7 +242,11 @@ impl Letra {
     /// es un hueco de cero bytes en `glyf`.
     pub fn subconjunto(&self, usados: &BTreeSet<u16>, caracteres: &BTreeMap<u16, char>) -> Vec<u8> {
         let total = self.glifos();
-        let mut dentro: BTreeSet<u16> = usados.iter().copied().filter(|g| (*g as usize) < total).collect();
+        let mut dentro: BTreeSet<u16> = usados
+            .iter()
+            .copied()
+            .filter(|g| (*g as usize) < total)
+            .collect();
         dentro.insert(0);
         let mut pendientes: Vec<u16> = dentro.iter().copied().collect();
         while let Some(g) = pendientes.pop() {
@@ -344,7 +357,10 @@ fn leer_cmap(d: &[u8]) -> Option<BTreeMap<u32, u16>> {
     let mut mapa = BTreeMap::new();
     for s in 0..segmentos {
         let (a, b) = (u16_en(d, inicio + 2 * s)?, u16_en(d, fin + 2 * s)?);
-        let (dl, ro) = (u16_en(d, delta + 2 * s)?, u16_en(d, rango + 2 * s)? as usize);
+        let (dl, ro) = (
+            u16_en(d, delta + 2 * s)?,
+            u16_en(d, rango + 2 * s)? as usize,
+        );
         if a == 0xffff || b < a {
             continue;
         }
@@ -370,7 +386,12 @@ fn leer_cmap(d: &[u8]) -> Option<BTreeMap<u32, u16>> {
 fn cmap_minima(caracteres: &BTreeMap<u16, char>) -> Vec<u8> {
     let mut pares: Vec<(u16, u16)> = caracteres
         .iter()
-        .filter_map(|(g, c)| u16::try_from(*c as u32).ok().filter(|c| *c != 0xffff).map(|c| (c, *g)))
+        .filter_map(|(g, c)| {
+            u16::try_from(*c as u32)
+                .ok()
+                .filter(|c| *c != 0xffff)
+                .map(|c| (c, *g))
+        })
         .collect();
     pares.sort();
     pares.dedup_by_key(|(c, _)| *c);
@@ -480,7 +501,9 @@ pub fn del_sistema(familia: &str) -> Option<Letra> {
     unsafe {
         let fabrica: IDWriteFactory = DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED).ok()?;
         let mut coleccion = None;
-        fabrica.GetSystemFontCollection(&mut coleccion, false).ok()?;
+        fabrica
+            .GetSystemFontCollection(&mut coleccion, false)
+            .ok()?;
         let coleccion = coleccion?;
         let (mut indice, mut existe) = (0u32, BOOL(0));
         coleccion
@@ -560,10 +583,17 @@ mod pruebas {
             return;
         };
         let texto = "Planta baja, año 2026";
-        let caracteres: BTreeMap<u16, char> = texto.chars().filter_map(|c| Some((l.glifo(c)?, c))).collect();
+        let caracteres: BTreeMap<u16, char> = texto
+            .chars()
+            .filter_map(|c| Some((l.glifo(c)?, c)))
+            .collect();
         let usados: BTreeSet<u16> = caracteres.keys().copied().collect();
         let sub = l.subconjunto(&usados, &caracteres);
-        assert!(sub.len() < 150_000, "mucho menos que la letra entera: {}", sub.len());
+        assert!(
+            sub.len() < 150_000,
+            "mucho menos que la letra entera: {}",
+            sub.len()
+        );
         let otra = Letra::desde_fichero("sub", &sub).expect("el subconjunto es una letra");
         assert_eq!(otra.glifos(), l.glifos(), "los numeros de glifo no cambian");
         for c in texto.chars() {
@@ -594,7 +624,12 @@ mod pruebas {
         let l = segoe().expect("segoe");
         let fila = |a: u32, b: u32| {
             (a..=b)
-                .map(|c| format!("{}", l.ancho(char::from_u32(c).unwrap_or(' ')).round() as u16))
+                .map(|c| {
+                    format!(
+                        "{}",
+                        l.ancho(char::from_u32(c).unwrap_or(' ')).round() as u16
+                    )
+                })
                 .collect::<Vec<_>>()
                 .join(", ")
         };

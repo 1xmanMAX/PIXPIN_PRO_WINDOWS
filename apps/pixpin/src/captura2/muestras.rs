@@ -56,7 +56,11 @@ fn escritorio() -> ImagenRgba {
                         let col = (x - vx) / 90;
                         let alto = [120, 160, 80, 175, 100, 140][(col as usize) % 6];
                         if (x - vx) % 90 > 20 && (x - vx) % 90 < 70 && y > vy + 380 - alto {
-                            c = if col == 3 { [0xE8, 0x83, 0x3A] } else { [0x5B, 0x8D, 0xEF] };
+                            c = if col == 3 {
+                                [0xE8, 0x83, 0x3A]
+                            } else {
+                                [0x5B, 0x8D, 0xEF]
+                            };
                         }
                     }
                 }
@@ -105,10 +109,30 @@ fn velo_con_hueco(p: &pixpin_render::Pintor, s: RectF) {
     let velo = Color::oscurecido();
     let (w, h) = (ANCHO as f32, ALTO as f32);
     for r in [
-        RectF { x: 0.0, y: 0.0, ancho: w, alto: s.y },
-        RectF { x: 0.0, y: s.y + s.alto, ancho: w, alto: h - s.y - s.alto },
-        RectF { x: 0.0, y: s.y, ancho: s.x, alto: s.alto },
-        RectF { x: s.x + s.ancho, y: s.y, ancho: w - s.x - s.ancho, alto: s.alto },
+        RectF {
+            x: 0.0,
+            y: 0.0,
+            ancho: w,
+            alto: s.y,
+        },
+        RectF {
+            x: 0.0,
+            y: s.y + s.alto,
+            ancho: w,
+            alto: h - s.y - s.alto,
+        },
+        RectF {
+            x: 0.0,
+            y: s.y,
+            ancho: s.x,
+            alto: s.alto,
+        },
+        RectF {
+            x: s.x + s.ancho,
+            y: s.y,
+            ancho: w - s.x - s.ancho,
+            alto: s.alto,
+        },
     ] {
         p.rellenar(r, velo);
     }
@@ -189,7 +213,15 @@ fn muestra_captura2_elegir() {
             p.bitmap(&fondo, todo, None, false);
             let r = l.r(ventana);
             velo_con_hueco(p, r);
-            p.rellenar(r, Color { r: 0.04, g: 0.52, b: 1.0, a: 0.08 });
+            p.rellenar(
+                r,
+                Color {
+                    r: 0.04,
+                    g: 0.52,
+                    b: 1.0,
+                    a: 0.08,
+                },
+            );
             p.trazar(r, 3.0, p2::AZUL);
             p2::pintar_pistas(p, l, d2::fila_de_pistas(trabajo, 100), &s.contexto.textos);
             let titulo = s.ventana_en(cursor).unwrap().titulo.clone();
@@ -198,10 +230,28 @@ fn muestra_captura2_elegir() {
             let et = d2::etiqueta_de_ventana(ventana, w, pantalla, 100);
             p2::pintar_etiqueta(p, l, et, &titulo, (620, 400), &pista);
             let b = BarraModos::colocar(trabajo, 100, true);
-            p2::pintar_modos(p, l, &b, &s, &s.contexto.textos, Punto { x: 0, y: 0 }, (620, 400));
+            p2::pintar_modos(
+                p,
+                l,
+                &b,
+                &s,
+                &s.contexto.textos,
+                Punto { x: 0, y: 0 },
+                (620, 400),
+            );
             let lupa = PanelLupa::colocar(cursor, pantalla, 100);
             let region = lupa.region(cursor, pantalla);
-            p2::pintar_lupa(p, l, &lupa, &fondo, l.r(region), cursor, color, &s, &s.contexto.textos);
+            p2::pintar_lupa(
+                p,
+                l,
+                &lupa,
+                &fondo,
+                l.r(region),
+                cursor,
+                color,
+                &s,
+                &s.contexto.textos,
+            );
         })
         .expect("pintar");
     fuera.esperar_gpu().unwrap();
@@ -321,7 +371,16 @@ fn muestra_captura2_despues() {
             velo_con_hueco(p, r);
             s.anotacion.as_mut().unwrap().pintar(p, r);
             p.trazar(r, 2.0, Color::ACENTO);
-            p2::pintar_despues(p, l, &a, &b, &s, &s.contexto.textos, raton, (sel.ancho, sel.alto));
+            p2::pintar_despues(
+                p,
+                l,
+                &a,
+                &b,
+                &s,
+                &s.contexto.textos,
+                raton,
+                (sel.ancho, sel.alto),
+            );
             p2::pintar_selector(
                 p,
                 l,
@@ -345,7 +404,10 @@ fn muestra_captura2_despues() {
         .unwrap()
         .hornear(&mut horneada, &motor, d.d3d())
         .unwrap();
-    assert_ne!(horneada.pixeles, foto_horno.pixeles, "lo anotado tiene que verse");
+    assert_ne!(
+        horneada.pixeles, foto_horno.pixeles,
+        "lo anotado tiene que verse"
+    );
     guardar(
         "captura2-horneada.png",
         horneada.ancho,

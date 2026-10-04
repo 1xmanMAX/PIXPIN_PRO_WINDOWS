@@ -102,15 +102,17 @@ pub fn abrir(idioma: Idioma, ubicacion: Ubicacion, opciones: Opciones) {
         return;
     }
     ABIERTA.store(-1, Ordering::SeqCst);
-    let lanzado = std::thread::Builder::new().name("buscar-todo".into()).spawn(move || {
-        let _com = pixpin_shell::ComDelHilo::iniciar();
-        let textos = Catalogo::nuevo(idioma);
-        let hecho = Recursos::nuevos().and_then(|r| bucle(&r, &textos, &ubicacion, &opciones));
-        if let Err(e) = hecho {
-            tracing::warn!(?e, "no se pudo abrir el buscador");
-        }
-        ABIERTA.store(0, Ordering::SeqCst);
-    });
+    let lanzado = std::thread::Builder::new()
+        .name("buscar-todo".into())
+        .spawn(move || {
+            let _com = pixpin_shell::ComDelHilo::iniciar();
+            let textos = Catalogo::nuevo(idioma);
+            let hecho = Recursos::nuevos().and_then(|r| bucle(&r, &textos, &ubicacion, &opciones));
+            if let Err(e) = hecho {
+                tracing::warn!(?e, "no se pudo abrir el buscador");
+            }
+            ABIERTA.store(0, Ordering::SeqCst);
+        });
     if let Err(e) = lanzado {
         tracing::warn!(?e, "no se pudo lanzar el hilo del buscador");
         ABIERTA.store(0, Ordering::SeqCst);
@@ -132,25 +134,37 @@ struct FotoLeida {
 fn lanzar_lector(hwnd: isize) -> (Sender<String>, Receiver<FotoLeida>) {
     let (pedir, pedidas) = channel::<String>();
     let (dar, dadas) = channel::<FotoLeida>();
-    let _ = std::thread::Builder::new().name("buscar-fotos".into()).spawn(move || {
-        for ruta in pedidas {
-            let leida = pixpin_codec::imagen::cargar(Path::new(&ruta)).ok();
-            let original = leida.as_ref().map_or((0, 0), |i| (i.ancho, i.alto));
-            let imagen = leida.and_then(|i| {
-                let lado = i.ancho.max(i.alto);
-                if lado <= LADO_FOTO {
-                    return Some(i);
+    let _ = std::thread::Builder::new()
+        .name("buscar-fotos".into())
+        .spawn(move || {
+            for ruta in pedidas {
+                let leida = pixpin_codec::imagen::cargar(Path::new(&ruta)).ok();
+                let original = leida.as_ref().map_or((0, 0), |i| (i.ancho, i.alto));
+                let imagen = leida.and_then(|i| {
+                    let lado = i.ancho.max(i.alto);
+                    if lado <= LADO_FOTO {
+                        return Some(i);
+                    }
+                    let k = LADO_FOTO as f32 / lado as f32;
+                    let (w, h) = (
+                        ((i.ancho as f32 * k) as u32).max(1),
+                        ((i.alto as f32 * k) as u32).max(1),
+                    );
+                    pixpin_codec::imagen::redimensionar(i, w, h).ok()
+                });
+                if dar
+                    .send(FotoLeida {
+                        ruta,
+                        imagen,
+                        original,
+                    })
+                    .is_err()
+                {
+                    break;
                 }
-                let k = LADO_FOTO as f32 / lado as f32;
-                let (w, h) = (((i.ancho as f32 * k) as u32).max(1), ((i.alto as f32 * k) as u32).max(1));
-                pixpin_codec::imagen::redimensionar(i, w, h).ok()
-            });
-            if dar.send(FotoLeida { ruta, imagen, original }).is_err() {
-                break;
+                pixpin_shell::overlay::despertar(hwnd);
             }
-            pixpin_shell::overlay::despertar(hwnd);
-        }
-    });
+        });
     (pedir, dadas)
 }
 
@@ -205,7 +219,12 @@ impl Fuente {
 /// **Los resultados de lo escrito**: los del plugin, y al buscar en todo
 /// (sin verbo ni letra delante) tambien las capturas que coincidan, que el
 /// plugin solo da con «capturas …».
-fn resultados_de(consulta: &str, pestana: Pestana, fuente: &mut Fuente, recientes: &Recientes) -> Vec<Resultado> {
+fn resultados_de(
+    consulta: &str,
+    pestana: Pestana,
+    fuente: &mut Fuente,
+    recientes: &Recientes,
+) -> Vec<Resultado> {
     let ctx = fuente.contexto();
     let proyectos = fuente.datos.proyectos();
     if consulta.trim().is_empty() {
@@ -229,8 +248,16 @@ fn resultados_de(consulta: &str, pestana: Pestana, fuente: &mut Fuente, reciente
 
 /// «Abierto hace poco»: lo elegido aqui, y si es poco, la ultima captura y
 /// los ultimos proyectos (lo que tambien ensena Flow sin escribir nada).
-fn abiertos(recientes: &Recientes, proyectos: &[pixpin_lanzador::datos::Proyecto], ctx: &Contexto) -> Vec<Resultado> {
-    let mut v: Vec<Resultado> = recientes.abiertos.iter().filter_map(|a| a.resultado()).collect();
+fn abiertos(
+    recientes: &Recientes,
+    proyectos: &[pixpin_lanzador::datos::Proyecto],
+    ctx: &Contexto,
+) -> Vec<Resultado> {
+    let mut v: Vec<Resultado> = recientes
+        .abiertos
+        .iter()
+        .filter_map(|a| a.resultado())
+        .collect();
     if v.len() < ABIERTOS_A_LA_VISTA {
         if let Some(raiz) = ctx.raiz.as_deref() {
             if let Some(c) = capturas::leer(raiz, ctx.ahora).first() {
@@ -268,7 +295,11 @@ fn letras(textos: &Catalogo, raiz: &Path, opciones: &Opciones) -> Vec<LetraRapid
                 letra: l,
                 titulo: textos.t(&format!("buscar-todo-letra-{l}")),
                 sub,
-                atajo: if l == 'c' { opciones.atajo_capturar.clone() } else { None },
+                atajo: if l == 'c' {
+                    opciones.atajo_capturar.clone()
+                } else {
+                    None
+                },
             }
         })
         .collect()
@@ -313,7 +344,12 @@ impl Ventana<'_> {
 
     fn buscar(&mut self, mantener: bool) {
         let antes = self.estado.elegido;
-        let v = resultados_de(&self.estado.consulta, self.estado.pestana, &mut self.fuente, &self.recientes);
+        let v = resultados_de(
+            &self.estado.consulta,
+            self.estado.pestana,
+            &mut self.fuente,
+            &self.recientes,
+        );
         self.estado.poner_resultados(v);
         if mantener {
             self.estado.elegido = antes.min(self.estado.visibles().len().saturating_sub(1));
@@ -329,7 +365,10 @@ impl Ventana<'_> {
     fn pedir(&self, p: &Value) {
         let json = p.to_string();
         let r = if self.opciones.mensajes != 0 {
-            pixpin_shell::mensajero::enviar_pedido_a(windows::Win32::Foundation::HWND(self.opciones.mensajes as *mut _), &json)
+            pixpin_shell::mensajero::enviar_pedido_a(
+                windows::Win32::Foundation::HWND(self.opciones.mensajes as *mut _),
+                &json,
+            )
         } else {
             pixpin_shell::mensajero::enviar_pedido(&json)
         };
@@ -394,7 +433,12 @@ impl Ventana<'_> {
             }
             Accion::PegarImagen { consulta, numero } => {
                 let ahora = pixpin_lanzador::datos::ahora_ms();
-                let _ = imagenes::pegar_en_borrador(&self.raiz(), &imagenes::WINDOWS, Some(numero), ahora);
+                let _ = imagenes::pegar_en_borrador(
+                    &self.raiz(),
+                    &imagenes::WINDOWS,
+                    Some(numero),
+                    ahora,
+                );
                 self.estado.poner_consulta(&consulta);
                 Tras::Buscar
             }
@@ -422,7 +466,11 @@ impl Ventana<'_> {
             return Tras::Buscar;
         }
         if let Some(pixpin_codec::ContenidoPortapapeles::Texto(t)) = pixpin_codec::leer() {
-            let linea = t.lines().map(str::trim).find(|l| !l.is_empty()).unwrap_or("");
+            let linea = t
+                .lines()
+                .map(str::trim)
+                .find(|l| !l.is_empty())
+                .unwrap_or("");
             if linea.is_empty() {
                 return Tras::Nada;
             }
@@ -444,7 +492,9 @@ impl Ventana<'_> {
         }
         let ahora = pixpin_shell::entorno::ahora_utc_ms();
         let nombre = crate::caducidad_capturas::nombre(&ruta);
-        let conservada = crate::caducidad_capturas::leer(&raiz, ahora).conservadas.contains(&nombre);
+        let conservada = crate::caducidad_capturas::leer(&raiz, ahora)
+            .conservadas
+            .contains(&nombre);
         match crate::galeria_capturas::a_la_papelera(&raiz, &ruta) {
             Ok(en_papelera) => {
                 if conservada {
@@ -453,7 +503,11 @@ impl Ventana<'_> {
                     });
                 }
                 tracing::info!(ruta = %ruta.display(), "captura a la papelera desde el buscador");
-                self.borrada = Some(Borrada { original: ruta, en_papelera, conservada });
+                self.borrada = Some(Borrada {
+                    original: ruta,
+                    en_papelera,
+                    conservada,
+                });
                 self.estado.se_puede_deshacer = true;
                 self.avisar("buscar-todo-borrada");
                 Tras::Buscar
@@ -466,7 +520,9 @@ impl Ventana<'_> {
     }
 
     fn deshacer(&mut self) -> Tras {
-        let Some(b) = self.borrada.take() else { return Tras::Nada };
+        let Some(b) = self.borrada.take() else {
+            return Tras::Nada;
+        };
         self.estado.se_puede_deshacer = false;
         self.aviso = None;
         if b.original.exists() || std::fs::rename(&b.en_papelera, &b.original).is_err() {
@@ -475,9 +531,13 @@ impl Ventana<'_> {
         }
         if b.conservada {
             let nombre = crate::caducidad_capturas::nombre(&b.original);
-            let _ = crate::caducidad_capturas::cambiar(&self.raiz(), pixpin_shell::entorno::ahora_utc_ms(), |r| {
-                r.conservadas.insert(nombre);
-            });
+            let _ = crate::caducidad_capturas::cambiar(
+                &self.raiz(),
+                pixpin_shell::entorno::ahora_utc_ms(),
+                |r| {
+                    r.conservadas.insert(nombre);
+                },
+            );
         }
         Tras::Buscar
     }
@@ -510,22 +570,28 @@ impl Ventana<'_> {
             Orden::Pegar => self.pegar(),
             Orden::BorrarCaptura(r) => self.borrar_captura(&r),
             Orden::Deshacer => self.deshacer(),
-            Orden::AbrirCon(f) => match pixpin_shell::abrir_con_otra::abrir_con_otra(hwnd, Path::new(&f)) {
-                Ok(true) => Tras::Cerrar,
-                Ok(false) => Tras::Nada,
-                Err(e) => {
-                    tracing::warn!(?e, "no se pudo abrir «Abrir con»");
-                    Tras::Nada
+            Orden::AbrirCon(f) => {
+                match pixpin_shell::abrir_con_otra::abrir_con_otra(hwnd, Path::new(&f)) {
+                    Ok(true) => Tras::Cerrar,
+                    Ok(false) => Tras::Nada,
+                    Err(e) => {
+                        tracing::warn!(?e, "no se pudo abrir «Abrir con»");
+                        Tras::Nada
+                    }
                 }
-            },
+            }
         }
     }
 
     /// Lo que sabe la vista previa del elegido (las capturas: medidas, peso
     /// y cuando caducan).
     fn detalle(&self, fotos: &Fotos) -> Detalle {
-        let Some(r) = self.estado.elegido() else { return Detalle::default() };
-        let Some(ruta) = modelo::ruta_de_captura(r) else { return Detalle::default() };
+        let Some(r) = self.estado.elegido() else {
+            return Detalle::default();
+        };
+        let Some(ruta) = modelo::ruta_de_captura(r) else {
+            return Detalle::default();
+        };
         let mut d = Detalle::default();
         let peso = std::fs::metadata(&ruta).map(|m| m.len()).unwrap_or(0);
         if let Some((w, h)) = fotos.originales.get(&ruta).filter(|(w, _)| *w > 0) {
@@ -536,7 +602,10 @@ impl Ventana<'_> {
             d.medidas = Some(self.textos.t_args("buscar-todo-medidas", &args));
         }
         let ahora = pixpin_lanzador::datos::ahora_ms();
-        if let Some(c) = capturas::leer(&self.fuente.raiz, ahora).into_iter().find(|c| c.ruta.to_string_lossy() == ruta) {
+        if let Some(c) = capturas::leer(&self.fuente.raiz, ahora)
+            .into_iter()
+            .find(|c| c.ruta.to_string_lossy() == ruta)
+        {
             d.caducidad = Some(match c.se_va {
                 None => (self.textos.t("buscar-todo-conservada"), false),
                 Some(t) => {
@@ -567,7 +636,12 @@ fn peso_legible(bytes: u64) -> String {
 
 // ---------------------------------------------------------------- bucle
 
-fn bucle(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion, opciones: &Opciones) -> Result<()> {
+fn bucle(
+    recursos: &Recursos,
+    textos: &Catalogo,
+    ubicacion: &Ubicacion,
+    opciones: &Opciones,
+) -> Result<()> {
     let monitores = pixpin_capture::enumerar_monitores().context("sin monitores")?;
     let monitor = pixpin_shell::pantalla_de::monitor_de_la_ventana_activa()
         .and_then(|r| monitores.monitores().iter().find(|m| m.area == r))
@@ -575,27 +649,46 @@ fn bucle(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion, opciones
         .context("sin monitor")?
         .to_owned();
     let e = monitor.escala_por_cien as f32 / 100.0;
-    let mut marco = crate::ventanita::centrado(monitor.area_trabajo, disposicion::ANCHO, disposicion::ALTO, monitor.escala_por_cien);
+    let mut marco = crate::ventanita::centrado(
+        monitor.area_trabajo,
+        disposicion::ANCHO,
+        disposicion::ALTO,
+        monitor.escala_por_cien,
+    );
     // Algo por encima del centro, como los buscadores del sistema.
     let area = monitor.area_trabajo;
     marco.y = area.y + ((area.alto - marco.alto) as i32 / 4).max(0);
-    let ventana = VentanaOverlay::nueva_normal(marco, &textos.t("buscar-todo-titulo")).context("no se pudo abrir el buscador")?;
+    let ventana = VentanaOverlay::nueva_normal(marco, &textos.t("buscar-todo-titulo"))
+        .context("no se pudo abrir el buscador")?;
     let motor = recursos.motor();
-    let superficie = Superficie::nueva(&motor, &recursos.d3d(), ventana.handle(), marco.ancho, marco.alto)
-        .context("sin superficie para el buscador")?;
+    let superficie = Superficie::nueva(
+        &motor,
+        &recursos.d3d(),
+        ventana.handle(),
+        marco.ancho,
+        marco.alto,
+    )
+    .context("sin superficie para el buscador")?;
     ventana.mostrar();
     ventana.enfocar();
     let hwnd = ventana.handle().0 as isize;
     ABIERTA.store(hwnd, Ordering::SeqCst);
 
     let raiz = ubicacion.raiz().to_path_buf();
-    let pal = if pixpin_shell::entorno::tema_claro() && !crate::tema_cosmos::activo() { Paleta::DIA } else { Paleta::NOCHE };
+    let pal = if pixpin_shell::entorno::tema_claro() && !crate::tema_cosmos::activo() {
+        Paleta::DIA
+    } else {
+        Paleta::NOCHE
+    };
     let letras_rapidas = letras(textos, &raiz, opciones);
     let mut v = Ventana {
         textos,
         // Con la cache de disco del plugin: abrir no relee todos los
         // proyectos si Flow ya los leyo.
-        fuente: Fuente { raiz: raiz.clone(), datos: Datos::nuevo(raiz.clone()).con_cache_en_disco() },
+        fuente: Fuente {
+            raiz: raiz.clone(),
+            datos: Datos::nuevo(raiz.clone()).con_cache_en_disco(),
+        },
         opciones,
         estado: Estado::default(),
         recientes: Recientes::leer(&raiz),
@@ -630,15 +723,27 @@ fn bucle(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion, opciones
                     tras.push(clic(&mut v, &dispo, raton, ventana.handle()));
                 }
                 EventoOverlay::Rueda(m) => {
-                    let paso = if m > 0 { modelo::VK_UP } else { modelo::VK_DOWN };
+                    let paso = if m > 0 {
+                        modelo::VK_UP
+                    } else {
+                        modelo::VK_DOWN
+                    };
                     for _ in 0..3 {
                         v.estado.tecla(paso, false, false, false);
                     }
                 }
-                EventoOverlay::Tecla { vk, shift, ctrl, alt } => {
+                EventoOverlay::Tecla {
+                    vk,
+                    shift,
+                    ctrl,
+                    alt,
+                } => {
                     // La flecha derecha abre el menu del plugin (lo sabe la
                     // ventana, no el modelo).
-                    let o = if vk == modelo::VK_RIGHT && v.estado.menu.is_none() && !v.estado.es_inicio() {
+                    let o = if vk == modelo::VK_RIGHT
+                        && v.estado.menu.is_none()
+                        && !v.estado.es_inicio()
+                    {
                         let opciones = v.opciones_de_menu();
                         v.estado.abrir_menu(opciones)
                     } else {
@@ -677,7 +782,9 @@ fn bucle(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion, opciones
             v.buscar(true);
             pintar = true;
         }
-        if v.aviso.as_ref().is_some_and(|(_, t)| t.elapsed() > Duration::from_millis(if v.borrada.is_some() { 6_000 } else { 2_000 })) {
+        if v.aviso.as_ref().is_some_and(|(_, t)| {
+            t.elapsed() > Duration::from_millis(if v.borrada.is_some() { 6_000 } else { 2_000 })
+        }) {
             v.aviso = None;
             v.borrada = None;
             v.estado.se_puede_deshacer = false;
@@ -691,7 +798,13 @@ fn bucle(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion, opciones
         if pintar {
             // Las fotos que hacen falta: la de cada fila visible y la del
             // elegido.
-            for r in v.estado.visibles().iter().take(30).map(|i| &v.estado.resultados[*i]) {
+            for r in v
+                .estado
+                .visibles()
+                .iter()
+                .take(30)
+                .map(|i| &v.estado.resultados[*i])
+            {
                 if let Some(f) = r.vista_previa.as_deref().or(r.icono.as_deref()) {
                     fotos.pedir(f, &pedir_foto);
                 }
@@ -713,14 +826,26 @@ fn bucle(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion, opciones
             };
             if let Ok(d) = superficie.empezar(&motor) {
                 let _ = motor.dibujar(&d, |p: &Pintor| {
-                    dispo = pintar::pintar(p, &vista, &pal, textos, marco.ancho as f32, marco.alto as f32, e);
+                    dispo = pintar::pintar(
+                        p,
+                        &vista,
+                        &pal,
+                        textos,
+                        marco.ancho as f32,
+                        marco.alto as f32,
+                        e,
+                    );
                 });
                 let _ = superficie.presentar();
             }
             scroll = dispo.scroll;
             pintar = false;
         }
-        let espera = if v.aviso.is_some() || v.refrescar.is_some() { 200 } else { 1_000 };
+        let espera = if v.aviso.is_some() || v.refrescar.is_some() {
+            200
+        } else {
+            1_000
+        };
         pixpin_shell::overlay::esperar_eventos(Some(espera));
     }
     v.fuente.datos.guardar_cache();
@@ -729,7 +854,12 @@ fn bucle(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion, opciones
 }
 
 /// Un clic: lo que hay debajo segun la disposicion del ultimo fotograma.
-fn clic(v: &mut Ventana, d: &disposicion::Disposicion, p: (f32, f32), hwnd: windows::Win32::Foundation::HWND) -> Tras {
+fn clic(
+    v: &mut Ventana,
+    d: &disposicion::Disposicion,
+    p: (f32, f32),
+    hwnd: windows::Win32::Foundation::HWND,
+) -> Tras {
     if let Some(z) = d.zona_en(p) {
         let o = match z {
             Zona::Borrar => v.estado.poner_consulta(""),
@@ -755,12 +885,18 @@ fn clic(v: &mut Ventana, d: &disposicion::Disposicion, p: (f32, f32), hwnd: wind
             }
             Zona::Letra(l) => v.estado.poner_consulta(&format!("{l} ")),
             Zona::OpcionMenu(i) => match v.estado.menu.as_ref().and_then(|m| m.opciones.get(i)) {
-                Some(o) => Orden::Hacer { accion: o.accion.clone(), recordar: false },
+                Some(o) => Orden::Hacer {
+                    accion: o.accion.clone(),
+                    recordar: false,
+                },
                 None => Orden::Nada,
             },
             Zona::Conservar => match v.estado.elegido().and_then(modelo::ruta_de_captura) {
                 Some(r) => Orden::Hacer {
-                    accion: Accion::Pedido(resultados::pedido("conservar_captura", json!({ "ruta": r }))),
+                    accion: Accion::Pedido(resultados::pedido(
+                        "conservar_captura",
+                        json!({ "ruta": r }),
+                    )),
                     recordar: false,
                 },
                 None => Orden::Nada,
@@ -796,7 +932,10 @@ mod pruebas {
     }
 
     fn datos_de_prueba(nombre: &str) -> PathBuf {
-        let raiz = std::env::temp_dir().join(format!("pixpin-buscar-todo-{nombre}-{}", std::process::id()));
+        let raiz = std::env::temp_dir().join(format!(
+            "pixpin-buscar-todo-{nombre}-{}",
+            std::process::id()
+        ));
         let _ = std::fs::remove_dir_all(&raiz);
         std::fs::create_dir_all(raiz.join("capturas")).unwrap();
         raiz
@@ -805,13 +944,23 @@ mod pruebas {
     #[test]
     fn al_buscar_en_todo_salen_tambien_las_capturas_y_con_una_letra_no() {
         let raiz = datos_de_prueba("capturas");
-        std::fs::write(raiz.join("capturas").join("grieta-muro.png"), b"no es un png de verdad").unwrap();
+        std::fs::write(
+            raiz.join("capturas").join("grieta-muro.png"),
+            b"no es un png de verdad",
+        )
+        .unwrap();
         std::fs::write(raiz.join("capturas").join("otra.png"), b"x").unwrap();
-        let mut f = Fuente { raiz: raiz.clone(), datos: Datos::nuevo(raiz.clone()) };
+        let mut f = Fuente {
+            raiz: raiz.clone(),
+            datos: Datos::nuevo(raiz.clone()),
+        };
         f.datos.vigilar = false;
         let r = resultados_de("grieta", Pestana::Todo, &mut f, &Recientes::default());
-        let caps: Vec<&str> =
-            r.iter().filter(|r| modelo::pestana_de(r) == Pestana::Capturas).map(|r| r.titulo.as_str()).collect();
+        let caps: Vec<&str> = r
+            .iter()
+            .filter(|r| modelo::pestana_de(r) == Pestana::Capturas)
+            .map(|r| r.titulo.as_str())
+            .collect();
         assert_eq!(caps, vec!["grieta-muro.png"]);
         // Caso negativo: «t grieta» es apuntar una tarea, no buscar capturas.
         let r = resultados_de("t grieta", Pestana::Todo, &mut f, &Recientes::default());
@@ -824,7 +973,10 @@ mod pruebas {
     fn con_la_caja_vacia_salen_los_abiertos_y_la_ultima_captura() {
         let raiz = datos_de_prueba("vacia");
         std::fs::write(raiz.join("capturas").join("ultima.png"), b"x").unwrap();
-        let mut f = Fuente { raiz: raiz.clone(), datos: Datos::nuevo(raiz.clone()) };
+        let mut f = Fuente {
+            raiz: raiz.clone(),
+            datos: Datos::nuevo(raiz.clone()),
+        };
         f.datos.vigilar = false;
         let r = resultados_de("", Pestana::Todo, &mut f, &Recientes::default());
         assert_eq!(r.first().map(|r| r.titulo.as_str()), Some("ultima.png"));
@@ -833,7 +985,10 @@ mod pruebas {
         assert!(r.iter().any(|r| r.titulo == "ultima.png"));
         // Caso negativo: sin nada en disco, la caja vacia no inventa nada.
         let vacia = datos_de_prueba("nada");
-        let mut f = Fuente { raiz: vacia.clone(), datos: Datos::nuevo(vacia.clone()) };
+        let mut f = Fuente {
+            raiz: vacia.clone(),
+            datos: Datos::nuevo(vacia.clone()),
+        };
         f.datos.vigilar = false;
         assert!(resultados_de("", Pestana::Todo, &mut f, &Recientes::default()).is_empty());
         let _ = std::fs::remove_dir_all(&raiz);
@@ -844,29 +999,63 @@ mod pruebas {
     fn las_letras_rapidas_son_las_del_plugin() {
         let raiz = datos_de_prueba("letras");
         let textos = Catalogo::nuevo(Idioma::Espanol);
-        let l = letras(&textos, &raiz, &Opciones { atajo_capturar: Some("Ctrl Alt X".into()), ..Default::default() });
+        let l = letras(
+            &textos,
+            &raiz,
+            &Opciones {
+                atajo_capturar: Some("Ctrl Alt X".into()),
+                ..Default::default()
+            },
+        );
         let cuales: String = l.iter().map(|l| l.letra).collect();
         assert_eq!(cuales, "tnlgcua");
         for x in &l {
             assert!(Funcion::atajo(&x.letra.to_string()).is_some());
-            assert!(!x.titulo.starts_with("buscar-todo"), "falta el texto de «{}»", x.letra);
+            assert!(
+                !x.titulo.starts_with("buscar-todo"),
+                "falta el texto de «{}»",
+                x.letra
+            );
         }
         assert_eq!(l[4].atajo.as_deref(), Some("Ctrl Alt X"));
         // Caso negativo: solo «c» lleva el atajo de capturar.
-        assert!(l.iter().filter(|x| x.letra != 'c').all(|x| x.atajo.is_none()));
-        assert_eq!(l[5].sub, textos.t("buscar-todo-letra-u-sub-nada"), "sin capturas lo dice");
+        assert!(
+            l.iter()
+                .filter(|x| x.letra != 'c')
+                .all(|x| x.atajo.is_none())
+        );
+        assert_eq!(
+            l[5].sub,
+            textos.t("buscar-todo-letra-u-sub-nada"),
+            "sin capturas lo dice"
+        );
         let _ = std::fs::remove_dir_all(&raiz);
     }
 
     #[test]
     fn la_chapita_de_letra_sale_de_la_funcion_o_de_lo_que_crea() {
-        let mut f = modelo::resultado("Tareas", "", resultados::glifo::TAREAS, Accion::Consulta("tareas ".into()));
+        let mut f = modelo::resultado(
+            "Tareas",
+            "",
+            resultados::glifo::TAREAS,
+            Accion::Consulta("tareas ".into()),
+        );
         f.clave = Some("funcion/tareas".into());
         assert_eq!(pintar::letra_de(&f), Some('t'));
-        let apuntar = modelo::resultado("Apuntar", "", resultados::glifo::ANADIR, Accion::Pedido(resultados::pedido("anadir_tarea", json!({}))));
+        let apuntar = modelo::resultado(
+            "Apuntar",
+            "",
+            resultados::glifo::ANADIR,
+            Accion::Pedido(resultados::pedido("anadir_tarea", json!({}))),
+        );
         assert_eq!(pintar::letra_de(&apuntar), Some('t'));
         // Caso negativo: un proyecto o una funcion sin letra no llevan.
-        let mut p = modelo::resultado("Thesis", "", resultados::glifo::PROYECTO, Accion::Consulta("x".into()));
+        let mut p = modelo::resultado(
+            "Thesis",
+            "",
+            resultados::glifo::PROYECTO,
+            Accion::Consulta("x".into()),
+        );
         p.clave = Some("proyecto/t".into());
         assert_eq!(pintar::letra_de(&p), None);
         p.clave = Some("funcion/grabar".into());
@@ -895,7 +1084,10 @@ mod pruebas {
         c.vista_previa = Some(foto.clone());
         c.fichero = Some(foto.clone());
         c.contexto = Some(json!({ "tipo": "captura", "ruta": foto, "conservada": false }));
-        c.ayuda_subtitulo = Some("«Grieta en el muro norte, revisar el lunes» — enviada al chat de Obra Miraflores".into());
+        c.ayuda_subtitulo = Some(
+            "«Grieta en el muro norte, revisar el lunes» — enviada al chat de Obra Miraflores"
+                .into(),
+        );
         let mut t = r(
             "☐ Revisar la grieta del muro con el ingeniero",
             "Tarea · Obra Miraflores · vence el lunes · 2 adjuntos",
@@ -912,17 +1104,29 @@ mod pruebas {
             Accion::Consulta("x".into()),
             Some("fichero/x.pdf"),
         );
-        f.fichero = Some(FOTO.replace("capturas", "obra").replace("grieta.png", "Informe de grietas – bloque B.pdf"));
+        f.fichero = Some(
+            FOTO.replace("capturas", "obra")
+                .replace("grieta.png", "Informe de grietas – bloque B.pdf"),
+        );
         vec![
             c,
             t,
-            r("Sellar las grietas antes de pintar", "Lección · Obra Miraflores · repasar hoy", resultados::glifo::LECCION, Accion::Consulta("x".into()), Some("leccion/1")),
+            r(
+                "Sellar las grietas antes de pintar",
+                "Lección · Obra Miraflores · repasar hoy",
+                resultados::glifo::LECCION,
+                Accion::Consulta("x".into()),
+                Some("leccion/1"),
+            ),
             f,
             r(
                 "Apuntar tarea: grie",
                 "Tarea · Inbox · Intro: apuntarla",
                 resultados::glifo::ANADIR,
-                Accion::Pedido(resultados::pedido("anadir_tarea", json!({ "texto": "grie" }))),
+                Accion::Pedido(resultados::pedido(
+                    "anadir_tarea",
+                    json!({ "texto": "grie" }),
+                )),
                 None,
             ),
         ]
@@ -935,19 +1139,32 @@ mod pruebas {
     fn muestras_del_buscador() {
         let textos = Catalogo::nuevo(Idioma::Espanol);
         let raiz = datos_de_prueba("muestras");
-        let letras = letras(&textos, &raiz, &Opciones { atajo_capturar: Some("Ctrl Alt X".into()), ..Default::default() });
-        let busquedas: Vec<String> = ["grieta", "factura temu", "bibliografía tesis", "IEN 2024"].map(String::from).to_vec();
+        let letras = letras(
+            &textos,
+            &raiz,
+            &Opciones {
+                atajo_capturar: Some("Ctrl Alt X".into()),
+                ..Default::default()
+            },
+        );
+        let busquedas: Vec<String> = ["grieta", "factura temu", "bibliografía tesis", "IEN 2024"]
+            .map(String::from)
+            .to_vec();
         let mut inicio = Estado::default();
         let mut abiertos = de_la_maqueta();
         abiertos.truncate(4);
         abiertos.iter_mut().for_each(|r| r.resaltado.clear());
         inicio.poner_resultados(abiertos);
-        let mut con = Estado { consulta: "grie".into(), ..Default::default() };
+        let mut con = Estado {
+            consulta: "grie".into(),
+            ..Default::default()
+        };
         con.poner_resultados(de_la_maqueta());
         let mut menu = con.clone();
         menu.tecla(modelo::VK_DOWN, false, false, false);
         let ctx = Contexto::con("", 0);
-        let opciones = pixpin_lanzador::menu::menu(menu.elegido().unwrap().contexto.as_ref().unwrap(), &ctx);
+        let opciones =
+            pixpin_lanzador::menu::menu(menu.elegido().unwrap().contexto.as_ref().unwrap(), &ctx);
         menu.abrir_menu(opciones);
         let mut borrada = con.clone();
         borrada.se_puede_deshacer = true;
@@ -957,10 +1174,19 @@ mod pruebas {
             ("buscar2-menu", &menu, Paleta::NOCHE, 1.0, None),
             ("buscar2-resultados-dia", &con, Paleta::DIA, 1.0, None),
             ("buscar2-vacio-150", &inicio, Paleta::NOCHE, 1.5, None),
-            ("buscar2-deshacer", &borrada, Paleta::NOCHE, 1.0, Some("Captura borrada")),
+            (
+                "buscar2-deshacer",
+                &borrada,
+                Paleta::NOCHE,
+                1.0,
+                Some("Captura borrada"),
+            ),
         ];
         for (nombre, estado, pal, e, aviso) in casos {
-            let (w, h) = ((disposicion::ANCHO as f32 * e) as u32, (disposicion::ALTO as f32 * e) as u32);
+            let (w, h) = (
+                (disposicion::ANCHO as f32 * e) as u32,
+                (disposicion::ALTO as f32 * e) as u32,
+            );
             crate::ventanita::muestra(nombre, w, h, |p, motor| {
                 // Una «foto» de degradado para la captura.
                 let (fw, fh) = (480u32, 270u32);
@@ -984,7 +1210,11 @@ mod pruebas {
                     letras: &letras,
                     atajo: Some("Ctrl Espacio"),
                     fotos: &fotos,
-                    detalle: if es_captura { detalle } else { Detalle::default() },
+                    detalle: if es_captura {
+                        detalle
+                    } else {
+                        Detalle::default()
+                    },
                     hay_menu: true,
                     aviso,
                     raton: (-1.0, -1.0),

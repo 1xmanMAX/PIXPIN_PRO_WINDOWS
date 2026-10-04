@@ -37,7 +37,8 @@ pub const ANCHO_EN_UNIDADES: f64 = 1400.0;
 /// [`Plano::se_manda_como_lineas`].
 pub fn de_bytes(bytes: &[u8], pagina: usize, ancho_en_unidades: f64) -> Option<String> {
     let p = plano::de_bytes(bytes, pagina)?;
-    p.se_manda_como_lineas().then(|| a_json(&p, ancho_en_unidades))
+    p.se_manda_como_lineas()
+        .then(|| a_json(&p, ancho_en_unidades))
 }
 
 /// **Varias paginas de una vez** (desde 0), leyendo el indice del PDF una
@@ -46,7 +47,10 @@ pub fn de_bytes(bytes: &[u8], pagina: usize, ancho_en_unidades: f64) -> Option<S
 pub fn de_paginas(bytes: &[u8], cuales: &[usize], ancho_en_unidades: f64) -> Vec<Option<String>> {
     let mut salida = Vec::with_capacity(cuales.len());
     plano::con_cada(bytes, cuales, |_, p| {
-        salida.push(p.filter(Plano::se_manda_como_lineas).map(|p| a_json(&p, ancho_en_unidades)));
+        salida.push(
+            p.filter(Plano::se_manda_como_lineas)
+                .map(|p| a_json(&p, ancho_en_unidades)),
+        );
     });
     salida
 }
@@ -122,7 +126,11 @@ pub fn a_json(plano: &Plano, ancho_en_unidades: f64) -> String {
         if i > 0 {
             s.push(',');
         }
-        let f = plano.fotos.iter().find(|f| f.id == *sena).expect("la sena sale de una foto");
+        let f = plano
+            .fotos
+            .iter()
+            .find(|f| f.id == *sena)
+            .expect("la sena sale de una foto");
         let _ = write!(s, "{{\"u\":\"data:{};base64,{}\"", f.tipo, base64(&f.datos));
         if let (Some(m), Some(t)) = (&f.mascara, f.tipo_mascara) {
             let _ = write!(s, ",\"k\":\"data:{t};base64,{}\"", base64(m));
@@ -204,7 +212,10 @@ fn escribir_brocha(b: &Brocha, flujo: &mut Flujo) -> usize {
     } else {
         empalmar(&mut trozos)
     };
-    cabezas.iter().map(|&c| escribir_trozo(b, &trozos, c, flujo)).sum()
+    cabezas
+        .iter()
+        .map(|&c| escribir_trozo(b, &trozos, c, flujo))
+        .sum()
 }
 
 /// Un subcamino: donde empiezan y acaban sus ordenes y sus puntos.
@@ -395,7 +406,10 @@ impl Flujo {
 
 /// DEFLATE crudo (sin cabecera zlib) y en base64: lo que sabe leer `inflar`.
 pub(crate) fn comprimido(datos: &[u8]) -> String {
-    let mut z = flate2::write::DeflateEncoder::new(Vec::with_capacity(datos.len() / 3 + 64), flate2::Compression::best());
+    let mut z = flate2::write::DeflateEncoder::new(
+        Vec::with_capacity(datos.len() / 3 + 64),
+        flate2::Compression::best(),
+    );
     let _ = z.write_all(datos);
     base64(&z.finish().unwrap_or_default())
 }

@@ -25,7 +25,9 @@ pub(super) const C_FONDO: u16 = 210;
 pub(super) const C_LETRA: u16 = 230;
 
 pub(super) fn es_suyo(c: u16) -> bool {
-    matches!(c, C_COMBINAR | C_SEPARAR) || (C_FONDO..C_FONDO + 15).contains(&c) || (C_LETRA..C_LETRA + 15).contains(&c)
+    matches!(c, C_COMBINAR | C_SEPARAR)
+        || (C_FONDO..C_FONDO + 15).contains(&c)
+        || (C_LETRA..C_LETRA + 15).contains(&c)
 }
 
 // Las banderas de `ITextRow::GetCellMergeFlags` (medidas: 5 la que manda
@@ -44,7 +46,14 @@ fn rgb(cr: i32) -> Option<Rgb> {
 /// La fila de la tabla cuya marca de abrir esta en `pos`.
 fn fila_de(doc: &ITextDocument, pos: usize) -> Option<ITextRow> {
     // SAFETY: rango del documento vivo del control.
-    unsafe { doc.Range(pos as i32, pos as i32).ok()?.cast::<ITextRange2>().ok()?.GetRow().ok() }
+    unsafe {
+        doc.Range(pos as i32, pos as i32)
+            .ok()?
+            .cast::<ITextRange2>()
+            .ok()?
+            .GetRow()
+            .ok()
+    }
 }
 
 /// Una celda segun el control.
@@ -84,7 +93,9 @@ const CON_LETRA: u32 = 0x0100_0000;
 
 /// Donde esta la marca de fin de la celda que empieza en `desde`.
 fn fin_de_celda(u: &[u16], desde: usize) -> usize {
-    (desde..u.len()).find(|&i| u[i] == md_tabla::CELDA as u16).unwrap_or(desde)
+    (desde..u.len())
+        .find(|&i| u[i] == md_tabla::CELDA as u16)
+        .unwrap_or(desde)
 }
 
 /// **El color de la letra de una celda**, guardado en la galleta de su
@@ -131,7 +142,10 @@ fn poner_y_pintar(e: &Estado, t: &Tabla, deshacer: bool) {
     }
     let texto = leer(e.edit);
     let u: Vec<u16> = texto.encode_utf16().collect();
-    let Some(tc) = md_tabla::tablas_en_control(&texto).into_iter().find(|x| x.desde == desde) else {
+    let Some(tc) = md_tabla::tablas_en_control(&texto)
+        .into_iter()
+        .find(|x| x.desde == desde)
+    else {
         return;
     };
     // SAFETY: documento vivo; la galleta no se deshace aparte (va con el
@@ -196,14 +210,21 @@ pub(super) fn completar(e: &Estado, tc: &TablaEnControl, t: &mut Tabla) {
     let mut leidas: Vec<Vec<Leida>> = Vec::with_capacity(alto);
     let mut formato = vec![vec![Formato::default(); n]; alto];
     for (f, inicios) in tc.celdas.iter().enumerate().take(alto) {
-        let fila = inicios.first().and_then(|p| fila_de(doc, p.saturating_sub(2)));
+        let fila = inicios
+            .first()
+            .and_then(|p| fila_de(doc, p.saturating_sub(2)));
         leidas.push(fila.map(|x| leer_fila(&x, n)).unwrap_or_default());
         for (c, &p) in inicios.iter().enumerate().take(n) {
             formato[f][c].alineacion = Some(alineacion_en(doc, p));
             formato[f][c].letra = letra_de(doc, fin_de_celda(&u, p));
         }
     }
-    let banderas = |f: usize, c: usize| leidas.get(f).and_then(|x| x.get(c)).map_or(0, |l| l.banderas);
+    let banderas = |f: usize, c: usize| {
+        leidas
+            .get(f)
+            .and_then(|x| x.get(c))
+            .map_or(0, |l| l.banderas)
+    };
     for f in 0..alto {
         for c in 0..n {
             let b = banderas(f, c);
@@ -216,10 +237,16 @@ pub(super) fn completar(e: &Estado, tc: &TablaEnControl, t: &mut Tabla) {
                 continue;
             }
             if b & H_INICIO != 0 {
-                x.columnas = 1 + (c + 1..n).take_while(|k| banderas(f, *k) & H_SIGUE != 0).count();
+                x.columnas = 1
+                    + (c + 1..n)
+                        .take_while(|k| banderas(f, *k) & H_SIGUE != 0)
+                        .count();
             }
             if b & V_ARRIBA != 0 {
-                x.filas = 1 + (f + 1..alto).take_while(|k| banderas(*k, c) & V_SIGUE != 0).count();
+                x.filas = 1
+                    + (f + 1..alto)
+                        .take_while(|k| banderas(*k, c) & V_SIGUE != 0)
+                        .count();
             }
             let Some(l) = leidas.get(f).and_then(|x| x.get(c)) else {
                 continue;
@@ -256,7 +283,12 @@ pub(super) fn modelo(e: &Estado, tc: &TablaEnControl) -> Tabla {
 /// pone todo el texto del color del tema, y despues de eso aqui se vuelve
 /// a poner el de las celdas que lo tienen (el guardado en su galleta, o el
 /// que se lee sobre su fondo).
-pub(super) fn colorear_letras(e: &Estado, texto: &str, ls: &[md_vivo::Linea], entra: &dyn Fn(usize) -> bool) {
+pub(super) fn colorear_letras(
+    e: &Estado,
+    texto: &str,
+    ls: &[md_vivo::Linea],
+    entra: &dyn Fn(usize) -> bool,
+) {
     let Some(doc) = &e.doc else {
         return;
     };
@@ -345,7 +377,10 @@ fn elegido(e: &Estado) -> Option<Eleccion> {
         && a < b
         && a <= p1.min(p2)
         && p1.max(p2) <= b
-        && let (Some(x), Some(y)) = (md_tabla::celda_en(&tablas, p1), md_tabla::celda_en(&tablas, p2))
+        && let (Some(x), Some(y)) = (
+            md_tabla::celda_en(&tablas, p1),
+            md_tabla::celda_en(&tablas, p2),
+        )
         && x.0 == y.0
     {
         let tc = tablas.into_iter().nth(x.0)?;
@@ -392,7 +427,11 @@ pub(super) fn comando(e: &mut Estado, c: u16) {
             }
         }
         _ => {
-            let (base, paleta) = if c >= C_LETRA { (C_LETRA, LETRAS) } else { (C_FONDO, FONDOS) };
+            let (base, paleta) = if c >= C_LETRA {
+                (C_LETRA, LETRAS)
+            } else {
+                (C_FONDO, FONDOS)
+            };
             let (objetivo, cual) = ((c - base) / 5, ((c - base) % 5) as usize);
             let color = (cual > 0).then(|| paleta[cual - 1]);
             let (alto, ancho) = (t.filas.len().max(1), t.columnas());
@@ -440,7 +479,9 @@ pub(super) fn combinar_o_separar(e: &mut Estado) {
 /// **Ctrl+V con una tabla en el portapapeles**: `true` si se pego como
 /// tabla; si no (texto, una sola celda, media pagina), lo de siempre.
 pub(super) fn pegar(e: &mut Estado) -> bool {
-    let Some((fragmento, entero, texto)) = pixpin_codec::portapapeles::tabla::leer_tabla_con_estilos() else {
+    let Some((fragmento, entero, texto)) =
+        pixpin_codec::portapapeles::tabla::leer_tabla_con_estilos()
+    else {
         return false;
     };
     let tabla = fragmento
@@ -484,15 +525,25 @@ fn nombres(lista: &str, defecto: &[&str; 5]) -> Vec<String> {
 }
 
 fn nombres_fondo(r: &Rotulos) -> Vec<String> {
-    nombres(&r.nombres_fondo, &["Sin color", "Rojo", "Verde", "Azul", "Amarillo"])
+    nombres(
+        &r.nombres_fondo,
+        &["Sin color", "Rojo", "Verde", "Azul", "Amarillo"],
+    )
 }
 
 fn nombres_letra(r: &Rotulos) -> Vec<String> {
-    nombres(&r.nombres_letra, &["Automático", "Rojo", "Verde", "Azul", "Naranja"])
+    nombres(
+        &r.nombres_letra,
+        &["Automático", "Rojo", "Verde", "Azul", "Naranja"],
+    )
 }
 
 fn o(s: &str, defecto: &str) -> String {
-    if s.is_empty() { defecto.to_string() } else { s.to_string() }
+    if s.is_empty() {
+        defecto.to_string()
+    } else {
+        s.to_string()
+    }
 }
 
 /// **La paleta de la barra** (boton «Color»): fondo y letra de las celdas
@@ -502,13 +553,31 @@ pub(super) fn entradas_de_color(e: &Estado) -> Vec<Entrada> {
     let mut v = Vec::new();
     for (i, nombre) in nombres_fondo(r).into_iter().enumerate() {
         let c = (i > 0).then(|| FONDOS[i - 1]);
-        let atajo = if i == 0 { o(&r.color_fondo, "Color de fondo") } else { String::new() };
-        v.push(entrada(C_FONDO + i as u16, Dibujo::Fondo(c), &nombre, &atajo));
+        let atajo = if i == 0 {
+            o(&r.color_fondo, "Color de fondo")
+        } else {
+            String::new()
+        };
+        v.push(entrada(
+            C_FONDO + i as u16,
+            Dibujo::Fondo(c),
+            &nombre,
+            &atajo,
+        ));
     }
     for (i, nombre) in nombres_letra(r).into_iter().enumerate() {
         let c = (i > 0).then(|| LETRAS[i - 1]);
-        let atajo = if i == 0 { o(&r.color_letra, "Color de la letra") } else { String::new() };
-        v.push(entrada(C_LETRA + i as u16, Dibujo::Tinta(c), &nombre, &atajo));
+        let atajo = if i == 0 {
+            o(&r.color_letra, "Color de la letra")
+        } else {
+            String::new()
+        };
+        v.push(entrada(
+            C_LETRA + i as u16,
+            Dibujo::Tinta(c),
+            &nombre,
+            &atajo,
+        ));
     }
     v
 }
@@ -524,7 +593,10 @@ pub(super) fn rotulo_color(r: &Rotulos) -> String {
 
 /// La pista de debajo de la paleta.
 pub(super) fn pista_de_color(e: &Estado) -> String {
-    o(&e.rotulos.pista_color, "Filas y columnas enteras: clic derecho")
+    o(
+        &e.rotulos.pista_color,
+        "Filas y columnas enteras: clic derecho",
+    )
 }
 
 /// Un cuadradito de color para una entrada del menu de Windows (con una
@@ -551,10 +623,17 @@ fn muestra_de(c: Option<Rgb>, tinta: bool, tema: &Tema, lado: i32) -> HBITMAP {
         pintar_caja(caja(0, 0, lado, lado), tema.raya);
         pintar_caja(
             caja(1, 1, lado - 1, lado - 1),
-            if tinta { tema.menu } else { c.unwrap_or(tema.menu) },
+            if tinta {
+                tema.menu
+            } else {
+                c.unwrap_or(tema.menu)
+            },
         );
         if tinta {
-            pintar_caja(caja(3, lado - 5, lado - 3, lado - 2), c.unwrap_or(tema.texto));
+            pintar_caja(
+                caja(3, lado - 5, lado - 3, lado - 2),
+                c.unwrap_or(tema.texto),
+            );
         }
         SelectObject(dc, viejo);
         let _ = DeleteDC(dc);
@@ -564,7 +643,13 @@ fn muestra_de(c: Option<Rgb>, tinta: bool, tema: &Tema, lado: i32) -> HBITMAP {
 
 /// Un submenu de colores en tres columnas: celdas elegidas, sus filas y
 /// sus columnas, con un cuadradito de cada color.
-fn submenu(e: &Estado, base: u16, nombres_color: &[String], tinta: bool, mapas: &mut Vec<HBITMAP>) -> Option<HMENU> {
+fn submenu(
+    e: &Estado,
+    base: u16,
+    nombres_color: &[String],
+    tinta: bool,
+    mapas: &mut Vec<HBITMAP>,
+) -> Option<HMENU> {
     let mut objetivos: Vec<String> = e
         .rotulos
         .aplicar_a
@@ -573,7 +658,11 @@ fn submenu(e: &Estado, base: u16, nombres_color: &[String], tinta: bool, mapas: 
         .filter(|s| !s.is_empty())
         .collect();
     if objetivos.len() != 3 {
-        objetivos = vec!["Celdas".into(), "Fila entera".into(), "Columna entera".into()];
+        objetivos = vec![
+            "Celdas".into(),
+            "Fila entera".into(),
+            "Columna entera".into(),
+        ];
     }
     let lado = 14 * super::PPP.with(|p| p.get()) / 96;
     let paleta = if tinta { LETRAS } else { FONDOS };
@@ -582,8 +671,17 @@ fn submenu(e: &Estado, base: u16, nombres_color: &[String], tinta: bool, mapas: 
     unsafe {
         let sub = CreatePopupMenu().ok()?;
         for (k, objetivo) in objetivos.iter().take(3).enumerate() {
-            let salto = if k > 0 { MF_MENUBARBREAK } else { MENU_ITEM_FLAGS(0) };
-            let _ = AppendMenuW(sub, MF_STRING | MF_GRAYED | salto, 0, &HSTRING::from(objetivo.as_str()));
+            let salto = if k > 0 {
+                MF_MENUBARBREAK
+            } else {
+                MENU_ITEM_FLAGS(0)
+            };
+            let _ = AppendMenuW(
+                sub,
+                MF_STRING | MF_GRAYED | salto,
+                0,
+                &HSTRING::from(objetivo.as_str()),
+            );
             for (i, nombre) in nombres_color.iter().enumerate() {
                 let id = base + (k * 5 + i) as u16;
                 let _ = AppendMenuW(sub, MF_STRING, id as usize, &HSTRING::from(nombre.as_str()));
@@ -621,13 +719,29 @@ pub(super) fn al_menu_contextual(e: &Estado, menu: HMENU, pos: u32) -> Vec<HBITM
         p += 1;
     };
     meter(MF_SEPARATOR, 0, "");
-    meter(MF_STRING | gris(combinar), C_COMBINAR as usize, &o(&r.combinar_celdas, "Combinar celdas"));
-    meter(MF_STRING | gris(separar), C_SEPARAR as usize, &o(&r.separar_celdas, "Separar celdas"));
+    meter(
+        MF_STRING | gris(combinar),
+        C_COMBINAR as usize,
+        &o(&r.combinar_celdas, "Combinar celdas"),
+    );
+    meter(
+        MF_STRING | gris(separar),
+        C_SEPARAR as usize,
+        &o(&r.separar_celdas, "Separar celdas"),
+    );
     if let Some(s) = fondo {
-        meter(MF_STRING | MF_POPUP, s.0 as usize, &o(&r.color_fondo, "Color de fondo"));
+        meter(
+            MF_STRING | MF_POPUP,
+            s.0 as usize,
+            &o(&r.color_fondo, "Color de fondo"),
+        );
     }
     if let Some(s) = letra {
-        meter(MF_STRING | MF_POPUP, s.0 as usize, &o(&r.color_letra, "Color de la letra"));
+        meter(
+            MF_STRING | MF_POPUP,
+            s.0 as usize,
+            &o(&r.color_letra, "Color de la letra"),
+        );
     }
     mapas
 }

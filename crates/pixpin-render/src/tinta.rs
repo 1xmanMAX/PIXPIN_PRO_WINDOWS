@@ -507,7 +507,10 @@ pub(crate) mod pruebas {
         let (a, ancla_a) = super::huella_de_forma(&forma, 1);
         let (b, ancla_b) = super::huella_de_forma(&corrida, 1);
         assert_eq!(a, b, "la misma forma en otro sitio");
-        assert_eq!((ancla_b.0 - ancla_a.0, ancla_b.1 - ancla_a.1), (80.0, -12.5));
+        assert_eq!(
+            (ancla_b.0 - ancla_a.0, ancla_b.1 - ancla_a.1),
+            (80.0, -12.5)
+        );
         // Casos negativos: un vertice movido medio pixel, otra clase de
         // orden (trazo en vez de relleno) y un punto de menos.
         let mut tocada = forma.clone();

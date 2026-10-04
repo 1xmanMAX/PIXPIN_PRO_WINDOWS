@@ -85,20 +85,28 @@ pub fn celdas_de(b: &Bloque) -> Vec<Celda> {
             match resto.split_once(SEPARADOR_DE_CELDA) {
                 Some((antes, despues)) => {
                     if !antes.is_empty() {
-                        celdas.last_mut().expect("siempre hay una").trozos.push(Trozo {
-                            texto: antes.to_string(),
-                            estilo: t.estilo,
-                        });
+                        celdas
+                            .last_mut()
+                            .expect("siempre hay una")
+                            .trozos
+                            .push(Trozo {
+                                texto: antes.to_string(),
+                                estilo: t.estilo,
+                            });
                     }
                     celdas.push(Celda::llana(Vec::new()));
                     resto = despues;
                 }
                 None => {
                     if !resto.is_empty() {
-                        celdas.last_mut().expect("siempre hay una").trozos.push(Trozo {
-                            texto: resto.to_string(),
-                            estilo: t.estilo,
-                        });
+                        celdas
+                            .last_mut()
+                            .expect("siempre hay una")
+                            .trozos
+                            .push(Trozo {
+                                texto: resto.to_string(),
+                                estilo: t.estilo,
+                            });
                     }
                     break;
                 }
@@ -135,7 +143,11 @@ pub fn columnas_de(filas: &[Vec<Celda>]) -> usize {
 /// Los anchos que da la rejilla de Word, en unidades del lector, si la hay
 /// y cuadra con las columnas: la proporcion de cada columna sobre el ancho
 /// de texto de la pagina, aplicada a la columna del lector.
-pub fn anchos_de_word(fila: Option<&FilaDeTabla>, columnas: usize, columna: f32) -> Option<Vec<f32>> {
+pub fn anchos_de_word(
+    fila: Option<&FilaDeTabla>,
+    columnas: usize,
+    columna: f32,
+) -> Option<Vec<f32>> {
     let f = fila?;
     if f.rejilla.len() != columnas || f.rejilla.iter().all(|w| *w == 0) {
         return None;
@@ -143,8 +155,17 @@ pub fn anchos_de_word(fila: Option<&FilaDeTabla>, columnas: usize, columna: f32)
     let total: u32 = f.rejilla.iter().sum();
     // Una pagina que no se sabe, o mas estrecha que la tabla dibujada en
     // ella (tabla que se sale del margen en Word): se toma la que haya.
-    let pagina = if f.pagina > 0 { f.pagina } else { PAGINA_POR_DEFECTO.max(total) };
-    Some(f.rejilla.iter().map(|w| *w as f32 / pagina as f32 * columna).collect())
+    let pagina = if f.pagina > 0 {
+        f.pagina
+    } else {
+        PAGINA_POR_DEFECTO.max(total)
+    };
+    Some(
+        f.rejilla
+            .iter()
+            .map(|w| *w as f32 / pagina as f32 * columna)
+            .collect(),
+    )
 }
 
 /// **Reparte el ancho entre las columnas.**
@@ -168,7 +189,9 @@ pub fn repartir(
     if n == 0 {
         return Vec::new();
     }
-    let maximo: Vec<f32> = (0..n).map(|i| maximo.get(i).copied().unwrap_or(0.0).max(minimo[i])).collect();
+    let maximo: Vec<f32> = (0..n)
+        .map(|i| maximo.get(i).copied().unwrap_or(0.0).max(minimo[i]))
+        .collect();
     let suma_min: f32 = minimo.iter().sum();
     let mut anchos: Vec<f32> = match preferidas {
         Some(p) if p.len() == n => {
@@ -197,7 +220,9 @@ pub fn repartir(
                 minimo.to_vec()
             } else {
                 let k = (disponible - suma_min) / (suma_max - suma_min);
-                (0..n).map(|i| minimo[i] + (maximo[i] - minimo[i]) * k).collect()
+                (0..n)
+                    .map(|i| minimo[i] + (maximo[i] - minimo[i]) * k)
+                    .collect()
             }
         }
     };
@@ -222,7 +247,10 @@ pub fn palabra_mas_larga(texto: &str) -> &str {
 
 /// El parrafo mas largo de una celda (por letras): el que marca su maximo.
 pub fn parrafo_mas_largo(texto: &str) -> &str {
-    texto.split('\n').max_by_key(|p| p.chars().count()).unwrap_or("")
+    texto
+        .split('\n')
+        .max_by_key(|p| p.chars().count())
+        .unwrap_or("")
 }
 
 #[cfg(test)]
@@ -253,8 +281,14 @@ mod pruebas {
     fn dos_tablas_de_word_pegadas_no_se_mezclan() {
         let mut a = fila(&["a"]);
         let mut b = fila(&["b"]);
-        a.fila = Some(FilaDeTabla { tabla: 0, ..Default::default() });
-        b.fila = Some(FilaDeTabla { tabla: 1, ..Default::default() });
+        a.fila = Some(FilaDeTabla {
+            tabla: 0,
+            ..Default::default()
+        });
+        b.fila = Some(FilaDeTabla {
+            tabla: 1,
+            ..Default::default()
+        });
         assert!(!misma_tabla(&a, &b));
         b.fila.as_mut().unwrap().tabla = 0;
         assert!(misma_tabla(&a, &b));
@@ -266,7 +300,14 @@ mod pruebas {
     fn la_rejilla_cuenta_lo_que_ocupa_cada_celda() {
         let mut ancha = Celda::llana(vec![]);
         ancha.columnas = 2;
-        let filas = vec![vec![ancha], vec![Celda::llana(vec![]), Celda::llana(vec![]), Celda::llana(vec![])]];
+        let filas = vec![
+            vec![ancha],
+            vec![
+                Celda::llana(vec![]),
+                Celda::llana(vec![]),
+                Celda::llana(vec![]),
+            ],
+        ];
         assert_eq!(columnas_de(&filas), 3);
         assert_eq!(columnas_de(&[]), 1, "nunca cero columnas");
     }
@@ -279,22 +320,44 @@ mod pruebas {
             ..Default::default()
         };
         let a = anchos_de_word(Some(&f), 2, 800.0).unwrap();
-        assert_eq!(a, vec![100.0, 300.0], "media pagina en Word, media columna aqui");
+        assert_eq!(
+            a,
+            vec![100.0, 300.0],
+            "media pagina en Word, media columna aqui"
+        );
         // Casos negativos: rejilla que no cuadra con las celdas, o vacia.
         assert!(anchos_de_word(Some(&f), 3, 800.0).is_none());
         assert!(anchos_de_word(None, 2, 800.0).is_none());
-        let sin = FilaDeTabla { rejilla: vec![0, 0], ..Default::default() };
+        let sin = FilaDeTabla {
+            rejilla: vec![0, 0],
+            ..Default::default()
+        };
         assert!(anchos_de_word(Some(&sin), 2, 800.0).is_none());
     }
 
     #[test]
     fn con_los_anchos_de_word_ninguna_columna_baja_de_su_palabra_mas_larga() {
         // Como la tabla de la bibliografia: numero, referencia larga, estado.
-        let a = repartir(&[20.0, 80.0, 70.0], &[20.0, 900.0, 70.0], Some(&[40.0, 700.0, 50.0]), 790.0, 1000.0);
+        let a = repartir(
+            &[20.0, 80.0, 70.0],
+            &[20.0, 900.0, 70.0],
+            Some(&[40.0, 700.0, 50.0]),
+            790.0,
+            1000.0,
+        );
         assert!(a[2] >= 70.0 - 0.01, "«Cerrado» no se parte: {a:?}");
-        assert!((a.iter().sum::<f32>() - 790.0).abs() < 0.1, "lo que falta sale de la ancha: {a:?}");
-        assert!(a[1] < 700.0 && a[1] > 650.0, "casi todo lo pone la ancha: {a:?}");
-        assert!(a[0] >= 20.0 && a[0] <= 40.0, "la del numero no pasa de lo suyo: {a:?}");
+        assert!(
+            (a.iter().sum::<f32>() - 790.0).abs() < 0.1,
+            "lo que falta sale de la ancha: {a:?}"
+        );
+        assert!(
+            a[1] < 700.0 && a[1] > 650.0,
+            "casi todo lo pone la ancha: {a:?}"
+        );
+        assert!(
+            a[0] >= 20.0 && a[0] <= 40.0,
+            "la del numero no pasa de lo suyo: {a:?}"
+        );
     }
 
     #[test]

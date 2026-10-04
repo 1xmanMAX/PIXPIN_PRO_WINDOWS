@@ -1174,7 +1174,10 @@ alto = 200
         assert_eq!(a.voz.segundo_idioma, "en");
         assert_eq!(a.voz.modo_de_idiomas, ModoDeIdiomas::TodoEnUno);
         let texto = toml::to_string(&a).unwrap();
-        assert!(texto.contains("modo_de_idiomas = \"todo_en_uno\""), "{texto}");
+        assert!(
+            texto.contains("modo_de_idiomas = \"todo_en_uno\""),
+            "{texto}"
+        );
         // Caso negativo: una palabra que no es del movil no se acepta callada.
         assert!(toml::from_str::<Ajustes>("[voz]\nmodo_de_idiomas = \"mezcla\"\n").is_err());
     }
@@ -1190,8 +1193,12 @@ alto = 200
     fn el_nivel_del_pdf_se_lee_con_su_nombre_o_con_el_de_pdfsqueeze() {
         let a: Ajustes = toml::from_str("[pdf]\nnivel = \"pequeno\"\n").unwrap();
         assert_eq!(a.pdf.nivel, NivelPdf::Pequeno);
-        assert!(a.pdf.aligerar_al_entrar, "lo que no se escribe sigue de fabrica");
-        let b: Ajustes = toml::from_str("[pdf]\nnivel = \"lossless\"\naligerar_al_entrar = false\n").unwrap();
+        assert!(
+            a.pdf.aligerar_al_entrar,
+            "lo que no se escribe sigue de fabrica"
+        );
+        let b: Ajustes =
+            toml::from_str("[pdf]\nnivel = \"lossless\"\naligerar_al_entrar = false\n").unwrap();
         assert_eq!(b.pdf.nivel, NivelPdf::SinPerdida);
         assert!(!b.pdf.aligerar_al_entrar);
         // Caso negativo: un nivel que no existe es un error, no un nivel

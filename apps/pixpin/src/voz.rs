@@ -672,7 +672,10 @@ mod pruebas {
         assert!(poner_marca(&mut m, 2_500));
         assert!(!poner_marca(&mut m, 9_000), "la misma no es otra");
         assert_eq!(marcas_de(&m), vec![2_500, 9_000]);
-        assert_eq!(m.resto.get(MARCAS), Some(&serde_json::json!([2_500, 9_000])));
+        assert_eq!(
+            m.resto.get(MARCAS),
+            Some(&serde_json::json!([2_500, 9_000]))
+        );
     }
 
     #[test]
@@ -699,8 +702,14 @@ mod pruebas {
         let mut m = Mensaje::default();
         assert!(escribir_letra(&mut m, "la la\r\nla"));
         assert_eq!(m.transcripcion.as_deref(), Some("la la\nla"));
-        assert_eq!(estado_del_texto(&m), Some(pixpin_voz::EstadoDelTexto::Letra));
-        assert!(!escribir_letra(&mut m, "la la\nla"), "lo mismo no es un cambio");
+        assert_eq!(
+            estado_del_texto(&m),
+            Some(pixpin_voz::EstadoDelTexto::Letra)
+        );
+        assert!(
+            !escribir_letra(&mut m, "la la\nla"),
+            "lo mismo no es un cambio"
+        );
     }
 
     #[test]
@@ -719,7 +728,10 @@ mod pruebas {
             "turnos".into(),
             serde_json::json!([{"quien": "Ana", "desdeMs": 0, "hastaMs": 900}]),
         );
-        assert_eq!(turnos_de(&m), vec![pixpin_voz::turnos::Turno::nuevo("Ana", 0, 900)]);
+        assert_eq!(
+            turnos_de(&m),
+            vec![pixpin_voz::turnos::Turno::nuevo("Ana", 0, 900)]
+        );
     }
 
     #[test]

@@ -114,7 +114,10 @@ pub fn ventanas_del_proceso() -> Vec<isize> {
         let mut suyo = 0u32;
         // SAFETY: consulta de solo lectura; escribe en una variable local.
         unsafe {
-            windows::Win32::UI::WindowsAndMessaging::GetWindowThreadProcessId(hwnd, Some(&mut suyo));
+            windows::Win32::UI::WindowsAndMessaging::GetWindowThreadProcessId(
+                hwnd,
+                Some(&mut suyo),
+            );
         }
         if suyo == *yo {
             v.push(hwnd.0 as isize);
@@ -126,7 +129,10 @@ pub fn ventanas_del_proceso() -> Vec<isize> {
     let mut par: (u32, Vec<isize>) = (yo, Vec::new());
     // SAFETY: el par vive hasta que EnumWindows vuelve.
     unsafe {
-        let _ = windows::Win32::UI::WindowsAndMessaging::EnumWindows(Some(cada), LPARAM(&mut par as *mut _ as isize));
+        let _ = windows::Win32::UI::WindowsAndMessaging::EnumWindows(
+            Some(cada),
+            LPARAM(&mut par as *mut _ as isize),
+        );
     }
     par.1
 }
@@ -139,16 +145,21 @@ pub fn ventanas_del_proceso() -> Vec<isize> {
 /// nadie. El permiso de pasar al frente lo da quien pidio
 /// (`AllowSetForegroundWindow`); sin el, Windows solo hace parpadear su boton.
 pub fn al_frente_lo_nuevo(antes: Vec<isize>, espera: std::time::Duration) {
-    let _ = std::thread::Builder::new().name("al-frente".into()).spawn(move || {
-        let desde = std::time::Instant::now();
-        while desde.elapsed() < espera {
-            if let Some(h) = ventanas_del_proceso().into_iter().find(|h| !antes.contains(h) && es_principal(*h)) {
-                crate::overlay::VentanaOverlay::restaurar_de_hwnd(HWND(h as *mut _));
-                return;
+    let _ = std::thread::Builder::new()
+        .name("al-frente".into())
+        .spawn(move || {
+            let desde = std::time::Instant::now();
+            while desde.elapsed() < espera {
+                if let Some(h) = ventanas_del_proceso()
+                    .into_iter()
+                    .find(|h| !antes.contains(h) && es_principal(*h))
+                {
+                    crate::overlay::VentanaOverlay::restaurar_de_hwnd(HWND(h as *mut _));
+                    return;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(80));
             }
-            std::thread::sleep(std::time::Duration::from_millis(80));
-        }
-    });
+        });
 }
 
 /// Si una ventana es de las que se ven como ventana: viva, visible, sin
@@ -160,7 +171,9 @@ pub fn es_principal(h: isize) -> bool {
     unsafe {
         IsWindow(Some(hwnd)).as_bool()
             && IsWindowVisible(hwnd).as_bool()
-            && GetWindow(hwnd, GW_OWNER).map(|o| o.0.is_null()).unwrap_or(true)
+            && GetWindow(hwnd, GW_OWNER)
+                .map(|o| o.0.is_null())
+                .unwrap_or(true)
             && (GetWindowLongPtrW(hwnd, GWL_EXSTYLE) as u32 & WS_EX_TOOLWINDOW.0) == 0
     }
 }
@@ -185,7 +198,12 @@ pub fn leer(h: isize) -> Option<Colocacion> {
 /// lo que cae fuera de todos los monitores de ahora (se desenchufo una
 /// pantalla) se queda donde esta: perder una ventana fuera de la vista es
 /// peor que no moverla.
-pub fn a_aplicar(guardada: &Colocacion, actual: &Colocacion, redimensionable: bool, cabe: bool) -> Colocacion {
+pub fn a_aplicar(
+    guardada: &Colocacion,
+    actual: &Colocacion,
+    redimensionable: bool,
+    cabe: bool,
+) -> Colocacion {
     let mut c = *guardada;
     if !cabe || !(redimensionable || guardada.tamano() == actual.tamano()) {
         c.izquierda = actual.izquierda;
@@ -278,9 +296,15 @@ mod pruebas {
     #[test]
     fn a_una_de_tamano_fijo_solo_se_la_mueve_si_mide_lo_mismo() {
         // Mismo tamano, otro monitor: se mueve.
-        assert_eq!(a_aplicar(&c(1920, 800), &c(0, 800), false, true), c(1920, 800));
+        assert_eq!(
+            a_aplicar(&c(1920, 800), &c(0, 800), false, true),
+            c(1920, 800)
+        );
         // Otro tamano: se queda donde esta (su superficie no se estira).
-        assert_eq!(a_aplicar(&c(1920, 1024), &c(0, 800), false, true), c(0, 800));
+        assert_eq!(
+            a_aplicar(&c(1920, 1024), &c(0, 800), false, true),
+            c(0, 800)
+        );
     }
 
     #[test]
@@ -288,7 +312,10 @@ mod pruebas {
         assert_eq!(a_aplicar(&c(9000, 500), &c(0, 800), true, false), c(0, 800));
         let mut oculta = c(0, 800);
         oculta.mostrar = SW_HIDE.0 as u32;
-        assert_eq!(a_aplicar(&oculta, &c(0, 800), true, true).mostrar, SW_SHOWNORMAL.0 as u32);
+        assert_eq!(
+            a_aplicar(&oculta, &c(0, 800), true, true).mostrar,
+            SW_SHOWNORMAL.0 as u32
+        );
     }
 
     #[test]

@@ -61,7 +61,10 @@ fn se_escribe_donde_se_hizo_clic_sin_marco_ni_tiradores_y_con_cursor() {
         let mut g = Gesto::nuevo();
         let id = texto_nuevo(&mut g, &mut escena, "hola");
         assert!(!g.marco_visible(), "mientras se escribe no hay marco");
-        assert!(g.tiradores(&escena, 1.0).is_none(), "ni tiradores que agarren");
+        assert!(
+            g.tiradores(&escena, 1.0).is_none(),
+            "ni tiradores que agarren"
+        );
         // Elegido por dentro, para que el panel cambie la letra de lo que se
         // escribe.
         assert!(g.seleccion.contiene(id));
@@ -81,7 +84,11 @@ fn la_caja_mide_lo_escrito_con_el_medidor_y_crece_al_escribir() {
         let mut g = Gesto::nuevo();
         let id = texto_nuevo(&mut g, &mut escena, "hola");
         let e = escena.buscar(id).unwrap();
-        assert_eq!((e.ancho, e.alto), (40.0, 25.0), "lo escrito, sin letra de mas");
+        assert_eq!(
+            (e.ancho, e.alto),
+            (40.0, 25.0),
+            "lo escrito, sin letra de mas"
+        );
         g.tecla_de_texto(TeclaTexto::Entrar, &mut escena);
         escribir(&mut g, &mut escena, "mundo!");
         let e = escena.buscar(id).unwrap();
@@ -219,7 +226,12 @@ fn un_texto_suelto_no_parte_renglones_y_uno_de_figura_si() {
 
 #[test]
 fn cambiar_la_letra_de_un_texto_le_remide_la_caja() {
-    fn ancho_por_familia(t: &str, _tam: f32, familia: &str, _e: EstiloDeTexto) -> Option<(f32, f32)> {
+    fn ancho_por_familia(
+        t: &str,
+        _tam: f32,
+        familia: &str,
+        _e: EstiloDeTexto,
+    ) -> Option<(f32, f32)> {
         let k = if familia == "Nunito" { 12.0 } else { 10.0 };
         Some((t.chars().count() as f32 * k, 25.0))
     }
@@ -305,7 +317,11 @@ fn el_resaltador_medio_vuelve_a_su_grosor_de_siempre_y_fino_y_grueso_lo_rodean()
     // El del movil (27-sep): el lapiz x5 (`ENGORDE_DEL_MARCADOR`) sobre la
     // mitad del grosor de las formas: Medio 2 / 2 x 5 = 5, que pinta unos
     // 30 de ancho. El 3 de D45 (9 de raya) era un tercio: «muy delgado».
-    assert_eq!(escena.buscar(id).unwrap().grosor, 5.0, "Medio: el 5 del movil");
+    assert_eq!(
+        escena.buscar(id).unwrap().grosor,
+        5.0,
+        "Medio: el 5 del movil"
+    );
     let medio = alto_de(&ordenes(escena.buscar(id).unwrap()));
     assert!(medio > 25.0 && medio < 42.0, "raya de {medio}");
     for (nivel, esperado) in [(NivelGrosor::Fino, 2.5), (NivelGrosor::Grueso, 10.0)] {

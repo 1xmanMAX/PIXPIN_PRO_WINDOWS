@@ -211,12 +211,17 @@ pub fn tomar_doble_central_del_anotador() -> bool {
 /// el usuario (Panel de control > Mouse).
 fn reglas_de_doble_clic() -> (u32, (i32, i32)) {
     use windows::Win32::UI::Input::KeyboardAndMouse::GetDoubleClickTime;
-    use windows::Win32::UI::WindowsAndMessaging::{GetSystemMetrics, SM_CXDOUBLECLK, SM_CYDOUBLECLK};
+    use windows::Win32::UI::WindowsAndMessaging::{
+        GetSystemMetrics, SM_CXDOUBLECLK, SM_CYDOUBLECLK,
+    };
     // SAFETY: consultas de configuracion del sistema, sin precondiciones.
     unsafe {
         (
             GetDoubleClickTime(),
-            (GetSystemMetrics(SM_CXDOUBLECLK), GetSystemMetrics(SM_CYDOUBLECLK)),
+            (
+                GetSystemMetrics(SM_CXDOUBLECLK),
+                GetSystemMetrics(SM_CYDOUBLECLK),
+            ),
         )
     }
 }
@@ -325,9 +330,9 @@ impl GanchoRaton {
                 }
             })
             .map_err(|e| windows::core::Error::new(windows::core::HRESULT(-1), e.to_string()))?;
-        let id_hilo = rx.recv().map_err(|e| {
-            windows::core::Error::new(windows::core::HRESULT(-1), e.to_string())
-        })??;
+        let id_hilo = rx
+            .recv()
+            .map_err(|e| windows::core::Error::new(windows::core::HRESULT(-1), e.to_string()))??;
         Ok(Self {
             hilo: Some(hilo),
             id_hilo,
@@ -470,13 +475,20 @@ extern "system" fn procedimiento(codigo: i32, wparam: WPARAM, lparam: LPARAM) ->
                 }
                 return LRESULT(1);
             }
-            if !SUSPENDIDO.load(Ordering::SeqCst) && EDITORES.load(Ordering::SeqCst) == 0 && destino != 0 {
+            if !SUSPENDIDO.load(Ordering::SeqCst)
+                && EDITORES.load(Ordering::SeqCst) == 0
+                && destino != 0
+            {
                 // El primer clic ya se devolvio (se solto sin arrastrar); este
                 // segundo no es un clic pendiente: es el gesto.
                 PENDIENTE.store(NINGUNO, Ordering::SeqCst);
                 EN_CURSO.store(false, Ordering::SeqCst);
                 TRAGAR_SOLTADA_CENTRAL.store(true, Ordering::SeqCst);
-                tracing::info!(x = info.pt.x, y = info.pt.y, "gesto: Alt + doble clic central");
+                tracing::info!(
+                    x = info.pt.x,
+                    y = info.pt.y,
+                    "gesto: Alt + doble clic central"
+                );
                 // SAFETY: publicar un mensaje propio en una ventana propia.
                 unsafe {
                     let _ = PostMessageW(
@@ -630,12 +642,21 @@ mod pruebas {
     #[test]
     fn dos_clics_centrales_con_alt_juntos_y_a_tiempo_abren_el_anotador() {
         let mut d = DobleCentral::default();
-        assert!(!d.pulsacion(1000, (300, 300), true, T, H), "el primero solo espera");
-        assert!(d.pulsacion(1300, (301, 299), true, T, H), "el segundo lo completa");
+        assert!(
+            !d.pulsacion(1000, (300, 300), true, T, H),
+            "el primero solo espera"
+        );
+        assert!(
+            d.pulsacion(1300, (301, 299), true, T, H),
+            "el segundo lo completa"
+        );
         // Justo en el borde del tiempo y de la holgura tambien vale.
         let mut d = DobleCentral::default();
         d.pulsacion(0, (-1900, 40), true, T, H);
-        assert!(d.pulsacion(500, (-1898, 42), true, T, H), "monitor de la izquierda");
+        assert!(
+            d.pulsacion(500, (-1898, 42), true, T, H),
+            "monitor de la izquierda"
+        );
     }
 
     #[test]
@@ -666,8 +687,14 @@ mod pruebas {
         let mut d = DobleCentral::default();
         d.pulsacion(0, (10, 10), true, T, H);
         assert!(d.pulsacion(100, (10, 10), true, T, H));
-        assert!(!d.pulsacion(200, (10, 10), true, T, H), "el tercero empieza otro");
-        assert!(d.pulsacion(300, (10, 10), true, T, H), "y el cuarto lo cierra");
+        assert!(
+            !d.pulsacion(200, (10, 10), true, T, H),
+            "el tercero empieza otro"
+        );
+        assert!(
+            d.pulsacion(300, (10, 10), true, T, H),
+            "y el cuarto lo cierra"
+        );
         // Un clic izquierdo entre los dos centrales ya no es un doble clic.
         let mut d = DobleCentral::default();
         d.pulsacion(0, (10, 10), true, T, H);
@@ -677,7 +704,10 @@ mod pruebas {
         // en ese momento sigue valiendo (y no da una resta negativa).
         let mut d = DobleCentral::default();
         d.pulsacion(u32::MAX - 100, (10, 10), true, T, H);
-        assert!(d.pulsacion(100, (10, 10), true, T, H), "a traves de la vuelta, 201 ms");
+        assert!(
+            d.pulsacion(100, (10, 10), true, T, H),
+            "a traves de la vuelta, 201 ms"
+        );
     }
 
     #[test]
@@ -715,7 +745,10 @@ mod pruebas {
         // hacia arriba o hacia la izquierda.
         assert!(es_arrastre((500, 500), (508, 500)));
         assert!(es_arrastre((500, 500), (500, 492)));
-        assert!(es_arrastre((-1900, 40), (-1950, 40)), "monitor de la izquierda");
+        assert!(
+            es_arrastre((-1900, 40), (-1950, 40)),
+            "monitor de la izquierda"
+        );
     }
 
     #[test]

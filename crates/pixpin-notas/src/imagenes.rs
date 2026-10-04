@@ -49,7 +49,9 @@ use std::rc::Rc;
 use windows::Win32::Foundation::{COLORREF, HWND, LPARAM, POINT, RECT, WPARAM};
 use windows::Win32::Graphics::Gdi::*;
 use windows::Win32::UI::Controls::RichEdit::{EM_GETSCROLLPOS, EM_GETTEXTEX, EM_GETTEXTLENGTHEX};
-use windows::Win32::UI::Controls::RichEdit::{GETTEXTEX, GETTEXTLENGTHEX, GT_RAWTEXT, GTL_NUMCHARS, GTL_PRECISE};
+use windows::Win32::UI::Controls::RichEdit::{
+    GETTEXTEX, GETTEXTLENGTHEX, GT_RAWTEXT, GTL_NUMCHARS, GTL_PRECISE,
+};
 use windows::Win32::UI::WindowsAndMessaging::{GetClientRect, SendMessageW};
 use windows::core::HSTRING;
 
@@ -127,7 +129,11 @@ impl Fotos {
     ) -> Option<Rc<Foto>> {
         self.leidas
             .entry((ruta.to_string(), max, llenar))
-            .or_insert_with(|| resolver(ruta).and_then(|r| cargar(&r, max, llenar)).map(Rc::new))
+            .or_insert_with(|| {
+                resolver(ruta)
+                    .and_then(|r| cargar(&r, max, llenar))
+                    .map(Rc::new)
+            })
             .clone()
     }
 
@@ -147,7 +153,10 @@ pub fn encajar_con(an: u32, al: u32, max: (i32, i32), llenar: bool) -> (i32, i32
     }
     let k = (max.0 as f64 / an as f64).min(max.1 as f64 / al as f64);
     let k = if llenar { k } else { k.min(1.0) };
-    (((an as f64 * k).round() as i32).max(1), ((al as f64 * k).round() as i32).max(1))
+    (
+        ((an as f64 * k).round() as i32).max(1),
+        ((al as f64 * k).round() as i32).max(1),
+    )
 }
 
 /// Lo que puede ocupar una foto: la columna y 440 de alto, o el ancho que
@@ -159,7 +168,10 @@ pub fn caja_maxima(ancho: Option<u32>, columna_px: i32, esc: f32) -> (i32, i32) 
             ((a as i32).min(columna_px) as f32 * esc) as i32,
             (ALTO_CON_ANCHO_PX as f32 * esc) as i32,
         ),
-        None => ((columna_px as f32 * esc) as i32, (ALTO_MAXIMO_PX as f32 * esc) as i32),
+        None => (
+            (columna_px as f32 * esc) as i32,
+            (ALTO_MAXIMO_PX as f32 * esc) as i32,
+        ),
     }
 }
 
@@ -292,14 +304,25 @@ pub fn texto_del_control(edit: HWND) -> String {
         codepage: 1200,
         ..Default::default()
     };
-    let copiados = enviar(edit, EM_GETTEXTEX, &pedido as *const _ as usize, buf.as_mut_ptr() as isize).max(0) as usize;
+    let copiados = enviar(
+        edit,
+        EM_GETTEXTEX,
+        &pedido as *const _ as usize,
+        buf.as_mut_ptr() as isize,
+    )
+    .max(0) as usize;
     buf.truncate(copiados.min(n));
     String::from_utf16_lossy(&buf)
 }
 
 fn punto_de(edit: HWND, pos: usize) -> POINT {
     let mut p = POINT::default();
-    enviar(edit, EM_POSFROMCHAR, &mut p as *mut _ as usize, pos as isize);
+    enviar(
+        edit,
+        EM_POSFROMCHAR,
+        &mut p as *mut _ as usize,
+        pos as isize,
+    );
     p
 }
 
@@ -308,11 +331,30 @@ fn punto_de(edit: HWND, pos: usize) -> POINT {
 enum Que {
     /// La foto `i` de [`PUESTAS`] en `(x, y)` de `an` x `al` (al cambiarle
     /// el tamano, a otro que el suyo).
-    Foto { i: usize, x: i32, y: i32, an: i32, al: i32 },
-    Casilla { hecha: bool, caja: Caja },
-    Raya { x0: i32, x1: i32, y: i32 },
-    Cita { x: i32, y0: i32, y1: i32 },
-    Barra { asidero: RECT },
+    Foto {
+        i: usize,
+        x: i32,
+        y: i32,
+        an: i32,
+        al: i32,
+    },
+    Casilla {
+        hecha: bool,
+        caja: Caja,
+    },
+    Raya {
+        x0: i32,
+        x1: i32,
+        y: i32,
+    },
+    Cita {
+        x: i32,
+        y0: i32,
+        y1: i32,
+    },
+    Barra {
+        asidero: RECT,
+    },
 }
 
 /// La pieza y el rectangulo que ocupa (lo que se compone de una vez).
@@ -354,8 +396,11 @@ fn medidas_con(edit: HWND, texto: &str) -> (i32, i32) {
     let mut scroll = POINT::default();
     enviar(edit, EM_GETSCROLLPOS, 0, &mut scroll as *mut _ as isize);
     let total = texto.encode_utf16().count();
-    let renglon = ADORNOS.with(|a| a.borrow().as_ref().map(|a| a.renglon_px)).unwrap_or(escala(24));
-    let alto_nota = punto_de(edit, total).y + scroll.y + renglon + (cliente.bottom - dentro.bottom).max(0);
+    let renglon = ADORNOS
+        .with(|a| a.borrow().as_ref().map(|a| a.renglon_px))
+        .unwrap_or(escala(24));
+    let alto_nota =
+        punto_de(edit, total).y + scroll.y + renglon + (cliente.bottom - dentro.bottom).max(0);
     (cliente.bottom - cliente.top, alto_nota)
 }
 
@@ -405,12 +450,18 @@ fn colocar(edit: HWND) -> Vec<Pieza> {
             // Centrada en la columna de texto (corrida si las tarjetas de los
             // comentarios ocupan el margen).
             let ppp = PPP.with(|p| p.get());
-            let (ci, cd) = (izq + crate::tabla_ancha::sobra_px(ppp), dentro.right - crate::tabla_ancha::sobra_der_px(ppp));
+            let (ci, cd) = (
+                izq + crate::tabla_ancha::sobra_px(ppp),
+                dentro.right - crate::tabla_ancha::sobra_der_px(ppp),
+            );
             let (x, y) = ((ci + cd - an) / 2, pt.y + aire);
             pu.caja.set(rect(x, y, an, al));
             // Con el borde y el asa, que salen un poco por fuera.
             let g = escala(3);
-            sal.push((Que::Foto { i, x, y, an, al }, rect(x - g, y - g, an + 2 * g, al + 2 * g)));
+            sal.push((
+                Que::Foto { i, x, y, an, al },
+                rect(x - g, y - g, an + 2 * g, al + 2 * g),
+            ));
         }
     });
     let Some(ad) = ADORNOS.with(|a| a.borrow().clone()) else {
@@ -426,7 +477,9 @@ fn colocar(edit: HWND) -> Vec<Pieza> {
     let mut cita: Option<(i32, i32)> = None;
     let x_cita = col_izq + ad.sangria_px / 3;
     for (n, l) in ls.iter().enumerate() {
-        let es_cita = tramos.iter().any(|t| t.linea == n && t.estilo == md_vivo::Estilo::Cita);
+        let es_cita = tramos
+            .iter()
+            .any(|t| t.linea == n && t.estilo == md_vivo::Estilo::Cita);
         if es_cita {
             let y = punto_de(edit, l.desde).y;
             cita = Some(match cita {
@@ -434,7 +487,10 @@ fn colocar(edit: HWND) -> Vec<Pieza> {
                 None => (y, y + ad.renglon_px),
             });
         } else if let Some((y0, y1)) = cita.take() {
-            sal.push((Que::Cita { x: x_cita, y0, y1 }, rect(x_cita, y0, escala(3), y1 - y0)));
+            sal.push((
+                Que::Cita { x: x_cita, y0, y1 },
+                rect(x_cita, y0, escala(3), y1 - y0),
+            ));
         }
         match tipos.get(n) {
             Some(md_edicion::Renglon::Texto(m)) => {
@@ -457,22 +513,40 @@ fn colocar(edit: HWND) -> Vec<Pieza> {
                 }
             }
             Some(md_edicion::Renglon::Bloque)
-                if tramos.iter().any(|t| t.linea == n && t.estilo == md_vivo::Estilo::Regla) =>
+                if tramos
+                    .iter()
+                    .any(|t| t.linea == n && t.estilo == md_vivo::Estilo::Regla) =>
             {
                 let y = punto_de(edit, l.desde).y + ad.renglon_px / 2;
-                sal.push((Que::Raya { x0: col_izq, x1: col_der, y }, rect(col_izq, y - 1, col_der - col_izq, 3)));
+                sal.push((
+                    Que::Raya {
+                        x0: col_izq,
+                        x1: col_der,
+                        y,
+                    },
+                    rect(col_izq, y - 1, col_der - col_izq, 3),
+                ));
             }
             _ => {}
         }
     }
     if let Some((y0, y1)) = cita {
-        sal.push((Que::Cita { x: x_cita, y0, y1 }, rect(x_cita, y0, escala(3), y1 - y0)));
+        sal.push((
+            Que::Cita { x: x_cita, y0, y1 },
+            rect(x_cita, y0, escala(3), y1 - y0),
+        ));
     }
     // La barra de desplazamiento fina, de lo que mide toda la nota.
     let mut scroll = POINT::default();
     enviar(edit, EM_GETSCROLLPOS, 0, &mut scroll as *mut _ as isize);
     let (visible, alto_nota) = medidas_con(edit, &texto);
-    let b = barra(visible, alto_nota, scroll.y, cliente.right, BARRA_ENCIMA.with(|b| b.get()));
+    let b = barra(
+        visible,
+        alto_nota,
+        scroll.y,
+        cliente.right,
+        BARRA_ENCIMA.with(|b| b.get()),
+    );
     BARRA.with(|x| x.set(b));
     if let Some((pista, asidero)) = b {
         sal.push((Que::Barra { asidero }, pista));
@@ -482,7 +556,13 @@ fn colocar(edit: HWND) -> Vec<Pieza> {
 
 /// **La barra fina**: la pista (a la derecha, de arriba abajo) y el
 /// asidero, proporcional a lo que se ve de la nota. `None` si cabe entera.
-pub fn barra(visible: i32, alto_nota: i32, desplazado: i32, derecha: i32, encima: bool) -> Option<(RECT, RECT)> {
+pub fn barra(
+    visible: i32,
+    alto_nota: i32,
+    desplazado: i32,
+    derecha: i32,
+    encima: bool,
+) -> Option<(RECT, RECT)> {
     if visible <= 0 || alto_nota <= visible {
         return None;
     }
@@ -494,7 +574,9 @@ pub fn barra(visible: i32, alto_nota: i32, desplazado: i32, derecha: i32, encima
     let alto = (largo as i64 * visible as i64 / alto_nota as i64).max(escala(28) as i64) as i32;
     let alto = alto.min(largo);
     let recorrido = (largo - alto).max(0);
-    let y = margen + (desplazado.max(0) as i64 * recorrido as i64 / (alto_nota - visible) as i64).min(recorrido as i64) as i32;
+    let y = margen
+        + (desplazado.max(0) as i64 * recorrido as i64 / (alto_nota - visible) as i64)
+            .min(recorrido as i64) as i32;
     let asidero = rect(derecha - margen - ancho, y, ancho, alto);
     Some((pista, asidero))
 }
@@ -635,7 +717,12 @@ fn pintar_adorno(dc: HDC, ad: &Adornos, que: &Que, dx: i32, dy: i32, (an, al): (
             let c = mueve(caja);
             if hecha {
                 f.redondo(c, 4.0, t.acento);
-                f.icono(Icono::Hecho, c, (c.an as f32 / ad.pintor.escala) * 0.8, t.papel);
+                f.icono(
+                    Icono::Hecho,
+                    c,
+                    (c.an as f32 / ad.pintor.escala) * 0.8,
+                    t.papel,
+                );
             } else {
                 f.borde(c, 4.0, 1.5 * ad.pintor.escala, t.tenue);
             }
@@ -651,7 +738,11 @@ fn pintar_adorno(dc: HDC, ad: &Adornos, que: &Que, dx: i32, dy: i32, (an, al): (
             1.5,
             t.raya,
         ),
-        Que::Barra { asidero } => f.redondo(mueve(caja_de(asidero)), 3.0, if t.oscuro { 0x4a4a48 } else { 0xc4c4c0 }),
+        Que::Barra { asidero } => f.redondo(
+            mueve(caja_de(asidero)),
+            3.0,
+            if t.oscuro { 0x4a4a48 } else { 0xc4c4c0 },
+        ),
         Que::Foto { .. } => {}
     });
 }
@@ -670,10 +761,22 @@ fn rellenar(hdc: HDC, r: RECT, c: COLORREF) {
 fn marco(hdc: HDC, r: RECT, c: COLORREF, grueso: i32) {
     let g = grueso.max(1);
     for b in [
-        RECT { bottom: r.top + g, ..r },
-        RECT { top: r.bottom - g, ..r },
-        RECT { right: r.left + g, ..r },
-        RECT { left: r.right - g, ..r },
+        RECT {
+            bottom: r.top + g,
+            ..r
+        },
+        RECT {
+            top: r.bottom - g,
+            ..r
+        },
+        RECT {
+            right: r.left + g,
+            ..r
+        },
+        RECT {
+            left: r.right - g,
+            ..r
+        },
     ] {
         rellenar(hdc, b, c);
     }
@@ -715,7 +818,12 @@ fn aviso(hdc: HDC, caja: RECT, texto: &str, c: Colores) {
             ..franja
         };
         let mut t: Vec<u16> = texto.encode_utf16().collect();
-        DrawTextW(hdc, &mut t, &mut r, DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS | DT_NOPREFIX);
+        DrawTextW(
+            hdc,
+            &mut t,
+            &mut r,
+            DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS | DT_NOPREFIX,
+        );
         SelectObject(hdc, vieja);
         let _ = DeleteObject(HGDIOBJ(letra.0));
     }
@@ -827,7 +935,10 @@ mod pruebas {
     fn el_ancho_puesto_manda_y_no_pasa_de_la_columna() {
         assert_eq!(caja_maxima(None, 720, 1.0), (720, ALTO_MAXIMO_PX));
         assert_eq!(caja_maxima(Some(300), 720, 1.0), (300, ALTO_CON_ANCHO_PX));
-        assert_eq!(caja_maxima(Some(300), 720, 2.0), (600, 2 * ALTO_CON_ANCHO_PX));
+        assert_eq!(
+            caja_maxima(Some(300), 720, 2.0),
+            (600, 2 * ALTO_CON_ANCHO_PX)
+        );
         // Caso negativo: mas ancha que la columna no se sale.
         assert_eq!(caja_maxima(Some(5000), 720, 1.0).0, 720);
     }

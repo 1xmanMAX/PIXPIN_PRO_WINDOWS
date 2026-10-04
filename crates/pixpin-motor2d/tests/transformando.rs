@@ -8,7 +8,16 @@ use pixpin_motor2d::gesto::{EventoGesto, Gesto, Herramienta};
 use pixpin_motor2d::vector::Punto2;
 
 fn pulsar(g: &mut Gesto, e: &mut Escena, p: Punto2) {
-    g.evento(EventoGesto::Pulsar { p, shift: false, alt: false, presion: None }, e, 1.0);
+    g.evento(
+        EventoGesto::Pulsar {
+            p,
+            shift: false,
+            alt: false,
+            presion: None,
+        },
+        e,
+        1.0,
+    );
 }
 
 fn con_una_caja_elegida() -> (Escena, Gesto) {

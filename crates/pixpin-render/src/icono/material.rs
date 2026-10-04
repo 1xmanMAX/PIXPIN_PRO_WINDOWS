@@ -580,7 +580,6 @@ pub const WIFI: Icono = Icono {
     )],
 };
 
-
 // --- Los de la voz (B7, B9, B11): banderita, llamada, persona, altavoz y
 // repetir, los mismos `Icons.Filled.*` que `LetraActivity`,
 // `LlamadaSecretaActivity` y `PronunciarActivity`.
@@ -640,7 +639,10 @@ pub const REPLAY: Icono = Icono {
 /// subir una tarea en su lista.
 pub const KEYBOARD_ARROW_UP: Icono = Icono {
     vista: VISTA,
-    trazos: &[relleno("M7.41 15.41L12 10.83l4.59 4.58L18 14l-6-6-6 6z", false)],
+    trazos: &[relleno(
+        "M7.41 15.41L12 10.83l4.59 4.58L18 14l-6-6-6 6z",
+        false,
+    )],
 };
 /// Todos, para poder comprobarlos de una vez.
 pub const TODOS: &[Icono] = &[

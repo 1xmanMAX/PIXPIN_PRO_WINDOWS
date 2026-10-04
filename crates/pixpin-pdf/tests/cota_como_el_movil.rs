@@ -47,16 +47,31 @@ fn las_cotas_del_plano_salen_como_rotulos_girados_con_halo_en_centimetros() {
         .ordenes
         .iter()
         .filter_map(|o| match o {
-            Orden::Rotulo { texto, angulo, halo, .. } => {
-                Some((texto.clone(), angulo.to_degrees().rem_euclid(360.0), [halo.r, halo.g, halo.b]))
-            }
+            Orden::Rotulo {
+                texto,
+                angulo,
+                halo,
+                ..
+            } => Some((
+                texto.clone(),
+                angulo.to_degrees().rem_euclid(360.0),
+                [halo.r, halo.g, halo.b],
+            )),
             _ => None,
         })
         .collect();
     assert_eq!(rotulos.len(), 2, "{rotulos:?}");
     assert_eq!(rotulos[0].0, "5,00 cm · -90°");
-    assert!((rotulos[0].1 - 90.0).abs() < 0.1, "a lo largo de la vertical: {}", rotulos[0].1);
-    assert!((rotulos[1].1 - 271.09).abs() < 0.1, "volteada para no ir boca abajo: {}", rotulos[1].1);
+    assert!(
+        (rotulos[0].1 - 90.0).abs() < 0.1,
+        "a lo largo de la vertical: {}",
+        rotulos[0].1
+    );
+    assert!(
+        (rotulos[1].1 - 271.09).abs() < 0.1,
+        "volteada para no ir boca abajo: {}",
+        rotulos[1].1
+    );
     // La tinta adaptada al papel blanco es oscura: halo blanco.
     assert_eq!(rotulos[0].2, [1.0, 1.0, 1.0]);
 }
@@ -64,8 +79,12 @@ fn las_cotas_del_plano_salen_como_rotulos_girados_con_halo_en_centimetros() {
 #[test]
 fn en_el_pdf_el_numero_lleva_su_halo_trazado_debajo_y_va_girado() {
     let hojas = exportar::hojas(&escena(), Alcance::Todo, &[], None);
-    let bytes = de_hojas(&hojas, Some(pixpin_motor2d::ColorRgba::opaco(1.0, 1.0, 1.0)), &|_| None)
-        .expect("una hoja");
+    let bytes = de_hojas(
+        &hojas,
+        Some(pixpin_motor2d::ColorRgba::opaco(1.0, 1.0, 1.0)),
+        &|_| None,
+    )
+    .expect("una hoja");
     let ruta = std::env::temp_dir().join(format!("pixpin-cota-{}.pdf", std::process::id()));
     std::fs::write(&ruta, &bytes).expect("escribir");
     let doc = pixpin_pdf::Documento::abrir(&ruta).expect("Windows lo abre");
@@ -92,15 +111,24 @@ fn en_el_pdf_el_numero_lleva_su_halo_trazado_debajo_y_va_girado() {
         c
     };
     // La foto oscura: donde esta en la pagina.
-    let (fx0, fy0, fx1, fy1) =
-        caja_de(&|c| c[0] < 60 && c[1] < 60 && c[2] < 60, 0, p.ancho, 0, p.alto).expect("la foto");
+    let (fx0, fy0, fx1, fy1) = caja_de(
+        &|c| c[0] < 60 && c[1] < 60 && c[2] < 60,
+        0,
+        p.ancho,
+        0,
+        p.alto,
+    )
+    .expect("la foto");
     // Dentro de ella, blanco solo puede ser el halo de un numero: sin el, el
     // numero se perderia sobre lo de debajo. Se mira la mitad izquierda, la
     // de la cota larga: su halo es un renglon PUESTO DE PIE, mas alto que
     // ancho, porque el numero va a lo largo de la raya vertical.
     let blanco = |c: [u8; 3]| c[0] > 230 && c[1] > 230 && c[2] > 230;
-    let (hx0, hy0, hx1, hy1) =
-        caja_de(&blanco, fx0 + 2, (fx0 + fx1) / 2, fy0 + 2, fy1 - 2).expect("hay halo sobre la foto");
+    let (hx0, hy0, hx1, hy1) = caja_de(&blanco, fx0 + 2, (fx0 + fx1) / 2, fy0 + 2, fy1 - 2)
+        .expect("hay halo sobre la foto");
     let (ancho, alto) = (hx1 - hx0, hy1 - hy0);
-    assert!(alto > ancho * 2, "el numero va a lo largo de la cota: {ancho} x {alto}");
+    assert!(
+        alto > ancho * 2,
+        "el numero va a lo largo de la cota: {ancho} x {alto}"
+    );
 }

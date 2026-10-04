@@ -333,10 +333,22 @@ enum Fase {
     Grabando(pixpin_audio::Grabadora),
     /// Parando y cerrando el `.m4a`, en su hilo (25-50 ms).
     Parando(Receiver<Result<pixpin_audio::Grabacion, pixpin_audio::ErrorAudio>>),
-    Guardada { mensaje: Mensaje, desde: Instant },
-    Hora { mensaje: Mensaje, selector: Selector },
-    Puesta { texto: String, desde: Instant },
-    Fallo { texto: String, desde: Instant },
+    Guardada {
+        mensaje: Mensaje,
+        desde: Instant,
+    },
+    Hora {
+        mensaje: Mensaje,
+        selector: Selector,
+    },
+    Puesta {
+        texto: String,
+        desde: Instant,
+    },
+    Fallo {
+        texto: String,
+        desde: Instant,
+    },
 }
 
 /// El tamano logico de la ventana en cada fase.
@@ -356,7 +368,10 @@ fn marco_para(area: Rect, escala_por_cien: u32, logico: (u32, u32), antes: Optio
     let e = |v: u32| v * escala_por_cien / 100;
     let (w, h) = (e(logico.0).min(area.ancho), e(logico.1).min(area.alto));
     let (x, y) = match antes {
-        Some(a) => (a.x + a.ancho as i32 - w as i32, a.y + a.alto as i32 - h as i32),
+        Some(a) => (
+            a.x + a.ancho as i32 - w as i32,
+            a.y + a.alto as i32 - h as i32,
+        ),
         None => (
             area.x + area.ancho as i32 - w as i32 - e(24) as i32,
             area.y + area.alto as i32 - h as i32 - e(24) as i32,
@@ -427,7 +442,8 @@ fn flotar(recursos: &Recursos, pedido: &Pedido, rotulos: &Rotulos) -> Result<()>
                     botones.raton = ((p.x - marco.x) as f32, (p.y - marco.y) as f32);
                     if let Some((desde, origen, _, arrastre)) = pulsado.as_mut() {
                         let (dx, dy) = (p.x - desde.x, p.y - desde.y);
-                        if !*arrastre && (dx.abs() > UMBRAL_ARRASTRE || dy.abs() > UMBRAL_ARRASTRE) {
+                        if !*arrastre && (dx.abs() > UMBRAL_ARRASTRE || dy.abs() > UMBRAL_ARRASTRE)
+                        {
                             *arrastre = true;
                         }
                         if *arrastre {
@@ -589,7 +605,14 @@ fn flotar(recursos: &Recursos, pedido: &Pedido, rotulos: &Rotulos) -> Result<()>
                 vivo = false;
                 guardada
             }
-            (Fase::Hora { mensaje, mut selector }, Some(a), _) => match a {
+            (
+                Fase::Hora {
+                    mensaje,
+                    mut selector,
+                },
+                Some(a),
+                _,
+            ) => match a {
                 Accion::Atajo(i) => {
                     selector.atajo(atajos(ahora)[i.min(2)], ahora);
                     Fase::Hora { mensaje, selector }
@@ -607,7 +630,12 @@ fn flotar(recursos: &Recursos, pedido: &Pedido, rotulos: &Rotulos) -> Result<()>
                     desde: Instant::now(),
                 },
                 Accion::Poner => {
-                    match poner_la_llamada(&pedido.raiz, &pedido.proyecto, &mensaje.id, selector.cuando) {
+                    match poner_la_llamada(
+                        &pedido.raiz,
+                        &pedido.proyecto,
+                        &mensaje.id,
+                        selector.cuando,
+                    ) {
                         Ok(true) => Fase::Puesta {
                             texto: rotulos.puesta.replace(
                                 HUECO,
@@ -787,7 +815,16 @@ fn pintar(
                 ancho: w - 32.0 * e,
                 alto: 46.0 * e,
             };
-            boton_con_icono(p, botones, caja, Accion::Convertir, &mi::CALL, &r.convertir, tema.enviar, e);
+            boton_con_icono(
+                p,
+                botones,
+                caja,
+                Accion::Convertir,
+                &mi::CALL,
+                &r.convertir,
+                tema.enviar,
+                e,
+            );
             botones.boton(
                 p,
                 RectF {
@@ -868,9 +905,17 @@ fn pintar_grabando(
     let fase_latido = (llevado.as_millis() % 1000) as f32 / 1000.0;
     if grabando {
         let aro = radio + 14.0 * e * fase_latido;
-        p.circulo(centro, aro, con_alfa(ROJO_GRABAR, 0.35 * (1.0 - fase_latido)));
+        p.circulo(
+            centro,
+            aro,
+            con_alfa(ROJO_GRABAR, 0.35 * (1.0 - fase_latido)),
+        );
     }
-    p.circulo(centro, radio, if grabando { ROJO_GRABAR } else { tema.campo });
+    p.circulo(
+        centro,
+        radio,
+        if grabando { ROJO_GRABAR } else { tema.campo },
+    );
     let lado = 46.0 * e;
     p.icono(
         &mi::MIC,
@@ -880,7 +925,11 @@ fn pintar_grabando(
             ancho: lado,
             alto: lado,
         },
-        if grabando { Color::BLANCO } else { tema.campo_apagado },
+        if grabando {
+            Color::BLANCO
+        } else {
+            tema.campo_apagado
+        },
     );
 
     match fase {
@@ -968,7 +1017,13 @@ fn boton_con_icono(
         },
         Color::BLANCO,
     );
-    p.texto(rotulo, x + lado + 10.0 * e, caja.y + (caja.alto - th) / 2.0, tam, Color::BLANCO);
+    p.texto(
+        rotulo,
+        x + lado + 10.0 * e,
+        caja.y + (caja.alto - th) / 2.0,
+        tam,
+        Color::BLANCO,
+    );
     botones.zona(caja, que);
 }
 
@@ -1007,7 +1062,10 @@ fn pintar_hora(
     let margen = 16.0 * e;
     let hueco = 8.0 * e;
     let ancho = (w - 2.0 * margen - 2.0 * hueco) / 3.0;
-    for (i, rotulo) in [&r.en_15_min, &r.en_1_hora, &r.manana].into_iter().enumerate() {
+    for (i, rotulo) in [&r.en_15_min, &r.en_1_hora, &r.manana]
+        .into_iter()
+        .enumerate()
+    {
         let caja = RectF {
             x: margen + i as f32 * (ancho + hueco),
             y: 50.0 * e,
@@ -1122,7 +1180,16 @@ fn pintar_hora(
         ancho: w - 2.0 * margen,
         alto: 46.0 * e,
     };
-    boton_con_icono(p, botones, caja, Accion::Poner, &mi::CALL, &r.poner, VERDE, e);
+    boton_con_icono(
+        p,
+        botones,
+        caja,
+        Accion::Poner,
+        &mi::CALL,
+        &r.poner,
+        VERDE,
+        e,
+    );
     botones.boton(
         p,
         RectF {
@@ -1221,8 +1288,8 @@ mod pruebas {
     }
 
     fn proyecto_de_prueba(nombre: &str) -> (PathBuf, String) {
-        let raiz = std::env::temp_dir()
-            .join(format!("pixpin-microfono-{nombre}-{}", std::process::id()));
+        let raiz =
+            std::env::temp_dir().join(format!("pixpin-microfono-{nombre}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&raiz);
         let f = pixpin_proyecto::almacen::Ficha::nueva("Casa", 1, "PC01");
         pixpin_proyecto::almacen::Indice {
@@ -1245,8 +1312,9 @@ mod pruebas {
             duracion_ms: 4200,
             picos: vec![10, 2000, 30000],
         };
-        let m = super::super::guardar_la_voz(&raiz, &proyecto, "PC01", Some("reunion"), &grabacion, 1)
-            .unwrap();
+        let m =
+            super::super::guardar_la_voz(&raiz, &proyecto, "PC01", Some("reunion"), &grabacion, 1)
+                .unwrap();
         assert_eq!(m.nombre, "reunion.m4a");
         assert_eq!(m.clase, Some(pixpin_proyecto::cuaderno::Clase::Voz));
         assert_eq!(m.duracion_ms, 4200);
@@ -1288,7 +1356,10 @@ mod pruebas {
             alto: 1040,
         };
         let m = marco_para(area, 100, (230, 248), None);
-        assert_eq!((m.x, m.y, m.ancho, m.alto), (1920 - 230 - 24, 1040 - 248 - 24, 230, 248));
+        assert_eq!(
+            (m.x, m.y, m.ancho, m.alto),
+            (1920 - 230 - 24, 1040 - 248 - 24, 230, 248)
+        );
         let mayor = marco_para(area, 100, (320, 400), Some(m));
         // Mismo pie y mismo borde derecho: crece hacia arriba y a la izquierda.
         assert_eq!(mayor.x + mayor.ancho as i32, m.x + m.ancho as i32);

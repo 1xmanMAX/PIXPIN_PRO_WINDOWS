@@ -9,7 +9,9 @@
 //! `motor/PortapapelesDeTabla.kt` del movil.
 
 use windows::Win32::Foundation::HGLOBAL;
-use windows::Win32::System::DataExchange::{GetClipboardData, OpenClipboard, RegisterClipboardFormatW};
+use windows::Win32::System::DataExchange::{
+    GetClipboardData, OpenClipboard, RegisterClipboardFormatW,
+};
 use windows::Win32::System::Memory::{GlobalLock, GlobalSize, GlobalUnlock};
 use windows::core::w;
 
@@ -110,7 +112,9 @@ pub fn fragmento_de(bytes: &[u8]) -> String {
         return String::from_utf8_lossy(&bytes[a..b]).into_owned();
     }
     match (numero("StartHTML:"), numero("EndHTML:")) {
-        (Some(a), Some(b)) if a <= b && b <= bytes.len() => String::from_utf8_lossy(&bytes[a..b]).into_owned(),
+        (Some(a), Some(b)) if a <= b && b <= bytes.len() => {
+            String::from_utf8_lossy(&bytes[a..b]).into_owned()
+        }
         _ => texto.into_owned(),
     }
 }
@@ -154,7 +158,8 @@ mod pruebas {
     #[test]
     fn un_cf_html_de_excel_se_lee_por_su_fragmento() {
         let fragmento = "<tr><td>1</td></tr>";
-        let mut crudo = String::from("Version:1.0\r\nStartHTML:0000000000\r\nEndHTML:0000000000\r\n");
+        let mut crudo =
+            String::from("Version:1.0\r\nStartHTML:0000000000\r\nEndHTML:0000000000\r\n");
         crudo.push_str("StartFragment:XXXXXXXXXX\r\nEndFragment:YYYYYYYYYY\r\n<html><body><!--StartFragment-->");
         let a = crudo.len();
         crudo.push_str(fragmento);

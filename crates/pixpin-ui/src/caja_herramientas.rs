@@ -698,7 +698,10 @@ impl CajaHerramientas {
     /// sacar va al final de la barra.
     pub fn menu(&self) -> Option<MenuGrupo> {
         let g = self.desplegado?;
-        let i = self.botones().iter().position(|b| *b == BotonCaja::Grupo(g))?;
+        let i = self
+            .botones()
+            .iter()
+            .position(|b| *b == BotonCaja::Grupo(g))?;
         let miembros = self.miembros(g);
         let e = |v: u32| v * self.escala_por_cien / 100;
         let boton = self.rect_de(i);
@@ -728,12 +731,7 @@ impl CajaHerramientas {
             .collect();
         Some(MenuGrupo {
             grupo: g,
-            marco: Rect {
-                x,
-                y,
-                ancho,
-                alto,
-            },
+            marco: Rect { x, y, ancho, alto },
             filas,
         })
     }
@@ -1098,7 +1096,11 @@ mod pruebas {
                 .iter()
                 .filter(|g| g.miembros().contains(&b))
                 .count();
-            assert_eq!(sueltos + grupos, 1, "{b:?}: {sueltos} suelto y {grupos} grupos");
+            assert_eq!(
+                sueltos + grupos,
+                1,
+                "{b:?}: {sueltos} suelto y {grupos} grupos"
+            );
         }
         // Y al reves: nada en un grupo que no sea de la barra de siempre.
         for g in GrupoBarra::TODOS {
@@ -1170,7 +1172,13 @@ mod pruebas {
         for i in 0..botones.len() {
             let r = b.rect_de(i);
             assert!(b.marco.contiene(Punto { x: r.x, y: r.y }), "{i}");
-            assert_eq!(b.destino(Punto { x: r.x + 2, y: r.y + 2 }), DestinoClic::Boton(botones[i]));
+            assert_eq!(
+                b.destino(Punto {
+                    x: r.x + 2,
+                    y: r.y + 2
+                }),
+                DestinoClic::Boton(botones[i])
+            );
             for j in 0..i {
                 assert!(r.interseccion(b.rect_de(j)).is_none(), "{i} pisa {j}");
             }
@@ -1218,8 +1226,14 @@ mod pruebas {
         let formas = GrupoBarra::Formas.miembros();
         let rombo = BotonCaja::Elegir(Herramienta::Rombo);
         let elipse = BotonCaja::Elegir(Herramienta::Elipse);
-        assert_eq!(cara_del_grupo(formas, Herramienta::Rombo, Some(elipse)), Some(rombo));
-        assert_eq!(cara_del_grupo(formas, Herramienta::Lapiz, Some(elipse)), Some(elipse));
+        assert_eq!(
+            cara_del_grupo(formas, Herramienta::Rombo, Some(elipse)),
+            Some(rombo)
+        );
+        assert_eq!(
+            cara_del_grupo(formas, Herramienta::Lapiz, Some(elipse)),
+            Some(elipse)
+        );
         assert_eq!(
             cara_del_grupo(formas, Herramienta::Lapiz, None),
             Some(BotonCaja::Elegir(Herramienta::Rectangulo))
@@ -1241,9 +1255,14 @@ mod pruebas {
             .con_desplegado(Some(GrupoBarra::Formas));
         assert_eq!(b.desplegado(), Some(GrupoBarra::Formas));
         let m = b.menu().expect("abierto");
-        let boton = b.rect_de_boton(BotonCaja::Grupo(GrupoBarra::Formas)).unwrap();
+        let boton = b
+            .rect_de_boton(BotonCaja::Grupo(GrupoBarra::Formas))
+            .unwrap();
         assert!(m.marco.y >= b.marco.abajo(), "debajo de la barra");
-        assert!((m.marco.x - boton.x).abs() <= 10, "bajo su boton: {m:?} {boton:?}");
+        assert!(
+            (m.marco.x - boton.x).abs() <= 10,
+            "bajo su boton: {m:?} {boton:?}"
+        );
         assert_eq!(m.filas.len(), 4);
         for (h, r) in &m.filas {
             assert!(m.marco.contiene(Punto { x: r.x, y: r.y }));
@@ -1271,10 +1290,16 @@ mod pruebas {
         ];
         let b = CajaHerramientas::barra_superior(area(), 100, solo_cota);
         assert_eq!(b.con_desplegado(Some(GrupoBarra::Medir)).desplegado(), None);
-        assert_eq!(b.con_desplegado(Some(GrupoBarra::Formas)).desplegado(), None);
+        assert_eq!(
+            b.con_desplegado(Some(GrupoBarra::Formas)).desplegado(),
+            None
+        );
         // La columna tampoco despliega.
         let c = CajaHerramientas::colocar(contenido(), area(), 100, &BOTONES_EDITOR);
-        assert_eq!(c.con_desplegado(Some(GrupoBarra::Formas)).desplegado(), None);
+        assert_eq!(
+            c.con_desplegado(Some(GrupoBarra::Formas)).desplegado(),
+            None
+        );
     }
 
     #[test]

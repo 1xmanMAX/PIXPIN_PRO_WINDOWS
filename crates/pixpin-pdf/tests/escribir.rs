@@ -40,7 +40,12 @@ fn fichero(nombre: &str, bytes: &[u8]) -> std::path::PathBuf {
 
 fn pixel(img: &pixpin_codec::imagen::ImagenRgba, x: u32, y: u32) -> [u8; 4] {
     let i = ((y * img.ancho + x) * 4) as usize;
-    [img.pixeles[i], img.pixeles[i + 1], img.pixeles[i + 2], img.pixeles[i + 3]]
+    [
+        img.pixeles[i],
+        img.pixeles[i + 1],
+        img.pixeles[i + 2],
+        img.pixeles[i + 3],
+    ]
 }
 
 #[test]
@@ -92,12 +97,21 @@ fn el_pdf_escrito_abre_con_windows_y_pinta_cada_hoja_en_su_pagina() {
     let p1 = doc.renderizar(0, 300).expect("pagina 1");
     assert!(p1.alto > p1.ancho);
     let centro = pixel(&p1, p1.ancho / 2, p1.alto / 2);
-    assert!(centro[0] < 40 && centro[1] < 40 && centro[2] < 40, "el cuadrado negro: {centro:?}");
+    assert!(
+        centro[0] < 40 && centro[1] < 40 && centro[2] < 40,
+        "el cuadrado negro: {centro:?}"
+    );
     let esquina = pixel(&p1, 2, 2);
-    assert!(esquina[0] > 200, "fuera de la hoja queda el papel: {esquina:?}");
+    assert!(
+        esquina[0] > 200,
+        "fuera de la hoja queda el papel: {esquina:?}"
+    );
     let p2 = doc.renderizar(1, 300).expect("pagina 2");
     let c2 = pixel(&p2, p2.ancho / 2, p2.alto / 2);
-    assert!(c2[0] > 200 && c2[1] < 60 && c2[2] < 60, "la imagen roja: {c2:?}");
+    assert!(
+        c2[0] > 200 && c2[1] < 60 && c2[2] < 60,
+        "la imagen roja: {c2:?}"
+    );
 }
 
 #[test]
@@ -120,7 +134,10 @@ fn una_hoja_apaisada_sale_en_una_pagina_tumbada_y_la_transparencia_se_respeta() 
     // El cuadrado ocupa el primer tercio de la hoja: gris, no negro.
     let x = p.ancho / 6;
     let gris = pixel(&p, x, p.alto / 2);
-    assert!(gris[0] > 90 && gris[0] < 170, "medio transparente: {gris:?}");
+    assert!(
+        gris[0] > 90 && gris[0] < 170,
+        "medio transparente: {gris:?}"
+    );
 }
 
 #[test]
@@ -174,7 +191,9 @@ fn el_grano_de_una_tinta_porosa_se_ve_en_el_pdf_y_sin_el_sale_lisa() {
     let mut escena = Escena::nueva();
     escena.anadir(Elemento {
         figura: Figura::Lapiz {
-            puntos: (0..40).map(|i| Punto2::nuevo(i as f32 * 10.0, 50.0)).collect(),
+            puntos: (0..40)
+                .map(|i| Punto2::nuevo(i as f32 * 10.0, 50.0))
+                .collect(),
             presiones: Vec::new(),
             opciones: Some(Default::default()),
         },
@@ -203,7 +222,10 @@ fn el_grano_de_una_tinta_porosa_se_ve_en_el_pdf_y_sin_el_sale_lisa() {
     // el grano oscurece (la tela es la tinta oscurecida).
     let (y0, y1) = (p_con.alto / 2 - 4, p_con.alto / 2 + 4);
     let (luz_con, luz_sin) = (luz_media(&p_con, y0, y1), luz_media(&p_sin, y0, y1));
-    assert!(luz_con + 5.0 < luz_sin, "con grano mas oscuro: {luz_con} contra {luz_sin}");
+    assert!(
+        luz_con + 5.0 < luz_sin,
+        "con grano mas oscuro: {luz_con} contra {luz_sin}"
+    );
     // Y no es un oscurecido parejo: dentro del trazo hay rayas, o sea mas
     // de un tono en la misma fila.
     let fila: Vec<u8> = (p_con.ancho / 4..p_con.ancho * 3 / 4)
@@ -259,9 +281,16 @@ fn una_imagen_recortada_sale_en_el_pdf_con_solo_su_trozo() {
     // La hoja entera es el cuadrante verde, estirado: en el centro y cerca
     // de las cuatro esquinas de la hoja, verde.
     let (w, h) = (p.ancho, p.alto);
-    for (x, y) in [(w / 2, h / 2), (w / 5, h / 2 - w / 5), (w * 4 / 5, h / 2 + w / 5)] {
+    for (x, y) in [
+        (w / 2, h / 2),
+        (w / 5, h / 2 - w / 5),
+        (w * 4 / 5, h / 2 + w / 5),
+    ] {
         let c = pixel(&p, x, y);
-        assert!(c[1] > 200 && c[0] < 60 && c[2] < 60, "verde en ({x}, {y}): {c:?}");
+        assert!(
+            c[1] > 200 && c[0] < 60 && c[2] < 60,
+            "verde en ({x}, {y}): {c:?}"
+        );
     }
     // Caso negativo: sin recorte sale la foto entera, con su rojo arriba a la
     // izquierda.
@@ -290,12 +319,24 @@ fn con_la_letra_de_la_pantalla_el_texto_va_incrustado_y_se_ve() {
         negrita: false,
         cursiva: false,
     };
-    let bytes = pixpin_pdf::escribir::de_hojas_con_letra(&[hoja(vec![texto(90.0)])], None, &|_| None, Some(&segoe))
-        .expect("una hoja");
+    let bytes = pixpin_pdf::escribir::de_hojas_con_letra(
+        &[hoja(vec![texto(90.0)])],
+        None,
+        &|_| None,
+        Some(&segoe),
+    )
+    .expect("una hoja");
     let s = String::from_utf8_lossy(&bytes);
-    assert!(s.contains("/FontFile2") && s.contains("+SegoeUI"), "la letra va dentro");
+    assert!(
+        s.contains("/FontFile2") && s.contains("+SegoeUI"),
+        "la letra va dentro"
+    );
     assert!(s.contains("/ToUnicode"), "y se puede copiar el texto");
-    assert!(bytes.len() < 120_000, "solo las letras usadas: {} bytes", bytes.len());
+    assert!(
+        bytes.len() < 120_000,
+        "solo las letras usadas: {} bytes",
+        bytes.len()
+    );
     let p = pixpin_pdf::Documento::abrir(&fichero("letra.pdf", &bytes))
         .and_then(|d| d.renderizar(0, 600))
         .expect("Windows lo abre");

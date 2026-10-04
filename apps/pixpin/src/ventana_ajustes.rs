@@ -33,10 +33,9 @@ use pixpin_store::ajustes::{
 use pixpin_store::comandos::{CATALOGO, Comando, Enlaces};
 use pixpin_store::{Catalogo, Ubicacion};
 use pixpin_ui::ajustes::{
-    Control, Estado, Fila, Foco, Golpe, NAV_ANCHO, Parte, Recta, ancho_de_textos,
-    boton_restablecer_seccion, borrar_busqueda, botones_del_pie, buscador, coincide, contenido,
-    escribir, golpe_en, limitar_desplazamiento, numero_tras, partes_de_fila, rect_de_fila,
-    rect_de_seccion,
+    Control, Estado, Fila, Foco, Golpe, NAV_ANCHO, Parte, Recta, ancho_de_textos, borrar_busqueda,
+    boton_restablecer_seccion, botones_del_pie, buscador, coincide, contenido, escribir, golpe_en,
+    limitar_desplazamiento, numero_tras, partes_de_fila, rect_de_fila, rect_de_seccion,
 };
 
 /// Medidas de la ventana en pixeles logicos (se encogen si el monitor no
@@ -337,7 +336,13 @@ fn distinto_de_fabrica(clave: Clave, a: &Ajustes) -> bool {
 }
 
 /// Una fila de opcion, con el punto azul ya decidido.
-fn op(a: &Ajustes, clave: Clave, etiqueta: String, ayuda: String, control: Control) -> (Clave, Fila) {
+fn op(
+    a: &Ajustes,
+    clave: Clave,
+    etiqueta: String,
+    ayuda: String,
+    control: Control,
+) -> (Clave, Fila) {
     (
         clave,
         Fila {
@@ -388,7 +393,11 @@ fn filas_de_seccion(s: Seccion, a: &Ajustes, cx: &Contexto) -> Vec<(Clave, Fila)
                 tt("ajustes-idioma"),
                 tt("ajustes2-ayuda-idioma"),
                 opcion(
-                    vec![tt("ajustes-idioma-sistema"), "Español".into(), "English".into()],
+                    vec![
+                        tt("ajustes-idioma-sistema"),
+                        "Español".into(),
+                        "English".into(),
+                    ],
                     match a.idioma {
                         PreferenciaIdioma::Sistema => 0,
                         PreferenciaIdioma::Espanol => 1,
@@ -433,7 +442,13 @@ fn filas_de_seccion(s: Seccion, a: &Ajustes, cx: &Contexto) -> Vec<(Clave, Fila)
                     Clave::RetardoCaptura,
                     tt("ajustes2-retardo"),
                     tt("ajustes2-ayuda-retardo"),
-                    numero(a.retardo_captura_s, 0, 30, 1, cx.n("ajustes2-u-s", a.retardo_captura_s)),
+                    numero(
+                        a.retardo_captura_s,
+                        0,
+                        30,
+                        1,
+                        cx.n("ajustes2-u-s", a.retardo_captura_s),
+                    ),
                 ),
                 op(
                     a,
@@ -475,7 +490,13 @@ fn filas_de_seccion(s: Seccion, a: &Ajustes, cx: &Contexto) -> Vec<(Clave, Fila)
                     Clave::GifRetardo,
                     tt("ajustes2-gif-retardo"),
                     tt("ajustes2-ayuda-gif-retardo"),
-                    numero(a.gif.retardo_s, 0, 10, 1, cx.n("ajustes2-u-s", a.gif.retardo_s)),
+                    numero(
+                        a.gif.retardo_s,
+                        0,
+                        10,
+                        1,
+                        cx.n("ajustes2-u-s", a.gif.retardo_s),
+                    ),
                 ),
                 grupo(t, "ajustes2-g-guardar"),
                 op(
@@ -692,7 +713,10 @@ fn filas_de_seccion(s: Seccion, a: &Ajustes, cx: &Contexto) -> Vec<(Clave, Fila)
                 tt("ajustes-voz-modo"),
                 tt("ajustes2-ayuda-voz-modo"),
                 opcion(
-                    vec![tt("ajustes-voz-modo-cada-uno"), tt("ajustes-voz-modo-todo-en-uno")],
+                    vec![
+                        tt("ajustes-voz-modo-cada-uno"),
+                        tt("ajustes-voz-modo-todo-en-uno"),
+                    ],
                     match a.voz.modo_de_idiomas {
                         ModoDeIdiomas::CadaUno => 0,
                         ModoDeIdiomas::TodoEnUno => 1,
@@ -779,8 +803,16 @@ fn filas_de_seccion(s: Seccion, a: &Ajustes, cx: &Contexto) -> Vec<(Clave, Fila)
             ),
         ],
         Seccion::Avanzado => {
-            let corte = a.tinta.corte_minimo.map(|v| (v * 10.0).round().clamp(1.0, 50.0) as u32).unwrap_or(0);
-            let beta = a.tinta.beta.map(|v| (v * 1000.0).round().clamp(1.0, 50.0) as u32).unwrap_or(0);
+            let corte = a
+                .tinta
+                .corte_minimo
+                .map(|v| (v * 10.0).round().clamp(1.0, 50.0) as u32)
+                .unwrap_or(0);
+            let beta = a
+                .tinta
+                .beta
+                .map(|v| (v * 1000.0).round().clamp(1.0, 50.0) as u32)
+                .unwrap_or(0);
             vec![
                 grupo(t, "ajustes2-g-rendimiento"),
                 op(
@@ -962,7 +994,10 @@ fn restablecer(clave: Clave, a: &mut Ajustes) {
 /// «Restablecer <seccion>»: todo lo restablecible de la seccion. Las listas
 /// del usuario (programas, regiones) no se tocan.
 fn restablecer_seccion(s: Seccion, a: &mut Ajustes, cx: &Contexto) {
-    let claves: Vec<Clave> = filas_de_seccion(s, a, cx).into_iter().map(|(c, _)| c).collect();
+    let claves: Vec<Clave> = filas_de_seccion(s, a, cx)
+        .into_iter()
+        .map(|(c, _)| c)
+        .collect();
     for c in claves {
         if c.restablecible() {
             restablecer(c, a);
@@ -1207,7 +1242,11 @@ fn aplicar_al_cerrar(antes: &Ajustes, a: &Ajustes, ubicacion: &Ubicacion) {
     crate::caducidad_capturas::fijar_dias(a.capturas.dias_caducidad);
     let Some(exe) = ruta_exe() else { return };
     if a.arranque_con_windows != antes.arranque_con_windows {
-        match pixpin_shell::arranque::establecer(a.arranque_con_windows, ubicacion.es_portable(), &exe) {
+        match pixpin_shell::arranque::establecer(
+            a.arranque_con_windows,
+            ubicacion.es_portable(),
+            &exe,
+        ) {
             Ok(()) | Err(pixpin_shell::arranque::ErrorArranque::ModoPortable) => {}
             Err(e) => tracing::warn!(?e, "no se pudo cambiar el arranque con Windows"),
         }
@@ -1275,7 +1314,9 @@ pub fn abrir(
 
     let cx = Contexto {
         t: textos,
-        carpeta: crate::galeria_capturas::carpeta(ubicacion).display().to_string(),
+        carpeta: crate::galeria_capturas::carpeta(ubicacion)
+            .display()
+            .to_string(),
     };
     // Copia de trabajo: se toca esta y se guarda al cerrar.
     let mut copia = Copia {
@@ -1302,9 +1343,8 @@ pub fn abrir(
                 y: ((p.y - marco.y) as f32 / e) as i32,
             };
             let solo: Vec<Fila> = filas.iter().map(|(_, f)| f.clone()).collect();
-            let boton_seccion = (!estado.buscando()).then(|| {
-                boton_restablecer_seccion(ancho, &rotulo_restablecer(&estado, textos))
-            });
+            let boton_seccion = (!estado.buscando())
+                .then(|| boton_restablecer_seccion(ancho, &rotulo_restablecer(&estado, textos)));
             let golpe_aqui = |p: Punto, estado: &Estado, hay: bool| {
                 golpe_en(
                     local(p),
@@ -1356,10 +1396,16 @@ pub fn abrir(
                         Some(Golpe::Fila(i, parte)) => {
                             if let Some((clave, fila)) = filas.get(i).cloned() {
                                 match parte {
-                                    Parte::Alternar => copia.cambiar(|a| aplicar_interruptor(a, clave)),
-                                    Parte::Elegir(c) => copia.cambiar(|a| aplicar_opcion(a, clave, c)),
+                                    Parte::Alternar => {
+                                        copia.cambiar(|a| aplicar_interruptor(a, clave))
+                                    }
+                                    Parte::Elegir(c) => {
+                                        copia.cambiar(|a| aplicar_opcion(a, clave, c))
+                                    }
                                     Parte::Menos | Parte::Mas => {
-                                        if let Some(n) = numero_tras(&fila.control, parte == Parte::Mas) {
+                                        if let Some(n) =
+                                            numero_tras(&fila.control, parte == Parte::Mas)
+                                        {
                                             copia.cambiar(|a| aplicar_numero(a, clave, n));
                                         }
                                     }
@@ -1455,17 +1501,15 @@ pub fn abrir(
                                     estado.foco = Foco::Nada;
                                 }
                             }
-                            0x08 => {
-                                match estado.foco {
-                                    Foco::Buscador => {
-                                        estado.busqueda.pop();
-                                    }
-                                    Foco::Entrada(_) => {
-                                        estado.entrada.pop();
-                                    }
-                                    Foco::Nada => {}
+                            0x08 => match estado.foco {
+                                Foco::Buscador => {
+                                    estado.busqueda.pop();
                                 }
-                            }
+                                Foco::Entrada(_) => {
+                                    estado.entrada.pop();
+                                }
+                                Foco::Nada => {}
+                            },
                             0x0D => match estado.foco {
                                 Foco::Entrada(i)
                                     if matches!(filas.get(i), Some((Clave::AnadirIgnorado, _))) =>
@@ -1748,7 +1792,11 @@ fn dibujar_columna(p: &Pintor, e: f32, v: &Vista, t: &Catalogo) {
         |p| p.texto(&texto, x_texto, y_texto, tam, color),
     );
     if enfocado {
-        let x_cursor = if estado.busqueda.is_empty() { x_texto } else { x_texto + w + e };
+        let x_cursor = if estado.busqueda.is_empty() {
+            x_texto
+        } else {
+            x_texto + w + e
+        };
         p.rellenar(
             RectF {
                 x: x_cursor,
@@ -1766,7 +1814,14 @@ fn dibujar_columna(p: &Pintor, e: f32, v: &Vista, t: &Catalogo) {
         }
         icono_en(p, &mi::CLOSE, x, 16.0, e, TEXTO);
     } else {
-        chapita(p, "Ctrl F", b.x + b.ancho - 8.0 * e, b.y + b.alto / 2.0, e, false);
+        chapita(
+            p,
+            "Ctrl F",
+            b.x + b.ancho - 8.0 * e,
+            b.y + b.alto / 2.0,
+            e,
+            false,
+        );
     }
 
     // Las secciones.
@@ -1824,14 +1879,24 @@ fn dibujar_columna(p: &Pintor, e: f32, v: &Vista, t: &Catalogo) {
     let (_, hn) = p.medir_texto("Ag", tam_nota);
     let y2 = y_nota + hn + 2.0 * e;
     p.circulo((x_nota + 4.0 * e, y2 + hn / 2.0), 3.5 * e, AZUL);
-    p.texto(&t.t("ajustes2-nota-punto"), x_nota + 12.0 * e, y2, tam_nota, TENUE);
+    p.texto(
+        &t.t("ajustes2-nota-punto"),
+        x_nota + 12.0 * e,
+        y2,
+        tam_nota,
+        TENUE,
+    );
 
     if v.hay_deshacer {
         let r = rf(deshacer, e);
         p.rellenar_redondeado(
             r,
             10.0 * e,
-            if v.resaltado == Some(Golpe::Deshacer) { BOTON_SOBRE } else { BOTON },
+            if v.resaltado == Some(Golpe::Deshacer) {
+                BOTON_SOBRE
+            } else {
+                BOTON
+            },
         );
         icono_en(
             p,
@@ -1847,8 +1912,21 @@ fn dibujar_columna(p: &Pintor, e: f32, v: &Vista, t: &Catalogo) {
         );
         let rotulo = t.t("ajustes2-deshacer");
         let (_, h) = p.medir_texto(&rotulo, 14.0 * e);
-        p.texto(&rotulo, r.x + 42.0 * e, r.y + (r.alto - h) / 2.0, 14.0 * e, TINTA);
-        chapita(p, "Ctrl Z", r.x + r.ancho - 10.0 * e, r.y + r.alto / 2.0, e, false);
+        p.texto(
+            &rotulo,
+            r.x + 42.0 * e,
+            r.y + (r.alto - h) / 2.0,
+            14.0 * e,
+            TINTA,
+        );
+        chapita(
+            p,
+            "Ctrl Z",
+            r.x + r.ancho - 10.0 * e,
+            r.y + r.alto / 2.0,
+            e,
+            false,
+        );
     }
     // La accion principal: azul y siempre en la misma esquina.
     let r = rf(listo, e);
@@ -1862,7 +1940,14 @@ fn dibujar_columna(p: &Pintor, e: f32, v: &Vista, t: &Catalogo) {
         },
     );
     centrar(p, &t.t("ajustes2-listo"), r, 14.0 * e, blanco(1.0), true);
-    chapita(p, "Esc", r.x + r.ancho - 10.0 * e, r.y + r.alto / 2.0, e, true);
+    chapita(
+        p,
+        "Esc",
+        r.x + r.ancho - 10.0 * e,
+        r.y + r.alto / 2.0,
+        e,
+        true,
+    );
 }
 
 fn dibujar_cabecera(p: &Pintor, e: f32, v: &Vista, t: &Catalogo) {
@@ -1883,12 +1968,19 @@ fn dibujar_cabecera(p: &Pintor, e: f32, v: &Vista, t: &Catalogo) {
         let n = v.filas.iter().filter(|(_, f)| !f.es_grupo()).count();
         let mut a2 = FluentArgs::new();
         a2.set("n", n);
-        (t.t_args("ajustes2-resultados", &args), t.t_args("ajustes2-resultados-sub", &a2))
+        (
+            t.t_args("ajustes2-resultados", &args),
+            t.t_args("ajustes2-resultados-sub", &a2),
+        )
     } else {
         let s = SECCIONES[v.estado.seccion];
         (s.titulo(t), s.subtitulo(t))
     };
-    let ancho_titulo = if v.estado.buscando() { v.ancho - NAV_ANCHO - 60.0 } else { v.ancho - NAV_ANCHO - 300.0 };
+    let ancho_titulo = if v.estado.buscando() {
+        v.ancho - NAV_ANCHO - 60.0
+    } else {
+        v.ancho - NAV_ANCHO - 300.0
+    };
     p.con_recorte(
         RectF {
             x,
@@ -1897,7 +1989,15 @@ fn dibujar_cabecera(p: &Pintor, e: f32, v: &Vista, t: &Catalogo) {
             alto: 90.0 * e,
         },
         |p| {
-            p.texto_con_letra(&titulo, x, 22.0 * e, 24.0 * e, SIN_PARTIR, &negrita(), TINTA);
+            p.texto_con_letra(
+                &titulo,
+                x,
+                22.0 * e,
+                24.0 * e,
+                SIN_PARTIR,
+                &negrita(),
+                TINTA,
+            );
         },
     );
     p.texto_ajustado(&sub, x, 58.0 * e, 13.0 * e, ancho_titulo * e, TENUE);
@@ -1930,7 +2030,13 @@ fn dibujar_cabecera(p: &Pintor, e: f32, v: &Vista, t: &Catalogo) {
             },
             color,
         );
-        p.texto(&rotulo, x0 + 26.0 * e, r.y + (r.alto - h) / 2.0, 13.0 * e, color);
+        p.texto(
+            &rotulo,
+            x0 + 26.0 * e,
+            r.y + (r.alto - h) / 2.0,
+            13.0 * e,
+            color,
+        );
     }
 }
 
@@ -2026,7 +2132,16 @@ fn dibujar_contenido(p: &Pintor, e: f32, v: &Vista, t: &Catalogo) {
 }
 
 #[allow(clippy::too_many_arguments)]
-fn dibujar_fila(p: &Pintor, e: f32, v: &Vista, t: &Catalogo, i: usize, clave: Clave, fila: &Fila, r: Recta) {
+fn dibujar_fila(
+    p: &Pintor,
+    e: f32,
+    v: &Vista,
+    t: &Catalogo,
+    i: usize,
+    clave: Clave,
+    fila: &Fila,
+    r: Recta,
+) {
     let sobre = |parte: Parte| v.resaltado == Some(Golpe::Fila(i, parte));
     // La etiqueta y la explicacion, centradas en vertical juntas.
     let ancho_textos = ancho_de_textos(fila, r) * e;
@@ -2046,7 +2161,14 @@ fn dibujar_fila(p: &Pintor, e: f32, v: &Vista, t: &Catalogo, i: usize, clave: Cl
         p.circulo((x + lw + 8.0 * e, y0 + lh / 2.0), 3.5 * e, AZUL);
     }
     if ah > 0.0 {
-        p.texto_ajustado(&fila.ayuda, x, y0 + lh + 2.0 * e, tam_ayuda, ancho_textos, TENUE);
+        p.texto_ajustado(
+            &fila.ayuda,
+            x,
+            y0 + lh + 2.0 * e,
+            tam_ayuda,
+            ancho_textos,
+            TENUE,
+        );
     }
 
     let partes = partes_de_fila(fila, r);
@@ -2122,7 +2244,11 @@ fn dibujar_fila(p: &Pintor, e: f32, v: &Vista, t: &Catalogo, i: usize, clave: Cl
                 } else {
                     caja.x + 3.0 * e
                 };
-                p.circulo((bx + bola / 2.0, caja.y + caja.alto / 2.0), bola / 2.0, blanco(1.0));
+                p.circulo(
+                    (bx + bola / 2.0, caja.y + caja.alto / 2.0),
+                    bola / 2.0,
+                    blanco(1.0),
+                );
             }
             Parte::Elegir(k) => {
                 let Control::Opcion { opciones, elegida } = &fila.control else {
@@ -2135,7 +2261,14 @@ fn dibujar_fila(p: &Pintor, e: f32, v: &Vista, t: &Catalogo, i: usize, clave: Cl
                     p.rellenar_redondeado(caja, 7.0 * e, blanco(0.07));
                 }
                 let tam = if clave == Clave::Esquina { 16.0 } else { 13.0 };
-                centrar(p, &opciones[*k], caja, tam * e, if es { blanco(1.0) } else { TEXTO }, es);
+                centrar(
+                    p,
+                    &opciones[*k],
+                    caja,
+                    tam * e,
+                    if es { blanco(1.0) } else { TEXTO },
+                    es,
+                );
             }
             Parte::Menos | Parte::Mas => {
                 if sobre(*parte) {
@@ -2180,7 +2313,11 @@ fn dibujar_fila(p: &Pintor, e: f32, v: &Vista, t: &Catalogo, i: usize, clave: Cl
                 centrar(p, &rotulo, caja, 13.0 * e, color, !sin && !grabando);
             }
             Parte::Pulsar => {
-                p.rellenar_redondeado(caja, 9.0 * e, if sobre(*parte) { BOTON_SOBRE } else { BOTON });
+                p.rellenar_redondeado(
+                    caja,
+                    9.0 * e,
+                    if sobre(*parte) { BOTON_SOBRE } else { BOTON },
+                );
                 let rotulo = match &fila.control {
                     Control::Boton(s) => s.clone(),
                     Control::Entrada { boton, .. } => format!("+ {boton}"),
@@ -2207,7 +2344,13 @@ fn dibujar_fila(p: &Pintor, e: f32, v: &Vista, t: &Catalogo, i: usize, clave: Cl
                             },
                             TEXTO,
                         );
-                        p.texto(&rotulo, x0 + 24.0 * e, caja.y + (caja.alto - h) / 2.0, 13.0 * e, TINTA);
+                        p.texto(
+                            &rotulo,
+                            x0 + 24.0 * e,
+                            caja.y + (caja.alto - h) / 2.0,
+                            13.0 * e,
+                            TINTA,
+                        );
                     }
                     None => centrar(p, &rotulo, caja, 13.0 * e, TINTA, false),
                 }
@@ -2217,7 +2360,14 @@ fn dibujar_fila(p: &Pintor, e: f32, v: &Vista, t: &Catalogo, i: usize, clave: Cl
                     continue;
                 };
                 let enfocada = v.estado.foco == Foco::Entrada(i);
-                caja_con_borde(p, caja, 9.0 * e, HUNDIDO, if enfocada { AZUL } else { BORDE }, e);
+                caja_con_borde(
+                    p,
+                    caja,
+                    9.0 * e,
+                    HUNDIDO,
+                    if enfocada { AZUL } else { BORDE },
+                    e,
+                );
                 let (texto, color) = if v.estado.entrada.is_empty() {
                     (marcador.clone(), TENUE)
                 } else {
@@ -2235,7 +2385,11 @@ fn dibujar_fila(p: &Pintor, e: f32, v: &Vista, t: &Catalogo, i: usize, clave: Cl
                     |p| p.texto(&texto, xt, yt, 13.0 * e, color),
                 );
                 if enfocada {
-                    let xc = if v.estado.entrada.is_empty() { xt } else { xt + w + e };
+                    let xc = if v.estado.entrada.is_empty() {
+                        xt
+                    } else {
+                        xt + w + e
+                    };
                     p.rellenar(
                         RectF {
                             x: xc,
@@ -2251,7 +2405,14 @@ fn dibujar_fila(p: &Pintor, e: f32, v: &Vista, t: &Catalogo, i: usize, clave: Cl
                 if sobre(*parte) {
                     p.rellenar_redondeado(caja, 9.0 * e, BOTON);
                 }
-                icono_en(p, &RESTABLECER, caja, 17.0, e, if sobre(*parte) { TINTA } else { TENUE });
+                icono_en(
+                    p,
+                    &RESTABLECER,
+                    caja,
+                    17.0,
+                    e,
+                    if sobre(*parte) { TINTA } else { TENUE },
+                );
             }
             Parte::Quitar => {
                 // Quitar va en rojo al pasar por encima, y apartado a la
@@ -2259,7 +2420,14 @@ fn dibujar_fila(p: &Pintor, e: f32, v: &Vista, t: &Catalogo, i: usize, clave: Cl
                 if sobre(*parte) {
                     p.rellenar_redondeado(caja, 9.0 * e, Color { a: 0.16, ..ROJO });
                 }
-                icono_en(p, &mi::DELETE, caja, 18.0, e, if sobre(*parte) { ROJO } else { TENUE });
+                icono_en(
+                    p,
+                    &mi::DELETE,
+                    caja,
+                    18.0,
+                    e,
+                    if sobre(*parte) { ROJO } else { TENUE },
+                );
             }
         }
     }
@@ -2308,7 +2476,11 @@ mod pruebas {
         }
         // Las secciones vacias no existen: cada una trae al menos una opcion.
         for s in SECCIONES {
-            assert!(filas_de_seccion(s, &a, &cx(&t)).iter().any(|(_, f)| !f.es_grupo()));
+            assert!(
+                filas_de_seccion(s, &a, &cx(&t))
+                    .iter()
+                    .any(|(_, f)| !f.es_grupo())
+            );
             assert!(!s.titulo(&t).starts_with("ajustes2"));
             assert!(!s.subtitulo(&t).starts_with("ajustes2"));
         }
@@ -2361,11 +2533,18 @@ mod pruebas {
         }
         assert!(claves.contains(&Clave::Comando(Comando::CapturarRegion)));
         assert_eq!(
-            claves.iter().filter(|c| matches!(c, Clave::Herramienta(_))).count(),
+            claves
+                .iter()
+                .filter(|c| matches!(c, Clave::Herramienta(_)))
+                .count(),
             pixpin_store::herramientas::NOMBRES.len()
         );
         // Caso negativo: sin regiones ni programas, no hay filas de ellos.
-        assert!(!claves.iter().any(|c| matches!(c, Clave::Region(_) | Clave::Ignorado(_))));
+        assert!(
+            !claves
+                .iter()
+                .any(|c| matches!(c, Clave::Region(_) | Clave::Ignorado(_)))
+        );
     }
 
     #[test]
@@ -2428,7 +2607,10 @@ mod pruebas {
         );
         // Caso negativo: quitar el atajo de fabrica SI es un cambio.
         poner_atajo(&mut a, Clave::Comando(Comando::CapturarRegion), None);
-        assert!(distinto_de_fabrica(Clave::Comando(Comando::CapturarRegion), &a));
+        assert!(distinto_de_fabrica(
+            Clave::Comando(Comando::CapturarRegion),
+            &a
+        ));
     }
 
     #[test]
@@ -2442,7 +2624,11 @@ mod pruebas {
             alto: 200,
             atajo: None,
         });
-        poner_atajo(&mut a, Clave::Region(0), Some("Ctrl+Alt+1".parse().unwrap()));
+        poner_atajo(
+            &mut a,
+            Clave::Region(0),
+            Some("Ctrl+Alt+1".parse().unwrap()),
+        );
         assert_eq!(a.regiones[0].atajo.as_deref(), Some("Ctrl+Alt+1"));
         quitar(&mut a, Clave::Region(0));
         assert!(a.regiones.is_empty());

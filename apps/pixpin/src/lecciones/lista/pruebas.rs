@@ -78,7 +78,9 @@ fn ejemplos() -> Vec<Entrada> {
 
 fn estado() -> Estado {
     let mut e = Estado::nuevo(Pedido {
-        ubicacion: Ubicacion::Portable { raiz: std::env::temp_dir().join("pixpin-lecciones-v2-sin-disco") },
+        ubicacion: Ubicacion::Portable {
+            raiz: std::env::temp_dir().join("pixpin-lecciones-v2-sin-disco"),
+        },
         idioma: Idioma::Espanol,
         aparato: "PC01".into(),
         proyecto: None,
@@ -86,8 +88,15 @@ fn estado() -> Estado {
         seleccion: None,
     });
     e.todas = ejemplos();
-    e.indices = e.todas.iter().map(|x| Indice::nuevo(x.leccion.clone())).collect();
-    e.proyectos = vec![("f1".into(), "Obra Miraflores".into()), ("f2".into(), "Tesis".into())];
+    e.indices = e
+        .todas
+        .iter()
+        .map(|x| Indice::nuevo(x.leccion.clone()))
+        .collect();
+    e.proyectos = vec![
+        ("f1".into(), "Obra Miraflores".into()),
+        ("f2".into(), "Tesis".into()),
+    ];
     e.general = Some("g".into());
     e.ahora = AHORA;
     let lecciones: Vec<Leccion> = e.todas.iter().map(|x| x.leccion.clone()).collect();
@@ -103,17 +112,29 @@ fn los_filtros_cuentan_y_filtran_y_la_eleccion_sigue_si_se_ve() {
     assert_eq!(f[0], (Filtro::Todas, 4));
     assert_eq!(f[1], (Filtro::Repetidas, 2));
     assert_eq!(f[2], (Filtro::Graves, 1));
-    assert_eq!(f[3], (Filtro::Area("Construcción".into()), 2), "el area con mas va primero");
+    assert_eq!(
+        f[3],
+        (Filtro::Area("Construcción".into()), 2),
+        "el area con mas va primero"
+    );
     assert_eq!(e.sel.as_deref(), Some("a"), "sin eleccion, la primera");
     e.sel = Some("d".into());
     e.filtro = Filtro::Area("Construcción".into());
     e.filtrar();
     assert_eq!(e.visibles, vec![0, 3]);
-    assert_eq!(e.sel.as_deref(), Some("d"), "la elegida se ve: sigue elegida");
+    assert_eq!(
+        e.sel.as_deref(),
+        Some("d"),
+        "la elegida se ve: sigue elegida"
+    );
     e.filtro = Filtro::Graves;
     e.filtrar();
     assert_eq!(e.visibles, vec![2]);
-    assert_eq!(e.sel.as_deref(), Some("c"), "la elegida ya no se ve: la primera");
+    assert_eq!(
+        e.sel.as_deref(),
+        Some("c"),
+        "la elegida ya no se ve: la primera"
+    );
     // Caso negativo: una busqueda sin nada deja la lista vacia y sin eleccion.
     e.filtro = Filtro::Todas;
     e.consulta.poner("zzzz qqqq");
@@ -141,12 +162,27 @@ fn los_atajos_de_una_tecla_solo_valen_sin_caja_de_texto() {
     let a = |foco, vk, ctrl, shift| atajo(foco, false, false, vk, ctrl, shift);
     assert_eq!(a(None, VK_R, false, false), Some(Atajo::Accion(A::Repasar)));
     assert_eq!(a(None, VK_P, false, false), Some(Atajo::Accion(A::Pinear)));
-    assert_eq!(a(None, VK_SUPRIMIR, false, false), Some(Atajo::Accion(A::Borrar)));
+    assert_eq!(
+        a(None, VK_SUPRIMIR, false, false),
+        Some(Atajo::Accion(A::Borrar))
+    );
     assert_eq!(a(None, VK_Z, true, false), Some(Atajo::Accion(A::Deshacer)));
-    assert_eq!(a(Some(Foco::Paso), VK_F, true, false), Some(Atajo::Accion(A::FocoBuscar)));
-    assert_eq!(a(Some(Foco::Rapida), VK_ENTRAR, false, false), Some(Atajo::Accion(A::Guardar)));
-    assert_eq!(a(Some(Foco::Rapida), VK_D, true, true), Some(Atajo::Accion(A::DictarRapida)));
-    assert_eq!(a(Some(Foco::Paso), VK_ENTRAR, false, false), Some(Atajo::Terminar));
+    assert_eq!(
+        a(Some(Foco::Paso), VK_F, true, false),
+        Some(Atajo::Accion(A::FocoBuscar))
+    );
+    assert_eq!(
+        a(Some(Foco::Rapida), VK_ENTRAR, false, false),
+        Some(Atajo::Accion(A::Guardar))
+    );
+    assert_eq!(
+        a(Some(Foco::Rapida), VK_D, true, true),
+        Some(Atajo::Accion(A::DictarRapida))
+    );
+    assert_eq!(
+        a(Some(Foco::Paso), VK_ENTRAR, false, false),
+        Some(Atajo::Terminar)
+    );
     assert_eq!(a(None, VK_ABAJO, false, false), Some(Atajo::Abajo));
     // Caso negativo: escribiendo, R, P y Supr son de la caja; Mayus+Intro
     // en un bloque parte el renglon; Ctrl+Z en un bloque no deshace borrar.
@@ -164,12 +200,27 @@ fn en_el_repaso_valen_1_2_3_espacio_y_s() {
     let r = |foco, mostrada, vk, ctrl| atajo(foco, true, mostrada, vk, ctrl, false);
     assert_eq!(r(None, true, VK_1, false), Some(Atajo::Accion(A::Nota(0))));
     assert_eq!(r(None, true, VK_3, false), Some(Atajo::Accion(A::Nota(2))));
-    assert_eq!(r(None, false, VK_ESPACIO, false), Some(Atajo::Accion(A::Mostrar)));
+    assert_eq!(
+        r(None, false, VK_ESPACIO, false),
+        Some(Atajo::Accion(A::Mostrar))
+    );
     assert_eq!(r(None, true, VK_S, false), Some(Atajo::Accion(A::Saltar)));
-    assert_eq!(r(None, true, VK_ENTRAR, false), Some(Atajo::Accion(A::Siguiente)));
-    assert_eq!(r(Some(Foco::Respuesta), false, VK_ENTRAR, false), Some(Atajo::Accion(A::Mostrar)));
-    assert_eq!(r(Some(Foco::Respuesta), false, VK_D, true), Some(Atajo::Accion(A::DictarRespuesta)));
-    assert_eq!(r(Some(Foco::Respuesta), false, VK_ESCAPE, false), Some(Atajo::Atras));
+    assert_eq!(
+        r(None, true, VK_ENTRAR, false),
+        Some(Atajo::Accion(A::Siguiente))
+    );
+    assert_eq!(
+        r(Some(Foco::Respuesta), false, VK_ENTRAR, false),
+        Some(Atajo::Accion(A::Mostrar))
+    );
+    assert_eq!(
+        r(Some(Foco::Respuesta), false, VK_D, true),
+        Some(Atajo::Accion(A::DictarRespuesta))
+    );
+    assert_eq!(
+        r(Some(Foco::Respuesta), false, VK_ESCAPE, false),
+        Some(Atajo::Atras)
+    );
     // Caso negativo: escribiendo la respuesta, 1/2/3, S y Espacio son letras;
     // y R (repasar) o P (pinear) no hacen nada dentro del repaso.
     assert_eq!(r(Some(Foco::Respuesta), false, VK_1, false), None);
@@ -199,8 +250,15 @@ fn borrar_se_puede_deshacer_y_la_de_debajo_queda_elegida() {
     let mut e = estado();
     e.sel = Some("b".into());
     e.borrar_elegida();
-    assert!(e.borrando.as_ref().is_some_and(|(x, _)| x.leccion.id == "b"));
-    assert!(!e.visibles.iter().any(|i| e.todas[*i].leccion.id == "b"), "ya no se ve");
+    assert!(
+        e.borrando
+            .as_ref()
+            .is_some_and(|(x, _)| x.leccion.id == "b")
+    );
+    assert!(
+        !e.visibles.iter().any(|i| e.todas[*i].leccion.id == "b"),
+        "ya no se ve"
+    );
     assert_eq!(e.sel.as_deref(), Some("c"), "la de debajo");
     assert_eq!(e.filtros()[0].1, 3, "ni cuenta");
     e.deshacer();
@@ -215,7 +273,9 @@ fn borrar_se_puede_deshacer_y_la_de_debajo_queda_elegida() {
 #[test]
 fn la_barra_rellena_sola_y_lo_cambiado_a_mano_gana() {
     let mut e = estado();
-    e.rapida.campo.poner("La escalera de Miraflores resbala con el polvo de yeso; barrer antes de bajar material");
+    e.rapida.campo.poner(
+        "La escalera de Miraflores resbala con el polvo de yeso; barrer antes de bajar material",
+    );
     e.recalcular_rapida();
     assert_eq!(e.gravedad_rapida(), 2);
     assert_eq!(e.proyecto_rapida().as_deref(), Some("f1"));
@@ -241,7 +301,9 @@ fn la_barra_rellena_sola_y_lo_cambiado_a_mano_gana() {
 #[test]
 fn la_parecida_se_ofrece_como_me_volvio_a_pasar() {
     let mut e = estado();
-    e.rapida.campo.poner("sellar las grietas antes de pintar el muro");
+    e.rapida
+        .campo
+        .poner("sellar las grietas antes de pintar el muro");
     e.recalcular_rapida();
     assert_eq!(e.rapida.parecida.as_ref().map(|l| l.id.as_str()), Some("a"));
     // Caso negativo: una frase de otra cosa no ofrece ninguna.
@@ -281,12 +343,18 @@ fn el_repaso_avanza_cuenta_y_acaba() {
 #[test]
 fn cada_boton_del_repaso_dice_cuando_vuelve() {
     let tx = Catalogo::nuevo(Idioma::Espanol);
-    let l = Leccion { caja: 3, ..Leccion::nueva("x", 0, "x") };
+    let l = Leccion {
+        caja: 3,
+        ..Leccion::nueva("x", 0, "x")
+    };
     let dias: Vec<String> = pixpin_lecciones::Nota::TODAS
         .iter()
         .map(|n| repaso::cuando_vuelve(&tx, Repaso::dias_hasta(&l, *n)))
         .collect();
-    assert_eq!(dias, vec!["Vuelve en 30 días", "Vuelve en 7 días", "Vuelve mañana"]);
+    assert_eq!(
+        dias,
+        vec!["Vuelve en 30 días", "Vuelve en 7 días", "Vuelve mañana"]
+    );
     // Caso negativo: la clave existe (no sale el nombre de la clave).
     assert!(!dias[0].contains("lec2-"));
 }
@@ -294,20 +362,46 @@ fn cada_boton_del_repaso_dice_cuando_vuelve() {
 #[test]
 fn hace_y_el_proximo_repaso_se_leen_bien() {
     let tx = Catalogo::nuevo(Idioma::Espanol);
-    assert_eq!(pintar::hace_texto(&tx, crate::lecciones::ui::Hace::Dias(3)), "hace 3 días");
-    assert_eq!(pintar::hace_texto(&tx, crate::lecciones::ui::Hace::Semanas(1)), "hace 1 semana");
+    assert_eq!(
+        pintar::hace_texto(&tx, crate::lecciones::ui::Hace::Dias(3)),
+        "hace 3 días"
+    );
+    assert_eq!(
+        pintar::hace_texto(&tx, crate::lecciones::ui::Hace::Semanas(1)),
+        "hace 1 semana"
+    );
     assert_eq!(pintar::fecha_corta(&tx, 20_724 * DIA), "28 sep");
-    let l = Leccion { repasar: AHORA - DIA, ..Leccion::nueva("x", 0, "x") };
-    assert_eq!(pintar::proximo_repaso(&tx, &l, AHORA), "Próximo repaso: hoy");
-    let l = Leccion { repasar: AHORA + 5 * DIA, ..l };
-    assert_eq!(pintar::proximo_repaso(&tx, &l, AHORA), "Próximo repaso: en 5 días");
+    let l = Leccion {
+        repasar: AHORA - DIA,
+        ..Leccion::nueva("x", 0, "x")
+    };
+    assert_eq!(
+        pintar::proximo_repaso(&tx, &l, AHORA),
+        "Próximo repaso: hoy"
+    );
+    let l = Leccion {
+        repasar: AHORA + 5 * DIA,
+        ..l
+    };
+    assert_eq!(
+        pintar::proximo_repaso(&tx, &l, AHORA),
+        "Próximo repaso: en 5 días"
+    );
     // Caso negativo: en ingles no sale el castellano.
     let en = Catalogo::nuevo(Idioma::Ingles);
-    assert_ne!(pintar::hace_texto(&en, crate::lecciones::ui::Hace::Ayer), "ayer");
+    assert_ne!(
+        pintar::hace_texto(&en, crate::lecciones::ui::Hace::Ayer),
+        "ayer"
+    );
 }
 
 fn muestra(nombre: &str, e: &mut Estado, ancho: u32, alto: u32) {
-    let marco = Rect { x: 0, y: 0, ancho, alto };
+    let marco = Rect {
+        x: 0,
+        y: 0,
+        ancho,
+        alto,
+    };
     crate::ventanita::muestra(nombre, ancho, alto, |p, _| pintar::todo(e, p, marco, 1.0));
 }
 
@@ -344,7 +438,8 @@ fn muestra_del_repaso_v2() {
     // La primera es «c» (grave); se salta para ensenar la de la maqueta.
     hacer(&mut e, Accion::Saltar);
     if let Some(r) = e.repaso.as_mut() {
-        r.respuesta.poner("Sellar la grieta primero y dejar secar antes de pintar.");
+        r.respuesta
+            .poner("Sellar la grieta primero y dejar secar antes de pintar.");
     }
     e.foco = Some(Foco::Respuesta);
     muestra("lecciones-v2-repaso-pensar", &mut e, 1280, 820);

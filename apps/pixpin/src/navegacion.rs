@@ -576,7 +576,12 @@ pub fn aplicar_con_minimo(camara: &mut Camara, accion: Accion, zoom_minimo: f32)
             if !factor.is_finite() || factor <= 0.0 {
                 return false;
             }
-            camara.acercar_en_entre(foco, factor, zoom_minimo, pixpin_motor2d::camara::ZOOM_MAXIMO)
+            camara.acercar_en_entre(
+                foco,
+                factor,
+                zoom_minimo,
+                pixpin_motor2d::camara::ZOOM_MAXIMO,
+            )
         }
         Accion::ZoomRueda { foco, delta } => {
             let nuevo = zoom_de_rueda_entre(camara.zoom, delta, zoom_minimo);
@@ -1149,7 +1154,10 @@ mod pruebas {
         // Una rueda libre (o una muesca doble, 240) manda multiplos de 120
         // cada pocos milisegundos: sigue siendo zoom, nunca desplazar.
         let mut n = Navegador::nuevo();
-        for (i, d) in [120, 120, 240, -120, 360, -240, 120].into_iter().enumerate() {
+        for (i, d) in [120, 120, 240, -120, 360, -240, 120]
+            .into_iter()
+            .enumerate()
+        {
             let r = ev(&mut n, rueda(d, 5000 + i as u32));
             assert!(
                 matches!(r.accion, Some(Accion::ZoomSuave { .. })),
@@ -1180,7 +1188,11 @@ mod pruebas {
         let mut n = Navegador::nuevo();
         let _ = ev(&mut n, rueda(-17, 1000));
         let r = ev(&mut n, rueda(MUESCA, 1000 + RACHA_PANEL_MS + 1));
-        assert!(matches!(r.accion, Some(Accion::ZoomSuave { .. })), "{:?}", r.accion);
+        assert!(
+            matches!(r.accion, Some(Accion::ZoomSuave { .. })),
+            "{:?}",
+            r.accion
+        );
     }
 
     #[test]
@@ -1188,7 +1200,11 @@ mod pruebas {
         let mut n = Navegador::nuevo();
         let _ = ev(&mut n, rueda(-17, u32::MAX - 10));
         let r = ev(&mut n, rueda(-MUESCA, 20));
-        assert!(matches!(r.accion, Some(Accion::Desplazar { .. })), "{:?}", r.accion);
+        assert!(
+            matches!(r.accion, Some(Accion::Desplazar { .. })),
+            "{:?}",
+            r.accion
+        );
     }
 
     #[test]
@@ -1222,7 +1238,13 @@ mod pruebas {
                 shift: true,
             }),
         );
-        assert_eq!(r.accion, Some(Accion::Desplazar { dx: -100.0, dy: 0.0 }));
+        assert_eq!(
+            r.accion,
+            Some(Accion::Desplazar {
+                dx: -100.0,
+                dy: 0.0
+            })
+        );
     }
 
     #[test]
@@ -1239,7 +1261,14 @@ mod pruebas {
                     shift: false,
                 }),
             );
-            assert_eq!(r.accion, Some(Accion::Desplazar { dx: -100.0, dy: 0.0 }), "{ctrl}");
+            assert_eq!(
+                r.accion,
+                Some(Accion::Desplazar {
+                    dx: -100.0,
+                    dy: 0.0
+                }),
+                "{ctrl}"
+            );
         }
     }
 
@@ -1263,7 +1292,13 @@ mod pruebas {
             SIEMPRE,
         );
         assert!(r.consumido);
-        assert_eq!(r.accion, Some(Accion::Desplazar { dx: 20.0, dy: -10.0 }));
+        assert_eq!(
+            r.accion,
+            Some(Accion::Desplazar {
+                dx: 20.0,
+                dy: -10.0
+            })
+        );
         let mut c = Camara::nueva();
         let p = Punto2::nuevo(5.0, 5.0);
         let antes = vista_efectiva(&c, 150).a_pantalla(p);
@@ -1316,10 +1351,22 @@ mod pruebas {
         let foco = Punto2::nuevo(0.0, 0.0);
         let mut c = Camara::nueva();
         c.zoom = ZOOM_MAXIMO;
-        let _ = aplicar(&mut c, Accion::ZoomSuave { foco, delta: MUESCA });
+        let _ = aplicar(
+            &mut c,
+            Accion::ZoomSuave {
+                foco,
+                delta: MUESCA,
+            },
+        );
         assert!(c.zoom <= ZOOM_MAXIMO);
         c.zoom = ZOOM_MINIMO;
-        let _ = aplicar(&mut c, Accion::ZoomSuave { foco, delta: -MUESCA });
+        let _ = aplicar(
+            &mut c,
+            Accion::ZoomSuave {
+                foco,
+                delta: -MUESCA,
+            },
+        );
         assert!(c.zoom >= ZOOM_MINIMO);
     }
 
@@ -1328,7 +1375,10 @@ mod pruebas {
         // Caso negativo: los eventos nuevos no le quitan la mano al central.
         let mut n = Navegador::nuevo();
         let _ = ev(&mut n, rueda(-17, 1));
-        let _ = ev(&mut n, EventoOverlay::BotonCentralPulsado(Punto { x: 0, y: 0 }));
+        let _ = ev(
+            &mut n,
+            EventoOverlay::BotonCentralPulsado(Punto { x: 0, y: 0 }),
+        );
         let m = ev(&mut n, EventoOverlay::RatonMovido(Punto { x: 7, y: -3 }));
         assert_eq!(m.accion, Some(Accion::Desplazar { dx: 7.0, dy: -3.0 }));
     }

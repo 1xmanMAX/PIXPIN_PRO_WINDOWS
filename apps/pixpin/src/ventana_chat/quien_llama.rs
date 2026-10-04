@@ -210,7 +210,9 @@ mod pruebas {
         assert!(matches!(e.accion, Accion::QuienLlama(4)));
         // Casos negativos: una nota escrita o un archivo no llaman.
         assert!(entrada_del_menu(&mensaje(Clase::Nota, "x"), 4, &carpeta, &textos).is_none());
-        assert!(entrada_del_menu(&mensaje(Clase::Archivo, "a.pdf"), 4, &carpeta, &textos).is_none());
+        assert!(
+            entrada_del_menu(&mensaje(Clase::Archivo, "a.pdf"), 4, &carpeta, &textos).is_none()
+        );
         let _ = std::fs::remove_dir_all(&r);
     }
 
@@ -220,7 +222,10 @@ mod pruebas {
         let carpeta = r.join("proyectos").join("p1");
         let voz = mensaje(Clase::Voz, "recado.m4a");
         al_poner_la_hora(&r, &carpeta, &voz);
-        assert_eq!(crate::llamada::quien_llama(&r, "m1").as_deref(), Some("recado"));
+        assert_eq!(
+            crate::llamada::quien_llama(&r, "m1").as_deref(),
+            Some("recado")
+        );
         // Lo ya puesto se respeta: no se pisa con el nombre de la nota.
         crate::llamada::poner_quien_llama(&r, "m1", "Mama").unwrap();
         al_poner_la_hora(&r, &carpeta, &voz);

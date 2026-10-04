@@ -25,7 +25,8 @@ fn carpeta(nombre: &str) -> (PathBuf, bool) {
             (c, false)
         }
         None => {
-            let c = std::env::temp_dir().join(format!("pixpin-compartir-{nombre}-{}", std::process::id()));
+            let c = std::env::temp_dir()
+                .join(format!("pixpin-compartir-{nombre}-{}", std::process::id()));
             let _ = std::fs::remove_dir_all(&c);
             std::fs::create_dir_all(&c).unwrap();
             (c, true)
@@ -46,7 +47,9 @@ fn rectangulo(x: f32, y: f32, w: f32, h: f32) -> Elemento {
 
 fn marco(nombre: &str, y: f32) -> Elemento {
     Elemento {
-        figura: Figura::Marco { nombre: nombre.into() },
+        figura: Figura::Marco {
+            nombre: nombre.into(),
+        },
         x: 0.0,
         y,
         ancho: 300.0,
@@ -77,7 +80,11 @@ fn foto(ancho: u32, alto: u32) -> ImagenRgba {
             pixeles.extend_from_slice(&[(x * 255 / ancho) as u8, (y * 255 / alto) as u8, 160, 255]);
         }
     }
-    ImagenRgba { ancho, alto, pixeles }
+    ImagenRgba {
+        ancho,
+        alto,
+        pixeles,
+    }
 }
 
 /// El lienzo del editor: dos marcos con algo dentro y una foto.
@@ -125,7 +132,10 @@ fn comprobar(salida: &Salida, formato: &str, paginas: usize) {
         .iter()
         .map(|r| std::fs::metadata(r).expect("existe").len())
         .sum();
-    assert_eq!(salida.bytes, suma, "{formato}: el peso que se dice es el de verdad");
+    assert_eq!(
+        salida.bytes, suma,
+        "{formato}: el peso que se dice es el de verdad"
+    );
     assert!(salida.bytes > 0, "{formato}: vacio");
     let r = &salida.ficheros[0];
     let bytes = std::fs::read(r).unwrap();
@@ -136,14 +146,26 @@ fn comprobar(salida: &Salida, formato: &str, paginas: usize) {
             assert!(s.trim_end().ends_with("</html>"), "web cortada");
             // Un documento que se lee va entero en una hoja, como en el
             // lector: sus paginas son una columna, no hojas sueltas.
-            let hojas = if s.contains("class=\"doc-caja\"") { 1 } else { paginas };
-            assert_eq!(s.matches("class=\"hoja\"").count(), hojas, "una hoja por pagina");
+            let hojas = if s.contains("class=\"doc-caja\"") {
+                1
+            } else {
+                paginas
+            };
+            assert_eq!(
+                s.matches("class=\"hoja\"").count(),
+                hojas,
+                "una hoja por pagina"
+            );
             assert!(s.contains("id=\"lapiz\""), "con los mandos de dibujar");
         }
         PDF => {
             assert!(bytes.starts_with(b"%PDF"));
             let doc = pixpin_pdf::Documento::abrir(r).expect("el PDF abre");
-            assert_eq!(doc.paginas() as usize, paginas, "una pagina por pagina marcada");
+            assert_eq!(
+                doc.paginas() as usize,
+                paginas,
+                "una pagina por pagina marcada"
+            );
         }
         PNG => {
             assert!(bytes.starts_with(b"\x89PNG"));
@@ -167,7 +189,11 @@ fn comprobar(salida: &Salida, formato: &str, paginas: usize) {
         "texto" | "csv" => assert!(String::from_utf8(bytes).is_ok()),
         // Un Word que el lector de Word de PixPin vuelve a abrir.
         "word" => {
-            assert!(r.extension().is_some_and(|e| e == "docx"), "{}", r.display());
+            assert!(
+                r.extension().is_some_and(|e| e == "docx"),
+                "{}",
+                r.display()
+            );
             pixpin_docs::abrir(r).expect("el .docx se vuelve a leer");
         }
         _ => {}
@@ -202,11 +228,19 @@ fn el_lienzo_del_editor_sale_en_todos_los_formatos_y_con_sus_marcos() {
     assert_eq!(nombres, ["Lienzo completo", "Planta", "Alzado"]);
     assert_eq!(p.piezas[1].pagina.nivel, 1);
     let marcadas = p.marcadas.clone().unwrap();
-    assert!(!marcadas.contains("lienzo") && marcadas.len() == 2, "{marcadas:?}");
+    assert!(
+        !marcadas.contains("lienzo") && marcadas.len() == 2,
+        "{marcadas:?}"
+    );
     let hechos = todos_los_formatos(&p, &dir);
     assert_eq!(hechos, [WEB, PDF, PNG, JPG, SVG, "excalidraw"]);
     // Caso negativo: el PDF de un lienzo no tiene interruptor «Con anotaciones».
-    assert!(compartible(&p, &textos()).formatos.iter().all(|f| f.interruptor.is_none()));
+    assert!(
+        compartible(&p, &textos())
+            .formatos
+            .iter()
+            .all(|f| f.interruptor.is_none())
+    );
     // La pagina web lleva el lienzo dentro para volver a editarlo.
     let web = std::fs::read_to_string(dir.join(WEB).join("Casa.html")).unwrap();
     assert!(web.contains("class=\"excalidraw\""));
@@ -224,8 +258,24 @@ fn con_varios_lienzos_cada_papel_y_cada_foto_tiene_su_propio_numero() {
     let escena = Escena::nueva();
     let a = Arc::new(foto(10, 10));
     let b = Arc::new(foto(20, 20));
-    anadir_lienzo(&mut p, "a", "", &escena, Some((FuenteImagen::Cargada(a), 10.0, 10.0)), &|_| None, &t);
-    anadir_lienzo(&mut p, "b", "", &escena, Some((FuenteImagen::Cargada(b), 20.0, 20.0)), &|_| None, &t);
+    anadir_lienzo(
+        &mut p,
+        "a",
+        "",
+        &escena,
+        Some((FuenteImagen::Cargada(a), 10.0, 10.0)),
+        &|_| None,
+        &t,
+    );
+    anadir_lienzo(
+        &mut p,
+        "b",
+        "",
+        &escena,
+        Some((FuenteImagen::Cargada(b), 20.0, 20.0)),
+        &|_| None,
+        &t,
+    );
     let ids: Vec<u64> = p
         .piezas
         .iter()
@@ -237,9 +287,20 @@ fn con_varios_lienzos_cada_papel_y_cada_foto_tiene_su_propio_numero() {
         .collect();
     assert_eq!(ids.len(), 2);
     assert_ne!(ids[0], ids[1]);
-    assert!(!ids.contains(&ID_PAPEL) && !ids.contains(&0), "ni el del papel ni el cero");
+    assert!(
+        !ids.contains(&ID_PAPEL) && !ids.contains(&0),
+        "ni el del papel ni el cero"
+    );
     // Caso negativo: un lienzo vacio y sin papel no pone ninguna pagina.
-    assert!(!anadir_lienzo(&mut p, "c", "", &escena, None, &|_| None, &t));
+    assert!(!anadir_lienzo(
+        &mut p,
+        "c",
+        "",
+        &escena,
+        None,
+        &|_| None,
+        &t
+    ));
     assert_eq!(p.piezas.len(), 2);
 }
 
@@ -266,7 +327,11 @@ fn proyecto_en_disco(raiz: &Path) -> (Ficha, Vec<Mensaje>) {
     .unwrap();
     // La foto, con un trazo encima en su `.pixpin2d`.
     let ruta_foto = carpeta.join("fachada.png");
-    std::fs::write(&ruta_foto, pixpin_codec::codificar_png(&foto(160, 120)).unwrap()).unwrap();
+    std::fs::write(
+        &ruta_foto,
+        pixpin_codec::codificar_png(&foto(160, 120)).unwrap(),
+    )
+    .unwrap();
     let mut encima = Escena::nueva();
     encima.anadir(trazo(10.0, 50.0));
     pixpin_motor2d::guardar(&dibujo_de_foto(&ruta_foto), &encima).unwrap();
@@ -320,7 +385,10 @@ fn proyecto_en_disco(raiz: &Path) -> (Ficha, Vec<Mensaje>) {
             ..Mensaje::default()
         },
     ];
-    let lineas: Vec<String> = mensajes.iter().map(|m| serde_json::to_string(m).unwrap()).collect();
+    let lineas: Vec<String> = mensajes
+        .iter()
+        .map(|m| serde_json::to_string(m).unwrap())
+        .collect();
     std::fs::write(carpeta.join("guardados.jsonl"), lineas.join("\n") + "\n").unwrap();
     (ficha, mensajes)
 }
@@ -339,7 +407,10 @@ fn un_proyecto_entero_sale_en_todos_los_formatos_y_como_pixpin() {
     )
     .unwrap();
     let claves: Vec<&str> = p.piezas.iter().map(|x| x.pagina.clave.as_str()).collect();
-    assert_eq!(claves, ["m-lienzo", "m-foto", "m-nota", "m-tabla", "m-tareas"]);
+    assert_eq!(
+        claves,
+        ["m-lienzo", "m-foto", "m-nota", "m-tabla", "m-tareas"]
+    );
     let hechos = todos_los_formatos(&p, &dir.join("salida"));
     assert_eq!(hechos, [WEB, PDF, PNG, JPG, SVG, "pixpin"]);
     // La foto sale con lo dibujado encima: el trazo rojo.
@@ -348,7 +419,9 @@ fn un_proyecto_entero_sale_en_todos_los_formatos_y_como_pixpin() {
     let img = png.imagen.unwrap();
     assert_eq!((img.ancho, img.alto), (320, 240), "a doble tamano");
     assert!(
-        img.pixeles.chunks_exact(4).any(|q| q[0] > 180 && q[1] < 80 && q[2] < 80),
+        img.pixeles
+            .chunks_exact(4)
+            .any(|q| q[0] > 180 && q[1] < 80 && q[2] < 80),
         "el trazo rojo de encima"
     );
     assert_eq!(c.titulo, "Obra");
@@ -379,13 +452,29 @@ fn una_tabla_compartida_como_pagina_web_sigue_calculando() {
         &textos(),
     )
     .unwrap();
-    let salida = generar(&p, WEB, &["m-nota".to_string(), "m-tabla".to_string()], &dir.join("web")).unwrap();
+    let salida = generar(
+        &p,
+        WEB,
+        &["m-nota".to_string(), "m-tabla".to_string()],
+        &dir.join("web"),
+    )
+    .unwrap();
     let html = std::fs::read_to_string(&salida.ficheros[0]).unwrap();
     assert_eq!(html.matches("data-tipo=\"tabla\"").count(), 1);
-    assert_eq!(html.matches("data-tipo=\"dibujo\"").count(), 1, "la nota sigue siendo un dibujo");
+    assert_eq!(
+        html.matches("data-tipo=\"dibujo\"").count(),
+        1,
+        "la nota sigue siendo un dibujo"
+    );
     assert!(html.contains("function crearTabla(d,api){"));
-    assert!(html.contains("\"B2\":\"=B1*2\""), "lo escrito viaja, con la formula");
-    assert!(html.contains("<td class=\"d f\">24</td>"), "y ya calculada para leerse sin guion");
+    assert!(
+        html.contains("\"B2\":\"=B1*2\""),
+        "lo escrito viaja, con la formula"
+    );
+    assert!(
+        html.contains("<td class=\"d f\">24</td>"),
+        "y ya calculada para leerse sin guion"
+    );
     // Caso negativo: sin tablas en lo elegido no se carga su motor.
     let solo_nota = generar(&p, WEB, &["m-nota".to_string()], &dir.join("nota")).unwrap();
     let html = std::fs::read_to_string(&solo_nota.ficheros[0]).unwrap();
@@ -445,7 +534,11 @@ fn cada_mensaje_solo_ofrece_sus_formatos_y_su_original() {
     .unwrap();
     let c = compartible(&p, &t);
     let ids: Vec<&str> = c.formatos.iter().map(|f| f.id.as_str()).collect();
-    assert_eq!(ids, [WEB, PDF, PNG, JPG, SVG, "original"], "un solo fichero detras");
+    assert_eq!(
+        ids,
+        [WEB, PDF, PNG, JPG, SVG, "original"],
+        "un solo fichero detras"
+    );
     let web = generar(&p, WEB, &elegidas_para(&c, 0), &dir.join("varios")).unwrap();
     comprobar(&web, WEB, 5);
     if borrar {
@@ -495,14 +588,16 @@ fn lo_que_no_tiene_nada_que_compartir_no_ofrece_nada() {
     assert!(generar(&p, PNG, &["no".into()], &dir.join("i")).is_err());
     assert!(generar(&p, "zip", &[], &dir.join("z")).is_err());
     // Un proyecto que no esta, tampoco.
-    assert!(preparar(
-        Cosa::Proyectos {
-            raiz: dir.clone(),
-            ids: vec!["no-existe".into()]
-        },
-        &t
-    )
-    .is_err());
+    assert!(
+        preparar(
+            Cosa::Proyectos {
+                raiz: dir.clone(),
+                ids: vec!["no-existe".into()]
+            },
+            &t
+        )
+        .is_err()
+    );
     if borrar {
         let _ = std::fs::remove_dir_all(dir);
     }
@@ -514,7 +609,11 @@ fn un_pdf_anotado_sale_con_su_tinta_y_solo_las_paginas_elegidas() {
     // Un PDF de tres paginas, hecho con el escritor de siempre.
     let texto = "Parrafo de prueba. ".repeat(900);
     let hojas = hojas_de_texto(Some("Memoria"), &texto);
-    assert!(hojas.len() >= 3, "el texto largo pasa de pagina: {}", hojas.len());
+    assert!(
+        hojas.len() >= 3,
+        "el texto largo pasa de pagina: {}",
+        hojas.len()
+    );
     let bytes = pixpin_pdf::escribir::de_hojas(&hojas[..3], Some(BLANCO), &|_| None).unwrap();
     let pdf = dir.join("memoria.pdf");
     std::fs::write(&pdf, bytes).unwrap();
@@ -531,47 +630,99 @@ fn un_pdf_anotado_sale_con_su_tinta_y_solo_las_paginas_elegidas() {
     assert_eq!(p.piezas[1].pagina.detalle, "Con lo anotado");
     assert!(p.piezas[0].pagina.detalle.is_empty());
     let c = compartible(&p, &t);
-    assert_eq!(c.formatos[0].id, "original", "un PDF se suele mandar tal cual");
+    assert_eq!(
+        c.formatos[0].id, "original",
+        "un PDF se suele mandar tal cual"
+    );
     let hechos = todos_los_formatos(&p, &dir.join("salida"));
     assert_eq!(hechos, ["original", WEB, PDF, PNG, JPG, SVG]);
     // Solo la segunda: un PDF de una pagina, con la tinta.
-    let una = generar(&p, PDF, &[p.piezas[1].pagina.clave.clone()], &dir.join("una")).unwrap();
+    let una = generar(
+        &p,
+        PDF,
+        &[p.piezas[1].pagina.clave.clone()],
+        &dir.join("una"),
+    )
+    .unwrap();
     comprobar(&una, PDF, 1);
     // **La pagina sigue siendo la del PDF** (su texto se lee) y la tinta va
     // encima dentro de su contenido y en su capa (Android v0.98.2), no como
     // foto de la hoja ni como anotacion que el visor del movil no pinta.
     let una = std::fs::read(&una.ficheros[0]).unwrap();
     let hoja = pixpin_pdf::plano::de_bytes(&una, 0).unwrap();
-    assert!(hoja.textos.iter().any(|x| x.texto.contains("Parrafo de prueba")), "sin su texto");
+    assert!(
+        hoja.textos
+            .iter()
+            .any(|x| x.texto.contains("Parrafo de prueba")),
+        "sin su texto"
+    );
     let texto = String::from_utf8_lossy(&una);
-    assert!(texto.contains(" BDC\n/PxT") && !texto.contains("/Subtype /Stamp"), "sin la tinta en el contenido");
+    assert!(
+        texto.contains(" BDC\n/PxT") && !texto.contains("/Subtype /Stamp"),
+        "sin la tinta en el contenido"
+    );
     // Todas: el original entero al principio y la revision detras.
     let original_bytes = std::fs::read(&pdf).unwrap();
     let todas: Vec<String> = p.piezas.iter().map(|x| x.pagina.clave.clone()).collect();
     let entero = generar(&p, PDF, &todas, &dir.join("todas")).unwrap();
     let entero = std::fs::read(&entero.ficheros[0]).unwrap();
-    assert_eq!(&entero[..original_bytes.len()], &original_bytes[..], "el original no va entero");
-    assert!(entero.len() - original_bytes.len() < 20_000, "pesa la tinta, no las hojas");
+    assert_eq!(
+        &entero[..original_bytes.len()],
+        &original_bytes[..],
+        "el original no va entero"
+    );
+    assert!(
+        entero.len() - original_bytes.len() < 20_000,
+        "pesa la tinta, no las hojas"
+    );
     // El interruptor quitado: el PDF limpio, tal cual.
     let pdf_formato = c.formatos.iter().find(|f| f.id == PDF).unwrap();
-    assert_eq!(pdf_formato.interruptor.as_ref().map(|i| i.id_apagado.as_str()), Some(PDF_LIMPIO));
+    assert_eq!(
+        pdf_formato
+            .interruptor
+            .as_ref()
+            .map(|i| i.id_apagado.as_str()),
+        Some(PDF_LIMPIO)
+    );
     let limpio = generar(&p, PDF_LIMPIO, &todas, &dir.join("limpio")).unwrap();
     assert_eq!(std::fs::read(&limpio.ficheros[0]).unwrap(), original_bytes);
     // **La pagina web, con «Texto buscable»** (Android v0.98.1): puesto, las
     // hojas en lineas; quitado, como imagen con el texto invisible encima.
     let web_formato = c.formatos.iter().find(|f| f.id == WEB).unwrap();
-    assert_eq!(web_formato.interruptor.as_ref().map(|i| i.id_apagado.as_str()), Some(WEB_IMAGEN));
+    assert_eq!(
+        web_formato
+            .interruptor
+            .as_ref()
+            .map(|i| i.id_apagado.as_str()),
+        Some(WEB_IMAGEN)
+    );
     let en_lineas = generar(&p, WEB, &todas, &dir.join("web")).unwrap();
     let en_lineas = std::fs::read_to_string(&en_lineas.ficheros[0]).unwrap();
-    assert!(en_lineas.contains("class=\"plano-hoja\"") && !en_lineas.contains("class=\"texto-pdf\""));
+    assert!(
+        en_lineas.contains("class=\"plano-hoja\"") && !en_lineas.contains("class=\"texto-pdf\"")
+    );
     let como_imagen = generar(&p, WEB_IMAGEN, &todas, &dir.join("web-imagen")).unwrap();
     let como_imagen = std::fs::read_to_string(&como_imagen.ficheros[0]).unwrap();
-    assert!(!como_imagen.contains("class=\"plano-hoja\"") && como_imagen.contains("class=\"texto-pdf\""));
-    assert!(como_imagen.contains("Parrafo de prueba."), "el texto se sigue buscando");
-    let png = generar(&p, PNG, &[p.piezas[1].pagina.clave.clone()], &dir.join("png2")).unwrap();
+    assert!(
+        !como_imagen.contains("class=\"plano-hoja\"")
+            && como_imagen.contains("class=\"texto-pdf\"")
+    );
+    assert!(
+        como_imagen.contains("Parrafo de prueba."),
+        "el texto se sigue buscando"
+    );
+    let png = generar(
+        &p,
+        PNG,
+        &[p.piezas[1].pagina.clave.clone()],
+        &dir.join("png2"),
+    )
+    .unwrap();
     let img = png.imagen.unwrap();
     assert!(
-        img.pixeles.chunks_exact(4).any(|q| q[0] > 180 && q[1] < 80 && q[2] < 80),
+        img.pixeles
+            .chunks_exact(4)
+            .any(|q| q[0] > 180 && q[1] < 80 && q[2] < 80),
         "la tinta roja de la segunda hoja"
     );
     // El original es el mismo fichero, sin tocar.
@@ -606,7 +757,10 @@ fn un_documento_anotado_sale_como_en_el_lector_partido_en_paginas() {
 
     let t = textos();
     let p = preparar(Cosa::Documento(doc.clone()), &t).unwrap();
-    assert!(p.piezas.len() >= 2, "un documento largo va en varias paginas");
+    assert!(
+        p.piezas.len() >= 2,
+        "un documento largo va en varias paginas"
+    );
     // Todas las paginas con el papel oscuro del lector y la columna fijada
     // mas sus margenes para anotar.
     let margen = pixpin_docs::vista::margen_de(500.0);
@@ -620,14 +774,26 @@ fn un_documento_anotado_sale_como_en_el_lector_partido_en_paginas() {
         assert_eq!(par[0].hoja.caja.3, par[1].hoja.caja.1);
     }
     // Cada trazo va en la pagina donde cae, y no en las demas.
-    let con_tinta = |x: &Pieza| x.hoja.ordenes.iter().filter(|o| matches!(o, Orden::Tinta { .. } | Orden::Poligono { .. })).count();
-    assert!(con_tinta(&p.piezas[0]) > 0, "el trazo de arriba en la primera");
+    let con_tinta = |x: &Pieza| {
+        x.hoja
+            .ordenes
+            .iter()
+            .filter(|o| matches!(o, Orden::Tinta { .. } | Orden::Poligono { .. }))
+            .count()
+    };
+    assert!(
+        con_tinta(&p.piezas[0]) > 0,
+        "el trazo de arriba en la primera"
+    );
     let donde = p
         .piezas
         .iter()
         .position(|x| x.hoja.caja.1 <= 2600.0 && x.hoja.caja.3 > 2600.0)
         .unwrap();
-    assert!(donde > 0 && con_tinta(&p.piezas[donde]) > 0, "el de abajo en la suya");
+    assert!(
+        donde > 0 && con_tinta(&p.piezas[donde]) > 0,
+        "el de abajo en la suya"
+    );
     let hechos = todos_los_formatos(&p, &dir.join("salida"));
     assert_eq!(hechos, ["original", WEB, PDF, PNG, JPG, SVG]);
     if borrar {
@@ -657,7 +823,10 @@ fn un_texto_largo_pasa_de_pagina_y_uno_corto_cabe_en_una() {
 
 #[test]
 fn las_tareas_se_leen_como_casillas_y_la_tabla_vacia_no_da_hoja() {
-    assert_eq!(texto_de_miniapp("# Compras\n\n- [x] Cemento\n- [ ] Arena"), "☑ Cemento\n☐ Arena");
+    assert_eq!(
+        texto_de_miniapp("# Compras\n\n- [x] Cemento\n- [ ] Arena"),
+        "☑ Cemento\n☐ Arena"
+    );
     assert!(hoja_de_tabla(&pixpin_proyecto::tabla::Tabla::default()).is_none());
 }
 

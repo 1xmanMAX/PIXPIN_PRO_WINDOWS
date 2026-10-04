@@ -69,7 +69,10 @@ mod pruebas {
 
     fn con_capa(nombre: &str) -> Vec<u8> {
         let mut v = ORIGINAL.to_vec();
-        v.extend_from_slice(format!("9 0 obj<</Type /OCG /Name {nombre}>>endobj\nstartxref\n50\n%%EOF\n").as_bytes());
+        v.extend_from_slice(
+            format!("9 0 obj<</Type /OCG /Name {nombre}>>endobj\nstartxref\n50\n%%EOF\n")
+                .as_bytes(),
+        );
         v
     }
 
@@ -85,8 +88,14 @@ mod pruebas {
 
     #[test]
     fn tambien_con_el_nombre_en_mayusculas_o_literal() {
-        assert_eq!(largo_sin_lo_cocido(&con_capa("<FEFF00500069007800500069006E>")), Some(ORIGINAL.len()));
-        assert_eq!(largo_sin_lo_cocido(&con_capa("(PixPin)")), Some(ORIGINAL.len()));
+        assert_eq!(
+            largo_sin_lo_cocido(&con_capa("<FEFF00500069007800500069006E>")),
+            Some(ORIGINAL.len())
+        );
+        assert_eq!(
+            largo_sin_lo_cocido(&con_capa("(PixPin)")),
+            Some(ORIGINAL.len())
+        );
     }
 
     #[test]

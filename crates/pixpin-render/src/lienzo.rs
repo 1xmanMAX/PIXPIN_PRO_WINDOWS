@@ -148,7 +148,12 @@ pub struct Tramo {
 /// que viene de una tabla pegada se salia de su fila y se veia detras de las
 /// de abajo. Lo que ya es una linea sale tal cual, sin copiarlo.
 pub fn en_una_linea(texto: &str) -> std::borrow::Cow<'_, str> {
-    let corta = |c: char| matches!(c, '\n' | '\r' | '\t' | '\u{b}' | '\u{c}' | '\u{85}' | '\u{2028}' | '\u{2029}');
+    let corta = |c: char| {
+        matches!(
+            c,
+            '\n' | '\r' | '\t' | '\u{b}' | '\u{c}' | '\u{85}' | '\u{2028}' | '\u{2029}'
+        )
+    };
     if !texto.contains(corta) {
         return std::borrow::Cow::Borrowed(texto);
     }
@@ -170,7 +175,11 @@ pub(crate) fn disposicion_dwrite(
 ) -> Option<(IDWriteTextLayout, f32, f32)> {
     // En una linea es en UNA: los saltos del texto tambien abren lineas, y
     // «sin partir» solo quita las que abre el ancho (ver `en_una_linea`).
-    let texto = if una_linea { en_una_linea(texto) } else { texto.into() };
+    let texto = if una_linea {
+        en_una_linea(texto)
+    } else {
+        texto.into()
+    };
     let contenido: Vec<u16> = texto.encode_utf16().collect();
     // SAFETY: cadenas constantes terminadas en cero; la disposicion copia
     // el texto y no retiene nada del llamante; los rangos se limitan al
@@ -904,7 +913,11 @@ impl Pintor<'_> {
 
 /// Las cajas de las letras `inicio..inicio+largo` de una disposicion, con
 /// el origen en su esquina (ver `Pintor::cajas_de_trozo`).
-pub(crate) fn cajas_de_disposicion(disposicion: &IDWriteTextLayout, inicio: u32, largo: u32) -> Vec<RectF> {
+pub(crate) fn cajas_de_disposicion(
+    disposicion: &IDWriteTextLayout,
+    inicio: u32,
+    largo: u32,
+) -> Vec<RectF> {
     {
         let mut cuantas = 0u32;
         // SAFETY: la disposicion esta viva; la primera llamada solo pide
@@ -1136,7 +1149,13 @@ impl Pintor<'_> {
         } else {
             self.estilo_redondo()
         };
-        if !self.realizar(cache, clave, &geometria, Some((grosor, estilo.as_ref())), forma) {
+        if !self.realizar(
+            cache,
+            clave,
+            &geometria,
+            Some((grosor, estilo.as_ref())),
+            forma,
+        ) {
             if let Some(p) = self.pincel(color) {
                 // SAFETY: dentro del fotograma; geometria, estilo y pincel
                 // vivos.
@@ -1432,7 +1451,11 @@ impl Pintor<'_> {
 
     /// Construye una geometria a partir de los vertices. `cerrada` decide si
     /// el ultimo punto se une con el primero.
-    pub(crate) fn geometria(&self, vertices: &[(f32, f32)], cerrada: bool) -> Option<ID2D1PathGeometry1> {
+    pub(crate) fn geometria(
+        &self,
+        vertices: &[(f32, f32)],
+        cerrada: bool,
+    ) -> Option<ID2D1PathGeometry1> {
         use windows::Win32::Graphics::Direct2D::Common::{
             D2D1_FIGURE_BEGIN_FILLED, D2D1_FIGURE_BEGIN_HOLLOW, D2D1_FIGURE_END_CLOSED,
             D2D1_FIGURE_END_OPEN,
@@ -1569,19 +1592,32 @@ impl Pintor<'_> {
         color_halo: Color,
         grosor: f32,
     ) {
-        let Some((disposicion, _, _)) =
-            disposicion_cacheada(self.motor, texto, tam, crate::letras::SIN_PARTIR, false, Some(letra))
-        else {
+        let Some((disposicion, _, _)) = disposicion_cacheada(
+            self.motor,
+            texto,
+            tam,
+            crate::letras::SIN_PARTIR,
+            false,
+            Some(letra),
+        ) else {
             return;
         };
         let radio = grosor / 2.0;
-        if radio > 0.0 && color_halo.a > 0.0 && !self.halo_de_mapa(texto, x, y, tam, letra, color_halo, grosor) {
+        if radio > 0.0
+            && color_halo.a > 0.0
+            && !self.halo_de_mapa(texto, x, y, tam, letra, color_halo, grosor)
+        {
             // Solo si no se pudo hacer el mapa (demasiado grande, o
             // Direct2D no pudo): las 24 copias a pelo, como antes.
             for (n, r) in [(16, radio), (8, radio / 2.0)] {
                 for i in 0..n {
                     let a = i as f32 * std::f32::consts::TAU / n as f32;
-                    self.dibujar_disposicion(&disposicion, x + r * a.cos(), y + r * a.sin(), color_halo);
+                    self.dibujar_disposicion(
+                        &disposicion,
+                        x + r * a.cos(),
+                        y + r * a.sin(),
+                        color_halo,
+                    );
                 }
             }
         }
@@ -1600,9 +1636,14 @@ impl Pintor<'_> {
         color: Color,
         grosor: f32,
     ) {
-        let Some((disposicion, _, _)) =
-            disposicion_cacheada(self.motor, texto, tam, crate::letras::SIN_PARTIR, false, Some(letra))
-        else {
+        let Some((disposicion, _, _)) = disposicion_cacheada(
+            self.motor,
+            texto,
+            tam,
+            crate::letras::SIN_PARTIR,
+            false,
+            Some(letra),
+        ) else {
             return;
         };
         let radio = grosor / 2.0;
@@ -1644,7 +1685,12 @@ impl Pintor<'_> {
         let clave = (
             grosor.to_bits(),
             nivel,
-            [color.r.to_bits(), color.g.to_bits(), color.b.to_bits(), color.a.to_bits()],
+            [
+                color.r.to_bits(),
+                color.g.to_bits(),
+                color.b.to_bits(),
+                color.a.to_bits(),
+            ],
         );
         let hecho = halo_cacheado(self.motor, texto, tam, letra, clave, |d, w, h| {
             crate::halo::hacer_mapa(self.motor, d, w, h, grosor / 2.0, nivel, color)
@@ -1660,7 +1706,16 @@ impl Pintor<'_> {
             bottom: y + cy + ch,
         };
         // SAFETY: dentro del fotograma; mapa hecho por este motor.
-        unsafe { c.DrawBitmap(&hecho.mapa, Some(&destino), 1.0, D2D1_INTERPOLATION_MODE_LINEAR, None, None) };
+        unsafe {
+            c.DrawBitmap(
+                &hecho.mapa,
+                Some(&destino),
+                1.0,
+                D2D1_INTERPOLATION_MODE_LINEAR,
+                None,
+                None,
+            )
+        };
         true
     }
 
@@ -1782,13 +1837,20 @@ mod pruebas {
     /// Una tabla pegada de una hoja de calculo, tal cual llega al resumen
     /// de un proyecto en la lista (la queja: su texto se veia detras de las
     /// filas de abajo).
-    const TABLA_PEGADA: &str = "DESCRIPCION \tMONTO\r\nALQUILER \t690\r\n\t687.5\r\nCELULAR\t39.95\r\n\t\r\n\t2517.34";
+    const TABLA_PEGADA: &str =
+        "DESCRIPCION \tMONTO\r\nALQUILER \t690\r\n\t687.5\r\nCELULAR\t39.95\r\n\t\r\n\t2517.34";
 
     #[test]
     fn un_texto_de_una_linea_con_saltos_y_tabuladores_sale_en_una_sola_linea() {
         assert_eq!(lineas_de(TABLA_PEGADA, true), 1);
-        for salto in ["\n", "\r", "\r\n", "\u{2028}", "\u{2029}", "\u{85}", "\u{b}", "\u{c}"] {
-            assert_eq!(lineas_de(&format!("uno{salto}dos"), true), 1, "salto {salto:?}");
+        for salto in [
+            "\n", "\r", "\r\n", "\u{2028}", "\u{2029}", "\u{85}", "\u{b}", "\u{c}",
+        ] {
+            assert_eq!(
+                lineas_de(&format!("uno{salto}dos"), true),
+                1,
+                "salto {salto:?}"
+            );
         }
     }
 

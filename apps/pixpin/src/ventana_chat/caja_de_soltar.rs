@@ -196,7 +196,11 @@ enum Estado {
     Esperando,
     /// Metiendo lo soltado en su hilo (un video grande tarda en copiarse).
     Anadiendo(Receiver<usize>),
-    Dicho { texto: String, bien: bool, desde: Instant },
+    Dicho {
+        texto: String,
+        bien: bool,
+        desde: Instant,
+    },
 }
 
 /// Abajo a la derecha del monitor del raton, como el microfono.
@@ -259,7 +263,8 @@ fn flotar(recursos: &Recursos, pedido: &Pedido, rotulos: &Rotulos) -> Result<()>
                     botones.raton = ((p.x - marco.x) as f32, (p.y - marco.y) as f32);
                     if let Some((desde, origen, _, arrastre)) = pulsado.as_mut() {
                         let (dx, dy) = (p.x - desde.x, p.y - desde.y);
-                        if !*arrastre && (dx.abs() > UMBRAL_ARRASTRE || dy.abs() > UMBRAL_ARRASTRE) {
+                        if !*arrastre && (dx.abs() > UMBRAL_ARRASTRE || dy.abs() > UMBRAL_ARRASTRE)
+                        {
                             *arrastre = true;
                         }
                         if *arrastre {
@@ -339,7 +344,11 @@ fn flotar(recursos: &Recursos, pedido: &Pedido, rotulos: &Rotulos) -> Result<()>
             });
             let _ = superficie.presentar();
         }
-        let latido = if matches!(estado, Estado::Esperando) { 500 } else { 60 };
+        let latido = if matches!(estado, Estado::Esperando) {
+            500
+        } else {
+            60
+        };
         pixpin_shell::overlay::esperar_eventos(Some(latido));
     }
     ventana.ocultar();
@@ -391,7 +400,11 @@ fn pintar(
     // Arriba: la carpeta, el nombre del proyecto y el aspa.
     let disco = 24.0 * e;
     let (x0, y0) = (14.0 * e, 12.0 * e);
-    p.circulo((x0 + disco / 2.0, y0 + disco / 2.0), disco / 2.0, tema.carpeta);
+    p.circulo(
+        (x0 + disco / 2.0, y0 + disco / 2.0),
+        disco / 2.0,
+        tema.carpeta,
+    );
     let lado = 15.0 * e;
     p.icono(
         &mi::FOLDER,
@@ -443,12 +456,21 @@ fn pintar(
         ancho: w - 28.0 * e,
         alto: h - 60.0 * e,
     };
-    p.rellenar_redondeado(zona, 12.0 * e, Color { a: 0.55, ..tema.campo });
+    p.rellenar_redondeado(
+        zona,
+        12.0 * e,
+        Color {
+            a: 0.55,
+            ..tema.campo
+        },
+    );
     p.trazar_discontinuo(zona, (1.5 * e).max(1.0), tema.campo_apagado);
     let (icono, texto, color): (&pixpin_render::icono::Icono, &str, Color) = match estado {
         Estado::Esperando => (&mi::ATTACH_FILE, &r.aqui, tema.texto),
         Estado::Anadiendo(_) => (&mi::ATTACH_FILE, &r.anadiendo, tema.campo_apagado),
-        Estado::Dicho { texto, bien: true, .. } => (&mi::CHECK_CIRCLE, texto, VERDE),
+        Estado::Dicho {
+            texto, bien: true, ..
+        } => (&mi::CHECK_CIRCLE, texto, VERDE),
         Estado::Dicho { texto, .. } => (&mi::CLOSE, texto, tema.campo_apagado),
     };
     let li = 26.0 * e;
@@ -537,7 +559,11 @@ mod pruebas {
         assert_eq!(clases, vec![Some(Clase::Imagen), Some(Clase::Archivo)]);
         let numeros: Vec<_> = c.mensajes.iter().map(|m| m.numero).collect();
         assert_eq!(numeros, vec![1, 2]);
-        assert!(c.mensajes.iter().all(|m| m.aparato.as_deref() == Some("PC01")));
+        assert!(
+            c.mensajes
+                .iter()
+                .all(|m| m.aparato.as_deref() == Some("PC01"))
+        );
         // El fichero esta copiado dentro del proyecto.
         for m in &c.mensajes {
             let r = super::super::fichero_del_mensaje(&raiz, &f.id, m).unwrap();

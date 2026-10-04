@@ -166,7 +166,9 @@ fn hilo_de_paginas() {
         let (pdf, pagina, ancho, destino) = pedido;
         if abierto.as_ref().is_none_or(|(r, _)| *r != pdf) {
             abierto = pixpin_pdf::Documento::abrir(&pdf)
-                .inspect_err(|e| tracing::info!(?e, pdf = %pdf.display(), "PDF que no se abre para pintar"))
+                .inspect_err(
+                    |e| tracing::info!(?e, pdf = %pdf.display(), "PDF que no se abre para pintar"),
+                )
                 .ok()
                 .map(|d| (pdf.clone(), d));
         }
@@ -255,20 +257,15 @@ fn trabajos() -> &'static Mutex<Trabajos> {
 /// Si ese mensaje ya tiene un trabajo en marcha: pulsar dos veces no lo une
 /// dos veces.
 pub fn ocupado(ficha: &str, mensaje: &str) -> bool {
-    trabajos()
-        .lock()
-        .is_ok_and(|t| t.en_curso.contains_key(&(ficha.to_string(), mensaje.to_string())))
+    trabajos().lock().is_ok_and(|t| {
+        t.en_curso
+            .contains_key(&(ficha.to_string(), mensaje.to_string()))
+    })
 }
 
 /// El progreso del trabajo que va, si va alguno: que es, cuantas y de cuantas.
 pub fn progreso() -> Option<(Trabajo, u32, u32)> {
-    trabajos()
-        .lock()
-        .ok()?
-        .en_curso
-        .values()
-        .next()
-        .copied()
+    trabajos().lock().ok()?.en_curso.values().next().copied()
 }
 
 /// Lo que ha terminado desde la ultima vez.
@@ -323,12 +320,13 @@ pub fn empezar(
             // Un PowerPoint entra como su PDF (D10, `DiapositivasAPdf` del
             // movil): se convierte aqui, en este mismo hilo, y lo demas no
             // se entera. Un PDF pasa tal cual.
-            let resultado = crate::diapositivas::pdf_para_unir(&raiz, &pdf).and_then(|pdf| match trabajo {
-                Trabajo::Unir => unir(&raiz, &ficha, &pdf, &mensaje, &nombre, ahora, &avance),
-                Trabajo::ComoImagenes => {
-                    como_imagenes(&raiz, &ficha, &pdf, &mensaje, &nombre, ahora, &avance)
-                }
-            });
+            let resultado =
+                crate::diapositivas::pdf_para_unir(&raiz, &pdf).and_then(|pdf| match trabajo {
+                    Trabajo::Unir => unir(&raiz, &ficha, &pdf, &mensaje, &nombre, ahora, &avance),
+                    Trabajo::ComoImagenes => {
+                        como_imagenes(&raiz, &ficha, &pdf, &mensaje, &nombre, ahora, &avance)
+                    }
+                });
             if let Err(e) = &resultado {
                 tracing::warn!(%e, pdf = %pdf.display(), ?trabajo, "no se pudo unir el PDF");
             }
@@ -437,13 +435,11 @@ pub fn unir(
             let limpio = std::fs::copy(&origen, &limpio).ok().map(|_| limpio);
             crate::aligerar::tras_unir(raiz, &origen);
             let cuantas = (paginas as usize).min(sitio);
-            p.hojas.extend(
-                (0..cuantas).map(|i| {
-                    let mut h = hoja(format!("h-{ahora}-{i}"), String::new(), de_mensaje);
-                    h.pagina = Some(i as u32);
-                    h
-                }),
-            );
+            p.hojas.extend((0..cuantas).map(|i| {
+                let mut h = hoja(format!("h-{ahora}-{i}"), String::new(), de_mensaje);
+                h.pagina = Some(i as u32);
+                h
+            }));
             p.pdf_origen = Some(format!("archivos/doc-{ahora}.pdf"));
             p.pdf_limpio = limpio.map(|_| format!("archivos/limpio-{ahora}.pdf"));
             p.tocado = ahora;
@@ -471,7 +467,10 @@ pub fn unir(
                     let pintado = pintar_paginas(pdf, paginas, avance)
                         .and_then(|imgs| pixpin_pdf::union::de_imagenes(&imgs));
                     let unidos = pintado.as_ref().and_then(|propio| {
-                        Some((pixpin_pdf::union::anadir_paginas(&antes_bytes, propio)?, propio.clone()))
+                        Some((
+                            pixpin_pdf::union::anadir_paginas(&antes_bytes, propio)?,
+                            propio.clone(),
+                        ))
                     });
                     (unidos, Como::Pintadas)
                 }
@@ -782,7 +781,9 @@ pub fn sin_su_hoja(carpeta: &Path, m: &cuaderno::Mensaje) -> bool {
     let ruta = carpeta.join("proyecto.json");
     let fecha = std::fs::metadata(&ruta).and_then(|m| m.modified()).ok();
     CACHE.with_borrow_mut(|c| {
-        let vale = c.as_ref().is_some_and(|(r, f, _)| *r == ruta && *f == fecha);
+        let vale = c
+            .as_ref()
+            .is_some_and(|(r, f, _)| *r == ruta && *f == fecha);
         if !vale {
             let senas = std::fs::read_to_string(&ruta)
                 .ok()
@@ -811,7 +812,9 @@ pub fn sin_su_hoja(carpeta: &Path, m: &cuaderno::Mensaje) -> bool {
         }
         c.as_ref().is_some_and(|(_, _, s)| {
             !s.contains(&m.id)
-                && m.referencia.as_ref().is_none_or(|r| !s.contains(&format!("dibujo:{r}")))
+                && m.referencia
+                    .as_ref()
+                    .is_none_or(|r| !s.contains(&format!("dibujo:{r}")))
         })
     })
 }
@@ -880,7 +883,8 @@ pub fn asegurar_dibujo(
             return Some(());
         }
         std::fs::create_dir_all(ruta.parent()?).ok()?;
-        let vacio = pixpin_motor2d::excalidraw::escribir(&pixpin_motor2d::excalidraw::Lienzo::vacio());
+        let vacio =
+            pixpin_motor2d::excalidraw::escribir(&pixpin_motor2d::excalidraw::Lienzo::vacio());
         std::fs::write(&ruta, vacio)
             .inspect_err(|e| tracing::warn!(?e, ruta = %ruta.display(), "no se pudo crear el dibujo de la pagina"))
             .ok()
@@ -928,7 +932,10 @@ pub fn dibujo_de_la_hoja(raiz: &Path, proyecto: &str, m: &cuaderno::Mensaje) -> 
     let ruta = almacen::carpeta(raiz, proyecto).join("proyecto.json");
     let fecha = std::fs::metadata(&ruta).and_then(|m| m.modified()).ok();
     CACHE.with_borrow_mut(|c| {
-        if !c.as_ref().is_some_and(|(r, f, _, _)| *r == ruta && *f == fecha) {
+        if !c
+            .as_ref()
+            .is_some_and(|(r, f, _, _)| *r == ruta && *f == fecha)
+        {
             let p: Proyecto = std::fs::read_to_string(&ruta)
                 .ok()
                 .and_then(|t| serde_json::from_str(&t).ok())
@@ -1001,7 +1008,8 @@ mod pruebas {
     use pixpin_codec::imagen::ImagenRgba;
 
     fn raiz_de_prueba(etiqueta: &str) -> (PathBuf, almacen::Ficha) {
-        let raiz = std::env::temp_dir().join(format!("pixpin-pdfchat-{etiqueta}-{}", std::process::id()));
+        let raiz =
+            std::env::temp_dir().join(format!("pixpin-pdfchat-{etiqueta}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&raiz);
         let ficha = almacen::Ficha::nueva("Obra", 5, "PC01");
         let mut indice = almacen::Indice::default();
@@ -1042,7 +1050,10 @@ mod pruebas {
         for h in &p.hojas {
             // Ni dibujo ni foto: la hoja ES la pagina del PDF.
             assert!(h.dibujo.is_none());
-            assert_eq!(h.resto.get("deMensaje").and_then(|v| v.as_str()), Some("m1"));
+            assert_eq!(
+                h.resto.get("deMensaje").and_then(|v| v.as_str()),
+                Some("m1")
+            );
             assert!(h.uid.is_some());
         }
         // Y ninguna imagen extraida: ni en imagenes/ ni en archivos/ salvo el PDF.
@@ -1069,10 +1080,16 @@ mod pruebas {
         let paginas: Vec<_> = p.hojas.iter().filter_map(|h| h.pagina).collect();
         assert_eq!(paginas, vec![0, 1, 2, 3, 4]);
         let doc = pixpin_proyecto::vista::documento_del_proyecto(&raiz, &ficha.id).unwrap();
-        assert_eq!(pixpin_pdf::union::contar_paginas(&std::fs::read(&doc).unwrap()), Some(5));
+        assert_eq!(
+            pixpin_pdf::union::contar_paginas(&std::fs::read(&doc).unwrap()),
+            Some(5)
+        );
         // La copia limpia va a la par.
         let limpio = almacen::carpeta(&raiz, &ficha.id).join("archivos/limpio-1000.pdf");
-        assert_eq!(pixpin_pdf::union::contar_paginas(&std::fs::read(limpio).unwrap()), Some(5));
+        assert_eq!(
+            pixpin_pdf::union::contar_paginas(&std::fs::read(limpio).unwrap()),
+            Some(5)
+        );
         let _ = std::fs::remove_dir_all(&raiz);
     }
 
@@ -1091,13 +1108,18 @@ mod pruebas {
         std::fs::write(&b, texto).unwrap();
         assert!(pixpin_pdf::union::esta_cifrado(&std::fs::read(&b).unwrap()));
         let pasos = std::cell::Cell::new(0);
-        let u = unir(&raiz, &ficha, &b, "m2", "b", 2000, &|_, _| pasos.set(pasos.get() + 1));
+        let u = unir(&raiz, &ficha, &b, "m2", "b", 2000, &|_, _| {
+            pasos.set(pasos.get() + 1)
+        });
         let u = u.unwrap();
         assert_eq!(u.como, Como::Pintadas);
         assert_eq!(u.hojas, 2);
         assert!(pasos.get() > 0, "pintar dice por donde va");
         let p = proyecto(&raiz, &ficha);
-        assert_eq!(p.hojas.iter().filter_map(|h| h.pagina).collect::<Vec<_>>(), vec![0, 1, 2]);
+        assert_eq!(
+            p.hojas.iter().filter_map(|h| h.pagina).collect::<Vec<_>>(),
+            vec![0, 1, 2]
+        );
         let _ = std::fs::remove_dir_all(&raiz);
     }
 
@@ -1115,12 +1137,21 @@ mod pruebas {
         assert!(p.pdf_origen.is_none());
         let h = &p.hojas[0];
         assert_eq!(h.nombre, "largo 1");
-        let texto = std::fs::read_to_string(almacen::lienzo(&raiz, &ficha.id, h.dibujo.as_ref().unwrap())).unwrap();
+        let texto = std::fs::read_to_string(almacen::lienzo(
+            &raiz,
+            &ficha.id,
+            h.dibujo.as_ref().unwrap(),
+        ))
+        .unwrap();
         let lienzo = pixpin_motor2d::excalidraw::leer(&texto).unwrap();
         let ficheros = pixpin_motor2d::excalidraw::ficheros(&lienzo);
         assert_eq!(ficheros.len(), 1);
         assert!(ficheros[0].1.starts_with("imagenes/pag1000x0"));
-        assert!(almacen::carpeta(&raiz, &ficha.id).join(&ficheros[0].1).is_file());
+        assert!(
+            almacen::carpeta(&raiz, &ficha.id)
+                .join(&ficheros[0].1)
+                .is_file()
+        );
         assert!(texto.contains("\"locked\":true"), "la foto va clavada");
         let _ = std::fs::remove_dir_all(&raiz);
     }
@@ -1138,8 +1169,14 @@ mod pruebas {
         let guardado = almacen::carpeta(&raiz, &ficha.id).join(&relativa);
         let vista = pagina_pintada(&raiz, &guardado, 0, ANCHO_VISTA);
         let tardo = t.elapsed();
-        assert!(vista.is_none(), "la primera vez aun no esta pintada: se pide y se sigue");
-        assert!(tardo.as_millis() < 50, "el hilo de la ventana se paro {tardo:?}");
+        assert!(
+            vista.is_none(),
+            "la primera vez aun no esta pintada: se pide y se sigue"
+        );
+        assert!(
+            tardo.as_millis() < 50,
+            "el hilo de la ventana se paro {tardo:?}"
+        );
         // Y no se extrajo ninguna pagina en el proyecto.
         let ficheros = std::fs::read_dir(almacen::carpeta(&raiz, &ficha.id).join("archivos"))
             .unwrap()
@@ -1189,7 +1226,13 @@ mod pruebas {
             aparato: "PC01".into(),
             proyecto: ficha.id.clone(),
         };
-        let mut pdf_msg = cuaderno::Mensaje::adjunto(cuaderno::Clase::Archivo, "g.pdf", "archivos/g.pdf", 1, &sello);
+        let mut pdf_msg = cuaderno::Mensaje::adjunto(
+            cuaderno::Clase::Archivo,
+            "g.pdf",
+            "archivos/g.pdf",
+            1,
+            &sello,
+        );
         pdf_msg.id = "m1".into();
         let mut mensajes = vec![pdf_msg];
         mensajes.extend(almacen::hojas_para_ensenar(&raiz, &ficha.id, "PC01"));
@@ -1248,7 +1291,13 @@ mod pruebas {
         let (raiz, ficha) = raiz_de_prueba("cinco");
         let carpeta = almacen::carpeta(&raiz, &ficha.id);
         let doc = pdf(&raiz, "plano.pdf", 5);
-        let mut m = cuaderno::Mensaje::adjunto(cuaderno::Clase::Archivo, "plano.pdf", "archivos/plano.pdf", 1, &sello(&ficha, 1));
+        let mut m = cuaderno::Mensaje::adjunto(
+            cuaderno::Clase::Archivo,
+            "plano.pdf",
+            "archivos/plano.pdf",
+            1,
+            &sello(&ficha, 1),
+        );
         m.id = "m-pdf".into();
         cuaderno::anadir(&carpeta, &m).unwrap();
         unir(&raiz, &ficha, &doc, "m-pdf", "plano", 1000, &|_, _| {}).unwrap();
@@ -1258,7 +1307,12 @@ mod pruebas {
         guardar_proyecto(&raiz, &ficha.id, &p).unwrap();
 
         let visto = lo_que_se_ve(&raiz, &ficha);
-        assert_eq!(visto.len(), 1, "solo el PDF: {:?}", visto.iter().map(|m| &m.nombre).collect::<Vec<_>>());
+        assert_eq!(
+            visto.len(),
+            1,
+            "solo el PDF: {:?}",
+            visto.iter().map(|m| &m.nombre).collect::<Vec<_>>()
+        );
         assert_eq!(visto[0].id, "m-pdf");
         let p = proyecto(&raiz, &ficha);
         assert_eq!(p.hojas.iter().filter(|h| h.pagina.is_some()).count(), 5);
@@ -1294,9 +1348,16 @@ mod pruebas {
         // sale de ese mensaje y lleva su codigo.
         let mut unida = pagina(4);
         unida.uid = Some("MANDADA".into());
-        unida.resto.insert("deMensaje".into(), serde_json::Value::String("m-mandada".into()));
+        unida.resto.insert(
+            "deMensaje".into(),
+            serde_json::Value::String("m-mandada".into()),
+        );
         hojas.push(unida);
-        let p = Proyecto { id: ficha.id.clone(), hojas, ..Default::default() };
+        let p = Proyecto {
+            id: ficha.id.clone(),
+            hojas,
+            ..Default::default()
+        };
         guardar_proyecto(&raiz, &ficha.id, &p).unwrap();
 
         let mut n = 0;
@@ -1309,18 +1370,51 @@ mod pruebas {
             cuaderno::anadir(&carpeta, &m).unwrap();
         };
         for i in 0..3 {
-            escribir(cuaderno::Clase::Pagina, "Pagina", &format!("PAG{i}"), &format!("m-pag-{i}"), Some(i));
+            escribir(
+                cuaderno::Clase::Pagina,
+                "Pagina",
+                &format!("PAG{i}"),
+                &format!("m-pag-{i}"),
+                Some(i),
+            );
         }
-        escribir(cuaderno::Clase::Dibujo, "Croquis", "LIENZO", "m-lienzo", None);
+        escribir(
+            cuaderno::Clase::Dibujo,
+            "Croquis",
+            "LIENZO",
+            "m-lienzo",
+            None,
+        );
         escribir(cuaderno::Clase::Imagen, "foto.png", "FOTO", "m-foto", None);
         // «Una pagina de un proyecto» (A7): un mensaje nuevo, con codigo propio.
-        escribir(cuaderno::Clase::Pagina, "Plano · Pagina 2", "A7A7A7", "m-a7", Some(1));
-        escribir(cuaderno::Clase::Pagina, "Pagina 5", "MANDADA", "m-mandada", Some(4));
+        escribir(
+            cuaderno::Clase::Pagina,
+            "Plano · Pagina 2",
+            "A7A7A7",
+            "m-a7",
+            Some(1),
+        );
+        escribir(
+            cuaderno::Clase::Pagina,
+            "Pagina 5",
+            "MANDADA",
+            "m-mandada",
+            Some(4),
+        );
 
-        let visto: Vec<String> = lo_que_se_ve(&raiz, &ficha).into_iter().map(|m| m.id).collect();
+        let visto: Vec<String> = lo_que_se_ve(&raiz, &ficha)
+            .into_iter()
+            .map(|m| m.id)
+            .collect();
         assert_eq!(visto, ["m-lienzo", "m-foto", "m-a7", "m-mandada"]);
         // Esconder no es borrar: el cuaderno viaja al movil.
-        assert_eq!(cuaderno::Cuaderno::leer_de(&carpeta).unwrap().mensajes.len(), 7);
+        assert_eq!(
+            cuaderno::Cuaderno::leer_de(&carpeta)
+                .unwrap()
+                .mensajes
+                .len(),
+            7
+        );
         let _ = std::fs::remove_dir_all(&raiz);
     }
 
@@ -1334,10 +1428,17 @@ mod pruebas {
             aparato: "PC01".into(),
             proyecto: ficha.id.clone(),
         };
-        let mut m = cuaderno::Mensaje::adjunto(cuaderno::Clase::Archivo, "g.pdf", "archivos/g.pdf", 1, &sello);
+        let mut m = cuaderno::Mensaje::adjunto(
+            cuaderno::Clase::Archivo,
+            "g.pdf",
+            "archivos/g.pdf",
+            1,
+            &sello,
+        );
         m.id = "m1".into();
         assert!(!sin_su_hoja(&carpeta, &m), "sin unir no hay punto");
-        m.resto.insert("unido".into(), serde_json::Value::Bool(true));
+        m.resto
+            .insert("unido".into(), serde_json::Value::Bool(true));
         assert!(sin_su_hoja(&carpeta, &m), "unido y sin hoja: punto");
         let doc = pdf(&raiz, "g.pdf", 1);
         // La fecha del fichero cambia de segundo en algunos discos: se
@@ -1362,14 +1463,19 @@ mod pruebas {
             ..Default::default()
         };
         std::fs::create_dir_all(&carpeta).unwrap();
-        std::fs::write(carpeta.join("proyecto.json"), serde_json::to_vec(&p).unwrap()).unwrap();
+        std::fs::write(
+            carpeta.join("proyecto.json"),
+            serde_json::to_vec(&p).unwrap(),
+        )
+        .unwrap();
         let mut m = cuaderno::Mensaje {
             id: "registro-x-dib-1".into(),
             clase: Some(cuaderno::Clase::Dibujo),
             referencia: Some("dib-1".into()),
             ..Default::default()
         };
-        m.resto.insert("unido".into(), serde_json::Value::Bool(true));
+        m.resto
+            .insert("unido".into(), serde_json::Value::Bool(true));
         assert!(!sin_su_hoja(&carpeta, &m), "su hoja es la del mismo dibujo");
         // Caso negativo: un lienzo cuyo dibujo no tiene hoja si lo lleva.
         m.referencia = Some("dib-9".into());

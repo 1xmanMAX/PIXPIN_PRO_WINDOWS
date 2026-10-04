@@ -143,7 +143,12 @@ fn ordenes_al_exportar(escena: &Escena, e: &Elemento) -> Vec<Orden> {
         return marco::ordenes_del_papel(e);
     }
     let mut v = pintado::ordenes(e);
-    v.extend(pintado::ordenes_medibles(e, escena.escala.as_ref(), ',', escena.fondo));
+    v.extend(pintado::ordenes_medibles(
+        e,
+        escena.escala.as_ref(),
+        ',',
+        escena.fondo,
+    ));
     v
 }
 
@@ -164,7 +169,12 @@ fn meter(
         && let Some(g) = crate::tinta::grafito::suelto(e, ordenes.len())
     {
         grafitos.push(g);
-        ordenes.extend(pintado::ordenes_medibles(e, escena.escala.as_ref(), ',', escena.fondo));
+        ordenes.extend(pintado::ordenes_medibles(
+            e,
+            escena.escala.as_ref(),
+            ',',
+            escena.fondo,
+        ));
         return;
     }
     let grano = pintado::grano_de(e);
@@ -210,7 +220,9 @@ pub fn tela_rgba(g: &pintado::Grano) -> (u32, Vec<u8>) {
 pub fn matriz_de_la_tela(g: &pintado::Grano) -> [f32; 4] {
     let cuanto = g.paso / crate::tinta::material::LADO_DEL_MOSAICO as f32;
     if g.inclinada {
-        let (sen, cos) = crate::tinta::material::GRADOS_DEL_GRANO.to_radians().sin_cos();
+        let (sen, cos) = crate::tinta::material::GRADOS_DEL_GRANO
+            .to_radians()
+            .sin_cos();
         [cuanto * cos, cuanto * sen, -cuanto * sen, cuanto * cos]
     } else {
         [cuanto, 0.0, 0.0, cuanto]
@@ -229,7 +241,11 @@ pub fn png_rgba(ancho: u32, alto: u32, rgba: &[u8]) -> Vec<u8> {
         for b in datos {
             c ^= *b as u32;
             for _ in 0..8 {
-                c = if c & 1 != 0 { 0xedb8_8320 ^ (c >> 1) } else { c >> 1 };
+                c = if c & 1 != 0 {
+                    0xedb8_8320 ^ (c >> 1)
+                } else {
+                    c >> 1
+                };
             }
         }
         !c
@@ -370,10 +386,7 @@ fn nombre_del_marco(m: &Elemento) -> String {
 
 fn entero(escena: &Escena, papel: Option<(f32, f32)>) -> Option<Hoja> {
     let visibles: Vec<&Elemento> = escena.visibles().collect();
-    let contenido = visibles
-        .iter()
-        .map(|e| caja_de(e))
-        .reduce(union);
+    let contenido = visibles.iter().map(|e| caja_de(e)).reduce(union);
     let caja = match (papel, contenido) {
         // Con papel manda el papel (y lo que se salga de el), sin margen.
         (Some((w, h)), Some(c)) => union((0.0, 0.0, w, h), c),
@@ -637,7 +650,12 @@ pub fn ancho_de_caracter(c: char) -> u16 {
 
 /// Lo que mide `texto` a tamano `tam`.
 pub fn ancho_de_texto(texto: &str, tam: f32) -> f32 {
-    texto.chars().map(|c| ancho_de_caracter(c) as f32).sum::<f32>() * tam / 1000.0
+    texto
+        .chars()
+        .map(|c| ancho_de_caracter(c) as f32)
+        .sum::<f32>()
+        * tam
+        / 1000.0
 }
 
 /// El texto partido en lineas que caben en `ancho_max`, midiendo con la
@@ -789,7 +807,10 @@ mod pruebas {
         assert_eq!(h.len(), 1);
         let (x0, y0, x1, y1) = h[0].caja;
         let (cx0, cy0, cx1, cy1) = e.elementos[0].caja();
-        assert_eq!((x0, y0, x1, y1), (cx0 - MARGEN, cy0 - MARGEN, cx1 + MARGEN, cy1 + MARGEN));
+        assert_eq!(
+            (x0, y0, x1, y1),
+            (cx0 - MARGEN, cy0 - MARGEN, cx1 + MARGEN, cy1 + MARGEN)
+        );
         assert!(!h[0].ordenes.is_empty());
     }
 
@@ -846,7 +867,10 @@ mod pruebas {
         ]);
         let a = &hojas(&solo_planta, Alcance::Marcos, &[], None)[0];
         let b = &hojas(&con_lejano, Alcance::Marcos, &[], None)[0];
-        assert!(!a.ordenes.is_empty(), "la raya que cruza tiene que pintarse");
+        assert!(
+            !a.ordenes.is_empty(),
+            "la raya que cruza tiene que pintarse"
+        );
         assert_eq!(a.ordenes, b.ordenes, "lo que no toca el marco no entra");
         assert_eq!(a.caja, (0.0, 0.0, 300.0, 200.0), "recortada al marco");
     }
@@ -869,7 +893,10 @@ mod pruebas {
         let solo = e.elementos[0].clone();
         assert!(ordenes_al_exportar(&e, &solo).is_empty());
         let todo = hojas(&e, Alcance::Todo, &[], None);
-        assert!(todo.is_empty(), "un lienzo con solo un marco vacio no exporta nada");
+        assert!(
+            todo.is_empty(),
+            "un lienzo con solo un marco vacio no exporta nada"
+        );
     }
 
     #[test]
@@ -908,7 +935,10 @@ mod pruebas {
         assert_eq!(h[0].caja, (0.0, 0.0, 800.0, 600.0));
         assert!(matches!(
             h[0].ordenes.first(),
-            Some(Orden::Imagen { id_objeto: ID_PAPEL, .. })
+            Some(Orden::Imagen {
+                id_objeto: ID_PAPEL,
+                ..
+            })
         ));
         // Y sin trazos, el papel solo sigue siendo algo que exportar.
         let solo = hojas(&Escena::nueva(), Alcance::Todo, &[], Some((800.0, 600.0)));
@@ -947,8 +977,14 @@ mod pruebas {
         assert!((izquierda - 28.0).abs() < 0.01 && (derecha - 814.0).abs() < 0.01);
         let arriba = 100.0 * k + dy;
         let abajo = 200.0 * k + dy;
-        assert!(((arriba + abajo) / 2.0 - 297.5).abs() < 0.01, "centrada en alto");
-        assert!(encaje(&h, 40.0, 40.0, 28.0).is_none(), "sin sitio no hay encaje");
+        assert!(
+            ((arriba + abajo) / 2.0 - 297.5).abs() < 0.01,
+            "centrada en alto"
+        );
+        assert!(
+            encaje(&h, 40.0, 40.0, 28.0).is_none(),
+            "sin sitio no hay encaje"
+        );
     }
 
     #[test]
@@ -988,13 +1024,28 @@ mod pruebas {
         assert_eq!(r.trozo_en(100.0, 50.0), Some((0.0, 0.0, 50.0, 50.0)));
         // Lo que se sale del original se queda en el borde.
         let fuera = recorte(150.0, 0.0, 100.0, 100.0, 200.0, 100.0);
-        assert_eq!(fuera.trozo_en(200.0, 100.0), Some((150.0, 0.0, 200.0, 100.0)));
+        assert_eq!(
+            fuera.trozo_en(200.0, 100.0),
+            Some((150.0, 0.0, 200.0, 100.0))
+        );
         // Casos negativos: sin tamano natural, sin area o fuera del todo no
         // hay trozo, y se pinta la foto entera en vez de nada.
-        assert_eq!(recorte(0.0, 0.0, 10.0, 10.0, 0.0, 0.0).trozo_en(100.0, 100.0), None);
-        assert_eq!(recorte(0.0, 0.0, 0.0, 10.0, 20.0, 20.0).trozo_en(100.0, 100.0), None);
-        assert_eq!(recorte(500.0, 0.0, 10.0, 10.0, 20.0, 20.0).trozo_en(100.0, 100.0), None);
-        assert_eq!(recorte(f32::NAN, 0.0, 10.0, 10.0, 20.0, 20.0).trozo_en(100.0, 100.0), None);
+        assert_eq!(
+            recorte(0.0, 0.0, 10.0, 10.0, 0.0, 0.0).trozo_en(100.0, 100.0),
+            None
+        );
+        assert_eq!(
+            recorte(0.0, 0.0, 0.0, 10.0, 20.0, 20.0).trozo_en(100.0, 100.0),
+            None
+        );
+        assert_eq!(
+            recorte(500.0, 0.0, 10.0, 10.0, 20.0, 20.0).trozo_en(100.0, 100.0),
+            None
+        );
+        assert_eq!(
+            recorte(f32::NAN, 0.0, 10.0, 10.0, 20.0, 20.0).trozo_en(100.0, 100.0),
+            None
+        );
     }
 
     #[test]
@@ -1003,9 +1054,15 @@ mod pruebas {
         // caja de 50x50 en (10, 20): la imagen entera mide 100x100 y empieza
         // 50 mas arriba y a la izquierda.
         let r = recorte(50.0, 50.0, 50.0, 50.0, 100.0, 100.0);
-        assert_eq!(imagen_entera((10.0, 20.0, 50.0, 50.0), &r), Some((-40.0, -30.0, 100.0, 100.0)));
+        assert_eq!(
+            imagen_entera((10.0, 20.0, 50.0, 50.0), &r),
+            Some((-40.0, -30.0, 100.0, 100.0))
+        );
         // Caso negativo: un recorte roto no mueve la imagen.
-        assert_eq!(imagen_entera((0.0, 0.0, 5.0, 5.0), &recorte(0.0, 0.0, 0.0, 0.0, 1.0, 1.0)), None);
+        assert_eq!(
+            imagen_entera((0.0, 0.0, 5.0, 5.0), &recorte(0.0, 0.0, 0.0, 0.0, 1.0, 1.0)),
+            None
+        );
     }
 
     #[test]
@@ -1017,7 +1074,10 @@ mod pruebas {
         let lienzo = crate::excalidraw::leer(json).expect("se lee");
         let escena = crate::excalidraw::a_escena(&lienzo);
         let h = hojas(&escena, Alcance::Todo, &[], None);
-        let Some(Orden::Imagen { recorte: Some(r), .. }) = h[0].ordenes.first() else {
+        let Some(Orden::Imagen {
+            recorte: Some(r), ..
+        }) = h[0].ordenes.first()
+        else {
             panic!("la imagen sale con su recorte: {:?}", h[0].ordenes);
         };
         assert_eq!((r.x, r.ancho, r.ancho_natural), (10.0, 20.0, 40.0));
@@ -1025,8 +1085,14 @@ mod pruebas {
         // movil no aparecen por haberlo leido.
         let salida = crate::excalidraw::escribir(&crate::excalidraw::con_escena(&lienzo, &escena));
         assert_eq!(salida.matches("\"crop\"").count(), 1);
-        assert!(salida.contains("\"naturalWidth\": 40") && !salida.contains("40.0"), "sin reescribir: {salida}");
-        assert!(!salida.contains("presionFirme"), "leer el recorte no ensucia: {salida}");
+        assert!(
+            salida.contains("\"naturalWidth\": 40") && !salida.contains("40.0"),
+            "sin reescribir: {salida}"
+        );
+        assert!(
+            !salida.contains("presionFirme"),
+            "leer el recorte no ensucia: {salida}"
+        );
         // Caso negativo: una imagen sin `crop` no inventa ninguno.
         let sin = json.replace(
             r#""crop":{"x":10,"y":0,"width":20,"height":20,"naturalWidth":40,"naturalHeight":40}"#,
@@ -1040,7 +1106,9 @@ mod pruebas {
     fn trazo_de(material: crate::tinta::MaterialTinta, x: f32) -> Elemento {
         Elemento {
             figura: Figura::Lapiz {
-                puntos: (0..20).map(|i| Punto2::nuevo(x + i as f32 * 5.0, 10.0 + (i % 3) as f32)).collect(),
+                puntos: (0..20)
+                    .map(|i| Punto2::nuevo(x + i as f32 * 5.0, 10.0 + (i % 3) as f32))
+                    .collect(),
                 presiones: Vec::new(),
                 opciones: Some(Default::default()),
             },
@@ -1060,7 +1128,10 @@ mod pruebas {
         let h = &hojas(&e, Alcance::Todo, &[], None)[0];
         assert_eq!(h.granos.len(), 1, "solo el rayado: {:?}", h.granos);
         let (i, g) = h.granos[0];
-        assert!(matches!(h.ordenes[i], Orden::Tinta { .. }), "el grano va con la silueta");
+        assert!(
+            matches!(h.ordenes[i], Orden::Tinta { .. }),
+            "el grano va con la silueta"
+        );
         assert_eq!(g.material, MaterialTinta::Rayado);
         assert_eq!(grano_de_la_orden(h, i), Some(g));
         // Caso negativo: la orden de al lado no tiene grano.
@@ -1068,7 +1139,10 @@ mod pruebas {
         // Y con lo elegido o por marcos, el indice sigue siendo el de su hoja.
         let ids: Vec<u64> = e.elementos.iter().map(|x| x.id).collect();
         let solo = &hojas(&e, Alcance::Seleccion, &[ids[1]], None)[0];
-        assert!(matches!(solo.ordenes[solo.granos[0].0], Orden::Tinta { .. }));
+        assert!(matches!(
+            solo.ordenes[solo.granos[0].0],
+            Orden::Tinta { .. }
+        ));
     }
 
     #[test]
@@ -1078,9 +1152,14 @@ mod pruebas {
         let g = pintado::grano_de(&e).expect("tiene grano");
         let (lado, rgba) = tela_rgba(&g);
         assert_eq!(rgba.len(), (lado * lado * 4) as usize);
-        assert!(rgba.chunks_exact(4).any(|p| p[3] == 0) && rgba.chunks_exact(4).any(|p| p[3] > 100));
+        assert!(
+            rgba.chunks_exact(4).any(|p| p[3] == 0) && rgba.chunks_exact(4).any(|p| p[3] > 100)
+        );
         let [a, b, c, d] = matriz_de_la_tela(&g);
-        assert!((a - d).abs() < 1e-6 && (b + c).abs() < 1e-6 && b > 0.0, "girada 45 grados");
+        assert!(
+            (a - d).abs() < 1e-6 && (b + c).abs() < 1e-6 && b > 0.0,
+            "girada 45 grados"
+        );
         let puntos = pintado::grano_de(&trazo_de(MaterialTinta::Puntos, 0.0)).expect("puntos");
         assert_eq!(matriz_de_la_tela(&puntos)[1], 0.0, "los puntos no se giran");
         // Caso negativo: la lisa no tiene grano que estampar.

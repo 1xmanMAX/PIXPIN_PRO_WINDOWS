@@ -126,7 +126,13 @@ pub fn adjuntar(
             let png = pixpin_codec::codificar_png(&img).map_err(|e| e.to_string())?;
             let ruta = almacen::guardar_adjunto(raiz, hacia, &format!("{nombre}.png"), &png)
                 .map_err(|e| e.to_string())?;
-            cuaderno::Mensaje::adjunto(cuaderno::Clase::Imagen, &nombre, &ruta, png.len() as i64, sello)
+            cuaderno::Mensaje::adjunto(
+                cuaderno::Clase::Imagen,
+                &nombre,
+                &ruta,
+                png.len() as i64,
+                sello,
+            )
         }
         Plan::Dibujo { dibujo } => lienzo(raiz, hacia, &nombre, dibujo, sello),
         Plan::DibujoCopiado { dibujo } => {
@@ -159,7 +165,13 @@ fn lienzo(
 
 /// Copia un lienzo de un proyecto a otro con id nuevo, y las fotos que
 /// lleva dentro (`imagenes/…`): sin ellas, alli seria una hoja con huecos.
-fn copiar_lienzo(raiz: &Path, desde: &str, hacia: &str, id: &str, nuevo: &str) -> Result<(), String> {
+fn copiar_lienzo(
+    raiz: &Path,
+    desde: &str,
+    hacia: &str,
+    id: &str,
+    nuevo: &str,
+) -> Result<(), String> {
     let origen = almacen::lienzo(raiz, desde, id);
     let texto = std::fs::read_to_string(&origen).map_err(|e| e.to_string())?;
     let destino = almacen::lienzo(raiz, hacia, nuevo);
@@ -194,7 +206,12 @@ fn rutas_de_fotos(texto: &str) -> Vec<String> {
         .map(|f| {
             f.values()
                 .filter_map(|x| x.get("path")?.as_str())
-                .filter(|r| !r.is_empty() && !r.contains("..") && !Path::new(r).is_absolute() && !r.contains(':'))
+                .filter(|r| {
+                    !r.is_empty()
+                        && !r.contains("..")
+                        && !Path::new(r).is_absolute()
+                        && !r.contains(':')
+                })
                 .map(str::to_string)
                 .collect()
         })
@@ -249,15 +266,24 @@ mod pruebas {
                 dibujo: Some("d".into())
             })
         );
-        assert_eq!(plan(&pagina, false), Some(Plan::PaginaPintada { pagina: 2 }));
+        assert_eq!(
+            plan(&pagina, false),
+            Some(Plan::PaginaPintada { pagina: 2 })
+        );
         let lienzo = Elegible {
             hoja: "b".into(),
             n: 1,
             pagina: None,
             dibujo: Some("d".into()),
         };
-        assert_eq!(plan(&lienzo, true), Some(Plan::Dibujo { dibujo: "d".into() }));
-        assert_eq!(plan(&lienzo, false), Some(Plan::DibujoCopiado { dibujo: "d".into() }));
+        assert_eq!(
+            plan(&lienzo, true),
+            Some(Plan::Dibujo { dibujo: "d".into() })
+        );
+        assert_eq!(
+            plan(&lienzo, false),
+            Some(Plan::DibujoCopiado { dibujo: "d".into() })
+        );
         // Caso negativo: sin pagina ni dibujo no hay nada que adjuntar.
         let nada = Elegible {
             hoja: "c".into(),
@@ -284,7 +310,11 @@ mod pruebas {
             hojas: vec![hoja("h1", None, Some("d1"), None)],
             ..Default::default()
         };
-        std::fs::write(desde.join("proyecto.json"), serde_json::to_string(&p).unwrap()).unwrap();
+        std::fs::write(
+            desde.join("proyecto.json"),
+            serde_json::to_string(&p).unwrap(),
+        )
+        .unwrap();
         std::fs::create_dir_all(almacen::carpeta(&raiz, "p2")).unwrap();
         let sello = cuaderno::Sello {
             cuando: 42,
@@ -295,9 +325,18 @@ mod pruebas {
         let m = adjuntar(&raiz, "p1", "p2", "h1", |n| format!("Pagina {n}"), &sello).unwrap();
         assert_eq!(m.clase, Some(cuaderno::Clase::Dibujo));
         assert_eq!(m.nombre, "Plano · Pagina 1");
-        assert_eq!(m.referencia.as_deref(), Some("dib-42"), "id nuevo: no comparte dibujo");
+        assert_eq!(
+            m.referencia.as_deref(),
+            Some("dib-42"),
+            "id nuevo: no comparte dibujo"
+        );
         assert!(almacen::lienzo(&raiz, "p2", "dib-42").is_file());
-        assert!(almacen::carpeta(&raiz, "p2").join("imagenes").join("f1").is_file());
+        assert!(
+            almacen::carpeta(&raiz, "p2")
+                .join("imagenes")
+                .join("f1")
+                .is_file()
+        );
         // Caso negativo: la ruta que sale de la carpeta no se sigue.
         assert!(!raiz.join("proyectos").join("fuera").exists());
         let alli = cuaderno::Cuaderno::leer_de(&almacen::carpeta(&raiz, "p2")).unwrap();
@@ -319,7 +358,11 @@ mod pruebas {
             hojas: vec![hoja("h1", Some(4), Some("d9"), None)],
             ..Default::default()
         };
-        std::fs::write(carpeta.join("proyecto.json"), serde_json::to_string(&p).unwrap()).unwrap();
+        std::fs::write(
+            carpeta.join("proyecto.json"),
+            serde_json::to_string(&p).unwrap(),
+        )
+        .unwrap();
         let sello = cuaderno::Sello {
             cuando: 7,
             numero: 3,

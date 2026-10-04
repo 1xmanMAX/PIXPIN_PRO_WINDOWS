@@ -32,9 +32,9 @@
 //! mandarla (`ElegirProyectoParaLaZona`). Aqui esos lienzos (el de un pin, el
 //! de la bandeja) no ofrecen el interruptor: la zona sale como copia.
 
-use pixpin_proyecto::{almacen, cuaderno, Hoja, Proyecto};
+use pixpin_proyecto::{Hoja, Proyecto, almacen, cuaderno};
 use pixpin_store::Catalogo;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::cell::RefCell;
 use std::path::{Path, PathBuf};
 
@@ -61,13 +61,22 @@ impl HojaAbierta {
     /// (`lienzos/<dibujo>.excalidraw`): el dibujo sale del nombre del
     /// fichero, que es el que de verdad se abrio (una pagina que aun no tenia
     /// dibujo lo estrena al abrirse y su mensaje no lo dice todavia).
-    pub(crate) fn de(raiz: &Path, proyecto: &str, ruta: &Path, m: &cuaderno::Mensaje) -> HojaAbierta {
+    pub(crate) fn de(
+        raiz: &Path,
+        proyecto: &str,
+        ruta: &Path,
+        m: &cuaderno::Mensaje,
+    ) -> HojaAbierta {
         let dibujo = ruta
             .file_stem()
             .map(|s| s.to_string_lossy().to_string())
             .or_else(|| m.referencia.clone())
             .unwrap_or_default();
-        let nombre = m.nombre.strip_suffix(".excalidraw").unwrap_or(&m.nombre).to_string();
+        let nombre = m
+            .nombre
+            .strip_suffix(".excalidraw")
+            .unwrap_or(&m.nombre)
+            .to_string();
         HojaAbierta {
             raiz: raiz.to_path_buf(),
             proyecto: proyecto.to_string(),
@@ -140,11 +149,9 @@ pub(crate) fn mandar(
     let es_pdf = h.pagina.is_some();
 
     // 1. El lienzo de origen, hoja del proyecto (si no lo era, lo pasa a ser).
-    let origen = match p
-        .hojas
-        .iter()
-        .position(|x| x.dibujo.as_deref() == Some(h.dibujo.as_str()) || (es_pdf && x.pagina == h.pagina))
-    {
+    let origen = match p.hojas.iter().position(|x| {
+        x.dibujo.as_deref() == Some(h.dibujo.as_str()) || (es_pdf && x.pagina == h.pagina)
+    }) {
         Some(i) => p.hojas[i].clone(),
         None => {
             let nueva = Hoja {
@@ -169,15 +176,26 @@ pub(crate) fn mandar(
     let (de_donde, nombre) = if let Some(pagina) = h.pagina {
         args.set("proyecto", p.nombre.clone());
         args.set("pagina", (pagina + 1) as i64);
-        (textos.t_args("zona-viene-pdf", &args), textos.t_args("zona-nombre-pagina", &args))
+        (
+            textos.t_args("zona-viene-pdf", &args),
+            textos.t_args("zona-nombre-pagina", &args),
+        )
     } else {
-        let de = if origen.nombre.trim().is_empty() { p.nombre.clone() } else { origen.nombre.clone() };
+        let de = if origen.nombre.trim().is_empty() {
+            p.nombre.clone()
+        } else {
+            origen.nombre.clone()
+        };
         args.set("nombre", de);
         let viene = textos.t_args("zona-viene-lienzo", &args);
         let mut n = fluent_bundle::FluentArgs::new();
         n.set(
             "nombre",
-            if origen.nombre.trim().is_empty() { textos.t("zona-lienzo") } else { origen.nombre.clone() },
+            if origen.nombre.trim().is_empty() {
+                textos.t("zona-lienzo")
+            } else {
+                origen.nombre.clone()
+            },
         );
         (viene, textos.t_args("zona-nombre-lienzo", &n))
     };
@@ -224,12 +242,17 @@ pub(crate) fn mandar(
         uid: Some(m.codigo_unico()),
         ..Default::default()
     };
-    hoja.resto.insert("padre".into(), Value::String(origen.id.clone()));
-    hoja.resto.insert("deMensaje".into(), Value::String(m.id.clone()));
+    hoja.resto
+        .insert("padre".into(), Value::String(origen.id.clone()));
+    hoja.resto
+        .insert("deMensaje".into(), Value::String(m.id.clone()));
     let donde = p
         .hojas
         .iter()
-        .rposition(|x| x.id == origen.id || x.resto.get("padre").and_then(|v| v.as_str()) == Some(origen.id.as_str()))
+        .rposition(|x| {
+            x.id == origen.id
+                || x.resto.get("padre").and_then(|v| v.as_str()) == Some(origen.id.as_str())
+        })
         .map_or(p.hojas.len(), |i| i + 1);
     p.hojas.insert(donde.min(p.hojas.len()), hoja);
     p.tocado = ahora;
@@ -315,7 +338,11 @@ pub(crate) fn mandar_y_marcar(
 /// El mensaje del chat cuya hoja es `dibujo`, leido del cuaderno. Lo usa el
 /// salto por enlace: una zona recien mandada no esta aun en la lista que el
 /// chat tenia al abrir el lienzo.
-pub(crate) fn mensaje_con_dibujo(raiz: &Path, proyecto: &str, dibujo: &str) -> Option<cuaderno::Mensaje> {
+pub(crate) fn mensaje_con_dibujo(
+    raiz: &Path,
+    proyecto: &str,
+    dibujo: &str,
+) -> Option<cuaderno::Mensaje> {
     cuaderno::Cuaderno::leer_de(&almacen::carpeta(raiz, proyecto))
         .ok()?
         .mensajes
@@ -387,7 +414,10 @@ mod pruebas {
     use pixpin_store::Idioma;
 
     fn raiz(etiqueta: &str) -> PathBuf {
-        let r = std::env::temp_dir().join(format!("pixpin-zona-chat-{etiqueta}-{}", std::process::id()));
+        let r = std::env::temp_dir().join(format!(
+            "pixpin-zona-chat-{etiqueta}-{}",
+            std::process::id()
+        ));
         let _ = std::fs::remove_dir_all(&r);
         std::fs::create_dir_all(&r).unwrap();
         r
@@ -430,26 +460,41 @@ mod pruebas {
         assert_eq!(m.clase, Some(cuaderno::Clase::Imagen));
         assert_eq!(m.nombre, "Zona de Planta.png");
         assert_eq!(m.referencia.as_deref(), Some(hecho.dibujo.as_str()));
-        assert_eq!(hecho.dibujo, format!("foto-{}", m.id), "el sublienzo se llama como en el movil");
+        assert_eq!(
+            hecho.dibujo,
+            format!("foto-{}", m.id),
+            "el sublienzo se llama como en el movil"
+        );
         assert_eq!(m.aparato.as_deref(), Some("K7Q2"));
         assert_eq!(m.resto.get("unido"), Some(&Value::Bool(true)));
         let v = m.resto.get("vieneDe").unwrap();
         assert_eq!(v["texto"], "Lienzo «Planta»");
         assert_eq!(v["dibujo"], "dib-1");
         assert_eq!(v["proyecto"], "p1");
-        assert!(v.get("pagina").is_none() && v.get("pdf").is_none(), "un lienzo no es una pagina");
+        assert!(
+            v.get("pagina").is_none() && v.get("pdf").is_none(),
+            "un lienzo no es una pagina"
+        );
         // La foto del mensaje esta donde dice.
-        assert_eq!(std::fs::read(carpeta.join(m.ruta.as_ref().unwrap())).unwrap(), b"PNG");
+        assert_eq!(
+            std::fs::read(carpeta.join(m.ruta.as_ref().unwrap())).unwrap(),
+            b"PNG"
+        );
         // El sublienzo abre con la foto clavada.
         let texto = std::fs::read_to_string(almacen::lienzo(&r, "p1", &hecho.dibujo)).unwrap();
         let l: Value = serde_json::from_str(&texto).unwrap();
         assert_eq!(l["elements"][0]["type"], "image");
         assert_eq!(l["elements"][0]["locked"], true);
         assert_eq!(l["elements"][0]["width"], 30.0);
-        let ruta_foto = l["files"][l["elements"][0]["fileId"].as_str().unwrap()]["path"].as_str().unwrap();
+        let ruta_foto = l["files"][l["elements"][0]["fileId"].as_str().unwrap()]["path"]
+            .as_str()
+            .unwrap();
         assert_eq!(std::fs::read(carpeta.join(ruta_foto)).unwrap(), b"PNG");
         // Y el salto por enlace lo encuentra leyendo el cuaderno.
-        assert_eq!(mensaje_con_dibujo(&r, "p1", &hecho.dibujo).map(|x| x.id), Some(m.id.clone()));
+        assert_eq!(
+            mensaje_con_dibujo(&r, "p1", &hecho.dibujo).map(|x| x.id),
+            Some(m.id.clone())
+        );
         let _ = std::fs::remove_dir_all(&r);
     }
 
@@ -466,18 +511,33 @@ mod pruebas {
         let a = mandar(&hoja(&r, None), b"A", 10, 10, 1_000, "K7Q2", &textos()).unwrap();
         let b = mandar(&hoja(&r, None), b"B", 10, 10, 2_000, "K7Q2", &textos()).unwrap();
         let p = leer_proyecto(&almacen::carpeta(&r, "p1"));
-        let ids: Vec<_> = p.hojas.iter().map(|h| h.dibujo.clone().unwrap_or_default()).collect();
+        let ids: Vec<_> = p
+            .hojas
+            .iter()
+            .map(|h| h.dibujo.clone().unwrap_or_default())
+            .collect();
         // Detras de su lienzo, en el orden en que se mandaron, y antes del
         // lienzo siguiente: no al final del proyecto.
-        assert_eq!(ids, ["dib-1", a.dibujo.as_str(), b.dibujo.as_str(), "dib-2"]);
+        assert_eq!(
+            ids,
+            ["dib-1", a.dibujo.as_str(), b.dibujo.as_str(), "dib-2"]
+        );
         let sub = &p.hojas[1];
         assert_eq!(sub.nombre, "↳ Zona de Planta");
         assert_eq!(sub.resto["padre"], "h-planta");
-        assert!(sub.resto["deMensaje"].as_str().is_some_and(|s| !s.is_empty()));
+        assert!(
+            sub.resto["deMensaje"]
+                .as_str()
+                .is_some_and(|s| !s.is_empty())
+        );
         // Lleva el codigo de su mensaje: el chat no la ensena dos veces.
         let c = cuaderno::Cuaderno::leer_de(&almacen::carpeta(&r, "p1")).unwrap();
         assert_eq!(sub.uid, Some(c.mensajes[0].codigo_unico()));
-        assert_eq!(c.mensajes[1].numero, c.mensajes[0].numero + 1, "numeros seguidos");
+        assert_eq!(
+            c.mensajes[1].numero,
+            c.mensajes[0].numero + 1,
+            "numeros seguidos"
+        );
         let _ = std::fs::remove_dir_all(&r);
     }
 
@@ -490,8 +550,16 @@ mod pruebas {
         mandar(&hoja(&r, None), b"B", 10, 10, 2_000, "K7Q2", &textos()).unwrap();
         let p = leer_proyecto(&almacen::carpeta(&r, "p1"));
         assert_eq!(p.id, "p1");
-        let origenes: Vec<_> = p.hojas.iter().filter(|h| h.dibujo.as_deref() == Some("dib-1")).collect();
-        assert_eq!(origenes.len(), 1, "caso negativo: la segunda zona no la duplica");
+        let origenes: Vec<_> = p
+            .hojas
+            .iter()
+            .filter(|h| h.dibujo.as_deref() == Some("dib-1"))
+            .collect();
+        assert_eq!(
+            origenes.len(),
+            1,
+            "caso negativo: la segunda zona no la duplica"
+        );
         assert_eq!(origenes[0].nombre, "Planta");
         assert_eq!(origenes[0].uid.as_deref(), Some("u-planta"));
         assert_eq!(p.hojas.len(), 3);
@@ -506,7 +574,10 @@ mod pruebas {
             json!({"id": "p1", "nombre": "Plano", "pdfOrigen": "archivos/doc-1.pdf",
                    "hojas": [{"id": "h-2", "nombre": "", "pagina": 2}]}),
         );
-        let h = HojaAbierta { dibujo: "dib-pag".into(), ..hoja(&r, Some(2)) };
+        let h = HojaAbierta {
+            dibujo: "dib-pag".into(),
+            ..hoja(&r, Some(2))
+        };
         mandar(&h, b"A", 10, 10, 1_000, "K7Q2", &textos()).unwrap();
         let c = cuaderno::Cuaderno::leer_de(&almacen::carpeta(&r, "p1")).unwrap();
         let v = &c.mensajes[0].resto["vieneDe"];
@@ -526,14 +597,35 @@ mod pruebas {
         let r = raiz("marcar");
         proyecto_con(&r, json!({"id": "p1", "nombre": "Casa", "hojas": []}));
         let mut escena = pixpin_motor2d::Escena::nueva();
-        let foto = pixpin_codec::ImagenRgba { ancho: 2, alto: 1, pixeles: vec![255; 8] };
-        let dicho = mandar_y_marcar(&mut escena, &foto, (0.0, 0.0, 40.0, 30.0), &hoja(&r, None), &textos()).unwrap();
+        let foto = pixpin_codec::ImagenRgba {
+            ancho: 2,
+            alto: 1,
+            pixeles: vec![255; 8],
+        };
+        let dicho = mandar_y_marcar(
+            &mut escena,
+            &foto,
+            (0.0, 0.0, 40.0, 30.0),
+            &hoja(&r, None),
+            &textos(),
+        )
+        .unwrap();
         assert_eq!(dicho, "Zona mandada al chat de «Casa»");
-        let marca = escena.elementos.iter().find(|e| e.enlace.is_some()).expect("la marca");
-        let m = mensaje_con_dibujo(&r, "p1", marca.enlace.as_deref().unwrap()).expect("lleva a su mensaje");
+        let marca = escena
+            .elementos
+            .iter()
+            .find(|e| e.enlace.is_some())
+            .expect("la marca");
+        let m = mensaje_con_dibujo(&r, "p1", marca.enlace.as_deref().unwrap())
+            .expect("lleva a su mensaje");
         assert_eq!(m.clase, Some(cuaderno::Clase::Imagen));
         assert!(escena.deshacer());
-        assert!(escena.elementos.iter().all(|e| e.borrado || e.enlace.is_none()));
+        assert!(
+            escena
+                .elementos
+                .iter()
+                .all(|e| e.borrado || e.enlace.is_none())
+        );
         let _ = std::fs::remove_dir_all(&r);
     }
 
@@ -544,8 +636,18 @@ mod pruebas {
         std::fs::create_dir_all(r.join("proyectos")).unwrap();
         std::fs::write(almacen::carpeta(&r, "p1"), b"no soy una carpeta").unwrap();
         let mut escena = pixpin_motor2d::Escena::nueva();
-        let foto = pixpin_codec::ImagenRgba { ancho: 1, alto: 1, pixeles: vec![255; 4] };
-        let dicho = mandar_y_marcar(&mut escena, &foto, (0.0, 0.0, 40.0, 30.0), &hoja(&r, None), &textos());
+        let foto = pixpin_codec::ImagenRgba {
+            ancho: 1,
+            alto: 1,
+            pixeles: vec![255; 4],
+        };
+        let dicho = mandar_y_marcar(
+            &mut escena,
+            &foto,
+            (0.0, 0.0, 40.0, 30.0),
+            &hoja(&r, None),
+            &textos(),
+        );
         assert_eq!(dicho, Err("No se pudo mandar la zona".to_string()));
         assert!(escena.elementos.is_empty());
         let _ = std::fs::remove_dir_all(&r);
@@ -564,10 +666,19 @@ mod pruebas {
         let h = HojaAbierta::de(r, "p1", &almacen::lienzo(r, "p1", "dib-9"), &m);
         assert_eq!(h.dibujo, "dib-9", "manda el fichero abierto");
         assert_eq!(h.nombre, "Planta");
-        assert_eq!((h.pagina, h.uid.as_deref(), h.proyecto.as_str()), (Some(4), Some("u1"), "p1"));
+        assert_eq!(
+            (h.pagina, h.uid.as_deref(), h.proyecto.as_str()),
+            (Some(4), Some("u1"), "p1")
+        );
         // Caso negativo: un nombre sin extension de lienzo se queda entero.
-        let otro = cuaderno::Mensaje { nombre: "Alzado".into(), ..m };
-        assert_eq!(HojaAbierta::de(r, "p1", Path::new("x.excalidraw"), &otro).nombre, "Alzado");
+        let otro = cuaderno::Mensaje {
+            nombre: "Alzado".into(),
+            ..m
+        };
+        assert_eq!(
+            HojaAbierta::de(r, "p1", Path::new("x.excalidraw"), &otro).nombre,
+            "Alzado"
+        );
     }
 
     #[test]

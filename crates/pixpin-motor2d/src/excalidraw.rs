@@ -336,8 +336,10 @@ pub fn a_escena(lienzo: &Lienzo) -> crate::Escena {
 /// ultimos digitos): un papel medio transparente se veria distinto en cada
 /// lado. `"transparent"` tampoco es un papel: blanco, como el movil.
 pub fn fondo(lienzo: &Lienzo) -> ColorRgba {
-    papel_leido(lienzo)
-        .map_or(crate::escena::FONDO_DE_FABRICA, |c| ColorRgba { a: 1.0, ..c })
+    papel_leido(lienzo).map_or(crate::escena::FONDO_DE_FABRICA, |c| ColorRgba {
+        a: 1.0,
+        ..c
+    })
 }
 
 /// El papel que dice el fichero, si dice alguno que se entienda.
@@ -994,16 +996,22 @@ fn extras_desde(v: &Value) -> Extras {
         // cronograma, la cota, el numero de serie, el punto, la escala); la
         // de un texto va en su figura y no aqui. Antes solo la del cronograma:
         // una cota del movil en Caveat se veia aqui en la letra del sistema.
-        familia: (v.get("type").and_then(Value::as_str).is_some_and(|t| t != "text"))
-            .then(|| v.get("fontFamily").and_then(Value::as_u64))
-            .flatten()
-            .map(|n| crate::texto::nombre_de_familia(Some(n.min(u8::MAX as u64) as u8)).to_string()),
+        familia: (v
+            .get("type")
+            .and_then(Value::as_str)
+            .is_some_and(|t| t != "text"))
+        .then(|| v.get("fontFamily").and_then(Value::as_u64))
+        .flatten()
+        .map(|n| crate::texto::nombre_de_familia(Some(n.min(u8::MAX as u64) as u8)).to_string()),
         // El tamano de lo que rotula: el cronograma y el numero de la cota
         // (`e.fontSize ?: MEASURE_TEXT_SIZE` en `drawMeasure`).
-        tam_letra: matches!(v.get("type").and_then(Value::as_str), Some("pixpin-gantt" | "pixpin-measure"))
-            .then(|| num(v, "fontSize"))
-            .flatten()
-            .filter(|t| t.is_finite() && *t > 0.0),
+        tam_letra: matches!(
+            v.get("type").and_then(Value::as_str),
+            Some("pixpin-gantt" | "pixpin-measure")
+        )
+        .then(|| num(v, "fontSize"))
+        .flatten()
+        .filter(|t| t.is_finite() && *t > 0.0),
     }
 }
 
@@ -1519,7 +1527,10 @@ fn elemento_hacia(e: &Elemento, original: &Value, objetos: bool) -> Value {
             mapa.insert("tareas".into(), tareas_hacia(tareas));
             mapa.insert("periodos".into(), Value::from(*periodos));
             if let Some(f) = &e.extras.familia {
-                mapa.insert("fontFamily".into(), Value::from(crate::texto::numero_de_familia(f)));
+                mapa.insert(
+                    "fontFamily".into(),
+                    Value::from(crate::texto::numero_de_familia(f)),
+                );
             }
             if let Some(t) = e.extras.tam_letra {
                 mapa.insert("fontSize".into(), Value::from(t as f64));
@@ -1543,10 +1554,7 @@ fn elemento_hacia(e: &Elemento, original: &Value, objetos: bool) -> Value {
                 crate::lupa_elemento::escribir(&mut mapa, cristal);
             }
         }
-        Figura::Rectangulo
-        | Figura::Rombo
-        | Figura::Elipse
-        | Figura::Imagen { .. } => {}
+        Figura::Rectangulo | Figura::Rombo | Figura::Elipse | Figura::Imagen { .. } => {}
     }
     // La letra elegida de lo que rotula sin ser un texto, en su `fontFamily`
     // como en el movil (`newElement` la pone en la cota; el panel, en todo lo
@@ -1554,7 +1562,10 @@ fn elemento_hacia(e: &Elemento, original: &Value, objetos: bool) -> Value {
     if !matches!(e.figura, Figura::Texto { .. })
         && let Some(f) = &e.extras.familia
     {
-        mapa.insert("fontFamily".into(), Value::from(crate::texto::numero_de_familia(f)));
+        mapa.insert(
+            "fontFamily".into(),
+            Value::from(crate::texto::numero_de_familia(f)),
+        );
     }
     extras_hacia(&mut mapa, &e.extras);
     Value::Object(mapa)
@@ -1592,7 +1603,11 @@ fn tareas_desde(v: Option<&Value>) -> Option<Vec<crate::cronograma::Tarea>> {
             let t = t.as_object()?;
             let num = |k: &str, d: f32| t.get(k).and_then(Value::as_f64).map_or(d, |n| n as f32);
             Some(crate::cronograma::Tarea {
-                nombre: t.get("nombre").and_then(Value::as_str).unwrap_or("").to_string(),
+                nombre: t
+                    .get("nombre")
+                    .and_then(Value::as_str)
+                    .unwrap_or("")
+                    .to_string(),
                 desde: num("desde", 0.0),
                 cuanto: num("cuanto", 1.0),
                 color: color_desde(t.get("color")),
@@ -1708,9 +1723,9 @@ pub fn poner_fichero(lienzo: &mut Lienzo, id: &str, tipo: &str, ruta: &str, crea
     let Value::Object(files) = files else {
         return;
     };
-    files.entry(id.to_string()).or_insert_with(|| {
-        serde_json::json!({"id": id, "mimeType": tipo, "path": ruta, "created": creado_ms})
-    });
+    files.entry(id.to_string()).or_insert_with(
+        || serde_json::json!({"id": id, "mimeType": tipo, "path": ruta, "created": creado_ms}),
+    );
 }
 
 #[cfg(test)]
@@ -2046,9 +2061,15 @@ mod pruebas {
              "text":"3","fontFamily":6,"seed":2}
         ]}"##;
         let l = leer(json).unwrap();
-        let familias: Vec<Option<String>> =
-            l.elementos().iter().map(|e| e.extras.familia.clone()).collect();
-        assert_eq!(familias, [Some("Caveat".to_string()), Some("Nunito".to_string())]);
+        let familias: Vec<Option<String>> = l
+            .elementos()
+            .iter()
+            .map(|e| e.extras.familia.clone())
+            .collect();
+        assert_eq!(
+            familias,
+            [Some("Caveat".to_string()), Some("Nunito".to_string())]
+        );
         let v: Value = serde_json::from_str(&escribir(&l)).unwrap();
         assert_eq!(v["elements"][0]["fontFamily"], 104);
         assert_eq!(v["elements"][1]["fontFamily"], 6);
@@ -2086,7 +2107,10 @@ mod pruebas {
         assert!(cristal.redonda);
         assert_eq!(cristal.oscurecer, Some(60));
         assert_eq!(cristal.foco, Some(Punto2::nuevo(100.0, 50.0)));
-        assert_eq!((cristal.foco_ancho, cristal.foco_alto), (Some(111.0), Some(55.0)));
+        assert_eq!(
+            (cristal.foco_ancho, cristal.foco_alto),
+            (Some(111.0), Some(55.0))
+        );
         let vuelta = escribir(&l);
         assert!(vuelta.contains("pixpin-spotlight"), "{vuelta}");
         assert!(vuelta.contains("\"oscurecer\""), "{vuelta}");
@@ -2439,7 +2463,10 @@ mod pruebas {
         .unwrap();
         primero_mut(&mut recta).redondo = true;
         let vuelta: Value = serde_json::from_str(&escribir(&recta)).unwrap();
-        assert_eq!(vuelta["elements"][0]["roundness"], serde_json::json!({"type": 2}));
+        assert_eq!(
+            vuelta["elements"][0]["roundness"],
+            serde_json::json!({"type": 2})
+        );
         assert!(vuelta["elements"][0]["roundness"]["type"].is_i64());
 
         // Caso negativo: enderezarla la deja sin `roundness`, o el movil la
@@ -2466,7 +2493,10 @@ mod pruebas {
         let mut l = leer(json).unwrap();
         let e = &l.elementos()[0];
         assert_eq!(e.extras.alineacion, Some(AlineacionTexto::Centro));
-        assert_eq!(e.extras.alineacion_vertical, Some(AlineacionVertical::Abajo));
+        assert_eq!(
+            e.extras.alineacion_vertical,
+            Some(AlineacionVertical::Abajo)
+        );
         // Caso negativo: la alineacion no son extras del movil; un texto
         // alineado no estrena `negrita`, `papel` y compania al guardarse.
         assert!(e.extras.vacios());
@@ -2723,7 +2753,13 @@ mod pruebas {
         let id = 0x1a2b_3c4d_5e6f_u64;
         let clave = crate::enlace::id_de_texto(id);
         let mut lienzo = Lienzo::vacio();
-        poner_fichero(&mut lienzo, &clave, "image/png", &format!("imagenes/{clave}"), 7);
+        poner_fichero(
+            &mut lienzo,
+            &clave,
+            "image/png",
+            &format!("imagenes/{clave}"),
+            7,
+        );
         let mut escena = crate::Escena::nueva();
         escena.anadir(imagen_pegada(id));
         let texto = escribir(&con_escena(&lienzo, &escena));
@@ -2738,8 +2774,14 @@ mod pruebas {
         let elementos = a_escena(&reabierto);
         let foto = elementos.visibles().next().expect("la imagen sigue ahi");
         assert_eq!(foto.figura, Figura::Imagen { id_objeto: id });
-        assert_eq!((foto.x, foto.y, foto.ancho, foto.alto), (40.0, 50.0, 320.0, 200.0));
-        assert_eq!(ficheros(&reabierto), vec![(id, format!("imagenes/{clave}"))]);
+        assert_eq!(
+            (foto.x, foto.y, foto.ancho, foto.alto),
+            (40.0, 50.0, 320.0, 200.0)
+        );
+        assert_eq!(
+            ficheros(&reabierto),
+            vec![(id, format!("imagenes/{clave}"))]
+        );
     }
 
     #[test]
@@ -2925,7 +2967,10 @@ mod pruebas {
         assert!(tareas[0].color.is_none());
         assert!(tareas[1].color.is_some());
         let vuelta = escribir(&l);
-        assert!(vuelta.contains("pixpin-gantt") && vuelta.contains("\"Acabados\""), "{vuelta}");
+        assert!(
+            vuelta.contains("pixpin-gantt") && vuelta.contains("\"Acabados\""),
+            "{vuelta}"
+        );
         assert!(vuelta.contains("\"periodos\""), "{vuelta}");
         assert!(vuelta.contains("#e03131"), "{vuelta}");
         let otra = leer(&vuelta).unwrap();
@@ -2998,7 +3043,10 @@ mod pruebas {
     #[test]
     fn la_escala_del_movil_llega_a_la_escena_y_la_cota_dice_centimetros() {
         let escena = a_escena(&leer(FOTO_MEDIDA_DEL_MOVIL).unwrap());
-        let e = escena.escala.as_ref().expect("la escala del fichero llega a la escena");
+        let e = escena
+            .escala
+            .as_ref()
+            .expect("la escala del fichero llega a la escena");
         assert_eq!(e.unidad, "cm");
         let cotas: Vec<&Elemento> = escena.visibles().collect();
         let textos: Vec<String> = cotas
@@ -3007,7 +3055,10 @@ mod pruebas {
             .collect();
         // Lo mismo que `textoDeCota` del movil: la medida con sus dos
         // decimales y coma, y el angulo porque la raya esta torcida.
-        assert_eq!(textos, vec!["5,00 cm · -90°".to_string(), "5,00 cm · -91°".to_string()]);
+        assert_eq!(
+            textos,
+            vec!["5,00 cm · -90°".to_string(), "5,00 cm · -91°".to_string()]
+        );
         // Sin la escala (lo que pasaba), pixeles: el fallo que vio el usuario.
         assert_eq!(crate::medida::texto_de_medida(36.637, None, ','), "37 px");
     }
@@ -3030,9 +3081,13 @@ mod pruebas {
     #[test]
     fn la_escala_hace_ida_y_vuelta_por_la_escena_sin_perder_un_decimal() {
         let l = leer(FOTO_MEDIDA_DEL_MOVIL).unwrap();
-        let vuelta: Value = serde_json::from_str(&escribir(&con_escena(&l, &a_escena(&l)))).unwrap();
+        let vuelta: Value =
+            serde_json::from_str(&escribir(&con_escena(&l, &a_escena(&l)))).unwrap();
         let original: Value = serde_json::from_str(FOTO_MEDIDA_DEL_MOVIL).unwrap();
-        assert_eq!(vuelta["escala"], original["escala"], "tal cual, con sus 17 cifras");
+        assert_eq!(
+            vuelta["escala"], original["escala"],
+            "tal cual, con sus 17 cifras"
+        );
     }
 
     #[test]
@@ -3499,8 +3554,14 @@ mod pruebas {
             .map(|i| Punto2::nuevo(300.0 + i as f32 * 5.0, 100.0 + ((i % 3) as f32) * 10.0))
             .collect();
         for figura in [
-            Figura::Lapiz { puntos: puntos.clone(), presiones: Vec::new(), opciones: Some(Default::default()) },
-            Figura::Linea { puntos: puntos.clone() },
+            Figura::Lapiz {
+                puntos: puntos.clone(),
+                presiones: Vec::new(),
+                opciones: Some(Default::default()),
+            },
+            Figura::Linea {
+                puntos: puntos.clone(),
+            },
             Figura::Flecha {
                 puntos: puntos.clone(),
                 punta_inicio: TipoPunta::Ninguna,
@@ -3509,11 +3570,18 @@ mod pruebas {
             },
         ] {
             let e = escrito(figura);
-            assert_eq!((e["width"].as_f64(), e["height"].as_f64()), (Some(40.0), Some(20.0)), "{e}");
+            assert_eq!(
+                (e["width"].as_f64(), e["height"].as_f64()),
+                (Some(40.0), Some(20.0)),
+                "{e}"
+            );
             // Los N puntos, relativos a su x/y.
             let p = e["points"].as_array().unwrap();
             assert_eq!(p.len(), 9);
-            assert_eq!((e["x"].as_f64(), e["y"].as_f64()), (Some(300.0), Some(100.0)));
+            assert_eq!(
+                (e["x"].as_f64(), e["y"].as_f64()),
+                (Some(300.0), Some(100.0))
+            );
             assert_eq!(p[0], serde_json::json!([0.0, 0.0]));
             assert_eq!(p[8], serde_json::json!([40.0, 20.0]));
         }
@@ -3531,7 +3599,13 @@ mod pruebas {
         });
         let v: Value =
             serde_json::from_str(&escribir(&con_escena(&Lienzo::vacio(), &escena))).unwrap();
-        assert_eq!((v["elements"][0]["width"].as_f64(), v["elements"][0]["height"].as_f64()), (Some(70.0), Some(30.0)));
+        assert_eq!(
+            (
+                v["elements"][0]["width"].as_f64(),
+                v["elements"][0]["height"].as_f64()
+            ),
+            (Some(70.0), Some(30.0))
+        );
         // Y un trazo del movil que aqui no se toco sale como entro, con su
         // caja aunque no sea la exacta (el movil la deja asi al mover un punto).
         let del_movil = r#"{"elements":[{"id":"m","type":"freedraw","x":1,"y":2,"width":99,"height":7,"seed":3,"version":2,"points":[{"x":0.0,"y":0.0},{"x":4.0,"y":4.0}]}]}"#;
@@ -3540,8 +3614,15 @@ mod pruebas {
         let v: Value = serde_json::from_str(&salida).unwrap();
         assert_eq!(v["elements"][0]["width"].as_f64(), Some(99.0));
         // Uno solo o ninguno: una caja de nada, como alli.
-        let e = escrito(Figura::Lapiz { puntos: vec![Punto2::nuevo(5.0, 5.0)], presiones: Vec::new(), opciones: None });
-        assert_eq!((e["width"].as_f64(), e["height"].as_f64()), (Some(0.0), Some(0.0)));
+        let e = escrito(Figura::Lapiz {
+            puntos: vec![Punto2::nuevo(5.0, 5.0)],
+            presiones: Vec::new(),
+            opciones: None,
+        });
+        assert_eq!(
+            (e["width"].as_f64(), e["height"].as_f64()),
+            (Some(0.0), Some(0.0))
+        );
     }
 }
 
@@ -3582,8 +3663,14 @@ mod papel_de_la_escena_del_movil {
         let lienzo = leer(ESCENA_AZUL_NOCHE).unwrap();
         let salida = raiz(&escribir(&con_escena(&lienzo, &a_escena(&lienzo))));
         assert_eq!(salida["backgroundColor"], "#14213d");
-        assert!(salida.get("appState").is_none(), "no se inventa un appState: {salida}");
-        assert_eq!(salida["style"]["backgroundColor"], "transparent", "el estilo no es el papel");
+        assert!(
+            salida.get("appState").is_none(),
+            "no se inventa un appState: {salida}"
+        );
+        assert_eq!(
+            salida["style"]["backgroundColor"], "transparent",
+            "el estilo no es el papel"
+        );
     }
 
     #[test]
@@ -3627,12 +3714,17 @@ mod papel_de_la_escena_del_movil {
             let escena = a_escena(&lienzo);
             assert_eq!(escena.fondo, crate::escena::FONDO_DE_FABRICA, "{raro}");
             let salida = raiz(&escribir(&con_escena(&lienzo, &escena)));
-            assert_eq!(salida["backgroundColor"], raiz(&json)["backgroundColor"], "{raro}");
+            assert_eq!(
+                salida["backgroundColor"],
+                raiz(&json)["backgroundColor"],
+                "{raro}"
+            );
         }
     }
 
     #[test]
-    fn un_lienzo_nuevo_con_papel_elegido_lleva_el_papel_arriba_para_el_movil_y_en_app_state_para_la_web() {
+    fn un_lienzo_nuevo_con_papel_elegido_lleva_el_papel_arriba_para_el_movil_y_en_app_state_para_la_web()
+     {
         let mut escena = crate::Escena::nueva();
         escena.poner_fondo(color_desde(Some(&Value::from("#f5faff"))).unwrap());
         let salida = raiz(&escribir(&con_escena(&Lienzo::vacio(), &escena)));
@@ -3685,11 +3777,23 @@ mod vuelta_de_un_lienzo_del_movil {
         assert_eq!(despues["elements"][0], antes["elements"][0]);
         assert_eq!(despues["elements"][1], antes["elements"][1]);
         assert_eq!(despues["elements"].as_array().unwrap().len(), 3);
-        for clave in ["backgroundColor", "files", "viewport", "luces", "vista", "style", "alfileres"] {
+        for clave in [
+            "backgroundColor",
+            "files",
+            "viewport",
+            "luces",
+            "vista",
+            "style",
+            "alfileres",
+        ] {
             assert_eq!(despues[clave], antes[clave], "{clave}");
         }
         // Y la raya nueva va con los puntos como objetos, como las del movil.
-        assert!(despues["elements"][2]["points"][0].is_object(), "{}", despues["elements"][2]);
+        assert!(
+            despues["elements"][2]["points"][0].is_object(),
+            "{}",
+            despues["elements"][2]
+        );
     }
 
     #[test]
@@ -3701,9 +3805,15 @@ mod vuelta_de_un_lienzo_del_movil {
         let despues = raiz(&escribir(&con_escena(&lienzo, &escena)));
         let foto = &despues["elements"][0];
         assert_eq!(foto["x"], 110.0);
-        assert!((foto["angle"].as_f64().unwrap() - 1.5813086).abs() < 1e-6, "{foto}");
+        assert!(
+            (foto["angle"].as_f64().unwrap() - 1.5813086).abs() < 1e-6,
+            "{foto}"
+        );
         assert_eq!(foto["fileId"], "Qwertyuiopasdfghjklzx");
-        assert_eq!(foto["formaSolida"], "caja", "un campo propio del movil no se pierde");
+        assert_eq!(
+            foto["formaSolida"], "caja",
+            "un campo propio del movil no se pierde"
+        );
         assert_eq!(foto["periodos"], 6);
         assert_eq!(despues["backgroundColor"], "#121212");
     }

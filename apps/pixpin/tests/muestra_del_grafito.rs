@@ -458,7 +458,11 @@ fn el_png_del_grafito_para_el_svg_se_lee_igual_que_el_mapa() {
         }
     }
     // Caso negativo: comprimido de verdad, no los bytes tal cual.
-    assert!(png.len() < (tw * th * 4) as usize / 3, "{} bytes", png.len());
+    assert!(
+        png.len() < (tw * th * 4) as usize / 3,
+        "{} bytes",
+        png.len()
+    );
 }
 
 #[test]
@@ -528,7 +532,14 @@ fn la_muestra_del_bote_de_grafito_y_de_la_figura_mientras_se_arrastra() {
         Punto2::nuevo(860.0, 360.0),
     )
     .expect("copia predicha");
-    let rgba = pintar(&fuera, &motor, &[bote, recinto, copia], 1.0, (0.0, 0.0), &mut cache);
+    let rgba = pintar(
+        &fuera,
+        &motor,
+        &[bote, recinto, copia],
+        1.0,
+        (0.0, 0.0),
+        &mut cache,
+    );
     // En el agujero, papel; en la mancha, grafito azul.
     let px = |x: usize, y: usize| &rgba[(y * ancho as usize + x) * 4..][..4];
     assert_eq!(px(220, 210)[..3], [255, 255, 255], "el agujero se relleno");
@@ -536,6 +547,9 @@ fn la_muestra_del_bote_de_grafito_y_de_la_figura_mientras_se_arrastra() {
         .flat_map(|x| (60..140).map(move |y| (x, y)))
         .filter(|&(x, y)| px(x, y)[2] > px(x, y)[0] + 20)
         .count();
-    assert!(azules > 1000, "la mancha del bote no es de grafito azul: {azules}");
+    assert!(
+        azules > 1000,
+        "la mancha del bote no es de grafito azul: {azules}"
+    );
     guardar("bote-y-figura-en-curso", ancho, alto, rgba);
 }

@@ -24,7 +24,8 @@ fn main() {
         tj += t.elapsed().as_millis();
         j82 += pixpin_codec::imagen::codificar_jpg(&img, 82).unwrap().len();
         let t = Instant::now();
-        pixpin_codec::imagen::guardar(&img, &tmp, pixpin_codec::imagen::FormatoImagen::Webp).unwrap();
+        pixpin_codec::imagen::guardar(&img, &tmp, pixpin_codec::imagen::FormatoImagen::Webp)
+            .unwrap();
         tw += t.elapsed().as_millis();
         wl += std::fs::metadata(&tmp).unwrap().len() as usize;
     }

@@ -15,10 +15,12 @@
 
 use crate::datos::{self, Proyecto};
 use crate::normalizar::{normalizar, puntuar};
-use crate::resultados::{glifo, hace, para_ayuda, pedido, resultado_ventana, Accion, Contexto, Resultado};
+use crate::resultados::{
+    Accion, Contexto, Resultado, glifo, hace, para_ayuda, pedido, resultado_ventana,
+};
 use pixpin_lecciones::leccion::{TIPO_ACIERTO, TIPO_ERROR};
-use pixpin_lecciones::{buscador, Leccion, Repaso};
-use serde_json::{json, Value};
+use pixpin_lecciones::{Leccion, Repaso, buscador};
+use serde_json::{Value, json};
 use std::path::PathBuf;
 
 /// Cuantas tocan repasar cada dia: las de la ventana de Lecciones (y del
@@ -47,7 +49,9 @@ pub fn todas(proyectos: &[Proyecto]) -> Vec<LeccionEn> {
     let mut v: Vec<LeccionEn> = Vec::new();
     for (i, p) in proyectos.iter().enumerate() {
         for l in &p.lecciones {
-            let Some(leccion) = Leccion::de_valor(&l.json) else { continue };
+            let Some(leccion) = Leccion::de_valor(&l.json) else {
+                continue;
+            };
             let fotos = leccion
                 .adjuntos
                 .iter()
@@ -56,7 +60,13 @@ pub fn todas(proyectos: &[Proyecto]) -> Vec<LeccionEn> {
                 .filter_map(|m| m.ruta.as_deref().and_then(|r| p.ruta_real(r)))
                 .filter(|r| datos::existe(r))
                 .collect();
-            v.push(LeccionEn { proyecto: i, mensaje: l.mensaje.clone(), ruta: l.ruta.clone(), leccion, fotos });
+            v.push(LeccionEn {
+                proyecto: i,
+                mensaje: l.mensaje.clone(),
+                ruta: l.ruta.clone(),
+                leccion,
+                fotos,
+            });
         }
     }
     v.sort_by(|a, b| b.leccion.tocada.cmp(&a.leccion.tocada));
@@ -88,11 +98,18 @@ pub fn buscar<'a>(todas: &'a [LeccionEn], texto: &str) -> Vec<(u32, &'a LeccionE
     if q.is_empty() {
         return Vec::new();
     }
-    let indices: Vec<buscador::Indice> = todas.iter().map(|l| buscador::Indice::nuevo(l.leccion.clone())).collect();
+    let indices: Vec<buscador::Indice> = todas
+        .iter()
+        .map(|l| buscador::Indice::nuevo(l.leccion.clone()))
+        .collect();
     let mut v: Vec<(u32, &LeccionEn)> = Vec::new();
     for r in buscador::buscar(&indices, texto) {
         if let Some(l) = todas.iter().find(|l| l.leccion.id == r.leccion.id) {
-            let letra = puntuar(&q, &normalizar(&l.leccion.titulo), &normalizar(&texto_entero(&l.leccion)));
+            let letra = puntuar(
+                &q,
+                &normalizar(&l.leccion.titulo),
+                &normalizar(&texto_entero(&l.leccion)),
+            );
             // Lo que solo encuentra por significado o con erratas, por lo bajo.
             v.push((letra.max(crate::normalizar::SALTEADO + 50), l));
         }
@@ -101,7 +118,11 @@ pub fn buscar<'a>(todas: &'a [LeccionEn], texto: &str) -> Vec<(u32, &'a LeccionE
         if v.iter().any(|(_, x)| x.leccion.id == l.leccion.id) {
             continue;
         }
-        let p = puntuar(&q, &normalizar(&l.leccion.titulo), &normalizar(&texto_entero(&l.leccion)));
+        let p = puntuar(
+            &q,
+            &normalizar(&l.leccion.titulo),
+            &normalizar(&texto_entero(&l.leccion)),
+        );
         if p > 0 {
             v.push((p, l));
         }
@@ -124,21 +145,50 @@ fn tipo(l: &Leccion) -> &'static str {
 pub fn resultado(l: &LeccionEn, proyectos: &[Proyecto], ctx: &Contexto) -> Resultado {
     let p = &proyectos[l.proyecto];
     let x = &l.leccion;
-    let etiquetas = x.todas_las_etiquetas().iter().take(3).map(|e| format!("#{e}")).collect::<Vec<_>>().join(" ");
-    let veces = if x.repeticiones.is_empty() { String::new() } else { format!("🔁 {}", x.veces_que_paso()) };
-    let donde = if p.guardados { String::new() } else { p.nombre.clone() };
+    let etiquetas = x
+        .todas_las_etiquetas()
+        .iter()
+        .take(3)
+        .map(|e| format!("#{e}"))
+        .collect::<Vec<_>>()
+        .join(" ");
+    let veces = if x.repeticiones.is_empty() {
+        String::new()
+    } else {
+        format!("🔁 {}", x.veces_que_paso())
+    };
+    let donde = if p.guardados {
+        String::new()
+    } else {
+        p.nombre.clone()
+    };
     let cuando = hace(x.creada, ctx.ahora);
     let mut sub: Vec<&str> = vec![tipo(x), x.area.trim(), &etiquetas, &veces, &donde, &cuando];
     sub.retain(|t| !t.is_empty());
     let mut subtitulo = sub.join(" · ");
     if !l.fotos.is_empty() {
         let n = l.fotos.len();
-        subtitulo = format!("📎 {n} {} · {subtitulo}", if n == 1 { "foto" } else { "fotos" });
+        subtitulo = format!(
+            "📎 {n} {} · {subtitulo}",
+            if n == 1 { "foto" } else { "fotos" }
+        );
     }
     let ruta = l.ruta.to_string_lossy().to_string();
-    let abrir = Accion::Pedido(pedido("abrir", json!({ "que": { "tipo": "fichero", "ruta": ruta } })));
+    let abrir = Accion::Pedido(pedido(
+        "abrir",
+        json!({ "que": { "tipo": "fichero", "ruta": ruta } }),
+    ));
     let titulo = x.titulo.trim();
-    let mut r = Resultado::nuevo(if titulo.is_empty() { "Lección" } else { titulo }, subtitulo, glifo::LECCION, abrir);
+    let mut r = Resultado::nuevo(
+        if titulo.is_empty() {
+            "Lección"
+        } else {
+            titulo
+        },
+        subtitulo,
+        glifo::LECCION,
+        abrir,
+    );
     let resumen = x.resumen();
     r.copiar = Some(resumen.clone());
     r.ayuda_titulo = Some(para_ayuda(titulo));
@@ -166,19 +216,38 @@ pub fn resultado(l: &LeccionEn, proyectos: &[Proyecto], ctx: &Contexto) -> Resul
 
 /// «Abrir la ventana de Lecciones».
 pub fn resultado_ventana_lecciones() -> Resultado {
-    resultado_ventana("lecciones", "Abrir la ventana de Lecciones", "Todas, con buscador, repaso y lista de comprobación", glifo::VENTANA)
+    resultado_ventana(
+        "lecciones",
+        "Abrir la ventana de Lecciones",
+        "Todas, con buscador, repaso y lista de comprobación",
+        glifo::VENTANA,
+    )
 }
 
 /// «Repasar hoy (N)»: entra en `p repasar`.
 fn resultado_repasar(todas: &[LeccionEn], ctx: &Contexto) -> Resultado {
     let lecciones: Vec<Leccion> = todas.iter().map(|l| l.leccion.clone()).collect();
-    let tocan = lecciones.iter().filter(|l| Repaso::toca(l, ctx.ahora)).count();
+    let tocan = lecciones
+        .iter()
+        .filter(|l| Repaso::toca(l, ctx.ahora))
+        .count();
     let (titulo, sub) = match tocan {
-        0 => ("Repasar hoy".to_string(), "Hoy no toca repasar ninguna".to_string()),
-        n => (format!("Repasar hoy ({})", n.min(DE_HOY)), "Las que tocan repasar hoy, la más grave primero".to_string()),
+        0 => (
+            "Repasar hoy".to_string(),
+            "Hoy no toca repasar ninguna".to_string(),
+        ),
+        n => (
+            format!("Repasar hoy ({})", n.min(DE_HOY)),
+            "Las que tocan repasar hoy, la más grave primero".to_string(),
+        ),
     };
     let entrar = ctx.consulta("repasar ");
-    let mut r = Resultado::nuevo(titulo, sub, glifo::LECCION, Accion::Consulta(entrar.clone()));
+    let mut r = Resultado::nuevo(
+        titulo,
+        sub,
+        glifo::LECCION,
+        Accion::Consulta(entrar.clone()),
+    );
     r.autocompletar = Some(entrar);
     r.clave = Some("funcion/repasar".into());
     r
@@ -187,7 +256,12 @@ fn resultado_repasar(todas: &[LeccionEn], ctx: &Contexto) -> Resultado {
 /// **`p lecciones [texto]`**: sin texto, repasar, la ventana y todas de la
 /// mas tocada a la menos; con texto, las que encuentra el buscador y, al
 /// final, buscarlo en la ventana o apuntarlo como leccion nueva.
-pub fn lista(proyectos: &[Proyecto], texto: &str, en: Option<&Proyecto>, ctx: &Contexto) -> Vec<Resultado> {
+pub fn lista(
+    proyectos: &[Proyecto],
+    texto: &str,
+    en: Option<&Proyecto>,
+    ctx: &Contexto,
+) -> Vec<Resultado> {
     let mut todas = todas(proyectos);
     if let Some(p) = en {
         todas.retain(|l| proyectos[l.proyecto].id == p.id);
@@ -227,13 +301,19 @@ pub fn lista(proyectos: &[Proyecto], texto: &str, en: Option<&Proyecto>, ctx: &C
         format!("Buscar «{texto}» en la ventana de Lecciones"),
         "Intro: la lista de la app con esta búsqueda",
         glifo::VENTANA,
-        Accion::Pedido(pedido("lecciones", json!({ "consulta": texto, "proyecto": proyecto }))),
+        Accion::Pedido(pedido(
+            "lecciones",
+            json!({ "consulta": texto, "proyecto": proyecto }),
+        )),
     ));
     let mut nueva = Resultado::nuevo(
         format!("Nueva lección: {texto}"),
         "Intro: abre la ficha con esto",
         glifo::ANADIR,
-        Accion::Pedido(pedido("leccion_nueva", json!({ "texto": texto, "proyecto": proyecto }))),
+        Accion::Pedido(pedido(
+            "leccion_nueva",
+            json!({ "texto": texto, "proyecto": proyecto }),
+        )),
     );
     crate::imagenes::con_imagenes(&mut nueva, texto, ctx);
     v.push(nueva);
@@ -247,7 +327,10 @@ pub fn repasar(proyectos: &[Proyecto], ctx: &Contexto) -> Vec<Resultado> {
     let todas = todas(proyectos);
     let lecciones: Vec<Leccion> = todas.iter().map(|l| l.leccion.clone()).collect();
     let hoy = Repaso::de_hoy(&lecciones, ctx.ahora, DE_HOY);
-    let tocan = lecciones.iter().filter(|l| Repaso::toca(l, ctx.ahora)).count();
+    let tocan = lecciones
+        .iter()
+        .filter(|l| Repaso::toca(l, ctx.ahora))
+        .count();
     let mut v: Vec<Resultado> = hoy
         .iter()
         .filter_map(|h| todas.iter().find(|l| l.leccion.id == h.id))
@@ -265,13 +348,24 @@ pub fn repasar(proyectos: &[Proyecto], ctx: &Contexto) -> Vec<Resultado> {
         })
         .collect();
     if v.is_empty() {
-        let siguiente = lecciones.iter().map(|l| l.repasar).filter(|r| *r > ctx.ahora).min();
+        let siguiente = lecciones
+            .iter()
+            .map(|l| l.repasar)
+            .filter(|r| *r > ctx.ahora)
+            .min();
         let sub = match siguiente {
             Some(s) => format!("La siguiente toca {}", cuando_toca(s, ctx.ahora)),
-            None if lecciones.is_empty() => "Aún no hay lecciones · «a <lo que aprendiste>» apunta una".to_string(),
+            None if lecciones.is_empty() => {
+                "Aún no hay lecciones · «a <lo que aprendiste>» apunta una".to_string()
+            }
             None => String::new(),
         };
-        v.push(Resultado::nuevo("Hoy no toca repasar ninguna", sub, glifo::LECCION, Accion::Consulta(ctx.consulta("lecciones "))));
+        v.push(Resultado::nuevo(
+            "Hoy no toca repasar ninguna",
+            sub,
+            glifo::LECCION,
+            Accion::Consulta(ctx.consulta("lecciones ")),
+        ));
     } else if tocan > hoy.len() {
         v.push(Resultado::nuevo(
             format!("Y {} más esperan", tocan - hoy.len()),
@@ -296,14 +390,25 @@ fn cuando_toca(ms: i64, ahora: i64) -> String {
 /// Las lecciones para la busqueda en todo: cada una con sus puntos, ya por
 /// debajo de lo que coincide de verdad (un proyecto, una lista o una tarea
 /// que se llama asi salen antes). Como mucho [`EN_TODO`].
-pub fn para_buscar_en_todo(proyectos: &[Proyecto], texto: &str, en: Option<&str>, ctx: &Contexto) -> Vec<(u32, i64, Resultado)> {
+pub fn para_buscar_en_todo(
+    proyectos: &[Proyecto],
+    texto: &str,
+    en: Option<&str>,
+    ctx: &Contexto,
+) -> Vec<(u32, i64, Resultado)> {
     let mut todas = todas(proyectos);
     if let Some(id) = en {
         todas.retain(|l| proyectos[l.proyecto].id == id);
     }
     let mut v: Vec<(u32, i64, Resultado)> = buscar(&todas, texto)
         .into_iter()
-        .map(|(p, l)| (p.min(crate::normalizar::PALABRA), l.leccion.tocada, resultado(l, proyectos, ctx)))
+        .map(|(p, l)| {
+            (
+                p.min(crate::normalizar::PALABRA),
+                l.leccion.tocada,
+                resultado(l, proyectos, ctx),
+            )
+        })
         .collect();
     v.sort_by(|a, b| b.0.cmp(&a.0).then(b.1.cmp(&a.1)));
     v.truncate(EN_TODO);

@@ -361,7 +361,10 @@ fn arrastrar_mil_seleccionados_de_dos_mil_cuesta_menos_de_cuatrocientos_microseg
         &mut escena,
         1.0,
     );
-    assert!(g.marquesina().is_none() && !g.en_reposo(), "la pulsacion tiene que coger la seleccion");
+    assert!(
+        g.marquesina().is_none() && !g.en_reposo(),
+        "la pulsacion tiene que coger la seleccion"
+    );
     let avisos = 200;
     let ahora = Instant::now();
     for i in 0..avisos {
@@ -426,7 +429,7 @@ fn pasar_el_raton_sobre_dos_mil_elementos_cuesta_menos_de_cien_microsegundos_por
 /// flechas y esto no cabria.
 #[test]
 fn arrastrar_mil_de_dos_mil_con_cien_flechas_atadas_cuesta_menos_de_seiscientos_microsegundos_por_aviso()
-{
+ {
     use pixpin_motor2d::elemento::{Enganche, Extras};
     use pixpin_motor2d::gesto::{EventoGesto, Gesto, Herramienta};
     let mut escena = Escena::nueva();
@@ -472,7 +475,11 @@ fn arrastrar_mil_de_dos_mil_con_cien_flechas_atadas_cuesta_menos_de_seiscientos_
         &mut escena,
         1.0,
     );
-    assert_eq!(g.flechas_que_siguen().len(), 100, "no se apuntaron las cien flechas");
+    assert_eq!(
+        g.flechas_que_siguen().len(),
+        100,
+        "no se apuntaron las cien flechas"
+    );
     let avisos = 200;
     let ahora = Instant::now();
     for i in 0..avisos {

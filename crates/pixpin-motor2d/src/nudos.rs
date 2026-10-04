@@ -28,12 +28,12 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::ColorRgba;
 use crate::elemento::{Elemento, Figura};
 use crate::escena::Escena;
 use crate::perimetros::{self, PASO_PERIMETRO};
 use crate::pintado::Orden;
 use crate::vector::{Punto2, distancia_a_segmento};
-use crate::ColorRgba;
 
 /// Cuanto se acerca el cursor a un cruce para clavar alli, o a un clavo para
 /// cogerlo, en pixeles de pantalla. El movil usa 28 dp para el dedo
@@ -364,9 +364,7 @@ fn agarrar_en(e: &Elemento, donde: Punto2, radio: f32) -> Agarre {
 /// no se deja girar (sus puntos no siguen al giro de su caja); y lo que no
 /// tiene borde visible (texto, punto, foco) no da contorno por el que entrar.
 fn se_puede_clavar(e: &Elemento) -> bool {
-    !e.borrado
-        && !e.bloqueado
-        && !matches!(e.figura, Figura::Marco { .. } | Figura::Region { .. })
+    !e.borrado && !e.bloqueado && !matches!(e.figura, Figura::Marco { .. } | Figura::Region { .. })
 }
 
 /// **Clava un alfiler en `p`, o lo quita si ya habia uno ahi.**
@@ -411,7 +409,10 @@ pub fn clavar_en(
         .min_by(|a, b| a.distancia(p).total_cmp(&b.distancia(p)));
     let donde = cruce.or(vertice).unwrap_or(p);
 
-    let agarres = candidatas.iter().map(|e| agarrar_en(e, donde, radio)).collect();
+    let agarres = candidatas
+        .iter()
+        .map(|e| agarrar_en(e, donde, radio))
+        .collect();
     let mut con = alfileres.to_vec();
     con.push(Alfiler {
         punto: donde,
@@ -492,7 +493,10 @@ pub fn arrastrar_con_alfileres(
     hasta: Punto2,
 ) {
     let (dx, dy) = (hasta.x - desde.x, hasta.y - desde.y);
-    for e in elementos.iter_mut().filter(|e| elegido(e.id) && !e.bloqueado) {
+    for e in elementos
+        .iter_mut()
+        .filter(|e| elegido(e.id) && !e.bloqueado)
+    {
         match libertad_de(alfileres, e.id) {
             Libertad::Libre => e.mover(dx, dy),
             Libertad::Fija => {}
@@ -520,7 +524,10 @@ pub fn girar_con_alfileres(
     centro: Punto2,
     delta: f32,
 ) {
-    for e in elementos.iter_mut().filter(|e| elegido(e.id) && !e.bloqueado) {
+    for e in elementos
+        .iter_mut()
+        .filter(|e| elegido(e.id) && !e.bloqueado)
+    {
         match libertad_de(alfileres, e.id) {
             Libertad::Libre => crate::transformar::girar(e, centro, delta),
             Libertad::Fija => {}
@@ -553,7 +560,11 @@ pub fn mover_alfiler(
         return;
     };
     for e in elementos.iter_mut() {
-        let agarres: Vec<&Agarre> = alfiler.agarres.iter().filter(|a| a.elemento == e.id).collect();
+        let agarres: Vec<&Agarre> = alfiler
+            .agarres
+            .iter()
+            .filter(|a| a.elemento == e.id)
+            .collect();
         if agarres.is_empty() || e.bloqueado {
             continue;
         }
@@ -570,9 +581,10 @@ pub fn mover_alfiler(
             .find(|(i, a)| *i != indice && a.atraviesa(e.id))
             .and_then(|(_, a)| a.agarres.iter().find(|g| g.elemento == e.id).cloned());
         if let Some(eje_agarre) = otro {
-            let (Some(eje), Some(mano)) =
-                (punto_del_agarre(e, &eje_agarre), punto_del_agarre(e, agarres[0]))
-            else {
+            let (Some(eje), Some(mano)) = (
+                punto_del_agarre(e, &eje_agarre),
+                punto_del_agarre(e, agarres[0]),
+            ) else {
                 continue;
             };
             girar_elemento(e, eje, angulo_entre(eje, mano, destino));
@@ -599,7 +611,10 @@ pub fn fijar_alfileres(
     if alfileres.is_empty() {
         return;
     }
-    for e in elementos.iter_mut().filter(|e| elegido(e.id) && !e.bloqueado) {
+    for e in elementos
+        .iter_mut()
+        .filter(|e| elegido(e.id) && !e.bloqueado)
+    {
         let id = e.id;
         for a in alfileres {
             for agarre in a.agarres.iter().filter(|g| g.elemento == id) {
@@ -749,7 +764,9 @@ pub fn girar(escena: &mut Escena, elegidos: &[u64], centro: Punto2, delta: f32) 
 pub fn sujetar(escena: &mut Escena, elegidos: &[u64]) {
     apuntar(escena, elegidos);
     let alfileres = escena.alfileres.clone();
-    fijar_alfileres(&mut escena.elementos, &alfileres, |id| elegidos.contains(&id));
+    fijar_alfileres(&mut escena.elementos, &alfileres, |id| {
+        elegidos.contains(&id)
+    });
     escena.alfileres = refrescar_alfileres(&escena.elementos, &alfileres);
 }
 
@@ -867,7 +884,10 @@ fn alfiler_hacia(a: &Alfiler, elementos: &[Elemento]) -> Option<serde_json::Valu
 /// Un lienzo del movil que nadie toco no cambia ni un byte por haberlo
 /// abierto aqui. Los clavos que no se entendieron al leer (atraviesan algo
 /// ajeno) vuelven intactos.
-pub fn escribir_al_fichero(resto: &mut serde_json::Map<String, serde_json::Value>, escena: &Escena) {
+pub fn escribir_al_fichero(
+    resto: &mut serde_json::Map<String, serde_json::Value>,
+    escena: &Escena,
+) {
     let vivos = refrescar_alfileres(&escena.elementos, &escena.alfileres);
     let leidos = leer_del_fichero(resto, &escena.elementos);
     if vivos == refrescar_alfileres(&escena.elementos, &leidos) {
@@ -940,7 +960,11 @@ mod pruebas {
     }
 
     fn cerca(a: Punto2, b: Punto2, tol: f32, que: &str) {
-        assert!(a.distancia(b) <= tol, "{que}: {a:?} y {b:?} estan a {}", a.distancia(b));
+        assert!(
+            a.distancia(b) <= tol,
+            "{que}: {a:?} y {b:?} estan a {}",
+            a.distancia(b)
+        );
     }
 
     fn escena_con(elementos: Vec<Elemento>) -> Escena {
@@ -983,7 +1007,10 @@ mod pruebas {
     #[test]
     fn tocar_un_clavo_lo_quita() {
         let con = clavar_en(&triangulo(), &[], p(100.0, 100.0), 10.0).unwrap();
-        assert_eq!(clavar_en(&triangulo(), &con, p(100.0, 100.0), 10.0), Some(vec![]));
+        assert_eq!(
+            clavar_en(&triangulo(), &con, p(100.0, 100.0), 10.0),
+            Some(vec![])
+        );
     }
 
     #[test]
@@ -1060,7 +1087,12 @@ mod pruebas {
         // ...y sigue midiendo lo mismo: gira, no se estira.
         assert!((a[0].distancia(a[1]) - 100.0).abs() < 0.5);
         // La vecina no se ha movido: es una articulacion, no un bloque.
-        cerca(puntas(&escena, 2)[0], p(100.0, 100.0), 0.001, "la vecina se movio");
+        cerca(
+            puntas(&escena, 2)[0],
+            p(100.0, 100.0),
+            0.001,
+            "la vecina se movio",
+        );
     }
 
     #[test]
@@ -1076,21 +1108,39 @@ mod pruebas {
         assert_eq!(escena.alfileres.len(), 2);
         assert_eq!(libertad_de(&escena.alfileres, 1), Libertad::Fija);
         arrastrar(&mut escena, &[1], p(100.0, 100.0), p(140.0, 180.0));
-        cerca(puntas(&escena, 1)[0], p(0.0, 100.0), 0.001, "se movio con dos clavos");
+        cerca(
+            puntas(&escena, 1)[0],
+            p(0.0, 100.0),
+            0.001,
+            "se movio con dos clavos",
+        );
     }
 
     #[test]
     fn sin_clavos_la_figura_se_traslada() {
         let mut escena = escena_con(triangulo());
         arrastrar(&mut escena, &[1], p(50.0, 100.0), p(50.0, 160.0));
-        cerca(puntas(&escena, 1)[0], p(0.0, 160.0), 0.001, "no se traslado");
+        cerca(
+            puntas(&escena, 1)[0],
+            p(0.0, 160.0),
+            0.001,
+            "no se traslado",
+        );
         // Sin clavo, cada una por su lado: el triangulo se abre.
-        cerca(puntas(&escena, 2)[0], p(100.0, 100.0), 0.001, "la otra no deberia moverse");
+        cerca(
+            puntas(&escena, 2)[0],
+            p(100.0, 100.0),
+            0.001,
+            "la otra no deberia moverse",
+        );
     }
 
     #[test]
     fn un_circulo_clavado_gira_alrededor_del_clavo() {
-        let mut escena = escena_con(vec![circulo(1, 0.0, 0.0, 100.0), circulo(2, 100.0, 0.0, 100.0)]);
+        let mut escena = escena_con(vec![
+            circulo(1, 0.0, 0.0, 100.0),
+            circulo(2, 100.0, 0.0, 100.0),
+        ]);
         assert!(soldar(&mut escena, p(52.0, -84.0), 14.0));
         let clavo = escena.alfileres[0].punto;
         arrastrar(&mut escena, &[1], p(-100.0, 0.0), p(-90.0, 60.0));
@@ -1099,7 +1149,10 @@ mod pruebas {
         let o = escena.buscar(1).unwrap();
         assert!(o.angulo != 0.0, "no ha girado");
         let centro = Punto2::nuevo(o.x + o.ancho / 2.0, o.y + o.alto / 2.0);
-        assert!((despues.distancia(centro) - 100.0).abs() < 1.0, "el circulo se ha soltado del clavo");
+        assert!(
+            (despues.distancia(centro) - 100.0).abs() < 1.0,
+            "el circulo se ha soltado del clavo"
+        );
         assert_eq!(escena.buscar(2).unwrap().x, 0.0, "el otro circulo se movio");
     }
 
@@ -1116,7 +1169,10 @@ mod pruebas {
         let r = puntas(&escena, 2);
         assert!((r[0].y).abs() > 1.0, "la raya no ha girado");
         cerca(escena.alfileres[0].punto, clavo, 0.6, "el clavo se movio");
-        assert!(distancia_a_segmento(clavo, r[0], r[1]) < 1.0, "el clavo se ha salido de la raya");
+        assert!(
+            distancia_a_segmento(clavo, r[0], r[1]) < 1.0,
+            "el clavo se ha salido de la raya"
+        );
         assert_eq!(escena.buscar(1).unwrap().angulo, 0.0);
     }
 
@@ -1128,11 +1184,31 @@ mod pruebas {
         soldar(&mut escena, p(100.0, 100.0), 10.0);
         let i = clavo_en(&escena, p(100.0, 100.0), 10.0).expect("no encuentra el clavo");
         mover_clavo(&mut escena, i, p(160.0, 140.0));
-        cerca(escena.alfileres[0].punto, p(160.0, 140.0), 0.001, "el clavo no se fue");
-        cerca(puntas(&escena, 1)[1], p(160.0, 140.0), 0.001, "a no siguio al clavo");
-        cerca(puntas(&escena, 2)[0], p(160.0, 140.0), 0.001, "b no siguio al clavo");
+        cerca(
+            escena.alfileres[0].punto,
+            p(160.0, 140.0),
+            0.001,
+            "el clavo no se fue",
+        );
+        cerca(
+            puntas(&escena, 1)[1],
+            p(160.0, 140.0),
+            0.001,
+            "a no siguio al clavo",
+        );
+        cerca(
+            puntas(&escena, 2)[0],
+            p(160.0, 140.0),
+            0.001,
+            "b no siguio al clavo",
+        );
         // Las otras puntas no se mueven: es un clavo, no un arrastre.
-        cerca(puntas(&escena, 1)[0], p(0.0, 100.0), 0.001, "se movio la otra punta");
+        cerca(
+            puntas(&escena, 1)[0],
+            p(0.0, 100.0),
+            0.001,
+            "se movio la otra punta",
+        );
     }
 
     #[test]
@@ -1144,18 +1220,41 @@ mod pruebas {
         assert_eq!(escena.alfileres.len(), 3);
         let i = clavo_en(&escena, p(100.0, 100.0), 10.0).unwrap();
         mover_clavo(&mut escena, i, p(190.0, 130.0));
-        cerca(puntas(&escena, 1)[1], p(190.0, 130.0), 0.001, "la esquina no fue al cursor");
-        cerca(puntas(&escena, 2)[0], p(190.0, 130.0), 0.001, "el otro lado se quedo");
+        cerca(
+            puntas(&escena, 1)[1],
+            p(190.0, 130.0),
+            0.001,
+            "la esquina no fue al cursor",
+        );
+        cerca(
+            puntas(&escena, 2)[0],
+            p(190.0, 130.0),
+            0.001,
+            "el otro lado se quedo",
+        );
         // Las otras dos esquinas siguen donde estaban: se deforma, no gira.
-        cerca(puntas(&escena, 1)[0], p(0.0, 100.0), 0.001, "giro en vez de estirarse");
-        cerca(puntas(&escena, 3)[0], p(50.0, 0.0), 0.001, "se movio el vertice de arriba");
+        cerca(
+            puntas(&escena, 1)[0],
+            p(0.0, 100.0),
+            0.001,
+            "giro en vez de estirarse",
+        );
+        cerca(
+            puntas(&escena, 3)[0],
+            p(50.0, 0.0),
+            0.001,
+            "se movio el vertice de arriba",
+        );
     }
 
     // ---- El clavo no se despega ----
 
     #[test]
     fn el_clavo_se_queda_pegado_a_la_raya_aunque_gire() {
-        let escena = vec![raya(1, (0.0, 0.0), (200.0, 0.0)), circulo(2, 60.0, 0.0, 40.0)];
+        let escena = vec![
+            raya(1, (0.0, 0.0), (200.0, 0.0)),
+            circulo(2, 60.0, 0.0, 40.0),
+        ];
         let a = &clavar_en(&escena, &[], p(100.0, 0.0), 14.0).unwrap()[0];
         let g = a.agarres.iter().find(|g| g.elemento == 1).unwrap().clone();
         assert!(g.local.is_none(), "no deberia agarrarla por proporcion");
@@ -1164,7 +1263,10 @@ mod pruebas {
         girar_elemento(&mut r, p(100.0, 0.0), std::f32::consts::FRAC_PI_2);
         let despues = punto_del_agarre(&r, &g).unwrap();
         let v = vertices_en_el_mundo(&r);
-        assert!(distancia_a_segmento(despues, v[0], v[1]) < 0.5, "el clavo se ha ido de la raya");
+        assert!(
+            distancia_a_segmento(despues, v[0], v[1]) < 0.5,
+            "el clavo se ha ido de la raya"
+        );
         assert!(
             (antes.distancia(p(0.0, 0.0)) - despues.distancia(v[0])).abs() < 0.5,
             "el clavo cambio de sitio dentro de la raya"
@@ -1183,9 +1285,17 @@ mod pruebas {
         // se le pide que vuelva a su clavo.
         con_punto_en_el_mundo(escena.buscar_mut(1).unwrap(), 1, p(240.0, 40.0));
         sujetar(&mut escena, &[1]);
-        cerca(escena.alfileres[0].punto, clavo, 1.0, "el clavo se ha movido");
+        cerca(
+            escena.alfileres[0].punto,
+            clavo,
+            1.0,
+            "el clavo se ha movido",
+        );
         let r = puntas(&escena, 1);
-        assert!(distancia_a_segmento(clavo, r[0], r[1]) < 1.0, "la raya se solto del clavo");
+        assert!(
+            distancia_a_segmento(clavo, r[0], r[1]) < 1.0,
+            "la raya se solto del clavo"
+        );
     }
 
     #[test]
@@ -1193,7 +1303,12 @@ mod pruebas {
         let mut r = raya(1, (0.0, 0.0), (100.0, 0.0));
         r.angulo = std::f32::consts::PI / 5.0;
         con_punto_en_el_mundo(&mut r, 1, p(160.0, 40.0));
-        cerca(vertices_en_el_mundo(&r)[1], p(160.0, 40.0), 0.01, "no llego donde se pidio");
+        cerca(
+            vertices_en_el_mundo(&r)[1],
+            p(160.0, 40.0),
+            0.01,
+            "no llego donde se pidio",
+        );
     }
 
     #[test]
@@ -1218,7 +1333,12 @@ mod pruebas {
         ]);
         soldar(&mut escena, p(100.0, 100.0), 10.0);
         girar(&mut escena, &[1], p(150.0, 100.0), 0.5);
-        cerca(puntas(&escena, 1)[0], p(100.0, 100.0), 0.5, "el eje se movio");
+        cerca(
+            puntas(&escena, 1)[0],
+            p(100.0, 100.0),
+            0.5,
+            "el eje se movio",
+        );
         assert!(puntas(&escena, 1)[1].y > 101.0, "no ha girado");
     }
 
@@ -1234,9 +1354,17 @@ mod pruebas {
         soldar(&mut escena, p(100.0, 0.0), 10.0);
         let antes = escena.buscar(1).unwrap().clone();
         girar(&mut escena, &[1], p(50.0, 0.0), 0.5);
-        assert_eq!(escena.buscar(1).unwrap().figura, antes.figura, "giro con dos clavos");
+        assert_eq!(
+            escena.buscar(1).unwrap().figura,
+            antes.figura,
+            "giro con dos clavos"
+        );
         girar(&mut escena, &[4], p(350.0, 0.0), 0.5);
-        assert_eq!(escena.buscar(4).unwrap().angulo, 0.5, "sin clavos no giro sobre su centro");
+        assert_eq!(
+            escena.buscar(4).unwrap().angulo,
+            0.5,
+            "sin clavos no giro sobre su centro"
+        );
     }
 
     // ---- Que no se quede basura ----
@@ -1270,7 +1398,11 @@ mod pruebas {
         let mut escena = escena_con(triangulo());
         let pasos = escena.pasos_cerrados();
         assert!(!soldar(&mut escena, p(400.0, 400.0), 10.0));
-        assert_eq!(escena.pasos_cerrados(), pasos, "un toque en el vacio dejo paso");
+        assert_eq!(
+            escena.pasos_cerrados(),
+            pasos,
+            "un toque en el vacio dejo paso"
+        );
         assert!(soldar(&mut escena, p(100.0, 100.0), 10.0));
         assert_eq!(escena.alfileres.len(), 1);
         assert!(escena.deshacer());
@@ -1287,8 +1419,18 @@ mod pruebas {
         mover_clavo(&mut escena, 0, p(160.0, 140.0));
         escena.cerrar_paso();
         assert!(escena.deshacer());
-        cerca(escena.alfileres[0].punto, p(100.0, 100.0), 0.001, "el clavo no volvio");
-        cerca(puntas(&escena, 2)[0], p(100.0, 100.0), 0.001, "la raya no volvio");
+        cerca(
+            escena.alfileres[0].punto,
+            p(100.0, 100.0),
+            0.001,
+            "el clavo no volvio",
+        );
+        cerca(
+            puntas(&escena, 2)[0],
+            p(100.0, 100.0),
+            0.001,
+            "la raya no volvio",
+        );
     }
 
     // ---- El fichero del movil ----
@@ -1315,7 +1457,11 @@ mod pruebas {
         assert_eq!(escena.alfileres.len(), 1);
         let a = &escena.alfileres[0];
         let ids: Vec<u64> = a.agarres.iter().map(|g| g.elemento).collect();
-        assert_eq!(ids, vec![1, 2], "no se tradujeron a los numeros de la escena");
+        assert_eq!(
+            ids,
+            vec![1, 2],
+            "no se tradujeron a los numeros de la escena"
+        );
         assert_eq!(a.agarres[0].indice, Some(1));
         // Y ya sujetan: llevarse el clavo se lleva las dos puntas.
         let mut escena = escena;
@@ -1336,11 +1482,18 @@ mod pruebas {
     fn quitar_un_clavo_se_guarda_y_el_ajeno_sobrevive() {
         let lienzo = crate::excalidraw::leer(DEL_MOVIL).unwrap();
         let mut escena = crate::excalidraw::a_escena(&lienzo);
-        assert!(soldar(&mut escena, p(100.0, 100.0), 10.0), "tocar el clavo no lo quito");
+        assert!(
+            soldar(&mut escena, p(100.0, 100.0), 10.0),
+            "tocar el clavo no lo quito"
+        );
         assert!(escena.alfileres.is_empty());
         let salida = crate::excalidraw::con_escena(&lienzo, &escena);
         let lista = salida.resto["alfileres"].as_array().unwrap();
-        assert_eq!(lista.len(), 1, "se perdio el clavo ajeno o quedo el quitado");
+        assert_eq!(
+            lista.len(),
+            1,
+            "se perdio el clavo ajeno o quedo el quitado"
+        );
         assert_eq!(lista[0]["agarres"][1]["elementId"], "s");
     }
 
@@ -1356,12 +1509,18 @@ mod pruebas {
         let vuelta = crate::excalidraw::a_escena(&otra);
         assert_eq!(vuelta.alfileres.len(), 2, "el clavo nuevo no volvio");
         assert!(
-            vuelta.alfileres.iter().any(|a| a.punto.distancia(p(50.0, 100.0)) < 0.01),
+            vuelta
+                .alfileres
+                .iter()
+                .any(|a| a.punto.distancia(p(50.0, 100.0)) < 0.01),
             "el clavo nuevo volvio en otro sitio: {:?}",
             vuelta.alfileres
         );
         let texto = serde_json::to_string(&salida.resto["alfileres"]).unwrap();
-        assert!(texto.contains(&crate::enlace::id_de_texto(nueva)), "{texto}");
+        assert!(
+            texto.contains(&crate::enlace::id_de_texto(nueva)),
+            "{texto}"
+        );
         assert!(texto.contains("\"a\""), "{texto}");
     }
 }

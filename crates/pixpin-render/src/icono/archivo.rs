@@ -60,7 +60,12 @@ pub fn contorno_hoja(caja: RectF) -> Vec<(f32, f32)> {
     v.push((x + w - pliegue, y));
     v.push((x + w, y + pliegue));
     v.push((x + w, y + h - r));
-    curva(&mut v, (x + w, y + h - r), (x + w, y + h), (x + w - r, y + h));
+    curva(
+        &mut v,
+        (x + w, y + h - r),
+        (x + w, y + h),
+        (x + w - r, y + h),
+    );
     v.push((x + r, y + h));
     curva(&mut v, (x + r, y + h), (x, y + h), (x, y + h - r));
     v.push((x, y + r));
@@ -151,7 +156,10 @@ mod pruebas {
     fn la_hoja_no_se_sale_de_su_caja_y_tiene_la_esquina_cortada() {
         let v = contorno_hoja(CAJA);
         for &(x, y) in &v {
-            assert!((10.0..=54.0).contains(&x) && (20.0..=64.0).contains(&y), "{x},{y}");
+            assert!(
+                (10.0..=54.0).contains(&x) && (20.0..=64.0).contains(&y),
+                "{x},{y}"
+            );
         }
         // La esquina de arriba a la derecha NO esta: se corta en diagonal
         // de (54 - 13,2, 20) a (54, 20 + 13,2).

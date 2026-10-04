@@ -60,7 +60,8 @@ struct DeCelda {
 /// PixPin no llevan a ningun sitio, y queda su nombre como texto.
 pub(super) fn es_enlace_web(url: &str) -> bool {
     let u = url.trim().to_ascii_lowercase();
-    (u.starts_with("https://") || u.starts_with("http://") || u.starts_with("mailto:")) && !u.contains(char::is_whitespace)
+    (u.starts_with("https://") || u.starts_with("http://") || u.starts_with("mailto:"))
+        && !u.contains(char::is_whitespace)
 }
 
 struct Escritor<'a> {
@@ -87,7 +88,12 @@ struct Escritor<'a> {
 }
 
 /// **Escribe el cuerpo.**
-pub(super) fn escribir(m: &Modelo, com: &Colocados, letra: &Letra, imagen: &dyn Fn(&str) -> Option<Vec<u8>>) -> Hecho {
+pub(super) fn escribir(
+    m: &Modelo,
+    com: &Colocados,
+    letra: &Letra,
+    imagen: &dyn Fn(&str) -> Option<Vec<u8>>,
+) -> Hecho {
     let mut e = Escritor {
         s: String::with_capacity(16 * 1024),
         letra,
@@ -139,7 +145,13 @@ pub(super) fn escribir(m: &Modelo, com: &Colocados, letra: &Letra, imagen: &dyn 
     }
     // Lo que no se coloco (un comentario de una nota sin letras): en un
     // parrafo suyo al final, para que no se pierda.
-    let sueltos: Vec<usize> = e.com.hilos.iter().map(|h| h.id).filter(|id| !e.cerrados.contains(id)).collect();
+    let sueltos: Vec<usize> = e
+        .com
+        .hilos
+        .iter()
+        .map(|h| h.id)
+        .filter(|id| !e.cerrados.contains(id))
+        .collect();
     if !sueltos.is_empty() {
         e.s.push_str("<w:p>");
         for id in &sueltos {
@@ -166,7 +178,11 @@ pub(super) fn escribir(m: &Modelo, com: &Colocados, letra: &Letra, imagen: &dyn 
         ),
         e.s, seccion
     );
-    let enlaces = e.rids.iter().map(|(i, rid)| (rid.clone(), m.enlaces[*i].clone())).collect();
+    let enlaces = e
+        .rids
+        .iter()
+        .map(|(i, rid)| (rid.clone(), m.enlaces[*i].clone()))
+        .collect();
     Hecho {
         documento,
         medios: e.medios,
@@ -189,7 +205,11 @@ fn seccion(tumbada: bool) -> String {
 
 impl Escritor<'_> {
     fn ancho_de_texto(&self) -> u32 {
-        if self.tumbada { TEXTO_TUMBADO } else { TEXTO_DE_PIE }
+        if self.tumbada {
+            TEXTO_TUMBADO
+        } else {
+            TEXTO_DE_PIE
+        }
     }
 
     /// Antes de un bloque: cierra la seccion si cambia de pie a tumbada o
@@ -213,7 +233,8 @@ impl Escritor<'_> {
         if self.tras_tabla {
             // Dos tablas pegadas Word las funde en una: un parrafo vacio
             // y pequeno entre las dos.
-            self.s.push_str(r#"<w:p><w:pPr><w:spacing w:before="0" w:after="0"/></w:pPr></w:p>"#);
+            self.s
+                .push_str(r#"<w:p><w:pPr><w:spacing w:before="0" w:after="0"/></w:pPr></w:p>"#);
         }
         self.tras_tabla = false;
         self.algo = true;
@@ -254,7 +275,11 @@ impl Escritor<'_> {
         if let Some(x) = prefijo {
             // En la letra de los simbolos de Windows, que tiene ☐ ☒ y el
             // clip; seguida de un tabulador (casilla) o un espacio.
-            let tras = if matches!(p.tipo, Tipo::Casilla { .. }) { "<w:tab/>" } else { r#"<w:t xml:space="preserve"> </w:t>"# };
+            let tras = if matches!(p.tipo, Tipo::Casilla { .. }) {
+                "<w:tab/>"
+            } else {
+                r#"<w:t xml:space="preserve"> </w:t>"#
+            };
             self.s.push_str(&format!(
                 r#"<w:r><w:rPr><w:rFonts w:ascii="Segoe UI Symbol" w:hAnsi="Segoe UI Symbol" w:cs="Segoe UI Symbol"/></w:rPr><w:t>{x}</w:t>{tras}</w:r>"#
             ));
@@ -286,7 +311,8 @@ impl Escritor<'_> {
                 if let Some(i) = quiere {
                     let siguiente = format!("rIdE{}", self.rids.len() + 1);
                     let rid = self.rids.entry(i).or_insert(siguiente).clone();
-                    self.s.push_str(&format!(r#"<w:hyperlink r:id="{rid}" w:history="1">"#));
+                    self.s
+                        .push_str(&format!(r#"<w:hyperlink r:id="{rid}" w:history="1">"#));
                 }
                 enlace = quiere;
             }
@@ -295,7 +321,8 @@ impl Escritor<'_> {
                 self.tramo(&mut tramo, marcas, celda);
                 for id in ids {
                     if self.abiertos.insert(*id) {
-                        self.s.push_str(&format!(r#"<w:commentRangeStart w:id="{id}"/>"#));
+                        self.s
+                            .push_str(&format!(r#"<w:commentRangeStart w:id="{id}"/>"#));
                     }
                 }
             }
@@ -333,7 +360,9 @@ impl Escritor<'_> {
             pr.push_str(r#"<w:rStyle w:val="Hyperlink"/>"#);
         }
         if m.formula {
-            pr.push_str(r#"<w:rFonts w:ascii="Cambria Math" w:hAnsi="Cambria Math" w:cs="Cambria Math"/>"#);
+            pr.push_str(
+                r#"<w:rFonts w:ascii="Cambria Math" w:hAnsi="Cambria Math" w:cs="Cambria Math"/>"#,
+            );
         }
         if m.negrita || celda.negrita {
             pr.push_str("<w:b/><w:bCs/>");
@@ -347,7 +376,10 @@ impl Escritor<'_> {
         if m.hecha {
             pr.push_str(r#"<w:color w:val="8A8A8A"/>"#);
         } else if let Some(c) = celda.color.filter(|_| !web) {
-            pr.push_str(&format!(r#"<w:color w:val="{}"/>"#, &hex(c)[1..].to_ascii_uppercase()));
+            pr.push_str(&format!(
+                r#"<w:color w:val="{}"/>"#,
+                &hex(c)[1..].to_ascii_uppercase()
+            ));
         }
         if let Some(t) = celda.tam {
             pr.push_str(&format!(r#"<w:sz w:val="{t}"/><w:szCs w:val="{t}"/>"#));
@@ -392,7 +424,11 @@ impl Escritor<'_> {
             // Sin la foto (no esta en este equipo, o es de un formato que
             // Word no pinta): un aviso en su sitio, no un documento roto.
             let nombre = if foto.alt.trim().is_empty() {
-                foto.ruta.rsplit(['/', '\\']).next().unwrap_or("").to_string()
+                foto.ruta
+                    .rsplit(['/', '\\'])
+                    .next()
+                    .unwrap_or("")
+                    .to_string()
             } else {
                 foto.alt.clone()
             };
@@ -406,11 +442,16 @@ impl Escritor<'_> {
         // llevado al ancho de texto de la pagina: la foto ocupa en Word la
         // misma parte de la linea que en la nota.
         let px = foto.ancho.unwrap_or(an).clamp(1, COLUMNA_EDITOR);
-        let mut ancho = px as u64 * self.ancho_de_texto() as u64 / COLUMNA_EDITOR as u64 * EMU_POR_TWIP;
+        let mut ancho =
+            px as u64 * self.ancho_de_texto() as u64 / COLUMNA_EDITOR as u64 * EMU_POR_TWIP;
         let mut alto = ancho * al as u64 / an as u64;
         // Y que quepa de alto en la pagina (una captura de un movil, larga).
         let tope = (PAPEL_ALTO.max(PAPEL_ANCHO) as u64 - 2 * MARGEN as u64 - 720) * EMU_POR_TWIP;
-        let tope = if self.tumbada { tope.min((PAPEL_ANCHO as u64 - 2 * MARGEN as u64 - 720) * EMU_POR_TWIP) } else { tope };
+        let tope = if self.tumbada {
+            tope.min((PAPEL_ANCHO as u64 - 2 * MARGEN as u64 - 720) * EMU_POR_TWIP)
+        } else {
+            tope
+        };
         if alto > tope {
             ancho = ancho * tope / alto;
             alto = tope;
@@ -421,11 +462,14 @@ impl Escritor<'_> {
         let rid = self.medios[i].rid.clone();
         let nombre = esc(&self.medios[i].nombre);
         let descr = esc(&foto.alt);
-        self.s.push_str("<w:p><w:pPr><w:keepNext/><w:spacing w:before=\"120\" w:after=\"60\"/></w:pPr>");
+        self.s.push_str(
+            "<w:p><w:pPr><w:keepNext/><w:spacing w:before=\"120\" w:after=\"60\"/></w:pPr>",
+        );
         if let Some(ids) = self.com.empiezan.get(&orden) {
             for id in ids.clone() {
                 if self.abiertos.insert(id) {
-                    self.s.push_str(&format!(r#"<w:commentRangeStart w:id="{id}"/>"#));
+                    self.s
+                        .push_str(&format!(r#"<w:commentRangeStart w:id="{id}"/>"#));
                 }
             }
         }
@@ -506,7 +550,16 @@ impl Escritor<'_> {
                 if !x.tapada {
                     let span = x.columnas.clamp(1, n - c);
                     let rehace = x.filas > 1;
-                    self.celda(t, f, c, span, if rehace { Some(true) } else { None }, &anchos, celdas, reparto.tam);
+                    self.celda(
+                        t,
+                        f,
+                        c,
+                        span,
+                        if rehace { Some(true) } else { None },
+                        &anchos,
+                        celdas,
+                        reparto.tam,
+                    );
                     c += span;
                     continue;
                 }
@@ -554,9 +607,14 @@ impl Escritor<'_> {
         }
         // El fondo de la celda; la cabecera sin color lleva un gris suave,
         // como las tablas del editor.
-        let fondo = x.fondo.map(|c| hex(c)[1..].to_ascii_uppercase()).or(cabecera.then(|| "F2F2F2".to_string()));
+        let fondo = x
+            .fondo
+            .map(|c| hex(c)[1..].to_ascii_uppercase())
+            .or(cabecera.then(|| "F2F2F2".to_string()));
         if let Some(fill) = fondo {
-            pr.push_str(&format!(r#"<w:shd w:val="clear" w:color="auto" w:fill="{fill}"/>"#));
+            pr.push_str(&format!(
+                r#"<w:shd w:val="clear" w:color="auto" w:fill="{fill}"/>"#
+            ));
         }
         match x.vertical {
             Vertical::Medio => pr.push_str(r#"<w:vAlign w:val="center"/>"#),
@@ -571,10 +629,16 @@ impl Escritor<'_> {
             Alineacion::Derecha => r#"<w:jc w:val="right"/>"#,
             Alineacion::Izquierda => "",
         };
-        let ppr = format!(r#"<w:pPr><w:spacing w:before="40" w:after="40" w:line="240" w:lineRule="auto"/>{jc}</w:pPr>"#);
+        let ppr = format!(
+            r#"<w:pPr><w:spacing w:before="40" w:after="40" w:line="240" w:lineRule="auto"/>{jc}</w:pPr>"#
+        );
         let parrafos: &[Vec<Letra1>] = match combinada {
             Some(false) => &[],
-            _ => celdas.get(f).and_then(|fila| fila.get(c)).map(Vec::as_slice).unwrap_or(&[]),
+            _ => celdas
+                .get(f)
+                .and_then(|fila| fila.get(c))
+                .map(Vec::as_slice)
+                .unwrap_or(&[]),
         };
         let de_celda = DeCelda {
             negrita: cabecera,
@@ -668,7 +732,11 @@ pub(super) fn repartir(t: &Tabla, celdas: &[Vec<Celda1>], px: u32) -> Reparto {
             let gordo = if t.es_cabecera(f, c) { 1.12 } else { 1.0 };
             for p in celda {
                 let texto: String = p.iter().map(|l| l.c).collect();
-                let w = texto.split_whitespace().map(|w| w.chars().count()).max().unwrap_or(0);
+                let w = texto
+                    .split_whitespace()
+                    .map(|w| w.chars().count())
+                    .max()
+                    .unwrap_or(0);
                 palabra[c] = palabra[c].max(w as f32 * gordo);
                 renglon[c] = renglon[c].max(texto.chars().count() as f32 * gordo);
             }
@@ -678,16 +746,30 @@ pub(super) fn repartir(t: &Tabla, celdas: &[Vec<Celda1>], px: u32) -> Reparto {
     // cuadratin (en veintavos de punto).
     let medir = |p: f32, v: &[f32]| -> Vec<f32> { v.iter().map(|l| aire + l * p * 11.0).collect() };
     let cabe = |p: f32, ancho: u32| medir(p, &palabra).iter().sum::<f32>() <= ancho as f32;
-    let menores = |minimo: f32| [1.0f32, 0.9, 0.8, 0.75].into_iter().map(move |k| pt * k).filter(move |p| *p >= minimo);
+    let menores = |minimo: f32| {
+        [1.0f32, 0.9, 0.8, 0.75]
+            .into_iter()
+            .map(move |k| pt * k)
+            .filter(move |p| *p >= minimo)
+    };
     let eleccion = menores(9.0f32.min(pt))
         .find(|p| cabe(*p, TEXTO_DE_PIE))
         .map(|p| (false, p))
-        .or_else(|| menores(8.0f32.min(pt)).chain([8.0f32.min(pt)]).find(|p| cabe(*p, TEXTO_TUMBADO)).map(|p| (true, p)));
+        .or_else(|| {
+            menores(8.0f32.min(pt))
+                .chain([8.0f32.min(pt)])
+                .find(|p| cabe(*p, TEXTO_TUMBADO))
+                .map(|p| (true, p))
+        });
     let (tumbada, p) = eleccion.unwrap_or((true, 8.0f32.min(pt)));
     let ancho = if tumbada { TEXTO_TUMBADO } else { TEXTO_DE_PIE } as f32;
     let tam = ((p - pt).abs() > 0.01).then(|| (p * 2.0).round() as u32);
     let minimo = medir(p, &palabra);
-    let quiere: Vec<f32> = medir(p, &renglon).iter().zip(&minimo).map(|(q, m)| q.max(*m)).collect();
+    let quiere: Vec<f32> = medir(p, &renglon)
+        .iter()
+        .zip(&minimo)
+        .map(|(q, m)| q.max(*m))
+        .collect();
     let suma_min: f32 = minimo.iter().sum();
     let suma_quiere: f32 = quiere.iter().sum();
     let anchos: Vec<f32> = if suma_quiere <= ancho {
@@ -695,7 +777,11 @@ pub(super) fn repartir(t: &Tabla, celdas: &[Vec<Celda1>], px: u32) -> Reparto {
     } else if suma_min <= ancho {
         let sobra = ancho - suma_min;
         let falta = (suma_quiere - suma_min).max(1.0);
-        minimo.iter().zip(&quiere).map(|(m, q)| m + (q - m) * sobra / falta).collect()
+        minimo
+            .iter()
+            .zip(&quiere)
+            .map(|(m, q)| m + (q - m) * sobra / falta)
+            .collect()
     } else {
         minimo.iter().map(|m| m * ancho / suma_min).collect()
     };

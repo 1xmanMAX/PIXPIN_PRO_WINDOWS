@@ -29,7 +29,9 @@
 use std::path::PathBuf;
 
 use pixpin_docs::md_edicion;
-use windows::Win32::UI::Input::KeyboardAndMouse::{GetFocus, ReleaseCapture, SetCapture, VK_BACK, VK_DELETE, VK_SHIFT};
+use windows::Win32::UI::Input::KeyboardAndMouse::{
+    GetFocus, ReleaseCapture, SetCapture, VK_BACK, VK_DELETE, VK_SHIFT,
+};
 
 use super::*;
 use crate::barra_flotante::{self, BotonBarra};
@@ -94,7 +96,10 @@ impl Vivo {
     pub fn nuevo(integracion: &crate::integracion::Integracion) -> Vivo {
         let ajustes = integracion.ajustes_vista.clone();
         let clave = integracion.clave_vista.as_ref().map(|c| c());
-        let contenido = ajustes.as_ref().and_then(|r| std::fs::read_to_string(r).ok()).unwrap_or_default();
+        let contenido = ajustes
+            .as_ref()
+            .and_then(|r| std::fs::read_to_string(r).ok())
+            .unwrap_or_default();
         let (vista, de_la_nota) = vista::leer(&contenido, clave.as_deref());
         Vivo {
             vista,
@@ -151,8 +156,14 @@ pub(super) fn pintar_bloques(
     let tipos = md_edicion::renglones(texto);
     let sangria = a_escala(&e.estilos, SANGRIA);
     let nivel = |l: &md_vivo::Linea| -> i32 {
-        let blancos = u[l.desde..l.hasta].iter().take_while(|c| **c == b' ' as u16 || **c == b'\t' as u16);
-        (blancos.map(|c| if *c == b'\t' as u16 { 2 } else { 1 }).sum::<i32>() / 2).min(6)
+        let blancos = u[l.desde..l.hasta]
+            .iter()
+            .take_while(|c| **c == b' ' as u16 || **c == b'\t' as u16);
+        (blancos
+            .map(|c| if *c == b'\t' as u16 { 2 } else { 1 })
+            .sum::<i32>()
+            / 2)
+        .min(6)
     };
     let mut racha: Option<(usize, i32, u16)> = None;
     for (n, l) in ls.iter().enumerate() {
@@ -164,10 +175,16 @@ pub(super) fn pintar_bloques(
             racha = None;
             continue;
         }
-        let primera = u[l.desde..l.hasta].iter().find(|c| **c != b' ' as u16 && **c != b'\t' as u16).copied();
+        let primera = u[l.desde..l.hasta]
+            .iter()
+            .find(|c| **c != b' ' as u16 && **c != b'\t' as u16)
+            .copied();
         // Titulo: el renglon entero, con su fin de parrafo.
         if u[l.desde] == b'#' as u16 && entra(n) {
-            let almohadillas = u[l.desde..l.hasta].iter().take_while(|c| **c == b'#' as u16).count() as u8;
+            let almohadillas = u[l.desde..l.hasta]
+                .iter()
+                .take_while(|c| **c == b'#' as u16)
+                .count() as u8;
             let f = formato_de(Estilo::Titulo(almohadillas), false, &e.estilos);
             elegir(edit, l.desde, (l.hasta + 1).min(total.max(l.hasta)));
             poner_formato(edit, &f);
@@ -178,7 +195,10 @@ pub(super) fn pintar_bloques(
         // Lista numerada: el numero lo pone Windows, contando desde el del
         // primer renglon de la racha (como lo pinta un lector de Markdown).
         let k = nivel(l);
-        if let Some(t) = tramos.iter().find(|t| t.linea == n && t.estilo == Estilo::Numero) {
+        if let Some(t) = tramos
+            .iter()
+            .find(|t| t.linea == n && t.estilo == Estilo::Numero)
+        {
             let cifras = String::from_utf16_lossy(&u[t.desde..t.hasta.saturating_sub(1)]);
             let numero: u16 = cifras.parse().unwrap_or(1).clamp(0, 9999);
             let cierre = u.get(t.hasta.saturating_sub(1)).copied();
@@ -191,7 +211,11 @@ pub(super) fn pintar_bloques(
                 let mut p = parrafo_base(&e.estilos);
                 p.Base.wNumbering = PARAFORMAT_NUMBERING(2);
                 p.wNumberingStart = empieza;
-                p.wNumberingStyle = PARAFORMAT_NUMBERING_STYLE(if cierre == Some(b')' as u16) { 0 } else { 0x200 });
+                p.wNumberingStyle = PARAFORMAT_NUMBERING_STYLE(if cierre == Some(b')' as u16) {
+                    0
+                } else {
+                    0x200
+                });
                 // El numero en el primer cuarto de la sangria y el texto donde el
                 // de las vinetas (`wNumberingTab` es el aire minimo tras el numero).
                 p.wNumberingTab = (sangria / 6).clamp(0, u16::MAX as i32) as u16;
@@ -204,8 +228,14 @@ pub(super) fn pintar_bloques(
         }
         racha = None;
         // Vinetas y casillas anidadas: una sangria mas por nivel.
-        if k > 0 && matches!(primera, Some(c) if c == b'-' as u16 || c == b'*' as u16 || c == b'+' as u16) && entra(n) {
-            let estilo = if tramos.iter().any(|t| t.linea == n && matches!(t.estilo, Estilo::Casilla { .. })) {
+        if k > 0
+            && matches!(primera, Some(c) if c == b'-' as u16 || c == b'*' as u16 || c == b'+' as u16)
+            && entra(n)
+        {
+            let estilo = if tramos
+                .iter()
+                .any(|t| t.linea == n && matches!(t.estilo, Estilo::Casilla { .. }))
+            {
                 Estilo::Casilla { hecha: false }
             } else {
                 Estilo::Vineta
@@ -253,7 +283,11 @@ fn hereda_escondido(e: &Estado, pos: usize) -> bool {
     let Some(d) = &e.doc else { return false };
     // SAFETY: rango del documento vivo del control.
     unsafe {
-        d.Range(pos as i32 - 1, pos as i32).and_then(|r| r.GetFont()).and_then(|f| f.GetHidden()).unwrap_or(0) != 0
+        d.Range(pos as i32 - 1, pos as i32)
+            .and_then(|r| r.GetFont())
+            .and_then(|f| f.GetHidden())
+            .unwrap_or(0)
+            != 0
     }
 }
 
@@ -275,7 +309,10 @@ fn letra_con_formato(e: &mut Estado, letra: char) -> bool {
     let puesta: Vec<u16> = letra.encode_utf16(&mut buf).to_vec();
     // En el renglon de una foto o de una raya no se escribe dentro (lo
     // romperia): la letra abre un renglon debajo (o encima, al principio).
-    if matches!(md_edicion::renglones(&texto).get(n), Some(md_edicion::Renglon::Bloque)) {
+    if matches!(
+        md_edicion::renglones(&texto).get(n),
+        Some(md_edicion::Renglon::Bloque)
+    ) {
         let (pos, v) = if a <= l.desde && l.hasta > l.desde {
             (l.desde, [puesta.clone(), vec![b'\n' as u16]].concat())
         } else {
@@ -284,7 +321,11 @@ fn letra_con_formato(e: &mut Estado, letra: char) -> bool {
         let mut nuevo = u[..pos].to_vec();
         nuevo.extend_from_slice(&v);
         nuevo.extend_from_slice(&u[pos..]);
-        let cursor = if pos == l.desde && a <= l.desde { pos + puesta.len() } else { pos + v.len() };
+        let cursor = if pos == l.desde && a <= l.desde {
+            pos + puesta.len()
+        } else {
+            pos + v.len()
+        };
         cambiar(e, &texto, &String::from_utf16_lossy(&nuevo), cursor, cursor);
         return true;
     }
@@ -318,7 +359,11 @@ pub(super) fn pegar_texto(e: &mut Estado, pegado: &str) {
     congelar::congelado(e, congelar::Pintado::Entero, |e| {
         let texto = leer(e.edit);
         let (a, b) = seleccion(e.edit);
-        let (base, c) = if a != b { md_edicion::borrar(&texto, a, b) } else { (texto.clone(), a) };
+        let (base, c) = if a != b {
+            md_edicion::borrar(&texto, a, b)
+        } else {
+            (texto.clone(), a)
+        };
         let u: Vec<u16> = base.encode_utf16().collect();
         let c = c.min(u.len());
         let mut v = u[..c].to_vec();
@@ -341,7 +386,11 @@ pub(super) fn tecla(e: &mut Estado, m: &MSG) -> bool {
     match m.message {
         WM_KEYDOWN => {
             let k = m.wParam.0 as u16;
-            let (ctrl, mayus, alt) = (pulsada(VK_CONTROL.0), pulsada_sola(VK_SHIFT.0), pulsada(VK_MENU.0));
+            let (ctrl, mayus, alt) = (
+                pulsada(VK_CONTROL.0),
+                pulsada_sola(VK_SHIFT.0),
+                pulsada(VK_MENU.0),
+            );
             if (k == VK_BACK.0 || k == VK_DELETE.0) && !alt && !ctrl {
                 if celda_del_cursor(e).is_some() {
                     return false;
@@ -433,7 +482,9 @@ pub(super) fn despues(e: &mut Estado, m: &MSG) {
                     elegir(e.edit, c, c);
                 }
             }
-            if m.message == WM_KEYDOWN && !matches!(m.wParam.0 as u16, k if k == VK_SHIFT.0 || k == VK_CONTROL.0) {
+            if m.message == WM_KEYDOWN
+                && !matches!(m.wParam.0 as u16, k if k == VK_SHIFT.0 || k == VK_CONTROL.0)
+            {
                 if !pulsada(VK_SHIFT.0) {
                     esconder_barra(e);
                 }
@@ -537,16 +588,32 @@ pub(super) fn bloque(e: &mut Estado, prefijo: &str) {
         n1 -= 1;
     }
     let tipos = md_edicion::renglones(&texto);
-    let renglones: Vec<usize> = (n0..=n1).filter(|n| matches!(tipos.get(*n), Some(md_edicion::Renglon::Texto(_)))).collect();
+    let renglones: Vec<usize> = (n0..=n1)
+        .filter(|n| matches!(tipos.get(*n), Some(md_edicion::Renglon::Texto(_))))
+        .collect();
     if renglones.is_empty() {
         return;
     }
     let numerada = prefijo == "1. ";
-    let quiere = |i: usize| if numerada { format!("{}. ", i + 1) } else { prefijo.to_string() };
+    let quiere = |i: usize| {
+        if numerada {
+            format!("{}. ", i + 1)
+        } else {
+            prefijo.to_string()
+        }
+    };
     let todos = !prefijo.is_empty()
         && renglones.iter().enumerate().all(|(i, n)| {
             let puesto = md_edicion::bloque_de(&texto, *n);
-            if numerada { puesto.trim_start().chars().next().is_some_and(|c| c.is_ascii_digit()) } else { puesto == quiere(i) }
+            if numerada {
+                puesto
+                    .trim_start()
+                    .chars()
+                    .next()
+                    .is_some_and(|c| c.is_ascii_digit())
+            } else {
+                puesto == quiere(i)
+            }
         });
     let mut t = texto.clone();
     for (i, n) in renglones.iter().enumerate().rev() {
@@ -625,19 +692,47 @@ pub(super) fn actualizar_barra_flotante(e: &mut Estado) {
     let disp = barra_flotante::disponer(e.pintor.escala);
     let mut pa = POINT::default();
     let mut pb = POINT::default();
-    enviar(e.edit, EM_POSFROMCHAR, &mut pa as *mut _ as usize, a as isize);
-    enviar(e.edit, EM_POSFROMCHAR, &mut pb as *mut _ as usize, b as isize);
+    enviar(
+        e.edit,
+        EM_POSFROMCHAR,
+        &mut pa as *mut _ as usize,
+        a as isize,
+    );
+    enviar(
+        e.edit,
+        EM_POSFROMCHAR,
+        &mut pb as *mut _ as usize,
+        b as isize,
+    );
     let mut cliente = RECT::default();
     // SAFETY: rectangulo y coordenadas de ventanas propias.
     let (pa, abajo, zona) = unsafe {
         let _ = GetClientRect(e.edit, &mut cliente);
-        let mut esquina = POINT { x: cliente.left, y: cliente.top };
+        let mut esquina = POINT {
+            x: cliente.left,
+            y: cliente.top,
+        };
         let _ = ClientToScreen(e.edit, &mut esquina);
         let _ = ClientToScreen(e.edit, &mut pa);
         let _ = ClientToScreen(e.edit, &mut pb);
-        (pa, pb.y + renglon_px(e), (esquina.x, esquina.y, cliente.right - cliente.left, cliente.bottom - cliente.top))
+        (
+            pa,
+            pb.y + renglon_px(e),
+            (
+                esquina.x,
+                esquina.y,
+                cliente.right - cliente.left,
+                cliente.bottom - cliente.top,
+            ),
+        )
     };
-    let (x, y) = barra_flotante::colocar((pa.x, pa.y), abajo, (disp.an, disp.al), zona, 8 * ppp_ui() / 96);
+    let (x, y) = barra_flotante::colocar(
+        (pa.x, pa.y),
+        abajo,
+        (disp.an, disp.al),
+        zona,
+        8 * ppp_ui() / 96,
+    );
     let (an, al) = (disp.an, disp.al);
     let hechos = puestos(&texto, a, b);
     barra_flotante::VISTA.with(|v| {
@@ -654,7 +749,12 @@ pub(super) fn actualizar_barra_flotante(e: &mut Estado) {
     unsafe {
         let _ = ScreenToClient(e.marco, &mut dentro);
     }
-    e.vivo.barra_caja = Some(Caja { x: dentro.x, y: dentro.y, an, al });
+    e.vivo.barra_caja = Some(Caja {
+        x: dentro.x,
+        y: dentro.y,
+        an,
+        al,
+    });
     if !e.oculto
         && let Some(h) = ventana_barra(e)
     {
@@ -674,7 +774,10 @@ pub(super) fn esconder_barra(e: &mut Estado) {
 fn ancla_de(e: &Estado, b: BotonBarra) -> Option<(POINT, i32)> {
     let caja = e.vivo.barra_caja?;
     let c = barra_flotante::VISTA.with(|v| v.borrow().as_ref().and_then(|v| v.disp.caja(b)))?;
-    let mut p = POINT { x: caja.x + c.x, y: caja.y + c.y };
+    let mut p = POINT {
+        x: caja.x + c.x,
+        y: caja.y + c.y,
+    };
     // SAFETY: conversion de coordenadas de una ventana propia.
     unsafe {
         let _ = ClientToScreen(e.marco, &mut p);
@@ -703,7 +806,12 @@ pub(super) fn clic_barra(e: &mut Estado, b: BotonBarra, guardar: &mut dyn FnMut(
         _ if habia == Some(Abierto::Vivo) => {}
         BotonBarra::Formato => {
             let entradas = vec![
-                entrada(C_TEXTO_NORMAL, Dibujo::Letras("Aa"), &r.barra.texto_normal, ""),
+                entrada(
+                    C_TEXTO_NORMAL,
+                    Dibujo::Letras("Aa"),
+                    &r.barra.texto_normal,
+                    "",
+                ),
                 entrada(C_T1, Dibujo::Letras("H1"), &r.titulo1, "Ctrl+1"),
                 entrada(C_T2, Dibujo::Letras("H2"), &r.titulo2, "Ctrl+2"),
                 entrada(C_T3, Dibujo::Letras("H3"), &r.titulo3, "Ctrl+3"),
@@ -713,9 +821,24 @@ pub(super) fn clic_barra(e: &mut Estado, b: BotonBarra, guardar: &mut dyn FnMut(
         BotonBarra::Listas => {
             let m = &r.mayus;
             let entradas = vec![
-                entrada(C_LISTA, Dibujo::Icono(Icono::Lista), &r.lista, &format!("Ctrl+{m}+8")),
-                entrada(C_NUMERADA, Dibujo::Icono(Icono::Numerada), &r.numerada, &format!("Ctrl+{m}+7")),
-                entrada(C_CASILLA, Dibujo::Icono(Icono::Casillas), &r.casilla, &format!("Ctrl+{m}+9")),
+                entrada(
+                    C_LISTA,
+                    Dibujo::Icono(Icono::Lista),
+                    &r.lista,
+                    &format!("Ctrl+{m}+8"),
+                ),
+                entrada(
+                    C_NUMERADA,
+                    Dibujo::Icono(Icono::Numerada),
+                    &r.numerada,
+                    &format!("Ctrl+{m}+7"),
+                ),
+                entrada(
+                    C_CASILLA,
+                    Dibujo::Icono(Icono::Casillas),
+                    &r.casilla,
+                    &format!("Ctrl+{m}+9"),
+                ),
             ];
             menu_de(entradas, e);
         }
@@ -724,7 +847,14 @@ pub(super) fn clic_barra(e: &mut Estado, b: BotonBarra, guardar: &mut dyn FnMut(
             let entradas = EMOJIS
                 .iter()
                 .enumerate()
-                .map(|(i, x)| entrada(C_EMOJI + i as u16, Dibujo::Letras(x), nombres.get(i).copied().unwrap_or(""), ""))
+                .map(|(i, x)| {
+                    entrada(
+                        C_EMOJI + i as u16,
+                        Dibujo::Letras(x),
+                        nombres.get(i).copied().unwrap_or(""),
+                        "",
+                    )
+                })
                 .collect();
             menu_de(entradas, e);
         }
@@ -750,14 +880,24 @@ pub(super) fn empezar_enlace(e: &mut Estado) {
     let (a, b) = seleccion(e.edit);
     let caja = e.vivo.barra_caja.unwrap_or_else(|| {
         let mut p = POINT::default();
-        enviar(e.edit, EM_POSFROMCHAR, &mut p as *mut _ as usize, a as isize);
+        enviar(
+            e.edit,
+            EM_POSFROMCHAR,
+            &mut p as *mut _ as usize,
+            a as isize,
+        );
         let mut q = p;
         // SAFETY: conversion de coordenadas de ventanas propias.
         unsafe {
             let _ = ClientToScreen(e.edit, &mut q);
             let _ = ScreenToClient(e.marco, &mut q);
         }
-        Caja { x: q.x, y: q.y - 40 * ppp_ui() / 96, an: 0, al: 34 * ppp_ui() / 96 }
+        Caja {
+            x: q.x,
+            y: q.y - 40 * ppp_ui() / 96,
+            an: 0,
+            al: 34 * ppp_ui() / 96,
+        }
     });
     esconder_barra(e);
     let ancho = 360 * ppp_ui() / 96;
@@ -780,10 +920,26 @@ pub(super) fn empezar_enlace(e: &mut Estado) {
         ) else {
             return;
         };
-        SendMessageW(h, WM_SETFONT, Some(WPARAM(e.pintor.letra.0 as usize)), Some(LPARAM(1)));
-        let pista: Vec<u16> = e.rotulos.barra.enlace_pista.encode_utf16().chain(std::iter::once(0)).collect();
+        SendMessageW(
+            h,
+            WM_SETFONT,
+            Some(WPARAM(e.pintor.letra.0 as usize)),
+            Some(LPARAM(1)),
+        );
+        let pista: Vec<u16> = e
+            .rotulos
+            .barra
+            .enlace_pista
+            .encode_utf16()
+            .chain(std::iter::once(0))
+            .collect();
         // EM_SETCUEBANNER: la pista gris mientras esta vacio.
-        SendMessageW(h, 0x1501, Some(WPARAM(1)), Some(LPARAM(pista.as_ptr() as isize)));
+        SendMessageW(
+            h,
+            0x1501,
+            Some(WPARAM(1)),
+            Some(LPARAM(pista.as_ptr() as isize)),
+        );
         SendMessageW(h, 0x00B1, Some(WPARAM(0)), Some(LPARAM(-1)));
         let _ = SetFocus(Some(h));
         e.vivo.enlace = Some((h, a, b));
@@ -792,7 +948,9 @@ pub(super) fn empezar_enlace(e: &mut Estado) {
 
 /// Si el mensaje es del cuadro del enlace: Intro lo pone, Esc lo deja.
 pub(super) fn tecla_del_enlace(e: &mut Estado, m: &MSG) -> bool {
-    let Some((h, ..)) = e.vivo.enlace else { return false };
+    let Some((h, ..)) = e.vivo.enlace else {
+        return false;
+    };
     if m.hwnd != h || m.message != WM_KEYDOWN {
         return false;
     }
@@ -812,7 +970,11 @@ pub(super) fn es_del_enlace(e: &Estado, h: HWND) -> bool {
 /// enlace sin esquema el movil lo abriria como fichero.
 pub(super) fn completar_direccion(s: &str) -> String {
     let s = s.trim();
-    if s.is_empty() || s.contains("://") || s.to_ascii_lowercase().starts_with("mailto:") || s.starts_with("pixpin:") {
+    if s.is_empty()
+        || s.contains("://")
+        || s.to_ascii_lowercase().starts_with("mailto:")
+        || s.starts_with("pixpin:")
+    {
         s.to_string()
     } else if s.contains('@') && !s.contains('/') {
         format!("mailto:{s}")
@@ -835,7 +997,10 @@ pub(super) fn poner_enlace(e: &mut Estado, a: usize, b: usize, url: &str) {
         let mut v = u[..a.min(u.len())].to_vec();
         v.extend(puesto.encode_utf16());
         v.extend_from_slice(&u[a.min(u.len())..]);
-        (String::from_utf16_lossy(&v), a + puesto.encode_utf16().count())
+        (
+            String::from_utf16_lossy(&v),
+            a + puesto.encode_utf16().count(),
+        )
     } else {
         let (t, x, _) = md_vivo::poner_enlace(&texto, a, b, &url);
         (t, x)
@@ -844,7 +1009,9 @@ pub(super) fn poner_enlace(e: &mut Estado, a: usize, b: usize, url: &str) {
 }
 
 pub(super) fn acabar_enlace(e: &mut Estado, poner: bool) {
-    let Some((h, a, b)) = e.vivo.enlace.take() else { return };
+    let Some((h, a, b)) = e.vivo.enlace.take() else {
+        return;
+    };
     // SAFETY: control propio; el bufer es local.
     let url = unsafe {
         let n = GetWindowTextLengthW(h).max(0) as usize;
@@ -871,9 +1038,24 @@ pub(super) fn entradas_de_vista(e: &Estado) -> Vec<Entrada> {
     let r = &e.rotulos.barra;
     let v = &e.vivo.vista;
     vec![
-        entrada(C_MENU_LETRA, Dibujo::Letras("Aa"), &r.letra_texto, &v.cuerpo),
-        entrada(C_MENU_LETRA_TITULOS, Dibujo::Letras("H1"), &r.letra_titulos, &v.titulos),
-        entrada(C_MENU_TAMANO, Dibujo::Letras("A+"), &r.tamano, &format!("{} px", v.px)),
+        entrada(
+            C_MENU_LETRA,
+            Dibujo::Letras("Aa"),
+            &r.letra_texto,
+            &v.cuerpo,
+        ),
+        entrada(
+            C_MENU_LETRA_TITULOS,
+            Dibujo::Letras("H1"),
+            &r.letra_titulos,
+            &v.titulos,
+        ),
+        entrada(
+            C_MENU_TAMANO,
+            Dibujo::Letras("A+"),
+            &r.tamano,
+            &format!("{} px", v.px),
+        ),
     ]
 }
 
@@ -882,12 +1064,23 @@ fn marca_si(si: bool) -> &'static str {
 }
 
 fn menu_de_letras(e: &mut Estado, titulos: bool) {
-    let actual = if titulos { e.vivo.vista.titulos.clone() } else { e.vivo.vista.cuerpo.clone() };
+    let actual = if titulos {
+        e.vivo.vista.titulos.clone()
+    } else {
+        e.vivo.vista.cuerpo.clone()
+    };
     let base = if titulos { C_LETRA_TITULOS } else { C_LETRA };
     let entradas = vista::LETRAS
         .iter()
         .enumerate()
-        .map(|(i, f)| entrada(base + i as u16, Dibujo::Letras("Aa"), f, marca_si(*f == actual)))
+        .map(|(i, f)| {
+            entrada(
+                base + i as u16,
+                Dibujo::Letras("Aa"),
+                f,
+                marca_si(*f == actual),
+            )
+        })
         .collect();
     abrir_menu_en_boton(e, Abierto::Vivo, Boton::Titulo, entradas, None);
 }
@@ -900,11 +1093,20 @@ fn menu_de_tamano(e: &mut Estado) {
         .enumerate()
         .map(|(i, px)| {
             let nombre = nombres.get(i).copied().unwrap_or("");
-            let atajo = if e.vivo.vista.px == *px { format!("{px} px \u{2713}") } else { format!("{px} px") };
+            let atajo = if e.vivo.vista.px == *px {
+                format!("{px} px \u{2713}")
+            } else {
+                format!("{px} px")
+            };
             entrada(C_TAMANO + i as u16, Dibujo::Letras("A"), nombre, &atajo)
         })
         .collect();
-    entradas.push(entrada(C_SOLO_ESTA_NOTA, Dibujo::Icono(Icono::Lapiz), &r.solo_esta_nota, marca_si(e.vivo.vista_de_la_nota())));
+    entradas.push(entrada(
+        C_SOLO_ESTA_NOTA,
+        Dibujo::Icono(Icono::Lapiz),
+        &r.solo_esta_nota,
+        marca_si(e.vivo.vista_de_la_nota()),
+    ));
     let pista = Some(format!("{} \u{b7} {} px", r.pista_tamano, e.vivo.vista.px));
     abrir_menu_en_boton(e, Abierto::Vivo, Boton::Titulo, entradas, pista);
 }
@@ -936,7 +1138,11 @@ pub(super) fn aplicar_vista(e: &mut Estado, v: Vista) {
 fn guardar_vista(e: &Estado) {
     let Some(ruta) = &e.vivo.ajustes else { return };
     let contenido = std::fs::read_to_string(ruta).unwrap_or_default();
-    let clave = if e.vivo.de_la_nota { e.integracion.clave_vista.as_ref().map(|c| c()) } else { None };
+    let clave = if e.vivo.de_la_nota {
+        e.integracion.clave_vista.as_ref().map(|c| c())
+    } else {
+        None
+    };
     let nuevo = vista::escribir(&contenido, clave.as_deref(), &e.vivo.vista);
     if let Err(err) = std::fs::write(ruta, nuevo) {
         tracing::warn!(?err, "no se pudo guardar la letra de las notas");
@@ -949,7 +1155,12 @@ fn alternar_de_la_nota(e: &mut Estado) {
     let clave = e.integracion.clave_vista.as_ref().map(|c| c());
     if e.vivo.de_la_nota {
         e.vivo.de_la_nota = false;
-        let contenido = e.vivo.ajustes.as_ref().and_then(|r| std::fs::read_to_string(r).ok()).unwrap_or_default();
+        let contenido = e
+            .vivo
+            .ajustes
+            .as_ref()
+            .and_then(|r| std::fs::read_to_string(r).ok())
+            .unwrap_or_default();
         let contenido = match (&clave, &e.vivo.ajustes) {
             (Some(c), Some(r)) => {
                 let limpio = vista::olvidar(&contenido, c);
@@ -979,7 +1190,10 @@ pub(super) fn comando(e: &mut Estado, c: u16) {
         C_LETRA_MAS | C_LETRA_MENOS => {
             let px = e.vivo.vista.otro_tamano(c == C_LETRA_MAS);
             if px != e.vivo.vista.px {
-                let v = Vista { px, ..e.vivo.vista.clone() };
+                let v = Vista {
+                    px,
+                    ..e.vivo.vista.clone()
+                };
                 aplicar_vista(e, v);
             }
         }
@@ -990,15 +1204,24 @@ pub(super) fn comando(e: &mut Estado, c: u16) {
             enviar(e.edit, EM_REPLACESEL, 1, t.as_ptr() as isize);
         }
         c if (C_LETRA..C_LETRA + vista::LETRAS.len() as u16).contains(&c) => {
-            let v = Vista { cuerpo: vista::LETRAS[(c - C_LETRA) as usize].into(), ..e.vivo.vista.clone() };
+            let v = Vista {
+                cuerpo: vista::LETRAS[(c - C_LETRA) as usize].into(),
+                ..e.vivo.vista.clone()
+            };
             aplicar_vista(e, v);
         }
         c if (C_LETRA_TITULOS..C_LETRA_TITULOS + vista::LETRAS.len() as u16).contains(&c) => {
-            let v = Vista { titulos: vista::LETRAS[(c - C_LETRA_TITULOS) as usize].into(), ..e.vivo.vista.clone() };
+            let v = Vista {
+                titulos: vista::LETRAS[(c - C_LETRA_TITULOS) as usize].into(),
+                ..e.vivo.vista.clone()
+            };
             aplicar_vista(e, v);
         }
         c if (C_TAMANO..C_TAMANO + vista::TAMANOS.len() as u16).contains(&c) => {
-            let v = Vista { px: vista::TAMANOS[(c - C_TAMANO) as usize], ..e.vivo.vista.clone() };
+            let v = Vista {
+                px: vista::TAMANOS[(c - C_TAMANO) as usize],
+                ..e.vivo.vista.clone()
+            };
             aplicar_vista(e, v);
         }
         _ => {}
@@ -1061,7 +1284,12 @@ pub(super) fn poner_zoom(e: &mut Estado, z: i32) {
     let arriba = POINT { x: izq + 1, y: 1 };
     let letra = enviar(e.edit, EM_CHARFROMPOS, 0, &arriba as *const _ as isize).max(0) as usize;
     let mut antes = POINT::default();
-    enviar(e.edit, EM_POSFROMCHAR, &mut antes as *mut _ as usize, letra as isize);
+    enviar(
+        e.edit,
+        EM_POSFROMCHAR,
+        &mut antes as *mut _ as usize,
+        letra as isize,
+    );
     e.vivo.zoom = if z == 1000 { 0 } else { z };
     let ppp = (real * z + 500) / 1000;
     e.ppp = ppp;
@@ -1078,7 +1306,12 @@ pub(super) fn poner_zoom(e: &mut Estado, z: i32) {
     });
     super::tablas::desplazar::colocar_todas(e, None);
     let mut despues = POINT::default();
-    enviar(e.edit, EM_POSFROMCHAR, &mut despues as *mut _ as usize, letra as isize);
+    enviar(
+        e.edit,
+        EM_POSFROMCHAR,
+        &mut despues as *mut _ as usize,
+        letra as isize,
+    );
     let y = (desplazado(e) + despues.y - antes.y).clamp(0, tope(e));
     e.vivo.objetivo = None;
     ir_a(e, y);
@@ -1104,7 +1337,12 @@ pub(super) fn paso_de_rueda(e: &Estado) -> i32 {
     let mut lineas: u32 = 3;
     // SAFETY: consulta de un ajuste del sistema a una variable local.
     unsafe {
-        let _ = SystemParametersInfoW(SPI_GETWHEELSCROLLLINES, 0, Some(&mut lineas as *mut _ as *mut _), SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS(0));
+        let _ = SystemParametersInfoW(
+            SPI_GETWHEELSCROLLLINES,
+            0,
+            Some(&mut lineas as *mut _ as *mut _),
+            SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS(0),
+        );
     }
     if lineas == u32::MAX {
         imagenes::medidas(e.edit).0 * 9 / 10
@@ -1174,7 +1412,11 @@ pub(super) fn paso(e: &mut Estado) {
     };
     let ahora = desplazado(e);
     let falta = objetivo - ahora;
-    let siguiente = if falta.abs() <= 2 { objetivo } else { ahora + falta / 3 + falta.signum() };
+    let siguiente = if falta.abs() <= 2 {
+        objetivo
+    } else {
+        ahora + falta / 3 + falta.signum()
+    };
     ir_a(e, siguiente);
     // Si el control no se movio (el final de la nota), se acaba aqui.
     if siguiente == objetivo || desplazado(e) == ahora {
@@ -1195,10 +1437,15 @@ fn en_la_pista(x: i32, y: i32) -> Option<(RECT, RECT)> {
 /// **La barra fina con el raton**: coger el asidero y arrastrarlo, o un
 /// clic en la pista para ir ahi (deslizando). `true` si era de la barra.
 pub(super) fn raton_barra(e: &mut Estado, m: &MSG) -> bool {
-    let (x, y) = ((m.lParam.0 & 0xffff) as i16 as i32, ((m.lParam.0 >> 16) & 0xffff) as i16 as i32);
+    let (x, y) = (
+        (m.lParam.0 & 0xffff) as i16 as i32,
+        ((m.lParam.0 >> 16) & 0xffff) as i16 as i32,
+    );
     match m.message {
         WM_LBUTTONDOWN => {
-            let Some((_, asidero)) = en_la_pista(x, y) else { return false };
+            let Some((_, asidero)) = en_la_pista(x, y) else {
+                return false;
+            };
             esconder_barra(e);
             if y >= asidero.top && y < asidero.bottom {
                 e.vivo.agarre = Some(y - asidero.top);
@@ -1209,7 +1456,11 @@ pub(super) fn raton_barra(e: &mut Estado, m: &MSG) -> bool {
             } else {
                 // Un clic en la pista: una pantalla hacia alli.
                 let (visible, _) = imagenes::medidas(e.edit);
-                let hacia = if y < asidero.top { -visible * 9 / 10 } else { visible * 9 / 10 };
+                let hacia = if y < asidero.top {
+                    -visible * 9 / 10
+                } else {
+                    visible * 9 / 10
+                };
                 let objetivo = (desplazado(e) + hacia).clamp(0, tope(e));
                 if e.oculto {
                     ir_a(e, objetivo);
@@ -1225,9 +1476,19 @@ pub(super) fn raton_barra(e: &mut Estado, m: &MSG) -> bool {
         }
         WM_MOUSEMOVE => {
             if let Some(agarre) = e.vivo.agarre {
-                let Some((_, asidero)) = imagenes::BARRA.with(|b| b.get()) else { return true };
+                let Some((_, asidero)) = imagenes::BARRA.with(|b| b.get()) else {
+                    return true;
+                };
                 let (visible, alto) = imagenes::medidas(e.edit);
-                ir_a(e, imagenes::desplazado_de(visible, alto, y - agarre, asidero.bottom - asidero.top));
+                ir_a(
+                    e,
+                    imagenes::desplazado_de(
+                        visible,
+                        alto,
+                        y - agarre,
+                        asidero.bottom - asidero.top,
+                    ),
+                );
                 imagenes::repintar(e.edit);
                 return true;
             }
@@ -1289,12 +1550,26 @@ pub(super) fn antes_de_pintar(edit: HWND) {
         let dy = antes - p.y;
         let mut sucio: Vec<RECT> = super::asas::puestas()
             .into_iter()
-            .flat_map(|r| [r, RECT { top: r.top + dy, bottom: r.bottom + dy, ..r }])
+            .flat_map(|r| {
+                [
+                    r,
+                    RECT {
+                        top: r.top + dy,
+                        bottom: r.bottom + dy,
+                        ..r
+                    },
+                ]
+            })
             .collect();
         sucio.extend(imagenes::BARRA.with(|b| b.get()).map(|(pista, _)| pista));
         super::asas::al_desplazar();
         for r in &sucio {
-            let r = RECT { left: r.left - 2, top: r.top - 2, right: r.right + 2, bottom: r.bottom + 2 };
+            let r = RECT {
+                left: r.left - 2,
+                top: r.top - 2,
+                right: r.right + 2,
+                bottom: r.bottom + 2,
+            };
             // SAFETY: rectangulo de una ventana propia.
             unsafe {
                 let _ = InvalidateRect(Some(edit), Some(&r), false);

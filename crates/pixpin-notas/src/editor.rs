@@ -45,8 +45,8 @@ use windows::Win32::Foundation::{COLORREF, HWND, LPARAM, LRESULT, POINT, RECT, W
 use windows::Win32::Graphics::Gdi::*;
 use windows::Win32::UI::Controls::RichEdit::*;
 use windows::Win32::UI::Input::KeyboardAndMouse::{
-    GetKeyState, SetFocus, TME_LEAVE, TRACKMOUSEEVENT, TrackMouseEvent, VK_APPS, VK_CONTROL, VK_DOWN, VK_ESCAPE,
-    VK_F10, VK_F11, VK_MENU, VK_RETURN, VK_SHIFT, VK_TAB, VK_UP,
+    GetKeyState, SetFocus, TME_LEAVE, TRACKMOUSEEVENT, TrackMouseEvent, VK_APPS, VK_CONTROL,
+    VK_DOWN, VK_ESCAPE, VK_F10, VK_F11, VK_MENU, VK_RETURN, VK_SHIFT, VK_TAB, VK_UP,
 };
 use windows::Win32::UI::WindowsAndMessaging::*;
 use windows::core::{HSTRING, Interface, PCWSTR, w};
@@ -329,7 +329,13 @@ fn leer(edit: HWND) -> String {
         codepage: 1200,
         ..Default::default()
     };
-    let copiados = enviar(edit, EM_GETTEXTEX, &pedido as *const _ as usize, buf.as_mut_ptr() as isize).max(0) as usize;
+    let copiados = enviar(
+        edit,
+        EM_GETTEXTEX,
+        &pedido as *const _ as usize,
+        buf.as_mut_ptr() as isize,
+    )
+    .max(0) as usize;
     buf.truncate(copiados.min(n));
     String::from_utf16_lossy(&buf).replace('\r', "\n")
 }
@@ -340,7 +346,12 @@ fn poner_todo(edit: HWND, texto: &str) {
         flags: ST_DEFAULT,
         codepage: 1200,
     };
-    enviar(edit, EM_SETTEXTEX, &st as *const _ as usize, t.as_ptr() as isize);
+    enviar(
+        edit,
+        EM_SETTEXTEX,
+        &st as *const _ as usize,
+        t.as_ptr() as isize,
+    );
 }
 
 /// Mete RTF en lo elegido (una tabla). `deshacer`: como un paso que Ctrl+Z
@@ -351,7 +362,12 @@ fn poner_rtf(edit: HWND, rtf: &str, deshacer: bool) {
         codepage: 65001,
     };
     let b: Vec<u8> = rtf.bytes().chain(std::iter::once(0)).collect();
-    enviar(edit, EM_SETTEXTEX, &st as *const _ as usize, b.as_ptr() as isize);
+    enviar(
+        edit,
+        EM_SETTEXTEX,
+        &st as *const _ as usize,
+        b.as_ptr() as isize,
+    );
 }
 
 fn seleccion(edit: HWND) -> (usize, usize) {
@@ -525,7 +541,12 @@ fn cara(f: &mut CHARFORMAT2W, nombre: &str) {
 }
 
 fn poner_formato(edit: HWND, f: &CHARFORMAT2W) {
-    enviar(edit, EM_SETCHARFORMAT, SCF_SELECTION as usize, f as *const _ as isize);
+    enviar(
+        edit,
+        EM_SETCHARFORMAT,
+        SCF_SELECTION as usize,
+        f as *const _ as isize,
+    );
 }
 
 fn poner_parrafo(edit: HWND, p: &PARAFORMAT2) {
@@ -545,7 +566,14 @@ fn a_escala(s: &Estilos, v: i32) -> i32 {
 
 fn letra_base(s: &Estilos) -> CHARFORMAT2W {
     let mut f = formato();
-    f.Base.dwMask = CFM_BOLD | CFM_ITALIC | CFM_UNDERLINE | CFM_STRIKEOUT | CFM_HIDDEN | CFM_SIZE | CFM_COLOR | CFM_BACKCOLOR;
+    f.Base.dwMask = CFM_BOLD
+        | CFM_ITALIC
+        | CFM_UNDERLINE
+        | CFM_STRIKEOUT
+        | CFM_HIDDEN
+        | CFM_SIZE
+        | CFM_COLOR
+        | CFM_BACKCOLOR;
     f.Base.dwEffects = CFE_AUTOBACKCOLOR;
     f.Base.yHeight = s.tamano;
     f.Base.crTextColor = color(s.tema.texto);
@@ -692,7 +720,14 @@ fn parrafo_de(estilo: Estilo, _activo: bool, s: &Estilos) -> Option<PARAFORMAT2>
 fn renglones_de_tabla(texto: &str) -> Vec<bool> {
     texto
         .split('\n')
-        .map(|r| r.chars().any(|c| matches!(c, md_tabla::FILA_ABRE | md_tabla::FILA_CIERRA | md_tabla::CELDA)))
+        .map(|r| {
+            r.chars().any(|c| {
+                matches!(
+                    c,
+                    md_tabla::FILA_ABRE | md_tabla::FILA_CIERRA | md_tabla::CELDA
+                )
+            })
+        })
         .collect()
 }
 
@@ -766,7 +801,12 @@ fn pintar(e: &mut Estado, solo: Option<&[usize]>) {
         if renglon.trim_start().starts_with("```") || renglon.trim_start().starts_with("~~~") {
             en_codigo = !en_codigo;
         }
-        if entra(n) && l.desde == l.hasta && n != activa && !en_codigo && !de_tabla.get(n).copied().unwrap_or(false) {
+        if entra(n)
+            && l.desde == l.hasta
+            && n != activa
+            && !en_codigo
+            && !de_tabla.get(n).copied().unwrap_or(false)
+        {
             let mut f = formato();
             f.Base.dwMask = CFM_SIZE;
             f.Base.yHeight = a_escala(&e.estilos, 110);
@@ -788,7 +828,8 @@ fn pintar(e: &mut Estado, solo: Option<&[usize]>) {
         // El texto de una foto que se ve no sale nunca, tampoco con el
         // cursor (como en Word: «que no aparece nada de eso», 1-oct); solo
         // si la foto no se puede ensenar queda su texto a la vista.
-        let activo = sin_foto.contains(&t.linea) || (t.linea == activa && t.estilo != Estilo::Imagen);
+        let activo =
+            sin_foto.contains(&t.linea) || (t.linea == activa && t.estilo != Estilo::Imagen);
         elegir(edit, t.desde, t.hasta);
         if !de_tabla.get(t.linea).copied().unwrap_or(false)
             && let Some(p) = parrafo_de(t.estilo, activo, &e.estilos)
@@ -962,7 +1003,9 @@ fn celda_del_cursor(e: &Estado) -> Option<(md_tabla::TablaEnControl, usize, usiz
 /// en `desde`.
 fn ir_a_celda(e: &Estado, desde: usize, f: usize, c: usize) {
     let texto = leer(e.edit);
-    if let Some(t) = md_tabla::tablas_en_control(&texto).into_iter().find(|t| t.desde == desde)
+    if let Some(t) = md_tabla::tablas_en_control(&texto)
+        .into_iter()
+        .find(|t| t.desde == desde)
         && let Some(p) = t.celdas.get(f).and_then(|fila| fila.get(c).or(fila.last()))
     {
         elegir(e.edit, *p, *p);
@@ -974,13 +1017,26 @@ fn ir_a_celda(e: &Estado, desde: usize, f: usize, c: usize) {
 /// celda nueva.
 fn anadir_al_final(e: &mut Estado, desde: usize, fila: bool) {
     let texto = leer(e.edit);
-    let Some(t) = md_tabla::tablas_en_control(&texto).into_iter().find(|t| t.desde == desde) else {
+    let Some(t) = md_tabla::tablas_en_control(&texto)
+        .into_iter()
+        .find(|t| t.desde == desde)
+    else {
         return;
     };
     let f = t.celdas.len().saturating_sub(1);
-    let c = t.celdas.first().map_or(0, |fila| fila.len().saturating_sub(1));
+    let c = t
+        .celdas
+        .first()
+        .map_or(0, |fila| fila.len().saturating_sub(1));
     ir_a_celda(e, desde, if fila { f } else { 0 }, c);
-    operar_tabla(e, if fila { OpTabla::FilaDebajo } else { OpTabla::ColDerecha });
+    operar_tabla(
+        e,
+        if fila {
+            OpTabla::FilaDebajo
+        } else {
+            OpTabla::ColDerecha
+        },
+    );
     if fila {
         ir_a_celda(e, desde, f + 1, 0);
     }
@@ -1081,7 +1137,10 @@ fn meter_tabla(e: &mut Estado, t: &Tabla) {
 
 fn titulo_de(e: &Estado, md: &str) -> String {
     match md_vivo::titulo(md) {
-        t if t.is_empty() => e.nombre_de_fichero.clone().unwrap_or_else(|| e.rotulos.nueva.clone()),
+        t if t.is_empty() => e
+            .nombre_de_fichero
+            .clone()
+            .unwrap_or_else(|| e.rotulos.nueva.clone()),
         t => t,
     }
 }
@@ -1145,7 +1204,9 @@ fn con(e: &Estado, f: impl Fn(&str, usize, usize) -> (String, usize, usize)) {
 /// pegar del dialogo de enlace del movil, sin dialogo.
 fn url_del_portapapeles() -> String {
     match pixpin_codec::portapapeles::leer() {
-        Some(pixpin_codec::portapapeles::ContenidoPortapapeles::Texto(t)) if es_direccion(t.trim()) => {
+        Some(pixpin_codec::portapapeles::ContenidoPortapapeles::Texto(t))
+            if es_direccion(t.trim()) =>
+        {
             t.trim().to_string()
         }
         _ => String::new(),
@@ -1156,7 +1217,8 @@ fn url_del_portapapeles() -> String {
 /// ejecutable en una nota llegada de otro aparato no se lanza a ciegas.
 fn es_direccion(s: &str) -> bool {
     let s = s.to_ascii_lowercase();
-    (s.starts_with("https://") || s.starts_with("http://") || s.starts_with("mailto:")) && !s.contains(char::is_whitespace)
+    (s.starts_with("https://") || s.starts_with("http://") || s.starts_with("mailto:"))
+        && !s.contains(char::is_whitespace)
 }
 
 /// El titulo de la nota como nombre de fichero: sin las letras que Windows
@@ -1164,7 +1226,13 @@ fn es_direccion(s: &str) -> bool {
 fn sin_prohibidas(t: &str) -> String {
     let limpio: String = t
         .chars()
-        .map(|c| if "<>:\"/\\|?*".contains(c) || c.is_control() { '_' } else { c })
+        .map(|c| {
+            if "<>:\"/\\|?*".contains(c) || c.is_control() {
+                '_'
+            } else {
+                c
+            }
+        })
         .collect();
     limpio.trim_end_matches(['.', ' ']).to_string()
 }
@@ -1187,7 +1255,11 @@ fn insertar_renglon(e: &Estado, renglon: &str) {
         elegir(e.edit, t.hasta, t.hasta);
         let r = ancho_nulo(&format!("{renglon}\r"));
         enviar(e.edit, EM_REPLACESEL, 1, r.as_ptr() as isize);
-        elegir(e.edit, t.hasta + renglon.encode_utf16().count(), t.hasta + renglon.encode_utf16().count());
+        elegir(
+            e.edit,
+            t.hasta + renglon.encode_utf16().count(),
+            t.hasta + renglon.encode_utf16().count(),
+        );
         return;
     }
     let ls = md_vivo::lineas(&texto);
@@ -1198,11 +1270,21 @@ fn insertar_renglon(e: &Estado, renglon: &str) {
         (l.hasta, format!("\r{renglon}"))
     };
     elegir(e.edit, pos, pos);
-    enviar(e.edit, EM_REPLACESEL, 1, ancho_nulo(&puesto).as_ptr() as isize);
+    enviar(
+        e.edit,
+        EM_REPLACESEL,
+        1,
+        ancho_nulo(&puesto).as_ptr() as isize,
+    );
 }
 
 fn fecha_de_hoy(e: &Estado) -> String {
-    let meses: Vec<String> = e.rotulos.meses.split_whitespace().map(String::from).collect();
+    let meses: Vec<String> = e
+        .rotulos
+        .meses
+        .split_whitespace()
+        .map(String::from)
+        .collect();
     let (d, m, a) = md_comandos::dia_de(pixpin_shell::entorno::ahora_local_ms());
     md_comandos::fecha(d, m, a, &meses)
 }
@@ -1274,7 +1356,11 @@ fn atender(e: &mut Estado, o: Orden, guardar: &mut dyn FnMut(&str) -> bool) {
         Orden::Cerrar => {
             cerrar_menu(e);
             if guardar_ahora(e, guardar)
-                || pixpin_shell::dialogo::preguntar(e.marco, &e.rotulos.sufijo, &e.rotulos.no_guardada)
+                || pixpin_shell::dialogo::preguntar(
+                    e.marco,
+                    &e.rotulos.sufijo,
+                    &e.rotulos.no_guardada,
+                )
             {
                 // SAFETY: ventana propia; su WM_DESTROY acaba el bucle.
                 unsafe {
@@ -1329,13 +1415,29 @@ fn es_modal(c: u16) -> bool {
     let de_la_barra = (C_BARRA..C_BARRA + md_comandos::CATALOGO.len() as u16).contains(&c)
         && matches!(
             md_comandos::CATALOGO[(c - C_BARRA) as usize].0,
-            Bloque::Imagen | Bloque::Pagina | Bloque::EnlaceHoja | Bloque::Documento | Bloque::DelChat | Bloque::Audio
+            Bloque::Imagen
+                | Bloque::Pagina
+                | Bloque::EnlaceHoja
+                | Bloque::Documento
+                | Bloque::DelChat
+                | Bloque::Audio
         );
     de_la_barra
         || matches!(
             c,
-            C_IMAGEN | C_PAGINA_VIVA | C_ENLACE_HOJA | C_COPIA_MD | C_COMPARTIR | C_CERRAR | C_COMPLETA | C_GUARDAR | C_VER_FOTO
-                | incrustados::C_DOCUMENTO | incrustados::C_DEL_CHAT | incrustados::C_AUDIO | exportar::C_EXPORTAR_WORD
+            C_IMAGEN
+                | C_PAGINA_VIVA
+                | C_ENLACE_HOJA
+                | C_COPIA_MD
+                | C_COMPARTIR
+                | C_CERRAR
+                | C_COMPLETA
+                | C_GUARDAR
+                | C_VER_FOTO
+                | incrustados::C_DOCUMENTO
+                | incrustados::C_DEL_CHAT
+                | incrustados::C_AUDIO
+                | exportar::C_EXPORTAR_WORD
         )
 }
 
@@ -1345,7 +1447,9 @@ fn comando(e: &mut Estado, c: u16, guardar: &mut dyn FnMut(&str) -> bool) {
     if es_modal(c) {
         comando_suelto(e, c, guardar);
     } else {
-        congelar::congelado(e, congelar::Pintado::Entero, |e| comando_suelto(e, c, guardar));
+        congelar::congelado(e, congelar::Pintado::Entero, |e| {
+            comando_suelto(e, c, guardar)
+        });
     }
 }
 
@@ -1392,7 +1496,9 @@ fn comando_suelto(e: &mut Estado, c: u16, guardar: &mut dyn FnMut(&str) -> bool)
                 // El texto lo mete el editor (como un paso de deshacer) y no
                 // el control: asi entra ya con sus marcas escondidas.
                 match pixpin_codec::portapapeles::leer() {
-                    Some(pixpin_codec::portapapeles::ContenidoPortapapeles::Texto(t)) if celda_del_cursor(e).is_none() => {
+                    Some(pixpin_codec::portapapeles::ContenidoPortapapeles::Texto(t))
+                        if celda_del_cursor(e).is_none() =>
+                    {
                         wysiwyg::pegar_texto(e, &t)
                     }
                     _ => {
@@ -1411,7 +1517,8 @@ fn comando_suelto(e: &mut Estado, c: u16, guardar: &mut dyn FnMut(&str) -> bool)
                 t if t.is_empty() => e.rotulos.nueva.clone(),
                 t => sin_prohibidas(&t),
             };
-            if let Some(ruta) = pixpin_shell::guardar::pedir_ruta_para(e.marco, &nombre, &e.rotulos.tipo_md, "md")
+            if let Some(ruta) =
+                pixpin_shell::guardar::pedir_ruta_para(e.marco, &nombre, &e.rotulos.tipo_md, "md")
                 && let Err(err) = std::fs::write(&ruta, texto.as_bytes())
             {
                 tracing::warn!(?err, ruta = %ruta.display(), "no se pudo guardar la copia .md");
@@ -1430,9 +1537,8 @@ fn comando_suelto(e: &mut Estado, c: u16, guardar: &mut dyn FnMut(&str) -> bool)
         }
         C_PAGINA_VIVA => fotos::hoja_de_un_proyecto(e, false),
         C_ENLACE_HOJA => fotos::hoja_de_un_proyecto(e, true),
-        C_VER_FOTO | C_FOTO_PEQUENA | C_FOTO_MEDIANA | C_FOTO_GRANDE | C_FOTO_COLUMNA | C_QUITAR_FOTO => {
-            fotos::orden_de_foto(e, c)
-        }
+        C_VER_FOTO | C_FOTO_PEQUENA | C_FOTO_MEDIANA | C_FOTO_GRANDE | C_FOTO_COLUMNA
+        | C_QUITAR_FOTO => fotos::orden_de_foto(e, c),
         C_FECHA => {
             let f = ancho_nulo(&fecha_de_hoy(e));
             enviar(e.edit, EM_REPLACESEL, 1, f.as_ptr() as isize);
@@ -1511,7 +1617,12 @@ fn clic(e: &mut Estado, b: Boton, guardar: &mut dyn FnMut(&str) -> bool) {
             let entradas = vec![
                 entrada(C_TITULO, Dibujo::Icono(Icono::Lapiz), &r.cambiar_titulo, ""),
                 entrada(C_GUARDAR, Dibujo::Icono(Icono::Disco), &r.guardar, "Ctrl+S"),
-                entrada(C_COPIA_MD, Dibujo::Icono(Icono::Copia), &r.copia_md, &format!("Ctrl+{m}+S")),
+                entrada(
+                    C_COPIA_MD,
+                    Dibujo::Icono(Icono::Copia),
+                    &r.copia_md,
+                    &format!("Ctrl+{m}+S"),
+                ),
             ];
             // La letra y el tamano de la vista (no van en el texto).
             // Y exportar a Word (`exportar`), junto a la copia .md.
@@ -1531,16 +1642,32 @@ fn clic(e: &mut Estado, b: Boton, guardar: &mut dyn FnMut(&str) -> bool) {
                 entrada(C_FECHA, Dibujo::Icono(Icono::Fecha), &r.fecha, ""),
                 entrada(C_NUMERADA, Dibujo::Icono(Icono::Numerada), &r.numerada, ""),
                 // Las hojas de los proyectos, si la aplicacion las da.
-                entrada(C_PAGINA_VIVA, Dibujo::Icono(Icono::Pagina), &r.pagina_viva, ""),
-                entrada(C_ENLACE_HOJA, Dibujo::Icono(Icono::Enlace), &r.enlace_hoja, ""),
+                entrada(
+                    C_PAGINA_VIVA,
+                    Dibujo::Icono(Icono::Pagina),
+                    &r.pagina_viva,
+                    "",
+                ),
+                entrada(
+                    C_ENLACE_HOJA,
+                    Dibujo::Icono(Icono::Enlace),
+                    &r.enlace_hoja,
+                    "",
+                ),
             ];
             let entradas = if e.integracion.hojas.is_some() {
                 entradas
             } else {
-                entradas.into_iter().filter(|x| x.id != C_PAGINA_VIVA && x.id != C_ENLACE_HOJA).collect()
+                entradas
+                    .into_iter()
+                    .filter(|x| x.id != C_PAGINA_VIVA && x.id != C_ENLACE_HOJA)
+                    .collect()
             };
             // Documento, del chat y audio, si la aplicacion los da.
-            let entradas: Vec<Entrada> = entradas.into_iter().chain(incrustados::entradas_del_mas(e)).collect();
+            let entradas: Vec<Entrada> = entradas
+                .into_iter()
+                .chain(incrustados::entradas_del_mas(e))
+                .collect();
             let r = &e.rotulos;
             let pista = Some(r.pista_barra.clone());
             abrir_menu_en_boton(e, Abierto::Mas, Boton::Mas, entradas, pista);
@@ -1586,7 +1713,13 @@ fn entrada(id: u16, dibujo: Dibujo, texto: &str, atajo: &str) -> Entrada {
 // ---------------------------------------------------------------------------
 // Los menus que se despliegan
 
-fn abrir_menu_en_boton(e: &mut Estado, que: Abierto, b: Boton, entradas: Vec<Entrada>, pista: Option<String>) {
+fn abrir_menu_en_boton(
+    e: &mut Estado,
+    que: Abierto,
+    b: Boton,
+    entradas: Vec<Entrada>,
+    pista: Option<String>,
+) {
     let Some(c) = VISTA.with(|v| v.borrow().as_ref().and_then(|v| v.disp.caja(b))) else {
         return;
     };
@@ -1598,7 +1731,14 @@ fn abrir_menu_en_boton(e: &mut Estado, que: Abierto, b: Boton, entradas: Vec<Ent
     abrir_menu(e, que, entradas, pista, p, c.al + 4 * e.ppp / 96);
 }
 
-fn abrir_menu(e: &mut Estado, que: Abierto, entradas: Vec<Entrada>, pista: Option<String>, ancla: POINT, alto_ancla: i32) {
+fn abrir_menu(
+    e: &mut Estado,
+    que: Abierto,
+    entradas: Vec<Entrada>,
+    pista: Option<String>,
+    ancla: POINT,
+    alto_ancla: i32,
+) {
     let esc = e.pintor.escala;
     let mut m = Menu {
         entradas: Vec::new(),
@@ -1621,7 +1761,12 @@ fn abrir_menu(e: &mut Estado, que: Abierto, entradas: Vec<Entrada>, pista: Optio
         ReleaseDC(None, dc);
         r
     };
-    let (x, y) = menu::colocar((ancla.x, ancla.y), alto_ancla, (an, al), menu::pantalla_de(ancla));
+    let (x, y) = menu::colocar(
+        (ancla.x, ancla.y),
+        alto_ancla,
+        (an, al),
+        menu::pantalla_de(ancla),
+    );
     let mut dentro = POINT { x, y };
     // SAFETY: conversion de coordenadas de una ventana propia.
     unsafe {
@@ -1670,7 +1815,11 @@ fn elegir_del_menu(e: &mut Estado, guardar: &mut dyn FnMut(&str) -> bool) {
 fn actualizar_barra(e: &mut Estado) {
     let texto = leer(e.edit);
     let (a, b) = seleccion(e.edit);
-    let consulta = if a == b { md_comandos::consulta(&texto, b) } else { None };
+    let consulta = if a == b {
+        md_comandos::consulta(&texto, b)
+    } else {
+        None
+    };
     let Some((barra, q)) = consulta else {
         e.descartada = None;
         if matches!(e.abierto, Some(Abierto::Barra(_))) {
@@ -1691,18 +1840,33 @@ fn actualizar_barra(e: &mut Estado) {
     let entradas: Vec<Entrada> = bloques
         .iter()
         .map(|b| {
-            let i = md_comandos::CATALOGO.iter().position(|(x, _)| x == b).unwrap_or(0);
+            let i = md_comandos::CATALOGO
+                .iter()
+                .position(|(x, _)| x == b)
+                .unwrap_or(0);
             let (dibujo, atajo) = dibujo_de_bloque(*b);
             entrada(C_BARRA + i as u16, dibujo, &nombre(*b), atajo)
         })
         .collect();
     let mut p = POINT::default();
-    enviar(e.edit, EM_POSFROMCHAR, &mut p as *mut _ as usize, barra as isize);
+    enviar(
+        e.edit,
+        EM_POSFROMCHAR,
+        &mut p as *mut _ as usize,
+        barra as isize,
+    );
     // SAFETY: conversion de coordenadas de una ventana propia.
     unsafe {
         let _ = ClientToScreen(e.edit, &mut p);
     }
-    abrir_menu(e, Abierto::Barra(barra), entradas, None, p, RENGLON_PX * e.ppp / 96);
+    abrir_menu(
+        e,
+        Abierto::Barra(barra),
+        entradas,
+        None,
+        p,
+        RENGLON_PX * e.ppp / 96,
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -1713,9 +1877,13 @@ fn empezar_titulo(e: &mut Estado) {
         return;
     }
     let Some((c, titulo, letra)) = VISTA.with(|v| {
-        v.borrow()
-            .as_ref()
-            .and_then(|v| Some((v.disp.caja(Boton::Titulo)?, v.titulo.clone(), v.pintor.letra)))
+        v.borrow().as_ref().and_then(|v| {
+            Some((
+                v.disp.caja(Boton::Titulo)?,
+                v.titulo.clone(),
+                v.pintor.letra,
+            ))
+        })
     }) else {
         return;
     };
@@ -1739,7 +1907,12 @@ fn empezar_titulo(e: &mut Estado) {
         ) else {
             return;
         };
-        SendMessageW(h, WM_SETFONT, Some(WPARAM(letra.0 as usize)), Some(LPARAM(1)));
+        SendMessageW(
+            h,
+            WM_SETFONT,
+            Some(WPARAM(letra.0 as usize)),
+            Some(LPARAM(1)),
+        );
         SendMessageW(h, 0x00B1, Some(WPARAM(0)), Some(LPARAM(-1)));
         let _ = SetFocus(Some(h));
         e.titulo_edit = Some(h);
@@ -1806,8 +1979,15 @@ fn alternar_completa(e: &mut Estado) {
                     cbSize: std::mem::size_of::<MONITORINFO>() as u32,
                     ..Default::default()
                 };
-                let _ = GetMonitorInfoW(MonitorFromWindow(e.marco, MONITOR_DEFAULTTONEAREST), &mut info);
-                SetWindowLongPtrW(e.marco, GWL_STYLE, (WS_POPUP | WS_VISIBLE | WS_CLIPCHILDREN).0 as isize);
+                let _ = GetMonitorInfoW(
+                    MonitorFromWindow(e.marco, MONITOR_DEFAULTTONEAREST),
+                    &mut info,
+                );
+                SetWindowLongPtrW(
+                    e.marco,
+                    GWL_STYLE,
+                    (WS_POPUP | WS_VISIBLE | WS_CLIPCHILDREN).0 as isize,
+                );
                 let r = info.rcMonitor;
                 let _ = SetWindowPos(
                     e.marco,
@@ -1866,13 +2046,22 @@ fn preparar_edit(edit: HWND, marco: HWND, tema: &Tema, s: &Estilos) {
         // Las barras de desplazamiento oscuras de Windows 10 y 11.
         let _ = windows::Win32::UI::Controls::SetWindowTheme(
             edit,
-            if tema.oscuro { w!("DarkMode_Explorer") } else { w!("Explorer") },
+            if tema.oscuro {
+                w!("DarkMode_Explorer")
+            } else {
+                w!("Explorer")
+            },
             PCWSTR::null(),
         );
     }
     let mut f = letra_base(s);
     f.Base.dwMask = CFM_SIZE | CFM_COLOR | CFM_FACE;
-    enviar(edit, EM_SETCHARFORMAT, SCF_ALL as usize, &f as *const _ as isize);
+    enviar(
+        edit,
+        EM_SETCHARFORMAT,
+        SCF_ALL as usize,
+        &f as *const _ as isize,
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -1906,7 +2095,9 @@ fn intro_suelto(e: &Estado) -> bool {
         Continuar::Con(marca) => {
             // Con el cursor antes de la marca, un Intro normal: se abre un
             // renglon encima y la marca baja con su texto.
-            let marca_hasta = l.desde + renglon.encode_utf16().count() - renglon.trim_start().encode_utf16().count() + 1;
+            let marca_hasta = l.desde + renglon.encode_utf16().count()
+                - renglon.trim_start().encode_utf16().count()
+                + 1;
             if b < marca_hasta {
                 return false;
             }
@@ -2004,7 +2195,9 @@ fn interceptar(e: &mut Estado, m: &MSG, guardar: &mut dyn FnMut(&str) -> bool) -
             congelar::deshacer(e, rehacer);
             true
         }
-        WM_KEYDOWN if m.wParam.0 == VK_RETURN.0 as usize && sin_mods => intro_en_tabla(e) || intro(e),
+        WM_KEYDOWN if m.wParam.0 == VK_RETURN.0 as usize && sin_mods => {
+            intro_en_tabla(e) || intro(e)
+        }
         // Esc a mitad de mover un bloque, una fila o una columna (`asas`).
         WM_KEYDOWN if m.wParam.0 == VK_ESCAPE.0 as usize && asas::cancelar(e) => true,
         WM_KEYDOWN if m.wParam.0 == VK_ESCAPE.0 as usize && e.completa.is_some() => {
@@ -2018,7 +2211,11 @@ fn interceptar(e: &mut Estado, m: &MSG, guardar: &mut dyn FnMut(&str) -> bool) -
         // La rueda de lado y la barra de una tabla ancha (`tabla_ancha`).
         // Las asas de mover bloques, filas y columnas (`asas`), antes que nada.
         WM_LBUTTONDOWN | WM_MOUSEMOVE | WM_LBUTTONUP | WM_MOUSELEAVE if asas::raton(e, m) => true,
-        WM_MOUSEWHEEL | WM_MOUSEHWHEEL | WM_LBUTTONDOWN | WM_MOUSEMOVE | WM_LBUTTONUP if tablas::desplazar::raton(e, m) => true,
+        WM_MOUSEWHEEL | WM_MOUSEHWHEEL | WM_LBUTTONDOWN | WM_MOUSEMOVE | WM_LBUTTONUP
+            if tablas::desplazar::raton(e, m) =>
+        {
+            true
+        }
         // La rueda por pixeles y suave, y la barra fina de la nota (`wysiwyg`).
         WM_MOUSEWHEEL if wysiwyg::rueda(e, m) => true,
         WM_LBUTTONDOWN | WM_MOUSEMOVE | WM_LBUTTONUP if wysiwyg::raton_barra(e, m) => true,
@@ -2026,7 +2223,9 @@ fn interceptar(e: &mut Estado, m: &MSG, guardar: &mut dyn FnMut(&str) -> bool) -
         // Los documentos, mensajes y audios: abrir, tocar, la barra, las
         // marcas de tiempo (`incrustados`); antes que las fotos, que tienen asa.
         WM_LBUTTONDOWN | WM_LBUTTONDBLCLK if incrustados::raton(e, m) => true,
-        WM_LBUTTONDOWN | WM_MOUSEMOVE | WM_LBUTTONUP | WM_LBUTTONDBLCLK if fotos::raton(e, m) => true,
+        WM_LBUTTONDOWN | WM_MOUSEMOVE | WM_LBUTTONUP | WM_LBUTTONDBLCLK if fotos::raton(e, m) => {
+            true
+        }
         WM_DROPFILES => {
             fotos::soltar_hdrop(e, m.wParam.0, true);
             true
@@ -2037,7 +2236,8 @@ fn interceptar(e: &mut Estado, m: &MSG, guardar: &mut dyn FnMut(&str) -> bool) -
             let texto = leer(e.edit);
             // Un enlace a una hoja de un proyecto la abre en su editor.
             if pulsada(VK_CONTROL.0)
-                && let Some(url) = md_vivo::enlace_en(&texto, pos).filter(|u| fotos::es_enlace_a_hoja(u))
+                && let Some(url) =
+                    md_vivo::enlace_en(&texto, pos).filter(|u| fotos::es_enlace_a_hoja(u))
             {
                 fotos::abrir(e, &url);
                 return true;
@@ -2052,7 +2252,10 @@ fn interceptar(e: &mut Estado, m: &MSG, guardar: &mut dyn FnMut(&str) -> bool) -
             }
             // La casilla se pinta en la sangria (su texto esta escondido): el
             // clic se mira por donde se pinto.
-            let (x, y) = ((m.lParam.0 & 0xffff) as i16 as i32, ((m.lParam.0 >> 16) & 0xffff) as i16 as i32);
+            let (x, y) = (
+                (m.lParam.0 & 0xffff) as i16 as i32,
+                ((m.lParam.0 >> 16) & 0xffff) as i16 as i32,
+            );
             if let Some(n) = imagenes::casilla_en(e.edit, x, y) {
                 alternar_casilla(e, n);
                 return true;
@@ -2069,7 +2272,10 @@ fn interceptar(e: &mut Estado, m: &MSG, guardar: &mut dyn FnMut(&str) -> bool) -
             menu_contextual(e);
             true
         }
-        WM_KEYDOWN if m.wParam.0 == VK_APPS.0 as usize || (m.wParam.0 == VK_F10.0 as usize && pulsada(VK_SHIFT.0)) => {
+        WM_KEYDOWN
+            if m.wParam.0 == VK_APPS.0 as usize
+                || (m.wParam.0 == VK_F10.0 as usize && pulsada(VK_SHIFT.0)) =>
+        {
             menu_contextual(e);
             true
         }
@@ -2091,7 +2297,10 @@ fn menu_contextual(e: &mut Estado) {
     let (m, i) = (&r.mayus, &r.intro);
     let mut entradas: Vec<Option<(u16, String)>> = de_foto;
     // Comentar lo elegido, arriba como en Google Docs.
-    entradas.push(Some((C_COMENTAR, format!("{}\tCtrl+Alt+M", r.comentarios.comentar))));
+    entradas.push(Some((
+        C_COMENTAR,
+        format!("{}\tCtrl+Alt+M", r.comentarios.comentar),
+    )));
     entradas.push(None);
     let en_tabla = celda_del_cursor(e).is_some();
     // Detras de quitar tabla van combinar, separar y los colores.
@@ -2149,7 +2358,9 @@ fn menu_contextual(e: &mut Estado) {
         };
         for en in &entradas {
             let _ = match en {
-                Some((id, t)) => AppendMenuW(menu, MF_STRING, *id as usize, &HSTRING::from(t.as_str())),
+                Some((id, t)) => {
+                    AppendMenuW(menu, MF_STRING, *id as usize, &HSTRING::from(t.as_str()))
+                }
                 None => AppendMenuW(menu, MF_SEPARATOR, 0, PCWSTR::null()),
             };
         }
@@ -2160,7 +2371,15 @@ fn menu_contextual(e: &mut Estado) {
         };
         let mut p = POINT::default();
         let _ = GetCursorPos(&mut p);
-        let r = TrackPopupMenu(menu, TPM_RETURNCMD | TPM_RIGHTBUTTON, p.x, p.y, None, e.marco, None);
+        let r = TrackPopupMenu(
+            menu,
+            TPM_RETURNCMD | TPM_RIGHTBUTTON,
+            p.x,
+            p.y,
+            None,
+            e.marco,
+            None,
+        );
         let _ = DestroyMenu(menu);
         tablas::soltar(muestras);
         r.0 as u16
@@ -2173,7 +2392,11 @@ fn menu_contextual(e: &mut Estado) {
 fn teclas() -> Vec<ACCEL> {
     let c = FVIRTKEY | FCONTROL;
     let cs = FVIRTKEY | FCONTROL | FSHIFT;
-    let a = |f: ACCEL_VIRT_FLAGS, k: u16, cmd: u16| ACCEL { fVirt: f, key: k, cmd };
+    let a = |f: ACCEL_VIRT_FLAGS, k: u16, cmd: u16| ACCEL {
+        fVirt: f,
+        key: k,
+        cmd,
+    };
     vec![
         a(c, b'B' as u16, C_NEGRITA),
         a(FVIRTKEY | FCONTROL | FALT, b'M' as u16, C_COMENTAR),
@@ -2260,7 +2483,13 @@ fn pintar_marco(hdc: HDC, v: &VistaMarco) {
     p.formas(hdc, zona, |f| {
         f.rect(d.cabecera, t.cabecera);
         f.rect(d.barra, t.papel);
-        f.raya(0, d.barra.abajo() - 1, d.barra.an, d.barra.abajo() - 1, t.raya);
+        f.raya(
+            0,
+            d.barra.abajo() - 1,
+            d.barra.an,
+            d.barra.abajo() - 1,
+            t.raya,
+        );
         // La pastilla del titulo con su flecha.
         let pastilla = Caja {
             an: flecha.derecha() - titulo.x,
@@ -2298,7 +2527,14 @@ fn pintar_marco(hdc: HDC, v: &VistaMarco) {
             if v.hover == Some(b) {
                 f.redondo(c, 6.0, t.pastilla);
             }
-            let tinta = if matches!(b, Boton::Minimizar | Boton::PantallaCompleta | Boton::Cerrar) { t.tenue } else { t.texto };
+            let tinta = if matches!(
+                b,
+                Boton::Minimizar | Boton::PantallaCompleta | Boton::Cerrar
+            ) {
+                t.tenue
+            } else {
+                t.texto
+            };
             f.icono(icono, c, 15.0, tinta);
         }
         let mas = caja(Boton::Mas);
@@ -2414,7 +2650,14 @@ fn colocar_edit(marco: HWND) {
     let hueco = crate::tabla_ancha::hueco();
     // SAFETY: ventanas propias.
     unsafe {
-        let _ = MoveWindow(edit, cuerpo.x - hueco, cuerpo.y, cuerpo.an + hueco, cuerpo.al.max(1), true);
+        let _ = MoveWindow(
+            edit,
+            cuerpo.x - hueco,
+            cuerpo.y,
+            cuerpo.an + hueco,
+            cuerpo.al.max(1),
+            true,
+        );
     }
     let _ = marco;
     let dentro = RECT {
@@ -2441,7 +2684,10 @@ fn hover(h: HWND, b: Option<Boton>) {
 }
 
 fn punto_de(l: LPARAM) -> (i32, i32) {
-    ((l.0 & 0xffff) as i16 as i32, ((l.0 >> 16) & 0xffff) as i16 as i32)
+    (
+        (l.0 & 0xffff) as i16 as i32,
+        ((l.0 >> 16) & 0xffff) as i16 as i32,
+    )
 }
 
 unsafe extern "system" fn procedimiento(h: HWND, m: u32, w: WPARAM, l: LPARAM) -> LRESULT {
@@ -2457,7 +2703,8 @@ unsafe extern "system" fn procedimiento(h: HWND, m: u32, w: WPARAM, l: LPARAM) -
                 let r = DefWindowProcW(h, m, w, l);
                 (*p).rgrc[0].top = arriba;
                 if IsZoomed(h).as_bool() {
-                    (*p).rgrc[0].top += GetSystemMetrics(SM_CYFRAME) + GetSystemMetrics(SM_CXPADDEDBORDER);
+                    (*p).rgrc[0].top +=
+                        GetSystemMetrics(SM_CYFRAME) + GetSystemMetrics(SM_CXPADDEDBORDER);
                 }
                 r
             }
@@ -2482,7 +2729,9 @@ unsafe extern "system" fn procedimiento(h: HWND, m: u32, w: WPARAM, l: LPARAM) -
                 return LRESULT(HTTOP as isize);
             }
             let zona = VISTA.with(|v| {
-                v.borrow().as_ref().map(|v| (v.disp.zona(p.x, p.y), v.disp.cabecera.contiene(p.x, p.y)))
+                v.borrow()
+                    .as_ref()
+                    .map(|v| (v.disp.zona(p.x, p.y), v.disp.cabecera.contiene(p.x, p.y)))
             });
             match zona {
                 Some((Zona::Arrastre, true)) => LRESULT(HTCAPTION as isize),
@@ -2684,7 +2933,10 @@ unsafe extern "system" fn procedimiento_edit(h: HWND, m: u32, w: WPARAM, l: LPAR
         let anterior: WNDPROC = std::mem::transmute::<isize, WNDPROC>(original);
         // Sobre el asa de una foto, la flecha de cambiar el tamano.
         if m == WM_SETCURSOR
-            && (asas::cursor(h) || fotos::cursor_del_asa(h) || tablas::desplazar::cursor_de_la_barra(h) || wysiwyg::cursor_de_la_barra(h))
+            && (asas::cursor(h)
+                || fotos::cursor_del_asa(h)
+                || tablas::desplazar::cursor_de_la_barra(h)
+                || wysiwyg::cursor_de_la_barra(h))
         {
             return LRESULT(1);
         }
@@ -2762,7 +3014,8 @@ fn montar(p: Pedido, op: Opciones) -> windows::core::Result<Estado> {
         };
         let letras = letras::registrar();
         let pintor = Rc::new(
-            Pintor::nuevo(escala, &letras.cuerpo).ok_or_else(|| windows::core::Error::from(windows::Win32::Foundation::E_FAIL))?,
+            Pintor::nuevo(escala, &letras.cuerpo)
+                .ok_or_else(|| windows::core::Error::from(windows::Win32::Foundation::E_FAIL))?,
         );
         let e = |v: i32| v * ppp / 96;
         let (an, al) = op.tamano.unwrap_or((e(980), e(900)));
@@ -2807,7 +3060,10 @@ fn montar(p: Pedido, op: Opciones) -> windows::core::Result<Estado> {
             // Sin barra de abajo: cada tabla ancha lleva la suya (`tabla_ancha`).
             // Sin pintar encima de sus hermanas: el cajon de los comentarios
             // va sobre ella (`comentarios::carril`).
-            WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS | WINDOW_STYLE((ES_MULTILINE | ES_AUTOVSCROLL | ES_NOHIDESEL) as u32),
+            WS_CHILD
+                | WS_VISIBLE
+                | WS_CLIPSIBLINGS
+                | WINDOW_STYLE((ES_MULTILINE | ES_AUTOVSCROLL | ES_NOHIDESEL) as u32),
             0,
             0,
             10,
@@ -2818,7 +3074,8 @@ fn montar(p: Pedido, op: Opciones) -> windows::core::Result<Estado> {
             None,
         )?;
         EDIT.with(|c| c.set(edit.0 as isize));
-        let original = SetWindowLongPtrW(edit, GWLP_WNDPROC, procedimiento_edit as *const () as isize);
+        let original =
+            SetWindowLongPtrW(edit, GWLP_WNDPROC, procedimiento_edit as *const () as isize);
         ORIGINAL.with(|o| o.set(original));
         let menu = menu::crear(marco)?;
 
@@ -2826,11 +3083,21 @@ fn montar(p: Pedido, op: Opciones) -> windows::core::Result<Estado> {
         enviar(edit, EM_EXLIMITTEXT, 0, 0x7FFF_FFFE);
         // Ajustar a la ventana, y que el control no se corra de lado para
         // ensenar el cursor: lo hace la tabla ancha suya (`tabla_ancha`).
-        enviar(edit, EM_SETOPTIONS, ECOOP_AND as usize, !(ECO_AUTOHSCROLL as isize));
+        enviar(
+            edit,
+            EM_SETOPTIONS,
+            ECOOP_AND as usize,
+            !(ECO_AUTOHSCROLL as isize),
+        );
         enviar(edit, EM_SETTARGETDEVICE, 0, 0);
         // El corrector ortografico de Windows (8 en adelante) y el IME.
         let opciones = enviar(edit, EM_GETLANGOPTIONS, 0, 0);
-        enviar(edit, EM_SETLANGOPTIONS, 0, opciones | IMF_SPELLCHECKING as isize);
+        enviar(
+            edit,
+            EM_SETLANGOPTIONS,
+            0,
+            opciones | IMF_SPELLCHECKING as isize,
+        );
         let ctf = SES_USECTF | SES_CTFALLOWPROOFING | SES_CTFALLOWEMBED;
         enviar(edit, EM_SETEDITSTYLE, ctf as usize, ctf as isize);
 
@@ -2840,7 +3107,9 @@ fn montar(p: Pedido, op: Opciones) -> windows::core::Result<Estado> {
             if ole.is_null() {
                 None
             } else {
-                windows::core::IUnknown::from_raw(ole).cast::<ITextDocument>().ok()
+                windows::core::IUnknown::from_raw(ole)
+                    .cast::<ITextDocument>()
+                    .ok()
             }
         };
         // La letra y el tamano elegidos para leer (ver `vista`): no van en el
@@ -2889,7 +3158,12 @@ fn montar(p: Pedido, op: Opciones) -> windows::core::Result<Estado> {
         estado.estilos.margen = margen_de(&estado);
         cargar(&mut estado, &p.texto);
         // Con EN_DROPFILES: soltar fotos del Explorador en el texto.
-        enviar(edit, EM_SETEVENTMASK, 0, (ENM_CHANGE | ENM_DROPFILES) as isize);
+        enviar(
+            edit,
+            EM_SETEVENTMASK,
+            0,
+            (ENM_CHANGE | ENM_DROPFILES) as isize,
+        );
         fotos::preparar(&estado);
         // Lo guardado es lo que se leeria ahora: abrir y cerrar no reescribe
         // una tabla que venia escrita de otra forma.
@@ -2966,7 +3240,15 @@ pub fn correr(
             }
         }
         // Que Windows recalcule el marco sin su barra de titulo.
-        let _ = SetWindowPos(marco, None, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
+        let _ = SetWindowPos(
+            marco,
+            None,
+            0,
+            0,
+            0,
+            0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED,
+        );
         let _ = SetForegroundWindow(marco);
         let _ = SetFocus(Some(edit));
         SetTimer(Some(marco), T_AUTOGUARDAR, MS_AUTOGUARDAR, None);
@@ -2977,22 +3259,30 @@ pub fn correr(
         let mut m = MSG::default();
         while GetMessageW(&mut m, None, 0, 0).0 > 0 {
             // Un clic en la nota no la mueve (ver `quedarse_en`).
-            let antes_del_clic = (m.hwnd == edit && matches!(m.message, WM_LBUTTONDOWN | WM_LBUTTONUP)).then(|| {
-                let mut p = POINT::default();
-                enviar(edit, EM_GETSCROLLPOS, 0, &mut p as *mut _ as isize);
-                p.y
-            });
+            let antes_del_clic =
+                (m.hwnd == edit && matches!(m.message, WM_LBUTTONDOWN | WM_LBUTTONUP)).then(|| {
+                    let mut p = POINT::default();
+                    enviar(edit, EM_GETSCROLLPOS, 0, &mut p as *mut _ as isize);
+                    p.y
+                });
             let del_titulo = estado.titulo_edit.is_some_and(|t| t == m.hwnd);
             // Escribiendo un comentario las teclas son suyas (Intro envia).
             let del_comentario = estado.comentarios.compositor == Some(m.hwnd);
             // Y en el cuadro del enlace de la barra flotante (Intro lo pone).
             let del_enlace = wysiwyg::es_del_enlace(&estado, m.hwnd);
-            if del_titulo && m.message == WM_KEYDOWN && (m.wParam.0 == VK_RETURN.0 as usize || m.wParam.0 == VK_ESCAPE.0 as usize) {
+            if del_titulo
+                && m.message == WM_KEYDOWN
+                && (m.wParam.0 == VK_RETURN.0 as usize || m.wParam.0 == VK_ESCAPE.0 as usize)
+            {
                 acabar_titulo(&mut estado, m.wParam.0 == VK_RETURN.0 as usize);
             } else if del_comentario && comentarios::tecla(&mut estado, &m) {
             } else if del_enlace && wysiwyg::tecla_del_enlace(&mut estado, &m) {
             } else if m.hwnd == edit && interceptar(&mut estado, &m, guardar) {
-            } else if del_titulo || del_comentario || del_enlace || TranslateAcceleratorW(marco, tabla, &m) == 0 {
+            } else if del_titulo
+                || del_comentario
+                || del_enlace
+                || TranslateAcceleratorW(marco, tabla, &m) == 0
+            {
                 let _ = TranslateMessage(&m);
                 DispatchMessageW(&m);
             }
@@ -3009,7 +3299,12 @@ pub fn correr(
             for o in ordenes {
                 atender(&mut estado, o, guardar);
             }
-            if m.hwnd == edit && matches!(m.message, WM_KEYDOWN | WM_KEYUP | WM_LBUTTONUP | WM_LBUTTONDOWN) {
+            if m.hwnd == edit
+                && matches!(
+                    m.message,
+                    WM_KEYDOWN | WM_KEYUP | WM_LBUTTONUP | WM_LBUTTONDOWN
+                )
+            {
                 seguir_al_cursor(&mut estado);
                 tablas::desplazar::seguir(&estado);
                 actualizar_en_tabla(&mut estado);
@@ -3020,7 +3315,12 @@ pub fn correr(
             // El cursor fuera de las marcas, la conversion al vuelo y la barra
             // flotante (`wysiwyg`).
             wysiwyg::despues(&mut estado, &m);
-            if m.hwnd == edit && matches!(m.message, WM_KEYDOWN | WM_CHAR | WM_MOUSEWHEEL | WM_VSCROLL | WM_LBUTTONUP) {
+            if m.hwnd == edit
+                && matches!(
+                    m.message,
+                    WM_KEYDOWN | WM_CHAR | WM_MOUSEWHEEL | WM_VSCROLL | WM_LBUTTONUP
+                )
+            {
                 imagenes::repintar(edit);
             }
             // El panel sigue a la nota y el cursor elige su comentario.
@@ -3045,7 +3345,8 @@ fn quedarse_en(e: &Estado, y: i32) {
     let mut p = POINT::default();
     enviar(e.edit, EM_GETSCROLLPOS, 0, &mut p as *mut _ as isize);
     // SAFETY: consulta de la captura del raton de este hilo.
-    let arrastrando = unsafe { windows::Win32::UI::Input::KeyboardAndMouse::GetCapture() } == e.edit;
+    let arrastrando =
+        unsafe { windows::Win32::UI::Input::KeyboardAndMouse::GetCapture() } == e.edit;
     if p.y == y || arrastrando {
         return;
     }
@@ -3073,7 +3374,11 @@ fn quedarse_en(e: &Estado, y: i32) {
 /// **La nota pintada en memoria**, sin ensenar nada: la ventana oculta de
 /// `tamano`, desde arriba, con el cursor al principio. Para las muestras de
 /// la aplicacion (una nota con sus paginas vivas ya pintadas).
-pub fn pintar_en_memoria(p: Pedido, claro: bool, tamano: (i32, i32)) -> windows::core::Result<pixpin_codec::ImagenRgba> {
+pub fn pintar_en_memoria(
+    p: Pedido,
+    claro: bool,
+    tamano: (i32, i32),
+) -> windows::core::Result<pixpin_codec::ImagenRgba> {
     let mut e = montar(
         p,
         Opciones {
@@ -3112,20 +3417,28 @@ fn muestra(e: &Estado) -> pixpin_codec::ImagenRgba {
             ..Default::default()
         };
         let mut bits: *mut core::ffi::c_void = std::ptr::null_mut();
-        let mapa = CreateDIBSection(Some(dc), &info, DIB_RGB_COLORS, &mut bits, None, 0).unwrap_or_default();
+        let mapa = CreateDIBSection(Some(dc), &info, DIB_RGB_COLORS, &mut bits, None, 0)
+            .unwrap_or_default();
         let viejo = SelectObject(dc, HGDIOBJ(mapa.0));
         VISTA.with(|v| {
             if let Some(v) = v.borrow().as_ref() {
                 pintar_marco(dc, v);
             }
         });
-        let cuerpo = VISTA.with(|v| v.borrow().as_ref().map(|v| v.disp.cuerpo)).unwrap_or_default();
+        let cuerpo = VISTA
+            .with(|v| v.borrow().as_ref().map(|v| v.disp.cuerpo))
+            .unwrap_or_default();
         // Lo de la nota, solo en el papel (lo que esta por encima de lo
         // visible tambien se pinta y pisaria la barra).
         let guardado = SaveDC(dc);
         IntersectClipRect(dc, cuerpo.x, cuerpo.y, cuerpo.derecha(), cuerpo.abajo());
         let mut antes = POINT::default();
-        let _ = SetViewportOrgEx(dc, cuerpo.x - crate::tabla_ancha::hueco(), cuerpo.y, Some(&mut antes));
+        let _ = SetViewportOrgEx(
+            dc,
+            cuerpo.x - crate::tabla_ancha::hueco(),
+            cuerpo.y,
+            Some(&mut antes),
+        );
         SendMessageW(
             e.edit,
             WM_PRINTCLIENT,

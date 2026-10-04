@@ -162,7 +162,12 @@ pub fn guardar_en_el_chat(
         Paso::Nada => Paso::Nada,
         Paso::Nuevo => match foto(pa) {
             Some(foto) => {
-                tracing::info!(trazos = tinta.len(), ancho = foto.ancho, alto = foto.alto, "anotador: a Mensajes guardados");
+                tracing::info!(
+                    trazos = tinta.len(),
+                    ancho = foto.ancho,
+                    alto = foto.alto,
+                    "anotador: a Mensajes guardados"
+                );
                 chat.guardar_nuevo(raiz, Sesion { foto, tinta }, pa.avisos, globo);
                 Paso::Nuevo
             }
@@ -172,7 +177,10 @@ pub fn guardar_en_el_chat(
             }
         },
         Paso::AlDia => {
-            tracing::info!(trazos = tinta.len(), "anotador: al dia en Mensajes guardados");
+            tracing::info!(
+                trazos = tinta.len(),
+                "anotador: al dia en Mensajes guardados"
+            );
             chat.poner_al_dia(raiz, tinta, pa.avisos, globo);
             Paso::AlDia
         }
@@ -584,7 +592,10 @@ mod pruebas {
         let escritorio = d.escritorio_virtual();
         let principal = *d.principal().expect("principal");
         let t = pixpin_store::Catalogo::nuevo(pixpin_store::Idioma::Espanol);
-        let rotulos = (t.t("anotador-rotulo-dibujando"), t.t("anotador-rotulo-atravesando"));
+        let rotulos = (
+            t.t("anotador-rotulo-dibujando"),
+            t.t("anotador-rotulo-atravesando"),
+        );
         println!(
             "escritorio virtual {}x{} ({} monitores)",
             escritorio.ancho,
@@ -597,7 +608,8 @@ mod pruebas {
             let t_disp = t0.elapsed();
             let motor = pixpin_render::MotorRender::nuevo(disp.d3d()).expect("motor");
             let t_motor = t0.elapsed();
-            let ventana = pixpin_shell::overlay::VentanaOverlay::nueva(escritorio).expect("ventana");
+            let ventana =
+                pixpin_shell::overlay::VentanaOverlay::nueva(escritorio).expect("ventana");
             let t_ventana = t0.elapsed();
             let sup = pixpin_render::Superficie::nueva_con_capas(
                 &motor,
@@ -609,8 +621,14 @@ mod pruebas {
             )
             .expect("superficie");
             let t_sup = t0.elapsed();
-            let mut ps = super::super::pastilla_pantalla::Pastilla::nueva(&motor, disp.d3d(), &principal, rotulos.clone(), ventana.handle())
-                .expect("pastilla");
+            let mut ps = super::super::pastilla_pantalla::Pastilla::nueva(
+                &motor,
+                disp.d3d(),
+                &principal,
+                rotulos.clone(),
+                ventana.handle(),
+            )
+            .expect("pastilla");
             ps.al_dia(&motor);
             let t_pastilla = t0.elapsed();
             println!(

@@ -376,7 +376,9 @@ impl Lector<'_, '_> {
                     }
                     self.en_linea(h, Estilo::default(), salida);
                 }
-                "tbl" | "tr" | "tc" | "sdt" | "sdtContent" => self.parrafos_de_celda(h, salida, primero),
+                "tbl" | "tr" | "tc" | "sdt" | "sdtContent" => {
+                    self.parrafos_de_celda(h, salida, primero)
+                }
                 _ => {}
             }
         }
@@ -390,11 +392,18 @@ fn ancho_de_texto(cuerpo: &Nodo) -> u32 {
     let Some(s) = cuerpo.elementos().filter(|e| e.nombre == "sectPr").last() else {
         return 0;
     };
-    let numero = |e: Option<&Nodo>, a: &str| e.and_then(|e| e.atributo(a).parse::<i64>().ok()).unwrap_or(0);
+    let numero = |e: Option<&Nodo>, a: &str| {
+        e.and_then(|e| e.atributo(a).parse::<i64>().ok())
+            .unwrap_or(0)
+    };
     let papel = numero(s.hijo("pgSz"), "w");
     let margenes = s.hijo("pgMar");
     let texto = papel - numero(margenes, "left") - numero(margenes, "right");
-    if papel > 0 && texto > 0 { texto as u32 } else { 0 }
+    if papel > 0 && texto > 0 {
+        texto as u32
+    } else {
+        0
+    }
 }
 
 /// «Heading1», «Ttulo1» (asi escribe Word «Titulo 1» en espanol), «Title»…
@@ -553,8 +562,16 @@ mod pruebas {
     fn una_tabla_de_word_guarda_sus_celdas_con_rejilla_uniones_y_fondo() {
         let d = leer_cuerpo(TABLA_COMPLETA);
         assert_eq!(d.bloques.len(), 3);
-        let filas: Vec<&FilaDeTabla> = d.bloques.iter().map(|b| b.fila.as_ref().expect("fila de Word")).collect();
-        assert!(filas.iter().all(|f| f.tabla == 0 && f.rejilla == vec![500, 6000, 2000]));
+        let filas: Vec<&FilaDeTabla> = d
+            .bloques
+            .iter()
+            .map(|b| b.fila.as_ref().expect("fila de Word"))
+            .collect();
+        assert!(
+            filas
+                .iter()
+                .all(|f| f.tabla == 0 && f.rejilla == vec![500, 6000, 2000])
+        );
         assert_eq!(filas[0].pagina, 11906 - 1440, "papel menos margenes");
         let cab = &filas[0].celdas;
         assert_eq!(cab.len(), 2);
@@ -563,22 +580,36 @@ mod pruebas {
         assert_eq!(cab[1].columnas, 2);
         // Cada parrafo en su linea, tambien el vacio del final: el movil lo
         // pinta como `<p>&nbsp;</p>` y la fila mide un renglon mas (K16).
-        assert_eq!(cab[1].texto(), "Referencia
+        assert_eq!(
+            cab[1].texto(),
+            "Referencia
 y enlace
-");
+"
+        );
         assert!(!filas[1].celdas[0].sigue);
         assert!(filas[2].celdas[0].sigue, "la continuacion de la union");
         assert_eq!(filas[2].celdas[0].texto(), "", "no trae nada suyo");
         // La fila en una linea (buscar, exportar) sigue como antes.
-        assert_eq!(d.bloques[0].texto(), format!("N{SEPARADOR_DE_CELDA}Referencia y enlace"));
-        assert_eq!(d.bloques[2].texto(), format!("Li{SEPARADOR_DE_CELDA}Abierto"), "sin nada delante, sin raya delante");
+        assert_eq!(
+            d.bloques[0].texto(),
+            format!("N{SEPARADOR_DE_CELDA}Referencia y enlace")
+        );
+        assert_eq!(
+            d.bloques[2].texto(),
+            format!("Li{SEPARADOR_DE_CELDA}Abierto"),
+            "sin nada delante, sin raya delante"
+        );
     }
 
     #[test]
     fn dos_tablas_seguidas_llevan_numeros_distintos_y_sin_seccion_la_pagina_es_cero() {
         let t = r#"<w:tbl><w:tr><w:tc><w:p><w:r><w:t>a</w:t></w:r></w:p></w:tc></w:tr></w:tbl>"#;
         let d = leer_cuerpo(&format!("{t}{t}"));
-        let n: Vec<u32> = d.bloques.iter().map(|b| b.fila.as_ref().unwrap().tabla).collect();
+        let n: Vec<u32> = d
+            .bloques
+            .iter()
+            .map(|b| b.fila.as_ref().unwrap().tabla)
+            .collect();
         assert_eq!(n, vec![0, 1]);
         assert_eq!(d.bloques[0].fila.as_ref().unwrap().pagina, 0);
         assert!(d.bloques[0].fila.as_ref().unwrap().rejilla.is_empty());

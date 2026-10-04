@@ -57,7 +57,10 @@ fn elegir_varias_filas_lo_alarga_el_control_y_vale_el_rectangulo_arrastrado() {
     let t = tabla(&e);
     elegir(e.edit, t.celdas[1][1], t.celdas[2][1] + 1);
     let (a, b) = seleccion(e.edit);
-    assert!(a <= t.celdas[1][0] && b > t.celdas[2][2], "filas enteras: {a}..{b}");
+    assert!(
+        a <= t.celdas[1][0] && b > t.celdas[2][2],
+        "filas enteras: {a}..{b}"
+    );
     // Sin arrastre apuntado, filas enteras; con el, sus celdas.
     ARRASTRE.with(|x| x.set(None));
     assert_eq!(elegido(&e).map(|x| (x.1, x.2)), Some(((1, 0), (2, 2))));
@@ -78,7 +81,11 @@ const DE_SHEETS: &str = "<google-sheets-html-origin><table><tbody><tr><td style=
 #[test]
 fn una_tabla_html_con_combinadas_y_colores_se_abre_editable_y_se_guarda_igual() {
     let e = abrir(PRESUPUESTO);
-    assert_eq!(md_tabla::tablas_en_control(&leer(e.edit)).len(), 1, "es una tabla del control");
+    assert_eq!(
+        md_tabla::tablas_en_control(&leer(e.edit)).len(),
+        1,
+        "es una tabla del control"
+    );
     assert_eq!(markdown(&e), PRESUPUESTO);
     assert_eq!(e.guardado, PRESUPUESTO, "abrir y cerrar no la reescribe");
     desmontar(e);
@@ -91,7 +98,10 @@ fn las_combinadas_y_los_colores_se_leen_del_control() {
     assert_eq!(t.formato(0, 0).columnas, 3);
     assert!(t.formato(0, 1).tapada && t.formato(0, 2).tapada);
     let obra = t.formato(1, 0);
-    assert_eq!((obra.filas, obra.fondo, obra.letra), (2, Some(0xffc9c9), Some(0xe03131)));
+    assert_eq!(
+        (obra.filas, obra.fondo, obra.letra),
+        (2, Some(0xffc9c9), Some(0xe03131))
+    );
     assert!(t.formato(2, 0).tapada);
     assert_eq!(t.formato(3, 2).fondo, Some(0xffec99));
     assert_eq!(t.alineacion_de(2, 2), Alineacion::Derecha);
@@ -102,7 +112,14 @@ fn las_combinadas_y_los_colores_se_leen_del_control() {
 fn color_de_la_letra_en(e: &Estado, pos: usize) -> u32 {
     let doc = e.doc.as_ref().unwrap();
     // SAFETY: rango del documento vivo.
-    unsafe { doc.Range(pos as i32, pos as i32 + 1).unwrap().GetFont().unwrap().GetForeColor().unwrap() as u32 }
+    unsafe {
+        doc.Range(pos as i32, pos as i32 + 1)
+            .unwrap()
+            .GetFont()
+            .unwrap()
+            .GetForeColor()
+            .unwrap() as u32
+    }
 }
 
 #[test]
@@ -111,14 +128,29 @@ fn la_letra_de_una_celda_pintada_sobrevive_al_formato_en_vivo() {
     pintar(&mut e, None);
     let texto = leer(e.edit);
     let en = |s: &str| texto[..texto.find(s).unwrap()].encode_utf16().count();
-    assert_eq!(color_de_la_letra_en(&e, en("Obra gruesa")), bgr(0xe03131), "la suya");
-    assert_eq!(color_de_la_letra_en(&e, en("4,30")), bgr(tabla_rtf::letra_sobre(0xffec99)), "oscura sobre el amarillo");
-    assert_eq!(color_de_la_letra_en(&e, en("Hormigon")), bgr(e.estilos.tema.texto), "las demas, la del tema");
+    assert_eq!(
+        color_de_la_letra_en(&e, en("Obra gruesa")),
+        bgr(0xe03131),
+        "la suya"
+    );
+    assert_eq!(
+        color_de_la_letra_en(&e, en("4,30")),
+        bgr(tabla_rtf::letra_sobre(0xffec99)),
+        "oscura sobre el amarillo"
+    );
+    assert_eq!(
+        color_de_la_letra_en(&e, en("Hormigon")),
+        bgr(e.estilos.tema.texto),
+        "las demas, la del tema"
+    );
     // Y con el cursor yendo y viniendo (repintado de dos renglones).
     elegir(e.edit, en("Obra gruesa"), en("Obra gruesa"));
     let n = md_vivo::linea_de(&md_vivo::lineas(&texto), en("Obra gruesa"));
     pintar(&mut e, Some(&[n]));
-    assert_eq!(color_de_la_letra_en(&e, en("Obra gruesa") + 2), bgr(0xe03131));
+    assert_eq!(
+        color_de_la_letra_en(&e, en("Obra gruesa") + 2),
+        bgr(0xe03131)
+    );
     desmontar(e);
 }
 
@@ -132,7 +164,10 @@ fn pegar_una_tabla_de_sheets_fuera_de_una_tabla_la_crea_con_sus_combinadas() {
     assert!(md.contains(
         "<th colspan=\"3\" align=\"center\" style=\"background:#4a86e8;color:#ffffff\">**Mensualidad**</th>"
     ), "{md}");
-    assert!(md.contains("<td rowspan=\"2\" style=\"background:#ffec99\">Enero</td>"), "{md}");
+    assert!(
+        md.contains("<td rowspan=\"2\" style=\"background:#ffec99\">Enero</td>"),
+        "{md}"
+    );
     assert!(md.contains("<td align=\"right\" style=\"color:#e03131\">45</td>"));
     desmontar(e);
     // Ida y vuelta: abierta otra vez, el mismo Markdown.
@@ -144,8 +179,14 @@ fn pegar_una_tabla_de_sheets_fuera_de_una_tabla_la_crea_con_sus_combinadas() {
 #[test]
 fn pegar_una_tabla_sin_colores_ni_combinadas_la_deja_en_barras() {
     let mut e = abrir("");
-    pegar_tabla(&mut e, &leer_tsv("Partida\tImporte\nArena\t12,5\n").unwrap());
-    assert_eq!(markdown(&e), "| Partida | Importe |\n|:---|:---|\n| Arena | 12,5 |\n");
+    pegar_tabla(
+        &mut e,
+        &leer_tsv("Partida\tImporte\nArena\t12,5\n").unwrap(),
+    );
+    assert_eq!(
+        markdown(&e),
+        "| Partida | Importe |\n|:---|:---|\n| Arena | 12,5 |\n"
+    );
     desmontar(e);
 }
 
@@ -172,8 +213,14 @@ fn combinar_lo_elegido_y_separar_vuelve_a_las_barras() {
     comando(&mut e, C_COMBINAR);
     let md = markdown(&e);
     // El texto junto en renglones, como lo junta el movil.
-    assert!(md.contains("<td colspan=\"2\" rowspan=\"2\">1\n2\n4\n5</td>"), "{md}");
-    assert!(md.contains("<td>3</td>\n  </tr>\n  <tr>\n    <td>6</td>"), "las tapadas no se escriben");
+    assert!(
+        md.contains("<td colspan=\"2\" rowspan=\"2\">1\n2\n4\n5</td>"),
+        "{md}"
+    );
+    assert!(
+        md.contains("<td>3</td>\n  </tr>\n  <tr>\n    <td>6</td>"),
+        "las tapadas no se escriben"
+    );
     // El cursor quedo en la combinada: el boton separa.
     assert_eq!(se_puede(&e), (false, true));
     combinar_o_separar(&mut e);
@@ -190,10 +237,18 @@ fn colorear_una_fila_y_una_columna_y_quitarlo_deja_la_tabla_como_estaba() {
     ir_a_celda(&e, tabla(&e).desde, 1, 1);
     comando(&mut e, C_FONDO + 5 + 1);
     let md = markdown(&e);
-    assert_eq!(md.matches("background:#ffc9c9").count(), 3, "la fila entera\n{md}");
+    assert_eq!(
+        md.matches("background:#ffc9c9").count(),
+        3,
+        "la fila entera\n{md}"
+    );
     comando(&mut e, C_LETRA + 10 + 3);
     let md = markdown(&e);
-    assert_eq!(md.matches("color:#1971c2").count(), 3, "la columna entera\n{md}");
+    assert_eq!(
+        md.matches("color:#1971c2").count(),
+        3,
+        "la columna entera\n{md}"
+    );
     assert!(md.contains("<td style=\"background:#ffc9c9;color:#1971c2\">2</td>"));
     comando(&mut e, C_FONDO + 5);
     comando(&mut e, C_LETRA + 10);
@@ -267,7 +322,11 @@ fn guardar_png(img: &pixpin_codec::ImagenRgba, nombre: &str) {
 
 fn muestra_pegada(claro: bool, nombre: &str, paleta: bool) {
     let _com = pixpin_shell::ComDelHilo::iniciar();
-    let mut e = abrir_con("# Gastos de la casa\nCopiado de la hoja de Sheets:\n", claro, (1000, 720));
+    let mut e = abrir_con(
+        "# Gastos de la casa\nCopiado de la hoja de Sheets:\n",
+        claro,
+        (1000, 720),
+    );
     let fin = leer(e.edit).encode_utf16().count();
     elegir(e.edit, fin, fin);
     pegar_tabla(&mut e, &leer_pegado(DE_SHEETS, None).unwrap());
@@ -317,7 +376,10 @@ fn medir_tabla_coloreada() {
     t.poner_fondo((0, 0), (0, 2), Some(0xa5d8ff));
     t.poner_letra((1, 2), (60, 2), Some(0xe03131));
     let con_color = format!("# Notas\n{}\n", md_tabla::a_texto(&t));
-    for (que, md) in [("sin nada", gfm.as_str()), ("con color", con_color.as_str())] {
+    for (que, md) in [
+        ("sin nada", gfm.as_str()),
+        ("con color", con_color.as_str()),
+    ] {
         let t0 = std::time::Instant::now();
         let mut e = abrir(md);
         let abrir_ms = t0.elapsed();
@@ -331,8 +393,9 @@ fn medir_tabla_coloreada() {
         let vuelta = markdown(&e);
         let a_md = t0.elapsed();
         assert_eq!(vuelta, md);
-        println!("{que}: abrir {abrir_ms:?}, repintado {entero:?}, dos renglones {dos:?}, a Markdown {a_md:?}");
+        println!(
+            "{que}: abrir {abrir_ms:?}, repintado {entero:?}, dos renglones {dos:?}, a Markdown {a_md:?}"
+        );
         desmontar(e);
     }
 }
-

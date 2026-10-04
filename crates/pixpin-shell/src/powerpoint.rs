@@ -35,9 +35,7 @@ use windows::Win32::System::Com::{
     DISPATCH_PROPERTYGET, DISPATCH_PROPERTYPUT, DISPPARAMS, IDispatch,
 };
 use windows::Win32::System::Ole::{DISPID_PROPERTYPUT, GetActiveObject};
-use windows::Win32::System::Variant::{
-    VARIANT, VT_BSTR, VT_DISPATCH, VT_I4, VariantClear,
-};
+use windows::Win32::System::Variant::{VARIANT, VT_BSTR, VT_DISPATCH, VT_I4, VariantClear};
 use windows::core::{BSTR, GUID, HSTRING, PCWSTR};
 
 /// `ppSaveAsPDF` de la enumeracion `PpSaveAsFileType`.
@@ -128,21 +126,38 @@ impl Var {
 
 /// Llama a `nombre` de `objeto`. `args` en el orden natural (el de VBA): se
 /// dan la vuelta aqui, que `DISPPARAMS` los quiere del ultimo al primero.
-fn llamar(objeto: &IDispatch, nombre: &str, tipo: DISPATCH_FLAGS, args: Vec<Var>) -> windows::core::Result<Var> {
+fn llamar(
+    objeto: &IDispatch,
+    nombre: &str,
+    tipo: DISPATCH_FLAGS,
+    args: Vec<Var>,
+) -> windows::core::Result<Var> {
     let ancho = HSTRING::from(nombre);
     let nombres = [PCWSTR(ancho.as_ptr())];
     let mut id = 0i32;
     // SAFETY: un nombre, un id; punteros validos durante la llamada.
     unsafe { objeto.GetIDsOfNames(&GUID::zeroed(), nombres.as_ptr(), 1, 0, &mut id)? };
-    let mut crudos: Vec<VARIANT> = args.iter().rev().map(|v| {
-        // SAFETY: copia bit a bit; los originales en `args` siguen siendo
-        // los duenos y se limpian una sola vez, al final.
-        unsafe { std::mem::transmute_copy(&v.0) }
-    }).collect();
+    let mut crudos: Vec<VARIANT> = args
+        .iter()
+        .rev()
+        .map(|v| {
+            // SAFETY: copia bit a bit; los originales en `args` siguen siendo
+            // los duenos y se limpian una sola vez, al final.
+            unsafe { std::mem::transmute_copy(&v.0) }
+        })
+        .collect();
     let mut nombrado = DISPID_PROPERTYPUT;
     let parametros = DISPPARAMS {
-        rgvarg: if crudos.is_empty() { std::ptr::null_mut() } else { crudos.as_mut_ptr() },
-        rgdispidNamedArgs: if tipo == DISPATCH_PROPERTYPUT { &mut nombrado } else { std::ptr::null_mut() },
+        rgvarg: if crudos.is_empty() {
+            std::ptr::null_mut()
+        } else {
+            crudos.as_mut_ptr()
+        },
+        rgdispidNamedArgs: if tipo == DISPATCH_PROPERTYPUT {
+            &mut nombrado
+        } else {
+            std::ptr::null_mut()
+        },
         cArgs: crudos.len() as u32,
         cNamedArgs: u32::from(tipo == DISPATCH_PROPERTYPUT),
     };
@@ -150,7 +165,16 @@ fn llamar(objeto: &IDispatch, nombre: &str, tipo: DISPATCH_FLAGS, args: Vec<Var>
     // SAFETY: `parametros` apunta a memoria viva hasta despues de la
     // llamada; el resultado es un VARIANT propio que limpia `Var`.
     let hecho = unsafe {
-        objeto.Invoke(id, &GUID::zeroed(), 0, tipo, &parametros, Some(&mut resultado.0), None, None)
+        objeto.Invoke(
+            id,
+            &GUID::zeroed(),
+            0,
+            tipo,
+            &parametros,
+            Some(&mut resultado.0),
+            None,
+            None,
+        )
     };
     // Las copias no se limpian (serian dos `VariantClear`): se olvidan.
     for c in crudos.drain(..) {
@@ -186,7 +210,12 @@ pub fn a_pdf(origen: &Path, destino: &Path) -> Result<(), ErrorPowerPoint> {
     let app: IDispatch = unsafe { CoCreateInstance(&clsid, None, CLSCTX_LOCAL_SERVER)? };
     if !ya_estaba {
         // Que no pregunte nada a nadie. Si falla, se sigue: es un seguro.
-        let _ = llamar(&app, "DisplayAlerts", DISPATCH_PROPERTYPUT, vec![Var::entero(PP_ALERTS_NONE)]);
+        let _ = llamar(
+            &app,
+            "DisplayAlerts",
+            DISPATCH_PROPERTYPUT,
+            vec![Var::entero(PP_ALERTS_NONE)],
+        );
     }
     let resultado = convertir(&app, origen, destino);
     if !ya_estaba {
@@ -230,7 +259,10 @@ fn convertir(app: &IDispatch, origen: &Path, destino: &Path) -> Result<(), Error
         &abierta,
         "SaveAs",
         DISPATCH_METHOD,
-        vec![Var::texto(&destino.to_string_lossy()), Var::entero(PP_SAVE_AS_PDF)],
+        vec![
+            Var::texto(&destino.to_string_lossy()),
+            Var::entero(PP_SAVE_AS_PDF),
+        ],
     );
     // Se cierra siempre, haya salido bien o no.
     let _ = llamar(&abierta, "Close", DISPATCH_METHOD, Vec::new());
@@ -282,7 +314,13 @@ mod pruebas {
             let diapos = propiedad(&nueva, "Slides").unwrap();
             for i in 1..=2 {
                 // ppLayoutBlank = 12
-                llamar(&diapos, "Add", DISPATCH_METHOD, vec![Var::entero(i), Var::entero(12)]).unwrap();
+                llamar(
+                    &diapos,
+                    "Add",
+                    DISPATCH_METHOD,
+                    vec![Var::entero(i), Var::entero(12)],
+                )
+                .unwrap();
             }
             // ppSaveAsOpenXMLPresentation = 24
             llamar(

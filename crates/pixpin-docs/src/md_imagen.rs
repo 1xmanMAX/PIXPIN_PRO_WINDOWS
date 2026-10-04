@@ -144,7 +144,13 @@ pub fn es_foto(nombre: &str) -> bool {
 pub fn fichero_de_viva(hoja: &str) -> String {
     let limpio: String = hoja
         .chars()
-        .map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' { c } else { '_' })
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
         .collect();
     format!("{PREFIJO_VIVA}{limpio}.png")
 }
@@ -154,8 +160,11 @@ pub fn fichero_de_viva(hoja: &str) -> String {
 pub fn hoja_de_viva(ruta: &str) -> Option<String> {
     let nombre = ruta.rsplit(['/', '\\']).next()?;
     let hoja = nombre.strip_prefix(PREFIJO_VIVA)?.strip_suffix(".png")?;
-    (!hoja.is_empty() && hoja.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_'))
-        .then(|| hoja.to_string())
+    (!hoja.is_empty()
+        && hoja
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_'))
+    .then(|| hoja.to_string())
 }
 
 /// La direccion de un enlace a una hoja.
@@ -198,7 +207,10 @@ mod pruebas {
         );
         // Casos negativos: barras que son texto.
         assert_eq!(leer(&format!("![a|b]({R})")).unwrap().ancho, None);
-        assert_eq!(leer(&format!("![cota 1|2 m]({R})")).unwrap().alt, "cota 1|2 m");
+        assert_eq!(
+            leer(&format!("![cota 1|2 m]({R})")).unwrap().alt,
+            "cota 1|2 m"
+        );
         assert_eq!(leer(&format!("![x|0]({R})")).unwrap().ancho, None);
         assert_eq!(leer(&format!("![x|]({R})")).unwrap().alt, "x|");
         // Ni una foto en mitad de una frase ni un PDF.
@@ -208,7 +220,11 @@ mod pruebas {
 
     #[test]
     fn leer_y_escribir_una_foto_da_el_mismo_renglon() {
-        for r in [format!("![Planta|320]({R})"), format!("![Planta]({R})"), format!("![]({R})")] {
+        for r in [
+            format!("![Planta|320]({R})"),
+            format!("![Planta]({R})"),
+            format!("![]({R})"),
+        ] {
             assert_eq!(escribir(&leer(&r).unwrap()), r);
         }
     }
@@ -240,7 +256,10 @@ mod pruebas {
     #[test]
     fn cambiar_el_ancho_toca_solo_ese_renglon_y_conserva_la_sangria() {
         let t = format!("# Obra\n  ![Planta]({R})\nfin");
-        assert_eq!(con_ancho(&t, 1, Some(300)).unwrap(), format!("# Obra\n  ![Planta|300]({R})\nfin"));
+        assert_eq!(
+            con_ancho(&t, 1, Some(300)).unwrap(),
+            format!("# Obra\n  ![Planta|300]({R})\nfin")
+        );
         let con = format!("![Planta|300]({R})");
         assert_eq!(con_ancho(&con, 0, None).unwrap(), format!("![Planta]({R})"));
         // Casos negativos: un renglon que no es foto, o que no existe.
@@ -284,9 +303,15 @@ mod pruebas {
     fn el_enlace_a_una_hoja_va_y_vuelve() {
         let e = enlace_a_hoja("Planta [baja]", "P9", "K7Q2");
         assert_eq!(e, "[Planta baja](pixpin:hoja=P9/K7Q2)");
-        assert_eq!(hoja_del_enlace("pixpin:hoja=P9/K7Q2"), Some(("P9".into(), "K7Q2".into())));
+        assert_eq!(
+            hoja_del_enlace("pixpin:hoja=P9/K7Q2"),
+            Some(("P9".into(), "K7Q2".into()))
+        );
         // El enlace se lee como un enlace de siempre.
-        assert_eq!(md_vivo::enlace_en(&e, 2).as_deref(), Some("pixpin:hoja=P9/K7Q2"));
+        assert_eq!(
+            md_vivo::enlace_en(&e, 2).as_deref(),
+            Some("pixpin:hoja=P9/K7Q2")
+        );
         // Casos negativos.
         assert_eq!(hoja_del_enlace("https://x.es"), None);
         assert_eq!(hoja_del_enlace("pixpin:hoja=P9"), None);

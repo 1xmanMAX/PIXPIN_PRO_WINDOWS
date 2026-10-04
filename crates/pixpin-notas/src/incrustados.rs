@@ -48,7 +48,8 @@ pub const ESQUEMA_MENSAJE: &str = "pixpin:mensaje=";
 /// Las extensiones de audio, las de `Markdown.claseDeMedio` del movil (y
 /// de `AudioLigero.EXTENSIONES_DE_AUDIO`): si alli se anade una, aqui
 /// tambien.
-pub const EXTENSIONES_DE_AUDIO: [&str; 8] = ["mp3", "ogg", "oga", "m4a", "wav", "flac", "opus", "aac"];
+pub const EXTENSIONES_DE_AUDIO: [&str; 8] =
+    ["mp3", "ogg", "oga", "m4a", "wav", "flac", "opus", "aac"];
 
 /// Que clase de cosa es un renglon incrustado.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -113,7 +114,11 @@ pub fn de_renglon(renglon: &str) -> Option<(Clase, String, String)> {
         if md_vivo::imagen_de(renglon).is_some() {
             return None;
         }
-        let clase = if es_audio(&ruta) { Clase::Audio } else { Clase::Archivo };
+        let clase = if es_audio(&ruta) {
+            Clase::Audio
+        } else {
+            Clase::Archivo
+        };
         return Some((clase, nombre, ruta));
     }
     if mensaje_del_enlace(&ruta).is_some() {
@@ -159,7 +164,10 @@ pub fn renglones(texto: &str) -> Vec<Renglon> {
 /// Las fotos y los incrustados de la nota, por renglon: lo que se pinta
 /// encima del texto (`imagenes::colocar` busca aqui el sitio de cada uno).
 pub fn encima(texto: &str) -> Vec<(usize, String)> {
-    let mut v: Vec<(usize, String)> = md_imagen::fotos(texto).into_iter().map(|(n, f)| (n, f.ruta)).collect();
+    let mut v: Vec<(usize, String)> = md_imagen::fotos(texto)
+        .into_iter()
+        .map(|(n, f)| (n, f.ruta))
+        .collect();
     v.extend(renglones(texto).into_iter().map(|r| (r.linea, r.ruta)));
     v.sort_by_key(|(n, _)| *n);
     v
@@ -171,7 +179,13 @@ pub fn encima(texto: &str) -> Vec<(usize, String)> {
 /// Sin lo que romperia el `[…]`: corchetes y saltos de renglon.
 fn texto_limpio(s: &str) -> String {
     s.chars()
-        .map(|c| if c == '\n' || c == '\r' || c == '\t' { ' ' } else { c })
+        .map(|c| {
+            if c == '\n' || c == '\r' || c == '\t' {
+                ' '
+            } else {
+                c
+            }
+        })
         .filter(|c| !matches!(c, '[' | ']'))
         .collect::<String>()
         .split_whitespace()
@@ -208,8 +222,15 @@ const LARGO_DEL_TEXTO: usize = 80;
 /// El renglon de un mensaje del chat: su primera frase como texto del
 /// enlace (lo que lee el movil) y sus codigos en la direccion.
 pub fn renglon_de_mensaje(texto: &str, proyecto: &str, mensaje: &str) -> String {
-    let primera = texto.lines().map(str::trim).find(|l| !l.is_empty()).unwrap_or("");
-    let mut t: String = texto_limpio(primera).chars().take(LARGO_DEL_TEXTO).collect();
+    let primera = texto
+        .lines()
+        .map(str::trim)
+        .find(|l| !l.is_empty())
+        .unwrap_or("");
+    let mut t: String = texto_limpio(primera)
+        .chars()
+        .take(LARGO_DEL_TEXTO)
+        .collect();
     if texto_limpio(primera).chars().count() > LARGO_DEL_TEXTO {
         t.push('…');
     }
@@ -260,7 +281,11 @@ fn normalizar_letra(letra: &str) -> String {
 pub fn marca_de_tiempo(ms: i64) -> String {
     let s = ms.max(0) / 1000;
     let (h, m, seg) = (s / 3600, (s % 3600) / 60, s % 60);
-    if h > 0 { format!("{h}:{m:02}:{seg:02}") } else { format!("{m}:{seg:02}") }
+    if h > 0 {
+        format!("{h}:{m:02}:{seg:02}")
+    } else {
+        format!("{m}:{seg:02}")
+    }
 }
 
 /// La velocidad como la escribe el reproductor del chat: `1×`, `1,5×`
@@ -290,15 +315,25 @@ pub struct Marca {
 }
 
 pub fn marca(renglon: &str) -> Option<Marca> {
-    let blancos = renglon.chars().take_while(|c| c.is_whitespace()).map(char::len_utf16).sum::<usize>();
+    let blancos = renglon
+        .chars()
+        .take_while(|c| c.is_whitespace())
+        .map(char::len_utf16)
+        .sum::<usize>();
     let t = renglon.trim_start();
     let resto = t.strip_prefix('[')?;
     let (dentro, _) = resto.split_once(']')?;
     let partes: Vec<&str> = dentro.split(':').collect();
-    let num = |s: &str| (!s.is_empty() && s.len() <= 3 && s.bytes().all(|b| b.is_ascii_digit())).then(|| s.parse::<i64>().ok()).flatten();
+    let num = |s: &str| {
+        (!s.is_empty() && s.len() <= 3 && s.bytes().all(|b| b.is_ascii_digit()))
+            .then(|| s.parse::<i64>().ok())
+            .flatten()
+    };
     let ms = match partes.as_slice() {
         [m, s] if s.len() == 2 => (num(m)? * 60 + num(s)?) * 1000,
-        [h, m, s] if s.len() == 2 && m.len() == 2 => (num(h)? * 3600 + num(m)? * 60 + num(s)?) * 1000,
+        [h, m, s] if s.len() == 2 && m.len() == 2 => {
+            (num(h)? * 3600 + num(m)? * 60 + num(s)?) * 1000
+        }
         _ => return None,
     };
     Some(Marca {
@@ -350,7 +385,11 @@ pub fn letras(texto: &str) -> Vec<Letra> {
 /// El parrafo por el que va el audio: el ultimo cuyo minuto ya paso
 /// (`voz::por_donde_va`). `None` antes del primero.
 pub fn parrafo_que_suena(parrafos: &[(usize, i64)], posicion_ms: i64) -> Option<usize> {
-    parrafos.iter().rev().find(|(_, ms)| *ms <= posicion_ms).map(|(n, _)| *n)
+    parrafos
+        .iter()
+        .rev()
+        .find(|(_, ms)| *ms <= posicion_ms)
+        .map(|(n, _)| *n)
 }
 
 // ---------------------------------------------------------------------------
@@ -371,13 +410,23 @@ pub struct Archivo {
 pub enum Contenido {
     Texto(String),
     /// Una foto (su fichero en este equipo) con su texto, si lo lleva.
-    Foto { ruta: PathBuf, pie: String },
+    Foto {
+        ruta: PathBuf,
+        pie: String,
+    },
     Archivo(Archivo),
     /// Una hoja: su miniatura si ya la hay, su nombre y su clase corta
     /// («2D», «MD», «PDF»), como la tira de Proyectos.
-    Hoja { nombre: String, miniatura: Option<PathBuf>, clase: String },
+    Hoja {
+        nombre: String,
+        miniatura: Option<PathBuf>,
+        clase: String,
+    },
     /// Una nota de voz en una burbuja: su duracion y lo que dice.
-    Voz { duracion: String, texto: String },
+    Voz {
+        duracion: String,
+        texto: String,
+    },
 }
 
 /// Una burbuja del chat para pintar en la nota.
@@ -519,7 +568,10 @@ mod pruebas {
             de_renglon(&format!("![Plano.pdf]({PDF})")),
             Some((Clase::Archivo, "Plano.pdf".into(), PDF.into()))
         );
-        assert_eq!(de_renglon(&format!("  ![nota]({VOZ})  ")).map(|x| x.0), Some(Clase::Audio));
+        assert_eq!(
+            de_renglon(&format!("  ![nota]({VOZ})  ")).map(|x| x.0),
+            Some(Clase::Audio)
+        );
         // Casos negativos: una foto es de `md_imagen`, y un documento en
         // mitad de una frase sigue siendo texto.
         assert_eq!(de_renglon("![obra](pixpin:files/a/obra.jpg)"), None);
@@ -530,7 +582,10 @@ mod pruebas {
 
     #[test]
     fn un_mensaje_y_una_hoja_enlazados_solos_en_su_renglon_son_incrustados() {
-        let m = format!("[Llamar al aparejador]({})", direccion_de_mensaje("p1", "K7Q2ABCDEF"));
+        let m = format!(
+            "[Llamar al aparejador]({})",
+            direccion_de_mensaje("p1", "K7Q2ABCDEF")
+        );
         assert_eq!(de_renglon(&m).map(|x| x.0), Some(Clase::Mensaje));
         let h = md_imagen::enlace_a_hoja("Planta", "p1", "H1");
         assert_eq!(de_renglon(&h).map(|x| x.0), Some(Clase::Hoja));
@@ -543,22 +598,34 @@ mod pruebas {
 
     #[test]
     fn los_renglones_dentro_de_un_bloque_de_codigo_no_se_pintan() {
-        let t = format!("# Obra\n![Plano.pdf]({PDF})\n```\n![Otro.pdf]({PDF})\n```\n[x]({})", direccion_de_mensaje("p", "m"));
+        let t = format!(
+            "# Obra\n![Plano.pdf]({PDF})\n```\n![Otro.pdf]({PDF})\n```\n[x]({})",
+            direccion_de_mensaje("p", "m")
+        );
         let r = renglones(&t);
-        assert_eq!(r.iter().map(|r| (r.linea, r.clase)).collect::<Vec<_>>(), vec![(1, Clase::Archivo), (5, Clase::Mensaje)]);
+        assert_eq!(
+            r.iter().map(|r| (r.linea, r.clase)).collect::<Vec<_>>(),
+            vec![(1, Clase::Archivo), (5, Clase::Mensaje)]
+        );
     }
 
     #[test]
     fn lo_que_va_encima_junta_fotos_e_incrustados_por_renglon() {
         let t = format!("![Plano.pdf]({PDF})\n![obra](obra.png)\ntexto");
-        assert_eq!(encima(&t), vec![(0, PDF.to_string()), (1, "obra.png".to_string())]);
+        assert_eq!(
+            encima(&t),
+            vec![(0, PDF.to_string()), (1, "obra.png".to_string())]
+        );
         assert!(encima("solo texto").is_empty());
     }
 
     #[test]
     fn el_enlace_de_un_mensaje_va_y_vuelve_con_sus_codigos() {
         let d = direccion_de_mensaje("PRJ1234567", "MSG7654321");
-        assert_eq!(mensaje_del_enlace(&d), Some(("PRJ1234567".into(), "MSG7654321".into())));
+        assert_eq!(
+            mensaje_del_enlace(&d),
+            Some(("PRJ1234567".into(), "MSG7654321".into()))
+        );
         // Casos negativos: sin mensaje, con un espacio o con un parentesis
         // (el movil cortaria la direccion ahi).
         assert_eq!(mensaje_del_enlace("pixpin:mensaje=PRJ/"), None);
@@ -571,7 +638,10 @@ mod pruebas {
     fn el_texto_de_un_mensaje_enlazado_es_su_primera_frase_sin_corchetes() {
         let r = renglon_de_mensaje("\n  Pedir [urgente] la grua\nsegunda linea", "p", "m");
         assert_eq!(r, "[Pedir urgente la grua](pixpin:mensaje=p/m)");
-        assert_eq!(de_renglon(&r).map(|x| x.1), Some("Pedir urgente la grua".to_string()));
+        assert_eq!(
+            de_renglon(&r).map(|x| x.1),
+            Some("Pedir urgente la grua".to_string())
+        );
         // Un mensaje sin texto (una foto suelta) se nombra por su codigo.
         assert_eq!(renglon_de_mensaje("", "p", "m"), "[m](pixpin:mensaje=p/m)");
         let largo = renglon_de_mensaje(&"a".repeat(200), "p", "m");
@@ -580,21 +650,46 @@ mod pruebas {
 
     #[test]
     fn el_bloque_de_un_audio_lleva_su_transcripcion_como_la_escribe_el_movil() {
-        let b = bloque_de_audio("Nota de voz", VOZ, Some("[0:00] llamar al aparejador\n\n\n[0:21] y pedir\nel presupuesto\n"));
-        assert_eq!(b, format!("![Nota de voz]({VOZ})\n\n[0:00] llamar al aparejador\n\n[0:21] y pedir el presupuesto"));
+        let b = bloque_de_audio(
+            "Nota de voz",
+            VOZ,
+            Some("[0:00] llamar al aparejador\n\n\n[0:21] y pedir\nel presupuesto\n"),
+        );
+        assert_eq!(
+            b,
+            format!(
+                "![Nota de voz]({VOZ})\n\n[0:00] llamar al aparejador\n\n[0:21] y pedir el presupuesto"
+            )
+        );
         // Y vuelve: el audio y sus dos parrafos con su minuto.
         let l = letras(&b);
         assert_eq!(l.len(), 1);
         assert_eq!(l[0].parrafos, vec![(2, 0), (4, 21_000)]);
         // Sin transcripcion, el renglon solo.
-        assert_eq!(bloque_de_audio("Nota", VOZ, Some("  \n ")), format!("![Nota]({VOZ})"));
-        assert_eq!(bloque_de_audio("Nota", VOZ, None), format!("![Nota]({VOZ})"));
+        assert_eq!(
+            bloque_de_audio("Nota", VOZ, Some("  \n ")),
+            format!("![Nota]({VOZ})")
+        );
+        assert_eq!(
+            bloque_de_audio("Nota", VOZ, None),
+            format!("![Nota]({VOZ})")
+        );
     }
 
     #[test]
     fn la_marca_de_tiempo_se_lee_con_sus_posiciones_y_se_escribe_igual() {
-        assert_eq!(marca("[1:23] hola"), Some(Marca { ms: 83_000, abre: 0, cierra: 5 }));
-        assert_eq!(marca("  [1:02:09] x").map(|m| (m.ms, m.abre, m.cierra)), Some((3_729_000, 2, 10)));
+        assert_eq!(
+            marca("[1:23] hola"),
+            Some(Marca {
+                ms: 83_000,
+                abre: 0,
+                cierra: 5
+            })
+        );
+        assert_eq!(
+            marca("  [1:02:09] x").map(|m| (m.ms, m.abre, m.cierra)),
+            Some((3_729_000, 2, 10))
+        );
         assert_eq!(marca_de_tiempo(83_000), "1:23");
         assert_eq!(marca_de_tiempo(3_729_000), "1:02:09");
         // Casos negativos: una casilla, un enlace y un numero suelto no son
@@ -608,11 +703,19 @@ mod pruebas {
 
     #[test]
     fn cada_transcripcion_salta_en_el_audio_que_tiene_encima() {
-        let t = format!("[0:05] antes de todo\n![a]({VOZ})\n[0:00] uno\n\n[0:10] dos\n![b](b.mp3)\n[0:03] tres");
+        let t = format!(
+            "[0:05] antes de todo\n![a]({VOZ})\n[0:00] uno\n\n[0:10] dos\n![b](b.mp3)\n[0:03] tres"
+        );
         let l = letras(&t);
         assert_eq!(l.len(), 2);
-        assert_eq!((l[0].linea, l[0].parrafos.clone()), (1, vec![(2, 0), (4, 10_000)]));
-        assert_eq!((l[1].ruta.as_str(), l[1].parrafos.clone()), ("b.mp3", vec![(6, 3_000)]));
+        assert_eq!(
+            (l[0].linea, l[0].parrafos.clone()),
+            (1, vec![(2, 0), (4, 10_000)])
+        );
+        assert_eq!(
+            (l[1].ruta.as_str(), l[1].parrafos.clone()),
+            ("b.mp3", vec![(6, 3_000)])
+        );
         // El parrafo que suena: el ultimo cuyo minuto ya paso.
         assert_eq!(parrafo_que_suena(&l[0].parrafos, 12_000), Some(4));
         assert_eq!(parrafo_que_suena(&l[0].parrafos, 9_999), Some(2));
@@ -627,12 +730,24 @@ mod pruebas {
         let m = format!("[x]({})", direccion_de_mensaje("p", "m"));
         let pdf = format!("![Plano.pdf]({PDF})");
         let voz = format!("![a]({VOZ})");
-        for r in [pdf.as_str(), voz.as_str(), m.as_str(), h.as_str(), "[web](https://x.es)", "texto", "![x]()", "mira ![a](b.pdf)"] {
+        for r in [
+            pdf.as_str(),
+            voz.as_str(),
+            m.as_str(),
+            h.as_str(),
+            "[web](https://x.es)",
+            "texto",
+            "![x]()",
+            "mira ![a](b.pdf)",
+        ] {
             assert_eq!(md_edicion::es_incrustado(r), de_renglon(r).is_some(), "{r}");
         }
         // Escribir en su renglon abre uno nuevo y Retroceso detras lo quita
         // entero, como con una foto.
-        assert_eq!(md_edicion::renglones(&format!("{pdf}\ntexto")), vec![Renglon::Bloque, Renglon::Texto(0)]);
+        assert_eq!(
+            md_edicion::renglones(&format!("{pdf}\ntexto")),
+            vec![Renglon::Bloque, Renglon::Texto(0)]
+        );
     }
 
     #[test]

@@ -4,7 +4,10 @@ use pdfsqueeze_core::{compress, Options, Profile};
 fn text_of(bytes: &[u8]) -> String {
     let d = lopdf::Document::load_mem(bytes).unwrap();
     let n = d.get_pages().len() as u32;
-    (1..=n).map(|p| d.extract_text(&[p]).unwrap_or_default()).collect::<Vec<_>>().join("\n")
+    (1..=n)
+        .map(|p| d.extract_text(&[p]).unwrap_or_default())
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 #[test]
@@ -29,13 +32,24 @@ fn raw_photo_is_flate_compressed_losslessly() {
     let input = s.finish();
     let (out, rep) = compress(&input, &Options::from_profile(Profile::Lossless)).unwrap();
     assert!(rep.verified, "{:?}", rep.warnings);
-    assert!(out.len() < input.len() * 8 / 10, "{} vs {}", out.len(), input.len());
+    assert!(
+        out.len() < input.len() * 8 / 10,
+        "{} vs {}",
+        out.len(),
+        input.len()
+    );
     // Pixel-exact round trip.
     let d = lopdf::Document::load_mem(&out).unwrap();
     let mut found = false;
     for (_, o) in &d.objects {
         if let lopdf::Object::Stream(st) = o {
-            if st.dict.get(b"Subtype").and_then(lopdf::Object::as_name).unwrap_or(b"") == b"Image" {
+            if st
+                .dict
+                .get(b"Subtype")
+                .and_then(lopdf::Object::as_name)
+                .unwrap_or(b"")
+                == b"Image"
+            {
                 let dec = pdfsqueeze_core::images::decode::decode_image(&d, st).unwrap();
                 assert_eq!(dec.data, img.data);
                 found = true;
@@ -58,7 +72,12 @@ fn balanced_downsamples_oversized_photo_within_ssim() {
     let dec = rep.images.iter().find(|i| i.width == 1600).unwrap();
     assert!(dec.after_width < 1600, "not downsampled: {:?}", dec);
     assert!(dec.ssim.unwrap() >= opts.min_ssim);
-    assert!(out.len() < input.len() / 3, "{} vs {}", out.len(), input.len());
+    assert!(
+        out.len() < input.len() / 3,
+        "{} vs {}",
+        out.len(),
+        input.len()
+    );
 }
 
 #[test]
@@ -83,7 +102,11 @@ fn bilevel_gray_becomes_ccitt_or_1bit() {
     let (_, rep) = compress(&input, &Options::from_profile(Profile::Lossless)).unwrap();
     assert!(rep.verified, "{:?}", rep.warnings);
     let dec = &rep.images[0];
-    assert!(dec.after_filter == "CCITTFaxDecode" || dec.action.starts_with("bilevel"), "{:?}", dec);
+    assert!(
+        dec.after_filter == "CCITTFaxDecode" || dec.action.starts_with("bilevel"),
+        "{:?}",
+        dec
+    );
     assert!(dec.after_bytes * 6 < dec.before_bytes, "{:?}", dec);
 }
 
@@ -97,7 +120,12 @@ fn scanned_page_uses_mrc_in_small_profile() {
     assert!(rep.verified, "{:?}", rep.warnings);
     let dec = &rep.images[0];
     assert!(dec.action.starts_with("mrc"), "expected MRC, got {:?}", dec);
-    assert!(out.len() < input.len() / 2, "{} vs {}", out.len(), input.len());
+    assert!(
+        out.len() < input.len() / 2,
+        "{} vs {}",
+        out.len(),
+        input.len()
+    );
     // The page must still render two image layers + a mask.
     let d = lopdf::Document::load_mem(&out).unwrap();
     let forms = d.objects.values().filter(|o| matches!(o, lopdf::Object::Stream(s) if s.dict.get(b"Subtype").and_then(lopdf::Object::as_name).unwrap_or(b"") == b"Form")).count();
@@ -145,7 +173,10 @@ fn trailing_junk_is_repaired() {
     assert!(rep.verified, "{:?}", rep.warnings);
     assert!(rep.warnings.iter().any(|w| w.contains("repaired")));
     assert!(out.len() < input.len() / 4);
-    assert_eq!(lopdf::Document::load_mem(&out).unwrap().get_pages().len(), 1);
+    assert_eq!(
+        lopdf::Document::load_mem(&out).unwrap().get_pages().len(),
+        1
+    );
 }
 
 #[test]
@@ -154,22 +185,41 @@ fn progress_reports_and_cancellation_works() {
     use std::sync::Mutex;
     let mut s = Synth::new();
     for i in 0..4u64 {
-        s.image_page(&testgen::photo_seeded(600, 400, i), ImgEnc::Jpeg(90), 50.0, 300.0, 300.0, 200.0);
+        s.image_page(
+            &testgen::photo_seeded(600, 400, i),
+            ImgEnc::Jpeg(90),
+            50.0,
+            300.0,
+            300.0,
+            200.0,
+        );
     }
     let input = s.finish();
     let seen: Mutex<Vec<(u8, String)>> = Mutex::new(vec![]);
-    let (_, rep) = compress_with(&input, &Options::from_profile(Profile::Balanced), &|p: Progress| {
-        seen.lock().unwrap().push((p.percent, p.stage.to_string()));
-        true
-    })
+    let (_, rep) = compress_with(
+        &input,
+        &Options::from_profile(Profile::Balanced),
+        &|p: Progress| {
+            seen.lock().unwrap().push((p.percent, p.stage.to_string()));
+            true
+        },
+    )
     .unwrap();
     let seen = seen.into_inner().unwrap();
     assert!(rep.verified);
     assert_eq!(seen.first().unwrap().0, 0);
     assert_eq!(seen.last().unwrap().0, 100);
-    assert!(seen.windows(2).all(|w| w[0].0 <= w[1].0), "monotone: {:?}", seen);
+    assert!(
+        seen.windows(2).all(|w| w[0].0 <= w[1].0),
+        "monotone: {:?}",
+        seen
+    );
     assert!(seen.iter().any(|(_, s)| s == "images"));
     // Cancel as soon as image work starts.
-    let r = compress_with(&input, &Options::from_profile(Profile::Balanced), &|p: Progress| p.stage != "images");
+    let r = compress_with(
+        &input,
+        &Options::from_profile(Profile::Balanced),
+        &|p: Progress| p.stage != "images",
+    );
     assert!(matches!(r, Err(pdfsqueeze_core::Error::Cancelled)));
 }

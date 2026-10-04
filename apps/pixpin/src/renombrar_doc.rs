@@ -46,14 +46,25 @@ pub fn nombre_nuevo(escrito: &str, antes: &str) -> Option<String> {
         .chars()
         .filter(|c| *c != '\n' && *c != '\r')
         .take(LARGO_MAXIMO)
-        .map(|c| if "\\/:*?\"<>|".contains(c) || c < ' ' { '-' } else { c })
+        .map(|c| {
+            if "\\/:*?\"<>|".contains(c) || c < ' ' {
+                '-'
+            } else {
+                c
+            }
+        })
         .collect();
     // Windows no admite un nombre que acabe en punto o en espacio.
     let limpio = limpio.trim().trim_end_matches(['.', ' ']).trim();
     if limpio.is_empty() {
         return None;
     }
-    let base = limpio.split('.').next().unwrap_or("").trim().to_ascii_uppercase();
+    let base = limpio
+        .split('.')
+        .next()
+        .unwrap_or("")
+        .trim()
+        .to_ascii_uppercase();
     let reservado = matches!(base.as_str(), "CON" | "PRN" | "AUX" | "NUL")
         || ((base.starts_with("COM") || base.starts_with("LPT"))
             && base.len() == 4
@@ -75,7 +86,10 @@ fn con_su_extension(nuevo: &str, antes: &str) -> String {
     if ext.is_empty() || ext.chars().count() > 5 {
         return nuevo.to_string();
     }
-    if nuevo.to_lowercase().ends_with(&format!(".{}", ext.to_lowercase())) {
+    if nuevo
+        .to_lowercase()
+        .ends_with(&format!(".{}", ext.to_lowercase()))
+    {
         nuevo.to_string()
     } else {
         format!("{nuevo}.{ext}")
@@ -83,8 +97,7 @@ fn con_su_extension(nuevo: &str, antes: &str) -> String {
 }
 
 /// De que es el documento que se esta leyendo.
-#[derive(Debug, Clone)]
-#[derive(Default)]
+#[derive(Debug, Clone, Default)]
 pub enum Dueno {
     /// Un mensaje del chat: `carpeta` es la del proyecto, donde esta su
     /// cuaderno.
@@ -128,11 +141,11 @@ pub fn dueno(raiz: &Path, ruta: &Path) -> Dueno {
                 .strip_prefix(carpeta)
                 .map(|r| r.to_string_lossy().replace('\\', "/"))
                 .unwrap_or_default();
-            return match c
-                .mensajes
-                .into_iter()
-                .find(|m| m.ruta.as_deref().is_some_and(|r| r.replace('\\', "/") == rel))
-            {
+            return match c.mensajes.into_iter().find(|m| {
+                m.ruta
+                    .as_deref()
+                    .is_some_and(|r| r.replace('\\', "/") == rel)
+            }) {
                 Some(mensaje) => Dueno::Chat {
                     carpeta: carpeta.to_path_buf(),
                     mensaje,
@@ -225,7 +238,10 @@ pub fn renombrar(
                 return Err(NoSeRenombro::YaExiste(nuevo));
             }
             mover_con_hermanos(ruta, &destino).map_err(NoSeRenombro::Disco)?;
-            Ok(Some(Renombrado::EnDisco { nombre: nuevo, ruta: destino }))
+            Ok(Some(Renombrado::EnDisco {
+                nombre: nuevo,
+                ruta: destino,
+            }))
         }
     }
 }
@@ -260,7 +276,10 @@ fn mover_con_hermanos(ruta: &Path, destino: &Path) -> std::io::Result<()> {
 }
 
 /// Lo que se dice al usuario tras intentarlo.
-pub fn aviso(textos: &pixpin_store::Catalogo, r: &Result<Option<Renombrado>, NoSeRenombro>) -> Option<String> {
+pub fn aviso(
+    textos: &pixpin_store::Catalogo,
+    r: &Result<Option<Renombrado>, NoSeRenombro>,
+) -> Option<String> {
     let mut args = fluent_bundle::FluentArgs::new();
     match r {
         Ok(None) => None,
@@ -375,7 +394,12 @@ impl Pastilla {
     }
 
     /// **Guarda lo escrito.** Si era del chat, el chat relee su cuaderno.
-    pub fn confirmar(&mut self, raiz: &Path, ruta: &Path, textos: &pixpin_store::Catalogo) -> Confirmado {
+    pub fn confirmar(
+        &mut self,
+        raiz: &Path,
+        ruta: &Path,
+        textos: &pixpin_store::Catalogo,
+    ) -> Confirmado {
         let Some(escrito) = self.editando.take() else {
             return Confirmado::default();
         };
@@ -414,19 +438,38 @@ mod pruebas {
             visto: "Informe.docx".into(),
             ..Default::default()
         };
-        assert_eq!(p.tecla(0x54, false), Tecla::NoEsMia, "sin escribir, la T es del lector");
+        assert_eq!(
+            p.tecla(0x54, false),
+            Tecla::NoEsMia,
+            "sin escribir, la T es del lector"
+        );
         assert_eq!(p.tecla(VK_F2, false), Tecla::Consumida);
-        assert_eq!(p.editando.as_deref(), Some("Informe"), "sin la extension, como el movil");
-        assert_eq!(p.tecla(0x54, false), Tecla::Consumida, "escribiendo, la T es del campo");
+        assert_eq!(
+            p.editando.as_deref(),
+            Some("Informe"),
+            "sin la extension, como el movil"
+        );
+        assert_eq!(
+            p.tecla(0x54, false),
+            Tecla::Consumida,
+            "escribiendo, la T es del campo"
+        );
         assert!(p.caracter('\u{8}'));
         assert!(p.caracter('X'));
         assert_eq!(p.editando.as_deref(), Some("InformX"));
-        assert_eq!(p.tecla(0x53, true), Tecla::NoEsMia, "Ctrl+S sigue siendo del lector");
+        assert_eq!(
+            p.tecla(0x53, true),
+            Tecla::NoEsMia,
+            "Ctrl+S sigue siendo del lector"
+        );
         assert_eq!(p.tecla(VK_RETURN, false), Tecla::Confirmar);
         assert_eq!(p.tecla(VK_ESCAPE, false), Tecla::Consumida);
         assert_eq!(p.editando, None);
         assert_eq!(p.visto, "Informe.docx");
-        assert!(!p.caracter('a'), "sin escribir, los caracteres no son suyos");
+        assert!(
+            !p.caracter('a'),
+            "sin escribir, los caracteres no son suyos"
+        );
     }
 
     #[test]
@@ -442,7 +485,8 @@ mod pruebas {
     }
 
     fn carpeta_de_prueba(nombre: &str) -> PathBuf {
-        let d = std::env::temp_dir().join(format!("pixpin-renombrar-{nombre}-{}", std::process::id()));
+        let d =
+            std::env::temp_dir().join(format!("pixpin-renombrar-{nombre}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&d);
         std::fs::create_dir_all(&d).unwrap();
         d
@@ -450,11 +494,23 @@ mod pruebas {
 
     #[test]
     fn el_nombre_nuevo_lleva_la_extension_de_antes_sin_repetirla() {
-        assert_eq!(nombre_nuevo("Informe final", "borrador.docx").as_deref(), Some("Informe final.docx"));
-        assert_eq!(nombre_nuevo("Informe.DOCX", "borrador.docx").as_deref(), Some("Informe.DOCX"));
+        assert_eq!(
+            nombre_nuevo("Informe final", "borrador.docx").as_deref(),
+            Some("Informe final.docx")
+        );
+        assert_eq!(
+            nombre_nuevo("Informe.DOCX", "borrador.docx").as_deref(),
+            Some("Informe.DOCX")
+        );
         // Una «extension» de mas de cinco letras no lo es: no se pega.
-        assert_eq!(nombre_nuevo("Nuevo", "acta.reunion-larga").as_deref(), Some("Nuevo"));
-        assert_eq!(nombre_nuevo("Nuevo", "sin extension").as_deref(), Some("Nuevo"));
+        assert_eq!(
+            nombre_nuevo("Nuevo", "acta.reunion-larga").as_deref(),
+            Some("Nuevo")
+        );
+        assert_eq!(
+            nombre_nuevo("Nuevo", "sin extension").as_deref(),
+            Some("Nuevo")
+        );
     }
 
     #[test]
@@ -462,18 +518,34 @@ mod pruebas {
         assert_eq!(nombre_nuevo("", "a.pdf"), None);
         assert_eq!(nombre_nuevo("   \n", "a.pdf"), None);
         assert_eq!(nombre_nuevo("a", "a.pdf"), None, "igual que antes");
-        assert_eq!(nombre_nuevo("CON", "a.pdf"), None, "nombre reservado de Windows");
+        assert_eq!(
+            nombre_nuevo("CON", "a.pdf"),
+            None,
+            "nombre reservado de Windows"
+        );
         assert_eq!(nombre_nuevo("com1", "a.pdf"), None);
         assert_eq!(nombre_nuevo("...", "a.pdf"), None);
     }
 
     #[test]
     fn lo_que_windows_no_admite_se_cambia_y_el_largo_se_corta() {
-        assert_eq!(nombre_nuevo("a/b:c?", "x.pdf").as_deref(), Some("a-b-c-.pdf"));
-        assert_eq!(nombre_nuevo("dos\nlineas", "x.pdf").as_deref(), Some("doslineas.pdf"));
-        assert_eq!(nombre_nuevo("acaba en punto.", "x.pdf").as_deref(), Some("acaba en punto.pdf"));
+        assert_eq!(
+            nombre_nuevo("a/b:c?", "x.pdf").as_deref(),
+            Some("a-b-c-.pdf")
+        );
+        assert_eq!(
+            nombre_nuevo("dos\nlineas", "x.pdf").as_deref(),
+            Some("doslineas.pdf")
+        );
+        assert_eq!(
+            nombre_nuevo("acaba en punto.", "x.pdf").as_deref(),
+            Some("acaba en punto.pdf")
+        );
         let largo = "a".repeat(200);
-        assert_eq!(nombre_nuevo(&largo, "x.pdf").unwrap().chars().count(), LARGO_MAXIMO + 4);
+        assert_eq!(
+            nombre_nuevo(&largo, "x.pdf").unwrap().chars().count(),
+            LARGO_MAXIMO + 4
+        );
     }
 
     #[test]
@@ -485,7 +557,11 @@ mod pruebas {
         std::fs::write(&doc, b"x").unwrap();
         std::fs::write(d.join("libro.epub.pixpin-lectura"), b"{}").unwrap();
         std::fs::create_dir_all(d.join("libro.epub.pixpin-anotado")).unwrap();
-        std::fs::write(d.join("libro.epub.pixpin-anotado").join("capa.excalidraw"), b"{}").unwrap();
+        std::fs::write(
+            d.join("libro.epub.pixpin-anotado").join("capa.excalidraw"),
+            b"{}",
+        )
+        .unwrap();
         // Un vecino con un nombre parecido no se toca.
         std::fs::write(d.join("libro.epub2.pixpin-lectura"), b"{}").unwrap();
 
@@ -493,11 +569,24 @@ mod pruebas {
         assert!(matches!(dueno, Dueno::Suelto));
         let r = renombrar(&raiz, &doc, &dueno, "libro.epub", "Novela").unwrap();
         let nueva = d.join("Novela.epub");
-        assert_eq!(r, Some(Renombrado::EnDisco { nombre: "Novela.epub".into(), ruta: nueva.clone() }));
+        assert_eq!(
+            r,
+            Some(Renombrado::EnDisco {
+                nombre: "Novela.epub".into(),
+                ruta: nueva.clone()
+            })
+        );
         assert!(nueva.is_file() && !doc.exists());
         assert!(d.join("Novela.epub.pixpin-lectura").is_file());
-        assert!(d.join("Novela.epub.pixpin-anotado").join("capa.excalidraw").is_file());
-        assert!(d.join("libro.epub2.pixpin-lectura").is_file(), "el vecino sigue igual");
+        assert!(
+            d.join("Novela.epub.pixpin-anotado")
+                .join("capa.excalidraw")
+                .is_file()
+        );
+        assert!(
+            d.join("libro.epub2.pixpin-lectura").is_file(),
+            "el vecino sigue igual"
+        );
         let _ = std::fs::remove_dir_all(&d);
     }
 
@@ -509,7 +598,11 @@ mod pruebas {
         std::fs::write(d.join("b.pdf"), b"b").unwrap();
         let r = renombrar(&d.join("almacen"), &doc, &Dueno::Suelto, "a.pdf", "b");
         assert!(matches!(r, Err(NoSeRenombro::YaExiste(n)) if n == "b.pdf"));
-        assert_eq!(std::fs::read(d.join("b.pdf")).unwrap(), b"b", "el otro sigue intacto");
+        assert_eq!(
+            std::fs::read(d.join("b.pdf")).unwrap(),
+            b"b",
+            "el otro sigue intacto"
+        );
         assert!(doc.is_file());
         // Cambiar solo mayusculas si se deja: es el mismo fichero.
         assert!(renombrar(&d.join("almacen"), &doc, &Dueno::Suelto, "a.pdf", "A").is_ok());
@@ -542,7 +635,12 @@ mod pruebas {
         assert!(matches!(&dueno, Dueno::Chat { mensaje, .. } if mensaje.id == m.id));
         assert_eq!(nombre_a_la_vista(&dueno, &doc), "Contrato.docx");
         let r = renombrar(&raiz, &doc, &dueno, "Contrato.docx", "Contrato firmado").unwrap();
-        assert_eq!(r, Some(Renombrado::EnElChat { nombre: "Contrato firmado.docx".into() }));
+        assert_eq!(
+            r,
+            Some(Renombrado::EnElChat {
+                nombre: "Contrato firmado.docx".into()
+            })
+        );
         // El fichero no se mueve: su ruta viaja al movil en el mensaje.
         assert!(doc.is_file());
         let c = Cuaderno::leer_de(&carpeta).unwrap();
@@ -562,7 +660,10 @@ mod pruebas {
         std::fs::write(&doc, b"x").unwrap();
         let dueno = dueno(&raiz, &doc);
         assert!(matches!(dueno, Dueno::DelAlmacen));
-        assert!(matches!(renombrar(&raiz, &doc, &dueno, "huerfano.pdf", "otro"), Err(NoSeRenombro::DelAlmacen)));
+        assert!(matches!(
+            renombrar(&raiz, &doc, &dueno, "huerfano.pdf", "otro"),
+            Err(NoSeRenombro::DelAlmacen)
+        ));
         assert!(doc.is_file());
         let _ = std::fs::remove_dir_all(&d);
     }

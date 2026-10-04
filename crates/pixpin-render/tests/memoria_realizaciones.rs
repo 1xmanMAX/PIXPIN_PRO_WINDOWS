@@ -94,7 +94,12 @@ fn memoria(d3d: &ID3D11Device) -> (f64, f64) {
         .args(["-NoProfile", "-Command", &orden])
         .output()
         .ok()
-        .and_then(|s| String::from_utf8_lossy(&s.stdout).trim().parse::<f64>().ok())
+        .and_then(|s| {
+            String::from_utf8_lossy(&s.stdout)
+                .trim()
+                .parse::<f64>()
+                .ok()
+        })
         .unwrap_or(0.0)
         / (1024.0 * 1024.0);
     let video = pixpin_render::fuera_de_pantalla::memoria_de_video(d3d)
@@ -149,7 +154,11 @@ fn mover_un_trazo_por_fotograma_no_retiene_memoria() {
         fotograma(&mut cache, &versiones, &corrimiento);
     }
     let m1 = memoria(&d3d);
-    println!("300 sin mover:            priv {:+.1} MB, video {:+.1} MB", m1.0 - m0.0, m1.1 - m0.1);
+    println!(
+        "300 sin mover:            priv {:+.1} MB, video {:+.1} MB",
+        m1.0 - m0.0,
+        m1.1 - m0.1
+    );
     for k in 0..300 {
         let i = k % n;
         versiones[i] += 1;
@@ -157,10 +166,18 @@ fn mover_un_trazo_por_fotograma_no_retiene_memoria() {
         fotograma(&mut cache, &versiones, &corrimiento);
     }
     let m2 = memoria(&d3d);
-    println!("300 moviendo uno:         priv {:+.1} MB, video {:+.1} MB", m2.0 - m1.0, m2.1 - m1.1);
+    println!(
+        "300 moviendo uno:         priv {:+.1} MB, video {:+.1} MB",
+        m2.0 - m1.0,
+        m2.1 - m1.1
+    );
     // La puerta: mover no crea realizaciones (`reusar_trasladada`), y sin
     // crearlas no hay nada que crezca. Antes eran +360 MB.
-    assert_eq!(cache.trasladadas(), 300, "cada movimiento tenia que reusar su realizacion");
+    assert_eq!(
+        cache.trasladadas(),
+        300,
+        "cada movimiento tenia que reusar su realizacion"
+    );
     assert!(
         m2.1 - m1.1 < 40.0,
         "mover un trazo por fotograma retiene memoria de video: {:+.1} MB",
@@ -172,11 +189,19 @@ fn mover_un_trazo_por_fotograma_no_retiene_memoria() {
         fotograma(&mut cache, &versiones, &corrimiento);
     }
     let m3 = memoria(&d3d);
-    println!("300 version nueva, quieto: priv {:+.1} MB, video {:+.1} MB", m3.0 - m2.0, m3.1 - m2.1);
+    println!(
+        "300 version nueva, quieto: priv {:+.1} MB, video {:+.1} MB",
+        m3.0 - m2.0,
+        m3.1 - m2.1
+    );
     cache.vaciar();
     motor.devolver_memoria(&d3d);
     let m4 = memoria(&d3d);
-    println!("vaciar y Trim:            priv {:+.1} MB, video {:+.1} MB", m4.0 - m3.0, m4.1 - m3.1);
+    println!(
+        "vaciar y Trim:            priv {:+.1} MB, video {:+.1} MB",
+        m4.0 - m3.0,
+        m4.1 - m3.1
+    );
 }
 
 /// Cada variante en su propio proceso (`PIXPIN_VARIANTE`), porque lo que
@@ -193,9 +218,8 @@ fn variante_de_trazos_nuevos() {
         .and_then(|s| s.parse().ok())
         .unwrap_or(0);
     let (motor, _, d3d) = motor_y_destino(16, 16);
-    let fuera =
-        pixpin_render::fuera_de_pantalla::FueraDePantalla::nuevo(&motor, &d3d, 1920, 1080)
-            .expect("destino");
+    let fuera = pixpin_render::fuera_de_pantalla::FueraDePantalla::nuevo(&motor, &d3d, 1920, 1080)
+        .expect("destino");
     let negro = Color {
         r: 0.0,
         g: 0.0,
@@ -249,4 +273,3 @@ fn variante_de_trazos_nuevos() {
         m1.1 - m0.1
     );
 }
-

@@ -61,7 +61,15 @@ pub(super) fn colocar(h: HWND, caja: Caja) {
     ORIGEN.with(|o| o.set((caja.x, caja.y)));
     // SAFETY: ventana propia.
     unsafe {
-        let _ = SetWindowPos(h, Some(HWND_TOP), caja.x, caja.y, caja.an.max(1), caja.al.max(1), SWP_NOACTIVATE | SWP_SHOWWINDOW);
+        let _ = SetWindowPos(
+            h,
+            Some(HWND_TOP),
+            caja.x,
+            caja.y,
+            caja.an.max(1),
+            caja.al.max(1),
+            SWP_NOACTIVATE | SWP_SHOWWINDOW,
+        );
         let _ = InvalidateRect(Some(h), None, false);
     }
 }
@@ -74,7 +82,10 @@ pub(super) fn esconder(h: HWND) {
 }
 
 fn punto(l: LPARAM) -> (i32, i32) {
-    ((l.0 & 0xffff) as i16 as i32, ((l.0 >> 16) & 0xffff) as i16 as i32)
+    (
+        (l.0 & 0xffff) as i16 as i32,
+        ((l.0 >> 16) & 0xffff) as i16 as i32,
+    )
 }
 
 unsafe extern "system" fn procedimiento(h: HWND, m: u32, w: WPARAM, l: LPARAM) -> LRESULT {
@@ -92,7 +103,8 @@ unsafe extern "system" fn procedimiento(h: HWND, m: u32, w: WPARAM, l: LPARAM) -
                 let mem = CreateCompatibleDC(Some(dc));
                 let mapa = CreateCompatibleBitmap(dc, an, al);
                 let viejo = SelectObject(mem, HGDIOBJ(mapa.0));
-                let pintor = super::super::VISTA.with(|v| v.borrow().as_ref().map(|v| v.pintor.clone()));
+                let pintor =
+                    super::super::VISTA.with(|v| v.borrow().as_ref().map(|v| v.pintor.clone()));
                 if let Some(p) = pintor {
                     panel::pintar_en(mem, &p, ORIGEN.with(Cell::get));
                 }

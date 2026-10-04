@@ -231,7 +231,9 @@ pub(crate) fn pedir_resumenes(ubicacion: &Ubicacion, fichas: &[Ficha]) {
 /// Lo que ya esta leido desde la ultima vez que se pregunto.
 pub(crate) fn recoger() -> Vec<Hecho> {
     let (m, _) = cola();
-    m.lock().map(|mut c| std::mem::take(&mut c.hechos)).unwrap_or_default()
+    m.lock()
+        .map(|mut c| std::mem::take(&mut c.hechos))
+        .unwrap_or_default()
 }
 
 fn hilo() {
@@ -332,7 +334,11 @@ mod pruebas {
             hojas: vec![hoja(&b, "hb"), hoja(&a, "ha")],
             ..Default::default()
         };
-        std::fs::write(carpeta.join("proyecto.json"), serde_json::to_string(&p).unwrap()).unwrap();
+        std::fs::write(
+            carpeta.join("proyecto.json"),
+            serde_json::to_string(&p).unwrap(),
+        )
+        .unwrap();
         let h = hojas_de(&u, &ficha("p1"));
         let ids: Vec<&str> = h.hojas.iter().map(|h| h.id.as_str()).collect();
         assert_eq!(ids, ["hb", "ha"]);
@@ -363,7 +369,11 @@ mod pruebas {
             }],
             ..Default::default()
         };
-        std::fs::write(carpeta.join("proyecto.json"), serde_json::to_string(&p).unwrap()).unwrap();
+        std::fs::write(
+            carpeta.join("proyecto.json"),
+            serde_json::to_string(&p).unwrap(),
+        )
+        .unwrap();
         let h = hojas_de(&u, &ficha("p1"));
         assert!(h.hojas.is_empty());
         assert_eq!(h.total, 1);
@@ -379,7 +389,11 @@ mod pruebas {
             archivado: true,
             ..Default::default()
         };
-        std::fs::write(carpeta.join("proyecto.json"), serde_json::to_string(&p).unwrap()).unwrap();
+        std::fs::write(
+            carpeta.join("proyecto.json"),
+            serde_json::to_string(&p).unwrap(),
+        )
+        .unwrap();
         assert!(resumen_de(&u, &ficha("p1")).archivado);
         let mut aqui = ficha("p2");
         aqui.resto
@@ -404,9 +418,17 @@ mod pruebas {
             }],
             ..Default::default()
         };
-        std::fs::write(carpeta.join("proyecto.json"), serde_json::to_string(&p).unwrap()).unwrap();
+        std::fs::write(
+            carpeta.join("proyecto.json"),
+            serde_json::to_string(&p).unwrap(),
+        )
+        .unwrap();
         let h = hojas_de(&u, &ficha("p1"));
-        assert_eq!(h.hojas.len(), 1, "la pagina sale aunque el chat no la tenga");
+        assert_eq!(
+            h.hojas.len(),
+            1,
+            "la pagina sale aunque el chat no la tenga"
+        );
         assert!(h.hojas[0].por_pedir);
         assert!(h.hojas[0].vista.is_none());
         assert!(!h.hojas[0].anotada, "sin dibujo no esta anotada");
@@ -428,7 +450,13 @@ mod pruebas {
             .collect();
         let doc = raiz.join("plano.pdf");
         std::fs::write(&doc, pixpin_pdf::union::de_imagenes(&imgs).unwrap()).unwrap();
-        let mut m = cuaderno::Mensaje::adjunto(cuaderno::Clase::Archivo, "plano.pdf", "archivos/plano.pdf", 1, &sello(1));
+        let mut m = cuaderno::Mensaje::adjunto(
+            cuaderno::Clase::Archivo,
+            "plano.pdf",
+            "archivos/plano.pdf",
+            1,
+            &sello(1),
+        );
         m.id = "m-pdf".into();
         cuaderno::anadir(&carpeta, &m).unwrap();
         crate::pdf_en_chat::unir(&raiz, &f, &doc, "m-pdf", "plano", 1000, &|_, _| {}).unwrap();
@@ -436,7 +464,10 @@ mod pruebas {
         let h = hojas_de(&u, &f);
         assert_eq!(h.total, 4);
         assert_eq!(h.hojas.len(), 4, "las cuatro paginas en la tira");
-        assert!(h.hojas.iter().all(|h| h.por_pedir), "pintadas desde el PDF, sin leer nada");
+        assert!(
+            h.hojas.iter().all(|h| h.por_pedir),
+            "pintadas desde el PDF, sin leer nada"
+        );
         let _ = std::fs::remove_dir_all(&raiz);
     }
 }

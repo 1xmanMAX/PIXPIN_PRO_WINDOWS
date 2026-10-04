@@ -74,10 +74,7 @@ impl MiniApp {
 
     /// Su sitio en [`MiniApp::TODAS`]: lo que viaja en el comando del menu.
     pub fn indice(self) -> u8 {
-        MiniApp::TODAS
-            .iter()
-            .position(|m| *m == self)
-            .unwrap_or(0) as u8
+        MiniApp::TODAS.iter().position(|m| *m == self).unwrap_or(0) as u8
     }
 
     pub fn por_indice(i: u8) -> Option<MiniApp> {
@@ -259,7 +256,9 @@ mod pruebas {
     fn las_palabras_que_se_copian_solas_a_menudo_no_son_magicas() {
         // Decision del movil: perderlas como texto costaria mas que el atajo.
         let p = por_defecto();
-        for palabra in ["nota", "lista", "plano", "dibujo", "draw", "papel", "random"] {
+        for palabra in [
+            "nota", "lista", "plano", "dibujo", "draw", "papel", "random",
+        ] {
             assert_eq!(detectar(palabra, &p), None, "{palabra}");
         }
     }
@@ -297,7 +296,11 @@ mod pruebas {
         let raro = "ya=TIMER\n=BOARD\nsin igual\nfoo=NOEXISTE\nYA=COUNTER\ncroquis=croquis";
         let l = leer(Some(raro));
         assert_eq!(l.len(), 1, "{l:?}");
-        assert_eq!(l.get("ya"), Some(&MiniApp::Temporizador), "manda la primera");
+        assert_eq!(
+            l.get("ya"),
+            Some(&MiniApp::Temporizador),
+            "manda la primera"
+        );
     }
 
     #[test]

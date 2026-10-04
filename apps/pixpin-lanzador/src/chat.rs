@@ -15,9 +15,10 @@
 
 use crate::consulta::SEPARADOR;
 use crate::datos::Proyecto;
-use crate::normalizar::{normalizar, puntuar, SALTEADO};
+use crate::normalizar::{SALTEADO, normalizar, puntuar};
 use crate::resultados::{
-    abrir_proyecto, de_mensaje, glifo, listas, resultado_arrastrar, Accion, Contexto, Resultado, Vista,
+    Accion, Contexto, Resultado, Vista, abrir_proyecto, de_mensaje, glifo, listas,
+    resultado_arrastrar,
 };
 use serde_json::json;
 
@@ -31,11 +32,19 @@ pub fn etiquetas(proyectos: &[Proyecto]) -> Vec<String> {
     let mut vistas: Vec<String> = Vec::with_capacity(proyectos.len());
     for p in proyectos {
         let base = p.nombre.replace(SEPARADOR, "›");
-        let base = if base.trim().is_empty() { "Proyecto".to_string() } else { base.trim().to_string() };
+        let base = if base.trim().is_empty() {
+            "Proyecto".to_string()
+        } else {
+            base.trim().to_string()
+        };
         let n = normalizar(&base);
         let antes = vistas.iter().filter(|x| **x == n).count();
         vistas.push(n);
-        v.push(if antes == 0 { base } else { format!("{base} · {}", antes + 1) });
+        v.push(if antes == 0 {
+            base
+        } else {
+            format!("{base} · {}", antes + 1)
+        });
     }
     v
 }
@@ -56,7 +65,12 @@ pub fn exacto(proyectos: &[Proyecto], texto: &str) -> Option<usize> {
 }
 
 /// `<algo> > ...` sin nombre exacto: el proyecto que mejor encaje.
-pub fn buscar_y_entrar(proyectos: &[Proyecto], texto: &str, filtro: &str, ctx: &Contexto) -> Vec<Resultado> {
+pub fn buscar_y_entrar(
+    proyectos: &[Proyecto],
+    texto: &str,
+    filtro: &str,
+    ctx: &Contexto,
+) -> Vec<Resultado> {
     let q = normalizar(texto.trim());
     let mejor = (!q.is_empty())
         .then(|| {
@@ -65,7 +79,10 @@ pub fn buscar_y_entrar(proyectos: &[Proyecto], texto: &str, filtro: &str, ctx: &
                 .enumerate()
                 .map(|(i, p)| (i, puntuar(&q, &normalizar(&p.nombre), "")))
                 .filter(|(_, s)| *s > 0)
-                .max_by(|a, b| a.1.cmp(&b.1).then(proyectos[a.0].tocado.cmp(&proyectos[b.0].tocado)))
+                .max_by(|a, b| {
+                    a.1.cmp(&b.1)
+                        .then(proyectos[a.0].tocado.cmp(&proyectos[b.0].tocado))
+                })
                 .map(|(i, _)| i)
         })
         .flatten();
@@ -81,7 +98,12 @@ pub fn buscar_y_entrar(proyectos: &[Proyecto], texto: &str, filtro: &str, ctx: &
 }
 
 /// El chat del proyecto `i`.
-pub fn en_proyecto(proyectos: &[Proyecto], i: usize, filtro: &str, ctx: &Contexto) -> Vec<Resultado> {
+pub fn en_proyecto(
+    proyectos: &[Proyecto],
+    i: usize,
+    filtro: &str,
+    ctx: &Contexto,
+) -> Vec<Resultado> {
     let p = &proyectos[i];
     let etiqueta = &etiquetas(proyectos)[i];
     let aqui = consulta_de(etiqueta, ctx);
@@ -104,8 +126,12 @@ pub fn en_proyecto(proyectos: &[Proyecto], i: usize, filtro: &str, ctx: &Context
 
     // Del mas nuevo al mas viejo; a igual hora, el que va despues en el
     // fichero (el ultimo escrito).
-    let mut orden: Vec<(usize, &crate::datos::Mensaje)> =
-        p.mensajes.iter().enumerate().filter(|(_, m)| !m.en_buzon).collect();
+    let mut orden: Vec<(usize, &crate::datos::Mensaje)> = p
+        .mensajes
+        .iter()
+        .enumerate()
+        .filter(|(_, m)| !m.en_buzon)
+        .collect();
     orden.sort_by(|a, b| b.1.cuando.cmp(&a.1.cuando).then(b.0.cmp(&a.0)));
 
     let todas = listas(proyectos);
@@ -126,7 +152,9 @@ pub fn en_proyecto(proyectos: &[Proyecto], i: usize, filtro: &str, ctx: &Context
         let Some(pz) = de_mensaje(proyectos, i, m, Vista::Chat, &todas, ctx) else {
             continue;
         };
-        if !q.is_empty() && puntuar(&q, &normalizar(&pz.nombre), &normalizar(&pz.dentro)) <= SALTEADO {
+        if !q.is_empty()
+            && puntuar(&q, &normalizar(&pz.nombre), &normalizar(&pz.dentro)) <= SALTEADO
+        {
             continue;
         }
         let mut r = pz.resultado;
@@ -147,7 +175,12 @@ pub fn en_proyecto(proyectos: &[Proyecto], i: usize, filtro: &str, ctx: &Context
         v.push(abrir);
         v.push(arrastrar);
     } else if v.len() == fijas {
-        v.push(Resultado::nuevo("El chat está vacío", "Nada que enseñar todavía", glifo::CHAT, abrir_proyecto(p)));
+        v.push(Resultado::nuevo(
+            "El chat está vacío",
+            "Nada que enseñar todavía",
+            glifo::CHAT,
+            abrir_proyecto(p),
+        ));
     }
     v
 }

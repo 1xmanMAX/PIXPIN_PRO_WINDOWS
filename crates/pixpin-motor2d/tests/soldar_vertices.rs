@@ -66,7 +66,11 @@ fn escuadra_clavada() -> (Escena, u64, u64) {
     let mut escena = Escena::nueva();
     let base = escena.anadir(raya((0.0, 100.0), (100.0, 100.0)));
     let lado = escena.anadir(raya((100.0, 100.0), (100.0, 0.0)));
-    assert!(nudos::soldar(&mut escena, Punto2::nuevo(100.0, 100.0), 16.0));
+    assert!(nudos::soldar(
+        &mut escena,
+        Punto2::nuevo(100.0, 100.0),
+        16.0
+    ));
     (escena, base, lado)
 }
 
@@ -77,10 +81,20 @@ fn arrastrar_con_la_mano_una_raya_clavada_la_hace_girar_sobre_el_clavo() {
     g.tomar_herramienta(Herramienta::Mano);
     arrastrar(&mut g, &mut escena, (30.0, 100.0), (30.0, 160.0));
     let b = puntas(&escena, base);
-    assert!(b[1].distancia(Punto2::nuevo(100.0, 100.0)) < 0.5, "se despego del clavo: {b:?}");
+    assert!(
+        b[1].distancia(Punto2::nuevo(100.0, 100.0)) < 0.5,
+        "se despego del clavo: {b:?}"
+    );
     assert!(b[0].y > 120.0, "no giro: {b:?}");
-    assert!((b[0].distancia(b[1]) - 100.0).abs() < 0.5, "se estiro al girar");
-    assert_eq!(puntas(&escena, lado)[1], Punto2::nuevo(100.0, 0.0), "el lado se movio");
+    assert!(
+        (b[0].distancia(b[1]) - 100.0).abs() < 0.5,
+        "se estiro al girar"
+    );
+    assert_eq!(
+        puntas(&escena, lado)[1],
+        Punto2::nuevo(100.0, 0.0),
+        "el lado se movio"
+    );
     // Un paso de deshacer, y vuelve entera.
     assert!(escena.deshacer());
     assert_eq!(puntas(&escena, base)[0], Punto2::nuevo(0.0, 100.0));
@@ -93,8 +107,16 @@ fn coger_el_clavo_con_la_mano_se_lleva_la_esquina_de_las_dos() {
     g.tomar_herramienta(Herramienta::Mano);
     arrastrar(&mut g, &mut escena, (101.0, 99.0), (150.0, 140.0));
     let esquina = Punto2::nuevo(150.0, 140.0);
-    assert!(puntas(&escena, base)[1].distancia(esquina) < 1.5, "{:?}", puntas(&escena, base));
-    assert!(puntas(&escena, lado)[0].distancia(esquina) < 1.5, "{:?}", puntas(&escena, lado));
+    assert!(
+        puntas(&escena, base)[1].distancia(esquina) < 1.5,
+        "{:?}",
+        puntas(&escena, base)
+    );
+    assert!(
+        puntas(&escena, lado)[0].distancia(esquina) < 1.5,
+        "{:?}",
+        puntas(&escena, lado)
+    );
     // Las otras puntas, quietas: es un clavo, no un arrastre de todo.
     assert_eq!(puntas(&escena, base)[0], Punto2::nuevo(0.0, 100.0));
     assert_eq!(escena.alfileres.len(), 1);
@@ -139,7 +161,13 @@ fn sin_clavos_arrastrar_sigue_trasladando_y_moviendo_como_capa() {
         1.0,
     );
     assert!(g.moviendo());
-    g.evento(EventoGesto::Soltar { p: Punto2::nuevo(30.0, 100.0) }, &mut escena, 1.0);
+    g.evento(
+        EventoGesto::Soltar {
+            p: Punto2::nuevo(30.0, 100.0),
+        },
+        &mut escena,
+        1.0,
+    );
     arrastrar(&mut g, &mut escena, (30.0, 100.0), (30.0, 160.0));
     assert_eq!(puntas(&escena, base)[0], Punto2::nuevo(0.0, 160.0));
 }
@@ -176,9 +204,22 @@ fn un_clavo_que_no_sujeta_lo_elegido_no_le_quita_moverse_como_capa() {
         1.0,
     );
     assert!(g.moviendo(), "la raya suelta no esta clavada");
-    g.evento(EventoGesto::Soltar { p: Punto2::nuevo(330.0, 300.0) }, &mut escena, 1.0);
+    g.evento(
+        EventoGesto::Soltar {
+            p: Punto2::nuevo(330.0, 300.0),
+        },
+        &mut escena,
+        1.0,
+    );
     let antes = escena.alfileres.clone();
     arrastrar(&mut g, &mut escena, (330.0, 300.0), (330.0, 360.0));
-    assert_eq!(puntas(&escena, suelta)[0], Punto2::nuevo(300.0, 360.0), "se traslada entera");
-    assert_eq!(escena.alfileres, antes, "el clavo de la escuadra no se entera");
+    assert_eq!(
+        puntas(&escena, suelta)[0],
+        Punto2::nuevo(300.0, 360.0),
+        "se traslada entera"
+    );
+    assert_eq!(
+        escena.alfileres, antes,
+        "el clavo de la escuadra no se entera"
+    );
 }

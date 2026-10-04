@@ -32,19 +32,53 @@ use windows::core::{HSTRING, PCWSTR};
 /// ofrecerse; ahora se leen de verdad. Texto, CSV y demas siguen fuera: su
 /// programa de siempre los hace mejor.
 pub const EXTENSIONES: &[&str] = &[
-    ".png", ".jpg", ".jpeg", ".bmp", ".gif", ".webp", ".tif", ".tiff", ".mp4", ".mkv", ".avi",
-    ".mov", ".webm", ".wmv", ".m4v", ".mpg", ".mpeg", ".ts",
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".bmp",
+    ".gif",
+    ".webp",
+    ".tif",
+    ".tiff",
+    ".mp4",
+    ".mkv",
+    ".avi",
+    ".mov",
+    ".webm",
+    ".wmv",
+    ".m4v",
+    ".mpg",
+    ".mpeg",
+    ".ts",
     // Las fotos que lee Windows por debajo (`pixpin_codec::wic`): las del
     // iPhone, AVIF, JPEG XL... (lista entera en `asociaciones::IMAGENES`).
-    ".jfif", ".ico", ".heic", ".heif", ".avif", ".jxl", ".jxr",
+    ".jfif",
+    ".ico",
+    ".heic",
+    ".heif",
+    ".avif",
+    ".jxl",
+    ".jxr",
     // Los audios, que suenan en el reproductor flotante
     // (`asociaciones::AUDIOS`).
-    ".mp3", ".m4a", ".wav", ".aac", ".flac", ".ogg", ".opus", ".wma", ".3gp", ".amr",
+    ".mp3",
+    ".m4a",
+    ".wav",
+    ".aac",
+    ".flac",
+    ".ogg",
+    ".opus",
+    ".wma",
+    ".3gp",
+    ".amr",
     // Y el proyecto entero del movil.
     ".pixpin", // Los documentos con lector propio.
-    ".pdf", ".docx", ".epub",
+    ".pdf",
+    ".docx",
+    ".epub",
     // Y el Markdown, que se abre en el editor de notas.
-    ".md", ".markdown",
+    ".md",
+    ".markdown",
 ];
 
 #[derive(Debug, thiserror::Error)]
@@ -223,7 +257,9 @@ mod pruebas {
         for malo in [".exe", ".zip", ".txt", ".csv", ".doc"] {
             assert!(!EXTENSIONES.contains(&malo), "sobra {malo}");
         }
-        for bueno in [".png", ".mp4", ".pixpin", ".pdf", ".docx", ".epub", ".heic", ".mp3", ".m4a"] {
+        for bueno in [
+            ".png", ".mp4", ".pixpin", ".pdf", ".docx", ".epub", ".heic", ".mp3", ".m4a",
+        ] {
             assert!(EXTENSIONES.contains(&bueno), "falta {bueno}");
         }
     }

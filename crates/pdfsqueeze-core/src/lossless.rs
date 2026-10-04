@@ -11,7 +11,11 @@ use std::collections::{HashMap, HashSet};
 pub fn strip(doc: &mut Document, strip_private: bool, strip_metadata: bool) -> (u64, Vec<String>) {
     let mut removed = 0u64;
     let mut notes = Vec::new();
-    let private_keys: &[&[u8]] = if strip_private { &[b"PieceInfo", b"Thumb", b"SpiderInfo", b"OPI"] } else { &[] };
+    let private_keys: &[&[u8]] = if strip_private {
+        &[b"PieceInfo", b"Thumb", b"SpiderInfo", b"OPI"]
+    } else {
+        &[]
+    };
     let meta_keys: &[&[u8]] = if strip_metadata { &[b"Metadata"] } else { &[] };
     let ids: Vec<ObjectId> = doc.objects.keys().copied().collect();
     for id in ids {
@@ -24,9 +28,21 @@ pub fn strip(doc: &mut Document, strip_private: bool, strip_metadata: bool) -> (
             Object::Stream(s) => &mut s.dict,
             _ => continue,
         };
-        let ty = dict.get(b"Type").and_then(Object::as_name).unwrap_or(b"").to_vec();
-        let sub = dict.get(b"Subtype").and_then(Object::as_name).unwrap_or(b"").to_vec();
-        let eligible = ty == b"Page" || ty == b"Catalog" || sub == b"Image" || sub == b"Form" || ty == b"Pages";
+        let ty = dict
+            .get(b"Type")
+            .and_then(Object::as_name)
+            .unwrap_or(b"")
+            .to_vec();
+        let sub = dict
+            .get(b"Subtype")
+            .and_then(Object::as_name)
+            .unwrap_or(b"")
+            .to_vec();
+        let eligible = ty == b"Page"
+            || ty == b"Catalog"
+            || sub == b"Image"
+            || sub == b"Form"
+            || ty == b"Pages";
         if !eligible {
             continue;
         }
@@ -41,8 +57,19 @@ pub fn strip(doc: &mut Document, strip_private: bool, strip_metadata: bool) -> (
         // Slim the Info dictionary to the fields a reader actually shows.
         if let Ok(info_id) = doc.trailer.get(b"Info").and_then(Object::as_reference) {
             if let Ok(info) = doc.get_dictionary_mut(info_id) {
-                let keep: [&[u8]; 6] = [b"Title", b"Author", b"Subject", b"Keywords", b"CreationDate", b"ModDate"];
-                let drop: Vec<Vec<u8>> = info.iter().filter(|(k, _)| !keep.contains(&k.as_slice())).map(|(k, _)| k.clone()).collect();
+                let keep: [&[u8]; 6] = [
+                    b"Title",
+                    b"Author",
+                    b"Subject",
+                    b"Keywords",
+                    b"CreationDate",
+                    b"ModDate",
+                ];
+                let drop: Vec<Vec<u8>> = info
+                    .iter()
+                    .filter(|(k, _)| !keep.contains(&k.as_slice()))
+                    .map(|(k, _)| k.clone())
+                    .collect();
                 for k in drop {
                     info.remove(&k);
                 }
@@ -196,13 +223,25 @@ pub fn recompress_streams(doc: &mut Document, effort: Effort, skip_images: bool)
             Object::Stream(s) => s,
             _ => continue,
         };
-        let sub = s.dict.get(b"Subtype").and_then(Object::as_name).unwrap_or(b"");
+        let sub = s
+            .dict
+            .get(b"Subtype")
+            .and_then(Object::as_name)
+            .unwrap_or(b"");
         let ty = s.dict.get(b"Type").and_then(Object::as_name).unwrap_or(b"");
         if (skip_images && sub == b"Image") || ty == b"XRef" || ty == b"ObjStm" {
             continue;
         }
-        let filters: Vec<Vec<u8>> = s.filters().map(|v| v.iter().map(|f| f.to_vec()).collect()).unwrap_or_default();
-        let recodable = filters.iter().all(|f| matches!(f.as_slice(), b"FlateDecode" | b"LZWDecode" | b"ASCII85Decode" | b"Fl" | b"LZW" | b"A85"));
+        let filters: Vec<Vec<u8>> = s
+            .filters()
+            .map(|v| v.iter().map(|f| f.to_vec()).collect())
+            .unwrap_or_default();
+        let recodable = filters.iter().all(|f| {
+            matches!(
+                f.as_slice(),
+                b"FlateDecode" | b"LZWDecode" | b"ASCII85Decode" | b"Fl" | b"LZW" | b"A85"
+            )
+        });
         if !recodable {
             continue;
         }
@@ -257,7 +296,10 @@ pub fn strip_jpeg_metadata(doc: &mut Document) -> (usize, i64) {
             Object::Stream(s) => s,
             _ => continue,
         };
-        let filters = s.filters().map(|v| v.iter().map(|f| f.to_vec()).collect::<Vec<_>>()).unwrap_or_default();
+        let filters = s
+            .filters()
+            .map(|v| v.iter().map(|f| f.to_vec()).collect::<Vec<_>>())
+            .unwrap_or_default();
         if filters.len() != 1 || filters[0] != b"DCTDecode" {
             continue;
         }
@@ -307,8 +349,8 @@ pub fn strip_jpeg_segments(data: &[u8]) -> Option<Vec<u8>> {
             return None;
         }
         let keep = match marker {
-            0xE0 | 0xE2 | 0xEE => true,   // JFIF, ICC, Adobe
-            0xE1..=0xEF | 0xFE => false,  // EXIF/XMP/Photoshop/comments
+            0xE0 | 0xE2 | 0xEE => true,  // JFIF, ICC, Adobe
+            0xE1..=0xEF | 0xFE => false, // EXIF/XMP/Photoshop/comments
             _ => true,
         };
         if keep {
@@ -331,12 +373,26 @@ pub fn dict_type(d: &Dictionary) -> &[u8] {
 /// Re-Flate one stream without touching its decoded bytes. Used for images
 /// whose *sample values* must stay exactly as they are (colour-key masks).
 pub fn recompress_stream(s: &mut Stream, effort: Effort) -> i64 {
-    let filters: Vec<Vec<u8>> = s.filters().map(|v| v.iter().map(|f| f.to_vec()).collect()).unwrap_or_default();
-    let recodable = filters.iter().all(|f| matches!(f.as_slice(), b"FlateDecode" | b"LZWDecode" | b"ASCII85Decode" | b"Fl" | b"LZW" | b"A85"));
+    let filters: Vec<Vec<u8>> = s
+        .filters()
+        .map(|v| v.iter().map(|f| f.to_vec()).collect())
+        .unwrap_or_default();
+    let recodable = filters.iter().all(|f| {
+        matches!(
+            f.as_slice(),
+            b"FlateDecode" | b"LZWDecode" | b"ASCII85Decode" | b"Fl" | b"LZW" | b"A85"
+        )
+    });
     if !recodable {
         return 0;
     }
-    let has_predictor = s.dict.get(b"DecodeParms").ok().and_then(|p| p.as_dict().ok()).map(|d| d.has(b"Predictor")).unwrap_or(false);
+    let has_predictor = s
+        .dict
+        .get(b"DecodeParms")
+        .ok()
+        .and_then(|p| p.as_dict().ok())
+        .map(|d| d.has(b"Predictor"))
+        .unwrap_or(false);
     if has_predictor {
         return 0; // keep the predictor layout untouched; not worth the risk
     }
@@ -371,7 +427,12 @@ pub fn minify_content_streams(doc: &mut Document, _effort: Effort) -> (usize, i6
     }
     for (&id, obj) in &doc.objects {
         if let Object::Stream(s) = obj {
-            if s.dict.get(b"Subtype").and_then(Object::as_name).unwrap_or(b"") == b"Form" {
+            if s.dict
+                .get(b"Subtype")
+                .and_then(Object::as_name)
+                .unwrap_or(b"")
+                == b"Form"
+            {
                 ids.insert(id);
             }
         }
@@ -469,9 +530,17 @@ pub fn minify_content_streams(doc: &mut Document, _effort: Effort) -> (usize, i6
 fn same_operand(a: &Object, b: &Object) -> bool {
     match (a, b) {
         (Object::Real(x), Object::Real(y)) => (x - y).abs() <= 1e-4 * x.abs().max(1.0),
-        (Object::Integer(x), Object::Real(y)) | (Object::Real(y), Object::Integer(x)) => (*x as f32 - y).abs() <= 1e-4,
-        (Object::Array(x), Object::Array(y)) => x.len() == y.len() && x.iter().zip(y).all(|(p, q)| same_operand(p, q)),
-        (Object::Dictionary(x), Object::Dictionary(y)) => x.len() == y.len() && x.iter().all(|(k, v)| y.get(k).map(|w| same_operand(v, w)).unwrap_or(false)),
+        (Object::Integer(x), Object::Real(y)) | (Object::Real(y), Object::Integer(x)) => {
+            (*x as f32 - y).abs() <= 1e-4
+        }
+        (Object::Array(x), Object::Array(y)) => {
+            x.len() == y.len() && x.iter().zip(y).all(|(p, q)| same_operand(p, q))
+        }
+        (Object::Dictionary(x), Object::Dictionary(y)) => {
+            x.len() == y.len()
+                && x.iter()
+                    .all(|(k, v)| y.get(k).map(|w| same_operand(v, w)).unwrap_or(false))
+        }
         _ => a == b,
     }
 }

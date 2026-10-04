@@ -10,7 +10,9 @@ use pixpin_motor2d::gesto::{EventoGesto, Herramienta};
 fn carpeta() -> PathBuf {
     let c = std::env::var_os("PIXPIN_MUESTRAS")
         .map(PathBuf::from)
-        .unwrap_or_else(|| std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/muestras-lienzo"));
+        .unwrap_or_else(|| {
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/muestras-lienzo")
+        });
     std::fs::create_dir_all(&c).unwrap();
     c
 }
@@ -32,7 +34,8 @@ fn foto_de(escena: &Escena) -> pixpin_codec::ImagenRgba {
         fotos: &fotos,
         nombre: "muestra".into(),
     };
-    let hojas = pixpin_motor2d::exportar::hojas(escena, pixpin_motor2d::exportar::Alcance::Todo, &[], None);
+    let hojas =
+        pixpin_motor2d::exportar::hojas(escena, pixpin_motor2d::exportar::Alcance::Todo, &[], None);
     super::super::exportar::a_imagen(&hojas[0], 1.0, Some(escena.fondo), &lienzo).unwrap()
 }
 
@@ -44,8 +47,18 @@ fn estirar(escena: &mut Escena, gesto: &mut Gesto, dx: f32, dy: f32) {
     let ev = |g: &mut Gesto, e: &mut Escena, x: f32, y: f32, fase: u8| {
         let p = Punto2::nuevo(x, y);
         let evento = match fase {
-            0 => EventoGesto::Pulsar { p, shift: false, alt: false, presion: None },
-            1 => EventoGesto::Mover { p, shift: false, alt: false, presion: None },
+            0 => EventoGesto::Pulsar {
+                p,
+                shift: false,
+                alt: false,
+                presion: None,
+            },
+            1 => EventoGesto::Mover {
+                p,
+                shift: false,
+                alt: false,
+                presion: None,
+            },
             _ => EventoGesto::Soltar { p },
         };
         g.evento(evento, e, 1.0);
@@ -82,7 +95,13 @@ fn muestras_de_las_figuras() {
         let v = grafica::elementos(&peticion(), &estilo, &medir).unwrap();
         let mut escena = Escena::nueva();
         let mut gesto = Gesto::nuevo();
-        estampar_en_la_vista(&mut escena, &mut gesto, Punto2::nuevo(300.0, 200.0), "grafica", &v);
+        estampar_en_la_vista(
+            &mut escena,
+            &mut gesto,
+            Punto2::nuevo(300.0, 200.0),
+            "grafica",
+            &v,
+        );
         guardar("grafica", &foto_de(&escena));
         estirar(&mut escena, &mut gesto, 300.0, 60.0);
         guardar("grafica-estirada", &foto_de(&escena));
@@ -101,10 +120,22 @@ fn muestras_de_las_figuras() {
             Punto2::nuevo(200.0, 100.0),
             &medir,
         );
-        let fb = formulario_de_tabla(&Catalogo::nuevo(pixpin_store::Idioma::Espanol), &vec![vec![String::new(); 3]; 4], true, "tabla-blanco-titulo", "tabla-insertar");
+        let fb = formulario_de_tabla(
+            &Catalogo::nuevo(pixpin_store::Idioma::Espanol),
+            &vec![vec![String::new(); 3]; 4],
+            true,
+            "tabla-blanco-titulo",
+            "tabla-insertar",
+        );
         let v = tabla_de_celdas(&fb, &estilo, &medir);
         let mut g2 = Gesto::nuevo();
-        estampar_en_la_vista(&mut escena, &mut g2, Punto2::nuevo(200.0, 320.0), "tabla", &v);
+        estampar_en_la_vista(
+            &mut escena,
+            &mut g2,
+            Punto2::nuevo(200.0, 320.0),
+            "tabla",
+            &v,
+        );
         guardar("tablas", &foto_de(&escena));
         estirar(&mut escena, &mut gesto, 200.0, 0.0);
         guardar("tabla-estirada", &foto_de(&escena));
@@ -118,8 +149,18 @@ fn muestras_de_las_figuras() {
         let ev = |g: &mut Gesto, e: &mut Escena, x: f32, y: f32, fase: u8| {
             let p = Punto2::nuevo(x, y);
             let evento = match fase {
-                0 => EventoGesto::Pulsar { p, shift: false, alt: false, presion: None },
-                1 => EventoGesto::Mover { p, shift: false, alt: false, presion: None },
+                0 => EventoGesto::Pulsar {
+                    p,
+                    shift: false,
+                    alt: false,
+                    presion: None,
+                },
+                1 => EventoGesto::Mover {
+                    p,
+                    shift: false,
+                    alt: false,
+                    presion: None,
+                },
                 _ => EventoGesto::Soltar { p },
             };
             g.evento(evento, e, 1.0);
@@ -129,7 +170,11 @@ fn muestras_de_las_figuras() {
         ev(&mut g, &mut escena, 420.0, 200.0, 1);
         ev(&mut g, &mut escena, 420.0, 200.0, 2);
         let id = escena.elementos.last().unwrap().id;
-        let nombres = vec!["Cimientos".to_string(), "Estructura y muros".into(), "Acabados".into()];
+        let nombres = vec![
+            "Cimientos".to_string(),
+            "Estructura y muros".into(),
+            "Acabados".into(),
+        ];
         aplicar_cronograma(&mut escena, id, 3, 6, &nombres);
         guardar("cronograma", &foto_de(&escena));
     }
@@ -152,17 +197,49 @@ fn muestras_de_las_figuras() {
 }
 
 /// Pinta el cajetin `f` sobre un fondo gris claro, como si fuera el lienzo.
-fn cajetin_a_png(motor: &mut MotorRender, d: &pixpin_capture::Dispositivo, nombre: &str, f: &mut Formulario) {
+fn cajetin_a_png(
+    motor: &mut MotorRender,
+    d: &pixpin_capture::Dispositivo,
+    nombre: &str,
+    f: &mut Formulario,
+) {
     let (w, h) = (1100u32, 800u32);
-    let previa = vista_previa(f, &medidor(motor, pixpin_motor2d::texto::FAMILIA_DEL_SISTEMA), 100);
-    let destino = pixpin_render::fuera_de_pantalla::FueraDePantalla::nuevo(motor, d.d3d(), w, h).unwrap();
+    let previa = vista_previa(
+        f,
+        &medidor(motor, pixpin_motor2d::texto::FAMILIA_DEL_SISTEMA),
+        100,
+    );
+    let destino =
+        pixpin_render::fuera_de_pantalla::FueraDePantalla::nuevo(motor, d.d3d(), w, h).unwrap();
     let sin_imagenes = ImagenesLienzo::nuevo(1);
     motor
         .dibujar(&destino.destino, |p| {
-            p.limpiar(Color { r: 0.93, g: 0.93, b: 0.93, a: 1.0 });
-            dibujar(p, (0.0, 0.0), w as f32, h as f32, 100, f, &previa, &sin_imagenes, true);
+            p.limpiar(Color {
+                r: 0.93,
+                g: 0.93,
+                b: 0.93,
+                a: 1.0,
+            });
+            dibujar(
+                p,
+                (0.0, 0.0),
+                w as f32,
+                h as f32,
+                100,
+                f,
+                &previa,
+                &sin_imagenes,
+                true,
+            );
         })
         .unwrap();
     let (ancho, alto, pixeles) = destino.leer_rgba().unwrap();
-    guardar(nombre, &pixpin_codec::ImagenRgba { ancho, alto, pixeles });
+    guardar(
+        nombre,
+        &pixpin_codec::ImagenRgba {
+            ancho,
+            alto,
+            pixeles,
+        },
+    );
 }

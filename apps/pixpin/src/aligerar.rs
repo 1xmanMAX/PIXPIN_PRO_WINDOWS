@@ -94,7 +94,11 @@ pub fn fijar_equipo(ram_fisica_bytes: u64, nivel_ligero: bool) {
     let c = modo_cuidadoso(ram_fisica_bytes, nivel_ligero);
     CUIDADOSO.store(c, Ordering::Relaxed);
     if c {
-        tracing::info!(ram_fisica_bytes, nivel_ligero, "aligerar PDF en modo cuidadoso");
+        tracing::info!(
+            ram_fisica_bytes,
+            nivel_ligero,
+            "aligerar PDF en modo cuidadoso"
+        );
     }
 }
 
@@ -149,7 +153,11 @@ fn nivel_a_mano() -> NivelPdf {
 /// verdad; con perdida, un 15 %, que por menos no compensa haber recodificado
 /// las fotos.
 pub fn lo_que_puede_quedar(n: NivelPdf) -> f64 {
-    if n == NivelPdf::SinPerdida { 0.98 } else { 0.85 }
+    if n == NivelPdf::SinPerdida {
+        0.98
+    } else {
+        0.85
+    }
 }
 
 /// Cuantos hilos usa el compresor: uno en modo cuidadoso; si no, la mitad de
@@ -159,7 +167,9 @@ pub fn hilos_para(cuidadoso: bool, nucleos: usize) -> usize {
 }
 
 fn hilos() -> usize {
-    let nucleos = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1);
+    let nucleos = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(1);
     hilos_para(CUIDADOSO.load(Ordering::Relaxed), nucleos)
 }
 
@@ -591,7 +601,9 @@ impl Drop for BorrarAlSalir {
 }
 
 fn parece_pdf(bytes: &[u8]) -> bool {
-    bytes[..bytes.len().min(1024)].windows(5).any(|v| v == b"%PDF-")
+    bytes[..bytes.len().min(1024)]
+        .windows(5)
+        .any(|v| v == b"%PDF-")
 }
 
 /// Lo que salio del compresor.
@@ -663,7 +675,9 @@ fn procesar(
     // **Que Windows lo abra con las mismas paginas y lo dibuje.** Es quien lo
     // va a pintar en el chat y en el lector: lo que pdfsqueeze da por bueno
     // tiene que darlo por bueno tambien el lector de verdad.
-    let paginas_antes = pixpin_pdf::Documento::abrir(&p.ruta).ok().map(|d| d.paginas());
+    let paginas_antes = pixpin_pdf::Documento::abrir(&p.ruta)
+        .ok()
+        .map(|d| d.paginas());
     if !se_abre_y_se_dibuja(&salida, paginas_antes) {
         apuntar(&p.raiz, &[&huella]);
         return Desenlace::Fallo("el aligerado no se abre igual".into());
@@ -714,7 +728,8 @@ fn gemelos(ruta: &Path, original: &[u8]) -> Vec<PathBuf> {
         .filter(|g| {
             g.as_path() != ruta
                 && g.extension().is_some_and(|x| x.eq_ignore_ascii_case("pdf"))
-                && std::fs::metadata(g).is_ok_and(|m| m.is_file() && m.len() == original.len() as u64)
+                && std::fs::metadata(g)
+                    .is_ok_and(|m| m.is_file() && m.len() == original.len() as u64)
         })
         .filter(|g| sigue_igual(g, original))
         .collect()
@@ -784,7 +799,8 @@ fn fichero_de_vistos(raiz: &Path) -> PathBuf {
 }
 
 fn ya_visto(raiz: &Path, huella: &str) -> bool {
-    std::fs::read_to_string(fichero_de_vistos(raiz)).is_ok_and(|t| t.lines().any(|l| l.trim() == huella))
+    std::fs::read_to_string(fichero_de_vistos(raiz))
+        .is_ok_and(|t| t.lines().any(|l| l.trim() == huella))
 }
 
 fn apuntar(raiz: &Path, huellas: &[&str]) {
@@ -803,7 +819,10 @@ fn apuntar(raiz: &Path, huellas: &[&str]) {
             Ok(())
         });
     if let Err(e) = hecho {
-        tracing::info!(?e, "no se pudo apuntar el PDF aligerado: se podria repetir la pasada");
+        tracing::info!(
+            ?e,
+            "no se pudo apuntar el PDF aligerado: se podria repetir la pasada"
+        );
     }
 }
 
@@ -962,13 +981,20 @@ fn comprimir_en_su_proceso(
         }
         for linea in std::io::BufReader::new(salida_hijo).lines() {
             let Ok(linea) = linea else { break };
-            if let Some(por) = linea.strip_prefix("p ").and_then(|n| n.trim().parse::<u8>().ok()) {
+            if let Some(por) = linea
+                .strip_prefix("p ")
+                .and_then(|n| n.trim().parse::<u8>().ok())
+            {
                 avance(por);
             } else if let Some(bytes) = linea.strip_prefix("memoria ") {
                 tracing::info!(pico = bytes.trim(), "memoria pico del compresor de PDF");
             }
         }
-        let estado = hijo.lock().ok().and_then(|mut g| g.take()).map(|mut h| h.wait());
+        let estado = hijo
+            .lock()
+            .ok()
+            .and_then(|mut g| g.take())
+            .map(|mut h| h.wait());
         acabado.store(true, Ordering::Release);
         estado
     });
@@ -1029,7 +1055,8 @@ mod pruebas {
     }
 
     fn raiz(etiqueta: &str) -> PathBuf {
-        let r = std::env::temp_dir().join(format!("pixpin-aligerar-{etiqueta}-{}", std::process::id()));
+        let r =
+            std::env::temp_dir().join(format!("pixpin-aligerar-{etiqueta}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&r);
         std::fs::create_dir_all(r.join("archivos")).unwrap();
         r
@@ -1101,7 +1128,11 @@ mod pruebas {
             "de {antes} a {despues}: no bajo lo bastante"
         );
         assert_eq!(paginas(&ruta), 2, "las paginas no cambian de numero");
-        assert_eq!(std::fs::read(&gemelo).unwrap(), ligero, "la copia identica va a la par");
+        assert_eq!(
+            std::fs::read(&gemelo).unwrap(),
+            ligero,
+            "la copia identica va a la par"
+        );
         assert_eq!(std::fs::read(&otro).unwrap(), distinto);
         assert!(sobras(&r.join("archivos")).is_empty());
         // **Sin pasadas repetidas**: el ya aligerado, o una copia suya, se
@@ -1127,8 +1158,14 @@ mod pruebas {
         let _ = terminados();
         let _ = cambios();
         let tardo = t.elapsed();
-        assert!(tardo.as_millis() < 50, "el hilo de la ventana se paro {tardo:?}");
-        assert!(por.is_some(), "la burbuja tiene que decir que se esta aligerando");
+        assert!(
+            tardo.as_millis() < 50,
+            "el hilo de la ventana se paro {tardo:?}"
+        );
+        assert!(
+            por.is_some(),
+            "la burbuja tiene que decir que se esta aligerando"
+        );
         // Caso negativo: otro mensaje no dice nada.
         assert_eq!(progreso_de_mensaje("m-otro"), None);
         // Y mientras comprime, preguntar sigue siendo instantaneo.
@@ -1140,9 +1177,16 @@ mod pruebas {
             peor = peor.max(t.elapsed());
             std::thread::sleep(std::time::Duration::from_millis(5));
         }
-        assert!(peor.as_millis() < 50, "preguntar el progreso tardo {peor:?}");
+        assert!(
+            peor.as_millis() < 50,
+            "preguntar el progreso tardo {peor:?}"
+        );
         assert!(matches!(desenlace_de(&ruta), Desenlace::Aligerado { .. }));
-        assert_eq!(progreso_de_mensaje("m-grande"), None, "acabado ya no dice nada");
+        assert_eq!(
+            progreso_de_mensaje("m-grande"),
+            None,
+            "acabado ya no dice nada"
+        );
         let _ = std::fs::remove_dir_all(&r);
     }
 
@@ -1169,7 +1213,14 @@ mod pruebas {
         let r = raiz("cifrado");
         let ruta = r.join("archivos").join("cifrado.pdf");
         let mut s = Synth::new();
-        s.image_page(&testgen::photo(1600, 1200), ImgEnc::Jpeg(92), 50.0, 400.0, 144.0, 108.0);
+        s.image_page(
+            &testgen::photo(1600, 1200),
+            ImgEnc::Jpeg(92),
+            50.0,
+            400.0,
+            144.0,
+            108.0,
+        );
         let mut d = lopdf::Dictionary::new();
         d.set("Filter", "Standard");
         d.set("V", 1);
@@ -1183,10 +1234,7 @@ mod pruebas {
         std::fs::write(&ruta, &original).unwrap();
         assert!(al_entrar(&r, "p", "m1", &ruta));
         let d = desenlace_de(&ruta);
-        assert!(
-            d == Desenlace::Cifrado,
-            "un cifrado no se aligera: {d:?}"
-        );
+        assert!(d == Desenlace::Cifrado, "un cifrado no se aligera: {d:?}");
         assert_eq!(std::fs::read(&ruta).unwrap(), original);
         assert!(sobras(&r.join("archivos")).is_empty());
         let _ = std::fs::remove_dir_all(&r);
@@ -1226,14 +1274,21 @@ mod pruebas {
         assert!(al_entrar(&r, "p", "m-largo", &ruta));
         // A que empiece de verdad (que haya pasado de cargar).
         let hasta = std::time::Instant::now() + std::time::Duration::from_secs(60);
-        while progreso_de_mensaje("m-largo").unwrap_or(0) < 16 && std::time::Instant::now() < hasta {
+        while progreso_de_mensaje("m-largo").unwrap_or(0) < 16 && std::time::Instant::now() < hasta
+        {
             std::thread::sleep(std::time::Duration::from_millis(2));
         }
         cancelar(&ruta);
         assert_eq!(desenlace_de(&ruta), Desenlace::Cancelado);
-        assert_eq!(std::fs::read(&ruta).unwrap(), original, "el original, entero");
+        assert_eq!(
+            std::fs::read(&ruta).unwrap(),
+            original,
+            "el original, entero"
+        );
         assert!(sobras(&r.join("archivos")).is_empty());
-        let quedan = std::fs::read_dir(temporales(&r)).map(|l| l.count()).unwrap_or(0);
+        let quedan = std::fs::read_dir(temporales(&r))
+            .map(|l| l.count())
+            .unwrap_or(0);
         assert_eq!(quedan, 0, "ni un temporal en la cache");
         // Y cancelado no se apunta como visto: se puede volver a intentar.
         assert!(!ya_visto(&r, &huella(&original)));
@@ -1259,7 +1314,10 @@ mod pruebas {
     }
 
     fn proyecto(etiqueta: &str) -> (PathBuf, almacen::Ficha) {
-        let raiz = std::env::temp_dir().join(format!("pixpin-aligerar-unir-{etiqueta}-{}", std::process::id()));
+        let raiz = std::env::temp_dir().join(format!(
+            "pixpin-aligerar-unir-{etiqueta}-{}",
+            std::process::id()
+        ));
         let _ = std::fs::remove_dir_all(&raiz);
         let ficha = almacen::Ficha::nueva("Obra", 5, "PC01");
         let mut indice = almacen::Indice::default();
@@ -1278,14 +1336,26 @@ mod pruebas {
         let adjunto = almacen::carpeta(&raiz, &ficha.id).join(&relativa);
         assert!(al_entrar(&raiz, &ficha.id, "m1", &adjunto));
         // «Anadir al proyecto» enseguida, con el PDF aun comprimiendose.
-        let u = crate::pdf_en_chat::unir(&raiz, &ficha, &adjunto, "m1", "plano", 1000, &|_, _| {}).unwrap();
+        let u = crate::pdf_en_chat::unir(&raiz, &ficha, &adjunto, "m1", "plano", 1000, &|_, _| {})
+            .unwrap();
         assert_eq!(u.hojas, 3, "una hoja por pagina, las mismas");
         let ligero = std::fs::read(&adjunto).unwrap();
-        assert!(ligero.len() < original.len() * 85 / 100, "el adjunto ya es el ligero");
+        assert!(
+            ligero.len() < original.len() * 85 / 100,
+            "el adjunto ya es el ligero"
+        );
         let doc = pixpin_proyecto::vista::documento_del_proyecto(&raiz, &ficha.id).unwrap();
-        assert_eq!(std::fs::read(&doc).unwrap(), ligero, "el documento nace ligero");
+        assert_eq!(
+            std::fs::read(&doc).unwrap(),
+            ligero,
+            "el documento nace ligero"
+        );
         let limpio = almacen::carpeta(&raiz, &ficha.id).join("archivos/limpio-1000.pdf");
-        assert_eq!(std::fs::read(&limpio).unwrap(), ligero, "y su copia limpia tambien");
+        assert_eq!(
+            std::fs::read(&limpio).unwrap(),
+            ligero,
+            "y su copia limpia tambien"
+        );
         // El documento es copia del ya aligerado: la cola no lo repite.
         assert_eq!(desenlace_de(&doc), Desenlace::YaEstaba);
         assert_eq!(paginas(&doc), 3);
@@ -1346,7 +1416,10 @@ mod pruebas {
         assert_eq!(codigo::CIFRADO, pixpin_aligerar::codigo::CIFRADO);
         assert_eq!(codigo::CANCELADO, pixpin_aligerar::codigo::CANCELADO);
         // Caso negativo: un codigo que no es de exito no se toma por exito.
-        assert!(matches!(salida_de(Some(pixpin_aligerar::codigo::FALLO)), Salida::Fallo(_)));
+        assert!(matches!(
+            salida_de(Some(pixpin_aligerar::codigo::FALLO)),
+            Salida::Fallo(_)
+        ));
         assert!(matches!(salida_de(None), Salida::Fallo(_)));
     }
 
@@ -1355,8 +1428,14 @@ mod pruebas {
         assert_eq!(nivel_para_entrar(NivelPdf::Pequeno), NivelPdf::Equilibrado);
         assert_eq!(nivel_para_entrar(NivelPdf::Extremo), NivelPdf::Equilibrado);
         // Casos negativos: los dos de entrar no se tocan.
-        assert_eq!(nivel_para_entrar(NivelPdf::SinPerdida), NivelPdf::SinPerdida);
-        assert_eq!(nivel_para_entrar(NivelPdf::Equilibrado), NivelPdf::Equilibrado);
+        assert_eq!(
+            nivel_para_entrar(NivelPdf::SinPerdida),
+            NivelPdf::SinPerdida
+        );
+        assert_eq!(
+            nivel_para_entrar(NivelPdf::Equilibrado),
+            NivelPdf::Equilibrado
+        );
     }
 
     #[test]
@@ -1372,12 +1451,21 @@ mod pruebas {
     #[test]
     fn el_modo_cuidadoso_es_para_cuatro_gigas_o_menos_o_el_nivel_ligero() {
         assert!(modo_cuidadoso(4 * GIB, false));
-        assert!(modo_cuidadoso(3_900 * MIB, false), "lo que Windows cuenta de 4 GB");
-        assert!(modo_cuidadoso(16 * GIB, true), "Ligero manda aunque sobre RAM");
+        assert!(
+            modo_cuidadoso(3_900 * MIB, false),
+            "lo que Windows cuenta de 4 GB"
+        );
+        assert!(
+            modo_cuidadoso(16 * GIB, true),
+            "Ligero manda aunque sobre RAM"
+        );
         // Casos negativos.
         assert!(!modo_cuidadoso(8 * GIB, false));
         assert!(!modo_cuidadoso(4 * GIB + 1, false));
-        assert!(!modo_cuidadoso(0, false), "una RAM que no se sabe no cuenta");
+        assert!(
+            !modo_cuidadoso(0, false),
+            "una RAM que no se sabe no cuenta"
+        );
     }
 
     #[test]
@@ -1469,12 +1557,22 @@ mod pruebas {
         let mut s = Synth::new();
         s.doc.reference_table.cross_reference_type = lopdf::xref::XrefType::CrossReferenceTable;
         // Mas ancha que un A4 a 200 ppp: el plan B mide contra la pagina.
-        s.image_page(&testgen::photo(3000, 2250), ImgEnc::Jpeg(92), 0.0, 0.0, 612.0, 459.0);
+        s.image_page(
+            &testgen::photo(3000, 2250),
+            ImgEnc::Jpeg(92),
+            0.0,
+            0.0,
+            612.0,
+            459.0,
+        );
         let original = s.finish();
         std::fs::write(&ruta, &original).unwrap();
         assert!(al_entrar(&r, "p", "m1", &ruta));
         let d = desenlace_de(&ruta);
-        assert!(matches!(d, Desenlace::Aligerado { .. }), "el plan B baja las fotos: {d:?}");
+        assert!(
+            matches!(d, Desenlace::Aligerado { .. }),
+            "el plan B baja las fotos: {d:?}"
+        );
         assert!(std::fs::read(&ruta).unwrap().len() < original.len() * 85 / 100);
         assert_eq!(paginas(&ruta), 1);
         let _ = std::fs::remove_dir_all(&r);

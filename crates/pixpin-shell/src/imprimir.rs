@@ -16,7 +16,9 @@ use windows::Win32::Graphics::Gdi::{
     DEVMODEW, DM_ORIENTATION, DMORIENT_LANDSCAPE, DMORIENT_PORTRAIT, DeleteDC, GetDeviceCaps,
     LOGPIXELSX, LOGPIXELSY, PHYSICALHEIGHT, PHYSICALWIDTH,
 };
-use windows::Win32::System::Memory::{GMEM_MOVEABLE, GlobalAlloc, GlobalLock, GlobalSize, GlobalUnlock};
+use windows::Win32::System::Memory::{
+    GMEM_MOVEABLE, GlobalAlloc, GlobalLock, GlobalSize, GlobalUnlock,
+};
 use windows::Win32::UI::Controls::Dialogs::{
     DEVNAMES, PD_NOCURRENTPAGE, PD_NOPAGENUMS, PD_NOSELECTION, PD_PAGENUMS, PD_RESULT_PRINT,
     PD_RETURNDC, PD_SELECTION, PD_USEDEVMODECOPIESANDCOLLATE, PRINTDLGEXW, PRINTPAGERANGE,
@@ -152,9 +154,16 @@ pub fn pedir_impresion(
     // Con la orientacion puesta y, si el controlador no acepta ese DEVMODE
     // a medias (hay alguno que no), con lo que la impresora traiga: mejor
     // un dialogo derecho que ninguno.
-    match un_intento(propietaria, paginas, hay_seleccion, devmode_inicial(apaisada)) {
+    match un_intento(
+        propietaria,
+        paginas,
+        hay_seleccion,
+        devmode_inicial(apaisada),
+    ) {
         Ok(r) => r,
-        Err(()) => un_intento(propietaria, paginas, hay_seleccion, None).ok().flatten(),
+        Err(()) => un_intento(propietaria, paginas, hay_seleccion, None)
+            .ok()
+            .flatten(),
     }
 }
 

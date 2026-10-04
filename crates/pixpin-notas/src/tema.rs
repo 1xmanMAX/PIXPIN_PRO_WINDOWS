@@ -125,7 +125,11 @@ mod pruebas {
         let luz = |c: Rgb| ((c >> 16) & 0xff) * 299 + ((c >> 8) & 0xff) * 587 + (c & 0xff) * 114;
         for t in [Tema::oscuro(), Tema::claro()] {
             let d = luz(t.texto).abs_diff(luz(t.papel));
-            assert!(d > 150_000, "poco contraste en {}", if t.oscuro { "oscuro" } else { "claro" });
+            assert!(
+                d > 150_000,
+                "poco contraste en {}",
+                if t.oscuro { "oscuro" } else { "claro" }
+            );
             assert_ne!(t.elegido, t.menu, "lo elegido no se distingue");
         }
     }

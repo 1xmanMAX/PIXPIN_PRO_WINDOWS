@@ -86,7 +86,12 @@ struct Hecho {
 
 /// El hilo que hace los ficheros: siempre lo ultimo que se pidio, que lo
 /// anterior ya no se mira.
-fn hilo_de_ficheros(p: Arc<Preparado>, pedidos: mpsc::Receiver<Clave>, hechos: mpsc::Sender<Hecho>, ventana: isize) {
+fn hilo_de_ficheros(
+    p: Arc<Preparado>,
+    pedidos: mpsc::Receiver<Clave>,
+    hechos: mpsc::Sender<Hecho>,
+    ventana: isize,
+) {
     let _com = pixpin_shell::ComDelHilo::iniciar();
     let base = super::carpeta_temporal();
     let mut n = 0u32;
@@ -220,7 +225,10 @@ fn hilo(textos: &Catalogo, idioma: Idioma, ubicacion: Ubicacion, cosa: Cosa) -> 
     // Con varias paginas marcadas se empieza por un formato que las lleve
     // todas; con una, por el primero.
     let primero = if e.marcadas.len() > 1 {
-        c.formatos.iter().position(|f| f.cuantas != Cuantas::Una).unwrap_or(0)
+        c.formatos
+            .iter()
+            .position(|f| f.cuantas != Cuantas::Una)
+            .unwrap_or(0)
     } else {
         0
     };
@@ -237,7 +245,11 @@ fn hilo(textos: &Catalogo, idioma: Idioma, ubicacion: Ubicacion, cosa: Cosa) -> 
         esperando_panel: false,
     };
     let terminado = Arc::new(AtomicBool::new(false));
-    let coma = textos.t("compartir-coma-decimal").chars().next().unwrap_or(',');
+    let coma = textos
+        .t("compartir-coma-decimal")
+        .chars()
+        .next()
+        .unwrap_or(',');
 
     let mut hay_que_pintar = true;
     let mut vivo = true;
@@ -270,7 +282,10 @@ fn hilo(textos: &Catalogo, idioma: Idioma, ubicacion: Ubicacion, cosa: Cosa) -> 
                         Destino::Ninguna => hoja.e.ninguna(),
                         Destino::Interruptor => hoja.e.alternar_interruptor(&hoja.c),
                         Destino::Salida(s) => {
-                            vivo = pulsar(&mut hoja, s, &ventana, &preparado, textos, idioma, &ubicacion, &terminado);
+                            vivo = pulsar(
+                                &mut hoja, s, &ventana, &preparado, textos, idioma, &ubicacion,
+                                &terminado,
+                            );
                         }
                         Destino::Nada => {}
                     }
@@ -283,13 +298,40 @@ fn hilo(textos: &Catalogo, idioma: Idioma, ubicacion: Ubicacion, cosa: Cosa) -> 
                 EventoOverlay::Tecla { vk, ctrl, .. } => match (vk, ctrl) {
                     (0x1B, _) => vivo = false,
                     (0x0D, _) => {
-                        vivo = pulsar(&mut hoja, Boton::Compartir, &ventana, &preparado, textos, idioma, &ubicacion, &terminado)
+                        vivo = pulsar(
+                            &mut hoja,
+                            Boton::Compartir,
+                            &ventana,
+                            &preparado,
+                            textos,
+                            idioma,
+                            &ubicacion,
+                            &terminado,
+                        )
                     }
                     (0x53, true) => {
-                        vivo = pulsar(&mut hoja, Boton::Guardar, &ventana, &preparado, textos, idioma, &ubicacion, &terminado)
+                        vivo = pulsar(
+                            &mut hoja,
+                            Boton::Guardar,
+                            &ventana,
+                            &preparado,
+                            textos,
+                            idioma,
+                            &ubicacion,
+                            &terminado,
+                        )
                     }
                     (0x43, true) => {
-                        vivo = pulsar(&mut hoja, Boton::Copiar, &ventana, &preparado, textos, idioma, &ubicacion, &terminado)
+                        vivo = pulsar(
+                            &mut hoja,
+                            Boton::Copiar,
+                            &ventana,
+                            &preparado,
+                            textos,
+                            idioma,
+                            &ubicacion,
+                            &terminado,
+                        )
                     }
                     (0x25 | 0x27, false) => {
                         let visibles = hoja.e.visibles(&hoja.c);
@@ -331,10 +373,16 @@ fn hilo(textos: &Catalogo, idioma: Idioma, ubicacion: Ubicacion, cosa: Cosa) -> 
             && !matches!(hoja.pie(), Pie::Preparando)
         {
             hoja.pendiente = None;
-            vivo = pulsar(&mut hoja, s, &ventana, &preparado, textos, idioma, &ubicacion, &terminado);
+            vivo = pulsar(
+                &mut hoja, s, &ventana, &preparado, textos, idioma, &ubicacion, &terminado,
+            );
             hay_que_pintar = true;
         }
-        if hoja.aviso.as_ref().is_some_and(|(_, desde)| desde.elapsed() > AVISO) {
+        if hoja
+            .aviso
+            .as_ref()
+            .is_some_and(|(_, desde)| desde.elapsed() > AVISO)
+        {
             hoja.aviso = None;
             hay_que_pintar = true;
         }
@@ -345,11 +393,13 @@ fn hilo(textos: &Catalogo, idioma: Idioma, ubicacion: Ubicacion, cosa: Cosa) -> 
                 let _ = superficie.presentar();
             }
         }
-        pixpin_shell::overlay::esperar_eventos(Some(if hoja.pedido.is_some() || hoja.aviso.is_some() {
-            100
-        } else {
-            500
-        }));
+        pixpin_shell::overlay::esperar_eventos(Some(
+            if hoja.pedido.is_some() || hoja.aviso.is_some() {
+                100
+            } else {
+                500
+            },
+        ));
     }
     Ok(())
 }
@@ -405,7 +455,12 @@ fn pulsar(
                 aviso.store(true, Ordering::SeqCst);
                 pixpin_shell::overlay::despertar(hwnd_hoja);
             });
-            match pixpin_shell::compartir::compartir_avisando(ventana.handle(), &salida.ficheros, &titulo, al_terminar) {
+            match pixpin_shell::compartir::compartir_avisando(
+                ventana.handle(),
+                &salida.ficheros,
+                &titulo,
+                al_terminar,
+            ) {
                 Ok(()) => {
                     hoja.esperando_panel = true;
                     hoja.avisar(textos.t("compartir-panel-abierto"));
@@ -439,7 +494,9 @@ fn pulsar(
         }
         Boton::Copiar => {
             let hecho = match (&salida.imagen, salida.ficheros.as_slice()) {
-                (Some(img), _) => pixpin_codec::portapapeles::copiar_imagen_y_ficheros(img, &salida.ficheros),
+                (Some(img), _) => {
+                    pixpin_codec::portapapeles::copiar_imagen_y_ficheros(img, &salida.ficheros)
+                }
                 (None, [uno]) if es_texto(uno) => match std::fs::read_to_string(uno) {
                     Ok(t) => pixpin_codec::portapapeles::copiar_texto(&t),
                     Err(_) => pixpin_codec::portapapeles::copiar_ficheros(&salida.ficheros),
@@ -476,7 +533,12 @@ fn es_texto(ruta: &std::path::Path) -> bool {
 
 /// «Guardar como…»: un fichero, con su tipo ya puesto; varios, en una
 /// carpeta. Devuelve donde quedo, o `None` si se cancelo.
-fn guardar(ventana: &VentanaOverlay, salida: &Salida, hoja: &Hoja, textos: &Catalogo) -> Result<Option<PathBuf>> {
+fn guardar(
+    ventana: &VentanaOverlay,
+    salida: &Salida,
+    hoja: &Hoja,
+    textos: &Catalogo,
+) -> Result<Option<PathBuf>> {
     match salida.ficheros.as_slice() {
         [uno] => {
             let ext = uno
@@ -492,11 +554,14 @@ fn guardar(ventana: &VentanaOverlay, salida: &Salida, hoja: &Hoja, textos: &Cata
                 .formato(&hoja.c)
                 .map(|f| f.nombre.clone())
                 .unwrap_or_else(|| ext.to_uppercase());
-            let Some(destino) = pixpin_shell::guardar::pedir_ruta_para(ventana.handle(), &tronco, &tipo, &ext) else {
+            let Some(destino) =
+                pixpin_shell::guardar::pedir_ruta_para(ventana.handle(), &tronco, &tipo, &ext)
+            else {
                 return Ok(None);
             };
             if destino != *uno {
-                std::fs::copy(uno, &destino).with_context(|| format!("no se pudo guardar {}", destino.display()))?;
+                std::fs::copy(uno, &destino)
+                    .with_context(|| format!("no se pudo guardar {}", destino.display()))?;
             }
             Ok(Some(destino))
         }
@@ -538,14 +603,35 @@ fn pintar_interruptor(h: &Hoja, p: &Pintor, d: &Disposicion, sobre: bool) {
         ancho,
         alto,
     };
-    let fondo = if puesto { ENCENDIDO } else if sobre { ENCIMA } else { REDONDEL };
+    let fondo = if puesto {
+        ENCENDIDO
+    } else if sobre {
+        ENCIMA
+    } else {
+        REDONDEL
+    };
     p.rellenar_redondeado(pastilla, alto / 2.0, fondo);
     let radio = alto / 2.0 - 3.0 * k;
-    let cx = if puesto { pastilla.x + ancho - alto / 2.0 } else { pastilla.x + alto / 2.0 };
-    p.circulo((cx, pastilla.y + alto / 2.0), radio, if puesto { TEXTO } else { APAGADO });
+    let cx = if puesto {
+        pastilla.x + ancho - alto / 2.0
+    } else {
+        pastilla.x + alto / 2.0
+    };
+    p.circulo(
+        (cx, pastilla.y + alto / 2.0),
+        radio,
+        if puesto { TEXTO } else { APAGADO },
+    );
     let x = pastilla.x + ancho + 10.0 * k;
     let resto = (caja.x + caja.ancho - x).max(0.0);
-    p.texto_linea(&i.nombre, x, caja.y + caja.alto / 2.0 - 9.0 * k, 14.0 * k, resto, TEXTO);
+    p.texto_linea(
+        &i.nombre,
+        x,
+        caja.y + caja.alto / 2.0 - 9.0 * k,
+        14.0 * k,
+        resto,
+        TEXTO,
+    );
 }
 
 fn rf(c: Caja) -> RectF {
@@ -613,7 +699,10 @@ fn pintar(h: &Hoja, p: &Pintor, textos: &Catalogo, coma: char) {
     );
     if encima == Destino::Cerrar {
         p.circulo(
-            (d.cerrar.x + d.cerrar.ancho / 2.0, d.cerrar.y + d.cerrar.alto / 2.0),
+            (
+                d.cerrar.x + d.cerrar.ancho / 2.0,
+                d.cerrar.y + d.cerrar.alto / 2.0,
+            ),
             d.cerrar.ancho / 2.0,
             ENCIMA,
         );
@@ -634,7 +723,10 @@ fn pintar(h: &Hoja, p: &Pintor, textos: &Catalogo, coma: char) {
     for (i, redondel, nombre) in &d.formatos {
         let f = &h.c.formatos[*i];
         let puesto = *i == h.e.formato;
-        let centro = (redondel.x + redondel.ancho / 2.0, redondel.y + redondel.alto / 2.0);
+        let centro = (
+            redondel.x + redondel.ancho / 2.0,
+            redondel.y + redondel.alto / 2.0,
+        );
         let fondo = if puesto {
             ENCENDIDO
         } else if encima == Destino::Formato(*i) {
@@ -654,7 +746,13 @@ fn pintar(h: &Hoja, p: &Pintor, textos: &Catalogo, coma: char) {
             },
             TEXTO,
         );
-        centrado(p, &f.nombre, rf(*nombre), 12.0 * k, if puesto { TEXTO } else { APAGADO });
+        centrado(
+            p,
+            &f.nombre,
+            rf(*nombre),
+            12.0 * k,
+            if puesto { TEXTO } else { APAGADO },
+        );
     }
 
     // Que paginas.
@@ -718,7 +816,12 @@ fn pintar(h: &Hoja, p: &Pintor, textos: &Catalogo, coma: char) {
             let lado = 20.0 * k;
             let cy = fila.y + fila.alto / 2.0;
             if cuantas == Some(Cuantas::Una) {
-                p.anillo((x + lado / 2.0, cy), lado / 2.0 - 1.5 * k, 2.0 * k, if marcada { ENCENDIDO } else { APAGADO });
+                p.anillo(
+                    (x + lado / 2.0, cy),
+                    lado / 2.0 - 1.5 * k,
+                    2.0 * k,
+                    if marcada { ENCENDIDO } else { APAGADO },
+                );
                 if marcada {
                     p.circulo((x + lado / 2.0, cy), lado / 4.0, ENCENDIDO);
                 }
@@ -774,12 +877,12 @@ fn pintar(h: &Hoja, p: &Pintor, textos: &Catalogo, coma: char) {
             Destino::Salida(Boton::Copiar) => textos.t("compartir-copiar"),
             Destino::Salida(Boton::Wifi) => textos.t("compartir-wifi"),
             // Encima del interruptor, que hace.
-            Destino::Interruptor => h
-                .e
-                .formato(&h.c)
-                .and_then(|f| f.interruptor.as_ref())
-                .map(|i| i.detalle.clone())
-                .unwrap_or_default(),
+            Destino::Interruptor => {
+                h.e.formato(&h.c)
+                    .and_then(|f| f.interruptor.as_ref())
+                    .map(|i| i.detalle.clone())
+                    .unwrap_or_default()
+            }
             _ => match h.pie() {
                 Pie::Preparando => textos.t("compartir-preparando"),
                 Pie::MarcaAlguna => textos.t("compartir-marca-alguna"),
@@ -799,15 +902,30 @@ fn pintar(h: &Hoja, p: &Pintor, textos: &Catalogo, coma: char) {
         },
     };
     pintar_interruptor(h, p, &d, encima == Destino::Interruptor);
-    p.texto_linea(&pie, d.peso.x, d.peso.y + d.peso.alto / 2.0 - 9.0 * k, 14.0 * k, d.peso.ancho, TEXTO);
+    p.texto_linea(
+        &pie,
+        d.peso.x,
+        d.peso.y + d.peso.alto / 2.0 - 9.0 * k,
+        14.0 * k,
+        d.peso.ancho,
+        TEXTO,
+    );
     let listo = matches!(h.pie(), Pie::Listo(..));
     for (s, caja) in &d.salidas {
         let r = rf(*caja);
         let sobre = encima == Destino::Salida(*s);
-        let alfa = if listo || matches!(h.pie(), Pie::Preparando) { 1.0 } else { 0.4 };
+        let alfa = if listo || matches!(h.pie(), Pie::Preparando) {
+            1.0
+        } else {
+            0.4
+        };
         match s {
             Boton::Compartir => {
-                p.rellenar_redondeado(r, 8.0 * k, con_alfa(if sobre { hex(0x3196ec) } else { ENCENDIDO }, alfa));
+                p.rellenar_redondeado(
+                    r,
+                    8.0 * k,
+                    con_alfa(if sobre { hex(0x3196ec) } else { ENCENDIDO }, alfa),
+                );
                 let lado = 18.0 * k;
                 p.icono(
                     &mi::IOS_SHARE,
@@ -829,7 +947,11 @@ fn pintar(h: &Hoja, p: &Pintor, textos: &Catalogo, coma: char) {
                 );
             }
             Boton::Guardar => {
-                p.rellenar_redondeado(r, 8.0 * k, con_alfa(if sobre { ENCIMA } else { REDONDEL }, alfa));
+                p.rellenar_redondeado(
+                    r,
+                    8.0 * k,
+                    con_alfa(if sobre { ENCIMA } else { REDONDEL }, alfa),
+                );
                 centrado(
                     p,
                     &textos.t("compartir-guardar"),
@@ -842,7 +964,11 @@ fn pintar(h: &Hoja, p: &Pintor, textos: &Catalogo, coma: char) {
                 );
             }
             Boton::Copiar | Boton::Wifi => {
-                p.rellenar_redondeado(r, 8.0 * k, con_alfa(if sobre { ENCIMA } else { REDONDEL }, alfa));
+                p.rellenar_redondeado(
+                    r,
+                    8.0 * k,
+                    con_alfa(if sobre { ENCIMA } else { REDONDEL }, alfa),
+                );
                 let lado = 20.0 * k;
                 p.icono(
                     if *s == Boton::Copiar {
@@ -889,32 +1015,37 @@ mod pruebas {
     #[test]
     fn la_hoja_se_pinta_entera_y_dice_cuanto_pesa() {
         let textos = Catalogo::nuevo(Idioma::Espanol);
-        let p = super::super::preparar(Cosa::Lienzo(super::super::LienzoSuelto {
-            escena: {
-                let mut e = pixpin_motor2d::Escena::nueva();
-                for (i, n) in ["Planta", "Alzado", "Seccion"].iter().enumerate() {
-                    e.anadir(pixpin_motor2d::Elemento {
-                        figura: pixpin_motor2d::Figura::Marco { nombre: (*n).into() },
-                        y: i as f32 * 300.0,
-                        ancho: 200.0,
-                        alto: 200.0,
-                        ..Default::default()
-                    });
-                    e.anadir(pixpin_motor2d::Elemento {
-                        figura: pixpin_motor2d::Figura::Rectangulo,
-                        x: 20.0,
-                        y: i as f32 * 300.0 + 20.0,
-                        ancho: 50.0,
-                        alto: 50.0,
-                        ..Default::default()
-                    });
-                }
-                e
-            },
-            papel: None,
-            fotos: HashMap::new(),
-            nombre: "Casa de muestra".into(),
-        }), &textos)
+        let p = super::super::preparar(
+            Cosa::Lienzo(super::super::LienzoSuelto {
+                escena: {
+                    let mut e = pixpin_motor2d::Escena::nueva();
+                    for (i, n) in ["Planta", "Alzado", "Seccion"].iter().enumerate() {
+                        e.anadir(pixpin_motor2d::Elemento {
+                            figura: pixpin_motor2d::Figura::Marco {
+                                nombre: (*n).into(),
+                            },
+                            y: i as f32 * 300.0,
+                            ancho: 200.0,
+                            alto: 200.0,
+                            ..Default::default()
+                        });
+                        e.anadir(pixpin_motor2d::Elemento {
+                            figura: pixpin_motor2d::Figura::Rectangulo,
+                            x: 20.0,
+                            y: i as f32 * 300.0 + 20.0,
+                            ancho: 50.0,
+                            alto: 50.0,
+                            ..Default::default()
+                        });
+                    }
+                    e
+                },
+                papel: None,
+                fotos: HashMap::new(),
+                nombre: "Casa de muestra".into(),
+            }),
+            &textos,
+        )
         .unwrap();
         let c = super::super::compartible(&p, &textos);
         let escala = 1.25;
@@ -935,12 +1066,18 @@ mod pruebas {
         let (w, alto) = (w.ceil() as u32, alto.ceil() as u32);
         let d = pixpin_capture::Dispositivo::nuevo().unwrap();
         let motor = pixpin_render::MotorRender::nuevo(d.d3d()).unwrap();
-        let destino = pixpin_render::fuera_de_pantalla::FueraDePantalla::nuevo(&motor, d.d3d(), w, alto).unwrap();
+        let destino =
+            pixpin_render::fuera_de_pantalla::FueraDePantalla::nuevo(&motor, d.d3d(), w, alto)
+                .unwrap();
         motor
             .dibujar(&destino.destino, |p| pintar(&h, p, &textos, ','))
             .unwrap();
         let (ancho, alto, pixeles) = destino.leer_rgba().unwrap();
-        let img = pixpin_codec::ImagenRgba { ancho, alto, pixeles };
+        let img = pixpin_codec::ImagenRgba {
+            ancho,
+            alto,
+            pixeles,
+        };
         // Algo pintado en el centro de la tarjeta, y las esquinas redondeadas
         // transparentes.
         assert_eq!(img.pixeles[3], 0, "la esquina, fuera de la tarjeta");
@@ -949,7 +1086,11 @@ mod pruebas {
         let dir = std::env::var_os("PIXPIN_MUESTRAS_COMPARTIR")
             .map(PathBuf::from)
             .unwrap_or_else(std::env::temp_dir);
-        std::fs::write(dir.join("hoja-de-compartir.png"), pixpin_codec::codificar_png(&img).unwrap()).unwrap();
+        std::fs::write(
+            dir.join("hoja-de-compartir.png"),
+            pixpin_codec::codificar_png(&img).unwrap(),
+        )
+        .unwrap();
 
         // Caso negativo: sin paginas marcadas no hay nada que preparar y el
         // pie lo dice.

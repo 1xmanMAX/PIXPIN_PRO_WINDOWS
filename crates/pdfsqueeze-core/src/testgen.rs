@@ -23,8 +23,15 @@ impl Synth {
     pub fn new() -> Self {
         let mut doc = Document::with_version("1.4");
         let pages_id = doc.new_object_id();
-        let font_id = doc.add_object(dictionary! { "Type" => "Font", "Subtype" => "Type1", "BaseFont" => "Helvetica" });
-        Synth { doc, pages_id, page_ids: vec![], font_id }
+        let font_id = doc.add_object(
+            dictionary! { "Type" => "Font", "Subtype" => "Type1", "BaseFont" => "Helvetica" },
+        );
+        Synth {
+            doc,
+            pages_id,
+            page_ids: vec![],
+            font_id,
+        }
     }
 
     fn add_page(&mut self, content: Vec<u8>, xobjects: Dictionary) -> lopdf::ObjectId {
@@ -47,7 +54,27 @@ impl Synth {
     pub fn text_page(&mut self, lines: usize) -> lopdf::ObjectId {
         let page_no = self.page_ids.len() + 1;
         let mut c = String::from("BT /F1 11 Tf 14 TL 50 740 Td\n");
-        let words = ["lorem", "ipsum", "dolor", "sit", "amet", "consectetur", "adipiscing", "elit", "sed", "do", "eiusmod", "tempor", "incididunt", "ut", "labore", "et", "dolore", "magna", "aliqua"];
+        let words = [
+            "lorem",
+            "ipsum",
+            "dolor",
+            "sit",
+            "amet",
+            "consectetur",
+            "adipiscing",
+            "elit",
+            "sed",
+            "do",
+            "eiusmod",
+            "tempor",
+            "incididunt",
+            "ut",
+            "labore",
+            "et",
+            "dolore",
+            "magna",
+            "aliqua",
+        ];
         let mut seed = page_no as u64 * 7919;
         for i in 0..lines {
             let mut line = format!("p{page_no} l{i}:");
@@ -61,7 +88,13 @@ impl Synth {
         self.add_page(c.into_bytes(), Dictionary::new())
     }
 
-    fn image_object(&mut self, img: &RawImage, filter: &str, data: Vec<u8>, bpc: u8) -> lopdf::ObjectId {
+    fn image_object(
+        &mut self,
+        img: &RawImage,
+        filter: &str,
+        data: Vec<u8>,
+        bpc: u8,
+    ) -> lopdf::ObjectId {
         let cs = match img.cs {
             ColorKind::Gray => "DeviceGray",
             ColorKind::Rgb | ColorKind::Other3 => "DeviceRGB",
@@ -79,28 +112,50 @@ impl Synth {
     }
 
     /// Page drawing `img` scaled to `w_pt × h_pt` points at (x, y).
-    pub fn image_page(&mut self, img: &RawImage, encoding: ImgEnc, x: f32, y: f32, w_pt: f32, h_pt: f32) -> (lopdf::ObjectId, lopdf::ObjectId) {
+    pub fn image_page(
+        &mut self,
+        img: &RawImage,
+        encoding: ImgEnc,
+        x: f32,
+        y: f32,
+        w_pt: f32,
+        h_pt: f32,
+    ) -> (lopdf::ObjectId, lopdf::ObjectId) {
         let (filter, data, bpc) = match encoding {
             ImgEnc::Raw => ("", img.data.clone(), 8),
             ImgEnc::Flate => ("FlateDecode", deflate::zlib_best(&img.data), 8),
             ImgEnc::Jpeg(q) => {
                 let mut buf = Vec::new();
-                let ct = if img.channels == 1 { jpeg_encoder::ColorType::Luma } else { jpeg_encoder::ColorType::Rgb };
-                jpeg_encoder::Encoder::new(&mut buf, q).encode(&img.data, img.width as u16, img.height as u16, ct).unwrap();
+                let ct = if img.channels == 1 {
+                    jpeg_encoder::ColorType::Luma
+                } else {
+                    jpeg_encoder::ColorType::Rgb
+                };
+                jpeg_encoder::Encoder::new(&mut buf, q)
+                    .encode(&img.data, img.width as u16, img.height as u16, ct)
+                    .unwrap();
                 ("DCTDecode", buf, 8)
             }
         };
         let img_id = self.image_object(img, filter, data, bpc);
         let mut xo = Dictionary::new();
         xo.set("Im1", Object::Reference(img_id));
-        let content = format!("q {w_pt} 0 0 {h_pt} {x} {y} cm /Im1 Do Q\nBT /F1 9 Tf 50 20 Td (caption) Tj ET");
+        let content = format!(
+            "q {w_pt} 0 0 {h_pt} {x} {y} cm /Im1 Do Q\nBT /F1 9 Tf 50 20 Td (caption) Tj ET"
+        );
         let page = self.add_page(content.into_bytes(), xo);
         (page, img_id)
     }
 
     /// Page drawing an arbitrary pre-built image XObject stream (for codec /
     /// colour-space edge cases).
-    pub fn custom_image_page(&mut self, dict: Dictionary, data: Vec<u8>, w_pt: f32, h_pt: f32) -> (lopdf::ObjectId, lopdf::ObjectId) {
+    pub fn custom_image_page(
+        &mut self,
+        dict: Dictionary,
+        data: Vec<u8>,
+        w_pt: f32,
+        h_pt: f32,
+    ) -> (lopdf::ObjectId, lopdf::ObjectId) {
         let img_id = self.doc.add_object(Stream::new(dict, data));
         let mut xo = Dictionary::new();
         xo.set("Im1", Object::Reference(img_id));
@@ -110,10 +165,19 @@ impl Synth {
     }
 
     pub fn finish(mut self) -> Vec<u8> {
-        let kids: Vec<Object> = self.page_ids.iter().map(|id| Object::Reference(*id)).collect();
+        let kids: Vec<Object> = self
+            .page_ids
+            .iter()
+            .map(|id| Object::Reference(*id))
+            .collect();
         let count = kids.len() as i64;
-        self.doc.objects.insert(self.pages_id, Object::Dictionary(dictionary! { "Type" => "Pages", "Kids" => kids, "Count" => count }));
-        let catalog = self.doc.add_object(dictionary! { "Type" => "Catalog", "Pages" => self.pages_id });
+        self.doc.objects.insert(
+            self.pages_id,
+            Object::Dictionary(dictionary! { "Type" => "Pages", "Kids" => kids, "Count" => count }),
+        );
+        let catalog = self
+            .doc
+            .add_object(dictionary! { "Type" => "Catalog", "Pages" => self.pages_id });
         let info = self.doc.add_object(dictionary! { "Producer" => Object::string_literal("synth"), "Title" => Object::string_literal("Synthetic") });
         self.doc.trailer.set("Root", catalog);
         self.doc.trailer.set("Info", info);
@@ -131,7 +195,9 @@ pub enum ImgEnc {
 }
 
 fn lcg(seed: &mut u64) -> u32 {
-    *seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+    *seed = seed
+        .wrapping_mul(6364136223846793005)
+        .wrapping_add(1442695040888963407);
     (*seed >> 33) as u32
 }
 
@@ -158,7 +224,16 @@ pub fn photo_seeded(w: u32, h: u32, seed: u64) -> RawImage {
             data.extend_from_slice(&[r as u8, g as u8, b as u8]);
         }
     }
-    RawImage { width: w, height: h, channels: 3, data, cs: ColorKind::Rgb, is_mask: false, orig_bpc: 8, lossy_decode: false }
+    RawImage {
+        width: w,
+        height: h,
+        channels: 3,
+        data,
+        cs: ColorKind::Rgb,
+        is_mask: false,
+        orig_bpc: 8,
+        lossy_decode: false,
+    }
 }
 
 /// Flat-colour chart with a handful of colours.
@@ -167,17 +242,39 @@ pub fn flat_graphic(w: u32, h: u32) -> RawImage {
 }
 
 pub fn flat_graphic_seeded(w: u32, h: u32, seed: u64) -> RawImage {
-    let palette: [[u8; 3]; 6] = [[255, 255, 255], [30, 60, 200], [220, 40, 40], [40, 180, 80], [250, 200, 30], [20, 20, 20]];
+    let palette: [[u8; 3]; 6] = [
+        [255, 255, 255],
+        [30, 60, 200],
+        [220, 40, 40],
+        [40, 180, 80],
+        [250, 200, 30],
+        [20, 20, 20],
+    ];
     let mut data = Vec::with_capacity((w * h * 3) as usize);
     for y in 0..h {
         for x in 0..w {
             let bar = (x * 6 / w) as usize;
             let height = (bar * 37 + 20 + seed as usize * 13) % 90 + 5;
-            let c = if y > h * (100 - height as u32) / 100 { palette[bar] } else if y % 40 == 0 { palette[5] } else { palette[0] };
+            let c = if y > h * (100 - height as u32) / 100 {
+                palette[bar]
+            } else if y % 40 == 0 {
+                palette[5]
+            } else {
+                palette[0]
+            };
             data.extend_from_slice(&c);
         }
     }
-    RawImage { width: w, height: h, channels: 3, data, cs: ColorKind::Rgb, is_mask: false, orig_bpc: 8, lossy_decode: false }
+    RawImage {
+        width: w,
+        height: h,
+        channels: 3,
+        data,
+        cs: ColorKind::Rgb,
+        is_mask: false,
+        orig_bpc: 8,
+        lossy_decode: false,
+    }
 }
 
 /// A "scanned" text page: off-white textured paper, dark glyph-like blobs in
@@ -220,7 +317,10 @@ pub fn scanned_text_seeded(w: u32, h: u32, seed: u64) -> RawImage {
     for y in 0..h {
         for x in 0..w {
             let n = (lcg(&mut seed) % 7) as i32 - 3;
-            let vign = 1.0 - 0.12 * (((x as f32 / w as f32 - 0.5).powi(2) + (y as f32 / h as f32 - 0.5).powi(2)) * 2.0);
+            let vign = 1.0
+                - 0.12
+                    * (((x as f32 / w as f32 - 0.5).powi(2) + (y as f32 / h as f32 - 0.5).powi(2))
+                        * 2.0);
             let paper = (243.0 * vign) as i32 + n;
             let (r, g, b) = if ink[(y * w + x) as usize] {
                 let d = 25 + (lcg(&mut seed) % 30) as i32;
@@ -228,10 +328,23 @@ pub fn scanned_text_seeded(w: u32, h: u32, seed: u64) -> RawImage {
             } else {
                 (paper, paper - 2, paper - 8)
             };
-            data.extend_from_slice(&[r.clamp(0, 255) as u8, g.clamp(0, 255) as u8, b.clamp(0, 255) as u8]);
+            data.extend_from_slice(&[
+                r.clamp(0, 255) as u8,
+                g.clamp(0, 255) as u8,
+                b.clamp(0, 255) as u8,
+            ]);
         }
     }
-    RawImage { width: w, height: h, channels: 3, data, cs: ColorKind::Rgb, is_mask: false, orig_bpc: 8, lossy_decode: false }
+    RawImage {
+        width: w,
+        height: h,
+        channels: 3,
+        data,
+        cs: ColorKind::Rgb,
+        is_mask: false,
+        orig_bpc: 8,
+        lossy_decode: false,
+    }
 }
 
 /// Pure black/white line-art stored as 8-bit gray (wasteful, as scanners emit).
@@ -248,7 +361,16 @@ pub fn bilevel_lineart_seeded(w: u32, h: u32, seed: u64) -> RawImage {
             data.push(if on { 0 } else { 255 });
         }
     }
-    RawImage { width: w, height: h, channels: 1, data, cs: ColorKind::Gray, is_mask: false, orig_bpc: 8, lossy_decode: false }
+    RawImage {
+        width: w,
+        height: h,
+        channels: 1,
+        data,
+        cs: ColorKind::Gray,
+        is_mask: false,
+        orig_bpc: 8,
+        lossy_decode: false,
+    }
 }
 
 /// Scanned text page with a photograph pasted in the lower half: the MRC
@@ -268,7 +390,8 @@ pub fn scanned_text_with_photo(w: u32, h: u32) -> RawImage {
             let grain = (lcg(&mut seed) % 41) as i32 - 20;
             let weave = if (x / 3 + y / 3) % 2 == 0 { 14 } else { -14 };
             for c in 0..3 {
-                page.data[dst + c] = (photo.data[src + c] as i32 + grain + weave).clamp(0, 255) as u8;
+                page.data[dst + c] =
+                    (photo.data[src + c] as i32 + grain + weave).clamp(0, 255) as u8;
             }
         }
     }

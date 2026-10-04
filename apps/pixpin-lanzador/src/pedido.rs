@@ -4,13 +4,13 @@
 
 use std::path::Path;
 use std::time::{Duration, Instant};
-use windows::core::w;
 use windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
 use windows::Win32::System::DataExchange::COPYDATASTRUCT;
 use windows::Win32::UI::WindowsAndMessaging::{
-    FindWindowExW, FindWindowW, PostMessageW, SendMessageTimeoutW, HWND_MESSAGE, SMTO_ABORTIFHUNG, SMTO_BLOCK,
-    WM_COPYDATA, WM_NULL,
+    FindWindowExW, FindWindowW, HWND_MESSAGE, PostMessageW, SMTO_ABORTIFHUNG, SMTO_BLOCK,
+    SendMessageTimeoutW, WM_COPYDATA, WM_NULL,
 };
+use windows::core::w;
 
 /// El `dwData` de un pedido.
 pub const PEDIDO_JSON: usize = 0x5049_5851;
@@ -50,7 +50,9 @@ impl Envio {
     pub fn explicacion(&self) -> String {
         match self {
             Envio::Aceptado => "Hecho".into(),
-            Envio::VersionNoSoportada => "Esta PixPin no entiende la version del pedido: actualizala".into(),
+            Envio::VersionNoSoportada => {
+                "Esta PixPin no entiende la version del pedido: actualizala".into()
+            }
             Envio::NoEntendido => "Esta PixPin no entiende el pedido: actualizala".into(),
             Envio::SinApp(m) => format!("No se pudo abrir PixPin Max: {m}"),
             Envio::Otro(r) => format!("PixPin no contesto (respuesta {r})"),
@@ -125,7 +127,11 @@ pub fn avisar(json: &str) -> Envio {
 
 fn mandar(destino: HWND, json: &str, espera_ms: u32) -> Envio {
     let datos = json.as_bytes();
-    let paquete = COPYDATASTRUCT { dwData: PEDIDO_JSON, cbData: datos.len() as u32, lpData: datos.as_ptr() as *mut _ };
+    let paquete = COPYDATASTRUCT {
+        dwData: PEDIDO_JSON,
+        cbData: datos.len() as u32,
+        lpData: datos.as_ptr() as *mut _,
+    };
     let mut respuesta: usize = 0;
     // SAFETY: SendMessageTimeoutW es sincrono: `datos` y `paquete` viven
     // durante toda la llamada, que es lo que exige WM_COPYDATA.
@@ -165,7 +171,14 @@ fn ventana() -> Option<HWND> {
     }
     // Por si es de solo mensajes (`HWND_MESSAGE`), que FindWindowW no ve.
     // SAFETY: igual que arriba.
-    let h = unsafe { FindWindowExW(Some(HWND_MESSAGE), None, w!("PixPinMaxVentanaMensajes"), None) };
+    let h = unsafe {
+        FindWindowExW(
+            Some(HWND_MESSAGE),
+            None,
+            w!("PixPinMaxVentanaMensajes"),
+            None,
+        )
+    };
     match h {
         Ok(h) if !h.0.is_null() => Some(h),
         _ => None,
@@ -183,7 +196,9 @@ fn arrancar(exe: &Path) -> Result<(), String> {
         return Err(format!("no esta {}", exe.display()));
     }
     let preparar = |c: &mut Command| {
-        c.stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
+        c.stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
         if let Some(d) = exe.parent() {
             c.current_dir(d);
         }

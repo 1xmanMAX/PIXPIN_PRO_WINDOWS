@@ -93,6 +93,19 @@ pub fn stats(img: &RawImage) -> Stats {
     } else {
         Kind::Continuous
     };
-    let text_like = white_frac > 0.50 && dark_frac > 0.005 && dark_frac < 0.35 && img.width >= 600 && img.height >= 600;
-    Stats { kind, unique_colors, is_gray: is_gray && ch != 4, is_gray_exact: is_gray_exact && ch == 3, white_frac, dark_frac, text_like, extreme_frac }
+    let text_like = white_frac > 0.50
+        && dark_frac > 0.005
+        && dark_frac < 0.35
+        && img.width >= 600
+        && img.height >= 600;
+    Stats {
+        kind,
+        unique_colors,
+        is_gray: is_gray && ch != 4,
+        is_gray_exact: is_gray_exact && ch == 3,
+        white_frac,
+        dark_frac,
+        text_like,
+        extreme_frac,
+    }
 }

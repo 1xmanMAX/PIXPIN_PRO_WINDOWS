@@ -12,7 +12,10 @@ pub struct Effort {
 
 impl Effort {
     pub fn fast() -> Self {
-        Effort { zopfli_iterations: 0, zopfli_max_bytes: 0 }
+        Effort {
+            zopfli_iterations: 0,
+            zopfli_max_bytes: 0,
+        }
     }
 }
 
@@ -21,7 +24,10 @@ impl Effort {
 pub const ZOPFLI_MIN_BYTES: usize = 6 * 1024;
 
 pub fn zlib(data: &[u8], effort: Effort) -> Vec<u8> {
-    if effort.zopfli_iterations > 0 && data.len() <= effort.zopfli_max_bytes && data.len() >= ZOPFLI_MIN_BYTES {
+    if effort.zopfli_iterations > 0
+        && data.len() <= effort.zopfli_max_bytes
+        && data.len() >= ZOPFLI_MIN_BYTES
+    {
         // Zopfli cost grows super-linearly; scale iterations down for big inputs.
         let iters = if data.len() > (1 << 20) {
             1
@@ -45,7 +51,10 @@ pub fn zlib(data: &[u8], effort: Effort) -> Vec<u8> {
 }
 
 pub fn zlib_best(data: &[u8]) -> Vec<u8> {
-    let mut enc = flate2::write::ZlibEncoder::new(Vec::with_capacity(data.len() / 2), flate2::Compression::best());
+    let mut enc = flate2::write::ZlibEncoder::new(
+        Vec::with_capacity(data.len() / 2),
+        flate2::Compression::best(),
+    );
     enc.write_all(data).expect("in-memory write");
     enc.finish().expect("in-memory finish")
 }

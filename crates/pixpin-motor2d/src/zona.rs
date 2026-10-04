@@ -71,7 +71,10 @@ pub fn color_del_filo(papel_de_noche: bool) -> ColorRgba {
 /// redondeado» para un recorte) y un 0,6 % entre 2 y 5.
 pub fn radio_y_filo(w: u32, h: u32) -> (f32, f32) {
     let corto = w.min(h) as f32;
-    ((corto * 0.05).clamp(10.0, 36.0), (corto * 0.006).clamp(2.0, 5.0))
+    (
+        (corto * 0.05).clamp(10.0, 36.0),
+        (corto * 0.006).clamp(2.0, 5.0),
+    )
 }
 
 /// Distancia con signo de `(x, y)` al borde de un rectangulo redondeado
@@ -219,24 +222,45 @@ mod pruebas {
         let m = marca((10.0, 20.0, 110.0, 70.0), "foto-1");
         let v = [m];
         // Justo en la esquina, y un poco fuera del recuadro.
-        assert_eq!(enlace_bajo_el_puntero(&v, Punto2::nuevo(110.0, 20.0), 1.0), Some("foto-1"));
-        assert_eq!(enlace_bajo_el_puntero(&v, Punto2::nuevo(125.0, 10.0), 1.0), Some("foto-1"));
+        assert_eq!(
+            enlace_bajo_el_puntero(&v, Punto2::nuevo(110.0, 20.0), 1.0),
+            Some("foto-1")
+        );
+        assert_eq!(
+            enlace_bajo_el_puntero(&v, Punto2::nuevo(125.0, 10.0), 1.0),
+            Some("foto-1")
+        );
         // Caso negativo: a 25 px de pantalla ya no.
-        assert_eq!(enlace_bajo_el_puntero(&v, Punto2::nuevo(135.0, 20.0), 1.0), None);
+        assert_eq!(
+            enlace_bajo_el_puntero(&v, Punto2::nuevo(135.0, 20.0), 1.0),
+            None
+        );
         // Acercado al doble, 25 px de pantalla son 12,5 del dibujo: si.
-        assert_eq!(enlace_bajo_el_puntero(&v, Punto2::nuevo(122.5, 20.0), 2.0), None);
-        assert_eq!(enlace_bajo_el_puntero(&v, Punto2::nuevo(118.0, 20.0), 2.0), Some("foto-1"));
+        assert_eq!(
+            enlace_bajo_el_puntero(&v, Punto2::nuevo(122.5, 20.0), 2.0),
+            None
+        );
+        assert_eq!(
+            enlace_bajo_el_puntero(&v, Punto2::nuevo(118.0, 20.0), 2.0),
+            Some("foto-1")
+        );
         // Caso negativo: una borrada o sin enlace no tiene icono.
         let mut b = v[0].clone();
         b.borrado = true;
-        assert_eq!(enlace_bajo_el_puntero(&[b], Punto2::nuevo(110.0, 20.0), 1.0), None);
+        assert_eq!(
+            enlace_bajo_el_puntero(&[b], Punto2::nuevo(110.0, 20.0), 1.0),
+            None
+        );
     }
 
     #[test]
     fn con_dos_iconos_juntos_gana_el_de_encima() {
         let abajo = marca((0.0, 0.0, 100.0, 50.0), "abajo");
         let arriba = marca((0.0, 0.0, 100.0, 50.0), "arriba");
-        assert_eq!(enlace_bajo_el_puntero(&[abajo, arriba], Punto2::nuevo(100.0, 0.0), 1.0), Some("arriba"));
+        assert_eq!(
+            enlace_bajo_el_puntero(&[abajo, arriba], Punto2::nuevo(100.0, 0.0), 1.0),
+            Some("arriba")
+        );
     }
 
     #[test]
@@ -259,7 +283,10 @@ mod pruebas {
         let id = marcar(&mut e, (0.0, 0.0, 50.0, 50.0), "foto-1");
         assert!(e.buscar(id).is_some_and(|x| !x.borrado));
         assert!(e.deshacer());
-        assert!(e.buscar(id).is_none_or(|x| x.borrado), "un deshacer la quita");
+        assert!(
+            e.buscar(id).is_none_or(|x| x.borrado),
+            "un deshacer la quita"
+        );
         // Caso negativo: no quedaba otro paso detras.
         assert!(!e.deshacer());
     }
@@ -293,7 +320,11 @@ mod pruebas {
         en_redondo_y_con_filo(&mut v, w, h, color_del_filo(false));
         assert_eq!(px(&v, w, 0, 0)[3], 0, "la punta de la esquina se va");
         assert_eq!(px(&v, w, w - 1, h - 1)[3], 0);
-        assert_eq!(px(&v, w, 200, 150), [200, 20, 20, 255], "el medio no se toca");
+        assert_eq!(
+            px(&v, w, 200, 150),
+            [200, 20, 20, 255],
+            "el medio no se toca"
+        );
     }
 
     #[test]

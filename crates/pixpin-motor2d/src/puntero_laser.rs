@@ -205,7 +205,11 @@ fn contorno(e: &[(Punto2, f64)], anchos: &[f32]) -> Option<Vec<Punto2>> {
         let b = tramo[(i + 1).min(tramo.len() - 1)].0;
         let (dx, dy) = (b.x - a.x, b.y - a.y);
         let l = dx.hypot(dy);
-        let (nx, ny) = if l > 1e-6 { (-dy / l, dx / l) } else { (0.0, 0.0) };
+        let (nx, ny) = if l > 1e-6 {
+            (-dy / l, dx / l)
+        } else {
+            (0.0, 0.0)
+        };
         let p = tramo[i].0;
         let m = anchos[i] / 2.0;
         izq.push(Punto2::nuevo(p.x + nx * m, p.y + ny * m));

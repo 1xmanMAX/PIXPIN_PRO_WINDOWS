@@ -65,7 +65,11 @@ pub(crate) fn escena_de_debajo(escena: &Escena, i: usize) -> Escena {
 /// El elemento que ocupa el sitio del mosaico: una imagen derecha sobre la
 /// caja que tapa (la girada, que tapa de mas y nunca de menos), con el mismo
 /// id para que la seleccion y los marcos lo sigan contando.
-pub(crate) fn imagen_en_su_sitio(m: &Elemento, caja: (f32, f32, f32, f32), id_objeto: u64) -> Elemento {
+pub(crate) fn imagen_en_su_sitio(
+    m: &Elemento,
+    caja: (f32, f32, f32, f32),
+    id_objeto: u64,
+) -> Elemento {
     Elemento {
         figura: Figura::Imagen { id_objeto },
         x: caja.0,
@@ -89,7 +93,10 @@ pub(crate) fn tapar(lienzo: &Lienzo<'_>) -> Option<Tapada> {
 
 /// Como [`tapar`], solo con los mosaicos que tocan `caja` (la foto de una
 /// zona no tiene por que pintar los de la otra punta del lienzo).
-pub(crate) fn tapar_dentro(lienzo: &Lienzo<'_>, caja: Option<(f32, f32, f32, f32)>) -> Option<Tapada> {
+pub(crate) fn tapar_dentro(
+    lienzo: &Lienzo<'_>,
+    caja: Option<(f32, f32, f32, f32)>,
+) -> Option<Tapada> {
     let toca = |c: (f32, f32, f32, f32)| {
         caja.is_none_or(|z| c.0 < z.2 && c.2 > z.0 && c.1 < z.3 && c.3 > z.1)
     };
@@ -110,7 +117,9 @@ pub(crate) fn tapar_dentro(lienzo: &Lienzo<'_>, caja: Option<(f32, f32, f32, f32
     for (k, (i, t)) in tapados.into_iter().enumerate() {
         let debajo = escena_de_debajo(lienzo.escena, i);
         let (ancho, alto) = (t.caja.2 - t.caja.0, t.caja.3 - t.caja.1);
-        let escala = ESCALA.min(LADO_MAXIMO / ancho.max(1.0)).min(LADO_MAXIMO / alto.max(1.0));
+        let escala = ESCALA
+            .min(LADO_MAXIMO / ancho.max(1.0))
+            .min(LADO_MAXIMO / alto.max(1.0));
         // Sin nada debajo (ni papel ni dibujo) lo tapado es papel liso: se
         // pinta igual, una hoja vacia del color del papel.
         let hoja = pixpin_motor2d::exportar::de_una_zona(&debajo, t.caja, papel).unwrap_or(
@@ -141,7 +150,14 @@ pub(crate) fn tapar_dentro(lienzo: &Lienzo<'_>, caja: Option<(f32, f32, f32, f32
         };
         let lado = mosaico::lado_en_pantalla(t.grano, img.ancho as f32 / ancho.max(1.0));
         let caja = (0.0, 0.0, img.ancho as f32, img.alto as f32);
-        if !mosaico::tapar_rgba(&mut img.pixeles, img.ancho, img.alto, caja, lado, t.desenfoque) {
+        if !mosaico::tapar_rgba(
+            &mut img.pixeles,
+            img.ancho,
+            img.alto,
+            caja,
+            lado,
+            t.desenfoque,
+        ) {
             continue;
         }
         let id_objeto = PRIMER_ID - k as u64;
@@ -190,14 +206,20 @@ mod pruebas {
             mosaico(2),
             Elemento {
                 id: 3,
-                figura: Figura::Foco { cristal: Default::default() },
+                figura: Figura::Foco {
+                    cristal: Default::default(),
+                },
                 ..rect(3, 0.0)
             },
             rect(4, 10.0),
             mosaico(5),
             rect(6, 20.0),
         ];
-        let ids: Vec<u64> = escena_de_debajo(&escena, 4).elementos.iter().map(|e| e.id).collect();
+        let ids: Vec<u64> = escena_de_debajo(&escena, 4)
+            .elementos
+            .iter()
+            .map(|e| e.id)
+            .collect();
         // Caso negativo: ni el mosaico 2, ni el foco 3, ni lo de encima (6).
         assert_eq!(ids, [1, 4]);
     }
@@ -301,7 +323,10 @@ mod pruebas {
         // Una flecha DESPUES del mosaico: no se pixela (va por encima).
         escena.anadir(Elemento {
             figura: Figura::Flecha {
-                puntos: vec![pixpin_motor2d::vector::Punto2::nuevo(470.0, 40.0), pixpin_motor2d::vector::Punto2::nuevo(380.0, 40.0)],
+                puntos: vec![
+                    pixpin_motor2d::vector::Punto2::nuevo(470.0, 40.0),
+                    pixpin_motor2d::vector::Punto2::nuevo(380.0, 40.0),
+                ],
                 punta_inicio: pixpin_motor2d::formas::TipoPunta::Ninguna,
                 punta_fin: pixpin_motor2d::formas::TipoPunta::Flecha,
                 codos: false,
@@ -320,7 +345,8 @@ mod pruebas {
         let hojas = |e: &Escena| {
             pixpin_motor2d::exportar::hojas(e, pixpin_motor2d::exportar::Alcance::Todo, &[], None)
         };
-        let antes = super::super::a_imagen(&hojas(&escena)[0], 2.0, Some(escena.fondo), &lienzo).unwrap();
+        let antes =
+            super::super::a_imagen(&hojas(&escena)[0], 2.0, Some(escena.fondo), &lienzo).unwrap();
         guardar("mosaico-exportado-antes", &antes);
         let t = tapar(&lienzo).expect("hay mosaicos");
         assert_eq!(t.imagenes.len(), 2);
@@ -357,10 +383,27 @@ mod pruebas {
         assert!(en_antes <= 2, "antes era la banda: {en_antes}");
         assert!(en_despues > 2, "despues se ve el pixelado: {en_despues}");
         let mut en_claro = escena.clone();
-        en_claro.elementos.retain(|e| !matches!(e.figura, Figura::Mosaico { .. }));
-        let claro = super::super::a_imagen(&hojas(&en_claro)[0], 2.0, Some(escena.fondo), &Lienzo { escena: &en_claro, seleccion: &[], papel: None, fotos: &|_| None, nombre: String::new() }).unwrap();
+        en_claro
+            .elementos
+            .retain(|e| !matches!(e.figura, Figura::Mosaico { .. }));
+        let claro = super::super::a_imagen(
+            &hojas(&en_claro)[0],
+            2.0,
+            Some(escena.fondo),
+            &Lienzo {
+                escena: &en_claro,
+                seleccion: &[],
+                papel: None,
+                fotos: &|_| None,
+                nombre: String::new(),
+            },
+        )
+        .unwrap();
         let en_claro = colores_en(&claro, zona);
-        assert!(en_despues * 2 < en_claro, "tapa: {en_despues} frente a {en_claro} en claro");
+        assert!(
+            en_despues * 2 < en_claro,
+            "tapa: {en_despues} frente a {en_claro} en claro"
+        );
     }
 
     #[test]

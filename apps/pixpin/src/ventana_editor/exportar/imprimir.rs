@@ -106,7 +106,11 @@ fn alcance_de(id: Option<&str>) -> Alcance {
 /// **La opcion «Que imprimir»**, solo si hay algo que elegir: con marcos,
 /// cada marco o el lienzo entero; con algo elegido, ademas solo eso. Sin
 /// marcos ni seleccion las dos cosas son la misma hoja y no se pregunta.
-fn opcion_que_imprimir(t: &Catalogo, hay_marcos: bool, hay_seleccion: bool) -> Option<OpcionPropia> {
+fn opcion_que_imprimir(
+    t: &Catalogo,
+    hay_marcos: bool,
+    hay_seleccion: bool,
+) -> Option<OpcionPropia> {
     if !hay_marcos && !hay_seleccion {
         return None;
     }
@@ -235,7 +239,11 @@ mod pruebas {
         let ids: Vec<&str> = o.elementos.iter().map(|(i, _)| i.as_str()).collect();
         assert_eq!(ids, [MARCOS, TODO]);
         assert_eq!(o.inicial, MARCOS, "por marcos, como el movil");
-        assert!(o.elementos.iter().all(|(_, r)| !r.is_empty() && !r.starts_with("imprimir-")));
+        assert!(
+            o.elementos
+                .iter()
+                .all(|(_, r)| !r.is_empty() && !r.starts_with("imprimir-"))
+        );
         let o = opcion_que_imprimir(&t, false, true).expect("con seleccion");
         let ids: Vec<&str> = o.elementos.iter().map(|(i, _)| i.as_str()).collect();
         // Caso negativo: sin marcos no se ofrece «cada marco».
@@ -258,7 +266,10 @@ mod pruebas {
         let mut e = Escena::nueva();
         let crema = ColorRgba::opaco(253.0 / 255.0, 246.0 / 255.0, 227.0 / 255.0);
         assert!(e.poner_fondo(crema));
-        for (y, nombre, ancho, alto) in [(0.0, "Planta", 300.0, 420.0), (600.0, "Alzado", 500.0, 260.0)] {
+        for (y, nombre, ancho, alto) in [
+            (0.0, "Planta", 300.0, 420.0),
+            (600.0, "Alzado", 500.0, 260.0),
+        ] {
             e.anadir(Elemento {
                 figura: Figura::Marco {
                     nombre: nombre.into(),
@@ -322,7 +333,10 @@ mod pruebas {
     }
 
     fn tinta(img: &(u32, u32, Vec<u8>)) -> usize {
-        img.2.chunks_exact(4).filter(|p| p[0] < 128 && p[1] < 128 && p[2] < 128).count()
+        img.2
+            .chunks_exact(4)
+            .filter(|p| p[0] < 128 && p[1] < 128 && p[2] < 128)
+            .count()
     }
 
     /// **La vista previa ensena las hojas que salen**: por marcos, una por
@@ -333,7 +347,9 @@ mod pruebas {
     fn la_vista_previa_ensena_cada_hoja_tal_como_saldra_en_el_papel() {
         let dir = std::env::var_os("PIXPIN_MUESTRAS_IMPRIMIR")
             .map(std::path::PathBuf::from)
-            .unwrap_or_else(|| std::env::temp_dir().join(format!("pixpin-imprimir-{}", std::process::id())));
+            .unwrap_or_else(|| {
+                std::env::temp_dir().join(format!("pixpin-imprimir-{}", std::process::id()))
+            });
         std::fs::create_dir_all(&dir).expect("carpeta");
         let e = escena();
         let a4 = moderno::A4;
@@ -359,12 +375,20 @@ mod pruebas {
             std::fs::write(dir.join(format!("{nombre}.png")), png).expect("escribir");
             // El papel es blanco: ni el crema del lienzo ni transparente.
             for (x, y) in [(2, 2), (img.0 - 3, img.1 - 3)] {
-                assert_eq!(pixel(&img, x, y), [255, 255, 255, 255], "{nombre} ({x},{y})");
+                assert_eq!(
+                    pixel(&img, x, y),
+                    [255, 255, 255, 255],
+                    "{nombre} ({x},{y})"
+                );
             }
             // El margen de 28 pt (a esta escala, unos 28 px) queda limpio.
             let m = (28.0 / 72.0 * 96.0 * img.0 as f32 / papel.0) as u32 - 2;
             for x in 0..img.0 {
-                assert_eq!(pixel(&img, x, m)[0], 255, "{nombre}: tinta en el margen de arriba");
+                assert_eq!(
+                    pixel(&img, x, m)[0],
+                    255,
+                    "{nombre}: tinta en el margen de arriba"
+                );
             }
             assert!(tinta(&img) > 500, "{nombre}: la hoja salio en blanco");
             // El numero de pagina: en el margen de abajo, solo por marcos.

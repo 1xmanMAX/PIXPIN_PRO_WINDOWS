@@ -1,10 +1,10 @@
 //! Con la ventana entera pero **oculta**: el `RichEdit` de verdad, las
 //! teclas y el raton con mensajes hechos a mano a la propia ventana (nada
 //! de teclado ni raton de verdad), y las muestras pintadas en memoria.
+use super::super::{desmontar as cerrar, formato as un_formato};
 use super::*;
 use crate::editor::pruebas::{abrir, abrir_con, escribir, foto_de_prueba, guardar_png, pedido};
 use crate::integracion::Integracion;
-use super::super::{desmontar as cerrar, formato as un_formato};
 use windows::Win32::UI::Input::KeyboardAndMouse::VK_HOME;
 
 fn msg(e: &Estado, m: u32, w: usize) -> MSG {
@@ -49,7 +49,12 @@ fn efectos(e: &Estado, p: usize) -> CHARFORMAT2W {
     let mut f = un_formato();
     f.Base.dwMask = CFM_HIDDEN | CFM_BOLD | CFM_SIZE | CFM_FACE;
     elegir(e.edit, p, p + 1);
-    enviar(e.edit, EM_GETCHARFORMAT, SCF_SELECTION as usize, &mut f as *mut _ as isize);
+    enviar(
+        e.edit,
+        EM_GETCHARFORMAT,
+        SCF_SELECTION as usize,
+        &mut f as *mut _ as isize,
+    );
     elegir(e.edit, sel.0, sel.1);
     f
 }
@@ -59,19 +64,34 @@ fn efectos(e: &Estado, p: usize) -> CHARFORMAT2W {
 fn escondida(e: &Estado, p: usize) -> bool {
     let d = e.doc.as_ref().expect("el control da su documento");
     // SAFETY: rango del documento vivo del control.
-    unsafe { d.Range(p as i32, p as i32 + 1).and_then(|r| r.GetFont()).and_then(|f| f.GetHidden()).unwrap_or(0) != 0 }
+    unsafe {
+        d.Range(p as i32, p as i32 + 1)
+            .and_then(|r| r.GetFont())
+            .and_then(|f| f.GetHidden())
+            .unwrap_or(0)
+            != 0
+    }
 }
 
 #[test]
 fn las_marcas_no_se_ven_ni_en_el_renglon_del_cursor() {
     let md = "a **bold** c\n# Titulo\n- uno\n- [ ] tarea\n3. tres\n> cita";
     let mut e = abrir(md);
-    for cursor in [0, en(&e, "Titulo") + 2, en(&e, "uno"), en(&e, "tarea"), en(&e, "tres")] {
+    for cursor in [
+        0,
+        en(&e, "Titulo") + 2,
+        en(&e, "uno"),
+        en(&e, "tarea"),
+        en(&e, "tres"),
+    ] {
         elegir(e.edit, cursor, cursor);
         pintar(&mut e, None);
         for marca in ["**", "# ", "- ", "[ ]", "3.", "> "] {
             let p = en(&e, marca);
-            assert!(escondida(&e, p), "«{marca}» se ve con el cursor en {cursor}");
+            assert!(
+                escondida(&e, p),
+                "«{marca}» se ve con el cursor en {cursor}"
+            );
         }
         // Caso negativo: el texto si se ve.
         for texto in ["bold", "Titulo", "uno", "tarea", "tres", "cita"] {
@@ -97,7 +117,11 @@ fn una_lista_numerada_la_numera_windows_desde_su_primer_numero() {
     let a = parrafo(&e, en(&e, "cuatro"));
     let b = parrafo(&e, en(&e, "cinco"));
     assert_eq!(a.Base.wNumbering.0, 2);
-    assert_eq!((a.wNumberingStart, b.wNumberingStart), (4, 4), "la racha cuenta desde el primero");
+    assert_eq!(
+        (a.wNumberingStart, b.wNumberingStart),
+        (4, 4),
+        "la racha cuenta desde el primero"
+    );
     assert_eq!(a.wNumberingStyle.0, 0x200);
     // Otra racha, con parentesis.
     let c = parrafo(&e, en(&e, "uno"));
@@ -231,7 +255,10 @@ fn la_barra_flotante_sale_al_elegir_y_pone_y_quita_el_formato() {
         let _ = ClientToScreen(e.edit, &mut p);
         let _ = ScreenToClient(e.marco, &mut p);
     }
-    assert!(caja.abajo() <= p.y || caja.y > p.y, "no tapa el renglon elegido");
+    assert!(
+        caja.abajo() <= p.y || caja.y > p.y,
+        "no tapa el renglon elegido"
+    );
     clic_barra(&mut e, BotonBarra::Negrita, &mut |_| true);
     assert_eq!(markdown(&e), "hola **mundo**\notra");
     // Sigue elegido lo mismo (lo que se ve): y su boton, pulsado.
@@ -248,7 +275,16 @@ fn la_barra_flotante_sale_al_elegir_y_pone_y_quita_el_formato() {
     // «Aa ▾» y la lista abren su menu; elegir pone el bloque.
     clic_barra(&mut e, BotonBarra::Formato, &mut |_| true);
     assert_eq!(e.abierto, Some(Abierto::Vivo));
-    let ids: Vec<u16> = menu::VISTA.with(|v| v.borrow().as_ref().unwrap().menu.entradas.iter().map(|x| x.id).collect());
+    let ids: Vec<u16> = menu::VISTA.with(|v| {
+        v.borrow()
+            .as_ref()
+            .unwrap()
+            .menu
+            .entradas
+            .iter()
+            .map(|x| x.id)
+            .collect()
+    });
     assert_eq!(ids, vec![C_TEXTO_NORMAL, C_T1, C_T2, C_T3]);
     cerrar_menu(&mut e);
     super::super::comando(&mut e, C_T2, &mut |_| true);
@@ -335,7 +371,9 @@ fn la_letra_y_el_tamano_son_de_la_vista_y_no_cambian_el_markdown() {
     // La letra y el tamano, en el texto del control y en el fichero.
     let f = efectos(&e, en(&e, "Texto"));
     assert_eq!(f.Base.yHeight, 18 * 15);
-    let cara = String::from_utf16_lossy(&f.Base.szFaceName).trim_end_matches('\0').to_string();
+    let cara = String::from_utf16_lossy(&f.Base.szFaceName)
+        .trim_end_matches('\0')
+        .to_string();
     assert_eq!(cara, letras::nombre_gdi("Nunito", "x"));
     // El titulo, en proporcion.
     assert!(efectos(&e, en(&e, "Plan")).Base.yHeight > 18 * 15 * 2);
@@ -347,11 +385,17 @@ fn la_letra_y_el_tamano_son_de_la_vista_y_no_cambian_el_markdown() {
     // Solo en esta nota.
     comando(&mut e, C_SOLO_ESTA_NOTA);
     let guardado = std::fs::read_to_string(&fichero).unwrap();
-    assert!(guardado.contains("pins/notas/plan.md\tNunito\tLilita One\t19"), "{guardado}");
+    assert!(
+        guardado.contains("pins/notas/plan.md\tNunito\tLilita One\t19"),
+        "{guardado}"
+    );
     // Lo que se cambie ahora es solo de esta nota: la general se queda en 19.
     comando(&mut e, C_TAMANO + 3);
     let guardado = std::fs::read_to_string(&fichero).unwrap();
-    assert!(guardado.contains("pins/notas/plan.md\tNunito\tLilita One\t21"), "{guardado}");
+    assert!(
+        guardado.contains("pins/notas/plan.md\tNunito\tLilita One\t21"),
+        "{guardado}"
+    );
     assert!(guardado.contains("*\tNunito\tLilita One\t19"), "{guardado}");
     cerrar(e);
     // Al abrirla otra vez se ve igual; otra nota, con la general.
@@ -399,8 +443,18 @@ fn pellizcar_acerca_la_pagina_entera_y_no_cambia_la_letra() {
     let renglon = |e: &Estado| {
         let (a, b) = (en(e, "Renglon 1 "), en(e, "Renglon 2 "));
         let (mut p, mut q) = (POINT::default(), POINT::default());
-        enviar(e.edit, EM_POSFROMCHAR, &mut p as *mut _ as usize, a as isize);
-        enviar(e.edit, EM_POSFROMCHAR, &mut q as *mut _ as usize, b as isize);
+        enviar(
+            e.edit,
+            EM_POSFROMCHAR,
+            &mut p as *mut _ as usize,
+            a as isize,
+        );
+        enviar(
+            e.edit,
+            EM_POSFROMCHAR,
+            &mut q as *mut _ as usize,
+            b as isize,
+        );
         q.y - p.y
     };
     let alto = renglon(&e);
@@ -515,7 +569,12 @@ fn un_clic_en_la_casilla_pintada_la_marca() {
     let _ = muestra(&e);
     // La casilla esta a la izquierda de su texto, en la sangria.
     let mut p = POINT::default();
-    enviar(e.edit, EM_POSFROMCHAR, &mut p as *mut _ as usize, en(&e, "comprar") as isize);
+    enviar(
+        e.edit,
+        EM_POSFROMCHAR,
+        &mut p as *mut _ as usize,
+        en(&e, "comprar") as isize,
+    );
     let r = renglon_px(&e);
     let n = imagenes::casilla_en(e.edit, p.x - 8 * e.ppp / 96 - 4, p.y + r / 2);
     assert_eq!(n, Some(0));
@@ -542,7 +601,12 @@ fn con_foto(md: &str, an: u32, al: u32) -> Estado {
 
 fn y_de(e: &Estado, pos: usize) -> i32 {
     let mut p = POINT::default();
-    enviar(e.edit, EM_POSFROMCHAR, &mut p as *mut _ as usize, pos as isize);
+    enviar(
+        e.edit,
+        EM_POSFROMCHAR,
+        &mut p as *mut _ as usize,
+        pos as isize,
+    );
     p.y
 }
 
@@ -553,10 +617,18 @@ fn sin_pisar(e: &Estado) {
     let (linea, _, caja, _) = imagenes::puesta(0).unwrap();
     if linea > 0 {
         let arriba = ls[linea - 1];
-        assert!(caja.top >= y_de(e, arriba.desde) + renglon_px(e) - 4, "pisa el renglon de encima");
+        assert!(
+            caja.top >= y_de(e, arriba.desde) + renglon_px(e) - 4,
+            "pisa el renglon de encima"
+        );
     }
     if let Some(abajo) = ls.get(linea + 1) {
-        assert!(caja.bottom <= y_de(e, abajo.desde), "pisa el renglon de debajo: {} > {}", caja.bottom, y_de(e, abajo.desde));
+        assert!(
+            caja.bottom <= y_de(e, abajo.desde),
+            "pisa el renglon de debajo: {} > {}",
+            caja.bottom,
+            y_de(e, abajo.desde)
+        );
     }
 }
 
@@ -596,15 +668,30 @@ fn el_asa_cambia_el_tamano_en_vivo_y_el_hueco_la_sigue() {
         };
         fotos::raton(e, &msg)
     };
-    assert!(pulsar_raton(&mut e, WM_LBUTTONDOWN, caja.right - 3, caja.bottom - 3));
+    assert!(pulsar_raton(
+        &mut e,
+        WM_LBUTTONDOWN,
+        caja.right - 3,
+        caja.bottom - 3
+    ));
     let centro = (caja.left + caja.right) / 2;
     // A la mitad: mientras se arrastra, la foto y su hueco ya miden eso.
-    assert!(pulsar_raton(&mut e, WM_MOUSEMOVE, centro + (caja.right - caja.left) / 4, caja.bottom));
+    assert!(pulsar_raton(
+        &mut e,
+        WM_MOUSEMOVE,
+        centro + (caja.right - caja.left) / 4,
+        caja.bottom
+    ));
     let _ = muestra(&e);
     let (_, _, ahora, _) = imagenes::puesta(0).unwrap();
     assert!(((ahora.right - ahora.left) - (caja.right - caja.left) / 2).abs() <= 2);
     sin_pisar(&e);
-    assert!(pulsar_raton(&mut e, WM_LBUTTONUP, centro + (caja.right - caja.left) / 4, caja.bottom));
+    assert!(pulsar_raton(
+        &mut e,
+        WM_LBUTTONUP,
+        centro + (caja.right - caja.left) / 4,
+        caja.bottom
+    ));
     pintar(&mut e, None);
     let _ = muestra(&e);
     sin_pisar(&e);
@@ -637,7 +724,12 @@ fn soltar_el_asa_deja_la_foto_tal_cual_se_solto_sin_rebote() {
     };
     let medida = |r: RECT| (r.right - r.left, r.bottom - r.top);
     let abajo = |e: &Estado| y_de(e, md_vivo::lineas(&leer(e.edit))[2].desde);
-    assert!(raton(&mut e, WM_LBUTTONDOWN, caja.right - 3, caja.bottom - 3));
+    assert!(raton(
+        &mut e,
+        WM_LBUTTONDOWN,
+        caja.right - 3,
+        caja.bottom - 3
+    ));
     let centro = (caja.left + caja.right) / 2;
     let x = centro + (caja.right - caja.left) / 3 + 1;
     assert!(raton(&mut e, WM_MOUSEMOVE, x, caja.bottom));
@@ -648,7 +740,11 @@ fn soltar_el_asa_deja_la_foto_tal_cual_se_solto_sin_rebote() {
     assert!(raton(&mut e, WM_LBUTTONUP, x + 3, caja.bottom));
     // El primer fotograma tras soltar, sin pintar nada mas.
     let _ = muestra(&e);
-    assert_eq!(medida(imagenes::puesta(0).unwrap().2), arrastrada, "ni se achica ni crece al soltar");
+    assert_eq!(
+        medida(imagenes::puesta(0).unwrap().2),
+        arrastrada,
+        "ni se achica ni crece al soltar"
+    );
     assert_eq!(abajo(&e), abajo_arrastrando, "el hueco tampoco");
     // Ni con el formato entero de despues (el respiro de siempre).
     pintar(&mut e, None);
@@ -657,11 +753,19 @@ fn soltar_el_asa_deja_la_foto_tal_cual_se_solto_sin_rebote() {
     assert_eq!(abajo(&e), abajo_arrastrando);
     // Y lo escrito es lo que se ve.
     let f = pixpin_docs::md_imagen::leer(markdown(&e).lines().nth(1).unwrap()).unwrap();
-    assert_eq!((f.ancho.unwrap() as f32 * e.ppp as f32 / 96.0) as i32, arrastrada.0);
+    assert_eq!(
+        (f.ancho.unwrap() as f32 * e.ppp as f32 / 96.0) as i32,
+        arrastrada.0
+    );
     // Caso negativo: un clic en el asa sin arrastrar no cambia nada.
     let antes = markdown(&e);
     let (_, _, caja, _) = imagenes::puesta(0).unwrap();
-    assert!(raton(&mut e, WM_LBUTTONDOWN, caja.right - 3, caja.bottom - 3));
+    assert!(raton(
+        &mut e,
+        WM_LBUTTONDOWN,
+        caja.right - 3,
+        caja.bottom - 3
+    ));
     assert!(raton(&mut e, WM_LBUTTONUP, caja.right - 3, caja.bottom - 3));
     assert_eq!(markdown(&e), antes);
     cerrar(e);
@@ -672,12 +776,19 @@ fn una_hoja_pequena_se_agranda_con_el_asa_hasta_la_columna_y_no_mas() {
     let e = con_foto(&format!("![Hoja|600]({VIVA})\nfin"), 200, 100);
     let _ = muestra(&e);
     let (_, _, c, _) = imagenes::puesta(0).unwrap();
-    assert_eq!(c.right - c.left, 600 * e.ppp / 96, "con el ancho puesto, se agranda");
+    assert_eq!(
+        c.right - c.left,
+        600 * e.ppp / 96,
+        "con el ancho puesto, se agranda"
+    );
     cerrar(e);
     // Caso negativo: sin ancho puesto, una pequena se ve a su tamano.
     let e = con_foto(&format!("![Hoja]({VIVA})\nfin"), 200, 100);
     let _ = muestra(&e);
-    assert_eq!(imagenes::puesta(0).unwrap().2.right - imagenes::puesta(0).unwrap().2.left, 200);
+    assert_eq!(
+        imagenes::puesta(0).unwrap().2.right - imagenes::puesta(0).unwrap().2.left,
+        200
+    );
     cerrar(e);
 }
 
@@ -738,10 +849,22 @@ fn muestra_otra_letra_y_tamano() {
     for (cuerpo, titulos, px, nombre) in [
         ("Nunito", "Lilita One", 18, "nota-md-letra-nunito-18.png"),
         ("Caveat", "Caveat", 21, "nota-md-letra-caveat-21.png"),
-        ("Courier New", "Courier New", 14, "nota-md-letra-courier-14.png"),
+        (
+            "Courier New",
+            "Courier New",
+            14,
+            "nota-md-letra-courier-14.png",
+        ),
     ] {
         let mut e = abrir_con(pedido(NOTA), false, (900, 760));
-        aplicar_vista(&mut e, Vista { cuerpo: cuerpo.into(), titulos: titulos.into(), px });
+        aplicar_vista(
+            &mut e,
+            Vista {
+                cuerpo: cuerpo.into(),
+                titulos: titulos.into(),
+                px,
+            },
+        );
         elegir(e.edit, 0, 0);
         pintar(&mut e, None);
         ir_a(&e, 0);
@@ -755,7 +878,9 @@ fn muestra_otra_letra_y_tamano() {
 #[ignore]
 fn muestra_pagina_viva_redimensionada() {
     let _com = pixpin_shell::ComDelHilo::iniciar();
-    let md = format!("# Planta\nLa hoja del lienzo, viva:\n![Planta baja]({VIVA})\nDebajo sigue el texto, sin que la hoja lo pise.\nOtro renglon.");
+    let md = format!(
+        "# Planta\nLa hoja del lienzo, viva:\n![Planta baja]({VIVA})\nDebajo sigue el texto, sin que la hoja lo pise.\nOtro renglon."
+    );
     let mut e = con_foto(&md, 1200, 800);
     let t = leer(e.edit);
     let fin = md_vivo::lineas(&t)[2].hasta;

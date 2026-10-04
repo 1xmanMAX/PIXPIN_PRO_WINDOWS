@@ -18,8 +18,8 @@ use pixpin_render::{Color, Pintor, RectF};
 use pixpin_ui::proyectos as ui;
 
 use super::super::{
-    Ojeada, Pinta, Tema, encoger, papel_de_vista, pintar_lienzo, pintar_ojeada_tabla,
-    pildora, pintar_tarjeta_galeria, rf, ruta_del_mensaje,
+    Ojeada, Pinta, Tema, encoger, papel_de_vista, pildora, pintar_lienzo, pintar_ojeada_tabla,
+    pintar_tarjeta_galeria, rf, ruta_del_mensaje,
 };
 use super::cargar::{Hoja, Hojas};
 use super::{ACCIONES, AccionBarra, VistaProyectos, Zona, de_que_es, hijos_de, hojas_visibles};
@@ -229,9 +229,23 @@ pub(crate) fn pintar(
         visible: panel.hueco,
     };
     p.empujar_recorte(rf(panel.hueco));
-    tarjeta(p, &cx, f, nombre, escribiendo, panel.tarjeta(v.desplazamiento()));
+    tarjeta(
+        p,
+        &cx,
+        f,
+        nombre,
+        escribiendo,
+        panel.tarjeta(v.desplazamiento()),
+    );
     p.soltar_recorte();
-    barra_de_acciones(p, &Cx { visible: area, ..cx }, &panel);
+    barra_de_acciones(
+        p,
+        &Cx {
+            visible: area,
+            ..cx
+        },
+        &panel,
+    );
 }
 
 /// Lo que dice bajo el nombre (`proyecto_hojas` o `proyecto_hojas_de`).
@@ -242,7 +256,10 @@ fn detalle(cx: &Cx, f: &Ficha, d: Option<&Hojas>) -> String {
         .map(|d| d.total)
         .or(resumen.map(|r| r.hojas))
         .unwrap_or(f.hojas as usize);
-    let con_pdf = d.map(|d| d.con_pdf).or(resumen.map(|r| r.con_pdf)).unwrap_or(false);
+    let con_pdf = d
+        .map(|d| d.con_pdf)
+        .or(resumen.map(|r| r.con_pdf))
+        .unwrap_or(false);
     let mut args = fluent_bundle::FluentArgs::new();
     args.set("total", total);
     if con_pdf {
@@ -287,7 +304,11 @@ fn tarjeta(p: &Pintor, cx: &Cx, f: &Ficha, nombre: &str, escribiendo: bool, r: R
     // El nombre grande, en dos lineas como mucho; normal y apagado si esta
     // archivado.
     let provisional = ui::tarjeta(r, cx.c.escala, 0, hay, est.rejilla);
-    let letra = Letra::de(if archivado { "Segoe UI" } else { "Segoe UI Semibold" });
+    let letra = Letra::de(if archivado {
+        "Segoe UI"
+    } else {
+        "Segoe UI Semibold"
+    });
     let tam = ui::NOMBRE_TAM * e;
     let ancho = provisional.texto.ancho as f32;
     let (_, alto) = p.medir_con_letra(&nombre, tam, ancho.max(1.0), &letra);
@@ -314,7 +335,11 @@ fn tarjeta(p: &Pintor, cx: &Cx, f: &Ficha, nombre: &str, escribiendo: bool, r: R
         tam,
         texto.ancho.max(1.0),
         &letra,
-        if archivado { pal.texto_suave } else { pal.texto },
+        if archivado {
+            pal.texto_suave
+        } else {
+            pal.texto
+        },
     );
     p.soltar_recorte();
     p.texto_linea(
@@ -328,7 +353,11 @@ fn tarjeta(p: &Pintor, cx: &Cx, f: &Ficha, nombre: &str, escribiendo: bool, r: R
     zona(v, t.texto, cx.visible, Zona::Nombre(f.id.clone()));
     // La rejilla o una pagina, y los tres puntos: iconos de 20.
     if hay {
-        let icono = if est.rejilla { &VIEW_CAROUSEL } else { &GRID_VIEW };
+        let icono = if est.rejilla {
+            &VIEW_CAROUSEL
+        } else {
+            &GRID_VIEW
+        };
         icono_centrado(p, icono, t.rejilla, 20.0 * e, pal.texto);
         zona(v, t.rejilla, cx.visible, Zona::Rejilla(f.id.clone()));
     }
@@ -386,7 +415,8 @@ fn ruta_grande(cx: &Cx, proyecto: &str, h: &Hoja, ancho: u32) -> Option<PathBuf>
     }
     let pagina = m.pagina?;
     let pdf = crate::pdf_en_chat::documento_de(cx.raiz, proyecto)?;
-    crate::pdf_en_chat::pagina_pintada(cx.raiz, &pdf, pagina, ui::nitidez_para(ancho)).map(|(r, _, _)| r)
+    crate::pdf_en_chat::pagina_pintada(cx.raiz, &pdf, pagina, ui::nitidez_para(ancho))
+        .map(|(r, _, _)| r)
 }
 
 /// La hoja que se esta mirando, del tamano de mirarla, con su nombre en una
@@ -398,7 +428,15 @@ fn portada(p: &Pintor, cx: &Cx, proyecto: &str, d: &Hojas, n: usize, caja: Rect)
     zona(cx.v, caja, cx.visible, Zona::Portada(proyecto.to_string()));
     p.empujar_recorte(rf(caja));
     let grande = ruta_grande(cx, proyecto, h, caja.ancho);
-    contenido(p, cx, proyecto, h, caja, grande.as_deref(), ui::NOTA_PORTADA_TAM);
+    contenido(
+        p,
+        cx,
+        proyecto,
+        h,
+        caja,
+        grande.as_deref(),
+        ui::NOTA_PORTADA_TAM,
+    );
     let nombre = nombre_de(cx, h);
     let tam = ui::PORTADA_ETIQUETA_TAM * e;
     let (w, alto) = p.medir_texto(&nombre, tam);
@@ -415,7 +453,14 @@ fn portada(p: &Pintor, cx: &Cx, proyecto: &str, d: &Hojas, n: usize, caja: Rect)
         alfa(OSCURA.fondo, 0.85)
     };
     p.rellenar_redondeado(etiqueta, 6.0 * e, fondo);
-    p.texto_linea(&nombre, etiqueta.x + 8.0 * e, etiqueta.y + 3.0 * e, tam, w + 1.0, pal.texto);
+    p.texto_linea(
+        &nombre,
+        etiqueta.x + 8.0 * e,
+        etiqueta.y + 3.0 * e,
+        tam,
+        w + 1.0,
+        pal.texto,
+    );
     p.soltar_recorte();
 }
 
@@ -588,7 +633,9 @@ fn tira(
     });
     let dentro = area.interseccion(cx.visible);
     if let Some(r) = dentro {
-        cx.v.zonas.borrow_mut().push((r, Zona::Tira(proyecto.to_string())));
+        cx.v.zonas
+            .borrow_mut()
+            .push((r, Zona::Tira(proyecto.to_string())));
     }
     // La etiqueta de debajo va fuera de la celda: el recorte deja sitio.
     p.empujar_recorte(rf(area));
@@ -699,12 +746,29 @@ fn miniatura(
             alfa(OSCURA.fondo, 0.82)
         };
         p.rellenar_redondeado(chapa, 4.0 * e, fondo);
-        p.texto(que, chapa.x + 4.0 * e, chapa.y + 1.0 * e, tam, pal.texto_suave);
+        p.texto(
+            que,
+            chapa.x + 4.0 * e,
+            chapa.y + 1.0 * e,
+            tam,
+            pal.texto_suave,
+        );
     }
     // El punto de una pagina anotada, solo si de verdad lleva algo.
     if m.pagina.is_some() && h.anotada {
-        let centro = (r.x + r.ancho - 4.0 * e - 3.5 * e, r.y + r.alto - 4.0 * e - 3.5 * e);
-        p.circulo(centro, 4.5 * e, if std::ptr::eq(pal, &CLARA) { CLARA.fondo } else { OSCURA.fondo });
+        let centro = (
+            r.x + r.ancho - 4.0 * e - 3.5 * e,
+            r.y + r.alto - 4.0 * e - 3.5 * e,
+        );
+        p.circulo(
+            centro,
+            4.5 * e,
+            if std::ptr::eq(pal, &CLARA) {
+                CLARA.fondo
+            } else {
+                OSCURA.fondo
+            },
+        );
         p.circulo(centro, 3.5 * e, pal.primario);
     }
     // Marcada (clic derecho): el velo del primario al 22 % y el circulo con
@@ -718,7 +782,11 @@ fn miniatura(
             ancho: lado,
             alto: lado,
         };
-        p.circulo((caja.x + lado / 2.0, caja.y + lado / 2.0), lado * 0.42, pal.fondo);
+        p.circulo(
+            (caja.x + lado / 2.0, caja.y + lado / 2.0),
+            lado * 0.42,
+            pal.fondo,
+        );
         p.icono(&mi::CHECK_CIRCLE, caja, pal.primario);
     }
     p.soltar_recorte();
@@ -823,7 +891,11 @@ pub(crate) fn pintar_interruptor(
     let radio = i.caja.alto as f32 / 2.0;
     p.rellenar_redondeado(rf(i.caja), radio, tema.boton_sobre);
     let puesta = if v.activa() { i.proyectos } else { i.chat };
-    p.rellenar_redondeado(encoger(rf(puesta), 2.0 * e), radio - 2.0 * e, tema.fila_elegida);
+    p.rellenar_redondeado(
+        encoger(rf(puesta), 2.0 * e),
+        radio - 2.0 * e,
+        tema.fila_elegida,
+    );
     for (mitad, clave, elegida) in [
         (i.chat, "proyectos-interruptor-chat", !v.activa()),
         (i.proyectos, "proyectos-interruptor-proyectos", v.activa()),
@@ -836,7 +908,11 @@ pub(crate) fn pintar_interruptor(
             mitad.x as f32 + (mitad.ancho as f32 - w) / 2.0,
             mitad.y as f32 + (mitad.alto as f32 - h) / 2.0,
             tam,
-            if elegida { tema.texto_elegido } else { tema.apagado },
+            if elegida {
+                tema.texto_elegido
+            } else {
+                tema.apagado
+            },
         );
     }
 }
@@ -889,7 +965,10 @@ mod pruebas {
         assert_eq!(texto_de_nota("Piso #3"), "Piso #3");
         // Y una nota enorme no se compone entera.
         let larga = "linea\n".repeat(500);
-        assert_eq!(texto_de_nota(&larga).lines().count(), BLOQUES_DE_LA_MINIATURA);
+        assert_eq!(
+            texto_de_nota(&larga).lines().count(),
+            BLOQUES_DE_LA_MINIATURA
+        );
     }
 
     #[test]

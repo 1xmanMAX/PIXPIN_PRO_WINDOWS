@@ -141,7 +141,10 @@ mod pruebas {
 
     #[test]
     fn un_documento_sin_titulos_no_tiene_indice() {
-        let d = doc(vec![b(Clase::Parrafo, "solo texto"), b(Clase::Lista, "uno")]);
+        let d = doc(vec![
+            b(Clase::Parrafo, "solo texto"),
+            b(Clase::Lista, "uno"),
+        ]);
         assert!(de(&d).is_empty());
         assert!(de(&Documento::default()).is_empty());
     }

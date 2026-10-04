@@ -10,11 +10,14 @@ fn norm(s: &str) -> String {
 }
 
 pub fn verify(original: &Document, output_bytes: &[u8]) -> Result<()> {
-    let out = Document::load_mem(output_bytes).map_err(|e| Error::Verification(format!("output does not parse: {e}")))?;
+    let out = Document::load_mem(output_bytes)
+        .map_err(|e| Error::Verification(format!("output does not parse: {e}")))?;
     let p0 = original.get_pages().len();
     let p1 = out.get_pages().len();
     if p0 != p1 {
-        return Err(Error::Verification(format!("page count changed: {p0} → {p1}")));
+        return Err(Error::Verification(format!(
+            "page count changed: {p0} → {p1}"
+        )));
     }
     for n in 1..=p1 as u32 {
         let a = original.extract_text(&[n]).ok().map(|s| norm(&s));
@@ -27,7 +30,11 @@ pub fn verify(original: &Document, output_bytes: &[u8]) -> Result<()> {
     }
     for (id, obj) in &out.objects {
         if let Object::Stream(s) = obj {
-            let sub = s.dict.get(b"Subtype").and_then(Object::as_name).unwrap_or(b"");
+            let sub = s
+                .dict
+                .get(b"Subtype")
+                .and_then(Object::as_name)
+                .unwrap_or(b"");
             if sub != b"Image" {
                 continue;
             }
@@ -41,7 +48,10 @@ pub fn verify(original: &Document, output_bytes: &[u8]) -> Result<()> {
                 // fail when the *original* had the same object decodable.
                 if let Some(Object::Stream(orig)) = original.objects.get(id) {
                     if decode::decode_image(original, orig).is_some() {
-                        return Err(Error::Verification(format!("image {} no longer decodes", id.0)));
+                        return Err(Error::Verification(format!(
+                            "image {} no longer decodes",
+                            id.0
+                        )));
                     }
                 }
             }

@@ -99,8 +99,16 @@ pub fn hacer(base: &[u8], a: &Anotaciones) -> Option<Vec<u8>> {
     if paginas.is_empty() {
         return None;
     }
-    let izquierda = if a.izquierda.is_finite() { a.izquierda.max(0.0) } else { 0.0 };
-    let derecha = if a.derecha.is_finite() { a.derecha.max(0.0) } else { 0.0 };
+    let izquierda = if a.izquierda.is_finite() {
+        a.izquierda.max(0.0)
+    } else {
+        0.0
+    };
+    let derecha = if a.derecha.is_finite() {
+        a.derecha.max(0.0)
+    } else {
+        0.0
+    };
 
     // Lo de cada hoja: su caja, su giro y lo anotado.
     struct DeLaHoja {
@@ -122,7 +130,11 @@ pub fn hacer(base: &[u8], a: &Anotaciones) -> Option<Vec<u8>> {
             continue;
         };
         let giro = giro_de(&archivo, &dicc);
-        let ancho_pt = if de_lado(giro) { caja[3] - caja[1] } else { caja[2] - caja[0] };
+        let ancho_pt = if de_lado(giro) {
+            caja[3] - caja[1]
+        } else {
+            caja[2] - caja[0]
+        };
         let por_unidad = ancho_pt / ANCHO_EN_UNIDADES as f64;
         let (izq, der) = if giro == 0 {
             (izquierda as f64 * por_unidad, derecha as f64 * por_unidad)
@@ -140,7 +152,11 @@ pub fn hacer(base: &[u8], a: &Anotaciones) -> Option<Vec<u8>> {
             tinta,
         });
     }
-    let validos: Vec<&Marcador> = a.marcadores.iter().filter(|m| m.pagina < paginas.len()).collect();
+    let validos: Vec<&Marcador> = a
+        .marcadores
+        .iter()
+        .filter(|m| m.pagina < paginas.len())
+        .collect();
     let hay_tinta = hojas.iter().any(|h| !h.tinta.is_empty());
     let hay_margen = hojas.iter().any(|h| h.izq > 0.0 || h.der > 0.0);
     if !hay_tinta && !hay_margen && validos.is_empty() {
@@ -152,7 +168,9 @@ pub fn hacer(base: &[u8], a: &Anotaciones) -> Option<Vec<u8>> {
 
     // La tinta de todas las hojas, escrita de una vez: la letra y las
     // transparencias se comparten entre hojas.
-    let con_tinta: Vec<usize> = (0..hojas.len()).filter(|&k| !hojas[k].tinta.is_empty()).collect();
+    let con_tinta: Vec<usize> = (0..hojas.len())
+        .filter(|&k| !hojas[k].tinta.is_empty())
+        .collect();
     let mut formularios: HashMap<usize, (Valor, [f64; 4])> = HashMap::new();
     if !con_tinta.is_empty() {
         let mut papeles = Vec::with_capacity(con_tinta.len());
@@ -185,7 +203,12 @@ pub fn hacer(base: &[u8], a: &Anotaciones) -> Option<Vec<u8>> {
             let Some(Valor::Flujo(d, datos)) = tinta.resolver(en(&pagina, b"Contents")) else {
                 return None;
             };
-            let recursos = trasladar(en(&pagina, b"Resources")?, &mut numero_de, &mut pendientes, &mut siguiente);
+            let recursos = trasladar(
+                en(&pagina, b"Resources")?,
+                &mut numero_de,
+                &mut pendientes,
+                &mut siguiente,
+            );
             let (w, alto) = (medidas[j].0 as f64, medidas[j].1 as f64);
             let (m, rect) = matriz_y_rect(h.caja, h.giro, h.izq, h.der);
             let mut forma: Dicc = d.into_iter().filter(|(k, _)| k != b"Length").collect();
@@ -223,14 +246,24 @@ pub fn hacer(base: &[u8], a: &Anotaciones) -> Option<Vec<u8>> {
             poner(
                 &mut pagina,
                 b"MediaBox",
-                lista(&[media[0].min(x0 - h.izq), media[1], media[2].max(x1 + h.der), media[3]]),
+                lista(&[
+                    media[0].min(x0 - h.izq),
+                    media[1],
+                    media[2].max(x1 + h.der),
+                    media[3],
+                ]),
             );
-            poner(&mut pagina, b"CropBox", lista(&[x0 - h.izq, y0, x1 + h.der, y1]));
+            poner(
+                &mut pagina,
+                b"CropBox",
+                lista(&[x0 - h.izq, y0, x1 + h.der, y1]),
+            );
         }
         if let Some((forma, _)) = formulario {
             let hoja = paginas.iter().position(|&n| n == h.numero).unwrap_or(k) + 1;
             let nombre_capa = format!("PixPin · hoja {hoja}");
-            let (capa, n_forma, abrir, pintar) = (siguiente, siguiente + 1, siguiente + 2, siguiente + 3);
+            let (capa, n_forma, abrir, pintar) =
+                (siguiente, siguiente + 1, siguiente + 2, siguiente + 3);
             siguiente += 4;
             nuevos.push((
                 capa,
@@ -262,7 +295,8 @@ pub fn hacer(base: &[u8], a: &Anotaciones) -> Option<Vec<u8>> {
                 0,
                 Valor::Flujo(
                     Vec::new(),
-                    format!("Q\nq\n/OC /{nombre_de_capa} BDC\n/{nombre_forma} Do\nEMC\nQ\n").into_bytes(),
+                    format!("Q\nq\n/OC /{nombre_de_capa} BDC\n/{nombre_forma} Do\nEMC\nQ\n")
+                        .into_bytes(),
                 ),
             ));
             let mut contenidos = vec![Valor::Ref(abrir, 0)];
@@ -294,7 +328,17 @@ pub fn hacer(base: &[u8], a: &Anotaciones) -> Option<Vec<u8>> {
     }
     if !validos.is_empty() {
         let mut con_indice = |c: &mut Dicc| -> Option<()> {
-            let objetos = indice(&archivo, c, &paginas, &hojas.iter().map(|h| (h.numero, h.caja, h.giro)).collect::<Vec<_>>(), &validos, &mut siguiente)?;
+            let objetos = indice(
+                &archivo,
+                c,
+                &paginas,
+                &hojas
+                    .iter()
+                    .map(|h| (h.numero, h.caja, h.giro))
+                    .collect::<Vec<_>>(),
+                &validos,
+                &mut siguiente,
+            )?;
             nuevos.extend(objetos);
             Some(())
         };
@@ -326,11 +370,15 @@ pub fn marcadores_del_indice(bytes: &[u8], tope: usize) -> Vec<Marcador> {
     if archivo.cifrado() {
         return Vec::new();
     }
-    let Some(raiz) = archivo.raiz().and_then(|c| archivo.dicc_de(en(&c, b"Outlines"))) else {
+    let Some(raiz) = archivo
+        .raiz()
+        .and_then(|c| archivo.dicc_de(en(&c, b"Outlines")))
+    else {
         return Vec::new();
     };
     let paginas = archivo.paginas();
-    let por_numero: HashMap<u32, usize> = paginas.iter().enumerate().map(|(i, n)| (*n, i)).collect();
+    let por_numero: HashMap<u32, usize> =
+        paginas.iter().enumerate().map(|(i, n)| (*n, i)).collect();
     let mut salida = Vec::new();
     let mut vistos = std::collections::HashSet::new();
     // Sin recursion: una pila de «siguiente por mirar» y su hondura.
@@ -355,21 +403,31 @@ pub fn marcadores_del_indice(bytes: &[u8], tope: usize) -> Vec<Marcador> {
                 && let Some(&pagina) = por_numero.get(p)
             {
                 let titulo = match archivo.resolver(en(&m, b"Title")) {
-                    Some(Valor::Cadena(c)) => crate::plano::texto_de_cadena(&crate::plano::bytes_de_cadena(&c)),
+                    Some(Valor::Cadena(c)) => {
+                        crate::plano::texto_de_cadena(&crate::plano::bytes_de_cadena(&c))
+                    }
                     _ => String::new(),
                 };
                 // Con `/XYZ izquierda arriba zoom`, la altura; si no, lo alto de la hoja.
                 let arriba = match l.get(1) {
-                    Some(Valor::Nombre(x)) if x == b"XYZ" => l.get(3).and_then(|v| real_de(&archivo, v)),
+                    Some(Valor::Nombre(x)) if x == b"XYZ" => {
+                        l.get(3).and_then(|v| real_de(&archivo, v))
+                    }
                     _ => None,
                 };
                 let dicc = archivo.dicc_de(Some(&Valor::Ref(*p, 0)));
                 let caja = dicc.as_ref().and_then(|d| caja_de(&archivo, d));
                 let alto = match (arriba, caja) {
-                    (Some(a), Some(c)) if c[3] > c[1] => ((c[3] - a) / (c[3] - c[1])).clamp(0.0, 1.0),
+                    (Some(a), Some(c)) if c[3] > c[1] => {
+                        ((c[3] - a) / (c[3] - c[1])).clamp(0.0, 1.0)
+                    }
                     _ => 0.0,
                 };
-                salida.push(Marcador { titulo: titulo.trim().to_string(), pagina, alto });
+                salida.push(Marcador {
+                    titulo: titulo.trim().to_string(),
+                    pagina,
+                    alto,
+                });
             }
             // Los de dentro, justo detras de este; los hermanos, despues.
             let siguiente = en(&m, b"Next").cloned();
@@ -410,7 +468,12 @@ fn caja_heredada(archivo: &Archivo, pagina: &Dicc, clave: &[u8]) -> Option<[f64;
         if let Some(Valor::Lista(l)) = archivo.resolver(en(&actual, clave)) {
             let n: Vec<f64> = l.iter().filter_map(|v| real_de(archivo, v)).collect();
             if n.len() >= 4 {
-                return Some([n[0].min(n[2]), n[1].min(n[3]), n[0].max(n[2]), n[1].max(n[3])]);
+                return Some([
+                    n[0].min(n[2]),
+                    n[1].min(n[3]),
+                    n[0].max(n[2]),
+                    n[1].max(n[3]),
+                ]);
             }
         }
         d = archivo.dicc_de(en(&actual, b"Parent"));
@@ -424,7 +487,12 @@ fn caja_heredada(archivo: &Archivo, pagina: &Dicc, clave: &[u8]) -> Option<[f64;
 fn caja_de(archivo: &Archivo, pagina: &Dicc) -> Option<[f64; 4]> {
     let media = caja_heredada(archivo, pagina, b"MediaBox")?;
     let caja = match caja_heredada(archivo, pagina, b"CropBox") {
-        Some(c) => [c[0].max(media[0]), c[1].max(media[1]), c[2].min(media[2]), c[3].min(media[3])],
+        Some(c) => [
+            c[0].max(media[0]),
+            c[1].max(media[1]),
+            c[2].min(media[2]),
+            c[3].min(media[3]),
+        ],
         None => media,
     };
     (caja[2] - caja[0] >= 1.0 && caja[3] - caja[1] >= 1.0).then_some(caja)
@@ -440,7 +508,10 @@ fn giro_de(archivo: &Archivo, pagina: &Dicc) -> i32 {
             break;
         }
         saltos += 1;
-        if let Some(v) = archivo.resolver(en(&actual, b"Rotate")).and_then(|v| real_de(archivo, &v)) {
+        if let Some(v) = archivo
+            .resolver(en(&actual, b"Rotate"))
+            .and_then(|v| real_de(archivo, &v))
+        {
             return ((v as i64).rem_euclid(360) / 90 * 90) as i32;
         }
         d = archivo.dicc_de(en(&actual, b"Parent"));
@@ -488,7 +559,12 @@ fn contenidos_de(archivo: &Archivo, pagina: &Dicc) -> Vec<Valor> {
 /// arbol si no los lleva: sus padres no se tocan) tal cual, y en `/XObject`
 /// el formulario de la tinta y en `/Properties` su capa, junto a los que
 /// hubiera (`fusionarRecursos` del movil). Va escrito en la hoja.
-fn con_lo_nuestro(archivo: &Archivo, pagina: &Dicc, forma: (&[u8], u32), capa: (&[u8], u32)) -> Dicc {
+fn con_lo_nuestro(
+    archivo: &Archivo,
+    pagina: &Dicc,
+    forma: (&[u8], u32),
+    capa: (&[u8], u32),
+) -> Dicc {
     let mut recursos = recursos_heredados(archivo, pagina).unwrap_or_default();
     let mut anadir = |clave: &[u8], nombre: &[u8], n: u32| {
         let mut d = archivo.dicc_de(en(&recursos, clave)).unwrap_or_default();
@@ -526,12 +602,15 @@ fn recursos_heredados(archivo: &Archivo, pagina: &Dicc) -> Option<Dicc> {
 /// hay lectores que no dibujan lo que la lleva. Un PDF de AutoCAD llega con
 /// las suyas y perderlas seria romperle el archivo. Nacen encendidas.
 fn anunciar_capas(archivo: &Archivo, catalogo: &Dicc, capas: &[u32]) -> Valor {
-    let lista_de = |d: Option<&Dicc>, clave: &[u8]| match d.and_then(|d| archivo.resolver(en(d, clave))) {
-        Some(Valor::Lista(l)) => l,
-        _ => Vec::new(),
-    };
+    let lista_de =
+        |d: Option<&Dicc>, clave: &[u8]| match d.and_then(|d| archivo.resolver(en(d, clave))) {
+            Some(Valor::Lista(l)) => l,
+            _ => Vec::new(),
+        };
     let propiedades = archivo.dicc_de(en(catalogo, b"OCProperties"));
-    let por_defecto = propiedades.as_ref().and_then(|p| archivo.dicc_de(en(p, b"D")));
+    let por_defecto = propiedades
+        .as_ref()
+        .and_then(|p| archivo.dicc_de(en(p, b"D")));
     let nuevas: Vec<Valor> = capas.iter().map(|&c| Valor::Ref(c, 0)).collect();
     let mut todas = lista_de(propiedades.as_ref(), b"OCGs");
     todas.extend(nuevas.iter().cloned());
@@ -620,7 +699,11 @@ fn indice(
         objetos.push((n, g, Valor::Dicc(d)));
     }
     let raiz = existente.as_ref().map(|(_, d)| d.clone());
-    let cuenta = raiz.as_ref().and_then(|d| entero(en(d, b"Count"))).unwrap_or(0).max(0);
+    let cuenta = raiz
+        .as_ref()
+        .and_then(|d| entero(en(d, b"Count")))
+        .unwrap_or(0)
+        .max(0);
     let mut r = raiz.unwrap_or_default();
     poner(&mut r, b"Type", nombre(b"Outlines"));
     if en(&r, b"First").is_none() {
@@ -683,7 +766,12 @@ fn texto_pdf(s: &str) -> Valor {
 
 /// Un valor del PDF de la tinta con sus referencias renumeradas para el
 /// original; lo que alcanza queda en `pendientes` para copiarlo despues.
-fn trasladar(v: &Valor, numero_de: &mut HashMap<u32, u32>, pendientes: &mut VecDeque<u32>, siguiente: &mut u32) -> Valor {
+fn trasladar(
+    v: &Valor,
+    numero_de: &mut HashMap<u32, u32>,
+    pendientes: &mut VecDeque<u32>,
+    siguiente: &mut u32,
+) -> Valor {
     match v {
         Valor::Ref(n, _) => {
             let nuevo = *numero_de.entry(*n).or_insert_with(|| {
@@ -694,7 +782,11 @@ fn trasladar(v: &Valor, numero_de: &mut HashMap<u32, u32>, pendientes: &mut VecD
             });
             Valor::Ref(nuevo, 0)
         }
-        Valor::Lista(l) => Valor::Lista(l.iter().map(|x| trasladar(x, numero_de, pendientes, siguiente)).collect()),
+        Valor::Lista(l) => Valor::Lista(
+            l.iter()
+                .map(|x| trasladar(x, numero_de, pendientes, siguiente))
+                .collect(),
+        ),
         Valor::Dicc(d) => Valor::Dicc(
             d.iter()
                 .map(|(k, x)| (k.clone(), trasladar(x, numero_de, pendientes, siguiente)))
@@ -727,7 +819,10 @@ mod pruebas {
         for d in donde {
             t.push_str(&format!("{d:010} 00000 n \n"));
         }
-        t.push_str(&format!("trailer\n<< /Size {} /Root 1 0 R >>\nstartxref\n{inicio}\n%%EOF\n", objetos.len() + 1));
+        t.push_str(&format!(
+            "trailer\n<< /Size {} /Root 1 0 R >>\nstartxref\n{inicio}\n%%EOF\n",
+            objetos.len() + 1
+        ));
         s.extend_from_slice(t.as_bytes());
         s
     }
@@ -751,7 +846,10 @@ mod pruebas {
         let m = marcadores_del_indice(&b, 50);
         let resumen: Vec<(&str, usize)> = m.iter().map(|x| (x.titulo.as_str(), x.pagina)).collect();
         assert_eq!(resumen, vec![("Uno", 0), ("Uno.a", 1), ("Dos año", 1)]);
-        assert!((m[0].alto - 0.25).abs() < 1e-9 && m[1].alto == 0.0 && (m[2].alto - 0.75).abs() < 1e-9, "{m:?}");
+        assert!(
+            (m[0].alto - 0.25).abs() < 1e-9 && m[1].alto == 0.0 && (m[2].alto - 0.75).abs() < 1e-9,
+            "{m:?}"
+        );
         // Caso negativo: un indice que se muerde la cola no da vueltas sin fin.
         let b = pdf_de(&[
             "<< /Type /Catalog /Pages 2 0 R /Outlines 4 0 R >>",
@@ -776,12 +874,19 @@ mod pruebas {
         ]);
         let a = Archivo::leer(&b).unwrap();
         let hoja = a.dicc_de(Some(&Valor::Ref(3, 0))).unwrap();
-        assert_eq!(contenidos_de(&a, &hoja), vec![Valor::Ref(5, 0), Valor::Ref(5, 0)]);
+        assert_eq!(
+            contenidos_de(&a, &hoja),
+            vec![Valor::Ref(5, 0), Valor::Ref(5, 0)]
+        );
         let r = con_lo_nuestro(&a, &hoja, (b"PxT20", 20), (b"PxOC21", 21));
         let fuentes = a.dicc_de(en(&r, b"Font")).unwrap();
         assert!(en(&fuentes, b"F1").is_some(), "la letra heredada sigue");
         let xo = a.dicc_de(en(&r, b"XObject")).unwrap();
-        assert_eq!(en(&xo, b"Im9"), Some(&Valor::Ref(5, 0)), "sus formularios siguen");
+        assert_eq!(
+            en(&xo, b"Im9"),
+            Some(&Valor::Ref(5, 0)),
+            "sus formularios siguen"
+        );
         assert_eq!(en(&xo, b"PxT20"), Some(&Valor::Ref(20, 0)));
         let props = a.dicc_de(en(&r, b"Properties")).unwrap();
         assert_eq!(en(&props, b"PxOC21"), Some(&Valor::Ref(21, 0)));
@@ -801,7 +906,8 @@ mod pruebas {
     fn la_matriz_lleva_cada_esquina_del_papel_a_la_suya() {
         // Hoja de 612 x 792 girada 90: se ve de 792 x 612.
         let caja = [0.0, 0.0, 612.0, 792.0];
-        let aplicar = |m: [f64; 6], x: f64, y: f64| (m[0] * x + m[2] * y + m[4], m[1] * x + m[3] * y + m[5]);
+        let aplicar =
+            |m: [f64; 6], x: f64, y: f64| (m[0] * x + m[2] * y + m[4], m[1] * x + m[3] * y + m[5]);
         let (m, _) = matriz_y_rect(caja, 90, 0.0, 0.0);
         // Arriba a la izquierda de lo que se ve (0, 612) es abajo a la
         // izquierda de la hoja sin girar.

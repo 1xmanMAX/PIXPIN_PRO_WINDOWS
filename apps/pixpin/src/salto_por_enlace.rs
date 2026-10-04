@@ -24,7 +24,7 @@
 //! o, si solo hay uno, cualquiera). Un enlace que no lleva a ningun lienzo que
 //! exista da `None`: el editor avisa y **no se cierra**.
 
-use pixpin_proyecto::{almacen, cuaderno, Proyecto};
+use pixpin_proyecto::{Proyecto, almacen, cuaderno};
 use std::path::Path;
 
 /// La hoja que hay que abrir para seguir un enlace.
@@ -111,7 +111,10 @@ pub(crate) fn hoja_del_enlace(
     }
     // Una hoja que solo esta en `proyecto.json` (la del movil que el chat no
     // ensena): con su pagina, que es su fondo.
-    if let Some(m) = almacen::hojas_para_ensenar(raiz, proyecto, "").into_iter().find(es_el) {
+    if let Some(m) = almacen::hojas_para_ensenar(raiz, proyecto, "")
+        .into_iter()
+        .find(es_el)
+    {
         return Some(HojaDelEnlace::Leida(m));
     }
     // Y un dibujo suelto del proyecto: el movil lo abre igual, por su fichero.
@@ -222,7 +225,8 @@ mod pruebas {
     use std::path::PathBuf;
 
     fn raiz(etiqueta: &str) -> PathBuf {
-        let r = std::env::temp_dir().join(format!("pixpin-salto-{etiqueta}-{}", std::process::id()));
+        let r =
+            std::env::temp_dir().join(format!("pixpin-salto-{etiqueta}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&r);
         std::fs::create_dir_all(&r).unwrap();
         r
@@ -253,9 +257,15 @@ mod pruebas {
     fn un_enlace_a_un_dibujo_que_existe_lleva_a_el_tal_cual() {
         let r = raiz("tal-cual");
         lienzo(&r, "p1", "foto-abc");
-        assert_eq!(dibujo_del_enlace(&r, "p1", "foto-abc").as_deref(), Some("foto-abc"));
+        assert_eq!(
+            dibujo_del_enlace(&r, "p1", "foto-abc").as_deref(),
+            Some("foto-abc")
+        );
         // Tambien escrito como ruta.
-        assert_eq!(dibujo_del_enlace(&r, "p1", "lienzos/foto-abc.excalidraw").as_deref(), Some("foto-abc"));
+        assert_eq!(
+            dibujo_del_enlace(&r, "p1", "lienzos/foto-abc.excalidraw").as_deref(),
+            Some("foto-abc")
+        );
         // Caso negativo: nada fuera de la carpeta de lienzos.
         assert_eq!(dibujo_del_enlace(&r, "p1", "../p2/foto-abc"), None);
         assert_eq!(dibujo_del_enlace(&r, "p1", "  "), None);
@@ -270,7 +280,10 @@ mod pruebas {
         let p = "pr-1789352007247";
         lienzo(&r, p, "dib-1-1789352007247");
         lienzo(&r, p, "foto-e1da-1789352007247");
-        assert_eq!(dibujo_del_enlace(&r, p, "foto-e1da").as_deref(), Some("foto-e1da-1789352007247"));
+        assert_eq!(
+            dibujo_del_enlace(&r, p, "foto-e1da").as_deref(),
+            Some("foto-e1da-1789352007247")
+        );
         // Caso negativo: un prefijo que no es el nombre entero no vale
         // (`foto-e1` no es `foto-e1da`).
         assert_eq!(dibujo_del_enlace(&r, p, "foto-e1"), None);
@@ -289,7 +302,10 @@ mod pruebas {
             ]}),
         );
         lienzo(&r, "p1", "zona-renombrada");
-        assert_eq!(dibujo_del_enlace(&r, "p1", "foto-e1da").as_deref(), Some("zona-renombrada"));
+        assert_eq!(
+            dibujo_del_enlace(&r, "p1", "foto-e1da").as_deref(),
+            Some("zona-renombrada")
+        );
         // Caso negativo: el mensaje de otra zona no se confunde.
         assert_eq!(dibujo_del_enlace(&r, "p1", "foto-otro"), None);
         let _ = std::fs::remove_dir_all(&r);
@@ -302,7 +318,10 @@ mod pruebas {
         std::fs::create_dir_all(&carpeta).unwrap();
         cuaderno::anadir(&carpeta, &mensaje("e1da", "otra-cosa")).unwrap();
         lienzo(&r, "p1", "otra-cosa");
-        assert_eq!(dibujo_del_enlace(&r, "p1", "foto-e1da").as_deref(), Some("otra-cosa"));
+        assert_eq!(
+            dibujo_del_enlace(&r, "p1", "foto-e1da").as_deref(),
+            Some("otra-cosa")
+        );
         let _ = std::fs::remove_dir_all(&r);
     }
 
@@ -311,10 +330,17 @@ mod pruebas {
         let r = raiz("dudoso");
         lienzo(&r, "p1", "foto-x-100");
         lienzo(&r, "p1", "foto-x-200");
-        assert_eq!(dibujo_del_enlace(&r, "p1", "foto-x"), None, "caso negativo: dos posibles");
+        assert_eq!(
+            dibujo_del_enlace(&r, "p1", "foto-x"),
+            None,
+            "caso negativo: dos posibles"
+        );
         // Con uno solo, si.
         let _ = std::fs::remove_file(almacen::lienzo(&r, "p1", "foto-x-200"));
-        assert_eq!(dibujo_del_enlace(&r, "p1", "foto-x").as_deref(), Some("foto-x-100"));
+        assert_eq!(
+            dibujo_del_enlace(&r, "p1", "foto-x").as_deref(),
+            Some("foto-x-100")
+        );
         // Y lo que sigue al nombre tiene que ser una hora, no otra palabra.
         lienzo(&r, "p1", "foto-y-copia");
         assert_eq!(dibujo_del_enlace(&r, "p1", "foto-y"), None);
@@ -328,7 +354,9 @@ mod pruebas {
         // Ni con un mensaje que lo nombre: sin su fichero no hay que abrir.
         cuaderno::anadir(&almacen::carpeta(&r, "p1"), &mensaje("m1", "foto-fantasma")).unwrap();
         assert_eq!(dibujo_del_enlace(&r, "p1", "foto-fantasma"), None);
-        assert!(hoja_del_enlace(&r, "p1", &[mensaje("m1", "foto-fantasma")], "foto-fantasma").is_none());
+        assert!(
+            hoja_del_enlace(&r, "p1", &[mensaje("m1", "foto-fantasma")], "foto-fantasma").is_none()
+        );
         // Ni en un proyecto que no existe.
         assert!(hoja_del_enlace(&r, "p-no", &[], "foto-fantasma").is_none());
         let _ = std::fs::remove_dir_all(&r);
@@ -341,9 +369,15 @@ mod pruebas {
         let carpeta = almacen::carpeta(&r, p);
         std::fs::create_dir_all(&carpeta).unwrap();
         lienzo(&r, p, "foto-e1da-1789352007247");
-        let lista = vec![mensaje("a", "dib-1"), mensaje("e1da", "foto-e1da-1789352007247")];
+        let lista = vec![
+            mensaje("a", "dib-1"),
+            mensaje("e1da", "foto-e1da-1789352007247"),
+        ];
         // En la lista: su sitio.
-        assert!(matches!(hoja_del_enlace(&r, p, &lista, "foto-e1da"), Some(HojaDelEnlace::EnLaLista(1))));
+        assert!(matches!(
+            hoja_del_enlace(&r, p, &lista, "foto-e1da"),
+            Some(HojaDelEnlace::EnLaLista(1))
+        ));
         // Fuera de la lista (abierto desde Proyectos, o recien mandada): del
         // cuaderno.
         cuaderno::anadir(&carpeta, &mensaje("e1da", "foto-e1da-1789352007247")).unwrap();
@@ -387,7 +421,11 @@ mod pruebas {
         let guardadas = recorrer_hojas(&r, p, &lista, 0, guion(&pasos, &mut abiertas));
         assert_eq!(
             abiertas,
-            ["dib-1-1789352007247", "foto-e1da-1789352007247", "dib-1-1789352007247"]
+            [
+                "dib-1-1789352007247",
+                "foto-e1da-1789352007247",
+                "dib-1-1789352007247"
+            ]
         );
         // Solo los sitios de la lista de quien llama, y una vez.
         assert_eq!(guardadas, [0]);
@@ -413,9 +451,20 @@ mod pruebas {
         for d in ["dib-1", "foto-a", "foto-b"] {
             lienzo(&r, "p1", d);
         }
-        let lista = vec![mensaje("1", "dib-1"), mensaje("a", "foto-a"), mensaje("b", "foto-b")];
+        let lista = vec![
+            mensaje("1", "dib-1"),
+            mensaje("a", "foto-a"),
+            mensaje("b", "foto-b"),
+        ];
         let mut abiertas = Vec::new();
-        let pasos = [Some("foto-a"), Some("foto-b"), None, None, None, Some("no-deberia")];
+        let pasos = [
+            Some("foto-a"),
+            Some("foto-b"),
+            None,
+            None,
+            None,
+            Some("no-deberia"),
+        ];
         recorrer_hojas(&r, "p1", &lista, 0, guion(&pasos, &mut abiertas));
         assert_eq!(abiertas, ["dib-1", "foto-a", "foto-b", "foto-a", "dib-1"]);
         let _ = std::fs::remove_dir_all(&r);

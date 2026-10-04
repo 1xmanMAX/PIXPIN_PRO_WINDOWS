@@ -207,7 +207,9 @@ fn silueta(e: &Elemento) -> Vec<(Punto2, Punto2)> {
         Punto2::nuevo(x0, y1),
     ]
     .map(|q| q.girar(centro, e.angulo));
-    (0..4).map(|i| (esquinas[i], esquinas[(i + 1) % 4])).collect()
+    (0..4)
+        .map(|i| (esquinas[i], esquinas[(i + 1) % 4]))
+        .collect()
 }
 
 /// Lo que se separa `p` del borde dibujado de `e`. Grande si no hay borde.
@@ -621,7 +623,11 @@ pub fn reatar_a_su_figura(escena: &mut Escena, flecha: u64, extremo: Extremo) ->
         return false;
     };
     let (punta, otro, b) = match extremo {
-        Extremo::Inicio => (puntos[0], puntos[puntos.len() - 1], &f.extras.enganche_inicio),
+        Extremo::Inicio => (
+            puntos[0],
+            puntos[puntos.len() - 1],
+            &f.extras.enganche_inicio,
+        ),
         Extremo::Fin => (puntos[puntos.len() - 1], puntos[0], &f.extras.enganche_fin),
     };
     let Some(b) = b.as_ref() else {
@@ -709,7 +715,10 @@ pub fn soltar_lo_borrado(escena: &mut Escena, id: u64) -> usize {
                 b.as_ref()
                     .is_some_and(|b| tiene_id_de_texto(&figura, &b.elemento))
             };
-            let (i, fin) = (apunta(&f.extras.enganche_inicio), apunta(&f.extras.enganche_fin));
+            let (i, fin) = (
+                apunta(&f.extras.enganche_inicio),
+                apunta(&f.extras.enganche_fin),
+            );
             (i || fin).then_some((f.id, i, fin))
         })
         .collect();
@@ -787,7 +796,10 @@ pub fn revisar_extremo_en(
     let Some(f) = escena.buscar(flecha) else {
         return false;
     };
-    let Some(puntos) = f.puntos().filter(|_| matches!(f.figura, Figura::Flecha { .. })) else {
+    let Some(puntos) = f
+        .puntos()
+        .filter(|_| matches!(f.figura, Figura::Flecha { .. }))
+    else {
         return false;
     };
     if puntos.len() < 2 {
@@ -870,15 +882,13 @@ pub fn sincronizar_atados(escena: &mut Escena, flecha: u64) {
     };
     let texto = id_de_texto_de(f);
     let objetivos: [Option<String>; 2] = [
-        f.extras.enganche_inicio.as_ref().map(|b| b.elemento.clone()),
+        f.extras
+            .enganche_inicio
+            .as_ref()
+            .map(|b| b.elemento.clone()),
         f.extras.enganche_fin.as_ref().map(|b| b.elemento.clone()),
     ];
-    let es_objetivo = |e: &Elemento| {
-        objetivos
-            .iter()
-            .flatten()
-            .any(|t| tiene_id_de_texto(e, t))
-    };
+    let es_objetivo = |e: &Elemento| objetivos.iter().flatten().any(|t| tiene_id_de_texto(e, t));
     let tocar: Vec<u64> = escena
         .elementos
         .iter()

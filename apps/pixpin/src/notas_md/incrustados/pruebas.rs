@@ -12,7 +12,10 @@ impl Drop for Carpeta {
 }
 
 fn carpeta(nombre: &str) -> Carpeta {
-    let d = std::env::temp_dir().join(format!("pixpin-incrustados-{nombre}-{}", std::process::id()));
+    let d = std::env::temp_dir().join(format!(
+        "pixpin-incrustados-{nombre}-{}",
+        std::process::id()
+    ));
     let _ = std::fs::remove_dir_all(&d);
     std::fs::create_dir_all(&d).unwrap();
     Carpeta(d)
@@ -81,18 +84,32 @@ fn proyecto(raiz: &Path) -> FichaProyecto {
             ..mensaje("m-buzon", "UIDBUZON01", 4_000, 49)
         },
     ];
-    let lineas: Vec<String> = mensajes.iter().map(|m| serde_json::to_string(m).unwrap()).collect();
+    let lineas: Vec<String> = mensajes
+        .iter()
+        .map(|m| serde_json::to_string(m).unwrap())
+        .collect();
     std::fs::write(c.join("guardados.jsonl"), lineas.join("\n") + "\n").unwrap();
     ficha
 }
 
 fn mensaje_de(raiz: &Path, f: &FichaProyecto, uid: &str) -> Mensaje {
-    paginas_vivas::mensajes_de(raiz, f).into_iter().find(|m| m.uid.as_deref() == Some(uid)).unwrap()
+    paginas_vivas::mensajes_de(raiz, f)
+        .into_iter()
+        .find(|m| m.uid.as_deref() == Some(uid))
+        .unwrap()
 }
 
 fn medios(raiz: &Path, f: &FichaProyecto) -> MediosDeLaNota {
-    let actual = Rc::new(RefCell::new(Destino::Nueva { proyecto: f.id.clone() }));
-    MediosDeLaNota::nuevo(pixpin_store::Idioma::Espanol, &Ubicacion::Portable { raiz: raiz.to_path_buf() }, &actual)
+    let actual = Rc::new(RefCell::new(Destino::Nueva {
+        proyecto: f.id.clone(),
+    }));
+    MediosDeLaNota::nuevo(
+        pixpin_store::Idioma::Espanol,
+        &Ubicacion::Portable {
+            raiz: raiz.to_path_buf(),
+        },
+        &actual,
+    )
 }
 
 #[test]
@@ -106,9 +123,15 @@ fn una_nota_de_voz_del_chat_entra_como_su_audio_con_su_transcripcion_y_sin_copia
     let l = inc::letras(&b);
     assert_eq!(l.len(), 1, "{b}");
     assert!(l[0].ruta.ends_with("archivos/voz-1.m4a"), "{b}");
-    assert_eq!(l[0].parrafos.iter().map(|p| p.1).collect::<Vec<_>>(), vec![0, 21_000]);
+    assert_eq!(
+        l[0].parrafos.iter().map(|p| p.1).collect::<Vec<_>>(),
+        vec![0, 21_000]
+    );
     assert!(b.starts_with("![Aparejador]("), "{b}");
-    assert!(!almacen::carpeta(&d.0, &f.id).join("notas").exists(), "no se copia nada");
+    assert!(
+        !almacen::carpeta(&d.0, &f.id).join("notas").exists(),
+        "no se copia nada"
+    );
     // Y la nota lo encuentra: su reproductor sabe cuanto dura.
     let mut x = medios(&d.0, &f);
     assert_eq!(
@@ -128,9 +151,13 @@ fn un_archivo_del_chat_se_enlaza_a_su_mensaje_y_su_burbuja_lleva_hora_chapa_y_ta
     let m = mensaje_de(&d.0, &f, PDF);
     let b = bloque_de(&d.0, &f, &m, &textos());
     let codigo_proyecto = paginas_vivas::codigo_de_proyecto(&f);
-    assert_eq!(b, format!("[Plano.pdf](pixpin:mensaje={codigo_proyecto}/{PDF})"));
+    assert_eq!(
+        b,
+        format!("[Plano.pdf](pixpin:mensaje={codigo_proyecto}/{PDF})")
+    );
     let mut x = medios(&d.0, &f);
-    let Some(Ficha::Burbuja(burbuja)) = x.ficha(&format!("pixpin:mensaje={codigo_proyecto}/{PDF}")) else {
+    let Some(Ficha::Burbuja(burbuja)) = x.ficha(&format!("pixpin:mensaje={codigo_proyecto}/{PDF}"))
+    else {
         panic!("sin burbuja");
     };
     assert_eq!(burbuja.codigo.as_deref(), Some("#47·K7Q2"));
@@ -161,8 +188,14 @@ fn un_mensaje_borrado_y_un_documento_que_no_esta_se_dicen() {
     let f = proyecto(&d.0);
     let mut x = medios(&d.0, &f);
     let codigo_proyecto = paginas_vivas::codigo_de_proyecto(&f);
-    assert_eq!(x.ficha(&format!("pixpin:mensaje={codigo_proyecto}/NOESTA0001")), Some(Ficha::Borrado(String::new())));
-    assert_eq!(x.ficha("pixpin:mensaje=PROYECTOXX/NOESTA0001"), Some(Ficha::Borrado(String::new())));
+    assert_eq!(
+        x.ficha(&format!("pixpin:mensaje={codigo_proyecto}/NOESTA0001")),
+        Some(Ficha::Borrado(String::new()))
+    );
+    assert_eq!(
+        x.ficha("pixpin:mensaje=PROYECTOXX/NOESTA0001"),
+        Some(Ficha::Borrado(String::new()))
+    );
     match x.ficha("notas/9-Presupuesto.pdf") {
         Some(Ficha::Archivo(a)) => assert!(a.falta && a.nombre == "Presupuesto.pdf", "{a:?}"),
         otra => panic!("{otra:?}"),
@@ -181,10 +214,16 @@ fn un_mensaje_borrado_y_un_documento_que_no_esta_se_dicen() {
 fn abrir_un_mensaje_va_a_su_chat_y_un_documento_a_su_fichero() {
     let d = carpeta("abrir");
     let f = proyecto(&d.0);
-    let nota = Destino::Nueva { proyecto: f.id.clone() };
+    let nota = Destino::Nueva {
+        proyecto: f.id.clone(),
+    };
     let codigo_proyecto = paginas_vivas::codigo_de_proyecto(&f);
     assert_eq!(
-        que_abre(&d.0, &nota, &format!("pixpin:mensaje={codigo_proyecto}/{PDF}")),
+        que_abre(
+            &d.0,
+            &nota,
+            &format!("pixpin:mensaje={codigo_proyecto}/{PDF}")
+        ),
         Apertura::Mensaje {
             proyecto: f.id.clone(),
             codigo: PDF.into(),
@@ -192,14 +231,21 @@ fn abrir_un_mensaje_va_a_su_chat_y_un_documento_a_su_fichero() {
     );
     assert_eq!(
         que_abre(&d.0, &nota, "archivos/Plano.pdf"),
-        Apertura::Fichero(almacen::carpeta(&d.0, &f.id).join("archivos").join("Plano.pdf"))
+        Apertura::Fichero(
+            almacen::carpeta(&d.0, &f.id)
+                .join("archivos")
+                .join("Plano.pdf")
+        )
     );
     // Lo que no es suyo (una foto, una hoja) lo abre quien abre las fotos;
     // lo que ya no esta, nada.
     assert_eq!(que_abre(&d.0, &nota, "notas/1-obra.png"), Apertura::NoEsMio);
     assert_eq!(que_abre(&d.0, &nota, "pixpin:hoja=P/H"), Apertura::NoEsMio);
     assert_eq!(que_abre(&d.0, &nota, "notas/no-esta.pdf"), Apertura::Nada);
-    assert_eq!(que_abre(&d.0, &nota, "pixpin:mensaje=NOEXISTE/M"), Apertura::Nada);
+    assert_eq!(
+        que_abre(&d.0, &nota, "pixpin:mensaje=NOEXISTE/M"),
+        Apertura::Nada
+    );
 }
 
 #[test]
@@ -210,17 +256,30 @@ fn el_menu_del_chat_va_del_mas_nuevo_al_mas_viejo_sin_el_buzon_ni_la_propia_nota
         proyecto: f.id.clone(),
         codigo: TEXTO.into(),
     }));
-    let mut x = MediosDeLaNota::nuevo(pixpin_store::Idioma::Espanol, &Ubicacion::Portable { raiz: d.0.clone() }, &actual);
+    let mut x = MediosDeLaNota::nuevo(
+        pixpin_store::Idioma::Espanol,
+        &Ubicacion::Portable { raiz: d.0.clone() },
+        &actual,
+    );
     let v = x.mensajes();
-    assert_eq!(v.iter().map(|m| m.clave.as_str()).collect::<Vec<_>>(), vec![PDF, VOZ]);
+    assert_eq!(
+        v.iter().map(|m| m.clave.as_str()).collect::<Vec<_>>(),
+        vec![PDF, VOZ]
+    );
     assert!(v[0].rotulo.contains("#47·K7Q2"), "{}", v[0].rotulo);
     // Lo elegido se escribe como su bloque.
     let b = x.insertar_mensaje(PDF).unwrap();
     assert!(b.contains(&format!("/{PDF})")), "{b}");
     assert_eq!(x.insertar_mensaje("NOESTA0001"), None);
     // Una nota suelta no tiene chat.
-    let suelta = Rc::new(RefCell::new(Destino::Fichero { ruta: d.0.join("a.md") }));
-    let mut y = MediosDeLaNota::nuevo(pixpin_store::Idioma::Espanol, &Ubicacion::Portable { raiz: d.0.clone() }, &suelta);
+    let suelta = Rc::new(RefCell::new(Destino::Fichero {
+        ruta: d.0.join("a.md"),
+    }));
+    let mut y = MediosDeLaNota::nuevo(
+        pixpin_store::Idioma::Espanol,
+        &Ubicacion::Portable { raiz: d.0.clone() },
+        &suelta,
+    );
     assert!(y.mensajes().is_empty());
 }
 
@@ -229,7 +288,10 @@ fn todo_mensaje_del_chat_se_puede_insertar_en_una_nota_menos_el_del_buzon() {
     let d = carpeta("insertar");
     let f = proyecto(&d.0);
     for uid in [VOZ, PDF, TEXTO] {
-        assert!(paginas_vivas::se_puede_insertar(&mensaje_de(&d.0, &f, uid)), "{uid}");
+        assert!(
+            paginas_vivas::se_puede_insertar(&mensaje_de(&d.0, &f, uid)),
+            "{uid}"
+        );
     }
     // Caso negativo: lo del buzon se va solo, y un mensaje sin id no es nada.
     let buzon = Mensaje {

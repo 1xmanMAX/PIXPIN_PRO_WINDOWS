@@ -41,7 +41,10 @@ fn sin_marcas_a_la_vista(e: &mut Estado, que: &str, f: impl FnOnce(&mut Estado))
     espiar();
     f(e);
     let vistos = fotogramas();
-    assert!(!vistos.is_empty(), "{que}: el espia no vio ningun fotograma");
+    assert!(
+        !vistos.is_empty(),
+        "{que}: el espia no vio ningun fotograma"
+    );
     for (i, v) in vistos.iter().enumerate() {
         assert!(
             v.marcas_a_la_vista.is_empty(),
@@ -64,9 +67,17 @@ fn el_espia_ve_las_marcas_de_un_cambio_hecho_sin_congelar() {
     let e = abrir("hola mundo");
     espiar();
     elegir(e.edit, 5, 10);
-    enviar(e.edit, EM_REPLACESEL, 1, ancho_nulo("**mundo**").as_ptr() as isize);
+    enviar(
+        e.edit,
+        EM_REPLACESEL,
+        1,
+        ancho_nulo("**mundo**").as_ptr() as isize,
+    );
     let vistos = fotogramas();
-    assert!(vistos.iter().any(|v| !v.marcas_a_la_vista.is_empty()), "{vistos:?}");
+    assert!(
+        vistos.iter().any(|v| !v.marcas_a_la_vista.is_empty()),
+        "{vistos:?}"
+    );
     desmontar(e);
 }
 
@@ -108,7 +119,9 @@ fn escribir_marcas_a_mano_las_esconde_desde_el_primer_fotograma() {
     // Un titulo, una lista, una casilla al vuelo, un separador y una negrita
     // cerrada a mano.
     sin_marcas_a_la_vista(&mut e, "titulo", |e| teclear(e, "# Plan"));
-    sin_marcas_a_la_vista(&mut e, "intro", |e| como_el_bucle(e, msg(e, WM_KEYDOWN, VK_RETURN.0 as usize)));
+    sin_marcas_a_la_vista(&mut e, "intro", |e| {
+        como_el_bucle(e, msg(e, WM_KEYDOWN, VK_RETURN.0 as usize))
+    });
     sin_marcas_a_la_vista(&mut e, "lista", |e| teclear(e, "- uno"));
     sin_marcas_a_la_vista(&mut e, "intro en lista", |e| {
         como_el_bucle(e, msg(e, WM_KEYDOWN, VK_RETURN.0 as usize))
@@ -134,7 +147,12 @@ fn la_primera_letra_tras_una_marca_escondida_se_ve_en_el_acto() {
     teclear(&mut e, "T");
     let d = e.doc.as_ref().unwrap();
     // SAFETY: rango del documento vivo de la prueba.
-    let oculta = unsafe { d.Range(2, 3).and_then(|r| r.GetFont()).and_then(|f| f.GetHidden()).unwrap() };
+    let oculta = unsafe {
+        d.Range(2, 3)
+            .and_then(|r| r.GetFont())
+            .and_then(|f| f.GetHidden())
+            .unwrap()
+    };
     assert_eq!(oculta, 0, "la T se ve");
     assert_eq!(markdown(&e), "# T");
     desmontar(e);
@@ -145,7 +163,9 @@ fn pegar_markdown_deshacer_y_rehacer_no_ensenan_marcas() {
     let mut e = abrir("antes ");
     let fin = leer(e.edit).encode_utf16().count();
     elegir(e.edit, fin, fin);
-    sin_marcas_a_la_vista(&mut e, "pegar", |e| wysiwyg::pegar_texto(e, "**pegado** y `codigo`\n- [ ] tarea"));
+    sin_marcas_a_la_vista(&mut e, "pegar", |e| {
+        wysiwyg::pegar_texto(e, "**pegado** y `codigo`\n- [ ] tarea")
+    });
     assert_eq!(markdown(&e), "antes **pegado** y `codigo`\n- [ ] tarea");
     let ctrl_z = MSG {
         hwnd: e.edit,
@@ -183,8 +203,16 @@ fn meter_una_foto_nace_escondida_y_con_su_hueco() {
     let l = md_vivo::lineas(&leer(e.edit))[1];
     let d = e.doc.as_ref().unwrap();
     // SAFETY: rango del documento vivo de la prueba.
-    let aire = unsafe { d.Range(l.desde as i32, l.desde as i32).and_then(|r| r.GetPara()).and_then(|p| p.GetSpaceBefore()).unwrap() };
-    assert!(aire >= 200.0 * 72.0 / e.ppp as f32, "el hueco es del alto de la foto: {aire}");
+    let aire = unsafe {
+        d.Range(l.desde as i32, l.desde as i32)
+            .and_then(|r| r.GetPara())
+            .and_then(|p| p.GetSpaceBefore())
+            .unwrap()
+    };
+    assert!(
+        aire >= 200.0 * 72.0 / e.ppp as f32,
+        "el hueco es del alto de la foto: {aire}"
+    );
     // Y escribir con el cursor en la foto abre un renglon debajo, sin
     // tocar el de la foto.
     teclear(&mut e, "x");

@@ -75,7 +75,11 @@ pub fn puntuar(consulta: &str, nombre: &str, dentro: &str) -> u32 {
         if dentro.contains(q) {
             return DENTRO;
         }
-        if palabras.len() > 1 && palabras.iter().all(|p| nombre.contains(p) || dentro.contains(p)) {
+        if palabras.len() > 1
+            && palabras
+                .iter()
+                .all(|p| nombre.contains(p) || dentro.contains(p))
+        {
             return DENTRO_TROZOS;
         }
     }
@@ -159,7 +163,10 @@ pub fn resaltado(titulo: &str, consulta: &str) -> Vec<usize> {
             marcadas = salteadas(&letras, &q).unwrap_or_default();
         }
     }
-    let mut v: Vec<usize> = marcadas.into_iter().filter_map(|i| posiciones.get(i).copied()).collect();
+    let mut v: Vec<usize> = marcadas
+        .into_iter()
+        .filter_map(|i| posiciones.get(i).copied())
+        .collect();
     v.sort_unstable();
     v.dedup();
     v
@@ -173,7 +180,9 @@ fn buscar_trozo(letras: &[char], q: &[char]) -> Option<usize> {
     let encaja = |i: usize| letras[i..].starts_with(q);
     let inicio = |i: usize| i == 0 || !letras[i - 1].is_alphanumeric();
     let fin = letras.len() - q.len();
-    (0..=fin).find(|&i| inicio(i) && encaja(i)).or_else(|| (0..=fin).find(|&i| encaja(i)))
+    (0..=fin)
+        .find(|&i| inicio(i) && encaja(i))
+        .or_else(|| (0..=fin).find(|&i| encaja(i)))
 }
 
 /// Las posiciones de [`salteado`], si encaja.
@@ -210,7 +219,10 @@ mod pruebas {
         assert_eq!(puntuar("gest", "gestion de proyectos", ""), PREFIJO);
         assert_eq!(puntuar("proy", "gestion de proyectos", ""), PALABRA);
         assert_eq!(puntuar("yect", "gestion de proyectos", ""), TROZO);
-        assert_eq!(puntuar("gestion de proyectos", "gestion de proyectos", ""), IGUAL);
+        assert_eq!(
+            puntuar("gestion de proyectos", "gestion de proyectos", ""),
+            IGUAL
+        );
     }
 
     #[test]
@@ -238,11 +250,17 @@ mod pruebas {
 
     #[test]
     fn resalta_las_letras_que_coinciden_sin_tildes() {
-        assert_eq!(resaltado("Gestión de proyectos", "gestion"), (0..7).collect::<Vec<_>>());
+        assert_eq!(
+            resaltado("Gestión de proyectos", "gestion"),
+            (0..7).collect::<Vec<_>>()
+        );
         // Mejor al principio de una palabra que en medio de otra.
         assert_eq!(resaltado("compra pan", "pa"), vec![7, 8]);
         // Palabras sueltas en cualquier orden.
-        assert_eq!(resaltado("Gestión de proyectos", "proy gest"), vec![0, 1, 2, 3, 11, 12, 13, 14]);
+        assert_eq!(
+            resaltado("Gestión de proyectos", "proy gest"),
+            vec![0, 1, 2, 3, 11, 12, 13, 14]
+        );
         // Letras salteadas.
         assert_eq!(resaltado("Gestión de proyectos", "gdp"), vec![0, 8, 11]);
     }

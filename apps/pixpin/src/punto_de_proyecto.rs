@@ -17,8 +17,8 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant, SystemTime};
 
-use pixpin_proyecto::cuaderno::{Clase, Mensaje};
 use pixpin_proyecto::Proyecto;
+use pixpin_proyecto::cuaderno::{Clase, Mensaje};
 
 /// Si el mensaje lleva punto. Solo lo que es un archivo: una nota escrita o
 /// una nota de voz no estan «en los proyectos» ni dejan de estarlo, y un
@@ -85,12 +85,17 @@ impl Senas {
     pub fn esta(&self, m: &Mensaje) -> bool {
         let clase = m.clase.as_ref();
         let es = |c: &str| matches!(clase, Some(Clase::Otra(x)) if x == c);
-        if clase == Some(&Clase::Archivo) && m.ruta.as_ref().is_some_and(|r| self.archivos.contains(r)) {
+        if clase == Some(&Clase::Archivo)
+            && m.ruta.as_ref().is_some_and(|r| self.archivos.contains(r))
+        {
             return true;
         }
         if clase == Some(&Clase::Proyecto) {
             // Un mensaje que ES un proyecto esta mientras ese proyecto exista.
-            return m.referencia.as_ref().is_some_and(|r| self.proyectos.contains(r));
+            return m
+                .referencia
+                .as_ref()
+                .is_some_and(|r| self.proyectos.contains(r));
         }
         if self.de_mensaje.contains(&m.id) {
             return true;
@@ -99,10 +104,16 @@ impl Senas {
             return true;
         }
         if es("TABLA") {
-            return m.referencia.as_ref().is_some_and(|r| self.tablas.contains(r));
+            return m
+                .referencia
+                .as_ref()
+                .is_some_and(|r| self.tablas.contains(r));
         }
         if es("CROQUIS") {
-            return m.referencia.as_ref().is_some_and(|r| self.croquis.contains(r));
+            return m
+                .referencia
+                .as_ref()
+                .is_some_and(|r| self.croquis.contains(r));
         }
         // El rastro viejo: una foto o un dibujo unidos antes de que existiera
         // el vinculo comparten id de dibujo con su hoja (`dibujoDeLaFoto`).
@@ -192,7 +203,7 @@ pub fn esta(raiz: &Path, m: &Mensaje) -> bool {
 mod pruebas {
     use super::*;
     use pixpin_proyecto::Hoja;
-    use serde_json::{json, Value};
+    use serde_json::{Value, json};
 
     fn mensaje(id: &str, clase: Clase) -> Mensaje {
         Mensaje {
@@ -231,7 +242,10 @@ mod pruebas {
         };
         let senas = Senas::de(&[p], &[]);
         assert!(senas.esta(&mensaje("m1", Clase::Imagen)));
-        assert!(!senas.esta(&mensaje("m2", Clase::Imagen)), "otro mensaje no");
+        assert!(
+            !senas.esta(&mensaje("m2", Clase::Imagen)),
+            "otro mensaje no"
+        );
     }
 
     #[test]
@@ -287,7 +301,10 @@ mod pruebas {
             ..Default::default()
         };
         let senas = Senas::de(&[p], &[]);
-        assert!(senas.esta(&mensaje("m1", Clase::Imagen)), "sin referencia: foto-<id>");
+        assert!(
+            senas.esta(&mensaje("m1", Clase::Imagen)),
+            "sin referencia: foto-<id>"
+        );
         let mut d = mensaje("m2", Clase::Dibujo);
         d.referencia = Some("lienzo-7".into());
         assert!(senas.esta(&d), "con referencia: la referencia");

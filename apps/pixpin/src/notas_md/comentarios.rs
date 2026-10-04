@@ -27,7 +27,11 @@ pub fn ruta(raiz: &Path, destino: &Destino) -> Option<PathBuf> {
 /// Lo que necesita el editor: quien comenta (el nombre de este aparato) y
 /// leer y escribir el fichero de la nota que este abierta (`actual` cambia
 /// cuando una nota nueva se guarda).
-pub fn de(raiz: &Path, actual: &Rc<RefCell<Destino>>, aparato: &str) -> pixpin_notas::DeComentarios {
+pub fn de(
+    raiz: &Path,
+    actual: &Rc<RefCell<Destino>>,
+    aparato: &str,
+) -> pixpin_notas::DeComentarios {
     let autor = pixpin_proyecto::identidad::Identidad::leer_o_crear(raiz, "PC")
         .map(|i| i.yo.nombre)
         .unwrap_or_else(|_| "PC".into());
@@ -84,7 +88,15 @@ mod pruebas {
     #[test]
     fn una_nota_nueva_aun_no_tiene_fichero_de_comentarios() {
         let raiz = std::env::temp_dir().join(format!("pixpin-com-app-{}", std::process::id()));
-        assert_eq!(ruta(&raiz, &Destino::Nueva { proyecto: "p1".into() }), None);
+        assert_eq!(
+            ruta(
+                &raiz,
+                &Destino::Nueva {
+                    proyecto: "p1".into()
+                }
+            ),
+            None
+        );
         // Y una de un proyecto que no esta, tampoco (no se inventa sitio).
         let d = Destino::Mensaje {
             proyecto: "no-esta".into(),
@@ -107,8 +119,18 @@ mod pruebas {
     fn todos_los_textos_del_panel_existen_en_los_dos_idiomas() {
         for idioma in [pixpin_store::Idioma::Espanol, pixpin_store::Idioma::Ingles] {
             let r = rotulos(&Catalogo::nuevo(idioma));
-            for t in [&r.comentarios, &r.comentar, &r.sin_comentarios, &r.pista, &r.borrar_hilo, &r.ver_resueltos] {
-                assert!(!t.is_empty() && !t.starts_with("nota-md-com"), "falta un texto: {t:?}");
+            for t in [
+                &r.comentarios,
+                &r.comentar,
+                &r.sin_comentarios,
+                &r.pista,
+                &r.borrar_hilo,
+                &r.ver_resueltos,
+            ] {
+                assert!(
+                    !t.is_empty() && !t.starts_with("nota-md-com"),
+                    "falta un texto: {t:?}"
+                );
             }
         }
     }

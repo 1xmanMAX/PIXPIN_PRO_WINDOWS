@@ -93,7 +93,10 @@ pub fn reparar(documento: &Path) -> Option<PathBuf> {
     // La copia tiene que ser un PDF que se lee: pisar un documento roto con
     // otro roto solo cambia uno por otro.
     pixpin_pdf::union::contar_paginas(&bytes)?;
-    let ya = estado().lock().ok().is_some_and(|e| e.rehechos.contains(documento));
+    let ya = estado()
+        .lock()
+        .ok()
+        .is_some_and(|e| e.rehechos.contains(documento));
     if ya {
         return Some(limpio);
     }
@@ -103,7 +106,8 @@ pub fn reparar(documento: &Path) -> Option<PathBuf> {
     // Al lado y luego el nombre: si algo se tuerce a mitad, el documento de
     // alguien no puede quedarse a medias.
     let temporal = documento.with_extension("pdf.sano");
-    let hecho = std::fs::write(&temporal, &bytes).and_then(|_| std::fs::rename(&temporal, documento));
+    let hecho =
+        std::fs::write(&temporal, &bytes).and_then(|_| std::fs::rename(&temporal, documento));
     match hecho {
         Ok(()) => {
             tracing::warn!(documento = %documento.display(), "documento del proyecto roto: rehecho desde su copia limpia");
@@ -167,7 +171,10 @@ fn copia_sin_lo_cocido(
     let paginas = pixpin_pdf::union::contar_paginas(antes)?;
     let mut h = std::collections::hash_map::DefaultHasher::new();
     clave.hash(&mut h);
-    let destino = raiz.join("cache").join("sin-cocer").join(format!("{:016x}.pdf", h.finish()));
+    let destino = raiz
+        .join("cache")
+        .join("sin-cocer")
+        .join(format!("{:016x}.pdf", h.finish()));
     if !destino.is_file() {
         std::fs::create_dir_all(destino.parent()?).ok()?;
         let temporal = destino.with_extension("pdf.tmp");
@@ -209,8 +216,16 @@ mod pruebas {
         std::fs::write(&doc, con_capa_del_movil(&bueno)).unwrap();
         let fondo = sin_lo_cocido(&raiz, &doc, 1);
         assert_ne!(fondo, doc);
-        assert_eq!(std::fs::read(&fondo).unwrap(), bueno, "el PDF de antes de anotar");
-        assert_eq!(pixpin_pdf::Documento::abrir(&fondo).unwrap().paginas(), 2, "y Windows lo pinta");
+        assert_eq!(
+            std::fs::read(&fondo).unwrap(),
+            bueno,
+            "el PDF de antes de anotar"
+        );
+        assert_eq!(
+            pixpin_pdf::Documento::abrir(&fondo).unwrap().paginas(),
+            2,
+            "y Windows lo pinta"
+        );
         // Caso negativo: una pagina que la copia no tiene sale del documento.
         assert_eq!(sin_lo_cocido(&raiz, &doc, 5), doc);
         // Caso negativo: un documento sin nada cocido se usa tal cual.
@@ -220,8 +235,13 @@ mod pruebas {
         let _ = std::fs::remove_dir_all(&raiz);
     }
 
-    fn proyecto_con_documento(nombre: &str, documento: &[u8], limpio: Option<&[u8]>) -> (PathBuf, PathBuf) {
-        let raiz = std::env::temp_dir().join(format!("pixpin-pdf-sano-{nombre}-{}", std::process::id()));
+    fn proyecto_con_documento(
+        nombre: &str,
+        documento: &[u8],
+        limpio: Option<&[u8]>,
+    ) -> (PathBuf, PathBuf) {
+        let raiz =
+            std::env::temp_dir().join(format!("pixpin-pdf-sano-{nombre}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&raiz);
         let carpeta = raiz.join("p1");
         std::fs::create_dir_all(carpeta.join("archivos")).unwrap();
@@ -234,7 +254,11 @@ mod pruebas {
             std::fs::write(carpeta.join("archivos/limpio-1.pdf"), l).unwrap();
             p.pdf_limpio = Some("archivos/limpio-1.pdf".into());
         }
-        std::fs::write(carpeta.join("proyecto.json"), serde_json::to_string(&p).unwrap()).unwrap();
+        std::fs::write(
+            carpeta.join("proyecto.json"),
+            serde_json::to_string(&p).unwrap(),
+        )
+        .unwrap();
         (raiz, carpeta.join("archivos/doc-1.pdf"))
     }
 
@@ -253,13 +277,27 @@ mod pruebas {
         // Lo que dejaban dos escritores a la vez: trozos de dos ficheros.
         let roto = [&bueno[..bueno.len() / 2], &bueno[..bueno.len() / 3]].concat();
         let (raiz, doc) = proyecto_con_documento("roto", &roto, Some(&bueno));
-        assert!(pixpin_pdf::Documento::abrir(&doc).is_err() || pixpin_pdf::union::contar_paginas(&roto).is_none());
+        assert!(
+            pixpin_pdf::Documento::abrir(&doc).is_err()
+                || pixpin_pdf::union::contar_paginas(&roto).is_none()
+        );
         assert_eq!(reparar(&doc), Some(doc.clone()));
-        assert_eq!(std::fs::read(&doc).unwrap(), bueno, "el documento es otra vez la copia limpia");
-        assert_eq!(pixpin_pdf::Documento::abrir(&doc).unwrap().paginas(), 2, "y Windows lo pinta");
+        assert_eq!(
+            std::fs::read(&doc).unwrap(),
+            bueno,
+            "el documento es otra vez la copia limpia"
+        );
+        assert_eq!(
+            pixpin_pdf::Documento::abrir(&doc).unwrap().paginas(),
+            2,
+            "y Windows lo pinta"
+        );
         // Si aun asi fallara, no se vuelve a copiar: se pinta la copia.
         assert_eq!(reparar(&doc), Some(raiz.join("p1/archivos/limpio-1.pdf")));
-        assert!(!doc.with_extension("pdf.sano").exists(), "no queda el temporal");
+        assert!(
+            !doc.with_extension("pdf.sano").exists(),
+            "no queda el temporal"
+        );
         let _ = std::fs::remove_dir_all(&raiz);
     }
 
@@ -270,7 +308,11 @@ mod pruebas {
         assert_eq!(std::fs::read(&doc).unwrap(), b"%PDF-roto");
         let _ = std::fs::remove_dir_all(&raiz);
         let (raiz, doc) = proyecto_con_documento("rota", b"%PDF-roto", Some(b"%PDF-tambien"));
-        assert_eq!(reparar(&doc), None, "pisar un roto con otro roto no arregla nada");
+        assert_eq!(
+            reparar(&doc),
+            None,
+            "pisar un roto con otro roto no arregla nada"
+        );
         assert_eq!(std::fs::read(&doc).unwrap(), b"%PDF-roto");
         let _ = std::fs::remove_dir_all(&raiz);
     }
@@ -279,7 +321,8 @@ mod pruebas {
     /// su proyecto: su copia se sabe porque se apunto al buscarlo.
     #[test]
     fn la_copia_apuntada_vale_para_un_documento_que_no_esta_en_su_carpeta() {
-        let dir = std::env::temp_dir().join(format!("pixpin-pdf-sano-apuntado-{}", std::process::id()));
+        let dir =
+            std::env::temp_dir().join(format!("pixpin-pdf-sano-apuntado-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let doc = dir.join("documento.pdf");

@@ -119,7 +119,10 @@ impl Comentarios {
             activo: None,
             borrador: None,
             compositor: None,
-            desplazado: POINT { x: i32::MIN, y: i32::MIN },
+            desplazado: POINT {
+                x: i32::MIN,
+                y: i32::MIN,
+            },
             carril: None,
         }
     }
@@ -165,7 +168,15 @@ fn poner_colores(e: &Estado) {
             && !h.resuelto
         {
             let activo = c.activo.as_deref() == Some(h.id.as_str());
-            fondo(e, *r, if activo { co.resaltado_activo } else { co.resaltado });
+            fondo(
+                e,
+                *r,
+                if activo {
+                    co.resaltado_activo
+                } else {
+                    co.resaltado
+                },
+            );
         }
     }
     if let Some(Borrador::Nuevo { rango, .. }) = &c.borrador {
@@ -199,13 +210,25 @@ fn recolorear(e: &Estado) {
 /// Lo alto en la ventana de la letra `pos` del control.
 fn alto_de(e: &Estado, pos: usize) -> i32 {
     let mut p = POINT::default();
-    enviar(e.edit, EM_POSFROMCHAR, &mut p as *mut _ as usize, pos as isize);
-    let cuerpo = super::VISTA.with(|v| v.borrow().as_ref().map(|v| v.disp.cuerpo)).unwrap_or_default();
+    enviar(
+        e.edit,
+        EM_POSFROMCHAR,
+        &mut p as *mut _ as usize,
+        pos as isize,
+    );
+    let cuerpo = super::VISTA
+        .with(|v| v.borrow().as_ref().map(|v| v.disp.cuerpo))
+        .unwrap_or_default();
     cuerpo.y + p.y
 }
 
 fn fecha(e: &Estado, cuando: i64, editado: Option<i64>) -> String {
-    let meses: Vec<String> = e.rotulos.meses.split_whitespace().map(String::from).collect();
+    let meses: Vec<String> = e
+        .rotulos
+        .meses
+        .split_whitespace()
+        .map(String::from)
+        .collect();
     let desfase = pixpin_shell::entorno::ahora_local_ms() - ahora();
     let f = panel::fecha_corta(cuando, desfase, ahora(), &meses);
     match editado {
@@ -230,7 +253,9 @@ fn tarjetas(e: &Estado) -> (Vec<Tarjeta>, usize) {
         let rango = c.rangos.get(i).copied().flatten().filter(|_| !h.resuelto);
         let compositor = match &c.borrador {
             Some(Borrador::Responder(id)) if *id == h.id => Some(Compositor::Responder),
-            Some(Borrador::Editar(id)) if *id == h.id || h.respuestas.iter().any(|r| r.id == *id) => {
+            Some(Borrador::Editar(id))
+                if *id == h.id || h.respuestas.iter().any(|r| r.id == *id) =>
+            {
                 Some(Compositor::Editar(id.clone()))
             }
             _ => None,
@@ -318,7 +343,14 @@ pub(super) fn componer(e: &mut Estado) {
     // SAFETY: el DC de la pantalla se pide y se devuelve aqui, para medir.
     let vista = unsafe {
         let dc = GetDC(None);
-        let v = panel::disponer(&datos, caja, &panel::MedirGdi { hdc: dc, pintor: &e.pintor });
+        let v = panel::disponer(
+            &datos,
+            caja,
+            &panel::MedirGdi {
+                hdc: dc,
+                pintor: &e.pintor,
+            },
+        );
         ReleaseDC(None, dc);
         v
     };
@@ -336,7 +368,15 @@ pub(super) fn componer(e: &mut Estado) {
         unsafe {
             match sitio {
                 Some(c) => {
-                    let _ = SetWindowPos(h, Some(HWND_TOP), c.x, c.y, c.an, c.al, SWP_NOACTIVATE | SWP_SHOWWINDOW);
+                    let _ = SetWindowPos(
+                        h,
+                        Some(HWND_TOP),
+                        c.x,
+                        c.y,
+                        c.an,
+                        c.al,
+                        SWP_NOACTIVATE | SWP_SHOWWINDOW,
+                    );
                 }
                 None => {
                     let _ = ShowWindow(h, SW_HIDE);
@@ -344,7 +384,12 @@ pub(super) fn componer(e: &mut Estado) {
             }
         }
     }
-    enviar(e.edit, EM_GETSCROLLPOS, 0, &mut e.comentarios.desplazado as *mut _ as isize);
+    enviar(
+        e.edit,
+        EM_GETSCROLLPOS,
+        0,
+        &mut e.comentarios.desplazado as *mut _ as isize,
+    );
     // SAFETY: ventana propia; el globo de la cabecera tambien cambia.
     unsafe {
         let _ = InvalidateRect(Some(e.marco), None, false);
@@ -398,7 +443,12 @@ fn abrir_compositor(e: &mut Estado, texto: &str) {
         ) else {
             return;
         };
-        SendMessageW(h, WM_SETFONT, Some(WPARAM(e.pintor.letra.0 as usize)), Some(LPARAM(1)));
+        SendMessageW(
+            h,
+            WM_SETFONT,
+            Some(WPARAM(e.pintor.letra.0 as usize)),
+            Some(LPARAM(1)),
+        );
         let n = texto.encode_utf16().count() + texto.matches('\n').count();
         SendMessageW(h, 0x00B1, Some(WPARAM(n)), Some(LPARAM(n as isize)));
         e.comentarios.compositor = Some(h);
@@ -460,9 +510,10 @@ pub(super) fn comentar(e: &mut Estado) {
     }
     // Un trozo de tabla se corta en la primera raya de celda: una cita que
     // cruza celdas no se encontraria en el Markdown.
-    let corte = u[a..b.min(u.len())]
-        .iter()
-        .position(|&c| [md_tabla::FILA_ABRE, md_tabla::FILA_CIERRA, md_tabla::CELDA].contains(&char::from_u32(c as u32).unwrap_or(' ')));
+    let corte = u[a..b.min(u.len())].iter().position(|&c| {
+        [md_tabla::FILA_ABRE, md_tabla::FILA_CIERRA, md_tabla::CELDA]
+            .contains(&char::from_u32(c as u32).unwrap_or(' '))
+    });
     if let Some(k) = corte {
         b = a + k;
     }
@@ -615,7 +666,12 @@ pub(super) fn hacer(e: &mut Estado, a: Accion) {
 /// Elige un hilo; con `saltar`, lleva la nota a su texto.
 pub(super) fn elegir_hilo(e: &mut Estado, id: &str, saltar: bool) {
     e.comentarios.activo = Some(id.to_string());
-    let i = e.comentarios.datos.comentarios.iter().position(|h| h.id == id);
+    let i = e
+        .comentarios
+        .datos
+        .comentarios
+        .iter()
+        .position(|h| h.id == id);
     if saltar && let Some((a, _)) = i.and_then(|i| e.comentarios.rangos.get(i).copied().flatten()) {
         // El cursor a su texto sin que el control salte; luego la nota se
         // desliza hasta dejarlo a un tercio de arriba, si no se ve bien.
@@ -624,7 +680,12 @@ pub(super) fn elegir_hilo(e: &mut Estado, id: &str, saltar: bool) {
         elegir(e.edit, a, a);
         enviar(e.edit, EM_SETSCROLLPOS, 0, &antes as *const _ as isize);
         let mut p = POINT::default();
-        enviar(e.edit, EM_POSFROMCHAR, &mut p as *mut _ as usize, a as isize);
+        enviar(
+            e.edit,
+            EM_POSFROMCHAR,
+            &mut p as *mut _ as usize,
+            a as isize,
+        );
         let (visible, _) = crate::imagenes::medidas(e.edit);
         if p.y < visible / 8 || p.y > visible * 3 / 4 {
             super::wysiwyg::deslizar_a(e, antes.y + p.y - visible / 3);
@@ -652,7 +713,15 @@ fn menu_mas(e: &mut Estado, id: &str) {
         let _ = AppendMenuW(menu, MF_STRING, BORRAR, &HSTRING::from(r.borrar.as_str()));
         let mut p = POINT::default();
         let _ = GetCursorPos(&mut p);
-        let x = TrackPopupMenu(menu, TPM_RETURNCMD | TPM_RIGHTBUTTON, p.x, p.y, None, e.marco, None);
+        let x = TrackPopupMenu(
+            menu,
+            TPM_RETURNCMD | TPM_RIGHTBUTTON,
+            p.x,
+            p.y,
+            None,
+            e.marco,
+            None,
+        );
         let _ = DestroyMenu(menu);
         x.0 as usize
     };
@@ -660,7 +729,13 @@ fn menu_mas(e: &mut Estado, id: &str) {
         EDITAR => editar(e, id),
         BORRAR => {
             let es_hilo = e.comentarios.datos.hilo(id).is_some();
-            if !es_hilo || pixpin_shell::dialogo::preguntar(e.marco, &r.comentarios.clone(), &r.borrar_hilo.clone()) {
+            if !es_hilo
+                || pixpin_shell::dialogo::preguntar(
+                    e.marco,
+                    &r.comentarios.clone(),
+                    &r.borrar_hilo.clone(),
+                )
+            {
                 borrar(e, id);
             }
         }
@@ -674,13 +749,22 @@ pub(super) fn editar(e: &mut Estado, id: &str) {
         if h.id == id {
             Some(h.texto.clone())
         } else {
-            h.respuestas.iter().find(|r| r.id == id).map(|r| r.texto.clone())
+            h.respuestas
+                .iter()
+                .find(|r| r.id == id)
+                .map(|r| r.texto.clone())
         }
     });
     let Some(texto) = texto else {
         return;
     };
-    if let Some(h) = e.comentarios.datos.comentarios.iter().find(|h| h.id == id || h.respuestas.iter().any(|r| r.id == id)) {
+    if let Some(h) = e
+        .comentarios
+        .datos
+        .comentarios
+        .iter()
+        .find(|h| h.id == id || h.respuestas.iter().any(|r| r.id == id))
+    {
         e.comentarios.activo = Some(h.id.clone());
     }
     e.comentarios.borrador = Some(Borrador::Editar(id.to_string()));
@@ -751,7 +835,10 @@ pub(super) fn seguir(e: &mut Estado, m: &MSG) {
 
 /// Al cerrar la ventana.
 pub(super) fn desmontar(e: &Estado) {
-    for h in [e.comentarios.compositor, e.comentarios.carril].into_iter().flatten() {
+    for h in [e.comentarios.compositor, e.comentarios.carril]
+        .into_iter()
+        .flatten()
+    {
         // SAFETY: ventanas propias.
         unsafe {
             let _ = DestroyWindow(h);
@@ -767,14 +854,20 @@ pub(super) fn pintar_compositor(e: &Estado, dc: HDC) {
     let Some(h) = e.comentarios.compositor else {
         return;
     };
-    let Some(c) = panel::VISTA.with(|v| v.borrow().as_ref().and_then(|v| v.compositor_visible())) else {
+    let Some(c) = panel::VISTA.with(|v| v.borrow().as_ref().and_then(|v| v.compositor_visible()))
+    else {
         return;
     };
     // SAFETY: DC de la muestra; el origen se devuelve como estaba.
     unsafe {
         let mut antes = POINT::default();
         let _ = SetViewportOrgEx(dc, c.x, c.y, Some(&mut antes));
-        SendMessageW(h, WM_PRINT, Some(WPARAM(dc.0 as usize)), Some(LPARAM((PRF_CLIENT | PRF_ERASEBKGND) as isize)));
+        SendMessageW(
+            h,
+            WM_PRINT,
+            Some(WPARAM(dc.0 as usize)),
+            Some(LPARAM((PRF_CLIENT | PRF_ERASEBKGND) as isize)),
+        );
         let _ = SetViewportOrgEx(dc, antes.x, antes.y, None);
     }
 }

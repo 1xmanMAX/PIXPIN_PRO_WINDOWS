@@ -404,7 +404,9 @@ pub fn decidir_pegado(
 /// Las extensiones de imagen que se pegan desde una ruta. Por extension y
 /// no probando a abrir cualquier cosa: copiar un video de dos gigas y pulsar
 /// Ctrl+V en el lienzo no puede ponerse a leerlo.
-const EXTENSIONES_DE_IMAGEN: [&str; 9] = ["png", "jpg", "jpeg", "bmp", "gif", "webp", "tif", "tiff", "ico"];
+const EXTENSIONES_DE_IMAGEN: [&str; 9] = [
+    "png", "jpg", "jpeg", "bmp", "gif", "webp", "tif", "tiff", "ico",
+];
 
 /// La primera imagen legible de unas rutas copiadas.
 pub fn imagen_de_rutas(rutas: &[std::path::PathBuf]) -> Option<ImagenRgba> {
@@ -485,7 +487,13 @@ pub fn guardar_pegadas_en_hoja(
     for (clave, img) in pegadas_en_uso(escena, pegadas) {
         let relativa = format!("imagenes/{clave}");
         escribir_png_si_falta(&carpeta_proyecto.join("imagenes").join(&clave), img)?;
-        pixpin_motor2d::excalidraw::poner_fichero(&mut salida, &clave, "image/png", &relativa, ahora_ms);
+        pixpin_motor2d::excalidraw::poner_fichero(
+            &mut salida,
+            &clave,
+            "image/png",
+            &relativa,
+            ahora_ms,
+        );
     }
     Ok(salida)
 }
@@ -748,7 +756,10 @@ mod pruebas {
         let mut escena = Escena::nueva();
         escena.anadir(elemento_imagen(id, 1.0, 2.0, 6.0, 5.0));
         let pegadas = sesion.tomar_nuevas();
-        assert_eq!(guardar_pegadas_junto_a(&dibujo, &escena, &pegadas).unwrap(), 1);
+        assert_eq!(
+            guardar_pegadas_junto_a(&dibujo, &escena, &pegadas).unwrap(),
+            1
+        );
         pixpin_motor2d::guardar(&dibujo, &escena).unwrap();
 
         let reabierta = pixpin_motor2d::cargar(&dibujo).unwrap();
@@ -770,7 +781,10 @@ mod pruebas {
     fn el_id_de_una_imagen_pegada_vuelve_igual_de_su_file_id() {
         let mut a = ImagenesLienzo::nuevo(4096);
         let id = a.guardar(imagen(3, 3)).unwrap();
-        assert_eq!(pixpin_motor2d::enlace::id_del_fichero(&id_de_fichero(id)), id);
+        assert_eq!(
+            pixpin_motor2d::enlace::id_del_fichero(&id_de_fichero(id)),
+            id
+        );
     }
 
     #[test]
@@ -778,7 +792,10 @@ mod pruebas {
         assert_eq!(
             decidir_pegado(
                 false,
-                Some(ContenidoPortapapeles::Rutas(vec!["video.mp4".into(), "no-esta.png".into()]))
+                Some(ContenidoPortapapeles::Rutas(vec![
+                    "video.mp4".into(),
+                    "no-esta.png".into()
+                ]))
             ),
             Pegado::Nada
         );

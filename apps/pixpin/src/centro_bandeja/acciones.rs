@@ -34,10 +34,18 @@ pub enum Accion {
 /// ajustes) y su clave de titulo.
 const OTRAS: [(Accion, &str, &str); 6] = [
     (Accion::Lecciones, "lecciones", "bandeja2-lecciones"),
-    (Accion::NuevaLeccion, "nueva-leccion", "bandeja2-nueva-leccion"),
+    (
+        Accion::NuevaLeccion,
+        "nueva-leccion",
+        "bandeja2-nueva-leccion",
+    ),
     (Accion::Galeria, "galeria-capturas", "bandeja2-galeria"),
     (Accion::Tareas, "tareas", "bandeja2-tareas"),
-    (Accion::AbrirDocumento, "abrir-documento", "bandeja2-documento"),
+    (
+        Accion::AbrirDocumento,
+        "abrir-documento",
+        "bandeja2-documento",
+    ),
     (Accion::GruposVentanas, "grupos-ventanas", "bandeja2-grupos"),
 ];
 
@@ -299,7 +307,10 @@ mod pruebas {
         vec![
             (Accion::Comando(Comando::CapturarRegion), "Capturar".into()),
             (Accion::Galeria, "Galería de capturas".into()),
-            (Accion::Comando(Comando::CapturarConScroll), "Captura larga con scroll".into()),
+            (
+                Accion::Comando(Comando::CapturarConScroll),
+                "Captura larga con scroll".into(),
+            ),
             (Accion::Tareas, "Tareas".into()),
         ]
     }
@@ -318,14 +329,23 @@ mod pruebas {
             ],
             "primero las que empiezan por lo escrito; «Galería de capturas» al final"
         );
-        assert_eq!(buscar("larga scroll", &con_titulos()), vec![Accion::Comando(Comando::CapturarConScroll)]);
+        assert_eq!(
+            buscar("larga scroll", &con_titulos()),
+            vec![Accion::Comando(Comando::CapturarConScroll)]
+        );
     }
 
     #[test]
     fn caso_negativo_buscar_lo_que_no_hay_o_nada() {
         assert!(buscar("xyzzy", &con_titulos()).is_empty());
-        assert!(buscar("   ", &con_titulos()).is_empty(), "una consulta vacia no es «todas»");
-        assert!(buscar("capturar tareas", &con_titulos()).is_empty(), "cada palabra cuenta");
+        assert!(
+            buscar("   ", &con_titulos()).is_empty(),
+            "una consulta vacia no es «todas»"
+        );
+        assert!(
+            buscar("capturar tareas", &con_titulos()).is_empty(),
+            "cada palabra cuenta"
+        );
     }
 
     #[test]
@@ -345,7 +365,11 @@ mod pruebas {
             assert_eq!(Accion::desde_nombre(a.nombre()), Some(a), "{a:?}");
             assert!(!a.clave_titulo().is_empty(), "{a:?} sin titulo");
         }
-        assert_eq!(Accion::desde_nombre("salir"), None, "Salir no se puede poner de favorito");
+        assert_eq!(
+            Accion::desde_nombre("salir"),
+            None,
+            "Salir no se puede poner de favorito"
+        );
         assert_eq!(Accion::desde_nombre("no-existe"), None);
     }
 
@@ -354,10 +378,19 @@ mod pruebas {
         let n = |x: &[&str]| x.iter().map(|s| s.to_string()).collect::<Vec<_>>();
         let f = favoritos_de(&n(&["anotar", "anotar", "no-existe", "tareas"]));
         assert_eq!(f, vec![Accion::Comando(Comando::Anotar), Accion::Tareas]);
-        let mut f: Vec<Accion> = todas().into_iter().take(pixpin_store::bandeja::TOPE).collect();
+        let mut f: Vec<Accion> = todas()
+            .into_iter()
+            .take(pixpin_store::bandeja::TOPE)
+            .collect();
         let fuera = todas()[pixpin_store::bandeja::TOPE];
-        assert!(!alternar_favorito(&mut f, fuera), "caso negativo: lleno, no entra");
-        assert!(alternar_favorito(&mut f, todas()[0]), "quitar siempre se puede");
+        assert!(
+            !alternar_favorito(&mut f, fuera),
+            "caso negativo: lleno, no entra"
+        );
+        assert!(
+            alternar_favorito(&mut f, todas()[0]),
+            "quitar siempre se puede"
+        );
         assert!(alternar_favorito(&mut f, fuera));
         assert!(f.contains(&fuera));
     }
@@ -373,6 +406,9 @@ mod pruebas {
         assert!(!Accion::Comando(Comando::AlternarPines).cierra_el_panel());
         assert!(Accion::Comando(Comando::CapturarRegion).cierra_el_panel());
         assert!(Accion::Comando(Comando::CapturarRegion).mira_la_pantalla());
-        assert!(!Accion::Tareas.mira_la_pantalla(), "caso negativo: abrir una ventana no");
+        assert!(
+            !Accion::Tareas.mira_la_pantalla(),
+            "caso negativo: abrir una ventana no"
+        );
     }
 }

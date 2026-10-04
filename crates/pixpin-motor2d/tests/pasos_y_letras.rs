@@ -138,11 +138,18 @@ fn la_letra_se_cambia_en_la_cota_el_numero_el_punto_y_el_cronograma() {
                 ..Default::default()
             },
         );
-        assert!(aplicar_forma(&mut escena, &sel, CambioForma::Familia(FUENTE_NUNITO)), "{figura:?}");
+        assert!(
+            aplicar_forma(&mut escena, &sel, CambioForma::Familia(FUENTE_NUNITO)),
+            "{figura:?}"
+        );
         let e = escena.visibles().next().unwrap();
         assert_eq!(e.extras.familia.as_deref(), Some("Nunito"), "{figura:?}");
         // Pulsar la que ya tiene no abre un paso vacio.
-        assert!(!aplicar_forma(&mut escena, &sel, CambioForma::Familia(FUENTE_NUNITO)));
+        assert!(!aplicar_forma(
+            &mut escena,
+            &sel,
+            CambioForma::Familia(FUENTE_NUNITO)
+        ));
     }
     // Caso negativo: un rectangulo no tiene letra que cambiar.
     let mut escena = Escena::nueva();
@@ -155,7 +162,11 @@ fn la_letra_se_cambia_en_la_cota_el_numero_el_punto_y_el_cronograma() {
             ..Default::default()
         },
     );
-    assert!(!aplicar_forma(&mut escena, &sel, CambioForma::Familia(FUENTE_NUNITO)));
+    assert!(!aplicar_forma(
+        &mut escena,
+        &sel,
+        CambioForma::Familia(FUENTE_NUNITO)
+    ));
     assert_eq!(escena.visibles().next().unwrap().extras.familia, None);
 }
 
@@ -173,10 +184,21 @@ fn cambiar_el_tamano_de_un_numero_agranda_su_circulo_desde_el_centro() {
             ..Default::default()
         },
     );
-    assert!(aplicar_forma(&mut escena, &sel, CambioForma::TamanoLetra(36.0)));
+    assert!(aplicar_forma(
+        &mut escena,
+        &sel,
+        CambioForma::TamanoLetra(36.0)
+    ));
     let e = escena.visibles().next().unwrap();
-    assert!((e.ancho - 64.8).abs() < 0.01 && (e.alto - 64.8).abs() < 0.01, "{}", e.ancho);
-    assert!((e.x + e.ancho / 2.0 - 100.0).abs() < 0.01, "sigue centrado en 100");
+    assert!(
+        (e.ancho - 64.8).abs() < 0.01 && (e.alto - 64.8).abs() < 0.01,
+        "{}",
+        e.ancho
+    );
+    assert!(
+        (e.x + e.ancho / 2.0 - 100.0).abs() < 0.01,
+        "sigue centrado en 100"
+    );
 }
 
 #[test]
@@ -202,22 +224,38 @@ fn el_foco_elegido_cambia_cuanto_oscurece_y_su_zona_sin_mover_el_marco() {
         },
     );
     assert!(aplicar_forma(&mut escena, &sel, CambioForma::Oscurecer(65)));
-    assert!(aplicar_forma(&mut escena, &sel, CambioForma::ZonaFoco(0.75)));
+    assert!(aplicar_forma(
+        &mut escena,
+        &sel,
+        CambioForma::ZonaFoco(0.75)
+    ));
     let e = escena.visibles().next().unwrap();
-    let Figura::Foco { cristal } = &e.figura else { panic!() };
+    let Figura::Foco { cristal } = &e.figura else {
+        panic!()
+    };
     assert_eq!(l::oscurecimiento_de(cristal), 65);
     assert!((l::zona_de(cristal, l::caja_de(e)) - 0.75).abs() < 1e-4);
-    assert_eq!((e.x, e.y, e.ancho, e.alto), (10.0, 5.0, 180.0, 90.0), "el marco no se mueve");
+    assert_eq!(
+        (e.x, e.y, e.ancho, e.alto),
+        (10.0, 5.0, 180.0, 90.0),
+        "el marco no se mueve"
+    );
     // Caso negativo: a una lupa no se le cambia el oscurecer.
     let mut escena = Escena::nueva();
     let sel = elegido(
         &mut escena,
         Elemento {
-            figura: Figura::Lupa { cristal: Cristal::default() },
+            figura: Figura::Lupa {
+                cristal: Cristal::default(),
+            },
             ancho: 50.0,
             alto: 50.0,
             ..Default::default()
         },
     );
-    assert!(!aplicar_forma(&mut escena, &sel, CambioForma::Oscurecer(65)));
+    assert!(!aplicar_forma(
+        &mut escena,
+        &sel,
+        CambioForma::Oscurecer(65)
+    ));
 }

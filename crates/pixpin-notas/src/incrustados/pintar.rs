@@ -28,7 +28,8 @@ use std::path::Path;
 
 use windows::Win32::Foundation::{COLORREF, RECT, SIZE};
 use windows::Win32::Graphics::Direct2D::Common::{
-    D2D_RECT_F, D2D1_ALPHA_MODE_IGNORE, D2D1_COLOR_F, D2D1_FIGURE_BEGIN_FILLED, D2D1_FIGURE_END_CLOSED, D2D1_PIXEL_FORMAT,
+    D2D_RECT_F, D2D1_ALPHA_MODE_IGNORE, D2D1_COLOR_F, D2D1_FIGURE_BEGIN_FILLED,
+    D2D1_FIGURE_END_CLOSED, D2D1_PIXEL_FORMAT,
 };
 use windows::Win32::Graphics::Direct2D::*;
 use windows::Win32::Graphics::Dxgi::Common::DXGI_FORMAT_B8G8R8A8_UNORM;
@@ -187,7 +188,8 @@ pub(crate) struct Pintado {
 fn crear_d2d() -> Option<(ID2D1Factory, ID2D1DCRenderTarget)> {
     // SAFETY: crear la fabrica y el objetivo no toma punteros ajenos.
     unsafe {
-        let fabrica: ID2D1Factory = D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, None).ok()?;
+        let fabrica: ID2D1Factory =
+            D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, None).ok()?;
         let props = D2D1_RENDER_TARGET_PROPERTIES {
             r#type: D2D1_RENDER_TARGET_TYPE_DEFAULT,
             pixelFormat: D2D1_PIXEL_FORMAT {
@@ -251,7 +253,8 @@ impl Lienzo {
         // SAFETY: DC y mapa propios; los suelta `acabar` (o `Drop`).
         unsafe {
             let dc = CreateCompatibleDC(None);
-            let mapa = CreateDIBSection(Some(dc), &info, DIB_RGB_COLORS, &mut bits, None, 0).ok()?;
+            let mapa =
+                CreateDIBSection(Some(dc), &info, DIB_RGB_COLORS, &mut bits, None, 0).ok()?;
             if bits.is_null() {
                 let _ = DeleteObject(HGDIOBJ(mapa.0));
                 let _ = DeleteDC(dc);
@@ -289,7 +292,9 @@ impl Lienzo {
     /// Unas formas de una vez, suaves (Direct2D atado al DC).
     fn formas(&self, fs: &[Forma]) {
         {
-            let Some((fabrica, rt)) = &self.d2d else { return };
+            let Some((fabrica, rt)) = &self.d2d else {
+                return;
+            };
             let zona = RECT {
                 left: 0,
                 top: 0,
@@ -307,7 +312,9 @@ impl Lienzo {
                 for f in fs {
                     match f {
                         Forma::Redondo(c, r, col, a) => {
-                            let Ok(p) = rt.CreateSolidColorBrush(&color(*col, *a), None) else { continue };
+                            let Ok(p) = rt.CreateSolidColorBrush(&color(*col, *a), None) else {
+                                continue;
+                            };
                             let rr = D2D1_ROUNDED_RECT {
                                 rect: D2D_RECT_F {
                                     left: c.x as f32,
@@ -321,7 +328,9 @@ impl Lienzo {
                             rt.FillRoundedRectangle(&rr, &p);
                         }
                         Forma::Borde(c, r, g, col) => {
-                            let Ok(p) = rt.CreateSolidColorBrush(&color(*col, 1.0), None) else { continue };
+                            let Ok(p) = rt.CreateSolidColorBrush(&color(*col, 1.0), None) else {
+                                continue;
+                            };
                             let m = g / 2.0;
                             let rr = D2D1_ROUNDED_RECT {
                                 rect: D2D_RECT_F {
@@ -336,7 +345,9 @@ impl Lienzo {
                             rt.DrawRoundedRectangle(&rr, &p, *g, None);
                         }
                         Forma::Circulo(x, y, r, col) => {
-                            let Ok(p) = rt.CreateSolidColorBrush(&color(*col, 1.0), None) else { continue };
+                            let Ok(p) = rt.CreateSolidColorBrush(&color(*col, 1.0), None) else {
+                                continue;
+                            };
                             let e = D2D1_ELLIPSE {
                                 point: Vector2 { X: *x, Y: *y },
                                 radiusX: *r,
@@ -345,17 +356,35 @@ impl Lienzo {
                             rt.FillEllipse(&e, &p);
                         }
                         Forma::Linea(a, b, g, col) => {
-                            let Ok(p) = rt.CreateSolidColorBrush(&color(*col, 1.0), None) else { continue };
-                            rt.DrawLine(Vector2 { X: a.0, Y: a.1 }, Vector2 { X: b.0, Y: b.1 }, &p, *g, None);
+                            let Ok(p) = rt.CreateSolidColorBrush(&color(*col, 1.0), None) else {
+                                continue;
+                            };
+                            rt.DrawLine(
+                                Vector2 { X: a.0, Y: a.1 },
+                                Vector2 { X: b.0, Y: b.1 },
+                                &p,
+                                *g,
+                                None,
+                            );
                         }
                         Forma::Poligono(ps, col, a) => {
                             if ps.len() < 3 {
                                 continue;
                             }
-                            let Ok(p) = rt.CreateSolidColorBrush(&color(*col, *a), None) else { continue };
-                            let Ok(geo) = fabrica.CreatePathGeometry() else { continue };
+                            let Ok(p) = rt.CreateSolidColorBrush(&color(*col, *a), None) else {
+                                continue;
+                            };
+                            let Ok(geo) = fabrica.CreatePathGeometry() else {
+                                continue;
+                            };
                             let Ok(s) = geo.Open() else { continue };
-                            s.BeginFigure(Vector2 { X: ps[0].0, Y: ps[0].1 }, D2D1_FIGURE_BEGIN_FILLED);
+                            s.BeginFigure(
+                                Vector2 {
+                                    X: ps[0].0,
+                                    Y: ps[0].1,
+                                },
+                                D2D1_FIGURE_BEGIN_FILLED,
+                            );
                             for q in &ps[1..] {
                                 s.AddLine(Vector2 { X: q.0, Y: q.1 });
                             }
@@ -406,7 +435,12 @@ impl Lienzo {
         // SAFETY: como `medir`.
         unsafe {
             let v = SelectObject(self.dc, HGDIOBJ(f.0));
-            DrawTextW(self.dc, &mut t, &mut r, DT_CALCRECT | DT_WORDBREAK | DT_NOPREFIX | DT_EDITCONTROL);
+            DrawTextW(
+                self.dc,
+                &mut t,
+                &mut r,
+                DT_CALCRECT | DT_WORDBREAK | DT_NOPREFIX | DT_EDITCONTROL,
+            );
             SelectObject(self.dc, v);
             let _ = DeleteObject(HGDIOBJ(f.0));
         }
@@ -444,7 +478,8 @@ impl Lienzo {
         let Some(img) = pixpin_codec::imagen::cargar(ruta).ok() else {
             return false;
         };
-        let (an, al) = crate::imagenes::encajar_con(img.ancho, img.alto, (hueco.an, hueco.al), false);
+        let (an, al) =
+            crate::imagenes::encajar_con(img.ancho, img.alto, (hueco.an, hueco.al), false);
         let img = if (an as u32, al as u32) != (img.ancho, img.alto) {
             match pixpin_codec::imagen::redimensionar(img, an as u32, al as u32) {
                 Ok(i) => i,
@@ -463,7 +498,12 @@ impl Lienzo {
         for j in 0..al {
             for i in 0..an {
                 let (px, py) = (x + i, y + j);
-                if px < 0 || py < 0 || px >= self.an || py >= self.al || fuera_de_la_esquina(i, j, an, al, radio) {
+                if px < 0
+                    || py < 0
+                    || px >= self.an
+                    || py >= self.al
+                    || fuera_de_la_esquina(i, j, an, al, radio)
+                {
                     continue;
                 }
                 let s = ((j * an + i) * 4) as usize;
@@ -525,8 +565,20 @@ fn fuera_de_la_esquina(i: i32, j: i32, an: i32, al: i32, r: i32) -> bool {
     if r <= 0 {
         return false;
     }
-    let cx = if i < r { r } else if i >= an - r { an - r - 1 } else { return false };
-    let cy = if j < r { r } else if j >= al - r { al - r - 1 } else { return false };
+    let cx = if i < r {
+        r
+    } else if i >= an - r {
+        an - r - 1
+    } else {
+        return false;
+    };
+    let cy = if j < r {
+        r
+    } else if j >= al - r {
+        al - r - 1
+    } else {
+        return false;
+    };
     let (dx, dy) = ((i - cx) as f32, (j - cy) as f32);
     dx * dx + dy * dy > (r as f32) * (r as f32)
 }
@@ -547,7 +599,10 @@ fn icono_de_archivo(l: &Lienzo, nombre: &str, c: Caja) {
     };
     let hoja = ia::contorno_hoja(caja);
     let doblez = ia::contorno_doblez(caja);
-    l.formas(&[Forma::Poligono(&hoja, f.color, 1.0), Forma::Poligono(&doblez, 0xffffff, ia::ALFA_DEL_DOBLEZ)]);
+    l.formas(&[
+        Forma::Poligono(&hoja, f.color, 1.0),
+        Forma::Poligono(&doblez, 0xffffff, ia::ALFA_DEL_DOBLEZ),
+    ]);
     let rotulo = pixpin_ui::color_de_extension::rotulo(nombre);
     if rotulo.is_empty() {
         return;
@@ -575,7 +630,10 @@ fn icono_de_archivo(l: &Lienzo, nombre: &str, c: Caja) {
 /// esquinas de 8 y la flecha que sale de un cuadro.
 fn pastilla_de_abrir(l: &Lienzo, c: Caja, col: &Colores) {
     let e = l.esc;
-    let (x, y) = (c.x as f32 + c.an as f32 / 2.0, c.y as f32 + c.al as f32 / 2.0);
+    let (x, y) = (
+        c.x as f32 + c.an as f32 / 2.0,
+        c.y as f32 + c.al as f32 / 2.0,
+    );
     let k = 5.0 * e;
     let g = (1.4 * e).max(1.0);
     l.formas(&[
@@ -591,8 +649,16 @@ fn pastilla_de_abrir(l: &Lienzo, c: Caja, col: &Colores) {
 /// El triangulo de tocar o las dos barras de pausa, en el circulo.
 fn boton_de_tocar(l: &Lienzo, c: Caja, sonando: bool, col: &Colores, apagado: bool) {
     let e = l.esc;
-    let (cx, cy, r) = (c.x as f32 + c.an as f32 / 2.0, c.y as f32 + c.al as f32 / 2.0, c.an as f32 / 2.0);
-    let tinta = if apagado { mezcla(col.circulo_icono, col.circulo, 0.4) } else { col.circulo_icono };
+    let (cx, cy, r) = (
+        c.x as f32 + c.an as f32 / 2.0,
+        c.y as f32 + c.al as f32 / 2.0,
+        c.an as f32 / 2.0,
+    );
+    let tinta = if apagado {
+        mezcla(col.circulo_icono, col.circulo, 0.4)
+    } else {
+        col.circulo_icono
+    };
     l.formas(&[Forma::Circulo(cx, cy, r, col.circulo)]);
     if sonando {
         let (an, al) = (4.0 * e, 14.0 * e);
@@ -631,7 +697,16 @@ fn boton_de_tocar(l: &Lienzo, c: Caja, sonando: bool, col: &Colores, apagado: bo
 /// detalle, y la pastilla de abrir a la derecha.
 fn fila_de_archivo(l: &Lienzo, a: &Archivo, x: i32, y: i32, ancho: i32, col: &Colores) {
     let fila = l.px(FILA);
-    icono_de_archivo(l, &a.nombre, Caja { x, y, an: fila, al: fila });
+    icono_de_archivo(
+        l,
+        &a.nombre,
+        Caja {
+            x,
+            y,
+            an: fila,
+            al: fila,
+        },
+    );
     let abrir = Caja {
         x: x + ancho - l.px(30),
         y: y + (fila - l.px(24)) / 2,
@@ -645,9 +720,37 @@ fn fila_de_archivo(l: &Lienzo, a: &Archivo, x: i32, y: i32, ancho: i32, col: &Co
     let tw = (abrir.x - l.px(8) - tx).max(0);
     let (h1, h2) = (l.px(NOMBRE_TAM) * 4 / 3, l.px(DETALLE_TAM) * 4 / 3);
     let ty = y + (fila - h1 - h2) / 2;
-    l.texto(LETRA_NOMBRE, NOMBRE_TAM, &a.nombre, Caja { x: tx, y: ty, an: tw, al: h1 }, col.texto, false);
-    let tinta = if a.falta { col.rojo } else { mezcla(col.hora, col.burbuja, 0.8) };
-    l.texto(LETRA, DETALLE_TAM, &a.detalle, Caja { x: tx, y: ty + h1, an: tw, al: h2 }, tinta, false);
+    l.texto(
+        LETRA_NOMBRE,
+        NOMBRE_TAM,
+        &a.nombre,
+        Caja {
+            x: tx,
+            y: ty,
+            an: tw,
+            al: h1,
+        },
+        col.texto,
+        false,
+    );
+    let tinta = if a.falta {
+        col.rojo
+    } else {
+        mezcla(col.hora, col.burbuja, 0.8)
+    };
+    l.texto(
+        LETRA,
+        DETALLE_TAM,
+        &a.detalle,
+        Caja {
+            x: tx,
+            y: ty + h1,
+            an: tw,
+            al: h2,
+        },
+        tinta,
+        false,
+    );
 }
 
 /// Lo que mide el pie (chapa y hora) y lo pinta en `x, y` si `pintar`.
@@ -664,13 +767,35 @@ fn pie(l: &Lienzo, b: &Burbuja, x: i32, y: i32, col: &Colores, pintar: bool) -> 
         };
         if pintar {
             l.formas(&[Forma::Redondo(chapa, 6.0 * l.esc, col.filete, 1.0)]);
-            l.texto(LETRA, CHAPA_TAM, codigo, Caja { x: chapa.x + l.px(4), ..chapa }, col.hora, false);
+            l.texto(
+                LETRA,
+                CHAPA_TAM,
+                codigo,
+                Caja {
+                    x: chapa.x + l.px(4),
+                    ..chapa
+                },
+                col.hora,
+                false,
+            );
         }
         cx += chapa.an + l.px(4);
     }
     let s = l.medir(LETRA, HORA_TAM, &b.hora);
     if pintar {
-        l.texto(LETRA, HORA_TAM, &b.hora, Caja { x: cx, y, an: s.cx + 2, al: alto }, col.hora, false);
+        l.texto(
+            LETRA,
+            HORA_TAM,
+            &b.hora,
+            Caja {
+                x: cx,
+                y,
+                an: s.cx + 2,
+                al: alto,
+            },
+            col.hora,
+            false,
+        );
     }
     (cx + s.cx - x, alto)
 }
@@ -692,7 +817,12 @@ fn recortar(l: &Lienzo, tam: i32, texto: &str, ancho: i32, renglones: i32) -> St
             alto = medio;
         }
     }
-    letras[..bajo].iter().collect::<String>().trim_end().to_string() + "…"
+    letras[..bajo]
+        .iter()
+        .collect::<String>()
+        .trim_end()
+        .to_string()
+        + "…"
 }
 
 // ---------------------------------------------------------------------------
@@ -717,7 +847,9 @@ pub(crate) fn pintar(
 }
 
 fn ancho_de(maximo: i32, columna: i32, esc: f32) -> i32 {
-    ((maximo as f32 * esc) as i32).min(columna).max((120.0 * esc) as i32)
+    ((maximo as f32 * esc) as i32)
+        .min(columna)
+        .max((120.0 * esc) as i32)
 }
 
 fn tarjeta_de_archivo(a: &Archivo, columna: i32, col: &Colores, esc: f32) -> Option<Pintado> {
@@ -732,7 +864,14 @@ fn tarjeta_de_archivo(a: &Archivo, columna: i32, col: &Colores, esc: f32) -> Opt
         al: alto,
     };
     l.formas(&[Forma::Redondo(caja, RADIO * esc, col.burbuja, 1.0)]);
-    fila_de_archivo(&l, a, px(RELLENO_X), caja.y + px(RELLENO_Y), ancho - 2 * px(RELLENO_X), col);
+    fila_de_archivo(
+        &l,
+        a,
+        px(RELLENO_X),
+        caja.y + px(RELLENO_Y),
+        ancho - 2 * px(RELLENO_X),
+        col,
+    );
     Some(l.acabar(Zonas {
         tarjeta: caja,
         ..Default::default()
@@ -750,21 +889,40 @@ fn burbuja(b: &Burbuja, columna: i32, col: &Colores, esc: f32) -> Option<Pintado
     let (cuerpo_an, cuerpo_al, texto) = match &b.contenido {
         Contenido::Texto(t) => {
             let t = recortar(&medida, TEXTO_TAM, t, dentro_max, RENGLONES);
-            let an = t.lines().map(|r| medida.medir(LETRA, TEXTO_TAM, r).cx).max().unwrap_or(0).min(dentro_max);
-            (an, medida.alto_partido(TEXTO_TAM, &t, dentro_max.max(an)), t)
+            let an = t
+                .lines()
+                .map(|r| medida.medir(LETRA, TEXTO_TAM, r).cx)
+                .max()
+                .unwrap_or(0)
+                .min(dentro_max);
+            (
+                an,
+                medida.alto_partido(TEXTO_TAM, &t, dentro_max.max(an)),
+                t,
+            )
         }
         Contenido::Foto { pie, .. } => {
             let t = recortar(&medida, TEXTO_TAM, pie, px(VISTA_ANCHO), 3);
-            let alto_t = if t.is_empty() { 0 } else { hueco + medida.alto_partido(TEXTO_TAM, &t, px(VISTA_ANCHO)) };
+            let alto_t = if t.is_empty() {
+                0
+            } else {
+                hueco + medida.alto_partido(TEXTO_TAM, &t, px(VISTA_ANCHO))
+            };
             (px(VISTA_ANCHO).min(dentro_max), px(VISTA_ALTO) + alto_t, t)
         }
-        Contenido::Hoja { nombre, .. } => {
-            (px(VISTA_ANCHO).min(dentro_max), px(VISTA_ALTO) + hueco + px(NOMBRE_TAM) * 4 / 3, nombre.clone())
-        }
+        Contenido::Hoja { nombre, .. } => (
+            px(VISTA_ANCHO).min(dentro_max),
+            px(VISTA_ALTO) + hueco + px(NOMBRE_TAM) * 4 / 3,
+            nombre.clone(),
+        ),
         Contenido::Archivo(_) => (dentro_max.min(px(320)), px(FILA), String::new()),
         Contenido::Voz { texto, .. } => {
             let t = recortar(&medida, TEXTO_TAM, texto, dentro_max, 3);
-            let alto_t = if t.is_empty() { 0 } else { hueco + medida.alto_partido(TEXTO_TAM, &t, dentro_max) };
+            let alto_t = if t.is_empty() {
+                0
+            } else {
+                hueco + medida.alto_partido(TEXTO_TAM, &t, dentro_max)
+            };
             (dentro_max.min(px(320)), px(FILA) + alto_t, t)
         }
     };
@@ -783,24 +941,66 @@ fn burbuja(b: &Burbuja, columna: i32, col: &Colores, esc: f32) -> Option<Pintado
     let (x, y) = (px(RELLENO_X), caja.y + px(RELLENO_Y));
     match &b.contenido {
         Contenido::Texto(_) => {
-            l.texto(LETRA, TEXTO_TAM, &texto, Caja { x, y, an: dentro_an, al: cuerpo_al }, col.texto, true);
+            l.texto(
+                LETRA,
+                TEXTO_TAM,
+                &texto,
+                Caja {
+                    x,
+                    y,
+                    an: dentro_an,
+                    al: cuerpo_al,
+                },
+                col.texto,
+                true,
+            );
         }
         Contenido::Foto { ruta, .. } => {
-            let vista = Caja { x, y, an: dentro_an, al: px(VISTA_ALTO) };
+            let vista = Caja {
+                x,
+                y,
+                an: dentro_an,
+                al: px(VISTA_ALTO),
+            };
             let fondo = mezcla(col.texto, col.burbuja, 0.08);
             l.formas(&[Forma::Redondo(vista, 8.0 * esc, fondo, 1.0)]);
             l.foto_en(ruta, vista, px(8), fondo);
             if !texto.is_empty() {
                 let ty = y + px(VISTA_ALTO) + hueco;
-                l.texto(LETRA, TEXTO_TAM, &texto, Caja { x, y: ty, an: dentro_an, al: cuerpo_al - px(VISTA_ALTO) - hueco }, col.texto, true);
+                l.texto(
+                    LETRA,
+                    TEXTO_TAM,
+                    &texto,
+                    Caja {
+                        x,
+                        y: ty,
+                        an: dentro_an,
+                        al: cuerpo_al - px(VISTA_ALTO) - hueco,
+                    },
+                    col.texto,
+                    true,
+                );
             }
         }
-        Contenido::Hoja { miniatura, clase, .. } => {
-            let vista = Caja { x, y, an: dentro_an, al: px(VISTA_ALTO) };
+        Contenido::Hoja {
+            miniatura, clase, ..
+        } => {
+            let vista = Caja {
+                x,
+                y,
+                an: dentro_an,
+                al: px(VISTA_ALTO),
+            };
             // La hoja sobre papel claro tambien de noche, como en el chat.
-            let papel = if col.burbuja == 0x3e618a { 0xe8e8e8 } else { 0xffffff };
+            let papel = if col.burbuja == 0x3e618a {
+                0xe8e8e8
+            } else {
+                0xffffff
+            };
             l.formas(&[Forma::Redondo(vista, 8.0 * esc, papel, 1.0)]);
-            let puesta = miniatura.as_ref().is_some_and(|m| l.foto_en(m, vista, px(8), papel));
+            let puesta = miniatura
+                .as_ref()
+                .is_some_and(|m| l.foto_en(m, vista, px(8), papel));
             if !puesta {
                 // Sin miniatura todavia: su clase en grande, en medio.
                 let s = l.medir(LETRA_NOMBRE, 22, clase);
@@ -819,16 +1019,63 @@ fn burbuja(b: &Burbuja, columna: i32, col: &Colores, esc: f32) -> Option<Pintado
             }
             l.formas(&[Forma::Borde(vista, 8.0 * esc, 1.0, col.filete)]);
             let ty = y + px(VISTA_ALTO) + hueco;
-            l.texto(LETRA_NOMBRE, NOMBRE_TAM, &texto, Caja { x, y: ty, an: dentro_an, al: px(NOMBRE_TAM) * 4 / 3 }, col.texto, false);
+            l.texto(
+                LETRA_NOMBRE,
+                NOMBRE_TAM,
+                &texto,
+                Caja {
+                    x,
+                    y: ty,
+                    an: dentro_an,
+                    al: px(NOMBRE_TAM) * 4 / 3,
+                },
+                col.texto,
+                false,
+            );
         }
         Contenido::Archivo(a) => fila_de_archivo(&l, a, x, y, dentro_an, col),
         Contenido::Voz { duracion, .. } => {
-            boton_de_tocar(&l, Caja { x, y, an: px(FILA), al: px(FILA) }, false, col, false);
+            boton_de_tocar(
+                &l,
+                Caja {
+                    x,
+                    y,
+                    an: px(FILA),
+                    al: px(FILA),
+                },
+                false,
+                col,
+                false,
+            );
             let tx = x + px(FILA) + px(10);
-            l.texto(LETRA, DETALLE_TAM, duracion, Caja { x: tx, y, an: dentro_an - (tx - x), al: px(FILA) }, col.hora, false);
+            l.texto(
+                LETRA,
+                DETALLE_TAM,
+                duracion,
+                Caja {
+                    x: tx,
+                    y,
+                    an: dentro_an - (tx - x),
+                    al: px(FILA),
+                },
+                col.hora,
+                false,
+            );
             if !texto.is_empty() {
                 let ty = y + px(FILA) + hueco;
-                l.texto(LETRA, TEXTO_TAM, &texto, Caja { x, y: ty, an: dentro_an, al: cuerpo_al - px(FILA) - hueco }, col.texto, true);
+                l.texto(
+                    LETRA,
+                    TEXTO_TAM,
+                    &texto,
+                    Caja {
+                        x,
+                        y: ty,
+                        an: dentro_an,
+                        al: cuerpo_al - px(FILA) - hueco,
+                    },
+                    col.texto,
+                    true,
+                );
             }
         }
     }
@@ -839,23 +1086,50 @@ fn burbuja(b: &Burbuja, columna: i32, col: &Colores, esc: f32) -> Option<Pintado
     }))
 }
 
-fn borrado(nombre: &str, columna: i32, col: &Colores, r: &RotulosIncrustados, esc: f32) -> Option<Pintado> {
+fn borrado(
+    nombre: &str,
+    columna: i32,
+    col: &Colores,
+    r: &RotulosIncrustados,
+    esc: f32,
+) -> Option<Pintado> {
     let px = |v: i32| (v as f32 * esc).round() as i32;
-    let texto = if nombre.trim().is_empty() { r.borrado.clone() } else { format!("{} · {}", r.borrado, nombre.trim()) };
+    let texto = if nombre.trim().is_empty() {
+        r.borrado.clone()
+    } else {
+        format!("{} · {}", r.borrado, nombre.trim())
+    };
     let medida = Lienzo::nuevo(1, 1, col.papel, esc)?;
     let maximo = ancho_de(ANCHO_MAXIMO, columna, esc);
     let an = (medida.medir(LETRA, TEXTO_TAM, &texto).cx + 2 * px(RELLENO_X)).min(maximo);
     drop(medida);
     let alto = px(TEXTO_TAM) * 4 / 3 + 2 * px(RELLENO_Y);
     let l = Lienzo::nuevo(columna.max(an), alto + 2 * px(AIRE), col.papel, esc)?;
-    let caja = Caja { x: 0, y: px(AIRE), an, al: alto };
+    let caja = Caja {
+        x: 0,
+        y: px(AIRE),
+        an,
+        al: alto,
+    };
     // La burbuja apagada y con su filete: esta, pero ya no dice nada.
     l.formas(&[
         Forma::Redondo(caja, RADIO * esc, mezcla(col.burbuja, col.papel, 0.45), 1.0),
         Forma::Borde(caja, RADIO * esc, 1.0, col.filete),
     ]);
     let tinta = mezcla(col.texto, col.papel, 0.6);
-    l.texto(LETRA, TEXTO_TAM, &texto, Caja { x: px(RELLENO_X), y: caja.y, an: an - 2 * px(RELLENO_X), al: alto }, tinta, false);
+    l.texto(
+        LETRA,
+        TEXTO_TAM,
+        &texto,
+        Caja {
+            x: px(RELLENO_X),
+            y: caja.y,
+            an: an - 2 * px(RELLENO_X),
+            al: alto,
+        },
+        tinta,
+        false,
+    );
     Some(l.acabar(Zonas {
         tarjeta: caja,
         ..Default::default()
@@ -865,15 +1139,32 @@ fn borrado(nombre: &str, columna: i32, col: &Colores, r: &RotulosIncrustados, es
 /// **El reproductor**: el circulo de tocar de la nota de voz del chat, el
 /// nombre, el tiempo «0:12 / 1:05», la velocidad, la barra de avance y,
 /// si la nota aun no lleva la transcripcion, la pastilla de pasarla a texto.
-fn reproductor(a: &Audio, suena: &ComoSuena, columna: i32, col: &Colores, r: &RotulosIncrustados, esc: f32) -> Option<Pintado> {
+fn reproductor(
+    a: &Audio,
+    suena: &ComoSuena,
+    columna: i32,
+    col: &Colores,
+    r: &RotulosIncrustados,
+    esc: f32,
+) -> Option<Pintado> {
     let px = |v: i32| (v as f32 * esc).round() as i32;
     let ancho = ancho_de(ANCHO_AUDIO, columna, esc);
     let con_pastilla = !a.falta && !suena.con_letra;
     let barra_al = px(14);
     let pastilla_al = px(26);
-    let alto = px(RELLENO_Y) + px(FILA) + px(6) + barra_al + if con_pastilla { px(6) + pastilla_al } else { 0 } + px(RELLENO_Y);
+    let alto = px(RELLENO_Y)
+        + px(FILA)
+        + px(6)
+        + barra_al
+        + if con_pastilla { px(6) + pastilla_al } else { 0 }
+        + px(RELLENO_Y);
     let l = Lienzo::nuevo(columna.max(ancho), alto + 2 * px(AIRE), col.papel, esc)?;
-    let caja = Caja { x: 0, y: px(AIRE), an: ancho, al: alto };
+    let caja = Caja {
+        x: 0,
+        y: px(AIRE),
+        an: ancho,
+        al: alto,
+    };
     l.formas(&[Forma::Redondo(caja, RADIO * esc, col.burbuja, 1.0)]);
     let (x, y) = (px(RELLENO_X), caja.y + px(RELLENO_Y));
     let dentro_an = ancho - 2 * px(RELLENO_X);
@@ -883,7 +1174,12 @@ fn reproductor(a: &Audio, suena: &ComoSuena, columna: i32, col: &Colores, r: &Ro
     };
     let estado = suena.estado.as_ref();
     let sonando = estado.is_some_and(|e| e.sonando);
-    let tocar = Caja { x, y, an: px(FILA), al: px(FILA) };
+    let tocar = Caja {
+        x,
+        y,
+        an: px(FILA),
+        al: px(FILA),
+    };
     boton_de_tocar(&l, tocar, sonando, col, a.falta);
     if !a.falta {
         zonas.tocar = Some(tocar);
@@ -899,24 +1195,71 @@ fn reproductor(a: &Audio, suena: &ComoSuena, columna: i32, col: &Colores, r: &Ro
     };
     if !a.falta {
         l.formas(&[Forma::Redondo(velocidad, 8.0 * esc, col.hora, 0.156)]);
-        l.texto(LETRA, DETALLE_TAM, &vel, Caja { x: velocidad.x + px(7), ..velocidad }, col.hora, false);
+        l.texto(
+            LETRA,
+            DETALLE_TAM,
+            &vel,
+            Caja {
+                x: velocidad.x + px(7),
+                ..velocidad
+            },
+            col.hora,
+            false,
+        );
         zonas.velocidad = Some(velocidad);
     }
     let tx = x + px(FILA) + px(10);
     let tw = (velocidad.x - px(8) - tx).max(0);
     let (h1, h2) = (px(NOMBRE_TAM) * 4 / 3, px(DETALLE_TAM) * 4 / 3);
     let ty = y + (px(FILA) - h1 - h2) / 2;
-    l.texto(LETRA_NOMBRE, NOMBRE_TAM, &a.nombre, Caja { x: tx, y: ty, an: tw, al: h1 }, col.texto, false);
-    let duracion = estado.map(|e| e.duracion_ms).filter(|d| *d > 0).unwrap_or(a.duracion_ms);
+    l.texto(
+        LETRA_NOMBRE,
+        NOMBRE_TAM,
+        &a.nombre,
+        Caja {
+            x: tx,
+            y: ty,
+            an: tw,
+            al: h1,
+        },
+        col.texto,
+        false,
+    );
+    let duracion = estado
+        .map(|e| e.duracion_ms)
+        .filter(|d| *d > 0)
+        .unwrap_or(a.duracion_ms);
     let posicion = estado.map_or(0, |e| e.posicion_ms);
     let (detalle, tinta) = if a.falta {
         (r.falta.clone(), col.rojo)
     } else if duracion > 0 {
-        (format!("{} / {}", super::marca_de_tiempo(posicion), super::marca_de_tiempo(duracion)), mezcla(col.hora, col.burbuja, 0.8))
+        (
+            format!(
+                "{} / {}",
+                super::marca_de_tiempo(posicion),
+                super::marca_de_tiempo(duracion)
+            ),
+            mezcla(col.hora, col.burbuja, 0.8),
+        )
     } else {
-        (super::marca_de_tiempo(posicion), mezcla(col.hora, col.burbuja, 0.8))
+        (
+            super::marca_de_tiempo(posicion),
+            mezcla(col.hora, col.burbuja, 0.8),
+        )
     };
-    l.texto(LETRA, DETALLE_TAM, &detalle, Caja { x: tx, y: ty + h1, an: tw, al: h2 }, tinta, false);
+    l.texto(
+        LETRA,
+        DETALLE_TAM,
+        &detalle,
+        Caja {
+            x: tx,
+            y: ty + h1,
+            an: tw,
+            al: h2,
+        },
+        tinta,
+        false,
+    );
     // La barra: la pista en el color de la chapa y lo oido en el de la hora.
     let barra = Caja {
         x,
@@ -933,8 +1276,21 @@ fn reproductor(a: &Audio, suena: &ComoSuena, columna: i32, col: &Colores, r: &Ro
     let mut fs = vec![Forma::Redondo(linea, 1.5 * esc, col.filete, 1.0)];
     if duracion > 0 && posicion > 0 {
         let oido = ((linea.an as f32) * (posicion as f32 / duracion as f32).clamp(0.0, 1.0)) as i32;
-        fs.push(Forma::Redondo(Caja { an: oido.max(1), ..linea }, 1.5 * esc, col.hora, 1.0));
-        fs.push(Forma::Circulo((linea.x + oido) as f32, (linea.y as f32) + linea.al as f32 / 2.0, 5.0 * esc, col.hora));
+        fs.push(Forma::Redondo(
+            Caja {
+                an: oido.max(1),
+                ..linea
+            },
+            1.5 * esc,
+            col.hora,
+            1.0,
+        ));
+        fs.push(Forma::Circulo(
+            (linea.x + oido) as f32,
+            (linea.y as f32) + linea.al as f32 / 2.0,
+            5.0 * esc,
+            col.hora,
+        ));
     }
     l.formas(&fs);
     if !a.falta {
@@ -942,7 +1298,9 @@ fn reproductor(a: &Audio, suena: &ComoSuena, columna: i32, col: &Colores, r: &Ro
     }
     if con_pastilla {
         let rotulo = match suena.pasando {
-            Some(f) => r.pasando.replace("{pct}", &format!("{}", (f * 100.0).round() as i64)),
+            Some(f) => r
+                .pasando
+                .replace("{pct}", &format!("{}", (f * 100.0).round() as i64)),
             None => r.pasar_a_texto.clone(),
         };
         let an = l.medir(LETRA, DETALLE_TAM, &rotulo).cx + px(34);
@@ -952,17 +1310,53 @@ fn reproductor(a: &Audio, suena: &ComoSuena, columna: i32, col: &Colores, r: &Ro
             an,
             al: pastilla_al,
         };
-        l.formas(&[Forma::Redondo(p, 8.0 * esc, col.hora, if suena.pasando.is_some() { 0.08 } else { 0.156 })]);
+        l.formas(&[Forma::Redondo(
+            p,
+            8.0 * esc,
+            col.hora,
+            if suena.pasando.is_some() { 0.08 } else { 0.156 },
+        )]);
         // El icono de subtitulos del chat: un marco con dos rayas.
         let (ix, iy) = (p.x + px(9), p.y + (p.al - px(12)) / 2);
         let g = (1.3 * esc).max(1.0);
         let (fx, fy) = (ix as f32, iy as f32);
         l.formas(&[
-            Forma::Borde(Caja { x: ix, y: iy, an: px(16), al: px(12) }, 2.0 * esc, g, col.hora),
-            Forma::Linea((fx + 3.0 * esc, fy + 5.0 * esc), (fx + 9.0 * esc, fy + 5.0 * esc), g, col.hora),
-            Forma::Linea((fx + 3.0 * esc, fy + 8.0 * esc), (fx + 12.0 * esc, fy + 8.0 * esc), g, col.hora),
+            Forma::Borde(
+                Caja {
+                    x: ix,
+                    y: iy,
+                    an: px(16),
+                    al: px(12),
+                },
+                2.0 * esc,
+                g,
+                col.hora,
+            ),
+            Forma::Linea(
+                (fx + 3.0 * esc, fy + 5.0 * esc),
+                (fx + 9.0 * esc, fy + 5.0 * esc),
+                g,
+                col.hora,
+            ),
+            Forma::Linea(
+                (fx + 3.0 * esc, fy + 8.0 * esc),
+                (fx + 12.0 * esc, fy + 8.0 * esc),
+                g,
+                col.hora,
+            ),
         ]);
-        l.texto(LETRA, DETALLE_TAM, &rotulo, Caja { x: p.x + px(28), an: p.an - px(28), ..p }, col.hora, false);
+        l.texto(
+            LETRA,
+            DETALLE_TAM,
+            &rotulo,
+            Caja {
+                x: p.x + px(28),
+                an: p.an - px(28),
+                ..p
+            },
+            col.hora,
+            false,
+        );
         if suena.pasando.is_none() {
             zonas.texto = Some(p);
         }

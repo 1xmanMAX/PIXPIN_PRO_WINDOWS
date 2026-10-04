@@ -21,7 +21,8 @@ use pixpin_proyecto::importar_hojas::{self, NoSeLee};
 pub(super) fn es_libro(m: &Mensaje) -> bool {
     m.clase == Some(Clase::Archivo)
         && m.ruta.as_deref().is_some_and(|r| !r.is_empty())
-        && (importar_hojas::es_libro(&m.nombre) || m.ruta.as_deref().is_some_and(importar_hojas::es_libro))
+        && (importar_hojas::es_libro(&m.nombre)
+            || m.ruta.as_deref().is_some_and(importar_hojas::es_libro))
 }
 
 /// La referencia de la tabla de la hoja `hoja` del libro `m`
@@ -38,14 +39,18 @@ pub(super) fn tablas_hechas(mensajes: &[Mensaje], libro: &Mensaje) -> Vec<usize>
         .enumerate()
         .filter(|(_, m)| m.miniapp.as_deref() == Some(pixpin_proyecto::tabla::MINIAPP))
         .filter_map(|(i, m)| {
-            let hoja = m.referencia.as_deref()?.strip_prefix(&prefijo)?.parse().ok()?;
+            let hoja = m
+                .referencia
+                .as_deref()?
+                .strip_prefix(&prefijo)?
+                .parse()
+                .ok()?;
             Some((hoja, i))
         })
         .collect();
     hechas.sort();
     hechas.into_iter().map(|(_, i)| i).collect()
 }
-
 
 /// Una hoja ya leida y escrita en JSON, lista para ser mensaje: el JSON se
 /// hace en el hilo que lee, que en una tabla de cuarenta mil celdas son
@@ -72,7 +77,12 @@ pub(super) fn mensajes_de_hojas(
                 numero: sello.numero + i as i64,
                 ..sello.clone()
             };
-            let mut m = Mensaje::miniapp(pixpin_proyecto::tabla::MINIAPP, &h.nombre, &h.documento, &sello);
+            let mut m = Mensaje::miniapp(
+                pixpin_proyecto::tabla::MINIAPP,
+                &h.nombre,
+                &h.documento,
+                &sello,
+            );
             m.referencia = Some(id_de_hoja(libro, i));
             m
         })
@@ -160,7 +170,12 @@ pub(super) fn leyendo() -> bool {
 /// **Tocar un libro**: abre su primera tabla; si es la primera vez, lanza su
 /// lectura en otro hilo y la abre al llegar ([`latido`]). `true` si ya se
 /// hizo lo que tocaba; `false` si no es un libro o se prefiere abrirlo fuera.
-pub(super) fn abrir_libro(ubicacion: &Ubicacion, a: &mut Abierto, indice: usize, textos: &Catalogo) -> bool {
+pub(super) fn abrir_libro(
+    ubicacion: &Ubicacion,
+    a: &mut Abierto,
+    indice: usize,
+    textos: &Catalogo,
+) -> bool {
     let Some(libro) = a.mensajes.get(indice) else {
         return false;
     };
@@ -223,7 +238,11 @@ fn preguntar_xls(textos: &Catalogo) -> bool {
     pixpin_shell::dialogo::preguntar(
         windows::Win32::Foundation::HWND::default(),
         &textos.t("libro-titulo"),
-        &format!("{}\n\n{}", textos.t("libro-xls-antiguo"), textos.t("libro-abrir-fuera")),
+        &format!(
+            "{}\n\n{}",
+            textos.t("libro-xls-antiguo"),
+            textos.t("libro-abrir-fuera")
+        ),
     )
 }
 
@@ -246,7 +265,11 @@ fn recoger() -> Option<(Lectura, Option<Result<Leido, NoSeLee>>)> {
 /// Mete las tablas en la conversacion y abre la primera. `None` si no ha
 /// llegado nada; si llego, lo que hay que decir abajo, si algo. Aqui solo va lo barato: hacer los mensajes, una
 /// linea por hoja al cuaderno y colocar lo que ya viene hecho.
-pub(super) fn latido(ubicacion: &Ubicacion, a: &mut Abierto, textos: &Catalogo) -> Option<Option<String>> {
+pub(super) fn latido(
+    ubicacion: &Ubicacion,
+    a: &mut Abierto,
+    textos: &Catalogo,
+) -> Option<Option<String>> {
     let (lectura, resultado) = recoger()?;
     Some(recibir(ubicacion, a, textos, lectura, resultado))
 }
@@ -264,11 +287,9 @@ fn recibir(
         Some(Err(NoSeLee::XlsAntiguo)) => {
             // Un .xls con otro nombre: se sabe al leer su firma.
             if preguntar_xls(textos)
-                && let Some(ruta) = lectura
-                    .libro
-                    .ruta
-                    .as_deref()
-                    .and_then(|r| pixpin_proyecto::vista::ruta_real(ubicacion.raiz(), &lectura.proyecto, r))
+                && let Some(ruta) = lectura.libro.ruta.as_deref().and_then(|r| {
+                    pixpin_proyecto::vista::ruta_real(ubicacion.raiz(), &lectura.proyecto, r)
+                })
                 && let Err(e) = pixpin_shell::abrir::abrir(&ruta)
             {
                 tracing::warn!(?e, "no se pudo abrir el libro fuera");
@@ -331,10 +352,18 @@ fn meter(ubicacion: &Ubicacion, a: &mut Abierto, proyecto: &str, leido: Leido) {
     let cuantas = mensajes.len();
     let mut primera = None;
     if es_este {
-        for (m, vista) in mensajes.into_iter().zip(vistas.into_iter().map(Some).chain(std::iter::repeat_with(|| None))) {
+        for (m, vista) in mensajes.into_iter().zip(
+            vistas
+                .into_iter()
+                .map(Some)
+                .chain(std::iter::repeat_with(|| None)),
+        ) {
             // Una tabla sin nada escrito no ensena rejilla (`leer_vista`).
-            a.vistas
-                .push(vista.filter(|t| !t.celdas.is_empty()).map(|t| Ojeada::Tabla(Box::new(t))));
+            a.vistas.push(
+                vista
+                    .filter(|t| !t.celdas.is_empty())
+                    .map(|t| Ojeada::Tabla(Box::new(t))),
+            );
             a.mensajes.push(m);
             primera.get_or_insert(a.mensajes.len() - 1);
         }
@@ -361,7 +390,10 @@ fn meter(ubicacion: &Ubicacion, a: &mut Abierto, proyecto: &str, leido: Leido) {
         a.hoja = Some(HojaAbierta {
             indice: i,
             tabla,
-            sel: pixpin_proyecto::tabla::Ref { columna: 0, fila: 0 },
+            sel: pixpin_proyecto::tabla::Ref {
+                columna: 0,
+                fila: 0,
+            },
             edicion: None,
             scroll_x: 0,
             scroll_y: 0,
@@ -413,11 +445,17 @@ mod pruebas {
         let hojas = vec![
             HojaLista {
                 nombre: "Cuentas · Gastos".into(),
-                documento: importar_hojas::de_csv("a;1", "Cuentas · Gastos", false, 0).tabla.escribir().unwrap(),
+                documento: importar_hojas::de_csv("a;1", "Cuentas · Gastos", false, 0)
+                    .tabla
+                    .escribir()
+                    .unwrap(),
             },
             HojaLista {
                 nombre: "Cuentas · Resumen".into(),
-                documento: importar_hojas::de_csv("b;2", "Cuentas · Resumen", false, 0).tabla.escribir().unwrap(),
+                documento: importar_hojas::de_csv("b;2", "Cuentas · Resumen", false, 0)
+                    .tabla
+                    .escribir()
+                    .unwrap(),
             },
         ];
         let sello = pixpin_proyecto::cuaderno::Sello {
@@ -430,7 +468,10 @@ mod pruebas {
         assert_eq!(nuevos.len(), 2);
         assert_eq!(nuevos[0].referencia.as_deref(), Some("libro-1700-0"));
         assert_eq!(nuevos[1].referencia.as_deref(), Some("libro-1700-1"));
-        assert_ne!(nuevos[0].id, nuevos[1].id, "dos hojas en el mismo milisegundo no se pisan");
+        assert_ne!(
+            nuevos[0].id, nuevos[1].id,
+            "dos hojas en el mismo milisegundo no se pisan"
+        );
         assert_eq!(nuevos[1].numero, 10);
         assert_eq!(nuevos[0].nombre, "Cuentas · Gastos");
         let t = pixpin_proyecto::tabla::Tabla::leer(&nuevos[1].texto).unwrap();
@@ -438,12 +479,20 @@ mod pruebas {
 
         // Y la segunda vez se encuentran, en el orden de las hojas aunque
         // esten desordenadas en el chat.
-        let mut chat = vec![l.clone(), nuevos[1].clone(), Mensaje::default(), nuevos[0].clone()];
+        let mut chat = vec![
+            l.clone(),
+            nuevos[1].clone(),
+            Mensaje::default(),
+            nuevos[0].clone(),
+        ];
         assert_eq!(tablas_hechas(&chat, &l), vec![3, 1]);
         // Caso negativo: las tablas de otro libro no son de este.
         let mut otro = l.clone();
         otro.id = "17".into();
-        assert!(tablas_hechas(&chat, &otro).is_empty(), "libro-17- no es prefijo de libro-1700-");
+        assert!(
+            tablas_hechas(&chat, &otro).is_empty(),
+            "libro-17- no es prefijo de libro-1700-"
+        );
         chat.clear();
         assert!(tablas_hechas(&chat, &l).is_empty());
     }
@@ -461,7 +510,11 @@ mod pruebas {
         std::fs::create_dir_all(&carpeta).unwrap();
         let mut csv = String::from("Concepto;Importe;Doble;Saldo\n");
         for f in 2..=10_001 {
-            let saldo = if f == 2 { "=C2".to_string() } else { format!("=D{}+C{f}", f - 1) };
+            let saldo = if f == 2 {
+                "=C2".to_string()
+            } else {
+                format!("=D{}+C{f}", f - 1)
+            };
             csv.push_str(&format!("Fila {f};{};=B{f}*2;{saldo}\n", f % 7));
         }
         std::fs::write(carpeta.join("grande.csv"), csv).unwrap();
@@ -476,7 +529,10 @@ mod pruebas {
         let t0 = std::time::Instant::now();
         assert!(abrir_libro(&u, &mut a, 0, &textos));
         let tocar = t0.elapsed();
-        assert!(tocar.as_millis() < 50, "tocar el libro tardo {tocar:?} en la ventana");
+        assert!(
+            tocar.as_millis() < 50,
+            "tocar el libro tardo {tocar:?} en la ventana"
+        );
         assert!(leyendo(), "la lectura sigue en su hilo");
         assert!(a.hoja.is_none(), "todavia no hay nada que abrir");
         // Tocar otra vez mientras se lee no lanza otro hilo.
@@ -493,12 +549,18 @@ mod pruebas {
             std::thread::sleep(std::time::Duration::from_millis(5));
         }
         eprintln!("libro de 40 000 celdas: tocar {tocar:?}, recibir {peor:?} en la ventana");
-        assert!(peor.as_millis() < 50, "recibirlo tardo {peor:?} en la ventana");
+        assert!(
+            peor.as_millis() < 50,
+            "recibirlo tardo {peor:?} en la ventana"
+        );
         let h = a.hoja.as_ref().expect("se abre la tabla al llegar");
         assert_eq!(a.mensajes.len(), 2);
         assert_eq!(h.indice, 1);
         let valores = h.valores.get().expect("con los valores ya calculados");
-        assert_eq!(valores["D10001"].to_string(), (2..=10_001).map(|f| 2 * (f % 7)).sum::<u32>().to_string());
+        assert_eq!(
+            valores["D10001"].to_string(),
+            (2..=10_001).map(|f| 2 * (f % 7)).sum::<u32>().to_string()
+        );
         // Y la segunda vez abre la tabla hecha, sin leer nada.
         a.hoja = None;
         assert!(abrir_libro(&u, &mut a, 0, &textos));

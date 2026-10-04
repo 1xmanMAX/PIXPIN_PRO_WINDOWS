@@ -87,7 +87,10 @@ fn escritorio_virtual() -> (i32, i32, i32, i32) {
 /// Un paso de lo que se hace con el cursor ya en su sitio.
 enum Paso {
     /// Un boton o la rueda: las banderas y su dato (el giro de la rueda).
-    Accion(windows::Win32::UI::Input::KeyboardAndMouse::MOUSE_EVENT_FLAGS, u32),
+    Accion(
+        windows::Win32::UI::Input::KeyboardAndMouse::MOUSE_EVENT_FLAGS,
+        u32,
+    ),
     /// Llevar el cursor a otro punto sin soltar lo que este pulsado.
     Mover(Punto),
 }
@@ -183,7 +186,11 @@ pub fn camino_de_arrastre(desde: Punto, hasta: Punto) -> Vec<Punto> {
 pub fn arrastrar_a_distancia(desde: Punto, hasta: Punto) {
     use windows::Win32::UI::Input::KeyboardAndMouse::{MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP};
     let mut pasos = vec![Paso::Accion(MOUSEEVENTF_LEFTDOWN, 0)];
-    pasos.extend(camino_de_arrastre(desde, hasta).into_iter().map(Paso::Mover));
+    pasos.extend(
+        camino_de_arrastre(desde, hasta)
+            .into_iter()
+            .map(Paso::Mover),
+    );
     pasos.push(Paso::Accion(MOUSEEVENTF_LEFTUP, 0));
     ir_actuar_y_volver(desde, &pasos);
 }
@@ -312,7 +319,10 @@ mod pruebas {
         let (x, _) = normalizar(Punto { x: 0, y: 0 }, escritorio);
         // El origen del principal esta a 1920 de 5879 del borde izquierdo.
         assert_eq!(x, ((1920i64 * 65535 + 5879 / 2) / 5879) as i32);
-        assert_eq!(normalizar(Punto { x: 3959, y: 2234 }, escritorio), (65535, 65535));
+        assert_eq!(
+            normalizar(Punto { x: 3959, y: 2234 }, escritorio),
+            (65535, 65535)
+        );
     }
 
     #[test]
@@ -320,9 +330,15 @@ mod pruebas {
         // Caso negativo: nunca un valor fuera de 0..=65535, que SendInput
         // interpretaria a su manera.
         let escritorio = (0, 0, 1920, 1080);
-        assert_eq!(normalizar(Punto { x: -500, y: 99999 }, escritorio), (0, 65535));
+        assert_eq!(
+            normalizar(Punto { x: -500, y: 99999 }, escritorio),
+            (0, 65535)
+        );
         // Ni una division por cero con un escritorio degenerado.
-        assert_eq!(normalizar(Punto { x: 5, y: 5 }, (0, 0, 1, 1)), (65535, 65535));
+        assert_eq!(
+            normalizar(Punto { x: 5, y: 5 }, (0, 0, 1, 1)),
+            (65535, 65535)
+        );
         assert_eq!(normalizar(Punto { x: 0, y: 0 }, (0, 0, 0, 0)), (0, 0));
     }
 
@@ -330,7 +346,11 @@ mod pruebas {
     fn el_arrastre_pasa_por_el_medio_y_acaba_justo_donde_se_solto() {
         let camino = camino_de_arrastre(Punto { x: 100, y: 200 }, Punto { x: 900, y: 200 });
         assert_eq!(camino.len(), PASOS_ARRASTRE as usize);
-        assert_eq!(camino[0], Punto { x: 200, y: 200 }, "no repite el punto de pulsar");
+        assert_eq!(
+            camino[0],
+            Punto { x: 200, y: 200 },
+            "no repite el punto de pulsar"
+        );
         assert_eq!(
             camino.last(),
             Some(&Punto { x: 900, y: 200 }),

@@ -278,7 +278,10 @@ mod pruebas {
         assert_eq!(vuelta["congeladas"], 1);
         assert_eq!(vuelta["futuro"]["x"], true);
         assert_eq!(vuelta["celdas"]["B7"], "=SUMA(B2:B6)");
-        assert_eq!(vuelta["estilos"]["C1"]["x"], 7, "lo que no se entiende de un estilo tambien vuelve");
+        assert_eq!(
+            vuelta["estilos"]["C1"]["x"], 7,
+            "lo que no se entiende de un estilo tambien vuelve"
+        );
         // Y sin los valores por defecto, como `encodeDefaults = false` del
         // movil: mil celdas con estilo no repiten mil veces `"n":false`.
         assert!(vuelta["estilos"]["C1"].get("n").is_none());

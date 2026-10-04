@@ -43,7 +43,13 @@ const TAM_ETIQUETA: f32 = 12.0;
 /// **Coloca la pastilla**: centrada en `ancho`, a 10 px bajo la barra.
 /// `texto` y `etiqueta` son lo que miden esos textos (la etiqueta, solo si
 /// hay interruptor). Pura, para probarla sin ventana.
-pub(super) fn colocar(ancho: f32, bajo_la_barra: f32, k: f32, texto: (f32, f32), etiqueta: Option<(f32, f32)>) -> Colocada {
+pub(super) fn colocar(
+    ancho: f32,
+    bajo_la_barra: f32,
+    k: f32,
+    texto: (f32, f32),
+    etiqueta: Option<(f32, f32)>,
+) -> Colocada {
     let alto = ALTO * k;
     let icono = 18.0 * k;
     let (sw, sh) = (34.0 * k, 18.0 * k);
@@ -77,7 +83,12 @@ pub(super) fn colocar(ancho: f32, bajo_la_barra: f32, k: f32, texto: (f32, f32),
         None => (None, None),
     };
     Colocada {
-        isla: RectF { x, y, ancho: w, alto },
+        isla: RectF {
+            x,
+            y,
+            ancho: w,
+            alto,
+        },
         icono: icono_r,
         texto: (tx, medio - texto.1 / 2.0),
         etiqueta: etiqueta_pos,
@@ -197,7 +208,11 @@ fn pintar_interruptor(p: &Pintor<'_>, s: RectF, encendido: bool) {
     };
     p.rellenar_redondeado(s, s.alto / 2.0, if encendido { azul } else { APAGADO });
     let r = s.alto / 2.0 - 2.5;
-    let cx = if encendido { s.x + s.ancho - s.alto / 2.0 } else { s.x + s.alto / 2.0 };
+    let cx = if encendido {
+        s.x + s.ancho - s.alto / 2.0
+    } else {
+        s.x + s.alto / 2.0
+    };
     p.circulo((cx, s.y + s.alto / 2.0), r, Color::BLANCO);
 }
 
@@ -208,11 +223,17 @@ mod pruebas {
     #[test]
     fn la_pastilla_va_centrada_bajo_la_barra_y_el_interruptor_a_su_derecha() {
         let c = colocar(1000.0, 60.0, 1.0, (200.0, 16.0), Some((50.0, 15.0)));
-        assert!((c.isla.x + c.isla.ancho / 2.0 - 500.0).abs() < 0.5, "centrada");
+        assert!(
+            (c.isla.x + c.isla.ancho / 2.0 - 500.0).abs() < 0.5,
+            "centrada"
+        );
         assert_eq!(c.isla.y, 70.0, "a diez pixeles bajo la barra");
         let s = c.interruptor.expect("hay interruptor");
         assert!(s.x > c.texto.0 + 200.0, "detras del texto");
-        assert!(s.x + s.ancho <= c.isla.x + c.isla.ancho, "dentro de la isla");
+        assert!(
+            s.x + s.ancho <= c.isla.x + c.isla.ancho,
+            "dentro de la isla"
+        );
         // Caso negativo: sin proyecto no hay interruptor ni etiqueta, y es
         // mas estrecha.
         let sin = colocar(1000.0, 60.0, 1.0, (200.0, 16.0), None);
@@ -234,7 +255,10 @@ mod pruebas {
         // Sin proyecto, aunque este puesto, no manda.
         assert!(!p.manda_al_chat(false));
         // En el icono: suyo, pero no cambia nada.
-        assert_eq!(p.pulsar(c.icono.x + 2.0, c.icono.y + 2.0, true), Clic::Tragado);
+        assert_eq!(
+            p.pulsar(c.icono.x + 2.0, c.icono.y + 2.0, true),
+            Clic::Tragado
+        );
         assert!(p.al_chat);
         // Caso negativo: fuera, o con otra herramienta, sigue al lienzo.
         assert_eq!(p.pulsar(5.0, 500.0, true), Clic::Fuera);
@@ -261,14 +285,20 @@ mod pruebas {
         let motor = MotorRender::nuevo(d.d3d()).expect("motor");
         let (ancho, alto) = (720u32, 130u32);
         let fuera = FueraDePantalla::nuevo(&motor, d.d3d(), ancho, alto).expect("superficie");
-        let carpeta = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/muestras-zona");
+        let carpeta =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/muestras-zona");
         std::fs::create_dir_all(&carpeta).unwrap();
         let textos = pixpin_store::Catalogo::nuevo(pixpin_store::Idioma::Espanol);
         let casos = [
             ("sin-proyecto", false, false, None),
             ("apagado", true, false, None),
             ("al-chat", true, true, None),
-            ("mandada", true, true, Some("Zona mandada al chat de «Casa Lima»")),
+            (
+                "mandada",
+                true,
+                true,
+                Some("Zona mandada al chat de «Casa Lima»"),
+            ),
         ];
         for (nombre, con_proyecto, al_chat, dicho) in casos {
             let pz = PastillaZona {
@@ -281,11 +311,24 @@ mod pruebas {
                     p.limpiar(hex(0xf4f4f6));
                     // La barra encima, para ver donde queda.
                     p.rellenar_redondeado(
-                        RectF { x: 160.0, y: 8.0, ancho: 400.0, alto: 44.0 },
+                        RectF {
+                            x: 160.0,
+                            y: 8.0,
+                            ancho: 400.0,
+                            alto: 44.0,
+                        },
                         8.0,
                         hex(0xffffff),
                     );
-                    pz.pintar(p, (0.0, 0.0), ancho as f32, 52.0, 100, con_proyecto, &textos);
+                    pz.pintar(
+                        p,
+                        (0.0, 0.0),
+                        ancho as f32,
+                        52.0,
+                        100,
+                        con_proyecto,
+                        &textos,
+                    );
                 })
                 .expect("pintar");
             fuera.esperar_gpu().expect("esperar");

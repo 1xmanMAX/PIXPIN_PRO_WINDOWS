@@ -44,7 +44,11 @@ pub(super) fn tipo_de_ruta(ruta: &Path) -> TipoFila {
 pub(super) fn nombre_de_nota(texto: &str) -> String {
     let linea = texto
         .lines()
-        .map(|l| l.trim().trim_start_matches(['#', '-', '*', '>', ' ']).trim())
+        .map(|l| {
+            l.trim()
+                .trim_start_matches(['#', '-', '*', '>', ' '])
+                .trim()
+        })
         .find(|l| !l.is_empty())
         .unwrap_or("");
     let mut nombre: String = linea.chars().take(60).collect();
@@ -165,10 +169,12 @@ impl Pines {
                         .unwrap_or_default();
                     let tipo = tipo_de_ruta(&ruta);
                     let detalle = match tipo {
-                        TipoFila::Pdf => match pin.and_then(|p| p.paginas().map(|n| (p.pagina(), n))) {
-                            Some((p, n)) => format!("{} · {}/{}", t.tipo_pdf, p + 1, n),
-                            None => t.tipo_pdf.clone(),
-                        },
+                        TipoFila::Pdf => {
+                            match pin.and_then(|p| p.paginas().map(|n| (p.pagina(), n))) {
+                                Some((p, n)) => format!("{} · {}/{}", t.tipo_pdf, p + 1, n),
+                                None => t.tipo_pdf.clone(),
+                            }
+                        }
                         TipoFila::Video => t.tipo_video.clone(),
                         _ => t.tipo_archivo.clone(),
                     };
@@ -378,7 +384,6 @@ impl Pines {
     }
 }
 
-
 #[cfg(test)]
 mod pruebas {
     use super::*;
@@ -386,16 +391,28 @@ mod pruebas {
 
     #[test]
     fn el_tipo_de_un_fichero_sale_de_su_extension() {
-        assert_eq!(tipo_de_ruta(&PathBuf::from("C:\\a\\Tesis.PDF")), TipoFila::Pdf);
+        assert_eq!(
+            tipo_de_ruta(&PathBuf::from("C:\\a\\Tesis.PDF")),
+            TipoFila::Pdf
+        );
         assert_eq!(tipo_de_ruta(&PathBuf::from("clase.mp4")), TipoFila::Video);
         // Caso negativo: lo demas es una ficha, aunque se parezca.
-        assert_eq!(tipo_de_ruta(&PathBuf::from("informe.docx")), TipoFila::Archivo);
-        assert_eq!(tipo_de_ruta(&PathBuf::from("sin_extension")), TipoFila::Archivo);
+        assert_eq!(
+            tipo_de_ruta(&PathBuf::from("informe.docx")),
+            TipoFila::Archivo
+        );
+        assert_eq!(
+            tipo_de_ruta(&PathBuf::from("sin_extension")),
+            TipoFila::Archivo
+        );
     }
 
     #[test]
     fn el_nombre_de_una_nota_es_su_primera_linea_sin_markdown() {
-        assert_eq!(nombre_de_nota("\n\n# Compras temu\n- nivel"), "Compras temu");
+        assert_eq!(
+            nombre_de_nota("\n\n# Compras temu\n- nivel"),
+            "Compras temu"
+        );
         assert_eq!(nombre_de_nota("- [ ] pan"), "[ ] pan");
         // Caso negativo: una nota vacia no se inventa nombre.
         assert_eq!(nombre_de_nota("   \n  "), "");

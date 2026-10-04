@@ -466,7 +466,10 @@ mod pruebas {
             enviar_pedido_a(v.handle(), r#"{"pixpin":1,"accion":"nada"}"#),
             respuesta::NO_SE_ENTIENDE
         );
-        assert_eq!(enviar_pedido_a(v.handle(), "{roto"), respuesta::NO_SE_ENTIENDE);
+        assert_eq!(
+            enviar_pedido_a(v.handle(), "{roto"),
+            respuesta::NO_SE_ENTIENDE
+        );
 
         let en_cola: Vec<Evento> = PENDIENTES.with(|p| p.borrow_mut().drain(..).collect());
         assert_eq!(en_cola, vec![Evento::Pedido(bueno.to_string())]);

@@ -45,7 +45,12 @@ pub fn cubicas(puntos: &[Punto2]) -> Vec<[Punto2; 4]> {
     let n = puntos.len() + 2;
     (1..n - 2)
         .map(|i| {
-            let (a, b, c, d) = (ampliado(i - 1), ampliado(i), ampliado(i + 1), ampliado(i + 2));
+            let (a, b, c, d) = (
+                ampliado(i - 1),
+                ampliado(i),
+                ampliado(i + 1),
+                ampliado(i + 2),
+            );
             [
                 b,
                 b.sumar(c.restar(a).escalar(1.0 / 6.0)),
@@ -189,7 +194,15 @@ mod pruebas {
             ..Default::default()
         };
         assert!(trazado_curvo(&con(flecha(false), true)).is_some());
-        assert!(trazado_curvo(&con(Figura::Linea { puntos: puntos.clone() }, true)).is_some());
+        assert!(
+            trazado_curvo(&con(
+                Figura::Linea {
+                    puntos: puntos.clone()
+                },
+                true
+            ))
+            .is_some()
+        );
         // Casos negativos: recta, de codos, con dos puntos, o un rectangulo
         // redondeado (que se redondea por sus esquinas, no por aqui).
         assert!(trazado_curvo(&con(flecha(false), false)).is_none());

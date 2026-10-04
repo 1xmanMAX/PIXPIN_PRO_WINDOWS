@@ -319,11 +319,18 @@ pub fn sitio_del_relleno(elementos: &[Elemento], relleno: &Elemento) -> usize {
 /// rejilla, con sus agujeros. De las que el PC pinta con fondo: rectangulo,
 /// rombo y elipse (la mas pequena si hay varias una dentro de otra).
 pub fn figura_que_se_rellena_sola(elementos: &[Elemento], p: Punto2) -> Option<u64> {
-    let paredes: Vec<&Elemento> = elementos.iter().filter(|e| !e.borrado && es_pared(e)).collect();
+    let paredes: Vec<&Elemento> = elementos
+        .iter()
+        .filter(|e| !e.borrado && es_pared(e))
+        .collect();
     let (figura, anillo) = paredes
         .iter()
         .filter(|e| {
-            !e.bloqueado && matches!(e.figura, Figura::Rectangulo | Figura::Rombo | Figura::Elipse)
+            !e.bloqueado
+                && matches!(
+                    e.figura,
+                    Figura::Rectangulo | Figura::Rombo | Figura::Elipse
+                )
         })
         .filter_map(|e| {
             let anillo = crate::perimetros::contornos_de(e, PASO_PERIMETRO)

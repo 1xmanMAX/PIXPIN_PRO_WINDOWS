@@ -52,12 +52,8 @@ pub fn convertir(escena: &mut Escena, gesto: &mut Gesto, id: u64) -> Option<u64>
     let fuente = escena.buscar(id)?.clone();
     // De fabrica, como el movil (`ItemStyle`): el doble, redonda y con
     // flecha. La forma copiada de la figura manda sobre «redonda».
-    let (cristal, caja) = lupa::desde_figura(
-        &fuente,
-        gesto.estilo.aumento,
-        true,
-        gesto.estilo.guia,
-    )?;
+    let (cristal, caja) =
+        lupa::desde_figura(&fuente, gesto.estilo.aumento, true, gesto.estilo.guia)?;
     let estilo = &gesto.estilo;
     let nueva = Elemento {
         figura: Figura::Lupa { cristal },
@@ -91,8 +87,12 @@ pub fn convertir(escena: &mut Escena, gesto: &mut Gesto, id: u64) -> Option<u64>
 /// con la mano puesta.
 pub fn convertir_en_foco(escena: &mut Escena, gesto: &mut Gesto, id: u64) -> Option<u64> {
     let fuente = escena.buscar(id)?.clone();
-    let (mut cristal, caja) =
-        lupa::desde_figura(&fuente, lupa::MARCO_DEL_FOCO, false, lupa::GuiaDeLupa::Ninguna)?;
+    let (mut cristal, caja) = lupa::desde_figura(
+        &fuente,
+        lupa::MARCO_DEL_FOCO,
+        false,
+        lupa::GuiaDeLupa::Ninguna,
+    )?;
     // Con cuanto oscurece el movil de fabrica (`ItemStyle.oscurecer`).
     cristal.oscurecer = Some(lupa::OSCURECER_POR_DEFECTO);
     let nuevo_foco = Elemento {
@@ -162,7 +162,8 @@ impl ManoDeLupa {
             return match *ev {
                 EventoOverlay::RatonMovido(p) => {
                     let q = al_documento(p);
-                    let foco = Punto2::nuevo(m.foco.x + (q.x - m.inicio.x), m.foco.y + (q.y - m.inicio.y));
+                    let foco =
+                        Punto2::nuevo(m.foco.x + (q.x - m.inicio.x), m.foco.y + (q.y - m.inicio.y));
                     if let Some(e) = escena.buscar_mut(m.id)
                         && let Figura::Lupa { cristal } = &mut e.figura
                     {
@@ -287,7 +288,11 @@ mod pruebas {
         let vivos: Vec<_> = escena.visibles().collect();
         assert_eq!(vivos.len(), 1, "el circulo se convirtio, no se duplico");
         assert!(matches!(vivos[0].figura, Figura::Lupa { .. }));
-        assert_eq!(gesto.herramienta, Herramienta::Mano, "lo siguiente es apartarla");
+        assert_eq!(
+            gesto.herramienta,
+            Herramienta::Mano,
+            "lo siguiente es apartarla"
+        );
         assert_eq!(gesto.seleccion.ids(), &[vivos[0].id]);
         // Un solo paso: deshacer quita la lupa y devuelve el circulo.
         assert!(escena.deshacer());
@@ -313,12 +318,21 @@ mod pruebas {
         // El marco, 1,8 veces el circulo y centrado en el; el hueco, el
         // circulo tal cual y con su forma.
         let (x0, y0, x1, y1) = vivos[0].caja();
-        assert!(((x1 - x0) - 100.0 * lupa::MARCO_DEL_FOCO).abs() < 2.0, "{x0} {x1}");
+        assert!(
+            ((x1 - x0) - 100.0 * lupa::MARCO_DEL_FOCO).abs() < 2.0,
+            "{x0} {x1}"
+        );
         assert!((((x0 + x1) / 2.0) - 50.0).abs() < 1.0 && (((y0 + y1) / 2.0) - 50.0).abs() < 1.0);
         let hueco = lupa::region(cristal, lupa::caja_de(vivos[0]));
         assert!((hueco.2 - 100.0).abs() < 2.0, "{hueco:?}");
-        assert!(cristal.forma.as_ref().is_some_and(|f| f.len() > 8), "con la forma del circulo");
-        assert_eq!(lupa::oscurecimiento_de(cristal), lupa::OSCURECER_POR_DEFECTO);
+        assert!(
+            cristal.forma.as_ref().is_some_and(|f| f.len() > 8),
+            "con la forma del circulo"
+        );
+        assert_eq!(
+            lupa::oscurecimiento_de(cristal),
+            lupa::OSCURECER_POR_DEFECTO
+        );
         assert_eq!(gesto.herramienta, Herramienta::Mano);
         // Un solo paso de deshacer.
         assert!(escena.deshacer());
@@ -343,7 +357,10 @@ mod pruebas {
         // En el anotador de pantalla la Lupa es la lupa viva: no se toca.
         let r = mano.atender(&en(50, 50), &mut gesto, &mut escena, directo, 1.0, false);
         assert_eq!(r, None);
-        assert!(matches!(escena.visibles().next().unwrap().figura, Figura::Elipse));
+        assert!(matches!(
+            escena.visibles().next().unwrap().figura,
+            Figura::Elipse
+        ));
     }
 
     #[test]
@@ -380,13 +397,24 @@ mod pruebas {
             true,
         );
         let despues = escena.buscar(id).unwrap();
-        let Figura::Lupa { cristal } = &despues.figura else { panic!() };
+        let Figura::Lupa { cristal } = &despues.figura else {
+            panic!()
+        };
         let f = cristal.foco.unwrap();
-        assert!((f.x - 80.0).abs() < 0.01 && (f.y - 60.0).abs() < 0.01, "{f:?}");
-        assert_eq!((despues.x, despues.y), (antes.x, antes.y), "el cristal no se movio");
+        assert!(
+            (f.x - 80.0).abs() < 0.01 && (f.y - 60.0).abs() < 0.01,
+            "{f:?}"
+        );
+        assert_eq!(
+            (despues.x, despues.y),
+            (antes.x, antes.y),
+            "el cristal no se movio"
+        );
         // Y deshacer devuelve el foco a donde miraba.
         assert!(escena.deshacer());
-        let Figura::Lupa { cristal } = &escena.buscar(id).unwrap().figura else { panic!() };
+        let Figura::Lupa { cristal } = &escena.buscar(id).unwrap().figura else {
+            panic!()
+        };
         assert!((cristal.foco.unwrap().x - 50.0).abs() < 0.5);
     }
 

@@ -24,9 +24,17 @@ use super::{BLANCO, FuenteImagen, Lector, Pieza, rect};
 /// Si la pieza es **una pagina del PDF y nada mas**: el papel solo, sin
 /// nada dibujado encima, blanco y sin marcos. Esa se copia del documento;
 /// con algo encima hay que componerla, y eso lo hace el escritor.
-pub(super) fn pagina_sola(pieza: &Pieza, fuentes: &HashMap<u64, FuenteImagen>) -> Option<(PathBuf, u32)> {
+pub(super) fn pagina_sola(
+    pieza: &Pieza,
+    fuentes: &HashMap<u64, FuenteImagen>,
+) -> Option<(PathBuf, u32)> {
     let h = &pieza.hoja;
-    if pieza.fondo != BLANCO || h.ordenes.len() != 1 || !h.granos.is_empty() || !h.grafitos.is_empty() || !h.marcos.is_empty() {
+    if pieza.fondo != BLANCO
+        || h.ordenes.len() != 1
+        || !h.granos.is_empty()
+        || !h.grafitos.is_empty()
+        || !h.marcos.is_empty()
+    {
         return None;
     }
     let Orden::Imagen { id_objeto, .. } = &h.ordenes[0] else {
@@ -50,7 +58,9 @@ fn tramos<'a>(piezas: &[&'a Pieza], fuentes: &HashMap<u64, FuenteImagen>) -> Vec
     let mut salida: Vec<Tramo<'a>> = Vec::new();
     for &x in piezas {
         match (pagina_sola(x, fuentes), salida.last_mut()) {
-            (Some((pdf, n)), Some(Tramo::Paginas(ultimo, lista))) if *ultimo == pdf => lista.push(n as usize),
+            (Some((pdf, n)), Some(Tramo::Paginas(ultimo, lista))) if *ultimo == pdf => {
+                lista.push(n as usize)
+            }
             (Some((pdf, n)), _) => salida.push(Tramo::Paginas(pdf, vec![n as usize])),
             (None, Some(Tramo::Hojas(lista))) => lista.push(x),
             (None, _) => salida.push(Tramo::Hojas(vec![x])),

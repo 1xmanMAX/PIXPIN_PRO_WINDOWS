@@ -529,7 +529,8 @@ fn miniatura_rapida(imagen: &ImagenRgba) -> ImagenRgba {
             for j in 0..3u64 {
                 for i in 0..3u64 {
                     // El punto (i, j) de la rejilla, centrado en su tercio.
-                    let sx = ((x as u64 * 6 + i * 2 + 1) * imagen.ancho as u64 / (ancho as u64 * 6))
+                    let sx = ((x as u64 * 6 + i * 2 + 1) * imagen.ancho as u64
+                        / (ancho as u64 * 6))
                         .min(imagen.ancho as u64 - 1);
                     let sy = ((y as u64 * 6 + j * 2 + 1) * imagen.alto as u64 / (alto as u64 * 6))
                         .min(imagen.alto as u64 - 1);
@@ -683,10 +684,8 @@ mod pruebas {
     fn reservar_dos_veces_la_misma_ruta_falla() {
         // Es lo que impide que dos capturas seguidas se pisen el fichero
         // mientras el primero aun se esta escribiendo.
-        let ruta = std::env::temp_dir().join(format!(
-            "pixpin-pila-reserva-{}.png",
-            std::process::id()
-        ));
+        let ruta =
+            std::env::temp_dir().join(format!("pixpin-pila-reserva-{}.png", std::process::id()));
         let _ = std::fs::remove_file(&ruta);
         assert!(reservar(&ruta).is_ok());
         assert!(reservar(&ruta).is_err());

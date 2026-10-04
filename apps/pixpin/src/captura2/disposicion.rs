@@ -530,7 +530,10 @@ pub struct BarraAcciones {
 impl BarraAcciones {
     pub fn ancho(escala: u32) -> u32 {
         let s = |v| e(v, escala);
-        Accion::TODAS.iter().map(|a| s(a.ancho_logico())).sum::<u32>()
+        Accion::TODAS
+            .iter()
+            .map(|a| s(a.ancho_logico()))
+            .sum::<u32>()
             + 6 * s(6)
             + s(SEPARADOR)
     }
@@ -577,7 +580,12 @@ impl BarraAcciones {
         if !self.panel.contiene(p) {
             return None;
         }
-        Some(self.botones.iter().find(|(_, r)| r.contiene(p)).map(|(a, _)| *a))
+        Some(
+            self.botones
+                .iter()
+                .find(|(_, r)| r.contiene(p))
+                .map(|(a, _)| *a),
+        )
     }
 
     pub fn boton(&self, a: Accion) -> Option<Rect> {
@@ -637,7 +645,12 @@ pub fn boton_confirmar(sel: Rect, area: Rect, escala: u32) -> Rect {
     } else {
         sel.abajo() - s(10) as i32 - h as i32
     };
-    Rect { x, y, ancho: w, alto: h }
+    Rect {
+        x,
+        y,
+        ancho: w,
+        alto: h,
+    }
 }
 
 /// Que hay bajo el raton en el selector de proyecto.
@@ -947,7 +960,10 @@ mod pruebas {
         }
         let r = b.repetir.unwrap();
         assert_eq!(
-            b.en(Punto { x: r.x + 5, y: r.y + 5 }),
+            b.en(Punto {
+                x: r.x + 5,
+                y: r.y + 5
+            }),
             Some(EnModos::Repetir)
         );
         assert_eq!(
@@ -986,12 +1002,30 @@ mod pruebas {
     #[test]
     fn las_acciones_de_despues_y_sus_atajos() {
         assert_eq!(Accion::de_tecla(0x0D, false, false), Some(Accion::Copiar));
-        assert_eq!(Accion::de_tecla(u32::from(b'C'), true, false), Some(Accion::Copiar));
-        assert_eq!(Accion::de_tecla(u32::from(b'P'), true, false), Some(Accion::Pinear));
-        assert_eq!(Accion::de_tecla(u32::from(b'M'), true, false), Some(Accion::AlChat));
-        assert_eq!(Accion::de_tecla(u32::from(b'T'), true, false), Some(Accion::Texto));
-        assert_eq!(Accion::de_tecla(u32::from(b'S'), true, false), Some(Accion::Guardar));
-        assert_eq!(Accion::de_tecla(0x1B, false, false), Some(Accion::Descartar));
+        assert_eq!(
+            Accion::de_tecla(u32::from(b'C'), true, false),
+            Some(Accion::Copiar)
+        );
+        assert_eq!(
+            Accion::de_tecla(u32::from(b'P'), true, false),
+            Some(Accion::Pinear)
+        );
+        assert_eq!(
+            Accion::de_tecla(u32::from(b'M'), true, false),
+            Some(Accion::AlChat)
+        );
+        assert_eq!(
+            Accion::de_tecla(u32::from(b'T'), true, false),
+            Some(Accion::Texto)
+        );
+        assert_eq!(
+            Accion::de_tecla(u32::from(b'S'), true, false),
+            Some(Accion::Guardar)
+        );
+        assert_eq!(
+            Accion::de_tecla(0x1B, false, false),
+            Some(Accion::Descartar)
+        );
         // Casos negativos: sin Ctrl la letra no es una accion (es un modo o
         // texto), y Ctrl+Mayus+S es «guardar como», que va aparte.
         assert_eq!(Accion::de_tecla(u32::from(b'P'), false, false), None);
@@ -1025,10 +1059,22 @@ mod pruebas {
         assert!(b.panel.y >= sel.abajo());
         assert_eq!(b.panel.x, 240);
         for (acc, r) in &b.botones {
-            assert_eq!(b.en(Punto { x: r.x + 4, y: r.y + 4 }), Some(Some(*acc)));
+            assert_eq!(
+                b.en(Punto {
+                    x: r.x + 4,
+                    y: r.y + 4
+                }),
+                Some(Some(*acc))
+            );
         }
         for (u, r) in &a.utiles {
-            assert_eq!(a.en(Punto { x: r.x + 4, y: r.y + 4 }), Some(EnAnotar::Util(*u)));
+            assert_eq!(
+                a.en(Punto {
+                    x: r.x + 4,
+                    y: r.y + 4
+                }),
+                Some(EnAnotar::Util(*u))
+            );
         }
         assert_eq!(
             a.en(Punto {
@@ -1083,7 +1129,13 @@ mod pruebas {
         assert_eq!(s.filas.len(), 4);
         for (i, f) in s.filas.iter().enumerate() {
             assert!(f.alto >= 44);
-            assert_eq!(s.en(Punto { x: f.x + 2, y: f.y + 2 }), Some(EnSelector::Fila(i)));
+            assert_eq!(
+                s.en(Punto {
+                    x: f.x + 2,
+                    y: f.y + 2
+                }),
+                Some(EnSelector::Fila(i))
+            );
         }
         assert_eq!(
             s.en(Punto {

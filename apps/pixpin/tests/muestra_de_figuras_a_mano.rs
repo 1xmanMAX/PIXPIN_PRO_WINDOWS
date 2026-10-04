@@ -35,7 +35,8 @@ fn carpeta() -> std::path::PathBuf {
     let d = std::env::var_os("PIXPIN_MUESTRA")
         .map(std::path::PathBuf::from)
         .unwrap_or_else(|| {
-            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/muestras-de-figuras")
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../target/muestras-de-figuras")
         });
     std::fs::create_dir_all(&d).expect("crear la carpeta de muestras");
     d

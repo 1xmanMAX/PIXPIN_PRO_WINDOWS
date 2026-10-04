@@ -110,8 +110,8 @@ fn abrir_panel(
     let gestor: DataTransferManager =
         unsafe { interop.GetForWindow(hwnd) }.map_err(ErrorCompartir::Panel)?;
 
-    let manejador = TypedEventHandler::<DataTransferManager, DataRequestedEventArgs>::new(
-        move |_, args| {
+    let manejador =
+        TypedEventHandler::<DataTransferManager, DataRequestedEventArgs>::new(move |_, args| {
             // El envoltorio entero, no su campo: con la captura por campos
             // de Rust 2021 el cierre se llevaria el `IIterable` suelto.
             let lista = &lista;
@@ -142,8 +142,7 @@ fn abrir_panel(
                 }));
             }
             Ok(())
-        },
-    );
+        });
     let ficha = gestor
         .DataRequested(&manejador)
         .map_err(ErrorCompartir::Panel)?;
@@ -166,9 +165,10 @@ fn fichero(ruta: &Path) -> Result<IStorageItem, ErrorCompartir> {
         ruta: ruta.display().to_string(),
         fuente,
     };
-    let f: StorageFile = StorageFile::GetFileFromPathAsync(&HSTRING::from(con_barras_de_windows(ruta)))
-        .and_then(|op| op.join())
-        .map_err(error)?;
+    let f: StorageFile =
+        StorageFile::GetFileFromPathAsync(&HSTRING::from(con_barras_de_windows(ruta)))
+            .and_then(|op| op.join())
+            .map_err(error)?;
     f.cast().map_err(error)
 }
 
@@ -203,7 +203,10 @@ mod pruebas {
             con_barras_de_windows(Path::new(r"C:\a\b/c/d.pdf")),
             r"C:\a\b\c\d.pdf"
         );
-        assert_eq!(con_barras_de_windows(Path::new(r"C:\a\b.pdf")), r"C:\a\b.pdf");
+        assert_eq!(
+            con_barras_de_windows(Path::new(r"C:\a\b.pdf")),
+            r"C:\a\b.pdf"
+        );
     }
 
     #[test]

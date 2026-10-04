@@ -404,9 +404,7 @@ pub fn disponer(c: &Compartible, e: &Estado, escala: f32) -> Disposicion {
             ancho: ancho - 2.0 * MARGEN * k,
             alto: ALTO_TITULO_PAGINAS * k,
         };
-        let con_lista = e
-            .formato(c)
-            .is_some_and(|f| f.cuantas != Cuantas::Ninguna);
+        let con_lista = e.formato(c).is_some_and(|f| f.cuantas != Cuantas::Ninguna);
         if e.formato(c).is_some_and(|f| f.cuantas == Cuantas::Varias) {
             let w = 84.0 * k;
             ninguna = Some(Caja {
@@ -593,7 +591,10 @@ mod pruebas {
         assert_eq!(e.id_a_generar(&c).as_deref(), Some("pdf"));
         let d = disponer(&c, &e, 1.0);
         let caja = d.interruptor.expect("se ve");
-        assert_eq!(destino_en(&d, caja.x + 10.0, caja.y + 10.0), Destino::Interruptor);
+        assert_eq!(
+            destino_en(&d, caja.x + 10.0, caja.y + 10.0),
+            Destino::Interruptor
+        );
         assert!(d.peso.y >= caja.y + caja.alto, "el peso va debajo");
         e.alternar_interruptor(&c);
         assert_eq!(e.id_a_generar(&c).as_deref(), Some("pdf-limpio"));

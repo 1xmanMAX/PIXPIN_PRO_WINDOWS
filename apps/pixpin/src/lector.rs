@@ -131,7 +131,10 @@ pub const VERDE_EN_LA_TIRA: usize = EMOJIS.len();
 
 /// El emoticono de la celda `i` de la tira: los de marcar y, el ultimo, el verde.
 pub fn emoji_de_la_tira(i: usize) -> &'static str {
-    EMOJIS.get(i).copied().unwrap_or(pixpin_docs::voz_alta::EMOJI_DE_VOZ)
+    EMOJIS
+        .get(i)
+        .copied()
+        .unwrap_or(pixpin_docs::voz_alta::EMOJI_DE_VOZ)
 }
 
 /// Un boton de los mandos de los lados.
@@ -174,7 +177,13 @@ pub fn pintar_mandos_de_los_lados(
     let tam = 16.0 * e;
     let centrado = |p: &Pintor<'_>, t: &str, r: RectF, color: Color| {
         let (w, h) = p.medir_texto(t, tam);
-        p.texto(t, r.x + (r.ancho - w) / 2.0, r.y + (r.alto - h) / 2.0, tam, color);
+        p.texto(
+            t,
+            r.x + (r.ancho - w) / 2.0,
+            r.y + (r.alto - h) / 2.0,
+            tam,
+            color,
+        );
     };
     let mut pastilla = |p: &Pintor<'_>, izquierda: bool, x: f32, pasos: u32| -> f32 {
         let flecha = if izquierda { "⟵" } else { "⟶" };
@@ -183,21 +192,69 @@ pub fn pintar_mandos_de_los_lados(
         let ancho_flecha = wf + if menos { 4.0 } else { 20.0 } * e;
         let total = ancho_flecha + lado + if menos { lado } else { 0.0 };
         let x = if izquierda { x } else { x - total };
-        p.rellenar_redondeado(RectF { x, y, ancho: total, alto: lado }, lado / 2.0, fondo);
+        p.rellenar_redondeado(
+            RectF {
+                x,
+                y,
+                ancho: total,
+                alto: lado,
+            },
+            lado / 2.0,
+            fondo,
+        );
         let mut xx = x;
         if menos {
-            let r = RectF { x: xx, y, ancho: lado, alto: lado };
+            let r = RectF {
+                x: xx,
+                y,
+                ancho: lado,
+                alto: lado,
+            };
             centrado(p, "−", r, Color::BLANCO);
-            botones.push((r, if izquierda { BotonLado::Izquierda(false) } else { BotonLado::Derecha(false) }));
+            botones.push((
+                r,
+                if izquierda {
+                    BotonLado::Izquierda(false)
+                } else {
+                    BotonLado::Derecha(false)
+                },
+            ));
             xx += lado;
         }
-        centrado(p, flecha, RectF { x: xx, y, ancho: ancho_flecha, alto: lado }, con_alfa(Color::BLANCO, 0.8));
+        centrado(
+            p,
+            flecha,
+            RectF {
+                x: xx,
+                y,
+                ancho: ancho_flecha,
+                alto: lado,
+            },
+            con_alfa(Color::BLANCO, 0.8),
+        );
         xx += ancho_flecha;
-        let r = RectF { x: xx, y, ancho: lado, alto: lado };
+        let r = RectF {
+            x: xx,
+            y,
+            ancho: lado,
+            alto: lado,
+        };
         let lleno = pasos >= tope;
-        centrado(p, "+", r, con_alfa(Color::BLANCO, if lleno { 0.3 } else { 1.0 }));
+        centrado(
+            p,
+            "+",
+            r,
+            con_alfa(Color::BLANCO, if lleno { 0.3 } else { 1.0 }),
+        );
         if !lleno {
-            botones.push((r, if izquierda { BotonLado::Izquierda(true) } else { BotonLado::Derecha(true) }));
+            botones.push((
+                r,
+                if izquierda {
+                    BotonLado::Izquierda(true)
+                } else {
+                    BotonLado::Derecha(true)
+                },
+            ));
         }
         total
     };
@@ -208,11 +265,28 @@ pub fn pintar_mandos_de_los_lados(
     let (wc, _) = p.medir_texto(candado, tam);
     let (wd, _) = p.medir_texto(" ⟷", tam);
     let total = wc + wd + 24.0 * e;
-    let r = RectF { x: (ancho - total) / 2.0, y, ancho: total, alto: lado };
+    let r = RectF {
+        x: (ancho - total) / 2.0,
+        y,
+        ancho: total,
+        alto: lado,
+    };
     p.rellenar_redondeado(r, lado / 2.0, fondo);
     let (_, h) = p.medir_texto(candado, tam);
-    p.texto_color(candado, r.x + 12.0 * e, r.y + (lado - h) / 2.0, tam, if sin_lado { DORADO } else { Color::BLANCO });
-    p.texto(" ⟷", r.x + 12.0 * e + wc, r.y + (lado - h) / 2.0, tam, Color::BLANCO);
+    p.texto_color(
+        candado,
+        r.x + 12.0 * e,
+        r.y + (lado - h) / 2.0,
+        tam,
+        if sin_lado { DORADO } else { Color::BLANCO },
+    );
+    p.texto(
+        " ⟷",
+        r.x + 12.0 * e + wc,
+        r.y + (lado - h) / 2.0,
+        tam,
+        Color::BLANCO,
+    );
     botones.push((r, BotonLado::Candado));
     botones
 }
@@ -370,7 +444,13 @@ pub fn aviso_en(p: &Pintor<'_>, texto: &str, cx: f32, y: f32, e: f32) {
         alto: h + 12.0 * e,
     };
     p.rellenar_redondeado(caja, caja.alto / 2.0, con_alfa(OSCURO, 0.9));
-    p.texto(texto, caja.x + 12.0 * e, caja.y + 6.0 * e, tam, Color::BLANCO);
+    p.texto(
+        texto,
+        caja.x + 12.0 * e,
+        caja.y + 6.0 * e,
+        tam,
+        Color::BLANCO,
+    );
 }
 
 /// El aviso de abajo (guardado, no se pudo, la letra fijada...).
@@ -418,7 +498,10 @@ mod pruebas {
         assert!(se_lee_al_tocar("plano.pdf"));
         assert!(se_lee_al_tocar("Tema 1.DOCX"));
         assert!(se_lee_al_tocar("novela.epub"));
-        assert!(!se_lee_al_tocar("gastos.csv"), "la hoja de calculo es su programa");
+        assert!(
+            !se_lee_al_tocar("gastos.csv"),
+            "la hoja de calculo es su programa"
+        );
         assert!(!se_lee_al_tocar("notas.txt"));
         assert!(!se_lee_al_tocar("foto.png"));
         assert!(!se_lee_al_tocar("pdf"), "sin extension no es un PDF");
@@ -431,7 +514,10 @@ mod pruebas {
     #[test]
     fn la_tira_acaba_en_el_verde_de_la_voz() {
         assert_eq!(emoji_de_la_tira(0), EMOJIS[0]);
-        assert_eq!(emoji_de_la_tira(VERDE_EN_LA_TIRA), pixpin_docs::voz_alta::EMOJI_DE_VOZ);
+        assert_eq!(
+            emoji_de_la_tira(VERDE_EN_LA_TIRA),
+            pixpin_docs::voz_alta::EMOJI_DE_VOZ
+        );
         let r = riel(1600.0, 900.0, 100, 0, true);
         assert_eq!(r.tira.expect("tira").celdas.len(), EMOJIS.len() + 1);
         assert!(raton_abajo(850.0, 900.0, 1.0));
@@ -459,7 +545,11 @@ mod pruebas {
         assert!(r.isla.x > 1400);
         assert_eq!(r.puntos.len(), 3);
         let tira = r.tira.expect("tira abierta");
-        assert!(tira.marco.y >= 60, "debajo de la pastilla: {:?}", tira.marco);
+        assert!(
+            tira.marco.y >= 60,
+            "debajo de la pastilla: {:?}",
+            tira.marco
+        );
         assert!(!riel(1600.0, 900.0, 100, 0, false).tira.is_some());
     }
 

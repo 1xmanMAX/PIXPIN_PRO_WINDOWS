@@ -653,7 +653,15 @@ pub fn desde_figura(
         guia,
         forma: Some(forma),
     };
-    Some((cristal, (c.x - ancho * z / 2.0, c.y - alto * z / 2.0, ancho * z, alto * z)))
+    Some((
+        cristal,
+        (
+            c.x - ancho * z / 2.0,
+            c.y - alto * z / 2.0,
+            ancho * z,
+            alto * z,
+        ),
+    ))
 }
 
 /// El grueso de la montura, de la zona y de la guia: el del trazo por 1,6 y
@@ -1012,8 +1020,14 @@ mod pruebas {
         let (cr, caja) = desde_figura(&circulo, 2.0, true, GuiaDeLupa::Flecha).unwrap();
         // Centrada donde estaba el circulo y el doble de grande.
         let c = centro(caja);
-        assert!((c.x - 50.0).abs() < 1.0 && (c.y - 25.0).abs() < 1.0, "{caja:?}");
-        assert!((caja.2 - 200.0).abs() < 2.0 && (caja.3 - 100.0).abs() < 2.0, "{caja:?}");
+        assert!(
+            (c.x - 50.0).abs() < 1.0 && (c.y - 25.0).abs() < 1.0,
+            "{caja:?}"
+        );
+        assert!(
+            (caja.2 - 200.0).abs() < 2.0 && (caja.3 - 100.0).abs() < 2.0,
+            "{caja:?}"
+        );
         // Mira a la figura tocada, con su tamano guardado.
         assert!((cr.foco_ancho.unwrap() - 100.0).abs() < 2.0);
         assert!((aumento_de(&cr, caja) - 2.0).abs() < 0.05);
@@ -1021,7 +1035,10 @@ mod pruebas {
         // punto de la esquina de la caja queda fuera.
         let contorno = puntos_del_cristal(&cr, caja);
         assert!(contorno.len() >= 16, "un ovalo, no cuatro esquinas");
-        assert!(!dentro_del_contorno(Punto2::nuevo(caja.0 + 2.0, caja.1 + 2.0), &contorno));
+        assert!(!dentro_del_contorno(
+            Punto2::nuevo(caja.0 + 2.0, caja.1 + 2.0),
+            &contorno
+        ));
         assert!(dentro_del_contorno(c, &contorno));
     }
 
@@ -1039,17 +1056,34 @@ mod pruebas {
         assert!(!sirve_de_lupa(&raya), "una raya no encierra nada");
         assert!(desde_figura(&raya, 2.0, true, GuiaDeLupa::Flecha).is_none());
         let otra = lupa(Cristal::default(), (0.0, 0.0, 100.0, 100.0));
-        assert!(!sirve_de_lupa(&otra), "una lupa mirando a otra no tiene fondo");
+        assert!(
+            !sirve_de_lupa(&otra),
+            "una lupa mirando a otra no tiene fondo"
+        );
         // Y un rectangulo si.
-        assert!(sirve_de_lupa(&figura(Figura::Rectangulo, 0.0, 0.0, 50.0, 50.0)));
+        assert!(sirve_de_lupa(&figura(
+            Figura::Rectangulo,
+            0.0,
+            0.0,
+            50.0,
+            50.0
+        )));
     }
 
     #[test]
     fn la_varita_toca_un_circulo_sin_relleno_por_dentro_y_en_el_vacio_no_hace_nada() {
         let circulo = figura(Figura::Elipse, 0.0, 0.0, 100.0, 100.0);
         let v = vec![circulo];
-        assert_eq!(figura_bajo(&v, Punto2::nuevo(50.0, 50.0)), Some(7), "por el hueco");
-        assert_eq!(figura_bajo(&v, Punto2::nuevo(300.0, 300.0)), None, "en el aire");
+        assert_eq!(
+            figura_bajo(&v, Punto2::nuevo(50.0, 50.0)),
+            Some(7),
+            "por el hueco"
+        );
+        assert_eq!(
+            figura_bajo(&v, Punto2::nuevo(300.0, 300.0)),
+            None,
+            "en el aire"
+        );
         // La esquina de la caja no es del circulo.
         assert_eq!(figura_bajo(&v, Punto2::nuevo(3.0, 3.0)), None);
     }
@@ -1070,12 +1104,24 @@ mod pruebas {
         let l = lineas_de_la_guia(&cr, caja);
         assert_eq!(l.len(), 1);
         let (desde, hasta) = l[0];
-        assert!((desde.x - 120.0).abs() < 0.01, "sale del borde derecho de lo mirado: {desde:?}");
-        assert!((hasta.x - 300.0).abs() < 0.01, "llega al borde izquierdo del cristal: {hasta:?}");
+        assert!(
+            (desde.x - 120.0).abs() < 0.01,
+            "sale del borde derecho de lo mirado: {desde:?}"
+        );
+        assert!(
+            (hasta.x - 300.0).abs() < 0.01,
+            "llega al borde izquierdo del cristal: {hasta:?}"
+        );
         // El cono da dos, y el punto una que llega al centro.
-        let cono = Cristal { guia: GuiaDeLupa::DosLineas, ..cr.clone() };
+        let cono = Cristal {
+            guia: GuiaDeLupa::DosLineas,
+            ..cr.clone()
+        };
         assert_eq!(lineas_de_la_guia(&cono, caja).len(), 2);
-        let punto = Cristal { guia: GuiaDeLupa::Punto, ..cr.clone() };
+        let punto = Cristal {
+            guia: GuiaDeLupa::Punto,
+            ..cr.clone()
+        };
         let (p, _) = lineas_de_la_guia(&punto, caja)[0];
         assert!((p.x - 100.0).abs() < 0.01 && (p.y - 100.0).abs() < 0.01);
     }
@@ -1089,7 +1135,12 @@ mod pruebas {
         let caja = (0.0, 0.0, 100.0, 60.0);
         assert!(esta_encima(&cr, caja), "sin foco mira a su centro");
         assert!(lineas_de_la_guia(&cr, caja).is_empty());
-        let o = ordenes_de_la_lupa(&cr, caja, crate::elemento::ColorRgba::opaco(0.0, 0.0, 0.0), 2.0);
+        let o = ordenes_de_la_lupa(
+            &cr,
+            caja,
+            crate::elemento::ColorRgba::opaco(0.0, 0.0, 0.0),
+            2.0,
+        );
         assert_eq!(o.len(), 1, "solo la montura");
         // Apartada: montura, zona, raya y punta.
         let lejos = Cristal {
@@ -1098,7 +1149,12 @@ mod pruebas {
             foco_alto: Some(20.0),
             ..cr
         };
-        let o = ordenes_de_la_lupa(&lejos, caja, crate::elemento::ColorRgba::opaco(0.0, 0.0, 0.0), 2.0);
+        let o = ordenes_de_la_lupa(
+            &lejos,
+            caja,
+            crate::elemento::ColorRgba::opaco(0.0, 0.0, 0.0),
+            2.0,
+        );
         assert_eq!(o.len(), 4, "{o:?}");
     }
 
@@ -1121,7 +1177,10 @@ mod pruebas {
             panic!("volvio como otra cosa: {:?}", e.figura);
         };
         assert_eq!(cristal.guia, GuiaDeLupa::DosLineas);
-        assert_eq!(cristal.forma.as_ref().map(Vec::len), cr.forma.as_ref().map(Vec::len));
+        assert_eq!(
+            cristal.forma.as_ref().map(Vec::len),
+            cr.forma.as_ref().map(Vec::len)
+        );
         assert!((cristal.aumento.unwrap() - 3.0).abs() < 1e-4);
     }
 }

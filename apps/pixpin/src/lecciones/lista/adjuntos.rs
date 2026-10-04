@@ -52,7 +52,9 @@ impl Cache {
     /// no llegaron sincronizando no salen).
     pub fn de(&mut self, raiz: &Path, x: &Entrada, motor: Option<&MotorRender>) -> &Vec<Adjunto> {
         let clave = (x.leccion.id.clone(), x.leccion.adjuntos.clone());
-        self.por_leccion.entry(clave).or_insert_with(|| buscar(raiz, x, motor))
+        self.por_leccion
+            .entry(clave)
+            .or_insert_with(|| buscar(raiz, x, motor))
     }
 
     pub fn olvidar(&mut self, id: &str) {
@@ -87,7 +89,9 @@ fn buscar(raiz: &Path, x: &Entrada, motor: Option<&MotorRender>) -> Vec<Adjunto>
             continue;
         };
         let (bitmap, ancho, alto) = match (clase, motor) {
-            (Clase::Foto, Some(motor)) => miniatura(&ruta, motor).map_or((None, 0, 0), |(b, w, h)| (Some(b), w, h)),
+            (Clase::Foto, Some(motor)) => {
+                miniatura(&ruta, motor).map_or((None, 0, 0), |(b, w, h)| (Some(b), w, h))
+            }
             _ => (None, 0, 0),
         };
         v.push(Adjunto {
@@ -116,7 +120,9 @@ fn miniatura(ruta: &Path, motor: &MotorRender) -> Option<(ID2D1Bitmap1, u32, u32
     } else {
         entera
     };
-    let b = motor.bitmap_desde_pixeles(img.ancho, img.alto, &img.pixeles).ok()?;
+    let b = motor
+        .bitmap_desde_pixeles(img.ancho, img.alto, &img.pixeles)
+        .ok()?;
     Some((b, img.ancho, img.alto))
 }
 
@@ -137,7 +143,12 @@ pub fn recorte(ancho: u32, alto: u32, celda: RectF) -> RectF {
 /// **La tarjeta de una leccion, en PNG**, para pinearla: titulo y los tres
 /// bloques, como en la ficha. Se escribe en la carpeta temporal; la ventana
 /// principal la copia a su pin.
-pub fn tarjeta_png(motor: &MotorRender, d3d: &ID3D11Device, l: &Leccion, textos: &Catalogo) -> Result<PathBuf> {
+pub fn tarjeta_png(
+    motor: &MotorRender,
+    d3d: &ID3D11Device,
+    l: &Leccion,
+    textos: &Catalogo,
+) -> Result<PathBuf> {
     const ANCHO: f32 = 460.0;
     const PAD: f32 = 20.0;
     let interior = ANCHO - 2.0 * PAD;
@@ -156,11 +167,20 @@ pub fn tarjeta_png(motor: &MotorRender, d3d: &ID3D11Device, l: &Leccion, textos:
     }
     alto += PAD - 4.0;
     let (w, h) = (ANCHO.ceil() as u32, alto.ceil() as u32);
-    let fuera = pixpin_render::fuera_de_pantalla::FueraDePantalla::nuevo(motor, d3d, w, h).context("sin superficie")?;
+    let fuera = pixpin_render::fuera_de_pantalla::FueraDePantalla::nuevo(motor, d3d, w, h)
+        .context("sin superficie")?;
     motor
         .dibujar(&fuera.destino, |p| {
             p.limpiar(v2::COLUMNA);
-            p.rellenar(RectF { x: 0.0, y: 0.0, ancho: 4.0, alto }, ui::color_de_gravedad(l.gravedad));
+            p.rellenar(
+                RectF {
+                    x: 0.0,
+                    y: 0.0,
+                    ancho: 4.0,
+                    alto,
+                },
+                ui::color_de_gravedad(l.gravedad),
+            );
             let mut y = PAD;
             ui::negrita(p, &l.titulo, PAD, y, 20.0, interior, v2::TEXTO);
             y += ht + 12.0;
@@ -174,8 +194,12 @@ pub fn tarjeta_png(motor: &MotorRender, d3d: &ID3D11Device, l: &Leccion, textos:
         .context("no se pudo pintar")?;
     fuera.esperar_gpu().context("la GPU no acabo")?;
     let (_, _, pixeles) = fuera.leer_rgba().context("no se pudo leer")?;
-    let png = pixpin_codec::imagen::codificar_png(&pixpin_codec::imagen::ImagenRgba { ancho: w, alto: h, pixeles })
-        .context("no se pudo codificar")?;
+    let png = pixpin_codec::imagen::codificar_png(&pixpin_codec::imagen::ImagenRgba {
+        ancho: w,
+        alto: h,
+        pixeles,
+    })
+    .context("no se pudo codificar")?;
     let carpeta = std::env::temp_dir().join("pixpin-lecciones");
     std::fs::create_dir_all(&carpeta)?;
     let ruta = carpeta.join(format!("{}.png", l.id));
@@ -189,7 +213,12 @@ mod pruebas {
 
     #[test]
     fn la_miniatura_llena_la_celda_sin_deformarse() {
-        let celda = RectF { x: 10.0, y: 10.0, ancho: 112.0, alto: 72.0 };
+        let celda = RectF {
+            x: 10.0,
+            y: 10.0,
+            ancho: 112.0,
+            alto: 72.0,
+        };
         // Una foto alta: se corta arriba y abajo, centrada.
         let r = recorte(240, 320, celda);
         assert!((r.ancho - 240.0).abs() < 0.01);

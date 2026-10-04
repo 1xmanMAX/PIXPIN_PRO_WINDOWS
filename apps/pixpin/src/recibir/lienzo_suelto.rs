@@ -196,7 +196,11 @@ fn proyecto_y_dibujo(raiz: &Path, ruta: &Path) -> Option<(String, String)> {
 fn nombre_de_hoja(nombre: &str, dibujo: &str) -> String {
     let n = nombre.trim();
     let n = n.strip_suffix(".excalidraw").unwrap_or(n).trim();
-    if n == dibujo { String::new() } else { n.to_string() }
+    if n == dibujo {
+        String::new()
+    } else {
+        n.to_string()
+    }
 }
 
 /// Un lienzo del PC como lo manda el movil (`EnviarActivity.deLienzo`):
@@ -221,16 +225,14 @@ pub(crate) fn empaquetar(
                         id: pid.clone(),
                         ..Default::default()
                     });
-                let mensaje = cuaderno::Cuaderno::leer_de(&carpeta)
-                    .ok()
-                    .and_then(|c| {
-                        c.mensajes.into_iter().find(|m| {
-                            m.clase == Some(cuaderno::Clase::Dibujo)
-                                && (m.referencia.as_deref() == Some(dibujo)
-                                    || m.ruta.as_deref()
-                                        == Some(&format!("lienzos/{dibujo}.excalidraw")))
-                        })
-                    });
+                let mensaje = cuaderno::Cuaderno::leer_de(&carpeta).ok().and_then(|c| {
+                    c.mensajes.into_iter().find(|m| {
+                        m.clase == Some(cuaderno::Clase::Dibujo)
+                            && (m.referencia.as_deref() == Some(dibujo)
+                                || m.ruta.as_deref()
+                                    == Some(&format!("lienzos/{dibujo}.excalidraw")))
+                    })
+                });
                 let hoja = base
                     .hojas
                     .iter()
@@ -383,7 +385,10 @@ pub(crate) fn empaquetar(
 /// El nombre del `.pixpin` que sale, el de `deLienzo`: «Proyecto - Hoja».
 pub(crate) fn nombre_del_paquete(e: &Elemento) -> String {
     let proyecto = e.proyecto_nombre.as_deref().unwrap_or("Proyecto");
-    format!("{}.pixpin", envio::nombre_sano(&format!("{proyecto} - {}", e.nombre)))
+    format!(
+        "{}.pixpin",
+        envio::nombre_sano(&format!("{proyecto} - {}", e.nombre))
+    )
 }
 
 /// Deja el paquete de un lienzo en `carpeta` y devuelve lo que se ofrece.
@@ -441,7 +446,11 @@ fn escena_para_el_pc(json: &[u8]) -> Vec<u8> {
     let Ok(Value::Object(mut m)) = serde_json::from_slice::<Value>(json) else {
         return json.to_vec();
     };
-    let Some(papel) = m.get("backgroundColor").and_then(Value::as_str).map(str::to_string) else {
+    let Some(papel) = m
+        .get("backgroundColor")
+        .and_then(Value::as_str)
+        .map(str::to_string)
+    else {
         return json.to_vec();
     };
     let estado = m
@@ -500,7 +509,11 @@ pub(crate) fn guardar(
         } else {
             paquete
         };
-        if let Some(n) = e.proyecto_nombre.as_deref().filter(|n| !n.trim().is_empty()) {
+        if let Some(n) = e
+            .proyecto_nombre
+            .as_deref()
+            .filter(|n| !n.trim().is_empty())
+        {
             p.proyecto.nombre = n.to_string();
         }
         // El papel donde lo lee el PC, en cada lienzo del paquete.
@@ -580,8 +593,17 @@ pub(crate) fn guardar(
     {
         let mut h = hoja.clone();
         h.dibujo = Some(dibujo.clone());
-        match p.hojas.iter_mut().find(|x| x.dibujo.as_deref() == Some(dibujo.as_str())) {
-            Some(x) => *x = Hoja { id: x.id.clone(), ..h },
+        match p
+            .hojas
+            .iter_mut()
+            .find(|x| x.dibujo.as_deref() == Some(dibujo.as_str()))
+        {
+            Some(x) => {
+                *x = Hoja {
+                    id: x.id.clone(),
+                    ..h
+                }
+            }
             None => {
                 if p.hojas.iter().any(|x| x.id == h.id) {
                     h.id = format!("{}-{ahora}", h.id);

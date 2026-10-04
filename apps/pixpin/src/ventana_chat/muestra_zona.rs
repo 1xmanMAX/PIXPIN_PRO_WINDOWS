@@ -16,7 +16,10 @@ use pixpin_render::MotorRender;
 use pixpin_render::fuera_de_pantalla::FueraDePantalla;
 use pixpin_store::{Catalogo, Idioma, Ubicacion};
 
-use super::{CLARO, Lista, Pinta, abrir_proyecto, disponer, fotos_del_historial, papel_de, pintar, pintar_historial, pintar_redaccion};
+use super::{
+    CLARO, Lista, Pinta, abrir_proyecto, disponer, fotos_del_historial, papel_de, pintar,
+    pintar_historial, pintar_redaccion,
+};
 
 /// La foto de una zona: un trozo de plano con dos muros y una cota roja.
 fn foto_de_ejemplo() -> pixpin_codec::ImagenRgba {
@@ -85,9 +88,20 @@ fn muestra_del_chat_con_la_zona() {
     pixpin_proyecto::cuaderno::anadir(&carpeta, &planta).unwrap();
     // La zona, mandada como la manda el editor.
     let textos = Catalogo::nuevo(Idioma::Espanol);
-    let h = crate::zona_al_chat::HojaAbierta::de(&raiz, "casa", &almacen::lienzo(&raiz, "casa", "dib-planta"), &planta);
+    let h = crate::zona_al_chat::HojaAbierta::de(
+        &raiz,
+        "casa",
+        &almacen::lienzo(&raiz, "casa", "dib-planta"),
+        &planta,
+    );
     let mut escena = pixpin_motor2d::Escena::nueva();
-    let dicho = crate::zona_al_chat::mandar_y_marcar(&mut escena, &foto_de_ejemplo(), (0.0, 0.0, 480.0, 300.0), &h, &textos);
+    let dicho = crate::zona_al_chat::mandar_y_marcar(
+        &mut escena,
+        &foto_de_ejemplo(),
+        (0.0, 0.0, 480.0, 300.0),
+        &h,
+        &textos,
+    );
     println!("  {dicho:?}");
 
     let a = abrir_proyecto(&u, &ficha);
@@ -96,8 +110,18 @@ fn muestra_del_chat_con_la_zona() {
     let (ancho, alto) = (1024u32, 720u32);
     let destino = FueraDePantalla::nuevo(&motor, d3.d3d(), ancho, alto).expect("destino");
     let escala = 100;
-    let marco = Rect { x: 0, y: 0, ancho, alto };
-    let d = disponer(marco, escala, pixpin_ui::chat::ancho_inicial(ancho, escala), Some(&a));
+    let marco = Rect {
+        x: 0,
+        y: 0,
+        ancho,
+        alto,
+    };
+    let d = disponer(
+        marco,
+        escala,
+        pixpin_ui::chat::ancho_inicial(ancho, escala),
+        Some(&a),
+    );
     let miniaturas = crate::miniaturas::Miniaturas::nuevo();
     let mut previas = crate::miniaturas::Miniaturas::con_lado(super::PREVIA_LADO);
     let fichas = vec![ficha.clone()];
@@ -123,7 +147,16 @@ fn muestra_del_chat_con_la_zona() {
         };
         motor
             .dibujar(&destino.destino, |p| {
-                pintar(p, &d, &CLARO, papel_de(0, true), escala, &textos, None, &lista);
+                pintar(
+                    p,
+                    &d,
+                    &CLARO,
+                    papel_de(0, true),
+                    escala,
+                    &textos,
+                    None,
+                    &lista,
+                );
                 a.zonas.borrow_mut().clear();
                 let c = Pinta {
                     tema: &CLARO,

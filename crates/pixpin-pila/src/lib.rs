@@ -22,9 +22,7 @@
 pub mod pila;
 pub mod ventana;
 
-pub use pila::{
-    Captura, Copia, Efecto, Esquina, Pila, TOPE_CAPTURAS, rect_del_icono,
-};
+pub use pila::{Captura, Copia, Efecto, Esquina, Pila, TOPE_CAPTURAS, rect_del_icono};
 pub use ventana::{
     AccionPila, ErrorPila, IconoPila, LADO_ICONO_LOGICO, MARGEN_ICONO_LOGICO, TextosPila,
     pintar_pila,

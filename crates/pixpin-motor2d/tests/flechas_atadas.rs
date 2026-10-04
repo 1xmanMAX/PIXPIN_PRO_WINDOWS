@@ -125,10 +125,17 @@ fn dibujar_una_flecha_que_acaba_en_una_caja_la_ata_y_la_caja_la_apunta() {
     let f = dibujar_flecha(&mut escena, (0.0, 50.0), (230.0, 50.0));
 
     let flecha = escena.buscar(f).unwrap();
-    let fin = flecha.extras.enganche_fin.as_ref().expect("la punta tiene que quedar atada");
+    let fin = flecha
+        .extras
+        .enganche_fin
+        .as_ref()
+        .expect("la punta tiene que quedar atada");
     let objetivo = escena.buscar(c).unwrap();
     assert_eq!(fin.elemento, enlace::id_de_texto_de(objetivo));
-    assert!(flecha.extras.enganche_inicio.is_none(), "la salida cae en el vacio");
+    assert!(
+        flecha.extras.enganche_inicio.is_none(),
+        "la salida cae en el vacio"
+    );
     assert_eq!(
         atados_de(&escena, c),
         vec![enlace::id_de_texto_de(flecha)],
@@ -137,7 +144,10 @@ fn dibujar_una_flecha_que_acaba_en_una_caja_la_ata_y_la_caja_la_apunta() {
     // Y la punta se queda DONDE SE SOLTO (lo pidio el usuario el
     // 2026-09-23), no salta al borde como en Excalidraw.
     let punta = *puntos(&escena, f).last().unwrap();
-    assert!(casi(punta, Punto2::nuevo(230.0, 50.0)), "la punta salto: {punta:?}");
+    assert!(
+        casi(punta, Punto2::nuevo(230.0, 50.0)),
+        "la punta salto: {punta:?}"
+    );
 }
 
 #[test]
@@ -168,7 +178,10 @@ fn una_flecha_que_acaba_lejos_de_toda_caja_no_se_ata_a_nada() {
         version_caja,
         "se toco una caja a la que no se ato nada"
     );
-    assert_eq!(*puntos(&escena, f).last().unwrap(), Punto2::nuevo(150.0, 50.0));
+    assert_eq!(
+        *puntos(&escena, f).last().unwrap(),
+        Punto2::nuevo(150.0, 50.0)
+    );
 }
 
 #[test]
@@ -180,7 +193,10 @@ fn una_raya_no_se_ata_aunque_acabe_encima_de_una_caja() {
     let mut g = gesto(Herramienta::Linea);
     pulsar(&mut g, &mut escena, 0.0, 50.0);
     mover(&mut g, &mut escena, 230.0, 50.0);
-    assert!(g.candidatas.iter().all(Option::is_none), "una raya no resalta nada");
+    assert!(
+        g.candidatas.iter().all(Option::is_none),
+        "una raya no resalta nada"
+    );
     soltar(&mut g, &mut escena, 230.0, 50.0);
     assert!(atados_de(&escena, c).is_empty());
 }
@@ -191,7 +207,10 @@ fn mientras_se_dibuja_se_resalta_la_caja_a_la_que_se_va_a_atar() {
     let c = escena.anadir(caja(200.0, 0.0, 100.0, 100.0));
     let mut g = gesto(Herramienta::Flecha);
     pulsar(&mut g, &mut escena, 0.0, 50.0);
-    assert!(g.resaltado_de_union(&escena, 1.0).is_empty(), "sale del vacio");
+    assert!(
+        g.resaltado_de_union(&escena, 1.0).is_empty(),
+        "sale del vacio"
+    );
 
     mover(&mut g, &mut escena, 230.0, 50.0);
     assert_eq!(g.candidatas[1], Some(c));
@@ -226,7 +245,11 @@ fn al_mover_la_caja_la_flecha_la_sigue_en_cada_aviso_y_no_solo_al_soltar() {
     let mut g = gesto(Herramienta::Mano);
     g.seleccion.poner(c);
     pulsar(&mut g, &mut escena, 200.0, 20.0);
-    assert_eq!(g.flechas_que_siguen(), &[f], "la flecha no se apunto al pulsar");
+    assert_eq!(
+        g.flechas_que_siguen(),
+        &[f],
+        "la flecha no se apunto al pulsar"
+    );
     for paso in 1..=10 {
         mover(&mut g, &mut escena, 200.0, 50.0 + paso as f32 * 20.0);
         let ahora = puntos(&escena, f);
@@ -240,7 +263,10 @@ fn al_mover_la_caja_la_flecha_la_sigue_en_cada_aviso_y_no_solo_al_soltar() {
         assert_eq!(ahora[0], antes[0], "aviso {paso}: la salida se movio");
     }
     soltar(&mut g, &mut escena, 200.0, 250.0);
-    assert!(g.flechas_que_siguen().is_empty(), "la lista sobrevivio al gesto");
+    assert!(
+        g.flechas_que_siguen().is_empty(),
+        "la lista sobrevivio al gesto"
+    );
     // Sigue atada despues de soltar.
     assert!(escena.buscar(f).unwrap().extras.enganche_fin.is_some());
 
@@ -306,14 +332,23 @@ fn arrastrar_la_punta_fuera_de_la_caja_suelta_la_union_y_la_caja_la_olvida() {
 
     let mut g = gesto(Herramienta::Mano);
     g.seleccion.poner(f);
-    assert!(g.tiradores_de_punta(&escena, 1.0).is_some(), "sin puntos que coger");
+    assert!(
+        g.tiradores_de_punta(&escena, 1.0).is_some(),
+        "sin puntos que coger"
+    );
     pulsar(&mut g, &mut escena, punta.x, punta.y);
     mover(&mut g, &mut escena, 120.0, 200.0);
     soltar(&mut g, &mut escena, 120.0, 200.0);
 
     let flecha = escena.buscar(f).unwrap();
-    assert!(flecha.extras.enganche_fin.is_none(), "la punta sigue atada lejos de la caja");
-    assert_eq!(*puntos(&escena, f).last().unwrap(), Punto2::nuevo(120.0, 200.0));
+    assert!(
+        flecha.extras.enganche_fin.is_none(),
+        "la punta sigue atada lejos de la caja"
+    );
+    assert_eq!(
+        *puntos(&escena, f).last().unwrap(),
+        Punto2::nuevo(120.0, 200.0)
+    );
     assert!(
         atados_de(&escena, c).is_empty(),
         "la caja sigue creyendo que la flecha es suya"
@@ -340,7 +375,11 @@ fn arrastrar_la_punta_de_una_flecha_suelta_hasta_una_caja_la_ata() {
     g.seleccion.poner(f);
     pulsar(&mut g, &mut escena, 120.0, 50.0);
     mover(&mut g, &mut escena, 240.0, 40.0);
-    assert_eq!(g.candidatas[1], Some(c), "al arrastrar la punta no se resalta la caja");
+    assert_eq!(
+        g.candidatas[1],
+        Some(c),
+        "al arrastrar la punta no se resalta la caja"
+    );
     soltar(&mut g, &mut escena, 240.0, 40.0);
     assert!(escena.buscar(f).unwrap().extras.enganche_fin.is_some());
     assert_eq!(atados_de(&escena, c).len(), 1);
@@ -357,7 +396,11 @@ fn deshacer_la_flecha_atada_deja_la_caja_como_estaba() {
     assert_eq!(atados_de(&escena, c).len(), 1);
     assert!(escena.deshacer(), "dibujar la flecha no dejo paso");
     assert!(escena.buscar(f).is_none_or(|e| e.borrado));
-    assert_eq!(escena.buscar(c).unwrap(), &caja_antes, "un Ctrl+Z dejo la caja atada");
+    assert_eq!(
+        escena.buscar(c).unwrap(),
+        &caja_antes,
+        "un Ctrl+Z dejo la caja atada"
+    );
     // Y rehacer lo devuelve todo.
     assert!(escena.rehacer());
     assert_eq!(atados_de(&escena, c).len(), 1);
@@ -473,11 +516,15 @@ fn en_un_dibujo_del_movil_la_flecha_sigue_a_la_caja_que_se_mueve() {
 
     // Y vuelve al movil con los nombres y las formas de siempre: puntos
     // como objetos, ataduras por el id de texto, `boundElements` intacto.
-    let json: serde_json::Value =
-        serde_json::from_str(&excalidraw::escribir(&excalidraw::con_escena(&lienzo, &escena)))
-            .unwrap();
+    let json: serde_json::Value = serde_json::from_str(&excalidraw::escribir(
+        &excalidraw::con_escena(&lienzo, &escena),
+    ))
+    .unwrap();
     let f = por_id(&json, "flecha-1");
-    assert!(f["points"][0].is_object(), "los puntos del movil dejaron de ser objetos");
+    assert!(
+        f["points"][0].is_object(),
+        "los puntos del movil dejaron de ser objetos"
+    );
     assert_eq!(f["startBinding"]["elementId"], "caja-a");
     assert_eq!(f["endBinding"]["elementId"], "caja-b");
     assert_eq!(f["endBinding"]["mode"], "orbit");
@@ -496,16 +543,26 @@ fn una_flecha_nueva_atada_a_una_caja_del_movil_viaja_con_los_ids_del_fichero() {
     let nueva = dibujar_flecha(&mut escena, (50.0, 300.0), (50.0, 58.0));
     assert!(escena.buscar(nueva).unwrap().extras.enganche_fin.is_some());
 
-    let json: serde_json::Value =
-        serde_json::from_str(&excalidraw::escribir(&excalidraw::con_escena(&lienzo, &escena)))
-            .unwrap();
+    let json: serde_json::Value = serde_json::from_str(&excalidraw::escribir(
+        &excalidraw::con_escena(&lienzo, &escena),
+    ))
+    .unwrap();
     let texto_nueva = enlace::id_de_texto(nueva);
     let f = por_id(&json, &texto_nueva);
     assert_eq!(f["type"], "arrow");
-    assert_eq!(f["endBinding"]["elementId"], "caja-a", "ata al id del fichero");
+    assert_eq!(
+        f["endBinding"]["elementId"], "caja-a",
+        "ata al id del fichero"
+    );
     assert!(f["startBinding"].is_null());
-    assert!(f["points"][0].is_object(), "en un lienzo del movil los puntos van como objetos");
-    let atados = por_id(&json, "caja-a")["boundElements"].as_array().unwrap().clone();
+    assert!(
+        f["points"][0].is_object(),
+        "en un lienzo del movil los puntos van como objetos"
+    );
+    let atados = por_id(&json, "caja-a")["boundElements"]
+        .as_array()
+        .unwrap()
+        .clone();
     assert!(atados.contains(&serde_json::json!({"id": "flecha-1", "type": "arrow"})));
     assert!(
         atados.contains(&serde_json::json!({"id": texto_nueva, "type": "arrow"})),
@@ -564,13 +621,25 @@ fn la_punta_se_ata_dentro_justo_donde_se_solto() {
     let c = escena.anadir(caja(200.0, 0.0, 100.0, 100.0));
     let f = dibujar_flecha(&mut escena, (0.0, 50.0), (240.0, 30.0));
 
-    let fin = escena.buscar(f).unwrap().extras.enganche_fin.clone().expect("atada");
+    let fin = escena
+        .buscar(f)
+        .unwrap()
+        .extras
+        .enganche_fin
+        .clone()
+        .expect("atada");
     assert_eq!(fin.modo, ModoEnganche::Dentro);
     let (fx, fy) = fin.punto_fijo.expect("dentro guarda el punto agarrado");
-    assert!((fx - 0.4).abs() < 1e-3 && (fy - 0.3).abs() < 1e-3, "{fx},{fy}");
+    assert!(
+        (fx - 0.4).abs() < 1e-3 && (fy - 0.3).abs() < 1e-3,
+        "{fx},{fy}"
+    );
     // No salta al borde: se queda donde se solto.
     let punta = *puntos(&escena, f).last().unwrap();
-    assert!(casi(punta, Punto2::nuevo(240.0, 30.0)), "la punta salto: {punta:?}");
+    assert!(
+        casi(punta, Punto2::nuevo(240.0, 30.0)),
+        "la punta salto: {punta:?}"
+    );
     assert_eq!(atados_de(&escena, c).len(), 1, "la caja no la apunta");
 }
 
@@ -581,7 +650,10 @@ fn la_punta_atada_dentro_sigue_al_mismo_sitio_de_la_caja_al_moverla() {
     let f = dibujar_flecha(&mut escena, (0.0, 50.0), (240.0, 30.0));
     arrastrar(&mut escena, c, (200.0, 70.0), (50.0, 100.0));
     let punta = *puntos(&escena, f).last().unwrap();
-    assert!(casi(punta, Punto2::nuevo(290.0, 130.0)), "no siguio su sitio: {punta:?}");
+    assert!(
+        casi(punta, Punto2::nuevo(290.0, 130.0)),
+        "no siguio su sitio: {punta:?}"
+    );
 }
 
 #[test]
@@ -590,7 +662,13 @@ fn con_alt_la_misma_suelta_se_ata_en_orbita_al_borde() {
     let mut escena = Escena::nueva();
     escena.anadir(caja(200.0, 0.0, 100.0, 100.0));
     let f = dibujar_flecha_con_alt(&mut escena, (0.0, 50.0), (240.0, 30.0));
-    let fin = escena.buscar(f).unwrap().extras.enganche_fin.clone().expect("atada");
+    let fin = escena
+        .buscar(f)
+        .unwrap()
+        .extras
+        .enganche_fin
+        .clone()
+        .expect("atada");
     assert_eq!(fin.modo, ModoEnganche::Orbita);
     let punta = *puntos(&escena, f).last().unwrap();
     assert!(punta.x < 200.0, "en orbita la punta va al borde: {punta:?}");
@@ -615,9 +693,18 @@ fn arrastrar_la_punta_de_una_flecha_suelta_la_ata_dentro_donde_se_suelta() {
     pulsar(&mut g, &mut escena, 120.0, 50.0);
     mover(&mut g, &mut escena, 260.0, 80.0);
     soltar(&mut g, &mut escena, 260.0, 80.0);
-    let fin = escena.buscar(f).unwrap().extras.enganche_fin.clone().expect("atada");
+    let fin = escena
+        .buscar(f)
+        .unwrap()
+        .extras
+        .enganche_fin
+        .clone()
+        .expect("atada");
     assert_eq!(fin.modo, ModoEnganche::Dentro);
-    assert!(casi(*puntos(&escena, f).last().unwrap(), Punto2::nuevo(260.0, 80.0)));
+    assert!(casi(
+        *puntos(&escena, f).last().unwrap(),
+        Punto2::nuevo(260.0, 80.0)
+    ));
 }
 
 #[test]
@@ -626,13 +713,16 @@ fn la_punta_dentro_viaja_al_movil_como_inside_con_su_fixed_point() {
     let mut escena = excalidraw::a_escena(&lienzo);
     // Dentro de la caja B (300..400 x 0..60).
     let nueva = dibujar_flecha(&mut escena, (350.0, 300.0), (325.0, 30.0));
-    let json: serde_json::Value =
-        serde_json::from_str(&excalidraw::escribir(&excalidraw::con_escena(&lienzo, &escena)))
-            .unwrap();
+    let json: serde_json::Value = serde_json::from_str(&excalidraw::escribir(
+        &excalidraw::con_escena(&lienzo, &escena),
+    ))
+    .unwrap();
     let f = por_id(&json, &enlace::id_de_texto(nueva));
     assert_eq!(f["endBinding"]["elementId"], "caja-b");
     assert_eq!(f["endBinding"]["mode"], "inside");
-    let fijo = f["endBinding"]["fixedPoint"].as_array().expect("fixedPoint [x, y]");
+    let fijo = f["endBinding"]["fixedPoint"]
+        .as_array()
+        .expect("fixedPoint [x, y]");
     assert!((fijo[0].as_f64().unwrap() - 0.25).abs() < 1e-3);
     assert!((fijo[1].as_f64().unwrap() - 0.5).abs() < 1e-3);
 }
@@ -657,11 +747,22 @@ fn alinear_la_caja_se_lleva_su_flecha_y_un_ctrl_z_devuelve_las_dos() {
 
     organizar::alinear(&mut escena, &seleccion(&[c, d]), Alineacion::Abajo);
     let punta = *puntos(&escena, f).last().unwrap();
-    assert!(punta.y > 150.0, "la flecha no siguio a la caja alineada: {punta:?}");
-    assert_eq!(puntos(&escena, f)[0], antes[0], "la salida suelta no se mueve");
+    assert!(
+        punta.y > 150.0,
+        "la flecha no siguio a la caja alineada: {punta:?}"
+    );
+    assert_eq!(
+        puntos(&escena, f)[0],
+        antes[0],
+        "la salida suelta no se mueve"
+    );
 
     assert!(escena.deshacer());
-    assert_eq!(puntos(&escena, f), antes, "hizo falta un segundo Ctrl+Z para la flecha");
+    assert_eq!(
+        puntos(&escena, f),
+        antes,
+        "hizo falta un segundo Ctrl+Z para la flecha"
+    );
     assert_eq!(escena.buscar(c).unwrap().y, 0.0);
 }
 
@@ -678,7 +779,10 @@ fn repartir_tambien_se_lleva_las_flechas_atadas() {
     organizar::repartir(&mut escena, &seleccion(&[a, b, c]), Reparto::Horizontal);
     // B pasa a estar centrada en 225: la punta va con ella.
     let punta = *puntos(&escena, f).last().unwrap();
-    assert!(punta.x > 180.0, "la flecha se quedo donde estaba B: {punta:?}");
+    assert!(
+        punta.x > 180.0,
+        "la flecha se quedo donde estaba B: {punta:?}"
+    );
 }
 
 #[test]
@@ -692,7 +796,10 @@ fn alinear_una_flecha_lejos_de_su_caja_la_suelta() {
     let f = dibujar_flecha(&mut escena, (0.0, 50.0), (230.0, 50.0));
     organizar::alinear(&mut escena, &seleccion(&[f, d]), Alineacion::Abajo);
     assert!(escena.buscar(f).unwrap().extras.enganche_fin.is_none());
-    assert!(atados_de(&escena, c).is_empty(), "la caja sigue apuntando la flecha");
+    assert!(
+        atados_de(&escena, c).is_empty(),
+        "la caja sigue apuntando la flecha"
+    );
 }
 
 #[test]
@@ -723,7 +830,10 @@ fn voltear_en(escena: &mut Escena, ids: &[u64]) {
         .filter(|(_, e)| ids.contains(&e.id))
         .map(|(i, _)| i)
         .collect();
-    let mut copia: Vec<Elemento> = sitios.iter().map(|&i| escena.elementos[i].clone()).collect();
+    let mut copia: Vec<Elemento> = sitios
+        .iter()
+        .map(|&i| escena.elementos[i].clone())
+        .collect();
     transformar::voltear(&mut copia, EjeVolteo::Horizontal);
     for (&i, e) in sitios.iter().zip(copia) {
         escena.elementos[i] = e;
@@ -742,10 +852,16 @@ fn voltear_las_cajas_se_lleva_la_flecha_que_cuelga_de_ellas() {
     voltear_en(&mut escena, &[c, d]);
     // C paso a 400..500: la punta va con ella.
     let punta = *puntos(&escena, f).last().unwrap();
-    assert!(punta.x > 380.0, "la flecha se quedo en el sitio viejo de C: {punta:?}");
+    assert!(
+        punta.x > 380.0,
+        "la flecha se quedo en el sitio viejo de C: {punta:?}"
+    );
     assert!(escena.deshacer());
     assert_eq!(escena.buscar(c).unwrap().x, 200.0);
-    assert!(puntos(&escena, f).last().unwrap().x < 300.0, "Ctrl+Z dejo la flecha volteada");
+    assert!(
+        puntos(&escena, f).last().unwrap().x < 300.0,
+        "Ctrl+Z dejo la flecha volteada"
+    );
 }
 
 #[test]
@@ -757,13 +873,22 @@ fn voltear_la_flecha_con_su_caja_la_deja_atada_al_lado_nuevo() {
     let c = escena.anadir(caja(200.0, 0.0, 100.0, 100.0));
     let f = dibujar_flecha(&mut escena, (0.0, 50.0), (240.0, 30.0));
     voltear_en(&mut escena, &[c, f]);
-    let fin = escena.buscar(f).unwrap().extras.enganche_fin.clone().expect("sigue atada");
+    let fin = escena
+        .buscar(f)
+        .unwrap()
+        .extras
+        .enganche_fin
+        .clone()
+        .expect("sigue atada");
     let (fx, _) = fin.punto_fijo.unwrap();
     assert!((fx - 0.6).abs() < 1e-3, "el punto fijo no se volteo: {fx}");
     let (x0, ..) = escena.buscar(c).unwrap().caja();
     arrastrar(&mut escena, c, (x0, 70.0), (0.0, 100.0));
     let punta = *puntos(&escena, f).last().unwrap();
-    assert!(casi(punta, Punto2::nuevo(x0 + 60.0, 130.0)), "la punta salto: {punta:?}");
+    assert!(
+        casi(punta, Punto2::nuevo(x0 + 60.0, 130.0)),
+        "la punta salto: {punta:?}"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -792,7 +917,10 @@ fn borrar_la_caja_suelta_la_flecha_y_un_ctrl_z_la_vuelve_a_atar() {
     assert_eq!(puntos(&escena, f), puntos_antes, "soltarla no la mueve");
 
     assert!(escena.deshacer(), "no quedo paso");
-    assert_eq!(escena.buscar(f).unwrap().extras.enganche_fin, enganche_antes);
+    assert_eq!(
+        escena.buscar(f).unwrap().extras.enganche_fin,
+        enganche_antes
+    );
     assert!(!escena.buscar(c).unwrap().borrado);
 }
 
@@ -802,9 +930,16 @@ fn borrar_la_flecha_la_quita_de_la_lista_de_su_caja() {
     let c = escena.anadir(caja(200.0, 0.0, 100.0, 100.0));
     let f = dibujar_flecha(&mut escena, (0.0, 50.0), (230.0, 50.0));
     suprimir(&mut escena, &[f]);
-    assert!(atados_de(&escena, c).is_empty(), "la caja apunta una flecha borrada");
+    assert!(
+        atados_de(&escena, c).is_empty(),
+        "la caja apunta una flecha borrada"
+    );
     assert!(escena.deshacer());
-    assert_eq!(atados_de(&escena, c).len(), 1, "Ctrl+Z no devolvio la atadura");
+    assert_eq!(
+        atados_de(&escena, c).len(),
+        1,
+        "Ctrl+Z no devolvio la atadura"
+    );
 }
 
 #[test]
@@ -843,12 +978,16 @@ fn borrar_una_caja_del_movil_deja_su_flecha_sin_esa_union_en_el_fichero() {
         .unwrap()
         .id;
     suprimir(&mut escena, &[caja_a]);
-    let json: serde_json::Value =
-        serde_json::from_str(&excalidraw::escribir(&excalidraw::con_escena(&lienzo, &escena)))
-            .unwrap();
+    let json: serde_json::Value = serde_json::from_str(&excalidraw::escribir(
+        &excalidraw::con_escena(&lienzo, &escena),
+    ))
+    .unwrap();
     let f = por_id(&json, "flecha-1");
     assert!(f["startBinding"].is_null(), "sigue atada a la caja borrada");
-    assert_eq!(f["endBinding"]["elementId"], "caja-b", "la otra punta no se toca");
+    assert_eq!(
+        f["endBinding"]["elementId"], "caja-b",
+        "la otra punta no se toca"
+    );
 }
 
 /// El caso del usuario, tal cual: «si inicie al centro de una figura ahi se
@@ -862,16 +1001,28 @@ fn la_flecha_se_queda_en_el_centro_y_en_la_esquina_donde_se_puso_al_mover_las_ca
     // dentro, que es donde cae el raton al apuntar a una esquina).
     let f = dibujar_flecha(&mut escena, (50.0, 50.0), (303.0, 203.0));
     let flecha = escena.buscar(f).unwrap();
-    assert!(flecha.extras.enganche_inicio.is_some(), "la salida no se sujeto al centro");
-    assert!(flecha.extras.enganche_fin.is_some(), "la punta no se sujeto a la esquina");
+    assert!(
+        flecha.extras.enganche_inicio.is_some(),
+        "la salida no se sujeto al centro"
+    );
+    assert!(
+        flecha.extras.enganche_fin.is_some(),
+        "la punta no se sujeto a la esquina"
+    );
 
     // Se cogen por el borde, lejos de los tiradores: por el del medio de
     // un lado se estirarian en vez de moverse.
     arrastrar(&mut escena, a, (0.0, 20.0), (40.0, -30.0));
     arrastrar(&mut escena, b, (400.0, 220.0), (-60.0, 80.0));
     let p = puntos(&escena, f);
-    assert!(casi(p[0], Punto2::nuevo(90.0, 20.0)), "la salida no sigue al centro: {:?}", p[0]);
+    assert!(
+        casi(p[0], Punto2::nuevo(90.0, 20.0)),
+        "la salida no sigue al centro: {:?}",
+        p[0]
+    );
     let fin = *p.last().unwrap();
-    assert!(casi(fin, Punto2::nuevo(243.0, 283.0)), "la punta no sigue a la esquina: {fin:?}");
+    assert!(
+        casi(fin, Punto2::nuevo(243.0, 283.0)),
+        "la punta no sigue a la esquina: {fin:?}"
+    );
 }
-

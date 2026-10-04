@@ -43,7 +43,8 @@ use pixpin_render::lectura::{Alineacion, LetraDeLectura, Medida};
 /// incrustadas; Courier New avanza lo mismo que Droid Sans Mono (0,6 em); la
 /// cursiva de Android (Dancing Script) no viene, y Caveat es la letra a mano
 /// que ya trae la aplicacion.
-pub(crate) const FAMILIAS: [&str; lectura::TIPOS] = ["Noto Serif", "Roboto", "Courier New", "Caveat"];
+pub(crate) const FAMILIAS: [&str; lectura::TIPOS] =
+    ["Noto Serif", "Roboto", "Courier New", "Caveat"];
 
 /// Con que letra va un bloque.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -218,7 +219,9 @@ pub(crate) fn letra_del_cuerpo(hoja: Hoja, a: &lectura::Ajustes) -> f32 {
 pub(crate) fn caja_de_texto(hoja: Hoja, a: &lectura::Ajustes, columna: f32) -> (f32, f32) {
     let css = hoja.css();
     // `max-width` es de la caja de contenido: el relleno va por fuera.
-    let texto = (columna - 2.0 * css.lado).min(css.ancho_max_em * letra_del_cuerpo(hoja, a)).max(1.0);
+    let texto = (columna - 2.0 * css.lado)
+        .min(css.ancho_max_em * letra_del_cuerpo(hoja, a))
+        .max(1.0);
     let x = (columna - texto - 2.0 * css.lado) / 2.0 + css.lado;
     (x, texto)
 }
@@ -276,7 +279,10 @@ pub(crate) fn texto_de(trozos: &[Trozo]) -> (String, Vec<Tramo>) {
                 }
             }
         }
-        limpios.push(Trozo { texto: s, estilo: t.estilo });
+        limpios.push(Trozo {
+            texto: s,
+            estilo: t.estilo,
+        });
     }
     if let Some(ultimo) = limpios.iter_mut().rev().find(|t| !t.texto.is_empty())
         && ultimo.texto.ends_with(' ')
@@ -346,7 +352,11 @@ impl Obra<'_, '_> {
         };
         let y = self.flujo.bloque(arriba, alto, abajo);
         self.salida.push(Colocado {
-            texto: if texto.trim().is_empty() { String::new() } else { texto },
+            texto: if texto.trim().is_empty() {
+                String::new()
+            } else {
+                texto
+            },
             tramos,
             clase,
             tam,
@@ -387,26 +397,60 @@ pub(crate) fn colocar(
         ancho,
         mide,
         // El relleno de arriba de `main`: el primer margen no lo cruza.
-        flujo: Flujo { y: css.arriba, margen: 0.0 },
+        flujo: Flujo {
+            y: css.arriba,
+            margen: 0.0,
+        },
         salida: Vec::with_capacity(doc.bloques.len() + 2),
     };
 
     // La cabecera del libro: su titulo centrado y el autor en cursiva.
     if css.cabecera && !doc.titulo.trim().is_empty() {
         let tam = base * 1.9;
-        let letra = Letra { peso: fuerte, interlineado: 1.2, alineacion: Alineacion::Centro, ..cuerpo };
+        let letra = Letra {
+            peso: fuerte,
+            interlineado: 1.2,
+            alineacion: Alineacion::Centro,
+            ..cuerpo
+        };
         let (texto, tramos) = (doc.titulo.trim().to_string(), Vec::new());
-        o.parrafo(texto, tramos, Clase::Titulo(1), tam, letra, (x, ancho), (base * 2.0, tam * 0.35), TEXTO, None);
+        o.parrafo(
+            texto,
+            tramos,
+            Clase::Titulo(1),
+            tam,
+            letra,
+            (x, ancho),
+            (base * 2.0, tam * 0.35),
+            TEXTO,
+            None,
+        );
         if !doc.autor.trim().is_empty() {
             let texto = doc.autor.trim().to_string();
             let largo = texto.encode_utf16().count() as u32;
             let tramos = vec![Tramo {
                 inicio: 0,
                 longitud: largo,
-                estilo: EstiloTexto { cursiva: true, ..EstiloTexto::default() },
+                estilo: EstiloTexto {
+                    cursiva: true,
+                    ..EstiloTexto::default()
+                },
             }];
-            let letra = Letra { alineacion: Alineacion::Centro, ..cuerpo };
-            o.parrafo(texto, tramos, Clase::Nota, base, letra, (x, ancho), (0.0, 0.0), APAGADO, None);
+            let letra = Letra {
+                alineacion: Alineacion::Centro,
+                ..cuerpo
+            };
+            o.parrafo(
+                texto,
+                tramos,
+                Clase::Nota,
+                base,
+                letra,
+                (x, ancho),
+                (0.0, 0.0),
+                APAGADO,
+                None,
+            );
         }
         // El margen de abajo de la cabecera.
         o.flujo.margen = o.flujo.margen.max(base);
@@ -432,10 +476,13 @@ pub(crate) fn colocar(
                 // La raya de arriba del capitulo y su relleno.
                 let (margen, relleno) = css.capitulo.unwrap_or((2.5, 2.0));
                 let y = o.flujo.bloque(base * margen, RAYA + base * relleno, 0.0);
-                o.salida.push(raya(Clase::Capitulo, x, ancho, y, Some(i), cuerpo));
+                o.salida
+                    .push(raya(Clase::Capitulo, x, ancho, y, Some(i), cuerpo));
             }
             Clase::Regla | Clase::Capitulo => {
-                let y = o.flujo.bloque(base * css.regla_em, css.regla_alto, base * css.regla_em);
+                let y = o
+                    .flujo
+                    .bloque(base * css.regla_em, css.regla_alto, base * css.regla_em);
                 o.salida.push(raya(b.clase, x, ancho, y, Some(i), cuerpo));
             }
             Clase::Nota if b.texto() == MARCA_IMAGEN => {
@@ -453,13 +500,29 @@ pub(crate) fn colocar(
                 };
                 let (texto, tramos) = texto_de(&b.trozos);
                 let margenes = (tam * css.titulo_arriba_em, tam * css.titulo_abajo_em);
-                o.parrafo(texto, tramos, b.clase, tam, letra, (x, ancho), margenes, TEXTO, Some(i));
+                o.parrafo(
+                    texto,
+                    tramos,
+                    b.clase,
+                    tam,
+                    letra,
+                    (x, ancho),
+                    margenes,
+                    TEXTO,
+                    Some(i),
+                );
             }
             Clase::Lista => {
                 let (texto, tramos) = texto_de(&b.trozos);
                 // La vineta va delante, en el renglon: corre los tramos.
                 let texto = format!("• {texto}");
-                let tramos = tramos.into_iter().map(|t| Tramo { inicio: t.inicio + 2, ..t }).collect();
+                let tramos = tramos
+                    .into_iter()
+                    .map(|t| Tramo {
+                        inicio: t.inicio + 2,
+                        ..t
+                    })
+                    .collect();
                 let sangria = base * css.lista_sangria_em + css.lista_sangria_px;
                 // En el libro los puntos seguidos son una lista: su margen
                 // va antes del primero y despues del ultimo.
@@ -467,10 +530,19 @@ pub(crate) fn colocar(
                     (base * css.lista_em, base * css.lista_em)
                 } else {
                     let antes = i > 0 && doc.bloques[i - 1].clase == Clase::Lista;
-                    let despues = doc.bloques.get(i + 1).is_some_and(|s| s.clase == Clase::Lista);
-                    (if antes { 0.0 } else { base }, if despues { 0.0 } else { base })
+                    let despues = doc
+                        .bloques
+                        .get(i + 1)
+                        .is_some_and(|s| s.clase == Clase::Lista);
+                    (
+                        if antes { 0.0 } else { base },
+                        if despues { 0.0 } else { base },
+                    )
                 };
-                let letra = Letra { alineacion: alineacion(b.alineacion), ..cuerpo };
+                let letra = Letra {
+                    alineacion: alineacion(b.alineacion),
+                    ..cuerpo
+                };
                 o.parrafo(
                     texto,
                     tramos,
@@ -502,16 +574,47 @@ pub(crate) fn colocar(
                 // `pre` no esta en la lista de `Lectura.estilo`: se queda en
                 // la de ancho fijo del navegador, a 13 px (por el tamano).
                 let tam = 13.0 * ajustes.tamano as f32 / 100.0;
-                let letra = Letra { familia: pixpin_render::lectura::LETRA_FIJA, peso: 400, ..cuerpo };
+                let letra = Letra {
+                    familia: pixpin_render::lectura::LETRA_FIJA,
+                    peso: 400,
+                    ..cuerpo
+                };
                 let (texto, tramos) = texto_de(&b.trozos);
-                o.parrafo(texto, tramos, b.clase, tam, letra, (x, ancho), (tam, tam), TEXTO, Some(i));
+                o.parrafo(
+                    texto,
+                    tramos,
+                    b.clase,
+                    tam,
+                    letra,
+                    (x, ancho),
+                    (tam, tam),
+                    TEXTO,
+                    Some(i),
+                );
             }
             Clase::Parrafo | Clase::Nota => {
                 let (texto, tramos) = texto_de(&b.trozos);
-                let color = if b.clase == Clase::Nota { APAGADO } else { TEXTO };
-                let letra = Letra { alineacion: alineacion(b.alineacion), ..cuerpo };
+                let color = if b.clase == Clase::Nota {
+                    APAGADO
+                } else {
+                    TEXTO
+                };
+                let letra = Letra {
+                    alineacion: alineacion(b.alineacion),
+                    ..cuerpo
+                };
                 let m = base * css.parrafo_em;
-                o.parrafo(texto, tramos, b.clase, base, letra, (x, ancho), (m, m), color, Some(i));
+                o.parrafo(
+                    texto,
+                    tramos,
+                    b.clase,
+                    base,
+                    letra,
+                    (x, ancho),
+                    (m, m),
+                    color,
+                    Some(i),
+                );
             }
         }
         i += 1;
@@ -546,10 +649,22 @@ fn raya(clase: Clase, x: f32, ancho: f32, y: f32, bloque: Option<usize>, letra: 
 /// **Lo que mide una imagen** por su cabecera, sin descodificarla: PNG, GIF,
 /// BMP, JPEG y WebP, que son las que pinta el `WebView`.
 pub(crate) fn medidas_de_imagen(d: &[u8]) -> Option<(u32, u32)> {
-    let u32be = |i: usize| d.get(i..i + 4).map(|b| u32::from_be_bytes([b[0], b[1], b[2], b[3]]));
-    let u16be = |i: usize| d.get(i..i + 2).map(|b| u32::from(u16::from_be_bytes([b[0], b[1]])));
-    let u16le = |i: usize| d.get(i..i + 2).map(|b| u32::from(u16::from_le_bytes([b[0], b[1]])));
-    let i32le = |i: usize| d.get(i..i + 4).map(|b| i32::from_le_bytes([b[0], b[1], b[2], b[3]]).unsigned_abs());
+    let u32be = |i: usize| {
+        d.get(i..i + 4)
+            .map(|b| u32::from_be_bytes([b[0], b[1], b[2], b[3]]))
+    };
+    let u16be = |i: usize| {
+        d.get(i..i + 2)
+            .map(|b| u32::from(u16::from_be_bytes([b[0], b[1]])))
+    };
+    let u16le = |i: usize| {
+        d.get(i..i + 2)
+            .map(|b| u32::from(u16::from_le_bytes([b[0], b[1]])))
+    };
+    let i32le = |i: usize| {
+        d.get(i..i + 4)
+            .map(|b| i32::from_le_bytes([b[0], b[1], b[2], b[3]]).unsigned_abs())
+    };
     let medidas = if d.starts_with(b"\x89PNG") {
         (u32be(16)?, u32be(20)?)
     } else if d.starts_with(b"GIF8") {
@@ -559,7 +674,10 @@ pub(crate) fn medidas_de_imagen(d: &[u8]) -> Option<(u32, u32)> {
     } else if d.starts_with(b"RIFF") && d.get(8..12) == Some(b"WEBP") {
         match d.get(12..16)? {
             b"VP8X" => {
-                let tres = |i: usize| d.get(i..i + 3).map(|b| u32::from_le_bytes([b[0], b[1], b[2], 0]) + 1);
+                let tres = |i: usize| {
+                    d.get(i..i + 3)
+                        .map(|b| u32::from_le_bytes([b[0], b[1], b[2], 0]) + 1)
+                };
                 (tres(24)?, tres(27)?)
             }
             b"VP8L" => {
@@ -650,12 +768,18 @@ fn parrafos_de_celda(c: &Celda) -> Vec<(String, Vec<Tramo>)> {
         if let Some(primera) = partes.next()
             && !primera.is_empty()
         {
-            parrafos.last_mut().expect("siempre hay uno").push(Trozo { texto: primera.to_string(), estilo: t.estilo });
+            parrafos.last_mut().expect("siempre hay uno").push(Trozo {
+                texto: primera.to_string(),
+                estilo: t.estilo,
+            });
         }
         for parte in partes {
             parrafos.push(Vec::new());
             if !parte.is_empty() {
-                parrafos.last_mut().expect("siempre hay uno").push(Trozo { texto: parte.to_string(), estilo: t.estilo });
+                parrafos.last_mut().expect("siempre hay uno").push(Trozo {
+                    texto: parte.to_string(),
+                    estilo: t.estilo,
+                });
             }
         }
     }
@@ -691,10 +815,15 @@ pub(crate) fn repartir_columnas(minimo: &[f32], maximo: &[f32], disponible: f32)
 fn tabla(o: &mut Obra, doc: &Documento, desde: usize, hasta: usize) {
     let base = o.base;
     let cuerpo = o.cuerpo;
-    let filas: Vec<Vec<Celda>> = doc.bloques[desde..hasta].iter().map(pixpin_docs::tabla::celdas_de).collect();
+    let filas: Vec<Vec<Celda>> = doc.bloques[desde..hasta]
+        .iter()
+        .map(pixpin_docs::tabla::celdas_de)
+        .collect();
     let n = pixpin_docs::tabla::columnas_de(&filas).max(1);
-    let parrafos: Vec<Vec<Vec<(String, Vec<Tramo>)>>> =
-        filas.iter().map(|f| f.iter().map(parrafos_de_celda).collect()).collect();
+    let parrafos: Vec<Vec<Vec<(String, Vec<Tramo>)>>> = filas
+        .iter()
+        .map(|f| f.iter().map(parrafos_de_celda).collect())
+        .collect();
 
     // Minimo y maximo de cada columna, por sus celdas de una columna.
     let relleno = 2.0 * CELDA_ANCHO + RAYA;
@@ -771,7 +900,12 @@ fn tabla(o: &mut Obra, doc: &Documento, desde: usize, hasta: usize) {
             })
             .unwrap_or_default();
         // Primero se mide cada celda a su ancho: la fila mide la mas alta.
-        let mut celdas: Vec<(usize, usize, Vec<(String, Vec<Tramo>, f32, Vec<(u32, u32)>)>, f32)> = Vec::new();
+        let mut celdas: Vec<(
+            usize,
+            usize,
+            Vec<(String, Vec<Tramo>, f32, Vec<(u32, u32)>)>,
+            f32,
+        )> = Vec::new();
         let mut g = 0usize;
         for (c, pc) in f.iter().zip(ps) {
             let span = usize::from(c.columnas.max(1));
@@ -819,12 +953,17 @@ fn tabla(o: &mut Obra, doc: &Documento, desde: usize, hasta: usize) {
             let texto_ancho = (ancho - relleno).max(1.0);
             if dentro.is_empty() {
                 // Una celda sin nada: solo su caja.
-                o.salida.push(celda_vacia(caja, i, cuerpo, texto_x, texto_ancho, ty, base));
+                o.salida
+                    .push(celda_vacia(caja, i, cuerpo, texto_x, texto_ancho, ty, base));
                 continue;
             }
             for (n_p, (t, tramos, h, renglones)) in dentro.into_iter().enumerate() {
                 o.salida.push(Colocado {
-                    texto: if t.trim().is_empty() { String::new() } else { t },
+                    texto: if t.trim().is_empty() {
+                        String::new()
+                    } else {
+                        t
+                    },
                     tramos,
                     clase: Clase::Fila,
                     tam: base,
@@ -849,7 +988,15 @@ fn tabla(o: &mut Obra, doc: &Documento, desde: usize, hasta: usize) {
     o.flujo.margen = base * o.css.tabla_em;
 }
 
-fn celda_vacia(caja: Caja, i: usize, letra: Letra, x: f32, ancho: f32, y: f32, base: f32) -> Colocado {
+fn celda_vacia(
+    caja: Caja,
+    i: usize,
+    letra: Letra,
+    x: f32,
+    ancho: f32,
+    y: f32,
+    base: f32,
+) -> Colocado {
     Colocado {
         texto: String::new(),
         tramos: Vec::new(),
@@ -877,12 +1024,26 @@ mod pruebas {
     /// por su interlineado; el minimo es la palabra mas larga.
     fn mide(texto: &str, tam: f32, ancho: f32, _t: &[Tramo], l: &Letra) -> Medida {
         let letras = texto.chars().count() as f32 * 8.0;
-        let palabra = texto.split_whitespace().map(|p| p.chars().count()).max().unwrap_or(0) as f32 * 8.0;
+        let palabra = texto
+            .split_whitespace()
+            .map(|p| p.chars().count())
+            .max()
+            .unwrap_or(0) as f32
+            * 8.0;
         let renglones = texto
             .split('\n')
-            .map(|p| ((p.chars().count() as f32 * 8.0) / ancho.max(1.0)).ceil().max(1.0))
+            .map(|p| {
+                ((p.chars().count() as f32 * 8.0) / ancho.max(1.0))
+                    .ceil()
+                    .max(1.0)
+            })
             .sum::<f32>();
-        Medida { ancho: letras.min(ancho), alto: renglones * tam * l.interlineado, minimo: palabra, renglones: Vec::new() }
+        Medida {
+            ancho: letras.min(ancho),
+            alto: renglones * tam * l.interlineado,
+            minimo: palabra,
+            renglones: Vec::new(),
+        }
     }
 
     fn p(t: &str) -> Bloque {
@@ -890,7 +1051,12 @@ mod pruebas {
     }
 
     fn a384() -> lectura::Ajustes {
-        lectura::Ajustes { columna: 384, tipo: 0, grosor: 1, ..lectura::Ajustes::default() }
+        lectura::Ajustes {
+            columna: 384,
+            tipo: 0,
+            grosor: 1,
+            ..lectura::Ajustes::default()
+        }
     }
 
     #[test]
@@ -901,7 +1067,11 @@ mod pruebas {
             ..Documento::default()
         };
         let (c, alto) = colocar(&doc, &a384(), 384.0, Hoja::Word, &mide);
-        assert_eq!(c.len(), 2, "el movil no pone el titulo del fichero en la pagina de un Word");
+        assert_eq!(
+            c.len(),
+            2,
+            "el movil no pone el titulo del fichero en la pagina de un Word"
+        );
         // `main{padding-top:18px}` y el `p{margin:.55em}` del primero.
         assert!((c[0].y - (18.0 + 8.8)).abs() < 1e-3, "{}", c[0].y);
         // Entre dos parrafos, un solo margen (el mayor), no la suma.
@@ -914,14 +1084,20 @@ mod pruebas {
 
     #[test]
     fn en_una_columna_ancha_main_se_queda_en_sus_46_em_y_va_centrado() {
-        let a = lectura::Ajustes { columna: 860, ..a384() };
+        let a = lectura::Ajustes {
+            columna: 860,
+            ..a384()
+        };
         let (x, ancho) = caja_de_texto(Hoja::Word, &a, 860.0);
         // Medido en el Chromium: el texto mide 736 y empieza en 62.
         assert_eq!(ancho, 46.0 * 16.0);
         assert_eq!(x, (860.0 - 736.0 - 32.0) / 2.0 + 16.0);
         // Con la letra mas grande, main (en em) tambien crece.
         let grande = lectura::Ajustes { tamano: 130, ..a };
-        assert_eq!(caja_de_texto(Hoja::Word, &grande, 860.0), (16.0, 860.0 - 32.0));
+        assert_eq!(
+            caja_de_texto(Hoja::Word, &grande, 860.0),
+            (16.0, 860.0 - 32.0)
+        );
         // Caso negativo: en una columna estrecha manda la columna.
         assert_eq!(caja_de_texto(Hoja::Word, &a384(), 384.0), (16.0, 352.0));
     }
@@ -929,7 +1105,11 @@ mod pruebas {
     #[test]
     fn un_titulo_lleva_su_margen_en_em_de_su_letra_y_su_interlineado_de_titulo() {
         let doc = Documento {
-            bloques: vec![p("antes"), Bloque::nuevo(Clase::Titulo(1), vec![Trozo::llano("Titulo")]), p("despues")],
+            bloques: vec![
+                p("antes"),
+                Bloque::nuevo(Clase::Titulo(1), vec![Trozo::llano("Titulo")]),
+                p("despues"),
+            ],
             ..Documento::default()
         };
         let (c, _) = colocar(&doc, &a384(), 384.0, Hoja::Word, &mide);
@@ -945,7 +1125,10 @@ mod pruebas {
 
     #[test]
     fn un_parrafo_vacio_de_word_ocupa_su_renglon_como_el_nbsp_del_movil() {
-        let doc = Documento { bloques: vec![p("a"), p(""), p("b")], ..Documento::default() };
+        let doc = Documento {
+            bloques: vec![p("a"), p(""), p("b")],
+            ..Documento::default()
+        };
         let (c, _) = colocar(&doc, &a384(), 384.0, Hoja::Word, &mide);
         assert_eq!(c.len(), 3);
         assert!(c[1].texto.is_empty());
@@ -954,11 +1137,19 @@ mod pruebas {
 
     #[test]
     fn la_letra_y_el_grosor_son_los_cuatro_del_movil() {
-        for (tipo, familia) in [(0u8, "Noto Serif"), (1, "Roboto"), (2, "Courier New"), (3, "Caveat")] {
+        for (tipo, familia) in [
+            (0u8, "Noto Serif"),
+            (1, "Roboto"),
+            (2, "Courier New"),
+            (3, "Caveat"),
+        ] {
             let a = lectura::Ajustes { tipo, ..a384() };
             assert_eq!(Letra::del_cuerpo(Hoja::Word, &a).familia, familia);
         }
-        let a = lectura::Ajustes { grosor: 3, ..a384() };
+        let a = lectura::Ajustes {
+            grosor: 3,
+            ..a384()
+        };
         assert_eq!(Letra::del_cuerpo(Hoja::Word, &a).peso, 800);
         assert_eq!(Letra::del_cuerpo(Hoja::Libro, &a).interlineado, 1.6);
     }
@@ -967,17 +1158,29 @@ mod pruebas {
     fn el_enlace_no_cambia_la_letra_y_el_tabulador_es_un_espacio_eme() {
         let enlace = Trozo {
             texto: "https://x.pe".into(),
-            estilo: pixpin_docs::documento::Estilo { enlace: true, ..Default::default() },
+            estilo: pixpin_docs::documento::Estilo {
+                enlace: true,
+                ..Default::default()
+            },
         };
         let (t, tramos) = texto_de(&[Trozo::llano("a\tb "), enlace]);
         assert_eq!(t, "a\u{2003}b https://x.pe");
-        assert!(tramos.is_empty(), "el movil solo le cambia el color: {tramos:?}");
+        assert!(
+            tramos.is_empty(),
+            "el movil solo le cambia el color: {tramos:?}"
+        );
     }
 
     #[test]
     fn el_reparto_de_la_tabla_da_el_maximo_si_cabe_y_el_minimo_si_no_cabe_ni_eso() {
-        assert_eq!(repartir_columnas(&[20.0, 30.0], &[50.0, 60.0], 300.0), vec![50.0, 60.0]);
-        assert_eq!(repartir_columnas(&[200.0, 300.0], &[500.0, 600.0], 300.0), vec![200.0, 300.0]);
+        assert_eq!(
+            repartir_columnas(&[20.0, 30.0], &[50.0, 60.0], 300.0),
+            vec![50.0, 60.0]
+        );
+        assert_eq!(
+            repartir_columnas(&[200.0, 300.0], &[500.0, 600.0], 300.0),
+            vec![200.0, 300.0]
+        );
         // Entre medias, lo que sobra en proporcion a lo que falta.
         let r = repartir_columnas(&[20.0, 20.0], &[120.0, 40.0], 100.0);
         assert!((r[0] + r[1] - 100.0).abs() < 1e-3);
@@ -986,7 +1189,12 @@ mod pruebas {
 
     fn fila(celdas: Vec<Celda>) -> Bloque {
         let mut b = Bloque::nuevo(Clase::Fila, vec![Trozo::llano("x")]);
-        b.fila = Some(FilaDeTabla { tabla: 0, rejilla: vec![100, 9000], pagina: 10_000, celdas });
+        b.fila = Some(FilaDeTabla {
+            tabla: 0,
+            rejilla: vec![100, 9000],
+            pagina: 10_000,
+            celdas,
+        });
         b
     }
 
@@ -995,7 +1203,10 @@ mod pruebas {
         let doc = Documento {
             bloques: vec![
                 p("antes"),
-                fila(vec![Celda::llana(vec![Trozo::llano("N")]), Celda::llana(vec![Trozo::llano("uno\n\ndos")])]),
+                fila(vec![
+                    Celda::llana(vec![Trozo::llano("N")]),
+                    Celda::llana(vec![Trozo::llano("uno\n\ndos")]),
+                ]),
                 p("despues"),
             ],
             ..Documento::default()
@@ -1014,7 +1225,11 @@ mod pruebas {
         let despues = c.last().unwrap();
         // (la fila con su raya de abajo; la de arriba es media fuera, como en
         // el Chromium).
-        assert!((despues.y - (k.y + contenido + 8.0 + 1.0 + 12.8)).abs() < 1e-3, "{} {k:?}", despues.y);
+        assert!(
+            (despues.y - (k.y + contenido + 8.0 + 1.0 + 12.8)).abs() < 1e-3,
+            "{} {k:?}",
+            despues.y
+        );
     }
 
     #[test]
@@ -1022,19 +1237,33 @@ mod pruebas {
         let doc = Documento {
             titulo: "El extranjero".into(),
             autor: "Camus".into(),
-            bloques: vec![Bloque::nuevo(Clase::Capitulo, vec![]), p("Hoy ha muerto mama.")],
+            bloques: vec![
+                Bloque::nuevo(Clase::Capitulo, vec![]),
+                p("Hoy ha muerto mama."),
+            ],
             imagenes: Vec::new(),
         };
-        let a = lectura::Ajustes { tipo: 0, ..lectura::Ajustes::default() };
+        let a = lectura::Ajustes {
+            tipo: 0,
+            ..lectura::Ajustes::default()
+        };
         let (c, _) = colocar(&doc, &a, 600.0, Hoja::Libro, &mide);
-        assert_eq!(c[0].bloque, None, "la cabecera no es un bloque del documento");
+        assert_eq!(
+            c[0].bloque, None,
+            "la cabecera no es un bloque del documento"
+        );
         assert_eq!(c[0].letra.alineacion, Alineacion::Centro);
         // 18 de relleno y 2 em de margen de la cabecera.
         assert!((c[0].y - (18.0 + 34.0)).abs() < 1e-3);
         let raya = c.iter().find(|x| x.clase == Clase::Capitulo).expect("raya");
         let texto = c.last().unwrap();
         // Tras la raya, su relleno de 2 em sin solaparse con el .7em del parrafo.
-        assert!((texto.y - (raya.y + 1.0 + 34.0 + 17.0 * 0.7)).abs() < 1e-3, "{} {}", texto.y, raya.y);
+        assert!(
+            (texto.y - (raya.y + 1.0 + 34.0 + 17.0 * 0.7)).abs() < 1e-3,
+            "{} {}",
+            texto.y,
+            raya.y
+        );
     }
 
     #[test]
@@ -1045,7 +1274,9 @@ mod pruebas {
         assert_eq!(medidas_de_imagen(&png), Some((640, 480)));
         let gif = [b"GIF89a".as_slice(), &[0x20, 0x01, 0x10, 0x00]].concat();
         assert_eq!(medidas_de_imagen(&gif), Some((288, 16)));
-        let jpg = [0xFF, 0xD8, 0xFF, 0xE0, 0, 4, 0, 0, 0xFF, 0xC0, 0, 11, 8, 0x01, 0xE0, 0x02, 0x80];
+        let jpg = [
+            0xFF, 0xD8, 0xFF, 0xE0, 0, 4, 0, 0, 0xFF, 0xC0, 0, 11, 8, 0x01, 0xE0, 0x02, 0x80,
+        ];
         assert_eq!(medidas_de_imagen(&jpg), Some((640, 480)));
         // Casos negativos: lo que no es una imagen, o esta cortado.
         assert_eq!(medidas_de_imagen(b"hola"), None);
@@ -1059,7 +1290,10 @@ mod pruebas {
         png.extend_from_slice(&352u32.to_be_bytes());
         let doc = Documento {
             bloques: vec![Bloque::nota(MARCA_IMAGEN), p("pie")],
-            imagenes: vec![pixpin_docs::documento::Imagen { mime: "image/png".into(), datos: png }],
+            imagenes: vec![pixpin_docs::documento::Imagen {
+                mime: "image/png".into(),
+                datos: png,
+            }],
             ..Documento::default()
         };
         let (c, _) = colocar(&doc, &a384(), 384.0, Hoja::Word, &mide);
@@ -1092,8 +1326,17 @@ mod contra_el_movil {
             if let (Some(a), Some(b)) = (cajas.first(), cajas.last()) {
                 v.push((a.y, a.alto, b.x + b.ancho - a.x, a.x + izq, "TR".into()));
             }
-            for x in celdas.iter().filter(|x| !(x.caja.is_some() && x.alto == 0.0)) {
-                v.push((x.y, x.alto, x.ancho, x.sangria + izq, x.texto.chars().take(40).collect()));
+            for x in celdas
+                .iter()
+                .filter(|x| !(x.caja.is_some() && x.alto == 0.0))
+            {
+                v.push((
+                    x.y,
+                    x.alto,
+                    x.ancho,
+                    x.sangria + izq,
+                    x.texto.chars().take(40).collect(),
+                ));
             }
             celdas.clear();
         };
@@ -1109,7 +1352,13 @@ mod contra_el_movil {
             vaciar(&mut celdas, &mut v);
             fila = None;
             if x.bloque.is_some() && x.clase != Clase::Capitulo {
-                v.push((x.y, x.alto, x.ancho, x.sangria + izq, x.texto.chars().take(40).collect()));
+                v.push((
+                    x.y,
+                    x.alto,
+                    x.ancho,
+                    x.sangria + izq,
+                    x.texto.chars().take(40).collect(),
+                ));
             }
         }
         vaciar(&mut celdas, &mut v);
@@ -1121,12 +1370,27 @@ mod contra_el_movil {
     fn contra_la_pagina_del_movil() {
         let docx = std::env::var("PIXPIN_DOCX").expect("PIXPIN_DOCX");
         let tops = std::env::var("PIXPIN_TOPS").expect("PIXPIN_TOPS");
-        let columna: f32 = std::env::var("PIXPIN_COLUMNA").ok().and_then(|c| c.parse().ok()).unwrap_or(384.0);
-        let izq: f32 = std::env::var("PIXPIN_IZQ").ok().and_then(|c| c.parse().ok()).unwrap_or(256.0);
-        let tipo: u8 = std::env::var("PIXPIN_TIPO").ok().and_then(|c| c.parse().ok()).unwrap_or(0);
+        let columna: f32 = std::env::var("PIXPIN_COLUMNA")
+            .ok()
+            .and_then(|c| c.parse().ok())
+            .unwrap_or(384.0);
+        let izq: f32 = std::env::var("PIXPIN_IZQ")
+            .ok()
+            .and_then(|c| c.parse().ok())
+            .unwrap_or(256.0);
+        let tipo: u8 = std::env::var("PIXPIN_TIPO")
+            .ok()
+            .and_then(|c| c.parse().ok())
+            .unwrap_or(0);
         let todo = std::env::var("PIXPIN_TODO").is_ok();
-        let v: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(tops).unwrap()).unwrap();
-        let movil: Vec<f32> = v["t"].as_array().unwrap().iter().map(|x| x.as_f64().unwrap() as f32).collect();
+        let v: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(tops).unwrap()).unwrap();
+        let movil: Vec<f32> = v["t"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|x| x.as_f64().unwrap() as f32)
+            .collect();
         let datos = v["d"].as_array().cloned().unwrap_or_default();
         let alto_movil = v["h"].as_f64().unwrap() as f32;
         let doc = pixpin_docs::abrir(Path::new(&docx)).unwrap();
@@ -1135,10 +1399,19 @@ mod contra_el_movil {
         let mide = |t: &str, tam: f32, ancho: f32, tramos: &[Tramo], l: &Letra| {
             motor.medir_de_lectura(t, tam, ancho, tramos, &l.para_pintar())
         };
-        let a = lectura::Ajustes { columna: columna as u32, tipo, grosor: 1, ..lectura::Ajustes::default() };
+        let a = lectura::Ajustes {
+            columna: columna as u32,
+            tipo,
+            grosor: 1,
+            ..lectura::Ajustes::default()
+        };
         let (c, alto) = colocar(&doc, &a, columna, Hoja::Word, &mide);
         let pc = como_el_movil(&c, izq);
-        println!("movil: {} tops, alto {alto_movil}; PC: {} tops, alto {alto}", movil.len(), pc.len());
+        println!(
+            "movil: {} tops, alto {alto_movil}; PC: {} tops, alto {alto}",
+            movil.len(),
+            pc.len()
+        );
         let n = movil.len().min(pc.len());
         let mut peor = (0usize, 0.0f32);
         let mut antes = 0.0f32;
@@ -1148,18 +1421,37 @@ mod contra_el_movil {
                 peor = (i, dif.abs());
             }
             let m = datos.get(i).cloned().unwrap_or_default();
-            let (ma, mw, mx) = (m[1].as_f64().unwrap_or(0.0) as f32, m[2].as_f64().unwrap_or(0.0) as f32, m[3].as_f64().unwrap_or(0.0) as f32);
-            let salto = (dif - antes).abs() > 0.6 || (pc[i].1 - ma).abs() > 0.6 || (pc[i].2 - mw).abs() > 1.5;
+            let (ma, mw, mx) = (
+                m[1].as_f64().unwrap_or(0.0) as f32,
+                m[2].as_f64().unwrap_or(0.0) as f32,
+                m[3].as_f64().unwrap_or(0.0) as f32,
+            );
+            let salto = (dif - antes).abs() > 0.6
+                || (pc[i].1 - ma).abs() > 0.6
+                || (pc[i].2 - mw).abs() > 1.5;
             if todo || i < 6 || salto {
                 println!(
                     "{i:4} {:>3}: y {:8.1}/{:8.1} ({:+6.1}) alto {:6.1}/{:6.1} ancho {:6.1}/{:6.1} x {:6.1}/{:6.1} | {}",
-                    m[0].as_str().unwrap_or(""), movil[i], pc[i].0, dif, ma, pc[i].1, mw, pc[i].2, mx, pc[i].3, pc[i].4
+                    m[0].as_str().unwrap_or(""),
+                    movil[i],
+                    pc[i].0,
+                    dif,
+                    ma,
+                    pc[i].1,
+                    mw,
+                    pc[i].2,
+                    mx,
+                    pc[i].3,
+                    pc[i].4
                 );
             }
             antes = dif;
         }
         let medias: f32 = (0..n).map(|i| (pc[i].0 - movil[i]).abs()).sum::<f32>() / n.max(1) as f32;
-        println!("peor: {} ({:.1} px); media {medias:.1} px; alto {:.1} vs {alto_movil}", peor.0, peor.1, alto);
+        println!(
+            "peor: {} ({:.1} px); media {medias:.1} px; alto {:.1} vs {alto_movil}",
+            peor.0, peor.1, alto
+        );
         assert_eq!(movil.len(), pc.len(), "la misma estructura de bloques");
     }
 }

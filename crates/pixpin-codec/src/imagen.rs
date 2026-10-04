@@ -281,7 +281,12 @@ pub fn codificar_jpg(imagen: &ImagenRgba, calidad: u8) -> Result<Vec<u8>, ErrorC
         .collect();
     let mut salida = Vec::new();
     image::codecs::jpeg::JpegEncoder::new_with_quality(&mut salida, calidad.clamp(1, 100))
-        .encode(&rgb, imagen.ancho, imagen.alto, image::ExtendedColorType::Rgb8)
+        .encode(
+            &rgb,
+            imagen.ancho,
+            imagen.alto,
+            image::ExtendedColorType::Rgb8,
+        )
         .map_err(|fuente| ErrorCodec::Escritura {
             ruta: std::path::PathBuf::from("<memoria>"),
             fuente,
@@ -633,7 +638,11 @@ mod pruebas {
         let mut pixeles = Vec::new();
         for _ in 0..16 {
             for x in 0..16 {
-                pixeles.extend_from_slice(if x < 8 { &[220, 20, 20, 255] } else { &[0, 0, 0, 0] });
+                pixeles.extend_from_slice(if x < 8 {
+                    &[220, 20, 20, 255]
+                } else {
+                    &[0, 0, 0, 0]
+                });
             }
         }
         let img = ImagenRgba {
@@ -646,12 +655,38 @@ mod pruebas {
         let leida = image::load_from_memory(&jpg).expect("se lee").to_rgb8();
         assert_eq!((leida.width(), leida.height()), (16, 16));
         let derecha = leida.get_pixel(13, 8);
-        assert!(derecha.0.iter().all(|c| *c > 230), "blanco, no negro: {derecha:?}");
+        assert!(
+            derecha.0.iter().all(|c| *c > 230),
+            "blanco, no negro: {derecha:?}"
+        );
         let izquierda = leida.get_pixel(2, 8);
-        assert!(izquierda.0[0] > 180 && izquierda.0[1] < 80, "rojo: {izquierda:?}");
+        assert!(
+            izquierda.0[0] > 180 && izquierda.0[1] < 80,
+            "rojo: {izquierda:?}"
+        );
         // Casos negativos: vacia o con bytes de menos no da fichero.
-        assert!(codificar_jpg(&ImagenRgba { ancho: 0, alto: 0, pixeles: vec![] }, 90).is_err());
-        assert!(codificar_jpg(&ImagenRgba { ancho: 2, alto: 2, pixeles: vec![0; 3] }, 90).is_err());
+        assert!(
+            codificar_jpg(
+                &ImagenRgba {
+                    ancho: 0,
+                    alto: 0,
+                    pixeles: vec![]
+                },
+                90
+            )
+            .is_err()
+        );
+        assert!(
+            codificar_jpg(
+                &ImagenRgba {
+                    ancho: 2,
+                    alto: 2,
+                    pixeles: vec![0; 3]
+                },
+                90
+            )
+            .is_err()
+        );
     }
 
     #[test]

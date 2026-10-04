@@ -311,8 +311,10 @@ pub fn rect_del_icono(
     // Con margenes grandes en un monitor pequeno los dos bordes se cruzan;
     // pegarse al borde es mejor que salirse de la pantalla.
     Rect {
-        x: x.max(monitor.x).min(monitor.x + monitor.ancho as i32 - lado as i32),
-        y: y.max(monitor.y).min(monitor.y + monitor.alto as i32 - lado as i32),
+        x: x.max(monitor.x)
+            .min(monitor.x + monitor.ancho as i32 - lado as i32),
+        y: y.max(monitor.y)
+            .min(monitor.y + monitor.alto as i32 - lado as i32),
         ancho: lado,
         alto: lado,
     }
@@ -392,7 +394,10 @@ mod pruebas {
         let mut apagada = Pila::nueva(0);
         apagada.anadir(captura("a"), monitor(), 100);
         assert!(!apagada.armar(true));
-        assert_eq!(apagada.anadir(captura("b"), monitor(), 100), Efecto::Empezada);
+        assert_eq!(
+            apagada.anadir(captura("b"), monitor(), 100),
+            Efecto::Empezada
+        );
     }
 
     #[test]
@@ -570,7 +575,10 @@ mod pruebas {
             alto: 60,
         };
         let r = rect_del_icono(chico, 100, Esquina::AbajoDerecha, 96, 24);
-        assert!(r.x >= 0 && r.y >= 0, "no se sale por arriba ni por la izquierda");
+        assert!(
+            r.x >= 0 && r.y >= 0,
+            "no se sale por arriba ni por la izquierda"
+        );
         assert!(
             r.x + r.ancho as i32 <= 80 && r.y + r.alto as i32 <= 60,
             "ni por abajo ni por la derecha"

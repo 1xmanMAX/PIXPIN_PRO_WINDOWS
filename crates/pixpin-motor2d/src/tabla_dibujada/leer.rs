@@ -13,8 +13,8 @@
 
 use super::{AIRE_DE_CELDA, Celda};
 use crate::ecuacion::{Estilo, Medir};
-use crate::escena::Escena;
 use crate::elemento::{Elemento, Figura};
+use crate::escena::Escena;
 use crate::vector::Punto2;
 
 /// Lo que se le admite a una raya para contar como vertical u horizontal.
@@ -59,15 +59,23 @@ impl TablaLeida {
 
     /// En que celda cae un punto.
     pub fn celda_en(&self, p: Punto2) -> Option<(usize, usize)> {
-        let c = self.columnas.windows(2).position(|w| p.x >= w[0] && p.x <= w[1])?;
-        let f = self.filas.windows(2).position(|w| p.y >= w[0] && p.y <= w[1])?;
+        let c = self
+            .columnas
+            .windows(2)
+            .position(|w| p.x >= w[0] && p.x <= w[1])?;
+        let f = self
+            .filas
+            .windows(2)
+            .position(|w| p.y >= w[0] && p.y <= w[1])?;
         Some((f, c))
     }
 }
 
 fn es_raya(e: &Elemento) -> Option<(Punto2, Punto2)> {
     match &e.figura {
-        Figura::Linea { puntos } if puntos.len() == 2 && e.angulo == 0.0 => Some((puntos[0], puntos[1])),
+        Figura::Linea { puntos } if puntos.len() == 2 && e.angulo == 0.0 => {
+            Some((puntos[0], puntos[1]))
+        }
         _ => None,
     }
 }
@@ -94,8 +102,14 @@ pub fn leer_tabla(elementos: &[&Elemento]) -> Option<TablaLeida> {
         .iter()
         .filter(|e| matches!(e.figura, Figura::Rectangulo) && e.trazo.a > 0.0 && e.angulo == 0.0)
         .max_by(|a, b| (a.ancho * a.alto).total_cmp(&(b.ancho * b.alto)))?;
-    let (x0, y0, x1, y1) = (marco.x, marco.y, marco.x + marco.ancho, marco.y + marco.alto);
-    let dentro = |p: Punto2| p.x >= x0 - 1.0 && p.x <= x1 + 1.0 && p.y >= y0 - 1.0 && p.y <= y1 + 1.0;
+    let (x0, y0, x1, y1) = (
+        marco.x,
+        marco.y,
+        marco.x + marco.ancho,
+        marco.y + marco.alto,
+    );
+    let dentro =
+        |p: Punto2| p.x >= x0 - 1.0 && p.x <= x1 + 1.0 && p.y >= y0 - 1.0 && p.y <= y1 + 1.0;
     let mut columnas = vec![x0, x1];
     let mut filas = vec![y0, y1];
     let mut de_la_tabla = vec![marco.id];
@@ -146,13 +160,17 @@ pub fn leer_tabla(elementos: &[&Elemento]) -> Option<TablaLeida> {
         if de_la_tabla.contains(&e.id) {
             continue;
         }
-        let Some((f, c)) = leida.celda_en(centro(e)) else { continue };
+        let Some((f, c)) = leida.celda_en(centro(e)) else {
+            continue;
+        };
         match &e.figura {
             // Un texto pegado a la izquierda de su celda es lo escrito en
             // ella; uno suelto por ahi dentro es una figura mas.
-            Figura::Texto { texto, tam: t, familia: fam }
-                if (e.x - leida.columnas[c] - AIRE_DE_CELDA).abs() < 3.0 =>
-            {
+            Figura::Texto {
+                texto,
+                tam: t,
+                familia: fam,
+            } if (e.x - leida.columnas[c] - AIRE_DE_CELDA).abs() < 3.0 => {
                 let celda = &mut celdas[f][c];
                 if !celda.texto.is_empty() {
                     celda.texto.push(' ');
@@ -178,21 +196,36 @@ pub fn leer_tabla(elementos: &[&Elemento]) -> Option<TablaLeida> {
 
 /// Los elementos de la escena con estos ids, en su orden.
 fn de_la_escena<'a>(escena: &'a Escena, ids: &[u64]) -> Vec<&'a Elemento> {
-    escena.elementos.iter().filter(|e| ids.contains(&e.id)).collect()
+    escena
+        .elementos
+        .iter()
+        .filter(|e| ids.contains(&e.id))
+        .collect()
 }
 
 /// Encaja en su celda cada figura de `figuras` (juntas las de una misma
 /// celda: una figura de varias piezas se encaja entera), la mete en el grupo
 /// de la tabla y la sube al frente, por encima del fondo de la cabecera.
 /// Todo dentro del paso que haya abierto.
-fn encajar_figuras(escena: &mut Escena, tabla: &TablaLeida, figuras: &[(u64, usize, usize)], grupos: &[String]) {
+fn encajar_figuras(
+    escena: &mut Escena,
+    tabla: &TablaLeida,
+    figuras: &[(u64, usize, usize)],
+    grupos: &[String],
+) {
     let mut celdas: Vec<(usize, usize)> = figuras.iter().map(|&(_, f, c)| (f, c)).collect();
     celdas.sort_unstable();
     celdas.dedup();
     escena.apuntar_reordenamiento();
     for (f, c) in celdas {
-        let Some(caja) = tabla.caja_de(f, c) else { continue };
-        let ids: Vec<u64> = figuras.iter().filter(|x| (x.1, x.2) == (f, c)).map(|x| x.0).collect();
+        let Some(caja) = tabla.caja_de(f, c) else {
+            continue;
+        };
+        let ids: Vec<u64> = figuras
+            .iter()
+            .filter(|x| (x.1, x.2) == (f, c))
+            .map(|x| x.0)
+            .collect();
         let piezas: Vec<Elemento> = de_la_escena(escena, &ids).into_iter().cloned().collect();
         for n in crate::estirar_bloque::encajar(&piezas, caja, AIRE_DE_CELDA) {
             escena.apuntar_edicion(n.id);
@@ -223,7 +256,10 @@ pub fn meter_en_celdas(escena: &mut Escena, elegidos: &[u64]) -> bool {
     if tabla.figuras.is_empty() {
         return false;
     }
-    let grupos = escena.buscar(tabla.de_la_tabla[0]).map(|e| e.grupos.clone()).unwrap_or_default();
+    let grupos = escena
+        .buscar(tabla.de_la_tabla[0])
+        .map(|e| e.grupos.clone())
+        .unwrap_or_default();
     escena.abrir_paso();
     encajar_figuras(escena, &tabla, &tabla.figuras, &grupos);
     escena.cerrar_paso();
@@ -243,11 +279,15 @@ pub fn rehacer_en_escena(
     estilo: &Estilo,
     medir: Medir<'_>,
 ) -> Vec<u64> {
-    let nuevos = super::elementos_de_tabla_con_juntas(celdas, estilo, vieja.origen(), medir, cabecera);
+    let nuevos =
+        super::elementos_de_tabla_con_juntas(celdas, estilo, vieja.origen(), medir, cabecera);
     if nuevos.is_empty() || vieja.de_la_tabla.is_empty() {
         return Vec::new();
     }
-    let grupos = escena.buscar(vieja.de_la_tabla[0]).map(|e| e.grupos.clone()).unwrap_or_default();
+    let grupos = escena
+        .buscar(vieja.de_la_tabla[0])
+        .map(|e| e.grupos.clone())
+        .unwrap_or_default();
     escena.abrir_paso();
     for &id in &vieja.de_la_tabla {
         escena.borrar_apuntando(id);
@@ -307,11 +347,28 @@ mod pruebas {
             vec!["Cemento".into(), "12".into()],
             vec!["Arena".into(), "".into()],
         ];
-        let v = con_ids(super::super::elementos_de_tabla(&filas, &estilo(), Punto2::nuevo(10.0, 20.0), &medir, true));
+        let v = con_ids(super::super::elementos_de_tabla(
+            &filas,
+            &estilo(),
+            Punto2::nuevo(10.0, 20.0),
+            &medir,
+            true,
+        ));
         let refs: Vec<&Elemento> = v.iter().collect();
         let t = leer_tabla(&refs).expect("no la reconocio");
-        let textos: Vec<Vec<&str>> = t.celdas.iter().map(|f| f.iter().map(|c| c.texto.as_str()).collect()).collect();
-        assert_eq!(textos, vec![vec!["Material", "Cantidad"], vec!["Cemento", "12"], vec!["Arena", ""]]);
+        let textos: Vec<Vec<&str>> = t
+            .celdas
+            .iter()
+            .map(|f| f.iter().map(|c| c.texto.as_str()).collect())
+            .collect();
+        assert_eq!(
+            textos,
+            vec![
+                vec!["Material", "Cantidad"],
+                vec!["Cemento", "12"],
+                vec!["Arena", ""]
+            ]
+        );
         assert!(t.cabecera);
         assert_eq!(t.origen(), Punto2::nuevo(10.0, 20.0));
         assert_eq!(t.tam, Some(20.0));
@@ -321,8 +378,17 @@ mod pruebas {
 
     #[test]
     fn lo_que_no_es_de_la_tabla_se_apunta_con_su_celda() {
-        let filas = vec![vec!["a".to_string(), "b".into()], vec!["c".into(), "d".into()]];
-        let mut v = super::super::elementos_de_tabla(&filas, &estilo(), Punto2::nuevo(0.0, 0.0), &medir, false);
+        let filas = vec![
+            vec!["a".to_string(), "b".into()],
+            vec!["c".into(), "d".into()],
+        ];
+        let mut v = super::super::elementos_de_tabla(
+            &filas,
+            &estilo(),
+            Punto2::nuevo(0.0, 0.0),
+            &medir,
+            false,
+        );
         let t0 = {
             let v = con_ids(v.clone());
             let refs: Vec<&Elemento> = v.iter().collect();
@@ -355,7 +421,11 @@ mod pruebas {
             ..Default::default()
         };
         assert!(leer_tabla(&[&caja]).is_none());
-        let diagonal = crate::ecuacion::elemento_linea(vec![Punto2::nuevo(0.0, 0.0), Punto2::nuevo(100.0, 50.0)], 1.0, &estilo());
+        let diagonal = crate::ecuacion::elemento_linea(
+            vec![Punto2::nuevo(0.0, 0.0), Punto2::nuevo(100.0, 50.0)],
+            1.0,
+            &estilo(),
+        );
         assert!(leer_tabla(&[&caja, &diagonal]).is_none());
     }
 }
@@ -371,12 +441,20 @@ mod pruebas_en_la_escena {
     }
 
     fn estilo() -> Estilo {
-        Estilo { color: ColorRgba::opaco(0.1, 0.1, 0.1), tam: 20.0, opacidad: 1.0, familia: "Excalifont".into() }
+        Estilo {
+            color: ColorRgba::opaco(0.1, 0.1, 0.1),
+            tam: 20.0,
+            opacidad: 1.0,
+            familia: "Excalifont".into(),
+        }
     }
 
     /// Una tabla de 2x2 en la escena, agrupada, y sus ids.
     fn tabla(escena: &mut Escena) -> Vec<u64> {
-        let filas = vec![vec!["Nombre".to_string(), "Foto".into()], vec!["Norte".into(), "".into()]];
+        let filas = vec![
+            vec!["Nombre".to_string(), "Foto".into()],
+            vec!["Norte".into(), "".into()],
+        ];
         super::super::elementos_de_tabla(&filas, &estilo(), Punto2::nuevo(0.0, 0.0), &medir, true)
             .into_iter()
             .map(|mut e| {
@@ -407,10 +485,25 @@ mod pruebas_en_la_escena {
         ids.push(ovalo);
         assert!(meter_en_celdas(&mut escena, &ids));
         let o = escena.buscar(ovalo).unwrap();
-        assert!(o.x >= x0 && o.x + o.ancho <= x1 + 0.01 && o.y >= y0 && o.y + o.alto <= y1 + 0.01, "no quedo dentro");
-        assert!((o.ancho / o.alto - 2.0).abs() < 0.01, "se deformo: {}x{}", o.ancho, o.alto);
-        assert!(o.grupos.contains(&"t".to_string()), "no se fue con la tabla");
-        assert_eq!(escena.elementos.last().unwrap().id, ovalo, "quedo debajo de la tabla");
+        assert!(
+            o.x >= x0 && o.x + o.ancho <= x1 + 0.01 && o.y >= y0 && o.y + o.alto <= y1 + 0.01,
+            "no quedo dentro"
+        );
+        assert!(
+            (o.ancho / o.alto - 2.0).abs() < 0.01,
+            "se deformo: {}x{}",
+            o.ancho,
+            o.alto
+        );
+        assert!(
+            o.grupos.contains(&"t".to_string()),
+            "no se fue con la tabla"
+        );
+        assert_eq!(
+            escena.elementos.last().unwrap().id,
+            ovalo,
+            "quedo debajo de la tabla"
+        );
         // Un paso de deshacer.
         escena.deshacer();
         assert_eq!(escena.buscar(ovalo).unwrap().ancho, 200.0);
@@ -448,9 +541,16 @@ mod pruebas_en_la_escena {
         assert_eq!(nueva.celdas[0][0].texto, "Lugar");
         assert_eq!(nueva.celdas[2][0].texto, "Sur");
         assert_eq!(nueva.origen(), vieja.origen());
-        assert!(escena.visibles().all(|e| e.grupos.contains(&"t".to_string())));
+        assert!(
+            escena
+                .visibles()
+                .all(|e| e.grupos.contains(&"t".to_string()))
+        );
         // La figura sigue en su celda (1, 1).
-        assert_eq!(nueva.figuras.iter().map(|x| (x.1, x.2)).collect::<Vec<_>>(), vec![(1, 1)]);
+        assert_eq!(
+            nueva.figuras.iter().map(|x| (x.1, x.2)).collect::<Vec<_>>(),
+            vec![(1, 1)]
+        );
         // Y deshacer devuelve la de antes entera.
         escena.deshacer();
         let otra_vez: Vec<u64> = escena.visibles().map(|e| e.id).collect();

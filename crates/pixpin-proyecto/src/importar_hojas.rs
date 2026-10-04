@@ -101,13 +101,22 @@ pub fn es_libro(nombre: &str) -> bool {
 pub fn leer(ruta: &Path, nombre: &str, ahora: i64) -> Result<Vec<HojaImportada>, NoSeLee> {
     let bytes = std::fs::read(ruta).map_err(|e| NoSeLee::Disco(e.to_string()))?;
     let de_ruta = ruta.file_name().and_then(|n| n.to_str()).unwrap_or("");
-    let nombre = if nombre.trim().is_empty() { de_ruta } else { nombre };
+    let nombre = if nombre.trim().is_empty() {
+        de_ruta
+    } else {
+        nombre
+    };
     leer_bytes(&bytes, nombre, de_ruta, ahora)
 }
 
 /// Lo mismo desde los bytes: `nombre` manda para saber que es, y si no
 /// trae extension, `respaldo` (el nombre del fichero).
-pub fn leer_bytes(bytes: &[u8], nombre: &str, respaldo: &str, ahora: i64) -> Result<Vec<HojaImportada>, NoSeLee> {
+pub fn leer_bytes(
+    bytes: &[u8],
+    nombre: &str,
+    respaldo: &str,
+    ahora: i64,
+) -> Result<Vec<HojaImportada>, NoSeLee> {
     let mut ext = extension(nombre);
     if ext.is_empty() {
         ext = extension(respaldo);
@@ -159,7 +168,8 @@ pub fn leer_bytes(bytes: &[u8], nombre: &str, respaldo: &str, ahora: i64) -> Res
 
 /// Los `.xml` y `.rels` del ZIP, con su texto.
 fn entradas(bytes: &[u8]) -> Result<HashMap<String, String>, NoSeLee> {
-    let mut zip = zip::ZipArchive::new(std::io::Cursor::new(bytes)).map_err(|_| NoSeLee::NoEsUnLibro)?;
+    let mut zip =
+        zip::ZipArchive::new(std::io::Cursor::new(bytes)).map_err(|_| NoSeLee::NoEsUnLibro)?;
     let mut salida = HashMap::new();
     let mut total: u64 = 0;
     for i in 0..zip.len() {
@@ -200,7 +210,8 @@ fn texto_como_literal(s: &str) -> Option<String> {
     if s.is_empty() {
         return None;
     }
-    if s.starts_with('=') || s.starts_with('\'') || !matches!(formula::literal(s), Valor::Texto(_)) {
+    if s.starts_with('=') || s.starts_with('\'') || !matches!(formula::literal(s), Valor::Texto(_))
+    {
         Some(format!("'{s}"))
     } else {
         Some(s.to_string())
@@ -279,13 +290,26 @@ fn numero_como_literal(v: &str, tipo: TipoNumero, fecha1904: bool) -> Option<Str
 /// por que coincidir, y no por eso estan mal.
 fn es_volatil(formula: &str) -> bool {
     let alto = formula.to_uppercase();
-    ["RAND(", "RANDBETWEEN(", "NOW(", "TODAY(", "ALEATORIO(", "ALEATORIO.ENTRE(", "HOY(", "AHORA("]
-        .iter()
-        .any(|f| {
-            alto.match_indices(f).any(|(i, _)| {
-                i == 0 || !alto[..i].chars().next_back().is_some_and(|c| c.is_alphanumeric() || c == '.' || c == '_')
-            })
+    [
+        "RAND(",
+        "RANDBETWEEN(",
+        "NOW(",
+        "TODAY(",
+        "ALEATORIO(",
+        "ALEATORIO.ENTRE(",
+        "HOY(",
+        "AHORA(",
+    ]
+    .iter()
+    .any(|f| {
+        alto.match_indices(f).any(|(i, _)| {
+            i == 0
+                || !alto[..i]
+                    .chars()
+                    .next_back()
+                    .is_some_and(|c| c.is_alphanumeric() || c == '.' || c == '_')
         })
+    })
 }
 
 /// Si lo calculado aqui es lo mismo que el resultado que traia el libro.
@@ -315,7 +339,10 @@ type Rango = (u32, u32, u32, u32);
 /// del problema—, se vuelve a calcular y se repite: asi `=D5+1` sigue siendo
 /// formula aunque `D5` usara una funcion que aqui no hay. Devuelve cuantas
 /// celdas se quedaron con su valor.
-fn con_valores_donde_no_cuadra(celdas: &mut BTreeMap<String, String>, guardados: &BTreeMap<String, String>) -> usize {
+fn con_valores_donde_no_cuadra(
+    celdas: &mut BTreeMap<String, String>,
+    guardados: &BTreeMap<String, String>,
+) -> usize {
     if guardados.is_empty() {
         return 0;
     }
@@ -363,14 +390,18 @@ fn con_valores_donde_no_cuadra(celdas: &mut BTreeMap<String, String>, guardados:
                 .filter(|&i| {
                     let crudo = tabla.celdas.get(&malas[i].0).map_or("", String::as_str);
                     !referencias(crudo).iter().any(|&(c1, f1, c2, f2)| {
-                        malas
-                            .iter()
-                            .any(|(_, m)| (c1..=c2).contains(&m.columna) && (f1..=f2).contains(&m.fila))
+                        malas.iter().any(|(_, m)| {
+                            (c1..=c2).contains(&m.columna) && (f1..=f2).contains(&m.fila)
+                        })
                     })
                 })
                 .collect()
         };
-        let raices = if raices.is_empty() { (0..malas.len()).collect() } else { raices };
+        let raices = if raices.is_empty() {
+            (0..malas.len()).collect()
+        } else {
+            raices
+        };
         for i in raices {
             let dir = &malas[i].0;
             let guardado = guardados.get(dir).cloned().unwrap_or_default();
@@ -506,8 +537,16 @@ pub fn desplazar(formula: &str, df: i64, dc: i64) -> String {
     s.push('=');
     let mut ultimo = 0;
     for x in refs_en(cuerpo) {
-        let f = if x.fila_fija { x.fila as i64 } else { x.fila as i64 + df };
-        let c = if x.columna_fija { x.columna as i64 } else { x.columna as i64 + dc };
+        let f = if x.fila_fija {
+            x.fila as i64
+        } else {
+            x.fila as i64 + df
+        };
+        let c = if x.columna_fija {
+            x.columna as i64
+        } else {
+            x.columna as i64 + dc
+        };
         s.push_str(&cuerpo[ultimo..x.desde]);
         if f < 0 || f >= MAX_FILAS as i64 || c < 0 || c >= MAX_COLS as i64 {
             s.push_str("#¡REF!");
@@ -516,7 +555,10 @@ pub fn desplazar(formula: &str, df: i64, dc: i64) -> String {
                 columna: c as u32,
                 fila: f as u32,
             });
-            let (letras, numeros) = dir.split_at(dir.find(|ch: char| ch.is_ascii_digit()).unwrap_or(dir.len()));
+            let (letras, numeros) = dir.split_at(
+                dir.find(|ch: char| ch.is_ascii_digit())
+                    .unwrap_or(dir.len()),
+            );
             if x.columna_fija {
                 s.push('$');
             }
@@ -549,7 +591,9 @@ fn estilos_dentro(
     };
     estilos
         .into_iter()
-        .filter(|(d, _)| ref_de(d).is_some_and(|r| (c1..=c2).contains(&r.columna) && (f1..=f2).contains(&r.fila)))
+        .filter(|(d, _)| {
+            ref_de(d).is_some_and(|r| (c1..=c2).contains(&r.columna) && (f1..=f2).contains(&r.fila))
+        })
         .collect()
 }
 
@@ -570,7 +614,9 @@ fn local(nombre: &str) -> &str {
 }
 
 fn attr<'a>(a: &'a [(&str, String)], nombre: &str) -> Option<&'a str> {
-    a.iter().find(|(k, _)| *k == nombre).map(|(_, v)| v.as_str())
+    a.iter()
+        .find(|(k, _)| *k == nombre)
+        .map(|(_, v)| v.as_str())
 }
 
 /// Las cinco entidades de siempre y las numericas. Las que declare el
@@ -598,7 +644,9 @@ fn descodificar(s: &str) -> std::borrow::Cow<'_, str> {
             "quot" => Some('"'),
             "apos" => Some('\''),
             _ if nombre.starts_with("#x") || nombre.starts_with("#X") => {
-                u32::from_str_radix(&nombre[2..], 16).ok().and_then(char::from_u32)
+                u32::from_str_radix(&nombre[2..], 16)
+                    .ok()
+                    .and_then(char::from_u32)
             }
             _ if nombre.starts_with('#') => nombre[1..].parse().ok().and_then(char::from_u32),
             _ => None,
@@ -674,14 +722,20 @@ fn sax(xml: &str, f: &mut dyn FnMut(Ev<'_>)) {
         }
         let suelta = dentro.ends_with('/');
         let dentro = dentro.trim_end_matches('/');
-        let corte = dentro.find(|c: char| c.is_whitespace()).unwrap_or(dentro.len());
+        let corte = dentro
+            .find(|c: char| c.is_whitespace())
+            .unwrap_or(dentro.len());
         let nombre = local(&dentro[..corte]);
         atributos.clear();
         let mut resto = &dentro[corte..];
         while let Some(igual) = resto.find('=') {
             let clave = local(resto[..igual].trim());
             let tras_igual = resto[igual + 1..].trim_start();
-            let Some(comilla) = tras_igual.chars().next().filter(|c| *c == '"' || *c == '\'') else {
+            let Some(comilla) = tras_igual
+                .chars()
+                .next()
+                .filter(|c| *c == '"' || *c == '\'')
+            else {
                 break;
             };
             let Some(cierre) = tras_igual[1..].find(comilla) else {
@@ -737,8 +791,14 @@ fn de_xlsx(bytes: &[u8], ahora: i64) -> Result<Vec<HojaImportada>, NoSeLee> {
             }
         });
     }
-    let compartidas = z.get("xl/sharedStrings.xml").map(|t| compartidas_xlsx(t)).unwrap_or_default();
-    let estilos = z.get("xl/styles.xml").map(|t| estilos_xlsx(t)).unwrap_or_default();
+    let compartidas = z
+        .get("xl/sharedStrings.xml")
+        .map(|t| compartidas_xlsx(t))
+        .unwrap_or_default();
+    let estilos = z
+        .get("xl/styles.xml")
+        .map(|t| estilos_xlsx(t))
+        .unwrap_or_default();
     let mut salida = Vec::new();
     for (nombre, rid, oculta) in hojas {
         if oculta {
@@ -817,7 +877,9 @@ fn tipo_de_formato(id: u32, codigo: Option<&str>) -> TipoNumero {
     if c.contains('%') {
         return TipoNumero::Porcentaje;
     }
-    if c.contains(['y', 'd']) || (c.contains('m') && !c.contains('h') && !c.contains('s') && !c.contains('0')) {
+    if c.contains(['y', 'd'])
+        || (c.contains('m') && !c.contains('h') && !c.contains('s') && !c.contains('0'))
+    {
         TipoNumero::Fecha
     } else {
         TipoNumero::General
@@ -844,7 +906,9 @@ fn estilos_xlsx(xml: &str) -> Vec<EstiloXlsx> {
                 }
             }
             "font" => negrita = false,
-            "b" if seccion == "fonts" => negrita = matches!(attr(a, "val"), None | Some("1" | "true")),
+            "b" if seccion == "fonts" => {
+                negrita = matches!(attr(a, "val"), None | Some("1" | "true"))
+            }
             "fill" => {
                 patron = None;
                 color = None;
@@ -857,7 +921,9 @@ fn estilos_xlsx(xml: &str) -> Vec<EstiloXlsx> {
             }
             "xf" if seccion == "cellXfs" => {
                 xf = (
-                    attr(a, "numFmtId").and_then(|v| v.parse().ok()).unwrap_or(0),
+                    attr(a, "numFmtId")
+                        .and_then(|v| v.parse().ok())
+                        .unwrap_or(0),
                     attr(a, "fontId").and_then(|v| v.parse().ok()).unwrap_or(0),
                     attr(a, "fillId").and_then(|v| v.parse().ok()).unwrap_or(0),
                     None,
@@ -880,14 +946,19 @@ fn estilos_xlsx(xml: &str) -> Vec<EstiloXlsx> {
                 }
             }
             "font" if seccion == "fonts" => fuentes.push(negrita),
-            "fill" if seccion == "fills" => {
-                fondos.push(if patron.as_deref() == Some("solid") { color.clone() } else { None })
-            }
+            "fill" if seccion == "fills" => fondos.push(if patron.as_deref() == Some("solid") {
+                color.clone()
+            } else {
+                None
+            }),
             "xf" if seccion == "cellXfs" => xfs.push(EstiloXlsx {
                 negrita: fuentes.get(xf.1).copied().unwrap_or(false),
                 fondo: fondos.get(xf.2).cloned().flatten(),
                 alineacion: xf.3.clone(),
-                tipo: Some(tipo_de_formato(xf.0, formatos.get(&xf.0).map(String::as_str))),
+                tipo: Some(tipo_de_formato(
+                    xf.0,
+                    formatos.get(&xf.0).map(String::as_str),
+                )),
             }),
             _ => {}
         },
@@ -899,7 +970,9 @@ fn estilos_xlsx(xml: &str) -> Vec<EstiloXlsx> {
 /// Quita los prefijos con que Excel guarda las funciones nuevas
 /// (`_xlfn.XLOOKUP`): en la formula escrita no van.
 fn sin_prefijos(f: &str) -> String {
-    f.replace("_xlfn._xlws.", "").replace("_xlfn.", "").replace("_xlws.", "")
+    f.replace("_xlfn._xlws.", "")
+        .replace("_xlfn.", "")
+        .replace("_xlws.", "")
 }
 
 fn hoja_xlsx(
@@ -933,7 +1006,9 @@ fn hoja_xlsx(
     sax(xml, &mut |ev| match ev {
         Ev::Abre(n, a) => match n {
             "row" => {
-                fila = attr(a, "r").and_then(|v| v.parse::<i64>().ok()).map_or(fila + 1, |r| r - 1);
+                fila = attr(a, "r")
+                    .and_then(|v| v.parse::<i64>().ok())
+                    .map_or(fila + 1, |r| r - 1);
                 siguiente = 0;
             }
             "c" => {
@@ -971,9 +1046,13 @@ fn hoja_xlsx(
                 if attr(a, "hidden") == Some("1") {
                     return;
                 }
-                let px = ((ancho * 7.0 + 5.0).round() as i64).clamp(ANCHO_MIN as i64, ANCHO_MAX as i64) as u32;
+                let px = ((ancho * 7.0 + 5.0).round() as i64)
+                    .clamp(ANCHO_MIN as i64, ANCHO_MAX as i64) as u32;
                 for col in desde.saturating_sub(1)..hasta {
-                    let letras = ref_a(Ref { columna: col, fila: 0 });
+                    let letras = ref_a(Ref {
+                        columna: col,
+                        fila: 0,
+                    });
                     anchos.insert(letras.trim_end_matches('1').to_string(), px);
                 }
             }
@@ -1015,7 +1094,14 @@ fn hoja_xlsx(
                         .and_then(|s| texto_como_literal(s)),
                     Some("inlineStr") => texto_como_literal(&en_linea),
                     Some("str") => texto_como_literal(&valor),
-                    Some("b") => Some(if valor.trim() == "1" { "VERDADERO" } else { "FALSO" }.to_string()),
+                    Some("b") => Some(
+                        if valor.trim() == "1" {
+                            "VERDADERO"
+                        } else {
+                            "FALSO"
+                        }
+                        .to_string(),
+                    ),
                     Some("e") => (!valor.trim().is_empty()).then(|| valor.clone()),
                     _ => numero_como_literal(
                         &valor,
@@ -1023,7 +1109,10 @@ fn hoja_xlsx(
                         fecha1904,
                     ),
                 };
-                let dir = ref_a(Ref { columna: c, fila: f });
+                let dir = ref_a(Ref {
+                    columna: c,
+                    fila: f,
+                });
                 if let Some(fin) = escrita.clone().or_else(|| literal.clone())
                     && !fin.is_empty()
                 {
@@ -1082,7 +1171,11 @@ fn formula_odf(f: &str) -> Option<String> {
         };
         let r = &resto[a + 1..a + b];
         if r.starts_with('.') || r.starts_with("$.") {
-            s.push_str(&r.replace("$.", "").trim_start_matches('.').replace(":.", ":"));
+            s.push_str(
+                &r.replace("$.", "")
+                    .trim_start_matches('.')
+                    .replace(":.", ":"),
+            );
         } else {
             s.push_str("#REF!");
         }
@@ -1123,13 +1216,19 @@ fn de_ods(bytes: &[u8], ahora: i64) -> Result<Vec<HojaImportada>, NoSeLee> {
                 fila = 0;
             }
             "table-row" => {
-                repite_fila = attr(a, "number-rows-repeated").and_then(|v| v.parse().ok()).unwrap_or(1).max(1);
+                repite_fila = attr(a, "number-rows-repeated")
+                    .and_then(|v| v.parse().ok())
+                    .unwrap_or(1)
+                    .max(1);
                 col = 0;
                 de_la_fila.clear();
             }
             "table-cell" | "covered-table-cell" => {
                 en_celda = true;
-                repite_col = attr(a, "number-columns-repeated").and_then(|v| v.parse().ok()).unwrap_or(1).max(1);
+                repite_col = attr(a, "number-columns-repeated")
+                    .and_then(|v| v.parse().ok())
+                    .unwrap_or(1)
+                    .max(1);
                 tipo = attr(a, "value-type").map(str::to_string);
                 valor = attr(a, "value").map(str::to_string);
                 fecha = attr(a, "date-value").map(str::to_string);
@@ -1160,13 +1259,23 @@ fn de_ods(bytes: &[u8], ahora: i64) -> Result<Vec<HojaImportada>, NoSeLee> {
             "table-cell" | "covered-table-cell" => {
                 en_celda = false;
                 let literal = match tipo.as_deref() {
-                    Some("float" | "currency") => valor.as_deref().and_then(|v| v.parse::<f64>().ok()).map(limpio),
+                    Some("float" | "currency") => valor
+                        .as_deref()
+                        .and_then(|v| v.parse::<f64>().ok())
+                        .map(limpio),
                     Some("percentage") => valor
                         .as_deref()
                         .and_then(|v| v.parse::<f64>().ok())
                         .map(|d| format!("{}%", formula::general(d * 100.0))),
                     Some("date") => fecha.as_deref().and_then(fecha_iso),
-                    Some("boolean") => Some(if logico.as_deref() == Some("true") { "VERDADERO" } else { "FALSO" }.into()),
+                    Some("boolean") => Some(
+                        if logico.as_deref() == Some("true") {
+                            "VERDADERO"
+                        } else {
+                            "FALSO"
+                        }
+                        .into(),
+                    ),
                     None => None,
                     Some(_) => texto_como_literal(&texto),
                 };
@@ -1200,7 +1309,13 @@ fn de_ods(bytes: &[u8], ahora: i64) -> Result<Vec<HojaImportada>, NoSeLee> {
                             break;
                         }
                         for (c, v) in &de_la_fila {
-                            celdas.insert(ref_a(Ref { columna: *c, fila: fila + k }), v.clone());
+                            celdas.insert(
+                                ref_a(Ref {
+                                    columna: *c,
+                                    fila: fila + k,
+                                }),
+                                v.clone(),
+                            );
                         }
                     }
                 }

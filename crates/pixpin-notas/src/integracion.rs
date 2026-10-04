@@ -136,7 +136,12 @@ pub fn claves_del_selector(grupos: &[GrupoDeHojas]) -> Vec<&str> {
 /// Ensena el selector de hojas en `punto` (pantalla) y da la clave de la
 /// elegida. Un menu de Windows con un submenu por proyecto: no hace falta
 /// mas para elegir entre unas decenas de hojas, y se maneja con el teclado.
-pub fn elegir_hoja(marco: HWND, grupos: &[GrupoDeHojas], r: &RotulosFotos, punto: POINT) -> Option<String> {
+pub fn elegir_hoja(
+    marco: HWND,
+    grupos: &[GrupoDeHojas],
+    r: &RotulosFotos,
+    punto: POINT,
+) -> Option<String> {
     let claves = claves_del_selector(grupos);
     if claves.is_empty() {
         return None;
@@ -148,14 +153,22 @@ pub fn elegir_hoja(marco: HWND, grupos: &[GrupoDeHojas], r: &RotulosFotos, punto
         let mut id = ID_HOJA;
         let poner = |m: HMENU, g: &GrupoDeHojas, id: &mut u32| {
             for h in &g.hojas {
-                let _ = AppendMenuW(m, MF_STRING, *id as usize, &HSTRING::from(h.nombre.as_str()));
+                let _ = AppendMenuW(
+                    m,
+                    MF_STRING,
+                    *id as usize,
+                    &HSTRING::from(h.nombre.as_str()),
+                );
                 *id += 1;
             }
         };
         for g in grupos.iter().filter(|g| g.propio) {
             poner(menu, g, &mut id);
         }
-        let otros: Vec<&GrupoDeHojas> = grupos.iter().filter(|g| !g.propio && !g.hojas.is_empty()).collect();
+        let otros: Vec<&GrupoDeHojas> = grupos
+            .iter()
+            .filter(|g| !g.propio && !g.hojas.is_empty())
+            .collect();
         if !otros.is_empty() {
             if id > ID_HOJA {
                 let _ = AppendMenuW(menu, MF_SEPARATOR, 0, PCWSTR::null());
@@ -164,11 +177,29 @@ pub fn elegir_hoja(marco: HWND, grupos: &[GrupoDeHojas], r: &RotulosFotos, punto
             for g in otros {
                 let deste = CreatePopupMenu().ok()?;
                 poner(deste, g, &mut id);
-                let _ = AppendMenuW(sub, MF_POPUP, deste.0 as usize, &HSTRING::from(g.proyecto.as_str()));
+                let _ = AppendMenuW(
+                    sub,
+                    MF_POPUP,
+                    deste.0 as usize,
+                    &HSTRING::from(g.proyecto.as_str()),
+                );
             }
-            let _ = AppendMenuW(menu, MF_POPUP, sub.0 as usize, &HSTRING::from(r.otros_proyectos.as_str()));
+            let _ = AppendMenuW(
+                menu,
+                MF_POPUP,
+                sub.0 as usize,
+                &HSTRING::from(r.otros_proyectos.as_str()),
+            );
         }
-        let elegido = TrackPopupMenu(menu, TPM_RETURNCMD | TPM_RIGHTBUTTON, punto.x, punto.y, None, marco, None);
+        let elegido = TrackPopupMenu(
+            menu,
+            TPM_RETURNCMD | TPM_RIGHTBUTTON,
+            punto.x,
+            punto.y,
+            None,
+            marco,
+            None,
+        );
         let _ = DestroyMenu(menu);
         let n = (elegido.0 as u32).checked_sub(ID_HOJA)? as usize;
         claves.get(n).map(|c| c.to_string())
@@ -200,13 +231,16 @@ pub fn rutas_de_hdrop(h: HDROP, soltar: bool) -> Vec<PathBuf> {
 /// para meterla como cualquier foto (se copia junto a la nota y el
 /// temporal sobra).
 pub fn png_temporal(img: &pixpin_codec::ImagenRgba, nombre: &str) -> Option<PathBuf> {
-    let carpeta = std::env::temp_dir().join("PixPin").join("notas").join(format!(
-        "{}-{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map_or(0, |d| d.as_nanos())
-    ));
+    let carpeta = std::env::temp_dir()
+        .join("PixPin")
+        .join("notas")
+        .join(format!(
+            "{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |d| d.as_nanos())
+        ));
     std::fs::create_dir_all(&carpeta).ok()?;
     let ruta = carpeta.join(format!("{nombre}.png"));
     let png = pixpin_codec::imagen::codificar_png(img).ok()?;
@@ -234,8 +268,14 @@ mod pruebas {
 
     #[test]
     fn el_selector_pone_primero_las_hojas_del_proyecto_de_la_nota() {
-        let g = vec![grupo("Otra", false, &["a"]), grupo("Casa", true, &["planta", "alzado"])];
-        assert_eq!(claves_del_selector(&g), vec!["Casa/planta", "Casa/alzado", "Otra/a"]);
+        let g = vec![
+            grupo("Otra", false, &["a"]),
+            grupo("Casa", true, &["planta", "alzado"]),
+        ];
+        assert_eq!(
+            claves_del_selector(&g),
+            vec!["Casa/planta", "Casa/alzado", "Otra/a"]
+        );
         // Caso negativo: sin hojas, nada que elegir.
         assert!(claves_del_selector(&[grupo("Vacia", true, &[])]).is_empty());
     }

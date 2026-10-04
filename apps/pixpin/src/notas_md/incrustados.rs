@@ -32,8 +32,8 @@ use std::time::SystemTime;
 
 use pixpin_docs::md_imagen;
 use pixpin_notas::incrustados::{
-    self as inc, Archivo, Audio, Burbuja, Contenido, EstadoAudio, Ficha, MensajeElegible, OrdenAudio, RotulosIncrustados,
-    Transcribiendo,
+    self as inc, Archivo, Audio, Burbuja, Contenido, EstadoAudio, Ficha, MensajeElegible,
+    OrdenAudio, RotulosIncrustados, Transcribiendo,
 };
 use pixpin_proyecto::almacen::{self, Ficha as FichaProyecto, Indice};
 use pixpin_proyecto::cuaderno::{Clase, Mensaje};
@@ -86,13 +86,24 @@ impl Leidos {
         let carpeta = almacen::carpeta(raiz, &f.id);
         let fecha = ["guardados.jsonl", "proyecto.json"]
             .iter()
-            .filter_map(|n| std::fs::metadata(carpeta.join(n)).and_then(|m| m.modified()).ok())
+            .filter_map(|n| {
+                std::fs::metadata(carpeta.join(n))
+                    .and_then(|m| m.modified())
+                    .ok()
+            })
             .max();
-        let viejo = self.por_proyecto.get(&f.id).is_none_or(|(antes, _)| *antes != fecha);
+        let viejo = self
+            .por_proyecto
+            .get(&f.id)
+            .is_none_or(|(antes, _)| *antes != fecha);
         if viejo {
-            self.por_proyecto.insert(f.id.clone(), (fecha, paginas_vivas::mensajes_de(raiz, f)));
+            self.por_proyecto
+                .insert(f.id.clone(), (fecha, paginas_vivas::mensajes_de(raiz, f)));
         }
-        self.por_proyecto.get(&f.id).map(|(_, v)| v.as_slice()).unwrap_or(&[])
+        self.por_proyecto
+            .get(&f.id)
+            .map(|(_, v)| v.as_slice())
+            .unwrap_or(&[])
     }
 }
 
@@ -116,7 +127,11 @@ fn ruta_para_la_nota(raiz: &Path, proyecto: &str, m: &Mensaje) -> Option<String>
 
 /// El texto de un mensaje en una linea o pocas, sin marcas de Markdown.
 fn texto_de(m: &Mensaje) -> String {
-    let t = if m.texto.trim().is_empty() { m.nombre.clone() } else { m.texto.clone() };
+    let t = if m.texto.trim().is_empty() {
+        m.nombre.clone()
+    } else {
+        m.texto.clone()
+    };
     crate::voz::sin_marcas(&t)
 }
 
@@ -144,12 +159,22 @@ fn clase_corta(m: &Mensaje) -> String {
 
 /// **La burbuja de un mensaje**, como la pinta el chat: su hora, su chapa y
 /// lo que lleva. `miniatura` es la de la hoja, si ya se pinto.
-pub fn burbuja_de(raiz: &Path, proyecto: &str, m: &Mensaje, miniatura: Option<PathBuf>, t: &Catalogo) -> Burbuja {
+pub fn burbuja_de(
+    raiz: &Path,
+    proyecto: &str,
+    m: &Mensaje,
+    miniatura: Option<PathBuf>,
+    t: &Catalogo,
+) -> Burbuja {
     let ahora = pixpin_shell::entorno::ahora_local_ms();
     let hora = pixpin_ui::chat::etiqueta_hora(pixpin_shell::entorno::a_local(m.cuando), ahora);
     let fichero = fichero_del_mensaje(raiz, proyecto, m);
     let nombre = if m.nombre.trim().is_empty() {
-        m.ruta.as_deref().and_then(|r| r.rsplit(['/', '\\']).next()).unwrap_or("").to_string()
+        m.ruta
+            .as_deref()
+            .and_then(|r| r.rsplit(['/', '\\']).next())
+            .unwrap_or("")
+            .to_string()
     } else {
         m.nombre.trim().to_string()
     };
@@ -157,7 +182,13 @@ pub fn burbuja_de(raiz: &Path, proyecto: &str, m: &Mensaje, miniatura: Option<Pa
         Some(Clase::Voz) => Contenido::Voz {
             duracion: inc::marca_de_tiempo(m.duracion_ms),
             texto: crate::voz::transcripcion_de(m)
-                .map(|x| crate::voz::trozos(x).into_iter().map(|t| t.texto).collect::<Vec<_>>().join(" "))
+                .map(|x| {
+                    crate::voz::trozos(x)
+                        .into_iter()
+                        .map(|t| t.texto)
+                        .collect::<Vec<_>>()
+                        .join(" ")
+                })
                 .unwrap_or_default(),
         },
         Some(Clase::Imagen) if fichero.is_some() => Contenido::Foto {
@@ -172,10 +203,18 @@ pub fn burbuja_de(raiz: &Path, proyecto: &str, m: &Mensaje, miniatura: Option<Pa
             clase: clase_corta(m),
         },
         _ if m.ruta.as_deref().is_some_and(|r| !r.is_empty()) => {
-            let bytes = fichero.as_ref().and_then(|f| std::fs::metadata(f).ok()).map(|x| x.len()).unwrap_or(m.bytes.max(0) as u64);
+            let bytes = fichero
+                .as_ref()
+                .and_then(|f| std::fs::metadata(f).ok())
+                .map(|x| x.len())
+                .unwrap_or(m.bytes.max(0) as u64);
             Contenido::Archivo(Archivo {
                 nombre: nombre.clone(),
-                detalle: if fichero.is_some() { detalle(bytes, &nombre) } else { t.t("nota-md-no-esta") },
+                detalle: if fichero.is_some() {
+                    detalle(bytes, &nombre)
+                } else {
+                    t.t("nota-md-no-esta")
+                },
                 falta: fichero.is_none(),
             })
         }
@@ -206,7 +245,11 @@ pub fn bloque_de(raiz: &Path, f: &FichaProyecto, m: &Mensaje, t: &Catalogo) -> S
         r if r.trim().is_empty() => crate::ventana_chat::chapa_de_codigo(m).unwrap_or_default(),
         r => crate::voz::sin_marcas(&r),
     };
-    inc::renglon_de_mensaje(&texto, &paginas_vivas::codigo_de_proyecto(f), &m.codigo_unico())
+    inc::renglon_de_mensaje(
+        &texto,
+        &paginas_vivas::codigo_de_proyecto(f),
+        &m.codigo_unico(),
+    )
 }
 
 /// Si un mensaje se puede meter en una nota como incrustado (todos los del
@@ -222,7 +265,10 @@ pub fn se_puede_enlazar(m: &Mensaje) -> bool {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Apertura {
     /// El mensaje, en su chat.
-    Mensaje { proyecto: String, codigo: String },
+    Mensaje {
+        proyecto: String,
+        codigo: String,
+    },
     /// Un documento de este equipo, en su lector de PixPin o su programa.
     Fichero(PathBuf),
     Nada,
@@ -240,7 +286,10 @@ pub fn que_abre(raiz: &Path, destino: &Destino, ruta: &str) -> Apertura {
             None => Apertura::Nada,
         };
     }
-    if md_imagen::hoja_del_enlace(ruta).is_some() || md_imagen::hoja_de_viva(ruta).is_some() || md_imagen::es_foto(ruta) {
+    if md_imagen::hoja_del_enlace(ruta).is_some()
+        || md_imagen::hoja_de_viva(ruta).is_some()
+        || md_imagen::es_foto(ruta)
+    {
         return Apertura::NoEsMio;
     }
     match adjuntos::resolver(raiz, destino, ruta).filter(|r| r.is_file()) {
@@ -255,10 +304,18 @@ pub fn que_abre(raiz: &Path, destino: &Destino, ruta: &str) -> Apertura {
 fn abrir_fichero(idioma: pixpin_store::Idioma, ubicacion: &Ubicacion, r: &Path) {
     let nombre = pixpin_docs::nombre(r);
     if super::es_markdown(r) {
-        super::abrir(idioma, ubicacion.clone(), Destino::Fichero { ruta: r.to_path_buf() });
+        super::abrir(
+            idioma,
+            ubicacion.clone(),
+            Destino::Fichero {
+                ruta: r.to_path_buf(),
+            },
+        );
         return;
     }
-    if crate::lector::se_lee_al_tocar(&nombre) && crate::lector::abrir_en_su_lector(idioma, ubicacion, r, &nombre) {
+    if crate::lector::se_lee_al_tocar(&nombre)
+        && crate::lector::abrir_en_su_lector(idioma, ubicacion, r, &nombre)
+    {
         return;
     }
     if let Err(e) = pixpin_shell::abrir(r) {
@@ -267,7 +324,12 @@ fn abrir_fichero(idioma: pixpin_store::Idioma, ubicacion: &Ubicacion, r: &Path) 
 }
 
 /// Abre un incrustado. `false` si no es uno (lo abre `paginas_vivas`).
-pub fn abrir(idioma: pixpin_store::Idioma, ubicacion: &Ubicacion, destino: &Destino, ruta: &str) -> bool {
+pub fn abrir(
+    idioma: pixpin_store::Idioma,
+    ubicacion: &Ubicacion,
+    destino: &Destino,
+    ruta: &str,
+) -> bool {
     match que_abre(ubicacion.raiz(), destino, ruta) {
         Apertura::NoEsMio => false,
         Apertura::Nada => {
@@ -279,7 +341,13 @@ pub fn abrir(idioma: pixpin_store::Idioma, ubicacion: &Ubicacion, destino: &Dest
             true
         }
         Apertura::Mensaje { proyecto, codigo } => {
-            crate::ventana_chat::ir_a(idioma, ubicacion.clone(), paginas_vivas::opciones_del_lienzo(), proyecto, Some(codigo));
+            crate::ventana_chat::ir_a(
+                idioma,
+                ubicacion.clone(),
+                paginas_vivas::opciones_del_lienzo(),
+                proyecto,
+                Some(codigo),
+            );
             true
         }
     }
@@ -314,7 +382,11 @@ pub struct MediosDeLaNota {
 }
 
 impl MediosDeLaNota {
-    pub fn nuevo(idioma: pixpin_store::Idioma, ubicacion: &Ubicacion, actual: &Rc<RefCell<Destino>>) -> MediosDeLaNota {
+    pub fn nuevo(
+        idioma: pixpin_store::Idioma,
+        ubicacion: &Ubicacion,
+        actual: &Rc<RefCell<Destino>>,
+    ) -> MediosDeLaNota {
         MediosDeLaNota {
             raiz: ubicacion.raiz().to_path_buf(),
             ubicacion: ubicacion.clone(),
@@ -341,19 +413,24 @@ impl MediosDeLaNota {
             return fichero_del_mensaje(&self.raiz, &h.proyecto, &h.mensaje);
         }
         let destino = self.actual.borrow().clone();
-        let (png, _) = adjuntos::sitio(&self.raiz, &destino, &md_imagen::fichero_de_viva(&h.codigo)).ok()?;
+        let (png, _) =
+            adjuntos::sitio(&self.raiz, &destino, &md_imagen::fichero_de_viva(&h.codigo)).ok()?;
         if png.is_file() {
             return Some(png);
         }
         if self.pidiendo.borrow_mut().insert(h.codigo.clone()) {
             let (raiz, h, idioma) = (self.raiz.clone(), h.clone(), self.idioma);
-            let lanzado = std::thread::Builder::new().name("miniatura-de-nota".into()).spawn(move || {
-                let _com = pixpin_shell::ComDelHilo::iniciar();
-                let t = Catalogo::nuevo(idioma);
-                if let Err(e) = paginas_vivas::pintar(&raiz, &h, &t).and_then(|img| paginas_vivas::escribir_png(&png, &img)) {
-                    tracing::warn!(?e, "no se pudo pintar la miniatura de la hoja enlazada");
-                }
-            });
+            let lanzado = std::thread::Builder::new()
+                .name("miniatura-de-nota".into())
+                .spawn(move || {
+                    let _com = pixpin_shell::ComDelHilo::iniciar();
+                    let t = Catalogo::nuevo(idioma);
+                    if let Err(e) = paginas_vivas::pintar(&raiz, &h, &t)
+                        .and_then(|img| paginas_vivas::escribir_png(&png, &img))
+                    {
+                        tracing::warn!(?e, "no se pudo pintar la miniatura de la hoja enlazada");
+                    }
+                });
             if let Err(e) = lanzado {
                 tracing::warn!(?e, "no se pudo lanzar la miniatura");
             }
@@ -366,13 +443,22 @@ impl MediosDeLaNota {
             return Ficha::Borrado(String::new());
         };
         let raiz = self.raiz.clone();
-        let Some(m) = self.leidos.de(&raiz, &f).iter().find(|m| m.codigo_unico() == c).cloned() else {
+        let Some(m) = self
+            .leidos
+            .de(&raiz, &f)
+            .iter()
+            .find(|m| m.codigo_unico() == c)
+            .cloned()
+        else {
             return Ficha::Borrado(String::new());
         };
-        let miniatura = matches!(m.clase, Some(Clase::Dibujo) | Some(Clase::Pagina) | Some(Clase::MiniApp))
-            .then(|| paginas_vivas::buscar(&raiz, Some(&f.id), c))
-            .flatten()
-            .and_then(|h| self.miniatura(&h));
+        let miniatura = matches!(
+            m.clase,
+            Some(Clase::Dibujo) | Some(Clase::Pagina) | Some(Clase::MiniApp)
+        )
+        .then(|| paginas_vivas::buscar(&raiz, Some(&f.id), c))
+        .flatten()
+        .and_then(|h| self.miniatura(&h));
         Ficha::Burbuja(burbuja_de(&raiz, &f.id, &m, miniatura, &self.textos))
     }
 
@@ -381,7 +467,13 @@ impl MediosDeLaNota {
             return Ficha::Borrado(String::new());
         };
         let miniatura = self.miniatura(&h);
-        let mut b = burbuja_de(&self.raiz, &h.proyecto, &h.mensaje, miniatura.clone(), &self.textos);
+        let mut b = burbuja_de(
+            &self.raiz,
+            &h.proyecto,
+            &h.mensaje,
+            miniatura.clone(),
+            &self.textos,
+        );
         // Una hoja se ensena siempre como hoja (una foto o una nota del
         // proyecto tambien), con su nombre de la tarjeta de Proyectos.
         b.contenido = Contenido::Hoja {
@@ -396,7 +488,11 @@ impl MediosDeLaNota {
         let nombre_md = ruta.rsplit(['/', '\\']).next().unwrap_or(ruta);
         // Sin la hora que le pone `adjuntos::adjuntar` delante.
         let nombre = match nombre_md.split_once('-') {
-            Some((hora, resto)) if !resto.is_empty() && hora.chars().all(|c| c.is_ascii_digit()) => resto,
+            Some((hora, resto))
+                if !resto.is_empty() && hora.chars().all(|c| c.is_ascii_digit()) =>
+            {
+                resto
+            }
             _ => nombre_md,
         }
         .to_string();
@@ -470,7 +566,9 @@ impl MediosDeLaNota {
 
     /// Carga `ruta` si no es la que suena, y arranca.
     fn cargar(&mut self, ruta: &str) -> bool {
-        let Some(real) = self.resolver(ruta) else { return false };
+        let Some(real) = self.resolver(ruta) else {
+            return false;
+        };
         if crate::audio::cargado().as_deref() != Some(real.as_path()) {
             if let Err(e) = crate::audio::cargar(&real, &self.titulo(ruta), true) {
                 tracing::warn!(?e, ruta = %real.display(), "no se pudo tocar el audio de la nota");
@@ -509,17 +607,31 @@ impl inc::Medios for MediosDeLaNota {
         };
         let raiz = self.raiz.clone();
         let ahora = pixpin_shell::entorno::ahora_local_ms();
-        let mut v: Vec<&Mensaje> = self.leidos.de(&raiz, &f).iter().filter(|m| se_puede_enlazar(m)).collect();
+        let mut v: Vec<&Mensaje> = self
+            .leidos
+            .de(&raiz, &f)
+            .iter()
+            .filter(|m| se_puede_enlazar(m))
+            .collect();
         v.sort_by_key(|m| std::cmp::Reverse(m.cuando));
         v.into_iter()
             .filter(|m| Some(m.codigo_unico()) != propia)
             .take(EN_EL_MENU)
             .map(|m| {
-                let hora = pixpin_ui::chat::etiqueta_hora(pixpin_shell::entorno::a_local(m.cuando), ahora);
+                let hora =
+                    pixpin_ui::chat::etiqueta_hora(pixpin_shell::entorno::a_local(m.cuando), ahora);
                 let codigo = crate::ventana_chat::chapa_de_codigo(m).unwrap_or_default();
                 let que: String = match m.clase {
-                    Some(Clase::Voz) => format!("\u{1f3a4} {}", crate::biblioteca_audio::titulo_de_audio(m)),
-                    _ => texto_de(m).lines().next().unwrap_or("").chars().take(60).collect(),
+                    Some(Clase::Voz) => {
+                        format!("\u{1f3a4} {}", crate::biblioteca_audio::titulo_de_audio(m))
+                    }
+                    _ => texto_de(m)
+                        .lines()
+                        .next()
+                        .unwrap_or("")
+                        .chars()
+                        .take(60)
+                        .collect(),
                 };
                 MensajeElegible {
                     clave: m.codigo_unico(),
@@ -534,7 +646,12 @@ impl inc::Medios for MediosDeLaNota {
     fn insertar_mensaje(&mut self, clave: &str) -> Option<String> {
         let f = proyecto_de(&self.raiz, &self.actual.borrow())?;
         let raiz = self.raiz.clone();
-        let m = self.leidos.de(&raiz, &f).iter().find(|m| m.codigo_unico() == clave).cloned()?;
+        let m = self
+            .leidos
+            .de(&raiz, &f)
+            .iter()
+            .find(|m| m.codigo_unico() == clave)
+            .cloned()?;
         Some(bloque_de(&raiz, &f, &m, &self.textos))
     }
 
@@ -580,7 +697,11 @@ impl inc::Medios for MediosDeLaNota {
     }
 
     fn pasar_a_texto(&mut self, ruta: &str) -> Result<(), String> {
-        if self.transcribiendo.as_ref().is_some_and(|(_, t)| !t.acabada()) {
+        if self
+            .transcribiendo
+            .as_ref()
+            .is_some_and(|(_, t)| !t.acabada())
+        {
             return Err(self.textos.t("chat-transcribir-en-marcha"));
         }
         let Some(real) = self.resolver(ruta) else {
@@ -589,11 +710,16 @@ impl inc::Medios for MediosDeLaNota {
         let whisper = crate::voz::whisper_posible(&self.ubicacion, self.idioma);
         if !whisper
             && !crate::voz::windows_sabe(self.idioma)
-            && let Some(aviso) = crate::ventana_chat::falta_para_transcribir(&self.ubicacion, &self.textos, self.idioma)
+            && let Some(aviso) = crate::ventana_chat::falta_para_transcribir(
+                &self.ubicacion,
+                &self.textos,
+                self.idioma,
+            )
         {
             return Err(aviso);
         }
-        let en = crate::voz::pasar_a_texto(ruta, &real, &self.ubicacion, self.idioma, Vec::new(), None);
+        let en =
+            crate::voz::pasar_a_texto(ruta, &real, &self.ubicacion, self.idioma, Vec::new(), None);
         self.transcribiendo = Some((ruta.to_string(), en));
         Ok(())
     }
@@ -603,7 +729,9 @@ impl inc::Medios for MediosDeLaNota {
         let ruta = ruta.clone();
         match en.recoger() {
             Some(r) => {
-                let hecho = r.map(|t| t.texto).map_err(|e| crate::ventana_chat::razon_de_voz(&e, &self.textos));
+                let hecho = r
+                    .map(|t| t.texto)
+                    .map_err(|e| crate::ventana_chat::razon_de_voz(&e, &self.textos));
                 self.transcribiendo = None;
                 Some(Transcribiendo {
                     ruta,

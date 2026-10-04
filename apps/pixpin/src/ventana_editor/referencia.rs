@@ -199,7 +199,10 @@ pub fn alternar(
     if r.quitar() {
         return true;
     }
-    let Some(ruta) = pixpin_shell::elegir::pedir_imagenes(propietaria).into_iter().next() else {
+    let Some(ruta) = pixpin_shell::elegir::pedir_imagenes(propietaria)
+        .into_iter()
+        .next()
+    else {
         return false;
     };
     let foto = match pixpin_codec::cargar(&ruta) {
@@ -229,7 +232,11 @@ mod pruebas {
         assert_eq!(tamano_de_la_foto(3000, 4000), (900, 1200));
         // Caso negativo: una pequena no se agranda.
         assert_eq!(tamano_de_la_foto(640, 480), (640, 480));
-        assert_eq!(tamano_de_la_foto(0, 0), (1, 1), "sin tamano no se divide por cero");
+        assert_eq!(
+            tamano_de_la_foto(0, 0),
+            (1, 1),
+            "sin tamano no se divide por cero"
+        );
     }
 
     #[test]

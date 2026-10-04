@@ -112,7 +112,11 @@ mod pruebas {
         assert_eq!(de_texto("idioma = \"es-ES\"\n"), None);
         assert_eq!(de_texto("esto no es toml = = ="), None);
         let vacia = en_texto("", &[]);
-        assert_eq!(de_texto(&vacia), Some(Vec::new()), "quitar todos es una eleccion");
+        assert_eq!(
+            de_texto(&vacia),
+            Some(Vec::new()),
+            "quitar todos es una eleccion"
+        );
     }
 
     #[test]

@@ -279,7 +279,9 @@ pub fn apuntar_con(
         Ok(c) => c.mensajes.into_iter().find(|m| {
             pedidos::es_lista(m)
                 && !m.en_buzon
-                && pedidos::nombre_de_lista(m).trim().eq_ignore_ascii_case(INBOX)
+                && pedidos::nombre_de_lista(m)
+                    .trim()
+                    .eq_ignore_ascii_case(INBOX)
         }),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
         Err(e) => return Err(e.into()),
@@ -304,7 +306,10 @@ pub fn mover(raiz: &Path, desde: &Lista, fila: &Fila, hasta: &Lista) -> Result<b
     }
     let mut origen = pedidos::mensaje_de(raiz, &desde.proyecto, &desde.codigo)?;
     let mut tareas = mini::leer_tareas(&origen.texto);
-    if tareas.get(fila.indice).is_none_or(|t| t.texto != fila.crudo) {
+    if tareas
+        .get(fila.indice)
+        .is_none_or(|t| t.texto != fila.crudo)
+    {
         return Ok(false);
     }
     let mut destino = pedidos::mensaje_de(raiz, &hasta.proyecto, &hasta.codigo)?;
@@ -333,9 +338,11 @@ pub const EXTENSIONES_DE_IMAGEN: [&str; 6] = ["png", "jpg", "jpeg", "bmp", "gif"
 /// Si un fichero es una imagen de las que puede llevar una tarea, por su
 /// extension.
 pub fn es_imagen(ruta: &Path) -> bool {
-    ruta.extension()
-        .and_then(|e| e.to_str())
-        .is_some_and(|e| EXTENSIONES_DE_IMAGEN.iter().any(|x| x.eq_ignore_ascii_case(e)))
+    ruta.extension().and_then(|e| e.to_str()).is_some_and(|e| {
+        EXTENSIONES_DE_IMAGEN
+            .iter()
+            .any(|x| x.eq_ignore_ascii_case(e))
+    })
 }
 
 /// Copia una imagen a `archivos/` del chat `proyecto` y devuelve su enlace
@@ -372,12 +379,19 @@ pub fn guardar_imagen(raiz: &Path, proyecto: &str, origen: &Path) -> Result<Stri
     // lanzador se vacia sola a diario) y la tarea no puede depender de el.
     if bmp {
         pixpin_codec::imagen::cargar(origen)
-            .and_then(|img| pixpin_codec::guardar(&img, &carpeta.join(&nombre), pixpin_codec::FormatoImagen::Png))
+            .and_then(|img| {
+                pixpin_codec::guardar(
+                    &img,
+                    &carpeta.join(&nombre),
+                    pixpin_codec::FormatoImagen::Png,
+                )
+            })
             .map_err(|e| Fallo::Imagen(e.to_string()))?;
     } else {
         std::fs::copy(origen, carpeta.join(&nombre))?;
     }
-    let chat = pixpin_proyecto::vista::chat_de_ficha(raiz, proyecto).unwrap_or_else(|| proyecto.to_string());
+    let chat = pixpin_proyecto::vista::chat_de_ficha(raiz, proyecto)
+        .unwrap_or_else(|| proyecto.to_string());
     let rel = format!("archivos/{nombre}");
     Ok(format!(
         "{}{}",
@@ -410,7 +424,10 @@ pub fn con_imagenes_guardadas(
     for (n, r) in imagenes {
         enlaces.push((*n, guardar_imagen(raiz, proyecto, r)?));
     }
-    Ok(mini::fichas_a_imagenes(mini::saneado(texto).as_str(), &enlaces))
+    Ok(mini::fichas_a_imagenes(
+        mini::saneado(texto).as_str(),
+        &enlaces,
+    ))
 }
 
 /// Donde esta en este equipo la imagen `enlace` de una tarea de la lista
@@ -505,14 +522,20 @@ mod pruebas {
             "- [ ] sin fecha a\n- [ ] nueva ➕ 2026-10-03\n- [x] hecha ➕ 2026-09-01\n- [ ] vieja ➕ 2026-10-01\n- [ ] sin fecha b",
         );
         let (arriba, plegadas) = l.a_la_vista(&|_| false);
-        assert_eq!(textos(&arriba), ["vieja", "nueva", "sin fecha a", "sin fecha b"]);
+        assert_eq!(
+            textos(&arriba),
+            ["vieja", "nueva", "sin fecha a", "sin fecha b"]
+        );
         // Caso negativo: lo hecho no sale arriba aunque sea lo mas viejo.
         assert_eq!(textos(&plegadas), ["hecha"]);
     }
 
     #[test]
     fn la_recien_marcada_se_queda_arriba_en_su_sitio() {
-        let l = lista(1, "- [ ] a ➕ 2026-10-01\n- [x] b ➕ 2026-10-02\n- [ ] c ➕ 2026-10-03\n- [x] d");
+        let l = lista(
+            1,
+            "- [ ] a ➕ 2026-10-01\n- [x] b ➕ 2026-10-02\n- [ ] c ➕ 2026-10-03\n- [x] d",
+        );
         let (arriba, plegadas) = l.a_la_vista(&|f| f.crudo.starts_with('b'));
         assert_eq!(textos(&arriba), ["a", "b", "c"]);
         assert_eq!(textos(&plegadas), ["d"]);
@@ -527,7 +550,11 @@ mod pruebas {
         ];
         ordenar_listas(&mut v);
         let orden: Vec<i64> = v.iter().map(|l| l.cuando).collect();
-        assert_eq!(orden, [20, 5, 10], "la hecha entera va al final aunque sea mas nueva");
+        assert_eq!(
+            orden,
+            [20, 5, 10],
+            "la hecha entera va al final aunque sea mas nueva"
+        );
     }
 
     fn almacen_de_prueba(nombre: &str) -> (PathBuf, almacen::Ficha) {
@@ -552,8 +579,16 @@ mod pruebas {
         apuntar(&raiz, "PC01", "pan").unwrap();
         // Caso negativo: una nota no sale; una lista vacia sale sin tareas
         // (es adonde mover), y la ventana no la ensena.
-        crate::ventana_chat::escribir_nota(&raiz, &obra.id, "PC01", "- [ ] no soy lista", 3, 90, None)
-            .unwrap();
+        crate::ventana_chat::escribir_nota(
+            &raiz,
+            &obra.id,
+            "PC01",
+            "- [ ] no soy lista",
+            3,
+            90,
+            None,
+        )
+        .unwrap();
         let vacia = cuaderno::Mensaje {
             id: "vacia".into(),
             clase: Some(cuaderno::Clase::MiniApp),
@@ -566,12 +601,22 @@ mod pruebas {
         let (listas, proyectos) = reunir(&raiz);
         assert_eq!(proyectos.len(), 2, "Obra y Mensajes guardados");
         assert_eq!(listas.len(), 3, "{listas:#?}");
-        assert!(listas.iter().any(|l| l.codigo == "vacia" && l.filas.is_empty()));
+        assert!(
+            listas
+                .iter()
+                .any(|l| l.codigo == "vacia" && l.filas.is_empty())
+        );
         let de = |guardados: bool| {
-            listas.iter().find(|l| l.guardados == guardados && !l.filas.is_empty()).unwrap()
+            listas
+                .iter()
+                .find(|l| l.guardados == guardados && !l.filas.is_empty())
+                .unwrap()
         };
         assert_eq!(de(false).chat, "Obra");
-        assert_eq!(textos(&de(false).filas.iter().collect::<Vec<_>>()), ["yeso"]);
+        assert_eq!(
+            textos(&de(false).filas.iter().collect::<Vec<_>>()),
+            ["yeso"]
+        );
         assert_eq!(textos(&de(true).filas.iter().collect::<Vec<_>>()), ["pan"]);
         assert_eq!(de(true).titulo, INBOX, "lo apuntado va al Inbox");
         assert_eq!(listas[0].titulo, INBOX, "y el Inbox va el primero");
@@ -589,7 +634,9 @@ mod pruebas {
         let antes = firma(&raiz, &proyectos);
         let l = &listas[0];
         assert!(marcar(&raiz, l, &l.filas[1], true).unwrap());
-        let doc = pedidos::mensaje_de(&raiz, &obra.id, &l.codigo).unwrap().texto;
+        let doc = pedidos::mensaje_de(&raiz, &obra.id, &l.codigo)
+            .unwrap()
+            .texto;
         let hechas: Vec<bool> = mini::leer_tareas(&doc).iter().map(|t| t.hecha).collect();
         assert_eq!(hechas, [false, true], "solo la pedida, en su mensaje");
         assert_ne!(firma(&raiz, &proyectos), antes, "y la ventana se entera");
@@ -597,7 +644,9 @@ mod pruebas {
         let mut vieja = l.filas[0].clone();
         vieja.crudo = "otra cosa".into();
         assert!(!marcar(&raiz, l, &vieja, true).unwrap());
-        let doc2 = pedidos::mensaje_de(&raiz, &obra.id, &l.codigo).unwrap().texto;
+        let doc2 = pedidos::mensaje_de(&raiz, &obra.id, &l.codigo)
+            .unwrap()
+            .texto;
         assert_eq!(doc2, doc);
         let _ = std::fs::remove_dir_all(&raiz);
     }
@@ -616,14 +665,26 @@ mod pruebas {
         let inbox2 = listas.iter().find(|l| es_inbox(l)).unwrap();
         let grupo2 = listas.iter().find(|l| !l.guardados).unwrap();
         assert_eq!(textos(&inbox2.filas.iter().collect::<Vec<_>>()), ["pan"]);
-        assert_eq!(textos(&grupo2.filas.iter().collect::<Vec<_>>()), ["yeso", "arena"]);
+        assert_eq!(
+            textos(&grupo2.filas.iter().collect::<Vec<_>>()),
+            ["yeso", "arena"]
+        );
         assert_eq!(grupo2.filas[1].creada, Some(hoy()), "conserva su fecha");
         assert_eq!(grupo2.titulo, "Obra", "y el titulo del grupo");
         // Caso negativo: una tarea que ya no esta donde se vio no se mueve.
         let mut vieja = inbox2.filas[0].clone();
         vieja.crudo = "otra".into();
         assert!(!mover(&raiz, inbox2, &vieja, grupo2).unwrap());
-        assert_eq!(reunir(&raiz).0.iter().find(|l| es_inbox(l)).unwrap().filas.len(), 1);
+        assert_eq!(
+            reunir(&raiz)
+                .0
+                .iter()
+                .find(|l| es_inbox(l))
+                .unwrap()
+                .filas
+                .len(),
+            1
+        );
         let _ = std::fs::remove_dir_all(&raiz);
     }
 
@@ -646,7 +707,13 @@ mod pruebas {
         let (raiz, _) = almacen_de_prueba("imagenes");
         let a = foto_de_fuera(&raiz, "mi foto (1).png");
         let b = foto_de_fuera(&raiz, "b.jpg");
-        apuntar_con(&raiz, "PC01", "yeso [img 01] para el muro", &[(1, a.clone()), (2, b)]).unwrap();
+        apuntar_con(
+            &raiz,
+            "PC01",
+            "yeso [img 01] para el muro",
+            &[(1, a.clone()), (2, b)],
+        )
+        .unwrap();
         let (listas, _) = reunir(&raiz);
         let inbox = listas.iter().find(|l| es_inbox(l)).unwrap();
         let f = &inbox.filas[0];
@@ -654,7 +721,12 @@ mod pruebas {
         assert_eq!(f.creada, Some(hoy()), "y la fecha se sigue leyendo");
         assert_eq!(f.imagenes.len(), 2);
         // La 1 en su sitio, la 2 (sin ficha) al final, y la fecha detras.
-        assert!(f.crudo.starts_with("yeso ![img 01](pixpin:files/guardados/pc/general/archivos/tarea-"), "{}", f.crudo);
+        assert!(
+            f.crudo
+                .starts_with("yeso ![img 01](pixpin:files/guardados/pc/general/archivos/tarea-"),
+            "{}",
+            f.crudo
+        );
         assert!(f.crudo.contains(") para el muro ![img 02]("), "{}", f.crudo);
         // Cada enlace lleva a una copia de este equipo, sin blancos ni parentesis.
         for e in &f.imagenes {
@@ -683,7 +755,10 @@ mod pruebas {
         bmp.extend_from_slice(&24u16.to_le_bytes());
         bmp.extend_from_slice(&[0; 24]);
         bmp.extend_from_slice(&[255, 0, 0, 0]);
-        let origen = raiz.join("cache").join("lanzador-imagenes").join("pegada.bmp");
+        let origen = raiz
+            .join("cache")
+            .join("lanzador-imagenes")
+            .join("pegada.bmp");
         std::fs::create_dir_all(origen.parent().unwrap()).unwrap();
         std::fs::write(&origen, &bmp).unwrap();
         apuntar_con(&raiz, "PC01", "[img 01] boceto", &[(1, origen.clone())]).unwrap();
@@ -703,11 +778,19 @@ mod pruebas {
     fn caso_negativo_una_imagen_que_falta_no_apunta_nada_ni_copia_las_demas() {
         let (raiz, _) = almacen_de_prueba("imagen-falta");
         let a = foto_de_fuera(&raiz, "a.png");
-        let r = apuntar_con(&raiz, "PC01", "x [img 01]", &[(1, a), (2, raiz.join("no-esta.png"))]);
+        let r = apuntar_con(
+            &raiz,
+            "PC01",
+            "x [img 01]",
+            &[(1, a), (2, raiz.join("no-esta.png"))],
+        );
         assert!(matches!(r, Err(Fallo::SinImagen(_))), "{r:?}");
         let texto = raiz.join("fuera").join("nota.txt");
         std::fs::write(&texto, "hola").unwrap();
-        assert!(matches!(apuntar_con(&raiz, "PC01", "x", &[(1, texto)]), Err(Fallo::NoEsImagen(_))));
+        assert!(matches!(
+            apuntar_con(&raiz, "PC01", "x", &[(1, texto)]),
+            Err(Fallo::NoEsImagen(_))
+        ));
         let (listas, _) = reunir(&raiz);
         assert!(listas.iter().all(|l| l.filas.is_empty()), "nada apuntado");
         let archivos = almacen::Indice::leer(&raiz)
@@ -739,17 +822,27 @@ mod pruebas {
         let nueva = &movida.imagenes[0];
         assert_ne!(nueva, &vieja, "el enlace es ahora del otro chat");
         let r = ruta_de_imagen(&raiz, &obra.id, nueva).unwrap();
-        assert!(r.starts_with(almacen::carpeta(&raiz, &obra.id).join("archivos")), "{}", r.display());
+        assert!(
+            r.starts_with(almacen::carpeta(&raiz, &obra.id).join("archivos")),
+            "{}",
+            r.display()
+        );
         // Caso negativo: un enlace del movil que aun no llego se deja igual.
         let crudo = "x ![img 01](pixpin:files/guardados/otra/no-llego.png) ➕ 2026-10-03";
-        assert_eq!(imagenes_al_chat(&raiz, "g", &obra.id, crudo).unwrap(), crudo);
+        assert_eq!(
+            imagenes_al_chat(&raiz, "g", &obra.id, crudo).unwrap(),
+            crudo
+        );
         let _ = std::fs::remove_dir_all(&raiz);
     }
 
     #[test]
     fn apuntar_algo_vacio_no_crea_nada() {
         let (raiz, _) = almacen_de_prueba("vacio");
-        assert!(matches!(apuntar(&raiz, "PC01", "   "), Err(Fallo::TareaVacia)));
+        assert!(matches!(
+            apuntar(&raiz, "PC01", "   "),
+            Err(Fallo::TareaVacia)
+        ));
         assert!(reunir(&raiz).0.is_empty());
         let _ = std::fs::remove_dir_all(&raiz);
     }

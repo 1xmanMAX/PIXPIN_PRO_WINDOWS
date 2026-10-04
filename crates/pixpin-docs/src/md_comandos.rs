@@ -45,25 +45,45 @@ pub enum Bloque {
 /// si uno se acuerda del simbolo como si solo de la palabra
 /// (`Bloques.todos`).
 pub const CATALOGO: [(Bloque, &[&str]); 17] = [
-    (Bloque::Titulo1, &["#", "t1", "h1", "titulo", "heading", "encabezado"]),
+    (
+        Bloque::Titulo1,
+        &["#", "t1", "h1", "titulo", "heading", "encabezado"],
+    ),
     (Bloque::Titulo2, &["##", "t2", "h2", "subtitulo"]),
     (Bloque::Titulo3, &["###", "t3", "h3"]),
     (Bloque::Lista, &["-", "lista", "vinetas", "bullet", "list"]),
     (Bloque::Numerada, &["1.", "numerada", "numbered", "ol"]),
-    (Bloque::Casillas, &["[]", "casillas", "tareas", "checklist", "todo"]),
+    (
+        Bloque::Casillas,
+        &["[]", "casillas", "tareas", "checklist", "todo"],
+    ),
     (Bloque::Cita, &[">", "cita", "quote"]),
     (Bloque::Codigo, &["```", "codigo", "code", "pre"]),
     (Bloque::Tabla, &["tabla", "table"]),
     (Bloque::Imagen, &["imagen", "foto", "image", "picture"]),
     (Bloque::Fecha, &["fecha", "hoy", "date", "today"]),
-    (Bloque::Separador, &["---", "separador", "raya", "divider", "rule"]),
-    (Bloque::Pagina, &["pagina", "hoja", "lienzo", "proyecto", "page", "sheet", "canvas"]),
+    (
+        Bloque::Separador,
+        &["---", "separador", "raya", "divider", "rule"],
+    ),
+    (
+        Bloque::Pagina,
+        &[
+            "pagina", "hoja", "lienzo", "proyecto", "page", "sheet", "canvas",
+        ],
+    ),
     (Bloque::EnlaceHoja, &["enlace", "vinculo", "link"]),
     // Los de `motormd/Bloques.kt` del movil (`/archivo`, `/adjunto`,
     // `/audio`, `/musica`), mas el chat, que alli no esta.
-    (Bloque::Documento, &["documento", "archivo", "adjunto", "pdf", "document", "file"]),
+    (
+        Bloque::Documento,
+        &["documento", "archivo", "adjunto", "pdf", "document", "file"],
+    ),
     (Bloque::DelChat, &["chat", "mensaje", "message"]),
-    (Bloque::Audio, &["audio", "voz", "musica", "sonido", "voice"]),
+    (
+        Bloque::Audio,
+        &["audio", "voz", "musica", "sonido", "voice"],
+    ),
 ];
 
 /// Lo tecleado tras la barra si el cursor esta escribiendo un comando: la
@@ -87,7 +107,9 @@ pub fn consulta(texto: &str, cursor: usize) -> Option<(usize, String)> {
 
 /// Letras, cifras y lo poco mas que llevan los atajos (`t1`, `1.`, `[]`).
 fn es_de_comando(u: u16) -> bool {
-    char::from_u32(u as u32).is_some_and(|c| c.is_alphanumeric() || matches!(c, '_' | '#' | '.' | '-' | '[' | ']' | '>' | '`'))
+    char::from_u32(u as u32).is_some_and(|c| {
+        c.is_alphanumeric() || matches!(c, '_' | '#' | '.' | '-' | '[' | ']' | '>' | '`')
+    })
 }
 
 /// Sin tildes ni mayusculas, para que «titulo» encuentre «Título».
@@ -114,7 +136,8 @@ pub fn encaja(nombre: &str, atajos: &[&str], q: &str) -> bool {
     if q.is_empty() {
         return true;
     }
-    plano(nombre).split_whitespace().any(|p| p.starts_with(&q)) || atajos.iter().any(|a| plano(a).starts_with(&q))
+    plano(nombre).split_whitespace().any(|p| p.starts_with(&q))
+        || atajos.iter().any(|a| plano(a).starts_with(&q))
 }
 
 /// Los bloques que encajan con lo tecleado, en el orden del catalogo.
@@ -155,7 +178,13 @@ pub fn plantilla(b: Bloque) -> Option<(&'static str, &'static str)> {
 /// Cambia lo que va de `desde` a `hasta` (la barra y lo tecleado) por
 /// `antes` + `despues`, con el cursor entre los dos (`Comandos.insertar`).
 /// Devuelve el texto nuevo y el cursor.
-pub fn poner(texto: &str, desde: usize, hasta: usize, antes: &str, despues: &str) -> (String, usize) {
+pub fn poner(
+    texto: &str,
+    desde: usize,
+    hasta: usize,
+    antes: &str,
+    despues: &str,
+) -> (String, usize) {
     let u: Vec<u16> = texto.encode_utf16().collect();
     let a = desde.min(u.len());
     let b = hasta.clamp(a, u.len());
@@ -232,14 +261,21 @@ mod pruebas {
     fn una_barra_en_mitad_de_la_frase_no_abre_nada() {
         assert_eq!(consulta("el 12/03", 8), None);
         assert_eq!(consulta("ver a/b", 7), None);
-        assert_eq!(consulta("/tabla y mas", 12), None, "con un espacio ya no es comando");
+        assert_eq!(
+            consulta("/tabla y mas", 12),
+            None,
+            "con un espacio ya no es comando"
+        );
         assert_eq!(consulta("sin barra", 4), None);
     }
 
     #[test]
     fn lo_tecleado_filtra_por_el_principio_de_cada_palabra() {
         assert_eq!(buscar("tab", &nombre), vec![Bloque::Tabla]);
-        assert_eq!(buscar("titulo", &nombre), vec![Bloque::Titulo1, Bloque::Titulo2, Bloque::Titulo3]);
+        assert_eq!(
+            buscar("titulo", &nombre),
+            vec![Bloque::Titulo1, Bloque::Titulo2, Bloque::Titulo3]
+        );
         assert_eq!(buscar("num", &nombre), vec![Bloque::Numerada]);
         assert_eq!(buscar("hoy", &nombre), vec![Bloque::Fecha]);
         assert_eq!(buscar("", &nombre).len(), CATALOGO.len());

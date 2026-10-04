@@ -11,7 +11,12 @@ pub(super) const C_EXPORTAR_WORD: u16 = 140;
 
 /// La entrada del menu de la flecha del titulo.
 pub(super) fn entrada(e: &Estado) -> Entrada {
-    super::entrada(C_EXPORTAR_WORD, Dibujo::Icono(Icono::Documento), &e.rotulos.exportar_word, "")
+    super::entrada(
+        C_EXPORTAR_WORD,
+        Dibujo::Icono(Icono::Documento),
+        &e.rotulos.exportar_word,
+        "",
+    )
 }
 
 pub(super) fn a_word(e: &mut Estado) {
@@ -28,7 +33,11 @@ pub(super) fn a_word(e: &mut Estado) {
     ) else {
         return;
     };
-    let tipo = if e.rotulos.tipo_word.is_empty() { "Word" } else { e.rotulos.tipo_word.as_str() };
+    let tipo = if e.rotulos.tipo_word.is_empty() {
+        "Word"
+    } else {
+        e.rotulos.tipo_word.as_str()
+    };
     if let Some(ruta) = pixpin_shell::guardar::pedir_ruta_para(e.marco, &nombre, tipo, "docx")
         && let Err(err) = std::fs::write(&ruta, &bytes)
     {

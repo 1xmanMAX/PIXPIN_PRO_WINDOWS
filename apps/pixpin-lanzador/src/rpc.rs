@@ -15,7 +15,7 @@
 use crate::datos::{self, Datos};
 use crate::pedido::{Envio, Mensajero};
 use crate::resultados::{self, Contexto};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::io::{BufRead, Write};
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
@@ -30,10 +30,17 @@ impl Registro {
     pub fn escribir(&self, texto: &str) {
         let Some(ruta) = &self.ruta else { return };
         // Que no crezca sin fin: pasado un cuarto de mega se empieza de nuevo.
-        if std::fs::metadata(ruta).map(|m| m.len() > 256 * 1024).unwrap_or(false) {
+        if std::fs::metadata(ruta)
+            .map(|m| m.len() > 256 * 1024)
+            .unwrap_or(false)
+        {
             let _ = std::fs::remove_file(ruta);
         }
-        if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(ruta) {
+        if let Ok(mut f) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(ruta)
+        {
             let _ = writeln!(f, "{} {}", datos::ahora_ms(), texto);
         }
     }
@@ -135,14 +142,16 @@ impl<M: Mensajero, W: Write> Plugin<M, W> {
         let msg: Value = match serde_json::from_str(linea) {
             Ok(v) => v,
             Err(e) => {
-                self.registro.escribir(&format!("linea rota ({e}): {linea}"));
+                self.registro
+                    .escribir(&format!("linea rota ({e}): {linea}"));
                 return;
             }
         };
         let Some(metodo) = msg.get("method").and_then(Value::as_str) else {
             // La respuesta de Flow a algo que le pedimos.
             if let Some(e) = msg.get("error") {
-                self.registro.escribir(&format!("Flow contesto con error: {e}"));
+                self.registro
+                    .escribir(&format!("Flow contesto con error: {e}"));
             }
             return;
         };
@@ -212,7 +221,10 @@ impl<M: Mensajero, W: Write> Plugin<M, W> {
             "carpeta" => {
                 let args = argumentos(&params);
                 let carpeta = args.first().and_then(Value::as_str).unwrap_or("");
-                let fichero = args.get(1).and_then(Value::as_str).filter(|f| !f.is_empty());
+                let fichero = args
+                    .get(1)
+                    .and_then(Value::as_str)
+                    .filter(|f| !f.is_empty());
                 self.llamar_a_flow("OpenDirectory", json!([carpeta, fichero]));
                 json!({ "hide": true })
             }
@@ -220,16 +232,21 @@ impl<M: Mensajero, W: Write> Plugin<M, W> {
                 let args = argumentos(&params);
                 if let Some(r) = args.first().and_then(Value::as_str) {
                     let hecho = self.mensajero.abrir_con_windows(r);
-                    self.registro.escribir(&format!("abrir con Windows {r} -> {hecho}"));
+                    self.registro
+                        .escribir(&format!("abrir con Windows {r} -> {hecho}"));
                     if !hecho {
                         let icono = self.icono.clone();
-                        self.llamar_a_flow("ShowMsg", json!(["PixPin Max", format!("No se pudo abrir {r}"), icono]));
+                        self.llamar_a_flow(
+                            "ShowMsg",
+                            json!(["PixPin Max", format!("No se pudo abrir {r}"), icono]),
+                        );
                     }
                 }
                 json!({ "hide": true })
             }
             otro => {
-                self.registro.escribir(&format!("metodo desconocido: {otro}"));
+                self.registro
+                    .escribir(&format!("metodo desconocido: {otro}"));
                 if let Some(id) = &id {
                     self.escribir(&json!({ "jsonrpc": "2.0", "id": id,
                         "error": { "code": -32601, "message": format!("metodo desconocido: {otro}") } }));
@@ -243,8 +260,14 @@ impl<M: Mensajero, W: Write> Plugin<M, W> {
     }
 
     fn inicializar(&mut self, params: &Value) {
-        let meta = primero(params).get("currentPluginMetadata").cloned().unwrap_or(Value::Null);
-        if let Some(dir) = meta.get("pluginSettingsDirectoryPath").and_then(Value::as_str) {
+        let meta = primero(params)
+            .get("currentPluginMetadata")
+            .cloned()
+            .unwrap_or(Value::Null);
+        if let Some(dir) = meta
+            .get("pluginSettingsDirectoryPath")
+            .and_then(Value::as_str)
+        {
             let dir = PathBuf::from(dir);
             let _ = std::fs::create_dir_all(&dir);
             self.registro.ruta = Some(dir.join("pixpin-lanzador.log"));
@@ -256,12 +279,18 @@ impl<M: Mensajero, W: Write> Plugin<M, W> {
                 self.icono = png.to_string_lossy().to_string();
             }
         }
-        self.registro.escribir(&format!("iniciado; datos en {}", self.datos.raiz().display()));
+        self.registro.escribir(&format!(
+            "iniciado; datos en {}",
+            self.datos.raiz().display()
+        ));
     }
 
     fn consulta(&mut self, params: &Value) -> Value {
         let q = primero(params);
-        let k = q.get("actionKeyword").and_then(Value::as_str).unwrap_or(crate::PALABRA_CLAVE);
+        let k = q
+            .get("actionKeyword")
+            .and_then(Value::as_str)
+            .unwrap_or(crate::PALABRA_CLAVE);
         self.palabra_clave = k.to_string();
         let busqueda = q.get("search").and_then(Value::as_str).unwrap_or("");
         let inicio = Instant::now();
@@ -279,7 +308,8 @@ impl<M: Mensajero, W: Write> Plugin<M, W> {
         }
         let t = inicio.elapsed();
         if t > Duration::from_millis(50) {
-            self.registro.escribir(&format!("consulta «{busqueda}» tardo {t:?}"));
+            self.registro
+                .escribir(&format!("consulta «{busqueda}» tardo {t:?}"));
         }
         json!({ "result": resultados::lista_json(&r, &self.icono), "settingsChange": {}, "debugMessage": "" })
     }
@@ -287,7 +317,11 @@ impl<M: Mensajero, W: Write> Plugin<M, W> {
     fn menu(&mut self, params: &Value) -> Value {
         // En versiones de Flow con el fallo #4686 llega `[null]`: lista vacia.
         let c = primero(params);
-        let r = if c.is_object() { resultados::menu(c, &self.contexto()) } else { Vec::new() };
+        let r = if c.is_object() {
+            resultados::menu(c, &self.contexto())
+        } else {
+            Vec::new()
+        };
         json!({ "result": resultados::lista_json(&r, &self.icono), "settingsChange": {}, "debugMessage": "" })
     }
 
@@ -311,8 +345,14 @@ impl<M: Mensajero, W: Write> Plugin<M, W> {
         let Some(consulta) = consulta else { return };
         use crate::imagenes::Pegado;
         let raiz = self.datos.raiz().to_path_buf();
-        let pegado = crate::imagenes::pegar_en_borrador(&raiz, &self.portapapeles, Some(numero), datos::ahora_ms());
-        self.registro.escribir(&format!("pegar imagen {numero} -> {pegado:?}"));
+        let pegado = crate::imagenes::pegar_en_borrador(
+            &raiz,
+            &self.portapapeles,
+            Some(numero),
+            datos::ahora_ms(),
+        );
+        self.registro
+            .escribir(&format!("pegar imagen {numero} -> {pegado:?}"));
         let icono = self.icono.clone();
         match pegado {
             Pegado::Nueva(..) => self.llamar_a_flow("ChangeQuery", json!([consulta, true])),
@@ -322,7 +362,14 @@ impl<M: Mensajero, W: Write> Plugin<M, W> {
                 self.llamar_a_flow("ShowMsg", json!(["PixPin Max", aviso, icono]));
             }
             Pegado::Nada => {
-                self.llamar_a_flow("ShowMsg", json!(["PixPin Max", "No hay ninguna imagen en el portapapeles", icono]));
+                self.llamar_a_flow(
+                    "ShowMsg",
+                    json!([
+                        "PixPin Max",
+                        "No hay ninguna imagen en el portapapeles",
+                        icono
+                    ]),
+                );
             }
         }
     }
@@ -336,7 +383,9 @@ impl<M: Mensajero, W: Write> Plugin<M, W> {
     /// Las tareas: mandar el pedido, poner al dia la cache con lo que la app
     /// va a escribir, y volver a pedir la lista sin cerrar Flow.
     fn pedir_y_seguir(&mut self, pedido: Option<&Value>, consulta: Option<&str>) {
-        let Some(p) = pedido.filter(|p| p.is_object()) else { return };
+        let Some(p) = pedido.filter(|p| p.is_object()) else {
+            return;
+        };
         let envio = self.mandar(p);
         if envio == Envio::Aceptado {
             self.adelantar(p);
@@ -359,24 +408,33 @@ impl<M: Mensajero, W: Write> Plugin<M, W> {
                 let indice = p.get("indice").and_then(Value::as_u64).unwrap_or(u64::MAX) as usize;
                 let hecha = p.get("hecha").and_then(Value::as_bool).unwrap_or(true);
                 let _ = self.datos.proyectos();
-                self.datos.retocar(&proyecto, codigo, |d| datos::con_tarea_marcada(d, indice, hecha));
+                self.datos.retocar(&proyecto, codigo, |d| {
+                    datos::con_tarea_marcada(d, indice, hecha)
+                });
             }
             Some("anadir_tarea") => {
-                let texto = p.get("texto").and_then(Value::as_str).unwrap_or("").to_string();
+                let texto = p
+                    .get("texto")
+                    .and_then(Value::as_str)
+                    .unwrap_or("")
+                    .to_string();
                 let _ = self.datos.proyectos();
-                self.datos.retocar(&proyecto, codigo, |d| datos::con_tarea_anadida(d, &texto));
+                self.datos
+                    .retocar(&proyecto, codigo, |d| datos::con_tarea_anadida(d, &texto));
             }
             Some("lista_nueva") => {
                 // Sin su codigo no se puede adelantar: se espera a que la app
                 // la escriba (suele tardar unas decenas de ms).
-                let titulo = crate::normalizar::normalizar(p.get("titulo").and_then(Value::as_str).unwrap_or(""));
+                let titulo = crate::normalizar::normalizar(
+                    p.get("titulo").and_then(Value::as_str).unwrap_or(""),
+                );
                 let inicio = Instant::now();
                 while inicio.elapsed() < self.espera_lista {
                     let ps = self.datos.proyectos();
-                    if resultados::listas(&ps)
-                        .iter()
-                        .any(|l| crate::normalizar::normalizar(&l.titulo) == titulo && ps[l.proyecto].id == proyecto)
-                    {
+                    if resultados::listas(&ps).iter().any(|l| {
+                        crate::normalizar::normalizar(&l.titulo) == titulo
+                            && ps[l.proyecto].id == proyecto
+                    }) {
                         break;
                     }
                     std::thread::sleep(Duration::from_millis(80));
@@ -399,7 +457,9 @@ fn primero(params: &Value) -> &Value {
 /// `[p1, p2]` por si alguna version no los envuelve.
 fn argumentos(params: &Value) -> Vec<Value> {
     match params {
-        Value::Array(a) if a.len() == 1 && a[0].is_array() => a[0].as_array().cloned().unwrap_or_default(),
+        Value::Array(a) if a.len() == 1 && a[0].is_array() => {
+            a[0].as_array().cloned().unwrap_or_default()
+        }
         Value::Array(a) => a.clone(),
         Value::Null => Vec::new(),
         otro => vec![otro.clone()],
@@ -415,7 +475,10 @@ fn argumentos(params: &Value) -> Vec<Value> {
 /// (`{"method":"Flow.Launcher.ChangeQuery","parameters":[...]}`).
 pub fn una_vez<M: Mensajero>(plugin: &mut Plugin<M, Vec<u8>>, peticion: &Value) -> Value {
     let metodo = peticion.get("method").and_then(Value::as_str).unwrap_or("");
-    let parametros = peticion.get("parameters").cloned().unwrap_or(Value::Array(Vec::new()));
+    let parametros = peticion
+        .get("parameters")
+        .cloned()
+        .unwrap_or(Value::Array(Vec::new()));
     let params = match metodo {
         "query" => {
             let texto = primero(&parametros).as_str().unwrap_or("").to_string();
@@ -425,7 +488,9 @@ pub fn una_vez<M: Mensajero>(plugin: &mut Plugin<M, Vec<u8>>, peticion: &Value) 
         // Las acciones llegan sin envolver: `[p1, p2]`.
         _ => json!([parametros]),
     };
-    plugin.atender(&json!({ "jsonrpc": "2.0", "id": 1, "method": metodo, "params": params }).to_string());
+    plugin.atender(
+        &json!({ "jsonrpc": "2.0", "id": 1, "method": metodo, "params": params }).to_string(),
+    );
     // Tras tocar una tarea, la consulta de despues es otro proceso que lee el
     // disco: un respiro para que la app lo haya escrito.
     if metodo == "pedir_y_seguir" {
@@ -435,14 +500,18 @@ pub fn una_vez<M: Mensajero>(plugin: &mut Plugin<M, Vec<u8>>, peticion: &Value) 
     let mut respuesta = Value::Null;
     let mut llamada = Value::Null;
     for linea in salida.lines() {
-        let Ok(v) = serde_json::from_str::<Value>(linea) else { continue };
+        let Ok(v) = serde_json::from_str::<Value>(linea) else {
+            continue;
+        };
         match v.get("method").and_then(Value::as_str) {
             // La primera llamada a Flow es la que vale (solo cabe una).
             Some(m) if llamada.is_null() => {
                 llamada = json!({ "method": format!("Flow.Launcher.{m}"), "parameters": v.get("params").cloned().unwrap_or(Value::Null) });
             }
             Some(_) => {}
-            None if v.get("id") == Some(&json!(1)) => respuesta = v.get("result").cloned().unwrap_or(Value::Null),
+            None if v.get("id") == Some(&json!(1)) => {
+                respuesta = v.get("result").cloned().unwrap_or(Value::Null)
+            }
             None => {}
         }
     }

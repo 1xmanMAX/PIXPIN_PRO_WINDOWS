@@ -27,8 +27,14 @@ fn trazar(g: &mut Gesto, e: &mut Escena, de: (f32, f32), a: (f32, f32)) -> Optio
         e,
         1.0,
     );
-    g.evento(EventoGesto::Soltar { p: Punto2::nuevo(a.0, a.1) }, e, 1.0)
-        .pide
+    g.evento(
+        EventoGesto::Soltar {
+            p: Punto2::nuevo(a.0, a.1),
+        },
+        e,
+        1.0,
+    )
+    .pide
 }
 
 fn con_cota() -> Gesto {
@@ -50,7 +56,10 @@ fn trazar_una_cota_pide_su_medida_y_lo_dictado_la_deja_anclada_por_su_principio(
     assert!(Gesto::dictar_cota(&mut escena, id, 120.0, 30.0));
     let c = escena.buscar(id).unwrap();
     assert!((longitud_de(c) - 120.0).abs() < 0.01);
-    assert!((angulo_de(c) - 30.0).abs() < 0.01, "30 grados es hacia arriba");
+    assert!(
+        (angulo_de(c) - 30.0).abs() < 0.01,
+        "30 grados es hacia arriba"
+    );
     assert_eq!(c.puntos().unwrap()[0], Punto2::nuevo(100.0, 100.0));
     // Un paso propio: deshacer vuelve a la raya trazada, no la borra.
     assert!(escena.deshacer());

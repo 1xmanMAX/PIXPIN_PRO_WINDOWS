@@ -40,9 +40,10 @@ impl Dictado {
             Dictado::Abriendo(_) => Some("Abriendo el micrófono…".into()),
             Dictado::Grabando(_) => Some("🎙️ Te escucho… pulsa el micrófono para terminar".into()),
             Dictado::Parando(_) => Some("Guardando lo dicho…".into()),
-            Dictado::Pasando(m) if m.bajando() => {
-                Some(format!("Bajando el modelo de voz (una vez)… {:.0} %", m.avance() * 100.0))
-            }
+            Dictado::Pasando(m) if m.bajando() => Some(format!(
+                "Bajando el modelo de voz (una vez)… {:.0} %",
+                m.avance() * 100.0
+            )),
             Dictado::Pasando(m) => Some(format!("Pasando a texto… {:.0} %", m.avance() * 100.0)),
         }
     }
@@ -77,7 +78,10 @@ impl Dictado {
                 Ok(Ok(g)) => (Dictado::Grabando(g), Salida::Nada),
                 Ok(Err(e)) => (Dictado::Nada, Salida::Fallo(fallo(&e))),
                 Err(TryRecvError::Empty) => (Dictado::Abriendo(rx), Salida::Nada),
-                Err(TryRecvError::Disconnected) => (Dictado::Nada, Salida::Fallo("No se pudo abrir el micrófono".into())),
+                Err(TryRecvError::Disconnected) => (
+                    Dictado::Nada,
+                    Salida::Fallo("No se pudo abrir el micrófono".into()),
+                ),
             },
             Dictado::Grabando(g) => (Dictado::Grabando(g), Salida::Nada),
             Dictado::Parando(rx) => match rx.try_recv() {
@@ -97,7 +101,10 @@ impl Dictado {
                     (Dictado::Nada, Salida::Fallo(fallo(&e)))
                 }
                 Err(TryRecvError::Empty) => (Dictado::Parando(rx), Salida::Nada),
-                Err(TryRecvError::Disconnected) => (Dictado::Nada, Salida::Fallo("No se pudo guardar lo dicho".into())),
+                Err(TryRecvError::Disconnected) => (
+                    Dictado::Nada,
+                    Salida::Fallo("No se pudo guardar lo dicho".into()),
+                ),
             },
             Dictado::Pasando(mut m) => match m.recoger() {
                 None => (Dictado::Pasando(m), Salida::Nada),
@@ -114,7 +121,10 @@ impl Dictado {
                         }
                         Err(e) => {
                             tracing::info!(?e, "el dictado de la leccion no se paso a texto");
-                            (Dictado::Nada, Salida::Fallo("No se pudo pasar a texto".into()))
+                            (
+                                Dictado::Nada,
+                                Salida::Fallo("No se pudo pasar a texto".into()),
+                            )
                         }
                     }
                 }
@@ -134,7 +144,9 @@ fn temporal(ubicacion: &Ubicacion) -> PathBuf {
 fn fallo(e: &pixpin_audio::ErrorAudio) -> String {
     match e {
         pixpin_audio::ErrorAudio::SinMicrofono => "No hay micrófono".into(),
-        pixpin_audio::ErrorAudio::DemasiadoCorta { .. } => "Demasiado corto: mantén el micrófono un poco más".into(),
+        pixpin_audio::ErrorAudio::DemasiadoCorta { .. } => {
+            "Demasiado corto: mantén el micrófono un poco más".into()
+        }
         otro => format!("No se pudo grabar: {otro}"),
     }
 }

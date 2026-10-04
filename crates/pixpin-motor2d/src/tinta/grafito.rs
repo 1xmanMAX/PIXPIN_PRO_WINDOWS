@@ -411,7 +411,14 @@ impl Lienzo {
     /// que es lo que hace que estamparlo poco a poco de lo mismo que de una
     /// vez. En una raya de dos pixeles, un giro de seis grados y un cuarto de
     /// pixel no se ven.
-    fn estampar_con_molde(&mut self, centro: (f64, f64), lado: f32, grados: f32, color: [f32; 3], pincel: f32) {
+    fn estampar_con_molde(
+        &mut self,
+        centro: (f64, f64),
+        lado: f32,
+        grados: f32,
+        color: [f32; 3],
+        pincel: f32,
+    ) {
         if lado.is_nan() || pincel.is_nan() || lado <= 0.0 || pincel <= 0.0 {
             return;
         }
@@ -1864,7 +1871,12 @@ pub fn ordenes_con_grafito_guardando(
             }
             None => ordenes.extend(crate::pintado::ordenes(e)),
         }
-        ordenes.extend(crate::pintado::ordenes_medibles(e, escena.escala.as_ref(), ',', escena.fondo));
+        ordenes.extend(crate::pintado::ordenes_medibles(
+            e,
+            escena.escala.as_ref(),
+            ',',
+            escena.fondo,
+        ));
     }
     guardados.mapas.retain(|id, _| vistos.contains(id));
     (ordenes, grafitos)
@@ -1956,7 +1968,11 @@ fn trozo_png(png: &mut Vec<u8>, tipo: &[u8; 4], datos: &[u8]) {
     for b in tipo.iter().chain(datos) {
         c ^= *b as u32;
         for _ in 0..8 {
-            c = if c & 1 != 0 { 0xedb8_8320 ^ (c >> 1) } else { c >> 1 };
+            c = if c & 1 != 0 {
+                0xedb8_8320 ^ (c >> 1)
+            } else {
+                c >> 1
+            };
         }
     }
     png.extend_from_slice(tipo);
@@ -2104,8 +2120,14 @@ mod pruebas {
         for _ in 0..3 {
             let ca = cocer(&a).unwrap();
             let cb = cocer(&b).unwrap();
-            assert_eq!((ca.x0, ca.y0, ca.ancho, ca.alto), (solo_a.x0, solo_a.y0, solo_a.ancho, solo_a.alto));
-            assert_eq!((cb.x0, cb.y0, cb.ancho, cb.alto), (solo_b.x0, solo_b.y0, solo_b.ancho, solo_b.alto));
+            assert_eq!(
+                (ca.x0, ca.y0, ca.ancho, ca.alto),
+                (solo_a.x0, solo_a.y0, solo_a.ancho, solo_a.alto)
+            );
+            assert_eq!(
+                (cb.x0, cb.y0, cb.ancho, cb.alto),
+                (solo_b.x0, solo_b.y0, solo_b.ancho, solo_b.alto)
+            );
         }
     }
 
@@ -2120,7 +2142,11 @@ mod pruebas {
         for k in 0..n {
             let f = k as f32;
             let fase = (f * 6.0) % (2.0 * ancho);
-            let x = if fase < ancho { fase } else { 2.0 * ancho - fase };
+            let x = if fase < ancho {
+                fase
+            } else {
+                2.0 * ancho - fase
+            };
             pts.push(Punto2::nuevo(x, f * 0.3 + 20.0 * (f / 5.0).sin()));
             if pts.len() < 2 {
                 continue;
@@ -2139,7 +2165,10 @@ mod pruebas {
     /// La carga de tinta de un mapa y cuantas casillas se ven llenas.
     fn carga_y_llenas(c: &Cocido) -> (u64, usize) {
         let px = || c.rgba.chunks_exact(4);
-        (px().map(|p| p[3] as u64).sum(), px().filter(|p| p[3] > 40).count())
+        (
+            px().map(|p| p[3] as u64).sum(),
+            px().filter(|p| p[3] > 40).count(),
+        )
     }
 
     /// **Un trazo largo no cambia al soltarlo** (lo reporto el usuario en el
@@ -2156,15 +2185,25 @@ mod pruebas {
         // el paso empieza a crecer con el (gordo * 0,1 * 9.000 = 4.320).
         let (e, en_curso) = garabato_creciendo(9101, 600.0, 1200);
         let d = datos_del_trazo(&e).unwrap();
-        assert!(d.largo / SELLOS_POR_TRAZO > (d.gordo * ESPACIADO_DEL_LAPIZ) as f64, "lo larguisimo");
+        assert!(
+            d.largo / SELLOS_POR_TRAZO > (d.gordo * ESPACIADO_DEL_LAPIZ) as f64,
+            "lo larguisimo"
+        );
         let antes = cocciones();
         let quieto = cocer(&e).unwrap();
         assert_eq!(cocciones(), antes, "quieto no se recuece");
         let de_cero = cocer_sin_horno(&e).unwrap();
-        let (a, b, c) = (carga_y_llenas(&en_curso), carga_y_llenas(&quieto), carga_y_llenas(&de_cero));
+        let (a, b, c) = (
+            carga_y_llenas(&en_curso),
+            carga_y_llenas(&quieto),
+            carga_y_llenas(&de_cero),
+        );
         assert_eq!(a, b);
         let cerca = |x: f64, y: f64| (x - y).abs() <= y * 0.01;
-        assert!(cerca(a.0 as f64, c.0 as f64) && cerca(a.1 as f64, c.1 as f64), "en curso {a:?}, de cero {c:?}");
+        assert!(
+            cerca(a.0 as f64, c.0 as f64) && cerca(a.1 as f64, c.1 as f64),
+            "en curso {a:?}, de cero {c:?}"
+        );
     }
 
     /// Y crecer no lo estampa entero en cada punto, tampoco pasado el tope
@@ -2207,7 +2246,11 @@ mod pruebas {
                 cocer(&b);
             });
         }
-        assert!(cocciones() >= antes + 5, "{} cocciones", cocciones() - antes);
+        assert!(
+            cocciones() >= antes + 5,
+            "{} cocciones",
+            cocciones() - antes
+        );
         // Y al salir vuelve el espacio de siempre.
         assert_eq!(ESPACIO.with(std::cell::Cell::get), 0);
     }
@@ -2330,7 +2373,10 @@ mod pruebas {
         assert_ne!(huella_de(&variable), huella_de(&constante));
         // Caso negativo: el cuerpo carga lo mismo, que el grueso es el mismo.
         let (cv, cc) = (carga_media(&v, 90.0, 110.0), carga_media(&c, 90.0, 110.0));
-        assert!((cv - cc).abs() < cv * 0.35, "cuerpo variable {cv}, constante {cc}");
+        assert!(
+            (cv - cc).abs() < cv * 0.35,
+            "cuerpo variable {cv}, constante {cc}"
+        );
     }
 
     #[test]
@@ -2654,10 +2700,15 @@ mod pruebas {
             })
             .collect();
         let mut azar = AzarJava::nuevo(e.id);
-        estampar_caminos(&mut l, &mut azar, &caminos, 2.4, 1.0, origen, [0.0; 3], true);
+        estampar_caminos(
+            &mut l, &mut azar, &caminos, 2.4, 1.0, origen, [0.0; 3], true,
+        );
         let tocado: usize = l.tocado().iter().map(|r| r.ancho * r.alto).sum();
         let total = l.ancho * l.alto;
-        assert!(tocado * 5 < total, "el diente pasaria por {tocado} de {total}");
+        assert!(
+            tocado * 5 < total,
+            "el diente pasaria por {tocado} de {total}"
+        );
         // Caso negativo: el centro del mapa cocido esta vacio.
         let (w, h) = (c.ancho as usize, c.alto as usize);
         assert_eq!(c.rgba[((h / 2) * w + w / 2) * 4 + 3], 0);
@@ -2680,7 +2731,11 @@ mod pruebas {
         assert!(a > 0.0);
         assert!((a - b).abs() < a * 0.08, "exacto {a}, molde {b}");
         // Caso negativo: nada fuera de la raya (el molde no se corre de sitio).
-        let fuera = |l: &Lienzo| (0..400).map(|x| l.px[(5 * 400 + x) * 4 + 3] as u32).sum::<u32>();
+        let fuera = |l: &Lienzo| {
+            (0..400)
+                .map(|x| l.px[(5 * 400 + x) * 4 + 3] as u32)
+                .sum::<u32>()
+        };
         assert_eq!(fuera(&molde), 0);
         assert_eq!(fuera(&exacto), 0);
     }
@@ -2689,7 +2744,11 @@ mod pruebas {
     fn el_fondo_tendido_tapa_entero_por_dentro_y_a_medias_en_el_canto() {
         let mut l = Lienzo::nuevo(40, 10);
         // De 5.5 a 30.25 en toda la altura.
-        l.rellenar(&[(5.5, 0.0), (30.25, 0.0), (30.25, 10.0), (5.5, 10.0)], [255.0, 0.0, 0.0], 1.0);
+        l.rellenar(
+            &[(5.5, 0.0), (30.25, 0.0), (30.25, 10.0), (5.5, 10.0)],
+            [255.0, 0.0, 0.0],
+            1.0,
+        );
         let a = |x: usize| l.px[(5 * 40 + x) * 4 + 3];
         assert_eq!(a(4), 0);
         assert!((120..=135).contains(&a(5)), "canto izquierdo {}", a(5));
@@ -2733,7 +2792,10 @@ mod pruebas {
         assert!(es_de_grafito(&region));
         let c = cocer_sin_horno(&region).expect("se cuece");
         // Dentro, el fondo con el diente: carga, pero floja.
-        let carga = (20..60).map(|x| alfa_en(&c, x as f32, 20.0) as u32).sum::<u32>() / 40;
+        let carga = (20..60)
+            .map(|x| alfa_en(&c, x as f32, 20.0) as u32)
+            .sum::<u32>()
+            / 40;
         assert!((40..250).contains(&carga), "fondo {carga}");
         // Y azul, que es el fondo y no la tinta negra del trazo.
         let i = (((20.0 - c.y0) as usize) * c.ancho as usize + (30.0 - c.x0) as usize) * 4;
@@ -2741,7 +2803,9 @@ mod pruebas {
         // En el agujero, nada: ni fondo ni un borde repasado.
         assert_eq!(alfa_en(&c, 100.0, 60.0), 0);
         // Fuera del contorno, nada: sin raya no hay sellos que se salgan.
-        let fuera = (10..190).map(|x| alfa_en(&c, x as f32, -2.5) as u32).sum::<u32>();
+        let fuera = (10..190)
+            .map(|x| alfa_en(&c, x as f32, -2.5) as u32)
+            .sum::<u32>();
         assert_eq!(fuera, 0, "el borde se repaso a sellos");
     }
 
@@ -2758,7 +2822,12 @@ mod pruebas {
         let g = &grafitos[0];
         // Entre las dos cajas lisas: todas las de la primera antes, las de la
         // segunda despues.
-        assert!(g.antes_de > 0 && g.antes_de < ordenes.len(), "{} de {}", g.antes_de, ordenes.len());
+        assert!(
+            g.antes_de > 0 && g.antes_de < ordenes.len(),
+            "{} de {}",
+            g.antes_de,
+            ordenes.len()
+        );
         assert_eq!(g.antes_de * 2, ordenes.len());
         // Caso negativo: el trazo de grafito no se cuela liso en las ordenes.
         assert!(

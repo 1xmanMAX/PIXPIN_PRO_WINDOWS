@@ -39,7 +39,9 @@ fn toca(e: &Elemento, p: Punto2, radio: f32) -> bool {
     }
     let tramos = crate::perimetros::segmentos_de(e, crate::perimetros::PASO_PERIMETRO);
     if !tramos.is_empty() {
-        return tramos.iter().any(|(a, b)| distancia_a_segmento(p, *a, *b) <= radio);
+        return tramos
+            .iter()
+            .any(|(a, b)| distancia_a_segmento(p, *a, *b) <= radio);
     }
     // Lo que no da contorno (texto, punto): su caja girada.
     let c = crate::impacto::esquinas_giradas(e);
@@ -122,8 +124,8 @@ impl Bolita {
 #[cfg(test)]
 mod pruebas {
     use super::*;
-    use crate::elemento::Figura;
     use crate::Escena;
+    use crate::elemento::Figura;
 
     fn raya(a: (f32, f32), b: (f32, f32)) -> Elemento {
         Elemento {

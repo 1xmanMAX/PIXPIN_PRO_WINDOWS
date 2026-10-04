@@ -143,11 +143,17 @@ enum Foco {
 
 impl Foco {
     fn es_de_la_ficha(self) -> bool {
-        matches!(self, Foco::Titulo | Foco::Paso | Foco::PorQue | Foco::Proxima | Foco::Etiqueta)
+        matches!(
+            self,
+            Foco::Titulo | Foco::Paso | Foco::PorQue | Foco::Proxima | Foco::Etiqueta
+        )
     }
 
     fn multilinea(self) -> bool {
-        matches!(self, Foco::Paso | Foco::PorQue | Foco::Proxima | Foco::Respuesta)
+        matches!(
+            self,
+            Foco::Paso | Foco::PorQue | Foco::Proxima | Foco::Respuesta
+        )
     }
 }
 
@@ -321,7 +327,12 @@ impl Estado {
             editando: Campo::default(),
             rapida: Rapida::default(),
             menu: None,
-            ancla: RectF { x: 0.0, y: 0.0, ancho: 0.0, alto: 0.0 },
+            ancla: RectF {
+                x: 0.0,
+                y: 0.0,
+                ancho: 0.0,
+                alto: 0.0,
+            },
             comprobacion: false,
             marcadas: HashSet::new(),
             hoy: Vec::new(),
@@ -336,8 +347,18 @@ impl Estado {
             alto_lista: 0.0,
             scroll_ficha: 0.0,
             alto_ficha: 0.0,
-            zona_lista: RectF { x: 0.0, y: 0.0, ancho: 0.0, alto: 0.0 },
-            zona_ficha: RectF { x: 0.0, y: 0.0, ancho: 0.0, alto: 0.0 },
+            zona_lista: RectF {
+                x: 0.0,
+                y: 0.0,
+                ancho: 0.0,
+                alto: 0.0,
+            },
+            zona_ficha: RectF {
+                x: 0.0,
+                y: 0.0,
+                ancho: 0.0,
+                alto: 0.0,
+            },
             seguir_sel: true,
             adjuntos: adjuntos::Cache::default(),
             relacionadas: None,
@@ -352,7 +373,12 @@ impl Estado {
         self.textos.t(clave)
     }
 
-    fn t1(&self, clave: &str, k: &str, v: impl Into<fluent_bundle::FluentValue<'static>>) -> String {
+    fn t1(
+        &self,
+        clave: &str,
+        k: &str,
+        v: impl Into<fluent_bundle::FluentValue<'static>>,
+    ) -> String {
         t1(&self.textos, clave, k, v)
     }
 
@@ -367,7 +393,11 @@ impl Estado {
     fn recargar(&mut self) {
         let raiz = self.raiz();
         self.todas = almacen::listar(&raiz);
-        self.indices = self.todas.iter().map(|e| Indice::nuevo(e.leccion.clone())).collect();
+        self.indices = self
+            .todas
+            .iter()
+            .map(|e| Indice::nuevo(e.leccion.clone()))
+            .collect();
         self.firma = almacen::firma(&raiz, &self.todas);
         self.cambios = almacen::cambios();
         let lecciones: Vec<Leccion> = self.todas.iter().map(|e| e.leccion.clone()).collect();
@@ -375,7 +405,10 @@ impl Estado {
         let indice = pixpin_proyecto::almacen::Indice::leer(&raiz);
         let mut proyectos: Vec<_> = indice.proyectos.iter().collect();
         proyectos.sort_by(|a, b| b.tocado.cmp(&a.tocado));
-        self.general = proyectos.iter().find(|f| f.es_guardados()).map(|f| f.id.clone());
+        self.general = proyectos
+            .iter()
+            .find(|f| f.es_guardados())
+            .map(|f| f.id.clone());
         self.proyectos = proyectos
             .iter()
             .filter(|f| !f.es_guardados())
@@ -404,11 +437,22 @@ impl Estado {
     /// Las fichas de filtro, con su cuenta: Todas, Repetidas, Graves y las
     /// areas que tienen alguna.
     fn filtros(&self) -> Vec<(Filtro, usize)> {
-        let vivas: Vec<&Leccion> = self.todas.iter().map(|e| &e.leccion).filter(|l| !self.se_esta_borrando(&l.id)).collect();
+        let vivas: Vec<&Leccion> = self
+            .todas
+            .iter()
+            .map(|e| &e.leccion)
+            .filter(|l| !self.se_esta_borrando(&l.id))
+            .collect();
         let mut v = vec![
             (Filtro::Todas, vivas.len()),
-            (Filtro::Repetidas, vivas.iter().filter(|l| !l.repeticiones.is_empty()).count()),
-            (Filtro::Graves, vivas.iter().filter(|l| l.gravedad >= 3).count()),
+            (
+                Filtro::Repetidas,
+                vivas.iter().filter(|l| !l.repeticiones.is_empty()).count(),
+            ),
+            (
+                Filtro::Graves,
+                vivas.iter().filter(|l| l.gravedad >= 3).count(),
+            ),
         ];
         let mut areas: Vec<(String, usize)> = Vec::new();
         for l in &vivas {
@@ -426,7 +470,9 @@ impl Estado {
     }
 
     fn se_esta_borrando(&self, id: &str) -> bool {
-        self.borrando.as_ref().is_some_and(|(x, _)| x.leccion.id == id)
+        self.borrando
+            .as_ref()
+            .is_some_and(|(x, _)| x.leccion.id == id)
     }
 
     /// Lo que se ve con el filtro y la busqueda puestos.
@@ -457,8 +503,15 @@ impl Estado {
             // Las del proyecto y las que hablan de lo mismo que su nombre.
             let nombre = self.nombre_de(p).unwrap_or_default();
             let ix: Vec<Indice> = base.iter().map(|i| self.indices[*i].clone()).collect();
-            let cerca: HashSet<String> = buscador::para_el_contexto(&ix, &nombre, 10).into_iter().map(|l| l.id).collect();
-            let mut v: Vec<usize> = base.iter().copied().filter(|i| self.todas[*i].ficha == *p).collect();
+            let cerca: HashSet<String> = buscador::para_el_contexto(&ix, &nombre, 10)
+                .into_iter()
+                .map(|l| l.id)
+                .collect();
+            let mut v: Vec<usize> = base
+                .iter()
+                .copied()
+                .filter(|i| self.todas[*i].ficha == *p)
+                .collect();
             for i in base {
                 if cerca.contains(&self.todas[i].leccion.id) && !v.contains(&i) {
                     v.push(i);
@@ -468,7 +521,10 @@ impl Estado {
         }
         if !self.consulta.texto.trim().is_empty() {
             let ix: Vec<Indice> = base.iter().map(|i| self.indices[*i].clone()).collect();
-            let por_id: HashMap<String, usize> = base.iter().map(|i| (self.todas[*i].leccion.id.clone(), *i)).collect();
+            let por_id: HashMap<String, usize> = base
+                .iter()
+                .map(|i| (self.todas[*i].leccion.id.clone(), *i))
+                .collect();
             base = buscador::buscar(&ix, &self.consulta.texto)
                 .into_iter()
                 .filter_map(|r| por_id.get(&r.leccion.id).copied())
@@ -478,20 +534,32 @@ impl Estado {
         self.scroll_lista = 0.0;
         self.mirado = Some(clave);
         // La elegida sigue si se ve; si no, la primera.
-        if !self.sel.as_ref().is_some_and(|s| self.visibles.iter().any(|i| self.todas[*i].leccion.id == *s)) {
-            self.sel = self.visibles.first().map(|i| self.todas[*i].leccion.id.clone());
+        if !self.sel.as_ref().is_some_and(|s| {
+            self.visibles
+                .iter()
+                .any(|i| self.todas[*i].leccion.id == *s)
+        }) {
+            self.sel = self
+                .visibles
+                .first()
+                .map(|i| self.todas[*i].leccion.id.clone());
             self.seguir_sel = true;
         }
     }
 
     fn nombre_de(&self, ficha: &str) -> Option<String> {
-        self.proyectos.iter().find(|p| p.0 == ficha).map(|p| p.1.clone())
+        self.proyectos
+            .iter()
+            .find(|p| p.0 == ficha)
+            .map(|p| p.1.clone())
     }
 
     /// La entrada elegida.
     fn elegida(&self) -> Option<&Entrada> {
         let id = self.sel.as_ref()?;
-        self.todas.iter().find(|e| e.leccion.id == *id && !self.se_esta_borrando(id))
+        self.todas
+            .iter()
+            .find(|e| e.leccion.id == *id && !self.se_esta_borrando(id))
     }
 
     fn aplicar(&mut self, p: Pedido) {
@@ -536,7 +604,13 @@ impl Estado {
             .map(|e| (e.leccion.id.clone(), e.ficha.clone()))
             .collect();
         let de_quien = |id: &str| quien.get(id).cloned();
-        self.rapida.relleno = rapida::rellenar(&frase, &self.aprendido, &self.indices, &self.proyectos, &de_quien);
+        self.rapida.relleno = rapida::rellenar(
+            &frase,
+            &self.aprendido,
+            &self.indices,
+            &self.proyectos,
+            &de_quien,
+        );
         self.rapida.parecida = buscador::parecidas_por_defecto(&self.indices, &frase)
             .into_iter()
             .map(|r| r.leccion)
@@ -553,7 +627,10 @@ impl Estado {
     }
 
     fn gravedad_rapida(&self) -> i64 {
-        self.rapida.gravedad.unwrap_or(self.rapida.relleno.gravedad).clamp(1, 3)
+        self.rapida
+            .gravedad
+            .unwrap_or(self.rapida.relleno.gravedad)
+            .clamp(1, 3)
     }
 
     /// La ficha donde ira la leccion de la barra: la elegida a mano, la
@@ -585,7 +662,11 @@ impl Estado {
         let ahora = pixpin_shell::entorno::ahora_utc_ms();
         let ficha = match self.proyecto_rapida().or_else(|| self.general.clone()) {
             Some(f) => f,
-            None => match pixpin_proyecto::almacen::asegurar_guardados(&raiz, ahora, &self.pedido.aparato) {
+            None => match pixpin_proyecto::almacen::asegurar_guardados(
+                &raiz,
+                ahora,
+                &self.pedido.aparato,
+            ) {
                 Ok(f) => f.id,
                 Err(err) => {
                     tracing::warn!(?err, "sin chat general donde guardar la leccion");
@@ -607,10 +688,20 @@ impl Estado {
             self.foco = Some(Foco::Rapida);
             return;
         }
-        match almacen::guardar_con_fotos(&raiz, &l, &Donde::Nueva { ficha: ficha.clone() }, &self.pedido.aparato, &self.rapida.fotos) {
+        match almacen::guardar_con_fotos(
+            &raiz,
+            &l,
+            &Donde::Nueva {
+                ficha: ficha.clone(),
+            },
+            &self.pedido.aparato,
+            &self.rapida.fotos,
+        ) {
             Ok(_) => {
                 tracing::info!(id = %l.id, "leccion apuntada desde la barra");
-                let donde = self.nombre_de(&ficha).unwrap_or_else(|| self.t("lec2-sin-proyecto"));
+                let donde = self
+                    .nombre_de(&ficha)
+                    .unwrap_or_else(|| self.t("lec2-sin-proyecto"));
                 self.avisar(self.t1("lec2-guardada", "donde", donde));
                 self.rapida = Rapida::default();
                 self.rapida.mirado = String::from("\u{0}");
@@ -635,7 +726,9 @@ impl Estado {
             Some(C::Imagen(img)) => match pixpin_codec::imagen::codificar_png(&img) {
                 Ok(png) => {
                     let n = self.rapida.fotos.len() + 1;
-                    self.rapida.fotos.push((format!("leccion-{}-{n}.png", self.ahora), png));
+                    self.rapida
+                        .fotos
+                        .push((format!("leccion-{}-{n}.png", self.ahora), png));
                 }
                 Err(err) => tracing::warn!(?err, "la captura pegada no se pudo pasar a PNG"),
             },
@@ -655,7 +748,10 @@ impl Estado {
         for r in rutas {
             match (pixpin_codec::cargar(r), std::fs::read(r)) {
                 (Ok(_), Ok(bytes)) => {
-                    let nombre = r.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| "foto.png".into());
+                    let nombre = r
+                        .file_name()
+                        .map(|n| n.to_string_lossy().into_owned())
+                        .unwrap_or_else(|| "foto.png".into());
                     self.rapida.fotos.push((nombre, bytes));
                 }
                 _ => no += 1,
@@ -756,7 +852,11 @@ impl Estado {
         let i = self
             .sel
             .as_ref()
-            .and_then(|s| self.visibles.iter().position(|i| self.todas[*i].leccion.id == *s))
+            .and_then(|s| {
+                self.visibles
+                    .iter()
+                    .position(|i| self.todas[*i].leccion.id == *s)
+            })
             .unwrap_or(0) as i32;
         let j = (i + paso).clamp(0, self.visibles.len() as i32 - 1) as usize;
         self.terminar_edicion();
@@ -775,8 +875,15 @@ impl Estado {
         };
         self.borrar_ya();
         // La de debajo queda elegida, como en una lista de correo.
-        let pos = self.visibles.iter().position(|i| self.todas[*i].leccion.id == x.leccion.id);
-        let siguiente = pos.and_then(|p| self.visibles.get(p + 1).or_else(|| p.checked_sub(1).and_then(|q| self.visibles.get(q))));
+        let pos = self
+            .visibles
+            .iter()
+            .position(|i| self.todas[*i].leccion.id == x.leccion.id);
+        let siguiente = pos.and_then(|p| {
+            self.visibles
+                .get(p + 1)
+                .or_else(|| p.checked_sub(1).and_then(|q| self.visibles.get(q)))
+        });
         self.sel = siguiente.map(|i| self.todas[*i].leccion.id.clone());
         let quitada = x.leccion.id.clone();
         self.borrando = Some((x, Instant::now()));
@@ -838,7 +945,13 @@ impl Estado {
         }
         let mut l = x.leccion.clone();
         l.tocada = pixpin_shell::entorno::ahora_utc_ms();
-        match almacen::guardar_con_fotos(&self.raiz(), &l, &Donde::de(&x), &self.pedido.aparato, &fotos) {
+        match almacen::guardar_con_fotos(
+            &self.raiz(),
+            &l,
+            &Donde::de(&x),
+            &self.pedido.aparato,
+            &fotos,
+        ) {
             Ok(_) => {
                 self.adjuntos.olvidar(&l.id);
                 self.recargar();
@@ -860,7 +973,12 @@ impl Estado {
         {
             return v.clone();
         }
-        let vivos: Vec<Indice> = self.indices.iter().filter(|ix| !self.se_esta_borrando(&ix.leccion.id)).cloned().collect();
+        let vivos: Vec<Indice> = self
+            .indices
+            .iter()
+            .filter(|ix| !self.se_esta_borrando(&ix.leccion.id))
+            .cloned()
+            .collect();
         let v = buscador::relacionadas(&vivos, &l, 3);
         self.relacionadas = Some((l.id.clone(), l.tocada, v.clone()));
         v
@@ -871,12 +989,18 @@ impl Estado {
     fn opciones_del_menu(&self, m: Menu) -> Vec<(String, String)> {
         match m {
             Menu::AreaRapida | Menu::AreaFicha => {
-                let mut v: Vec<(String, String)> = self.areas().into_iter().map(|a| (a.clone(), a)).collect();
+                let mut v: Vec<(String, String)> =
+                    self.areas().into_iter().map(|a| (a.clone(), a)).collect();
                 v.push((self.t("lec2-sin-area"), String::new()));
                 v
             }
             Menu::ProyectoRapida => {
-                let mut v: Vec<(String, String)> = self.proyectos.iter().take(14).map(|(f, n)| (n.clone(), f.clone())).collect();
+                let mut v: Vec<(String, String)> = self
+                    .proyectos
+                    .iter()
+                    .take(14)
+                    .map(|(f, n)| (n.clone(), f.clone()))
+                    .collect();
                 v.push((self.t("lec2-sin-proyecto"), String::new()));
                 v
             }
@@ -918,7 +1042,11 @@ impl Estado {
 
     /// Contesta la de ahora con `nota` y pasa a la siguiente.
     fn calificar(&mut self, nota: pixpin_lecciones::Nota) {
-        let Some(id) = self.repaso.as_ref().and_then(|r| r.actual().map(str::to_string)) else {
+        let Some(id) = self
+            .repaso
+            .as_ref()
+            .and_then(|r| r.actual().map(str::to_string))
+        else {
             return;
         };
         if let Some(x) = self.todas.iter().find(|x| x.leccion.id == id).cloned() {
@@ -971,7 +1099,14 @@ enum Atajo {
 /// **Los atajos**, en un sitio. Las teclas de una letra (R, P, S, 1/2/3,
 /// Espacio) solo valen sin una caja de texto con el foco: escribiendo son
 /// letras.
-fn atajo(foco: Option<Foco>, en_repaso: bool, mostrada: bool, vk: u32, ctrl: bool, shift: bool) -> Option<Atajo> {
+fn atajo(
+    foco: Option<Foco>,
+    en_repaso: bool,
+    mostrada: bool,
+    vk: u32,
+    ctrl: bool,
+    shift: bool,
+) -> Option<Atajo> {
     use Accion as A;
     if vk == VK_ESCAPE {
         return Some(Atajo::Atras);
@@ -979,7 +1114,9 @@ fn atajo(foco: Option<Foco>, en_repaso: bool, mostrada: bool, vk: u32, ctrl: boo
     if en_repaso {
         return match (vk, ctrl, foco) {
             (VK_D, true, _) => Some(Atajo::Accion(A::DictarRespuesta)),
-            (VK_ENTRAR, _, Some(Foco::Respuesta)) if !shift && !mostrada => Some(Atajo::Accion(A::Mostrar)),
+            (VK_ENTRAR, _, Some(Foco::Respuesta)) if !shift && !mostrada => {
+                Some(Atajo::Accion(A::Mostrar))
+            }
             (VK_ENTRAR, _, Some(Foco::Respuesta)) if !shift => Some(Atajo::Accion(A::Siguiente)),
             (_, _, Some(_)) => None,
             (VK_ESPACIO, false, None) if !mostrada => Some(Atajo::Accion(A::Mostrar)),
@@ -995,7 +1132,9 @@ fn atajo(foco: Option<Foco>, en_repaso: bool, mostrada: bool, vk: u32, ctrl: boo
         (VK_F, true, _, _) => Some(Atajo::Accion(A::FocoBuscar)),
         (VK_N, true, _, _) => Some(Atajo::Accion(A::FocoRapida)),
         (VK_D, true, true, _) => Some(Atajo::Accion(A::DictarRapida)),
-        (VK_Z, true, _, None | Some(Foco::Rapida) | Some(Foco::Buscar)) => Some(Atajo::Accion(A::Deshacer)),
+        (VK_Z, true, _, None | Some(Foco::Rapida) | Some(Foco::Buscar)) => {
+            Some(Atajo::Accion(A::Deshacer))
+        }
         (VK_V, true, _, None | Some(Foco::Rapida)) => Some(Atajo::Pegar),
         (VK_ENTRAR, _, false, Some(Foco::Rapida)) => Some(Atajo::Accion(A::Guardar)),
         (VK_ENTRAR, _, false, Some(f)) if f.es_de_la_ficha() => Some(Atajo::Terminar),
@@ -1018,9 +1157,24 @@ fn columnas(w: f32, h: f32, arriba: f32, s: f32) -> (RectF, RectF, RectF) {
     let alto = (h - arriba).max(0.0);
     let ficha = (w - lista - datos).max(0.0);
     (
-        RectF { x: 0.0, y: arriba, ancho: lista, alto },
-        RectF { x: lista, y: arriba, ancho: ficha, alto },
-        RectF { x: lista + ficha, y: arriba, ancho: datos, alto },
+        RectF {
+            x: 0.0,
+            y: arriba,
+            ancho: lista,
+            alto,
+        },
+        RectF {
+            x: lista,
+            y: arriba,
+            ancho: ficha,
+            alto,
+        },
+        RectF {
+            x: lista + ficha,
+            y: arriba,
+            ancho: datos,
+            alto,
+        },
     )
 }
 
@@ -1034,10 +1188,17 @@ fn bucle(recursos: &Recursos, pedido: Pedido) -> Result<()> {
     let escala = monitor.escala_por_cien as f32 / 100.0;
     let mut marco = centrado(monitor.area_trabajo, 1280, 820, monitor.escala_por_cien);
     let mut e = Estado::nuevo(pedido);
-    let mut ventana = VentanaOverlay::nueva_normal(marco, &e.t("chat-lecciones")).context("no se pudo abrir la lista de lecciones")?;
+    let mut ventana = VentanaOverlay::nueva_normal(marco, &e.t("chat-lecciones"))
+        .context("no se pudo abrir la lista de lecciones")?;
     let motor = recursos.motor();
-    let superficie = Superficie::nueva(&motor, &recursos.d3d(), ventana.handle(), marco.ancho, marco.alto)
-        .context("sin superficie para las lecciones")?;
+    let superficie = Superficie::nueva(
+        &motor,
+        &recursos.d3d(),
+        ventana.handle(),
+        marco.ancho,
+        marco.alto,
+    )
+    .context("sin superficie para las lecciones")?;
     ventana.mostrar();
     ventana.enfocar();
     let hwnd = ventana.handle().0 as isize;
@@ -1100,7 +1261,9 @@ fn bucle(recursos: &Recursos, pedido: Pedido) -> Result<()> {
                     }
                 }
                 EventoOverlay::Caracter(c) => escribir(&mut e, c),
-                EventoOverlay::Tecla { vk, ctrl, shift, .. } => vivo = tecla(&mut e, vk, ctrl, shift),
+                EventoOverlay::Tecla {
+                    vk, ctrl, shift, ..
+                } => vivo = tecla(&mut e, vk, ctrl, shift),
                 _ => {}
             }
         }
@@ -1125,7 +1288,10 @@ fn bucle(recursos: &Recursos, pedido: Pedido) -> Result<()> {
                 pintar = true;
             }
         }
-        match e.dictado.avanzar(&e.pedido.ubicacion.clone(), e.pedido.idioma) {
+        match e
+            .dictado
+            .avanzar(&e.pedido.ubicacion.clone(), e.pedido.idioma)
+        {
             Salida::Nada => {}
             Salida::Texto(t) => {
                 let campo = match e.dictando {
@@ -1151,11 +1317,17 @@ fn bucle(recursos: &Recursos, pedido: Pedido) -> Result<()> {
         if e.dictado.activo() {
             pintar = true;
         }
-        if e.borrando.as_ref().is_some_and(|(_, t)| t.elapsed() > PARA_DESHACER) {
+        if e.borrando
+            .as_ref()
+            .is_some_and(|(_, t)| t.elapsed() > PARA_DESHACER)
+        {
             e.borrar_ya();
             pintar = true;
         }
-        if e.aviso.as_ref().is_some_and(|(_, t)| t.elapsed() > Duration::from_millis(3_000)) {
+        if e.aviso
+            .as_ref()
+            .is_some_and(|(_, t)| t.elapsed() > Duration::from_millis(3_000))
+        {
             e.aviso = None;
             pintar = true;
         }
@@ -1235,7 +1407,11 @@ fn tecla(e: &mut Estado, vk: u32, ctrl: bool, shift: bool) -> bool {
         Some(Atajo::SiguienteBloque(atras)) => {
             const ORDEN: [Foco; 4] = [Foco::Titulo, Foco::Paso, Foco::PorQue, Foco::Proxima];
             let i = ORDEN.iter().position(|f| Some(*f) == e.foco).unwrap_or(0);
-            let j = if atras { (i + ORDEN.len() - 1) % ORDEN.len() } else { (i + 1) % ORDEN.len() };
+            let j = if atras {
+                (i + ORDEN.len() - 1) % ORDEN.len()
+            } else {
+                (i + 1) % ORDEN.len()
+            };
             e.editar(ORDEN[j]);
         }
         None => match e.foco {
@@ -1269,7 +1445,11 @@ fn atras(e: &mut Estado) -> bool {
         return true;
     }
     if e.repaso.is_some() {
-        if e.foco == Some(Foco::Respuesta) && e.repaso.as_ref().is_some_and(|r| !r.respuesta.texto.is_empty()) {
+        if e.foco == Some(Foco::Respuesta)
+            && e.repaso
+                .as_ref()
+                .is_some_and(|r| !r.respuesta.texto.is_empty())
+        {
             e.foco = None;
         } else {
             e.salir_del_repaso();
@@ -1317,7 +1497,11 @@ fn hacer(e: &mut Estado, a: Accion) -> bool {
             e.foco = Some(Foco::Rapida);
         }
         Accion::DictarRapida | Accion::DictarRespuesta => {
-            e.dictando = if a == Accion::DictarRespuesta { Foco::Respuesta } else { Foco::Rapida };
+            e.dictando = if a == Accion::DictarRespuesta {
+                Foco::Respuesta
+            } else {
+                Foco::Rapida
+            };
             e.foco = Some(e.dictando);
             let (u, i) = (e.pedido.ubicacion.clone(), e.pedido.idioma);
             if let Some(m) = e.dictado.pulsar(&u, i) {
@@ -1325,7 +1509,9 @@ fn hacer(e: &mut Estado, a: Accion) -> bool {
             }
         }
         Accion::ImagenRapida => {
-            let rutas = pixpin_shell::elegir::pedir_imagenes(windows::Win32::Foundation::HWND(e.hwnd as *mut _));
+            let rutas = pixpin_shell::elegir::pedir_imagenes(windows::Win32::Foundation::HWND(
+                e.hwnd as *mut _,
+            ));
             e.anadir_fotos_de(&rutas);
             e.foco = Some(Foco::Rapida);
         }
@@ -1342,7 +1528,12 @@ fn hacer(e: &mut Estado, a: Accion) -> bool {
                 && let Some(x) = e.todas.iter().find(|x| x.leccion.id == l.id).cloned()
             {
                 let ahora = pixpin_shell::entorno::ahora_utc_ms();
-                match almacen::guardar(&e.raiz(), &Repaso::repetida(&x.leccion, ahora), &Donde::de(&x), &e.pedido.aparato) {
+                match almacen::guardar(
+                    &e.raiz(),
+                    &Repaso::repetida(&x.leccion, ahora),
+                    &Donde::de(&x),
+                    &e.pedido.aparato,
+                ) {
                     Ok(_) => {
                         e.rapida = Rapida::default();
                         e.sel = Some(l.id.clone());
@@ -1399,7 +1590,9 @@ fn hacer(e: &mut Estado, a: Accion) -> bool {
         Accion::Editar(f) => e.editar(f),
         Accion::MasCampos => {
             if let Some(x) = e.elegida() {
-                ficha::abrir(e.ficha(ficha::Que::Editar { id: x.leccion.id.clone() }));
+                ficha::abrir(e.ficha(ficha::Que::Editar {
+                    id: x.leccion.id.clone(),
+                }));
             }
         }
         Accion::Adjunto(i) => {
@@ -1409,20 +1602,27 @@ fn hacer(e: &mut Estado, a: Accion) -> bool {
             {
                 match a.clase {
                     adjuntos::Clase::Foto => {
-                        if !pixpin_shell::mensajero::enviar_ficheros(std::slice::from_ref(&a.ruta)) {
+                        if !pixpin_shell::mensajero::enviar_ficheros(std::slice::from_ref(&a.ruta))
+                        {
                             e.avisar(e.t("lec2-no-se-pudo"));
                         } else {
                             e.avisar(e.t("lec2-pineado"));
                         }
                     }
                     adjuntos::Clase::Voz => {
-                        crate::ventana_chat::reproducir_flotante(&e.textos, a.ruta.clone(), x.leccion.titulo.clone());
+                        crate::ventana_chat::reproducir_flotante(
+                            &e.textos,
+                            a.ruta.clone(),
+                            x.leccion.titulo.clone(),
+                        );
                     }
                 }
             }
         }
         Accion::AnadirAdjunto => {
-            let rutas = pixpin_shell::elegir::pedir_imagenes(windows::Win32::Foundation::HWND(e.hwnd as *mut _));
+            let rutas = pixpin_shell::elegir::pedir_imagenes(windows::Win32::Foundation::HWND(
+                e.hwnd as *mut _,
+            ));
             let fotos: Vec<almacen::Foto> = rutas
                 .iter()
                 .filter(|r| pixpin_codec::cargar(r).is_ok())
@@ -1445,7 +1645,13 @@ fn hacer(e: &mut Estado, a: Accion) -> bool {
                     nivel: pixpin_nivel::Nivel::Ligero,
                     medir_fotogramas: false,
                 };
-                crate::ventana_chat::ir_a(e.pedido.idioma, e.pedido.ubicacion.clone(), opciones, x.ficha.clone(), None);
+                crate::ventana_chat::ir_a(
+                    e.pedido.idioma,
+                    e.pedido.ubicacion.clone(),
+                    opciones,
+                    x.ficha.clone(),
+                    None,
+                );
             }
         }
         Accion::Pinear => e.pinear(),
@@ -1514,7 +1720,11 @@ fn hacer(e: &mut Estado, a: Accion) -> bool {
                 e.foco = None;
             }
         }
-        Accion::Siguiente => match e.repaso.as_ref().map(|r| (r.actual().is_some(), r.mostrada, r.nota)) {
+        Accion::Siguiente => match e
+            .repaso
+            .as_ref()
+            .map(|r| (r.actual().is_some(), r.mostrada, r.nota))
+        {
             Some((false, _, _)) => e.salir_del_repaso(),
             Some((true, false, _)) => {
                 if let Some(r) = e.repaso.as_mut() {
@@ -1534,7 +1744,10 @@ fn hacer(e: &mut Estado, a: Accion) -> bool {
         }
         Accion::SalirRepaso => e.salir_del_repaso(),
         Accion::AbrirCompleta => {
-            let id = e.repaso.as_ref().and_then(|r| r.actual().map(str::to_string));
+            let id = e
+                .repaso
+                .as_ref()
+                .and_then(|r| r.actual().map(str::to_string));
             e.salir_del_repaso();
             if let Some(id) = id {
                 e.filtro = Filtro::Todas;
@@ -1552,7 +1765,12 @@ fn hacer(e: &mut Estado, a: Accion) -> bool {
 }
 
 /// Un texto del catalogo con un argumento.
-fn t1(tx: &Catalogo, clave: &str, k: &str, v: impl Into<fluent_bundle::FluentValue<'static>>) -> String {
+fn t1(
+    tx: &Catalogo,
+    clave: &str,
+    k: &str,
+    v: impl Into<fluent_bundle::FluentValue<'static>>,
+) -> String {
     let mut a = fluent_bundle::FluentArgs::new();
     a.set(k.to_string(), v.into());
     tx.t_args(clave, &a)

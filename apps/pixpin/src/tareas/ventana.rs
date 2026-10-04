@@ -44,10 +44,7 @@ const CARRIL: Color = hex(0x3a3a44);
 /// La ficha `[img 01]` de una imagen pegada: letra azul clara sobre el
 /// acento muy aguado, para que se vea que no es texto.
 const FICHA_LETRA: Color = hex(0x9cc4f0);
-const FICHA_FONDO: Color = Color {
-    a: 0.24,
-    ..ACENTO
-};
+const FICHA_FONDO: Color = Color { a: 0.24, ..ACENTO };
 /// Lado de la miniatura de una imagen de tarea, en la fila.
 const MINI: f32 = 28.0;
 /// Lado mayor de la vista de una ficha con el raton encima.
@@ -95,8 +92,7 @@ pub(super) fn abrir(idioma: Idioma, ubicacion: Ubicacion, aparato: String) {
         .spawn(move || {
             let _com = pixpin_shell::ComDelHilo::iniciar();
             let textos = Catalogo::nuevo(idioma);
-            let hecho =
-                Recursos::nuevos().and_then(|r| bucle(&r, &textos, &ubicacion, &aparato));
+            let hecho = Recursos::nuevos().and_then(|r| bucle(&r, &textos, &ubicacion, &aparato));
             if let Err(e) = hecho {
                 tracing::warn!(?e, "no se pudo abrir la ventana de tareas");
             }
@@ -177,10 +173,13 @@ impl Campo {
 
     /// La ficha que acaba justo en el cursor, o la que empieza en el.
     fn ficha_en(&self, antes: bool) -> Option<std::ops::Range<usize>> {
-        self.fichas()
-            .into_iter()
-            .map(|(r, _)| r)
-            .find(|r| if antes { r.end == self.cursor } else { r.start == self.cursor })
+        self.fichas().into_iter().map(|(r, _)| r).find(|r| {
+            if antes {
+                r.end == self.cursor
+            } else {
+                r.start == self.cursor
+            }
+        })
     }
 
     /// Las imagenes que van con la tarea: las que aun tienen su ficha.
@@ -209,7 +208,11 @@ impl Campo {
     fn meter_imagen(&mut self, ruta: PathBuf, temporal: bool, huella: u64) {
         let numero = self.pegadas.iter().map(|p| p.numero).max().unwrap_or(0) + 1;
         let mut ficha = String::new();
-        if self.texto[..self.cursor].chars().next_back().is_some_and(|c| !c.is_whitespace()) {
+        if self.texto[..self.cursor]
+            .chars()
+            .next_back()
+            .is_some_and(|c| !c.is_whitespace())
+        {
             ficha.push(' ');
         }
         ficha.push_str(&mini::ficha_de_imagen(numero));
@@ -227,7 +230,12 @@ impl Campo {
     /// **Una imagen, un nombre**: la ficha que sigue en el texto con una
     /// imagen de esa huella. Pegarla otra vez no mete nada; se avisa.
     fn ya_pegada(&mut self, huella: u64) -> bool {
-        let Some(numero) = self.fichas().into_iter().find(|(_, p)| p.huella == huella).map(|(_, p)| p.numero) else {
+        let Some(numero) = self
+            .fichas()
+            .into_iter()
+            .find(|(_, p)| p.huella == huella)
+            .map(|(_, p)| p.numero)
+        else {
             return false;
         };
         self.aviso = Some("tareas-pegar-repetida");
@@ -282,7 +290,13 @@ impl Campo {
         // Una tarea es una linea: lo pegado con saltos se junta.
         let s: String = s
             .chars()
-            .map(|c| if c == '\n' || c == '\r' || c == '\t' { ' ' } else { c })
+            .map(|c| {
+                if c == '\n' || c == '\r' || c == '\t' {
+                    ' '
+                } else {
+                    c
+                }
+            })
             .filter(|c| !c.is_control())
             .collect();
         self.texto.insert_str(self.cursor, &s);
@@ -335,17 +349,23 @@ impl Campo {
                 true
             }
             VK_SUPRIMIR => {
-                let s = self.ficha_en(false).map_or_else(|| self.siguiente(), |r| r.end);
+                let s = self
+                    .ficha_en(false)
+                    .map_or_else(|| self.siguiente(), |r| r.end);
                 self.texto.replace_range(self.cursor..s, "");
                 true
             }
             // Las flechas saltan una ficha de una vez.
             VK_IZQUIERDA => {
-                self.cursor = self.ficha_en(true).map_or_else(|| self.anterior(), |r| r.start);
+                self.cursor = self
+                    .ficha_en(true)
+                    .map_or_else(|| self.anterior(), |r| r.start);
                 true
             }
             VK_DERECHA => {
-                self.cursor = self.ficha_en(false).map_or_else(|| self.siguiente(), |r| r.end);
+                self.cursor = self
+                    .ficha_en(false)
+                    .map_or_else(|| self.siguiente(), |r| r.end);
                 true
             }
             VK_INICIO => {
@@ -479,14 +499,23 @@ impl Estado {
             for f in &l.filas {
                 for enlace in &f.imagenes {
                     let clave = (l.proyecto.clone(), enlace.clone());
-                    let ya = self.rutas.get(&clave).cloned().flatten().filter(|r| r.is_file());
+                    let ya = self
+                        .rutas
+                        .get(&clave)
+                        .cloned()
+                        .flatten()
+                        .filter(|r| r.is_file());
                     let ruta = ya.or_else(|| super::ruta_de_imagen(raiz, &l.proyecto, enlace));
                     rutas.insert(clave, ruta);
                 }
             }
         }
         self.rutas = rutas;
-        self.destinos = todas.iter().filter(|l| !super::es_inbox(l)).cloned().collect();
+        self.destinos = todas
+            .iter()
+            .filter(|l| !super::es_inbox(l))
+            .cloned()
+            .collect();
         self.listas = todas.into_iter().filter(|l| !l.filas.is_empty()).collect();
         // Releida, la tarea que se repartia puede estar en otro sitio.
         self.repartiendo = None;
@@ -499,14 +528,16 @@ impl Estado {
     }
 
     fn sigue_arriba(&self, lista: &Lista, f: &Fila) -> bool {
-        self.recien
-            .contains_key(&(lista.clave(), f.crudo.clone()))
+        self.recien.contains_key(&(lista.clave(), f.crudo.clone()))
     }
 
     /// Donde esta la imagen `k` de la tarea `f` de la lista `l`.
     fn ruta_de(&self, l: &Lista, f: &Fila, k: usize) -> Option<PathBuf> {
         let enlace = f.imagenes.get(k)?;
-        self.rutas.get(&(l.proyecto.clone(), enlace.clone())).cloned().flatten()
+        self.rutas
+            .get(&(l.proyecto.clone(), enlace.clone()))
+            .cloned()
+            .flatten()
     }
 
     /// Las imagenes que se van a pintar: las de las tareas y las pegadas.
@@ -517,7 +548,12 @@ impl Estado {
     }
 }
 
-fn bucle(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion, aparato: &str) -> Result<()> {
+fn bucle(
+    recursos: &Recursos,
+    textos: &Catalogo,
+    ubicacion: &Ubicacion,
+    aparato: &str,
+) -> Result<()> {
     let monitores = pixpin_capture::enumerar_monitores().context("sin monitores")?;
     let monitor = pixpin_shell::pantalla_de::monitor_de_la_ventana_activa()
         .and_then(|r| monitores.monitores().iter().find(|m| m.area == r))
@@ -644,7 +680,10 @@ fn bucle(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion, aparato:
         if e.recien.len() != antes {
             pintar = true;
         }
-        if e.aviso.as_ref().is_some_and(|(_, t)| t.elapsed() > Duration::from_millis(2_500)) {
+        if e.aviso
+            .as_ref()
+            .is_some_and(|(_, t)| t.elapsed() > Duration::from_millis(2_500))
+        {
             e.aviso = None;
             pintar = true;
         }
@@ -659,7 +698,9 @@ fn bucle(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion, aparato:
                 faltan_minis = e.minis.asegurar(&rutas, &motor);
             }
             if let Ok(d) = superficie.empezar(&motor) {
-                let _ = motor.dibujar(&d, |p: &Pintor| pintar_todo(&mut e, p, marco, escala, textos));
+                let _ = motor.dibujar(&d, |p: &Pintor| {
+                    pintar_todo(&mut e, p, marco, escala, textos)
+                });
                 let _ = superficie.presentar();
             }
             pintar = faltan_minis;
@@ -678,7 +719,13 @@ fn bucle(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion, aparato:
 }
 
 /// Lo que hace un clic (o Intro). Devuelve si la ventana sigue.
-fn hacer(e: &mut Estado, a: Accion, textos: &Catalogo, ubicacion: &Ubicacion, aparato: &str) -> bool {
+fn hacer(
+    e: &mut Estado,
+    a: Accion,
+    textos: &Catalogo,
+    ubicacion: &Ubicacion,
+    aparato: &str,
+) -> bool {
     let raiz = ubicacion.raiz();
     match a {
         Accion::Mover | Accion::Fondo => {}
@@ -723,7 +770,9 @@ fn hacer(e: &mut Estado, a: Accion, textos: &Catalogo, ubicacion: &Ubicacion, ap
                 Some(r) if pixpin_shell::mensajero::enviar_ficheros(std::slice::from_ref(&r)) => {
                     e.decir(textos.t("chat-pineado"));
                 }
-                Some(r) => tracing::warn!(ruta = %r.display(), "tareas: no contesta la ventana principal"),
+                Some(r) => {
+                    tracing::warn!(ruta = %r.display(), "tareas: no contesta la ventana principal")
+                }
                 None => e.decir(textos.t("tareas-imagen-no-esta")),
             }
         }
@@ -733,7 +782,9 @@ fn hacer(e: &mut Estado, a: Accion, textos: &Catalogo, ubicacion: &Ubicacion, ap
             let Some((li, fi)) = e.repartiendo.take() else {
                 return true;
             };
-            let (Some(desde), Some(hasta)) = (e.listas.get(li).cloned(), e.destinos.get(di).cloned()) else {
+            let (Some(desde), Some(hasta)) =
+                (e.listas.get(li).cloned(), e.destinos.get(di).cloned())
+            else {
                 return true;
             };
             let Some(fila) = desde.filas.get(fi).cloned() else {
@@ -848,7 +899,13 @@ fn pintar_todo(e: &mut Estado, p: &Pintor, marco: Rect, s: f32, textos: &Catalog
     let mut args = fluent_bundle::FluentArgs::new();
     args.set("pendientes", pendientes as i64);
     args.set("listas", e.listas.len() as i64);
-    p.texto(&textos.t_args("tareas-resumen", &args), m, 38.0 * s, 12.5 * s, APAGADO);
+    p.texto(
+        &textos.t_args("tareas-resumen", &args),
+        m,
+        38.0 * s,
+        12.5 * s,
+        APAGADO,
+    );
     let lado = 40.0 * s;
     let cerrar = RectF {
         x: w - m - lado,
@@ -876,7 +933,14 @@ fn pintar_todo(e: &mut Estado, p: &Pintor, marco: Rect, s: f32, textos: &Catalog
             ancho: tw + 28.0 * s,
             alto: th + 16.0 * s,
         };
-        p.rellenar_redondeado(caja, 8.0 * s, Color { a: 0.92, ..Color::NEGRO });
+        p.rellenar_redondeado(
+            caja,
+            8.0 * s,
+            Color {
+                a: 0.92,
+                ..Color::NEGRO
+            },
+        );
         p.texto_ajustado(t, caja.x + 14.0 * s, caja.y + 8.0 * s, tam, tw + 2.0, TEXTO);
     }
 }
@@ -896,7 +960,13 @@ fn pintar_caja(e: &mut Estado, p: &Pintor, x: f32, y: f32, ancho: f32, s: f32, t
     let ty = y + (caja.alto - alto_linea) / 2.0;
     let mas = "＋";
     let (mw, mh) = p.medir_texto(mas, 18.0 * s);
-    p.texto_color(mas, x + 16.0 * s, y + (caja.alto - mh) / 2.0, 18.0 * s, ACENTO);
+    p.texto_color(
+        mas,
+        x + 16.0 * s,
+        y + (caja.alto - mh) / 2.0,
+        18.0 * s,
+        ACENTO,
+    );
     let tx = x + 16.0 * s + mw + 10.0 * s;
     // A la derecha, con algo escrito, el boton de apuntar para el raton.
     let mut fin = x + ancho - 18.0 * s;
@@ -909,10 +979,20 @@ fn pintar_caja(e: &mut Estado, p: &Pintor, x: f32, y: f32, ancho: f32, s: f32, t
             ancho: rw + 28.0 * s,
             alto: caja.alto - 12.0 * s,
         };
-        let fondo = if dentro(b, e.botones.raton) { hex(0x6497cc) } else { ACENTO };
+        let fondo = if dentro(b, e.botones.raton) {
+            hex(0x6497cc)
+        } else {
+            ACENTO
+        };
         p.rellenar_redondeado(b, b.alto / 2.0, fondo);
         let (_, rh) = p.medir_texto(&rotulo, 13.5 * s);
-        p.texto(&rotulo, b.x + 14.0 * s, b.y + (b.alto - rh) / 2.0, 13.5 * s, TEXTO);
+        p.texto(
+            &rotulo,
+            b.x + 14.0 * s,
+            b.y + (b.alto - rh) / 2.0,
+            13.5 * s,
+            TEXTO,
+        );
         e.botones.zona(b, Accion::Apuntar);
         fin = b.x - 8.0 * s;
     }
@@ -954,7 +1034,9 @@ fn pintar_caja(e: &mut Estado, p: &Pintor, x: f32, y: f32, ancho: f32, s: f32, t
     let caja_de = |p: &Pintor, r: &std::ops::Range<usize>| {
         let inicio = texto[..r.start].encode_utf16().count() as u32;
         let largo = texto[r.clone()].encode_utf16().count() as u32;
-        p.cajas_de_trozo(texto, tam, 100_000.0, &[], inicio, largo).first().copied()
+        p.cajas_de_trozo(texto, tam, 100_000.0, &[], inicio, largo)
+            .first()
+            .copied()
     };
     let mut trozos: Vec<(std::ops::Range<usize>, Option<PathBuf>)> = Vec::new();
     let mut desde = 0;
@@ -1052,7 +1134,13 @@ fn pintar_eleccion(e: &mut Estado, p: &Pintor, w: f32, h: f32, s: f32, textos: &
         ancho: w,
         alto: h,
     };
-    p.rellenar(todo, Color { a: 0.55, ..Color::NEGRO });
+    p.rellenar(
+        todo,
+        Color {
+            a: 0.55,
+            ..Color::NEGRO
+        },
+    );
     e.botones.zona(todo, Accion::SoltarMenu);
     let renglon = 48.0 * s;
     let pad = 16.0 * s;
@@ -1109,8 +1197,22 @@ fn pintar_eleccion(e: &mut Estado, p: &Pintor, w: f32, h: f32, s: f32, textos: &
             if dentro(r, e.botones.raton) {
                 p.rellenar_redondeado(r, 8.0 * s, ENCIMA);
             }
-            p.texto_linea(&d.titulo, r.x + pad - 6.0 * s, r.y + 6.0 * s, 14.5 * s, r.ancho - 2.0 * pad, TEXTO);
-            p.texto_linea(&d.chat, r.x + pad - 6.0 * s, r.y + 26.0 * s, 12.0 * s, r.ancho - 2.0 * pad, APAGADO);
+            p.texto_linea(
+                &d.titulo,
+                r.x + pad - 6.0 * s,
+                r.y + 6.0 * s,
+                14.5 * s,
+                r.ancho - 2.0 * pad,
+                TEXTO,
+            );
+            p.texto_linea(
+                &d.chat,
+                r.x + pad - 6.0 * s,
+                r.y + 26.0 * s,
+                12.0 * s,
+                r.ancho - 2.0 * pad,
+                APAGADO,
+            );
         }
     });
     for di in 0..e.destinos.len() {
@@ -1157,15 +1259,18 @@ fn pintar_listas(
         let cabecera = (RELLENO + 22.0 + 18.0 + 12.0) * s;
         let alto = cabecera
             + arriba.len() as f32 * FILA * s
-            + if plegadas.is_empty() { 0.0 } else { PLIEGUE * s }
-            + if abierta { plegadas.len() as f32 * FILA * s } else { 0.0 }
+            + if plegadas.is_empty() {
+                0.0
+            } else {
+                PLIEGUE * s
+            }
+            + if abierta {
+                plegadas.len() as f32 * FILA * s
+            } else {
+                0.0
+            }
             + 8.0 * s;
-        let caja = RectF {
-            x,
-            y,
-            ancho,
-            alto,
-        };
+        let caja = RectF { x, y, ancho, alto };
         if caja.y + caja.alto >= vista.y && caja.y <= vista.y + vista.alto {
             p.rellenar_redondeado(caja, 14.0 * s, CRISTAL);
             pintar_cabecera(p, &lista, caja, s, textos);
@@ -1237,10 +1342,23 @@ fn pintar_cabecera(p: &Pintor, lista: &Lista, caja: RectF, s: f32, textos: &Cata
     let avance = textos.t_args("mini-avance", &args);
     let (aw, _) = p.medir_texto(&avance, 12.5 * s);
     let y = caja.y + pad;
-    p.texto(&avance, caja.x + caja.ancho - pad - aw, y + 3.0 * s, 12.5 * s, APAGADO);
+    p.texto(
+        &avance,
+        caja.x + caja.ancho - pad - aw,
+        y + 3.0 * s,
+        12.5 * s,
+        APAGADO,
+    );
     let interior = caja.ancho - 2.0 * pad - aw - 12.0 * s;
     p.texto_linea(&lista.titulo, caja.x + pad, y, 16.0 * s, interior, TEXTO);
-    p.texto_linea(&lista.chat, caja.x + pad, y + 22.0 * s, 12.5 * s, interior, APAGADO);
+    p.texto_linea(
+        &lista.chat,
+        caja.x + pad,
+        y + 22.0 * s,
+        12.5 * s,
+        interior,
+        APAGADO,
+    );
     let barra = RectF {
         x: caja.x + pad,
         y: y + 44.0 * s,
@@ -1337,9 +1455,19 @@ fn pintar_fila(
             ancho: rw + 20.0 * s,
             alto: 26.0 * s,
         };
-        let fondo = if dentro(b, e.botones.raton) { hex(0x6497cc) } else { ACENTO };
+        let fondo = if dentro(b, e.botones.raton) {
+            hex(0x6497cc)
+        } else {
+            ACENTO
+        };
         p.rellenar_redondeado(b, b.alto / 2.0, fondo);
-        p.texto(&rotulo, b.x + 10.0 * s, b.y + (b.alto - rh) / 2.0, tam_b, TEXTO);
+        p.texto(
+            &rotulo,
+            b.x + 10.0 * s,
+            b.y + (b.alto - rh) / 2.0,
+            tam_b,
+            TEXTO,
+        );
         e.botones.zona(b, Accion::Repartir(li, f.indice));
         derecha = b.x - 10.0 * s;
     }
@@ -1347,11 +1475,20 @@ fn pintar_fila(
     // gris, que es un dato de contexto y no la tarea.
     if let Some(creada) = f.creada {
         let mut args = fluent_bundle::FluentArgs::new();
-        args.set("dias", i64::from(pixpin_proyecto::mini::dias_desde(creada, e.hoy)));
+        args.set(
+            "dias",
+            i64::from(pixpin_proyecto::mini::dias_desde(creada, e.hoy)),
+        );
         let edad = textos.t_args("mini-tarea-edad", &args);
         let tam_e = 12.0 * s;
         let (ew, eh) = p.medir_texto(&edad, tam_e);
-        p.texto(&edad, derecha - ew, y + (fila.alto - eh) / 2.0, tam_e, APAGADO);
+        p.texto(
+            &edad,
+            derecha - ew,
+            y + (fila.alto - eh) / 2.0,
+            tam_e,
+            APAGADO,
+        );
         derecha -= ew + 12.0 * s;
     }
     let tx = x + pad + lado + 12.0 * s;
@@ -1366,7 +1503,11 @@ fn pintar_fila(
     let hueco = (derecha - tx - ancho_minis).max(0.0);
     let color = if f.hecha { APAGADO } else { TEXTO };
     p.texto_linea(&f.texto, tx, ty, tam, hueco, color);
-    let (tw, _) = if f.texto.is_empty() { (0.0, 0.0) } else { p.medir_texto(&f.texto, tam) };
+    let (tw, _) = if f.texto.is_empty() {
+        (0.0, 0.0)
+    } else {
+        p.medir_texto(&f.texto, tam)
+    };
     // Lo hecho se tacha, como en el movil (`TextDecoration.LineThrough`).
     if f.hecha && tw > 0.0 {
         let ly = ty + alto_t * 0.55;
@@ -1383,7 +1524,11 @@ fn pintar_fila(
             ancho: mini,
             alto: mini,
         };
-        match e.ruta_de(&lista, f, k).as_deref().and_then(|ruta| e.minis.ya(ruta)) {
+        match e
+            .ruta_de(&lista, f, k)
+            .as_deref()
+            .and_then(|ruta| e.minis.ya(ruta))
+        {
             Some((b, iw, ih)) => {
                 crate::miniaturas::pintar_recortado(p, b, r, iw, ih);
                 if f.hecha {
@@ -1478,24 +1623,35 @@ mod pruebas {
     fn pegar_una_imagen_mete_su_ficha_y_retroceso_la_borra_entera() {
         let mut c = Campo::default();
         c.escribir("comprar yeso");
-        c.pegar(Some(pixpin_codec::ContenidoPortapapeles::Imagen(pixpin_codec::ImagenRgba {
-            ancho: 1,
-            alto: 1,
-            pixeles: vec![1, 2, 3, 255],
-        })));
+        c.pegar(Some(pixpin_codec::ContenidoPortapapeles::Imagen(
+            pixpin_codec::ImagenRgba {
+                ancho: 1,
+                alto: 1,
+                pixeles: vec![1, 2, 3, 255],
+            },
+        )));
         assert_eq!(c.texto, "comprar yeso [img 01] ");
         let temporal = c.pegadas[0].ruta.clone();
-        assert!(c.pegadas[0].temporal && temporal.is_file(), "el mapa va a un PNG temporal");
+        assert!(
+            c.pegadas[0].temporal && temporal.is_file(),
+            "el mapa va a un PNG temporal"
+        );
         // Un fichero de imagen copiado del Explorador: su ficha, sin copia.
         let a = foto("explorador.png", [10, 200, 10]);
-        c.pegar(Some(pixpin_codec::ContenidoPortapapeles::Rutas(vec![a.clone()])));
+        c.pegar(Some(pixpin_codec::ContenidoPortapapeles::Rutas(vec![
+            a.clone(),
+        ])));
         assert_eq!(c.texto, "comprar yeso [img 01] [img 02] ");
         assert_eq!(c.imagenes(), vec![(1, temporal.clone()), (2, a.clone())]);
         // Retroceso tras el blanco borra el blanco; el siguiente, la ficha entera.
         c.tecla(VK_RETROCESO, false);
         c.tecla(VK_RETROCESO, false);
         assert_eq!(c.texto, "comprar yeso [img 01] ");
-        assert_eq!(c.imagenes(), vec![(1, temporal.clone())], "la borrada se lleva su imagen");
+        assert_eq!(
+            c.imagenes(),
+            vec![(1, temporal.clone())],
+            "la borrada se lleva su imagen"
+        );
         // Las flechas la saltan de una vez, y Supr delante la borra.
         c.tecla(VK_IZQUIERDA, false);
         c.tecla(VK_IZQUIERDA, false);
@@ -1505,11 +1661,15 @@ mod pruebas {
         assert_eq!(c.texto, "comprar yeso x[img 01] ");
         // Una imagen nueva no repite el numero de la borrada.
         c.tecla(VK_FIN, false);
-        c.pegar(Some(pixpin_codec::ContenidoPortapapeles::Rutas(vec![a.clone()])));
+        c.pegar(Some(pixpin_codec::ContenidoPortapapeles::Rutas(vec![
+            a.clone(),
+        ])));
         assert!(c.texto.ends_with("[img 03] "), "{}", c.texto);
         assert_eq!(c.lo_que_se_lee(), "comprar yeso x");
         // El texto pegado sigue entrando como texto.
-        c.pegar(Some(pixpin_codec::ContenidoPortapapeles::Texto("y arena".into())));
+        c.pegar(Some(pixpin_codec::ContenidoPortapapeles::Texto(
+            "y arena".into(),
+        )));
         assert!(c.texto.ends_with("[img 03] y arena"));
         assert!(c.aviso.is_none());
         // Vaciar borra el PNG temporal, pero no el fichero del Explorador.
@@ -1521,34 +1681,49 @@ mod pruebas {
     #[test]
     fn una_imagen_un_nombre_pegarla_otra_vez_no_mete_otra_ficha() {
         let mapa = || {
-            Some(pixpin_codec::ContenidoPortapapeles::Imagen(pixpin_codec::ImagenRgba {
-                ancho: 1,
-                alto: 1,
-                pixeles: vec![9, 8, 7, 255],
-            }))
+            Some(pixpin_codec::ContenidoPortapapeles::Imagen(
+                pixpin_codec::ImagenRgba {
+                    ancho: 1,
+                    alto: 1,
+                    pixeles: vec![9, 8, 7, 255],
+                },
+            ))
         };
         let mut c = Campo::default();
         c.pegar(mapa());
         assert!(c.aviso.is_none());
         c.pegar(mapa());
         assert_eq!(c.texto, "[img 01] ", "la misma imagen no es [img 02]");
-        assert_eq!((c.aviso, c.aviso_ficha.as_deref()), (Some("tareas-pegar-repetida"), Some("[img 01]")));
+        assert_eq!(
+            (c.aviso, c.aviso_ficha.as_deref()),
+            (Some("tareas-pegar-repetida"), Some("[img 01]"))
+        );
         // El mismo fichero del Explorador, igual (por su contenido).
         let a = foto("una-vez.png", [200, 10, 10]);
         c.aviso = None;
-        c.pegar(Some(pixpin_codec::ContenidoPortapapeles::Rutas(vec![a.clone()])));
-        c.pegar(Some(pixpin_codec::ContenidoPortapapeles::Rutas(vec![a.clone()])));
+        c.pegar(Some(pixpin_codec::ContenidoPortapapeles::Rutas(vec![
+            a.clone(),
+        ])));
+        c.pegar(Some(pixpin_codec::ContenidoPortapapeles::Rutas(vec![
+            a.clone(),
+        ])));
         assert_eq!(c.texto, "[img 01] [img 02] ");
         assert_eq!(c.aviso_ficha.as_deref(), Some("[img 02]"));
         // Caso negativo: otra imagen distinta si entra, y borrada la ficha
         // la misma imagen vuelve a poder pegarse.
         c.aviso = None;
-        c.pegar(Some(pixpin_codec::ContenidoPortapapeles::Imagen(pixpin_codec::ImagenRgba {
-            ancho: 1,
-            alto: 1,
-            pixeles: vec![1, 1, 1, 255],
-        })));
-        assert!(c.texto.ends_with("[img 03] ") && c.aviso.is_none(), "{}", c.texto);
+        c.pegar(Some(pixpin_codec::ContenidoPortapapeles::Imagen(
+            pixpin_codec::ImagenRgba {
+                ancho: 1,
+                alto: 1,
+                pixeles: vec![1, 1, 1, 255],
+            },
+        )));
+        assert!(
+            c.texto.ends_with("[img 03] ") && c.aviso.is_none(),
+            "{}",
+            c.texto
+        );
         c.vaciar();
         c.pegar(mapa());
         assert_eq!(c.texto, "[img 01] ");
@@ -1572,11 +1747,13 @@ mod pruebas {
         c.tecla(VK_RETROCESO, false);
         assert_eq!(c.texto, "[img 01", "se borra letra a letra");
         // Un mapa vacio no mete nada.
-        c.pegar(Some(pixpin_codec::ContenidoPortapapeles::Imagen(pixpin_codec::ImagenRgba {
-            ancho: 0,
-            alto: 0,
-            pixeles: vec![],
-        })));
+        c.pegar(Some(pixpin_codec::ContenidoPortapapeles::Imagen(
+            pixpin_codec::ImagenRgba {
+                ancho: 0,
+                alto: 0,
+                pixeles: vec![],
+            },
+        )));
         assert_eq!(c.texto, "[img 01");
     }
 
@@ -1627,12 +1804,16 @@ mod pruebas {
         for (i, f) in e.listas[0].filas.iter_mut().enumerate() {
             f.indice = i;
         }
-        e.rutas.insert(("g".into(), enlace("a.png")), Some(foto("muro.png", [220, 120, 60])));
+        e.rutas.insert(
+            ("g".into(), enlace("a.png")),
+            Some(foto("muro.png", [220, 120, 60])),
+        );
         e.rutas.insert(("g".into(), enlace("b.png")), None);
         e.destinos = vec![e.listas[1].clone(), lista("t", "Tesis", "Lecturas", 10, "")];
         e.abiertas.insert(e.listas[1].clave());
         e.campo.escribir("regar las plantas");
-        e.campo.meter_imagen(foto("maceta.png", [60, 160, 90]), false, 0);
+        e.campo
+            .meter_imagen(foto("maceta.png", [60, 160, 90]), false, 0);
         e.campo.escribir("y abonar");
         e
     }

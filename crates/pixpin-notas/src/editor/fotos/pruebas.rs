@@ -59,7 +59,12 @@ fn rotulos() -> Rotulos {
 type Resolver = Box<dyn Fn(&str) -> Option<PathBuf>>;
 type Adjuntar = Box<dyn FnMut(&Path) -> Option<String>>;
 
-fn abrir_con(texto: &str, resolver: Resolver, adjuntar: Adjuntar, integracion: Integracion) -> Estado {
+fn abrir_con(
+    texto: &str,
+    resolver: Resolver,
+    adjuntar: Adjuntar,
+    integracion: Integracion,
+) -> Estado {
     // Pintar en memoria (`muestra`) necesita COM en el hilo, como las muestras;
     // se queda iniciado lo que dure el hilo de la prueba.
     std::mem::forget(pixpin_shell::ComDelHilo::iniciar());
@@ -90,7 +95,10 @@ fn adjuntar_que_apunta(recibido: Comun<Celda<Vec<(String, bool)>>>) -> Adjuntar 
     Box::new(move |r: &Path| {
         let nombre = nombre_de(r);
         recibido.borrow_mut().push((nombre.clone(), r.is_file()));
-        Some(format!("pixpin:files/guardados/pc/p1/notas/9-{}", nombre.replace(' ', "_")))
+        Some(format!(
+            "pixpin:files/guardados/pc/p1/notas/9-{}",
+            nombre.replace(' ', "_")
+        ))
     })
 }
 
@@ -163,7 +171,12 @@ fn soltar_fotos_las_mete_donde_se_soltaron_y_lo_que_no_es_foto_no() {
 fn el_arrastre_de_windows_llega_al_bucle_y_mete_sus_fotos() {
     use windows::Win32::System::Memory::{GMEM_MOVEABLE, GlobalAlloc, GlobalLock, GlobalUnlock};
     let recibido = Comun::new(Celda::new(Vec::new()));
-    let mut e = abrir_con("", Box::new(|_: &str| None), adjuntar_que_apunta(recibido.clone()), Integracion::default());
+    let mut e = abrir_con(
+        "",
+        Box::new(|_: &str| None),
+        adjuntar_que_apunta(recibido.clone()),
+        Integracion::default(),
+    );
     let foto = png("soltada.png", 5, 5);
     let bytes = pixpin_codec::portapapeles::construir_hdrop(&[foto]).unwrap();
     // SAFETY: memoria global propia del tamano justo; la suelta
@@ -179,7 +192,10 @@ fn el_arrastre_de_windows_llega_al_bucle_y_mete_sus_fotos() {
     assert!(COLA.with(|c| c.borrow().contains(&Orden::Soltar)));
     COLA.with(|c| c.borrow_mut().clear());
     soltar_lo_soltado(&mut e);
-    assert_eq!(markdown(&e), "![soltada](pixpin:files/guardados/pc/p1/notas/9-soltada.png)");
+    assert_eq!(
+        markdown(&e),
+        "![soltada](pixpin:files/guardados/pc/p1/notas/9-soltada.png)"
+    );
     // Caso negativo: no queda nada pendiente por soltar otra vez.
     soltar_lo_soltado(&mut e);
     assert_eq!(recibido.borrow().len(), 1);
@@ -233,7 +249,10 @@ fn sin_elegir_la_foto_su_esquina_no_es_un_asa() {
     elegir(e.edit, 0, 0);
     pintar(&mut e, Some(&[0, 1]));
     let (_, _, caja, _) = imagenes::puesta(0).unwrap();
-    assert_eq!(imagenes::tocar(caja.right - 3, caja.bottom - 3), Some((0, false)));
+    assert_eq!(
+        imagenes::tocar(caja.right - 3, caja.bottom - 3),
+        Some((0, false))
+    );
     desmontar(e);
 }
 
@@ -267,7 +286,8 @@ fn una_foto_con_ancho_va_y_vuelve_igual_y_se_ensena_a_ese_ancho() {
         Integracion::default(),
     );
     assert_eq!(markdown(&e), md);
-    let anchos: Vec<i32> = imagenes::PUESTAS.with(|p| p.borrow().iter().map(|x| x.foto.ancho).collect());
+    let anchos: Vec<i32> =
+        imagenes::PUESTAS.with(|p| p.borrow().iter().map(|x| x.foto.ancho).collect());
     assert_eq!(anchos[0], 300 * e.ppp / 96);
     // La de su tamano llena la columna, sin salirse de lo que se ve.
     let mut dentro = RECT::default();
@@ -314,7 +334,10 @@ type Respuestas = Comun<Celda<Vec<Vec<(String, Viva)>>>>;
 
 /// La aplicacion de mentira: una hoja en el selector, su renglon, y lo
 /// que dice `vigilar` cada vez.
-fn integracion_de_prueba(respuestas: Respuestas, vistas: Comun<Celda<Vec<Vec<String>>>>) -> Integracion {
+fn integracion_de_prueba(
+    respuestas: Respuestas,
+    vistas: Comun<Celda<Vec<Vec<String>>>>,
+) -> Integracion {
     Integracion {
         hojas: Some(Box::new(|| {
             vec![GrupoDeHojas {
@@ -362,19 +385,32 @@ fn una_pagina_viva_se_ve_en_cuanto_la_aplicacion_la_pinta_y_se_relee_al_cambiar(
     assert_eq!(imagenes::PUESTAS.with(|p| p.borrow().len()), 0);
     // La aplicacion la pinta y lo dice.
     png("vivo-K7Q2ABCDEF.png", 400, 200);
-    respuestas.borrow_mut().push(vec![(VIVA.to_string(), Viva::Renovada)]);
+    respuestas
+        .borrow_mut()
+        .push(vec![(VIVA.to_string(), Viva::Renovada)]);
     vigilar(&mut e);
     assert_eq!(vistas.borrow().last().unwrap(), &vec![VIVA.to_string()]);
-    assert_eq!(imagenes::PUESTAS.with(|p| p.borrow()[0].foto.ancho), 400 * e.ppp / 96);
+    assert_eq!(
+        imagenes::PUESTAS.with(|p| p.borrow()[0].foto.ancho),
+        400 * e.ppp / 96
+    );
     // La hoja cambio: otra imagen; sin que la aplicacion lo diga no se relee...
     png("vivo-K7Q2ABCDEF.png", 300, 300);
     vigilar(&mut e);
     pintar(&mut e, None);
-    assert_eq!(imagenes::PUESTAS.with(|p| p.borrow()[0].foto.ancho), 400 * e.ppp / 96);
+    assert_eq!(
+        imagenes::PUESTAS.with(|p| p.borrow()[0].foto.ancho),
+        400 * e.ppp / 96
+    );
     // ...y diciendolo, si.
-    respuestas.borrow_mut().push(vec![(VIVA.to_string(), Viva::Renovada)]);
+    respuestas
+        .borrow_mut()
+        .push(vec![(VIVA.to_string(), Viva::Renovada)]);
     vigilar(&mut e);
-    assert_eq!(imagenes::PUESTAS.with(|p| p.borrow()[0].foto.ancho), 300 * e.ppp / 96);
+    assert_eq!(
+        imagenes::PUESTAS.with(|p| p.borrow()[0].foto.ancho),
+        300 * e.ppp / 96
+    );
     // El Markdown no cambia por repintarse.
     assert_eq!(markdown(&e), format!("Plano:\n![Planta baja]({VIVA})"));
     desmontar(e);
@@ -382,7 +418,8 @@ fn una_pagina_viva_se_ve_en_cuanto_la_aplicacion_la_pinta_y_se_relee_al_cambiar(
 
 #[test]
 fn una_pagina_viva_cuya_hoja_se_borro_se_queda_con_su_copia_y_un_aviso() {
-    let respuestas: Respuestas = Comun::new(Celda::new(vec![vec![(VIVA.to_string(), Viva::SinHoja)]]));
+    let respuestas: Respuestas =
+        Comun::new(Celda::new(vec![vec![(VIVA.to_string(), Viva::SinHoja)]]));
     let foto = png("vivo-borrada.png", 400, 200);
     let mut e = abrir_con(
         &format!("![Planta baja]({VIVA})"),
@@ -440,11 +477,25 @@ fn lo_mandado_desde_fuera_entra_en_la_nota_al_mirar() {
 fn sin_aplicacion_detras_no_se_ofrecen_las_hojas() {
     let ids_del_mas = |e: &mut Estado| -> Vec<u16> {
         clic(e, Boton::Mas, &mut |_| true);
-        let ids = menu::VISTA.with(|v| v.borrow().as_ref().unwrap().menu.entradas.iter().map(|x| x.id).collect());
+        let ids = menu::VISTA.with(|v| {
+            v.borrow()
+                .as_ref()
+                .unwrap()
+                .menu
+                .entradas
+                .iter()
+                .map(|x| x.id)
+                .collect()
+        });
         cerrar_menu(e);
         ids
     };
-    let mut e = abrir_con("x", Box::new(|_: &str| None), Box::new(|_: &Path| None), Integracion::default());
+    let mut e = abrir_con(
+        "x",
+        Box::new(|_: &str| None),
+        Box::new(|_: &Path| None),
+        Integracion::default(),
+    );
     let ids = ids_del_mas(&mut e);
     assert!(!ids.contains(&C_PAGINA_VIVA) && !ids.contains(&C_ENLACE_HOJA));
     // Y pedirlas no hace nada.
@@ -469,8 +520,12 @@ fn sin_aplicacion_detras_no_se_ofrecen_las_hojas() {
 #[test]
 #[ignore]
 fn muestra_foto_elegida_y_aviso() {
-    let respuestas: Respuestas = Comun::new(Celda::new(vec![vec![(VIVA.to_string(), Viva::SinHoja)]]));
-    let (planta, viva) = (png_de("planta-m.png", 800, 260, [70, 140, 90]), png_de("viva-m.png", 900, 200, [235, 225, 205]));
+    let respuestas: Respuestas =
+        Comun::new(Celda::new(vec![vec![(VIVA.to_string(), Viva::SinHoja)]]));
+    let (planta, viva) = (
+        png_de("planta-m.png", 800, 260, [70, 140, 90]),
+        png_de("viva-m.png", 900, 200, [235, 225, 205]),
+    );
     let mut e = abrir_con(
         &format!("# Obra\n![Planta]({R})\n![Planta baja]({VIVA})\nfin"),
         Box::new(move |r: &str| Some(if r == R { planta.clone() } else { viva.clone() })),

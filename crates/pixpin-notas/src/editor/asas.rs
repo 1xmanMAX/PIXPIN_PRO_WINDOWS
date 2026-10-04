@@ -23,7 +23,9 @@ use std::cell::{Cell, RefCell};
 
 use pixpin_docs::md_bloques::{self, Bloque};
 use pixpin_docs::md_tabla::TablaEnControl;
-use windows::Win32::UI::Input::KeyboardAndMouse::{ReleaseCapture, SetCapture, TME_LEAVE, TRACKMOUSEEVENT, TrackMouseEvent};
+use windows::Win32::UI::Input::KeyboardAndMouse::{
+    ReleaseCapture, SetCapture, TME_LEAVE, TRACKMOUSEEVENT, TrackMouseEvent,
+};
 
 use super::*;
 
@@ -32,13 +34,23 @@ use super::*;
 pub(super) enum Asa {
     Bloque(Bloque),
     /// La fila `f` de la tabla que empieza en `desde`.
-    Fila { desde: usize, f: usize },
+    Fila {
+        desde: usize,
+        f: usize,
+    },
     /// La columna `c` de la tabla que empieza en `desde`.
-    Columna { desde: usize, c: usize },
+    Columna {
+        desde: usize,
+        c: usize,
+    },
     /// El «+» de debajo de la tabla: una fila mas al final.
-    MasFila { desde: usize },
+    MasFila {
+        desde: usize,
+    },
     /// El «+» de su derecha: una columna mas al final.
-    MasColumna { desde: usize },
+    MasColumna {
+        desde: usize,
+    },
 }
 
 /// Un arrastre a medias: que se cogio, donde, si ya se movio el raton y a
@@ -87,18 +99,31 @@ fn esc(e: &Estado, v: i32) -> i32 {
 }
 
 fn punto(l: LPARAM) -> (i32, i32) {
-    ((l.0 & 0xffff) as i16 as i32, ((l.0 >> 16) & 0xffff) as i16 as i32)
+    (
+        (l.0 & 0xffff) as i16 as i32,
+        ((l.0 >> 16) & 0xffff) as i16 as i32,
+    )
 }
 
 fn y_de(e: &Estado, pos: usize) -> i32 {
     let mut p = POINT::default();
-    enviar(e.edit, EM_POSFROMCHAR, &mut p as *mut _ as usize, pos as isize);
+    enviar(
+        e.edit,
+        EM_POSFROMCHAR,
+        &mut p as *mut _ as usize,
+        pos as isize,
+    );
     p.y
 }
 
 fn x_de(e: &Estado, pos: usize) -> i32 {
     let mut p = POINT::default();
-    enviar(e.edit, EM_POSFROMCHAR, &mut p as *mut _ as usize, pos as isize);
+    enviar(
+        e.edit,
+        EM_POSFROMCHAR,
+        &mut p as *mut _ as usize,
+        pos as isize,
+    );
     p.x
 }
 
@@ -114,7 +139,9 @@ fn columna(e: &Estado) -> (i32, i32) {
 }
 
 fn renglon_px(e: &Estado) -> i32 {
-    imagenes::ADORNOS.with(|a| a.borrow().as_ref().map(|a| a.renglon_px)).unwrap_or(esc(e, 24))
+    imagenes::ADORNOS
+        .with(|a| a.borrow().as_ref().map(|a| a.renglon_px))
+        .unwrap_or(esc(e, 24))
 }
 
 fn dentro(r: &RECT, x: i32, y: i32) -> bool {
@@ -138,7 +165,13 @@ fn rejilla(e: &Estado, tc: &TablaEnControl) -> Option<Rejilla> {
     // SAFETY: rango y fila del documento vivo del control.
     let (anchos, margen) = unsafe {
         // La fila se pide por su marca de abrir (donde empieza la tabla).
-        let fila = doc.Range(tc.desde as i32, tc.desde as i32).ok()?.cast::<ITextRange2>().ok()?.GetRow().ok()?;
+        let fila = doc
+            .Range(tc.desde as i32, tc.desde as i32)
+            .ok()?
+            .cast::<ITextRange2>()
+            .ok()?
+            .GetRow()
+            .ok()?;
         let n = fila.GetCellCount().ok()?.max(0);
         let mut v = Vec::new();
         for c in 0..n {
@@ -152,7 +185,12 @@ fn rejilla(e: &Estado, tc: &TablaEnControl) -> Option<Rejilla> {
         let x = *xs.last()? + a;
         xs.push(x);
     }
-    let mut ys: Vec<i32> = tc.celdas.iter().filter_map(|f| f.first()).map(|p| y_de(e, *p) - esc(e, 3)).collect();
+    let mut ys: Vec<i32> = tc
+        .celdas
+        .iter()
+        .filter_map(|f| f.first())
+        .map(|p| y_de(e, *p) - esc(e, 3))
+        .collect();
     let abajo = y_de(e, tc.hasta).max(*ys.last()? + renglon_px(e));
     ys.push(abajo);
     Some(Rejilla { xs, ys })
@@ -165,7 +203,10 @@ fn asas_en(e: &Estado, x: i32, y: i32) -> Vec<(Asa, RECT)> {
     let ls = md_vivo::lineas(&texto);
     let (col_izq, col_der) = columna(e);
     let mut v = Vec::new();
-    let p = POINT { x: col_izq + esc(e, 4), y };
+    let p = POINT {
+        x: col_izq + esc(e, 4),
+        y,
+    };
     let pos = enviar(e.edit, EM_CHARFROMPOS, 0, &p as *const _ as isize).max(0) as usize;
     let n = md_vivo::linea_de(&ls, pos);
     let bloques = md_bloques::bloques(&texto);
@@ -184,38 +225,65 @@ fn asas_en(e: &Estado, x: i32, y: i32) -> Vec<(Asa, RECT)> {
     let _ = col_der;
     for tc in &tablas {
         let Some(r) = rejilla(e, tc) else { continue };
-        let (Some(&x0), Some(&x1), Some(&y0), Some(&y1)) = (r.xs.first(), r.xs.last(), r.ys.first(), r.ys.last()) else {
+        let (Some(&x0), Some(&x1), Some(&y0), Some(&y1)) =
+            (r.xs.first(), r.xs.last(), r.ys.first(), r.ys.last())
+        else {
             continue;
         };
         // Con aire a la derecha y debajo, para llegar a los «+» sin que se vayan.
-        if x < x0 - esc(e, 30) || x > x1 + esc(e, 30) || y < y0 - esc(e, 16) || y > y1 + esc(e, 26) {
+        if x < x0 - esc(e, 30) || x > x1 + esc(e, 30) || y < y0 - esc(e, 16) || y > y1 + esc(e, 26)
+        {
             continue;
         }
         // Los «+» de anadir una fila y una columna, como en Claude: debajo de
         // la tabla a su izquierda y a la derecha de su cabecera. Si la tabla
         // es ancha, en el borde de lo que se ve de ella.
         let (vis_izq, vis_der) = super::tablas::desplazar::visible(e.edit);
-        let (xi, xd) = if x1 - x0 > vis_der - vis_izq { (vis_izq.max(x0), vis_der.min(x1)) } else { (x0, x1) };
+        let (xi, xd) = if x1 - x0 > vis_der - vis_izq {
+            (vis_izq.max(x0), vis_der.min(x1))
+        } else {
+            (x0, x1)
+        };
         let lado = esc(e, 20);
         v.push((
             Asa::MasFila { desde: tc.desde },
-            RECT { left: xi - lado - esc(e, 4), top: y1 + esc(e, 3), right: xi - esc(e, 4), bottom: y1 + esc(e, 3) + lado },
+            RECT {
+                left: xi - lado - esc(e, 4),
+                top: y1 + esc(e, 3),
+                right: xi - esc(e, 4),
+                bottom: y1 + esc(e, 3) + lado,
+            },
         ));
         v.push((
             Asa::MasColumna { desde: tc.desde },
-            RECT { left: xd + esc(e, 4), top: y0 + esc(e, 2), right: xd + esc(e, 4) + lado, bottom: y0 + esc(e, 2) + lado },
+            RECT {
+                left: xd + esc(e, 4),
+                top: y0 + esc(e, 2),
+                right: xd + esc(e, 4) + lado,
+                bottom: y0 + esc(e, 2) + lado,
+            },
         ));
         if x > x1 || y > y1 {
             continue;
         }
         if let Some(c) = (0..r.xs.len() - 1).find(|&c| x >= r.xs[c] && x < r.xs[c + 1]) {
             let medio = (r.xs[c] + r.xs[c + 1]) / 2;
-            let rc = RECT { left: medio - esc(e, 14), top: y0 - esc(e, 11), right: medio + esc(e, 14), bottom: y0 - esc(e, 5) };
+            let rc = RECT {
+                left: medio - esc(e, 14),
+                top: y0 - esc(e, 11),
+                right: medio + esc(e, 14),
+                bottom: y0 - esc(e, 5),
+            };
             v.push((Asa::Columna { desde: tc.desde, c }, rc));
         }
         if let Some(f) = (0..r.ys.len() - 1).find(|&f| y >= r.ys[f] && y < r.ys[f + 1]) {
             let medio = (r.ys[f] + r.ys[f + 1]) / 2;
-            let rf = RECT { left: x0 - esc(e, 11), top: medio - esc(e, 12), right: x0 - esc(e, 5), bottom: medio + esc(e, 12) };
+            let rf = RECT {
+                left: x0 - esc(e, 11),
+                top: medio - esc(e, 12),
+                right: x0 - esc(e, 5),
+                bottom: medio + esc(e, 12),
+            };
             v.push((Asa::Fila { desde: tc.desde, f }, rf));
         }
     }
@@ -242,13 +310,23 @@ fn destino(e: &Estado, asa: Asa, x: i32, y: i32) -> Option<(usize, RECT)> {
                     }
                 }
             };
-            let (k, yk) = sitios.iter().map(|&k| (k, alto_de(k))).min_by_key(|(_, yk)| (yk - y).abs())?;
+            let (k, yk) = sitios
+                .iter()
+                .map(|&k| (k, alto_de(k)))
+                .min_by_key(|(_, yk)| (yk - y).abs())?;
             // Tambien hacia los lados se ve: la linea cruza la columna entera.
-            let r = RECT { left: col_izq - esc(e, 8), top: yk - grueso / 2 - esc(e, 1), right: col_der + esc(e, 8), bottom: yk + grueso / 2 };
+            let r = RECT {
+                left: col_izq - esc(e, 8),
+                top: yk - grueso / 2 - esc(e, 1),
+                right: col_der + esc(e, 8),
+                bottom: yk + grueso / 2,
+            };
             Some((k, r))
         }
         Asa::Fila { desde, f } => {
-            let tc = md_tabla::tablas_en_control(&texto).into_iter().find(|t| t.desde == desde)?;
+            let tc = md_tabla::tablas_en_control(&texto)
+                .into_iter()
+                .find(|t| t.desde == desde)?;
             let r = rejilla(e, &tc)?;
             let t = &tc.tabla;
             let (i, j) = t.banda_de_filas(f);
@@ -256,10 +334,20 @@ fn destino(e: &Estado, asa: Asa, x: i32, y: i32) -> Option<(usize, RECT)> {
                 .filter(|&a| !(i..=j).contains(&a) && t.corte_de_filas(a))
                 .min_by_key(|&a| (r.ys[a] - y).abs())?;
             let (x0, x1) = (*r.xs.first()?, *r.xs.last()?);
-            Some((a, RECT { left: x0 - esc(e, 4), top: r.ys[a] - grueso / 2, right: x1 + esc(e, 4), bottom: r.ys[a] + grueso / 2 + 1 }))
+            Some((
+                a,
+                RECT {
+                    left: x0 - esc(e, 4),
+                    top: r.ys[a] - grueso / 2,
+                    right: x1 + esc(e, 4),
+                    bottom: r.ys[a] + grueso / 2 + 1,
+                },
+            ))
         }
         Asa::Columna { desde, c } => {
-            let tc = md_tabla::tablas_en_control(&texto).into_iter().find(|t| t.desde == desde)?;
+            let tc = md_tabla::tablas_en_control(&texto)
+                .into_iter()
+                .find(|t| t.desde == desde)?;
             let r = rejilla(e, &tc)?;
             let t = &tc.tabla;
             let (i, j) = t.banda_de_columnas(c);
@@ -267,7 +355,15 @@ fn destino(e: &Estado, asa: Asa, x: i32, y: i32) -> Option<(usize, RECT)> {
                 .filter(|&a| !(i..=j).contains(&a) && t.corte_de_columnas(a))
                 .min_by_key(|&a| (r.xs[a] - x).abs())?;
             let (y0, y1) = (*r.ys.first()?, *r.ys.last()?);
-            Some((a, RECT { left: r.xs[a] - grueso / 2, top: y0 - esc(e, 4), right: r.xs[a] + grueso / 2 + 1, bottom: y1 + esc(e, 4) }))
+            Some((
+                a,
+                RECT {
+                    left: r.xs[a] - grueso / 2,
+                    top: y0 - esc(e, 4),
+                    right: r.xs[a] + grueso / 2 + 1,
+                    bottom: y1 + esc(e, 4),
+                },
+            ))
         }
         // Los «+» no se arrastran.
         Asa::MasFila { .. } | Asa::MasColumna { .. } => None,
@@ -306,7 +402,9 @@ pub(super) fn mover_bloque(e: &mut Estado, b: Bloque, antes_de: usize) -> bool {
 }
 
 fn mover_con_formato(e: &mut Estado, b: Bloque, antes_de: usize) -> bool {
-    let Some(doc) = e.doc.clone() else { return false };
+    let Some(doc) = e.doc.clone() else {
+        return false;
+    };
     let texto = leer(e.edit);
     let ls = md_vivo::lineas(&texto);
     if b.hasta >= ls.len() || antes_de > ls.len() || (b.desde..=b.hasta + 1).contains(&antes_de) {
@@ -352,7 +450,8 @@ fn mover_con_formato(e: &mut Estado, b: Bloque, antes_de: usize) -> bool {
             let t = leer(e.edit);
             let n = t.encode_utf16().count() as i32;
             let tipos = pixpin_docs::md_edicion::renglones(&t);
-            let antes_tabla = tipos.len() >= 2 && tipos[tipos.len() - 2] == pixpin_docs::md_edicion::Renglon::Tabla;
+            let antes_tabla = tipos.len() >= 2
+                && tipos[tipos.len() - 2] == pixpin_docs::md_edicion::Renglon::Tabla;
             if t.ends_with('\n')
                 && !antes_tabla
                 && let Ok(r) = doc.Range(n - 1, n)
@@ -376,7 +475,10 @@ fn mover_en_tabla(e: &mut Estado, asa: Asa, a: usize) -> bool {
             Asa::Fila { desde, .. } | Asa::Columna { desde, .. } => desde,
             _ => return false,
         };
-        let Some(tc) = md_tabla::tablas_en_control(&texto).into_iter().find(|t| t.desde == desde) else {
+        let Some(tc) = md_tabla::tablas_en_control(&texto)
+            .into_iter()
+            .find(|t| t.desde == desde)
+        else {
             return false;
         };
         let mut t = tablas::modelo(e, &tc);
@@ -410,7 +512,12 @@ fn elegir_en_tabla(e: &Estado, asa: Asa) {
         Asa::Fila { desde, .. } | Asa::Columna { desde, .. } => desde,
         _ => return,
     };
-    let Some(tc) = md_tabla::tablas_en_control(&texto).into_iter().find(|t| t.desde == desde) else { return };
+    let Some(tc) = md_tabla::tablas_en_control(&texto)
+        .into_iter()
+        .find(|t| t.desde == desde)
+    else {
+        return;
+    };
     let (p1, p2) = match asa {
         Asa::Fila { f, .. } => match tc.celdas.get(f) {
             Some(fila) => (fila.first().copied(), fila.last().copied()),
@@ -422,9 +529,17 @@ fn elegir_en_tabla(e: &Estado, asa: Asa) {
         ),
         _ => return,
     };
-    let (Some(p1), Some(p2)) = (p1, p2) else { return };
+    let (Some(p1), Some(p2)) = (p1, p2) else {
+        return;
+    };
     let u: Vec<u16> = texto.encode_utf16().collect();
-    let fin = p2 + u[p2.min(u.len())..].iter().take_while(|c| **c != md_tabla::CELDA as u16 && **c != b'\r' as u16 && **c != b'\n' as u16).count();
+    let fin = p2
+        + u[p2.min(u.len())..]
+            .iter()
+            .take_while(|c| {
+                **c != md_tabla::CELDA as u16 && **c != b'\r' as u16 && **c != b'\n' as u16
+            })
+            .count();
     tablas::recordar_arrastre(p1, p2);
     elegir(e.edit, p1, fin.max(p1 + 1));
     ENTERA.with(|x| x.set(true));
@@ -435,7 +550,12 @@ fn elegir_en_tabla(e: &Estado, asa: Asa) {
 
 fn refrescar(edit: HWND, rects: &[RECT]) {
     for r in rects {
-        let r = RECT { left: r.left - 2, top: r.top - 2, right: r.right + 2, bottom: r.bottom + 2 };
+        let r = RECT {
+            left: r.left - 2,
+            top: r.top - 2,
+            right: r.right + 2,
+            bottom: r.bottom + 2,
+        };
         // SAFETY: rectangulo de una ventana propia.
         unsafe {
             let _ = InvalidateRect(Some(edit), Some(&r), false);
@@ -483,8 +603,13 @@ pub(super) fn raton(e: &mut Estado, m: &MSG) -> bool {
     match m.message {
         WM_MOUSEMOVE => {
             if let Some(mut a) = ARRASTRE.with(Cell::get) {
-                a.movido |= (x - a.x0).abs() > esc(e, UMBRAL_PX) || (y - a.y0).abs() > esc(e, UMBRAL_PX);
-                let d = if a.movido { destino(e, a.asa, x, y) } else { None };
+                a.movido |=
+                    (x - a.x0).abs() > esc(e, UMBRAL_PX) || (y - a.y0).abs() > esc(e, UMBRAL_PX);
+                let d = if a.movido {
+                    destino(e, a.asa, x, y)
+                } else {
+                    None
+                };
                 a.destino = d.map(|(k, _)| k);
                 ARRASTRE.with(|x| x.set(Some(a)));
                 let asas = PINTA.with(|p| p.borrow().asas.clone());
@@ -520,7 +645,15 @@ pub(super) fn raton(e: &mut Estado, m: &MSG) -> bool {
                 return false;
             };
             cerrar_menu(e);
-            ARRASTRE.with(|a| a.set(Some(Arrastre { asa, x0: x, y0: y, movido: false, destino: None })));
+            ARRASTRE.with(|a| {
+                a.set(Some(Arrastre {
+                    asa,
+                    x0: x,
+                    y0: y,
+                    movido: false,
+                    destino: None,
+                }))
+            });
             if !e.oculto {
                 // SAFETY: captura del raton para una ventana propia.
                 unsafe {
@@ -544,7 +677,9 @@ pub(super) fn raton(e: &mut Estado, m: &MSG) -> bool {
                 (true, Some(k), asa) => {
                     mover_en_tabla(e, asa, k);
                 }
-                (false, _, asa @ (Asa::Fila { .. } | Asa::Columna { .. })) => elegir_en_tabla(e, asa),
+                (false, _, asa @ (Asa::Fila { .. } | Asa::Columna { .. })) => {
+                    elegir_en_tabla(e, asa)
+                }
                 (false, _, Asa::MasFila { desde }) => super::anadir_al_final(e, desde, true),
                 (false, _, Asa::MasColumna { desde }) => super::anadir_al_final(e, desde, false),
                 _ => {}
@@ -582,7 +717,8 @@ pub(super) fn cursor(edit: HWND) -> bool {
         let _ = GetCursorPos(&mut p);
         let _ = ScreenToClient(edit, &mut p);
     }
-    let encima = ARRASTRE.with(Cell::get).is_some() || PINTA.with(|x| x.borrow().asas.iter().any(|(_, r)| dentro(r, p.x, p.y)));
+    let encima = ARRASTRE.with(Cell::get).is_some()
+        || PINTA.with(|x| x.borrow().asas.iter().any(|(_, r)| dentro(r, p.x, p.y)));
     if encima {
         // SAFETY: cursor del sistema, compartido; no se suelta.
         unsafe {
@@ -640,18 +776,51 @@ pub(super) fn pintar_encima(hdc: HDC) {
                     for dx in [-e(3), e(3)] {
                         for dy in [-e(5), 0, e(5)] {
                             let (x, y) = (cx + dx - lado / 2, cy + dy - lado / 2);
-                            redondo(hdc, RECT { left: x, top: y, right: x + lado, bottom: y + lado }, p.tenue, lado);
+                            redondo(
+                                hdc,
+                                RECT {
+                                    left: x,
+                                    top: y,
+                                    right: x + lado,
+                                    bottom: y + lado,
+                                },
+                                p.tenue,
+                                lado,
+                            );
                         }
                     }
                 }
                 Asa::MasFila { .. } | Asa::MasColumna { .. } => {
                     // Un circulo con su «+», como el de Claude.
-                    redondo(hdc, *r, if encima { p.acento } else { p.pastilla }, r.right - r.left);
+                    redondo(
+                        hdc,
+                        *r,
+                        if encima { p.acento } else { p.pastilla },
+                        r.right - r.left,
+                    );
                     let (cx, cy) = ((r.left + r.right) / 2, (r.top + r.bottom) / 2);
                     let (largo, grueso) = (e(5), e(1).max(1));
                     let tinta = if encima { p.papel } else { p.tenue };
-                    rellenar(hdc, RECT { left: cx - largo, top: cy - grueso, right: cx + largo + 1, bottom: cy + grueso }, tinta);
-                    rellenar(hdc, RECT { left: cx - grueso, top: cy - largo, right: cx + grueso, bottom: cy + largo + 1 }, tinta);
+                    rellenar(
+                        hdc,
+                        RECT {
+                            left: cx - largo,
+                            top: cy - grueso,
+                            right: cx + largo + 1,
+                            bottom: cy + grueso,
+                        },
+                        tinta,
+                    );
+                    rellenar(
+                        hdc,
+                        RECT {
+                            left: cx - grueso,
+                            top: cy - largo,
+                            right: cx + grueso,
+                            bottom: cy + largo + 1,
+                        },
+                        tinta,
+                    );
                 }
                 _ => redondo(hdc, *r, if encima { p.acento } else { p.tenue }, e(6)),
             }

@@ -78,8 +78,15 @@ pub fn pedir_ventana_principal(id_comando: u32) -> bool {
     // `WM_COPYDATA`), y esta copia se va a morir enseguida; esperar a que la
     // otra termine de abrir una ventana entera seria esperar por nada.
     // SAFETY: mensaje sin punteros a una ventana de otro proceso propio.
-    unsafe { PostMessageW(Some(destino), WM_COMMAND, WPARAM(id_comando as usize), LPARAM(0)) }
-        .is_ok()
+    unsafe {
+        PostMessageW(
+            Some(destino),
+            WM_COMMAND,
+            WPARAM(id_comando as usize),
+            LPARAM(0),
+        )
+    }
+    .is_ok()
 }
 
 /// Manda las rutas a la instancia que ya corre. Devuelve si llegaron.
@@ -281,7 +288,12 @@ fn ventana_de_la_copia() -> Option<windows::Win32::Foundation::HWND> {
     // SAFETY: igual que arriba; HWND_MESSAGE es el padre valido para buscar
     // entre las ventanas de solo mensajes.
     let h = unsafe {
-        FindWindowExW(Some(HWND_MESSAGE), None, w!("PixPinMaxVentanaMensajes"), None)
+        FindWindowExW(
+            Some(HWND_MESSAGE),
+            None,
+            w!("PixPinMaxVentanaMensajes"),
+            None,
+        )
     }
     .ok()?;
     (!h.0.is_null()).then_some(h)
@@ -457,7 +469,10 @@ mod pruebas {
         grande.extend(std::iter::repeat_n(b'a', TOPE_PEDIDO));
         grande.extend(br#""}"#);
         assert_eq!(leer_pedido(&grande), Err(respuesta::NO_SE_ENTIENDE));
-        assert_eq!(leer_pedido(&[0xFF, 0xFE, b'{']), Err(respuesta::NO_SE_ENTIENDE));
+        assert_eq!(
+            leer_pedido(&[0xFF, 0xFE, b'{']),
+            Err(respuesta::NO_SE_ENTIENDE)
+        );
     }
 
     #[test]

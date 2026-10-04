@@ -20,12 +20,21 @@ fn generar(ruta: &std::path::Path, tramos: usize) {
     let por_capa = tramos / 20 + 1;
     let mut semilla: u64 = 7;
     let mut azar = || {
-        semilla = semilla.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        semilla = semilla
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
         (semilla >> 33) as f64 / (1u64 << 31) as f64
     };
     let mut hechos = 0;
     for capa in 0..20 {
-        let _ = write!(c, "/OC /oc{capa} BDC {} {} {} RG {} w\n", (capa % 3) as f64 / 3.0, (capa % 5) as f64 / 5.0, (capa % 7) as f64 / 7.0, 1 + capa % 4);
+        let _ = write!(
+            c,
+            "/OC /oc{capa} BDC {} {} {} RG {} w\n",
+            (capa % 3) as f64 / 3.0,
+            (capa % 5) as f64 / 5.0,
+            (capa % 7) as f64 / 7.0,
+            1 + capa % 4
+        );
         let mut n = 0;
         while n < por_capa && hechos < tramos {
             // Una polilinea de 10 a 60 tramos que va dando vueltas.
@@ -54,12 +63,22 @@ fn generar(ruta: &std::path::Path, tramos: usize) {
         b"2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n".to_vec(),
         format!("3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {an} {al}] /Contents 4 0 R /Resources << /Properties << {props}>> >> >>\nendobj\n").into_bytes(),
     ];
-    let mut f = format!("4 0 obj\n<< /Length {} /Filter /FlateDecode >>\nstream\n", contenido.len()).into_bytes();
+    let mut f = format!(
+        "4 0 obj\n<< /Length {} /Filter /FlateDecode >>\nstream\n",
+        contenido.len()
+    )
+    .into_bytes();
     f.extend_from_slice(&contenido);
     f.extend_from_slice(b"\nendstream\nendobj\n");
     objetos.push(f);
     for i in 0..20 {
-        objetos.push(format!("{} 0 obj\n<< /Type /OCG /Name (A-CAPA-{i:02}) >>\nendobj\n", 5 + i).into_bytes());
+        objetos.push(
+            format!(
+                "{} 0 obj\n<< /Type /OCG /Name (A-CAPA-{i:02}) >>\nendobj\n",
+                5 + i
+            )
+            .into_bytes(),
+        );
     }
     let mut s = b"%PDF-1.6\n".to_vec();
     let mut donde = Vec::new();
@@ -72,7 +91,11 @@ fn generar(ruta: &std::path::Path, tramos: usize) {
     for d in donde {
         let _ = write!(t, "{d:010} 00000 n \n");
     }
-    let _ = write!(t, "trailer\n<< /Size {} /Root 1 0 R >>\nstartxref\n{inicio}\n%%EOF\n", objetos.len() + 1);
+    let _ = write!(
+        t,
+        "trailer\n<< /Size {} /Root 1 0 R >>\nstartxref\n{inicio}\n%%EOF\n",
+        objetos.len() + 1
+    );
     s.extend_from_slice(t.as_bytes());
     std::fs::write(ruta, s).unwrap();
 }
@@ -93,7 +116,12 @@ fn main() {
         };
         let doc = pixpin_pdf::Documento::abrir(&ruta).ok();
         let paginas = doc.as_ref().map_or(1, |d| d.paginas()).min(6) as usize;
-        println!("== {} ({} KB, {} paginas miradas)", ruta.display(), bytes.len() / 1024, paginas);
+        println!(
+            "== {} ({} KB, {} paginas miradas)",
+            ruta.display(),
+            bytes.len() / 1024,
+            paginas
+        );
         for p in 0..paginas {
             let t0 = Instant::now();
             let plano = pixpin_pdf::plano::de_bytes(&bytes, p);
@@ -103,21 +131,28 @@ fn main() {
                 continue;
             };
             let t1 = Instant::now();
-            let json = pixpin_pdf::plano_web::a_json(&plano, pixpin_pdf::plano_web::ANCHO_EN_UNIDADES);
+            let json =
+                pixpin_pdf::plano_web::a_json(&plano, pixpin_pdf::plano_web::ANCHO_EN_UNIDADES);
             let empaquetar = t1.elapsed();
             let (jpeg, pintar) = match &doc {
                 Some(d) => {
                     let t2 = Instant::now();
                     let img = d.renderizar(p as u32, 1600).ok();
                     if let (Some(i), Some(dir)) = (&img, std::env::var_os("PIXPIN_PLANO_PNG")) {
-                        let _ = pixpin_codec::imagen::codificar_jpg(i, 80).map(|j| std::fs::write(std::path::Path::new(&dir).join(format!("windows-{p}.jpg")), j));
+                        let _ = pixpin_codec::imagen::codificar_jpg(i, 80).map(|j| {
+                            std::fs::write(
+                                std::path::Path::new(&dir).join(format!("windows-{p}.jpg")),
+                                j,
+                            )
+                        });
                     }
                     if let Some(m) = d.medidas().get(p) {
                         println!("  medidas de Windows: {:?}", m);
                     }
                     let pintar = t2.elapsed();
                     (
-                        img.and_then(|i| pixpin_codec::imagen::codificar_jpg(&i, 72).ok()).map_or(0, |j| j.len()),
+                        img.and_then(|i| pixpin_codec::imagen::codificar_jpg(&i, 72).ok())
+                            .map_or(0, |j| j.len()),
                         pintar,
                     )
                 }
@@ -161,7 +196,10 @@ impl ComDelHilo {
         // SAFETY: se inicia COM en el hilo principal del ejemplo y se cierra
         // al soltarlo; nada mas lo usa.
         unsafe {
-            let _ = windows::Win32::System::Com::CoInitializeEx(None, windows::Win32::System::Com::COINIT_MULTITHREADED);
+            let _ = windows::Win32::System::Com::CoInitializeEx(
+                None,
+                windows::Win32::System::Com::COINIT_MULTITHREADED,
+            );
         }
         ComDelHilo
     }

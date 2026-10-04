@@ -41,7 +41,10 @@ use windows::Win32::Foundation::HWND;
 /// pincel nace en Excalifont, bastante mas ancha que Segoe UI, y medido en
 /// Segoe el texto se salia de su celda y las piezas de una ecuacion se
 /// montaban unas sobre otras.
-pub(super) fn medidor<'a>(motor: &'a MotorRender, familia: &str) -> impl Fn(&str, f32) -> (f32, f32) + 'a {
+pub(super) fn medidor<'a>(
+    motor: &'a MotorRender,
+    familia: &str,
+) -> impl Fn(&str, f32) -> (f32, f32) + 'a {
     let familia = familia.to_string();
     move |texto, tam| {
         if pixpin_motor2d::texto::hay_medidor() {
@@ -227,7 +230,10 @@ pub(super) enum TablaElegida {
 
 impl TablaElegida {
     pub fn de(escena: &Escena, gesto: &Gesto) -> TablaElegida {
-        let elegidos: Vec<&Elemento> = escena.visibles().filter(|e| gesto.seleccion.contiene(e.id)).collect();
+        let elegidos: Vec<&Elemento> = escena
+            .visibles()
+            .filter(|e| gesto.seleccion.contiene(e.id))
+            .collect();
         match pixpin_motor2d::tabla_dibujada::leer::leer_tabla(&elegidos) {
             None => TablaElegida::Ninguna,
             Some(t) if t.figuras.is_empty() => TablaElegida::Sola,
@@ -250,7 +256,12 @@ const ID_QUITAR: u32 = 1000;
 /// encima); luego las de fabrica —la grafica, la tabla en blanco, pegar—,
 /// las propias, las nuevas arriba (`BibliotecaStore.anadir`), y al final
 /// guardar y quitar.
-pub(super) fn entradas(t: &Catalogo, figuras: &[FiguraGuardada], hay_seleccion: bool, tabla: TablaElegida) -> Vec<EntradaMenu> {
+pub(super) fn entradas(
+    t: &Catalogo,
+    figuras: &[FiguraGuardada],
+    hay_seleccion: bool,
+    tabla: TablaElegida,
+) -> Vec<EntradaMenu> {
     let mut v = Vec::new();
     if tabla != TablaElegida::Ninguna {
         v.push(EntradaMenu {
@@ -459,23 +470,72 @@ pub(super) enum Tecla {
 /// final del campo, asi que las flechas del movil (mover el cursor) no
 /// hacen falta y su hueco es «otra curva» (un renglon nuevo). `\u{8}` borra.
 pub(super) const TECLADO: [&[(&str, &str)]; 7] = [
-    &[("7", "7"), ("8", "8"), ("9", "9"), ("÷", "/"), ("(", "("), (")", ")")],
-    &[("4", "4"), ("5", "5"), ("6", "6"), ("×", "*"), ("^", "^"), ("x²", "^2")],
-    &[("1", "1"), ("2", "2"), ("3", "3"), ("−", "-"), ("√", "sqrt("), ("π", "pi")],
-    &[("0", "0"), (".", "."), (",", ","), ("+", "+"), ("x", "x"), ("e", "e")],
-    &[("sin", "sin("), ("cos", "cos("), ("tan", "tan("), ("ln", "ln("), ("log", "log("), ("exp", "exp(")],
-    &[("abs", "abs("), ("|x|", "|"), ("<", "<"), (">", ">"), ("≤", "<="), ("≥", ">=")],
+    &[
+        ("7", "7"),
+        ("8", "8"),
+        ("9", "9"),
+        ("÷", "/"),
+        ("(", "("),
+        (")", ")"),
+    ],
+    &[
+        ("4", "4"),
+        ("5", "5"),
+        ("6", "6"),
+        ("×", "*"),
+        ("^", "^"),
+        ("x²", "^2"),
+    ],
+    &[
+        ("1", "1"),
+        ("2", "2"),
+        ("3", "3"),
+        ("−", "-"),
+        ("√", "sqrt("),
+        ("π", "pi"),
+    ],
+    &[
+        ("0", "0"),
+        (".", "."),
+        (",", ","),
+        ("+", "+"),
+        ("x", "x"),
+        ("e", "e"),
+    ],
+    &[
+        ("sin", "sin("),
+        ("cos", "cos("),
+        ("tan", "tan("),
+        ("ln", "ln("),
+        ("log", "log("),
+        ("exp", "exp("),
+    ],
+    &[
+        ("abs", "abs("),
+        ("|x|", "|"),
+        ("<", "<"),
+        (">", ">"),
+        ("≤", "<="),
+        ("≥", ">="),
+    ],
     &[("si", " si "), (";", "; "), ("↵", "\n"), ("⌫", "\u{8}")],
 ];
 
 /// Las teclas «fuertes» del movil (funciones, la x y borrar), que se pintan
 /// de otro tono para encontrarlas de un vistazo.
 fn tecla_fuerte(rotulo: &str) -> bool {
-    (rotulo.len() > 1 && rotulo.chars().all(|c| c.is_ascii_alphabetic())) || matches!(rotulo, "x" | "√" | "⌫" | "↵")
+    (rotulo.len() > 1 && rotulo.chars().all(|c| c.is_ascii_alphabetic()))
+        || matches!(rotulo, "x" | "√" | "⌫" | "↵")
 }
 
 impl Formulario {
-    pub fn nuevo(titulo: String, campos: Vec<Campo>, ayuda: String, aceptar: String, cancelar: String) -> Formulario {
+    pub fn nuevo(
+        titulo: String,
+        campos: Vec<Campo>,
+        ayuda: String,
+        aceptar: String,
+        cancelar: String,
+    ) -> Formulario {
         Formulario {
             titulo,
             campos,
@@ -510,7 +570,11 @@ impl Formulario {
             '\u{1b}' => Tecla::Cancelar,
             '\t' => {
                 let n = self.campos.len();
-                self.activo = if mayus { (self.activo + n - 1) % n } else { (self.activo + 1) % n };
+                self.activo = if mayus {
+                    (self.activo + n - 1) % n
+                } else {
+                    (self.activo + 1) % n
+                };
                 Tecla::Sigue
             }
             '\u{8}' => {
@@ -546,13 +610,17 @@ impl Formulario {
 
     /// Pega texto en el campo activo; en uno de un renglon, sin saltos.
     pub fn pegar(&mut self, texto: &str) {
-        let Some(campo) = self.campos.get_mut(self.activo) else { return };
+        let Some(campo) = self.campos.get_mut(self.activo) else {
+            return;
+        };
         if campo.renglones {
             campo.texto.push_str(&texto.replace("\r\n", "\n"));
         } else {
             // Una celda copiada de Excel trae su salto de linea detras: sobra.
             let t = texto.replace("\r\n", "\n");
-            campo.texto.push_str(&t.trim_end_matches('\n').replace('\n', " "));
+            campo
+                .texto
+                .push_str(&t.trim_end_matches('\n').replace('\n', " "));
         }
         self.aviso = None;
     }
@@ -560,7 +628,9 @@ impl Formulario {
     /// Una tecla del teclado de formulas: escribe en las formulas y las deja
     /// con el cursor.
     pub fn teclear(&mut self, escribe: &str) {
-        let Some(campo) = self.campos.first_mut() else { return };
+        let Some(campo) = self.campos.first_mut() else {
+            return;
+        };
         if escribe == "\u{8}" {
             campo.texto.pop();
         } else {
@@ -573,7 +643,10 @@ impl Formulario {
     /// Las celdas de la tabla, fila a fila.
     pub fn celdas(&self) -> Vec<Vec<String>> {
         let cols = self.rejilla.map_or(1, |r| r.columnas.max(1));
-        self.campos.chunks(cols).map(|f| f.iter().map(|c| c.texto.clone()).collect()).collect()
+        self.campos
+            .chunks(cols)
+            .map(|f| f.iter().map(|c| c.texto.clone()).collect())
+            .collect()
     }
 
     /// Pone otras celdas en la tabla (lo que trae «pegar»). Una rejilla vacia
@@ -581,14 +654,18 @@ impl Formulario {
     /// no trae una tabla.
     pub fn poner_celdas(&mut self, filas: &[Vec<String>]) -> bool {
         let cols = filas.iter().map(Vec::len).max().unwrap_or(0);
-        let Some(r) = self.rejilla.as_mut() else { return false };
+        let Some(r) = self.rejilla.as_mut() else {
+            return false;
+        };
         if filas.is_empty() || cols == 0 {
             return false;
         }
         r.columnas = cols;
         self.campos = filas
             .iter()
-            .flat_map(|f| (0..cols).map(|i| Campo::nuevo("", f.get(i).cloned().unwrap_or_default())))
+            .flat_map(|f| {
+                (0..cols).map(|i| Campo::nuevo("", f.get(i).cloned().unwrap_or_default()))
+            })
             .collect();
         self.activo = 0;
         true
@@ -599,7 +676,9 @@ impl Formulario {
     /// que queda (una tabla sin filas no se puede volver a llenar). Pegar lo
     /// resuelve quien llama, que es quien lee el portapapeles.
     pub fn accion(&mut self, a: Accion) -> Tecla {
-        let Some(r) = self.rejilla else { return Tecla::Sigue };
+        let Some(r) = self.rejilla else {
+            return Tecla::Sigue;
+        };
         let cols = r.columnas.max(1);
         let filas = self.campos.len() / cols;
         let (f, c) = (self.activo / cols, self.activo % cols);
@@ -668,7 +747,11 @@ impl Formulario {
 
 /// Un numero de un campo, con coma decimal admitida (`numeroDelCampo`).
 pub(super) fn numero_del_campo(t: &str) -> Option<f64> {
-    t.trim().replace(',', ".").parse().ok().filter(|v: &f64| v.is_finite())
+    t.trim()
+        .replace(',', ".")
+        .parse()
+        .ok()
+        .filter(|v: &f64| v.is_finite())
 }
 
 /// **El cajetin de la grafica**, como el `DialogoDeGrafica` del movil: las
@@ -698,8 +781,20 @@ pub(super) fn formulario_de_grafica(t: &Catalogo) -> Formulario {
 
 /// **El cajetin de una tabla** (`EditorDeTablaPegada` del movil): una celda
 /// por campo, los botones de fila, columna, cabecera y pegar, e insertar.
-pub(super) fn formulario_de_tabla(t: &Catalogo, filas: &[Vec<String>], cabecera: bool, titulo: &str, aceptar: &str) -> Formulario {
-    let mut f = Formulario::nuevo(t.t(titulo), Vec::new(), t.t("tabla-ayuda"), t.t(aceptar), t.t("cajetin-cancelar"));
+pub(super) fn formulario_de_tabla(
+    t: &Catalogo,
+    filas: &[Vec<String>],
+    cabecera: bool,
+    titulo: &str,
+    aceptar: &str,
+) -> Formulario {
+    let mut f = Formulario::nuevo(
+        t.t(titulo),
+        Vec::new(),
+        t.t("tabla-ayuda"),
+        t.t(aceptar),
+        t.t("cajetin-cancelar"),
+    );
     f.rejilla = Some(TablaEnCajetin {
         columnas: 1,
         cabecera,
@@ -806,7 +901,11 @@ pub(super) fn pedir(
     // el del motor esta prestado a `pintar` mientras se pinta.
     let sin_imagenes = ImagenesLienzo::nuevo(1);
     let k = escala_por_cien as f32 / 100.0;
-    let mut previa = vista_previa(f, &medidor(motor, pixpin_motor2d::texto::FAMILIA_DEL_SISTEMA), escala_por_cien);
+    let mut previa = vista_previa(
+        f,
+        &medidor(motor, pixpin_motor2d::texto::FAMILIA_DEL_SISTEMA),
+        escala_por_cien,
+    );
     // Lo que hace una tecla o un clic, igual venga de donde venga.
     let atender = |f: &mut Formulario, tecla: Tecla| -> Option<bool> {
         match tecla {
@@ -822,7 +921,8 @@ pub(super) fn pedir(
                     Some(pixpin_codec::portapapeles::ContenidoPortapapeles::Texto(t)) => t,
                     _ => String::new(),
                 };
-                let filas = pixpin_motor2d::tabla_dibujada::rejilla_de_texto(&texto).unwrap_or_default();
+                let filas =
+                    pixpin_motor2d::tabla_dibujada::rejilla_de_texto(&texto).unwrap_or_default();
                 if !f.poner_celdas(&filas) {
                     f.aviso = Some(exportar_textos_sin_tabla());
                 }
@@ -855,7 +955,9 @@ pub(super) fn pedir(
                         cambio = true;
                     }
                 }
-                EventoOverlay::Tecla { vk, ctrl: false, .. } if (0x25..=0x28).contains(&vk) => {
+                EventoOverlay::Tecla {
+                    vk, ctrl: false, ..
+                } if (0x25..=0x28).contains(&vk) => {
                     f.flecha(vk);
                     cambio = true;
                 }
@@ -897,7 +999,17 @@ pub(super) fn pedir(
                         FueraDeLaEscena::default(),
                         None,
                         |p, base| {
-                            dibujar(p, base, ancho_px, alto_px, escala_por_cien, f, &previa, &sin_imagenes, valido)
+                            dibujar(
+                                p,
+                                base,
+                                ancho_px,
+                                alto_px,
+                                escala_por_cien,
+                                f,
+                                &previa,
+                                &sin_imagenes,
+                                valido,
+                            )
                         },
                     );
                 }
@@ -907,7 +1019,11 @@ pub(super) fn pedir(
         if cambio {
             // Las piezas de la vista previa, medidas antes de pintar (dentro,
             // el motor esta prestado).
-            previa = vista_previa(f, &medidor(motor, pixpin_motor2d::texto::FAMILIA_DEL_SISTEMA), escala_por_cien);
+            previa = vista_previa(
+                f,
+                &medidor(motor, pixpin_motor2d::texto::FAMILIA_DEL_SISTEMA),
+                escala_por_cien,
+            );
             ventana.invalidar();
         }
         std::thread::sleep(std::time::Duration::from_millis(5));
@@ -937,7 +1053,12 @@ fn vista_previa(f: &Formulario, medir: ecuacion::Medir<'_>, escala_por_cien: u32
     };
     f.campos
         .first()
-        .map(|c| c.texto.lines().filter(|l| !l.trim().is_empty()).collect::<Vec<_>>())
+        .map(|c| {
+            c.texto
+                .lines()
+                .filter(|l| !l.trim().is_empty())
+                .collect::<Vec<_>>()
+        })
         .unwrap_or_default()
         .into_iter()
         .enumerate()
@@ -946,16 +1067,24 @@ fn vista_previa(f: &Formulario, medir: ecuacion::Medir<'_>, escala_por_cien: u32
             let color = if i == 0 {
                 estilo.color
             } else {
-                grafica::color_de(grafica::COLORES_DE_CURVAS[(i - 1) % grafica::COLORES_DE_CURVAS.len()])
+                grafica::color_de(
+                    grafica::COLORES_DE_CURVAS[(i - 1) % grafica::COLORES_DE_CURVAS.len()],
+                )
             };
             let caja = ecuacion::caja_de_la_ecuacion("y", &c, estilo.tam, medir);
-            Some((caja.elementos(0.0, 0.0, &estilo.con_color(color)), caja.alto))
+            Some((
+                caja.elementos(0.0, 0.0, &estilo.con_color(color)),
+                caja.alto,
+            ))
         })
         .collect()
 }
 
 fn alto_de_la_previa(previa: &Previa, k: f32) -> f32 {
-    previa.iter().map(|x| x.as_ref().map_or(22.0 * k, |(_, h)| h + 6.0 * k)).sum()
+    previa
+        .iter()
+        .map(|x| x.as_ref().map_or(22.0 * k, |(_, h)| h + 6.0 * k))
+        .sum()
 }
 
 /// **Donde va cada cosa del cajetin**, en pixeles de la ventana: lo usan el
@@ -987,16 +1116,24 @@ fn rect(x: f32, y: f32, ancho: f32, alto: f32) -> RectF {
 
 /// La disposicion del cajetin `f`, centrado en una ventana de `ancho_px` x
 /// `alto_px` a la escala `k` (1 = 100 %).
-pub(super) fn disponer(f: &Formulario, alto_previa: f32, ancho_px: f32, alto_px: f32, k: f32) -> Disposicion {
+pub(super) fn disponer(
+    f: &Formulario,
+    alto_previa: f32,
+    ancho_px: f32,
+    alto_px: f32,
+    k: f32,
+) -> Disposicion {
     let (m, renglon, sep) = (18.0 * k, 26.0 * k, 10.0 * k);
     let t_etiqueta = 12.0 * k;
     let tecla = (44.0 * k, 30.0 * k, 4.0 * k);
     let ancho_teclado = 6.0 * tecla.0 + 5.0 * tecla.2;
     let columna_campos = 440.0 * k;
     // El teclado va a la derecha de los campos si cabe, y si no debajo.
-    let teclado_al_lado = f.teclado && ancho_px >= columna_campos + ancho_teclado + 2.0 * m + 16.0 * k + 32.0 * k;
+    let teclado_al_lado =
+        f.teclado && ancho_px >= columna_campos + ancho_teclado + 2.0 * m + 16.0 * k + 32.0 * k;
     let ancho = match f.rejilla {
-        Some(r) => (2.0 * m + r.columnas as f32 * 130.0 * k).clamp(520.0 * k, (ancho_px - 32.0 * k).max(520.0 * k)),
+        Some(r) => (2.0 * m + r.columnas as f32 * 130.0 * k)
+            .clamp(520.0 * k, (ancho_px - 32.0 * k).max(520.0 * k)),
         None if teclado_al_lado => columna_campos + ancho_teclado + 2.0 * m + 16.0 * k,
         None => 520.0 * k,
     };
@@ -1016,7 +1153,11 @@ pub(super) fn disponer(f: &Formulario, alto_previa: f32, ancho_px: f32, alto_px:
         aceptar: cero,
     };
     let x0 = m;
-    let ancho_campos = if teclado_al_lado { columna_campos } else { ancho - 2.0 * m };
+    let ancho_campos = if teclado_al_lado {
+        columna_campos
+    } else {
+        ancho - 2.0 * m
+    };
     d.titulo = (x0, m);
     d.cerrar = rect(ancho - m - 22.0 * k, m - 2.0 * k, 22.0 * k, 22.0 * k);
     let mut y = m + 34.0 * k;
@@ -1027,7 +1168,12 @@ pub(super) fn disponer(f: &Formulario, alto_previa: f32, ancho_px: f32, alto_px:
             let w = (ancho - 2.0 * m) / cols as f32;
             for (i, _) in f.campos.iter().enumerate() {
                 let (fila, col) = (i / cols, i % cols);
-                d.campos.push(rect(x0 + col as f32 * w, y + fila as f32 * renglon, w, renglon));
+                d.campos.push(rect(
+                    x0 + col as f32 * w,
+                    y + fila as f32 * renglon,
+                    w,
+                    renglon,
+                ));
                 d.etiquetas.push(None);
             }
             y += (f.campos.len().div_ceil(cols)) as f32 * renglon + sep;
@@ -1035,7 +1181,8 @@ pub(super) fn disponer(f: &Formulario, alto_previa: f32, ancho_px: f32, alto_px:
             let n = ACCIONES.len() as f32;
             let w = (ancho - 2.0 * m - (n - 1.0) * 6.0 * k) / n;
             for (i, a) in ACCIONES.iter().enumerate() {
-                d.acciones.push((rect(x0 + i as f32 * (w + 6.0 * k), y, w, 28.0 * k), *a));
+                d.acciones
+                    .push((rect(x0 + i as f32 * (w + 6.0 * k), y, w, 28.0 * k), *a));
             }
             y += 28.0 * k + sep;
         }
@@ -1045,11 +1192,16 @@ pub(super) fn disponer(f: &Formulario, alto_previa: f32, ancho_px: f32, alto_px:
                 let c = &f.campos[i];
                 let alto_caja = c.texto.split('\n').count().max(1) as f32 * renglon;
                 let pareja = c.media && f.campos.get(i + 1).is_some_and(|s| s.media);
-                let ancho_uno = if pareja { (ancho_campos - 10.0 * k) / 2.0 } else { ancho_campos };
+                let ancho_uno = if pareja {
+                    (ancho_campos - 10.0 * k) / 2.0
+                } else {
+                    ancho_campos
+                };
                 for j in 0..if pareja { 2 } else { 1 } {
                     let x = x0 + j as f32 * (ancho_uno + 10.0 * k);
                     d.etiquetas.push(Some((x, y)));
-                    d.campos.push(rect(x, y + t_etiqueta + 5.0 * k, ancho_uno, alto_caja));
+                    d.campos
+                        .push(rect(x, y + t_etiqueta + 5.0 * k, ancho_uno, alto_caja));
                 }
                 y += t_etiqueta + 5.0 * k + alto_caja + sep;
                 if i == 0 && f.teclado {
@@ -1059,9 +1211,15 @@ pub(super) fn disponer(f: &Formulario, alto_previa: f32, ancho_px: f32, alto_px:
                         y += sep;
                         let y_teclado = y;
                         for (fila, teclas) in TECLADO.iter().enumerate() {
-                            let w = (ancho_campos - (teclas.len() as f32 - 1.0) * tecla.2) / teclas.len() as f32;
+                            let w = (ancho_campos - (teclas.len() as f32 - 1.0) * tecla.2)
+                                / teclas.len() as f32;
                             for col in 0..teclas.len() {
-                                let r = rect(x0 + col as f32 * (w + tecla.2), y_teclado + fila as f32 * (tecla.1 + tecla.2), w, tecla.1);
+                                let r = rect(
+                                    x0 + col as f32 * (w + tecla.2),
+                                    y_teclado + fila as f32 * (tecla.1 + tecla.2),
+                                    w,
+                                    tecla.1,
+                                );
                                 d.teclas.push((r, fila, col));
                             }
                         }
@@ -1073,9 +1231,15 @@ pub(super) fn disponer(f: &Formulario, alto_previa: f32, ancho_px: f32, alto_px:
             if teclado_al_lado {
                 let xt = x0 + columna_campos + 16.0 * k;
                 for (fila, teclas) in TECLADO.iter().enumerate() {
-                    let w = (ancho_teclado - (teclas.len() as f32 - 1.0) * tecla.2) / teclas.len() as f32;
+                    let w = (ancho_teclado - (teclas.len() as f32 - 1.0) * tecla.2)
+                        / teclas.len() as f32;
                     for col in 0..teclas.len() {
-                        let r = rect(xt + col as f32 * (w + tecla.2), arriba_de_los_campos + fila as f32 * (tecla.1 + tecla.2), w, tecla.1);
+                        let r = rect(
+                            xt + col as f32 * (w + tecla.2),
+                            arriba_de_los_campos + fila as f32 * (tecla.1 + tecla.2),
+                            w,
+                            tecla.1,
+                        );
                         d.teclas.push((r, fila, col));
                     }
                 }
@@ -1095,7 +1259,10 @@ pub(super) fn disponer(f: &Formulario, alto_previa: f32, ancho_px: f32, alto_px:
     y += hb + m;
     d.tarjeta = rect(0.0, 0.0, ancho, y);
     // Centrada en la ventana: todo se corre lo mismo.
-    let (dx, dy) = (((ancho_px - ancho) / 2.0).max(0.0), ((alto_px - y) / 2.0).max(0.0));
+    let (dx, dy) = (
+        ((ancho_px - ancho) / 2.0).max(0.0),
+        ((alto_px - y) / 2.0).max(0.0),
+    );
     let correr = |r: &mut RectF| {
         r.x += dx;
         r.y += dy;
@@ -1118,13 +1285,24 @@ pub(super) fn disponer(f: &Formulario, alto_previa: f32, ancho_px: f32, alto_px:
 }
 
 const fn gris(v: f32) -> Color {
-    Color { r: v, g: v, b: v + 0.02, a: 1.0 }
+    Color {
+        r: v,
+        g: v,
+        b: v + 0.02,
+        a: 1.0,
+    }
 }
 
 /// Un rotulo centrado en una caja.
 fn centrado(p: &Pintor<'_>, texto: &str, r: RectF, tam: f32, color: Color) {
     let (w, h) = p.medir_texto(texto, tam);
-    p.texto(texto, r.x + (r.ancho - w) / 2.0, r.y + (r.alto - h) / 2.0, tam, color);
+    p.texto(
+        texto,
+        r.x + (r.ancho - w) / 2.0,
+        r.y + (r.alto - h) / 2.0,
+        tam,
+        color,
+    );
 }
 
 /// La tarjeta del cajetin, centrada, en coordenadas de pantalla.
@@ -1163,8 +1341,26 @@ fn dibujar(
         y: d.tarjeta.y + 5.0 * k,
         ..d.tarjeta
     };
-    p.rellenar_redondeado(sombra, 12.0 * k, Color { r: 0.0, g: 0.0, b: 0.0, a: 0.28 });
-    p.rellenar_redondeado(d.tarjeta, 12.0 * k, Color { r: 0.13, g: 0.13, b: 0.15, a: 0.98 });
+    p.rellenar_redondeado(
+        sombra,
+        12.0 * k,
+        Color {
+            r: 0.0,
+            g: 0.0,
+            b: 0.0,
+            a: 0.28,
+        },
+    );
+    p.rellenar_redondeado(
+        d.tarjeta,
+        12.0 * k,
+        Color {
+            r: 0.13,
+            g: 0.13,
+            b: 0.15,
+            a: 0.98,
+        },
+    );
     p.texto(&f.titulo, d.titulo.0, d.titulo.1, 17.0 * k, Color::BLANCO);
     centrado(p, "✕", d.cerrar, 14.0 * k, apagado);
     let cabecera = f.rejilla.is_some_and(|r| r.cabecera);
@@ -1175,7 +1371,11 @@ fn dibujar(
             p.texto(&c.etiqueta, *x, *y, t_etiqueta, apagado);
         }
         let celda = f.rejilla.is_some();
-        let fondo = if celda && cabecera && i < cols { gris(0.27) } else { gris(0.2) };
+        let fondo = if celda && cabecera && i < cols {
+            gris(0.27)
+        } else {
+            gris(0.2)
+        };
         if celda {
             // Las celdas pegadas, como una hoja: un borde fino las separa.
             p.rellenar(r, fondo);
@@ -1190,7 +1390,14 @@ fn dibujar(
         let alto_renglon = r.alto / renglones.len().max(1) as f32;
         let aire = if celda { 5.0 * k } else { 8.0 * k };
         if c.texto.is_empty() && !c.pista.is_empty() {
-            p.texto_linea(&c.pista, r.x + aire, r.y + (alto_renglon - t_texto * 1.3) / 2.0, t_texto, r.ancho - 2.0 * aire, gris(0.5));
+            p.texto_linea(
+                &c.pista,
+                r.x + aire,
+                r.y + (alto_renglon - t_texto * 1.3) / 2.0,
+                t_texto,
+                r.ancho - 2.0 * aire,
+                gris(0.5),
+            );
         }
         for (n, renglon) in renglones.iter().enumerate() {
             let s = if i == f.activo && n + 1 == renglones.len() {
@@ -1199,7 +1406,14 @@ fn dibujar(
                 renglon.to_string()
             };
             let y = r.y + n as f32 * alto_renglon + (alto_renglon - t_texto * 1.3) / 2.0;
-            p.texto_linea(&s, r.x + aire, y, t_texto, r.ancho - 2.0 * aire, Color::BLANCO);
+            p.texto_linea(
+                &s,
+                r.x + aire,
+                y,
+                t_texto,
+                r.ancho - 2.0 * aire,
+                Color::BLANCO,
+            );
         }
     }
     // La ecuacion como va a salir, una por curva y de su color.
@@ -1225,14 +1439,40 @@ fn dibujar(
     }
     for &(r, fila, col) in &d.teclas {
         let rotulo = TECLADO[fila][col].0;
-        let tono = if tecla_fuerte(rotulo) { Color { r: 0.25, g: 0.25, b: 0.42, a: 1.0 } } else { gris(0.23) };
+        let tono = if tecla_fuerte(rotulo) {
+            Color {
+                r: 0.25,
+                g: 0.25,
+                b: 0.42,
+                a: 1.0,
+            }
+        } else {
+            gris(0.23)
+        };
         p.rellenar_redondeado(r, 6.0 * k, tono);
         centrado(p, rotulo, r, 13.0 * k, Color::BLANCO);
     }
     for (i, &(r, a)) in d.acciones.iter().enumerate() {
         let encendido = a == Accion::Cabecera && cabecera;
-        p.rellenar_redondeado(r, 6.0 * k, if encendido { Color { r: 0.25, g: 0.25, b: 0.42, a: 1.0 } } else { gris(0.23) });
-        let rotulo = f.rotulos_de_acciones.get(i).map(String::as_str).unwrap_or("");
+        p.rellenar_redondeado(
+            r,
+            6.0 * k,
+            if encendido {
+                Color {
+                    r: 0.25,
+                    g: 0.25,
+                    b: 0.42,
+                    a: 1.0,
+                }
+            } else {
+                gris(0.23)
+            },
+        );
+        let rotulo = f
+            .rotulos_de_acciones
+            .get(i)
+            .map(String::as_str)
+            .unwrap_or("");
         let rotulo = if a == Accion::Cabecera {
             format!("{} {rotulo}", if cabecera { "☑" } else { "☐" })
         } else {
@@ -1251,7 +1491,13 @@ fn dibujar(
     // Aceptar no se enciende hasta que todo se entiende (el `enabled` del
     // boton del movil).
     p.rellenar_redondeado(d.aceptar, 7.0 * k, if valido { azul } else { gris(0.3) });
-    centrado(p, &f.aceptar, d.aceptar, 14.0 * k, if valido { Color::BLANCO } else { gris(0.55) });
+    centrado(
+        p,
+        &f.aceptar,
+        d.aceptar,
+        14.0 * k,
+        if valido { Color::BLANCO } else { gris(0.55) },
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -1312,7 +1558,8 @@ fn foto_sin_mosaicos(
     // que se exporta es lo que se eligio), asi que se adapta una copia de lo
     // dibujado, solo para la foto.
     let adaptada;
-    let escena = if lienzo.papel.is_none() && crate::dibujo::tema::es_de_noche(lienzo.escena.fondo) {
+    let escena = if lienzo.papel.is_none() && crate::dibujo::tema::es_de_noche(lienzo.escena.fondo)
+    {
         let fondo = lienzo.escena.fondo;
         let mut e = Escena::nueva();
         e.fondo = fondo;
@@ -1434,7 +1681,15 @@ pub(super) fn atender_figuras(mut ed: Editor<'_>, en: pixpin_geom::Punto, t: &Ca
     let mut biblio = cargar_biblioteca(&ruta);
     let hay_seleccion = !ed.gesto.seleccion.esta_vacia();
     let tabla = TablaElegida::de(ed.escena, ed.gesto);
-    let Some(eleccion) = menu(ed.ventana.handle(), en.x, en.y, t, &biblio, hay_seleccion, tabla) else {
+    let Some(eleccion) = menu(
+        ed.ventana.handle(),
+        en.x,
+        en.y,
+        t,
+        &biblio,
+        hay_seleccion,
+        tabla,
+    ) else {
         return false;
     };
     let centro = ed.centro();
@@ -1458,7 +1713,13 @@ pub(super) fn atender_figuras(mut ed: Editor<'_>, en: pixpin_geom::Punto, t: &Ca
         // entrar, como en el movil (`EditorDeTablaPegada`): lo que llega casi
         // nunca es justo lo que se quiere dibujar.
         Eleccion::TablaEnBlanco => {
-            let mut f = formulario_de_tabla(t, &vec![vec![String::new(); 3]; 4], true, "tabla-blanco-titulo", "tabla-insertar");
+            let mut f = formulario_de_tabla(
+                t,
+                &vec![vec![String::new(); 3]; 4],
+                true,
+                "tabla-blanco-titulo",
+                "tabla-insertar",
+            );
             if !pedir(ed.lienzo(), &mut f, |_| Ok(())) {
                 return false;
             }
@@ -1469,8 +1730,10 @@ pub(super) fn atender_figuras(mut ed: Editor<'_>, en: pixpin_geom::Punto, t: &Ca
         Eleccion::PegarTabla => {
             let (html, texto) = pixpin_codec::portapapeles::tabla::leer_tabla().unwrap_or_default();
             let texto = texto.unwrap_or_default();
-            let pegadas = pixpin_motor2d::tabla_dibujada::rejilla_de_texto(&texto).unwrap_or_default();
-            let mut f = formulario_de_tabla(t, &pegadas, true, "tabla-pegada-titulo", "tabla-insertar");
+            let pegadas =
+                pixpin_motor2d::tabla_dibujada::rejilla_de_texto(&texto).unwrap_or_default();
+            let mut f =
+                formulario_de_tabla(t, &pegadas, true, "tabla-pegada-titulo", "tabla-insertar");
             if pegadas.is_empty() {
                 f.aviso = Some(t.t("figuras-sin-tabla"));
             }
@@ -1482,7 +1745,8 @@ pub(super) fn atender_figuras(mut ed: Editor<'_>, en: pixpin_geom::Punto, t: &Ca
             // Sin tocar nada, manda lo del portapapeles tal cual: con su HTML
             // trae las celdas combinadas y la negrita, que el cajetin no sabe
             // ensenar.
-            if !pegadas.is_empty() && f.celdas() == pegadas && f.rejilla.is_some_and(|r| r.cabecera) {
+            if !pegadas.is_empty() && f.celdas() == pegadas && f.rejilla.is_some_and(|r| r.cabecera)
+            {
                 return pegar_tabla(html.as_deref(), &texto, ed.escena, ed.gesto, centro, &medir);
             }
             let v = tabla_de_celdas(&f, &estilo, &medir);
@@ -1536,9 +1800,17 @@ pub(super) fn atender_figuras(mut ed: Editor<'_>, en: pixpin_geom::Punto, t: &Ca
 
 /// La tabla que dice el cajetin, dibujada con la letra del pincel. Con las
 /// celdas en blanco tambien: una tabla en blanco es una tabla donde escribir.
-pub(super) fn tabla_de_celdas(f: &Formulario, estilo: &Estilo, medir: ecuacion::Medir<'_>) -> Vec<Elemento> {
+pub(super) fn tabla_de_celdas(
+    f: &Formulario,
+    estilo: &Estilo,
+    medir: ecuacion::Medir<'_>,
+) -> Vec<Elemento> {
     use pixpin_motor2d::tabla_dibujada::{Celda, elementos_de_tabla_con_juntas};
-    let celdas: Vec<Vec<Celda>> = f.celdas().into_iter().map(|fila| fila.into_iter().map(Celda::de).collect()).collect();
+    let celdas: Vec<Vec<Celda>> = f
+        .celdas()
+        .into_iter()
+        .map(|fila| fila.into_iter().map(Celda::de).collect())
+        .collect();
     let cabecera = f.rejilla.is_some_and(|r| r.cabecera);
     elementos_de_tabla_con_juntas(&celdas, estilo, Punto2::nuevo(0.0, 0.0), medir, cabecera)
 }
@@ -1550,7 +1822,11 @@ pub(super) fn tabla_de_celdas(f: &Formulario, estilo: &Estilo, medir: ecuacion::
 /// cambio el dibujo.
 pub(super) fn editar_tabla(mut ed: Editor<'_>, t: &Catalogo) -> bool {
     use pixpin_motor2d::tabla_dibujada::{Celda, leer};
-    let elegidos: Vec<&Elemento> = ed.escena.visibles().filter(|e| ed.gesto.seleccion.contiene(e.id)).collect();
+    let elegidos: Vec<&Elemento> = ed
+        .escena
+        .visibles()
+        .filter(|e| ed.gesto.seleccion.contiene(e.id))
+        .collect();
     let Some(vieja) = leer::leer_tabla(&elegidos) else {
         return false;
     };
@@ -1559,7 +1835,13 @@ pub(super) fn editar_tabla(mut ed: Editor<'_>, t: &Catalogo) -> bool {
         .iter()
         .map(|f| f.iter().map(|c| c.texto.clone()).collect())
         .collect();
-    let mut f = formulario_de_tabla(t, &textos, vieja.cabecera, "tabla-editar-titulo", "tabla-aplicar");
+    let mut f = formulario_de_tabla(
+        t,
+        &textos,
+        vieja.cabecera,
+        "tabla-editar-titulo",
+        "tabla-aplicar",
+    );
     if !pedir(ed.lienzo(), &mut f, |_| Ok(())) {
         return false;
     }
@@ -1575,7 +1857,11 @@ pub(super) fn editar_tabla(mut ed: Editor<'_>, t: &Catalogo) -> bool {
     if let Some(familia) = &vieja.familia {
         estilo.familia = familia.clone();
     }
-    if let Some(marco) = vieja.de_la_tabla.first().and_then(|id| ed.escena.buscar(*id)) {
+    if let Some(marco) = vieja
+        .de_la_tabla
+        .first()
+        .and_then(|id| ed.escena.buscar(*id))
+    {
         estilo.color = marco.trazo;
         estilo.opacidad = marco.opacidad;
     }
@@ -1588,7 +1874,11 @@ pub(super) fn editar_tabla(mut ed: Editor<'_>, t: &Catalogo) -> bool {
             fila.into_iter()
                 .enumerate()
                 .map(|(j, texto)| Celda {
-                    negrita: vieja.celdas.get(i).and_then(|f| f.get(j)).is_some_and(|c| c.negrita),
+                    negrita: vieja
+                        .celdas
+                        .get(i)
+                        .and_then(|f| f.get(j))
+                        .is_some_and(|c| c.negrita),
                     ..Celda::de(texto)
                 })
                 .collect()
@@ -1619,7 +1909,10 @@ pub(super) fn formulario_de_cronograma(
         Campo::nuevo(t.t("cronograma-columnas"), periodos.to_string()).a_medias(),
     ];
     for (i, tarea) in tareas.iter().enumerate() {
-        campos.push(Campo::nuevo(format!("{} {}", t.t("cronograma-fila"), i + 1), tarea.nombre.clone()));
+        campos.push(Campo::nuevo(
+            format!("{} {}", t.t("cronograma-fila"), i + 1),
+            tarea.nombre.clone(),
+        ));
     }
     let mut f = Formulario::nuevo(
         t.t("cronograma-titulo"),
@@ -1634,22 +1927,40 @@ pub(super) fn formulario_de_cronograma(
 
 /// Lo que dice el cajetin de un cronograma: filas, columnas y nombres. `Err`
 /// con el aviso si las cuentas no son numeros de verdad.
-pub(super) fn cronograma_de(f: &Formulario, t: &Catalogo) -> Result<(usize, u32, Vec<String>), String> {
-    let entero = |i: usize| f.campos.get(i).and_then(|c| c.texto.trim().parse::<i64>().ok());
+pub(super) fn cronograma_de(
+    f: &Formulario,
+    t: &Catalogo,
+) -> Result<(usize, u32, Vec<String>), String> {
+    let entero = |i: usize| {
+        f.campos
+            .get(i)
+            .and_then(|c| c.texto.trim().parse::<i64>().ok())
+    };
     let (Some(filas), Some(columnas)) = (entero(0), entero(1)) else {
         return Err(t.t("cronograma-cuentas-mal"));
     };
-    if !(0..=60).contains(&filas) || !(1..=pixpin_motor2d::cronograma::MAXIMO_DE_PERIODOS as i64).contains(&columnas) {
+    if !(0..=60).contains(&filas)
+        || !(1..=pixpin_motor2d::cronograma::MAXIMO_DE_PERIODOS as i64).contains(&columnas)
+    {
         return Err(t.t("cronograma-cuentas-mal"));
     }
-    let nombres = f.campos[2..].iter().map(|c| c.texto.trim().to_string()).collect();
+    let nombres = f.campos[2..]
+        .iter()
+        .map(|c| c.texto.trim().to_string())
+        .collect();
     Ok((filas as usize, columnas as u32, nombres))
 }
 
 /// Aplica lo del cajetin al cronograma `id`, en un paso de deshacer: los
 /// nombres, luego las filas que sobran o faltan (las nuevas, detras de la
 /// ultima, como el «+» del movil) y las columnas. `true` si cambio algo.
-pub(super) fn aplicar_cronograma(escena: &mut Escena, id: u64, filas: usize, columnas: u32, nombres: &[String]) -> bool {
+pub(super) fn aplicar_cronograma(
+    escena: &mut Escena,
+    id: u64,
+    filas: usize,
+    columnas: u32,
+    nombres: &[String],
+) -> bool {
     let Some(antes) = escena.buscar(id).cloned() else {
         return false;
     };
@@ -1727,9 +2038,9 @@ pub(super) fn meter_imagen(ed: Editor<'_>) -> bool {
     let (ancho, alto) = crate::imagenes_lienzo::tamano_al_pegar(w, h, v.2 - v.0, v.3 - v.1);
     let (x, y) = crate::imagenes_lienzo::esquina_centrada(v, ancho, alto);
     ed.escena.abrir_paso();
-    let id = ed
-        .escena
-        .anadir(crate::imagenes_lienzo::elemento_imagen(id_objeto, x, y, ancho, alto));
+    let id = ed.escena.anadir(crate::imagenes_lienzo::elemento_imagen(
+        id_objeto, x, y, ancho, alto,
+    ));
     ed.escena.cerrar_paso();
     ed.gesto.seleccion.limpiar();
     ed.gesto.seleccion.poner(id);
@@ -1757,12 +2068,26 @@ mod pruebas {
         };
         let sin = entradas(&t, &[], false, TablaElegida::Ninguna);
         assert_eq!(sin.iter().filter(|e| e.id != 0).count(), 3);
-        assert!(sin.iter().all(|e| e.id != ID_GUARDAR), "sin seleccion no se guarda");
-        assert!(sin.last().is_some_and(|e| e.id != 0), "sin separador colgando");
-        let con = entradas(&t, std::slice::from_ref(&propia), true, TablaElegida::Ninguna);
+        assert!(
+            sin.iter().all(|e| e.id != ID_GUARDAR),
+            "sin seleccion no se guarda"
+        );
+        assert!(
+            sin.last().is_some_and(|e| e.id != 0),
+            "sin separador colgando"
+        );
+        let con = entradas(
+            &t,
+            std::slice::from_ref(&propia),
+            true,
+            TablaElegida::Ninguna,
+        );
         assert!(con.iter().any(|e| e.id == ID_GUARDAR));
         assert!(con.iter().any(|e| e.id == ID_FIGURA && e.texto == "Norte"));
-        assert!(con.iter().any(|e| e.id == ID_QUITAR && e.texto.contains("Norte")));
+        assert!(
+            con.iter()
+                .any(|e| e.id == ID_QUITAR && e.texto.contains("Norte"))
+        );
         assert_eq!(eleccion_de(ID_FIGURA, 1), Some(Eleccion::Estampar(0)));
         assert_eq!(eleccion_de(ID_QUITAR, 1), Some(Eleccion::Quitar(0)));
         // Caso negativo: una figura que ya no esta no se elige.
@@ -1789,7 +2114,10 @@ mod pruebas {
         assert_eq!(f.tecla('\u{1b}', false), Tecla::Cancelar);
         let p = peticion_de(&f, &t).unwrap();
         assert_eq!(p.formulas, vec!["sin(x)".to_string(), "x^2".into()]);
-        assert_eq!((p.x_desde, p.x_hasta, p.y_desde, p.y_hasta, p.escala), (-5.0, 5.0, -3.0, 3.0, 40.0));
+        assert_eq!(
+            (p.x_desde, p.x_hasta, p.y_desde, p.y_hasta, p.escala),
+            (-5.0, 5.0, -3.0, 3.0, 40.0)
+        );
     }
 
     #[test]
@@ -1827,7 +2155,14 @@ mod pruebas {
         let mut escena = Escena::nueva();
         let mut gesto = Gesto::nuevo();
         let centro = Punto2::nuevo(500.0, 300.0);
-        assert!(pegar_tabla(None, "a\tb\n1\t2\n", &mut escena, &mut gesto, centro, &medir));
+        assert!(pegar_tabla(
+            None,
+            "a\tb\n1\t2\n",
+            &mut escena,
+            &mut gesto,
+            centro,
+            &medir
+        ));
         let vivos: Vec<_> = escena.visibles().collect();
         assert!(!vivos.is_empty());
         let grupo = &vivos[0].grupos;
@@ -1840,7 +2175,14 @@ mod pruebas {
         escena.deshacer();
         assert_eq!(escena.visibles().count(), 0);
         // Caso negativo: un texto corriente no pega nada.
-        assert!(!pegar_tabla(None, "hola", &mut escena, &mut gesto, centro, &medir));
+        assert!(!pegar_tabla(
+            None,
+            "hola",
+            &mut escena,
+            &mut gesto,
+            centro,
+            &medir
+        ));
     }
 
     #[test]
@@ -1849,12 +2191,22 @@ mod pruebas {
         let mut escena = Escena::nueva();
         let mut gesto = Gesto::nuevo();
         assert_eq!(TablaElegida::de(&escena, &gesto), TablaElegida::Ninguna);
-        assert!(pegar_tabla(None, "a\tb\n1\t2\n", &mut escena, &mut gesto, Punto2::nuevo(0.0, 0.0), &medir));
+        assert!(pegar_tabla(
+            None,
+            "a\tb\n1\t2\n",
+            &mut escena,
+            &mut gesto,
+            Punto2::nuevo(0.0, 0.0),
+            &medir
+        ));
         let tabla = TablaElegida::de(&escena, &gesto);
         assert_eq!(tabla, TablaElegida::Sola);
         let v = entradas(&t, &[], true, tabla);
         assert!(v.iter().any(|e| e.id == ID_EDITAR_TABLA));
-        assert!(v.iter().all(|e| e.id != ID_METER), "sin nada encima no se ofrece meter");
+        assert!(
+            v.iter().all(|e| e.id != ID_METER),
+            "sin nada encima no se ofrece meter"
+        );
         assert_eq!(eleccion_de(ID_EDITAR_TABLA, 0), Some(Eleccion::EditarTabla));
         // Algo encima de una celda y elegido con ella: ahora si.
         let (x0, y0, x1, y1) = biblioteca::caja_de(&escena.elementos).unwrap();
@@ -1871,15 +2223,28 @@ mod pruebas {
         gesto.seleccion.poner_todos(ids);
         let tabla = TablaElegida::de(&escena, &gesto);
         assert_eq!(tabla, TablaElegida::ConFiguras);
-        assert!(entradas(&t, &[], true, tabla).iter().any(|e| e.id == ID_METER));
+        assert!(
+            entradas(&t, &[], true, tabla)
+                .iter()
+                .any(|e| e.id == ID_METER)
+        );
         assert_eq!(eleccion_de(ID_METER, 0), Some(Eleccion::MeterEnCelda));
     }
 
     #[test]
     fn la_tabla_en_blanco_del_cajetin_es_rejilla_sin_textos() {
-        let f = formulario_de_tabla(&catalogo(), &vec![vec![String::new(); 3]; 4], true, "tabla-blanco-titulo", "tabla-insertar");
+        let f = formulario_de_tabla(
+            &catalogo(),
+            &vec![vec![String::new(); 3]; 4],
+            true,
+            "tabla-blanco-titulo",
+            "tabla-insertar",
+        );
         let e = tabla_de_celdas(&f, &estilo_del_pincel(&Gesto::nuevo()), &medir);
-        assert!(e.iter().all(|x| !matches!(x.figura, pixpin_motor2d::Figura::Texto { .. })));
+        assert!(
+            e.iter()
+                .all(|x| !matches!(x.figura, pixpin_motor2d::Figura::Texto { .. }))
+        );
         // Marco, cabecera, dos rayas verticales y tres horizontales.
         assert_eq!(e.len(), 7);
     }
@@ -1887,12 +2252,18 @@ mod pruebas {
     #[test]
     fn en_el_cajetin_de_la_tabla_se_anaden_y_quitan_filas_y_columnas_como_en_el_movil() {
         let t = catalogo();
-        let filas = vec![vec!["a".to_string(), "b".into()], vec!["c".into(), "d".into()]];
+        let filas = vec![
+            vec!["a".to_string(), "b".into()],
+            vec!["c".into(), "d".into()],
+        ];
         let mut f = formulario_de_tabla(&t, &filas, true, "tabla-editar-titulo", "tabla-aplicar");
         assert_eq!(f.campos.len(), 4);
         // Anadir fila y columna las pone al final (el movil), vacias.
         f.accion(Accion::MasFila);
-        assert_eq!(f.celdas(), vec![vec!["a", "b"], vec!["c", "d"], vec!["", ""]]);
+        assert_eq!(
+            f.celdas(),
+            vec![vec!["a", "b"], vec!["c", "d"], vec!["", ""]]
+        );
         assert_eq!(f.activo, 4, "el cursor va a la fila nueva");
         f.accion(Accion::MasColumna);
         assert_eq!(f.celdas()[0], vec!["a", "b", ""]);
@@ -1906,7 +2277,13 @@ mod pruebas {
         f.accion(Accion::Cabecera);
         assert_eq!(f.rejilla.map(|r| r.cabecera), Some(false));
         // Caso negativo: la ultima fila y la ultima columna no se quitan.
-        let mut uno = formulario_de_tabla(&t, &[vec!["x".to_string()]], false, "tabla-editar-titulo", "tabla-aplicar");
+        let mut uno = formulario_de_tabla(
+            &t,
+            &[vec!["x".to_string()]],
+            false,
+            "tabla-editar-titulo",
+            "tabla-aplicar",
+        );
         uno.accion(Accion::MenosFila);
         uno.accion(Accion::MenosColumna);
         assert_eq!(uno.celdas(), vec![vec!["x"]]);
@@ -1916,8 +2293,17 @@ mod pruebas {
 
     #[test]
     fn en_la_tabla_tab_y_las_flechas_van_de_celda_en_celda() {
-        let filas = vec![vec!["a".to_string(), "b".into()], vec!["c".into(), "d".into()]];
-        let mut f = formulario_de_tabla(&catalogo(), &filas, true, "tabla-editar-titulo", "tabla-aplicar");
+        let filas = vec![
+            vec!["a".to_string(), "b".into()],
+            vec!["c".into(), "d".into()],
+        ];
+        let mut f = formulario_de_tabla(
+            &catalogo(),
+            &filas,
+            true,
+            "tabla-editar-titulo",
+            "tabla-aplicar",
+        );
         f.tecla('\t', false);
         assert_eq!(f.activo, 1);
         f.flecha(0x28); // abajo
@@ -1934,7 +2320,13 @@ mod pruebas {
 
     #[test]
     fn pegar_una_tabla_en_el_cajetin_la_cambia_entera_y_un_texto_suelto_no_toca_nada() {
-        let mut f = formulario_de_tabla(&catalogo(), &[vec!["a".to_string()]], true, "tabla-pegada-titulo", "tabla-insertar");
+        let mut f = formulario_de_tabla(
+            &catalogo(),
+            &[vec!["a".to_string()]],
+            true,
+            "tabla-pegada-titulo",
+            "tabla-insertar",
+        );
         assert!(f.poner_celdas(&[vec!["1".into(), "2".into(), "3".into()]]));
         assert_eq!(f.rejilla.map(|r| r.columnas), Some(3));
         assert!(!f.poner_celdas(&[]));
@@ -1947,29 +2339,47 @@ mod pruebas {
         let mut f = formulario_de_grafica(&t);
         let d = disponer(&f, 30.0, 1600.0, 1000.0, 1.0);
         // Los limites van de dos en dos, como en el movil.
-        assert_eq!(d.campos[1].y, d.campos[2].y, "x desde y x hasta en la misma fila");
+        assert_eq!(
+            d.campos[1].y, d.campos[2].y,
+            "x desde y x hasta en la misma fila"
+        );
         assert!(d.campos[2].x > d.campos[1].x);
         assert_eq!(d.campos[3].y, d.campos[4].y);
         // Con sitio, el teclado de formulas va al lado de los campos.
-        assert_eq!(d.teclas.len(), TECLADO.iter().map(|f| f.len()).sum::<usize>());
+        assert_eq!(
+            d.teclas.len(),
+            TECLADO.iter().map(|f| f.len()).sum::<usize>()
+        );
         let centro = |r: RectF| (r.x + r.ancho / 2.0, r.y + r.alto / 2.0);
         // Clic en un campo: se activa.
         let (x, y) = centro(d.campos[3]);
         assert_eq!(f.clic(x, y, &d, true), Tecla::Sigue);
         assert_eq!(f.activo, 3);
         // Clic en «sin» del teclado: escribe en las formulas.
-        let (r, _, _) = *d.teclas.iter().find(|(_, fi, co)| TECLADO[*fi][*co].0 == "sin").unwrap();
+        let (r, _, _) = *d
+            .teclas
+            .iter()
+            .find(|(_, fi, co)| TECLADO[*fi][*co].0 == "sin")
+            .unwrap();
         let (x, y) = centro(r);
         f.clic(x, y, &d, true);
         assert_eq!(f.campos[0].texto, "sin(x)sin(");
         assert_eq!(f.activo, 0);
-        let (r, _, _) = *d.teclas.iter().find(|(_, fi, co)| TECLADO[*fi][*co].0 == "⌫").unwrap();
+        let (r, _, _) = *d
+            .teclas
+            .iter()
+            .find(|(_, fi, co)| TECLADO[*fi][*co].0 == "⌫")
+            .unwrap();
         let (x, y) = centro(r);
         f.clic(x, y, &d, true);
         assert_eq!(f.campos[0].texto, "sin(x)sin");
         // Los botones: aceptar solo si todo se entiende; cancelar y la cruz, siempre.
         let (x, y) = centro(d.aceptar);
-        assert_eq!(f.clic(x, y, &d, false), Tecla::Sigue, "aceptar apagado no acepta");
+        assert_eq!(
+            f.clic(x, y, &d, false),
+            Tecla::Sigue,
+            "aceptar apagado no acepta"
+        );
         assert_eq!(f.clic(x, y, &d, true), Tecla::Aceptar);
         let (x, y) = centro(d.cancelar);
         assert_eq!(f.clic(x, y, &d, true), Tecla::Cancelar);
@@ -1977,10 +2387,15 @@ mod pruebas {
         assert_eq!(f.clic(x, y, &d, true), Tecla::Cancelar);
         // Caso negativo: fuera de la tarjeta no pasa nada.
         assert_eq!(f.clic(1.0, 1.0, &d, true), Tecla::Sigue);
-        assert!(d.campos.iter().chain([d.aceptar, d.cancelar].iter()).all(|r| r.x >= d.tarjeta.x
-            && r.y >= d.tarjeta.y
-            && r.x + r.ancho <= d.tarjeta.x + d.tarjeta.ancho + 0.01
-            && r.y + r.alto <= d.tarjeta.y + d.tarjeta.alto + 0.01));
+        assert!(
+            d.campos
+                .iter()
+                .chain([d.aceptar, d.cancelar].iter())
+                .all(|r| r.x >= d.tarjeta.x
+                    && r.y >= d.tarjeta.y
+                    && r.x + r.ancho <= d.tarjeta.x + d.tarjeta.ancho + 0.01
+                    && r.y + r.alto <= d.tarjeta.y + d.tarjeta.alto + 0.01)
+        );
         // En una ventana estrecha el teclado baja debajo de las formulas.
         let estrecha = disponer(&f, 30.0, 700.0, 1000.0, 1.0);
         assert!(estrecha.teclas[0].0.y > estrecha.campos[0].y);
@@ -2021,7 +2436,11 @@ mod pruebas {
             _ => unreachable!(),
         };
         let mut f = formulario_de_cronograma(&t, &tareas, periodos);
-        assert_eq!(f.campos.len(), 2 + 3, "filas, columnas y un nombre por fila");
+        assert_eq!(
+            f.campos.len(),
+            2 + 3,
+            "filas, columnas y un nombre por fila"
+        );
         assert_eq!(f.activo, 2, "empieza en el nombre de la primera");
         for c in "Obra".chars() {
             f.tecla(c, false);
@@ -2029,7 +2448,13 @@ mod pruebas {
         f.campos[0].texto = "4".into();
         f.campos[1].texto = "9".into();
         let (filas, columnas, nombres) = cronograma_de(&f, &t).unwrap();
-        assert!(aplicar_cronograma(&mut escena, id, filas, columnas, &nombres));
+        assert!(aplicar_cronograma(
+            &mut escena,
+            id,
+            filas,
+            columnas,
+            &nombres
+        ));
         match &escena.buscar(id).unwrap().figura {
             pixpin_motor2d::Figura::Cronograma { tareas, periodos } => {
                 assert_eq!(tareas.len(), 4);
@@ -2064,14 +2489,27 @@ mod pruebas {
         };
         e.extras.tam_letra = Some(20.0);
         let id = escena.anadir(e);
-        let nombres = vec!["Estructura y muros de carga".to_string(), "B".into(), "C".into()];
+        let nombres = vec![
+            "Estructura y muros de carga".to_string(),
+            "B".into(),
+            "C".into(),
+        ];
         assert!(aplicar_cronograma(&mut escena, id, 3, 6, &nombres));
         let e = escena.buscar(id).unwrap();
         assert!(e.ancho > 300.0, "no se ensancho: {}", e.ancho);
         assert_eq!(e.x, 0.0, "se ensancha hacia la derecha");
         // Caso negativo: con nombres cortos el ancho no se toca.
-        assert!(aplicar_cronograma(&mut escena, id, 3, 6, &["A".into(), "B".into(), "C".into()]));
-        assert!(escena.buscar(id).unwrap().ancho > 300.0, "no encoge lo que el usuario ya tenia");
+        assert!(aplicar_cronograma(
+            &mut escena,
+            id,
+            3,
+            6,
+            &["A".into(), "B".into(), "C".into()]
+        ));
+        assert!(
+            escena.buscar(id).unwrap().ancho > 300.0,
+            "no encoge lo que el usuario ya tenia"
+        );
     }
 
     #[test]
@@ -2084,7 +2522,14 @@ mod pruebas {
             alto: 20,
             pixeles: vec![255; 40 * 20 * 4],
         };
-        assert!(poner_copia_de_zona(&mut escena, &mut gesto, &mut imagenes, foto, (10.0, 10.0, 50.0, 30.0), 2.0));
+        assert!(poner_copia_de_zona(
+            &mut escena,
+            &mut gesto,
+            &mut imagenes,
+            foto,
+            (10.0, 10.0, 50.0, 30.0),
+            2.0
+        ));
         let e = escena.visibles().next().unwrap();
         assert!(pixpin_motor2d::zona::es_copia(e));
         assert_eq!((e.x, e.y), (22.0, 22.0), "24 px de pantalla a zoom 2");
@@ -2106,7 +2551,8 @@ mod pruebas {
         let carpeta = std::env::var_os("PIXPIN_MUESTRAS")
             .map(PathBuf::from)
             .unwrap_or_else(|| {
-                std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/muestras-lienzo")
+                std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .join("../../target/muestras-lienzo")
             });
         std::fs::create_dir_all(&carpeta).unwrap();
         let guardar = |nombre: &str, img: &pixpin_codec::ImagenRgba| {
@@ -2138,10 +2584,20 @@ mod pruebas {
             escala: 50.0,
         };
         let v = grafica::elementos(&p, &estilo, &medir).unwrap();
-        estampar_en_la_vista(&mut escena, &mut gesto, Punto2::nuevo(300.0, 150.0), "grafica", &v);
+        estampar_en_la_vista(
+            &mut escena,
+            &mut gesto,
+            Punto2::nuevo(300.0, 150.0),
+            "grafica",
+            &v,
+        );
         // Unas ecuaciones sueltas, las de la pizarra.
         let mut y = 380.0;
-        for f in ["(x+1)^3/sqrt(2x)", "|x - 2| + e^(-x^2)", "log2(x) + cbrt(x) * pi"] {
+        for f in [
+            "(x+1)^3/sqrt(2x)",
+            "|x - 2| + e^(-x^2)",
+            "log2(x) + cbrt(x) * pi",
+        ] {
             let c = pixpin_motor2d::formula::compilar(f).unwrap();
             for e in ecuacion::elementos("f(x)", &c, 20.0, y, &estilo, &medir) {
                 escena.anadir(e);
@@ -2179,7 +2635,10 @@ mod pruebas {
         tareas[2].desde = 3.5;
         tareas[2].color = Some(grafica::color_de(0x2f9e44));
         escena.anadir(Elemento {
-            figura: pixpin_motor2d::Figura::Cronograma { tareas, periodos: 6 },
+            figura: pixpin_motor2d::Figura::Cronograma {
+                tareas,
+                periodos: 6,
+            },
             x: 680.0,
             y: 330.0,
             ancho: 520.0,
@@ -2197,15 +2656,25 @@ mod pruebas {
             fotos: &fotos,
             nombre: "muestra".into(),
         };
-        let hojas = pixpin_motor2d::exportar::hojas(&escena, pixpin_motor2d::exportar::Alcance::Todo, &[], None);
-        let img = super::super::exportar::a_imagen(&hojas[0], 1.0, Some(escena.fondo), &lienzo).unwrap();
+        let hojas = pixpin_motor2d::exportar::hojas(
+            &escena,
+            pixpin_motor2d::exportar::Alcance::Todo,
+            &[],
+            None,
+        );
+        let img =
+            super::super::exportar::a_imagen(&hojas[0], 1.0, Some(escena.fondo), &lienzo).unwrap();
         guardar("grafica-ecuaciones-y-tabla", &img);
         // La zona: el trozo de la grafica, recortado en redondo con su filo,
         // sobre papel claro y sobre la pizarra.
         let foto = foto_de_la_zona(&lienzo, (40.0, -120.0, 400.0, 200.0)).unwrap();
         guardar("zona-papel-claro", &foto);
         let mut noche = escena.clone();
-        noche.fondo = ColorRgba::opaco(0x12 as f32 / 255.0, 0x12 as f32 / 255.0, 0x12 as f32 / 255.0);
+        noche.fondo = ColorRgba::opaco(
+            0x12 as f32 / 255.0,
+            0x12 as f32 / 255.0,
+            0x12 as f32 / 255.0,
+        );
         let de_noche = super::super::exportar::Lienzo {
             escena: &noche,
             seleccion: &[],
@@ -2213,11 +2682,16 @@ mod pruebas {
             fotos: &fotos,
             nombre: "muestra".into(),
         };
-        guardar("zona-pizarra", &foto_de_la_zona(&de_noche, (40.0, -120.0, 400.0, 200.0)).unwrap());
+        guardar(
+            "zona-pizarra",
+            &foto_de_la_zona(&de_noche, (40.0, -120.0, 400.0, 200.0)).unwrap(),
+        );
         // La presentacion: la pastilla y la estela del laser encima de un
         // fondo, a 1280 x 720.
         let (w, h) = (1280u32, 720u32);
-        let destino = pixpin_render::fuera_de_pantalla::FueraDePantalla::nuevo(&motor, d.d3d(), w, h).unwrap();
+        let destino =
+            pixpin_render::fuera_de_pantalla::FueraDePantalla::nuevo(&motor, d.d3d(), w, h)
+                .unwrap();
         let pr = super::super::presentar::Presentacion {
             hojas: vec![(0.0, 0.0, 10.0, 10.0); 7],
             actual: 2,
@@ -2245,7 +2719,15 @@ mod pruebas {
                     a: 1.0,
                 });
                 for o in laser.ordenes_en(760.0, 1.0) {
-                    dibujar_orden(p, &o, (0.0, 0.0, w as f32, h as f32), None, &sin_imagenes, 1.0, None);
+                    dibujar_orden(
+                        p,
+                        &o,
+                        (0.0, 0.0, w as f32, h as f32),
+                        None,
+                        &sin_imagenes,
+                        1.0,
+                        None,
+                    );
                 }
                 super::super::presentar::pintar(
                     p,

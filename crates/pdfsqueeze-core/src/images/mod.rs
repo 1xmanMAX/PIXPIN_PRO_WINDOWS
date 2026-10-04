@@ -40,7 +40,9 @@ impl RawImage {
             1 => out.extend_from_slice(&self.data[..n]),
             3 => {
                 for p in self.data.chunks_exact(3).take(n) {
-                    out.push(((77 * p[0] as u32 + 150 * p[1] as u32 + 29 * p[2] as u32) >> 8) as u8);
+                    out.push(
+                        ((77 * p[0] as u32 + 150 * p[1] as u32 + 29 * p[2] as u32) >> 8) as u8,
+                    );
                 }
             }
             4 => {

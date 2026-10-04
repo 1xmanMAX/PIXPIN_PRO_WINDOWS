@@ -77,7 +77,9 @@ impl Tarea {
 /// anterior —porque es lo que es un plan—. Una figura en blanco obliga a
 /// descubrir donde se le anaden cosas antes de que ensene nada.
 pub fn tareas_de_fabrica() -> Vec<Tarea> {
-    (0..FILAS_DE_FABRICA).map(|i| Tarea::nueva(i as f32, 1.0)).collect()
+    (0..FILAS_DE_FABRICA)
+        .map(|i| Tarea::nueva(i as f32, 1.0))
+        .collect()
 }
 
 fn datos(e: &Elemento) -> Option<(&[Tarea], u32)> {
@@ -138,7 +140,12 @@ pub fn barra_de_tarea(e: &Elemento, i: usize) -> Option<(f32, f32, f32, f32)> {
     let x0 = x_de_la_escala(e) + t.desde * col;
     let y0 = y_de_las_filas(e) + i as f32 * fila;
     let respiro = fila * RESPIRO_DE_LA_BARRA;
-    Some((x0, y0 + respiro, x0 + t.cuanto.max(MINIMA_BARRA) * col, y0 + fila - respiro))
+    Some((
+        x0,
+        y0 + respiro,
+        x0 + t.cuanto.max(MINIMA_BARRA) * col,
+        y0 + fila - respiro,
+    ))
 }
 
 /// Las rayas verticales de la escala, de la primera a la ultima.
@@ -150,7 +157,9 @@ pub fn columnas(e: &Elemento) -> Vec<f32> {
     if col <= 0.0 {
         return Vec::new();
     }
-    (0..=periodos.max(1)).map(|k| x_de_la_escala(e) + k as f32 * col).collect()
+    (0..=periodos.max(1))
+        .map(|k| x_de_la_escala(e) + k as f32 * col)
+        .collect()
 }
 
 /// **De que tamano va la letra, sin poder reventar.** En el movil una cuenta
@@ -245,7 +254,13 @@ fn enganchado(v: f32) -> f32 {
 /// columna: a pulso salen barras que empiezan en 2,37 y el dibujo deja de
 /// decir «esta empieza cuando acaba aquella». `agarre` es por donde se cogio
 /// la barra, en columnas desde su principio (sin el, la barra saltaria).
-pub fn tarea_arrastrada(e: &Elemento, i: usize, mano: ManoEnLaBarra, p: Punto2, agarre: f32) -> Option<Tarea> {
+pub fn tarea_arrastrada(
+    e: &Elemento,
+    i: usize,
+    mano: ManoEnLaBarra,
+    p: Punto2,
+    agarre: f32,
+) -> Option<Tarea> {
     let (tareas, periodos) = datos(e)?;
     let t = tareas.get(i)?;
     let col = ancho_de_columna(e);
@@ -257,7 +272,8 @@ pub fn tarea_arrastrada(e: &Elemento, i: usize, mano: ManoEnLaBarra, p: Punto2, 
     let mut nueva = t.clone();
     match mano {
         ManoEnLaBarra::Mover => {
-            nueva.desde = enganchado(en_columnas - agarre).clamp(0.0, (periodos - t.cuanto).max(0.0));
+            nueva.desde =
+                enganchado(en_columnas - agarre).clamp(0.0, (periodos - t.cuanto).max(0.0));
         }
         ManoEnLaBarra::Estirar => {
             nueva.cuanto = enganchado(en_columnas - t.desde)
@@ -277,7 +293,9 @@ pub fn con_tarea_nueva(e: &mut Elemento, nombre: &str) -> bool {
     let ultima = tareas.last();
     let desde = ultima.map_or(0.0, |t| t.desde + t.cuanto);
     let cuanto = ultima.map_or(1.0, |t| t.cuanto);
-    *periodos = (*periodos).max((desde + cuanto).ceil() as u32).min(MAXIMO_DE_PERIODOS);
+    *periodos = (*periodos)
+        .max((desde + cuanto).ceil() as u32)
+        .min(MAXIMO_DE_PERIODOS);
     let tope = (*periodos as f32 - cuanto).max(0.0);
     tareas.push(Tarea {
         nombre: nombre.to_string(),
@@ -326,7 +344,11 @@ fn recortado(nombre: &str, ancho: f32, tam: f32, familia: &str) -> String {
     while !s.is_empty() && !cabe(&format!("{s}…")) {
         s.pop();
     }
-    if s.is_empty() { String::new() } else { format!("{s}…") }
+    if s.is_empty() {
+        String::new()
+    } else {
+        format!("{s}…")
+    }
 }
 
 /// Un rectangulo de esquinas redondas como poligono.
@@ -378,7 +400,10 @@ pub fn ordenes(e: &Elemento, tinta: ColorRgba) -> Vec<Orden> {
         }
     };
     let raya = |a: (f32, f32), b: (f32, f32), color: ColorRgba, g: f32| Orden::Polilinea {
-        puntos: vec![girar(Punto2::nuevo(a.0, a.1)), girar(Punto2::nuevo(b.0, b.1))],
+        puntos: vec![
+            girar(Punto2::nuevo(a.0, a.1)),
+            girar(Punto2::nuevo(b.0, b.1)),
+        ],
         color,
         grosor: g,
         estilo: EstiloTrazo::Solido,
@@ -529,7 +554,10 @@ mod pruebas {
         let grande = plan(0.0, 0.0, 800.0, 300.0, ab(), 8);
         let en_columnas = |e: &Elemento| {
             let (x0, _, x1, _) = barra_de_tarea(e, 1).unwrap();
-            ((x0 - x_de_la_escala(e)) / ancho_de_columna(e), (x1 - x0) / ancho_de_columna(e))
+            (
+                (x0 - x_de_la_escala(e)) / ancho_de_columna(e),
+                (x1 - x0) / ancho_de_columna(e),
+            )
         };
         let (a, b) = (en_columnas(&chico), en_columnas(&grande));
         assert!((a.0 - b.0).abs() < 1e-4 && (a.1 - b.1).abs() < 1e-4);
@@ -551,11 +579,20 @@ mod pruebas {
         let e = plan(0.0, 0.0, 400.0, 200.0, ab(), 8);
         let (x0, y0, x1, y1) = barra_de_tarea(&e, 0).unwrap();
         let medio = Punto2::nuevo((x0 + x1) / 2.0 - 20.0, (y0 + y1) / 2.0);
-        assert_eq!(toque_en_barra(&e, medio, 0.0), Some((0, ManoEnLaBarra::Mover)));
+        assert_eq!(
+            toque_en_barra(&e, medio, 0.0),
+            Some((0, ManoEnLaBarra::Mover))
+        );
         let punta = Punto2::nuevo(x1 - 2.0, (y0 + y1) / 2.0);
-        assert_eq!(toque_en_barra(&e, punta, 0.0), Some((0, ManoEnLaBarra::Estirar)));
+        assert_eq!(
+            toque_en_barra(&e, punta, 0.0),
+            Some((0, ManoEnLaBarra::Estirar))
+        );
         // Caso negativo: en la columna de los nombres no hay barra.
-        assert_eq!(toque_en_barra(&e, Punto2::nuevo(5.0, (y0 + y1) / 2.0), 0.0), None);
+        assert_eq!(
+            toque_en_barra(&e, Punto2::nuevo(5.0, (y0 + y1) / 2.0), 0.0),
+            None
+        );
         // Mover: agarrada por su principio, llevada a la columna 1,3 -> 1,25.
         let col = ancho_de_columna(&e);
         let p = Punto2::nuevo(x_de_la_escala(&e) + 1.3 * col, 0.0);
@@ -563,10 +600,20 @@ mod pruebas {
         assert_eq!(t.desde, 1.25);
         // Sin salirse de la escala: hasta 8 - 2.
         let lejos = Punto2::nuevo(x_de_la_escala(&e) + 20.0 * col, 0.0);
-        assert_eq!(tarea_arrastrada(&e, 0, ManoEnLaBarra::Mover, lejos, 0.0).unwrap().desde, 6.0);
+        assert_eq!(
+            tarea_arrastrada(&e, 0, ManoEnLaBarra::Mover, lejos, 0.0)
+                .unwrap()
+                .desde,
+            6.0
+        );
         // Estirar: nunca menos de un cuarto.
         let atras = Punto2::nuevo(x_de_la_escala(&e) - 50.0, 0.0);
-        assert_eq!(tarea_arrastrada(&e, 0, ManoEnLaBarra::Estirar, atras, 0.0).unwrap().cuanto, MINIMA_BARRA);
+        assert_eq!(
+            tarea_arrastrada(&e, 0, ManoEnLaBarra::Estirar, atras, 0.0)
+                .unwrap()
+                .cuanto,
+            MINIMA_BARRA
+        );
     }
 
     #[test]
@@ -580,7 +627,13 @@ mod pruebas {
         assert_eq!(*periodos, 4);
         assert!(sin_la_ultima_tarea(&mut e));
         assert!(con_periodos(&mut e, 100));
-        assert!(matches!(e.figura, Figura::Cronograma { periodos: MAXIMO_DE_PERIODOS, .. }));
+        assert!(matches!(
+            e.figura,
+            Figura::Cronograma {
+                periodos: MAXIMO_DE_PERIODOS,
+                ..
+            }
+        ));
         // Caso negativo: a una caja normal no se le anaden tareas.
         let mut r = Elemento::default();
         assert!(!con_tarea_nueva(&mut r, "x"));
@@ -604,14 +657,29 @@ mod pruebas {
             })
             .collect();
         assert_eq!(textos, vec!["1", "2", "3", "4", "A", "B"]);
-        assert_eq!(o.iter().filter(|x| matches!(x, Orden::Relleno { .. })).count(), 2);
+        assert_eq!(
+            o.iter()
+                .filter(|x| matches!(x, Orden::Relleno { .. }))
+                .count(),
+            2
+        );
         // Cinco columnas de escala (4 + 1), tres rayas de fila (2 + 1) y el marco.
-        assert_eq!(o.iter().filter(|x| matches!(x, Orden::Polilinea { .. })).count(), 5 + 3 + 1);
+        assert_eq!(
+            o.iter()
+                .filter(|x| matches!(x, Orden::Polilinea { .. }))
+                .count(),
+            5 + 3 + 1
+        );
     }
 
     #[test]
     fn un_nombre_largo_se_recorta_con_puntos_suspensivos() {
-        let s = recortado("Una tarea con un nombre larguisimo", 60.0, 10.0, "Excalifont");
+        let s = recortado(
+            "Una tarea con un nombre larguisimo",
+            60.0,
+            10.0,
+            "Excalifont",
+        );
         assert!(s.ends_with('…') && s.chars().count() < 20);
         assert_eq!(recortado("A", 60.0, 10.0, "Excalifont"), "A");
     }
@@ -625,10 +693,16 @@ mod pruebas_de_la_letra {
         let tareas = nombres
             .iter()
             .enumerate()
-            .map(|(i, n)| Tarea { nombre: n.to_string(), ..Tarea::nueva(i as f32, 1.0) })
+            .map(|(i, n)| Tarea {
+                nombre: n.to_string(),
+                ..Tarea::nueva(i as f32, 1.0)
+            })
             .collect();
         let mut e = Elemento {
-            figura: Figura::Cronograma { tareas, periodos: 6 },
+            figura: Figura::Cronograma {
+                tareas,
+                periodos: 6,
+            },
             ancho,
             alto: 200.0,
             ..Default::default()
@@ -642,7 +716,12 @@ mod pruebas_de_la_letra {
         ordenes(e, ColorRgba::opaco(0.0, 0.0, 0.0))
             .into_iter()
             .filter_map(|o| match o {
-                Orden::Texto { texto, tam, familia, .. } => Some((texto, tam, familia)),
+                Orden::Texto {
+                    texto,
+                    tam,
+                    familia,
+                    ..
+                } => Some((texto, tam, familia)),
                 _ => None,
             })
             .collect()
@@ -655,7 +734,11 @@ mod pruebas_de_la_letra {
         let t = textos(&e);
         assert!(t.iter().any(|(s, _, _)| s == "Cimientos"), "{t:?}");
         assert!(t.iter().all(|(_, _, f)| f == "Excalifont"), "{t:?}");
-        assert!(t.iter().filter(|(s, _, _)| s.len() > 2).all(|(_, tam, _)| *tam == 20.0));
+        assert!(
+            t.iter()
+                .filter(|(s, _, _)| s.len() > 2)
+                .all(|(_, tam, _)| *tam == 20.0)
+        );
     }
 
     #[test]
@@ -676,10 +759,21 @@ mod pruebas_de_la_letra {
         assert!(ancho > 200.0);
         let mut ancha = e.clone();
         ancha.ancho = ancho;
-        assert_eq!(ancho_para_los_nombres(&ancha), None, "con lo pedido sigue sin caber");
-        assert!(textos(&ancha).iter().any(|(s, _, _)| s == "Estructura y muros de carga"));
+        assert_eq!(
+            ancho_para_los_nombres(&ancha),
+            None,
+            "con lo pedido sigue sin caber"
+        );
+        assert!(
+            textos(&ancha)
+                .iter()
+                .any(|(s, _, _)| s == "Estructura y muros de carga")
+        );
         // Caso negativo: nombres cortos no piden nada.
-        assert_eq!(ancho_para_los_nombres(&con_nombres(&["A", "B"], 400.0, Some(20.0))), None);
+        assert_eq!(
+            ancho_para_los_nombres(&con_nombres(&["A", "B"], 400.0, Some(20.0))),
+            None
+        );
     }
 
     #[test]

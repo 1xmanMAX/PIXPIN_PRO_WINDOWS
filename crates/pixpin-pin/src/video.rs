@@ -291,12 +291,17 @@ impl Ritmo {
                         ok
                     }
                     .then(|| {
-                        hasta_el_refresco(ahora, info.qpcVBlank as i64, info.qpcRefreshPeriod as i64)
+                        hasta_el_refresco(
+                            ahora,
+                            info.qpcVBlank as i64,
+                            info.qpcRefreshPeriod as i64,
+                        )
                     })
                     .filter(|_| info.qpcRefreshPeriod > 0)
                     .map(|ticks| {
-                        Duration::from_micros((ticks as u128 * 1_000_000 / frecuencia as u128) as u64)
-                            + Duration::from_millis(1)
+                        Duration::from_micros(
+                            (ticks as u128 * 1_000_000 / frecuencia as u128) as u64,
+                        ) + Duration::from_millis(1)
                     })
                     // Sin compositor (no deberia pasar), un periodo de 60 Hz.
                     .unwrap_or(Duration::from_micros(16_667));
@@ -825,16 +830,30 @@ mod pruebas {
         // Mismo primer campo que el H.264 pero otra cola: no es un FOURCC.
         let raro = GUID::from_u128(((fourcc(b"H264") as u128) << 96) | 0x1234);
         assert_eq!(codec_de_subtipo(raro), Codec::Otro(fourcc(b"H264")));
-        assert_eq!(codec_de_subtipo(subtipo(b"WMV3")), Codec::Otro(fourcc(b"WMV3")));
+        assert_eq!(
+            codec_de_subtipo(subtipo(b"WMV3")),
+            Codec::Otro(fourcc(b"WMV3"))
+        );
     }
 
     #[test]
     fn cada_codec_de_pago_apunta_a_su_extension_de_la_tienda() {
-        assert_eq!(extension_para(Codec::Hevc).unwrap().nombre, "HEVC Video Extensions");
+        assert_eq!(
+            extension_para(Codec::Hevc).unwrap().nombre,
+            "HEVC Video Extensions"
+        );
         assert_eq!(extension_para(Codec::Vp9), extension_para(Codec::Vp8));
-        assert_eq!(extension_para(Codec::Av1).unwrap().nombre, "AV1 Video Extension");
+        assert_eq!(
+            extension_para(Codec::Av1).unwrap().nombre,
+            "AV1 Video Extension"
+        );
         for c in [Codec::Hevc, Codec::Vp9, Codec::Av1, Codec::Mpeg2] {
-            assert!(extension_para(c).unwrap().enlace.starts_with("ms-windows-store://pdp/"));
+            assert!(
+                extension_para(c)
+                    .unwrap()
+                    .enlace
+                    .starts_with("ms-windows-store://pdp/")
+            );
         }
     }
 
@@ -904,7 +923,11 @@ mod pruebas {
         assert_eq!(hasta_el_refresco(1030, 1000, 100), 70);
         // Un refresco anunciado en el futuro vale igual.
         assert_eq!(hasta_el_refresco(1030, 1300, 100), 70);
-        assert_eq!(hasta_el_refresco(1100, 1000, 100), 0, "justo en el refresco");
+        assert_eq!(
+            hasta_el_refresco(1100, 1000, 100),
+            0,
+            "justo en el refresco"
+        );
     }
 
     #[test]

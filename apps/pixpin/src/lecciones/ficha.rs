@@ -189,7 +189,8 @@ impl Estado {
         self.campo_mut(CampoId::Paso).poner(&l.que_paso);
         self.campo_mut(CampoId::PorQue).poner(&l.por_que);
         self.campo_mut(CampoId::Proxima).poner(&l.proxima);
-        self.campo_mut(CampoId::Referencias).poner(&l.referencias.join(", "));
+        self.campo_mut(CampoId::Referencias)
+            .poner(&l.referencias.join(", "));
         self.tipo = Some(l.tipo.clone());
         self.area = (!l.area.trim().is_empty()).then(|| l.area.clone());
         self.gravedad = l.gravedad;
@@ -198,7 +199,9 @@ impl Estado {
         self.causas = l.causas.clone();
         self.causas_tocadas = true;
         self.ficha = e.ficha.clone();
-        self.detalle = !l.que_paso.trim().is_empty() || !l.por_que.trim().is_empty() || !l.proxima.trim().is_empty();
+        self.detalle = !l.que_paso.trim().is_empty()
+            || !l.por_que.trim().is_empty()
+            || !l.proxima.trim().is_empty();
     }
 
     /// Lo dicho o recibido, repartido en sus campos (`poner` del movil).
@@ -220,13 +223,20 @@ impl Estado {
         if !c.proxima.trim().is_empty() && c.proxima != c.titulo {
             self.campo_mut(CampoId::Proxima).poner(&c.proxima);
         }
-        if ORDEN[1..4].iter().any(|c| !self.campo(*c).texto.trim().is_empty()) {
+        if ORDEN[1..4]
+            .iter()
+            .any(|c| !self.campo(*c).texto.trim().is_empty())
+        {
             self.detalle = true;
         }
     }
 
     fn texto_entero(&self) -> String {
-        ORDEN[..5].iter().map(|c| self.campo(*c).texto.as_str()).collect::<Vec<_>>().join("\n")
+        ORDEN[..5]
+            .iter()
+            .map(|c| self.campo(*c).texto.as_str())
+            .collect::<Vec<_>>()
+            .join("\n")
     }
 
     /// Las propuestas, si cambio lo escrito.
@@ -255,11 +265,17 @@ impl Estado {
     }
 
     fn tipo_final(&self) -> String {
-        self.tipo.clone().or_else(|| self.propuesta.tipo.clone()).unwrap_or_else(|| TIPO_LECCION.into())
+        self.tipo
+            .clone()
+            .or_else(|| self.propuesta.tipo.clone())
+            .unwrap_or_else(|| TIPO_LECCION.into())
     }
 
     fn area_final(&self) -> Option<String> {
-        self.area.clone().or_else(|| self.propuesta.area.clone()).filter(|a| !a.is_empty())
+        self.area
+            .clone()
+            .or_else(|| self.propuesta.area.clone())
+            .filter(|a| !a.is_empty())
     }
 
     fn causas_final(&self) -> Vec<String> {
@@ -276,7 +292,11 @@ impl Estado {
     }
 
     fn poner_etiqueta(&mut self) {
-        let e = self.campo(CampoId::Etiqueta).texto.trim_matches([' ', ',', '#']).to_lowercase();
+        let e = self
+            .campo(CampoId::Etiqueta)
+            .texto
+            .trim_matches([' ', ',', '#'])
+            .to_lowercase();
         if !e.is_empty() && !self.etiquetas.contains(&e) {
             self.etiquetas.push(e.clone());
         }
@@ -377,7 +397,16 @@ fn bucle(recursos: &Recursos, pedido: &Pedido) -> Result<()> {
         indices,
         proyectos: proyectos
             .iter()
-            .map(|p| (p.0.clone(), if p.3 { "Sin proyecto (chat general)".to_string() } else { p.1.clone() }))
+            .map(|p| {
+                (
+                    p.0.clone(),
+                    if p.3 {
+                        "Sin proyecto (chat general)".to_string()
+                    } else {
+                        p.1.clone()
+                    },
+                )
+            })
             .collect(),
         eligiendo: false,
         areas,
@@ -411,7 +440,10 @@ fn bucle(recursos: &Recursos, pedido: &Pedido) -> Result<()> {
         } => {
             e.de_mensaje = de_mensaje.clone();
             e.fotos = fotos.clone();
-            if let Some(f) = ficha.as_ref().filter(|f| e.proyectos.iter().any(|p| p.0 == **f)) {
+            if let Some(f) = ficha
+                .as_ref()
+                .filter(|f| e.proyectos.iter().any(|p| p.0 == **f))
+            {
                 e.ficha = f.clone();
             }
             if let Some(t) = texto.as_deref().filter(|t| !t.trim().is_empty()) {
@@ -430,11 +462,22 @@ fn bucle(recursos: &Recursos, pedido: &Pedido) -> Result<()> {
         .to_owned();
     let escala = monitor.escala_por_cien as f32 / 100.0;
     let mut marco = centrado(monitor.area_trabajo, 600, 780, monitor.escala_por_cien);
-    let titulo_ventana = if e.existente.is_some() { "Lección" } else { "Nueva lección" };
-    let mut ventana = VentanaOverlay::nueva_normal(marco, titulo_ventana).context("no se pudo abrir la ficha")?;
+    let titulo_ventana = if e.existente.is_some() {
+        "Lección"
+    } else {
+        "Nueva lección"
+    };
+    let mut ventana =
+        VentanaOverlay::nueva_normal(marco, titulo_ventana).context("no se pudo abrir la ficha")?;
     let motor = recursos.motor();
-    let superficie = Superficie::nueva(&motor, &recursos.d3d(), ventana.handle(), marco.ancho, marco.alto)
-        .context("sin superficie para la ficha")?;
+    let superficie = Superficie::nueva(
+        &motor,
+        &recursos.d3d(),
+        ventana.handle(),
+        marco.ancho,
+        marco.alto,
+    )
+    .context("sin superficie para la ficha")?;
     ventana.mostrar();
     ventana.traer_encima();
     ventana.enfocar();
@@ -495,16 +538,29 @@ fn bucle(recursos: &Recursos, pedido: &Pedido) -> Result<()> {
                         }
                     }
                 }
-                EventoOverlay::Tecla { vk, shift, ctrl, .. } => match (vk, e.foco) {
+                EventoOverlay::Tecla {
+                    vk, shift, ctrl, ..
+                } => match (vk, e.foco) {
                     (VK_ESCAPE, _) => fin = Fin::GuardarYSalir,
                     (VK_ENTRAR, _) if ctrl => fin = hacer(&mut e, Accion::Guardar, pedido),
                     (VK_ENTRAR, Some(CampoId::Etiqueta)) => e.poner_etiqueta(),
-                    (VK_ENTRAR, Some(CampoId::Titulo)) if !shift => fin = hacer(&mut e, Accion::Guardar, pedido),
+                    (VK_ENTRAR, Some(CampoId::Titulo)) if !shift => {
+                        fin = hacer(&mut e, Accion::Guardar, pedido)
+                    }
                     (VK_TAB, f) => {
                         let visibles: Vec<CampoId> = ORDEN
                             .iter()
                             .copied()
-                            .filter(|c| e.detalle || !matches!(c, CampoId::Paso | CampoId::PorQue | CampoId::Proxima | CampoId::Referencias))
+                            .filter(|c| {
+                                e.detalle
+                                    || !matches!(
+                                        c,
+                                        CampoId::Paso
+                                            | CampoId::PorQue
+                                            | CampoId::Proxima
+                                            | CampoId::Referencias
+                                    )
+                            })
                             .collect();
                         let i = f.and_then(|f| visibles.iter().position(|c| *c == f));
                         let n = visibles.len();
@@ -553,7 +609,10 @@ fn bucle(recursos: &Recursos, pedido: &Pedido) -> Result<()> {
                 pintar = true;
             }
         }
-        if e.aviso.as_ref().is_some_and(|(_, t)| t.elapsed() > Duration::from_millis(3_000)) {
+        if e.aviso
+            .as_ref()
+            .is_some_and(|(_, t)| t.elapsed() > Duration::from_millis(3_000))
+        {
             e.aviso = None;
             pintar = true;
         }
@@ -571,7 +630,13 @@ fn bucle(recursos: &Recursos, pedido: &Pedido) -> Result<()> {
             }
             pintar = false;
         }
-        let espera = if e.dictado.activo() { 120 } else if e.aviso.is_some() { 250 } else { 1_000 };
+        let espera = if e.dictado.activo() {
+            120
+        } else if e.aviso.is_some() {
+            250
+        } else {
+            1_000
+        };
         pixpin_shell::overlay::esperar_eventos(Some(espera));
     }
     almacen::quitar_ventana(hwnd);
@@ -583,7 +648,9 @@ fn guardar_y_salir(e: &mut Estado, pedido: &Pedido) {
     let l = e.leccion(ahora);
     let donde = match &e.existente {
         Some(x) => Donde::de(x),
-        None => Donde::Nueva { ficha: e.ficha.clone() },
+        None => Donde::Nueva {
+            ficha: e.ficha.clone(),
+        },
     };
     // Las fotos solo van con una nueva (en una que ya existe no se ponen).
     let fotos: &[almacen::Foto] = if e.existente.is_none() { &e.fotos } else { &[] };
@@ -619,7 +686,11 @@ fn hacer(e: &mut Estado, a: Accion, pedido: &Pedido) -> Fin {
         Accion::Gravedad(g) => e.gravedad = g,
         Accion::Area(i) => {
             if let Some(a) = e.areas.get(i).cloned() {
-                e.area = Some(if e.area_final().as_deref() == Some(a.as_str()) { String::new() } else { a });
+                e.area = Some(if e.area_final().as_deref() == Some(a.as_str()) {
+                    String::new()
+                } else {
+                    a
+                });
             }
         }
         Accion::QuitarEtiqueta(i) => {
@@ -656,7 +727,11 @@ fn hacer(e: &mut Estado, a: Accion, pedido: &Pedido) -> Fin {
         }
         Accion::PasoOtraVez => {
             if let Some(r) = e.parecidas.first()
-                && let Some(x) = e.todas.iter().find(|x| x.leccion.id == r.leccion.id).cloned()
+                && let Some(x) = e
+                    .todas
+                    .iter()
+                    .find(|x| x.leccion.id == r.leccion.id)
+                    .cloned()
             {
                 return volvio_a_pasar(&x, pedido);
             }
@@ -714,7 +789,12 @@ fn pintar_todo(e: &mut Estado, p: &Pintor, marco: Rect, s: f32) {
     let ancho = w - 2.0 * m;
     let arriba = CABECERA * s;
     let abajo = h - BARRA * s;
-    let contenido = RectF { x: 0.0, y: arriba, ancho: w, alto: abajo - arriba };
+    let contenido = RectF {
+        x: 0.0,
+        y: arriba,
+        ancho: w,
+        alto: abajo - arriba,
+    };
 
     let mut alto_total = 0.0;
     p.con_recorte(contenido, |p| {
@@ -725,27 +805,54 @@ fn pintar_todo(e: &mut Estado, p: &Pintor, marco: Rect, s: f32) {
     e.alto_contenido = alto_total;
 
     // La cabecera, por encima de lo que se desplazo bajo ella.
-    let cab = RectF { x: 0.0, y: 0.0, ancho: w, alto: arriba };
+    let cab = RectF {
+        x: 0.0,
+        y: 0.0,
+        ancho: w,
+        alto: arriba,
+    };
     p.rellenar(cab, FONDO);
     e.botones.zona(cab, Accion::Mover);
-    let titulo = if e.existente.is_some() { "💡 Lección" } else { "💡 Nueva lección" };
+    let titulo = if e.existente.is_some() {
+        "💡 Lección"
+    } else {
+        "💡 Nueva lección"
+    };
     p.texto_color(titulo, m, 15.0 * s, 20.0 * s, TEXTO);
     let lado = 36.0 * s;
-    let cerrar = RectF { x: w - m - lado, y: (arriba - lado) / 2.0, ancho: lado, alto: lado };
+    let cerrar = RectF {
+        x: w - m - lado,
+        y: (arriba - lado) / 2.0,
+        ancho: lado,
+        alto: lado,
+    };
     e.botones.boton(p, cerrar, Accion::Descartar, "", None, s);
     p.icono(&mi::CLOSE, ui::encoger(cerrar, 8.0 * s), TEXTO);
     if e.existente.is_some() {
-        let borrar = RectF { x: cerrar.x - lado - 8.0 * s, ..cerrar };
+        let borrar = RectF {
+            x: cerrar.x - lado - 8.0 * s,
+            ..cerrar
+        };
         e.botones.boton(p, borrar, Accion::Borrar, "", None, s);
         p.icono(&mi::DELETE, ui::encoger(borrar, 8.0 * s), ROJO);
     }
 
     // Guardar, siempre a mano.
-    let barra = RectF { x: 0.0, y: abajo, ancho: w, alto: h - abajo };
+    let barra = RectF {
+        x: 0.0,
+        y: abajo,
+        ancho: w,
+        alto: h - abajo,
+    };
     p.rellenar(barra, FONDO);
     // Tapa tambien para el raton lo que se desplazo bajo la barra.
     e.botones.zona(barra, Accion::Mover);
-    let boton = RectF { x: m, y: abajo + 12.0 * s, ancho, alto: 52.0 * s };
+    let boton = RectF {
+        x: m,
+        y: abajo + 12.0 * s,
+        ancho,
+        alto: 52.0 * s,
+    };
     let vale = !e.titulo().trim().is_empty();
     ui::boton(
         p,
@@ -785,7 +892,12 @@ fn pintar_contenido(e: &mut Estado, p: &Pintor, x: f32, mut y: f32, ancho: f32, 
     );
     e.botones.zona(caja, Accion::Foco(CampoId::Titulo));
     let lado = 36.0 * s;
-    let mic = RectF { x: x + ancho - lado - 6.0 * s, y: y + 6.0 * s, ancho: lado, alto: lado };
+    let mic = RectF {
+        x: x + ancho - lado - 6.0 * s,
+        y: y + 6.0 * s,
+        ancho: lado,
+        alto: lado,
+    };
     let grabando = matches!(e.dictado, Dictado::Grabando(_));
     p.circulo(
         (mic.x + lado / 2.0, mic.y + lado / 2.0),
@@ -796,13 +908,23 @@ fn pintar_contenido(e: &mut Estado, p: &Pintor, x: f32, mut y: f32, ancho: f32, 
     e.botones.zona(mic, Accion::Dictar);
     y += alto + 6.0 * s;
     if let Some(estado) = e.dictado.estado() {
-        p.texto_color(&estado, x, y, 13.0 * s, if grabando { ROJO } else { APAGADO });
+        p.texto_color(
+            &estado,
+            x,
+            y,
+            13.0 * s,
+            if grabando { ROJO } else { APAGADO },
+        );
         y += 22.0 * s;
     }
     // Las imagenes pegadas en Flow Launcher: van con ella al guardar.
     if e.existente.is_none() && !e.fotos.is_empty() {
         let n = e.fotos.len();
-        let t = format!("📎 {n} {} · se guarda{} con la lección", if n == 1 { "foto" } else { "fotos" }, if n == 1 { "" } else { "n" });
+        let t = format!(
+            "📎 {n} {} · se guarda{} con la lección",
+            if n == 1 { "foto" } else { "fotos" },
+            if n == 1 { "" } else { "n" }
+        );
         p.texto_color(&t, x, y, 13.0 * s, APAGADO);
         y += 22.0 * s;
     }
@@ -816,10 +938,38 @@ fn pintar_contenido(e: &mut Estado, p: &Pintor, x: f32, mut y: f32, ancho: f32, 
         let alto = (th + 40.0 * s).max(64.0 * s);
         let caja = RectF { x, y, ancho, alto };
         p.rellenar_redondeado(caja, 14.0 * s, hex(0x2f3a2c));
-        p.texto("Se parece a una que ya tienes", x + 12.0 * s, y + 8.0 * s, 12.5 * s, hex(0xb5d3a8));
-        p.texto_ajustado(&titulo, x + 12.0 * s, y + 28.0 * s, 14.0 * s, ancho_texto, TEXTO);
-        let b = RectF { x: x + ancho - 170.0 * s, y: y + (alto - 40.0 * s) / 2.0, ancho: 160.0 * s, alto: 40.0 * s };
-        ui::boton(p, &mut e.botones, b, Accion::PasoOtraVez, "🔁 Pasó otra vez", hex(0x445a3e), TEXTO, 14.0 * s, s);
+        p.texto(
+            "Se parece a una que ya tienes",
+            x + 12.0 * s,
+            y + 8.0 * s,
+            12.5 * s,
+            hex(0xb5d3a8),
+        );
+        p.texto_ajustado(
+            &titulo,
+            x + 12.0 * s,
+            y + 28.0 * s,
+            14.0 * s,
+            ancho_texto,
+            TEXTO,
+        );
+        let b = RectF {
+            x: x + ancho - 170.0 * s,
+            y: y + (alto - 40.0 * s) / 2.0,
+            ancho: 160.0 * s,
+            alto: 40.0 * s,
+        };
+        ui::boton(
+            p,
+            &mut e.botones,
+            b,
+            Accion::PasoOtraVez,
+            "🔁 Pasó otra vez",
+            hex(0x445a3e),
+            TEXTO,
+            14.0 * s,
+            s,
+        );
         y += alto + hueco;
     }
 
@@ -830,7 +980,11 @@ fn pintar_contenido(e: &mut Estado, p: &Pintor, x: f32, mut y: f32, ancho: f32, 
         .enumerate()
         .map(|(i, (t, n))| (n.to_string(), Accion::Tipo(i), tipo == *t, false))
         .collect();
-    fichas.extend(GRAVEDADES.iter().map(|(g, n)| (n.to_string(), Accion::Gravedad(*g), e.gravedad == *g, false)));
+    fichas.extend(
+        GRAVEDADES
+            .iter()
+            .map(|(g, n)| (n.to_string(), Accion::Gravedad(*g), e.gravedad == *g, false)),
+    );
     y = ui::fila_de_fichas(p, &mut e.botones, x, y, ancho, &fichas, tam * 0.93, s) + hueco;
 
     // Area.
@@ -843,7 +997,11 @@ fn pintar_contenido(e: &mut Estado, p: &Pintor, x: f32, mut y: f32, ancho: f32, 
         .map(|(i, a)| {
             let propuesta = e.area.is_none() && e.propuesta.area.as_deref() == Some(a.as_str());
             (
-                if propuesta { format!("✨ {a}") } else { a.clone() },
+                if propuesta {
+                    format!("✨ {a}")
+                } else {
+                    a.clone()
+                },
                 Accion::Area(i),
                 area_final.as_deref() == Some(a.as_str()),
                 false,
@@ -860,26 +1018,66 @@ fn pintar_contenido(e: &mut Estado, p: &Pintor, x: f32, mut y: f32, ancho: f32, 
         .enumerate()
         .map(|(i, t)| (format!("#{t}"), Accion::QuitarEtiqueta(i), true, true))
         .collect();
-    fichas.extend(e.auto().iter().enumerate().map(|(i, t)| (format!("✨ #{t}"), Accion::QuitarAuto(i), false, true)));
+    fichas.extend(
+        e.auto()
+            .iter()
+            .enumerate()
+            .map(|(i, t)| (format!("✨ #{t}"), Accion::QuitarAuto(i), false, true)),
+    );
     if !fichas.is_empty() {
         y = ui::fila_de_fichas(p, &mut e.botones, x, y, ancho, &fichas, tam * 0.93, s) + 8.0 * s;
     }
     let c = e.campo(CampoId::Etiqueta);
     let ancho_e = 220.0 * s;
     let alto = c.alto(p, ancho_e, tam, 1, 0.0, s);
-    let caja = RectF { x, y, ancho: ancho_e, alto };
-    c.pintar(p, caja, tam, e.foco == Some(CampoId::Etiqueta), "+ etiqueta", 0.0, s);
+    let caja = RectF {
+        x,
+        y,
+        ancho: ancho_e,
+        alto,
+    };
+    c.pintar(
+        p,
+        caja,
+        tam,
+        e.foco == Some(CampoId::Etiqueta),
+        "+ etiqueta",
+        0.0,
+        s,
+    );
     e.botones.zona(caja, Accion::Foco(CampoId::Etiqueta));
     y += alto + hueco;
 
     // Lo demas, plegado: no estorba a quien solo quiere apuntar la frase.
-    let rot = if e.detalle { "▴  Menos detalle" } else { "▾  Qué pasó, por qué y qué haré distinto" };
+    let rot = if e.detalle {
+        "▴  Menos detalle"
+    } else {
+        "▾  Qué pasó, por qué y qué haré distinto"
+    };
     let (rw, _) = p.medir_texto(rot, tam);
-    let b = RectF { x, y, ancho: rw + 20.0 * s, alto: 34.0 * s };
-    ui::boton(p, &mut e.botones, b, Accion::Detalle, rot, FONDO, PUESTO, tam, s);
+    let b = RectF {
+        x,
+        y,
+        ancho: rw + 20.0 * s,
+        alto: 34.0 * s,
+    };
+    ui::boton(
+        p,
+        &mut e.botones,
+        b,
+        Accion::Detalle,
+        rot,
+        FONDO,
+        PUESTO,
+        tam,
+        s,
+    );
     y += 34.0 * s + hueco;
     if e.detalle {
-        for (id, pista) in [(CampoId::Paso, "Qué pasó"), (CampoId::PorQue, "Por qué pasó")] {
+        for (id, pista) in [
+            (CampoId::Paso, "Qué pasó"),
+            (CampoId::PorQue, "Por qué pasó"),
+        ] {
             y = campo_con_rotulo(e, p, id, pista, x, y, ancho, s) + hueco;
         }
         y = rotulo(p, "Causas (un toque)", x, y, s);
@@ -888,9 +1086,15 @@ fn pintar_contenido(e: &mut Estado, p: &Pintor, x: f32, mut y: f32, ancho: f32, 
             .iter()
             .enumerate()
             .map(|(i, c)| {
-                let propuesta = !e.causas_tocadas && e.propuesta.causas.iter().any(|x| x == c) && !e.causas.iter().any(|x| x == c);
+                let propuesta = !e.causas_tocadas
+                    && e.propuesta.causas.iter().any(|x| x == c)
+                    && !e.causas.iter().any(|x| x == c);
                 (
-                    if propuesta { format!("✨ {c}") } else { c.to_string() },
+                    if propuesta {
+                        format!("✨ {c}")
+                    } else {
+                        c.to_string()
+                    },
                     Accion::Causa(i),
                     elegidas.iter().any(|x| x == c),
                     false,
@@ -898,8 +1102,26 @@ fn pintar_contenido(e: &mut Estado, p: &Pintor, x: f32, mut y: f32, ancho: f32, 
             })
             .collect();
         y = ui::fila_de_fichas(p, &mut e.botones, x, y, ancho, &fichas, tam * 0.93, s) + hueco;
-        y = campo_con_rotulo(e, p, CampoId::Proxima, "La próxima vez… (si pasa X, haré Y)", x, y, ancho, s) + hueco;
-        y = campo_con_rotulo(e, p, CampoId::Referencias, "Palabras para encontrarla (separadas por comas)", x, y, ancho, s) + hueco;
+        y = campo_con_rotulo(
+            e,
+            p,
+            CampoId::Proxima,
+            "La próxima vez… (si pasa X, haré Y)",
+            x,
+            y,
+            ancho,
+            s,
+        ) + hueco;
+        y = campo_con_rotulo(
+            e,
+            p,
+            CampoId::Referencias,
+            "Palabras para encontrarla (separadas por comas)",
+            x,
+            y,
+            ancho,
+            s,
+        ) + hueco;
     }
 
     if e.existente.is_none() {
@@ -913,15 +1135,32 @@ fn pintar_contenido(e: &mut Estado, p: &Pintor, x: f32, mut y: f32, ancho: f32, 
         y = ui::fila_de_fichas(p, &mut e.botones, x, y, ancho, &fichas, tam * 0.93, s) + 6.0 * s;
         if e.eligiendo {
             let fila = 34.0 * s;
-            let caja = RectF { x, y, ancho, alto: fila * e.proyectos.len().min(12) as f32 + 8.0 * s };
+            let caja = RectF {
+                x,
+                y,
+                ancho,
+                alto: fila * e.proyectos.len().min(12) as f32 + 8.0 * s,
+            };
             p.rellenar_redondeado(caja, 10.0 * s, CRISTAL);
             let mut yy = y + 4.0 * s;
             for (i, (id, n)) in e.proyectos.iter().enumerate().take(12) {
-                let r = RectF { x: x + 4.0 * s, y: yy, ancho: ancho - 8.0 * s, alto: fila };
+                let r = RectF {
+                    x: x + 4.0 * s,
+                    y: yy,
+                    ancho: ancho - 8.0 * s,
+                    alto: fila,
+                };
                 if crate::ventanita::dentro(r, e.botones.raton) {
                     p.rellenar_redondeado(r, 8.0 * s, hex(0x36363e));
                 }
-                p.texto_linea(n, r.x + 10.0 * s, r.y + 8.0 * s, tam * 0.93, r.ancho - 20.0 * s, if *id == e.ficha { PUESTO } else { TEXTO });
+                p.texto_linea(
+                    n,
+                    r.x + 10.0 * s,
+                    r.y + 8.0 * s,
+                    tam * 0.93,
+                    r.ancho - 20.0 * s,
+                    if *id == e.ficha { PUESTO } else { TEXTO },
+                );
                 e.botones.zona(r, Accion::ElegirProyecto(i));
                 yy += fila;
             }
@@ -937,18 +1176,45 @@ fn pintar_contenido(e: &mut Estado, p: &Pintor, x: f32, mut y: f32, ancho: f32, 
         } else {
             format!("🔁 Me volvió a pasar (van {veces})")
         };
-        let b = RectF { x, y, ancho, alto: 44.0 * s };
+        let b = RectF {
+            x,
+            y,
+            ancho,
+            alto: 44.0 * s,
+        };
         p.rellenar_redondeado(b, 10.0 * s, hex(0x4a4a52));
-        ui::boton(p, &mut e.botones, ui::encoger(b, 1.0 * s), Accion::VolvioAPasar, &rot, FONDO, TEXTO, tam, s);
+        ui::boton(
+            p,
+            &mut e.botones,
+            ui::encoger(b, 1.0 * s),
+            Accion::VolvioAPasar,
+            &rot,
+            FONDO,
+            TEXTO,
+            tam,
+            s,
+        );
         y += 44.0 * s + hueco;
         if !e.relacionadas.is_empty() {
             y = rotulo(p, "Relacionadas", x, y, s);
             for (i, l) in e.relacionadas.iter().enumerate() {
-                let r = RectF { x, y, ancho, alto: 34.0 * s };
+                let r = RectF {
+                    x,
+                    y,
+                    ancho,
+                    alto: 34.0 * s,
+                };
                 if crate::ventanita::dentro(r, e.botones.raton) {
                     p.rellenar_redondeado(r, 10.0 * s, CRISTAL);
                 }
-                p.texto_linea(&format!("💡 {}", l.titulo), x + 8.0 * s, y + 8.0 * s, tam * 0.93, ancho - 16.0 * s, TEXTO);
+                p.texto_linea(
+                    &format!("💡 {}", l.titulo),
+                    x + 8.0 * s,
+                    y + 8.0 * s,
+                    tam * 0.93,
+                    ancho - 16.0 * s,
+                    TEXTO,
+                );
                 e.botones.zona(r, Accion::Relacionada(i));
                 y += 36.0 * s;
             }
@@ -959,10 +1225,23 @@ fn pintar_contenido(e: &mut Estado, p: &Pintor, x: f32, mut y: f32, ancho: f32, 
 }
 
 #[allow(clippy::too_many_arguments)] // estado, pintor, campo, rotulo, sitio y escala
-fn campo_con_rotulo(e: &mut Estado, p: &Pintor, id: CampoId, pista: &str, x: f32, y: f32, ancho: f32, s: f32) -> f32 {
+fn campo_con_rotulo(
+    e: &mut Estado,
+    p: &Pintor,
+    id: CampoId,
+    pista: &str,
+    x: f32,
+    y: f32,
+    ancho: f32,
+    s: f32,
+) -> f32 {
     let tam = 15.0 * s;
     let c = e.campo(id);
-    let y = if c.texto.is_empty() { y } else { rotulo(p, pista, x, y, s) };
+    let y = if c.texto.is_empty() {
+        y
+    } else {
+        rotulo(p, pista, x, y, s)
+    };
     let alto = c.alto(p, ancho, tam, 1, 0.0, s);
     let caja = RectF { x, y, ancho, alto };
     c.pintar(p, caja, tam, e.foco == Some(id), pista, 0.0, s);
@@ -1005,7 +1284,7 @@ mod pruebas {
             aviso: None,
             dictado: Dictado::Nada,
             moviendo: None,
-        fotos: Vec::new(),
+            fotos: Vec::new(),
         }
     }
 
@@ -1022,7 +1301,10 @@ mod pruebas {
         assert_eq!(l.area, "Construcción");
         assert!(l.causas.contains(&"Prisa".to_string()));
         assert!(l.etiquetas_auto.contains(&"concreto".to_string()));
-        assert!(!l.etiquetas_auto.contains(&"obra".to_string()), "la puesta no va tambien como automatica");
+        assert!(
+            !l.etiquetas_auto.contains(&"obra".to_string()),
+            "la puesta no va tambien como automatica"
+        );
         assert_eq!(l.creada, 5000);
     }
 
@@ -1031,14 +1313,24 @@ mod pruebas {
     fn muestra_de_la_ficha() {
         let mut e = estado();
         e.poner("pasó que no revisé el encofrado y la losa se fisuró porque había prisa, la próxima vez reviso los puntales antes del vaciado #obra");
-        e.proyectos = vec![("g".into(), "Sin proyecto (chat general)".into()), ("p".into(), "Edificio Sur".into())];
+        e.proyectos = vec![
+            ("g".into(), "Sin proyecto (chat general)".into()),
+            ("p".into(), "Edificio Sur".into()),
+        ];
         e.foco = Some(CampoId::Titulo);
         let parecida = Leccion::nueva("x", 1, "Revisar los puntales del encofrado antes de vaciar");
         e.indices = vec![Indice::nuevo(parecida)];
         e.mirado = None;
         e.recalcular();
-        let marco = Rect { x: 0, y: 0, ancho: 600, alto: 780 };
-        crate::ventanita::muestra("leccion-ficha", 600, 780, |p, _| pintar_todo(&mut e, p, marco, 1.0));
+        let marco = Rect {
+            x: 0,
+            y: 0,
+            ancho: 600,
+            alto: 780,
+        };
+        crate::ventanita::muestra("leccion-ficha", 600, 780, |p, _| {
+            pintar_todo(&mut e, p, marco, 1.0)
+        });
     }
 
     #[test]

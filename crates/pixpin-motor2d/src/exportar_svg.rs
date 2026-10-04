@@ -184,8 +184,16 @@ fn orden(
             } else {
                 format!("{}, ", escapar(familia))
             };
-            let peso = if *negrita { " font-weight=\"bold\"" } else { "" };
-            let estilo = if *cursiva { " font-style=\"italic\"" } else { "" };
+            let peso = if *negrita {
+                " font-weight=\"bold\""
+            } else {
+                ""
+            };
+            let estilo = if *cursiva {
+                " font-style=\"italic\""
+            } else {
+                ""
+            };
             let _ = write!(
                 s,
                 "<text x=\"{}\" y=\"{}\" font-family=\"{familia}Segoe UI, Helvetica, Arial, sans-serif\" font-size=\"{}\"{peso}{estilo} {} xml:space=\"preserve\">",
@@ -378,7 +386,11 @@ fn grano(
             exportar::base64(&exportar::png_rgba(lado, lado, &rgba))
         );
     }
-    let _ = writeln!(s, "<path d=\"{}\" fill=\"url(#{id})\"/>", de_tinta(contorno));
+    let _ = writeln!(
+        s,
+        "<path d=\"{}\" fill=\"url(#{id})\"/>",
+        de_tinta(contorno)
+    );
 }
 
 /// Un numero con cuatro decimales: la matriz de la tela es un giro por una
@@ -436,7 +448,11 @@ fn grafito(g: &crate::tinta::grafito::GrafitoSuelto, s: &mut String) {
 }
 
 /// La hoja entera como documento SVG.
-pub fn svg(hoja: &Hoja, opciones: OpcionesSvg, imagenes: &dyn Fn(u64) -> Option<Incrustada>) -> String {
+pub fn svg(
+    hoja: &Hoja,
+    opciones: OpcionesSvg,
+    imagenes: &dyn Fn(u64) -> Option<Incrustada>,
+) -> String {
     let (x0, y0, _, _) = hoja.caja;
     let (w, h) = (hoja.ancho(), hoja.alto());
     let mut s = String::with_capacity(4096 + hoja.ordenes.len() * 200);
@@ -470,7 +486,8 @@ pub fn svg(hoja: &Hoja, opciones: OpcionesSvg, imagenes: &dyn Fn(u64) -> Option<
             grafito(g, &mut s);
         }
         orden(o, hoja.caja, imagenes, &mut s);
-        if let (Some(g), Orden::Tinta { contorno, .. }) = (exportar::grano_de_la_orden(hoja, i), o) {
+        if let (Some(g), Orden::Tinta { contorno, .. }) = (exportar::grano_de_la_orden(hoja, i), o)
+        {
             grano(&g, contorno, &mut telas, &mut s);
         }
     }
@@ -573,10 +590,7 @@ mod pruebas {
             &hoja(vec![
                 Orden::Relleno {
                     puntos: vec![p(0.0, 0.0), p(10.0, 0.0), p(10.0, 10.0)],
-                    color: ColorRgba {
-                        a: 0.5,
-                        ..negro()
-                    },
+                    color: ColorRgba { a: 0.5, ..negro() },
                 },
                 Orden::Tinta {
                     contorno: vec![p(0.0, 0.0), p(4.0, 0.0), p(4.0, 4.0)],
@@ -633,7 +647,10 @@ mod pruebas {
         assert!(s.contains("transform=\"rotate(90 50 30)\""), "{s}");
         assert!(s.contains("stroke=\"#ffffff\""), "el halo: {s}");
         assert!(s.contains("stroke-width=\"4.4\""), "{s}");
-        assert!(s.contains("paint-order=\"stroke\""), "debajo de la letra: {s}");
+        assert!(
+            s.contains("paint-order=\"stroke\""),
+            "debajo de la letra: {s}"
+        );
         assert!(s.contains(">5,00 cm</text>"), "{s}");
     }
 
@@ -678,10 +695,22 @@ mod pruebas {
             recorte: None,
             angulo,
         };
-        let girada = svg(&hoja(vec![orden(std::f32::consts::FRAC_PI_2)]), OpcionesSvg::default(), &img);
-        assert!(girada.contains("<g transform=\"rotate(90 30 30)\"><image"), "{girada}");
-        assert!(girada.contains("/>
-</g>"), "el grupo se cierra: {girada}");
+        let girada = svg(
+            &hoja(vec![orden(std::f32::consts::FRAC_PI_2)]),
+            OpcionesSvg::default(),
+            &img,
+        );
+        assert!(
+            girada.contains("<g transform=\"rotate(90 30 30)\"><image"),
+            "{girada}"
+        );
+        assert!(
+            girada.contains(
+                "/>
+</g>"
+            ),
+            "el grupo se cierra: {girada}"
+        );
         let derecha = svg(&hoja(vec![orden(0.0)]), OpcionesSvg::default(), &img);
         assert!(!derecha.contains("rotate("), "{derecha}");
     }
@@ -710,7 +739,9 @@ mod pruebas {
     fn rayado(x: f32) -> crate::Elemento {
         crate::Elemento {
             figura: crate::Figura::Lapiz {
-                puntos: (0..20).map(|i| Punto2::nuevo(x + i as f32 * 5.0, 10.0)).collect(),
+                puntos: (0..20)
+                    .map(|i| Punto2::nuevo(x + i as f32 * 5.0, 10.0))
+                    .collect(),
                 presiones: Vec::new(),
                 opciones: Some(Default::default()),
             },
@@ -734,7 +765,11 @@ mod pruebas {
         assert!(s.contains("href=\"data:image/png;base64,iVBORw0KGgo"));
         // Girada 45 grados: el coseno y el seno iguales.
         let m = s.split("matrix(").nth(1).expect("matriz");
-        let v: Vec<f32> = m.split(' ').take(4).map(|x| x.parse().expect("numero")).collect();
+        let v: Vec<f32> = m
+            .split(' ')
+            .take(4)
+            .map(|x| x.parse().expect("numero"))
+            .collect();
         assert!((v[0] - v[1]).abs() < 1e-3 && (v[0] - v[3]).abs() < 1e-3 && v[2] < 0.0);
         // Caso negativo: la tinta lisa no lleva tela.
         let mut lisa = crate::Escena::nueva();
@@ -777,7 +812,9 @@ mod pruebas {
             "{s}"
         );
         // Caso negativo: un recorte roto pinta la imagen entera en su caja.
-        let Orden::Imagen { recorte, .. } = &o else { unreachable!() };
+        let Orden::Imagen { recorte, .. } = &o else {
+            unreachable!()
+        };
         let roto = Orden::Imagen {
             id_objeto: 7,
             x: 10.0,
@@ -785,11 +822,17 @@ mod pruebas {
             ancho: 30.0,
             alto: 30.0,
             opacidad: 1.0,
-            recorte: recorte.map(|r| crate::RecorteImagen { ancho_natural: 0.0, ..r }),
+            recorte: recorte.map(|r| crate::RecorteImagen {
+                ancho_natural: 0.0,
+                ..r
+            }),
             angulo: 0.0,
         };
         let s2 = svg(&hoja(vec![roto]), OpcionesSvg::default(), &img);
-        assert!(s2.contains("<image x=\"10\" y=\"20\" width=\"30\" height=\"30\""), "{s2}");
+        assert!(
+            s2.contains("<image x=\"10\" y=\"20\" width=\"30\" height=\"30\""),
+            "{s2}"
+        );
     }
 
     #[test]
@@ -799,7 +842,9 @@ mod pruebas {
         let mut escena = crate::escena::Escena::nueva();
         let raya = |material| Elemento {
             figura: Figura::Lapiz {
-                puntos: (0..60).map(|i| Punto2::nuevo(i as f32 * 3.0, 40.0 + (i % 7) as f32)).collect(),
+                puntos: (0..60)
+                    .map(|i| Punto2::nuevo(i as f32 * 3.0, 40.0 + (i % 7) as f32))
+                    .collect(),
                 presiones: Vec::new(),
                 opciones: Some(Default::default()),
             },

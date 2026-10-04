@@ -19,10 +19,10 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use windows::Win32::Media::MediaFoundation::{
     CLSID_MFMediaEngineClassFactory, IMFAttributes, IMFMediaEngine, IMFMediaEngineClassFactory,
-    IMFMediaEngineNotify, IMFMediaEngineNotify_Impl, MF_MEDIA_ENGINE_AUDIOONLY,
-    MF_MEDIA_ENGINE_AUDIO_ENDPOINT_ROLE, MF_MEDIA_ENGINE_CALLBACK, MF_MEDIA_ENGINE_EVENT, MF_MEDIA_ENGINE_EVENT_ENDED,
-    MF_MEDIA_ENGINE_EVENT_ERROR, MF_MEDIA_ENGINE_EVENT_LOADEDMETADATA, MF_VERSION,
-    MFCreateAttributes, MFSTARTUP_LITE, MFStartup,
+    IMFMediaEngineNotify, IMFMediaEngineNotify_Impl, MF_MEDIA_ENGINE_AUDIO_ENDPOINT_ROLE,
+    MF_MEDIA_ENGINE_AUDIOONLY, MF_MEDIA_ENGINE_CALLBACK, MF_MEDIA_ENGINE_EVENT,
+    MF_MEDIA_ENGINE_EVENT_ENDED, MF_MEDIA_ENGINE_EVENT_ERROR, MF_MEDIA_ENGINE_EVENT_LOADEDMETADATA,
+    MF_VERSION, MFCreateAttributes, MFSTARTUP_LITE, MFStartup,
 };
 use windows::Win32::System::Com::{
     CLSCTX_INPROC_SERVER, COINIT_APARTMENTTHREADED, CoCreateInstance, CoInitializeEx,
@@ -102,9 +102,11 @@ pub fn hay_salida_de_llamadas() -> bool {
     // y se suelta al salir del bloque. Solo se consulta.
     unsafe {
         let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
-        let Ok(e) =
-            CoCreateInstance::<_, IMMDeviceEnumerator>(&MMDeviceEnumerator, None, CLSCTX_INPROC_SERVER)
-        else {
+        let Ok(e) = CoCreateInstance::<_, IMMDeviceEnumerator>(
+            &MMDeviceEnumerator,
+            None,
+            CLSCTX_INPROC_SERVER,
+        ) else {
             return false;
         };
         e.GetDefaultAudioEndpoint(eRender, eCommunications).is_ok()
@@ -187,7 +189,10 @@ impl Salida {
                 // El papel de la salida por defecto que se usa: `eCommunications`
                 // es el aparato de llamadas que el usuario eligio en Windows.
                 atributos
-                    .SetUINT32(&MF_MEDIA_ENGINE_AUDIO_ENDPOINT_ROLE, eCommunications.0 as u32)
+                    .SetUINT32(
+                        &MF_MEDIA_ENGINE_AUDIO_ENDPOINT_ROLE,
+                        eCommunications.0 as u32,
+                    )
                     .map_err(en("pedir la salida de llamadas"))?;
             }
 
@@ -202,7 +207,9 @@ impl Salida {
                 .map_err(en("crear el motor de sonido"))?;
 
             motor.SetAutoPlay(false).map_err(en("quitar el autoplay"))?;
-            motor.SetLoop(en_bucle).map_err(en("poner o quitar el bucle"))?;
+            motor
+                .SetLoop(en_bucle)
+                .map_err(en("poner o quitar el bucle"))?;
 
             // Media Foundation admite una ruta de Windows tal cual como
             // origen; se pasa sin convertir a `file:///` para no tener que

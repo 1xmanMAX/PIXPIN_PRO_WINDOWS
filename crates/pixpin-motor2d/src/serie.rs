@@ -79,7 +79,6 @@ pub fn nuevo(
     .con_caja(x, y, ancho, alto)
 }
 
-
 /// El numero mide el radio por esto (`SERIAL_TEXT_RATIO = 1.25`).
 pub const TEXTO_POR_RADIO: f32 = 1.25;
 
@@ -203,7 +202,10 @@ mod pruebas {
         let amarillo = tinta_sobre(ColorRgba::opaco(1.0, 0.85, 0.0));
         assert_eq!((amarillo.r, amarillo.g, amarillo.b), (0.0, 0.0, 0.0));
         // Con la transparencia del disco.
-        let medio = tinta_sobre(ColorRgba { a: 0.5, ..ColorRgba::opaco(0.0, 0.0, 0.0) });
+        let medio = tinta_sobre(ColorRgba {
+            a: 0.5,
+            ..ColorRgba::opaco(0.0, 0.0, 0.0)
+        });
         assert_eq!(medio.a, 0.5);
     }
 

@@ -95,7 +95,10 @@ pub fn guardar(
                 h.nota = Some(texto.to_string());
                 let id = h.id.clone();
                 p.tocado = p.tocado.max(ahora);
-                escribir_atomico(&carpeta.join("notas").join(format!("{id}.md")), texto.as_bytes())?;
+                escribir_atomico(
+                    &carpeta.join("notas").join(format!("{id}.md")),
+                    texto.as_bytes(),
+                )?;
                 escribir_atomico(
                     &carpeta.join("proyecto.json"),
                     &serde_json::to_vec_pretty(&p).map_err(std::io::Error::other)?,
@@ -127,12 +130,20 @@ pub fn guardar(
                     ..Default::default()
                 });
                 p.tocado = p.tocado.max(ahora);
-                escribir_atomico(&carpeta.join("notas").join(format!("{id}.md")), texto.as_bytes())?;
+                escribir_atomico(
+                    &carpeta.join("notas").join(format!("{id}.md")),
+                    texto.as_bytes(),
+                )?;
                 escribir_atomico(
                     &carpeta.join("proyecto.json"),
                     &serde_json::to_vec_pretty(&p).map_err(std::io::Error::other)?,
                 )?;
-                tocar_ficha(raiz, proyecto, ahora, Some(pixpin_docs::md_vivo::titulo(texto)))?;
+                tocar_ficha(
+                    raiz,
+                    proyecto,
+                    ahora,
+                    Some(pixpin_docs::md_vivo::titulo(texto)),
+                )?;
                 return Ok(Destino::Mensaje {
                     proyecto: proyecto.clone(),
                     codigo: uid,
@@ -153,7 +164,12 @@ pub fn guardar(
             );
             std::fs::create_dir_all(&carpeta)?;
             cuaderno::anadir(&carpeta, &m)?;
-            tocar_ficha(raiz, proyecto, ahora, Some(pixpin_docs::md_vivo::titulo(texto)))?;
+            tocar_ficha(
+                raiz,
+                proyecto,
+                ahora,
+                Some(pixpin_docs::md_vivo::titulo(texto)),
+            )?;
             Ok(Destino::Mensaje {
                 proyecto: proyecto.clone(),
                 codigo: m.codigo_unico(),
@@ -164,7 +180,12 @@ pub fn guardar(
 
 /// La ficha del proyecto en el indice: cuando se toco y, al crear, el
 /// resumen que ensena la lista (como hace el chat al crear un lienzo).
-fn tocar_ficha(raiz: &Path, proyecto: &str, ahora: i64, resumen: Option<String>) -> std::io::Result<()> {
+fn tocar_ficha(
+    raiz: &Path,
+    proyecto: &str,
+    ahora: i64,
+    resumen: Option<String>,
+) -> std::io::Result<()> {
     let mut indice = almacen::Indice::leer(raiz);
     if let Some(f) = indice.proyectos.iter_mut().find(|f| f.id == proyecto) {
         f.tocado = f.tocado.max(ahora);
@@ -241,7 +262,8 @@ mod pruebas {
         assert_eq!(leer_texto(&c.0, &d).as_deref(), Some("vieja"));
         guardar(&c.0, &d, "**nueva**", "K7Q2", 99).unwrap();
         let p: serde_json::Value =
-            serde_json::from_str(&std::fs::read_to_string(dir.join("proyecto.json")).unwrap()).unwrap();
+            serde_json::from_str(&std::fs::read_to_string(dir.join("proyecto.json")).unwrap())
+                .unwrap();
         assert_eq!(p["hojas"][0]["nota"], "**nueva**");
         // Lo que el PC no entiende viaja igual: guardar no lo pierde.
         assert_eq!(p["hojas"][0]["queSeYo"], 7);
@@ -324,7 +346,8 @@ mod pruebas {
         };
         let despues = guardar(&c.0, &d, "# Portada", "K7Q2", 777).unwrap();
         let p: pixpin_proyecto::Proyecto =
-            serde_json::from_str(&std::fs::read_to_string(dir.join("proyecto.json")).unwrap()).unwrap();
+            serde_json::from_str(&std::fs::read_to_string(dir.join("proyecto.json")).unwrap())
+                .unwrap();
         assert_eq!(p.hojas.len(), 2);
         let h = &p.hojas[1];
         assert_eq!(h.id, "n-777");

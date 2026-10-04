@@ -45,7 +45,8 @@ pub(crate) struct MapaDelHalo {
 /// como mucho) y el mismo mapa valga mientras no se acerque o aleje. Es la
 /// clave de la cache junto al grosor y el color.
 pub(crate) fn nivel_de(escala: f32) -> Option<i32> {
-    (escala.is_finite() && escala > 0.0).then(|| (escala.log2() * 8.0).ceil().clamp(-64.0, 64.0) as i32)
+    (escala.is_finite() && escala > 0.0)
+        .then(|| (escala.log2() * 8.0).ceil().clamp(-64.0, 64.0) as i32)
 }
 
 fn escala_del_nivel(nivel: i32) -> f32 {
@@ -99,12 +100,25 @@ pub(crate) fn hacer_mapa(
     unsafe {
         let destino = motor
             .contexto()
-            .CreateCompatibleRenderTarget(Some(&dip), Some(&px), None, D2D1_COMPATIBLE_RENDER_TARGET_OPTIONS_NONE)
+            .CreateCompatibleRenderTarget(
+                Some(&dip),
+                Some(&px),
+                None,
+                D2D1_COMPATIBLE_RENDER_TARGET_OPTIONS_NONE,
+            )
             .ok()?;
         destino.SetTextAntialiasMode(D2D1_TEXT_ANTIALIAS_MODE_GRAYSCALE);
         destino.BeginDraw();
         destino.SetTransform(&Matrix3x2::identity());
-        destino.Clear(Some(&Color { r: 0.0, g: 0.0, b: 0.0, a: 0.0 }.a_d2d()));
+        destino.Clear(Some(
+            &Color {
+                r: 0.0,
+                g: 0.0,
+                b: 0.0,
+                a: 0.0,
+            }
+            .a_d2d(),
+        ));
         for (n, r) in [(16, radio), (8, radio / 2.0)] {
             for i in 0..n {
                 let a = i as f32 * std::f32::consts::TAU / n as f32;
@@ -156,8 +170,18 @@ mod pruebas {
             interlineado: None,
         };
         let ms = |t: Instant| t.elapsed().as_secs_f64() * 1000.0;
-        let negro = Color { r: 0.0, g: 0.0, b: 0.0, a: 1.0 };
-        let blanco = Color { r: 1.0, g: 1.0, b: 1.0, a: 1.0 };
+        let negro = Color {
+            r: 0.0,
+            g: 0.0,
+            b: 0.0,
+            a: 1.0,
+        };
+        let blanco = Color {
+            r: 1.0,
+            g: 1.0,
+            b: 1.0,
+            a: 1.0,
+        };
         let pasadas = |que: &str, f: &dyn Fn(&crate::lienzo::Pintor)| {
             let t = Instant::now();
             for _ in 0..30 {
@@ -166,7 +190,10 @@ mod pruebas {
                         p.limpiar(blanco);
                         p.poner_vista((0.0, 0.0), 0.6, (0.0, 0.0));
                         for i in 0..20 {
-                            let (cx, cy) = (100.0 + (i % 5) as f32 * 220.0, 100.0 + (i / 5) as f32 * 180.0);
+                            let (cx, cy) = (
+                                100.0 + (i % 5) as f32 * 220.0,
+                                100.0 + (i / 5) as f32 * 180.0,
+                            );
                             p.girado((cx, cy), 0.3, |p| f(p));
                         }
                     })
@@ -175,14 +202,36 @@ mod pruebas {
             println!("{que}: {:.3} ms por fotograma de 20 girados", ms(t) / 30.0);
         };
         pasadas("24 copias + letra", &|p| {
-            p.texto_con_halo_de_copias_para_medir("3,48 cm · -17°", 300.0, 200.0, 20.0, &letra, negro, 4.4)
+            p.texto_con_halo_de_copias_para_medir(
+                "3,48 cm · -17°",
+                300.0,
+                200.0,
+                20.0,
+                &letra,
+                negro,
+                4.4,
+            )
         });
         pasadas("mapa + letra", &|p| {
-            p.texto_con_halo("3,48 cm · -17°", 300.0, 200.0, 20.0, &letra, negro, blanco, 4.4)
+            p.texto_con_halo(
+                "3,48 cm · -17°",
+                300.0,
+                200.0,
+                20.0,
+                &letra,
+                negro,
+                blanco,
+                4.4,
+            )
         });
-        let (d, w, h) =
-            crate::letras::disposicion(motor.dwrite(), "3,48 cm · -17°", 20.0, crate::letras::SIN_PARTIR, &letra)
-                .unwrap();
+        let (d, w, h) = crate::letras::disposicion(
+            motor.dwrite(),
+            "3,48 cm · -17°",
+            20.0,
+            crate::letras::SIN_PARTIR,
+            &letra,
+        )
+        .unwrap();
         let _ = motor.dibujar(&destino, |_| {
             let t = Instant::now();
             for _ in 0..20 {

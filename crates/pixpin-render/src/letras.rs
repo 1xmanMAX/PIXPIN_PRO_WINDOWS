@@ -73,21 +73,48 @@ const FICHEROS: [(&str, &[u8]); 16] = [
     ("Excalifont", include_bytes!("../letras/excalifont.woff2")),
     ("Nunito", include_bytes!("../letras/nunito.woff2")),
     ("Lilita One", include_bytes!("../letras/lilita-one.woff2")),
-    ("Comic Shanns", include_bytes!("../letras/comic-shanns.woff2")),
+    (
+        "Comic Shanns",
+        include_bytes!("../letras/comic-shanns.woff2"),
+    ),
     ("Work Sans", include_bytes!("../letras/work-sans-400.woff2")),
     ("Fraunces", include_bytes!("../letras/fraunces-600.woff2")),
     ("Caveat", include_bytes!("../letras/caveat-500.woff2")),
     ("Caveat", include_bytes!("../letras/caveat-700.woff2")),
     // Las cuatro caras que trae Android de su serif (y las mismas de Roboto):
     // pedir 600 u 800 cae en la 700 aqui como alli.
-    ("Noto Serif", include_bytes!("../letras/noto-serif-400-normal.woff2")),
-    ("Noto Serif", include_bytes!("../letras/noto-serif-700-normal.woff2")),
-    ("Noto Serif", include_bytes!("../letras/noto-serif-400-italic.woff2")),
-    ("Noto Serif", include_bytes!("../letras/noto-serif-700-italic.woff2")),
-    ("Roboto", include_bytes!("../letras/roboto-400-normal.woff2")),
-    ("Roboto", include_bytes!("../letras/roboto-700-normal.woff2")),
-    ("Roboto", include_bytes!("../letras/roboto-400-italic.woff2")),
-    ("Roboto", include_bytes!("../letras/roboto-700-italic.woff2")),
+    (
+        "Noto Serif",
+        include_bytes!("../letras/noto-serif-400-normal.woff2"),
+    ),
+    (
+        "Noto Serif",
+        include_bytes!("../letras/noto-serif-700-normal.woff2"),
+    ),
+    (
+        "Noto Serif",
+        include_bytes!("../letras/noto-serif-400-italic.woff2"),
+    ),
+    (
+        "Noto Serif",
+        include_bytes!("../letras/noto-serif-700-italic.woff2"),
+    ),
+    (
+        "Roboto",
+        include_bytes!("../letras/roboto-400-normal.woff2"),
+    ),
+    (
+        "Roboto",
+        include_bytes!("../letras/roboto-700-normal.woff2"),
+    ),
+    (
+        "Roboto",
+        include_bytes!("../letras/roboto-400-italic.woff2"),
+    ),
+    (
+        "Roboto",
+        include_bytes!("../letras/roboto-700-italic.woff2"),
+    ),
 ];
 
 /// La letra de reserva: la de siempre de Windows, y la que se usa si la
@@ -186,9 +213,11 @@ fn montar(dwrite: &IDWriteFactory) -> Option<Propias> {
         let constructor = f5.CreateFontSetBuilder().ok()?;
         let mut alguna = false;
         for (_, datos) in FICHEROS {
-            let Ok(flujo) =
-                f5.UnpackFontFile(DWRITE_CONTAINER_TYPE_WOFF2, datos.as_ptr().cast(), datos.len() as u32)
-            else {
+            let Ok(flujo) = f5.UnpackFontFile(
+                DWRITE_CONTAINER_TYPE_WOFF2,
+                datos.as_ptr().cast(),
+                datos.len() as u32,
+            ) else {
                 continue;
             };
             let Ok(largo) = flujo.GetFileSize() else {
@@ -220,8 +249,11 @@ fn montar(dwrite: &IDWriteFactory) -> Option<Propias> {
             return None;
         }
         let juego = constructor.CreateFontSet().ok()?;
-        let coleccion: IDWriteFontCollection =
-            f5.CreateFontCollectionFromFontSet(&juego).ok()?.cast().ok()?;
+        let coleccion: IDWriteFontCollection = f5
+            .CreateFontCollectionFromFontSet(&juego)
+            .ok()?
+            .cast()
+            .ok()?;
         Some(Propias {
             coleccion,
             alturas: RefCell::new(HashMap::new()),
@@ -274,7 +306,10 @@ pub fn nombres_cargados() -> Vec<String> {
 /// dice pesar 1 en la tabla OS/2 del woff2 de Fontsource, y pidiendo 400
 /// DirectWrite la descarta por la 700 (lo mide la prueba de abajo). Pidiendo
 /// 100 la mas cercana es esa 500, que es la «Manuscrita» del lienzo de citas.
-fn peso_de(familia: &str, negrita: bool) -> windows::Win32::Graphics::DirectWrite::DWRITE_FONT_WEIGHT {
+fn peso_de(
+    familia: &str,
+    negrita: bool,
+) -> windows::Win32::Graphics::DirectWrite::DWRITE_FONT_WEIGHT {
     if negrita {
         DWRITE_FONT_WEIGHT_BOLD
     } else if familia.trim().eq_ignore_ascii_case("Caveat") {
@@ -312,7 +347,11 @@ fn alturas_de(
         let cara = coleccion
             .GetFontFamily(indice)
             .ok()?
-            .GetFirstMatchingFont(peso_de(familia, negrita), DWRITE_FONT_STRETCH_NORMAL, estilo(cursiva))
+            .GetFirstMatchingFont(
+                peso_de(familia, negrita),
+                DWRITE_FONT_STRETCH_NORMAL,
+                estilo(cursiva),
+            )
             .ok()?;
         let mut m = DWRITE_FONT_METRICS::default();
         cara.GetMetrics(&mut m);
@@ -324,7 +363,11 @@ fn alturas_de(
 /// **El formato de texto de una letra**: la familia buscada en la coleccion
 /// propia si es de las nuestras, en la del sistema si no, y Segoe UI si la
 /// propia no se pudo montar.
-pub(crate) fn formato(dwrite: &IDWriteFactory, letra: &Letra, tam: f32) -> Option<IDWriteTextFormat> {
+pub(crate) fn formato(
+    dwrite: &IDWriteFactory,
+    letra: &Letra,
+    tam: f32,
+) -> Option<IDWriteTextFormat> {
     let propia = es_propia(letra.familia);
     con_propias(dwrite, |p| {
         let (nombre, coleccion): (&str, Option<&IDWriteFontCollection>) = match (propia, p) {
@@ -397,7 +440,11 @@ pub(crate) fn formato_con_peso(
             (true, None) => (LETRA_DEL_SISTEMA, None),
             (false, _) => (familia, None),
         };
-        let nombre = if nombre.trim().is_empty() { LETRA_DEL_SISTEMA } else { nombre };
+        let nombre = if nombre.trim().is_empty() {
+            LETRA_DEL_SISTEMA
+        } else {
+            nombre
+        };
         // SAFETY: cadenas propias vivas durante la llamada; el formato copia
         // el nombre y guarda su propia referencia a la coleccion.
         let formato = unsafe {
@@ -405,7 +452,9 @@ pub(crate) fn formato_con_peso(
                 .CreateTextFormat(
                     &HSTRING::from(nombre),
                     coleccion,
-                    windows::Win32::Graphics::DirectWrite::DWRITE_FONT_WEIGHT(i32::from(peso.clamp(1, 999))),
+                    windows::Win32::Graphics::DirectWrite::DWRITE_FONT_WEIGHT(i32::from(
+                        peso.clamp(1, 999),
+                    )),
                     estilo(cursiva),
                     DWRITE_FONT_STRETCH_NORMAL,
                     tam.max(0.01),
@@ -414,7 +463,12 @@ pub(crate) fn formato_con_peso(
                 .ok()?
         };
         let negrita = peso >= 600;
-        let letra = Letra { familia: nombre, negrita, cursiva, interlineado: None };
+        let letra = Letra {
+            familia: nombre,
+            negrita,
+            cursiva,
+            interlineado: None,
+        };
         let alturas = match (coleccion, p) {
             (Some(c), Some(p)) => *p
                 .alturas
@@ -516,19 +570,29 @@ pub fn ficheros_llanos(familia: &str) -> Vec<Vec<u8>> {
         return Vec::new();
     };
     let mut sal = Vec::new();
-    for (_, datos) in FICHEROS.iter().filter(|(f, _)| f.eq_ignore_ascii_case(familia.trim())) {
+    for (_, datos) in FICHEROS
+        .iter()
+        .filter(|(f, _)| f.eq_ignore_ascii_case(familia.trim()))
+    {
         // SAFETY: el woff2 es una rebanada `'static`; el fragmento que presta
         // DirectWrite se copia y se devuelve antes de soltar el flujo.
         unsafe {
-            let Ok(flujo) = f5.UnpackFontFile(DWRITE_CONTAINER_TYPE_WOFF2, datos.as_ptr().cast(), datos.len() as u32)
-            else {
+            let Ok(flujo) = f5.UnpackFontFile(
+                DWRITE_CONTAINER_TYPE_WOFF2,
+                datos.as_ptr().cast(),
+                datos.len() as u32,
+            ) else {
                 continue;
             };
             let Ok(largo) = flujo.GetFileSize() else {
                 continue;
             };
             let (mut trozo, mut contexto) = (std::ptr::null_mut(), std::ptr::null_mut());
-            if flujo.ReadFileFragment(&mut trozo, 0, largo, &mut contexto).is_err() || trozo.is_null() {
+            if flujo
+                .ReadFileFragment(&mut trozo, 0, largo, &mut contexto)
+                .is_err()
+                || trozo.is_null()
+            {
                 continue;
             }
             sal.push(std::slice::from_raw_parts(trozo as *const u8, largo as usize).to_vec());
@@ -539,7 +603,13 @@ pub fn ficheros_llanos(familia: &str) -> Vec<Vec<u8>> {
 }
 
 /// Cuanto sale la tinta por la derecha de un texto de ancho `ancho`.
-fn sobresale(dwrite: &IDWriteFactory, texto: &str, tam: f32, letra: &Letra, ancho: f32) -> Option<f32> {
+fn sobresale(
+    dwrite: &IDWriteFactory,
+    texto: &str,
+    tam: f32,
+    letra: &Letra,
+    ancho: f32,
+) -> Option<f32> {
     let formato = formato(dwrite, letra, tam)?;
     let contenido: Vec<u16> = texto.encode_utf16().collect();
     // SAFETY: la disposicion copia el texto; formato vivo.
@@ -566,7 +636,9 @@ mod pruebas {
         let cargadas = nombres_cargados();
         for f in FAMILIAS_PROPIAS {
             assert!(
-                cargadas.iter().any(|c| c.eq_ignore_ascii_case(nombre_real(f))),
+                cargadas
+                    .iter()
+                    .any(|c| c.eq_ignore_ascii_case(nombre_real(f))),
                 "{f} no esta; se cargaron {cargadas:?}"
             );
         }
@@ -641,7 +713,11 @@ mod pruebas {
             })
         };
         assert_eq!(peso_elegido(true), 700);
-        assert_ne!(peso_elegido(false), 700, "la normal salio con la cara gorda");
+        assert_ne!(
+            peso_elegido(false),
+            700,
+            "la normal salio con la cara gorda"
+        );
     }
 
     #[test]

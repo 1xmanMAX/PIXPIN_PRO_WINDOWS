@@ -51,7 +51,9 @@ fn texto(t: &str, x: f32, y: f32, trazo: ColorRgba) -> Elemento {
 }
 
 fn raya(x: f32, y: f32, trazo: ColorRgba) -> Elemento {
-    let puntos: Vec<Punto2> = (0..30).map(|i| Punto2::nuevo(i as f32 * 10.0, (i as f32 * 0.4).sin() * 20.0)).collect();
+    let puntos: Vec<Punto2> = (0..30)
+        .map(|i| Punto2::nuevo(i as f32 * 10.0, (i as f32 * 0.4).sin() * 20.0))
+        .collect();
     Elemento {
         figura: Figura::Lapiz {
             puntos,
@@ -81,10 +83,16 @@ fn escena_de(papel: ColorRgba) -> Escena {
 
 /// Un almacen con un proyecto y el lienzo `escena` en un mensaje de dibujo.
 fn almacen_con(etiqueta: &str, escena: &Escena) -> (Ubicacion, PathBuf, Mensaje) {
-    let raiz = std::env::temp_dir().join(format!("pixpin-papel-vista-{etiqueta}-{}", std::process::id()));
+    let raiz = std::env::temp_dir().join(format!(
+        "pixpin-papel-vista-{etiqueta}-{}",
+        std::process::id()
+    ));
     let _ = std::fs::remove_dir_all(&raiz);
     std::fs::create_dir_all(pixpin_proyecto::almacen::carpeta(&raiz, "p").join("lienzos")).unwrap();
-    let l = pixpin_motor2d::excalidraw::con_escena(&pixpin_motor2d::excalidraw::Lienzo::vacio(), escena);
+    let l = pixpin_motor2d::excalidraw::con_escena(
+        &pixpin_motor2d::excalidraw::Lienzo::vacio(),
+        escena,
+    );
     std::fs::write(
         pixpin_proyecto::almacen::lienzo(&raiz, "p", "dib-1"),
         pixpin_motor2d::excalidraw::escribir(&l),
@@ -133,12 +141,17 @@ fn la_vista_previa_de_un_lienzo_de_pizarra_tiene_su_papel_negro_y_la_letra_clara
     let (u, raiz, m) = almacen_con("pizarra", &escena_de(hex(0x000000)));
     let v = vista_de(&u, &m);
     let p = v.papel.expect("con su papel");
-    assert!(p.r < 0.01 && p.g < 0.01 && p.b < 0.01, "el papel negro del lienzo: {p:?}");
+    assert!(
+        p.r < 0.01 && p.g < 0.01 && p.b < 0.01,
+        "el papel negro del lienzo: {p:?}"
+    );
     let textos = colores_de_texto(&v.ordenes);
     assert_eq!(textos.len(), 2);
     // La negra guardada sale clara, la misma que pinta el editor con ese
     // papel; y la blanca sigue blanca (no pasa a negra).
-    let en_el_editor = crate::dibujo::tema::con_papel(Some(hex(0x000000)), || crate::dibujo::tema::tinta(hex(0x1e1e1e)));
+    let en_el_editor = crate::dibujo::tema::con_papel(Some(hex(0x000000)), || {
+        crate::dibujo::tema::tinta(hex(0x1e1e1e))
+    });
     assert_eq!(textos[0], en_el_editor);
     assert!(claro(textos[0]) && claro(textos[1]), "{textos:?}");
     // Y la raya a mano, tambien.
@@ -186,7 +199,9 @@ fn carpeta() -> PathBuf {
 
 /// Cuantos pixeles claros (los tres canales por encima de 200) hay.
 fn claros(px: &[u8]) -> usize {
-    px.chunks_exact(4).filter(|p| p[0] > 200 && p[1] > 200 && p[2] > 200).count()
+    px.chunks_exact(4)
+        .filter(|p| p[0] > 200 && p[1] > 200 && p[2] > 200)
+        .count()
 }
 
 /// Pega varias imagenes en fila, con un filo gris entre ellas.
@@ -199,11 +214,16 @@ fn en_fila(imgs: &[&pixpin_codec::ImagenRgba]) -> pixpin_codec::ImagenRgba {
         for y in 0..i.alto {
             let o = ((y * i.ancho) * 4) as usize;
             let d = ((y * ancho + x0) * 4) as usize;
-            px[d..d + (i.ancho * 4) as usize].copy_from_slice(&i.pixeles[o..o + (i.ancho * 4) as usize]);
+            px[d..d + (i.ancho * 4) as usize]
+                .copy_from_slice(&i.pixeles[o..o + (i.ancho * 4) as usize]);
         }
         x0 += i.ancho + 8;
     }
-    pixpin_codec::ImagenRgba { ancho, alto, pixeles: px }
+    pixpin_codec::ImagenRgba {
+        ancho,
+        alto,
+        pixeles: px,
+    }
 }
 
 /// El lienzo tal como lo pinta el editor: su camino de pintado
@@ -233,7 +253,9 @@ fn como_la_vista_previa(v: &LienzoVisto, (ancho, alto): (u32, u32)) -> pixpin_co
     let dispositivo = pixpin_capture::Dispositivo::nuevo().expect("GPU real");
     let d3d = dispositivo.d3d().clone();
     let motor = pixpin_render::MotorRender::nuevo(&d3d).expect("motor");
-    let destino = pixpin_render::fuera_de_pantalla::FueraDePantalla::nuevo(&motor, &d3d, ancho, alto).expect("destino");
+    let destino =
+        pixpin_render::fuera_de_pantalla::FueraDePantalla::nuevo(&motor, &d3d, ancho, alto)
+            .expect("destino");
     let hoja = pixpin_render::RectF {
         x: 0.0,
         y: 0.0,
@@ -248,13 +270,21 @@ fn como_la_vista_previa(v: &LienzoVisto, (ancho, alto): (u32, u32)) -> pixpin_co
         })
         .expect("pintar");
     let (ancho, alto, pixeles) = destino.leer_rgba().expect("leer");
-    pixpin_codec::ImagenRgba { ancho, alto, pixeles }
+    pixpin_codec::ImagenRgba {
+        ancho,
+        alto,
+        pixeles,
+    }
 }
 
 #[test]
 #[ignore = "necesita GPU; genera PNG para mirarlos"]
 fn muestra_del_lienzo_y_su_vista_previa() {
-    for (nombre, papel) in [("pizarra", 0x000000), ("azul-noche", 0x14213d), ("blanco", 0xffffff)] {
+    for (nombre, papel) in [
+        ("pizarra", 0x000000),
+        ("azul-noche", 0x14213d),
+        ("blanco", 0xffffff),
+    ] {
         let escena = escena_de(hex(papel));
         let editor = como_el_editor(&escena);
         let (u, raiz, m) = almacen_con(nombre, &escena);
@@ -267,7 +297,12 @@ fn muestra_del_lienzo_y_su_vista_previa() {
             claros(&editor.pixeles) as f32 / (editor.ancho * editor.alto) as f32,
             claros(&previa.pixeles) as f32 / (previa.ancho * previa.alto) as f32,
         );
-        println!("{nombre}: {} | claros editor {:.3} previa {:.3}", ruta.display(), ce, cp);
+        println!(
+            "{nombre}: {} | claros editor {:.3} previa {:.3}",
+            ruta.display(),
+            ce,
+            cp
+        );
         // El papel del centro de una esquina: el del lienzo en los dos.
         let esquina = |i: &pixpin_codec::ImagenRgba| {
             let k = ((10 * i.ancho + 10) * 4) as usize;
@@ -275,12 +310,18 @@ fn muestra_del_lienzo_y_su_vista_previa() {
         };
         let (pe, pp) = (esquina(&editor), esquina(&previa));
         for c in 0..3 {
-            assert!((pe[c] as i32 - pp[c] as i32).abs() <= 3, "{nombre}: papel {pe:?} vs {pp:?}");
+            assert!(
+                (pe[c] as i32 - pp[c] as i32).abs() <= 3,
+                "{nombre}: papel {pe:?} vs {pp:?}"
+            );
         }
         // Lo claro ocupa lo mismo (proporcion del area) en los dos: con la
         // letra negra en la previa, en la pizarra saldria casi nada.
         if papel != 0xffffff {
-            assert!(cp > 0.02 && (cp - ce).abs() < ce * 0.5, "{nombre}: editor {ce} previa {cp}");
+            assert!(
+                cp > 0.02 && (cp - ce).abs() < ce * 0.5,
+                "{nombre}: editor {ce} previa {cp}"
+            );
         }
         let _ = std::fs::remove_dir_all(&raiz);
     }

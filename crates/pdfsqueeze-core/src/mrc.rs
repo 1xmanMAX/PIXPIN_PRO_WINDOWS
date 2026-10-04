@@ -34,7 +34,11 @@ impl MrcLayers {
 
 fn otsu(hist: &[u64; 256]) -> u8 {
     let total: u64 = hist.iter().sum();
-    let sum_all: f64 = hist.iter().enumerate().map(|(i, &c)| i as f64 * c as f64).sum();
+    let sum_all: f64 = hist
+        .iter()
+        .enumerate()
+        .map(|(i, &c)| i as f64 * c as f64)
+        .sum();
     let (mut w_b, mut sum_b, mut best, mut thr) = (0u64, 0f64, 0f64, 128u8);
     for t in 0..256 {
         w_b += hist[t];
@@ -105,7 +109,10 @@ pub fn segment(luma: &[u8], w: usize, h: usize) -> Vec<u8> {
     for y in 1..h.saturating_sub(1) {
         for x in 1..w.saturating_sub(1) {
             if mask[y * w + x] == 1 {
-                let n = mask[(y - 1) * w + x] + mask[(y + 1) * w + x] + mask[y * w + x - 1] + mask[y * w + x + 1];
+                let n = mask[(y - 1) * w + x]
+                    + mask[(y + 1) * w + x]
+                    + mask[y * w + x - 1]
+                    + mask[y * w + x + 1];
                 if n == 0 {
                     clean[y * w + x] = 0;
                 }
@@ -136,7 +143,17 @@ pub fn build(img: &RawImage, opts: &Options, effort: Effort) -> Option<MrcLayers
     let keep = Integral::new(|x, y| 1 - mask[y * w + x] as u32, w, h);
     let mut chan_integrals = Vec::with_capacity(ch);
     for c in 0..ch {
-        chan_integrals.push(Integral::new(|x, y| if mask[y * w + x] == 0 { img.data[(y * w + x) * ch + c] as u32 } else { 0 }, w, h));
+        chan_integrals.push(Integral::new(
+            |x, y| {
+                if mask[y * w + x] == 0 {
+                    img.data[(y * w + x) * ch + c] as u32
+                } else {
+                    0
+                }
+            },
+            w,
+            h,
+        ));
     }
     let mut bg = img.data.clone();
     const R: usize = 10;
@@ -145,10 +162,19 @@ pub fn build(img: &RawImage, opts: &Options, effort: Effort) -> Option<MrcLayers
             if mask[y * w + x] == 0 {
                 continue;
             }
-            let (x0, y0, x1, y1) = (x.saturating_sub(R), y.saturating_sub(R), (x + R + 1).min(w), (y + R + 1).min(h));
+            let (x0, y0, x1, y1) = (
+                x.saturating_sub(R),
+                y.saturating_sub(R),
+                (x + R + 1).min(w),
+                (y + R + 1).min(h),
+            );
             let n = keep.sum(x0, y0, x1, y1);
             for c in 0..ch {
-                bg[(y * w + x) * ch + c] = if n == 0 { 255 } else { (chan_integrals[c].sum(x0, y0, x1, y1) / n) as u8 };
+                bg[(y * w + x) * ch + c] = if n == 0 {
+                    255
+                } else {
+                    (chan_integrals[c].sum(x0, y0, x1, y1) / n) as u8
+                };
             }
         }
     }
@@ -158,7 +184,10 @@ pub fn build(img: &RawImage, opts: &Options, effort: Effort) -> Option<MrcLayers
     // derived from it. Holes are filled by propagation so JPEG has no edges
     // to ring against.
     let fg_base_scale = 4u32;
-    let (fw, fh) = ((img.width / fg_base_scale).max(8), (img.height / fg_base_scale).max(8));
+    let (fw, fh) = (
+        (img.width / fg_base_scale).max(8),
+        (img.height / fg_base_scale).max(8),
+    );
     let mut fg = vec![0u8; (fw * fh) as usize * ch];
     let mut filled = vec![false; (fw * fh) as usize];
     for by in 0..fh as usize {
@@ -186,7 +215,13 @@ pub fn build(img: &RawImage, opts: &Options, effort: Effort) -> Option<MrcLayers
     let fwu = fw as usize;
     for i in 0..filled.len() {
         if !filled[i] {
-            let src = if i % fwu > 0 && filled[i - 1] { Some(i - 1) } else if i >= fwu && filled[i - fwu] { Some(i - fwu) } else { None };
+            let src = if i % fwu > 0 && filled[i - 1] {
+                Some(i - 1)
+            } else if i >= fwu && filled[i - fwu] {
+                Some(i - fwu)
+            } else {
+                None
+            };
             if let Some(s) = src {
                 for c in 0..ch {
                     fg[i * ch + c] = fg[s * ch + c];
@@ -197,7 +232,13 @@ pub fn build(img: &RawImage, opts: &Options, effort: Effort) -> Option<MrcLayers
     }
     for i in (0..filled.len()).rev() {
         if !filled[i] {
-            let src = if i % fwu < fwu - 1 && filled[i + 1] { Some(i + 1) } else if i + fwu < filled.len() && filled[i + fwu] { Some(i + fwu) } else { None };
+            let src = if i % fwu < fwu - 1 && filled[i + 1] {
+                Some(i + 1)
+            } else if i + fwu < filled.len() && filled[i + fwu] {
+                Some(i + fwu)
+            } else {
+                None
+            };
             match src {
                 Some(s) => {
                     for c in 0..ch {
@@ -213,12 +254,22 @@ pub fn build(img: &RawImage, opts: &Options, effort: Effort) -> Option<MrcLayers
             filled[i] = true;
         }
     }
-    let fg_base = RawImage { width: fw, height: fh, channels: img.channels, data: fg, cs: img.cs, is_mask: false, orig_bpc: 8, lossy_decode: false };
+    let fg_base = RawImage {
+        width: fw,
+        height: fh,
+        channels: img.channels,
+        data: fg,
+        cs: img.cs,
+        is_mask: false,
+        orig_bpc: 8,
+        lossy_decode: false,
+    };
     let t_fg = t0.elapsed().as_millis();
 
     // Mask layer: exact bilevel, race JBIG2 vs G4 vs Flate.
     let mask_gray: Vec<u8> = mask.iter().map(|&m| if m == 1 { 255 } else { 0 }).collect();
-    let mut mask_enc = encode::bilevel_flate(&mask_gray, img.width, img.height, Effort::fast(), false);
+    let mut mask_enc =
+        encode::bilevel_flate(&mask_gray, img.width, img.height, Effort::fast(), false);
     if let Some(g4) = encode::ccitt_g4(&mask_gray, img.width, img.height, false) {
         if g4.len() < mask_enc.len() {
             mask_enc = g4;
@@ -231,31 +282,105 @@ pub fn build(img: &RawImage, opts: &Options, effort: Effort) -> Option<MrcLayers
     }
     encode::squeeze(&mut mask_enc, effort);
     mask_enc.raw = None;
-    log::debug!("mrc {}x{}: segment {} | bg fill {} | fg {} | mask {} ms (cumulative)", img.width, img.height, t_seg, t_bg, t_fg, t0.elapsed().as_millis());
+    log::debug!(
+        "mrc {}x{}: segment {} | bg fill {} | fg {} | mask {} ms (cumulative)",
+        img.width,
+        img.height,
+        t_seg,
+        t_bg,
+        t_fg,
+        t0.elapsed().as_millis()
+    );
 
     let cs = encode::cs_object(img.cs);
     let target = (opts.min_ssim - opts.mrc_ssim_slack).max(0.5);
     // Reference plane for the gate (see images::race::Reference).
     let cap = 1_500_000u64;
     let n = img.width as u64 * img.height as u64;
-    let f = if n <= cap { 1 } else { ((n as f64 / cap as f64).sqrt()).ceil() as u32 };
+    let f = if n <= cap {
+        1
+    } else {
+        ((n as f64 / cap as f64).sqrt()).ceil() as u32
+    };
     let (rw, rh) = ((img.width / f).max(8), (img.height / f).max(8));
-    let ref_luma = if f == 1 { luma.clone() } else { resample::resize(&luma, img.width, img.height, 1, rw, rh, image::imageops::FilterType::Triangle) };
-    let mask_ref = if f == 1 { mask_gray.clone() } else { resample::resize(&mask_gray, img.width, img.height, 1, rw, rh, image::imageops::FilterType::Triangle) };
+    let ref_luma = if f == 1 {
+        luma.clone()
+    } else {
+        resample::resize(
+            &luma,
+            img.width,
+            img.height,
+            1,
+            rw,
+            rh,
+            image::imageops::FilterType::Triangle,
+        )
+    };
+    let mask_ref = if f == 1 {
+        mask_gray.clone()
+    } else {
+        resample::resize(
+            &mask_gray,
+            img.width,
+            img.height,
+            1,
+            rw,
+            rh,
+            image::imageops::FilterType::Triangle,
+        )
+    };
 
     // Layer candidates. Both layers are raced under the recomposition gate by
     // coordinate descent: background first (it dominates the bytes), then
     // foreground given the chosen background.
     let bg_layer = |scale: u32, q: u8| -> Option<(Encoded, Vec<u8>)> {
         let (bw, bh) = ((img.width / scale).max(16), (img.height / scale).max(16));
-        let small = RawImage { width: bw, height: bh, channels: img.channels, data: resample::resize(&bg, img.width, img.height, img.channels, bw, bh, image::imageops::FilterType::Triangle), cs: img.cs, is_mask: false, orig_bpc: 8, lossy_decode: false };
+        let small = RawImage {
+            width: bw,
+            height: bh,
+            channels: img.channels,
+            data: resample::resize(
+                &bg,
+                img.width,
+                img.height,
+                img.channels,
+                bw,
+                bh,
+                image::imageops::FilterType::Triangle,
+            ),
+            cs: img.cs,
+            is_mask: false,
+            orig_bpc: 8,
+            lossy_decode: false,
+        };
         let e = encode::jpeg(&small, q, true, cs.clone())?;
         let l = resample::upscale(&e.decoded.as_ref()?.luma(), bw, bh, 1, rw, rh);
         Some((e, l))
     };
     let fg_layer = |scale: u32, q: u8| -> Option<(Encoded, Vec<u8>)> {
         let (sw, sh) = ((img.width / scale).max(8), (img.height / scale).max(8));
-        let small = if scale == fg_base_scale { fg_base.clone() } else { RawImage { width: sw, height: sh, channels: img.channels, data: resample::resize(&fg_base.data, fw, fh, img.channels, sw, sh, image::imageops::FilterType::Triangle), cs: img.cs, is_mask: false, orig_bpc: 8, lossy_decode: false } };
+        let small = if scale == fg_base_scale {
+            fg_base.clone()
+        } else {
+            RawImage {
+                width: sw,
+                height: sh,
+                channels: img.channels,
+                data: resample::resize(
+                    &fg_base.data,
+                    fw,
+                    fh,
+                    img.channels,
+                    sw,
+                    sh,
+                    image::imageops::FilterType::Triangle,
+                ),
+                cs: img.cs,
+                is_mask: false,
+                orig_bpc: 8,
+                lossy_decode: false,
+            }
+        };
         let e = encode::jpeg(&small, q, true, cs.clone())?;
         let l = resample::upscale(&e.decoded.as_ref()?.luma(), sw, sh, 1, rw, rh);
         Some((e, l))
@@ -285,13 +410,20 @@ pub fn build(img: &RawImage, opts: &Options, effort: Effort) -> Option<MrcLayers
     // Pass 1: background, with a safe foreground (scale 4, q 45).
     let (fg0, fg0_l) = fg_layer(fg_base_scale, 45)?;
     let mut best_bg: Option<(u32, Encoded, Vec<u8>)> = None;
-    'bg: for scale in [8u32, 6, 4, 3, 2].into_iter().filter(|&s| s <= opts.mrc_max_bg_scale.max(2)) {
+    'bg: for scale in [8u32, 6, 4, 3, 2]
+        .into_iter()
+        .filter(|&s| s <= opts.mrc_max_bg_scale.max(2))
+    {
         for q in [30u8, 45, 60] {
             if let Some((e, l)) = bg_layer(scale, q) {
                 let s = gate(&l, &fg0_l);
                 log::debug!("mrc bg scale {scale} q{q}: {}B ssim {s:.4}", e.len());
                 if s >= target {
-                    if best_bg.as_ref().map(|b| e.len() < b.1.len()).unwrap_or(true) {
+                    if best_bg
+                        .as_ref()
+                        .map(|b| e.len() < b.1.len())
+                        .unwrap_or(true)
+                    {
                         best_bg = Some((scale, e, l));
                     }
                     continue 'bg; // larger scales are always smaller than the next scale: keep first pass
@@ -302,11 +434,19 @@ pub fn build(img: &RawImage, opts: &Options, effort: Effort) -> Option<MrcLayers
     let (bg_scale, bg_enc, bg_l) = best_bg?;
     // Pass 2: foreground given that background.
     let mut best_fg: Option<(u32, Encoded, Vec<u8>, f64)> = None;
-    for (scale, q) in [(8u32, 30u8), (8, 45), (4, 30), (4, 45), (4, 60)].into_iter().filter(|&(s, _)| s <= opts.mrc_max_fg_scale.max(4)) {
+    for (scale, q) in [(8u32, 30u8), (8, 45), (4, 30), (4, 45), (4, 60)]
+        .into_iter()
+        .filter(|&(s, _)| s <= opts.mrc_max_fg_scale.max(4))
+    {
         if let Some((e, l)) = fg_layer(scale, q) {
             let s = gate(&bg_l, &l);
             log::debug!("mrc fg scale {scale} q{q}: {}B ssim {s:.4}", e.len());
-            if s >= target && best_fg.as_ref().map(|b| e.len() < b.1.len()).unwrap_or(true) {
+            if s >= target
+                && best_fg
+                    .as_ref()
+                    .map(|b| e.len() < b.1.len())
+                    .unwrap_or(true)
+            {
                 best_fg = Some((scale, e, l, s));
             }
         }
@@ -322,9 +462,28 @@ pub fn build(img: &RawImage, opts: &Options, effort: Effort) -> Option<MrcLayers
         return None;
     }
     let recomposed_ref = recompose(&bg_l, &fg_l);
-    let strip = |mut e: Encoded| { e.decoded = None; e };
-    log::debug!("mrc done in {} ms: bg/{bg_scale} fg/{fg_scale} mask {} bg {} fg {} ssim {ssim:.4}", t0.elapsed().as_millis(), mask_enc.len(), bg_enc.len(), fg_enc.len());
-    Some(MrcLayers { mask: mask_enc, fg: strip(fg_enc), bg: strip(bg_enc), ssim, bg_scale, fg_scale, recomposed_ref, ref_w: rw, ref_h: rh })
+    let strip = |mut e: Encoded| {
+        e.decoded = None;
+        e
+    };
+    log::debug!(
+        "mrc done in {} ms: bg/{bg_scale} fg/{fg_scale} mask {} bg {} fg {} ssim {ssim:.4}",
+        t0.elapsed().as_millis(),
+        mask_enc.len(),
+        bg_enc.len(),
+        fg_enc.len()
+    );
+    Some(MrcLayers {
+        mask: mask_enc,
+        fg: strip(fg_enc),
+        bg: strip(bg_enc),
+        ssim,
+        bg_scale,
+        fg_scale,
+        recomposed_ref,
+        ref_w: rw,
+        ref_h: rh,
+    })
 }
 
 fn image_stream(e: &Encoded, cs: Object, extra: impl FnOnce(&mut Dictionary)) -> Stream {
@@ -348,9 +507,17 @@ fn image_stream(e: &Encoded, cs: Object, extra: impl FnOnce(&mut Dictionary)) ->
 /// Replace image object `id` with a Form XObject that paints bg then fg∘mask.
 pub fn apply(doc: &mut Document, id: ObjectId, layers: &MrcLayers, kind: ColorKind) {
     let cs = encode::cs_object(kind);
-    let mask_id = doc.add_object(Object::Stream(image_stream(&layers.mask, Object::Name(b"DeviceGray".to_vec()), |_| {})));
-    let fg_id = doc.add_object(Object::Stream(image_stream(&layers.fg, cs.clone(), |d| d.set("SMask", Object::Reference(mask_id)))));
-    let bg_id = doc.add_object(Object::Stream(image_stream(&layers.bg, cs, |d| d.set("Interpolate", true))));
+    let mask_id = doc.add_object(Object::Stream(image_stream(
+        &layers.mask,
+        Object::Name(b"DeviceGray".to_vec()),
+        |_| {},
+    )));
+    let fg_id = doc.add_object(Object::Stream(image_stream(&layers.fg, cs.clone(), |d| {
+        d.set("SMask", Object::Reference(mask_id))
+    })));
+    let bg_id = doc.add_object(Object::Stream(image_stream(&layers.bg, cs, |d| {
+        d.set("Interpolate", true)
+    })));
     let mut xobjs = Dictionary::new();
     xobjs.set("Bg", Object::Reference(bg_id));
     xobjs.set("Fg", Object::Reference(fg_id));
@@ -359,7 +526,10 @@ pub fn apply(doc: &mut Document, id: ObjectId, layers: &MrcLayers, kind: ColorKi
     let mut d = Dictionary::new();
     d.set("Type", Object::Name(b"XObject".to_vec()));
     d.set("Subtype", Object::Name(b"Form".to_vec()));
-    d.set("BBox", Object::Array(vec![0.into(), 0.into(), 1.into(), 1.into()]));
+    d.set(
+        "BBox",
+        Object::Array(vec![0.into(), 0.into(), 1.into(), 1.into()]),
+    );
     d.set("Resources", Object::Dictionary(res));
     let form = Stream::new(d, b"/Bg Do /Fg Do".to_vec());
     doc.objects.insert(id, Object::Stream(form));

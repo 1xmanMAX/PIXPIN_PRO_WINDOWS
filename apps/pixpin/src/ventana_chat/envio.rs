@@ -58,7 +58,12 @@ pub(super) enum Sitio {
 /// Coloca el cuadro centrado en la ventana, con `cuantos` ficheros.
 /// `ancho_cancelar` y `ancho_enviar` son lo que miden sus botones (rotulo y
 /// chapita), medidos al pintar.
-pub(super) fn colocar(ventana: Rect, cuantos: usize, ancho_botones: (u32, u32), escala: u32) -> Cuadro {
+pub(super) fn colocar(
+    ventana: Rect,
+    cuantos: usize,
+    ancho_botones: (u32, u32),
+    escala: u32,
+) -> Cuadro {
     let e = |v: u32| v * escala / 100;
     let ancho = e(ANCHO).min(ventana.ancho.saturating_sub(2 * e(MARGEN_VENTANA)));
     let dentro = ancho.saturating_sub(2 * e(RELLENO));
@@ -78,7 +83,13 @@ pub(super) fn colocar(ventana: Rect, cuantos: usize, ancho_botones: (u32, u32), 
     } else {
         (sitios.min(cuantos), false)
     };
-    let alto = 2 * e(RELLENO) + filas * e(FOTO) + filas.saturating_sub(1) * e(HUECO) + e(HUECO) + e(PIE) + e(HUECO) + e(BOTONES);
+    let alto = 2 * e(RELLENO)
+        + filas * e(FOTO)
+        + filas.saturating_sub(1) * e(HUECO)
+        + e(HUECO)
+        + e(PIE)
+        + e(HUECO)
+        + e(BOTONES);
     let caja = Rect {
         x: ventana.x + (ventana.ancho as i32 - ancho as i32) / 2,
         y: ventana.y + (ventana.alto as i32 - alto as i32) / 2,
@@ -148,7 +159,9 @@ impl Cuadro {
 
     pub(super) fn sitio_en(&self, p: Punto, escala: u32) -> Option<Sitio> {
         // El ✕ antes que su foto: esta encima.
-        if let Some(n) = (0..self.fotos.len()).find(|n| self.quitar(*n, escala).is_some_and(|r| r.contiene(p))) {
+        if let Some(n) =
+            (0..self.fotos.len()).find(|n| self.quitar(*n, escala).is_some_and(|r| r.contiene(p)))
+        {
             return Some(Sitio::Quitar(n));
         }
         if let Some(n) = self.fotos.iter().position(|r| r.contiene(p)) {
@@ -183,7 +196,9 @@ impl Cuadro {
                 (centro - p.y).abs()
             })
             .unwrap_or(self.fotos[0].y);
-        let en_fila: Vec<usize> = (0..self.fotos.len()).filter(|n| self.fotos[*n].y == fila_y).collect();
+        let en_fila: Vec<usize> = (0..self.fotos.len())
+            .filter(|n| self.fotos[*n].y == fila_y)
+            .collect();
         for n in &en_fila {
             let r = self.fotos[*n];
             if p.x < r.x + r.ancho as i32 / 2 {
@@ -223,7 +238,8 @@ impl Arrastre {
     /// que la mano tiembla.
     pub(super) fn se_movio(&self, escala: u32) -> bool {
         let umbral = (4 * escala / 100).max(2) as i32;
-        (self.ahora.x - self.agarre.x).abs() > umbral || (self.ahora.y - self.agarre.y).abs() > umbral
+        (self.ahora.x - self.agarre.x).abs() > umbral
+            || (self.ahora.y - self.agarre.y).abs() > umbral
     }
 }
 
@@ -248,7 +264,8 @@ impl Pendientes {
     pub(super) fn anadir(&mut self, rutas: Vec<std::path::PathBuf>) {
         for r in rutas {
             if !self.rutas.contains(&r) {
-                self.tamanos.push(std::fs::metadata(&r).map(|m| m.len()).unwrap_or(0));
+                self.tamanos
+                    .push(std::fs::metadata(&r).map(|m| m.len()).unwrap_or(0));
                 self.rutas.push(r);
             }
         }
@@ -265,7 +282,12 @@ fn es_foto(r: &std::path::Path) -> bool {
     r.extension()
         .and_then(|e| e.to_str())
         .map(|e| e.to_ascii_lowercase())
-        .is_some_and(|e| matches!(e.as_str(), "png" | "jpg" | "jpeg" | "gif" | "bmp" | "webp" | "tif" | "tiff" | "heic"))
+        .is_some_and(|e| {
+            matches!(
+                e.as_str(),
+                "png" | "jpg" | "jpeg" | "gif" | "bmp" | "webp" | "tif" | "tiff" | "heic"
+            )
+        })
 }
 
 /// Lo que miden los dos botones con su chapita.
@@ -277,7 +299,10 @@ pub(super) fn medir_botones(p: &Pintor, c: &Pinta) -> (u32, u32) {
         let ch = super::ancho_chapas(p, &[tecla.to_string()], e);
         (w + ch + 8.0 * e + 2.0 * 14.0 * e).ceil() as u32
     };
-    (uno("confirmar-cancelar", "Esc"), uno("v2menus-envio-enviar", "Enter"))
+    (
+        uno("confirmar-cancelar", "Esc"),
+        uno("v2menus-envio-enviar", "Enter"),
+    )
 }
 
 /// Pinta el cuadro. `proyecto` es el nombre de donde va.
@@ -326,7 +351,10 @@ pub(super) fn pintar(p: &Pintor, c: &Pinta, pend: &Pendientes, marco: Rect, proy
                     },
                     con_alfa(tema.apagado, opacidad),
                 );
-                let nombre = ruta.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+                let nombre = ruta
+                    .file_name()
+                    .map(|n| n.to_string_lossy().to_string())
+                    .unwrap_or_default();
                 p.texto_linea(
                     &nombre,
                     r.x + 6.0 * e,
@@ -353,19 +381,48 @@ pub(super) fn pintar(p: &Pintor, c: &Pinta, pend: &Pendientes, marco: Rect, proy
         // El numero de orden, arriba a la izquierda.
         let lado = NUMERO as f32 * e;
         let centro = (rr.x + 5.0 * e + lado / 2.0, rr.y + 5.0 * e + lado / 2.0);
-        p.circulo(centro, lado / 2.0, if n == 0 { super::AZUL_ELEGIDO } else { con_alfa(hex(0x000000), 0.6) });
+        p.circulo(
+            centro,
+            lado / 2.0,
+            if n == 0 {
+                super::AZUL_ELEGIDO
+            } else {
+                con_alfa(hex(0x000000), 0.6)
+            },
+        );
         let num = (n + 1).to_string();
         let (w, h) = p.medir_texto(&num, 11.0 * e);
-        p.texto_linea(&num, centro.0 - w / 2.0, centro.1 - h / 2.0, 11.0 * e, w + 2.0, hex(0xffffff));
+        p.texto_linea(
+            &num,
+            centro.0 - w / 2.0,
+            centro.1 - h / 2.0,
+            11.0 * e,
+            w + 2.0,
+            hex(0xffffff),
+        );
         // El ✕ para quitarla.
         if let Some(q) = d.quitar(n, escala) {
             let q = rf(q);
             let centro = (q.x + q.ancho / 2.0, q.y + q.alto / 2.0);
             let encima = pend.sobre == Some(Sitio::Quitar(n));
-            p.circulo(centro, q.ancho / 2.0, con_alfa(hex(0x000000), if encima { 0.85 } else { 0.6 }));
+            p.circulo(
+                centro,
+                q.ancho / 2.0,
+                con_alfa(hex(0x000000), if encima { 0.85 } else { 0.6 }),
+            );
             let b = 4.0 * e;
-            p.linea((centro.0 - b, centro.1 - b), (centro.0 + b, centro.1 + b), 2.0 * e, hex(0xffffff));
-            p.linea((centro.0 + b, centro.1 - b), (centro.0 - b, centro.1 + b), 2.0 * e, hex(0xffffff));
+            p.linea(
+                (centro.0 - b, centro.1 - b),
+                (centro.0 + b, centro.1 + b),
+                2.0 * e,
+                hex(0xffffff),
+            );
+            p.linea(
+                (centro.0 + b, centro.1 - b),
+                (centro.0 - b, centro.1 + b),
+                2.0 * e,
+                hex(0xffffff),
+            );
         }
     }
     if d.ocultos > 0
@@ -375,7 +432,14 @@ pub(super) fn pintar(p: &Pintor, c: &Pinta, pend: &Pendientes, marco: Rect, proy
         p.rellenar_redondeado(rr, radio_foto, con_alfa(hex(0x000000), 0.55));
         let mas = format!("+{}", d.ocultos);
         let (w, h) = p.medir_texto(&mas, 16.0 * e);
-        p.texto_linea(&mas, rr.x + (rr.ancho - w) / 2.0, rr.y + (rr.alto - h) / 2.0, 16.0 * e, w + 2.0, hex(0xffffff));
+        p.texto_linea(
+            &mas,
+            rr.x + (rr.ancho - w) / 2.0,
+            rr.y + (rr.alto - h) / 2.0,
+            16.0 * e,
+            w + 2.0,
+            hex(0xffffff),
+        );
     }
     // «Añadir», con borde de puntos.
     if let Some(r) = d.anadir {
@@ -391,7 +455,14 @@ pub(super) fn pintar(p: &Pintor, c: &Pinta, pend: &Pendientes, marco: Rect, proy
         p.linea((cx, cy - b), (cx, cy + b), 2.0 * e, tema.apagado);
         let rotulo = textos.t("v2menus-envio-anadir");
         let (w, _) = p.medir_texto(&rotulo, 12.0 * e);
-        p.texto_linea(&rotulo, cx - w / 2.0, cy + 14.0 * e, 12.0 * e, rr.ancho, tema.apagado);
+        p.texto_linea(
+            &rotulo,
+            cx - w / 2.0,
+            cy + 14.0 * e,
+            12.0 * e,
+            rr.ancho,
+            tema.apagado,
+        );
     }
     // La raya azul donde caera la que se arrastra, y ella bajo el raton.
     if let (Some(a), Some(h)) = (arrastrando, hueco) {
@@ -419,7 +490,10 @@ pub(super) fn pintar(p: &Pintor, c: &Pinta, pend: &Pendientes, marco: Rect, proy
                 alto: origen.alto as f32,
             };
             p.rellenar_redondeado(
-                RectF { y: rr.y + 6.0 * e, ..rr },
+                RectF {
+                    y: rr.y + 6.0 * e,
+                    ..rr
+                },
                 radio_foto,
                 con_alfa(hex(0x000000), 0.35),
             );
@@ -438,7 +512,14 @@ pub(super) fn pintar(p: &Pintor, c: &Pinta, pend: &Pendientes, marco: Rect, proy
     };
     let tam = 14.0 * e;
     let (_, alto) = p.medir_texto("X", tam);
-    p.texto_linea(&texto, pie.x + 12.0 * e, pie.y + (pie.alto - alto) / 2.0, tam, pie.ancho - 24.0 * e, color);
+    p.texto_linea(
+        &texto,
+        pie.x + 12.0 * e,
+        pie.y + (pie.alto - alto) / 2.0,
+        tam,
+        pie.ancho - 24.0 * e,
+        color,
+    );
 
     // «3 fotos · a Obra», y los dos botones.
     let mut args = fluent_bundle::FluentArgs::new();
@@ -465,7 +546,12 @@ pub(super) fn pintar(p: &Pintor, c: &Pinta, pend: &Pendientes, marco: Rect, proy
         (d.enviar, "v2menus-envio-enviar", "Enter", true),
     ] {
         let rr = rf(r);
-        let encima = pend.sobre == Some(if fuerte { Sitio::Enviar } else { Sitio::Cancelar });
+        let encima = pend.sobre
+            == Some(if fuerte {
+                Sitio::Enviar
+            } else {
+                Sitio::Cancelar
+            });
         if fuerte {
             p.rellenar_redondeado(rr, 10.0 * e, super::AZUL_ELEGIDO);
         } else if encima {
@@ -476,7 +562,15 @@ pub(super) fn pintar(p: &Pintor, c: &Pinta, pend: &Pendientes, marco: Rect, proy
         let x = rr.x + 14.0 * e;
         let color = if fuerte { hex(0xffffff) } else { tema.texto };
         p.texto_linea(&rotulo, x, rr.y + (rr.alto - h) / 2.0, tam, w + 2.0, color);
-        super::pintar_chapas(p, tema, &[tecla.to_string()], rr.x + rr.ancho - 14.0 * e, r, e, fuerte);
+        super::pintar_chapas(
+            p,
+            tema,
+            &[tecla.to_string()],
+            rr.x + rr.ancho - 14.0 * e,
+            r,
+            e,
+            fuerte,
+        );
     }
 }
 
@@ -498,7 +592,11 @@ mod pruebas {
         let d = colocar(ventana(), 3, (100, 110), 100);
         assert_eq!(d.fotos.len(), 3);
         assert!(d.anadir.is_some());
-        assert!(d.fotos.iter().all(|r| r.y == d.fotos[0].y && r.ancho == FOTO));
+        assert!(
+            d.fotos
+                .iter()
+                .all(|r| r.y == d.fotos[0].y && r.ancho == FOTO)
+        );
         assert_eq!(d.anadir.unwrap().y, d.fotos[0].y);
         // El pie debajo de las fotos y los botones debajo del pie, dentro.
         assert!(d.pie.y > d.fotos[0].abajo());
@@ -511,7 +609,10 @@ mod pruebas {
 
     #[test]
     fn en_una_ventana_baja_lo_que_no_cabe_se_resume() {
-        let baja = Rect { alto: 320, ..ventana() };
+        let baja = Rect {
+            alto: 320,
+            ..ventana()
+        };
         let d = colocar(baja, 30, (100, 110), 100);
         assert!(d.fotos.len() < 30);
         assert_eq!(d.ocultos, 30 - d.fotos.len());
@@ -526,12 +627,48 @@ mod pruebas {
     fn el_aspa_va_antes_que_su_foto() {
         let d = colocar(ventana(), 2, (100, 110), 100);
         let q = d.quitar(1, 100).unwrap();
-        assert_eq!(d.sitio_en(Punto { x: q.x + 3, y: q.y + 3 }, 100), Some(Sitio::Quitar(1)));
+        assert_eq!(
+            d.sitio_en(
+                Punto {
+                    x: q.x + 3,
+                    y: q.y + 3
+                },
+                100
+            ),
+            Some(Sitio::Quitar(1))
+        );
         let f = d.fotos[1];
-        assert_eq!(d.sitio_en(Punto { x: f.x + 5, y: f.abajo() - 5 }, 100), Some(Sitio::Foto(1)));
-        assert_eq!(d.sitio_en(Punto { x: d.enviar.x + 3, y: d.enviar.y + 3 }, 100), Some(Sitio::Enviar));
+        assert_eq!(
+            d.sitio_en(
+                Punto {
+                    x: f.x + 5,
+                    y: f.abajo() - 5
+                },
+                100
+            ),
+            Some(Sitio::Foto(1))
+        );
+        assert_eq!(
+            d.sitio_en(
+                Punto {
+                    x: d.enviar.x + 3,
+                    y: d.enviar.y + 3
+                },
+                100
+            ),
+            Some(Sitio::Enviar)
+        );
         // Casos negativos: el pie no es ningun boton, y fuera no es nada.
-        assert_eq!(d.sitio_en(Punto { x: d.pie.x + 3, y: d.pie.y + 3 }, 100), Some(Sitio::Dentro));
+        assert_eq!(
+            d.sitio_en(
+                Punto {
+                    x: d.pie.x + 3,
+                    y: d.pie.y + 3
+                },
+                100
+            ),
+            Some(Sitio::Dentro)
+        );
         assert_eq!(d.sitio_en(Punto { x: 1, y: 1 }, 100), None);
     }
 
@@ -540,11 +677,29 @@ mod pruebas {
         let d = colocar(ventana(), 3, (100, 110), 100);
         let f = &d.fotos;
         // A la izquierda de la mitad de la primera: delante de todo.
-        assert_eq!(d.hueco_en(Punto { x: f[0].x + 2, y: f[0].y + 10 }), 0);
+        assert_eq!(
+            d.hueco_en(Punto {
+                x: f[0].x + 2,
+                y: f[0].y + 10
+            }),
+            0
+        );
         // Pasada la mitad de la segunda: delante de la tercera.
-        assert_eq!(d.hueco_en(Punto { x: f[1].x + 60, y: f[1].y + 10 }), 2);
+        assert_eq!(
+            d.hueco_en(Punto {
+                x: f[1].x + 60,
+                y: f[1].y + 10
+            }),
+            2
+        );
         // Mas alla de la ultima: al final.
-        assert_eq!(d.hueco_en(Punto { x: f[2].derecha() + 30, y: f[2].y + 10 }), 3);
+        assert_eq!(
+            d.hueco_en(Punto {
+                x: f[2].derecha() + 30,
+                y: f[2].y + 10
+            }),
+            3
+        );
 
         let mut v = vec!['a', 'b', 'c'];
         mover(&mut v, 2, 0);

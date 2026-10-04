@@ -293,7 +293,10 @@ mod com {
         }
     }
 
-    #[implement(IDirectManipulationViewportEventHandler, IDirectManipulationInteractionEventHandler)]
+    #[implement(
+        IDirectManipulationViewportEventHandler,
+        IDirectManipulationInteractionEventHandler
+    )]
     struct Manejador {
         traductor: RefCell<Traductor>,
         rect: RECT,
@@ -317,7 +320,13 @@ mod com {
                     let r = self.rect;
                     // SAFETY: viewport vivo que nos pasa Windows.
                     unsafe {
-                        v.ZoomToRect(r.left as f32, r.top as f32, r.right as f32, r.bottom as f32, false)?;
+                        v.ZoomToRect(
+                            r.left as f32,
+                            r.top as f32,
+                            r.right as f32,
+                            r.bottom as f32,
+                            false,
+                        )?;
                     }
                 }
             }
@@ -398,10 +407,16 @@ mod com {
 
     impl GestosTactiles {
         /// Todo como `DirectManipulationHelper::CreateInstanceImpl`.
-        pub fn nuevo(hwnd: HWND, ancho: i32, alto: i32, avisar: Aviso) -> windows::core::Result<Self> {
+        pub fn nuevo(
+            hwnd: HWND,
+            ancho: i32,
+            alto: i32,
+            avisar: Aviso,
+        ) -> windows::core::Result<Self> {
             // SAFETY: sin precondiciones. Si el hilo ya estaba en otro
             // apartamento falla y se sigue: DirectManipulation dira si puede.
-            let com = Apartamento(unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED) }.is_ok());
+            let com =
+                Apartamento(unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED) }.is_ok());
             // Si montar falla, `com` se suelta con el error y cierra el
             // apartamento.
             Self::montar(hwnd, ancho, alto, avisar, com)
@@ -433,7 +448,8 @@ mod com {
                             | DIRECTMANIPULATION_CONFIGURATION_SCALING,
                     )?;
                     // Viewport de mentira: nadie lo pinta, solo se lee.
-                    viewport.SetViewportOptions(DIRECTMANIPULATION_VIEWPORT_OPTIONS_MANUALUPDATE)?;
+                    viewport
+                        .SetViewportOptions(DIRECTMANIPULATION_VIEWPORT_OPTIONS_MANUALUPDATE)?;
                     Ok(())
                 };
                 if let Err(e) = preparar() {
@@ -514,13 +530,17 @@ mod com {
             // SAFETY: gestor vivo; los avisos salen por el manejador en este
             // mismo hilo.
             unsafe {
-                let _ = self.update.Update(None::<&IDirectManipulationFrameInfoProvider>);
+                let _ = self
+                    .update
+                    .Update(None::<&IDirectManipulationFrameInfoProvider>);
             }
             if self.latido.interactuando.get() {
                 return;
             }
             // SAFETY: consulta del viewport vivo.
-            let estado = unsafe { self.viewport.GetStatus() }.map(estado_de).unwrap_or(Estado::Otro);
+            let estado = unsafe { self.viewport.GetStatus() }
+                .map(estado_de)
+                .unwrap_or(Estado::Otro);
             if estado != Estado::Corriendo && estado != Estado::Inercia {
                 let n = self.latido.ociosos.get() + 1;
                 self.latido.ociosos.set(n);
@@ -607,10 +627,19 @@ mod pruebas {
     #[test]
     fn un_pellizco_lento_que_empezo_como_desliz_pasa_a_pellizco_y_no_vuelve() {
         let mut t = Traductor::default();
-        assert!(matches!(t.contenido(1.0, 2.0, 1.0), Some(Salida::Desliz { .. })));
-        assert!(matches!(t.contenido(1.05, 2.0, 1.0), Some(Salida::Pellizco { .. })));
+        assert!(matches!(
+            t.contenido(1.0, 2.0, 1.0),
+            Some(Salida::Desliz { .. })
+        ));
+        assert!(matches!(
+            t.contenido(1.05, 2.0, 1.0),
+            Some(Salida::Pellizco { .. })
+        ));
         // Vuelve a escala 1 sin soltar: sigue siendo pellizco (factor < 1).
-        assert!(matches!(t.contenido(1.0, 9.0, 9.0), Some(Salida::Pellizco { .. })));
+        assert!(matches!(
+            t.contenido(1.0, 9.0, 9.0),
+            Some(Salida::Pellizco { .. })
+        ));
     }
 
     #[test]
@@ -633,7 +662,10 @@ mod pruebas {
         // El `ZoomToRect` devuelve una transformacion identidad: no mueve.
         assert_eq!(t.contenido(1.0, 0.0, 0.0), None);
         // Y el siguiente gesto es desplazar, no un pellizco heredado.
-        assert!(matches!(t.contenido(1.0, 3.0, 0.0), Some(Salida::Desliz { .. })));
+        assert!(matches!(
+            t.contenido(1.0, 3.0, 0.0),
+            Some(Salida::Desliz { .. })
+        ));
     }
 
     #[test]

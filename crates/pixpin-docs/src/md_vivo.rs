@@ -41,7 +41,9 @@ pub enum Estilo {
     /// El texto visible de un enlace; la direccion va en `Tramo::url`.
     Enlace,
     /// La casilla de una lista de tareas (`[ ]` o `[x]`).
-    Casilla { hecha: bool },
+    Casilla {
+        hecha: bool,
+    },
     /// Lo escrito tras una casilla marcada: se ve tachado y apagado.
     Hecha,
     /// Un renglon de lista con vineta: el renglon entero.
@@ -146,7 +148,14 @@ impl Renglon {
         self.poner_url(sal, a, b, estilo, None);
     }
 
-    fn poner_url(&self, sal: &mut Vec<Tramo>, a: usize, b: usize, estilo: Estilo, url: Option<String>) {
+    fn poner_url(
+        &self,
+        sal: &mut Vec<Tramo>,
+        a: usize,
+        b: usize,
+        estilo: Estilo,
+        url: Option<String>,
+    ) {
         if b > a {
             sal.push(Tramo {
                 desde: self.pos[a],
@@ -185,7 +194,12 @@ pub fn analizar(texto: &str) -> Vec<Tramo> {
 /// Un renglon de una tabla de verdad del control (ver `md_tabla`): la marca
 /// que abre la fila, o la fila con sus celdas.
 pub(crate) fn es_de_tabla(l: &[char]) -> bool {
-    l.iter().any(|c| matches!(*c, md_tabla::FILA_ABRE | md_tabla::FILA_CIERRA | md_tabla::CELDA))
+    l.iter().any(|c| {
+        matches!(
+            *c,
+            md_tabla::FILA_ABRE | md_tabla::FILA_CIERRA | md_tabla::CELDA
+        )
+    })
 }
 
 /// Dentro de una celda solo hay formato de letra: un `# ` o un `- ` al
@@ -224,10 +238,17 @@ pub fn imagen_de(renglon: &str) -> Option<(String, String)> {
         return None;
     }
     let ruta = ruta.trim();
-    let ext = ruta.rsplit_once('.').map(|(_, e)| e).unwrap_or("").to_ascii_lowercase();
+    let ext = ruta
+        .rsplit_once('.')
+        .map(|(_, e)| e)
+        .unwrap_or("")
+        .to_ascii_lowercase();
     let ext = ext.split('?').next().unwrap_or("");
-    matches!(ext, "png" | "jpg" | "jpeg" | "gif" | "webp" | "bmp" | "heic" | "svg")
-        .then(|| (alt.to_string(), ruta.to_string()))
+    matches!(
+        ext,
+        "png" | "jpg" | "jpeg" | "gif" | "webp" | "bmp" | "heic" | "svg"
+    )
+    .then(|| (alt.to_string(), ruta.to_string()))
 }
 
 /// Las imagenes de la nota: el renglon (desde 0) y la ruta de cada una.
@@ -249,7 +270,13 @@ pub fn imagenes(texto: &str) -> Vec<(usize, String)> {
 
 /// Las vallas de un bloque de codigo: tres acentos graves o tres virgulillas.
 pub(crate) fn es_valla(l: &[char]) -> bool {
-    let t: String = l.iter().collect::<String>().trim_start().chars().take(3).collect();
+    let t: String = l
+        .iter()
+        .collect::<String>()
+        .trim_start()
+        .chars()
+        .take(3)
+        .collect();
     t == "```" || t == "~~~"
 }
 
@@ -436,9 +463,7 @@ fn en_linea(r: &Renglon, desde: usize, hasta: usize, sal: &mut Vec<Tramo>) {
                     continue;
                 }
                 let doble = i + 1 < hasta && l[i + 1] == c;
-                if doble
-                    && let Some(j) = cierre_doble(l, i + 2, hasta, c)
-                {
+                if doble && let Some(j) = cierre_doble(l, i + 2, hasta, c) {
                     r.poner(sal, i, i + 2, Estilo::Marca);
                     r.poner(sal, i + 2, j, Estilo::Negrita);
                     en_linea(r, i + 2, j, sal);
@@ -487,9 +512,7 @@ fn cierre_simple(l: &[char], desde: usize, hasta: usize, c: char) -> Option<usiz
         return None;
     }
     (desde + 1..hasta).find(|&j| {
-        l[j] == c
-            && l[j - 1] != ' '
-            && (c != '_' || j + 1 >= hasta || !alfanumerica(l[j + 1]))
+        l[j] == c && l[j - 1] != ' ' && (c != '_' || j + 1 >= hasta || !alfanumerica(l[j + 1]))
     })
 }
 
@@ -536,7 +559,11 @@ pub fn continuar(renglon: &str) -> Continuar {
             None => (format!("{sangria}{} ", l[k]), k + 2),
         }
     } else if let Some((k, fin)) = numero(&l) {
-        let n: u64 = l[k..fin - 1].iter().collect::<String>().parse().unwrap_or(0);
+        let n: u64 = l[k..fin - 1]
+            .iter()
+            .collect::<String>()
+            .parse()
+            .unwrap_or(0);
         (format!("{sangria}{}{} ", n + 1, l[fin - 1]), fin + 1)
     } else if l.first() == Some(&'>') {
         ("> ".to_string(), if l.get(1) == Some(&' ') { 2 } else { 1 })
@@ -622,7 +649,10 @@ pub fn envolver(texto: &str, desde: usize, hasta: usize, marca: &str) -> (String
     let (desde, hasta) = (desde.min(u.len()), hasta.min(u.len()));
     let (desde, hasta) = (desde.min(hasta), desde.max(hasta));
     let k = m.len();
-    let ya = desde >= k && hasta + k <= u.len() && u[desde - k..desde] == m[..] && u[hasta..hasta + k] == m[..];
+    let ya = desde >= k
+        && hasta + k <= u.len()
+        && u[desde - k..desde] == m[..]
+        && u[hasta..hasta + k] == m[..];
     let mut sal: Vec<u16> = Vec::with_capacity(u.len() + 2 * k);
     if ya {
         sal.extend_from_slice(&u[..desde - k]);
@@ -672,8 +702,16 @@ pub fn bloque_de_codigo(texto: &str, desde: usize, hasta: usize) -> (String, usi
     let despues = String::from_utf16_lossy(&u[hasta..]);
     // La valla va en su propio renglon: si no se empieza a principio de uno,
     // se abre uno nuevo.
-    let salto_antes = if antes.is_empty() || antes.ends_with('\n') { "" } else { "\n" };
-    let salto_despues = if despues.is_empty() || despues.starts_with('\n') { "" } else { "\n" };
+    let salto_antes = if antes.is_empty() || antes.ends_with('\n') {
+        ""
+    } else {
+        "\n"
+    };
+    let salto_despues = if despues.is_empty() || despues.starts_with('\n') {
+        ""
+    } else {
+        "\n"
+    };
     let abre = format!("{salto_antes}```\n");
     let nuevo = format!("{antes}{abre}{dentro}\n```{salto_despues}{despues}");
     let a = desde + utf16(&abre);
@@ -705,9 +743,9 @@ pub fn titulo(texto: &str) -> String {
     for (n, l) in ls.iter().enumerate() {
         let visible: Vec<u16> = (l.desde..l.hasta)
             .filter(|p| {
-                !tramos
-                    .iter()
-                    .any(|t| t.linea == n && t.estilo == Estilo::Marca && t.desde <= *p && *p < t.hasta)
+                !tramos.iter().any(|t| {
+                    t.linea == n && t.estilo == Estilo::Marca && t.desde <= *p && *p < t.hasta
+                })
             })
             .map(|p| u[p])
             .collect();
@@ -738,7 +776,12 @@ pub fn con_titulo(texto: &str, nuevo: &str) -> Option<String> {
     let primero_con_algo = renglones.iter().position(|r| !r.trim().is_empty());
     if let Some(i) = primero.filter(|i| Some(*i) == primero_con_algo) {
         let almohadillas = renglones[i].chars().take_while(|c| *c == '#').count();
-        if (1..=6).contains(&almohadillas) && renglones[i].chars().nth(almohadillas).is_none_or(|c| c == ' ') {
+        if (1..=6).contains(&almohadillas)
+            && renglones[i]
+                .chars()
+                .nth(almohadillas)
+                .is_none_or(|c| c == ' ')
+        {
             let mut v: Vec<String> = renglones.iter().map(|s| s.to_string()).collect();
             v[i] = format!("{} {nuevo}", "#".repeat(almohadillas));
             return Some(v.join("\n"));
@@ -753,11 +796,20 @@ mod pruebas {
 
     #[test]
     fn cambiar_el_titulo_reescribe_el_primer_titulo_o_pone_uno() {
-        assert_eq!(con_titulo("\n## Obra\ntexto", "Casa Lima").as_deref(), Some("\n## Casa Lima\ntexto"));
-        assert_eq!(con_titulo("solo texto", "Plan").as_deref(), Some("# Plan\nsolo texto"));
+        assert_eq!(
+            con_titulo("\n## Obra\ntexto", "Casa Lima").as_deref(),
+            Some("\n## Casa Lima\ntexto")
+        );
+        assert_eq!(
+            con_titulo("solo texto", "Plan").as_deref(),
+            Some("# Plan\nsolo texto")
+        );
         assert_eq!(con_titulo("", "Plan").as_deref(), Some("# Plan\n"));
         // Un titulo que no es el primer renglon no se toca: se pone otro encima.
-        assert_eq!(con_titulo("hola\n# Luego", "Plan").as_deref(), Some("# Plan\nhola\n# Luego"));
+        assert_eq!(
+            con_titulo("hola\n# Luego", "Plan").as_deref(),
+            Some("# Plan\nhola\n# Luego")
+        );
     }
 
     #[test]
@@ -776,7 +828,9 @@ mod pruebas {
     }
 
     fn tiene(texto: &str, trozo: &str, estilo: Estilo) -> bool {
-        vistos(texto).iter().any(|(t, e)| t == trozo && *e == estilo)
+        vistos(texto)
+            .iter()
+            .any(|(t, e)| t == trozo && *e == estilo)
     }
 
     #[test]
@@ -797,7 +851,13 @@ mod pruebas {
         assert!(tiene(t, "mucho", Estilo::Negrita));
         assert!(tiene(t, "poco", Estilo::Cursiva));
         assert!(tiene(t, "nada", Estilo::Tachado));
-        assert_eq!(vistos(t).iter().filter(|(_, e)| *e == Estilo::Marca).count(), 6);
+        assert_eq!(
+            vistos(t)
+                .iter()
+                .filter(|(_, e)| *e == Estilo::Marca)
+                .count(),
+            6
+        );
     }
 
     #[test]
@@ -999,8 +1059,18 @@ mod pruebas {
         let t = "antes\n![planta baja](pixpin:files/guardados/pc/p1/notas/1-planta.png)\ndespues";
         assert!(tiene(t, "![", Estilo::Marca));
         assert!(tiene(t, "planta baja", Estilo::Imagen));
-        assert!(tiene(t, "](pixpin:files/guardados/pc/p1/notas/1-planta.png)", Estilo::Marca));
-        assert_eq!(imagenes(t), vec![(1, "pixpin:files/guardados/pc/p1/notas/1-planta.png".to_string())]);
+        assert!(tiene(
+            t,
+            "](pixpin:files/guardados/pc/p1/notas/1-planta.png)",
+            Estilo::Marca
+        ));
+        assert_eq!(
+            imagenes(t),
+            vec![(
+                1,
+                "pixpin:files/guardados/pc/p1/notas/1-planta.png".to_string()
+            )]
+        );
     }
 
     #[test]
@@ -1016,7 +1086,10 @@ mod pruebas {
         assert!(imagenes("mira ![x](a.png) aqui").is_empty());
         assert!(imagenes("![plano](plano.pdf)").is_empty());
         assert!(imagenes("```\n![x](a.png)\n```").is_empty());
-        assert_eq!(imagen_de("![](a.JPG)"), Some((String::new(), "a.JPG".into())));
+        assert_eq!(
+            imagen_de("![](a.JPG)"),
+            Some((String::new(), "a.JPG".into()))
+        );
         assert_eq!(imagen_de("![x]()"), None);
     }
 
@@ -1029,8 +1102,15 @@ mod pruebas {
         assert!(tiene(&t, "sí", Estilo::Negrita));
         assert!(tiene(&t, "# Obra", Estilo::Cabecera));
         assert!(tiene(&t, "**sí**", Estilo::Cabecera));
-        assert!(!vistos(&t).iter().any(|(_, e)| matches!(e, Estilo::Titulo(_) | Estilo::Vineta)));
-        assert!(!tiene(&t, "b", Estilo::Cabecera), "la segunda fila no es cabecera");
+        assert!(
+            !vistos(&t)
+                .iter()
+                .any(|(_, e)| matches!(e, Estilo::Titulo(_) | Estilo::Vineta))
+        );
+        assert!(
+            !tiene(&t, "b", Estilo::Cabecera),
+            "la segunda fila no es cabecera"
+        );
     }
 
     #[test]

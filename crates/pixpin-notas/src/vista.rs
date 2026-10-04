@@ -80,7 +80,12 @@ fn de_renglon(r: &str) -> Option<(String, Vista)> {
     let cuerpo = c.next()?;
     let titulos = c.next()?;
     let px: u32 = c.next()?.trim().parse().ok()?;
-    let valida = |f: &str| LETRAS.iter().find(|l| l.eq_ignore_ascii_case(f.trim())).map(|l| l.to_string());
+    let valida = |f: &str| {
+        LETRAS
+            .iter()
+            .find(|l| l.eq_ignore_ascii_case(f.trim()))
+            .map(|l| l.to_string())
+    };
     Some((
         clave,
         Vista {
@@ -100,7 +105,10 @@ pub fn leer(contenido: &str, nota: Option<&str>) -> (Vista, bool) {
     {
         return (v.clone(), true);
     }
-    let general = todas.into_iter().find(|(c, _)| c == GENERAL).map(|(_, v)| v);
+    let general = todas
+        .into_iter()
+        .find(|(c, _)| c == GENERAL)
+        .map(|(_, v)| v);
     (general.unwrap_or_default(), false)
 }
 
@@ -125,7 +133,11 @@ pub fn olvidar(contenido: &str, nota: &str) -> String {
         .lines()
         .filter(|r| de_renglon(r).is_none_or(|(c, _)| c != clave))
         .collect();
-    if fuera.is_empty() { String::new() } else { fuera.join("\n") + "\n" }
+    if fuera.is_empty() {
+        String::new()
+    } else {
+        fuera.join("\n") + "\n"
+    }
 }
 
 #[cfg(test)]
@@ -140,8 +152,16 @@ mod pruebas {
 
     #[test]
     fn la_vista_de_una_nota_manda_sobre_la_general_y_las_demas_usan_la_general() {
-        let grande = Vista { cuerpo: "Nunito".into(), titulos: "Lilita One".into(), px: 21 };
-        let chica = Vista { cuerpo: "Caveat".into(), titulos: "Caveat".into(), px: 14 };
+        let grande = Vista {
+            cuerpo: "Nunito".into(),
+            titulos: "Lilita One".into(),
+            px: 21,
+        };
+        let chica = Vista {
+            cuerpo: "Caveat".into(),
+            titulos: "Caveat".into(),
+            px: 14,
+        };
         let f = escribir("", None, &grande);
         let f = escribir(&f, Some("pins/notas/a.md"), &chica);
         assert_eq!(leer(&f, Some("pins/notas/a.md")), (chica.clone(), true));
@@ -176,7 +196,10 @@ mod pruebas {
 
     #[test]
     fn una_clave_con_tabuladores_no_rompe_el_fichero() {
-        let v = Vista { px: 18, ..Default::default() };
+        let v = Vista {
+            px: 18,
+            ..Default::default()
+        };
         let f = escribir("", Some("a\tb\nc"), &v);
         assert_eq!(f.lines().count(), 1);
         assert_eq!(leer(&f, Some("a\tb\nc")), (v, true));

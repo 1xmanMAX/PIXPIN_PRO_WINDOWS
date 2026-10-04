@@ -1393,7 +1393,11 @@ mod pruebas {
         let (r, g, _) = color_de(&px, 128, 116);
         assert!(g > 150 && r < 100, "la tinta no subio: {:?}", (r, g));
         let (r, g, _) = color_de(&px, 128, 216);
-        assert!(r > 150 && g < 100, "donde estaba la tinta queda {:?}", (r, g));
+        assert!(
+            r > 150 && g < 100,
+            "donde estaba la tinta queda {:?}",
+            (r, g)
+        );
         drop(superficie);
         // SAFETY: la ventana la creo este test y nadie mas la usa.
         unsafe { DestroyWindow(hwnd).unwrap() };
@@ -1540,7 +1544,8 @@ mod pruebas {
             let ctx = d3d.GetImmediateContext().unwrap();
             ctx.CopyResource(&copia, &atras);
             let mut mapa = D3D11_MAPPED_SUBRESOURCE::default();
-            ctx.Map(&copia, 0, D3D11_MAP_READ, 0, Some(&mut mapa)).unwrap();
+            ctx.Map(&copia, 0, D3D11_MAP_READ, 0, Some(&mut mapa))
+                .unwrap();
             let p = (mapa.pData as *const u8).add((y * mapa.RowPitch + x * 4) as usize);
             let px = [*p, *p.add(1), *p.add(2), *p.add(3)];
             ctx.Unmap(&copia, 0);
@@ -1600,20 +1605,32 @@ mod pruebas {
         presentar_de_color(&s, &motor, ROJO);
         presentar_de_color(&s, &motor, AZUL);
         let rojo = pixel_de_atras(&s, &d3d, 5, 5);
-        assert!(rojo[2] > 200 && rojo[0] < 50, "atras deberia quedar el rojo: {rojo:?}");
+        assert!(
+            rojo[2] > 200 && rojo[0] < 50,
+            "atras deberia quedar el rojo: {rojo:?}"
+        );
 
         // Caso negativo primero: igualar solo un trozo deja el resto como
         // estaba. Es lo que hace barata la copia al soltar trazo tras trazo.
         s.igualar_trasero(Some((0, 0, 10, 10))).unwrap();
         let dentro = pixel_de_atras(&s, &d3d, 5, 5);
         let fuera = pixel_de_atras(&s, &d3d, 40, 40);
-        assert!(dentro[0] > 200 && dentro[2] < 50, "la zona ya es azul: {dentro:?}");
-        assert!(fuera[2] > 200 && fuera[0] < 50, "fuera de la zona sigue el rojo: {fuera:?}");
+        assert!(
+            dentro[0] > 200 && dentro[2] < 50,
+            "la zona ya es azul: {dentro:?}"
+        );
+        assert!(
+            fuera[2] > 200 && fuera[0] < 50,
+            "fuera de la zona sigue el rojo: {fuera:?}"
+        );
 
         // Y entero, todo.
         s.igualar_trasero(None).unwrap();
         let fuera = pixel_de_atras(&s, &d3d, 40, 40);
-        assert!(fuera[0] > 200 && fuera[2] < 50, "entero, todo azul: {fuera:?}");
+        assert!(
+            fuera[0] > 200 && fuera[2] < 50,
+            "entero, todo azul: {fuera:?}"
+        );
 
         drop(s);
         // SAFETY: la ventana la creo este test y nadie mas la usa.

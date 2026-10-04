@@ -45,7 +45,10 @@ pub fn ventanas_visibles() -> Vec<VentanaVisible> {
     // SAFETY: el Vec vive hasta que EnumWindows vuelve; la devolucion solo
     // lee de cada ventana y empuja.
     unsafe {
-        let _ = EnumWindows(Some(cada), LPARAM(&mut v as *mut Vec<VentanaVisible> as isize));
+        let _ = EnumWindows(
+            Some(cada),
+            LPARAM(&mut v as *mut Vec<VentanaVisible> as isize),
+        );
     }
     v
 }

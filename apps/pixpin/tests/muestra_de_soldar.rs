@@ -104,7 +104,8 @@ fn pintar(fuera: &FueraDePantalla, motor: &MotorRender, ordenes: &[Orden]) -> Ve
 }
 
 fn guardar(nombre: &str, rgba: &[u8]) {
-    let d = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/muestras-de-construir");
+    let d =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/muestras-de-construir");
     std::fs::create_dir_all(&d).expect("carpeta");
     let png = pixpin_codec::imagen::codificar_png(&pixpin_codec::imagen::ImagenRgba {
         ancho: ANCHO,
@@ -137,25 +138,46 @@ fn soldar_vertices_y_numerar_puntos_se_ven_como_tienen_que_verse() {
     }
     let rgba = pintar(&fuera, &motor, &ordenes(&escena));
     guardar("1-tres-clavos", &rgba);
-    assert!(es_rojo(&rgba, Punto2::nuevo(250.0, 230.0)), "no se ve el clavo");
-    assert!(!es_rojo(&rgba, Punto2::nuevo(150.0, 230.0)), "rojo donde no hay clavo");
+    assert!(
+        es_rojo(&rgba, Punto2::nuevo(250.0, 230.0)),
+        "no se ve el clavo"
+    );
+    assert!(
+        !es_rojo(&rgba, Punto2::nuevo(150.0, 230.0)),
+        "rojo donde no hay clavo"
+    );
 
     // 2. Llevarse el clavo de arriba: el triangulo se deforma, no se abre.
     let i = nudos::clavo_en(&escena, Punto2::nuevo(150.0, 60.0), 16.0).unwrap();
     nudos::mover_clavo(&mut escena, i, Punto2::nuevo(90.0, 40.0));
     let rgba = pintar(&fuera, &motor, &ordenes(&escena));
     guardar("2-clavo-llevado", &rgba);
-    assert!(es_rojo(&rgba, Punto2::nuevo(90.0, 40.0)), "el clavo no llego");
+    assert!(
+        es_rojo(&rgba, Punto2::nuevo(90.0, 40.0)),
+        "el clavo no llego"
+    );
 
     // 3. Una escuadra con un solo clavo: arrastrar la base la hace girar.
     let mut escena = Escena::nueva();
     let base = escena.anadir(raya((60.0, 200.0), (200.0, 200.0)));
     escena.anadir(raya((200.0, 200.0), (200.0, 60.0)));
-    assert!(nudos::soldar(&mut escena, Punto2::nuevo(200.0, 200.0), 16.0));
-    nudos::arrastrar(&mut escena, &[base], Punto2::nuevo(80.0, 200.0), Punto2::nuevo(90.0, 270.0));
+    assert!(nudos::soldar(
+        &mut escena,
+        Punto2::nuevo(200.0, 200.0),
+        16.0
+    ));
+    nudos::arrastrar(
+        &mut escena,
+        &[base],
+        Punto2::nuevo(80.0, 200.0),
+        Punto2::nuevo(90.0, 270.0),
+    );
     let rgba = pintar(&fuera, &motor, &ordenes(&escena));
     guardar("3-gira-sobre-el-clavo", &rgba);
-    assert!(es_rojo(&rgba, Punto2::nuevo(200.0, 200.0)), "el clavo se movio al girar");
+    assert!(
+        es_rojo(&rgba, Punto2::nuevo(200.0, 200.0)),
+        "el clavo se movio al girar"
+    );
 
     // 4. Numerar puntos: la misma cruz con las tres series.
     let mut escena = Escena::nueva();
@@ -174,7 +196,8 @@ fn soldar_vertices_y_numerar_puntos_se_ven_como_tienen_que_verse() {
         // En el cruce y en la punta de arriba.
         for toque in [Punto2::nuevo(x + 3.0, 152.0), Punto2::nuevo(x - 2.0, 63.0)] {
             let otros: Vec<Elemento> = escena.elementos.clone();
-            let donde = puntos_etiquetados::sitio_para_punto(&otros, toque, 30.0).expect("sin sitio");
+            let donde =
+                puntos_etiquetados::sitio_para_punto(&otros, toque, 30.0).expect("sin sitio");
             let punto = puntos_etiquetados::nuevo_punto(donde, &otros, serie, &molde);
             escena.anadir(punto);
         }

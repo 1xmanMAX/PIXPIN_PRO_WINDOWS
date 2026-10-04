@@ -82,7 +82,11 @@ pub fn abrir(textos: &Catalogo, ruta: &Path) -> Result<bool> {
     let aviso_de_cierre = Rc::clone(&cerrado);
     let visor = pixpin_web::VisorHtml::nuevo(
         ventana.handle(),
-        Rect { x: 0, y: 0, ..marco },
+        Rect {
+            x: 0,
+            y: 0,
+            ..marco
+        },
         ruta,
         Box::new(move |bytes| buzon.borrow_mut().push(bytes)),
         Box::new(move || aviso_de_cierre.set(true)),

@@ -46,7 +46,8 @@ pub(crate) fn marcadores_de(lista: &[Marca]) -> Vec<Marcador> {
 /// ellas. Si no, lo anotado saldria dos veces.
 pub(crate) fn base_limpia(ruta: &Path) -> Result<Vec<u8>> {
     let documento = crate::lector_pdf_proyecto::DondeVa::solo_leer(ruta).documento(ruta);
-    let mut bytes = std::fs::read(&documento).with_context(|| format!("no se pudo leer {}", documento.display()))?;
+    let mut bytes = std::fs::read(&documento)
+        .with_context(|| format!("no se pudo leer {}", documento.display()))?;
     if let Some(n) = pixpin_pdf::cocido::largo_sin_lo_cocido(&bytes) {
         bytes.truncate(n);
     }
@@ -82,17 +83,28 @@ pub(crate) fn con_tinta(
 /// documento, con lo anotado que tenga en disco o limpio. Unas cuantas
 /// hojas salen como paginas de verdad del original (`union::solo_paginas`),
 /// no como fotos.
-pub(crate) fn de_documento(ruta: &Path, paginas: Option<&[usize]>, con_anotaciones: bool) -> Result<Vec<u8>> {
+pub(crate) fn de_documento(
+    ruta: &Path,
+    paginas: Option<&[usize]>,
+    con_anotaciones: bool,
+) -> Result<Vec<u8>> {
     let original = base_limpia(ruta)?;
     let total = pixpin_pdf::union::contar_paginas(&original).unwrap_or(0) as usize;
     let todas: Vec<usize> = (0..total).collect();
-    let cuales: Vec<usize> = paginas.map_or_else(|| todas.clone(), |p| p.iter().copied().filter(|i| *i < total).collect());
-    anyhow::ensure!(!cuales.is_empty() || total == 0, "el PDF no tiene esas hojas");
+    let cuales: Vec<usize> = paginas.map_or_else(
+        || todas.clone(),
+        |p| p.iter().copied().filter(|i| *i < total).collect(),
+    );
+    anyhow::ensure!(
+        !cuales.is_empty() || total == 0,
+        "el PDF no tiene esas hojas"
+    );
     let enteras = cuales == todas || total == 0;
     let base = if enteras {
         original
     } else {
-        pixpin_pdf::union::solo_paginas(&original, &cuales).context("esas hojas no se dejan copiar")?
+        pixpin_pdf::union::solo_paginas(&original, &cuales)
+            .context("esas hojas no se dejan copiar")?
     };
     if !con_anotaciones {
         return Ok(base);
@@ -110,7 +122,8 @@ pub(crate) fn de_documento(ruta: &Path, paginas: Option<&[usize]>, con_anotacion
             continue;
         }
         let alto = hojas.altos.get(i).copied().unwrap_or(0.0);
-        let ordenes = pintado::ordenes_de_escena(&donde.leer_capa(ruta, i, ajustes.espacios, alto).escena);
+        let ordenes =
+            pintado::ordenes_de_escena(&donde.leer_capa(ruta, i, ajustes.espacios, alto).escena);
         if !ordenes.is_empty() {
             tinta.insert(j, ordenes);
         }
@@ -124,8 +137,13 @@ pub(crate) fn de_documento(ruta: &Path, paginas: Option<&[usize]>, con_anotacion
             Some(m)
         })
         .collect();
-    con_tinta(&base, &tinta, vista::espacios_del_pdf(ajustes.espacios), &marcadores)
-        .context("el PDF no se deja anotar (cifrado o roto)")
+    con_tinta(
+        &base,
+        &tinta,
+        vista::espacios_del_pdf(ajustes.espacios),
+        &marcadores,
+    )
+    .context("el PDF no se deja anotar (cifrado o roto)")
 }
 
 #[cfg(test)]

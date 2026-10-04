@@ -43,7 +43,10 @@ pub fn marcas(texto: &str) -> Vec<bool> {
     let n = texto.encode_utf16().count();
     let mut v = vec![false; n];
     for t in md_vivo::analizar(texto) {
-        if matches!(t.estilo, Estilo::Marca | Estilo::Numero | Estilo::Casilla { .. }) {
+        if matches!(
+            t.estilo,
+            Estilo::Marca | Estilo::Numero | Estilo::Casilla { .. }
+        ) {
             for x in v.iter_mut().take(t.hasta.min(n)).skip(t.desde) {
                 *x = true;
             }
@@ -60,7 +63,11 @@ pub fn escondidas(texto: &str) -> Vec<bool> {
     for t in md_vivo::analizar(texto) {
         if matches!(
             t.estilo,
-            Estilo::Marca | Estilo::Numero | Estilo::Casilla { .. } | Estilo::Regla | Estilo::Imagen
+            Estilo::Marca
+                | Estilo::Numero
+                | Estilo::Casilla { .. }
+                | Estilo::Regla
+                | Estilo::Imagen
         ) {
             for x in v.iter_mut().take(t.hasta.min(n)).skip(t.desde) {
                 *x = true;
@@ -197,18 +204,30 @@ pub struct Envuelto {
 /// acaba justo donde empieza lo de dentro y la que empieza donde acaba.
 pub fn envueltos(texto: &str) -> Vec<Envuelto> {
     let tramos = md_vivo::analizar(texto);
-    let marcas: Vec<&md_vivo::Tramo> = tramos.iter().filter(|t| t.estilo == Estilo::Marca).collect();
+    let marcas: Vec<&md_vivo::Tramo> = tramos
+        .iter()
+        .filter(|t| t.estilo == Estilo::Marca)
+        .collect();
     tramos
         .iter()
         .filter(|t| {
             matches!(
                 t.estilo,
-                Estilo::Negrita | Estilo::Cursiva | Estilo::Tachado | Estilo::Codigo | Estilo::Formula | Estilo::Enlace
+                Estilo::Negrita
+                    | Estilo::Cursiva
+                    | Estilo::Tachado
+                    | Estilo::Codigo
+                    | Estilo::Formula
+                    | Estilo::Enlace
             )
         })
         .filter_map(|t| {
-            let abre = marcas.iter().find(|m| m.linea == t.linea && m.hasta == t.desde)?;
-            let cierra = marcas.iter().find(|m| m.linea == t.linea && m.desde == t.hasta)?;
+            let abre = marcas
+                .iter()
+                .find(|m| m.linea == t.linea && m.hasta == t.desde)?;
+            let cierra = marcas
+                .iter()
+                .find(|m| m.linea == t.linea && m.desde == t.hasta)?;
             Some(Envuelto {
                 estilo: t.estilo,
                 abre: (abre.desde, abre.hasta),
@@ -246,7 +265,8 @@ pub fn borrar(texto: &str, desde: usize, hasta: usize) -> (String, usize) {
     }
     // Los tramos que se quedan sin nada visible dentro, con sus marcas (de
     // dentro afuera: `***x***` pierde la cursiva y luego la negrita).
-    let vacio = |fuera: &[bool], e: &Envuelto| (e.dentro.0..e.dentro.1).all(|i| fuera[i] || marcas[i]);
+    let vacio =
+        |fuera: &[bool], e: &Envuelto| (e.dentro.0..e.dentro.1).all(|i| fuera[i] || marcas[i]);
     let envs = envueltos(texto);
     loop {
         let mut cambio = false;
@@ -271,7 +291,12 @@ pub fn borrar(texto: &str, desde: usize, hasta: usize) -> (String, usize) {
         }
     }
     let cursor = (0..desde).filter(|&i| !fuera[i]).count();
-    let quedan: Vec<u16> = u.iter().zip(&fuera).filter(|(_, f)| !**f).map(|(c, _)| *c).collect();
+    let quedan: Vec<u16> = u
+        .iter()
+        .zip(&fuera)
+        .filter(|(_, f)| !**f)
+        .map(|(c, _)| *c)
+        .collect();
     (texto_de(&quedan), cursor)
 }
 
@@ -293,7 +318,11 @@ pub fn tecla_borrar(texto: &str, cursor: usize, atras: bool) -> Option<(String, 
     // Un bloque entero (foto, raya) se quita de una vez, con su salto.
     let quitar_renglon = |k: usize| -> (String, usize) {
         let r = ls[k];
-        let (a, b) = if r.hasta < u.len() { (r.desde, r.hasta + 1) } else { (r.desde.saturating_sub(1), r.hasta) };
+        let (a, b) = if r.hasta < u.len() {
+            (r.desde, r.hasta + 1)
+        } else {
+            (r.desde.saturating_sub(1), r.hasta)
+        };
         let mut v = u[..a].to_vec();
         v.extend_from_slice(&u[b..]);
         (texto_de(&v), a)
@@ -302,8 +331,16 @@ pub fn tecla_borrar(texto: &str, cursor: usize, atras: bool) -> Option<(String, 
         let visible = (inicio..cursor.min(l.hasta)).rev().find(|&i| !marcas[i]);
         match visible {
             Some(p) => {
-                let p = if p > 0 && is_baja(u[p]) && is_alta(u[p - 1]) { p - 1 } else { p };
-                let largo = if is_alta(u[p]) && p + 1 < u.len() { 2 } else { 1 };
+                let p = if p > 0 && is_baja(u[p]) && is_alta(u[p - 1]) {
+                    p - 1
+                } else {
+                    p
+                };
+                let largo = if is_alta(u[p]) && p + 1 < u.len() {
+                    2
+                } else {
+                    1
+                };
                 Some(borrar(texto, p, p + largo))
             }
             // Al principio de lo que se ve.
@@ -329,7 +366,11 @@ pub fn tecla_borrar(texto: &str, cursor: usize, atras: bool) -> Option<(String, 
         let visible = (cursor.max(inicio)..l.hasta).find(|&i| !marcas[i]);
         match visible {
             Some(q) => {
-                let largo = if is_alta(u[q]) && q + 1 < u.len() { 2 } else { 1 };
+                let largo = if is_alta(u[q]) && q + 1 < u.len() {
+                    2
+                } else {
+                    1
+                };
                 let (t, _) = borrar(texto, q, q + largo);
                 Some((t, cursor.min(q)))
             }
@@ -379,9 +420,17 @@ struct Cambio {
 }
 
 /// Aplica los cambios (que no se pisan) y lleva por ellos unas posiciones.
-fn aplicar(u: &[u16], mut cambios: Vec<Cambio>, posiciones: &[(usize, bool)]) -> (String, Vec<usize>) {
+fn aplicar(
+    u: &[u16],
+    mut cambios: Vec<Cambio>,
+    posiciones: &[(usize, bool)],
+) -> (String, Vec<usize>) {
     // De atras adelante; en la misma posicion, quitar antes que meter.
-    cambios.sort_by(|a, b| b.pos.cmp(&a.pos).then_with(|| (a.quitar == 0).cmp(&(b.quitar == 0))));
+    cambios.sort_by(|a, b| {
+        b.pos
+            .cmp(&a.pos)
+            .then_with(|| (a.quitar == 0).cmp(&(b.quitar == 0)))
+    });
     let mut v = u.to_vec();
     for c in &cambios {
         v.splice(c.pos..c.pos + c.quitar, c.poner.iter().copied());
@@ -419,16 +468,32 @@ fn aplicar(u: &[u16], mut cambios: Vec<Cambio>, posiciones: &[(usize, bool)]) ->
 /// Sin nada elegido, con el cursor dentro de un tramo con ese formato, se
 /// lo quita a todo el tramo. `None`: no hay nada que hacer (el editor deja
 /// el formato «pendiente» para lo que se escriba).
-pub fn alternar(texto: &str, desde: usize, hasta: usize, marca: &str) -> Option<(String, usize, usize)> {
+pub fn alternar(
+    texto: &str,
+    desde: usize,
+    hasta: usize,
+    marca: &str,
+) -> Option<(String, usize, usize)> {
     let estilo = estilo_de(marca)?;
     let u = u16s(texto);
     let (a, b) = (desde.min(hasta).min(u.len()), hasta.max(desde).min(u.len()));
-    let envs: Vec<Envuelto> = envueltos(texto).into_iter().filter(|e| e.estilo == estilo).collect();
+    let envs: Vec<Envuelto> = envueltos(texto)
+        .into_iter()
+        .filter(|e| e.estilo == estilo)
+        .collect();
     if a == b {
         let e = envs.iter().find(|e| e.dentro.0 <= a && a <= e.dentro.1)?;
         let cambios = vec![
-            Cambio { pos: e.abre.0, quitar: e.abre.1 - e.abre.0, poner: Vec::new() },
-            Cambio { pos: e.cierra.0, quitar: e.cierra.1 - e.cierra.0, poner: Vec::new() },
+            Cambio {
+                pos: e.abre.0,
+                quitar: e.abre.1 - e.abre.0,
+                poner: Vec::new(),
+            },
+            Cambio {
+                pos: e.cierra.0,
+                quitar: e.cierra.1 - e.cierra.0,
+                poner: Vec::new(),
+            },
         ];
         let (t, p) = aplicar(&u, cambios, &[(a, false)]);
         return Some((t, p[0], p[0]));
@@ -459,7 +524,11 @@ pub fn alternar(texto: &str, desde: usize, hasta: usize, marca: &str) -> Option<
         return None;
     }
     // Quitar si todo lo elegido ya lo tiene.
-    let dentro_de = |s: usize, t: usize| envs.iter().find(|e| e.dentro.0 <= s && t <= e.dentro.1).copied();
+    let dentro_de = |s: usize, t: usize| {
+        envs.iter()
+            .find(|e| e.dentro.0 <= s && t <= e.dentro.1)
+            .copied()
+    };
     let quitar = trozos.iter().all(|&(s, t)| dentro_de(s, t).is_some());
     let mut cambios = Vec::new();
     let mut extremos = Vec::new();
@@ -477,14 +546,30 @@ pub fn alternar(texto: &str, desde: usize, hasta: usize, marca: &str) -> Option<
                 abre += 1;
             }
             if cierre == e.dentro.0 {
-                cambios.push(Cambio { pos: e.abre.0, quitar: e.abre.1 - e.abre.0, poner: Vec::new() });
+                cambios.push(Cambio {
+                    pos: e.abre.0,
+                    quitar: e.abre.1 - e.abre.0,
+                    poner: Vec::new(),
+                });
             } else {
-                cambios.push(Cambio { pos: cierre, quitar: 0, poner: u[e.cierra.0..e.cierra.1].to_vec() });
+                cambios.push(Cambio {
+                    pos: cierre,
+                    quitar: 0,
+                    poner: u[e.cierra.0..e.cierra.1].to_vec(),
+                });
             }
             if abre == e.dentro.1 {
-                cambios.push(Cambio { pos: e.cierra.0, quitar: e.cierra.1 - e.cierra.0, poner: Vec::new() });
+                cambios.push(Cambio {
+                    pos: e.cierra.0,
+                    quitar: e.cierra.1 - e.cierra.0,
+                    poner: Vec::new(),
+                });
             } else {
-                cambios.push(Cambio { pos: abre, quitar: 0, poner: u[e.abre.0..e.abre.1].to_vec() });
+                cambios.push(Cambio {
+                    pos: abre,
+                    quitar: 0,
+                    poner: u[e.abre.0..e.abre.1].to_vec(),
+                });
             }
             extremos.push(((s, true), (t, false)));
         } else {
@@ -497,11 +582,27 @@ pub fn alternar(texto: &str, desde: usize, hasta: usize, marca: &str) -> Option<
             for e in &tocados {
                 s2 = s2.min(e.dentro.0);
                 t2 = t2.max(e.dentro.1);
-                cambios.push(Cambio { pos: e.abre.0, quitar: e.abre.1 - e.abre.0, poner: Vec::new() });
-                cambios.push(Cambio { pos: e.cierra.0, quitar: e.cierra.1 - e.cierra.0, poner: Vec::new() });
+                cambios.push(Cambio {
+                    pos: e.abre.0,
+                    quitar: e.abre.1 - e.abre.0,
+                    poner: Vec::new(),
+                });
+                cambios.push(Cambio {
+                    pos: e.cierra.0,
+                    quitar: e.cierra.1 - e.cierra.0,
+                    poner: Vec::new(),
+                });
             }
-            cambios.push(Cambio { pos: s2, quitar: 0, poner: m.clone() });
-            cambios.push(Cambio { pos: t2, quitar: 0, poner: m.clone() });
+            cambios.push(Cambio {
+                pos: s2,
+                quitar: 0,
+                poner: m.clone(),
+            });
+            cambios.push(Cambio {
+                pos: t2,
+                quitar: 0,
+                poner: m.clone(),
+            });
             extremos.push(((s2, true), (t2, false)));
         }
     }
@@ -518,11 +619,26 @@ pub fn quitar_formato(texto: &str, desde: usize, hasta: usize) -> Option<(String
     let u = u16s(texto);
     let (a, b) = (desde.min(hasta).min(u.len()), hasta.max(desde).min(u.len()));
     let mut cambios = Vec::new();
-    for e in envueltos(texto).into_iter().filter(|e| e.estilo != Estilo::Enlace) {
-        let toca = if a == b { e.dentro.0 <= a && a <= e.dentro.1 } else { e.abre.0 < b && a < e.cierra.1 };
+    for e in envueltos(texto)
+        .into_iter()
+        .filter(|e| e.estilo != Estilo::Enlace)
+    {
+        let toca = if a == b {
+            e.dentro.0 <= a && a <= e.dentro.1
+        } else {
+            e.abre.0 < b && a < e.cierra.1
+        };
         if toca {
-            cambios.push(Cambio { pos: e.abre.0, quitar: e.abre.1 - e.abre.0, poner: Vec::new() });
-            cambios.push(Cambio { pos: e.cierra.0, quitar: e.cierra.1 - e.cierra.0, poner: Vec::new() });
+            cambios.push(Cambio {
+                pos: e.abre.0,
+                quitar: e.abre.1 - e.abre.0,
+                poner: Vec::new(),
+            });
+            cambios.push(Cambio {
+                pos: e.cierra.0,
+                quitar: e.cierra.1 - e.cierra.0,
+                poner: Vec::new(),
+            });
         }
     }
     if cambios.is_empty() {

@@ -56,14 +56,19 @@ pub struct Entrada {
 /// Si un mensaje lleva una leccion (`LeccionesStore.esLeccion`).
 pub fn es_leccion(m: &Mensaje) -> bool {
     m.clase == Some(Clase::Archivo)
-        && m.ruta.as_deref().is_some_and(pixpin_lecciones::leccion::es_ruta_de_leccion)
+        && m.ruta
+            .as_deref()
+            .is_some_and(pixpin_lecciones::leccion::es_ruta_de_leccion)
 }
 
 /// Si un mensaje es una leccion o una foto o audio suyo (los que la
 /// responden): lo que el chat no ensena (`LeccionesStore.sinLecciones`). Las
 /// suyas se reconocen por el id de lo que responden, que empieza por `lec-`.
 pub fn es_de_leccion(m: &Mensaje) -> bool {
-    es_leccion(m) || m.responde_a.as_deref().is_some_and(|r| r.starts_with(PREFIJO))
+    es_leccion(m)
+        || m.responde_a
+            .as_deref()
+            .is_some_and(|r| r.starts_with(PREFIJO))
 }
 
 /// La ruta con que el mensaje nombra la leccion `id`.
@@ -243,7 +248,9 @@ pub fn guardar(raiz: &Path, l: &Leccion, donde: &Donde, aparato: &str) -> std::i
         };
         let ruta = match &mensaje {
             // El de antes se fue, pero el archivo es el mismo.
-            Some(_) => vista::portatil_de_ruta(raiz, &archivo).unwrap_or_else(|| ruta_portatil(&l.id)),
+            Some(_) => {
+                vista::portatil_de_ruta(raiz, &archivo).unwrap_or_else(|| ruta_portatil(&l.id))
+            }
             None => ruta_portatil(&l.id),
         };
         let mut m = Mensaje::adjunto(Clase::Archivo, &l.nombre(), &ruta, bytes, &sello);
@@ -282,7 +289,11 @@ pub fn guardar_con_fotos(
         return guardar(raiz, l, donde, aparato);
     }
     let (ficha, mensaje, archivo) = match donde {
-        Donde::Nueva { ficha } => (ficha.clone(), format!("{PREFIJO}{}", l.id), archivo_nuevo(raiz, ficha, &l.id)),
+        Donde::Nueva { ficha } => (
+            ficha.clone(),
+            format!("{PREFIJO}{}", l.id),
+            archivo_nuevo(raiz, ficha, &l.id),
+        ),
         Donde::Existente {
             ficha,
             mensaje,
@@ -304,7 +315,13 @@ pub fn guardar_con_fotos(
             aparato: aparato.to_string(),
             proyecto: ficha.clone(),
         };
-        let mut m = Mensaje::adjunto(Clase::Imagen, NOMBRE_FOTO, &ruta, bytes.len() as i64, &sello);
+        let mut m = Mensaje::adjunto(
+            Clase::Imagen,
+            NOMBRE_FOTO,
+            &ruta,
+            bytes.len() as i64,
+            &sello,
+        );
         m.responde_a = Some(mensaje.clone());
         cuaderno::anadir(&carpeta, &m)?;
         ids.push(m.id);
@@ -312,7 +329,10 @@ pub fn guardar_con_fotos(
     }
     let mut adjuntos = l.adjuntos.clone();
     adjuntos.extend(ids);
-    let con_fotos = Leccion { adjuntos, ..l.clone() };
+    let con_fotos = Leccion {
+        adjuntos,
+        ..l.clone()
+    };
     guardar(
         raiz,
         &con_fotos,
@@ -327,7 +347,10 @@ pub fn guardar_con_fotos(
 
 /// Donde se escribe el archivo de una leccion nueva del chat `ficha`.
 fn archivo_nuevo(raiz: &Path, ficha: &str, id: &str) -> PathBuf {
-    almacen::carpeta(raiz, ficha).join("android").join(CARPETA).join(format!("{id}{EXTENSION}"))
+    almacen::carpeta(raiz, ficha)
+        .join("android")
+        .join(CARPETA)
+        .join(format!("{id}{EXTENSION}"))
 }
 
 /// **Borra la leccion** (`LeccionesStore.borrar`): su mensaje y los de sus
@@ -362,10 +385,16 @@ pub fn borrar(raiz: &Path, e: &Entrada) -> std::io::Result<()> {
     };
     let ahora = pixpin_shell::entorno::ahora_utc_ms();
     if let Err(err) = vista::anotar_borrados(raiz, &e.ficha, &quitados, ahora) {
-        tracing::warn!(?err, "no se pudo apuntar la leccion borrada para sincronizar");
+        tracing::warn!(
+            ?err,
+            "no se pudo apuntar la leccion borrada para sincronizar"
+        );
     }
     for m in quitados.iter().filter(|m| m.id != e.mensaje.id) {
-        if let Some(r) = m.ruta.as_deref().and_then(|r| vista::ruta_real(raiz, &e.ficha, r))
+        if let Some(r) = m
+            .ruta
+            .as_deref()
+            .and_then(|r| vista::ruta_real(raiz, &e.ficha, r))
             && r.is_file()
         {
             let _ = std::fs::remove_file(r);
@@ -396,11 +425,17 @@ pub fn avisar_cambio() {
 }
 
 pub fn apuntar_ventana(hwnd: isize) {
-    ABIERTAS.lock().unwrap_or_else(|e| e.into_inner()).push(hwnd);
+    ABIERTAS
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .push(hwnd);
 }
 
 pub fn quitar_ventana(hwnd: isize) {
-    ABIERTAS.lock().unwrap_or_else(|e| e.into_inner()).retain(|h| *h != hwnd);
+    ABIERTAS
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .retain(|h| *h != hwnd);
 }
 
 #[cfg(test)]
@@ -408,7 +443,8 @@ mod pruebas {
     use super::*;
 
     fn raiz(nombre: &str) -> PathBuf {
-        let r = std::env::temp_dir().join(format!("pixpin-lecciones-{nombre}-{}", std::process::id()));
+        let r =
+            std::env::temp_dir().join(format!("pixpin-lecciones-{nombre}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&r);
         std::fs::create_dir_all(&r).unwrap();
         r
@@ -416,12 +452,20 @@ mod pruebas {
 
     #[test]
     fn la_ruta_es_la_del_movil_y_vive_donde_lo_que_llega_del_movil() {
-        assert_eq!(ruta_portatil("abc"), "pixpin:files/guardados/lecciones/abc.leccion");
+        assert_eq!(
+            ruta_portatil("abc"),
+            "pixpin:files/guardados/lecciones/abc.leccion"
+        );
         let r = Path::new("C:/datos");
         let a = archivo_de(r, "p1", "pixpin:files/guardados/lecciones/abc.leccion").unwrap();
         assert!(a.ends_with("proyectos/p1/android/guardados/lecciones/abc.leccion"));
         // La absoluta de un movil viejo se busca por lo de detras de files/.
-        let b = archivo_de(r, "p1", "/data/user/0/com.forge.pixpin/files/guardados/lecciones/abc.leccion").unwrap();
+        let b = archivo_de(
+            r,
+            "p1",
+            "/data/user/0/com.forge.pixpin/files/guardados/lecciones/abc.leccion",
+        )
+        .unwrap();
         assert_eq!(a, b);
         // Caso negativo: no se sale de la carpeta.
         assert!(archivo_de(r, "p1", "pixpin:files/guardados/../../x.leccion").is_none());
@@ -454,14 +498,25 @@ mod pruebas {
         indice.proyectos.push(ficha.clone());
         indice.guardar(&r).unwrap();
         let l = Leccion::nueva("k1", 1000, "Revisar puntales");
-        guardar(&r, &l, &Donde::Nueva { ficha: ficha.id.clone() }, "K7Q2").unwrap();
+        guardar(
+            &r,
+            &l,
+            &Donde::Nueva {
+                ficha: ficha.id.clone(),
+            },
+            "K7Q2",
+        )
+        .unwrap();
         let todas = listar(&r);
         assert_eq!(todas.len(), 1);
         let e = &todas[0];
         assert_eq!(e.mensaje.id, "lec-k1");
         assert_eq!(e.mensaje.nombre, "💡 Revisar puntales");
         assert_eq!(e.mensaje.texto, "💡 Lección: Revisar puntales");
-        assert_eq!(e.mensaje.ruta.as_deref(), Some("pixpin:files/guardados/lecciones/k1.leccion"));
+        assert_eq!(
+            e.mensaje.ruta.as_deref(),
+            Some("pixpin:files/guardados/lecciones/k1.leccion")
+        );
         assert_eq!(e.mensaje.cuando, 1000);
         // Editarla no crea otro mensaje.
         let cambiada = Leccion {
@@ -488,8 +543,20 @@ mod pruebas {
         indice.proyectos.push(ficha.clone());
         indice.guardar(&r).unwrap();
         let l = Leccion::nueva("f1", 1000, "Mirar el encofrado");
-        let fotos = vec![("a.png".to_string(), b"uno".to_vec()), ("b.jpg".to_string(), b"dos".to_vec())];
-        let guardada = guardar_con_fotos(&r, &l, &Donde::Nueva { ficha: ficha.id.clone() }, "K7Q2", &fotos).unwrap();
+        let fotos = vec![
+            ("a.png".to_string(), b"uno".to_vec()),
+            ("b.jpg".to_string(), b"dos".to_vec()),
+        ];
+        let guardada = guardar_con_fotos(
+            &r,
+            &l,
+            &Donde::Nueva {
+                ficha: ficha.id.clone(),
+            },
+            "K7Q2",
+            &fotos,
+        )
+        .unwrap();
         assert_eq!(guardada.adjuntos.len(), 2);
         let todas = listar(&r);
         assert_eq!(todas.len(), 1, "una sola leccion, no una por guardado");
@@ -497,7 +564,11 @@ mod pruebas {
         assert!(todas[0].mensaje.texto.contains("📎 2 adjuntos"));
         let carpeta = almacen::carpeta(&r, &ficha.id);
         let c = cuaderno::Cuaderno::leer_de(&carpeta).unwrap();
-        let fotos_del_chat: Vec<&Mensaje> = c.mensajes.iter().filter(|m| m.clase == Some(Clase::Imagen)).collect();
+        let fotos_del_chat: Vec<&Mensaje> = c
+            .mensajes
+            .iter()
+            .filter(|m| m.clase == Some(Clase::Imagen))
+            .collect();
         assert_eq!(fotos_del_chat.len(), 2);
         for (m, id) in fotos_del_chat.iter().zip(&guardada.adjuntos) {
             assert_eq!(&m.id, id);
@@ -509,10 +580,25 @@ mod pruebas {
         assert_ne!(fotos_del_chat[0].id, fotos_del_chat[1].id);
         // Caso negativo: sin fotos no se anade ningun mensaje de foto.
         let otra = Leccion::nueva("f2", 2000, "Sin fotos");
-        let g = guardar_con_fotos(&r, &otra, &Donde::Nueva { ficha: ficha.id.clone() }, "K7Q2", &[]).unwrap();
+        let g = guardar_con_fotos(
+            &r,
+            &otra,
+            &Donde::Nueva {
+                ficha: ficha.id.clone(),
+            },
+            "K7Q2",
+            &[],
+        )
+        .unwrap();
         assert!(g.adjuntos.is_empty());
         let c = cuaderno::Cuaderno::leer_de(&carpeta).unwrap();
-        assert_eq!(c.mensajes.iter().filter(|m| m.clase == Some(Clase::Imagen)).count(), 2);
+        assert_eq!(
+            c.mensajes
+                .iter()
+                .filter(|m| m.clase == Some(Clase::Imagen))
+                .count(),
+            2
+        );
         let _ = std::fs::remove_dir_all(&r);
     }
 }

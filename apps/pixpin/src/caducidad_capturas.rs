@@ -107,7 +107,10 @@ fn leer_sin_cerrojo(raiz: &Path, ahora: i64) -> Registro {
         let _ = std::fs::rename(&ruta, raiz.join(format!("{FICHERO}.roto-{ahora}")));
     }
     if let Err(e) = escribir(raiz, &nuevo) {
-        tracing::warn!(?e, "no se pudo escribir el registro de caducidad de las capturas");
+        tracing::warn!(
+            ?e,
+            "no se pudo escribir el registro de caducidad de las capturas"
+        );
     }
     nuevo
 }
@@ -115,12 +118,19 @@ fn leer_sin_cerrojo(raiz: &Path, ahora: i64) -> Registro {
 fn escribir(raiz: &Path, r: &Registro) -> std::io::Result<()> {
     let ruta = ruta_del_registro(raiz);
     let tmp = ruta.with_extension("json.tmp");
-    std::fs::write(&tmp, serde_json::to_vec_pretty(r).map_err(std::io::Error::other)?)?;
+    std::fs::write(
+        &tmp,
+        serde_json::to_vec_pretty(r).map_err(std::io::Error::other)?,
+    )?;
     std::fs::rename(&tmp, &ruta)
 }
 
 /// Cambia el registro con el cerrojo cogido y lo escribe.
-pub fn cambiar(raiz: &Path, ahora: i64, f: impl FnOnce(&mut Registro)) -> std::io::Result<Registro> {
+pub fn cambiar(
+    raiz: &Path,
+    ahora: i64,
+    f: impl FnOnce(&mut Registro),
+) -> std::io::Result<Registro> {
     let _c = CERROJO.lock().unwrap_or_else(|e| e.into_inner());
     let mut r = leer_sin_cerrojo(raiz, ahora);
     f(&mut r);
@@ -130,7 +140,9 @@ pub fn cambiar(raiz: &Path, ahora: i64, f: impl FnOnce(&mut Registro)) -> std::i
 
 /// El nombre con que se apunta una captura.
 pub fn nombre(ruta: &Path) -> String {
-    ruta.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default()
+    ruta.file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_default()
 }
 
 pub fn ms_de(t: SystemTime) -> i64 {
@@ -194,7 +206,9 @@ pub fn barrer(raiz: &Path, ahora: i64) -> usize {
                 idas += 1;
                 tracing::info!(ruta = %e.ruta.display(), "captura caducada, a la papelera de Windows");
             }
-            Err(err) => tracing::warn!(?err, ruta = %e.ruta.display(), "no se pudo llevar a la papelera"),
+            Err(err) => {
+                tracing::warn!(?err, ruta = %e.ruta.display(), "no se pudo llevar a la papelera")
+            }
         }
     }
     let presentes: BTreeSet<String> = lista.iter().map(|e| nombre(&e.ruta)).collect();
@@ -287,7 +301,11 @@ mod pruebas {
         assert_eq!(viejo.desde, 5);
         assert!(viejo.prorrogadas.is_empty());
         // Caso negativo: sin prorrogas el fichero queda como antes.
-        assert!(!serde_json::to_string(&viejo).unwrap().contains("prorrogadas"));
+        assert!(
+            !serde_json::to_string(&viejo)
+                .unwrap()
+                .contains("prorrogadas")
+        );
     }
 
     #[test]
@@ -296,7 +314,10 @@ mod pruebas {
         let e = entrada("a.png", 10 * DIA_MS);
         assert_eq!(se_va_el(&r, &e), Some(17 * DIA_MS));
         assert!(caducadas(&r, std::slice::from_ref(&e), 17 * DIA_MS - 1).is_empty());
-        assert_eq!(caducadas(&r, std::slice::from_ref(&e), 17 * DIA_MS).len(), 1);
+        assert_eq!(
+            caducadas(&r, std::slice::from_ref(&e), 17 * DIA_MS).len(),
+            1
+        );
     }
 
     #[test]
@@ -304,7 +325,10 @@ mod pruebas {
         // Estreno el dia 100; una captura de hace meses (dia 3).
         let r = registro(100 * DIA_MS);
         let vieja = entrada("vieja.png", 3 * DIA_MS);
-        assert!(caducadas(&r, std::slice::from_ref(&vieja), 100 * DIA_MS).is_empty(), "el primer dia no");
+        assert!(
+            caducadas(&r, std::slice::from_ref(&vieja), 100 * DIA_MS).is_empty(),
+            "el primer dia no"
+        );
         assert_eq!(se_va_el(&r, &vieja), Some(107 * DIA_MS));
     }
 
@@ -343,8 +367,14 @@ mod pruebas {
         assert!(leer(&raiz, 5).conservadas.contains("x.png"));
         let y = entrada("y.png", 0);
         let r = prorrogar(&raiz, &y, 5).unwrap();
-        assert_eq!(r.prorrogadas.get("y.png"), Some(&(1000 + 2 * DIAS * DIA_MS)));
-        assert_eq!(leer(&raiz, 5).prorrogadas.get("y.png"), Some(&(1000 + 2 * DIAS * DIA_MS)));
+        assert_eq!(
+            r.prorrogadas.get("y.png"),
+            Some(&(1000 + 2 * DIAS * DIA_MS))
+        );
+        assert_eq!(
+            leer(&raiz, 5).prorrogadas.get("y.png"),
+            Some(&(1000 + 2 * DIAS * DIA_MS))
+        );
         // Un registro roto se aparta y se empieza de nuevo, sin panico.
         std::fs::write(raiz.join(FICHERO), b"{roto").unwrap();
         assert_eq!(leer(&raiz, 77).desde, 77);
@@ -353,7 +383,8 @@ mod pruebas {
 
     #[test]
     fn barrer_lleva_lo_caducado_a_la_papelera_y_deja_lo_demas() {
-        let raiz = std::env::temp_dir().join(format!("pixpin-caducidad-barrer-{}", std::process::id()));
+        let raiz =
+            std::env::temp_dir().join(format!("pixpin-caducidad-barrer-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&raiz);
         let dir = galeria_capturas::carpeta_en(&raiz);
         std::fs::create_dir_all(&dir).unwrap();

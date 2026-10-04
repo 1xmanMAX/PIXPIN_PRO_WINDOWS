@@ -26,7 +26,10 @@ pub(super) struct Dictado {
 
 impl Dictado {
     /// Nace con lo que mide la raya trazada, para corregir y no reescribir.
-    pub fn de(e: &pixpin_motor2d::Elemento, escala: Option<&pixpin_motor2d::medida::Escala>) -> Dictado {
+    pub fn de(
+        e: &pixpin_motor2d::Elemento,
+        escala: Option<&pixpin_motor2d::medida::Escala>,
+    ) -> Dictado {
         Dictado {
             largo: numero(pixpin_motor2d::medida::largo_en_unidades(e, escala)),
             angulo: numero(pixpin_motor2d::medida::angulo_de(e)),
@@ -63,7 +66,13 @@ impl Dictado {
     /// El largo y el angulo tecleados, si valen: largo positivo y angulo
     /// numerico (`valida` del cajetin del movil).
     pub fn valores(&self) -> Option<(f32, f32)> {
-        let leer = |t: &str| t.trim().replace(',', ".").parse::<f32>().ok().filter(|v| v.is_finite());
+        let leer = |t: &str| {
+            t.trim()
+                .replace(',', ".")
+                .parse::<f32>()
+                .ok()
+                .filter(|v| v.is_finite())
+        };
         let largo = leer(&self.largo).filter(|v| *v > 0.0)?;
         let angulo = if self.angulo.trim().is_empty() {
             0.0
@@ -236,7 +245,13 @@ fn dibujar(
         let v = if valor.is_empty() { "0" } else { valor };
         let texto = format!("{v} {sufijo}");
         let (_, th) = p.medir_texto(&texto, 20.0);
-        p.texto(&texto, r.x + 8.0, r.y + r.alto - th - 8.0, 20.0, Color::BLANCO);
+        p.texto(
+            &texto,
+            r.x + 8.0,
+            r.y + r.alto - th - 8.0,
+            20.0,
+            Color::BLANCO,
+        );
     };
     casilla(0, t_largo, &d.largo, unidad, !d.en_el_angulo);
     casilla(1, t_angulo, &d.angulo, "°", d.en_el_angulo);

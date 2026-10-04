@@ -1535,9 +1535,8 @@ fn guias_para(hwnd: HWND, i: &PinInterno, rect: Rect) -> crate::guias::Ajuste {
         let es_pin = String::from_utf16_lossy(&clase[..n.max(0) as usize]) == "PixPinPin";
         // Solo los del MISMO hilo: su USERDATA es un `PinInterno` de verdad.
         // SAFETY: consultas puras sobre ventanas que existen ahora.
-        let mismo_hilo = unsafe {
-            GetWindowThreadProcessId(h, None) == GetWindowThreadProcessId(*yo, None)
-        };
+        let mismo_hilo =
+            unsafe { GetWindowThreadProcessId(h, None) == GetWindowThreadProcessId(*yo, None) };
         // SAFETY: consulta pura.
         if es_pin
             && mismo_hilo
@@ -2843,23 +2842,27 @@ fn pintar_anotaciones(p: &pixpin_render::Pintor, i: &PinInterno, margen: f32) {
                 angulo,
             } => {
                 let k = (fx + fy) / 2.0;
-                p.girado((centro.x * fx + margen, centro.y * fy + margen), *angulo, |p| {
-                    p.texto_con_halo(
-                        texto,
-                        x * fx + margen,
-                        y * fy + margen,
-                        *tam * k,
-                        &pixpin_render::letras::Letra {
-                            familia,
-                            negrita: false,
-                            cursiva: false,
-                            interlineado: pixpin_motor2d::texto::interlineado_de(familia),
-                        },
-                        color(*c),
-                        color(*halo),
-                        *grosor_halo * k,
-                    )
-                });
+                p.girado(
+                    (centro.x * fx + margen, centro.y * fy + margen),
+                    *angulo,
+                    |p| {
+                        p.texto_con_halo(
+                            texto,
+                            x * fx + margen,
+                            y * fy + margen,
+                            *tam * k,
+                            &pixpin_render::letras::Letra {
+                                familia,
+                                negrita: false,
+                                cursiva: false,
+                                interlineado: pixpin_motor2d::texto::interlineado_de(familia),
+                            },
+                            color(*c),
+                            color(*halo),
+                            *grosor_halo * k,
+                        )
+                    },
+                );
             }
             // El velo del foco (D51) cubre el CONTENIDO del pin, no la
             // ventana entera: la sombra queda fuera del oscurecido.
@@ -3209,9 +3212,7 @@ fn abrir_menu(hwnd: HWND, punto: Option<(i32, i32)>) {
             poner_pasante_en(hwnd, true);
             (i.al_cambiar)(CambioPin::Movido(colocacion_de(i, i.estado.rect())));
         }
-        Some(crate::menu::CMD_TAMANO_ORIGINAL) => {
-            aplicar(hwnd, EfectoPin::AlternarTamano)
-        }
+        Some(crate::menu::CMD_TAMANO_ORIGINAL) => aplicar(hwnd, EfectoPin::AlternarTamano),
         Some(crate::menu::CMD_CERRAR) => aplicar(hwnd, EfectoPin::Cerrar),
         // Los nuevos del rediseno v2: los mismos que la barra.
         Some(crate::menu::CMD_ANOTAR) => (i.al_cambiar)(CambioPin::AnotarPedido),
@@ -3239,10 +3240,7 @@ fn abrir_menu(hwnd: HWND, punto: Option<(i32, i32)>) {
         Some(crate::menu::CMD_SONIDO) => {
             if let Some(v) = &i.video {
                 v.alternar_sonido();
-                tracing::info!(
-                    silenciado = v.silenciado(),
-                    "sonido del video alternado"
-                );
+                tracing::info!(silenciado = v.silenciado(), "sonido del video alternado");
             }
         }
         Some(cmd) => {
@@ -3256,9 +3254,7 @@ fn abrir_menu(hwnd: HWND, punto: Option<(i32, i32)>) {
                 crate::menu::CMD_PAGINA_ANTERIOR => Some(CambioPin::PaginaPedida(-1)),
                 crate::menu::CMD_EXTRAER_PAGINA => Some(CambioPin::ExtraerPaginaPedida),
                 crate::menu::CMD_EXTRAER_TODAS => Some(CambioPin::ExtraerTodasPedida),
-                crate::menu::CMD_ABRIR_UBICACION => {
-                    Some(CambioPin::AbrirUbicacionPedido)
-                }
+                crate::menu::CMD_ABRIR_UBICACION => Some(CambioPin::AbrirUbicacionPedido),
                 crate::menu::CMD_OCULTAR_GRUPO => Some(CambioPin::OcultarGrupoPedido),
                 crate::menu::CMD_ELIMINAR => Some(CambioPin::EliminarPedido),
                 crate::menu::CMD_SIN_GRUPO => Some(CambioPin::GrupoPedido(None)),
@@ -3292,8 +3288,7 @@ fn abrir_menu(hwnd: HWND, punto: Option<(i32, i32)>) {
                     })
                 }
                 c if (crate::menu::CMD_PIZARRA_PAUTA_BASE
-                    ..crate::menu::CMD_PIZARRA_PAUTA_BASE
-                        + crate::menu::PAUTAS_PIZARRA as u32)
+                    ..crate::menu::CMD_PIZARRA_PAUTA_BASE + crate::menu::PAUTAS_PIZARRA as u32)
                     .contains(&c) =>
                 {
                     let (color, _) = i.pizarra.unwrap_or((0, 0));
@@ -4883,8 +4878,11 @@ mod pruebas {
                 }
             }
         };
-        let fotogramas =
-            || interno_de(hwnd).and_then(|i| i.video.as_ref().map(|v| v.fotogramas())).unwrap_or(0);
+        let fotogramas = || {
+            interno_de(hwnd)
+                .and_then(|i| i.video.as_ref().map(|v| v.fotogramas()))
+                .unwrap_or(0)
+        };
 
         // Hasta el primer fotograma.
         let mut avisos = 0u64;
@@ -4970,8 +4968,8 @@ mod pruebas {
                 .expect("seccion DIB");
             let viejo = SelectObject(hdc, bmp.into());
             let _ = BitBlt(hdc, 0, 0, ancho, alto, Some(pantalla), r.x, r.y, SRCCOPY);
-            let px = std::slice::from_raw_parts(bits as *const u8, (ancho * alto * 4) as usize)
-                .to_vec();
+            let px =
+                std::slice::from_raw_parts(bits as *const u8, (ancho * alto * 4) as usize).to_vec();
             SelectObject(hdc, viejo);
             let _ = DeleteObject(bmp.into());
             let _ = DeleteDC(hdc);
@@ -5116,10 +5114,38 @@ mod pruebas {
         panel.poner_filas(
             vec![
                 fila(1, "Tesis.pdf", "PDF · 3/48", TipoFila::Pdf, Some(5), false),
-                fila(2, "Foto · 2026-10-04", "Foto", TipoFila::Foto, Some(5), false),
-                fila(3, "Tabla de resultados", "Foto", TipoFila::Foto, Some(5), true),
-                fila(4, "Compras temu", "Nota · opacidad 70 %", TipoFila::Nota, Some(1), false),
-                fila(5, "Clase grabada.mp4", "Vídeo", TipoFila::Video, None, false),
+                fila(
+                    2,
+                    "Foto · 2026-10-04",
+                    "Foto",
+                    TipoFila::Foto,
+                    Some(5),
+                    false,
+                ),
+                fila(
+                    3,
+                    "Tabla de resultados",
+                    "Foto",
+                    TipoFila::Foto,
+                    Some(5),
+                    true,
+                ),
+                fila(
+                    4,
+                    "Compras temu",
+                    "Nota · opacidad 70 %",
+                    TipoFila::Nota,
+                    Some(1),
+                    false,
+                ),
+                fila(
+                    5,
+                    "Clase grabada.mp4",
+                    "Vídeo",
+                    TipoFila::Video,
+                    None,
+                    false,
+                ),
                 fila(6, "Pin en vivo", "EN VIVO", TipoFila::Vivo, None, false),
             ],
             false,
@@ -5156,7 +5182,10 @@ mod pruebas {
 
         crate::guias::esconder();
         esconder_barra(foto.hwnd());
-        assert!(!crate::barra_flotante::es_de(foto.hwnd()), "caso negativo: escondida");
+        assert!(
+            !crate::barra_flotante::es_de(foto.hwnd()),
+            "caso negativo: escondida"
+        );
         drop(panel);
         drop(nota);
         drop(foto);

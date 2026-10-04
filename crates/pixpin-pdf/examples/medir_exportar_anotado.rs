@@ -23,12 +23,21 @@ fn main() {
     let doc = pixpin_pdf::Documento::abrir(&ruta).expect("abrir");
     let medidas = doc.medidas();
     let n = medidas.len();
-    let altos: Vec<f32> = medidas.iter().map(|(w, h)| 1400.0 * h / w.max(1.0)).collect();
-    let carpeta = ruta.with_file_name(format!("{}.pixpin-anotado", ruta.file_name().unwrap().to_string_lossy()));
+    let altos: Vec<f32> = medidas
+        .iter()
+        .map(|(w, h)| 1400.0 * h / w.max(1.0))
+        .collect();
+    let carpeta = ruta.with_file_name(format!(
+        "{}.pixpin-anotado",
+        ruta.file_name().unwrap().to_string_lossy()
+    ));
     let mut tinta: HashMap<usize, Vec<Orden>> = HashMap::new();
     for i in 0..n {
-        let texto = std::fs::read_to_string(carpeta.join(format!("hoja-{}.excalidraw", i + 1))).unwrap_or_default();
-        if let Ok(e) = pixpin_motor2d::excalidraw::leer(&texto).map(|l| pixpin_motor2d::excalidraw::a_escena(&l)) {
+        let texto = std::fs::read_to_string(carpeta.join(format!("hoja-{}.excalidraw", i + 1)))
+            .unwrap_or_default();
+        if let Ok(e) = pixpin_motor2d::excalidraw::leer(&texto)
+            .map(|l| pixpin_motor2d::excalidraw::a_escena(&l))
+        {
             let o = pintado::ordenes_de_escena(&e);
             if !o.is_empty() {
                 tinta.insert(i, o);
@@ -36,9 +45,21 @@ fn main() {
         }
     }
     let m = 1400.0 * 0.75;
-    let (izq, der) = (if espacios & 1 != 0 { m } else { 0.0 }, if espacios & 2 != 0 { m } else { 0.0 });
-    let marcadores = [Marcador { titulo: "✅ Hoja 1".into(), pagina: 0, alto: 0.0 }];
-    println!("{}: {n} hojas, {} bytes, {} hojas con tinta", ruta.display(), bytes.len(), tinta.len());
+    let (izq, der) = (
+        if espacios & 1 != 0 { m } else { 0.0 },
+        if espacios & 2 != 0 { m } else { 0.0 },
+    );
+    let marcadores = [Marcador {
+        titulo: "✅ Hoja 1".into(),
+        pagina: 0,
+        alto: 0.0,
+    }];
+    println!(
+        "{}: {n} hojas, {} bytes, {} hojas con tinta",
+        ruta.display(),
+        bytes.len(),
+        tinta.len()
+    );
 
     // Ahora: el original con la tinta encima.
     let t = Instant::now();
@@ -60,7 +81,10 @@ fn main() {
     let salida = ruta.with_extension("anotado.pdf");
     std::fs::write(&salida, &nuevo).unwrap();
     let hallada = (0..n)
-        .filter(|&i| pixpin_pdf::plano::de_bytes(&nuevo, i).is_some_and(|p| p.textos.iter().any(|x| x.texto.contains(&palabra))))
+        .filter(|&i| {
+            pixpin_pdf::plano::de_bytes(&nuevo, i)
+                .is_some_and(|p| p.textos.iter().any(|x| x.texto.contains(&palabra)))
+        })
         .count();
     println!(
         "  con anotaciones: {} bytes (+{} sobre el original) en {:?}; '{palabra}' en {hallada} hojas",
@@ -108,15 +132,26 @@ fn main() {
             None,
             &|id| {
                 let img = doc.renderizar((id - 1) as u32, 1400).ok()?;
-                Some(pixpin_pdf::escribir::Pixeles { ancho: img.ancho, alto: img.alto, rgba: img.pixeles })
+                Some(pixpin_pdf::escribir::Pixeles {
+                    ancho: img.ancho,
+                    alto: img.alto,
+                    rgba: img.pixeles,
+                })
             },
             None,
             &[],
         )
         .expect("pintado");
         let hallada = (0..n)
-            .filter(|&i| pixpin_pdf::plano::de_bytes(&viejo, i).is_some_and(|p| p.textos.iter().any(|x| x.texto.contains(&palabra))))
+            .filter(|&i| {
+                pixpin_pdf::plano::de_bytes(&viejo, i)
+                    .is_some_and(|p| p.textos.iter().any(|x| x.texto.contains(&palabra)))
+            })
             .count();
-        println!("  pintado (antes): {} bytes en {:?}; '{palabra}' en {hallada} hojas", viejo.len(), t.elapsed());
+        println!(
+            "  pintado (antes): {} bytes en {:?}; '{palabra}' en {hallada} hojas",
+            viejo.len(),
+            t.elapsed()
+        );
     }
 }

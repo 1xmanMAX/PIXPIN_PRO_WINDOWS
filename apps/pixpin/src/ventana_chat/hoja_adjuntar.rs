@@ -81,7 +81,12 @@ pub(super) fn normalizar(s: &str) -> String {
 impl Hoja {
     pub(super) fn nueva(textos: &Catalogo) -> Hoja {
         use pixpin_proyecto::mini;
-        let baldosa = |n: u8, clave: &str, palabras: &str, accion: Accion, color: u32, icono: &'static Icono| {
+        let baldosa = |n: u8,
+                       clave: &str,
+                       palabras: &str,
+                       accion: Accion,
+                       color: u32,
+                       icono: &'static Icono| {
             let rotulo = textos.t(clave);
             Opcion {
                 buscable: normalizar(&format!("{rotulo} {palabras}")),
@@ -104,25 +109,125 @@ impl Hoja {
             }
         };
         let opciones = vec![
-            baldosa(1, "adjuntar-imagen", "imagen foto video photo image", Accion::AdjImagen, 0x0a6cd6, &mi::IMAGE),
-            baldosa(2, "adjuntar-archivo", "pdf documento word excel fichero file", Accion::AdjArchivo, 0x636366, &mi::DESCRIPTION),
-            baldosa(3, "v2menus-adj-lienzo", "dibujo pizarra canvas draw", Accion::AdjLienzo, 0xc77700, &mi::DRAW),
-            baldosa(4, "chat-adj-nota-md", "nota markdown texto note", Accion::AdjNotaMd, 0x248a3d, &mi::LIST),
-            baldosa(5, "v2menus-adj-tareas", "tareas lista todo checklist", Accion::AdjMini(mini::TAREAS), 0x1e7a4a, &mi::CHECKLIST),
-            baldosa(6, "v2menus-adj-tabla", "tabla hoja calculo excel table", Accion::AdjTabla, 0x4b49c8, &mi::TABLE_CHART),
-            baldosa(7, "v2menus-adj-conversacion", "conversacion voz traducir conversation", Accion::Conversacion, 0x9a3fc4, &mi::RECORD_VOICE_OVER),
-            baldosa(8, "v2menus-adj-captura", "captura pantalla recorte screenshot", Accion::AdjCaptura, 0xc93c35, &mi::CROP),
-            chip("v2menus-adj-pagina", "pagina proyecto page", Accion::AdjPagina),
-            chip("v2menus-adj-proyecto", "proyecto entero project", Accion::AdjProyectos),
-            chip("chat-adj-telepronter", "teleprompter leer", Accion::Telepronter),
-            chip("chat-adj-pronunciar", "pronunciar ingles pronounce", Accion::Pronunciar),
-            chip("mini-cronometro", "cronometro stopwatch mini-app", Accion::AdjMini(mini::CRONOMETRO)),
-            chip("mini-temporizador", "temporizador timer mini-app", Accion::AdjMini(mini::TEMPORIZADOR)),
-            chip("mini-contador", "contador counter mini-app", Accion::AdjMini(mini::CONTADOR)),
-            chip("mini-ruleta", "ruleta sorteo mini-app", Accion::AdjMini(mini::RULETA)),
-            chip("mini-gastos", "gastos dinero mini-app", Accion::AdjMini(mini::GASTOS)),
-            chip("mini-alarma", "alarma despertador mini-app", Accion::AdjMini(mini::ALARMA)),
-            chip("v2menus-adj-movil", "movil telefono wifi phone", Accion::AdjDelMovil),
+            baldosa(
+                1,
+                "adjuntar-imagen",
+                "imagen foto video photo image",
+                Accion::AdjImagen,
+                0x0a6cd6,
+                &mi::IMAGE,
+            ),
+            baldosa(
+                2,
+                "adjuntar-archivo",
+                "pdf documento word excel fichero file",
+                Accion::AdjArchivo,
+                0x636366,
+                &mi::DESCRIPTION,
+            ),
+            baldosa(
+                3,
+                "v2menus-adj-lienzo",
+                "dibujo pizarra canvas draw",
+                Accion::AdjLienzo,
+                0xc77700,
+                &mi::DRAW,
+            ),
+            baldosa(
+                4,
+                "chat-adj-nota-md",
+                "nota markdown texto note",
+                Accion::AdjNotaMd,
+                0x248a3d,
+                &mi::LIST,
+            ),
+            baldosa(
+                5,
+                "v2menus-adj-tareas",
+                "tareas lista todo checklist",
+                Accion::AdjMini(mini::TAREAS),
+                0x1e7a4a,
+                &mi::CHECKLIST,
+            ),
+            baldosa(
+                6,
+                "v2menus-adj-tabla",
+                "tabla hoja calculo excel table",
+                Accion::AdjTabla,
+                0x4b49c8,
+                &mi::TABLE_CHART,
+            ),
+            baldosa(
+                7,
+                "v2menus-adj-conversacion",
+                "conversacion voz traducir conversation",
+                Accion::Conversacion,
+                0x9a3fc4,
+                &mi::RECORD_VOICE_OVER,
+            ),
+            baldosa(
+                8,
+                "v2menus-adj-captura",
+                "captura pantalla recorte screenshot",
+                Accion::AdjCaptura,
+                0xc93c35,
+                &mi::CROP,
+            ),
+            chip(
+                "v2menus-adj-pagina",
+                "pagina proyecto page",
+                Accion::AdjPagina,
+            ),
+            chip(
+                "v2menus-adj-proyecto",
+                "proyecto entero project",
+                Accion::AdjProyectos,
+            ),
+            chip(
+                "chat-adj-telepronter",
+                "teleprompter leer",
+                Accion::Telepronter,
+            ),
+            chip(
+                "chat-adj-pronunciar",
+                "pronunciar ingles pronounce",
+                Accion::Pronunciar,
+            ),
+            chip(
+                "mini-cronometro",
+                "cronometro stopwatch mini-app",
+                Accion::AdjMini(mini::CRONOMETRO),
+            ),
+            chip(
+                "mini-temporizador",
+                "temporizador timer mini-app",
+                Accion::AdjMini(mini::TEMPORIZADOR),
+            ),
+            chip(
+                "mini-contador",
+                "contador counter mini-app",
+                Accion::AdjMini(mini::CONTADOR),
+            ),
+            chip(
+                "mini-ruleta",
+                "ruleta sorteo mini-app",
+                Accion::AdjMini(mini::RULETA),
+            ),
+            chip(
+                "mini-gastos",
+                "gastos dinero mini-app",
+                Accion::AdjMini(mini::GASTOS),
+            ),
+            chip(
+                "mini-alarma",
+                "alarma despertador mini-app",
+                Accion::AdjMini(mini::ALARMA),
+            ),
+            chip(
+                "v2menus-adj-movil",
+                "movil telefono wifi phone",
+                Accion::AdjDelMovil,
+            ),
         ];
         Hoja {
             anchos: RefCell::new(vec![100.0; opciones.len()]),
@@ -151,7 +256,14 @@ impl Hoja {
     /// Donde va todo, calculado igual al pintar y al pulsar.
     pub(super) fn colocar(&self, ancla: Punto, marco: Rect, escala: u32) -> Puesta {
         let anchos = self.anchos.borrow();
-        colocar(&self.opciones, &self.visibles(), &anchos, ancla, marco, escala)
+        colocar(
+            &self.opciones,
+            &self.visibles(),
+            &anchos,
+            ancla,
+            marco,
+            escala,
+        )
     }
 
     pub(super) fn pulsar(&mut self, p: Punto, ancla: Punto, marco: Rect, escala: u32) -> Respuesta {
@@ -166,7 +278,9 @@ impl Hoja {
     pub(super) fn mover(&mut self, p: Punto, ancla: Punto, marco: Rect, escala: u32) -> bool {
         let puesta = self.colocar(ancla, marco, escala);
         let visibles = self.visibles();
-        let nuevo = puesta.opcion_en(p).and_then(|n| visibles.iter().position(|v| *v == n));
+        let nuevo = puesta
+            .opcion_en(p)
+            .and_then(|n| visibles.iter().position(|v| *v == n));
         let cambia = nuevo != self.sobre;
         self.sobre = nuevo;
         cambia
@@ -174,7 +288,10 @@ impl Hoja {
 
     pub(super) fn tecla(&mut self, vk: u32) -> Respuesta {
         let visibles = self.visibles();
-        let baldosas = visibles.iter().filter(|n| self.opciones[**n].numero.is_some()).count();
+        let baldosas = visibles
+            .iter()
+            .filter(|n| self.opciones[**n].numero.is_some())
+            .count();
         match vk {
             super::VK_ESCAPE if !self.busqueda.is_empty() => {
                 self.busqueda.clear();
@@ -208,7 +325,10 @@ impl Hoja {
         // Los numeros son teclas, no texto: ninguna opcion se busca por uno.
         if let Some(d) = c.to_digit(10) {
             let visibles = self.visibles();
-            if let Some(n) = visibles.iter().find(|n| self.opciones[**n].numero == Some(d as u8)) {
+            if let Some(n) = visibles
+                .iter()
+                .find(|n| self.opciones[**n].numero == Some(d as u8))
+            {
                 return Respuesta::Hacer(self.opciones[*n].accion.clone());
             }
             return Respuesta::Sigue;
@@ -223,7 +343,12 @@ impl Hoja {
 
 /// Mover lo elegido con las flechas: izquierda y derecha de uno en uno;
 /// arriba y abajo saltan una fila entre las baldosas.
-pub(super) fn mover_eleccion(actual: Option<usize>, vk: u32, cuantas: usize, baldosas: usize) -> Option<usize> {
+pub(super) fn mover_eleccion(
+    actual: Option<usize>,
+    vk: u32,
+    cuantas: usize,
+    baldosas: usize,
+) -> Option<usize> {
     if cuantas == 0 {
         return None;
     }
@@ -293,7 +418,11 @@ pub(super) fn colocar(
     let col = COLUMNAS;
     let ancho_baldosa = dentro.saturating_sub((col - 1) * e(BALDOSA_HUECO)) / col;
     let mut baldosas = Vec::new();
-    let de_baldosa: Vec<usize> = visibles.iter().copied().filter(|n| opciones[*n].numero.is_some()).collect();
+    let de_baldosa: Vec<usize> = visibles
+        .iter()
+        .copied()
+        .filter(|n| opciones[*n].numero.is_some())
+        .collect();
     for (k, n) in de_baldosa.iter().enumerate() {
         let (f, c) = (k as u32 / col, k as u32 % col);
         baldosas.push((
@@ -310,7 +439,11 @@ pub(super) fn colocar(
         let filas = (de_baldosa.len() as u32).div_ceil(col);
         y += (filas * e(BALDOSA_ALTO) + (filas - 1) * e(BALDOSA_HUECO)) as i32;
     }
-    let de_chip: Vec<usize> = visibles.iter().copied().filter(|n| opciones[*n].numero.is_none()).collect();
+    let de_chip: Vec<usize> = visibles
+        .iter()
+        .copied()
+        .filter(|n| opciones[*n].numero.is_none())
+        .collect();
     let mut cabecera_mas = None;
     let mut chips = Vec::new();
     if !de_chip.is_empty() {
@@ -325,7 +458,8 @@ pub(super) fn colocar(
         y = cab.abajo() + e(CHIP_HUECO) as i32;
         let mut x = x0;
         for n in de_chip {
-            let w = (anchos_chips.get(n).copied().unwrap_or(100.0).ceil() as u32 + e(24)).min(dentro);
+            let w =
+                (anchos_chips.get(n).copied().unwrap_or(100.0).ceil() as u32 + e(24)).min(dentro);
             if x > x0 && x + w as i32 > x0 + dentro as i32 {
                 x = x0;
                 y += (e(CHIP_ALTO) + e(CHIP_HUECO)) as i32;
@@ -379,14 +513,19 @@ pub(super) fn pintar(p: &Pintor, c: &Pinta, h: &Hoja, ancla: Punto, marco: Rect)
     let (tema, escala) = (c.tema, c.escala);
     let e = escala as f32 / 100.0;
     // Primero se miden los chips: de eso depende donde cae cada uno.
-    *h.anchos.borrow_mut() = h.opciones.iter().map(|o| p.medir_texto(&o.rotulo, TAM * e).0).collect();
+    *h.anchos.borrow_mut() = h
+        .opciones
+        .iter()
+        .map(|o| p.medir_texto(&o.rotulo, TAM * e).0)
+        .collect();
     let puesta = h.colocar(ancla, marco, escala);
     let visibles = h.visibles();
     let resaltada = |n: usize| -> (bool, bool) {
         let k = visibles.iter().position(|v| *v == n);
         let sobre = k.is_some() && k == h.sobre;
         // Sin nada elegido, Intro hace la primera: se marca tambien.
-        let elegida = k.is_some() && (k == h.elegido || (h.elegido.is_none() && k == Some(0) && !h.busqueda.is_empty()));
+        let elegida = k.is_some()
+            && (k == h.elegido || (h.elegido.is_none() && k == Some(0) && !h.busqueda.is_empty()));
         (sobre, elegida)
     };
 
@@ -435,7 +574,15 @@ pub(super) fn pintar(p: &Pintor, c: &Pinta, h: &Hoja, ancla: Punto, marco: Rect)
         (b.ancho - 56.0 * e - ancho_esc).max(0.0),
         color,
     );
-    super::pintar_chapas(p, tema, &esc, b.x + b.ancho - 10.0 * e, puesta.buscador, e, false);
+    super::pintar_chapas(
+        p,
+        tema,
+        &esc,
+        b.x + b.ancho - 10.0 * e,
+        puesta.buscador,
+        e,
+        false,
+    );
 
     // Las baldosas: el cuadrado de color con su icono, el nombre debajo y
     // el numero arriba a la derecha.
@@ -584,7 +731,11 @@ mod pruebas {
         assert!(p.baldosas[4].1.y > p.baldosas[0].1.y);
         // Los chips por debajo de las baldosas y dentro de la caja.
         let ultima = p.baldosas[7].1.abajo();
-        assert!(p.chips.iter().all(|(_, r)| r.y > ultima && r.abajo() <= p.caja.abajo()));
+        assert!(
+            p.chips
+                .iter()
+                .all(|(_, r)| r.y > ultima && r.abajo() <= p.caja.abajo())
+        );
         // La hoja apoya su base encima del boton.
         assert!(p.caja.abajo() <= 740);
         // Caso negativo: nada se sale de la ventana.
@@ -628,10 +779,16 @@ mod pruebas {
         }
         let v = h.visibles();
         assert_eq!(v.len(), 1);
-        assert_eq!(h.opciones[v[0]].accion, Accion::AdjMini(pixpin_proyecto::mini::CRONOMETRO));
+        assert_eq!(
+            h.opciones[v[0]].accion,
+            Accion::AdjMini(pixpin_proyecto::mini::CRONOMETRO)
+        );
         // «pdf» encuentra Archivo, e Intro lo hace.
         h.busqueda = "PDF".into();
-        assert_eq!(h.tecla(super::super::VK_ENTRAR), Respuesta::Hacer(Accion::AdjArchivo));
+        assert_eq!(
+            h.tecla(super::super::VK_ENTRAR),
+            Respuesta::Hacer(Accion::AdjArchivo)
+        );
         // Caso negativo: lo que no esta no deja nada, e Intro no hace nada.
         h.busqueda = "zzzz".into();
         assert!(h.visibles().is_empty());
@@ -669,12 +826,24 @@ mod pruebas {
         let ancla = Punto { x: 300, y: 740 };
         let p = h.colocar(ancla, marco(), 100);
         let (n, r) = p.baldosas[2];
-        let dentro = Punto { x: r.x + 5, y: r.y + 5 };
-        assert_eq!(h.pulsar(dentro, ancla, marco(), 100), Respuesta::Hacer(h.opciones[n].accion.clone()));
+        let dentro = Punto {
+            x: r.x + 5,
+            y: r.y + 5,
+        };
+        assert_eq!(
+            h.pulsar(dentro, ancla, marco(), 100),
+            Respuesta::Hacer(h.opciones[n].accion.clone())
+        );
         // Caso negativo: el relleno no hace nada y fuera cierra.
-        let relleno = Punto { x: p.caja.x + 3, y: p.caja.y + 3 };
+        let relleno = Punto {
+            x: p.caja.x + 3,
+            y: p.caja.y + 3,
+        };
         assert_eq!(h.pulsar(relleno, ancla, marco(), 100), Respuesta::Sigue);
-        assert_eq!(h.pulsar(Punto { x: 2, y: 790 }, ancla, marco(), 100), Respuesta::Fuera);
+        assert_eq!(
+            h.pulsar(Punto { x: 2, y: 790 }, ancla, marco(), 100),
+            Respuesta::Fuera
+        );
     }
 
     #[test]
@@ -682,7 +851,11 @@ mod pruebas {
         use super::super::{VK_ABAJO, VK_ARRIBA, VK_DERECHA, VK_IZQUIERDA};
         assert_eq!(mover_eleccion(None, VK_DERECHA, 19, 8), Some(0));
         assert_eq!(mover_eleccion(Some(1), VK_ABAJO, 19, 8), Some(5));
-        assert_eq!(mover_eleccion(Some(5), VK_ABAJO, 19, 8), Some(8), "de la ultima fila a los chips");
+        assert_eq!(
+            mover_eleccion(Some(5), VK_ABAJO, 19, 8),
+            Some(8),
+            "de la ultima fila a los chips"
+        );
         assert_eq!(mover_eleccion(Some(9), VK_ARRIBA, 19, 8), Some(7));
         assert_eq!(mover_eleccion(Some(5), VK_ARRIBA, 19, 8), Some(1));
         // Casos negativos: no se sale por los extremos.

@@ -48,7 +48,11 @@ fn todo(ajustes: &lectura::Ajustes, negrita: bool) -> EstiloTexto {
     }
 }
 
-fn tramos_viejos(texto: &str, lista: &[pixpin_docs::documento::TramoDoc], t: EstiloTexto) -> Vec<Tramo> {
+fn tramos_viejos(
+    texto: &str,
+    lista: &[pixpin_docs::documento::TramoDoc],
+    t: EstiloTexto,
+) -> Vec<Tramo> {
     let mut tramos: Vec<Tramo> = lista
         .iter()
         .map(|x| Tramo {
@@ -62,13 +66,25 @@ fn tramos_viejos(texto: &str, lista: &[pixpin_docs::documento::TramoDoc], t: Est
         })
         .collect();
     if t != EstiloTexto::default() {
-        tramos.insert(0, Tramo { inicio: 0, longitud: texto.encode_utf16().count() as u32, estilo: t });
+        tramos.insert(
+            0,
+            Tramo {
+                inicio: 0,
+                longitud: texto.encode_utf16().count() as u32,
+                estilo: t,
+            },
+        );
     }
     tramos
 }
 
 /// **Donde caia cada bloque con la maqueta de antes.**
-pub(crate) fn colocar(doc: &Documento, ajustes: &lectura::Ajustes, columna: f32, mide: &MideViejo<'_>) -> (Vec<Viejo>, f32) {
+pub(crate) fn colocar(
+    doc: &Documento,
+    ajustes: &lectura::Ajustes,
+    columna: f32,
+    mide: &MideViejo<'_>,
+) -> (Vec<Viejo>, f32) {
     let base = 16.0 * ajustes.tamano as f32 / 100.0;
     let mut salida = Vec::with_capacity(doc.bloques.len() + 2);
     let mut y = base * 2.0;
@@ -102,7 +118,9 @@ pub(crate) fn colocar(doc: &Documento, ajustes: &lectura::Ajustes, columna: f32,
                 continue;
             }
             let mut hasta = i + 1;
-            while hasta < doc.bloques.len() && pixpin_docs::tabla::misma_tabla(&doc.bloques[hasta - 1], &doc.bloques[hasta]) {
+            while hasta < doc.bloques.len()
+                && pixpin_docs::tabla::misma_tabla(&doc.bloques[hasta - 1], &doc.bloques[hasta])
+            {
                 hasta += 1;
             }
             y = tabla(doc, i, hasta, ajustes, columna, mide, y, &mut salida);
@@ -114,7 +132,11 @@ pub(crate) fn colocar(doc: &Documento, ajustes: &lectura::Ajustes, columna: f32,
         let tam = base * factor;
         y += base * aire_em;
         if clase == Clase::Regla || clase == Clase::Capitulo {
-            salida.push(Viejo { bloque, y, alto: 1.0 });
+            salida.push(Viejo {
+                bloque,
+                y,
+                alto: 1.0,
+            });
             y += base * aire_em;
             continue;
         }
@@ -122,7 +144,11 @@ pub(crate) fn colocar(doc: &Documento, ajustes: &lectura::Ajustes, columna: f32,
             texto = format!("• {texto}");
         }
         if clase == Clase::Nota && texto == pixpin_docs::documento::MARCA_IMAGEN {
-            let peso = doc.imagenes.get(imagen).map(|i| i.datos.len() / 1024).unwrap_or(0);
+            let peso = doc
+                .imagenes
+                .get(imagen)
+                .map(|i| i.datos.len() / 1024)
+                .unwrap_or(0);
             imagen += 1;
             texto = format!("🖼 imagen ({peso} kB) — se ve al guardar la página");
         }
@@ -142,7 +168,11 @@ pub(crate) fn colocar(doc: &Documento, ajustes: &lectura::Ajustes, columna: f32,
 /// El texto de una celda como lo pintaba antes: sus parrafos con algo,
 /// separados por un salto (los vacios no dejaban renglon).
 fn texto_de_celda(c: &Celda) -> String {
-    c.texto().split('\n').filter(|p| !p.is_empty()).collect::<Vec<_>>().join("\n")
+    c.texto()
+        .split('\n')
+        .filter(|p| !p.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 #[allow(clippy::too_many_arguments)] // documento, filas, letra, columna, medida, altura y salida
@@ -158,7 +188,10 @@ fn tabla(
 ) -> f32 {
     let base = 16.0 * ajustes.tamano as f32 / 100.0;
     let (aire_y, aire_x) = (base * 0.25, base * 0.5);
-    let filas: Vec<Vec<Celda>> = doc.bloques[desde..hasta].iter().map(pixpin_docs::tabla::celdas_de).collect();
+    let filas: Vec<Vec<Celda>> = doc.bloques[desde..hasta]
+        .iter()
+        .map(pixpin_docs::tabla::celdas_de)
+        .collect();
     let n = pixpin_docs::tabla::columnas_de(&filas);
     let mut palabras: Vec<std::collections::BTreeSet<String>> = vec![Default::default(); n];
     let mut largas: Vec<String> = vec![String::new(); n];
@@ -167,7 +200,11 @@ fn tabla(
         for c in f {
             let t = texto_de_celda(c);
             if c.columnas == 1 && !c.sigue && g < n {
-                palabras[g].extend(t.split(char::is_whitespace).filter(|p| !p.is_empty()).map(str::to_string));
+                palabras[g].extend(
+                    t.split(char::is_whitespace)
+                        .filter(|p| !p.is_empty())
+                        .map(str::to_string),
+                );
                 let parrafo = pixpin_docs::tabla::parrafo_mas_largo(&t);
                 if parrafo.chars().count() > largas[g].chars().count() {
                     largas[g] = parrafo.to_string();
@@ -193,10 +230,15 @@ fn tabla(
             mas_ancha.min(base * 9.0) + 2.0 * aire_x + 1.0
         })
         .collect();
-    let maximo: Vec<f32> = largas.iter().map(|p| medir_ancho(p) + 2.0 * aire_x + 1.0).collect();
-    let preferidas = pixpin_docs::tabla::anchos_de_word(doc.bloques[desde].fila.as_ref(), n, columna);
+    let maximo: Vec<f32> = largas
+        .iter()
+        .map(|p| medir_ancho(p) + 2.0 * aire_x + 1.0)
+        .collect();
+    let preferidas =
+        pixpin_docs::tabla::anchos_de_word(doc.bloques[desde].fila.as_ref(), n, columna);
     let tope = columna + vista::margen_de(columna);
-    let anchos = pixpin_docs::tabla::repartir(&minimo, &maximo, preferidas.as_deref(), columna, tope);
+    let anchos =
+        pixpin_docs::tabla::repartir(&minimo, &maximo, preferidas.as_deref(), columna, tope);
     let mut xs = vec![0.0f32];
     for a in &anchos {
         xs.push(xs.last().copied().unwrap_or(0.0) + a);
@@ -220,7 +262,11 @@ fn tabla(
             }
             g = fin;
         }
-        salida.push(Viejo { bloque: Some(desde + k), y: y + aire_y, alto: alto_fila - aire_y });
+        salida.push(Viejo {
+            bloque: Some(desde + k),
+            y: y + aire_y,
+            alto: alto_fila - aire_y,
+        });
         y += alto_fila;
     }
     y + base * 0.8
@@ -276,22 +322,40 @@ mod pruebas {
     #[test]
     fn un_trazo_del_texto_viejo_cae_en_el_mismo_sitio_de_su_bloque_nuevo() {
         let viejos = [
-            Viejo { bloque: None, y: 32.0, alto: 30.0 },
-            Viejo { bloque: Some(0), y: 100.0, alto: 40.0 },
-            Viejo { bloque: Some(1), y: 150.0, alto: 80.0 },
+            Viejo {
+                bloque: None,
+                y: 32.0,
+                alto: 30.0,
+            },
+            Viejo {
+                bloque: Some(0),
+                y: 100.0,
+                alto: 40.0,
+            },
+            Viejo {
+                bloque: Some(1),
+                y: 150.0,
+                alto: 80.0,
+            },
         ];
         let nuevos = [(0usize, 30.0, 50.0), (1usize, 90.0, 100.0)];
         // En la mitad del bloque 1 viejo (y 190), en la mitad del nuevo (140).
         let (dx, dy) = mudanza((400.0, 190.0), &viejos, &nuevos, 800.0, (16.0, 704.0));
         assert!((190.0 + dy - 140.0).abs() < 1e-3, "{dy}");
         // A lo ancho, en proporcion a la caja de texto nueva.
-        assert!((400.0 + dx - (16.0 + 400.0 * 704.0 / 800.0)).abs() < 1e-3, "{dx}");
+        assert!(
+            (400.0 + dx - (16.0 + 400.0 * 704.0 / 800.0)).abs() < 1e-3,
+            "{dx}"
+        );
         // En el margen izquierdo conserva su distancia al borde del texto.
         let (dx, _) = mudanza((-50.0, 190.0), &viejos, &nuevos, 800.0, (16.0, 704.0));
         assert_eq!(dx, 16.0);
         let (dx, _) = mudanza((850.0, 190.0), &viejos, &nuevos, 800.0, (16.0, 704.0));
         assert_eq!(850.0 + dx, 16.0 + 704.0 + 50.0);
         // Caso negativo: por encima de todo bloque no se mueve de alto.
-        assert_eq!(mudanza((10.0, 5.0), &viejos, &nuevos, 800.0, (0.0, 800.0)).1, 0.0);
+        assert_eq!(
+            mudanza((10.0, 5.0), &viejos, &nuevos, 800.0, (0.0, 800.0)).1,
+            0.0
+        );
     }
 }

@@ -119,13 +119,22 @@ fn como_suena(ruta: &str, con_letra: bool) -> ComoSuena {
         ComoSuena {
             estado: m.audio.clone().filter(|a| a.ruta == ruta),
             con_letra,
-            pasando: m.transcribiendo.as_ref().filter(|t| t.ruta == ruta && t.hecho.is_none()).map(|t| t.avance),
+            pasando: m
+                .transcribiendo
+                .as_ref()
+                .filter(|t| t.ruta == ruta && t.hecho.is_none())
+                .map(|t| t.avance),
         }
     })
 }
 
 /// El incrustado pintado (de la memoria si nada cambio).
-fn pintado(e: &mut Estado, ruta: &str, ficha: Ficha, suena: ComoSuena) -> Option<(Rc<imagenes::Foto>, Zonas)> {
+fn pintado(
+    e: &mut Estado,
+    ruta: &str,
+    ficha: Ficha,
+    suena: ComoSuena,
+) -> Option<(Rc<imagenes::Foto>, Zonas)> {
     let clave = Clave {
         ficha,
         suena,
@@ -140,9 +149,20 @@ fn pintado(e: &mut Estado, ruta: &str, ficha: Ficha, suena: ComoSuena) -> Option
         return Some((f, z));
     }
     let esc = e.ppp as f32 / 96.0;
-    let p = pin::pintar(&clave.ficha, &clave.suena, clave.columna, &colores(e), &e.rotulos.incrustados, esc)?;
+    let p = pin::pintar(
+        &clave.ficha,
+        &clave.suena,
+        clave.columna,
+        &colores(e),
+        &e.rotulos.incrustados,
+        esc,
+    )?;
     let foto = Rc::new(imagenes::Foto::de_mapa(p.mapa, p.an, p.al));
-    MEMORIA.with(|m| m.borrow_mut().pintados.insert(ruta.to_string(), (clave, foto.clone(), p.zonas)));
+    MEMORIA.with(|m| {
+        m.borrow_mut()
+            .pintados
+            .insert(ruta.to_string(), (clave, foto.clone(), p.zonas))
+    });
     Some((foto, p.zonas))
 }
 
@@ -157,8 +177,14 @@ pub(super) fn medir(e: &mut Estado, texto: &str, con: &mut fotos::ConFoto) {
         let Some(ficha) = ficha_de(e, &r.ruta, &r.nombre) else {
             continue;
         };
-        let con_letra = letras.iter().any(|l| l.linea == r.linea && !l.parrafos.is_empty());
-        let suena = if r.clase == Clase::Audio { como_suena(&r.ruta, con_letra) } else { ComoSuena::default() };
+        let con_letra = letras
+            .iter()
+            .any(|l| l.linea == r.linea && !l.parrafos.is_empty());
+        let suena = if r.clase == Clase::Audio {
+            como_suena(&r.ruta, con_letra)
+        } else {
+            ComoSuena::default()
+        };
         if let Some((foto, _)) = pintado(e, &r.ruta, ficha, suena) {
             con.push((r.linea, r.ruta, foto));
         }
@@ -178,13 +204,23 @@ fn esconder(e: &Estado, desde: usize, hasta: usize) {
 /// renglon de cada uno, escondido entero salvo con el cursor (entonces
 /// asoma su nombre); y las marcas de tiempo como chapas, con el parrafo que
 /// suena resaltado.
-pub(super) fn formatear(e: &Estado, texto: &str, ls: &[md_vivo::Linea], con: &fotos::ConFoto, activa: usize, entra: &dyn Fn(usize) -> bool) {
+pub(super) fn formatear(
+    e: &Estado,
+    texto: &str,
+    ls: &[md_vivo::Linea],
+    con: &fotos::ConFoto,
+    activa: usize,
+    entra: &dyn Fn(usize) -> bool,
+) {
     if e.integracion.medios.is_none() {
         return;
     }
     let pintados: Vec<usize> = inc::renglones(texto)
         .into_iter()
-        .filter(|r| con.iter().any(|(n, ruta, _)| *n == r.linea && *ruta == r.ruta))
+        .filter(|r| {
+            con.iter()
+                .any(|(n, ruta, _)| *n == r.linea && *ruta == r.ruta)
+        })
         .map(|r| r.linea)
         .collect();
     for n in pintados {
@@ -214,7 +250,9 @@ pub(super) fn formatear(e: &Estado, texto: &str, ls: &[md_vivo::Linea], con: &fo
             }
             let Some(l) = ls.get(n) else { continue };
             let renglon = String::from_utf16_lossy(&u[l.desde..l.hasta.min(u.len())]);
-            let Some(m) = inc::marca(&renglon) else { continue };
+            let Some(m) = inc::marca(&renglon) else {
+                continue;
+            };
             let (abre, cierra) = (l.desde + m.abre, l.desde + m.cierra);
             esconder(e, abre, abre + 1);
             esconder(e, cierra, cierra + 1);
@@ -255,21 +293,31 @@ fn avisar(e: &Estado, texto: &str) {
 /// escribe y se le pone el formato (escondido, con su hueco y su tarjeta),
 /// y solo entonces se suelta. Nunca se ve el Markdown.
 pub(super) fn insertar_pintado(e: &mut Estado, renglon: &str) {
-    congelar::congelado(e, congelar::Pintado::Entero, |e| insertar_renglon(e, renglon));
+    congelar::congelado(e, congelar::Pintado::Entero, |e| {
+        insertar_renglon(e, renglon)
+    });
     imagenes::repintar(e.edit);
 }
 
 fn nombre_de(r: &Path) -> String {
-    r.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default()
+    r.file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_default()
 }
 
 /// **Mete documentos y audios de fuera**: las fotos van como fotos; lo
 /// demas se copia junto a la nota (para que viaje con ella) y entra como
 /// su tarjeta o su reproductor. Devuelve cuantos entraron.
 pub(super) fn meter_documentos(e: &mut Estado, rutas: &[PathBuf]) -> usize {
-    let (fotos_, otros): (Vec<PathBuf>, Vec<PathBuf>) =
-        rutas.iter().cloned().partition(|r| pixpin_docs::md_imagen::es_foto(&nombre_de(r)));
-    let mut hechas = if fotos_.is_empty() { 0 } else { fotos::meter(e, &fotos_) };
+    let (fotos_, otros): (Vec<PathBuf>, Vec<PathBuf>) = rutas
+        .iter()
+        .cloned()
+        .partition(|r| pixpin_docs::md_imagen::es_foto(&nombre_de(r)));
+    let mut hechas = if fotos_.is_empty() {
+        0
+    } else {
+        fotos::meter(e, &fotos_)
+    };
     let mut fallo = false;
     for r in otros.iter().filter(|r| r.is_file()) {
         match (e.adjuntar)(r) {
@@ -307,7 +355,12 @@ fn del_chat(e: &mut Estado) {
     }
     let (_, b) = seleccion(e.edit);
     let mut p = POINT::default();
-    enviar(e.edit, EM_POSFROMCHAR, &mut p as *mut _ as usize, b as isize);
+    enviar(
+        e.edit,
+        EM_POSFROMCHAR,
+        &mut p as *mut _ as usize,
+        b as isize,
+    );
     p.y += RENGLON_PX * e.ppp / 96;
     // SAFETY: el menu se crea y se destruye aqui; las cadenas viven durante
     // cada llamada; ventanas propias.
@@ -315,20 +368,41 @@ fn del_chat(e: &mut Estado) {
         let _ = ClientToScreen(e.edit, &mut p);
         let Ok(menu) = CreatePopupMenu() else { return };
         for (i, m) in lista.iter().enumerate() {
-            let _ = AppendMenuW(menu, MF_STRING, ID_MENSAJE as usize + i, &HSTRING::from(m.rotulo.as_str()));
+            let _ = AppendMenuW(
+                menu,
+                MF_STRING,
+                ID_MENSAJE as usize + i,
+                &HSTRING::from(m.rotulo.as_str()),
+            );
         }
-        let r = TrackPopupMenu(menu, TPM_RETURNCMD | TPM_RIGHTBUTTON, p.x, p.y, None, e.marco, None);
+        let r = TrackPopupMenu(
+            menu,
+            TPM_RETURNCMD | TPM_RIGHTBUTTON,
+            p.x,
+            p.y,
+            None,
+            e.marco,
+            None,
+        );
         let _ = DestroyMenu(menu);
         r.0 as u32
     };
-    if let Some(m) = elegido.checked_sub(ID_MENSAJE).and_then(|i| lista.get(i as usize)) {
+    if let Some(m) = elegido
+        .checked_sub(ID_MENSAJE)
+        .and_then(|i| lista.get(i as usize))
+    {
         meter_mensaje(e, &m.clave.clone());
     }
 }
 
 /// Mete el mensaje `clave` del chat. `false` si la aplicacion no lo da.
 pub(super) fn meter_mensaje(e: &mut Estado, clave: &str) -> bool {
-    let Some(bloque) = e.integracion.medios.as_mut().and_then(|m| m.insertar_mensaje(clave)) else {
+    let Some(bloque) = e
+        .integracion
+        .medios
+        .as_mut()
+        .and_then(|m| m.insertar_mensaje(clave))
+    else {
         return false;
     };
     insertar_pintado(e, &bloque);
@@ -370,7 +444,12 @@ pub(super) fn entradas_del_mas(e: &Estado) -> Vec<Entrada> {
     }
     let r = &e.rotulos.incrustados;
     vec![
-        entrada(C_DOCUMENTO, Dibujo::Icono(Icono::Documento), &r.documento, ""),
+        entrada(
+            C_DOCUMENTO,
+            Dibujo::Icono(Icono::Documento),
+            &r.documento,
+            "",
+        ),
         entrada(C_DEL_CHAT, Dibujo::Icono(Icono::Chat), &r.del_chat, ""),
         entrada(C_AUDIO, Dibujo::Icono(Icono::Audio), &r.audio, ""),
     ]
@@ -382,7 +461,10 @@ pub(super) fn entradas_del_mas(e: &Estado) -> Vec<Entrada> {
 /// La ruta del incrustado del renglon `n`, si lo es.
 fn incrustado_en(e: &Estado, n: usize) -> Option<String> {
     let texto = leer(e.edit);
-    inc::renglones(&texto).into_iter().find(|r| r.linea == n).map(|r| r.ruta)
+    inc::renglones(&texto)
+        .into_iter()
+        .find(|r| r.linea == n)
+        .map(|r| r.ruta)
 }
 
 fn abrir(e: &mut Estado, ruta: &str) {
@@ -396,9 +478,15 @@ fn quitar(e: &Estado, n: usize) -> bool {
     }
     let texto = leer(e.edit);
     let ls = md_vivo::lineas(&texto);
-    let Some(l) = ls.get(n).copied() else { return false };
+    let Some(l) = ls.get(n).copied() else {
+        return false;
+    };
     let total = texto.encode_utf16().count();
-    let (a, b) = if l.hasta < total { (l.desde, l.hasta + 1) } else { (l.desde.saturating_sub(1), l.hasta) };
+    let (a, b) = if l.hasta < total {
+        (l.desde, l.hasta + 1)
+    } else {
+        (l.desde.saturating_sub(1), l.hasta)
+    };
     elegir(e.edit, a, b);
     enviar(e.edit, EM_REPLACESEL, 1, ancho_nulo("").as_ptr() as isize);
     true
@@ -413,19 +501,32 @@ pub(super) fn entradas_del_menu(e: &mut Estado) -> Vec<Option<(u16, String)>> {
         let _ = GetCursorPos(&mut p);
         let _ = ScreenToClient(e.edit, &mut p);
     }
-    let bajo = imagenes::tocar(p.x, p.y).and_then(|(i, _)| imagenes::puesta(i)).map(|(n, ..)| n);
+    let bajo = imagenes::tocar(p.x, p.y)
+        .and_then(|(i, _)| imagenes::puesta(i))
+        .map(|(n, ..)| n);
     let n = bajo.or_else(|| {
         let texto = leer(e.edit);
-        Some(md_vivo::linea_de(&md_vivo::lineas(&texto), seleccion(e.edit).1))
+        Some(md_vivo::linea_de(
+            &md_vivo::lineas(&texto),
+            seleccion(e.edit).1,
+        ))
     });
     let Some(n) = n.filter(|n| incrustado_en(e, *n).is_some()) else {
         return Vec::new();
     };
     MEMORIA.with(|m| m.borrow_mut().del_menu = Some(n));
     let r = &e.rotulos.incrustados;
-    let es_mensaje = incrustado_en(e, n).is_some_and(|ruta| inc::mensaje_del_enlace(&ruta).is_some());
+    let es_mensaje =
+        incrustado_en(e, n).is_some_and(|ruta| inc::mensaje_del_enlace(&ruta).is_some());
     vec![
-        Some((C_ABRIR, if es_mensaje { r.ir_al_mensaje.clone() } else { r.abrir.clone() })),
+        Some((
+            C_ABRIR,
+            if es_mensaje {
+                r.ir_al_mensaje.clone()
+            } else {
+                r.abrir.clone()
+            },
+        )),
         Some((C_QUITAR, r.quitar.clone())),
         None,
     ]
@@ -435,12 +536,17 @@ pub(super) fn entradas_del_menu(e: &mut Estado) -> Vec<Option<(u16, String)>> {
 // El raton
 
 fn punto(l: LPARAM) -> (i32, i32) {
-    ((l.0 & 0xffff) as i16 as i32, ((l.0 >> 16) & 0xffff) as i16 as i32)
+    (
+        (l.0 & 0xffff) as i16 as i32,
+        ((l.0 >> 16) & 0xffff) as i16 as i32,
+    )
 }
 
 /// Pide algo al reproductor y deja el latido en marcha.
 fn al_audio(e: &mut Estado, orden: OrdenAudio) {
-    let Some(m) = e.integracion.medios.as_mut() else { return };
+    let Some(m) = e.integracion.medios.as_mut() else {
+        return;
+    };
     let estado = m.audio(orden);
     MEMORIA.with(|me| me.borrow_mut().audio = estado);
     latir(e, true);
@@ -474,7 +580,9 @@ pub(super) fn marca_en(texto: &str, pos: usize) -> Option<(String, i64)> {
     if pos < l.desde + m.abre || pos > l.desde + m.cierra + 1 {
         return None;
     }
-    let letra = inc::letras(texto).into_iter().find(|x| x.parrafos.iter().any(|(p, _)| *p == n))?;
+    let letra = inc::letras(texto)
+        .into_iter()
+        .find(|x| x.parrafos.iter().any(|(p, _)| *p == n))?;
     Some((letra.ruta, m.ms))
 }
 
@@ -487,7 +595,8 @@ pub(super) fn raton(e: &mut Estado, m: &MSG) -> bool {
     }
     let (x, y) = punto(m.lParam);
     let sobre = imagenes::tocar(x, y).and_then(|(i, _)| imagenes::puesta(i));
-    let Some((linea, ruta, caja, _)) = sobre.filter(|(_, ruta, ..)| MEMORIA.with(|me| me.borrow().pintados.contains_key(ruta)))
+    let Some((linea, ruta, caja, _)) =
+        sobre.filter(|(_, ruta, ..)| MEMORIA.with(|me| me.borrow().pintados.contains_key(ruta)))
     else {
         // Un clic en una marca de tiempo salta el audio.
         if m.message == WM_LBUTTONDOWN && !pulsada(VK_SHIFT.0) {
@@ -501,7 +610,9 @@ pub(super) fn raton(e: &mut Estado, m: &MSG) -> bool {
         return false;
     };
     cerrar_menu(e);
-    let zonas = MEMORIA.with(|me| me.borrow().pintados.get(&ruta).map(|(_, _, z)| *z)).unwrap_or_default();
+    let zonas = MEMORIA
+        .with(|me| me.borrow().pintados.get(&ruta).map(|(_, _, z)| *z))
+        .unwrap_or_default();
     let (rx, ry) = (x - caja.left, y - caja.top);
     let elegir_renglon = |e: &Estado| {
         let texto = leer(e.edit);
@@ -521,7 +632,12 @@ pub(super) fn raton(e: &mut Estado, m: &MSG) -> bool {
     } else if en(zonas.barra) {
         let b = zonas.barra.unwrap_or_default();
         let f = ((rx - b.x) as f32 / b.an.max(1) as f32).clamp(0.0, 1.0);
-        let cargado = MEMORIA.with(|me| me.borrow().audio.as_ref().is_some_and(|a| a.ruta == ruta && a.duracion_ms > 0));
+        let cargado = MEMORIA.with(|me| {
+            me.borrow()
+                .audio
+                .as_ref()
+                .is_some_and(|a| a.ruta == ruta && a.duracion_ms > 0)
+        });
         if !cargado {
             al_audio(e, OrdenAudio::Alternar(ruta.clone()));
         }
@@ -542,7 +658,9 @@ pub(super) fn raton(e: &mut Estado, m: &MSG) -> bool {
 }
 
 fn pasar_a_texto(e: &mut Estado, ruta: &str) {
-    let Some(m) = e.integracion.medios.as_mut() else { return };
+    let Some(m) = e.integracion.medios.as_mut() else {
+        return;
+    };
     match m.pasar_a_texto(ruta) {
         Ok(()) => {
             MEMORIA.with(|me| {
@@ -569,8 +687,14 @@ fn refrescar_audio(e: &mut Estado) {
     let mut cambiadas = Vec::new();
     let renglones = inc::renglones(&texto);
     for l in &letras {
-        let nombre = renglones.iter().find(|r| r.linea == l.linea).map(|r| r.nombre.clone()).unwrap_or_default();
-        let Some(ficha) = ficha_de(e, &l.ruta, &nombre) else { continue };
+        let nombre = renglones
+            .iter()
+            .find(|r| r.linea == l.linea)
+            .map(|r| r.nombre.clone())
+            .unwrap_or_default();
+        let Some(ficha) = ficha_de(e, &l.ruta, &nombre) else {
+            continue;
+        };
         let suena = como_suena(&l.ruta, !l.parrafos.is_empty());
         if let Some((foto, _)) = pintado(e, &l.ruta, ficha, suena) {
             cambiadas.push((l.ruta.clone(), foto));
@@ -590,7 +714,10 @@ fn refrescar_audio(e: &mut Estado) {
     // El parrafo que suena, resaltado.
     let ahora = MEMORIA.with(|m| {
         let m = m.borrow();
-        let a = m.audio.as_ref().filter(|a| a.sonando || a.posicion_ms > 0)?;
+        let a = m
+            .audio
+            .as_ref()
+            .filter(|a| a.sonando || a.posicion_ms > 0)?;
         let l = letras.iter().find(|l| l.ruta == a.ruta)?;
         inc::parrafo_que_suena(&l.parrafos, a.posicion_ms)
     });
@@ -617,7 +744,8 @@ pub(super) fn latido(e: &mut Estado) {
     let (cambio, sigue) = MEMORIA.with(|me| {
         let mut me = me.borrow_mut();
         let cambio = me.audio != audio || me.transcribiendo != tr;
-        let sigue = audio.as_ref().is_some_and(|a| a.sonando) || tr.as_ref().is_some_and(|t| t.hecho.is_none());
+        let sigue = audio.as_ref().is_some_and(|a| a.sonando)
+            || tr.as_ref().is_some_and(|t| t.hecho.is_none());
         me.audio = audio;
         me.transcribiendo = tr.clone();
         (cambio, sigue)
@@ -644,7 +772,10 @@ pub(super) fn latido(e: &mut Estado) {
 /// sigue en la nota y aun no la lleva.
 pub(super) fn poner_letra(e: &mut Estado, ruta: &str, letra: &str) -> bool {
     let texto = leer(e.edit);
-    let Some(l) = inc::letras(&texto).into_iter().find(|l| l.ruta == ruta && l.parrafos.is_empty()) else {
+    let Some(l) = inc::letras(&texto)
+        .into_iter()
+        .find(|l| l.ruta == ruta && l.parrafos.is_empty())
+    else {
         return false;
     };
     let bloque = inc::bloque_de_audio("x", "x", Some(letra));
@@ -652,12 +783,19 @@ pub(super) fn poner_letra(e: &mut Estado, ruta: &str, letra: &str) -> bool {
         return false;
     };
     let ls = md_vivo::lineas(&texto);
-    let Some(hasta) = ls.get(l.linea).map(|x| x.hasta) else { return false };
+    let Some(hasta) = ls.get(l.linea).map(|x| x.hasta) else {
+        return false;
+    };
     let puesto = format!("\r\r{}", cuerpo.replace('\n', "\r"));
     congelar::congelado(e, congelar::Pintado::Entero, |e| {
         let sel = seleccion(e.edit);
         elegir(e.edit, hasta, hasta);
-        enviar(e.edit, EM_REPLACESEL, 1, ancho_nulo(&puesto).as_ptr() as isize);
+        enviar(
+            e.edit,
+            EM_REPLACESEL,
+            1,
+            ancho_nulo(&puesto).as_ptr() as isize,
+        );
         elegir(e.edit, sel.0, sel.1);
     });
     imagenes::repintar(e.edit);
@@ -669,7 +807,9 @@ pub(super) fn poner_letra(e: &mut Estado, ruta: &str, letra: &str) -> bool {
 /// se vuelve a pintar.
 pub(super) fn vigilar(e: &mut Estado) {
     let rutas: Vec<String> = MEMORIA.with(|m| m.borrow().fichas.keys().cloned().collect());
-    let Some(medios) = e.integracion.medios.as_mut() else { return };
+    let Some(medios) = e.integracion.medios.as_mut() else {
+        return;
+    };
     let mut cambio = false;
     for r in rutas {
         let nueva = medios.ficha(&r);

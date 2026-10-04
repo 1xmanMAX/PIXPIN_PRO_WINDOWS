@@ -116,15 +116,21 @@ pub fn ejecutar(args: &[std::ffi::OsString]) -> i32 {
     vigilar_al_padre();
     let fuera = std::io::stdout();
     let ultimo = AtomicU8::new(u8::MAX);
-    let hecho = comprimir(Path::new(entrada), Path::new(salida), perfil, hilos, &|por| {
-        // Solo cuando cambia: cada foto avisa, y un escaneo tiene cientos.
-        if ultimo.swap(por, Ordering::Relaxed) != por {
-            let mut f = fuera.lock();
-            let _ = writeln!(f, "p {por}");
-            let _ = f.flush();
-        }
-        true
-    });
+    let hecho = comprimir(
+        Path::new(entrada),
+        Path::new(salida),
+        perfil,
+        hilos,
+        &|por| {
+            // Solo cuando cambia: cada foto avisa, y un escaneo tiene cientos.
+            if ultimo.swap(por, Ordering::Relaxed) != por {
+                let mut f = fuera.lock();
+                let _ = writeln!(f, "p {por}");
+                let _ = f.flush();
+            }
+            true
+        },
+    );
     if let Some(pico) = pixpin_shell::prioridad::memoria_pico() {
         let mut f = fuera.lock();
         let _ = writeln!(f, "memoria {pico}");

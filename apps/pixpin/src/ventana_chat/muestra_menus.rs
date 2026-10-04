@@ -70,7 +70,13 @@ fn muestras_de_los_menus_v2() {
         .collect();
     let textos = Catalogo::nuevo(Idioma::Espanol);
     let mut a = abrir_proyecto(&u, &ficha);
-    meter_ficheros(&u, &mut a, "PC", std::slice::from_ref(&fotos[0]), "Grieta en el muro norte");
+    meter_ficheros(
+        &u,
+        &mut a,
+        "PC",
+        std::slice::from_ref(&fotos[0]),
+        "Grieta en el muro norte",
+    );
     let a = abrir_proyecto(&u, &ficha);
 
     let ahora = pixpin_shell::entorno::ahora_utc_ms();
@@ -78,8 +84,18 @@ fn muestras_de_los_menus_v2() {
     let motor = MotorRender::nuevo(d3.d3d()).expect("motor");
     let (ancho, alto) = (1180u32, 860u32);
     let escala = 100;
-    let marco = Rect { x: 0, y: 0, ancho, alto };
-    let d = disponer(marco, escala, pixpin_ui::chat::ancho_inicial(ancho, escala), Some(&a));
+    let marco = Rect {
+        x: 0,
+        y: 0,
+        ancho,
+        alto,
+    };
+    let d = disponer(
+        marco,
+        escala,
+        pixpin_ui::chat::ancho_inicial(ancho, escala),
+        Some(&a),
+    );
     let mut miniaturas = crate::miniaturas::Miniaturas::nuevo();
     let mut previas = crate::miniaturas::Miniaturas::con_lado(super::PREVIA_LADO);
     miniaturas.asegurar(&fotos, &motor);
@@ -92,8 +108,9 @@ fn muestras_de_los_menus_v2() {
     std::fs::create_dir_all(&salida).unwrap();
 
     // Tres escenas: (nombre, menu, pendientes).
-    let mut menu_msg = MenuAbierto::nuevo(Punto { x: 520, y: 140 }, menu_de_mensaje(&a, 0, &textos))
-        .con_etiquetas(0, Some(pixpin_ui::chat::ETIQUETAS[1].to_string()));
+    let mut menu_msg =
+        MenuAbierto::nuevo(Punto { x: 520, y: 140 }, menu_de_mensaje(&a, 0, &textos))
+            .con_etiquetas(0, Some(pixpin_ui::chat::ETIQUETAS[1].to_string()));
     menu_msg.mas_abierto = true;
     menu_msg.elegido = Some(menu_v2::Sitio::Mas(0));
     menu_msg.sobre = Some(menu_v2::Sitio::Principal(1));
@@ -101,10 +118,22 @@ fn muestras_de_los_menus_v2() {
     let clip = d.boton_adjuntar(alto_texto, escala);
     let mut hoja = hoja_adjuntar::Hoja::nueva(&textos);
     hoja.sobre = Some(2);
-    let menu_hoja = MenuAbierto::de_hoja(Punto { x: clip.derecha(), y: clip.y }, hoja);
+    let menu_hoja = MenuAbierto::de_hoja(
+        Punto {
+            x: clip.derecha(),
+            y: clip.y,
+        },
+        hoja,
+    );
     let mut hoja_buscando = hoja_adjuntar::Hoja::nueva(&textos);
     hoja_buscando.busqueda = "cro".into();
-    let menu_hoja_buscando = MenuAbierto::de_hoja(Punto { x: clip.derecha(), y: clip.y }, hoja_buscando);
+    let menu_hoja_buscando = MenuAbierto::de_hoja(
+        Punto {
+            x: clip.derecha(),
+            y: clip.y,
+        },
+        hoja_buscando,
+    );
     let mut pend = Pendientes::de(fotos.clone()).unwrap();
     pend.pie = "Grieta en el muro norte, revisar el lunes".into();
     let escenas: Vec<(&str, Option<&MenuAbierto>, Option<&Pendientes>)> = vec![
@@ -136,8 +165,14 @@ fn muestras_de_los_menus_v2() {
                 let f = c.fotos[2];
                 p.arrastre = Some(envio::Arrastre {
                     desde: 2,
-                    agarre: Punto { x: f.x + 40, y: f.y + 40 },
-                    ahora: Punto { x: c.fotos[1].x + 10, y: f.y + 34 },
+                    agarre: Punto {
+                        x: f.x + 40,
+                        y: f.y + 40,
+                    },
+                    ahora: Punto {
+                        x: c.fotos[1].x + 10,
+                        y: f.y + 34,
+                    },
                 });
                 p.sobre = Some(envio::Sitio::Enviar);
             }
@@ -154,7 +189,16 @@ fn muestras_de_los_menus_v2() {
             };
             motor
                 .dibujar(&destino.destino, |p| {
-                    pintar(p, &d, &OSCURO, papel_de(0, false), escala, &textos, None, &lista);
+                    pintar(
+                        p,
+                        &d,
+                        &OSCURO,
+                        papel_de(0, false),
+                        escala,
+                        &textos,
+                        None,
+                        &lista,
+                    );
                     a.zonas.borrow_mut().clear();
                     let c = Pinta {
                         tema: &OSCURO,

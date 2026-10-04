@@ -87,7 +87,11 @@ pub fn pdf_en_cache(raiz: &Path, origen: &Path) -> Option<PathBuf> {
     origen.hash(&mut h);
     meta.len().hash(&mut h);
     meta.modified().ok().hash(&mut h);
-    Some(raiz.join("cache").join("diapositivas").join(format!("{:016x}.pdf", h.finish())))
+    Some(
+        raiz.join("cache")
+            .join("diapositivas")
+            .join(format!("{:016x}.pdf", h.finish())),
+    )
 }
 
 /// El PDF de la presentacion, convirtiendola si aun no lo estaba. Bloquea
@@ -268,7 +272,8 @@ pub fn lanzar(idioma: pixpin_store::Idioma, ubicacion: pixpin_store::Ubicacion, 
                 ofrecer_otra_app(&textos, clave, &ruta);
                 return;
             }
-            let hecho = Recursos::nuevos().and_then(|r| presentar(&r, &textos, ubicacion.raiz(), &ruta));
+            let hecho =
+                Recursos::nuevos().and_then(|r| presentar(&r, &textos, ubicacion.raiz(), &ruta));
             if let Err(e) = hecho {
                 tracing::warn!(?e, ruta = %ruta.display(), "no se pudo presentar");
             }
@@ -281,7 +286,11 @@ pub fn lanzar(idioma: pixpin_store::Idioma, ubicacion: pixpin_store::Ubicacion, 
 /// Sin PowerPoint (o con un Keynote): se dice por que y se ofrece el
 /// «Abrir con» de Windows, que es lo que queda.
 fn ofrecer_otra_app(textos: &Catalogo, clave: &str, ruta: &Path) {
-    let pregunta = format!("{}\n\n{}", textos.t(clave), textos.t("diapositivas-abrir-con-otra"));
+    let pregunta = format!(
+        "{}\n\n{}",
+        textos.t(clave),
+        textos.t("diapositivas-abrir-con-otra")
+    );
     let nula = windows::Win32::Foundation::HWND::default();
     if pixpin_shell::preguntar(nula, &textos.t("diapositivas-titulo"), &pregunta)
         && let Err(e) = pixpin_shell::abrir_con_otra::abrir_con_otra(nula, ruta)
@@ -297,7 +306,13 @@ enum Llega {
 }
 
 /// El hilo que convierte y luego dibuja las diapositivas que se le piden.
-fn hilo(raiz: PathBuf, origen: PathBuf, pedidos: mpsc::Receiver<(usize, u32)>, salida: mpsc::Sender<Llega>, ventana: isize) {
+fn hilo(
+    raiz: PathBuf,
+    origen: PathBuf,
+    pedidos: mpsc::Receiver<(usize, u32)>,
+    salida: mpsc::Sender<Llega>,
+    ventana: isize,
+) {
     let _com = pixpin_shell::ComDelHilo::iniciar();
     let avisar = |l: Llega| {
         let _ = salida.send(l);
@@ -330,15 +345,25 @@ const MS_DE_LA_PASTILLA: u64 = 3000;
 
 fn presentar(recursos: &Recursos, textos: &Catalogo, raiz: &Path, ruta: &Path) -> Result<()> {
     let monitores = pixpin_capture::enumerar_monitores().context("sin monitores")?;
-    let monitor = monitores.principal().context("sin monitor principal")?.to_owned();
+    let monitor = monitores
+        .principal()
+        .context("sin monitor principal")?
+        .to_owned();
     let area = monitor.area;
     let e = monitor.escala_por_cien as f32 / 100.0;
     let (ancho, alto) = (area.ancho as f32, area.alto as f32);
     let nombre = pixpin_docs::sin_extension(&pixpin_docs::nombre(ruta));
-    let ventana = VentanaOverlay::nueva_normal(area, &nombre).context("sin ventana para presentar")?;
+    let ventana =
+        VentanaOverlay::nueva_normal(area, &nombre).context("sin ventana para presentar")?;
     let motor = recursos.motor();
-    let superficie = Superficie::nueva(&motor, &recursos.d3d(), ventana.handle(), area.ancho, area.alto)
-        .context("sin superficie para presentar")?;
+    let superficie = Superficie::nueva(
+        &motor,
+        &recursos.d3d(),
+        ventana.handle(),
+        area.ancho,
+        area.alto,
+    )
+    .context("sin superficie para presentar")?;
     ventana.mostrar();
     ventana.enfocar();
 
@@ -373,12 +398,16 @@ fn presentar(recursos: &Recursos, textos: &Catalogo, raiz: &Path, ruta: &Path) -
                     pase.total = m.len();
                     medidas = m;
                 }
-                Llega::Hoja(i, img) => match motor.bitmap_desde_pixeles(img.ancho, img.alto, &img.pixeles) {
-                    Ok(b) => {
-                        pintadas.insert(i, b);
+                Llega::Hoja(i, img) => {
+                    match motor.bitmap_desde_pixeles(img.ancho, img.alto, &img.pixeles) {
+                        Ok(b) => {
+                            pintadas.insert(i, b);
+                        }
+                        Err(err) => {
+                            tracing::warn!(?err, hoja = i, "no se pudo subir la diapositiva")
+                        }
                     }
-                    Err(err) => tracing::warn!(?err, hoja = i, "no se pudo subir la diapositiva"),
-                },
+                }
                 Llega::Fallo(clave) => fallo = Some(clave),
             }
         }
@@ -405,7 +434,10 @@ fn presentar(recursos: &Recursos, textos: &Catalogo, raiz: &Path, ruta: &Path) -
                 }
                 EventoOverlay::BotonPulsado(p) => {
                     raton = ((p.x - area.x) as f32, (p.y - area.y) as f32);
-                    let sobre_boton = botones.iter().find(|(r, _)| dentro(r, raton.0, raton.1)).map(|(_, m)| *m);
+                    let sobre_boton = botones
+                        .iter()
+                        .find(|(r, _)| dentro(r, raton.0, raton.1))
+                        .map(|(_, m)| *m);
                     Some(sobre_boton.unwrap_or_else(|| mando_de_clic(raton.0, ancho)))
                 }
                 _ => None,
@@ -458,7 +490,17 @@ fn presentar(recursos: &Recursos, textos: &Catalogo, raiz: &Path, ruta: &Path) -
             let mostrar_pastilla = pase.pastilla && pastilla_hasta > ahora;
             if let Ok(destino) = superficie.empezar(&motor) {
                 let _ = motor.dibujar(&destino, |p: &Pintor| {
-                    botones = pintar(p, &pase, &medidas, &pintadas, fallo.as_deref(), mostrar_pastilla, (ancho, alto), e, textos);
+                    botones = pintar(
+                        p,
+                        &pase,
+                        &medidas,
+                        &pintadas,
+                        fallo.as_deref(),
+                        mostrar_pastilla,
+                        (ancho, alto),
+                        e,
+                        textos,
+                    );
                 });
                 let _ = superficie.presentar();
             }
@@ -482,7 +524,15 @@ fn pintar(
     textos: &Catalogo,
 ) -> Vec<(RectF, Mando)> {
     let mut botones = Vec::new();
-    p.rellenar(RectF { x: 0.0, y: 0.0, ancho, alto }, Color::NEGRO);
+    p.rellenar(
+        RectF {
+            x: 0.0,
+            y: 0.0,
+            ancho,
+            alto,
+        },
+        Color::NEGRO,
+    );
     let centrado = |texto: &str, color: Color| {
         let tam = 18.0 * e;
         let (w, _) = p.medir_texto(texto, tam);
@@ -526,17 +576,51 @@ fn pintar(
     p.rellenar_redondeado(caja, lado / 2.0, con_alfa(CRISTAL, 0.86));
     let mut x = caja.x + 6.0 * e;
     let mut boton = |icono: &pixpin_render::icono::Icono, activo: bool, mando: Mando, x: f32| {
-        let zona = RectF { x, y: caja.y, ancho: lado, alto: lado };
+        let zona = RectF {
+            x,
+            y: caja.y,
+            ancho: lado,
+            alto: lado,
+        };
         let l = 22.0 * e;
-        let color = if activo { Color::BLANCO } else { con_alfa(Color::BLANCO, 0.35) };
-        p.icono(icono, RectF { x: x + (lado - l) / 2.0, y: caja.y + (lado - l) / 2.0, ancho: l, alto: l }, color);
+        let color = if activo {
+            Color::BLANCO
+        } else {
+            con_alfa(Color::BLANCO, 0.35)
+        };
+        p.icono(
+            icono,
+            RectF {
+                x: x + (lado - l) / 2.0,
+                y: caja.y + (lado - l) / 2.0,
+                ancho: l,
+                alto: l,
+            },
+            color,
+        );
         botones.push((zona, mando));
     };
-    boton(&material::ARROW_BACK, pase.puede_anterior(), Mando::Anterior, x);
+    boton(
+        &material::ARROW_BACK,
+        pase.puede_anterior(),
+        Mando::Anterior,
+        x,
+    );
     x += lado;
-    p.texto(&cuenta, x + 4.0 * e, caja.y + (lado - h) / 2.0, tam, Color::BLANCO);
+    p.texto(
+        &cuenta,
+        x + 4.0 * e,
+        caja.y + (lado - h) / 2.0,
+        tam,
+        Color::BLANCO,
+    );
     x += w + 8.0 * e;
-    boton(&material::ARROW_FORWARD, pase.puede_siguiente(), Mando::Siguiente, x);
+    boton(
+        &material::ARROW_FORWARD,
+        pase.puede_siguiente(),
+        Mando::Siguiente,
+        x,
+    );
     x += lado + 10.0 * e;
     boton(&material::CLOSE, true, Mando::Salir, x);
     botones
@@ -548,7 +632,14 @@ mod pruebas {
 
     #[test]
     fn las_presentaciones_se_reconocen_por_su_extension() {
-        for si in ["charla.pptx", "CHARLA.PPTX", "vieja.ppt", "pase.ppsx", "libre.odp", "mac.key"] {
+        for si in [
+            "charla.pptx",
+            "CHARLA.PPTX",
+            "vieja.ppt",
+            "pase.ppsx",
+            "libre.odp",
+            "mac.key",
+        ] {
             assert!(es_presentacion(si), "{si}");
         }
         for no in ["informe.pdf", "carta.docx", "hoja.xlsx", "pptx", "sin"] {
@@ -563,7 +654,10 @@ mod pruebas {
         assert_eq!(por_que_no("a.ppt", true), None);
         assert_eq!(por_que_no("a.odp", true), None);
         assert_eq!(por_que_no("a.key", true), Some("diapositivas-keynote"));
-        assert_eq!(por_que_no("a.pptx", false), Some("diapositivas-sin-powerpoint"));
+        assert_eq!(
+            por_que_no("a.pptx", false),
+            Some("diapositivas-sin-powerpoint")
+        );
         assert_eq!(por_que_no("a.pdf", true), Some("diapositivas-no-es"));
     }
 
@@ -593,7 +687,10 @@ mod pruebas {
 
     #[test]
     fn el_pase_no_da_la_vuelta_ni_se_sale_de_la_presentacion() {
-        let mut p = Pase { total: 3, ..Default::default() };
+        let mut p = Pase {
+            total: 3,
+            ..Default::default()
+        };
         assert!(!p.puede_anterior());
         assert!(p.aplicar(Mando::Anterior));
         assert_eq!(p.actual, 0, "antes de la primera no hay nada");
@@ -611,7 +708,11 @@ mod pruebas {
 
     #[test]
     fn en_negro_el_primer_mando_solo_enciende_la_pantalla() {
-        let mut p = Pase { total: 5, actual: 1, ..Default::default() };
+        let mut p = Pase {
+            total: 5,
+            actual: 1,
+            ..Default::default()
+        };
         p.aplicar(Mando::Negro);
         assert!(p.negro);
         p.aplicar(Mando::Siguiente);
@@ -650,10 +751,21 @@ mod pruebas {
         let pptx = dir.join("charla.pptx");
         std::fs::write(&pptx, b"uno").unwrap();
         let a = pdf_en_cache(&dir, &pptx).unwrap();
-        assert_eq!(a, pdf_en_cache(&dir, &pptx).unwrap(), "la misma clave dos veces");
-        assert!(a.starts_with(dir.join("cache")), "fuera del proyecto: {a:?}");
+        assert_eq!(
+            a,
+            pdf_en_cache(&dir, &pptx).unwrap(),
+            "la misma clave dos veces"
+        );
+        assert!(
+            a.starts_with(dir.join("cache")),
+            "fuera del proyecto: {a:?}"
+        );
         std::fs::write(&pptx, b"otro mas largo").unwrap();
-        assert_ne!(a, pdf_en_cache(&dir, &pptx).unwrap(), "cambiado, otra conversion");
+        assert_ne!(
+            a,
+            pdf_en_cache(&dir, &pptx).unwrap(),
+            "cambiado, otra conversion"
+        );
         // Sin fichero no hay clave.
         assert!(pdf_en_cache(&dir, &dir.join("no.pptx")).is_none());
         // Un PDF no pasa por PowerPoint.
@@ -662,7 +774,10 @@ mod pruebas {
         // Un Keynote no se convierte: se dice por que.
         let key = dir.join("mac.key");
         std::fs::write(&key, b"x").unwrap();
-        assert_eq!(pdf_para_unir(&dir, &key).unwrap_err(), "diapositivas-keynote");
+        assert_eq!(
+            pdf_para_unir(&dir, &key).unwrap_err(),
+            "diapositivas-keynote"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

@@ -27,7 +27,13 @@ use super::Destino;
 pub fn nombre_limpio(nombre: &str) -> String {
     let limpio: String = nombre
         .chars()
-        .map(|c| if "/\\:|()[] ".contains(c) || c.is_control() { '_' } else { c })
+        .map(|c| {
+            if "/\\:|()[] ".contains(c) || c.is_control() {
+                '_'
+            } else {
+                c
+            }
+        })
         .take(80)
         .collect();
     if limpio.trim_matches('_').is_empty() {
@@ -45,7 +51,9 @@ pub fn resolver(raiz: &Path, destino: &Destino, ruta: &str) -> Option<PathBuf> {
         return Some(PathBuf::from(ruta)).filter(|p| p.is_file());
     }
     match destino {
-        Destino::Mensaje { proyecto, .. } | Destino::Nueva { proyecto } => vista::ruta_real(raiz, proyecto, ruta),
+        Destino::Mensaje { proyecto, .. } | Destino::Nueva { proyecto } => {
+            vista::ruta_real(raiz, proyecto, ruta)
+        }
         Destino::Fichero { ruta: md } => {
             if ruta.contains(':') || ruta.starts_with('/') || ruta.contains("..") {
                 return None;
@@ -81,8 +89,18 @@ pub fn sitio(raiz: &Path, destino: &Destino, fichero: &str) -> std::io::Result<(
 
 /// Copia la foto `origen` junto a la nota y da la ruta que se escribe en
 /// el Markdown.
-pub fn adjuntar(raiz: &Path, destino: &Destino, origen: &Path, ahora: i64) -> std::io::Result<String> {
-    let nombre = nombre_limpio(&origen.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default());
+pub fn adjuntar(
+    raiz: &Path,
+    destino: &Destino,
+    origen: &Path,
+    ahora: i64,
+) -> std::io::Result<String> {
+    let nombre = nombre_limpio(
+        &origen
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_default(),
+    );
     let (copia, ruta) = sitio(raiz, destino, &format!("{ahora}-{nombre}"))?;
     std::fs::copy(origen, &copia)?;
     Ok(ruta)
@@ -100,7 +118,8 @@ mod pruebas {
     }
 
     fn carpeta(nombre: &str) -> Carpeta {
-        let d = std::env::temp_dir().join(format!("pixpin-notas-adj-{nombre}-{}", std::process::id()));
+        let d =
+            std::env::temp_dir().join(format!("pixpin-notas-adj-{nombre}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&d);
         std::fs::create_dir_all(&d).unwrap();
         Carpeta(d)
@@ -125,7 +144,9 @@ mod pruebas {
         let ruta = adjuntar(&c.0, &d, &origen, 1234).unwrap();
         // Sin indice no hay chat: relativa a la carpeta del proyecto.
         assert_eq!(ruta, "notas/1234-planta_baja.png");
-        let copia = almacen::carpeta(&c.0, "p1").join("notas").join("1234-planta_baja.png");
+        let copia = almacen::carpeta(&c.0, "p1")
+            .join("notas")
+            .join("1234-planta_baja.png");
         assert!(copia.is_file());
         assert_eq!(resolver(&c.0, &d, &ruta), Some(copia));
     }
@@ -140,7 +161,10 @@ mod pruebas {
         };
         let ruta = adjuntar(&c.0, &d, &origen, 7).unwrap();
         assert_eq!(ruta, "adjuntos/7-x.jpg");
-        assert_eq!(resolver(&c.0, &d, &ruta), Some(c.0.join("adjuntos").join("7-x.jpg")));
+        assert_eq!(
+            resolver(&c.0, &d, &ruta),
+            Some(c.0.join("adjuntos").join("7-x.jpg"))
+        );
     }
 
     #[test]
@@ -150,7 +174,14 @@ mod pruebas {
             ruta: c.0.join("apuntes.md"),
         };
         assert_eq!(resolver(&c.0, &d, "../secreto.png"), None);
-        assert_eq!(resolver(&c.0, &d, "/data/user/0/com.forge.pixpin/files/notas/1-a.png"), None);
+        assert_eq!(
+            resolver(
+                &c.0,
+                &d,
+                "/data/user/0/com.forge.pixpin/files/notas/1-a.png"
+            ),
+            None
+        );
         assert_eq!(resolver(&c.0, &d, "C:\\no\\existe.png"), None);
     }
 }

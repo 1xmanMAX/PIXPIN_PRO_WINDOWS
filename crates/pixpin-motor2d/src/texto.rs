@@ -260,7 +260,9 @@ pub fn apartados_de_renglones(
 ) -> Vec<f32> {
     texto
         .split('\n')
-        .map(|r| ((ancho_caja - ancho_real(r.trim_end(), tam, familia, estilo)) * a.fraccion()).max(0.0))
+        .map(|r| {
+            ((ancho_caja - ancho_real(r.trim_end(), tam, familia, estilo)) * a.fraccion()).max(0.0)
+        })
         .collect()
 }
 
@@ -799,7 +801,12 @@ mod pruebas_de_estilo {
         assert_eq!(familia_resuelta(Some(8)), FUENTE_COMIC_SHANNS);
         assert_eq!(familia_resuelta(Some(7)), FUENTE_LILITA_ONE);
         // Las del lienzo de citas se quedan con su numero.
-        for id in [FUENTE_WORK_SANS, FUENTE_FRAUNCES, FUENTE_COURIER_NEW, FUENTE_CAVEAT] {
+        for id in [
+            FUENTE_WORK_SANS,
+            FUENTE_FRAUNCES,
+            FUENTE_COURIER_NEW,
+            FUENTE_CAVEAT,
+        ] {
             assert_eq!(familia_resuelta(Some(id)), id);
         }
         // Caso negativo: un numero que no es de nadie cae en la de por
@@ -832,7 +839,12 @@ mod pruebas_de_estilo {
         // letra que si conoce, en vez de con su reserva.
         let de_excalidraw = [1u8, 2, 3, 4, 5, 6, 7, 8, 9, 10, 100];
         for f in &FUENTES[4..] {
-            assert!(!de_excalidraw.contains(&f.id), "{} usa el {}", f.nombre, f.id);
+            assert!(
+                !de_excalidraw.contains(&f.id),
+                "{} usa el {}",
+                f.nombre,
+                f.id
+            );
         }
         // Y no hay dos con el mismo numero ni el mismo nombre.
         for (i, a) in FUENTES.iter().enumerate() {
@@ -1045,7 +1057,10 @@ mod pruebas {
     ) -> Option<(f32, f32)> {
         let largo = t.split('\n').map(|r| r.chars().count()).max().unwrap_or(0) as f32;
         let gordo = if estilo.negrita { 2.0 } else { 1.0 };
-        Some((largo * 10.0 * gordo, t.split('\n').count() as f32 * tam * 1.5))
+        Some((
+            largo * 10.0 * gordo,
+            t.split('\n').count() as f32 * tam * 1.5,
+        ))
     }
 
     #[test]
@@ -1074,7 +1089,10 @@ mod pruebas {
             assert!(alto > 0.0);
             // Caso negativo: el ancho de NADA delante del cursor es cero, no
             // un espacio; si no la barra saldria despegada del borde.
-            assert_eq!(ancho_real("", 20.0, "Nunito", EstiloDeTexto::default()), 0.0);
+            assert_eq!(
+                ancho_real("", 20.0, "Nunito", EstiloDeTexto::default()),
+                0.0
+            );
         });
     }
 
@@ -1093,7 +1111,10 @@ mod pruebas {
     fn sin_medidor_se_mide_a_ojo_como_siempre() {
         // Caso negativo: el motor puro no tiene DirectWrite y no puede
         // quedarse sin caja.
-        assert!(!hay_medidor(), "una prueba dejo un medidor puesto en este hilo");
+        assert!(
+            !hay_medidor(),
+            "una prueba dejo un medidor puesto en este hilo"
+        );
         let (ancho, _) = medida("hola", 10.0, "Excalifont", EstiloDeTexto::default());
         assert_eq!(ancho, medida_estimada("hola", 10.0).0);
     }

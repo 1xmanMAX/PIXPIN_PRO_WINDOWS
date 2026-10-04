@@ -3,15 +3,18 @@
 
 use crate::datos::Datos;
 use crate::pedido::{Envio, Mensajero};
-use crate::resultados::{resultados, Accion, Contexto, Resultado};
-use crate::rpc::{bucle, Plugin};
-use serde_json::{json, Value};
+use crate::resultados::{Accion, Contexto, Resultado, resultados};
+use crate::rpc::{Plugin, bucle};
+use serde_json::{Value, json};
 use std::fs;
 use std::path::{Path, PathBuf};
 
 /// Una raiz de datos de PixPin, nueva para cada prueba.
 fn raiz(etiqueta: &str) -> PathBuf {
-    let r = std::env::temp_dir().join(format!("pixpin-lanzador-pruebas-{etiqueta}-{}", std::process::id()));
+    let r = std::env::temp_dir().join(format!(
+        "pixpin-lanzador-pruebas-{etiqueta}-{}",
+        std::process::id()
+    ));
     let _ = fs::remove_dir_all(&r);
     let p = r.join("proyectos");
     fs::create_dir_all(&p).unwrap();
@@ -28,13 +31,24 @@ fn raiz(etiqueta: &str) -> PathBuf {
         .to_string(),
     )
     .unwrap();
-    for d in ["G1/android/guardados", "P1/archivos", "P1/notas", "P2", "PX", "P4"] {
+    for d in [
+        "G1/android/guardados",
+        "P1/archivos",
+        "P1/notas",
+        "P2",
+        "PX",
+        "P4",
+    ] {
         fs::create_dir_all(p.join(d)).unwrap();
     }
     fs::write(p.join("G1/android/guardados/foto.jpg"), b"jpg").unwrap();
     fs::write(p.join("G1/android/guardados/voz_1.m4a"), b"m4a").unwrap();
     fs::write(p.join("P1/archivos/Objetivos.md"), b"# Objetivos").unwrap();
-    fs::write(p.join("P1/notas/suelta.md"), "\u{feff}\n# Apuntes sueltos\n\ntexto").unwrap();
+    fs::write(
+        p.join("P1/notas/suelta.md"),
+        "\u{feff}\n# Apuntes sueltos\n\ntexto",
+    )
+    .unwrap();
     // La nota de verdad del mensaje n2 (por su referencia), una foto y un audio.
     fs::write(p.join("P1/notas/zacta.md"), "# Acta\n\nreunión").unwrap();
     fs::write(p.join("P1/archivos/croquis.png"), b"png").unwrap();
@@ -43,7 +57,12 @@ fn raiz(etiqueta: &str) -> PathBuf {
     fs::create_dir_all(r.join("cache/iconos-de-extension")).unwrap();
     fs::write(r.join("cache/iconos-de-extension/md.png"), b"png").unwrap();
     fs::write(p.join("P4/guardados.jsonl"), "").unwrap();
-    let lineas = |v: &[Value]| v.iter().map(Value::to_string).collect::<Vec<_>>().join("\n");
+    let lineas = |v: &[Value]| {
+        v.iter()
+            .map(Value::to_string)
+            .collect::<Vec<_>>()
+            .join("\n")
+    };
     let g1 = lineas(&[
         json!({ "id": "n1", "cuando": 100, "clase": "NOTA", "texto": "# Idea brillante\n\ncomprar pan integral", "nombre": "" }),
         json!({ "id": "i1", "cuando": 101, "clase": "IMAGEN", "ruta": "pixpin:files/guardados/foto.jpg", "nombre": "foto.jpg" }),
@@ -122,7 +141,12 @@ fn la_cache_se_pone_al_dia_cuando_cambia_el_fichero() {
     assert_eq!(d.proyectos()[2].mensajes.len(), 0);
     // Se adelanta la cache: dura mientras el fichero no cambie.
     assert!(d.retocar("G1", "t1", |t| crate::datos::con_tarea_anadida(t, "yogur")));
-    assert!(d.proyectos()[0].mensajes.iter().any(|m| m.texto().contains("yogur")));
+    assert!(
+        d.proyectos()[0]
+            .mensajes
+            .iter()
+            .any(|m| m.texto().contains("yogur"))
+    );
     std::thread::sleep(std::time::Duration::from_millis(30));
     fs::write(
         r.join("proyectos/P2/guardados.jsonl"),
@@ -131,7 +155,10 @@ fn la_cache_se_pone_al_dia_cuando_cambia_el_fichero() {
     .unwrap();
     let ps = d.proyectos();
     assert_eq!(ps[2].mensajes.len(), 1);
-    assert!(ps[0].mensajes.iter().any(|m| m.texto().contains("yogur")), "G1 no cambio: sigue lo adelantado");
+    assert!(
+        ps[0].mensajes.iter().any(|m| m.texto().contains("yogur")),
+        "G1 no cambio: sigue lo adelantado"
+    );
 }
 
 #[test]
@@ -139,11 +166,23 @@ fn un_archivo_se_abre_por_su_ruta_real() {
     let r = raiz("archivo");
     let v = buscar(&r, "objetivos");
     assert_eq!(v[0].titulo, "Objetivos e Indicadores.md");
-    assert!(v[0].subtitulo.starts_with("Archivo · Gestión de proyectos"), "{}", v[0].subtitulo);
+    assert!(
+        v[0].subtitulo.starts_with("Archivo · Gestión de proyectos"),
+        "{}",
+        v[0].subtitulo
+    );
     let p = pedido_de(&v[0]);
     assert_eq!(p["accion"], "abrir");
     assert_eq!(p["que"]["tipo"], "fichero");
-    assert_eq!(p["que"]["ruta"], r.join("proyectos").join("P1").join("archivos").join("Objetivos.md").to_string_lossy().as_ref());
+    assert_eq!(
+        p["que"]["ruta"],
+        r.join("proyectos")
+            .join("P1")
+            .join("archivos")
+            .join("Objetivos.md")
+            .to_string_lossy()
+            .as_ref()
+    );
 }
 
 #[test]
@@ -151,7 +190,10 @@ fn lo_que_no_esta_en_el_equipo_abre_su_mensaje() {
     let r = raiz("remoto");
     let v = buscar(&r, "remoto");
     assert!(v[0].subtitulo.contains("no está en este equipo"));
-    assert_eq!(pedido_de(&v[0])["que"], json!({ "tipo": "mensaje", "proyecto": "P1", "codigo": "a2" }));
+    assert_eq!(
+        pedido_de(&v[0])["que"],
+        json!({ "tipo": "mensaje", "proyecto": "P1", "codigo": "a2" })
+    );
 }
 
 #[test]
@@ -159,7 +201,10 @@ fn lienzos_por_el_nombre_de_su_hoja_y_hojas_sin_mensaje() {
     let r = raiz("lienzos");
     let v = buscar(&r, "plano");
     assert_eq!(v[0].titulo, "Plano de la casa");
-    assert_eq!(pedido_de(&v[0])["que"], json!({ "tipo": "hoja", "proyecto": "P1", "referencia": "dib-1" }));
+    assert_eq!(
+        pedido_de(&v[0])["que"],
+        json!({ "tipo": "hoja", "proyecto": "P1", "referencia": "dib-1" })
+    );
     let v = buscar(&r, "hoja suelta");
     assert_eq!(pedido_de(&v[0])["que"]["referencia"], "dib-2");
     let v = buscar(&r, "pagina uno");
@@ -172,7 +217,10 @@ fn notas_del_chat_y_md_sueltas() {
     let r = raiz("notas");
     let v = buscar(&r, "idea");
     assert_eq!(v[0].titulo, "Idea brillante");
-    assert_eq!(pedido_de(&v[0])["que"], json!({ "tipo": "nota", "proyecto": null, "codigo": "n1" }));
+    assert_eq!(
+        pedido_de(&v[0])["que"],
+        json!({ "tipo": "nota", "proyecto": null, "codigo": "n1" })
+    );
     // Por el texto de dentro tambien, pero por debajo.
     let v = buscar(&r, "integral");
     assert!(v.iter().any(|x| x.titulo == "Idea brillante"));
@@ -238,11 +286,24 @@ fn vacio_da_las_funciones_y_los_proyectos_recientes() {
     assert_eq!(v[7].accion, Accion::Consulta("pp lecciones ".into()));
     assert_eq!(v[8].accion, Accion::Consulta("pp repasar ".into()));
     assert_eq!(pedido_de(&v[2])["accion"], "lienzo_nuevo");
-    assert!(v[4].subtitulo.contains("micrófono flotante"), "{}", v[4].subtitulo);
+    assert!(
+        v[4].subtitulo.contains("micrófono flotante"),
+        "{}",
+        v[4].subtitulo
+    );
     // Un proyecto ya no abre la app: entra en su chat.
-    assert_eq!(v[14].accion, Accion::Consulta("pp Gestión de proyectos > ".into()));
-    assert_eq!(v[14].autocompletar.as_deref(), Some("pp Gestión de proyectos > "));
-    assert_eq!(v[16].accion, Accion::Consulta("pp Mensajes guardados > ".into()));
+    assert_eq!(
+        v[14].accion,
+        Accion::Consulta("pp Gestión de proyectos > ".into())
+    );
+    assert_eq!(
+        v[14].autocompletar.as_deref(),
+        Some("pp Gestión de proyectos > ")
+    );
+    assert_eq!(
+        v[16].accion,
+        Accion::Consulta("pp Mensajes guardados > ".into())
+    );
 }
 
 #[test]
@@ -259,19 +320,38 @@ fn verbos_con_texto_y_proyecto() {
     let r = raiz("verbos");
     let v = buscar(&r, "chat hola que tal @gest");
     assert_eq!(v[0].titulo, "Escribir en el chat: hola que tal");
-    assert_eq!(*pedido_de(&v[0]), json!({ "pixpin": 1, "accion": "chat", "texto": "hola que tal", "proyecto": "P1" }));
+    assert_eq!(
+        *pedido_de(&v[0]),
+        json!({ "pixpin": 1, "accion": "chat", "texto": "hola que tal", "proyecto": "P1" })
+    );
     // `@gest` no es el nombre entero: se sugieren proyectos para completarlo.
-    assert!(v.iter().any(|x| x.accion == Accion::Consulta("pp chat hola que tal @Gestión de proyectos".into())));
+    assert!(
+        v.iter()
+            .any(|x| x.accion
+                == Accion::Consulta("pp chat hola que tal @Gestión de proyectos".into()))
+    );
     let v = buscar(&r, "chat hola @Gestión de proyectos");
     assert_eq!(v.len(), 1, "con el nombre entero ya no se sugiere nada");
 
     let v = buscar(&r, "nota idea feliz");
-    assert_eq!(*pedido_de(&v[0]), json!({ "pixpin": 1, "accion": "nota_nueva", "texto": "idea feliz", "proyecto": null }));
+    assert_eq!(
+        *pedido_de(&v[0]),
+        json!({ "pixpin": 1, "accion": "nota_nueva", "texto": "idea feliz", "proyecto": null })
+    );
     let v = buscar(&r, "canvas plano");
-    assert_eq!(*pedido_de(&v[0]), json!({ "pixpin": 1, "accion": "lienzo_nuevo", "nombre": "plano", "proyecto": null }));
-    assert_eq!(v[1].titulo, "Plano de la casa", "debajo, los lienzos que ya se llaman asi");
+    assert_eq!(
+        *pedido_de(&v[0]),
+        json!({ "pixpin": 1, "accion": "lienzo_nuevo", "nombre": "plano", "proyecto": null })
+    );
+    assert_eq!(
+        v[1].titulo, "Plano de la casa",
+        "debajo, los lienzos que ya se llaman asi"
+    );
     let v = buscar(&r, "grabar Clase 4 @thesis");
-    assert_eq!(*pedido_de(&v[0]), json!({ "pixpin": 1, "accion": "grabar", "nombre": "Clase 4", "proyecto": "P2" }));
+    assert_eq!(
+        *pedido_de(&v[0]),
+        json!({ "pixpin": 1, "accion": "grabar", "nombre": "Clase 4", "proyecto": "P2" })
+    );
     let v = buscar(&r, "grabar");
     assert_eq!(v[0].accion, Accion::Consulta("pp grabar ".into()));
     let v = buscar(&r, "chat @nadaparecido");
@@ -284,20 +364,41 @@ fn las_listas_de_tareas_y_una_nueva() {
     let v = buscar(&r, "tareas");
     // Sin Inbox: la ventana de Tareas y despues las listas.
     assert_eq!(v.len(), 3);
-    assert_eq!(*pedido_de(&v[0]), json!({ "pixpin": 1, "accion": "ventana", "cual": "tareas" }));
+    assert_eq!(
+        *pedido_de(&v[0]),
+        json!({ "pixpin": 1, "accion": "ventana", "cual": "tareas" })
+    );
     let v = &v[1..];
     // La mas reciente primero; las dos se llaman igual y se distinguen por proyecto.
-    assert_eq!(v[0].accion, Accion::Consulta("pp tareas Compra · Gestión de proyectos > ".into()));
-    assert_eq!(v[1].accion, Accion::Consulta("pp tareas Compra · Mensajes guardados > ".into()));
-    assert_eq!(v[1].subtitulo, "Lista de tareas · Mensajes guardados · 2 pendientes de 3");
+    assert_eq!(
+        v[0].accion,
+        Accion::Consulta("pp tareas Compra · Gestión de proyectos > ".into())
+    );
+    assert_eq!(
+        v[1].accion,
+        Accion::Consulta("pp tareas Compra · Mensajes guardados > ".into())
+    );
+    assert_eq!(
+        v[1].subtitulo,
+        "Lista de tareas · Mensajes guardados · 2 pendientes de 3"
+    );
     // Tab completa la lista; la barra dice lo hecho (1 de 3).
-    assert_eq!(v[1].autocompletar.as_deref(), Some("pp tareas Compra · Mensajes guardados > "));
+    assert_eq!(
+        v[1].autocompletar.as_deref(),
+        Some("pp tareas Compra · Mensajes guardados > ")
+    );
     assert_eq!(v[1].progreso, Some(33));
     let v = buscar(&r, "todo Viaje");
     assert_eq!(v[0].titulo, "Nueva lista: Viaje");
-    assert_eq!(*pedido_de(&v[0]), json!({ "pixpin": 1, "accion": "lista_nueva", "titulo": "Viaje", "proyecto": null }));
+    assert_eq!(
+        *pedido_de(&v[0]),
+        json!({ "pixpin": 1, "accion": "lista_nueva", "titulo": "Viaje", "proyecto": null })
+    );
     let v = buscar(&r, "tareas compra");
-    assert!(!v.iter().any(|x| x.titulo.starts_with("Nueva lista")), "ya existe una que se llama asi");
+    assert!(
+        !v.iter().any(|x| x.titulo.starts_with("Nueva lista")),
+        "ya existe una que se llama asi"
+    );
 }
 
 #[test]
@@ -311,7 +412,9 @@ fn dentro_de_una_lista_marcar_y_anadir() {
         json!({ "pixpin": 1, "accion": "marcar_tarea", "proyecto": null, "codigo": "t1", "indice": 2, "hecha": true })
     );
     assert_eq!(pedido_de(&v[2])["hecha"], false);
-    let Accion::PedirYSeguir { consulta, .. } = &v[0].accion else { panic!() };
+    let Accion::PedirYSeguir { consulta, .. } = &v[0].accion else {
+        panic!()
+    };
     assert_eq!(consulta, "pp tareas Compra · Mensajes guardados > ");
 
     let v = buscar(&r, "tareas Compra · Mensajes guardados > yogur");
@@ -330,7 +433,10 @@ fn dentro_de_una_lista_marcar_y_anadir() {
     // Con el titulo solo vale tambien (la de Gestion, que es la mas nueva).
     let v = buscar(&r, "tareas compra > ");
     assert_eq!(v[0].titulo, "☐ tornillos");
-    assert_eq!(buscar(&r, "tareas nada de nada > x")[0].accion, Accion::Consulta("pp tareas ".into()));
+    assert_eq!(
+        buscar(&r, "tareas nada de nada > x")[0].accion,
+        Accion::Consulta("pp tareas ".into())
+    );
 }
 
 // --- El dialogo con Flow ---------------------------------------------------
@@ -348,7 +454,11 @@ struct DeMentira {
 impl Mensajero for DeMentira {
     fn enviar(&mut self, json: &str) -> Envio {
         self.pedidos.push(serde_json::from_str(json).unwrap());
-        if self.falla { Envio::SinApp("prueba".into()) } else { Envio::Aceptado }
+        if self.falla {
+            Envio::SinApp("prueba".into())
+        } else {
+            Envio::Aceptado
+        }
     }
     fn avisar(&mut self, json: &str) -> Envio {
         self.avisos.push(serde_json::from_str(json).unwrap());
@@ -361,7 +471,12 @@ impl Mensajero for DeMentira {
 }
 
 fn plugin(r: &Path) -> Plugin<DeMentira, Vec<u8>> {
-    let mut p = Plugin::nuevo(Datos::nuevo(r.to_path_buf()), DeMentira::default(), Vec::new(), "icono.png".into());
+    let mut p = Plugin::nuevo(
+        Datos::nuevo(r.to_path_buf()),
+        DeMentira::default(),
+        Vec::new(),
+        "icono.png".into(),
+    );
     p.espera_lista = std::time::Duration::ZERO;
     p
 }
@@ -395,7 +510,10 @@ fn initialize_y_query_con_la_forma_de_flow() {
     bucle(&mut p, entrada.as_bytes());
     let s = salida(&p);
     assert_eq!(s.len(), 2);
-    assert_eq!(s[0], json!({ "jsonrpc": "2.0", "id": 1, "result": { "hide": false } }));
+    assert_eq!(
+        s[0],
+        json!({ "jsonrpc": "2.0", "id": 1, "result": { "hide": false } })
+    );
     assert_eq!(s[1]["id"], 2);
     let res = &s[1]["result"];
     assert_eq!(res["settingsChange"], json!({}));
@@ -403,11 +521,22 @@ fn initialize_y_query_con_la_forma_de_flow() {
     let primero = &res["result"][0];
     assert_eq!(primero["title"], "Objetivos e Indicadores.md");
     // Su icono es el de su extension, que la app ya pinto: sin glifo.
-    assert!(primero["icoPath"].as_str().unwrap().ends_with(r"iconos-de-extension\md.png"), "{}", primero["icoPath"]);
+    assert!(
+        primero["icoPath"]
+            .as_str()
+            .unwrap()
+            .ends_with(r"iconos-de-extension\md.png"),
+        "{}",
+        primero["icoPath"]
+    );
     assert!(primero.get("glyph").is_none());
     assert_eq!(primero["jsonRPCAction"]["method"], "pedir");
     assert_eq!(primero["jsonRPCAction"]["dontHideAfterAction"], false);
-    assert!(primero["subTitle"].is_string() && primero["score"].is_i64() && primero["contextData"].is_object());
+    assert!(
+        primero["subTitle"].is_string()
+            && primero["score"].is_i64()
+            && primero["contextData"].is_object()
+    );
     // El registro va a un fichero de la carpeta de ajustes.
     assert!(ajustes.join("pixpin-lanzador.log").is_file());
 }
@@ -416,10 +545,16 @@ fn initialize_y_query_con_la_forma_de_flow() {
 fn una_accion_llega_envuelta_y_manda_el_pedido() {
     let r = raiz("rpc-pedir");
     let mut p = plugin(&r);
-    let pedido = json!({ "pixpin": 1, "accion": "abrir", "que": { "tipo": "proyecto", "proyecto": "P1" } });
-    p.atender(&json!({ "jsonrpc": "2.0", "id": 7, "method": "pedir", "params": [[pedido]] }).to_string());
+    let pedido =
+        json!({ "pixpin": 1, "accion": "abrir", "que": { "tipo": "proyecto", "proyecto": "P1" } });
+    p.atender(
+        &json!({ "jsonrpc": "2.0", "id": 7, "method": "pedir", "params": [[pedido]] }).to_string(),
+    );
     assert_eq!(p.mensajero.pedidos, vec![pedido]);
-    assert_eq!(salida(&p), vec![json!({ "jsonrpc": "2.0", "id": 7, "result": { "hide": true } })]);
+    assert_eq!(
+        salida(&p),
+        vec![json!({ "jsonrpc": "2.0", "id": 7, "result": { "hide": true } })]
+    );
 }
 
 #[test]
@@ -431,7 +566,12 @@ fn si_la_app_no_esta_se_avisa_con_showmsg() {
     let s = salida(&p);
     assert_eq!(s[0]["result"]["hide"], true);
     assert_eq!(s[1]["method"], "ShowMsg");
-    assert!(s[1]["params"][1].as_str().unwrap().contains("No se pudo abrir PixPin"));
+    assert!(
+        s[1]["params"][1]
+            .as_str()
+            .unwrap()
+            .contains("No se pudo abrir PixPin")
+    );
 }
 
 #[test]
@@ -452,12 +592,20 @@ fn marcar_una_tarea_la_ensena_marcada_sin_cerrar_flow() {
     let s = salida(&p);
     assert_eq!(s[1]["method"], "ChangeQuery");
     assert_eq!(s[1]["params"], json!([format!("pp {q}"), true]));
-    assert_eq!(s[2], json!({ "jsonrpc": "2.0", "id": 2, "result": { "hide": false } }));
+    assert_eq!(
+        s[2],
+        json!({ "jsonrpc": "2.0", "id": 2, "result": { "hide": false } })
+    );
     // Flow contesta al ChangeQuery (se ignora) y vuelve a consultar.
     p.atender(&json!({ "jsonrpc": "2.0", "id": s[1]["id"], "result": null }).to_string());
     p.atender(&consulta(3, q));
     let s = salida(&p);
-    let titulos: Vec<&str> = s[3]["result"]["result"].as_array().unwrap().iter().map(|r| r["title"].as_str().unwrap()).collect();
+    let titulos: Vec<&str> = s[3]["result"]["result"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|r| r["title"].as_str().unwrap())
+        .collect();
     assert_eq!(titulos, ["☐ huevos", "☑ pan", "☑ leche"]);
 }
 
@@ -471,7 +619,11 @@ fn anadir_una_tarea_la_ensena_en_la_lista() {
     assert_eq!(p.mensajero.pedidos[0]["accion"], "anadir_tarea");
     p.atender(&consulta(3, "tareas Compra · Mensajes guardados > "));
     let s = salida(&p);
-    let ultima = s.last().unwrap()["result"]["result"].as_array().unwrap().iter().any(|r| r["title"] == "☐ yogur");
+    let ultima = s.last().unwrap()["result"]["result"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|r| r["title"] == "☐ yogur");
     assert!(ultima);
 }
 
@@ -501,19 +653,30 @@ fn menu_contextual_y_cerrar() {
     assert_eq!(salida(&p)[0]["result"]["result"], json!([]));
     p.atender(&consulta(2, "calculo"));
     let ctx = salida(&p)[1]["result"]["result"][0]["contextData"].clone();
-    p.atender(&json!({ "jsonrpc": "2.0", "id": 3, "method": "context_menu", "params": [ctx] }).to_string());
+    p.atender(
+        &json!({ "jsonrpc": "2.0", "id": 3, "method": "context_menu", "params": [ctx] })
+            .to_string(),
+    );
     let s = salida(&p);
     let menu = s[2]["result"]["result"].as_array().unwrap();
     let titulos: Vec<&str> = menu.iter().map(|r| r["title"].as_str().unwrap()).collect();
     assert_eq!(
         titulos,
-        ["Abrir", "Ver en el chat", "Abrir con el programa de Windows", "Mostrar en la carpeta", "Copiar texto", "Copiar ruta"]
+        [
+            "Abrir",
+            "Ver en el chat",
+            "Abrir con el programa de Windows",
+            "Mostrar en la carpeta",
+            "Copiar texto",
+            "Copiar ruta"
+        ]
     );
     assert_eq!(
         menu[1]["jsonRPCAction"]["parameters"][0]["que"],
         json!({ "tipo": "mensaje", "proyecto": null, "codigo": "v1" })
     );
-    let entrada = "{\"jsonrpc\":\"2.0\",\"id\":4,\"method\":\"close\"}\n".to_string() + &consulta(5, "x");
+    let entrada =
+        "{\"jsonrpc\":\"2.0\",\"id\":4,\"method\":\"close\"}\n".to_string() + &consulta(5, "x");
     bucle(&mut p, entrada.as_bytes());
     assert!(p.terminado);
     assert_eq!(salida(&p).len(), 4, "tras close no se atiende nada mas");
@@ -525,7 +688,10 @@ fn una_lista_nueva_espera_y_entra_en_ella() {
     let mut p = plugin(&r);
     p.atender(&consulta(1, "tareas Viaje"));
     let a = salida(&p)[0]["result"]["result"][0]["jsonRPCAction"].clone();
-    p.atender(&json!({ "jsonrpc": "2.0", "id": 2, "method": a["method"], "params": [a["parameters"]] }).to_string());
+    p.atender(
+        &json!({ "jsonrpc": "2.0", "id": 2, "method": a["method"], "params": [a["parameters"]] })
+            .to_string(),
+    );
     assert_eq!(p.mensajero.pedidos[0]["accion"], "lista_nueva");
     let s = salida(&p);
     assert_eq!(s[1]["params"], json!(["pp tareas Viaje > ", true]));
@@ -559,7 +725,10 @@ fn el_chat_de_un_proyecto_de_lo_ultimo_a_lo_primero_con_todas_las_clases() {
     // La segunda fila fija: el recuadro para soltar archivos en este proyecto.
     let arrastrar = v.remove(1);
     assert_eq!(arrastrar.titulo, "Añadir arrastrando (recuadro flotante)");
-    assert_eq!(*pedido_de(&arrastrar), json!({ "pixpin": 1, "accion": "soltar", "proyecto": "P1" }));
+    assert_eq!(
+        *pedido_de(&arrastrar),
+        json!({ "pixpin": 1, "accion": "soltar", "proyecto": "P1" })
+    );
     assert_eq!(
         titulos(&v),
         [
@@ -577,29 +746,66 @@ fn el_chat_de_un_proyecto_de_lo_ultimo_a_lo_primero_con_todas_las_clases() {
             "revisar el presupuesto",
         ]
     );
-    assert_eq!(*pedido_de(&v[0]), json!({ "pixpin": 1, "accion": "abrir", "que": { "tipo": "proyecto", "proyecto": "P1" } }));
+    assert_eq!(
+        *pedido_de(&v[0]),
+        json!({ "pixpin": 1, "accion": "abrir", "que": { "tipo": "proyecto", "proyecto": "P1" } })
+    );
     // Foto: su miniatura, sin glifo.
-    let foto = r.join("proyectos").join("P1").join("archivos").join("croquis.png");
+    let foto = r
+        .join("proyectos")
+        .join("P1")
+        .join("archivos")
+        .join("croquis.png");
     assert_eq!(v[1].icono.as_deref(), Some(foto.to_string_lossy().as_ref()));
     assert!(v[1].subtitulo.starts_with("Foto · "), "{}", v[1].subtitulo);
     // Un texto: su primera linea, «Mensaje · <hora>», y abre el mensaje.
-    assert!(v[2].subtitulo.starts_with("Mensaje · "), "{}", v[2].subtitulo);
-    assert_eq!(pedido_de(&v[2])["que"], json!({ "tipo": "mensaje", "proyecto": "P1", "codigo": "x1" }));
+    assert!(
+        v[2].subtitulo.starts_with("Mensaje · "),
+        "{}",
+        v[2].subtitulo
+    );
+    assert_eq!(
+        pedido_de(&v[2])["que"],
+        json!({ "tipo": "mensaje", "proyecto": "P1", "codigo": "x1" })
+    );
     // Una nota con su .md: al editor de notas.
-    assert_eq!(pedido_de(&v[3])["que"], json!({ "tipo": "nota", "proyecto": "P1", "codigo": "n2" }));
+    assert_eq!(
+        pedido_de(&v[3])["que"],
+        json!({ "tipo": "nota", "proyecto": "P1", "codigo": "n2" })
+    );
     // Otra mini-app: su mensaje; una lista: entra en ella.
     assert_eq!(pedido_de(&v[4])["que"]["codigo"], "m3");
-    assert_eq!(v[5].accion, Accion::Consulta("pp tareas Compra · Gestión de proyectos > ".into()));
-    assert!(v[5].subtitulo.starts_with("Lista de tareas · 1 pendiente de 1"), "{}", v[5].subtitulo);
+    assert_eq!(
+        v[5].accion,
+        Accion::Consulta("pp tareas Compra · Gestión de proyectos > ".into())
+    );
+    assert!(
+        v[5].subtitulo
+            .starts_with("Lista de tareas · 1 pendiente de 1"),
+        "{}",
+        v[5].subtitulo
+    );
     // El acceso directo a otro proyecto entra en su chat.
     assert_eq!(v[6].accion, Accion::Consulta("pp Thesis > ".into()));
     // Archivos: el icono de su extension si ya esta; si no, glifo y se pide.
     assert_eq!(v[7].icono, None);
-    assert!(v[8].icono.as_deref().unwrap().ends_with(r"iconos-de-extension\md.png"));
+    assert!(
+        v[8].icono
+            .as_deref()
+            .unwrap()
+            .ends_with(r"iconos-de-extension\md.png")
+    );
     assert_eq!(faltan, ["pdf"]);
     // Lienzos y hojas al lienzo; el audio con lo que dura.
-    assert_eq!(pedido_de(&v[10])["que"], json!({ "tipo": "hoja", "proyecto": "P1", "referencia": "dib-1" }));
-    assert!(v[11].subtitulo.starts_with("Audio · 1:15 · "), "{}", v[11].subtitulo);
+    assert_eq!(
+        pedido_de(&v[10])["que"],
+        json!({ "tipo": "hoja", "proyecto": "P1", "referencia": "dib-1" })
+    );
+    assert!(
+        v[11].subtitulo.starts_with("Audio · 1:15 · "),
+        "{}",
+        v[11].subtitulo
+    );
     assert!(v[11].icono.is_none(), "los audios, su glifo");
     // Lo del buzon no sale.
     assert!(!titulos(&v).contains(&"del buzon"));
@@ -609,26 +815,63 @@ fn el_chat_de_un_proyecto_de_lo_ultimo_a_lo_primero_con_todas_las_clases() {
 fn en_el_chat_se_filtra_y_abrir_el_proyecto_baja_al_final() {
     let r = raiz("chat-filtro");
     let v = buscar(&r, "gestion de proyectos > presupuesto");
-    assert_eq!(titulos(&v), ["revisar el presupuesto", "Abrir proyecto en la app", "Añadir arrastrando (recuadro flotante)"]);
+    assert_eq!(
+        titulos(&v),
+        [
+            "revisar el presupuesto",
+            "Abrir proyecto en la app",
+            "Añadir arrastrando (recuadro flotante)"
+        ]
+    );
     let v = buscar(&r, "Gestión de proyectos > nada de esto");
-    assert_eq!(titulos(&v), ["Nada con «nada de esto» en «Gestión de proyectos»", "Abrir proyecto en la app", "Añadir arrastrando (recuadro flotante)"]);
-    assert_eq!(v[0].accion, Accion::Consulta("pp Gestión de proyectos > ".into()));
+    assert_eq!(
+        titulos(&v),
+        [
+            "Nada con «nada de esto» en «Gestión de proyectos»",
+            "Abrir proyecto en la app",
+            "Añadir arrastrando (recuadro flotante)"
+        ]
+    );
+    assert_eq!(
+        v[0].accion,
+        Accion::Consulta("pp Gestión de proyectos > ".into())
+    );
     // Mensajes guardados por su nombre de siempre, y un trozo del nombre vale.
     let v = buscar(&r, "Mensajes guardados > ");
-    assert_eq!(v[2].titulo, "Compra", "lo mas nuevo de guardados es la lista");
-    assert_eq!(*pedido_de(&v[1]), json!({ "pixpin": 1, "accion": "soltar", "proyecto": null }));
+    assert_eq!(
+        v[2].titulo, "Compra",
+        "lo mas nuevo de guardados es la lista"
+    );
+    assert_eq!(
+        *pedido_de(&v[1]),
+        json!({ "pixpin": 1, "accion": "soltar", "proyecto": null })
+    );
     assert_eq!(buscar(&r, "thes > ")[0].titulo, "Abrir proyecto en la app");
     assert!(buscar(&r, "thes > ")[0].subtitulo.starts_with("Thesis"));
-    assert!(buscar(&r, "zzz > ")[0].titulo.starts_with("No encuentro el proyecto"));
+    assert!(
+        buscar(&r, "zzz > ")[0]
+            .titulo
+            .starts_with("No encuentro el proyecto")
+    );
 }
 
 #[test]
 fn un_proyecto_que_empieza_por_un_verbo_y_no_choca_con_las_tareas() {
     let r = raiz("chat-verbo");
     let v = buscar(&r, "Chat de clase > ");
-    assert_eq!(titulos(&v), ["Abrir proyecto en la app", "Añadir arrastrando (recuadro flotante)", "El chat está vacío"]);
+    assert_eq!(
+        titulos(&v),
+        [
+            "Abrir proyecto en la app",
+            "Añadir arrastrando (recuadro flotante)",
+            "El chat está vacío"
+        ]
+    );
     // «chat hola > adios» sigue siendo escribir en el chat.
-    assert_eq!(buscar(&r, "chat hola > adios")[0].titulo, "Escribir en el chat: hola > adios");
+    assert_eq!(
+        buscar(&r, "chat hola > adios")[0].titulo,
+        "Escribir en el chat: hola > adios"
+    );
     // y «tareas X > » sigue siendo la lista.
     assert_eq!(buscar(&r, "tareas compra > ")[0].titulo, "☐ tornillos");
 }
@@ -640,41 +883,105 @@ fn el_menu_de_cada_tipo() {
     // El recuadro lleva el menu del proyecto.
     assert_eq!(menu_de(&v[1])[0].titulo, "Abrir en la app");
     v.remove(1);
-    let t = |i: usize| menu_de(&v[i]).into_iter().map(|x| x.titulo).collect::<Vec<_>>();
+    let t = |i: usize| {
+        menu_de(&v[i])
+            .into_iter()
+            .map(|x| x.titulo)
+            .collect::<Vec<_>>()
+    };
     // El proyecto.
     assert_eq!(
         t(0),
-        ["Abrir en la app", "Ver contenido", "Añadir arrastrando (recuadro flotante)", "Lienzo nuevo aquí", "Nota nueva aquí", "Abrir la carpeta"]
+        [
+            "Abrir en la app",
+            "Ver contenido",
+            "Añadir arrastrando (recuadro flotante)",
+            "Lienzo nuevo aquí",
+            "Nota nueva aquí",
+            "Abrir la carpeta"
+        ]
     );
-    assert_eq!(*pedido_de(&menu_de(&v[0])[2]), json!({ "pixpin": 1, "accion": "soltar", "proyecto": "P1" }));
+    assert_eq!(
+        *pedido_de(&menu_de(&v[0])[2]),
+        json!({ "pixpin": 1, "accion": "soltar", "proyecto": "P1" })
+    );
     // La foto.
     assert_eq!(
         t(1),
-        ["Abrir", "Pinear", "Ver en el chat", "Abrir con el programa de Windows", "Mostrar en la carpeta", "Copiar ruta"]
+        [
+            "Abrir",
+            "Pinear",
+            "Ver en el chat",
+            "Abrir con el programa de Windows",
+            "Mostrar en la carpeta",
+            "Copiar ruta"
+        ]
     );
     let m = menu_de(&v[1]);
     let carpeta = r.join("proyectos").join("P1").join("archivos");
     let foto = carpeta.join("croquis.png").to_string_lossy().to_string();
     assert_eq!(m[0].accion, v[1].accion, "Abrir es lo mismo que Intro");
-    assert_eq!(*pedido_de(&m[1]), json!({ "pixpin": 1, "accion": "pinear", "ruta": foto }));
+    assert_eq!(
+        *pedido_de(&m[1]),
+        json!({ "pixpin": 1, "accion": "pinear", "ruta": foto })
+    );
     assert_eq!(m[3].accion, Accion::Windows(foto.clone()));
-    assert_eq!(m[4].accion, Accion::Carpeta { carpeta: carpeta.to_string_lossy().to_string(), fichero: foto.clone() });
+    assert_eq!(
+        m[4].accion,
+        Accion::Carpeta {
+            carpeta: carpeta.to_string_lossy().to_string(),
+            fichero: foto.clone()
+        }
+    );
     assert_eq!(m[5].accion, Accion::Copiar(foto));
     // Un texto: pin por su codigo y copiar el texto entero.
-    assert_eq!(t(2), ["Abrir", "Pinear", "Ver en el chat", "Copiar texto", "Abrir la carpeta del proyecto"]);
+    assert_eq!(
+        t(2),
+        [
+            "Abrir",
+            "Pinear",
+            "Ver en el chat",
+            "Copiar texto",
+            "Abrir la carpeta del proyecto"
+        ]
+    );
     let m = menu_de(&v[2]);
-    assert_eq!(*pedido_de(&m[1]), json!({ "pixpin": 1, "accion": "pinear", "proyecto": "P1", "codigo": "x1" }));
-    assert_eq!(m[3].accion, Accion::Copiar("hola equipo, mañana a las 9\nsegunda línea".into()));
+    assert_eq!(
+        *pedido_de(&m[1]),
+        json!({ "pixpin": 1, "accion": "pinear", "proyecto": "P1", "codigo": "x1" })
+    );
+    assert_eq!(
+        m[3].accion,
+        Accion::Copiar("hola equipo, mañana a las 9\nsegunda línea".into())
+    );
     // Una lista: Abrir entra en ella.
     assert_eq!(menu_de(&v[5])[0].accion, v[5].accion);
     // Un archivo que no esta en este equipo: nada de Windows ni de pin.
-    assert_eq!(t(7), ["Abrir", "Ver en el chat", "Abrir la carpeta del proyecto"]);
+    assert_eq!(
+        t(7),
+        ["Abrir", "Ver en el chat", "Abrir la carpeta del proyecto"]
+    );
     // El lienzo.
-    assert_eq!(t(10), ["Abrir", "Pinear", "Ver en el chat", "Abrir la carpeta del proyecto"]);
+    assert_eq!(
+        t(10),
+        [
+            "Abrir",
+            "Pinear",
+            "Ver en el chat",
+            "Abrir la carpeta del proyecto"
+        ]
+    );
     // El audio: sin pin, con su transcripcion.
     assert_eq!(
         t(11),
-        ["Abrir", "Ver en el chat", "Abrir con el programa de Windows", "Mostrar en la carpeta", "Copiar texto", "Copiar ruta"]
+        [
+            "Abrir",
+            "Ver en el chat",
+            "Abrir con el programa de Windows",
+            "Mostrar en la carpeta",
+            "Copiar texto",
+            "Copiar ruta"
+        ]
     );
 }
 
@@ -692,16 +999,28 @@ fn v1(r: &Path, peticion: Value) -> (Value, Vec<Value>, DeMentira) {
 #[test]
 fn modo_v1_consulta_menu_y_acciones() {
     let r = raiz("v1");
-    let (q, avisos, m) = v1(&r, json!({ "method": "query", "parameters": ["Gestión de proyectos > "] }));
+    let (q, avisos, m) = v1(
+        &r,
+        json!({ "method": "query", "parameters": ["Gestión de proyectos > "] }),
+    );
     let lista = q["result"].as_array().unwrap();
     assert_eq!(lista[0]["title"], "Abrir proyecto en la app");
-    assert_eq!(lista[0]["autoCompleteText"], "p Gestión de proyectos > ", "en v1, la palabra clave «p»");
+    assert_eq!(
+        lista[0]["autoCompleteText"], "p Gestión de proyectos > ",
+        "en v1, la palabra clave «p»"
+    );
     // Los iconos que faltan se piden despues de contestar, y sin arrancar la app.
-    assert_eq!(avisos, vec![json!({ "pixpin": 1, "accion": "iconos", "extensiones": ["pdf"] })]);
+    assert_eq!(
+        avisos,
+        vec![json!({ "pixpin": 1, "accion": "iconos", "extensiones": ["pdf"] })]
+    );
     assert_eq!(m.avisos.len(), 1);
     assert!(m.pedidos.is_empty());
     // El menu de la foto.
-    let (menu, _, _) = v1(&r, json!({ "method": "context_menu", "parameters": [lista[2]["contextData"]] }));
+    let (menu, _, _) = v1(
+        &r,
+        json!({ "method": "context_menu", "parameters": [lista[2]["contextData"]] }),
+    );
     let menu = menu["result"].as_array().unwrap().clone();
     assert_eq!(menu[1]["title"], "Pinear");
     // Cada accion del menu, como la manda Flow v1: sus parametros sin envolver.
@@ -717,15 +1036,26 @@ fn modo_v1_consulta_menu_y_acciones() {
     assert!(m.lanzados[0].ends_with("croquis.png"));
     let (carpeta, _, _) = v1(&r, accion(4));
     assert_eq!(carpeta["method"], "Flow.Launcher.OpenDirectory");
-    assert!(carpeta["parameters"][1].as_str().unwrap().ends_with("croquis.png"));
+    assert!(
+        carpeta["parameters"][1]
+            .as_str()
+            .unwrap()
+            .ends_with("croquis.png")
+    );
     let (copiar, _, _) = v1(&r, accion(5));
     assert_eq!(copiar["method"], "Flow.Launcher.CopyToClipboard");
     // Intro en un proyecto de la busqueda: entra en su chat.
     let (q, _, _) = v1(&r, json!({ "method": "query", "parameters": ["thesis"] }));
     let a = &q["result"][0]["jsonRPCAction"];
     assert_eq!(a["method"], "consulta");
-    let (cambio, _, _) = v1(&r, json!({ "method": a["method"], "parameters": a["parameters"] }));
-    assert_eq!(cambio, json!({ "method": "Flow.Launcher.ChangeQuery", "parameters": ["p Thesis > ", true] }));
+    let (cambio, _, _) = v1(
+        &r,
+        json!({ "method": a["method"], "parameters": a["parameters"] }),
+    );
+    assert_eq!(
+        cambio,
+        json!({ "method": "Flow.Launcher.ChangeQuery", "parameters": ["p Thesis > ", true] })
+    );
 }
 
 #[test]
@@ -734,7 +1064,10 @@ fn en_v2_los_iconos_que_faltan_se_piden_tras_contestar() {
     let mut p = plugin(&r);
     p.atender(&consulta(1, "remoto"));
     assert_eq!(salida(&p).len(), 1, "la respuesta, y nada mas por stdout");
-    assert_eq!(p.mensajero.avisos, vec![json!({ "pixpin": 1, "accion": "iconos", "extensiones": ["pdf"] })]);
+    assert_eq!(
+        p.mensajero.avisos,
+        vec![json!({ "pixpin": 1, "accion": "iconos", "extensiones": ["pdf"] })]
+    );
     assert!(p.mensajero.pedidos.is_empty());
 }
 
@@ -746,12 +1079,20 @@ fn anadir_a_proyecto_con_el_recuadro_flotante() {
     for q in ["solt", "adjun", "agreg", "dro"] {
         assert_eq!(buscar(&r, q)[0].titulo, "Añadir a proyecto", "{q}");
     }
-    assert_eq!(buscar(&r, "añad")[0].accion, Accion::Consulta("pp añadir ".into()));
+    assert_eq!(
+        buscar(&r, "añad")[0].accion,
+        Accion::Consulta("pp añadir ".into())
+    );
     // Sin nombre: guardados primero y despues los proyectos, del mas tocado.
     let v = buscar(&r, "añadir");
     assert_eq!(
         titulos(&v),
-        ["Añadir a «Mensajes guardados»", "Añadir a «Gestión de proyectos»", "Añadir a «Thesis»", "Añadir a «Chat de clase»"]
+        [
+            "Añadir a «Mensajes guardados»",
+            "Añadir a «Gestión de proyectos»",
+            "Añadir a «Thesis»",
+            "Añadir a «Chat de clase»"
+        ]
     );
     assert_eq!(*pedido_de(&v[0]), soltar(Value::Null));
     assert_eq!(*pedido_de(&v[1]), soltar(json!("P1")));
@@ -759,10 +1100,19 @@ fn anadir_a_proyecto_con_el_recuadro_flotante() {
     let v = buscar(&r, "anadir thes");
     assert_eq!(titulos(&v), ["Añadir a «Thesis»"]);
     assert_eq!(*pedido_de(&v[0]), soltar(json!("P2")));
-    assert_eq!(titulos(&buscar(&r, "subir gestion")), ["Añadir a «Gestión de proyectos»"]);
-    assert_eq!(titulos(&buscar(&r, "agregar mensajes")), ["Añadir a «Mensajes guardados»"]);
+    assert_eq!(
+        titulos(&buscar(&r, "subir gestion")),
+        ["Añadir a «Gestión de proyectos»"]
+    );
+    assert_eq!(
+        titulos(&buscar(&r, "agregar mensajes")),
+        ["Añadir a «Mensajes guardados»"]
+    );
     // Con @ tambien.
-    assert_eq!(*pedido_de(&buscar(&r, "adjuntar @Thesis")[0]), soltar(json!("P2")));
+    assert_eq!(
+        *pedido_de(&buscar(&r, "adjuntar @Thesis")[0]),
+        soltar(json!("P2"))
+    );
     // Nada que encaje: a guardados, diciendolo.
     let v = buscar(&r, "añadir zzz");
     assert_eq!(v.len(), 1);
@@ -781,11 +1131,17 @@ fn leccion_con_texto_abre_la_ficha_rellena_y_sin_texto_la_ofrece() {
     assert!(p.get("imagenes").is_none());
     assert_eq!(pedido_de(v.last().unwrap())["accion"], "lecciones");
     // «a» es lo mismo que «lección».
-    assert_eq!(buscar(&r, "a no cargar el móvil de noche")[0].titulo, "Nueva lección: no cargar el móvil de noche");
+    assert_eq!(
+        buscar(&r, "a no cargar el móvil de noche")[0].titulo,
+        "Nueva lección: no cargar el móvil de noche"
+    );
     let v = buscar(&r, "aprendi");
     assert_eq!(pedido_de(&v[0])["accion"], "leccion_nueva");
     assert_eq!(v[1].accion, Accion::Consulta("pp lecciones ".into()));
-    assert_eq!(*pedido_de(&v[2]), json!({ "pixpin": 1, "accion": "ventana", "cual": "lecciones" }));
+    assert_eq!(
+        *pedido_de(&v[2]),
+        json!({ "pixpin": 1, "accion": "ventana", "cual": "lecciones" })
+    );
 }
 
 // --- Las lecciones aprendidas, leidas del disco ----------------------------
@@ -799,7 +1155,11 @@ fn raiz_con_lecciones(etiqueta: &str) -> PathBuf {
     let escribir = |dir: &str, id: &str, v: Value| {
         let d = p.join(dir).join("android/guardados/lecciones");
         fs::create_dir_all(&d).unwrap();
-        fs::write(d.join(format!("{id}.leccion")), serde_json::to_string_pretty(&v).unwrap()).unwrap();
+        fs::write(
+            d.join(format!("{id}.leccion")),
+            serde_json::to_string_pretty(&v).unwrap(),
+        )
+        .unwrap();
     };
     escribir(
         "G1",
@@ -840,8 +1200,10 @@ fn raiz_con_lecciones(etiqueta: &str) -> PathBuf {
     );
     anadir(
         "P1",
-        &[json!({ "id": "lec-k2", "cuando": 200, "clase": "ARCHIVO", "nombre": "💡 Mandar el acta el mismo día",
-            "ruta": "pixpin:files/guardados/lecciones/k2.leccion" })],
+        &[
+            json!({ "id": "lec-k2", "cuando": 200, "clase": "ARCHIVO", "nombre": "💡 Mandar el acta el mismo día",
+            "ruta": "pixpin:files/guardados/lecciones/k2.leccion" }),
+        ],
     );
     r
 }
@@ -852,42 +1214,92 @@ fn lecciones_sin_texto_repasar_y_todas_de_la_mas_tocada() {
     let v = buscar(&r, "lecciones");
     assert_eq!(
         titulos(&v),
-        ["Repasar hoy (1)", "Mandar el acta el mismo día", "Revisar los puntales antes de hormigonar", "Abrir la ventana de Lecciones"]
+        [
+            "Repasar hoy (1)",
+            "Mandar el acta el mismo día",
+            "Revisar los puntales antes de hormigonar",
+            "Abrir la ventana de Lecciones"
+        ]
     );
     assert_eq!(v[0].accion, Accion::Consulta("pp repasar ".into()));
     let k1 = &v[2];
-    assert_eq!(k1.subtitulo, "📎 1 foto · Error · Construcción · #encofrado #obra · 🔁 2 · hoy");
-    assert_eq!(v[1].subtitulo, "Acierto · Trabajo · Gestión de proyectos · hoy");
-    let ruta = r.join("proyectos").join("G1").join("android").join("guardados").join("lecciones").join("k1.leccion");
-    assert_eq!(*pedido_de(k1), json!({ "pixpin": 1, "accion": "abrir", "que": { "tipo": "fichero", "ruta": ruta.to_string_lossy() } }));
-    let foto = r.join("proyectos").join("G1").join("archivos").join("foto-leccion.png").to_string_lossy().to_string();
+    assert_eq!(
+        k1.subtitulo,
+        "📎 1 foto · Error · Construcción · #encofrado #obra · 🔁 2 · hoy"
+    );
+    assert_eq!(
+        v[1].subtitulo,
+        "Acierto · Trabajo · Gestión de proyectos · hoy"
+    );
+    let ruta = r
+        .join("proyectos")
+        .join("G1")
+        .join("android")
+        .join("guardados")
+        .join("lecciones")
+        .join("k1.leccion");
+    assert_eq!(
+        *pedido_de(k1),
+        json!({ "pixpin": 1, "accion": "abrir", "que": { "tipo": "fichero", "ruta": ruta.to_string_lossy() } })
+    );
+    let foto = r
+        .join("proyectos")
+        .join("G1")
+        .join("archivos")
+        .join("foto-leccion.png")
+        .to_string_lossy()
+        .to_string();
     assert_eq!(k1.vista_previa.as_deref(), Some(foto.as_str()));
     // El texto entero al pasar el raton, como el resumen del movil.
     let ayuda = k1.ayuda_subtitulo.as_deref().unwrap();
-    assert!(ayuda.starts_with("⚠️ Error que no repetir: Revisar los puntales"), "{ayuda}");
-    assert!(ayuda.contains("La próxima vez: Mirar cada puntal") && ayuda.contains("📎 1 adjunto"), "{ayuda}");
+    assert!(
+        ayuda.starts_with("⚠️ Error que no repetir: Revisar los puntales"),
+        "{ayuda}"
+    );
+    assert!(
+        ayuda.contains("La próxima vez: Mirar cada puntal") && ayuda.contains("📎 1 adjunto"),
+        "{ayuda}"
+    );
     assert_eq!(k1.clave.as_deref(), Some("leccion/k1"));
     let j = k1.a_json("i", 1);
     assert_eq!(j["glyph"]["glyph"], crate::resultados::glifo::LECCION);
     assert_eq!(j["preview"]["previewImagePath"], foto);
     // Con @proyecto, solo las suyas.
-    assert_eq!(titulos(&buscar(&r, "lecciones @Gestión de proyectos"))[1], "Mandar el acta el mismo día");
-    assert!(!titulos(&buscar(&r, "lecciones @Gestión de proyectos")).contains(&"Revisar los puntales antes de hormigonar"));
+    assert_eq!(
+        titulos(&buscar(&r, "lecciones @Gestión de proyectos"))[1],
+        "Mandar el acta el mismo día"
+    );
+    assert!(
+        !titulos(&buscar(&r, "lecciones @Gestión de proyectos"))
+            .contains(&"Revisar los puntales antes de hormigonar")
+    );
 }
 
 #[test]
 fn lecciones_con_texto_busca_como_el_movil() {
     let r = raiz_con_lecciones("lecciones-buscar");
     // Por la etiqueta, por una palabra con plural y con una errata.
-    for q in ["lecciones encofrado", "lecciones puntal", "lessons encofrdo", "lecciones prisa"] {
-        assert_eq!(buscar(&r, q)[0].titulo, "Revisar los puntales antes de hormigonar", "«{q}»");
+    for q in [
+        "lecciones encofrado",
+        "lecciones puntal",
+        "lessons encofrdo",
+        "lecciones prisa",
+    ] {
+        assert_eq!(
+            buscar(&r, q)[0].titulo,
+            "Revisar los puntales antes de hormigonar",
+            "«{q}»"
+        );
     }
     let v = buscar(&r, "lecciones acta");
     assert_eq!(v[0].titulo, "Mandar el acta el mismo día");
     assert!(v[0].resaltado.len() >= 4, "lo buscado, resaltado");
     // Al final: buscarlo en la ventana y apuntarlo como nueva.
     let n = v.len();
-    assert_eq!(*pedido_de(&v[n - 2]), json!({ "pixpin": 1, "accion": "lecciones", "consulta": "acta", "proyecto": null }));
+    assert_eq!(
+        *pedido_de(&v[n - 2]),
+        json!({ "pixpin": 1, "accion": "lecciones", "consulta": "acta", "proyecto": null })
+    );
     assert_eq!(pedido_de(&v[n - 1])["accion"], "leccion_nueva");
 }
 
@@ -902,20 +1314,43 @@ fn caso_negativo_lecciones_sin_coincidencias_ni_ficheros() {
     let todas = buscar(&r, "lecciones");
     assert!(!titulos(&todas).iter().any(|t| t.contains("Aun no llego")));
     for q in ["foto de la leccion", "aun no llego", "💡"] {
-        assert!(!buscar(&r, q).iter().any(|x| x.titulo.contains("Foto de la lección") || x.titulo.contains("💡")), "«{q}»");
+        assert!(
+            !buscar(&r, q)
+                .iter()
+                .any(|x| x.titulo.contains("Foto de la lección") || x.titulo.contains("💡")),
+            "«{q}»"
+        );
     }
-    assert!(!buscar(&r, "Mensajes guardados > ").iter().any(|x| x.titulo.contains("puntales") || x.titulo.contains("Foto de")));
+    assert!(
+        !buscar(&r, "Mensajes guardados > ")
+            .iter()
+            .any(|x| x.titulo.contains("puntales") || x.titulo.contains("Foto de"))
+    );
     // Sin lecciones, se dice como apuntar la primera.
     let vacia = raiz("lecciones-vacia");
-    assert_eq!(titulos(&buscar(&vacia, "lecciones"))[1], "Aún no hay lecciones");
+    assert_eq!(
+        titulos(&buscar(&vacia, "lecciones"))[1],
+        "Aún no hay lecciones"
+    );
 }
 
 #[test]
 fn repasar_hoy_con_la_regla_de_la_app() {
     let r = raiz_con_lecciones("repasar");
     let v = buscar(&r, "repasar");
-    assert_eq!(titulos(&v), ["Revisar los puntales antes de hormigonar", "Abrir la ventana de Lecciones"]);
-    assert!(v[0].subtitulo.starts_with("La próxima vez: Mirar cada puntal · "), "{}", v[0].subtitulo);
+    assert_eq!(
+        titulos(&v),
+        [
+            "Revisar los puntales antes de hormigonar",
+            "Abrir la ventana de Lecciones"
+        ]
+    );
+    assert!(
+        v[0].subtitulo
+            .starts_with("La próxima vez: Mirar cada puntal · "),
+        "{}",
+        v[0].subtitulo
+    );
     assert_eq!(pedido_de(&v[0])["que"]["tipo"], "fichero");
     // Caso negativo: antes de que toque, ninguna, y se dice cuando.
     let mut d = Datos::nuevo(r.clone());
@@ -929,12 +1364,22 @@ fn las_lecciones_salen_al_buscar_en_todo_por_debajo_de_lo_exacto() {
     let r = raiz_con_lecciones("lecciones-en-todo");
     let v = buscar(&r, "acta");
     let nota = v.iter().position(|x| x.titulo == "Acta").expect("la nota");
-    let leccion = v.iter().position(|x| x.titulo == "Mandar el acta el mismo día").expect("la leccion");
+    let leccion = v
+        .iter()
+        .position(|x| x.titulo == "Mandar el acta el mismo día")
+        .expect("la leccion");
     assert!(nota < leccion, "{:?}", titulos(&v));
     // Por significado o por lo que paso tambien.
-    assert!(titulos(&buscar(&r, "encofrado")).contains(&"Revisar los puntales antes de hormigonar"));
+    assert!(
+        titulos(&buscar(&r, "encofrado")).contains(&"Revisar los puntales antes de hormigonar")
+    );
     // Caso negativo: una palabra que no dice ninguna, ninguna leccion.
-    assert!(!buscar(&r, "integrales").iter().any(|x| x.glifo == crate::resultados::glifo::LECCION && x.clave.as_deref().is_some_and(|c| c.starts_with("leccion/"))));
+    assert!(!buscar(&r, "integrales").iter().any(|x| {
+        x.glifo == crate::resultados::glifo::LECCION
+            && x.clave
+                .as_deref()
+                .is_some_and(|c| c.starts_with("leccion/"))
+    }));
 }
 
 #[test]
@@ -944,7 +1389,13 @@ fn el_menu_de_una_leccion() {
     let m = menu_de(&v[0]);
     assert_eq!(
         titulos(&m),
-        ["Abrir la ficha", "Ver en la lista de lecciones", "Copiar texto", "Pinear su foto", "Mostrar en la carpeta"]
+        [
+            "Abrir la ficha",
+            "Ver en la lista de lecciones",
+            "Copiar texto",
+            "Pinear su foto",
+            "Mostrar en la carpeta"
+        ]
     );
     assert_eq!(m[0].accion, v[0].accion);
     assert_eq!(
@@ -952,8 +1403,17 @@ fn el_menu_de_una_leccion() {
         json!({ "pixpin": 1, "accion": "lecciones", "consulta": "Revisar los puntales antes de hormigonar", "proyecto": null })
     );
     assert!(matches!(&m[2].accion, Accion::Copiar(t) if t.starts_with("⚠️ Error que no repetir")));
-    let carpeta = r.join("proyectos").join("G1").join("android").join("guardados").join("lecciones").to_string_lossy().to_string();
-    assert!(matches!(&m[4].accion, Accion::Carpeta { carpeta: c, fichero } if *c == carpeta && fichero.ends_with("k1.leccion")));
+    let carpeta = r
+        .join("proyectos")
+        .join("G1")
+        .join("android")
+        .join("guardados")
+        .join("lecciones")
+        .to_string_lossy()
+        .to_string();
+    assert!(
+        matches!(&m[4].accion, Accion::Carpeta { carpeta: c, fichero } if *c == carpeta && fichero.ends_with("k1.leccion"))
+    );
     // Caso negativo: sin foto no hay pin, y la de un proyecto lo lleva.
     let m = menu_de(&buscar(&r, "lecciones acta")[0]);
     assert!(!titulos(&m).contains(&"Pinear su foto"));
@@ -974,20 +1434,42 @@ fn una_leccion_nueva_lleva_sus_imagenes_pegadas() {
     assert_eq!(p["accion"], "leccion_nueva");
     assert_eq!(p["texto"], "mirar el plano [img 01]");
     assert_eq!(p["imagenes"], json!([img.to_string_lossy()]));
-    assert!(v[0].subtitulo.starts_with("📎 1 imagen"), "{}", v[0].subtitulo);
+    assert!(
+        v[0].subtitulo.starts_with("📎 1 imagen"),
+        "{}",
+        v[0].subtitulo
+    );
     // Buscar las parecidas no lleva la ficha.
-    assert!(v.iter().any(|x| x.titulo == "Buscar en lecciones: mirar el plano"));
+    assert!(
+        v.iter()
+            .any(|x| x.titulo == "Buscar en lecciones: mirar el plano")
+    );
     // Con una imagen copiada se ofrece pegarla, como en las tareas.
     let v = buscar_con(&r, "a mirar", CON_IMAGEN);
-    assert_eq!(v[0].accion, Accion::PegarImagen { consulta: "pp a mirar [img 01] ".into(), numero: 1 });
+    assert_eq!(
+        v[0].accion,
+        Accion::PegarImagen {
+            consulta: "pp a mirar [img 01] ".into(),
+            numero: 1
+        }
+    );
     assert!(v[0].subtitulo.contains("la lección"), "{}", v[0].subtitulo);
     // Caso negativo: una ficha que no esta en el borrador se queda como texto.
     let v = buscar_con(&r, "a mirar [img 05]", imagenes::SIN_PORTAPAPELES);
     assert!(pedido_de(&v[0]).get("imagenes").is_none());
-    assert!(v[0].subtitulo.contains("no se encuentra"), "{}", v[0].subtitulo);
+    assert!(
+        v[0].subtitulo.contains("no se encuentra"),
+        "{}",
+        v[0].subtitulo
+    );
     // Ni se ofrece pegar en buscar lecciones o repasar.
     for q in ["lecciones mirar", "repasar"] {
-        assert!(!buscar_con(&r, q, CON_IMAGEN).iter().any(|x| matches!(x.accion, Accion::PegarImagen { .. })), "«{q}»");
+        assert!(
+            !buscar_con(&r, q, CON_IMAGEN)
+                .iter()
+                .any(|x| matches!(x.accion, Accion::PegarImagen { .. })),
+            "«{q}»"
+        );
     }
 }
 
@@ -1014,7 +1496,14 @@ fn tareas_ensena_el_inbox_primero_con_sus_tareas() {
     let v = buscar(&r, "tareas");
     assert_eq!(
         titulos(&v),
-        ["Inbox", "☐ llamar a Ana", "☑ pagar luz", "Abrir la ventana de Tareas", "Compra", "Compra"]
+        [
+            "Inbox",
+            "☐ llamar a Ana",
+            "☑ pagar luz",
+            "Abrir la ventana de Tareas",
+            "Compra",
+            "Compra"
+        ]
     );
     assert_eq!(v[0].progreso, Some(50));
     assert_eq!(v[0].accion, Accion::Consulta("pp tareas Inbox > ".into()));
@@ -1027,7 +1516,10 @@ fn tareas_ensena_el_inbox_primero_con_sus_tareas() {
         }
     );
     assert_eq!(v[1].subtitulo, "Tarea · Inbox · Intro: hecha");
-    assert_eq!(*pedido_de(&v[3]), json!({ "pixpin": 1, "accion": "ventana", "cual": "tareas" }));
+    assert_eq!(
+        *pedido_de(&v[3]),
+        json!({ "pixpin": 1, "accion": "ventana", "cual": "tareas" })
+    );
     // El Inbox no se repite entre las listas.
     assert_eq!(v.iter().filter(|x| x.titulo == "Inbox").count(), 1);
 }
@@ -1039,7 +1531,14 @@ fn mover_una_tarea_a_otra_lista_desde_el_menu() {
     let m = menu_de(&v[1]);
     assert_eq!(
         titulos(&m),
-        ["Abrir", "Ver en el chat", "Copiar texto", "Mover a «Compra»", "Mover a «Compra»", "Abrir la carpeta del proyecto"]
+        [
+            "Abrir",
+            "Ver en el chat",
+            "Copiar texto",
+            "Mover a «Compra»",
+            "Mover a «Compra»",
+            "Abrir la carpeta del proyecto"
+        ]
     );
     assert_eq!(m[0].accion, v[1].accion, "Abrir es marcarla, como Intro");
     assert_eq!(m[3].subtitulo, "Lista de tareas · Gestión de proyectos");
@@ -1070,8 +1569,14 @@ fn t_apunta_en_el_inbox_y_tareas_con_texto_tambien() {
     let v = buscar(&r, "t comprar pan");
     assert_eq!(v[0].titulo, "Apuntar tarea: comprar pan");
     // Sin lista: la app la pone en el Inbox.
-    assert_eq!(v[0].accion, Accion::Pedido(json!({ "pixpin": 1, "accion": "anadir_tarea", "texto": "comprar pan" })));
-    assert_eq!(*pedido_de(&v[1]), json!({ "pixpin": 1, "accion": "ventana", "cual": "tareas" }));
+    assert_eq!(
+        v[0].accion,
+        Accion::Pedido(json!({ "pixpin": 1, "accion": "anadir_tarea", "texto": "comprar pan" }))
+    );
+    assert_eq!(
+        *pedido_de(&v[1]),
+        json!({ "pixpin": 1, "accion": "ventana", "cual": "tareas" })
+    );
     // «tareas <texto>»: listas que encajan, lista nueva y, abajo, el Inbox.
     let v = buscar(&r, "tareas leche");
     let ultimo = v.last().unwrap();
@@ -1086,7 +1591,10 @@ fn t_apunta_en_el_inbox_y_tareas_con_texto_tambien() {
     // Sin Inbox todavia, sin lista: la app lo crea.
     let r = raiz("apuntar-sin-inbox");
     let v = buscar(&r, "tareas leche");
-    assert_eq!(*pedido_de(v.last().unwrap()), json!({ "pixpin": 1, "accion": "anadir_tarea", "texto": "leche" }));
+    assert_eq!(
+        *pedido_de(v.last().unwrap()),
+        json!({ "pixpin": 1, "accion": "anadir_tarea", "texto": "leche" })
+    );
 }
 
 #[test]
@@ -1095,7 +1603,8 @@ fn caso_negativo_una_letra_pegada_no_apunta_nada() {
     for q in ["tx", "tornillos", "t"] {
         let v = buscar(&r, q);
         assert!(
-            !v.iter().any(|x| matches!(&x.accion, Accion::Pedido(p) if p["accion"] == "anadir_tarea")),
+            !v.iter()
+                .any(|x| matches!(&x.accion, Accion::Pedido(p) if p["accion"] == "anadir_tarea")),
             "«{q}» no es apuntar"
         );
     }
@@ -1106,25 +1615,57 @@ fn caso_negativo_una_letra_pegada_no_apunta_nada() {
 #[test]
 fn los_atajos_de_una_letra() {
     let r = raiz("atajos");
-    assert_eq!(*pedido_de(&buscar(&r, "n idea")[0]), json!({ "pixpin": 1, "accion": "nota_nueva", "texto": "idea", "proyecto": null }));
-    assert_eq!(*pedido_de(&buscar(&r, "l plano")[0]), json!({ "pixpin": 1, "accion": "lienzo_nuevo", "nombre": "plano", "proyecto": null }));
-    assert_eq!(*pedido_de(&buscar(&r, "g")[0]), json!({ "pixpin": 1, "accion": "ventana", "cual": "galeria" }));
-    assert_eq!(*pedido_de(&buscar(&r, "c")[0]), json!({ "pixpin": 1, "accion": "capturar", "modo": "zona" }));
-    assert_eq!(*pedido_de(&buscar(&r, "u")[0]), json!({ "pixpin": 1, "accion": "pinear_ultima" }));
+    assert_eq!(
+        *pedido_de(&buscar(&r, "n idea")[0]),
+        json!({ "pixpin": 1, "accion": "nota_nueva", "texto": "idea", "proyecto": null })
+    );
+    assert_eq!(
+        *pedido_de(&buscar(&r, "l plano")[0]),
+        json!({ "pixpin": 1, "accion": "lienzo_nuevo", "nombre": "plano", "proyecto": null })
+    );
+    assert_eq!(
+        *pedido_de(&buscar(&r, "g")[0]),
+        json!({ "pixpin": 1, "accion": "ventana", "cual": "galeria" })
+    );
+    assert_eq!(
+        *pedido_de(&buscar(&r, "c")[0]),
+        json!({ "pixpin": 1, "accion": "capturar", "modo": "zona" })
+    );
+    assert_eq!(
+        *pedido_de(&buscar(&r, "u")[0]),
+        json!({ "pixpin": 1, "accion": "pinear_ultima" })
+    );
     // Por su nombre tambien.
-    assert_eq!(*pedido_de(&buscar(&r, "captura")[0]), json!({ "pixpin": 1, "accion": "capturar", "modo": "zona" }));
-    assert_eq!(*pedido_de(&buscar(&r, "última")[0]), json!({ "pixpin": 1, "accion": "pinear_ultima" }));
-    assert_eq!(*pedido_de(&buscar(&r, "galeria")[0]), json!({ "pixpin": 1, "accion": "ventana", "cual": "galeria" }));
+    assert_eq!(
+        *pedido_de(&buscar(&r, "captura")[0]),
+        json!({ "pixpin": 1, "accion": "capturar", "modo": "zona" })
+    );
+    assert_eq!(
+        *pedido_de(&buscar(&r, "última")[0]),
+        json!({ "pixpin": 1, "accion": "pinear_ultima" })
+    );
+    assert_eq!(
+        *pedido_de(&buscar(&r, "galeria")[0]),
+        json!({ "pixpin": 1, "accion": "ventana", "cual": "galeria" })
+    );
     // Las lecciones, con su ventana.
     let ventana = json!({ "pixpin": 1, "accion": "ventana", "cual": "lecciones" });
-    assert!(buscar(&r, "lecciones").iter().any(|x| matches!(&x.accion, Accion::Pedido(p) if *p == ventana)));
+    assert!(
+        buscar(&r, "lecciones")
+            .iter()
+            .any(|x| matches!(&x.accion, Accion::Pedido(p) if *p == ventana))
+    );
 }
 
 #[test]
 fn caso_negativo_una_letra_sin_atajo_busca_normal() {
     let r = raiz("atajos-no");
     // «x» no es atajo: busca, y no captura nada.
-    assert!(buscar(&r, "x").iter().all(|x| !matches!(&x.accion, Accion::Pedido(p) if p["accion"] == "capturar")));
+    assert!(
+        buscar(&r, "x")
+            .iter()
+            .all(|x| !matches!(&x.accion, Accion::Pedido(p) if p["accion"] == "capturar"))
+    );
     // «ca» busca: salen varias cosas, no solo capturar.
     assert!(buscar(&r, "ca").len() > 1);
 }
@@ -1140,11 +1681,20 @@ fn raiz_con_capturas(etiqueta: &str) -> (PathBuf, i64) {
     for (nombre, hace) in [("captura-0001.png", 3 * h), ("captura-0002.png", 2 * h)] {
         fs::write(c.join(nombre), b"png").unwrap();
         let t = std::time::UNIX_EPOCH + std::time::Duration::from_millis((ahora - hace) as u64);
-        fs::File::options().write(true).open(c.join(nombre)).unwrap().set_modified(t).unwrap();
+        fs::File::options()
+            .write(true)
+            .open(c.join(nombre))
+            .unwrap()
+            .set_modified(t)
+            .unwrap();
     }
     fs::write(c.join("vacia.png"), b"").unwrap();
     fs::write(c.join("notas.txt"), b"x").unwrap();
-    fs::write(r.join("capturas-caducidad.json"), json!({ "desde": 0, "conservadas": ["captura-0001.png"] }).to_string()).unwrap();
+    fs::write(
+        r.join("capturas-caducidad.json"),
+        json!({ "desde": 0, "conservadas": ["captura-0001.png"] }).to_string(),
+    )
+    .unwrap();
     (r, ahora)
 }
 
@@ -1159,42 +1709,114 @@ fn buscar_con_raiz(r: &Path, q: &str, ahora: i64) -> Vec<Resultado> {
 fn las_capturas_de_la_mas_nueva_a_la_mas_vieja_con_su_caducidad() {
     let (r, ahora) = raiz_con_capturas("capturas");
     let v = buscar_con_raiz(&r, "capturas", ahora);
-    assert_eq!(titulos(&v), ["captura-0002.png", "captura-0001.png", "Abrir la galería de capturas"]);
-    let ruta = r.join("capturas").join("captura-0002.png").to_string_lossy().to_string();
+    assert_eq!(
+        titulos(&v),
+        [
+            "captura-0002.png",
+            "captura-0001.png",
+            "Abrir la galería de capturas"
+        ]
+    );
+    let ruta = r
+        .join("capturas")
+        .join("captura-0002.png")
+        .to_string_lossy()
+        .to_string();
     // Sin `desde` en el registro, los 7 dias cuentan desde ahora (como la app).
     let se_va = crate::fecha::dia_y_mes(ahora + 7 * 86_400_000);
-    assert_eq!(v[0].subtitulo, format!("Captura · hace 2 h · se borra el {se_va}"));
+    assert_eq!(
+        v[0].subtitulo,
+        format!("Captura · hace 2 h · se borra el {se_va}")
+    );
     assert_eq!(v[1].subtitulo, "Captura · hace 3 h · Conservada");
-    assert_eq!(*pedido_de(&v[0]), json!({ "pixpin": 1, "accion": "pinear", "ruta": ruta }));
+    assert_eq!(
+        *pedido_de(&v[0]),
+        json!({ "pixpin": 1, "accion": "pinear", "ruta": ruta })
+    );
     // Su icono y su vista previa: la imagen misma.
     assert_eq!(v[0].icono.as_deref(), Some(ruta.as_str()));
     let j = v[0].a_json("icono.png", 100);
-    assert_eq!(j["preview"], json!({ "previewImagePath": ruta, "isMedia": true, "filePath": ruta }));
+    assert_eq!(
+        j["preview"],
+        json!({ "previewImagePath": ruta, "isMedia": true, "filePath": ruta })
+    );
     assert_eq!(j["recordKey"], "captura/captura-0002.png");
-    assert_eq!(*pedido_de(&v[2]), json!({ "pixpin": 1, "accion": "ventana", "cual": "galeria" }));
+    assert_eq!(
+        *pedido_de(&v[2]),
+        json!({ "pixpin": 1, "accion": "ventana", "cual": "galeria" })
+    );
     // Filtrar por nombre.
-    assert_eq!(titulos(&buscar_con_raiz(&r, "capturas 0001", ahora)), ["captura-0001.png", "Abrir la galería de capturas"]);
+    assert_eq!(
+        titulos(&buscar_con_raiz(&r, "capturas 0001", ahora)),
+        ["captura-0001.png", "Abrir la galería de capturas"]
+    );
     // La galeria: abrirla primero y debajo las capturas.
-    assert_eq!(titulos(&buscar_con_raiz(&r, "galeria", ahora))[0], "Abrir la galería de capturas");
+    assert_eq!(
+        titulos(&buscar_con_raiz(&r, "galeria", ahora))[0],
+        "Abrir la galería de capturas"
+    );
     // La ultima, con su nombre.
     let u = buscar_con_raiz(&r, "u", ahora);
-    assert!(u[0].subtitulo.starts_with("captura-0002.png · hace 2 h"), "{}", u[0].subtitulo);
+    assert!(
+        u[0].subtitulo.starts_with("captura-0002.png · hace 2 h"),
+        "{}",
+        u[0].subtitulo
+    );
 }
 
 #[test]
 fn el_menu_de_una_captura() {
     let (r, ahora) = raiz_con_capturas("capturas-menu");
     let v = buscar_con_raiz(&r, "capturas", ahora);
-    let ruta = r.join("capturas").join("captura-0002.png").to_string_lossy().to_string();
+    let ruta = r
+        .join("capturas")
+        .join("captura-0002.png")
+        .to_string_lossy()
+        .to_string();
     let m = menu_de(&v[0]);
-    assert_eq!(titulos(&m), ["Conservar", "Copiar imagen", "Borrar", "Mostrar en la carpeta", "Abrir galería"]);
-    assert_eq!(*pedido_de(&m[0]), json!({ "pixpin": 1, "accion": "conservar_captura", "ruta": ruta }));
-    assert_eq!(*pedido_de(&m[1]), json!({ "pixpin": 1, "accion": "copiar_imagen", "ruta": ruta }));
-    assert_eq!(*pedido_de(&m[2]), json!({ "pixpin": 1, "accion": "borrar_captura", "ruta": ruta }));
-    assert_eq!(m[3].accion, Accion::Carpeta { carpeta: r.join("capturas").to_string_lossy().to_string(), fichero: ruta });
-    assert_eq!(*pedido_de(&m[4]), json!({ "pixpin": 1, "accion": "ventana", "cual": "galeria" }));
+    assert_eq!(
+        titulos(&m),
+        [
+            "Conservar",
+            "Copiar imagen",
+            "Borrar",
+            "Mostrar en la carpeta",
+            "Abrir galería"
+        ]
+    );
+    assert_eq!(
+        *pedido_de(&m[0]),
+        json!({ "pixpin": 1, "accion": "conservar_captura", "ruta": ruta })
+    );
+    assert_eq!(
+        *pedido_de(&m[1]),
+        json!({ "pixpin": 1, "accion": "copiar_imagen", "ruta": ruta })
+    );
+    assert_eq!(
+        *pedido_de(&m[2]),
+        json!({ "pixpin": 1, "accion": "borrar_captura", "ruta": ruta })
+    );
+    assert_eq!(
+        m[3].accion,
+        Accion::Carpeta {
+            carpeta: r.join("capturas").to_string_lossy().to_string(),
+            fichero: ruta
+        }
+    );
+    assert_eq!(
+        *pedido_de(&m[4]),
+        json!({ "pixpin": 1, "accion": "ventana", "cual": "galeria" })
+    );
     // La conservada no ofrece conservarla otra vez.
-    assert_eq!(titulos(&menu_de(&v[1])), ["Copiar imagen", "Borrar", "Mostrar en la carpeta", "Abrir galería"]);
+    assert_eq!(
+        titulos(&menu_de(&v[1])),
+        [
+            "Copiar imagen",
+            "Borrar",
+            "Mostrar en la carpeta",
+            "Abrir galería"
+        ]
+    );
 }
 
 #[test]
@@ -1206,7 +1828,10 @@ fn caso_negativo_sin_capturas_o_sin_coincidencias() {
     let r = raiz("capturas-ninguna");
     let v = buscar_con_raiz(&r, "capturas", 1000);
     assert_eq!(v[0].titulo, "No hay capturas todavía");
-    assert_eq!(*pedido_de(&v[0]), json!({ "pixpin": 1, "accion": "capturar", "modo": "zona" }));
+    assert_eq!(
+        *pedido_de(&v[0]),
+        json!({ "pixpin": 1, "accion": "capturar", "modo": "zona" })
+    );
     // Sin raiz conocida (sin carpeta de iconos), tampoco se rompe nada.
     assert_eq!(buscar(&r, "capturas")[0].titulo, "No hay capturas todavía");
 }
@@ -1215,18 +1840,34 @@ fn caso_negativo_sin_capturas_o_sin_coincidencias() {
 fn los_campos_nuevos_de_flow_en_el_json() {
     let r = raiz("campos");
     let v = buscar(&r, "croquis");
-    let ruta = r.join("proyectos").join("P1").join("archivos").join("croquis.png").to_string_lossy().to_string();
+    let ruta = r
+        .join("proyectos")
+        .join("P1")
+        .join("archivos")
+        .join("croquis.png")
+        .to_string_lossy()
+        .to_string();
     let j = v[0].a_json("icono.png", 100);
     assert_eq!(j["title"], "croquis.png");
     assert_eq!(j["titleHighlightData"], json!([0, 1, 2, 3, 4, 5, 6]));
     assert_eq!(j["titleToolTip"], ruta);
     assert_eq!(j["recordKey"], "mensaje/P1/i2");
     assert_eq!(j["autoCompleteText"], "pp croquis.png");
-    assert_eq!(j["preview"], json!({ "previewImagePath": ruta, "isMedia": true, "filePath": ruta }));
+    assert_eq!(
+        j["preview"],
+        json!({ "previewImagePath": ruta, "isMedia": true, "filePath": ruta })
+    );
     // Un texto: el entero al pasar por el subtitulo.
     let v = buscar(&r, "hola equipo");
-    let j = v.iter().find(|x| x.titulo.starts_with("hola equipo")).unwrap().a_json("i", 1);
-    assert_eq!(j["subTitleToolTip"], "hola equipo, mañana a las 9\nsegunda línea");
+    let j = v
+        .iter()
+        .find(|x| x.titulo.starts_with("hola equipo"))
+        .unwrap()
+        .a_json("i", 1);
+    assert_eq!(
+        j["subTitleToolTip"],
+        "hola equipo, mañana a las 9\nsegunda línea"
+    );
     // Una lista: sin barra de progreso, que en Flow tapaba el titulo.
     let j = buscar(&r, "tareas")[2].a_json("i", 1);
     assert_eq!(j["title"], "Compra");
@@ -1245,8 +1886,15 @@ fn caso_negativo_sin_consulta_ni_fichero_no_hay_campos_de_mas() {
     let r = raiz("campos-no");
     let v = buscar(&r, "");
     let j = v[0].a_json("icono.png", 100);
-    assert!(j.get("titleHighlightData").is_none(), "sin nada tecleado no se resalta");
-    assert!(j.get("preview").is_none() && j.get("titleToolTip").is_none() && j.get("progressBar").is_none());
+    assert!(
+        j.get("titleHighlightData").is_none(),
+        "sin nada tecleado no se resalta"
+    );
+    assert!(
+        j.get("preview").is_none()
+            && j.get("titleToolTip").is_none()
+            && j.get("progressBar").is_none()
+    );
     assert_eq!(j["recordKey"], "funcion/chat");
     // Un archivo de otro equipo: ni vista previa ni ruta.
     let v = buscar(&r, "remoto");
@@ -1270,10 +1918,16 @@ fn otra_copia() -> Option<u32> {
 
 /// «La imagen del portapapeles»: unos bytes de PNG.
 fn leer_de_mentira() -> Option<imagenes::Copiada> {
-    Some(imagenes::Copiada { extension: "png".into(), bytes: b"\x89PNG de mentira".to_vec() })
+    Some(imagenes::Copiada {
+        extension: "png".into(),
+        bytes: b"\x89PNG de mentira".to_vec(),
+    })
 }
 fn leer_otra() -> Option<imagenes::Copiada> {
-    Some(imagenes::Copiada { extension: "png".into(), bytes: b"\x89PNG otra distinta".to_vec() })
+    Some(imagenes::Copiada {
+        extension: "png".into(),
+        bytes: b"\x89PNG otra distinta".to_vec(),
+    })
 }
 fn sin_leer() -> Option<imagenes::Copiada> {
     None
@@ -1285,17 +1939,36 @@ fn app_abierta() -> bool {
     true
 }
 
-const CON_IMAGEN: Portapapeles = Portapapeles { imagen: hay_imagen, leer: leer_de_mentira, pega_la_app: app_cerrada };
+const CON_IMAGEN: Portapapeles = Portapapeles {
+    imagen: hay_imagen,
+    leer: leer_de_mentira,
+    pega_la_app: app_cerrada,
+};
 /// Otra imagen distinta, copiada despues.
-const OTRA_IMAGEN: Portapapeles = Portapapeles { imagen: hay_otra, leer: leer_otra, pega_la_app: app_cerrada };
+const OTRA_IMAGEN: Portapapeles = Portapapeles {
+    imagen: hay_otra,
+    leer: leer_otra,
+    pega_la_app: app_cerrada,
+};
 /// La primera imagen copiada otra vez: otro numero de secuencia, los mismos
 /// bytes.
-const LA_MISMA_OTRA_VEZ: Portapapeles =
-    Portapapeles { imagen: otra_copia, leer: leer_de_mentira, pega_la_app: app_cerrada };
+const LA_MISMA_OTRA_VEZ: Portapapeles = Portapapeles {
+    imagen: otra_copia,
+    leer: leer_de_mentira,
+    pega_la_app: app_cerrada,
+};
 /// Dice que hay imagen pero al ir a guardarla ya no esta.
-const SE_FUE: Portapapeles = Portapapeles { imagen: hay_imagen, leer: sin_leer, pega_la_app: app_cerrada };
+const SE_FUE: Portapapeles = Portapapeles {
+    imagen: hay_imagen,
+    leer: sin_leer,
+    pega_la_app: app_cerrada,
+};
 /// Con la app abierta (pega ella con Ctrl+V).
-const CON_LA_APP: Portapapeles = Portapapeles { imagen: hay_imagen, leer: leer_de_mentira, pega_la_app: app_abierta };
+const CON_LA_APP: Portapapeles = Portapapeles {
+    imagen: hay_imagen,
+    leer: leer_de_mentira,
+    pega_la_app: app_abierta,
+};
 
 fn buscar_con(r: &Path, q: &str, pp: Portapapeles) -> Vec<Resultado> {
     let mut d = Datos::nuevo(r.to_path_buf());
@@ -1308,12 +1981,19 @@ fn buscar_con(r: &Path, q: &str, pp: Portapapeles) -> Vec<Resultado> {
 /// Pulsa Intro en el resultado `r` (como Flow v2, los parametros envueltos).
 fn intro(p: &mut Plugin<DeMentira, Vec<u8>>, id: u64, r: &Value) {
     let a = &r["jsonRPCAction"];
-    p.atender(&json!({ "jsonrpc": "2.0", "id": id, "method": a["method"], "params": [a["parameters"]] }).to_string());
+    p.atender(
+        &json!({ "jsonrpc": "2.0", "id": id, "method": a["method"], "params": [a["parameters"]] })
+            .to_string(),
+    );
 }
 
 /// Los resultados de la ultima respuesta a `query`.
 fn ultima_lista(p: &Plugin<DeMentira, Vec<u8>>) -> Vec<Value> {
-    salida(p).iter().rev().find_map(|l| l["result"]["result"].as_array().cloned()).unwrap()
+    salida(p)
+        .iter()
+        .rev()
+        .find_map(|l| l["result"]["result"].as_array().cloned())
+        .unwrap()
 }
 
 #[test]
@@ -1329,7 +2009,16 @@ fn las_fichas_se_numeran_y_se_encuentran() {
 
 #[test]
 fn caso_negativo_lo_que_parece_una_ficha_y_no_lo_es() {
-    for t in ["[img]", "[img 0]", "[imagen 01]", "[img01]", "[img 1234]", "img 01]", "[img 01", "[ img 01]"] {
+    for t in [
+        "[img]",
+        "[img 0]",
+        "[imagen 01]",
+        "[img01]",
+        "[img 1234]",
+        "img 01]",
+        "[img 01",
+        "[ img 01]",
+    ] {
         assert!(imagenes::fichas(t).is_empty(), "«{t}» no es una ficha");
     }
     assert_eq!(imagenes::siguiente("[img 0] [img x]"), 1);
@@ -1340,7 +2029,10 @@ fn el_resaltado_de_las_fichas_va_en_utf16() {
     // «😀» son 2 en UTF-16: la ficha empieza en 22 y ocupa 8.
     let t = "Añadir tarea: 😀 foto [img 01] y [img 02]";
     assert_eq!(imagenes::resaltado(t, &[1]), (22..30).collect::<Vec<_>>());
-    assert_eq!(imagenes::resaltado(t, &[1, 2]), (22..30).chain(33..41).collect::<Vec<_>>());
+    assert_eq!(
+        imagenes::resaltado(t, &[1, 2]),
+        (22..30).chain(33..41).collect::<Vec<_>>()
+    );
     // Caso negativo: una ficha que no se conoce no se resalta.
     assert!(imagenes::resaltado(t, &[5]).is_empty());
 }
@@ -1350,7 +2042,13 @@ fn con_una_imagen_copiada_se_ofrece_pegarla_arriba() {
     let r = raiz_con_inbox("pegar");
     let v = buscar_con(&r, "t comprar", CON_IMAGEN);
     assert_eq!(v[0].titulo, "📎 Pegar la imagen copiada → [img 01]");
-    assert_eq!(v[0].accion, Accion::PegarImagen { consulta: "pp t comprar [img 01] ".into(), numero: 1 });
+    assert_eq!(
+        v[0].accion,
+        Accion::PegarImagen {
+            consulta: "pp t comprar [img 01] ".into(),
+            numero: 1
+        }
+    );
     assert_eq!(v[1].titulo, "Apuntar tarea: comprar");
     let j = v[0].a_json("i", 1);
     assert_eq!(
@@ -1361,28 +2059,68 @@ fn con_una_imagen_copiada_se_ofrece_pegarla_arriba() {
     assert_eq!(j["titleHighlightData"], json!((29..37).collect::<Vec<_>>()));
     // La que toca es la siguiente a las que ya hay.
     let v = buscar_con(&r, "t comprar [img 01] y", CON_IMAGEN);
-    assert_eq!(v[0].accion, Accion::PegarImagen { consulta: "pp t comprar [img 01] y [img 02] ".into(), numero: 2 });
+    assert_eq!(
+        v[0].accion,
+        Accion::PegarImagen {
+            consulta: "pp t comprar [img 01] y [img 02] ".into(),
+            numero: 2
+        }
+    );
     // «t» sola, dentro de una lista y «tareas <texto>» tambien.
-    assert_eq!(buscar_con(&r, "t", CON_IMAGEN)[0].accion, Accion::PegarImagen { consulta: "pp t [img 01] ".into(), numero: 1 });
+    assert_eq!(
+        buscar_con(&r, "t", CON_IMAGEN)[0].accion,
+        Accion::PegarImagen {
+            consulta: "pp t [img 01] ".into(),
+            numero: 1
+        }
+    );
     let v = buscar_con(&r, "tareas Compra · Mensajes guardados > ", CON_IMAGEN);
     assert_eq!(
         v[0].accion,
-        Accion::PegarImagen { consulta: "pp tareas Compra · Mensajes guardados > [img 01] ".into(), numero: 1 }
+        Accion::PegarImagen {
+            consulta: "pp tareas Compra · Mensajes guardados > [img 01] ".into(),
+            numero: 1
+        }
     );
-    assert!(matches!(buscar_con(&r, "tareas leche", CON_IMAGEN)[0].accion, Accion::PegarImagen { .. }));
+    assert!(matches!(
+        buscar_con(&r, "tareas leche", CON_IMAGEN)[0].accion,
+        Accion::PegarImagen { .. }
+    ));
 }
 
 #[test]
 fn caso_negativo_sin_imagen_o_fuera_de_una_tarea_no_se_ofrece_pegar() {
     let r = raiz_con_inbox("pegar-no");
-    let pegar = |v: &[Resultado]| v.iter().any(|x| matches!(x.accion, Accion::PegarImagen { .. }));
+    let pegar = |v: &[Resultado]| {
+        v.iter()
+            .any(|x| matches!(x.accion, Accion::PegarImagen { .. }))
+    };
     // Sin imagen en el portapapeles, nada.
-    for q in ["t comprar", "t", "tareas leche", "tareas Compra · Mensajes guardados > "] {
-        assert!(!pegar(&buscar_con(&r, q, imagenes::SIN_PORTAPAPELES)), "«{q}» sin imagen");
+    for q in [
+        "t comprar",
+        "t",
+        "tareas leche",
+        "tareas Compra · Mensajes guardados > ",
+    ] {
+        assert!(
+            !pegar(&buscar_con(&r, q, imagenes::SIN_PORTAPAPELES)),
+            "«{q}» sin imagen"
+        );
     }
     // Con imagen, pero no es escribir una tarea.
-    for q in ["", "chat hola", "n idea", "tareas", "comprar", "tareas leche @thesis", "tareas NoExiste > x"] {
-        assert!(!pegar(&buscar_con(&r, q, CON_IMAGEN)), "«{q}» no es una tarea");
+    for q in [
+        "",
+        "chat hola",
+        "n idea",
+        "tareas",
+        "comprar",
+        "tareas leche @thesis",
+        "tareas NoExiste > x",
+    ] {
+        assert!(
+            !pegar(&buscar_con(&r, q, CON_IMAGEN)),
+            "«{q}» no es una tarea"
+        );
     }
 }
 
@@ -1401,24 +2139,40 @@ fn pegar_guarda_la_imagen_y_la_tarea_la_lleva_en_el_pedido() {
     assert_eq!(s[n - 1]["result"], json!({ "hide": false }));
     let b = imagenes::leer_borrador(&r, crate::datos::ahora_ms()).expect("el borrador");
     let img1 = b.imagenes[&1].clone();
-    assert!(img1.contains("lanzador-imagenes") && Path::new(&img1).is_file(), "{img1}");
+    assert!(
+        img1.contains("lanzador-imagenes") && Path::new(&img1).is_file(),
+        "{img1}"
+    );
     // Flow vuelve a preguntar con la ficha puesta, y se sigue escribiendo.
     p.atender(&consulta(3, "t comprar [img 01] esto"));
     let v = ultima_lista(&p);
     let anadir = &v[0];
     assert_eq!(anadir["title"], "Apuntar tarea: comprar [img 01] esto");
-    assert_eq!(anadir["titleHighlightData"], json!((23..31).collect::<Vec<_>>()));
-    assert_eq!(anadir["subTitle"], "📎 1 imagen · Tarea · Inbox · 1 pendiente de 2 · Intro: apuntarla");
+    assert_eq!(
+        anadir["titleHighlightData"],
+        json!((23..31).collect::<Vec<_>>())
+    );
+    assert_eq!(
+        anadir["subTitle"],
+        "📎 1 imagen · Tarea · Inbox · 1 pendiente de 2 · Intro: apuntarla"
+    );
     assert_eq!(anadir["preview"]["previewImagePath"], img1);
     // Una imagen, un nombre: la misma copia ya no se ofrece como [img 02].
-    assert!(!v.iter().any(|x| x["title"].as_str().unwrap().starts_with("📎 Pegar")), "{v:?}");
+    assert!(
+        !v.iter()
+            .any(|x| x["title"].as_str().unwrap().starts_with("📎 Pegar")),
+        "{v:?}"
+    );
     // Una segunda imagen, distinta.
     p.portapapeles = OTRA_IMAGEN;
     p.atender(&consulta(4, "t comprar [img 01] esto"));
     let v = ultima_lista(&p);
     assert_eq!(v[0]["title"], "📎 Pegar la imagen copiada → [img 02]");
     intro(&mut p, 4, &v[0]);
-    let img2 = imagenes::leer_borrador(&r, crate::datos::ahora_ms()).unwrap().imagenes[&2].clone();
+    let img2 = imagenes::leer_borrador(&r, crate::datos::ahora_ms())
+        .unwrap()
+        .imagenes[&2]
+        .clone();
     assert_ne!(img1, img2);
     // La primera, copiada otra vez (otra secuencia, mismo contenido): se
     // ofrece, pero al pegarla se avisa y no cambia nada.
@@ -1429,15 +2183,25 @@ fn pegar_guarda_la_imagen_y_la_tarea_la_lleva_en_el_pedido() {
     intro(&mut p, 5, &pegar);
     let s = salida(&p);
     assert_eq!(s[s.len() - 2]["method"], "ShowMsg");
-    assert_eq!(s[s.len() - 2]["params"][1], "Esa imagen ya está como [img 01]");
+    assert_eq!(
+        s[s.len() - 2]["params"][1],
+        "Esa imagen ya está como [img 01]"
+    );
     let b = imagenes::leer_borrador(&r, crate::datos::ahora_ms()).unwrap();
     assert_eq!(b.imagenes.len(), 2, "no hay [img 03]");
     // Y ya no se vuelve a ofrecer esa copia.
     p.atender(&consulta(5, "t comprar [img 01] esto [img 02]"));
-    assert!(!ultima_lista(&p).iter().any(|x| x["title"].as_str().unwrap().starts_with("📎 Pegar")));
+    assert!(
+        !ultima_lista(&p)
+            .iter()
+            .any(|x| x["title"].as_str().unwrap().starts_with("📎 Pegar"))
+    );
     p.atender(&consulta(5, "t comprar [img 01] esto [img 02]"));
     let anadir = ultima_lista(&p)[0].clone();
-    assert_eq!(anadir["subTitle"].as_str().unwrap().split(" · ").next(), Some("📎 2 imágenes"));
+    assert_eq!(
+        anadir["subTitle"].as_str().unwrap().split(" · ").next(),
+        Some("📎 2 imágenes")
+    );
     intro(&mut p, 6, &anadir);
     assert_eq!(
         p.mensajero.pedidos.last().unwrap(),
@@ -1459,7 +2223,11 @@ fn una_ficha_borrada_no_va_y_las_demas_se_renumeran() {
     assert!(imagenes::apuntar(&r, 1, &a, Some(1), ahora));
     assert!(imagenes::apuntar(&r, 2, &b, Some(2), ahora));
     // Se borro «[img 01]»: solo va la segunda, que pasa a ser la 01.
-    let v = buscar_con(&r, "tareas Compra · Mensajes guardados > leer [img 02]", imagenes::SIN_PORTAPAPELES);
+    let v = buscar_con(
+        &r,
+        "tareas Compra · Mensajes guardados > leer [img 02]",
+        imagenes::SIN_PORTAPAPELES,
+    );
     assert_eq!(v[0].titulo, "Añadir tarea: leer [img 02]");
     assert_eq!(
         *pedido_de(&v[0]),
@@ -1468,7 +2236,13 @@ fn una_ficha_borrada_no_va_y_las_demas_se_renumeran() {
     );
     // Y en «tareas <texto>» la ficha hace que sea una tarea del Inbox.
     let v = buscar_con(&r, "tareas leer [img 01]", imagenes::SIN_PORTAPAPELES);
-    assert_eq!(titulos(&v), ["Añadir al Inbox: leer [img 01]", "Abrir la ventana de Tareas"]);
+    assert_eq!(
+        titulos(&v),
+        [
+            "Añadir al Inbox: leer [img 01]",
+            "Abrir la ventana de Tareas"
+        ]
+    );
     assert_eq!(pedido_de(&v[0])["imagenes"], json!([a.to_string_lossy()]));
 }
 
@@ -1477,8 +2251,16 @@ fn caso_negativo_una_ficha_desconocida_se_queda_como_texto() {
     let r = raiz_con_inbox("pegar-desconocida");
     // Escrita a mano, sin borrador: el pedido de siempre, y se avisa.
     let v = buscar_con(&r, "t foto [img 05]", imagenes::SIN_PORTAPAPELES);
-    assert_eq!(*pedido_de(&v[0]), json!({ "pixpin": 1, "accion": "anadir_tarea", "texto": "foto [img 05]" }));
-    assert!(v[0].subtitulo.starts_with("⚠ [img 05] no se encuentra: se queda como texto"), "{}", v[0].subtitulo);
+    assert_eq!(
+        *pedido_de(&v[0]),
+        json!({ "pixpin": 1, "accion": "anadir_tarea", "texto": "foto [img 05]" })
+    );
+    assert!(
+        v[0].subtitulo
+            .starts_with("⚠ [img 05] no se encuentra: se queda como texto"),
+        "{}",
+        v[0].subtitulo
+    );
     assert!(v[0].resaltado.is_empty() && v[0].vista_previa.is_none());
     // Una conocida y otra no: va la conocida; la otra, tal cual.
     let ahora = crate::datos::ahora_ms();
@@ -1490,7 +2272,12 @@ fn caso_negativo_una_ficha_desconocida_se_queda_como_texto() {
     let v = buscar_con(&r, "t foto [img 01] [img 07]", imagenes::SIN_PORTAPAPELES);
     assert_eq!(pedido_de(&v[0])["imagenes"], json!([a.to_string_lossy()]));
     assert_eq!(pedido_de(&v[0])["texto"], "foto [img 01] [img 07]");
-    assert!(v[0].subtitulo.starts_with("📎 1 imagen · ⚠ [img 07] no se encuentra"), "{}", v[0].subtitulo);
+    assert!(
+        v[0].subtitulo
+            .starts_with("📎 1 imagen · ⚠ [img 07] no se encuentra"),
+        "{}",
+        v[0].subtitulo
+    );
     // Un borrador caducado no vale, ni una imagen que ya no esta.
     assert!(imagenes::leer_borrador(&r, ahora + imagenes::CADUCA_MS).is_none());
     fs::remove_file(&a).unwrap();
@@ -1509,7 +2296,10 @@ fn caso_negativo_si_la_imagen_ya_no_esta_al_pegar_se_avisa() {
     let s = salida(&p);
     let aviso = &s[s.len() - 2];
     assert_eq!(aviso["method"], "ShowMsg");
-    assert_eq!(aviso["params"][1], "No hay ninguna imagen en el portapapeles");
+    assert_eq!(
+        aviso["params"][1],
+        "No hay ninguna imagen en el portapapeles"
+    );
     assert!(!s.iter().any(|l| l["method"] == "ChangeQuery"));
     assert!(imagenes::leer_borrador(&r, crate::datos::ahora_ms()).is_none());
 }
@@ -1519,9 +2309,18 @@ fn pegar_en_el_modo_v1_cambia_la_consulta() {
     let r = raiz_con_inbox("pegar-v1");
     let mut p = plugin(&r);
     p.portapapeles = CON_IMAGEN;
-    let res = crate::rpc::una_vez(&mut p, &json!({ "method": "pegar_imagen", "parameters": ["p t pan [img 01] ", 1] }));
-    assert_eq!(res, json!({ "method": "Flow.Launcher.ChangeQuery", "parameters": ["p t pan [img 01] ", true] }));
-    assert!(imagenes::leer_borrador(&r, crate::datos::ahora_ms()).is_some_and(|b| b.imagenes.contains_key(&1)));
+    let res = crate::rpc::una_vez(
+        &mut p,
+        &json!({ "method": "pegar_imagen", "parameters": ["p t pan [img 01] ", 1] }),
+    );
+    assert_eq!(
+        res,
+        json!({ "method": "Flow.Launcher.ChangeQuery", "parameters": ["p t pan [img 01] ", true] })
+    );
+    assert!(
+        imagenes::leer_borrador(&r, crate::datos::ahora_ms())
+            .is_some_and(|b| b.imagenes.contains_key(&1))
+    );
 }
 
 #[test]
@@ -1529,9 +2328,15 @@ fn con_la_app_abierta_no_sale_pegar_porque_pega_ella_con_ctrl_v() {
     let r = raiz_con_inbox("pegar-con-app");
     let v = buscar_con(&r, "t comprar", CON_LA_APP);
     assert_eq!(v[0].titulo, "Apuntar tarea: comprar");
-    assert!(!v.iter().any(|x| matches!(x.accion, Accion::PegarImagen { .. })));
+    assert!(
+        !v.iter()
+            .any(|x| matches!(x.accion, Accion::PegarImagen { .. }))
+    );
     // Caso negativo: con la app cerrada, si.
-    assert!(matches!(buscar_con(&r, "t comprar", CON_IMAGEN)[0].accion, Accion::PegarImagen { .. }));
+    assert!(matches!(
+        buscar_con(&r, "t comprar", CON_IMAGEN)[0].accion,
+        Accion::PegarImagen { .. }
+    ));
 }
 
 #[test]
@@ -1540,12 +2345,22 @@ fn una_imagen_un_nombre_la_misma_no_se_pega_dos_veces() {
     let ahora = crate::datos::ahora_ms();
     use imagenes::Pegado;
     // Como la app: sin numero, el siguiente del borrador.
-    let Pegado::Nueva(1, a) = imagenes::pegar_en_borrador(&r, &CON_IMAGEN, None, ahora) else { panic!() };
+    let Pegado::Nueva(1, a) = imagenes::pegar_en_borrador(&r, &CON_IMAGEN, None, ahora) else {
+        panic!()
+    };
     assert!(a.is_file() && a.extension().unwrap() == "png");
-    assert_eq!(imagenes::pegar_en_borrador(&r, &CON_IMAGEN, None, ahora), Pegado::Repetida(1));
+    assert_eq!(
+        imagenes::pegar_en_borrador(&r, &CON_IMAGEN, None, ahora),
+        Pegado::Repetida(1)
+    );
     // Copiada otra vez (otra secuencia): por el contenido, la misma.
-    assert_eq!(imagenes::pegar_en_borrador(&r, &LA_MISMA_OTRA_VEZ, None, ahora), Pegado::Repetida(1));
-    let Pegado::Nueva(2, _) = imagenes::pegar_en_borrador(&r, &OTRA_IMAGEN, None, ahora) else { panic!() };
+    assert_eq!(
+        imagenes::pegar_en_borrador(&r, &LA_MISMA_OTRA_VEZ, None, ahora),
+        Pegado::Repetida(1)
+    );
+    let Pegado::Nueva(2, _) = imagenes::pegar_en_borrador(&r, &OTRA_IMAGEN, None, ahora) else {
+        panic!()
+    };
     let b = imagenes::leer_borrador(&r, ahora).unwrap();
     assert_eq!(b.imagenes.len(), 2);
     assert_eq!(b.secuencias, [7, 9, 8]);
@@ -1553,13 +2368,27 @@ fn una_imagen_un_nombre_la_misma_no_se_pega_dos_veces() {
     assert_eq!(ficheros, 3, "dos imagenes y el borrador");
     // Caso negativo: la ficha 1 empieza un borrador nuevo (una tarea nueva),
     // y ahi la misma imagen si se pega; sin imagen, nada.
-    let Pegado::Nueva(1, _) = imagenes::pegar_en_borrador(&r, &CON_IMAGEN, Some(1), ahora) else { panic!() };
-    assert_eq!(imagenes::leer_borrador(&r, ahora).unwrap().imagenes.len(), 1);
-    assert_eq!(imagenes::pegar_en_borrador(&r, &SE_FUE, None, ahora), Pegado::Nada);
-    assert_eq!(imagenes::pegar_en_borrador(&r, &imagenes::SIN_PORTAPAPELES, None, ahora), Pegado::Nada);
+    let Pegado::Nueva(1, _) = imagenes::pegar_en_borrador(&r, &CON_IMAGEN, Some(1), ahora) else {
+        panic!()
+    };
+    assert_eq!(
+        imagenes::leer_borrador(&r, ahora).unwrap().imagenes.len(),
+        1
+    );
+    assert_eq!(
+        imagenes::pegar_en_borrador(&r, &SE_FUE, None, ahora),
+        Pegado::Nada
+    );
+    assert_eq!(
+        imagenes::pegar_en_borrador(&r, &imagenes::SIN_PORTAPAPELES, None, ahora),
+        Pegado::Nada
+    );
     // Un borrador caducado tampoco cuenta.
     let tarde = ahora + imagenes::CADUCA_MS;
-    assert!(matches!(imagenes::pegar_en_borrador(&r, &CON_IMAGEN, None, tarde), Pegado::Nueva(1, _)));
+    assert!(matches!(
+        imagenes::pegar_en_borrador(&r, &CON_IMAGEN, None, tarde),
+        Pegado::Nueva(1, _)
+    ));
 }
 
 #[test]
@@ -1570,17 +2399,26 @@ fn el_borrador_olvida_las_fichas_que_ya_no_estan_en_la_caja() {
     imagenes::pegar_en_borrador(&r, &OTRA_IMAGEN, None, ahora);
     // Justo despues de pegar no se toca (la app aun esta escribiendo).
     imagenes::podar(&r, "t comp", ahora + 100);
-    assert_eq!(imagenes::leer_borrador(&r, ahora).unwrap().imagenes.len(), 2);
+    assert_eq!(
+        imagenes::leer_borrador(&r, ahora).unwrap().imagenes.len(),
+        2
+    );
     let luego = ahora + imagenes::GRACIA_PODAR_MS;
     // Con las dos fichas puestas, nada cambia.
     imagenes::podar(&r, "t a [img 01] b [img 02]", luego);
-    assert_eq!(imagenes::leer_borrador(&r, luego).unwrap().imagenes.len(), 2);
+    assert_eq!(
+        imagenes::leer_borrador(&r, luego).unwrap().imagenes.len(),
+        2
+    );
     // Borrada la primera: se olvida, y su imagen se puede volver a pegar.
     imagenes::podar(&r, "t a b [img 02]", luego);
     let b = imagenes::leer_borrador(&r, luego).unwrap();
     assert_eq!(b.imagenes.keys().copied().collect::<Vec<_>>(), [2]);
     assert!(b.secuencias.is_empty());
-    assert!(matches!(imagenes::pegar_en_borrador(&r, &CON_IMAGEN, None, luego), imagenes::Pegado::Nueva(3, _)));
+    assert!(matches!(
+        imagenes::pegar_en_borrador(&r, &CON_IMAGEN, None, luego),
+        imagenes::Pegado::Nueva(3, _)
+    ));
     // Una caja vacia (Flow abierto de nuevo): el borrador entero fuera.
     imagenes::podar(&r, "", luego + imagenes::GRACIA_PODAR_MS);
     assert!(imagenes::leer_borrador(&r, luego).is_none());
@@ -1596,7 +2434,11 @@ fn el_formato_del_borrador_es_el_que_leen_la_app_y_el_plugin() {
     assert_eq!(b.imagenes[&1], "C:\\a.png");
     assert!(b.huellas.is_empty() && b.secuencias.is_empty());
     // Y el de ahora, campo a campo.
-    let mut b = imagenes::Borrador { tocado: 5, secuencia: Some(7), ..Default::default() };
+    let mut b = imagenes::Borrador {
+        tocado: 5,
+        secuencia: Some(7),
+        ..Default::default()
+    };
     b.imagenes.insert(1, "C:\\a.png".into());
     b.huellas.insert(1, imagenes::huella(b"abc"));
     b.secuencias.push(7);
@@ -1609,7 +2451,11 @@ fn el_formato_del_borrador_es_el_que_leen_la_app_y_el_plugin() {
     assert_eq!(serde_json::from_value::<imagenes::Borrador>(j).unwrap(), b);
     // La huella es fija (FNV-1a): la del texto vacio es su base.
     assert_eq!(imagenes::huella(b""), 0xcbf2_9ce4_8422_2325);
-    assert_ne!(imagenes::huella(b"abc"), imagenes::huella(b"abd"), "caso negativo");
+    assert_ne!(
+        imagenes::huella(b"abc"),
+        imagenes::huella(b"abd"),
+        "caso negativo"
+    );
 }
 
 #[test]
@@ -1621,9 +2467,18 @@ fn los_ficheros_copiados_y_el_bmp_de_un_dib() {
     for c in "C:\\a.png\0D:\\b c.jpg\0\0".encode_utf16() {
         b.extend_from_slice(&c.to_le_bytes());
     }
-    assert_eq!(imagenes::ficheros_de_drop(&b), [PathBuf::from("C:\\a.png"), PathBuf::from("D:\\b c.jpg")]);
-    assert!(imagenes::ficheros_de_drop(&[1, 2]).is_empty(), "caso negativo: roto");
-    assert!(imagenes::es_imagen_pegable(Path::new("x.JPEG")) && !imagenes::es_imagen_pegable(Path::new("x.pdf")));
+    assert_eq!(
+        imagenes::ficheros_de_drop(&b),
+        [PathBuf::from("C:\\a.png"), PathBuf::from("D:\\b c.jpg")]
+    );
+    assert!(
+        imagenes::ficheros_de_drop(&[1, 2]).is_empty(),
+        "caso negativo: roto"
+    );
+    assert!(
+        imagenes::es_imagen_pegable(Path::new("x.JPEG"))
+            && !imagenes::es_imagen_pegable(Path::new("x.pdf"))
+    );
     // Un DIB de 1x1 a 24 bits: cabecera de 40 y 4 bytes de pixel.
     let mut dib = vec![0u8; 44];
     dib[0] = 40;
@@ -1635,15 +2490,24 @@ fn los_ficheros_copiados_y_el_bmp_de_un_dib() {
     assert_eq!(&bmp[..2], b"BM");
     assert_eq!(u32::from_le_bytes(bmp[2..6].try_into().unwrap()), 58);
     assert_eq!(u32::from_le_bytes(bmp[10..14].try_into().unwrap()), 54);
-    assert!(imagenes::bmp_de_dib(&[0; 8]).is_none(), "caso negativo: corto");
+    assert!(
+        imagenes::bmp_de_dib(&[0; 8]).is_none(),
+        "caso negativo: corto"
+    );
 }
 
 #[test]
 fn una_tarea_con_imagenes_ensena_img_01_y_no_el_enlace() {
-    let (t, v) = crate::datos::sin_imagenes("yeso ![img 01](pixpin:files/guardados/pc/general/archivos/tarea-1-01.png) ya");
+    let (t, v) = crate::datos::sin_imagenes(
+        "yeso ![img 01](pixpin:files/guardados/pc/general/archivos/tarea-1-01.png) ya",
+    );
     assert_eq!(t, "yeso [img 01] ya");
-    assert_eq!(v, ["pixpin:files/guardados/pc/general/archivos/tarea-1-01.png"]);
-    let tareas = crate::datos::leer_tareas("- [ ] yeso ![img 01](pixpin:files/a.png) ➕ 2026-10-03");
+    assert_eq!(
+        v,
+        ["pixpin:files/guardados/pc/general/archivos/tarea-1-01.png"]
+    );
+    let tareas =
+        crate::datos::leer_tareas("- [ ] yeso ![img 01](pixpin:files/a.png) ➕ 2026-10-03");
     assert_eq!(tareas[0].texto, "yeso [img 01]");
     assert_eq!(tareas[0].imagenes.len(), 1);
     assert!(tareas[0].creada.is_some());

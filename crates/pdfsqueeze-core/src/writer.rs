@@ -22,7 +22,11 @@ pub struct WriteOptions {
 
 impl Default for WriteOptions {
     fn default() -> Self {
-        WriteOptions { object_streams: true, effort: Effort::fast(), objstm_chunk: 200 }
+        WriteOptions {
+            object_streams: true,
+            effort: Effort::fast(),
+            objstm_chunk: 200,
+        }
     }
 }
 
@@ -49,7 +53,13 @@ pub fn write_document(doc: &Document, opts: &WriteOptions) -> Vec<u8> {
         if opts.object_streams && !must_be_direct {
             packable.push((id, obj));
         } else {
-            offsets.insert(id.0, XrefEntry::Direct { offset: out.len() as u64, gen: id.1 });
+            offsets.insert(
+                id.0,
+                XrefEntry::Direct {
+                    offset: out.len() as u64,
+                    gen: id.1,
+                },
+            );
             write_indirect(&mut out, id, obj);
         }
     }
@@ -57,7 +67,14 @@ pub fn write_document(doc: &Document, opts: &WriteOptions) -> Vec<u8> {
     // Object streams: build all chunks, compress them in parallel, then emit.
     let mut next_id = max_id + 1;
     let chunk_size = opts.objstm_chunk.max(1);
-    let chunks: Vec<(u32, &[(ObjectId, &Object)])> = packable.chunks(chunk_size).map(|c| { let id = next_id; next_id += 1; (id, c) }).collect();
+    let chunks: Vec<(u32, &[(ObjectId, &Object)])> = packable
+        .chunks(chunk_size)
+        .map(|c| {
+            let id = next_id;
+            next_id += 1;
+            (id, c)
+        })
+        .collect();
     let built: Vec<(u32, usize, usize, Vec<u8>)> = {
         use rayon::prelude::*;
         chunks
@@ -72,13 +89,24 @@ pub fn write_document(doc: &Document, opts: &WriteOptions) -> Vec<u8> {
                 }
                 let first = header.len();
                 header.extend_from_slice(&body);
-                (*stm_id, chunk.len(), first, deflate::zlib(&header, opts.effort))
+                (
+                    *stm_id,
+                    chunk.len(),
+                    first,
+                    deflate::zlib(&header, opts.effort),
+                )
             })
             .collect()
     };
     for ((stm_id, chunk), (_, n, first, compressed)) in chunks.iter().zip(built) {
         for (idx, (id, _)) in chunk.iter().enumerate() {
-            offsets.insert(id.0, XrefEntry::InStream { stream: *stm_id, index: idx as u32 });
+            offsets.insert(
+                id.0,
+                XrefEntry::InStream {
+                    stream: *stm_id,
+                    index: idx as u32,
+                },
+            );
         }
         let mut dict = Dictionary::new();
         dict.set("Type", Object::Name(b"ObjStm".to_vec()));
@@ -86,7 +114,13 @@ pub fn write_document(doc: &Document, opts: &WriteOptions) -> Vec<u8> {
         dict.set("First", first as i64);
         dict.set("Filter", Object::Name(b"FlateDecode".to_vec()));
         let stream = Stream::new(dict, compressed);
-        offsets.insert(*stm_id, XrefEntry::Direct { offset: out.len() as u64, gen: 0 });
+        offsets.insert(
+            *stm_id,
+            XrefEntry::Direct {
+                offset: out.len() as u64,
+                gen: 0,
+            },
+        );
         write_indirect(&mut out, (*stm_id, 0), &Object::Stream(stream));
     }
 
@@ -94,7 +128,13 @@ pub fn write_document(doc: &Document, opts: &WriteOptions) -> Vec<u8> {
     let xref_id = next_id;
     let size = xref_id + 1;
     let xref_offset = out.len() as u64;
-    offsets.insert(xref_id, XrefEntry::Direct { offset: xref_offset, gen: 0 });
+    offsets.insert(
+        xref_id,
+        XrefEntry::Direct {
+            offset: xref_offset,
+            gen: 0,
+        },
+    );
     let mut rows = Vec::with_capacity(size as usize * 7);
     for n in 0..size {
         match offsets.get(&n) {
@@ -202,10 +242,20 @@ fn write_dict(out: &mut Vec<u8>, d: &Dictionary) {
 
 /// Tokens that start with a delimiter (`/`, `[`, `<`, `(`) need no space after a name.
 fn needs_separator_before(o: &Object) -> bool {
-    !matches!(o, Object::Name(_) | Object::Array(_) | Object::Dictionary(_) | Object::String(..) | Object::Stream(_))
+    !matches!(
+        o,
+        Object::Name(_)
+            | Object::Array(_)
+            | Object::Dictionary(_)
+            | Object::String(..)
+            | Object::Stream(_)
+    )
 }
 fn needs_separator_after(o: &Object) -> bool {
-    !matches!(o, Object::Array(_) | Object::Dictionary(_) | Object::String(..))
+    !matches!(
+        o,
+        Object::Array(_) | Object::Dictionary(_) | Object::String(..)
+    )
 }
 
 fn write_real(out: &mut Vec<u8>, r: f32) {
@@ -216,7 +266,13 @@ fn write_real(out: &mut Vec<u8>, r: f32) {
     let s = format!("{:.5}", r);
     let s = s.trim_end_matches('0').trim_end_matches('.');
     // "-0" and "0.x" → ".x" are both legal but keep it readable: only drop leading zero.
-    let s = if let Some(rest) = s.strip_prefix("0.") { format!(".{}", rest) } else if let Some(rest) = s.strip_prefix("-0.") { format!("-.{}", rest) } else { s.to_string() };
+    let s = if let Some(rest) = s.strip_prefix("0.") {
+        format!(".{}", rest)
+    } else if let Some(rest) = s.strip_prefix("-0.") {
+        format!("-.{}", rest)
+    } else {
+        s.to_string()
+    };
     out.extend_from_slice(s.as_bytes());
 }
 

@@ -42,12 +42,15 @@ use std::path::{Path, PathBuf};
 use pixpin_docs::lectura::{self, Ajustes};
 use pixpin_docs::{vista, voz_alta};
 use pixpin_proyecto::anotado::{self as an, Base};
-use pixpin_sincro::anotado::{CIFRAS_DE_LA_HUELLA, HOJA, MarcoDeLaHoja, Maqueta, huella_coincide, margen_de};
+use pixpin_sincro::anotado::{
+    CIFRAS_DE_LA_HUELLA, HOJA, Maqueta, MarcoDeLaHoja, huella_coincide, margen_de,
+};
 
 use crate::lector_tinta::{self, Capa, Unidades};
 
 fn es_pdf(doc: &Path) -> bool {
-    doc.extension().is_some_and(|e| e.eq_ignore_ascii_case("pdf"))
+    doc.extension()
+        .is_some_and(|e| e.eq_ignore_ascii_case("pdf"))
 }
 
 /// La base de lo anotado de `doc`, si es un adjunto del chat (o el PDF de un proyecto).
@@ -104,7 +107,8 @@ pub fn maqueta_para(a: &Ajustes, actual: Option<Maqueta>) -> Option<Maqueta> {
         && lectura::tamano_valido(m.tamano.max(0) as u32) == a.tamano
         && grosor_del_movil(m.grosor) == a.grosor
         && tipo_del_movil(m.tipo) == a.tipo
-        && a.lados.is_none_or(|(i, d)| (i as i32, d as i32) == (m.izq, m.der))
+        && a.lados
+            .is_none_or(|(i, d)| (i as i32, d as i32) == (m.izq, m.der))
     {
         return None;
     }
@@ -151,16 +155,32 @@ pub fn leer(doc: &Path) -> Ajustes {
 /// Lo de antes a los ficheros del mensaje, si aun no los tiene (`migrar`).
 fn migrar(b: &Base, a: &Ajustes, pdf: bool) {
     if pdf {
-        an::poner_si_falta(&b.fichero(".marcas"), Some(&a.marcas).filter(|m| !m.is_empty()).map(String::as_str));
-        an::poner_si_falta(&b.fichero(".espacios"), (a.espacios != 0).then(|| a.espacios.to_string()).as_deref());
+        an::poner_si_falta(
+            &b.fichero(".marcas"),
+            Some(&a.marcas)
+                .filter(|m| !m.is_empty())
+                .map(String::as_str),
+        );
+        an::poner_si_falta(
+            &b.fichero(".espacios"),
+            (a.espacios != 0).then(|| a.espacios.to_string()).as_deref(),
+        );
         return;
     }
     let marcas = (!a.marcadores.is_empty()).then(|| marcadores_a_texto(a));
     an::poner_si_falta(&b.fichero(".marcas"), marcas.as_deref());
-    let maqueta = (a.columna > 0).then(|| maqueta_para(a, None).map(|m| m.a_texto())).flatten();
+    let maqueta = (a.columna > 0)
+        .then(|| maqueta_para(a, None).map(|m| m.a_texto()))
+        .flatten();
     an::poner_si_falta(&b.fichero(".maqueta"), maqueta.as_deref());
-    an::poner_si_falta(&b.fichero(".sitio"), (a.sitio > 0.0).then(|| a.sitio.to_string()).as_deref());
-    an::poner_si_falta(&b.fichero(".voz"), a.voz.map(|(p, f)| voz_alta::voz_a_texto(p, f)).as_deref());
+    an::poner_si_falta(
+        &b.fichero(".sitio"),
+        (a.sitio > 0.0).then(|| a.sitio.to_string()).as_deref(),
+    );
+    an::poner_si_falta(
+        &b.fichero(".voz"),
+        a.voz.map(|(p, f)| voz_alta::voz_a_texto(p, f)).as_deref(),
+    );
 }
 
 fn poner_lo_del_mensaje(b: &Base, a: &mut Ajustes, pdf: bool) {
@@ -203,7 +223,10 @@ fn poner_lo_del_mensaje(b: &Base, a: &mut Ajustes, pdf: bool) {
     if let Some(t) = leer(".voz") {
         a.voz = voz_alta::voz_de_texto(&t);
     }
-    if let Some(s) = leer(".sitio").and_then(|t| t.trim().parse::<f32>().ok()).filter(|s| s.is_finite()) {
+    if let Some(s) = leer(".sitio")
+        .and_then(|t| t.trim().parse::<f32>().ok())
+        .filter(|s| s.is_finite())
+    {
         a.sitio = s.clamp(0.0, 1.0);
     }
 }
@@ -253,7 +276,10 @@ fn escribir_lo_del_mensaje(b: &Base, a: &Ajustes, pdf: bool) -> std::io::Result<
     }
     // El verde: lo de ahora, o vacio si se quito (no se borra, como el movil).
     let f = b.fichero(".voz");
-    let ahora = a.voz.map(|(p, fr)| voz_alta::voz_a_texto(p, fr)).unwrap_or_default();
+    let ahora = a
+        .voz
+        .map(|(p, fr)| voz_alta::voz_a_texto(p, fr))
+        .unwrap_or_default();
     if an::leer(&f).and_then(|t| voz_alta::voz_de_texto(&t)) != a.voz {
         poner(".voz", ahora, a.voz.is_none())?;
     }
@@ -384,7 +410,10 @@ pub fn guardar_capa(doc: &Path, capa: &mut Capa) -> std::io::Result<()> {
 /// **La base de la tinta de la hoja `i` de un PDF suelto del chat**
 /// (`anot-<uid>-p<i>`: su marco es `Base::marco`), junto a lo demas de su
 /// mensaje; `None` si no es un adjunto.
-pub fn base_de_la_hoja_del_pdf(adjunto: Option<&(PathBuf, pixpin_proyecto::anotado::Adjunto)>, i: usize) -> Option<Base> {
+pub fn base_de_la_hoja_del_pdf(
+    adjunto: Option<&(PathBuf, pixpin_proyecto::anotado::Adjunto)>,
+    i: usize,
+) -> Option<Base> {
     let (raiz, x) = adjunto?;
     Some(Base::de_pagina(raiz, x, u32::try_from(i).ok()?))
 }
@@ -434,10 +463,15 @@ pub fn escribir_marco(b: &Base, u: Unidades, propia: &MarcoDeLaHoja) -> std::io:
     if !propia.valido() {
         return Ok(());
     }
-    if let Some((ya, huella)) = an::leer(&b.marco()).and_then(|t| MarcoDeLaHoja::de_texto_con_huella(&t))
+    if let Some((ya, huella)) =
+        an::leer(&b.marco()).and_then(|t| MarcoDeLaHoja::de_texto_con_huella(&t))
         && Unidades::del_marco(propia, &ya).is_some_and(|v| v.casi_iguales(&u))
     {
-        return if huella.is_some() { b.quitar_la_huella() } else { Ok(()) };
+        return if huella.is_some() {
+            b.quitar_la_huella()
+        } else {
+            Ok(())
+        };
     }
     b.escribir_marco(&u.marco_de(propia))
 }
@@ -445,11 +479,18 @@ pub fn escribir_marco(b: &Base, u: Unidades, propia: &MarcoDeLaHoja) -> std::io:
 /// **La tinta de la hoja `i` de un PDF suelto** que es un adjunto del chat
 /// (`anot-<uid>-p<i>`), con la de antes copiada la primera vez (mismas
 /// unidades que el movil: se copia tal cual). `None` si no es un adjunto.
-pub fn hoja_del_pdf(adjunto: Option<&(PathBuf, pixpin_proyecto::anotado::Adjunto)>, pdf: &Path, i: usize) -> Option<PathBuf> {
+pub fn hoja_del_pdf(
+    adjunto: Option<&(PathBuf, pixpin_proyecto::anotado::Adjunto)>,
+    pdf: &Path,
+    i: usize,
+) -> Option<PathBuf> {
     use pixpin_sincro::disco::Disco;
     let (raiz, x) = adjunto?;
     let pagina = u32::try_from(i).ok()?;
-    let rel = pixpin_sincro::anotado::rel(&pixpin_sincro::anotado::de_pagina(&x.uid, pagina), ".excalidraw.gz");
+    let rel = pixpin_sincro::anotado::rel(
+        &pixpin_sincro::anotado::de_pagina(&x.uid, pagina),
+        ".excalidraw.gz",
+    );
     let nueva = pixpin_proyecto::vista::DiscoPc::nuevo(raiz).ruta(&x.chat, &rel);
     let vieja = lector_tinta::ruta_de_hoja(pdf, i);
     if an::copiar_si_falta(&vieja, &nueva) {
@@ -465,8 +506,11 @@ pub fn hoja_del_pdf(adjunto: Option<&(PathBuf, pixpin_proyecto::anotado::Adjunto
 /// `pc` y el numero en hexadecimal). Los del movil son de 21 letras al azar
 /// con mayusculas, `_` y `-`: que uno sea `pc` y solo hexadecimal no pasa.
 fn nacido_en_el_pc(id: &str) -> bool {
-    id.strip_prefix("pc")
-        .is_some_and(|h| (1..=16).contains(&h.len()) && h.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b)))
+    id.strip_prefix("pc").is_some_and(|h| {
+        (1..=16).contains(&h.len())
+            && h.bytes()
+                .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+    })
 }
 
 /// **Lo que el PC escribio en la hoja del movil antes de saber sus
@@ -490,11 +534,21 @@ pub fn lo_del_pc_a_la_capa_del_movil(pdf: &Path, i: usize, hoja: &Path, u: lecto
         return;
     }
     let mut c = Capa::leer(hoja);
-    let movidos = c.pasar_a(u, |e| e.extras.id_de_fichero.as_deref().is_some_and(nacido_en_el_pc));
+    let movidos = c.pasar_a(u, |e| {
+        e.extras
+            .id_de_fichero
+            .as_deref()
+            .is_some_and(nacido_en_el_pc)
+    });
     if movidos > 0 {
         match c.guardar(hoja) {
-            Ok(()) => tracing::info!(movidos, hoja = %hoja.display(), "tinta del PC llevada a las unidades del movil"),
-            Err(e) => tracing::warn!(?e, "no se pudo llevar la tinta del PC a las unidades del movil"),
+            Ok(()) => {
+                tracing::info!(movidos, hoja = %hoja.display(), "tinta del PC llevada a las unidades del movil")
+            }
+            Err(e) => tracing::warn!(
+                ?e,
+                "no se pudo llevar la tinta del PC a las unidades del movil"
+            ),
         }
     }
 }
@@ -526,7 +580,10 @@ pub(crate) mod pruebas {
     use pixpin_proyecto::cuaderno::{self, Clase, Mensaje, Sello};
 
     pub(crate) fn raiz(etiqueta: &str) -> PathBuf {
-        let r = std::env::temp_dir().join(format!("pixpin-anotado-app-{etiqueta}-{}", std::process::id()));
+        let r = std::env::temp_dir().join(format!(
+            "pixpin-anotado-app-{etiqueta}-{}",
+            std::process::id()
+        ));
         let _ = std::fs::remove_dir_all(&r);
         std::fs::create_dir_all(&r).unwrap();
         r
@@ -539,9 +596,18 @@ pub(crate) mod pruebas {
         i.proyectos.push(ficha.clone());
         i.guardar(r).unwrap();
         let ruta = almacen::guardar_adjunto(r, &ficha.id, nombre, bytes).unwrap();
-        let sello = Sello { cuando: 10, numero: 1, aparato: "PC01".into(), proyecto: ficha.id.clone() };
+        let sello = Sello {
+            cuando: 10,
+            numero: 1,
+            aparato: "PC01".into(),
+            proyecto: ficha.id.clone(),
+        };
         let carpeta = almacen::carpeta(r, &ficha.id);
-        cuaderno::anadir(&carpeta, &Mensaje::adjunto(Clase::Archivo, nombre, &ruta, 2, &sello)).unwrap();
+        cuaderno::anadir(
+            &carpeta,
+            &Mensaje::adjunto(Clase::Archivo, nombre, &ruta, 2, &sello),
+        )
+        .unwrap();
         carpeta.join(&ruta)
     }
 
@@ -576,13 +642,19 @@ pub(crate) mod pruebas {
         assert_eq!(a.voz, Some((12, 0.25)));
         // Sin cambios no se reescribe nada.
         escribir(&doc, &a).unwrap();
-        assert_eq!(an::leer(&b.fichero(".maqueta")).as_deref(), Some("420,140,280,100,1,0"));
+        assert_eq!(
+            an::leer(&b.fichero(".maqueta")).as_deref(),
+            Some("420,140,280,100,1,0")
+        );
         assert_eq!(an::leer(&b.fichero(".voz")).as_deref(), Some("12:0.25"));
         // El PC quita el paso de la izquierda y el verde avanza.
         a.lados = Some((0, 280));
         a.voz = Some((13, 0.3));
         escribir(&doc, &a).unwrap();
-        assert_eq!(an::leer(&b.fichero(".maqueta")).as_deref(), Some("420,0,280,100,1,0"));
+        assert_eq!(
+            an::leer(&b.fichero(".maqueta")).as_deref(),
+            Some("420,0,280,100,1,0")
+        );
         assert_eq!(an::leer(&b.fichero(".voz")).as_deref(), Some("13:0.3"));
         // Acabado el documento: vacio, no borrado (borrado seria «no se sabe»).
         a.voz = None;
@@ -622,7 +694,11 @@ pub(crate) mod pruebas {
         an::escribir(&b.fichero(".marcas"), "1790218080412:0.34022403:P").unwrap();
         an::escribir(&b.fichero(".sitio"), "0.7799783").unwrap();
         let a = leer(&doc);
-        assert_eq!((a.columna, a.tamano, a.grosor, a.tipo), (384, 115, 3, 2), "la columna y la letra del movil");
+        assert_eq!(
+            (a.columna, a.tamano, a.grosor, a.tipo),
+            (384, 115, 3, 2),
+            "la columna y la letra del movil"
+        );
         assert_eq!(a.marcadores.len(), 1);
         assert_eq!(a.marcadores[0].emoji, "P");
         assert!((a.sitio - 0.7799783).abs() < 1e-6);
@@ -630,12 +706,28 @@ pub(crate) mod pruebas {
         // Guardar sin cambiar la letra no reescribe la maqueta del movil:
         // sus margenes, su peso negro y su letra de ancho fijo se quedan.
         escribir(&doc, &a).unwrap();
-        assert_eq!(an::leer(&b.fichero(".maqueta")).as_deref(), Some("384,256,256,115,3,2"));
-        assert_eq!(an::leer(&b.fichero(".marcas")).as_deref(), Some("1790218080412:0.34022403:P"));
+        assert_eq!(
+            an::leer(&b.fichero(".maqueta")).as_deref(),
+            Some("384,256,256,115,3,2")
+        );
+        assert_eq!(
+            an::leer(&b.fichero(".marcas")).as_deref(),
+            Some("1790218080412:0.34022403:P")
+        );
         assert_eq!(an::leer(&b.fichero(".sitio")).as_deref(), Some("0.7799783"));
         // Cambiada en el PC, se reescribe con los margenes que tenia.
-        escribir(&doc, &Ajustes { tamano: 130, ..a.clone() }).unwrap();
-        assert_eq!(an::leer(&b.fichero(".maqueta")).as_deref(), Some("384,256,256,130,3,2"));
+        escribir(
+            &doc,
+            &Ajustes {
+                tamano: 130,
+                ..a.clone()
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            an::leer(&b.fichero(".maqueta")).as_deref(),
+            Some("384,256,256,130,3,2")
+        );
         // Y sin columna (se quito toda la tinta), vacia, no borrada.
         escribir(&doc, &Ajustes { columna: 0, ..a }).unwrap();
         assert_eq!(an::leer(&b.fichero(".maqueta")).as_deref(), Some(""));
@@ -664,15 +756,25 @@ pub(crate) mod pruebas {
         .unwrap();
         let capa = leer_capa(&doc);
         let b = base(&doc);
-        assert_eq!(an::leer(&b.fichero(".maqueta")).as_deref(), Some("860,573,573,100,1,0"));
-        assert_eq!(an::leer(&b.fichero(".marcas")).as_deref(), Some("1790218080412:0.34022403:P"));
+        assert_eq!(
+            an::leer(&b.fichero(".maqueta")).as_deref(),
+            Some("860,573,573,100,1,0")
+        );
+        assert_eq!(
+            an::leer(&b.fichero(".marcas")).as_deref(),
+            Some("1790218080412:0.34022403:P")
+        );
         assert_eq!(an::leer(&b.fichero(".sitio")).as_deref(), Some("0.6239229"));
         // En el fichero del mensaje cuenta desde el borde de la pagina; en el
         // lector, igual que antes.
-        let v: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(b.tinta()).unwrap()).unwrap();
+        let v: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(b.tinta()).unwrap()).unwrap();
         assert_eq!(v["elements"][0]["x"].as_f64(), Some(583.0));
         assert_eq!(capa.escena.visibles().next().unwrap().x, 10.0);
-        assert!(vieja.is_file() && lectura::ruta_de_ajustes(&doc).is_file(), "lo viejo se queda");
+        assert!(
+            vieja.is_file() && lectura::ruta_de_ajustes(&doc).is_file(),
+            "lo viejo se queda"
+        );
         // La segunda vez no se pisa lo que ya tiene el mensaje.
         std::fs::write(&vieja, r#"{"type":"excalidraw","elements":[]}"#).unwrap();
         assert_eq!(leer_capa(&doc).escena.cuantos_visibles(), 1);
@@ -702,9 +804,18 @@ pub(crate) mod pruebas {
         )
         .unwrap();
         let capa = leer_capa(&doc);
-        assert_eq!(capa.escena.cuantos_visibles(), 2, "lo del movil y lo de aqui");
-        let v: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(b.tinta()).unwrap()).unwrap();
-        assert_eq!(v["elements"][1]["x"].as_f64(), Some(266.0), "lo de aqui, corrido a la pagina");
+        assert_eq!(
+            capa.escena.cuantos_visibles(),
+            2,
+            "lo del movil y lo de aqui"
+        );
+        let v: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(b.tinta()).unwrap()).unwrap();
+        assert_eq!(
+            v["elements"][1]["x"].as_f64(),
+            Some(266.0),
+            "lo de aqui, corrido a la pagina"
+        );
         // Borrado despues, no vuelve al abrir otra vez.
         std::fs::write(b.tinta(), r#"{"elements":[]}"#).unwrap();
         assert_eq!(leer_capa(&doc).escena.cuantos_visibles(), 0);
@@ -715,19 +826,31 @@ pub(crate) mod pruebas {
         let (raiz, x) = adjunto.clone().unwrap();
         let nueva = {
             use pixpin_sincro::disco::Disco;
-            let rel = pixpin_sincro::anotado::rel(&pixpin_sincro::anotado::de_pagina(&x.uid, 2), ".excalidraw.gz");
+            let rel = pixpin_sincro::anotado::rel(
+                &pixpin_sincro::anotado::de_pagina(&x.uid, 2),
+                ".excalidraw.gz",
+            );
             pixpin_proyecto::vista::DiscoPc::nuevo(&raiz).ruta(&x.chat, &rel)
         };
         std::fs::create_dir_all(nueva.parent().unwrap()).unwrap();
         std::fs::write(&nueva, r#"{"elements":[{"id":"m2","type":"freedraw","x":5,"y":5,"width":1,"height":1,"points":[{"x":0.0,"y":0.0},{"x":1.0,"y":1.0}]}]}"#).unwrap();
         let hoja_vieja = lector_tinta::ruta_de_hoja(&pdf, 2);
         std::fs::create_dir_all(hoja_vieja.parent().unwrap()).unwrap();
-        std::fs::write(&hoja_vieja, r#"{"elements":[{"id":"pc1","type":"freedraw","x":70,"y":80,"points":[[0,0],[9,9]]}]}"#).unwrap();
+        std::fs::write(
+            &hoja_vieja,
+            r#"{"elements":[{"id":"pc1","type":"freedraw","x":70,"y":80,"points":[[0,0],[9,9]]}]}"#,
+        )
+        .unwrap();
         let h = hoja_del_pdf(adjunto.as_ref(), &pdf, 2).unwrap();
         assert_eq!(h, nueva);
         assert_eq!(Capa::leer(&h).escena.cuantos_visibles(), 2);
-        let v: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&h).unwrap()).unwrap();
-        assert_eq!(v["elements"][1]["x"].as_f64(), Some(70.0), "en un PDF las unidades son las mismas");
+        let v: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&h).unwrap()).unwrap();
+        assert_eq!(
+            v["elements"][1]["x"].as_f64(),
+            Some(70.0),
+            "en un PDF las unidades son las mismas"
+        );
         let _ = std::fs::remove_dir_all(&r);
     }
 
@@ -752,10 +875,19 @@ pub(crate) mod pruebas {
         capa.escena.anadir(nuevo);
         capa.sucia = true;
         guardar_capa(&doc, &mut capa).unwrap();
-        let v: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(b.tinta()).unwrap()).unwrap();
-        let xs: Vec<f64> = v["elements"].as_array().unwrap().iter().map(|e| e["x"].as_f64().unwrap()).collect();
+        let v: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(b.tinta()).unwrap()).unwrap();
+        let xs: Vec<f64> = v["elements"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|e| e["x"].as_f64().unwrap())
+            .collect();
         assert_eq!(xs.len(), 2);
-        assert!((xs[0] - 10.123456789).abs() < 1e-9, "el del movil, intacto: {xs:?}");
+        assert!(
+            (xs[0] - 10.123456789).abs() < 1e-9,
+            "el del movil, intacto: {xs:?}"
+        );
         assert_eq!(xs[1], 156.0, "el nuevo, corrido al borde de la pagina");
         // Caso negativo: un documento fuera del almacen, junto a el y sin correr.
         let fuera = r.join("fuera.docx");
@@ -765,8 +897,10 @@ pub(crate) mod pruebas {
         c.escena.anadir(e);
         c.sucia = true;
         guardar_capa(&fuera, &mut c).unwrap();
-        let v: serde_json::Value =
-            serde_json::from_str(&std::fs::read_to_string(lector_tinta::ruta_de_capa(&fuera)).unwrap()).unwrap();
+        let v: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(lector_tinta::ruta_de_capa(&fuera)).unwrap(),
+        )
+        .unwrap();
         assert!(v["elements"][0]["x"].as_f64().unwrap() < 0.0, "sin correr");
         let _ = std::fs::remove_dir_all(&r);
     }
@@ -778,7 +912,12 @@ pub(crate) mod pruebas {
         // Lo de antes: marcas y espacios junto al PDF, y la tinta de la hoja 4.
         lectura::escribir(
             &pdf,
-            &Ajustes { espacios: 2, marcas: "1:0.5:3.61:B".into(), pagina: 4.5, ..Ajustes::default() },
+            &Ajustes {
+                espacios: 2,
+                marcas: "1:0.5:3.61:B".into(),
+                pagina: 4.5,
+                ..Ajustes::default()
+            },
         )
         .unwrap();
         let hoja_vieja = lector_tinta::ruta_de_hoja(&pdf, 3);
@@ -786,7 +925,10 @@ pub(crate) mod pruebas {
         std::fs::write(&hoja_vieja, r#"{"elements":[]}"#).unwrap();
         let a = leer(&pdf);
         let b = base(&pdf);
-        assert_eq!(an::leer(&b.fichero(".marcas")).as_deref(), Some("1:0.5:3.61:B"));
+        assert_eq!(
+            an::leer(&b.fichero(".marcas")).as_deref(),
+            Some("1:0.5:3.61:B")
+        );
         assert_eq!(an::leer(&b.fichero(".espacios")).as_deref(), Some("2"));
         assert_eq!(a.pagina, 4.5);
         // Lo que manda el movil gana.
@@ -802,7 +944,12 @@ pub(crate) mod pruebas {
         // La tinta de cada hoja, con el codigo del mensaje y la de antes copiada.
         let adjunto = adjunto_del_pdf(&pdf);
         let nueva = hoja_del_pdf(adjunto.as_ref(), &pdf, 3).unwrap();
-        assert!(nueva.to_string_lossy().ends_with(&format!("{}-p3.excalidraw", b.base)), "{nueva:?}");
+        assert!(
+            nueva
+                .to_string_lossy()
+                .ends_with(&format!("{}-p3.excalidraw", b.base)),
+            "{nueva:?}"
+        );
         assert!(nueva.is_file() && hoja_vieja.is_file());
         assert_eq!(hoja_del_pdf(None, &pdf, 3), None);
         let _ = std::fs::remove_dir_all(&r);
@@ -820,7 +967,11 @@ pub(crate) mod pruebas {
         let pdf = con_adjunto(&r, "tesis.pdf", b"%PDF-1.4");
         let d = DondeVa::de(&r, &pdf, 1);
         assert_eq!(d.unidades(0), Unidades::de_la_capa_del_movil(0));
-        assert_eq!(d.unidades(3), Unidades::DEL_PC, "con los dos espacios el movil guarda la hoja tal cual");
+        assert_eq!(
+            d.unidades(3),
+            Unidades::DEL_PC,
+            "con los dos espacios el movil guarda la hoja tal cual"
+        );
         let h = d.para_leer(&pdf, 0);
         std::fs::create_dir_all(h.parent().unwrap()).unwrap();
         let fichero = r#"{"elements":[
@@ -830,16 +981,37 @@ pub(crate) mod pruebas {
         let caja = |c: &Capa, n: usize| c.escena.visibles().nth(n).unwrap().caja();
         let c = d.leer_capa(&pdf, 0, 0, 1980.0);
         let (movil, pc) = (caja(&c, 0), caja(&c, 1));
-        assert!((movil.0 - 100.0).abs() < 3.0 && (movil.2 - movil.0 - 100.0).abs() < 5.0, "{movil:?}");
-        assert!((pc.0 - 100.0).abs() < 3.0 && (pc.2 - pc.0 - 100.0).abs() < 5.0, "lo del PC donde se dibujo: {pc:?}");
-        let v: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&h).unwrap()).unwrap();
-        assert_eq!(v["elements"][0]["x"].as_f64(), Some(-800.0), "lo del movil no se toca");
+        assert!(
+            (movil.0 - 100.0).abs() < 3.0 && (movil.2 - movil.0 - 100.0).abs() < 5.0,
+            "{movil:?}"
+        );
+        assert!(
+            (pc.0 - 100.0).abs() < 3.0 && (pc.2 - pc.0 - 100.0).abs() < 5.0,
+            "lo del PC donde se dibujo: {pc:?}"
+        );
+        let v: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&h).unwrap()).unwrap();
+        assert_eq!(
+            v["elements"][0]["x"].as_f64(),
+            Some(-800.0),
+            "lo del movil no se toca"
+        );
         let x = v["elements"][1]["x"].as_f64().unwrap();
-        assert!((x + 800.0).abs() < 1.0, "lo del PC, en las unidades del movil: {x}");
-        assert!(v["elements"][1]["version"].as_u64() > Some(2), "y como un cambio, para que el movil lo tome");
+        assert!(
+            (x + 800.0).abs() < 1.0,
+            "lo del PC, en las unidades del movil: {x}"
+        );
+        assert!(
+            v["elements"][1]["version"].as_u64() > Some(2),
+            "y como un cambio, para que el movil lo tome"
+        );
         // Una sola vez: abrirlo otra vez no lo vuelve a encoger.
         let otra = d.leer_capa(&pdf, 0, 0, 1980.0);
-        assert!((caja(&otra, 1).0 - 100.0).abs() < 3.0, "{:?}", caja(&otra, 1));
+        assert!(
+            (caja(&otra, 1).0 - 100.0).abs() < 3.0,
+            "{:?}",
+            caja(&otra, 1)
+        );
         // Caso negativo: compartir solo lee, no escribe nada.
         let h2 = d.para_leer(&pdf, 1);
         std::fs::write(&h2, fichero).unwrap();
@@ -854,9 +1026,17 @@ pub(crate) mod pruebas {
 
     #[test]
     fn un_id_nacido_en_el_pc_se_reconoce_y_uno_del_movil_no() {
-        assert!(nacido_en_el_pc("pc1f") && nacido_en_el_pc("pcc") && nacido_en_el_pc("pc0123456789abcdef"));
+        assert!(
+            nacido_en_el_pc("pc1f")
+                && nacido_en_el_pc("pcc")
+                && nacido_en_el_pc("pc0123456789abcdef")
+        );
         assert!(!nacido_en_el_pc("jDNyxAFkaxm2qZ-KsluKG"));
-        assert!(!nacido_en_el_pc("pcZ") && !nacido_en_el_pc("pc") && !nacido_en_el_pc("pc0123456789abcdef0"));
+        assert!(
+            !nacido_en_el_pc("pcZ")
+                && !nacido_en_el_pc("pc")
+                && !nacido_en_el_pc("pc0123456789abcdef0")
+        );
         assert!(!nacido_en_el_pc("PC1"));
     }
 
@@ -868,7 +1048,15 @@ pub(crate) mod pruebas {
         // Dentro de la carpeta del chat pero sin mensaje que lo senale.
         let pdf = carpeta.join("archivos/suelto.pdf");
         std::fs::write(&pdf, b"%PDF").unwrap();
-        escribir(&pdf, &Ajustes { espacios: 2, marcas: "1:0:0:E".into(), ..Ajustes::default() }).unwrap();
+        escribir(
+            &pdf,
+            &Ajustes {
+                espacios: 2,
+                marcas: "1:0:0:E".into(),
+                ..Ajustes::default()
+            },
+        )
+        .unwrap();
         assert_eq!(leer(&pdf).espacios, 2);
         assert!(adjunto_del_pdf(&pdf).is_none());
         assert!(!carpeta.join("android").exists(), "nada con codigo");
@@ -889,7 +1077,11 @@ pub(crate) mod pruebas {
         assert_eq!(an::leer(&nueva).as_deref(), Some("k:10.0:20.0:H"));
         std::fs::write(&vieja, "otra").unwrap();
         marcas_del_lienzo(&lienzo, vieja.clone());
-        assert_eq!(an::leer(&nueva).as_deref(), Some("k:10.0:20.0:H"), "no se pisa");
+        assert_eq!(
+            an::leer(&nueva).as_deref(),
+            Some("k:10.0:20.0:H"),
+            "no se pisa"
+        );
         // Caso negativo: fuera del almacen, el de siempre.
         let fuera = r.join("d.excalidraw");
         assert_eq!(
@@ -917,21 +1109,41 @@ mod con_datos_reales {
         let capa = leer_capa(&docx);
         let xs: Vec<f32> = capa.escena.visibles().map(|e| e.x).collect();
         println!("docx: base {:?}", base_de(&docx).map(|b| b.base));
-        println!("docx: columna {} tamano {} sitio {} marcadores {}", a.columna, a.tamano, a.sitio, a.marcadores.len());
+        println!(
+            "docx: columna {} tamano {} sitio {} marcadores {}",
+            a.columna,
+            a.tamano,
+            a.sitio,
+            a.marcadores.len()
+        );
         println!("docx: {} trazos, x {:?}", xs.len(), xs);
         let pdf = carpeta.join("Transcripcion_Voz_260904_201352.pdf");
         let a = leer(&pdf);
-        println!("pdf: base {:?} espacios {} marcas {:?}", base_de(&pdf).map(|b| b.base), a.espacios, a.marcas);
+        println!(
+            "pdf: base {:?} espacios {} marcas {:?}",
+            base_de(&pdf).map(|b| b.base),
+            a.espacios,
+            a.marcas
+        );
         let adj = adjunto_del_pdf(&pdf);
         for i in 0..7 {
             let h = hoja_del_pdf(adj.as_ref(), &pdf, i).unwrap();
             if h.is_file() {
-                println!("pdf hoja {i}: {} trazos ({})", Capa::leer(&h).escena.cuantos_visibles(), h.display());
+                println!(
+                    "pdf hoja {i}: {} trazos ({})",
+                    Capa::leer(&h).escena.cuantos_visibles(),
+                    h.display()
+                );
             }
         }
-        let lienzo = raiz.join("proyectos/pr-1788574477233/lienzos/hoja-pr-1788574477233-0.excalidraw");
+        let lienzo =
+            raiz.join("proyectos/pr-1788574477233/lienzos/hoja-pr-1788574477233-0.excalidraw");
         let m = marcas_del_lienzo(&lienzo, lienzo.with_extension("excalidraw.pixpin-marcas"));
-        println!("lienzo: {} -> {:?}", m.display(), std::fs::read_to_string(&m).ok());
+        println!(
+            "lienzo: {} -> {:?}",
+            m.display(),
+            std::fs::read_to_string(&m).ok()
+        );
         assert_eq!(base_de(&docx).unwrap().base, "anot-9KKUS3XF5W");
         assert_eq!(base_de(&pdf).unwrap().base, "anot-34FJGS8TT2");
     }
@@ -970,7 +1182,10 @@ mod pruebas_del_marco {
     /// Su marco, como lo escribiria Kotlin (`1400.0`): se conserva tal cual.
     const SU_MARCO: &str = "500.0,300.0,4700.0,6240.0\nv1\n";
 
-    fn pdf_con_tinta(etiqueta: &str, marco: Option<&str>) -> (PathBuf, PathBuf, DondeVa, PathBuf, PathBuf) {
+    fn pdf_con_tinta(
+        etiqueta: &str,
+        marco: Option<&str>,
+    ) -> (PathBuf, PathBuf, DondeVa, PathBuf, PathBuf) {
         let r = raiz(etiqueta);
         let pdf = con_adjunto(&r, "plano.pdf", b"%PDF-1.4");
         let d = DondeVa::de(&r, &pdf, 1);
@@ -978,7 +1193,9 @@ mod pruebas_del_marco {
         std::fs::create_dir_all(tinta.parent().unwrap()).unwrap();
         std::fs::write(&tinta, TINTA_A_OTRA_ESCALA).unwrap();
         let (raiz_almacen, x) = adjunto_del_pdf(&pdf).unwrap();
-        let f = base_de_la_hoja_del_pdf(Some(&(raiz_almacen, x)), 0).unwrap().marco();
+        let f = base_de_la_hoja_del_pdf(Some(&(raiz_almacen, x)), 0)
+            .unwrap()
+            .marco();
         if let Some(m) = marco {
             an::escribir(&f, m).unwrap();
         }
@@ -987,7 +1204,10 @@ mod pruebas_del_marco {
 
     /// La huella de la tinta de la hoja 0 del PDF del chat, como ahora.
     fn huella_de_la_hoja(pdf: &Path) -> String {
-        base_de_la_hoja_del_pdf(adjunto_del_pdf(pdf).as_ref(), 0).unwrap().huella().unwrap()
+        base_de_la_hoja_del_pdf(adjunto_del_pdf(pdf).as_ref(), 0)
+            .unwrap()
+            .huella()
+            .unwrap()
     }
 
     #[test]
@@ -996,7 +1216,10 @@ mod pruebas_del_marco {
         let (r, pdf, d, tinta, f) = pdf_con_tinta("marco-huella", None);
         let h = huella_de_la_hoja(&pdf);
         an::escribir(&f, &format!("500.0,300.0,4700.0,6240.0\nv1\ntinta {h}\n")).unwrap();
-        assert!(cerca(puntos(&d.leer_capa(&pdf, 0, 0, 1980.0))[0][0], (0.0, 0.0)));
+        assert!(cerca(
+            puntos(&d.leer_capa(&pdf, 0, 0, 1980.0))[0][0],
+            (0.0, 0.0)
+        ));
         // El movil de hoy reescribe la tinta (otro trazo) sin tocar el
         // marco: ya no es la suya, se lee con la regla vieja (x2,5, -1050).
         let reescrita = TINTA_A_OTRA_ESCALA.replace("\"raya\"", "\"raya2\"");
@@ -1015,21 +1238,39 @@ mod pruebas_del_marco {
         assert!(cerca(p[1][0], (1850.0 / 2.5, 900.0 / 2.5)), "{:?}", p[1]);
         // Sin huella (el formato de Android) manda.
         an::escribir(&f, SU_MARCO).unwrap();
-        assert!(cerca(puntos(&d.leer_capa(&pdf, 0, 0, 1980.0))[0][0], (0.0, 0.0)));
+        assert!(cerca(
+            puntos(&d.leer_capa(&pdf, 0, 0, 1980.0))[0][0],
+            (0.0, 0.0)
+        ));
         let _ = std::fs::remove_dir_all(&r);
     }
 
     #[test]
     fn la_tinta_escrita_con_su_marco_en_otra_escala_cae_exactamente_sobre_la_hoja() {
         let (r, pdf, d, _, f) = pdf_con_tinta("marco-escala", Some(SU_MARCO));
-        assert_eq!(f.file_name().unwrap().to_string_lossy(), format!("{}-p0.hoja", base_de(&pdf).unwrap().base));
+        assert_eq!(
+            f.file_name().unwrap().to_string_lossy(),
+            format!("{}-p0.hoja", base_de(&pdf).unwrap().base)
+        );
         // Sin espacios la regla vieja lo leeria dos veces y media: el marco manda.
         let c = d.leer_capa(&pdf, 0, 0, 1980.0);
         let p = puntos(&c);
-        assert!(cerca(p[0][0], (0.0, 0.0)) && cerca(p[0][1], (1400.0, 1980.0)), "{:?}", p[0]);
-        assert!(cerca(p[1][0], (100.0, 200.0)) && cerca(p[1][1], (400.0, 200.0)), "{:?}", p[1]);
+        assert!(
+            cerca(p[0][0], (0.0, 0.0)) && cerca(p[0][1], (1400.0, 1980.0)),
+            "{:?}",
+            p[0]
+        );
+        assert!(
+            cerca(p[1][0], (100.0, 200.0)) && cerca(p[1][1], (400.0, 200.0)),
+            "{:?}",
+            p[1]
+        );
         let raya = c.escena.visibles().nth(1).unwrap();
-        assert!((raya.grosor - 2.0).abs() < 1e-4, "el grosor, a la misma escala: {}", raya.grosor);
+        assert!(
+            (raya.grosor - 2.0).abs() < 1e-4,
+            "el grosor, a la misma escala: {}",
+            raya.grosor
+        );
         // Con cualquier espacio puesto, lo mismo: ya no depende de ellos.
         assert_eq!(puntos(&d.leer_capa(&pdf, 0, 3, 1980.0)), p);
         let _ = std::fs::remove_dir_all(&r);
@@ -1043,7 +1284,11 @@ mod pruebas_del_marco {
         let p = puntos(&d.leer_capa(&pdf, 0, 0, 1800.0));
         assert!(cerca(p[0][0], (0.0, 0.0)), "{:?}", p[0]);
         assert!((p[0][1].0 - 1400.0).abs() < 0.01, "{:?}", p[0]);
-        assert!((p[0][1].1 - 1800.0 * 5940.0 / 5640.0).abs() < 0.05, "{:?}", p[0]);
+        assert!(
+            (p[0][1].1 - 1800.0 * 5940.0 / 5640.0).abs() < 0.05,
+            "{:?}",
+            p[0]
+        );
         let _ = std::fs::remove_dir_all(&r);
     }
 
@@ -1053,20 +1298,32 @@ mod pruebas_del_marco {
         let (antes_t, antes_m) = (std::fs::read(&tinta).unwrap(), std::fs::read(&f).unwrap());
         let mut c = d.leer_capa(&pdf, 0, 0, 1980.0);
         d.guardar_capa(&pdf, 0, &mut c, 1980.0).unwrap();
-        assert_eq!(std::fs::read(&tinta).unwrap(), antes_t, "sin cambios no se escribe");
+        assert_eq!(
+            std::fs::read(&tinta).unwrap(),
+            antes_t,
+            "sin cambios no se escribe"
+        );
         assert_eq!(std::fs::read(&f).unwrap(), antes_m, "ni el marco");
         // Guardada, como Android v0.98.0: la tinta en las unidades de la
         // hoja (0 a 1400) y el marco que lo dice.
         c.sucia = true;
         d.guardar_capa(&pdf, 0, &mut c, 1980.0).unwrap();
         assert_eq!(std::fs::read_to_string(&f).unwrap(), "0,0,1400,1980\nv1\n");
-        let v: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&tinta).unwrap()).unwrap();
+        let v: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&tinta).unwrap()).unwrap();
         let x = |v: &serde_json::Value| v.as_f64().unwrap();
-        assert!((x(&v["elements"][1]["x"]) - 100.0).abs() < 1e-3, "{}", v["elements"][1]);
+        assert!(
+            (x(&v["elements"][1]["x"]) - 100.0).abs() < 1e-3,
+            "{}",
+            v["elements"][1]
+        );
         assert!((x(&v["elements"][1]["y"]) - 200.0).abs() < 1e-3);
         assert!((x(&v["elements"][1]["strokeWidth"]) - 2.0).abs() < 1e-4);
         let fin = &v["elements"][0]["points"][1];
-        assert!((fin["x"].as_f64().or(fin[0].as_f64()).unwrap() - 1400.0).abs() < 1e-3, "{fin}");
+        assert!(
+            (fin["x"].as_f64().or(fin[0].as_f64()).unwrap() - 1400.0).abs() < 1e-3,
+            "{fin}"
+        );
         // Otra vez igual: ya no se toca nada.
         let fecha = std::fs::metadata(&f).unwrap().modified().unwrap();
         let mut c = d.leer_capa(&pdf, 0, 0, 1980.0);
@@ -1082,7 +1339,8 @@ mod pruebas_del_marco {
     /// escala y con cualquier espacio puesto en el PC.
     #[test]
     fn la_tinta_nueva_del_movil_con_su_marco_de_hoja_se_lee_tal_cual_con_cualquier_espacio() {
-        let (r, pdf, d, tinta, f) = pdf_con_tinta("marco-android-nuevo", Some("0,0,1400,1979.899\nv1\n"));
+        let (r, pdf, d, tinta, f) =
+            pdf_con_tinta("marco-android-nuevo", Some("0,0,1400,1979.899\nv1\n"));
         std::fs::write(
             &tinta,
             r#"{"elements":[{"id":"aNdRoId98xxxxxxxxxxxx","type":"freedraw","x":100,"y":400,"width":300,"height":0,"strokeWidth":2,"version":3,"points":[{"x":0.0,"y":0.0},{"x":300.0,"y":0.0}]}]}"#,
@@ -1091,11 +1349,18 @@ mod pruebas_del_marco {
         for espacios in 0..4u8 {
             let c = d.leer_capa(&pdf, 0, espacios, 1980.0);
             let p = puntos(&c);
-            assert!((p[0][0].0 - 100.0).abs() < 0.01 && (p[0][1].0 - 400.0).abs() < 0.01, "{espacios}: {p:?}");
+            assert!(
+                (p[0][0].0 - 100.0).abs() < 0.01 && (p[0][1].0 - 400.0).abs() < 0.01,
+                "{espacios}: {p:?}"
+            );
             assert!((p[0][0].1 - 400.0).abs() < 0.1, "{espacios}: {p:?}");
             assert!((c.escena.visibles().next().unwrap().grosor - 2.0).abs() < 1e-3);
         }
-        assert_eq!(an::leer(&f).as_deref(), Some("0,0,1400,1979.899\nv1\n"), "leer no toca su marco");
+        assert_eq!(
+            an::leer(&f).as_deref(),
+            Some("0,0,1400,1979.899\nv1\n"),
+            "leer no toca su marco"
+        );
         let _ = std::fs::remove_dir_all(&r);
     }
 
@@ -1109,7 +1374,11 @@ mod pruebas_del_marco {
         assert!(cerca(p[1][0], (1850.0 / 2.5, 900.0 / 2.5)), "{:?}", p[1]);
         // Como Android (`migrar`): su marco al lado, y la tinta intacta.
         assert_eq!(an::leer(&f).as_deref(), Some("-1050,0,2450,4950\nv1\n"));
-        assert_eq!(std::fs::read(&tinta).unwrap(), antes, "la tinta, byte a byte");
+        assert_eq!(
+            std::fs::read(&tinta).unwrap(),
+            antes,
+            "la tinta, byte a byte"
+        );
         // Ya no depende de los espacios: con los dos, en el mismo sitio.
         assert_eq!(puntos(&d.leer_capa(&pdf, 0, 3, 1980.0)), p);
         // Guardada, a la hoja.
@@ -1134,20 +1403,42 @@ mod pruebas_del_marco {
         assert_eq!(d.fijar_lo_viejo(&pdf, 2, &[1980.0, 1980.0]), 1);
         let k = 2.5 / 1.75;
         let m = MarcoDeLaHoja::de_texto(&an::leer(&f).unwrap()).unwrap();
-        assert!(m.casi_igual(&MarcoDeLaHoja::nuevo(-1050.0, 0.0, -1050.0 + 1400.0 * k, 1980.0 * k)), "{m:?}");
+        assert!(
+            m.casi_igual(&MarcoDeLaHoja::nuevo(
+                -1050.0,
+                0.0,
+                -1050.0 + 1400.0 * k,
+                1980.0 * k
+            )),
+            "{m:?}"
+        );
         assert_eq!(std::fs::read(&tinta).unwrap(), antes);
         // Otra vez, nada: ya lo tiene.
         assert_eq!(d.fijar_lo_viejo(&pdf, 0, &[1980.0]), 0);
-        assert!(MarcoDeLaHoja::de_texto(&an::leer(&f).unwrap()).unwrap().casi_igual(&m));
+        assert!(
+            MarcoDeLaHoja::de_texto(&an::leer(&f).unwrap())
+                .unwrap()
+                .casi_igual(&m)
+        );
         let _ = std::fs::remove_dir_all(&r);
     }
 
     #[test]
     fn un_marco_mal_formado_se_ignora_y_se_lee_con_la_regla_de_antes() {
-        for malo in ["500,300,4700", "a,b,c,d", "0,0,0,0", "500,300,4700,6240\nv9\n", ""] {
+        for malo in [
+            "500,300,4700",
+            "a,b,c,d",
+            "0,0,0,0",
+            "500,300,4700,6240\nv9\n",
+            "",
+        ] {
             let (r, pdf, d, _, f) = pdf_con_tinta("marco-malo", Some(malo));
             let p = puntos(&d.leer_capa(&pdf, 0, 0, 1980.0));
-            assert!(cerca(p[1][0], (1850.0 / 2.5, 900.0 / 2.5)), "{malo:?}: {:?}", p[1]);
+            assert!(
+                cerca(p[1][0], (1850.0 / 2.5, 900.0 / 2.5)),
+                "{malo:?}: {:?}",
+                p[1]
+            );
             assert_eq!(an::leer(&f).as_deref(), Some(malo), "leer no lo toca");
             let _ = std::fs::remove_dir_all(&r);
         }
@@ -1187,20 +1478,33 @@ mod pruebas_del_marco {
         std::fs::write(b.tinta(), tinta).unwrap();
         let mut c = leer_capa(&doc);
         let p = puntos(&c);
-        assert!(cerca(p[0][0], (10.0, 50.0)) && cerca(p[0][1], (110.0, 50.0)), "{p:?}");
+        assert!(
+            cerca(p[0][0], (10.0, 50.0)) && cerca(p[0][1], (110.0, 50.0)),
+            "{p:?}"
+        );
         // Ida y vuelta: sin cambios, nada; guardada, el marco del otro se queda.
         guardar_capa(&doc, &mut c).unwrap();
         assert_eq!(std::fs::read_to_string(b.tinta()).unwrap(), tinta);
         c.sucia = true;
         guardar_capa(&doc, &mut c).unwrap();
-        assert_eq!(an::leer(&b.fichero(HOJA)).as_deref(), Some("560,0,1400,840\nv1\n"));
+        assert_eq!(
+            an::leer(&b.fichero(HOJA)).as_deref(),
+            Some("560,0,1400,840\nv1\n")
+        );
         // Uno con la huella del PC del 29-sep que dice lo mismo: se le quita.
         let h = b.huella().unwrap();
-        an::escribir(&b.fichero(HOJA), &format!("560,0,1400,840\nv1\ntinta {h}\n")).unwrap();
+        an::escribir(
+            &b.fichero(HOJA),
+            &format!("560,0,1400,840\nv1\ntinta {h}\n"),
+        )
+        .unwrap();
         let mut c = leer_capa(&doc);
         c.sucia = true;
         guardar_capa(&doc, &mut c).unwrap();
-        assert_eq!(an::leer(&b.fichero(HOJA)).as_deref(), Some("560,0,1400,840\nv1\n"));
+        assert_eq!(
+            an::leer(&b.fichero(HOJA)).as_deref(),
+            Some("560,0,1400,840\nv1\n")
+        );
         // Caso negativo: sin marco, la regla de antes (la columna corrida `izq`).
         std::fs::remove_file(b.fichero(HOJA)).unwrap();
         std::fs::write(b.tinta(), tinta).unwrap();
@@ -1209,7 +1513,10 @@ mod pruebas_del_marco {
         // Y al guardar un cambio escribe el suyo: la columna a 280, a escala 1.
         c.sucia = true;
         guardar_capa(&doc, &mut c).unwrap();
-        assert_eq!(an::leer(&b.fichero(HOJA)).as_deref(), Some("280,0,700,420\nv1\n"));
+        assert_eq!(
+            an::leer(&b.fichero(HOJA)).as_deref(),
+            Some("280,0,700,420\nv1\n")
+        );
         let _ = std::fs::remove_dir_all(&r);
     }
 }

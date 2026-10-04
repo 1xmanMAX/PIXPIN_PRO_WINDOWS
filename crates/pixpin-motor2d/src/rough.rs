@@ -141,17 +141,41 @@ impl Rough {
         let d = if repaso { medio } else { desvio };
         let mut ops = Vec::with_capacity(2);
         if mover {
-            let x = a.x + if quieto { 0.0 } else { self.desvio_sim(d, ganancia) };
-            let y = a.y + if quieto { 0.0 } else { self.desvio_sim(d, ganancia) };
+            let x = a.x
+                + if quieto {
+                    0.0
+                } else {
+                    self.desvio_sim(d, ganancia)
+                };
+            let y = a.y
+                + if quieto {
+                    0.0
+                } else {
+                    self.desvio_sim(d, ganancia)
+                };
             ops.push(Op::Mover(Pt::nuevo(x, y)));
         }
         let c1x = panza_x + a.x + (b.x - a.x) * divergencia + self.desvio_sim(d, ganancia);
         let c1y = panza_y + a.y + (b.y - a.y) * divergencia + self.desvio_sim(d, ganancia);
         let c2x = panza_x + a.x + 2.0 * (b.x - a.x) * divergencia + self.desvio_sim(d, ganancia);
         let c2y = panza_y + a.y + 2.0 * (b.y - a.y) * divergencia + self.desvio_sim(d, ganancia);
-        let fx = b.x + if quieto { 0.0 } else { self.desvio_sim(d, ganancia) };
-        let fy = b.y + if quieto { 0.0 } else { self.desvio_sim(d, ganancia) };
-        ops.push(Op::Cubica(Pt::nuevo(c1x, c1y), Pt::nuevo(c2x, c2y), Pt::nuevo(fx, fy)));
+        let fx = b.x
+            + if quieto {
+                0.0
+            } else {
+                self.desvio_sim(d, ganancia)
+            };
+        let fy = b.y
+            + if quieto {
+                0.0
+            } else {
+                self.desvio_sim(d, ganancia)
+            };
+        ops.push(Op::Cubica(
+            Pt::nuevo(c1x, c1y),
+            Pt::nuevo(c2x, c2y),
+            Pt::nuevo(fx, fy),
+        ));
         ops
     }
 
@@ -309,8 +333,11 @@ impl Rough {
     /// (`ellipse` del movil, `ellipseWithParams` de rough.js).
     pub fn elipse(&mut self, cx: f64, cy: f64, w: f64, h: f64) -> (Vec<Op>, Vec<Pt>) {
         // `generateEllipseParams`: cuantos puntos, segun el perimetro.
-        let psq = (std::f64::consts::TAU * (((w / 2.0).powi(2) + (h / 2.0).powi(2)) / 2.0).sqrt()).sqrt();
-        let pasos = PASOS_DE_CURVA.max(PASOS_DE_CURVA / 200f64.sqrt() * psq).ceil();
+        let psq =
+            (std::f64::consts::TAU * (((w / 2.0).powi(2) + (h / 2.0).powi(2)) / 2.0).sqrt()).sqrt();
+        let pasos = PASOS_DE_CURVA
+            .max(PASOS_DE_CURVA / 200f64.sqrt() * psq)
+            .ceil();
         let paso = std::f64::consts::TAU / pasos;
         let (mut rx, mut ry) = ((w / 2.0).abs(), (h / 2.0).abs());
         let holgura = 1.0 - self.o.ajuste_de_curva;
@@ -378,7 +405,8 @@ pub fn a_pasadas(ops: &[Op]) -> Vec<Vec<Punto2>> {
                     }
                 };
                 let m = fuera(c1).max(fuera(c2));
-                let trozos = ((0.75 * m / DESVIO_DE_LA_QUEBRADA).sqrt().ceil() as usize).clamp(2, 64);
+                let trozos =
+                    ((0.75 * m / DESVIO_DE_LA_QUEBRADA).sqrt().ceil() as usize).clamp(2, 64);
                 for k in 1..=trozos {
                     let t = k as f64 / trozos as f64;
                     let u = 1.0 - t;
@@ -419,7 +447,10 @@ mod pruebas {
         for r in [1.0f32, 2.0] {
             let (ops, nucleo) = Rough::nuevo(a_mano(r), 7).elipse(100.0, 100.0, 200.0, 200.0);
             assert_eq!(movimientos(&ops), 2, "dos pasadas, como rough.js (r={r})");
-            assert!(!ops.iter().any(|o| matches!(o, Op::Recta(_))), "ni una recta (r={r})");
+            assert!(
+                !ops.iter().any(|o| matches!(o, Op::Recta(_))),
+                "ni una recta (r={r})"
+            );
             // 200 de ancho: 16 pasos (`generateEllipseParams`), y la vuelta
             // entera son curvas, no vertices unidos con rectas.
             assert_eq!(nucleo.len(), 16);
@@ -432,11 +463,17 @@ mod pruebas {
         // El final de la primera pasada se pasa del arranque: una elipse a
         // mano casi nunca cierra exacta, y ese exceso es lo que la hace
         // creible. Pero poco: el ultimo punto cae cerca del primero.
-        let ops = Rough::nuevo(a_mano(1.0), 3).elipse(0.0, 0.0, 200.0, 120.0).0;
+        let ops = Rough::nuevo(a_mano(1.0), 3)
+            .elipse(0.0, 0.0, 200.0, 120.0)
+            .0;
         let pasadas = a_pasadas(&ops);
         let v = &pasadas[0];
         let (primero, ultimo) = (v[0], *v.last().unwrap());
-        assert!(primero.distancia(ultimo) < 25.0, "cierra: {}", primero.distancia(ultimo));
+        assert!(
+            primero.distancia(ultimo) < 25.0,
+            "cierra: {}",
+            primero.distancia(ultimo)
+        );
     }
 
     #[test]
@@ -446,7 +483,10 @@ mod pruebas {
         // del radio con el del 90 % de tirador, como en excalidraw.com.
         for (r, tope) in [(0.0f32, 0.2f32), (1.0, 6.0), (2.0, 9.0)] {
             let (w, h) = (300.0f32, 180.0f32);
-            let o = Opciones { ajuste_de_curva: 1.0, ..a_mano(r) };
+            let o = Opciones {
+                ajuste_de_curva: 1.0,
+                ..a_mano(r)
+            };
             let ops = Rough::nuevo(o, 11).elipse(0.0, 0.0, w as f64, h as f64).0;
             for v in a_pasadas(&ops) {
                 for p in v {
@@ -489,12 +529,20 @@ mod pruebas {
         let esquinas = [(10.0, 20.0), (210.0, 20.0), (210.0, 120.0), (10.0, 120.0)];
         for v in a_pasadas(&ops) {
             let (a, b) = (v[0], *v.last().unwrap());
-            let es_esquina = |p: Punto2| esquinas.iter().any(|&(x, y)| (p.x - x).abs() < 1e-3 && (p.y - y).abs() < 1e-3);
+            let es_esquina = |p: Punto2| {
+                esquinas
+                    .iter()
+                    .any(|&(x, y)| (p.x - x).abs() < 1e-3 && (p.y - y).abs() < 1e-3)
+            };
             assert!(es_esquina(a) && es_esquina(b), "{a:?} {b:?}");
             // Y la panza es pequena: nada se va mas de 3 px de su lado.
             let lado_h = (a.y - b.y).abs() < 1e-3;
             for p in &v {
-                let d = if lado_h { (p.y - a.y).abs() } else { (p.x - a.x).abs() };
+                let d = if lado_h {
+                    (p.y - a.y).abs()
+                } else {
+                    (p.x - a.x).abs()
+                };
                 assert!(d < 3.0, "una panza de {d}");
             }
         }
@@ -507,7 +555,11 @@ mod pruebas {
         let n = |v: Vec<Vec<Punto2>>| v.iter().map(Vec::len).sum::<usize>();
         let rect = a_pasadas(&Rough::nuevo(a_mano(1.0), 2).rectangulo(0.0, 0.0, 900.0, 600.0));
         assert!(n(rect) < 260, "rectangulo");
-        let elipse = a_pasadas(&Rough::nuevo(a_mano(1.0), 2).elipse(0.0, 0.0, 900.0, 600.0).0);
+        let elipse = a_pasadas(
+            &Rough::nuevo(a_mano(1.0), 2)
+                .elipse(0.0, 0.0, 900.0, 600.0)
+                .0,
+        );
         assert!(n(elipse) < 1200, "elipse");
     }
 
@@ -522,8 +574,14 @@ mod pruebas {
     #[test]
     fn discontinuo_va_en_una_sola_pasada() {
         let o = Opciones::nuevas(1.0, true, true);
-        assert_eq!(movimientos(&Rough::nuevo(o, 1).rectangulo(0.0, 0.0, 50.0, 50.0)), 4);
-        assert_eq!(movimientos(&Rough::nuevo(o, 1).elipse(0.0, 0.0, 50.0, 50.0).0), 1);
+        assert_eq!(
+            movimientos(&Rough::nuevo(o, 1).rectangulo(0.0, 0.0, 50.0, 50.0)),
+            4
+        );
+        assert_eq!(
+            movimientos(&Rough::nuevo(o, 1).elipse(0.0, 0.0, 50.0, 50.0).0),
+            1
+        );
     }
 
     /// Los numeros de rough.js 4.6.6 (el de excalidraw.com) con la misma
@@ -534,27 +592,51 @@ mod pruebas {
     #[test]
     fn sale_lo_mismo_que_rough_js_con_la_misma_semilla() {
         let cerca = |a: Pt, x: f64, y: f64| (a.x - x).abs() < 1e-3 && (a.y - y).abs() < 1e-3;
-        let ops = Rough::nuevo(Opciones::nuevas(1.0, true, false), 9).rectangulo(10.0, 20.0, 200.0, 100.0);
-        let Op::Cubica(c1, c2, f) = ops[1] else { panic!("{:?}", ops[1]) };
-        assert!(cerca(c1, 49.7519, 20.9244) && cerca(c2, 91.0261, 18.9387) && cerca(f, 210.0, 20.0), "{:?}", ops[1]);
-        let ops = Rough::nuevo(Opciones::nuevas(2.0, false, false), 9).rectangulo(10.0, 20.0, 200.0, 100.0);
+        let ops = Rough::nuevo(Opciones::nuevas(1.0, true, false), 9)
+            .rectangulo(10.0, 20.0, 200.0, 100.0);
+        let Op::Cubica(c1, c2, f) = ops[1] else {
+            panic!("{:?}", ops[1])
+        };
+        assert!(
+            cerca(c1, 49.7519, 20.9244) && cerca(c2, 91.0261, 18.9387) && cerca(f, 210.0, 20.0),
+            "{:?}",
+            ops[1]
+        );
+        let ops = Rough::nuevo(Opciones::nuevas(2.0, false, false), 9)
+            .rectangulo(10.0, 20.0, 200.0, 100.0);
         let Op::Mover(m) = ops[0] else { panic!() };
         assert!(cerca(m, 9.4877, 21.2149), "{m:?}");
-        let Op::Cubica(_, _, f) = ops[15] else { panic!() };
+        let Op::Cubica(_, _, f) = ops[15] else {
+            panic!()
+        };
         assert!(cerca(f, 9.9333, 21.7845), "{f:?}");
-        let o = Opciones { ajuste_de_curva: 1.0, ..Opciones::nuevas(1.0, true, false) };
+        let o = Opciones {
+            ajuste_de_curva: 1.0,
+            ..Opciones::nuevas(1.0, true, false)
+        };
         let ops = Rough::nuevo(o, 11).elipse(100.0, 100.0, 300.0, 180.0).0;
         let Op::Mover(m) = ops[0] else { panic!() };
         assert!(cerca(m, 49.5809, 15.9195), "{m:?}");
-        let Op::Cubica(c1, _, f) = ops[1] else { panic!() };
-        assert!(cerca(c1, 63.9407, 11.2190) && cerca(f, 99.5976, 10.1578), "{:?}", ops[1]);
+        let Op::Cubica(c1, _, f) = ops[1] else {
+            panic!()
+        };
+        assert!(
+            cerca(c1, 63.9407, 11.2190) && cerca(f, 99.5976, 10.1578),
+            "{:?}",
+            ops[1]
+        );
     }
 
     #[test]
     fn la_esquina_de_un_redondeado_empalma_y_es_lisa() {
         // `_bezierTo` con los vertices quietos: las dos pasadas empiezan y
         // acaban donde la ruta, asi la esquina empalma con los lados.
-        let (a, c1, c2, b) = (Pt::nuevo(0.0, 0.0), Pt::nuevo(20.0, 0.0), Pt::nuevo(32.0, 12.0), Pt::nuevo(32.0, 32.0));
+        let (a, c1, c2, b) = (
+            Pt::nuevo(0.0, 0.0),
+            Pt::nuevo(20.0, 0.0),
+            Pt::nuevo(32.0, 12.0),
+            Pt::nuevo(32.0, 32.0),
+        );
         let ops = Rough::nuevo(Opciones::nuevas(1.0, true, false), 3).cubica_a(a, c1, c2, b);
         assert_eq!(movimientos(&ops), 2);
         for v in a_pasadas(&ops) {

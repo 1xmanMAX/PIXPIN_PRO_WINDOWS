@@ -253,9 +253,8 @@ const RELOJ_DE_VERDAD: i64 = 946_684_800_000; // 1-ene-2000
 /// contradigan: creada «hoy» se lee «hoy» aunque sean las once de la noche
 /// en Peru y ya sea manana en UTC.
 fn hoy_de(ahora_utc: i64) -> Option<mini::Fecha> {
-    (ahora_utc >= RELOJ_DE_VERDAD).then(|| {
-        mini::Fecha::de_ms_locales(ahora_utc + pixpin_shell::entorno::desfase_local_ms())
-    })
+    (ahora_utc >= RELOJ_DE_VERDAD)
+        .then(|| mini::Fecha::de_ms_locales(ahora_utc + pixpin_shell::entorno::desfase_local_ms()))
 }
 
 fn de_tareas(documento: &str, ahora: i64) -> Vista {
@@ -2320,9 +2319,18 @@ mod pruebas {
         let v = vista(mini::TAREAS, &d, &euro(), MEDIODIA + 3 * DIA).unwrap();
         assert_eq!(v.lista[0].edad, Some(3));
         // Sin reloj de verdad no se inventa: ni fecha al crear ni edad.
-        let sin = aplicar(mini::TAREAS, &nueva(mini::TAREAS), &euro(), &Orden::Anadir("sal".into()), 1_000);
+        let sin = aplicar(
+            mini::TAREAS,
+            &nueva(mini::TAREAS),
+            &euro(),
+            &Orden::Anadir("sal".into()),
+            1_000,
+        );
         assert_eq!(sin, "# P\n\n- [ ] sal");
-        assert_eq!(vista(mini::TAREAS, &d, &euro(), 0).unwrap().lista[0].edad, None);
+        assert_eq!(
+            vista(mini::TAREAS, &d, &euro(), 0).unwrap().lista[0].edad,
+            None
+        );
         // Y una de antes, sin fecha, tampoco ensena nada.
         let vieja = vista(mini::TAREAS, "# L\n\n- [ ] vieja", &euro(), MEDIODIA).unwrap();
         assert_eq!(vieja.lista[0].edad, None);
@@ -2333,7 +2341,10 @@ mod pruebas {
         let d = "# L\n\n- [ ] grieta ![img 01](pixpin:files/guardados/pc/x/archivos/a.png) en el muro ➕ 2026-10-02\n- [ ] pan";
         let v = vista(mini::TAREAS, d, &euro(), 0).unwrap();
         assert_eq!(v.lista[0].texto, "grieta en el muro");
-        assert_eq!(v.lista[0].imagenes, ["pixpin:files/guardados/pc/x/archivos/a.png"]);
+        assert_eq!(
+            v.lista[0].imagenes,
+            ["pixpin:files/guardados/pc/x/archivos/a.png"]
+        );
         // Caso negativo: una sin imagenes no tiene ninguna, y marcar la de la
         // imagen no la pierde.
         assert!(v.lista[1].imagenes.is_empty());
@@ -2353,7 +2364,11 @@ mod pruebas {
         assert!(solo_de_vista(&Orden::VerHechas, &mut t));
         assert_eq!(aplicar(mini::TAREAS, d, &euro(), &Orden::VerHechas, 0), d);
         let v = vista_con(mini::TAREAS, d, &euro(), 0, &t).unwrap();
-        let textos: Vec<_> = v.lista.iter().map(|f| (f.texto.as_str(), f.indice)).collect();
+        let textos: Vec<_> = v
+            .lista
+            .iter()
+            .map(|f| (f.texto.as_str(), f.indice))
+            .collect();
         assert_eq!(textos, [("b", 1), ("d", 3)]);
         assert_eq!(v.avance, Some((2, 4)), "esconder no las deshace");
         let boton = &v.filas_de_botones[0][0];
@@ -2435,7 +2450,10 @@ mod pruebas {
         };
         let toque = toque_en_lista(&v, &disp, 0, 100, en_texto).unwrap();
         assert_eq!(toque, ToqueDeFila::Elegir(0));
-        assert_eq!(cumplir_toque(mini::TAREAS, &d, &euro(), &v, &mut t, toque), Efecto::Repintar);
+        assert_eq!(
+            cumplir_toque(mini::TAREAS, &d, &euro(), &v, &mut t, toque),
+            Efecto::Repintar
+        );
         assert_eq!(t.marcada, Some(0));
         // Elegida, salen bajar (no subir: es la primera) y el lapiz.
         let v = vista_con(mini::TAREAS, &d, &euro(), 0, &t).unwrap();
@@ -2459,7 +2477,14 @@ mod pruebas {
             marcada: Some(0),
             ..Teclado::default()
         };
-        let e = cumplir_toque(mini::TAREAS, &d, &euro(), &v, &mut t, ToqueDeFila::Elegir(0));
+        let e = cumplir_toque(
+            mini::TAREAS,
+            &d,
+            &euro(),
+            &v,
+            &mut t,
+            ToqueDeFila::Elegir(0),
+        );
         assert_eq!(e, Efecto::Repintar);
         assert_eq!(t.edicion, Edicion::Fila(0));
         assert_eq!(t.borrador, "pan");
@@ -2468,7 +2493,13 @@ mod pruebas {
         let d = pulsar(mini::TAREAS, &d, &mut t, k(VK_ENTRAR));
         assert_eq!(d, "# L\n\n- [ ] pan integral ➕ 2026-09-01\n- [ ] sal");
         // Caso negativo: el lapiz no sale en los gastos ni en la ruleta.
-        let g = vista(mini::GASTOS, "# G\n\n| Concepto | Importe |\n|---|---|\n| Cena | 42.50 |", &euro(), 0).unwrap();
+        let g = vista(
+            mini::GASTOS,
+            "# G\n\n| Concepto | Importe |\n|---|---|\n| Cena | 42.50 |",
+            &euro(),
+            0,
+        )
+        .unwrap();
         assert!(g.lista.iter().all(|f| !f.se_corrige));
     }
 
@@ -2484,7 +2515,11 @@ mod pruebas {
         assert_eq!(dime(&es, 0), "hoy");
         assert_eq!(dime(&es, 1), "hace 1 día");
         assert_eq!(dime(&es, 5), "hace 5 días");
-        assert_eq!(dime(&es, 40), "hace 40 días", "sin pasar a semanas ni meses");
+        assert_eq!(
+            dime(&es, 40),
+            "hace 40 días",
+            "sin pasar a semanas ni meses"
+        );
         let en = Catalogo::nuevo(Idioma::Ingles);
         assert_eq!(dime(&en, 0), "today");
         assert_eq!(dime(&en, 1), "1 day ago");

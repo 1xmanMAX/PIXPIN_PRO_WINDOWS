@@ -463,9 +463,25 @@ mod pruebas {
         let provisional = proyecto_json("pr-movil", "pr-movil", &[], 0, &[], &[]);
         let de_verdad = proyecto_json("pr-movil", "Reforma", &[hoja], 1_791_000_000_000, &[], &[]);
         for desfase in [-3, 0, 3, 5_000] {
-            let r = proyecto(Some(&provisional), Some(&de_verdad), None, &nada(), &nada(), desfase).unwrap();
+            let r = proyecto(
+                Some(&provisional),
+                Some(&de_verdad),
+                None,
+                &nada(),
+                &nada(),
+                desfase,
+            )
+            .unwrap();
             assert_eq!(nombre_de(&r), "Reforma", "desfase {desfase}");
-            let r = proyecto(Some(&de_verdad), Some(&provisional), None, &nada(), &nada(), desfase).unwrap();
+            let r = proyecto(
+                Some(&de_verdad),
+                Some(&provisional),
+                None,
+                &nada(),
+                &nada(),
+                desfase,
+            )
+            .unwrap();
             assert_eq!(nombre_de(&r), "Reforma", "desfase {desfase}, al reves");
         }
     }

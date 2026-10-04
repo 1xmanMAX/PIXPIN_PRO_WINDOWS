@@ -88,11 +88,37 @@ pub enum Accion {
 /// Una pieza de lo que se pinta, en pixeles de la ventana.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Pieza {
-    Caja { caja: Caja, radio: f32, color: Rgb },
-    Borde { caja: Caja, radio: f32, grosor: f32, color: Rgb },
-    Raya { x0: i32, y0: i32, x1: i32, color: Rgb },
-    Icono { icono: Icono, caja: Caja, lado: f32, color: Rgb },
-    Texto { caja: Caja, texto: String, letra: Letra, color: Rgb, varias: bool, centrado: bool },
+    Caja {
+        caja: Caja,
+        radio: f32,
+        color: Rgb,
+    },
+    Borde {
+        caja: Caja,
+        radio: f32,
+        grosor: f32,
+        color: Rgb,
+    },
+    Raya {
+        x0: i32,
+        y0: i32,
+        x1: i32,
+        color: Rgb,
+    },
+    Icono {
+        icono: Icono,
+        caja: Caja,
+        lado: f32,
+        color: Rgb,
+    },
+    Texto {
+        caja: Caja,
+        texto: String,
+        letra: Letra,
+        color: Rgb,
+        varias: bool,
+        centrado: bool,
+    },
 }
 
 impl Pieza {
@@ -102,9 +128,10 @@ impl Pieza {
             c.y += dy;
         };
         match self {
-            Pieza::Caja { caja, .. } | Pieza::Borde { caja, .. } | Pieza::Icono { caja, .. } | Pieza::Texto { caja, .. } => {
-                m(caja)
-            }
+            Pieza::Caja { caja, .. }
+            | Pieza::Borde { caja, .. }
+            | Pieza::Icono { caja, .. }
+            | Pieza::Texto { caja, .. } => m(caja),
             Pieza::Raya { x0, y0, x1, .. } => {
                 *x0 += dx;
                 *x1 += dx;
@@ -234,12 +261,18 @@ pub fn colores(t: &Tema) -> Colores {
 /// El color del redondel de cada aparato: siempre el mismo para el mismo.
 fn color_de(aparato: &str) -> Rgb {
     const PALETA: [Rgb; 6] = [0x5b8def, 0xd9822b, 0x3aa776, 0xb45fc9, 0xd2555a, 0x2f9fb3];
-    let h = aparato.bytes().fold(0x811c_9dc5u32, |h, b| (h ^ b as u32).wrapping_mul(0x0100_0193));
+    let h = aparato.bytes().fold(0x811c_9dc5u32, |h, b| {
+        (h ^ b as u32).wrapping_mul(0x0100_0193)
+    });
     PALETA[(h % PALETA.len() as u32) as usize]
 }
 
 fn inicial(autor: &str) -> String {
-    autor.chars().find(|c| c.is_alphanumeric()).map(|c| c.to_uppercase().to_string()).unwrap_or_else(|| "?".into())
+    autor
+        .chars()
+        .find(|c| c.is_alphanumeric())
+        .map(|c| c.to_uppercase().to_string())
+        .unwrap_or_else(|| "?".into())
 }
 
 /// **El sitio de las tarjetas**, si estan a la vista: con sitio, encima del
@@ -274,14 +307,24 @@ fn recorte(m: &mut Marco, escala: f32) -> Option<(Caja, bool)> {
     // La barra fina de la nota va en el borde derecho del papel: se deja.
     let barra = e(crate::imagenes::BARRA_COGER_PX);
     if m.cuerpo.an - an - barra >= e(PAPEL_MINIMO_PX) {
-        let caja = Caja { x: m.cuerpo.derecha() - barra - an, y: m.cuerpo.y, an, al: m.cuerpo.al };
+        let caja = Caja {
+            x: m.cuerpo.derecha() - barra - an,
+            y: m.cuerpo.y,
+            an,
+            al: m.cuerpo.al,
+        };
         return Some((caja, false));
     }
     let an = an.min(m.cuerpo.an - e(CAJON_DEJA_PX));
     if an <= 0 {
         return None;
     }
-    let caja = Caja { x: m.cuerpo.derecha() - an, y: m.cuerpo.y, an, al: m.cuerpo.al };
+    let caja = Caja {
+        x: m.cuerpo.derecha() - an,
+        y: m.cuerpo.y,
+        an,
+        al: m.cuerpo.al,
+    };
     Some((caja, true))
 }
 
@@ -302,7 +345,12 @@ fn sombra(caja: Caja, debajo: Rgb, escala: f32) -> Vec<Pieza> {
     [(4, 18u32), (3, 30), (2, 44), (1, 60)]
         .iter()
         .map(|&(k, t)| Pieza::Caja {
-            caja: Caja { x: caja.x - e(k), y: caja.y - e(k) + e(2), an: caja.an + 2 * e(k), al: caja.al + 2 * e(k) },
+            caja: Caja {
+                x: caja.x - e(k),
+                y: caja.y - e(k) + e(2),
+                an: caja.an + 2 * e(k),
+                al: caja.al + 2 * e(k),
+            },
             radio: 8.0 + k as f32,
             color: mezcla(debajo, 0x000000, t),
         })
@@ -337,7 +385,10 @@ pub fn fecha_corta(cuando: i64, desfase: i64, ahora: i64, meses: &[String]) -> S
     let local = cuando + desfase;
     let (d, m, a) = pixpin_docs::md_comandos::dia_de(local);
     let (_, _, este) = pixpin_docs::md_comandos::dia_de(ahora + desfase);
-    let mes = meses.get(m.saturating_sub(1) as usize).cloned().unwrap_or_else(|| format!("{m:02}"));
+    let mes = meses
+        .get(m.saturating_sub(1) as usize)
+        .cloned()
+        .unwrap_or_else(|| format!("{m:02}"));
     if a != este {
         return format!("{d} {mes} {a}");
     }
@@ -361,36 +412,81 @@ fn tarjeta(t: &Tarjeta, an: i32, d: &Datos, medir: &dyn Medir) -> Hecha {
     let p = e(RELLENO_PX);
     let w = an - 2 * p;
     let mut piezas = Vec::new();
-    let mut zonas = vec![(Accion::Tarjeta(t.id.clone()), Caja { x: 0, y: 0, an, al: 0 })];
+    let mut zonas = vec![(
+        Accion::Tarjeta(t.id.clone()),
+        Caja {
+            x: 0,
+            y: 0,
+            an,
+            al: 0,
+        },
+    )];
     let mut compositor = None;
     let mut y = p;
     let tenue = if t.resuelto { tm.apagado } else { tm.tenue };
     let texto_c = if t.resuelto { tm.tenue } else { tm.texto };
-    let redondel = |piezas: &mut Vec<Pieza>, x: i32, y: i32, lado: i32, autor: &str, aparato: &str| {
-        let c = Caja { x, y, an: lado, al: lado };
-        piezas.push(Pieza::Caja {
-            caja: c,
-            radio: lado as f32 / 2.0 / d.escala,
-            color: color_de(aparato),
-        });
-        piezas.push(Pieza::Texto {
-            caja: c,
-            texto: inicial(autor),
-            letra: if lado >= e(24) { Letra::Negrita } else { Letra::Chica },
-            color: 0xffffff,
-            varias: false,
-            centrado: true,
-        });
-    };
+    let redondel =
+        |piezas: &mut Vec<Pieza>, x: i32, y: i32, lado: i32, autor: &str, aparato: &str| {
+            let c = Caja {
+                x,
+                y,
+                an: lado,
+                al: lado,
+            };
+            piezas.push(Pieza::Caja {
+                caja: c,
+                radio: lado as f32 / 2.0 / d.escala,
+                color: color_de(aparato),
+            });
+            piezas.push(Pieza::Texto {
+                caja: c,
+                texto: inicial(autor),
+                letra: if lado >= e(24) {
+                    Letra::Negrita
+                } else {
+                    Letra::Chica
+                },
+                color: 0xffffff,
+                varias: false,
+                centrado: true,
+            });
+        };
     // El cuadro de escribir con sus dos botones debajo.
-    let escribir = |piezas: &mut Vec<Pieza>, zonas: &mut Vec<(Accion, Caja)>, y: &mut i32, enviar: &str| -> Caja {
-        let caja = Caja { x: p, y: *y, an: w, al: e(COMPOSITOR_PX) };
-        piezas.push(Pieza::Caja { caja, radio: 6.0, color: tm.pastilla });
-        piezas.push(Pieza::Borde { caja, radio: 6.0, grosor: 1.0, color: tm.acento });
+    let escribir = |piezas: &mut Vec<Pieza>,
+                    zonas: &mut Vec<(Accion, Caja)>,
+                    y: &mut i32,
+                    enviar: &str|
+     -> Caja {
+        let caja = Caja {
+            x: p,
+            y: *y,
+            an: w,
+            al: e(COMPOSITOR_PX),
+        };
+        piezas.push(Pieza::Caja {
+            caja,
+            radio: 6.0,
+            color: tm.pastilla,
+        });
+        piezas.push(Pieza::Borde {
+            caja,
+            radio: 6.0,
+            grosor: 1.0,
+            color: tm.acento,
+        });
         *y += caja.al + e(8);
         let an_enviar = medir.ancho(Letra::Negrita, enviar) + e(24);
-        let b_enviar = Caja { x: p + w - an_enviar, y: *y, an: an_enviar, al: e(28) };
-        piezas.push(Pieza::Caja { caja: b_enviar, radio: 7.0, color: tm.acento });
+        let b_enviar = Caja {
+            x: p + w - an_enviar,
+            y: *y,
+            an: an_enviar,
+            al: e(28),
+        };
+        piezas.push(Pieza::Caja {
+            caja: b_enviar,
+            radio: 7.0,
+            color: tm.acento,
+        });
         piezas.push(Pieza::Texto {
             caja: b_enviar,
             texto: enviar.to_string(),
@@ -400,7 +496,12 @@ fn tarjeta(t: &Tarjeta, an: i32, d: &Datos, medir: &dyn Medir) -> Hecha {
             centrado: true,
         });
         let an_cancelar = medir.ancho(Letra::Normal, &r.cancelar) + e(20);
-        let b_cancelar = Caja { x: b_enviar.x - e(6) - an_cancelar, y: *y, an: an_cancelar, al: e(28) };
+        let b_cancelar = Caja {
+            x: b_enviar.x - e(6) - an_cancelar,
+            y: *y,
+            an: an_cancelar,
+            al: e(28),
+        };
         piezas.push(Pieza::Texto {
             caja: b_cancelar,
             texto: r.cancelar.clone(),
@@ -413,27 +514,54 @@ fn tarjeta(t: &Tarjeta, an: i32, d: &Datos, medir: &dyn Medir) -> Hecha {
         zonas.push((Accion::Cancelar, b_cancelar));
         *y += e(28);
         // El control de escribir va dentro del cuadro, con su margen.
-        Caja { x: caja.x + e(8), y: caja.y + e(6), an: caja.an - e(16), al: caja.al - e(12) }
+        Caja {
+            x: caja.x + e(8),
+            y: caja.y + e(6),
+            an: caja.an - e(16),
+            al: caja.al - e(12),
+        }
     };
     // Cabecera: redondel, quien y cuando; con la tarjeta elegida, resolver y «⋯».
     let (autor, aparato, fecha) = match t.entradas.first() {
         Some(x) => (x.autor.clone(), x.aparato.clone(), x.fecha.clone()),
-        None => (t.autor_nuevo.0.clone(), t.autor_nuevo.1.clone(), String::new()),
+        None => (
+            t.autor_nuevo.0.clone(),
+            t.autor_nuevo.1.clone(),
+            String::new(),
+        ),
     };
     redondel(&mut piezas, p, y, e(26), &autor, &aparato);
-    let botones = if t.activa && !t.entradas.is_empty() { e(26) * 2 + e(4) } else { 0 };
+    let botones = if t.activa && !t.entradas.is_empty() {
+        e(26) * 2 + e(4)
+    } else {
+        0
+    };
     let x_texto = p + e(34);
     piezas.push(Pieza::Texto {
-        caja: Caja { x: x_texto, y, an: w - e(34) - botones, al: e(15) },
+        caja: Caja {
+            x: x_texto,
+            y,
+            an: w - e(34) - botones,
+            al: e(15),
+        },
         texto: autor,
         letra: Letra::Negrita,
         color: texto_c,
         varias: false,
         centrado: false,
     });
-    let linea2 = if t.resuelto { format!("{fecha} · {}", r.resuelto) } else { fecha };
+    let linea2 = if t.resuelto {
+        format!("{fecha} · {}", r.resuelto)
+    } else {
+        fecha
+    };
     piezas.push(Pieza::Texto {
-        caja: Caja { x: x_texto, y: y + e(16), an: w - e(34) - botones, al: e(14) },
+        caja: Caja {
+            x: x_texto,
+            y: y + e(16),
+            an: w - e(34) - botones,
+            al: e(14),
+        },
         texto: linea2,
         letra: Letra::Chica,
         color: tenue,
@@ -441,10 +569,22 @@ fn tarjeta(t: &Tarjeta, an: i32, d: &Datos, medir: &dyn Medir) -> Hecha {
         centrado: false,
     });
     if let (true, Some(raiz)) = (t.activa, t.entradas.first()) {
-        let mas = Caja { x: p + w - e(26), y, an: e(26), al: e(26) };
-        let hecho = Caja { x: mas.x - e(4) - e(26), ..mas };
+        let mas = Caja {
+            x: p + w - e(26),
+            y,
+            an: e(26),
+            al: e(26),
+        };
+        let hecho = Caja {
+            x: mas.x - e(4) - e(26),
+            ..mas
+        };
         if t.resuelto {
-            piezas.push(Pieza::Caja { caja: hecho, radio: 6.0, color: tm.pastilla });
+            piezas.push(Pieza::Caja {
+                caja: hecho,
+                radio: 6.0,
+                color: tm.pastilla,
+            });
         }
         piezas.push(Pieza::Icono {
             icono: Icono::Hecho,
@@ -452,7 +592,12 @@ fn tarjeta(t: &Tarjeta, an: i32, d: &Datos, medir: &dyn Medir) -> Hecha {
             lado: 15.0,
             color: if t.resuelto { tm.hecha } else { tm.tenue },
         });
-        piezas.push(Pieza::Icono { icono: Icono::Puntos, caja: mas, lado: 15.0, color: tm.tenue });
+        piezas.push(Pieza::Icono {
+            icono: Icono::Puntos,
+            caja: mas,
+            lado: 15.0,
+            color: tm.tenue,
+        });
         zonas.push((Accion::Resolver(t.id.clone()), hecho));
         zonas.push((Accion::Mas(raiz.id.clone()), mas));
     }
@@ -460,13 +605,23 @@ fn tarjeta(t: &Tarjeta, an: i32, d: &Datos, medir: &dyn Medir) -> Hecha {
     // La cita, en un renglon con su raya.
     if !t.cita.trim().is_empty() {
         piezas.push(Pieza::Caja {
-            caja: Caja { x: p, y: y + e(2), an: e(3), al: e(15) },
+            caja: Caja {
+                x: p,
+                y: y + e(2),
+                an: e(3),
+                al: e(15),
+            },
             radio: 1.0,
             color: co.resaltado_activo,
         });
         let cita = t.cita.split_whitespace().collect::<Vec<_>>().join(" ");
         piezas.push(Pieza::Texto {
-            caja: Caja { x: p + e(10), y, an: w - e(10), al: e(19) },
+            caja: Caja {
+                x: p + e(10),
+                y,
+                an: w - e(10),
+                al: e(19),
+            },
             texto: cita,
             letra: Letra::Chica,
             color: tenue,
@@ -482,7 +637,12 @@ fn tarjeta(t: &Tarjeta, an: i32, d: &Datos, medir: &dyn Medir) -> Hecha {
             redondel(&mut piezas, p, y, e(20), &en.autor, &en.aparato);
             let an_autor = medir.ancho(Letra::Negrita, &en.autor).min(w - e(60));
             piezas.push(Pieza::Texto {
-                caja: Caja { x: p + e(28), y, an: an_autor, al: e(20) },
+                caja: Caja {
+                    x: p + e(28),
+                    y,
+                    an: an_autor,
+                    al: e(20),
+                },
                 texto: en.autor.clone(),
                 letra: Letra::Negrita,
                 color: texto_c,
@@ -492,7 +652,12 @@ fn tarjeta(t: &Tarjeta, an: i32, d: &Datos, medir: &dyn Medir) -> Hecha {
             let x_fecha = p + e(28) + an_autor + e(6);
             let tope = if t.activa { e(28) } else { 0 };
             piezas.push(Pieza::Texto {
-                caja: Caja { x: x_fecha, y, an: (p + w - tope - x_fecha).max(0), al: e(20) },
+                caja: Caja {
+                    x: x_fecha,
+                    y,
+                    an: (p + w - tope - x_fecha).max(0),
+                    al: e(20),
+                },
                 texto: en.fecha.clone(),
                 letra: Letra::Chica,
                 color: tenue,
@@ -500,8 +665,18 @@ fn tarjeta(t: &Tarjeta, an: i32, d: &Datos, medir: &dyn Medir) -> Hecha {
                 centrado: false,
             });
             if t.activa {
-                let mas = Caja { x: p + w - e(24), y: y - e(2), an: e(24), al: e(24) };
-                piezas.push(Pieza::Icono { icono: Icono::Puntos, caja: mas, lado: 14.0, color: tm.tenue });
+                let mas = Caja {
+                    x: p + w - e(24),
+                    y: y - e(2),
+                    an: e(24),
+                    al: e(24),
+                };
+                piezas.push(Pieza::Icono {
+                    icono: Icono::Puntos,
+                    caja: mas,
+                    lado: 14.0,
+                    color: tm.tenue,
+                });
                 zonas.push((Accion::Mas(en.id.clone()), mas));
             }
             y += e(26);
@@ -532,10 +707,24 @@ fn tarjeta(t: &Tarjeta, an: i32, d: &Datos, medir: &dyn Medir) -> Hecha {
         Some(Compositor::Editar(_)) => {}
         None if t.activa && !t.resuelto => {
             y += e(12);
-            let pastilla = Caja { x: p, y, an: w, al: e(30) };
-            piezas.push(Pieza::Borde { caja: pastilla, radio: 15.0, grosor: 1.0, color: tm.raya });
+            let pastilla = Caja {
+                x: p,
+                y,
+                an: w,
+                al: e(30),
+            };
+            piezas.push(Pieza::Borde {
+                caja: pastilla,
+                radio: 15.0,
+                grosor: 1.0,
+                color: tm.raya,
+            });
             piezas.push(Pieza::Texto {
-                caja: Caja { x: p + e(12), an: w - e(24), ..pastilla },
+                caja: Caja {
+                    x: p + e(12),
+                    an: w - e(24),
+                    ..pastilla
+                },
                 texto: r.responder_pista.clone(),
                 letra: Letra::Normal,
                 color: tm.tenue,
@@ -549,12 +738,41 @@ fn tarjeta(t: &Tarjeta, an: i32, d: &Datos, medir: &dyn Medir) -> Hecha {
     }
     y += p;
     // El fondo y el borde, debajo de todo.
-    let caja = Caja { x: 0, y: 0, an, al: y };
-    let (borde, grosor) = if t.activa { (tm.acento, 1.5) } else { (tm.raya, 1.0) };
-    piezas.insert(0, Pieza::Borde { caja, radio: 8.0, grosor, color: borde });
-    piezas.insert(0, Pieza::Caja { caja, radio: 8.0, color: co.tarjeta });
+    let caja = Caja {
+        x: 0,
+        y: 0,
+        an,
+        al: y,
+    };
+    let (borde, grosor) = if t.activa {
+        (tm.acento, 1.5)
+    } else {
+        (tm.raya, 1.0)
+    };
+    piezas.insert(
+        0,
+        Pieza::Borde {
+            caja,
+            radio: 8.0,
+            grosor,
+            color: borde,
+        },
+    );
+    piezas.insert(
+        0,
+        Pieza::Caja {
+            caja,
+            radio: 8.0,
+            color: co.tarjeta,
+        },
+    );
     zonas[0].1.al = y;
-    Hecha { piezas, zonas, compositor, alto: y }
+    Hecha {
+        piezas,
+        zonas,
+        compositor,
+        alto: y,
+    }
 }
 
 /// **Coloca las tarjetas** en `panel` (pixeles de la ventana).
@@ -563,25 +781,55 @@ pub fn disponer(d: &Datos, panel: Caja, medir: &dyn Medir) -> Vista {
     let tm = &d.tema;
     let co = colores(tm);
     let r = d.rotulos;
-    let mut v = Vista { caja: panel, cajon: d.cajon, ..Default::default() };
+    let mut v = Vista {
+        caja: panel,
+        cajon: d.cajon,
+        ..Default::default()
+    };
     // Sin caja: en el margen las tarjetas flotan sobre el papel; el cajon,
     // que va encima del texto, tiene su fondo, su sombra y su cabecera.
     let debajo = if d.cajon { co.fondo } else { tm.papel };
-    v.fijas.push(Pieza::Caja { caja: panel, radio: 0.0, color: debajo });
+    v.fijas.push(Pieza::Caja {
+        caja: panel,
+        radio: 0.0,
+        color: debajo,
+    });
     let mut y = panel.y + e(14);
     if d.cajon {
         for k in 0..6 {
             v.fijas.push(Pieza::Caja {
-                caja: Caja { x: panel.x + k * e(1).max(1), y: panel.y, an: e(1).max(1), al: panel.al },
+                caja: Caja {
+                    x: panel.x + k * e(1).max(1),
+                    y: panel.y,
+                    an: e(1).max(1),
+                    al: panel.al,
+                },
                 radio: 0.0,
                 color: mezcla(debajo, 0x000000, (90 - 15 * k) as u32),
             });
         }
-        let cab = Caja { x: panel.x, y: panel.y, an: panel.an, al: e(CABECERA_PX) };
-        let cerrar = Caja { x: cab.derecha() - e(10) - e(28), y: cab.y + (cab.al - e(28)) / 2, an: e(28), al: e(28) };
-        let filtro = Caja { x: cerrar.x - e(4) - e(28), ..cerrar };
+        let cab = Caja {
+            x: panel.x,
+            y: panel.y,
+            an: panel.an,
+            al: e(CABECERA_PX),
+        };
+        let cerrar = Caja {
+            x: cab.derecha() - e(10) - e(28),
+            y: cab.y + (cab.al - e(28)) / 2,
+            an: e(28),
+            al: e(28),
+        };
+        let filtro = Caja {
+            x: cerrar.x - e(4) - e(28),
+            ..cerrar
+        };
         v.fijas.push(Pieza::Texto {
-            caja: Caja { x: cab.x + e(20), an: filtro.x - cab.x - e(24), ..cab },
+            caja: Caja {
+                x: cab.x + e(20),
+                an: filtro.x - cab.x - e(24),
+                ..cab
+            },
             texto: r.comentarios.clone(),
             letra: Letra::Negrita,
             color: tm.texto,
@@ -589,7 +837,11 @@ pub fn disponer(d: &Datos, panel: Caja, medir: &dyn Medir) -> Vista {
             centrado: false,
         });
         if d.ver_resueltos {
-            v.fijas.push(Pieza::Caja { caja: filtro, radio: 6.0, color: tm.pastilla });
+            v.fijas.push(Pieza::Caja {
+                caja: filtro,
+                radio: 6.0,
+                color: tm.pastilla,
+            });
         }
         v.fijas.push(Pieza::Icono {
             icono: Icono::Filtro,
@@ -597,10 +849,24 @@ pub fn disponer(d: &Datos, panel: Caja, medir: &dyn Medir) -> Vista {
             lado: 15.0,
             color: if d.ver_resueltos { tm.acento } else { tm.tenue },
         });
-        v.fijas.push(Pieza::Icono { icono: Icono::Cerrar, caja: cerrar, lado: 14.0, color: tm.tenue });
+        v.fijas.push(Pieza::Icono {
+            icono: Icono::Cerrar,
+            caja: cerrar,
+            lado: 14.0,
+            color: tm.tenue,
+        });
         v.zonas.push((Accion::Filtro, filtro, false));
         v.zonas.push((Accion::CerrarPanel, cerrar, false));
-        v.fijas.push(Pieza::Caja { caja: Caja { x: panel.x, y: cab.abajo() - 1, an: panel.an, al: 1 }, radio: 0.0, color: tm.raya });
+        v.fijas.push(Pieza::Caja {
+            caja: Caja {
+                x: panel.x,
+                y: cab.abajo() - 1,
+                an: panel.an,
+                al: 1,
+            },
+            radio: 0.0,
+            color: tm.raya,
+        });
         y = cab.abajo() + e(12);
     }
     // Sitio a la izquierda para que la elegida se adelante, y para la sombra.
@@ -608,10 +874,26 @@ pub fn disponer(d: &Datos, panel: Caja, medir: &dyn Medir) -> Vista {
     let an = panel.an - e(ADELANTE_PX) - e(26);
     // Los resueltos: cuantos hay y verlos u ocultarlos (un enlace, sin caja).
     if d.resueltos > 0 {
-        let t = if d.ver_resueltos { r.ocultar_resueltos.clone() } else { format!("{} ({})", r.ver_resueltos, d.resueltos) };
+        let t = if d.ver_resueltos {
+            r.ocultar_resueltos.clone()
+        } else {
+            format!("{} ({})", r.ver_resueltos, d.resueltos)
+        };
         let w = medir.ancho(Letra::Chica, &t) + e(8);
-        let c = Caja { x: x + an - w, y, an: w, al: e(20) };
-        v.fijas.push(Pieza::Texto { caja: c, texto: t, letra: Letra::Chica, color: tm.acento, varias: false, centrado: true });
+        let c = Caja {
+            x: x + an - w,
+            y,
+            an: w,
+            al: e(20),
+        };
+        v.fijas.push(Pieza::Texto {
+            caja: c,
+            texto: t,
+            letra: Letra::Chica,
+            color: tm.acento,
+            varias: false,
+            centrado: true,
+        });
         v.zonas.push((Accion::Filtro, c, false));
         y += e(28);
     }
@@ -619,11 +901,30 @@ pub fn disponer(d: &Datos, panel: Caja, medir: &dyn Medir) -> Vista {
         // Una tarjeta que dice que no hay y como poner uno.
         let p = e(RELLENO_PX);
         let al_pista = medir.alto(Letra::Chica, &r.pista, an - 2 * p);
-        let caja = Caja { x, y: y + e(4), an, al: p + e(18) + e(6) + al_pista + p };
+        let caja = Caja {
+            x,
+            y: y + e(4),
+            an,
+            al: p + e(18) + e(6) + al_pista + p,
+        };
         v.fijas.extend(sombra(caja, debajo, d.escala));
-        v.fijas.push(Pieza::Caja { caja, radio: 8.0, color: co.tarjeta });
-        v.fijas.push(Pieza::Borde { caja, radio: 8.0, grosor: 1.0, color: tm.raya });
-        let c = Caja { x: x + p, y: caja.y + p, an: an - 2 * p, al: e(18) };
+        v.fijas.push(Pieza::Caja {
+            caja,
+            radio: 8.0,
+            color: co.tarjeta,
+        });
+        v.fijas.push(Pieza::Borde {
+            caja,
+            radio: 8.0,
+            grosor: 1.0,
+            color: tm.raya,
+        });
+        let c = Caja {
+            x: x + p,
+            y: caja.y + p,
+            an: an - 2 * p,
+            al: e(18),
+        };
         v.fijas.push(Pieza::Texto {
             caja: c,
             texto: r.sin_comentarios.clone(),
@@ -633,21 +934,37 @@ pub fn disponer(d: &Datos, panel: Caja, medir: &dyn Medir) -> Vista {
             centrado: false,
         });
         v.fijas.push(Pieza::Texto {
-            caja: Caja { x: x + p, y: c.abajo() + e(6), an: an - 2 * p, al: al_pista },
+            caja: Caja {
+                x: x + p,
+                y: c.abajo() + e(6),
+                an: an - 2 * p,
+                al: al_pista,
+            },
             texto: r.pista.clone(),
             letra: Letra::Chica,
             color: tm.tenue,
             varias: true,
             centrado: false,
         });
-        v.zona_movil = Caja { x: panel.x, y: panel.abajo(), an: panel.an, al: 0 };
+        v.zona_movil = Caja {
+            x: panel.x,
+            y: panel.abajo(),
+            an: panel.an,
+            al: 0,
+        };
         return v;
     }
     // Los que perdieron su sitio, arriba y quietos.
-    let (sueltas, ancladas): (Vec<&Tarjeta>, Vec<&Tarjeta>) = d.tarjetas.iter().partition(|t| t.ancla_y.is_none());
+    let (sueltas, ancladas): (Vec<&Tarjeta>, Vec<&Tarjeta>) =
+        d.tarjetas.iter().partition(|t| t.ancla_y.is_none());
     if !sueltas.is_empty() {
         v.fijas.push(Pieza::Texto {
-            caja: Caja { x: x + e(4), y, an, al: e(18) },
+            caja: Caja {
+                x: x + e(4),
+                y,
+                an,
+                al: e(18),
+            },
             texto: r.sin_ancla.clone(),
             letra: Letra::Chica,
             color: tm.tenue,
@@ -661,7 +978,16 @@ pub fn disponer(d: &Datos, panel: Caja, medir: &dyn Medir) -> Vista {
             for pz in &mut h.piezas {
                 pz.mover(tx, y);
             }
-            v.fijas.extend(sombra(Caja { x: tx, y, an, al: h.alto }, debajo, d.escala));
+            v.fijas.extend(sombra(
+                Caja {
+                    x: tx,
+                    y,
+                    an,
+                    al: h.alto,
+                },
+                debajo,
+                d.escala,
+            ));
             v.fijas.extend(h.piezas);
             for (a, mut c) in h.zonas {
                 c.x += tx;
@@ -673,12 +999,25 @@ pub fn disponer(d: &Datos, panel: Caja, medir: &dyn Medir) -> Vista {
                 c.y += y;
                 v.compositor = Some((c, false));
             }
-            v.tarjetas.push((t.id.clone(), Caja { x: tx, y, an, al: h.alto }));
+            v.tarjetas.push((
+                t.id.clone(),
+                Caja {
+                    x: tx,
+                    y,
+                    an,
+                    al: h.alto,
+                },
+            ));
             y += h.alto + e(HUECO_PX);
         }
         y += e(6);
     }
-    v.zona_movil = Caja { x: panel.x, y, an: panel.an, al: (panel.abajo() - y).max(0) };
+    v.zona_movil = Caja {
+        x: panel.x,
+        y,
+        an: panel.an,
+        al: (panel.abajo() - y).max(0),
+    };
     // Los que siguen al texto, cada uno a la altura de su frase.
     let hechas: Vec<Hecha> = ancladas.iter().map(|t| tarjeta(t, an, d, medir)).collect();
     // Una frase a la vista no deja su tarjeta debajo de los sin ancla: la
@@ -692,11 +1031,26 @@ pub fn disponer(d: &Datos, panel: Caja, medir: &dyn Medir) -> Vista {
             (if y >= panel.y { y.max(tope) } else { y }, h.alto)
         })
         .collect();
-    let activa = ancladas.iter().position(|t| t.activa || t.compositor.is_some());
+    let activa = ancladas
+        .iter()
+        .position(|t| t.activa || t.compositor.is_some());
     let ys = apilar(&pedidos, activa, e(HUECO_PX));
     for ((t, h), ty) in ancladas.iter().zip(hechas).zip(ys) {
-        let tx = if t.activa || t.compositor.is_some() { x - e(ADELANTE_PX) } else { x };
-        let mut piezas = sombra(Caja { x: tx, y: ty, an, al: h.alto }, debajo, d.escala);
+        let tx = if t.activa || t.compositor.is_some() {
+            x - e(ADELANTE_PX)
+        } else {
+            x
+        };
+        let mut piezas = sombra(
+            Caja {
+                x: tx,
+                y: ty,
+                an,
+                al: h.alto,
+            },
+            debajo,
+            d.escala,
+        );
         let mut propias = h.piezas;
         for pz in &mut propias {
             pz.mover(tx, ty);
@@ -713,7 +1067,15 @@ pub fn disponer(d: &Datos, panel: Caja, medir: &dyn Medir) -> Vista {
             c.y += ty;
             v.compositor = Some((c, true));
         }
-        v.tarjetas.push((t.id.clone(), Caja { x: tx, y: ty, an, al: h.alto }));
+        v.tarjetas.push((
+            t.id.clone(),
+            Caja {
+                x: tx,
+                y: ty,
+                an,
+                al: h.alto,
+            },
+        ));
     }
     v
 }
@@ -773,7 +1135,8 @@ fn letra_de(p: &Pintor, l: Letra) -> HFONT {
     }
 }
 
-const PARTIR: DRAW_TEXT_FORMAT = DRAW_TEXT_FORMAT(DT_WORDBREAK.0 | DT_NOPREFIX.0 | DT_EDITCONTROL.0);
+const PARTIR: DRAW_TEXT_FORMAT =
+    DRAW_TEXT_FORMAT(DT_WORDBREAK.0 | DT_NOPREFIX.0 | DT_EDITCONTROL.0);
 
 impl Medir for MedirGdi<'_> {
     fn ancho(&self, l: Letra, t: &str) -> i32 {
@@ -781,8 +1144,17 @@ impl Medir for MedirGdi<'_> {
     }
 
     fn alto(&self, l: Letra, t: &str, ancho: i32) -> i32 {
-        let mut b: Vec<u16> = if t.is_empty() { vec![b' ' as u16] } else { t.encode_utf16().collect() };
-        let mut r = RECT { left: 0, top: 0, right: ancho.max(1), bottom: 0 };
+        let mut b: Vec<u16> = if t.is_empty() {
+            vec![b' ' as u16]
+        } else {
+            t.encode_utf16().collect()
+        };
+        let mut r = RECT {
+            left: 0,
+            top: 0,
+            right: ancho.max(1),
+            bottom: 0,
+        };
         // SAFETY: HDC y letra vivos; el texto es un bufer propio; se devuelve
         // la letra que habia.
         unsafe {
@@ -799,7 +1171,12 @@ fn texto_partido(hdc: HDC, p: &Pintor, l: Letra, t: &str, caja: Caja, tinta: Rgb
         return;
     }
     let mut b: Vec<u16> = t.encode_utf16().collect();
-    let mut r = RECT { left: caja.x, top: caja.y, right: caja.derecha(), bottom: caja.abajo() };
+    let mut r = RECT {
+        left: caja.x,
+        top: caja.y,
+        right: caja.derecha(),
+        bottom: caja.abajo(),
+    };
     let f = if centrado { PARTIR | DT_CENTER } else { PARTIR };
     // SAFETY: como en `alto`.
     unsafe {
@@ -815,14 +1192,29 @@ fn pintar_piezas(hdc: HDC, p: &Pintor, piezas: &[Pieza], zona: Caja) {
     if zona.an <= 0 || zona.al <= 0 {
         return;
     }
-    let r = RECT { left: zona.x, top: zona.y, right: zona.derecha(), bottom: zona.abajo() };
+    let r = RECT {
+        left: zona.x,
+        top: zona.y,
+        right: zona.derecha(),
+        bottom: zona.abajo(),
+    };
     p.formas(hdc, r, |f| {
         for pz in piezas {
             match pz {
                 Pieza::Caja { caja, radio, color } => f.redondo(*caja, *radio, *color),
-                Pieza::Borde { caja, radio, grosor, color } => f.borde(*caja, *radio, *grosor, *color),
+                Pieza::Borde {
+                    caja,
+                    radio,
+                    grosor,
+                    color,
+                } => f.borde(*caja, *radio, *grosor, *color),
                 Pieza::Raya { x0, y0, x1, color } => f.raya(*x0, *y0, *x1, *y0, *color),
-                Pieza::Icono { icono, caja, lado, color } => f.icono(*icono, *caja, *lado, *color),
+                Pieza::Icono {
+                    icono,
+                    caja,
+                    lado,
+                    color,
+                } => f.icono(*icono, *caja, *lado, *color),
                 Pieza::Texto { .. } => {}
             }
         }
@@ -832,7 +1224,15 @@ fn pintar_piezas(hdc: HDC, p: &Pintor, piezas: &[Pieza], zona: Caja) {
         let guardado = SaveDC(hdc);
         IntersectClipRect(hdc, zona.x, zona.y, zona.derecha(), zona.abajo());
         for pz in piezas {
-            if let Pieza::Texto { caja, texto, letra, color, varias, centrado } = pz {
+            if let Pieza::Texto {
+                caja,
+                texto,
+                letra,
+                color,
+                varias,
+                centrado,
+            } = pz
+            {
                 if *varias {
                     texto_partido(hdc, p, *letra, texto, *caja, *color, *centrado);
                 } else {
@@ -866,7 +1266,11 @@ pub fn pintar_en(hdc: HDC, p: &Pintor, (ox, oy): (i32, i32)) {
                     })
                     .collect()
             };
-            let caja = |c: Caja| Caja { x: c.x - ox, y: c.y - oy, ..c };
+            let caja = |c: Caja| Caja {
+                x: c.x - ox,
+                y: c.y - oy,
+                ..c
+            };
             pintar_piezas(hdc, p, &mover(&v.fijas), caja(v.caja));
             pintar_piezas(hdc, p, &mover(&v.moviles), caja(v.zona_movil));
         }
@@ -879,19 +1283,38 @@ pub fn pintar_boton(hdc: HDC, p: &Pintor, caja: Caja, hover: bool, tema: &Tema) 
     let abierto = ABIERTO.with(Cell::get);
     let n = CONTADOR.with(Cell::get);
     let e = |v: i32| (v as f32 * p.escala).round() as i32;
-    let insignia = Caja { x: caja.derecha() - e(13), y: caja.y - e(2), an: e(15), al: e(15) };
-    let zona = RECT { left: caja.x, top: caja.y - e(4), right: caja.derecha() + e(4), bottom: caja.abajo() };
+    let insignia = Caja {
+        x: caja.derecha() - e(13),
+        y: caja.y - e(2),
+        an: e(15),
+        al: e(15),
+    };
+    let zona = RECT {
+        left: caja.x,
+        top: caja.y - e(4),
+        right: caja.derecha() + e(4),
+        bottom: caja.abajo(),
+    };
     p.formas(hdc, zona, |f| {
         if abierto || hover {
             f.redondo(caja, 6.0, tema.pastilla);
         }
-        f.icono(Icono::Comentario, caja, 15.0, if abierto { tema.acento } else { tema.texto });
+        f.icono(
+            Icono::Comentario,
+            caja,
+            15.0,
+            if abierto { tema.acento } else { tema.texto },
+        );
         if n > 0 {
             f.redondo(insignia, 7.5, tema.acento);
         }
     });
     if n > 0 {
-        let t = if n > 99 { "99".to_string() } else { n.to_string() };
+        let t = if n > 99 {
+            "99".to_string()
+        } else {
+            n.to_string()
+        };
         p.texto(hdc, p.letra_chica, &t, insignia, 0xffffff, true);
     }
 }
@@ -908,7 +1331,10 @@ mod pruebas {
         }
         fn alto(&self, _: Letra, t: &str, ancho: i32) -> i32 {
             let por_renglon = (ancho / 7).max(1) as usize;
-            t.split('\n').map(|r| r.chars().count().div_ceil(por_renglon).max(1)).sum::<usize>() as i32 * 18
+            t.split('\n')
+                .map(|r| r.chars().count().div_ceil(por_renglon).max(1))
+                .sum::<usize>() as i32
+                * 18
         }
     }
 
@@ -948,7 +1374,12 @@ mod pruebas {
         }
     }
 
-    const PANEL: Caja = Caja { x: 700, y: 82, an: 300, al: 700 };
+    const PANEL: Caja = Caja {
+        x: 700,
+        y: 82,
+        an: 300,
+        al: 700,
+    };
 
     fn colocar(tarjetas: Vec<Tarjeta>, resueltos: usize) -> Vista {
         colocar_en(tarjetas, resueltos, false)
@@ -996,15 +1427,19 @@ mod pruebas {
         let sombras = v
             .moviles
             .iter()
-            .filter(|p| matches!(p, Pieza::Caja { caja, color, .. }
-                if caja.an > b.an && *color != co.tarjeta && *color != Tema::oscuro().papel))
+            .filter(|p| {
+                matches!(p, Pieza::Caja { caja, color, .. }
+                if caja.an > b.an && *color != co.tarjeta && *color != Tema::oscuro().papel)
+            })
             .count();
         assert!(sombras >= 2 * 3, "{sombras}");
     }
 
     #[test]
     fn muchas_tarjetas_juntas_se_apilan_sin_solaparse() {
-        let mut v_t: Vec<Tarjeta> = (0..5).map(|i| t(&format!("c{i}"), Some(150 + i * 8), "un comentario")).collect();
+        let mut v_t: Vec<Tarjeta> = (0..5)
+            .map(|i| t(&format!("c{i}"), Some(150 + i * 8), "un comentario"))
+            .collect();
         v_t[2].activa = true;
         let v = colocar(v_t, 0);
         let mut cajas: Vec<Caja> = v.tarjetas.iter().map(|(_, c)| *c).collect();
@@ -1013,16 +1448,29 @@ mod pruebas {
             assert!(par[0].abajo() <= par[1].y, "{:?} pisa {:?}", par[0], par[1]);
         }
         // La elegida, justo en su frase.
-        assert_eq!(v.tarjetas.iter().find(|(x, _)| x == "c2").unwrap().1.y, 150 + 16);
+        assert_eq!(
+            v.tarjetas.iter().find(|(x, _)| x == "c2").unwrap().1.y,
+            150 + 16
+        );
     }
 
     #[test]
     fn en_el_cajon_hay_cabecera_para_cerrarlo_y_fondo_propio() {
         let v = colocar_en(vec![t("a", Some(200), "uno")], 0, true);
         assert!(textos(&v.fijas).contains(&"Comentarios".to_string()));
-        let cerrar = v.zonas.iter().find(|(a, _, _)| *a == Accion::CerrarPanel).unwrap().1;
-        assert_eq!(v.accion_en(cerrar.x + 2, cerrar.y + 2), Some(Accion::CerrarPanel));
-        assert!(matches!(v.fijas[0], Pieza::Caja { color, .. } if color == colores(&Tema::oscuro()).fondo));
+        let cerrar = v
+            .zonas
+            .iter()
+            .find(|(a, _, _)| *a == Accion::CerrarPanel)
+            .unwrap()
+            .1;
+        assert_eq!(
+            v.accion_en(cerrar.x + 2, cerrar.y + 2),
+            Some(Accion::CerrarPanel)
+        );
+        assert!(
+            matches!(v.fijas[0], Pieza::Caja { color, .. } if color == colores(&Tema::oscuro()).fondo)
+        );
     }
 
     #[test]
@@ -1048,16 +1496,28 @@ mod pruebas {
         assert!(textos.contains(&"No hay comentarios".to_string()));
         assert!(textos.iter().any(|t| t.contains("Comentar")));
         // En una tarjeta como las demas, dentro del margen.
-        assert!(v.fijas.iter().any(|p| matches!(p, Pieza::Borde { caja, .. } if caja.derecha() <= PANEL.derecha())));
+        assert!(
+            v.fijas.iter().any(
+                |p| matches!(p, Pieza::Borde { caja, .. } if caja.derecha() <= PANEL.derecha())
+            )
+        );
         // En el cajon, ademas, su cruz para cerrarlo.
         let v = colocar_en(Vec::new(), 0, true);
-        let cerrar = v.zonas.iter().find(|(a, _, _)| *a == Accion::CerrarPanel).unwrap().1;
+        let cerrar = v
+            .zonas
+            .iter()
+            .find(|(a, _, _)| *a == Accion::CerrarPanel)
+            .unwrap()
+            .1;
         assert!(cerrar.derecha() <= PANEL.derecha());
     }
 
     #[test]
     fn los_sin_ancla_van_arriba_y_los_demas_debajo_siguiendo_al_texto() {
-        let v = colocar(vec![t("a", Some(300), "en su frase"), t("s", None, "perdido")], 0);
+        let v = colocar(
+            vec![t("a", Some(300), "en su frase"), t("s", None, "perdido")],
+            0,
+        );
         let caja = |id: &str| v.tarjetas.iter().find(|(x, _)| x == id).unwrap().1;
         let (a, s) = (caja("a"), caja("s"));
         assert!(s.y < v.zona_movil.y, "el suelto va en la parte quieta");
@@ -1068,7 +1528,10 @@ mod pruebas {
     #[test]
     fn una_frase_a_la_vista_no_deja_su_tarjeta_tapada_por_los_sin_ancla() {
         // La frase esta justo bajo la cabecera, donde van los sin ancla.
-        let v = colocar(vec![t("a", Some(PANEL.y + 20), "uno"), t("s", None, "perdido")], 0);
+        let v = colocar(
+            vec![t("a", Some(PANEL.y + 20), "uno"), t("s", None, "perdido")],
+            0,
+        );
         let a = v.tarjetas.iter().find(|(x, _)| x == "a").unwrap().1;
         assert!(a.y >= v.zona_movil.y, "entera a la vista");
     }
@@ -1100,7 +1563,10 @@ mod pruebas {
         assert!(!acciones.contains(&&Accion::Resolver("b".into())));
         // Un clic en el cuerpo de la otra la elige.
         let b = v.tarjetas.iter().find(|(x, _)| x == "b").unwrap().1;
-        assert_eq!(v.accion_en(b.x + 5, b.y + 5), Some(Accion::Tarjeta("b".into())));
+        assert_eq!(
+            v.accion_en(b.x + 5, b.y + 5),
+            Some(Accion::Tarjeta("b".into()))
+        );
         // Y la elegida no se monta en la otra.
         let a = v.tarjetas.iter().find(|(x, _)| x == "a").unwrap().1;
         assert!(a.abajo() <= b.y);
@@ -1115,11 +1581,23 @@ mod pruebas {
         let tarjeta = v.tarjetas[0].1;
         let c = v.compositor_visible().unwrap();
         assert!(c.y > tarjeta.y && c.abajo() < tarjeta.abajo());
-        let enviar = v.zonas.iter().find(|(a, _, _)| *a == Accion::Enviar).unwrap().1;
-        assert_eq!(v.accion_en(enviar.x + 3, enviar.y + 3), Some(Accion::Enviar));
+        let enviar = v
+            .zonas
+            .iter()
+            .find(|(a, _, _)| *a == Accion::Enviar)
+            .unwrap()
+            .1;
+        assert_eq!(
+            v.accion_en(enviar.x + 3, enviar.y + 3),
+            Some(Accion::Enviar)
+        );
         assert!(v.zonas.iter().any(|(a, _, _)| *a == Accion::Cancelar));
         // Sin la pastilla de responder: ya se esta respondiendo.
-        assert!(!v.zonas.iter().any(|(a, _, _)| matches!(a, Accion::Responder(_))));
+        assert!(
+            !v.zonas
+                .iter()
+                .any(|(a, _, _)| matches!(a, Accion::Responder(_)))
+        );
     }
 
     #[test]
@@ -1132,9 +1610,21 @@ mod pruebas {
         assert_eq!(texto.as_deref(), Some("Ver resueltos (2)"));
         // En el margen, solo el enlace; en el cajon, tambien el filtro de
         // su cabecera.
-        assert_eq!(v.zonas.iter().filter(|(a, _, _)| *a == Accion::Filtro).count(), 1);
+        assert_eq!(
+            v.zonas
+                .iter()
+                .filter(|(a, _, _)| *a == Accion::Filtro)
+                .count(),
+            1
+        );
         let v = colocar_en(vec![t("a", Some(200), "uno")], 2, true);
-        assert_eq!(v.zonas.iter().filter(|(a, _, _)| *a == Accion::Filtro).count(), 2);
+        assert_eq!(
+            v.zonas
+                .iter()
+                .filter(|(a, _, _)| *a == Accion::Filtro)
+                .count(),
+            2
+        );
         // Caso negativo: sin resueltos no hay enlace.
         let v = colocar(vec![t("a", Some(200), "uno")], 0);
         assert!(!v.zonas.iter().any(|(a, _, _)| *a == Accion::Filtro));
@@ -1142,7 +1632,15 @@ mod pruebas {
 
     #[test]
     fn el_panel_va_encima_del_margen_del_papel_solo_si_esta_abierto() {
-        let mut m = Marco { cuerpo: Caja { x: 0, y: 82, an: 1000, al: 600 }, ..Default::default() };
+        let mut m = Marco {
+            cuerpo: Caja {
+                x: 0,
+                y: 82,
+                an: 1000,
+                al: 600,
+            },
+            ..Default::default()
+        };
         ABIERTO.with(|a| a.set(false));
         assert_eq!(recortar(&mut m, 1.0), None);
         assert_eq!(m.cuerpo.an, 1000);
@@ -1154,27 +1652,57 @@ mod pruebas {
         assert_eq!(reserva(), 320);
         // Estrecha: las tarjetas van en el cajon, encima del texto, y el
         // papel no pierde nada.
-        let mut m = Marco { cuerpo: Caja { x: 0, y: 82, an: 600, al: 600 }, ..Default::default() };
+        let mut m = Marco {
+            cuerpo: Caja {
+                x: 0,
+                y: 82,
+                an: 600,
+                al: 600,
+            },
+            ..Default::default()
+        };
         let p = recortar(&mut m, 1.0).unwrap();
         assert_eq!((p.x, p.an, m.cuerpo.an), (280, 320, 600));
         assert!(CAJON.with(Cell::get));
         // Muy estrecha: el cajon deja ver un poco de texto a su izquierda.
-        let mut m = Marco { cuerpo: Caja { x: 0, y: 82, an: 300, al: 600 }, ..Default::default() };
+        let mut m = Marco {
+            cuerpo: Caja {
+                x: 0,
+                y: 82,
+                an: 300,
+                al: 600,
+            },
+            ..Default::default()
+        };
         let p = recortar(&mut m, 1.0).unwrap();
         assert_eq!((p.x, p.an), (48, 252));
         ABIERTO.with(|a| a.set(false));
-        let mut m = Marco { cuerpo: Caja { x: 0, y: 82, an: 600, al: 600 }, ..Default::default() };
+        let mut m = Marco {
+            cuerpo: Caja {
+                x: 0,
+                y: 82,
+                an: 600,
+                al: 600,
+            },
+            ..Default::default()
+        };
         assert_eq!(recortar(&mut m, 1.0), None);
         assert!(!CAJON.with(Cell::get));
     }
 
     #[test]
     fn la_fecha_es_corta_y_lleva_el_ano_solo_si_no_es_este() {
-        let meses: Vec<String> = "ene feb mar abr may jun jul ago sept oct nov dic".split(' ').map(String::from).collect();
+        let meses: Vec<String> = "ene feb mar abr may jun jul ago sept oct nov dic"
+            .split(' ')
+            .map(String::from)
+            .collect();
         // 2026-09-30 19:05 UTC; Lima va 5 h por detras.
         let cuando = 1_790_795_100_000;
         let lima = -5 * 3_600_000;
         assert_eq!(fecha_corta(cuando, lima, cuando, &meses), "30 sept, 14:05");
-        assert_eq!(fecha_corta(cuando - 365 * 86_400_000, lima, cuando, &meses), "30 sept 2025");
+        assert_eq!(
+            fecha_corta(cuando - 365 * 86_400_000, lima, cuando, &meses),
+            "30 sept 2025"
+        );
     }
 }

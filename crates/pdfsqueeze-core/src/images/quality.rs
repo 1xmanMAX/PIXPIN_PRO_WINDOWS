@@ -5,7 +5,11 @@
 pub fn ssim(a: &[u8], b: &[u8], w: usize, h: usize) -> f64 {
     const R: usize = 3; // window radius → 7×7
     if w < 2 * R + 1 || h < 2 * R + 1 {
-        return if a == b { 1.0 } else { psnr_to_pseudo_ssim(psnr(a, b)) };
+        return if a == b {
+            1.0
+        } else {
+            psnr_to_pseudo_ssim(psnr(a, b))
+        };
     }
     let n = (w + 1) * (h + 1);
     let mut ia = vec![0f64; n];
@@ -51,7 +55,8 @@ pub fn ssim(a: &[u8], b: &[u8], w: usize, h: usize) -> f64 {
             let va = sum(&iaa, x0, y0, x1, y1) / win - ma * ma;
             let vb = sum(&ibb, x0, y0, x1, y1) / win - mb * mb;
             let cov = sum(&iab, x0, y0, x1, y1) / win - ma * mb;
-            let s = ((2.0 * ma * mb + c1) * (2.0 * cov + c2)) / ((ma * ma + mb * mb + c1) * (va + vb + c2));
+            let s = ((2.0 * ma * mb + c1) * (2.0 * cov + c2))
+                / ((ma * ma + mb * mb + c1) * (va + vb + c2));
             total += s;
             count += 1;
             x += 2;
@@ -87,7 +92,9 @@ pub fn ssim_mean_and_p10(a: &[u8], b: &[u8], w: usize, h: usize, tile: usize) ->
                 }
                 // Flat paper tiles are trivially identical; only tiles with
                 // content in the original are informative.
-                let (mn, mx) = ta.iter().fold((255u8, 0u8), |(mn, mx), &v| (mn.min(v), mx.max(v)));
+                let (mn, mx) = ta
+                    .iter()
+                    .fold((255u8, 0u8), |(mn, mx), &v| (mn.min(v), mx.max(v)));
                 if mx - mn >= 24 {
                     tiles.push(ssim(&ta, &tb, tw, th));
                 }
@@ -109,7 +116,15 @@ pub fn psnr(a: &[u8], b: &[u8]) -> f64 {
     if n == 0 {
         return 0.0;
     }
-    let mse: f64 = a.iter().zip(b).map(|(&x, &y)| { let d = x as f64 - y as f64; d * d }).sum::<f64>() / n as f64;
+    let mse: f64 = a
+        .iter()
+        .zip(b)
+        .map(|(&x, &y)| {
+            let d = x as f64 - y as f64;
+            d * d
+        })
+        .sum::<f64>()
+        / n as f64;
     if mse <= 1e-9 {
         99.0
     } else {
@@ -132,7 +147,11 @@ mod tests {
     #[test]
     fn noise_lowers_ssim() {
         let a: Vec<u8> = (0..64 * 64).map(|i| ((i / 64) * 4) as u8).collect();
-        let b: Vec<u8> = a.iter().enumerate().map(|(i, &v)| v.wrapping_add(((i * 7919) % 41) as u8)).collect();
+        let b: Vec<u8> = a
+            .iter()
+            .enumerate()
+            .map(|(i, &v)| v.wrapping_add(((i * 7919) % 41) as u8))
+            .collect();
         let s = ssim(&a, &b, 64, 64);
         assert!(s < 0.9, "{}", s);
     }

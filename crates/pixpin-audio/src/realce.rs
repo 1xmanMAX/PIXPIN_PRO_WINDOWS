@@ -175,8 +175,7 @@ impl Realce {
                 // Silencio: no se sube; se vuelve despacio a 0 dB.
                 self.ganancia += (GANANCIA_MINIMA - self.ganancia) * self.vuelta;
             } else {
-                let quiere =
-                    (OBJETIVO / self.envolvente).clamp(GANANCIA_MINIMA, GANANCIA_MAXIMA);
+                let quiere = (OBJETIVO / self.envolvente).clamp(GANANCIA_MINIMA, GANANCIA_MAXIMA);
                 // Bajar es urgente (lo que viene se saldria); subir, no.
                 let k = if quiere < self.ganancia {
                     self.ataque
@@ -241,7 +240,13 @@ mod pruebas {
         let p = pico(&salida);
         assert!(p < 32767, "llego al techo: {p}");
         // Ni un tramo plano pegado arriba: eso es un recorte.
-        assert_eq!(salida.iter().filter(|s| (**s as i32).abs() >= 32700).count(), 0);
+        assert_eq!(
+            salida
+                .iter()
+                .filter(|s| (**s as i32).abs() >= 32700)
+                .count(),
+            0
+        );
         // Y sigue sonando alta: el limitador dobla, no apaga.
         assert!(p > (0.85 * 32767.0) as i32, "{p}");
     }

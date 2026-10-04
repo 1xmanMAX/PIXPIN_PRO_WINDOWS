@@ -271,7 +271,11 @@ fn la_raya_que_sale_del_resaltador_al_pararse_es_tan_ancha_como_su_tinta() {
         ev(&mut g, &mut escena, mover(200.0, 0.0));
         ev(&mut g, &mut escena, soltar(200.0, 0.0));
         let raya = ultimo(&escena);
-        assert!(matches!(raya.figura, Figura::Linea { .. }), "{:?}", raya.figura);
+        assert!(
+            matches!(raya.figura, Figura::Linea { .. }),
+            "{:?}",
+            raya.figura
+        );
         let (recta, pasadas) = ancho_pintado(raya);
         assert!(
             (recta - esperado).abs() < 0.5,

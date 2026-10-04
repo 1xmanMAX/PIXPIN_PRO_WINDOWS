@@ -224,7 +224,11 @@ fn leer_fuente(archivo: &Archivo, d: &Dicc) -> Fuente {
         if let Some(Valor::Lista(hijas)) = archivo.resolver(en(d, b"DescendantFonts"))
             && let Some(hija) = archivo.dicc_de(hijas.first())
         {
-            if let Some(dw) = archivo.resolver(en(&hija, b"DW")).as_ref().and_then(numero_de) {
+            if let Some(dw) = archivo
+                .resolver(en(&hija, b"DW"))
+                .as_ref()
+                .and_then(numero_de)
+            {
                 f.ancho_por_omision = dw;
             }
             if let Some(Valor::Lista(w)) = archivo.resolver(en(&hija, b"W")) {
@@ -241,7 +245,10 @@ fn leer_fuente(archivo: &Archivo, d: &Dicc) -> Fuente {
             }
         }
         if let Some(desc) = archivo.dicc_de(en(d, b"FontDescriptor"))
-            && let Some(a) = archivo.resolver(en(&desc, b"MissingWidth")).as_ref().and_then(numero_de)
+            && let Some(a) = archivo
+                .resolver(en(&desc, b"MissingWidth"))
+                .as_ref()
+                .and_then(numero_de)
             && a > 0.0
         {
             f.ancho_por_omision = a;
@@ -458,8 +465,10 @@ fn leer_cmap(datos: &[u8]) -> (HashMap<u32, String>, Option<usize>) {
                     let hi = hi.min(lo.saturating_add(65535));
                     match &toks[i + 2] {
                         Tok::Cadena(d, true) => {
-                            let mut unidades: Vec<u16> =
-                                d.chunks(2).map(|c| ((c[0] as u16) << 8) | *c.get(1).unwrap_or(&0) as u16).collect();
+                            let mut unidades: Vec<u16> = d
+                                .chunks(2)
+                                .map(|c| ((c[0] as u16) << 8) | *c.get(1).unwrap_or(&0) as u16)
+                                .collect();
                             for k in lo..=hi {
                                 mapa.insert(k, String::from_utf16_lossy(&unidades));
                                 if let Some(u) = unidades.last_mut() {
@@ -511,7 +520,10 @@ fn es_blanco(c: u8) -> bool {
 }
 
 fn es_delimitador(c: u8) -> bool {
-    matches!(c, b'(' | b')' | b'<' | b'>' | b'[' | b']' | b'{' | b'}' | b'/' | b'%')
+    matches!(
+        c,
+        b'(' | b')' | b'<' | b'>' | b'[' | b']' | b'{' | b'}' | b'/' | b'%'
+    )
 }
 
 /// Trocea un flujo de contenido (o un CMap). Los diccionarios en linea
@@ -612,7 +624,10 @@ fn trocear(b: &[u8]) -> Vec<Tok> {
                     i += 1;
                     continue;
                 }
-                if let Some(n) = std::str::from_utf8(palabra).ok().and_then(|s| s.parse::<f32>().ok()) {
+                if let Some(n) = std::str::from_utf8(palabra)
+                    .ok()
+                    .and_then(|s| s.parse::<f32>().ok())
+                {
                     Tok::Num(n)
                 } else if palabra == b"ID" {
                     // Los datos de una imagen en linea, hasta `EI` suelto.
@@ -727,7 +742,12 @@ fn caja_de(v: Option<Valor>) -> Option<[f32; 4]> {
     if n.len() != 4 {
         return None;
     }
-    let caja = [n[0].min(n[2]), n[1].min(n[3]), n[0].max(n[2]), n[1].max(n[3])];
+    let caja = [
+        n[0].min(n[2]),
+        n[1].min(n[3]),
+        n[0].max(n[2]),
+        n[1].max(n[3]),
+    ];
     (caja[2] - caja[0] > 0.0 && caja[3] - caja[1] > 0.0).then_some(caja)
 }
 
@@ -807,8 +827,14 @@ fn pagina(archivo: &Archivo, n: u32, fuentes: &mut Fuentes) -> PaginaDeTexto {
 
 impl Lectura<'_> {
     fn flujo(&mut self, datos: &[u8], recursos: &Dicc, ctm: M, hondo: u32) {
-        let fuentes_de_la_hoja = self.archivo.dicc_de(en(recursos, b"Font")).unwrap_or_default();
-        let formularios = self.archivo.dicc_de(en(recursos, b"XObject")).unwrap_or_default();
+        let fuentes_de_la_hoja = self
+            .archivo
+            .dicc_de(en(recursos, b"Font"))
+            .unwrap_or_default();
+        let formularios = self
+            .archivo
+            .dicc_de(en(recursos, b"XObject"))
+            .unwrap_or_default();
         let mut g = EstadoTexto {
             ctm,
             fuente: None,
@@ -857,7 +883,8 @@ impl Lectura<'_> {
                 b"Tf" if n >= 2 => {
                     g.tam = num(&args, n - 1);
                     if let Some(Tok::Nombre(nombre)) = args.get(n - 2) {
-                        g.fuente = en(&fuentes_de_la_hoja, nombre).map(|v| self.fuentes.de(self.archivo, v));
+                        g.fuente = en(&fuentes_de_la_hoja, nombre)
+                            .map(|v| self.fuentes.de(self.archivo, v));
                     }
                 }
                 b"Tc" if n >= 1 => g.tc = num(&args, n - 1),
@@ -919,13 +946,15 @@ impl Lectura<'_> {
                 }
                 b"Do" if hondo < HONDO_FORMULARIOS => {
                     if let Some(Tok::Nombre(nombre)) = args.last()
-                        && let Some(Valor::Flujo(sd, crudo)) = self.archivo.resolver(en(&formularios, nombre))
+                        && let Some(Valor::Flujo(sd, crudo)) =
+                            self.archivo.resolver(en(&formularios, nombre))
                         && nombre_de(en(&sd, b"Subtype")) == Some(b"Form")
                         && let Some(x) = descodificar(&sd, &crudo)
                     {
                         let matriz = match self.archivo.resolver(en(&sd, b"Matrix")) {
                             Some(Valor::Lista(l)) if l.len() == 6 => {
-                                let v: Vec<f32> = l.iter().map(|v| numero_de(v).unwrap_or(0.0)).collect();
+                                let v: Vec<f32> =
+                                    l.iter().map(|v| numero_de(v).unwrap_or(0.0)).collect();
                                 M([v[0], v[1], v[2], v[3], v[4], v[5]])
                             }
                             _ => IDENTIDAD,
@@ -953,7 +982,9 @@ impl Lectura<'_> {
             let codigo = trozo.iter().fold(0u32, |a, x| (a << 8) | *x as u32);
             let w0 = fuente.ancho(codigo) / 1000.0;
             let espacio = if paso == 1 && codigo == 32 { g.tw } else { 0.0 };
-            let trm = M([g.tam * g.th, 0.0, 0.0, g.tam, 0.0, g.rise]).por(*tm).por(g.ctm);
+            let trm = M([g.tam * g.th, 0.0, 0.0, g.tam, 0.0, g.rise])
+                .por(*tm)
+                .por(g.ctm);
             if let Some(letras) = fuente.letras(codigo) {
                 // La caja del glifo: su ancho y de la base un poco abajo a
                 // bastante arriba, que es donde caen las letras.
@@ -1033,7 +1064,10 @@ mod pruebas {
     }
 
     fn flujo(contenido: &str) -> String {
-        format!("<< /Length {} >>\nstream\n{contenido}\nendstream", contenido.len())
+        format!(
+            "<< /Length {} >>\nstream\n{contenido}\nendstream",
+            contenido.len()
+        )
     }
 
     /// Una hoja de 200x100 puntos con Helvetica y lo que se pida escrito.
@@ -1070,7 +1104,10 @@ mod pruebas {
     fn las_palabras_separadas_por_hueco_o_por_linea_llevan_espacio() {
         // TJ con un hueco grande entre palabras (lo que escribe Word) y una
         // segunda linea con T*.
-        let b = una_hoja("BT /F1 10 Tf 12 TL 20 80 Td [(uno) -600 (dos)] TJ T* (tres) Tj ET", "");
+        let b = una_hoja(
+            "BT /F1 10 Tf 12 TL 20 80 Td [(uno) -600 (dos)] TJ T* (tres) Tj ET",
+            "",
+        );
         let p = de_bytes(&b).unwrap();
         assert_eq!(p[0].texto, "uno dos tres");
         // El espacio anadido no tiene caja: no se pinta nada donde no hay letra.
@@ -1082,7 +1119,10 @@ mod pruebas {
 
     #[test]
     fn una_palabra_partida_en_dos_renglones_se_marca_con_dos_cajas() {
-        let b = una_hoja("BT /F1 10 Tf 12 TL 20 80 Td (hola mun) Tj T* (do) Tj ET", "");
+        let b = una_hoja(
+            "BT /F1 10 Tf 12 TL 20 80 Td (hola mun) Tj T* (do) Tj ET",
+            "",
+        );
         let p = &de_bytes(&b).unwrap()[0];
         assert_eq!(p.texto, "hola mun do");
         // «mun do»: dos renglones, dos cajas; «hola»: una.
@@ -1117,7 +1157,10 @@ mod pruebas {
     /// «defined» no se encontraba.
     #[test]
     fn en_macroman_la_ligadura_fi_es_fi_y_no_una_thorn() {
-        let b = una_hoja_con(r"BT /F1 10 Tf 20 50 Td (de\336ned \216t\216 \321) Tj ET", "/MacRomanEncoding");
+        let b = una_hoja_con(
+            r"BT /F1 10 Tf 20 50 Td (de\336ned \216t\216 \321) Tj ET",
+            "/MacRomanEncoding",
+        );
         assert_eq!(de_bytes(&b).unwrap()[0].texto, "defined été —");
         // Tambien como `BaseEncoding` de un diccionario, y las `Differences`
         // mandan sobre la tabla.
@@ -1127,8 +1170,14 @@ mod pruebas {
         );
         assert_eq!(de_bytes(&b).unwrap()[0].texto, "fiflA");
         // La tabla llena de 128 a 255, y nada por debajo.
-        assert_eq!((128..=255u8).filter(|b| mac_roman(*b).is_some()).count(), 128);
-        assert_eq!((mac_roman(0x80), mac_roman(0xFF), mac_roman(0x41)), (Some("Ä"), Some("ˇ"), None));
+        assert_eq!(
+            (128..=255u8).filter(|b| mac_roman(*b).is_some()).count(),
+            128
+        );
+        assert_eq!(
+            (mac_roman(0x80), mac_roman(0xFF), mac_roman(0x41)),
+            (Some("Ä"), Some("ˇ"), None)
+        );
         // Caso negativo: en WinAnsi el 0xDE sigue siendo «Þ».
         let b = una_hoja_con(r"BT /F1 10 Tf 20 50 Td (\336) Tj ET", "/WinAnsiEncoding");
         assert_eq!(de_bytes(&b).unwrap()[0].texto, "Þ");
@@ -1194,7 +1243,10 @@ mod pruebas {
     fn lo_que_no_es_pdf_y_lo_cifrado_se_dicen() {
         assert_eq!(de_bytes(b"hola, no soy un pdf"), Err(SinTexto::NoEsPdf));
         let mut b = una_hoja("BT /F1 10 Tf (x) Tj ET", "");
-        let s = String::from_utf8(b.clone()).unwrap().replace("<< /Root 1 0 R >>", "<< /Root 1 0 R /Encrypt << /Filter /Standard >> >>");
+        let s = String::from_utf8(b.clone()).unwrap().replace(
+            "<< /Root 1 0 R >>",
+            "<< /Root 1 0 R /Encrypt << /Filter /Standard >> >>",
+        );
         b = s.into_bytes();
         assert_eq!(de_bytes(&b), Err(SinTexto::Cifrado));
     }
@@ -1225,8 +1277,15 @@ mod pruebas {
         let t0 = std::time::Instant::now();
         let p = de_fichero(std::path::Path::new(&ruta)).unwrap();
         let letras: usize = p.iter().map(|x| x.texto.chars().count()).sum();
-        eprintln!("{} hojas, {letras} letras, {} ms", p.len(), t0.elapsed().as_millis());
-        eprintln!("hoja 1: {}", p[0].texto.chars().take(400).collect::<String>());
+        eprintln!(
+            "{} hojas, {letras} letras, {} ms",
+            p.len(),
+            t0.elapsed().as_millis()
+        );
+        eprintln!(
+            "hoja 1: {}",
+            p[0].texto.chars().take(400).collect::<String>()
+        );
     }
 
     fn hoja_con(texto: &str) -> pixpin_motor2d::exportar::Hoja {
@@ -1259,16 +1318,25 @@ mod pruebas {
         let b = crate::escribir::de_hojas(&hojas, None, &|_| None).unwrap();
         let p = de_bytes(&b).unwrap();
         assert_eq!(p.len(), 2);
-        assert!(p[0].texto.contains("El árbol de la ciencia"), "{:?}", p[0].texto);
+        assert!(
+            p[0].texto.contains("El árbol de la ciencia"),
+            "{:?}",
+            p[0].texto
+        );
         assert!(p[1].texto.contains("Segunda hoja"));
         // La primera letra cae a la izquierda y arriba, donde se escribio.
         let c = p[0].cajas.iter().flatten().next().unwrap();
         assert!(c[0] > 0.05 && c[0] < 0.2 && c[1] < 0.2, "{c:?}");
 
         if let Some(segoe) = crate::letra::del_sistema("Segoe UI") {
-            let b = crate::escribir::de_hojas_con_letra(&hojas, None, &|_| None, Some(&segoe)).unwrap();
+            let b =
+                crate::escribir::de_hojas_con_letra(&hojas, None, &|_| None, Some(&segoe)).unwrap();
             let p = de_bytes(&b).unwrap();
-            assert!(p[0].texto.contains("El árbol de la ciencia"), "{:?}", p[0].texto);
+            assert!(
+                p[0].texto.contains("El árbol de la ciencia"),
+                "{:?}",
+                p[0].texto
+            );
         }
     }
 }

@@ -49,7 +49,15 @@ fn mover(g: &mut Gesto, e: &mut Escena, x: f32, y: f32) {
 /// fuera, a la derecha, en el camino del arrastre.
 fn lamina() -> (Escena, u64, u64, u64) {
     let mut e = Escena::nueva();
-    let marco = e.anadir(caja(Figura::Marco { nombre: "Lamina".into() }, 0.0, 0.0, 400.0, 300.0));
+    let marco = e.anadir(caja(
+        Figura::Marco {
+            nombre: "Lamina".into(),
+        },
+        0.0,
+        0.0,
+        400.0,
+        300.0,
+    ));
     let dentro = e.anadir(caja(Figura::Rectangulo, 100.0, 100.0, 50.0, 50.0));
     let en_el_camino = e.anadir(caja(Figura::Rectangulo, 500.0, 100.0, 50.0, 50.0));
     (e, marco, dentro, en_el_camino)
@@ -73,7 +81,10 @@ fn mientras_se_arrastra_un_marco_dice_que_lleva_lo_de_dentro() {
     mover(&mut g, &mut e, 130.0, 10.0);
     assert!(g.lleva_el_marco(dentro), "lo de dentro va con el marco");
     assert!(!g.lleva_el_marco(fuera), "lo de fuera no");
-    assert!(!g.lleva_el_marco(marco), "el marco va por la seleccion, no por aqui");
+    assert!(
+        !g.lleva_el_marco(marco),
+        "el marco va por la seleccion, no por aqui"
+    );
     let d = e.buscar(dentro).unwrap();
     assert_eq!((d.x, d.y), (130.0, 110.0), "y de verdad se ha movido");
 }
@@ -88,7 +99,11 @@ fn un_marco_no_recoge_lo_que_pisa_por_el_camino() {
         mover(&mut g, &mut e, 100.0 + i as f32 * 20.0, 0.0);
     }
     let f = e.buscar(fuera).unwrap();
-    assert_eq!((f.x, f.y), (500.0, 100.0), "lo que estaba fuera sigue en su sitio");
+    assert_eq!(
+        (f.x, f.y),
+        (500.0, 100.0),
+        "lo que estaba fuera sigue en su sitio"
+    );
     assert!(!g.lleva_el_marco(fuera));
 }
 

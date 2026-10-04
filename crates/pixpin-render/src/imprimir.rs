@@ -35,9 +35,7 @@ use windows::Win32::Storage::Xps::Printing::{
     IPrintDocumentPackageTarget, IPrintDocumentPackageTargetFactory,
     PrintDocumentPackageTargetFactory,
 };
-use windows::Win32::System::Com::StructuredStorage::{
-    CreateStreamOnHGlobal, GetHGlobalFromStream,
-};
+use windows::Win32::System::Com::StructuredStorage::{CreateStreamOnHGlobal, GetHGlobalFromStream};
 use windows::Win32::System::Com::{
     CLSCTX_INPROC_SERVER, COINIT_APARTMENTTHREADED, CoCreateInstance, CoInitializeEx,
     CoUninitialize, IStream, STATFLAG_NONAME, STATSTG, STREAM_SEEK_SET,
@@ -210,8 +208,7 @@ pub fn imprimir_en(
         colorSpace: D2D1_COLOR_SPACE_SRGB,
     };
     // SAFETY: fabrica WIC y destino vivos; las propiedades son locales.
-    let control =
-        unsafe { dispositivo.CreatePrintControl(&wic, destino, Some(&propiedades))? };
+    let control = unsafe { dispositivo.CreatePrintControl(&wic, destino, Some(&propiedades))? };
     for (i, &(ancho, alto)) in paginas.iter().enumerate() {
         // SAFETY: lista de ordenes nueva del mismo contexto.
         let lista = unsafe { ctx.CreateCommandList()? };
@@ -273,8 +270,7 @@ fn esperar_y_guardar(ruta: &Path, flujo: &IStream) -> Result<(), ErrorRender> {
             }
             visto = ahora;
         }
-        std::fs::write(ruta, bytes_del_flujo(flujo)?)
-            .map_err(|e| {
+        std::fs::write(ruta, bytes_del_flujo(flujo)?).map_err(|e| {
             ErrorRender::Windows(windows::core::Error::new(
                 windows::Win32::Foundation::E_FAIL,
                 e.to_string(),

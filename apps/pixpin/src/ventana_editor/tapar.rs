@@ -139,8 +139,9 @@ mod pruebas {
         let d = pixpin_capture::Dispositivo::nuevo().expect("GPU");
         let mut motor = MotorRender::nuevo(d.d3d()).expect("motor");
         let (w, h) = (360u32, 150u32);
-        let destino = pixpin_render::fuera_de_pantalla::FueraDePantalla::nuevo(&motor, d.d3d(), w, h)
-            .expect("textura");
+        let destino =
+            pixpin_render::fuera_de_pantalla::FueraDePantalla::nuevo(&motor, d.d3d(), w, h)
+                .expect("textura");
         let imagenes = crate::imagenes_lienzo::ImagenesLienzo::nuevo(4096);
         let camara = Camara::nueva();
         let vista = camara.ventana(w as f32, h as f32);
@@ -156,7 +157,17 @@ mod pruebas {
                 }
             })
             .expect("pinta");
-        assert_eq!(pasar(&mut motor, &destino.destino, &escena.elementos, &camara, w, h), 2);
+        assert_eq!(
+            pasar(
+                &mut motor,
+                &destino.destino,
+                &escena.elementos,
+                &camara,
+                w,
+                h
+            ),
+            2
+        );
         let (ancho, alto, px) = destino.leer_rgba().expect("lee");
         let g = |x: u32, y: u32| px[((y * ancho + x) * 4) as usize] as i32;
         // Pixelado: en cada fila, cuantas veces cambia el color. Con cuadros
@@ -183,7 +194,10 @@ mod pruebas {
         })
         .expect("png");
         std::fs::write(dir.join("mosaico-pixelar-desenfocar.png"), png).expect("escribe");
-        assert!(pix <= 300 / 16 + 2, "pixelado: una fila con detalle ({pix} cambios)");
+        assert!(
+            pix <= 300 / 16 + 2,
+            "pixelado: una fila con detalle ({pix} cambios)"
+        );
         assert!(borr < 60, "desenfocado: queda un canto vivo ({borr})");
         // Caso negativo: encima del mosaico (papel liso) no cambia nada, y
         // la cuenta no es trivial: el pixelado si tiene sus cuadros.

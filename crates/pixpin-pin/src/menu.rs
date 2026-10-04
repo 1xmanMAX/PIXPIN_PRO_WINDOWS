@@ -264,9 +264,11 @@ fn submenu_pizarra(t: &TextosPin, color: u8, pauta: u8) -> EntradaMenu {
         .map(|(i, nombre)| marcada(CMD_PIZARRA_COLOR_BASE + i as u32, nombre, i as u8 == color))
         .collect();
     entradas.push(EntradaMenu::Separador);
-    entradas.extend(t.pautas_pizarra.iter().enumerate().map(|(i, nombre)| {
-        marcada(CMD_PIZARRA_PAUTA_BASE + i as u32, nombre, i as u8 == pauta)
-    }));
+    entradas.extend(
+        t.pautas_pizarra.iter().enumerate().map(|(i, nombre)| {
+            marcada(CMD_PIZARRA_PAUTA_BASE + i as u32, nombre, i as u8 == pauta)
+        }),
+    );
     EntradaMenu::Submenu {
         etiqueta: t.fondo_pizarra.clone(),
         entradas,
@@ -331,7 +333,11 @@ pub fn entradas_del_menu(
     let reproducir = || {
         accion(
             CMD_REPRODUCIR,
-            if reproduciendo { &t.pausar } else { &t.reproducir },
+            if reproduciendo {
+                &t.pausar
+            } else {
+                &t.reproducir
+            },
             Some(&t.v2.tecla_espacio),
         )
     };
@@ -347,7 +353,11 @@ pub fn entradas_del_menu(
             // izquierdo ya no es del pin).
             v.push(accion(
                 CMD_REMOTO,
-                if remoto { &t.dejar_de_manejar } else { &t.manejar },
+                if remoto {
+                    &t.dejar_de_manejar
+                } else {
+                    &t.manejar
+                },
                 None,
             ));
         }
@@ -418,7 +428,11 @@ pub fn entradas_del_menu(
     // 3. Ver: el tamano y la opacidad.
     v.push(EntradaMenu::Separador);
     if contenido.redimensionable() && !matches!(contenido, Contenido::Video { .. }) {
-        v.push(accion(CMD_TAMANO_ORIGINAL, &t.tamano_original, Some("Ctrl+0")));
+        v.push(accion(
+            CMD_TAMANO_ORIGINAL,
+            &t.tamano_original,
+            Some("Ctrl+0"),
+        ));
     }
     v.push(submenu_opacidad(t, opacidad));
 
@@ -787,7 +801,9 @@ pub(crate) mod pruebas {
         // Justo antes de Cerrar, una raya: va aparte.
         assert_eq!(v[v.len() - 2], EntradaMenu::Separador);
         // «Mas» es el ultimo submenu antes de cerrar.
-        assert!(matches!(&v[v.len() - 3], EntradaMenu::Submenu { etiqueta, .. } if etiqueta == "Más"));
+        assert!(
+            matches!(&v[v.len() - 3], EntradaMenu::Submenu { etiqueta, .. } if etiqueta == "Más")
+        );
     }
 
     #[test]
@@ -803,7 +819,10 @@ pub(crate) mod pruebas {
 
     #[test]
     fn el_atajo_va_tras_un_tabulador_y_sin_atajo_no_hay_tabulador() {
-        assert_eq!(con_atajo("Copiar", &Some("Ctrl+C".into())), "Copiar\tCtrl+C");
+        assert_eq!(
+            con_atajo("Copiar", &Some("Ctrl+C".into())),
+            "Copiar\tCtrl+C"
+        );
         assert_eq!(con_atajo("Más", &None), "Más");
         assert_eq!(con_atajo("Más", &Some(String::new())), "Más");
     }
@@ -822,7 +841,9 @@ pub(crate) mod pruebas {
         let marcadas: Vec<u32> = s
             .iter()
             .filter_map(|e| match e {
-                EntradaMenu::Accion { id, marcada: true, .. } => Some(*id),
+                EntradaMenu::Accion {
+                    id, marcada: true, ..
+                } => Some(*id),
                 _ => None,
             })
             .collect();
@@ -893,11 +914,16 @@ pub(crate) mod pruebas {
         let marcadas: Vec<u32> = s
             .iter()
             .filter_map(|e| match e {
-                EntradaMenu::Accion { id, marcada: true, .. } => Some(*id),
+                EntradaMenu::Accion {
+                    id, marcada: true, ..
+                } => Some(*id),
                 _ => None,
             })
             .collect();
-        assert_eq!(marcadas, vec![CMD_PIZARRA_COLOR_BASE + 2, CMD_PIZARRA_PAUTA_BASE + 4]);
+        assert_eq!(
+            marcadas,
+            vec![CMD_PIZARRA_COLOR_BASE + 2, CMD_PIZARRA_PAUTA_BASE + 4]
+        );
         assert_eq!(
             s.iter().filter(|e| **e == EntradaMenu::Separador).count(),
             1,
@@ -972,7 +998,11 @@ pub(crate) mod pruebas {
             &textos(),
         );
         assert_eq!(etiqueta_de(&e, CMD_REPRODUCIR).as_deref(), Some("Pausar"));
-        assert_eq!(ids_arriba(&e)[0], CMD_REPRODUCIR, "corriendo, lo primero es pausar");
+        assert_eq!(
+            ids_arriba(&e)[0],
+            CMD_REPRODUCIR,
+            "corriendo, lo primero es pausar"
+        );
         let ids = ids(&e);
         for esperado in [
             CMD_CONGELAR,
@@ -1004,7 +1034,10 @@ pub(crate) mod pruebas {
             alto: 200,
         };
         let e = entradas_del_menu(&vivo, EstadoMenu::default(), &textos());
-        assert_eq!(etiqueta_de(&e, CMD_REPRODUCIR).as_deref(), Some("Reproducir"));
+        assert_eq!(
+            etiqueta_de(&e, CMD_REPRODUCIR).as_deref(),
+            Some("Reproducir")
+        );
     }
 
     #[test]
@@ -1109,7 +1142,11 @@ pub(crate) mod pruebas {
         assert!(ids(&entradas_del_menu(&imagen(), con_ocr(), &textos())).contains(&CMD_TEXTO));
         // Caso negativo, el importante: sin motor de reconocimiento NO se
         // ofrece.
-        let sin = ids(&entradas_del_menu(&imagen(), EstadoMenu::default(), &textos()));
+        let sin = ids(&entradas_del_menu(
+            &imagen(),
+            EstadoMenu::default(),
+            &textos(),
+        ));
         assert!(!sin.contains(&CMD_TEXTO));
         // Y en una nota tampoco: el texto ya lo tienes escrito.
         let nota = Contenido::Nota {
@@ -1157,7 +1194,9 @@ pub(crate) mod pruebas {
 
     #[test]
     fn abrir_en_lienzo_solo_esta_en_los_pines_de_imagen() {
-        assert!(ids(&entradas_del_menu(&imagen(), con_ocr(), &textos())).contains(&CMD_ABRIR_LIENZO));
+        assert!(
+            ids(&entradas_del_menu(&imagen(), con_ocr(), &textos())).contains(&CMD_ABRIR_LIENZO)
+        );
         let nota = Contenido::Nota { texto: "x".into() };
         for c in [
             nota,
@@ -1186,8 +1225,9 @@ pub(crate) mod pruebas {
         let grupo = submenu(mas, "Grupo").expect("el grupo va en «Mas»");
         assert_eq!(grupo.len(), 9, "sin grupo y los ocho colores");
         // Caso negativo: no esta tambien arriba.
-        assert!(!v
-            .iter()
-            .any(|e| matches!(e, EntradaMenu::Submenu { etiqueta, .. } if etiqueta == "Grupo")));
+        assert!(
+            !v.iter()
+                .any(|e| matches!(e, EntradaMenu::Submenu { etiqueta, .. } if etiqueta == "Grupo"))
+        );
     }
 }

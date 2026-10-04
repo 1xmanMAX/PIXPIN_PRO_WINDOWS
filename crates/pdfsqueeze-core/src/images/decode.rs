@@ -45,7 +45,12 @@ pub fn parse_colorspace(doc: &Document, obj: Option<&Object>) -> Cs {
             let head = a.first().and_then(|o| o.as_name().ok()).unwrap_or(b"");
             match head {
                 b"ICCBased" => {
-                    let n = a.get(1).and_then(|o| doc.dereference(o).ok()).and_then(|(_, o)| o.as_stream().ok()).and_then(|s| s.dict.get(b"N").ok()).and_then(|o| o.as_i64().ok());
+                    let n = a
+                        .get(1)
+                        .and_then(|o| doc.dereference(o).ok())
+                        .and_then(|(_, o)| o.as_stream().ok())
+                        .and_then(|s| s.dict.get(b"N").ok())
+                        .and_then(|o| o.as_i64().ok());
                     match n {
                         Some(1) => Cs::Gray,
                         Some(3) => Cs::Rgb,
@@ -69,7 +74,10 @@ pub fn parse_colorspace(doc: &Document, obj: Option<&Object>) -> Cs {
                         },
                         _ => return Cs::Unsupported,
                     };
-                    Cs::Indexed { base: Box::new(base), lookup }
+                    Cs::Indexed {
+                        base: Box::new(base),
+                        lookup,
+                    }
                 }
                 _ => Cs::Unsupported,
             }
@@ -78,13 +86,27 @@ pub fn parse_colorspace(doc: &Document, obj: Option<&Object>) -> Cs {
     }
 }
 
-const OUTER: [&[u8]; 6] = [b"FlateDecode", b"LZWDecode", b"ASCII85Decode", b"Fl", b"LZW", b"A85"];
+const OUTER: [&[u8]; 6] = [
+    b"FlateDecode",
+    b"LZWDecode",
+    b"ASCII85Decode",
+    b"Fl",
+    b"LZW",
+    b"A85",
+];
 
 /// Apply the "outer" (generic) filters only, returning bytes for the final
 /// image codec (or the raw samples when there is none).
 fn outer_decoded(stream: &Stream) -> Option<(Vec<u8>, Option<Vec<u8>>, Option<Dictionary>)> {
-    let filters: Vec<Vec<u8>> = stream.filters().map(|v| v.iter().map(|f| f.to_vec()).collect()).unwrap_or_default();
-    let parms: Vec<Option<Dictionary>> = match stream.dict.get(b"DecodeParms").or_else(|_| stream.dict.get(b"DP")) {
+    let filters: Vec<Vec<u8>> = stream
+        .filters()
+        .map(|v| v.iter().map(|f| f.to_vec()).collect())
+        .unwrap_or_default();
+    let parms: Vec<Option<Dictionary>> = match stream
+        .dict
+        .get(b"DecodeParms")
+        .or_else(|_| stream.dict.get(b"DP"))
+    {
         Ok(Object::Dictionary(d)) => vec![Some(d.clone())],
         Ok(Object::Array(a)) => a.iter().map(|o| o.as_dict().ok().cloned()).collect(),
         _ => vec![],
@@ -95,7 +117,10 @@ fn outer_decoded(stream: &Stream) -> Option<(Vec<u8>, Option<Vec<u8>>, Option<Di
             if i != filters.len() - 1 {
                 return None; // codec followed by more filters: not a real-world layout
             }
-            (filters[..i].to_vec(), Some((filters[i].clone(), parms.get(i).cloned().flatten())))
+            (
+                filters[..i].to_vec(),
+                Some((filters[i].clone(), parms.get(i).cloned().flatten())),
+            )
         }
         None => (filters.clone(), None),
     };
@@ -105,18 +130,35 @@ fn outer_decoded(stream: &Stream) -> Option<(Vec<u8>, Option<Vec<u8>>, Option<Di
         // lopdf only honours a *dictionary* DecodeParms, so hand it the one
         // that carries a predictor (there is at most one in practice).
         let mut tmp = stream.clone();
-        tmp.dict.set("Filter", Object::Array(outer.iter().map(|f| Object::Name(f.clone())).collect()));
+        tmp.dict.set(
+            "Filter",
+            Object::Array(outer.iter().map(|f| Object::Name(f.clone())).collect()),
+        );
         tmp.dict.remove(b"DP");
-        let pred_parms = (0..outer.len()).filter_map(|i| parms.get(i).cloned().flatten()).find(|d| d.has(b"Predictor") || d.has(b"EarlyChange"));
+        let pred_parms = (0..outer.len())
+            .filter_map(|i| parms.get(i).cloned().flatten())
+            .find(|d| d.has(b"Predictor") || d.has(b"EarlyChange"));
         // Predictors are undone here (lopdf's PNG un-filtering is not exact).
         let mut png = None;
         match pred_parms {
             Some(mut d) => {
                 let predictor = d.get(b"Predictor").and_then(Object::as_i64).unwrap_or(1);
                 if predictor >= 10 {
-                    let colors = d.get(b"Colors").and_then(Object::as_i64).unwrap_or(1).max(1) as usize;
-                    let bits = d.get(b"BitsPerComponent").and_then(Object::as_i64).unwrap_or(8).max(1) as usize;
-                    let columns = d.get(b"Columns").and_then(Object::as_i64).unwrap_or(1).max(1) as usize;
+                    let colors = d
+                        .get(b"Colors")
+                        .and_then(Object::as_i64)
+                        .unwrap_or(1)
+                        .max(1) as usize;
+                    let bits = d
+                        .get(b"BitsPerComponent")
+                        .and_then(Object::as_i64)
+                        .unwrap_or(8)
+                        .max(1) as usize;
+                    let columns = d
+                        .get(b"Columns")
+                        .and_then(Object::as_i64)
+                        .unwrap_or(1)
+                        .max(1) as usize;
                     png = Some((colors, bits, columns));
                     d.remove(b"Predictor");
                 } else if predictor == 2 {
@@ -141,23 +183,61 @@ fn outer_decoded(stream: &Stream) -> Option<(Vec<u8>, Option<Vec<u8>>, Option<Di
 }
 
 fn decode_array(doc: &Document, dict: &Dictionary) -> Option<Vec<f32>> {
-    let (_, o) = doc.dereference(dict.get(b"Decode").or_else(|_| dict.get(b"D")).ok()?).ok()?;
+    let (_, o) = doc
+        .dereference(dict.get(b"Decode").or_else(|_| dict.get(b"D")).ok()?)
+        .ok()?;
     let a = o.as_array().ok()?;
-    Some(a.iter().filter_map(|x| match x { Object::Integer(i) => Some(*i as f32), Object::Real(r) => Some(*r), _ => None }).collect())
+    Some(
+        a.iter()
+            .filter_map(|x| match x {
+                Object::Integer(i) => Some(*i as f32),
+                Object::Real(r) => Some(*r),
+                _ => None,
+            })
+            .collect(),
+    )
 }
 
 /// Returns `None` for anything we cannot decode exactly enough to re-encode
 /// (JPX, JBIG2, DeviceN, ...). Those streams are simply left untouched.
 pub fn decode_image(doc: &Document, stream: &Stream) -> Option<RawImage> {
     let d = &stream.dict;
-    let width = d.get(b"Width").or_else(|_| d.get(b"W")).ok().and_then(|o| doc.dereference(o).ok()).and_then(|(_, o)| o.as_i64().ok())? as u32;
-    let height = d.get(b"Height").or_else(|_| d.get(b"H")).ok().and_then(|o| doc.dereference(o).ok()).and_then(|(_, o)| o.as_i64().ok())? as u32;
+    let width = d
+        .get(b"Width")
+        .or_else(|_| d.get(b"W"))
+        .ok()
+        .and_then(|o| doc.dereference(o).ok())
+        .and_then(|(_, o)| o.as_i64().ok())? as u32;
+    let height = d
+        .get(b"Height")
+        .or_else(|_| d.get(b"H"))
+        .ok()
+        .and_then(|o| doc.dereference(o).ok())
+        .and_then(|(_, o)| o.as_i64().ok())? as u32;
     if width == 0 || height == 0 || width > 20000 || height > 20000 {
         return None;
     }
-    let is_mask = d.get(b"ImageMask").or_else(|_| d.get(b"IM")).ok().and_then(|o| o.as_bool().ok()).unwrap_or(false);
-    let bpc = if is_mask { 1 } else { d.get(b"BitsPerComponent").or_else(|_| d.get(b"BPC")).ok().and_then(|o| doc.dereference(o).ok()).and_then(|(_, o)| o.as_i64().ok()).unwrap_or(8) as u8 };
-    let cs = if is_mask { Cs::Gray } else { parse_colorspace(doc, d.get(b"ColorSpace").or_else(|_| d.get(b"CS")).ok()) };
+    let is_mask = d
+        .get(b"ImageMask")
+        .or_else(|_| d.get(b"IM"))
+        .ok()
+        .and_then(|o| o.as_bool().ok())
+        .unwrap_or(false);
+    let bpc = if is_mask {
+        1
+    } else {
+        d.get(b"BitsPerComponent")
+            .or_else(|_| d.get(b"BPC"))
+            .ok()
+            .and_then(|o| doc.dereference(o).ok())
+            .and_then(|(_, o)| o.as_i64().ok())
+            .unwrap_or(8) as u8
+    };
+    let cs = if is_mask {
+        Cs::Gray
+    } else {
+        parse_colorspace(doc, d.get(b"ColorSpace").or_else(|_| d.get(b"CS")).ok())
+    };
     let ncomp = cs.components()?;
     let decode = decode_array(doc, d);
     let (data, codec, parms) = outer_decoded(stream)?;
@@ -202,13 +282,24 @@ pub fn decode_image(doc: &Document, stream: &Stream) -> Option<RawImage> {
             let p = parms.unwrap_or_default();
             let k = p.get(b"K").and_then(Object::as_i64).unwrap_or(0);
             let cols = p.get(b"Columns").and_then(Object::as_i64).unwrap_or(1728) as u32;
-            let black_is_1 = p.get(b"BlackIs1").and_then(Object::as_bool).unwrap_or(false);
-            let aligned = p.get(b"EncodedByteAlign").and_then(Object::as_bool).unwrap_or(false);
+            let black_is_1 = p
+                .get(b"BlackIs1")
+                .and_then(Object::as_bool)
+                .unwrap_or(false);
+            let aligned = p
+                .get(b"EncodedByteAlign")
+                .and_then(Object::as_bool)
+                .unwrap_or(false);
             if k >= 0 || aligned || cols != width || width > u16::MAX as u32 {
                 return None;
             }
             let mut rows: Vec<Vec<u16>> = Vec::with_capacity(height as usize);
-            fax::decoder::decode_g4(data.iter().copied(), width as u16, Some(height as u16), |t| rows.push(t.to_vec()))?;
+            fax::decoder::decode_g4(
+                data.iter().copied(),
+                width as u16,
+                Some(height as u16),
+                |t| rows.push(t.to_vec()),
+            )?;
             if rows.len() < height as usize {
                 return None;
             }
@@ -217,7 +308,11 @@ pub fn decode_image(doc: &Document, stream: &Stream) -> Option<RawImage> {
                 for c in fax::decoder::pels(row, width as u16) {
                     // Filter output bit: BlackIs1=false → black=0. DeviceGray 1-bit: 0=black.
                     let bit_black = if black_is_1 { 1u8 } else { 0u8 };
-                    let bit = if c == fax::Color::Black { bit_black } else { 1 - bit_black };
+                    let bit = if c == fax::Color::Black {
+                        bit_black
+                    } else {
+                        1 - bit_black
+                    };
                     px.push(if bit == 1 { 255 } else { 0 });
                 }
             }
@@ -233,7 +328,11 @@ pub fn decode_image(doc: &Document, stream: &Stream) -> Option<RawImage> {
             }
             let bm = crate::jbig2::decode_pdf_stream(&data, width, height)?;
             // Filter output is the inverse of JBIG2 (1 = black) → DeviceGray 0 = black.
-            let px: Vec<u8> = bm.bits.iter().map(|&b| if b == 1 { 0 } else { 255 }).collect();
+            let px: Vec<u8> = bm
+                .bits
+                .iter()
+                .map(|&b| if b == 1 { 0 } else { 255 })
+                .collect();
             (px, 1, ColorKind::Gray)
         }
         _ => return None,
@@ -243,8 +342,12 @@ pub fn decode_image(doc: &Document, stream: &Stream) -> Option<RawImage> {
     // exotic makes us leave the image alone.
     if let Some(dec) = decode {
         if !matches!(cs, Cs::Indexed { .. }) && !dec.is_empty() {
-            let inverted = dec.chunks(2).all(|c| c.len() == 2 && c[0] == 1.0 && c[1] == 0.0);
-            let identity = dec.chunks(2).all(|c| c.len() == 2 && c[0] == 0.0 && c[1] == 1.0);
+            let inverted = dec
+                .chunks(2)
+                .all(|c| c.len() == 2 && c[0] == 1.0 && c[1] == 0.0);
+            let identity = dec
+                .chunks(2)
+                .all(|c| c.len() == 2 && c[0] == 0.0 && c[1] == 1.0);
             if inverted {
                 pixels.iter_mut().for_each(|p| *p = 255 - *p);
             } else if !identity {
@@ -256,7 +359,16 @@ pub fn decode_image(doc: &Document, stream: &Stream) -> Option<RawImage> {
         return None;
     }
     pixels.truncate(npix * channels as usize);
-    Some(RawImage { width, height, channels, data: pixels, cs: kind, is_mask, orig_bpc: bpc, lossy_decode: bpc == 16 })
+    Some(RawImage {
+        width,
+        height,
+        channels,
+        data: pixels,
+        cs: kind,
+        is_mask,
+        orig_bpc: bpc,
+        lossy_decode: bpc == 16,
+    })
 }
 
 /// Unpack `bpc`-bit samples (rows padded to bytes) to one byte per sample,
@@ -302,7 +414,13 @@ fn expand_cs(samples: Vec<u8>, cs: &Cs, bpc: u8) -> Option<(Vec<u8>, u8, ColorKi
     let scale = |v: u8| -> u8 {
         match bpc {
             8 | 16 => v,
-            1 => if v != 0 { 255 } else { 0 },
+            1 => {
+                if v != 0 {
+                    255
+                } else {
+                    0
+                }
+            }
             2 => v * 85,
             4 => v * 17,
             _ => v,
@@ -311,7 +429,11 @@ fn expand_cs(samples: Vec<u8>, cs: &Cs, bpc: u8) -> Option<(Vec<u8>, u8, ColorKi
     match cs {
         Cs::Gray => Some((samples.into_iter().map(scale).collect(), 1, ColorKind::Gray)),
         Cs::Rgb => Some((samples.into_iter().map(scale).collect(), 3, ColorKind::Rgb)),
-        Cs::Other3 => Some((samples.into_iter().map(scale).collect(), 3, ColorKind::Other3)),
+        Cs::Other3 => Some((
+            samples.into_iter().map(scale).collect(),
+            3,
+            ColorKind::Other3,
+        )),
         Cs::Cmyk => Some((samples.into_iter().map(scale).collect(), 4, ColorKind::Cmyk)),
         Cs::Indexed { base, lookup } => {
             let n = base.components()? as usize;
@@ -337,7 +459,6 @@ fn expand_cs(samples: Vec<u8>, cs: &Cs, bpc: u8) -> Option<(Vec<u8>, u8, ColorKi
     }
 }
 
-
 /// Undo PNG row filters (Predictor 10–15): each row is a filter-type byte
 /// followed by `row_len` filtered bytes.
 pub fn png_unpredict(data: &[u8], colors: usize, bits: usize, columns: usize) -> Option<Vec<u8>> {
@@ -349,7 +470,11 @@ pub fn png_unpredict(data: &[u8], colors: usize, bits: usize, columns: usize) ->
         let ft = data[r * (row_len + 1)];
         let src = &data[r * (row_len + 1) + 1..(r + 1) * (row_len + 1)];
         let (prev_rows, cur_rows) = out.split_at_mut(r * row_len);
-        let prev: &[u8] = if r == 0 { &[] } else { &prev_rows[(r - 1) * row_len..] };
+        let prev: &[u8] = if r == 0 {
+            &[]
+        } else {
+            &prev_rows[(r - 1) * row_len..]
+        };
         let cur = &mut cur_rows[..row_len];
         for i in 0..row_len {
             let a = if i >= bpp { cur[i - bpp] } else { 0 };
@@ -362,8 +487,18 @@ pub fn png_unpredict(data: &[u8], colors: usize, bits: usize, columns: usize) ->
                 3 => ((a as u16 + b as u16) / 2) as u8,
                 4 => {
                     let p = a as i16 + b as i16 - c as i16;
-                    let (pa, pb, pc) = ((p - a as i16).abs(), (p - b as i16).abs(), (p - c as i16).abs());
-                    if pa <= pb && pa <= pc { a } else if pb <= pc { b } else { c }
+                    let (pa, pb, pc) = (
+                        (p - a as i16).abs(),
+                        (p - b as i16).abs(),
+                        (p - c as i16).abs(),
+                    );
+                    if pa <= pb && pa <= pc {
+                        a
+                    } else if pb <= pc {
+                        b
+                    } else {
+                        c
+                    }
                 }
                 _ => return None,
             };

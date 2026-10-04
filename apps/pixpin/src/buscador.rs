@@ -87,7 +87,11 @@ impl Buscador {
             return Hecho::Abierta;
         }
         if vk == VK_F3 && !self.busqueda.consulta.trim().is_empty() {
-            return if shift { Hecho::Anterior } else { Hecho::Siguiente };
+            return if shift {
+                Hecho::Anterior
+            } else {
+                Hecho::Siguiente
+            };
         }
         if !self.abierto {
             return Hecho::NoEsMia;
@@ -194,12 +198,19 @@ impl Buscador {
         };
         let tam_cuenta = 12.5 * e;
         let (wc, hc) = p.medir_texto(&cuenta, tam_cuenta);
-        let color_cuenta = if self.busqueda.cuenta().is_none() && aviso.is_none() && !cuenta.is_empty() {
-            DORADO
-        } else {
-            APAGADO
-        };
-        p.texto(&cuenta, x - wc - 8.0 * e, caja.y + (alto - hc) / 2.0, tam_cuenta, color_cuenta);
+        let color_cuenta =
+            if self.busqueda.cuenta().is_none() && aviso.is_none() && !cuenta.is_empty() {
+                DORADO
+            } else {
+                APAGADO
+            };
+        p.texto(
+            &cuenta,
+            x - wc - 8.0 * e,
+            caja.y + (alto - hc) / 2.0,
+            tam_cuenta,
+            color_cuenta,
+        );
         // Lo escrito, con el cursor detras.
         let izquierda = caja.x + 12.0 * e + lado_icono + 10.0 * e;
         let hueco = (x - wc - 16.0 * e - izquierda).max(20.0 * e);
@@ -215,7 +226,11 @@ impl Buscador {
         let (wt, ht) = p.medir_texto(&texto, tam);
         let y_texto = caja.y + (alto - ht) / 2.0;
         p.texto_linea(&texto, izquierda, y_texto, tam, hueco, color);
-        let x_cursor = if escrito.is_some() { izquierda + wt.min(hueco) + 1.0 } else { izquierda };
+        let x_cursor = if escrito.is_some() {
+            izquierda + wt.min(hueco) + 1.0
+        } else {
+            izquierda
+        };
         p.rellenar(
             RectF {
                 x: x_cursor,
@@ -236,14 +251,22 @@ impl Buscador {
             RAYA,
         );
         let hay = self.busqueda.cuenta().is_some();
-        for (b, flecha) in [(Boton::Anterior, "↑"), (Boton::Siguiente, "↓"), (Boton::Cerrar, "")] {
+        for (b, flecha) in [
+            (Boton::Anterior, "↑"),
+            (Boton::Siguiente, "↓"),
+            (Boton::Cerrar, ""),
+        ] {
             let zona = RectF {
                 x,
                 y: caja.y,
                 ancho: lado,
                 alto,
             };
-            let color = if b == Boton::Cerrar || hay { TEXTO } else { con_alfa(APAGADO, 0.5) };
+            let color = if b == Boton::Cerrar || hay {
+                TEXTO
+            } else {
+                con_alfa(APAGADO, 0.5)
+            };
             if flecha.is_empty() {
                 p.icono(
                     &material::CLOSE,
@@ -257,7 +280,13 @@ impl Buscador {
                 );
             } else {
                 let (wf, hf) = p.medir_texto(flecha, tam);
-                p.texto(flecha, zona.x + (lado - wf) / 2.0, zona.y + (alto - hf) / 2.0, tam, color);
+                p.texto(
+                    flecha,
+                    zona.x + (lado - wf) / 2.0,
+                    zona.y + (alto - hf) / 2.0,
+                    tam,
+                    color,
+                );
             }
             botones.push((zona, b));
             x += lado;
@@ -314,7 +343,11 @@ mod pruebas {
         assert_eq!(b.caracter('\u{8}'), Some(Hecho::Escrito));
         assert_eq!(b.busqueda.consulta, "á");
         b.caracter('\u{8}');
-        assert_eq!(b.caracter('\u{8}'), Some(Hecho::Nada), "borrar en vacio no cambia nada");
+        assert_eq!(
+            b.caracter('\u{8}'),
+            Some(Hecho::Nada),
+            "borrar en vacio no cambia nada"
+        );
         // Intro llega tambien como caracter y no se escribe.
         assert_eq!(b.caracter('\r'), Some(Hecho::Nada));
         assert!(b.busqueda.consulta.is_empty());

@@ -15,7 +15,10 @@ use pdfsqueeze_core::testgen::{self, ImgEnc, Synth};
 const EXE: &str = env!("CARGO_BIN_EXE_pixpin-aligerar");
 
 fn carpeta(etiqueta: &str) -> PathBuf {
-    let d = std::env::temp_dir().join(format!("pixpin-aligerar-proceso-{etiqueta}-{}", std::process::id()));
+    let d = std::env::temp_dir().join(format!(
+        "pixpin-aligerar-proceso-{etiqueta}-{}",
+        std::process::id()
+    ));
     let _ = std::fs::remove_dir_all(&d);
     std::fs::create_dir_all(&d).unwrap();
     d
@@ -60,11 +63,21 @@ fn el_proceso_hijo_aligera_y_va_diciendo_su_avance_y_su_memoria() {
         .iter()
         .filter_map(|l| l.strip_prefix("p ")?.parse().ok())
         .collect();
-    assert!(avance.len() >= 3, "tiene que ir diciendo por donde va: {lineas:?}");
-    assert!(lineas.iter().any(|l| l.starts_with("memoria ")), "{lineas:?}");
+    assert!(
+        avance.len() >= 3,
+        "tiene que ir diciendo por donde va: {lineas:?}"
+    );
+    assert!(
+        lineas.iter().any(|l| l.starts_with("memoria ")),
+        "{lineas:?}"
+    );
     let ligero = std::fs::read(&salida).unwrap();
     assert!(ligero.len() < original.len() * 85 / 100);
-    assert_eq!(std::fs::read(&entrada).unwrap(), original, "la entrada no se toca");
+    assert_eq!(
+        std::fs::read(&entrada).unwrap(),
+        original,
+        "la entrada no se toca"
+    );
     let _ = std::fs::remove_dir_all(&d);
 }
 
@@ -79,7 +92,12 @@ fn matar_el_proceso_hijo_a_mitad_no_toca_la_entrada() {
     let mut linea = String::new();
     // Hasta que este en las fotos, que es lo largo.
     while fuera.read_line(&mut linea).unwrap_or(0) > 0 {
-        if linea.trim().strip_prefix("p ").and_then(|n| n.parse::<u8>().ok()).is_some_and(|n| n >= 15) {
+        if linea
+            .trim()
+            .strip_prefix("p ")
+            .and_then(|n| n.parse::<u8>().ok())
+            .is_some_and(|n| n >= 15)
+        {
             break;
         }
         linea.clear();
@@ -87,7 +105,11 @@ fn matar_el_proceso_hijo_a_mitad_no_toca_la_entrada() {
     hijo.kill().unwrap();
     let estado = hijo.wait().unwrap();
     assert_ne!(estado.code(), Some(0));
-    assert_eq!(std::fs::read(&entrada).unwrap(), original, "el original, entero");
+    assert_eq!(
+        std::fs::read(&entrada).unwrap(),
+        original,
+        "el original, entero"
+    );
     let _ = std::fs::remove_dir_all(&d);
 }
 
@@ -102,7 +124,11 @@ fn sin_padre_el_proceso_hijo_se_va_solo() {
     let mut hijo = lanzar(&entrada, &salida, "equilibrado");
     drop(hijo.stdin.take());
     let estado = hijo.wait().unwrap();
-    assert_eq!(estado.code(), Some(14), "se va con el codigo de «sin padre»");
+    assert_eq!(
+        estado.code(),
+        Some(14),
+        "se va con el codigo de «sin padre»"
+    );
     assert!(t.elapsed().as_secs() < 5, "tardo {:?} en irse", t.elapsed());
     let _ = std::fs::remove_dir_all(&d);
 }
@@ -112,7 +138,14 @@ fn un_pdf_cifrado_sale_con_su_codigo_y_sin_escribir_nada() {
     let d = carpeta("cifrado");
     let (entrada, salida) = (d.join("a.pdf"), d.join("a.ligero.pdf"));
     let mut s = Synth::new();
-    s.image_page(&testgen::photo(800, 600), ImgEnc::Jpeg(92), 50.0, 400.0, 144.0, 108.0);
+    s.image_page(
+        &testgen::photo(800, 600),
+        ImgEnc::Jpeg(92),
+        50.0,
+        400.0,
+        144.0,
+        108.0,
+    );
     let mut cifra = lopdf::Dictionary::new();
     cifra.set("Filter", "Standard");
     cifra.set("V", 1);
@@ -124,7 +157,9 @@ fn un_pdf_cifrado_sale_con_su_codigo_y_sin_escribir_nada() {
     s.doc.trailer.set("Encrypt", clave);
     std::fs::write(&entrada, s.finish()).unwrap();
     let mut hijo = lanzar(&entrada, &salida, "equilibrado");
-    let _ = std::io::BufReader::new(hijo.stdout.take().unwrap()).lines().count();
+    let _ = std::io::BufReader::new(hijo.stdout.take().unwrap())
+        .lines()
+        .count();
     assert_eq!(hijo.wait().unwrap().code(), Some(11));
     assert!(!salida.exists());
     // Caso negativo: argumentos que no son los suyos no comprimen nada.

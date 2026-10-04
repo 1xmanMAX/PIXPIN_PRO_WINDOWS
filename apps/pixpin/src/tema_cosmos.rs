@@ -224,8 +224,24 @@ mod pruebas {
             p.limpiar(hex(0x151e27));
             assert!(pintar(p, w as f32, h as f32, 1.25, lista));
             // La barra de titulo, opaca, y el papel del chat de noche.
-            p.rellenar(RectF { x: 0.0, y: 0.0, ancho: w as f32, alto: 40.0 }, hex(0x242f3d));
-            p.rellenar(RectF { x: 460.0, y: 40.0, ancho: 1140.0, alto: 960.0 }, hex(0x151e27));
+            p.rellenar(
+                RectF {
+                    x: 0.0,
+                    y: 0.0,
+                    ancho: w as f32,
+                    alto: 40.0,
+                },
+                hex(0x242f3d),
+            );
+            p.rellenar(
+                RectF {
+                    x: 460.0,
+                    y: 40.0,
+                    ancho: 1140.0,
+                    alto: 960.0,
+                },
+                hex(0x151e27),
+            );
             for i in 0..9 {
                 let y = 70.0 + i as f32 * 76.0;
                 p.circulo((50.0, y + 24.0), 24.0, hex(0x5288c1));
@@ -263,7 +279,8 @@ mod pruebas {
             pixeles,
         })
         .expect("png");
-        let d = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/muestras-universo");
+        let d =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/muestras-universo");
         std::fs::create_dir_all(&d).unwrap();
         std::fs::write(d.join("m1-tema-cosmos.png"), png).unwrap();
         // Sus recursos son de este dispositivo: fuera antes de que muera.

@@ -460,7 +460,9 @@ mod pruebas {
     fn el_foco_se_agarra_por_dentro_de_su_marco() {
         // Lo que se ve es el anillo de su marco: es lo que se intenta mover.
         let e = Elemento {
-            figura: Figura::Foco { cristal: Default::default() },
+            figura: Figura::Foco {
+                cristal: Default::default(),
+            },
             ..base()
         };
         assert!(toca(&e, Punto2::nuevo(200.0, 150.0)));

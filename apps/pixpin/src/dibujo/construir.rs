@@ -445,7 +445,12 @@ mod pruebas {
         let mut gesto = con_herramienta(Herramienta::Grafito);
         gesto.tomar_herramienta(Herramienta::Grafito);
         gesto.tomar_herramienta(Herramienta::Relleno);
-        assert!(al_pulsar(&mut escena, &gesto, Punto2::nuevo(100.0, 100.0), 1.0));
+        assert!(al_pulsar(
+            &mut escena,
+            &gesto,
+            Punto2::nuevo(100.0, 100.0),
+            1.0
+        ));
         let m = mancha(&escena);
         assert_eq!(m.material, MaterialTinta::Cuadritos);
         // Y se pinta de grafito de verdad: un mapa, no la mancha lisa.
@@ -563,8 +568,17 @@ mod pruebas {
             let id = escena.anadir(caja_sola(0.0, 0.0, 200.0, 120.0, f.clone()));
             let gesto = con_herramienta(Herramienta::Relleno);
             let pasos = escena.pasos_cerrados();
-            assert!(al_pulsar(&mut escena, &gesto, Punto2::nuevo(100.0, 60.0), 1.0));
-            assert_eq!(escena.visibles().count(), 1, "{f:?}: no nace una mancha aparte");
+            assert!(al_pulsar(
+                &mut escena,
+                &gesto,
+                Punto2::nuevo(100.0, 60.0),
+                1.0
+            ));
+            assert_eq!(
+                escena.visibles().count(),
+                1,
+                "{f:?}: no nace una mancha aparte"
+            );
             assert_eq!(escena.buscar(id).unwrap().relleno, Some(gesto.estilo.trazo));
             assert_eq!(escena.pasos_cerrados(), pasos + 1, "un paso de deshacer");
             escena.deshacer();
@@ -580,9 +594,18 @@ mod pruebas {
         let id = escena.anadir(caja_sola(0.0, 0.0, 300.0, 300.0, Figura::Rectangulo));
         escena.anadir(caja_sola(100.0, 100.0, 100.0, 100.0, Figura::Elipse));
         let gesto = con_herramienta(Herramienta::Relleno);
-        assert!(al_pulsar(&mut escena, &gesto, Punto2::nuevo(30.0, 30.0), 1.0));
+        assert!(al_pulsar(
+            &mut escena,
+            &gesto,
+            Punto2::nuevo(30.0, 30.0),
+            1.0
+        ));
         assert_eq!(escena.buscar(id).unwrap().relleno, None);
-        assert!(escena.visibles().any(|e| matches!(e.figura, Figura::Region { .. })));
+        assert!(
+            escena
+                .visibles()
+                .any(|e| matches!(e.figura, Figura::Region { .. }))
+        );
     }
 
     #[test]
@@ -593,10 +616,20 @@ mod pruebas {
         let gesto = con_herramienta(Herramienta::Nudo);
         // Cinco pixeles de pantalla al lado de la junta, a zoom 2: el clavo
         // va a la junta de verdad, no donde cayo el raton.
-        assert!(al_pulsar(&mut escena, &gesto, Punto2::nuevo(102.0, 101.0), 2.0));
+        assert!(al_pulsar(
+            &mut escena,
+            &gesto,
+            Punto2::nuevo(102.0, 101.0),
+            2.0
+        ));
         assert_eq!(escena.alfileres.len(), 1);
         assert_eq!(escena.alfileres[0].punto, Punto2::nuevo(100.0, 100.0));
-        assert!(al_pulsar(&mut escena, &gesto, Punto2::nuevo(100.0, 100.0), 2.0));
+        assert!(al_pulsar(
+            &mut escena,
+            &gesto,
+            Punto2::nuevo(100.0, 100.0),
+            2.0
+        ));
         assert!(escena.alfileres.is_empty(), "el segundo clic no lo quito");
     }
 
@@ -606,10 +639,18 @@ mod pruebas {
         let mut escena = escena_con_recinto();
         let pasos = escena.pasos_cerrados();
         let gesto = con_herramienta(Herramienta::Nudo);
-        assert!(!al_pulsar(&mut escena, &gesto, Punto2::nuevo(100.0, 100.0), 1.0));
+        assert!(!al_pulsar(
+            &mut escena,
+            &gesto,
+            Punto2::nuevo(100.0, 100.0),
+            1.0
+        ));
         assert!(escena.alfileres.is_empty());
         assert_eq!(escena.pasos_cerrados(), pasos);
-        assert!(!Herramienta::Nudo.deja_rastro(), "soldar no hace nacer nada");
+        assert!(
+            !Herramienta::Nudo.deja_rastro(),
+            "soldar no hace nacer nada"
+        );
     }
 
     #[test]

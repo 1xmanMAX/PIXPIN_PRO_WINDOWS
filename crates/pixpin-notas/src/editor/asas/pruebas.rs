@@ -25,7 +25,11 @@ fn asa_del_renglon(e: &mut Estado, linea: usize) -> RECT {
     let y = y_de(e, ls[linea].desde) + 4;
     let (izq, _) = columna(e);
     raton(e, WM_MOUSEMOVE, izq + 20, y);
-    a_la_vista().iter().find(|(a, _)| matches!(a, Asa::Bloque(_))).expect("sale el asa del bloque").1
+    a_la_vista()
+        .iter()
+        .find(|(a, _)| matches!(a, Asa::Bloque(_)))
+        .expect("sale el asa del bloque")
+        .1
 }
 
 /// Coge `asa` y la suelta en `(x, y)`, mirando que la linea azul salga.
@@ -33,7 +37,10 @@ fn arrastrar(e: &mut Estado, asa: RECT, x: i32, y: i32) {
     let (x0, y0) = centro(asa);
     assert!(raton(e, WM_LBUTTONDOWN, x0, y0), "el asa se coge");
     assert!(raton(e, WM_MOUSEMOVE, x, y));
-    assert!(linea_azul().is_some(), "mientras se arrastra, la linea azul ensena donde cae");
+    assert!(
+        linea_azul().is_some(),
+        "mientras se arrastra, la linea azul ensena donde cae"
+    );
     assert!(raton(e, WM_LBUTTONUP, x, y));
     assert!(linea_azul().is_none());
 }
@@ -95,12 +102,19 @@ fn una_tabla_se_mueve_entera_con_su_asa_y_vuelve_con_deshacer() {
     let mut e = abrir(CON_TABLA);
     assert_eq!(markdown(&e), CON_TABLA);
     let asa = asa_del_renglon(&mut e, 1);
-    assert!(matches!(a_la_vista()[0].0, Asa::Bloque(b) if b.desde == 1 && b.hasta > 1), "la tabla entera es un bloque");
+    assert!(
+        matches!(a_la_vista()[0].0, Asa::Bloque(b) if b.desde == 1 && b.hasta > 1),
+        "la tabla entera es un bloque"
+    );
     let (x, _) = centro(asa);
     let y = abajo_del_todo(&e);
     arrastrar(&mut e, asa, x, y);
-    let esperado = normal("Antes.\nDespues.\n| A | B |\n|:---|:---|\n| 1 | x |\n| 2 | y |\n| 3 | z |");
-    assert!(esperado.starts_with("Antes.\nDespues.\n| A | B |"), "{esperado:?}");
+    let esperado =
+        normal("Antes.\nDespues.\n| A | B |\n|:---|:---|\n| 1 | x |\n| 2 | y |\n| 3 | z |");
+    assert!(
+        esperado.starts_with("Antes.\nDespues.\n| A | B |"),
+        "{esperado:?}"
+    );
     assert_eq!(markdown(&e), esperado);
     assert!(congelar::deshacer(&mut e, false));
     assert_eq!(markdown(&e), CON_TABLA, "en un solo paso");
@@ -108,7 +122,10 @@ fn una_tabla_se_mueve_entera_con_su_asa_y_vuelve_con_deshacer() {
     let asa = asa_del_renglon(&mut e, 0);
     let fondo = abajo_del_todo(&e);
     arrastrar(&mut e, asa, x, fondo);
-    assert_eq!(markdown(&e), "| A | B |\n|:---|:---|\n| 1 | x |\n| 2 | y |\n| 3 | z |\nDespues.\nAntes.");
+    assert_eq!(
+        markdown(&e),
+        "| A | B |\n|:---|:---|\n| 1 | x |\n| 2 | y |\n| 3 | z |\nDespues.\nAntes."
+    );
     desmontar(e);
 }
 
@@ -129,7 +146,10 @@ fn una_foto_se_mueve_con_su_hueco() {
     let (linea, _, caja, _) = imagenes::puesta(0).expect("la foto se sigue viendo");
     assert_eq!(linea, 2);
     let ls = md_vivo::lineas(&leer(e.edit));
-    assert!(caja.top >= y_de(&e, ls[1].desde), "debajo de «abajo», en su hueco");
+    assert!(
+        caja.top >= y_de(&e, ls[1].desde),
+        "debajo de «abajo», en su hueco"
+    );
     desmontar(e);
 }
 
@@ -140,8 +160,16 @@ fn barritas(e: &mut Estado, f: usize, c: usize) -> (RECT, RECT) {
     let p = tc.celdas[f][c];
     raton(e, WM_MOUSEMOVE, x_de(e, p) + 3, y_de(e, p) + 4);
     let v = a_la_vista();
-    let fila = v.iter().find(|(a, _)| matches!(a, Asa::Fila { f: x, .. } if *x == f)).expect("la barrita de la fila").1;
-    let col = v.iter().find(|(a, _)| matches!(a, Asa::Columna { c: x, .. } if *x == c)).expect("la de la columna").1;
+    let fila = v
+        .iter()
+        .find(|(a, _)| matches!(a, Asa::Fila { f: x, .. } if *x == f))
+        .expect("la barrita de la fila")
+        .1;
+    let col = v
+        .iter()
+        .find(|(a, _)| matches!(a, Asa::Columna { c: x, .. } if *x == c))
+        .expect("la de la columna")
+        .1;
     (fila, col)
 }
 
@@ -153,13 +181,19 @@ fn las_barritas_de_una_tabla_reordenan_filas_y_columnas() {
     let tc = md_tabla::tablas_en_control(&leer(e.edit)).remove(0);
     let y = y_de(&e, tc.celdas[1][0]) - 2;
     arrastrar(&mut e, fila, centro(fila).0, y);
-    assert_eq!(markdown(&e), "Antes.\n| A | B |\n|:---|:---|\n| 3 | z |\n| 1 | x |\n| 2 | y |\nDespues.");
+    assert_eq!(
+        markdown(&e),
+        "Antes.\n| A | B |\n|:---|:---|\n| 3 | z |\n| 1 | x |\n| 2 | y |\nDespues."
+    );
     // La columna B delante de la A.
     let (_, col) = barritas(&mut e, 1, 1);
     let tc = md_tabla::tablas_en_control(&leer(e.edit)).remove(0);
     let x = x_de(&e, tc.celdas[0][0]) - 4;
     arrastrar(&mut e, col, x, centro(col).1);
-    assert_eq!(markdown(&e), "Antes.\n| B | A |\n|:---|:---|\n| z | 3 |\n| x | 1 |\n| y | 2 |\nDespues.");
+    assert_eq!(
+        markdown(&e),
+        "Antes.\n| B | A |\n|:---|:---|\n| z | 3 |\n| x | 1 |\n| y | 2 |\nDespues."
+    );
     // Y deshacer, un paso cada una.
     assert!(congelar::deshacer(&mut e, false));
     assert!(markdown(&e).contains("| A | B |"));
@@ -181,17 +215,28 @@ fn los_mas_de_una_tabla_anaden_una_fila_y_una_columna_al_final() {
     let (x, y) = centro(fila);
     assert!(raton(&mut e, WM_LBUTTONDOWN, x, y));
     assert!(raton(&mut e, WM_LBUTTONUP, x, y));
-    assert_eq!(markdown(&e), "Antes.\n| A | B |\n|:---|:---|\n| 1 | x |\n| 2 | y |\n| 3 | z |\n|  |  |\nDespues.");
+    assert_eq!(
+        markdown(&e),
+        "Antes.\n| A | B |\n|:---|:---|\n| 1 | x |\n| 2 | y |\n| 3 | z |\n|  |  |\nDespues."
+    );
     // El cursor, en la fila nueva.
     let tc = md_tabla::tablas_en_control(&leer(e.edit)).remove(0);
     assert_eq!(seleccion(e.edit).0, tc.celdas[4][0]);
     // Y la columna: el raton otra vez por la tabla, que ya cambio.
     let _ = barritas(&mut e, 1, 0);
-    let col = a_la_vista().iter().find(|(a, _)| matches!(a, Asa::MasColumna { .. })).unwrap().1;
+    let col = a_la_vista()
+        .iter()
+        .find(|(a, _)| matches!(a, Asa::MasColumna { .. }))
+        .unwrap()
+        .1;
     let (x, y) = centro(col);
     assert!(raton(&mut e, WM_LBUTTONDOWN, x, y));
     assert!(raton(&mut e, WM_LBUTTONUP, x, y));
-    assert!(markdown(&e).starts_with("Antes.\n| A | B |  |\n"), "{}", markdown(&e));
+    assert!(
+        markdown(&e).starts_with("Antes.\n| A | B |  |\n"),
+        "{}",
+        markdown(&e)
+    );
     // Un paso de deshacer cada uno.
     assert!(congelar::deshacer(&mut e, false));
     assert!(markdown(&e).starts_with("Antes.\n| A | B |\n"));
@@ -207,7 +252,10 @@ fn un_clic_en_una_barrita_elige_su_fila_o_su_columna() {
     assert!(raton(&mut e, WM_LBUTTONUP, x, y));
     let tc = md_tabla::tablas_en_control(&leer(e.edit)).remove(0);
     let (a, b) = seleccion(e.edit);
-    assert!(a <= tc.celdas[2][0] && b > tc.celdas[2][1], "la fila entera: {a}..{b}");
+    assert!(
+        a <= tc.celdas[2][0] && b > tc.celdas[2][1],
+        "la fila entera: {a}..{b}"
+    );
     assert_eq!(markdown(&e), CON_TABLA, "elegir no cambia nada");
     desmontar(e);
 }
@@ -219,7 +267,12 @@ fn fuera_de_un_bloque_no_sale_ningun_asa() {
     let (izq, _) = columna(&e);
     let y = y_de(&e, ls[1].desde) + 2;
     raton(&mut e, WM_MOUSEMOVE, izq + 20, y);
-    assert!(a_la_vista().iter().all(|(a, _)| !matches!(a, Asa::Bloque(b) if b.desde == 1)), "el renglon vacio no se coge");
+    assert!(
+        a_la_vista()
+            .iter()
+            .all(|(a, _)| !matches!(a, Asa::Bloque(b) if b.desde == 1)),
+        "el renglon vacio no se coge"
+    );
     desmontar(e);
 }
 
@@ -249,7 +302,16 @@ fn muestra_de(claro: bool, en_tabla: bool, nombre: &str) {
         let (x, y) = centro(asa);
         assert!(raton(&mut e, WM_LBUTTONDOWN, x, y));
         let ls = md_vivo::lineas(&leer(e.edit));
-        let n = ls.iter().position(|l| leer(e.edit).encode_utf16().skip(l.desde).take(7).eq("Despues".encode_utf16())).unwrap();
+        let n = ls
+            .iter()
+            .position(|l| {
+                leer(e.edit)
+                    .encode_utf16()
+                    .skip(l.desde)
+                    .take(7)
+                    .eq("Despues".encode_utf16())
+            })
+            .unwrap();
         let yn = y_de(&e, ls[n].desde) + 6;
         raton(&mut e, WM_MOUSEMOVE, x, yn);
     }

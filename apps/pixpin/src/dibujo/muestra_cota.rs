@@ -48,7 +48,8 @@ const ALTO: u32 = 400;
 /// mapa hecho una vez, `pixpin-render/src/halo.rs`): la prueba de abajo
 /// compara uno con otro para que el mapa no cambie lo que se ve.
 fn pintar(nombre: &str, papel: pixpin_motor2d::ColorRgba) -> (Vec<u8>, Vec<u8>) {
-    let mut escena = pixpin_motor2d::excalidraw::a_escena(&pixpin_motor2d::excalidraw::leer(PLANO).unwrap());
+    let mut escena =
+        pixpin_motor2d::excalidraw::a_escena(&pixpin_motor2d::excalidraw::leer(PLANO).unwrap());
     escena.fondo = papel;
     let d = pixpin_capture::Dispositivo::nuevo().expect("GPU real");
     let motor = MotorRender::nuevo(d.d3d()).expect("motor");
@@ -90,7 +91,8 @@ fn pintar(nombre: &str, papel: pixpin_motor2d::ColorRgba) -> (Vec<u8>, Vec<u8>) 
         pixeles: segundo.clone(),
     })
     .expect("codificar");
-    let carpeta = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/muestras-de-cota");
+    let carpeta =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/muestras-de-cota");
     std::fs::create_dir_all(&carpeta).expect("carpeta");
     std::fs::write(carpeta.join(format!("{nombre}.png")), png).expect("guardar");
     (primero, segundo)
@@ -100,19 +102,30 @@ fn pintar(nombre: &str, papel: pixpin_motor2d::ColorRgba) -> (Vec<u8>, Vec<u8>) 
 /// canal que mas, de 0 a 255).
 fn diferencia(a: &[u8], b: &[u8]) -> (usize, u8) {
     a.chunks(4).zip(b.chunks(4)).fold((0, 0), |(n, m), (p, q)| {
-        let d = p.iter().zip(q).map(|(x, y)| x.abs_diff(*y)).max().unwrap_or(0);
+        let d = p
+            .iter()
+            .zip(q)
+            .map(|(x, y)| x.abs_diff(*y))
+            .max()
+            .unwrap_or(0);
         (n + (d > 0) as usize, m.max(d))
     })
 }
 
 /// La caja de los pixeles que cumplen `f` dentro de `(x0, y0, x1, y1)`.
-fn caja(v: &[u8], (x0, y0, x1, y1): (u32, u32, u32, u32), f: impl Fn(&[u8]) -> bool) -> Option<(u32, u32, u32, u32)> {
+fn caja(
+    v: &[u8],
+    (x0, y0, x1, y1): (u32, u32, u32, u32),
+    f: impl Fn(&[u8]) -> bool,
+) -> Option<(u32, u32, u32, u32)> {
     let mut c: Option<(u32, u32, u32, u32)> = None;
     for y in y0..y1 {
         for x in x0..x1 {
             let i = ((y * ANCHO + x) * 4) as usize;
             if f(&v[i..i + 4]) {
-                c = Some(c.map_or((x, y, x, y), |(a, b, cc, d)| (a.min(x), b.min(y), cc.max(x), d.max(y))));
+                c = Some(c.map_or((x, y, x, y), |(a, b, cc, d)| {
+                    (a.min(x), b.min(y), cc.max(x), d.max(y))
+                }));
             }
         }
     }
@@ -122,25 +135,50 @@ fn caja(v: &[u8], (x0, y0, x1, y1): (u32, u32, u32, u32), f: impl Fn(&[u8]) -> b
 #[test]
 #[ignore = "necesita GPU; genera PNG para mirarlos"]
 fn muestra_de_la_cota_sobre_papel_blanco_y_de_noche() {
-    let (blanco_antes, blanco) = pintar("cota_pantalla_papel_blanco", pixpin_motor2d::ColorRgba::opaco(1.0, 1.0, 1.0));
+    let (blanco_antes, blanco) = pintar(
+        "cota_pantalla_papel_blanco",
+        pixpin_motor2d::ColorRgba::opaco(1.0, 1.0, 1.0),
+    );
     // El mapa del halo no cambia lo que se ve: solo el remuestreo del borde
     // del halo (medido: 1.087 de 192.000 pixeles, todos en su borde).
     let (n, _) = diferencia(&blanco_antes, &blanco);
-    assert!(n < (ANCHO * ALTO / 100) as usize, "el halo de mapa cambia {n} pixeles");
+    assert!(
+        n < (ANCHO * ALTO / 100) as usize,
+        "el halo de mapa cambia {n} pixeles"
+    );
     // Sobre la foto oscura (x 0..240) solo es blanco el halo de un numero, y
     // el de la cota larga (x 0..100) esta de pie: va a lo largo de la raya.
     let es_blanco = |p: &[u8]| p[0] > 230 && p[1] > 230 && p[2] > 230;
-    let (hx0, hy0, hx1, hy1) = caja(&blanco, (5, 5, 100, 395), es_blanco).expect("hay halo sobre la foto");
-    assert!(hy1 - hy0 > (hx1 - hx0) * 2, "de pie: {}x{}", hx1 - hx0, hy1 - hy0);
+    let (hx0, hy0, hx1, hy1) =
+        caja(&blanco, (5, 5, 100, 395), es_blanco).expect("hay halo sobre la foto");
+    assert!(
+        hy1 - hy0 > (hx1 - hx0) * 2,
+        "de pie: {}x{}",
+        hx1 - hx0,
+        hy1 - hy0
+    );
     // La tinta de la cota: el cian adaptado, oscuro (azul > verde > rojo, y
     // ningun pixel del cian claro original #0edeff).
     let cian_claro = |p: &[u8]| p[0] < 40 && p[1] > 200 && p[2] > 240;
-    assert!(caja(&blanco, (5, 5, 100, 395), cian_claro).is_none(), "no el cian claro tal cual");
+    assert!(
+        caja(&blanco, (5, 5, 100, 395), cian_claro).is_none(),
+        "no el cian claro tal cual"
+    );
 
     // Sobre papel de noche el cian se lee tal cual y su halo es negro.
-    let noche = pixpin_motor2d::ColorRgba::opaco(0x12 as f32 / 255.0, 0x12 as f32 / 255.0, 0x12 as f32 / 255.0);
+    let noche = pixpin_motor2d::ColorRgba::opaco(
+        0x12 as f32 / 255.0,
+        0x12 as f32 / 255.0,
+        0x12 as f32 / 255.0,
+    );
     let (oscuro_antes, oscuro) = pintar("cota_pantalla_papel_de_noche", noche);
     let (n, _) = diferencia(&oscuro_antes, &oscuro);
-    assert!(n < (ANCHO * ALTO / 100) as usize, "el halo de mapa cambia {n} pixeles de noche");
-    assert!(caja(&oscuro, (250, 100, 470, 200), cian_claro).is_some(), "el cian de siempre sobre la pizarra");
+    assert!(
+        n < (ANCHO * ALTO / 100) as usize,
+        "el halo de mapa cambia {n} pixeles de noche"
+    );
+    assert!(
+        caja(&oscuro, (250, 100, 470, 200), cian_claro).is_some(),
+        "el cian de siempre sobre la pizarra"
+    );
 }

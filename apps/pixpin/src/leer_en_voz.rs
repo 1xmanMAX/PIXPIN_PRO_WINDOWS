@@ -78,7 +78,12 @@ impl LeerEnVoz {
     /// el documento dicho en `parrafos`. No empieza a sonar: para eso,
     /// [`LeerEnVoz::leer`]. `None` si Windows no tiene ninguna de las dos.
     /// COM tiene que estar iniciado en el hilo (lo esta en los lectores).
-    pub fn arrancar(idioma: &str, reserva: &str, parrafos: Vec<String>, velocidad: f32) -> Option<LeerEnVoz> {
+    pub fn arrancar(
+        idioma: &str,
+        reserva: &str,
+        parrafos: Vec<String>,
+        velocidad: f32,
+    ) -> Option<LeerEnVoz> {
         let lector = Lector::nuevo(idioma).or_else(|| Lector::nuevo(reserva))?;
         lector.poner_tasa(voz_alta::tasa_de_windows(velocidad));
         Some(LeerEnVoz {
@@ -101,7 +106,11 @@ impl LeerEnVoz {
     /// «Microsoft Helena Desktop · Windows», para la barra.
     pub fn nombre(&self) -> String {
         let n = self.lector.nombre();
-        if n.is_empty() { "Windows".into() } else { format!("{n} · Windows") }
+        if n.is_empty() {
+            "Windows".into()
+        } else {
+            format!("{n} · Windows")
+        }
     }
 
     /// Empieza a leer en el parrafo `desde`, por su principio.
@@ -147,7 +156,8 @@ impl LeerEnVoz {
         if self.parrafos.is_empty() {
             return 0;
         }
-        let a = (self.actual as isize + cuantos).clamp(0, self.parrafos.len() as isize - 1) as usize;
+        let a =
+            (self.actual as isize + cuantos).clamp(0, self.parrafos.len() as isize - 1) as usize;
         if self.leyendo {
             self.leer(a);
         } else {
@@ -161,7 +171,8 @@ impl LeerEnVoz {
     /// La velocidad siguiente; sonando, se vuelve a empezar el trozo con ella.
     pub fn otra_velocidad(&mut self) -> f32 {
         self.velocidad = voz_alta::siguiente_velocidad(self.velocidad);
-        self.lector.poner_tasa(voz_alta::tasa_de_windows(self.velocidad));
+        self.lector
+            .poner_tasa(voz_alta::tasa_de_windows(self.velocidad));
         if self.leyendo {
             self.decir();
         } else if self.en_pausa {
@@ -175,7 +186,8 @@ impl LeerEnVoz {
     /// **Lo que paso desde la ultima vuelta**: si la voz acabo su trozo, se
     /// dice el siguiente, o el siguiente parrafo, o se acaba el documento.
     pub fn vuelta(&mut self) -> Option<Suceso> {
-        if !self.leyendo || ahora_ms() < self.hablado_en + MS_PARA_EMPEZAR || !self.lector.acabado() {
+        if !self.leyendo || ahora_ms() < self.hablado_en + MS_PARA_EMPEZAR || !self.lector.acabado()
+        {
             return None;
         }
         if self.trozo + 1 < self.trozos.len() {
@@ -202,7 +214,13 @@ impl Drop for LeerEnVoz {
 /// **La barra de escuchar**, abajo y de cristal como la del movil: atras un
 /// parrafo, play/pausa, adelante uno, la velocidad (rota al pulsarla) y
 /// cerrar. Debajo, que voz lee y por donde va. Devuelve donde cae cada boton.
-pub fn pintar_barra(p: &Pintor, ancho: f32, alto: f32, e: f32, voz: &LeerEnVoz) -> Vec<(RectF, BotonVoz)> {
+pub fn pintar_barra(
+    p: &Pintor,
+    ancho: f32,
+    alto: f32,
+    e: f32,
+    voz: &LeerEnVoz,
+) -> Vec<(RectF, BotonVoz)> {
     let mut botones = Vec::new();
     let lado = 40.0 * e;
     let rotulo = voz_alta::rotulo(voz.velocidad);
@@ -210,7 +228,12 @@ pub fn pintar_barra(p: &Pintor, ancho: f32, alto: f32, e: f32, voz: &LeerEnVoz) 
     let (w_vel, _) = p.medir_texto(&rotulo, tam);
     let ancho_vel = w_vel + 20.0 * e;
     let fila = 4.0 * lado + ancho_vel;
-    let debajo = format!("{} · {} / {}", voz.nombre(), voz.actual + 1, voz.cuantos().max(1));
+    let debajo = format!(
+        "{} · {} / {}",
+        voz.nombre(),
+        voz.actual + 1,
+        voz.cuantos().max(1)
+    );
     let tam_debajo = 11.0 * e;
     let (w_debajo, h_debajo) = p.medir_texto(&debajo, tam_debajo);
     let total = fila.max(w_debajo + 24.0 * e) + 12.0 * e;
@@ -224,32 +247,87 @@ pub fn pintar_barra(p: &Pintor, ancho: f32, alto: f32, e: f32, voz: &LeerEnVoz) 
     let mut x = caja.x + (total - fila) / 2.0;
     let y = caja.y;
     let icono = |p: &Pintor, i: &pixpin_render::icono::Icono, r: RectF, l: f32| {
-        p.icono(i, RectF { x: r.x + (r.ancho - l) / 2.0, y: r.y + (r.alto - l) / 2.0, ancho: l, alto: l }, TEXTO);
+        p.icono(
+            i,
+            RectF {
+                x: r.x + (r.ancho - l) / 2.0,
+                y: r.y + (r.alto - l) / 2.0,
+                ancho: l,
+                alto: l,
+            },
+            TEXTO,
+        );
     };
     let texto = |p: &Pintor, t: &str, r: RectF, tam: f32| {
         let (w, h) = p.medir_texto(t, tam);
-        p.texto(t, r.x + (r.ancho - w) / 2.0, r.y + (r.alto - h) / 2.0, tam, TEXTO);
+        p.texto(
+            t,
+            r.x + (r.ancho - w) / 2.0,
+            r.y + (r.alto - h) / 2.0,
+            tam,
+            TEXTO,
+        );
     };
-    let r = RectF { x, y, ancho: lado, alto: lado };
+    let r = RectF {
+        x,
+        y,
+        ancho: lado,
+        alto: lado,
+    };
     texto(p, "⏮", r, 16.0 * e);
     botones.push((r, BotonVoz::Anterior));
     x += lado;
-    let r = RectF { x, y, ancho: lado, alto: lado };
-    icono(p, if voz.leyendo { &material::PAUSE } else { &material::PLAY_ARROW }, r, 28.0 * e);
+    let r = RectF {
+        x,
+        y,
+        ancho: lado,
+        alto: lado,
+    };
+    icono(
+        p,
+        if voz.leyendo {
+            &material::PAUSE
+        } else {
+            &material::PLAY_ARROW
+        },
+        r,
+        28.0 * e,
+    );
     botones.push((r, BotonVoz::Alternar));
     x += lado;
-    let r = RectF { x, y, ancho: lado, alto: lado };
+    let r = RectF {
+        x,
+        y,
+        ancho: lado,
+        alto: lado,
+    };
     texto(p, "⏭", r, 16.0 * e);
     botones.push((r, BotonVoz::Siguiente));
     x += lado;
-    let r = RectF { x, y, ancho: ancho_vel, alto: lado };
+    let r = RectF {
+        x,
+        y,
+        ancho: ancho_vel,
+        alto: lado,
+    };
     texto(p, &rotulo, r, tam);
     botones.push((r, BotonVoz::Velocidad));
     x += ancho_vel;
-    let r = RectF { x, y, ancho: lado, alto: lado };
+    let r = RectF {
+        x,
+        y,
+        ancho: lado,
+        alto: lado,
+    };
     icono(p, &material::CLOSE, r, 20.0 * e);
     botones.push((r, BotonVoz::Cerrar));
-    p.texto(&debajo, caja.x + (total - w_debajo) / 2.0, y + lado, tam_debajo, APAGADO);
+    p.texto(
+        &debajo,
+        caja.x + (total - w_debajo) / 2.0,
+        y + lado,
+        tam_debajo,
+        APAGADO,
+    );
     botones
 }
 

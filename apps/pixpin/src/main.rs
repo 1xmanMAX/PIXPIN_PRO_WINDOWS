@@ -57,6 +57,7 @@ mod audio;
 mod biblioteca_audio;
 mod buscador;
 mod buscar_todo;
+mod caducidad_capturas;
 mod caja_dibujo;
 mod capa;
 mod captura2;
@@ -71,18 +72,17 @@ mod editor;
 mod fondo_lienzo;
 mod foto_anotada;
 mod fusionar_paginas;
-mod caducidad_capturas;
 mod galeria_capturas;
 mod gif;
-mod grupos_ventanas;
 mod grabador;
+mod grupos_ventanas;
 mod imagenes_lienzo;
-mod leer_en_voz;
 mod lecciones;
 mod lector;
 mod lector_pdf;
 mod lector_pdf_proyecto;
 mod lector_tinta;
+mod leer_en_voz;
 mod llamada;
 mod marco_de_la_tinta;
 mod medir_fotogramas;
@@ -94,8 +94,8 @@ mod overlay;
 mod panel_dibujo;
 mod pdf_del_proyecto;
 mod pdf_en_chat;
-mod pegar_en_flow;
 mod pedidos;
+mod pegar_en_flow;
 mod pila_capturas;
 mod pin_vivo;
 mod pines;
@@ -115,9 +115,9 @@ mod turno_pesado;
 mod ventana_ajustes;
 mod ventana_chat;
 mod ventana_editor;
+mod ventanita;
 mod visor;
 mod visor_html;
-mod ventanita;
 mod voz;
 mod voz_en_chat;
 mod zona_al_chat;
@@ -805,7 +805,7 @@ fn arrancar(
                                 .context("sin monitor para la region")?
                                 .to_owned();
                             let imagen = scroll::capturar(r, &m, region)?;
-                            pila.entrar(imagen,region, r, &ubicacion, &textos)
+                            pila.entrar(imagen, region, r, &ubicacion, &textos)
                         });
                         match hecho {
                             Ok(()) => tracing::info!(?region, "ultima region repetida y copiada"),
@@ -840,7 +840,7 @@ fn arrancar(
                         .context("la region guardada no cae en ningun monitor")?
                         .to_owned();
                     let imagen = scroll::capturar(rec, &m, region)?;
-                    pila.entrar(imagen,region, rec, &ubicacion, &textos)
+                    pila.entrar(imagen, region, rec, &ubicacion, &textos)
                 });
                 match hecho {
                     Ok(()) => {
@@ -872,7 +872,11 @@ fn arrancar(
             _ if comando == Some(comandos::Comando::Buscar) => {
                 // En su propio hilo, como la galeria; si ya esta abierto
                 // lo trae delante (lo vigila `buscar_todo::abrir`).
-                buscar_todo::abrir(lengua, ubicacion.clone(), buscar_todo::Opciones::de(&config, hwnd.0 as isize));
+                buscar_todo::abrir(
+                    lengua,
+                    ubicacion.clone(),
+                    buscar_todo::Opciones::de(&config, hwnd.0 as isize),
+                );
                 Continuar::Si
             }
             _ if comando == Some(comandos::Comando::Sincronizar) => {
@@ -982,13 +986,18 @@ fn arrancar(
                 // El visor recibe una ruta y no sabe de donde sale; desde la
                 // bandeja la elige el usuario. Lo que no sepa abrir se salta:
                 // mas vale no abrir nada que abrir una ventana en blanco.
-                for ruta in pixpin_shell::elegir::pedir_ficheros(
-                    windows::Win32::Foundation::HWND(std::ptr::null_mut()),
-                )
+                for ruta in pixpin_shell::elegir::pedir_ficheros(windows::Win32::Foundation::HWND(
+                    std::ptr::null_mut(),
+                ))
                 .iter()
                 {
                     // Word, libro, pagina o PDF: cada uno a su lector.
-                    lector::abrir_en_su_lector(lengua, &ubicacion, ruta, &pixpin_docs::nombre(ruta));
+                    lector::abrir_en_su_lector(
+                        lengua,
+                        &ubicacion,
+                        ruta,
+                        &pixpin_docs::nombre(ruta),
+                    );
                 }
                 Continuar::Si
             }
@@ -997,7 +1006,14 @@ fn arrancar(
                 Continuar::Si
             }
             Evento::Menu(id) if id == ID_LECCION_NUEVA => {
-                lecciones::nueva(ubicacion.clone(), lengua, &identidad_equipo, None, None, None);
+                lecciones::nueva(
+                    ubicacion.clone(),
+                    lengua,
+                    &identidad_equipo,
+                    None,
+                    None,
+                    None,
+                );
                 Continuar::Si
             }
             Evento::Menu(id) if id == ID_GALERIA_CAPTURAS => {
@@ -1376,7 +1392,7 @@ fn arrancar(
                         let r = recursos_overlay
                             .as_ref()
                             .context("sin recursos para la pila de capturas")?;
-                        pila.entrar(imagen,region, r, &ubicacion, &textos)?;
+                        pila.entrar(imagen, region, r, &ubicacion, &textos)?;
                         Ok(None)
                     }
                     otra => ejecutar_accion(otra, &ubicacion, hwnd),
@@ -1801,7 +1817,11 @@ fn abrir_ficheros(
         .into_iter()
         .partition(|r| destino_de_fichero(r) == DestinoDeFichero::Nota);
     for ruta in notas {
-        notas_md::abrir(lengua, ubicacion.clone(), notas_md::Destino::Fichero { ruta });
+        notas_md::abrir(
+            lengua,
+            ubicacion.clone(),
+            notas_md::Destino::Fichero { ruta },
+        );
     }
     let (a_leer, rutas): (Vec<_>, Vec<_>) = rutas
         .into_iter()
@@ -1854,12 +1874,8 @@ fn abrir_ficheros(
         let hecho = pixpin_proyecto::Paquete::abrir(ruta)
             .map_err(|e| e.to_string())
             .and_then(|p| {
-                pixpin_proyecto::almacen::importar_paquete(
-                    ubicacion.raiz(),
-                    &p,
-                    identidad_equipo,
-                )
-                .map_err(|e| e.to_string())
+                pixpin_proyecto::almacen::importar_paquete(ubicacion.raiz(), &p, identidad_equipo)
+                    .map_err(|e| e.to_string())
             });
         match hecho {
             Ok(f) => tracing::info!(id = %f.id, nombre = %f.nombre, "proyecto en la lista"),
@@ -1883,7 +1899,10 @@ fn abrir_ficheros(
         let d = pixpin_capture::enumerar_monitores()?;
         let m = d.principal().context("sin monitor")?.to_owned();
         let mut cuantos = 0;
-        for v in listas.iter().filter_map(|r| pines::herramienta::vinculo_de_ruta(r)) {
+        for v in listas
+            .iter()
+            .filter_map(|r| pines::herramienta::vinculo_de_ruta(r))
+        {
             match p.pinear_lista_del_chat(v, &m) {
                 Ok(_) => cuantos += 1,
                 Err(e) => tracing::warn!(?e, "no se pudo sacar la lista a la pantalla"),
@@ -1894,14 +1913,18 @@ fn abrir_ficheros(
             // demas ficheros que venian con el.
             match p.abrir_paquete(proyecto, &m, ubicacion) {
                 Ok((hechas, _)) => cuantos += hechas,
-                Err(e) => tracing::warn!(?e, ruta = %proyecto.display(), "proyecto que no se pudo abrir"),
+                Err(e) => {
+                    tracing::warn!(?e, ruta = %proyecto.display(), "proyecto que no se pudo abrir")
+                }
             }
         }
         for foto in &de_la_tienda {
             match pixpin_codec::cargar(foto) {
                 Ok(img) => match p.pinear_imagen_centrada(&img, &m) {
                     Ok(_) => cuantos += 1,
-                    Err(e) => tracing::warn!(?e, ruta = %foto.display(), "no se pudo pinear la foto"),
+                    Err(e) => {
+                        tracing::warn!(?e, ruta = %foto.display(), "no se pudo pinear la foto")
+                    }
                 },
                 Err(e) => {
                     tracing::warn!(%e, ruta = %foto.display(), "foto que Windows no sabe leer");
@@ -1921,10 +1944,7 @@ fn abrir_ficheros(
             }
         }
         if !sueltos.is_empty() {
-            cuantos += pinear_portapapeles(
-                p,
-                pixpin_codec::ContenidoPortapapeles::Rutas(sueltos),
-            )?;
+            cuantos += pinear_portapapeles(p, pixpin_codec::ContenidoPortapapeles::Rutas(sueltos))?;
         }
         Ok(cuantos)
     });
@@ -1987,7 +2007,9 @@ mod pruebas_abrir_ficheros {
     fn abrir_cada_fichero_va_a_lo_suyo() {
         let d = |r: &str| destino_de_fichero(Path::new(r));
         assert_eq!(d(r"C:\musica\Cancion.MP3"), DestinoDeFichero::Audio);
-        for a in ["a.m4a", "b.wav", "c.flac", "d.ogg", "e.opus", "f.aac", "g.wma", "h.amr", "i.3gp"] {
+        for a in [
+            "a.m4a", "b.wav", "c.flac", "d.ogg", "e.opus", "f.aac", "g.wma", "h.amr", "i.3gp",
+        ] {
             assert_eq!(d(a), DestinoDeFichero::Audio, "{a}");
         }
         assert_eq!(d("notas.md"), DestinoDeFichero::Nota);
@@ -2002,13 +2024,20 @@ mod pruebas_abrir_ficheros {
     fn abrir_caso_negativo_un_video_o_algo_sin_extension_no_va_al_reproductor() {
         let d = |r: &str| destino_de_fichero(Path::new(r));
         assert_ne!(d("pelicula.mp4"), DestinoDeFichero::Audio);
-        assert_ne!(d("mp3"), DestinoDeFichero::Audio, "sin punto no es extension");
+        assert_ne!(
+            d("mp3"),
+            DestinoDeFichero::Audio,
+            "sin punto no es extension"
+        );
         assert_ne!(d("cancion.mp3.txt"), DestinoDeFichero::Audio);
     }
 
     #[test]
     fn abrir_un_audio_lo_titula_sin_extension() {
-        assert_eq!(titulo_del_audio(Path::new(r"C:\x\Nota de voz 3.m4a")), "Nota de voz 3");
+        assert_eq!(
+            titulo_del_audio(Path::new(r"C:\x\Nota de voz 3.m4a")),
+            "Nota de voz 3"
+        );
         // Caso negativo: un punto en medio no se come el resto del nombre.
         assert_eq!(titulo_del_audio(Path::new("v1.2 final.mp3")), "v1.2 final");
     }
@@ -2060,8 +2089,11 @@ mod pruebas_abrir_ficheros {
             pixeles: [220u8, 40, 40, 255].repeat(160 * 90),
         };
         let gif = dir.join("rojo.gif");
-        std::fs::write(&gif, pixpin_codec::codificar_gif(&[rojo], Default::default()).unwrap())
-            .unwrap();
+        std::fs::write(
+            &gif,
+            pixpin_codec::codificar_gif(&[rojo], Default::default()).unwrap(),
+        )
+        .unwrap();
         let mut rutas = vec![a, b, gif];
         match std::env::var("PIXPIN_PROBAR_HEIC") {
             Ok(heic) => rutas.push(heic.into()),
@@ -2403,7 +2435,15 @@ mod pruebas_bandeja {
             .position(|(id, _)| *id == comandos::Comando::AbrirChat.id())
             .expect("el chat esta en la bandeja");
         let siguen: Vec<u32> = v[chat + 1..chat + 5].iter().map(|(id, _)| *id).collect();
-        assert_eq!(siguen, [ID_LECCIONES, ID_LECCION_NUEVA, ID_GALERIA_CAPTURAS, ID_TAREAS]);
+        assert_eq!(
+            siguen,
+            [
+                ID_LECCIONES,
+                ID_LECCION_NUEVA,
+                ID_GALERIA_CAPTURAS,
+                ID_TAREAS
+            ]
+        );
     }
 
     #[test]
@@ -2438,7 +2478,12 @@ mod pruebas_bandeja {
     #[test]
     fn cada_entrada_sale_una_sola_vez_y_salir_no_se_cuela() {
         let v = acciones_de_bandeja(|clave| clave.to_string());
-        for id in [ID_LECCIONES, ID_LECCION_NUEVA, ID_GALERIA_CAPTURAS, ID_TAREAS] {
+        for id in [
+            ID_LECCIONES,
+            ID_LECCION_NUEVA,
+            ID_GALERIA_CAPTURAS,
+            ID_TAREAS,
+        ] {
             assert_eq!(v.iter().filter(|(i, _)| *i == id).count(), 1, "{id}");
         }
         // Caso negativo: el universo (901) ya no esta.

@@ -57,7 +57,8 @@ pub const MUESTRAS: usize = 400;
 
 /// Los colores de las curvas a partir de la segunda: la primera va con el
 /// pincel, y las demas con estos, vivos y distintos entre si.
-pub const COLORES_DE_CURVAS: [u32; 6] = [0xe03131, 0x1971c2, 0x2f9e44, 0xf08c00, 0x9c36b5, 0x0c8599];
+pub const COLORES_DE_CURVAS: [u32; 6] =
+    [0xe03131, 0x1971c2, 0x2f9e44, 0xf08c00, 0x9c36b5, 0x0c8599];
 
 /// Largo de la punta de los ejes, en px del dibujo.
 pub const PUNTA: f32 = 8.0;
@@ -88,7 +89,12 @@ pub enum Fallo {
 /// Compila las formulas de la peticion, o dice cual falla.
 pub fn compilar(p: &Peticion) -> Result<Vec<Compilada>, Fallo> {
     let mut v = Vec::new();
-    for f in p.formulas.iter().map(|f| f.trim()).filter(|f| !f.is_empty()) {
+    for f in p
+        .formulas
+        .iter()
+        .map(|f| f.trim())
+        .filter(|f| !f.is_empty())
+    {
         let c = formula::compilar(f).ok_or_else(|| Fallo::NoSeEntiende(f.to_string()))?;
         if c.variables().iter().any(|&v| v != 'x') {
             return Err(Fallo::OtraVariable(f.to_string()));
@@ -154,8 +160,26 @@ pub fn partes(
     // El nombre de cada eje, en cursiva como las variables de la ecuacion,
     // pegado a la punta donde no choca con los numeros de las marcas.
     let tam_variable = de_letra.tam * 1.15;
-    salida.push(rotulo("x", (ancho + 4.0, y_eje_x), tam_variable, true, estilo, medir, Lado::Derecha, false));
-    salida.push(rotulo("y", (x_eje_y + 5.0, 0.0), tam_variable, true, estilo, medir, Lado::Derecha, true));
+    salida.push(rotulo(
+        "x",
+        (ancho + 4.0, y_eje_x),
+        tam_variable,
+        true,
+        estilo,
+        medir,
+        Lado::Derecha,
+        false,
+    ));
+    salida.push(rotulo(
+        "y",
+        (x_eje_y + 5.0, 0.0),
+        tam_variable,
+        true,
+        estilo,
+        medir,
+        Lado::Derecha,
+        true,
+    ));
 
     // Las marcas, a un paso «bonito»: ni dos ni doscientas.
     let paso_x = paso_bonito(p.x_hasta - p.x_desde);
@@ -164,16 +188,42 @@ pub fn partes(
     let mut x = (p.x_desde / paso_x).ceil() * paso_x;
     while x <= p.x_hasta + 1e-9 {
         if x.abs() > 1e-9 || !hay_eje_y {
-            salida.push(raya((px(x), y_eje_x - marca), (px(x), y_eje_x + marca), estilo));
-            salida.push(rotulo(&numero(x), (px(x), y_eje_x + marca + 2.0), tam_numeros, false, estilo, medir, Lado::Centro, true));
+            salida.push(raya(
+                (px(x), y_eje_x - marca),
+                (px(x), y_eje_x + marca),
+                estilo,
+            ));
+            salida.push(rotulo(
+                &numero(x),
+                (px(x), y_eje_x + marca + 2.0),
+                tam_numeros,
+                false,
+                estilo,
+                medir,
+                Lado::Centro,
+                true,
+            ));
         }
         x += paso_x;
     }
     let mut y = (p.y_desde / paso_y).ceil() * paso_y;
     while y <= p.y_hasta + 1e-9 {
         if y.abs() > 1e-9 || !hay_eje_x {
-            salida.push(raya((x_eje_y - marca, py(y)), (x_eje_y + marca, py(y)), estilo));
-            salida.push(rotulo(&numero(y), (x_eje_y - marca - 2.0, py(y)), tam_numeros, false, estilo, medir, Lado::Izquierda, false));
+            salida.push(raya(
+                (x_eje_y - marca, py(y)),
+                (x_eje_y + marca, py(y)),
+                estilo,
+            ));
+            salida.push(rotulo(
+                &numero(y),
+                (x_eje_y - marca - 2.0, py(y)),
+                tam_numeros,
+                false,
+                estilo,
+                medir,
+                Lado::Izquierda,
+                false,
+            ));
         }
         y += paso_y;
     }
@@ -193,7 +243,11 @@ pub fn partes(
         let mut rama: Vec<Punto2> = Vec::new();
         let cerrar = |rama: &mut Vec<Punto2>, salida: &mut Vec<Elemento>| {
             if rama.len() >= 2 {
-                salida.push(elemento_linea(std::mem::take(rama), grosor_de_curva(estilo), &de_curva));
+                salida.push(elemento_linea(
+                    std::mem::take(rama),
+                    grosor_de_curva(estilo),
+                    &de_curva,
+                ));
             }
             rama.clear();
         };
@@ -268,7 +322,11 @@ fn numero(v: f64) -> String {
 }
 
 fn raya(a: (f32, f32), b: (f32, f32), estilo: &Estilo) -> Elemento {
-    elemento_linea(vec![Punto2::nuevo(a.0, a.1), Punto2::nuevo(b.0, b.1)], 1.0, estilo)
+    elemento_linea(
+        vec![Punto2::nuevo(a.0, a.1), Punto2::nuevo(b.0, b.1)],
+        1.0,
+        estilo,
+    )
 }
 
 /// Un eje: la raya de `a` a `b` y una uve pequena en `b`. No es una flecha
@@ -285,7 +343,10 @@ fn flecha(a: (f32, f32), b: (f32, f32), estilo: &Estilo) -> Vec<Elemento> {
     let rad = ANGULO_DE_LA_PUNTA.to_radians();
     let ala1 = base.girar(punta, -rad);
     let ala2 = base.girar(punta, rad);
-    vec![raya(a, b, estilo), elemento_linea(vec![ala1, punta, ala2], 1.0, estilo)]
+    vec![
+        raya(a, b, estilo),
+        elemento_linea(vec![ala1, punta, ala2], 1.0, estilo),
+    ]
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -314,7 +375,11 @@ fn rotulo(
         Lado::Derecha => donde.0,
         Lado::Centro => donde.0 - ancho / 2.0,
     };
-    let y = if arriba { donde.1 } else { donde.1 - alto / 2.0 };
+    let y = if arriba {
+        donde.1
+    } else {
+        donde.1 - alto / 2.0
+    };
     elemento_texto(texto, x, y, (ancho, alto), tam, cursiva, estilo)
 }
 
@@ -349,10 +414,11 @@ mod pruebas {
     }
 
     fn caja(v: &[&Elemento]) -> (f32, f32, f32, f32) {
-        v.iter().fold((f32::MAX, f32::MAX, f32::MIN, f32::MIN), |c, e| {
-            let (a, b, x, y) = e.caja();
-            (c.0.min(a), c.1.min(b), c.2.max(x), c.3.max(y))
-        })
+        v.iter()
+            .fold((f32::MAX, f32::MAX, f32::MIN, f32::MIN), |c, e| {
+                let (a, b, x, y) = e.caja();
+                (c.0.min(a), c.1.min(b), c.2.max(x), c.3.max(y))
+            })
     }
 
     #[test]
@@ -372,13 +438,25 @@ mod pruebas {
             .filter(|x| matches!(&x.figura, Figura::Linea { puntos } if puntos.len() == 3))
             .collect();
         assert_eq!(puntas.len(), 2);
-        assert!(puntas.iter().all(|x| x.ancho <= PUNTA + 0.01 && x.alto <= PUNTA + 0.01));
+        assert!(
+            puntas
+                .iter()
+                .all(|x| x.ancho <= PUNTA + 0.01 && x.alto <= PUNTA + 0.01)
+        );
         let letras: Vec<_> = e
             .iter()
             .filter(|x| matches!(texto_de(x), Some("x" | "y")) && x.extras.cursiva)
             .collect();
-        assert!(letras.iter().any(|x| texto_de(x) == Some("x") && x.x >= 240.0));
-        assert!(letras.iter().any(|x| texto_de(x) == Some("y") && x.y >= 0.0 && x.y < 4.0));
+        assert!(
+            letras
+                .iter()
+                .any(|x| texto_de(x) == Some("x") && x.x >= 240.0)
+        );
+        assert!(
+            letras
+                .iter()
+                .any(|x| texto_de(x) == Some("y") && x.y >= 0.0 && x.y < 4.0)
+        );
         // El rotulo va tipografiado: «y =» y el 2 de exponente, sin «^».
         assert!(e.iter().any(|x| texto_de(x) == Some("y =")));
         assert!(e.iter().all(|x| !texto_de(x).unwrap_or("").contains('^')));
@@ -391,10 +469,16 @@ mod pruebas {
         }
         assert!(curvas.iter().all(|c| c.rugosidad == 0.0));
         let c = caja(&curvas);
-        assert!(c.0 >= -1.0 && c.1 >= -1.0 && c.2 <= 241.0 && c.3 <= 401.0, "{c:?}");
+        assert!(
+            c.0 >= -1.0 && c.1 >= -1.0 && c.2 <= 241.0 && c.3 <= 401.0,
+            "{c:?}"
+        );
         let (trazado, _) = partes(&p, &estilo(), &medir).unwrap();
         let todo = caja(&trazado.iter().collect::<Vec<_>>());
-        assert!(todo.0 > -60.0 && todo.1 > -20.0 && todo.2 < 300.0 && todo.3 < 440.0, "{todo:?}");
+        assert!(
+            todo.0 > -60.0 && todo.1 > -20.0 && todo.2 < 300.0 && todo.3 < 440.0,
+            "{todo:?}"
+        );
     }
 
     #[test]
@@ -437,13 +521,25 @@ mod pruebas {
 
     #[test]
     fn sin_formula_con_otra_variable_o_con_limites_del_reves_no_hay_grafica() {
-        assert_eq!(elementos(&Peticion::de("nada(x)"), &estilo(), &medir).unwrap_err(), Fallo::NoSeEntiende("nada(x)".into()));
-        assert_eq!(elementos(&Peticion::de("x + y"), &estilo(), &medir).unwrap_err(), Fallo::OtraVariable("x + y".into()));
-        assert_eq!(elementos(&Peticion::de("  "), &estilo(), &medir).unwrap_err(), Fallo::SinFormula);
+        assert_eq!(
+            elementos(&Peticion::de("nada(x)"), &estilo(), &medir).unwrap_err(),
+            Fallo::NoSeEntiende("nada(x)".into())
+        );
+        assert_eq!(
+            elementos(&Peticion::de("x + y"), &estilo(), &medir).unwrap_err(),
+            Fallo::OtraVariable("x + y".into())
+        );
+        assert_eq!(
+            elementos(&Peticion::de("  "), &estilo(), &medir).unwrap_err(),
+            Fallo::SinFormula
+        );
         let mut p = Peticion::de("x");
         p.x_desde = 5.0;
         p.x_hasta = -5.0;
-        assert_eq!(elementos(&p, &estilo(), &medir).unwrap_err(), Fallo::Limites);
+        assert_eq!(
+            elementos(&p, &estilo(), &medir).unwrap_err(),
+            Fallo::Limites
+        );
         assert!(elementos(&Peticion::de("x"), &estilo(), &medir).is_ok());
     }
 
@@ -468,17 +564,31 @@ mod pruebas {
             escala: 50.0,
         };
         let (trazado, leyenda) = partes(&p, &estilo(), &medir).unwrap();
-        assert!(leyenda.iter().filter(|e| texto_de(e) == Some("y =")).count() == 3);
+        assert!(
+            leyenda
+                .iter()
+                .filter(|e| texto_de(e) == Some("y ="))
+                .count()
+                == 3
+        );
         let area = (0.0, 0.0, 600.0, 300.0);
         for l in &leyenda {
             let c = l.caja();
-            assert!(!se_tocan(c, area), "la leyenda {:?} cruza el area de los ejes", l.figura);
+            assert!(
+                !se_tocan(c, area),
+                "la leyenda {:?} cruza el area de los ejes",
+                l.figura
+            );
             for t in &trazado {
                 assert!(!se_tocan(c, t.caja()), "la leyenda pisa {:?}", t.figura);
             }
         }
         // Y las leyendas no se pisan entre si: van apiladas.
-        let ys: Vec<f32> = leyenda.iter().filter(|e| texto_de(e) == Some("y =")).map(|e| e.y).collect();
+        let ys: Vec<f32> = leyenda
+            .iter()
+            .filter(|e| texto_de(e) == Some("y ="))
+            .map(|e| e.y)
+            .collect();
         assert!(ys.windows(2).all(|w| w[1] > w[0] + 10.0), "{ys:?}");
     }
 
@@ -507,7 +617,15 @@ mod pruebas {
             y_hasta: 3.0,
             escala: 40.0,
         };
-        let (trazado, leyenda) = partes(&p, &Estilo { tam: tam_pincel, ..estilo() }, &medir).unwrap();
+        let (trazado, leyenda) = partes(
+            &p,
+            &Estilo {
+                tam: tam_pincel,
+                ..estilo()
+            },
+            &medir,
+        )
+        .unwrap();
         let tam = |e: &Elemento| match &e.figura {
             Figura::Texto { tam, .. } => Some(*tam),
             _ => None,

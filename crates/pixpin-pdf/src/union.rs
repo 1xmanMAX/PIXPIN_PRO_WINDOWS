@@ -74,12 +74,7 @@ pub(crate) fn poner(d: &mut Dicc, clave: &[u8], v: Valor) {
 
 pub(crate) fn entero(v: Option<&Valor>) -> Option<i64> {
     match v {
-        Some(Valor::Numero(t)) => std::str::from_utf8(t)
-            .ok()?
-            .split('.')
-            .next()?
-            .parse()
-            .ok(),
+        Some(Valor::Numero(t)) => std::str::from_utf8(t).ok()?.split('.').next()?.parse().ok(),
         _ => None,
     }
 }
@@ -200,7 +195,9 @@ impl<'a> Lector<'a> {
                     }
                     self.pos += 1;
                 }
-                Some(Valor::Cadena(self.b[inicio..self.pos.min(self.b.len())].to_vec()))
+                Some(Valor::Cadena(
+                    self.b[inicio..self.pos.min(self.b.len())].to_vec(),
+                ))
             }
             b'[' => {
                 self.pos += 1;
@@ -300,13 +297,14 @@ impl<'a> Lector<'a> {
         // **La longitud declarada no se cree a ciegas**: hay archivos
         // remendados donde miente. Se comprueba que detras venga `endstream`.
         let fin = match declarado {
-            Some(l) if l >= 0 && inicio + l as usize <= self.b.len() && {
-                let mut i = inicio + l as usize;
-                while i < self.b.len() && es_blanco(self.b[i]) && i < inicio + l as usize + 4 {
-                    i += 1;
-                }
-                self.b[i..].starts_with(b"endstream")
-            } =>
+            Some(l)
+                if l >= 0 && inicio + l as usize <= self.b.len() && {
+                    let mut i = inicio + l as usize;
+                    while i < self.b.len() && es_blanco(self.b[i]) && i < inicio + l as usize + 4 {
+                        i += 1;
+                    }
+                    self.b[i..].starts_with(b"endstream")
+                } =>
             {
                 inicio + l as usize
             }
@@ -376,7 +374,10 @@ impl<'a> Archivo<'a> {
 
     fn leer_indices(&mut self) -> Option<()> {
         let sx = self.b.windows(9).rposition(|w| w == b"startxref")?;
-        let mut l = Lector { b: self.b, pos: sx + 9 };
+        let mut l = Lector {
+            b: self.b,
+            pos: sx + 9,
+        };
         let (t, _) = l.entero_crudo()?;
         let inicio: usize = std::str::from_utf8(&t).ok()?.parse().ok()?;
         self.ultimo_indice = inicio;
@@ -387,7 +388,10 @@ impl<'a> Archivo<'a> {
             if off >= self.b.len() || !vistos.insert(off) || vistos.len() > 512 {
                 continue;
             }
-            let mut l = Lector { b: self.b, pos: off };
+            let mut l = Lector {
+                b: self.b,
+                pos: off,
+            };
             l.saltar_blancos();
             let trailer = if self.b[l.pos..].starts_with(b"xref") {
                 l.pos += 4;
@@ -464,7 +468,10 @@ impl<'a> Archivo<'a> {
     fn flujo_de_indice(&mut self, d: &Dicc, datos: &[u8]) -> Option<()> {
         let datos = descodificar(d, datos)?;
         let w: Vec<usize> = match en(d, b"W") {
-            Some(Valor::Lista(l)) => l.iter().map(|v| entero(Some(v)).unwrap_or(0) as usize).collect(),
+            Some(Valor::Lista(l)) => l
+                .iter()
+                .map(|v| entero(Some(v)).unwrap_or(0) as usize)
+                .collect(),
             _ => return None,
         };
         if w.len() < 3 || w.iter().any(|&x| x > 8) {
@@ -555,7 +562,10 @@ impl<'a> Archivo<'a> {
         }
         // El trailer: el ultimo que haya, o el catalogo si no hay ninguno.
         if let Some(t) = self.b.windows(7).rposition(|w| w == b"trailer") {
-            let mut l = Lector { b: self.b, pos: t + 7 };
+            let mut l = Lector {
+                b: self.b,
+                pos: t + 7,
+            };
             if let Some(Valor::Dicc(d)) = l.valor(None, 0) {
                 self.trailer = d;
             }
@@ -567,7 +577,8 @@ impl<'a> Archivo<'a> {
             poner(&mut self.trailer, b"Root", Valor::Ref(catalogo, 0));
         }
         // El anadido no puede apuntar a un indice que no sirve.
-        self.trailer.retain(|(k, _)| k != b"Prev" && k != b"XRefStm");
+        self.trailer
+            .retain(|(k, _)| k != b"Prev" && k != b"XRefStm");
         self.ultimo_indice = 0;
         self.indice_en_flujo = false;
         Some(())
@@ -575,7 +586,10 @@ impl<'a> Archivo<'a> {
 
     /// Lee `N G obj <valor>` en `off`.
     fn objeto_en(&self, off: usize, archivo: Option<&Archivo>) -> Option<(u32, u16, Valor)> {
-        let mut l = Lector { b: self.b, pos: off };
+        let mut l = Lector {
+            b: self.b,
+            pos: off,
+        };
         let (n, _) = l.entero_crudo()?;
         let (g, _) = l.entero_crudo()?;
         if !l.palabra(b"obj") {
@@ -890,7 +904,10 @@ pub fn en_blanco() -> Vec<u8> {
         s.push_str(o);
     }
     let xref = s.len();
-    s.push_str(&format!("xref\n0 {}\n0000000000 65535 f \n", objetos.len() + 1));
+    s.push_str(&format!(
+        "xref\n0 {}\n0000000000 65535 f \n",
+        objetos.len() + 1
+    ));
     for d in donde {
         s.push_str(&format!("{d:010} 00000 n \n"));
     }
@@ -1053,7 +1070,12 @@ fn anadir(primero: &[u8], segundo: &[u8], cuales: Option<&[usize]>) -> Option<Ve
 }
 
 /// Anade `nuevos` detras de `original` con su indice y su trailer.
-pub(crate) fn incremental(a: &Archivo, original: &[u8], nuevos: &[(u32, u16, Valor)], libre: u32) -> Vec<u8> {
+pub(crate) fn incremental(
+    a: &Archivo,
+    original: &[u8],
+    nuevos: &[(u32, u16, Valor)],
+    libre: u32,
+) -> Vec<u8> {
     let mut s = original.to_vec();
     if !s.ends_with(b"\n") {
         s.push(b'\n');
@@ -1141,7 +1163,9 @@ pub fn de_imagenes(paginas: &[pixpin_codec::imagen::ImagenRgba]) -> Option<Vec<u
     };
     // 1 catalogo, 2 arbol; luego por pagina: pagina, contenido, imagen.
     let cuantas = paginas.len();
-    let kids: Vec<Valor> = (0..cuantas).map(|i| Valor::Ref(3 + 3 * i as u32, 0)).collect();
+    let kids: Vec<Valor> = (0..cuantas)
+        .map(|i| Valor::Ref(3 + 3 * i as u32, 0))
+        .collect();
     objeto(
         &mut s,
         &mut sitios,
@@ -1249,7 +1273,10 @@ mod pruebas {
         let kids: String = (0..n).map(|i| format!("{} 0 R ", 5 + i)).collect();
         for (num, cuerpo) in [
             (1u32, "<</Type/Catalog/Pages 2 0 R>>".to_string()),
-            (2, format!("<</Type/Pages/Kids[{kids}]/Count {n}/MediaBox[0 0 200 300]>>")),
+            (
+                2,
+                format!("<</Type/Pages/Kids[{kids}]/Count {n}/MediaBox[0 0 200 300]>>"),
+            ),
         ] {
             sitios.push((num, s.len()));
             s.extend_from_slice(format!("{num} 0 obj\n{cuerpo}\nendobj\n").as_bytes());
@@ -1305,7 +1332,9 @@ mod pruebas {
             .as_bytes(),
         );
         s.extend_from_slice(&filas);
-        s.extend_from_slice(format!("\nendstream\nendobj\nstartxref\n{inicio}\n%%EOF\n").as_bytes());
+        s.extend_from_slice(
+            format!("\nendstream\nendobj\nstartxref\n{inicio}\n%%EOF\n").as_bytes(),
+        );
         s
     }
 
@@ -1348,7 +1377,11 @@ mod pruebas {
         assert!(solo_paginas(b"no es un pdf", &[0]).is_none());
         // Y el en blanco no se acepta como primero de una union normal.
         assert!(anadir_paginas(&en_blanco(), &b).is_none());
-        assert_eq!(contar_paginas(&en_blanco()), None, "sin paginas no cuenta como documento");
+        assert_eq!(
+            contar_paginas(&en_blanco()),
+            None,
+            "sin paginas no cuenta como documento"
+        );
     }
 
     fn numero_de_prueba(v: &Valor) -> f64 {
@@ -1370,7 +1403,10 @@ mod pruebas {
         let unido = anadir_paginas(&moderno, &viejo).unwrap();
         assert_eq!(contar_paginas(&unido), Some(3));
         let a = Archivo::leer(&unido).unwrap();
-        assert!(a.indice_en_flujo, "el anadido sigue la clase de indice del original");
+        assert!(
+            a.indice_en_flujo,
+            "el anadido sigue la clase de indice del original"
+        );
     }
 
     #[test]
@@ -1392,7 +1428,10 @@ mod pruebas {
         // ilegibles dentro de otro documento. Se devuelve None y quien llama
         // pega las paginas pintadas.
         let a = de_imagenes(&[imagen(10, 10, 0)]).unwrap();
-        let texto = String::from_utf8_lossy(&a).replace("/Root 1 0 R>>", "/Root 1 0 R /Encrypt << /Filter /Standard >> >>");
+        let texto = String::from_utf8_lossy(&a).replace(
+            "/Root 1 0 R>>",
+            "/Root 1 0 R /Encrypt << /Filter /Standard >> >>",
+        );
         let cifrado = texto.into_bytes();
         assert!(esta_cifrado(&cifrado));
         assert!(!esta_cifrado(&a));
@@ -1421,14 +1460,20 @@ mod pruebas {
             let (na, nb) = (contar_paginas(&a), contar_paginas(&b));
             eprintln!("{} ({na:?}) + {} ({nb:?})", par[0], par[1]);
             let Some(unido) = anadir_paginas(&a, &b) else {
-                eprintln!("  no se unen (cifrado: {} / {})", esta_cifrado(&a), esta_cifrado(&b));
+                eprintln!(
+                    "  no se unen (cifrado: {} / {})",
+                    esta_cifrado(&a),
+                    esta_cifrado(&b)
+                );
                 continue;
             };
-            let ruta = std::env::temp_dir().join(format!("pixpin-union-real-{}.pdf", std::process::id()));
+            let ruta =
+                std::env::temp_dir().join(format!("pixpin-union-real-{}.pdf", std::process::id()));
             std::fs::write(&ruta, &unido).unwrap();
             let d = crate::Documento::abrir(&ruta).expect("Windows tiene que abrirlo");
             assert_eq!(Some(d.paginas()), na.zip(nb).map(|(x, y)| x + y));
-            d.renderizar(d.paginas() - 1, 200).expect("la ultima pagina pegada se dibuja");
+            d.renderizar(d.paginas() - 1, 200)
+                .expect("la ultima pagina pegada se dibuja");
             drop(d);
             let _ = std::fs::remove_file(&ruta);
         }

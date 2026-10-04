@@ -26,8 +26,8 @@
 //! Una captura (`tipo: "captura"`, `ruta`, `conservada`): «Conservar»,
 //! «Copiar imagen», «Borrar», «Mostrar en la carpeta», «Abrir galería».
 
-use crate::resultados::{glifo, pedido, pedido_ventana, Accion, Contexto, Resultado};
-use serde_json::{json, Value};
+use crate::resultados::{Accion, Contexto, Resultado, glifo, pedido, pedido_ventana};
+use serde_json::{Value, json};
 
 fn muestra(texto: &str) -> String {
     let t: String = texto.chars().take(80).collect();
@@ -36,7 +36,13 @@ fn muestra(texto: &str) -> String {
 
 pub fn menu(contexto: &Value, ctx: &Contexto) -> Vec<Resultado> {
     let _ = ctx;
-    let texto_de = |k: &str| contexto.get(k).and_then(Value::as_str).map(str::trim).filter(|s| !s.is_empty());
+    let texto_de = |k: &str| {
+        contexto
+            .get(k)
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+    };
     let proyecto = contexto.get("proyecto").cloned().unwrap_or(Value::Null);
     let tipo = texto_de("tipo").unwrap_or("");
     let mut v = Vec::new();
@@ -46,10 +52,18 @@ pub fn menu(contexto: &Value, ctx: &Contexto) -> Vec<Resultado> {
             "Abrir en la app",
             "Su chat en PixPin",
             glifo::PIXPIN,
-            Accion::Pedido(pedido("abrir", json!({ "que": { "tipo": "proyecto", "proyecto": proyecto } }))),
+            Accion::Pedido(pedido(
+                "abrir",
+                json!({ "que": { "tipo": "proyecto", "proyecto": proyecto } }),
+            )),
         ));
         if let Some(q) = texto_de("consulta") {
-            v.push(Resultado::nuevo("Ver contenido", "Su chat aquí, de lo último a lo primero", glifo::CHAT, Accion::Consulta(q.to_string())));
+            v.push(Resultado::nuevo(
+                "Ver contenido",
+                "Su chat aquí, de lo último a lo primero",
+                glifo::CHAT,
+                Accion::Consulta(q.to_string()),
+            ));
         }
         v.push(Resultado::nuevo(
             "Añadir arrastrando (recuadro flotante)",
@@ -70,15 +84,30 @@ pub fn menu(contexto: &Value, ctx: &Contexto) -> Vec<Resultado> {
             Accion::Pedido(pedido("nota_nueva", json!({ "proyecto": proyecto }))),
         ));
         if let Some(c) = texto_de("carpeta") {
-            v.push(Resultado::nuevo("Abrir la carpeta", c, glifo::CARPETA, Accion::Carpeta { carpeta: c.into(), fichero: String::new() }));
+            v.push(Resultado::nuevo(
+                "Abrir la carpeta",
+                c,
+                glifo::CARPETA,
+                Accion::Carpeta {
+                    carpeta: c.into(),
+                    fichero: String::new(),
+                },
+            ));
         }
         return v;
     }
 
     if tipo == "captura" {
         let Some(r) = texto_de("ruta") else { return v };
-        let carpeta = std::path::Path::new(r).parent().map(|p| p.to_string_lossy().to_string()).unwrap_or_default();
-        if !contexto.get("conservada").and_then(Value::as_bool).unwrap_or(false) {
+        let carpeta = std::path::Path::new(r)
+            .parent()
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or_default();
+        if !contexto
+            .get("conservada")
+            .and_then(Value::as_bool)
+            .unwrap_or(false)
+        {
             v.push(Resultado::nuevo(
                 "Conservar",
                 "No se borra a la semana: se guarda en el chat",
@@ -98,7 +127,15 @@ pub fn menu(contexto: &Value, ctx: &Contexto) -> Vec<Resultado> {
             glifo::BORRAR,
             Accion::Pedido(pedido("borrar_captura", json!({ "ruta": r }))),
         ));
-        v.push(Resultado::nuevo("Mostrar en la carpeta", &carpeta, glifo::CARPETA, Accion::Carpeta { carpeta: carpeta.clone(), fichero: r.into() }));
+        v.push(Resultado::nuevo(
+            "Mostrar en la carpeta",
+            &carpeta,
+            glifo::CARPETA,
+            Accion::Carpeta {
+                carpeta: carpeta.clone(),
+                fichero: r.into(),
+            },
+        ));
         v.push(Resultado::nuevo(
             "Abrir galería",
             "Todas las capturas",
@@ -110,31 +147,64 @@ pub fn menu(contexto: &Value, ctx: &Contexto) -> Vec<Resultado> {
 
     if tipo == "leccion" {
         if let Some(a) = contexto.get("abrir").and_then(Accion::de_valor) {
-            v.push(Resultado::nuevo("Abrir la ficha", "Como Intro: la lección en PixPin", glifo::ABRIR, a));
+            v.push(Resultado::nuevo(
+                "Abrir la ficha",
+                "Como Intro: la lección en PixPin",
+                glifo::ABRIR,
+                a,
+            ));
         }
         let titulo = texto_de("titulo").unwrap_or("");
         v.push(Resultado::nuevo(
             "Ver en la lista de lecciones",
             "La ventana de Lecciones, buscándola",
             glifo::VENTANA,
-            Accion::Pedido(pedido("lecciones", json!({ "consulta": titulo, "proyecto": proyecto }))),
+            Accion::Pedido(pedido(
+                "lecciones",
+                json!({ "consulta": titulo, "proyecto": proyecto }),
+            )),
         ));
         if let Some(t) = texto_de("texto") {
-            v.push(Resultado::nuevo("Copiar texto", muestra(t), glifo::COPIAR, Accion::Copiar(t.into())));
+            v.push(Resultado::nuevo(
+                "Copiar texto",
+                muestra(t),
+                glifo::COPIAR,
+                Accion::Copiar(t.into()),
+            ));
         }
         if let Some(pin) = contexto.get("pin").filter(|p| p.is_object()) {
-            v.push(Resultado::nuevo("Pinear su foto", "Como pin flotante, siempre encima", glifo::PIN, Accion::Pedido(pin.clone())));
+            v.push(Resultado::nuevo(
+                "Pinear su foto",
+                "Como pin flotante, siempre encima",
+                glifo::PIN,
+                Accion::Pedido(pin.clone()),
+            ));
         }
         if let Some(r) = texto_de("ruta") {
-            let carpeta = std::path::Path::new(r).parent().map(|p| p.to_string_lossy().to_string()).unwrap_or_default();
-            v.push(Resultado::nuevo("Mostrar en la carpeta", &carpeta, glifo::CARPETA, Accion::Carpeta { carpeta: carpeta.clone(), fichero: r.into() }));
+            let carpeta = std::path::Path::new(r)
+                .parent()
+                .map(|p| p.to_string_lossy().to_string())
+                .unwrap_or_default();
+            v.push(Resultado::nuevo(
+                "Mostrar en la carpeta",
+                &carpeta,
+                glifo::CARPETA,
+                Accion::Carpeta {
+                    carpeta: carpeta.clone(),
+                    fichero: r.into(),
+                },
+            ));
         }
         return v;
     }
 
     let ruta = texto_de("ruta");
     if let Some(a) = contexto.get("abrir").and_then(Accion::de_valor) {
-        let sub = if ruta.is_some() { "Con PixPin, como Intro" } else { "Como Intro" };
+        let sub = if ruta.is_some() {
+            "Con PixPin, como Intro"
+        } else {
+            "Como Intro"
+        };
         v.push(Resultado::nuevo("Abrir", sub, glifo::ABRIR, a));
     }
     if let Some(pin) = contexto.get("pin").filter(|p| p.is_object()) {
@@ -150,19 +220,48 @@ pub fn menu(contexto: &Value, ctx: &Contexto) -> Vec<Resultado> {
             "Ver en el chat",
             "Abre el chat de PixPin en este mensaje",
             glifo::CHAT,
-            Accion::Pedido(pedido("abrir", json!({ "que": { "tipo": "mensaje", "proyecto": proyecto, "codigo": codigo } }))),
+            Accion::Pedido(pedido(
+                "abrir",
+                json!({ "que": { "tipo": "mensaje", "proyecto": proyecto, "codigo": codigo } }),
+            )),
         ));
     }
     if let Some(r) = ruta {
-        let carpeta = std::path::Path::new(r).parent().map(|p| p.to_string_lossy().to_string()).unwrap_or_default();
-        v.push(Resultado::nuevo("Abrir con el programa de Windows", r, glifo::WINDOWS, Accion::Windows(r.into())));
-        v.push(Resultado::nuevo("Mostrar en la carpeta", &carpeta, glifo::CARPETA, Accion::Carpeta { carpeta: carpeta.clone(), fichero: r.into() }));
+        let carpeta = std::path::Path::new(r)
+            .parent()
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or_default();
+        v.push(Resultado::nuevo(
+            "Abrir con el programa de Windows",
+            r,
+            glifo::WINDOWS,
+            Accion::Windows(r.into()),
+        ));
+        v.push(Resultado::nuevo(
+            "Mostrar en la carpeta",
+            &carpeta,
+            glifo::CARPETA,
+            Accion::Carpeta {
+                carpeta: carpeta.clone(),
+                fichero: r.into(),
+            },
+        ));
     }
     if let Some(t) = texto_de("texto") {
-        v.push(Resultado::nuevo("Copiar texto", muestra(t), glifo::COPIAR, Accion::Copiar(t.into())));
+        v.push(Resultado::nuevo(
+            "Copiar texto",
+            muestra(t),
+            glifo::COPIAR,
+            Accion::Copiar(t.into()),
+        ));
     }
     if let Some(r) = ruta {
-        v.push(Resultado::nuevo("Copiar ruta", r, glifo::COPIAR, Accion::Copiar(r.into())));
+        v.push(Resultado::nuevo(
+            "Copiar ruta",
+            r,
+            glifo::COPIAR,
+            Accion::Copiar(r.into()),
+        ));
     }
     if let Some(m) = contexto.get("mover").filter(|m| m.is_object()) {
         v.extend(mover_a(m));
@@ -173,7 +272,10 @@ pub fn menu(contexto: &Value, ctx: &Contexto) -> Vec<Resultado> {
                 "Abrir la carpeta del proyecto",
                 c,
                 glifo::CARPETA,
-                Accion::Carpeta { carpeta: c.into(), fichero: String::new() },
+                Accion::Carpeta {
+                    carpeta: c.into(),
+                    fichero: String::new(),
+                },
             ));
         }
     }
@@ -182,7 +284,10 @@ pub fn menu(contexto: &Value, ctx: &Contexto) -> Vec<Resultado> {
 
 /// «Mover a «lista»» por cada destino de una tarea (pedido `mover_tarea`).
 fn mover_a(m: &Value) -> Vec<Resultado> {
-    let (Some(codigo), Some(indice)) = (m.get("codigo").and_then(Value::as_str), m.get("indice").and_then(Value::as_u64)) else {
+    let (Some(codigo), Some(indice)) = (
+        m.get("codigo").and_then(Value::as_str),
+        m.get("indice").and_then(Value::as_u64),
+    ) else {
         return Vec::new();
     };
     let proyecto = m.get("proyecto").cloned().unwrap_or(Value::Null);

@@ -744,8 +744,10 @@ pub fn juntar_leccion(rel: &str, destino: &Path, tmp: &Path) -> io::Result<()> {
     if !rel.ends_with(pixpin_lecciones::leccion::EXTENSION) || !destino.is_file() {
         return Ok(());
     }
-    let (Ok(aqui), Ok(llega)) = (std::fs::read_to_string(destino), std::fs::read_to_string(tmp))
-    else {
+    let (Ok(aqui), Ok(llega)) = (
+        std::fs::read_to_string(destino),
+        std::fs::read_to_string(tmp),
+    ) else {
         return Ok(());
     };
     if let Some(junta) = pixpin_lecciones::fusion::al_llegar(&aqui, &llega) {
@@ -1510,7 +1512,11 @@ mod pruebas {
         std::fs::write(&tmp, llega.escribir()).unwrap();
         juntar_leccion("guardados/lecciones/k.leccion", &destino, &tmp).unwrap();
         let junta = Leccion::leer(&std::fs::read_to_string(&tmp).unwrap()).unwrap();
-        assert_eq!(junta.repeticiones, vec![9000], "la repeticion de aqui no se pierde");
+        assert_eq!(
+            junta.repeticiones,
+            vec![9000],
+            "la repeticion de aqui no se pierde"
+        );
         assert_eq!(junta.etiquetas, vec!["obra"], "ni la etiqueta de alli");
         // Caso negativo: un archivo que no es una leccion pasa tal cual.
         std::fs::write(&tmp, b"foto").unwrap();

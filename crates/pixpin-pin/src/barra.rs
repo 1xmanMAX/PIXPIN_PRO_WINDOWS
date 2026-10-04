@@ -92,7 +92,9 @@ pub enum Propio {
     /// Foto o nota: alejar, el zoom y acercar.
     Zoom,
     /// Un PDF: pasar de pagina (si hay mas de una) y pinear la que se ve.
-    Paginas { con_paso: bool },
+    Paginas {
+        con_paso: bool,
+    },
     Video,
     Vivo,
     /// Una ficha o un documento que no es PDF.
@@ -247,7 +249,13 @@ pub enum Lado {
 /// Donde va la barra (su esquina, en pixeles fisicos) para un pin cuyo
 /// contenido ocupa `pin` en un monitor cuya area de trabajo es `trabajo`.
 /// Alineada con el borde izquierdo del pin y sin salirse del monitor.
-pub fn colocar(pin: Rect, trabajo: Rect, ancho: u32, alto: u32, separacion: i32) -> (i32, i32, Lado) {
+pub fn colocar(
+    pin: Rect,
+    trabajo: Rect,
+    ancho: u32,
+    alto: u32,
+    separacion: i32,
+) -> (i32, i32, Lado) {
     let max_x = (trabajo.derecha() - ancho as i32).max(trabajo.x);
     let x = pin.x.clamp(trabajo.x, max_x);
     let arriba = pin.y - separacion - alto as i32;
@@ -347,7 +355,10 @@ mod pruebas {
         let a = acciones(&b);
         assert!(!a.contains(&AccionBarra::Anotar));
         assert!(!a.contains(&AccionBarra::Copiar));
-        assert_eq!(a, vec![AccionBarra::Congelar, AccionBarra::Mas, AccionBarra::Cerrar]);
+        assert_eq!(
+            a,
+            vec![AccionBarra::Congelar, AccionBarra::Mas, AccionBarra::Cerrar]
+        );
     }
 
     #[test]

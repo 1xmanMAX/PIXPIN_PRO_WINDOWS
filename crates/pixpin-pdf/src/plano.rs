@@ -309,7 +309,13 @@ fn parametros_de(archivo: &Archivo, d: &Dicc, i: usize) -> Option<Dicc> {
 }
 
 /// Aplica un filtro. `None` si no se sabe.
-fn un_filtro(archivo: &Archivo, d: &Dicc, i: usize, nombre: &[u8], datos: &[u8]) -> Option<Vec<u8>> {
+fn un_filtro(
+    archivo: &Archivo,
+    d: &Dicc,
+    i: usize,
+    nombre: &[u8],
+    datos: &[u8],
+) -> Option<Vec<u8>> {
     match nombre {
         b"FlateDecode" | b"Fl" => {
             let mut z = flate2::read::ZlibDecoder::new(datos);
@@ -447,7 +453,11 @@ fn heredado(archivo: &Archivo, hoja: &Dicc, clave: &[u8]) -> Option<Valor> {
 /// Un numero de la sintaxis (`Valor::Numero` lo guarda tal cual venia).
 fn numero_de(v: &Valor) -> Option<f64> {
     match v {
-        Valor::Numero(t) => std::str::from_utf8(t).ok()?.parse::<f64>().ok().filter(|x| x.is_finite()),
+        Valor::Numero(t) => std::str::from_utf8(t)
+            .ok()?
+            .parse::<f64>()
+            .ok()
+            .filter(|x| x.is_finite()),
         _ => None,
     }
 }
@@ -495,7 +505,12 @@ fn media_box(archivo: &Archivo, hoja: &Dicc) -> Option<Caja> {
     if n.len() < 4 {
         return None;
     }
-    let (x0, y0, x1, y1) = (n[0].min(n[2]), n[1].min(n[3]), n[0].max(n[2]), n[1].max(n[3]));
+    let (x0, y0, x1, y1) = (
+        n[0].min(n[2]),
+        n[1].min(n[3]),
+        n[0].max(n[2]),
+        n[1].max(n[3]),
+    );
     if x1 - x0 < 1.0 || y1 - y0 < 1.0 {
         return None;
     }
@@ -504,7 +519,13 @@ fn media_box(archivo: &Archivo, hoja: &Dicc) -> Option<Caja> {
         .and_then(numero_de)
         .map_or(0, |g| g as i32)
         .rem_euclid(360);
-    Some(Caja { x0, y0, x1, y1, giro })
+    Some(Caja {
+        x0,
+        y0,
+        x1,
+        y1,
+        giro,
+    })
 }
 
 /// El papel y su giro. `ancho` y `alto` son los de la pagina **como se mira**.
@@ -522,10 +543,18 @@ impl Caja {
         self.giro == 90 || self.giro == 270
     }
     fn ancho(&self) -> f64 {
-        if self.de_lado() { self.y1 - self.y0 } else { self.x1 - self.x0 }
+        if self.de_lado() {
+            self.y1 - self.y0
+        } else {
+            self.x1 - self.x0
+        }
     }
     fn alto(&self) -> f64 {
-        if self.de_lado() { self.x1 - self.x0 } else { self.y1 - self.y0 }
+        if self.de_lado() {
+            self.x1 - self.x0
+        } else {
+            self.y1 - self.y0
+        }
     }
     /// Un punto del PDF donde se ve: origen arriba a la izquierda, y abajo.
     fn en_x(&self, px: f64, py: f64) -> f64 {
@@ -689,7 +718,8 @@ impl Estado {
     }
 
     fn poner_texto(&mut self, m: [f64; 6]) {
-        (self.txa, self.txb, self.txc, self.txd, self.txe, self.txf) = (m[0], m[1], m[2], m[3], m[4], m[5]);
+        (self.txa, self.txb, self.txc, self.txd, self.txe, self.txf) =
+            (m[0], m[1], m[2], m[3], m[4], m[5]);
         self.tx = 0.0;
         self.ty = 0.0;
     }
@@ -845,16 +875,17 @@ impl<'a, 'b> Interprete<'a, 'b> {
             _ => Vec::new(),
         };
         let pred = a.dicc_de(en(&props, b"D"));
-        let apagadas: std::collections::HashSet<u32> = match pred.as_ref().and_then(|p| a.resolver(en(p, b"OFF"))) {
-            Some(Valor::Lista(l)) => l
-                .iter()
-                .filter_map(|v| match v {
-                    Valor::Ref(n, _) => Some(*n),
-                    _ => None,
-                })
-                .collect(),
-            _ => Default::default(),
-        };
+        let apagadas: std::collections::HashSet<u32> =
+            match pred.as_ref().and_then(|p| a.resolver(en(p, b"OFF"))) {
+                Some(Valor::Lista(l)) => l
+                    .iter()
+                    .filter_map(|v| match v {
+                        Valor::Ref(n, _) => Some(*n),
+                        _ => None,
+                    })
+                    .collect(),
+                _ => Default::default(),
+            };
         let mut ordenadas: Vec<u32> = Vec::new();
         if let Some(orden) = pred.as_ref().and_then(|p| en(p, b"Order")).cloned() {
             self.recoger_orden(&orden, &mut ordenadas, 0);
@@ -957,7 +988,9 @@ impl<'a, 'b> Interprete<'a, 'b> {
                                 self.e = e;
                             }
                         }
-                        b"cm" if n.len() >= 6 => self.e.multiplicar(n[0], n[1], n[2], n[3], n[4], n[5]),
+                        b"cm" if n.len() >= 6 => {
+                            self.e.multiplicar(n[0], n[1], n[2], n[3], n[4], n[5])
+                        }
                         b"w" if !n.is_empty() => self.e.grosor = n[0],
                         b"gs" => {
                             if let Some(nom) = nombre1.clone() {
@@ -985,19 +1018,23 @@ impl<'a, 'b> Interprete<'a, 'b> {
                             if nombre1.is_some() {
                                 self.sin_entender += 1;
                             }
-                            self.e.color_trazo = en_este_espacio(&self.e.espacio_trazo, n, self.e.color_trazo);
+                            self.e.color_trazo =
+                                en_este_espacio(&self.e.espacio_trazo, n, self.e.color_trazo);
                         }
                         b"sc" | b"scn" => {
                             if nombre1.is_some() {
                                 self.sin_entender += 1;
                             }
-                            self.e.color_relleno = en_este_espacio(&self.e.espacio_relleno, n, self.e.color_relleno);
+                            self.e.color_relleno =
+                                en_este_espacio(&self.e.espacio_relleno, n, self.e.color_relleno);
                         }
                         // ---- El camino ----
                         b"m" if n.len() >= 2 => self.mover(n[0], n[1]),
                         b"l" if n.len() >= 2 => self.linea(n[0], n[1]),
                         b"c" if n.len() >= 6 => self.curva(n[0], n[1], n[2], n[3], n[4], n[5]),
-                        b"v" if n.len() >= 4 => self.curva(self.ultimo_x, self.ultimo_y, n[0], n[1], n[2], n[3]),
+                        b"v" if n.len() >= 4 => {
+                            self.curva(self.ultimo_x, self.ultimo_y, n[0], n[1], n[2], n[3])
+                        }
                         b"y" if n.len() >= 4 => self.curva(n[0], n[1], n[2], n[3], n[2], n[3]),
                         b"h" => self.cerrar(),
                         b"re" if n.len() >= 4 => self.rectangulo(n[0], n[1], n[2], n[3]),
@@ -1044,7 +1081,9 @@ impl<'a, 'b> Interprete<'a, 'b> {
                             self.e.tl = -n[1];
                             self.e.salto_de_linea(n[0], n[1]);
                         }
-                        b"Tm" if n.len() >= 6 => self.e.poner_texto([n[0], n[1], n[2], n[3], n[4], n[5]]),
+                        b"Tm" if n.len() >= 6 => {
+                            self.e.poner_texto([n[0], n[1], n[2], n[3], n[4], n[5]])
+                        }
                         b"T*" => {
                             let tl = self.e.tl;
                             self.e.salto_de_linea(0.0, -tl);
@@ -1108,7 +1147,13 @@ impl<'a, 'b> Interprete<'a, 'b> {
         let py = e.b * x + e.d * y + e.ty0;
         let ux = self.caja.en_x(px, py) * FINEZA as f64;
         let uy = self.caja.en_y(px, py) * FINEZA as f64;
-        let q = |v: f64| if v.is_finite() { v.round().clamp(i32::MIN as f64, i32::MAX as f64) as i32 } else { 0 };
+        let q = |v: f64| {
+            if v.is_finite() {
+                v.round().clamp(i32::MIN as f64, i32::MAX as f64) as i32
+            } else {
+                0
+            }
+        };
         (q(ux), q(uy))
     }
 
@@ -1189,7 +1234,10 @@ impl<'a, 'b> Interprete<'a, 'b> {
             }
         }
         if self.recorte_pendiente && !self.px.is_empty() {
-            self.e.recorte = self.e.recorte.corta(self.min_x, self.min_y, self.max_x, self.max_y);
+            self.e.recorte = self
+                .e
+                .recorte
+                .corta(self.min_x, self.min_y, self.max_x, self.max_y);
         }
         self.recorte_pendiente = false;
         self.ops.clear();
@@ -1212,7 +1260,10 @@ impl<'a, 'b> Interprete<'a, 'b> {
         let margen = FINEZA * 8;
         let ancho = (self.caja.ancho() * FINEZA as f64) as i32;
         let alto = (self.caja.alto() * FINEZA as f64) as i32;
-        !(self.max_x < -margen || self.min_x > ancho + margen || self.max_y < -margen || self.min_y > alto + margen)
+        !(self.max_x < -margen
+            || self.min_x > ancho + margen
+            || self.max_y < -margen
+            || self.min_y > alto + margen)
     }
 
     fn capa_actual(&self) -> i32 {
@@ -1223,8 +1274,16 @@ impl<'a, 'b> Interprete<'a, 'b> {
     /// [`TOPE_DE_BROCHAS`] puesto si ya se paso.
     fn clave(&mut self, relleno: bool, par_impar: bool) -> (u64, u32, f64, f64, i32, i32) {
         let e = &self.e;
-        let mut color = if relleno { e.color_relleno } else { e.color_trazo };
-        let alfa = if relleno { e.alfa_relleno } else { e.alfa_trazo };
+        let mut color = if relleno {
+            e.color_relleno
+        } else {
+            e.color_trazo
+        };
+        let alfa = if relleno {
+            e.alfa_relleno
+        } else {
+            e.alfa_trazo
+        };
         let grosor = if relleno { 0.0 } else { self.grosor_en_papel() };
         let capa = self.capa_actual();
         let raya = if relleno || self.e.raya.is_empty() {
@@ -1315,7 +1374,11 @@ impl<'a, 'b> Interprete<'a, 'b> {
     fn grosor_en_papel(&self) -> f64 {
         let e = &self.e;
         let det = (e.a * e.d - e.b * e.c).abs();
-        let k = if det > 0.0 { det.sqrt() } else { e.a.hypot(e.b) };
+        let k = if det > 0.0 {
+            det.sqrt()
+        } else {
+            e.a.hypot(e.b)
+        };
         e.grosor * k
     }
 
@@ -1350,7 +1413,12 @@ impl<'a, 'b> Interprete<'a, 'b> {
 
     // ---- Recursos ----
 
-    fn recurso(&self, recursos: Option<&Rc<Dicc>>, grupo: &[u8], nombre: Option<&str>) -> Option<(Option<u32>, Valor)> {
+    fn recurso(
+        &self,
+        recursos: Option<&Rc<Dicc>>,
+        grupo: &[u8],
+        nombre: Option<&str>,
+    ) -> Option<(Option<u32>, Valor)> {
         let nombre = nombre?;
         let g = self.archivo.dicc_de(en(recursos?, grupo))?;
         let v = en(&g, nombre.as_bytes())?;
@@ -1433,7 +1501,8 @@ impl<'a, 'b> Interprete<'a, 'b> {
             self.sin_entender += 1;
             return;
         }
-        let Some((numero, Valor::Flujo(d, crudo))) = self.recurso(recursos, b"XObject", nombre) else {
+        let Some((numero, Valor::Flujo(d, crudo))) = self.recurso(recursos, b"XObject", nombre)
+        else {
             self.sin_entender += 1;
             return;
         };
@@ -1546,7 +1615,10 @@ impl<'a, 'b> Interprete<'a, 'b> {
                 // Sin numero de objeto (una imagen escrita dentro de su
                 // diccionario de recursos) no se puede reconocer: sale repetida,
                 // que pesa mas pero pinta lo mismo.
-                self.senas_de_foto.insert(numero.unwrap_or(u32::MAX - self.senas_de_foto.len() as u32), v.clone());
+                self.senas_de_foto.insert(
+                    numero.unwrap_or(u32::MAX - self.senas_de_foto.len() as u32),
+                    v.clone(),
+                );
                 v
             }
         };
@@ -1559,7 +1631,11 @@ impl<'a, 'b> Interprete<'a, 'b> {
         self.fotos.push(Imagen {
             capa: self.capa_actual(),
             alfa: e.alfa_relleno,
-            tipo: if datos.starts_with(b"\x89PNG") { "image/png" } else { "image/jpeg" },
+            tipo: if datos.starts_with(b"\x89PNG") {
+                "image/png"
+            } else {
+                "image/jpeg"
+            },
             datos,
             a: c.vector_x(ux, uy),
             b: c.vector_y(ux, uy),
@@ -1616,7 +1692,9 @@ impl<'a, 'b> Interprete<'a, 'b> {
         let pixeles = |d: &Dicc, datos: &[u8], canales: usize, bits: usize| -> Option<Vec<u8>> {
             let crudo = crate::png::inflar(datos)?;
             let n = filtros_de(a, d)?.len().saturating_sub(1);
-            let predictor = parametros_de(a, d, n).and_then(|p| entero(en(&p, b"Predictor"))).unwrap_or(1);
+            let predictor = parametros_de(a, d, n)
+                .and_then(|p| entero(en(&p, b"Predictor")))
+                .unwrap_or(1);
             let fila = (ancho * canales * bits).div_ceil(8);
             let mut px = if predictor >= 10 {
                 crate::png::desfiltrar(&crudo, fila, (canales * bits / 8).max(1))?
@@ -1629,7 +1707,11 @@ impl<'a, 'b> Interprete<'a, 'b> {
                 return None;
             }
             px.truncate(fila * alto);
-            Some(if bits < 8 { crate::png::a_ocho_bits(&px, ancho, bits, matches!(espacio, Espacio::Indexado(_))) } else { px })
+            Some(if bits < 8 {
+                crate::png::a_ocho_bits(&px, ancho, bits, matches!(espacio, Espacio::Indexado(_)))
+            } else {
+                px
+            })
         };
         let mut color = pixeles(d, datos, canales, bits)?;
         let mut canales = canales;
@@ -1647,7 +1729,11 @@ impl<'a, 'b> Interprete<'a, 'b> {
                 canales = 3;
             }
             Espacio::Indexado(p) => {
-                paleta = Some(p.iter().flat_map(|v| [(*v >> 16) as u8, (*v >> 8) as u8, *v as u8]).collect());
+                paleta = Some(
+                    p.iter()
+                        .flat_map(|v| [(*v >> 16) as u8, (*v >> 8) as u8, *v as u8])
+                        .collect(),
+                );
             }
             _ => {}
         }
@@ -1655,7 +1741,9 @@ impl<'a, 'b> Interprete<'a, 'b> {
             let Some(Valor::Flujo(md, mcrudo)) = a.resolver(Some(m)) else {
                 return None;
             };
-            if lado(&md, b"Width") != Some(ancho as i64) || lado(&md, b"Height") != Some(alto as i64) {
+            if lado(&md, b"Width") != Some(ancho as i64)
+                || lado(&md, b"Height") != Some(alto as i64)
+            {
                 return None;
             }
             if lado(&md, b"BitsPerComponent") != Some(8) || en(&md, b"Decode").is_some() {
@@ -1673,25 +1761,40 @@ impl<'a, 'b> Interprete<'a, 'b> {
             color = crate::png::con_alfa(&color, canales, &alfa)?;
             canales += 1;
         }
-        crate::png::escribir(ancho as u32, alto as u32, canales as u8, &color, paleta.as_deref())
+        crate::png::escribir(
+            ancho as u32,
+            alto as u32,
+            canales as u8,
+            &color,
+            paleta.as_deref(),
+        )
     }
 
     fn mismo_tamano(&self, imagen: &Dicc, mascara: &Dicc) -> bool {
         let a = self.archivo;
         let lado = |d: &Dicc, k: &[u8]| num(a, en(d, k)).map(|v| v as i64);
         match (lado(imagen, b"Width"), lado(imagen, b"Height")) {
-            (Some(w), Some(h)) => lado(mascara, b"Width") == Some(w) && lado(mascara, b"Height") == Some(h),
+            (Some(w), Some(h)) => {
+                lado(mascara, b"Width") == Some(w) && lado(mascara, b"Height") == Some(h)
+            }
             _ => false,
         }
     }
 
     // ---- El texto ----
 
-    fn fuente_de(&mut self, recursos: Option<&Rc<Dicc>>, nombre: Option<&str>) -> Option<Rc<Fuente>> {
+    fn fuente_de(
+        &mut self,
+        recursos: Option<&Rc<Dicc>>,
+        nombre: Option<&str>,
+    ) -> Option<Rc<Fuente>> {
         let nombre = nombre?;
         // Por recursos y nombre: dos formularios pueden llamar /F1 a fuentes
         // distintas.
-        let clave = (recursos.map_or(0, |r| Rc::as_ptr(r) as usize), nombre.as_bytes().to_vec());
+        let clave = (
+            recursos.map_or(0, |r| Rc::as_ptr(r) as usize),
+            nombre.as_bytes().to_vec(),
+        );
         if let Some(f) = self.fuentes.get(&clave) {
             return Some(f.clone());
         }
@@ -1717,7 +1820,9 @@ impl<'a, 'b> Interprete<'a, 'b> {
 
     /// Escribe una cadena: apunta el texto donde toca y adelanta el cursor.
     fn escribir(&mut self, bytes: &[u8]) {
-        let Some(f) = self.e.fuente.clone() else { return };
+        let Some(f) = self.e.fuente.clone() else {
+            return;
+        };
         let tam = self.e.tam;
         if tam == 0.0 {
             return;
@@ -1748,7 +1853,11 @@ impl<'a, 'b> Interprete<'a, 'b> {
             let c = self.caja;
             self.textos.push(Texto {
                 capa: self.capa_actual(),
-                color: if e.tr == 1 || e.tr == 5 { e.color_trazo } else { e.color_relleno },
+                color: if e.tr == 1 || e.tr == 5 {
+                    e.color_trazo
+                } else {
+                    e.color_relleno
+                },
                 alfa: e.alfa_relleno,
                 texto,
                 a: c.vector_x(ax, ay) * tam,
@@ -1790,7 +1899,9 @@ impl<'a, 'b> Interprete<'a, 'b> {
             return Espacio::Adivinar;
         }
         let l = match v {
-            Valor::Nombre(n) => return por_nombre(&String::from_utf8_lossy(n)).unwrap_or(Espacio::Adivinar),
+            Valor::Nombre(n) => {
+                return por_nombre(&String::from_utf8_lossy(n)).unwrap_or(Espacio::Adivinar);
+            }
             Valor::Lista(l) => l,
             _ => return Espacio::Adivinar,
         };
@@ -1799,7 +1910,10 @@ impl<'a, 'b> Interprete<'a, 'b> {
             _ => return Espacio::Adivinar,
         };
         match clase {
-            b"ICCBased" => match a.dicc_de(l.get(1)).and_then(|d| entero(a.resolver(en(&d, b"N")).as_ref())) {
+            b"ICCBased" => match a
+                .dicc_de(l.get(1))
+                .and_then(|d| entero(a.resolver(en(&d, b"N")).as_ref()))
+            {
                 Some(1) => Espacio::Gris,
                 Some(3) => Espacio::Rgb,
                 Some(4) => Espacio::Cmyk,
@@ -1818,7 +1932,10 @@ impl<'a, 'b> Interprete<'a, 'b> {
 
     fn paleta_de(&self, l: &[Valor], fondo: u32) -> Espacio {
         let a = self.archivo;
-        let Some(base) = a.resolver(l.get(1)).map(|b| self.de_la_lista(&b, fondo + 1)) else {
+        let Some(base) = a
+            .resolver(l.get(1))
+            .map(|b| self.de_la_lista(&b, fondo + 1))
+        else {
             return Espacio::Adivinar;
         };
         let (comp, tinta) = match base {
@@ -1897,7 +2014,11 @@ fn rgb(r: f64, g: f64, b: f64) -> u32 {
 }
 
 fn cmyk(c: f64, m: f64, y: f64, k: f64) -> u32 {
-    rgb((1.0 - c) * (1.0 - k), (1.0 - m) * (1.0 - k), (1.0 - y) * (1.0 - k))
+    rgb(
+        (1.0 - c) * (1.0 - k),
+        (1.0 - m) * (1.0 - k),
+        (1.0 - y) * (1.0 - k),
+    )
 }
 
 fn por_nombre(nombre: &str) -> Option<Espacio> {
@@ -1970,7 +2091,21 @@ struct Fichas<'x> {
 fn es_corte(c: u8) -> bool {
     matches!(
         c,
-        0 | 9 | 10 | 12 | 13 | 32 | b'(' | b')' | b'<' | b'>' | b'[' | b']' | b'{' | b'}' | b'/' | b'%'
+        0 | 9
+            | 10
+            | 12
+            | 13
+            | 32
+            | b'('
+            | b')'
+            | b'<'
+            | b'>'
+            | b'['
+            | b']'
+            | b'{'
+            | b'}'
+            | b'/'
+            | b'%'
     )
 }
 
@@ -2003,7 +2138,10 @@ impl<'x> Fichas<'x> {
             match self.b[self.pos] {
                 0 | 9 | 10 | 12 | 13 | 32 => self.pos += 1,
                 b'%' => {
-                    while self.pos < self.b.len() && self.b[self.pos] != 10 && self.b[self.pos] != 13 {
+                    while self.pos < self.b.len()
+                        && self.b[self.pos] != 10
+                        && self.b[self.pos] != 13
+                    {
                         self.pos += 1;
                     }
                 }
@@ -2065,7 +2203,10 @@ impl<'x> Fichas<'x> {
             self.pos += 1;
             if c == b'#'
                 && self.pos + 1 < self.b.len()
-                && let Ok(h) = u8::from_str_radix(std::str::from_utf8(&self.b[self.pos..self.pos + 2]).unwrap_or("zz"), 16)
+                && let Ok(h) = u8::from_str_radix(
+                    std::str::from_utf8(&self.b[self.pos..self.pos + 2]).unwrap_or("zz"),
+                    16,
+                )
             {
                 s.push(h as char);
                 self.pos += 2;
@@ -2106,7 +2247,10 @@ impl<'x> Fichas<'x> {
                         b'0'..=b'7' => {
                             let mut v = (d - b'0') as u32;
                             let mut n = 1;
-                            while n < 3 && self.pos < b.len() && (b'0'..=b'7').contains(&b[self.pos]) {
+                            while n < 3
+                                && self.pos < b.len()
+                                && (b'0'..=b'7').contains(&b[self.pos])
+                            {
                                 v = v * 8 + (b[self.pos] - b'0') as u32;
                                 self.pos += 1;
                                 n += 1;
@@ -2260,10 +2404,39 @@ struct Letra {
 
 /// De 128 a 160 WinAnsi pone comillas y guiones donde Latin-1 no tiene nada.
 const WIN_ANSI: [Option<&str>; 33] = [
-    Some("€"), None, Some("‚"), Some("ƒ"), Some("„"), Some("…"), Some("†"), Some("‡"), Some("ˆ"), Some("‰"),
-    Some("Š"), Some("‹"), Some("Œ"), None, Some("Ž"), None, None, Some("\u{2018}"), Some("\u{2019}"),
-    Some("“"), Some("”"), Some("•"), Some("–"), Some("—"), Some("˜"), Some("™"), Some("š"), Some("›"),
-    Some("œ"), None, Some("ž"), Some("Ÿ"), Some(" "),
+    Some("€"),
+    None,
+    Some("‚"),
+    Some("ƒ"),
+    Some("„"),
+    Some("…"),
+    Some("†"),
+    Some("‡"),
+    Some("ˆ"),
+    Some("‰"),
+    Some("Š"),
+    Some("‹"),
+    Some("Œ"),
+    None,
+    Some("Ž"),
+    None,
+    None,
+    Some("\u{2018}"),
+    Some("\u{2019}"),
+    Some("“"),
+    Some("”"),
+    Some("•"),
+    Some("–"),
+    Some("—"),
+    Some("˜"),
+    Some("™"),
+    Some("š"),
+    Some("›"),
+    Some("œ"),
+    None,
+    Some("ž"),
+    Some("Ÿ"),
+    Some(" "),
 ];
 
 impl Fuente {
@@ -2290,7 +2463,11 @@ impl Fuente {
                 .or_else(|| if self.dos_bytes { None } else { latin(codigo) });
             out.push(Letra {
                 texto,
-                ancho: self.anchos.get(&codigo).copied().unwrap_or(self.ancho_por_defecto),
+                ancho: self
+                    .anchos
+                    .get(&codigo)
+                    .copied()
+                    .unwrap_or(self.ancho_por_defecto),
                 es_espacio: !self.dos_bytes && codigo == 32,
             });
         }
@@ -2309,7 +2486,10 @@ impl Fuente {
         let tipo0 = subtipo == "Type0";
         let dos_bytes = tipo0
             && nombre_enc.as_deref().is_none_or(|n| {
-                n.starts_with("Identity") || n.contains("UCS2") || n.ends_with("-H") || n.ends_with("-V")
+                n.starts_with("Identity")
+                    || n.contains("UCS2")
+                    || n.ends_with("-H")
+                    || n.ends_with("-V")
             });
         let mut anchos = HashMap::new();
         let mut por_defecto = if tipo0 { 1000.0 } else { 500.0 };
@@ -2365,10 +2545,14 @@ impl Fuente {
         let minus = base.to_lowercase();
         // **Las estrechas se reconocen y se dicen**: un cajetin las usa a
         // mansalva, y sustituidas por una normal la letra sale aplastada.
-        let estrecha = ["narrow", "condensed", "cond", "compressed"].iter().any(|k| minus.contains(k));
+        let estrecha = ["narrow", "condensed", "cond", "compressed"]
+            .iter()
+            .any(|k| minus.contains(k));
         let familia = if minus.contains("courier") || minus.contains("mono") {
             "monospace"
-        } else if ["times", "georgia", "garamond", "cambria", "minion"].iter().any(|k| minus.contains(k))
+        } else if ["times", "georgia", "garamond", "cambria", "minion"]
+            .iter()
+            .any(|k| minus.contains(k))
             || (minus.contains("serif") && !minus.contains("sans"))
         {
             "serif"
@@ -2415,7 +2599,9 @@ fn leer_w(a: &Archivo, v: &[Valor], out: &mut HashMap<u32, f64>) {
                 i += 2;
             }
             Some(sig) => {
-                let (Some(ultimo), Some(ancho)) = (numero_de(&sig).map(|x| x as i64), num(a, v.get(i + 2))) else {
+                let (Some(ultimo), Some(ancho)) =
+                    (numero_de(&sig).map(|x| x as i64), num(a, v.get(i + 2)))
+                else {
                     break;
                 };
                 if (0..=65535).contains(&(ultimo - primero)) {
@@ -2433,7 +2619,10 @@ fn leer_w(a: &Archivo, v: &[Valor], out: &mut HashMap<u32, f64>) {
 /// El destino de un CMap es UTF-16 en hexadecimal: `<0041>` es la «A».
 fn texto_utf16(b: &[u8]) -> String {
     if b.len() >= 2 {
-        let u: Vec<u16> = b.chunks_exact(2).map(|p| u16::from_be_bytes([p[0], p[1]])).collect();
+        let u: Vec<u16> = b
+            .chunks_exact(2)
+            .map(|p| u16::from_be_bytes([p[0], p[1]]))
+            .collect();
         String::from_utf16_lossy(&u)
     } else {
         b.iter().map(|&c| c as char).collect()
@@ -2462,7 +2651,13 @@ fn leer_cmap(datos: &[u8], out: &mut HashMap<u32, String>) {
                 match op {
                     b"beginbfchar" => modo = 1,
                     b"beginbfrange" => modo = 2,
-                    _ => modo = if op.starts_with(b"end") || op.starts_with(b"begin") { 0 } else { modo },
+                    _ => {
+                        modo = if op.starts_with(b"end") || op.starts_with(b"begin") {
+                            0
+                        } else {
+                            modo
+                        }
+                    }
                 }
                 pila.clear();
             }
@@ -2484,7 +2679,8 @@ fn leer_cmap(datos: &[u8], out: &mut HashMap<u32, String>) {
                             // Un tramo con un solo destino numera desde ahi.
                             let base = texto_utf16(a);
                             if let Some(ultimo) = base.chars().last() {
-                                let sin: String = base.chars().take(base.chars().count() - 1).collect();
+                                let sin: String =
+                                    base.chars().take(base.chars().count() - 1).collect();
                                 for i in 0..=(h - d) {
                                     if let Some(ch) = char::from_u32(ultimo as u32 + i) {
                                         out.insert(d + i, format!("{sin}{ch}"));
@@ -2539,7 +2735,10 @@ fn de_nombre_de_glifo(n: &str) -> Option<String> {
     if let Some(h) = n.strip_prefix("uni")
         && h.len() >= 4
     {
-        return u32::from_str_radix(&h[..4], 16).ok().and_then(char::from_u32).map(|c| c.to_string());
+        return u32::from_str_radix(&h[..4], 16)
+            .ok()
+            .and_then(char::from_u32)
+            .map(|c| c.to_string());
     }
     (n.chars().count() == 1).then(|| n.to_string())
 }

@@ -1,4 +1,4 @@
-﻿//! Los proyectos que hay en este equipo: la lista de la ventana de chat.
+//! Los proyectos que hay en este equipo: la lista de la ventana de chat.
 //!
 //! Un indice pequeno (`proyectos/indice.json`) con lo justo para pintar la
 //! lista sin abrir nada: nombre, ultima linea, cuando se toco y los tres
@@ -787,9 +787,17 @@ pub fn completar_hojas(raiz: &Path, id: &str, aparato: &str) -> std::io::Result<
     // son cuarenta mensajes; se ven en la tarjeta de Proyectos.
     let paginas = paginas_fuera_del_chat(&p);
     let mut hechas = 0;
-    for m in hojas_que_faltan(&p, &carpeta, &ya, &referencias_de(&previos.mensajes), numero, cuando, aparato, id) {
-        if m
-            .uid
+    for m in hojas_que_faltan(
+        &p,
+        &carpeta,
+        &ya,
+        &referencias_de(&previos.mensajes),
+        numero,
+        cuando,
+        aparato,
+        id,
+    ) {
+        if m.uid
             .as_ref()
             .is_some_and(|u| de_un_mensaje.contains(u) || paginas.contains_key(u))
         {
@@ -806,7 +814,12 @@ pub fn completar_hojas(raiz: &Path, id: &str, aparato: &str) -> std::io::Result<
 fn referencias_de(mensajes: &[crate::cuaderno::Mensaje]) -> std::collections::BTreeSet<String> {
     mensajes
         .iter()
-        .flat_map(|m| m.referencia.iter().cloned().chain(std::iter::once(m.id.clone())))
+        .flat_map(|m| {
+            m.referencia
+                .iter()
+                .cloned()
+                .chain(std::iter::once(m.id.clone()))
+        })
         .filter(|s| !s.is_empty())
         .collect()
 }
@@ -971,7 +984,16 @@ pub fn hojas_para_ensenar(raiz: &Path, id: &str, aparato: &str) -> Vec<crate::cu
     // el usuario lo pidio igual: «en la galeria solo aparezca lo mismo que
     // aparece en la seccion de proyectos de Android», y «los html no tienen
     // que aparecer ya que estos no se pueden agregar ahi».
-    hojas_que_faltan(&p, &carpeta, &ya, &referencias_de(&previos.mensajes), numero, cuando, aparato, id)
+    hojas_que_faltan(
+        &p,
+        &carpeta,
+        &ya,
+        &referencias_de(&previos.mensajes),
+        numero,
+        cuando,
+        aparato,
+        id,
+    )
 }
 
 /// Los codigos unicos de las hojas del proyecto.
@@ -988,7 +1010,6 @@ pub fn uids_de_hojas(raiz: &Path, id: &str) -> std::collections::BTreeSet<String
     };
     p.hojas.iter().filter_map(|h| h.uid.clone()).collect()
 }
-
 
 /// Como se llama el chat de lo suelto, igual que en el movil.
 pub const NOMBRE_GUARDADOS: &str = "Mensajes guardados";
@@ -1501,7 +1522,11 @@ mod pruebas {
         crate::cuaderno::anadir(&dir, pagina).unwrap();
         let despues = hojas_para_ensenar(&raiz, &ficha.id, "ZZZZ");
         assert_eq!(despues.len(), 2, "la pagina ya esta en el cuaderno");
-        assert!(despues.iter().all(|m| m.uid.as_deref() != Some("PAGPAGPAG7")));
+        assert!(
+            despues
+                .iter()
+                .all(|m| m.uid.as_deref() != Some("PAGPAGPAG7"))
+        );
         let _ = std::fs::remove_dir_all(&raiz);
     }
 
@@ -1546,7 +1571,10 @@ mod pruebas {
             "p1",
         );
         // Caso negativo: la hoja sin mensaje (dib-2) sigue saliendo.
-        let refs: Vec<_> = faltan.iter().filter_map(|m| m.referencia.as_deref()).collect();
+        let refs: Vec<_> = faltan
+            .iter()
+            .filter_map(|m| m.referencia.as_deref())
+            .collect();
         assert_eq!(refs, ["dib-2"]);
     }
 
@@ -2117,7 +2145,11 @@ mod pruebas {
         assert_eq!(completar_hojas(&raiz, &ficha.id, "ZZZZ").unwrap(), 1);
         let escritos = lineas(&raiz, &ficha.id);
         assert_eq!(escritos.len(), 1);
-        assert_eq!(escritos[0].uid.as_deref(), Some("LIENZO0001"), "el lienzo suelto si");
+        assert_eq!(
+            escritos[0].uid.as_deref(),
+            Some("LIENZO0001"),
+            "el lienzo suelto si"
+        );
         // Y otra vez no hace nada.
         assert_eq!(completar_hojas(&raiz, &ficha.id, "ZZZZ").unwrap(), 0);
         let _ = std::fs::remove_dir_all(&raiz);
@@ -2126,9 +2158,10 @@ mod pruebas {
     #[test]
     fn las_paginas_fuera_del_chat_son_las_hojas_con_pagina_y_su_mensaje_de_origen() {
         let mut p = paquete_de_pdf().proyecto;
-        p.hojas[2]
-            .resto
-            .insert("deMensaje".into(), serde_json::Value::String("m-pdf".into()));
+        p.hojas[2].resto.insert(
+            "deMensaje".into(),
+            serde_json::Value::String("m-pdf".into()),
+        );
         let fuera = paginas_fuera_del_chat(&p);
         assert_eq!(fuera.len(), 3);
         assert_eq!(fuera.get("PAGINA0000"), Some(&None));

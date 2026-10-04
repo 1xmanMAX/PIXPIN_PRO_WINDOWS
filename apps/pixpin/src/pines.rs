@@ -860,7 +860,11 @@ impl Pines {
             y: zona.y + y,
         };
         if pixpin_shell::entrada::punto_es_nuestro(p) {
-            tracing::info!(id, ?p, "clic a distancia descartado: el punto lo tapa PixPin");
+            tracing::info!(
+                id,
+                ?p,
+                "clic a distancia descartado: el punto lo tapa PixPin"
+            );
             return Ok(None);
         }
         Ok(Some(p))
@@ -1330,9 +1334,7 @@ impl Pines {
                 }
             }
         }
-        cambio_la_lista |= pedidos
-            .iter()
-            .any(|(_, c)| evento_de_puntero(*c).is_none());
+        cambio_la_lista |= pedidos.iter().any(|(_, c)| evento_de_puntero(*c).is_none());
         // Lo que pidio el panel «Pines abiertos» (v2).
         let del_panel: Vec<_> = self.pedidos_panel.borrow_mut().drain(..).collect();
         for a in del_panel {
@@ -1906,8 +1908,10 @@ impl Pines {
                 return Ok(true);
             }
             EventoAnotador::CambiarHerramienta(h) => {
-                if crate::dibujo::permitidas::permitida(crate::dibujo::permitidas::Anfitrion::Pin, h)
-                {
+                if crate::dibujo::permitidas::permitida(
+                    crate::dibujo::permitidas::Anfitrion::Pin,
+                    h,
+                ) {
                     crate::dibujo::teclas::elegir_herramienta(&mut a.gesto, h);
                 }
                 return Ok(true);
@@ -2844,8 +2848,16 @@ mod pruebas {
         assert!(!b.contains(&BotonCaja::Elegir(Herramienta::FlechaCodos)));
         assert!(!b.contains(&BotonCaja::Elegir(Herramienta::Lupa)));
         assert!(!b.contains(&BotonCaja::Elegir(Herramienta::Escalar)));
-        assert!(!caja.botones().contains(&BotonCaja::Grupo(pixpin_ui::GrupoBarra::Medir)));
-        assert!(!caja.botones().contains(&BotonCaja::Grupo(pixpin_ui::GrupoBarra::Sacar)));
+        assert!(
+            !caja
+                .botones()
+                .contains(&BotonCaja::Grupo(pixpin_ui::GrupoBarra::Medir))
+        );
+        assert!(
+            !caja
+                .botones()
+                .contains(&BotonCaja::Grupo(pixpin_ui::GrupoBarra::Sacar))
+        );
         // Cabe en la pantalla: es una barra, no una columna de treinta.
         assert!(caja.marco.alto < 100 && caja.marco.ancho <= area.ancho);
         // Con un grupo abierto, la ventana de la paleta abarca sus hermanas;
@@ -2854,7 +2866,10 @@ mod pruebas {
         let abierta = caja.con_desplegado(Some(pixpin_ui::GrupoBarra::Formas));
         let r = rect_de_paleta(&abierta);
         let m = abierta.menu().expect("abierto").marco;
-        assert!(r.abajo() >= m.abajo() && r.arriba() <= caja.marco.arriba(), "{r:?}");
+        assert!(
+            r.abajo() >= m.abajo() && r.arriba() <= caja.marco.arriba(),
+            "{r:?}"
+        );
         crate::dibujo::permitidas::fijar(Default::default());
     }
 
@@ -3045,7 +3060,12 @@ mod pruebas {
         let lienzo = pixpin_motor2d::excalidraw::leer(json).unwrap();
         let papel = pixpin_motor2d::excalidraw::fondo(&lienzo);
         let (imagen, _, _) = lienzo_en_blanco(&[], papel);
-        assert!(imagen.pixeles.chunks_exact(4).all(|p| p == [253, 246, 227, 255]));
+        assert!(
+            imagen
+                .pixeles
+                .chunks_exact(4)
+                .all(|p| p == [253, 246, 227, 255])
+        );
         // Caso negativo: sin papel dicho, blanco como siempre.
         let (imagen, _, _) = lienzo_en_blanco(&[], BLANCO);
         assert!(imagen.pixeles.iter().all(|&v| v == 255));

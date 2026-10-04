@@ -83,7 +83,10 @@ mod pruebas {
             nombre: nombre.into(),
             ..Default::default()
         };
-        assert_eq!(nombre_propio_de_voz(&voz("Clase de física.m4a")).as_deref(), Some("Clase de física"));
+        assert_eq!(
+            nombre_propio_de_voz(&voz("Clase de física.m4a")).as_deref(),
+            Some("Clase de física")
+        );
         // Casos negativos: sin nombre y con el de serie.
         assert_eq!(nombre_propio_de_voz(&voz("")), None);
         assert_eq!(nombre_propio_de_voz(&voz("voz_1758123.m4a")), None);
@@ -92,9 +95,18 @@ mod pruebas {
 
     #[test]
     fn conserva_la_extension() {
-        assert_eq!(con_su_extension("informe (1).pdf", "  Memoria "), "Memoria.pdf");
-        assert_eq!(con_su_extension("informe.pdf", "Memoria.PDF"), "Memoria.PDF");
-        assert_eq!(con_su_extension("voz_123.m4a", "Clase de física"), "Clase de física.m4a");
+        assert_eq!(
+            con_su_extension("informe (1).pdf", "  Memoria "),
+            "Memoria.pdf"
+        );
+        assert_eq!(
+            con_su_extension("informe.pdf", "Memoria.PDF"),
+            "Memoria.PDF"
+        );
+        assert_eq!(
+            con_su_extension("voz_123.m4a", "Clase de física"),
+            "Clase de física.m4a"
+        );
         assert_eq!(con_su_extension("Nota de voz 14:32", "Clase 3"), "Clase 3");
         assert_eq!(con_su_extension("a.pdf", "   "), "");
         assert_eq!(con_su_extension("x.pdf", "a/b"), "a-b.pdf");
@@ -113,7 +125,10 @@ mod pruebas {
         assert!(se_puede(&m(Clase::Archivo, Some("archivos/x.pdf"))));
         // Casos negativos: una nota sin fichero y una leccion.
         assert!(!se_puede(&m(Clase::Nota, None)));
-        let mut leccion = m(Clase::Archivo, Some("pixpin:files/guardados/lecciones/a.leccion"));
+        let mut leccion = m(
+            Clase::Archivo,
+            Some("pixpin:files/guardados/lecciones/a.leccion"),
+        );
         leccion.id = "lec-a".into();
         assert!(!se_puede(&leccion));
     }

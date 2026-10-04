@@ -28,7 +28,9 @@ fn entidades_bien(t: &str) -> Result<(), String> {
     let mut resto = t;
     while let Some(i) = resto.find('&') {
         let tras = &resto[i + 1..];
-        let fin = tras.find(';').ok_or_else(|| format!("& sin cerrar en {t:?}"))?;
+        let fin = tras
+            .find(';')
+            .ok_or_else(|| format!("& sin cerrar en {t:?}"))?;
         let e = &tras[..fin];
         let bien = matches!(e, "amp" | "lt" | "gt" | "quot" | "apos")
             || (e.starts_with("#x") && u32::from_str_radix(&e[2..], 16).is_ok())
@@ -105,7 +107,9 @@ pub(super) fn bien_formado(xml: &str) -> Result<(), String> {
         let mut prefijos = BTreeSet::new();
         let mut usados: Vec<String> = Vec::new();
         while !resto.is_empty() {
-            let igual = resto.find('=').ok_or_else(|| format!("atributo sin valor en <{nombre}>"))?;
+            let igual = resto
+                .find('=')
+                .ok_or_else(|| format!("atributo sin valor en <{nombre}>"))?;
             let an = resto[..igual].trim();
             if !nombre_valido(an) {
                 return Err(format!("atributo invalido {an:?} en <{nombre}>"));
@@ -155,11 +159,17 @@ pub(super) fn bien_formado(xml: &str) -> Result<(), String> {
 
 #[test]
 fn el_comprobador_de_xml_pilla_lo_que_word_no_perdona() {
-    assert!(bien_formado(r#"<?xml version="1.0"?><a xmlns:w="x"><w:b c="1">t &amp; u</w:b></a>"#).is_ok());
+    assert!(
+        bien_formado(r#"<?xml version="1.0"?><a xmlns:w="x"><w:b c="1">t &amp; u</w:b></a>"#)
+            .is_ok()
+    );
     // Casos negativos: cada uno es un Word que no abre.
     assert!(bien_formado("<a><b></a></b>").is_err(), "cruzadas");
     assert!(bien_formado("<a>x & y</a>").is_err(), "& suelto");
-    assert!(bien_formado(r#"<a b="1" b="2"/>"#).is_err(), "atributo repetido");
+    assert!(
+        bien_formado(r#"<a b="1" b="2"/>"#).is_err(),
+        "atributo repetido"
+    );
     assert!(bien_formado("<w:a/>").is_err(), "prefijo sin declarar");
     assert!(bien_formado("<a>\u{1}</a>").is_err(), "letra de control");
     assert!(bien_formado("<a/><b/>").is_err(), "dos raices");
@@ -175,7 +185,11 @@ fn crc32(datos: &[u8]) -> u32 {
     for b in datos {
         crc ^= *b as u32;
         for _ in 0..8 {
-            crc = if crc & 1 != 0 { (crc >> 1) ^ 0xEDB8_8320 } else { crc >> 1 };
+            crc = if crc & 1 != 0 {
+                (crc >> 1) ^ 0xEDB8_8320
+            } else {
+                crc >> 1
+            };
         }
     }
     !crc
@@ -318,7 +332,12 @@ fn hilo(md: &str, id: &str, cita: &str, texto: &str) -> Hilo {
 
 pub(super) fn comentarios_de_prueba() -> Comentarios {
     let mut c = Comentarios::default();
-    let mut uno = hilo(NOTA, "h1", "negrita", "¿Esto va en negrita?\nSegundo renglon & <cosas>");
+    let mut uno = hilo(
+        NOTA,
+        "h1",
+        "negrita",
+        "¿Esto va en negrita?\nSegundo renglon & <cosas>",
+    );
     uno.respuestas.push(Respuesta {
         id: "r1".into(),
         autor: "Movil".into(),
@@ -327,7 +346,8 @@ pub(super) fn comentarios_de_prueba() -> Comentarios {
         ..Default::default()
     });
     c.comentarios.push(uno);
-    c.comentarios.push(hilo(NOTA, "h2", "Pareto", "Comentario en una celda"));
+    c.comentarios
+        .push(hilo(NOTA, "h2", "Pareto", "Comentario en una celda"));
     let mut resuelto = hilo(NOTA, "h3", "Una cita", "Ya esta");
     resuelto.resuelto = true;
     c.comentarios.push(resuelto);
@@ -379,21 +399,35 @@ pub(super) fn comprobar_paquete(bytes: &[u8]) -> BTreeMap<String, Vec<u8>> {
             }
         }
     }
-    for obligatoria in ["[Content_Types].xml", "_rels/.rels", "word/document.xml", "word/_rels/document.xml.rels"] {
+    for obligatoria in [
+        "[Content_Types].xml",
+        "_rels/.rels",
+        "word/document.xml",
+        "word/_rels/document.xml.rels",
+    ] {
         assert!(m.contains_key(obligatoria), "falta {obligatoria}");
     }
     // Relaciones: las internas, a partes que estan.
-    for (rels, base) in [("_rels/.rels", ""), ("word/_rels/document.xml.rels", "word/")] {
+    for (rels, base) in [
+        ("_rels/.rels", ""),
+        ("word/_rels/document.xml.rels", "word/"),
+    ] {
         let raiz = crate::xml::leer(&texto(&m, rels)).unwrap();
         let mut ids = BTreeSet::new();
         for r in raiz.elementos() {
-            assert!(ids.insert(r.atributo("Id").to_string()), "Id repetido en {rels}");
+            assert!(
+                ids.insert(r.atributo("Id").to_string()),
+                "Id repetido en {rels}"
+            );
             if r.atributo("TargetMode") == "External" {
                 assert!(r.atributo("Target").starts_with("http"), "externa rara");
                 continue;
             }
             let destino = format!("{base}{}", r.atributo("Target"));
-            assert!(m.contains_key(&destino), "{rels} apunta a {destino}, que no esta");
+            assert!(
+                m.contains_key(&destino),
+                "{rels} apunta a {destino}, que no esta"
+            );
         }
     }
     // Tipos: cada parte, por su nombre o por su extension.
@@ -416,7 +450,10 @@ pub(super) fn comprobar_paquete(bytes: &[u8]) -> BTreeMap<String, Vec<u8>> {
         );
     }
     for o in &overrides {
-        assert!(m.contains_key(&o[1..]), "Override de una parte que no esta: {o}");
+        assert!(
+            m.contains_key(&o[1..]),
+            "Override de una parte que no esta: {o}"
+        );
     }
     m
 }
@@ -433,7 +470,11 @@ fn la_nota_con_todo_sale_en_un_paquete_sano() {
     let m = comprobar_paquete(&bytes);
     assert!(m.contains_key("word/comments.xml") && m.contains_key("word/commentsExtended.xml"));
     let medios: Vec<&String> = m.keys().filter(|n| n.starts_with("word/media/")).collect();
-    assert_eq!(medios.len(), 2, "las dos fotos que estan, y no la que falta: {medios:?}");
+    assert_eq!(
+        medios.len(),
+        2,
+        "las dos fotos que estan, y no la que falta: {medios:?}"
+    );
 }
 
 #[test]
@@ -441,7 +482,10 @@ fn el_lector_de_word_de_pixpin_lee_lo_mismo_que_dice_la_nota() {
     let d = leer_con_pixpin(&exportar_de_prueba(NOTA, None));
     let textos: Vec<(Clase, String)> = d.bloques.iter().map(|b| (b.clase, b.texto())).collect();
     let tiene = |clase: Clase, t: &str| textos.iter().any(|(c, x)| *c == clase && x == t);
-    assert!(tiene(Clase::Titulo(1), "Informe de obra «Casa Lima»"), "{textos:#?}");
+    assert!(
+        tiene(Clase::Titulo(1), "Informe de obra «Casa Lima»"),
+        "{textos:#?}"
+    );
     assert!(tiene(Clase::Titulo(2), "Listas"));
     assert!(tiene(Clase::Titulo(3), "Codigo"));
     // El primer parrafo, sin una sola marca y con lo especial tal cual.
@@ -457,45 +501,104 @@ fn el_lector_de_word_de_pixpin_lee_lo_mismo_que_dice_la_nota() {
     let (t, tramos) = texto_y_tramos(p);
     let de = |palabra: &str| {
         let i = t[..t.find(palabra).unwrap()].encode_utf16().count() as u32;
-        tramos.iter().find(|x| x.inicio == i).map(|x| x.estilo).unwrap_or_default()
+        tramos
+            .iter()
+            .find(|x| x.inicio == i)
+            .map(|x| x.estilo)
+            .unwrap_or_default()
     };
     assert!(de("negrita").negrita && !de("negrita").cursiva);
     assert!(de("cursiva").cursiva);
     assert!(de("tachado").tachado);
     // Enlaces: el web es hipervinculo; los de PixPin, su nombre.
-    let enlace = d.bloques.iter().find(|b| b.texto().starts_with("Un enlace")).unwrap();
-    assert_eq!(enlace.texto(), "Un enlace a la web, a la hoja Planta baja y a un mensaje.");
-    assert!(enlace.trozos.iter().any(|x| x.texto == "la web" && x.estilo.enlace));
-    assert!(!enlace.trozos.iter().any(|x| x.texto.contains("Planta") && x.estilo.enlace));
+    let enlace = d
+        .bloques
+        .iter()
+        .find(|b| b.texto().starts_with("Un enlace"))
+        .unwrap();
+    assert_eq!(
+        enlace.texto(),
+        "Un enlace a la web, a la hoja Planta baja y a un mensaje."
+    );
+    assert!(
+        enlace
+            .trozos
+            .iter()
+            .any(|x| x.texto == "la web" && x.estilo.enlace)
+    );
+    assert!(
+        !enlace
+            .trozos
+            .iter()
+            .any(|x| x.texto.contains("Planta") && x.estilo.enlace)
+    );
     // Listas: siete puntos con numeracion de Word.
-    let lista: Vec<String> = d.bloques.iter().filter(|b| b.clase == Clase::Lista).map(|b| b.texto()).collect();
-    assert_eq!(lista, ["uno", "uno punto uno", "tres niveles", "dos", "tercero", "cuarto", "anidado"]);
-    assert!(tiene(Clase::Parrafo, "\u{2610}\tpor hacer") && tiene(Clase::Parrafo, "\u{2612}\thecho"));
+    let lista: Vec<String> = d
+        .bloques
+        .iter()
+        .filter(|b| b.clase == Clase::Lista)
+        .map(|b| b.texto())
+        .collect();
+    assert_eq!(
+        lista,
+        [
+            "uno",
+            "uno punto uno",
+            "tres niveles",
+            "dos",
+            "tercero",
+            "cuarto",
+            "anidado"
+        ]
+    );
+    assert!(
+        tiene(Clase::Parrafo, "\u{2610}\tpor hacer") && tiene(Clase::Parrafo, "\u{2612}\thecho")
+    );
     // El codigo, con su tabulador y sus signos.
-    assert!(textos.iter().any(|(_, x)| x == "\tprintln!(\"<hola> & adios\");"));
+    assert!(
+        textos
+            .iter()
+            .any(|(_, x)| x == "\tprintln!(\"<hola> & adios\");")
+    );
     // Las fotos que estan, y un aviso por la que no.
     assert_eq!(d.imagenes.len(), 2);
     assert!(d.imagenes.iter().all(|i| i.mime == "image/png"));
     assert!(textos.iter().any(|(_, x)| x.contains("No esta")));
-    assert!(textos.iter().any(|(_, x)| x.contains("Plano.pdf")), "el adjunto, por su nombre");
+    assert!(
+        textos.iter().any(|(_, x)| x.contains("Plano.pdf")),
+        "el adjunto, por su nombre"
+    );
     assert!(tiene(Clase::Parrafo, "Fin del informe."));
 }
 
 #[test]
 fn las_tablas_vuelven_con_sus_celdas_combinadas() {
     let d = leer_con_pixpin(&exportar_de_prueba(NOTA, None));
-    let filas: Vec<&crate::Bloque> = d.bloques.iter().filter(|b| b.clase == Clase::Fila).collect();
+    let filas: Vec<&crate::Bloque> = d
+        .bloques
+        .iter()
+        .filter(|b| b.clase == Clase::Fila)
+        .collect();
     // GFM (3) + HTML (3) + la ancha (2).
     assert_eq!(filas.len(), 8);
-    let tablas: BTreeSet<u32> = filas.iter().map(|b| b.fila.as_ref().unwrap().tabla).collect();
+    let tablas: BTreeSet<u32> = filas
+        .iter()
+        .map(|b| b.fila.as_ref().unwrap().tabla)
+        .collect();
     assert_eq!(tablas.len(), 3, "tres tablas, sin fundirse");
     let celdas = |i: usize| filas[i].fila.as_ref().unwrap().celdas.clone();
-    assert_eq!(celdas(0).iter().map(|c| c.texto()).collect::<Vec<_>>(), ["Objetivo", "Tecnica", "Coste"]);
+    assert_eq!(
+        celdas(0).iter().map(|c| c.texto()).collect::<Vec<_>>(),
+        ["Objetivo", "Tecnica", "Coste"]
+    );
     assert_eq!(celdas(1)[1].texto(), "Pareto");
     // La combinada de la cabecera ocupa dos columnas y tiene fondo.
     let c3 = celdas(3);
     assert_eq!(c3.len(), 2);
-    assert_eq!((c3[0].texto().as_str(), c3[0].columnas, c3[0].relleno), ("Combinada", 2, true));
+    assert_eq!(
+        (c3[0].texto().as_str(), c3[0].columnas, c3[0].relleno),
+        ("Combinada", 2, true)
+    );
     // «Alta» baja dos filas: en la tercera, su continuacion.
     let c5 = celdas(5);
     assert!(c5[0].sigue && c5[0].texto().is_empty());
@@ -532,15 +635,27 @@ fn el_documento_lleva_los_estilos_y_la_estructura_de_word() {
     // Las fotos a su tamano: la de 360 px del editor es la mitad de la
     // columna (720), luego la mitad del ancho de texto.
     let ancho = |cx: u64| doc.contains(&format!(r#"<wp:extent cx="{cx}""#));
-    assert!(ancho(super::cuerpo::TEXTO_DE_PIE as u64 / 2 * 635), "la de 360 px, a media pagina");
-    assert!(ancho(super::cuerpo::TEXTO_DE_PIE as u64 * 635), "la viva de 900 px, a la columna entera");
+    assert!(
+        ancho(super::cuerpo::TEXTO_DE_PIE as u64 / 2 * 635),
+        "la de 360 px, a media pagina"
+    );
+    assert!(
+        ancho(super::cuerpo::TEXTO_DE_PIE as u64 * 635),
+        "la viva de 900 px, a la columna entera"
+    );
     // La ancha va tumbada y lo de despues vuelve de pie: dos saltos.
     assert_eq!(doc.matches("<w:sectPr>").count(), 3);
     let rels = texto(&m, "word/_rels/document.xml.rels");
     assert!(rels.contains(r#"Target="https://example.com/a?b=1&amp;c=2" TargetMode="External""#));
-    assert!(!rels.contains("pixpin:"), "los enlaces de PixPin no son hipervinculos");
+    assert!(
+        !rels.contains("pixpin:"),
+        "los enlaces de PixPin no son hipervinculos"
+    );
     let num = texto(&m, "word/numbering.xml");
-    assert!(num.contains(r#"<w:startOverride w:val="3"/>"#), "la lista empieza en el 3 como en la nota");
+    assert!(
+        num.contains(r#"<w:startOverride w:val="3"/>"#),
+        "la lista empieza en el 3 como en la nota"
+    );
 }
 
 #[test]
@@ -551,7 +666,11 @@ fn los_comentarios_van_anclados_a_su_texto_con_sus_respuestas() {
     // principio, su final y su referencia.
     for id in 0..5 {
         for marca in ["commentRangeStart", "commentRangeEnd", "commentReference"] {
-            assert_eq!(doc.matches(&format!(r#"<w:{marca} w:id="{id}"/>"#)).count(), 1, "{marca} {id}");
+            assert_eq!(
+                doc.matches(&format!(r#"<w:{marca} w:id="{id}"/>"#)).count(),
+                1,
+                "{marca} {id}"
+            );
         }
     }
     // El de «negrita» abraza justo esa palabra.
@@ -560,12 +679,18 @@ fn los_comentarios_van_anclados_a_su_texto_con_sus_respuestas() {
     assert!(doc[i..f].contains(">negrita</w:t>") && !doc[i..f].contains("cursiva"));
     // El de la celda cae dentro de la tabla.
     let i = doc.find(r#"<w:commentRangeStart w:id="2"/>"#).unwrap();
-    assert!(doc[..i].rfind("<w:tbl>") > doc[..i].rfind("</w:tbl>"), "dentro de una tabla");
+    assert!(
+        doc[..i].rfind("<w:tbl>") > doc[..i].rfind("</w:tbl>"),
+        "dentro de una tabla"
+    );
     let com = texto(&m, "word/comments.xml");
     assert!(com.contains(r#"w:author="PC de Max""#) && com.contains(r#"w:author="Movil""#));
     assert!(com.contains("2026-09-21T"), "con su fecha");
     assert!(com.contains("Segundo renglon &amp; &lt;cosas&gt;"));
-    assert!(com.contains("«un texto que se borro hace tiempo»"), "el perdido lleva su cita");
+    assert!(
+        com.contains("«un texto que se borro hace tiempo»"),
+        "el perdido lleva su cita"
+    );
     let ex = texto(&m, "word/commentsExtended.xml");
     assert_eq!(ex.matches("w15:paraIdParent=").count(), 1, "una respuesta");
     assert_eq!(ex.matches(r#"w15:done="1""#).count(), 1, "un resuelto");
@@ -575,7 +700,10 @@ fn los_comentarios_van_anclados_a_su_texto_con_sus_respuestas() {
 fn una_nota_vacia_es_un_word_vacio_pero_sano() {
     for md in ["", "\n\n", "   "] {
         let m = comprobar_paquete(&exportar_de_prueba(md, None));
-        assert!(!m.contains_key("word/comments.xml"), "sin comentarios no hay parte");
+        assert!(
+            !m.contains_key("word/comments.xml"),
+            "sin comentarios no hay parte"
+        );
         assert!(texto(&m, "word/document.xml").contains("<w:body><w:p/>"));
     }
 }
@@ -606,7 +734,11 @@ fn lo_que_no_es_tabla_se_queda_como_texto() {
     // titulo (que el editor tampoco sabe ensenar).
     let md = "```\n| a | b |\n|---|---|\n```\n| suelta | sin guiones |\n<table><caption>T</caption><tr><td>x</td></tr></table>";
     let d = leer_con_pixpin(&exportar_de_prueba(md, None));
-    assert!(d.bloques.iter().all(|b| b.clase != Clase::Fila), "{:?}", d.bloques);
+    assert!(
+        d.bloques.iter().all(|b| b.clase != Clase::Fila),
+        "{:?}",
+        d.bloques
+    );
     assert!(d.bloques.iter().any(|b| b.texto() == "| a | b |"));
 }
 
@@ -646,24 +778,39 @@ fn la_letra_de_la_nota_va_con_su_sustituta_de_windows() {
     .unwrap();
     let m = comprobar_paquete(&bytes);
     let estilos = texto(&m, "word/styles.xml");
-    assert!(estilos.contains(r#"w:ascii="Caveat""#) && estilos.contains(r#"w:ascii="Courier New""#));
+    assert!(
+        estilos.contains(r#"w:ascii="Caveat""#) && estilos.contains(r#"w:ascii="Courier New""#)
+    );
     // 21 px son 15,75 pt: 31 medios puntos.
     assert!(estilos.contains(r#"<w:sz w:val="31"/>"#));
     let letras = texto(&m, "word/fontTable.xml");
     assert!(letras.contains(r#"<w:font w:name="Caveat"><w:altName w:val="Segoe Print"/>"#));
-    assert!(!letras.contains(r#"<w:font w:name="Courier New"><w:altName"#), "Courier ya es de Windows");
+    assert!(
+        !letras.contains(r#"<w:font w:name="Courier New"><w:altName"#),
+        "Courier ya es de Windows"
+    );
     let core = texto(&m, "docProps/core.xml");
     assert!(core.contains("<dc:title>T</dc:title>") && core.contains("1970-01-01T00:00:00Z"));
 }
 
 #[test]
 fn el_nombre_de_fichero_es_seguro_en_windows() {
-    assert_eq!(nombre_de_fichero("Informe: obra/2026?"), "Informe_ obra_2026_.docx");
+    assert_eq!(
+        nombre_de_fichero("Informe: obra/2026?"),
+        "Informe_ obra_2026_.docx"
+    );
     assert_eq!(nombre_de_fichero("  "), "Nota.docx");
-    assert_eq!(nombre_de_fichero("con punto final. "), "con punto final.docx");
+    assert_eq!(
+        nombre_de_fichero("con punto final. "),
+        "con punto final.docx"
+    );
     assert_eq!(nombre_de_fichero("CON"), "CON_.docx");
     assert_eq!(nombre_de_fichero("com1.txt"), "com1.txt_.docx");
-    assert_eq!(nombre_de_fichero("Concierto"), "Concierto.docx", "empezar por CON no es reservado");
+    assert_eq!(
+        nombre_de_fichero("Concierto"),
+        "Concierto.docx",
+        "empezar por CON no es reservado"
+    );
     assert_eq!(nombre_de_fichero("a\u{7}b"), "a_b.docx");
     assert!(nombre_de_fichero(&"x".repeat(500)).chars().count() <= 125);
 }
@@ -683,7 +830,11 @@ fn una_tabla_ancha_achica_la_letra_y_si_no_basta_se_tumba() {
     };
     let estrecha = reparto(&tabla(3, "corto"));
     assert!(!estrecha.tumbada && estrecha.tam.is_none());
-    assert_eq!(estrecha.anchos.iter().sum::<u32>(), cuerpo::TEXTO_DE_PIE, "llena el ancho de texto");
+    assert_eq!(
+        estrecha.anchos.iter().sum::<u32>(),
+        cuerpo::TEXTO_DE_PIE,
+        "llena el ancho de texto"
+    );
     // Seis columnas de palabras largas: de pie, con la letra a 9 pt.
     let algo = reparto(&tabla(6, "Cuantitativo"));
     assert!(!algo.tumbada && algo.tam == Some(18), "{algo:?}");
@@ -695,15 +846,22 @@ fn una_tabla_ancha_achica_la_letra_y_si_no_basta_se_tumba() {
     assert!(enorme.tumbada && enorme.tam == Some(16));
     // Las columnas piden en proporcion a lo que llevan.
     let desigual = reparto("| a | una cabecera bastante mas larga |\n|---|---|\n| 1 | 2 |");
-    assert!(desigual.anchos[1] > desigual.anchos[0] * 3, "{:?}", desigual.anchos);
+    assert!(
+        desigual.anchos[1] > desigual.anchos[0] * 3,
+        "{:?}",
+        desigual.anchos
+    );
 }
 
 #[test]
 fn las_imagenes_se_reconocen_por_sus_bytes_y_no_por_el_nombre() {
-    assert_eq!(imagen::leer(&png(7, 5, [0, 0, 0])), Some((imagen::Formato::Png, 7, 5)));
+    assert_eq!(
+        imagen::leer(&png(7, 5, [0, 0, 0])),
+        Some((imagen::Formato::Png, 7, 5))
+    );
     let jpeg = [
-        0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x04, 0x00, 0x00, 0xFF, 0xC0, 0x00, 0x0B, 0x08, 0x00, 0x20, 0x00, 0x40, 0x01,
-        0x01, 0x11, 0x00,
+        0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x04, 0x00, 0x00, 0xFF, 0xC0, 0x00, 0x0B, 0x08, 0x00, 0x20,
+        0x00, 0x40, 0x01, 0x01, 0x11, 0x00,
     ];
     assert_eq!(imagen::leer(&jpeg), Some((imagen::Formato::Jpeg, 64, 32)));
     let mut gif = b"GIF89a".to_vec();
@@ -711,7 +869,9 @@ fn las_imagenes_se_reconocen_por_sus_bytes_y_no_por_el_nombre() {
     assert_eq!(imagen::leer(&gif), Some((imagen::Formato::Gif, 10, 20)));
     // Casos negativos: cortado, de un formato que Word no pinta, nada.
     assert_eq!(imagen::leer(&png(7, 5, [0, 0, 0])[..20]), None);
-    assert!(imagen::es_webp(b"RIFF\0\0\0\0WEBPVP8 ") && imagen::leer(b"RIFF\0\0\0\0WEBPVP8 ").is_none());
+    assert!(
+        imagen::es_webp(b"RIFF\0\0\0\0WEBPVP8 ") && imagen::leer(b"RIFF\0\0\0\0WEBPVP8 ").is_none()
+    );
     assert_eq!(imagen::leer(b""), None);
     assert_eq!(imagen::leer(&[0xFF, 0xD8, 0xFF]), None);
 }
@@ -720,7 +880,11 @@ fn las_imagenes_se_reconocen_por_sus_bytes_y_no_por_el_nombre() {
 fn las_fechas_salen_en_utc_como_las_quiere_word() {
     assert_eq!(partes::fecha(0), "1970-01-01T00:00:00Z");
     assert_eq!(partes::fecha(1_790_000_000_000), "2026-09-21T14:13:20Z");
-    assert_eq!(partes::fecha(951_782_400_000), "2000-02-29T00:00:00Z", "bisiesto");
+    assert_eq!(
+        partes::fecha(951_782_400_000),
+        "2000-02-29T00:00:00Z",
+        "bisiesto"
+    );
 }
 
 /// **La muestra para abrir con Word**: deja el `.docx` de la nota con todo
@@ -729,7 +893,8 @@ fn las_fechas_salen_en_utc_como_las_quiere_word() {
 #[test]
 #[ignore]
 fn muestra_para_word() {
-    let carpeta = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/muestras-docx");
+    let carpeta =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/muestras-docx");
     std::fs::create_dir_all(&carpeta).unwrap();
     let bytes = exportar_de_prueba(NOTA, Some(&comentarios_de_prueba()));
     std::fs::write(carpeta.join("nota-completa.docx"), &bytes).unwrap();
@@ -763,15 +928,28 @@ fn muestra_para_word() {
 #[test]
 fn el_titulo_de_una_tabla_tumbada_se_va_con_ella_a_su_pagina() {
     let fila = |t: &str| format!("|{}|", vec![t; 7].join("|"));
-    let md = format!("Intro\n\n## Tabla grande\n\n{}\n{}\n{}\n\nFin", fila("Contabilidad"), fila("---"), fila("x"));
+    let md = format!(
+        "Intro\n\n## Tabla grande\n\n{}\n{}\n{}\n\nFin",
+        fila("Contabilidad"),
+        fila("---"),
+        fila("x")
+    );
     let m = comprobar_paquete(&exportar_de_prueba(&md, None));
     let doc = texto(&m, "word/document.xml");
-    let salto = doc.find("<w:p><w:pPr><w:sectPr>").expect("salto de seccion");
+    let salto = doc
+        .find("<w:p><w:pPr><w:sectPr>")
+        .expect("salto de seccion");
     let titulo = doc.find(r#"<w:pStyle w:val="Heading2"/>"#).unwrap();
     let intro = doc.find(">Intro<").unwrap();
-    assert!(intro < salto && salto < titulo, "el salto va entre la intro y el titulo");
+    assert!(
+        intro < salto && salto < titulo,
+        "el salto va entre la intro y el titulo"
+    );
     // Caso negativo: una tabla que cabe de pie no parte el documento.
     let corta = "## T\n\n| a | b |\n|---|---|\n| 1 | 2 |";
-    let doc = texto(&comprobar_paquete(&exportar_de_prueba(corta, None)), "word/document.xml");
+    let doc = texto(
+        &comprobar_paquete(&exportar_de_prueba(corta, None)),
+        "word/document.xml",
+    );
     assert_eq!(doc.matches("<w:sectPr>").count(), 1);
 }

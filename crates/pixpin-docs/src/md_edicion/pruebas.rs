@@ -28,32 +28,56 @@ fn borrar_la_ultima_letra_de_una_negrita_no_deja_asteriscos_sueltos() {
     // Con mas letras dentro, la marca se queda.
     assert_eq!(tecla_borrar("**ab**", 4, true), Some(("**a**".into(), 3)));
     // Cursiva dentro de negrita: se van las dos.
-    assert_eq!(tecla_borrar("x ***y*** z", 6, true), Some(("x  z".into(), 2)));
+    assert_eq!(
+        tecla_borrar("x ***y*** z", 6, true),
+        Some(("x  z".into(), 2))
+    );
     // Un enlace sin texto se va entero, direccion incluida.
-    assert_eq!(tecla_borrar("ver [a](https://x.es)", 6, true), Some(("ver ".into(), 4)));
+    assert_eq!(
+        tecla_borrar("ver [a](https://x.es)", 6, true),
+        Some(("ver ".into(), 4))
+    );
 }
 
 #[test]
 fn supr_borra_la_letra_que_se_ve_saltando_las_marcas() {
     assert_eq!(tecla_borrar("a**b**", 1, false), Some(("a".into(), 1)));
-    assert_eq!(tecla_borrar("a**bc**", 1, false), Some(("a**c**".into(), 1)));
+    assert_eq!(
+        tecla_borrar("a**bc**", 1, false),
+        Some(("a**c**".into(), 1))
+    );
 }
 
 #[test]
 fn retroceso_al_principio_de_un_titulo_o_una_lista_lo_vuelve_parrafo() {
     assert_eq!(tecla_borrar("# Hola", 2, true), Some(("Hola".into(), 0)));
-    assert_eq!(tecla_borrar("uno\n- dos", 6, true), Some(("uno\ndos".into(), 4)));
-    assert_eq!(tecla_borrar("- [x] hecha", 6, true), Some(("hecha".into(), 0)));
+    assert_eq!(
+        tecla_borrar("uno\n- dos", 6, true),
+        Some(("uno\ndos".into(), 4))
+    );
+    assert_eq!(
+        tecla_borrar("- [x] hecha", 6, true),
+        Some(("hecha".into(), 0))
+    );
     // Ya parrafo: se junta con el de arriba.
-    assert_eq!(tecla_borrar("uno\ndos", 4, true), Some(("unodos".into(), 3)));
+    assert_eq!(
+        tecla_borrar("uno\ndos", 4, true),
+        Some(("unodos".into(), 3))
+    );
     // Caso negativo: al principio de la nota no hay nada que hacer.
     assert_eq!(tecla_borrar("hola", 0, true), None);
 }
 
 #[test]
 fn supr_al_final_de_un_renglon_junta_el_de_abajo_sin_su_marca() {
-    assert_eq!(tecla_borrar("uno\n# dos", 3, false), Some(("unodos".into(), 3)));
-    assert_eq!(tecla_borrar("uno\n- [ ] dos", 3, false), Some(("unodos".into(), 3)));
+    assert_eq!(
+        tecla_borrar("uno\n# dos", 3, false),
+        Some(("unodos".into(), 3))
+    );
+    assert_eq!(
+        tecla_borrar("uno\n- [ ] dos", 3, false),
+        Some(("unodos".into(), 3))
+    );
     // Caso negativo: al final de la nota.
     assert_eq!(tecla_borrar("uno", 3, false), None);
 }
@@ -61,8 +85,14 @@ fn supr_al_final_de_un_renglon_junta_el_de_abajo_sin_su_marca() {
 #[test]
 fn retroceso_tras_una_foto_o_una_raya_la_quita_entera() {
     let t = "![x](a.png)\ntexto";
-    assert_eq!(tecla_borrar(t, en(t, "texto"), true), Some(("texto".into(), 0)));
-    assert_eq!(tecla_borrar("uno\n---\ndos", 8, true), Some(("uno\ndos".into(), 4)));
+    assert_eq!(
+        tecla_borrar(t, en(t, "texto"), true),
+        Some(("texto".into(), 0))
+    );
+    assert_eq!(
+        tecla_borrar("uno\n---\ndos", 8, true),
+        Some(("uno\ndos".into(), 4))
+    );
 }
 
 #[test]
@@ -84,7 +114,10 @@ fn un_emoji_se_borra_entero() {
 fn borrar_lo_elegido_quita_solo_lo_que_se_ve() {
     let t = "a **bold** c";
     // «ld c» a la vista: la negrita se queda con «bo».
-    assert_eq!(borrar(t, en(t, "ld"), t.encode_utf16().count()), ("a **bo**".into(), 6));
+    assert_eq!(
+        borrar(t, en(t, "ld"), t.encode_utf16().count()),
+        ("a **bo**".into(), 6)
+    );
     assert_eq!(borrar(t, 0, en(t, "ld")), ("**ld** c".into(), 0));
     // Todo: no queda nada.
     assert_eq!(borrar(t, 0, 12), (String::new(), 0));
@@ -100,12 +133,24 @@ fn borrar_la_letra_escapada_se_lleva_su_barra() {
 
 #[test]
 fn la_negrita_se_pone_sobre_lo_elegido_sin_sus_blancos() {
-    assert_eq!(alternar("hola mundo", 5, 10, "**"), Some(("hola **mundo**".into(), 7, 12)));
+    assert_eq!(
+        alternar("hola mundo", 5, 10, "**"),
+        Some(("hola **mundo**".into(), 7, 12))
+    );
     // Doble clic: la palabra con su espacio.
-    assert_eq!(alternar("hola mundo fin", 5, 11, "**"), Some(("hola **mundo** fin".into(), 7, 12)));
-    assert_eq!(alternar("# Hola", 0, 6, "*"), Some(("# *Hola*".into(), 3, 7)));
+    assert_eq!(
+        alternar("hola mundo fin", 5, 11, "**"),
+        Some(("hola **mundo** fin".into(), 7, 12))
+    );
+    assert_eq!(
+        alternar("# Hola", 0, 6, "*"),
+        Some(("# *Hola*".into(), 3, 7))
+    );
     // Un renglon cada vez.
-    assert_eq!(alternar("uno\ndos", 0, 7, "~~"), Some(("~~uno~~\n~~dos~~".into(), 2, 13)));
+    assert_eq!(
+        alternar("uno\ndos", 0, 7, "~~"),
+        Some(("~~uno~~\n~~dos~~".into(), 2, 13))
+    );
     // Caso negativo: solo blancos.
     assert_eq!(alternar("a   b", 1, 4, "**"), None);
     // Caso negativo: una marca que no es de letra.
@@ -138,7 +183,10 @@ fn poner_negrita_junto_a_otra_las_junta() {
 
 #[test]
 fn sin_nada_elegido_quita_el_formato_del_tramo_del_cursor() {
-    assert_eq!(alternar("a **bc** d", 5, 5, "**"), Some(("a bc d".into(), 3, 3)));
+    assert_eq!(
+        alternar("a **bc** d", 5, 5, "**"),
+        Some(("a bc d".into(), 3, 3))
+    );
     // Caso negativo: fuera de un tramo no hay nada que hacer.
     assert_eq!(alternar("a **bc** d", 9, 9, "**"), None);
     assert_eq!(alternar("a *bc* d", 4, 4, "**"), None);
@@ -156,7 +204,10 @@ fn quitar_formato_deja_el_texto_y_los_enlaces() {
 #[test]
 fn corchetes_al_principio_se_vuelven_casilla_al_vuelo() {
     assert_eq!(convertir("[] ", 3), Some(("- [ ] ".into(), 6)));
-    assert_eq!(convertir("uno\n[ ] x", 8), Some(("uno\n- [ ] x".into(), 10)));
+    assert_eq!(
+        convertir("uno\n[ ] x", 8),
+        Some(("uno\n- [ ] x".into(), 10))
+    );
     assert_eq!(convertir("[x] ", 4), Some(("- [x] ".into(), 6)));
     // Casos negativos: en mitad del renglon, o ya en una lista.
     assert_eq!(convertir("ver [] ", 7), None);
@@ -176,7 +227,12 @@ fn el_bloque_de_cada_renglon() {
 fn se_esconden_las_marcas_las_rayas_y_el_texto_de_las_fotos() {
     let t = "a **b**\n---\n![x](a.png)";
     let v = escondidas(t);
-    let visto: String = t.chars().zip(&v).filter(|(_, e)| !**e).map(|(c, _)| c).collect();
+    let visto: String = t
+        .chars()
+        .zip(&v)
+        .filter(|(_, e)| !**e)
+        .map(|(c, _)| c)
+        .collect();
     assert_eq!(visto, "a b\n\n");
     // Caso negativo: un parrafo llano no esconde nada.
     assert!(escondidas("hola mundo").iter().all(|e| !e));

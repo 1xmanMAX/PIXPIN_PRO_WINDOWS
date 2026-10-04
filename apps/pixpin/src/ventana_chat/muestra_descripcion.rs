@@ -16,8 +16,8 @@ use pixpin_render::fuera_de_pantalla::FueraDePantalla;
 use pixpin_store::{Catalogo, Idioma, Ubicacion};
 
 use super::{
-    CLARO, Lista, Pinta, abrir_proyecto, disponer, fotos_del_historial, meter_ficheros, papel_de, pintar,
-    pintar_historial, pintar_redaccion,
+    CLARO, Lista, Pinta, abrir_proyecto, disponer, fotos_del_historial, meter_ficheros, papel_de,
+    pintar, pintar_historial, pintar_redaccion,
 };
 
 /// Un plano de juguete: papel claro, dos muros y una cota roja.
@@ -51,7 +51,8 @@ fn foto(ruta: &std::path::Path, tono: u8) {
 #[test]
 #[ignore = "necesita GPU; genera PNG para mirarlos"]
 fn muestra_de_la_foto_con_descripcion() {
-    let raiz = std::env::temp_dir().join(format!("pixpin-muestra-descripcion-{}", std::process::id()));
+    let raiz =
+        std::env::temp_dir().join(format!("pixpin-muestra-descripcion-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&raiz);
     std::fs::create_dir_all(&raiz).unwrap();
     let u = Ubicacion::Portable { raiz: raiz.clone() };
@@ -93,8 +94,18 @@ fn muestra_de_la_foto_con_descripcion() {
     let (ancho, alto) = (1024u32, 900u32);
     let destino = FueraDePantalla::nuevo(&motor, d3.d3d(), ancho, alto).expect("destino");
     let escala = 100;
-    let marco = Rect { x: 0, y: 0, ancho, alto };
-    let d = disponer(marco, escala, pixpin_ui::chat::ancho_inicial(ancho, escala), Some(&a));
+    let marco = Rect {
+        x: 0,
+        y: 0,
+        ancho,
+        alto,
+    };
+    let d = disponer(
+        marco,
+        escala,
+        pixpin_ui::chat::ancho_inicial(ancho, escala),
+        Some(&a),
+    );
     let miniaturas = crate::miniaturas::Miniaturas::nuevo();
     let mut previas = crate::miniaturas::Miniaturas::con_lado(super::PREVIA_LADO);
     let fichas = vec![ficha.clone()];
@@ -118,7 +129,16 @@ fn muestra_de_la_foto_con_descripcion() {
         };
         motor
             .dibujar(&destino.destino, |p| {
-                pintar(p, &d, &CLARO, papel_de(0, true), escala, &textos, None, &lista);
+                pintar(
+                    p,
+                    &d,
+                    &CLARO,
+                    papel_de(0, true),
+                    escala,
+                    &textos,
+                    None,
+                    &lista,
+                );
                 a.zonas.borrow_mut().clear();
                 let c = Pinta {
                     tema: &CLARO,

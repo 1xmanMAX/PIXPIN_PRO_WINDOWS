@@ -134,7 +134,6 @@ thread_local! {
     static LINEAS: Cell<[Option<HWND>; 2]> = const { Cell::new([None, None]) };
 }
 
-
 extern "system" fn procedimiento_guia(
     hwnd: HWND,
     mensaje: u32,
@@ -170,11 +169,7 @@ fn linea(i: usize) -> Option<HWND> {
     // recoge el raton (transparente + capas) y no sale en la barra de tareas.
     let h = unsafe {
         CreateWindowExW(
-            WS_EX_TOPMOST
-                | WS_EX_TOOLWINDOW
-                | WS_EX_NOACTIVATE
-                | WS_EX_LAYERED
-                | WS_EX_TRANSPARENT,
+            WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE | WS_EX_LAYERED | WS_EX_TRANSPARENT,
             w!("PixPinGuia"),
             w!(""),
             WS_POPUP,
@@ -259,7 +254,10 @@ mod pruebas {
         assert_eq!(a.rect.x, 440, "izquierda con izquierda");
         let g = a.guias.iter().find(|g| g.vertical).expect("guia vertical");
         assert_eq!(g.pos, 440);
-        assert!(g.desde <= 128 && g.hasta >= a.rect.abajo(), "cubre a los dos");
+        assert!(
+            g.desde <= 128 && g.hasta >= a.rect.abajo(),
+            "cubre a los dos"
+        );
     }
 
     #[test]

@@ -9,12 +9,19 @@
 //! seguro de `pixpin-render` y toda la interaccion por el estado puro de
 //! `pixpin-ui`. Aqui solo se cablean piezas ya probadas.
 
+use crate::captura2::disposicion::{
+    self as d2, Accion, BarraAcciones, BarraAnotar, BarraModos, EnAnotar, EnModos, EnSelector,
+    Modo, PanelLupa, Selector, Util,
+};
+use crate::captura2::pintar as p2;
+use crate::captura2::{Campo, Contexto, Sesion};
 use anyhow::{Context, Result};
 use pixpin_capture::{
     Dispositivo, Duplicador, Instantanea, SesionViva, a_imagen, capturar_monitor, componer_region,
     enumerar_monitores,
 };
 use pixpin_codec::ImagenRgba;
+use pixpin_geom::Candidato;
 use pixpin_geom::{Monitor, Punto, Rect};
 use pixpin_nivel::Nivel;
 use pixpin_render::{Color, MotorRender, RectF, Superficie};
@@ -25,13 +32,6 @@ use pixpin_ui::{
     Efecto, EstadoOverlay, EventoEntrada, Fase, FormaCursor, FormatoColorLupa, PanelTodo,
     TeclaOverlay, texto_color,
 };
-use pixpin_geom::Candidato;
-use crate::captura2::disposicion::{
-    self as d2, Accion, BarraAcciones, BarraAnotar, BarraModos, EnAnotar, EnModos, EnSelector,
-    Modo, PanelLupa, Selector, Util,
-};
-use crate::captura2::pintar as p2;
-use crate::captura2::{Campo, Contexto, Sesion};
 use std::rc::Rc;
 use std::time::Instant;
 use windows::Win32::Foundation::HWND;
@@ -265,7 +265,11 @@ impl Recursos {
                         self.duplicadores.len() - 1
                     }
                     Err(e) => {
-                        tracing::info!(?e, monitor = m.id, "sin duplicador; congelando por WGC (lento)");
+                        tracing::info!(
+                            ?e,
+                            monitor = m.id,
+                            "sin duplicador; congelando por WGC (lento)"
+                        );
                         break;
                     }
                 },
@@ -278,7 +282,11 @@ impl Recursos {
                     self.duplicadores.remove(indice);
                 }
                 Err(e) => {
-                    tracing::info!(?e, monitor = m.id, "duplicador sin fotograma; congelando por WGC (lento)");
+                    tracing::info!(
+                        ?e,
+                        monitor = m.id,
+                        "duplicador sin fotograma; congelando por WGC (lento)"
+                    );
                     break;
                 }
             }
@@ -315,8 +323,7 @@ pub fn ejecutar_overlay(
     let t0 = Instant::now();
     // Lo que ya se habia ido entre el gesto o el atajo y llegar aqui: la cola
     // del hilo principal. Si esto crece, el hilo estaba ocupado con otra cosa.
-    let espera_cola_ms =
-        pixpin_shell::gestos::ms_entre(desde_ms, pixpin_shell::gestos::reloj_ms());
+    let espera_cola_ms = pixpin_shell::gestos::ms_entre(desde_ms, pixpin_shell::gestos::reloj_ms());
 
     // 1. Congelar TODOS los monitores antes de ensenar ventana alguna.
     let disposicion = enumerar_monitores().context("sin monitores")?;
@@ -433,10 +440,8 @@ pub fn ejecutar_overlay(
     if gesto {
         tracing::info!(
             ?arranque,
-            desde_pulsacion_ms = pixpin_shell::gestos::ms_entre(
-                desde_ms,
-                pixpin_shell::gestos::reloj_ms()
-            ),
+            desde_pulsacion_ms =
+                pixpin_shell::gestos::ms_entre(desde_ms, pixpin_shell::gestos::reloj_ms()),
             "arranque del gesto"
         );
     }
@@ -625,7 +630,10 @@ fn eventos_de_arranque(a: ArranqueGesto) -> Vec<EventoOverlay> {
     match a {
         ArranqueGesto::Ninguno => Vec::new(),
         ArranqueGesto::Arrastrando(p) => {
-            vec![EventoOverlay::RatonMovido(p), EventoOverlay::BotonPulsado(p)]
+            vec![
+                EventoOverlay::RatonMovido(p),
+                EventoOverlay::BotonPulsado(p),
+            ]
         }
         ArranqueGesto::YaSoltado { desde, hasta } => vec![
             EventoOverlay::RatonMovido(desde),
@@ -726,7 +734,10 @@ fn barra_modos(estado: &EstadoOverlay, sesion: &Sesion, piezas: &[Pieza]) -> (Ba
     )
 }
 
-fn barras_despues(estado: &EstadoOverlay, piezas: &[Pieza]) -> (BarraAnotar, BarraAcciones, Monitor) {
+fn barras_despues(
+    estado: &EstadoOverlay,
+    piezas: &[Pieza],
+) -> (BarraAnotar, BarraAcciones, Monitor) {
     let sel = estado.seleccion();
     let m = monitor_de_region(piezas, sel);
     let (a, b) = d2::colocar_despues(sel, m.area_trabajo, m.escala_por_cien);
@@ -737,13 +748,21 @@ fn selector_de(sesion: &Sesion, acciones: &BarraAcciones, m: &Monitor) -> Option
     let es = sesion.selector.as_ref()?;
     let boton = acciones.boton(Accion::AlChat)?;
     let n = es.visibles(&sesion.proyectos).len();
-    Some(Selector::colocar(boton, m.area_trabajo, n, m.escala_por_cien))
+    Some(Selector::colocar(
+        boton,
+        m.area_trabajo,
+        n,
+        m.escala_por_cien,
+    ))
 }
 
 fn boton_confirmar(estado: &EstadoOverlay, piezas: &[Pieza]) -> (Rect, Monitor) {
     let sel = estado.seleccion();
     let m = monitor_de_region(piezas, sel);
-    (d2::boton_confirmar(sel, m.area_trabajo, m.escala_por_cien), m)
+    (
+        d2::boton_confirmar(sel, m.area_trabajo, m.escala_por_cien),
+        m,
+    )
 }
 
 /// Lo que miden la zona elegida o lo resaltado, para los campos y la
@@ -773,7 +792,13 @@ enum Bajo {
     Confirmar,
 }
 
-fn que_hay(p: Punto, estado: &EstadoOverlay, sesion: &Sesion, piezas: &[Pieza], modo: ModoConfirmacion) -> Bajo {
+fn que_hay(
+    p: Punto,
+    estado: &EstadoOverlay,
+    sesion: &Sesion,
+    piezas: &[Pieza],
+    modo: ModoConfirmacion,
+) -> Bajo {
     match vista_de(estado, sesion, modo) {
         Vista::Nada => Bajo::Nada,
         Vista::Despues => {
@@ -822,7 +847,13 @@ fn candidatos_propios(sesion: &Sesion, piezas: &[Pieza], p: Punto) -> Vec<Candid
     .unwrap_or_default()
 }
 
-fn cambiar_modo(m: Modo, estado: &mut EstadoOverlay, sesion: &mut Sesion, piezas: &[Pieza], ctx: &Ctx) {
+fn cambiar_modo(
+    m: Modo,
+    estado: &mut EstadoOverlay,
+    sesion: &mut Sesion,
+    piezas: &[Pieza],
+    ctx: &Ctx,
+) {
     if sesion.anotada() {
         return;
     }
@@ -1559,7 +1590,13 @@ fn aplicar_efecto(
 }
 
 /// Dibuja el fotograma completo de una pieza.
-fn pintar(pieza: &Pieza, estado: &EstadoOverlay, sesion: &mut Sesion, muestra_color: [u8; 4], ctx: &Ctx) {
+fn pintar(
+    pieza: &Pieza,
+    estado: &EstadoOverlay,
+    sesion: &mut Sesion,
+    muestra_color: [u8; 4],
+    ctx: &Ctx,
+) {
     let motor = ctx.motor;
     let monitor = pieza.monitor().area;
     let escala = pieza.monitor().escala_por_cien as f32 / 100.0;
@@ -1797,7 +1834,12 @@ fn pintar(pieza: &Pieza, estado: &EstadoOverlay, sesion: &mut Sesion, muestra_co
         if modos_aqui {
             let m = pieza.monitor();
             if v == Vista::Elegir && sesion.contexto.gestos {
-                p2::pintar_pistas(p, l, d2::fila_de_pistas(m.area_trabajo, m.escala_por_cien), t2);
+                p2::pintar_pistas(
+                    p,
+                    l,
+                    d2::fila_de_pistas(m.area_trabajo, m.escala_por_cien),
+                    t2,
+                );
             }
             if v == Vista::Elegir {
                 if let Some(res) = estado.rect_resaltado() {
@@ -1813,7 +1855,8 @@ fn pintar(pieza: &Pieza, estado: &EstadoOverlay, sesion: &mut Sesion, muestra_co
                     } else {
                         &t2.pista_zona
                     };
-                    let ancho = p2::ancho_etiqueta(p, escala, &titulo, (res.ancho, res.alto), pista);
+                    let ancho =
+                        p2::ancho_etiqueta(p, escala, &titulo, (res.ancho, res.alto), pista);
                     let r = d2::etiqueta_de_ventana(res, ancho, m.area, m.escala_por_cien);
                     p2::pintar_etiqueta(p, l, r, &titulo, (res.ancho, res.alto), pista);
                 }
@@ -1832,9 +1875,19 @@ fn pintar(pieza: &Pieza, estado: &EstadoOverlay, sesion: &mut Sesion, muestra_co
             let (a, b, m) = barras_despues(estado, std::slice::from_ref(pieza));
             if m.id == pieza.monitor().id && monitor.interseccion(sel).is_some() {
                 p2::pintar_despues(p, l, &a, &b, sesion, t2, cursor, medidas_ahora);
-                if let (Some(s), Some(es)) = (selector_de(sesion, &b, &m), sesion.selector.as_ref()) {
+                if let (Some(s), Some(es)) = (selector_de(sesion, &b, &m), sesion.selector.as_ref())
+                {
                     let ultimo = crate::captura2::al_chat::ultimo();
-                    p2::pintar_selector(p, l, &s, es, &sesion.proyectos, ultimo.as_deref(), t2, cursor);
+                    p2::pintar_selector(
+                        p,
+                        l,
+                        &s,
+                        es,
+                        &sesion.proyectos,
+                        ultimo.as_deref(),
+                        t2,
+                        cursor,
+                    );
                 }
             }
         }
@@ -1891,7 +1944,12 @@ fn pintar_lupa_vieja(
         ancho: d,
         alto: d,
     };
-    p.bitmap(&pieza.fondo, destino_lupa, Some(a_rectf(fuente_local)), true);
+    p.bitmap(
+        &pieza.fondo,
+        destino_lupa,
+        Some(a_rectf(fuente_local)),
+        true,
+    );
     p.trazar(destino_lupa, 2.0 * escala, Color::ACENTO);
     let cx = destino_lupa.x + d / 2.0;
     let cy = destino_lupa.y + d / 2.0;
@@ -1948,7 +2006,10 @@ mod pruebas {
     fn sin_gesto_o_sin_soltada_conocida_el_overlay_abre_en_exploracion() {
         // Caso negativo: un atajo no reproduce nada aunque haya soltadas.
         let r = Punto { x: 5, y: 5 };
-        assert_eq!(arranque_del_gesto(None, true, Some(r)), ArranqueGesto::Ninguno);
+        assert_eq!(
+            arranque_del_gesto(None, true, Some(r)),
+            ArranqueGesto::Ninguno
+        );
         assert_eq!(
             arranque_del_gesto(Some(Punto { x: 1, y: 1 }), false, None),
             ArranqueGesto::Ninguno

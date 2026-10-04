@@ -115,7 +115,8 @@ fn atributo(atributos: &str, nombre: &str) -> Option<String> {
         desde = i + 1;
         let antes_bien = i == 0 || bajo[..i].ends_with(|c: char| c.is_whitespace());
         let tras = &atributos[i + nombre.len()..];
-        let tras_bien = tras.is_empty() || tras.starts_with(|c: char| c.is_whitespace() || c == '=');
+        let tras_bien =
+            tras.is_empty() || tras.starts_with(|c: char| c.is_whitespace() || c == '=');
         if !antes_bien || !tras_bien {
             continue;
         }
@@ -126,7 +127,10 @@ fn atributo(atributos: &str, nombre: &str) -> Option<String> {
         let valor = valor.trim_start();
         let crudo = match valor.chars().next() {
             Some(q @ ('"' | '\'')) => valor[1..].split(q).next().unwrap_or(""),
-            _ => valor.split(|c: char| c.is_whitespace() || c == '>').next().unwrap_or(""),
+            _ => valor
+                .split(|c: char| c.is_whitespace() || c == '>')
+                .next()
+                .unwrap_or(""),
         };
         return Some(entidades(crudo));
     }
@@ -186,7 +190,9 @@ fn texto_de(html: &str) -> String {
     while i < html.len() {
         if html[i..].starts_with('<') {
             let fin = html[i..].find('>').map_or(html.len(), |k| i + k + 1);
-            if bajo[i..].starts_with("<br") && bajo[i + 3..].starts_with(|c: char| c == '>' || c == '/' || c.is_whitespace()) {
+            if bajo[i..].starts_with("<br")
+                && bajo[i + 3..].starts_with(|c: char| c == '>' || c == '/' || c.is_whitespace())
+            {
                 s.push('\0');
             }
             i = fin;
@@ -223,7 +229,9 @@ fn es_negrita_css(css: &str) -> bool {
     let mut desde = 0;
     while let Some(i) = buscar(&bajo, "font-weight:", desde) {
         let v = bajo[i + 12..].trim_start();
-        if v.starts_with("bold") || (v.len() >= 3 && matches!(&v[..1], "6" | "7" | "8" | "9") && &v[1..3] == "00") {
+        if v.starts_with("bold")
+            || (v.len() >= 3 && matches!(&v[..1], "6" | "7" | "8" | "9") && &v[1..3] == "00")
+        {
             return true;
         }
         desde = i + 1;
@@ -286,11 +294,14 @@ pub fn de_html(html: &str) -> Option<Vec<Vec<Pegada>>> {
                 break;
             };
             let atributos = &dentro[c0 + 3..c1];
-            let fin = [buscar(dentro_bajo, "</td>", c1), buscar(dentro_bajo, "</th>", c1)]
-                .into_iter()
-                .flatten()
-                .min()
-                .unwrap_or(dentro.len());
+            let fin = [
+                buscar(dentro_bajo, "</td>", c1),
+                buscar(dentro_bajo, "</th>", c1),
+            ]
+            .into_iter()
+            .flatten()
+            .min()
+            .unwrap_or(dentro.len());
             let interior = &dentro[c1 + 1..fin];
             k = fin + 1;
             let negrita = atributo(atributos, "style").is_some_and(|s| es_negrita_css(&s))
@@ -300,7 +311,8 @@ pub fn de_html(html: &str) -> Option<Vec<Vec<Pegada>>> {
                 }
                 || es_negrita_css(interior);
             let texto = texto_de(interior);
-            let de_sheets = atributo(atributos, "data-sheets-formula").filter(|f| f.starts_with('='));
+            let de_sheets =
+                atributo(atributos, "data-sheets-formula").filter(|f| f.starts_with('='));
             let de_excel = atributo(atributos, "x:fmla").filter(|f| f.starts_with('='));
             fila.push(if let Some(f) = de_sheets {
                 Pegada {
@@ -329,7 +341,9 @@ pub fn de_html(html: &str) -> Option<Vec<Vec<Pegada>>> {
                     negrita,
                 }
             });
-            let juntas: usize = atributo(atributos, "colspan").and_then(|v| v.parse().ok()).unwrap_or(1);
+            let juntas: usize = atributo(atributos, "colspan")
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(1);
             for _ in 1..juntas.clamp(1, 51) {
                 fila.push(Pegada::default());
             }
@@ -406,11 +420,14 @@ pub fn vista_de_html(html: &str) -> Option<Vec<Vec<Vista>>> {
                 break;
             };
             let atributos = &dentro[c0 + 3..c1];
-            let fin = [buscar(dentro_bajo, "</td>", c1), buscar(dentro_bajo, "</th>", c1)]
-                .into_iter()
-                .flatten()
-                .min()
-                .unwrap_or(dentro.len());
+            let fin = [
+                buscar(dentro_bajo, "</td>", c1),
+                buscar(dentro_bajo, "</th>", c1),
+            ]
+            .into_iter()
+            .flatten()
+            .min()
+            .unwrap_or(dentro.len());
             let interior = &dentro[c1 + 1..fin];
             k = fin + 1;
             // Los huecos que tapa una combinada de arriba van antes.
@@ -501,7 +518,10 @@ fn parte(t: &str, desde: u32) -> Option<(i64, bool)> {
         return Some((desde as i64, false));
     }
     if let Some(dentro) = t.strip_prefix('[').and_then(|x| x.strip_suffix(']')) {
-        return dentro.parse::<i64>().ok().map(|d| (desde as i64 + d, false));
+        return dentro
+            .parse::<i64>()
+            .ok()
+            .map(|d| (desde as i64 + d, false));
     }
     t.parse::<i64>().ok().map(|n| (n - 1, true))
 }
@@ -565,7 +585,8 @@ pub fn r1c1(formula: &str, fila: u32, col: u32) -> String {
                 if !palabra(despues) && despues != '(' {
                     match (parte(&pf, fila), parte(&pc, col)) {
                         (Some((f, ff)), Some((k2, cf)))
-                            if (0..MAX_FILAS as i64).contains(&f) && (0..MAX_COLS as i64).contains(&k2) =>
+                            if (0..MAX_FILAS as i64).contains(&f)
+                                && (0..MAX_COLS as i64).contains(&k2) =>
                         {
                             let dir = ref_a(Ref {
                                 columna: k2 as u32,
@@ -661,10 +682,16 @@ pub fn a_html(
         s.push_str("<tr>");
         for (j, v) in fv.iter().enumerate() {
             s.push_str("<td");
-            let crudo = crudos.get(i).and_then(|f| f.get(j)).map_or("", String::as_str);
+            let crudo = crudos
+                .get(i)
+                .and_then(|f| f.get(j))
+                .map_or("", String::as_str);
             let (f, c) = (fila + i as u32, col + j as u32);
             if Tabla::es_formula(crudo) {
-                s.push_str(&format!(" data-sheets-formula=\"{}\"", escapar(&a_r1c1(crudo, f, c))));
+                s.push_str(&format!(
+                    " data-sheets-formula=\"{}\"",
+                    escapar(&a_r1c1(crudo, f, c))
+                ));
             }
             if negrita(f, c) {
                 s.push_str(" style=\"font-weight:bold\"");
@@ -698,7 +725,11 @@ pub fn pegar(t: &mut Tabla, en: Ref, filas: &[Vec<Pegada>]) -> usize {
                 columna: c as u32,
                 fila: f as u32,
             };
-            let texto = if p.r1c1 { r1c1(&p.texto, r.fila, r.columna) } else { p.texto.clone() };
+            let texto = if p.r1c1 {
+                r1c1(&p.texto, r.fila, r.columna)
+            } else {
+                p.texto.clone()
+            };
             let mut cambio = false;
             if t.celda(r) != texto {
                 t.poner(r, &texto);
@@ -732,14 +763,24 @@ pub fn copiar(t: &Tabla, a: Ref, b: Ref, decimal: char) -> (String, String) {
         let mut vf = Vec::new();
         let mut cf = Vec::new();
         for c in c0..=c1 {
-            let r = Ref { columna: c, fila: f };
+            let r = Ref {
+                columna: c,
+                fila: f,
+            };
             vf.push(formula::evaluar(t, r).mostrar(decimal));
             cf.push(t.celda(r).to_string());
         }
         valores.push(vf);
         crudos.push(cf);
     }
-    let negrita = |f: u32, c: u32| t.estilos.get(&ref_a(Ref { columna: c, fila: f })).is_some_and(|e| e.n);
+    let negrita = |f: u32, c: u32| {
+        t.estilos
+            .get(&ref_a(Ref {
+                columna: c,
+                fila: f,
+            }))
+            .is_some_and(|e| e.n)
+    };
     (a_tsv(&valores), a_html(&valores, &crudos, f0, c0, &negrita))
 }
 
@@ -772,14 +813,20 @@ mod pruebas {
         assert_eq!(v[0][0].texto, "DESCRIPCIÓN");
         // La combinada ocupa tres filas y las dos de debajo la tienen tapada:
         // «687.5» sigue en la columna del monto, no se corre a la izquierda.
-        assert_eq!((v[1][0].texto.as_str(), v[1][0].filas, v[1][0].columnas), ("MENSUALIDAD RUBY", 3, 1));
+        assert_eq!(
+            (v[1][0].texto.as_str(), v[1][0].filas, v[1][0].columnas),
+            ("MENSUALIDAD RUBY", 3, 1)
+        );
         assert!(v[2][0].tapada && v[3][0].tapada);
         assert_eq!(v[2][1].texto, "687.5");
         assert_eq!(v[3][1].texto, "685.4");
         assert_eq!(v[4][0].filas, 2);
         assert!(v[5][0].tapada);
         assert_eq!(v[6][0].texto, "PAPÁ");
-        assert!(!v[6][0].tapada, "tras la combinada, la fila vuelve a ser normal");
+        assert!(
+            !v[6][0].tapada,
+            "tras la combinada, la fila vuelve a ser normal"
+        );
         // Se ve el valor, no la formula, y con su negrita.
         assert_eq!(v[7][1].texto, "2517.34");
         assert!(v[7][1].negrita);
@@ -809,7 +856,10 @@ mod pruebas {
         let filas = leer(None, Some("Pan\t1,50\r\nLeche\t\"3\n litros\"\r\n")).unwrap();
         assert_eq!(filas.len(), 2);
         assert_eq!(filas[0][1].texto, "1,50");
-        assert_eq!(filas[1][1].texto, "3\n litros", "una celda con salto va entre comillas");
+        assert_eq!(
+            filas[1][1].texto, "3\n litros",
+            "una celda con salto va entre comillas"
+        );
         // Casos negativos: nada, o vacio.
         assert!(leer(None, None).is_none());
         assert!(leer(Some("  "), Some("")).is_none());
@@ -824,11 +874,24 @@ mod pruebas {
             <td x:num x:fmla="=SUM(B1:B3)">9</td><td>=no</td><td colspan=2>junta</td><td>a&amp;b&nbsp;c<br>d</td></tr></table><!--EndFragment--></body></html>"#;
         let filas = leer(Some(html), Some("Total\t1.234,57")).unwrap();
         let f = &filas[0];
-        assert_eq!(f[0], Pegada { texto: "Total".into(), r1c1: false, negrita: true });
-        assert_eq!(f[1].texto, "1234.5678", "el numero de verdad, no el redondeado");
+        assert_eq!(
+            f[0],
+            Pegada {
+                texto: "Total".into(),
+                r1c1: false,
+                negrita: true
+            }
+        );
+        assert_eq!(
+            f[1].texto, "1234.5678",
+            "el numero de verdad, no el redondeado"
+        );
         assert_eq!(f[2].texto, "=SUM(B1:B3)");
         assert!(!f[2].r1c1);
-        assert_eq!(f[3].texto, "'=no", "un texto con = delante sigue siendo texto");
+        assert_eq!(
+            f[3].texto, "'=no",
+            "un texto con = delante sigue siendo texto"
+        );
         assert_eq!(f[4].texto, "junta");
         assert_eq!(f[5].texto, "", "la celda combinada ocupa su sitio");
         assert_eq!(f[6].texto, "a&b c\nd");
@@ -851,7 +914,10 @@ mod pruebas {
         assert_eq!(r1c1("=R[-1]C", 0, 0), "=#¡REF!");
         assert_eq!(r1c1("=RC[1]*2", 4, 1), "=C5*2");
         // Lo que va entre comillas y las funciones que empiezan por R no se tocan.
-        assert_eq!(r1c1("=ROUND(RC[-1],2)&\"R1C1\"", 0, 1), "=ROUND(A1,2)&\"R1C1\"");
+        assert_eq!(
+            r1c1("=ROUND(RC[-1],2)&\"R1C1\"", 0, 1),
+            "=ROUND(A1,2)&\"R1C1\""
+        );
     }
 
     #[test]
@@ -859,25 +925,43 @@ mod pruebas {
         let mut t = Tabla::default();
         t.poner(ref_de("A1").unwrap(), "2");
         t.poner(ref_de("A2").unwrap(), "=A1*3");
-        t.estilos.insert("A2".into(), EstiloDeCelda { n: true, ..Default::default() });
+        t.estilos.insert(
+            "A2".into(),
+            EstiloDeCelda {
+                n: true,
+                ..Default::default()
+            },
+        );
         let (tsv, html) = copiar(&t, ref_de("A1").unwrap(), ref_de("A2").unwrap(), '.');
         assert_eq!(tsv, "2\n6");
-        assert!(html.contains("<td data-sheets-formula=\"=R[-1]C[0]*3\" style=\"font-weight:bold\">6</td>"));
+        assert!(html.contains(
+            "<td data-sheets-formula=\"=R[-1]C[0]*3\" style=\"font-weight:bold\">6</td>"
+        ));
         // Y lo copiado vuelve a pegarse igual en otro sitio.
         let filas = de_html(&html).unwrap();
         let mut otra = Tabla::default();
         pegar(&mut otra, ref_de("C3").unwrap(), &filas);
         assert_eq!(otra.celda(ref_de("C4").unwrap()), "=C3*3");
         assert!(otra.estilos["C4"].n);
-        assert!(!otra.estilos.contains_key("C3"), "sin negrita no se guarda un estilo vacio");
+        assert!(
+            !otra.estilos.contains_key("C3"),
+            "sin negrita no se guarda un estilo vacio"
+        );
     }
 
     #[test]
     fn pegar_fuera_de_la_hoja_no_entra_y_pegar_lo_mismo_no_cuenta() {
         let mut t = Tabla::default();
         let filas = vec![vec![Pegada::de("1"), Pegada::de("2")]];
-        let ultima = Ref { columna: MAX_COLS - 1, fila: 0 };
+        let ultima = Ref {
+            columna: MAX_COLS - 1,
+            fila: 0,
+        };
         assert_eq!(pegar(&mut t, ultima, &filas), 1, "la segunda se saldria");
-        assert_eq!(pegar(&mut t, ultima, &filas), 0, "lo mismo otra vez no cambia nada");
+        assert_eq!(
+            pegar(&mut t, ultima, &filas),
+            0,
+            "lo mismo otra vez no cambia nada"
+        );
     }
 }

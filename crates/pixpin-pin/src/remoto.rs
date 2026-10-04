@@ -57,7 +57,11 @@ pub fn punto_en_la_zona(
     if contenido.0 == 0 || contenido.1 == 0 || zona.0 == 0 || zona.1 == 0 {
         return None;
     }
-    let escala = if vista.escala > 0.0 { vista.escala } else { 1.0 };
+    let escala = if vista.escala > 0.0 {
+        vista.escala
+    } else {
+        1.0
+    };
     // Primero se deshace la vista interior, luego el tamano del pin.
     let x = (p.0 - vista.dx) / escala * zona.0 as f32 / contenido.0 as f32;
     let y = (p.1 - vista.dy) / escala * zona.1 as f32 / contenido.1 as f32;
@@ -132,8 +136,14 @@ mod pruebas {
 
     #[test]
     fn con_medidas_a_cero_no_hay_division_ni_clic() {
-        assert_eq!(punto_en_la_zona((1.0, 1.0), (0, 300), Vista::NEUTRA, (400, 300)), None);
-        assert_eq!(punto_en_la_zona((1.0, 1.0), (400, 300), Vista::NEUTRA, (400, 0)), None);
+        assert_eq!(
+            punto_en_la_zona((1.0, 1.0), (0, 300), Vista::NEUTRA, (400, 300)),
+            None
+        );
+        assert_eq!(
+            punto_en_la_zona((1.0, 1.0), (400, 300), Vista::NEUTRA, (400, 0)),
+            None
+        );
         // Una vista con escala cero (no deberia existir) se toma por neutra.
         let rota = Vista {
             escala: 0.0,

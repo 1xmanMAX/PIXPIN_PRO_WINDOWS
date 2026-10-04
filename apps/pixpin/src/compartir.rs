@@ -105,7 +105,11 @@ pub(crate) const SVG: &str = "svg";
 pub(crate) enum FuenteImagen {
     Cargada(Arc<ImagenRgba>),
     Fichero(PathBuf),
-    PaginaPdf { pdf: PathBuf, pagina: u32, ancho: u32 },
+    PaginaPdf {
+        pdf: PathBuf,
+        pagina: u32,
+        ancho: u32,
+    },
 }
 
 /// Una pagina de lo que se comparte: la fila de la hoja y lo que se pinta.
@@ -196,7 +200,12 @@ impl Preparado {
     /// Cambia los ids de las imagenes de `hoja` a los de aqui, con `fuente`
     /// diciendo de donde sale cada id de antes. Una imagen sin fuente se
     /// quita: pintaria un hueco.
-    fn traducir(&mut self, hoja: &mut Hoja, ids: &mut HashMap<u64, u64>, fuente: &dyn Fn(u64) -> Option<FuenteImagen>) {
+    fn traducir(
+        &mut self,
+        hoja: &mut Hoja,
+        ids: &mut HashMap<u64, u64>,
+        fuente: &dyn Fn(u64) -> Option<FuenteImagen>,
+    ) {
         hoja.ordenes.retain_mut(|o| {
             let Orden::Imagen { id_objeto, .. } = o else {
                 return true;
@@ -261,7 +270,12 @@ fn a_rgba(c: pixpin_render::Color) -> ColorRgba {
     }
 }
 
-fn pagina(clave: impl Into<String>, nombre: impl Into<String>, detalle: impl Into<String>, nivel: u8) -> Pagina {
+fn pagina(
+    clave: impl Into<String>,
+    nombre: impl Into<String>,
+    detalle: impl Into<String>,
+    nivel: u8,
+) -> Pagina {
     Pagina {
         clave: clave.into(),
         nombre: nombre.into(),
@@ -303,7 +317,9 @@ fn de_lienzo_suelto(l: LienzoSuelto, t: &Catalogo) -> Preparado {
     } else {
         l.nombre.clone()
     });
-    let papel = l.papel.map(|(img, w, h)| (FuenteImagen::Cargada(Arc::new(img)), w, h));
+    let papel = l
+        .papel
+        .map(|(img, w, h)| (FuenteImagen::Cargada(Arc::new(img)), w, h));
     let fotos: HashMap<u64, Arc<ImagenRgba>> =
         l.fotos.into_iter().map(|(k, v)| (k, Arc::new(v))).collect();
     let fuente = |id: u64| fotos.get(&id).cloned().map(FuenteImagen::Cargada);
@@ -339,7 +355,10 @@ fn tapar_para_compartir(
     papel: Option<&(FuenteImagen, f32, f32)>,
     fotos: &dyn Fn(u64) -> Option<FuenteImagen>,
 ) -> Option<(Escena, HashMap<u64, Arc<ImagenRgba>>)> {
-    if !escena.visibles().any(|e| pixpin_motor2d::mosaico::tapado_de(e).is_some()) {
+    if !escena
+        .visibles()
+        .any(|e| pixpin_motor2d::mosaico::tapado_de(e).is_some())
+    {
         return None;
     }
     // Lo de debajo hay que pintarlo, asi que se leen el papel y las fotos.
@@ -358,8 +377,10 @@ fn tapar_para_compartir(
         fuentes: &fuentes,
         pdfs: Default::default(),
     };
-    let leidas: HashMap<u64, Arc<ImagenRgba>> =
-        fuentes.keys().filter_map(|id| lector.leer(*id).map(|i| (*id, i))).collect();
+    let leidas: HashMap<u64, Arc<ImagenRgba>> = fuentes
+        .keys()
+        .filter_map(|id| lector.leer(*id).map(|i| (*id, i)))
+        .collect();
     let de_fotos = |id: u64| leidas.get(&id).map(|i| i.as_ref());
     let lienzo = crate::ventana_editor::exportar::Lienzo {
         escena,
@@ -369,7 +390,11 @@ fn tapar_para_compartir(
         nombre: String::new(),
     };
     let t = crate::ventana_editor::exportar::tapado::tapar(&lienzo)?;
-    let imagenes = t.imagenes.into_iter().map(|(id, i)| (id, Arc::new(i))).collect();
+    let imagenes = t
+        .imagenes
+        .into_iter()
+        .map(|(id, i)| (id, Arc::new(i)))
+        .collect();
     Some((t.escena, imagenes))
 }
 
@@ -403,7 +428,10 @@ fn anadir_lienzo(
         }
     };
     let mut ids = HashMap::new();
-    let Some(mut entero) = ex::hojas(escena, Alcance::Todo, &[], tam_papel).into_iter().next() else {
+    let Some(mut entero) = ex::hojas(escena, Alcance::Todo, &[], tam_papel)
+        .into_iter()
+        .next()
+    else {
         return false;
     };
     p.traducir(&mut entero, &mut ids, &fuente);
@@ -445,7 +473,12 @@ fn anadir_lienzo(
             h.nombre.clone()
         };
         let k = format!("{clave}|marco-{}", i + 1);
-        p.pieza(pagina(&k, nombre, t.t("compartir-marco"), 1), h, BLANCO, false);
+        p.pieza(
+            pagina(&k, nombre, t.t("compartir-marco"), 1),
+            h,
+            BLANCO,
+            false,
+        );
         p.marcar(&k);
     }
     true
@@ -462,7 +495,10 @@ fn ruta_de(raiz: &Path, proyecto: &str, m: &Mensaje) -> Option<PathBuf> {
 /// mensaje cuyo adjunto no llego a este equipo: al panel de Windows solo se
 /// le pueden dar ficheros que existen.
 pub(crate) fn originales(raiz: &Path, proyecto: &str, mensajes: &[Mensaje]) -> Vec<PathBuf> {
-    mensajes.iter().filter_map(|m| ruta_de(raiz, proyecto, m)).collect()
+    mensajes
+        .iter()
+        .filter_map(|m| ruta_de(raiz, proyecto, m))
+        .collect()
 }
 
 /// Lo dibujado sobre una foto: a su lado, con `.pixpin2d` detras (D48).
@@ -498,7 +534,11 @@ fn papel_de_pagina(raiz: &Path, proyecto: &str, pagina: u32) -> Option<(FuenteIm
 
 /// El lienzo de una hoja del proyecto (`lienzos/<id>.excalidraw`) con sus
 /// fotos, o `None` si no se puede leer.
-fn lienzo_de_hoja(raiz: &Path, proyecto: &str, id: &str) -> Option<(Escena, HashMap<u64, PathBuf>)> {
+fn lienzo_de_hoja(
+    raiz: &Path,
+    proyecto: &str,
+    id: &str,
+) -> Option<(Escena, HashMap<u64, PathBuf>)> {
     let ruta = pixpin_proyecto::almacen::lienzo(raiz, proyecto, id);
     let texto = std::fs::read_to_string(&ruta)
         .inspect_err(|e| tracing::warn!(?e, ruta = %ruta.display(), "lienzo que no se pudo leer para compartir"))
@@ -506,7 +546,9 @@ fn lienzo_de_hoja(raiz: &Path, proyecto: &str, id: &str) -> Option<(Escena, Hash
     let lienzo = pixpin_motor2d::excalidraw::leer(&texto).ok()?;
     let fotos = pixpin_motor2d::excalidraw::ficheros(&lienzo)
         .into_iter()
-        .filter_map(|(id, rel)| Some((id, pixpin_proyecto::vista::ruta_real(raiz, proyecto, &rel)?)))
+        .filter_map(|(id, rel)| {
+            Some((id, pixpin_proyecto::vista::ruta_real(raiz, proyecto, &rel)?))
+        })
         .collect();
     Some((pixpin_motor2d::excalidraw::a_escena(&lienzo), fotos))
 }
@@ -540,7 +582,14 @@ fn nombre_de(m: &Mensaje, t: &Catalogo) -> String {
 }
 
 /// **Las paginas de un mensaje**, segun lo que sea. Devuelve si puso alguna.
-fn anadir_mensaje(p: &mut Preparado, raiz: &Path, proyecto: &str, m: &Mensaje, solo: bool, t: &Catalogo) -> bool {
+fn anadir_mensaje(
+    p: &mut Preparado,
+    raiz: &Path,
+    proyecto: &str,
+    m: &Mensaje,
+    solo: bool,
+    t: &Catalogo,
+) -> bool {
     let clave = m.id.clone();
     let nombre = nombre_de(m, t);
     match m.clase.as_ref() {
@@ -590,9 +639,18 @@ fn anadir_mensaje(p: &mut Preparado, raiz: &Path, proyecto: &str, m: &Mensaje, s
                 return false;
             };
             // Con lo dibujado encima en el chat o en el editor, si lo hay.
-            let escena = pixpin_motor2d::cargar(&dibujo_de_foto(&foto)).unwrap_or_else(|_| Escena::nueva());
+            let escena =
+                pixpin_motor2d::cargar(&dibujo_de_foto(&foto)).unwrap_or_else(|_| Escena::nueva());
             let papel = Some((FuenteImagen::Fichero(foto), w as f32, h as f32));
-            let puesto = anadir_lienzo(p, &clave, &t.t("compartir-tipo-foto"), &escena, papel, &|_| None, t);
+            let puesto = anadir_lienzo(
+                p,
+                &clave,
+                &t.t("compartir-tipo-foto"),
+                &escena,
+                papel,
+                &|_| None,
+                t,
+            );
             if let Some(pieza) = p.piezas.iter_mut().find(|x| x.pagina.clave == clave) {
                 pieza.pagina.nombre = pixpin_docs::sin_extension(&nombre);
             }
@@ -610,7 +668,12 @@ fn anadir_mensaje(p: &mut Preparado, raiz: &Path, proyecto: &str, m: &Mensaje, s
                 let Some(hoja) = hoja_de_tabla(&tabla) else {
                     return false;
                 };
-                p.pieza(pagina(&clave, titulo, t.t("compartir-tipo-tabla"), 0), hoja, BLANCO, false);
+                p.pieza(
+                    pagina(&clave, titulo, t.t("compartir-tipo-tabla"), 0),
+                    hoja,
+                    BLANCO,
+                    false,
+                );
                 p.tablas.insert(clave.clone(), tabla.clone());
                 p.marcar(&clave);
                 if solo {
@@ -627,7 +690,16 @@ fn anadir_mensaje(p: &mut Preparado, raiz: &Path, proyecto: &str, m: &Mensaje, s
             }
             let texto = texto_de_miniapp(&m.texto);
             let titulo = pixpin_proyecto::mini::titulo(&m.texto);
-            anadir_texto(p, &clave, &nombre, &t.t("compartir-tipo-miniapp"), Some(&titulo).filter(|s| !s.is_empty()).map(String::as_str), &texto, solo, t)
+            anadir_texto(
+                p,
+                &clave,
+                &nombre,
+                &t.t("compartir-tipo-miniapp"),
+                Some(&titulo).filter(|s| !s.is_empty()).map(String::as_str),
+                &texto,
+                solo,
+                t,
+            )
         }
         Some(Clase::Archivo) => {
             let Some(ruta) = ruta_de(raiz, proyecto, m) else {
@@ -641,18 +713,37 @@ fn anadir_mensaje(p: &mut Preparado, raiz: &Path, proyecto: &str, m: &Mensaje, s
         Some(Clase::Voz) => {
             let texto = m.transcripcion.as_deref().unwrap_or("").trim().to_string();
             !texto.is_empty()
-                && anadir_texto(p, &clave, &nombre, &t.t("compartir-tipo-voz"), None, &texto, solo, t)
+                && anadir_texto(
+                    p,
+                    &clave,
+                    &nombre,
+                    &t.t("compartir-tipo-voz"),
+                    None,
+                    &texto,
+                    solo,
+                    t,
+                )
         }
         Some(Clase::Proyecto) => false,
         Some(Clase::Nota) | Some(Clase::Otra(_)) | None => {
             let texto = m.resumen();
             let puesta = !texto.trim().is_empty()
-                && anadir_texto(p, &clave, &nombre, &t.t("compartir-tipo-nota"), None, &texto, solo, t);
+                && anadir_texto(
+                    p,
+                    &clave,
+                    &nombre,
+                    &t.t("compartir-tipo-nota"),
+                    None,
+                    &texto,
+                    solo,
+                    t,
+                );
             // Una nota Markdown sola tambien sale como Word (`word`).
             if puesta
                 && solo
                 && word::es_nota(m)
-                && let Some((bytes, fichero)) = word::de_nota(raiz, proyecto, m, &t.t("nota-md-nueva"))
+                && let Some((bytes, fichero)) =
+                    word::de_nota(raiz, proyecto, m, &t.t("nota-md-nueva"))
             {
                 p.extras.push(Extra {
                     id: "word",
@@ -665,10 +756,20 @@ fn anadir_mensaje(p: &mut Preparado, raiz: &Path, proyecto: &str, m: &Mensaje, s
     }
 }
 
-fn de_mensajes(raiz: &Path, proyecto: &str, titulo: &str, mensajes: &[Mensaje], t: &Catalogo) -> Preparado {
+fn de_mensajes(
+    raiz: &Path,
+    proyecto: &str,
+    titulo: &str,
+    mensajes: &[Mensaje],
+    t: &Catalogo,
+) -> Preparado {
     let solo = mensajes.len() == 1;
     let titulo = match mensajes {
-        [m] if matches!(m.clase, Some(Clase::Imagen) | Some(Clase::Archivo) | Some(Clase::Voz)) => {
+        [m] if matches!(
+            m.clase,
+            Some(Clase::Imagen) | Some(Clase::Archivo) | Some(Clase::Voz)
+        ) =>
+        {
             pixpin_docs::sin_extension(&nombre_de(m, t))
         }
         [m] => nombre_de(m, t),
@@ -690,9 +791,12 @@ fn de_mensajes(raiz: &Path, proyecto: &str, titulo: &str, mensajes: &[Mensaje], 
     // Una foto o un fichero solos: lo que se suele querer es mandarlos tal
     // cual.
     p.original_primero = solo
-        && mensajes
-            .iter()
-            .any(|m| matches!(m.clase, Some(Clase::Imagen) | Some(Clase::Archivo) | Some(Clase::Voz)));
+        && mensajes.iter().any(|m| {
+            matches!(
+                m.clase,
+                Some(Clase::Imagen) | Some(Clase::Archivo) | Some(Clase::Voz)
+            )
+        });
     p
 }
 
@@ -704,7 +808,11 @@ fn de_proyectos(raiz: &Path, ids: &[String], t: &Catalogo) -> Result<Preparado> 
     let indice = pixpin_proyecto::almacen::Indice::leer(raiz);
     let fichas: Vec<_> = ids.iter().filter_map(|id| indice.buscar(id)).collect();
     anyhow::ensure!(!fichas.is_empty(), "esos proyectos no estan");
-    let titulo = fichas.iter().map(|f| f.nombre.as_str()).collect::<Vec<_>>().join(" + ");
+    let titulo = fichas
+        .iter()
+        .map(|f| f.nombre.as_str())
+        .collect::<Vec<_>>()
+        .join(" + ");
     let mut p = Preparado::nuevo(titulo);
     let varios = fichas.len() > 1;
     let mut paquetes = Vec::new();
@@ -716,7 +824,9 @@ fn de_proyectos(raiz: &Path, ids: &[String], t: &Catalogo) -> Result<Preparado> 
         // Las hojas que solo se ensenan (las paginas del PDF sin dibujo)
         // tambien son del proyecto: el chat las pone igual.
         let aparato = ficha.aparato.clone().unwrap_or_default();
-        mensajes.extend(pixpin_proyecto::almacen::hojas_para_ensenar(raiz, &ficha.id, &aparato));
+        mensajes.extend(pixpin_proyecto::almacen::hojas_para_ensenar(
+            raiz, &ficha.id, &aparato,
+        ));
         mensajes.sort_by_key(|m| m.cuando);
         let desde = p.piezas.len();
         for m in &mensajes {
@@ -825,7 +935,10 @@ pub(crate) fn hojas_de_texto(titulo: Option<&str>, texto: &str) -> Vec<Hoja> {
     for (l, tam, color) in lineas {
         let alto = tam * ex::INTERLINEA;
         if y + alto > ALTO_A4 - MARGEN_A4 && !ordenes.is_empty() {
-            hojas.push(hoja_en_blanco((0.0, 0.0, ANCHO_A4, ALTO_A4), std::mem::take(&mut ordenes)));
+            hojas.push(hoja_en_blanco(
+                (0.0, 0.0, ANCHO_A4, ALTO_A4),
+                std::mem::take(&mut ordenes),
+            ));
             y = MARGEN_A4;
         }
         if !l.trim().is_empty() {
@@ -863,7 +976,12 @@ fn anadir_texto(
                 1,
             )
         };
-        p.pieza(pagina(&k, n, if i == 0 { detalle } else { "" }, nivel), h, BLANCO, false);
+        p.pieza(
+            pagina(&k, n, if i == 0 { detalle } else { "" }, nivel),
+            h,
+            BLANCO,
+            false,
+        );
         p.marcar(&k);
     }
     if solo {
@@ -890,7 +1008,10 @@ fn texto_de_miniapp(documento: &str) -> String {
         .lines()
         .map(|l| {
             let s = l.trim_start();
-            if let Some(r) = s.strip_prefix("- [x] ").or_else(|| s.strip_prefix("- [X] ")) {
+            if let Some(r) = s
+                .strip_prefix("- [x] ")
+                .or_else(|| s.strip_prefix("- [X] "))
+            {
                 format!("☑ {r}")
             } else if let Some(r) = s.strip_prefix("- [ ] ") {
                 format!("☐ {r}")
@@ -913,9 +1034,12 @@ const LETRA_TABLA: f32 = 12.0;
 fn anchos_de(tabla: &pixpin_proyecto::tabla::Tabla, columnas: u32) -> Vec<f32> {
     (0..columnas)
         .map(|c| {
-            let letra = pixpin_proyecto::tabla::ref_a(pixpin_proyecto::tabla::Ref { columna: c, fila: 0 })
-                .trim_end_matches(|ch: char| ch.is_ascii_digit())
-                .to_string();
+            let letra = pixpin_proyecto::tabla::ref_a(pixpin_proyecto::tabla::Ref {
+                columna: c,
+                fila: 0,
+            })
+            .trim_end_matches(|ch: char| ch.is_ascii_digit())
+            .to_string();
             tabla
                 .anchos
                 .get(&letra)
@@ -973,32 +1097,60 @@ pub(crate) fn hoja_de_tabla(tabla: &pixpin_proyecto::tabla::Tabla) -> Option<Hoj
     let arriba = (ALTO_FILA_TABLA - LETRA_TABLA * ex::INTERLINEA) / 2.0;
     // Las letras de las columnas y los numeros de las filas.
     for (c, x0) in xs.iter().enumerate() {
-        let letra = pixpin_proyecto::tabla::ref_a(pixpin_proyecto::tabla::Ref { columna: c as u32, fila: 0 })
-            .trim_end_matches(|ch: char| ch.is_ascii_digit())
-            .to_string();
-        ordenes.push(texto_orden(letra, x0 + 6.0, arriba, LETRA_TABLA, TINTA_SUAVE, anchos[c] - 8.0));
+        let letra = pixpin_proyecto::tabla::ref_a(pixpin_proyecto::tabla::Ref {
+            columna: c as u32,
+            fila: 0,
+        })
+        .trim_end_matches(|ch: char| ch.is_ascii_digit())
+        .to_string();
+        ordenes.push(texto_orden(
+            letra,
+            x0 + 6.0,
+            arriba,
+            LETRA_TABLA,
+            TINTA_SUAVE,
+            anchos[c] - 8.0,
+        ));
     }
     for f in 0..filas {
         let y = (f as f32 + 1.0) * ALTO_FILA_TABLA + arriba;
-        ordenes.push(texto_orden((f + 1).to_string(), 6.0, y, LETRA_TABLA, TINTA_SUAVE, ANCHO_CABECERA - 8.0));
+        ordenes.push(texto_orden(
+            (f + 1).to_string(),
+            6.0,
+            y,
+            LETRA_TABLA,
+            TINTA_SUAVE,
+            ANCHO_CABECERA - 8.0,
+        ));
     }
     for (clave, valor) in &valores {
         let Some(r) = pixpin_proyecto::tabla::ref_de(clave) else {
             continue;
         };
-        let (Some(x0), Some(w)) = (xs.get(r.columna as usize), anchos.get(r.columna as usize)) else {
+        let (Some(x0), Some(w)) = (xs.get(r.columna as usize), anchos.get(r.columna as usize))
+        else {
             continue;
         };
         let texto = valor.mostrar(decimal);
         // Una linea por celda, como en la pantalla: lo que no cabe se corta.
-        let Some(linea) = ex::partir_texto(&texto, LETRA_TABLA, w - 8.0).into_iter().next() else {
+        let Some(linea) = ex::partir_texto(&texto, LETRA_TABLA, w - 8.0)
+            .into_iter()
+            .next()
+        else {
             continue;
         };
         if linea.is_empty() {
             continue;
         }
         let y = (r.fila as f32 + 1.0) * ALTO_FILA_TABLA + arriba;
-        ordenes.push(texto_orden(linea, x0 + 4.0, y, LETRA_TABLA, TINTA_TEXTO, w - 8.0));
+        ordenes.push(texto_orden(
+            linea,
+            x0 + 4.0,
+            y,
+            LETRA_TABLA,
+            TINTA_TEXTO,
+            w - 8.0,
+        ));
     }
     let m = ex::MARGEN;
     Some(hoja_en_blanco((-m, -m, total_x + m, total_y + m), ordenes))
@@ -1016,8 +1168,14 @@ pub(crate) fn csv_de(tabla: &pixpin_proyecto::tabla::Tabla) -> String {
     for f in 0..filas {
         let fila: Vec<String> = (0..columnas)
             .map(|c| {
-                let clave = pixpin_proyecto::tabla::ref_a(pixpin_proyecto::tabla::Ref { columna: c, fila: f });
-                let v = valores.get(&clave).map(|v| v.mostrar(decimal)).unwrap_or_default();
+                let clave = pixpin_proyecto::tabla::ref_a(pixpin_proyecto::tabla::Ref {
+                    columna: c,
+                    fila: f,
+                });
+                let v = valores
+                    .get(&clave)
+                    .map(|v| v.mostrar(decimal))
+                    .unwrap_or_default();
                 if v.contains([';', '"', '\n', '\r']) {
                     format!("\"{}\"", v.replace('"', "\"\""))
                 } else {
@@ -1096,12 +1254,18 @@ fn anadir_pdf(p: &mut Preparado, ruta: &Path, clave: &str, t: &Catalogo) -> bool
     for i in 0..hojas.cuantas() {
         let capa = donde.para_leer(ruta, i);
         let tinta = capa.is_file().then(|| {
-            pixpin_motor2d::pintado::ordenes_de_escena(&donde.leer_capa(ruta, i, ajustes.espacios, hojas.altos[i]).escena)
+            pixpin_motor2d::pintado::ordenes_de_escena(
+                &donde
+                    .leer_capa(ruta, i, ajustes.espacios, hojas.altos[i])
+                    .escena,
+            )
         });
         if tinta.as_ref().is_some_and(|v| !v.is_empty()) {
             anotadas += 1;
         }
-        let Some(mut h) = crate::lector_pdf::hoja_anotada(i, &hojas.altos, tinta.as_deref(), espacios) else {
+        let Some(mut h) =
+            crate::lector_pdf::hoja_anotada(i, &hojas.altos, tinta.as_deref(), espacios)
+        else {
             continue;
         };
         let fuente = |id: u64| {
@@ -1119,7 +1283,12 @@ fn anadir_pdf(p: &mut Preparado, ruta: &Path, clave: &str, t: &Catalogo) -> bool
             String::new()
         };
         p.pieza(
-            pagina(&k, format!("{} {}", t.t("compartir-pagina"), i + 1), detalle, 0),
+            pagina(
+                &k,
+                format!("{} {}", t.t("compartir-pagina"), i + 1),
+                detalle,
+                0,
+            ),
             h,
             BLANCO,
             false,
@@ -1152,12 +1321,19 @@ fn anadir_texto_leido(p: &mut Preparado, ruta: &Path, clave: &str, t: &Catalogo)
     } else {
         COLUMNA_SIN_ANOTAR
     };
-    let dispositivo = pixpin_capture::Dispositivo::nuevo().context("sin dispositivo para medir el texto")?;
-    let motor = pixpin_render::MotorRender::nuevo(dispositivo.d3d()).context("sin motor para medir el texto")?;
-    let mide = |texto: &str, tam: f32, ancho: f32, tramos: &[pixpin_render::Tramo], letra: &crate::visor::Letra| {
+    let dispositivo =
+        pixpin_capture::Dispositivo::nuevo().context("sin dispositivo para medir el texto")?;
+    let motor = pixpin_render::MotorRender::nuevo(dispositivo.d3d())
+        .context("sin motor para medir el texto")?;
+    let mide = |texto: &str,
+                tam: f32,
+                ancho: f32,
+                tramos: &[pixpin_render::Tramo],
+                letra: &crate::visor::Letra| {
         motor.medir_de_lectura(texto, tam, ancho, tramos, &letra.para_pintar())
     };
-    let (colocados, alto_doc) = crate::visor::colocar(&doc, &ajustes, columna, crate::visor::Hoja::de(ruta), &mide);
+    let (colocados, alto_doc) =
+        crate::visor::colocar(&doc, &ajustes, columna, crate::visor::Hoja::de(ruta), &mide);
     let margen = if fijada || !tinta.is_empty() {
         pixpin_docs::vista::margen_de(columna)
     } else {
@@ -1223,7 +1399,10 @@ fn anadir_texto_leido(p: &mut Preparado, ruta: &Path, clave: &str, t: &Catalogo)
     while arriba + alto_pagina < fin {
         let tope = arriba + alto_pagina;
         let mut corte = tope;
-        if let Some((y0, _, renglon)) = renglones.iter().find(|(y0, y1, _)| *y1 > tope && *y0 < tope) {
+        if let Some((y0, _, renglon)) = renglones
+            .iter()
+            .find(|(y0, y1, _)| *y1 > tope && *y0 < tope)
+        {
             corte = if *y0 > arriba + 1.0 {
                 // El bloque que no cabe empieza en la pagina que viene.
                 *y0
@@ -1459,7 +1638,12 @@ fn imagen_de(pieza: &Pieza, lector: &Lector<'_>) -> Result<ImagenRgba> {
         fotos: &fotos,
         nombre: String::new(),
     };
-    crate::ventana_editor::exportar::a_imagen(&pieza.hoja, escala_de(&pieza.hoja), Some(pieza.fondo), &lienzo)
+    crate::ventana_editor::exportar::a_imagen(
+        &pieza.hoja,
+        escala_de(&pieza.hoja),
+        Some(pieza.fondo),
+        &lienzo,
+    )
 }
 
 /// El lado mas largo de una imagen compartida, en pixeles: una pagina de PDF
@@ -1498,8 +1682,14 @@ fn nombre_de_pagina(p: &Preparado, pieza: &Pieza) -> String {
 /// `carpeta`. Es lo que la hoja manda hacer en segundo plano para decir
 /// cuanto pesa, y ese mismo fichero es el que luego se comparte: no se hace
 /// dos veces.
-pub(crate) fn generar(p: &Preparado, formato: &str, claves: &[String], carpeta: &Path) -> Result<Salida> {
-    std::fs::create_dir_all(carpeta).with_context(|| format!("no se pudo crear {}", carpeta.display()))?;
+pub(crate) fn generar(
+    p: &Preparado,
+    formato: &str,
+    claves: &[String],
+    carpeta: &Path,
+) -> Result<Salida> {
+    std::fs::create_dir_all(carpeta)
+        .with_context(|| format!("no se pudo crear {}", carpeta.display()))?;
     let lector = Lector {
         fuentes: &p.imagenes,
         pdfs: Default::default(),
@@ -1507,9 +1697,15 @@ pub(crate) fn generar(p: &Preparado, formato: &str, claves: &[String], carpeta: 
     let piezas: Vec<&Pieza> = claves.iter().filter_map(|k| p.pieza_de(k)).collect();
     let base = nombre_de_fichero(&p.titulo);
     let mut imagen = None;
-    let documento = if matches!(formato, WEB | WEB_IMAGEN | PDF | PDF_LIMPIO) { documento_elegido(p, claves) } else { None };
+    let documento = if matches!(formato, WEB | WEB_IMAGEN | PDF | PDF_LIMPIO) {
+        documento_elegido(p, claves)
+    } else {
+        None
+    };
     let ficheros = match formato {
-        WEB | WEB_IMAGEN | PDF | PDF_LIMPIO if piezas.is_empty() => anyhow::bail!("no hay paginas marcadas"),
+        WEB | WEB_IMAGEN | PDF | PDF_LIMPIO if piezas.is_empty() => {
+            anyhow::bail!("no hay paginas marcadas")
+        }
         // Un PDF que se lee: el original con lo anotado encima en vectores
         // (o limpio), no fotos de sus hojas. Si no se deja (cifrado), como
         // antes: pintado, que mejor pesado que nada.
@@ -1629,9 +1825,12 @@ pub(crate) fn generar(p: &Preparado, formato: &str, claves: &[String], carpeta: 
                 Entero::Proyectos(paquetes) => {
                     let mut v = Vec::with_capacity(paquetes.len());
                     for (raiz, id, fichero) in paquetes {
-                        let bytes =
-                            pixpin_proyecto::almacen::empaquetar(raiz, id, pixpin_shell::entorno::ahora_utc_ms())
-                                .context("no se pudo empaquetar el proyecto")?;
+                        let bytes = pixpin_proyecto::almacen::empaquetar(
+                            raiz,
+                            id,
+                            pixpin_shell::entorno::ahora_utc_ms(),
+                        )
+                        .context("no se pudo empaquetar el proyecto")?;
                         let ruta = carpeta.join(fichero);
                         escribir(&ruta, &bytes)?;
                         v.push(ruta);

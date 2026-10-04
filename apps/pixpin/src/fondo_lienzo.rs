@@ -421,7 +421,10 @@ impl FondoLienzo {
             .name("fondo-pdf".into())
             .spawn(move || hilo_del_pdf(p, c, tx));
         if let Err(e) = lanzado {
-            tracing::warn!(?e, "sin hilo para la pagina del PDF; se queda la vista previa");
+            tracing::warn!(
+                ?e,
+                "sin hilo para la pagina del PDF; se queda la vista previa"
+            );
         }
         Self {
             ancho,
@@ -697,7 +700,12 @@ impl FondoLienzo {
     /// ([`FondoLienzo::pedir_tambien`]): con `para_escala` el pedido de la
     /// lupa y el de la pantalla se pisaban en cada fotograma y ninguno
     /// llegaba a afinarse. Devuelve cuantas faltan.
-    pub fn pintar_en_lupa(&self, p: &Pintor<'_>, vista: (f32, f32, f32, f32), escala: f32) -> usize {
+    pub fn pintar_en_lupa(
+        &self,
+        p: &Pintor<'_>,
+        vista: (f32, f32, f32, f32),
+        escala: f32,
+    ) -> usize {
         if !se_ve(vista, self.ancho, self.alto) {
             return 0;
         }
@@ -802,7 +810,10 @@ fn reducir(imagen: ImagenRgba, lado_maximo: u32) -> ImagenRgba {
                 "imagen del lienzo reducida para la GPU"
             );
             pixpin_codec::redimensionar(imagen, w, h).unwrap_or_else(|e| {
-                tracing::warn!(?e, "no se pudo reducir la imagen del lienzo; sale sin fondo");
+                tracing::warn!(
+                    ?e,
+                    "no se pudo reducir la imagen del lienzo; sale sin fondo"
+                );
                 ImagenRgba {
                     ancho: 0,
                     alto: 0,
@@ -836,11 +847,14 @@ fn hilo_del_pdf(p: PaginaPdf, c: Arc<Compartido>, tx: mpsc::Sender<Llegada>) {
     // documento este roto** (E7, `paginaSana` del movil): se rehace desde la
     // copia limpia del proyecto y se vuelve a intentar una vez; si ni asi, se
     // pinta la copia. El fondo no desaparece mientras exista.
-    let abrir_y_pintar = |ruta: &std::path::Path| -> Result<(pixpin_pdf::Documento, ImagenRgba), String> {
-        let d = pixpin_pdf::Documento::abrir(ruta).map_err(|e| e.to_string())?;
-        let img = d.renderizar(pagina, ANCHO_PAPEL_PDF as u32).map_err(|e| e.to_string())?;
-        Ok((d, img))
-    };
+    let abrir_y_pintar =
+        |ruta: &std::path::Path| -> Result<(pixpin_pdf::Documento, ImagenRgba), String> {
+            let d = pixpin_pdf::Documento::abrir(ruta).map_err(|e| e.to_string())?;
+            let img = d
+                .renderizar(pagina, ANCHO_PAPEL_PDF as u32)
+                .map_err(|e| e.to_string())?;
+            Ok((d, img))
+        };
     let (doc, img) = match abrir_y_pintar(&pdf) {
         Ok(v) => v,
         Err(e) => {
@@ -959,9 +973,16 @@ mod pruebas {
         assert!(c.zoom < 1.0);
         let a = c.a_pantalla(Punto2::nuevo(x0, y0));
         let b = c.a_pantalla(Punto2::nuevo(x1, y1));
-        assert!(a.x >= 0.0 && a.y >= 0.0 && b.x <= 1920.0 && b.y <= 1080.0, "{a:?} {b:?}");
+        assert!(
+            a.x >= 0.0 && a.y >= 0.0 && b.x <= 1920.0 && b.y <= 1080.0,
+            "{a:?} {b:?}"
+        );
         // Un punto solo (caja sin ancho) no divide por cero.
-        assert!(encuadre_de_contenido((5.0, 5.0, 5.0, 5.0), 1920.0, 1080.0, 100).zoom.is_finite());
+        assert!(
+            encuadre_de_contenido((5.0, 5.0, 5.0, 5.0), 1920.0, 1080.0, 100)
+                .zoom
+                .is_finite()
+        );
     }
 
     #[test]
@@ -1047,11 +1068,18 @@ mod pruebas {
             assert!(x1 >= vista.0 && x0 <= vista.2 && y1 >= vista.1 && y0 <= vista.3);
         }
         let primera = caja_de_tesela(v[0], ancho, alto).unwrap();
-        assert!(primera.0 <= 428.0 && primera.2 >= 428.0, "la del centro va primera");
+        assert!(
+            primera.0 <= 428.0 && primera.2 >= 428.0,
+            "la del centro va primera"
+        );
         // Casos negativos: a zoom 1 basta la pagina entera; fuera del papel,
         // nada; y la ultima columna se recorta al papel, no se sale.
         assert!(teselas_para(1.0, vista, ancho, alto).1.is_empty());
-        assert!(teselas_para(8.0, (-900.0, -900.0, -10.0, -10.0), ancho, alto).1.is_empty());
+        assert!(
+            teselas_para(8.0, (-900.0, -900.0, -10.0, -10.0), ancho, alto)
+                .1
+                .is_empty()
+        );
         let (_, borde) = teselas_para(4.0, (1350.0, 0.0, 1400.0, 10.0), ancho, alto);
         let caja = caja_de_tesela(borde[0], ancho, alto).unwrap();
         assert_eq!(caja.2, ancho);
@@ -1114,12 +1142,20 @@ mod pruebas {
         let tardo = t.elapsed();
         // El hilo de la ventana no abre el PDF: esto es solo lanzar el hilo.
         assert!(tardo.as_millis() < 50, "crear el fondo tardo {tardo:?}");
-        assert_eq!(f.ancho(), ANCHO_PAPEL_PDF, "el ancho del movil desde el principio");
+        assert_eq!(
+            f.ancho(),
+            ANCHO_PAPEL_PDF,
+            "el ancho del movil desde el principio"
+        );
         assert!(!f.pagina_lista());
         assert!(esperar(&mut f, |f| f.pagina_lista()), "la pagina no llego");
         // 20x30 de papel: el alto sale de su proporcion, el ancho no cambia.
         assert_eq!(f.ancho(), ANCHO_PAPEL_PDF);
-        assert!((f.alto() - ANCHO_PAPEL_PDF * 1.5).abs() < 2.0, "alto {}", f.alto());
+        assert!(
+            (f.alto() - ANCHO_PAPEL_PDF * 1.5).abs() < 2.0,
+            "alto {}",
+            f.alto()
+        );
         assert_eq!(f.imagen().map(|i| i.ancho), Some(ANCHO_PAPEL_PDF as u32));
         // A zoom 1 basta con ella: no se pide nada mas.
         assert_eq!(f.para_escala(1.0, (0.0, 0.0, 1400.0, 900.0)).faltan, 0);
@@ -1138,7 +1174,11 @@ mod pruebas {
         for (c, t) in &n.teselas {
             let img = t.imagen.as_ref().unwrap();
             let esperado = ((t.caja.2 - t.caja.0) * c.0 as f32).round() as i64;
-            assert!((img.ancho as i64 - esperado).abs() <= esperado / 20 + 2, "{c:?}: {}", img.ancho);
+            assert!(
+                (img.ancho as i64 - esperado).abs() <= esperado / 20 + 2,
+                "{c:?}: {}",
+                img.ancho
+            );
         }
         // Volver a mirar lo mismo no pide nada: se reutiliza.
         let otra = f.para_escala(4.0, vista);
@@ -1155,7 +1195,11 @@ mod pruebas {
         let dir = std::env::temp_dir().join(format!("pixpin-fondo-previa-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let png = dir.join("previa.png");
-        std::fs::write(&png, pixpin_codec::codificar_png(&recuadro_gris(64, 32)).unwrap()).unwrap();
+        std::fs::write(
+            &png,
+            pixpin_codec::codificar_png(&recuadro_gris(64, 32)).unwrap(),
+        )
+        .unwrap();
         let mut f = FondoLienzo::nuevo(
             Fuente::Pdf(PaginaPdf {
                 pdf: PathBuf::from("no-existe.pdf"),
@@ -1165,8 +1209,14 @@ mod pruebas {
             }),
             4096,
         );
-        assert_eq!((f.ancho(), f.alto()), (ANCHO_PAPEL_PDF, ANCHO_PAPEL_PDF / 2.0));
-        assert!(esperar(&mut f, |f| f.imagen().is_some()), "la vista previa no llego");
+        assert_eq!(
+            (f.ancho(), f.alto()),
+            (ANCHO_PAPEL_PDF, ANCHO_PAPEL_PDF / 2.0)
+        );
+        assert!(
+            esperar(&mut f, |f| f.imagen().is_some()),
+            "la vista previa no llego"
+        );
         assert_eq!(f.tamano_subido(), (64, 32));
         // Caso negativo: la provisional no cuenta como la pagina de verdad.
         assert!(!f.pagina_lista());

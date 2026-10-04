@@ -21,9 +21,9 @@
 pub mod al_chat;
 pub mod anotar;
 pub mod disposicion;
-pub mod pintar;
 #[cfg(test)]
 mod muestras;
+pub mod pintar;
 
 use pixpin_geom::{Punto, Rect};
 use pixpin_shell::ventanas_visibles::VentanaVisible;
@@ -302,7 +302,10 @@ impl Sesion {
     /// La anotacion lista para dibujar sobre `zona`. Si existia vacia y la
     /// zona se movio, se rehace en su sitio nuevo.
     pub fn anotacion_en(&mut self, zona: Rect, escala: u32) -> &mut Anotacion {
-        let origen = Punto { x: zona.x, y: zona.y };
+        let origen = Punto {
+            x: zona.x,
+            y: zona.y,
+        };
         let rehacer = match &self.anotacion {
             None => true,
             Some(a) => a.vacia() && a.origen() != origen,
@@ -350,7 +353,11 @@ impl Sesion {
                 self.proyectos = al_chat::proyectos(raiz);
                 if self.proyectos.is_empty() {
                     let ahora = pixpin_shell::entorno::ahora_utc_ms();
-                    match pixpin_proyecto::almacen::asegurar_guardados(raiz, ahora, &self.contexto.aparato) {
+                    match pixpin_proyecto::almacen::asegurar_guardados(
+                        raiz,
+                        ahora,
+                        &self.contexto.aparato,
+                    ) {
                         Ok(_) => self.proyectos = al_chat::proyectos(raiz),
                         Err(e) => tracing::warn!(?e, "no se pudo preparar Mensajes guardados"),
                     }
@@ -402,9 +409,15 @@ mod pruebas {
         );
         assert_eq!(z.modo, Modo::Zona);
         // Zona con el atajo de pinear sigue pinando; Texto cambia a OCR.
-        assert_eq!(z.confirmacion(ModoConfirmacion::Pinear), ModoConfirmacion::Pinear);
+        assert_eq!(
+            z.confirmacion(ModoConfirmacion::Pinear),
+            ModoConfirmacion::Pinear
+        );
         z.modo = Modo::Texto;
-        assert_eq!(z.confirmacion(ModoConfirmacion::Pinear), ModoConfirmacion::Texto);
+        assert_eq!(
+            z.confirmacion(ModoConfirmacion::Pinear),
+            ModoConfirmacion::Texto
+        );
     }
 
     #[test]

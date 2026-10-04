@@ -176,7 +176,10 @@ pub(crate) fn dibujar_orden(
                     id: g.id,
                     generacion: g.generacion,
                     sucio: g.sucio.map(|(desde, r)| {
-                        (desde, (r.x as u32, r.y as u32, r.ancho as u32, r.alto as u32))
+                        (
+                            desde,
+                            (r.x as u32, r.y as u32, r.ancho as u32, r.alto as u32),
+                        )
                     }),
                 };
                 let cache = tinta.map(|(c, _)| &mut c.grano.grafito);
@@ -291,7 +294,16 @@ pub(crate) fn dibujar_orden(
         } => {
             let letra = letra_de(familia, false, false);
             p.girado((centro.x, centro.y), *angulo, |p| {
-                p.texto_con_halo(texto, *x, *y, *tam, &letra, a_tinta(*color), a_color(*halo), *grosor_halo);
+                p.texto_con_halo(
+                    texto,
+                    *x,
+                    *y,
+                    *tam,
+                    &letra,
+                    a_tinta(*color),
+                    a_color(*halo),
+                    *grosor_halo,
+                );
             });
         }
         Orden::Imagen {
@@ -362,7 +374,15 @@ pub(crate) fn pintar_copia_predicha(
         .flatten();
     if let Some(cocido) = grafito::cocer(adaptado.as_ref().unwrap_or(copia)) {
         grafito::con_marca(cocido, || {
-            dibujar_orden(p, &grafito::orden_de_aviso(copia), vista, None, imagenes, zoom, None);
+            dibujar_orden(
+                p,
+                &grafito::orden_de_aviso(copia),
+                vista,
+                None,
+                imagenes,
+                zoom,
+                None,
+            );
         });
         return;
     }
@@ -400,7 +420,8 @@ pub(crate) fn punta_de_tinta(e: &Elemento, q: Punto2) -> Option<Orden> {
     // aviso sin marca, que no pinta nada, para que nadie tire por la copia
     // entera y lisa. Las figuras de grafito si van por la copia: la pinta
     // `pintar_copia_predicha`, de grafito.
-    if pixpin_motor2d::tinta::grafito::es_de_grafito(e) && matches!(e.figura, Figura::Lapiz { .. }) {
+    if pixpin_motor2d::tinta::grafito::es_de_grafito(e) && matches!(e.figura, Figura::Lapiz { .. })
+    {
         return Some(Orden::Tinta {
             contorno: Vec::new(),
             color: e.trazo,
@@ -466,7 +487,11 @@ pub(crate) fn punta_de_tinta(e: &Elemento, q: Punto2) -> Option<Orden> {
 /// si es de las del catalogo (`texto::FUENTES`), el interlineado fijo de
 /// Excalidraw. Las de fuera del catalogo (Segoe UI de los rotulos) siguen
 /// con el de su fuente, como siempre.
-pub(crate) fn letra_de(familia: &str, negrita: bool, cursiva: bool) -> pixpin_render::letras::Letra<'_> {
+pub(crate) fn letra_de(
+    familia: &str,
+    negrita: bool,
+    cursiva: bool,
+) -> pixpin_render::letras::Letra<'_> {
     pixpin_render::letras::Letra {
         familia,
         negrita,
@@ -486,7 +511,11 @@ pub(crate) fn medir_para_el_motor(
     familia: &str,
     estilo: pixpin_motor2d::texto::EstiloDeTexto,
 ) -> Option<(f32, f32)> {
-    pixpin_render::letras::medir(texto, tam, &letra_de(familia, estilo.negrita, estilo.cursiva))
+    pixpin_render::letras::medir(
+        texto,
+        tam,
+        &letra_de(familia, estilo.negrita, estilo.cursiva),
+    )
 }
 
 pub(crate) fn a_tuplas(puntos: &[Punto2]) -> Vec<(f32, f32)> {
@@ -565,10 +594,18 @@ pub(crate) fn pintar_escena(
 /// redondel azul en la esquina de arriba a la derecha con dos eslabones
 /// blancos en diagonal (`Renderer.pintarIconoDeEnlace` del movil). Mide lo
 /// mismo a cualquier aumento: el radio va en pixeles de pantalla.
-pub(crate) fn pintar_iconos_de_enlace(p: &pixpin_render::Pintor<'_>, escena: &pixpin_motor2d::Escena, zoom: f32) {
+pub(crate) fn pintar_iconos_de_enlace(
+    p: &pixpin_render::Pintor<'_>,
+    escena: &pixpin_motor2d::Escena,
+    zoom: f32,
+) {
     let r = pixpin_motor2d::zona::RADIO_DEL_ICONO_DE_ENLACE / zoom.max(0.0001);
     let azul = a_color(pixpin_motor2d::zona::COLOR_DE_LA_ZONA);
-    for c in escena.elementos.iter().filter_map(pixpin_motor2d::zona::icono_de_enlace) {
+    for c in escena
+        .elementos
+        .iter()
+        .filter_map(pixpin_motor2d::zona::icono_de_enlace)
+    {
         p.circulo((c.x, c.y), r, azul);
         let (w, h) = (r * 0.62, r * 0.42);
         for (desde, hasta) in [(-0.95 * w, 0.15 * w), (-0.15 * w, 0.95 * w)] {
@@ -960,7 +997,14 @@ mod muestras {
                 soltar(&mut g, &mut escena, 315.0, y + 14.0);
                 y += 45.0;
             }
-            guardar("resaltador", &escena, &Gesto::nuevo(), 2.0, (760, 300), false);
+            guardar(
+                "resaltador",
+                &escena,
+                &Gesto::nuevo(),
+                2.0,
+                (760, 300),
+                false,
+            );
         });
     }
 
@@ -1012,7 +1056,14 @@ mod muestras {
             opacidad: 0.35,
             ..Default::default()
         });
-        guardar("resaltador-recto", &escena, &Gesto::nuevo(), 2.0, (980, 560), false);
+        guardar(
+            "resaltador-recto",
+            &escena,
+            &Gesto::nuevo(),
+            2.0,
+            (980, 560),
+            false,
+        );
     }
 
     /// **Los pasos numerados y el foco**, con el gesto de verdad: cuatro
@@ -1026,7 +1077,10 @@ mod muestras {
         use pixpin_motor2d::estilo::CambioForma;
         pixpin_motor2d::texto::con_medidor(medir_para_el_motor, || {
             let mut escena = Escena::nueva();
-            for (i, t) in ["Paso uno: abrir", "Paso dos: elegir", "Paso tres: guardar"].iter().enumerate() {
+            for (i, t) in ["Paso uno: abrir", "Paso dos: elegir", "Paso tres: guardar"]
+                .iter()
+                .enumerate()
+            {
                 let id = escena.anadir(Elemento {
                     figura: Figura::Texto {
                         texto: t.to_string(),
@@ -1043,10 +1097,26 @@ mod muestras {
             g.enganche.activo = false;
             g.tomar_herramienta(Herramienta::Serie);
             let colores = [
-                (pixpin_motor2d::ColorRgba::opaco(0.12, 0.12, 0.12), None, 20.0),
-                (pixpin_motor2d::ColorRgba::opaco(0.88, 0.19, 0.19), Some(pixpin_motor2d::texto::FUENTE_CAVEAT), 20.0),
-                (pixpin_motor2d::ColorRgba::opaco(1.0, 0.85, 0.0), Some(pixpin_motor2d::texto::FUENTE_NUNITO), 20.0),
-                (pixpin_motor2d::ColorRgba::opaco(0.1, 0.44, 0.76), Some(pixpin_motor2d::texto::FUENTE_EXCALIFONT), 28.0),
+                (
+                    pixpin_motor2d::ColorRgba::opaco(0.12, 0.12, 0.12),
+                    None,
+                    20.0,
+                ),
+                (
+                    pixpin_motor2d::ColorRgba::opaco(0.88, 0.19, 0.19),
+                    Some(pixpin_motor2d::texto::FUENTE_CAVEAT),
+                    20.0,
+                ),
+                (
+                    pixpin_motor2d::ColorRgba::opaco(1.0, 0.85, 0.0),
+                    Some(pixpin_motor2d::texto::FUENTE_NUNITO),
+                    20.0,
+                ),
+                (
+                    pixpin_motor2d::ColorRgba::opaco(0.1, 0.44, 0.76),
+                    Some(pixpin_motor2d::texto::FUENTE_EXCALIFONT),
+                    28.0,
+                ),
             ];
             for (i, (color, familia, tam)) in colores.iter().enumerate() {
                 g.estilo.trazo = *color;
@@ -1054,7 +1124,11 @@ mod muestras {
                     g.estilo.aplicar_forma(CambioForma::Familia(*n));
                 }
                 g.estilo.aplicar_forma(CambioForma::TamanoLetra(*tam));
-                let (x, y) = if i < 3 { (30.0, 32.0 + i as f32 * 50.0) } else { (300.0, 32.0) };
+                let (x, y) = if i < 3 {
+                    (30.0, 32.0 + i as f32 * 50.0)
+                } else {
+                    (300.0, 32.0)
+                };
                 pulsar(&mut g, &mut escena, x, y);
                 soltar(&mut g, &mut escena, x, y);
             }
@@ -1072,7 +1146,14 @@ mod muestras {
             });
             let mut gf = Gesto::nuevo();
             crate::dibujo::lupa::convertir_en_foco(&mut escena, &mut gf, circulo).expect("foco");
-            guardar("pasos-y-foco", &escena, &Gesto::nuevo(), 2.0, (760, 400), false);
+            guardar(
+                "pasos-y-foco",
+                &escena,
+                &Gesto::nuevo(),
+                2.0,
+                (760, 400),
+                false,
+            );
         });
     }
 
@@ -1094,7 +1175,21 @@ mod muestras {
             });
         }
         pixpin_motor2d::zona::marcar(&mut escena, (20.0, 25.0, 250.0, 170.0), "foto-1");
-        guardar("zona-marca-con-enlace", &escena, &Gesto::nuevo(), 1.0, (460, 260), false);
-        guardar("zona-marca-con-enlace-x2", &escena, &Gesto::nuevo(), 2.0, (920, 520), false);
+        guardar(
+            "zona-marca-con-enlace",
+            &escena,
+            &Gesto::nuevo(),
+            1.0,
+            (460, 260),
+            false,
+        );
+        guardar(
+            "zona-marca-con-enlace-x2",
+            &escena,
+            &Gesto::nuevo(),
+            2.0,
+            (920, 520),
+            false,
+        );
     }
 }

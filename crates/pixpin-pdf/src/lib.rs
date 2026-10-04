@@ -1178,15 +1178,38 @@ mod pruebas {
             .renderizar_trozo(0, (0.5, 0.0, 0.5, 1.0), 400, 400)
             .unwrap();
         // Cuatro veces mas fino que la pagina entera a 200: es la razon de ser.
-        assert!(izquierda.ancho >= 380 && izquierda.ancho <= 420, "{}", izquierda.ancho);
-        assert!(izquierda.alto >= 380 && izquierda.alto <= 420, "{}", izquierda.alto);
+        assert!(
+            izquierda.ancho >= 380 && izquierda.ancho <= 420,
+            "{}",
+            izquierda.ancho
+        );
+        assert!(
+            izquierda.alto >= 380 && izquierda.alto <= 420,
+            "{}",
+            izquierda.alto
+        );
         let total = (izquierda.ancho * izquierda.alto) as usize;
-        assert!(oscuros(&izquierda) > total / 2, "la izquierda tiene el cuadrado");
+        assert!(
+            oscuros(&izquierda) > total / 2,
+            "la izquierda tiene el cuadrado"
+        );
         assert_eq!(oscuros(&derecha), 0, "la derecha esta en blanco");
         // Casos negativos: un trozo vacio o una pagina que no hay.
-        assert!(documento.renderizar_trozo(0, (0.0, 0.0, 0.0, 1.0), 10, 10).is_err());
-        assert!(documento.renderizar_trozo(9, (0.0, 0.0, 1.0, 1.0), 10, 10).is_err());
-        assert!(documento.renderizar_trozo(0, (0.0, 0.0, 1.0, 1.0), 0, 10).is_err());
+        assert!(
+            documento
+                .renderizar_trozo(0, (0.0, 0.0, 0.0, 1.0), 10, 10)
+                .is_err()
+        );
+        assert!(
+            documento
+                .renderizar_trozo(9, (0.0, 0.0, 1.0, 1.0), 10, 10)
+                .is_err()
+        );
+        assert!(
+            documento
+                .renderizar_trozo(0, (0.0, 0.0, 1.0, 1.0), 0, 10)
+                .is_err()
+        );
         drop(documento);
         let _ = fs::remove_dir_all(dir);
     }

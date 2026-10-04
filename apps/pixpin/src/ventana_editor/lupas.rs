@@ -160,7 +160,12 @@ pub fn alguna_mira(elementos: &[Elemento], mundo: Caja) -> bool {
 /// focos y mosaicos, que se pintarian a si mismos o necesitan su pasada)
 /// y cae en lo mirado.
 fn se_ve_dentro(e: &Elemento, mira: Caja) -> bool {
-    if e.borrado || matches!(e.figura, Figura::Lupa { .. } | Figura::Foco { .. } | Figura::Mosaico { .. }) {
+    if e.borrado
+        || matches!(
+            e.figura,
+            Figura::Lupa { .. } | Figura::Foco { .. } | Figura::Mosaico { .. }
+        )
+    {
         return false;
     }
     let (x0, y0, x1, y1) = e.caja();
@@ -233,14 +238,23 @@ impl<H: Hasher> std::fmt::Write for AlHasher<'_, H> {
 /// y la escala de la hoja (las cotas la escriben).
 fn firma(escena: &Escena, recogido: Caja, fondo: Option<&FondoLienzo>) -> u64 {
     let mut h = std::collections::hash_map::DefaultHasher::new();
-    for c in [escena.fondo.r, escena.fondo.g, escena.fondo.b, escena.fondo.a] {
+    for c in [
+        escena.fondo.r,
+        escena.fondo.g,
+        escena.fondo.b,
+        escena.fondo.a,
+    ] {
         c.to_bits().hash(&mut h);
     }
     fondo.map(FondoLienzo::firma).hash(&mut h);
     if let Some(esc) = &escena.escala {
         let _ = std::fmt::Write::write_fmt(&mut AlHasher(&mut h), format_args!("{esc:?}"));
     }
-    for e in escena.elementos.iter().filter(|e| se_ve_dentro(e, recogido)) {
+    for e in escena
+        .elementos
+        .iter()
+        .filter(|e| se_ve_dentro(e, recogido))
+    {
         (e.id, e.version).hash(&mut h);
     }
     h.finish()
@@ -258,7 +272,13 @@ struct Contenido {
 }
 
 /// La clave que le toca ahora a la lupa `e` con este zoom.
-fn clave_de(escena: &Escena, e: &Elemento, zoom: f32, tope: u32, fondo: Option<&FondoLienzo>) -> Option<Clave> {
+fn clave_de(
+    escena: &Escena,
+    e: &Elemento,
+    zoom: f32,
+    tope: u32,
+    fondo: Option<&FondoLienzo>,
+) -> Option<Clave> {
     let cr = lupa::de(e)?;
     let caja = lupa::caja_de(e);
     if caja.2.abs() < 1.0 || caja.3.abs() < 1.0 {
@@ -305,11 +325,21 @@ fn pintar_contenido(
         }
         CACHE.with(|cache| {
             let mut cache = cache.borrow_mut();
-            for otro in escena.elementos.iter().filter(|o| se_ve_dentro(o, recogido)) {
+            for otro in escena
+                .elementos
+                .iter()
+                .filter(|o| se_ve_dentro(o, recogido))
+            {
                 let grano = pixpin_motor2d::pintado::grano_de(otro);
-                por_cada_orden(&mut cache, otro, aumento * DETALLE, escena.escala.as_ref(), |orden| {
-                    dibujar_orden(p, orden, recogido, None, imagenes, MUESTREO_DE_FOTOS, grano);
-                });
+                por_cada_orden(
+                    &mut cache,
+                    otro,
+                    aumento * DETALLE,
+                    escena.escala.as_ref(),
+                    |orden| {
+                        dibujar_orden(p, orden, recogido, None, imagenes, MUESTREO_DE_FOTOS, grano);
+                    },
+                );
             }
         });
     });
@@ -380,7 +410,7 @@ pub fn preparar(
                     }
                 },
             };
-    let pendiente = pintar_contenido(motor, &mapa, escena, e, &clave, fondo, imagenes);
+            let pendiente = pintar_contenido(motor, &mapa, escena, e, &clave, fondo, imagenes);
             rehechas += 1;
             c.insert(
                 e.id,
@@ -395,7 +425,8 @@ pub fn preparar(
         // Lo de las lupas que ya no estan, o que llevan mucho sin verse,
         // fuera: cada mapa es un cristal de pantalla en memoria de video.
         c.retain(|id, x| {
-            pasada.saturating_sub(x.visto) < OLVIDO && escena.buscar(*id).is_some_and(|e| !e.borrado)
+            pasada.saturating_sub(x.visto) < OLVIDO
+                && escena.buscar(*id).is_some_and(|e| !e.borrado)
         });
     });
     rehechas
@@ -423,7 +454,10 @@ fn copiar_dentro(
     let copiado = CONTENIDOS.with(|c| {
         let c = c.borrow();
         let Some(x) = c.get(&e.id) else { return false };
-        let contorno: Vec<(f32, f32)> = lupa::puntos_del_cristal(cr, caja).into_iter().map(a_sup).collect();
+        let contorno: Vec<(f32, f32)> = lupa::puntos_del_cristal(cr, caja)
+            .into_iter()
+            .map(a_sup)
+            .collect();
         p.desplazar(0.0, 0.0);
         if !p.empujar_recorte_poligono(&contorno) {
             return false;
@@ -434,7 +468,10 @@ fn copiar_dentro(
         let foco = lupa::foco_de(cr, caja);
         let centro = Punto2::nuevo(caja.0 + caja.2 / 2.0, caja.1 + caja.3 / 2.0);
         let m = x.clave.mirado;
-        let esquina = Punto2::nuevo(centro.x + (m.0 - foco.x) * aumento, centro.y + (m.1 - foco.y) * aumento);
+        let esquina = Punto2::nuevo(
+            centro.x + (m.0 - foco.x) * aumento,
+            centro.y + (m.1 - foco.y) * aumento,
+        );
         let (x0, y0) = a_sup(esquina);
         let ancho_px = (m.2 - m.0) * aumento * camara.zoom;
         let alto_px = (m.3 - m.1) * aumento * camara.zoom;
@@ -529,7 +566,11 @@ pub(super) fn pintar_en_capa(
     copiar_dentro(p, e, camara, base, imagenes, ancho, alto);
     // Lo que venga despues en la capa espera la vista del mundo.
     let origen = camara.a_pantalla(Punto2::nuevo(0.0, 0.0));
-    p.poner_vista((0.0, 0.0), camara.zoom, (origen.x + base.0, origen.y + base.1));
+    p.poner_vista(
+        (0.0, 0.0),
+        camara.zoom,
+        (origen.x + base.0, origen.y + base.1),
+    );
 }
 
 /// **Lo que puede manchar en pantalla la lupa elegida**: su cristal y lo que
@@ -605,8 +646,10 @@ pub(crate) fn en_la_hoja(
         let Some(dentro) = pixpin_motor2d::exportar::de_una_zona(&sin_lupas, mira, papel) else {
             continue;
         };
-        let contorno: Vec<(f32, f32)> =
-            lupa::puntos_del_cristal(cr, caja).into_iter().map(a_imagen).collect();
+        let contorno: Vec<(f32, f32)> = lupa::puntos_del_cristal(cr, caja)
+            .into_iter()
+            .map(a_imagen)
+            .collect();
         p.desplazar(0.0, 0.0);
         if !p.empujar_recorte_poligono(&contorno) {
             continue;
@@ -687,16 +730,25 @@ mod pruebas {
     fn un_trazo_en_lo_mirado_o_en_el_cristal_pide_el_fotograma_entero() {
         let v = vec![una_lupa()];
         assert!(pisa_una_lupa(&v, (10.0, 10.0, 20.0, 20.0)), "en lo mirado");
-        assert!(pisa_una_lupa(&v, (320.0, 20.0, 330.0, 30.0)), "en el cristal");
+        assert!(
+            pisa_una_lupa(&v, (320.0, 20.0, 330.0, 30.0)),
+            "en el cristal"
+        );
         // Caso negativo: lejos de las dos cajas, el atajo sigue valiendo.
         assert!(!pisa_una_lupa(&v, (150.0, 150.0, 200.0, 200.0)));
-        assert!(!pisa_una_lupa(&[], (10.0, 10.0, 20.0, 20.0)), "sin lupas nunca");
+        assert!(
+            !pisa_una_lupa(&[], (10.0, 10.0, 20.0, 20.0)),
+            "sin lupas nunca"
+        );
     }
 
     #[test]
     fn dentro_de_una_lupa_no_se_pinta_otra_lupa_ni_lo_que_queda_fuera_de_lo_mirado() {
         let mira = (0.0, 0.0, 50.0, 50.0);
-        assert!(!se_ve_dentro(&una_lupa(), mira), "una lupa mirando a otra no acaba");
+        assert!(
+            !se_ve_dentro(&una_lupa(), mira),
+            "una lupa mirando a otra no acaba"
+        );
         let dentro = Elemento {
             figura: Figura::Rectangulo,
             x: 10.0,
@@ -706,7 +758,10 @@ mod pruebas {
             ..Default::default()
         };
         assert!(se_ve_dentro(&dentro, mira));
-        let fuera = Elemento { x: 500.0, ..dentro.clone() };
+        let fuera = Elemento {
+            x: 500.0,
+            ..dentro.clone()
+        };
         assert!(!se_ve_dentro(&fuera, mira));
     }
 
@@ -762,7 +817,11 @@ mod pruebas {
         let id = convertir(&mut escena, &mut gesto, circulo).expect("la varita convierte");
         // Apartada a la derecha: la guia (flecha) sale del circulo mirado.
         escena.mover(id, 260.0, 0.0);
-        assert_eq!(escena.cuantos_visibles(), 8, "el circulo se fue con la lupa");
+        assert_eq!(
+            escena.cuantos_visibles(),
+            8,
+            "el circulo se fue con la lupa"
+        );
         (escena, id)
     }
 
@@ -787,8 +846,9 @@ mod pruebas {
         let d = pixpin_capture::Dispositivo::nuevo().expect("GPU");
         let mut motor = MotorRender::nuevo(d.d3d()).expect("motor");
         let (w, h) = (560u32, 260u32);
-        let destino = pixpin_render::fuera_de_pantalla::FueraDePantalla::nuevo(&motor, d.d3d(), w, h)
-            .expect("textura");
+        let destino =
+            pixpin_render::fuera_de_pantalla::FueraDePantalla::nuevo(&motor, d.d3d(), w, h)
+                .expect("textura");
         let imagenes = ImagenesLienzo::nuevo(4096);
         let camara = Camara::nueva();
         let vista = camara.ventana(w as f32, h as f32);
@@ -804,7 +864,17 @@ mod pruebas {
                 }
             })
             .expect("pinta la escena");
-        let pintadas = pasar(&mut motor, &destino.destino, &escena, &camara, None, &imagenes, w, h, &|_| false);
+        let pintadas = pasar(
+            &mut motor,
+            &destino.destino,
+            &escena,
+            &camara,
+            None,
+            &imagenes,
+            w,
+            h,
+            &|_| false,
+        );
         assert_eq!(pintadas, 1);
         let (ancho, alto, px) = destino.leer_rgba().expect("lee");
         // En el centro del cristal (lo mirado es el centro del circulo, con
@@ -892,9 +962,13 @@ mod pruebas {
         };
         let d = pixpin_capture::Dispositivo::nuevo().expect("GPU");
         let motor = MotorRender::nuevo(d.d3d()).expect("motor");
-        let fuera =
-            pixpin_render::fuera_de_pantalla::FueraDePantalla::nuevo(&motor, d.d3d(), area.ancho, area.alto)
-                .expect("textura");
+        let fuera = pixpin_render::fuera_de_pantalla::FueraDePantalla::nuevo(
+            &motor,
+            d.d3d(),
+            area.ancho,
+            area.alto,
+        )
+        .expect("textura");
         let foto = |panel: &pixpin_ui::panel_lateral::PanelLateral, nombre: &str| {
             motor
                 .dibujar(&fuera.destino, |p| {
@@ -912,8 +986,14 @@ mod pruebas {
         gesto.seleccion.poner(id);
         let panel = crate::panel_dibujo::panel_para(&gesto, &escena, area, 100).expect("panel");
         let s = secciones(&panel);
-        assert!(s.contains(&Seccion::AumentoLupa) && s.contains(&Seccion::GuiaLupa), "{s:?}");
-        assert!(!s.contains(&Seccion::Mosaico), "caso negativo: una lupa no se pixela");
+        assert!(
+            s.contains(&Seccion::AumentoLupa) && s.contains(&Seccion::GuiaLupa),
+            "{s:?}"
+        );
+        assert!(
+            !s.contains(&Seccion::Mosaico),
+            "caso negativo: una lupa no se pixela"
+        );
         foto(&panel, "panel-lupa.png");
         let antes = escena.buscar(id).unwrap().clone();
         assert!(crate::panel_dibujo::aplicar(
@@ -924,7 +1004,11 @@ mod pruebas {
         let e = escena.buscar(id).unwrap();
         let cr = lupa::de(e).unwrap();
         assert!((lupa::aumento_de(cr, lupa::caja_de(e)) - 4.0).abs() < 0.05);
-        assert_eq!(lupa::foco_de(cr, lupa::caja_de(e)), lupa::foco_de(lupa::de(&antes).unwrap(), lupa::caja_de(&antes)), "lo mirado no se mueve");
+        assert_eq!(
+            lupa::foco_de(cr, lupa::caja_de(e)),
+            lupa::foco_de(lupa::de(&antes).unwrap(), lupa::caja_de(&antes)),
+            "lo mirado no se mueve"
+        );
         assert!(e.ancho > antes.ancho * 1.9, "crece el cristal");
 
         // El mosaico: pixelar o desenfocar, y el grano con el grosor.
@@ -940,7 +1024,10 @@ mod pruebas {
         gesto.seleccion.poner(m);
         let panel = crate::panel_dibujo::panel_para(&gesto, &escena, area, 100).expect("panel");
         let s = secciones(&panel);
-        assert!(s.contains(&Seccion::Mosaico) && s.contains(&Seccion::Grosor), "{s:?}");
+        assert!(
+            s.contains(&Seccion::Mosaico) && s.contains(&Seccion::Grosor),
+            "{s:?}"
+        );
         assert!(!s.contains(&Seccion::AumentoLupa));
         foto(&panel, "panel-mosaico.png");
         assert!(crate::panel_dibujo::aplicar(
@@ -948,7 +1035,10 @@ mod pruebas {
             &mut gesto,
             &mut escena,
         ));
-        assert_eq!(escena.buscar(m).unwrap().figura, Figura::Mosaico { desenfoque: true });
+        assert_eq!(
+            escena.buscar(m).unwrap().figura,
+            Figura::Mosaico { desenfoque: true }
+        );
         // Y queda para el proximo: el gesto lo recuerda.
         assert!(gesto.estilo.desenfoque);
     }
@@ -960,12 +1050,27 @@ mod pruebas {
         let mut px = Vec::with_capacity((w * h * 4) as usize);
         for y in 0..h {
             for x in 0..w {
-                let c = if ((x / 3) + (y / 3)) % 2 == 0 { 235u8 } else { 190u8 };
-                let d = if (x as i32 - y as i32 * 2).abs() < 2 { 60u8 } else { c };
+                let c = if ((x / 3) + (y / 3)) % 2 == 0 {
+                    235u8
+                } else {
+                    190u8
+                };
+                let d = if (x as i32 - y as i32 * 2).abs() < 2 {
+                    60u8
+                } else {
+                    c
+                };
                 px.extend_from_slice(&[d, c, 255, 255]);
             }
         }
-        FondoLienzo::nuevo(pixpin_codec::ImagenRgba { ancho: w, alto: h, pixeles: px }, 4096)
+        FondoLienzo::nuevo(
+            pixpin_codec::ImagenRgba {
+                ancho: w,
+                alto: h,
+                pixeles: px,
+            },
+            4096,
+        )
     }
 
     /// La lamina de siempre con un trazo a mano bajo lo mirado: su contorno
@@ -1007,10 +1112,15 @@ mod pruebas {
         alto: u32,
     ) -> Vec<u8> {
         let destino =
-            pixpin_render::fuera_de_pantalla::FueraDePantalla::nuevo(motor, d3d, ancho, alto).expect("textura");
+            pixpin_render::fuera_de_pantalla::FueraDePantalla::nuevo(motor, d3d, ancho, alto)
+                .expect("textura");
         let imagenes = ImagenesLienzo::nuevo(4096);
         fondo.asegurar(motor);
-        let camara = Camara { x: 0.0, y: 0.0, zoom };
+        let camara = Camara {
+            x: 0.0,
+            y: 0.0,
+            zoom,
+        };
         let vista = camara.ventana(ancho as f32, alto as f32);
         motor
             .dibujar(&destino.destino, |p| {
@@ -1025,7 +1135,20 @@ mod pruebas {
                 }
             })
             .expect("pinta la escena");
-        assert_eq!(pasar(motor, &destino.destino, escena, &camara, Some(fondo), &imagenes, ancho, alto, &|_| false), 1);
+        assert_eq!(
+            pasar(
+                motor,
+                &destino.destino,
+                escena,
+                &camara,
+                Some(fondo),
+                &imagenes,
+                ancho,
+                alto,
+                &|_| false
+            ),
+            1
+        );
         destino.leer_rgba().expect("lee").2
     }
 
@@ -1060,7 +1183,9 @@ mod pruebas {
                     // El de zoom 2, reducido: la media de sus cuatro pixeles.
                     let m: u32 = [(0, 0), (1, 0), (0, 1), (1, 1)]
                         .iter()
-                        .map(|(dx, dy)| dos[(((2 * y + dy) * w * 2 + 2 * x + dx) * 4) as usize + c] as u32)
+                        .map(|(dx, dy)| {
+                            dos[(((2 * y + dy) * w * 2 + 2 * x + dx) * 4) as usize + c] as u32
+                        })
                         .sum::<u32>()
                         / 4;
                     let diferencia = (uno[a + c] as i32 - m as i32).unsigned_abs();
@@ -1078,7 +1203,10 @@ mod pruebas {
         // segun el zoom de la camara) daba 4,18 de media; esta, 1,87. Lo
         // que queda es el suavizado de los bordes, que a otra resolucion
         // cae en otros pixeles (un 1 % de canales, las rayas de un pixel).
-        assert!(media < 3.0, "lo de dentro cambia con el zoom: diferencia media {media:.2}");
+        assert!(
+            media < 3.0,
+            "lo de dentro cambia con el zoom: diferencia media {media:.2}"
+        );
         assert!(
             (distintos as f64) < total as f64 * 0.02,
             "lo de dentro cambia con el zoom: {distintos} de {total} canales muy distintos"
@@ -1096,19 +1224,41 @@ mod pruebas {
         let mut motor = MotorRender::nuevo(d.d3d()).expect("motor");
         let (w, h) = (900u32, 400u32);
         let destino =
-            pixpin_render::fuera_de_pantalla::FueraDePantalla::nuevo(&motor, d.d3d(), w, h).expect("textura");
+            pixpin_render::fuera_de_pantalla::FueraDePantalla::nuevo(&motor, d.d3d(), w, h)
+                .expect("textura");
         let imagenes = ImagenesLienzo::nuevo(4096);
         let camara = Camara::nueva();
         let mut pasada = |escena: &Escena, camara: &Camara| {
             let antes = rehechas();
-            assert_eq!(pasar(&mut motor, &destino.destino, escena, camara, None, &imagenes, w, h, &|_| false), 1);
+            assert_eq!(
+                pasar(
+                    &mut motor,
+                    &destino.destino,
+                    escena,
+                    camara,
+                    None,
+                    &imagenes,
+                    w,
+                    h,
+                    &|_| false
+                ),
+                1
+            );
             rehechas() - antes
         };
         assert_eq!(pasada(&escena, &camara), 1, "la primera vez se pinta");
         assert_eq!(pasada(&escena, &camara), 0, "sin cambios se copia");
         escena.mover(id, 37.0, 11.0);
-        assert_eq!(pasada(&escena, &camara), 0, "mover el cristal no cambia lo de dentro");
-        let lejos = Camara { x: -20.0, y: -10.0, zoom: 1.0 };
+        assert_eq!(
+            pasada(&escena, &camara),
+            0,
+            "mover el cristal no cambia lo de dentro"
+        );
+        let lejos = Camara {
+            x: -20.0,
+            y: -10.0,
+            zoom: 1.0,
+        };
         assert_eq!(pasada(&escena, &lejos), 0, "desplazar la camara tampoco");
         // Caso negativo del lado contrario: algo que no se ve dentro.
         let fuera = escena.anadir(Elemento {
@@ -1120,7 +1270,11 @@ mod pruebas {
             ..Default::default()
         });
         escena.mover(fuera, 5.0, 0.0);
-        assert_eq!(pasada(&escena, &camara), 0, "lo de fuera de lo mirado no cuenta");
+        assert_eq!(
+            pasada(&escena, &camara),
+            0,
+            "lo de fuera de lo mirado no cuenta"
+        );
         // Lo que si cambia lo de dentro.
         let texto = escena
             .visibles()
@@ -1136,7 +1290,10 @@ mod pruebas {
             e.tocar();
         }
         assert_eq!(pasada(&escena, &camara), 1, "se apunto a otro sitio");
-        let cerca = Camara { zoom: 2.0, ..camara };
+        let cerca = Camara {
+            zoom: 2.0,
+            ..camara
+        };
         assert_eq!(pasada(&escena, &cerca), 1, "otro zoom, otros pixeles");
         olvidar();
     }
@@ -1152,10 +1309,17 @@ mod pruebas {
         let a = mirado(&cr, (300.0, 0.0, 80.0, 40.0));
         let b = mirado(&cr, (-900.0, 77.0, 80.0, 40.0));
         assert_eq!(a, b);
-        assert_eq!(a, (30.0, 40.0, 70.0, 60.0), "a x2, el cristal partido por dos");
+        assert_eq!(
+            a,
+            (30.0, 40.0, 70.0, 60.0),
+            "a x2, el cristal partido por dos"
+        );
         assert_eq!(pixeles_para((0.0, 0.0, 80.0, 40.0), 1.5, 4096), (120, 60));
         // Caso negativo: a mucho zoom no pasa del tope, y guarda la forma.
-        assert_eq!(pixeles_para((0.0, 0.0, 800.0, 400.0), 100.0, 4096), (4096, 2048));
+        assert_eq!(
+            pixeles_para((0.0, 0.0, 800.0, 400.0), 100.0, 4096),
+            (4096, 2048)
+        );
     }
 
     #[test]
@@ -1164,7 +1328,11 @@ mod pruebas {
         let c = Camara::nueva();
         assert_eq!(a_la_vista(&v, &c, 800, 600).count(), 1);
         // Con la camara lejos, ninguna: la pasada no hace nada.
-        let lejos = Camara { x: 5000.0, y: 5000.0, zoom: 1.0 };
+        let lejos = Camara {
+            x: 5000.0,
+            y: 5000.0,
+            zoom: 1.0,
+        };
         assert_eq!(a_la_vista(&v, &lejos, 800, 600).count(), 0);
     }
 }

@@ -97,13 +97,28 @@ pub fn exportar(n: &Nota) -> Result<Vec<u8>, ErrorDocs> {
         partes::tipos(&hecho.medios, hay_comentarios).into_bytes(),
     ));
     entradas.push(("_rels/.rels".into(), partes::RELS_RAIZ.as_bytes().to_vec()));
-    entradas.push(("docProps/core.xml".into(), partes::core(&titulo, n.autor, n.ahora_ms).into_bytes()));
+    entradas.push((
+        "docProps/core.xml".into(),
+        partes::core(&titulo, n.autor, n.ahora_ms).into_bytes(),
+    ));
     entradas.push(("docProps/app.xml".into(), partes::APP.as_bytes().to_vec()));
     entradas.push(("word/document.xml".into(), hecho.documento.into_bytes()));
-    entradas.push(("word/styles.xml".into(), partes::estilos(&n.letra).into_bytes()));
-    entradas.push(("word/numbering.xml".into(), partes::numeracion(&hecho.numeradas).into_bytes()));
-    entradas.push(("word/settings.xml".into(), partes::AJUSTES.as_bytes().to_vec()));
-    entradas.push(("word/fontTable.xml".into(), partes::letras(&n.letra).into_bytes()));
+    entradas.push((
+        "word/styles.xml".into(),
+        partes::estilos(&n.letra).into_bytes(),
+    ));
+    entradas.push((
+        "word/numbering.xml".into(),
+        partes::numeracion(&hecho.numeradas).into_bytes(),
+    ));
+    entradas.push((
+        "word/settings.xml".into(),
+        partes::AJUSTES.as_bytes().to_vec(),
+    ));
+    entradas.push((
+        "word/fontTable.xml".into(),
+        partes::letras(&n.letra).into_bytes(),
+    ));
     if hay_comentarios {
         let (c, ex) = partes::comentarios(&comentarios.hilos);
         entradas.push(("word/comments.xml".into(), c.into_bytes()));
@@ -126,11 +141,26 @@ pub fn exportar(n: &Nota) -> Result<Vec<u8>, ErrorDocs> {
 pub fn nombre_de_fichero(titulo: &str) -> String {
     let limpio: String = titulo
         .chars()
-        .map(|c| if "<>:\"/\\|?*".contains(c) || c.is_control() { '_' } else { c })
+        .map(|c| {
+            if "<>:\"/\\|?*".contains(c) || c.is_control() {
+                '_'
+            } else {
+                c
+            }
+        })
         .take(120)
         .collect();
-    let limpio = limpio.trim().trim_end_matches(['.', ' ']).trim().to_string();
-    let base = limpio.split('.').next().unwrap_or("").trim().to_ascii_uppercase();
+    let limpio = limpio
+        .trim()
+        .trim_end_matches(['.', ' '])
+        .trim()
+        .to_string();
+    let base = limpio
+        .split('.')
+        .next()
+        .unwrap_or("")
+        .trim()
+        .to_ascii_uppercase();
     let reservado = matches!(base.as_str(), "CON" | "PRN" | "AUX" | "NUL")
         || ((base.starts_with("COM") || base.starts_with("LPT"))
             && base.len() == 4
@@ -204,11 +234,19 @@ pub(crate) enum Tipo {
     Titulo(u8),
     Cita,
     Codigo,
-    Vineta { nivel: u8 },
+    Vineta {
+        nivel: u8,
+    },
     /// `lista`: el numero de la racha (cada una con su numeracion de Word,
     /// que empieza donde empezaba la del Markdown).
-    Numerada { nivel: u8, lista: usize },
-    Casilla { nivel: u8, hecha: bool },
+    Numerada {
+        nivel: u8,
+        lista: usize,
+    },
+    Casilla {
+        nivel: u8,
+        hecha: bool,
+    },
     /// Un documento, un audio o un mensaje del chat metido en la nota.
     Adjunto,
 }
@@ -272,16 +310,23 @@ impl Constructor {
 
     /// Las letras que se ven de un trozo de Markdown en linea, con sus
     /// marcas. `base` es donde empieza en la nota (UTF-16), si se sabe.
-    fn letras(&mut self, texto: &str, tramos: &[md_vivo::Tramo], base: Option<usize>) -> Vec<Letra1> {
+    fn letras(
+        &mut self,
+        texto: &str,
+        tramos: &[md_vivo::Tramo],
+        base: Option<usize>,
+    ) -> Vec<Letra1> {
         let mut sal = Vec::new();
         let mut pos = 0usize;
         for c in texto.chars() {
             let largo = c.len_utf16();
             let dentro = |t: &&md_vivo::Tramo| t.desde <= pos && pos < t.hasta;
-            let escondida = tramos
-                .iter()
-                .filter(dentro)
-                .any(|t| matches!(t.estilo, Estilo::Marca | Estilo::Numero | Estilo::Casilla { .. }));
+            let escondida = tramos.iter().filter(dentro).any(|t| {
+                matches!(
+                    t.estilo,
+                    Estilo::Marca | Estilo::Numero | Estilo::Casilla { .. }
+                )
+            });
             if !escondida && !matches!(c, '\u{FFF9}' | '\u{FFFB}' | '\u{0007}' | '\u{FFFF}') {
                 let mut m = Marcas::default();
                 for t in tramos.iter().filter(dentro) {
@@ -371,7 +416,9 @@ pub(crate) fn modelo(md: &str) -> Modelo {
         p += r.encode_utf16().count() + 1;
     }
     let limpio = |i: usize| renglones[i].trim_end_matches('\r');
-    let mut k = Constructor { m: Modelo::default() };
+    let mut k = Constructor {
+        m: Modelo::default(),
+    };
     let mut en_codigo = false;
     let mut blancos = 0usize;
     // La racha numerada en curso: (su numero, ultimo renglon de lista).
@@ -413,7 +460,11 @@ pub(crate) fn modelo(md: &str) -> Modelo {
             continue;
         }
         // Tabla de barras: una fila con la de guiones debajo.
-        if r.trim().starts_with('|') && renglones.get(i + 1).is_some_and(|s| md_tabla::es_separadora(s.trim_end_matches('\r'))) {
+        if r.trim().starts_with('|')
+            && renglones
+                .get(i + 1)
+                .is_some_and(|s| md_tabla::es_separadora(s.trim_end_matches('\r')))
+        {
             let mut j = i;
             while j < renglones.len() && limpio(j).trim().starts_with('|') {
                 j += 1;
@@ -513,7 +564,12 @@ pub(crate) fn modelo(md: &str) -> Modelo {
             let lista = match racha {
                 Some(l) => l,
                 None => {
-                    let cifras: String = r.encode_utf16().skip(t.desde).take(t.hasta - t.desde).map(|u| u as u8 as char).collect();
+                    let cifras: String = r
+                        .encode_utf16()
+                        .skip(t.desde)
+                        .take(t.hasta - t.desde)
+                        .map(|u| u as u8 as char)
+                        .collect();
                     let numero: u32 = cifras.trim_end_matches(['.', ')']).parse().unwrap_or(1);
                     k.m.rachas.push(numero.clamp(0, 32_767));
                     k.m.rachas.len() - 1
@@ -580,7 +636,14 @@ fn colocar_comentarios(md: &str, c: Option<&Comentarios>, m: &Modelo) -> Colocad
         match b {
             Bloque1::Parrafo(p) => sitios.extend(p.letras.iter().filter_map(con_sitio)),
             Bloque1::Foto { orden, sitio, .. } => sitios.push((*orden, *sitio)),
-            Bloque1::Tabla { celdas, .. } => sitios.extend(celdas.iter().flatten().flatten().flatten().filter_map(con_sitio)),
+            Bloque1::Tabla { celdas, .. } => sitios.extend(
+                celdas
+                    .iter()
+                    .flatten()
+                    .flatten()
+                    .flatten()
+                    .filter_map(con_sitio),
+            ),
             Bloque1::Vacio | Bloque1::Regla => {}
         }
     }
@@ -626,7 +689,10 @@ fn colocar_comentarios(md: &str, c: Option<&Comentarios>, m: &Modelo) -> Colocad
             });
             ids.push(rid);
         }
-        sal.empiezan.entry(desde).or_default().extend(ids.iter().copied());
+        sal.empiezan
+            .entry(desde)
+            .or_default()
+            .extend(ids.iter().copied());
         sal.acaban.entry(hasta).or_default().extend(ids);
     }
     sal

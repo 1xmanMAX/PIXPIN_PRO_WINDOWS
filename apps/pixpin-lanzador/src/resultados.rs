@@ -5,10 +5,10 @@
 //! pulsar Intro ([`Accion`]): un pedido a la app, cambiar lo tecleado en Flow
 //! (para entrar en una lista o pedir un nombre) o las dos cosas.
 
-use crate::consulta::{analizar, Funcion, Modo, SEPARADOR};
+use crate::consulta::{Funcion, Modo, SEPARADOR, analizar};
 use crate::datos::{self, Mensaje, Proyecto, Tarea};
 use crate::normalizar::{normalizar, puntuar};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::cell::RefCell;
 use std::collections::BTreeSet;
 use std::path::PathBuf;
@@ -65,13 +65,18 @@ pub mod glifo {
 /// El pedido `soltar`: el recuadro flotante donde se sueltan archivos, que
 /// van al chat de `p` (`None`: Mensajes guardados).
 pub(crate) fn pedido_soltar(p: Option<&Proyecto>) -> Value {
-    pedido("soltar", json!({ "proyecto": p.map(Proyecto::id_para_pedido).unwrap_or(Value::Null) }))
+    pedido(
+        "soltar",
+        json!({ "proyecto": p.map(Proyecto::id_para_pedido).unwrap_or(Value::Null) }),
+    )
 }
 
 /// «Añadir arrastrando (recuadro flotante)» a ese proyecto (el del chat y
 /// el del menu).
 pub(crate) fn resultado_arrastrar(p: Option<&Proyecto>) -> Resultado {
-    let nombre = p.map(|p| p.nombre.as_str()).unwrap_or(datos::NOMBRE_GUARDADOS);
+    let nombre = p
+        .map(|p| p.nombre.as_str())
+        .unwrap_or(datos::NOMBRE_GUARDADOS);
     Resultado::nuevo(
         "Añadir arrastrando (recuadro flotante)",
         format!("Suelta archivos en el recuadro y van a «{nombre}»"),
@@ -108,11 +113,19 @@ impl Accion {
         match self {
             Accion::Pedido(p) => ("pedir", vec![p.clone()], false),
             Accion::Consulta(c) => ("consulta", vec![json!(c)], true),
-            Accion::PedirYSeguir { pedido, consulta } => ("pedir_y_seguir", vec![pedido.clone(), json!(consulta)], true),
+            Accion::PedirYSeguir { pedido, consulta } => (
+                "pedir_y_seguir",
+                vec![pedido.clone(), json!(consulta)],
+                true,
+            ),
             Accion::Copiar(t) => ("copiar", vec![json!(t)], false),
-            Accion::Carpeta { carpeta, fichero } => ("carpeta", vec![json!(carpeta), json!(fichero)], false),
+            Accion::Carpeta { carpeta, fichero } => {
+                ("carpeta", vec![json!(carpeta), json!(fichero)], false)
+            }
             Accion::Windows(r) => ("windows", vec![json!(r)], false),
-            Accion::PegarImagen { consulta, numero } => ("pegar_imagen", vec![json!(consulta), json!(numero)], true),
+            Accion::PegarImagen { consulta, numero } => {
+                ("pegar_imagen", vec![json!(consulta), json!(numero)], true)
+            }
         }
     }
 
@@ -130,11 +143,20 @@ impl Accion {
         Some(match metodo {
             "pedir" => Accion::Pedido(p.first()?.clone()),
             "consulta" => Accion::Consulta(texto(0)?),
-            "pedir_y_seguir" => Accion::PedirYSeguir { pedido: p.first()?.clone(), consulta: texto(1)? },
+            "pedir_y_seguir" => Accion::PedirYSeguir {
+                pedido: p.first()?.clone(),
+                consulta: texto(1)?,
+            },
             "copiar" => Accion::Copiar(texto(0)?),
-            "carpeta" => Accion::Carpeta { carpeta: texto(0)?, fichero: texto(1).unwrap_or_default() },
+            "carpeta" => Accion::Carpeta {
+                carpeta: texto(0)?,
+                fichero: texto(1).unwrap_or_default(),
+            },
             "windows" => Accion::Windows(texto(0)?),
-            "pegar_imagen" => Accion::PegarImagen { consulta: texto(0)?, numero: p.get(1)?.as_u64()? as u32 },
+            "pegar_imagen" => Accion::PegarImagen {
+                consulta: texto(0)?,
+                numero: p.get(1)?.as_u64()? as u32,
+            },
             _ => return None,
         })
     }
@@ -175,7 +197,12 @@ pub struct Resultado {
 }
 
 impl Resultado {
-    pub(crate) fn nuevo(titulo: impl Into<String>, subtitulo: impl Into<String>, glifo: &'static str, accion: Accion) -> Self {
+    pub(crate) fn nuevo(
+        titulo: impl Into<String>,
+        subtitulo: impl Into<String>,
+        glifo: &'static str,
+        accion: Accion,
+    ) -> Self {
         Resultado {
             titulo: titulo.into(),
             subtitulo: subtitulo.into(),
@@ -244,7 +271,11 @@ impl Resultado {
         if let Some(t) = self.ayuda_titulo.as_deref().filter(|t| *t != self.titulo) {
             r["titleToolTip"] = json!(t);
         }
-        if let Some(t) = self.ayuda_subtitulo.as_deref().filter(|t| *t != self.subtitulo) {
+        if let Some(t) = self
+            .ayuda_subtitulo
+            .as_deref()
+            .filter(|t| *t != self.subtitulo)
+        {
             r["subTitleToolTip"] = json!(t);
         }
         if let Some(k) = &self.clave {
@@ -274,7 +305,11 @@ impl Resultado {
 /// asi eso no desordena una lista de tareas.
 pub fn lista_json(resultados: &[Resultado], icono: &str) -> Vec<Value> {
     let n = resultados.len() as i64;
-    resultados.iter().enumerate().map(|(i, r)| r.a_json(icono, (n - i as i64) * 100)).collect()
+    resultados
+        .iter()
+        .enumerate()
+        .map(|(i, r)| r.a_json(icono, (n - i as i64) * 100))
+        .collect()
 }
 
 /// Un pedido del protocolo v1.
@@ -292,7 +327,12 @@ pub fn es_audio(ruta: &std::path::Path) -> bool {
     ruta.extension()
         .and_then(|e| e.to_str())
         .map(str::to_ascii_lowercase)
-        .is_some_and(|e| matches!(e.as_str(), "m4a" | "mp3" | "wav" | "aac" | "wma" | "flac" | "ogg" | "opus" | "3gp" | "amr"))
+        .is_some_and(|e| {
+            matches!(
+                e.as_str(),
+                "m4a" | "mp3" | "wav" | "aac" | "wma" | "flac" | "ogg" | "opus" | "3gp" | "amr"
+            )
+        })
 }
 
 /// Si el fichero es una imagen que Flow sabe ensenar (icono y vista previa).
@@ -300,7 +340,12 @@ pub fn es_imagen(ruta: &std::path::Path) -> bool {
     ruta.extension()
         .and_then(|e| e.to_str())
         .map(str::to_ascii_lowercase)
-        .is_some_and(|e| matches!(e.as_str(), "png" | "jpg" | "jpeg" | "bmp" | "gif" | "webp" | "ico" | "tif" | "tiff"))
+        .is_some_and(|e| {
+            matches!(
+                e.as_str(),
+                "png" | "jpg" | "jpeg" | "bmp" | "gif" | "webp" | "ico" | "tif" | "tiff"
+            )
+        })
 }
 
 /// Un texto largo cortado para el texto de ayuda (con «…» si se corto).
@@ -345,7 +390,11 @@ pub struct Contexto {
 impl Contexto {
     pub fn nuevo(palabra_clave: &str) -> Self {
         let k = palabra_clave.trim();
-        let prefijo = if k.is_empty() || k == "*" { String::new() } else { format!("{k} ") };
+        let prefijo = if k.is_empty() || k == "*" {
+            String::new()
+        } else {
+            format!("{k} ")
+        };
         Contexto::con(prefijo, datos::ahora_ms())
     }
 
@@ -363,9 +412,13 @@ impl Contexto {
     /// La raiz de los datos: la puesta, o la de la carpeta de los iconos
     /// (`<raiz>/cache/iconos-de-extension`).
     pub fn raiz_de_datos(&self) -> Option<PathBuf> {
-        self.raiz
-            .clone()
-            .or_else(|| self.iconos.as_deref().and_then(|i| i.parent()).and_then(|c| c.parent()).map(PathBuf::from))
+        self.raiz.clone().or_else(|| {
+            self.iconos
+                .as_deref()
+                .and_then(|i| i.parent())
+                .and_then(|c| c.parent())
+                .map(PathBuf::from)
+        })
     }
 
     pub(crate) fn consulta(&self, texto: &str) -> String {
@@ -407,7 +460,12 @@ pub fn hace(ms: i64, ahora: i64) -> String {
 }
 
 fn unir(trozos: &[&str]) -> String {
-    trozos.iter().filter(|t| !t.is_empty()).copied().collect::<Vec<_>>().join(" · ")
+    trozos
+        .iter()
+        .filter(|t| !t.is_empty())
+        .copied()
+        .collect::<Vec<_>>()
+        .join(" · ")
 }
 
 // --- Lo que se busca ------------------------------------------------------
@@ -490,14 +548,24 @@ fn resultado_funcion(f: Funcion, ctx: &Contexto) -> Resultado {
             glifo::LECCION,
             Accion::Consulta(ctx.consulta("repasar ")),
         ),
-        Funcion::Capturar => ("Capturar zona", "Recorta una zona de la pantalla · «c»", glifo::CAPTURA, Accion::Pedido(pedido_capturar())),
+        Funcion::Capturar => (
+            "Capturar zona",
+            "Recorta una zona de la pantalla · «c»",
+            glifo::CAPTURA,
+            Accion::Pedido(pedido_capturar()),
+        ),
         Funcion::Capturas => (
             "Capturas",
             "Las últimas, para buscarlas y pinearlas",
             glifo::IMAGEN,
             Accion::Consulta(ctx.consulta("capturas ")),
         ),
-        Funcion::Galeria => ("Galería de capturas", "Abre la galería · «g»", glifo::GALERIA, Accion::Pedido(pedido_ventana("galeria"))),
+        Funcion::Galeria => (
+            "Galería de capturas",
+            "Abre la galería · «g»",
+            glifo::GALERIA,
+            Accion::Pedido(pedido_ventana("galeria")),
+        ),
         Funcion::Ultima => (
             "Última captura",
             "Pinéala · «u»",
@@ -529,7 +597,12 @@ pub(crate) fn pedido_capturar() -> Value {
 }
 
 /// «Abrir la ventana de …»: una ventana de la app, la misma fila siempre.
-pub(crate) fn resultado_ventana(cual: &str, titulo: &str, sub: &str, glifo: &'static str) -> Resultado {
+pub(crate) fn resultado_ventana(
+    cual: &str,
+    titulo: &str,
+    sub: &str,
+    glifo: &'static str,
+) -> Resultado {
     let mut r = Resultado::nuevo(titulo, sub, glifo, Accion::Pedido(pedido_ventana(cual)));
     r.clave = Some(format!("ventana/{cual}"));
     r
@@ -546,7 +619,12 @@ pub(crate) fn resultado_proyecto(p: &Proyecto, etiqueta: &str, ctx: &Contexto) -
     let tocado = hace(p.tocado, ctx.ahora);
     let tipo = if p.guardados { "Chat" } else { "Proyecto" };
     let entrar = crate::chat::consulta_de(etiqueta, ctx);
-    let mut r = Resultado::nuevo(&p.nombre, unir(&[tipo, &hojas, &tocado]), glifo::PROYECTO, Accion::Consulta(entrar.clone()));
+    let mut r = Resultado::nuevo(
+        &p.nombre,
+        unir(&[tipo, &hojas, &tocado]),
+        glifo::PROYECTO,
+        Accion::Consulta(entrar.clone()),
+    );
     r.autocompletar = Some(entrar.clone());
     r.copiar = Some(p.nombre.clone());
     r.clave = Some(format!("proyecto/{}", p.id));
@@ -561,24 +639,38 @@ pub(crate) fn resultado_proyecto(p: &Proyecto, etiqueta: &str, ctx: &Contexto) -
 }
 
 pub(crate) fn abrir_mensaje(p: &Proyecto, m: &Mensaje) -> Accion {
-    Accion::Pedido(pedido("abrir", json!({ "que": { "tipo": "mensaje", "proyecto": p.id_para_pedido(), "codigo": m.id } })))
+    Accion::Pedido(pedido(
+        "abrir",
+        json!({ "que": { "tipo": "mensaje", "proyecto": p.id_para_pedido(), "codigo": m.id } }),
+    ))
 }
 
 pub(crate) fn abrir_proyecto(p: &Proyecto) -> Accion {
-    Accion::Pedido(pedido("abrir", json!({ "que": { "tipo": "proyecto", "proyecto": p.id_para_pedido() } })))
+    Accion::Pedido(pedido(
+        "abrir",
+        json!({ "que": { "tipo": "proyecto", "proyecto": p.id_para_pedido() } }),
+    ))
 }
 
 /// El nombre que se ensena de un lienzo.
 fn nombre_de_lienzo(p: &Proyecto, m: &Mensaje) -> String {
     let referencia = m.referencia.as_deref().unwrap_or("");
-    if let Some(h) = p.hojas_json.iter().find(|h| h.dibujo.as_deref() == Some(referencia) || h.id == referencia) {
+    if let Some(h) = p
+        .hojas_json
+        .iter()
+        .find(|h| h.dibujo.as_deref() == Some(referencia) || h.id == referencia)
+    {
         if !h.nombre.trim().is_empty() {
             return h.nombre.trim().to_string();
         }
     }
     let n = m.nombre();
     let n = n.strip_suffix(".excalidraw").unwrap_or(n).trim();
-    if n.is_empty() { "Lienzo".into() } else { n.to_string() }
+    if n.is_empty() {
+        "Lienzo".into()
+    } else {
+        n.to_string()
+    }
 }
 
 /// La primera linea con texto, sin `#` delante, cortada a `n` letras (con
@@ -586,7 +678,12 @@ fn nombre_de_lienzo(p: &Proyecto, m: &Mensaje) -> String {
 pub(crate) fn resumen(texto: &str, n: usize) -> Option<String> {
     let l = texto
         .lines()
-        .map(|l| l.trim().trim_start_matches('\u{feff}').trim_start_matches('#').trim())
+        .map(|l| {
+            l.trim()
+                .trim_start_matches('\u{feff}')
+                .trim_start_matches('#')
+                .trim()
+        })
         .find(|l| !l.is_empty())?;
     if l.chars().count() <= n {
         return Some(l.to_string());
@@ -603,7 +700,11 @@ fn duracion(ms: f64) -> String {
     }
     let s = (ms / 1000.0).round() as u64;
     let (h, m, s) = (s / 3600, s / 60 % 60, s % 60);
-    if h > 0 { format!("{h}:{m:02}:{s:02}") } else { format!("{m}:{s:02}") }
+    if h > 0 {
+        format!("{h}:{m:02}:{s:02}")
+    } else {
+        format!("{m}:{s:02}")
+    }
 }
 
 /// Donde se ensena: en la busqueda de todo, o dentro del chat de un
@@ -655,7 +756,11 @@ fn de_mensaje_sin_clave(
         return None;
     }
     let chat = vista == Vista::Chat;
-    let cuando = if chat { crate::fecha::momento(m.cuando, ctx.ahora) } else { hace(m.cuando, ctx.ahora) };
+    let cuando = if chat {
+        crate::fecha::momento(m.cuando, ctx.ahora)
+    } else {
+        hace(m.cuando, ctx.ahora)
+    };
     let donde = if chat { "" } else { p.nombre.as_str() };
     let base = json!({
         "tipo": "mensaje",
@@ -663,8 +768,18 @@ fn de_mensaje_sin_clave(
         "codigo": m.id,
         "carpeta": p.carpeta.to_string_lossy(),
     });
-    let pin_del_mensaje = pedido("pinear", json!({ "proyecto": p.id_para_pedido(), "codigo": m.id }));
-    let pieza = |tipo, nombre: String, dentro: String, resultado| Some(Pieza { tipo, nombre, dentro, resultado });
+    let pin_del_mensaje = pedido(
+        "pinear",
+        json!({ "proyecto": p.id_para_pedido(), "codigo": m.id }),
+    );
+    let pieza = |tipo, nombre: String, dentro: String, resultado| {
+        Some(Pieza {
+            tipo,
+            nombre,
+            dentro,
+            resultado,
+        })
+    };
     match m.clase.as_str() {
         "DIBUJO" | "PAGINA" => {
             let referencia = m.referencia.as_deref().filter(|r| !r.is_empty());
@@ -672,12 +787,24 @@ fn de_mensaje_sin_clave(
                 return None;
             }
             let nombre = nombre_de_lienzo(p, m);
-            let tipo = if m.clase == "PAGINA" { "Hoja" } else { "Lienzo" };
+            let tipo = if m.clase == "PAGINA" {
+                "Hoja"
+            } else {
+                "Lienzo"
+            };
             let accion = match referencia {
-                Some(r) => Accion::Pedido(pedido("abrir", json!({ "que": { "tipo": "hoja", "proyecto": p.id_para_pedido(), "referencia": r } }))),
+                Some(r) => Accion::Pedido(pedido(
+                    "abrir",
+                    json!({ "que": { "tipo": "hoja", "proyecto": p.id_para_pedido(), "referencia": r } }),
+                )),
                 None => abrir_mensaje(p, m),
             };
-            let mut r = Resultado::nuevo(&nombre, unir(&[tipo, donde, &cuando]), glifo::LIENZO, accion);
+            let mut r = Resultado::nuevo(
+                &nombre,
+                unir(&[tipo, donde, &cuando]),
+                glifo::LIENZO,
+                accion,
+            );
             r.copiar = Some(nombre.clone());
             r.con_menu(extender(base, json!({ "pin": pin_del_mensaje })));
             pieza(Tipo::Lienzo, nombre, String::new(), r)
@@ -687,17 +814,30 @@ fn de_mensaje_sin_clave(
             // Una nota de verdad tiene su `.md` en `notas/`; lo demas es un
             // mensaje de texto.
             let con_md = p.notas_md.iter().any(|n| {
-                let raiz = n.ruta.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
+                let raiz = n
+                    .ruta
+                    .file_stem()
+                    .map(|s| s.to_string_lossy().to_string())
+                    .unwrap_or_default();
                 raiz == m.id || m.referencia.as_deref() == Some(raiz.as_str())
             });
             let titulo = if chat {
-                resumen(texto, 120).unwrap_or_else(|| if m.nombre().is_empty() { "Mensaje".into() } else { m.nombre().into() })
+                resumen(texto, 120).unwrap_or_else(|| {
+                    if m.nombre().is_empty() {
+                        "Mensaje".into()
+                    } else {
+                        m.nombre().into()
+                    }
+                })
             } else if m.nombre().is_empty() {
                 datos::primera_linea(texto).unwrap_or_else(|| "Nota".into())
             } else {
                 m.nombre().to_string()
             };
-            let abrir_nota = Accion::Pedido(pedido("abrir", json!({ "que": { "tipo": "nota", "proyecto": p.id_para_pedido(), "codigo": m.id } })));
+            let abrir_nota = Accion::Pedido(pedido(
+                "abrir",
+                json!({ "que": { "tipo": "nota", "proyecto": p.id_para_pedido(), "codigo": m.id } }),
+            ));
             let (etiqueta, accion, glifo) = if chat && !con_md {
                 ("Mensaje", abrir_mensaje(p, m), glifo::CHAT)
             } else {
@@ -706,18 +846,34 @@ fn de_mensaje_sin_clave(
             let mut r = Resultado::nuevo(&titulo, unir(&[etiqueta, donde, &cuando]), glifo, accion);
             r.copiar = Some(texto.to_string());
             r.ayuda_subtitulo = Some(para_ayuda(texto));
-            r.con_menu(extender(base, json!({ "texto": texto, "pin": pin_del_mensaje })));
+            r.con_menu(extender(
+                base,
+                json!({ "texto": texto, "pin": pin_del_mensaje }),
+            ));
             pieza(Tipo::Nota, titulo, texto.to_string(), r)
         }
         "ARCHIVO" | "IMAGEN" | "VOZ" => {
-            let ruta = m.ruta.as_deref().and_then(|r| p.ruta_real(r)).filter(|r| crate::datos::existe(r));
-            let de_ruta = m.ruta.as_deref().and_then(|r| r.rsplit(['/', '\\']).next()).unwrap_or("").to_string();
+            let ruta = m
+                .ruta
+                .as_deref()
+                .and_then(|r| p.ruta_real(r))
+                .filter(|r| crate::datos::existe(r));
+            let de_ruta = m
+                .ruta
+                .as_deref()
+                .and_then(|r| r.rsplit(['/', '\\']).next())
+                .unwrap_or("")
+                .to_string();
             let (tipo, glifo, etiqueta) = match m.clase.as_str() {
                 "VOZ" => (Tipo::Audio, glifo::AUDIO, "Audio"),
                 "IMAGEN" => (Tipo::Archivo, glifo::IMAGEN, "Foto"),
                 _ => (Tipo::Archivo, glifo::ARCHIVO, "Archivo"),
             };
-            let etiqueta = if !chat && m.clase == "IMAGEN" { "Imagen" } else { etiqueta };
+            let etiqueta = if !chat && m.clase == "IMAGEN" {
+                "Imagen"
+            } else {
+                etiqueta
+            };
             let transcripcion = m.transcripcion.as_deref().unwrap_or("").trim();
             let titulo = if !m.nombre().is_empty() {
                 m.nombre().to_string()
@@ -727,7 +883,11 @@ fn de_mensaje_sin_clave(
                     // Sin nombre no hay forma de encontrarlo: se dice que es.
                     None if chat => "Nota de voz".into(),
                     None => {
-                        let fecha = if cuando.is_empty() { String::new() } else { format!(" ({cuando})") };
+                        let fecha = if cuando.is_empty() {
+                            String::new()
+                        } else {
+                            format!(" ({cuando})")
+                        };
                         format!("Nota de voz sin nombre{fecha}")
                     }
                 }
@@ -736,32 +896,61 @@ fn de_mensaje_sin_clave(
             } else {
                 etiqueta.to_string()
             };
-            let falta = if ruta.is_none() { "no está en este equipo" } else { "" };
-            let largo = if chat && tipo == Tipo::Audio { duracion(m.duracion_ms.unwrap_or(0.0)) } else { String::new() };
+            let falta = if ruta.is_none() {
+                "no está en este equipo"
+            } else {
+                ""
+            };
+            let largo = if chat && tipo == Tipo::Audio {
+                duracion(m.duracion_ms.unwrap_or(0.0))
+            } else {
+                String::new()
+            };
             // Un audio suena ahi mismo, en el reproductor flotante de la app,
             // sin abrir el chat ni el reproductor de Windows.
             let suena = tipo == Tipo::Audio || ruta.as_deref().is_some_and(es_audio);
             let accion = match &ruta {
-                Some(r) if suena => Accion::Pedido(pedido("reproducir", json!({ "ruta": r.to_string_lossy(), "titulo": titulo }))),
-                Some(r) => Accion::Pedido(pedido("abrir", json!({ "que": { "tipo": "fichero", "ruta": r.to_string_lossy() } }))),
+                Some(r) if suena => Accion::Pedido(pedido(
+                    "reproducir",
+                    json!({ "ruta": r.to_string_lossy(), "titulo": titulo }),
+                )),
+                Some(r) => Accion::Pedido(pedido(
+                    "abrir",
+                    json!({ "que": { "tipo": "fichero", "ruta": r.to_string_lossy() } }),
+                )),
                 None => abrir_mensaje(p, m),
             };
-            let mut r = Resultado::nuevo(&titulo, unir(&[etiqueta, donde, &largo, &cuando, falta]), glifo, accion);
+            let mut r = Resultado::nuevo(
+                &titulo,
+                unir(&[etiqueta, donde, &largo, &cuando, falta]),
+                glifo,
+                accion,
+            );
             // El icono: la foto misma (Flow la ensena en pequeno) o el de su
             // extension, como en el chat. Los audios, su glifo.
             r.icono = match m.clase.as_str() {
                 "IMAGEN" => ruta.as_ref().map(|r| r.to_string_lossy().to_string()),
                 "ARCHIVO" => {
-                    let nombre_real = ruta.as_ref().and_then(|r| r.file_name()).map(|n| n.to_string_lossy().to_string());
-                    [nombre_real.as_deref(), Some(m.nombre()), Some(de_ruta.as_str())]
-                        .into_iter()
-                        .flatten()
-                        .find_map(crate::iconos::extension)
-                        .and_then(|e| ctx.icono_de_extension(&e))
+                    let nombre_real = ruta
+                        .as_ref()
+                        .and_then(|r| r.file_name())
+                        .map(|n| n.to_string_lossy().to_string());
+                    [
+                        nombre_real.as_deref(),
+                        Some(m.nombre()),
+                        Some(de_ruta.as_str()),
+                    ]
+                    .into_iter()
+                    .flatten()
+                    .find_map(crate::iconos::extension)
+                    .and_then(|e| ctx.icono_de_extension(&e))
                 }
                 _ => None,
             };
-            let copiar = ruta.as_ref().map(|r| r.to_string_lossy().to_string()).unwrap_or_else(|| titulo.clone());
+            let copiar = ruta
+                .as_ref()
+                .map(|r| r.to_string_lossy().to_string())
+                .unwrap_or_else(|| titulo.clone());
             r.copiar = Some(copiar);
             if let Some(rr) = &ruta {
                 r.con_fichero(rr);
@@ -796,7 +985,12 @@ fn de_mensaje_sin_clave(
                 titulo = "Mini-app".into();
             }
             let cual = m.miniapp.as_deref().unwrap_or("");
-            let mut r = Resultado::nuevo(&titulo, unir(&["Mini-app", cual, &cuando]), glifo::MINIAPP, abrir_mensaje(p, m));
+            let mut r = Resultado::nuevo(
+                &titulo,
+                unir(&["Mini-app", cual, &cuando]),
+                glifo::MINIAPP,
+                abrir_mensaje(p, m),
+            );
             r.copiar = Some(m.texto().to_string());
             r.ayuda_subtitulo = Some(para_ayuda(m.texto()));
             r.con_menu(extender(base, json!({ "texto": m.texto() })));
@@ -804,17 +998,28 @@ fn de_mensaje_sin_clave(
         }
         "PROYECTO" => {
             // El acceso directo a otro proyecto: entra en su chat.
-            let destino = m.referencia.as_deref().and_then(|id| proyectos.iter().position(|q| q.id == id));
+            let destino = m
+                .referencia
+                .as_deref()
+                .and_then(|id| proyectos.iter().position(|q| q.id == id));
             let titulo = match (m.nombre(), destino) {
                 ("", Some(j)) => proyectos[j].nombre.clone(),
                 ("", None) => "Proyecto".into(),
                 (n, _) => n.to_string(),
             };
             let accion = match destino {
-                Some(j) => Accion::Consulta(crate::chat::consulta_de(&crate::chat::etiquetas(proyectos)[j], ctx)),
+                Some(j) => Accion::Consulta(crate::chat::consulta_de(
+                    &crate::chat::etiquetas(proyectos)[j],
+                    ctx,
+                )),
                 None => abrir_mensaje(p, m),
             };
-            let mut r = Resultado::nuevo(&titulo, unir(&["Proyecto", &cuando]), glifo::PROYECTO, accion);
+            let mut r = Resultado::nuevo(
+                &titulo,
+                unir(&["Proyecto", &cuando]),
+                glifo::PROYECTO,
+                accion,
+            );
             r.con_menu(base);
             pieza(Tipo::Proyecto, titulo, String::new(), r)
         }
@@ -822,7 +1027,12 @@ fn de_mensaje_sin_clave(
             let titulo = resumen(m.texto(), 120)
                 .or_else(|| (!m.nombre().is_empty()).then(|| m.nombre().to_string()))
                 .unwrap_or_else(|| otra.to_string());
-            let mut r = Resultado::nuevo(&titulo, unir(&["Mensaje", &cuando]), glifo::CHAT, abrir_mensaje(p, m));
+            let mut r = Resultado::nuevo(
+                &titulo,
+                unir(&["Mensaje", &cuando]),
+                glifo::CHAT,
+                abrir_mensaje(p, m),
+            );
             r.ayuda_subtitulo = Some(para_ayuda(m.texto()));
             r.con_menu(extender(base, json!({ "texto": m.texto() })));
             pieza(Tipo::Nota, titulo, m.texto().to_string(), r)
@@ -864,7 +1074,10 @@ fn cosas_de_proyecto(proyectos: &[Proyecto], i: usize, ctx: &Contexto, salida: &
             h.nombre.trim(),
             unir(&["Hoja", &p.nombre]),
             glifo::LIENZO,
-            Accion::Pedido(pedido("abrir", json!({ "que": { "tipo": "hoja", "proyecto": p.id_para_pedido(), "referencia": dibujo } }))),
+            Accion::Pedido(pedido(
+                "abrir",
+                json!({ "que": { "tipo": "hoja", "proyecto": p.id_para_pedido(), "referencia": dibujo } }),
+            )),
         );
         r.copiar = Some(h.nombre.trim().to_string());
         r.clave = Some(format!("hoja/{}/{}", p.id, dibujo));
@@ -873,7 +1086,11 @@ fn cosas_de_proyecto(proyectos: &[Proyecto], i: usize, ctx: &Contexto, salida: &
     }
     // Las notas .md sueltas (las de un mensaje NOTA ya salieron arriba).
     for n in &p.notas_md {
-        let raiz = n.ruta.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
+        let raiz = n
+            .ruta
+            .file_stem()
+            .map(|s| s.to_string_lossy().to_string())
+            .unwrap_or_default();
         if referencias.contains(&raiz) || p.mensajes.iter().any(|m| m.id == raiz) {
             continue;
         }
@@ -882,7 +1099,10 @@ fn cosas_de_proyecto(proyectos: &[Proyecto], i: usize, ctx: &Contexto, salida: &
             &n.titulo,
             unir(&["Nota", &p.nombre, &hace(n.cuando, ctx.ahora)]),
             glifo::NOTA,
-            Accion::Pedido(pedido("abrir", json!({ "que": { "tipo": "fichero", "ruta": ruta } }))),
+            Accion::Pedido(pedido(
+                "abrir",
+                json!({ "que": { "tipo": "fichero", "ruta": ruta } }),
+            )),
         );
         r.copiar = Some(ruta.clone());
         r.clave = Some(format!("fichero/{ruta}"));
@@ -914,7 +1134,8 @@ pub const INBOX: &str = "Inbox";
 impl Lista {
     /// Si es el Inbox: la de «Mensajes guardados» que se llama asi.
     pub fn es_inbox(&self, proyectos: &[Proyecto]) -> bool {
-        proyectos.get(self.proyecto).is_some_and(|p| p.guardados) && self.titulo.trim().eq_ignore_ascii_case(INBOX)
+        proyectos.get(self.proyecto).is_some_and(|p| p.guardados)
+            && self.titulo.trim().eq_ignore_ascii_case(INBOX)
     }
 
     /// Lo hecho, de 0 a 100 (`None` si esta vacia).
@@ -962,7 +1183,10 @@ pub fn listas(proyectos: &[Proyecto]) -> Vec<Lista> {
     }
     let etiquetas: Vec<String> = v.iter().map(|l| normalizar(&l.etiqueta)).collect();
     for i in 0..v.len() {
-        let antes = etiquetas[..i].iter().filter(|e| **e == etiquetas[i]).count();
+        let antes = etiquetas[..i]
+            .iter()
+            .filter(|e| **e == etiquetas[i])
+            .count();
         if antes > 0 {
             v[i].etiqueta = format!("{} · {}", v[i].etiqueta, antes + 1);
         }
@@ -1026,11 +1250,25 @@ fn elegir_proyecto<'a>(proyectos: &'a [Proyecto], texto: &str) -> Option<(&'a Pr
 }
 
 /// Las sugerencias de proyecto mientras se escribe tras `@`.
-fn sugerir_proyectos(proyectos: &[Proyecto], texto: &str, delante: &str, ctx: &Contexto) -> Vec<Resultado> {
+fn sugerir_proyectos(
+    proyectos: &[Proyecto],
+    texto: &str,
+    delante: &str,
+    ctx: &Contexto,
+) -> Vec<Resultado> {
     let q = normalizar(texto.trim());
     let mut v: Vec<(&Proyecto, u32)> = proyectos
         .iter()
-        .map(|p| (p, if q.is_empty() { 1 } else { puntuar(&q, &normalizar(&p.nombre), "") }))
+        .map(|p| {
+            (
+                p,
+                if q.is_empty() {
+                    1
+                } else {
+                    puntuar(&q, &normalizar(&p.nombre), "")
+                },
+            )
+        })
         .filter(|(_, s)| *s > 0)
         .collect();
     v.sort_by(|a, b| b.1.cmp(&a.1).then(b.0.tocado.cmp(&a.0.tocado)));
@@ -1065,7 +1303,13 @@ fn buscar(
             let r = resultado_funcion(f, ctx);
             let mut nombres: Vec<String> = f.alias().iter().map(|a| a.to_string()).collect();
             nombres.push(normalizar(&r.titulo));
-            cosas.push(Cosa { tipo: Tipo::Funcion, nombres, dentro: String::new(), cuando: i64::MAX, resultado: r });
+            cosas.push(Cosa {
+                tipo: Tipo::Funcion,
+                nombres,
+                dentro: String::new(),
+                cuando: i64::MAX,
+                resultado: r,
+            });
         }
     }
     let etiquetas = crate::chat::etiquetas(proyectos);
@@ -1102,7 +1346,12 @@ fn buscar(
         .into_iter()
         .filter(|c| tipos.is_none_or(|t| t.contains(&c.tipo)))
         .filter_map(|c| {
-            let base = c.nombres.iter().map(|n| puntuar(&q, n, &c.dentro)).max().unwrap_or(0);
+            let base = c
+                .nombres
+                .iter()
+                .map(|n| puntuar(&q, n, &c.dentro))
+                .max()
+                .unwrap_or(0);
             if base == 0 && !q.is_empty() {
                 return None;
             }
@@ -1117,7 +1366,12 @@ fn buscar(
     // Las lecciones aprendidas, buscadas como en la app y por debajo de lo
     // que se llama exactamente asi (`lecciones::para_buscar_en_todo`).
     if tipos.is_none() && !q.is_empty() {
-        puntuadas.extend(crate::lecciones::para_buscar_en_todo(proyectos, texto, en_proyecto, ctx));
+        puntuadas.extend(crate::lecciones::para_buscar_en_todo(
+            proyectos,
+            texto,
+            en_proyecto,
+            ctx,
+        ));
     }
     puntuadas.sort_by(|a, b| b.0.cmp(&a.0).then(b.1.cmp(&a.1)));
     puntuadas
@@ -1151,13 +1405,17 @@ pub fn resultados(proyectos: &[Proyecto], busqueda: &str, ctx: &Contexto) -> Vec
     // quedaria dentro del nombre.
     let de_tarea = match &modo {
         Modo::Apuntar { .. } | Modo::Lista { .. } => true,
-        Modo::Verbo { funcion: Funcion::Tareas, resto, proyecto: None } => {
-            !resto.trim().is_empty() || busqueda.trim().chars().count() == 1
-        }
+        Modo::Verbo {
+            funcion: Funcion::Tareas,
+            resto,
+            proyecto: None,
+        } => !resto.trim().is_empty() || busqueda.trim().chars().count() == 1,
         // Y escribiendo una leccion nueva («a …», «lección …»): son sus fotos.
-        Modo::Verbo { funcion: Funcion::Leccion, resto, proyecto: None } => {
-            !resto.trim().is_empty() || busqueda.trim().chars().count() == 1
-        }
+        Modo::Verbo {
+            funcion: Funcion::Leccion,
+            resto,
+            proyecto: None,
+        } => !resto.trim().is_empty() || busqueda.trim().chars().count() == 1,
         _ => false,
     };
     // Lo que se resalta en los titulos: lo que se busca o filtra.
@@ -1169,11 +1427,19 @@ pub fn resultados(proyectos: &[Proyecto], busqueda: &str, ctx: &Contexto) -> Vec
     };
     let mut v = match modo {
         Modo::Vacio => {
-            let mut v: Vec<Resultado> = Funcion::TODAS.iter().map(|f| resultado_funcion(*f, ctx)).collect();
+            let mut v: Vec<Resultado> = Funcion::TODAS
+                .iter()
+                .map(|f| resultado_funcion(*f, ctx))
+                .collect();
             let etiquetas = crate::chat::etiquetas(proyectos);
             let mut recientes: Vec<usize> = (0..proyectos.len()).collect();
             recientes.sort_by_key(|i| std::cmp::Reverse(proyectos[*i].tocado));
-            v.extend(recientes.into_iter().take(RECIENTES).map(|i| resultado_proyecto(&proyectos[i], &etiquetas[i], ctx)));
+            v.extend(
+                recientes
+                    .into_iter()
+                    .take(RECIENTES)
+                    .map(|i| resultado_proyecto(&proyectos[i], &etiquetas[i], ctx)),
+            );
             v
         }
         Modo::Buscar { texto, proyecto } => match proyecto {
@@ -1190,7 +1456,11 @@ pub fn resultados(proyectos: &[Proyecto], busqueda: &str, ctx: &Contexto) -> Vec
                 v
             }
         },
-        Modo::Verbo { funcion, resto, proyecto } => verbo(proyectos, funcion, &resto, proyecto.as_deref(), ctx),
+        Modo::Verbo {
+            funcion,
+            resto,
+            proyecto,
+        } => verbo(proyectos, funcion, &resto, proyecto.as_deref(), ctx),
         Modo::Lista { lista, filtro } => en_lista(proyectos, &lista, &filtro, ctx),
         Modo::Proyecto { proyecto, filtro } => {
             let mut v = crate::chat::buscar_y_entrar(proyectos, &proyecto, &filtro, ctx);
@@ -1248,15 +1518,32 @@ fn apuntar(proyectos: &[Proyecto], texto: &str, ctx: &Contexto) -> Vec<Resultado
 }
 
 fn resultado_ventana_tareas() -> Resultado {
-    resultado_ventana("tareas", "Abrir la ventana de Tareas", "El Inbox y todas tus listas, en PixPin", glifo::VENTANA)
+    resultado_ventana(
+        "tareas",
+        "Abrir la ventana de Tareas",
+        "El Inbox y todas tus listas, en PixPin",
+        glifo::VENTANA,
+    )
 }
 
-fn verbo(proyectos: &[Proyecto], f: Funcion, resto: &str, arroba: Option<&str>, ctx: &Contexto) -> Vec<Resultado> {
+fn verbo(
+    proyectos: &[Proyecto],
+    f: Funcion,
+    resto: &str,
+    arroba: Option<&str>,
+    ctx: &Contexto,
+) -> Vec<Resultado> {
     let elegido = arroba.and_then(|a| elegir_proyecto(proyectos, a));
-    let destino_id = elegido.map(|(p, _)| p.id_para_pedido()).unwrap_or(Value::Null);
+    let destino_id = elegido
+        .map(|(p, _)| p.id_para_pedido())
+        .unwrap_or(Value::Null);
     let destino = match (arroba, elegido) {
         (_, Some((p, _))) => format!("en «{}»", p.nombre),
-        (Some(a), None) if !a.trim().is_empty() => format!("en {} (no hay ningún proyecto «{}»)", datos::NOMBRE_GUARDADOS, a.trim()),
+        (Some(a), None) if !a.trim().is_empty() => format!(
+            "en {} (no hay ningún proyecto «{}»)",
+            datos::NOMBRE_GUARDADOS,
+            a.trim()
+        ),
         _ => format!("en {}", datos::NOMBRE_GUARDADOS),
     };
     let resto = resto.trim();
@@ -1265,16 +1552,27 @@ fn verbo(proyectos: &[Proyecto], f: Funcion, resto: &str, arroba: Option<&str>, 
         Funcion::Chat => {
             if resto.is_empty() {
                 let accion = match elegido {
-                    Some((p, _)) => Accion::Pedido(pedido("abrir", json!({ "que": { "tipo": "proyecto", "proyecto": p.id_para_pedido() } }))),
+                    Some((p, _)) => Accion::Pedido(pedido(
+                        "abrir",
+                        json!({ "que": { "tipo": "proyecto", "proyecto": p.id_para_pedido() } }),
+                    )),
                     None => Accion::Pedido(pedido("ventana_principal", json!({}))),
                 };
-                v.push(Resultado::nuevo("Escribir en el chat…", format!("Escribe el mensaje detrás de «chat» · Intro abre el chat {destino}"), glifo::CHAT, accion));
+                v.push(Resultado::nuevo(
+                    "Escribir en el chat…",
+                    format!("Escribe el mensaje detrás de «chat» · Intro abre el chat {destino}"),
+                    glifo::CHAT,
+                    accion,
+                ));
             } else {
                 let mut r = Resultado::nuevo(
                     format!("Escribir en el chat: {resto}"),
                     format!("Intro: mandarlo {destino}"),
                     glifo::CHAT,
-                    Accion::Pedido(pedido("chat", json!({ "texto": resto, "proyecto": destino_id }))),
+                    Accion::Pedido(pedido(
+                        "chat",
+                        json!({ "texto": resto, "proyecto": destino_id }),
+                    )),
                 );
                 // Con `[img NN]`, las imagenes van con el mensaje como fotos.
                 crate::imagenes::con_imagenes(&mut r, resto, ctx);
@@ -1285,20 +1583,39 @@ fn verbo(proyectos: &[Proyecto], f: Funcion, resto: &str, arroba: Option<&str>, 
             let (titulo, campos) = if resto.is_empty() {
                 ("Nota nueva".to_string(), json!({ "proyecto": destino_id }))
             } else {
-                (format!("Nota nueva: {resto}"), json!({ "texto": resto, "proyecto": destino_id }))
+                (
+                    format!("Nota nueva: {resto}"),
+                    json!({ "texto": resto, "proyecto": destino_id }),
+                )
             };
-            let mut r = Resultado::nuevo(titulo, format!("Intro: abrirla en el editor de notas, {destino}"), glifo::NOTA, Accion::Pedido(pedido("nota_nueva", campos)));
+            let mut r = Resultado::nuevo(
+                titulo,
+                format!("Intro: abrirla en el editor de notas, {destino}"),
+                glifo::NOTA,
+                Accion::Pedido(pedido("nota_nueva", campos)),
+            );
             // Y en una nota, cada `[img NN]` queda como su imagen dentro.
             crate::imagenes::con_imagenes(&mut r, resto, ctx);
             v.push(r);
         }
         Funcion::Lienzo => {
             let (titulo, campos) = if resto.is_empty() {
-                ("Lienzo nuevo".to_string(), json!({ "proyecto": destino_id }))
+                (
+                    "Lienzo nuevo".to_string(),
+                    json!({ "proyecto": destino_id }),
+                )
             } else {
-                (format!("Lienzo nuevo: {resto}"), json!({ "nombre": resto, "proyecto": destino_id }))
+                (
+                    format!("Lienzo nuevo: {resto}"),
+                    json!({ "nombre": resto, "proyecto": destino_id }),
+                )
             };
-            v.push(Resultado::nuevo(titulo, format!("Intro: abrirlo, {destino}"), glifo::LIENZO, Accion::Pedido(pedido("lienzo_nuevo", campos))));
+            v.push(Resultado::nuevo(
+                titulo,
+                format!("Intro: abrirlo, {destino}"),
+                glifo::LIENZO,
+                Accion::Pedido(pedido("lienzo_nuevo", campos)),
+            ));
         }
         Funcion::Grabar => {
             if resto.is_empty() {
@@ -1325,7 +1642,9 @@ fn verbo(proyectos: &[Proyecto], f: Funcion, resto: &str, arroba: Option<&str>, 
             if resto.is_empty() {
                 let mut r = Resultado::nuevo(
                     "Nueva lección: escribe lo que aprendiste",
-                    format!("Con el texto, Intro abre la ficha ya rellena · Ctrl+V pega una foto · {destino}"),
+                    format!(
+                        "Con el texto, Intro abre la ficha ya rellena · Ctrl+V pega una foto · {destino}"
+                    ),
                     glifo::LECCION,
                     Accion::Pedido(pedido("leccion_nueva", json!({ "proyecto": destino_id }))),
                 );
@@ -1343,7 +1662,10 @@ fn verbo(proyectos: &[Proyecto], f: Funcion, resto: &str, arroba: Option<&str>, 
                     format!("Nueva lección: {resto}"),
                     format!("Intro: abre la ficha con esto, {destino}"),
                     glifo::LECCION,
-                    Accion::Pedido(pedido("leccion_nueva", json!({ "texto": resto, "proyecto": destino_id }))),
+                    Accion::Pedido(pedido(
+                        "leccion_nueva",
+                        json!({ "texto": resto, "proyecto": destino_id }),
+                    )),
                 );
                 // Con `[img NN]`, las imagenes son las fotos de la leccion.
                 crate::imagenes::con_imagenes(&mut r, resto, ctx);
@@ -1353,22 +1675,35 @@ fn verbo(proyectos: &[Proyecto], f: Funcion, resto: &str, arroba: Option<&str>, 
                 let todas = crate::lecciones::todas(proyectos);
                 let mut parecidas = crate::lecciones::buscar(&todas, &sin_fichas);
                 parecidas.sort_by(|a, b| b.0.cmp(&a.0));
-                v.extend(parecidas.iter().take(crate::lecciones::EN_TODO).map(|(_, l)| {
-                    let mut r = crate::lecciones::resultado(l, proyectos, ctx);
-                    r.subtitulo = format!("¿Ya la tienes? · {}", r.subtitulo);
-                    r
-                }));
+                v.extend(
+                    parecidas
+                        .iter()
+                        .take(crate::lecciones::EN_TODO)
+                        .map(|(_, l)| {
+                            let mut r = crate::lecciones::resultado(l, proyectos, ctx);
+                            r.subtitulo = format!("¿Ya la tienes? · {}", r.subtitulo);
+                            r
+                        }),
+                );
                 if !sin_fichas.is_empty() {
                     v.push(Resultado::nuevo(
                         format!("Buscar en lecciones: {sin_fichas}"),
                         "Intro: la lista de lecciones de la app con esta búsqueda",
                         glifo::VENTANA,
-                        Accion::Pedido(pedido("lecciones", json!({ "consulta": sin_fichas, "proyecto": destino_id }))),
+                        Accion::Pedido(pedido(
+                            "lecciones",
+                            json!({ "consulta": sin_fichas, "proyecto": destino_id }),
+                        )),
                     ));
                 }
             }
         }
-        Funcion::Lecciones => v.extend(crate::lecciones::lista(proyectos, resto, elegido.map(|(p, _)| p), ctx)),
+        Funcion::Lecciones => v.extend(crate::lecciones::lista(
+            proyectos,
+            resto,
+            elegido.map(|(p, _)| p),
+            ctx,
+        )),
         Funcion::Repasar => v.extend(crate::lecciones::repasar(proyectos, ctx)),
         Funcion::Soltar => {
             // Sin proyecto elegido, el primero va a Mensajes guardados;
@@ -1377,7 +1712,12 @@ fn verbo(proyectos: &[Proyecto], f: Funcion, resto: &str, arroba: Option<&str>, 
             let titulo = |p: &Proyecto| format!("Añadir a «{}»", p.nombre);
             let sub = "Intro: un recuadro flotante; suelta archivos en él y van a su chat";
             match elegido {
-                Some((p, _)) => v.push(Resultado::nuevo(titulo(p), sub, glifo::ADJUNTAR, Accion::Pedido(pedido_soltar(Some(p))))),
+                Some((p, _)) => v.push(Resultado::nuevo(
+                    titulo(p),
+                    sub,
+                    glifo::ADJUNTAR,
+                    Accion::Pedido(pedido_soltar(Some(p))),
+                )),
                 None if q.is_empty() => {
                     let guardados = proyectos.iter().find(|p| p.guardados);
                     v.push(Resultado::nuevo(
@@ -1393,12 +1733,26 @@ fn verbo(proyectos: &[Proyecto], f: Funcion, resto: &str, arroba: Option<&str>, 
                 let mut encajan: Vec<(u32, &Proyecto)> = proyectos
                     .iter()
                     .filter(|p| !(q.is_empty() && p.guardados))
-                    .map(|p| (if q.is_empty() { 1 } else { puntuar(&q, &normalizar(&p.nombre), "") }, p))
+                    .map(|p| {
+                        (
+                            if q.is_empty() {
+                                1
+                            } else {
+                                puntuar(&q, &normalizar(&p.nombre), "")
+                            },
+                            p,
+                        )
+                    })
                     .filter(|(s, _)| *s > 0)
                     .collect();
                 encajan.sort_by(|a, b| b.0.cmp(&a.0).then(b.1.tocado.cmp(&a.1.tocado)));
                 v.extend(encajan.into_iter().map(|(_, p)| {
-                    Resultado::nuevo(titulo(p), sub, glifo::ADJUNTAR, Accion::Pedido(pedido_soltar(Some(p))))
+                    Resultado::nuevo(
+                        titulo(p),
+                        sub,
+                        glifo::ADJUNTAR,
+                        Accion::Pedido(pedido_soltar(Some(p))),
+                    )
                 }));
                 if v.is_empty() {
                     v.push(Resultado::nuevo(
@@ -1412,10 +1766,18 @@ fn verbo(proyectos: &[Proyecto], f: Funcion, resto: &str, arroba: Option<&str>, 
         }
         Funcion::Abrir => {
             let accion = match elegido {
-                Some((p, _)) => Accion::Pedido(pedido("abrir", json!({ "que": { "tipo": "proyecto", "proyecto": p.id_para_pedido() } }))),
+                Some((p, _)) => Accion::Pedido(pedido(
+                    "abrir",
+                    json!({ "que": { "tipo": "proyecto", "proyecto": p.id_para_pedido() } }),
+                )),
                 None => Accion::Pedido(pedido("ventana_principal", json!({}))),
             };
-            v.push(Resultado::nuevo("Abrir PixPin", "Saca la ventana del chat", glifo::PIXPIN, accion));
+            v.push(Resultado::nuevo(
+                "Abrir PixPin",
+                "Saca la ventana del chat",
+                glifo::PIXPIN,
+                accion,
+            ));
         }
         Funcion::Tareas => {
             let todas = listas(proyectos);
@@ -1425,7 +1787,16 @@ fn verbo(proyectos: &[Proyecto], f: Funcion, resto: &str, arroba: Option<&str>, 
             let mut encajan: Vec<(u32, &Lista)> = todas
                 .iter()
                 .filter(|l| en.is_none_or(|id| proyectos[l.proyecto].id == id))
-                .map(|l| (if q.is_empty() { 1 } else { puntuar(&q, &normalizar(&l.titulo), "") }, l))
+                .map(|l| {
+                    (
+                        if q.is_empty() {
+                            1
+                        } else {
+                            puntuar(&q, &normalizar(&l.titulo), "")
+                        },
+                        l,
+                    )
+                })
                 .filter(|(s, _)| *s > 0)
                 .collect();
             encajan.sort_by(|a, b| b.0.cmp(&a.0).then(b.1.cuando.cmp(&a.1.cuando)));
@@ -1437,7 +1808,10 @@ fn verbo(proyectos: &[Proyecto], f: Funcion, resto: &str, arroba: Option<&str>, 
                     format!("Intro: crear la lista de tareas {destino}"),
                     glifo::ANADIR,
                     Accion::PedirYSeguir {
-                        pedido: pedido("lista_nueva", json!({ "titulo": titulo, "proyecto": destino_id })),
+                        pedido: pedido(
+                            "lista_nueva",
+                            json!({ "titulo": titulo, "proyecto": destino_id }),
+                        ),
                         consulta: ctx.consulta(&format!("tareas {titulo} {SEPARADOR} ")),
                     },
                 )
@@ -1450,12 +1824,18 @@ fn verbo(proyectos: &[Proyecto], f: Funcion, resto: &str, arroba: Option<&str>, 
             } else if q.is_empty() {
                 // Sin texto: el Inbox el primero, con lo suyo a la vista
                 // (Intro marca; el menu lo reparte con «Mover a…»).
-                let inbox_aqui = inbox.filter(|l| en.is_none_or(|id| proyectos[l.proyecto].id == id));
+                let inbox_aqui =
+                    inbox.filter(|l| en.is_none_or(|id| proyectos[l.proyecto].id == id));
                 if let Some(l) = inbox_aqui {
                     v.push(resultado_lista(l, proyectos, ctx));
                     let mut tareas: Vec<&Tarea> = l.tareas.iter().collect();
                     tareas.sort_by_key(|t| (t.hecha, t.indice));
-                    v.extend(tareas.into_iter().take(TAREAS_DEL_INBOX).map(|t| resultado_tarea(l, t, proyectos, &todas, &aqui, ctx)));
+                    v.extend(
+                        tareas
+                            .into_iter()
+                            .take(TAREAS_DEL_INBOX)
+                            .map(|t| resultado_tarea(l, t, proyectos, &todas, &aqui, ctx)),
+                    );
                 }
                 v.push(resultado_ventana_tareas());
                 if encajan.is_empty() {
@@ -1467,18 +1847,30 @@ fn verbo(proyectos: &[Proyecto], f: Funcion, resto: &str, arroba: Option<&str>, 
                     ));
                 } else {
                     v.extend(
-                        encajan.iter().filter(|(_, l)| !inbox_aqui.is_some_and(|i| i.codigo == l.codigo)).map(|(_, l)| resultado_lista(l, proyectos, ctx)),
+                        encajan
+                            .iter()
+                            .filter(|(_, l)| !inbox_aqui.is_some_and(|i| i.codigo == l.codigo))
+                            .map(|(_, l)| resultado_lista(l, proyectos, ctx)),
                     );
                 }
             } else {
-                v.extend(encajan.iter().map(|(_, l)| resultado_lista(l, proyectos, ctx)));
+                v.extend(
+                    encajan
+                        .iter()
+                        .map(|(_, l)| resultado_lista(l, proyectos, ctx)),
+                );
                 v.extend(nueva);
                 // Lo escrito tambien puede ser una tarea para el Inbox.
                 v.push(anadir_al_inbox(resto, inbox, proyectos, &aqui, ctx));
             }
         }
         Funcion::Capturar => {
-            let mut r = Resultado::nuevo("Capturar zona", "Recorta una zona de la pantalla", glifo::CAPTURA, Accion::Pedido(pedido_capturar()));
+            let mut r = Resultado::nuevo(
+                "Capturar zona",
+                "Recorta una zona de la pantalla",
+                glifo::CAPTURA,
+                Accion::Pedido(pedido_capturar()),
+            );
             r.clave = Some("funcion/captura".into());
             v.push(r);
             v.push(resultado_ultima(ctx));
@@ -1544,7 +1936,14 @@ const DESTINOS: usize = 15;
 
 /// **Una tarea como resultado**: Intro la marca o desmarca y vuelve a
 /// `vuelta` sin cerrar Flow; el menu ofrece «Mover a…» cada otra lista.
-pub(crate) fn resultado_tarea(l: &Lista, t: &Tarea, proyectos: &[Proyecto], todas: &[Lista], vuelta: &str, ctx: &Contexto) -> Resultado {
+pub(crate) fn resultado_tarea(
+    l: &Lista,
+    t: &Tarea,
+    proyectos: &[Proyecto],
+    todas: &[Lista],
+    vuelta: &str,
+    ctx: &Contexto,
+) -> Resultado {
     let p = &proyectos[l.proyecto];
     let (marca, glifo, que) = if t.hecha {
         ("☑", glifo::HECHA, "Intro: desmarcarla")
@@ -1555,15 +1954,27 @@ pub(crate) fn resultado_tarea(l: &Lista, t: &Tarea, proyectos: &[Proyecto], toda
     let edad = t
         .creada
         .zip(crate::fecha::local(ctx.ahora))
-        .map(|(c, hoy)| datos::hace_dias(datos::dias_civiles(i64::from(hoy.anio), i64::from(hoy.mes), i64::from(hoy.dia)) - c))
+        .map(|(c, hoy)| {
+            datos::hace_dias(
+                datos::dias_civiles(i64::from(hoy.anio), i64::from(hoy.mes), i64::from(hoy.dia))
+                    - c,
+            )
+        })
         .unwrap_or_default();
-    let donde = if p.guardados { l.titulo.clone() } else { format!("{} · {}", l.titulo, p.nombre) };
+    let donde = if p.guardados {
+        l.titulo.clone()
+    } else {
+        format!("{} · {}", l.titulo, p.nombre)
+    };
     let mut r = Resultado::nuevo(
         format!("{marca} {}", t.texto),
         unir(&["Tarea", &donde, &edad, que]),
         glifo,
         Accion::PedirYSeguir {
-            pedido: pedido("marcar_tarea", json!({ "proyecto": p.id_para_pedido(), "codigo": l.codigo, "indice": t.indice, "hecha": !t.hecha })),
+            pedido: pedido(
+                "marcar_tarea",
+                json!({ "proyecto": p.id_para_pedido(), "codigo": l.codigo, "indice": t.indice, "hecha": !t.hecha }),
+            ),
             consulta: vuelta.to_string(),
         },
     );
@@ -1575,11 +1986,21 @@ pub(crate) fn resultado_tarea(l: &Lista, t: &Tarea, proyectos: &[Proyecto], toda
     // subtitulo y la primera en la vista previa (F1).
     if !t.imagenes.is_empty() {
         let titulo = r.titulo.clone();
-        let numeros: Vec<u32> = crate::imagenes::fichas(&titulo).iter().map(|f| f.numero).collect();
+        let numeros: Vec<u32> = crate::imagenes::fichas(&titulo)
+            .iter()
+            .map(|f| f.numero)
+            .collect();
         r.resaltado = crate::imagenes::resaltado(&titulo, &numeros);
         let n = t.imagenes.len();
-        r.subtitulo = format!("📎 {n} {} · {}", if n == 1 { "imagen" } else { "imágenes" }, r.subtitulo);
-        if let Some(ruta) = p.ruta_real(&t.imagenes[0]).filter(|r| crate::datos::existe(r)) {
+        r.subtitulo = format!(
+            "📎 {n} {} · {}",
+            if n == 1 { "imagen" } else { "imágenes" },
+            r.subtitulo
+        );
+        if let Some(ruta) = p
+            .ruta_real(&t.imagenes[0])
+            .filter(|r| crate::datos::existe(r))
+        {
             r.con_fichero(&ruta);
         }
     }
@@ -1606,17 +2027,28 @@ pub(crate) fn resultado_tarea(l: &Lista, t: &Tarea, proyectos: &[Proyecto], toda
 /// «Añadir al Inbox: <texto>»: la tarea va al Inbox y se vuelve a `vuelta`.
 /// Si el Inbox ya esta, se dice cual (`codigo`), para ensenarla en el acto;
 /// si no, la app lo crea.
-fn anadir_al_inbox(texto: &str, inbox: Option<&Lista>, proyectos: &[Proyecto], vuelta: &str, ctx: &Contexto) -> Resultado {
+fn anadir_al_inbox(
+    texto: &str,
+    inbox: Option<&Lista>,
+    proyectos: &[Proyecto],
+    vuelta: &str,
+    ctx: &Contexto,
+) -> Resultado {
     let texto = texto.trim();
     let campos = match inbox {
-        Some(l) => json!({ "texto": texto, "proyecto": proyectos[l.proyecto].id_para_pedido(), "codigo": l.codigo }),
+        Some(l) => {
+            json!({ "texto": texto, "proyecto": proyectos[l.proyecto].id_para_pedido(), "codigo": l.codigo })
+        }
         None => json!({ "texto": texto }),
     };
     let mut r = Resultado::nuevo(
         format!("Añadir al Inbox: {texto}"),
         unir(&["Tarea", INBOX, "Intro: apuntarla"]),
         glifo::ANADIR,
-        Accion::PedirYSeguir { pedido: pedido("anadir_tarea", campos), consulta: vuelta.to_string() },
+        Accion::PedirYSeguir {
+            pedido: pedido("anadir_tarea", campos),
+            consulta: vuelta.to_string(),
+        },
     );
     crate::imagenes::con_imagenes(&mut r, texto, ctx);
     r
@@ -1631,8 +2063,15 @@ fn resultado_ultima(ctx: &Contexto) -> Resultado {
         Accion::Pedido(pedido("pinear_ultima", json!({}))),
     );
     r.clave = Some("funcion/ultima".into());
-    if let Some(c) = ctx.raiz_de_datos().and_then(|raiz| crate::capturas::leer(&raiz, ctx.ahora).into_iter().next()) {
-        r.subtitulo = unir(&[&c.nombre, &crate::fecha::hace_con_horas(c.cuando, ctx.ahora), "Intro: pinearla"]);
+    if let Some(c) = ctx
+        .raiz_de_datos()
+        .and_then(|raiz| crate::capturas::leer(&raiz, ctx.ahora).into_iter().next())
+    {
+        r.subtitulo = unir(&[
+            &c.nombre,
+            &crate::fecha::hace_con_horas(c.cuando, ctx.ahora),
+            "Intro: pinearla",
+        ]);
         if !c.es_video() {
             r.icono = Some(c.ruta.to_string_lossy().to_string());
         }
@@ -1681,7 +2120,10 @@ fn en_lista(proyectos: &[Proyecto], lista: &str, filtro: &str, ctx: &Contexto) -
             format!("Intro: añadirla a «{}» · {}", l.titulo, p.nombre),
             glifo::ANADIR,
             Accion::PedirYSeguir {
-                pedido: pedido("anadir_tarea", json!({ "texto": filtro, "proyecto": p.id_para_pedido(), "codigo": l.codigo })),
+                pedido: pedido(
+                    "anadir_tarea",
+                    json!({ "texto": filtro, "proyecto": p.id_para_pedido(), "codigo": l.codigo }),
+                ),
                 consulta: aqui.clone(),
             },
         );

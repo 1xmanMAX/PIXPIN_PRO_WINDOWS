@@ -27,7 +27,10 @@ fn en_fila_las_paginas_se_separan_y_no_se_pisan() {
     assert_eq!(s[1].x, 1000.0 + hueco);
     assert_eq!(s[2].x, 2.0 * (1000.0 + hueco));
     assert!(s.iter().all(|x| x.y == 0.0));
-    assert!(s.windows(2).all(|w| w[0].x + w[0].ancho < w[1].x), "se pisan");
+    assert!(
+        s.windows(2).all(|w| w[0].x + w[0].ancho < w[1].x),
+        "se pisan"
+    );
 }
 
 #[test]
@@ -48,7 +51,11 @@ fn una_pagina_del_doble_de_ancha_se_lleva_el_doble_de_pixeles() {
 fn entre_todas_no_se_pasan_del_presupuesto() {
     let m = [(2384.0, 3370.0); 6];
     let a = anchos(&m);
-    let pixeles: f64 = a.iter().zip(&m).map(|(w, p)| *w as f64 * (*w as f64 * p.1 / p.0)).sum();
+    let pixeles: f64 = a
+        .iter()
+        .zip(&m)
+        .map(|(w, p)| *w as f64 * (*w as f64 * p.1 / p.0))
+        .sum();
     assert!(pixeles <= PIXELES_EN_TOTAL * 1.05, "son {pixeles}");
     assert!(a.iter().all(|w| *w as f64 >= ANCHO_MINIMO));
 }
@@ -93,7 +100,8 @@ fn solo_dos_o_mas_paginas_del_pdf_se_pueden_fusionar() {
     let lienzo = Mensaje::default();
     assert!(de(Some(pdf.clone()), "f", &[&a, &b, &lienzo]).is_none());
     let mut nota = pagina(7);
-    nota.resto.insert("nota".into(), serde_json::Value::String("x".into()));
+    nota.resto
+        .insert("nota".into(), serde_json::Value::String("x".into()));
     assert!(de(Some(pdf.clone()), "f", &[&a, &nota]).is_none());
     assert!(de(None, "f", &[&a, &b]).is_none());
     assert!(de(Some(dir.join("no-esta.pdf")), "f", &[&a, &b]).is_none());
@@ -117,27 +125,43 @@ fn fusionar_deja_un_lienzo_con_un_marco_por_pagina_y_una_hoja_mas() {
         pixeles: [g, g, g, 255].repeat((w * h) as usize),
     };
     let pdf = carpeta.join("archivos/doc-1.pdf");
-    std::fs::write(&pdf, pixpin_pdf::union::de_imagenes(&[hoja(10, 60, 80), hoja(90, 60, 80), hoja(200, 80, 60)]).unwrap()).unwrap();
+    std::fs::write(
+        &pdf,
+        pixpin_pdf::union::de_imagenes(&[hoja(10, 60, 80), hoja(90, 60, 80), hoja(200, 80, 60)])
+            .unwrap(),
+    )
+    .unwrap();
     let p = Proyecto {
         id: "p1".into(),
         nombre: "Obra".into(),
         pdf_origen: Some("archivos/doc-1.pdf".into()),
         ..Default::default()
     };
-    std::fs::write(carpeta.join("proyecto.json"), serde_json::to_string(&p).unwrap()).unwrap();
+    std::fs::write(
+        carpeta.join("proyecto.json"),
+        serde_json::to_string(&p).unwrap(),
+    )
+    .unwrap();
     let peticion = Peticion {
         ficha: "p1".into(),
         pdf,
         paginas: vec![0, 2],
     };
     let _com = pixpin_shell::ComDelHilo::iniciar();
-    assert_eq!(en_un_lienzo(&raiz, &peticion, 77).unwrap(), "P\u{e1}ginas 1 y 3");
-    let p: Proyecto = serde_json::from_str(&std::fs::read_to_string(carpeta.join("proyecto.json")).unwrap()).unwrap();
+    assert_eq!(
+        en_un_lienzo(&raiz, &peticion, 77).unwrap(),
+        "P\u{e1}ginas 1 y 3"
+    );
+    let p: Proyecto =
+        serde_json::from_str(&std::fs::read_to_string(carpeta.join("proyecto.json")).unwrap())
+            .unwrap();
     let h = p.hojas.last().unwrap();
     assert_eq!(h.dibujo.as_deref(), Some("dib-fus-77"));
     assert!(h.uid.is_some(), "con su codigo, para salir en el chat");
     let texto = std::fs::read_to_string(almacen::lienzo(&raiz, "p1", "dib-fus-77")).unwrap();
-    let elementos = pixpin_motor2d::excalidraw::leer(&texto).expect("el lienzo se lee").elementos();
+    let elementos = pixpin_motor2d::excalidraw::leer(&texto)
+        .expect("el lienzo se lee")
+        .elementos();
     let marcos = elementos
         .iter()
         .filter(|e| matches!(&e.figura, pixpin_motor2d::Figura::Marco { nombre } if nombre.contains("p\u{e1}g.")))

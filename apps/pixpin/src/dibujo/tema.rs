@@ -80,7 +80,11 @@ fn de_hsl(h: f64, s: f64, l: f64) -> (f64, f64, f64) {
     if s == 0.0 {
         return (l, l, l);
     }
-    let q = if l < 0.5 { l * (1.0 + s) } else { l + s - l * s };
+    let q = if l < 0.5 {
+        l * (1.0 + s)
+    } else {
+        l + s - l * s
+    };
     let p = 2.0 * l - q;
     let canal = |t0: f64| {
         let mut t = t0;
@@ -319,7 +323,9 @@ mod pruebas {
     fn el_grafito_negro_sobre_la_pizarra_se_cuece_claro() {
         use pixpin_motor2d::tinta::{MaterialTinta, grafito};
         use pixpin_motor2d::{Elemento, Figura, vector::Punto2};
-        let puntos: Vec<Punto2> = (0..40).map(|i| Punto2::nuevo(i as f32 * 4.0, 20.0)).collect();
+        let puntos: Vec<Punto2> = (0..40)
+            .map(|i| Punto2::nuevo(i as f32 * 4.0, 20.0))
+            .collect();
         let e = Elemento {
             id: 7,
             figura: Figura::Lapiz {
@@ -396,7 +402,10 @@ mod pruebas {
         let negro = hex(0x1e1e1e);
         for p in [PIZARRA, COSMOS, NEGRO] {
             let c = adaptar(negro, hex(p));
-            assert!(c.r > 0.8 && c.g > 0.8 && c.b > 0.8, "un gris se da la vuelta: {c:?}");
+            assert!(
+                c.r > 0.8 && c.g > 0.8 && c.b > 0.8,
+                "un gris se da la vuelta: {c:?}"
+            );
             assert!(contraste_de(c, hex(p)) >= 4.5);
         }
     }
@@ -420,7 +429,10 @@ mod pruebas {
 
     #[test]
     fn el_alfa_se_conserva_al_adaptar() {
-        let c = ColorRgba { a: 0.35, ..hex(0x1e1e1e) };
+        let c = ColorRgba {
+            a: 0.35,
+            ..hex(0x1e1e1e)
+        };
         assert!((adaptar(c, hex(PIZARRA)).a - 0.35).abs() < 1e-6);
     }
 
@@ -466,7 +478,8 @@ mod pruebas {
 
     fn color_de(o: &pixpin_motor2d::Orden) -> ColorRgba {
         match o {
-            pixpin_motor2d::Orden::Texto { color, .. } | pixpin_motor2d::Orden::Tinta { color, .. } => *color,
+            pixpin_motor2d::Orden::Texto { color, .. }
+            | pixpin_motor2d::Orden::Tinta { color, .. } => *color,
             _ => unreachable!(),
         }
     }
@@ -498,9 +511,18 @@ mod pruebas {
         // papel negro (ya se lee: no pasa a negra); y papel crema.
         let negro = hex(0x1e1e1e);
         let blanco = hex(0xffffff);
-        assert_eq!(color_de(&ordenes_como_en_el_lienzo(vec![texto(negro)], hex(0xffffff))[0]), negro);
-        assert_eq!(color_de(&ordenes_como_en_el_lienzo(vec![texto(blanco)], hex(NEGRO))[0]), blanco);
-        assert_eq!(color_de(&ordenes_como_en_el_lienzo(vec![texto(blanco)], hex(0xfdf6e3))[0]), blanco);
+        assert_eq!(
+            color_de(&ordenes_como_en_el_lienzo(vec![texto(negro)], hex(0xffffff))[0]),
+            negro
+        );
+        assert_eq!(
+            color_de(&ordenes_como_en_el_lienzo(vec![texto(blanco)], hex(NEGRO))[0]),
+            blanco
+        );
+        assert_eq!(
+            color_de(&ordenes_como_en_el_lienzo(vec![texto(blanco)], hex(0xfdf6e3))[0]),
+            blanco
+        );
     }
 
     #[test]
@@ -519,7 +541,11 @@ mod pruebas {
             ..Default::default()
         });
         grafito_como_en_el_lienzo(&mut escena);
-        assert!(escena.elementos[0].trazo.r > 0.8, "{:?}", escena.elementos[0].trazo);
+        assert!(
+            escena.elementos[0].trazo.r > 0.8,
+            "{:?}",
+            escena.elementos[0].trazo
+        );
         assert_eq!(escena.elementos[1].trazo, hex(0x1e1e1e));
         // Caso negativo: en papel blanco el grafito se queda como es.
         escena.fondo = hex(0xffffff);

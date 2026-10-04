@@ -46,11 +46,21 @@ pub struct LargeObject {
     pub detail: String,
 }
 
-pub fn category_of(doc: &Document, id: ObjectId, obj: &Object, fonts: &HashSet<ObjectId>, contents: &HashSet<ObjectId>) -> &'static str {
+pub fn category_of(
+    doc: &Document,
+    id: ObjectId,
+    obj: &Object,
+    fonts: &HashSet<ObjectId>,
+    contents: &HashSet<ObjectId>,
+) -> &'static str {
     match obj {
         Object::Stream(s) => {
             let ty = s.dict.get(b"Type").and_then(Object::as_name).unwrap_or(b"");
-            let sub = s.dict.get(b"Subtype").and_then(Object::as_name).unwrap_or(b"");
+            let sub = s
+                .dict
+                .get(b"Subtype")
+                .and_then(Object::as_name)
+                .unwrap_or(b"");
             if sub == b"Image" {
                 let filt = filter_name(doc, s);
                 return match filt.as_str() {
@@ -92,12 +102,21 @@ pub fn category_of(doc: &Document, id: ObjectId, obj: &Object, fonts: &HashSet<O
 }
 
 pub fn filter_name(doc: &Document, s: &lopdf::Stream) -> String {
-    let f = s.dict.get(b"Filter").ok().and_then(|o| doc.dereference(o).ok()).map(|(_, o)| o.clone());
+    let f = s
+        .dict
+        .get(b"Filter")
+        .ok()
+        .and_then(|o| doc.dereference(o).ok())
+        .map(|(_, o)| o.clone());
     match f {
         Some(Object::Name(n)) => String::from_utf8_lossy(&n).into_owned(),
         Some(Object::Array(a)) => a
             .iter()
-            .filter_map(|o| o.as_name().ok().map(|n| String::from_utf8_lossy(n).into_owned()))
+            .filter_map(|o| {
+                o.as_name()
+                    .ok()
+                    .map(|n| String::from_utf8_lossy(n).into_owned())
+            })
             .collect::<Vec<_>>()
             .join("+"),
         _ => "none".into(),
@@ -116,9 +135,19 @@ pub fn colorspace_name(doc: &Document, cs: Option<&Object>) -> String {
     match cs {
         Object::Name(n) => String::from_utf8_lossy(n).into_owned(),
         Object::Array(a) => {
-            let head = a.first().and_then(|o| o.as_name().ok()).map(|n| String::from_utf8_lossy(n).into_owned()).unwrap_or_default();
+            let head = a
+                .first()
+                .and_then(|o| o.as_name().ok())
+                .map(|n| String::from_utf8_lossy(n).into_owned())
+                .unwrap_or_default();
             if head == "ICCBased" {
-                let n = a.get(1).and_then(|o| doc.dereference(o).ok()).and_then(|(_, o)| o.as_stream().ok()).and_then(|s| s.dict.get(b"N").ok()).and_then(|o| o.as_i64().ok()).unwrap_or(0);
+                let n = a
+                    .get(1)
+                    .and_then(|o| doc.dereference(o).ok())
+                    .and_then(|(_, o)| o.as_stream().ok())
+                    .and_then(|s| s.dict.get(b"N").ok())
+                    .and_then(|o| o.as_i64().ok())
+                    .unwrap_or(0);
                 format!("ICCBased({})", n)
             } else if head == "Indexed" {
                 format!("Indexed({})", colorspace_name(doc, a.get(1)))
@@ -168,15 +197,26 @@ pub fn dict_int(doc: &Document, d: &lopdf::Dictionary, key: &[u8]) -> Option<i64
 
 pub fn object_size(obj: &Object) -> u64 {
     match obj {
-        Object::Stream(s) => s.content.len() as u64 + serialized_len(&Object::Dictionary(s.dict.clone())) as u64 + 24,
+        Object::Stream(s) => {
+            s.content.len() as u64 + serialized_len(&Object::Dictionary(s.dict.clone())) as u64 + 24
+        }
         o => serialized_len(o) as u64 + 16,
     }
 }
 
 pub fn analyze(doc: &Document, file_bytes: u64) -> Analysis {
-    let mut a = Analysis { file_bytes, pages: doc.get_pages().len() as u32, version: doc.version.clone(), objects: doc.objects.len() as u32, ..Default::default() };
+    let mut a = Analysis {
+        file_bytes,
+        pages: doc.get_pages().len() as u32,
+        version: doc.version.clone(),
+        objects: doc.objects.len() as u32,
+        ..Default::default()
+    };
     a.encrypted = doc.is_encrypted();
-    a.has_xref_stream = matches!(doc.reference_table.cross_reference_type, lopdf::xref::XrefType::CrossReferenceStream);
+    a.has_xref_stream = matches!(
+        doc.reference_table.cross_reference_type,
+        lopdf::xref::XrefType::CrossReferenceStream
+    );
     let (fonts, contents) = font_and_content_ids(doc);
     let placements = placement::scan(doc);
     let mut large: Vec<LargeObject> = Vec::new();
@@ -205,16 +245,37 @@ pub fn analyze(doc: &Document, file_bytes: u64) -> Analysis {
                     effective_dpi: pl.and_then(|p| p.effective_dpi(w, h)),
                     page_coverage: pl.map(|p| p.max_page_coverage),
                     has_smask: s.dict.has(b"SMask"),
-                    is_mask: s.dict.get(b"ImageMask").and_then(Object::as_bool).unwrap_or(false),
+                    is_mask: s
+                        .dict
+                        .get(b"ImageMask")
+                        .and_then(Object::as_bool)
+                        .unwrap_or(false),
                 });
             }
         }
         let detail = match obj {
-            Object::Stream(s) => format!("{} {}", String::from_utf8_lossy(s.dict.get(b"Subtype").and_then(Object::as_name).unwrap_or(b"stream")), filter_name(doc, s)),
-            Object::Dictionary(d) => String::from_utf8_lossy(d.get(b"Type").and_then(Object::as_name).unwrap_or(b"dict")).into_owned(),
+            Object::Stream(s) => format!(
+                "{} {}",
+                String::from_utf8_lossy(
+                    s.dict
+                        .get(b"Subtype")
+                        .and_then(Object::as_name)
+                        .unwrap_or(b"stream")
+                ),
+                filter_name(doc, s)
+            ),
+            Object::Dictionary(d) => {
+                String::from_utf8_lossy(d.get(b"Type").and_then(Object::as_name).unwrap_or(b"dict"))
+                    .into_owned()
+            }
             _ => "object".into(),
         };
-        large.push(LargeObject { object: id.0, category: cat.into(), bytes: size, detail });
+        large.push(LargeObject {
+            object: id.0,
+            category: cat.into(),
+            bytes: size,
+            detail,
+        });
     }
     large.sort_by(|x, y| y.bytes.cmp(&x.bytes));
     large.truncate(15);
@@ -222,14 +283,16 @@ pub fn analyze(doc: &Document, file_bytes: u64) -> Analysis {
     a.images.sort_by(|x, y| y.bytes.cmp(&x.bytes));
     let accounted: u64 = a.budget.values().sum();
     if file_bytes > accounted {
-        a.budget.insert("unaccounted_or_incremental".into(), file_bytes - accounted);
+        a.budget
+            .insert("unaccounted_or_incremental".into(), file_bytes - accounted);
         if file_bytes > accounted + accounted / 10 + 4096 {
             a.incremental_updates = true;
             a.notes.push("File carries data not reachable from the current revision (incremental updates or junk): rewriting alone will drop it.".into());
         }
     }
     if a.encrypted {
-        a.notes.push("Document is encrypted; decrypt before optimising.".into());
+        a.notes
+            .push("Document is encrypted; decrypt before optimising.".into());
     }
     a
 }

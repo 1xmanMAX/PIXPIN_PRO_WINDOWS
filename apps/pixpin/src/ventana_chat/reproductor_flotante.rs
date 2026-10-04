@@ -110,7 +110,9 @@ fn lanzar_hilo(pistas: Vec<Pista>, no_se_pudo: String, cola: &mut Option<Sender<
             let _com = pixpin_shell::ComDelHilo::iniciar();
             let mut pistas = pistas;
             loop {
-                if let Err(e) = Recursos::nuevos().and_then(|r| flotar(&r, pistas, &rx, &no_se_pudo)) {
+                if let Err(e) =
+                    Recursos::nuevos().and_then(|r| flotar(&r, pistas, &rx, &no_se_pudo))
+                {
                     tracing::warn!(?e, "no se pudo abrir el reproductor flotante");
                 }
                 // Lo que llego mientras se cerraba vuelve a abrirla; si no
@@ -309,7 +311,8 @@ impl Suena {
 
     fn saltar(&mut self, ms: i64) {
         if let Some(s) = self.salida.as_ref() {
-            let destino = pixpin_audio::reloj::destino_al_saltar(s.posicion_ms(), ms, self.duracion_ms);
+            let destino =
+                pixpin_audio::reloj::destino_al_saltar(s.posicion_ms(), ms, self.duracion_ms);
             s.ir_a_ms(destino);
             self.posicion_ms = destino;
         }
@@ -375,8 +378,14 @@ fn flotar(
     let mut marco = marco_para(monitor.area_trabajo, monitor.escala_por_cien);
     let mut ventana = VentanaOverlay::nueva(marco).context("no se pudo abrir la ventana")?;
     let motor = recursos.motor();
-    let superficie = Superficie::nueva(&motor, &recursos.d3d(), ventana.handle(), marco.ancho, marco.alto)
-        .context("sin superficie para el reproductor")?;
+    let superficie = Superficie::nueva(
+        &motor,
+        &recursos.d3d(),
+        ventana.handle(),
+        marco.ancho,
+        marco.alto,
+    )
+    .context("sin superficie para el reproductor")?;
 
     let mut suena = Suena {
         salida: None,
@@ -424,7 +433,9 @@ fn flotar(
                             suena.ir_a(fraccion_en(&reparto, botones.raton.0));
                         } else if debajo.is_none() {
                             let (dx, dy) = (p.x - desde.x, p.y - desde.y);
-                            if !*arrastre && (dx.abs() > UMBRAL_ARRASTRE || dy.abs() > UMBRAL_ARRASTRE) {
+                            if !*arrastre
+                                && (dx.abs() > UMBRAL_ARRASTRE || dy.abs() > UMBRAL_ARRASTRE)
+                            {
                                 *arrastre = true;
                             }
                             if *arrastre {
@@ -494,7 +505,11 @@ fn flotar(
         }
         // Sonando, unas 20 veces por segundo (la bolita se mueve suave);
         // parado solo espera al raton.
-        let latido = if suena.sonando || pulsado.is_some() { 50 } else { 250 };
+        let latido = if suena.sonando || pulsado.is_some() {
+            50
+        } else {
+            250
+        };
         pixpin_shell::overlay::esperar_eventos(Some(latido));
     }
     ventana.ocultar();
@@ -571,7 +586,11 @@ fn pintar(
     let raton = botones.raton;
     let encima = |caja: RectF| dentro(caja, raton);
     let lado_icono = 22.0 * e;
-    let tocar = if suena.sonando { &mi::PAUSE } else { &mi::PLAY_ARROW };
+    let tocar = if suena.sonando {
+        &mi::PAUSE
+    } else {
+        &mi::PLAY_ARROW
+    };
     for (icono, caja, que, lado) in [
         (&mi::CLOSE, r.cerrar, Boton::Cerrar, 18.0 * e),
         (&mi::REPLAY_10, r.atras, Boton::Atras, lado_icono),
@@ -646,7 +665,10 @@ mod pruebas {
             assert!(r.adelante.x + r.adelante.ancho < r.pista.x);
             assert!(r.pista.x + r.pista.ancho < r.velocidad.x);
             assert!(r.velocidad.x + r.velocidad.ancho <= ANCHO as f32 * e);
-            assert!(r.cerrar.y + r.cerrar.alto <= r.atras.y, "el aspa va en la fila de arriba");
+            assert!(
+                r.cerrar.y + r.cerrar.alto <= r.atras.y,
+                "el aspa va en la fila de arriba"
+            );
             assert!(r.atras.y + r.atras.alto <= ALTO as f32 * e);
             assert!(r.pista.ancho > 150.0 * e, "una pista que se pueda apuntar");
         }

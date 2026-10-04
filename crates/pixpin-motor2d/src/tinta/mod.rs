@@ -440,7 +440,11 @@ mod pruebas {
                     streamline: STREAMLINE_RESALTADOR,
                 }),
             );
-            assert_eq!(contorno_de_resaltador(&recta(), grosor), lapiz, "grosor {grosor}");
+            assert_eq!(
+                contorno_de_resaltador(&recta(), grosor),
+                lapiz,
+                "grosor {grosor}"
+            );
         }
     }
 

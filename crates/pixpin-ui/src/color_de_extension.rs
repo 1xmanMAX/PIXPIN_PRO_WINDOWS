@@ -57,15 +57,21 @@ const TABLA: &[(&Familia, &[&str])] = &[
     (&PDF, &["pdf"]),
     (
         &WORD,
-        &["doc", "docx", "docm", "dot", "dotx", "odt", "rtf", "pages", "wps"],
+        &[
+            "doc", "docx", "docm", "dot", "dotx", "odt", "rtf", "pages", "wps",
+        ],
     ),
     (
         &HOJA,
-        &["xls", "xlsx", "xlsm", "xlsb", "csv", "tsv", "ods", "numbers"],
+        &[
+            "xls", "xlsx", "xlsm", "xlsb", "csv", "tsv", "ods", "numbers",
+        ],
     ),
     (
         &PRESENTACION,
-        &["ppt", "pptx", "pptm", "pps", "ppsx", "pot", "potx", "odp", "key"],
+        &[
+            "ppt", "pptx", "pptm", "pps", "ppsx", "pot", "potx", "odp", "key",
+        ],
     ),
     (
         &PLANO,
@@ -83,8 +89,8 @@ const TABLA: &[(&Familia, &[&str])] = &[
     (
         &IMAGEN,
         &[
-            "jpg", "jpeg", "png", "webp", "gif", "heic", "heif", "bmp", "tif", "tiff", "svg", "psd",
-            "ai", "raw", "dng", "avif", "ico",
+            "jpg", "jpeg", "png", "webp", "gif", "heic", "heif", "bmp", "tif", "tiff", "svg",
+            "psd", "ai", "raw", "dng", "avif", "ico",
         ],
     ),
     (
@@ -95,7 +101,9 @@ const TABLA: &[(&Familia, &[&str])] = &[
     ),
     (
         &VIDEO,
-        &["mp4", "mov", "avi", "mkv", "webm", "3gp", "m4v", "wmv", "flv"],
+        &[
+            "mp4", "mov", "avi", "mkv", "webm", "3gp", "m4v", "wmv", "flv",
+        ],
     ),
     (
         &COMPRIMIDO,
@@ -115,7 +123,9 @@ const TABLA: &[(&Familia, &[&str])] = &[
     ),
     (
         &APLICACION,
-        &["apk", "aab", "xapk", "apks", "exe", "msi", "dmg", "deb", "appimage"],
+        &[
+            "apk", "aab", "xapk", "apks", "exe", "msi", "dmg", "deb", "appimage",
+        ],
     ),
     (&PIXPIN, &["pixpin", "excalidraw"]),
 ];
@@ -238,7 +248,11 @@ mod pruebas {
     fn el_color_se_pasa_a_rgb_sin_perder_nada() {
         let (r, g, b) = rgb(&PDF);
         assert_eq!(
-            ((r * 255.0).round(), (g * 255.0).round(), (b * 255.0).round()),
+            (
+                (r * 255.0).round(),
+                (g * 255.0).round(),
+                (b * 255.0).round()
+            ),
             (229.0, 72.0, 77.0)
         );
     }

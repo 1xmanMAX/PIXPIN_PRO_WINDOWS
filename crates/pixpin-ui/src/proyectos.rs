@@ -228,7 +228,9 @@ impl Panel {
             }
         } else {
             Rect {
-                x: self.barra.x + relleno + n * (e(BOTON_ACCION_ANCHO) + e(BARRA_SEPARACION)) as i32,
+                x: self.barra.x
+                    + relleno
+                    + n * (e(BOTON_ACCION_ANCHO) + e(BARRA_SEPARACION)) as i32,
                 y: self.barra.y + relleno,
                 ancho: e(BOTON_ACCION_ANCHO),
                 alto: e(BOTON_ACCION_ALTO),
@@ -241,7 +243,6 @@ impl Panel {
         (0..self.botones).find(|n| self.boton(*n).contiene(p))
     }
 }
-
 
 /// Como va repartida por dentro la tarjeta de un proyecto.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -264,7 +265,13 @@ pub struct Tarjeta {
 
 /// Reparte la tarjeta `pagina`. `alto_texto` es lo que miden el nombre y su
 /// linea de debajo, que solo sabe quien los compone.
-pub fn tarjeta(pagina: Rect, escala: u32, alto_texto: u32, hay_hojas: bool, rejilla: bool) -> Tarjeta {
+pub fn tarjeta(
+    pagina: Rect,
+    escala: u32,
+    alto_texto: u32,
+    hay_hojas: bool,
+    rejilla: bool,
+) -> Tarjeta {
     let r = e(RELLENO_TARJETA, escala);
     let contenido = Rect {
         x: pagina.x + r as i32,
@@ -529,9 +536,7 @@ pub fn interruptor(barra: Rect, desde: i32, hasta: i32, escala: u32) -> Interrup
     let ancho = 2 * mitad;
     let alto = barra.alto.saturating_sub(2 * aire).max(1);
     let centrado = barra.x + (barra.ancho as i32 - ancho as i32) / 2;
-    let x = centrado
-        .min(hasta - ancho as i32 - aire as i32)
-        .max(desde);
+    let x = centrado.min(hasta - ancho as i32 - aire as i32).max(desde);
     let caja = Rect {
         x,
         y: barra.y + aire as i32,
@@ -551,7 +556,6 @@ pub fn interruptor(barra: Rect, desde: i32, hasta: i32, escala: u32) -> Interrup
         },
     }
 }
-
 
 #[cfg(test)]
 mod pruebas {
@@ -581,7 +585,10 @@ mod pruebas {
         assert_eq!(a.barra.derecha(), 392 + 708 - 6);
         let debajo_y = 24 + 54;
         let debajo_alto = 696 - 54;
-        assert_eq!(a.barra.y, debajo_y + (debajo_alto - a.barra.alto as i32) / 2);
+        assert_eq!(
+            a.barra.y,
+            debajo_y + (debajo_alto - a.barra.alto as i32) / 2
+        );
         // La tarjeta deja a la derecha el sitio de la barra de pie.
         assert_eq!(a.hueco.derecha(), 392 + 708 - 78);
         assert_eq!(a.hueco.x, 392 + 10);
@@ -592,7 +599,10 @@ mod pruebas {
         let a = panel_ancho();
         assert_eq!(a.cabecera, r(392, 24, 708, 54));
         assert_eq!(a.hueco.y, a.cabecera.abajo());
-        assert!(!a.hueco.contiene(p(392 + 20, 24 + 20)), "volver no queda debajo de la tarjeta");
+        assert!(
+            !a.hueco.contiene(p(392 + 20, 24 + 20)),
+            "volver no queda debajo de la tarjeta"
+        );
     }
 
     #[test]
@@ -612,7 +622,11 @@ mod pruebas {
     fn si_la_tarjeta_cabe_no_se_desplaza() {
         let a = panel_ancho();
         assert_eq!(a.tope(), 0);
-        assert_eq!(a.tarjeta(0), a.tarjeta(500), "sin nada que bajar la rueda no la mueve");
+        assert_eq!(
+            a.tarjeta(0),
+            a.tarjeta(500),
+            "sin nada que bajar la rueda no la mueve"
+        );
         assert_eq!(a.tarjeta(0).alto, a.hueco.alto);
     }
 

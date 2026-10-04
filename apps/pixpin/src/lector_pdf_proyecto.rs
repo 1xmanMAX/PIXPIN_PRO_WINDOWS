@@ -28,7 +28,11 @@ impl DondeVa {
     /// que se anoto antes junto al PDF (cuando el PC aun no lo hacia asi).
     pub fn de(raiz: &Path, pdf: &Path, ahora: i64) -> DondeVa {
         let proyecto = capas_del_pdf::de_este_pdf(raiz, pdf);
-        let adjunto = if proyecto.is_none() { crate::anotado_del_adjunto::adjunto_del_pdf(pdf) } else { None };
+        let adjunto = if proyecto.is_none() {
+            crate::anotado_del_adjunto::adjunto_del_pdf(pdf)
+        } else {
+            None
+        };
         let d = DondeVa {
             raiz: raiz.to_path_buf(),
             huella: capas_del_pdf::huella(&pdf.to_string_lossy()),
@@ -53,8 +57,14 @@ impl DondeVa {
             })
             .and_then(Path::parent)
             .map(Path::to_path_buf);
-        let proyecto = raiz.as_deref().and_then(|r| capas_del_pdf::de_este_pdf(r, pdf));
-        let adjunto = if proyecto.is_none() { crate::anotado_del_adjunto::adjunto_del_pdf(pdf) } else { None };
+        let proyecto = raiz
+            .as_deref()
+            .and_then(|r| capas_del_pdf::de_este_pdf(r, pdf));
+        let adjunto = if proyecto.is_none() {
+            crate::anotado_del_adjunto::adjunto_del_pdf(pdf)
+        } else {
+            None
+        };
         DondeVa {
             proyecto,
             raiz: raiz.unwrap_or_default(),
@@ -80,9 +90,13 @@ impl DondeVa {
                 continue;
             };
             match capas_del_pdf::adoptar(&self.raiz, ficha, n - 1, &self.huella, &f.path(), ahora) {
-                Ok(true) => tracing::info!(%ficha, hoja = n, "tinta del lector adoptada en la hoja del proyecto"),
+                Ok(true) => {
+                    tracing::info!(%ficha, hoja = n, "tinta del lector adoptada en la hoja del proyecto")
+                }
                 Ok(false) => {}
-                Err(e) => tracing::warn!(?e, %ficha, hoja = n, "no se pudo adoptar la tinta del lector"),
+                Err(e) => {
+                    tracing::warn!(?e, %ficha, hoja = n, "no se pudo adoptar la tinta del lector")
+                }
             }
         }
     }
@@ -109,7 +123,9 @@ impl DondeVa {
     /// de junto al PDF solo la lee el PC.
     pub fn unidades(&self, espacios: u8) -> crate::lector_tinta::Unidades {
         match &self.adjunto {
-            Some(_) if self.proyecto.is_none() => crate::lector_tinta::Unidades::de_la_capa_del_movil(espacios),
+            Some(_) if self.proyecto.is_none() => {
+                crate::lector_tinta::Unidades::de_la_capa_del_movil(espacios)
+            }
             _ => crate::lector_tinta::Unidades::DEL_PC,
         }
     }
@@ -145,7 +161,13 @@ impl DondeVa {
     /// si la abre el lector, **se le apunta al lado el marco de esa regla sin
     /// tocar la tinta** (`tintaDeLaHoja` con `migrar` de Android v0.98.0): asi
     /// ya no depende de los espacios que se pongan despues.
-    pub fn leer_capa(&self, pdf: &Path, i: usize, espacios: u8, alto: f32) -> crate::lector_tinta::Capa {
+    pub fn leer_capa(
+        &self,
+        pdf: &Path,
+        i: usize,
+        espacios: u8,
+        alto: f32,
+    ) -> crate::lector_tinta::Capa {
         let ruta = self.para_leer(pdf, i);
         // Un marco que esta pero no vale (no se entiende, o es de otra
         // tinta) es como no tenerlo: la regla de antes, con su migracion.
@@ -156,7 +178,8 @@ impl DondeVa {
         let u = del_marco.unwrap_or_else(|| self.unidades(espacios));
         // Con marco no se migra nada: quien lo escribio ya puso cada trazo
         // en las unidades que dice, tambien lo nacido en otro PC.
-        let migrar = self.escribe && self.adjunto.is_some() && self.proyecto.is_none() && !con_marco;
+        let migrar =
+            self.escribe && self.adjunto.is_some() && self.proyecto.is_none() && !con_marco;
         if migrar {
             crate::anotado_del_adjunto::lo_del_pc_a_la_capa_del_movil(pdf, i, &ruta, u);
         }
@@ -167,11 +190,16 @@ impl DondeVa {
         if migrar
             && !capa.escena.elementos.is_empty()
             && let Some(b) = self.marco(i)
-            && pixpin_proyecto::anotado::leer(&b.marco())
-                .is_none_or(|t| pixpin_sincro::anotado::MarcoDeLaHoja::de_texto_con_huella(&t).is_some())
+            && pixpin_proyecto::anotado::leer(&b.marco()).is_none_or(|t| {
+                pixpin_sincro::anotado::MarcoDeLaHoja::de_texto_con_huella(&t).is_some()
+            })
             && let Err(e) = b.escribir_marco(&u.marco_de(&hoja_propia(alto)))
         {
-            tracing::warn!(?e, hoja = i, "no se pudo apuntar el marco de la tinta de antes");
+            tracing::warn!(
+                ?e,
+                hoja = i,
+                "no se pudo apuntar el marco de la tinta de antes"
+            );
         }
         capa
     }
@@ -195,12 +223,21 @@ impl DondeVa {
                 continue;
             }
             // `leer_capa` hace la migracion y apunta el marco si hay tinta.
-            if !self.leer_capa(pdf, i, espacios, *alto).escena.elementos.is_empty() {
+            if !self
+                .leer_capa(pdf, i, espacios, *alto)
+                .escena
+                .elementos
+                .is_empty()
+            {
                 n += 1;
             }
         }
         if n > 0 {
-            tracing::info!(hojas = n, ?u, "marco de la tinta de antes apuntado antes de cambiar los espacios");
+            tracing::info!(
+                hojas = n,
+                ?u,
+                "marco de la tinta de antes apuntado antes de cambiar los espacios"
+            );
         }
         n
     }
@@ -226,7 +263,10 @@ impl DondeVa {
         }
         match self.marco(i) {
             Some(b) => {
-                capa.guardar_en(&self.para_escribir(pdf, i), crate::lector_tinta::Unidades::DEL_PC)?;
+                capa.guardar_en(
+                    &self.para_escribir(pdf, i),
+                    crate::lector_tinta::Unidades::DEL_PC,
+                )?;
                 b.escribir_marco(&hoja_propia(alto))
             }
             None => capa.guardar(&self.para_escribir(pdf, i)),
@@ -277,7 +317,10 @@ mod pruebas {
     use pixpin_proyecto::{Hoja, Proyecto};
 
     fn raiz(etiqueta: &str) -> PathBuf {
-        let r = std::env::temp_dir().join(format!("pixpin-lector-proyecto-{etiqueta}-{}", std::process::id()));
+        let r = std::env::temp_dir().join(format!(
+            "pixpin-lector-proyecto-{etiqueta}-{}",
+            std::process::id()
+        ));
         let _ = std::fs::remove_dir_all(&r);
         std::fs::create_dir_all(&r).unwrap();
         r
@@ -304,7 +347,11 @@ mod pruebas {
             pdf_origen: Some("archivos/doc-1.pdf".into()),
             ..Default::default()
         };
-        std::fs::write(carpeta.join("proyecto.json"), serde_json::to_string(&p).unwrap()).unwrap();
+        std::fs::write(
+            carpeta.join("proyecto.json"),
+            serde_json::to_string(&p).unwrap(),
+        )
+        .unwrap();
         (ficha, doc)
     }
 
@@ -329,7 +376,9 @@ mod pruebas {
         // La hoja 1 aun no tiene dibujo: leer no se lo pone, escribir si.
         let hoja1 = almacen::lienzo(&r, &ficha.id, &format!("pdf-{h}-p1"));
         assert_eq!(d.para_leer(&doc, 1), hoja1);
-        let json = || std::fs::read_to_string(almacen::carpeta(&r, &ficha.id).join("proyecto.json")).unwrap();
+        let json = || {
+            std::fs::read_to_string(almacen::carpeta(&r, &ficha.id).join("proyecto.json")).unwrap()
+        };
         assert!(!json().contains(&format!("pdf-{h}-p1")));
         assert_eq!(d.para_escribir(&doc, 1), hoja1);
         assert!(json().contains(&format!("pdf-{h}-p1")));
@@ -339,8 +388,16 @@ mod pruebas {
         let disco = pixpin_proyecto::vista::DiscoPc::nuevo(&r);
         let chat = pixpin_proyecto::vista::chat_de_ficha(&r, &ficha.id).unwrap();
         let alcance = disco.alcance(&chat).unwrap();
-        assert!(alcance.iter().any(|(rel, _)| *rel == format!("pins/draw/pdf-{h}-p1.excalidraw.gz")));
-        assert!(alcance.iter().any(|(rel, _)| *rel == format!("pins/draw/pdf-{h}-p0.excalidraw.gz")));
+        assert!(
+            alcance
+                .iter()
+                .any(|(rel, _)| *rel == format!("pins/draw/pdf-{h}-p1.excalidraw.gz"))
+        );
+        assert!(
+            alcance
+                .iter()
+                .any(|(rel, _)| *rel == format!("pins/draw/pdf-{h}-p0.excalidraw.gz"))
+        );
         let _ = std::fs::remove_dir_all(&r);
     }
 
@@ -353,9 +410,13 @@ mod pruebas {
         std::fs::write(&suelto, b"%PDF-1.4").unwrap();
         let d = DondeVa::de(&r, &suelto, 1);
         assert!(!d.es_de_un_proyecto());
-        assert_eq!(d.para_escribir(&suelto, 3), crate::lector_tinta::ruta_de_hoja(&suelto, 3));
+        assert_eq!(
+            d.para_escribir(&suelto, 3),
+            crate::lector_tinta::ruta_de_hoja(&suelto, 3)
+        );
         assert_eq!(d.documento(&suelto), suelto);
-        let json = std::fs::read_to_string(almacen::carpeta(&r, &ficha.id).join("proyecto.json")).unwrap();
+        let json =
+            std::fs::read_to_string(almacen::carpeta(&r, &ficha.id).join("proyecto.json")).unwrap();
         assert!(!json.contains("pdf-"));
         let _ = std::fs::remove_dir_all(&r);
     }
@@ -368,12 +429,18 @@ mod pruebas {
         DondeVa::de(&r, &doc, 1).para_escribir(&doc, 0);
         let d = DondeVa::solo_leer(&doc);
         assert!(d.es_de_un_proyecto());
-        assert_eq!(d.para_leer(&doc, 0), almacen::lienzo(&r, &ficha.id, &format!("pdf-{h}-p0")));
+        assert_eq!(
+            d.para_leer(&doc, 0),
+            almacen::lienzo(&r, &ficha.id, &format!("pdf-{h}-p0"))
+        );
         // Caso negativo: un PDF fuera de cualquier almacen lee junto a el.
         let fuera = std::env::temp_dir().join("pixpin-fuera-de-todo.pdf");
         let d = DondeVa::solo_leer(&fuera);
         assert!(!d.es_de_un_proyecto());
-        assert_eq!(d.para_leer(&fuera, 2), crate::lector_tinta::ruta_de_hoja(&fuera, 2));
+        assert_eq!(
+            d.para_leer(&fuera, 2),
+            crate::lector_tinta::ruta_de_hoja(&fuera, 2)
+        );
         let _ = std::fs::remove_dir_all(&r);
     }
 
@@ -383,7 +450,10 @@ mod pruebas {
         let r = raiz("sin-hoja");
         let (_, doc) = proyecto_con_pdf(&r);
         let d = DondeVa::de(&r, &doc, 1);
-        assert_eq!(d.para_escribir(&doc, 7), crate::lector_tinta::ruta_de_hoja(&doc, 7));
+        assert_eq!(
+            d.para_escribir(&doc, 7),
+            crate::lector_tinta::ruta_de_hoja(&doc, 7)
+        );
         let _ = std::fs::remove_dir_all(&r);
     }
 }

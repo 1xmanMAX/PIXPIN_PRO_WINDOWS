@@ -7,7 +7,10 @@ use pixpin_motor2d::{Elemento, Figura};
 use pixpin_store::Idioma;
 
 fn carpeta(nombre: &str) -> PathBuf {
-    let c = std::env::temp_dir().join(format!("pixpin-compartir-pdf-{nombre}-{}", std::process::id()));
+    let c = std::env::temp_dir().join(format!(
+        "pixpin-compartir-pdf-{nombre}-{}",
+        std::process::id()
+    ));
     let _ = std::fs::remove_dir_all(&c);
     std::fs::create_dir_all(&c).unwrap();
     c
@@ -16,7 +19,9 @@ fn carpeta(nombre: &str) -> PathBuf {
 fn trazo() -> Elemento {
     Elemento {
         figura: Figura::Lapiz {
-            puntos: (0..20).map(|i| Punto2::nuevo(100.0 + i as f32 * 6.0, 200.0 + (i % 3) as f32 * 4.0)).collect(),
+            puntos: (0..20)
+                .map(|i| Punto2::nuevo(100.0 + i as f32 * 6.0, 200.0 + (i % 3) as f32 * 4.0))
+                .collect(),
             presiones: Vec::new(),
             opciones: Some(Default::default()),
         },
@@ -29,9 +34,16 @@ fn trazo() -> Elemento {
 /// Un PDF de texto de tres paginas, vectorial, escrito aqui.
 fn documento(dir: &Path) -> PathBuf {
     let pdf = dir.join("memoria.pdf");
-    let hojas = hojas_de_texto(Some("Memoria"), &"Parrafo de prueba con letras. ".repeat(900));
+    let hojas = hojas_de_texto(
+        Some("Memoria"),
+        &"Parrafo de prueba con letras. ".repeat(900),
+    );
     assert!(hojas.len() >= 3);
-    std::fs::write(&pdf, pixpin_pdf::escribir::de_hojas(&hojas[..3], Some(BLANCO), &|_| None).unwrap()).unwrap();
+    std::fs::write(
+        &pdf,
+        pixpin_pdf::escribir::de_hojas(&hojas[..3], Some(BLANCO), &|_| None).unwrap(),
+    )
+    .unwrap();
     pdf
 }
 
@@ -59,10 +71,42 @@ fn las_paginas_del_pdf_salen_tal_cual_y_en_el_orden_de_la_hoja() {
     let mut p = Preparado::nuevo("Entrega");
     let mut con_trazo = Escena::nueva();
     con_trazo.anadir(trazo());
-    assert!(anadir_lienzo(&mut p, "a", "", &Escena::nueva(), papel(&pdf, 0), &|_| None, &t));
-    assert!(anadir_lienzo(&mut p, "b", "", &con_trazo, None, &|_| None, &t));
-    assert!(anadir_lienzo(&mut p, "c", "", &con_trazo, papel(&pdf, 1), &|_| None, &t));
-    assert!(anadir_lienzo(&mut p, "d", "", &Escena::nueva(), papel(&pdf, 2), &|_| None, &t));
+    assert!(anadir_lienzo(
+        &mut p,
+        "a",
+        "",
+        &Escena::nueva(),
+        papel(&pdf, 0),
+        &|_| None,
+        &t
+    ));
+    assert!(anadir_lienzo(
+        &mut p,
+        "b",
+        "",
+        &con_trazo,
+        None,
+        &|_| None,
+        &t
+    ));
+    assert!(anadir_lienzo(
+        &mut p,
+        "c",
+        "",
+        &con_trazo,
+        papel(&pdf, 1),
+        &|_| None,
+        &t
+    ));
+    assert!(anadir_lienzo(
+        &mut p,
+        "d",
+        "",
+        &Escena::nueva(),
+        papel(&pdf, 2),
+        &|_| None,
+        &t
+    ));
     let claves: Vec<String> = ["a", "b", "c", "d"].map(String::from).to_vec();
     let salida = generar(&p, PDF, &claves, &dir).unwrap();
     let bytes = std::fs::read(&salida.ficheros[0]).unwrap();
@@ -72,19 +116,36 @@ fn las_paginas_del_pdf_salen_tal_cual_y_en_el_orden_de_la_hoja() {
     let primera = pixpin_pdf::plano::de_bytes(&bytes, 0).unwrap();
     // (Se cuentan letras y no rotulos: los trozos de un renglon van juntos.)
     let letras: usize = primera.textos.iter().map(|t| t.texto.chars().count()).sum();
-    assert!(lineas(&bytes, 0) && letras > 40, "la pagina copiada lleva su texto: {letras}");
+    assert!(
+        lineas(&bytes, 0) && letras > 40,
+        "la pagina copiada lleva su texto: {letras}"
+    );
     assert!(lineas(&bytes, 3));
     // La que lleva algo dibujado encima se compone como siempre: la pagina
     // pintada debajo (una foto) y el trazo encima.
     let tercera = pixpin_pdf::plano::de_bytes(&bytes, 2).unwrap();
-    assert!(tercera.fotos.len() == 1 && tercera.textos.is_empty(), "con algo encima la pagina va pintada");
+    assert!(
+        tercera.fotos.len() == 1 && tercera.textos.is_empty(),
+        "con algo encima la pagina va pintada"
+    );
     // Y todo el documento pesa menos que pintando las tres paginas.
-    let todo_pintado = de_hojas(&claves.iter().map(|k| p.pieza_de(k).unwrap()).collect::<Vec<_>>(), &Lector {
-        fuentes: &p.imagenes,
-        pdfs: Default::default(),
-    })
+    let todo_pintado = de_hojas(
+        &claves
+            .iter()
+            .map(|k| p.pieza_de(k).unwrap())
+            .collect::<Vec<_>>(),
+        &Lector {
+            fuentes: &p.imagenes,
+            pdfs: Default::default(),
+        },
+    )
     .unwrap();
-    assert!(bytes.len() < todo_pintado.len(), "{} >= {}", bytes.len(), todo_pintado.len());
+    assert!(
+        bytes.len() < todo_pintado.len(),
+        "{} >= {}",
+        bytes.len(),
+        todo_pintado.len()
+    );
     let _ = std::fs::remove_dir_all(&dir);
 }
 
@@ -96,9 +157,20 @@ fn sin_paginas_sueltas_del_pdf_se_escribe_como_siempre() {
     let mut p = Preparado::nuevo("Entrega");
     let mut con_trazo = Escena::nueva();
     con_trazo.anadir(trazo());
-    assert!(anadir_lienzo(&mut p, "c", "", &con_trazo, papel(&pdf, 1), &|_| None, &t));
+    assert!(anadir_lienzo(
+        &mut p,
+        "c",
+        "",
+        &con_trazo,
+        papel(&pdf, 1),
+        &|_| None,
+        &t
+    ));
     let pieza = p.pieza_de("c").unwrap();
-    assert!(pagina_sola(pieza, &p.imagenes).is_none(), "una pagina con algo encima no es una pagina sola");
+    assert!(
+        pagina_sola(pieza, &p.imagenes).is_none(),
+        "una pagina con algo encima no es una pagina sola"
+    );
     let lector = Lector {
         fuentes: &p.imagenes,
         pdfs: Default::default(),
@@ -115,8 +187,24 @@ fn si_el_pdf_ya_no_esta_se_cae_a_pintar_y_no_falla() {
     let perdido = dir.join("no-esta.pdf");
     let mut con_trazo = Escena::nueva();
     con_trazo.anadir(trazo());
-    assert!(anadir_lienzo(&mut p, "a", "", &Escena::nueva(), papel(&perdido, 0), &|_| None, &t));
-    assert!(anadir_lienzo(&mut p, "b", "", &con_trazo, None, &|_| None, &t));
+    assert!(anadir_lienzo(
+        &mut p,
+        "a",
+        "",
+        &Escena::nueva(),
+        papel(&perdido, 0),
+        &|_| None,
+        &t
+    ));
+    assert!(anadir_lienzo(
+        &mut p,
+        "b",
+        "",
+        &con_trazo,
+        None,
+        &|_| None,
+        &t
+    ));
     let claves: Vec<String> = ["a", "b"].map(String::from).to_vec();
     let salida = generar(&p, PDF, &claves, &dir).unwrap();
     let bytes = std::fs::read(&salida.ficheros[0]).unwrap();

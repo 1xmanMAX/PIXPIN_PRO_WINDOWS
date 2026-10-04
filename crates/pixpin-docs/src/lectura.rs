@@ -478,11 +478,16 @@ mod pruebas {
 
     #[test]
     fn valores_imposibles_de_lo_nuevo_no_rompen_nada() {
-        let a = de_texto("pixpin-lectura 2\ntipo 9\ngrosor 7\ncolumna 999999\nzoom NaN\nespacios 255\npagina -3\n");
+        let a = de_texto(
+            "pixpin-lectura 2\ntipo 9\ngrosor 7\ncolumna 999999\nzoom NaN\nespacios 255\npagina -3\n",
+        );
         assert_eq!(a.tipo, (TIPOS - 1) as u8);
         assert_eq!(a.grosor, (GROSORES - 1) as u8);
         assert_eq!(a.columna, 20_000);
-        assert_eq!(a.zoom, 1.0, "un aumento que no es numero vuelve al de siempre");
+        assert_eq!(
+            a.zoom, 1.0,
+            "un aumento que no es numero vuelve al de siempre"
+        );
         assert_eq!(a.espacios, 3, "solo hay dos lados");
         assert_eq!(a.pagina, 0.0);
         assert_eq!(

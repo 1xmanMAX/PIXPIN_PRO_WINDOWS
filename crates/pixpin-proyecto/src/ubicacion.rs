@@ -99,7 +99,10 @@ pub fn estado(raiz: &Path, ficha: &almacen::Ficha) -> Estado {
 /// Si se puede abrir: lo barato, para pintar la lista sin tocar el disco en
 /// los proyectos de siempre.
 pub fn disponible(ficha: &almacen::Ficha) -> bool {
-    ficha.ubicacion.as_ref().is_none_or(|u| Path::new(u).is_dir())
+    ficha
+        .ubicacion
+        .as_ref()
+        .is_none_or(|u| Path::new(u).is_dir())
 }
 
 /// La carpeta de verdad del proyecto: la elegida si la tiene, o la de
@@ -561,8 +564,14 @@ mod pruebas {
 
     fn entero(dir: &Path) {
         assert_eq!(std::fs::read(dir.join("guardados.jsonl")).unwrap(), b"{}\n");
-        assert_eq!(std::fs::read(dir.join("archivos/plano.png")).unwrap(), b"png");
-        assert_eq!(std::fs::read(dir.join("lienzos/a.excalidraw")).unwrap(), b"{}");
+        assert_eq!(
+            std::fs::read(dir.join("archivos/plano.png")).unwrap(),
+            b"png"
+        );
+        assert_eq!(
+            std::fs::read(dir.join("lienzos/a.excalidraw")).unwrap(),
+            b"{}"
+        );
     }
 
     #[test]
@@ -578,8 +587,14 @@ mod pruebas {
         entero(&elegida);
         let enlace = almacen::carpeta(&raiz, "p1");
         assert!(union::es_union(&enlace));
-        assert_eq!(ficha(&raiz, "p1").ubicacion.as_deref(), Some(elegida.to_str().unwrap()));
-        assert_eq!(estado(&raiz, &ficha(&raiz, "p1")), Estado::Propia(elegida.clone()));
+        assert_eq!(
+            ficha(&raiz, "p1").ubicacion.as_deref(),
+            Some(elegida.to_str().unwrap())
+        );
+        assert_eq!(
+            estado(&raiz, &ficha(&raiz, "p1")),
+            Estado::Propia(elegida.clone())
+        );
         assert_eq!(carpeta_real(&raiz, "p1"), elegida);
 
         // Lo que se escribe por `carpeta()` acaba en la del usuario.
@@ -608,7 +623,10 @@ mod pruebas {
         assert_eq!(d1, m.usuario().join("Obra_ fase 1"));
         entero(&d1);
         // Caso negativo: lo que ya tenia el usuario ni se mueve ni se mezcla.
-        assert_eq!(std::fs::read(m.usuario().join("mio.docx")).unwrap(), b"del usuario");
+        assert_eq!(
+            std::fs::read(m.usuario().join("mio.docx")).unwrap(),
+            b"del usuario"
+        );
         assert!(!m.usuario().join("guardados.jsonl").exists());
         // Otro con el mismo nombre no pisa al primero.
         let d2 = mover_a(&raiz, "p2", &m.usuario()).unwrap();
@@ -764,10 +782,16 @@ mod pruebas {
         // Se recupera con su ruta...
         let lista = almacen::en_papelera(&raiz);
         assert_eq!(lista.len(), 1);
-        assert_eq!(lista[0].ficha.ubicacion.as_deref(), Some(d.to_str().unwrap()));
+        assert_eq!(
+            lista[0].ficha.ubicacion.as_deref(),
+            Some(d.to_str().unwrap())
+        );
         almacen::recuperar(&raiz, &lista[0], 800).unwrap();
         entero(&almacen::carpeta(&raiz, "p1"));
-        assert_eq!(ficha(&raiz, "p1").ubicacion.as_deref(), Some(d.to_str().unwrap()));
+        assert_eq!(
+            ficha(&raiz, "p1").ubicacion.as_deref(),
+            Some(d.to_str().unwrap())
+        );
         // ...y purgar la papelera (borrarla entera) no entra en la union.
         almacen::borrar_proyectos(&raiz, &["p1".to_string()], 900).unwrap();
         std::fs::remove_dir_all(almacen::papelera(&raiz)).unwrap();
@@ -793,7 +817,10 @@ mod pruebas {
         assert!(almacen::guardar_adjunto(&raiz, "p1", "x.txt", b"x").is_err());
         assert!(union::es_union(&almacen::carpeta(&raiz, "p1")));
         // Volver a la habitual sin el disco no deja un proyecto vacio.
-        assert!(matches!(volver_a_habitual(&raiz, "p1"), Err(Error::NoDisponible(_))));
+        assert!(matches!(
+            volver_a_habitual(&raiz, "p1"),
+            Err(Error::NoDisponible(_))
+        ));
         assert!(union::es_union(&almacen::carpeta(&raiz, "p1")));
 
         // Si ademas alguien quito la union, preparar la rehace (rota) en vez

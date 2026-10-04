@@ -19,7 +19,11 @@ pub fn carpeta(raiz: &Path) -> PathBuf {
 pub fn extension(nombre: &str) -> Option<String> {
     let nombre = nombre.trim().rsplit(['/', '\\']).next()?;
     let (base, ext) = nombre.rsplit_once('.')?;
-    if base.is_empty() || ext.is_empty() || ext.len() > 10 || !ext.bytes().all(|b| b.is_ascii_alphanumeric()) {
+    if base.is_empty()
+        || ext.is_empty()
+        || ext.len() > 10
+        || !ext.bytes().all(|b| b.is_ascii_alphanumeric())
+    {
         return None;
     }
     Some(ext.to_ascii_lowercase())
@@ -38,7 +42,10 @@ mod pruebas {
     fn la_extension_en_minusculas_y_solo_si_es_razonable() {
         assert_eq!(extension("Informe.PDF").as_deref(), Some("pdf"));
         assert_eq!(extension(r"C:\a.b\plano 2.dwg").as_deref(), Some("dwg"));
-        assert_eq!(extension("pixpin:files/guardados/x.tar.gz").as_deref(), Some("gz"));
+        assert_eq!(
+            extension("pixpin:files/guardados/x.tar.gz").as_deref(),
+            Some("gz")
+        );
         assert_eq!(extension("sin_extension"), None);
         assert_eq!(extension(".gitignore"), None);
         assert_eq!(extension("raro.p d f"), None);

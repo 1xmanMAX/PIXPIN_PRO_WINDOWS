@@ -27,13 +27,13 @@
 //! tela de la pantalla, y las imagenes recortadas (`crop`) ensenan solo su
 //! trozo.
 
+use crate::letra::Letra;
 use flate2::Compression;
 use flate2::write::ZlibEncoder;
 use pixpin_motor2d::ColorRgba;
 use pixpin_motor2d::exportar::{self, Hoja};
 use pixpin_motor2d::pintado::{Grano, Orden};
 use pixpin_motor2d::vector::Punto2;
-use crate::letra::Letra;
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
 use std::io::Write as _;
@@ -230,7 +230,14 @@ fn contenido(
     );
     let (x0, y0, x1, y1) = hoja.caja;
     // Lo que sobresale de la hoja no se ve, como en el PNG.
-    let _ = writeln!(c, "{} {} {} {} re W n", n(x0), n(y0), n(x1 - x0), n(y1 - y0));
+    let _ = writeln!(
+        c,
+        "{} {} {} {} re W n",
+        n(x0),
+        n(y0),
+        n(x1 - x0),
+        n(y1 - y0)
+    );
     if let Some(f) = fondo {
         c.push_str("q ");
         r.alfa(f.a, &mut c);
@@ -324,10 +331,11 @@ fn contenido(
                 // fijo, como en pantalla (`pixpin_render::letras`); la cara
                 // sigue siendo la incrustada (Segoe UI), que el PDF no lleva
                 // las del catalogo.
-                let (linea_base, interlinea) = match pixpin_motor2d::texto::fuente_por_nombre(familia) {
-                    Some(f) => (f.linea_base(), f.interlineado),
-                    None => (exportar::LINEA_BASE, exportar::INTERLINEA),
-                };
+                let (linea_base, interlinea) =
+                    match pixpin_motor2d::texto::fuente_por_nombre(familia) {
+                        Some(f) => (f.linea_base(), f.interlineado),
+                        None => (exportar::LINEA_BASE, exportar::INTERLINEA),
+                    };
                 c.push_str("q ");
                 r.alfa(color.a, &mut c);
                 // Con la letra de la pantalla dentro (`/F2`) se parte y se
@@ -335,7 +343,9 @@ fn contenido(
                 let fuente = if letra_propia.is_some() { "F2" } else { "F1" };
                 let _ = write!(c, "{} rg BT /{fuente} {} Tf ", rgb(*color), n(*tam));
                 let lineas = match letra_propia {
-                    Some(l) => exportar::partir_texto_con(texto, *tam, *ancho_max, &|ch| l.ancho(ch)),
+                    Some(l) => {
+                        exportar::partir_texto_con(texto, *tam, *ancho_max, &|ch| l.ancho(ch))
+                    }
                     None => exportar::partir_texto(texto, *tam, *ancho_max),
                 };
                 for (i, linea) in lineas.iter().enumerate() {
@@ -415,7 +425,13 @@ fn contenido(
                     }
                 }
                 let base = y + tam * linea_base;
-                for (modo, tinta) in [("1 Tr", format!("{} RG {} w 1 j 1 J", rgb(*halo), n(*grosor_halo))), ("0 Tr", format!("{} rg", rgb(*color)))] {
+                for (modo, tinta) in [
+                    (
+                        "1 Tr",
+                        format!("{} RG {} w 1 j 1 J", rgb(*halo), n(*grosor_halo)),
+                    ),
+                    ("0 Tr", format!("{} rg", rgb(*color))),
+                ] {
                     let _ = write!(
                         c,
                         "{tinta} BT /{fuente} {} Tf {modo} 1 0 0 -1 {} {} Tm {renglon} Tj ET ",
@@ -466,7 +482,9 @@ fn contenido(
                 // mismo objeto de imagen sirve aunque dos figuras ensenen dos
                 // trozos distintos de la misma foto.
                 let caja = (*x, *y, *ancho, *alto);
-                let (ix, iy, iw, ih) = match recorte.and_then(|rc| exportar::imagen_entera(caja, &rc)) {
+                let (ix, iy, iw, ih) = match recorte
+                    .and_then(|rc| exportar::imagen_entera(caja, &rc))
+                {
                     Some(entera) => {
                         let _ = write!(c, "{} {} {} {} re W n ", n(*x), n(*y), n(*ancho), n(*alto));
                         entera
@@ -619,13 +637,21 @@ fn objetos_de_letra(f: &mut Fichero, l: &Letra, caracteres: &BTreeMap<u16, char>
     let mut mapa = String::from(
         "/CIDInit /ProcSet findresource begin\n12 dict begin\nbegincmap\n/CIDSystemInfo << /Registry (Adobe) /Ordering (UCS) /Supplement 0 >> def\n/CMapName /Adobe-Identity-UCS def\n/CMapType 2 def\n1 begincodespacerange\n<0000> <FFFF>\nendcodespacerange\n",
     );
-    let pares: Vec<(u16, char)> = caracteres.iter().filter(|(g, _)| **g != 0).map(|(g, c)| (*g, *c)).collect();
+    let pares: Vec<(u16, char)> = caracteres
+        .iter()
+        .filter(|(g, _)| **g != 0)
+        .map(|(g, c)| (*g, *c))
+        .collect();
     // De cien en cien, que es lo mas que la norma deja en un bloque.
     for trozo in pares.chunks(100) {
         let _ = writeln!(mapa, "{} beginbfchar", trozo.len());
         for (g, c) in trozo {
             let mut u = [0u16; 2];
-            let hex: String = c.encode_utf16(&mut u).iter().map(|x| format!("{x:04X}")).collect();
+            let hex: String = c
+                .encode_utf16(&mut u)
+                .iter()
+                .map(|x| format!("{x:04X}"))
+                .collect();
             let _ = writeln!(mapa, "<{g:04X}> <{hex}>");
         }
         mapa.push_str("endbfchar\n");
@@ -648,7 +674,10 @@ fn objetos_de_letra(f: &mut Fichero, l: &Letra, caracteres: &BTreeMap<u16, char>
 /// paso y el giro no, que van en el patron.
 fn llave_de_tela(g: &Grano) -> (pixpin_motor2d::tinta::MaterialTinta, [u8; 4]) {
     let c = |v: f32| (v.clamp(0.0, 1.0) * 255.0).round() as u8;
-    (g.material, [c(g.color.r), c(g.color.g), c(g.color.b), c(g.color.a)])
+    (
+        g.material,
+        [c(g.color.r), c(g.color.g), c(g.color.b), c(g.color.a)],
+    )
 }
 
 /// La imagen de una tela (la de `exportar::tela_rgba`, la misma que sube la
@@ -663,7 +692,9 @@ fn objeto_de_tela(f: &mut Fichero, g: &Grano) -> usize {
     .unwrap_or_default();
     // `Interpolate`: la pantalla estira la tela con filtro lineal; sin el, un
     // lector la amplia a bloques y las rayas salen en escalera.
-    let comun = format!("/Type /XObject /Subtype /Image /Width {lado} /Height {lado} /BitsPerComponent 8 /Interpolate true");
+    let comun = format!(
+        "/Type /XObject /Subtype /Image /Width {lado} /Height {lado} /BitsPerComponent 8 /Interpolate true"
+    );
     let smask = mascara.map(|m| {
         let o = f.reservar();
         f.poner(
@@ -676,7 +707,10 @@ fn objeto_de_tela(f: &mut Fichero, g: &Grano) -> usize {
     let extra = smask.map_or(String::new(), |s| format!(" /SMask {s} 0 R"));
     f.poner(
         o,
-        Fichero::flujo(&format!("{comun} /ColorSpace /DeviceRGB{extra}"), &comprimir(&color)),
+        Fichero::flujo(
+            &format!("{comun} /ColorSpace /DeviceRGB{extra}"),
+            &comprimir(&color),
+        ),
     );
     o
 }
@@ -760,7 +794,8 @@ impl Fichero {
     }
 
     fn escribir(self, catalogo: usize) -> Vec<u8> {
-        let mut salida = Vec::with_capacity(self.objetos.iter().map(Vec::len).sum::<usize>() + 1024);
+        let mut salida =
+            Vec::with_capacity(self.objetos.iter().map(Vec::len).sum::<usize>() + 1024);
         // El comentario binario de la segunda linea es lo que la norma pide
         // para que un programa de transferencia no lo trate como texto.
         salida.extend_from_slice(b"%PDF-1.4\n%\xe2\xe3\xcf\xd3\n");
@@ -772,7 +807,11 @@ impl Fichero {
             salida.extend_from_slice(b"\nendobj\n");
         }
         let xref = salida.len();
-        let _ = write!(salida, "xref\n0 {}\n0000000000 65535 f \n", self.objetos.len() + 1);
+        let _ = write!(
+            salida,
+            "xref\n0 {}\n0000000000 65535 f \n",
+            self.objetos.len() + 1
+        );
         for p in posiciones {
             let _ = write!(salida, "{p:010} 00000 n \n");
         }
@@ -864,7 +903,13 @@ pub fn de_hojas_con_indice(
     letra_propia: Option<&Letra>,
     indice: &[Marcador],
 ) -> Option<Vec<u8>> {
-    let a4 = |_: usize, h: &Hoja| if exportar::apaisada(h) { (A4.1, A4.0) } else { A4 };
+    let a4 = |_: usize, h: &Hoja| {
+        if exportar::apaisada(h) {
+            (A4.1, A4.0)
+        } else {
+            A4
+        }
+    };
     escribir_hojas(hojas, fondo, imagenes, letra_propia, indice, &a4, MARGEN)
 }
 
@@ -883,7 +928,15 @@ pub fn de_hojas_a_medida(
     if medidas.len() != hojas.len() {
         return None;
     }
-    escribir_hojas(hojas, None, imagenes, letra_propia, &[], &|i, _| medidas[i], 0.0)
+    escribir_hojas(
+        hojas,
+        None,
+        imagenes,
+        letra_propia,
+        &[],
+        &|i, _| medidas[i],
+        0.0,
+    )
 }
 
 fn escribir_hojas(
@@ -1181,10 +1234,22 @@ mod pruebas {
     fn los_marcadores_van_al_indice_del_pdf_con_su_emoticono_y_su_hoja() {
         let hojas = [hoja_blanca(), hoja_blanca()];
         let indice = [
-            Marcador { titulo: "⭐ Hoja 2".into(), hoja: 1, y: 990.0 },
-            Marcador { titulo: "🔖 Hoja 1".into(), hoja: 0, y: 0.0 },
+            Marcador {
+                titulo: "⭐ Hoja 2".into(),
+                hoja: 1,
+                y: 990.0,
+            },
+            Marcador {
+                titulo: "🔖 Hoja 1".into(),
+                hoja: 0,
+                y: 0.0,
+            },
             // Caso negativo: una hoja que no hay no entra.
-            Marcador { titulo: "x".into(), hoja: 7, y: 0.0 },
+            Marcador {
+                titulo: "x".into(),
+                hoja: 7,
+                y: 0.0,
+            },
         ];
         let bytes = de_hojas_con_indice(&hojas, None, &|_| None, None, &indice).unwrap();
         let s = String::from_utf8_lossy(&bytes);

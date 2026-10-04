@@ -175,7 +175,9 @@ pub const TAMANOS_DE_LETRA: [f32; 4] = [16.0, 20.0, 28.0, 36.0];
 /// del catalogo (`texto::FUENTES`), que es el que se ve.
 pub const FAMILIAS: [u8; 8] = {
     let f = pixpin_motor2d::texto::FUENTES;
-    [f[0].id, f[1].id, f[2].id, f[3].id, f[4].id, f[5].id, f[6].id, f[7].id]
+    [
+        f[0].id, f[1].id, f[2].id, f[3].id, f[4].id, f[5].id, f[6].id, f[7].id,
+    ]
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -502,7 +504,10 @@ impl Mandos {
             con_fondo: h == Herramienta::Relleno || (rayable && estilo.relleno.is_some()),
             // El grafito es el mismo trazo que el lapiz (un `freedraw`), y
             // la presion le cambia igual el grueso y la carga de los sellos.
-            presion: si(matches!(h, Herramienta::Lapiz | Herramienta::Grafito), variabilidad),
+            presion: si(
+                matches!(h, Herramienta::Lapiz | Herramienta::Grafito),
+                variabilidad,
+            ),
             bordes: si(
                 matches!(h, Herramienta::Rectangulo | Herramienta::Rombo),
                 estilo.redondo,
@@ -571,9 +576,7 @@ impl Mandos {
                         .juntar(pixpin_motor2d::texto::numero_de_familia(familia));
                     m.tamano = m.tamano.juntar(*tam);
                     // Lo que se ve: sin `textAlign` se pinta a la izquierda.
-                    m.alineacion = m
-                        .alineacion
-                        .juntar(e.extras.alineacion.unwrap_or_default());
+                    m.alineacion = m.alineacion.juntar(e.extras.alineacion.unwrap_or_default());
                     if e.extras.contenedor.is_some() {
                         m.alineacion_vertical = m
                             .alineacion_vertical
@@ -585,12 +588,15 @@ impl Mandos {
                 // Sin elegir aun (la del sistema) sale la fila sin marcar.
                 f if pixpin_motor2d::estilo::lleva_letra(f) => {
                     m.familia = match &e.extras.familia {
-                        Some(n) => m.familia.juntar(pixpin_motor2d::texto::numero_de_familia(n)),
+                        Some(n) => m
+                            .familia
+                            .juntar(pixpin_motor2d::texto::numero_de_familia(n)),
                         None => Mando::Mixto,
                     };
                     if let Figura::Serie { .. } = f {
                         m.tamano = m.tamano.juntar(
-                            (e.ancho.min(e.alto) / (2.0 * pixpin_motor2d::serie::RADIO_POR_LETRA)).round(),
+                            (e.ancho.min(e.alto) / (2.0 * pixpin_motor2d::serie::RADIO_POR_LETRA))
+                                .round(),
                         );
                     }
                 }
@@ -1139,16 +1145,20 @@ impl Emergente {
             // elegido aqui salga marcado en su selector al abrirlo alla.
             c.separar();
             c.titulo(Seccion::PapelesDelMovil);
-            c.rejilla(PAPELES_DEL_MOVIL.len(), (casilla, casilla, hueco), |k, rect| {
-                let color = Some(hex(PAPELES_DEL_MOVIL[k]));
-                Some(Control::Muestra {
-                    rect,
-                    color,
-                    activa: mismo(color, actual),
-                    accion: accion_de_color(cual, color),
-                    grande: false,
-                })
-            });
+            c.rejilla(
+                PAPELES_DEL_MOVIL.len(),
+                (casilla, casilla, hueco),
+                |k, rect| {
+                    let color = Some(hex(PAPELES_DEL_MOVIL[k]));
+                    Some(Control::Muestra {
+                        rect,
+                        color,
+                        activa: mismo(color, actual),
+                        accion: accion_de_color(cual, color),
+                        grande: false,
+                    })
+                },
+            );
         }
         c.separar();
         c.titulo(Seccion::CodigoHex);
@@ -1466,7 +1476,12 @@ impl PanelLateral {
         }
         if m.mosaico.sale() {
             c.titulo(Seccion::Mosaico);
-            let s = |v| (AccionPanel::Forma(CambioForma::Desenfoque(v)), m.mosaico.valor() == Some(v));
+            let s = |v| {
+                (
+                    AccionPanel::Forma(CambioForma::Desenfoque(v)),
+                    m.mosaico.valor() == Some(v),
+                )
+            };
             c.fila(&[s(false), s(true)]);
             c.separar();
         }
@@ -1485,14 +1500,24 @@ impl PanelLateral {
         if m.lupa_guia.sale() {
             use pixpin_motor2d::lupa_elemento::GuiaDeLupa as G;
             c.titulo(Seccion::GuiaLupa);
-            let s = |g| (AccionPanel::Forma(CambioForma::GuiaLupa(g)), m.lupa_guia.valor() == Some(g));
+            let s = |g| {
+                (
+                    AccionPanel::Forma(CambioForma::GuiaLupa(g)),
+                    m.lupa_guia.valor() == Some(g),
+                )
+            };
             c.fila(&[s(G::Ninguna), s(G::Flecha), s(G::DosLineas), s(G::Punto)]);
             c.separar();
         }
         if m.foco_oscurecer.sale() {
             c.titulo(Seccion::Oscurecer);
             let actual = m.foco_oscurecer.valor();
-            let s = |n: u8| (AccionPanel::Forma(CambioForma::Oscurecer(n)), actual == Some(n));
+            let s = |n: u8| {
+                (
+                    AccionPanel::Forma(CambioForma::Oscurecer(n)),
+                    actual == Some(n),
+                )
+            };
             c.fila(&[s(25), s(45), s(65), s(85)]);
             c.separar();
         }
@@ -1510,7 +1535,12 @@ impl PanelLateral {
         }
         if m.pedir_medida.sale() {
             c.titulo(Seccion::PedirMedida);
-            let s = |v| (AccionPanel::PedirMedida(v), m.pedir_medida.valor() == Some(v));
+            let s = |v| {
+                (
+                    AccionPanel::PedirMedida(v),
+                    m.pedir_medida.valor() == Some(v),
+                )
+            };
             c.fila(&[s(true), s(false)]);
             c.separar();
         }
@@ -2038,8 +2068,9 @@ mod pruebas {
         let s = secciones(&cerrado);
         assert!(s.contains(&Seccion::TipoFlecha) && s.contains(&Seccion::Puntas));
         assert!(
-            marcados(&cerrado)
-                .contains(&AccionPanel::Forma(CambioForma::TipoFlecha(TipoFlecha::Afilada)))
+            marcados(&cerrado).contains(&AccionPanel::Forma(CambioForma::TipoFlecha(
+                TipoFlecha::Afilada
+            )))
         );
         let abrir = AccionPanel::Abrir(Desplegable::PuntaFin);
         assert_eq!(
@@ -2164,9 +2195,13 @@ mod pruebas {
             );
         }
         // Los pasos, ademas, su tamano (el del circulo).
-        assert!(secciones(&de_herramienta(Herramienta::Serie, estilo)).contains(&Seccion::TamanoFuente));
+        assert!(
+            secciones(&de_herramienta(Herramienta::Serie, estilo)).contains(&Seccion::TamanoFuente)
+        );
         // Caso negativo: el rectangulo no tiene letra.
-        assert!(!secciones(&de_herramienta(Herramienta::Rectangulo, estilo)).contains(&Seccion::Fuente));
+        assert!(
+            !secciones(&de_herramienta(Herramienta::Rectangulo, estilo)).contains(&Seccion::Fuente)
+        );
     }
 
     #[test]
@@ -2233,9 +2268,15 @@ mod pruebas {
 
     #[test]
     fn con_la_flecha_puesta_salen_tipo_y_puntas_y_la_de_codos_no_ofrece_tipo() {
-        let s = secciones(&de_herramienta(Herramienta::Flecha, EstiloDibujo::default()));
+        let s = secciones(&de_herramienta(
+            Herramienta::Flecha,
+            EstiloDibujo::default(),
+        ));
         assert!(s.contains(&Seccion::TipoFlecha) && s.contains(&Seccion::Puntas));
-        let s = secciones(&de_herramienta(Herramienta::FlechaCodos, EstiloDibujo::default()));
+        let s = secciones(&de_herramienta(
+            Herramienta::FlechaCodos,
+            EstiloDibujo::default(),
+        ));
         assert!(!s.contains(&Seccion::TipoFlecha) && s.contains(&Seccion::Puntas));
     }
 
@@ -2273,7 +2314,9 @@ mod pruebas {
             assert_eq!(p.destino(centro(rect_de(&p, a))), DestinoPanel::Accion(a));
         }
         let m = marcados(&p);
-        assert!(m.contains(&AccionPanel::Forma(CambioForma::TipoFlecha(TipoFlecha::Curva))));
+        assert!(m.contains(&AccionPanel::Forma(CambioForma::TipoFlecha(
+            TipoFlecha::Curva
+        ))));
         // Caso negativo: una curva y una afilada juntas no marcan ninguna.
         let recta = elem(2, flecha(TipoPunta::Ninguna, TipoPunta::Flecha));
         let mezcla = de_seleccion(&[&curva, &recta], None);
@@ -2288,8 +2331,9 @@ mod pruebas {
             ..EstiloDibujo::default()
         };
         assert!(
-            marcados(&de_herramienta(Herramienta::Flecha, estilo))
-                .contains(&AccionPanel::Forma(CambioForma::TipoFlecha(TipoFlecha::Curva)))
+            marcados(&de_herramienta(Herramienta::Flecha, estilo)).contains(&AccionPanel::Forma(
+                CambioForma::TipoFlecha(TipoFlecha::Curva)
+            ))
         );
     }
 
@@ -2299,9 +2343,11 @@ mod pruebas {
         let p = de_seleccion(&[&suelto], None);
         assert!(secciones(&p).contains(&Seccion::AlineacionTexto));
         // Sin `textAlign` se ve a la izquierda, y es la que va marcada.
-        assert!(marcados(&p).contains(&AccionPanel::Forma(CambioForma::Alineacion(
-            AlineacionTexto::Izquierda
-        ))));
+        assert!(
+            marcados(&p).contains(&AccionPanel::Forma(CambioForma::Alineacion(
+                AlineacionTexto::Izquierda
+            )))
+        );
         let vertical = |p: &PanelLateral| {
             p.controles.iter().any(|c| {
                 matches!(
@@ -2323,9 +2369,11 @@ mod pruebas {
         assert!(m.contains(&AccionPanel::Forma(CambioForma::Alineacion(
             AlineacionTexto::Centro
         ))));
-        assert!(m.contains(&AccionPanel::Forma(CambioForma::AlineacionVertical(
-            AlineacionVertical::Medio
-        ))));
+        assert!(
+            m.contains(&AccionPanel::Forma(CambioForma::AlineacionVertical(
+                AlineacionVertical::Medio
+            )))
+        );
         // Y al pulsar, la vertical solo le llega al rotulo, no al suelto.
         let abajo = AccionPanel::Forma(CambioForma::AlineacionVertical(AlineacionVertical::Abajo));
         assert_eq!(destinatarios(&abajo, &[&suelto, &rotulo]), vec![2]);
@@ -2337,9 +2385,11 @@ mod pruebas {
             ..EstiloDibujo::default()
         };
         let p = de_herramienta(Herramienta::Texto, estilo);
-        assert!(marcados(&p).contains(&AccionPanel::Forma(CambioForma::Alineacion(
-            AlineacionTexto::Derecha
-        ))));
+        assert!(
+            marcados(&p).contains(&AccionPanel::Forma(CambioForma::Alineacion(
+                AlineacionTexto::Derecha
+            )))
+        );
         assert!(!vertical(&p));
         // Caso negativo: un rectangulo no alinea renglones.
         let caja = elem(3, Figura::Rectangulo);
@@ -2398,7 +2448,10 @@ mod pruebas {
                 _ => None,
             })
             .expect("hay campo");
-        assert_eq!(p.destino(centro(campo)), DestinoPanel::Accion(AccionPanel::EditarHex));
+        assert_eq!(
+            p.destino(centro(campo)),
+            DestinoPanel::Accion(AccionPanel::EditarHex)
+        );
     }
 
     #[test]
@@ -2500,7 +2553,10 @@ mod pruebas {
         let p = panel_del_papel(hex(0xfffce8), None);
         for c in COLORES_LIENZO {
             let r = rect_de(&p, AccionPanel::FondoLienzo(c));
-            assert_eq!(p.destino(centro(r)), DestinoPanel::Accion(AccionPanel::FondoLienzo(c)));
+            assert_eq!(
+                p.destino(centro(r)),
+                DestinoPanel::Accion(AccionPanel::FondoLienzo(c))
+            );
         }
         // El actual va marcado: el amarillo, y no el blanco.
         assert!(p.controles.iter().any(|c| matches!(
@@ -2529,13 +2585,20 @@ mod pruebas {
         }
         // La paleta con el tono claro: el azul es su 50, #e7f5ff.
         rect_de(&p, AccionPanel::FondoLienzo(hex(0xe7f5ff)));
-        assert!(em.controles.iter().any(|c| matches!(c, Control::Hex { .. })));
+        assert!(
+            em.controles
+                .iter()
+                .any(|c| matches!(c, Control::Hex { .. }))
+        );
         // Caso negativo: sin papel no hay lienzo, asi que no hay transparente
         // ni nada que cambie el estilo de lo elegido.
         assert!(!em.controles.iter().any(|c| matches!(
             c,
             Control::Muestra { color: None, .. }
-                | Control::Muestra { accion: Some(AccionPanel::Estilo(_)), .. }
+                | Control::Muestra {
+                    accion: Some(AccionPanel::Estilo(_)),
+                    ..
+                }
         )));
     }
 
@@ -2546,7 +2609,10 @@ mod pruebas {
         let p = de_seleccion(&[&caja], None);
         assert!(!p.controles.iter().any(|c| matches!(
             c,
-            Control::Muestra { accion: Some(AccionPanel::FondoLienzo(_)), .. }
+            Control::Muestra {
+                accion: Some(AccionPanel::FondoLienzo(_)),
+                ..
+            }
         )));
     }
 
@@ -2890,8 +2956,14 @@ mod pruebas_pedir_medida {
 
     #[test]
     fn con_la_cota_en_la_mano_sale_el_si_y_el_no_con_el_puesto_marcado() {
-        assert_eq!(opciones(Herramienta::Cota, true), vec![(true, true), (false, false)]);
-        assert_eq!(opciones(Herramienta::Cota, false), vec![(true, false), (false, true)]);
+        assert_eq!(
+            opciones(Herramienta::Cota, true),
+            vec![(true, true), (false, false)]
+        );
+        assert_eq!(
+            opciones(Herramienta::Cota, false),
+            vec![(true, false), (false, true)]
+        );
     }
 
     #[test]

@@ -254,7 +254,11 @@ impl Anotacion {
     /// Antes de pintar: si los mosaicos cambiaron y no se esta arrastrando,
     /// se rehace la foto tapada. `bajar_foto` trae la foto de la zona la
     /// primera vez.
-    pub fn preparar(&mut self, motor: &MotorRender, bajar_foto: impl FnOnce() -> Option<ImagenRgba>) {
+    pub fn preparar(
+        &mut self,
+        motor: &MotorRender,
+        bajar_foto: impl FnOnce() -> Option<ImagenRgba>,
+    ) {
         self.imagenes.asegurar(motor);
         let tapados = self.tapados();
         if tapados.is_empty() {
@@ -308,12 +312,7 @@ impl Anotacion {
                     crate::dibujo::pintar::a_color(mosaico::TAPA_MACIZA),
                 );
             }
-            let vista = (
-                0.0,
-                0.0,
-                zona.ancho / self.zoom,
-                zona.alto / self.zoom,
-            );
+            let vista = (0.0, 0.0, zona.ancho / self.zoom, zona.alto / self.zoom);
             crate::dibujo::pintar::pintar_escena(
                 p,
                 &self.escena,
@@ -340,12 +339,23 @@ impl Anotacion {
 
     /// **Lo anotado, dentro de la captura**: los mosaicos tapan la foto y lo
     /// demas se pinta encima, con la GPU y a la misma escala que se veia.
-    pub fn hornear(&mut self, imagen: &mut ImagenRgba, motor: &MotorRender, d3d: &ID3D11Device) -> Result<()> {
+    pub fn hornear(
+        &mut self,
+        imagen: &mut ImagenRgba,
+        motor: &MotorRender,
+        d3d: &ID3D11Device,
+    ) -> Result<()> {
         if self.gesto.esta_escribiendo() {
             self.gesto.cerrar_texto(&mut self.escena);
         }
         let tapados = self.tapados();
-        tapar(&mut imagen.pixeles, imagen.ancho, imagen.alto, &tapados, self.zoom);
+        tapar(
+            &mut imagen.pixeles,
+            imagen.ancho,
+            imagen.alto,
+            &tapados,
+            self.zoom,
+        );
         let hay_trazos = self
             .escena
             .visibles()
@@ -362,8 +372,12 @@ impl Anotacion {
         self.imagenes.asegurar(motor);
         let zoom = self.zoom;
         let vista = (0.0, 0.0, w as f32 / zoom, h as f32 / zoom);
-        let (escena, cache, cache_tinta, imagenes) =
-            (&self.escena, &mut self.cache, &mut self.cache_tinta, &self.imagenes);
+        let (escena, cache, cache_tinta, imagenes) = (
+            &self.escena,
+            &mut self.cache,
+            &mut self.cache_tinta,
+            &self.imagenes,
+        );
         motor
             .dibujar(&fuera.destino, |p| {
                 p.bitmap(
@@ -442,7 +456,12 @@ mod pruebas {
         assert_eq!(a.cuantos(), 1);
         let e = a.escena.visibles().next().unwrap();
         // 30 px fisicos al 150 % son 20 unidades del dibujo.
-        assert!((e.x - 20.0).abs() < 0.01 && (e.y - 20.0).abs() < 0.01, "{} {}", e.x, e.y);
+        assert!(
+            (e.x - 20.0).abs() < 0.01 && (e.y - 20.0).abs() < 0.01,
+            "{} {}",
+            e.x,
+            e.y
+        );
         assert!((e.ancho - 100.0).abs() < 0.01);
         assert_eq!(e.trazo, color_de(3));
         assert!(!a.vacia());
@@ -465,7 +484,10 @@ mod pruebas {
     #[test]
     fn el_texto_se_escribe_y_las_teclas_de_texto_solo_valen_escribiendo() {
         let mut a = Anotacion::nueva(Punto { x: 0, y: 0 }, 100);
-        assert!(!a.tecla_de_texto(VK_BACK), "caso negativo: sin texto abierto");
+        assert!(
+            !a.tecla_de_texto(VK_BACK),
+            "caso negativo: sin texto abierto"
+        );
         a.tomar(Util::Texto);
         a.pulsar(Punto { x: 40, y: 40 });
         a.soltar(Punto { x: 40, y: 40 });
@@ -509,6 +531,9 @@ mod pruebas {
         assert_eq!(px[i(0, 0)..i(0, 0) + 4], px[i(7, 7)..i(7, 7) + 4]);
         assert_ne!(px[i(0, 0)..i(0, 0) + 4], original[i(0, 0)..i(0, 0) + 4]);
         // Caso negativo: fuera de la caja nada cambia.
-        assert_eq!(px[i(40, 20)..i(40, 20) + 4], original[i(40, 20)..i(40, 20) + 4]);
+        assert_eq!(
+            px[i(40, 20)..i(40, 20) + 4],
+            original[i(40, 20)..i(40, 20) + 4]
+        );
     }
 }

@@ -209,7 +209,11 @@ impl<T> Agil<T> {
 }
 
 /// **La fuente del documento** que se le da al dialogo.
-#[implement(IPrintDocumentSource, IPrintDocumentPageSource, IPrintPreviewPageCollection)]
+#[implement(
+    IPrintDocumentSource,
+    IPrintDocumentPageSource,
+    IPrintPreviewPageCollection
+)]
 struct Fuente {
     estado: Compartido,
 }
@@ -287,7 +291,10 @@ impl IPrintDocumentPageSource_Impl for Fuente_Impl {
         destino: Ref<IPrintDocumentPackageTarget>,
     ) -> windows::core::Result<()> {
         let destino = destino.ok()?;
-        let mut e = self.estado.lock().map_err(|_| windows::core::Error::from(E_FAIL))?;
+        let mut e = self
+            .estado
+            .lock()
+            .map_err(|_| windows::core::Error::from(E_FAIL))?;
         let (papel, alcance) = leer_opciones(opciones.as_ref(), &e);
         let e = &mut *e;
         let total = e.documento.paginar(&e.motor, alcance.as_deref());
@@ -303,7 +310,10 @@ impl IPrintDocumentPageSource_Impl for Fuente_Impl {
 
 impl IPrintPreviewPageCollection_Impl for Fuente_Impl {
     fn Paginate(&self, _actual: u32, opciones: Ref<IInspectable>) -> windows::core::Result<()> {
-        let mut e = self.estado.lock().map_err(|_| windows::core::Error::from(E_FAIL))?;
+        let mut e = self
+            .estado
+            .lock()
+            .map_err(|_| windows::core::Error::from(E_FAIL))?;
         let (papel, alcance) = leer_opciones(opciones.as_ref(), &e);
         let e = &mut *e;
         e.papel = papel;
@@ -322,13 +332,20 @@ impl IPrintPreviewPageCollection_Impl for Fuente_Impl {
     }
 
     fn MakePage(&self, pedida: u32, ancho: f32, alto: f32) -> windows::core::Result<()> {
-        let e = self.estado.lock().map_err(|_| windows::core::Error::from(E_FAIL))?;
+        let e = self
+            .estado
+            .lock()
+            .map_err(|_| windows::core::Error::from(E_FAIL))?;
         let Some(previa) = e.previa.clone() else {
             return Ok(());
         };
-        let numero = if pedida == PAGINA_DE_LA_APLICACION { 1 } else { pedida };
-        let superficie = miniatura(&e, hoja_del_trabajo(pedida, e.total), ancho, alto)
-            .map_err(a_error)?;
+        let numero = if pedida == PAGINA_DE_LA_APLICACION {
+            1
+        } else {
+            pedida
+        };
+        let superficie =
+            miniatura(&e, hoja_del_trabajo(pedida, e.total), ancho, alto).map_err(a_error)?;
         // SAFETY: destino vivo; la superficie es una textura propia recien
         // pintada, que el dialogo retiene mientras la necesite.
         unsafe { previa.DrawPage(numero, &superficie, e.ppp, e.ppp) }
@@ -537,15 +554,19 @@ pub fn mostrar(
     let titulo = HSTRING::from(&pedido.titulo);
     let apaisada = pedido.apaisada;
     let opcion = pedido.opcion.clone();
-    let pedida = TypedEventHandler::<PrintManager, PrintTaskRequestedEventArgs>::new(
-        move |_, args| {
-            let args = args.as_ref().ok_or_else(|| windows::core::Error::from(E_POINTER))?;
+    let pedida =
+        TypedEventHandler::<PrintManager, PrintTaskRequestedEventArgs>::new(move |_, args| {
+            let args = args
+                .as_ref()
+                .ok_or_else(|| windows::core::Error::from(E_POINTER))?;
             let fuente = Agil(fuente.dentro().clone());
             let tarea = args.Request()?.CreatePrintTask(
                 &titulo,
                 &PrintTaskSourceRequestedHandler::new(
                     move |a: Ref<PrintTaskSourceRequestedArgs>| {
-                        let a = a.as_ref().ok_or_else(|| windows::core::Error::from(E_POINTER))?;
+                        let a = a
+                            .as_ref()
+                            .ok_or_else(|| windows::core::Error::from(E_POINTER))?;
                         a.SetSource(fuente.dentro())
                     },
                 ),
@@ -555,8 +576,7 @@ pub fn mostrar(
             // con menos opciones que ninguno.
             let _ = preparar_tarea(&tarea, apaisada, opcion.as_ref(), &estado);
             Ok(())
-        },
-    );
+        });
     let token = manager.PrintTaskRequested(&pedida)?;
     // El editor va siempre encima, y el dialogo es de otro proceso: sin
     // bajarlo, el dialogo podria abrirse detras y parecer que no pasa nada.
@@ -698,10 +718,10 @@ mod pruebas {
             if alcance == Some("dos") { 2 } else { 1 }
         }
         fn pintar(&self, i: usize, pagina: Pagina, p: &Pintor) {
-            self.0
-                .lock()
-                .unwrap()
-                .push(format!("pintar {i} {:.0}x{:.0} {:.3}", pagina.papel.0, pagina.papel.1, pagina.escala));
+            self.0.lock().unwrap().push(format!(
+                "pintar {i} {:.0}x{:.0} {:.3}",
+                pagina.papel.0, pagina.papel.1, pagina.escala
+            ));
             let k = pagina.escala;
             p.rellenar(
                 crate::RectF {
@@ -752,9 +772,7 @@ mod pruebas {
         }
     }
 
-    impl windows::Win32::Graphics::Printing::IPrintPreviewDxgiPackageTarget_Impl
-        for DialogoFalso_Impl
-    {
+    impl windows::Win32::Graphics::Printing::IPrintPreviewDxgiPackageTarget_Impl for DialogoFalso_Impl {
         fn SetJobPageCount(
             &self,
             _t: windows::Win32::Graphics::Printing::PageCountType,
@@ -772,10 +790,10 @@ mod pruebas {
         ) -> windows::core::Result<()> {
             // SAFETY: superficie viva que nos pasan.
             let d = unsafe { imagen.ok()?.GetDesc()? };
-            self.visto
-                .lock()
-                .unwrap()
-                .push(format!("miniatura {pagina} {}x{} {ppp_x}", d.Width, d.Height));
+            self.visto.lock().unwrap().push(format!(
+                "miniatura {pagina} {}x{} {ppp_x}",
+                d.Width, d.Height
+            ));
             Ok(())
         }
         fn InvalidatePreview(&self) -> windows::core::Result<()> {

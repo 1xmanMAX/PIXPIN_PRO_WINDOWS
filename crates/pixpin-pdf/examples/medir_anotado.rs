@@ -10,7 +10,10 @@ fn main() {
     let palabra = args.get(1).cloned().unwrap_or_default();
     let bytes = std::fs::read(&ruta).expect("leer");
     let n = pixpin_pdf::union::contar_paginas(&bytes).unwrap_or(0) as usize;
-    if let Ok(v) = std::env::var("VOLCAR") { volcar(&bytes, v.parse().unwrap()); return; }
+    if let Ok(v) = std::env::var("VOLCAR") {
+        volcar(&bytes, v.parse().unwrap());
+        return;
+    }
     println!("{}: {} bytes, {n} paginas", ruta.display(), bytes.len());
     let t = std::time::Instant::now();
     let (mut lineas, mut textos, mut sin, mut hallada) = (0, 0, 0, 0);
@@ -25,7 +28,13 @@ fn main() {
         } else {
             sin += 1;
             if sin < 6 {
-                println!("  hoja {i}: foto (sin entender {}, puntos {}, textos {}, cortado {})", p.sin_entender, p.puntos(), p.textos.len(), p.cortado);
+                println!(
+                    "  hoja {i}: foto (sin entender {}, puntos {}, textos {}, cortado {})",
+                    p.sin_entender,
+                    p.puntos(),
+                    p.textos.len(),
+                    p.cortado
+                );
             }
         }
         textos += p.textos.len();
@@ -33,9 +42,16 @@ fn main() {
             hallada += 1;
         }
     });
-    println!("  {lineas} como lineas, {sin} como foto, {textos} textos, '{palabra}' entera en {hallada} hojas; {:?}", t.elapsed());
+    println!(
+        "  {lineas} como lineas, {sin} como foto, {textos} textos, '{palabra}' entera en {hallada} hojas; {:?}",
+        t.elapsed()
+    );
     let t = std::time::Instant::now();
-    let web: usize = pixpin_pdf::plano_web::de_paginas(&bytes, &cuales, 800.0).iter().flatten().map(String::len).sum();
+    let web: usize = pixpin_pdf::plano_web::de_paginas(&bytes, &cuales, 800.0)
+        .iter()
+        .flatten()
+        .map(String::len)
+        .sum();
     println!("  paquetes de la web: {} bytes en {:?}", web, t.elapsed());
 }
 
@@ -43,6 +59,9 @@ fn main() {
 fn volcar(bytes: &[u8], i: usize) {
     let p = pixpin_pdf::plano::de_bytes(bytes, i).expect("hoja");
     for t in p.textos.iter().take(60) {
-        println!("    [{:.1},{:.1} a={:.2} w={:.2}] {:?}", t.x, t.y, t.a, t.ancho, t.texto);
+        println!(
+            "    [{:.1},{:.1} a={:.2} w={:.2}] {:?}",
+            t.x, t.y, t.a, t.ancho, t.texto
+        );
     }
 }

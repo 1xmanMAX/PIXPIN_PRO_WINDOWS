@@ -62,8 +62,8 @@ use std::sync::mpsc;
 use windows::Win32::Graphics::Direct2D::ID2D1Bitmap1;
 
 use crate::lector::{
-    self, APAGADO, CRISTAL, DORADO, EMOJIS, FONDO_PDF, PAPEL_DEL_MARGEN, RAYA, TEXTO,
-    ahora_ms, con_alfa, dentro,
+    self, APAGADO, CRISTAL, DORADO, EMOJIS, FONDO_PDF, PAPEL_DEL_MARGEN, RAYA, TEXTO, ahora_ms,
+    con_alfa, dentro,
 };
 use crate::lector_tinta::{self, Capa, Tinta};
 use crate::overlay::Recursos;
@@ -205,7 +205,10 @@ fn hilo_de_hojas(
         } else {
             None
         };
-        for p in primero.into_iter().chain(std::iter::from_fn(|| pedidos.try_recv().ok())) {
+        for p in primero
+            .into_iter()
+            .chain(std::iter::from_fn(|| pedidos.try_recv().ok()))
+        {
             match p {
                 Pedido::Quiero(lista) => cola = lista.into(),
                 Pedido::Exportar {
@@ -215,9 +218,15 @@ fn hilo_de_hojas(
                     marcas,
                     destino,
                 } => {
-                    let hecho = exportar(&documento, &tinta, &altos, espacios, &marcas, &destino, &|n, t| {
-                        avisar(Llega::Progreso(n, t))
-                    });
+                    let hecho = exportar(
+                        &documento,
+                        &tinta,
+                        &altos,
+                        espacios,
+                        &marcas,
+                        &destino,
+                        &|n, t| avisar(Llega::Progreso(n, t)),
+                    );
                     avisar(Llega::Exportado(hecho.map(|_| destino)));
                 }
             }
@@ -288,7 +297,9 @@ fn exportar(
         b
     });
     let indice = crate::compartir::pdf_anotado::marcadores_de(marcas);
-    if let Some(bytes) = limpio.and_then(|b| crate::compartir::pdf_anotado::con_tinta(&b, tinta, (izq, der), &indice)) {
+    if let Some(bytes) = limpio
+        .and_then(|b| crate::compartir::pdf_anotado::con_tinta(&b, tinta, (izq, der), &indice))
+    {
         progreso(total, total);
         if let Some(carpeta) = destino.parent() {
             std::fs::create_dir_all(carpeta).map_err(|e| e.to_string())?;
@@ -314,19 +325,25 @@ fn exportar(
         })
         .collect();
     let hechas = std::cell::Cell::new(0usize);
-    let bytes = pixpin_pdf::escribir::de_hojas_con_indice(&hojas, None, &|id| {
-        let i = id.checked_sub(1)? as u32;
-        hechas.set(hechas.get() + 1);
-        progreso(hechas.get(), total);
-        documento
-            .renderizar(i, vista::ANCHO_HOJA as u32)
-            .ok()
-            .map(|img| pixpin_pdf::escribir::Pixeles {
-                ancho: img.ancho,
-                alto: img.alto,
-                rgba: img.pixeles,
-            })
-    }, None, &indice)
+    let bytes = pixpin_pdf::escribir::de_hojas_con_indice(
+        &hojas,
+        None,
+        &|id| {
+            let i = id.checked_sub(1)? as u32;
+            hechas.set(hechas.get() + 1);
+            progreso(hechas.get(), total);
+            documento
+                .renderizar(i, vista::ANCHO_HOJA as u32)
+                .ok()
+                .map(|img| pixpin_pdf::escribir::Pixeles {
+                    ancho: img.ancho,
+                    alto: img.alto,
+                    rgba: img.pixeles,
+                })
+        },
+        None,
+        &indice,
+    )
     .ok_or_else(|| "sin hojas".to_string())?;
     if let Some(carpeta) = destino.parent() {
         std::fs::create_dir_all(carpeta).map_err(|e| e.to_string())?;
@@ -435,7 +452,12 @@ struct Estado {
     escuchar_al_llegar: bool,
 }
 
-pub fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion, ruta: &Path) -> Result<()> {
+pub fn abrir(
+    recursos: &Recursos,
+    textos: &Catalogo,
+    ubicacion: &Ubicacion,
+    ruta: &Path,
+) -> Result<()> {
     // Cuenta como abierto para los grupos de ventanas (H9) mientras viva.
     let _grupo = crate::grupos_ventanas::apuntar(crate::grupos_ventanas::Clase::Lector {
         ruta: ruta.to_path_buf(),
@@ -456,8 +478,14 @@ pub fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion, ruta
     let ventana = VentanaOverlay::nueva_normal(area, &textos.t("lector-pdf-titulo"))
         .context("no se pudo abrir la ventana del lector de PDF")?;
     let motor = recursos.motor();
-    let superficie = Superficie::nueva(&motor, &recursos.d3d(), ventana.handle(), area.ancho, area.alto)
-        .context("sin superficie para el lector de PDF")?;
+    let superficie = Superficie::nueva(
+        &motor,
+        &recursos.d3d(),
+        ventana.handle(),
+        area.ancho,
+        area.alto,
+    )
+    .context("sin superficie para el lector de PDF")?;
     ventana.mostrar();
     ventana.enfocar();
     // Todos los puntos del trazo y la presion del lapiz, como en el lienzo.
@@ -685,15 +713,26 @@ pub fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion, ruta
                     shift: true,
                     ctrl: true,
                     ..
-                } => hacer(&mut e, Accion::Compartir, textos, ruta, ubicacion, &tx_pedidos, marco),
+                } => hacer(
+                    &mut e,
+                    Accion::Compartir,
+                    textos,
+                    ruta,
+                    ubicacion,
+                    &tx_pedidos,
+                    marco,
+                ),
                 // L: escuchar (play/pausa con la barra abierta).
                 EventoOverlay::Tecla {
                     vk: VK_L,
                     ctrl: false,
                     ..
                 } if !e.anotando && !escribiendo(&e) => voz::escuchar(&mut e, textos, ruta, marco),
-                EventoOverlay::Tecla { vk, shift, ctrl, .. } => {
-                    let (suya, nueva) = tecla_de_las_cajas(&mut e, vk, shift, ctrl, textos, ruta, ubicacion);
+                EventoOverlay::Tecla {
+                    vk, shift, ctrl, ..
+                } => {
+                    let (suya, nueva) =
+                        tecla_de_las_cajas(&mut e, vk, shift, ctrl, textos, ruta, ubicacion);
                     if nueva.is_some() {
                         ruta_nueva = nueva;
                     }
@@ -807,7 +846,11 @@ fn recibir(e: &mut Estado, l: Llega, motor: &pixpin_render::MotorRender, textos:
             // (ver `pixpin_pdf::Documento::medidas`): se corrige su sitio sin
             // perder por donde se iba.
             if let Some(medida) = e.medidas.get_mut(i) {
-                let antes = if medida.0 > 0.0 { medida.1 / medida.0 } else { 0.0 };
+                let antes = if medida.0 > 0.0 {
+                    medida.1 / medida.0
+                } else {
+                    0.0
+                };
                 let ahora = img.alto as f32 / img.ancho.max(1) as f32;
                 if (antes - ahora).abs() > 0.02 {
                     let sitio = e.hojas.sitio(e.y);
@@ -828,7 +871,10 @@ fn recibir(e: &mut Estado, l: Llega, motor: &pixpin_render::MotorRender, textos:
             let mut args = fluent_bundle::FluentArgs::new();
             args.set("hechas", n);
             args.set("total", total);
-            e.aviso = Some((textos.t_args("lector-exportando", &args), ahora_ms() + 60_000));
+            e.aviso = Some((
+                textos.t_args("lector-exportando", &args),
+                ahora_ms() + 60_000,
+            ));
         }
         Llega::Exportado(hecho) => {
             e.exportando = false;
@@ -921,7 +967,10 @@ fn pedir_hojas(e: &mut Estado, tx: &mpsc::Sender<Pedido>, m: Marco) {
     let reserva = vis.start.saturating_sub(1)..(vis.end + 1).min(e.hojas.cuantas());
     let firme = e.zoom_cambiado == 0;
     let mut lista = Vec::new();
-    for i in vis.clone().chain(reserva.clone().filter(|i| !vis.contains(i))) {
+    for i in vis
+        .clone()
+        .chain(reserva.clone().filter(|i| !vis.contains(i)))
+    {
         let quiero = ancho_para(e, i, m);
         match e.pintadas.get(&i) {
             // Mientras la rueda cambia el aumento se estira lo que hay.
@@ -1031,7 +1080,13 @@ fn pintar(e: &mut Estado, p: &Pintor, m: Marco, textos: &Catalogo) {
     if e.hojas.cuantas() == 0 {
         let texto = textos.t("lector-pdf-abriendo");
         let (w, _) = p.medir_texto(&texto, 15.0 * m.e);
-        p.texto(&texto, (m.ancho - w) / 2.0, m.alto / 2.0, 15.0 * m.e, APAGADO);
+        p.texto(
+            &texto,
+            (m.ancho - w) / 2.0,
+            m.alto / 2.0,
+            15.0 * m.e,
+            APAGADO,
+        );
         e.botones = botones;
         return;
     }
@@ -1108,8 +1163,15 @@ fn pintar(e: &mut Estado, p: &Pintor, m: Marco, textos: &Catalogo) {
             );
             // En la misma pasada y con la misma transformada que la hoja.
             let activa = e.anotando && e.tinta.hoja == Some(i);
-            e.tinta
-                .pintar_capa(p, i, capa, vista_hoja, s, lector_tinta::papel(Color::BLANCO), activa);
+            e.tinta.pintar_capa(
+                p,
+                i,
+                capa,
+                vista_hoja,
+                s,
+                lector_tinta::papel(Color::BLANCO),
+                activa,
+            );
         }
     }
     p.desplazar(0.0, 0.0);
@@ -1125,13 +1187,25 @@ fn pintar(e: &mut Estado, p: &Pintor, m: Marco, textos: &Catalogo) {
         let x_doc = vista::ANCHO_HOJA + 20.0;
         let (sx, sy) = ((x_doc - e.x) * s, (y_doc - e.y) * s);
         if sy > -40.0 && sy < m.alto + 40.0 {
-            lector::redondel(p, &mm.emoji, (sx.min(m.ancho - 90.0 * m.e), sy), 14.0 * m.e, 0.8);
+            lector::redondel(
+                p,
+                &mm.emoji,
+                (sx.min(m.ancho - 90.0 * m.e), sy),
+                14.0 * m.e,
+                0.8,
+            );
         }
     }
 
     barra_de_avance(e, p, m);
     let emojis: Vec<&str> = e.marcas.iter().map(|x| x.emoji.as_str()).collect();
-    let riel = lector::riel(m.ancho, m.alto, m.escala_por_cien, emojis.len(), e.poniendo_marca);
+    let riel = lector::riel(
+        m.ancho,
+        m.alto,
+        m.escala_por_cien,
+        emojis.len(),
+        e.poniendo_marca,
+    );
     lector::pintar_riel(
         p,
         &riel,
@@ -1158,20 +1232,36 @@ fn pintar(e: &mut Estado, p: &Pintor, m: Marco, textos: &Catalogo) {
     {
         let izq = u32::from(e.ajustes.espacios & vista::ESPACIO_IZQUIERDA != 0);
         let der = u32::from(e.ajustes.espacios & vista::ESPACIO_DERECHA != 0);
-        for (r, b) in lector::pintar_mandos_de_los_lados(p, m.ancho, m.alto, m.e, izq, der, 1, e.ajustes.sin_lado) {
+        for (r, b) in lector::pintar_mandos_de_los_lados(
+            p,
+            m.ancho,
+            m.alto,
+            m.e,
+            izq,
+            der,
+            1,
+            e.ajustes.sin_lado,
+        ) {
             botones.push((r, Accion::Lado(b)));
         }
     }
     if e.anotando {
         // La barra y el panel del lienzo (`lector_tinta::Tinta`).
         let activa = e.tinta.hoja.and_then(|i| e.capas.get(&i));
-        e.tinta.pintar_interfaz(p, activa, m.area, m.escala_por_cien);
-    } else if e.renombre.editando.is_some() || (!e.hallar.caja.abierto && (e.pastilla_hasta > ahora_ms() || e.panel)) {
+        e.tinta
+            .pintar_interfaz(p, activa, m.area, m.escala_por_cien);
+    } else if e.renombre.editando.is_some()
+        || (!e.hallar.caja.abierto && (e.pastilla_hasta > ahora_ms() || e.panel))
+    {
         pastilla(e, p, m, &mut botones);
     }
     if e.renombre.editando.is_none() {
         let aviso = aviso_de_buscar(e, textos);
-        for (zona, b) in e.hallar.caja.pintar(p, m.ancho, m.e, textos, aviso.as_deref()) {
+        for (zona, b) in e
+            .hallar
+            .caja
+            .pintar(p, m.ancho, m.e, textos, aviso.as_deref())
+        {
             botones.push((zona, Accion::Buscar(b)));
         }
     }
@@ -1209,9 +1299,18 @@ fn pastilla(e: &Estado, p: &Pintor, m: Marco, botones: &mut Vec<(RectF, Accion)>
     let tam = 15.0 * m.e;
     // Escribiendo el nombre (D5) se ensena solo lo escrito, sin la hoja.
     let hoja = if let Some(t) = &e.renombre.editando {
-        if t.is_empty() { " ".to_string() } else { t.clone() }
+        if t.is_empty() {
+            " ".to_string()
+        } else {
+            t.clone()
+        }
     } else if e.hojas.cuantas() > 0 {
-        format!("{} · {}/{}", e.nombre, e.hojas.en(e.y.max(0.0)) + 1, e.hojas.cuantas())
+        format!(
+            "{} · {}/{}",
+            e.nombre,
+            e.hojas.en(e.y.max(0.0)) + 1,
+            e.hojas.cuantas()
+        )
     } else {
         e.nombre.clone()
     };
@@ -1230,17 +1329,45 @@ fn pastilla(e: &Estado, p: &Pintor, m: Marco, botones: &mut Vec<(RectF, Accion)>
         // Escribiendo el nombre: subrayado y cursor detras de lo escrito.
         let (wt, _) = p.medir_texto(t, tam);
         let x0 = caja.x + 14.0 * m.e;
-        p.rellenar(RectF { x: x0, y: caja.y + caja.alto - 6.0 * m.e, ancho: wt.max(40.0 * m.e), alto: 1.0 * m.e }, DORADO);
-        p.rellenar(RectF { x: x0 + wt + 1.0, y: caja.y + 8.0 * m.e, ancho: 1.5 * m.e, alto: h - 2.0 * m.e }, DORADO);
+        p.rellenar(
+            RectF {
+                x: x0,
+                y: caja.y + caja.alto - 6.0 * m.e,
+                ancho: wt.max(40.0 * m.e),
+                alto: 1.0 * m.e,
+            },
+            DORADO,
+        );
+        p.rellenar(
+            RectF {
+                x: x0 + wt + 1.0,
+                y: caja.y + 8.0 * m.e,
+                ancho: 1.5 * m.e,
+                alto: h - 2.0 * m.e,
+            },
+            DORADO,
+        );
     }
     if e.renombre.se_puede() {
-        botones.push((RectF { x: caja.x, y: caja.y, ancho: w + 22.0 * m.e, alto: caja.alto }, Accion::Renombrar));
+        botones.push((
+            RectF {
+                x: caja.x,
+                y: caja.y,
+                ancho: w + 22.0 * m.e,
+                alto: caja.alto,
+            },
+            Accion::Renombrar,
+        ));
     }
     // **Escuchar** (`RecordVoiceOver`) y el engranaje, como la pastilla del movil.
     let x0 = caja.x + 14.0 * m.e + w + 4.0 * m.e;
     let l = 19.0 * m.e;
     for (n, (icono, encendido, que)) in [
-        (&material::RECORD_VOICE_OVER, e.voz.is_some(), Accion::Escuchar),
+        (
+            &material::RECORD_VOICE_OVER,
+            e.voz.is_some(),
+            Accion::Escuchar,
+        ),
         (&material::SETTINGS, e.panel, Accion::Engranaje),
     ]
     .into_iter()
@@ -1331,7 +1458,13 @@ fn que_hay_debajo(e: &Estado) -> Option<Accion> {
 }
 
 fn riel_de(e: &Estado, m: Marco) -> pixpin_ui::riel_marcas::Riel {
-    lector::riel(m.ancho, m.alto, m.escala_por_cien, e.marcas.len(), e.poniendo_marca)
+    lector::riel(
+        m.ancho,
+        m.alto,
+        m.escala_por_cien,
+        e.marcas.len(),
+        e.poniendo_marca,
+    )
 }
 
 fn mover_raton(e: &mut Estado, m: Marco) {
@@ -1614,7 +1747,8 @@ fn alternar_anotar(e: &mut Estado, ruta: &Path) {
 /// escribe en un adjunto del chat (`fijar_lo_viejo` no toca lo demas).
 fn al_saber_las_hojas(e: &Estado, ruta: &Path) {
     if !e.hojas.altos.is_empty() {
-        e.donde.fijar_lo_viejo(ruta, e.ajustes.espacios, &e.hojas.altos);
+        e.donde
+            .fijar_lo_viejo(ruta, e.ajustes.espacios, &e.hojas.altos);
     }
 }
 
@@ -1624,7 +1758,8 @@ fn alternar_espacio(e: &mut Estado, lado: u8, ruta: &Path) {
     // recibe el de la regla vieja con los espacios de ahora
     // (`fijarLoViejo`), y desde ahi manda el marco. Lo abierto ya esta en
     // las unidades de la hoja y se queda como esta.
-    e.donde.fijar_lo_viejo(ruta, e.ajustes.espacios, &e.hojas.altos);
+    e.donde
+        .fijar_lo_viejo(ruta, e.ajustes.espacios, &e.hojas.altos);
     e.ajustes.espacios = vista::con_espacio(e.ajustes.espacios, lado);
     guardar_ajustes(e, ruta);
 }
@@ -1713,7 +1848,11 @@ fn hacer(
             }
             lector::BotonLado::Candado => {
                 e.ajustes.sin_lado = !e.ajustes.sin_lado;
-                let clave = if e.ajustes.sin_lado { "lector-sin-lado" } else { "lector-con-lado" };
+                let clave = if e.ajustes.sin_lado {
+                    "lector-sin-lado"
+                } else {
+                    "lector-con-lado"
+                };
                 e.aviso = Some((textos.t(clave), ahora_ms() + 2500));
                 guardar_ajustes(e, ruta);
             }
@@ -1762,8 +1901,12 @@ fn hacer(
             for i in 0..e.hojas.cuantas() {
                 let de_aqui = e.donde.para_leer(ruta, i);
                 if de_aqui.is_file() || e.capas.contains_key(&i) {
-                    let (donde, espacios, alto) = (&e.donde, e.ajustes.espacios, alto_de(&e.hojas, i));
-                    let capa = e.capas.entry(i).or_insert_with(|| donde.leer_capa(ruta, i, espacios, alto));
+                    let (donde, espacios, alto) =
+                        (&e.donde, e.ajustes.espacios, alto_de(&e.hojas, i));
+                    let capa = e
+                        .capas
+                        .entry(i)
+                        .or_insert_with(|| donde.leer_capa(ruta, i, espacios, alto));
                     capa.vaciar();
                     e.hechos.push(i);
                 }
@@ -1796,7 +1939,8 @@ fn al_proyecto(e: &mut Estado, textos: &Catalogo, ruta: &Path, ubicacion: &Ubica
         Ok(ficha) => {
             tracing::info!(%ficha, "PDF del lector pasado a proyecto");
             // Lo abierto se vuelve a leer de las hojas del proyecto.
-            e.donde = crate::lector_pdf_proyecto::DondeVa::de(ubicacion.raiz(), ruta, ahora_ms() as i64);
+            e.donde =
+                crate::lector_pdf_proyecto::DondeVa::de(ubicacion.raiz(), ruta, ahora_ms() as i64);
             e.capas.clear();
             e.hechos.clear();
             e.deshechos.clear();
@@ -1825,7 +1969,11 @@ fn tinta_de_todas(e: &mut Estado, ruta: &Path) -> HashMap<usize, Vec<Orden>> {
                 if !r.is_file() {
                     continue;
                 }
-                pintado::ordenes_de_escena(&e.donde.leer_capa(ruta, i, e.ajustes.espacios, alto_de(&e.hojas, i)).escena)
+                pintado::ordenes_de_escena(
+                    &e.donde
+                        .leer_capa(ruta, i, e.ajustes.espacios, alto_de(&e.hojas, i))
+                        .escena,
+                )
             }
         };
         if !ordenes.is_empty() {
@@ -1854,7 +2002,10 @@ fn recoger_el_indice(e: &mut Estado, ruta: &Path) -> bool {
     let bytes = std::fs::read(ruta).unwrap_or_default();
     e.marcas = marcas_del_indice(&bytes, ahora_ms() as i64);
     if !e.marcas.is_empty() {
-        tracing::info!(cuantos = e.marcas.len(), "marcadores recogidos del indice del PDF");
+        tracing::info!(
+            cuantos = e.marcas.len(),
+            "marcadores recogidos del indice del PDF"
+        );
     }
     true
 }
@@ -1864,7 +2015,11 @@ fn recoger_el_indice(e: &mut Estado, ruta: &Path) -> bool {
 fn marcas_del_indice(bytes: &[u8], ahora: i64) -> Vec<Marca> {
     let mut lista = Vec::new();
     for m in pixpin_pdf::con_anotaciones::marcadores_del_indice(bytes, marcas::MAXIMO) {
-        let emoji = EMOJIS.iter().copied().find(|x| m.titulo.starts_with(x)).unwrap_or(EMOJIS[0]);
+        let emoji = EMOJIS
+            .iter()
+            .copied()
+            .find(|x| m.titulo.starts_with(x))
+            .unwrap_or(EMOJIS[0]);
         let pagina = i32::try_from(m.pagina).unwrap_or(i32::MAX);
         let (x, y) = marcas::en_la_pagina(pagina, m.alto, 0.5);
         lista = marcas::con(&lista, x, y, emoji, ahora);
@@ -2000,7 +2155,11 @@ fn rebuscar(e: &mut Estado) {
     let Some(Ok(paginas)) = &e.hallar.texto else {
         return;
     };
-    let desde = if e.hojas.cuantas() > 0 { e.hojas.en(e.y.max(0.0)) } else { 0 };
+    let desde = if e.hojas.cuantas() > 0 {
+        e.hojas.en(e.y.max(0.0))
+    } else {
+        0
+    };
     e.hallar
         .caja
         .busqueda
@@ -2038,7 +2197,9 @@ fn aviso_de_buscar(e: &Estado, textos: &Catalogo) -> Option<String> {
     match &e.hallar.texto {
         Some(Err(pixpin_pdf::texto::SinTexto::Cifrado)) => Some(textos.t("buscar-cifrado")),
         Some(Err(_)) => Some(textos.t("buscar-sin-texto")),
-        Some(Ok(p)) if p.iter().all(|h| h.texto.trim().is_empty()) => Some(textos.t("buscar-sin-texto")),
+        Some(Ok(p)) if p.iter().all(|h| h.texto.trim().is_empty()) => {
+            Some(textos.t("buscar-sin-texto"))
+        }
         _ => None,
     }
 }
@@ -2122,7 +2283,12 @@ mod pruebas {
             alto: 1080.0,
             e: 1.0,
             escala_por_cien: 100,
-            area: pixpin_geom::Rect { x: 0, y: 0, ancho: 1920, alto: 1080 },
+            area: pixpin_geom::Rect {
+                x: 0,
+                y: 0,
+                ancho: 1920,
+                alto: 1080,
+            },
         }
     }
 
@@ -2197,14 +2363,22 @@ mod pruebas {
         // dentro de la ventana.
         let y_palabra = e.hojas.arriba[2] + 0.5 * e.hojas.altos[2];
         let s = px(&e, m);
-        assert!(y_palabra > e.y && y_palabra < e.y + m.alto / s, "{} {}", e.y, y_palabra);
+        assert!(
+            y_palabra > e.y && y_palabra < e.y + m.alto / s,
+            "{} {}",
+            e.y,
+            y_palabra
+        );
         // Sin texto que buscar, la caja lo dice en vez de «sin resultados».
         let textos = Catalogo::nuevo(pixpin_store::Idioma::Espanol);
         assert_eq!(aviso_de_buscar(&e, &textos), None);
         e.hallar.texto = Some(Ok(vec![pagina_con("", 0.1)]));
         assert!(aviso_de_buscar(&e, &textos).is_some());
         e.hallar.texto = Some(Err(pixpin_pdf::texto::SinTexto::Cifrado));
-        assert_eq!(aviso_de_buscar(&e, &textos), Some(textos.t("buscar-cifrado")));
+        assert_eq!(
+            aviso_de_buscar(&e, &textos),
+            Some(textos.t("buscar-cifrado"))
+        );
     }
 
     #[test]
@@ -2214,7 +2388,10 @@ mod pruebas {
         e.hallar.texto = Some(Ok(vec![
             pagina_con("uno", 0.1),
             pagina_con("dos", 0.1),
-            pixpin_pdf::texto::PaginaDeTexto { texto: "tres".into(), cajas: vec![None; 4] },
+            pixpin_pdf::texto::PaginaDeTexto {
+                texto: "tres".into(),
+                cajas: vec![None; 4],
+            },
         ]));
         e.hallar.caja.tecla(VK_F, false, true);
         for c in "tres".chars() {
@@ -2243,12 +2420,16 @@ mod pruebas {
         let mut e = estado(3);
         assert!(tiene(&e), "un PDF suelto puede pasar a proyecto");
         // Caso negativo: el documento de un proyecto ya lo es.
-        let raiz = std::env::temp_dir().join(format!("pixpin-lector-al-proyecto-{}", std::process::id()));
+        let raiz =
+            std::env::temp_dir().join(format!("pixpin-lector-al-proyecto-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&raiz);
         let pdf = raiz.join("fuera/plano.pdf");
         std::fs::create_dir_all(pdf.parent().unwrap()).unwrap();
         std::fs::write(&pdf, b"%PDF-1.4").unwrap();
-        pixpin_proyecto::capas_del_pdf::al_proyecto(&raiz, &pdf, "plano", 3, 1, &|_| raiz.join("no")).unwrap();
+        pixpin_proyecto::capas_del_pdf::al_proyecto(&raiz, &pdf, "plano", 3, 1, &|_| {
+            raiz.join("no")
+        })
+        .unwrap();
         let doc = std::fs::read_dir(raiz.join("proyectos"))
             .unwrap()
             .flatten()
@@ -2269,7 +2450,10 @@ mod pruebas {
         let izquierda_en_pantalla = -e.x * s;
         let derecha_en_pantalla = (vista::ANCHO_HOJA - e.x) * s;
         assert!((izquierda_en_pantalla - (m.ancho - derecha_en_pantalla)).abs() < 1.0);
-        assert!((derecha_en_pantalla - izquierda_en_pantalla - 1000.0).abs() < 1.0, "a aumento 1 la hoja mide 1000 px");
+        assert!(
+            (derecha_en_pantalla - izquierda_en_pantalla - 1000.0).abs() < 1.0,
+            "a aumento 1 la hoja mide 1000 px"
+        );
     }
 
     #[test]
@@ -2326,7 +2510,10 @@ mod pruebas {
         e.raton = ((700.0 - e.x) * s, 110.0 * s);
         let (i, q) = en_la_hoja(&e, m).unwrap();
         assert_eq!(i, 1);
-        assert!((q.x - 700.0).abs() < 0.5 && (q.y - 100.0).abs() < 0.5, "{q:?}");
+        assert!(
+            (q.x - 700.0).abs() < 0.5 && (q.y - 100.0).abs() < 0.5,
+            "{q:?}"
+        );
     }
 
     #[test]
@@ -2359,7 +2546,10 @@ mod pruebas {
         let a4 = ancho_para(&e, 0, m);
         assert!(a4 > a1);
         let alto = e.hojas.altos[0] / vista::ANCHO_HOJA * a4 as f32;
-        assert!(a4 as f32 * alto <= PIXELES_POR_HOJA * 1.1, "con el tope de pixeles");
+        assert!(
+            a4 as f32 * alto <= PIXELES_POR_HOJA * 1.1,
+            "con el tope de pixeles"
+        );
     }
 
     #[test]
@@ -2397,13 +2587,25 @@ mod pruebas {
     /// Un PDF de verdad de dos hojas con dos marcadores en su indice, como
     /// lo exporta PixPin.
     fn pdf_con_indice() -> Vec<u8> {
-        let img = pixpin_codec::ImagenRgba { ancho: 20, alto: 30, pixeles: [250, 250, 250, 255].repeat(600) };
+        let img = pixpin_codec::ImagenRgba {
+            ancho: 20,
+            alto: 30,
+            pixeles: [250, 250, 250, 255].repeat(600),
+        };
         let base = pixpin_pdf::union::de_imagenes(&[img.clone(), img]).unwrap();
         let nada = |_: usize| None;
         let sin = |_: u64| None;
         let marcadores = [
-            pixpin_pdf::con_anotaciones::Marcador { titulo: "⭐ Hoja 1".into(), pagina: 0, alto: 0.25 },
-            pixpin_pdf::con_anotaciones::Marcador { titulo: "Capitulo 2".into(), pagina: 1, alto: 0.0 },
+            pixpin_pdf::con_anotaciones::Marcador {
+                titulo: "⭐ Hoja 1".into(),
+                pagina: 0,
+                alto: 0.25,
+            },
+            pixpin_pdf::con_anotaciones::Marcador {
+                titulo: "Capitulo 2".into(),
+                pagina: 1,
+                alto: 0.0,
+            },
         ];
         let a = pixpin_pdf::con_anotaciones::Anotaciones {
             tinta: &nada,
@@ -2427,7 +2629,11 @@ mod pruebas {
         std::fs::write(&pdf, pdf_con_indice()).unwrap();
         let mut e = estado(2);
         assert!(recoger_el_indice(&mut e, &pdf));
-        let resumen: Vec<(u32, &str)> = e.marcas.iter().map(|m| (marcas::pagina_de(m), m.emoji.as_str())).collect();
+        let resumen: Vec<(u32, &str)> = e
+            .marcas
+            .iter()
+            .map(|m| (marcas::pagina_de(m), m.emoji.as_str()))
+            .collect();
         assert_eq!(resumen, vec![(0, "⭐"), (1, "🔖")]);
         assert!((marcas::alto_en_la_pagina(&e.marcas[0]) - 0.25).abs() < 1e-3);
         assert!(e.ajustes.indice);
@@ -2455,7 +2661,8 @@ mod pruebas {
     fn al_abrir_un_adjunto_su_tinta_sin_marco_recibe_el_suyo_y_no_se_corre() {
         let preparar = |etiqueta: &str| {
             let r = crate::anotado_del_adjunto::pruebas::raiz(etiqueta);
-            let pdf = crate::anotado_del_adjunto::pruebas::con_adjunto(&r, "tesis.pdf", b"%PDF-1.4");
+            let pdf =
+                crate::anotado_del_adjunto::pruebas::con_adjunto(&r, "tesis.pdf", b"%PDF-1.4");
             let mut e = estado(1);
             e.donde = crate::lector_pdf_proyecto::DondeVa::de(&r, &pdf, 1);
             let h = e.donde.para_escribir(&pdf, 0);
@@ -2474,12 +2681,20 @@ mod pruebas {
         let (r, pdf, mut e) = preparar("abrir-fija");
         al_saber_las_hojas(&e, &pdf);
         e.ajustes.espacios = 3;
-        assert!((x(&e, &pdf) - 99.2).abs() < 1.0, "fijada al abrir: {}", x(&e, &pdf));
+        assert!(
+            (x(&e, &pdf) - 99.2).abs() < 1.0,
+            "fijada al abrir: {}",
+            x(&e, &pdf)
+        );
         let _ = std::fs::remove_dir_all(&r);
         // Caso negativo: sin fijarla al abrir, los espacios que llegan la mueven.
         let (r, pdf, mut e) = preparar("abrir-sin-fijar");
         e.ajustes.espacios = 3;
-        assert!((x(&e, &pdf) - 99.2).abs() > 1.0, "sin marco se corre: {}", x(&e, &pdf));
+        assert!(
+            (x(&e, &pdf) - 99.2).abs() > 1.0,
+            "sin marco se corre: {}",
+            x(&e, &pdf)
+        );
         let _ = std::fs::remove_dir_all(&r);
     }
 
@@ -2494,17 +2709,36 @@ mod pruebas {
         std::fs::write(&h, r#"{"elements":[{"id":"jDNyxAFkaxm2qZ-KsluKG","type":"freedraw","x":-800,"y":1000,"width":250,"height":0,"strokeWidth":1,"points":[{"x":0.0,"y":0.0},{"x":250.0,"y":0.0}]}]}"#).unwrap();
         let x = |e: &mut Estado| {
             let (donde, espacios, alto) = (&e.donde, e.ajustes.espacios, alto_de(&e.hojas, 0));
-            e.capas.entry(0).or_insert_with(|| donde.leer_capa(&pdf, 0, espacios, alto)).escena.caja().unwrap().0
+            e.capas
+                .entry(0)
+                .or_insert_with(|| donde.leer_capa(&pdf, 0, espacios, alto))
+                .escena
+                .caja()
+                .unwrap()
+                .0
         };
-        assert!((x(&mut e) - 99.2).abs() < 1.0, "sin espacios: {}", x(&mut e));
+        assert!(
+            (x(&mut e) - 99.2).abs() < 1.0,
+            "sin espacios: {}",
+            x(&mut e)
+        );
         alternar_espacio(&mut e, vista::ESPACIO_IZQUIERDA, &pdf);
         alternar_espacio(&mut e, vista::ESPACIO_DERECHA, &pdf);
-        assert!((x(&mut e) - 99.2).abs() < 1.0, "con los dos, donde estaba: {}", x(&mut e));
+        assert!(
+            (x(&mut e) - 99.2).abs() < 1.0,
+            "con los dos, donde estaba: {}",
+            x(&mut e)
+        );
         // Leida otra vez desde el disco, igual: manda su marco.
         e.capas.clear();
         assert!((x(&mut e) - 99.2).abs() < 1.0, "releida: {}", x(&mut e));
-        let v: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&h).unwrap()).unwrap();
-        assert_eq!(v["elements"][0]["x"].as_f64(), Some(-800.0), "el fichero no cambia");
+        let v: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&h).unwrap()).unwrap();
+        assert_eq!(
+            v["elements"][0]["x"].as_f64(),
+            Some(-800.0),
+            "el fichero no cambia"
+        );
         // Caso negativo: un PDF suelto no depende de los espacios.
         let mut suelto = estado(1);
         suelto.capas.insert(0, Capa::default());
@@ -2519,7 +2753,10 @@ mod pruebas {
         use pixpin_docs::documento::{Bloque, Clase, Documento, Trozo};
         let texto = "Memoria de calidades. La estructura será de hormigón armado con forjados \
                      unidireccionales; la cubierta, plana transitable con aislamiento térmico.";
-        let mut bloques = vec![Bloque::nuevo(Clase::Titulo(1), vec![Trozo::llano("Proyecto de ejecución")])];
+        let mut bloques = vec![Bloque::nuevo(
+            Clase::Titulo(1),
+            vec![Trozo::llano("Proyecto de ejecución")],
+        )];
         for _ in 0..40 {
             bloques.push(Bloque::nuevo(Clase::Parrafo, vec![Trozo::llano(texto)]));
         }
@@ -2558,8 +2795,13 @@ mod pruebas {
 
         let ruta = PathBuf::from(std::env::var("PIXPIN_PDF").expect("PIXPIN_PDF"));
         let tinta = PathBuf::from(std::env::var("PIXPIN_HOJA_TINTA").expect("PIXPIN_HOJA_TINTA"));
-        let hoja: usize = std::env::var("PIXPIN_HOJA").ok().and_then(|h| h.parse().ok()).unwrap_or(0);
-        let carpeta = std::env::var_os("PIXPIN_MUESTRAS").map(PathBuf::from).unwrap_or_else(std::env::temp_dir);
+        let hoja: usize = std::env::var("PIXPIN_HOJA")
+            .ok()
+            .and_then(|h| h.parse().ok())
+            .unwrap_or(0);
+        let carpeta = std::env::var_os("PIXPIN_MUESTRAS")
+            .map(PathBuf::from)
+            .unwrap_or_else(std::env::temp_dir);
         let d = pixpin_capture::Dispositivo::nuevo().expect("GPU real");
         let motor = MotorRender::nuevo(d.d3d()).expect("motor");
         let textos = Catalogo::nuevo(pixpin_store::Idioma::Espanol);
@@ -2568,17 +2810,29 @@ mod pruebas {
         e.medidas = documento.medidas();
         e.hojas = vista::Hojas::colocar(&e.medidas);
         let (w, h) = e.medidas[hoja];
-        println!("hoja {hoja}: {w}x{h} puntos -> {} de alto en unidades (1400 * {h}/{w} = {})", e.hojas.altos[hoja], 1400.0 * h / w);
+        println!(
+            "hoja {hoja}: {w}x{h} puntos -> {} de alto en unidades (1400 * {h}/{w} = {})",
+            e.hojas.altos[hoja],
+            1400.0 * h / w
+        );
         // Los espacios del movil para este PDF (`anot-<uid>.espacios`, sin
         // fichero 0): con ellos se leen sus unidades (`capa_del_movil`).
-        let espacios: u8 = std::env::var("PIXPIN_ESPACIOS").ok().and_then(|h| h.parse().ok()).unwrap_or(0);
+        let espacios: u8 = std::env::var("PIXPIN_ESPACIOS")
+            .ok()
+            .and_then(|h| h.parse().ok())
+            .unwrap_or(0);
         e.ajustes.espacios = 3;
         let u = lector_tinta::Unidades::de_la_capa_del_movil(espacios);
         // Y con lo dibujado antes en el PC pasado a esas unidades (una copia).
         let copia = carpeta.join(format!("k16-hoja{hoja}.excalidraw"));
         std::fs::copy(&tinta, &copia).expect("copia de la tinta");
         let _ = std::fs::remove_dir_all(lector_tinta::carpeta_de(&copia.with_extension("pdf")));
-        crate::anotado_del_adjunto::lo_del_pc_a_la_capa_del_movil(&copia.with_extension("pdf"), hoja, &copia, u);
+        crate::anotado_del_adjunto::lo_del_pc_a_la_capa_del_movil(
+            &copia.with_extension("pdf"),
+            hoja,
+            &copia,
+            u,
+        );
         for (como, capa) in [
             ("tal-cual", Capa::leer(&tinta)),
             ("unidades-del-movil", Capa::leer_en(&tinta, u)),
@@ -2595,7 +2849,12 @@ mod pruebas {
                 alto: alto as f32,
                 e: 1.0,
                 escala_por_cien: 100,
-                area: pixpin_geom::Rect { x: 0, y: 0, ancho, alto },
+                area: pixpin_geom::Rect {
+                    x: 0,
+                    y: 0,
+                    ancho,
+                    alto,
+                },
             };
             let fuera = FueraDePantalla::nuevo(&motor, d.d3d(), ancho, alto).expect("superficie");
             e.zoom = 1.0;
@@ -2606,14 +2865,25 @@ mod pruebas {
             e.y = e.hojas.arriba[hoja] + e.hojas.altos[hoja] / 2.0 - m.alto / s / 2.0;
             e.pintadas.clear();
             for i in visibles(&e, m) {
-                let img = documento.renderizar(i as u32, ancho_para(&e, i, m)).expect("hoja");
-                let b = motor.bitmap_desde_pixeles(img.ancho, img.alto, &img.pixeles).expect("bitmap");
+                let img = documento
+                    .renderizar(i as u32, ancho_para(&e, i, m))
+                    .expect("hoja");
+                let b = motor
+                    .bitmap_desde_pixeles(img.ancho, img.alto, &img.pixeles)
+                    .expect("bitmap");
                 e.pintadas.insert(i, (img.ancho, b));
             }
-            motor.dibujar(&fuera.destino, |p| pintar(&mut e, p, m, &textos)).expect("pintar");
+            motor
+                .dibujar(&fuera.destino, |p| pintar(&mut e, p, m, &textos))
+                .expect("pintar");
             fuera.esperar_gpu().expect("esperar");
             let (a, b, pixeles) = fuera.leer_rgba().expect("leer");
-            let png = pixpin_codec::imagen::codificar_png(&ImagenRgba { ancho: a, alto: b, pixeles }).expect("png");
+            let png = pixpin_codec::imagen::codificar_png(&ImagenRgba {
+                ancho: a,
+                alto: b,
+                pixeles,
+            })
+            .expect("png");
             let salida = carpeta.join(format!("k16-hoja{hoja}-{como}.png"));
             std::fs::write(&salida, png).expect("guardar");
             println!("{como}: {}", salida.display());
@@ -2639,9 +2909,17 @@ mod pruebas {
 
         let ruta = PathBuf::from(std::env::var("PIXPIN_PDF").expect("PIXPIN_PDF"));
         let tinta = PathBuf::from(std::env::var("PIXPIN_HOJA_TINTA").expect("PIXPIN_HOJA_TINTA"));
-        let hoja: usize = std::env::var("PIXPIN_HOJA").ok().and_then(|h| h.parse().ok()).unwrap_or(0);
-        let espacios: u8 = std::env::var("PIXPIN_ESPACIOS").ok().and_then(|h| h.parse().ok()).unwrap_or(0);
-        let carpeta = std::env::var_os("PIXPIN_MUESTRAS").map(PathBuf::from).unwrap_or_else(std::env::temp_dir);
+        let hoja: usize = std::env::var("PIXPIN_HOJA")
+            .ok()
+            .and_then(|h| h.parse().ok())
+            .unwrap_or(0);
+        let espacios: u8 = std::env::var("PIXPIN_ESPACIOS")
+            .ok()
+            .and_then(|h| h.parse().ok())
+            .unwrap_or(0);
+        let carpeta = std::env::var_os("PIXPIN_MUESTRAS")
+            .map(PathBuf::from)
+            .unwrap_or_else(std::env::temp_dir);
         let d = pixpin_capture::Dispositivo::nuevo().expect("GPU real");
         let motor = MotorRender::nuevo(d.d3d()).expect("motor");
         let textos = Catalogo::nuevo(pixpin_store::Idioma::Espanol);
@@ -2657,26 +2935,43 @@ mod pruebas {
         let marco = vieja.marco_de(&propia);
         let fichero_marco = carpeta.join(format!("k21-hoja{hoja}.hoja"));
         std::fs::write(&fichero_marco, marco.a_texto()).expect("marco");
-        println!("marco ({}): {}", fichero_marco.display(), marco.a_texto().trim());
-        let leido = MarcoDeLaHoja::de_texto(&std::fs::read_to_string(&fichero_marco).unwrap()).expect("se entiende");
+        println!(
+            "marco ({}): {}",
+            fichero_marco.display(),
+            marco.a_texto().trim()
+        );
+        let leido = MarcoDeLaHoja::de_texto(&std::fs::read_to_string(&fichero_marco).unwrap())
+            .expect("se entiende");
         let con_marco = Unidades::del_marco(&propia, &leido).expect("marco valido");
 
         // La misma tinta reescrita en otras unidades (0,6 a lo ancho y 0,7 a
         // lo alto, el cero en (200, -150)) con su marco.
-        let otra = Unidades { ex: 0.6, ey: 0.7, dx: 200.0, dy: -150.0 };
+        let otra = Unidades {
+            ex: 0.6,
+            ey: 0.7,
+            dx: 200.0,
+            dy: -150.0,
+        };
         let copia = carpeta.join(format!("k21-hoja{hoja}-otra-escala.excalidraw"));
         let mut c = Capa::leer_en(&tinta, vieja);
         c.sucia = true;
         c.guardar_en(&copia, otra).expect("copia en otra escala");
         let marco_otra = otra.marco_de(&propia);
         println!("marco de la otra escala: {}", marco_otra.a_texto().trim());
-        let con_marco_otra = Unidades::del_marco(&propia, &MarcoDeLaHoja::de_texto(&marco_otra.a_texto()).unwrap()).unwrap();
+        let con_marco_otra = Unidades::del_marco(
+            &propia,
+            &MarcoDeLaHoja::de_texto(&marco_otra.a_texto()).unwrap(),
+        )
+        .unwrap();
 
         let mut cajas = Vec::new();
         for (como, capa) in [
             ("regla-vieja", Capa::leer_en(&tinta, vieja)),
             ("con-su-marco", Capa::leer_en(&tinta, con_marco)),
-            ("otra-escala-con-marco", Capa::leer_en(&copia, con_marco_otra)),
+            (
+                "otra-escala-con-marco",
+                Capa::leer_en(&copia, con_marco_otra),
+            ),
             ("otra-escala-sin-marco", Capa::leer_en(&copia, vieja)),
         ] {
             e.capas.insert(hoja, capa);
@@ -2690,7 +2985,12 @@ mod pruebas {
                 alto: alto as f32,
                 e: 1.0,
                 escala_por_cien: 100,
-                area: pixpin_geom::Rect { x: 0, y: 0, ancho, alto },
+                area: pixpin_geom::Rect {
+                    x: 0,
+                    y: 0,
+                    ancho,
+                    alto,
+                },
             };
             let fuera = FueraDePantalla::nuevo(&motor, d.d3d(), ancho, alto).expect("superficie");
             e.ajustes.espacios = 3;
@@ -2702,23 +3002,42 @@ mod pruebas {
             e.y = e.hojas.arriba[hoja] + e.hojas.altos[hoja] / 2.0 - m.alto / s / 2.0;
             e.pintadas.clear();
             for i in visibles(&e, m) {
-                let img = documento.renderizar(i as u32, ancho_para(&e, i, m)).expect("hoja");
-                let b = motor.bitmap_desde_pixeles(img.ancho, img.alto, &img.pixeles).expect("bitmap");
+                let img = documento
+                    .renderizar(i as u32, ancho_para(&e, i, m))
+                    .expect("hoja");
+                let b = motor
+                    .bitmap_desde_pixeles(img.ancho, img.alto, &img.pixeles)
+                    .expect("bitmap");
                 e.pintadas.insert(i, (img.ancho, b));
             }
-            motor.dibujar(&fuera.destino, |p| pintar(&mut e, p, m, &textos)).expect("pintar");
+            motor
+                .dibujar(&fuera.destino, |p| pintar(&mut e, p, m, &textos))
+                .expect("pintar");
             fuera.esperar_gpu().expect("esperar");
             let (a, b, pixeles) = fuera.leer_rgba().expect("leer");
-            let png = pixpin_codec::imagen::codificar_png(&ImagenRgba { ancho: a, alto: b, pixeles }).expect("png");
+            let png = pixpin_codec::imagen::codificar_png(&ImagenRgba {
+                ancho: a,
+                alto: b,
+                pixeles,
+            })
+            .expect("png");
             let salida = carpeta.join(format!("k21-hoja{hoja}-{como}.png"));
             std::fs::write(&salida, png).expect("guardar");
             println!("{como}: {}", salida.display());
         }
         let igual = |a: (f32, f32, f32, f32), b: (f32, f32, f32, f32)| {
-            [(a.0, b.0), (a.1, b.1), (a.2, b.2), (a.3, b.3)].iter().all(|(x, y)| (x - y).abs() < 0.5)
+            [(a.0, b.0), (a.1, b.1), (a.2, b.2), (a.3, b.3)]
+                .iter()
+                .all(|(x, y)| (x - y).abs() < 0.5)
         };
-        assert!(igual(cajas[0], cajas[1]), "con su marco, donde la regla vieja");
-        assert!(igual(cajas[1], cajas[2]), "en otra escala con su marco, en el mismo sitio");
+        assert!(
+            igual(cajas[0], cajas[1]),
+            "con su marco, donde la regla vieja"
+        );
+        assert!(
+            igual(cajas[1], cajas[2]),
+            "en otra escala con su marco, en el mismo sitio"
+        );
         assert!(!igual(cajas[1], cajas[3]), "sin marco, en otro sitio");
     }
 
@@ -2742,7 +3061,12 @@ mod pruebas {
             alto: 900.0,
             e: 1.0,
             escala_por_cien: 100,
-            area: pixpin_geom::Rect { x: 0, y: 0, ancho: 1600, alto: 900 },
+            area: pixpin_geom::Rect {
+                x: 0,
+                y: 0,
+                ancho: 1600,
+                alto: 900,
+            },
         };
         let fuera = FueraDePantalla::nuevo(&motor, d.d3d(), 1600, 900).expect("superficie");
         let textos = Catalogo::nuevo(pixpin_store::Idioma::Espanol);
@@ -2758,7 +3082,9 @@ mod pruebas {
         e.y = e.hojas.arriba[0] + e.hojas.altos[0] * 0.6;
         acotar(&mut e, m);
         for i in visibles(&e, m) {
-            let img = documento.renderizar(i as u32, ancho_para(&e, i, m)).expect("hoja");
+            let img = documento
+                .renderizar(i as u32, ancho_para(&e, i, m))
+                .expect("hoja");
             let b = motor
                 .bitmap_desde_pixeles(img.ancho, img.alto, &img.pixeles)
                 .expect("bitmap");
@@ -2784,7 +3110,10 @@ mod pruebas {
             .collect();
         e.tinta.trazar(capa, &nota);
         crate::dibujo::teclas::elegir_herramienta(&mut e.tinta.gesto, Herramienta::Rectangulo);
-        e.tinta.trazar(capa, &[Punto2::nuevo(380.0, 1360.0), Punto2::nuevo(1020.0, 1640.0)]);
+        e.tinta.trazar(
+            capa,
+            &[Punto2::nuevo(380.0, 1360.0), Punto2::nuevo(1020.0, 1640.0)],
+        );
         e.marcas = marcas::con(&[], 0.5, 0.7, "⭐", 1);
         e.anotando = true;
         motor
@@ -2825,7 +3154,11 @@ mod pruebas {
             "los marcadores viajan en el indice"
         );
         let otro = pixpin_pdf::Documento::abrir(&exportado).expect("el anotado abre");
-        assert_eq!(otro.paginas() as usize, e.hojas.cuantas(), "todas las hojas");
+        assert_eq!(
+            otro.paginas() as usize,
+            e.hojas.cuantas(),
+            "todas las hojas"
+        );
         let primera = otro.renderizar(0, 900).expect("hoja anotada");
         assert!(
             primera.ancho < primera.alto * 2,
@@ -2915,7 +3248,12 @@ mod pruebas {
             alto: 900.0,
             e: 1.0,
             escala_por_cien: 100,
-            area: pixpin_geom::Rect { x: 0, y: 0, ancho: 1600, alto: 900 },
+            area: pixpin_geom::Rect {
+                x: 0,
+                y: 0,
+                ancho: 1600,
+                alto: 900,
+            },
         };
         let fuera = FueraDePantalla::nuevo(&motor, d.d3d(), 1600, 900).expect("superficie");
         let textos = Catalogo::nuevo(pixpin_store::Idioma::Espanol);
@@ -2950,11 +3288,15 @@ mod pruebas {
             e.tinta.gesto.estilo.trazo = azul;
             for k in 0..otras {
                 let c = e.capas.entry(1).or_default();
-                e.tinta.trazar(c, &garabato(200.0, 40.0 + k as f32 * 25.0, 80 + k * 10));
+                e.tinta
+                    .trazar(c, &garabato(200.0, 40.0 + k as f32 * 25.0, 80 + k * 10));
             }
             for k in 0..otras.saturating_sub(1) {
                 let c = e.capas.entry(0).or_default();
-                e.tinta.trazar(c, &garabato(200.0, y0 + 300.0 + k as f32 * 10.0, 80 + k * 10));
+                e.tinta.trazar(
+                    c,
+                    &garabato(200.0, y0 + 300.0 + k as f32 * 10.0, 80 + k * 10),
+                );
             }
             e.tinta.hoja = Some(0);
             e.tinta.gesto.estilo.trazo = rojo;
@@ -2976,16 +3318,25 @@ mod pruebas {
             e.tinta.acabar_trazo(c, *puntos.last().unwrap());
             let suelto = pintar_y_medir(&mut e, &format!("lector-grafito-{otras}-suelto"));
             let otra_vez = pintar_y_medir(&mut e, &format!("lector-grafito-{otras}-otra-vez"));
-            println!("otras {otras}: en curso {en_curso:?}, suelto {suelto:?}, otra vez {otra_vez:?}");
-            let cerca = |(a, ta): ((u32, u32, u32, u32), u64), (b, tb): ((u32, u32, u32, u32), u64)| {
+            println!(
+                "otras {otras}: en curso {en_curso:?}, suelto {suelto:?}, otra vez {otra_vez:?}"
+            );
+            let cerca = |(a, ta): ((u32, u32, u32, u32), u64),
+                         (b, tb): ((u32, u32, u32, u32), u64)| {
                 a.0.abs_diff(b.0) <= 3
                     && a.1.abs_diff(b.1) <= 3
                     && a.2.abs_diff(b.2) <= 3
                     && a.3.abs_diff(b.3) <= 3
                     && ta.abs_diff(tb) as f64 <= tb as f64 * 0.02
             };
-            assert!(cerca(en_curso, suelto), "con {otras} trazos en otras hojas: {en_curso:?} -> {suelto:?}");
-            assert!(cerca(suelto, otra_vez), "con {otras}: {suelto:?} -> {otra_vez:?}");
+            assert!(
+                cerca(en_curso, suelto),
+                "con {otras} trazos en otras hojas: {en_curso:?} -> {suelto:?}"
+            );
+            assert!(
+                cerca(suelto, otra_vez),
+                "con {otras}: {suelto:?} -> {otra_vez:?}"
+            );
         }
     }
 }

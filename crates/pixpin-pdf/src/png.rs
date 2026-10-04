@@ -24,12 +24,20 @@ pub(crate) fn desfiltrar(datos: &[u8], bytes_fila: usize, bpp: usize) -> Option<
         let tipo = datos[f * fila];
         let origen = &datos[f * fila + 1..(f + 1) * fila];
         let (antes, ahora) = salida.split_at_mut(f * bytes_fila);
-        let arriba = if f > 0 { Some(&antes[(f - 1) * bytes_fila..]) } else { None };
+        let arriba = if f > 0 {
+            Some(&antes[(f - 1) * bytes_fila..])
+        } else {
+            None
+        };
         let actual = &mut ahora[..bytes_fila];
         for i in 0..bytes_fila {
             let izq = if i >= bpp { actual[i - bpp] } else { 0 };
             let sup = arriba.map_or(0, |a| a[i]);
-            let sup_izq = if i >= bpp { arriba.map_or(0, |a| a[i - bpp]) } else { 0 };
+            let sup_izq = if i >= bpp {
+                arriba.map_or(0, |a| a[i - bpp])
+            } else {
+                0
+            };
             let x = origen[i];
             actual[i] = match tipo {
                 0 => x,
@@ -38,7 +46,11 @@ pub(crate) fn desfiltrar(datos: &[u8], bytes_fila: usize, bpp: usize) -> Option<
                 3 => x.wrapping_add(((izq as u16 + sup as u16) / 2) as u8),
                 4 => {
                     let p = izq as i16 + sup as i16 - sup_izq as i16;
-                    let (pa, pb, pc) = ((p - izq as i16).abs(), (p - sup as i16).abs(), (p - sup_izq as i16).abs());
+                    let (pa, pb, pc) = (
+                        (p - izq as i16).abs(),
+                        (p - sup as i16).abs(),
+                        (p - sup_izq as i16).abs(),
+                    );
                     let pred = if pa <= pb && pa <= pc {
                         izq
                     } else if pb <= pc {
@@ -71,7 +83,11 @@ fn crc32(partes: &[&[u8]]) -> u32 {
         for &b in *p {
             c ^= b as u32;
             for _ in 0..8 {
-                c = if c & 1 != 0 { 0xEDB8_8320 ^ (c >> 1) } else { c >> 1 };
+                c = if c & 1 != 0 {
+                    0xEDB8_8320 ^ (c >> 1)
+                } else {
+                    c >> 1
+                };
             }
         }
     }
@@ -89,7 +105,13 @@ fn trozo(salida: &mut Vec<u8>, tipo: &[u8; 4], datos: &[u8]) {
 /// relleno. `canales`: 1 gris, 2 gris con alfa, 3 color, 4 color con alfa;
 /// con `paleta` (RGB, hasta 256 colores) los pixeles son indices y
 /// `canales` es 1. `None` si las cuentas no cuadran.
-pub(crate) fn escribir(ancho: u32, alto: u32, canales: u8, pixeles: &[u8], paleta: Option<&[u8]>) -> Option<Vec<u8>> {
+pub(crate) fn escribir(
+    ancho: u32,
+    alto: u32,
+    canales: u8,
+    pixeles: &[u8],
+    paleta: Option<&[u8]>,
+) -> Option<Vec<u8>> {
     let bytes_fila = ancho as usize * canales as usize;
     if ancho == 0 || alto == 0 || pixeles.len() != bytes_fila * alto as usize {
         return None;
@@ -107,7 +129,10 @@ pub(crate) fn escribir(ancho: u32, alto: u32, canales: u8, pixeles: &[u8], palet
         filas.push(0u8);
         filas.extend_from_slice(f);
     }
-    let mut z = flate2::write::ZlibEncoder::new(Vec::with_capacity(filas.len() / 2), flate2::Compression::default());
+    let mut z = flate2::write::ZlibEncoder::new(
+        Vec::with_capacity(filas.len() / 2),
+        flate2::Compression::default(),
+    );
     z.write_all(&filas).ok()?;
     let comprimido = z.finish().ok()?;
     let mut s = b"\x89PNG\r\n\x1a\n".to_vec();
@@ -164,7 +189,11 @@ pub(crate) fn a_ocho_bits(datos: &[u8], ancho: usize, bits: usize, indices: bool
             let bit = x * bits;
             let byte = f.get(bit / 8).copied().unwrap_or(0);
             let v = (byte >> (8 - bits - bit % 8)) as u16 & tope;
-            out.push(if indices { v as u8 } else { (v * 255 / tope) as u8 });
+            out.push(if indices {
+                v as u8
+            } else {
+                (v * 255 / tope) as u8
+            });
         }
     }
     out
@@ -178,7 +207,9 @@ mod pruebas {
     fn el_predictor_se_deshace_mirando_el_pixel_de_la_izquierda_y_no_el_byte() {
         // Dos pixeles RGB por fila; la fila con «Sub» suma el pixel de al
         // lado (tres bytes atras).
-        let datos = [1u8, 10, 20, 30, 1, 1, 1, /* fila 2, «Up» */ 2, 1, 1, 1, 0, 0, 0];
+        let datos = [
+            1u8, 10, 20, 30, 1, 1, 1, /* fila 2, «Up» */ 2, 1, 1, 1, 0, 0, 0,
+        ];
         let hecho = desfiltrar(&datos, 6, 3).unwrap();
         assert_eq!(hecho, vec![10, 20, 30, 11, 21, 31, 11, 21, 31, 11, 21, 31]);
         // Caso negativo: un tipo de filtro que no existe.
@@ -218,7 +249,10 @@ mod pruebas_de_los_bits {
     #[test]
     fn un_bit_por_pixel_sale_negro_o_blanco_y_cada_fila_empieza_en_byte_nuevo() {
         // Tres pixeles por fila: 101 y 011.
-        assert_eq!(a_ocho_bits(&[0b1010_0000, 0b0110_0000], 3, 1, false), vec![255, 0, 255, 0, 255, 255]);
+        assert_eq!(
+            a_ocho_bits(&[0b1010_0000, 0b0110_0000], 3, 1, false),
+            vec![255, 0, 255, 0, 255, 255]
+        );
         // Los indices de una paleta se quedan como indices.
         assert_eq!(a_ocho_bits(&[0b1101_0000], 2, 2, true), vec![3, 1]);
     }

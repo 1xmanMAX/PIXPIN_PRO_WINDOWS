@@ -1087,7 +1087,11 @@ mod pruebas_escala {
     #[test]
     fn una_escala_rara_cae_en_el_escalon_mas_cercano() {
         // Lo que puede llegar de `estado.toml` escrito a mano.
-        assert_eq!(escala_valida(137), 125, "137 esta a 12 de 125 y a 13 de 150");
+        assert_eq!(
+            escala_valida(137),
+            125,
+            "137 esta a 12 de 125 y a 13 de 150"
+        );
         assert_eq!(escala_valida(0), 75);
         assert_eq!(escala_valida(100_000), 250);
         assert_eq!(escala_valida(100), 100, "un escalon de verdad no se mueve");
@@ -1143,7 +1147,10 @@ mod pruebas_ventana {
             }));
         }
         assert!(b.derecha() < l.x, "el buscador acaba antes");
-        assert!(l.derecha() < g.x && g.derecha() < t.x && t.derecha() < s.x, "en fila, sin tocarse");
+        assert!(
+            l.derecha() < g.x && g.derecha() < t.x && t.derecha() < s.x,
+            "en fila, sin tocarse"
+        );
     }
 
     #[test]
@@ -1172,7 +1179,11 @@ mod pruebas_ventana {
     fn con_la_lista_plegada_no_hay_boton_y_el_buscador_no_le_guarda_sitio() {
         let d = Disposicion::calcular(1200, 800, 100, LISTA_PLEGADA, Vista::Ambas);
         assert_eq!(d.boton_sincro(100).ancho, 0);
-        assert!(Extra::TODOS.iter().all(|x| d.boton_extra(*x, 100).ancho == 0));
+        assert!(
+            Extra::TODOS
+                .iter()
+                .all(|x| d.boton_extra(*x, 100).ancho == 0)
+        );
         // Un punto cualquiera no cae en un boton que no esta.
         assert!(!d.boton_sincro(100).contiene(Punto { x: 0, y: 0 }));
     }

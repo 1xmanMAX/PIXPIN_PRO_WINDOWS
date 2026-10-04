@@ -164,7 +164,10 @@ pub enum Orden {
     Cerrar,
     /// Hacer esta accion. `recordar`: es la eleccion del usuario (Intro sobre
     /// un resultado): se apunta en los recientes.
-    Hacer { accion: Accion, recordar: bool },
+    Hacer {
+        accion: Accion,
+        recordar: bool,
+    },
     /// Ctrl+V: pegar lo del portapapeles (imagen como `[img NN]`, o texto).
     Pegar,
     /// Supr sobre una captura: a la papelera de PixPin, con deshacer.
@@ -221,7 +224,11 @@ impl Estado {
     pub fn cuenta(&self, p: Pestana) -> usize {
         match p {
             Pestana::Todo => self.resultados.len(),
-            _ => self.resultados.iter().filter(|r| pestana_de(r) == p).count(),
+            _ => self
+                .resultados
+                .iter()
+                .filter(|r| pestana_de(r) == p)
+                .count(),
         }
     }
 
@@ -243,7 +250,12 @@ impl Estado {
             return (0..self.resultados.len()).map(Linea::Fila).collect();
         }
         let mut v = vec![Linea::Cabecera(Grupo::Mejor), Linea::Fila(0)];
-        for g in [Grupo::TareasYLecciones, Grupo::Archivos, Grupo::Capturas, Grupo::Acciones] {
+        for g in [
+            Grupo::TareasYLecciones,
+            Grupo::Archivos,
+            Grupo::Capturas,
+            Grupo::Acciones,
+        ] {
             let del_grupo: Vec<usize> = (1..self.resultados.len())
                 .filter(|i| Grupo::de(pestana_de(&self.resultados[*i])) == g)
                 .collect();
@@ -269,7 +281,8 @@ impl Estado {
     /// El resultado elegido.
     pub fn elegido(&self) -> Option<&Resultado> {
         let v = self.visibles();
-        v.get(self.elegido.min(v.len().saturating_sub(1))).map(|i| &self.resultados[*i])
+        v.get(self.elegido.min(v.len().saturating_sub(1)))
+            .map(|i| &self.resultados[*i])
     }
 
     /// Pone resultados nuevos y vuelve a la primera fila.
@@ -310,7 +323,11 @@ impl Estado {
         self.menu = None;
         // Con algo escrito, los resultados ya estan: solo se filtran. Con la
         // caja vacia, cada pestana pregunta lo suyo.
-        if self.consulta.trim().is_empty() { Orden::Buscar } else { Orden::Repintar }
+        if self.consulta.trim().is_empty() {
+            Orden::Buscar
+        } else {
+            Orden::Repintar
+        }
     }
 
     /// Cambia lo escrito entero (una busqueda reciente, una letra rapida,
@@ -327,13 +344,22 @@ impl Estado {
             return Orden::Nada;
         };
         match b {
-            Boton::Principal => Orden::Hacer { accion: r.accion.clone(), recordar: true },
+            Boton::Principal => Orden::Hacer {
+                accion: r.accion.clone(),
+                recordar: true,
+            },
             Boton::VerEnChat => match ver_en_chat(&r) {
-                Some(a) => Orden::Hacer { accion: a, recordar: true },
+                Some(a) => Orden::Hacer {
+                    accion: a,
+                    recordar: true,
+                },
                 None => Orden::Nada,
             },
             Boton::Copiar => match copiar(&r) {
-                Some(a) => Orden::Hacer { accion: a, recordar: false },
+                Some(a) => Orden::Hacer {
+                    accion: a,
+                    recordar: false,
+                },
                 None => Orden::Nada,
             },
             Boton::Mas => Orden::Repintar,
@@ -343,11 +369,17 @@ impl Estado {
     /// Abre el menu de mas acciones con `opciones` (las de
     /// `pixpin_lanzador::menu::menu` para el elegido).
     pub fn abrir_menu(&mut self, opciones: Vec<Resultado>) -> Orden {
-        let Some(r) = self.elegido() else { return Orden::Nada };
+        let Some(r) = self.elegido() else {
+            return Orden::Nada;
+        };
         if opciones.is_empty() {
             return Orden::Nada;
         }
-        self.menu = Some(Menu { titulo: r.titulo.clone(), opciones, elegida: 0 });
+        self.menu = Some(Menu {
+            titulo: r.titulo.clone(),
+            opciones,
+            elegida: 0,
+        });
         Orden::Repintar
     }
 
@@ -377,7 +409,10 @@ impl Estado {
             VK_RETURN => {
                 if let Some(m) = &self.menu {
                     return match m.opciones.get(m.elegida) {
-                        Some(o) => Orden::Hacer { accion: o.accion.clone(), recordar: false },
+                        Some(o) => Orden::Hacer {
+                            accion: o.accion.clone(),
+                            recordar: false,
+                        },
                         None => Orden::Nada,
                     };
                 }
@@ -387,7 +422,11 @@ impl Estado {
                         None => Orden::Nada,
                     };
                 }
-                self.boton(if ctrl { Boton::VerEnChat } else { Boton::Principal })
+                self.boton(if ctrl {
+                    Boton::VerEnChat
+                } else {
+                    Boton::Principal
+                })
             }
             VK_DELETE if !ctrl && !alt => match self.elegido().and_then(ruta_de_captura) {
                 Some(r) => Orden::BorrarCaptura(r),
@@ -415,7 +454,10 @@ impl Estado {
                 }
                 let sin_blancos = self.consulta.trim_end().len();
                 self.consulta.truncate(sin_blancos);
-                let corte = self.consulta.rfind(char::is_whitespace).map_or(0, |i| i + 1);
+                let corte = self
+                    .consulta
+                    .rfind(char::is_whitespace)
+                    .map_or(0, |i| i + 1);
                 self.consulta.truncate(corte);
             }
             // Intro, Tab, Esc y demas de control: ya los atendio la tecla.
@@ -457,9 +499,14 @@ pub fn ver_en_chat(r: &Resultado) -> Option<Accion> {
     let proyecto = campo(r, "proyecto").cloned().unwrap_or(Value::Null);
     let tipo = campo(r, "tipo").and_then(Value::as_str).unwrap_or("");
     if tipo == "proyecto" {
-        return Some(Accion::Pedido(pedido("abrir", json!({ "que": { "tipo": "proyecto", "proyecto": proyecto } }))));
+        return Some(Accion::Pedido(pedido(
+            "abrir",
+            json!({ "que": { "tipo": "proyecto", "proyecto": proyecto } }),
+        )));
     }
-    let codigo = campo(r, "codigo").and_then(Value::as_str).filter(|c| !c.trim().is_empty())?;
+    let codigo = campo(r, "codigo")
+        .and_then(Value::as_str)
+        .filter(|c| !c.trim().is_empty())?;
     Some(Accion::Pedido(pedido(
         "abrir",
         json!({ "que": { "tipo": "mensaje", "proyecto": proyecto, "codigo": codigo } }),
@@ -470,9 +517,15 @@ pub fn ver_en_chat(r: &Resultado) -> Option<Accion> {
 /// programa) o el texto del resultado.
 pub fn copiar(r: &Resultado) -> Option<Accion> {
     if let Some(ruta) = ruta_de_captura(r) {
-        return Some(Accion::Pedido(pedido("copiar_imagen", json!({ "ruta": ruta }))));
+        return Some(Accion::Pedido(pedido(
+            "copiar_imagen",
+            json!({ "ruta": ruta }),
+        )));
     }
-    r.copiar.clone().filter(|t| !t.trim().is_empty()).map(Accion::Copiar)
+    r.copiar
+        .clone()
+        .filter(|t| !t.trim().is_empty())
+        .map(Accion::Copiar)
 }
 
 /// La clave del rotulo del boton azul (lo de Intro) segun lo que hace.
@@ -482,7 +535,9 @@ pub fn rotulo_principal(a: &Accion) -> &'static str {
             "pinear" | "pinear_ultima" => "buscar-todo-accion-pinear",
             "anadir_tarea" => "buscar-todo-accion-apuntar",
             "capturar" => "buscar-todo-accion-capturar",
-            "nota_nueva" | "lienzo_nuevo" | "leccion_nueva" | "lista_nueva" => "buscar-todo-accion-crear",
+            "nota_nueva" | "lienzo_nuevo" | "leccion_nueva" | "lista_nueva" => {
+                "buscar-todo-accion-crear"
+            }
             "grabar" => "buscar-todo-accion-grabar",
             "chat" => "buscar-todo-accion-enviar",
             "copiar_imagen" => "buscar-todo-accion-copiar",
@@ -555,7 +610,11 @@ pub fn glifo_estatico(g: &str) -> &'static str {
         glifo::VENTANA,
         glifo::PIXPIN,
     ];
-    TODOS.iter().copied().find(|t| *t == g).unwrap_or(glifo::ABRIR)
+    TODOS
+        .iter()
+        .copied()
+        .find(|t| *t == g)
+        .unwrap_or(glifo::ABRIR)
 }
 
 /// Un resultado hecho a mano (los recientes, las pruebas): el plugin no
@@ -592,7 +651,12 @@ mod pruebas {
 
     fn captura(nombre: &str) -> Resultado {
         let ruta = format!("C:\\datos\\capturas\\{nombre}");
-        let mut r = resultado(nombre, "Captura", glifo::IMAGEN, Accion::Pedido(pedido("pinear", json!({ "ruta": ruta }))));
+        let mut r = resultado(
+            nombre,
+            "Captura",
+            glifo::IMAGEN,
+            Accion::Pedido(pedido("pinear", json!({ "ruta": ruta }))),
+        );
         r.clave = Some(format!("captura/{nombre}"));
         r.contexto = Some(json!({ "tipo": "captura", "ruta": ruta, "conservada": false }));
         r.fichero = Some(ruta);
@@ -600,7 +664,10 @@ mod pruebas {
     }
 
     fn mezcla() -> Estado {
-        let mut e = Estado { consulta: "grie".into(), ..Default::default() };
+        let mut e = Estado {
+            consulta: "grie".into(),
+            ..Default::default()
+        };
         e.poner_resultados(vec![
             captura("grieta.png"),
             con_clave("Apuntar «grie»", None),
@@ -615,18 +682,40 @@ mod pruebas {
     #[test]
     fn cada_resultado_va_a_su_pestana_por_su_clave() {
         assert_eq!(pestana_de(&captura("a.png")), Pestana::Capturas);
-        assert_eq!(pestana_de(&con_clave("x", Some("leccion/1"))), Pestana::Lecciones);
-        assert_eq!(pestana_de(&con_clave("x", Some("tarea/p/c/t"))), Pestana::Tareas);
-        assert_eq!(pestana_de(&con_clave("x", Some("lista/p/c"))), Pestana::Tareas);
+        assert_eq!(
+            pestana_de(&con_clave("x", Some("leccion/1"))),
+            Pestana::Lecciones
+        );
+        assert_eq!(
+            pestana_de(&con_clave("x", Some("tarea/p/c/t"))),
+            Pestana::Tareas
+        );
+        assert_eq!(
+            pestana_de(&con_clave("x", Some("lista/p/c"))),
+            Pestana::Tareas
+        );
         for k in ["fichero/x", "hoja/p/d", "mensaje/p/m", "proyecto/p"] {
-            assert_eq!(pestana_de(&con_clave("x", Some(k))), Pestana::Archivos, "{k}");
+            assert_eq!(
+                pestana_de(&con_clave("x", Some(k))),
+                Pestana::Archivos,
+                "{k}"
+            );
         }
         // Caso negativo: sin clave, o con una de funcion o ventana, es una
         // accion (no se cuela en Archivos).
         assert_eq!(pestana_de(&con_clave("x", None)), Pestana::Acciones);
-        assert_eq!(pestana_de(&con_clave("x", Some("funcion/chat"))), Pestana::Acciones);
-        assert_eq!(pestana_de(&con_clave("x", Some("ventana/galeria"))), Pestana::Acciones);
-        assert_eq!(pestana_de(&con_clave("x", Some("capturax/1"))), Pestana::Acciones);
+        assert_eq!(
+            pestana_de(&con_clave("x", Some("funcion/chat"))),
+            Pestana::Acciones
+        );
+        assert_eq!(
+            pestana_de(&con_clave("x", Some("ventana/galeria"))),
+            Pestana::Acciones
+        );
+        assert_eq!(
+            pestana_de(&con_clave("x", Some("capturax/1"))),
+            Pestana::Acciones
+        );
     }
 
     #[test]
@@ -671,15 +760,29 @@ mod pruebas {
     #[test]
     fn flechas_mueven_sin_salirse_y_tab_cambia_de_pestana() {
         let mut e = mezcla();
-        assert_eq!(e.tecla(VK_UP, false, false, false), Orden::Nada, "arriba del todo no se mueve");
+        assert_eq!(
+            e.tecla(VK_UP, false, false, false),
+            Orden::Nada,
+            "arriba del todo no se mueve"
+        );
         assert_eq!(e.tecla(VK_DOWN, false, false, false), Orden::Repintar);
-        assert_eq!(e.elegido().map(|r| r.titulo.as_str()), Some("Revisar la grieta"));
+        assert_eq!(
+            e.elegido().map(|r| r.titulo.as_str()),
+            Some("Revisar la grieta")
+        );
         for _ in 0..20 {
             e.tecla(VK_DOWN, false, false, false);
         }
-        assert_eq!(e.elegido().map(|r| r.titulo.as_str()), Some("Apuntar «grie»"));
+        assert_eq!(
+            e.elegido().map(|r| r.titulo.as_str()),
+            Some("Apuntar «grie»")
+        );
         // Tab avanza, Mayus+Tab vuelve, y se da la vuelta.
-        assert_eq!(e.tecla(VK_TAB, false, false, false), Orden::Repintar, "con algo escrito solo se filtra");
+        assert_eq!(
+            e.tecla(VK_TAB, false, false, false),
+            Orden::Repintar,
+            "con algo escrito solo se filtra"
+        );
         assert_eq!(e.pestana, Pestana::Archivos);
         assert_eq!(e.elegido, 0, "al cambiar de pestana se empieza arriba");
         e.tecla(VK_TAB, true, false, false);
@@ -705,7 +808,12 @@ mod pruebas {
     #[test]
     fn escape_cierra_el_menu_luego_borra_y_luego_cierra() {
         let mut e = mezcla();
-        e.abrir_menu(vec![resultado("Copiar", "", glifo::COPIAR, Accion::Copiar("x".into()))]);
+        e.abrir_menu(vec![resultado(
+            "Copiar",
+            "",
+            glifo::COPIAR,
+            Accion::Copiar("x".into()),
+        )]);
         assert!(e.menu.is_some());
         assert_eq!(e.tecla(VK_ESCAPE, false, false, false), Orden::Repintar);
         assert!(e.menu.is_none());
@@ -723,11 +831,17 @@ mod pruebas {
         e.poner_resultados(vec![tarea]);
         e.consulta = "rev".into();
         match e.tecla(VK_RETURN, false, false, false) {
-            Orden::Hacer { accion: Accion::Consulta(c), recordar: true } => assert_eq!(c, "☐ Revisar"),
+            Orden::Hacer {
+                accion: Accion::Consulta(c),
+                recordar: true,
+            } => assert_eq!(c, "☐ Revisar"),
             o => panic!("{o:?}"),
         }
         match e.tecla(VK_RETURN, false, true, false) {
-            Orden::Hacer { accion: Accion::Pedido(p), .. } => {
+            Orden::Hacer {
+                accion: Accion::Pedido(p),
+                ..
+            } => {
                 assert_eq!(p["accion"], "abrir");
                 assert_eq!(p["que"]["tipo"], "mensaje");
                 assert_eq!(p["que"]["codigo"], "LST");
@@ -737,7 +851,10 @@ mod pruebas {
         }
         assert_eq!(
             e.tecla(VK_C, false, true, false),
-            Orden::Hacer { accion: Accion::Copiar("Revisar".into()), recordar: false }
+            Orden::Hacer {
+                accion: Accion::Copiar("Revisar".into()),
+                recordar: false
+            }
         );
         // Caso negativo: Alt+Intro sin fichero no hace nada, y Supr en algo
         // que no es una captura tampoco.
@@ -752,16 +869,25 @@ mod pruebas {
         e.poner_resultados(vec![captura("muro.png")]);
         let r = e.elegido().cloned().unwrap();
         assert_eq!(rotulo_principal(&r.accion), "buscar-todo-accion-pinear");
-        assert_eq!(botones_de(&r, true), vec![Boton::Principal, Boton::Copiar, Boton::Mas]);
+        assert_eq!(
+            botones_de(&r, true),
+            vec![Boton::Principal, Boton::Copiar, Boton::Mas]
+        );
         match e.tecla(VK_C, false, true, false) {
-            Orden::Hacer { accion: Accion::Pedido(p), .. } => assert_eq!(p["accion"], "copiar_imagen"),
+            Orden::Hacer {
+                accion: Accion::Pedido(p),
+                ..
+            } => assert_eq!(p["accion"], "copiar_imagen"),
             o => panic!("{o:?}"),
         }
         assert_eq!(
             e.tecla(VK_DELETE, false, false, false),
             Orden::BorrarCaptura("C:\\datos\\capturas\\muro.png".into())
         );
-        assert_eq!(e.tecla(VK_RETURN, false, false, true), Orden::AbrirCon("C:\\datos\\capturas\\muro.png".into()));
+        assert_eq!(
+            e.tecla(VK_RETURN, false, false, true),
+            Orden::AbrirCon("C:\\datos\\capturas\\muro.png".into())
+        );
         // Caso negativo: Ctrl+Z sin nada borrado no hace nada.
         assert_eq!(e.tecla(VK_Z, false, true, false), Orden::Nada);
         e.se_puede_deshacer = true;
@@ -780,7 +906,10 @@ mod pruebas {
         assert_eq!(e.elegido, 0, "con el menu abierto las flechas son suyas");
         assert_eq!(
             e.tecla(VK_RETURN, false, false, false),
-            Orden::Hacer { accion: Accion::Copiar("2".into()), recordar: false }
+            Orden::Hacer {
+                accion: Accion::Copiar("2".into()),
+                recordar: false
+            }
         );
         assert_eq!(e.tecla(VK_LEFT, false, false, false), Orden::Repintar);
         assert!(e.menu.is_none());
@@ -817,14 +946,29 @@ mod pruebas {
     fn el_boton_azul_dice_lo_que_hace() {
         let p = |a: &str| Accion::Pedido(pedido(a, json!({})));
         assert_eq!(rotulo_principal(&p("pinear")), "buscar-todo-accion-pinear");
-        assert_eq!(rotulo_principal(&p("anadir_tarea")), "buscar-todo-accion-apuntar");
-        assert_eq!(rotulo_principal(&p("nota_nueva")), "buscar-todo-accion-crear");
+        assert_eq!(
+            rotulo_principal(&p("anadir_tarea")),
+            "buscar-todo-accion-apuntar"
+        );
+        assert_eq!(
+            rotulo_principal(&p("nota_nueva")),
+            "buscar-todo-accion-crear"
+        );
         assert_eq!(rotulo_principal(&p("abrir")), "buscar-todo-accion-abrir");
-        let marcar = |h: bool| Accion::PedirYSeguir { pedido: pedido("marcar_tarea", json!({ "hecha": h })), consulta: String::new() };
+        let marcar = |h: bool| Accion::PedirYSeguir {
+            pedido: pedido("marcar_tarea", json!({ "hecha": h })),
+            consulta: String::new(),
+        };
         assert_eq!(rotulo_principal(&marcar(true)), "buscar-todo-accion-hecha");
-        assert_eq!(rotulo_principal(&marcar(false)), "buscar-todo-accion-desmarcar");
+        assert_eq!(
+            rotulo_principal(&marcar(false)),
+            "buscar-todo-accion-desmarcar"
+        );
         // Caso negativo: un pedido desconocido no inventa un verbo: «Abrir».
-        assert_eq!(rotulo_principal(&p("algo_nuevo")), "buscar-todo-accion-abrir");
+        assert_eq!(
+            rotulo_principal(&p("algo_nuevo")),
+            "buscar-todo-accion-abrir"
+        );
     }
 
     #[test]
@@ -841,6 +985,10 @@ mod pruebas {
     #[test]
     fn el_glifo_guardado_vuelve_a_su_constante() {
         assert_eq!(glifo_estatico(glifo::LECCION), glifo::LECCION);
-        assert_eq!(glifo_estatico("zz"), glifo::ABRIR, "uno desconocido no rompe nada");
+        assert_eq!(
+            glifo_estatico("zz"),
+            glifo::ABRIR,
+            "uno desconocido no rompe nada"
+        );
     }
 }

@@ -407,7 +407,12 @@ mod pruebas {
         assert!((abajo.y + 20.0 - 145.0).abs() < 0.01, "{abajo:?}");
         // Caso negativo: el centrado de siempre no se ha movido.
         assert_eq!(
-            sitio_alineado_dentro(&c, medida, AlineacionTexto::Centro, AlineacionVertical::Medio),
+            sitio_alineado_dentro(
+                &c,
+                medida,
+                AlineacionTexto::Centro,
+                AlineacionVertical::Medio
+            ),
             sitio_del_texto_dentro(&c, medida)
         );
     }
@@ -432,7 +437,10 @@ mod pruebas {
         let p = sitio_en_su_contenedor(&t, &elementos).expect("vive en la caja");
         // Sin `textAlign` va a la izquierda, la de fabrica; abajo, porque
         // lo pide.
-        assert!((p.x - 105.0).abs() < 0.01 && (p.y - 125.0).abs() < 0.01, "{p:?}");
+        assert!(
+            (p.x - 105.0).abs() < 0.01 && (p.y - 125.0).abs() < 0.01,
+            "{p:?}"
+        );
         // Caso negativo: suelto no tiene donde ir.
         t.extras.contenedor = None;
         assert!(sitio_en_su_contenedor(&t, &elementos).is_none());

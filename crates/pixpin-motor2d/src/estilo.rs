@@ -483,7 +483,8 @@ fn cambiaria_forma(e: &crate::elemento::Elemento, cambio: CambioForma) -> bool {
             crate::lupa_elemento::oscurecimiento_de(cristal) != n
         }
         (CambioForma::ZonaFoco(z), Figura::Foco { cristal }) => {
-            (crate::lupa_elemento::zona_de(cristal, crate::lupa_elemento::caja_de(e)) - z).abs() > 0.005
+            (crate::lupa_elemento::zona_de(cristal, crate::lupa_elemento::caja_de(e)) - z).abs()
+                > 0.005
         }
         _ => false,
     }
@@ -502,7 +503,12 @@ fn remedir_texto_suelto(e: &mut crate::elemento::Elemento) {
         cursiva: e.extras.cursiva,
         tachado: false,
     };
-    if let Figura::Texto { texto, tam, familia } = &e.figura {
+    if let Figura::Texto {
+        texto,
+        tam,
+        familia,
+    } = &e.figura
+    {
         let (ancho, alto) = crate::texto::medida(texto, *tam, familia, estilo);
         e.ancho = ancho;
         e.alto = alto;
@@ -637,9 +643,10 @@ fn escribir_forma(e: &mut crate::elemento::Elemento, cambio: CambioForma) {
         }
         CambioForma::Oscurecer(n) => {
             if let Figura::Foco { cristal } = &mut e.figura {
-                cristal.oscurecer = Some(
-                    n.clamp(crate::lupa_elemento::OSCURECER_MINIMO, crate::lupa_elemento::OSCURECER_MAXIMO),
-                );
+                cristal.oscurecer = Some(n.clamp(
+                    crate::lupa_elemento::OSCURECER_MINIMO,
+                    crate::lupa_elemento::OSCURECER_MAXIMO,
+                ));
             }
         }
         CambioForma::ZonaFoco(z) => {
@@ -1395,20 +1402,39 @@ mod pruebas {
         let mut escena = Escena::nueva();
         let id = con(&mut escena, flecha());
         let sel = sel_de(id);
-        assert_eq!(TipoFlecha::de(escena.buscar(id).unwrap()), Some(TipoFlecha::Afilada));
-        assert!(aplicar_forma(&mut escena, &sel, CambioForma::TipoFlecha(TipoFlecha::Codos)));
-        assert!(aplicar_forma(&mut escena, &sel, CambioForma::TipoFlecha(TipoFlecha::Curva)));
+        assert_eq!(
+            TipoFlecha::de(escena.buscar(id).unwrap()),
+            Some(TipoFlecha::Afilada)
+        );
+        assert!(aplicar_forma(
+            &mut escena,
+            &sel,
+            CambioForma::TipoFlecha(TipoFlecha::Codos)
+        ));
+        assert!(aplicar_forma(
+            &mut escena,
+            &sel,
+            CambioForma::TipoFlecha(TipoFlecha::Curva)
+        ));
         let e = escena.buscar(id).unwrap();
         assert!(e.redondo, "curva es `roundness`");
         assert!(
             matches!(e.figura, Figura::Flecha { codos: false, .. }),
             "curva y de codos a la vez no significa nada"
         );
-        assert!(aplicar_forma(&mut escena, &sel, CambioForma::TipoFlecha(TipoFlecha::Codos)));
+        assert!(aplicar_forma(
+            &mut escena,
+            &sel,
+            CambioForma::TipoFlecha(TipoFlecha::Codos)
+        ));
         assert!(!escena.buscar(id).unwrap().redondo);
         // Caso negativo: pulsar el que ya tiene no abre un paso vacio, y un
         // rectangulo no tiene tipo de flecha.
-        assert!(!aplicar_forma(&mut escena, &sel, CambioForma::TipoFlecha(TipoFlecha::Codos)));
+        assert!(!aplicar_forma(
+            &mut escena,
+            &sel,
+            CambioForma::TipoFlecha(TipoFlecha::Codos)
+        ));
         let caja = rect(&mut escena);
         assert!(!aplicar_forma(
             &mut escena,
@@ -1445,7 +1471,10 @@ mod pruebas {
             CambioForma::AlineacionVertical(AlineacionVertical::Abajo)
         ));
         let t = escena.buscar(rotulo).unwrap();
-        assert_eq!(t.extras.alineacion_vertical, Some(AlineacionVertical::Abajo));
+        assert_eq!(
+            t.extras.alineacion_vertical,
+            Some(AlineacionVertical::Abajo)
+        );
         // Pegado al fondo del hueco: 100 de alto menos 5 de aire.
         assert!((t.y + t.alto - 95.0).abs() < 0.01, "{}", t.y);
         assert!(aplicar_forma(

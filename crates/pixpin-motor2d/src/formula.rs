@@ -33,11 +33,17 @@ use std::collections::BTreeSet;
 #[derive(Debug, Clone, PartialEq)]
 pub enum Nodo {
     /// Un numero, con el texto tal como se escribio (para el rotulo).
-    Numero { valor: f64, texto: String },
+    Numero {
+        valor: f64,
+        texto: String,
+    },
     /// `x`, `y` o `t`.
     Variable(char),
     /// `pi` o `e`.
-    Constante { nombre: &'static str, valor: f64 },
+    Constante {
+        nombre: &'static str,
+        valor: f64,
+    },
     /// `op` es el del movil: `+ - * / % ^ < >`, `l` (<=), `g` (>=), `=` y
     /// `n` (!=). `implicita`: un producto sin signo (`2x`).
     Binaria {
@@ -50,7 +56,10 @@ pub enum Nodo {
     /// Unos parentesis escritos: se conservan para el rotulo.
     Grupo(Box<Nodo>),
     /// Una funcion con su nombre canonico (`sin`, `sqrt`...).
-    Funcion { nombre: &'static str, args: Vec<Nodo> },
+    Funcion {
+        nombre: &'static str,
+        args: Vec<Nodo>,
+    },
 }
 
 /// Las variables de una evaluacion.
@@ -738,7 +747,9 @@ mod pruebas {
     use super::*;
 
     fn f(texto: &str, x: f64) -> f64 {
-        compilar(texto).unwrap_or_else(|| panic!("no compila: {texto}")).en(x)
+        compilar(texto)
+            .unwrap_or_else(|| panic!("no compila: {texto}"))
+            .en(x)
     }
 
     fn cerca(a: f64, b: f64) {
@@ -813,7 +824,13 @@ mod pruebas {
 
     #[test]
     fn las_variables_se_conocen() {
-        let v = |t: &str| compilar(t).unwrap().variables().into_iter().collect::<String>();
+        let v = |t: &str| {
+            compilar(t)
+                .unwrap()
+                .variables()
+                .into_iter()
+                .collect::<String>()
+        };
         assert_eq!(v("x^2"), "x");
         assert_eq!(v("sin(x) cos(y)"), "xy");
         assert_eq!(v("cos(t)"), "t");

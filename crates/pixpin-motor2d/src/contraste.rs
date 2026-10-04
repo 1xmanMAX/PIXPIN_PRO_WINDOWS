@@ -62,7 +62,11 @@ fn a_hsl(r: f64, g: f64, b: f64) -> (f64, f64, f64) {
         return (0.0, 0.0, l);
     }
     let d = alto - bajo;
-    let s = if l > 0.5 { d / (2.0 - alto - bajo) } else { d / (alto + bajo) };
+    let s = if l > 0.5 {
+        d / (2.0 - alto - bajo)
+    } else {
+        d / (alto + bajo)
+    };
     let h = if alto == r {
         (g - b) / d + if g < b { 6.0 } else { 0.0 }
     } else if alto == g {
@@ -77,7 +81,11 @@ fn de_hsl(h: f64, s: f64, l: f64) -> (f64, f64, f64) {
     if s == 0.0 {
         return (l, l, l);
     }
-    let q = if l < 0.5 { l * (1.0 + s) } else { l + s - l * s };
+    let q = if l < 0.5 {
+        l * (1.0 + s)
+    } else {
+        l + s - l * s
+    };
     let p = 2.0 * l - q;
     let canal = |t0: f64| {
         let mut t = t0;
@@ -159,7 +167,12 @@ pub fn papel_de(fondo: ColorRgba) -> ColorRgba {
 pub fn color_de_halo(tinta: ColorRgba) -> ColorRgba {
     let lum = 0.299 * a8(tinta.r) as f32 + 0.587 * a8(tinta.g) as f32 + 0.114 * a8(tinta.b) as f32;
     let v = if lum > 150.0 { 0.0 } else { 1.0 };
-    ColorRgba { r: v, g: v, b: v, a: tinta.a }
+    ColorRgba {
+        r: v,
+        g: v,
+        b: v,
+        a: tinta.a,
+    }
 }
 
 #[cfg(test)]
@@ -180,7 +193,10 @@ mod pruebas {
     fn un_cian_claro_sobre_papel_blanco_se_oscurece_sin_perder_el_tono() {
         let cian = hex(0x0edeff);
         let c = adaptar(cian, hex(BLANCO));
-        assert!(contraste_entre(c, hex(BLANCO)) >= 4.5, "tiene que leerse: {c:?}");
+        assert!(
+            contraste_entre(c, hex(BLANCO)) >= 4.5,
+            "tiene que leerse: {c:?}"
+        );
         // El mismo tono: el azul sigue mandando sobre el verde y el rojo va
         // casi a cero.
         assert!(c.b > c.g && c.g > c.r, "sigue siendo cian: {c:?}");
@@ -206,13 +222,21 @@ mod pruebas {
 
     #[test]
     fn el_halo_conserva_el_alfa_de_la_tinta() {
-        let medio = ColorRgba { a: 0.5, ..hex(0x000000) };
+        let medio = ColorRgba {
+            a: 0.5,
+            ..hex(0x000000)
+        };
         assert_eq!(color_de_halo(medio).a, 0.5);
     }
 
     #[test]
     fn un_papel_transparente_cuenta_como_blanco() {
-        let transparente = ColorRgba { r: 0.0, g: 0.0, b: 0.0, a: 0.0 };
+        let transparente = ColorRgba {
+            r: 0.0,
+            g: 0.0,
+            b: 0.0,
+            a: 0.0,
+        };
         assert_eq!(papel_de(transparente), hex(BLANCO));
         assert_eq!(papel_de(hex(0x121212)), hex(0x121212));
     }

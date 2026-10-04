@@ -32,7 +32,11 @@ fn latin(s: &str) -> Vec<u8> {
 }
 
 pub(crate) fn flujo(numero: u32, datos: &[u8], dicc: &str) -> Vec<u8> {
-    let mut o = format!("{numero} 0 obj\n<< /Length {}{dicc} >>\nstream\n", datos.len()).into_bytes();
+    let mut o = format!(
+        "{numero} 0 obj\n<< /Length {}{dicc} >>\nstream\n",
+        datos.len()
+    )
+    .into_bytes();
     o.extend_from_slice(datos);
     o.extend_from_slice(b"\nendstream\nendobj\n");
     o
@@ -75,8 +79,7 @@ fn simple(contenido: &str) -> Plano {
 
 /// Los puntos de una brocha en puntos del papel, para compararlos a ojo.
 fn puntos(b: &Brocha) -> Vec<(f64, f64)> {
-    b.xs
-        .iter()
+    b.xs.iter()
         .zip(&b.ys)
         .map(|(x, y)| (*x as f64 / FINEZA as f64, *y as f64 / FINEZA as f64))
         .collect()
@@ -113,8 +116,14 @@ fn un_rectangulo_relleno_son_cuatro_esquinas_y_un_cierre() {
 fn pintar_y_trazar_el_mismo_camino_da_dos_brochas() {
     let p = simple("1 0 0 rg 0 0 1 RG 10 10 20 20 re B");
     assert_eq!(p.brochas.len(), 2);
-    assert_eq!(p.brochas.iter().find(|b| b.relleno).unwrap().color, 0xff0000);
-    assert_eq!(p.brochas.iter().find(|b| !b.relleno).unwrap().color, 0x0000ff);
+    assert_eq!(
+        p.brochas.iter().find(|b| b.relleno).unwrap().color,
+        0xff0000
+    );
+    assert_eq!(
+        p.brochas.iter().find(|b| !b.relleno).unwrap().color,
+        0x0000ff
+    );
 }
 
 /// La matriz manda en todo, **incluido el grosor**: un plano de AutoCAD
@@ -132,7 +141,10 @@ fn q_y_mayuscula_q_devuelven_el_estado_como_estaba() {
     let p = simple("q 3 w 1 0 0 RG 0 0 m 1 1 l S Q 0 0 m 2 2 l S");
     assert_eq!(p.brochas.len(), 2);
     let fuera = p.brochas.iter().find(|b| b.color == 0).unwrap();
-    assert!((fuera.grosor - 1.0).abs() < 1e-3, "el grosor de dentro se ha escapado");
+    assert!(
+        (fuera.grosor - 1.0).abs() < 1e-3,
+        "el grosor de dentro se ha escapado"
+    );
 }
 
 #[test]
@@ -157,7 +169,10 @@ fn una_paleta_indexada_da_el_color_de_su_indice_y_no_un_gris() {
     ))
     .unwrap();
     assert_eq!(p.brochas[0].color, 0x0000ff);
-    assert_eq!(p.sin_entender, 0, "una paleta se entiende: no hay que volver a la foto");
+    assert_eq!(
+        p.sin_entender, 0,
+        "una paleta se entiende: no hay que volver a la foto"
+    );
 }
 
 #[test]
@@ -185,7 +200,10 @@ fn el_icc_dice_cuantos_canales_tiene_su_espacio() {
         },
     ))
     .unwrap();
-    assert_eq!(p.brochas[0].color, 0xff0000, "cian a cero, magenta y amarillo a tope: rojo");
+    assert_eq!(
+        p.brochas[0].color, 0xff0000,
+        "cian a cero, magenta y amarillo a tope: rojo"
+    );
 }
 
 #[test]
@@ -206,7 +224,10 @@ fn una_tinta_plana_va_de_blanco_a_negro() {
 
 #[test]
 fn sin_espacio_conocido_se_adivina_por_los_numeros() {
-    assert_eq!(simple("1 0 0 sc 10 10 20 20 re f").brochas[0].color, 0xff0000);
+    assert_eq!(
+        simple("1 0 0 sc 10 10 20 20 re f").brochas[0].color,
+        0xff0000
+    );
 }
 
 #[test]
@@ -227,13 +248,18 @@ fn los_rellenos_conservan_el_orden_en_que_se_pintaron() {
 fn un_relleno_par_impar_se_dice() {
     let p = simple("0 0 10 10 re 2 2 5 5 re f*");
     assert!(p.brochas[0].par_impar);
-    assert!(!simple("0 0 10 10 re f").brochas[0].par_impar, "caso negativo: el normal no lo es");
+    assert!(
+        !simple("0 0 10 10 re f").brochas[0].par_impar,
+        "caso negativo: el normal no lo es"
+    );
 }
 
 // ---- Las capas ----
 
 fn con_capas(contenido: &str, off: &str) -> Plano {
-    let catalogo = format!("/OCProperties << /OCGs [5 0 R 6 0 R] /D << /Order [5 0 R 6 0 R] /OFF [{off}] >> >> ");
+    let catalogo = format!(
+        "/OCProperties << /OCGs [5 0 R 6 0 R] /D << /Order [5 0 R 6 0 R] /OFF [{off}] >> >> "
+    );
     leer(&pagina_con(
         contenido.as_bytes(),
         Pagina {
@@ -259,8 +285,14 @@ fn cada_capa_del_pdf_sale_con_su_nombre_y_lo_suyo_dentro() {
     assert_eq!(nombres, vec!["Muros", "Cotas"]);
     assert!(p.capas.iter().all(|c| c.encendida));
     assert!(p.brochas.iter().any(|b| b.color == 0 && b.capa == 0));
-    assert_eq!(p.brochas.iter().find(|b| b.color == 0xff0000).unwrap().capa, 1);
-    assert!(p.brochas.iter().any(|b| b.capa == -1), "falta lo que va fuera de las capas");
+    assert_eq!(
+        p.brochas.iter().find(|b| b.color == 0xff0000).unwrap().capa,
+        1
+    );
+    assert!(
+        p.brochas.iter().any(|b| b.capa == -1),
+        "falta lo que va fuera de las capas"
+    );
 }
 
 #[test]
@@ -272,7 +304,10 @@ fn una_capa_apagada_en_el_pdf_llega_apagada() {
 
 #[test]
 fn las_marcas_metidas_unas_en_otras_devuelven_la_capa_de_fuera() {
-    let p = con_capas("/OC /oc1 BDC /Span <</Lang (es)>> BDC 0 0 m 1 1 l S EMC 2 2 m 3 3 l S EMC", "");
+    let p = con_capas(
+        "/OC /oc1 BDC /Span <</Lang (es)>> BDC 0 0 m 1 1 l S EMC 2 2 m 3 3 l S EMC",
+        "",
+    );
     assert!(p.brochas.iter().all(|b| b.capa == 0));
 }
 
@@ -280,21 +315,42 @@ fn las_marcas_metidas_unas_en_otras_devuelven_la_capa_de_fuera() {
 
 #[test]
 fn una_pagina_girada_un_cuarto_de_vuelta_sale_apaisada() {
-    let p = leer(&pagina_con(b"0 0 m 10 20 l S", Pagina { extra: "/Rotate 90 ", ..Default::default() })).unwrap();
+    let p = leer(&pagina_con(
+        b"0 0 m 10 20 l S",
+        Pagina {
+            extra: "/Rotate 90 ",
+            ..Default::default()
+        },
+    ))
+    .unwrap();
     assert_eq!((p.ancho, p.alto), (200.0, 100.0));
     assert_eq!(puntos(&p.brochas[0]), vec![(0.0, 0.0), (20.0, 10.0)]);
 }
 
 #[test]
 fn con_tres_cuartos_de_vuelta_el_papel_tambien_se_tumba() {
-    let p = leer(&pagina_con(b"0 0 m 10 20 l S", Pagina { extra: "/Rotate 270 ", ..Default::default() })).unwrap();
+    let p = leer(&pagina_con(
+        b"0 0 m 10 20 l S",
+        Pagina {
+            extra: "/Rotate 270 ",
+            ..Default::default()
+        },
+    ))
+    .unwrap();
     assert_eq!((p.ancho, p.alto), (200.0, 100.0));
     assert_eq!(puntos(&p.brochas[0]), vec![(200.0, 100.0), (180.0, 90.0)]);
 }
 
 #[test]
 fn el_mediabox_que_no_empieza_en_cero_se_lleva_al_origen() {
-    let p = leer(&pagina_con(b"50 50 m 60 60 l S", Pagina { caja: Some("50 50 150 250"), ..Default::default() })).unwrap();
+    let p = leer(&pagina_con(
+        b"50 50 m 60 60 l S",
+        Pagina {
+            caja: Some("50 50 150 250"),
+            ..Default::default()
+        },
+    ))
+    .unwrap();
     assert_eq!(p.ancho, 100.0);
     assert_eq!(puntos(&p.brochas[0]), vec![(0.0, 200.0), (10.0, 190.0)]);
 }
@@ -310,7 +366,11 @@ fn lo_que_el_recorte_deja_fuera_no_viaja() {
 }
 
 fn imagen(numero: u32, datos: &[u8], dicc: &str) -> Vec<u8> {
-    flujo(numero, datos, &format!(" /Type /XObject /Subtype /Image {dicc}"))
+    flujo(
+        numero,
+        datos,
+        &format!(" /Type /XObject /Subtype /Image {dicc}"),
+    )
 }
 
 #[test]
@@ -326,7 +386,10 @@ fn una_imagen_que_no_es_jpeg_se_cuenta_y_no_se_dibuja() {
     .unwrap();
     assert_eq!(p.sin_entender, 1);
     assert_eq!(p.brochas.len(), 1);
-    assert!(!p.se_manda_como_lineas(), "con algo que falta, la pagina va como foto");
+    assert!(
+        !p.se_manda_como_lineas(),
+        "con algo que falta, la pagina va como foto"
+    );
 }
 
 #[test]
@@ -336,7 +399,11 @@ fn una_foto_en_jpeg_se_pasa_tal_cual_con_su_sitio() {
         b"q 40 0 0 20 10 30 cm /Im1 Do Q 0 0 m 1 1 l S",
         Pagina {
             recursos: "/XObject << /Im1 5 0 R >>",
-            mas: vec![imagen(5, &jpeg, "/Width 4 /Height 2 /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode")],
+            mas: vec![imagen(
+                5,
+                &jpeg,
+                "/Width 4 /Height 2 /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode",
+            )],
             ..Default::default()
         },
     ))
@@ -363,7 +430,10 @@ fn la_misma_imagen_colocada_dos_veces_lleva_la_misma_sena() {
     .unwrap();
     assert_eq!(p.fotos.len(), 2);
     assert_eq!(p.fotos[0].id, p.fotos[1].id);
-    assert!(Arc::ptr_eq(&p.fotos[0].datos, &p.fotos[1].datos), "los bytes se comparten, no se copian");
+    assert!(
+        Arc::ptr_eq(&p.fotos[0].datos, &p.fotos[1].datos),
+        "los bytes se comparten, no se copian"
+    );
     assert_ne!(p.fotos[0].x, p.fotos[1].x);
 }
 
@@ -376,8 +446,16 @@ fn una_foto_con_mascara_de_transparencia_se_pasa_con_las_dos() {
         Pagina {
             recursos: "/XObject << /Im1 5 0 R >>",
             mas: vec![
-                imagen(5, &color, "/Width 4 /Height 2 /SMask 6 0 R /Filter /DCTDecode"),
-                imagen(6, &gris, "/Width 4 /Height 2 /ColorSpace /DeviceGray /Filter /DCTDecode"),
+                imagen(
+                    5,
+                    &color,
+                    "/Width 4 /Height 2 /SMask 6 0 R /Filter /DCTDecode",
+                ),
+                imagen(
+                    6,
+                    &gris,
+                    "/Width 4 /Height 2 /ColorSpace /DeviceGray /Filter /DCTDecode",
+                ),
             ],
             ..Default::default()
         },
@@ -395,7 +473,11 @@ fn una_mascara_de_otro_tamano_no_se_pasa() {
         Pagina {
             recursos: "/XObject << /Im1 5 0 R >>",
             mas: vec![
-                imagen(5, b"xx", "/Width 4 /Height 2 /SMask 6 0 R /Filter /DCTDecode"),
+                imagen(
+                    5,
+                    b"xx",
+                    "/Width 4 /Height 2 /SMask 6 0 R /Filter /DCTDecode",
+                ),
                 imagen(6, b"yy", "/Width 2 /Height 1 /Filter /DCTDecode"),
             ],
             ..Default::default()
@@ -426,7 +508,11 @@ fn un_formulario_se_ejecuta_con_su_matriz() {
         b"q 1 0 0 1 10 10 cm /Fm1 Do Q",
         Pagina {
             recursos: "/XObject << /Fm1 5 0 R >>",
-            mas: vec![flujo(5, b"0 0 m 10 10 l S", " /Type /XObject /Subtype /Form /BBox [0 0 20 20] /Matrix [2 0 0 2 0 0]")],
+            mas: vec![flujo(
+                5,
+                b"0 0 m 10 10 l S",
+                " /Type /XObject /Subtype /Form /BBox [0 0 20 20] /Matrix [2 0 0 2 0 0]",
+            )],
             ..Default::default()
         },
     ))
@@ -459,7 +545,10 @@ fn un_rotulo_sale_con_lo_que_dice_donde_y_cuanto_ocupa() {
     let t = &p.textos[0];
     assert_eq!(t.texto, "AÑ");
     assert_eq!((t.x, t.y), (20.0, 100.0));
-    assert!((t.ancho - 1.0).abs() < 1e-9, "dos letras de media eme: una eme");
+    assert!(
+        (t.ancho - 1.0).abs() < 1e-9,
+        "dos letras de media eme: una eme"
+    );
     assert_eq!((t.a, t.b, t.d), (10.0, 0.0, 10.0));
     assert_eq!(t.familia, "sans-serif");
 }
@@ -480,7 +569,10 @@ fn en_macroman_la_ligadura_fi_sale_fi_y_en_winansi_sigue_siendo_thorn() {
         .unwrap()
     };
     assert_eq!(con("/MacRomanEncoding").textos[0].texto, "defined");
-    assert_eq!(con("<< /BaseEncoding /MacRomanEncoding >>").textos[0].texto, "defined");
+    assert_eq!(
+        con("<< /BaseEncoding /MacRomanEncoding >>").textos[0].texto,
+        "defined"
+    );
     // Caso negativo: en WinAnsi (o sin decir nada) sigue siendo la thorn.
     assert_eq!(con("/WinAnsiEncoding").textos[0].texto, "deÞned");
 }
@@ -495,7 +587,11 @@ fn la_matriz_del_texto_lo_gira() {
 
 #[test]
 fn el_texto_invisible_del_escaneo_no_se_manda() {
-    assert!(con_fuente("BT /F1 10 Tf 3 Tr 20 100 Td <0003> Tj ET").textos.is_empty());
+    assert!(
+        con_fuente("BT /F1 10 Tf 3 Tr 20 100 Td <0003> Tj ET")
+            .textos
+            .is_empty()
+    );
 }
 
 #[test]
@@ -514,11 +610,17 @@ fn un_empujon_dentro_de_tj_separa_lo_que_viene_detras() {
 #[test]
 fn un_tramo_del_cmap_con_lista_da_cada_letra() {
     let mut out = HashMap::new();
-    leer_cmap(b"1 beginbfrange\n<0001> <0002> [<0048> <0049>]\nendbfrange", &mut out);
+    leer_cmap(
+        b"1 beginbfrange\n<0001> <0002> [<0048> <0049>]\nendbfrange",
+        &mut out,
+    );
     assert_eq!(out.get(&1).map(String::as_str), Some("H"));
     assert_eq!(out.get(&2).map(String::as_str), Some("I"));
     let mut seguidas = HashMap::new();
-    leer_cmap(b"1 beginbfrange\n<20> <22> <0041>\nendbfrange", &mut seguidas);
+    leer_cmap(
+        b"1 beginbfrange\n<20> <22> <0041>\nendbfrange",
+        &mut seguidas,
+    );
     assert_eq!(seguidas.get(&0x22).map(String::as_str), Some("C"));
 }
 
@@ -533,8 +635,19 @@ fn un_pdf_cifrado_no_se_toca() {
 
 #[test]
 fn un_contenido_en_hexadecimal_se_lee_igual() {
-    let hex: String = "1 0 0 RG 10 20 m 30 40 l S".bytes().map(|b| format!("{b:02x}")).collect::<String>() + ">";
-    let p = leer(&pagina_con(hex.as_bytes(), Pagina { filtro: " /Filter /ASCIIHexDecode", ..Default::default() })).unwrap();
+    let hex: String = "1 0 0 RG 10 20 m 30 40 l S"
+        .bytes()
+        .map(|b| format!("{b:02x}"))
+        .collect::<String>()
+        + ">";
+    let p = leer(&pagina_con(
+        hex.as_bytes(),
+        Pagina {
+            filtro: " /Filter /ASCIIHexDecode",
+            ..Default::default()
+        },
+    ))
+    .unwrap();
     assert_eq!(puntos(&p.brochas[0]), vec![(10.0, 180.0), (30.0, 160.0)]);
 }
 
@@ -558,7 +671,14 @@ fn a_base85(t: &[u8]) -> Vec<u8> {
 
 #[test]
 fn un_contenido_en_base_85_se_lee_igual() {
-    let p = leer(&pagina_con(&a_base85(b"10 20 m 30 40 l S"), Pagina { filtro: " /Filter /ASCII85Decode", ..Default::default() })).unwrap();
+    let p = leer(&pagina_con(
+        &a_base85(b"10 20 m 30 40 l S"),
+        Pagina {
+            filtro: " /Filter /ASCII85Decode",
+            ..Default::default()
+        },
+    ))
+    .unwrap();
     assert_eq!(puntos(&p.brochas[0]), vec![(10.0, 180.0), (30.0, 160.0)]);
 }
 
@@ -567,14 +687,24 @@ fn un_contenido_comprimido_con_flate_se_lee_igual() {
     use std::io::Write;
     let mut z = flate2::write::ZlibEncoder::new(Vec::new(), flate2::Compression::default());
     z.write_all(b"10 20 m 30 40 l S").unwrap();
-    let p = leer(&pagina_con(&z.finish().unwrap(), Pagina { filtro: " /Filter /FlateDecode", ..Default::default() })).unwrap();
+    let p = leer(&pagina_con(
+        &z.finish().unwrap(),
+        Pagina {
+            filtro: " /Filter /FlateDecode",
+            ..Default::default()
+        },
+    ))
+    .unwrap();
     assert_eq!(puntos(&p.brochas[0]), vec![(10.0, 180.0), (30.0, 160.0)]);
 }
 
 #[test]
 fn un_archivo_que_no_es_un_pdf_devuelve_nada() {
     assert!(leer(b"esto no es un pdf").is_none());
-    assert!(de_bytes(&pagina_con(b"0 0 m 1 1 l S", Pagina::default()), 3).is_none(), "ni una pagina que no existe");
+    assert!(
+        de_bytes(&pagina_con(b"0 0 m 1 1 l S", Pagina::default()), 3).is_none(),
+        "ni una pagina que no existe"
+    );
 }
 
 #[test]
@@ -609,11 +739,20 @@ fn una_palabra_partida_por_el_interletrado_sale_en_un_solo_rotulo() {
     // Word escribe «Beneficios» como `[(B)20(e)-15(ne)…] TJ`: sin juntar,
     // el Ctrl+F del navegador no encuentra la palabra.
     let p = con_fuente("BT /F1 10 Tf 20 100 Td [<0003> 20 <0004> -30 <0003>] TJ ET");
-    assert_eq!(p.textos.len(), 1, "{:?}", p.textos.iter().map(|t| &t.texto).collect::<Vec<_>>());
+    assert_eq!(
+        p.textos.len(),
+        1,
+        "{:?}",
+        p.textos.iter().map(|t| &t.texto).collect::<Vec<_>>()
+    );
     assert_eq!(p.textos[0].texto, "AÑA");
     // Lo que ocupa es de la primera letra al final de la ultima.
     let t = &p.textos[0];
-    assert!((t.x + t.a * t.ancho - (20.0 + 15.0 + 0.1)).abs() < 0.01, "ancho {}", t.ancho);
+    assert!(
+        (t.x + t.a * t.ancho - (20.0 + 15.0 + 0.1)).abs() < 0.01,
+        "ancho {}",
+        t.ancho
+    );
 }
 
 #[test]
@@ -625,10 +764,25 @@ fn dos_palabras_separadas_por_un_hueco_de_espacio_llevan_su_espacio() {
 
 #[test]
 fn lo_de_otro_renglon_otro_tamano_o_muy_lejos_no_se_junta() {
-    assert_eq!(con_fuente("BT /F1 10 Tf 12 TL 20 100 Td <0003> Tj T* <0003> Tj ET").textos.len(), 2);
-    assert_eq!(con_fuente("BT /F1 10 Tf 20 100 Td <0003> Tj /F1 14 Tf <0003> Tj ET").textos.len(), 2);
+    assert_eq!(
+        con_fuente("BT /F1 10 Tf 12 TL 20 100 Td <0003> Tj T* <0003> Tj ET")
+            .textos
+            .len(),
+        2
+    );
+    assert_eq!(
+        con_fuente("BT /F1 10 Tf 20 100 Td <0003> Tj /F1 14 Tf <0003> Tj ET")
+            .textos
+            .len(),
+        2
+    );
     // Una columna al lado: el hueco es de varias emes.
-    assert_eq!(con_fuente("BT /F1 10 Tf 20 100 Td [<0003> -3000 <0003>] TJ ET").textos.len(), 2);
+    assert_eq!(
+        con_fuente("BT /F1 10 Tf 20 100 Td [<0003> -3000 <0003>] TJ ET")
+            .textos
+            .len(),
+        2
+    );
 }
 
 // ---- Las imagenes que no son JPEG ----
@@ -676,7 +830,11 @@ fn con_predictor_y_transparencia_la_imagen_sale_entera_en_un_png() {
     let p = con_imagen(
         "/Width 2 /Height 1 /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /FlateDecode /DecodeParms << /Predictor 15 /Colors 3 /Columns 2 >> /SMask 6 0 R",
         &comprimido(&filas),
-        vec![imagen(6, &comprimido(&[255, 0]), "/Width 2 /Height 1 /ColorSpace /DeviceGray /BitsPerComponent 8 /Filter /FlateDecode")],
+        vec![imagen(
+            6,
+            &comprimido(&[255, 0]),
+            "/Width 2 /Height 1 /ColorSpace /DeviceGray /BitsPerComponent 8 /Filter /FlateDecode",
+        )],
     );
     assert_eq!(p.sin_entender, 0);
     let png = &p.fotos[0].datos;
@@ -695,7 +853,11 @@ fn una_imagen_en_jbig2_o_con_una_mascara_rara_sigue_mandando_la_hoja_como_foto()
     let p = con_imagen(
         "/Width 2 /Height 1 /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /FlateDecode /SMask 6 0 R",
         &comprimido(&[1, 2, 3, 4, 5, 6]),
-        vec![imagen(6, &comprimido(&[1, 2, 3]), "/Width 3 /Height 1 /ColorSpace /DeviceGray /BitsPerComponent 8 /Filter /FlateDecode")],
+        vec![imagen(
+            6,
+            &comprimido(&[1, 2, 3]),
+            "/Width 3 /Height 1 /ColorSpace /DeviceGray /BitsPerComponent 8 /Filter /FlateDecode",
+        )],
     );
     assert_eq!(p.sin_entender, 1, "una mascara de otro tamano no se estira");
 }
@@ -707,7 +869,11 @@ fn la_silueta_de_un_bit_con_su_mascara_de_word_se_pasa_como_png() {
     let p = con_imagen(
         "/Width 8 /Height 1 /ColorSpace /DeviceGray /BitsPerComponent 1 /Filter /FlateDecode /SMask 6 0 R",
         &comprimido(&[0x0F]),
-        vec![imagen(6, &comprimido(&[0, 255, 0, 255, 0, 255, 0, 255]), "/Width 8 /Height 1 /ColorSpace /DeviceGray /BitsPerComponent 8 /Filter /FlateDecode")],
+        vec![imagen(
+            6,
+            &comprimido(&[0, 255, 0, 255, 0, 255, 0, 255]),
+            "/Width 8 /Height 1 /ColorSpace /DeviceGray /BitsPerComponent 8 /Filter /FlateDecode",
+        )],
     );
     assert_eq!(p.sin_entender, 0);
     assert_eq!(p.fotos[0].tipo, "image/png");
@@ -720,7 +886,11 @@ fn un_jpeg_con_su_mascara_en_flate_lleva_la_mascara_como_png() {
     let p = con_imagen(
         "/Width 2 /Height 1 /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /SMask 6 0 R",
         &jpeg,
-        vec![imagen(6, &comprimido(&[255, 0]), "/Width 2 /Height 1 /ColorSpace /DeviceGray /BitsPerComponent 8 /Filter /FlateDecode")],
+        vec![imagen(
+            6,
+            &comprimido(&[255, 0]),
+            "/Width 2 /Height 1 /ColorSpace /DeviceGray /BitsPerComponent 8 /Filter /FlateDecode",
+        )],
     );
     assert_eq!(p.sin_entender, 0);
     assert_eq!(p.fotos[0].tipo, "image/jpeg");

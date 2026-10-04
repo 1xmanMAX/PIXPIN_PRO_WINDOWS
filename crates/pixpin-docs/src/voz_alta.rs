@@ -64,7 +64,9 @@ pub fn tasa_de_windows(velocidad: f32) -> i32 {
     if !velocidad.is_finite() || velocidad <= 0.0 {
         return 0;
     }
-    (10.0 * velocidad.ln() / 3f32.ln()).round().clamp(-10.0, 10.0) as i32
+    (10.0 * velocidad.ln() / 3f32.ln())
+        .round()
+        .clamp(-10.0, 10.0) as i32
 }
 
 /// **Un parrafo, en trozos que la voz admita**, como `VozAlta.trozos`: se
@@ -82,22 +84,25 @@ pub fn cortes(texto: &str, tope: usize) -> Vec<Range<usize>> {
         es_blanco(l[i]) && i > 0 && cierra_frase(l, i - 1)
     });
     let mut actual: Option<Range<usize>> = None;
-    let anadir = |pieza: Range<usize>, actual: &mut Option<Range<usize>>, salida: &mut Vec<Range<usize>>| {
-        let largo = actual.as_ref().map_or(0, |a| a.end - a.start);
-        if largo + (pieza.end - pieza.start) > tope {
-            soltar(&letras, actual, salida);
-        }
-        *actual = Some(match actual.take() {
-            Some(a) => a.start..pieza.end,
-            None => pieza,
-        });
-    };
+    let anadir =
+        |pieza: Range<usize>, actual: &mut Option<Range<usize>>, salida: &mut Vec<Range<usize>>| {
+            let largo = actual.as_ref().map_or(0, |a| a.end - a.start);
+            if largo + (pieza.end - pieza.start) > tope {
+                soltar(&letras, actual, salida);
+            }
+            *actual = Some(match actual.take() {
+                Some(a) => a.start..pieza.end,
+                None => pieza,
+            });
+        };
     for frase in frases {
         if frase.end - frase.start <= tope {
             anadir(frase, &mut actual, &mut salida);
             continue;
         }
-        let partes = partir_detras(&letras, frase, |l, i| es_blanco(l[i]) && i > 0 && l[i - 1] == ',');
+        let partes = partir_detras(&letras, frase, |l, i| {
+            es_blanco(l[i]) && i > 0 && l[i - 1] == ','
+        });
         for parte in partes {
             if parte.end - parte.start <= tope {
                 anadir(parte, &mut actual, &mut salida);
@@ -161,7 +166,11 @@ fn cierra_frase(l: &[char], mut i: usize) -> bool {
 
 /// Parte `rango` justo **detras** de cada letra `i` en la que `corta` dice
 /// que si (la letra `i` va con lo de delante). Sin perder nada.
-fn partir_detras(l: &[char], rango: Range<usize>, corta: impl Fn(&[char], usize) -> bool) -> Vec<Range<usize>> {
+fn partir_detras(
+    l: &[char],
+    rango: Range<usize>,
+    corta: impl Fn(&[char], usize) -> bool,
+) -> Vec<Range<usize>> {
     let mut salida = Vec::new();
     let mut desde = rango.start;
     for i in rango.clone() {
@@ -192,7 +201,11 @@ fn sin_blancos(l: &[char], r: Range<usize>) -> Option<Range<usize>> {
 
 /// «es_ES», «es-es», «ES» → («es», «ES») (`VozAlta.partes`).
 pub fn partes(idioma: &str) -> (String, String) {
-    let p: Vec<&str> = idioma.trim().split(['-', '_']).filter(|s| !s.is_empty()).collect();
+    let p: Vec<&str> = idioma
+        .trim()
+        .split(['-', '_'])
+        .filter(|s| !s.is_empty())
+        .collect();
     let lengua = p.first().map(|s| s.to_lowercase()).unwrap_or_default();
     let pais = p
         .get(1)
@@ -204,12 +217,60 @@ pub fn partes(idioma: &str) -> (String, String) {
 
 /// Las palabras mas corrientes de cada lengua (`VozAlta.PALABRAS`).
 const PALABRAS: [(&str, &[&str]); 6] = [
-    ("es", &["el", "la", "los", "las", "de", "del", "que", "y", "en", "un", "una", "por", "con", "para", "es", "se", "no", "lo", "al", "su", "como", "más", "pero", "sus", "le", "ya", "o", "este", "sí", "porque", "esta", "entre", "cuando", "muy", "sin", "sobre", "también", "hay", "donde", "está"]),
-    ("en", &["the", "of", "and", "to", "in", "is", "that", "it", "was", "for", "on", "are", "as", "with", "his", "they", "at", "be", "this", "have", "from", "or", "by", "but", "not", "what", "all", "were", "when", "we", "there", "can", "which", "their", "if", "would", "been", "has", "an", "she"]),
-    ("pt", &["o", "os", "as", "de", "do", "da", "dos", "das", "que", "e", "em", "um", "uma", "para", "com", "não", "no", "na", "por", "mais", "se", "ao", "como", "mas", "foi", "ele", "ela", "seu", "sua", "ou", "ser", "quando", "muito", "há", "nos", "já", "está", "também", "só", "pelo"]),
-    ("fr", &["le", "la", "les", "de", "des", "du", "et", "un", "une", "est", "en", "que", "qui", "dans", "pour", "pas", "sur", "au", "aux", "ne", "il", "elle", "se", "ce", "avec", "plus", "par", "son", "sa", "ses", "mais", "nous", "vous", "ont", "été", "cette", "sont", "comme", "leur", "tout"]),
-    ("it", &["il", "lo", "la", "gli", "le", "di", "del", "della", "che", "e", "è", "un", "una", "per", "con", "non", "in", "si", "da", "al", "sono", "come", "più", "ma", "anche", "questo", "nel", "nella", "dei", "delle", "suo", "sua", "ha", "molto", "quando", "già", "tra", "cosa", "loro", "essere"]),
-    ("de", &["der", "die", "das", "und", "ist", "nicht", "ein", "eine", "zu", "den", "dem", "mit", "sich", "des", "auf", "für", "im", "von", "auch", "es", "an", "werden", "aus", "er", "hat", "dass", "sie", "nach", "wird", "bei", "einer", "um", "noch", "wie", "einem", "über", "so", "zum", "war", "haben"]),
+    (
+        "es",
+        &[
+            "el", "la", "los", "las", "de", "del", "que", "y", "en", "un", "una", "por", "con",
+            "para", "es", "se", "no", "lo", "al", "su", "como", "más", "pero", "sus", "le", "ya",
+            "o", "este", "sí", "porque", "esta", "entre", "cuando", "muy", "sin", "sobre",
+            "también", "hay", "donde", "está",
+        ],
+    ),
+    (
+        "en",
+        &[
+            "the", "of", "and", "to", "in", "is", "that", "it", "was", "for", "on", "are", "as",
+            "with", "his", "they", "at", "be", "this", "have", "from", "or", "by", "but", "not",
+            "what", "all", "were", "when", "we", "there", "can", "which", "their", "if", "would",
+            "been", "has", "an", "she",
+        ],
+    ),
+    (
+        "pt",
+        &[
+            "o", "os", "as", "de", "do", "da", "dos", "das", "que", "e", "em", "um", "uma", "para",
+            "com", "não", "no", "na", "por", "mais", "se", "ao", "como", "mas", "foi", "ele",
+            "ela", "seu", "sua", "ou", "ser", "quando", "muito", "há", "nos", "já", "está",
+            "também", "só", "pelo",
+        ],
+    ),
+    (
+        "fr",
+        &[
+            "le", "la", "les", "de", "des", "du", "et", "un", "une", "est", "en", "que", "qui",
+            "dans", "pour", "pas", "sur", "au", "aux", "ne", "il", "elle", "se", "ce", "avec",
+            "plus", "par", "son", "sa", "ses", "mais", "nous", "vous", "ont", "été", "cette",
+            "sont", "comme", "leur", "tout",
+        ],
+    ),
+    (
+        "it",
+        &[
+            "il", "lo", "la", "gli", "le", "di", "del", "della", "che", "e", "è", "un", "una",
+            "per", "con", "non", "in", "si", "da", "al", "sono", "come", "più", "ma", "anche",
+            "questo", "nel", "nella", "dei", "delle", "suo", "sua", "ha", "molto", "quando", "già",
+            "tra", "cosa", "loro", "essere",
+        ],
+    ),
+    (
+        "de",
+        &[
+            "der", "die", "das", "und", "ist", "nicht", "ein", "eine", "zu", "den", "dem", "mit",
+            "sich", "des", "auf", "für", "im", "von", "auch", "es", "an", "werden", "aus", "er",
+            "hat", "dass", "sie", "nach", "wird", "bei", "einer", "um", "noch", "wie", "einem",
+            "über", "so", "zum", "war", "haben",
+        ],
+    ),
 ];
 
 /// **De que idioma es el texto**, por sus palabras mas corrientes
@@ -227,13 +288,23 @@ pub fn idioma_del_texto(muestra: &str, por_defecto: &str) -> String {
     }
     let cuentas: Vec<(&str, usize)> = PALABRAS
         .iter()
-        .map(|(lengua, lista)| (*lengua, palabras.iter().filter(|p| lista.contains(p)).count()))
+        .map(|(lengua, lista)| {
+            (
+                *lengua,
+                palabras.iter().filter(|p| lista.contains(p)).count(),
+            )
+        })
         .collect();
     // El primero con mas, como `maxByOrNull` (el primero en caso de empate).
     let (mejor, n) = cuentas
         .iter()
         .fold(cuentas[0], |a, b| if b.1 > a.1 { *b } else { a });
-    let segundo = cuentas.iter().filter(|(l, _)| *l != mejor).map(|(_, c)| *c).max().unwrap_or(0);
+    let segundo = cuentas
+        .iter()
+        .filter(|(l, _)| *l != mejor)
+        .map(|(_, c)| *c)
+        .max()
+        .unwrap_or(0);
     // Claro: al menos un 6 % de las palabras y bastante por delante del siguiente.
     if n as f32 >= palabras.len() as f32 * 0.06 && n as f32 > segundo as f32 * 1.3 {
         mejor.to_string()
@@ -249,7 +320,11 @@ pub fn idioma_para_leer(muestra: &str, lang: &str, del_equipo: &str) -> String {
     let adivinado = idioma_del_texto(muestra, "");
     let (suyo, su_pais) = partes(lang);
     if adivinado.is_empty() {
-        return if suyo.is_empty() { del_equipo.to_string() } else { lang.to_string() };
+        return if suyo.is_empty() {
+            del_equipo.to_string()
+        } else {
+            lang.to_string()
+        };
     }
     if suyo == adivinado && !su_pais.is_empty() {
         lang.to_string()
@@ -295,20 +370,21 @@ pub fn parrafo_de_la_marca(fracciones: &[f32], marca: (usize, f32)) -> Option<us
     }
     let i = fracciones.partition_point(|x| *x < f);
     let candidatos = [i.checked_sub(1), (i < fracciones.len()).then_some(i)];
-    candidatos
-        .into_iter()
-        .flatten()
-        .min_by(|a, b| {
-            let da = (fracciones[*a] - f).abs();
-            let db = (fracciones[*b] - f).abs();
-            da.partial_cmp(&db).unwrap_or(std::cmp::Ordering::Equal)
-        })
+    candidatos.into_iter().flatten().min_by(|a, b| {
+        let da = (fracciones[*a] - f).abs();
+        let db = (fracciones[*b] - f).abs();
+        da.partial_cmp(&db).unwrap_or(std::cmp::Ordering::Equal)
+    })
 }
 
 /// Los marcadores con el verde de la voz en su sitio
 /// (`Lectura.conMarcaDeVoz`): nunca mas de un verde.
 pub fn con_marca_de_voz(lista: &[Marcador], fraccion: Option<f32>) -> Vec<Marcador> {
-    let mut salida: Vec<Marcador> = lista.iter().filter(|m| m.emoji != EMOJI_DE_VOZ).cloned().collect();
+    let mut salida: Vec<Marcador> = lista
+        .iter()
+        .filter(|m| m.emoji != EMOJI_DE_VOZ)
+        .cloned()
+        .collect();
     if let Some(f) = fraccion {
         salida.push(Marcador {
             id: u64::MAX,
@@ -316,7 +392,11 @@ pub fn con_marca_de_voz(lista: &[Marcador], fraccion: Option<f32>) -> Vec<Marcad
             emoji: EMOJI_DE_VOZ.to_string(),
         });
     }
-    salida.sort_by(|a, b| a.fraccion.partial_cmp(&b.fraccion).unwrap_or(std::cmp::Ordering::Equal));
+    salida.sort_by(|a, b| {
+        a.fraccion
+            .partial_cmp(&b.fraccion)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
     salida
 }
 
@@ -353,7 +433,10 @@ mod pruebas {
         assert!(trozos("   ", 600).is_empty());
         let t = "Primera frase. Segunda frase! ¿Tercera? Cuarta.";
         let v = trozos(t, 20);
-        assert_eq!(v, vec!["Primera frase.", "Segunda frase!", "¿Tercera? Cuarta."]);
+        assert_eq!(
+            v,
+            vec!["Primera frase.", "Segunda frase!", "¿Tercera? Cuarta."]
+        );
         // Nada se pierde: juntos dicen lo mismo.
         assert_eq!(v.join(" "), t);
     }
@@ -375,7 +458,10 @@ mod pruebas {
         let t = "Él dijo «sí». Y se fue.";
         let r = cortes(t, 14);
         let letras: Vec<char> = t.chars().collect();
-        let textos: Vec<String> = r.iter().map(|x| letras[x.clone()].iter().collect()).collect();
+        let textos: Vec<String> = r
+            .iter()
+            .map(|x| letras[x.clone()].iter().collect())
+            .collect();
         assert_eq!(textos, vec!["Él dijo «sí».", "Y se fue."]);
     }
 
@@ -383,9 +469,14 @@ mod pruebas {
     fn el_idioma_se_adivina_por_las_palabras_y_se_afina_con_el_acento() {
         let ingles = "The quick fox was in the house and it was not what they said of the dog";
         assert_eq!(idioma_del_texto(ingles, "es"), "en");
-        let castellano = "El perro de la casa no es lo que dicen los vecinos y por eso se fue con su dueño";
+        let castellano =
+            "El perro de la casa no es lo que dicen los vecinos y por eso se fue con su dueño";
         assert_eq!(idioma_del_texto(castellano, "en"), "es");
-        assert_eq!(idioma_del_texto("hola", "fr"), "fr", "poca muestra: lo de por defecto");
+        assert_eq!(
+            idioma_del_texto("hola", "fr"),
+            "fr",
+            "poca muestra: lo de por defecto"
+        );
         assert_eq!(idioma_para_leer(castellano, "", "es-PE"), "es-PE");
         assert_eq!(idioma_para_leer(castellano, "es-MX", "es-PE"), "es-MX");
         assert_eq!(idioma_para_leer(ingles, "", "es-PE"), "en");
@@ -418,8 +509,16 @@ mod pruebas {
     #[test]
     fn nunca_hay_mas_de_un_verde() {
         let lista = vec![
-            Marcador { id: 1, fraccion: 0.3, emoji: "⭐".into() },
-            Marcador { id: 2, fraccion: 0.6, emoji: EMOJI_DE_VOZ.into() },
+            Marcador {
+                id: 1,
+                fraccion: 0.3,
+                emoji: "⭐".into(),
+            },
+            Marcador {
+                id: 2,
+                fraccion: 0.6,
+                emoji: EMOJI_DE_VOZ.into(),
+            },
         ];
         let v = con_marca_de_voz(&lista, Some(0.1));
         assert_eq!(v.iter().filter(|m| m.emoji == EMOJI_DE_VOZ).count(), 1);

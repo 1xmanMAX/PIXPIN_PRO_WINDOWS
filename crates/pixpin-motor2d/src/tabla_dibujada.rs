@@ -153,7 +153,11 @@ pub fn rejilla_de_texto(texto: &str) -> Option<Vec<Vec<String>>> {
     Some(
         filas
             .into_iter()
-            .map(|f| (0..ancho).map(|i| f.get(i).cloned().unwrap_or_default()).collect())
+            .map(|f| {
+                (0..ancho)
+                    .map(|i| f.get(i).cloned().unwrap_or_default())
+                    .collect()
+            })
             .collect(),
     )
 }
@@ -162,7 +166,10 @@ pub fn rejilla_de_texto(texto: &str) -> Option<Vec<Vec<String>>> {
 /// final: lo que llega del portapapeles no viene cuadrado.
 pub fn rejilla_regular(filas: &[Vec<String>]) -> Vec<Vec<String>> {
     let mut utiles: Vec<&Vec<String>> = filas.iter().collect();
-    while utiles.last().is_some_and(|f| f.iter().all(|c| c.trim().is_empty())) {
+    while utiles
+        .last()
+        .is_some_and(|f| f.iter().all(|c| c.trim().is_empty()))
+    {
         utiles.pop();
     }
     let ancho = utiles.iter().map(|f| f.len()).max().unwrap_or(0);
@@ -171,7 +178,11 @@ pub fn rejilla_regular(filas: &[Vec<String>]) -> Vec<Vec<String>> {
     }
     utiles
         .into_iter()
-        .map(|f| (0..ancho).map(|i| f.get(i).map_or(String::new(), |c| c.trim().to_string())).collect())
+        .map(|f| {
+            (0..ancho)
+                .map(|i| f.get(i).map_or(String::new(), |c| c.trim().to_string()))
+                .collect()
+        })
         .collect()
 }
 
@@ -353,7 +364,11 @@ pub fn elementos_de_tabla_con_juntas(
     }
     out.push(caja(origen.x, origen.y, ancho_total, alto_total));
     let raya = |a: (f32, f32), b: (f32, f32)| {
-        elemento_linea(vec![Punto2::nuevo(a.0, a.1), Punto2::nuevo(b.0, b.1)], 1.0, estilo)
+        elemento_linea(
+            vec![Punto2::nuevo(a.0, a.1), Punto2::nuevo(b.0, b.1)],
+            1.0,
+            estilo,
+        )
     };
     // Las rayas de dentro, a tramos: se corta donde una combinada cruza la
     // frontera y lo seguido va en una sola raya (una tabla sin combinadas
@@ -365,7 +380,10 @@ pub fn elementos_de_tabla_con_juntas(
             match (separa, desde) {
                 (true, None) => desde = Some(f),
                 (false, Some(d)) => {
-                    out.push(raya((izquierdas[c], arribas[d]), (izquierdas[c], arribas[f])));
+                    out.push(raya(
+                        (izquierdas[c], arribas[d]),
+                        (izquierdas[c], arribas[f]),
+                    ));
                     desde = None;
                 }
                 _ => {}
@@ -379,7 +397,10 @@ pub fn elementos_de_tabla_con_juntas(
             match (separa, desde) {
                 (true, None) => desde = Some(c),
                 (false, Some(d)) => {
-                    out.push(raya((izquierdas[d], arribas[f]), (izquierdas[c], arribas[f])));
+                    out.push(raya(
+                        (izquierdas[d], arribas[f]),
+                        (izquierdas[c], arribas[f]),
+                    ));
                     desde = None;
                 }
                 _ => {}
@@ -431,7 +452,9 @@ mod pruebas {
     }
 
     fn filas(v: &[&[&str]]) -> Vec<Vec<String>> {
-        v.iter().map(|f| f.iter().map(|s| s.to_string()).collect()).collect()
+        v.iter()
+            .map(|f| f.iter().map(|s| s.to_string()).collect())
+            .collect()
     }
 
     #[test]
@@ -450,26 +473,45 @@ mod pruebas {
         let r = rejilla_de_texto(md).unwrap();
         assert_eq!(r, filas(&[&["a", "b"], &["1", "2"], &["3", "4"]]));
         let alineada = "punto   x     y\nA       10    20\nB       30    40";
-        assert_eq!(rejilla_de_texto(alineada).unwrap()[2], vec!["B", "30", "40"]);
+        assert_eq!(
+            rejilla_de_texto(alineada).unwrap()[2],
+            vec!["B", "30", "40"]
+        );
     }
 
     #[test]
     fn un_texto_corriente_no_es_una_tabla() {
         assert!(rejilla_de_texto("hola que tal").is_none());
-        assert!(rejilla_de_texto("una linea\notra linea con\tun tabulador suelto\ny otra mas\ny otra").is_none());
+        assert!(
+            rejilla_de_texto("una linea\notra linea con\tun tabulador suelto\ny otra mas\ny otra")
+                .is_none()
+        );
         assert!(rejilla_de_texto("").is_none());
-        assert!(rejilla_de_texto("a\tb").is_none(), "una fila sola no es tabla");
+        assert!(
+            rejilla_de_texto("a\tb").is_none(),
+            "una fila sola no es tabla"
+        );
     }
 
     #[test]
     fn las_columnas_se_anchan_con_su_texto_mas_largo() {
         let f = filas(&[&["Nombre", "N"], &["Una descripcion larga", "1"]]);
         let v = elementos_de_tabla(&f, &estilo(), Punto2::nuevo(0.0, 0.0), &medir, true);
-        let marco = v.iter().find(|e| matches!(e.figura, Figura::Rectangulo) && e.relleno.is_none()).unwrap();
+        let marco = v
+            .iter()
+            .find(|e| matches!(e.figura, Figura::Rectangulo) && e.relleno.is_none())
+            .unwrap();
         let (larga, _) = medir("Una descripcion larga", 20.0);
-        assert!((marco.ancho - (larga + 2.0 * AIRE_DE_CELDA + ANCHO_MINIMO_DE_COLUMNA)).abs() < 0.01);
+        assert!(
+            (marco.ancho - (larga + 2.0 * AIRE_DE_CELDA + ANCHO_MINIMO_DE_COLUMNA)).abs() < 0.01
+        );
         // Una raya vertical (dos columnas) y una horizontal (dos filas).
-        assert_eq!(v.iter().filter(|e| matches!(e.figura, Figura::Linea { .. })).count(), 2);
+        assert_eq!(
+            v.iter()
+                .filter(|e| matches!(e.figura, Figura::Linea { .. }))
+                .count(),
+            2
+        );
         // La cabecera: el primer elemento, con fondo gris y sin trazo.
         assert_eq!(v[0].relleno, Some(FONDO_DE_CABECERA));
         assert_eq!(v[0].trazo.a, 0.0);
@@ -481,13 +523,20 @@ mod pruebas {
     fn las_celdas_vacias_no_dejan_texto_y_sin_cabecera_no_hay_fondo() {
         let f = filas(&[&["a", ""], &["", "d"], &["", ""]]);
         let v = elementos_de_tabla(&f, &estilo(), Punto2::nuevo(10.0, 10.0), &medir, false);
-        assert_eq!(v.iter().filter(|e| matches!(e.figura, Figura::Texto { .. })).count(), 2);
+        assert_eq!(
+            v.iter()
+                .filter(|e| matches!(e.figura, Figura::Texto { .. }))
+                .count(),
+            2
+        );
         assert!(v.iter().all(|e| e.relleno.is_none()));
         // La fila vacia del final se cae: dos filas, una raya horizontal.
         let marco = &v[0];
         let fila = (medir("a", 20.0).1 + 2.0 * AIRE_DE_CELDA).max(ALTO_MINIMO_DE_FILA);
         assert!((marco.alto - 2.0 * fila).abs() < 0.01, "{}", marco.alto);
-        assert!(elementos_de_tabla(&[], &estilo(), Punto2::nuevo(0.0, 0.0), &medir, true).is_empty());
+        assert!(
+            elementos_de_tabla(&[], &estilo(), Punto2::nuevo(0.0, 0.0), &medir, true).is_empty()
+        );
     }
 
     fn tapada() -> Celda {
@@ -532,19 +581,36 @@ mod pruebas {
             vec![tapada(), Celda::de("687.5")],
             vec![tapada(), Celda::de("685.4")],
         ];
-        let v = elementos_de_tabla_con_juntas(&celdas, &estilo(), Punto2::nuevo(0.0, 0.0), &medir, false);
+        let v = elementos_de_tabla_con_juntas(
+            &celdas,
+            &estilo(),
+            Punto2::nuevo(0.0, 0.0),
+            &medir,
+            false,
+        );
         let marco = &v[0];
         let fila = (medir("a", 20.0).1 + 2.0 * AIRE_DE_CELDA).max(ALTO_MINIMO_DE_FILA);
-        let col0 = (medir("DESCRIPCION", 20.0).0 + 2.0 * AIRE_DE_CELDA).max(ANCHO_MINIMO_DE_COLUMNA);
+        let col0 =
+            (medir("DESCRIPCION", 20.0).0 + 2.0 * AIRE_DE_CELDA).max(ANCHO_MINIMO_DE_COLUMNA);
         // La vertical, entera; horizontales: la de la cabecera entera y dos
         // que solo cruzan la columna del monto.
         let r = rayas(&v);
         assert_eq!(r.len(), 4, "{r:?}");
         let horizontales: Vec<_> = r.iter().filter(|(a, b)| (a.y - b.y).abs() < 0.01).collect();
         assert_eq!(horizontales.len(), 3);
-        let cortas = horizontales.iter().filter(|(a, _)| (a.x - col0).abs() < 0.01).count();
-        assert_eq!(cortas, 2, "las rayas de las filas 2 y 3 empiezan tras la combinada");
-        assert!(horizontales.iter().all(|(a, b)| a.x.min(b.x) >= -0.01 && a.x.max(b.x) <= marco.ancho + 0.01));
+        let cortas = horizontales
+            .iter()
+            .filter(|(a, _)| (a.x - col0).abs() < 0.01)
+            .count();
+        assert_eq!(
+            cortas, 2,
+            "las rayas de las filas 2 y 3 empiezan tras la combinada"
+        );
+        assert!(
+            horizontales
+                .iter()
+                .all(|(a, b)| a.x.min(b.x) >= -0.01 && a.x.max(b.x) <= marco.ancho + 0.01)
+        );
         // El texto de la combinada, centrado en sus tres filas.
         let ruby = v
             .iter()
@@ -556,7 +622,12 @@ mod pruebas {
         let negritas: Vec<_> = v.iter().filter(|e| e.extras.negrita).collect();
         assert_eq!(negritas.len(), 2);
         // Las tapadas no dejan texto.
-        assert_eq!(v.iter().filter(|e| matches!(e.figura, Figura::Texto { .. })).count(), 6);
+        assert_eq!(
+            v.iter()
+                .filter(|e| matches!(e.figura, Figura::Texto { .. }))
+                .count(),
+            6
+        );
     }
 
     #[test]
@@ -572,11 +643,20 @@ mod pruebas {
             ],
             vec![Celda::de("a"), Celda::de("b")],
         ];
-        let v = elementos_de_tabla_con_juntas(&celdas, &estilo(), Punto2::nuevo(0.0, 0.0), &medir, false);
+        let v = elementos_de_tabla_con_juntas(
+            &celdas,
+            &estilo(),
+            Punto2::nuevo(0.0, 0.0),
+            &medir,
+            false,
+        );
         let marco = &v[0];
         assert!((marco.ancho - (medir(largo, 20.0).0 + 2.0 * AIRE_DE_CELDA)).abs() < 0.01);
         // La vertical solo en la segunda fila.
-        let verticales: Vec<_> = rayas(&v).into_iter().filter(|(a, b)| (a.x - b.x).abs() < 0.01).collect();
+        let verticales: Vec<_> = rayas(&v)
+            .into_iter()
+            .filter(|(a, b)| (a.x - b.x).abs() < 0.01)
+            .collect();
         assert_eq!(verticales.len(), 1);
         assert!(verticales[0].0.y.min(verticales[0].1.y) > 0.01);
     }
@@ -585,7 +665,14 @@ mod pruebas {
     fn una_rejilla_torcida_no_se_dibuja() {
         let celdas = vec![vec![Celda::de("a"), Celda::de("b")], vec![Celda::de("c")]];
         assert!(
-            elementos_de_tabla_con_juntas(&celdas, &estilo(), Punto2::nuevo(0.0, 0.0), &medir, false).is_empty()
+            elementos_de_tabla_con_juntas(
+                &celdas,
+                &estilo(),
+                Punto2::nuevo(0.0, 0.0),
+                &medir,
+                false
+            )
+            .is_empty()
         );
     }
 }

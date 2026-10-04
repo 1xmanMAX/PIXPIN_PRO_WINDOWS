@@ -151,13 +151,19 @@ pub(super) enum Pedido {
         codigo: Option<String>,
     },
     /// Abrir la hoja `indice` del proyecto.
-    AbrirHoja { proyecto: String, indice: usize },
+    AbrirHoja {
+        proyecto: String,
+        indice: usize,
+    },
     Accion(AccionBarra, String),
     /// El menu de los tres puntos del proyecto.
     Menu(String),
     /// Pedir el nombre nuevo del proyecto.
     PedirNombre(String),
-    Renombrar { proyecto: String, nombre: String },
+    Renombrar {
+        proyecto: String,
+        nombre: String,
+    },
     /// Soltar el proyecto elegido y volver a la lista, como el volver del chat.
     Volver,
     /// El proyecto de al lado en la lista (↑ es -1, ↓ es +1).
@@ -237,12 +243,21 @@ pub(super) fn abre_en_proyectos(guardado: Option<&str>) -> bool {
 /// elegido, en la lista tal como se ve (`orden`, ya filtrada por el
 /// buscador). Sin ninguno elegido, ↓ va al primero y ↑ al ultimo; en los
 /// extremos se queda donde esta, como la lista de Telegram.
-pub(super) fn vecino(orden: &[usize], fichas: &[Ficha], actual: Option<&str>, paso: i32) -> Option<usize> {
+pub(super) fn vecino(
+    orden: &[usize],
+    fichas: &[Ficha],
+    actual: Option<&str>,
+    paso: i32,
+) -> Option<usize> {
     if orden.is_empty() {
         return None;
     }
     let ultimo = orden.len() as i32 - 1;
-    let puesto = actual.and_then(|id| orden.iter().position(|&i| fichas.get(i).is_some_and(|f| f.id == id)));
+    let puesto = actual.and_then(|id| {
+        orden
+            .iter()
+            .position(|&i| fichas.get(i).is_some_and(|f| f.id == id))
+    });
     let nuevo = match puesto {
         Some(p) => (p as i32 + paso).clamp(0, ultimo),
         None if paso < 0 => ultimo,
@@ -377,7 +392,10 @@ impl VistaProyectos {
         let pedida = self.grande_pedida.borrow().clone();
         if let Some(r) = pedida {
             if self.grande.as_ref().is_none_or(|(g, _)| *g != r) {
-                self.grande = Some((r.clone(), crate::miniaturas::Miniaturas::con_lado(LADO_GRANDE)));
+                self.grande = Some((
+                    r.clone(),
+                    crate::miniaturas::Miniaturas::con_lado(LADO_GRANDE),
+                ));
             }
             if let Some((_, m)) = self.grande.as_mut() {
                 m.asegurar(&[r], motor);
@@ -449,7 +467,11 @@ impl VistaProyectos {
     /// Cambia lo que recuerda una tarjeta. Con `&self` porque quien pinta
     /// tambien lo ajusta (lo corrida que puede estar la tira).
     pub(super) fn con_tarjeta<R>(&self, id: &str, f: impl FnOnce(&mut EstadoTarjeta) -> R) -> R {
-        f(self.tarjetas.borrow_mut().entry(id.to_string()).or_default())
+        f(self
+            .tarjetas
+            .borrow_mut()
+            .entry(id.to_string())
+            .or_default())
     }
 
     pub(super) fn datos(&self, id: &str) -> Option<&cargar::Hojas> {
@@ -571,7 +593,9 @@ impl VistaProyectos {
         };
         let mut hubo = false;
         for n in vistas {
-            let Some(h) = d.hojas.get_mut(n) else { continue };
+            let Some(h) = d.hojas.get_mut(n) else {
+                continue;
+            };
             let sin_fondo = match &h.vista {
                 None => h.por_pedir,
                 Some(super::Ojeada::Lienzo(l)) => h.mensaje.pagina.is_some() && l.fondo.is_none(),
@@ -678,7 +702,11 @@ impl VistaProyectos {
         match self.zona_en(l) {
             Some(Zona::Nombre(id)) => Pedido::PedirNombre(id),
             Some(Zona::Hoja(id, n)) => {
-                let Some(hoja) = self.datos.get(&id).and_then(|d| d.hojas.get(n)).map(|h| h.id.clone())
+                let Some(hoja) = self
+                    .datos
+                    .get(&id)
+                    .and_then(|d| d.hojas.get(n))
+                    .map(|h| h.id.clone())
                 else {
                     return Pedido::Nada;
                 };
@@ -890,7 +918,11 @@ impl Bucle<'_> {
     /// Deja `nuevo` como proyecto abierto del chat, guardando antes lo que el
     /// que habia tuviera a medias (lo mismo que hace `ir_a`).
     fn poner_abierto(&mut self, nuevo: Abierto) {
-        if self.abierto.as_ref().is_some_and(|a| a.ficha.id != nuevo.ficha.id) {
+        if self
+            .abierto
+            .as_ref()
+            .is_some_and(|a| a.ficha.id != nuevo.ficha.id)
+        {
             if let Some(a) = self.abierto.as_mut() {
                 super::cerrar_panel(self.ubicacion, a);
                 super::apagar_lienzo(self.ubicacion, a);
@@ -1131,7 +1163,13 @@ fn abrir_hoja(v: &mut VistaProyectos, b: &mut Bucle, id: &str, indice: usize) ->
     // ensenaba la captura sin la tinta guardada en su lienzo.
     if m.clase == Some(Clase::Imagen) {
         let mut mensajes: Vec<_> = d.hojas.iter().map(|h| h.mensaje.clone()).collect();
-        if crate::foto_anotada::abrir_en_su_lienzo(b.ubicacion.raiz(), id, &mut mensajes, indice, b.lienzo) {
+        if crate::foto_anotada::abrir_en_su_lienzo(
+            b.ubicacion.raiz(),
+            id,
+            &mut mensajes,
+            indice,
+            b.lienzo,
+        ) {
             v.olvidar(id);
             if let Some(a) = b.abierto.as_mut().filter(|a| a.ficha.id == id) {
                 super::releer_lo_abierto(b.ubicacion, a);
@@ -1196,7 +1234,10 @@ fn menu_del_proyecto(v: &mut VistaProyectos, b: &mut Bucle, id: &str) -> bool {
         return false;
     };
     let archivado = v.resumen(id).is_some_and(|r| r.archivado)
-        || f.resto.get(cargar::MARCA_ARCHIVADO).and_then(|x| x.as_bool()) == Some(true);
+        || f.resto
+            .get(cargar::MARCA_ARCHIVADO)
+            .and_then(|x| x.as_bool())
+            == Some(true);
     // Fusionar va delante y solo con dos o mas paginas marcadas, como la
     // `CajaDeAcciones` del movil, que solo lo ofrece cuando tiene sentido.
     let fusion = v.peticion_de_fusion(b.ubicacion.raiz(), id);
@@ -1360,8 +1401,10 @@ fn archivar(ubicacion: &Ubicacion, f: &Ficha, archivar: bool) {
     if let Some(g) = indice.proyectos.iter_mut().find(|g| g.id == f.id) {
         g.tocado = ahora;
         if archivar && !con_json {
-            g.resto
-                .insert(cargar::MARCA_ARCHIVADO.into(), serde_json::Value::Bool(true));
+            g.resto.insert(
+                cargar::MARCA_ARCHIVADO.into(),
+                serde_json::Value::Bool(true),
+            );
         } else {
             g.resto.remove(cargar::MARCA_ARCHIVADO);
         }
@@ -1370,7 +1413,6 @@ fn archivar(ubicacion: &Ubicacion, f: &Ficha, archivar: bool) {
         }
     }
 }
-
 
 #[cfg(test)]
 mod pruebas {
@@ -1424,7 +1466,8 @@ mod pruebas {
 
     #[test]
     fn el_interruptor_se_recuerda_y_el_boton_chat_no_lo_cambia() {
-        let raiz = std::env::temp_dir().join(format!("pixpin-proyectos-vista-{}", std::process::id()));
+        let raiz =
+            std::env::temp_dir().join(format!("pixpin-proyectos-vista-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&raiz);
         std::fs::create_dir_all(&raiz).unwrap();
         let u = Ubicacion::Portable { raiz: raiz.clone() };
@@ -1480,12 +1523,24 @@ mod pruebas {
         // La lista filtrada por el buscador: solo «c» y «a», en ese orden.
         let orden = [2, 0];
         assert_eq!(vecino(&orden, &fichas, Some("c"), 1), Some(0));
-        assert_eq!(vecino(&orden, &fichas, Some("a"), 1), Some(0), "en el ultimo se queda");
-        assert_eq!(vecino(&orden, &fichas, Some("c"), -1), Some(2), "en el primero se queda");
+        assert_eq!(
+            vecino(&orden, &fichas, Some("a"), 1),
+            Some(0),
+            "en el ultimo se queda"
+        );
+        assert_eq!(
+            vecino(&orden, &fichas, Some("c"), -1),
+            Some(2),
+            "en el primero se queda"
+        );
         // Sin ninguno elegido (o uno que el buscador esconde), abajo al primero y arriba al ultimo.
         assert_eq!(vecino(&orden, &fichas, None, 1), Some(2));
         assert_eq!(vecino(&orden, &fichas, Some("b"), -1), Some(0));
-        assert_eq!(vecino(&[], &fichas, Some("a"), 1), None, "lista vacia, nada");
+        assert_eq!(
+            vecino(&[], &fichas, Some("a"), 1),
+            None,
+            "lista vacia, nada"
+        );
     }
 
     #[test]
@@ -1537,10 +1592,21 @@ mod pruebas {
         let mut v = vista();
         v.seguir(Some("a"));
         assert_eq!(v.evento(tecla(super::super::VK_MAS, true)), None);
-        assert_eq!(v.evento(tecla(super::super::VK_U, true)), Some(Pedido::Nada), "Ctrl+U ya no abre nada");
-        assert_eq!(v.evento(EventoOverlay::Pintar), None, "lo que no es suyo sigue");
+        assert_eq!(
+            v.evento(tecla(super::super::VK_U, true)),
+            Some(Pedido::Nada),
+            "Ctrl+U ya no abre nada"
+        );
+        assert_eq!(
+            v.evento(EventoOverlay::Pintar),
+            None,
+            "lo que no es suyo sigue"
+        );
         // Ctrl+V no llega al chat de detras, que no se ve.
-        assert_eq!(v.evento(tecla(super::super::VK_V, true)), Some(Pedido::Nada));
+        assert_eq!(
+            v.evento(tecla(super::super::VK_V, true)),
+            Some(Pedido::Nada)
+        );
     }
 
     #[test]
@@ -1555,7 +1621,11 @@ mod pruebas {
         };
         v.zonas.borrow_mut().push((r, Zona::Volver));
         assert_eq!(v.pulsar(Punto { x: 410, y: 40 }), Pedido::Volver);
-        assert_eq!(v.pulsar(Punto { x: 10, y: 10 }), Pedido::Nada, "fuera de todo, nada");
+        assert_eq!(
+            v.pulsar(Punto { x: 10, y: 10 }),
+            Pedido::Nada,
+            "fuera de todo, nada"
+        );
     }
 
     #[test]
@@ -1567,11 +1637,16 @@ mod pruebas {
             ancho: 66,
             alto: 55,
         };
-        v.zonas.borrow_mut().push((r, Zona::Boton(AccionBarra::Chat)));
+        v.zonas
+            .borrow_mut()
+            .push((r, Zona::Boton(AccionBarra::Chat)));
         let p = Punto { x: 5, y: 5 };
         assert_eq!(v.pulsar(p), Pedido::Nada);
         v.seguir(Some("obra"));
-        assert_eq!(v.pulsar(p), Pedido::Accion(AccionBarra::Chat, "obra".into()));
+        assert_eq!(
+            v.pulsar(p),
+            Pedido::Accion(AccionBarra::Chat, "obra".into())
+        );
     }
 
     #[test]
@@ -1633,7 +1708,10 @@ mod pruebas {
         v.zonas
             .borrow_mut()
             .push((Rect { y: 50, ..r }, Zona::Hoja("a".into(), 0)));
-        assert_eq!(v.pulsar_derecho(Punto { x: 5, y: 5 }), Pedido::PedirNombre("a".into()));
+        assert_eq!(
+            v.pulsar_derecho(Punto { x: 5, y: 5 }),
+            Pedido::PedirNombre("a".into())
+        );
         // Una hoja que aun no se ha leido no se puede marcar.
         assert_eq!(v.pulsar_derecho(Punto { x: 5, y: 55 }), Pedido::Nada);
         assert!(v.tarjeta("a").marcadas.is_empty());
@@ -1642,7 +1720,8 @@ mod pruebas {
     #[test]
     fn marcar_dos_paginas_con_el_derecho_ofrece_fusionarlas_y_una_sola_no() {
         // E9 vive aqui: las paginas del PDF ya no salen en el chat.
-        let raiz = std::env::temp_dir().join(format!("pixpin-proyectos-fusion-{}", std::process::id()));
+        let raiz =
+            std::env::temp_dir().join(format!("pixpin-proyectos-fusion-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&raiz);
         let f = Ficha::nueva("Plano", 5, "PC01");
         std::fs::create_dir_all(pixpin_proyecto::almacen::carpeta(&raiz, &f.id)).unwrap();
@@ -1659,16 +1738,31 @@ mod pruebas {
         let u = Ubicacion::Portable { raiz: raiz.clone() };
         let mut v = VistaProyectos::nueva(&u);
         v.datos.insert(f.id.clone(), cargar::hojas_de(&u, &f));
-        let celda = |y| Rect { x: 0, y, ancho: 40, alto: 40 };
+        let celda = |y| Rect {
+            x: 0,
+            y,
+            ancho: 40,
+            alto: 40,
+        };
         for n in 0..3 {
-            v.zonas.borrow_mut().push((celda(50 * n as i32), Zona::Hoja(f.id.clone(), n)));
+            v.zonas
+                .borrow_mut()
+                .push((celda(50 * n as i32), Zona::Hoja(f.id.clone(), n)));
         }
-        let en = |n: i32| Punto { x: 5, y: 50 * n + 5 };
+        let en = |n: i32| Punto {
+            x: 5,
+            y: 50 * n + 5,
+        };
 
         assert_eq!(v.pulsar_derecho(en(0)), Pedido::Pintar);
-        assert!(v.peticion_de_fusion(&raiz, &f.id).is_none(), "una sola pagina no se fusiona");
+        assert!(
+            v.peticion_de_fusion(&raiz, &f.id).is_none(),
+            "una sola pagina no se fusiona"
+        );
         assert_eq!(v.pulsar_derecho(en(2)), Pedido::Pintar);
-        let p = v.peticion_de_fusion(&raiz, &f.id).expect("dos paginas marcadas");
+        let p = v
+            .peticion_de_fusion(&raiz, &f.id)
+            .expect("dos paginas marcadas");
         assert_eq!(p.paginas, vec![0, 2]);
         // Otra vez el derecho la desmarca.
         v.pulsar_derecho(en(2));
@@ -1679,7 +1773,10 @@ mod pruebas {
 
     #[test]
     fn un_nombre_en_blanco_no_cambia_nada_y_se_queda_la_primera_linea() {
-        assert_eq!(nombre_limpio("  Obra nueva \nsegunda"), Some("Obra nueva".into()));
+        assert_eq!(
+            nombre_limpio("  Obra nueva \nsegunda"),
+            Some("Obra nueva".into())
+        );
         assert_eq!(nombre_limpio("   "), None);
         assert_eq!(nombre_limpio(""), None);
     }
@@ -1695,7 +1792,11 @@ mod pruebas {
         let mut abiertos = BTreeSet::new();
         assert_eq!(hojas_visibles(&hojas, &abiertos), [0, 3]);
         abiertos.insert("p1".to_string());
-        assert_eq!(hojas_visibles(&hojas, &abiertos), [0, 1, 3], "el nieto sigue plegado");
+        assert_eq!(
+            hojas_visibles(&hojas, &abiertos),
+            [0, 1, 3],
+            "el nieto sigue plegado"
+        );
         abiertos.insert("s1".to_string());
         assert_eq!(hojas_visibles(&hojas, &abiertos), [0, 1, 2, 3]);
         assert_eq!(hijos_de(&hojas).get("p1"), Some(&1));
@@ -1720,7 +1821,11 @@ mod pruebas {
         m.clase = Some(Clase::Dibujo);
         assert_eq!(de_que_es(&m), Some("2D"));
         m.pagina = Some(3);
-        assert_eq!(de_que_es(&m), None, "una pagina dibujada sigue siendo pagina");
+        assert_eq!(
+            de_que_es(&m),
+            None,
+            "una pagina dibujada sigue siendo pagina"
+        );
         m.pagina = None;
         m.clase = Some(Clase::Imagen);
         assert_eq!(de_que_es(&m), None);
@@ -1729,7 +1834,11 @@ mod pruebas {
     #[test]
     fn el_interruptor_elige_la_mitad_que_se_pulsa() {
         let v = vista();
-        assert_eq!(v.interruptor_en(Punto { x: 1, y: 1 }), None, "sin pintar no hay interruptor");
+        assert_eq!(
+            v.interruptor_en(Punto { x: 1, y: 1 }),
+            None,
+            "sin pintar no hay interruptor"
+        );
         let i = pixpin_ui::proyectos::interruptor(
             Rect {
                 x: 0,

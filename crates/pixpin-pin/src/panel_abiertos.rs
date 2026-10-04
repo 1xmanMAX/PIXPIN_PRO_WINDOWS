@@ -123,13 +123,8 @@ pub fn agrupar<'a>(filas: &[&'a FilaPanel]) -> Vec<(Option<u8>, Vec<&'a FilaPane
 /// Una cosa pintada del panel.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Pieza {
-    Grupo {
-        color: Option<u8>,
-        cuantos: usize,
-    },
-    Fila {
-        id: u64,
-    },
+    Grupo { color: Option<u8>, cuantos: usize },
+    Fila { id: u64 },
 }
 
 /// El panel dispuesto: donde va cada cosa.
@@ -707,10 +702,24 @@ fn pintar_panel(p: &Pintor, i: &Interno, d: &Disposicion) {
                     };
                     let tam = 12.0 * e;
                     let (_, h) = p.medir_texto(&nombre, tam);
-                    p.texto_linea(&nombre, r.x + 20.0 * e, cy - h / 2.0, tam, r.ancho - 60.0 * e, tenue);
+                    p.texto_linea(
+                        &nombre,
+                        r.x + 20.0 * e,
+                        cy - h / 2.0,
+                        tam,
+                        r.ancho - 60.0 * e,
+                        tenue,
+                    );
                     let n = cuantos.to_string();
                     let (w, _) = p.medir_texto(&n, tam);
-                    p.texto_linea(&n, r.x + r.ancho - w - 6.0 * e, cy - h / 2.0, tam, w + 2.0, tenue);
+                    p.texto_linea(
+                        &n,
+                        r.x + r.ancho - w - 6.0 * e,
+                        cy - h / 2.0,
+                        tam,
+                        w + 2.0,
+                        tenue,
+                    );
                 }
                 Pieza::Fila { id } => {
                     let Some(f) = i.filas.iter().find(|f| f.id == *id) else {
@@ -723,7 +732,13 @@ fn pintar_panel(p: &Pintor, i: &Interno, d: &Disposicion) {
                     if encima {
                         p.rellenar_redondeado(*r, 10.0 * e, suave);
                     }
-                    let atenuar = |c: Color| if f.oculto { Color { a: c.a * 0.6, ..c } } else { c };
+                    let atenuar = |c: Color| {
+                        if f.oculto {
+                            Color { a: c.a * 0.6, ..c }
+                        } else {
+                            c
+                        }
+                    };
                     // La miniatura: el tipo, como en la maqueta.
                     let th = RectF {
                         x: r.x + 8.0 * e,
@@ -757,7 +772,11 @@ fn pintar_panel(p: &Pintor, i: &Interno, d: &Disposicion) {
                         atenuar(color_rotulo),
                     );
                     if f.tipo == TipoFila::Vivo {
-                        p.circulo((th.x + 7.0 * e, th.y + 7.0 * e), 3.0 * e, rgba(0xFF, 0x45, 0x3A, 1.0));
+                        p.circulo(
+                            (th.x + 7.0 * e, th.y + 7.0 * e),
+                            3.0 * e,
+                            rgba(0xFF, 0x45, 0x3A, 1.0),
+                        );
                     }
                     // Nombre y detalle.
                     let (ojo_r, cruz_r) = d.botones_de_fila(*r, e);
@@ -770,7 +789,14 @@ fn pintar_panel(p: &Pintor, i: &Interno, d: &Disposicion) {
                     } else {
                         (f.detalle.as_str(), tenue)
                     };
-                    p.texto_linea(detalle, xt, r.y + 29.0 * e, 12.0 * e, ancho_t, color_detalle);
+                    p.texto_linea(
+                        detalle,
+                        xt,
+                        r.y + 29.0 * e,
+                        12.0 * e,
+                        ancho_t,
+                        color_detalle,
+                    );
                     if i.encima == Some(Zona::Ojo(*id)) {
                         p.rellenar_redondeado(ojo_r, 8.0 * e, suave);
                     }
@@ -840,7 +866,14 @@ fn pintar_panel(p: &Pintor, i: &Interno, d: &Disposicion) {
                 alto: 20.0 * e,
             };
             p.rellenar_redondeado(chapa, 5.0 * e, suave);
-            p.texto_linea(s, chapa.x + 6.0 * e, chapa.y + (20.0 * e - hs) / 2.0, 11.0 * e, ws + 2.0, tenue);
+            p.texto_linea(
+                s,
+                chapa.x + 6.0 * e,
+                chapa.y + (20.0 * e - hs) / 2.0,
+                11.0 * e,
+                ws + 2.0,
+                tenue,
+            );
         }
     }
 }
@@ -948,7 +981,8 @@ extern "system" fn procedimiento(
             if let Some(i) = interno_de(hwnd) {
                 let delta = ((wparam.0 >> 16) & 0xFFFF) as i16 as f32;
                 let d = disposicion_de(hwnd, i);
-                i.desplazamiento = d.limitar(i.desplazamiento - delta / 120.0 * 3.0 * 52.0 * i.escala / 2.0);
+                i.desplazamiento =
+                    d.limitar(i.desplazamiento - delta / 120.0 * 3.0 * 52.0 * i.escala / 2.0);
                 pintar(hwnd, i);
             }
             LRESULT(0)
@@ -975,9 +1009,7 @@ extern "system" fn procedimiento(
             const VK_Z: u32 = b'Z' as u32;
             let ctrl = {
                 // SAFETY: consulta pura del teclado.
-                let k = unsafe {
-                    windows::Win32::UI::Input::KeyboardAndMouse::GetKeyState(0x11)
-                };
+                let k = unsafe { windows::Win32::UI::Input::KeyboardAndMouse::GetKeyState(0x11) };
                 k < 0
             };
             if vk == VK_ESCAPE {
@@ -1060,7 +1092,10 @@ mod pruebas {
 
     #[test]
     fn buscar_no_distingue_mayusculas_y_caso_negativo_lo_que_no_casa_se_va() {
-        let filas = [fila(1, "Plano Obra Miraflores", None), fila(2, "Tesis.pdf", None)];
+        let filas = [
+            fila(1, "Plano Obra Miraflores", None),
+            fila(2, "Tesis.pdf", None),
+        ];
         let v = filtrar(&filas, "obra");
         assert_eq!(v.len(), 1);
         assert_eq!(v[0].id, 1);
@@ -1081,7 +1116,10 @@ mod pruebas {
         let (ojo, cruz) = d.botones_de_fila(r, 1.0);
         assert_eq!(d.zona_en(r.x + 20.0, r.y + 20.0, 1.0), Some(Zona::Fila(7)));
         assert_eq!(d.zona_en(ojo.x + 5.0, ojo.y + 5.0, 1.0), Some(Zona::Ojo(7)));
-        assert_eq!(d.zona_en(cruz.x + 5.0, cruz.y + 5.0, 1.0), Some(Zona::Cruz(7)));
+        assert_eq!(
+            d.zona_en(cruz.x + 5.0, cruz.y + 5.0, 1.0),
+            Some(Zona::Cruz(7))
+        );
         // Los botones de fila miden 40.
         assert!(ojo.ancho >= 40.0 && cruz.alto >= 40.0);
     }
@@ -1099,7 +1137,11 @@ mod pruebas {
             ]
         );
         let d = disponer(&[], "", 800.0, 1.0, 0.0, true);
-        assert_eq!(d.pie[2].1, AccionPanel::Deshacer, "tras cerrar todos, deshacer");
+        assert_eq!(
+            d.pie[2].1,
+            AccionPanel::Deshacer,
+            "tras cerrar todos, deshacer"
+        );
         // Todo el pie dentro del panel.
         assert!(d.pie[2].0.y + d.pie[2].0.alto <= 800.0);
     }

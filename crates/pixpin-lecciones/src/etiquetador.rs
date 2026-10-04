@@ -39,35 +39,425 @@ const TRABAJO: &str = "Trabajo";
 const VIDA: &str = "Vida diaria";
 
 const DICCIONARIO: &[(&str, &str, &[&str])] = &[
-    ("concreto", OBRA, &["concreto", "hormigón", "losa", "vaciado", "colado", "curado", "fraguado", "slump", "mezcla", "cemento", "fisura", "grieta", "fisuró", "agrietó"]),
-    ("acero", OBRA, &["acero", "varilla", "fierro", "armado", "estribo", "traslape", "anclaje", "recubrimiento", "malla"]),
-    ("encofrado", OBRA, &["encofrado", "cimbra", "puntal", "desencofrado", "formaleta", "molde"]),
-    ("estructuras", OBRA, &["estructura", "viga", "columna", "zapata", "cimentación", "cimiento", "muro", "carga", "momento", "cortante", "deflexión", "sismo", "pórtico", "placa"]),
-    ("suelos", OBRA, &["suelo", "excavación", "relleno", "compactación", "talud", "terreno", "nivel freático", "estudio de suelos", "geotecnia"]),
-    ("soldadura", OBRA, &["soldadura", "soldar", "electrodo", "perno", "conexión metálica"]),
-    ("instalaciones", OBRA, &["tubería", "eléctrica", "sanitaria", "desagüe", "agua", "cableado", "tablero", "instalación"]),
-    ("seguridad", OBRA, &["seguridad", "epp", "casco", "arnés", "andamio", "caída", "accidente", "riesgo", "señalización", "lesión"]),
-    ("planos", OBRA, &["plano", "escala", "cota", "detalle", "corte", "elevación", "dwg", "autocad", "revit", "lámina", "impresión", "imprimir"]),
-    ("metrados", OBRA, &["metrado", "cómputo", "cantidad", "medición", "volumen", "área"]),
-    ("presupuesto", OBRA, &["presupuesto", "costo", "precio", "cotización", "valorización", "partida", "adicional"]),
-    ("materiales", OBRA, &["material", "ladrillo", "arena", "piedra", "agregado", "pintura", "madera", "proveedor", "pedido", "almacén"]),
-    ("topografía", OBRA, &["topografía", "nivel", "replanteo", "estación total", "trazo", "eje"]),
-    ("supervisión", OBRA, &["supervisión", "supervisor", "inspección", "residente", "maestro de obra", "cuaderno de obra", "contratista", "subcontrata", "obrero"]),
-    ("calidad", OBRA, &["calidad", "ensayo", "prueba", "probeta", "control", "norma", "especificación", "tolerancia"]),
-    ("cálculo", ESTUDIO, &["cálculo", "fórmula", "unidades", "ecuación", "integral", "derivada", "resultado", "decimal", "redondeo", "conversión"]),
-    ("software", ESTUDIO, &["excel", "programa", "software", "sap2000", "etabs", "matlab", "python", "archivo", "guardar", "respaldo", "copia", "computadora", "laptop"]),
-    ("exámenes", ESTUDIO, &["examen", "parcial", "final", "práctica", "prueba", "nota", "calificación", "estudiar", "repasar"]),
-    ("tesis", ESTUDIO, &["tesis", "asesor", "capítulo", "bibliografía", "cita", "referencia", "sustentación", "investigación"]),
-    ("entregas", ESTUDIO, &["entrega", "trabajo", "informe", "tarea", "plazo", "fecha límite", "profesor", "curso"]),
-    ("reuniones", TRABAJO, &["reunión", "junta", "acta", "acuerdo", "llamada", "videollamada"]),
-    ("comunicación", TRABAJO, &["correo", "mensaje", "whatsapp", "avisar", "aviso", "malentendido", "explicar", "preguntar", "confirmar", "por escrito"]),
-    ("cliente", TRABAJO, &["cliente", "propietario", "jefe", "gerente", "compañero", "equipo", "contrato", "pago", "factura"]),
-    ("tiempos", TRABAJO, &["tiempo", "retraso", "demora", "cronograma", "plazo", "puntual", "tarde", "atraso", "programación"]),
-    ("documentos", TRABAJO, &["documento", "permiso", "licencia", "firma", "trámite", "expediente", "pdf", "versión"]),
-    ("dinero", VIDA, &["dinero", "gasto", "ahorro", "deuda", "banco", "compra", "pagar", "préstamo"]),
-    ("salud", VIDA, &["salud", "dormir", "sueño", "comida", "ejercicio", "médico", "cansancio", "estrés"]),
-    ("relaciones", VIDA, &["familia", "amigo", "pareja", "padres", "promesa", "discusión", "confianza"]),
-    ("viajes", VIDA, &["viaje", "transporte", "bus", "vuelo", "maleta", "tráfico"]),
+    (
+        "concreto",
+        OBRA,
+        &[
+            "concreto",
+            "hormigón",
+            "losa",
+            "vaciado",
+            "colado",
+            "curado",
+            "fraguado",
+            "slump",
+            "mezcla",
+            "cemento",
+            "fisura",
+            "grieta",
+            "fisuró",
+            "agrietó",
+        ],
+    ),
+    (
+        "acero",
+        OBRA,
+        &[
+            "acero",
+            "varilla",
+            "fierro",
+            "armado",
+            "estribo",
+            "traslape",
+            "anclaje",
+            "recubrimiento",
+            "malla",
+        ],
+    ),
+    (
+        "encofrado",
+        OBRA,
+        &[
+            "encofrado",
+            "cimbra",
+            "puntal",
+            "desencofrado",
+            "formaleta",
+            "molde",
+        ],
+    ),
+    (
+        "estructuras",
+        OBRA,
+        &[
+            "estructura",
+            "viga",
+            "columna",
+            "zapata",
+            "cimentación",
+            "cimiento",
+            "muro",
+            "carga",
+            "momento",
+            "cortante",
+            "deflexión",
+            "sismo",
+            "pórtico",
+            "placa",
+        ],
+    ),
+    (
+        "suelos",
+        OBRA,
+        &[
+            "suelo",
+            "excavación",
+            "relleno",
+            "compactación",
+            "talud",
+            "terreno",
+            "nivel freático",
+            "estudio de suelos",
+            "geotecnia",
+        ],
+    ),
+    (
+        "soldadura",
+        OBRA,
+        &[
+            "soldadura",
+            "soldar",
+            "electrodo",
+            "perno",
+            "conexión metálica",
+        ],
+    ),
+    (
+        "instalaciones",
+        OBRA,
+        &[
+            "tubería",
+            "eléctrica",
+            "sanitaria",
+            "desagüe",
+            "agua",
+            "cableado",
+            "tablero",
+            "instalación",
+        ],
+    ),
+    (
+        "seguridad",
+        OBRA,
+        &[
+            "seguridad",
+            "epp",
+            "casco",
+            "arnés",
+            "andamio",
+            "caída",
+            "accidente",
+            "riesgo",
+            "señalización",
+            "lesión",
+        ],
+    ),
+    (
+        "planos",
+        OBRA,
+        &[
+            "plano",
+            "escala",
+            "cota",
+            "detalle",
+            "corte",
+            "elevación",
+            "dwg",
+            "autocad",
+            "revit",
+            "lámina",
+            "impresión",
+            "imprimir",
+        ],
+    ),
+    (
+        "metrados",
+        OBRA,
+        &[
+            "metrado",
+            "cómputo",
+            "cantidad",
+            "medición",
+            "volumen",
+            "área",
+        ],
+    ),
+    (
+        "presupuesto",
+        OBRA,
+        &[
+            "presupuesto",
+            "costo",
+            "precio",
+            "cotización",
+            "valorización",
+            "partida",
+            "adicional",
+        ],
+    ),
+    (
+        "materiales",
+        OBRA,
+        &[
+            "material",
+            "ladrillo",
+            "arena",
+            "piedra",
+            "agregado",
+            "pintura",
+            "madera",
+            "proveedor",
+            "pedido",
+            "almacén",
+        ],
+    ),
+    (
+        "topografía",
+        OBRA,
+        &[
+            "topografía",
+            "nivel",
+            "replanteo",
+            "estación total",
+            "trazo",
+            "eje",
+        ],
+    ),
+    (
+        "supervisión",
+        OBRA,
+        &[
+            "supervisión",
+            "supervisor",
+            "inspección",
+            "residente",
+            "maestro de obra",
+            "cuaderno de obra",
+            "contratista",
+            "subcontrata",
+            "obrero",
+        ],
+    ),
+    (
+        "calidad",
+        OBRA,
+        &[
+            "calidad",
+            "ensayo",
+            "prueba",
+            "probeta",
+            "control",
+            "norma",
+            "especificación",
+            "tolerancia",
+        ],
+    ),
+    (
+        "cálculo",
+        ESTUDIO,
+        &[
+            "cálculo",
+            "fórmula",
+            "unidades",
+            "ecuación",
+            "integral",
+            "derivada",
+            "resultado",
+            "decimal",
+            "redondeo",
+            "conversión",
+        ],
+    ),
+    (
+        "software",
+        ESTUDIO,
+        &[
+            "excel",
+            "programa",
+            "software",
+            "sap2000",
+            "etabs",
+            "matlab",
+            "python",
+            "archivo",
+            "guardar",
+            "respaldo",
+            "copia",
+            "computadora",
+            "laptop",
+        ],
+    ),
+    (
+        "exámenes",
+        ESTUDIO,
+        &[
+            "examen",
+            "parcial",
+            "final",
+            "práctica",
+            "prueba",
+            "nota",
+            "calificación",
+            "estudiar",
+            "repasar",
+        ],
+    ),
+    (
+        "tesis",
+        ESTUDIO,
+        &[
+            "tesis",
+            "asesor",
+            "capítulo",
+            "bibliografía",
+            "cita",
+            "referencia",
+            "sustentación",
+            "investigación",
+        ],
+    ),
+    (
+        "entregas",
+        ESTUDIO,
+        &[
+            "entrega",
+            "trabajo",
+            "informe",
+            "tarea",
+            "plazo",
+            "fecha límite",
+            "profesor",
+            "curso",
+        ],
+    ),
+    (
+        "reuniones",
+        TRABAJO,
+        &[
+            "reunión",
+            "junta",
+            "acta",
+            "acuerdo",
+            "llamada",
+            "videollamada",
+        ],
+    ),
+    (
+        "comunicación",
+        TRABAJO,
+        &[
+            "correo",
+            "mensaje",
+            "whatsapp",
+            "avisar",
+            "aviso",
+            "malentendido",
+            "explicar",
+            "preguntar",
+            "confirmar",
+            "por escrito",
+        ],
+    ),
+    (
+        "cliente",
+        TRABAJO,
+        &[
+            "cliente",
+            "propietario",
+            "jefe",
+            "gerente",
+            "compañero",
+            "equipo",
+            "contrato",
+            "pago",
+            "factura",
+        ],
+    ),
+    (
+        "tiempos",
+        TRABAJO,
+        &[
+            "tiempo",
+            "retraso",
+            "demora",
+            "cronograma",
+            "plazo",
+            "puntual",
+            "tarde",
+            "atraso",
+            "programación",
+        ],
+    ),
+    (
+        "documentos",
+        TRABAJO,
+        &[
+            "documento",
+            "permiso",
+            "licencia",
+            "firma",
+            "trámite",
+            "expediente",
+            "pdf",
+            "versión",
+        ],
+    ),
+    (
+        "dinero",
+        VIDA,
+        &[
+            "dinero",
+            "gasto",
+            "ahorro",
+            "deuda",
+            "banco",
+            "compra",
+            "pagar",
+            "préstamo",
+        ],
+    ),
+    (
+        "salud",
+        VIDA,
+        &[
+            "salud",
+            "dormir",
+            "sueño",
+            "comida",
+            "ejercicio",
+            "médico",
+            "cansancio",
+            "estrés",
+        ],
+    ),
+    (
+        "relaciones",
+        VIDA,
+        &[
+            "familia",
+            "amigo",
+            "pareja",
+            "padres",
+            "promesa",
+            "discusión",
+            "confianza",
+        ],
+    ),
+    (
+        "viajes",
+        VIDA,
+        &["viaje", "transporte", "bus", "vuelo", "maleta", "tráfico"],
+    ),
 ];
 
 /// Los conceptos, con sus raices ya cortadas (se cortan una vez).
@@ -85,26 +475,145 @@ pub fn conceptos() -> &'static [Concepto] {
                         }
                     }
                 }
-                Concepto { etiqueta, area, raices }
+                Concepto {
+                    etiqueta,
+                    area,
+                    raices,
+                }
             })
             .collect()
     })
 }
 
 /// Palabras que delatan el tipo.
-const DE_ERROR: &[&str] = &["error", "equivoqué", "equivocación", "olvidé", "olvido", "falló", "falla", "mal", "problema", "no revisé", "perdí", "rompí", "se cayó", "rechazaron", "multa", "reclamo", "tuve que rehacer", "rehacer"];
-const DE_ACIERTO: &[&str] = &["funcionó", "salió bien", "acierto", "sirvió", "ahorré", "logré", "bien hecho", "buena idea", "resultó"];
+const DE_ERROR: &[&str] = &[
+    "error",
+    "equivoqué",
+    "equivocación",
+    "olvidé",
+    "olvido",
+    "falló",
+    "falla",
+    "mal",
+    "problema",
+    "no revisé",
+    "perdí",
+    "rompí",
+    "se cayó",
+    "rechazaron",
+    "multa",
+    "reclamo",
+    "tuve que rehacer",
+    "rehacer",
+];
+const DE_ACIERTO: &[&str] = &[
+    "funcionó",
+    "salió bien",
+    "acierto",
+    "sirvió",
+    "ahorré",
+    "logré",
+    "bien hecho",
+    "buena idea",
+    "resultó",
+];
 
 const DE_CAUSA: &[(&str, &[&str])] = &[
-    ("Prisa", &["prisa", "apuré", "apurado", "rápido", "corriendo", "última hora"]),
-    ("No revisé", &["no revisé", "sin revisar", "no verifiqué", "no comprobé", "no chequeé", "no leí"]),
-    ("Comunicación", &["no avisé", "no me avisaron", "no me dijeron", "malentendido", "no pregunté", "no entendí", "no quedó claro", "por escrito"]),
-    ("No sabía", &["no sabía", "desconocía", "no conocía", "primera vez", "nunca había"]),
-    ("Supuse algo", &["supuse", "asumí", "creí que", "pensé que", "di por hecho", "daba por hecho"]),
-    ("Herramienta", &["programa", "software", "se colgó", "se trabó", "excel", "autocad", "app", "batería", "impresora"]),
-    ("Planificación", &["no planifiqué", "sin planificar", "no calculé el tiempo", "a última hora", "dejé para", "cronograma"]),
-    ("Cansancio", &["cansado", "cansancio", "sueño", "desvelado", "agotado"]),
-    ("Distracción", &["distraído", "distracción", "celular", "me olvidé", "no presté atención"]),
+    (
+        "Prisa",
+        &[
+            "prisa",
+            "apuré",
+            "apurado",
+            "rápido",
+            "corriendo",
+            "última hora",
+        ],
+    ),
+    (
+        "No revisé",
+        &[
+            "no revisé",
+            "sin revisar",
+            "no verifiqué",
+            "no comprobé",
+            "no chequeé",
+            "no leí",
+        ],
+    ),
+    (
+        "Comunicación",
+        &[
+            "no avisé",
+            "no me avisaron",
+            "no me dijeron",
+            "malentendido",
+            "no pregunté",
+            "no entendí",
+            "no quedó claro",
+            "por escrito",
+        ],
+    ),
+    (
+        "No sabía",
+        &[
+            "no sabía",
+            "desconocía",
+            "no conocía",
+            "primera vez",
+            "nunca había",
+        ],
+    ),
+    (
+        "Supuse algo",
+        &[
+            "supuse",
+            "asumí",
+            "creí que",
+            "pensé que",
+            "di por hecho",
+            "daba por hecho",
+        ],
+    ),
+    (
+        "Herramienta",
+        &[
+            "programa",
+            "software",
+            "se colgó",
+            "se trabó",
+            "excel",
+            "autocad",
+            "app",
+            "batería",
+            "impresora",
+        ],
+    ),
+    (
+        "Planificación",
+        &[
+            "no planifiqué",
+            "sin planificar",
+            "no calculé el tiempo",
+            "a última hora",
+            "dejé para",
+            "cronograma",
+        ],
+    ),
+    (
+        "Cansancio",
+        &["cansado", "cansancio", "sueño", "desvelado", "agotado"],
+    ),
+    (
+        "Distracción",
+        &[
+            "distraído",
+            "distracción",
+            "celular",
+            "me olvidé",
+            "no presté atención",
+        ],
+    ),
 ];
 
 fn de_palabra_normal(c: char) -> bool {
@@ -306,7 +815,10 @@ impl Aprendido {
             .raices_por_etiqueta
             .iter()
             .filter_map(|(etiqueta, cuenta)| {
-                let comunes = raices.iter().filter(|r| cuenta.get(*r).copied().unwrap_or(0) > 0).count();
+                let comunes = raices
+                    .iter()
+                    .filter(|r| cuenta.get(*r).copied().unwrap_or(0) > 0)
+                    .count();
                 (comunes >= 2).then(|| (etiqueta.clone(), comunes))
             })
             .collect();
@@ -321,7 +833,10 @@ pub fn aprender(lecciones: &[Leccion]) -> Aprendido {
         if l.etiquetas.is_empty() {
             continue;
         }
-        let mut raices = texto::raices(&format!("{} {} {} {}", l.titulo, l.que_paso, l.por_que, l.proxima));
+        let mut raices = texto::raices(&format!(
+            "{} {} {} {}",
+            l.titulo, l.que_paso, l.por_que, l.proxima
+        ));
         raices.sort();
         raices.dedup();
         for e in &l.etiquetas {
@@ -401,21 +916,67 @@ pub fn proponer(texto_entero: &str, aprendido: &Aprendido, quitadas: &[String]) 
 /// Los conceptos a los que apunta una palabra buscada: «obra» → los de
 /// Construccion.
 pub fn conceptos_de(raiz: &str) -> Vec<&'static Concepto> {
-    conceptos().iter().filter(|c| c.raices.iter().any(|r| r == raiz)).collect()
+    conceptos()
+        .iter()
+        .filter(|c| c.raices.iter().any(|r| r == raiz))
+        .collect()
 }
 
 /// Palabras que delatan una leccion grave o importante. **Lo anade el PC**
 /// (v2, 4-oct-2026): el movil no propone la gravedad y la deja en «Leve»;
 /// la barra rapida de la lista la rellena sola y se cambia con un clic.
 const DE_GRAVE: &[&str] = &[
-    "grave", "peligro", "peligroso", "accidente", "herido", "herida", "lesión", "me lastimé", "incendio",
-    "inundación", "perdí todo", "lo perdí todo", "se perdió todo", "despido", "despidieron", "demanda",
-    "denuncia", "multa", "hospital", "urgencias", "electrocutado", "electrocutó","se derrumbó", "colapsó",
+    "grave",
+    "peligro",
+    "peligroso",
+    "accidente",
+    "herido",
+    "herida",
+    "lesión",
+    "me lastimé",
+    "incendio",
+    "inundación",
+    "perdí todo",
+    "lo perdí todo",
+    "se perdió todo",
+    "despido",
+    "despidieron",
+    "demanda",
+    "denuncia",
+    "multa",
+    "hospital",
+    "urgencias",
+    "electrocutado",
+    "electrocutó",
+    "se derrumbó",
+    "colapsó",
 ];
 const DE_IMPORTANTE: &[&str] = &[
-    "importante", "rehacer", "tuve que rehacer", "repintar", "retraso", "se retrasó", "atraso", "costó",
-    "caro", "dinero", "rechazaron", "reclamo", "resbala", "resbaló", "resbaladizo", "se cayó", "caída",
-    "otra vez", "de nuevo", "volvió a pasar", "perdí", "se rompió", "rompí", "nota baja", "desaprobé",
+    "importante",
+    "rehacer",
+    "tuve que rehacer",
+    "repintar",
+    "retraso",
+    "se retrasó",
+    "atraso",
+    "costó",
+    "caro",
+    "dinero",
+    "rechazaron",
+    "reclamo",
+    "resbala",
+    "resbaló",
+    "resbaladizo",
+    "se cayó",
+    "caída",
+    "otra vez",
+    "de nuevo",
+    "volvió a pasar",
+    "perdí",
+    "se rompió",
+    "rompí",
+    "nota baja",
+    "desaprobé",
 ];
 
 /// **La gravedad que se propone** para un texto: 3 si habla de algo grave

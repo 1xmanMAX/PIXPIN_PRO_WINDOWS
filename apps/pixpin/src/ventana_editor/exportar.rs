@@ -76,8 +76,8 @@ pub(crate) fn textos() -> &'static Catalogo {
         let appdata = std::env::var_os("APPDATA")
             .map(PathBuf::from)
             .unwrap_or_default();
-        let ajustes = pixpin_store::cargar(&pixpin_store::resolver(&dir_exe, &appdata))
-            .unwrap_or_default();
+        let ajustes =
+            pixpin_store::cargar(&pixpin_store::resolver(&dir_exe, &appdata)).unwrap_or_default();
         Catalogo::nuevo(pixpin_store::resolver_idioma(
             &pixpin_shell::entorno::locale_del_sistema(),
             ajustes.idioma,
@@ -91,16 +91,12 @@ pub(crate) fn textos() -> &'static Catalogo {
 static ULTIMA: std::sync::Mutex<Option<Eleccion>> = std::sync::Mutex::new(None);
 
 fn eleccion_inicial() -> Eleccion {
-    ULTIMA
-        .lock()
-        .ok()
-        .and_then(|g| *g)
-        .unwrap_or(Eleccion {
-            formato: Formato::Png,
-            que: Que::Todo,
-            escala: 2,
-            transparente: false,
-        })
+    ULTIMA.lock().ok().and_then(|g| *g).unwrap_or(Eleccion {
+        formato: Formato::Png,
+        que: Que::Todo,
+        escala: 2,
+        transparente: false,
+    })
 }
 
 /// Un lienzo listo para exportar: la escena, lo elegido y de donde salen
@@ -174,7 +170,8 @@ fn subir(motor: &MotorRender, hojas: &[Hoja], lienzo: &Lienzo<'_>) -> Subidas {
                 && !v.contains_key(id_objeto)
                 && let Some(img) = lienzo.imagen(*id_objeto)
             {
-                match motor.bitmap_desde_pixeles_premultiplicado(img.ancho, img.alto, &img.pixeles) {
+                match motor.bitmap_desde_pixeles_premultiplicado(img.ancho, img.alto, &img.pixeles)
+                {
                     Ok(b) => {
                         v.insert(*id_objeto, (b, img.ancho, img.alto));
                     }
@@ -407,7 +404,9 @@ fn incrustada(lienzo: &Lienzo<'_>, id: u64) -> Option<Incrustada> {
 }
 
 fn svg_de(hoja: &Hoja, fondo: Option<ColorRgba>, marcos: bool, lienzo: &Lienzo<'_>) -> String {
-    exportar_svg::svg(hoja, OpcionesSvg { fondo, marcos }, &|id| incrustada(lienzo, id))
+    exportar_svg::svg(hoja, OpcionesSvg { fondo, marcos }, &|id| {
+        incrustada(lienzo, id)
+    })
 }
 
 /// El fichero de la hoja `i` de `n`: el elegido si solo hay una, y con su
@@ -531,10 +530,11 @@ pub(crate) fn exportar_a(ruta: &Path, e: Eleccion, lienzo: &Lienzo<'_>) -> Resul
                 })
                 .collect();
             // El lienzo entero viaja dentro, para volver a editarlo.
-            let json = pixpin_motor2d::excalidraw::escribir(&pixpin_motor2d::excalidraw::con_escena(
-                &pixpin_motor2d::excalidraw::Lienzo::vacio(),
-                lienzo.escena,
-            ));
+            let json =
+                pixpin_motor2d::excalidraw::escribir(&pixpin_motor2d::excalidraw::con_escena(
+                    &pixpin_motor2d::excalidraw::Lienzo::vacio(),
+                    lienzo.escena,
+                ));
             let nombre = exportar_html::nombre_de_fichero(&lienzo.nombre);
             let pagina = exportar_html::paginas(
                 &web,
@@ -767,7 +767,11 @@ fn atender_tal_cual(p: Peticion, propietaria: HWND, lienzo: &Lienzo<'_>, textos:
     };
     match r {
         Ok(true) => {}
-        Ok(false) => pixpin_shell::exportar::informar(propietaria, &textos.t("exportar-titulo"), &textos.t(vacio)),
+        Ok(false) => pixpin_shell::exportar::informar(
+            propietaria,
+            &textos.t("exportar-titulo"),
+            &textos.t(vacio),
+        ),
         Err(e) => {
             tracing::error!(?e, ?p, "exportar o imprimir el lienzo");
             pixpin_shell::exportar::informar(
@@ -1092,7 +1096,9 @@ mod pruebas {
     fn el_papel_del_lienzo_sale_al_exportar_salvo_con_fondo_transparente() {
         let dir = std::env::var_os("PIXPIN_MUESTRAS_EXPORTAR")
             .map(PathBuf::from)
-            .unwrap_or_else(|| std::env::temp_dir().join(format!("pixpin-papel-{}", std::process::id())));
+            .unwrap_or_else(|| {
+                std::env::temp_dir().join(format!("pixpin-papel-{}", std::process::id()))
+            });
         std::fs::create_dir_all(&dir).expect("carpeta");
         let mut escena = escena_con_marcos();
         // «Crema» del movil, `#fdf6e3`.
@@ -1116,15 +1122,42 @@ mod pruebas {
             img.pixeles[..4].to_vec()
         };
 
-        let png = exportar_a(&dir.join("papel-crema.png"), eleccion(Formato::Png, false), &lienzo).unwrap();
-        assert_eq!(esquina(&png[0]), [253, 246, 227, 255], "el papel del lienzo, no blanco");
-        let svg = exportar_a(&dir.join("papel-crema.svg"), eleccion(Formato::Svg, false), &lienzo).unwrap();
+        let png = exportar_a(
+            &dir.join("papel-crema.png"),
+            eleccion(Formato::Png, false),
+            &lienzo,
+        )
+        .unwrap();
+        assert_eq!(
+            esquina(&png[0]),
+            [253, 246, 227, 255],
+            "el papel del lienzo, no blanco"
+        );
+        let svg = exportar_a(
+            &dir.join("papel-crema.svg"),
+            eleccion(Formato::Svg, false),
+            &lienzo,
+        )
+        .unwrap();
         let svg = std::fs::read_to_string(&svg[0]).unwrap();
         assert!(svg.contains("#fdf6e3"), "el rectangulo del papel en el SVG");
-        let web = exportar_a(&dir.join("papel-crema.html"), eleccion(Formato::Html, false), &lienzo).unwrap();
+        let web = exportar_a(
+            &dir.join("papel-crema.html"),
+            eleccion(Formato::Html, false),
+            &lienzo,
+        )
+        .unwrap();
         let web = std::fs::read_to_string(&web[0]).unwrap();
-        assert!(web.contains("data-fondo=\"#fdf6e3\""), "la hoja de la web con su papel");
-        let pdf = exportar_a(&dir.join("papel-crema.pdf"), eleccion(Formato::Pdf, false), &lienzo).unwrap();
+        assert!(
+            web.contains("data-fondo=\"#fdf6e3\""),
+            "la hoja de la web con su papel"
+        );
+        let pdf = exportar_a(
+            &dir.join("papel-crema.pdf"),
+            eleccion(Formato::Pdf, false),
+            &lienzo,
+        )
+        .unwrap();
         let pagina = pixpin_pdf::Documento::abrir(&pdf[0])
             .and_then(|d| d.renderizar(0, 300))
             .expect("el pdf se dibuja");
@@ -1139,10 +1172,24 @@ mod pruebas {
         );
 
         // Caso negativo: con «fondo transparente» no hay papel que valga.
-        let png = exportar_a(&dir.join("papel-transparente.png"), eleccion(Formato::Png, true), &lienzo).unwrap();
+        let png = exportar_a(
+            &dir.join("papel-transparente.png"),
+            eleccion(Formato::Png, true),
+            &lienzo,
+        )
+        .unwrap();
         assert_eq!(esquina(&png[0])[3], 0, "la esquina es transparente");
-        let svg = exportar_a(&dir.join("papel-transparente.svg"), eleccion(Formato::Svg, true), &lienzo).unwrap();
-        assert!(!std::fs::read_to_string(&svg[0]).unwrap().contains("#fdf6e3"));
+        let svg = exportar_a(
+            &dir.join("papel-transparente.svg"),
+            eleccion(Formato::Svg, true),
+            &lienzo,
+        )
+        .unwrap();
+        assert!(
+            !std::fs::read_to_string(&svg[0])
+                .unwrap()
+                .contains("#fdf6e3")
+        );
     }
 
     /// **Las muestras**: el mismo lienzo en los cuatro formatos, para mirarlo.
@@ -1152,7 +1199,9 @@ mod pruebas {
     fn el_mismo_lienzo_sale_en_png_svg_pdf_y_web() {
         let dir = std::env::var_os("PIXPIN_MUESTRAS_EXPORTAR")
             .map(PathBuf::from)
-            .unwrap_or_else(|| std::env::temp_dir().join(format!("pixpin-exportar-{}", std::process::id())));
+            .unwrap_or_else(|| {
+                std::env::temp_dir().join(format!("pixpin-exportar-{}", std::process::id()))
+            });
         std::fs::create_dir_all(&dir).expect("carpeta");
         let mut escena = escena_con_marcos();
         escena.anadir(Elemento {
@@ -1184,7 +1233,12 @@ mod pruebas {
             escena.anadir(Elemento {
                 figura: Figura::Lapiz {
                     puntos: (0..26)
-                        .map(|i| pixpin_motor2d::vector::Punto2::nuevo(50.0 + i as f32 * 8.0, y + (i % 4) as f32))
+                        .map(|i| {
+                            pixpin_motor2d::vector::Punto2::nuevo(
+                                50.0 + i as f32 * 8.0,
+                                y + (i % 4) as f32,
+                            )
+                        })
                         .collect(),
                     presiones: Vec::new(),
                     opciones: Some(Default::default()),
@@ -1264,14 +1318,21 @@ mod pruebas {
                     // El papel es blanco y opaco en la esquina.
                     assert_eq!(&img.pixeles[..4], &[255, 255, 255, 255]);
                     // Y hay tinta: algun pixel oscuro.
-                    assert!(img.pixeles.chunks_exact(4).any(|p| p[0] < 80 && p[3] == 255));
+                    assert!(
+                        img.pixeles
+                            .chunks_exact(4)
+                            .any(|p| p[0] < 80 && p[3] == 255)
+                    );
                     // La foto sale recortada: en su centro, verde (el cuarto
                     // elegido), no el cruce de los cuatro colores.
                     let (x0, y0) = (h.caja.0, h.caja.1);
                     let (cx, cy) = (((60.0 - x0) * 2.0) as u32, ((550.0 - y0) * 2.0) as u32);
                     let i = ((cy * img.ancho + cx) * 4) as usize;
                     let c = &img.pixeles[i..i + 4];
-                    assert!(c[1] > 150 && c[0] < 90, "verde en el centro de la foto: {c:?}");
+                    assert!(
+                        c[1] > 150 && c[0] < 90,
+                        "verde en el centro de la foto: {c:?}"
+                    );
                     // Y el grano cambia lo pintado: sin el, el rayado sale
                     // liso y la imagen es otra.
                     let mut lisa = h.clone();

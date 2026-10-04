@@ -64,7 +64,11 @@ pub(super) fn columna_px(e: &Estado) -> i32 {
     enviar(e.edit, 0x00B2, 0, &mut dentro as *mut _ as isize);
     // Sin el hueco de las tablas anchas, que no se ve (`tabla_ancha`).
     let visible = (dentro.right - dentro.left - crate::tabla_ancha::hueco()) * 96 / e.ppp.max(1);
-    if visible > 0 { tabla_rtf::COLUMNA_PX.min(visible) } else { tabla_rtf::COLUMNA_PX }
+    if visible > 0 {
+        tabla_rtf::COLUMNA_PX.min(visible)
+    } else {
+        tabla_rtf::COLUMNA_PX
+    }
 }
 
 /// El aire de encima del renglon `linea`, para una foto de `alto` pixeles
@@ -118,7 +122,13 @@ pub(super) fn medir(e: &mut Estado, texto: &str) -> (ConFoto, Vec<usize>) {
 /// Deja las fotos listas para pintarse encima. `todo`: tras un cambio del
 /// texto (si no, solo se movio el cursor y basta con decir cual tiene el
 /// borde).
-pub(super) fn poner_puestas(e: &Estado, ls: &[md_vivo::Linea], con: &ConFoto, activa: usize, todo: bool) {
+pub(super) fn poner_puestas(
+    e: &Estado,
+    ls: &[md_vivo::Linea],
+    con: &ConFoto,
+    activa: usize,
+    todo: bool,
+) {
     let t = &e.estilos.tema;
     imagenes::COLORES.with(|c| {
         c.set(imagenes::Colores {
@@ -144,7 +154,10 @@ pub(super) fn poner_puestas(e: &Estado, ls: &[md_vivo::Linea], con: &ConFoto, ac
                     ruta: ruta.clone(),
                     foto: f.clone(),
                     activa: *n == activa,
-                    aviso: e.sin_hoja.contains(ruta).then(|| e.rotulos.fotos.hoja_borrada.clone()),
+                    aviso: e
+                        .sin_hoja
+                        .contains(ruta)
+                        .then(|| e.rotulos.fotos.hoja_borrada.clone()),
                     caja: Cell::new(RECT::default()),
                 })
             })
@@ -166,7 +179,9 @@ fn avisar(e: &Estado, texto: &str) {
 }
 
 fn nombre_de(r: &std::path::Path) -> String {
-    r.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default()
+    r.file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_default()
 }
 
 /// Copia las fotos junto a la nota y mete un renglon por cada una en el
@@ -176,7 +191,10 @@ pub(super) fn meter(e: &mut Estado, rutas: &[PathBuf]) -> usize {
     for r in rutas.iter().filter(|r| md_imagen::es_foto(&nombre_de(r))) {
         match (e.adjuntar)(r) {
             Some(md) => {
-                let alt = r.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
+                let alt = r
+                    .file_stem()
+                    .map(|s| s.to_string_lossy().to_string())
+                    .unwrap_or_default();
                 let renglon = md_imagen::escribir(&Foto {
                     alt,
                     ancho: None,
@@ -184,7 +202,9 @@ pub(super) fn meter(e: &mut Estado, rutas: &[PathBuf]) -> usize {
                 });
                 // El renglon nace escondido y con su hueco: congelado, se
                 // pinta la foto en el mismo fotograma que entra (ver `congelar`).
-                congelar::congelado(e, congelar::Pintado::Entero, |e| insertar_renglon(e, &renglon));
+                congelar::congelado(e, congelar::Pintado::Entero, |e| {
+                    insertar_renglon(e, &renglon)
+                });
                 hechas += 1;
             }
             None => fallo = true,
@@ -202,7 +222,10 @@ pub(super) fn meter(e: &mut Estado, rutas: &[PathBuf]) -> usize {
 /// dibujo de el, y pegar ese dibujo en vez del texto seria un susto).
 fn hay_texto_en_el_portapapeles() -> bool {
     // SAFETY: consulta sin abrir el portapapeles.
-    unsafe { windows::Win32::System::DataExchange::IsClipboardFormatAvailable(CF_UNICODETEXT as u32).is_ok() }
+    unsafe {
+        windows::Win32::System::DataExchange::IsClipboardFormatAvailable(CF_UNICODETEXT as u32)
+            .is_ok()
+    }
 }
 
 /// Ctrl+V con una imagen (una captura de PixPin, una de Windows) o con
@@ -217,7 +240,10 @@ pub(super) fn pegar(e: &mut Estado) -> bool {
             if e.integracion.medios.is_some() {
                 return super::incrustados::meter_documentos(e, &v) > 0;
             }
-            let fotos: Vec<PathBuf> = v.into_iter().filter(|r| md_imagen::es_foto(&nombre_de(r))).collect();
+            let fotos: Vec<PathBuf> = v
+                .into_iter()
+                .filter(|r| md_imagen::es_foto(&nombre_de(r)))
+                .collect();
             !fotos.is_empty() && meter(e, &fotos) > 0
         }
         Some(C::Imagen(img)) if !hay_texto_en_el_portapapeles() => pegar_imagen(e, &img),
@@ -328,7 +354,12 @@ pub(super) fn preparar(e: &Estado) {
 fn punto_del_cursor(e: &Estado) -> POINT {
     let (_, b) = seleccion(e.edit);
     let mut p = POINT::default();
-    enviar(e.edit, EM_POSFROMCHAR, &mut p as *mut _ as usize, b as isize);
+    enviar(
+        e.edit,
+        EM_POSFROMCHAR,
+        &mut p as *mut _ as usize,
+        b as isize,
+    );
     p.y += RENGLON_PX * e.ppp / 96;
     // SAFETY: conversion de coordenadas de una ventana propia.
     unsafe {
@@ -379,10 +410,17 @@ pub(super) fn meter_hoja(e: &mut Estado, clave: &str, como_enlace: bool) -> bool
             _ => renglon,
         };
         congelar::congelado(e, congelar::Pintado::Entero, |e| {
-            enviar(e.edit, EM_REPLACESEL, 1, ancho_nulo(&puesto).as_ptr() as isize)
+            enviar(
+                e.edit,
+                EM_REPLACESEL,
+                1,
+                ancho_nulo(&puesto).as_ptr() as isize,
+            )
         });
     } else {
-        congelar::congelado(e, congelar::Pintado::Entero, |e| insertar_renglon(e, &renglon));
+        congelar::congelado(e, congelar::Pintado::Entero, |e| {
+            insertar_renglon(e, &renglon)
+        });
         // Que la aplicacion se ponga a pintarla ya.
         apuntar(Orden::Vivas);
     }
@@ -467,7 +505,10 @@ pub(super) fn arrancar(e: &mut Estado) {
 // El raton y el menu de una foto
 
 fn punto(l: LPARAM) -> (i32, i32) {
-    ((l.0 & 0xffff) as i16 as i32, ((l.0 >> 16) & 0xffff) as i16 as i32)
+    (
+        (l.0 & 0xffff) as i16 as i32,
+        ((l.0 >> 16) & 0xffff) as i16 as i32,
+    )
 }
 
 /// El renglon `n` del texto del control.
@@ -476,7 +517,10 @@ fn renglon(e: &Estado, n: usize) -> Option<(md_vivo::Linea, String)> {
     let ls = md_vivo::lineas(&texto);
     let l = *ls.get(n)?;
     let u: Vec<u16> = texto.encode_utf16().collect();
-    Some((l, String::from_utf16_lossy(&u[l.desde..l.hasta.min(u.len())])))
+    Some((
+        l,
+        String::from_utf16_lossy(&u[l.desde..l.hasta.min(u.len())]),
+    ))
 }
 
 /// Cambia el renglon `n` por `nuevo`, como un paso de deshacer, y deja el
@@ -484,7 +528,12 @@ fn renglon(e: &Estado, n: usize) -> Option<(md_vivo::Linea, String)> {
 fn cambiar_renglon(e: &Estado, n: usize, nuevo: &str) {
     let Some((l, _)) = renglon(e, n) else { return };
     elegir(e.edit, l.desde, l.hasta);
-    enviar(e.edit, EM_REPLACESEL, 1, ancho_nulo(nuevo).as_ptr() as isize);
+    enviar(
+        e.edit,
+        EM_REPLACESEL,
+        1,
+        ancho_nulo(nuevo).as_ptr() as isize,
+    );
     let fin = l.desde + nuevo.encode_utf16().count();
     elegir(e.edit, fin, fin);
 }
@@ -492,7 +541,9 @@ fn cambiar_renglon(e: &Estado, n: usize, nuevo: &str) {
 /// Pone el ancho (pixeles a 96 ppp; `None`, el de la columna) de la foto
 /// del renglon `n`.
 pub(super) fn poner_ancho(e: &Estado, n: usize, ancho: Option<u32>) -> bool {
-    let Some((_, r)) = renglon(e, n) else { return false };
+    let Some((_, r)) = renglon(e, n) else {
+        return false;
+    };
     match md_imagen::con_ancho(&r, 0, ancho) {
         Some(nuevo) if nuevo != r => {
             cambiar_renglon(e, n, &nuevo);
@@ -506,8 +557,12 @@ pub(super) fn poner_ancho(e: &Estado, n: usize, ancho: Option<u32>) -> bool {
 pub(super) fn quitar(e: &Estado, n: usize) -> bool {
     let texto = leer(e.edit);
     let ls = md_vivo::lineas(&texto);
-    let Some(l) = ls.get(n).copied() else { return false };
-    let Some((_, r)) = renglon(e, n) else { return false };
+    let Some(l) = ls.get(n).copied() else {
+        return false;
+    };
+    let Some((_, r)) = renglon(e, n) else {
+        return false;
+    };
     if md_imagen::leer(&r).is_none() {
         return false;
     }
@@ -524,7 +579,9 @@ pub(super) fn quitar(e: &Estado, n: usize) -> bool {
 
 /// La ruta de la foto del renglon `n`.
 fn ruta_de(e: &Estado, n: usize) -> Option<String> {
-    renglon(e, n).and_then(|(_, r)| md_imagen::leer(&r)).map(|f| f.ruta)
+    renglon(e, n)
+        .and_then(|(_, r)| md_imagen::leer(&r))
+        .map(|f| f.ruta)
 }
 
 /// El raton sobre las fotos: el asa cambia el ancho, un clic elige la foto
@@ -542,7 +599,8 @@ pub(super) fn raton(e: &mut Estado, m: &MSG) -> bool {
             };
             cerrar_menu(e);
             if asa {
-                imagenes::ARRASTRE.with(|a| a.set(Some((i, caja.right - caja.left, caja.bottom - caja.top))));
+                imagenes::ARRASTRE
+                    .with(|a| a.set(Some((i, caja.right - caja.left, caja.bottom - caja.top))));
                 ANCHO.with(|a| a.set(None));
                 // SAFETY: captura del raton para una ventana propia.
                 unsafe {
@@ -570,11 +628,15 @@ pub(super) fn raton(e: &mut Estado, m: &MSG) -> bool {
             // el minimo y lo que mide la columna de verdad (en una ventana
             // estrecha, menos que la columna de siempre).
             let centro = (caja.left + caja.right) / 2;
-            let px = (2 * (x - centro)).clamp(md_imagen::ANCHO_MINIMO as i32 * e.ppp / 96, columna_px(e) * e.ppp / 96);
+            let px = (2 * (x - centro)).clamp(
+                md_imagen::ANCHO_MINIMO as i32 * e.ppp / 96,
+                columna_px(e) * e.ppp / 96,
+            );
             // Lo que se escribira al soltar (pixeles a 96 ppp) y lo que medira
             // entonces, con las mismas cuentas que al leerla: lo que se ve
             // mientras se arrastra es exactamente lo que queda (sin rebote).
-            let ancho96 = ((px * 96 + e.ppp / 2) / e.ppp.max(1)).max(md_imagen::ANCHO_MINIMO as i32) as u32;
+            let ancho96 =
+                ((px * 96 + e.ppp / 2) / e.ppp.max(1)).max(md_imagen::ANCHO_MINIMO as i32) as u32;
             let Some((an, al)) = tamano_con_ancho(e, i, ancho96) else {
                 return true;
             };
@@ -632,7 +694,8 @@ pub(super) fn cursor_del_asa(edit: HWND) -> bool {
         let _ = GetCursorPos(&mut p);
         let _ = ScreenToClient(edit, &mut p);
     }
-    let encima = imagenes::ARRASTRE.with(|a| a.get()).is_some() || matches!(imagenes::tocar(p.x, p.y), Some((_, true)));
+    let encima = imagenes::ARRASTRE.with(|a| a.get()).is_some()
+        || matches!(imagenes::tocar(p.x, p.y), Some((_, true)));
     if encima {
         // SAFETY: cursor del sistema, compartido; no se suelta.
         unsafe {
@@ -670,7 +733,14 @@ pub(super) fn entradas_del_menu(e: &mut Estado) -> Vec<Option<(u16, String)>> {
     let r = &e.rotulos.fotos;
     let viva = ruta_de(e, n).is_some_and(|ruta| md_imagen::hoja_de_viva(&ruta).is_some());
     vec![
-        Some((C_VER_FOTO, if viva { r.abrir_hoja.clone() } else { r.ver_grande.clone() })),
+        Some((
+            C_VER_FOTO,
+            if viva {
+                r.abrir_hoja.clone()
+            } else {
+                r.ver_grande.clone()
+            },
+        )),
         None,
         Some((C_FOTO_PEQUENA, r.pequena.clone())),
         Some((C_FOTO_MEDIANA, r.mediana.clone())),

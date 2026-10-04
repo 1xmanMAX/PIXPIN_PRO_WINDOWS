@@ -37,8 +37,7 @@ fn capa(nombre: &str) -> Option<u8> {
         // usa su libreria (el borrador de las imagenes pegadas en Flow).
         "pixpin-lanzador" => 2,
         "pixpin-capture" | "pixpin-pin" | "pixpin-pdf" | "pixpin-ocr" | "pixpin-record"
-        | "pixpin-store" | "pixpin-proyecto" | "pixpin-docs"
-        | "pixpin-pila" => 2,
+        | "pixpin-store" | "pixpin-proyecto" | "pixpin-docs" | "pixpin-pila" => 2,
         // El compresor de PDF en su propio ejecutable: solo pdfsqueeze y la
         // prioridad de pixpin-shell. `pixpin` solo lo usa en sus pruebas.
         "pixpin-aligerar" => 2,
@@ -186,5 +185,10 @@ fn pixpinmax_no_enlaza_el_compresor_de_pdf() {
     // Caso negativo de la propia prueba: el compresor si lo enlaza.
     let texto = fs::read_to_string(raiz().join("apps/pixpin-aligerar/Cargo.toml")).unwrap();
     let doc: toml::Value = texto.parse().unwrap();
-    assert!(doc["dependencies"].as_table().unwrap().contains_key("pdfsqueeze-core"));
+    assert!(
+        doc["dependencies"]
+            .as_table()
+            .unwrap()
+            .contains_key("pdfsqueeze-core")
+    );
 }

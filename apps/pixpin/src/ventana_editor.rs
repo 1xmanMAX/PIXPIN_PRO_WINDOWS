@@ -38,22 +38,22 @@ use crate::dibujo::construir;
 use crate::dibujo::pintar::{
     a_color, dibujar_orden, pintar_copia_predicha, por_cada_orden, punta_de_tinta,
 };
-use crate::dibujo::teclas::{a_evento, elegir_herramienta, forma_de, tecla_de};
 #[cfg(test)]
 use crate::dibujo::teclas::{
     CambioPluma, aplicar_orden, pulsar_boton, tecla_a_herramienta, tecla_a_pluma, tecla_del_motor,
 };
+use crate::dibujo::teclas::{a_evento, elegir_herramienta, forma_de, tecla_de};
 use crate::navegacion::{self, vista_efectiva};
 use anyhow::{Context, Result};
 use pixpin_geom::Punto;
 use pixpin_motor2d::cache::Cache;
 use pixpin_motor2d::camara::Camara;
 use pixpin_motor2d::escena::Escena;
-use pixpin_motor2d::gesto::{Gesto, Herramienta, Peticion, Region};
 #[cfg(test)]
 use pixpin_motor2d::gesto::EventoGesto;
 #[cfg(test)]
 use pixpin_motor2d::gesto::FormaCursor;
+use pixpin_motor2d::gesto::{Gesto, Herramienta, Peticion, Region};
 use pixpin_motor2d::indice::Rejilla;
 use pixpin_motor2d::pintado::Orden;
 #[cfg(test)]
@@ -62,9 +62,9 @@ use pixpin_motor2d::vector::Punto2;
 use pixpin_motor2d::{Elemento, Figura};
 use pixpin_render::{CapaEstatica, Color, Estampa, MotorRender, RectF, Superficie};
 use pixpin_shell::overlay::{EventoOverlay, FormaCursorWin, VentanaOverlay};
-use pixpin_ui::{BotonCaja, CajaHerramientas, DestinoClic};
 #[cfg(test)]
 use pixpin_ui::BOTONES_EDITOR;
+use pixpin_ui::{BotonCaja, CajaHerramientas, DestinoClic};
 
 /// Cuanto se adelanta la punta del trazo en curso. La medida contra la
 /// posicion LOGICA del cursor daba 28 ms como adelantado y se bajo a 14, pero
@@ -443,7 +443,15 @@ pub fn abrir(
     fondo: Option<pixpin_codec::ImagenRgba>,
     fotos: &[(u64, std::path::PathBuf)],
 ) -> Result<(Escena, Option<String>)> {
-    abrir_con_pegadas(escena, ajustes_iman, nivel, medir_fotogramas, fondo, fotos, &mut Vec::new())
+    abrir_con_pegadas(
+        escena,
+        ajustes_iman,
+        nivel,
+        medir_fotogramas,
+        fondo,
+        fotos,
+        &mut Vec::new(),
+    )
 }
 
 /// `abrir`, devolviendo en `pegadas` los pixeles de las imagenes que se
@@ -461,7 +469,15 @@ pub fn abrir_con_pegadas(
     pegadas: &mut Vec<(u64, pixpin_codec::ImagenRgba)>,
 ) -> Result<(Escena, Option<String>)> {
     let fondo = fondo.map(crate::fondo_lienzo::Fuente::from);
-    abrir_sobre_con_pegadas(escena, ajustes_iman, nivel, medir_fotogramas, fondo, fotos, pegadas)
+    abrir_sobre_con_pegadas(
+        escena,
+        ajustes_iman,
+        nivel,
+        medir_fotogramas,
+        fondo,
+        fotos,
+        pegadas,
+    )
 }
 
 /// `abrir` con cualquier fondo: tambien una pagina de PDF, que se pinta en
@@ -513,10 +529,7 @@ pub fn abrir_pantalla(
     nivel: pixpin_nivel::Nivel,
     pantalla: &mut pantalla::Pantalla<'_>,
 ) -> Result<Option<pixpin_codec::ImagenRgba>> {
-    let fondo = pantalla
-        .foto
-        .take()
-        .map(crate::fondo_lienzo::Fuente::from);
+    let fondo = pantalla.foto.take().map(crate::fondo_lienzo::Fuente::from);
     let mut escena = Escena::nueva();
     escena.fondo = pantalla::papel(pantalla.modo);
     let (vuelta, _, _) = abrir_en_modo(
@@ -696,16 +709,28 @@ fn abrir_en_modo(
     // `escucha`, alterna el clic a traves en vez de abrir otro anotador.
     let mut pastilla = pantalla.as_deref().and_then(|p| {
         let t = exportar::textos();
-        let rotulos = (t.t("anotador-rotulo-dibujando"), t.t("anotador-rotulo-atravesando"));
-        pastilla_pantalla::Pastilla::nueva(&motor, dispositivo.d3d(), &p.principal, rotulos, ventana.handle())
-            .inspect_err(|e| tracing::warn!(?e, "el anotador sin su pastilla"))
-            .ok()
+        let rotulos = (
+            t.t("anotador-rotulo-dibujando"),
+            t.t("anotador-rotulo-atravesando"),
+        );
+        pastilla_pantalla::Pastilla::nueva(
+            &motor,
+            dispositivo.d3d(),
+            &p.principal,
+            rotulos,
+            ventana.handle(),
+        )
+        .inspect_err(|e| tracing::warn!(?e, "el anotador sin su pastilla"))
+        .ok()
     });
     if let Some(ps) = pastilla.as_ref() {
         ps.mostrar();
     }
     let _escucha = pantalla.is_some().then(|| {
-        pixpin_shell::gestos::EscuchaAnotador::tomar(ventana.handle(), pixpin_shell::overlay::MSG_DESPIERTA)
+        pixpin_shell::gestos::EscuchaAnotador::tomar(
+            ventana.handle(),
+            pixpin_shell::overlay::MSG_DESPIERTA,
+        )
     });
     let mut accion_pastilla: Option<pastilla_pantalla::Accion> = None;
     // El guardado de esta sesion en «Mensajes guardados»: el boton lo lanza
@@ -726,7 +751,9 @@ fn abrir_en_modo(
     // usuario la apago en los ajustes, se abre con la mano.
     let anfitrion = pantalla
         .as_deref()
-        .map_or(crate::dibujo::permitidas::Anfitrion::Lienzo, |p| p.anfitrion());
+        .map_or(crate::dibujo::permitidas::Anfitrion::Lienzo, |p| {
+            p.anfitrion()
+        });
     crate::dibujo::permitidas::asegurar(anfitrion, &mut gesto);
     // D135: con fondo, la imagen centrada; sin fondo, el origen como antes.
     let mut camara = match &fondo {
@@ -1039,9 +1066,8 @@ fn abrir_en_modo(
             // herramientas, que no tienen que ver ni el espacio ni el Ctrl.
             if let Some(pa) = pantalla.as_deref() {
                 use pantalla::TeclaPantalla;
-                let sin_nada = gesto.seleccion.esta_vacia()
-                    && gesto.en_reposo()
-                    && gesto.lazo.is_none();
+                let sin_nada =
+                    gesto.seleccion.esta_vacia() && gesto.en_reposo() && gesto.lazo.is_none();
                 match pantalla::tecla(&ev, pa.modo, !gesto.esta_escribiendo(), sin_nada) {
                     Some(TeclaPantalla::Salir) => break 'bucle,
                     Some(TeclaPantalla::AlternarPasante) => {
@@ -1110,7 +1136,9 @@ fn abrir_en_modo(
                     let (ancho_v, alto_v) = (ancho_px, alto_px);
                     let accion = match ev {
                         // Ctrl+Z deshace lo anotado: esa sigue al gesto.
-                        EventoOverlay::Tecla { vk, ctrl: false, .. } => {
+                        EventoOverlay::Tecla {
+                            vk, ctrl: false, ..
+                        } => {
                             consumido = true;
                             presentar::Presentacion::tecla(vk)
                         }
@@ -1122,7 +1150,9 @@ fn abrir_en_modo(
                         EventoOverlay::BotonPulsado(p) => {
                             let (x, y) = ((p.x - area.x) as f32, (p.y - area.y) as f32);
                             let boton = (pr.pastilla && !pr.negro)
-                                .then(|| presentar::boton_en(x, y, ancho_v, alto_v, escala_por_cien))
+                                .then(|| {
+                                    presentar::boton_en(x, y, ancho_v, alto_v, escala_por_cien)
+                                })
                                 .flatten();
                             match boton {
                                 Some(b) => {
@@ -1136,7 +1166,13 @@ fn abrir_en_modo(
                                 }
                                 None if pr.pastilla
                                     && !pr.negro
-                                    && presentar::en_la_pastilla(x, y, ancho_v, alto_v, escala_por_cien) =>
+                                    && presentar::en_la_pastilla(
+                                        x,
+                                        y,
+                                        ancho_v,
+                                        alto_v,
+                                        escala_por_cien,
+                                    ) =>
                                 {
                                     consumido = true;
                                     None
@@ -1204,9 +1240,9 @@ fn abrir_en_modo(
                         EventoOverlay::Caracter(_) | EventoOverlay::Muestra(_) => consumido = true,
                         // Las letras eligirian herramientas y Supr borraria: fuera.
                         // Escape y F11 siguen siendo del lienzo.
-                        EventoOverlay::Tecla { vk, ctrl: false, .. }
-                            if (b'A' as u32..=b'Z' as u32).contains(&vk) || vk == 0x2E =>
-                        {
+                        EventoOverlay::Tecla {
+                            vk, ctrl: false, ..
+                        } if (b'A' as u32..=b'Z' as u32).contains(&vk) || vk == 0x2E => {
                             consumido = true
                         }
                         _ => {}
@@ -1322,7 +1358,8 @@ fn abrir_en_modo(
             // F8: la pastilla de la Zona es un boton, no el sitio donde empieza
             // una zona (ver `pastilla_zona`).
             if let EventoOverlay::BotonPulsado(q) = &ev {
-                let visible = gesto.herramienta == Herramienta::Zona && presentacion.is_none() && !solo_mirar;
+                let visible =
+                    gesto.herramienta == Herramienta::Zona && presentacion.is_none() && !solo_mirar;
                 match pastilla_zona.pulsar((q.x - area.x) as f32, (q.y - area.y) as f32, visible) {
                     pastilla_zona::Clic::Fuera => {}
                     pastilla_zona::Clic::Tragado => continue,
@@ -1423,7 +1460,10 @@ fn abrir_en_modo(
             // abre con el lapiz.
             // El aviso de un enlace roto se va con el primer aviso del raton
             // pasado su tiempo: sin repintar, se quedaria puesto.
-            if aviso_enlace.as_ref().is_some_and(|(_, d)| d.elapsed() >= AVISO_ENLACE_DURA) {
+            if aviso_enlace
+                .as_ref()
+                .is_some_and(|(_, d)| d.elapsed() >= AVISO_ENLACE_DURA)
+            {
                 aviso_enlace = None;
                 interfaz_sucia = true;
                 ventana.invalidar();
@@ -1448,21 +1488,24 @@ fn abrir_en_modo(
                 let _ = p;
                 // Su icono (`enlaceBajoElDedo` del movil), que cae fuera del
                 // recuadro, o el propio recuadro.
-                let destino = pixpin_motor2d::zona::enlace_bajo_el_puntero(&escena.elementos, q, efectiva.zoom)
-                    .map(str::to_string)
-                    .or_else(|| {
-                        pixpin_motor2d::impacto::elemento_en(&escena.elementos, q)
-                            .and_then(|id| escena.buscar(id))
-                            .and_then(|e| e.enlace.clone())
-                    });
+                let destino = pixpin_motor2d::zona::enlace_bajo_el_puntero(
+                    &escena.elementos,
+                    q,
+                    efectiva.zoom,
+                )
+                .map(str::to_string)
+                .or_else(|| {
+                    pixpin_motor2d::impacto::elemento_en(&escena.elementos, q)
+                        .and_then(|id| escena.buscar(id))
+                        .and_then(|e| e.enlace.clone())
+                });
                 if let Some(destino) = destino {
                     // Se cierra SOLO si hay adonde ir: antes se cerraba igual
                     // y, si el enlace no llevaba a nada, el usuario se quedaba
                     // fuera del lienzo sin el otro.
-                    match hoja_del_chat
-                        .as_ref()
-                        .and_then(|h| crate::salto_por_enlace::dibujo_del_enlace(&h.raiz, &h.proyecto, &destino))
-                    {
+                    match hoja_del_chat.as_ref().and_then(|h| {
+                        crate::salto_por_enlace::dibujo_del_enlace(&h.raiz, &h.proyecto, &destino)
+                    }) {
                         Some(dibujo) => {
                             tracing::info!(%destino, %dibujo, "enlace a otra hoja");
                             enlace_pedido = Some(dibujo);
@@ -1470,7 +1513,10 @@ fn abrir_en_modo(
                         }
                         None => {
                             tracing::warn!(%destino, "el enlace no lleva a ningun lienzo; el lienzo sigue abierto");
-                            aviso_enlace = Some((marcas::textos().t("zona-enlace-roto"), std::time::Instant::now()));
+                            aviso_enlace = Some((
+                                marcas::textos().t("zona-enlace-roto"),
+                                std::time::Instant::now(),
+                            ));
                             interfaz_sucia = true;
                             ventana.invalidar();
                             continue;
@@ -1565,7 +1611,11 @@ fn abrir_en_modo(
             // manda antes: el texto lo cerro ya `mano` (y se consumio) y un
             // arrastre lo cancela el motor, abajo.
             if let EventoOverlay::Tecla { vk: VK_ESCAPE, .. } = ev
-                && escape_cierra(pantalla.is_none(), presentacion.is_none(), gesto.en_reposo())
+                && escape_cierra(
+                    pantalla.is_none(),
+                    presentacion.is_none(),
+                    gesto.en_reposo(),
+                )
             {
                 break 'bucle;
             }
@@ -1801,7 +1851,12 @@ fn abrir_en_modo(
                     for caja in [lupa_antes, ahora].into_iter().flatten() {
                         sucio = Some(match sucio {
                             None => caja,
-                            Some(s) => (s.0.min(caja.0), s.1.min(caja.1), s.2.max(caja.2), s.3.max(caja.3)),
+                            Some(s) => (
+                                s.0.min(caja.0),
+                                s.1.min(caja.1),
+                                s.2.max(caja.2),
+                                s.3.max(caja.3),
+                            ),
                         });
                     }
                     ventana.invalidar();
@@ -1925,49 +1980,58 @@ fn abrir_en_modo(
                 // la zona que de verdad hay que pintar la lleva `sucio`
                 // (D125): es lo que reduce a `Superficie::
                 // presentar_sincronizado` cuanto tiene que recomponer DWM.
-                if compuesto == Compuesto::No { match r.region {
-                    Region::Nada => {}
-                    Region::Caja(x0, y0, x1, y1) => {
-                        let a = efectiva.a_pantalla(Punto2::nuevo(x0, y0));
-                        let b = efectiva.a_pantalla(Punto2::nuevo(x1, y1));
-                        let caja = (a.x.min(b.x), a.y.min(b.y), a.x.max(b.x), a.y.max(b.y));
-                        sucio = Some(match sucio {
-                            None => caja,
-                            Some(s) => (
-                                s.0.min(caja.0),
-                                s.1.min(caja.1),
-                                s.2.max(caja.2),
-                                s.3.max(caja.3),
-                            ),
-                        });
-                        ventana.invalidar();
-                    }
-                    Region::Todo => {
-                        // Estirando o girando: solo lo elegido, su trozo de
-                        // antes y el de ahora, sobre la capa congelada.
-                        let ahora = congelar::zona_al_transformar(&escena, &gesto, &efectiva, &mut cache);
-                        match (ahora, zona_transformada) {
-                            (Some(z), Some(a)) if capa.lista() => {
-                                let caja = (
-                                    a.0.min(z.0) as f32,
-                                    a.1.min(z.1) as f32,
-                                    a.2.max(z.2) as f32,
-                                    a.3.max(z.3) as f32,
-                                );
-                                sucio = Some(match sucio {
-                                    None => caja,
-                                    Some(s) => (s.0.min(caja.0), s.1.min(caja.1), s.2.max(caja.2), s.3.max(caja.3)),
-                                });
-                            }
-                            _ => {
-                                todo_sucio = true;
-                                contenido_sucio = true;
-                            }
+                if compuesto == Compuesto::No {
+                    match r.region {
+                        Region::Nada => {}
+                        Region::Caja(x0, y0, x1, y1) => {
+                            let a = efectiva.a_pantalla(Punto2::nuevo(x0, y0));
+                            let b = efectiva.a_pantalla(Punto2::nuevo(x1, y1));
+                            let caja = (a.x.min(b.x), a.y.min(b.y), a.x.max(b.x), a.y.max(b.y));
+                            sucio = Some(match sucio {
+                                None => caja,
+                                Some(s) => (
+                                    s.0.min(caja.0),
+                                    s.1.min(caja.1),
+                                    s.2.max(caja.2),
+                                    s.3.max(caja.3),
+                                ),
+                            });
+                            ventana.invalidar();
                         }
-                        zona_transformada = ahora;
-                        ventana.invalidar();
+                        Region::Todo => {
+                            // Estirando o girando: solo lo elegido, su trozo de
+                            // antes y el de ahora, sobre la capa congelada.
+                            let ahora = congelar::zona_al_transformar(
+                                &escena, &gesto, &efectiva, &mut cache,
+                            );
+                            match (ahora, zona_transformada) {
+                                (Some(z), Some(a)) if capa.lista() => {
+                                    let caja = (
+                                        a.0.min(z.0) as f32,
+                                        a.1.min(z.1) as f32,
+                                        a.2.max(z.2) as f32,
+                                        a.3.max(z.3) as f32,
+                                    );
+                                    sucio = Some(match sucio {
+                                        None => caja,
+                                        Some(s) => (
+                                            s.0.min(caja.0),
+                                            s.1.min(caja.1),
+                                            s.2.max(caja.2),
+                                            s.3.max(caja.3),
+                                        ),
+                                    });
+                                }
+                                _ => {
+                                    todo_sucio = true;
+                                    contenido_sucio = true;
+                                }
+                            }
+                            zona_transformada = ahora;
+                            ventana.invalidar();
+                        }
                     }
-                } }
+                }
                 if !gesto.transformando() {
                     zona_transformada = None;
                 }
@@ -1980,8 +2044,7 @@ fn abrir_en_modo(
                 // hornearla costaba de 20 a 194 ms justo al empezar a mover,
                 // el tiron que se notaba al coger una figura.
                 let excluidos = excluidos_de(&gesto);
-                let activo_ahora =
-                    !gesto.en_reposo() && !excluidos.is_empty() && en_capa.is_none();
+                let activo_ahora = !gesto.en_reposo() && !excluidos.is_empty() && en_capa.is_none();
                 // **B2: el trazo vivo en su propia capa.** Mientras dura, la
                 // escena no se toca: ni se hornea al apoyar el lapiz
                 // (`capa.preparar`: 20 ms con 200 elementos y 194 ms con
@@ -2040,7 +2103,11 @@ fn abrir_en_modo(
                             && !habia_eleccion
                             && !construido
                             && compuesto == Compuesto::No;
-                        trazo_limpio = if solo_nacio { gesto.trazo_en_curso() } else { None };
+                        trazo_limpio = if solo_nacio {
+                            gesto.trazo_en_curso()
+                        } else {
+                            None
+                        };
                         if trazo_limpio.is_some() {
                             todo_sucio = false;
                             contenido_sucio = false;
@@ -2220,9 +2287,13 @@ fn abrir_en_modo(
                     let tinta = crate::anotador_al_chat::tinta_de(&escena);
                     let fondo_ref = fondo.as_ref();
                     let ps = pastilla.as_ref();
-                    pantalla::guardar_en_el_chat(&mut chat, pa, tinta, pantalla::globo(exportar::textos()), |pa| {
-                        pantalla::foto_de_debajo(pa, fondo_ref, &ventana, ps, !pasante_fijo)
-                    });
+                    pantalla::guardar_en_el_chat(
+                        &mut chat,
+                        pa,
+                        tinta,
+                        pantalla::globo(exportar::textos()),
+                        |pa| pantalla::foto_de_debajo(pa, fondo_ref, &ventana, ps, !pasante_fijo),
+                    );
                 }
                 Accion::Copiar => {
                     // Como la foto de al salir: la pantalla con lo anotado y
@@ -2274,13 +2345,19 @@ fn abrir_en_modo(
                     trazo_limpio = None;
                     contenido_sucio = true;
                     let copiado = foto.map(|f| pixpin_codec::copiar_imagen(&f));
-                    tracing::info!(ok = matches!(copiado, Some(Ok(()))), "anotador: copiado al portapapeles");
+                    tracing::info!(
+                        ok = matches!(copiado, Some(Ok(()))),
+                        "anotador: copiado al portapapeles"
+                    );
                     if matches!(copiado, Some(Ok(()))) && pa.avisos != 0 {
                         let t = exportar::textos();
-                        let _ = pixpin_shell::aviso::Aviso::sobre_la_bandeja(windows::Win32::Foundation::HWND(
-                            pa.avisos as *mut _,
-                        ))
-                        .mostrar(&t.t("anotador-globo-titulo"), &t.t("anotador-globo-copiado"));
+                        let _ = pixpin_shell::aviso::Aviso::sobre_la_bandeja(
+                            windows::Win32::Foundation::HWND(pa.avisos as *mut _),
+                        )
+                        .mostrar(
+                            &t.t("anotador-globo-titulo"),
+                            &t.t("anotador-globo-copiado"),
+                        );
                     }
                 }
             }
@@ -2445,7 +2522,8 @@ fn abrir_en_modo(
         }
         if tinta_viva && hay_que_pintar && espera_tinta.is_none() {
             let t_pintar = std::time::Instant::now();
-            let prediccion = prediccion_de(&gesto, &mut mano.predictor, tinta_clasica, efectiva.zoom);
+            let prediccion =
+                prediccion_de(&gesto, &mut mano.predictor, tinta_clasica, efectiva.zoom);
             let holgura = if prediccion.is_some() || habia_prediccion {
                 TOPE_PREDICCION_PX as i32 + 8
             } else {
@@ -2670,7 +2748,8 @@ fn abrir_en_modo(
             // capa horneada, no que `volcar` la vaya a usar ahora mismo.
             // La punta predicha: horizonte medido (~30 ms de la lectura a la
             // pantalla en el equipo del usuario) y tope de 48 px de pantalla.
-            let prediccion = prediccion_de(&gesto, &mut mano.predictor, tinta_clasica, efectiva.zoom);
+            let prediccion =
+                prediccion_de(&gesto, &mut mano.predictor, tinta_clasica, efectiva.zoom);
             // Lo que se presenta crece por el tope: la punta nueva y la del
             // fotograma anterior caen, como mucho, a esa distancia.
             let holgura = if prediccion.is_some() || habia_prediccion {
@@ -2777,7 +2856,10 @@ fn abrir_en_modo(
                         );
                     }
                     // F8: con la Zona en la mano, su pastilla bajo la barra.
-                    if gesto.herramienta == Herramienta::Zona && presentacion.is_none() && !solo_mirar {
+                    if gesto.herramienta == Herramienta::Zona
+                        && presentacion.is_none()
+                        && !solo_mirar
+                    {
                         pastilla_zona.pintar(
                             p,
                             base,
@@ -3014,9 +3096,13 @@ fn abrir_en_modo(
     {
         let tinta = crate::anotador_al_chat::tinta_de(&escena);
         let fondo_ref = fondo.as_ref();
-        pantalla::guardar_en_el_chat(&mut chat, pa, tinta, pantalla::globo(exportar::textos()), |pa| {
-            pantalla::foto_al_salir(pa, fondo_ref, &ventana)
-        });
+        pantalla::guardar_en_el_chat(
+            &mut chat,
+            pa,
+            tinta,
+            pantalla::globo(exportar::textos()),
+            |pa| pantalla::foto_al_salir(pa, fondo_ref, &ventana),
+        );
     }
     // **Sin almacen** (no pasa desde `main`, que siempre lo da) queda la
     // salida de antes: una foto de la pantalla con lo anotado, SIN barra ni
@@ -3317,7 +3403,14 @@ fn pintar(
                             if let Some(copia) =
                                 pixpin_motor2d::tinta::prediccion::con_punta(e, origen, q)
                             {
-                                pintar_copia_predicha(p, &copia, vista, imagenes, camara.zoom, escena.escala.as_ref());
+                                pintar_copia_predicha(
+                                    p,
+                                    &copia,
+                                    vista,
+                                    imagenes,
+                                    camara.zoom,
+                                    escena.escala.as_ref(),
+                                );
                                 continue;
                             }
                         }
@@ -3557,7 +3650,10 @@ fn hornear_trazo(
     trasero_distinto: Option<(i32, i32, i32, i32)>,
     marcas: Option<(&marcas::Marcador, u32)>,
 ) -> Option<Horneado> {
-    let e = escena.elementos.last().filter(|e| e.id == id && !e.borrado)?;
+    let e = escena
+        .elementos
+        .last()
+        .filter(|e| e.id == id && !e.borrado)?;
     let margen = superficie.margen();
     let (ancho_sup, alto_sup) = tamano_escena(ancho_px, alto_px, margen);
     let zona = zona_del_horneado(e, camara, margen, ancho_sup, alto_sup)?;
@@ -3591,7 +3687,19 @@ fn hornear_trazo(
     superficie.igualar_trasero(trasero_distinto).ok()?;
     let destino = superficie.empezar(motor).ok()?;
     let error = motor.dibujar(&destino, |p| {
-        pintar_horneado(p, e, camara, margen, zona, escena, cache, cache_tinta, imagenes, ancho_px, alto_px);
+        pintar_horneado(
+            p,
+            e,
+            camara,
+            margen,
+            zona,
+            escena,
+            cache,
+            cache_tinta,
+            imagenes,
+            ancho_px,
+            alto_px,
+        );
     });
     if error.is_err() {
         // Dispositivo perdido: lo arregla el fotograma entero, que ya sabe
@@ -3699,7 +3807,11 @@ fn pintar_horneado(
     let v = camara.ventana(ancho_px, alto_px);
     let vista = (v.0 - holgura, v.1 - holgura, v.2 + holgura, v.3 + holgura);
     let origen = camara.a_pantalla(Punto2::nuevo(0.0, 0.0));
-    p.poner_vista((0.0, 0.0), camara.zoom, (origen.x + margen, origen.y + margen));
+    p.poner_vista(
+        (0.0, 0.0),
+        camara.zoom,
+        (origen.x + margen, origen.y + margen),
+    );
     let mut indice = 0u32;
     let grano = pixpin_motor2d::pintado::grano_de(e);
     por_cada_orden(cache, e, camara.zoom, escena.escala.as_ref(), |orden| {
@@ -3779,7 +3891,14 @@ fn pintar_tinta_viva(
                         if let Some(copia) =
                             pixpin_motor2d::tinta::prediccion::con_punta(e, origen_trazo, q)
                         {
-                            pintar_copia_predicha(p, &copia, vista, imagenes, camara.zoom, escena.escala.as_ref());
+                            pintar_copia_predicha(
+                                p,
+                                &copia,
+                                vista,
+                                imagenes,
+                                camara.zoom,
+                                escena.escala.as_ref(),
+                            );
                             return;
                         }
                     }
@@ -3845,11 +3964,23 @@ fn pintar_seleccion_en_capa(
                 });
                 // Una lupa viaja con lo de dentro (ya pintado: moverla no
                 // lo cambia), no con el cristal vacio.
-                lupas::pintar_en_capa(p, e, camara, base, imagenes, ancho_px as u32, alto_px as u32);
+                lupas::pintar_en_capa(
+                    p,
+                    e,
+                    camara,
+                    base,
+                    imagenes,
+                    ancho_px as u32,
+                    alto_px as u32,
+                );
             }
             // El marco y los tiradores viajan con lo elegido: son la misma
             // llamada que usa `pintar`, para que no se desincronicen.
-            if let Some(caja) = gesto.seleccion.caja(escena).filter(|_| gesto.marco_visible()) {
+            if let Some(caja) = gesto
+                .seleccion
+                .caja(escena)
+                .filter(|_| gesto.marco_visible())
+            {
                 let tiradores = gesto.tiradores(escena, escala);
                 let angulo = tiradores.as_ref().map_or(0.0, |t| t.angulo);
                 p.marco(caja, angulo, escala);
@@ -3891,7 +4022,11 @@ fn pintar_marquesina_en_capa(
 
 /// El rectangulo de pantalla (pixeles de ventana) que ocupa una caja del
 /// mundo, con un margen para el trazo del marco y los tiradores.
-fn caja_en_pantalla(camara: &Camara, caja: (f32, f32, f32, f32), margen: f32) -> (i32, i32, i32, i32) {
+fn caja_en_pantalla(
+    camara: &Camara,
+    caja: (f32, f32, f32, f32),
+    margen: f32,
+) -> (i32, i32, i32, i32) {
     let a = camara.a_pantalla(Punto2::nuevo(caja.0, caja.1));
     let b = camara.a_pantalla(Punto2::nuevo(caja.2, caja.3));
     (
@@ -3944,92 +4079,120 @@ fn zona_de_seleccion(
         let es_texto = matches!(e.figura, Figura::Texto { .. });
         let es_marco = matches!(e.figura, Figura::Marco { .. });
         let girado = e.angulo != 0.0;
-        por_cada_orden(cache, e, camara.zoom, escena.escala.as_ref(), |orden| match orden {
-            Orden::Poligono { puntos, .. } | Orden::Relleno { puntos, .. } => {
-                if !puntos.is_empty() {
-                    unir(&mut u, caja_de(puntos, suavizado));
+        por_cada_orden(
+            cache,
+            e,
+            camara.zoom,
+            escena.escala.as_ref(),
+            |orden| match orden {
+                Orden::Poligono { puntos, .. } | Orden::Relleno { puntos, .. } => {
+                    if !puntos.is_empty() {
+                        unir(&mut u, caja_de(puntos, suavizado));
+                    }
                 }
-            }
-            // El aviso del grafito: su mapa, que `caja_de_tinta` ya cuenta.
-            Orden::Tinta { contorno, .. } if contorno.is_empty() => {
-                if girado {
-                    se_sabe = false;
-                } else {
-                    unir(&mut u, caja_de_tinta(e));
+                // El aviso del grafito: su mapa, que `caja_de_tinta` ya cuenta.
+                Orden::Tinta { contorno, .. } if contorno.is_empty() => {
+                    if girado {
+                        se_sabe = false;
+                    } else {
+                        unir(&mut u, caja_de_tinta(e));
+                    }
                 }
-            }
-            Orden::Tinta { contorno, .. } => unir(&mut u, caja_de(contorno, suavizado)),
-            // Las esquinas de una linea gruesa asoman de su caja; tres
-            // grosores cubren una union en punta sin llegar a la de inglete
-            // mas larga que Direct2D llega a pintar con su limite de 10.
-            Orden::Polilinea { puntos, grosor, .. } => {
-                if !puntos.is_empty() {
-                    unir(&mut u, caja_de(puntos, grosor * 5.0 + suavizado));
+                Orden::Tinta { contorno, .. } => unir(&mut u, caja_de(contorno, suavizado)),
+                // Las esquinas de una linea gruesa asoman de su caja; tres
+                // grosores cubren una union en punta sin llegar a la de inglete
+                // mas larga que Direct2D llega a pintar con su limite de 10.
+                Orden::Polilinea { puntos, grosor, .. } => {
+                    if !puntos.is_empty() {
+                        unir(&mut u, caja_de(puntos, grosor * 5.0 + suavizado));
+                    }
                 }
-            }
-            Orden::Imagen {
-                x, y, ancho, alto, ..
-            } => {
-                if girado {
-                    se_sabe = false;
-                } else {
-                    unir(&mut u, (*x, *y, x + ancho, y + alto));
+                Orden::Imagen {
+                    x, y, ancho, alto, ..
+                } => {
+                    if girado {
+                        se_sabe = false;
+                    } else {
+                        unir(&mut u, (*x, *y, x + ancho, y + alto));
+                    }
                 }
-            }
-            Orden::Texto {
-                texto, x, y, tam, ancho_max, familia, ..
-            } => {
-                if es_texto && !girado {
-                    let (c0, c1, c2, c3) = e.caja();
-                    unir(
-                        &mut u,
-                        (
-                            x.min(c0) - tam,
-                            y.min(c1) - tam,
-                            // Un texto suelto no se parte (`SIN_PARTIR`): lo
-                            // pintado acaba en su caja, no en el ancho sin fin.
-                            if *ancho_max >= pixpin_motor2d::texto::SIN_PARTIR {
-                                c2 + tam
-                            } else {
-                                (x + ancho_max).max(c2) + tam
-                            },
-                            c3.max(*y) + tam,
-                        ),
-                    );
-                } else if es_marco && !girado {
-                    // El nombre de un marco: encima de su raya, partido al
-                    // ancho del marco. Baja hacia dentro del marco, cuya caja
-                    // ya esta en la cuenta; si sus renglones no caben ni en
-                    // el alto del marco, no se sabe. Sin esto, estirar un
-                    // marco con nombre rehacia la escena entera en cada aviso.
-                    let (c0, c1, c2, c3) = e.caja();
-                    let (ancho, _) = pixpin_motor2d::texto::medida(
-                        texto,
-                        *tam,
-                        familia,
-                        pixpin_motor2d::texto::EstiloDeTexto::default(),
-                    );
-                    let renglones = texto.split('\n').count() as f32 + (ancho / ancho_max.max(1.0)).floor();
-                    let abajo = y + renglones * tam * 1.5;
-                    if abajo <= c3 {
-                        unir(&mut u, (x.min(c0) - tam, y - tam, (x + ancho_max).max(c2) + tam, c3.max(c1)));
+                Orden::Texto {
+                    texto,
+                    x,
+                    y,
+                    tam,
+                    ancho_max,
+                    familia,
+                    ..
+                } => {
+                    if es_texto && !girado {
+                        let (c0, c1, c2, c3) = e.caja();
+                        unir(
+                            &mut u,
+                            (
+                                x.min(c0) - tam,
+                                y.min(c1) - tam,
+                                // Un texto suelto no se parte (`SIN_PARTIR`): lo
+                                // pintado acaba en su caja, no en el ancho sin fin.
+                                if *ancho_max >= pixpin_motor2d::texto::SIN_PARTIR {
+                                    c2 + tam
+                                } else {
+                                    (x + ancho_max).max(c2) + tam
+                                },
+                                c3.max(*y) + tam,
+                            ),
+                        );
+                    } else if es_marco && !girado {
+                        // El nombre de un marco: encima de su raya, partido al
+                        // ancho del marco. Baja hacia dentro del marco, cuya caja
+                        // ya esta en la cuenta; si sus renglones no caben ni en
+                        // el alto del marco, no se sabe. Sin esto, estirar un
+                        // marco con nombre rehacia la escena entera en cada aviso.
+                        let (c0, c1, c2, c3) = e.caja();
+                        let (ancho, _) = pixpin_motor2d::texto::medida(
+                            texto,
+                            *tam,
+                            familia,
+                            pixpin_motor2d::texto::EstiloDeTexto::default(),
+                        );
+                        let renglones =
+                            texto.split('\n').count() as f32 + (ancho / ancho_max.max(1.0)).floor();
+                        let abajo = y + renglones * tam * 1.5;
+                        if abajo <= c3 {
+                            unir(
+                                &mut u,
+                                (
+                                    x.min(c0) - tam,
+                                    y - tam,
+                                    (x + ancho_max).max(c2) + tam,
+                                    c3.max(c1),
+                                ),
+                            );
+                        } else {
+                            se_sabe = false;
+                        }
                     } else {
                         se_sabe = false;
                     }
-                } else {
-                    se_sabe = false;
                 }
-            }
-            // El numero de una cota va girado con su raya: el circulo que
-            // barre su caja alrededor del centro, con el halo.
-            Orden::Rotulo {
-                x, y, centro, grosor_halo, ..
-            } => {
-                let r = (centro.x - x).hypot(centro.y - y) + grosor_halo + suavizado;
-                unir(&mut u, (centro.x - r, centro.y - r, centro.x + r, centro.y + r));
-            }
-            Orden::Velo { .. } => se_sabe = false,
-        });
+                // El numero de una cota va girado con su raya: el circulo que
+                // barre su caja alrededor del centro, con el halo.
+                Orden::Rotulo {
+                    x,
+                    y,
+                    centro,
+                    grosor_halo,
+                    ..
+                } => {
+                    let r = (centro.x - x).hypot(centro.y - y) + grosor_halo + suavizado;
+                    unir(
+                        &mut u,
+                        (centro.x - r, centro.y - r, centro.x + r, centro.y + r),
+                    );
+                }
+                Orden::Velo { .. } => se_sabe = false,
+            },
+        );
         if !se_sabe {
             return None;
         }
@@ -4161,8 +4324,14 @@ fn zona_en_superficie(
 
 /// La caja del mundo que cae en una zona de la superficie de escena.
 fn mundo_de_zona(camara: &Camara, zona: (i32, i32, i32, i32), margen: f32) -> (f32, f32, f32, f32) {
-    let a = camara.a_mundo(Punto2::nuevo(zona.0 as f32 - margen, zona.1 as f32 - margen));
-    let b = camara.a_mundo(Punto2::nuevo(zona.2 as f32 - margen, zona.3 as f32 - margen));
+    let a = camara.a_mundo(Punto2::nuevo(
+        zona.0 as f32 - margen,
+        zona.1 as f32 - margen,
+    ));
+    let b = camara.a_mundo(Punto2::nuevo(
+        zona.2 as f32 - margen,
+        zona.3 as f32 - margen,
+    ));
     (a.x.min(b.x), a.y.min(b.y), a.x.max(b.x), a.y.max(b.y))
 }
 
@@ -4204,7 +4373,11 @@ fn pintar_zona(
     let v = camara.ventana(ancho_px, alto_px);
     let vista = (v.0 - holgura, v.1 - holgura, v.2 + holgura, v.3 + holgura);
     let origen = camara.a_pantalla(Punto2::nuevo(0.0, 0.0));
-    p.poner_vista((0.0, 0.0), camara.zoom, (origen.x + margen, origen.y + margen));
+    p.poner_vista(
+        (0.0, 0.0),
+        camara.zoom,
+        (origen.x + margen, origen.y + margen),
+    );
     if let Some(f) = fondo {
         f.pintar(p, vista, camara.zoom);
     }
@@ -4441,7 +4614,10 @@ enum EnCapa {
     /// camara con la que se pinto: si cambia, la capa ya no vale.
     Arrastre { ancla: (f32, f32), camara: Camara },
     /// La marquesina, con la zona de pantalla que se pinto la ultima vez.
-    Marquesina { zona: (i32, i32, i32, i32), camara: Camara },
+    Marquesina {
+        zona: (i32, i32, i32, i32),
+        camara: Camara,
+    },
 }
 
 /// Lo que se le deja de pedir a `pintar` porque ya esta en la capa.
@@ -4628,34 +4804,34 @@ fn dibujar_cajetin(
     );
 }
 
-/// Exportar (PNG, SVG, PDF, web) e imprimir; lo usa tambien el chat.
-pub(crate) mod exportar;
+/// Hornear la capa congelada (lo que no se mueve), para dos gestos.
+mod congelar;
 /// La pasada de tapado del mosaico. Ver su cabecera: se engancha en dos
 /// sitios del fotograma y los dos estan en `pintar`.
 /// El cajetin de la cota: cuanto mide y hacia donde va (lienzo-geometria).
 mod cota;
-mod tapar;
-/// La pasada de las lupas: lo que mira cada una, agrandado (lienzo-imagen).
-mod lupas;
-/// Hornear la capa congelada (lo que no se mueve), para dos gestos.
-mod congelar;
-/// La imagen de referencia flotando encima del lienzo (`VentanaDeReferencia`).
-mod referencia;
-/// Los marcadores con emoticono y su riel (F5).
-pub(crate) mod marcas;
-/// La hojita: el recado que se pega como pin (F6).
-mod hojita;
+/// Exportar (PNG, SVG, PDF, web) e imprimir; lo usa tambien el chat.
+pub(crate) mod exportar;
 /// F8, F12, F14: la zona, la grafica, las tablas, la biblioteca y la imagen.
 mod figuras;
-/// F8: la pastilla de la Zona y su interruptor «Al chat».
-mod pastilla_zona;
-/// G5: presentar por marcos (F5) y solo mirar (Alt+R).
-mod presentar;
+/// La hojita: el recado que se pega como pin (F6).
+mod hojita;
+/// La pasada de las lupas: lo que mira cada una, agrandado (lienzo-imagen).
+mod lupas;
+/// Los marcadores con emoticono y su riel (F5).
+pub(crate) mod marcas;
 /// El anotador de pantalla: este mismo editor encima del escritorio.
 pub(crate) mod pantalla;
 /// La pastilla del anotador de pantalla: atravesar, limpiar, copiar, guardar
 /// y salir, en su propia ventana (`CapaPantalla.kt`).
 pub(crate) mod pastilla_pantalla;
+/// F8: la pastilla de la Zona y su interruptor «Al chat».
+mod pastilla_zona;
+/// G5: presentar por marcos (F5) y solo mirar (Alt+R).
+mod presentar;
+/// La imagen de referencia flotando encima del lienzo (`VentanaDeReferencia`).
+mod referencia;
+mod tapar;
 
 #[cfg(test)]
 pub(crate) mod medir;
@@ -4763,11 +4939,15 @@ mod pruebas {
         assert!(punta_de_tinta(&caja, q).is_none());
         // ...y la copia sigue siendo de grafito, con la punta dentro: es lo
         // que `pintar_copia_predicha` cuece en vez de pintarla lisa.
-        let copia = pixpin_motor2d::tinta::prediccion::con_punta(&caja, Some(Punto2::nuevo(10.0, 10.0)), q)
-            .expect("una caja en curso tiene copia predicha");
+        let copia =
+            pixpin_motor2d::tinta::prediccion::con_punta(&caja, Some(Punto2::nuevo(10.0, 10.0)), q)
+                .expect("una caja en curso tiene copia predicha");
         let cocido = grafito::cocer_sin_horno(&copia).expect("la copia se cuece de grafito");
         let (x0, y0, w, h) = cocido.caja();
-        assert!(x0 + w >= 160.0 && y0 + h >= 110.0, "el mapa no llega a la punta");
+        assert!(
+            x0 + w >= 160.0 && y0 + h >= 110.0,
+            "el mapa no llega a la punta"
+        );
         // Caso negativo: el trazo a mano de grafito si lleva su aviso sin
         // marca, que no pinta nada: una punta lisa se veria como una gota.
         let mut trazo = trazo_de(40);
@@ -5085,7 +5265,11 @@ mod pruebas {
         // El anotador de pantalla tiene su propia regla.
         assert!(!escape_cierra(false, true, true));
         // Recien abierto, el gesto esta en reposo: una pulsacion basta.
-        assert!(escape_cierra(true, true, gesto_inicial(Default::default()).en_reposo()));
+        assert!(escape_cierra(
+            true,
+            true,
+            gesto_inicial(Default::default()).en_reposo()
+        ));
     }
 
     #[test]
@@ -5528,24 +5712,48 @@ mod pruebas {
             grosor: 2.0,
             ..Default::default()
         };
-        let marco = escena.anadir(caja(Figura::Marco { nombre: String::new() }, 0.0, 0.0, 400.0, 300.0));
+        let marco = escena.anadir(caja(
+            Figura::Marco {
+                nombre: String::new(),
+            },
+            0.0,
+            0.0,
+            400.0,
+            300.0,
+        ));
         let dentro = escena.anadir(caja(Figura::Rectangulo, 100.0, 100.0, 50.0, 50.0));
         let fuera = escena.anadir(caja(Figura::Rectangulo, 600.0, 100.0, 50.0, 50.0));
         let mut g = Gesto::nuevo();
         g.herramienta = Herramienta::Mano;
         g.seleccion.poner(marco);
         assert!(!se_arrastra(&g, dentro), "quieto no se arrastra nada");
-        for (evento, p) in [(true, Punto2::nuevo(100.0, 0.0)), (false, Punto2::nuevo(130.0, 10.0))] {
+        for (evento, p) in [
+            (true, Punto2::nuevo(100.0, 0.0)),
+            (false, Punto2::nuevo(130.0, 10.0)),
+        ] {
             let e = if evento {
-                EventoGesto::Pulsar { p, shift: false, alt: false, presion: None }
+                EventoGesto::Pulsar {
+                    p,
+                    shift: false,
+                    alt: false,
+                    presion: None,
+                }
             } else {
-                EventoGesto::Mover { p, shift: false, alt: false, presion: None }
+                EventoGesto::Mover {
+                    p,
+                    shift: false,
+                    alt: false,
+                    presion: None,
+                }
             };
             g.evento(e, &mut escena, 1.0);
         }
         assert!(g.moviendo());
         assert!(es_excluido(&g, marco) && es_excluido(&g, dentro));
-        assert!(!es_excluido(&g, fuera), "lo de fuera sigue en la capa congelada");
+        assert!(
+            !es_excluido(&g, fuera),
+            "lo de fuera sigue en la capa congelada"
+        );
         let mut ex = excluidos_de(&g);
         ex.sort_unstable();
         assert_eq!(ex, vec![marco, dentro]);

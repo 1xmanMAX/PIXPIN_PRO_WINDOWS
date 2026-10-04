@@ -319,7 +319,9 @@ pub fn sitio_fino(
     finos: &AjustesFinos,
     excluir: &[u64],
 ) -> Option<Anclaje> {
-    sitio_fino_con(elementos, p, zoom, faena, config, finos, &|id| excluir.contains(&id))
+    sitio_fino_con(elementos, p, zoom, faena, config, finos, &|id| {
+        excluir.contains(&id)
+    })
 }
 
 /// Como [`sitio`], pero preguntando a `excluye` si un id no cuenta, en vez
@@ -335,7 +337,15 @@ pub fn sitio_con(
     config: &Ajustes,
     excluye: &dyn Fn(u64) -> bool,
 ) -> Option<Anclaje> {
-    sitio_fino_con(elementos, p, zoom, faena, config, &AjustesFinos::NINGUNO, excluye)
+    sitio_fino_con(
+        elementos,
+        p,
+        zoom,
+        faena,
+        config,
+        &AjustesFinos::NINGUNO,
+        excluye,
+    )
 }
 
 fn sitio_fino_con(

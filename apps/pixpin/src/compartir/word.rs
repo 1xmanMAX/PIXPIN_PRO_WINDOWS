@@ -16,7 +16,12 @@ pub(crate) fn es_nota(m: &Mensaje) -> bool {
 }
 
 /// El `.docx` de la nota y su nombre de fichero (con `.docx`).
-pub(crate) fn de_nota(raiz: &Path, proyecto: &str, m: &Mensaje, nueva: &str) -> Option<(Vec<u8>, String)> {
+pub(crate) fn de_nota(
+    raiz: &Path,
+    proyecto: &str,
+    m: &Mensaje,
+    nueva: &str,
+) -> Option<(Vec<u8>, String)> {
     let destino = Destino::Mensaje {
         proyecto: proyecto.to_string(),
         codigo: m.codigo_unico(),
@@ -66,11 +71,16 @@ mod pruebas {
             ..nota.clone()
         }));
         // Y el Word sale aunque el proyecto no exista en este equipo.
-        let raiz = std::env::temp_dir().join(format!("pixpin-compartir-word-{}", std::process::id()));
+        let raiz =
+            std::env::temp_dir().join(format!("pixpin-compartir-word-{}", std::process::id()));
         let (bytes, nombre) = de_nota(&raiz, "no-esta", &nota, "Nota nueva").unwrap();
         assert_eq!(nombre, "Hola.docx");
         let mut p = pixpin_docs::Paquete::de_bytes(&bytes).unwrap();
         let d = pixpin_docs::docx::de_paquete(&mut p, "x").unwrap();
-        assert!(d.bloques.iter().any(|b| b.clase == pixpin_docs::Clase::Fila));
+        assert!(
+            d.bloques
+                .iter()
+                .any(|b| b.clase == pixpin_docs::Clase::Fila)
+        );
     }
 }

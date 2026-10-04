@@ -178,7 +178,11 @@ impl Tabla {
 
     /// Lo de la celda `(f, c)`; lo de siempre si no lleva nada.
     pub fn formato(&self, f: usize, c: usize) -> Formato {
-        self.formato.get(f).and_then(|x| x.get(c)).copied().unwrap_or_default()
+        self.formato
+            .get(f)
+            .and_then(|x| x.get(c))
+            .copied()
+            .unwrap_or_default()
     }
 
     /// Todas las filas con todas sus celdas, y el formato con la misma
@@ -233,14 +237,21 @@ impl Tabla {
     }
 
     pub fn normalizar(&mut self) {
-        if self.formato.iter().flatten().all(|x| *x == Formato::default()) {
+        if self
+            .formato
+            .iter()
+            .flatten()
+            .all(|x| *x == Formato::default())
+        {
             self.formato.clear();
         }
     }
 
     /// Como se alinea la celda `(f, c)`: la suya o la de su columna.
     pub fn alineacion_de(&self, f: usize, c: usize) -> Alineacion {
-        self.formato(f, c).alineacion.unwrap_or_else(|| self.alineacion(c))
+        self.formato(f, c)
+            .alineacion
+            .unwrap_or_else(|| self.alineacion(c))
     }
 
     /// Si `(f, c)` es de cabecera: la primera fila, salvo que diga otra cosa.
@@ -327,7 +338,9 @@ impl Tabla {
         let (f1, f2, c1, c2) = self.rectangulo(a, b);
         // Una sola celda, o una sola combinada entera: nada que combinar.
         let ya = self.formato(f1, c1);
-        if (f1 == f2 && c1 == c2) || (!ya.tapada && f2 - f1 + 1 == ya.filas && c2 - c1 + 1 == ya.columnas) {
+        if (f1 == f2 && c1 == c2)
+            || (!ya.tapada && f2 - f1 + 1 == ya.filas && c2 - c1 + 1 == ya.columnas)
+        {
             return false;
         }
         self.cuadrar();
@@ -467,7 +480,10 @@ impl Tabla {
                     self.formato[af][ac].filas -= 1;
                 } else if x.filas > 1 {
                     self.filas[cual + 1][ac] = std::mem::take(&mut self.filas[cual][ac]);
-                    self.formato[cual + 1][ac] = Formato { filas: x.filas - 1, ..x };
+                    self.formato[cual + 1][ac] = Formato {
+                        filas: x.filas - 1,
+                        ..x
+                    };
                 }
             }
             self.formato.remove(cual);
@@ -501,7 +517,14 @@ impl Tabla {
                 }
             }
             for (fila, tapada) in self.formato.iter_mut().zip(tapadas) {
-                fila.insert(i, if tapada { Formato::tapada() } else { Formato::default() });
+                fila.insert(
+                    i,
+                    if tapada {
+                        Formato::tapada()
+                    } else {
+                        Formato::default()
+                    },
+                );
             }
         }
         for f in &mut self.filas {
@@ -531,7 +554,10 @@ impl Tabla {
                     self.formato[af][ac].columnas -= 1;
                 } else if x.columnas > 1 {
                     self.filas[af][cual + 1] = std::mem::take(&mut self.filas[af][cual]);
-                    self.formato[af][cual + 1] = Formato { columnas: x.columnas - 1, ..x };
+                    self.formato[af][cual + 1] = Formato {
+                        columnas: x.columnas - 1,
+                        ..x
+                    };
                 }
             }
             for fila in &mut self.formato {
@@ -711,7 +737,10 @@ impl Tabla {
 fn celdas_de_fila(fila: &str) -> Vec<String> {
     let t = fila.trim();
     let t = t.strip_prefix('|').unwrap_or(t);
-    let t = t.strip_suffix('|').filter(|x| !x.ends_with('\\')).unwrap_or(t);
+    let t = t
+        .strip_suffix('|')
+        .filter(|x| !x.ends_with('\\'))
+        .unwrap_or(t);
     let mut salida = Vec::new();
     let mut actual = String::new();
     let mut letras = t.chars().peekable();
@@ -771,7 +800,10 @@ pub fn leer_gfm(texto: &str) -> Option<Tabla> {
     if renglones.len() < 2 || !es_separadora(renglones[1]) {
         return None;
     }
-    let alineaciones: Vec<Alineacion> = celdas_de_fila(renglones[1]).iter().map(|c| alineacion_de(c)).collect();
+    let alineaciones: Vec<Alineacion> = celdas_de_fila(renglones[1])
+        .iter()
+        .map(|c| alineacion_de(c))
+        .collect();
     let filas: Vec<Vec<String>> = renglones
         .iter()
         .enumerate()
@@ -790,7 +822,13 @@ pub fn leer_gfm(texto: &str) -> Option<Tabla> {
 fn celda_a_gfm(c: &str) -> String {
     let llano: String = c
         .chars()
-        .map(|x| if x == '\n' || x == '\r' || x == CELDA { ' ' } else { x })
+        .map(|x| {
+            if x == '\n' || x == '\r' || x == CELDA {
+                ' '
+            } else {
+                x
+            }
+        })
         .collect();
     llano.trim().replace('|', "\\|")
 }
@@ -849,7 +887,10 @@ pub fn para_control(md: &str) -> ParaControl {
     if renglones.is_empty() {
         renglones.push("");
     }
-    let sin_salto: Vec<&str> = renglones.iter().map(|r| r.trim_end_matches(['\n', '\r'])).collect();
+    let sin_salto: Vec<&str> = renglones
+        .iter()
+        .map(|r| r.trim_end_matches(['\n', '\r']))
+        .collect();
     let mut sal = ParaControl::default();
     let mut en_codigo = false;
     let mut i = 0;
@@ -873,7 +914,12 @@ pub fn para_control(md: &str) -> ParaControl {
         }
         // Una tabla en HTML, como las escribe el movil (`Markdown.kt`: un
         // renglon que empieza por `<table`, hasta el que cierra).
-        if !en_codigo && sin_salto[i].trim_start().to_ascii_lowercase().starts_with("<table") {
+        if !en_codigo
+            && sin_salto[i]
+                .trim_start()
+                .to_ascii_lowercase()
+                .starts_with("<table")
+        {
             let mut j = i;
             while j < renglones.len() {
                 j += 1;
@@ -934,7 +980,10 @@ pub fn tablas_en_control(texto: &str) -> Vec<TablaEnControl> {
             let inicio = i;
             let mut filas = Vec::new();
             let mut celdas = Vec::new();
-            while i < letras.len() && letras[i] == FILA_ABRE && letras.get(i + 1).is_some_and(|c| es_salto(*c)) {
+            while i < letras.len()
+                && letras[i] == FILA_ABRE
+                && letras.get(i + 1).is_some_and(|c| es_salto(*c))
+            {
                 let mut k = i + 2;
                 let mut fila = Vec::new();
                 let mut donde = Vec::new();
@@ -1018,7 +1067,10 @@ pub fn de_control_con(texto: &str, completar: &mut dyn FnMut(usize, &mut Tabla))
         sal.push_str(&a_texto(&tabla));
         // El salto de la ultima fila es el que separa la tabla de lo que
         // sigue; sin el (tabla al final del todo) no se inventa.
-        if t.hasta > t.desde && u.get(t.hasta - 1).is_some_and(|c| *c == b'\n' as u16 || *c == b'\r' as u16) {
+        if t.hasta > t.desde
+            && u.get(t.hasta - 1)
+                .is_some_and(|c| *c == b'\n' as u16 || *c == b'\r' as u16)
+        {
             sal.push('\n');
         }
         desde = t.hasta;
@@ -1029,7 +1081,10 @@ pub fn de_control_con(texto: &str, completar: &mut dyn FnMut(usize, &mut Tabla))
 
 /// La tabla, fila y columna de la celda donde cae `pos`, si cae en una.
 pub fn celda_en(tablas: &[TablaEnControl], pos: usize) -> Option<(usize, usize, usize)> {
-    let (k, t) = tablas.iter().enumerate().find(|(_, t)| t.desde <= pos && pos < t.hasta)?;
+    let (k, t) = tablas
+        .iter()
+        .enumerate()
+        .find(|(_, t)| t.desde <= pos && pos < t.hasta)?;
     let mut ultima = None;
     for (f, fila) in t.celdas.iter().enumerate() {
         for (c, &inicio) in fila.iter().enumerate() {
@@ -1045,14 +1100,18 @@ pub fn celda_en(tablas: &[TablaEnControl], pos: usize) -> Option<(usize, usize, 
 /// las marcas de Markdown mas comunes, que el editor esconde. Sirve para
 /// repartir el ancho de las columnas.
 pub fn letras_visibles(celda: &str) -> usize {
-    celda.chars().filter(|c| !matches!(c, '*' | '`' | '~' | '_' | '$')).count()
+    celda
+        .chars()
+        .filter(|c| !matches!(c, '*' | '`' | '~' | '_' | '$'))
+        .count()
 }
 
 #[cfg(test)]
 mod pruebas {
     use super::*;
 
-    const DEL_MOVIL: &str = "| Objetivo | Tecnica |\n|:---|:---|\n| OE1 | Pareto |\n| OE2 | Likert 1\\|5 |";
+    const DEL_MOVIL: &str =
+        "| Objetivo | Tecnica |\n|:---|:---|\n| OE1 | Pareto |\n| OE2 | Likert 1\\|5 |";
 
     #[test]
     fn una_tabla_del_movil_se_lee_y_se_escribe_igual() {
@@ -1067,7 +1126,11 @@ mod pruebas {
         let t = leer_gfm("| a | b | c |\n|---|:-:|--:|\n| 1 | 2 | 3 |").unwrap();
         assert_eq!(
             t.alineaciones,
-            vec![Alineacion::Izquierda, Alineacion::Centro, Alineacion::Derecha]
+            vec![
+                Alineacion::Izquierda,
+                Alineacion::Centro,
+                Alineacion::Derecha
+            ]
         );
         assert!(a_gfm(&t).contains("|:---|:---:|---:|"));
     }
@@ -1215,7 +1278,10 @@ mod pruebas {
     #[test]
     fn combinar_junta_los_textos_en_la_de_arriba_y_tapa_las_demas() {
         let mut t = rejilla(3, 3);
-        assert!(t.combinar((1, 2), (0, 1)), "las esquinas en cualquier orden");
+        assert!(
+            t.combinar((1, 2), (0, 1)),
+            "las esquinas en cualquier orden"
+        );
         assert_eq!(t.filas[0][1], "01\n02\n11\n12");
         let a = t.formato(0, 1);
         assert_eq!((a.filas, a.columnas, a.tapada), (2, 2, false));
@@ -1295,7 +1361,11 @@ mod pruebas {
         let mut t = rejilla(3, 3);
         t.combinar((0, 0), (0, 2));
         t.poner_letra((0, 2), (2, 2), Some(0x1971c2));
-        assert_eq!(t.formato(0, 0).letra, Some(0x1971c2), "el titulo tapa esa columna");
+        assert_eq!(
+            t.formato(0, 0).letra,
+            Some(0x1971c2),
+            "el titulo tapa esa columna"
+        );
         assert_eq!(t.formato(1, 2).letra, Some(0x1971c2));
         assert_eq!(t.formato(1, 1).letra, None);
         assert_eq!(t.formato(2, 0).letra, None);
@@ -1328,7 +1398,10 @@ mod pruebas {
         assert!(t.formato(2, 0).tapada);
         assert!(t.quitar_fila(2));
         assert_eq!(t.formato(1, 0).filas, 1);
-        assert!(t.formato.is_empty(), "una combinada de una celda ya no es combinada");
+        assert!(
+            t.formato.is_empty(),
+            "una combinada de una celda ya no es combinada"
+        );
     }
 
     #[test]
@@ -1397,14 +1470,17 @@ mod pruebas {
 
     #[test]
     fn el_texto_de_una_tapada_del_control_no_es_texto() {
-        let control = format!("{FILA_ABRE}\rA{SALTO_EN_CELDA}B{CELDA}{TAPADA}{CELDA}{FILA_CIERRA}\r");
+        let control =
+            format!("{FILA_ABRE}\rA{SALTO_EN_CELDA}B{CELDA}{TAPADA}{CELDA}{FILA_CIERRA}\r");
         let t = tablas_en_control(&control).remove(0);
         assert_eq!(t.tabla.filas, vec![vec!["A\nB".to_string(), String::new()]]);
     }
 
     #[test]
     fn una_tabla_con_combinadas_vuelve_del_control_como_html() {
-        let control = format!("x\n{FILA_ABRE}\rA{CELDA}{TAPADA}{CELDA}{FILA_CIERRA}\r{FILA_ABRE}\r1{CELDA}2{CELDA}{FILA_CIERRA}\r");
+        let control = format!(
+            "x\n{FILA_ABRE}\rA{CELDA}{TAPADA}{CELDA}{FILA_CIERRA}\r{FILA_ABRE}\r1{CELDA}2{CELDA}{FILA_CIERRA}\r"
+        );
         let md = de_control_con(&control, &mut |_, t| {
             t.combinar((0, 0), (0, 1));
         });
@@ -1421,7 +1497,8 @@ mod pruebas {
 
     #[test]
     fn una_tabla_html_con_titulo_o_dentro_de_codigo_se_queda_como_texto() {
-        let con_titulo = "<table>\n  <caption>Plan</caption>\n  <tr>\n    <td>a</td>\n  </tr>\n</table>\n";
+        let con_titulo =
+            "<table>\n  <caption>Plan</caption>\n  <tr>\n    <td>a</td>\n  </tr>\n</table>\n";
         let p = para_control(con_titulo);
         assert!(p.tablas.is_empty());
         assert_eq!(p.texto, con_titulo);
@@ -1435,7 +1512,8 @@ mod pruebas {
     // Mover filas y columnas con su asa (H12, 1-oct)
 
     fn cuatro() -> Tabla {
-        leer_gfm("| A | B | C |\n|:---|:-:|--:|\n| 1 | x | p |\n| 2 | y | q |\n| 3 | z | r |").unwrap()
+        leer_gfm("| A | B | C |\n|:---|:-:|--:|\n| 1 | x | p |\n| 2 | y | q |\n| 3 | z | r |")
+            .unwrap()
     }
 
     fn columna(t: &Tabla, c: usize) -> Vec<String> {
@@ -1466,7 +1544,14 @@ mod pruebas {
         let mut t = cuatro();
         assert!(t.mover_columna(2, 0), "la C, delante de todas");
         assert_eq!(t.filas[0], ["C", "A", "B"]);
-        assert_eq!(t.alineaciones, [Alineacion::Derecha, Alineacion::Izquierda, Alineacion::Centro]);
+        assert_eq!(
+            t.alineaciones,
+            [
+                Alineacion::Derecha,
+                Alineacion::Izquierda,
+                Alineacion::Centro
+            ]
+        );
         assert!(t.mover_columna(0, 3));
         assert_eq!(t.filas[1], ["1", "x", "p"]);
         assert!(!t.mover_columna(1, 2), "a su sitio no");

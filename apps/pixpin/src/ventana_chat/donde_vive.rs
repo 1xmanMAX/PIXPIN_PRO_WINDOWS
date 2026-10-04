@@ -79,13 +79,15 @@ pub(super) fn cambiar(
     let aviso = match hecho {
         Ok(t) => t,
         Err(e) => {
-            tracing::warn!(?e, proyecto = id, "no se pudo cambiar la carpeta del proyecto");
+            tracing::warn!(
+                ?e,
+                proyecto = id,
+                "no se pudo cambiar la carpeta del proyecto"
+            );
             texto_de_error(textos, &e)
         }
     };
-    if estaba_abierto
-        && let Some(f) = almacen::Indice::leer(raiz).buscar(id).cloned()
-    {
+    if estaba_abierto && let Some(f) = almacen::Indice::leer(raiz).buscar(id).cloned() {
         let mut nuevo = abrir_proyecto(donde, &f);
         nuevo.borrador = borradores.remove(id).unwrap_or_default();
         *abierto = Some(nuevo);
@@ -95,7 +97,11 @@ pub(super) fn cambiar(
 
 /// Abre en el Explorador la carpeta de verdad del proyecto: la elegida si la
 /// tiene, no la union de `AppData`, que al usuario no le dice nada.
-pub(super) fn abrir_carpeta(textos: &Catalogo, donde: &Ubicacion, ficha: &almacen::Ficha) -> Option<String> {
+pub(super) fn abrir_carpeta(
+    textos: &Catalogo,
+    donde: &Ubicacion,
+    ficha: &almacen::Ficha,
+) -> Option<String> {
     let raiz = donde.raiz();
     if let Err(e) = ubicacion::preparar(raiz, ficha) {
         return Some(texto_de_error(textos, &e));
