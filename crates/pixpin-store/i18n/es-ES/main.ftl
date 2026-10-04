@@ -1838,3 +1838,79 @@ lec2-repaso-hechas = { $n ->
    *[other] Repasaste { $n } lecciones. Vuelven cuando toque.
   }
 lec2-repaso-volver = Volver a la lista
+## v2-galeria
+galeria-subtitulo = { $cuantas } · duran 7 días
+galeria-buscar = Buscar, también el texto de las capturas
+galeria-buscar-sin-ocr = Buscar por nombre o fecha
+galeria-elegir = Seleccionar
+galeria-eligiendo = Seleccionando
+galeria-filtro-todas = Todas
+galeria-filtro-hoy = Hoy
+galeria-filtro-semana = Esta semana
+galeria-filtro-conservadas = Conservadas
+galeria-filtro-pronto = Se borran pronto
+galeria-filtro-gif = GIF
+galeria-filtro-videos = Vídeos
+galeria-filtro-con-texto = Con texto
+galeria-filtro-vacio = Ninguna captura en este filtro.
+galeria-sin-resultados = Ninguna captura con «{ $texto }».
+galeria-papelera = Papelera
+galeria-ocupan = Ocupan { $tamano }
+galeria-ayuda-mover = moverse
+galeria-tecla-espacio = Espacio
+galeria-ayuda-elegir = elegir ·
+galeria-ayuda-pinear = pinear
+galeria-hoy = Hoy
+galeria-ayer = Ayer
+galeria-dia-0 = lunes
+galeria-dia-1 = martes
+galeria-dia-2 = miércoles
+galeria-dia-3 = jueves
+galeria-dia-4 = viernes
+galeria-dia-5 = sábado
+galeria-dia-6 = domingo
+galeria-elegir-dia = Elegir todo el día
+galeria-se-borra-manana = Se borra mañana
+galeria-se-borra-en = Se borra en { $dias } días
+galeria-chip-video = Vídeo
+galeria-chip-texto = Aa texto
+galeria-pinear = Pinear
+galeria-copiar = Copiar
+galeria-conservar = Conservar
+galeria-borrar = Borrar
+galeria-dar-mas = Dar 7 días más
+galeria-elegidas = { $cuantas ->
+    [one] 1 elegida
+   *[other] { $cuantas } elegidas
+}
+galeria-elegir-todas = Todas
+galeria-deshacer = Deshacer
+galeria-borradas = { $cuantas } llevadas a la papelera de PixPin
+galeria-recuperadas = { $cuantas ->
+    [one] Recuperada
+   *[other] { $cuantas } recuperadas
+}
+galeria-pineadas = { $cuantas } pineadas en la pantalla
+galeria-copiadas = { $cuantas } copiadas como archivos
+galeria-conservadas-aviso = { $cuantas } conservadas: están en Mensajes guardados
+galeria-prorrogada = Siete días más: se borrará más tarde
+galeria-texto-copiado = Texto copiado
+galeria-detalle-vacio = Elige una captura para ver sus detalles.
+galeria-ver-grande = Doble clic: ver grande
+galeria-tipo-captura = Captura de pantalla
+galeria-tipo-gif = GIF animado
+galeria-tipo-video = Vídeo
+galeria-fecha = Fecha
+galeria-tamano = Tamaño
+galeria-en-dias = { $dias ->
+    [0] hoy
+    [one] mañana
+   *[other] en { $dias } días
+}
+galeria-conservada-detalle = Está en Mensajes guardados y no se borra.
+galeria-texto-reconocido = Texto reconocido
+galeria-copiar-texto = Copiar texto
+galeria-texto-leyendo = Leyendo el texto…
+galeria-texto-nada = No se encontró texto en esta captura.
+galeria-texto-video = Los vídeos no tienen texto reconocido.
+galeria-texto-sin-ocr = Este Windows no tiene ningún idioma de reconocimiento de texto instalado.

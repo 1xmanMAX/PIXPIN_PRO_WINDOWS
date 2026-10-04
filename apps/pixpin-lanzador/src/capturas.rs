@@ -4,9 +4,11 @@
 //! Se leen de `<raiz>/capturas` (las mismas que la galeria de la app,
 //! `galeria_capturas::listar`: la mas nueva primero, por fecha) y su
 //! caducidad de `<raiz>/capturas-caducidad.json` (`caducidad_capturas`):
-//! `{"desde": <ms>, "conservadas": ["captura-0001.png", ...]}`. Una captura
-//! se va a los siete dias de lo MAS TARDE entre su fecha y `desde`; las
-//! conservadas no se van.
+//! `{"desde": <ms>, "conservadas": ["captura-0001.png", ...],
+//! "prorrogadas": {"captura-0002.png": <ms>}}`. Una captura se va a los
+//! siete dias de lo MAS TARDE entre su fecha y `desde`, o en la fecha de su
+//! prorroga («Dar 7 dias mas» de la galeria) si es mas tarde; las
+//! conservadas no se van. `prorrogadas` puede faltar (registros de antes).
 //!
 //! Solo se lee: conservar, copiar o borrar es un pedido a la app.
 
@@ -27,6 +29,7 @@ const DIA_MS: i64 = 86_400_000;
 struct Registro {
     desde: i64,
     conservadas: Vec<String>,
+    prorrogadas: std::collections::HashMap<String, i64>,
 }
 
 /// Una captura de la carpeta.
@@ -55,6 +58,12 @@ pub fn se_va_el(cuando: i64, desde: i64, conservada: bool) -> Option<i64> {
     (!conservada).then_some(cuando.max(desde) + DIAS * DIA_MS)
 }
 
+/// Como [`se_va_el`], con la prorroga apuntada si la hay: gana la fecha mas
+/// tarde (prorrogar nunca acorta).
+pub fn se_va_con_prorroga(cuando: i64, desde: i64, conservada: bool, prorroga: Option<i64>) -> Option<i64> {
+    se_va_el(cuando, desde, conservada).map(|t| prorroga.map_or(t, |p| t.max(p)))
+}
+
 fn ms(t: std::time::SystemTime) -> i64 {
     t.duration_since(std::time::SystemTime::UNIX_EPOCH).map(|d| d.as_millis() as i64).unwrap_or(0)
 }
@@ -68,11 +77,9 @@ pub fn leer(raiz: &Path, ahora: i64) -> Vec<Captura> {
     let registro = std::fs::read_to_string(raiz.join("capturas-caducidad.json"))
         .ok()
         .and_then(|t| serde_json::from_str::<Registro>(t.trim_start_matches('\u{feff}')).ok());
-    let (desde, conservadas) = match registro {
-        Some(r) if r.desde > 0 => (r.desde, r.conservadas),
-        Some(r) => (ahora, r.conservadas),
-        None => (ahora, Vec::new()),
-    };
+    let registro = registro.unwrap_or_default();
+    let desde = if registro.desde > 0 { registro.desde } else { ahora };
+    let (conservadas, prorrogadas) = (registro.conservadas, registro.prorrogadas);
     let mut v: Vec<Captura> = dir
         .flatten()
         .filter_map(|e| {
@@ -85,7 +92,8 @@ pub fn leer(raiz: &Path, ahora: i64) -> Vec<Captura> {
             }
             let nombre = ruta.file_name()?.to_string_lossy().to_string();
             let cuando = meta.modified().map(ms).unwrap_or(0);
-            let se_va = se_va_el(cuando, desde, conservadas.contains(&nombre));
+            let se_va =
+                se_va_con_prorroga(cuando, desde, conservadas.contains(&nombre), prorrogadas.get(&nombre).copied());
             Some(Captura { ruta, nombre, cuando, se_va })
         })
         .collect();
@@ -187,5 +195,40 @@ mod pruebas {
     #[test]
     fn caso_negativo_una_conservada_no_caduca() {
         assert_eq!(se_va_el(1000, 0, true), None);
+    }
+
+    #[test]
+    fn la_prorroga_alarga_y_nunca_acorta() {
+        let regla = 1000 + 7 * DIA_MS;
+        assert_eq!(se_va_con_prorroga(1000, 0, false, Some(regla + DIA_MS)), Some(regla + DIA_MS));
+        // Caso negativo: una prorroga anterior a la regla no adelanta nada,
+        // y a una conservada no la hace caducar.
+        assert_eq!(se_va_con_prorroga(1000, 0, false, Some(5)), Some(regla));
+        assert_eq!(se_va_con_prorroga(1000, 0, true, Some(regla)), None);
+    }
+
+    #[test]
+    fn lee_el_registro_con_y_sin_prorrogas() {
+        let raiz = std::env::temp_dir().join(format!("pixpin-lanzador-capturas-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&raiz);
+        std::fs::create_dir_all(carpeta(&raiz)).unwrap();
+        std::fs::write(carpeta(&raiz).join("a.png"), b"x").unwrap();
+        std::fs::write(carpeta(&raiz).join("b.png"), b"x").unwrap();
+        let lejos = 4_000_000_000_000i64;
+        std::fs::write(
+            raiz.join("capturas-caducidad.json"),
+            format!(r#"{{"desde": 1, "conservadas": [], "prorrogadas": {{"a.png": {lejos}}}}}"#),
+        )
+        .unwrap();
+        let v = leer(&raiz, 0);
+        let a = v.iter().find(|c| c.nombre == "a.png").unwrap();
+        let b = v.iter().find(|c| c.nombre == "b.png").unwrap();
+        assert_eq!(a.se_va, Some(lejos));
+        assert!(b.se_va.unwrap() < lejos, "caso negativo: la prorroga de a no vale para b");
+        // Un registro de antes, sin el campo, se sigue leyendo.
+        std::fs::write(raiz.join("capturas-caducidad.json"), r#"{"desde": 1, "conservadas": ["a.png"]}"#).unwrap();
+        let v = leer(&raiz, 0);
+        assert_eq!(v.iter().find(|c| c.nombre == "a.png").unwrap().se_va, None);
+        let _ = std::fs::remove_dir_all(&raiz);
     }
 }
