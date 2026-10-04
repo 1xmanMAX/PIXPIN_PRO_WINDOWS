@@ -58,6 +58,14 @@ pub struct PinGuardado {
     pub invertido: bool,
     #[serde(default)]
     pub brillo: i32,
+    /// La opacidad del pin en por ciento (rediseno v2). Ausente en indices
+    /// viejos: opaco.
+    #[serde(default = "cien_u8")]
+    pub opacidad: u8,
+}
+
+fn cien_u8() -> u8 {
+    100
 }
 
 fn cien() -> u32 {
@@ -453,6 +461,7 @@ mod pruebas {
             gris: false,
             invertido: false,
             brillo: 0,
+            opacidad: 100,
         }
     }
 
@@ -687,5 +696,21 @@ mod pruebas {
             .filter(|e| e.file_name().to_string_lossy().ends_with(".tmp"))
             .collect();
         assert!(sobras.is_empty(), "quedo un temporal: {sobras:?}");
+    }
+
+    #[test]
+    fn la_opacidad_se_guarda_y_un_indice_viejo_vuelve_opaco() {
+        // Caso negativo: un pin guardado antes del rediseno no trae
+        // opacidad, y tiene que volver opaco, no invisible.
+        let viejo = r#"{"x":1,"y":2,"ancho":3,"alto":4,"escala_por_cien":100}"#;
+        let g: PinGuardado = serde_json::from_str(viejo).unwrap();
+        assert_eq!(g.opacidad, 100);
+        let medio = PinGuardado {
+            opacidad: 60,
+            ..pin()
+        };
+        let texto = serde_json::to_string(&medio).unwrap();
+        let vuelta: PinGuardado = serde_json::from_str(&texto).unwrap();
+        assert_eq!(vuelta.opacidad, 60);
     }
 }

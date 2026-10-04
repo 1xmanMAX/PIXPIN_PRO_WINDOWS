@@ -59,6 +59,8 @@ pub struct Colocacion {
     pub gris: bool,
     pub invertido: bool,
     pub brillo: i32,
+    /// La opacidad en por ciento (v2): 100 es opaco.
+    pub opacidad: u8,
 }
 
 // Sin Eq: MuestraPuntero lleva f32 (subpixel), que no lo implementa.
@@ -200,6 +202,8 @@ pub enum CambioPin {
     /// El latido de una herramienta que se mueve sola (cronometro,
     /// temporizador): el pin ya se repinto, y el gestor mira si vencio algo.
     Latido,
+    /// Menu «Mas»: abrir el panel «Pines abiertos» (v2).
+    PinesAbiertosPedido,
 }
 
 /// La lupa dentro del pin (D52): que trozo del contenido se amplia y donde
@@ -246,6 +250,13 @@ const ID_TEMPORIZADOR_REPOSO: usize = 4;
 /// la cuenta atras). Solo mientras el gestor lo pida: parada, no despierta
 /// a nadie, como `esperaDelReloj` del movil.
 const ID_TEMPORIZADOR_LATIDO: usize = 5;
+/// Mientras la barra del pin se ve, mira cada poco si el raton sigue en el
+/// pin o en la barra; si no, la esconde. Con `WM_MOUSELEAVE` solo no basta:
+/// pasar del pin a su barra es salir del pin.
+const ID_TEMPORIZADOR_BARRA: usize = 6;
+const RITMO_BARRA_MS: u32 = 120;
+/// La opacidad mas baja: por debajo el pin se pierde de vista.
+const OPACIDAD_MINIMA: f32 = 0.2;
 const RITMO_ZOOM_MS: u32 = 16;
 
 /// Lo que pinta dentro de una herramienta. Lo cuelga el gestor y el pin lo
@@ -632,10 +643,8 @@ struct PinInterno {
     /// `video_fallido` avisa al gestor en el primer tick (D72).
     video: Option<Reproductor>,
     video_fallido: bool,
-    /// El raton esta encima: en un video, se ensenan los mandos.
+    /// El raton esta encima: se ensena la barra del pin (v2).
     raton_encima: bool,
-    /// Arrastrando la barra de un video: cada movimiento salta.
-    barra_agarrada: bool,
     /// Donde se pulso un video fuera de sus mandos: si al soltar no se ha
     /// movido, fue un clic, y un clic reproduce o pausa.
     pulsado_video: Option<(i32, i32)>,
@@ -661,6 +670,11 @@ struct PinInterno {
     /// El color y la pauta de una pizarra, para su submenu; `None` si el pin
     /// no es una.
     pizarra: Option<(u8, u8)>,
+    /// La opacidad del pin entero, de 0,2 a 1 (v2). Mayus + rueda y el menu.
+    opacidad: f32,
+    /// Donde quedaria el pin pegado a la guia que se ve mientras se
+    /// arrastra; se pega al soltar (`guias.rs`).
+    guia: Option<Rect>,
     al_cambiar: Box<dyn Fn(CambioPin)>,
 }
 
@@ -835,7 +849,6 @@ impl Pin {
             video,
             video_fallido,
             raton_encima: false,
-            barra_agarrada: false,
             pulsado_video: None,
             proporcion_video_hecha: false,
             fuente_viva: None,
@@ -845,6 +858,8 @@ impl Pin {
             pintor_interior: None,
             pulsado_interior: None,
             pizarra: None,
+            opacidad: 1.0,
+            guia: None,
             al_cambiar,
         });
         // SAFETY: la ventana es propia y viva; el Box se cede al USERDATA y
@@ -1234,6 +1249,52 @@ impl Pin {
     pub fn vivo_pausado(&self) -> bool {
         interno_de(self.hwnd).is_some_and(|i| i.vivo_pausado)
     }
+
+    /// La opacidad del pin en por ciento (v2), al restaurarlo del almacen.
+    pub fn poner_opacidad(&self, por_cien: u8) {
+        if let Some(i) = interno_de(self.hwnd) {
+            i.opacidad = opacidad_valida(por_cien as f32 / 100.0);
+            pintar(i);
+        }
+    }
+
+    /// La opacidad de ahora, en por ciento.
+    pub fn opacidad(&self) -> u8 {
+        interno_de(self.hwnd).map_or(100, |i| (i.opacidad * 100.0).round() as u8)
+    }
+
+    /// Lo trae delante y le da el foco, para encontrarlo (panel «Pines
+    /// abiertos»): la sombra del enfocado es la mas marcada.
+    pub fn resaltar(&self) {
+        // SAFETY: ventana propia y viva; traerla delante desde el mismo
+        // hilo que tiene la ventana activa (el panel) esta permitido.
+        unsafe {
+            let _ = ShowWindow(self.hwnd, SW_SHOWNOACTIVATE);
+            let _ = SetForegroundWindow(self.hwnd);
+            let _ = windows::Win32::UI::Input::KeyboardAndMouse::SetFocus(Some(self.hwnd));
+        }
+    }
+
+    /// Si se ve en pantalla (no esta escondido).
+    pub fn visible(&self) -> bool {
+        // SAFETY: consulta pura sobre una ventana propia.
+        unsafe { IsWindowVisible(self.hwnd) }.as_bool()
+    }
+}
+
+/// La opacidad dentro de lo que se deja: ni invisible ni mas que opaco.
+fn opacidad_valida(o: f32) -> f32 {
+    if o.is_finite() {
+        o.clamp(OPACIDAD_MINIMA, 1.0)
+    } else {
+        1.0
+    }
+}
+
+/// La opacidad tras girar la rueda con Mayus: un 10 % por muesca.
+fn opacidad_tras_rueda(o: f32, delta: i32) -> f32 {
+    let paso = 0.1 * delta.signum() as f32;
+    (opacidad_valida(o + paso) * 100.0).round() / 100.0
 }
 
 /// Si la ventana es un pin de video. `None` si ya no existe.
@@ -1258,35 +1319,249 @@ fn armar_temporizador_video(hwnd: HWND, ritmo_ms: u32) {
     }
 }
 
-/// Los mandos del video en coordenadas del contenido (origen en la esquina
-/// de la imagen, sin la sombra). `None` si el pin es demasiado pequeno.
-fn mandos_de(i: &PinInterno) -> Option<crate::mandos_video::Mandos> {
-    let r = i.estado.rect();
-    crate::mandos_video::mandos_en(
-        RectF {
-            x: 0.0,
-            y: 0.0,
-            ancho: r.ancho as f32,
-            alto: r.alto as f32,
+// ---------------------------------------------------------------------------
+// La barra del pin (v2): `barra.rs` dice que lleva, `barra_flotante.rs` la
+// ensena, y aqui se decide para cada pin y se atiende cada clic.
+// ---------------------------------------------------------------------------
+
+/// Que barra lleva este pin.
+fn tipo_barra(i: &PinInterno) -> crate::barra::TipoBarra {
+    use crate::barra::{Propio, TipoBarra};
+    let propio = match &i.contenido {
+        Contenido::Imagen(_) | Contenido::Nota { .. } => Propio::Zoom,
+        Contenido::Video { .. } if i.video.is_some() => Propio::Video,
+        Contenido::Video { .. } => Propio::Ninguno,
+        Contenido::Vivo { .. } => Propio::Vivo,
+        Contenido::Documento { .. } if es_pdf(i) => Propio::Paginas {
+            con_paso: i.pdf_paginas.is_some_and(|c| c > 1),
         },
-        i.escala_por_cien as f32 / 100.0,
-    )
+        Contenido::Documento { .. } | Contenido::Archivo { .. } => Propio::Abrir,
+        Contenido::Herramienta { .. } => Propio::Ninguno,
+    };
+    TipoBarra {
+        propio,
+        anotable: crate::menu::anotable(&i.contenido),
+        copiable: true,
+    }
 }
 
-/// El mando del video bajo un punto del contenido. Las esquinas de abajo
-/// son de redimensionar aunque caigan sobre un boton: se respeta el gesto
-/// de siempre.
-fn mando_en(i: &PinInterno, p: Punto) -> Option<crate::mandos_video::ZonaMando> {
-    if i.video.is_none() || !i.raton_encima || i.anotando {
-        return None;
-    }
+/// Lo que la barra ensena ahora de este pin.
+fn datos_barra(i: &PinInterno) -> crate::barra_flotante::DatosBarra {
     let r = i.estado.rect();
-    let z = (crate::estado::ZONA_ESQUINA_LOGICA * i.escala_por_cien / 100) as i32;
-    let en_esquina = (p.x < z || p.x >= r.ancho as i32 - z) && p.y >= r.alto as i32 - z;
-    if en_esquina {
-        return None;
+    let zoom_por_cien = match &i.contenido {
+        Contenido::Nota { .. } => (i.zoom_texto * 100.0).round() as u32,
+        _ if i.imagen_nativa.0 > 0 => {
+            (r.ancho as f32 * 100.0 / i.imagen_nativa.0 as f32).round() as u32
+        }
+        _ => 100,
+    };
+    crate::barra_flotante::DatosBarra {
+        tipo: tipo_barra(i),
+        zoom_por_cien,
+        pagina: i.pdf_paginas.map(|c| (i.pdf_pagina, c)),
+        video: i.video.as_ref().map(|v| {
+            let (t, duracion) = v.posicion();
+            crate::barra_flotante::DatosVideo {
+                reproduciendo: v.reproduciendo(),
+                // Al segundo: la barra solo se repinta cuando cambia algo
+                // que se ve, y el tiempo se ve en segundos.
+                t: t.floor(),
+                duracion,
+                volumen: v.volumen(),
+                silenciado: v.silenciado(),
+            }
+        }),
     }
-    mandos_de(i)?.zona_en(p.x as f32, p.y as f32)
+}
+
+/// Si a este pin le toca barra ahora: con textos (sin ellos no hay ni
+/// menu), sin anotar, sin dejar pasar el clic, sin un gesto a medias y a la
+/// vista.
+fn quiere_barra(i: &PinInterno) -> bool {
+    i.textos.is_some()
+        && !i.anotando
+        && !i.pasante
+        && !i.estado.en_gesto()
+        // SAFETY: consulta pura sobre la ventana propia.
+        && unsafe { IsWindowVisible(i.hwnd) }.as_bool()
+}
+
+/// Ensena la barra junto a este pin y arma la vigilancia de la salida.
+fn ensenar_barra(i: &PinInterno) {
+    let Some(t) = &i.textos else { return };
+    // Las paginas de un PDF se preguntan la primera vez que hacen falta.
+    if i.pdf_paginas.is_none() && es_pdf(i) {
+        (i.al_cambiar)(CambioPin::PaginaPedida(0));
+    }
+    crate::barra_flotante::mostrar(
+        &i.d3d,
+        &i.motor,
+        i.hwnd,
+        i.estado.rect(),
+        area_de_trabajo(i.hwnd),
+        i.escala_por_cien,
+        datos_barra(i),
+        t,
+        i.tema_claro,
+    );
+    // SAFETY: temporizador de la ventana propia; se mata al esconderla.
+    unsafe {
+        SetTimer(Some(i.hwnd), ID_TEMPORIZADOR_BARRA, RITMO_BARRA_MS, None);
+    }
+}
+
+/// Repinta la barra si es de este pin (cambio el zoom, la pagina, el video).
+fn actualizar_barra(i: &PinInterno) {
+    if crate::barra_flotante::es_de(i.hwnd) {
+        crate::barra_flotante::actualizar(i.hwnd, datos_barra(i));
+    }
+}
+
+/// La vuelve a poner junto al pin, que se ha movido o cambiado de tamano.
+fn recolocar_barra(i: &PinInterno) {
+    if crate::barra_flotante::es_de(i.hwnd) {
+        crate::barra_flotante::recolocar(i.hwnd, i.estado.rect(), area_de_trabajo(i.hwnd));
+        crate::barra_flotante::actualizar(i.hwnd, datos_barra(i));
+    }
+}
+
+fn esconder_barra(hwnd: HWND) {
+    crate::barra_flotante::esconder(hwnd);
+    // SAFETY: mata el temporizador propio (si lo habia).
+    unsafe {
+        let _ = KillTimer(Some(hwnd), ID_TEMPORIZADOR_BARRA);
+    }
+}
+
+/// Lo que se pulso en la barra de este pin.
+pub(crate) fn accion_de_barra(hwnd: HWND, evento: crate::barra_flotante::EventoBarra) {
+    use crate::barra::AccionBarra as A;
+    use crate::barra_flotante::EventoBarra;
+    let Some(i) = interno_de(hwnd) else {
+        return;
+    };
+    match evento {
+        EventoBarra::Saltar {
+            fraccion,
+            aproximado,
+        } => {
+            if let Some(v) = &i.video
+                && let (_, Some(d)) = v.posicion()
+            {
+                v.buscar(fraccion * d, aproximado);
+            }
+            pintar(i);
+            actualizar_barra(i);
+        }
+        EventoBarra::Volumen(muescas) => {
+            if let Some(v) = &i.video {
+                v.poner_volumen(crate::mandos_video::volumen_tras_rueda(
+                    v.volumen(),
+                    muescas,
+                ));
+            }
+            actualizar_barra(i);
+        }
+        EventoBarra::Pulsado { accion, bajo } => match accion {
+            A::Alejar | A::Acercar => {
+                // El mismo camino que la rueda, anclado en el centro del pin:
+                // el gestor ya sabe animar el zoom y guardarlo.
+                let r = i.estado.rect();
+                (i.al_cambiar)(CambioPin::RuedaGirada {
+                    delta: if accion == A::Acercar { 120 } else { -120 },
+                    cursor: Punto {
+                        x: r.x + r.ancho as i32 / 2,
+                        y: r.y + r.alto as i32 / 2,
+                    },
+                });
+            }
+            A::PaginaAnterior => (i.al_cambiar)(CambioPin::PaginaPedida(-1)),
+            A::PaginaSiguiente => (i.al_cambiar)(CambioPin::PaginaPedida(1)),
+            A::PinearPagina => (i.al_cambiar)(CambioPin::ExtraerPaginaPedida),
+            A::Reproducir => {
+                if matches!(i.contenido, Contenido::Vivo { .. }) {
+                    alternar_vivo(i);
+                } else {
+                    alternar_video(hwnd, i);
+                }
+                actualizar_barra(i);
+            }
+            A::Saltar => {}
+            A::Sonido => {
+                if let Some(v) = &i.video {
+                    v.alternar_sonido();
+                    // Quitar el silencio con el volumen a cero no se oiria:
+                    // se sube a la mitad.
+                    if !v.silenciado() && v.volumen() <= 0.0 {
+                        v.poner_volumen(0.5);
+                    }
+                }
+                actualizar_barra(i);
+            }
+            A::Congelar => (i.al_cambiar)(CambioPin::CongelarPedido),
+            A::Abrir => (i.al_cambiar)(CambioPin::AbrirPedido),
+            A::Copiar => {
+                // Con texto marcado, copia ESO, como Ctrl+C.
+                if !copiar_seleccion(i) {
+                    (i.al_cambiar)(CambioPin::CopiarPedido);
+                }
+            }
+            A::Anotar => {
+                esconder_barra(hwnd);
+                (i.al_cambiar)(CambioPin::AnotarPedido);
+            }
+            A::Mas => abrir_menu(hwnd, Some(bajo)),
+            A::Cerrar => {
+                esconder_barra(hwnd);
+                aplicar(hwnd, EfectoPin::Cerrar);
+            }
+        },
+    }
+}
+
+/// Las guias frente a los demas pines visibles, para este pin en `rect`.
+fn guias_para(hwnd: HWND, i: &PinInterno, rect: Rect) -> crate::guias::Ajuste {
+    let mut otros: Vec<Rect> = Vec::new();
+    // Los pines viven todos en este hilo: se recorren sus ventanas y se lee
+    // el rect de cada una de su propio estado (la ventana puede estar
+    // recortada al escritorio; el contenido no).
+    unsafe extern "system" fn cada(h: HWND, lp: LPARAM) -> windows::core::BOOL {
+        // SAFETY: `lp` es el puntero a la pareja de abajo, viva durante toda
+        // la enumeracion, que es sincrona.
+        let (yo, otros) = unsafe { &mut *(lp.0 as *mut (HWND, &mut Vec<Rect>)) };
+        let mut clase = [0u16; 16];
+        // SAFETY: lectura del nombre de clase a un bufer propio.
+        let n = unsafe { GetClassNameW(h, &mut clase) };
+        let es_pin = String::from_utf16_lossy(&clase[..n.max(0) as usize]) == "PixPinPin";
+        // Solo los del MISMO hilo: su USERDATA es un `PinInterno` de verdad.
+        // SAFETY: consultas puras sobre ventanas que existen ahora.
+        let mismo_hilo = unsafe {
+            GetWindowThreadProcessId(h, None) == GetWindowThreadProcessId(*yo, None)
+        };
+        // SAFETY: consulta pura.
+        if es_pin
+            && mismo_hilo
+            && h != *yo
+            && unsafe { IsWindowVisible(h) }.as_bool()
+            && let Some(o) = interno_de(h)
+        {
+            otros.push(o.estado.rect());
+        }
+        true.into()
+    }
+    let mut pareja: (HWND, &mut Vec<Rect>) = (hwnd, &mut otros);
+    // SAFETY: enumeracion sincrona; el puntero apunta a `pareja`, que vive
+    // hasta despues de la llamada.
+    unsafe {
+        let _ = EnumWindows(Some(cada), LPARAM(&mut pareja as *mut _ as isize));
+    }
+    let e = i.escala_por_cien as i32;
+    crate::guias::alinear(
+        rect,
+        &otros,
+        crate::guias::UMBRAL_LOGICO * e / 100,
+        crate::guias::SEPARACION_LOGICA * e / 100,
+    )
 }
 
 /// El tick del video: si hay fotograma nuevo, se pinta. Lo llaman el ritmo
@@ -1348,6 +1623,9 @@ fn tick_video(hwnd: HWND) {
             i.bitmap = i.motor.bitmap_desde_textura(&t).ok();
         }
         pintar(i);
+        // El tiempo de la barra; `actualizar` no repinta si el segundo que
+        // se ve no ha cambiado.
+        actualizar_barra(i);
     }
     if let Some(v) = &i.video {
         v.reposar_si_parado();
@@ -1386,19 +1664,6 @@ fn punto_remoto(i: &PinInterno, pantalla: (i32, i32)) -> Option<(i32, i32)> {
         },
         i.imagen_nativa,
     )
-}
-
-/// Salta al punto de la barra bajo `x` (coordenadas del contenido).
-fn saltar_a(i: &mut PinInterno, x: i32, aproximado: bool) {
-    let Some(m) = mandos_de(i) else {
-        return;
-    };
-    if let Some(v) = &i.video
-        && let (_, Some(d)) = v.posicion()
-    {
-        v.buscar(m.fraccion(x as f32) * d, aproximado);
-    }
-    pintar(i);
 }
 
 /// Reproducir o pausar (D68): el temporizador va con el estado, asi que un
@@ -1855,6 +2120,10 @@ fn poner_pasante_en(hwnd: HWND, pasante: bool) {
     if let Some(i) = interno_de(hwnd) {
         i.pasante = pasante;
     }
+    // Un pin que deja pasar el clic no se toca: tampoco su barra.
+    if pasante {
+        esconder_barra(hwnd);
+    }
 }
 
 fn colocacion_de(i: &PinInterno, rect: Rect) -> Colocacion {
@@ -1868,6 +2137,7 @@ fn colocacion_de(i: &PinInterno, rect: Rect) -> Colocacion {
         gris: i.filtros.gris,
         invertido: i.filtros.invertido,
         brillo: i.filtros.brillo,
+        opacidad: (i.opacidad * 100.0).round() as u8,
     }
 }
 
@@ -1914,8 +2184,29 @@ fn pintar(i: &PinInterno) {
     // la ventana fuera entera y el desplazamiento lo corrige.
     let (ox, oy) = origen_contenido(i.hwnd, contenido);
 
+    let con_capa = i.opacidad < 0.999;
     let _ = i.motor.dibujar(&destino, |p| {
         p.limpiar_transparente();
+        // La opacidad (v2): todo el pin, sombra incluida, en una capa
+        // translucida. Opaco no se paga la capa.
+        if con_capa {
+            use windows::Win32::Graphics::Direct2D::{
+                Common::D2D_RECT_F, D2D1_LAYER_OPTIONS1_NONE, D2D1_LAYER_PARAMETERS1,
+            };
+            let parametros = D2D1_LAYER_PARAMETERS1 {
+                contentBounds: D2D_RECT_F {
+                    left: -1.0e7,
+                    top: -1.0e7,
+                    right: 1.0e7,
+                    bottom: 1.0e7,
+                },
+                opacity: i.opacidad,
+                layerOptions: D2D1_LAYER_OPTIONS1_NONE,
+                ..Default::default()
+            };
+            // SAFETY: Push emparejado con el Pop del final del fotograma.
+            unsafe { i.motor.contexto().PushLayer(&parametros, None) };
+        }
         p.desplazar(ox as f32 - m, oy as f32 - m);
         // Sombra difusa: seis aros redondeados concentricos de alfa
         // decreciente, desplazados hacia abajo. Sin desenfoque real y
@@ -2326,6 +2617,10 @@ fn pintar(i: &PinInterno) {
             }
             p.trazar(destino, 2.0 * escala, Color::ACENTO);
         }
+        if con_capa {
+            // SAFETY: cierra el PushLayer de arriba, dentro del fotograma.
+            unsafe { i.motor.contexto().PopLayer() };
+        }
     });
     let _ = i.superficie.presentar();
 }
@@ -2402,12 +2697,9 @@ fn pintar_markdown(
     }
 }
 
-/// Pinta las ordenes de dibujo del motor 2D sobre el contenido del pin.
-///
-/// El motor produce geometria y el pintor la pinta: es la separacion que
-/// mantiene al motor puro y probable sin GPU.
-/// La franja de mandos del video (raton encima) o, en pausa y sin raton, un
-/// simbolo de reproducir en el centro para que se vea que esta parado.
+/// En pausa, un simbolo de reproducir en el centro del video para que se
+/// vea que esta parado. Los mandos (reproducir, tiempo, linea, altavoz) van
+/// en la barra del pin, fuera de la imagen (v2): ya no tapan el video.
 fn pintar_mandos_video(
     p: &pixpin_render::Pintor,
     i: &PinInterno,
@@ -2415,106 +2707,36 @@ fn pintar_mandos_video(
     caja: RectF,
     escala: f32,
 ) {
-    use pixpin_render::icono::material::{PAUSE, PLAY_ARROW, VOLUME_UP};
-    let blanco = Color::BLANCO;
+    use pixpin_render::icono::material::PLAY_ARROW;
+    if v.reproduciendo() || i.bitmap.is_none() {
+        return;
+    }
     let velo = Color {
         r: 0.0,
         g: 0.0,
         b: 0.0,
         a: 0.55,
     };
-    let reproduciendo = v.reproduciendo();
-    if !(i.raton_encima || i.barra_agarrada) {
-        if !reproduciendo && i.bitmap.is_some() {
-            let radio = (caja.ancho.min(caja.alto) * 0.12).clamp(16.0 * escala, 36.0 * escala);
-            let centro = (caja.x + caja.ancho / 2.0, caja.y + caja.alto / 2.0);
-            p.circulo(centro, radio, velo);
-            let lado = radio * 1.2;
-            p.icono(
-                &PLAY_ARROW,
-                RectF {
-                    x: centro.0 - lado / 2.0,
-                    y: centro.1 - lado / 2.0,
-                    ancho: lado,
-                    alto: lado,
-                },
-                blanco,
-            );
-        }
-        return;
-    }
-    let Some(m) = crate::mandos_video::mandos_en(caja, escala) else {
-        return;
-    };
-    p.rellenar(m.franja, velo);
-    let encoger = |r: RectF, k: f32| RectF {
-        x: r.x + k,
-        y: r.y + k,
-        ancho: (r.ancho - 2.0 * k).max(1.0),
-        alto: (r.alto - 2.0 * k).max(1.0),
-    };
+    let radio = (caja.ancho.min(caja.alto) * 0.12).clamp(16.0 * escala, 36.0 * escala);
+    let centro = (caja.x + caja.ancho / 2.0, caja.y + caja.alto / 2.0);
+    p.circulo(centro, radio, velo);
+    let lado = radio * 1.2;
     p.icono(
-        if reproduciendo { &PAUSE } else { &PLAY_ARROW },
-        encoger(m.boton, 2.0 * escala),
-        blanco,
+        &PLAY_ARROW,
+        RectF {
+            x: centro.0 - lado / 2.0,
+            y: centro.1 - lado / 2.0,
+            ancho: lado,
+            alto: lado,
+        },
+        Color::BLANCO,
     );
-    let (t, duracion) = v.posicion();
-    if let Some(caja_t) = m.tiempo {
-        let tam = 11.5 * escala;
-        let texto = match duracion {
-            Some(d) => format!(
-                "{} / {}",
-                crate::mandos_video::formato_tiempo(t),
-                crate::mandos_video::formato_tiempo(d)
-            ),
-            None => crate::mandos_video::formato_tiempo(t),
-        };
-        p.texto_linea(
-            &texto,
-            caja_t.x,
-            caja_t.y + (caja_t.alto - tam * 1.35) / 2.0,
-            tam,
-            caja_t.ancho,
-            blanco,
-        );
-    }
-    // La barra: el recorrido tenue y lo visto en acento, con un punto en la
-    // posicion. Sin duracion conocida (aun cargando), solo el recorrido.
-    let y = m.barra.y + m.barra.alto / 2.0;
-    let grosor = 3.0 * escala;
-    p.linea(
-        (m.barra.x, y),
-        (m.barra.x + m.barra.ancho, y),
-        grosor,
-        Color { a: 0.35, ..blanco },
-    );
-    if let Some(d) = duracion {
-        let x = m.barra.x + m.barra.ancho * (t / d).clamp(0.0, 1.0) as f32;
-        p.linea((m.barra.x, y), (x, y), grosor, Color::ACENTO);
-        p.circulo((x, y), 5.0 * escala, blanco);
-    }
-    // El altavoz, tachado si no suena; debajo, el volumen como una raya.
-    let altavoz = encoger(m.sonido, 3.0 * escala);
-    p.icono(&VOLUME_UP, altavoz, blanco);
-    let volumen = v.volumen();
-    if v.silenciado() || volumen <= 0.0 {
-        p.linea(
-            (altavoz.x, altavoz.y),
-            (altavoz.x + altavoz.ancho, altavoz.y + altavoz.alto),
-            2.0 * escala,
-            blanco,
-        );
-    } else {
-        let yv = m.sonido.y + m.sonido.alto + 1.0 * escala;
-        p.linea(
-            (m.sonido.x, yv),
-            (m.sonido.x + m.sonido.ancho * volumen as f32, yv),
-            2.0 * escala,
-            Color { a: 0.8, ..blanco },
-        );
-    }
 }
 
+/// Pinta las ordenes de dibujo del motor 2D sobre el contenido del pin.
+///
+/// El motor produce geometria y el pintor la pinta: es la separacion que
+/// mantiene al motor puro y probable sin GPU.
 fn pintar_anotaciones(p: &pixpin_render::Pintor, i: &PinInterno, margen: f32) {
     use pixpin_motor2d::Orden;
 
@@ -2728,6 +2950,8 @@ fn aplicar(hwnd: HWND, efecto: EfectoPin) {
                 // visual entero y no hace falta.
                 pintar(i);
             }
+            // Con las flechas el pin se mueve con la barra a la vista.
+            recolocar_barra(i);
         }
         EfectoPin::Escalar(contenido) => {
             // En proporcion: el texto de una nota acompaña al tamano.
@@ -2785,6 +3009,8 @@ fn aplicar(hwnd: HWND, efecto: EfectoPin) {
             if ms > 24 {
                 tracing::info!(ms, ancho = v.ancho, alto = v.alto, "redimension lenta");
             }
+            // El zoom de la barra cambia, y su sitio si el pin crecio.
+            recolocar_barra(i);
         }
         EfectoPin::AlternarTamano => {
             if i.estado.es_fijo() {
@@ -2843,7 +3069,16 @@ fn aplicar(hwnd: HWND, efecto: EfectoPin) {
         EfectoPin::GestoTerminado(contenido) => {
             // El iman actua AL SOLTAR, no durante el arrastre: pegarse a
             // media pasada peleaba con el raton y se sentia como un tiron.
-            let pegado = con_iman(hwnd, contenido, i.escala_por_cien);
+            // Primero la guia de otro pin que se estuviera viendo (v2), y
+            // luego los bordes de la pantalla. Con Alt, ninguno de los dos.
+            crate::guias::esconder();
+            let sin_iman = tecla_pulsada(VK_MENU);
+            let guia = i.guia.take().filter(|_| !sin_iman);
+            let pegado = if sin_iman {
+                contenido
+            } else {
+                con_iman(hwnd, guia.unwrap_or(contenido), i.escala_por_cien)
+            };
             if pegado != contenido {
                 i.estado.poner_rect(pegado);
                 aplicar(hwnd, EfectoPin::Mover(pegado));
@@ -2866,6 +3101,8 @@ fn aplicar(hwnd: HWND, efecto: EfectoPin) {
             (i.al_cambiar)(CambioPin::Movido(colocacion_de(i, pegado)));
         }
         EfectoPin::Cerrar => {
+            esconder_barra(hwnd);
+            crate::guias::esconder();
             (i.al_cambiar)(CambioPin::Cerrado);
             // SAFETY: destruye la ventana propia; WM_NCDESTROY libera el Box.
             unsafe {
@@ -2897,6 +3134,181 @@ fn tragar_goma(mensaje: u32, wparam: WPARAM) -> bool {
     // siguiente.
     HISTORIAL.with(|h| h.borrow_mut().olvidar());
     true
+}
+
+/// Abre el menu del pin en `punto` (pantalla), o donde este el raton, y
+/// hace lo elegido. Lo abren el clic derecho y el boton «Mas» de la barra.
+fn abrir_menu(hwnd: HWND, punto: Option<(i32, i32)>) {
+    esconder_barra(hwnd);
+    let Some(i) = interno_de(hwnd) else {
+        return;
+    };
+    let Some(t) = i.textos.clone() else {
+        return;
+    };
+    let reproduciendo = i.video.as_ref().is_some_and(|v| v.reproduciendo())
+        || (i.fuente_viva.is_some() && !i.vivo_pausado);
+    // Cuantas paginas tiene se pregunta la PRIMERA vez que se
+    // abre el menu de un PDF, no al nacer el pin: abrir el
+    // documento cuesta, y la mayoria de los pines nunca ven su
+    // menu.
+    if i.pdf_paginas.is_none() && es_pdf(i) {
+        (i.al_cambiar)(CambioPin::PaginaPedida(0));
+    }
+    let estado = crate::menu::EstadoMenu {
+        con_grupo: i.color_sombra.is_some(),
+        reproduciendo,
+        pasante: i.pasante,
+        con_ocr: i.con_ocr,
+        paginas: i.pdf_paginas,
+        pagina: i.pdf_pagina,
+        remoto: i.remoto,
+        pizarra: i.pizarra,
+        opacidad: (i.opacidad * 100.0).round() as u8,
+    };
+    match crate::menu::mostrar(hwnd, &i.contenido, estado, &t, punto) {
+        None => {}
+        // Tambien de esta ventana y de nadie mas: es como se
+        // interpretan SUS clics.
+        Some(crate::menu::CMD_REMOTO) => {
+            i.remoto = !i.remoto;
+            i.pulsado_remoto = None;
+            // Encenderlo REANUDA el pin. Al usuario le paso a la
+            // primera: un doble clic de antes lo habia dejado en
+            // pausa, y manejando a distancia veia una foto fija
+            // mientras sus clics si actuaban en la ventana. Un
+            // mando a distancia sobre una imagen parada es
+            // manejar a ciegas.
+            if i.remoto && i.vivo_pausado {
+                i.vivo_pausado = false;
+                // Y un aviso de fotograma ya: con la pantalla
+                // quieta la captura no manda ninguno, y el pin se
+                // quedaria con la foto de cuando se pauso.
+                // SAFETY: mensaje propio a la ventana propia.
+                unsafe {
+                    let _ = windows::Win32::UI::WindowsAndMessaging::PostMessageW(
+                        Some(hwnd),
+                        MSG_FOTOGRAMA_VIVO,
+                        WPARAM(0),
+                        LPARAM(0),
+                    );
+                }
+            }
+            tracing::info!(remoto = i.remoto, "manejo a distancia alternado");
+            pintar(i);
+        }
+        // Las dos que puede resolver la propia ventana se
+        // resuelven aqui: pedirselas al gestor solo daria un
+        // rodeo para volver al mismo sitio.
+        Some(crate::menu::CMD_PASANTE) => {
+            // Se resuelve aqui, como el tamano: el paso de
+            // clics es un estilo de ESTA ventana, y pedirselo
+            // al gestor seria un rodeo para volver al mismo
+            // sitio. Se avisa del cambio para que quede
+            // guardado y el pin vuelva pasante tras reiniciar.
+            poner_pasante_en(hwnd, true);
+            (i.al_cambiar)(CambioPin::Movido(colocacion_de(i, i.estado.rect())));
+        }
+        Some(crate::menu::CMD_TAMANO_ORIGINAL) => {
+            aplicar(hwnd, EfectoPin::AlternarTamano)
+        }
+        Some(crate::menu::CMD_CERRAR) => aplicar(hwnd, EfectoPin::Cerrar),
+        // Los nuevos del rediseno v2: los mismos que la barra.
+        Some(crate::menu::CMD_ANOTAR) => (i.al_cambiar)(CambioPin::AnotarPedido),
+        Some(crate::menu::CMD_ABRIR) => (i.al_cambiar)(CambioPin::AbrirPedido),
+        Some(crate::menu::CMD_PINES_ABIERTOS) => (i.al_cambiar)(CambioPin::PinesAbiertosPedido),
+        Some(c)
+            if (crate::menu::CMD_OPACIDAD_BASE
+                ..crate::menu::CMD_OPACIDAD_BASE + crate::menu::OPACIDADES.len() as u32)
+                .contains(&c) =>
+        {
+            let o = crate::menu::OPACIDADES[(c - crate::menu::CMD_OPACIDAD_BASE) as usize];
+            i.opacidad = opacidad_valida(o as f32 / 100.0);
+            pintar(i);
+            (i.al_cambiar)(CambioPin::Movido(colocacion_de(i, i.estado.rect())));
+        }
+        // Los del video tambien se resuelven aqui: el reproductor
+        // vive en esta ventana (D64/D68).
+        Some(crate::menu::CMD_REPRODUCIR) => {
+            if matches!(i.contenido, Contenido::Vivo { .. }) {
+                alternar_vivo(i);
+            } else {
+                alternar_video(hwnd, i);
+            }
+        }
+        Some(crate::menu::CMD_SONIDO) => {
+            if let Some(v) = &i.video {
+                v.alternar_sonido();
+                tracing::info!(
+                    silenciado = v.silenciado(),
+                    "sonido del video alternado"
+                );
+            }
+        }
+        Some(cmd) => {
+            let cambio = match cmd {
+                crate::menu::CMD_COPIAR => Some(CambioPin::CopiarPedido),
+                crate::menu::CMD_GUARDAR_COMO => Some(CambioPin::GuardarComoPedido),
+                crate::menu::CMD_TEXTO => Some(CambioPin::TextoPedido),
+                crate::menu::CMD_ABRIR_LIENZO => Some(CambioPin::AbrirLienzoPedido),
+                crate::menu::CMD_CONGELAR => Some(CambioPin::CongelarPedido),
+                crate::menu::CMD_PAGINA_SIGUIENTE => Some(CambioPin::PaginaPedida(1)),
+                crate::menu::CMD_PAGINA_ANTERIOR => Some(CambioPin::PaginaPedida(-1)),
+                crate::menu::CMD_EXTRAER_PAGINA => Some(CambioPin::ExtraerPaginaPedida),
+                crate::menu::CMD_EXTRAER_TODAS => Some(CambioPin::ExtraerTodasPedida),
+                crate::menu::CMD_ABRIR_UBICACION => {
+                    Some(CambioPin::AbrirUbicacionPedido)
+                }
+                crate::menu::CMD_OCULTAR_GRUPO => Some(CambioPin::OcultarGrupoPedido),
+                crate::menu::CMD_ELIMINAR => Some(CambioPin::EliminarPedido),
+                crate::menu::CMD_SIN_GRUPO => Some(CambioPin::GrupoPedido(None)),
+                c if (crate::menu::CMD_COLOR_BASE..crate::menu::CMD_COLOR_BASE + 8)
+                    .contains(&c) =>
+                {
+                    Some(CambioPin::GrupoPedido(Some(
+                        (c - crate::menu::CMD_COLOR_BASE) as u8,
+                    )))
+                }
+                c if (crate::menu::CMD_CONVERTIR_BASE
+                    ..crate::menu::CMD_CONVERTIR_BASE
+                        + crate::magia::MiniApp::TODAS.len() as u32)
+                    .contains(&c) =>
+                {
+                    Some(CambioPin::ConvertirPedido(
+                        (c - crate::menu::CMD_CONVERTIR_BASE) as u8,
+                    ))
+                }
+                // Cambiar el color deja la pauta y al reves: son
+                // dos decisiones sobre el mismo papel.
+                c if (crate::menu::CMD_PIZARRA_COLOR_BASE
+                    ..crate::menu::CMD_PIZARRA_COLOR_BASE
+                        + crate::menu::COLORES_PIZARRA as u32)
+                    .contains(&c) =>
+                {
+                    let (_, pauta) = i.pizarra.unwrap_or((0, 0));
+                    Some(CambioPin::PizarraPedida {
+                        color: (c - crate::menu::CMD_PIZARRA_COLOR_BASE) as u8,
+                        pauta,
+                    })
+                }
+                c if (crate::menu::CMD_PIZARRA_PAUTA_BASE
+                    ..crate::menu::CMD_PIZARRA_PAUTA_BASE
+                        + crate::menu::PAUTAS_PIZARRA as u32)
+                    .contains(&c) =>
+                {
+                    let (color, _) = i.pizarra.unwrap_or((0, 0));
+                    Some(CambioPin::PizarraPedida {
+                        color,
+                        pauta: (c - crate::menu::CMD_PIZARRA_PAUTA_BASE) as u8,
+                    })
+                }
+                _ => None,
+            };
+            if let Some(c) = cambio {
+                (i.al_cambiar)(c);
+            }
+        }
+    }
 }
 
 extern "system" fn procedimiento_pin(
@@ -2972,54 +3384,19 @@ extern "system" fn procedimiento_pin(
                 }
                 return LRESULT(0);
             }
-            // Los mandos del video: reproducir, el altavoz y la barra. Fuera
-            // de ellos el pin se mueve como siempre, y si al soltar no se
-            // movio, el clic reproduce o pausa.
+            // Un clic sobre el video (sin moverlo) reproduce o pausa: se
+            // apunta donde se pulso y lo decide el soltar. Los mandos van
+            // en la barra del pin (v2), fuera de la imagen.
             if let Some(i) = interno_de(hwnd)
                 && i.video.is_some()
                 && !i.anotando
                 && !tecla_pulsada(VK_CONTROL)
             {
-                use crate::mandos_video::ZonaMando;
-                let p = punto_contenido(i, lparam);
-                let zona = mando_en(i, p);
-                if zona.is_some() {
-                    // SAFETY: foco sobre ventana propia (arma Espacio y Esc).
-                    unsafe {
-                        let _ = windows::Win32::UI::Input::KeyboardAndMouse::SetFocus(Some(hwnd));
-                    }
-                }
-                match zona {
-                    Some(ZonaMando::Reproducir) => {
-                        alternar_video(hwnd, i);
-                        return LRESULT(0);
-                    }
-                    Some(ZonaMando::Sonido) => {
-                        if let Some(v) = &i.video {
-                            v.alternar_sonido();
-                            // Quitar el silencio con el volumen a cero no
-                            // se oiria: se sube a la mitad.
-                            if !v.silenciado() && v.volumen() <= 0.0 {
-                                v.poner_volumen(0.5);
-                            }
-                        }
-                        pintar(i);
-                        return LRESULT(0);
-                    }
-                    Some(ZonaMando::Barra) => {
-                        // SAFETY: captura sobre ventana propia; se suelta en
-                        // WM_LBUTTONUP.
-                        unsafe { SetCapture(hwnd) };
-                        i.barra_agarrada = true;
-                        saltar_a(i, p.x, true);
-                        return LRESULT(0);
-                    }
-                    None => {
-                        let c = cursor_de_pantalla();
-                        i.pulsado_video = Some((c.x, c.y));
-                    }
-                }
+                let c = cursor_de_pantalla();
+                i.pulsado_video = Some((c.x, c.y));
             }
+            // La barra se esconde mientras se arrastra el pin.
+            esconder_barra(hwnd);
             // Sobre una palabra reconocida, el boton izquierdo SELECCIONA
             // texto en vez de mover el pin: es lo que lo hace parecerse a
             // un documento. Fuera del texto, mover, como siempre.
@@ -3209,31 +3586,25 @@ extern "system" fn procedimiento_pin(
                 // SIEMPRE (agrandar el pin), que es lo que pidio el usuario,
                 // y el zoom interior se queda sin gesto mientras dure el modo.
                 let remoto = i.remoto && matches!(i.contenido, Contenido::Vivo { .. });
-                // Sobre la franja de mandos de un video, la rueda es el
-                // volumen; en el resto del video, el zoom de siempre.
-                if i.video.is_some() && i.raton_encima && !tecla_pulsada(VK_CONTROL) {
-                    let c = cursor_de_pantalla();
-                    let mut r = RECT::default();
-                    // SAFETY: GetWindowRect sobre la ventana propia.
-                    unsafe {
-                        let _ = GetWindowRect(hwnd, &mut r);
-                    }
-                    let (ox, oy) = origen_contenido(hwnd, i.estado.rect());
-                    let p = Punto {
-                        x: c.x - r.left - ox,
-                        y: c.y - r.top - oy,
-                    };
-                    if mandos_de(i).is_some_and(|m| m.zona_en(p.x as f32, p.y as f32).is_some()) {
-                        if let Some(v) = &i.video {
-                            let muescas = if delta > 0 { 1 } else { -1 };
-                            v.poner_volumen(crate::mandos_video::volumen_tras_rueda(
-                                v.volumen(),
-                                muescas,
-                            ));
-                        }
+                // Mayus + rueda: la opacidad del pin, un 10 % por muesca (v2).
+                // Ctrl + rueda ya es el zoom de dentro, y no se le quita.
+                if tecla_pulsada(VK_SHIFT) && !tecla_pulsada(VK_CONTROL) && !i.anotando {
+                    let nueva = opacidad_tras_rueda(i.opacidad, delta);
+                    if (nueva - i.opacidad).abs() > f32::EPSILON {
+                        i.opacidad = nueva;
                         pintar(i);
-                        return LRESULT(0);
+                        // Se guarda al parar de girar, como las flechas.
+                        // SAFETY: temporizador sobre ventana propia.
+                        unsafe {
+                            SetTimer(
+                                Some(hwnd),
+                                ID_TEMPORIZADOR_GUARDADO,
+                                RETARDO_GUARDADO_MS,
+                                None,
+                            );
+                        }
                     }
+                    return LRESULT(0);
                 }
                 // Sobre una herramienta la rueda baja por su lista, que es lo
                 // unico que se desplaza; con `Ctrl`, agranda el pin como
@@ -3269,43 +3640,22 @@ extern "system" fn procedimiento_pin(
             }
             LRESULT(0)
         }
-        WM_MOUSEMOVE if interno_de(hwnd).is_some_and(|i| i.barra_agarrada) => {
-            if let Some(i) = interno_de(hwnd) {
-                let p = punto_contenido(i, lparam);
-                saltar_a(i, p.x, true);
-            }
-            LRESULT(0)
-        }
         m if m == WM_RATON_FUERA => {
-            if let Some(i) = interno_de(hwnd)
-                && i.raton_encima
-            {
-                i.raton_encima = false;
-                pintar(i);
-            }
+            // La salida la vigila el temporizador de la barra: pasar del pin
+            // a su barra tambien es salir del pin, y no debe esconderla.
             LRESULT(0)
         }
         WM_MOUSEMOVE => {
             if let Some(i) = interno_de(hwnd) {
-                // Un video ensena sus mandos con el raton encima; Windows
-                // avisa de la salida solo si se le pide cada vez.
-                if i.video.is_some() && !i.raton_encima {
+                // Con el raton encima sale la barra del pin (v2). No con un
+                // boton pulsado: arrastrando, la barra estorba.
+                const BOTONES: usize = 0x0001 | 0x0002 | 0x0010;
+                if (!i.raton_encima || !crate::barra_flotante::es_de(hwnd))
+                    && wparam.0 & BOTONES == 0
+                    && quiere_barra(i)
+                {
                     i.raton_encima = true;
-                    let mut seguir = windows::Win32::UI::Input::KeyboardAndMouse::TRACKMOUSEEVENT {
-                        cbSize: std::mem::size_of::<
-                            windows::Win32::UI::Input::KeyboardAndMouse::TRACKMOUSEEVENT,
-                        >() as u32,
-                        dwFlags: windows::Win32::UI::Input::KeyboardAndMouse::TME_LEAVE,
-                        hwndTrack: hwnd,
-                        dwHoverTime: 0,
-                    };
-                    // SAFETY: estructura completa sobre la ventana propia.
-                    unsafe {
-                        let _ = windows::Win32::UI::Input::KeyboardAndMouse::TrackMouseEvent(
-                            &mut seguir,
-                        );
-                    }
-                    pintar(i);
+                    ensenar_barra(i);
                 }
                 // Arrastrando una seleccion de texto: se amplia y se
                 // repinta, y el pin NO se mueve.
@@ -3389,23 +3739,24 @@ extern "system" fn procedimiento_pin(
                     (i.al_cambiar)(CambioPin::PunteroMovido(movido));
                 } else {
                     let e = i.estado.procesar(EventoPin::RatonMovido(punto(lparam)));
+                    // Moviendo el pin entero, las guias con los demas pines
+                    // (v2). Se ensenan, no se pegan: se pega al soltar. Con
+                    // Alt, sin guias.
+                    if let EfectoPin::Mover(r) = e
+                        && i.estado.moviendo()
+                    {
+                        if tecla_pulsada(VK_MENU) {
+                            i.guia = None;
+                            crate::guias::esconder();
+                        } else {
+                            let a = guias_para(hwnd, i, r);
+                            let grosor = (2 * i.escala_por_cien as i32 / 100).max(2);
+                            crate::guias::ensenar(&a.guias, grosor);
+                            i.guia = (!a.guias.is_empty()).then_some(a.rect);
+                        }
+                    }
                     aplicar(hwnd, e);
                 }
-            }
-            LRESULT(0)
-        }
-        WM_LBUTTONUP if interno_de(hwnd).is_some_and(|i| i.barra_agarrada) => {
-            // SAFETY: libera la captura tomada al agarrar la barra.
-            unsafe {
-                let _ = ReleaseCapture();
-            }
-            if let Some(i) = interno_de(hwnd) {
-                i.barra_agarrada = false;
-                // Al soltar, el salto exacto: arrastrando iba a los
-                // fotogramas clave, que es rapido pero no preciso.
-                let p = punto_contenido(i, lparam);
-                saltar_a(i, p.x, false);
-                pintar(i);
             }
             LRESULT(0)
         }
@@ -3593,158 +3944,8 @@ extern "system" fn procedimiento_pin(
                 if arrastro {
                     return LRESULT(0);
                 }
-                let Some(t) = i.textos.clone() else {
-                    return LRESULT(0);
-                };
-                let reproduciendo = i.video.as_ref().is_some_and(|v| v.reproduciendo())
-                    || (i.fuente_viva.is_some() && !i.vivo_pausado);
-                // Cuantas paginas tiene se pregunta la PRIMERA vez que se
-                // abre el menu de un PDF, no al nacer el pin: abrir el
-                // documento cuesta, y la mayoria de los pines nunca ven su
-                // menu.
-                if i.pdf_paginas.is_none() && es_pdf(i) {
-                    (i.al_cambiar)(CambioPin::PaginaPedida(0));
-                }
-                let estado = crate::menu::EstadoMenu {
-                    con_grupo: i.color_sombra.is_some(),
-                    reproduciendo,
-                    pasante: i.pasante,
-                    con_ocr: i.con_ocr,
-                    paginas: i.pdf_paginas,
-                    pagina: i.pdf_pagina,
-                    remoto: i.remoto,
-                    pizarra: i.pizarra,
-                };
-                match crate::menu::mostrar(hwnd, &i.contenido, estado, &t) {
-                    None => {}
-                    // Tambien de esta ventana y de nadie mas: es como se
-                    // interpretan SUS clics.
-                    Some(crate::menu::CMD_REMOTO) => {
-                        i.remoto = !i.remoto;
-                        i.pulsado_remoto = None;
-                        // Encenderlo REANUDA el pin. Al usuario le paso a la
-                        // primera: un doble clic de antes lo habia dejado en
-                        // pausa, y manejando a distancia veia una foto fija
-                        // mientras sus clics si actuaban en la ventana. Un
-                        // mando a distancia sobre una imagen parada es
-                        // manejar a ciegas.
-                        if i.remoto && i.vivo_pausado {
-                            i.vivo_pausado = false;
-                            // Y un aviso de fotograma ya: con la pantalla
-                            // quieta la captura no manda ninguno, y el pin se
-                            // quedaria con la foto de cuando se pauso.
-                            // SAFETY: mensaje propio a la ventana propia.
-                            unsafe {
-                                let _ = windows::Win32::UI::WindowsAndMessaging::PostMessageW(
-                                    Some(hwnd),
-                                    MSG_FOTOGRAMA_VIVO,
-                                    WPARAM(0),
-                                    LPARAM(0),
-                                );
-                            }
-                        }
-                        tracing::info!(remoto = i.remoto, "manejo a distancia alternado");
-                        pintar(i);
-                    }
-                    // Las dos que puede resolver la propia ventana se
-                    // resuelven aqui: pedirselas al gestor solo daria un
-                    // rodeo para volver al mismo sitio.
-                    Some(crate::menu::CMD_PASANTE) => {
-                        // Se resuelve aqui, como el tamano: el paso de
-                        // clics es un estilo de ESTA ventana, y pedirselo
-                        // al gestor seria un rodeo para volver al mismo
-                        // sitio. Se avisa del cambio para que quede
-                        // guardado y el pin vuelva pasante tras reiniciar.
-                        poner_pasante_en(hwnd, true);
-                        (i.al_cambiar)(CambioPin::Movido(colocacion_de(i, i.estado.rect())));
-                    }
-                    Some(crate::menu::CMD_TAMANO_ORIGINAL) => {
-                        aplicar(hwnd, EfectoPin::AlternarTamano)
-                    }
-                    Some(crate::menu::CMD_CERRAR) => aplicar(hwnd, EfectoPin::Cerrar),
-                    // Los del video tambien se resuelven aqui: el reproductor
-                    // vive en esta ventana (D64/D68).
-                    Some(crate::menu::CMD_REPRODUCIR) => {
-                        if matches!(i.contenido, Contenido::Vivo { .. }) {
-                            alternar_vivo(i);
-                        } else {
-                            alternar_video(hwnd, i);
-                        }
-                    }
-                    Some(crate::menu::CMD_SONIDO) => {
-                        if let Some(v) = &i.video {
-                            v.alternar_sonido();
-                            tracing::info!(
-                                silenciado = v.silenciado(),
-                                "sonido del video alternado"
-                            );
-                        }
-                    }
-                    Some(cmd) => {
-                        let cambio = match cmd {
-                            crate::menu::CMD_COPIAR => Some(CambioPin::CopiarPedido),
-                            crate::menu::CMD_GUARDAR_COMO => Some(CambioPin::GuardarComoPedido),
-                            crate::menu::CMD_TEXTO => Some(CambioPin::TextoPedido),
-                            crate::menu::CMD_ABRIR_LIENZO => Some(CambioPin::AbrirLienzoPedido),
-                            crate::menu::CMD_CONGELAR => Some(CambioPin::CongelarPedido),
-                            crate::menu::CMD_PAGINA_SIGUIENTE => Some(CambioPin::PaginaPedida(1)),
-                            crate::menu::CMD_PAGINA_ANTERIOR => Some(CambioPin::PaginaPedida(-1)),
-                            crate::menu::CMD_EXTRAER_PAGINA => Some(CambioPin::ExtraerPaginaPedida),
-                            crate::menu::CMD_EXTRAER_TODAS => Some(CambioPin::ExtraerTodasPedida),
-                            crate::menu::CMD_ABRIR_UBICACION => {
-                                Some(CambioPin::AbrirUbicacionPedido)
-                            }
-                            crate::menu::CMD_OCULTAR_GRUPO => Some(CambioPin::OcultarGrupoPedido),
-                            crate::menu::CMD_ELIMINAR => Some(CambioPin::EliminarPedido),
-                            crate::menu::CMD_SIN_GRUPO => Some(CambioPin::GrupoPedido(None)),
-                            c if (crate::menu::CMD_COLOR_BASE..crate::menu::CMD_COLOR_BASE + 8)
-                                .contains(&c) =>
-                            {
-                                Some(CambioPin::GrupoPedido(Some(
-                                    (c - crate::menu::CMD_COLOR_BASE) as u8,
-                                )))
-                            }
-                            c if (crate::menu::CMD_CONVERTIR_BASE
-                                ..crate::menu::CMD_CONVERTIR_BASE
-                                    + crate::magia::MiniApp::TODAS.len() as u32)
-                                .contains(&c) =>
-                            {
-                                Some(CambioPin::ConvertirPedido(
-                                    (c - crate::menu::CMD_CONVERTIR_BASE) as u8,
-                                ))
-                            }
-                            // Cambiar el color deja la pauta y al reves: son
-                            // dos decisiones sobre el mismo papel.
-                            c if (crate::menu::CMD_PIZARRA_COLOR_BASE
-                                ..crate::menu::CMD_PIZARRA_COLOR_BASE
-                                    + crate::menu::COLORES_PIZARRA as u32)
-                                .contains(&c) =>
-                            {
-                                let (_, pauta) = i.pizarra.unwrap_or((0, 0));
-                                Some(CambioPin::PizarraPedida {
-                                    color: (c - crate::menu::CMD_PIZARRA_COLOR_BASE) as u8,
-                                    pauta,
-                                })
-                            }
-                            c if (crate::menu::CMD_PIZARRA_PAUTA_BASE
-                                ..crate::menu::CMD_PIZARRA_PAUTA_BASE
-                                    + crate::menu::PAUTAS_PIZARRA as u32)
-                                .contains(&c) =>
-                            {
-                                let (color, _) = i.pizarra.unwrap_or((0, 0));
-                                Some(CambioPin::PizarraPedida {
-                                    color,
-                                    pauta: (c - crate::menu::CMD_PIZARRA_PAUTA_BASE) as u8,
-                                })
-                            }
-                            _ => None,
-                        };
-                        if let Some(c) = cambio {
-                            (i.al_cambiar)(c);
-                        }
-                    }
-                }
             }
+            abrir_menu(hwnd, None);
             LRESULT(0)
         }
         WM_SETFOCUS | WM_KILLFOCUS => {
@@ -3797,6 +3998,33 @@ extern "system" fn procedimiento_pin(
             }
             LRESULT(0)
         }
+        // La vigilancia de la barra: si el raton ya no esta ni en el pin ni
+        // en su barra (y no se esta arrastrando la linea de tiempo), fuera.
+        WM_TIMER if wparam.0 == ID_TEMPORIZADOR_BARRA => {
+            let c = cursor_de_pantalla();
+            let mut r = RECT::default();
+            // SAFETY: GetWindowRect sobre la ventana propia.
+            unsafe {
+                let _ = GetWindowRect(hwnd, &mut r);
+            }
+            let en_pin = interno_de(hwnd).is_some_and(|i| i.estado.rect().contiene(c))
+                && c.x >= r.left
+                && c.x < r.right
+                && c.y >= r.top
+                && c.y < r.bottom;
+            let sigue = en_pin
+                || crate::barra_flotante::contiene(c.x, c.y)
+                || interno_de(hwnd)
+                    .is_some_and(|i| crate::barra_flotante::en_el_paso(i.estado.rect(), c.x, c.y))
+                || crate::barra_flotante::ocupada();
+            if !sigue || !crate::barra_flotante::es_de(hwnd) {
+                esconder_barra(hwnd);
+                if let Some(i) = interno_de(hwnd) {
+                    i.raton_encima = false;
+                }
+            }
+            LRESULT(0)
+        }
         WM_TIMER if wparam.0 == ID_TEMPORIZADOR_LATIDO => {
             if let Some(i) = interno_de(hwnd) {
                 pintar(i);
@@ -3841,6 +4069,58 @@ extern "system" fn procedimiento_pin(
                         CambioPin::RetrocesoAnotando
                     });
                 }
+            }
+            LRESULT(0)
+        }
+        // Los atajos que ensenan la barra y el menu del pin (v2). De UNA
+        // tecla y solo con el pin enfocado; ninguno choca con los de antes
+        // (1-3, 5-8, 0, R, H, V, T, M, C, Espacio, Esc, flechas).
+        //
+        // A: anotar encima (lo mismo que el doble clic, en fotos y notas).
+        WM_KEYDOWN
+            if wparam.0 as u32 == b'A' as u32
+                && !tecla_pulsada(VK_CONTROL)
+                && interno_de(hwnd)
+                    .is_some_and(|i| !i.anotando && crate::menu::anotable(&i.contenido)) =>
+        {
+            esconder_barra(hwnd);
+            if let Some(i) = interno_de(hwnd) {
+                (i.al_cambiar)(CambioPin::AnotarPedido);
+            }
+            LRESULT(0)
+        }
+        // Ctrl+0: tamano original. Va antes que el 0 de los filtros, que no
+        // mira el Ctrl.
+        WM_KEYDOWN
+            if wparam.0 as u32 == 0x30
+                && tecla_pulsada(VK_CONTROL)
+                && interno_de(hwnd).is_some_and(|i| !i.anotando) =>
+        {
+            aplicar(hwnd, EfectoPin::AlternarTamano);
+            LRESULT(0)
+        }
+        // Ctrl+T: dejar pasar el clic. La vuelta es el comando global, como
+        // desde el menu.
+        WM_KEYDOWN
+            if wparam.0 as u32 == b'T' as u32
+                && tecla_pulsada(VK_CONTROL)
+                && interno_de(hwnd).is_some_and(|i| !i.anotando && !i.pasante) =>
+        {
+            esconder_barra(hwnd);
+            poner_pasante_en(hwnd, true);
+            if let Some(i) = interno_de(hwnd) {
+                (i.al_cambiar)(CambioPin::Movido(colocacion_de(i, i.estado.rect())));
+            }
+            LRESULT(0)
+        }
+        // RePag y AvPag: la pagina anterior y la siguiente de un PDF.
+        WM_KEYDOWN
+            if matches!(wparam.0 as u32, 0x21 | 0x22)
+                && interno_de(hwnd).is_some_and(|i| !i.anotando && i.pdf_paginas.is_some()) =>
+        {
+            if let Some(i) = interno_de(hwnd) {
+                let salto = if wparam.0 as u32 == 0x21 { -1 } else { 1 };
+                (i.al_cambiar)(CambioPin::PaginaPedida(salto));
             }
             LRESULT(0)
         }
@@ -4296,6 +4576,8 @@ extern "system" fn procedimiento_pin(
             LRESULT(0)
         }
         WM_NCDESTROY => {
+            // Un pin que se va no deja su barra ni sus guias a la vista.
+            crate::barra_flotante::esconder(hwnd);
             // SAFETY: recupera el Box cedido en Pin::nuevo exactamente una
             // vez y deja el USERDATA a cero antes de soltarlo.
             unsafe {
@@ -4656,5 +4938,228 @@ mod pruebas {
         );
         assert!(f1 > f0, "el video deberia avanzar");
         drop(pin);
+    }
+
+    /// Lo que se ve en la pantalla en `r`, en RGBA. Se lee la pantalla y no
+    /// la ventana: estas ventanas no tienen superficie GDI que imprimir.
+    fn capturar_pantalla(r: Rect) -> ImagenRgba {
+        use windows::Win32::Graphics::Gdi::{
+            BI_RGB, BITMAPINFO, BITMAPINFOHEADER, BitBlt, CreateCompatibleDC, CreateDIBSection,
+            DIB_RGB_COLORS, DeleteDC, DeleteObject, GetDC, ReleaseDC, SRCCOPY, SelectObject,
+        };
+        let (ancho, alto) = (r.ancho as i32, r.alto as i32);
+        let info = BITMAPINFO {
+            bmiHeader: BITMAPINFOHEADER {
+                biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
+                biWidth: ancho,
+                biHeight: -alto,
+                biPlanes: 1,
+                biBitCount: 32,
+                biCompression: BI_RGB.0,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        // SAFETY: objetos GDI creados y soltados aqui; `bits` vive hasta el
+        // DeleteObject.
+        let mut px = unsafe {
+            let pantalla = GetDC(None);
+            let hdc = CreateCompatibleDC(Some(pantalla));
+            let mut bits: *mut core::ffi::c_void = std::ptr::null_mut();
+            let bmp = CreateDIBSection(Some(hdc), &info, DIB_RGB_COLORS, &mut bits, None, 0)
+                .expect("seccion DIB");
+            let viejo = SelectObject(hdc, bmp.into());
+            let _ = BitBlt(hdc, 0, 0, ancho, alto, Some(pantalla), r.x, r.y, SRCCOPY);
+            let px = std::slice::from_raw_parts(bits as *const u8, (ancho * alto * 4) as usize)
+                .to_vec();
+            SelectObject(hdc, viejo);
+            let _ = DeleteObject(bmp.into());
+            let _ = DeleteDC(hdc);
+            ReleaseDC(None, pantalla);
+            px
+        };
+        for p in px.chunks_exact_mut(4) {
+            p.swap(0, 2);
+            p[3] = 255;
+        }
+        ImagenRgba {
+            ancho: r.ancho,
+            alto: r.alto,
+            pixeles: px,
+        }
+    }
+
+    fn bombear(ms: u64) {
+        let fin = std::time::Instant::now() + std::time::Duration::from_millis(ms);
+        while std::time::Instant::now() < fin {
+            // SAFETY: bombear la cola del hilo de la prueba; `m` es local.
+            unsafe {
+                let mut m = MSG::default();
+                while PeekMessageW(&mut m, None, 0, 0, PM_REMOVE).as_bool() {
+                    let _ = DispatchMessageW(&m);
+                }
+            }
+            std::thread::sleep(std::time::Duration::from_millis(16));
+        }
+    }
+
+    /// **La muestra del rediseno v2**: dos pines con la barra a la vista
+    /// (con el aviso de Copiar), una guia de alinear, un pin al 70 % y el
+    /// panel «Pines abiertos». Deja un PNG en `PIXPIN_CAPTURA_PRUEBA` (o en
+    /// el temporal) para mirarlo. No toca el raton ni el teclado: la barra
+    /// se ensena llamando a su funcion.
+    #[test]
+    #[ignore = "necesita GPU y escritorio; --ignored y mirar el PNG"]
+    fn muestra_de_la_barra_y_el_panel_v2() {
+        use crate::panel_abiertos::{FilaPanel, PanelAbiertos, TipoFila};
+        let d3d = d3d();
+        let motor = Rc::new(MotorRender::nuevo(&d3d).unwrap());
+        let textos = crate::menu::pruebas::textos();
+        // Una foto con degradado, para que se note la opacidad del otro.
+        let (w, h) = (480u32, 300u32);
+        let mut px = Vec::with_capacity((w * h * 4) as usize);
+        for y in 0..h {
+            for x in 0..w {
+                px.extend_from_slice(&[
+                    (47 + x * 46 / w) as u8,
+                    (74 + y * 53 / h) as u8,
+                    (107 + x * 59 / w) as u8,
+                    255,
+                ]);
+            }
+        }
+        let foto = Pin::nuevo(
+            &d3d,
+            Rc::clone(&motor),
+            Contenido::Imagen(ImagenRgba {
+                ancho: w,
+                alto: h,
+                pixeles: px,
+            }),
+            Rect {
+                x: 200,
+                y: 220,
+                ancho: w,
+                alto: h,
+            },
+            100,
+            false,
+            16,
+            Box::new(|_| {}),
+        )
+        .unwrap();
+        foto.poner_textos(textos.clone());
+        let nota = Pin::nuevo(
+            &d3d,
+            Rc::clone(&motor),
+            Contenido::Nota {
+                texto: "# Compras temu\n- Nivel láser\n- Wincha 40 m".into(),
+            },
+            Rect {
+                x: 204,
+                y: 560,
+                ancho: 300,
+                alto: 160,
+            },
+            100,
+            false,
+            16,
+            Box::new(|_| {}),
+        )
+        .unwrap();
+        nota.poner_textos(textos.clone());
+        nota.poner_opacidad(70);
+        bombear(300);
+
+        // La barra de la foto, con el raton «sobre» Copiar.
+        let i = interno_de(foto.hwnd()).unwrap();
+        assert!(quiere_barra(i), "con textos y a la vista, quiere barra");
+        ensenar_barra(i);
+        crate::barra_flotante::poner_encima(Some(crate::barra::AccionBarra::Copiar));
+        assert!(crate::barra_flotante::es_de(foto.hwnd()));
+        // El raton de verdad no esta encima: sin esto la vigilancia la
+        // esconderia en el primer tick.
+        // SAFETY: temporizador de una ventana propia de la prueba.
+        unsafe {
+            let _ = KillTimer(Some(foto.hwnd()), ID_TEMPORIZADOR_BARRA);
+        }
+        // La guia que veria la nota al arrastrarla junto a la foto.
+        let n = interno_de(nota.hwnd()).unwrap();
+        let a = guias_para(nota.hwnd(), n, n.estado.rect());
+        assert_eq!(a.rect.x, 200, "se pegaria a la izquierda de la foto");
+        crate::guias::ensenar(&a.guias, 2);
+
+        let panel = PanelAbiertos::nuevo(
+            &d3d,
+            Rc::clone(&motor),
+            Rect {
+                x: 760,
+                y: 120,
+                ancho: 316,
+                alto: 640,
+            },
+            100,
+            textos.v2.clone(),
+            textos.colores.clone(),
+            false,
+            Box::new(|_| {}),
+        )
+        .unwrap();
+        let fila = |id, nombre: &str, detalle: &str, tipo, grupo, oculto| FilaPanel {
+            id,
+            nombre: nombre.into(),
+            detalle: detalle.into(),
+            tipo,
+            grupo,
+            oculto,
+        };
+        panel.poner_filas(
+            vec![
+                fila(1, "Tesis.pdf", "PDF · 3/48", TipoFila::Pdf, Some(5), false),
+                fila(2, "Foto · 2026-10-04", "Foto", TipoFila::Foto, Some(5), false),
+                fila(3, "Tabla de resultados", "Foto", TipoFila::Foto, Some(5), true),
+                fila(4, "Compras temu", "Nota · opacidad 70 %", TipoFila::Nota, Some(1), false),
+                fila(5, "Clase grabada.mp4", "Vídeo", TipoFila::Video, None, false),
+                fila(6, "Pin en vivo", "EN VIVO", TipoFila::Vivo, None, false),
+            ],
+            false,
+        );
+        bombear(700);
+        // La prueba no declara DPI: Windows la escala, y la pantalla se lee
+        // en pixeles de verdad. Se mide cuanto y se lee la zona escalada.
+        let k = {
+            use windows::Win32::Graphics::Gdi::{
+                DESKTOPHORZRES, GetDC, GetDeviceCaps, HORZRES, ReleaseDC,
+            };
+            // SAFETY: DC de pantalla pedido y soltado aqui.
+            unsafe {
+                let dc = GetDC(None);
+                let k = GetDeviceCaps(Some(dc), DESKTOPHORZRES) as f32
+                    / GetDeviceCaps(Some(dc), HORZRES).max(1) as f32;
+                ReleaseDC(None, dc);
+                k
+            }
+        };
+        let z = |v: i32| (v as f32 * k) as i32;
+        let png = pixpin_codec::codificar_png(&capturar_pantalla(Rect {
+            x: z(150),
+            y: z(120),
+            ancho: z(960) as u32,
+            alto: z(660) as u32,
+        }))
+        .unwrap();
+        let ruta = std::env::var_os("PIXPIN_CAPTURA_PRUEBA")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| std::env::temp_dir().join("pixpin-v2-pines.png"));
+        std::fs::write(&ruta, png).unwrap();
+        println!("captura en {}", ruta.display());
+
+        crate::guias::esconder();
+        esconder_barra(foto.hwnd());
+        assert!(!crate::barra_flotante::es_de(foto.hwnd()), "caso negativo: escondida");
+        drop(panel);
+        drop(nota);
+        drop(foto);
+        bombear(100);
     }
 }

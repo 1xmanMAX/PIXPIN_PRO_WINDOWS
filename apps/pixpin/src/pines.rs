@@ -15,6 +15,8 @@ pub(crate) mod herramienta;
 mod panel;
 mod pizarra;
 mod sacar;
+// El panel «Pines abiertos» (rediseno v2).
+mod abiertos;
 
 /// El catalogo de los rotulos que pintan las herramientas. El pintor de un
 /// pin se llama desde su `WM_PAINT`, sin el catalogo a mano; como el panel
@@ -34,6 +36,50 @@ fn textos() -> &'static pixpin_store::Catalogo {
             pixpin_store::ajustes::PreferenciaIdioma::Sistema,
         ))
     })
+}
+
+/// Los textos del rediseno v2 del pin (la barra, el menu y el panel «Pines
+/// abiertos»), traducidos de una vez. Los usa `textos_del_pin` de main.
+pub(crate) fn textos_v2(t: &pixpin_store::Catalogo) -> pixpin_pin::TextosV2 {
+    pixpin_pin::TextosV2 {
+        anotar: t.t("pin-v2-anotar"),
+        mas: t.t("pin-v2-mas"),
+        opacidad: t.t("pin-v2-opacidad"),
+        pines_abiertos: t.t("pin-v2-pines-abiertos"),
+        abrir: t.t("pin-v2-abrir"),
+        pinear_pagina: t.t("pin-v2-pinear-pagina"),
+        pinear_todas: t.t("pin-v2-pinear-todas"),
+        cerrar_pin: t.t("pin-v2-cerrar-pin"),
+        alejar: t.t("pin-v2-alejar"),
+        acercar: t.t("pin-v2-acercar"),
+        en_vivo: t.t("pin-v2-en-vivo"),
+        tecla_espacio: t.t("pin-v2-tecla-espacio"),
+        tecla_rueda: t.t("pin-v2-tecla-rueda"),
+        tecla_re_pag: t.t("pin-v2-tecla-re-pag"),
+        tecla_av_pag: t.t("pin-v2-tecla-av-pag"),
+        tecla_mayus_rueda: t.t("pin-v2-tecla-mayus-rueda"),
+        panel_titulo: t.t("pin-v2-panel-titulo"),
+        panel_buscar: t.t("pin-v2-panel-buscar"),
+        panel_mostrar_todos: t.t("pin-v2-panel-mostrar-todos"),
+        panel_ocultar_todos: t.t("pin-v2-panel-ocultar-todos"),
+        panel_cerrar_todos: t.t("pin-v2-panel-cerrar-todos"),
+        panel_deshacer: t.t("pin-v2-panel-deshacer"),
+        panel_sin_grupo: t.t("pin-v2-panel-sin-grupo"),
+        panel_oculto: t.t("pin-v2-panel-oculto"),
+        panel_ayuda: t.t("pin-v2-panel-ayuda"),
+        panel_vacio: t.t("pin-v2-panel-vacio"),
+        panel_ocultar: t.t("pin-v2-panel-ocultar"),
+        panel_mostrar: t.t("pin-v2-panel-mostrar"),
+        panel_cerrar_este: t.t("pin-v2-panel-cerrar-este"),
+        panel_cerrar_panel: t.t("pin-v2-panel-cerrar-panel"),
+        tipo_foto: t.t("pin-v2-tipo-foto"),
+        tipo_nota: t.t("pin-v2-tipo-nota"),
+        tipo_pdf: t.t("pin-v2-tipo-pdf"),
+        tipo_video: t.t("pin-v2-tipo-video"),
+        tipo_archivo: t.t("pin-v2-tipo-archivo"),
+        tipo_vivo: t.t("pin-v2-tipo-vivo"),
+        tipo_herramienta: t.t("pin-v2-tipo-herramienta"),
+    }
 }
 
 /// Cuantas paginas se extraen como maximo de un solo golpe.
@@ -284,6 +330,13 @@ pub struct Pines {
     pizarras: HashMap<u64, (u8, u8)>,
     /// Las palabras magicas (las de fabrica del movil).
     palabras: std::collections::BTreeMap<String, pixpin_pin::magia::MiniApp>,
+    /// El panel «Pines abiertos», si esta abierto (v2), y lo que pidio.
+    panel: Option<pixpin_pin::panel_abiertos::PanelAbiertos>,
+    pedidos_panel: Rc<RefCell<Vec<pixpin_pin::panel_abiertos::AccionPanel>>>,
+    /// Los pines escondidos uno a uno desde el panel: su ventana sigue viva.
+    escondidos: std::collections::HashSet<u64>,
+    /// Lo que cerro el ultimo «Cerrar todos» del panel, para deshacerlo.
+    deshacer_cierre: Option<Vec<(u64, PinGuardado)>>,
 }
 
 /// Lo que el gestor deja preparado para abrir un pin en el lienzo. El
@@ -460,6 +513,10 @@ impl Pines {
             herramientas: HashMap::new(),
             pizarras: HashMap::new(),
             palabras: pixpin_pin::magia::por_defecto(),
+            panel: None,
+            pedidos_panel: Rc::new(RefCell::new(Vec::new())),
+            escondidos: std::collections::HashSet::new(),
+            deshacer_cierre: None,
         })
     }
 
@@ -480,6 +537,7 @@ impl Pines {
             gris: false,
             invertido: false,
             brillo: 0,
+            opacidad: 100,
         }
     }
 
@@ -499,6 +557,7 @@ impl Pines {
             gris: c.gris,
             invertido: c.invertido,
             brillo: c.brillo,
+            opacidad: c.opacidad,
         }
     }
 
@@ -598,6 +657,9 @@ impl Pines {
             if g.gris || g.invertido || g.brillo != 0 {
                 pin.poner_filtros(g.gris, g.invertido, g.brillo);
             }
+            if g.opacidad != 100 {
+                pin.poner_opacidad(g.opacidad);
+            }
         }
         self.vivos.insert(id, pin);
         // Y con lo que tuviera dibujado encima. Sin esto el pin volvia
@@ -606,6 +668,8 @@ impl Pines {
         self.recargar_anotaciones(id);
         // Y si es una herramienta o una pizarra, con lo suyo (`sacar`).
         self.vestir(id);
+        // Y el panel «Pines abiertos», si esta a la vista, lo cuenta ya.
+        self.refrescar_panel();
         Ok(())
     }
 
@@ -701,6 +765,7 @@ impl Pines {
         ))));
         tracing::info!(id, ?zona, ?encuadre, ?sitio, "pin en vivo creado");
         self.en_vivo.insert(id, (pin, recorte));
+        self.refrescar_panel();
         Ok(id)
     }
 
@@ -1080,6 +1145,13 @@ impl Pines {
     /// Restaura los pines abiertos del almacen. Los fallos individuales se
     /// registran y no tumban el resto; devuelve cuantos volvieron.
     pub fn restaurar(&mut self, disposicion: &DisposicionMonitores) -> usize {
+        self.restaurar_donde(disposicion, None)
+    }
+
+    /// Como `restaurar`, o solo el pin `solo` (el panel «Pines abiertos»
+    /// trae uno): ese vuelve aunque su grupo este oculto, porque se pidio
+    /// el, por su nombre.
+    fn restaurar_donde(&mut self, disposicion: &DisposicionMonitores, solo: Option<u64>) -> usize {
         struct Pendiente {
             id: u64,
             guardado: PinGuardado,
@@ -1104,7 +1176,10 @@ impl Pines {
                 // Un grupo oculto NO vuelve solo: ni al arrancar ni al
                 // restaurar otro. Conserva su `pin` para saber donde
                 // devolverlo cuando el usuario lo pida desde la bandeja.
-                .filter(|e| !e.grupo.is_some_and(|g| ocultos.contains(&g)))
+                .filter(|e| match solo {
+                    Some(id) => e.id == id,
+                    None => !e.grupo.is_some_and(|g| ocultos.contains(&g)),
+                })
                 // Ni se duplica uno que ya esta en pantalla: `restaurar`
                 // tambien se usa al mostrar un grupo, con otros ya abiertos.
                 .filter(|e| !self.vivos.contains_key(&e.id))
@@ -1197,8 +1272,12 @@ impl Pines {
     /// Llamar desde el bucle principal; barato (dos punteros si esta vacia).
     pub fn purgar(&mut self) {
         let cerrados: Vec<u64> = self.cerrados.borrow_mut().drain(..).collect();
+        // El panel «Pines abiertos» se repinta si algo cambio la lista: un
+        // pin cerrado o un pedido que no sea de la tinta.
+        let mut cambio_la_lista = !cerrados.is_empty();
         for id in cerrados {
             self.vivos.remove(&id);
+            self.escondidos.remove(&id);
             self.herramientas.remove(&id);
             self.pizarras.remove(&id);
             // Soltar el pin en vivo cierra tambien su captura (Drop).
@@ -1251,10 +1330,27 @@ impl Pines {
                 }
             }
         }
+        cambio_la_lista |= pedidos
+            .iter()
+            .any(|(_, c)| evento_de_puntero(*c).is_none());
+        // Lo que pidio el panel «Pines abiertos» (v2).
+        let del_panel: Vec<_> = self.pedidos_panel.borrow_mut().drain(..).collect();
+        for a in del_panel {
+            if let Err(e) = self.atender_panel(a) {
+                tracing::warn!(?e, ?a, "no se pudo atender el panel de pines");
+            }
+        }
+        if cambio_la_lista {
+            self.refrescar_panel();
+        }
     }
 
     /// Lo que el pin pidio y no podia hacer solo.
     fn atender(&mut self, id: u64, cambio: CambioPin) -> Result<()> {
+        // El panel «Pines abiertos» lo puede pedir cualquier pin (v2).
+        if cambio == CambioPin::PinesAbiertosPedido {
+            return self.abrir_panel_abiertos();
+        }
         if self.en_vivo.contains_key(&id) {
             return self.atender_en_vivo(id, cambio);
         }
@@ -1897,15 +1993,23 @@ impl Pines {
         );
         let zoom = pin.zoom_objetivo_por_cien(nuevo);
         pin.escalar_persiguiendo(nuevo);
-        self.almacen
-            .borrow_mut()
-            // Con la escala REAL del pin: guardar 100 en un monitor al 150 %
-            // hacia que el pin volviera 1,5 veces mas grande tras reiniciar.
-            .actualizar_pin(
-                id,
-                Some(Pines::guardado_desde(nuevo, pin.escala_por_cien(), zoom)),
-            )
-            .ok();
+        // Con la escala REAL del pin: guardar 100 en un monitor al 150 %
+        // hacia que el pin volviera 1,5 veces mas grande tras reiniciar.
+        // Y sobre lo que ya habia guardado: el zoom no puede llevarse el
+        // giro, los filtros ni la opacidad (v2).
+        let mut g = Pines::guardado_desde(nuevo, pin.escala_por_cien(), zoom);
+        if let Some(antes) = posicion_guardada(&self.almacen, id) {
+            g = PinGuardado {
+                x: g.x,
+                y: g.y,
+                ancho: g.ancho,
+                alto: g.alto,
+                escala_por_cien: g.escala_por_cien,
+                zoom_por_cien: g.zoom_por_cien,
+                ..antes
+            };
+        }
+        self.almacen.borrow_mut().actualizar_pin(id, Some(g)).ok();
         Ok(())
     }
 
@@ -2446,6 +2550,7 @@ Todavia no se puede ver aqui; sigue dentro del proyecto.",
     /// Cierra todos los pines de la pantalla, dejandolos en el almacen y
     /// apuntados para poder devolverlos uno a uno. Devuelve cuantos cerro.
     pub fn cerrar_todos(&mut self) -> usize {
+        self.escondidos.clear();
         let ids: Vec<u64> = self.vivos.keys().copied().collect();
         for id in &ids {
             if let Some(g) = posicion_guardada(&self.almacen, *id) {
@@ -2461,6 +2566,7 @@ Todavia no se puede ver aqui; sigue dentro del proyecto.",
         // Los en vivo no tienen sitio que recordar: se cierran sin mas.
         let en_vivo = self.en_vivo.len();
         self.en_vivo.clear();
+        self.refrescar_panel();
         ids.len() + en_vivo
     }
 
@@ -2468,6 +2574,7 @@ Todavia no se puede ver aqui; sigue dentro del proyecto.",
     /// dando por abiertos, asi que `mostrar_todos` los devuelve enteros.
     /// Es la diferencia con `cerrar_todos`, que si los cierra.
     pub fn ocultar_todos(&mut self) -> usize {
+        self.escondidos.clear();
         let cuantos = self.vivos.len() + self.en_vivo.len();
         self.vivos.clear();
         // Vuelven del almacen al mostrarlos, con su documento guardado.
@@ -2477,6 +2584,7 @@ Todavia no se puede ver aqui; sigue dentro del proyecto.",
             pin.esconder(true);
         }
         self.en_vivo_ocultos = !self.en_vivo.is_empty();
+        self.refrescar_panel();
         cuantos
     }
 

@@ -8,13 +8,17 @@
 #![deny(clippy::undocumented_unsafe_blocks)]
 
 pub mod arrastre;
+pub mod barra;
+mod barra_flotante;
 pub mod contenido;
 pub mod estado;
+pub mod guias;
 pub mod icono;
 pub mod magia;
 pub mod mandos_video;
 pub mod markdown;
 pub mod menu;
+pub mod panel_abiertos;
 pub mod paleta;
 pub mod remoto;
 pub mod tabla;
@@ -35,7 +39,7 @@ pub use icono::{LADO_ICONO, icono_de, miniatura_de};
 pub use menu::{
     CMD_ABRIR_UBICACION, CMD_CERRAR, CMD_COLOR_BASE, CMD_CONGELAR, CMD_COPIAR, CMD_ELIMINAR,
     CMD_GUARDAR_COMO, CMD_OCULTAR_GRUPO, CMD_REPRODUCIR, CMD_SIN_GRUPO, CMD_SONIDO,
-    CMD_TAMANO_ORIGINAL, TextosPin,
+    CMD_TAMANO_ORIGINAL, TextosPin, TextosV2,
 };
 pub use paleta::{Paleta, PintorPaleta};
 pub use ventana::{

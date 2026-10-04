@@ -1476,3 +1476,43 @@ tareas-pegar-repetida = That image is already in as { $ficha }.
 
 # Opening a photo that Windows can only read with a Microsoft Store extension.
 abrir-falta-extension = Can't open { $nombre }: Windows needs "{ $extension }", free in the Microsoft Store. Install it and open the file again.
+
+## v2-pines
+# The pin toolbar, its right-click menu and the "Open pins" panel.
+pin-v2-anotar = Annotate
+pin-v2-mas = More
+pin-v2-opacidad = Opacity
+pin-v2-pines-abiertos = Open pins…
+pin-v2-abrir = Open
+pin-v2-pinear-pagina = Pin this page
+pin-v2-pinear-todas = Pin all pages
+pin-v2-cerrar-pin = Close pin
+pin-v2-alejar = Zoom out
+pin-v2-acercar = Zoom in
+pin-v2-en-vivo = LIVE
+pin-v2-tecla-espacio = Space
+pin-v2-tecla-rueda = Wheel
+pin-v2-tecla-re-pag = PgUp
+pin-v2-tecla-av-pag = PgDn
+pin-v2-tecla-mayus-rueda = Shift+Wheel
+pin-v2-panel-titulo = Open pins
+pin-v2-panel-buscar = Search a pin
+pin-v2-panel-mostrar-todos = Show all
+pin-v2-panel-ocultar-todos = Hide all
+pin-v2-panel-cerrar-todos = Close all · can be undone
+pin-v2-panel-deshacer = Undo: reopen them
+pin-v2-panel-sin-grupo = No group
+pin-v2-panel-oculto = Hidden
+pin-v2-panel-ayuda = Click a row to bring the pin to the centre and highlight it. The eye hides it or shows it again.
+pin-v2-panel-vacio = No open pins. Pin a capture, a note or a file and it will show up here.
+pin-v2-panel-ocultar = Hide
+pin-v2-panel-mostrar = Show
+pin-v2-panel-cerrar-este = Close this pin
+pin-v2-panel-cerrar-panel = Close panel
+pin-v2-tipo-foto = Photo
+pin-v2-tipo-nota = Note
+pin-v2-tipo-pdf = PDF
+pin-v2-tipo-video = Video
+pin-v2-tipo-archivo = File
+pin-v2-tipo-vivo = Live pin
+pin-v2-tipo-herramienta = Tool
