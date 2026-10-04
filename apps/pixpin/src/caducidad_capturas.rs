@@ -18,11 +18,17 @@
 //! - **Conservar es mandarla al chat** («Mensajes guardados», como una foto
 //!   mas) y apuntarla en [`Registro::conservadas`]: deja de caducar.
 //!
+//! - **«Dar 7 dias mas»** (v2 de la galeria) apunta en
+//!   [`Registro::prorrogadas`] la nueva fecha de una captura. Es un campo
+//!   aparte y opcional: un registro sin el se lee igual, y el plugin de Flow
+//!   (`pixpin-lanzador/src/capturas.rs`), que lee este mismo fichero, lo
+//!   tiene en cuenta al decir cuando se va cada una.
+//!
 //! El registro vive en `<datos>/capturas-caducidad.json`, fuera de la
 //! carpeta de las capturas: dentro, cada escritura cambiaria la fecha de la
 //! carpeta y la galeria la releeria sin motivo.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::{Duration, SystemTime};
@@ -50,6 +56,11 @@ pub struct Registro {
     /// Los nombres de fichero de las capturas que no se van.
     #[serde(default)]
     pub conservadas: BTreeSet<String>,
+    /// Las que se dejaron estar mas («Dar 7 dias mas»): nombre de fichero y
+    /// la fecha nueva en que se van, en ms UTC. Si es anterior a la de la
+    /// regla, gana la regla: prorrogar nunca acorta.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub prorrogadas: BTreeMap<String, i64>,
 }
 
 fn ruta_del_registro(raiz: &Path) -> PathBuf {
@@ -73,6 +84,7 @@ fn leer_sin_cerrojo(raiz: &Path, ahora: i64) -> Registro {
     let nuevo = Registro {
         desde: ahora,
         conservadas: BTreeSet::new(),
+        prorrogadas: BTreeMap::new(),
     };
     if ruta.exists() {
         // Estaba pero no se entiende: se aparta, no se pisa a ciegas.
@@ -116,7 +128,27 @@ pub fn se_va_el(r: &Registro, e: &Entrada) -> Option<i64> {
     if r.conservadas.contains(&nombre(&e.ruta)) {
         return None;
     }
-    Some(ms_de(e.cuando).max(r.desde) + DIAS * DIA_MS)
+    let regla = ms_de(e.cuando).max(r.desde) + DIAS * DIA_MS;
+    Some(match r.prorrogadas.get(&nombre(&e.ruta)) {
+        Some(&t) => regla.max(t),
+        None => regla,
+    })
+}
+
+/// La fecha nueva de «Dar 7 dias mas»: siete dias despues de la que tenia,
+/// o de ahora si ya se le habia pasado. `None` si esta conservada (no se va).
+pub fn fecha_prorrogada(r: &Registro, e: &Entrada, ahora: i64) -> Option<i64> {
+    se_va_el(r, e).map(|t| t.max(ahora) + DIAS * DIA_MS)
+}
+
+/// **Da siete dias mas** a una captura y escribe el registro.
+pub fn prorrogar(raiz: &Path, e: &Entrada, ahora: i64) -> std::io::Result<Registro> {
+    let n = nombre(&e.ruta);
+    cambiar(raiz, ahora, |r| {
+        if let Some(t) = fecha_prorrogada(r, e, ahora) {
+            r.prorrogadas.insert(n, t);
+        }
+    })
 }
 
 /// Las que ya tocan.
@@ -145,8 +177,16 @@ pub fn barrer(raiz: &Path, ahora: i64) -> usize {
         }
     }
     let presentes: BTreeSet<String> = lista.iter().map(|e| nombre(&e.ruta)).collect();
-    if r.conservadas.iter().any(|n| !presentes.contains(n)) {
-        let _ = cambiar(raiz, ahora, |r| r.conservadas.retain(|n| presentes.contains(n)));
+    let sobra = r
+        .conservadas
+        .iter()
+        .chain(r.prorrogadas.keys())
+        .any(|n| !presentes.contains(n));
+    if sobra {
+        let _ = cambiar(raiz, ahora, |r| {
+            r.conservadas.retain(|n| presentes.contains(n));
+            r.prorrogadas.retain(|n, _| presentes.contains(n));
+        });
     }
     idas
 }
@@ -186,7 +226,47 @@ mod pruebas {
         Registro {
             desde,
             conservadas: BTreeSet::new(),
+            prorrogadas: BTreeMap::new(),
         }
+    }
+
+    #[test]
+    fn dar_siete_dias_mas_alarga_desde_la_fecha_que_tenia() {
+        let mut r = registro(0);
+        let e = entrada("a.png", 10 * DIA_MS);
+        // Se iba el dia 17; hoy es el 12: pasa al 24.
+        let nueva = fecha_prorrogada(&r, &e, 12 * DIA_MS).unwrap();
+        assert_eq!(nueva, 24 * DIA_MS);
+        r.prorrogadas.insert("a.png".into(), nueva);
+        assert_eq!(se_va_el(&r, &e), Some(24 * DIA_MS));
+        assert!(caducadas(&r, std::slice::from_ref(&e), 20 * DIA_MS).is_empty());
+        // Otra vez: del 24 al 31.
+        assert_eq!(fecha_prorrogada(&r, &e, 12 * DIA_MS), Some(31 * DIA_MS));
+    }
+
+    #[test]
+    fn caso_negativo_una_prorroga_vieja_no_acorta_ni_vale_para_otra() {
+        let mut r = registro(0);
+        let e = entrada("a.png", 10 * DIA_MS);
+        // Apuntada antes que la regla: gana la regla (dia 17).
+        r.prorrogadas.insert("a.png".into(), 3 * DIA_MS);
+        assert_eq!(se_va_el(&r, &e), Some(17 * DIA_MS));
+        // La prorroga de otra captura no toca a esta.
+        r.prorrogadas.insert("b.png".into(), 90 * DIA_MS);
+        assert_eq!(se_va_el(&r, &e), Some(17 * DIA_MS));
+        // Y a una conservada no se le prorroga nada.
+        r.conservadas.insert("a.png".into());
+        assert_eq!(fecha_prorrogada(&r, &e, 0), None);
+    }
+
+    #[test]
+    fn un_registro_viejo_sin_prorrogas_se_lee_y_sin_ellas_no_se_escriben() {
+        let viejo: Registro =
+            serde_json::from_str(r#"{"desde": 5, "conservadas": ["a.png"]}"#).unwrap();
+        assert_eq!(viejo.desde, 5);
+        assert!(viejo.prorrogadas.is_empty());
+        // Caso negativo: sin prorrogas el fichero queda como antes.
+        assert!(!serde_json::to_string(&viejo).unwrap().contains("prorrogadas"));
     }
 
     #[test]
@@ -230,6 +310,10 @@ mod pruebas {
         })
         .unwrap();
         assert!(leer(&raiz, 5).conservadas.contains("x.png"));
+        let y = entrada("y.png", 0);
+        let r = prorrogar(&raiz, &y, 5).unwrap();
+        assert_eq!(r.prorrogadas.get("y.png"), Some(&(1000 + 2 * DIAS * DIA_MS)));
+        assert_eq!(leer(&raiz, 5).prorrogadas.get("y.png"), Some(&(1000 + 2 * DIAS * DIA_MS)));
         // Un registro roto se aparta y se empieza de nuevo, sin panico.
         std::fs::write(raiz.join(FICHERO), b"{roto").unwrap();
         assert_eq!(leer(&raiz, 77).desde, 77);

@@ -1476,3 +1476,80 @@ tareas-pegar-repetida = That image is already in as { $ficha }.
 
 # Opening a photo that Windows can only read with a Microsoft Store extension.
 abrir-falta-extension = Can't open { $nombre }: Windows needs "{ $extension }", free in the Microsoft Store. Install it and open the file again.
+
+## v2-galeria
+galeria-subtitulo = { $cuantas } · kept for 7 days
+galeria-buscar = Search, including the text in captures
+galeria-buscar-sin-ocr = Search by name or date
+galeria-elegir = Select
+galeria-eligiendo = Selecting
+galeria-filtro-todas = All
+galeria-filtro-hoy = Today
+galeria-filtro-semana = This week
+galeria-filtro-conservadas = Kept
+galeria-filtro-pronto = Deleted soon
+galeria-filtro-gif = GIF
+galeria-filtro-videos = Videos
+galeria-filtro-con-texto = With text
+galeria-filtro-vacio = No captures in this filter.
+galeria-sin-resultados = No captures with “{ $texto }”.
+galeria-papelera = Recycle bin
+galeria-ocupan = They take { $tamano }
+galeria-ayuda-mover = move
+galeria-tecla-espacio = Space
+galeria-ayuda-elegir = select ·
+galeria-ayuda-pinear = pin
+galeria-hoy = Today
+galeria-ayer = Yesterday
+galeria-dia-0 = Monday
+galeria-dia-1 = Tuesday
+galeria-dia-2 = Wednesday
+galeria-dia-3 = Thursday
+galeria-dia-4 = Friday
+galeria-dia-5 = Saturday
+galeria-dia-6 = Sunday
+galeria-elegir-dia = Select the whole day
+galeria-se-borra-manana = Deleted tomorrow
+galeria-se-borra-en = Deleted in { $dias } days
+galeria-chip-video = Video
+galeria-chip-texto = Aa text
+galeria-pinear = Pin
+galeria-copiar = Copy
+galeria-conservar = Keep
+galeria-borrar = Delete
+galeria-dar-mas = 7 more days
+galeria-elegidas = { $cuantas ->
+    [one] 1 selected
+   *[other] { $cuantas } selected
+}
+galeria-elegir-todas = All
+galeria-deshacer = Undo
+galeria-borradas = { $cuantas } moved to PixPin's recycle bin
+galeria-recuperadas = { $cuantas ->
+    [one] Restored
+   *[other] { $cuantas } restored
+}
+galeria-pineadas = { $cuantas } pinned on screen
+galeria-copiadas = { $cuantas } copied as files
+galeria-conservadas-aviso = { $cuantas } kept: they are in Saved messages
+galeria-prorrogada = Seven more days: it will be deleted later
+galeria-texto-copiado = Text copied
+galeria-detalle-vacio = Choose a capture to see its details.
+galeria-ver-grande = Double-click: view large
+galeria-tipo-captura = Screen capture
+galeria-tipo-gif = Animated GIF
+galeria-tipo-video = Video
+galeria-fecha = Date
+galeria-tamano = Size
+galeria-en-dias = { $dias ->
+    [0] today
+    [one] tomorrow
+   *[other] in { $dias } days
+}
+galeria-conservada-detalle = It is in Saved messages and won't be deleted.
+galeria-texto-reconocido = Recognized text
+galeria-copiar-texto = Copy text
+galeria-texto-leyendo = Reading the text…
+galeria-texto-nada = No text found in this capture.
+galeria-texto-video = Videos have no recognized text.
+galeria-texto-sin-ocr = This Windows has no text recognition language installed.
