@@ -357,28 +357,12 @@ una capa superior.
 
 ```mermaid
 flowchart TB
-    subgraph L5[Capa 5 · la app]
-      app[pixpin<br/>pixpinmax.exe]
-    end
-    subgraph L4[Capa 4 · ventanas propias]
-      notas[pixpin-notas<br/>editor de notas]
-    end
-    subgraph L3[Capa 3 · interfaz]
-      ui[pixpin-ui] --- flow[pixpin-flow] --- plugin[pixpin-plugin]
-    end
-    subgraph L2[Capa 2 · funciones]
-      cap[pixpin-capture] --- pin[pixpin-pin] --- pila[pixpin-pila] --- proy[pixpin-proyecto]
-      pdf[pixpin-pdf] --- docs[pixpin-docs] --- ocr[pixpin-ocr] --- rec[pixpin-record] --- store[pixpin-store]
-      lanz[pixpin-lanzador<br/>plugin de Flow] --- alig[pixpin-aligerar<br/>compresor de PDF]
-    end
-    subgraph L1[Capa 1 · Windows y motores]
-      shell[pixpin-shell] --- render[pixpin-render] --- gpu[pixpin-gpu] --- codec[pixpin-codec]
-      motor[pixpin-motor2d] --- tinta[pixpin-tinta] --- sincro[pixpin-sincro] --- audio[pixpin-audio]
-      voz[pixpin-voz] --- web[pixpin-web] --- squeeze[pdfsqueeze-core]
-    end
-    subgraph L0[Capa 0 · cimientos puros]
-      geom[pixpin-geom] --- model[pixpin-model] --- nivel[pixpin-nivel] --- lecc[pixpin-lecciones]
-    end
+    L5["<b>Capa 5 · la app</b><br/>pixpin → pixpinmax.exe"]
+    L4["<b>Capa 4 · ventanas propias</b><br/>pixpin-notas (editor de notas)"]
+    L3["<b>Capa 3 · interfaz</b><br/>pixpin-ui · pixpin-flow · pixpin-plugin"]
+    L2["<b>Capa 2 · funciones</b><br/>pixpin-capture · pixpin-pin · pixpin-pila · pixpin-proyecto<br/>pixpin-pdf · pixpin-docs · pixpin-ocr · pixpin-record · pixpin-store<br/>pixpin-lanzador (Flow) · pixpin-aligerar (PDF)"]
+    L1["<b>Capa 1 · Windows y motores</b><br/>pixpin-shell · pixpin-render · pixpin-gpu · pixpin-codec<br/>pixpin-motor2d · pixpin-tinta · pixpin-sincro · pixpin-audio<br/>pixpin-voz · pixpin-web · pdfsqueeze-core"]
+    L0["<b>Capa 0 · cimientos puros</b><br/>pixpin-geom · pixpin-model · pixpin-nivel · pixpin-lecciones"]
     L5 --> L4 --> L3 --> L2 --> L1 --> L0
 ```
 
