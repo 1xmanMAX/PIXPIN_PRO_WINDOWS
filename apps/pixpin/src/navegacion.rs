@@ -73,8 +73,8 @@ pub fn zoom_de_rueda(zoom: f32, delta_rueda: i32) -> f32 {
 /// Por encima del 10 % es la rueda de Excalidraw tal cual. Por debajo no
 /// puede serlo: su paso es de 0,1 fijo, y desde 0,1 una sola muesca lo
 /// dejaria en cero. Ahi el paso pasa a ser proporcional, un 10 % por
-/// muesca, que es como se siente igual a cualquier distancia. Solo lo usa
-/// el universo, que es el unico lienzo que baja de 0,1.
+/// muesca, que es como se siente igual a cualquier distancia. Lo usa un
+/// lienzo que deje bajar de 0,1.
 pub fn zoom_de_rueda_entre(zoom: f32, delta_rueda: i32, minimo: f32) -> f32 {
     let delta_y = delta_y_css(delta_rueda);
     if delta_y == 0.0 {
@@ -172,10 +172,8 @@ pub enum Accion {
     /// Ctrl+rueda: el zoom lo decide `zoom_de_rueda` con el de la camara, y
     /// `foco` (pixeles logicos de la ventana) se queda quieto.
     ZoomRueda { foco: Punto2, delta: i32 },
-    /// La rueda en el universo (`Navegador::mapa`): acercar o alejar con
-    /// `foco` quieto, suave. Quien lo recibe lo persigue fotograma a
-    /// fotograma (`universo::mapa::Suave`); `aplicar_con_minimo` lo aplica
-    /// de golpe.
+    /// La rueda fina de un raton (`decidir_rueda`): acercar o alejar con
+    /// `foco` quieto, proporcional al giro.
     ZoomSuave { foco: Punto2, delta: i32 },
     /// El pellizco del panel tactil: multiplicar el zoom por `factor` con
     /// `foco` quieto, de golpe (el pellizco ya llega continuo, paso a paso).
@@ -304,16 +302,8 @@ pub struct Navegador {
     /// ventana: el foco del zoom con Ctrl+rueda, que no trae posicion.
     ultimo: Punto2,
     /// Hasta donde deja alejarse este lienzo. Un dibujo se queda en el
-    /// minimo del motor; el universo baja mucho mas para ver todas las
-    /// galaxias a la vez. Quien lo cambia lo pasa a `aplicar_con_minimo`.
+    /// minimo del motor. Quien lo cambia lo pasa a `aplicar_con_minimo`.
     pub zoom_minimo: f32,
-    /// Con el universo detras: la rueda acerca y aleja (sin Ctrl), como en
-    /// un mapa. En un lienzo normal es `false` y la rueda desplaza, como en
-    /// Excalidraw.
-    ///
-    /// Solo cuenta para `Rueda`: la `RuedaFina` de las ventanas con gestos
-    /// tactiles acerca con el raton en cualquier lienzo (`decidir_rueda`).
-    pub mapa: bool,
     clasificador: Clasificador,
 }
 
@@ -329,7 +319,6 @@ impl Default for Navegador {
             // El de la rueda de Excalidraw, que ya era el suelo de hecho: la
             // camara del motor admite 0,05 pero la rueda nunca bajaba de 0,1.
             zoom_minimo: ZOOM_MINIMO,
-            mapa: false,
             clasificador: Clasificador::default(),
         }
     }
@@ -475,12 +464,7 @@ impl Navegador {
                 consumido
             }
             EventoOverlay::Rueda(delta) => {
-                let accion = if self.mapa && !m.shift {
-                    Accion::ZoomSuave {
-                        foco: self.ultimo,
-                        delta,
-                    }
-                } else if m.ctrl {
+                let accion = if m.ctrl {
                     Accion::ZoomRueda {
                         foco: self.ultimo,
                         delta,
@@ -554,9 +538,18 @@ impl Navegador {
     }
 }
 
+/// Cuanto acerca una muesca de la rueda fina (`WHEEL_DELTA` = 120).
+const FACTOR_MUESCA: f32 = 1.25;
+
+/// El factor de zoom de un giro de rueda: proporcional, igual a cualquier
+/// distancia, y fraccionario para los paneles tactiles que mandan giros
+/// pequenos.
+fn factor_de_rueda(delta: i32) -> f32 {
+    FACTOR_MUESCA.powf(delta as f32 / 120.0)
+}
+
 /// Aplica la accion a la camara del usuario (logica). Devuelve si cambio.
-/// Con el minimo de zoom del motor: es lo que quiere todo lienzo que no sea
-/// el universo.
+/// Con el minimo de zoom del motor.
 #[cfg(test)]
 pub fn aplicar(camara: &mut Camara, accion: Accion) -> bool {
     aplicar_con_minimo(camara, accion, ZOOM_MINIMO)
@@ -575,7 +568,7 @@ pub fn aplicar_con_minimo(camara: &mut Camara, accion: Accion, zoom_minimo: f32)
         }
         Accion::ZoomSuave { foco, delta } => camara.acercar_en_entre(
             foco,
-            crate::universo::mapa::factor_de_rueda(delta),
+            factor_de_rueda(delta),
             zoom_minimo,
             pixpin_motor2d::camara::ZOOM_MAXIMO,
         ),
@@ -644,7 +637,7 @@ mod pruebas {
 
     #[test]
     fn con_un_minimo_propio_la_rueda_baja_del_diez_por_ciento_a_pasos_proporcionales() {
-        // El universo: de 0,1 hacia fuera sigue alejando, un 10 % por muesca.
+        // Con un minimo propio: de 0,1 hacia fuera sigue alejando, un 10 % por muesca.
         let z = zoom_de_rueda_entre(0.1, -MUESCA, 0.002);
         assert!((z - 0.1 / 1.1).abs() < 1e-5, "{z}");
         // Y de vuelta hacia dentro, proporcional tambien.
@@ -661,53 +654,7 @@ mod pruebas {
     }
 
     #[test]
-    fn en_modo_mapa_la_rueda_acerca_donde_esta_el_raton_y_con_shift_sigue_desplazando() {
-        let mut n = Navegador::nuevo();
-        n.mapa = true;
-        n.evento(
-            &EventoOverlay::RatonMovido(Punto { x: 300, y: 150 }),
-            ORIGEN,
-            150,
-            NADA,
-            true,
-            SIEMPRE,
-        );
-        let r = n.evento(
-            &EventoOverlay::Rueda(MUESCA),
-            ORIGEN,
-            150,
-            NADA,
-            true,
-            SIEMPRE,
-        );
-        assert_eq!(
-            r.accion,
-            Some(Accion::ZoomSuave {
-                foco: Punto2::nuevo(200.0, 100.0),
-                delta: MUESCA
-            })
-        );
-        // Caso negativo: con Shift la rueda es horizontal tambien en el mapa.
-        let shift = Modificadores {
-            ctrl: false,
-            shift: true,
-        };
-        let r = n.evento(
-            &EventoOverlay::Rueda(MUESCA),
-            ORIGEN,
-            100,
-            shift,
-            true,
-            SIEMPRE,
-        );
-        assert!(matches!(r.accion, Some(Accion::Desplazar { dy: 0.0, .. })));
-    }
-
-    #[test]
-    fn un_lienzo_normal_no_esta_en_modo_mapa_y_su_rueda_no_cambia() {
-        // Lo que vigila que el universo no se lleve la rueda de todos.
-        let n = Navegador::nuevo();
-        assert!(!n.mapa);
+    fn la_rueda_del_raton_en_un_lienzo_no_hace_el_zoom_suave() {
         for mods in [
             NADA,
             Modificadores {

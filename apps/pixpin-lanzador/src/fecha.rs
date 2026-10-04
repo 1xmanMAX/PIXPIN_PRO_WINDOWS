@@ -53,6 +53,33 @@ pub fn momento(ms: i64, ahora: i64) -> String {
     formatear(&l, &a, local(ahora - 86_400_000).as_ref())
 }
 
+/// «10 oct»: el dia y el mes de `ms` en la hora local (vacio si Windows
+/// no puede).
+pub fn dia_y_mes(ms: i64) -> String {
+    local(ms).map(|l| dia_y_mes_de(&l)).unwrap_or_default()
+}
+
+/// Lo de [`dia_y_mes`], sin Windows.
+pub fn dia_y_mes_de(l: &Local) -> String {
+    let mes = MESES.get(usize::from(l.mes.max(1)) - 1).copied().unwrap_or("");
+    format!("{} {mes}", l.dia)
+}
+
+/// Cuanto hace, con minutos y horas el primer dia: «ahora mismo», «hace 5
+/// min», «hace 2 h»; despues, como [`crate::resultados::hace`].
+pub fn hace_con_horas(ms: i64, ahora: i64) -> String {
+    if ms <= 0 {
+        return String::new();
+    }
+    let s = (ahora - ms).max(0) / 1000;
+    match s {
+        0..=59 => "ahora mismo".into(),
+        60..=3599 => format!("hace {} min", s / 60),
+        3600..=86_399 => format!("hace {} h", s / 3600),
+        _ => crate::resultados::hace(ms, ahora),
+    }
+}
+
 /// Lo de [`momento`], sin Windows (para probarlo).
 pub fn formatear(l: &Local, ahora: &Local, ayer: Option<&Local>) -> String {
     let hora = format!("{:02}:{:02}", l.hora, l.minuto);
@@ -86,6 +113,23 @@ mod pruebas {
         assert_eq!(formatear(&en(2026, 10, 1, 23, 59), &ahora, Some(&ayer)), "ayer 23:59");
         assert_eq!(formatear(&en(2026, 9, 12, 18, 5), &ahora, Some(&ayer)), "12 sep, 18:05");
         assert_eq!(formatear(&en(2025, 3, 3, 1, 0), &ahora, Some(&ayer)), "3 mar 2025");
+    }
+
+    #[test]
+    fn horas_el_primer_dia_y_dias_despues() {
+        let h = 3_600_000;
+        let ahora = 100 * 86_400_000;
+        assert_eq!(hace_con_horas(ahora - 10_000, ahora), "ahora mismo");
+        assert_eq!(hace_con_horas(ahora - 5 * 60_000, ahora), "hace 5 min");
+        assert_eq!(hace_con_horas(ahora - 2 * h, ahora), "hace 2 h");
+        assert_eq!(hace_con_horas(ahora - 3 * 24 * h, ahora), "hace 3 días");
+        assert_eq!(dia_y_mes_de(&en(2026, 10, 10, 0, 0)), "10 oct");
+    }
+
+    #[test]
+    fn caso_negativo_sin_fecha_no_se_dice_nada() {
+        assert_eq!(hace_con_horas(0, 1_000_000), "");
+        assert_eq!(hace_con_horas(-5, 1_000_000), "");
     }
 
     #[test]

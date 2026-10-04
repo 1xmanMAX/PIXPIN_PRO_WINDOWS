@@ -21,6 +21,9 @@ thiserror = "2.0"
 # lo acordado (`sincro/objetos/<resumen>.gz`). Ya estaba en el arbol por
 # `zip`; aqui solo el lector y el escritor, sin mas.
 flate2 = "1.1"
+# Juntar dos versiones de una leccion aprendida en vez de pisar una con la
+# otra (`disco::juntar_leccion`). Logica pura, sin mas dependencias.
+pixpin-lecciones = { path = "../pixpin-lecciones" }
 
 [features]
 # Un `Disco` con la carpeta `files` de Android, puerto directo de `Disco.kt`:

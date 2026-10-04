@@ -42,7 +42,7 @@ use pixpin_store::{Catalogo, Ubicacion};
 pub enum Clase {
     /// Una hoja dibujada de un proyecto: su proyecto y la referencia de su
     /// dibujo (o el codigo unico de la pagina que aun no lo tiene), que es
-    /// como la busca el universo (`universo::abrir::abrir_hoja`).
+    /// como la busca el universo (`abrir_hoja::abrir_hoja`).
     Lienzo { proyecto: String, referencia: String },
     /// Un documento en su lector: PDF, Word, libro o pagina.
     Lector { ruta: PathBuf },
@@ -345,7 +345,7 @@ fn lanzar(l: &Lanzador, clase: &Clase) -> bool {
                 .name("lienzo-del-grupo".into())
                 .spawn(move || {
                     let _com = pixpin_shell::ComDelHilo::iniciar();
-                    crate::universo::abrir::abrir_hoja(&raiz, &proyecto, &referencia, opciones);
+                    crate::abrir_hoja::abrir_hoja(&raiz, &proyecto, &referencia, opciones);
                     // La burbuja del chat tiene que ensenar lo dibujado.
                     crate::ventana_chat::refrescar();
                 })

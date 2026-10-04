@@ -128,8 +128,8 @@ use pixpin_codec::{ImagenRgba, cargar, codificar_png};
 use pixpin_geom::{DisposicionMonitores, Monitor, Punto, Rect, recolocar_en_area};
 use pixpin_motor2d::Escena;
 use pixpin_pin::{
-    CambioPin, Contenido, CursorAnotacion, Paleta, Pin, Presentacion, TextosPin, icono_de,
-    miniatura_de, presentacion_de, tamano_humano, tamano_natural,
+    CambioPin, Contenido, CursorAnotacion, ExtensionTienda, Paleta, Pin, Presentacion, TextosPin,
+    examinar_video, icono_de, miniatura_de, presentacion_de, tamano_humano, tamano_natural,
 };
 use pixpin_render::MotorRender;
 use pixpin_store::{Almacen, ColorGrupo, PinGuardado, TipoEntrada};
@@ -858,21 +858,39 @@ impl Pines {
             && self.ritmo_video.is_some()
             && ruta.is_file();
         if es_video {
-            // La proporcion de la miniatura decide el tamano al nacer; el
-            // tamano nativo llega con los metadatos y solo afecta al 100 %.
-            // Sin miniatura, el provisional (D71).
+            // La cabecera del video dice su tamano y su codec en unas decenas
+            // de ms (la miniatura de la Shell decodificaba un fotograma y se
+            // llevaba casi todo el tiempo de abrir). Si falta el codec, ni se
+            // intenta: se ensena ya como documento, diciendo que instalar.
+            // Al restaurar no se lee: el rect ya esta guardado, y un codec que
+            // falte lo descubre el motor y lo degrada igual (D72).
+            let ficha = if tamano_guardado {
+                None
+            } else {
+                examinar_video(ruta)
+            };
+            if let Some(f) = ficha
+                && !f.decodificable
+            {
+                tracing::warn!(codec = ?f.codec, ruta = %ruta.display(), "video sin decodificador instalado");
+                return self.contenido_sin_codec(ruta, f.extension_que_falta());
+            }
+            // La proporcion decide el tamano al nacer; el tamano nativo llega
+            // con los metadatos y solo afecta al 100 %. Sin cabecera, la
+            // miniatura; sin nada, el provisional (D71), que el pin corrige
+            // en cuanto llegan los metadatos.
             let (ancho, alto) = if tamano_guardado {
                 None
             } else {
-                miniatura_de(ruta, 512)
+                ficha
+                    .filter(|f| f.ancho > 0 && f.alto > 0)
+                    .map(|f| (f.ancho, f.alto))
+                    .or_else(|| miniatura_de(ruta, 512).map(|m| (m.ancho, m.alto)))
             }
-            .map(|m| {
+            .map(|(w, h)| {
                 let base = 960.0;
-                let f = base / m.ancho.max(1) as f32;
-                (
-                    (m.ancho as f32 * f).round() as u32,
-                    (m.alto as f32 * f).round() as u32,
-                )
+                let f = base / w.max(1) as f32;
+                ((w as f32 * f).round() as u32, (h as f32 * f).round() as u32)
             })
             .unwrap_or((0, 0));
             return Contenido::Video {
@@ -906,27 +924,8 @@ impl Pines {
                 .context("el video no referencia ningun fichero")?
         };
         tracing::warn!(id, ruta = %ruta.display(), "video no reproducible; se ensena como documento o ficha");
-        let contenido = match miniatura_de(&ruta, 1024) {
-            // El nombre lleva la coletilla «sin codec de video»: un video
-            // parado sin explicacion parece un fallo del programa.
-            Some(vista) => Contenido::Documento {
-                nombre: format!(
-                    "{} · {}",
-                    ruta.file_name()
-                        .map(|n| n.to_string_lossy().into_owned())
-                        .unwrap_or_default(),
-                    self.texto_sin_codec
-                ),
-                vista,
-            },
-            None => {
-                let mut ficha = ficha_de(&ruta, &self.texto_no_encontrado);
-                if let Contenido::Archivo { detalle, .. } = &mut ficha {
-                    *detalle = format!("{detalle} · {}", self.texto_sin_codec);
-                }
-                ficha
-            }
-        };
+        let falta = examinar_video(&ruta).and_then(|f| f.extension_que_falta());
+        let contenido = self.contenido_sin_codec(&ruta, falta);
         // Conserva el ancho del pin; el alto se adapta al contenido nuevo.
         let motor = Rc::clone(&self.motor);
         let (nw, nh) = tamano_natural(&contenido, escala, &|t, tam, max, tramos| {
@@ -951,6 +950,36 @@ impl Pines {
         self.crear_ventana(id, contenido, nueva, escala)
     }
 
+    /// Un video que no se puede reproducir, como documento (su miniatura) o
+    /// ficha, con la coletilla «sin codec de video» y, si se sabe, la
+    /// extension de Microsoft Store que lo arregla: un video parado sin
+    /// explicacion parece un fallo del programa. Abrirlo (doble clic) lleva
+    /// a esa extension en la tienda.
+    fn contenido_sin_codec(&self, ruta: &Path, falta: Option<ExtensionTienda>) -> Contenido {
+        let aviso = match falta {
+            Some(e) => format!("{} — Microsoft Store: «{}»", self.texto_sin_codec, e.nombre),
+            None => self.texto_sin_codec.clone(),
+        };
+        match miniatura_de(ruta, 1024) {
+            Some(vista) => Contenido::Documento {
+                nombre: format!(
+                    "{} · {aviso}",
+                    ruta.file_name()
+                        .map(|n| n.to_string_lossy().into_owned())
+                        .unwrap_or_default(),
+                ),
+                vista,
+            },
+            None => {
+                let mut ficha = ficha_de(ruta, &self.texto_no_encontrado);
+                if let Contenido::Archivo { detalle, .. } = &mut ficha {
+                    *detalle = format!("{detalle} · {aviso}");
+                }
+                ficha
+            }
+        }
+    }
+
     /// La ficha de un archivo o carpeta, por referencia (D28).
     pub fn pinear_archivo(&mut self, ruta: &Path, monitor: &Monitor) -> Result<()> {
         let t0 = std::time::Instant::now();
@@ -970,6 +999,14 @@ impl Pines {
             )
             .context("no se pudo guardar la referencia")?;
         let hecho = self.crear_ventana(id, contenido, region, monitor.escala_por_cien);
+        // Un video abierto a proposito (doble clic en el Explorador, Abrir
+        // con) se oye: es lo que se pidio. Los que vuelven al arrancar
+        // siguen callados (D69).
+        if tipo == "video"
+            && let Some(pin) = self.vivos.get(&id)
+        {
+            pin.poner_sonido(true);
+        }
         tracing::info!(
             id,
             tipo,
@@ -1978,10 +2015,26 @@ impl Pines {
                 .context("esta entrada no referencia ningun fichero")?
         };
         if ubicacion {
-            pixpin_shell::abrir_ubicacion(&ruta).context("no se pudo abrir la ubicacion")
-        } else {
-            pixpin_shell::abrir(&ruta).context("no se pudo abrir el fichero")
+            return pixpin_shell::abrir_ubicacion(&ruta).context("no se pudo abrir la ubicacion");
         }
+        // Un video que se ensena como documento es uno que no se pudo ver.
+        // Abrirlo con el programa predeterminado —que es PixPin— solo
+        // volveria a pinearlo igual: se lleva a la extension que falta en la
+        // tienda o, si no se sabe cual, a su carpeta.
+        let es_video_fallido = presentacion_de(&ruta) == Presentacion::Video
+            && self.vivos.get(&id).is_some_and(|p| !p.es_video());
+        if es_video_fallido {
+            if let Some(e) = examinar_video(&ruta).and_then(|f| f.extension_que_falta()) {
+                tracing::info!(
+                    extension = e.nombre,
+                    "se abre la tienda para el codec que falta"
+                );
+                return pixpin_shell::abrir(Path::new(e.enlace))
+                    .context("no se pudo abrir la tienda");
+            }
+            return pixpin_shell::abrir_ubicacion(&ruta).context("no se pudo abrir la ubicacion");
+        }
+        pixpin_shell::abrir(&ruta).context("no se pudo abrir el fichero")
     }
 
     /// Guarda una copia del contenido donde el usuario diga.

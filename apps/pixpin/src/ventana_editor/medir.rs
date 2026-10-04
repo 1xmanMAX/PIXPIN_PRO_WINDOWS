@@ -1892,7 +1892,6 @@ fn medir_anotador(w: u32, h: u32) -> MedidaAnotador {
             None,
             None,
             None,
-            None,
             true,
             FueraDeLaEscena::default(),
             None,

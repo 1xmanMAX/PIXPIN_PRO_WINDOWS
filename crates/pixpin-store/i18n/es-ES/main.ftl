@@ -214,6 +214,12 @@ chat-compartir = Compartir…
 chat-abrir-con = Abrir con otra app
 chat-aligerar = Aligerar el PDF
 chat-renombrar = Cambiar el nombre
+chat-renombrar-barra = Nombre:
+chat-renombrar-teclas = Intro guarda · Esc deja el de antes
+chat-describir = Añadir descripción
+chat-describir-editar = Editar descripción
+chat-describir-barra = Descripción:
+chat-describir-teclas = Intro guarda · Esc la deja como estaba
 chat-pinear = Sacar a la pantalla
 chat-recordar = Recordármelo
 chat-rescatar = Guardar esto
@@ -286,7 +292,7 @@ confirmar-titulo = { $cuantos ->
    *[other] Añadir { $cuantos } archivos
 }
 confirmar-resto = y { $cuantos } más
-confirmar-pie = Añade un comentario…
+confirmar-pie = Añade una descripción…
 confirmar-cancelar = Cancelar
 confirmar-aceptar = Añadir
 adjuntar-tabla = Tabla nueva
@@ -395,58 +401,6 @@ sincro-juntar = Juntar
 sincro-lo-mio-manda = Lo mío manda
 sincro-lo-mio-manda-como = De una sola dirección: lo de { $yo } pisa a { $otro }. Aquí no se borra ni se cambia nada; allí, lo que sea distinto queda como aquí y lo que borraron vuelve. Lo que solo tenga { $otro } se conserva. Queda copia de lo pisado.
 sincro-mandar-n = Mandar { $n }
-
-## El universo
-universo-titulo = Universo
-universo-cosmos = Cosmos
-universo-buscar = Buscar…
-universo-archivos = { $n ->
-    [one] { $n } archivo
-   *[other] { $n } archivos
-  }
-universo-recuento = { $p ->
-    [one] { $p } proyecto
-   *[other] { $p } proyectos
-  } · { $a ->
-    [one] { $a } archivo
-   *[other] { $a } archivos
-  } · { $c ->
-    [one] { $c } conexión
-   *[other] { $c } conexiones
-  }
-universo-nebulosa = Nebulosa
-universo-mas = +{ $n } más
-universo-nuevas = { $n } nuevas
-universo-abrir = Abrir
-universo-ir-chat = Ir al chat
-universo-carpeta = Mostrar en carpeta
-universo-devolver = Devolver a la nebulosa
-universo-nota = Nota
-universo-conexiones = Conexiones
-universo-notas-chat = Notas sueltas en la nebulosa
-universo-ordenar = Ordenar planetas
-universo-limpiar = Limpiar huérfanas
-universo-agrupar = Agrupar en planeta nuevo
-universo-conectar = Conectar entre sí
-universo-no-esta = Este archivo no está en este equipo
-universo-roto = El universo guardado no se pudo leer; se apartó una copia
-universo-no-guardado = No se pudo guardar el universo. ¿Cerrar igualmente?
-universo-borrar-anotaciones = Se borrarán { $n } anotaciones. ¿Seguir?
-universo-abrir-varios = Se abrirán { $n } de { $total } archivos. ¿Seguir?
-universo-rotas = { $n } mensajes ilegibles
-universo-tipo-relacion = Relación
-universo-tipo-depende = Depende
-universo-tipo-referencia = Referencia
-universo-tipo-secuencia = Secuencia
-universo-planeta = Planeta
-universo-exoplaneta = Exoplaneta
-universo-galaxia = Galaxia
-universo-luna = Archivo
-universo-varios = { $n } elementos
-universo-abrir-todo = Universo
-universo-ver-proyecto = Ver en el universo
-menu-foto-universo = Mostrar en el universo
-bandeja-universo = Universo
 
 ## Recibir por Wi-Fi (copia de RecibirActivity.kt del movil)
 rw-titulo = Recibir por Wi-Fi
@@ -1466,6 +1420,13 @@ pedido-sin-tarea = La lista no tiene la tarea número { $indice }.
 pedido-tarea-vacia = Una tarea sin texto no se apunta.
 pedido-sin-fichero = Ese fichero ya no está en el disco.
 pedido-fallo-disco = No se pudo guardar lo que se pidió. Mira el registro de PixPin.
+pedido-tarea-movida = «{ $tarea }» movida a «{ $lista }».
+pedido-tarea-cambio = La lista cambió mientras se movía la tarea; no se tocó nada. Vuelve a buscarla.
+pedido-sin-capturas = Todavía no hay ninguna captura.
+pedido-fuera-de-capturas = Ese fichero no está en la carpeta de capturas; no se toca.
+pedido-no-es-imagen = Ese fichero no es una imagen.
+pedido-imagen-no-se-pudo = No se pudo copiar la imagen: { $motivo }
+pedido-sin-imagen = No se encuentra la imagen { $ruta }; no se apuntó la tarea.
 
 ## Galeria de capturas (2-oct)
 galeria-titulo = Capturas
@@ -1476,5 +1437,43 @@ galeria-copiada = Copiada al portapapeles
 galeria-pineada = Pineada en la pantalla
 galeria-borrada = Llevada a la papelera de PixPin
 galeria-no-se-pudo = No se pudo: { $motivo }
+galeria-caducan = Se borran solas a los 7 días (a la papelera de Windows). Conservar las guarda en el chat.
+galeria-se-borra = Se borra el { $fecha }
+galeria-se-borra-hoy = Se borra hoy
+galeria-conservada = Conservada
+galeria-conservada-aviso = Conservada: está en Mensajes guardados y ya no se borra
 bandeja-galeria-capturas = Galería de capturas…
 chat-galeria-capturas = Galería de capturas
+# Lecciones aprendidas (3-oct, como el movil)
+chat-lecciones = Lecciones
+chat-leccion-nueva = Nueva lección
+chat-hacer-leccion = Hacer lección
+bandeja-lecciones = 💡 Lecciones…
+bandeja-leccion-nueva = Nueva lección…
+bandeja-tareas = ☑ Tareas…
+
+## Tareas (ventana)
+tareas-titulo = Tareas
+tareas-resumen = { $pendientes ->
+    [0] Nada pendiente
+    [one] 1 pendiente
+   *[other] { $pendientes } pendientes
+  } · { $listas ->
+    [one] 1 lista
+   *[other] { $listas } listas
+  }
+tareas-apuntar = Apunta una tarea en el Inbox y pulsa Intro (Ctrl+V pega imágenes)
+tareas-apuntar-boton = Apuntar
+tareas-hechas = Hechas ({ $n })
+tareas-vacia = Aún no hay tareas. Escribe arriba y pulsa Intro: irá al Inbox y desde ahí la pasas a su grupo.
+tareas-cambio = La lista cambió mientras tanto; ya está al día. Vuelve a marcarla.
+tareas-mover = Mover a…
+tareas-mover-titulo = Mover «{ $tarea }» a…
+tareas-sin-grupos = Aún no hay otros grupos de tareas. Crea una lista de tareas en un chat y saldrá aquí.
+tareas-movida = Movida a { $lista }
+tareas-imagen-no-esta = Esa imagen aún no está en este equipo: llegará con la sincronización.
+tareas-pegar-no-imagen = Solo se pegan imágenes o texto en una tarea.
+tareas-pegar-repetida = Esa imagen ya está como { $ficha }.
+
+# Abrir una foto que Windows solo lee con una extension de Microsoft Store.
+abrir-falta-extension = No se puede abrir { $nombre }: Windows necesita «{ $extension }», gratis en Microsoft Store. Instálala y vuelve a abrirla.

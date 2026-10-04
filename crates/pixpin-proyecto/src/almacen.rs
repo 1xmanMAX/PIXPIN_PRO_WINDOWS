@@ -787,7 +787,7 @@ pub fn completar_hojas(raiz: &Path, id: &str, aparato: &str) -> std::io::Result<
     // son cuarenta mensajes; se ven en la tarjeta de Proyectos.
     let paginas = paginas_fuera_del_chat(&p);
     let mut hechas = 0;
-    for m in hojas_que_faltan(&p, &carpeta, &ya, numero, cuando, aparato, id) {
+    for m in hojas_que_faltan(&p, &carpeta, &ya, &referencias_de(&previos.mensajes), numero, cuando, aparato, id) {
         if m
             .uid
             .as_ref()
@@ -799,6 +799,16 @@ pub fn completar_hojas(raiz: &Path, id: &str, aparato: &str) -> std::io::Result<
         hechas += 1;
     }
     Ok(hechas)
+}
+
+/// Lo que dice de que hoja es cada mensaje: su `referencia` (el dibujo) y su
+/// `id` (lo que una hoja guarda en `deMensaje`). Ver [`hojas_que_faltan`].
+fn referencias_de(mensajes: &[crate::cuaderno::Mensaje]) -> std::collections::BTreeSet<String> {
+    mensajes
+        .iter()
+        .flat_map(|m| m.referencia.iter().cloned().chain(std::iter::once(m.id.clone())))
+        .filter(|s| !s.is_empty())
+        .collect()
 }
 
 /// Los mensajes que representan las hojas del `proyecto.json` que el
@@ -814,7 +824,12 @@ pub fn completar_hojas(raiz: &Path, id: &str, aparato: &str) -> std::io::Result<
 ///   y asi como en Android». Para eso se piden aqui y se usan solo en
 ///   pantalla, sin tocar el cuaderno.
 ///
-/// `ya` son los codigos unicos que el cuaderno ya tiene; `desde_numero` y
+/// `ya` son los codigos unicos que el cuaderno ya tiene y `ya_ref` lo que
+/// dice de que hoja es cada mensaje (su `referencia` y su `id`): una hoja
+/// cuyo dibujo ya es la `referencia` de un mensaje, o cuyo `deMensaje` es un
+/// mensaje del chat, ya esta en el, aunque su codigo unico no coincida
+/// (`RegistroDelChat.queFalta` del movil compara asi; por el codigo solo,
+/// los lienzos del movil salian dos veces, queja del 3-oct-2026); `desde_numero` y
 /// `desde_cuando` son el ultimo numero y la ultima hora usados, para que lo
 /// que salga vaya detras y en orden.
 #[allow(clippy::too_many_arguments)] // es el sello del cuaderno, que va junto
@@ -822,6 +837,7 @@ pub fn hojas_que_faltan(
     p: &crate::Proyecto,
     carpeta: &Path,
     ya: &std::collections::BTreeSet<String>,
+    ya_ref: &std::collections::BTreeSet<String>,
     desde_numero: i64,
     desde_cuando: i64,
     aparato: &str,
@@ -834,7 +850,17 @@ pub fn hojas_que_faltan(
         let Some(uid) = hoja.uid.clone() else {
             continue;
         };
-        if ya.contains(&uid) {
+        // Las paginas de un PDF guardan en `deMensaje` el mensaje del PDF,
+        // no uno suyo: ese no las representa, y la tarjeta las ensena todas.
+        let de_mensaje = hoja
+            .resto
+            .get("deMensaje")
+            .and_then(|v| v.as_str())
+            .filter(|_| hoja.pagina.is_none());
+        if ya.contains(&uid)
+            || hoja.dibujo.as_ref().is_some_and(|d| ya_ref.contains(d))
+            || de_mensaje.is_some_and(|d| ya_ref.contains(d))
+        {
             continue;
         }
         numero += 1;
@@ -945,7 +971,7 @@ pub fn hojas_para_ensenar(raiz: &Path, id: &str, aparato: &str) -> Vec<crate::cu
     // el usuario lo pidio igual: «en la galeria solo aparezca lo mismo que
     // aparece en la seccion de proyectos de Android», y «los html no tienen
     // que aparecer ya que estos no se pueden agregar ahi».
-    hojas_que_faltan(&p, &carpeta, &ya, numero, cuando, aparato, id)
+    hojas_que_faltan(&p, &carpeta, &ya, &referencias_de(&previos.mensajes), numero, cuando, aparato, id)
 }
 
 /// Los codigos unicos de las hojas del proyecto.
@@ -1477,6 +1503,51 @@ mod pruebas {
         assert_eq!(despues.len(), 2, "la pagina ya esta en el cuaderno");
         assert!(despues.iter().all(|m| m.uid.as_deref() != Some("PAGPAGPAG7")));
         let _ = std::fs::remove_dir_all(&raiz);
+    }
+
+    #[test]
+    fn un_lienzo_con_su_mensaje_no_sale_otra_vez_aunque_su_codigo_unico_no_coincida() {
+        // Lo que pasaba con los lienzos del movil (3-oct-2026): el mensaje y
+        // la hoja apuntan al mismo dibujo pero llevan codigos unicos
+        // distintos, y el chat los ensenaba dos veces.
+        let p = crate::Proyecto {
+            hojas: vec![
+                crate::Hoja {
+                    id: "h-1".into(),
+                    dibujo: Some("dib-1".into()),
+                    uid: Some("HOJAHOJA01".into()),
+                    ..Default::default()
+                },
+                crate::Hoja {
+                    id: "h-2".into(),
+                    dibujo: Some("dib-2".into()),
+                    uid: Some("HOJAHOJA02".into()),
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        };
+        let mensaje = crate::cuaderno::Mensaje {
+            id: "m-1".into(),
+            clase: Some(crate::cuaderno::Clase::Dibujo),
+            referencia: Some("dib-1".into()),
+            uid: Some("OTROCODIGO".into()),
+            ..Default::default()
+        };
+        let ya: std::collections::BTreeSet<String> = mensaje.uid.iter().cloned().collect();
+        let faltan = hojas_que_faltan(
+            &p,
+            Path::new("."),
+            &ya,
+            &referencias_de(std::slice::from_ref(&mensaje)),
+            0,
+            0,
+            "ZZZZ",
+            "p1",
+        );
+        // Caso negativo: la hoja sin mensaje (dib-2) sigue saliendo.
+        let refs: Vec<_> = faltan.iter().filter_map(|m| m.referencia.as_deref()).collect();
+        assert_eq!(refs, ["dib-2"]);
     }
 
     #[test]

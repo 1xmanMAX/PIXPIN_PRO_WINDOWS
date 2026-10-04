@@ -194,6 +194,12 @@ chat-compartir = Share…
 chat-abrir-con = Open with another app
 chat-aligerar = Make the PDF lighter
 chat-renombrar = Rename
+chat-renombrar-barra = Name:
+chat-renombrar-teclas = Enter saves · Esc keeps the old one
+chat-describir = Add caption
+chat-describir-editar = Edit caption
+chat-describir-barra = Caption:
+chat-describir-teclas = Enter saves · Esc keeps it as it was
 chat-pinear = Put on screen
 chat-recordar = Remind me
 chat-rescatar = Keep this
@@ -285,7 +291,7 @@ confirmar-titulo = { $cuantos ->
    *[other] Add { $cuantos } files
 }
 confirmar-resto = and { $cuantos } more
-confirmar-pie = Add a comment…
+confirmar-pie = Add a caption…
 confirmar-cancelar = Cancel
 confirmar-aceptar = Add
 adjuntar-tabla = New table
@@ -394,58 +400,6 @@ sincro-juntar = Merge
 sincro-lo-mio-manda = Mine wins
 sincro-lo-mio-manda-como = One way only: what { $yo } has overwrites { $otro }. Nothing is deleted or changed here; there, whatever differs ends up as here and what they deleted comes back. Whatever only { $otro } has is kept. A backup of what gets overwritten is kept.
 sincro-mandar-n = Send { $n }
-
-## The universe
-universo-titulo = Universe
-universo-cosmos = Cosmos
-universo-buscar = Search…
-universo-archivos = { $n ->
-    [one] { $n } file
-   *[other] { $n } files
-  }
-universo-recuento = { $p ->
-    [one] { $p } project
-   *[other] { $p } projects
-  } · { $a ->
-    [one] { $a } file
-   *[other] { $a } files
-  } · { $c ->
-    [one] { $c } connection
-   *[other] { $c } connections
-  }
-universo-nebulosa = Nebula
-universo-mas = +{ $n } more
-universo-nuevas = { $n } new
-universo-abrir = Open
-universo-ir-chat = Go to chat
-universo-carpeta = Show in folder
-universo-devolver = Return to the nebula
-universo-nota = Note
-universo-conexiones = Connections
-universo-notas-chat = Loose notes in the nebula
-universo-ordenar = Arrange planets
-universo-limpiar = Clean up orphans
-universo-agrupar = Group into new planet
-universo-conectar = Connect together
-universo-no-esta = This file is not on this computer
-universo-roto = The saved universe could not be read; a copy was set aside
-universo-no-guardado = The universe could not be saved. Close anyway?
-universo-borrar-anotaciones = { $n } annotations will be deleted. Continue?
-universo-abrir-varios = { $n } of { $total } files will be opened. Continue?
-universo-rotas = { $n } unreadable messages
-universo-tipo-relacion = Related
-universo-tipo-depende = Depends on
-universo-tipo-referencia = Reference
-universo-tipo-secuencia = Sequence
-universo-planeta = Planet
-universo-exoplaneta = Exoplanet
-universo-galaxia = Galaxy
-universo-luna = File
-universo-varios = { $n } items
-universo-abrir-todo = Universe
-universo-ver-proyecto = Show in the universe
-menu-foto-universo = Show in the universe
-bandeja-universo = Universe
 
 ## Receive over Wi-Fi (copy of the phone's RecibirActivity.kt)
 rw-titulo = Receive over Wi-Fi
@@ -1465,6 +1419,13 @@ pedido-sin-tarea = The list has no task number { $indice }.
 pedido-tarea-vacia = A task with no text isn't added.
 pedido-sin-fichero = That file is no longer on disk.
 pedido-fallo-disco = What was asked couldn't be saved. Check PixPin's log.
+pedido-tarea-movida = “{ $tarea }” moved to “{ $lista }”.
+pedido-tarea-cambio = The list changed while the task was being moved; nothing was touched. Look it up again.
+pedido-sin-capturas = There are no captures yet.
+pedido-fuera-de-capturas = That file isn't in the captures folder; it's left alone.
+pedido-no-es-imagen = That file isn't an image.
+pedido-imagen-no-se-pudo = The image couldn't be copied: { $motivo }
+pedido-sin-imagen = The image { $ruta } can't be found; the task wasn't added.
 
 ## Capture gallery (2-oct)
 galeria-titulo = Captures
@@ -1475,5 +1436,43 @@ galeria-copiada = Copied to the clipboard
 galeria-pineada = Pinned on screen
 galeria-borrada = Moved to PixPin's recycle bin
 galeria-no-se-pudo = Couldn't do it: { $motivo }
+galeria-caducan = They delete themselves after 7 days (to the Windows recycle bin). Keep saves them in the chat.
+galeria-se-borra = Deleted on { $fecha }
+galeria-se-borra-hoy = Deleted today
+galeria-conservada = Kept
+galeria-conservada-aviso = Kept: it is in Saved messages and won't be deleted
 bandeja-galeria-capturas = Capture gallery…
 chat-galeria-capturas = Capture gallery
+# Lessons learned (3-oct, as on the phone)
+chat-lecciones = Lessons
+chat-leccion-nueva = New lesson
+chat-hacer-leccion = Make a lesson
+bandeja-lecciones = 💡 Lessons…
+bandeja-leccion-nueva = New lesson…
+bandeja-tareas = ☑ Tasks…
+
+## Tareas (ventana)
+tareas-titulo = Tasks
+tareas-resumen = { $pendientes ->
+    [0] Nothing pending
+    [one] 1 pending
+   *[other] { $pendientes } pending
+  } · { $listas ->
+    [one] 1 list
+   *[other] { $listas } lists
+  }
+tareas-apuntar = Write a task for the Inbox and press Enter (Ctrl+V pastes images)
+tareas-apuntar-boton = Add
+tareas-hechas = Done ({ $n })
+tareas-vacia = No tasks yet. Type above and press Enter: it goes to the Inbox, and from there you move it to its group.
+tareas-cambio = The list changed in the meantime; it's up to date now. Tick it again.
+tareas-mover = Move to…
+tareas-mover-titulo = Move “{ $tarea }” to…
+tareas-sin-grupos = There are no other task groups yet. Create a task list in a chat and it will show up here.
+tareas-movida = Moved to { $lista }
+tareas-imagen-no-esta = That image isn't on this computer yet: it will arrive with the sync.
+tareas-pegar-no-imagen = Only images or text can be pasted into a task.
+tareas-pegar-repetida = That image is already in as { $ficha }.
+
+# Opening a photo that Windows can only read with a Microsoft Store extension.
+abrir-falta-extension = Can't open { $nombre }: Windows needs "{ $extension }", free in the Microsoft Store. Install it and open the file again.

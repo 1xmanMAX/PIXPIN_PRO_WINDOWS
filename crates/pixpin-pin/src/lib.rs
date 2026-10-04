@@ -12,6 +12,7 @@ pub mod contenido;
 pub mod estado;
 pub mod icono;
 pub mod magia;
+pub mod mandos_video;
 pub mod markdown;
 pub mod menu;
 pub mod paleta;
@@ -41,6 +42,6 @@ pub use ventana::{
     CambioPin, Colocacion, CursorAnotacion, ErrorPin, LupaPin, MARGEN_SOMBRA_LOGICO, Pin,
     contenido_desde_ventana, rect_ventana,
 };
-pub use video::Reproductor;
+pub use video::{Codec, ExtensionTienda, FichaVideo, Reproductor, examinar as examinar_video};
 pub use vivo::{FuenteViva, MSG_FOTOGRAMA_VIVO};
 pub use zoom::{ControlZoom, escalar_anclado};

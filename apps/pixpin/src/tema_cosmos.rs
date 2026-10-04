@@ -14,7 +14,7 @@
 //!
 //! **Barato en la maquina suelo** (HD 4000): el degradado y las nebulosas se
 //! hornean una vez por tamano de ventana en un bitmap chico y opaco
-//! (`universo::cielo`, medido alli: una pasada sin mezcla), y las estrellas
+//! (`cielo`, medido: una pasada sin mezcla), y las estrellas
 //! son 217 puntos quietos, sin animacion ni paralaje.
 
 use std::cell::RefCell;
@@ -22,7 +22,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use pixpin_render::{Color, MotorRender, Pintor, RectF};
 
-use crate::universo::cielo::Cielo;
+use crate::cielo::Cielo;
 
 /// Lo pone quien lee los ajustes (al arrancar y al cambiarlos). Un estatico
 /// y no un parametro: lo mira el hilo del chat, que nace aparte, y asi no

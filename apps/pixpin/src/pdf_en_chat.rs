@@ -797,6 +797,10 @@ pub fn sin_su_hoja(carpeta: &Path, m: &cuaderno::Mensaje) -> bool {
                                     .get("deMensaje")
                                     .and_then(|v| v.as_str())
                                     .map(str::to_string),
+                                // Y el dibujo: un lienzo del movil tiene su hoja
+                                // aunque el id del mensaje no coincida (salia
+                                // rojo sin motivo, 3-oct-2026).
+                                h.dibujo.as_ref().map(|d| format!("dibujo:{d}")),
                             ]
                         })
                         .flatten()
@@ -805,7 +809,10 @@ pub fn sin_su_hoja(carpeta: &Path, m: &cuaderno::Mensaje) -> bool {
                 .unwrap_or_default();
             *c = Some((ruta.clone(), fecha, senas));
         }
-        c.as_ref().is_some_and(|(_, _, s)| !s.contains(&m.id))
+        c.as_ref().is_some_and(|(_, _, s)| {
+            !s.contains(&m.id)
+                && m.referencia.as_ref().is_none_or(|r| !s.contains(&format!("dibujo:{r}")))
+        })
     })
 }
 
@@ -1338,6 +1345,35 @@ mod pruebas {
         std::thread::sleep(std::time::Duration::from_millis(20));
         unir(&raiz, &ficha, &doc, "m1", "g", 1000, &|_, _| {}).unwrap();
         assert!(!sin_su_hoja(&carpeta, &m), "con su hoja no hay punto");
+        let _ = std::fs::remove_dir_all(&raiz);
+    }
+
+    #[test]
+    fn un_lienzo_del_movil_con_su_hoja_no_lleva_punto_rojo_aunque_los_ids_no_coincidan() {
+        let (raiz, ficha) = raiz_de_prueba("punto-lienzo");
+        let carpeta = almacen::carpeta(&raiz, &ficha.id);
+        let p = Proyecto {
+            id: ficha.id.clone(),
+            hojas: vec![pixpin_proyecto::Hoja {
+                id: "h-1".into(),
+                dibujo: Some("dib-1".into()),
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        std::fs::create_dir_all(&carpeta).unwrap();
+        std::fs::write(carpeta.join("proyecto.json"), serde_json::to_vec(&p).unwrap()).unwrap();
+        let mut m = cuaderno::Mensaje {
+            id: "registro-x-dib-1".into(),
+            clase: Some(cuaderno::Clase::Dibujo),
+            referencia: Some("dib-1".into()),
+            ..Default::default()
+        };
+        m.resto.insert("unido".into(), serde_json::Value::Bool(true));
+        assert!(!sin_su_hoja(&carpeta, &m), "su hoja es la del mismo dibujo");
+        // Caso negativo: un lienzo cuyo dibujo no tiene hoja si lo lleva.
+        m.referencia = Some("dib-9".into());
+        assert!(sin_su_hoja(&carpeta, &m));
         let _ = std::fs::remove_dir_all(&raiz);
     }
 }

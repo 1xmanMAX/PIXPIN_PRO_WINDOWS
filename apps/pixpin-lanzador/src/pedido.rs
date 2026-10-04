@@ -238,3 +238,9 @@ pub fn enviar(json: &str) -> Envio {
     };
     mandar(destino, json, 5000)
 }
+
+/// Si PixPin esta abierta (su ventana de mensajes existe). Rapido: no le
+/// manda nada.
+pub fn app_abierta() -> bool {
+    ventana().is_some()
+}

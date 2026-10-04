@@ -65,12 +65,7 @@ impl Pines {
 
     /// Donde nace un pin de tamano `(w, h)`: en `donde` si se da, y si no
     /// centrado; siempre dentro del area de trabajo.
-    fn sitio(
-        &self,
-        contenido: &Contenido,
-        donde: Option<Punto>,
-        monitor: &Monitor,
-    ) -> Rect {
+    fn sitio(&self, contenido: &Contenido, donde: Option<Punto>, monitor: &Monitor) -> Rect {
         let centrada = self.region_centrada(contenido, monitor);
         match donde {
             Some(p) => recolocar_en_area(
@@ -170,7 +165,12 @@ impl Pines {
 
     /// La pizarra, el lienzo y la hoja: pines de imagen con su fondo hecho
     /// aqui y lo dibujado encima, como en el movil.
-    fn pinear_dibujo(&mut self, app: MiniApp, donde: Option<Punto>, monitor: &Monitor) -> Result<u64> {
+    fn pinear_dibujo(
+        &mut self,
+        app: MiniApp,
+        donde: Option<Punto>,
+        monitor: &Monitor,
+    ) -> Result<u64> {
         let (imagen, origen) = match app {
             MiniApp::Pizarra => (pizarra::fondo(0, 0), "pizarra"),
             MiniApp::Hoja => (pizarra::papel_de_la_hoja(), "hoja"),
@@ -250,7 +250,8 @@ impl Pines {
             });
             let mut h = Herramienta::nueva(cual, al_dia.or(texto.map(str::to_string))?);
             h.vinculo = vinculo;
-            let (ancho, alto) = herramienta::tamano_natural(&h, 100, &herramienta::moneda(textos()));
+            let (ancho, alto) =
+                herramienta::tamano_natural(&h, 100, &herramienta::moneda(textos()));
             self.herramientas.insert(id, h);
             return Some(Contenido::Herramienta { ancho, alto });
         }
@@ -369,7 +370,12 @@ impl Pines {
                 let e = h.clic(Punto { x, y }, tam, escala, &moneda, ahora);
                 h.cumplir(e, tam, escala, &moneda, ahora, azar)
             }
-            CambioPin::TeclaInterior { vk, shift, ctrl, alt } => h.tecla(
+            CambioPin::TeclaInterior {
+                vk,
+                shift,
+                ctrl,
+                alt,
+            } => h.tecla(
                 crate::mini_panel::Tecla {
                     vk,
                     shift,
@@ -396,20 +402,21 @@ impl Pines {
                 Some(v) => {
                     let mut hecho = None;
                     let mut releida = false;
-                    let guardado = pixpin_proyecto::cuaderno::cambiar(&v.carpeta, &v.mensaje, |m| {
-                        if m.texto != h.documento {
-                            h.documento = m.texto.clone();
-                            releida = true;
-                        }
-                        let e = interior(h);
-                        hecho = Some(e);
-                        if e == Hecho::Guardar {
-                            m.texto = h.documento.clone();
-                            true
-                        } else {
-                            false
-                        }
-                    });
+                    let guardado =
+                        pixpin_proyecto::cuaderno::cambiar(&v.carpeta, &v.mensaje, |m| {
+                            if m.texto != h.documento {
+                                h.documento = m.texto.clone();
+                                releida = true;
+                            }
+                            let e = interior(h);
+                            hecho = Some(e);
+                            if e == Hecho::Guardar {
+                                m.texto = h.documento.clone();
+                                true
+                            } else {
+                                false
+                            }
+                        });
                     if let Err(e) = &guardado {
                         tracing::warn!(?e, id, "no se pudo guardar la lista en su mensaje");
                     }
@@ -492,7 +499,13 @@ impl Pines {
             y: rect.y,
         };
         let nuevo = self.pinear_herramienta(app, &texto, Some(donde), &monitor)?;
-        tracing::info!(id, nuevo, herramienta = app.nombre(), escala, "nota convertida");
+        tracing::info!(
+            id,
+            nuevo,
+            herramienta = app.nombre(),
+            escala,
+            "nota convertida"
+        );
         self.cerrar_uno(id);
         Ok(())
     }
@@ -623,8 +636,10 @@ impl Pines {
         );
         // Un color nuevo para lo elegido cambia el dibujo; uno para la
         // herramienta, solo el panel. Se repintan los dos: es un clic.
-        if matches!(pulsado, ClicPanel::Suyo { repintar: true } | ClicPanel::Fuera { cerro: true })
-        {
+        if matches!(
+            pulsado,
+            ClicPanel::Suyo { repintar: true } | ClicPanel::Fuera { cerro: true }
+        ) {
             self.repintar_anotacion(id);
         }
         self.repintar_panel();
@@ -643,7 +658,10 @@ mod pruebas {
         let ruta = dir.join("000001.txt");
         std::fs::write(&ruta, "viejo").unwrap();
         reescribir(&ruta, b"# Compra\n\n- [ ] pan").unwrap();
-        assert_eq!(std::fs::read_to_string(&ruta).unwrap(), "# Compra\n\n- [ ] pan");
+        assert_eq!(
+            std::fs::read_to_string(&ruta).unwrap(),
+            "# Compra\n\n- [ ] pan"
+        );
         assert!(!ruta.with_extension("tmp").exists());
         std::fs::remove_dir_all(&dir).unwrap();
     }

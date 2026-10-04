@@ -145,6 +145,10 @@ pub struct FilaLista {
     pub edad: Option<u32>,
     /// Lleva lapiz para corregirla con el raton (lo mismo que F2).
     pub se_corrige: bool,
+    /// Tareas: los enlaces de sus imagenes (`pixpin:files/…`), que van
+    /// dentro del texto (`mini::imagenes_de`) y se pintan en pequeno detras
+    /// de el. `texto` ya va sin ellos.
+    pub imagenes: Vec<String>,
 }
 
 /// Todo lo que el panel ensena de una mini-app en este instante.
@@ -294,8 +298,10 @@ fn de_tareas(documento: &str, ahora: i64) -> Vista {
                 // cuantos dias lleva. Una tarea de antes, sin fecha, no
                 // ensena nada: no hay de donde sacarla sin inventarla.
                 let (visible, creada) = mini::partir(&t.texto);
+                let (texto, imagenes) = mini::imagenes_de(visible);
                 FilaLista {
-                    texto: visible.to_string(),
+                    texto,
+                    imagenes,
                     detalle: String::new(),
                     hecha: t.hecha,
                     se_marca: true,
@@ -2320,6 +2326,19 @@ mod pruebas {
         // Y una de antes, sin fecha, tampoco ensena nada.
         let vieja = vista(mini::TAREAS, "# L\n\n- [ ] vieja", &euro(), MEDIODIA).unwrap();
         assert_eq!(vieja.lista[0].edad, None);
+    }
+
+    #[test]
+    fn una_tarea_con_imagenes_ensena_su_texto_limpio_y_las_imagenes_aparte() {
+        let d = "# L\n\n- [ ] grieta ![img 01](pixpin:files/guardados/pc/x/archivos/a.png) en el muro ➕ 2026-10-02\n- [ ] pan";
+        let v = vista(mini::TAREAS, d, &euro(), 0).unwrap();
+        assert_eq!(v.lista[0].texto, "grieta en el muro");
+        assert_eq!(v.lista[0].imagenes, ["pixpin:files/guardados/pc/x/archivos/a.png"]);
+        // Caso negativo: una sin imagenes no tiene ninguna, y marcar la de la
+        // imagen no la pierde.
+        assert!(v.lista[1].imagenes.is_empty());
+        let marcada = aplicar(mini::TAREAS, d, &euro(), &Orden::Alternar(0), 0);
+        assert!(marcada.contains("- [x] grieta ![img 01](pixpin:files/guardados/pc/x/archivos/a.png) en el muro ➕ 2026-10-02"));
     }
 
     #[test]

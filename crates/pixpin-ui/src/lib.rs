@@ -32,7 +32,6 @@ pub mod reproductor;
 pub mod resaltado;
 pub mod riel_marcas;
 pub mod tabla;
-pub mod universo;
 
 pub use barra::{AccionBarra, Barra};
 pub use caja_herramientas::{

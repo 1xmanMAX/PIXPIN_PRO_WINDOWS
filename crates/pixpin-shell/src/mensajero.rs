@@ -158,7 +158,7 @@ pub mod respuesta {
 /// accion desconocida sin esperar al bucle. La aplicacion tiene una prueba
 /// que comprueba que entiende todas (`pedidos.rs`): si una se anade aqui y
 /// no alli, falla.
-pub const ACCIONES: [&str; 12] = [
+pub const ACCIONES: [&str; 22] = [
     "abrir",
     "chat",
     "nota_nueva",
@@ -171,6 +171,16 @@ pub const ACCIONES: [&str; 12] = [
     "pinear",
     "iconos",
     "soltar",
+    "reproducir",
+    "leccion_nueva",
+    "lecciones",
+    "mover_tarea",
+    "ventana",
+    "capturar",
+    "pinear_ultima",
+    "conservar_captura",
+    "borrar_captura",
+    "copiar_imagen",
 ];
 
 /// Mira un pedido por encima: lo justo para contestar en el acto.

@@ -86,16 +86,85 @@ pub enum ErrorCodec {
         #[source]
         fuente: image::ImageError,
     },
+    /// Ni `image` ni Windows (WIC) la saben leer.
+    #[error("Windows no pudo leer {ruta}: {fuente}")]
+    LecturaWindows {
+        ruta: std::path::PathBuf,
+        #[source]
+        fuente: windows::core::Error,
+    },
+    /// Windows sabria leerla con una extension gratuita de Microsoft Store
+    /// que no esta instalada (HEIC, AVIF, RAW...). El texto lo dice tal cual
+    /// para que el usuario sepa que instalar.
+    #[error("para abrir {ruta} hace falta instalar «{tienda}» de Microsoft Store")]
+    FaltaExtension {
+        ruta: std::path::PathBuf,
+        tienda: &'static str,
+    },
+}
+
+impl ErrorCodec {
+    /// La extension de Microsoft Store que falta, si el fallo es ese.
+    pub fn extension_que_falta(&self) -> Option<&'static str> {
+        match self {
+            ErrorCodec::FaltaExtension { tienda, .. } => Some(tienda),
+            _ => None,
+        }
+    }
+}
+
+/// El fallo de Windows, explicado: si es que no hay codec para un formato
+/// que da una extension de la tienda, se dice cual.
+fn error_de_windows(ruta: &Path, fuente: windows::core::Error) -> ErrorCodec {
+    use windows::Win32::Foundation::{
+        WINCODEC_ERR_COMPONENTINITIALIZEFAILURE, WINCODEC_ERR_COMPONENTNOTFOUND,
+        WINCODEC_ERR_UNKNOWNIMAGEFORMAT,
+    };
+    // El primero es el de un HEIC sin la extension HEVC (medido el 3-oct en
+    // el equipo del usuario: el contenedor HEIF se abre pero su codec no
+    // arranca); los otros dos, el de un formato sin descodificador.
+    let sin_codec = [
+        WINCODEC_ERR_COMPONENTINITIALIZEFAILURE,
+        WINCODEC_ERR_COMPONENTNOTFOUND,
+        WINCODEC_ERR_UNKNOWNIMAGEFORMAT,
+    ]
+    .contains(&fuente.code());
+    match crate::wic::extension_de_la_tienda(ruta) {
+        Some(tienda) if sin_codec => ErrorCodec::FaltaExtension {
+            ruta: ruta.to_path_buf(),
+            tienda,
+        },
+        _ => ErrorCodec::LecturaWindows {
+            ruta: ruta.to_path_buf(),
+            fuente,
+        },
+    }
 }
 
 /// Lee una imagen del disco a RGBA. La pareja de `guardar`.
+///
+/// Primero con `image` y, si no puede, con Windows (`wic`): asi se abren
+/// HEIC, AVIF, TIFF, GIF, ICO, JPEG XL y RAW sin meter sus codecs en el .exe.
+/// Los que `image` no tiene compilados van directos a Windows.
 pub fn cargar(ruta: &Path) -> Result<ImagenRgba, ErrorCodec> {
-    let dinamica = lector(ruta)
-        .and_then(|l| l.decode())
-        .map_err(|fuente| ErrorCodec::Lectura {
-            ruta: ruta.to_path_buf(),
-            fuente,
-        })?;
+    if crate::wic::camino_de(ruta) == crate::wic::Camino::SoloWindows {
+        return crate::wic::cargar(ruta).map_err(|e| error_de_windows(ruta, e));
+    }
+    let dinamica = match lector(ruta).and_then(|l| l.decode()) {
+        Ok(d) => d,
+        Err(fuente) => {
+            let error = |fuente| ErrorCodec::Lectura {
+                ruta: ruta.to_path_buf(),
+                fuente,
+            };
+            // Si Windows tampoco puede, el error que vale es el de `image`
+            // (dice si el fichero no existe o esta roto).
+            if !vale_probar_windows(&fuente) {
+                return Err(error(fuente));
+            }
+            return crate::wic::cargar(ruta).map_err(|_| error(fuente));
+        }
+    };
     let rgba = dinamica.to_rgba8();
     Ok(ImagenRgba {
         ancho: rgba.width(),
@@ -111,12 +180,30 @@ pub fn cargar(ruta: &Path) -> Result<ImagenRgba, ErrorCodec> {
 /// para colocarlos. Cargarlas enteras para eso seria descomprimir doce
 /// megapixeles por burbuja.
 pub fn medidas(ruta: &Path) -> Result<(u32, u32), ErrorCodec> {
+    if crate::wic::camino_de(ruta) == crate::wic::Camino::SoloWindows {
+        return crate::wic::medidas(ruta).map_err(|e| error_de_windows(ruta, e));
+    }
     lector(ruta)
         .and_then(|l| l.into_dimensions())
-        .map_err(|fuente| ErrorCodec::Lectura {
-            ruta: ruta.to_path_buf(),
-            fuente,
+        .or_else(|fuente| {
+            let error = |fuente| ErrorCodec::Lectura {
+                ruta: ruta.to_path_buf(),
+                fuente,
+            };
+            if !vale_probar_windows(&fuente) {
+                return Err(error(fuente));
+            }
+            crate::wic::medidas(ruta).map_err(|_| error(fuente))
         })
+}
+
+/// Si tras un fallo de `image` merece la pena preguntar a Windows: solo
+/// cuando el fichero se abrio y es que no lo entiende (formato que no tiene,
+/// o que lee mal). Si ni se abrio (no existe, sin permiso), Windows tampoco
+/// va a poder, y arrancar COM para eso es tiempo perdido en el hilo que
+/// llama (el chat pregunta medidas de fotos que aun no han llegado).
+fn vale_probar_windows(fuente: &image::ImageError) -> bool {
+    !matches!(fuente, image::ImageError::IoError(_))
 }
 
 /// Abre el fichero y decide que formato es MIRANDO DENTRO, no por el nombre.
@@ -459,6 +546,25 @@ mod pruebas {
             e.to_string().contains("existe.png"),
             "el error debe decir cual: {e}"
         );
+    }
+
+    #[test]
+    fn windows_se_prueba_solo_si_el_fichero_se_abrio_y_no_se_entendio() {
+        let io = image::ImageError::IoError(std::io::Error::from(std::io::ErrorKind::NotFound));
+        // Caso negativo: lo que no existe no paga COM.
+        assert!(!vale_probar_windows(&io));
+        let raro = image::ImageError::Unsupported(image::error::UnsupportedError::from(
+            image::error::ImageFormatHint::Unknown,
+        ));
+        assert!(vale_probar_windows(&raro));
+        // Un fichero que no es imagen, con nombre de PNG: ni `image` ni
+        // Windows; el error es el de `image`, con la ruta.
+        let dir = temporal("no-es-imagen");
+        let ruta = dir.join("texto.png");
+        fs::write(&ruta, b"no soy una imagen").unwrap();
+        let e = cargar(&ruta).unwrap_err();
+        assert!(matches!(e, ErrorCodec::Lectura { .. }), "{e}");
+        assert!(medidas(&ruta).is_err());
     }
 
     #[test]

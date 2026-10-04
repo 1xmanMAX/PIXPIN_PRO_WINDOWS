@@ -31,12 +31,17 @@ pixpin-record = { version = "0.1.0", path = "../../crates/pixpin-record" }
 pixpin-render = { version = "0.1.0", path = "../../crates/pixpin-render" }
 pixpin-shell = { version = "0.1.0", path = "../../crates/pixpin-shell" }
 pixpin-sincro = { version = "0.1.0", path = "../../crates/pixpin-sincro" }
+# Lecciones aprendidas: la logica pura (ficha, repaso, buscador, etiquetas).
+pixpin-lecciones = { path = "../../crates/pixpin-lecciones" }
 pixpin-store = { version = "0.1.0", path = "../../crates/pixpin-store" }
 pixpin-tinta = { version = "0.1.0", path = "../../crates/pixpin-tinta" }
 pixpin-ui = { version = "0.1.0", path = "../../crates/pixpin-ui" }
 pixpin-web = { version = "0.1.0", path = "../../crates/pixpin-web" }
 pixpin-voz = { version = "0.1.0", path = "../../crates/pixpin-voz" }
-pixpin-universo = { workspace = true }
+# El borrador de las imagenes pegadas en Flow (`[img 01]` -> fichero): el
+# mismo modulo que lee el plugin, asi el formato es uno solo. Solo serde y
+# `windows`, que ya estan; el plugin no depende de nada de PixPin.
+pixpin-lanzador = { version = "0.1.0", path = "../pixpin-lanzador" }
 # La huella de los PDF ya aligerados (ver src/aligerar.rs). Ya esta en el
 # arbol. pdfsqueeze NO va aqui: vive en su ejecutable, pixpin-aligerar.
 sha2 = "0.10"

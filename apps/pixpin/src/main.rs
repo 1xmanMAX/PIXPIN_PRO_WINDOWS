@@ -49,6 +49,7 @@
 // atributo es la unica guarda que lo habria detectado.
 #![forbid(unsafe_code)]
 
+mod abrir_hoja;
 mod aligerar;
 mod anotado_del_adjunto;
 mod anotador_al_chat;
@@ -57,6 +58,7 @@ mod biblioteca_audio;
 mod buscador;
 mod caja_dibujo;
 mod capa;
+mod cielo;
 mod compartir;
 mod conversacion;
 mod cuenta_atras;
@@ -66,12 +68,14 @@ mod editor;
 mod fondo_lienzo;
 mod foto_anotada;
 mod fusionar_paginas;
+mod caducidad_capturas;
 mod galeria_capturas;
 mod gif;
 mod grupos_ventanas;
 mod grabador;
 mod imagenes_lienzo;
 mod leer_en_voz;
+mod lecciones;
 mod lector;
 mod lector_pdf;
 mod lector_pdf_proyecto;
@@ -87,6 +91,7 @@ mod overlay;
 mod panel_dibujo;
 mod pdf_del_proyecto;
 mod pdf_en_chat;
+mod pegar_en_flow;
 mod pedidos;
 mod pila_capturas;
 mod pin_vivo;
@@ -100,10 +105,10 @@ mod reproductor;
 mod salto_por_enlace;
 mod scroll;
 mod sincronizar;
+mod tareas;
 mod teleprompter;
 mod tema_cosmos;
 mod turno_pesado;
-mod universo;
 mod ventana_ajustes;
 mod ventana_chat;
 mod ventana_editor;
@@ -152,10 +157,7 @@ const _: () = assert!(
      el menu lo convertiria en MostrarGrupo y el editor no se abriria"
 );
 
-/// El identificador del «Universo» de la bandeja (D213). Como el del
-/// editor, fuera del catalogo de comandos: no tiene atajo global (con el
-/// chat enfocado es Ctrl+U) y fuera del tramo de los grupos ocultos.
-const ID_VENTANA_UNIVERSO: u32 = 901;
+// El 901 era el del universo, que se quito (3-oct-2026, como en el movil).
 /// «Abrir documento…»: el visor de Word, libros y paginas (tanda 2).
 const ID_ABRIR_DOCUMENTO: u32 = 902;
 /// «Grupos de ventanas…» (H9): guardar y reabrir lienzos, lectores y notas
@@ -163,18 +165,25 @@ const ID_ABRIR_DOCUMENTO: u32 = 902;
 const ID_GRUPOS_VENTANAS: u32 = 903;
 /// «Galeria de capturas…» (2-oct): todas las capturas guardadas.
 const ID_GALERIA_CAPTURAS: u32 = 904;
+/// «Lecciones…» y «Nueva leccion…» (3-oct): las lecciones aprendidas, con
+/// acceso facil desde fuera del chat, como el atajo del icono en el movil.
+const ID_LECCIONES: u32 = 905;
+const ID_LECCION_NUEVA: u32 = 906;
+/// «Tareas…» (3-oct): las listas de tareas de todos los chats juntas.
+const ID_TAREAS: u32 = 907;
 
 const _: () = assert!(
-    ID_VENTANA_UNIVERSO >= pixpin_shell::ventana::ID_MENU_GRUPO_TOPE,
-    "el identificador del Universo cae dentro del tramo de los grupos ocultos"
+    ID_ABRIR_DOCUMENTO >= pixpin_shell::ventana::ID_MENU_GRUPO_TOPE,
+    "los identificadores de la bandeja caen dentro del tramo de los grupos ocultos"
 );
 
 /// Las entradas de la bandeja, en su orden, menos «Salir» (que va aparte).
 ///
 /// Sale del catalogo de comandos, no de una lista escrita a mano: anadir
-/// una funcion es anadir su fila. El universo va justo debajo del chat
-/// (D213) porque es la otra forma de ver lo mismo, y Sincronizar detras:
-/// es donde van los chats a otros aparatos, y en el catalogo esta al final
+/// una funcion es anadir su fila. Debajo del chat van las lecciones, la
+/// galeria de capturas y las tareas, que en el movil estan junto a
+/// Proyectos donde estaba el sistema solar (3-oct-2026), y Sincronizar
+/// detras: es donde van los chats a otros aparatos, y en el catalogo esta al final
 /// solo para no correr los numeros de los demas.
 fn acciones_de_bandeja(t: impl Fn(&str) -> String) -> Vec<(u32, String)> {
     use comandos::Comando;
@@ -186,7 +195,10 @@ fn acciones_de_bandeja(t: impl Fn(&str) -> String) -> Vec<(u32, String)> {
     }) {
         v.push((d.comando.id(), t(d.clave_titulo)));
         if d.comando == Comando::AbrirChat {
-            v.push((ID_VENTANA_UNIVERSO, t("bandeja-universo")));
+            v.push((ID_LECCIONES, t("bandeja-lecciones")));
+            v.push((ID_LECCION_NUEVA, t("bandeja-leccion-nueva")));
+            v.push((ID_GALERIA_CAPTURAS, t("bandeja-galeria-capturas")));
+            v.push((ID_TAREAS, t("bandeja-tareas")));
             let s = Comando::Sincronizar.descriptor();
             if s.en_bandeja {
                 v.push((s.comando.id(), t(s.clave_titulo)));
@@ -197,7 +209,6 @@ fn acciones_de_bandeja(t: impl Fn(&str) -> String) -> Vec<(u32, String)> {
     // lo minimo para abrirlo desde la bandeja y probarlo a mano.
     v.push((ID_ABRIR_DOCUMENTO, t("bandeja-abrir-documento")));
     v.push((ID_GRUPOS_VENTANAS, t("bandeja-grupos-ventanas")));
-    v.push((ID_GALERIA_CAPTURAS, t("bandeja-galeria-capturas")));
     v.push((ID_VENTANA_EDITOR, "Editor".to_string()));
     v
 }
@@ -312,11 +323,15 @@ fn arrancar(
         }
     };
 
+    // Las capturas se van solas a la semana salvo las conservadas: se barre
+    // ahora y cada hora, en su hilo (`caducidad_capturas`).
+    caducidad_capturas::vigilar(ubicacion.raiz().to_path_buf());
+
     // 4. Que nos han configurado.
     let mut config = ajustes::cargar(&ubicacion).context("no se pudieron leer los ajustes")?;
     // Como se siente el lapiz (`[tinta]`). Va por aqui y no como parametro de
     // `ventana_editor::abrir` porque el editor se abre desde cinco sitios
-    // distintos (la bandeja, el «abrir con», el chat, el universo) y ninguno
+    // distintos (la bandeja, el «abrir con», el chat, las lecciones) y ninguno
     // de ellos tiene por que enterarse de un ajuste que solo mira el bucle de
     // dibujo. Se fija una vez, antes de que exista el primer editor, y no
     // vuelve a cambiar mientras el programa viva.
@@ -345,6 +360,16 @@ fn arrancar(
     //
     // Solo se OFRECE, no se queda con las extensiones: eso ultimo es de lo
     // que mas molesta de un programa, y ademas Windows lo deshace y avisa.
+    // Y como app de imagenes y videos en Configuracion → Aplicaciones
+    // predeterminadas (`asociaciones`): ahi el usuario la hace la de siempre
+    // con un boton, y todo se abre como pin.
+    if config.abrir_con {
+        if let Err(e) = pixpin_shell::asociaciones::registrar(&ruta_exe) {
+            tracing::warn!(?e, "no se pudo registrar PixPin para imagenes y videos");
+        }
+    } else {
+        pixpin_shell::asociaciones::quitar();
+    }
     let inscripcion = if config.abrir_con {
         pixpin_shell::abrir_con::inscribir(&ruta_exe)
     } else {
@@ -459,6 +484,9 @@ fn arrancar(
             None
         }
     };
+    // Ctrl+V de una imagen en Flow Launcher la pega como `[img 01]` en la
+    // tarea que se esta escribiendo (el plugin no ve las teclas).
+    let _pegar_en_flow = pegar_en_flow::instalar(ubicacion.raiz().to_path_buf());
     for (id, atajo) in &fallidos {
         // Se registra el problema pero no se aborta: otra aplicacion puede
         // tener ese atajo y el resto de PixPin Max sigue siendo util.
@@ -932,16 +960,6 @@ fn arrancar(
                 }
                 Continuar::Si
             }
-            Evento::Menu(id) if id == ID_VENTANA_UNIVERSO => {
-                // En su propio hilo, como el chat (D215).
-                universo::lanzar(
-                    lengua,
-                    ubicacion.clone(),
-                    opciones_lienzo,
-                    universo::Pedido::Cosmos,
-                );
-                Continuar::Si
-            }
             Evento::Menu(id) if id == ID_ABRIR_DOCUMENTO => {
                 // El visor recibe una ruta y no sabe de donde sale; desde la
                 // bandeja la elige el usuario. Lo que no sepa abrir se salta:
@@ -956,8 +974,20 @@ fn arrancar(
                 }
                 Continuar::Si
             }
+            Evento::Menu(id) if id == ID_LECCIONES => {
+                lecciones::lista(ubicacion.clone(), lengua, &identidad_equipo, None, None);
+                Continuar::Si
+            }
+            Evento::Menu(id) if id == ID_LECCION_NUEVA => {
+                lecciones::nueva(ubicacion.clone(), lengua, &identidad_equipo, None, None, None);
+                Continuar::Si
+            }
             Evento::Menu(id) if id == ID_GALERIA_CAPTURAS => {
                 galeria_capturas::abrir(lengua, ubicacion.clone());
+                Continuar::Si
+            }
+            Evento::Menu(id) if id == ID_TAREAS => {
+                tareas::abrir(lengua, ubicacion.clone(), &identidad_equipo);
                 Continuar::Si
             }
             Evento::Menu(id) if id == ID_GRUPOS_VENTANAS => {
@@ -1703,16 +1733,36 @@ fn abrir_ficheros(
     // se pidio al abrirlos. Como pin solo eran una ficha con su
     // icono, que no se puede leer.
     // Un Markdown, en el editor de notas (no en el navegador).
-    let (notas, rutas): (Vec<_>, Vec<_>) =
-        rutas.into_iter().partition(|r| notas_md::es_markdown(r));
+    let (notas, rutas): (Vec<_>, Vec<_>) = rutas
+        .into_iter()
+        .partition(|r| destino_de_fichero(r) == DestinoDeFichero::Nota);
     for ruta in notas {
         notas_md::abrir(lengua, ubicacion.clone(), notas_md::Destino::Fichero { ruta });
     }
     let (a_leer, rutas): (Vec<_>, Vec<_>) = rutas
         .into_iter()
-        .partition(|r| lector::se_lee_al_tocar(&pixpin_docs::nombre(r)));
+        .partition(|r| destino_de_fichero(r) == DestinoDeFichero::Lector);
     for ruta in &a_leer {
         lector::abrir_en_su_lector(lengua, ubicacion, ruta, &pixpin_docs::nombre(ruta));
+    }
+    // Un audio suena en el reproductor flotante, sin abrir la app (como el
+    // Enter sobre un audio en Flow Launcher). Varios a la vez: en fila, uno
+    // tras otro en la misma ventanita.
+    let (audios, rutas): (Vec<_>, Vec<_>) = rutas
+        .into_iter()
+        .partition(|r| destino_de_fichero(r) == DestinoDeFichero::Audio);
+    if !audios.is_empty() {
+        tracing::info!(cuantos = audios.len(), "audios al reproductor flotante");
+        ventana_chat::reproducir_flotante_en_fila(
+            textos,
+            audios
+                .into_iter()
+                .map(|r| {
+                    let titulo = titulo_del_audio(&r);
+                    (r, titulo)
+                })
+                .collect(),
+        );
     }
     // Cada ruta cae en el pin que le toque por su extension:
     // imagen, video o ficha de archivo. Eso ya lo decide el
@@ -1721,13 +1771,18 @@ fn abrir_ficheros(
     // no es un fichero, es la ruta que dice de que mensaje es.
     let (listas, rutas): (Vec<_>, Vec<_>) = rutas
         .into_iter()
-        .partition(|r| pines::herramienta::vinculo_de_ruta(r).is_some());
+        .partition(|r| destino_de_fichero(r) == DestinoDeFichero::ListaDelChat);
     // Un `.pixpin` no es un fichero que pinear: es un proyecto
     // entero, y cada hoja suya sale como su propio pin.
-    let (proyectos, sueltos): (Vec<_>, Vec<_>) = rutas.into_iter().partition(|r| {
-        r.extension()
-            .is_some_and(|e| e.eq_ignore_ascii_case("pixpin"))
-    });
+    let (proyectos, sueltos): (Vec<_>, Vec<_>) = rutas
+        .into_iter()
+        .partition(|r| destino_de_fichero(r) == DestinoDeFichero::Proyecto);
+    // Las fotos que solo lee Windows con una extension de la tienda (HEIC,
+    // AVIF, RAW...): se leen aqui para que, si falta esa extension, salga
+    // un pin que DIGA cual instalar, en vez de la ficha muda del archivo.
+    let (de_la_tienda, sueltos): (Vec<_>, Vec<_>) = sueltos
+        .into_iter()
+        .partition(|r| pixpin_codec::wic::extension_de_la_tienda(r).is_some());
     // Y ademas entra en la LISTA de proyectos, que es donde el
     // usuario lo busca: un `.pixpin` es una conversacion entera.
     // Los pines de sus hojas siguen saliendo, que es lo de antes.
@@ -1746,6 +1801,11 @@ fn abrir_ficheros(
             Ok(f) => tracing::info!(id = %f.id, nombre = %f.nombre, "proyecto en la lista"),
             Err(e) => tracing::warn!(%e, ruta = %ruta.display(), "no se pudo importar"),
         }
+    }
+    // Solo audios, notas o documentos: nada que pinear, y los pines (que
+    // crean el dispositivo de la GPU la primera vez) ni se tocan.
+    if listas.is_empty() && proyectos.is_empty() && de_la_tienda.is_empty() && sueltos.is_empty() {
+        return;
     }
     let hecho = preparar_pines(
         recursos_overlay,
@@ -1773,6 +1833,29 @@ fn abrir_ficheros(
                 Err(e) => tracing::warn!(?e, ruta = %proyecto.display(), "proyecto que no se pudo abrir"),
             }
         }
+        for foto in &de_la_tienda {
+            match pixpin_codec::cargar(foto) {
+                Ok(img) => match p.pinear_imagen_centrada(&img, &m) {
+                    Ok(_) => cuantos += 1,
+                    Err(e) => tracing::warn!(?e, ruta = %foto.display(), "no se pudo pinear la foto"),
+                },
+                Err(e) => {
+                    tracing::warn!(%e, ruta = %foto.display(), "foto que Windows no sabe leer");
+                    let texto = match e.extension_que_falta() {
+                        Some(tienda) => {
+                            let mut args = fluent_bundle::FluentArgs::new();
+                            args.set("nombre", pixpin_docs::nombre(foto));
+                            args.set("extension", tienda);
+                            textos.t_args("abrir-falta-extension", &args)
+                        }
+                        None => e.to_string(),
+                    };
+                    if p.pinear_nota(&texto, &m).is_ok() {
+                        cuantos += 1;
+                    }
+                }
+            }
+        }
         if !sueltos.is_empty() {
             cuantos += pinear_portapapeles(
                 p,
@@ -1784,6 +1867,172 @@ fn abrir_ficheros(
     match hecho {
         Ok(cuantos) => tracing::info!(cuantos, "ficheros abiertos como pines"),
         Err(e) => tracing::warn!(?e, "no se pudieron abrir los ficheros"),
+    }
+}
+
+/// A donde va un fichero abierto «con PixPin» (doble clic, «Abrir con»,
+/// pedido `abrir`). Puro, por la ruta: [`abrir_ficheros`] lo reparte asi.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DestinoDeFichero {
+    /// Markdown: al editor de notas.
+    Nota,
+    /// PDF, Word, libro: a su lector.
+    Lector,
+    /// Un audio: al reproductor flotante.
+    Audio,
+    /// La lista de tareas de un mensaje del chat («Sacar a la pantalla»).
+    ListaDelChat,
+    /// Un `.pixpin`: a la lista de proyectos y sus hojas como pines.
+    Proyecto,
+    /// Lo demas (fotos, videos, cualquier archivo): un pin.
+    Pin,
+}
+
+fn destino_de_fichero(ruta: &std::path::Path) -> DestinoDeFichero {
+    if notas_md::es_markdown(ruta) {
+        DestinoDeFichero::Nota
+    } else if lector::se_lee_al_tocar(&pixpin_docs::nombre(ruta)) {
+        DestinoDeFichero::Lector
+    } else if pixpin_shell::asociaciones::es_audio(ruta) {
+        DestinoDeFichero::Audio
+    } else if pines::herramienta::vinculo_de_ruta(ruta).is_some() {
+        DestinoDeFichero::ListaDelChat
+    } else if ruta
+        .extension()
+        .is_some_and(|e| e.eq_ignore_ascii_case("pixpin"))
+    {
+        DestinoDeFichero::Proyecto
+    } else {
+        DestinoDeFichero::Pin
+    }
+}
+
+/// Lo que se lee en la barra del reproductor: el nombre sin la extension.
+fn titulo_del_audio(ruta: &std::path::Path) -> String {
+    ruta.file_stem()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_else(|| pixpin_docs::nombre(ruta))
+}
+
+#[cfg(test)]
+mod pruebas_abrir_ficheros {
+    use super::*;
+    use std::path::Path;
+
+    #[test]
+    fn abrir_cada_fichero_va_a_lo_suyo() {
+        let d = |r: &str| destino_de_fichero(Path::new(r));
+        assert_eq!(d(r"C:\musica\Cancion.MP3"), DestinoDeFichero::Audio);
+        for a in ["a.m4a", "b.wav", "c.flac", "d.ogg", "e.opus", "f.aac", "g.wma", "h.amr", "i.3gp"] {
+            assert_eq!(d(a), DestinoDeFichero::Audio, "{a}");
+        }
+        assert_eq!(d("notas.md"), DestinoDeFichero::Nota);
+        assert_eq!(d("libro.pdf"), DestinoDeFichero::Lector);
+        assert_eq!(d("proyecto.PIXPIN"), DestinoDeFichero::Proyecto);
+        for f in ["foto.png", "IMG_0001.HEIC", "b.avif", "clip.mp4", "c.tif"] {
+            assert_eq!(d(f), DestinoDeFichero::Pin, "{f}");
+        }
+    }
+
+    #[test]
+    fn abrir_caso_negativo_un_video_o_algo_sin_extension_no_va_al_reproductor() {
+        let d = |r: &str| destino_de_fichero(Path::new(r));
+        assert_ne!(d("pelicula.mp4"), DestinoDeFichero::Audio);
+        assert_ne!(d("mp3"), DestinoDeFichero::Audio, "sin punto no es extension");
+        assert_ne!(d("cancion.mp3.txt"), DestinoDeFichero::Audio);
+    }
+
+    #[test]
+    fn abrir_un_audio_lo_titula_sin_extension() {
+        assert_eq!(titulo_del_audio(Path::new(r"C:\x\Nota de voz 3.m4a")), "Nota de voz 3");
+        // Caso negativo: un punto en medio no se come el resto del nombre.
+        assert_eq!(titulo_del_audio(Path::new("v1.2 final.mp3")), "v1.2 final");
+    }
+
+    /// Un WAV de `ms` milisegundos, mono de 16 bits, con un tono casi mudo
+    /// (no molesta a quien este trabajando al lado).
+    fn wav(ruta: &Path, ms: u32) {
+        let hz = 22_050u32;
+        let n = hz * ms / 1000;
+        let mut datos = Vec::with_capacity(n as usize * 2);
+        for i in 0..n {
+            let v = ((i as f32 * 440.0 * std::f32::consts::TAU / hz as f32).sin() * 300.0) as i16;
+            datos.extend_from_slice(&v.to_le_bytes());
+        }
+        let mut f = Vec::new();
+        f.extend_from_slice(b"RIFF");
+        f.extend_from_slice(&(36 + datos.len() as u32).to_le_bytes());
+        f.extend_from_slice(b"WAVEfmt ");
+        f.extend_from_slice(&16u32.to_le_bytes());
+        f.extend_from_slice(&1u16.to_le_bytes()); // PCM
+        f.extend_from_slice(&1u16.to_le_bytes()); // mono
+        f.extend_from_slice(&hz.to_le_bytes());
+        f.extend_from_slice(&(hz * 2).to_le_bytes());
+        f.extend_from_slice(&2u16.to_le_bytes());
+        f.extend_from_slice(&16u16.to_le_bytes());
+        f.extend_from_slice(b"data");
+        f.extend_from_slice(&(datos.len() as u32).to_le_bytes());
+        f.extend_from_slice(&datos);
+        std::fs::write(ruta, f).unwrap();
+    }
+
+    /// **De verdad, en el escritorio**: abre dos audios, un GIF y (si se da
+    /// en `PIXPIN_PROBAR_HEIC`) una foto HEIC como lo haria el Explorador.
+    /// Salen el reproductor flotante (que se va solo al acabar los dos
+    /// audios) y los pines, que se cierran al acabar la prueba.
+    /// `cargo test -p pixpin abrir_de_verdad -- --ignored --nocapture`.
+    #[test]
+    #[ignore = "abre ventanas de verdad en el escritorio"]
+    fn abrir_de_verdad_audios_y_fotos() {
+        let dir = std::env::temp_dir().join("pixpin-abrir-de-verdad");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let (a, b) = (dir.join("Primero.wav"), dir.join("Segundo.wav"));
+        wav(&a, 2500);
+        wav(&b, 2500);
+        let rojo = pixpin_codec::ImagenRgba {
+            ancho: 160,
+            alto: 90,
+            pixeles: [220u8, 40, 40, 255].repeat(160 * 90),
+        };
+        let gif = dir.join("rojo.gif");
+        std::fs::write(&gif, pixpin_codec::codificar_gif(&[rojo], Default::default()).unwrap())
+            .unwrap();
+        let mut rutas = vec![a, b, gif];
+        match std::env::var("PIXPIN_PROBAR_HEIC") {
+            Ok(heic) => rutas.push(heic.into()),
+            // Sin foto de verdad, un «HEIC» que Windows no entiende: sale el
+            // pin que dice que extension instalar.
+            Err(_) => {
+                let falso = dir.join("IMG_prueba.heic");
+                std::fs::write(&falso, b"no es una foto").unwrap();
+                rutas.push(falso);
+            }
+        }
+        let ubicacion = rutas::resolver(&dir, &dir.join("appdata"));
+        let textos = Catalogo::nuevo(pixpin_store::Idioma::Espanol);
+        let mut recursos = None;
+        let mut pines = None;
+        abrir_ficheros(
+            rutas,
+            pixpin_store::Idioma::Espanol,
+            &ubicacion,
+            "prueba",
+            &mut recursos,
+            &mut pines,
+            &textos,
+            windows::Win32::Foundation::HWND::default(),
+            33,
+        );
+        println!("pines abiertos: {}", pines.is_some());
+        // Tiempo para mirar (y hacer una captura); los pines se quedan
+        // mientras, y bombear mensajes los deja pintarse.
+        let hasta = std::time::Instant::now() + std::time::Duration::from_secs(9);
+        while std::time::Instant::now() < hasta {
+            pixpin_shell::overlay::bombear_pendientes();
+            std::thread::sleep(std::time::Duration::from_millis(30));
+        }
+        drop(pines);
     }
 }
 
@@ -2080,16 +2329,14 @@ mod pruebas_bandeja {
     use super::*;
 
     #[test]
-    fn el_universo_sale_en_la_bandeja_justo_debajo_del_chat() {
+    fn lecciones_galeria_y_tareas_salen_justo_debajo_del_chat() {
         let v = acciones_de_bandeja(|clave| clave.to_string());
         let chat = v
             .iter()
             .position(|(id, _)| *id == comandos::Comando::AbrirChat.id())
             .expect("el chat esta en la bandeja");
-        assert_eq!(
-            v.get(chat + 1),
-            Some(&(ID_VENTANA_UNIVERSO, "bandeja-universo".to_string()))
-        );
+        let siguen: Vec<u32> = v[chat + 1..chat + 5].iter().map(|(id, _)| *id).collect();
+        assert_eq!(siguen, [ID_LECCIONES, ID_LECCION_NUEVA, ID_GALERIA_CAPTURAS, ID_TAREAS]);
     }
 
     #[test]
@@ -2099,9 +2346,9 @@ mod pruebas_bandeja {
             .iter()
             .position(|(id, _)| *id == comandos::Comando::AbrirChat.id())
             .expect("el chat esta en la bandeja");
-        // Chat, universo (D213) y en seguida Sincronizar.
+        // Chat, lecciones, galeria y tareas, y en seguida Sincronizar.
         assert_eq!(
-            v.get(chat + 2),
+            v.get(chat + 5),
             Some(&(
                 comandos::Comando::Sincronizar.id(),
                 "comando-sincronizar".to_string()
@@ -2122,14 +2369,13 @@ mod pruebas_bandeja {
     }
 
     #[test]
-    fn el_universo_sale_una_sola_vez_y_salir_no_se_cuela() {
+    fn cada_entrada_sale_una_sola_vez_y_salir_no_se_cuela() {
         let v = acciones_de_bandeja(|clave| clave.to_string());
-        assert_eq!(
-            v.iter()
-                .filter(|(id, _)| *id == ID_VENTANA_UNIVERSO)
-                .count(),
-            1
-        );
+        for id in [ID_LECCIONES, ID_LECCION_NUEVA, ID_GALERIA_CAPTURAS, ID_TAREAS] {
+            assert_eq!(v.iter().filter(|(i, _)| *i == id).count(), 1, "{id}");
+        }
+        // Caso negativo: el universo (901) ya no esta.
+        assert!(!v.iter().any(|(i, _)| *i == 901));
         assert!(!v.iter().any(|(id, _)| *id == comandos::Comando::Salir.id()));
     }
 }

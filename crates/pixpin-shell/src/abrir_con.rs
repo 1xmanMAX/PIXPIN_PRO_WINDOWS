@@ -33,7 +33,14 @@ use windows::core::{HSTRING, PCWSTR};
 /// programa de siempre los hace mejor.
 pub const EXTENSIONES: &[&str] = &[
     ".png", ".jpg", ".jpeg", ".bmp", ".gif", ".webp", ".tif", ".tiff", ".mp4", ".mkv", ".avi",
-    ".mov", ".webm", ".wmv", // Y el proyecto entero del movil.
+    ".mov", ".webm", ".wmv", ".m4v", ".mpg", ".mpeg", ".ts",
+    // Las fotos que lee Windows por debajo (`pixpin_codec::wic`): las del
+    // iPhone, AVIF, JPEG XL... (lista entera en `asociaciones::IMAGENES`).
+    ".jfif", ".ico", ".heic", ".heif", ".avif", ".jxl", ".jxr",
+    // Los audios, que suenan en el reproductor flotante
+    // (`asociaciones::AUDIOS`).
+    ".mp3", ".m4a", ".wav", ".aac", ".flac", ".ogg", ".opus", ".wma", ".3gp", ".amr",
+    // Y el proyecto entero del movil.
     ".pixpin", // Los documentos con lector propio.
     ".pdf", ".docx", ".epub",
     // Y el Markdown, que se abre en el editor de notas.
@@ -216,9 +223,27 @@ mod pruebas {
         for malo in [".exe", ".zip", ".txt", ".csv", ".doc"] {
             assert!(!EXTENSIONES.contains(&malo), "sobra {malo}");
         }
-        for bueno in [".png", ".mp4", ".pixpin", ".pdf", ".docx", ".epub"] {
+        for bueno in [".png", ".mp4", ".pixpin", ".pdf", ".docx", ".epub", ".heic", ".mp3", ".m4a"] {
             assert!(EXTENSIONES.contains(&bueno), "falta {bueno}");
         }
+    }
+
+    #[test]
+    fn todo_lo_que_se_asocia_sale_tambien_en_abrir_con() {
+        // Lo que PixPin pide ser predeterminada tiene que poder elegirse a
+        // mano en «Abrir con»; al reves no hace falta (el PDF sale en «Abrir
+        // con» sin pedir ser su predeterminada).
+        let asociadas = crate::asociaciones::IMAGENES
+            .iter()
+            .chain(&crate::asociaciones::VIDEOS)
+            .chain(&crate::asociaciones::AUDIOS);
+        let faltan: Vec<String> = asociadas
+            .map(|e| format!(".{e}"))
+            .filter(|e| !EXTENSIONES.contains(&e.as_str()))
+            .collect();
+        // Caso negativo implicito: si alguien anade un tipo a `asociaciones`
+        // y no aqui, esta lista deja de estar vacia.
+        assert!(faltan.is_empty(), "faltan en Abrir con: {faltan:?}");
     }
 
     #[test]

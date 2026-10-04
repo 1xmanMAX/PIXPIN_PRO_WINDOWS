@@ -246,6 +246,19 @@ pub enum Borde {
     AbajoDerecha,
 }
 
+/// Los botones redondos de la cabecera de la lista que van a la izquierda
+/// del de sincronizar (`Disposicion::boton_extra`), de derecha a izquierda.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Extra {
+    Tareas = 0,
+    Galeria = 1,
+    Lecciones = 2,
+}
+
+impl Extra {
+    pub const TODOS: [Extra; 3] = [Extra::Tareas, Extra::Galeria, Extra::Lecciones];
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Disposicion {
     /// La barra de titulo, arriba del todo.
@@ -514,7 +527,9 @@ impl Disposicion {
         // estrecha no cabe, y el buscador se queda con todo el ancho.
         let ocupado: u32 = [
             self.boton_sincro(escala_por_cien),
-            self.boton_universo(escala_por_cien),
+            self.boton_extra(Extra::Tareas, escala_por_cien),
+            self.boton_extra(Extra::Galeria, escala_por_cien),
+            self.boton_extra(Extra::Lecciones, escala_por_cien),
         ]
         .iter()
         .filter(|b| b.ancho > 0)
@@ -550,25 +565,29 @@ impl Disposicion {
         }
     }
 
-    /// El boton redondo del universo (D210), a la izquierda del de
-    /// sincronizar y con su mismo aspecto: los dos llevan a una pantalla con
-    /// TODOS los proyectos, no a uno.
+    /// Los botones redondos de **lecciones, galeria de capturas y tareas**,
+    /// a la izquierda del de sincronizar y con su mismo aspecto, en el sitio
+    /// donde estaba el del universo (3-oct-2026; en el movil van junto a
+    /// Proyectos donde estaba el sistema solar), en el orden de `Extra`
+    /// contando desde el de sincronizar hacia la izquierda.
     ///
-    /// Es el primero que se retira en una lista estrecha: sincronizar tiene
-    /// la preferencia porque el universo tambien se abre desde la bandeja y
-    /// con Ctrl+U.
-    pub fn boton_universo(&self, escala_por_cien: u32) -> Rect {
+    /// Se retiran de izquierda a derecha en una lista estrecha: sincronizar
+    /// tiene la preferencia, y los tres tambien estan en la bandeja. Con
+    /// cada uno de mas, el buscador tiene que seguir midiendo lo que dos
+    /// botones.
+    pub fn boton_extra(&self, extra: Extra, escala_por_cien: u32) -> Rect {
         let e = |v: u32| v * escala_por_cien / 100;
         let sincro = self.boton_sincro(escala_por_cien);
         let c = self.cabecera_lista;
         let lado = sincro.ancho;
-        // Sin el de sincronizar no hay sitio para ninguno; y con este de
-        // mas, el buscador tiene que seguir midiendo lo que dos botones.
-        if lado == 0 || c.ancho < 4 * lado + 4 * e(BUSCADOR_MARGEN) {
+        let i = extra as u32;
+        // Botones a la vista con este: los extra hasta el y el de sincronizar.
+        let n = i + 2;
+        if lado == 0 || c.ancho < (n + 2) * (lado + e(BUSCADOR_MARGEN)) {
             return vacio();
         }
         Rect {
-            x: sincro.x - (lado + e(BUSCADOR_MARGEN)) as i32,
+            x: sincro.x - ((i + 1) * (lado + e(BUSCADOR_MARGEN))) as i32,
             ..sincro
         }
     }
@@ -1111,27 +1130,38 @@ mod pruebas_ventana {
     }
 
     #[test]
-    fn el_boton_del_universo_va_a_la_izquierda_del_de_sincronizar_sin_pisar_el_buscador() {
+    fn lecciones_galeria_y_tareas_van_a_la_izquierda_de_sincronizar_sin_pisar_el_buscador() {
         let d = Disposicion::calcular(1000, 700, 100, 320, Vista::Ambas);
-        let (b, u, s) = (d.buscador(100), d.boton_universo(100), d.boton_sincro(100));
-        assert_eq!((u.ancho, u.alto), (s.ancho, s.alto), "el mismo boton");
-        assert_eq!(u.y, s.y);
-        assert!(b.derecha() < u.x, "el buscador acaba antes");
-        assert!(u.derecha() < s.x, "y los dos no se tocan");
-        assert!(d.cabecera_lista.contiene(Punto {
-            x: u.x + u.ancho as i32 / 2,
-            y: u.y + u.alto as i32 / 2,
-        }));
+        let (b, s) = (d.buscador(100), d.boton_sincro(100));
+        let [t, g, l] = Extra::TODOS.map(|x| d.boton_extra(x, 100));
+        for u in [t, g, l] {
+            assert_eq!((u.ancho, u.alto), (s.ancho, s.alto), "el mismo boton");
+            assert_eq!(u.y, s.y);
+            assert!(d.cabecera_lista.contiene(Punto {
+                x: u.x + u.ancho as i32 / 2,
+                y: u.y + u.alto as i32 / 2,
+            }));
+        }
+        assert!(b.derecha() < l.x, "el buscador acaba antes");
+        assert!(l.derecha() < g.x && g.derecha() < t.x && t.derecha() < s.x, "en fila, sin tocarse");
     }
 
     #[test]
-    fn en_una_lista_estrecha_el_universo_se_retira_antes_que_sincronizar() {
-        // Caso negativo: caben tres botones de ancho pero no cuatro.
+    fn en_una_lista_estrecha_se_retiran_de_izquierda_a_derecha_antes_que_sincronizar() {
+        let paso = BUSCADOR_ALTO + BUSCADOR_MARGEN;
         let mut d = Disposicion::calcular(1000, 700, 100, 320, Vista::Ambas);
-        d.cabecera_lista.ancho = 3 * BUSCADOR_ALTO + 3 * BUSCADOR_MARGEN + 4;
+        // Caben tareas y galeria pero no lecciones.
+        d.cabecera_lista.ancho = 5 * paso + 4;
+        assert!(d.boton_extra(Extra::Galeria, 100).ancho > 0);
+        assert_eq!(d.boton_extra(Extra::Lecciones, 100).ancho, 0);
+        // Caso negativo: caben tres botones de ancho pero no cuatro, y no
+        // queda ninguno.
+        d.cabecera_lista.ancho = 3 * paso + 4;
         assert!(d.boton_sincro(100).ancho > 0);
-        assert_eq!(d.boton_universo(100).ancho, 0);
-        // Y el buscador no le guarda un sitio que no ocupa.
+        for x in Extra::TODOS {
+            assert_eq!(d.boton_extra(x, 100).ancho, 0);
+        }
+        // Y el buscador no les guarda un sitio que no ocupan.
         assert_eq!(
             d.buscador(100).derecha() + BUSCADOR_MARGEN as i32,
             d.boton_sincro(100).x
@@ -1142,7 +1172,7 @@ mod pruebas_ventana {
     fn con_la_lista_plegada_no_hay_boton_y_el_buscador_no_le_guarda_sitio() {
         let d = Disposicion::calcular(1200, 800, 100, LISTA_PLEGADA, Vista::Ambas);
         assert_eq!(d.boton_sincro(100).ancho, 0);
-        assert_eq!(d.boton_universo(100).ancho, 0);
+        assert!(Extra::TODOS.iter().all(|x| d.boton_extra(*x, 100).ancho == 0));
         // Un punto cualquiera no cae en un boton que no esta.
         assert!(!d.boton_sincro(100).contiene(Punto { x: 0, y: 0 }));
     }
@@ -1489,12 +1519,11 @@ mod pruebas_hora {
 /// (`ALTO_DE_LA_PILDORA` y `AIRE_DE_LA_PILDORA` de `CabeceraFlotante.kt`).
 pub const PILDORA: u32 = 46;
 pub const PILDORA_AIRE: u32 = 6;
-/// La de la derecha lleva botones de 48: el universo, la lupa y los tres
-/// puntos. El movil tiene solo los dos ultimos; el del universo es del
-/// escritorio (D211) y va en la misma pastilla para no abrir una cuarta.
+/// La de la derecha lleva botones de 48: la lupa y los tres puntos, como en
+/// el movil (el del universo se quito con el, 3-oct-2026).
 pub const PILDORA_BOTON: u32 = 48;
 /// Cuantos botones lleva la pastilla de la derecha.
-pub const PILDORA_BOTONES: u32 = 3;
+pub const PILDORA_BOTONES: u32 = 2;
 /// La del centro se mide a su contenido, pero no pasa de aqui.
 pub const PILDORA_CENTRO_MAXIMA: u32 = 420;
 
@@ -1507,9 +1536,8 @@ pub struct Pildoras {
     /// texto y la centra aqui dentro.
     pub centro: Rect,
     /// La pastilla de la derecha entera, y sus botones de izquierda a
-    /// derecha: ver en el universo (D211), la lupa y los tres puntos.
+    /// derecha: la lupa y los tres puntos.
     pub derecha: Rect,
-    pub universo: Rect,
     pub buscar: Rect,
     pub menu: Rect,
 }
@@ -1539,21 +1567,16 @@ impl Disposicion {
             ancho: ancho_derecha,
             alto,
         };
-        let tercio = ancho_derecha / PILDORA_BOTONES;
-        let universo = Rect {
-            ancho: tercio,
-            ..derecha
-        };
+        let medio = ancho_derecha / PILDORA_BOTONES;
         let buscar = Rect {
-            x: universo.derecha(),
-            ancho: tercio,
+            ancho: medio,
             ..derecha
         };
         // El ultimo se queda con lo que sobre del redondeo: asi la pastilla
         // acaba justo donde acaba su boton.
         let menu = Rect {
             x: buscar.derecha(),
-            ancho: ancho_derecha - 2 * tercio,
+            ancho: ancho_derecha - medio,
             ..derecha
         };
         let izquierda = volver.derecha() + aire;
@@ -1567,7 +1590,6 @@ impl Disposicion {
             volver,
             centro,
             derecha,
-            universo,
             buscar,
             menu,
         }
@@ -1997,26 +2019,23 @@ mod pruebas_movil {
         }
         assert!(p.volver.derecha() < p.centro.x);
         assert!(p.centro.derecha() < p.derecha.x);
-        // Volver es un circulo de 46 y la de la derecha, tres botones de 48.
+        // Volver es un circulo de 46 y la de la derecha, dos botones de 48.
         assert_eq!((p.volver.ancho, p.volver.alto), (PILDORA, PILDORA));
-        assert_eq!(p.derecha.ancho, 3 * PILDORA_BOTON);
+        assert_eq!(p.derecha.ancho, 2 * PILDORA_BOTON);
         assert_eq!(p.buscar.derecha(), p.menu.x, "la lupa y los puntos, juntos");
         assert_eq!(p.menu.derecha(), p.derecha.derecha());
     }
 
     #[test]
-    fn ver_en_el_universo_va_en_la_pastilla_de_la_derecha_antes_de_la_lupa() {
+    fn la_pastilla_de_la_derecha_lleva_la_lupa_y_los_tres_puntos_como_el_movil() {
         let d = disposicion();
         let p = d.pildoras(100);
-        assert_eq!(p.universo.ancho, PILDORA_BOTON);
-        assert_eq!(p.universo.x, p.derecha.x, "el primero de la pastilla");
-        assert_eq!(p.universo.derecha(), p.buscar.x);
-        assert!(d.cabecera_chat.contiene(Punto {
-            x: p.universo.x + p.universo.ancho as i32 / 2,
-            y: p.universo.y + p.universo.alto as i32 / 2,
-        }));
+        assert_eq!(p.derecha.ancho, 2 * PILDORA_BOTON);
+        assert_eq!(p.buscar.x, p.derecha.x, "la lupa es la primera");
+        assert_eq!(p.buscar.derecha(), p.menu.x);
+        assert_eq!(p.menu.derecha(), p.derecha.derecha());
         // Caso negativo: no se monta encima del titulo.
-        assert!(p.centro.derecha() < p.universo.x);
+        assert!(p.centro.derecha() < p.buscar.x);
     }
 
     #[test]

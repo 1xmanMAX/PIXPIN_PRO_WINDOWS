@@ -625,12 +625,12 @@ pub fn abrir(idioma: pixpin_store::Idioma, ubicacion: &Ubicacion, destino: &Dest
                 ),
                 Some(Clase::Dibujo) | Some(Clase::Pagina) => {
                     // La referencia del dibujo, o el codigo de una pagina
-                    // que aun no lo tiene (`universo::abrir` sabe de las dos).
+                    // que aun no lo tiene (`abrir_hoja` sabe de las dos).
                     let referencia = m.referencia.clone().filter(|r| !r.is_empty()).unwrap_or(codigo);
                     let opciones = opciones_del_lienzo();
                     let lanzado = std::thread::Builder::new().name("lienzo-desde-nota".into()).spawn(move || {
                         let _com = pixpin_shell::ComDelHilo::iniciar();
-                        crate::universo::abrir::abrir_hoja(&raiz, &proyecto, &referencia, opciones);
+                        crate::abrir_hoja::abrir_hoja(&raiz, &proyecto, &referencia, opciones);
                         crate::ventana_chat::refrescar();
                     });
                     if let Err(e) = lanzado {

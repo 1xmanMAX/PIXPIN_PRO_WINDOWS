@@ -227,9 +227,16 @@ pub enum CursorAnotacion {
 /// flechas, y su retardo (spec 5.2: 300 ms tras el ultimo cambio).
 const ID_TEMPORIZADOR_GUARDADO: usize = 1;
 const RETARDO_GUARDADO_MS: u32 = 300;
-/// El temporizador que pregunta por fotogramas nuevos a un pin de video
-/// (D67). Solo corre mientras el video se reproduce.
+/// El temporizador de un pin de video sin reproductor: solo sirve para
+/// llevarle al gestor el aviso del fallo (D72). Con reproductor, el ritmo
+/// lo marca el refresco del monitor (`MSG_TICK_VIDEO`).
 const ID_TEMPORIZADOR_VIDEO: usize = 2;
+/// El aviso del hilo que sigue el refresco del monitor: toca preguntar al
+/// reproductor si hay fotograma nuevo.
+const MSG_TICK_VIDEO: u32 = windows::Win32::UI::WindowsAndMessaging::WM_APP + 0x52;
+/// `WM_MOUSELEAVE`, que el crate de Windows no exporta con los demas
+/// mensajes de ventana.
+const WM_RATON_FUERA: u32 = 0x02A3;
 /// El zoom animado de la rueda: un tick por fotograma hasta llegar.
 const ID_TEMPORIZADOR_ZOOM: usize = 3;
 /// Un disparo tras el ultimo cambio de un gesto continuo (Ctrl + arrastrar),
@@ -625,9 +632,15 @@ struct PinInterno {
     /// `video_fallido` avisa al gestor en el primer tick (D72).
     video: Option<Reproductor>,
     video_fallido: bool,
-    /// Cada cuanto se pregunta por un fotograma nuevo (D67): 16 ms en
-    /// `Completo`, 33 en `Ligero`.
-    ritmo_video_ms: u32,
+    /// El raton esta encima: en un video, se ensenan los mandos.
+    raton_encima: bool,
+    /// Arrastrando la barra de un video: cada movimiento salta.
+    barra_agarrada: bool,
+    /// Donde se pulso un video fuera de sus mandos: si al soltar no se ha
+    /// movido, fue un clic, y un clic reproduce o pausa.
+    pulsado_video: Option<(i32, i32)>,
+    /// La proporcion del video ya se ajusto a la de sus metadatos.
+    proporcion_video_hecha: bool,
     /// La zona de pantalla de un pin en vivo, puesta por el gestor tras
     /// crear la ventana (la fuente necesita su HWND para avisarla).
     fuente_viva: Option<Box<dyn FuenteViva>>,
@@ -821,7 +834,10 @@ impl Pin {
             ruta_origen,
             video,
             video_fallido,
-            ritmo_video_ms,
+            raton_encima: false,
+            barra_agarrada: false,
+            pulsado_video: None,
+            proporcion_video_hecha: false,
             fuente_viva: None,
             vivo_pausado: false,
             remoto: false,
@@ -843,8 +859,8 @@ impl Pin {
         unsafe {
             let _ = ShowWindow(hwnd, SW_SHOWNOACTIVATE);
         }
-        // Un video arranca su temporizador ya (D67); si el reproductor no
-        // pudo crearse, el temporizador es lo que lleva el aviso al gestor.
+        // Un video arranca su ritmo ya (D67); si el reproductor no pudo
+        // crearse, el temporizador es lo que lleva el aviso al gestor.
         if matches!(contenido_es_video(hwnd), Some(true)) {
             armar_temporizador_video(hwnd, ritmo_video_ms);
         }
@@ -1144,6 +1160,20 @@ impl Pin {
     pub fn silenciado(&self) -> bool {
         interno_de(self.hwnd).is_some_and(|i| i.video.as_ref().is_some_and(|v| v.silenciado()))
     }
+
+    /// Si el pin ensena un video (aunque su reproductor haya fallado).
+    pub fn es_video(&self) -> bool {
+        matches!(contenido_es_video(self.hwnd), Some(true))
+    }
+
+    /// Da o quita el sonido a un pin de video. Un video abierto a proposito
+    /// (doble clic en el Explorador) se oye: es lo que se pidio; los que
+    /// vuelven al arrancar Windows siguen callados (D69).
+    pub fn poner_sonido(&self, con_sonido: bool) {
+        if let Some(v) = interno_de(self.hwnd).and_then(|i| i.video.as_ref()) {
+            v.poner_silencio(!con_sonido);
+        }
+    }
 }
 
 impl Pin {
@@ -1211,11 +1241,116 @@ fn contenido_es_video(hwnd: HWND) -> Option<bool> {
     interno_de(hwnd).map(|i| matches!(i.contenido, Contenido::Video { .. }))
 }
 
+/// Pone en marcha el ritmo del video: con reproductor, el hilo que sigue el
+/// refresco del monitor; sin el, un temporizador que solo lleva el fallo.
 fn armar_temporizador_video(hwnd: HWND, ritmo_ms: u32) {
+    if let Some(v) = interno_de(hwnd).and_then(|i| i.video.as_mut()) {
+        // En `Completo` (16 ms) cada refresco; en `Ligero` (33 ms), uno de
+        // cada dos a 60 Hz: 30 fps como mucho.
+        let minimo = if ritmo_ms > 20 { ritmo_ms } else { 0 };
+        v.marcar_ritmo(hwnd.0 as isize, MSG_TICK_VIDEO, minimo);
+        return;
+    }
     // SAFETY: temporizador de ventana propia; volver a armarlo con el mismo
     // id solo cambia el intervalo.
     unsafe {
         SetTimer(Some(hwnd), ID_TEMPORIZADOR_VIDEO, ritmo_ms.max(1), None);
+    }
+}
+
+/// Los mandos del video en coordenadas del contenido (origen en la esquina
+/// de la imagen, sin la sombra). `None` si el pin es demasiado pequeno.
+fn mandos_de(i: &PinInterno) -> Option<crate::mandos_video::Mandos> {
+    let r = i.estado.rect();
+    crate::mandos_video::mandos_en(
+        RectF {
+            x: 0.0,
+            y: 0.0,
+            ancho: r.ancho as f32,
+            alto: r.alto as f32,
+        },
+        i.escala_por_cien as f32 / 100.0,
+    )
+}
+
+/// El mando del video bajo un punto del contenido. Las esquinas de abajo
+/// son de redimensionar aunque caigan sobre un boton: se respeta el gesto
+/// de siempre.
+fn mando_en(i: &PinInterno, p: Punto) -> Option<crate::mandos_video::ZonaMando> {
+    if i.video.is_none() || !i.raton_encima || i.anotando {
+        return None;
+    }
+    let r = i.estado.rect();
+    let z = (crate::estado::ZONA_ESQUINA_LOGICA * i.escala_por_cien / 100) as i32;
+    let en_esquina = (p.x < z || p.x >= r.ancho as i32 - z) && p.y >= r.alto as i32 - z;
+    if en_esquina {
+        return None;
+    }
+    mandos_de(i)?.zona_en(p.x as f32, p.y as f32)
+}
+
+/// El tick del video: si hay fotograma nuevo, se pinta. Lo llaman el ritmo
+/// del monitor y, sin reproductor, el temporizador del fallo.
+fn tick_video(hwnd: HWND) {
+    let Some(i) = interno_de(hwnd) else {
+        return;
+    };
+    if let Some(v) = &i.video {
+        v.atendido();
+    }
+    let fallo = i.video_fallido || i.video.as_ref().is_some_and(|v| v.fallo());
+    if fallo {
+        // SAFETY: mata el temporizador propio (si lo habia).
+        unsafe {
+            let _ = KillTimer(Some(hwnd), ID_TEMPORIZADOR_VIDEO);
+        }
+        if let Some(v) = &i.video {
+            tracing::warn!(motivo = ?v.motivo_fallo(), "Media Foundation no pudo con el video");
+        }
+        // El hilo del ritmo se para con el reproductor.
+        i.video = None;
+        i.video_fallido = true;
+        (i.al_cambiar)(CambioPin::VideoFallido);
+        return;
+    }
+    // Oculto (Ctrl+2) nadie lo ve: ni copiar ni pintar.
+    // SAFETY: consulta pura sobre la ventana propia.
+    if !unsafe { IsWindowVisible(hwnd) }.as_bool() {
+        return;
+    }
+    // Los metadatos dan el tamano nativo: es el 100 % del menu. La primera
+    // vez, si el pin nacio con otra proporcion (sin cabecera legible ni
+    // miniatura), se corrige: un video estirado parece roto.
+    if let Some(dim) = i.video.as_mut().and_then(|v| v.dimensiones()) {
+        i.imagen_nativa = dim;
+        if !i.proporcion_video_hecha {
+            i.proporcion_video_hecha = true;
+            if !i.estado.es_fijo()
+                && let Some(r) = crate::mandos_video::rect_con_proporcion(i.estado.rect(), dim)
+            {
+                i.estado.poner_rect(r);
+                aplicar(hwnd, EfectoPin::Redimensionar(r));
+                let Some(i) = interno_de(hwnd) else {
+                    return;
+                };
+                (i.al_cambiar)(CambioPin::Movido(colocacion_de(i, r)));
+            }
+        }
+    }
+    let Some(i) = interno_de(hwnd) else {
+        return;
+    };
+    // Clonar la interfaz de la textura (una cuenta de referencia) libera el
+    // prestamo del reproductor antes de tocar el bitmap.
+    let textura = i.video.as_mut().and_then(|v| v.tick().cloned());
+    if let Some(t) = textura {
+        if i.bitmap.is_none() {
+            i.bitmap = i.motor.bitmap_desde_textura(&t).ok();
+        }
+        pintar(i);
+    }
+    if let Some(v) = &i.video {
+        v.reposar_si_parado();
     }
 }
 
@@ -1253,21 +1388,31 @@ fn punto_remoto(i: &PinInterno, pantalla: (i32, i32)) -> Option<(i32, i32)> {
     )
 }
 
+/// Salta al punto de la barra bajo `x` (coordenadas del contenido).
+fn saltar_a(i: &mut PinInterno, x: i32, aproximado: bool) {
+    let Some(m) = mandos_de(i) else {
+        return;
+    };
+    if let Some(v) = &i.video
+        && let (_, Some(d)) = v.posicion()
+    {
+        v.buscar(m.fraccion(x as f32) * d, aproximado);
+    }
+    pintar(i);
+}
+
 /// Reproducir o pausar (D68): el temporizador va con el estado, asi que un
 /// video en pausa no cuesta un solo tick (D67).
-fn alternar_video(hwnd: HWND, i: &mut PinInterno) {
+fn alternar_video(_hwnd: HWND, i: &mut PinInterno) {
     let Some(v) = &i.video else {
         return;
     };
+    // El reproductor despierta o duerme su propio ritmo.
     v.alternar_pausa();
-    if v.reproduciendo() {
-        armar_temporizador_video(hwnd, i.ritmo_video_ms);
-    } else {
-        // SAFETY: mata el temporizador propio.
-        unsafe {
-            let _ = KillTimer(Some(hwnd), ID_TEMPORIZADOR_VIDEO);
-        }
-    }
+    tracing::debug!(reproduciendo = v.reproduciendo(), "video alternado");
+    // Se repinta ya: el boton y el simbolo de pausa cambian aunque no
+    // llegue fotograma nuevo.
+    pintar(i);
 }
 
 impl Pin {
@@ -2083,6 +2228,12 @@ fn pintar(i: &PinInterno) {
             p.trazar(caja, 2.0 * escala, Color::ACENTO);
         }
 
+        // Los mandos del video, encima de la imagen y solo con el raton
+        // encima: el resto del tiempo el pin es solo el video.
+        if let Some(v) = &i.video {
+            pintar_mandos_video(p, i, v, caja, escala);
+        }
+
         // El texto marcado, entre la imagen y las anotaciones: es una
         // seleccion sobre la imagen, asi que va encima de ella, pero lo
         // que el usuario ha dibujado manda sobre todo.
@@ -2255,6 +2406,115 @@ fn pintar_markdown(
 ///
 /// El motor produce geometria y el pintor la pinta: es la separacion que
 /// mantiene al motor puro y probable sin GPU.
+/// La franja de mandos del video (raton encima) o, en pausa y sin raton, un
+/// simbolo de reproducir en el centro para que se vea que esta parado.
+fn pintar_mandos_video(
+    p: &pixpin_render::Pintor,
+    i: &PinInterno,
+    v: &Reproductor,
+    caja: RectF,
+    escala: f32,
+) {
+    use pixpin_render::icono::material::{PAUSE, PLAY_ARROW, VOLUME_UP};
+    let blanco = Color::BLANCO;
+    let velo = Color {
+        r: 0.0,
+        g: 0.0,
+        b: 0.0,
+        a: 0.55,
+    };
+    let reproduciendo = v.reproduciendo();
+    if !(i.raton_encima || i.barra_agarrada) {
+        if !reproduciendo && i.bitmap.is_some() {
+            let radio = (caja.ancho.min(caja.alto) * 0.12).clamp(16.0 * escala, 36.0 * escala);
+            let centro = (caja.x + caja.ancho / 2.0, caja.y + caja.alto / 2.0);
+            p.circulo(centro, radio, velo);
+            let lado = radio * 1.2;
+            p.icono(
+                &PLAY_ARROW,
+                RectF {
+                    x: centro.0 - lado / 2.0,
+                    y: centro.1 - lado / 2.0,
+                    ancho: lado,
+                    alto: lado,
+                },
+                blanco,
+            );
+        }
+        return;
+    }
+    let Some(m) = crate::mandos_video::mandos_en(caja, escala) else {
+        return;
+    };
+    p.rellenar(m.franja, velo);
+    let encoger = |r: RectF, k: f32| RectF {
+        x: r.x + k,
+        y: r.y + k,
+        ancho: (r.ancho - 2.0 * k).max(1.0),
+        alto: (r.alto - 2.0 * k).max(1.0),
+    };
+    p.icono(
+        if reproduciendo { &PAUSE } else { &PLAY_ARROW },
+        encoger(m.boton, 2.0 * escala),
+        blanco,
+    );
+    let (t, duracion) = v.posicion();
+    if let Some(caja_t) = m.tiempo {
+        let tam = 11.5 * escala;
+        let texto = match duracion {
+            Some(d) => format!(
+                "{} / {}",
+                crate::mandos_video::formato_tiempo(t),
+                crate::mandos_video::formato_tiempo(d)
+            ),
+            None => crate::mandos_video::formato_tiempo(t),
+        };
+        p.texto_linea(
+            &texto,
+            caja_t.x,
+            caja_t.y + (caja_t.alto - tam * 1.35) / 2.0,
+            tam,
+            caja_t.ancho,
+            blanco,
+        );
+    }
+    // La barra: el recorrido tenue y lo visto en acento, con un punto en la
+    // posicion. Sin duracion conocida (aun cargando), solo el recorrido.
+    let y = m.barra.y + m.barra.alto / 2.0;
+    let grosor = 3.0 * escala;
+    p.linea(
+        (m.barra.x, y),
+        (m.barra.x + m.barra.ancho, y),
+        grosor,
+        Color { a: 0.35, ..blanco },
+    );
+    if let Some(d) = duracion {
+        let x = m.barra.x + m.barra.ancho * (t / d).clamp(0.0, 1.0) as f32;
+        p.linea((m.barra.x, y), (x, y), grosor, Color::ACENTO);
+        p.circulo((x, y), 5.0 * escala, blanco);
+    }
+    // El altavoz, tachado si no suena; debajo, el volumen como una raya.
+    let altavoz = encoger(m.sonido, 3.0 * escala);
+    p.icono(&VOLUME_UP, altavoz, blanco);
+    let volumen = v.volumen();
+    if v.silenciado() || volumen <= 0.0 {
+        p.linea(
+            (altavoz.x, altavoz.y),
+            (altavoz.x + altavoz.ancho, altavoz.y + altavoz.alto),
+            2.0 * escala,
+            blanco,
+        );
+    } else {
+        let yv = m.sonido.y + m.sonido.alto + 1.0 * escala;
+        p.linea(
+            (m.sonido.x, yv),
+            (m.sonido.x + m.sonido.ancho * volumen as f32, yv),
+            2.0 * escala,
+            Color { a: 0.8, ..blanco },
+        );
+    }
+}
+
 fn pintar_anotaciones(p: &pixpin_render::Pintor, i: &PinInterno, margen: f32) {
     use pixpin_motor2d::Orden;
 
@@ -2712,6 +2972,54 @@ extern "system" fn procedimiento_pin(
                 }
                 return LRESULT(0);
             }
+            // Los mandos del video: reproducir, el altavoz y la barra. Fuera
+            // de ellos el pin se mueve como siempre, y si al soltar no se
+            // movio, el clic reproduce o pausa.
+            if let Some(i) = interno_de(hwnd)
+                && i.video.is_some()
+                && !i.anotando
+                && !tecla_pulsada(VK_CONTROL)
+            {
+                use crate::mandos_video::ZonaMando;
+                let p = punto_contenido(i, lparam);
+                let zona = mando_en(i, p);
+                if zona.is_some() {
+                    // SAFETY: foco sobre ventana propia (arma Espacio y Esc).
+                    unsafe {
+                        let _ = windows::Win32::UI::Input::KeyboardAndMouse::SetFocus(Some(hwnd));
+                    }
+                }
+                match zona {
+                    Some(ZonaMando::Reproducir) => {
+                        alternar_video(hwnd, i);
+                        return LRESULT(0);
+                    }
+                    Some(ZonaMando::Sonido) => {
+                        if let Some(v) = &i.video {
+                            v.alternar_sonido();
+                            // Quitar el silencio con el volumen a cero no
+                            // se oiria: se sube a la mitad.
+                            if !v.silenciado() && v.volumen() <= 0.0 {
+                                v.poner_volumen(0.5);
+                            }
+                        }
+                        pintar(i);
+                        return LRESULT(0);
+                    }
+                    Some(ZonaMando::Barra) => {
+                        // SAFETY: captura sobre ventana propia; se suelta en
+                        // WM_LBUTTONUP.
+                        unsafe { SetCapture(hwnd) };
+                        i.barra_agarrada = true;
+                        saltar_a(i, p.x, true);
+                        return LRESULT(0);
+                    }
+                    None => {
+                        let c = cursor_de_pantalla();
+                        i.pulsado_video = Some((c.x, c.y));
+                    }
+                }
+            }
             // Sobre una palabra reconocida, el boton izquierdo SELECCIONA
             // texto en vez de mover el pin: es lo que lo hace parecerse a
             // un documento. Fuera del texto, mover, como siempre.
@@ -2901,6 +3209,32 @@ extern "system" fn procedimiento_pin(
                 // SIEMPRE (agrandar el pin), que es lo que pidio el usuario,
                 // y el zoom interior se queda sin gesto mientras dure el modo.
                 let remoto = i.remoto && matches!(i.contenido, Contenido::Vivo { .. });
+                // Sobre la franja de mandos de un video, la rueda es el
+                // volumen; en el resto del video, el zoom de siempre.
+                if i.video.is_some() && i.raton_encima && !tecla_pulsada(VK_CONTROL) {
+                    let c = cursor_de_pantalla();
+                    let mut r = RECT::default();
+                    // SAFETY: GetWindowRect sobre la ventana propia.
+                    unsafe {
+                        let _ = GetWindowRect(hwnd, &mut r);
+                    }
+                    let (ox, oy) = origen_contenido(hwnd, i.estado.rect());
+                    let p = Punto {
+                        x: c.x - r.left - ox,
+                        y: c.y - r.top - oy,
+                    };
+                    if mandos_de(i).is_some_and(|m| m.zona_en(p.x as f32, p.y as f32).is_some()) {
+                        if let Some(v) = &i.video {
+                            let muescas = if delta > 0 { 1 } else { -1 };
+                            v.poner_volumen(crate::mandos_video::volumen_tras_rueda(
+                                v.volumen(),
+                                muescas,
+                            ));
+                        }
+                        pintar(i);
+                        return LRESULT(0);
+                    }
+                }
                 // Sobre una herramienta la rueda baja por su lista, que es lo
                 // unico que se desplaza; con `Ctrl`, agranda el pin como
                 // siempre (lo de dentro se recoloca, no hay zoom interior).
@@ -2935,8 +3269,44 @@ extern "system" fn procedimiento_pin(
             }
             LRESULT(0)
         }
+        WM_MOUSEMOVE if interno_de(hwnd).is_some_and(|i| i.barra_agarrada) => {
+            if let Some(i) = interno_de(hwnd) {
+                let p = punto_contenido(i, lparam);
+                saltar_a(i, p.x, true);
+            }
+            LRESULT(0)
+        }
+        m if m == WM_RATON_FUERA => {
+            if let Some(i) = interno_de(hwnd)
+                && i.raton_encima
+            {
+                i.raton_encima = false;
+                pintar(i);
+            }
+            LRESULT(0)
+        }
         WM_MOUSEMOVE => {
             if let Some(i) = interno_de(hwnd) {
+                // Un video ensena sus mandos con el raton encima; Windows
+                // avisa de la salida solo si se le pide cada vez.
+                if i.video.is_some() && !i.raton_encima {
+                    i.raton_encima = true;
+                    let mut seguir = windows::Win32::UI::Input::KeyboardAndMouse::TRACKMOUSEEVENT {
+                        cbSize: std::mem::size_of::<
+                            windows::Win32::UI::Input::KeyboardAndMouse::TRACKMOUSEEVENT,
+                        >() as u32,
+                        dwFlags: windows::Win32::UI::Input::KeyboardAndMouse::TME_LEAVE,
+                        hwndTrack: hwnd,
+                        dwHoverTime: 0,
+                    };
+                    // SAFETY: estructura completa sobre la ventana propia.
+                    unsafe {
+                        let _ = windows::Win32::UI::Input::KeyboardAndMouse::TrackMouseEvent(
+                            &mut seguir,
+                        );
+                    }
+                    pintar(i);
+                }
                 // Arrastrando una seleccion de texto: se amplia y se
                 // repinta, y el pin NO se mueve.
                 if let Some(ancla) = i.ancla_texto {
@@ -3024,6 +3394,21 @@ extern "system" fn procedimiento_pin(
             }
             LRESULT(0)
         }
+        WM_LBUTTONUP if interno_de(hwnd).is_some_and(|i| i.barra_agarrada) => {
+            // SAFETY: libera la captura tomada al agarrar la barra.
+            unsafe {
+                let _ = ReleaseCapture();
+            }
+            if let Some(i) = interno_de(hwnd) {
+                i.barra_agarrada = false;
+                // Al soltar, el salto exacto: arrastrando iba a los
+                // fotogramas clave, que es rapido pero no preciso.
+                let p = punto_contenido(i, lparam);
+                saltar_a(i, p.x, false);
+                pintar(i);
+            }
+            LRESULT(0)
+        }
         WM_LBUTTONUP if interno_de(hwnd).is_some_and(|i| i.ancla_texto.is_some()) => {
             if let Some(i) = interno_de(hwnd) {
                 i.ancla_texto = None;
@@ -3067,8 +3452,23 @@ extern "system" fn procedimiento_pin(
                     if crate::remoto::fue_clic(pulsado, (c.x, c.y)) {
                         (i.al_cambiar)(CambioPin::ClicRemoto { x, y });
                     } else {
-                        (i.al_cambiar)(CambioPin::ArrastreRemoto { x0, y0, x1: x, y1: y });
+                        (i.al_cambiar)(CambioPin::ArrastreRemoto {
+                            x0,
+                            y0,
+                            x1: x,
+                            y1: y,
+                        });
                     }
+                }
+            }
+            // El clic sobre un video (sin moverlo) reproduce o pausa. Tambien
+            // despues de cerrar el arrastre: si se movio, no se toca.
+            if let Some(i) = interno_de(hwnd)
+                && let Some(pulsado) = i.pulsado_video.take()
+            {
+                let c = cursor_de_pantalla();
+                if crate::remoto::fue_clic(pulsado, (c.x, c.y)) {
+                    alternar_video(hwnd, i);
                 }
             }
             // El toque sobre una herramienta, tambien DESPUES de cerrar el
@@ -3157,8 +3557,10 @@ extern "system" fn procedimiento_pin(
                 ) {
                     (i.al_cambiar)(CambioPin::AbrirPedido);
                 } else if matches!(i.contenido, Contenido::Video { .. }) {
-                    // El doble clic en un video reproduce o pausa (D68/D70).
-                    alternar_video(hwnd, i);
+                    // El primer clic del doble ya reprodujo o pauso: aqui no
+                    // se hace nada, o el doble clic se anularia a si mismo.
+                    // Sin reproductor (fallo), el doble clic sigue siendo
+                    // reproducir/pausar, que no hace nada.
                 } else if matches!(i.contenido, Contenido::Vivo { .. }) {
                     if i.remoto {
                         // Manejando a distancia, la segunda pulsacion de un
@@ -3357,9 +3759,7 @@ extern "system" fn procedimiento_pin(
         // decide `mini_panel` en el gestor). Van ANTES que los atajos del
         // pin: una «r» escrita en la caja de una tarea no puede girar el pin.
         // `Ctrl + C` sigue siendo copiar el pin.
-        WM_CHAR
-            if interno_de(hwnd).is_some_and(|i| i.contenido.interactivo() && !i.anotando) =>
-        {
+        WM_CHAR if interno_de(hwnd).is_some_and(|i| i.contenido.interactivo() && !i.anotando) => {
             let unidad = wparam.0 as u16;
             let caracter = MITAD_ALTA.with(|alta| {
                 if (0xD800..0xDC00).contains(&unidad) {
@@ -3575,6 +3975,34 @@ extern "system" fn procedimiento_pin(
             }
             LRESULT(0)
         }
+        // En un video, las teclas de cualquier reproductor: M silencia,
+        // izquierda/derecha saltan 5 s y arriba/abajo cambian el volumen.
+        // Con Shift, las flechas mueven el pin como en los demas.
+        WM_KEYDOWN
+            if (es_flecha(wparam.0 as u32) && !tecla_pulsada(VK_SHIFT)
+                || wparam.0 as u32 == b'M' as u32)
+                && interno_de(hwnd).is_some_and(|i| i.video.is_some() && !i.anotando) =>
+        {
+            if let Some(i) = interno_de(hwnd)
+                && let Some(v) = &i.video
+            {
+                use crate::mandos_video::{SALTO_FLECHA, volumen_tras_rueda};
+                match wparam.0 as u32 {
+                    x if x == b'M' as u32 => v.alternar_sonido(),
+                    x if x == VK_LEFT.0 as u32 => v.buscar(v.posicion().0 - SALTO_FLECHA, false),
+                    x if x == VK_RIGHT.0 as u32 => {
+                        let (t, d) = v.posicion();
+                        let destino = t + SALTO_FLECHA;
+                        // Pasado el final, al final (no da la vuelta).
+                        v.buscar(d.map_or(destino, |d| destino.min(d - 0.05)), false);
+                    }
+                    x if x == VK_UP.0 as u32 => v.poner_volumen(volumen_tras_rueda(v.volumen(), 2)),
+                    _ => v.poner_volumen(volumen_tras_rueda(v.volumen(), -2)),
+                }
+                pintar(i);
+            }
+            LRESULT(0)
+        }
         WM_KEYDOWN if es_flecha(wparam.0 as u32) => {
             // Las flechas mueven ya y agrupan la persistencia: una rafaga
             // de veinte pulsaciones no puede escribir veinte veces el
@@ -3633,31 +4061,11 @@ extern "system" fn procedimiento_pin(
             LRESULT(0)
         }
         WM_TIMER if wparam.0 == ID_TEMPORIZADOR_VIDEO => {
-            if let Some(i) = interno_de(hwnd) {
-                let fallo = i.video_fallido || i.video.as_ref().is_some_and(|v| v.fallo());
-                if fallo {
-                    // SAFETY: mata el temporizador propio.
-                    unsafe {
-                        let _ = KillTimer(Some(hwnd), ID_TEMPORIZADOR_VIDEO);
-                    }
-                    i.video_fallido = true;
-                    (i.al_cambiar)(CambioPin::VideoFallido);
-                    return LRESULT(0);
-                }
-                // Los metadatos dan el tamano nativo: es el 100 % del menu.
-                if let Some(dim) = i.video.as_mut().and_then(|v| v.dimensiones()) {
-                    i.imagen_nativa = dim;
-                }
-                // Clonar la interfaz de la textura (una cuenta de referencia)
-                // libera el prestamo del reproductor antes de tocar el bitmap.
-                let textura = i.video.as_mut().and_then(|v| v.tick().cloned());
-                if let Some(t) = textura {
-                    if i.bitmap.is_none() {
-                        i.bitmap = i.motor.bitmap_desde_textura(&t).ok();
-                    }
-                    pintar(i);
-                }
-            }
+            tick_video(hwnd);
+            LRESULT(0)
+        }
+        m if m == MSG_TICK_VIDEO => {
+            tick_video(hwnd);
             LRESULT(0)
         }
         WM_TIMER if wparam.0 == ID_TEMPORIZADOR_ZOOM => {
@@ -4086,5 +4494,167 @@ mod pruebas {
             contenido,
             "ida y vuelta exacta"
         );
+    }
+
+    /// Un pin de video de verdad en pantalla, con su bucle de mensajes: que
+    /// el ritmo siga al monitor (no al temporizador de 15,6 ms), cuantos
+    /// fotogramas pinta por segundo y cuanta CPU gasta. Lo mismo mide, para
+    /// comparar, lo que daba `SetTimer(16)`. Informativa: imprime.
+    ///
+    /// `PIXPIN_VIDEO_PRUEBA` = ruta del video. El pin sale abajo a la
+    /// derecha del monitor principal unos segundos y se cierra solo.
+    #[test]
+    #[ignore = "necesita GPU, escritorio y PIXPIN_VIDEO_PRUEBA; --ignored --nocapture"]
+    fn un_pin_de_video_va_al_ritmo_del_monitor() {
+        use std::time::{Duration, Instant};
+        use windows::Win32::Graphics::Direct3D11::{
+            D3D11_CREATE_DEVICE_VIDEO_SUPPORT, ID3D11Multithread,
+        };
+        use windows::Win32::System::Threading::{GetCurrentProcess, GetProcessTimes};
+        use windows::core::Interface;
+
+        let Some(ruta) = std::env::var_os("PIXPIN_VIDEO_PRUEBA") else {
+            return;
+        };
+        let ruta = std::path::PathBuf::from(ruta);
+        let segundos: u64 = std::env::var("PIXPIN_VIDEO_SEGUNDOS")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(6);
+
+        let mut d = None;
+        // SAFETY: creacion estandar con salidas locales.
+        let d3d: ID3D11Device = unsafe {
+            D3D11CreateDevice(
+                None,
+                D3D_DRIVER_TYPE_HARDWARE,
+                Default::default(),
+                D3D11_CREATE_DEVICE_BGRA_SUPPORT | D3D11_CREATE_DEVICE_VIDEO_SUPPORT,
+                None,
+                D3D11_SDK_VERSION,
+                Some(&mut d),
+                None,
+                None,
+            )
+            .expect("GPU real");
+            let d: ID3D11Device = d.unwrap();
+            let _ = d
+                .cast::<ID3D11Multithread>()
+                .unwrap()
+                .SetMultithreadProtected(true);
+            d
+        };
+        let motor = Rc::new(MotorRender::nuevo(&d3d).unwrap());
+        // SAFETY: metrica del sistema, consulta pura.
+        let (sw, sh) = unsafe { (GetSystemMetrics(SM_CXSCREEN), GetSystemMetrics(SM_CYSCREEN)) };
+        let t_crear = Instant::now();
+        let pin = Pin::nuevo(
+            &d3d,
+            motor,
+            Contenido::Video {
+                nombre: "prueba".into(),
+                ruta,
+                ancho: 0,
+                alto: 0,
+            },
+            Rect {
+                x: sw - 520,
+                y: sh - 340,
+                ancho: 480,
+                alto: 270,
+            },
+            100,
+            true,
+            16,
+            Box::new(|_| {}),
+        )
+        .expect("pin de video");
+        let hwnd = pin.hwnd();
+        pin.poner_sonido(false);
+
+        let cpu = || {
+            let (mut a, mut b, mut k, mut u) = Default::default();
+            // SAFETY: salidas locales sobre el proceso propio.
+            unsafe {
+                let _ = GetProcessTimes(GetCurrentProcess(), &mut a, &mut b, &mut k, &mut u);
+            }
+            let t = |f: windows::Win32::Foundation::FILETIME| {
+                ((f.dwHighDateTime as u64) << 32 | f.dwLowDateTime as u64) as f64 / 1e7
+            };
+            t(k) + t(u)
+        };
+        let bombear = |hasta: Duration, avisos: &mut u64| {
+            let t0 = Instant::now();
+            let mut msg = MSG::default();
+            while t0.elapsed() < hasta {
+                // SAFETY: bucle de mensajes estandar del hilo propio.
+                unsafe {
+                    if PeekMessageW(&mut msg, None, 0, 0, PM_REMOVE).as_bool() {
+                        if msg.message == MSG_TICK_VIDEO {
+                            *avisos += 1;
+                        }
+                        let _ = TranslateMessage(&msg);
+                        DispatchMessageW(&msg);
+                    } else {
+                        let _ = MsgWaitForMultipleObjects(None, false, 5, QS_ALLINPUT);
+                    }
+                }
+            }
+        };
+        let fotogramas =
+            || interno_de(hwnd).and_then(|i| i.video.as_ref().map(|v| v.fotogramas())).unwrap_or(0);
+
+        // Hasta el primer fotograma.
+        let mut avisos = 0u64;
+        while fotogramas() == 0 && t_crear.elapsed() < Duration::from_secs(5) {
+            bombear(Duration::from_millis(5), &mut avisos);
+        }
+        let primer_ms = t_crear.elapsed().as_millis();
+        // Medida en regimen.
+        let (f0, c0, t0) = (fotogramas(), cpu(), Instant::now());
+        let mut avisos = 0u64;
+        bombear(Duration::from_secs(segundos), &mut avisos);
+        let dt = t0.elapsed().as_secs_f64();
+        let (f1, c1) = (fotogramas(), cpu());
+        println!(
+            "primer_fotograma_ms={primer_ms} avisos_por_s={:.1} fotogramas_por_s={:.1} cpu_un_nucleo={:.1}% (proceso de prueba entero)",
+            avisos as f64 / dt,
+            (f1 - f0) as f64 / dt,
+            (c1 - c0) / dt * 100.0
+        );
+        // Lo que daba el temporizador de antes, en la misma ventana.
+        // SAFETY: temporizador propio sobre la ventana propia; se mata abajo.
+        unsafe {
+            SetTimer(Some(hwnd), 77, 16, None);
+        }
+        let t0 = Instant::now();
+        let mut timers = 0u64;
+        let mut msg = MSG::default();
+        while t0.elapsed() < Duration::from_secs(2) {
+            // SAFETY: bucle de mensajes del hilo propio; los WM_TIMER 77 se
+            // cuentan y no se despachan.
+            unsafe {
+                if PeekMessageW(&mut msg, None, 0, 0, PM_REMOVE).as_bool() {
+                    if msg.message == WM_TIMER && msg.wParam.0 == 77 {
+                        timers += 1;
+                        continue;
+                    }
+                    let _ = TranslateMessage(&msg);
+                    DispatchMessageW(&msg);
+                } else {
+                    let _ = MsgWaitForMultipleObjects(None, false, 5, QS_ALLINPUT);
+                }
+            }
+        }
+        // SAFETY: mata el temporizador de la prueba.
+        unsafe {
+            let _ = KillTimer(Some(hwnd), 77);
+        }
+        println!(
+            "SetTimer(16) daba {:.1} ticks/s",
+            timers as f64 / t0.elapsed().as_secs_f64()
+        );
+        assert!(f1 > f0, "el video deberia avanzar");
+        drop(pin);
     }
 }

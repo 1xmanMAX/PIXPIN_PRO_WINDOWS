@@ -164,7 +164,6 @@ pub(super) fn dictar(
                         None,
                         None,
                         None,
-                        None,
                         true,
                         FueraDeLaEscena::default(),
                         None,

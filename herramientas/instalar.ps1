@@ -205,6 +205,60 @@ function Cerrar-Compresor {
     Get-Process pixpin-aligerar -ErrorAction SilentlyContinue | Stop-Process -Force
 }
 
+function Crear-Acceso {
+    # El buscador de Windows encuentra las apps por su acceso directo en el
+    # menu Inicio: sin el, escribir "PixPin" no sacaba nada. Se rehace en cada
+    # instalacion (es barato) por si se borro o apunta a otro sitio.
+    $programas = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs'
+    $lnk = Join-Path $programas 'PixPin Max.lnk'
+    try {
+        $s = (New-Object -ComObject WScript.Shell).CreateShortcut($lnk)
+        $s.TargetPath = $destino
+        $s.WorkingDirectory = $destinoDir
+        $s.IconLocation = "$destino,0"
+        $s.Description = 'PixPin Max: capturas, pines, chat y lienzo'
+        $s.Save()
+        Write-Host "En el menu Inicio: $lnk"
+    } catch {
+        Write-Warning "No se pudo crear el acceso del menu Inicio: $_"
+    }
+}
+
+function Ofrecer-Predeterminada {
+    # PixPin se registra sola para imagenes y videos al arrancar
+    # (pixpin_shell::asociaciones), pero hacerla LA predeterminada solo lo
+    # puede hacer el usuario: Windows deshace lo que escriba un programa. Se
+    # le abre la pagina de PixPin Max en Configuracion UNA vez por cada
+    # tanda de tipos nuevos; si ya lo es, o ya se le ofrecio, no se insiste.
+    #
+    # La marca guarda la tanda ofrecida ("tipos=2"). Cuando PixPin aprende
+    # tipos nuevos se sube $tandaDeTipos y se vuelve a ofrecer UNA vez:
+    #   1 = imagenes y videos
+    #   2 = + audios (PixPinMax.Audio) y HEIC/HEIF/AVIF/JPEG XL/JFIF
+    # Una marca vieja (solo traia la fecha) cuenta como tanda 1.
+    $tandaDeTipos = 2
+    $marca = Join-Path $destinoDir 'predeterminada-ofrecida.txt'
+    $exts = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts'
+    $elegido = {
+        param($ext)
+        (Get-ItemProperty "$exts\$ext\UserChoice" -ErrorAction SilentlyContinue).ProgId
+    }
+    $ya = ((& $elegido '.png') -eq 'PixPinMax.Imagen') -and
+          ((& $elegido '.mp3') -eq 'PixPinMax.Audio')
+    $ofrecida = 0
+    if (Test-Path $marca) {
+        $ofrecida = 1
+        $linea = Get-Content $marca -ErrorAction SilentlyContinue |
+            Where-Object { $_ -match '^tipos=(\d+)' } | Select-Object -First 1
+        if ($linea -match '^tipos=(\d+)') { $ofrecida = [int]$Matches[1] }
+    }
+    if ($ya -or $ofrecida -ge $tandaDeTipos) { return }
+    Start-Sleep -Seconds 2   # que la app recien abierta se registre antes
+    Start-Process 'ms-settings:defaultapps?registeredAppUser=PixPin%20Max'
+    Set-Content $marca @("tipos=$tandaDeTipos", (Get-Date -Format s))
+    Write-Host 'Abierta Configuracion: pulsa "Establecer como predeterminada" en PixPin Max (fotos, videos y audios)'
+}
+
 # El plugin de Flow va aparte de la app: se pone al dia aunque PixPin ya sea
 # la ultima, y un fallo suyo no impide instalar PixPin.
 try { Instalar-PluginFlow } catch { Write-Warning "Plugin de Flow Launcher: $_" }
@@ -214,6 +268,8 @@ $yaEsLaBuena = $igual -and $corriendo -and
     @($corriendo | Where-Object { $_.Path -ne $destino }).Count -eq 0
 if ($yaEsLaBuena) {
     Write-Host "Ya corre la ultima version desde $destino"
+    Crear-Acceso
+    Ofrecer-Predeterminada
     exit 0
 }
 
@@ -240,3 +296,5 @@ if (-not $igual) {
 Start-Process $destino
 Write-Host "Instalada y abierta: $destino"
 if ($origenCompresor) { Write-Host "Con el compresor de PDF: $(Join-Path $destinoDir $compresor)" }
+Crear-Acceso
+Ofrecer-Predeterminada

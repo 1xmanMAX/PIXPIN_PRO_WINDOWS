@@ -893,7 +893,6 @@ pub(super) fn pedir(
                         None,
                         None,
                         None,
-                        None,
                         true,
                         FueraDeLaEscena::default(),
                         None,

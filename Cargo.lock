@@ -713,6 +713,8 @@ dependencies = [
  "pixpin-codec",
  "pixpin-docs",
  "pixpin-geom",
+ "pixpin-lanzador",
+ "pixpin-lecciones",
  "pixpin-motor2d",
  "pixpin-nivel",
  "pixpin-notas",
@@ -728,7 +730,6 @@ dependencies = [
  "pixpin-store",
  "pixpin-tinta",
  "pixpin-ui",
- "pixpin-universo",
  "pixpin-voz",
  "pixpin-web",
  "qrcodegen",
@@ -807,9 +808,17 @@ version = "0.1.0"
 name = "pixpin-lanzador"
 version = "0.1.0"
 dependencies = [
+ "pixpin-lecciones",
  "serde",
  "serde_json",
  "windows",
+]
+
+[[package]]
+name = "pixpin-lecciones"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
 ]
 
 [[package]]
@@ -958,6 +967,7 @@ dependencies = [
  "flate2",
  "hmac",
  "pbkdf2",
+ "pixpin-lecciones",
  "serde",
  "serde_json",
  "sha2",
@@ -990,17 +1000,6 @@ version = "0.1.0"
 dependencies = [
  "pixpin-geom",
  "pixpin-motor2d",
- "pixpin-universo",
-]
-
-[[package]]
-name = "pixpin-universo"
-version = "0.1.0"
-dependencies = [
- "pixpin-motor2d",
- "serde",
- "serde_json",
- "thiserror",
 ]
 
 [[package]]

@@ -8,7 +8,7 @@
 //! al verla a pantalla entera: «no se esta adaptando a la interfaz de una
 //! PC». Asi que ahora cada proyecto tiene **su vista de chat y su vista de
 //! proyecto**, y la ventana es la del chat de siempre (maestro-detalle): la
-//! lista de proyectos a la izquierda, con su buscador, su universo, su
+//! lista de proyectos a la izquierda, con su buscador, sus botones, su
 //! sincronizar y su «+», y en el panel derecho, en vez de la conversacion
 //! del elegido, **su tarjeta**. Estrecha, un solo panel: la lista, o la
 //! tarjeta con el circulo de volver arriba a la izquierda (el mismo del
@@ -51,7 +51,6 @@ use pixpin_store::{Catalogo, Ubicacion};
 
 use super::{
     Abierto, OpcionesLienzo, VK_ABAJO, VK_ARRIBA, VK_DERECHA, VK_ENTRAR, VK_ESCAPE, VK_IZQUIERDA,
-    VK_U,
 };
 
 mod cargar;
@@ -154,7 +153,6 @@ pub(super) enum Pedido {
     /// Abrir la hoja `indice` del proyecto.
     AbrirHoja { proyecto: String, indice: usize },
     Accion(AccionBarra, String),
-    Universo(Option<String>),
     /// El menu de los tres puntos del proyecto.
     Menu(String),
     /// Pedir el nombre nuevo del proyecto.
@@ -787,7 +785,6 @@ impl VistaProyectos {
                 // siendo del bucle. Los demas atajos del chat no: Ctrl+V
                 // pegaria en un chat que no se ve.
                 _ if ctrl && es_de_la_escala(vk) => return None,
-                VK_U if ctrl => Pedido::Universo(self.actual.clone()),
                 _ if ctrl => Pedido::Nada,
                 // ↑↓ cambian de proyecto en la lista, que es de donde se elige.
                 VK_ABAJO => Pedido::Vecino(1),
@@ -975,11 +972,6 @@ pub(super) fn cumplir(pedido: Pedido, v: &mut VistaProyectos, b: &mut Bucle) -> 
             }
             v.ver_chat();
             true
-        }
-        Pedido::Universo(proyecto) => {
-            let pedido = super::pedido_de_ctrl_u(proyecto.as_deref());
-            crate::universo::lanzar(b.idioma, b.ubicacion.clone(), b.lienzo, pedido);
-            false
         }
         Pedido::Volver => {
             b.cerrar_abierto();
@@ -1541,11 +1533,11 @@ mod pruebas {
     }
 
     #[test]
-    fn ctrl_con_otra_tecla_sigue_su_camino_y_ctrl_u_abre_el_universo_del_que_se_ve() {
+    fn ctrl_con_otra_tecla_sigue_su_camino() {
         let mut v = vista();
         v.seguir(Some("a"));
         assert_eq!(v.evento(tecla(super::super::VK_MAS, true)), None);
-        assert_eq!(v.evento(tecla(VK_U, true)), Some(Pedido::Universo(Some("a".into()))));
+        assert_eq!(v.evento(tecla(super::super::VK_U, true)), Some(Pedido::Nada), "Ctrl+U ya no abre nada");
         assert_eq!(v.evento(EventoOverlay::Pintar), None, "lo que no es suyo sigue");
         // Ctrl+V no llega al chat de detras, que no se ve.
         assert_eq!(v.evento(tecla(super::super::VK_V, true)), Some(Pedido::Nada));

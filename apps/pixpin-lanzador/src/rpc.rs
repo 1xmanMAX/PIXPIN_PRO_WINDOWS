@@ -4,7 +4,7 @@
 //!
 //! - `initialize`, `query`, `context_menu`, `reload_data`, `close`, y los
 //!   metodos de las acciones (`pedir`, `consulta`, `pedir_y_seguir`, `copiar`, `windows`,
-//!   `carpeta`), cuyos parametros llegan envueltos: `[[p1, p2]]`.
+//!   `carpeta`, `pegar_imagen`), cuyos parametros llegan envueltos: `[[p1, p2]]`.
 //! - `$/cancelRequest` se ignora: se contesta tan rapido que no hace falta.
 //! - El plugin tambien le pide cosas a Flow por el mismo canal
 //!   (`ChangeQuery`, `ShowMsg`, `CopyToClipboard`, `OpenDirectory`). Sus
@@ -58,6 +58,9 @@ pub struct Plugin<M: Mensajero, W: Write> {
     /// En el modo v1 los manda quien escribe la respuesta (`lib.rs`), cuando
     /// ya la escribio: [`Plugin::mandar_avisos`].
     pub diferir_avisos: bool,
+    /// El portapapeles (para pegar una imagen en una tarea). En las pruebas,
+    /// uno que nunca tiene imagen.
+    pub portapapeles: crate::imagenes::Portapapeles,
 }
 
 impl<M: Mensajero, W: Write> Plugin<M, W> {
@@ -71,6 +74,7 @@ impl<M: Mensajero, W: Write> Plugin<M, W> {
             palabra_clave: crate::PALABRA_CLAVE.into(),
             avisos: Vec::new(),
             diferir_avisos: false,
+            portapapeles: crate::imagenes::SIN_PORTAPAPELES,
             siguiente_id: 1_000_000,
             espera_lista: Duration::from_millis(2500),
             terminado: false,
@@ -103,6 +107,8 @@ impl<M: Mensajero, W: Write> Plugin<M, W> {
     fn contexto(&self) -> Contexto {
         let mut c = Contexto::nuevo(&self.palabra_clave);
         c.iconos = Some(crate::iconos::carpeta(self.datos.raiz()));
+        c.raiz = Some(self.datos.raiz().to_path_buf());
+        c.portapapeles = self.portapapeles;
         c
     }
 
@@ -190,6 +196,12 @@ impl<M: Mensajero, W: Write> Plugin<M, W> {
                 self.pedir_y_seguir(args.first(), args.get(1).and_then(Value::as_str));
                 json!({ "hide": false })
             }
+            "pegar_imagen" => {
+                let args = argumentos(&params);
+                let numero = args.get(1).and_then(Value::as_u64).unwrap_or(1) as u32;
+                self.pegar_imagen(args.first().and_then(Value::as_str), numero);
+                json!({ "hide": false })
+            }
             "copiar" => {
                 let args = argumentos(&params);
                 if let Some(t) = args.first().and_then(Value::as_str) {
@@ -253,10 +265,15 @@ impl<M: Mensajero, W: Write> Plugin<M, W> {
         self.palabra_clave = k.to_string();
         let busqueda = q.get("search").and_then(Value::as_str).unwrap_or("");
         let inicio = Instant::now();
+        // Las imagenes pegadas cuya ficha ya no esta en la caja, olvidadas:
+        // una tarea nueva vuelve a empezar en `[img 01]`.
+        crate::imagenes::podar(self.datos.raiz(), busqueda, datos::ahora_ms());
         let proyectos = self.datos.proyectos();
         let ctx = self.contexto();
         let r = resultados::resultados(&proyectos, busqueda, &ctx);
-        let faltan = ctx.extensiones_que_faltan();
+        // Cada aviso puede esperar a la app hasta un cuarto de segundo: el
+        // mismo icono no se vuelve a pedir en cada tecla.
+        let faltan = self.datos.iconos_que_pedir(ctx.extensiones_que_faltan());
         if !faltan.is_empty() {
             self.avisos.push(crate::iconos::pedido(&faltan));
         }
@@ -281,8 +298,33 @@ impl<M: Mensajero, W: Write> Plugin<M, W> {
         if e != Envio::Aceptado {
             let icono = self.icono.clone();
             self.llamar_a_flow("ShowMsg", json!(["PixPin Max", e.explicacion(), icono]));
+        } else if pedido.get("imagenes").is_some() {
+            // Esa tarea ya se llevo sus imagenes: la siguiente empieza de cero.
+            crate::imagenes::olvidar_borrador(self.datos.raiz());
         }
         e
+    }
+
+    /// «📎 Pegar la imagen copiada»: la guarda como la ficha `numero` del
+    /// borrador y pone `consulta` (lo tecleado con la ficha) en Flow.
+    fn pegar_imagen(&mut self, consulta: Option<&str>, numero: u32) {
+        let Some(consulta) = consulta else { return };
+        use crate::imagenes::Pegado;
+        let raiz = self.datos.raiz().to_path_buf();
+        let pegado = crate::imagenes::pegar_en_borrador(&raiz, &self.portapapeles, Some(numero), datos::ahora_ms());
+        self.registro.escribir(&format!("pegar imagen {numero} -> {pegado:?}"));
+        let icono = self.icono.clone();
+        match pegado {
+            Pegado::Nueva(..) => self.llamar_a_flow("ChangeQuery", json!([consulta, true])),
+            // Una imagen, un nombre: la misma no se pega otra vez.
+            Pegado::Repetida(n) => {
+                let aviso = format!("Esa imagen ya está como {}", crate::imagenes::ficha(n));
+                self.llamar_a_flow("ShowMsg", json!(["PixPin Max", aviso, icono]));
+            }
+            Pegado::Nada => {
+                self.llamar_a_flow("ShowMsg", json!(["PixPin Max", "No hay ninguna imagen en el portapapeles", icono]));
+            }
+        }
     }
 
     fn pedir(&mut self, pedido: Option<&Value>) {

@@ -49,7 +49,10 @@ impl Pauta {
     ];
 
     pub fn por_indice(i: u8) -> Pauta {
-        Pauta::TODAS.get(i as usize).copied().unwrap_or(Pauta::Ninguna)
+        Pauta::TODAS
+            .get(i as usize)
+            .copied()
+            .unwrap_or(Pauta::Ninguna)
     }
 }
 
@@ -119,7 +122,8 @@ pub fn fondo(color: u8, pauta: u8) -> ImagenRgba {
             // Rayas y columnas se cruzan en los cuadros: el cruce se pinta
             // una sola vez, o saldria un punto mas oscuro en cada esquina.
             let raya_h = |y: u32| pauta != Pauta::Vertical && y >= PASO - 1 && (y + 1) % PASO <= 1;
-            let raya_v = |x: u32| pauta != Pauta::Horizontal && x >= PASO - 1 && (x + 1) % PASO <= 1;
+            let raya_v =
+                |x: u32| pauta != Pauta::Horizontal && x >= PASO - 1 && (x + 1) % PASO <= 1;
             for y in 0..ALTO {
                 let en_h = raya_h(y);
                 for x in 0..ANCHO {
@@ -148,8 +152,14 @@ pub fn escribir_estado(color: u8, pauta: u8) -> String {
 /// mejor que perder la pizarra.
 pub fn leer_estado(texto: &str) -> (u8, u8) {
     let mut partes = texto.split_whitespace().map(|p| p.parse::<u8>().ok());
-    let color = partes.next().flatten().filter(|c| (*c as usize) < COLORES.len());
-    let pauta = partes.next().flatten().filter(|p| (*p as usize) < Pauta::TODAS.len());
+    let color = partes
+        .next()
+        .flatten()
+        .filter(|c| (*c as usize) < COLORES.len());
+    let pauta = partes
+        .next()
+        .flatten()
+        .filter(|p| (*p as usize) < Pauta::TODAS.len());
     (color.unwrap_or(0), pauta.unwrap_or(0))
 }
 
@@ -243,10 +253,18 @@ mod pruebas {
     fn las_rayas_solo_van_a_lo_ancho_y_las_columnas_solo_a_lo_alto() {
         let rayas = fondo(0, 2);
         assert_ne!(pixel(&rayas, 10, PASO), [255, 255, 255, 255]);
-        assert_eq!(pixel(&rayas, PASO, 10), [255, 255, 255, 255], "sin columnas");
+        assert_eq!(
+            pixel(&rayas, PASO, 10),
+            [255, 255, 255, 255],
+            "sin columnas"
+        );
         let columnas = fondo(0, 3);
         assert_ne!(pixel(&columnas, PASO, 10), [255, 255, 255, 255]);
-        assert_eq!(pixel(&columnas, 10, PASO), [255, 255, 255, 255], "sin rayas");
+        assert_eq!(
+            pixel(&columnas, 10, PASO),
+            [255, 255, 255, 255],
+            "sin rayas"
+        );
     }
 
     #[test]
@@ -283,7 +301,11 @@ mod pruebas {
     #[test]
     fn un_indice_fuera_de_la_paleta_no_rompe_nada() {
         let img = fondo(99, 99);
-        assert_eq!(pixel(&img, 0, 0), [0x14, 0x31, 0x2A, 255], "el ultimo color");
+        assert_eq!(
+            pixel(&img, 0, 0),
+            [0x14, 0x31, 0x2A, 255],
+            "el ultimo color"
+        );
     }
 
     #[test]

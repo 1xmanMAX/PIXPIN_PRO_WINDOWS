@@ -44,6 +44,8 @@ produccion contra Flow) y `Flow-Launcher/Flow.Launcher.PluginsManifest`.
 | `Executable` (v1) | **Un proceso por cada tecla**: la peticion va en `argv[1]` y la respuesta sale por stdout | Funciona, pero arranca un `.exe` por cada letra que se teclea. |
 | **`Executable_V2`** | **Un proceso que se queda vivo**: JSON-RPC 2.0 por stdin/stdout, un mensaje por linea | **Este.** Un `.exe` de Rust pequeno, sin runtime. |
 
+> **Corregido el 3-oct-2026:** en Flow 2.1.4 `Executable_V2` NO funciona. `PluginsLoader.ExecutableV2Plugins()` crea un `ExecutablePlugin` (el de v1) y el exe no llega a arrancarse (probado: ni proceso ni `initialize`). El plugin va en `Executable` (v1), con una cache en disco (`<raiz>\cache\lanzador-indice.json`) para que cada tecla lea un solo fichero (~20 ms medidos). El modo v2 sigue en el codigo para cuando Flow lo arregle.
+
 Las mayusculas dan igual (`AllowedLanguage.IsExecutable` compara con
 `OrdinalIgnoreCase`). La documentacion web solo habla de v1; **el v2 hay que sacarlo del
 codigo**, y lo que sigue sale de ahi.
@@ -471,3 +473,26 @@ asienta, pasar a la **2** de acuerdo con Android.
 6. **El nombre**: `crates/pixpin-flow` ya esta reservado para los «flujos» post-captura. ¿Llamo
    al exe `pixpin-flow.exe` igualmente (en `apps/pixpin-lanzador`) o prefieres otro nombre?
 7. **¿Tambien pines y capturas** (`almacen/`) en la busqueda, o solo lo del chat?
+
+## 6. Hecho despues: las lecciones aprendidas en Flow (3-oct-2026)
+
+§4.5 quedo decidido por el movil: cada leccion es un `.leccion` (JSON) con su mensaje
+`lec-<id>` en el chat (`crates/pixpin-lecciones`, `apps/pixpin/src/lecciones/`). El plugin las
+lee del disco como lo demas y las busca y repasa con ese mismo crate (capa 0, solo
+`serde_json`), asi que Flow ensena lo mismo que la ventana de Lecciones:
+
+| Se teclea | Resultados |
+|---|---|
+| `p a <texto>` / `p lección <texto>` / `p aprendí <texto>` | «Nueva lección: *texto*» (pedido `leccion_nueva`, la ficha se abre rellena) y debajo las que ya hablan de lo mismo («¿Ya la tienes?»). Ctrl+V de una imagen escribe `[img 01]`: va como **foto de la lección** (`imagenes` del pedido). `@proyecto` elige el chat |
+| `p lecciones [texto]` | Sin texto: «Repasar hoy (N)», todas de la mas tocada a la menos y «Abrir la ventana de Lecciones». Con texto: el buscador del movil (sin tildes ni plurales, con erratas, por etiqueta y por significado), y al final buscarlo en la ventana o apuntarlo como nueva |
+| `p repasar` / `p repaso` | Las que tocan hoy con la regla de la app (`Repaso::de_hoy`: las vencidas, la mas grave y repetida primero, cinco al dia) |
+| `p <texto>` | Tambien salen lecciones (cinco como mucho), siempre por debajo de lo que se llama exactamente asi |
+
+Cada leccion: titulo; «📎 N fotos · Lección/Error/Acierto · área · #etiquetas · 🔁 veces ·
+proyecto · hace N días»; el resumen entero al pasar el raton; su primera foto en la vista
+previa (F1). Intro abre su ficha (`abrir` del `.leccion`). Menu: «Abrir la ficha», «Ver en la
+lista de lecciones», «Copiar texto», la foto como pin y «Mostrar en la carpeta».
+
+La letra `a` («aprendí») es la de la leccion nueva: la `l` ya era del lienzo, y el «`pp a`
+= solo archivos» de §4.2 nunca se hizo. Como las demas letras, solo vale sola o con un blanco
+detras («acta» o «ana» siguen buscando).

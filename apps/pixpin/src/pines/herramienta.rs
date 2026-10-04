@@ -106,7 +106,11 @@ pub fn vinculo_de_ruta(ruta: &std::path::Path) -> Option<Vinculo> {
 /// Un PixPin viejo no lo reconoce y lo ensena como nota con el texto, que es
 /// lo menos malo.
 pub fn origen_vinculado(cual: &str, v: &Vinculo) -> String {
-    format!("{PREFIJO_ORIGEN}{cual}@{}|{}", v.mensaje, v.carpeta.display())
+    format!(
+        "{PREFIJO_ORIGEN}{cual}@{}|{}",
+        v.mensaje,
+        v.carpeta.display()
+    )
 }
 
 /// El vinculo de un origen, si lo lleva.
@@ -375,7 +379,11 @@ impl Herramienta {
     ) -> Hecho {
         if self.es_tabla() {
             // La tabla solo se lee: Esc la cierra, como a cualquier pin.
-            return if k.vk == 0x1B { Hecho::Cerrar } else { Hecho::Nada };
+            return if k.vk == 0x1B {
+                Hecho::Cerrar
+            } else {
+                Hecho::Nada
+            };
         }
         let e = mini_panel::tecla(&self.cual, &self.documento, moneda, &mut self.teclado, k);
         self.cumplir(e, tam, escala, moneda, ahora, azar)
@@ -659,7 +667,13 @@ fn pintar_mini(
         let rotulo = textos.t_args("mini-avance", &args);
         let r = rf(d.avance);
         let (ancho, alto) = p.medir_texto(&rotulo, tam);
-        p.texto(&rotulo, r.x + margen, r.y + (r.alto - alto) / 2.0, tam, tema.apagado);
+        p.texto(
+            &rotulo,
+            r.x + margen,
+            r.y + (r.alto - alto) / 2.0,
+            tam,
+            tema.apagado,
+        );
         let x0 = r.x + margen + ancho + 10.0 * e;
         let x1 = r.x + r.ancho - margen;
         if x1 > x0 {
@@ -703,7 +717,10 @@ fn pintar_mini(
             // Los iconos de la derecha, con la cuenta del clic.
             let mut derecha = r.x + r.ancho;
             let iconos = mini_panel::iconos_de_fila(f, n, cuantas);
-            let usados = iconos.iter().rposition(Option::is_some).map_or(0, |k| k + 1);
+            let usados = iconos
+                .iter()
+                .rposition(Option::is_some)
+                .map_or(0, |k| k + 1);
             for (k, icono) in iconos.iter().enumerate().take(usados) {
                 let ri = rf(d.icono_de_fila(fila, k as u32, escala));
                 derecha = derecha.min(ri.x);
@@ -790,7 +807,10 @@ fn pintar_mini(
         p.rellenar(r, tema.caja);
         let (_, alto) = p.medir_texto("Ag", tam);
         let (texto, color) = if h.teclado.borrador.is_empty() {
-            (v.guia.map(|g| textos.t(g)).unwrap_or_default(), tema.apagado)
+            (
+                v.guia.map(|g| textos.t(g)).unwrap_or_default(),
+                tema.apagado,
+            )
         } else {
             (format!("{}|", h.teclado.borrador), tema.texto)
         };
@@ -923,7 +943,10 @@ mod pruebas {
     #[test]
     fn un_cronometro_nace_vacio_aunque_la_nota_traiga_texto() {
         let d = documento_nuevo(mini::CRONOMETRO, "lo que sea", &euro()).unwrap();
-        assert_eq!(d, mini::documento_nuevo(mini::CRONOMETRO, "", &euro()).unwrap());
+        assert_eq!(
+            d,
+            mini::documento_nuevo(mini::CRONOMETRO, "", &euro()).unwrap()
+        );
         // Caso negativo: una palabra que no es mini-app no da documento.
         assert_eq!(documento_nuevo("holograma", "x", &euro()), None);
     }
@@ -1011,10 +1034,16 @@ mod pruebas {
             ctrl: false,
             alt: false,
         };
-        assert_eq!(h.tecla(esc, (320, 400), 100, &euro(), 0, 0.0), Hecho::Cerrar);
+        assert_eq!(
+            h.tecla(esc, (320, 400), 100, &euro(), 0, 0.0),
+            Hecho::Cerrar
+        );
         // Caso negativo: con algo escrito, Esc solo lo borra.
         h.caracter('x', (320, 400), 100, &euro(), 0, 0.0);
-        assert_eq!(h.tecla(esc, (320, 400), 100, &euro(), 0, 0.0), Hecho::Repintar);
+        assert_eq!(
+            h.tecla(esc, (320, 400), 100, &euro(), 0, 0.0),
+            Hecho::Repintar
+        );
     }
 
     #[test]
@@ -1030,7 +1059,11 @@ mod pruebas {
             .filas_de_botones
             .iter()
             .enumerate()
-            .find_map(|(f, bs)| bs.iter().position(|b| b.orden == Orden::Mas).map(|n| (f, n)))
+            .find_map(|(f, bs)| {
+                bs.iter()
+                    .position(|b| b.orden == Orden::Mas)
+                    .map(|n| (f, n))
+            })
             .expect("el contador tiene boton de sumar");
         let r = d.boton(fila as u32, n, v.filas_de_botones[fila].len(), 100);
         let p = Punto {
@@ -1050,8 +1083,22 @@ mod pruebas {
         );
         let tam = (320, 300);
         // Un minuto y en marcha, a las 0.
-        h.cumplir(Efecto::Hacer(Orden::Duracion(60_000)), tam, 100, &euro(), 0, 0.0);
-        h.cumplir(Efecto::Hacer(Orden::ArrancarOParar), tam, 100, &euro(), 0, 0.0);
+        h.cumplir(
+            Efecto::Hacer(Orden::Duracion(60_000)),
+            tam,
+            100,
+            &euro(),
+            0,
+            0.0,
+        );
+        h.cumplir(
+            Efecto::Hacer(Orden::ArrancarOParar),
+            tam,
+            100,
+            &euro(),
+            0,
+            0.0,
+        );
         assert!(h.late_cada_ms(&euro(), 1_000).is_some(), "corriendo, late");
         assert!(!h.vencio(&euro(), 30_000), "a medias no avisa");
         assert!(h.vencio(&euro(), 61_000), "a cero avisa");
@@ -1106,7 +1153,14 @@ mod pruebas {
         let d = pixpin_capture::Dispositivo::nuevo().unwrap();
         let motor = pixpin_render::MotorRender::nuevo(d.d3d()).unwrap();
         let mut tareas = tareas(4);
-        tareas.cumplir(Efecto::Hacer(Orden::Alternar(1)), (320, 400), 125, &euro(), 0, 0.0);
+        tareas.cumplir(
+            Efecto::Hacer(Orden::Alternar(1)),
+            (320, 400),
+            125,
+            &euro(),
+            0,
+            0.0,
+        );
         let gastos = Herramienta::nueva(
             mini::GASTOS,
             documento_nuevo(mini::GASTOS, "# Viaje\nCena 42,50\nTaxi 12", &euro()).unwrap(),
@@ -1115,7 +1169,10 @@ mod pruebas {
             mini::CONTADOR,
             documento_nuevo(mini::CONTADOR, "", &euro()).unwrap(),
         );
-        let tabla = Herramienta::nueva(TABLA, "Mes\tIngresos\tGastos\nEnero\t1200\t800\nFebrero\t1350\t910".into());
+        let tabla = Herramienta::nueva(
+            TABLA,
+            "Mes\tIngresos\tGastos\nEnero\t1200\t800\nFebrero\t1350\t910".into(),
+        );
         for (nombre, h) in [
             ("tareas", tareas),
             ("gastos", gastos),

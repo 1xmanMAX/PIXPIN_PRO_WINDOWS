@@ -493,47 +493,10 @@ pub fn abrir_sobre_con_pegadas(
             fondo.clone(),
             fotos,
             None,
-            None,
             pegadas,
         )?;
         if !cambiar {
             return Ok((vuelta, enlace));
-        }
-        escena = vuelta;
-        let ahora = !PANTALLA_COMPLETA.load(std::sync::atomic::Ordering::SeqCst);
-        PANTALLA_COMPLETA.store(ahora, std::sync::atomic::Ordering::SeqCst);
-    }
-}
-
-/// El mismo editor con el universo detras (D215): la escena son sus
-/// anotaciones y la sesion atiende lo que es del universo antes que el
-/// editor. Vuelve con la escena al cerrar; si se pidio abrir una hoja, la
-/// sesion la lleva en `hoja_pedida`.
-///
-/// Va aparte de `abrir` y no como un parametro mas de ella para no tocar
-/// a quien ya la llama: el chat y la bandeja siguen abriendo dibujos igual.
-pub fn abrir_universo(
-    escena: Escena,
-    ajustes_iman: pixpin_motor2d::enganche::Ajustes,
-    nivel: pixpin_nivel::Nivel,
-    medir_fotogramas: bool,
-    sesion: &mut crate::universo::sesion::Sesion,
-) -> Result<Escena> {
-    let mut escena = escena;
-    loop {
-        let (vuelta, _, cambiar) = abrir_en_modo(
-            escena,
-            ajustes_iman,
-            nivel,
-            medir_fotogramas,
-            None,
-            &[],
-            Some(&mut *sesion),
-            None,
-            &mut Vec::new(),
-        )?;
-        if !cambiar {
-            return Ok(vuelta);
         }
         escena = vuelta;
         let ahora = !PANTALLA_COMPLETA.load(std::sync::atomic::Ordering::SeqCst);
@@ -563,7 +526,6 @@ pub fn abrir_pantalla(
         false,
         fondo,
         &[],
-        None,
         Some(&mut *pantalla),
         &mut Vec::new(),
     )?;
@@ -600,7 +562,6 @@ fn abrir_en_modo(
     medir_fotogramas: bool,
     fondo: Option<crate::fondo_lienzo::Fuente>,
     fotos: &[(u64, std::path::PathBuf)],
-    mut universo: Option<&mut crate::universo::sesion::Sesion>,
     // El anotador de pantalla (ver `pantalla.rs`): `None` es el lienzo de
     // siempre.
     mut pantalla: Option<&mut pantalla::Pantalla<'_>>,
@@ -683,12 +644,6 @@ fn abrir_en_modo(
     // A3: con capas, la escena vive en su propio visual con colchon y la
     // barra en otro encima. `[rendimiento] paneo_por_composicion = false`
     // vuelve a la superficie de siempre, con todo en la misma swapchain.
-    //
-    // Con el universo detras tambien, desde A3 fase 2: su cielo y sus
-    // estrellas se van a sus propios visuales DEBAJO de la escena, y cada
-    // uno se mueve a SU paralaje (`Superficie::montar_fondo`). Antes no se
-    // montaba porque los tres iban en la misma superficie, y correrla
-    // entera los correria a todos al mismo paso.
     let por_composicion = rendimiento.paneo_por_composicion && !tinta_clasica;
     let superficie = if por_composicion {
         Superficie::nueva_con_capas(
@@ -773,14 +728,6 @@ fn abrir_en_modo(
         .as_deref()
         .map_or(crate::dibujo::permitidas::Anfitrion::Lienzo, |p| p.anfitrion());
     crate::dibujo::permitidas::asegurar(anfitrion, &mut gesto);
-    // En el universo se abre con la mano: lo primero que se hace ahi es
-    // mirar y mover astros, no dibujar.
-    if universo.is_some() {
-        elegir_herramienta(&mut gesto, Herramienta::Mano);
-        // D227: soltar ficheros del Explorador encima los mete en el chat.
-        // Solo con el universo: en un dibujo suelto no hay chat al que ir.
-        ventana.aceptar_ficheros(true);
-    }
     // D135: con fondo, la imagen centrada; sin fondo, el origen como antes.
     let mut camara = match &fondo {
         Some(f) => encuadre_inicial(
@@ -815,32 +762,6 @@ fn abrir_en_modo(
     }
     // D136: rueda, Shift, Ctrl, espacio y boton central, a la Excalidraw.
     let mut navegador = navegacion::Navegador::nuevo();
-    if let Some(s) = universo.as_deref_mut() {
-        s.conectar_ventana(&ventana, area, escala_por_cien);
-        camara = s.camara_inicial();
-        // Alejarse hasta ver todas las galaxias a la vez.
-        navegador.zoom_minimo = pixpin_universo::ZOOM_MINIMO_UNIVERSO;
-        // Y moverse como por un mapa: la rueda acerca (`universo::mapa`).
-        navegador.mapa = true;
-        // A3 fase 2: el cielo y las estrellas, cada uno en su visual. El
-        // colchon de las estrellas es el del lienzo por su paralaje: se
-        // mueven menos, asi que necesitan menos. Si falla, la superficie se
-        // queda sin capas de fondo y el universo se pinta como siempre
-        // (`Superficie::tiene_fondo` lo dice).
-        if con_capas {
-            let margen_fondo = s.margen_estrellas(margen_escena);
-            let (cw, ch) = crate::universo::cielo::tamano(area.ancho, area.alto);
-            if let Err(err) = superficie.montar_fondo(cw, ch, area.ancho, area.alto, margen_fondo) {
-                tracing::warn!(?err, "sin capas de fondo para el universo");
-            }
-        }
-    }
-    // Solo con el universo: el zoom que persigue la rueda y la inercia de
-    // un arrastre del cielo (ver `universo::mapa`). En un lienzo normal no
-    // se activan nunca.
-    let mut suave = crate::universo::mapa::Suave::default();
-    let mut reloj_suave = std::time::Instant::now();
-    let mut arrastre_mapa: Option<crate::universo::mapa::Arrastre> = None;
     let mut efectiva = vista_efectiva(&camara, escala_por_cien);
     let mut cache = Cache::nueva();
     let mut cache_tinta = pixpin_render::CacheTinta::nueva();
@@ -855,20 +776,8 @@ fn abrir_en_modo(
     // "Contenido" y area de trabajo son el mismo rectangulo, como en
     // `CapaViva::nueva` (`capa.rs`): aqui el contenido ES la pantalla
     // entera, no hay un pin ni una ventana mas pequena de referencia.
-    // Con el universo, la caja va bajo su barra de ruta, no encima de ella.
-    let area_caja = |escala: u32, con_universo: bool| {
-        if !con_universo {
-            return area_ui;
-        }
-        let ruta = crate::universo::sesion::Sesion::alto_ruta(escala);
-        pixpin_geom::Rect {
-            y: area.y + ruta as i32,
-            alto: area.alto.saturating_sub(ruta),
-            ..area
-        }
-    };
     let mut caja = CajaHerramientas::barra_superior(
-        area_caja(escala_por_cien, universo.is_some()),
+        area_ui,
         escala_por_cien,
         crate::dibujo::permitidas::botones(anfitrion),
     );
@@ -888,7 +797,6 @@ fn abrir_en_modo(
     // La imagen de referencia flotando encima (`referencia.rs`): ninguna al
     // abrir, como en el movil.
     let mut la_referencia = referencia::Referencia::default();
-    let reloj = std::time::Instant::now();
     // Si el fotograma anterior pinto una punta predicha: la zona que se
     // presenta tiene que cubrir tambien donde estaba, o quedaria un resto.
     let mut habia_prediccion = false;
@@ -964,11 +872,10 @@ fn abrir_en_modo(
     // hay senal de latencia que marque el ritmo, asi que lo marca el reloj.
     let mut ultimo_commit_tinta = std::time::Instant::now();
     let mut medidor = crate::medir_fotogramas::MedidorFotogramas::nuevo(medir_fotogramas);
-    // F5: las marcas de este dibujo y su riel. Con el universo detras no hay:
-    // alli lo que se marca son astros, y el riel taparia su interfaz.
+    // F5: las marcas de este dibujo y su riel.
     let mut marcador = marcas::Marcador::cargar();
     // Ni en el anotador de pantalla: las marcas son de un dibujo guardado.
-    let con_marcas = universo.is_none() && pantalla.is_none();
+    let con_marcas = pantalla.is_none();
     // F8: la pastilla de la Zona y, si el chat dijo de que hoja es este
     // lienzo, su interruptor «Al chat» (ver `zona_al_chat`).
     let mut pastilla_zona = pastilla_zona::PastillaZona::default();
@@ -1080,7 +987,7 @@ fn abrir_en_modo(
                     }
                     efectiva = vista_efectiva(&camara, escala_por_cien);
                     caja = CajaHerramientas::barra_superior(
-                        area_caja(escala_por_cien, universo.is_some()),
+                        area_ui,
                         escala_por_cien,
                         crate::dibujo::permitidas::botones(anfitrion),
                     )
@@ -1168,7 +1075,7 @@ fn abrir_en_modo(
             // **G5: presentar (F5) y solo mirar (Alt+R)** (`presentar.rs`).
             // Van antes que el navegador y que la barra: presentando no hay
             // barra, y lo que se pulsa pasa diapositivas o anota.
-            if pantalla.is_none() && universo.is_none() {
+            if pantalla.is_none() {
                 let escribiendo = gesto.esta_escribiendo();
                 let mut repintar_todo = false;
                 let mut consumido = false;
@@ -1383,24 +1290,10 @@ fn abrir_en_modo(
                     vivo,
                 )
             };
-            // El universo: la rueda no salta, se persigue en el bucle. En el
-            // lienzo no: perseguir el zoom (~170 ms hasta llegar) se notaba
-            // como retraso al acercar para dibujar; cada muesca se aplica
-            // entera en el acto, abajo, con el mismo factor.
-            if universo.is_some()
-                && let Some(navegacion::Accion::ZoomSuave { foco, delta }) = nav.accion
-            {
-                if !suave.activo() {
-                    reloj_suave = std::time::Instant::now();
-                }
-                suave.pedir_zoom(
-                    camara.zoom,
-                    foco,
-                    delta,
-                    navegador.zoom_minimo,
-                    pixpin_motor2d::camara::ZOOM_MAXIMO,
-                );
-            } else if let Some(accion) = nav.accion {
+            // La rueda no se persigue: perseguir el zoom (~170 ms hasta
+            // llegar) se notaba como retraso al acercar para dibujar; cada
+            // muesca se aplica entera en el acto.
+            if let Some(accion) = nav.accion {
                 if navegacion::aplicar_con_minimo(&mut camara, accion, navegador.zoom_minimo) {
                     efectiva = vista_efectiva(&camara, escala_por_cien);
                     // La capa congelada se da por invalida sola: su Estampa
@@ -1425,199 +1318,6 @@ fn abrir_en_modo(
                     ventana.poner_cursor(FormaCursorWin::Mover);
                 }
                 continue;
-            }
-            // Un clic para la inercia: la mano vuelve a mandar.
-            if matches!(
-                ev,
-                EventoOverlay::BotonPulsado(_) | EventoOverlay::BotonCentralPulsado(_)
-            ) {
-                suave.parar_inercia();
-            }
-            // Arrastrando el cielo del universo (empezo abajo, en su `Pasa`):
-            // lo que se mueve es la camara, y nada mas ve el raton.
-            if let Some(mut a) = arrastre_mapa.take() {
-                let ms = reloj.elapsed().as_secs_f64() * 1000.0;
-                match ev {
-                    // Como con el espacio: si Windows le quito la captura al
-                    // raton, el boton-arriba no llega y el arrastre se suelta
-                    // aqui.
-                    EventoOverlay::RatonMovido(p)
-                        if navegacion::algun_boton_pulsado(
-                            &[0x01, 0x02],
-                            pixpin_shell::entrada::tecla_pulsada_ahora,
-                        ) =>
-                    {
-                        let (dx, dy) = a.mover(p, ms, navegacion::escala_de(escala_por_cien));
-                        arrastre_mapa = Some(a);
-                        ventana.poner_cursor(FormaCursorWin::Mover);
-                        if navegacion::aplicar_con_minimo(
-                            &mut camara,
-                            navegacion::Accion::Desplazar { dx, dy },
-                            navegador.zoom_minimo,
-                        ) {
-                            efectiva = vista_efectiva(&camara, escala_por_cien);
-                            todo_sucio = true;
-                            contenido_sucio = true;
-                            ventana.invalidar();
-                        }
-                        continue;
-                    }
-                    EventoOverlay::RatonMovido(_) => {}
-                    EventoOverlay::BotonSoltado(_) => {
-                        if let Some(v) = a.soltar(ms) {
-                            reloj_suave = std::time::Instant::now();
-                            suave.empujar(v);
-                        }
-                        ventana.poner_cursor(FormaCursorWin::Flecha);
-                        continue;
-                    }
-                    EventoOverlay::Muestra(_) => {
-                        arrastre_mapa = Some(a);
-                        continue;
-                    }
-                    _ => arrastre_mapa = Some(a),
-                }
-            }
-            // El universo, si lo hay, va antes que los enlaces y que las
-            // herramientas del editor: un clic sobre un astro es suyo. Menos
-            // el que cae en la caja de herramientas o en el panel, que son
-            // del editor tambien con el universo detras.
-            if let Some(s) = universo.as_deref_mut() {
-                use crate::universo::sesion::{Editor, Respuesta};
-                let sobre_la_interfaz = match ev {
-                    EventoOverlay::BotonPulsado(p) => {
-                        !matches!(caja.destino(p), DestinoClic::Lienzo)
-                            || crate::panel_dibujo::panel_para(
-                                &gesto,
-                                &escena,
-                                area,
-                                escala_por_cien,
-                            )
-                            .is_some_and(|panel| {
-                                !matches!(
-                                    panel.destino(p),
-                                    pixpin_ui::panel_lateral::DestinoPanel::Fuera
-                                )
-                            })
-                    }
-                    _ => false,
-                };
-                if !sobre_la_interfaz {
-                    let ed = Editor {
-                        mano: gesto.herramienta == Herramienta::Mano,
-                        escribiendo: gesto.esta_escribiendo(),
-                        escala_por_cien,
-                        area,
-                    };
-                    match s.evento(&ev, &mut camara, &mut escena, &ed) {
-                        Respuesta::Pasa => {
-                            use crate::universo::mapa;
-                            let libre = !gesto.esta_escribiendo();
-                            match ev {
-                                EventoOverlay::BotonPulsado(p) if libre => {
-                                    let q = efectiva.a_mundo(Punto2::nuevo(
-                                        (p.x - area.x) as f32,
-                                        (p.y - area.y) as f32,
-                                    ));
-                                    // Los tiradores sobresalen de la caja
-                                    // elegida: se cuentan unos pixeles de mas.
-                                    let margen = 16.0 / efectiva.zoom;
-                                    let en_la_seleccion = gesto
-                                        .seleccion
-                                        .caja(&escena)
-                                        .is_some_and(|(x0, y0, x1, y1)| {
-                                            q.x >= x0 - margen
-                                                && q.x <= x1 + margen
-                                                && q.y >= y0 - margen
-                                                && q.y <= y1 + margen
-                                        });
-                                    let clic = mapa::Clic {
-                                        libre_de_astros: true,
-                                        mano: ed.mano,
-                                        shift: pixpin_shell::entrada::modificadores_pulsados()
-                                            .shift,
-                                        sobre_anotacion: en_la_seleccion
-                                            || pixpin_motor2d::impacto::elemento_en(
-                                                &escena.elementos,
-                                                q,
-                                            )
-                                            .is_some(),
-                                    };
-                                    if mapa::arrastra_el_cielo(clic) {
-                                        // Como un clic en el vacio: suelta
-                                        // lo que hubiera elegido.
-                                        gesto.seleccion.limpiar();
-                                        arrastre_mapa = Some(mapa::Arrastre::nuevo(p));
-                                        ventana.poner_cursor(FormaCursorWin::Mover);
-                                        todo_sucio = true;
-                                        contenido_sucio = true;
-                                        ventana.invalidar();
-                                        continue;
-                                    }
-                                }
-                                // Las flechas llevan el cielo, si no hay
-                                // anotaciones elegidas que mover con ellas.
-                                EventoOverlay::Tecla {
-                                    vk, ctrl: false, ..
-                                } if libre && gesto.seleccion.esta_vacia() => {
-                                    if let Some((dx, dy)) = mapa::desplazamiento_de_flecha(vk) {
-                                        if navegacion::aplicar_con_minimo(
-                                            &mut camara,
-                                            navegacion::Accion::Desplazar { dx, dy },
-                                            navegador.zoom_minimo,
-                                        ) {
-                                            efectiva = vista_efectiva(&camara, escala_por_cien);
-                                            todo_sucio = true;
-                                            contenido_sucio = true;
-                                            ventana.invalidar();
-                                        }
-                                        continue;
-                                    }
-                                }
-                                // `+` y `-`: una muesca de rueda en el centro.
-                                EventoOverlay::Caracter(c) if libre => {
-                                    if let Some(delta) = mapa::delta_de_caracter(c) {
-                                        let e = navegacion::escala_de(escala_por_cien);
-                                        let centro = Punto2::nuevo(
-                                            area.ancho as f32 / (2.0 * e),
-                                            area.alto as f32 / (2.0 * e),
-                                        );
-                                        if !suave.activo() {
-                                            reloj_suave = std::time::Instant::now();
-                                        }
-                                        suave.pedir_zoom(
-                                            camara.zoom,
-                                            centro,
-                                            delta,
-                                            navegador.zoom_minimo,
-                                            pixpin_motor2d::camara::ZOOM_MAXIMO,
-                                        );
-                                        continue;
-                                    }
-                                }
-                                _ => {}
-                            }
-                        }
-                        Respuesta::Consumido { repintar } => {
-                            efectiva = vista_efectiva(&camara, escala_por_cien);
-                            if repintar {
-                                todo_sucio = true;
-                                contenido_sucio = true;
-                                ventana.invalidar();
-                            }
-                            s.tras_evento(&escena);
-                            continue;
-                        }
-                        Respuesta::Apartarse => {
-                            // El editor va siempre encima: minimizado deja
-                            // ver el chat, y `universo::lanzar` lo devuelve.
-                            ventana.minimizar();
-                            s.tras_evento(&escena);
-                            continue;
-                        }
-                        Respuesta::Cerrar | Respuesta::AbrirHoja { .. } => break 'bucle,
-                    }
-                }
             }
             // F8: la pastilla de la Zona es un boton, no el sitio donde empieza
             // una zona (ver `pastilla_zona`).
@@ -1857,12 +1557,6 @@ fn abrir_en_modo(
                 contenido_sucio |= hecho.repinte.contenido;
                 ventana.invalidar();
             }
-            // Una herramienta del editor deja la del universo.
-            if hecho.eligio
-                && let Some(s) = universo.as_deref_mut()
-            {
-                s.herramienta = None;
-            }
             if hecho.consumido && !imprimir_de_la_barra {
                 continue;
             }
@@ -2083,7 +1777,7 @@ fn abrir_en_modo(
             // cada aviso se rehace solo su trozo, el de antes y el de ahora.
             // Antes cada aviso pintaba la escena entera.
             let lupa_en_zona = match (apuntaba, apunta) {
-                (false, true) if con_capas && universo.is_none() && !tinta_viva => {
+                (false, true) if con_capas && !tinta_viva => {
                     congelar::hornear(
                         &mut motor,
                         &mut capa,
@@ -2206,7 +1900,7 @@ fn abrir_en_modo(
                     &imagenes,
                     ancho_px,
                     alto_px,
-                    con_capas && universo.is_none() && !tinta_viva,
+                    con_capas && !tinta_viva,
                     camara_pintada == efectiva && !superficie.esta_estirada(),
                     caja_al_pulsar,
                 );
@@ -2393,9 +2087,7 @@ fn abrir_en_modo(
                     }
                     ventana.invalidar();
                 }
-                // Con el universo detras no hay capa congelada: se horneria
-                // sobre blanco y sin astros (ver el plan, «Ajustes», D238).
-                if activo_ahora && en_reposo_antes && universo.is_none() && !tinta_ahora {
+                if activo_ahora && en_reposo_antes && !tinta_ahora {
                     congelar::hornear(
                         &mut motor,
                         &mut capa,
@@ -2565,7 +2257,6 @@ fn abrir_en_modo(
                         None,
                         None,
                         None,
-                        None,
                         true,
                         FueraDeLaEscena::default(),
                         None,
@@ -2600,42 +2291,13 @@ fn abrir_en_modo(
         if let Some(ps) = pastilla.as_mut() {
             ps.al_dia(&motor);
         }
-        // La rueda y la inercia del universo, con el reloj: se mueven sin
-        // eventos hasta llegar.
-        if suave.activo() {
-            let ahora = std::time::Instant::now();
-            let dt = ahora.duration_since(reloj_suave).as_secs_f32();
-            reloj_suave = ahora;
-            if suave.avanzar(
-                &mut camara,
-                dt,
-                navegador.zoom_minimo,
-                pixpin_motor2d::camara::ZOOM_MAXIMO,
-            ) {
-                efectiva = vista_efectiva(&camara, escala_por_cien);
-                todo_sucio = true;
-                contenido_sucio = true;
-                ventana.invalidar();
-            }
-        }
-        // F5: el viaje hasta una marca, con el reloj como la rueda del
-        // universo. Solo se mueve la camara: sin `contenido_sucio`, A3 lo
-        // resuelve corriendo el visual mientras el colchon de.
+        // F5: el viaje hasta una marca, con el reloj. Solo se mueve la
+        // camara: sin `contenido_sucio`, A3 lo resuelve corriendo el visual
+        // mientras el colchon de.
         if marcador.avanzar(&mut camara) {
             efectiva = vista_efectiva(&camara, escala_por_cien);
             todo_sucio = true;
             ventana.invalidar();
-        }
-        // El universo: su vuelo de camara, sus destellos y su guardado van
-        // con el reloj, no con los eventos.
-        if let Some(s) = universo.as_deref_mut() {
-            if s.tick(&mut camara) {
-                efectiva = vista_efectiva(&camara, escala_por_cien);
-                todo_sucio = true;
-                contenido_sucio = true;
-                ventana.invalidar();
-            }
-            s.tras_evento(&escena);
         }
         let mut pintado_medido = None;
         // Un solo fotograma por vuelta, despues de haber pasado TODOS los
@@ -2715,27 +2377,12 @@ fn abrir_en_modo(
         // se resuelve con una matriz en el visual de la escena: ni se
         // recorre la escena, ni se emite una primitiva, ni se presenta.
         //
-        // Con el universo detras tambien (A3 fase 2), pero solo PANEOS: el
-        // cielo esta quieto y las estrellas van a su paralaje, y eso es una
-        // traslacion; un zoom no se reparte asi -lo que se acerca es el
-        // lienzo, no el cielo-, y estirarlos los descolocaria. Un zoom en el
-        // universo pinta nitido, como siempre.
-        //
         // `todo_sucio && sucio.is_none() && !contenido_sucio` es la forma
         // exacta de decir «la unica razon por la que hay que rehacer el
         // fotograma es que la camara se movio»: `sucio` lo pone un gesto
         // (un trazo en curso, por ejemplo) y `contenido_sucio` todo lo
         // demas.
         if con_capas && hay_que_pintar && todo_sucio && !contenido_sucio && sucio.is_none() {
-            // A3 fase 2: cuanto se mueven las estrellas por cada pixel que
-            // se mueve el lienzo. Sin universo no hay estrellas y no se
-            // mueve nada.
-            let paralaje = universo.as_deref().map_or(0.0, |s| s.paralaje());
-            let compone = |s: f32, dx: f32, dy: f32| {
-                universo.is_none()
-                    || (s == 1.0
-                        && superficie.desplazamiento_fondo_valido(dx * paralaje, dy * paralaje))
-            };
             match transformada_de_camara(
                 &camara_pintada,
                 &efectiva,
@@ -2743,13 +2390,8 @@ fn abrir_en_modo(
                 alto_px,
                 margen_escena,
             ) {
-                Some((s, dx, dy)) if compone(s, dx, dy) => {
+                Some((s, dx, dy)) => {
                     superficie.estirar(s, s, dx, dy);
-                    // Las estrellas, a su paso. El cielo no se toca: es
-                    // fondo de pantalla y no se mueve con nada.
-                    if universo.is_some() {
-                        superficie.desplazar_fondo(dx * paralaje, dy * paralaje);
-                    }
                     hay_que_pintar = false;
                     // `todo_sucio` se queda puesto: el fotograma nitido que
                     // llegue al reposo tiene que ser completo.
@@ -2759,7 +2401,7 @@ fn abrir_en_modo(
                     // MOVERSE, no 150 ms desde que empezo el arrastre.
                     camara_movida = Some(std::time::Instant::now());
                 }
-                // No cabe (o es un zoom con el universo detras): se pinta
+                // No cabe: se pinta
                 // nitido ya, sin esperar al reposo.
                 _ => camara_movida = None,
             }
@@ -2953,7 +2595,6 @@ fn abrir_en_modo(
             let apto = camara_pintada == efectiva
                 && !superficie.esta_estirada()
                 && !interfaz_sucia
-                && universo.is_none()
                 && panel == ultimo_panel
                 && nada_mas_que_el_marco(&gesto, &escena, efectiva.zoom);
             let hecho = if apto {
@@ -3097,7 +2738,6 @@ fn abrir_en_modo(
                 zona_pintada,
                 prediccion,
                 panel.as_ref(),
-                universo.as_deref_mut(),
                 // La capa de interfaz se repinta cuando cambia algo suyo o
                 // cuando se rehace el fotograma entero: mientras se traza
                 // (zona parcial) no se toca, que es donde cada `Commit` de
@@ -3290,17 +2930,13 @@ fn abrir_en_modo(
             tope_ms: minimo(
                 minimo(minimo(decision.tope_ms, tope_forma), tope_reposo),
                 minimo(
-                    minimo(
-                        universo.as_deref().and_then(|s| s.tope_ms()),
-                        // B2: la capa de tinta tiene algo que pintar pero
-                        // todavia no toca; sin este tope, con la mano quieta
-                        // no llegaria ningun evento y el ultimo tramo del
-                        // trazo se quedaria sin salir.
-                        espera_tinta,
-                    ),
-                    // Persiguiendo: despertar cada fotograma. Parado, nada.
-                    // Lo mismo volando hacia una marca (F5).
-                    minimo(suave.activo().then_some(8), marcador.tope_ms()),
+                    // B2: la capa de tinta tiene algo que pintar pero todavia
+                    // no toca; sin este tope, con la mano quieta no llegaria
+                    // ningun evento y el ultimo tramo del trazo se quedaria
+                    // sin salir.
+                    espera_tinta,
+                    // Volando hacia una marca (F5): despertar cada fotograma.
+                    marcador.tope_ms(),
                 ),
             ),
             ..decision
@@ -3418,7 +3054,6 @@ fn abrir_en_modo(
             None,
             None,
             None,
-            None,
             true,
             FueraDeLaEscena::default(),
             None,
@@ -3427,10 +3062,6 @@ fn abrir_en_modo(
         superficie.dejar_de_estirar();
         pixpin_shell::esperar_composicion();
         pa.resultado = (pa.capturar)();
-    }
-    // El universo guarda al cerrar, pase lo que pase: su encuadre tambien.
-    if let Some(s) = universo {
-        s.cerrar(&escena, &camara);
     }
     // D143: la copia en GPU (y la de CPU) se suelta al cerrar, no al volver
     // al gestor de pines.
@@ -3494,7 +3125,6 @@ fn pintar(
     zona: Option<(i32, i32, i32, i32)>,
     prediccion: Option<Punto2>,
     panel: Option<&pixpin_ui::panel_lateral::PanelLateral>,
-    mut universo: Option<&mut crate::universo::sesion::Sesion>,
     interfaz_sucia: bool,
     fuera: FueraDeLaEscena,
     // F5: las marcas van dentro de la escena (ver `marcas.rs`, «por que la
@@ -3504,11 +3134,6 @@ fn pintar(
 ) -> Option<Pintada> {
     if let Some(f) = fondo.as_mut() {
         f.asegurar(motor);
-    }
-    // Lo que se ve, los cuadernos que faltan y las miniaturas: antes de
-    // abrir el fotograma, por lo mismo que las imagenes de abajo.
-    if let Some(s) = universo.as_deref_mut() {
-        s.preparar(motor, camara);
     }
     // Antes de `dibujar`: crear un bitmap con el `BeginDraw` abierto no es
     // lo que espera Direct2D.
@@ -3521,9 +3146,6 @@ fn pintar(
     // interfaz, que va en su propia capa, no.
     let margen = superficie.margen();
     let con_capas = superficie.tiene_capas();
-    // A3 fase 2: el cielo y las estrellas tienen visual propio, asi que la
-    // escena no los pinta.
-    let con_fondo = superficie.tiene_fondo();
     // La rejilla dice que PUEDE verse; la camara filtra lo que de verdad se
     // ve. Sin la rejilla, esto recorreria los ocho mil elementos.
     //
@@ -3570,18 +3192,13 @@ fn pintar(
     let zona = if capa_vale { zona } else { None };
 
     let fondo_ref = fondo.as_ref();
-    // Todo lo que NO es lienzo: la ruta del universo, la barra, el panel y
+    // Todo lo que NO es lienzo: la barra, el panel y
     // lo que pinte el llamante encima (el cajetin de calibrar).
     //
     // `base` es el desplazamiento que hay que sumarle a todo: 0 cuando se
     // pinta en la misma superficie que la escena, y el que devuelva
     // DirectComposition cuando va en su propia capa.
-    let pintar_ui = |p: &pixpin_render::Pintor<'_>,
-                     base: (f32, f32),
-                     uni: Option<&crate::universo::sesion::Sesion>| {
-        if let Some(s) = uni {
-            s.pintar_delante(p, camara, ancho_px, alto_px);
-        }
+    let pintar_ui = |p: &pixpin_render::Pintor<'_>, base: (f32, f32)| {
         // Pasante (el anotador de pantalla dejando pasar los clics): la
         // barra y el panel no responderian, asi que no se ensenan. Es
         // tambien lo que dice en que estado se esta.
@@ -3596,13 +3213,7 @@ fn pintar(
         crate::caja_dibujo::pintar_barra(
             p,
             caja_herramientas,
-            // Con una herramienta del universo puesta, ninguna del editor
-            // sale elegida: `Emoji` del motor no tiene boton en esta caja.
-            if uni.is_some_and(|s| s.herramienta.is_some()) {
-                Herramienta::Emoji
-            } else {
-                gesto.herramienta
-            },
+            gesto.herramienta,
             escala_por_cien,
             raton_barra,
             |b| match b {
@@ -3630,7 +3241,6 @@ fn pintar(
     // dispositivo se ha perdido.
     let error = {
         let imagenes: &ImagenesLienzo = imagenes;
-        let uni = universo.as_deref();
         motor.dibujar(&destino, |p| {
             // El mundo se dibuja en sus propias coordenadas; la matriz activa es
             // lo unico que cambia al encuadrar o acercar (camara.rs lo explica:
@@ -3651,26 +3261,7 @@ fn pintar(
                 });
             }
             if !capa_vale {
-                match uni {
-                    // El cielo en lugar del papel, en pixeles de pantalla:
-                    // la vista del mundo se pone justo despues. El colchon
-                    // se suma aqui porque esto se pinta en la superficie de
-                    // la escena, que va corrida ese colchon.
-                    Some(s) => {
-                        if con_fondo {
-                            // A3 fase 2: el cielo y las estrellas estan en
-                            // sus propios visuales, DEBAJO de este. La
-                            // escena va transparente para que se vean.
-                            p.limpiar_transparente();
-                            p.desplazar(margen, margen);
-                            s.pintar_astros(p, camara);
-                        } else {
-                            p.desplazar(margen, margen);
-                            s.pintar_detras(p, camara);
-                        }
-                    }
-                    None => p.limpiar(a_color(escena.fondo)),
-                }
+                p.limpiar(a_color(escena.fondo));
             }
             p.poner_vista((0.0, 0.0), camara.zoom, (origen.x, origen.y));
             // D140/D142: con la capa valida la imagen ya esta copiada; si no, va
@@ -3787,7 +3378,7 @@ fn pintar(
             // razon de ser de las dos capas.
             if !con_capas {
                 p.desplazar(0.0, 0.0);
-                pintar_ui(p, (0.0, 0.0), uni);
+                pintar_ui(p, (0.0, 0.0));
                 if let Some(e) = encima.take() {
                     e(p, (0.0, 0.0));
                 }
@@ -3802,36 +3393,12 @@ fn pintar(
     // `Present` de la escena caen en el mismo intervalo de composicion, asi
     // que DWM las ensena juntas.
     if con_capas && interfaz_sucia {
-        let uni = universo.as_deref();
         let _ = superficie.pintar_interfaz(motor, |p, d| {
-            pintar_ui(p, d, uni);
+            pintar_ui(p, d);
             if let Some(e) = encima.take() {
                 e(p, d);
             }
         });
-    }
-    // A3 fase 2: el cielo y las estrellas, cada uno en el suyo. Solo en el
-    // fotograma nitido: mientras la camara se mueve, lo que se mueve es la
-    // matriz del visual de las estrellas, no sus pixeles.
-    if con_fondo && interfaz_sucia {
-        let uni = universo.as_deref();
-        if let Some(s) = uni {
-            let (cw, ch) = superficie.tamano_cielo().unwrap_or((1, 1));
-            let _ = superficie.pintar_cielo(motor, |p, _| {
-                // El degradado se hornea del tamano de la PANTALLA y aqui se
-                // pinta del tamano de su superficie chica; la composicion lo
-                // estira al resto. Es la misma imagen, con una pasada de
-                // 192 px en vez de una de 3.000.
-                s.pintar_cielo(p, cw as f32, ch as f32);
-            });
-            let m = superficie.margen_fondo();
-            let _ = superficie.pintar_fondo(motor, |p, base| {
-                p.desplazar(base.0 + m, base.1 + m);
-                s.pintar_estrellas(p, camara);
-            });
-        }
-        // Lo que se acaba de pintar ya esta en la camara nueva.
-        superficie.reponer_fondo();
     }
     // **La pasada de tapado**, con el fotograma de la escena ya cerrado
     // (`motor.dibujar` acaba de hacer su `EndDraw`): leer lo pintado exige
@@ -3890,10 +3457,6 @@ fn pintar(
         imagenes.soltar();
         // Y lo de dentro de las lupas, pintado en mapas del viejo.
         lupas::olvidar();
-        // Y las estrellas y miniaturas del universo.
-        if let Some(s) = universo {
-            s.soltar_recursos();
-        }
     }
     let t_presentar = std::time::Instant::now();
     let _ = superficie.presentar_sincronizado(zona);
@@ -4994,16 +4557,13 @@ fn pedir_medida(
                         None,
                         None,
                         None,
-                        // El cajetin de calibrar pinta sin el universo: es un
-                        // dialogo corto y el cielo volvera al cerrarlo.
-                        None,
                         // El cajetin cambia con cada tecla: la capa de la
                         // interfaz se rehace en cada fotograma de este
                         // bucle, que dura lo que tarde en escribirse un
                         // numero.
                         true,
                         FueraDeLaEscena::default(),
-                        // El cajetin es un momento: sin marcas, como sin cielo.
+                        // El cajetin es un momento: sin marcas.
                         None,
                         |p, base| {
                             dibujar_cajetin(p, base, ancho_px, alto_px, largo_px, &texto, unidad)

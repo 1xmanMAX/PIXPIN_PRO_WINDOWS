@@ -1383,6 +1383,16 @@ impl<'a, D: Disco + ?Sized, F: Read + Write> Sesion<'a, D, F> {
                         &mut cuenta,
                         hecho,
                     )?,
+                // Una leccion aprendida cambiada en los dos se junta (mejora
+                // del PC): se trae la suya, se une con la de aqui y la union
+                // va de vuelta, para que los dos queden iguales.
+                Paso::Fusionar(_)
+                    if rel.ends_with(pixpin_lecciones::leccion::EXTENSION)
+                        && mio.is_some()
+                        && suyo.is_some() =>
+                {
+                    self.fusionar_leccion(rel, suyo, acordado, avance, hecho)?
+                }
                 // Un PDF o una foto no se juntan: se queda la version tocada
                 // mas tarde (la otra sigue en la copia).
                 Paso::Fusionar(_) => {
@@ -1536,6 +1546,30 @@ impl<'a, D: Disco + ?Sized, F: Read + Write> Sesion<'a, D, F> {
             Ok(Some(j)) => Ok(Some((j.a_texto(), resumen))),
             _ => Ok(None),
         }
+    }
+
+    /// **Una leccion cambiada en los dos lados**: la suya a memoria, la union
+    /// con la mia (`pixpin_lecciones::fusion::en_choque`) escrita aqui y
+    /// mandada alli. Si alguna no se lee como leccion, se hace lo de
+    /// cualquier archivo: gana la mas reciente (aqui, la suya: la mia sigue
+    /// en la copia).
+    fn fusionar_leccion(
+        &mut self,
+        rel: &str,
+        suyo: Option<&ArchivoInfo>,
+        acordado: Option<&str>,
+        avance: &mut dyn FnMut(u64),
+        hecho: &mut Hecho,
+    ) -> Resultado<Option<String>> {
+        let d = self.disco;
+        let chat = self.chat_de_la_vuelta.clone();
+        let Some(de_alli) = self.traer_entero(rel)? else {
+            return Ok(None);
+        };
+        let aqui = std::fs::read_to_string(d.ruta(&chat, rel)).unwrap_or_default();
+        let junta = pixpin_lecciones::fusion::en_choque(&aqui, &de_alli).unwrap_or(de_alli);
+        d.escribir_texto(&chat, rel, &junta)?;
+        self.mandar_archivo(rel, suyo, acordado, avance, hecho)
     }
 
     /// Su version entera, a memoria.

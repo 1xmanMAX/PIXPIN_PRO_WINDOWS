@@ -47,7 +47,6 @@ pixpin-web = { path = "crates/pixpin-web" }
 pixpin-ui = { path = "crates/pixpin-ui" }
 pixpin-flow = { path = "crates/pixpin-flow" }
 pixpin-plugin = { path = "crates/pixpin-plugin" }
-pixpin-universo = { path = "crates/pixpin-universo" }
 # El compresor de PDF del autor (github.com/1xmanMAX/Thesis), copiado: el
 # repositorio es privado y una dependencia git no compilaria sin credenciales.
 # Ver crates/pdfsqueeze-core/PROCEDENCIA.md.

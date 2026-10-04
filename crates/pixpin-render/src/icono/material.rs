@@ -329,6 +329,16 @@ pub const LIBRARY_MUSIC: Icono = Icono {
     )],
 };
 
+/// `lightbulb` (`src/action/lightbulb/materialicons/24px.svg`). Las
+/// lecciones aprendidas, como `Icons.Filled.Lightbulb` en el movil.
+pub const LIGHTBULB: Icono = Icono {
+    vista: VISTA,
+    trazos: &[relleno(
+        "M9 21c0 .5.4 1 1 1h4c.6 0 1-.5 1-1v-1H9v1zm3-19C8.1 2 5 5.1 5 9c0 2.4 1.2 4.5 3 5.7V17c0 .5.4 1 1 1h6c.6 0 1-.5 1-1v-2.3c1.8-1.3 3-3.4 3-5.7 0-3.9-3.1-7-7-7z",
+        false,
+    )],
+};
+
 /// `link` (`src/content/link/materialicons/24px.svg`).
 pub const LINK: Icono = Icono {
     vista: VISTA,
@@ -427,15 +437,23 @@ pub const PAUSE: Icono = Icono {
     trazos: &[relleno("M6 19h4V5H6v14zm8-14v14h4V5h-4z", false)],
 };
 
+/// `photo_library` (`src/image/photo_library/materialicons/24px.svg`). La
+/// galeria de capturas, como `Icons.Filled.PhotoLibrary` en el movil.
+pub const PHOTO_LIBRARY: Icono = Icono {
+    vista: VISTA,
+    trazos: &[relleno(
+        "M22 16V4c0-1.1-.9-2-2-2H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2zm-11-4l2.03 2.71L16 11l4 5H8l3-4zM2 6v14c0 1.1.9 2 2 2h14v-2H4V6H2z",
+        false,
+    )],
+};
+
 /// `play_arrow` (`src/av/play_arrow/materialicons/24px.svg`).
 pub const PLAY_ARROW: Icono = Icono {
     vista: VISTA,
     trazos: &[relleno("M8 5v14l11-7z", false)],
 };
 
-/// `public` (`src/social/public/materialicons/24px.svg`). El universo: el
-/// movil no tiene uno, y un globo es lo que mas se parece a «todo lo tuyo
-/// de un vistazo».
+/// `public` (`src/social/public/materialicons/24px.svg`).
 pub const PUBLIC: Icono = Icono {
     vista: VISTA,
     trazos: &[relleno(
@@ -626,6 +644,8 @@ pub const KEYBOARD_ARROW_UP: Icono = Icono {
 };
 /// Todos, para poder comprobarlos de una vez.
 pub const TODOS: &[Icono] = &[
+    LIGHTBULB,
+    PHOTO_LIBRARY,
     FLAG,
     CALL,
     CALL_END,

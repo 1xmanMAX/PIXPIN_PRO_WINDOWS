@@ -19,17 +19,23 @@
 /// seguir como si no estuviera en la lista.
 #[cfg(windows)]
 pub fn programa_delante() -> Option<String> {
+    use windows::Win32::UI::WindowsAndMessaging::GetForegroundWindow;
+    // SAFETY: GetForegroundWindow no tiene precondiciones y puede devolver
+    // una ventana nula, que `programa_de` descarta.
+    programa_de(unsafe { GetForegroundWindow() })
+}
+
+/// El nombre del ejecutable de la ventana `hwnd`, como [`programa_delante`].
+#[cfg(windows)]
+pub fn programa_de(hwnd: windows::Win32::Foundation::HWND) -> Option<String> {
     use windows::Win32::Foundation::{CloseHandle, MAX_PATH};
     use windows::Win32::System::Threading::{
         OpenProcess, PROCESS_NAME_FORMAT, PROCESS_QUERY_LIMITED_INFORMATION,
         QueryFullProcessImageNameW,
     };
-    use windows::Win32::UI::WindowsAndMessaging::{GetForegroundWindow, GetWindowThreadProcessId};
+    use windows::Win32::UI::WindowsAndMessaging::GetWindowThreadProcessId;
     use windows::core::PWSTR;
 
-    // SAFETY: GetForegroundWindow no tiene precondiciones y puede devolver
-    // una ventana nula, que se descarta justo debajo.
-    let hwnd = unsafe { GetForegroundWindow() };
     if hwnd.0.is_null() {
         return None;
     }

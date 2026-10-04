@@ -11,7 +11,10 @@ use std::path::{Path, PathBuf};
 /// Capa de cada crate. Numero menor = mas abajo en la arquitectura.
 fn capa(nombre: &str) -> Option<u8> {
     Some(match nombre {
-        "pixpin-geom" | "pixpin-model" | "pixpin-nivel" => 0,
+        // `pixpin-lecciones` es la logica de las lecciones aprendidas copiada
+        // del movil (JSON, buscador, etiquetador, repaso): solo serde_json, y
+        // la usa `pixpin-sincro` para juntar dos versiones de una leccion.
+        "pixpin-geom" | "pixpin-model" | "pixpin-nivel" | "pixpin-lecciones" => 0,
         // `pixpin-sincro` es el cable de WiFi: solo criptografia y JSON, sin
         // depender de ningun crate de PixPin, asi que vive abajo del todo
         // con los demas cimientos.
@@ -29,8 +32,12 @@ fn capa(nombre: &str) -> Option<u8> {
         "pixpin-shell" | "pixpin-render" | "pixpin-gpu" | "pixpin-codec" | "pixpin-motor2d"
         | "pixpin-sincro" | "pixpin-tinta" | "pixpin-audio" | "pixpin-voz" | "pixpin-web"
         | "pdfsqueeze-core" => 1,
+        // El plugin de Flow Launcher es un ejecutable aparte que no enlaza
+        // ningun crate de PixPin: habla con la app por WM_COPYDATA. La app si
+        // usa su libreria (el borrador de las imagenes pegadas en Flow).
+        "pixpin-lanzador" => 2,
         "pixpin-capture" | "pixpin-pin" | "pixpin-pdf" | "pixpin-ocr" | "pixpin-record"
-        | "pixpin-store" | "pixpin-proyecto" | "pixpin-universo" | "pixpin-docs"
+        | "pixpin-store" | "pixpin-proyecto" | "pixpin-docs"
         | "pixpin-pila" => 2,
         // El compresor de PDF en su propio ejecutable: solo pdfsqueeze y la
         // prioridad de pixpin-shell. `pixpin` solo lo usa en sus pruebas.
@@ -70,12 +77,12 @@ fn manifiestos() -> Vec<(String, PathBuf)> {
 }
 
 #[test]
-fn estan_los_treinta_paquetes() {
+fn estan_los_treinta_y_un_paquetes() {
     let encontrados = manifiestos();
     assert_eq!(
         encontrados.len(),
-        30,
-        "se esperan 28 crates de libreria y los dos ejecutables, encontrados: {:?}",
+        31,
+        "se esperan 28 crates de libreria y los tres ejecutables, encontrados: {:?}",
         encontrados.iter().map(|(n, _)| n).collect::<Vec<_>>()
     );
 }

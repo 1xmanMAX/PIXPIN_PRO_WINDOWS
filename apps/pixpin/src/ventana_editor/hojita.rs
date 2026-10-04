@@ -338,7 +338,6 @@ pub(super) fn abrir(ed: Editor<'_>) -> Option<Insertar> {
                             None,
                             None,
                             panel.as_ref(),
-                            None,
                             true,
                             FueraDeLaEscena::default(),
                             Some(marcador),

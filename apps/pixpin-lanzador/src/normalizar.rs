@@ -120,6 +120,81 @@ fn salteado(texto: &str, q: &str) -> bool {
     i == q.len()
 }
 
+/// **Las letras de `titulo` que coinciden con `consulta`**, para que Flow
+/// las resalte (`titleHighlightData`). Son posiciones en UTF-16, que es como
+/// cuenta Flow (`string.Substring(i, 1)` en C#), no bytes ni `char`s de Rust.
+///
+/// Con la regla de [`puntuar`]: lo tecleado entero (mejor al principio de una
+/// palabra); si no, cada palabra suelta; si no, las letras salteadas. Sin
+/// tildes ni mayusculas: «gestion» resalta «Gestión».
+pub fn resaltado(titulo: &str, consulta: &str) -> Vec<usize> {
+    // Cada letra normalizada, con la posicion UTF-16 de la que sale.
+    let mut letras: Vec<char> = Vec::new();
+    let mut posiciones: Vec<usize> = Vec::new();
+    let mut u16 = 0;
+    for c in titulo.chars() {
+        let mut b = [0u8; 4];
+        for n in normalizar(c.encode_utf8(&mut b)).chars() {
+            letras.push(n);
+            posiciones.push(u16);
+        }
+        u16 += c.len_utf16();
+    }
+    let consulta = normalizar(consulta.trim());
+    let q: Vec<char> = consulta.chars().collect();
+    if q.is_empty() {
+        return Vec::new();
+    }
+    let mut marcadas: Vec<usize> = Vec::new();
+    if let Some(i) = buscar_trozo(&letras, &q) {
+        marcadas.extend(i..i + q.len());
+    } else {
+        for palabra in consulta.split_whitespace() {
+            let w: Vec<char> = palabra.chars().collect();
+            if let Some(i) = buscar_trozo(&letras, &w) {
+                marcadas.extend(i..i + w.len());
+            }
+        }
+        if marcadas.is_empty() && q.len() >= 3 && !q.contains(&' ') {
+            marcadas = salteadas(&letras, &q).unwrap_or_default();
+        }
+    }
+    let mut v: Vec<usize> = marcadas.into_iter().filter_map(|i| posiciones.get(i).copied()).collect();
+    v.sort_unstable();
+    v.dedup();
+    v
+}
+
+/// Donde empieza `q` en `letras`: mejor al principio de una palabra.
+fn buscar_trozo(letras: &[char], q: &[char]) -> Option<usize> {
+    if q.is_empty() || letras.len() < q.len() {
+        return None;
+    }
+    let encaja = |i: usize| letras[i..].starts_with(q);
+    let inicio = |i: usize| i == 0 || !letras[i - 1].is_alphanumeric();
+    let fin = letras.len() - q.len();
+    (0..=fin).find(|&i| inicio(i) && encaja(i)).or_else(|| (0..=fin).find(|&i| encaja(i)))
+}
+
+/// Las posiciones de [`salteado`], si encaja.
+fn salteadas(letras: &[char], q: &[char]) -> Option<Vec<usize>> {
+    let mut v = Vec::new();
+    let mut anterior: Option<char> = None;
+    let mut pegada = false;
+    for (k, &c) in letras.iter().enumerate() {
+        let i = v.len();
+        let inicio = c.is_alphanumeric() && anterior.is_none_or(|a| !a.is_alphanumeric());
+        anterior = Some(c);
+        if i < q.len() && c == q[i] && (inicio || (pegada && i > 0)) {
+            v.push(k);
+            pegada = true;
+        } else {
+            pegada = false;
+        }
+    }
+    (v.len() == q.len()).then_some(v)
+}
+
 #[cfg(test)]
 mod pruebas {
     use super::*;
@@ -159,6 +234,34 @@ mod pruebas {
         assert_eq!(puntuar("tar", "lo que te falta mostrar", ""), 0);
         // Dos letras no bastan: casi todo coincidiria.
         assert_eq!(puntuar("gp", "gestion de proyectos", ""), 0);
+    }
+
+    #[test]
+    fn resalta_las_letras_que_coinciden_sin_tildes() {
+        assert_eq!(resaltado("Gestión de proyectos", "gestion"), (0..7).collect::<Vec<_>>());
+        // Mejor al principio de una palabra que en medio de otra.
+        assert_eq!(resaltado("compra pan", "pa"), vec![7, 8]);
+        // Palabras sueltas en cualquier orden.
+        assert_eq!(resaltado("Gestión de proyectos", "proy gest"), vec![0, 1, 2, 3, 11, 12, 13, 14]);
+        // Letras salteadas.
+        assert_eq!(resaltado("Gestión de proyectos", "gdp"), vec![0, 8, 11]);
+    }
+
+    #[test]
+    fn resalta_en_posiciones_utf16_no_en_bytes() {
+        // «☐» ocupa 3 bytes pero 1 en UTF-16; el emoji, 2.
+        assert_eq!(resaltado("☐ pan", "pan"), vec![2, 3, 4]);
+        assert_eq!(resaltado("💡 idea", "idea"), vec![3, 4, 5, 6]);
+        assert_eq!(resaltado("Añadir", "nad"), vec![1, 2, 3]);
+    }
+
+    #[test]
+    fn caso_negativo_sin_coincidencia_no_resalta_nada() {
+        assert!(resaltado("Gestión de proyectos", "xyz").is_empty());
+        assert!(resaltado("Gestión", "  ").is_empty());
+        assert!(resaltado("", "algo").is_empty());
+        // Dos letras salteadas no bastan (como al puntuar).
+        assert!(resaltado("gestion de proyectos", "gp").is_empty());
     }
 
     #[test]

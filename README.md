@@ -46,11 +46,12 @@ panel con un botón para volver a la lista.
 
 - **Voz**: notas de voz, transcripción con Whisper (sobre el ONNX Runtime de Windows),
   dos idiomas en una nota, teleprónter, pronunciar y conversación por turnos.
-- **Universo**: los proyectos como galaxias; el chat se ordena solo en órbitas.
+- **Lecciones aprendidas, galería de capturas y tareas**: tres botones junto a Sincronizar,
+  como en el móvil. Las capturas se van a la papelera a los 7 días salvo las que se conservan.
 
-| Universo | Tema Cosmos |
-|---|---|
-| ![](docs/img/universo.png) | ![](docs/img/cosmos.png) |
+| Tema Cosmos |
+|---|
+| ![](docs/img/cosmos.png) |
 
 ### El lienzo
 

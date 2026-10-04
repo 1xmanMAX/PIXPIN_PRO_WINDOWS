@@ -397,6 +397,9 @@ pub trait Disco {
                     std::fs::write(&tmp, local)?;
                 }
             }
+            // Una leccion aprendida que tambien cambio aqui no se pisa: se
+            // junta con lo que llega.
+            juntar_leccion(rel, &destino, &tmp)?;
             reemplazar(&tmp, &destino)?;
             Ok(true)
         })();
@@ -723,6 +726,32 @@ pub fn es_texto(rel: &str) -> bool {
     rel.ends_with(".excalidraw.gz")
         || rel.ends_with(".croquis.gz")
         || (rel.starts_with("tablas/") && rel.ends_with(".json"))
+}
+
+/// **Lo que llega de una leccion aprendida, junto con lo de aqui** (mejora
+/// del PC, 3-oct-2026). En el movil un `.leccion` es un archivo mas y gana
+/// el tocado mas tarde; aqui, si el de este equipo tiene algo que lo que
+/// llega no trae (una repeticion, un repaso, etiquetas de una edicion mas
+/// nueva), se escribe en `tmp` la fusion en vez de lo que llego
+/// (`pixpin_lecciones::fusion::al_llegar`). Si lo que llega ya lo trae todo,
+/// `tmp` se queda como estaba, byte a byte: asi no se fabrica una diferencia
+/// que volveria a viajar.
+///
+/// No cambia el protocolo: para el cable sigue siendo un archivo binario
+/// (`es_texto` no lo incluye, igual que `Disco.kt`). Si la fusion difiere de
+/// lo que tiene el otro, la vuelta siguiente se la manda.
+pub fn juntar_leccion(rel: &str, destino: &Path, tmp: &Path) -> io::Result<()> {
+    if !rel.ends_with(pixpin_lecciones::leccion::EXTENSION) || !destino.is_file() {
+        return Ok(());
+    }
+    let (Ok(aqui), Ok(llega)) = (std::fs::read_to_string(destino), std::fs::read_to_string(tmp))
+    else {
+        return Ok(());
+    };
+    if let Some(junta) = pixpin_lecciones::fusion::al_llegar(&aqui, &llega) {
+        std::fs::write(tmp, junta)?;
+    }
+    Ok(())
 }
 
 /// `Disco.permitida`: solo dentro de las carpetas de PixPin y nunca los
@@ -1462,6 +1491,31 @@ mod pruebas {
         reemplazar(&tmp, &destino).unwrap();
         assert_eq!(std::fs::read(&destino).unwrap(), b"nuevo");
         assert!(!tmp.exists(), "el temporal no se queda por ahi");
+    }
+
+    #[test]
+    fn una_leccion_que_llega_se_junta_con_la_de_aqui_y_lo_demas_no_se_toca() {
+        use pixpin_lecciones::{Leccion, Repaso};
+        let d = carpeta_de_prueba("leccion");
+        let base = Leccion::nueva("k", 1000, "Revisar puntales");
+        // Aqui: me volvio a pasar, mas tarde que lo que llega.
+        let aqui = Repaso::repetida(&base, 9000);
+        let llega = Leccion {
+            tocada: 5000,
+            etiquetas: vec!["obra".into()],
+            ..base
+        };
+        let (tmp, destino) = (d.join("k.leccion.sincro"), d.join("k.leccion"));
+        std::fs::write(&destino, aqui.escribir()).unwrap();
+        std::fs::write(&tmp, llega.escribir()).unwrap();
+        juntar_leccion("guardados/lecciones/k.leccion", &destino, &tmp).unwrap();
+        let junta = Leccion::leer(&std::fs::read_to_string(&tmp).unwrap()).unwrap();
+        assert_eq!(junta.repeticiones, vec![9000], "la repeticion de aqui no se pierde");
+        assert_eq!(junta.etiquetas, vec!["obra"], "ni la etiqueta de alli");
+        // Caso negativo: un archivo que no es una leccion pasa tal cual.
+        std::fs::write(&tmp, b"foto").unwrap();
+        juntar_leccion("guardados/foto.jpg", &destino, &tmp).unwrap();
+        assert_eq!(std::fs::read(&tmp).unwrap(), b"foto");
     }
 
     #[test]

@@ -1,7 +1,16 @@
 //! **`pixpin-lanzador.exe`**: PixPin Max desde Flow Launcher (`p`).
 //!
-//! - Sin argumentos es el plugin de Flow (`Executable_V2`: JSON-RPC por
-//!   stdin/stdout, ver [`rpc`]).
+//! - Con un JSON como argumento es el plugin de Flow tal como lo usa la 2.1.4
+//!   (`Executable`, un proceso por tecla: [`rpc::una_vez`]). Para que cada
+//!   tecla no relea todos los proyectos hay una cache en disco
+//!   (`<raiz>/cache/lanzador-indice.json`, ver [`datos`]).
+//! - Sin argumentos es el plugin de Flow que se queda vivo (`Executable_V2`:
+//!   JSON-RPC por stdin/stdout, ver [`rpc`]). **Flow 2.1.4 no lo usa**: su
+//!   `PluginsLoader.ExecutableV2Plugins` crea un `ExecutablePlugin` (el v1)
+//!   aunque `plugin.json` diga `Executable_V2`, y la clase
+//!   `ExecutablePluginV2` no se instancia nunca (comprobado en el codigo de la
+//!   etiqueta v2.1.4 y en `dev`, 2026-10-03). Se queda listo para cuando lo
+//!   arreglen.
 //! - `buscar "<texto>"` escribe los resultados, una linea JSON cada uno.
 //! - `pedido '<json>'` le manda un pedido a la app (docs/protocolo-pedidos.md).
 //!
@@ -9,11 +18,14 @@
 //! este cerrada; abrir, crear o marcar es pedirselo a la app ([`pedido`]),
 //! que es la unica que escribe sus ficheros.
 
+pub mod capturas;
 pub mod chat;
 pub mod consulta;
 pub mod datos;
 pub mod fecha;
 pub mod iconos;
+pub mod imagenes;
+pub mod lecciones;
 pub mod menu;
 pub mod normalizar;
 pub mod pedido;
@@ -71,6 +83,16 @@ fn raiz_del_registro() -> std::path::PathBuf {
         .unwrap_or_else(|| std::env::temp_dir().join("pixpin-lanzador.log"))
 }
 
+/// Los datos de un proceso que contesta una sola consulta (el modo v1 de
+/// Flow, `buscar`): sin vigia, y con la cache de disco
+/// (`<raiz>/cache/lanzador-indice.json`), para que cada tecla no relea todos
+/// los proyectos.
+fn datos_de_un_proceso(raiz: std::path::PathBuf) -> datos::Datos {
+    let mut d = datos::Datos::nuevo(raiz).con_cache_en_disco();
+    d.vigilar = false;
+    d
+}
+
 /// Lo que hace `main`. Devuelve el codigo de salida.
 pub fn ejecutar(args: &[String]) -> i32 {
     let Some(raiz) = datos::raiz_de_datos() else {
@@ -82,15 +104,17 @@ pub fn ejecutar(args: &[String]) -> i32 {
             let datos = datos::Datos::nuevo(raiz);
             let stdout = std::io::stdout().lock();
             let mut plugin = rpc::Plugin::nuevo(datos, pedido::Windows, stdout, icono_por_defecto());
+            plugin.portapapeles = imagenes::WINDOWS;
             rpc::bucle(&mut plugin, std::io::stdin().lock());
             0
         }
         Some("buscar") => {
             let texto = args[1..].join(" ");
-            let mut d = datos::Datos::nuevo(raiz);
+            let mut d = datos_de_un_proceso(raiz);
             let proyectos = d.proyectos();
             let mut ctx = resultados::Contexto::nuevo(PALABRA_CLAVE);
             ctx.iconos = Some(iconos::carpeta(d.raiz()));
+            ctx.portapapeles = imagenes::WINDOWS;
             let r = resultados::resultados(&proyectos, &texto, &ctx);
             let icono = icono_por_defecto();
             let mut salida = String::new();
@@ -100,6 +124,7 @@ pub fn ejecutar(args: &[String]) -> i32 {
             }
             use std::io::Write;
             let _ = std::io::stdout().write_all(salida.as_bytes());
+            d.guardar_cache();
             0
         }
         Some("pedido") => {
@@ -124,18 +149,22 @@ pub fn ejecutar(args: &[String]) -> i32 {
             let Ok(peticion) = serde_json::from_str::<serde_json::Value>(primero) else {
                 return 3;
             };
-            let datos = datos::Datos::nuevo(raiz.clone());
+            let datos = datos_de_un_proceso(raiz.clone());
             let mut plugin = rpc::Plugin::nuevo(datos, pedido::Windows, Vec::new(), icono_por_defecto());
             plugin.registro.ruta = Some(raiz_del_registro());
             plugin.diferir_avisos = true;
+            plugin.portapapeles = imagenes::WINDOWS;
             let respuesta = rpc::una_vez(&mut plugin, &peticion);
             use std::io::Write;
             let mut stdout = std::io::stdout().lock();
             let _ = stdout.write_all(respuesta.to_string().as_bytes());
             let _ = stdout.flush();
             drop(stdout);
-            // Ya contestado: ahora, sin arrancar la app y con poca espera,
-            // que pinte los iconos que faltaron.
+            // Flow no lee la respuesta hasta que el proceso termina: lo que
+            // queda tiene que ser corto. La cache para la tecla siguiente, y,
+            // sin arrancar la app y con poca espera, que pinte los iconos que
+            // faltaron (cada uno, una vez cada 30 s como mucho).
+            plugin.datos.guardar_cache();
             plugin.mandar_avisos();
             0
         }

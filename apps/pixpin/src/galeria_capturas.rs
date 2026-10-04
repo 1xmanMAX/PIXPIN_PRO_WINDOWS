@@ -105,7 +105,12 @@ pub struct Entrada {
 
 /// La carpeta de las capturas: la misma en que las escribe `main.rs`.
 pub fn carpeta(ubicacion: &Ubicacion) -> PathBuf {
-    ubicacion.raiz().join("capturas")
+    carpeta_en(ubicacion.raiz())
+}
+
+/// La de [`carpeta`], desde la raiz de los datos.
+pub fn carpeta_en(raiz: &Path) -> PathBuf {
+    raiz.join("capturas")
 }
 
 /// Si una ruta es de las que lista la galeria (por su extension).
@@ -185,6 +190,34 @@ pub fn a_la_papelera(raiz: &Path, ruta: &Path) -> std::io::Result<PathBuf> {
     }
     std::fs::rename(ruta, &destino)?;
     Ok(destino)
+}
+
+/// **Borra una captura** como el boton «Borrar» de la galeria: a la
+/// papelera de PixPin y, si estaba conservada, se olvida (su nombre queda
+/// libre: una captura nueva que lo herede no nace conservada). Devuelve el
+/// registro si cambio.
+pub(crate) fn borrar(
+    raiz: &Path,
+    ruta: &Path,
+) -> std::io::Result<Option<crate::caducidad_capturas::Registro>> {
+    let destino = a_la_papelera(raiz, ruta)?;
+    tracing::info!(ruta = %ruta.display(), destino = %destino.display(), "captura a la papelera");
+    let ahora = pixpin_shell::entorno::ahora_utc_ms();
+    let nombre = crate::caducidad_capturas::nombre(ruta);
+    if !crate::caducidad_capturas::leer(raiz, ahora).conservadas.contains(&nombre) {
+        return Ok(None);
+    }
+    // El fichero ya se fue: un registro que no se pudo escribir no lo
+    // devuelve, solo se apunta.
+    match crate::caducidad_capturas::cambiar(raiz, ahora, |reg| {
+        reg.conservadas.remove(&nombre);
+    }) {
+        Ok(reg) => Ok(Some(reg)),
+        Err(e) => {
+            tracing::warn!(?e, "no se pudo olvidar la captura conservada");
+            Ok(None)
+        }
+    }
 }
 
 // ------------------------------------------------------------- la rejilla
@@ -348,10 +381,15 @@ enum Accion {
     Pinear(usize),
     Copiar(usize),
     Borrar(usize),
+    /// Mandarla al chat y que deje de caducar.
+    Conservar(usize),
 }
 
 struct Estado {
     lista: Vec<Entrada>,
+    /// Cuando se va cada una y cuales se conservan
+    /// (`caducidad_capturas`).
+    registro: crate::caducidad_capturas::Registro,
     minis: HashMap<PathBuf, Mini>,
     scroll: f32,
     botones: Botones<Accion>,
@@ -390,7 +428,12 @@ fn bucle(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion) -> Resul
     let dir = carpeta(ubicacion);
     let cache = ubicacion.raiz().join("cache").join("galeria");
     let (pedir, hechas) = lanzar_lector(cache.clone(), hwnd);
+    // Lo caducado se va antes de ensenar nada: no tiene que salir una
+    // captura cuya fecha ya paso solo porque el barrendero aun no paso.
+    let raiz = ubicacion.raiz();
+    crate::caducidad_capturas::barrer(raiz, pixpin_shell::entorno::ahora_utc_ms());
     let mut e = Estado {
+        registro: crate::caducidad_capturas::leer(raiz, pixpin_shell::entorno::ahora_utc_ms()),
         lista: listar(&dir),
         minis: HashMap::new(),
         scroll: 0.0,
@@ -480,6 +523,7 @@ fn bucle(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion) -> Resul
             if ahora != fecha_carpeta {
                 fecha_carpeta = ahora;
                 e.lista = listar(&dir);
+                e.registro = crate::caducidad_capturas::leer(raiz, pixpin_shell::entorno::ahora_utc_ms());
                 pintar = true;
             }
         }
@@ -582,7 +626,11 @@ fn soltar_lejanas(e: &mut Estado, r: &Rejilla) {
 
 fn hacer(e: &mut Estado, a: Accion, textos: &Catalogo, ubicacion: &Ubicacion, vivo: &mut bool) {
     let de = match a {
-        Accion::Abrir(i) | Accion::Pinear(i) | Accion::Copiar(i) | Accion::Borrar(i) => {
+        Accion::Abrir(i)
+        | Accion::Pinear(i)
+        | Accion::Copiar(i)
+        | Accion::Borrar(i)
+        | Accion::Conservar(i) => {
             e.lista.get(i).map(|x| x.ruta.clone())
         }
         _ => None,
@@ -641,18 +689,54 @@ fn hacer(e: &mut Estado, a: Accion, textos: &Catalogo, ubicacion: &Ubicacion, vi
         }
         Accion::Borrar(i) => {
             if let Some(r) = ruta(i) {
-                match a_la_papelera(ubicacion.raiz(), &r) {
-                    Ok(destino) => {
-                        tracing::info!(ruta = %r.display(), destino = %destino.display(), "captura a la papelera");
+                match borrar(ubicacion.raiz(), &r) {
+                    Ok(reg) => {
                         e.lista.remove(i);
                         e.minis.remove(&r);
                         e.aviso = Some((textos.t("galeria-borrada"), Instant::now()));
+                        if let Some(reg) = reg {
+                            e.registro = reg;
+                        }
+                    }
+                    Err(err) => e.aviso = Some((fallo(textos, err.to_string()), Instant::now())),
+                }
+            }
+        }
+        Accion::Conservar(i) => {
+            if let Some(r) = ruta(i) {
+                match conservar(ubicacion.raiz(), &r) {
+                    Ok(reg) => {
+                        e.registro = reg;
+                        e.aviso = Some((textos.t("galeria-conservada-aviso"), Instant::now()));
                     }
                     Err(err) => e.aviso = Some((fallo(textos, err.to_string()), Instant::now())),
                 }
             }
         }
     }
+}
+
+/// **Conserva una captura**: entra en «Mensajes guardados» como una foto
+/// mas (por `meter_en_proyecto`, con su sello y su cerrojo, y de ahi viaja
+/// al movil) y se apunta para que no caduque.
+pub(crate) fn conservar(raiz: &Path, ruta: &Path) -> std::io::Result<crate::caducidad_capturas::Registro> {
+    let ahora = pixpin_shell::entorno::ahora_utc_ms();
+    let nombre_equipo = std::env::var("COMPUTERNAME").unwrap_or_else(|_| "PixPin Max".into());
+    let aparato = pixpin_proyecto::identidad::Identidad::leer_o_crear(raiz, &nombre_equipo)
+        .map(|i| i.yo.codigo())
+        .unwrap_or_default();
+    let ficha = pixpin_proyecto::almacen::asegurar_guardados(raiz, ahora, &aparato)?;
+    let bytes = std::fs::read(ruta)?;
+    let nombre = crate::caducidad_capturas::nombre(ruta);
+    let hechos = crate::ventana_chat::meter_en_proyecto(raiz, &ficha.id, &[(nombre.clone(), bytes)], &aparato)?;
+    if hechos.is_empty() {
+        return Err(std::io::Error::other("no entro en el chat"));
+    }
+    crate::ventana_chat::refrescar();
+    tracing::info!(ruta = %ruta.display(), "captura conservada en Mensajes guardados");
+    crate::caducidad_capturas::cambiar(raiz, ahora, |reg| {
+        reg.conservadas.insert(nombre);
+    })
 }
 
 fn pintar_todo(e: &mut Estado, p: &Pintor, marco: Rect, escala: f32, textos: &Catalogo) {
@@ -716,6 +800,7 @@ fn pintar_todo(e: &mut Estado, p: &Pintor, marco: Rect, escala: f32, textos: &Ca
                 );
             }
         }
+        pintar_caducidad(p, c, &e.registro, entrada, escala, textos);
         // Todo el recuadro abre; los botones de encima, apuntados despues,
         // le ganan.
         e.botones.zona(c, Accion::Abrir(i));
@@ -741,7 +826,16 @@ fn pintar_todo(e: &mut Estado, p: &Pintor, marco: Rect, escala: f32, textos: &Ca
     let mut args = fluent_bundle::FluentArgs::new();
     args.set("cuantas", n.to_string());
     let titulo = textos.t_args("galeria-titulo-cuantas", &args);
-    p.texto(&titulo, MARGEN * escala, 16.0 * escala, 18.0 * escala, TEXTO);
+    p.texto(&titulo, MARGEN * escala, 8.0 * escala, 18.0 * escala, TEXTO);
+    // Debajo, la regla: sin ella la fecha de cada captura parece un error.
+    p.texto_linea(
+        &textos.t("galeria-caducan"),
+        MARGEN * escala,
+        32.0 * escala,
+        12.0 * escala,
+        (w * 0.55).max(0.0),
+        APAGADO,
+    );
     let alto_b = 36.0 * escala;
     let yb = (barra - alto_b) / 2.0;
     let cerrar = RectF {
@@ -787,12 +881,26 @@ fn pintar_acciones(e: &mut Estado, p: &Pintor, c: RectF, i: usize, escala: f32) 
         alto: lado + 2.0 * hueco,
     };
     p.rellenar(franja, Color { a: 0.55, ..Color::NEGRO });
-    let acciones = [
+    // Conservar solo en las que aun caducan; en verde, que es lo que salva.
+    let conservada = e
+        .lista
+        .get(i)
+        .is_some_and(|x| crate::caducidad_capturas::se_va_el(&e.registro, x).is_none());
+    let mut acciones = vec![
         (Accion::Abrir(i), &mi::OPEN_IN_NEW, TEXTO),
         (Accion::Pinear(i), &mi::PUSH_PIN, TEXTO),
         (Accion::Copiar(i), &mi::CONTENT_COPY, TEXTO),
-        (Accion::Borrar(i), &mi::DELETE, ROJO),
     ];
+    if !conservada {
+        acciones.push((Accion::Conservar(i), &mi::BOOKMARK_ADD, crate::ventanita::VERDE));
+    }
+    acciones.push((Accion::Borrar(i), &mi::DELETE, ROJO));
+    let lado = if acciones.len() > 4 {
+        // Cinco en una celda de 168: algo mas pequenos, que quepan.
+        ((c.ancho - 6.0 * hueco) / acciones.len() as f32).min(lado)
+    } else {
+        lado
+    };
     let total = acciones.len() as f32 * lado + (acciones.len() as f32 - 1.0) * hueco;
     let mut x = c.x + (c.ancho - total) / 2.0;
     for (accion, icono, color) in acciones {
@@ -806,6 +914,64 @@ fn pintar_acciones(e: &mut Estado, p: &Pintor, c: RectF, i: usize, escala: f32) 
         p.icono(icono, encoger(caja, 7.0 * escala), color);
         x += lado + hueco;
     }
+}
+
+/// La pastilla de arriba a la izquierda: «Se borra el 10 oct» (en rojo si
+/// es hoy o manana) o «Conservada».
+fn pintar_caducidad(
+    p: &Pintor,
+    c: RectF,
+    r: &crate::caducidad_capturas::Registro,
+    entrada: &Entrada,
+    escala: f32,
+    textos: &Catalogo,
+) {
+    let ahora = pixpin_shell::entorno::ahora_utc_ms();
+    let (texto, color, icono) = match crate::caducidad_capturas::se_va_el(r, entrada) {
+        None => (textos.t("galeria-conservada"), crate::ventanita::VERDE, &mi::BOOKMARK_ADD),
+        Some(t) => {
+            let dia = |ms: i64| pixpin_shell::entorno::a_local(ms).div_euclid(86_400_000);
+            let falta = dia(t) - dia(ahora);
+            let texto = if falta <= 0 {
+                textos.t("galeria-se-borra-hoy")
+            } else {
+                let mut args = fluent_bundle::FluentArgs::new();
+                args.set("fecha", crate::ventana_chat::fecha_corta(textos, t));
+                textos.t_args("galeria-se-borra", &args)
+            };
+            (texto, if falta <= 1 { ROJO } else { TEXTO }, &mi::ALARM)
+        }
+    };
+    let tam = 11.0 * escala;
+    let (tw, th) = p.medir_texto(&texto, tam);
+    let lado_icono = 13.0 * escala;
+    let relleno = 6.0 * escala;
+    let caja = RectF {
+        x: c.x + 8.0 * escala,
+        y: c.y + 8.0 * escala,
+        ancho: (relleno * 2.0 + lado_icono + 4.0 * escala + tw).min(c.ancho - 16.0 * escala),
+        alto: th.max(lado_icono) + 6.0 * escala,
+    };
+    p.rellenar_redondeado(caja, caja.alto / 2.0, Color { a: 0.72, ..Color::NEGRO });
+    p.icono(
+        icono,
+        RectF {
+            x: caja.x + relleno,
+            y: caja.y + (caja.alto - lado_icono) / 2.0,
+            ancho: lado_icono,
+            alto: lado_icono,
+        },
+        color,
+    );
+    let x = caja.x + relleno + lado_icono + 4.0 * escala;
+    p.texto_linea(
+        &texto,
+        x,
+        caja.y + (caja.alto - th) / 2.0,
+        tam,
+        (caja.x + caja.ancho - relleno - x).max(0.0),
+        color,
+    );
 }
 
 fn encoger(r: RectF, m: f32) -> RectF {
@@ -940,7 +1106,13 @@ mod pruebas {
     #[ignore = "necesita GPU; ejecutar con --ignored y mirar el PNG"]
     fn muestra_de_la_galeria() {
         let textos = Catalogo::nuevo(Idioma::Espanol);
+        let ahora = pixpin_shell::entorno::ahora_utc_ms();
         let mut e = Estado {
+            // Estrenada hace cinco dias, con la tercera conservada.
+            registro: crate::caducidad_capturas::Registro {
+                desde: ahora - 5 * 86_400_000,
+                conservadas: ["captura-0010.png".to_string()].into_iter().collect(),
+            },
             lista: (0..13)
                 .map(|i| entrada(&format!("captura-{i:04}.png"), i))
                 .chain(std::iter::once(entrada("grabacion.mp4", 99)))

@@ -9,6 +9,7 @@ pub mod filtros;
 pub mod gif;
 pub mod imagen;
 pub mod portapapeles;
+pub mod wic;
 
 pub use cosido::{
     Cosedor, Orden, Plan, Resultado, SIN_ENCAJE, encontrar_desplazamiento, es_lisa, firmas,

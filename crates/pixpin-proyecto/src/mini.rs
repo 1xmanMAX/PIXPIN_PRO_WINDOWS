@@ -422,6 +422,143 @@ pub fn con_fecha(visible: &str, creada: Fecha) -> String {
     }
 }
 
+// --- Las imagenes de una tarea --------------------------------------------
+//
+// Ver `docs/investigacion/2026-10-03-tareas-con-imagenes-android.md`. Como la
+// fecha, van **dentro del texto de la tarea**, como imagenes de Markdown, y
+// siempre **delante** de la marca de la fecha para que [`partir`] siga
+// encontrandola al final:
+//
+//     - [ ] comprar yeso ![img 01](pixpin:files/guardados/pc/general/archivos/tarea-1759500000000-01.png) ➕ 2026-10-03
+//
+// El enlace es el portatil de siempre (`pixpin:files/…`): la sincronizacion
+// ya viaja con cualquier fichero que un mensaje nombre asi (`disco::en_texto`)
+// y cada aparato lo resuelve a su carpeta. Un movil de hoy, que no sabe de
+// esto, ensena el texto crudo y lo conserva al reescribir la lista.
+
+/// Lo que se lee de una imagen en el texto: `img 01`, `img 02`… Va en el
+/// `alt` de su `![…](…)`; el lector no lo mira (puede decir cualquier cosa).
+pub fn rotulo_de_imagen(numero: u32) -> String {
+    format!("img {numero:02}")
+}
+
+/// La ficha que ocupa el sitio de la imagen `numero` mientras se escribe la
+/// tarea (en la caja de la ventana de Tareas, o en el `texto` de un pedido):
+/// `[img 01]`.
+pub fn ficha_de_imagen(numero: u32) -> String {
+    format!("[{}]", rotulo_de_imagen(numero))
+}
+
+/// Donde esta cada `![alt](enlace)` del texto: el trozo entero y el del
+/// enlace, en bytes. El enlace no puede ir vacio ni llevar blancos (un
+/// lector de Markdown corta ahi), y el `alt` no puede llevar `]`.
+fn trozos_de_imagen(texto: &str) -> Vec<(std::ops::Range<usize>, std::ops::Range<usize>)> {
+    let mut salida = Vec::new();
+    let mut desde = 0;
+    while let Some(i) = texto[desde..].find("![") {
+        let inicio = desde + i;
+        let tras_alt = inicio + 2;
+        let Some(cierre) = texto[tras_alt..].find(']').map(|j| tras_alt + j) else {
+            break;
+        };
+        if !texto[cierre..].starts_with("](") {
+            desde = tras_alt;
+            continue;
+        }
+        let ini_enlace = cierre + 2;
+        let Some(fin_enlace) = texto[ini_enlace..].find(')').map(|j| ini_enlace + j) else {
+            break;
+        };
+        let enlace = &texto[ini_enlace..fin_enlace];
+        if enlace.is_empty() || enlace.contains(es_blanco) {
+            desde = tras_alt;
+            continue;
+        }
+        salida.push((inicio..fin_enlace + 1, ini_enlace..fin_enlace));
+        desde = fin_enlace + 1;
+    }
+    salida
+}
+
+/// El texto de una tarea (lo que se ve, ya sin la fecha: [`partir`]) separado
+/// en **lo que se lee** y **los enlaces de sus imagenes**, en orden.
+///
+/// Los blancos que dejan las imagenes al irse se juntan en uno: «yeso
+/// ![a](x) y arena» se lee «yeso y arena».
+pub fn imagenes_de(visible: &str) -> (String, Vec<String>) {
+    let trozos = trozos_de_imagen(visible);
+    if trozos.is_empty() {
+        return (visible.trim().to_string(), Vec::new());
+    }
+    let mut limpio = String::with_capacity(visible.len());
+    let mut desde = 0;
+    let mut enlaces = Vec::with_capacity(trozos.len());
+    for (todo, enlace) in trozos {
+        limpio.push_str(&visible[desde..todo.start]);
+        limpio.push(' ');
+        enlaces.push(visible[enlace].to_string());
+        desde = todo.end;
+    }
+    limpio.push_str(&visible[desde..]);
+    (limpio.split_whitespace().collect::<Vec<_>>().join(" "), enlaces)
+}
+
+/// El texto con sus imagenes detras, numeradas desde 1: lo contrario de
+/// [`imagenes_de`] para quien no sabe donde iban.
+pub fn con_imagenes(texto: &str, enlaces: &[String]) -> String {
+    let mut s = texto.trim().to_string();
+    for (n, e) in enlaces.iter().enumerate() {
+        if !s.is_empty() {
+            s.push(' ');
+        }
+        s.push_str(&format!("![{}]({e})", rotulo_de_imagen(n as u32 + 1)));
+    }
+    s
+}
+
+/// Cambia las fichas `[img NN]` del texto por su imagen ya guardada
+/// (`numero`, `enlace`). La imagen cuya ficha no esta en el texto va al
+/// final; una ficha sin imagen se queda como texto (alguien lo escribio).
+/// La fecha, si el texto ya la traia, sigue al final, detras de todo.
+pub fn fichas_a_imagenes(texto: &str, imagenes: &[(u32, String)]) -> String {
+    let (visible, fecha) = partir(texto);
+    let mut s = visible.to_string();
+    for (numero, enlace) in imagenes {
+        let ficha = ficha_de_imagen(*numero);
+        let imagen = format!("![{}]({enlace})", rotulo_de_imagen(*numero));
+        match s.find(&ficha) {
+            Some(i) => s.replace_range(i..i + ficha.len(), &imagen),
+            None => {
+                if !s.trim().is_empty() {
+                    s.push(' ');
+                }
+                s.push_str(&imagen);
+            }
+        }
+    }
+    let s = s.trim().to_string();
+    match fecha {
+        Some(f) => con_fecha(&s, f),
+        None => s,
+    }
+}
+
+/// El texto con el enlace de cada imagen cambiado por lo que diga `f` (o
+/// igual, si dice `None`), sin mover nada de sitio: lo usa «Mover a…», que
+/// lleva la imagen al chat de la otra lista.
+pub fn cambiar_enlaces(texto: &str, mut f: impl FnMut(&str) -> Option<String>) -> String {
+    let mut s = String::with_capacity(texto.len());
+    let mut desde = 0;
+    for (_, enlace) in trozos_de_imagen(texto) {
+        s.push_str(&texto[desde..enlace.start]);
+        let viejo = &texto[enlace.clone()];
+        s.push_str(&f(viejo).unwrap_or_else(|| viejo.to_string()));
+        desde = enlace.end;
+    }
+    s.push_str(&texto[desde..]);
+    s
+}
+
 /// Cuantos dias lleva creada, contando por dias de calendario: creada ayer a
 /// las once de la noche es «hace 1 dia» a la una de la madrugada, que es lo
 /// que dice cualquiera.
@@ -965,6 +1102,75 @@ mod pruebas {
         // Y una lista mixta cuenta igual las de antes y las nuevas.
         let mixta = anadir_el(viejo, "lijar", f(2026, 10, 2));
         assert_eq!(resumen_tareas(&mixta).texto, "1 de 3");
+    }
+
+    const FOTO: &str = "pixpin:files/guardados/pc/general/archivos/tarea-1759500000000-01.png";
+
+    #[test]
+    fn las_imagenes_de_una_tarea_van_antes_de_la_fecha_y_se_separan() {
+        let hoy = f(2026, 10, 3);
+        let texto = fichas_a_imagenes("comprar yeso [img 01]", &[(1, FOTO.into())]);
+        assert_eq!(texto, format!("comprar yeso ![img 01]({FOTO})"));
+        let d = anadir_el("# Inbox\n\n", &texto, hoy);
+        assert_eq!(d, format!("# Inbox\n\n- [ ] comprar yeso ![img 01]({FOTO}) ➕ 2026-10-03"));
+        // La fecha se sigue encontrando al final, y la imagen sale aparte.
+        let t = &leer_tareas(&d)[0];
+        let (visible, creada) = partir(&t.texto);
+        assert_eq!(creada, Some(hoy));
+        assert_eq!(imagenes_de(visible), ("comprar yeso".to_string(), vec![FOTO.to_string()]));
+        // Ida y vuelta por el escritor del movil: identica.
+        assert_eq!(escribir_tareas("Inbox", &leer_tareas(&d)), d);
+        // Y en medio del texto tambien: los blancos se juntan.
+        assert_eq!(
+            imagenes_de(&format!("yeso ![img 01]({FOTO}) y arena")),
+            ("yeso y arena".to_string(), vec![FOTO.to_string()])
+        );
+        assert_eq!(con_imagenes("pan", &["a.png".into(), "b.png".into()]), "pan ![img 01](a.png) ![img 02](b.png)");
+    }
+
+    #[test]
+    fn una_ficha_sin_imagen_se_queda_y_una_imagen_sin_ficha_va_al_final() {
+        // La 2 no tiene ficha: va detras. La 3 no tiene imagen: es texto.
+        let t = fichas_a_imagenes("[img 01] mira [img 03]", &[(1, "a.png".into()), (2, "b.png".into())]);
+        assert_eq!(t, "![img 01](a.png) mira [img 03] ![img 02](b.png)");
+        // Solo imagenes, sin palabras: vale, y se lee vacia de texto.
+        let solo = fichas_a_imagenes("", &[(1, "a.png".into())]);
+        assert_eq!(imagenes_de(&solo), (String::new(), vec!["a.png".to_string()]));
+        // Con la fecha ya puesta, las imagenes entran delante de ella.
+        assert_eq!(
+            fichas_a_imagenes("pan ➕ 2026-10-01", &[(1, "a.png".into())]),
+            "pan ![img 01](a.png) ➕ 2026-10-01"
+        );
+    }
+
+    #[test]
+    fn cambiar_enlaces_solo_toca_los_enlaces_y_en_su_sitio() {
+        let t = "a ![img 01](x.png) b ![img 02](y.png) ➕ 2026-10-03";
+        let n = cambiar_enlaces(t, |e| (e == "x.png").then(|| "z.png".to_string()));
+        assert_eq!(n, "a ![img 01](z.png) b ![img 02](y.png) ➕ 2026-10-03");
+        assert_eq!(cambiar_enlaces("sin nada", |_| Some("q".into())), "sin nada");
+    }
+
+    #[test]
+    fn caso_negativo_lo_que_no_es_una_imagen_se_queda_como_texto() {
+        for raro in [
+            "un [enlace](x.png) normal",
+            "![sin cierre](x.png",
+            "![vacia]()",
+            "![con blanco](mi foto.png)",
+            "! [separada](x.png)",
+            "![alt sin parentesis] x",
+        ] {
+            assert_eq!(imagenes_de(raro), (raro.split_whitespace().collect::<Vec<_>>().join(" "), Vec::new()), "{raro}");
+        }
+        // Y una tarea de antes, sin imagenes, se lee igual que siempre.
+        assert_eq!(imagenes_de("pan"), ("pan".to_string(), Vec::new()));
+        assert_eq!(fichas_a_imagenes("pan", &[]), "pan");
+        // Letras de varios bytes alrededor no revientan.
+        assert_eq!(
+            imagenes_de("ñandú ![img 01](ñ.png) ★"),
+            ("ñandú ★".to_string(), vec!["ñ.png".to_string()])
+        );
     }
 
     #[test]
