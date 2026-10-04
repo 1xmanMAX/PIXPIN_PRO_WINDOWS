@@ -43,6 +43,7 @@ pub mod puntero;
 pub mod uia;
 pub mod union;
 pub mod ventana;
+pub mod ventanas_visibles;
 
 pub use abrir::{abrir, abrir_ubicacion};
 pub use arranque::ErrorArranque;

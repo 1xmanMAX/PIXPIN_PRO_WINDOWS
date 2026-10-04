@@ -22,9 +22,16 @@ use pixpin_shell::overlay::{EventoOverlay, FormaCursorWin, VentanaOverlay, bucle
 use pixpin_shell::uia::Uia;
 use pixpin_shell::ventana::Continuar;
 use pixpin_ui::{
-    AccionBarra, Barra, Efecto, EstadoOverlay, EventoEntrada, Fase, FormaCursor, FormatoColorLupa,
-    Lupa, PanelTodo, TeclaOverlay, texto_color,
+    Efecto, EstadoOverlay, EventoEntrada, Fase, FormaCursor, FormatoColorLupa, PanelTodo,
+    TeclaOverlay, texto_color,
 };
+use pixpin_geom::Candidato;
+use crate::captura2::disposicion::{
+    self as d2, Accion, BarraAcciones, BarraAnotar, BarraModos, EnAnotar, EnModos, EnSelector,
+    Modo, PanelLupa, Selector, Util,
+};
+use crate::captura2::pintar as p2;
+use crate::captura2::{Campo, Contexto, Sesion};
 use std::rc::Rc;
 use std::time::Instant;
 use windows::Win32::Foundation::HWND;
@@ -40,6 +47,10 @@ const VK_LEFT: u32 = 0x25;
 const VK_UP: u32 = 0x26;
 const VK_RIGHT: u32 = 0x27;
 const VK_DOWN: u32 = 0x28;
+const VK_BACK: u32 = 0x08;
+const VK_TAB: u32 = 0x09;
+const VK_SHIFT: u32 = 0x10;
+const VK_DELETE: u32 = 0x2E;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ModoConfirmacion {
@@ -96,28 +107,23 @@ pub enum AccionFinal {
     PinEnVivo {
         region: Rect,
     },
+    /// La captura (con lo anotado) al chat de un proyecto, elegido en el
+    /// selector de «Al chat», con su comentario.
+    AlChat {
+        imagen: ImagenRgba,
+        region: Rect,
+        proyecto: String,
+        comentario: String,
+    },
     Nada,
 }
 
-/// Etiquetas ya traducidas: el overlay no conoce el catalogo.
+/// Etiquetas ya traducidas: el overlay no conoce el catalogo. Lo de la
+/// captura v2 va en `captura2::Textos`, dentro del `Contexto`.
 pub struct TextosBarra {
-    pub copiar: String,
-    pub guardar: String,
-    pub guardar_como: String,
-    pub descartar: String,
-    /// El boton del panel antes de seleccionar: la pantalla entera.
+    /// El boton del panel antes de seleccionar: la pantalla entera (solo sin
+    /// la barra de modos, que ya tiene «Pantalla»).
     pub todo: String,
-}
-
-impl TextosBarra {
-    fn de(&self, accion: AccionBarra) -> &str {
-        match accion {
-            AccionBarra::Copiar => &self.copiar,
-            AccionBarra::Guardar => &self.guardar,
-            AccionBarra::GuardarComo => &self.guardar_como,
-            AccionBarra::Descartar => &self.descartar,
-        }
-    }
 }
 
 /// Que parte de un rectangulo global le toca dibujar a este monitor, en
@@ -282,6 +288,20 @@ impl Recursos {
     }
 }
 
+/// Lo que no cambia durante un overlay y necesitan casi todos los pasos.
+struct Ctx<'r> {
+    dispositivo: &'r Dispositivo,
+    motor: &'r MotorRender,
+    nivel: Nivel,
+    /// Con que se abrio (el atajo o el gesto). Lo que hace confirmar ahora
+    /// lo dice `Sesion::confirmacion`, que puede cambiar con la barra.
+    modo: ModoConfirmacion,
+    textos: &'r TextosBarra,
+    gesto: bool,
+    uia: &'r Uia,
+}
+
+#[allow(clippy::too_many_arguments)] // el contexto de la captura v2 entra aqui y en ningun otro sitio
 pub fn ejecutar_overlay(
     recursos: &mut Recursos,
     nivel: Nivel,
@@ -290,6 +310,7 @@ pub fn ejecutar_overlay(
     formato_color: FormatoColorLupa,
     inicio: Option<Punto>,
     desde_ms: u32,
+    contexto: Contexto,
 ) -> Result<AccionFinal> {
     let t0 = Instant::now();
     // Lo que ya se habia ido entre el gesto o el atajo y llegar aqui: la cola
@@ -335,25 +356,31 @@ pub fn ejecutar_overlay(
     }
 
     // 3. Estado puro, snap y mostrar. El primer overlay recibe los avisos.
+    let gesto = inicio.is_some();
     let mut estado = EstadoOverlay::nuevo(disposicion.clone());
     let uia = Uia::nueva(piezas[0].ventana().handle());
-    let mut barra: Option<Barra> = None;
+    let mut sesion = Sesion::nueva(contexto, modo, gesto, formato_color, Vec::new());
     let mut muestra_color: [u8; 4] = [0, 0, 0, 255];
+    // El cursor real desde el primer fotograma: sin el, la barra de modos y
+    // la lupa saldrian en el monitor equivocado hasta mover el raton.
+    let _ = estado.procesar(EventoEntrada::RatonMovido(
+        pixpin_shell::entorno::posicion_del_cursor(),
+    ));
+    let ctx = Ctx {
+        dispositivo,
+        motor,
+        nivel,
+        modo,
+        textos,
+        gesto,
+        uia: &uia,
+    };
 
     // Pintar ANTES de mostrar: una ventana retenida ensenaria el fotograma
     // de la captura anterior durante un instante.
     let t_a = t0.elapsed().as_millis() as u64;
     for p in &piezas {
-        pintar(
-            p,
-            &estado,
-            None,
-            muestra_color,
-            motor,
-            textos,
-            formato_color,
-            modo,
-        );
+        pintar(p, &estado, &mut sesion, muestra_color, &ctx);
     }
     let t_b = t0.elapsed().as_millis() as u64;
     for p in &piezas {
@@ -374,6 +401,12 @@ pub fn ejecutar_overlay(
         mostrar_ms = t0.elapsed().as_millis() as u64 - t_b,
         "overlay visible"
     );
+    // Las ventanas con su nombre, para el modo «Ventana» y la etiqueta. Ya
+    // con el overlay a la vista (no cuenta en lo de arriba): la lista no
+    // incluye el overlay, que se reconoce por su clase.
+    if sesion.activa {
+        sesion.ventanas = pixpin_shell::ventanas_visibles::ventanas_visibles();
+    }
     // El primero toma el foco: sin esto el overlay es sordo al teclado.
     piezas[0].ventana().enfocar();
     for p in &piezas {
@@ -390,7 +423,6 @@ pub fn ejecutar_overlay(
     // que es lo que decide si soltar confirma, y que el boton siga pulsado,
     // que es lo que decide si hay que reproducir el arrastre. Lo segundo
     // depende de un instante concreto y puede fallar; lo primero no.
-    let gesto = inicio.is_some();
     let arrastrando =
         gesto && (pixpin_shell::gesto_en_curso() || pixpin_shell::boton_del_raton_pulsado());
     // Si el arrastre ya acabo (el overlay tardo mas que la mano), el recorte
@@ -423,17 +455,10 @@ pub fn ejecutar_overlay(
                 hwnd0,
                 evento,
                 &mut estado,
-                &mut barra,
+                &mut sesion,
                 &mut muestra_color,
                 &mut piezas,
-                &uia,
-                dispositivo,
-                motor,
-                nivel,
-                modo,
-                textos,
-                formato_color,
-                gesto,
+                &ctx,
             );
             if seguir == Continuar::No {
                 // La soltada reproducida ya confirmo: no hay nada que esperar.
@@ -463,17 +488,10 @@ pub fn ejecutar_overlay(
                 hwnd,
                 evento,
                 &mut estado,
-                &mut barra,
+                &mut sesion,
                 &mut muestra_color,
                 &mut piezas,
-                &uia,
-                dispositivo,
-                motor,
-                nivel,
-                modo,
-                textos,
-                formato_color,
-                gesto,
+                &ctx,
             )
         });
     }
@@ -506,14 +524,32 @@ pub fn ejecutar_overlay(
         Some((que, region)) => {
             let recorte = componer_region(dispositivo, &fuentes, region)
                 .context("no se pudo recortar la seleccion")?;
-            let imagen =
+            let mut imagen =
                 a_imagen(dispositivo, &recorte).context("no se pudo bajar la seleccion a CPU")?;
+            // Lo anotado entra en la imagen; el texto (OCR) se lee de la
+            // captura limpia, que es la que se lee mejor.
+            if !matches!(que, QueAccion::Texto) {
+                if let Some(a) = sesion.anotacion.as_mut().filter(|a| !a.vacia()) {
+                    if let Err(e) = a.hornear(&mut imagen, motor, dispositivo.d3d()) {
+                        tracing::warn!(?e, "lo anotado no se pudo meter en la captura");
+                    }
+                }
+            }
             Ok(match que {
                 QueAccion::Copiar => AccionFinal::Copiar { imagen, region },
                 QueAccion::Texto => AccionFinal::Texto(imagen),
                 QueAccion::Guardar => AccionFinal::Guardar(imagen),
                 QueAccion::GuardarComo => AccionFinal::GuardarComo(imagen),
                 QueAccion::Pinear => AccionFinal::Pinear { imagen, region },
+                QueAccion::AlChat => match sesion.al_chat.take() {
+                    Some((proyecto, comentario)) => AccionFinal::AlChat {
+                        imagen,
+                        region,
+                        proyecto,
+                        comentario,
+                    },
+                    None => AccionFinal::Nada,
+                },
                 QueAccion::Scroll => AccionFinal::Scroll { region },
                 QueAccion::Gif => AccionFinal::Gif { region },
                 QueAccion::PinEnVivo => AccionFinal::PinEnVivo { region },
@@ -536,6 +572,8 @@ enum QueAccion {
     Pinear,
     PinEnVivo,
     Scroll,
+    /// Al chat del proyecto elegido en el selector (`Sesion::al_chat`).
+    AlChat,
 }
 
 thread_local! {
@@ -627,38 +665,350 @@ fn toca_muestrear(fase: Fase) -> bool {
     })
 }
 
-#[allow(clippy::too_many_arguments)]
+/// Que se ensena ahora de la captura v2.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Vista {
+    /// Nada nuevo: un gesto, el cuentagotas, o se esta trazando (nada
+    /// encima de la mano).
+    Nada,
+    /// Eligiendo: la barra de modos, las pistas, la lupa y la etiqueta.
+    Elegir,
+    /// Zona lista con un modo que pregunta: acciones y anotar.
+    Despues,
+    /// Zona lista con un modo que hace lo suyo (scroll, GIF, pin en vivo,
+    /// texto): la barra de modos y un boton de confirmar.
+    Confirmar,
+}
+
+fn vista(fase: Fase, activa: bool, confirmacion: ModoConfirmacion) -> Vista {
+    if !activa {
+        return Vista::Nada;
+    }
+    match fase {
+        Fase::Explorando => Vista::Elegir,
+        Fase::Lista if confirmacion == ModoConfirmacion::ConBarra => Vista::Despues,
+        Fase::Lista => Vista::Confirmar,
+        Fase::Trazando | Fase::Moviendo | Fase::Redimensionando => Vista::Nada,
+    }
+}
+
+fn vista_de(estado: &EstadoOverlay, sesion: &Sesion, modo: ModoConfirmacion) -> Vista {
+    vista(estado.fase(), sesion.activa, sesion.confirmacion(modo))
+}
+
+/// El monitor bajo un punto, o el primero.
+fn monitor_en(piezas: &[Pieza], p: Punto) -> Monitor {
+    piezas
+        .iter()
+        .find(|z| z.monitor().area.contiene(p))
+        .map(|z| *z.monitor())
+        .unwrap_or(*piezas[0].monitor())
+}
+
+/// El monitor de una region: el primero que toca.
+fn monitor_de_region(piezas: &[Pieza], r: Rect) -> Monitor {
+    piezas
+        .iter()
+        .find(|z| z.monitor().area.interseccion(r).is_some())
+        .map(|z| *z.monitor())
+        .unwrap_or(*piezas[0].monitor())
+}
+
+fn barra_modos(estado: &EstadoOverlay, sesion: &Sesion, piezas: &[Pieza]) -> (BarraModos, Monitor) {
+    let m = monitor_en(piezas, estado.cursor());
+    (
+        BarraModos::colocar(
+            m.area_trabajo,
+            m.escala_por_cien,
+            sesion.contexto.ultima_region.is_some(),
+        ),
+        m,
+    )
+}
+
+fn barras_despues(estado: &EstadoOverlay, piezas: &[Pieza]) -> (BarraAnotar, BarraAcciones, Monitor) {
+    let sel = estado.seleccion();
+    let m = monitor_de_region(piezas, sel);
+    let (a, b) = d2::colocar_despues(sel, m.area_trabajo, m.escala_por_cien);
+    (a, b, m)
+}
+
+fn selector_de(sesion: &Sesion, acciones: &BarraAcciones, m: &Monitor) -> Option<Selector> {
+    let es = sesion.selector.as_ref()?;
+    let boton = acciones.boton(Accion::AlChat)?;
+    let n = es.visibles(&sesion.proyectos).len();
+    Some(Selector::colocar(boton, m.area_trabajo, n, m.escala_por_cien))
+}
+
+fn boton_confirmar(estado: &EstadoOverlay, piezas: &[Pieza]) -> (Rect, Monitor) {
+    let sel = estado.seleccion();
+    let m = monitor_de_region(piezas, sel);
+    (d2::boton_confirmar(sel, m.area_trabajo, m.escala_por_cien), m)
+}
+
+/// Lo que miden la zona elegida o lo resaltado, para los campos y la
+/// etiqueta. `(0, 0)` si no hay nada.
+fn medidas(estado: &EstadoOverlay) -> (u32, u32) {
+    match estado.fase() {
+        Fase::Explorando => estado
+            .rect_resaltado()
+            .map_or((0, 0), |r| (r.ancho, r.alto)),
+        _ => {
+            let s = estado.seleccion();
+            (s.ancho, s.alto)
+        }
+    }
+}
+
+/// Que hay de lo nuevo bajo un punto.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Bajo {
+    Nada,
+    Modos(EnModos),
+    Anotar(EnAnotar),
+    Acciones(Option<Accion>),
+    Selector(EnSelector),
+    /// Fuera del selector abierto: el clic lo cierra y nada mas.
+    FueraSelector,
+    Confirmar,
+}
+
+fn que_hay(p: Punto, estado: &EstadoOverlay, sesion: &Sesion, piezas: &[Pieza], modo: ModoConfirmacion) -> Bajo {
+    match vista_de(estado, sesion, modo) {
+        Vista::Nada => Bajo::Nada,
+        Vista::Despues => {
+            let (a, b, m) = barras_despues(estado, piezas);
+            if let Some(s) = selector_de(sesion, &b, &m) {
+                return match s.en(p) {
+                    Some(x) => Bajo::Selector(x),
+                    None => Bajo::FueraSelector,
+                };
+            }
+            if let Some(x) = a.en(p) {
+                return Bajo::Anotar(x);
+            }
+            if let Some(x) = b.en(p) {
+                return Bajo::Acciones(x);
+            }
+            Bajo::Nada
+        }
+        v @ (Vista::Elegir | Vista::Confirmar) => {
+            let (b, _) = barra_modos(estado, sesion, piezas);
+            if let Some(x) = b.en(p) {
+                return Bajo::Modos(x);
+            }
+            if v == Vista::Confirmar && boton_confirmar(estado, piezas).0.contiene(p) {
+                return Bajo::Confirmar;
+            }
+            Bajo::Nada
+        }
+    }
+}
+
+/// Lo resaltado en los modos que no usan UI Automation: la ventana de
+/// delante bajo el raton, o la pantalla entera.
+fn candidatos_propios(sesion: &Sesion, piezas: &[Pieza], p: Punto) -> Vec<Candidato> {
+    let rect = match sesion.modo {
+        Modo::Ventana => sesion.ventana_en(p).map(|v| v.rect),
+        Modo::Pantalla => Some(monitor_en(piezas, p).area),
+        _ => None,
+    };
+    rect.map(|rect| {
+        vec![Candidato {
+            rect,
+            profundidad: 0,
+        }]
+    })
+    .unwrap_or_default()
+}
+
+fn cambiar_modo(m: Modo, estado: &mut EstadoOverlay, sesion: &mut Sesion, piezas: &[Pieza], ctx: &Ctx) {
+    if sesion.anotada() {
+        return;
+    }
+    sesion.modo = m;
+    let c = if sesion.usa_uia() {
+        ctx.uia.candidatos()
+    } else {
+        candidatos_propios(sesion, piezas, estado.cursor())
+    };
+    let _ = estado.procesar(EventoEntrada::Candidatos(c));
+}
+
+/// «Repetir la ultima zona»: la deja elegida, lista para su accion.
+fn repetir(estado: &mut EstadoOverlay, sesion: &Sesion) {
+    if sesion.anotada() {
+        return;
+    }
+    if let Some(r) = sesion.contexto.ultima_region {
+        let _ = estado.poner_seleccion(r);
+    }
+}
+
+/// Aplica lo tecleado en los campos de medida.
+fn aplicar_medidas(estado: &mut EstadoOverlay, sesion: &mut Sesion, piezas: &[Pieza]) {
+    sesion.campo = None;
+    let (w0, h0) = medidas(estado);
+    let w = sesion.ancho.valor().unwrap_or(w0);
+    let h = sesion.alto.valor().unwrap_or(h0);
+    sesion.ancho = d2::Cifras::default();
+    sesion.alto = d2::Cifras::default();
+    if w == 0 || h == 0 || sesion.anotada() {
+        return;
+    }
+    let sel = (estado.fase() == Fase::Lista).then(|| estado.seleccion());
+    let m = monitor_en(piezas, estado.cursor());
+    let r = d2::zona_de_medidas(w, h, sel, m.area);
+    let _ = estado.poner_seleccion(r);
+}
+
+/// Hace una accion de despues. `No` cierra el overlay.
+fn hacer_accion(a: Accion, estado: &EstadoOverlay, sesion: &mut Sesion) -> Continuar {
+    let region = estado.seleccion();
+    match a {
+        Accion::Copiar => PENDIENTE.poner(QueAccion::Copiar, region),
+        Accion::Pinear => PENDIENTE.poner(QueAccion::Pinear, region),
+        Accion::Texto => PENDIENTE.poner(QueAccion::Texto, region),
+        Accion::Guardar => PENDIENTE.poner(QueAccion::Guardar, region),
+        Accion::Descartar => {}
+        Accion::AlChat => {
+            if sesion.selector.is_some() {
+                sesion.selector = None;
+            } else {
+                sesion.abrir_selector();
+            }
+            return Continuar::Si;
+        }
+    }
+    Continuar::No
+}
+
+/// Manda la captura al proyecto elegido del selector.
+fn enviar(estado: &EstadoOverlay, sesion: &mut Sesion) -> Continuar {
+    let Some(es) = &sesion.selector else {
+        return Continuar::Si;
+    };
+    let Some(id) = es.destino(&sesion.proyectos) else {
+        return Continuar::Si;
+    };
+    sesion.al_chat = Some((id, es.comentario.clone()));
+    PENDIENTE.poner(QueAccion::AlChat, estado.seleccion());
+    Continuar::No
+}
+
+/// El clic (pulsar y soltar) en algo de lo nuevo.
+fn actuar(
+    bajo: Bajo,
+    estado: &mut EstadoOverlay,
+    sesion: &mut Sesion,
+    piezas: &mut [Pieza],
+    ctx: &Ctx,
+) -> Continuar {
+    match bajo {
+        Bajo::Nada => {}
+        Bajo::FueraSelector => sesion.selector = None,
+        Bajo::Selector(x) => match x {
+            EnSelector::Fila(i) => {
+                if let Some(es) = sesion.selector.as_mut() {
+                    es.elegida = i;
+                }
+                return enviar(estado, sesion);
+            }
+            EnSelector::Enviar => return enviar(estado, sesion),
+            EnSelector::Buscar => {
+                if let Some(es) = sesion.selector.as_mut() {
+                    es.en_comentario = false;
+                }
+            }
+            EnSelector::Comentario => {
+                if let Some(es) = sesion.selector.as_mut() {
+                    es.en_comentario = true;
+                }
+            }
+            EnSelector::Fondo => {}
+        },
+        Bajo::Acciones(Some(a)) => return hacer_accion(a, estado, sesion),
+        Bajo::Acciones(None) => {}
+        Bajo::Anotar(x) => {
+            let sel = estado.seleccion();
+            let escala = monitor_de_region(piezas, sel).escala_por_cien;
+            match x {
+                EnAnotar::Util(u) => sesion.tomar(u, sel, escala),
+                EnAnotar::Color(i) => sesion.poner_color(i, sel, escala),
+                EnAnotar::Grosor(i) => sesion.poner_grosor(i, sel, escala),
+                EnAnotar::Deshacer => {
+                    if let Some(a) = sesion.anotacion.as_mut() {
+                        a.deshacer();
+                    }
+                }
+                EnAnotar::Rehacer => {
+                    if let Some(a) = sesion.anotacion.as_mut() {
+                        a.rehacer();
+                    }
+                }
+                EnAnotar::Fondo => {}
+            }
+        }
+        Bajo::Modos(x) => match x {
+            EnModos::Modo(m) => cambiar_modo(m, estado, sesion, piezas, ctx),
+            EnModos::Ancho => sesion.campo = Some(Campo::Ancho),
+            EnModos::Alto => sesion.campo = Some(Campo::Alto),
+            EnModos::Proporcion(pr) => {
+                sesion.proporcion = pr;
+                if !sesion.anotada() {
+                    let _ = estado.poner_proporcion(pr.par());
+                }
+            }
+            EnModos::Repetir => repetir(estado, sesion),
+            EnModos::Fondo => {}
+        },
+        Bajo::Confirmar => {
+            let efecto = estado.procesar(EventoEntrada::Tecla(TeclaOverlay::Enter));
+            return aplicar_efecto(efecto, estado, sesion, piezas, ctx);
+        }
+    }
+    for p in piezas.iter() {
+        p.ventana().invalidar();
+    }
+    Continuar::Si
+}
+
 fn procesar_evento(
     hwnd: HWND,
     evento: EventoOverlay,
     estado: &mut EstadoOverlay,
-    barra: &mut Option<Barra>,
+    sesion: &mut Sesion,
     muestra_color: &mut [u8; 4],
     piezas: &mut [Pieza],
-    uia: &Uia,
-    dispositivo: &Dispositivo,
-    motor: &MotorRender,
-    nivel: Nivel,
-    modo: ModoConfirmacion,
-    textos: &TextosBarra,
-    formato_color: FormatoColorLupa,
-    gesto: bool,
+    ctx: &Ctx,
 ) -> Continuar {
     let invalidar_todas = |piezas: &[Pieza]| {
         for p in piezas {
             p.ventana().invalidar();
         }
     };
+    let modo = ctx.modo;
 
     match evento {
         EventoOverlay::RatonMovido(p) => {
-            uia.pedir(p);
+            if sesion.dibujando {
+                if let Some(a) = sesion.anotacion.as_mut() {
+                    a.mover(p);
+                }
+                invalidar_todas(piezas);
+                return Continuar::Si;
+            }
+            if sesion.usa_uia() {
+                ctx.uia.pedir(p);
+            }
             // El color bajo el cursor: un recorte de 1x1 y su bajada. Es
-            // minusculo (4 bytes) y solo ocurre al mover el raton.
+            // minusculo (4 bytes) y solo ocurre al mover el raton. Con las
+            // barras de despues no hay lupa: no se baja nada.
+            let con_lupa = vista_de(estado, sesion, modo) != Vista::Despues;
             if let Some(pieza) = piezas
                 .iter()
                 .find(|z| z.monitor().area.contiene(p))
-                .filter(|_| toca_muestrear(estado.fase()))
+                .filter(|_| con_lupa && toca_muestrear(estado.fase()))
             {
                 let uno = Rect {
                     x: p.x,
@@ -666,8 +1016,8 @@ fn procesar_evento(
                     ancho: 1,
                     alto: 1,
                 };
-                if let Ok(rec) = pieza.instantanea.recortar(dispositivo, uno) {
-                    if let Ok(img) = a_imagen(dispositivo, &rec) {
+                if let Ok(rec) = pieza.instantanea.recortar(ctx.dispositivo, uno) {
+                    if let Ok(img) = a_imagen(ctx.dispositivo, &rec) {
                         if img.pixeles.len() == 4 {
                             *muestra_color = [
                                 img.pixeles[0],
@@ -680,14 +1030,11 @@ fn procesar_evento(
                 }
             }
             let _ = estado.procesar(EventoEntrada::RatonMovido(p));
-            let forma = match estado.forma_cursor() {
-                FormaCursor::Cruz => FormaCursorWin::Cruz,
-                FormaCursor::Mover => FormaCursorWin::Mover,
-                FormaCursor::RedimNS => FormaCursorWin::RedimNS,
-                FormaCursor::RedimEO => FormaCursorWin::RedimEO,
-                FormaCursor::RedimNeSo => FormaCursorWin::RedimNeSo,
-                FormaCursor::RedimNoSe => FormaCursorWin::RedimNoSe,
-            };
+            if !sesion.usa_uia() && estado.fase() == Fase::Explorando {
+                let c = candidatos_propios(sesion, piezas, p);
+                let _ = estado.procesar(EventoEntrada::Candidatos(c));
+            }
+            let forma = forma_del_cursor(p, estado, sesion, piezas, modo);
             for pieza in piezas.iter() {
                 pieza.ventana().poner_cursor(forma);
             }
@@ -699,11 +1046,48 @@ fn procesar_evento(
             // El cuentagotas (D78): el clic copia el color que la lupa esta
             // ensenando y cierra. No hay recuadro que empezar.
             if matches!(modo, ModoConfirmacion::Cuentagotas) {
-                copiar_color(formato_color, *muestra_color);
+                copiar_color(sesion.formato, *muestra_color);
                 return Continuar::No;
             }
-            // El panel «Seleccionar todo», solo mientras no hay seleccion.
-            if estado.fase() == Fase::Explorando {
+            let bajo = que_hay(p, estado, sesion, piezas, modo);
+            // Un clic fuera de los campos de medida los suelta.
+            if !matches!(bajo, Bajo::Modos(EnModos::Ancho | EnModos::Alto)) {
+                sesion.campo = None;
+            }
+            if bajo != Bajo::Nada {
+                // El clic se resuelve al soltar; tragarse el pulsado evita
+                // que el estado empiece un trazado bajo la barra.
+                sesion.pulsado_ui = true;
+                invalidar_todas(piezas);
+                return Continuar::Si;
+            }
+            sesion.pulsado_ui = false;
+            if vista_de(estado, sesion, modo) == Vista::Despues {
+                let sel = estado.seleccion();
+                let con_util = sesion
+                    .anotacion
+                    .as_ref()
+                    .map_or(sesion.util, |a| a.util)
+                    .is_some();
+                if con_util && sel.contiene(p) {
+                    let escala = monitor_de_region(piezas, sel).escala_por_cien;
+                    sesion.anotacion_en(sel, escala).pulsar(p);
+                    sesion.dibujando = true;
+                    if let Some(z) = piezas.iter().find(|z| z.ventana().handle() == hwnd) {
+                        z.ventana().capturar_raton();
+                    }
+                    invalidar_todas(piezas);
+                    return Continuar::Si;
+                }
+                // Con algo dibujado la zona ya no se mueve: lo anotado va
+                // pegado a lo que tiene debajo.
+                if sesion.anotada() {
+                    return Continuar::Si;
+                }
+            }
+            // El panel «Seleccionar todo», solo sin la barra de modos (que
+            // ya tiene «Pantalla») y mientras no hay seleccion.
+            if !sesion.activa && estado.fase() == Fase::Explorando {
                 let en_panel = piezas.iter().any(|z| {
                     let m = z.monitor();
                     m.area.contiene(p) && PanelTodo::colocar(m.area, m.escala_por_cien).contiene(p)
@@ -714,125 +1098,106 @@ fn procesar_evento(
                     return Continuar::Si;
                 }
             }
-            if let Some(b) = barra {
-                if b.origen.contiene(p) {
-                    // El clic se resuelve al soltar; tragarse el pulsado
-                    // evita que el estado empiece un trazado bajo la barra.
-                    return Continuar::Si;
-                }
-                *barra = None;
-            }
             let _ = estado.procesar(EventoEntrada::BotonPulsado(p));
             invalidar_todas(piezas);
             Continuar::Si
         }
         EventoOverlay::BotonSoltado(p) => {
-            if let Some(b) = barra {
-                if let Some(accion) = b.boton_en(p) {
-                    return decidir_accion(accion, estado.seleccion());
+            if sesion.dibujando {
+                sesion.dibujando = false;
+                if let Some(a) = sesion.anotacion.as_mut() {
+                    a.soltar(p);
                 }
-                if b.origen.contiene(p) {
-                    return Continuar::Si;
+                if let Some(z) = piezas.iter().find(|z| z.ventana().handle() == hwnd) {
+                    z.ventana().soltar_raton();
                 }
+                invalidar_todas(piezas);
+                return Continuar::Si;
+            }
+            if sesion.pulsado_ui {
+                sesion.pulsado_ui = false;
+                let bajo = que_hay(p, estado, sesion, piezas, modo);
+                return actuar(bajo, estado, sesion, piezas, ctx);
             }
             let efecto = estado.procesar(EventoEntrada::BotonSoltado(p));
-            let seguir = aplicar_efecto(
-                efecto,
-                estado,
-                barra,
-                piezas,
-                dispositivo,
-                motor,
-                nivel,
-                modo,
-            );
+            let seguir = aplicar_efecto(efecto, estado, sesion, piezas, ctx);
             // En un gesto con Alt (D81) soltar ya es confirmar: no hay
             // segundo paso. Solo si el arrastre dejo una seleccion; un clic
             // sin arrastre deja el overlay abierto para seleccionar a mano.
-            if seguir == Continuar::Si && gesto && estado.fase() == Fase::Lista {
+            if seguir == Continuar::Si && ctx.gesto && estado.fase() == Fase::Lista {
                 let efecto = estado.procesar(EventoEntrada::Tecla(TeclaOverlay::Enter));
-                return aplicar_efecto(
-                    efecto,
-                    estado,
-                    barra,
-                    piezas,
-                    dispositivo,
-                    motor,
-                    nivel,
-                    modo,
-                );
+                return aplicar_efecto(efecto, estado, sesion, piezas, ctx);
             }
             seguir
+        }
+        EventoOverlay::Caracter(c) => {
+            if let Some(campo) = sesion.campo {
+                match campo {
+                    Campo::Ancho => sesion.ancho.escribir(c),
+                    Campo::Alto => sesion.alto.escribir(c),
+                };
+            } else if let Some(es) = sesion.selector.as_mut() {
+                // Con la busqueda vacia, el numero de una fila la elige y
+                // manda: es la chapita que se ve en cada fila.
+                let fila = c
+                    .to_digit(10)
+                    .filter(|d| (1..=d2::FILAS_SELECTOR as u32).contains(d))
+                    .map(|d| d as usize - 1)
+                    .filter(|i| {
+                        !es.en_comentario
+                            && es.busqueda.is_empty()
+                            && *i < es.visibles(&sesion.proyectos).len()
+                    });
+                match fila {
+                    Some(i) => {
+                        es.elegida = i;
+                        return enviar(estado, sesion);
+                    }
+                    None => es.escribir(c),
+                }
+            } else if let Some(a) = sesion.anotacion.as_mut().filter(|a| a.escribiendo()) {
+                a.caracter(c);
+            }
+            invalidar_todas(piezas);
+            Continuar::Si
+        }
+        EventoOverlay::TeclaSoltada(vk) => {
+            // Mayus sola, sin otra tecla en medio: cambia HEX/RGB. Al
+            // soltarla y no al pulsarla, porque pulsada se repite sola.
+            if vk == VK_SHIFT && sesion.mayus_sola {
+                sesion.mayus_sola = false;
+                if vista_de(estado, sesion, modo) != Vista::Despues {
+                    sesion.cambiar_formato();
+                    invalidar_todas(piezas);
+                }
+            }
+            Continuar::Si
         }
         EventoOverlay::Tecla {
             vk, shift, ctrl, ..
         } => {
-            // Ctrl+A: la pantalla entera bajo el cursor, lista para
-            // confirmar. Mismo camino que el boton del panel.
-            if ctrl && vk == u32::from(b'A') && !matches!(modo, ModoConfirmacion::Cuentagotas) {
-                let _ = estado.procesar(EventoEntrada::Tecla(TeclaOverlay::SeleccionarTodo));
-                invalidar_todas(piezas);
+            if vk == VK_SHIFT {
+                sesion.mayus_sola = !ctrl;
                 return Continuar::Si;
             }
-            // Cuentagotas: Enter copia como el clic; Escape cancela.
-            if matches!(modo, ModoConfirmacion::Cuentagotas) {
-                match vk {
-                    VK_RETURN => {
-                        copiar_color(formato_color, *muestra_color);
-                        return Continuar::No;
-                    }
-                    VK_ESCAPE => return Continuar::No,
-                    _ => return Continuar::Si,
-                }
-            }
-            if barra.is_some() {
-                match vk {
-                    VK_RETURN => {
-                        return decidir_accion(AccionBarra::Copiar, estado.seleccion());
-                    }
-                    VK_ESCAPE => return Continuar::No,
-                    _ => {}
-                }
-            }
-            let paso = if shift { 10 } else { 1 };
-            let tecla = match vk {
-                VK_ESCAPE => Some(TeclaOverlay::Escape),
-                VK_RETURN => Some(TeclaOverlay::Enter),
-                VK_SPACE => Some(TeclaOverlay::Espacio),
-                VK_LEFT => Some(TeclaOverlay::Flecha { dx: -paso, dy: 0 }),
-                VK_RIGHT => Some(TeclaOverlay::Flecha { dx: paso, dy: 0 }),
-                VK_UP => Some(TeclaOverlay::Flecha { dx: 0, dy: -paso }),
-                VK_DOWN => Some(TeclaOverlay::Flecha { dx: 0, dy: paso }),
-                _ => None,
-            };
-            match tecla {
-                Some(t) => {
-                    let efecto = estado.procesar(EventoEntrada::Tecla(t));
-                    aplicar_efecto(
-                        efecto,
-                        estado,
-                        barra,
-                        piezas,
-                        dispositivo,
-                        motor,
-                        nivel,
-                        modo,
-                    )
-                }
-                None => Continuar::Si,
-            }
+            sesion.mayus_sola = false;
+            let seguir = tecla(vk, shift, ctrl, estado, sesion, muestra_color, piezas, ctx);
+            invalidar_todas(piezas);
+            seguir
         }
         EventoOverlay::Despierta => {
             // Dos emisores comparten MSG_DESPIERTA: el hilo UIA (candidatos
             // frescos) y las sesiones en vivo (fotograma nuevo). Atender
             // ambos es mas barato que distinguirlos.
-            let _ = estado.procesar(EventoEntrada::Candidatos(uia.candidatos()));
+            if sesion.usa_uia() {
+                let _ = estado.procesar(EventoEntrada::Candidatos(ctx.uia.candidatos()));
+            }
             if estado.vivo() {
                 for p in piezas.iter_mut() {
                     if let Some(textura) = p.sesion.as_ref().and_then(|s| s.ultimo()) {
                         // Si envolver falla (textura en transito), se ignora:
                         // el proximo fotograma lo reintenta.
-                        if let Ok(b) = motor.bitmap_desde_textura(&textura) {
+                        if let Ok(b) = ctx.motor.bitmap_desde_textura(&textura) {
                             p.fondo_vivo = Some(b);
                         }
                     }
@@ -848,24 +1213,14 @@ fn procesar_evento(
         EventoOverlay::FicherosSoltados => Continuar::Si,
         EventoOverlay::Pintar => {
             if let Some(pieza) = piezas.iter().find(|z| z.ventana().handle() == hwnd) {
-                pintar(
-                    pieza,
-                    estado,
-                    barra.as_ref(),
-                    *muestra_color,
-                    motor,
-                    textos,
-                    formato_color,
-                    modo,
-                );
+                pintar(pieza, estado, sesion, *muestra_color, ctx);
             }
             Continuar::Si
         }
         EventoOverlay::CambioDpi => Continuar::Si,
         // Alt+F4 sobre el overlay: cancelar limpiamente.
         EventoOverlay::Cerrar => Continuar::No,
-        // El overlay de captura no usa la rueda, ni escribe texto, ni
-        // reacciona a las teclas soltadas; la capa de anotacion de S3-C si.
+        // El overlay de captura no usa la rueda.
         // Un atajo global pulsado con el overlay abierto se descarta: si
         // volviera a la cola principal, reabriria el overlay al cerrarlo.
         // Esta ventana no pidio entrada fina (D106): no deberia llegar
@@ -876,8 +1231,6 @@ fn procesar_evento(
         | EventoOverlay::RuedaFina(_)
         | EventoOverlay::DeslizTactil(_)
         | EventoOverlay::PellizcoTactil(_)
-        | EventoOverlay::Caracter(_)
-        | EventoOverlay::TeclaSoltada(_)
         | EventoOverlay::Atajo(_)
         | EventoOverlay::Muestra(_)
         | EventoOverlay::BotonCentralPulsado(_)
@@ -885,6 +1238,211 @@ fn procesar_evento(
         // captura vale lo mismo (el gesto de Alt + derecho).
         | EventoOverlay::BotonDerechoPulsado(_)
         | EventoOverlay::BotonCentralSoltado(_) => Continuar::Si,
+    }
+}
+
+/// La forma del cursor: la flecha sobre los botones, la cruz o la barra de
+/// escribir al anotar, y la del estado en lo demas.
+fn forma_del_cursor(
+    p: Punto,
+    estado: &EstadoOverlay,
+    sesion: &Sesion,
+    piezas: &[Pieza],
+    modo: ModoConfirmacion,
+) -> FormaCursorWin {
+    if que_hay(p, estado, sesion, piezas, modo) != Bajo::Nada {
+        return FormaCursorWin::Flecha;
+    }
+    if vista_de(estado, sesion, modo) == Vista::Despues {
+        let util = sesion.anotacion.as_ref().map_or(sesion.util, |a| a.util);
+        if estado.seleccion().contiene(p) {
+            match util {
+                Some(Util::Texto) => return FormaCursorWin::Texto,
+                Some(_) => return FormaCursorWin::Cruz,
+                None => {}
+            }
+        }
+        if sesion.anotada() {
+            return FormaCursorWin::Flecha;
+        }
+    }
+    match estado.forma_cursor() {
+        FormaCursor::Cruz => FormaCursorWin::Cruz,
+        FormaCursor::Mover => FormaCursorWin::Mover,
+        FormaCursor::RedimNS => FormaCursorWin::RedimNS,
+        FormaCursor::RedimEO => FormaCursorWin::RedimEO,
+        FormaCursor::RedimNeSo => FormaCursorWin::RedimNeSo,
+        FormaCursor::RedimNoSe => FormaCursorWin::RedimNoSe,
+    }
+}
+
+/// Una tecla pulsada. El orden decide quien se la queda: primero lo que se
+/// esta escribiendo (un campo, el selector, un texto), despues las barras,
+/// y al final el estado de siempre.
+#[allow(clippy::too_many_arguments)]
+fn tecla(
+    vk: u32,
+    shift: bool,
+    ctrl: bool,
+    estado: &mut EstadoOverlay,
+    sesion: &mut Sesion,
+    muestra_color: &[u8; 4],
+    piezas: &mut [Pieza],
+    ctx: &Ctx,
+) -> Continuar {
+    let modo = ctx.modo;
+    let letra = |c: u8| vk == u32::from(c);
+
+    // Cuentagotas: Enter o C copian como el clic; Escape cancela.
+    if matches!(modo, ModoConfirmacion::Cuentagotas) {
+        return match vk {
+            VK_RETURN => {
+                copiar_color(sesion.formato, *muestra_color);
+                Continuar::No
+            }
+            _ if letra(b'C') && !ctrl => {
+                copiar_color(sesion.formato, *muestra_color);
+                Continuar::No
+            }
+            VK_ESCAPE => Continuar::No,
+            _ => Continuar::Si,
+        };
+    }
+
+    // 1. Un campo de medida: las cifras llegan por `Caracter`.
+    if let Some(campo) = sesion.campo {
+        match vk {
+            VK_ESCAPE => {
+                sesion.campo = None;
+                sesion.ancho = d2::Cifras::default();
+                sesion.alto = d2::Cifras::default();
+            }
+            VK_BACK => {
+                match campo {
+                    Campo::Ancho => sesion.ancho.borrar(),
+                    Campo::Alto => sesion.alto.borrar(),
+                };
+            }
+            VK_TAB => {
+                sesion.campo = match campo {
+                    Campo::Ancho => Some(Campo::Alto),
+                    Campo::Alto => Some(Campo::Ancho),
+                }
+            }
+            VK_RETURN => aplicar_medidas(estado, sesion, piezas),
+            _ => {}
+        }
+        return Continuar::Si;
+    }
+
+    // 2. El selector de proyecto.
+    if let Some(es) = sesion.selector.as_mut() {
+        let n = es.visibles(&sesion.proyectos).len();
+        match vk {
+            VK_ESCAPE => sesion.selector = None,
+            VK_RETURN => return enviar(estado, sesion),
+            VK_UP => es.mover(-1, n),
+            VK_DOWN => es.mover(1, n),
+            VK_TAB => es.en_comentario = !es.en_comentario,
+            VK_BACK => es.borrar(),
+            _ => {}
+        }
+        return Continuar::Si;
+    }
+
+    // 3. Un texto de la anotacion: las letras llegan por `Caracter`.
+    if let Some(a) = sesion.anotacion.as_mut().filter(|a| a.escribiendo()) {
+        if vk == VK_ESCAPE {
+            a.cerrar_texto();
+        } else {
+            a.tecla_de_texto(vk);
+        }
+        return Continuar::Si;
+    }
+
+    let v = vista_de(estado, sesion, modo);
+
+    // 4. Despues de elegir.
+    if v == Vista::Despues {
+        if ctrl && shift && letra(b'S') {
+            PENDIENTE.poner(QueAccion::GuardarComo, estado.seleccion());
+            return Continuar::No;
+        }
+        if ctrl && (letra(b'Z') || letra(b'Y')) {
+            if let Some(a) = sesion.anotacion.as_mut() {
+                if letra(b'Z') {
+                    a.deshacer();
+                } else {
+                    a.rehacer();
+                }
+            }
+            return Continuar::Si;
+        }
+        if let Some(a) = Accion::de_tecla(vk, ctrl, shift) {
+            return hacer_accion(a, estado, sesion);
+        }
+        if !ctrl {
+            if let Some(u) = Util::de_tecla(vk) {
+                let sel = estado.seleccion();
+                let escala = monitor_de_region(piezas, sel).escala_por_cien;
+                sesion.tomar(u, sel, escala);
+                return Continuar::Si;
+            }
+        }
+        if vk == VK_DELETE {
+            if let Some(a) = sesion.anotacion.as_mut() {
+                a.suprimir();
+            }
+            return Continuar::Si;
+        }
+        if sesion.anotada() {
+            // La zona ya no se mueve ni cambia: el resto no hace nada.
+            return Continuar::Si;
+        }
+    }
+
+    // 5. Las letras de la barra de modos.
+    if sesion.activa && !ctrl && matches!(v, Vista::Elegir | Vista::Confirmar) {
+        if let Some(m) = Modo::de_tecla(vk) {
+            cambiar_modo(m, estado, sesion, piezas, ctx);
+            return Continuar::Si;
+        }
+        if letra(b'R') && sesion.contexto.ultima_region.is_some() {
+            repetir(estado, sesion);
+            return Continuar::Si;
+        }
+    }
+
+    // C copia el color de la lupa mientras se elige.
+    if !ctrl && letra(b'C') && matches!(estado.fase(), Fase::Explorando | Fase::Trazando) {
+        copiar_color(sesion.formato, *muestra_color);
+        return Continuar::No;
+    }
+
+    // Ctrl+A: la pantalla entera bajo el cursor, lista para confirmar. Mismo
+    // camino que el boton del panel.
+    if ctrl && letra(b'A') {
+        let _ = estado.procesar(EventoEntrada::Tecla(TeclaOverlay::SeleccionarTodo));
+        return Continuar::Si;
+    }
+
+    let paso = if shift { 10 } else { 1 };
+    let t = match vk {
+        VK_ESCAPE => Some(TeclaOverlay::Escape),
+        VK_RETURN => Some(TeclaOverlay::Enter),
+        VK_SPACE => Some(TeclaOverlay::Espacio),
+        VK_LEFT => Some(TeclaOverlay::Flecha { dx: -paso, dy: 0 }),
+        VK_RIGHT => Some(TeclaOverlay::Flecha { dx: paso, dy: 0 }),
+        VK_UP => Some(TeclaOverlay::Flecha { dx: 0, dy: -paso }),
+        VK_DOWN => Some(TeclaOverlay::Flecha { dx: 0, dy: paso }),
+        _ => None,
+    };
+    match t {
+        Some(t) => {
+            let efecto = estado.procesar(EventoEntrada::Tecla(t));
+            aplicar_efecto(efecto, estado, sesion, piezas, ctx)
+        }
+        None => Continuar::Si,
     }
 }
 
@@ -898,26 +1456,12 @@ fn copiar_color(formato: FormatoColorLupa, muestra: [u8; 4]) {
     }
 }
 
-fn decidir_accion(accion: AccionBarra, region: Rect) -> Continuar {
-    match accion {
-        AccionBarra::Copiar => PENDIENTE.poner(QueAccion::Copiar, region),
-        AccionBarra::Guardar => PENDIENTE.poner(QueAccion::Guardar, region),
-        AccionBarra::GuardarComo => PENDIENTE.poner(QueAccion::GuardarComo, region),
-        AccionBarra::Descartar => {}
-    }
-    Continuar::No
-}
-
-#[allow(clippy::too_many_arguments)] // los brazos comparten el contexto entero del bucle
 fn aplicar_efecto(
     efecto: Efecto,
     estado: &mut EstadoOverlay,
-    barra: &mut Option<Barra>,
+    sesion: &mut Sesion,
     piezas: &mut [Pieza],
-    dispositivo: &Dispositivo,
-    _motor: &MotorRender, // simetria con procesar_evento; el vivo usa el del Despierta
-    nivel: Nivel,
-    modo: ModoConfirmacion,
+    ctx: &Ctx,
 ) -> Continuar {
     match efecto {
         Efecto::Nada => Continuar::Si,
@@ -933,7 +1477,7 @@ fn aplicar_efecto(
                 // primer consumidor real del nivel (D14/5.2): Completo sin
                 // tope, Ligero a 30 fps — sobre una iGPU compartida,
                 // refrescar a 60 Hz roba lo que la captura final necesita.
-                let tope = match nivel {
+                let tope = match ctx.nivel {
                     Nivel::Completo => std::time::Duration::ZERO,
                     Nivel::Ligero => std::time::Duration::from_millis(33),
                 };
@@ -942,7 +1486,7 @@ fn aplicar_efecto(
                         p.ventana().handle().0 as isize,
                         pixpin_shell::overlay::MSG_DESPIERTA,
                     ));
-                    match SesionViva::nueva(dispositivo, p.monitor().id, tope, aviso) {
+                    match SesionViva::nueva(ctx.dispositivo, p.monitor().id, tope, aviso) {
                         Ok(s) => p.sesion = Some(s),
                         Err(e) => {
                             tracing::warn!(?e, "sin sesion en vivo; el monitor queda congelado");
@@ -968,7 +1512,7 @@ fn aplicar_efecto(
             Continuar::Si
         }
         Efecto::Cancelar => Continuar::No,
-        Efecto::Confirmar(region) => match modo {
+        Efecto::Confirmar(region) => match sesion.confirmacion(ctx.modo) {
             ModoConfirmacion::DirectoAlPortapapeles => {
                 PENDIENTE.poner(QueAccion::Copiar, region);
                 Continuar::No
@@ -996,18 +1540,15 @@ fn aplicar_efecto(
             // El cuentagotas no confirma regiones: su clic se resuelve al
             // pulsar, antes de llegar aqui.
             ModoConfirmacion::Cuentagotas => Continuar::No,
+            // Confirmar con «preguntar» deja la zona elegida: las barras de
+            // despues salen solas en cuanto la zona esta lista. Enter con
+            // la zona ya lista es Copiar (lo atiende `tecla` antes).
             ModoConfirmacion::ConBarra => {
-                let monitor = piezas
-                    .iter()
-                    .find(|p| p.monitor().area.interseccion(region).is_some())
-                    .map(|p| *p.monitor())
-                    .unwrap_or(*piezas[0].monitor());
-                *barra = Some(Barra::colocar(
-                    region,
-                    monitor.area_trabajo,
-                    monitor.escala_por_cien,
-                ));
-                let _ = estado;
+                if estado.fase() == Fase::Lista && estado.seleccion() == region {
+                    PENDIENTE.poner(QueAccion::Copiar, region);
+                    return Continuar::No;
+                }
+                let _ = estado.poner_seleccion(region);
                 for p in piezas {
                     p.ventana().invalidar();
                 }
@@ -1017,24 +1558,37 @@ fn aplicar_efecto(
     }
 }
 
-/// Dibuja el fotograma completo de una pieza. Solo lectura del estado.
-#[allow(clippy::too_many_arguments)] // el fotograma se pinta con todo el contexto del bucle
-fn pintar(
-    pieza: &Pieza,
-    estado: &EstadoOverlay,
-    barra: Option<&Barra>,
-    muestra_color: [u8; 4],
-    motor: &MotorRender,
-    textos: &TextosBarra,
-    formato_color: FormatoColorLupa,
-    modo: ModoConfirmacion,
-) {
+/// Dibuja el fotograma completo de una pieza.
+fn pintar(pieza: &Pieza, estado: &EstadoOverlay, sesion: &mut Sesion, muestra_color: [u8; 4], ctx: &Ctx) {
+    let motor = ctx.motor;
     let monitor = pieza.monitor().area;
     let escala = pieza.monitor().escala_por_cien as f32 / 100.0;
+    let l = p2::Local {
+        ox: monitor.x,
+        oy: monitor.y,
+        e: escala,
+    };
+    let v = vista_de(estado, sesion, ctx.modo);
+    let sel = estado.seleccion();
+    // Lo anotado necesita su foto tapada antes de pintar (fuera del
+    // fotograma: sube un bitmap).
+    if v == Vista::Despues && monitor.interseccion(sel) == Some(sel) {
+        if let Some(a) = sesion.anotacion.as_mut() {
+            a.preparar(motor, || {
+                let rec = pieza.instantanea.recortar(ctx.dispositivo, sel).ok()?;
+                a_imagen(ctx.dispositivo, &rec).ok()
+            });
+        }
+    }
     let Ok(destino) = pieza.base.superficie.empezar(motor) else {
         return;
     };
     let fondo = pieza.fondo_vivo.as_ref().unwrap_or(&pieza.fondo);
+    let cursor = estado.cursor();
+    let en_este = monitor.contiene(cursor);
+    let modos_aqui = matches!(v, Vista::Elegir | Vista::Confirmar)
+        && monitor_en(std::slice::from_ref(pieza), cursor).id == pieza.monitor().id
+        && en_este;
 
     let _ = motor.dibujar(&destino, |p| {
         let todo = RectF {
@@ -1048,122 +1602,167 @@ fn pintar(
         let seleccion_local = if estado.fase() == Fase::Explorando {
             None
         } else {
-            parte_local(estado.seleccion(), monitor)
+            parte_local(sel, monitor)
         };
 
-        // El velo: cuatro rectangulos alrededor de la seleccion (o entero).
-        match seleccion_local {
-            Some(s) if !s.esta_vacio() => {
+        // El velo: cuatro rectangulos alrededor del hueco (la seleccion, o
+        // lo resaltado con la barra nueva), o entero.
+        let hueco = match seleccion_local {
+            Some(s) if !s.esta_vacio() => Some(s),
+            Some(_) => None,
+            None if sesion.activa => estado
+                .rect_resaltado()
+                .and_then(|r| parte_local(r, monitor))
+                .filter(|r| !r.esta_vacio()),
+            None => None,
+        };
+        let velo = Color::oscurecido();
+        match hueco {
+            Some(s) => {
                 let (sx, sy) = (s.x as f32, s.y as f32);
                 let (sw, sh) = (s.ancho as f32, s.alto as f32);
-                let velo = Color::oscurecido();
-                p.rellenar(
+                for r in [
                     RectF {
                         x: 0.0,
                         y: 0.0,
                         ancho: todo.ancho,
                         alto: sy,
                     },
-                    velo,
-                );
-                p.rellenar(
                     RectF {
                         x: 0.0,
                         y: sy + sh,
                         ancho: todo.ancho,
                         alto: todo.alto - sy - sh,
                     },
-                    velo,
-                );
-                p.rellenar(
                     RectF {
                         x: 0.0,
                         y: sy,
                         ancho: sx,
                         alto: sh,
                     },
-                    velo,
-                );
-                p.rellenar(
                     RectF {
                         x: sx + sw,
                         y: sy,
                         ancho: todo.ancho - sx - sw,
                         alto: sh,
                     },
-                    velo,
-                );
-
-                // Borde y tiradores.
-                let grosor = 2.0 * escala;
-                p.trazar(
-                    RectF {
-                        x: sx,
-                        y: sy,
-                        ancho: sw,
-                        alto: sh,
-                    },
-                    grosor,
-                    Color::ACENTO,
-                );
-                let lado = 8.0 * escala;
-                for (tx, ty) in [
-                    (sx, sy),
-                    (sx + sw / 2.0, sy),
-                    (sx + sw, sy),
-                    (sx + sw, sy + sh / 2.0),
-                    (sx + sw, sy + sh),
-                    (sx + sw / 2.0, sy + sh),
-                    (sx, sy + sh),
-                    (sx, sy + sh / 2.0),
                 ] {
-                    let cuadro = RectF {
-                        x: tx - lado / 2.0,
-                        y: ty - lado / 2.0,
-                        ancho: lado,
-                        alto: lado,
-                    };
-                    p.rellenar(cuadro, Color::BLANCO);
-                    p.trazar(cuadro, 1.0 * escala, Color::ACENTO);
+                    p.rellenar(r, velo);
+                }
+            }
+            None => p.rellenar(todo, velo),
+        }
+
+        match seleccion_local {
+            Some(s) if !s.esta_vacio() => {
+                let (sx, sy) = (s.x as f32, s.y as f32);
+                let (sw, sh) = (s.ancho as f32, s.alto as f32);
+                let caja = RectF {
+                    x: sx,
+                    y: sy,
+                    ancho: sw,
+                    alto: sh,
+                };
+                // Lo anotado, encima de la foto y dentro de la zona entera
+                // (aunque cruce monitores: la ventana recorta lo que sobra).
+                if v == Vista::Despues {
+                    if let Some(a) = sesion.anotacion.as_mut() {
+                        let zona = RectF {
+                            x: (sel.x - monitor.x) as f32,
+                            y: (sel.y - monitor.y) as f32,
+                            ancho: sel.ancho as f32,
+                            alto: sel.alto as f32,
+                        };
+                        a.pintar(p, zona);
+                    }
+                }
+                p.trazar(caja, 2.0 * escala, Color::ACENTO);
+                if sesion.activa {
+                    // Con algo dibujado la zona ya no se toca: sin tiradores.
+                    if !sesion.anotada() {
+                        p2::pintar_tiradores(p, caja, escala);
+                    }
+                } else {
+                    let lado = 8.0 * escala;
+                    for (tx, ty) in [
+                        (sx, sy),
+                        (sx + sw / 2.0, sy),
+                        (sx + sw, sy),
+                        (sx + sw, sy + sh / 2.0),
+                        (sx + sw, sy + sh),
+                        (sx + sw / 2.0, sy + sh),
+                        (sx, sy + sh),
+                        (sx, sy + sh / 2.0),
+                    ] {
+                        let cuadro = RectF {
+                            x: tx - lado / 2.0,
+                            y: ty - lado / 2.0,
+                            ancho: lado,
+                            alto: lado,
+                        };
+                        p.rellenar(cuadro, Color::BLANCO);
+                        p.trazar(cuadro, 1.0 * escala, Color::ACENTO);
+                    }
                 }
 
-                // Dimensiones y coordenadas, la spec pide ambas.
-                let sel = estado.seleccion();
-                let etiqueta = format!("{}\u{d7}{} ({}, {})", sel.ancho, sel.alto, sel.x, sel.y);
-                let tam = 14.0 * escala;
-                let ty = if sy > tam * 2.5 {
-                    sy - tam * 2.2
-                } else {
-                    sy + 4.0 * escala
-                };
-                p.texto_con_fondo(
-                    &etiqueta,
-                    sx,
-                    ty,
-                    tam,
-                    Color::BLANCO,
-                    Color {
-                        r: 0.0,
-                        g: 0.0,
-                        b: 0.0,
-                        a: 0.7,
-                    },
-                );
+                // Dimensiones y coordenadas, la spec pide ambas. Con las
+                // barras de despues ya van en la de anotar.
+                if v != Vista::Despues {
+                    let etiqueta =
+                        format!("{}\u{d7}{} ({}, {})", sel.ancho, sel.alto, sel.x, sel.y);
+                    let tam = 14.0 * escala;
+                    let ty = if sy > tam * 2.5 {
+                        sy - tam * 2.2
+                    } else {
+                        sy + 4.0 * escala
+                    };
+                    p.texto_con_fondo(
+                        &etiqueta,
+                        sx,
+                        ty,
+                        tam,
+                        Color::BLANCO,
+                        Color {
+                            r: 0.0,
+                            g: 0.0,
+                            b: 0.0,
+                            a: 0.7,
+                        },
+                    );
+                }
             }
             _ => {
-                p.rellenar(todo, Color::oscurecido());
-                // El resaltado del snap, discontinuo.
                 if let Some(res) = estado.rect_resaltado() {
                     if let Some(local) = parte_local(res, monitor) {
-                        p.trazar_discontinuo(a_rectf(local), 2.0 * escala, Color::ACENTO);
+                        if sesion.activa {
+                            // Lo resaltado, como en la maqueta: borde azul
+                            // firme y un velo azul muy suave.
+                            let r = a_rectf(local);
+                            p.rellenar(
+                                r,
+                                Color {
+                                    r: 0.04,
+                                    g: 0.52,
+                                    b: 1.0,
+                                    a: 0.08,
+                                },
+                            );
+                            p.trazar(r, 3.0 * escala, p2::AZUL);
+                        } else {
+                            // El resaltado del snap, discontinuo.
+                            p.trazar_discontinuo(a_rectf(local), 2.0 * escala, Color::ACENTO);
+                        }
                     }
                 }
             }
         }
 
-        // El panel «Seleccionar todo», mientras no hay seleccion y no es el
-        // cuentagotas (ahi no hay nada que seleccionar).
-        if estado.fase() == Fase::Explorando && !matches!(modo, ModoConfirmacion::Cuentagotas) {
+        // El panel «Seleccionar todo», mientras no hay seleccion, sin la
+        // barra nueva y sin el cuentagotas (ahi no hay nada que seleccionar).
+        if !sesion.activa
+            && estado.fase() == Fase::Explorando
+            && !matches!(ctx.modo, ModoConfirmacion::Cuentagotas)
+        {
             let panel = PanelTodo::colocar(pieza.monitor().area, pieza.monitor().escala_por_cien);
             if let Some(local) = parte_local(panel.rect, monitor) {
                 let caja = a_rectf(local);
@@ -1178,9 +1777,9 @@ fn pintar(
                     },
                 );
                 let tam = 13.0 * escala;
-                let (tw, th) = p.medir_texto(&textos.todo, tam);
+                let (tw, th) = p.medir_texto(&ctx.textos.todo, tam);
                 p.texto(
-                    &textos.todo,
+                    &ctx.textos.todo,
                     caja.x + (caja.ancho - tw) / 2.0,
                     caja.y + (caja.alto - th) / 2.0,
                     tam,
@@ -1189,108 +1788,135 @@ fn pintar(
             }
         }
 
-        // La barra de resultado.
-        if let Some(b) = barra {
-            if let Some(local) = parte_local(b.origen, monitor) {
-                let desplazado = |r: Rect| RectF {
-                    x: (r.x - b.origen.x + local.x) as f32,
-                    y: (r.y - b.origen.y + local.y) as f32,
-                    ancho: r.ancho as f32,
-                    alto: r.alto as f32,
-                };
-                p.rellenar_redondeado(
-                    a_rectf(local),
-                    6.0 * escala,
-                    Color {
-                        r: 0.12,
-                        g: 0.12,
-                        b: 0.14,
-                        a: 0.95,
-                    },
-                );
-                for accion in Barra::ACCIONES {
-                    let rb = b.rect_boton(accion);
-                    let rl = desplazado(rb);
-                    if rb.contiene(estado.cursor()) {
-                        p.rellenar_redondeado(
-                            rl,
-                            4.0 * escala,
-                            Color {
-                                r: 0.25,
-                                g: 0.45,
-                                b: 0.75,
-                                a: 0.9,
-                            },
-                        );
-                    }
-                    let etiqueta = textos.de(accion);
-                    let tam = 13.0 * escala;
-                    let (tw, th) = p.medir_texto(etiqueta, tam);
-                    p.texto(
-                        etiqueta,
-                        rl.x + (rl.ancho - tw) / 2.0,
-                        rl.y + (rl.alto - th) / 2.0,
-                        tam,
-                        Color::BLANCO,
-                    );
+        let t2 = &sesion.contexto.textos;
+        let medidas_ahora = medidas(estado);
+
+        // Lo de elegir: pistas arriba, etiqueta de lo resaltado, barra de
+        // modos abajo, en el monitor del raton.
+        let mut sobre_barra = false;
+        if modos_aqui {
+            let m = pieza.monitor();
+            if v == Vista::Elegir && sesion.contexto.gestos {
+                p2::pintar_pistas(p, l, d2::fila_de_pistas(m.area_trabajo, m.escala_por_cien), t2);
+            }
+            if v == Vista::Elegir {
+                if let Some(res) = estado.rect_resaltado() {
+                    let titulo = match sesion.modo {
+                        Modo::Pantalla => String::new(),
+                        _ => sesion
+                            .ventana_en(cursor)
+                            .map(|w| w.titulo.clone())
+                            .unwrap_or_default(),
+                    };
+                    let pista = if sesion.modo == Modo::Ventana {
+                        &t2.pista_ventana
+                    } else {
+                        &t2.pista_zona
+                    };
+                    let ancho = p2::ancho_etiqueta(p, escala, &titulo, (res.ancho, res.alto), pista);
+                    let r = d2::etiqueta_de_ventana(res, ancho, m.area, m.escala_por_cien);
+                    p2::pintar_etiqueta(p, l, r, &titulo, (res.ancho, res.alto), pista);
+                }
+            }
+            let (b, _) = barra_modos(estado, sesion, std::slice::from_ref(pieza));
+            sobre_barra = b.panel.contiene(cursor);
+            p2::pintar_modos(p, l, &b, sesion, t2, cursor, medidas_ahora);
+        }
+        if v == Vista::Confirmar {
+            let (r, m) = boton_confirmar(estado, std::slice::from_ref(pieza));
+            if m.id == pieza.monitor().id && monitor.interseccion(sel).is_some() {
+                p2::pintar_confirmar(p, l, r, t2.modo(sesion.modo), cursor);
+            }
+        }
+        if v == Vista::Despues {
+            let (a, b, m) = barras_despues(estado, std::slice::from_ref(pieza));
+            if m.id == pieza.monitor().id && monitor.interseccion(sel).is_some() {
+                p2::pintar_despues(p, l, &a, &b, sesion, t2, cursor, medidas_ahora);
+                if let (Some(s), Some(es)) = (selector_de(sesion, &b, &m), sesion.selector.as_ref()) {
+                    let ultimo = crate::captura2::al_chat::ultimo();
+                    p2::pintar_selector(p, l, &s, es, &sesion.proyectos, ultimo.as_deref(), t2, cursor);
                 }
             }
         }
 
-        // La lupa, si el cursor esta en este monitor y no hay barra activa.
-        let cursor = estado.cursor();
-        if barra.is_none() && monitor.contiene(cursor) {
-            let lupa = Lupa::por_defecto(pieza.monitor().escala_por_cien);
-            let fuente_global = lupa.region_fuente(cursor, monitor);
-            let fuente_local = parte_local(fuente_global, monitor).unwrap_or(fuente_global);
-            let pos = lupa.colocar(cursor, monitor);
-            let pos_local = Punto {
-                x: pos.x - monitor.x,
-                y: pos.y - monitor.y,
-            };
-            let d = lupa.diametro as f32;
-            let destino_lupa = RectF {
-                x: pos_local.x as f32,
-                y: pos_local.y as f32,
-                ancho: d,
-                alto: d,
-            };
-            p.bitmap(
-                &pieza.fondo,
-                destino_lupa,
-                Some(a_rectf(fuente_local)),
-                true,
-            );
-            p.trazar(destino_lupa, 2.0 * escala, Color::ACENTO);
-            // Reticula al centro.
-            let cx = destino_lupa.x + d / 2.0;
-            let cy = destino_lupa.y + d / 2.0;
-            let cruz = Color {
-                r: 1.0,
-                g: 1.0,
-                b: 1.0,
-                a: 0.6,
-            };
-            p.linea((cx, destino_lupa.y), (cx, destino_lupa.y + d), 1.0, cruz);
-            p.linea((destino_lupa.x, cy), (destino_lupa.x + d, cy), 1.0, cruz);
-            // El color bajo el cursor, en el formato configurado.
-            let texto = texto_color(formato_color, muestra_color);
-            p.texto_con_fondo(
-                &texto,
-                destino_lupa.x + 6.0 * escala,
-                destino_lupa.y + d + 6.0 * escala,
-                12.0 * escala,
-                Color::BLANCO,
-                Color {
-                    r: 0.0,
-                    g: 0.0,
-                    b: 0.0,
-                    a: 0.7,
-                },
-            );
+        // La lupa, si el cursor esta en este monitor, eligiendo y no encima
+        // de la barra.
+        let con_lupa = matches!(
+            estado.fase(),
+            Fase::Explorando | Fase::Trazando | Fase::Redimensionando
+        ) || !sesion.activa;
+        if en_este && con_lupa && !sobre_barra && v != Vista::Despues {
+            if sesion.activa || matches!(ctx.modo, ModoConfirmacion::Cuentagotas) {
+                let lupa = PanelLupa::colocar(cursor, monitor, pieza.monitor().escala_por_cien);
+                let region = lupa.region(cursor, monitor);
+                let fuente = a_rectf(parte_local(region, monitor).unwrap_or(region));
+                p2::pintar_lupa(
+                    p,
+                    l,
+                    &lupa,
+                    &pieza.fondo,
+                    fuente,
+                    cursor,
+                    muestra_color,
+                    sesion,
+                    t2,
+                );
+            } else {
+                pintar_lupa_vieja(p, pieza, cursor, muestra_color, sesion.formato, escala);
+            }
         }
     });
     let _ = pieza.base.superficie.presentar();
+}
+
+/// La lupa redonda de antes, para los gestos con Alt: mas pequena, porque
+/// ahi la mano ya va arrastrando y no hay nada que leer.
+fn pintar_lupa_vieja(
+    p: &pixpin_render::Pintor,
+    pieza: &Pieza,
+    cursor: Punto,
+    muestra_color: [u8; 4],
+    formato: FormatoColorLupa,
+    escala: f32,
+) {
+    let monitor = pieza.monitor().area;
+    let lupa = pixpin_ui::Lupa::por_defecto(pieza.monitor().escala_por_cien);
+    let fuente_global = lupa.region_fuente(cursor, monitor);
+    let fuente_local = parte_local(fuente_global, monitor).unwrap_or(fuente_global);
+    let pos = lupa.colocar(cursor, monitor);
+    let d = lupa.diametro as f32;
+    let destino_lupa = RectF {
+        x: (pos.x - monitor.x) as f32,
+        y: (pos.y - monitor.y) as f32,
+        ancho: d,
+        alto: d,
+    };
+    p.bitmap(&pieza.fondo, destino_lupa, Some(a_rectf(fuente_local)), true);
+    p.trazar(destino_lupa, 2.0 * escala, Color::ACENTO);
+    let cx = destino_lupa.x + d / 2.0;
+    let cy = destino_lupa.y + d / 2.0;
+    let cruz = Color {
+        r: 1.0,
+        g: 1.0,
+        b: 1.0,
+        a: 0.6,
+    };
+    p.linea((cx, destino_lupa.y), (cx, destino_lupa.y + d), 1.0, cruz);
+    p.linea((destino_lupa.x, cy), (destino_lupa.x + d, cy), 1.0, cruz);
+    let texto = texto_color(formato, muestra_color);
+    p.texto_con_fondo(
+        &texto,
+        destino_lupa.x + 6.0 * escala,
+        destino_lupa.y + d + 6.0 * escala,
+        12.0 * escala,
+        Color::BLANCO,
+        Color {
+            r: 0.0,
+            g: 0.0,
+            b: 0.0,
+            a: 0.7,
+        },
+    );
 }
 
 #[cfg(test)]

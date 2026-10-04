@@ -1477,3 +1477,43 @@ tareas-pegar-repetida = Esa imagen ya está como { $ficha }.
 
 # Abrir una foto que Windows solo lee con una extension de Microsoft Store.
 abrir-falta-extension = No se puede abrir { $nombre }: Windows necesita «{ $extension }», gratis en Microsoft Store. Instálala y vuelve a abrirla.
+
+## v2-captura
+captura2-zona = Zona
+captura2-ventana = Ventana
+captura2-pantalla = Pantalla
+captura2-scroll = Con scroll
+captura2-gif = Grabar GIF
+captura2-pin-vivo = Pin en vivo
+captura2-texto = Texto (OCR)
+captura2-libre = Libre
+captura2-repetir = Repetir la última zona
+captura2-ancho = An
+captura2-alto = Al
+captura2-sin-abrir = Sin abrir esto:
+captura2-arrastrar-izq = + arrastrar izquierdo
+captura2-arrastrar-der = + arrastrar derecho
+captura2-arrastrar-centro = + arrastrar central
+captura2-doble-centro = + doble clic central
+captura2-gesto-copiar = copiar
+captura2-gesto-pinear = pinear
+captura2-gesto-pin-vivo = pin en vivo
+captura2-gesto-anotar = anotar pantalla
+captura2-salir = salir
+captura2-pista-ventana = Clic: capturar ventana · Arrastrar: zona libre
+captura2-pista-zona = Clic: capturar esto · Arrastrar: zona libre
+captura2-copiar-color = copiar el color
+captura2-cambiar-formato = HEX / RGB
+captura2-copiar = Copiar
+captura2-pinear = Pinear
+captura2-al-chat = Al chat
+captura2-ocr = Texto
+captura2-guardar = Guardar
+captura2-descartar = Descartar
+captura2-buscar-proyecto = Buscar proyecto…
+captura2-recientes = Recientes
+captura2-el-ultimo = el último
+captura2-comentario = Añade un comentario (opcional)
+captura2-enviar = Enviar
+captura2-sin-proyectos = Ningún proyecto se llama así
+captura2-enviada = Captura enviada a «{ $proyecto }».

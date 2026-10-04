@@ -82,6 +82,9 @@ pub struct EstadoOverlay {
     ancla_clic: Punto,
     ultimo_cursor: Punto,
     candidatos: Vec<Candidato>,
+    /// La proporcion a la que se ata el trazado (v2-captura: 16:9, 4:3,
+    /// 1:1). `None` es libre, lo de siempre.
+    proporcion: Option<(u32, u32)>,
 }
 
 impl EstadoOverlay {
@@ -95,7 +98,82 @@ impl EstadoOverlay {
             ancla_clic: Punto { x: 0, y: 0 },
             ultimo_cursor: Punto { x: 0, y: 0 },
             candidatos: Vec::new(),
+            proporcion: None,
         }
+    }
+
+    /// La proporcion elegida, o `None` si es libre.
+    pub fn proporcion(&self) -> Option<(u32, u32)> {
+        self.proporcion
+    }
+
+    /// Ata el trazado a una proporcion (`None` la suelta). Si ya hay una
+    /// seleccion lista, se ajusta en el sitio: se conserva la esquina de
+    /// arriba a la izquierda y el ancho, y se calcula el alto; si no cabe
+    /// en el escritorio, manda el alto y se calcula el ancho.
+    pub fn poner_proporcion(&mut self, p: Option<(u32, u32)>) -> Efecto {
+        self.proporcion = p.filter(|(a, b)| *a > 0 && *b > 0);
+        let Some((pa, pb)) = self.proporcion else {
+            return Efecto::Redibujar;
+        };
+        if self.fase != Fase::Lista {
+            return Efecto::Redibujar;
+        }
+        let r = self.seleccion.rect();
+        let v = self.disposicion.escritorio_virtual();
+        let mut ancho = r.ancho.max(1);
+        let mut alto = (ancho as u64 * pb as u64 / pa as u64).max(1) as u32;
+        let cabe_alto = (v.abajo() - r.y).max(1) as u32;
+        if alto > cabe_alto {
+            alto = cabe_alto;
+            ancho = (alto as u64 * pa as u64 / pb as u64).max(1) as u32;
+        }
+        self.seleccion.establecer(Rect {
+            x: r.x,
+            y: r.y,
+            ancho,
+            alto,
+        });
+        self.seleccion.sujetar_a(&self.disposicion);
+        Efecto::Redibujar
+    }
+
+    /// Deja `r` como seleccion lista, como si se acabara de trazar: es
+    /// «Repetir la ultima zona» y las medidas tecleadas. Un rectangulo vacio
+    /// o fuera del escritorio no cambia nada.
+    pub fn poner_seleccion(&mut self, r: Rect) -> Efecto {
+        if r.esta_vacio() {
+            return Efecto::Nada;
+        }
+        let v = self.disposicion.escritorio_virtual();
+        if r.interseccion(v).is_none() {
+            return Efecto::Nada;
+        }
+        self.seleccion.terminar_arrastre();
+        self.seleccion.establecer(r);
+        self.seleccion.sujetar_a(&self.disposicion);
+        if self.seleccion.rect().esta_vacio() {
+            return Efecto::Nada;
+        }
+        self.fase = Fase::Lista;
+        Efecto::Redibujar
+    }
+
+    /// El rectangulo desde `ancla` hacia `p` con la proporcion puesta: manda
+    /// el lado que mas se arrastro. `None` si la proporcion es libre.
+    fn atado(&self, ancla: Punto, p: Punto) -> Option<Rect> {
+        let (pa, pb) = self.proporcion?;
+        let dx = p.x - ancla.x;
+        let dy = p.y - ancla.y;
+        let (ax, ay) = (dx.unsigned_abs(), dy.unsigned_abs());
+        let (ancho, alto) = if ax as u64 * pb as u64 >= ay as u64 * pa as u64 {
+            (ax, (ax as u64 * pb as u64 / pa as u64) as u32)
+        } else {
+            ((ay as u64 * pa as u64 / pb as u64) as u32, ay)
+        };
+        let x = if dx < 0 { ancla.x - ancho as i32 } else { ancla.x };
+        let y = if dy < 0 { ancla.y - alto as i32 } else { ancla.y };
+        Some(Rect { x, y, ancho, alto })
     }
 
     pub fn fase(&self) -> Fase {
@@ -160,7 +238,14 @@ impl EstadoOverlay {
     fn raton_movido(&mut self, p: Punto) -> Efecto {
         self.cursor = p;
         match self.fase {
-            Fase::Trazando | Fase::Redimensionando => {
+            Fase::Trazando => {
+                self.seleccion.arrastrar_a(p);
+                if let Some(r) = self.atado(self.ancla_clic, p) {
+                    self.seleccion.establecer(r);
+                }
+                Efecto::Redibujar
+            }
+            Fase::Redimensionando => {
                 self.seleccion.arrastrar_a(p);
                 Efecto::Redibujar
             }
@@ -582,5 +667,102 @@ mod pruebas {
             e.procesar(EventoEntrada::Tecla(TeclaOverlay::Enter)),
             Efecto::Confirmar(r) if r.ancho == 1920 && r.alto == 1080
         ));
+    }
+
+    #[test]
+    fn con_proporcion_el_trazado_sale_atado_y_libre_no() {
+        let mut e = estado();
+        e.poner_proporcion(Some((16, 9)));
+        e.procesar(EventoEntrada::BotonPulsado(Punto { x: 100, y: 100 }));
+        e.procesar(EventoEntrada::RatonMovido(Punto { x: 260, y: 140 }));
+        e.procesar(EventoEntrada::BotonSoltado(Punto { x: 260, y: 140 }));
+        assert_eq!(
+            e.seleccion(),
+            Rect {
+                x: 100,
+                y: 100,
+                ancho: 160,
+                alto: 90
+            }
+        );
+        // Hacia arriba a la izquierda tambien, con el ancla quieta.
+        e.procesar(EventoEntrada::BotonPulsado(Punto { x: 500, y: 500 }));
+        e.procesar(EventoEntrada::RatonMovido(Punto { x: 480, y: 300 }));
+        e.procesar(EventoEntrada::BotonSoltado(Punto { x: 480, y: 300 }));
+        let r = e.seleccion();
+        assert_eq!((r.abajo(), r.derecha()), (500, 500));
+        assert_eq!(r.ancho, 355);
+        assert_eq!(r.alto, 200);
+        // Caso negativo: libre, el trazado no se toca.
+        e.poner_proporcion(None);
+        e.procesar(EventoEntrada::BotonPulsado(Punto { x: 10, y: 10 }));
+        e.procesar(EventoEntrada::RatonMovido(Punto { x: 110, y: 20 }));
+        e.procesar(EventoEntrada::BotonSoltado(Punto { x: 110, y: 20 }));
+        assert_eq!((e.seleccion().ancho, e.seleccion().alto), (100, 10));
+    }
+
+    #[test]
+    fn poner_la_proporcion_con_seleccion_lista_la_ajusta_sin_salirse() {
+        let mut e = estado();
+        e.poner_seleccion(Rect {
+            x: 100,
+            y: 900,
+            ancho: 400,
+            alto: 100,
+        });
+        e.poner_proporcion(Some((1, 1)));
+        // 400 de alto no cabe desde y=900 en 1080: manda el alto que cabe.
+        assert_eq!(
+            e.seleccion(),
+            Rect {
+                x: 100,
+                y: 900,
+                ancho: 180,
+                alto: 180
+            }
+        );
+        // Caso negativo: una proporcion con un cero no se acepta.
+        e.poner_proporcion(Some((0, 9)));
+        assert_eq!(e.proporcion(), None);
+    }
+
+    #[test]
+    fn poner_seleccion_la_deja_lista_y_rechaza_lo_vacio_o_fuera() {
+        let mut e = estado();
+        assert_eq!(
+            e.poner_seleccion(Rect {
+                x: 10,
+                y: 10,
+                ancho: 300,
+                alto: 200
+            }),
+            Efecto::Redibujar
+        );
+        assert_eq!(e.fase(), Fase::Lista);
+        assert!(matches!(
+            e.procesar(EventoEntrada::Tecla(TeclaOverlay::Enter)),
+            Efecto::Confirmar(r) if r.ancho == 300
+        ));
+        // Casos negativos: vacio y fuera del escritorio.
+        let mut f = estado();
+        assert_eq!(
+            f.poner_seleccion(Rect {
+                x: 10,
+                y: 10,
+                ancho: 0,
+                alto: 5
+            }),
+            Efecto::Nada
+        );
+        assert_eq!(
+            f.poner_seleccion(Rect {
+                x: 5000,
+                y: 5000,
+                ancho: 10,
+                alto: 10
+            }),
+            Efecto::Nada
+        );
+        assert_eq!(f.fase(), Fase::Explorando);
     }
 }
