@@ -454,6 +454,22 @@ mod pruebas {
         );
     }
 
+    /// 4-oct-2026: con el desfase entre relojes, el nombre lo ganaba el lado
+    /// que dijera el signo del desfase, no el mas reciente. Asi el nombre
+    /// provisional (el id) de un proyecto recien llegado del movil se quedaba.
+    #[test]
+    fn sin_base_y_con_desfase_el_nombre_lo_gana_el_mas_reciente() {
+        let hoja = hoja_json("h1", "planta", None, None);
+        let provisional = proyecto_json("pr-movil", "pr-movil", &[], 0, &[], &[]);
+        let de_verdad = proyecto_json("pr-movil", "Reforma", &[hoja], 1_791_000_000_000, &[], &[]);
+        for desfase in [-3, 0, 3, 5_000] {
+            let r = proyecto(Some(&provisional), Some(&de_verdad), None, &nada(), &nada(), desfase).unwrap();
+            assert_eq!(nombre_de(&r), "Reforma", "desfase {desfase}");
+            let r = proyecto(Some(&de_verdad), Some(&provisional), None, &nada(), &nada(), desfase).unwrap();
+            assert_eq!(nombre_de(&r), "Reforma", "desfase {desfase}, al reves");
+        }
+    }
+
     #[test]
     fn sin_maestro_el_nombre_cambiado_en_los_dos_lo_gana_el_ultimo() {
         let hoja = hoja_json("h1", "planta", None, None);

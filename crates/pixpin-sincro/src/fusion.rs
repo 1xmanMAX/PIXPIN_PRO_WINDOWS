@@ -208,6 +208,15 @@ pub fn desempate(m: &Objeto, s: &Objeto, c: &Criterio) -> Option<bool> {
         let (Some(hm), Some(hs)) = (numero(m.obtener(campo)), numero(s.obtener(campo))) else {
             continue;
         };
+        // **Dos horas a 0 no dicen nada** (4-oct-2026). Los datos de un
+        // proyecto se juntan con su `tocado` puesto a 0 en los dos lados; con
+        // el desfase restado, 0 contra «0 - desfase» decidia por el signo del
+        // desfase entre relojes, y el nombre provisional de un proyecto recien
+        // llegado del movil (su id) le ganaba al de verdad. Igual en Android
+        // (`Fusion.kt`).
+        if hm == 0 && hs == 0 {
+            continue;
+        }
         let suya = hs.wrapping_sub(c.desfase);
         if hm != suya {
             return Some(hm > suya);
