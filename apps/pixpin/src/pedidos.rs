@@ -39,11 +39,16 @@ pub enum Pedido {
         que: Que,
     },
     /// `imagenes`: como en `AnadirTarea`; van al chat como fotos.
+    /// `archivos`: rutas absolutas de ficheros que van detras como adjuntos
+    /// (como soltarlos en el chat); en `texto`, `[archivo 01]`… marcan cada
+    /// uno y se quitan.
     Chat {
         texto: String,
         proyecto: Option<String>,
         #[serde(default)]
         imagenes: Vec<PathBuf>,
+        #[serde(default)]
+        archivos: Vec<PathBuf>,
     },
     /// `imagenes`: como en `AnadirTarea`; cada `[img NN]` queda como su
     /// imagen dentro de la nota.
@@ -463,9 +468,10 @@ fn hacer(p: Pedido, cx: &Contexto) -> Result<Hecho, Fallo> {
             texto,
             proyecto,
             imagenes,
+            archivos,
         } => {
             let f = ficha_de(raiz, proyecto.as_deref(), cx.aparato, ahora)?;
-            chat_con_imagenes(raiz, &f.id, cx.aparato, &texto, &imagenes, ahora)?;
+            chat_con_imagenes(raiz, &f.id, cx.aparato, &texto, &imagenes, &archivos, ahora)?;
             crate::ventana_chat::refrescar();
             return Ok(aviso("pedido-escrito", &[("proyecto", f.nombre)]));
         }
@@ -902,26 +908,60 @@ fn escribir_en_el_chat(
 /// siempre. Con ellas (pegadas como `[img NN]` en el lanzador), el texto sin
 /// sus fichas va primero y cada imagen detras como una foto del chat, como
 /// si se hubiera soltado en la ventana (un BMP, como PNG). Antes de escribir
-/// nada se comprueba que esten todas.
+/// nada se comprueba que esten todas. Con `archivos` (pegados como
+/// `[archivo NN]`), cada fichero va detras de las fotos como un adjunto con
+/// su nombre, igual que al soltarlo en el chat (`meter_en_proyecto`).
 fn chat_con_imagenes(
     raiz: &Path,
     proyecto: &str,
     aparato: &str,
     texto: &str,
     imagenes: &[PathBuf],
+    archivos: &[PathBuf],
     ahora: i64,
 ) -> Result<(), Fallo> {
-    if imagenes.is_empty() {
+    if imagenes.is_empty() && archivos.is_empty() {
         escribir_en_el_chat(raiz, proyecto, aparato, texto, ahora)?;
         return Ok(());
     }
-    let fotos = leer_imagenes(imagenes, "imagen", ahora)?;
-    let limpio = sin_fichas_de_imagen(texto, imagenes.len());
+    let mut adjuntos = leer_imagenes(imagenes, "imagen", ahora)?;
+    adjuntos.extend(leer_archivos(archivos)?);
+    let limpio =
+        sin_fichas_de_archivo(&sin_fichas_de_imagen(texto, imagenes.len()), archivos.len());
     if !limpio.is_empty() {
         escribir_en_el_chat(raiz, proyecto, aparato, &limpio, ahora)?;
     }
-    crate::ventana_chat::meter_en_proyecto(raiz, proyecto, &fotos, aparato)?;
+    crate::ventana_chat::meter_en_proyecto(raiz, proyecto, &adjuntos, aparato)?;
     Ok(())
+}
+
+/// Los ficheros `archivos` de un pedido `chat`, leidos con su nombre. Todos
+/// o ninguno: uno que no este (o sea una carpeta) es un fallo del pedido
+/// entero, antes de escribir nada.
+fn leer_archivos(archivos: &[PathBuf]) -> Result<Vec<(String, Vec<u8>)>, Fallo> {
+    if let Some(r) = archivos.iter().find(|r| !r.is_file()) {
+        return Err(Fallo::SinFichero(r.clone()));
+    }
+    archivos
+        .iter()
+        .map(|r| {
+            let nombre = r
+                .file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .ok_or_else(|| Fallo::SinFichero(r.clone()))?;
+            Ok((nombre, std::fs::read(r)?))
+        })
+        .collect()
+}
+
+/// El texto sin las fichas `[archivo 01]`…`[archivo NN]` de sus `n`
+/// ficheros, con los blancos de mas fuera.
+fn sin_fichas_de_archivo(texto: &str, n: usize) -> String {
+    let mut limpio = texto.to_string();
+    for i in 1..=n as u32 {
+        limpio = limpio.replace(&pixpin_lanzador::imagenes::ficha_de_archivo(i), " ");
+    }
+    limpio.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
 /// Las imagenes de un pedido, leidas y con nombre (`<prefijo>-<ms>-NN.ext`),
@@ -1324,7 +1364,8 @@ mod pruebas {
             Pedido::Chat {
                 texto: "x".into(),
                 proyecto: None,
-                imagenes: vec![]
+                imagenes: vec![],
+                archivos: vec![]
             }
         );
     }
@@ -1386,6 +1427,7 @@ mod pruebas {
             "PC01",
             "mira esto [img 01]",
             std::slice::from_ref(&png),
+            &[],
             5,
         )
         .unwrap();
@@ -1407,10 +1449,70 @@ mod pruebas {
                 "PC01",
                 "otra [img 01]",
                 &[raiz.join("no.png")],
+                &[],
                 6
             ),
             Err(Fallo::SinImagen(_))
         ));
+        assert_eq!(cuaderno_de(&raiz, &f.id).len(), antes);
+        let _ = std::fs::remove_dir_all(&raiz);
+    }
+
+    #[test]
+    fn un_chat_con_archivos_los_adjunta_como_al_soltarlos() {
+        let p = leer(
+            r#"{"pixpin":1,"accion":"chat","texto":"plano [archivo 01]","archivos":["C:\\a\\plano.pdf"]}"#,
+        )
+        .unwrap();
+        assert!(matches!(
+            &p,
+            Pedido::Chat { archivos, imagenes, .. }
+                if archivos == &[PathBuf::from(r"C:\a\plano.pdf")] && imagenes.is_empty()
+        ));
+        let (raiz, f) = almacen_de_prueba("chat-archivos");
+        let fuera = raiz.join("escritorio");
+        std::fs::create_dir_all(fuera.join("carpeta")).unwrap();
+        let pdf = fuera.join("plano.pdf");
+        let png = fuera.join("foto.png");
+        std::fs::write(&pdf, b"%PDF-1.4 falso").unwrap();
+        std::fs::write(&png, b"\x89PNG\r\n\x1a\nfalsa").unwrap();
+        chat_con_imagenes(
+            &raiz,
+            &f.id,
+            "PC01",
+            "va [archivo 01] y la foto [img 01]",
+            std::slice::from_ref(&png),
+            std::slice::from_ref(&pdf),
+            5,
+        )
+        .unwrap();
+        let v = cuaderno_de(&raiz, &f.id);
+        assert_eq!(v.len(), 3, "{v:#?}");
+        assert_eq!(v[0].texto, "va y la foto", "el texto, sin las fichas");
+        assert_eq!(v[1].clase, Some(cuaderno::Clase::Imagen));
+        let ruta = v[2].ruta.clone().unwrap();
+        assert!(ruta.ends_with("plano.pdf"), "{ruta}");
+        assert_eq!(
+            std::fs::read(almacen::carpeta(&raiz, &f.id).join(&ruta)).unwrap(),
+            b"%PDF-1.4 falso"
+        );
+        // Caso negativo: un fichero que no esta, o una carpeta, no dejan
+        // nada escrito (ni el texto ni los demas).
+        let antes = cuaderno_de(&raiz, &f.id).len();
+        for malo in [fuera.join("no.docx"), fuera.join("carpeta")] {
+            assert!(matches!(
+                chat_con_imagenes(
+                    &raiz,
+                    &f.id,
+                    "PC01",
+                    "otra [archivo 01] [archivo 02]",
+                    &[],
+                    &[pdf.clone(), malo],
+                    6
+                ),
+                Err(Fallo::SinFichero(_))
+            ));
+        }
         assert_eq!(cuaderno_de(&raiz, &f.id).len(), antes);
         let _ = std::fs::remove_dir_all(&raiz);
     }

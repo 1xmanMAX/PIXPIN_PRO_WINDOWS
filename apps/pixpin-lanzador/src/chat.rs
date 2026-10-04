@@ -8,7 +8,9 @@
 //! - Intro en un proyecto (en la busqueda) ya no abre la app: entra aqui.
 //! - Arriba, «Abrir proyecto en la app» y «Añadir arrastrando»; debajo, los mensajes del mas nuevo
 //!   al mas viejo (sin los del buzon), como [`Vista::Chat`].
-//! - Lo escrito tras `>` filtra; entonces las dos filas fijas bajan al final,
+//! - Lo escrito tras `>` filtra y, a la vez, es un mensaje: «Escribir en
+//!   «P»: …» lo manda a ese chat (con las imagenes y ficheros pegados como
+//!   `[img NN]` y `[archivo NN]`). Las dos filas fijas bajan al final,
 //!   para que Intro abra lo encontrado (y el recuadro, con ella).
 //! - El nombre se escribe con `>` cambiado por `›` y, si dos proyectos se
 //!   llaman igual, el segundo con ` · 2` (como las listas de tareas).
@@ -17,7 +19,7 @@ use crate::consulta::SEPARADOR;
 use crate::datos::Proyecto;
 use crate::normalizar::{SALTEADO, normalizar, puntuar};
 use crate::resultados::{
-    Accion, Contexto, Resultado, Vista, abrir_proyecto, de_mensaje, glifo, listas,
+    Accion, Contexto, Resultado, Vista, abrir_proyecto, de_mensaje, glifo, listas, pedido,
     resultado_arrastrar,
 };
 use serde_json::json;
@@ -97,6 +99,24 @@ pub fn buscar_y_entrar(
     }
 }
 
+/// **«Escribir en «P»: texto»**: el pedido `chat` a ese proyecto, con las
+/// imagenes y los ficheros pegados (`[img NN]`, `[archivo NN]`, ver
+/// `imagenes::con_imagenes`).
+fn escribir_en(p: &Proyecto, texto: &str, aqui: &str, ctx: &Contexto) -> Resultado {
+    let mut r = Resultado::nuevo(
+        format!("Escribir en «{}»: {texto}", p.nombre),
+        "Intro: mandarlo a su chat",
+        glifo::CHAT,
+        Accion::Pedido(pedido(
+            "chat",
+            json!({ "texto": texto, "proyecto": p.id_para_pedido() }),
+        )),
+    );
+    r.autocompletar = Some(format!("{aqui}{texto}"));
+    crate::imagenes::con_imagenes(&mut r, texto, ctx);
+    r
+}
+
 /// El chat del proyecto `i`.
 pub fn en_proyecto(
     proyectos: &[Proyecto],
@@ -146,7 +166,7 @@ pub fn en_proyecto(
         v.push(arrastrar.clone());
     }
     for (_, m) in orden {
-        if v.len() >= MAXIMO_CHAT - if q.is_empty() { 0 } else { fijas } {
+        if v.len() >= MAXIMO_CHAT - if q.is_empty() { 0 } else { fijas + 1 } {
             break;
         }
         let Some(pz) = de_mensaje(proyectos, i, m, Vista::Chat, &todas, ctx) else {
@@ -164,13 +184,16 @@ pub fn en_proyecto(
         v.push(r);
     }
     if !q.is_empty() {
-        if v.is_empty() {
-            v.push(Resultado::nuevo(
-                format!("Nada con «{filtro}» en «{}»", p.nombre),
-                "Intro: volver a todo su chat",
-                glifo::AVISO,
-                Accion::Consulta(aqui.clone()),
-            ));
+        // Lo escrito, como mensaje para este chat. Con fichas pegadas
+        // (`[img NN]`, `[archivo NN]`) es un mensaje seguro: arriba. Si no,
+        // debajo de lo encontrado (o arriba, si no se encontro nada).
+        let escribir = escribir_en(p, filtro, &aqui, ctx);
+        let con_fichas = !crate::imagenes::fichas(filtro).is_empty()
+            || !crate::imagenes::fichas_de_archivo(filtro).is_empty();
+        if con_fichas {
+            v.insert(0, escribir);
+        } else {
+            v.push(escribir);
         }
         v.push(abrir);
         v.push(arrastrar);

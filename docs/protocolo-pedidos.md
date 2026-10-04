@@ -37,7 +37,7 @@ el plugin de Flow Launcher (`apps/pixpin-lanzador`), y sirve igual para un scrip
 | `abrir` | `que: {tipo:"hoja", proyecto, referencia}` | Ese lienzo u hoja, en el lienzo |
 | `abrir` | `que: {tipo:"nota", proyecto, codigo}` | Esa nota en el editor de notas |
 | `abrir` | `que: {tipo:"fichero", ruta}` | Como «Abrir con PixPin» (lector, editor, pin). Un `.leccion` abre la ficha de esa lección |
-| `chat` | `texto`, `proyecto?`, `imagenes?` | Un mensaje de texto nuevo en ese chat. Con `imagenes` (rutas; `[img 01]` en `texto` = `imagenes[0]`), el texto sin sus fichas va primero y cada imagen detras como una foto del chat (un BMP se guarda como PNG)
+| `chat` | `texto`, `proyecto?`, `imagenes?`, `archivos?` | Un mensaje de texto nuevo en ese chat. Con `imagenes` (rutas; `[img 01]` en `texto` = `imagenes[0]`), el texto sin sus fichas va primero y cada imagen detras como una foto del chat (un BMP se guarda como PNG). Con `archivos` (ver abajo), cada fichero va detras como un adjunto
 | `nota_nueva` | `texto?`, `proyecto?`, `imagenes?` | Una nota nueva, abierta en el editor. Con `imagenes`, cada `[img NN]` del texto queda como esa imagen dentro de la nota
 | `lienzo_nuevo` | `nombre?`, `proyecto?` | Un lienzo nuevo, abierto |
 | `grabar` | `nombre`, `proyecto?` | Saca el micrófono flotante y graba una nota de voz; un clic la guarda con ese nombre (`<nombre>.m4a`) en ese chat |
@@ -80,6 +80,34 @@ este equipo. En `texto`, las fichas `[img 01]`, `[img 02]`… (desde 1, en el or
 - Si falta alguna imagen o alguna no es una imagen, **no se apunta nada ni se copia nada** y se
   avisa («No se encuentra la imagen …»). Igual si `codigo` no es una lista.
 - El formato de la tarea esta en `docs/investigacion/2026-10-03-tareas-con-imagenes-android.md`.
+
+### Ficheros en un mensaje del chat (`chat.archivos`, 4-oct-2026)
+
+`archivos` es una lista de **rutas absolutas** de ficheros cualesquiera (un PDF, un Excel, un
+`.dwg`…). En `texto`, `[archivo 01]`, `[archivo 02]`… (desde 1, en el orden de la lista) marcan
+cada uno y se quitan del texto:
+
+```json
+{ "pixpin": 1, "accion": "chat", "proyecto": "pr-1789412424738",
+  "texto": "el plano [archivo 01] y la foto [img 01]",
+  "imagenes": ["C:\\Users\\yo\\AppData\\Roaming\\PixPinMax\\cache\\lanzador-imagenes\\img-1.png"],
+  "archivos": ["C:\\Users\\yo\\Desktop\\plano.pdf"] }
+```
+
+- Va primero el texto sin fichas (si queda algo), luego las imagenes como fotos y luego cada
+  fichero como un adjunto con su nombre, **igual que al soltarlo en el chat**
+  (`ventana_chat::meter_en_proyecto`): se copia a `archivos/` del proyecto.
+- Es un campo aparte de `imagenes` a proposito: una imagen se guarda como foto (un BMP pasa a
+  PNG) y un fichero tal cual, sin mirar su extension.
+- Si falta un fichero o es una carpeta, **no se escribe nada** y se avisa («No existe …»).
+- Solo `chat` lo entiende. En el lanzador, una ficha `[archivo NN]` en una tarea, una nota o una
+  leccion se queda como texto (y lo dice el subtitulo).
+- De donde salen: con Flow delante y ficheros copiados en el Explorador, el Ctrl+V lo atrapa la
+  app (`pegar_en_flow`) y escribe ` [archivo 01] ` por cada fichero (una imagen copiada como
+  fichero sigue siendo ` [img NN] `). Un fichero, un nombre: el mismo dos veces no se repite. El
+  borrador (`<raiz>\cache\lanzador-imagenes\borrador.json`, campo `archivos`) guarda la ruta
+  original; no se copia nada hasta mandar el mensaje. Se escribe en el chat de un proyecto con
+  `p <proyecto> > texto` (la fila «Escribir en «P»: …») o, a proposito, con `p chat texto`.
 
 `grabar` no abre el chat: saca un **microfono flotante** siempre encima, con la señal de que
 graba y el tiempo; un clic lo para y lo guarda (con su `nombre`) en el chat pedido. Al

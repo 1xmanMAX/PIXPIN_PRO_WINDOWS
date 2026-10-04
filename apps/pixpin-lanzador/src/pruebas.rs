@@ -261,7 +261,6 @@ fn vacio_da_las_funciones_y_los_proyectos_recientes() {
     assert_eq!(
         titulos,
         [
-            "Chat",
             "Tareas",
             "Lienzo nuevo",
             "Nota nueva",
@@ -281,29 +280,58 @@ fn vacio_da_las_funciones_y_los_proyectos_recientes() {
             "Chat de clase"
         ]
     );
-    assert_eq!(v[1].accion, Accion::Consulta("pp tareas ".into()));
-    assert_eq!(v[6].accion, Accion::Consulta("pp a ".into()));
-    assert_eq!(v[7].accion, Accion::Consulta("pp lecciones ".into()));
-    assert_eq!(v[8].accion, Accion::Consulta("pp repasar ".into()));
-    assert_eq!(pedido_de(&v[2])["accion"], "lienzo_nuevo");
+    assert_eq!(v[0].accion, Accion::Consulta("pp tareas ".into()));
+    assert_eq!(v[5].accion, Accion::Consulta("pp a ".into()));
+    assert_eq!(v[6].accion, Accion::Consulta("pp lecciones ".into()));
+    assert_eq!(v[7].accion, Accion::Consulta("pp repasar ".into()));
+    assert_eq!(pedido_de(&v[1])["accion"], "lienzo_nuevo");
     assert!(
-        v[4].subtitulo.contains("micrófono flotante"),
+        v[3].subtitulo.contains("micrófono flotante"),
         "{}",
-        v[4].subtitulo
+        v[3].subtitulo
     );
     // Un proyecto ya no abre la app: entra en su chat.
     assert_eq!(
-        v[14].accion,
+        v[13].accion,
         Accion::Consulta("pp Gestión de proyectos > ".into())
     );
     assert_eq!(
-        v[14].autocompletar.as_deref(),
+        v[13].autocompletar.as_deref(),
         Some("pp Gestión de proyectos > ")
     );
     assert_eq!(
-        v[16].accion,
+        v[15].accion,
         Accion::Consulta("pp Mensajes guardados > ".into())
     );
+}
+
+#[test]
+fn caso_negativo_el_chat_no_se_ofrece_y_lo_que_no_se_encuentra_no_va_a_guardados() {
+    let r = raiz("sin-chat");
+    let es_chat = |x: &Resultado| {
+        x.titulo == "Chat"
+            || x.clave.as_deref() == Some("funcion/chat")
+            || matches!(&x.accion, Accion::Pedido(p) if p["accion"] == "chat")
+    };
+    // Ni con `p` a secas, ni buscando su nombre, ni con algo que no existe.
+    for q in [
+        "",
+        "chat",
+        "cha",
+        "mensaje",
+        "escribir",
+        "message",
+        "hola que tal",
+        "zzzz",
+    ] {
+        let v = buscar(&r, q);
+        assert!(!v.iter().any(es_chat), "«{q}»: {:?}", titulos(&v));
+    }
+    // «mensaje hola» o «escribir informe» ya no son verbos: se busca.
+    assert!(buscar(&r, "escribir informe").is_empty());
+    // Escribirlo a proposito sigue valiendo.
+    let v = buscar(&r, "chat hola");
+    assert_eq!(pedido_de(&v[0])["accion"], "chat");
 }
 
 #[test]
@@ -819,22 +847,29 @@ fn en_el_chat_se_filtra_y_abrir_el_proyecto_baja_al_final() {
         titulos(&v),
         [
             "revisar el presupuesto",
+            "Escribir en «Gestión de proyectos»: presupuesto",
             "Abrir proyecto en la app",
             "Añadir arrastrando (recuadro flotante)"
         ]
     );
+    // Lo que no se encuentra es un mensaje para ESTE chat (no para
+    // Mensajes guardados).
     let v = buscar(&r, "Gestión de proyectos > nada de esto");
     assert_eq!(
         titulos(&v),
         [
-            "Nada con «nada de esto» en «Gestión de proyectos»",
+            "Escribir en «Gestión de proyectos»: nada de esto",
             "Abrir proyecto en la app",
             "Añadir arrastrando (recuadro flotante)"
         ]
     );
     assert_eq!(
-        v[0].accion,
-        Accion::Consulta("pp Gestión de proyectos > ".into())
+        *pedido_de(&v[0]),
+        json!({ "pixpin": 1, "accion": "chat", "texto": "nada de esto", "proyecto": "P1" })
+    );
+    assert_eq!(
+        v[0].autocompletar.as_deref(),
+        Some("pp Gestión de proyectos > nada de esto")
     );
     // Mensajes guardados por su nombre de siempre, y un trozo del nombre vale.
     let v = buscar(&r, "Mensajes guardados > ");
@@ -1895,7 +1930,7 @@ fn caso_negativo_sin_consulta_ni_fichero_no_hay_campos_de_mas() {
             && j.get("titleToolTip").is_none()
             && j.get("progressBar").is_none()
     );
-    assert_eq!(j["recordKey"], "funcion/chat");
+    assert_eq!(j["recordKey"], "funcion/tareas");
     // Un archivo de otro equipo: ni vista previa ni ruta.
     let v = buscar(&r, "remoto");
     let j = v[0].a_json("i", 1);
@@ -2515,4 +2550,264 @@ fn una_tarea_con_imagenes_ensena_img_01_y_no_el_enlace() {
     let (t, v) = crate::datos::sin_imagenes("mira ![x](con blanco.png)");
     assert_eq!(t, "mira ![x](con blanco.png)");
     assert!(v.is_empty());
+}
+
+/// **Lo que cuesta una consulta, por partes**, con una copia de los datos
+/// de verdad (`PIXPIN_MEDIR_RAIZ`, una carpeta con `proyectos` y `cache`):
+/// `cargo test -p pixpin-lanzador medir_por_partes -- --ignored --nocapture`.
+/// Cada vuelta es como un proceso nuevo del modo v1 (leer la cache, mirar el
+/// disco, buscar, escribir el JSON, guardar la cache).
+#[test]
+#[ignore]
+fn medir_por_partes() {
+    use std::time::{Duration, Instant};
+    let Some(r) = std::env::var_os("PIXPIN_MEDIR_RAIZ").map(PathBuf::from) else {
+        return;
+    };
+    let mediana = |mut v: Vec<Duration>| {
+        v.sort();
+        v[v.len() / 2]
+    };
+    for q in ["", "tarea", "lec", "notas pdf", "zzzz"] {
+        let mut partes: Vec<Vec<Duration>> = vec![Vec::new(); 6];
+        for _ in 0..22 {
+            let t0 = Instant::now();
+            let mut d = Datos::nuevo(r.clone()).con_cache_en_disco();
+            d.vigilar = false;
+            let t1 = Instant::now();
+            crate::imagenes::podar(&r, q, crate::datos::ahora_ms());
+            let ps = d.proyectos();
+            let t2 = Instant::now();
+            let mut c = Contexto::nuevo("p");
+            c.iconos = Some(crate::iconos::carpeta(&r));
+            c.raiz = Some(r.clone());
+            let v = resultados(&ps, q, &c);
+            let t3 = Instant::now();
+            let json = Value::Array(crate::resultados::lista_json(&v, "x.png")).to_string();
+            let t4 = Instant::now();
+            let rel = d.relecturas;
+            d.guardar_cache();
+            let t5 = Instant::now();
+            if std::env::var_os("PIXPIN_MEDIR_DETALLE").is_some() {
+                println!(
+                    "  relecturas {rel} guardar {:?} cache {:?}",
+                    t5 - t4,
+                    t1 - t0
+                );
+            }
+            std::hint::black_box(json);
+            for (i, t) in [t1 - t0, t2 - t1, t3 - t2, t4 - t3, t5 - t4, t5 - t0]
+                .into_iter()
+                .enumerate()
+            {
+                partes[i].push(t);
+            }
+        }
+        let m: Vec<String> = partes
+            .into_iter()
+            .map(|p| format!("{:.2}", mediana(p).as_secs_f64() * 1000.0))
+            .collect();
+        println!(
+            "{:<12} cache {} | disco {} | buscar {} | json {} | guardar {} | total {} ms",
+            format!("'{q}'"),
+            m[0],
+            m[1],
+            m[2],
+            m[3],
+            m[4],
+            m[5]
+        );
+    }
+}
+
+// --- Ficheros pegados (las fichas `[archivo NN]`) ----------------------------
+
+#[test]
+fn las_fichas_de_archivo_se_leen_y_se_quitan_del_texto() {
+    let t = "mira [archivo 01] y [ARCHIVO 3] [img 02] [archivo 0] [archivo x]";
+    let f = imagenes::fichas_de_archivo(t);
+    assert_eq!(f.iter().map(|f| f.numero).collect::<Vec<_>>(), [1, 3]);
+    assert_eq!(&t[f[0].inicio..f[0].fin], "[archivo 01]");
+    assert_eq!(imagenes::ficha_de_archivo(4), "[archivo 04]");
+    // Las de imagen siguen siendo solo las de imagen.
+    assert_eq!(imagenes::fichas(t).len(), 1);
+    assert_eq!(
+        imagenes::sin_fichas(t),
+        "mira y [archivo 0] [archivo x]",
+        "las que no son fichas se quedan"
+    );
+}
+
+/// Unos ficheros «copiados en el Explorador», fuera de la raiz.
+fn ficheros_copiados(r: &Path) -> (PathBuf, PathBuf, PathBuf, PathBuf) {
+    let fuera = r.join("escritorio");
+    fs::create_dir_all(fuera.join("carpeta")).unwrap();
+    let pdf = fuera.join("informe.pdf");
+    let xlsx = fuera.join("datos.xlsx");
+    let png = fuera.join("foto.png");
+    fs::write(&pdf, b"%PDF").unwrap();
+    fs::write(&xlsx, b"PK").unwrap();
+    fs::write(&png, b"\x89PNG copiada en el explorador").unwrap();
+    (pdf, xlsx, png, fuera.join("carpeta"))
+}
+
+#[test]
+fn pegar_ficheros_los_apunta_y_el_chat_los_lleva_como_adjuntos() {
+    use imagenes::{Pegado, PegadoFichero};
+    let r = raiz("pegar-ficheros");
+    let (pdf, xlsx, png, _) = ficheros_copiados(&r);
+    let ahora = crate::datos::ahora_ms();
+    let v = imagenes::pegar_ficheros_en_borrador(&r, &[pdf.clone(), png.clone()], Some(9), ahora);
+    assert_eq!(
+        v[0],
+        PegadoFichero::Archivo {
+            numero: 1,
+            nuevo: true
+        }
+    );
+    // Una imagen copiada como fichero sigue siendo `[img NN]`, con su copia.
+    let PegadoFichero::Imagen(Pegado::Nueva(1, copia)) = &v[1] else {
+        panic!("{v:?}")
+    };
+    assert!(copia.is_file() && copia.starts_with(imagenes::carpeta(&r)));
+    let fichas: Vec<String> = v.iter().filter_map(PegadoFichero::ficha_nueva).collect();
+    assert_eq!(fichas, ["[archivo 01]", "[img 01]"]);
+    // Otro fichero despues: el siguiente numero.
+    let v = imagenes::pegar_ficheros_en_borrador(&r, std::slice::from_ref(&xlsx), None, ahora);
+    assert_eq!(
+        v,
+        [PegadoFichero::Archivo {
+            numero: 2,
+            nuevo: true
+        }]
+    );
+
+    // En el chat de un proyecto, el mensaje lleva los dos y la imagen.
+    let v = buscar_con(
+        &r,
+        "Gestión de proyectos > mira [archivo 02] [img 01] y [archivo 01]",
+        imagenes::SIN_PORTAPAPELES,
+    );
+    let escribir = &v[0];
+    assert!(
+        escribir
+            .titulo
+            .starts_with("Escribir en «Gestión de proyectos»"),
+        "{}",
+        escribir.titulo
+    );
+    let p = pedido_de(escribir);
+    assert_eq!(p["accion"], "chat");
+    assert_eq!(p["proyecto"], "P1");
+    assert_eq!(p["texto"], "mira [archivo 02] [img 01] y [archivo 01]");
+    assert_eq!(
+        p["archivos"],
+        json!([pdf.to_string_lossy(), xlsx.to_string_lossy()])
+    );
+    assert_eq!(p["imagenes"], json!([copia.to_string_lossy()]));
+    // En el subtitulo, el nombre de cada fichero; F1, la imagen.
+    assert!(
+        escribir.subtitulo.contains("informe.pdf, datos.xlsx"),
+        "{}",
+        escribir.subtitulo
+    );
+    assert_eq!(
+        escribir.vista_previa.as_deref(),
+        Some(&*copia.to_string_lossy())
+    );
+    // Las tres fichas, resaltadas.
+    assert_eq!(
+        imagenes::fichas(&escribir.titulo).len()
+            + imagenes::fichas_de_archivo(&escribir.titulo).len(),
+        3
+    );
+    let marcas = escribir.resaltado.len();
+    assert_eq!(marcas, "[archivo 02]".len() * 2 + "[img 01]".len());
+}
+
+#[test]
+fn caso_negativo_el_mismo_fichero_dos_veces_una_carpeta_o_uno_que_no_esta() {
+    use imagenes::PegadoFichero;
+    let r = raiz("pegar-ficheros-no");
+    let (pdf, _, _, carpeta) = ficheros_copiados(&r);
+    let no_esta = r.join("escritorio").join("borrado.docx");
+    let ahora = crate::datos::ahora_ms();
+    // La misma ruta escrita de otra forma es el mismo fichero.
+    let otra_forma = PathBuf::from(pdf.to_string_lossy().to_uppercase().replace('\\', "/"));
+    let v = imagenes::pegar_ficheros_en_borrador(
+        &r,
+        &[pdf.clone(), carpeta.clone(), no_esta.clone(), otra_forma],
+        None,
+        ahora,
+    );
+    assert_eq!(
+        v,
+        [
+            PegadoFichero::Archivo {
+                numero: 1,
+                nuevo: true
+            },
+            PegadoFichero::NoVale(carpeta),
+            PegadoFichero::NoVale(no_esta),
+            PegadoFichero::Archivo {
+                numero: 1,
+                nuevo: false
+            },
+        ]
+    );
+    assert!(v.iter().skip(1).all(|x| x.ficha_nueva().is_none()));
+    // Y pegarlo de nuevo, despues, tampoco escribe nada.
+    let v = imagenes::pegar_ficheros_en_borrador(&r, std::slice::from_ref(&pdf), None, ahora);
+    assert_eq!(v[0].ficha_nueva(), None);
+    let b = imagenes::leer_borrador(&r, ahora).unwrap();
+    assert_eq!(b.archivos.len(), 1);
+
+    // Un fichero que se borro despues de pegarlo no va: su ficha se queda
+    // como texto y se avisa.
+    fs::remove_file(&pdf).unwrap();
+    let v = buscar_con(
+        &r,
+        "Thesis > ahi va [archivo 01]",
+        imagenes::SIN_PORTAPAPELES,
+    );
+    let p = pedido_de(&v[0]);
+    assert!(p.get("archivos").is_none(), "{p}");
+    assert!(
+        v[0].subtitulo.contains("[archivo 01] no se encuentra"),
+        "{}",
+        v[0].subtitulo
+    );
+}
+
+#[test]
+fn caso_negativo_en_una_tarea_los_ficheros_no_van_y_se_avisa() {
+    let r = raiz_con_inbox("pegar-ficheros-tarea");
+    let (pdf, _, _, _) = ficheros_copiados(&r);
+    let ahora = crate::datos::ahora_ms();
+    imagenes::pegar_ficheros_en_borrador(&r, &[pdf], None, ahora);
+    let v = buscar_con(&r, "t revisar [archivo 01]", imagenes::SIN_PORTAPAPELES);
+    let p = pedido_de(&v[0]);
+    assert_eq!(p["accion"], "anadir_tarea");
+    assert!(p.get("archivos").is_none(), "{p}");
+    assert_eq!(p["texto"], "revisar [archivo 01]");
+    assert!(
+        v[0].subtitulo.contains("solo van en un mensaje del chat"),
+        "{}",
+        v[0].subtitulo
+    );
+}
+
+#[test]
+fn el_borrador_olvida_los_ficheros_que_ya_no_estan_en_la_caja() {
+    let r = raiz("podar-ficheros");
+    let (pdf, xlsx, _, _) = ficheros_copiados(&r);
+    let ahora = crate::datos::ahora_ms();
+    imagenes::pegar_ficheros_en_borrador(&r, &[pdf, xlsx], None, ahora);
+    let despues = ahora + imagenes::GRACIA_PODAR_MS + 1;
+    imagenes::podar(&r, "Thesis > hola [archivo 02]", despues);
+    let b = imagenes::leer_borrador(&r, despues).unwrap();
+    assert_eq!(b.archivos.keys().copied().collect::<Vec<_>>(), [2]);
+    // Sin ninguna ficha, el borrador se va (y el siguiente empieza en 01).
+    imagenes::podar(&r, "Thesis > hola", despues);
+    assert!(imagenes::leer_borrador(&r, despues).is_none());
 }

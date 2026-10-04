@@ -62,11 +62,34 @@ impl Funcion {
         Funcion::Abrir,
     ];
 
+    /// Las que se ofrecen en la lista (con `p` a secas y al buscar en todo):
+    /// todas menos el chat. El usuario, 4-oct: escribir algo que no se
+    /// encontraba dejaba «Chat» elegido, e Intro lo mandaba a Mensajes
+    /// guardados. Escribir en un chat es entrar en el (`<proyecto> > texto`)
+    /// o, a proposito, `chat <texto>`.
+    pub const OFRECIDAS: [Funcion; 13] = [
+        Funcion::Tareas,
+        Funcion::Lienzo,
+        Funcion::Nota,
+        Funcion::Grabar,
+        Funcion::Soltar,
+        Funcion::Leccion,
+        Funcion::Lecciones,
+        Funcion::Repasar,
+        Funcion::Capturar,
+        Funcion::Capturas,
+        Funcion::Galeria,
+        Funcion::Ultima,
+        Funcion::Abrir,
+    ];
+
     /// Las palabras que la llaman, ya normalizadas; la primera es la que se
     /// escribe al completar.
     pub fn alias(self) -> &'static [&'static str] {
         match self {
-            Funcion::Chat => &["chat", "mensaje", "escribir", "message"],
+            // Solo «chat»: «mensaje …» o «escribir …» son busquedas normales
+            // (como verbo mandaban lo escrito a Mensajes guardados).
+            Funcion::Chat => &["chat"],
             Funcion::Tareas => &[
                 "tareas",
                 "tarea",
@@ -310,6 +333,17 @@ mod pruebas {
             analizar("adjuntar ges"),
             verbo(Funcion::Soltar, "ges", None)
         );
+    }
+
+    #[test]
+    fn caso_negativo_mensaje_y_escribir_ya_no_son_el_chat() {
+        assert_eq!(analizar("mensaje hola"), buscar("mensaje hola", None));
+        assert_eq!(
+            analizar("escribir informe"),
+            buscar("escribir informe", None)
+        );
+        assert_eq!(analizar("message"), buscar("message", None));
+        assert_eq!(analizar("chat hola"), verbo(Funcion::Chat, "hola", None));
     }
 
     #[test]

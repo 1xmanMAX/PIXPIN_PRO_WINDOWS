@@ -639,6 +639,9 @@ pub struct Datos {
     /// de saber si nada cambio.
     existentes_heredados: Option<(HashMap<PathBuf, bool>, i64)>,
     existentes_desde: i64,
+    /// Cuantas respuestas de [`existe`] de la cache de disco siguen valiendo
+    /// (ya estan en el fichero: no hace falta reescribirlo por ellas).
+    existentes_en_disco: usize,
     iconos_pedidos: HashMap<String, i64>,
 }
 
@@ -661,6 +664,7 @@ impl Datos {
             retocado: false,
             existentes_heredados: None,
             existentes_desde: 0,
+            existentes_en_disco: 0,
             iconos_pedidos: HashMap::new(),
         }
     }
@@ -710,11 +714,16 @@ impl Datos {
                 HashMap::new()
             }
         });
-        let heredados = self
-            .existentes_heredados
-            .as_ref()
-            .map(|h| h.0.len())
-            .unwrap_or(0);
+        // Lo que ya esta en el fichero no obliga a reescribirlo. (Antes se
+        // comparaba con lo heredado DESPUES de que `proyectos` se lo llevara:
+        // casi cada tecla reescribia la cache, y el proceso siguiente pagaba
+        // ademas que el antivirus mirara el fichero recien escrito.)
+        let heredados = self.existentes_en_disco.max(
+            self.existentes_heredados
+                .as_ref()
+                .map(|h| h.0.len())
+                .unwrap_or(0),
+        );
         if !self.sucio && existentes.len() <= heredados {
             return;
         }
@@ -723,6 +732,7 @@ impl Datos {
         } else {
             ahora_ms()
         };
+        let cuantos = existentes.len();
         let c = CacheDisco {
             version: VERSION_CACHE,
             raiz: self.raiz.clone(),
@@ -738,11 +748,13 @@ impl Datos {
         let Ok(bytes) = bytes else { return };
         if let Some(dir) = ruta.parent() {
             let _ = std::fs::create_dir_all(dir);
+            limpiar_temporales(dir);
         }
         let aparte = ruta.with_extension(format!("{}.tmp", std::process::id()));
         if std::fs::write(&aparte, bytes).is_ok() && std::fs::rename(&aparte, &ruta).is_err() {
             let _ = std::fs::remove_file(&aparte);
         }
+        self.existentes_en_disco = cuantos;
         self.sucio = false;
     }
 
@@ -778,6 +790,7 @@ impl Datos {
         self.cache.clear();
         self.ultima = None;
         self.existentes_heredados = None;
+        self.existentes_en_disco = 0;
         self.sucio = true;
     }
 
@@ -824,10 +837,14 @@ impl Datos {
         // Lo que la cache de disco sabia de `existe` vale si nada cambio.
         match self.existentes_heredados.take() {
             Some((mapa, desde)) if self.relecturas == antes && !self.sucio => {
+                self.existentes_en_disco = mapa.len();
                 EXISTENTES.with(|c| *c.borrow_mut() = (generacion, mapa));
                 self.existentes_desde = desde;
             }
-            _ => self.existentes_desde = ahora_ms(),
+            _ => {
+                self.existentes_en_disco = 0;
+                self.existentes_desde = ahora_ms();
+            }
         }
         self.ultima = Some(salida.clone());
         salida
@@ -850,55 +867,29 @@ impl Datos {
             self.fecha_indice = f;
             self.sucio = true;
         }
+        // Los proyectos que valen, y la huella de cada uno: listar sus
+        // carpetas es lo que cuesta (una llamada al disco por carpeta, que
+        // ademas mira el antivirus), asi que se hace a la vez en varios hilos.
+        let validos: Vec<usize> = self
+            .indice
+            .iter()
+            .enumerate()
+            .filter(|(_, p)| {
+                !(p.id.is_empty() || p.papelera || p.en_papelera || p.id.contains(['/', '\\', '.']))
+                    && hijos.get(p.id.as_str()).is_some_and(|h| h.carpeta)
+            })
+            .map(|(i, _)| i)
+            .collect();
+        let carpetas: Vec<PathBuf> = validos
+            .iter()
+            .map(|i| base.join(&self.indice[*i].id))
+            .collect();
+        let huellas = fechas_en_paralelo(&carpetas);
         let mut vistos = Vec::new();
         let mut salida = Vec::new();
-        for p in &self.indice {
-            if p.id.is_empty() || p.papelera || p.en_papelera || p.id.contains(['/', '\\', '.']) {
-                continue;
-            }
-            if !hijos.get(p.id.as_str()).is_some_and(|h| h.carpeta) {
-                continue;
-            }
-            let carpeta = base.join(&p.id);
+        for ((i, carpeta), fechas) in validos.into_iter().zip(carpetas).zip(huellas) {
+            let p = &self.indice[i];
             vistos.push(p.id.clone());
-            let dentro = listar(&carpeta);
-            let h = |n: &str| dentro.get(n).and_then(|h| h.huella);
-            // Las notas: la mas nueva de sus `.md` y cuantas y cuanto ocupan
-            // (el titulo sale de dentro, y editarla no cambia la carpeta).
-            let notas = dentro.get("notas").filter(|n| n.carpeta).and_then(|n| {
-                let lista = listar(&carpeta.join("notas"));
-                let tamano = lista
-                    .values()
-                    .filter_map(|h| h.huella)
-                    .fold((lista.len() as u64) << 40, |a, (_, t)| a.wrapping_add(t));
-                let mas_nueva = lista
-                    .values()
-                    .filter_map(|h| h.huella)
-                    .map(|(f, _)| f)
-                    .chain(n.huella.map(|(f, _)| f))
-                    .max();
-                mas_nueva.map(|f| (f, tamano))
-            });
-            // Las lecciones, igual: cuantas, cuanto ocupan y la mas nueva.
-            let lecciones = dentro.get("android").filter(|a| a.carpeta).and_then(|_| {
-                let lista = listar(&carpeta.join("android").join("guardados").join("lecciones"));
-                let tamano = lista
-                    .values()
-                    .filter_map(|h| h.huella)
-                    .fold((lista.len() as u64) << 40, |a, (_, t)| a.wrapping_add(t));
-                lista
-                    .values()
-                    .filter_map(|h| h.huella)
-                    .map(|(f, _)| f)
-                    .max()
-                    .map(|f| (f, tamano))
-            });
-            let fechas = Fechas {
-                guardados: h("guardados.jsonl"),
-                proyecto: h("proyecto.json"),
-                notas,
-                lecciones,
-            };
             let nueva = !self.cache.contains_key(&p.id);
             let entrada = self.cache.entry(p.id.clone()).or_default();
             if nueva || entrada.fechas != fechas {
@@ -970,6 +961,98 @@ impl Datos {
             .into_iter()
             .find(|p| p.guardados)
             .map(|p| p.id)
+    }
+}
+
+/// Cuantas carpetas de proyecto mira cada hilo (con menos, no compensa
+/// arrancar otro).
+const CARPETAS_POR_HILO: usize = 3;
+
+/// [`fechas_de`] de cada carpeta, en su orden, repartidas en hilos.
+fn fechas_en_paralelo(carpetas: &[PathBuf]) -> Vec<Fechas> {
+    let todas = |t: &[PathBuf]| t.iter().map(|c| fechas_de(c)).collect::<Vec<_>>();
+    if carpetas.len() <= CARPETAS_POR_HILO {
+        return todas(carpetas);
+    }
+    let mut trozos = carpetas.chunks(CARPETAS_POR_HILO);
+    let primero = trozos.next().unwrap_or(&[]);
+    std::thread::scope(|s| {
+        let hilos: Vec<_> = trozos.map(|t| (t, s.spawn(move || todas(t)))).collect();
+        let mut v = todas(primero);
+        for (t, h) in hilos {
+            // Si un hilo cayera, sus carpetas se miran aqui.
+            v.extend(h.join().unwrap_or_else(|_| todas(t)));
+        }
+        v
+    })
+}
+
+/// Las fechas y tamanos de los ficheros de los que sale un proyecto (ver
+/// [`Fechas`]): su carpeta, y la de notas y la de lecciones si las tiene.
+fn fechas_de(carpeta: &Path) -> Fechas {
+    let dentro = listar(carpeta);
+    let h = |n: &str| dentro.get(n).and_then(|h| h.huella);
+    // Las notas: la mas nueva de sus `.md` y cuantas y cuanto ocupan
+    // (el titulo sale de dentro, y editarla no cambia la carpeta).
+    let notas = dentro.get("notas").filter(|n| n.carpeta).and_then(|n| {
+        let lista = listar(&carpeta.join("notas"));
+        let tamano = lista
+            .values()
+            .filter_map(|h| h.huella)
+            .fold((lista.len() as u64) << 40, |a, (_, t)| a.wrapping_add(t));
+        let mas_nueva = lista
+            .values()
+            .filter_map(|h| h.huella)
+            .map(|(f, _)| f)
+            .chain(n.huella.map(|(f, _)| f))
+            .max();
+        mas_nueva.map(|f| (f, tamano))
+    });
+    // Las lecciones, igual: cuantas, cuanto ocupan y la mas nueva.
+    let lecciones = dentro.get("android").filter(|a| a.carpeta).and_then(|_| {
+        let lista = listar(&carpeta.join("android").join("guardados").join("lecciones"));
+        let tamano = lista
+            .values()
+            .filter_map(|h| h.huella)
+            .fold((lista.len() as u64) << 40, |a, (_, t)| a.wrapping_add(t));
+        lista
+            .values()
+            .filter_map(|h| h.huella)
+            .map(|(f, _)| f)
+            .max()
+            .map(|f| (f, tamano))
+    });
+    Fechas {
+        guardados: h("guardados.jsonl"),
+        proyecto: h("proyecto.json"),
+        notas,
+        lecciones,
+    }
+}
+
+/// Borra los `lanzador-indice.<pid>.tmp` de mas de un minuto: los deja un
+/// proceso al que Flow mato a medio escribir (Flow mata el de la tecla
+/// anterior en cuanto llega la siguiente).
+fn limpiar_temporales(dir: &Path) {
+    let Ok(lista) = std::fs::read_dir(dir) else {
+        return;
+    };
+    let prefijo = NOMBRE_CACHE.trim_end_matches(".json");
+    for e in lista.flatten() {
+        let nombre = e.file_name();
+        let nombre = nombre.to_string_lossy();
+        if !(nombre.starts_with(prefijo) && nombre.ends_with(".tmp")) {
+            continue;
+        }
+        let viejo = e
+            .metadata()
+            .and_then(|m| m.modified())
+            .ok()
+            .and_then(|m| m.elapsed().ok())
+            .is_some_and(|t| t > Duration::from_secs(60));
+        if viejo {
+            let _ = std::fs::remove_file(e.path());
+        }
     }
 }
 
@@ -1455,6 +1538,57 @@ mod pruebas_de_cache {
     }
 
     #[test]
+    fn la_tecla_siguiente_no_reescribe_la_cache_si_no_aprendio_nada() {
+        let r = raiz("sin-reescribir");
+        let f = r.join("proyectos/A/archivo.pdf");
+        let g = r.join("proyectos/A/otro.pdf");
+        fs::write(&f, b"x").unwrap();
+        let ruta = r.join("cache").join(NOMBRE_CACHE);
+        let mut d = sin_vigia(&r, &ruta);
+        d.proyectos();
+        assert!(existe(&f));
+        d.guardar_cache();
+        // El proceso siguiente pregunta lo mismo: el fichero no se toca (se
+        // borra tras leerlo para ver si se vuelve a escribir).
+        let mut d = sin_vigia(&r, &ruta);
+        fs::remove_file(&ruta).unwrap();
+        d.proyectos();
+        assert!(existe(&f));
+        d.guardar_cache();
+        assert!(!ruta.exists(), "nada nuevo: no se reescribe");
+        // Caso negativo: con una respuesta nueva de `existe`, si.
+        assert!(!existe(&g));
+        d.guardar_cache();
+        assert!(ruta.is_file(), "algo nuevo: se guarda");
+    }
+
+    #[test]
+    fn caso_negativo_los_temporales_viejos_se_borran_y_los_recientes_no() {
+        let r = raiz("temporales");
+        let dir = r.join("cache");
+        fs::create_dir_all(&dir).unwrap();
+        let viejo = dir.join("lanzador-indice.111.tmp");
+        let reciente = dir.join("lanzador-indice.222.tmp");
+        let ajeno = dir.join("otra-cosa.tmp");
+        for f in [&viejo, &reciente, &ajeno] {
+            fs::write(f, b"").unwrap();
+        }
+        let hace_rato = std::time::SystemTime::now() - Duration::from_secs(600);
+        for f in [&viejo, &ajeno] {
+            fs::File::options()
+                .write(true)
+                .open(f)
+                .unwrap()
+                .set_modified(hace_rato)
+                .unwrap();
+        }
+        limpiar_temporales(&dir);
+        assert!(!viejo.exists());
+        assert!(reciente.exists(), "puede ser de un proceso vivo");
+        assert!(ajeno.exists(), "no es de la cache");
+    }
+
+    #[test]
     fn un_icono_se_pide_una_vez_aunque_cambie_el_proceso() {
         let r = raiz("iconos");
         let ruta = r.join("cache").join(NOMBRE_CACHE);
@@ -1472,6 +1606,62 @@ mod pruebas_de_cache {
         assert_eq!(
             d.iconos_que_pedir(vec!["pdf".into(), "zip".into()]),
             ["zip"]
+        );
+    }
+
+    #[test]
+    fn las_huellas_en_paralelo_son_las_mismas_y_en_el_mismo_orden() {
+        let r = raiz("paralelo");
+        let base = r.join("proyectos");
+        let mut carpetas: Vec<PathBuf> = (0..8)
+            .map(|i| {
+                let c = base.join(format!("Q{i}"));
+                fs::create_dir_all(c.join("notas")).unwrap();
+                fs::write(c.join("guardados.jsonl"), "x".repeat(i + 1)).unwrap();
+                fs::write(c.join("notas").join("n.md"), "y".repeat(i * 3)).unwrap();
+                c
+            })
+            .collect();
+        // Caso negativo: una que no existe no tumba a las demas.
+        carpetas.push(base.join("no-existe"));
+        let una_a_una: Vec<Fechas> = carpetas.iter().map(|c| fechas_de(c)).collect();
+        assert_eq!(fechas_en_paralelo(&carpetas), una_a_una);
+        assert_eq!(una_a_una[8], Fechas::default());
+        assert_eq!(una_a_una[3].guardados.map(|(_, t)| t), Some(4));
+    }
+
+    /// Lo que ahorra mirar las carpetas en hilos, con los datos de verdad
+    /// (`PIXPIN_MEDIR_RAIZ`): `cargo test -p pixpin-lanzador medir_huellas
+    /// -- --ignored --nocapture`.
+    #[test]
+    #[ignore]
+    fn medir_huellas_en_paralelo() {
+        let Some(r) = std::env::var_os("PIXPIN_MEDIR_RAIZ").map(PathBuf::from) else {
+            return;
+        };
+        let base = r.join("proyectos");
+        let carpetas: Vec<PathBuf> = fs::read_dir(&base)
+            .unwrap()
+            .flatten()
+            .filter(|e| e.path().is_dir())
+            .map(|e| e.path())
+            .collect();
+        let (mut uno, mut varios) = (Vec::new(), Vec::new());
+        for _ in 0..40 {
+            let t = Instant::now();
+            std::hint::black_box(carpetas.iter().map(|c| fechas_de(c)).collect::<Vec<_>>());
+            uno.push(t.elapsed());
+            let t = Instant::now();
+            std::hint::black_box(fechas_en_paralelo(&carpetas));
+            varios.push(t.elapsed());
+        }
+        uno.sort();
+        varios.sort();
+        println!(
+            "{} carpetas: una a una {:?}, en hilos {:?} (medianas)",
+            carpetas.len(),
+            uno[20],
+            varios[20]
         );
     }
 }

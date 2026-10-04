@@ -332,8 +332,9 @@ impl<M: Mensajero, W: Write> Plugin<M, W> {
         if e != Envio::Aceptado {
             let icono = self.icono.clone();
             self.llamar_a_flow("ShowMsg", json!(["PixPin Max", e.explicacion(), icono]));
-        } else if pedido.get("imagenes").is_some() {
-            // Esa tarea ya se llevo sus imagenes: la siguiente empieza de cero.
+        } else if pedido.get("imagenes").is_some() || pedido.get("archivos").is_some() {
+            // Esa tarea (o ese mensaje) ya se llevo sus imagenes y ficheros:
+            // lo siguiente empieza de cero.
             crate::imagenes::olvidar_borrador(self.datos.raiz());
         }
         e

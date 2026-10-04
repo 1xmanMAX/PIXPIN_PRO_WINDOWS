@@ -1301,7 +1301,7 @@ fn buscar(
     let q = normalizar(texto.trim());
     let mut cosas = Vec::new();
     if en_proyecto.is_none() {
-        for f in Funcion::TODAS {
+        for f in Funcion::OFRECIDAS {
             let r = resultado_funcion(f, ctx);
             let mut nombres: Vec<String> = f.alias().iter().map(|a| a.to_string()).collect();
             nombres.push(normalizar(&r.titulo));
@@ -1429,7 +1429,7 @@ pub fn resultados(proyectos: &[Proyecto], busqueda: &str, ctx: &Contexto) -> Vec
     };
     let mut v = match modo {
         Modo::Vacio => {
-            let mut v: Vec<Resultado> = Funcion::TODAS
+            let mut v: Vec<Resultado> = Funcion::OFRECIDAS
                 .iter()
                 .map(|f| resultado_funcion(*f, ctx))
                 .collect();

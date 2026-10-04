@@ -9,9 +9,10 @@
 //!
 //! Toca solo si TODO esto se cumple ([`interceptar`]): es la V con Ctrl (sin
 //! Alt ni Win), la ventana de delante es de `Flow.Launcher.exe`, y el
-//! portapapeles tiene una imagen (un mapa de bits, un PNG, o un fichero de
-//! imagen copiado en el Explorador) y NO tiene texto: con texto, Flow pega
-//! el texto como siempre.
+//! portapapeles tiene una imagen (un mapa de bits o un PNG) o ficheros
+//! copiados en el Explorador (4-oct: la imagen va como `[img NN]` y otro
+//! fichero como `[archivo NN]`, adjunto del mensaje del chat) y NO tiene
+//! texto: con texto, Flow pega el texto como siempre.
 //!
 //! # Lo que cuesta
 //!
@@ -60,7 +61,7 @@ pub struct Pulsacion {
     pub win: bool,
 }
 
-/// Lo que dice el portapapeles: `(hay imagen, hay texto)`.
+/// Lo que dice el portapapeles: `(hay imagen o ficheros, hay texto)`.
 pub type Contenido = (bool, bool);
 
 /// **¿Se traga esta pulsacion?** Pura: lo caro llega como funciones que solo
@@ -115,19 +116,6 @@ fn es_flow(hwnd: HWND) -> bool {
     es
 }
 
-/// Las extensiones de un fichero copiado que cuentan como imagen (las de
-/// `pixpin_lanzador::imagenes::es_imagen_pegable`).
-pub fn es_imagen_pegable(ruta: &str) -> bool {
-    let ext = ruta
-        .rsplit_once('.')
-        .map(|(_, e)| e.to_ascii_lowercase())
-        .unwrap_or_default();
-    matches!(
-        ext.as_str(),
-        "png" | "jpg" | "jpeg" | "bmp" | "gif" | "webp"
-    )
-}
-
 /// Que hay en el portapapeles, sin abrirlo salvo para un fichero copiado.
 fn contenido() -> Contenido {
     use windows::Win32::System::DataExchange::{
@@ -159,28 +147,19 @@ fn contenido() -> Contenido {
     if !hay(CF_HDROP) {
         return (false, false);
     }
-    // Un fichero copiado: hay que abrir para ver si es una imagen.
+    // Ficheros copiados (en el Explorador): cualquiera vale desde el 4-oct
+    // (una imagen va como `[img NN]`, otro fichero como `[archivo NN]`, al
+    // chat como adjunto). Hay que abrir para contarlos.
     // SAFETY: se abre sin ventana y se cierra en el mismo bloque; el HDROP
     // es del portapapeles y solo se lee mientras esta abierto.
     let imagen = unsafe {
         if OpenClipboard(None).is_err() {
             return (false, false);
         }
-        let mut es = false;
-        if let Ok(h) = GetClipboardData(CF_HDROP) {
-            let drop = HDROP(h.0);
-            let n = DragQueryFileW(drop, u32::MAX, None);
-            let mut buf = [0u16; 1024];
-            for i in 0..n.min(16) {
-                let largo = DragQueryFileW(drop, i, Some(&mut buf)) as usize;
-                if es_imagen_pegable(&String::from_utf16_lossy(&buf[..largo.min(buf.len())])) {
-                    es = true;
-                    break;
-                }
-            }
-        }
+        let hay_ficheros = GetClipboardData(CF_HDROP)
+            .is_ok_and(|h| DragQueryFileW(HDROP(h.0), u32::MAX, None) > 0);
         let _ = CloseClipboard();
-        es
+        hay_ficheros
     };
     (imagen, false)
 }

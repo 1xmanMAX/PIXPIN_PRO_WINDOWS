@@ -21,6 +21,13 @@
 //! Al mandar la tarea, el pedido `anadir_tarea` lleva `imagenes` (las rutas,
 //! en el orden de las fichas renumeradas `[img 01]`, `[img 02]`…); la app
 //! cambia cada ficha del texto por el enlace a la imagen.
+//!
+//! **Ficheros** (4-oct): con ficheros copiados en el Explorador, el Ctrl+V
+//! de la app escribe ` [archivo 01] ` por cada uno que no sea una imagen
+//! ([`pegar_ficheros_en_borrador`]; una imagen sigue siendo `[img NN]`). El
+//! borrador apunta su ruta (`archivos`); un fichero, un nombre (la misma
+//! ruta no se repite). Solo un mensaje del chat los lleva (`chat.archivos`,
+//! adjuntos como al soltarlos): en una tarea la ficha se queda como texto.
 
 use crate::resultados::{Accion, Contexto, Resultado};
 use serde::{Deserialize, Serialize};
@@ -130,28 +137,54 @@ pub fn ficha(numero: u32) -> String {
     format!("[img {numero:02}]")
 }
 
+/// `[archivo 01]`: un fichero pegado (Ctrl+V de ficheros copiados en el
+/// Explorador) que va al chat como adjunto.
+pub fn ficha_de_archivo(numero: u32) -> String {
+    format!("[archivo {numero:02}]")
+}
+
 /// Las fichas del texto, en orden. `[img 1]`, `[IMG 01]` tambien valen; el
 /// `0` no.
 pub fn fichas(texto: &str) -> Vec<Ficha> {
+    fichas_de(texto, b"img")
+}
+
+/// Las fichas `[archivo NN]` del texto, con las mismas reglas.
+pub fn fichas_de_archivo(texto: &str) -> Vec<Ficha> {
+    fichas_de(texto, b"archivo")
+}
+
+/// Las fichas `[<palabra> NN]` del texto.
+fn fichas_de(texto: &str, palabra: &[u8]) -> Vec<Ficha> {
     let mut v = Vec::new();
     let b = texto.as_bytes();
+    let n = palabra.len();
     let mut i = 0;
     while let Some(d) = texto[i..].find('[') {
         let inicio = i + d;
         i = inicio + 1;
         let resto = &b[inicio..];
-        if resto.len() < 7 || !resto[1..4].eq_ignore_ascii_case(b"img") || resto[4] != b' ' {
+        if resto.len() < n + 4
+            || !resto[1..1 + n].eq_ignore_ascii_case(palabra)
+            || resto[1 + n] != b' '
+        {
             continue;
         }
-        let digitos = resto[5..].iter().take_while(|c| c.is_ascii_digit()).count();
-        if !(1..=3).contains(&digitos) || resto.get(5 + digitos) != Some(&b']') {
+        let cifras = 2 + n;
+        let digitos = resto[cifras..]
+            .iter()
+            .take_while(|c| c.is_ascii_digit())
+            .count();
+        if !(1..=3).contains(&digitos) || resto.get(cifras + digitos) != Some(&b']') {
             continue;
         }
-        let numero: u32 = texto[inicio + 5..inicio + 5 + digitos].parse().unwrap_or(0);
+        let numero: u32 = texto[inicio + cifras..inicio + cifras + digitos]
+            .parse()
+            .unwrap_or(0);
         if numero == 0 {
             continue;
         }
-        let fin = inicio + 6 + digitos;
+        let fin = inicio + cifras + digitos + 1;
         v.push(Ficha {
             numero,
             inicio,
@@ -160,6 +193,23 @@ pub fn fichas(texto: &str) -> Vec<Ficha> {
         i = fin;
     }
     v
+}
+
+/// El texto sin sus fichas `[img NN]` ni `[archivo NN]`, con los blancos de
+/// mas fuera (el mensaje que va al chat delante de sus adjuntos).
+pub fn sin_fichas(texto: &str) -> String {
+    let mut todas = fichas(texto);
+    todas.extend(fichas_de_archivo(texto));
+    todas.sort_by_key(|f| f.inicio);
+    let mut s = String::new();
+    let mut desde = 0;
+    for f in todas {
+        s.push_str(&texto[desde..f.inicio]);
+        s.push(' ');
+        desde = f.fin;
+    }
+    s.push_str(&texto[desde..]);
+    s.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
 /// El numero de la siguiente imagen: uno mas que la mayor del texto.
@@ -186,6 +236,10 @@ pub struct Borrador {
     /// borrador: con uno de estos no se ofrece pegar (sin leer la imagen).
     #[serde(default)]
     pub secuencias: Vec<u32>,
+    /// Numero de la ficha `[archivo NN]` → ruta del fichero pegado (el
+    /// original: no se copia, la app lo lee al mandar el mensaje).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub archivos: BTreeMap<u32, String>,
 }
 
 impl Borrador {
@@ -198,6 +252,21 @@ impl Borrador {
     /// tecleado en Flow).
     pub fn siguiente(&self) -> u32 {
         self.imagenes.keys().max().copied().unwrap_or(0) + 1
+    }
+
+    /// El numero del siguiente `[archivo NN]` segun el borrador.
+    pub fn siguiente_archivo(&self) -> u32 {
+        self.archivos.keys().max().copied().unwrap_or(0) + 1
+    }
+
+    /// La ficha que ya tiene ese fichero (la misma ruta, sin distinguir
+    /// mayusculas ni las dos barras, como Windows).
+    pub fn ficha_de_ruta(&self, ruta: &Path) -> Option<u32> {
+        let clave = clave_de_ruta(&ruta.to_string_lossy());
+        self.archivos
+            .iter()
+            .find(|(_, r)| clave_de_ruta(r) == clave)
+            .map(|(n, _)| *n)
     }
 
     fn apuntar_secuencia(&mut self, secuencia: Option<u32>) {
@@ -233,10 +302,16 @@ fn apuntar_con_huella(
     h: Option<u64>,
     ahora: i64,
 ) -> bool {
+    let previo = leer_borrador(raiz, ahora).unwrap_or_default();
+    // La primera imagen empieza un borrador nuevo (los ficheros pegados se
+    // quedan: van por su cuenta, y [`podar`] los sigue con lo tecleado).
     let mut b = if numero <= 1 {
-        Borrador::default()
+        Borrador {
+            archivos: previo.archivos,
+            ..Borrador::default()
+        }
     } else {
-        leer_borrador(raiz, ahora).unwrap_or_default()
+        previo
     };
     b.tocado = ahora;
     b.apuntar_secuencia(secuencia);
@@ -286,13 +361,25 @@ pub fn pegar_en_borrador(
     let Some(copiada) = (pp.leer)() else {
         return Pegado::Nada;
     };
+    pegar_copiada(raiz, &copiada, Some(secuencia), numero, ahora)
+}
+
+/// Guarda `copiada` y la apunta (lo comun a pegar del portapapeles y a pegar
+/// un fichero de imagen copiado en el Explorador).
+fn pegar_copiada(
+    raiz: &Path,
+    copiada: &Copiada,
+    secuencia: Option<u32>,
+    numero: Option<u32>,
+    ahora: i64,
+) -> Pegado {
     let h = huella(&copiada.bytes);
     let previo = leer_borrador(raiz, ahora);
     let numero = numero.unwrap_or_else(|| previo.as_ref().map_or(1, Borrador::siguiente));
     // La ficha 1 empieza un borrador nuevo: lo de antes ya no cuenta.
     if let Some(mut b) = previo.filter(|_| numero > 1) {
         if let Some(n) = b.ficha_de_huella(h) {
-            b.apuntar_secuencia(Some(secuencia));
+            b.apuntar_secuencia(secuencia);
             b.tocado = ahora;
             escribir_borrador(raiz, &b);
             return Pegado::Repetida(n);
@@ -304,11 +391,95 @@ pub fn pegar_en_borrador(
     // Con la huella en el nombre: dos imagenes del mismo milisegundo no se pisan.
     let destino = dir.join(format!("img-{ahora:x}-{h:016x}.{}", copiada.extension));
     if std::fs::write(&destino, &copiada.bytes).is_err()
-        || !apuntar_con_huella(raiz, numero, &destino, Some(secuencia), Some(h), ahora)
+        || !apuntar_con_huella(raiz, numero, &destino, secuencia, Some(h), ahora)
     {
         return Pegado::Nada;
     }
     Pegado::Nueva(numero, destino)
+}
+
+/// Lo que paso con cada fichero copiado al pegarlo (ver
+/// [`pegar_ficheros_en_borrador`]).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PegadoFichero {
+    /// Una imagen (por su extension): se guarda y se apunta como `[img NN]`,
+    /// como la del portapapeles.
+    Imagen(Pegado),
+    /// Otro fichero: apuntado como `[archivo NN]`. `nuevo` es `false` si ya
+    /// estaba (un fichero, un nombre: no se escribe otra vez).
+    Archivo { numero: u32, nuevo: bool },
+    /// No es un fichero (una carpeta, o ya no esta): no se pega.
+    NoVale(PathBuf),
+}
+
+impl PegadoFichero {
+    /// La ficha que hay que escribir en Flow, si es nueva.
+    pub fn ficha_nueva(&self) -> Option<String> {
+        match self {
+            PegadoFichero::Imagen(Pegado::Nueva(n, _)) => Some(ficha(*n)),
+            PegadoFichero::Archivo {
+                numero,
+                nuevo: true,
+            } => Some(ficha_de_archivo(*numero)),
+            _ => None,
+        }
+    }
+}
+
+/// **Pega ficheros copiados (en el Explorador) en el borrador**: cada imagen
+/// como `[img NN]` (se guarda una copia, como la del portapapeles), cada otro
+/// fichero como `[archivo NN]` (se apunta su ruta). Una carpeta o una ruta
+/// que no existe se salta. El mismo fichero dos veces es una sola ficha.
+pub fn pegar_ficheros_en_borrador(
+    raiz: &Path,
+    rutas: &[PathBuf],
+    secuencia: Option<u32>,
+    ahora: i64,
+) -> Vec<PegadoFichero> {
+    let mut v = Vec::with_capacity(rutas.len());
+    for ruta in rutas {
+        if !ruta.is_file() {
+            v.push(PegadoFichero::NoVale(ruta.clone()));
+            continue;
+        }
+        if es_imagen_pegable(ruta) {
+            let pegado = std::fs::read(ruta)
+                .ok()
+                .map(|bytes| Copiada {
+                    extension: ruta
+                        .extension()
+                        .map(|e| e.to_string_lossy().to_ascii_lowercase())
+                        .unwrap_or_else(|| "png".into()),
+                    bytes,
+                })
+                .map_or(Pegado::Nada, |c| {
+                    pegar_copiada(raiz, &c, secuencia, None, ahora)
+                });
+            v.push(PegadoFichero::Imagen(pegado));
+            continue;
+        }
+        let mut b = leer_borrador(raiz, ahora).unwrap_or_default();
+        b.tocado = ahora;
+        let (numero, nuevo) = match b.ficha_de_ruta(ruta) {
+            Some(n) => (n, false),
+            None => {
+                let n = b.siguiente_archivo();
+                b.archivos.insert(n, ruta.to_string_lossy().to_string());
+                (n, true)
+            }
+        };
+        if escribir_borrador(raiz, &b) {
+            v.push(PegadoFichero::Archivo { numero, nuevo });
+        } else {
+            v.push(PegadoFichero::NoVale(ruta.clone()));
+        }
+    }
+    v
+}
+
+/// Una ruta para comparar: sin mayusculas y con la barra de Windows.
+fn clave_de_ruta(ruta: &str) -> String {
+    ruta.replace('/', "\\").to_lowercase()
 }
 
 /// Lo que se espera, tras pegar, antes de [`podar`]: mientras la app
@@ -328,16 +499,20 @@ pub fn podar(raiz: &Path, texto: &str, ahora: i64) {
         return;
     }
     let estan: Vec<u32> = fichas(texto).iter().map(|f| f.numero).collect();
-    let antes = b.imagenes.len();
+    let estan_archivos: Vec<u32> = fichas_de_archivo(texto).iter().map(|f| f.numero).collect();
+    let antes = (b.imagenes.len(), b.archivos.len());
     b.imagenes.retain(|n, _| estan.contains(n));
-    if b.imagenes.len() == antes {
+    b.archivos.retain(|n, _| estan_archivos.contains(n));
+    if (b.imagenes.len(), b.archivos.len()) == antes {
         return;
     }
-    b.huellas.retain(|n, _| estan.contains(n));
-    // No se sabe de que ficha era cada secuencia: que se vuelvan a mirar.
-    b.secuencias.clear();
-    b.secuencia = None;
-    if b.imagenes.is_empty() {
+    if b.imagenes.len() != antes.0 {
+        b.huellas.retain(|n, _| estan.contains(n));
+        // No se sabe de que ficha era cada secuencia: que se vuelvan a mirar.
+        b.secuencias.clear();
+        b.secuencia = None;
+    }
+    if b.imagenes.is_empty() && b.archivos.is_empty() {
         olvidar_borrador(raiz);
     } else {
         escribir_borrador(raiz, &b);
@@ -377,36 +552,56 @@ pub fn limpiar(raiz: &Path) {
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Adjuntas {
     /// El texto para la app: las fichas conocidas renumeradas `[img 01]`,
-    /// `[img 02]`… en el orden de su numero; las desconocidas, tal cual.
+    /// `[img 02]`… (y `[archivo 01]`…) en el orden de su numero; las
+    /// desconocidas, tal cual.
     pub texto: String,
-    /// Las rutas, en el orden de las fichas renumeradas.
+    /// Las rutas de las imagenes, en el orden de las fichas renumeradas.
     pub rutas: Vec<String>,
     /// Los numeros conocidos (los de lo tecleado, sin renumerar).
     pub conocidas: Vec<u32>,
-    /// Las fichas que no se sabe que imagen son (escritas a mano, o de un
+    /// Las rutas de los ficheros `[archivo NN]`, en su orden renumerado.
+    pub archivos: Vec<String>,
+    /// Los numeros de `[archivo NN]` conocidos (sin renumerar).
+    pub archivos_conocidos: Vec<u32>,
+    /// Las fichas que no se sabe que fichero son (escritas a mano, o de un
     /// borrador caducado): se quedan como texto.
     pub desconocidas: Vec<String>,
 }
 
+/// Los numeros de `fs` que tienen fichero, en orden y sin repetir.
+fn conocidos(fs: &[Ficha], ruta: impl Fn(u32) -> bool) -> Vec<u32> {
+    let mut v: Vec<u32> = fs.iter().map(|f| f.numero).filter(|n| ruta(*n)).collect();
+    v.sort_unstable();
+    v.dedup();
+    v
+}
+
 pub fn resolver(texto: &str, borrador: Option<&Borrador>) -> Adjuntas {
-    let fs = fichas(texto);
-    let ruta_de = |n: u32| {
-        borrador
-            .and_then(|b| b.imagenes.get(&n))
-            .filter(|r| Path::new(r.as_str()).is_file())
-    };
-    let mut conocidas: Vec<u32> = fs
-        .iter()
-        .map(|f| f.numero)
-        .filter(|n| ruta_de(*n).is_some())
+    let existe = |r: &&String| Path::new(r.as_str()).is_file();
+    let ruta_de = |n: u32| borrador.and_then(|b| b.imagenes.get(&n)).filter(existe);
+    let archivo_de = |n: u32| borrador.and_then(|b| b.archivos.get(&n)).filter(existe);
+    let de_imagen = fichas(texto);
+    let de_archivo = fichas_de_archivo(texto);
+    let conocidas = conocidos(&de_imagen, |n| ruta_de(n).is_some());
+    let archivos_conocidos = conocidos(&de_archivo, |n| archivo_de(n).is_some());
+    // Las dos clases de ficha, en el orden del texto.
+    let mut todas: Vec<(Ficha, bool)> = de_imagen
+        .into_iter()
+        .map(|f| (f, false))
+        .chain(de_archivo.into_iter().map(|f| (f, true)))
         .collect();
-    conocidas.sort_unstable();
-    conocidas.dedup();
+    todas.sort_by_key(|(f, _)| f.inicio);
     let mut a = Adjuntas::default();
     let mut desde = 0;
-    for f in &fs {
+    for (f, es_archivo) in &todas {
         a.texto.push_str(&texto[desde..f.inicio]);
-        match conocidas.iter().position(|n| *n == f.numero) {
+        let lista = if *es_archivo {
+            &archivos_conocidos
+        } else {
+            &conocidas
+        };
+        match lista.iter().position(|n| *n == f.numero) {
+            Some(i) if *es_archivo => a.texto.push_str(&ficha_de_archivo(i as u32 + 1)),
             Some(i) => a.texto.push_str(&ficha(i as u32 + 1)),
             None => {
                 let t = &texto[f.inicio..f.fin];
@@ -423,18 +618,24 @@ pub fn resolver(texto: &str, borrador: Option<&Borrador>) -> Adjuntas {
         .iter()
         .filter_map(|n| ruta_de(*n).cloned())
         .collect();
+    a.archivos = archivos_conocidos
+        .iter()
+        .filter_map(|n| archivo_de(*n).cloned())
+        .collect();
     a.conocidas = conocidas;
+    a.archivos_conocidos = archivos_conocidos;
     a
 }
 
 /// Las posiciones UTF-16 (`titleHighlightData`) de las fichas de `titulo`
 /// cuyo numero esta en `numeros`.
 pub fn resaltado(titulo: &str, numeros: &[u32]) -> Vec<usize> {
+    resaltado_de(titulo, fichas(titulo), numeros)
+}
+
+fn resaltado_de(titulo: &str, fs: Vec<Ficha>, numeros: &[u32]) -> Vec<usize> {
     let mut v = Vec::new();
-    for f in fichas(titulo)
-        .into_iter()
-        .filter(|f| numeros.contains(&f.numero))
-    {
+    for f in fs.into_iter().filter(|f| numeros.contains(&f.numero)) {
         let inicio = titulo[..f.inicio].encode_utf16().count();
         let largo = titulo[f.inicio..f.fin].encode_utf16().count();
         v.extend(inicio..inicio + largo);
@@ -442,28 +643,73 @@ pub fn resaltado(titulo: &str, numeros: &[u32]) -> Vec<usize> {
     v
 }
 
-/// **El «Añadir …» de una tarea con fichas**: el pedido lleva `imagenes` y
-/// el texto renumerado; el titulo, las fichas resaltadas; el subtitulo,
-/// cuantas imagenes (y que fichas no se encuentran); F1, la primera.
-/// Sin fichas no toca nada.
+/// Cuantos nombres de fichero se dicen en el subtitulo (los demas, «y N mas»).
+const NOMBRES_EN_SUBTITULO: usize = 3;
+
+/// **El «Añadir …» de una tarea con fichas** (o el mensaje de un chat): el
+/// pedido lleva `imagenes` (y, solo en un `chat`, `archivos`) y el texto
+/// renumerado; el titulo, las fichas resaltadas; el subtitulo, cuantas
+/// imagenes, el nombre de cada fichero (y que fichas no se encuentran); F1,
+/// la primera. Sin fichas no toca nada.
 pub fn con_imagenes(r: &mut Resultado, texto: &str, ctx: &Contexto) {
-    if fichas(texto).is_empty() {
+    if fichas(texto).is_empty() && fichas_de_archivo(texto).is_empty() {
         return;
     }
-    let borrador = ctx
+    let es_chat = matches!(&r.accion,
+        Accion::Pedido(p) | Accion::PedirYSeguir { pedido: p, .. } if p["accion"] == "chat");
+    let mut borrador = ctx
         .raiz_de_datos()
         .and_then(|raiz| leer_borrador(&raiz, ctx.ahora));
-    let a = resolver(texto.trim(), borrador.as_ref());
+    // Los ficheros solo van como adjuntos de un mensaje del chat: en una
+    // tarea, una nota o una leccion la ficha se queda como texto.
+    let archivos_sueltos: Vec<String> = if es_chat {
+        Vec::new()
+    } else {
+        if let Some(b) = borrador.as_mut() {
+            b.archivos.clear();
+        }
+        fichas_de_archivo(texto)
+            .iter()
+            .map(|f| texto[f.inicio..f.fin].to_string())
+            .collect()
+    };
+    let mut a = resolver(texto.trim(), borrador.as_ref());
+    a.desconocidas.retain(|d| !archivos_sueltos.contains(d));
     if let Accion::Pedido(p) | Accion::PedirYSeguir { pedido: p, .. } = &mut r.accion {
-        if !a.rutas.is_empty() {
+        if !a.rutas.is_empty() || !a.archivos.is_empty() {
             p["texto"] = json!(a.texto);
+        }
+        if !a.rutas.is_empty() {
             p["imagenes"] = json!(a.rutas);
+        }
+        if !a.archivos.is_empty() {
+            p["archivos"] = json!(a.archivos);
         }
     }
     let cuenta = match a.rutas.len() {
         0 => String::new(),
         1 => "📎 1 imagen".to_string(),
         n => format!("📎 {n} imágenes"),
+    };
+    let nombres: Vec<String> = a
+        .archivos
+        .iter()
+        .take(NOMBRES_EN_SUBTITULO)
+        .map(|r| {
+            Path::new(r)
+                .file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_else(|| r.clone())
+        })
+        .collect();
+    let ficheros = match a.archivos.len() {
+        0 => String::new(),
+        n if n > NOMBRES_EN_SUBTITULO => format!(
+            "📄 {} y {} más",
+            nombres.join(", "),
+            n - NOMBRES_EN_SUBTITULO
+        ),
+        _ => format!("📄 {}", nombres.join(", ")),
     };
     let aviso = match a.desconocidas.as_slice() {
         [] => String::new(),
@@ -473,14 +719,35 @@ pub fn con_imagenes(r: &mut Resultado, texto: &str, ctx: &Contexto) {
             varias.join(" ")
         ),
     };
+    let sueltos = if archivos_sueltos.is_empty() {
+        String::new()
+    } else {
+        format!(
+            "⚠ los archivos solo van en un mensaje del chat: {} se queda como texto",
+            archivos_sueltos.join(" ")
+        )
+    };
     let previo = std::mem::take(&mut r.subtitulo);
-    r.subtitulo = [cuenta.as_str(), aviso.as_str(), previo.as_str()]
-        .into_iter()
-        .filter(|t| !t.is_empty())
-        .collect::<Vec<_>>()
-        .join(" · ");
-    r.resaltado = resaltado(&r.titulo, &a.conocidas);
-    if let Some(primera) = a.rutas.first() {
+    r.subtitulo = [
+        cuenta.as_str(),
+        ficheros.as_str(),
+        aviso.as_str(),
+        sueltos.as_str(),
+        previo.as_str(),
+    ]
+    .into_iter()
+    .filter(|t| !t.is_empty())
+    .collect::<Vec<_>>()
+    .join(" · ");
+    let mut marcas = resaltado(&r.titulo, &a.conocidas);
+    marcas.extend(resaltado_de(
+        &r.titulo,
+        fichas_de_archivo(&r.titulo),
+        &a.archivos_conocidos,
+    ));
+    marcas.sort_unstable();
+    r.resaltado = marcas;
+    if let Some(primera) = a.rutas.first().or(a.archivos.first()) {
         r.vista_previa = Some(primera.clone());
         r.fichero = Some(primera.clone());
     }
@@ -604,6 +871,18 @@ mod win {
         }
     }
 
+    /// Los ficheros copiados (en el Explorador), en su orden: `CF_HDROP`.
+    /// Sin ficheros, o con el portapapeles ocupado, ninguno.
+    pub fn ficheros() -> Vec<PathBuf> {
+        if !hay(CF_HDROP) {
+            return Vec::new();
+        }
+        Abierto::abrir()
+            .and_then(|a| a.bytes(CF_HDROP))
+            .map(|b| ficheros_de_drop(&b))
+            .unwrap_or_default()
+    }
+
     /// La primera imagen de los ficheros copiados (en el Explorador).
     fn fichero_copiado() -> Option<PathBuf> {
         let bytes = Abierto::abrir()?.bytes(CF_HDROP)?;
@@ -711,6 +990,12 @@ mod win {
             bytes: bmp_de_dib(&dib)?,
         })
     }
+}
+
+/// Los ficheros copiados en el portapapeles (`CF_HDROP`, lo que deja
+/// «Copiar» en el Explorador). Lo usa la app al tragarse un Ctrl+V en Flow.
+pub fn ficheros_copiados() -> Vec<PathBuf> {
+    win::ficheros()
 }
 
 #[cfg(test)]
