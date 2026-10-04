@@ -6,6 +6,7 @@
 #![forbid(unsafe_code)]
 
 pub mod ajustes;
+pub mod bandeja;
 pub mod almacen;
 pub mod comandos;
 pub mod estado;

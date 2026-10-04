@@ -60,6 +60,7 @@ mod buscar_todo;
 mod caja_dibujo;
 mod capa;
 mod captura2;
+mod centro_bandeja;
 mod cielo;
 mod compartir;
 mod conversacion;
@@ -635,6 +636,11 @@ fn arrancar(
     // asi el primer pin nace con la ventana ya en pie.
     recordatorios::vigilar(ubicacion.raiz(), hwnd.0 as isize);
 
+    // Lo que ensenan los interruptores del panel de la bandeja (v2): lo
+    // que dijeron los dos ultimos «alternar» de los pines.
+    let mut pines_ocultos = false;
+    let mut pines_pasantes = false;
+
     ventana.ejecutar(|evento| {
         // Todo lo que abre el overlay de captura, en un sitio: los atajos,
         // «Capturar» de la bandeja y los gestos con Alt (D81). El gesto
@@ -759,12 +765,14 @@ fn arrancar(
                         }
                         Some(comandos::Comando::AlternarPasoDeClics) => {
                             let (pasantes, cuantos) = p.alternar_paso_de_clics();
+                            pines_pasantes = pasantes;
                             tracing::info!(pasantes, cuantos, "paso de clics de los pines");
                         }
                         _ => match pixpin_capture::enumerar_monitores() {
                             Err(e) => tracing::warn!(?e, "sin monitores"),
                             Ok(d) if comando == Some(comandos::Comando::AlternarPines) => {
                                 let (ocultados, cuantos) = p.alternar_todos(&d);
+                                pines_ocultos = ocultados;
                                 tracing::info!(ocultados, cuantos, "pines ocultados o mostrados");
                             }
                             Ok(d) => {
@@ -1026,6 +1034,12 @@ fn arrancar(
                     }
                     Err(e) => tracing::warn!(?e, "no se pudo abrir el editor"),
                 }
+                Continuar::Si
+            }
+            // Clic izquierdo: el panel de la bandeja (v2). Lo que se pulse en
+            // el vuelve aqui como `Evento::Menu`, con los numeros del menu.
+            Evento::PanelBandeja => {
+                centro_bandeja::abrir(lengua, &ubicacion, &config);
                 Continuar::Si
             }
             Evento::IconoPulsado => {
@@ -1608,6 +1622,17 @@ fn arrancar(
             hwnd,
             ritmo_video,
         );
+        // Los interruptores del panel de la bandeja, tal como quedaron.
+        centro_bandeja::publicar(centro_bandeja::Interruptores {
+            a_la_vista: if pines_ocultos {
+                0
+            } else {
+                pines.as_ref().map_or(0, |p| p.abiertos())
+            },
+            ocultos: pines_ocultos,
+            pasantes: pines_pasantes,
+            silenciados: registrados.is_none(),
+        });
         seguir
     });
 
