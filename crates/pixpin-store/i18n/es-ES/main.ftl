@@ -220,7 +220,7 @@ chat-describir = Añadir descripción
 chat-describir-editar = Editar descripción
 chat-describir-barra = Descripción:
 chat-describir-teclas = Intro guarda · Esc la deja como estaba
-chat-pinear = Sacar a la pantalla
+chat-pinear = Pinear
 chat-recordar = Recordármelo
 chat-rescatar = Guardar esto
 chat-solo-la-foto = Ver solo la foto
@@ -260,7 +260,7 @@ chat-reenviado = Reenviado
 chat-copiado = Copiado
 chat-compartido = Copiado al portapapeles: pégalo donde quieras compartirlo
 chat-compartir-sin-panel = Windows no abrió el panel Compartir: lo he dejado en el portapapeles para que lo pegues donde quieras
-chat-pineado = Puesto en la pantalla
+chat-pineado = Pineado
 chat-sin-archivo = Este mensaje no tiene un archivo en este equipo
 chat-sin-origen = No encuentro ese lienzo en este proyecto
 chat-sin-proyectos-otros = No hay otro proyecto al que mandarlo
@@ -300,7 +300,7 @@ tabla-nueva = Tabla
 chat-nombre-nuevo = Nombre del proyecto…
 hoja-volver = Esc para volver
 menu-foto-lienzo = Abrir en lienzo
-menu-foto-pin = Volver a fijar como pin
+menu-foto-pin = Volver a pinear
 menu-foto-abrir = Abrir con Windows
 recibir-titulo = Recibir del movil
 recibir-como = Escanea el codigo con PixPin en el movil
@@ -1434,7 +1434,7 @@ galeria-titulo-cuantas = Capturas · { $cuantas }
 galeria-vacia = Todavía no hay capturas. Las que copies con Alt + arrastrar aparecerán aquí.
 galeria-abrir-carpeta = Abrir carpeta
 galeria-copiada = Copiada al portapapeles
-galeria-pineada = Pineada en la pantalla
+galeria-pineada = Pineada
 galeria-borrada = Llevada a la papelera de PixPin
 galeria-no-se-pudo = No se pudo: { $motivo }
 galeria-caducan = Se borran solas a los 7 días (a la papelera de Windows). Conservar las guarda en el chat.
@@ -1477,3 +1477,32 @@ tareas-pegar-repetida = Esa imagen ya está como { $ficha }.
 
 # Abrir una foto que Windows solo lee con una extension de Microsoft Store.
 abrir-falta-extension = No se puede abrir { $nombre }: Windows necesita «{ $extension }», gratis en Microsoft Store. Instálala y vuelve a abrirla.
+
+## v2-menus
+v2menus-responder = Responder
+v2menus-anotar-encima = Anotar encima
+v2menus-mas = Más
+v2menus-elegir-varios = Elegir varios
+v2menus-tecla-supr = Supr
+v2menus-tecla-clic = clic
+v2menus-adj-buscar = Buscar: tabla, cronómetro, PDF…
+v2menus-adj-mas = MÁS
+v2menus-adj-nada = Nada coincide con lo buscado
+v2menus-adj-lienzo = Lienzo
+v2menus-adj-tareas = Lista de tareas
+v2menus-adj-tabla = Tabla
+v2menus-adj-conversacion = Conversación
+v2menus-adj-captura = Captura
+v2menus-adj-pagina = Página de un proyecto
+v2menus-adj-proyecto = Proyecto entero
+v2menus-adj-movil = Traer del móvil
+v2menus-envio-enviar = Enviar
+v2menus-envio-anadir = Añadir
+v2menus-envio-fotos = { $cuantos ->
+    [one] 1 foto
+   *[other] { $cuantos } fotos
+} · a { $proyecto }
+v2menus-envio-archivos = { $cuantos ->
+    [one] 1 archivo
+   *[other] { $cuantos } archivos
+} · a { $proyecto }

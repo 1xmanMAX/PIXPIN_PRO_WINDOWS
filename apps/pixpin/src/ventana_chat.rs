@@ -26,7 +26,6 @@ use pixpin_render::{Color, Pintor, RectF, Superficie};
 use pixpin_shell::overlay::{EventoOverlay, FormaCursorWin, VentanaOverlay};
 use pixpin_store::{Catalogo, Ubicacion};
 use pixpin_ui::chat::{self, Borde, BotonBarra, Disposicion, Vista};
-use pixpin_ui::menu;
 
 use pixpin_render::icono::{Icono, material as mi};
 
@@ -56,6 +55,12 @@ mod caja_de_soltar;
 mod reproductor_flotante;
 /// Mayus+clic marca un tramo de burbujas.
 mod marcar;
+/// v2-menus: geometria y teclas de los menus (`Menus2.dc.html`).
+mod menu_v2;
+/// v2-menus: la hoja del «+» de la caja, cuadricula con buscador.
+mod hoja_adjuntar;
+/// v2-menus: el cuadro de enviar fotos (ordenar arrastrando, quitar).
+mod envio;
 /// Clip → «Una pagina de un proyecto».
 mod paginas;
 /// La pantalla de Proyectos del movil y el interruptor Chat / Proyectos.
@@ -68,6 +73,9 @@ mod muestra_zona;
 /// Muestra en PNG de una foto con su descripcion (3-oct).
 #[cfg(test)]
 mod muestra_descripcion;
+/// v2-menus: muestras en PNG de los menus nuevos.
+#[cfg(test)]
+mod muestra_menus;
 /// La vista previa de un lienzo, con el papel y la tinta del lienzo.
 #[cfg(test)]
 mod papel_de_la_vista;
@@ -738,6 +746,122 @@ pub fn abrir(
                 }
             };
         }
+        // Lo que se elige en un menu abierto, con el raton o con su tecla:
+        // las dos vias pasan por aqui (v2-menus).
+        macro_rules! hacer_del_menu {
+            ($ancla:expr, $accion:expr) => {{
+                let ancla_del_menu: Punto = $ancla;
+                match $accion {
+                None => {}
+                Some(Accion::AdjArchivo) => {
+                    pendientes = Pendientes::con_lo_escrito(
+                        pixpin_shell::elegir::pedir_ficheros(ventana.handle()),
+                        abierto.as_mut(),
+                    );
+                }
+                Some(Accion::AdjImagen) => {
+                    pendientes = Pendientes::con_lo_escrito(
+                        pixpin_shell::elegir::pedir_imagenes(ventana.handle()),
+                        abierto.as_mut(),
+                    );
+                }
+                // Traer del movil abre su propio cartel, en otro
+                // hilo: mientras se espera al movil, el chat
+                // sigue usandose.
+                Some(Accion::AdjDelMovil) => {
+                    crate::recibir::lanzar(idioma, ubicacion.clone());
+                }
+                // Un lienzo o una tabla nacen vacios: no hay nada
+                // que ensenar en un cuadro de confirmar.
+                Some(n @ (Accion::AdjLienzo | Accion::AdjTabla)) => {
+                    if let Some(a) = abierto.as_mut() {
+                        let hecho = if n == Accion::AdjTabla {
+                            crear_tabla(ubicacion, a, &identidad, textos)
+                        } else {
+                            crear_lienzo(ubicacion, a, &identidad)
+                        };
+                        match hecho {
+                            Ok(()) => {
+                                a.scroll = None;
+                                if let Some(i) = elegida {
+                                    fichas[i].tocado = a.ficha.tocado;
+                                    fichas[i].resumen = a.ficha.resumen.clone();
+                                }
+                            }
+                            Err(e) => tracing::warn!(?e, "no se pudo crear"),
+                        }
+                        a.colocado.borrow_mut().ancho = 0;
+                    }
+                }
+                Some(Accion::Fondos) => {
+                    menu = Some(MenuAbierto::nuevo(
+                        ancla_del_menu,
+                        menu_de_fondos(textos, fondo),
+                    ));
+                }
+                Some(Accion::Fondo(n)) => {
+                    fondo = n;
+                    guardar_fondo(ubicacion, n);
+                }
+                Some(Accion::Escalas) => {
+                    menu = Some(MenuAbierto::nuevo(
+                        ancla_del_menu,
+                        menu_de_escalas(textos, factor_escala),
+                    ));
+                }
+                Some(Accion::Escala(cuanto)) => {
+                    factor_escala = chat::escala_valida(cuanto);
+                    escala = escala_monitor * factor_escala / 100;
+                    recordar_escala(ubicacion, &mut estado, factor_escala);
+                    if let Some(a) = abierto.as_mut() {
+                        a.colocado.borrow_mut().ancho = 0;
+                    }
+                }
+                // ⋮ → Proyectos lleva a la pantalla de Proyectos,
+                // como `abrirLaPortada(enProyectos = true)` del
+                // movil. Es ir, no elegir: lo que recuerda el
+                // interruptor no cambia.
+                Some(Accion::Proyectos) => vista_proyectos.ver_proyectos(),
+                // «Captura» de la hoja del «+»: la de zona, por el mismo camino
+                // que el atajo general (como el pedido `capturar`). Un poco
+                // despues, para que el menu ya no salga en la foto.
+                Some(Accion::AdjCaptura) => {
+                    let _ = std::thread::Builder::new()
+                        .name("captura-del-chat".into())
+                        .spawn(|| {
+                            std::thread::sleep(std::time::Duration::from_millis(200));
+                            let id = pixpin_store::comandos::Comando::CapturarRegion.id();
+                            if !pixpin_shell::mensajero::pedir_ventana_principal(id) {
+                                tracing::warn!("la captura del chat no llego a la ventana");
+                            }
+                        });
+                }
+                Some(otra) => {
+                    if let Some(a) = abierto.as_mut() {
+                        let cx = Contexto {
+                            ubicacion,
+                            identidad: &identidad,
+                            textos,
+                            lienzo,
+                            ventana: &ventana,
+                            fichas: &fichas,
+                            idioma,
+                        };
+                        match ejecutar(otra, a, &cx) {
+                            Efecto::Nada | Efecto::Cambio => {}
+                            Efecto::Aviso(t) => {
+                                aviso = Some((t, std::time::Instant::now()))
+                            }
+                            Efecto::Menu(v) => {
+                                menu = Some(MenuAbierto::nuevo(ancla_del_menu, v))
+                            }
+                        }
+                        a.colocado.borrow_mut().ancho = 0;
+                    }
+                }
+                }
+            }};
+        }
         // La tarjeta de Proyectos es la del proyecto que el chat tiene abierto.
         vista_proyectos.seguir(abierto.as_ref().map(|a| a.ficha.id.as_str()));
 
@@ -852,6 +976,73 @@ pub fn abrir(
                 }
             }
             match evento {
+                // v2-menus: con un menu (o la hoja del «+») delante, el
+                // teclado es suyo: sus teclas de una letra, las flechas,
+                // Intro y Esc. Van las primeras para que nada de debajo
+                // (la caja de escribir, una hoja) se quede con ellas.
+                EventoOverlay::Tecla { vk, ctrl, .. } if menu.is_some() => {
+                    if let Some(mut m) = menu.take() {
+                        let ancla = m.ancla;
+                        match m.tecla(vk, ctrl) {
+                            Respuesta::Fuera => {}
+                            Respuesta::Sigue => menu = Some(m),
+                            Respuesta::Hacer(accion) => hacer_del_menu!(ancla, Some(accion)),
+                        }
+                    }
+                    hay_que_pintar = true;
+                }
+                EventoOverlay::Caracter(c) if menu.is_some() => {
+                    if let Some(mut m) = menu.take() {
+                        let ancla = m.ancla;
+                        match m.caracter(c) {
+                            Respuesta::Fuera => {}
+                            Respuesta::Sigue => menu = Some(m),
+                            Respuesta::Hacer(accion) => hacer_del_menu!(ancla, Some(accion)),
+                        }
+                    }
+                    hay_que_pintar = true;
+                }
+                // El resalte sigue al raton, y «Más» se abre al pasar.
+                EventoOverlay::RatonMovido(p) if menu.is_some() && arrastre.is_none() => {
+                    let l = local(p);
+                    if let Some(m) = menu.as_mut()
+                        && m.mover(l, marco, escala)
+                    {
+                        hay_que_pintar = true;
+                    }
+                    ventana.poner_cursor(FormaCursorWin::Flecha);
+                }
+                // v2: el cuadro de enviar sigue al raton (resalte y foto
+                // arrastrada) y, al soltar, la foto cae en su hueco.
+                EventoOverlay::RatonMovido(p) if pendientes.is_some() && arrastre.is_none() => {
+                    let l = local(p);
+                    if let Some(pend) = pendientes.as_mut() {
+                        let sobre = pend.cuadro(marco, escala).sitio_en(l, escala);
+                        let antes = (pend.sobre, pend.arrastre);
+                        pend.sobre = sobre;
+                        if let Some(a) = pend.arrastre.as_mut() {
+                            a.ahora = l;
+                        }
+                        hay_que_pintar |= antes != (pend.sobre, pend.arrastre);
+                    }
+                    ventana.poner_cursor(FormaCursorWin::Flecha);
+                }
+                EventoOverlay::BotonSoltado(p)
+                    if pendientes.as_ref().is_some_and(|p| p.arrastre.is_some()) =>
+                {
+                    let l = local(p);
+                    ventana.soltar_raton();
+                    if let Some(pend) = pendientes.as_mut()
+                        && let Some(mut a) = pend.arrastre.take()
+                    {
+                        a.ahora = l;
+                        if a.se_movio(escala) {
+                            let hueco = pend.cuadro(marco, escala).hueco_en(l);
+                            pend.reordenar(a.desde, hueco);
+                        }
+                    }
+                    hay_que_pintar = true;
+                }
                 EventoOverlay::BotonPulsado(p) => {
                     let l = local(p);
                     // El lienzo vivo manda dentro de su burbuja: ahi el clic
@@ -891,19 +1082,12 @@ pub fn abrir(
                     // El cuadro de confirmar es modal: mientras esta, se lleva
                     // el clic entero. Ni siquiera los bordes, porque
                     // redimensionar la ventana lo movería debajo del raton.
-                    if let Some(p) = pendientes.as_ref() {
-                        let d = pixpin_ui::confirmar::colocar(
-                            Rect {
-                                x: 0,
-                                y: 0,
-                                ancho: marco.ancho,
-                                alto: marco.alto,
-                            },
-                            p.rutas.len(),
-                            escala,
-                        );
-                        match d.boton_en(l) {
-                            Some(pixpin_ui::confirmar::Boton::Aceptar) => {
+                    if let Some(p) = pendientes.as_mut() {
+                        // v2: el cuadro de enviar (`envio.rs`): el ✕ quita,
+                        // una foto se agarra para moverla, «Añadir» pide mas.
+                        let d = p.cuadro(marco, escala);
+                        match d.sitio_en(l, escala) {
+                            Some(envio::Sitio::Enviar) => {
                                 if let (Some(p), Some(a)) = (pendientes.take(), abierto.as_mut()) {
                                     let hechos =
                                         meter_ficheros(ubicacion, a, &identidad, &p.rutas, &p.pie);
@@ -917,19 +1101,44 @@ pub fn abrir(
                                     a.colocado.borrow_mut().ancho = 0;
                                 }
                             }
-                            Some(pixpin_ui::confirmar::Boton::Cancelar) => {
+                            Some(envio::Sitio::Quitar(n)) => {
+                                p.quitar(n);
+                                p.sobre = None;
+                                // Sin nada que enviar, el cuadro sobra: se
+                                // cancela y lo escrito vuelve a la caja.
+                                if p.rutas.is_empty()
+                                    && let Some(p) = pendientes.take()
+                                {
+                                    p.cancelar(abierto.as_mut());
+                                }
+                            }
+                            Some(envio::Sitio::Foto(n)) => {
+                                ventana.capturar_raton();
+                                p.arrastre = Some(envio::Arrastre {
+                                    desde: n,
+                                    agarre: l,
+                                    ahora: l,
+                                });
+                            }
+                            Some(envio::Sitio::Anadir) => {
+                                let mas = pixpin_shell::elegir::pedir_ficheros(ventana.handle());
+                                if let Some(p) = pendientes.as_mut() {
+                                    p.anadir(mas);
+                                }
+                            }
+                            Some(envio::Sitio::Cancelar) => {
                                 if let Some(p) = pendientes.take() {
                                     p.cancelar(abierto.as_mut());
                                 }
                             }
                             // Pulsar fuera del cuadro cancela, como el aspa de
                             // cualquier dialogo; dentro, no hace nada.
-                            None if !d.caja.contiene(l) => {
+                            None => {
                                 if let Some(p) = pendientes.take() {
                                     p.cancelar(abierto.as_mut());
                                 }
                             }
-                            None => {}
+                            Some(envio::Sitio::Dentro) => {}
                         }
                         hay_que_pintar = true;
                     } else if let Some(b) = chat::borde_en(l, marco.ancho, marco.alto, escala) {
@@ -985,110 +1194,17 @@ pub fn abrir(
                     } else if disposicion.asa.contiene(l) {
                         ventana.capturar_raton();
                         arrastre = Some(Arrastre::Asa(l.x - ancho_lista as i32));
-                    } else if let Some(m) = menu.take() {
+                    } else if let Some(mut m) = menu.take() {
                         // Con un menu desplegado, el primer clic es suyo: o
                         // elige una entrada o lo cierra. Que ademas hiciera
                         // lo que hubiera debajo seria dispararle al usuario
-                        // por querer salir del menu.
-                        let accion = m
-                            .colocado(marco, escala)
-                            .fila_en(l, escala)
-                            .and_then(|n| m.entradas.get(n))
-                            .map(|n| n.accion.clone());
-                        match accion {
-                            None => {}
-                            Some(Accion::AdjArchivo) => {
-                                pendientes = Pendientes::con_lo_escrito(
-                                    pixpin_shell::elegir::pedir_ficheros(ventana.handle()),
-                                    abierto.as_mut(),
-                                );
-                            }
-                            Some(Accion::AdjImagen) => {
-                                pendientes = Pendientes::con_lo_escrito(
-                                    pixpin_shell::elegir::pedir_imagenes(ventana.handle()),
-                                    abierto.as_mut(),
-                                );
-                            }
-                            // Traer del movil abre su propio cartel, en otro
-                            // hilo: mientras se espera al movil, el chat
-                            // sigue usandose.
-                            Some(Accion::AdjDelMovil) => {
-                                crate::recibir::lanzar(idioma, ubicacion.clone());
-                            }
-                            // Un lienzo o una tabla nacen vacios: no hay nada
-                            // que ensenar en un cuadro de confirmar.
-                            Some(n @ (Accion::AdjLienzo | Accion::AdjTabla)) => {
-                                if let Some(a) = abierto.as_mut() {
-                                    let hecho = if n == Accion::AdjTabla {
-                                        crear_tabla(ubicacion, a, &identidad, textos)
-                                    } else {
-                                        crear_lienzo(ubicacion, a, &identidad)
-                                    };
-                                    match hecho {
-                                        Ok(()) => {
-                                            a.scroll = None;
-                                            if let Some(i) = elegida {
-                                                fichas[i].tocado = a.ficha.tocado;
-                                                fichas[i].resumen = a.ficha.resumen.clone();
-                                            }
-                                        }
-                                        Err(e) => tracing::warn!(?e, "no se pudo crear"),
-                                    }
-                                    a.colocado.borrow_mut().ancho = 0;
-                                }
-                            }
-                            Some(Accion::Fondos) => {
-                                menu = Some(MenuAbierto::nuevo(
-                                    m.ancla,
-                                    menu_de_fondos(textos, fondo),
-                                ));
-                            }
-                            Some(Accion::Fondo(n)) => {
-                                fondo = n;
-                                guardar_fondo(ubicacion, n);
-                            }
-                            Some(Accion::Escalas) => {
-                                menu = Some(MenuAbierto::nuevo(
-                                    m.ancla,
-                                    menu_de_escalas(textos, factor_escala),
-                                ));
-                            }
-                            Some(Accion::Escala(cuanto)) => {
-                                factor_escala = chat::escala_valida(cuanto);
-                                escala = escala_monitor * factor_escala / 100;
-                                recordar_escala(ubicacion, &mut estado, factor_escala);
-                                if let Some(a) = abierto.as_mut() {
-                                    a.colocado.borrow_mut().ancho = 0;
-                                }
-                            }
-                            // ⋮ → Proyectos lleva a la pantalla de Proyectos,
-                            // como `abrirLaPortada(enProyectos = true)` del
-                            // movil. Es ir, no elegir: lo que recuerda el
-                            // interruptor no cambia.
-                            Some(Accion::Proyectos) => vista_proyectos.ver_proyectos(),
-                            Some(otra) => {
-                                if let Some(a) = abierto.as_mut() {
-                                    let cx = Contexto {
-                                        ubicacion,
-                                        identidad: &identidad,
-                                        textos,
-                                        lienzo,
-                                        ventana: &ventana,
-                                        fichas: &fichas,
-                                        idioma,
-                                    };
-                                    match ejecutar(otra, a, &cx) {
-                                        Efecto::Nada | Efecto::Cambio => {}
-                                        Efecto::Aviso(t) => {
-                                            aviso = Some((t, std::time::Instant::now()))
-                                        }
-                                        Efecto::Menu(v) => {
-                                            menu = Some(MenuAbierto::nuevo(m.ancla, v))
-                                        }
-                                    }
-                                    a.colocado.borrow_mut().ancho = 0;
-                                }
-                            }
+                        // por querer salir del menu. Un clic en su relleno
+                        // o en «Más» lo deja abierto.
+                        let ancla = m.ancla;
+                        match m.pulsar(l, marco, escala) {
+                            Respuesta::Fuera => {}
+                            Respuesta::Sigue => menu = Some(m),
+                            Respuesta::Hacer(accion) => hacer_del_menu!(ancla, Some(accion)),
                         }
                         hay_que_pintar = true;
                     } else if let Some((r, zona)) = abierto.as_ref().and_then(|a| {
@@ -1582,12 +1698,16 @@ pub fn abrir(
                         // El clip despliega su menu; lo que se adjunta se
                         // decide ahi, no aqui. Se retira al escribir, como en
                         // el movil, y entonces no se puede pulsar.
-                        menu = Some(MenuAbierto::nuevo(
+                        // v2: la hoja del «+», cuadricula con buscador.
+                        // Su ancla es la esquina de arriba del boton: la
+                        // hoja crece hacia arriba desde ahi, y lo que abra
+                        // despues (los proyectos, las mini-apps) nace ahi.
+                        menu = Some(MenuAbierto::de_hoja(
                             Punto {
                                 x: clip.derecha(),
                                 y: clip.y,
                             },
-                            menu_del_clip(textos),
+                            hoja_adjuntar::Hoja::nueva(textos),
                         ));
                         buscando = false;
                         hay_que_pintar = true;
@@ -2084,10 +2204,12 @@ pub fn abrir(
                             let cual =
                                 pixpin_ui::historial::mensaje_en(area, &c.puestos, scroll, l)?;
                             let i = c.mensaje(cual)?;
-                            Some(menu_de_mensaje(a, i, textos))
+                            let puesta = a.mensajes.get(i).and_then(|m| m.emoji.clone());
+                            Some((menu_de_mensaje(a, i, textos), i, puesta))
                         });
-                    if let Some(entradas) = pulsado.filter(|v| !v.is_empty()) {
-                        menu = Some(MenuAbierto::nuevo(l, entradas));
+                    if let Some((entradas, i, puesta)) = pulsado.filter(|(v, _, _)| !v.is_empty()) {
+                        // v2: con la fila de etiquetas encima.
+                        menu = Some(MenuAbierto::nuevo(l, entradas).con_etiquetas(i, puesta));
                         hay_que_pintar = true;
                     }
                 }
@@ -2429,10 +2551,6 @@ pub fn abrir(
                 EventoOverlay::Pintar => hay_que_pintar = true,
                 EventoOverlay::Cerrar => cerrar = true,
                 // Escapar cierra primero lo que este desplegado encima.
-                EventoOverlay::Tecla { vk, .. } if menu.is_some() && vk == VK_ESCAPE => {
-                    menu = None;
-                    hay_que_pintar = true;
-                }
                 // La escala de la interfaz, como en Telegram. Va de las
                 // primeras y sin mirar que hay abierto: quien no ve bien lo
                 // que tiene delante tiene que poder agrandarlo ahi mismo, no
@@ -3184,7 +3302,7 @@ pub fn abrir(
                 let rutas: Vec<std::path::PathBuf> = p
                     .rutas
                     .iter()
-                    .take(pixpin_ui::confirmar::FILAS_MAXIMAS)
+                    .take(48)
                     .cloned()
                     .collect();
                 miniaturas.asegurar(&rutas, &motor);
@@ -3331,12 +3449,20 @@ pub fn abrir(
                         // Encima de todo, panel incluido: esta esperando una
                         // respuesta y nada debe distraer de ella.
                         if let Some(pend) = pendientes_ref {
-                            pintar_confirmar(p, &c, pend, marco);
+                            envio::pintar(p, &c, pend, marco, &a.ficha.nombre);
                         }
                     }
                     // El menu, el ultimo: se despliega encima de todo.
                     if let Some(m) = menu_ref {
-                        pintar_menu_abierto(p, tema, escala, m, marco);
+                        let c = Pinta {
+                            tema,
+                            escala,
+                            textos,
+                            ahora,
+                            miniaturas: &miniaturas,
+                            previas: &previas,
+                        };
+                        pintar_menu_abierto(p, &c, m, marco);
                     }
                     if let Some(t) = aviso_ref {
                         pintar_aviso(p, &disposicion, escala, alto_caja, t);
@@ -3510,9 +3636,30 @@ struct Pendientes {
     /// no en cada fotograma: preguntarle al disco sesenta veces por segundo
     /// por algo que no cambia es tirar el rato.
     tamanos: Vec<u64>,
+    /// v2: la foto que se arrastra para cambiarla de sitio.
+    arrastre: Option<envio::Arrastre>,
+    /// v2: lo que hay bajo el raton (el ✕, Añadir, los botones).
+    sobre: Option<envio::Sitio>,
+    /// Lo que miden Cancelar y Enviar, medido al pintar.
+    botones: std::cell::Cell<(u32, u32)>,
 }
 
 impl Pendientes {
+    /// El cuadro ya colocado, igual que al pintarlo.
+    fn cuadro(&self, marco: Rect, escala: u32) -> envio::Cuadro {
+        envio::colocar(
+            Rect {
+                x: 0,
+                y: 0,
+                ancho: marco.ancho,
+                alto: marco.alto,
+            },
+            self.rutas.len(),
+            self.botones.get(),
+            escala,
+        )
+    }
+
     /// `None` si no hay ninguna ruta: un cuadro que pregunta por nada no se
     /// ensena, se descarta.
     fn de(rutas: Vec<std::path::PathBuf>) -> Option<Pendientes> {
@@ -3527,6 +3674,9 @@ impl Pendientes {
             rutas,
             pie: String::new(),
             tamanos,
+            arrastre: None,
+            sobre: None,
+            botones: std::cell::Cell::new((120, 130)),
         })
     }
 
@@ -7031,150 +7181,12 @@ fn filtrar(fichas: &[pixpin_proyecto::almacen::Ficha], busqueda: &str) -> Vec<us
         .collect()
 }
 
-/// Copia unos ficheros al proyecto y los deja como mensajes. Devuelve
-/// cuantos entraron: uno que falle no puede llevarse los demas.
-/// El cuadro que pregunta antes de meter ficheros en el proyecto.
-fn pintar_confirmar(p: &Pintor, c: &Pinta, pend: &Pendientes, marco: Rect) {
-    use pixpin_ui::confirmar as cf;
-    let (tema, escala, textos) = (c.tema, c.escala, c.textos);
-    let e = escala as f32 / 100.0;
-    let ventana = Rect {
-        x: 0,
-        y: 0,
-        ancho: marco.ancho,
-        alto: marco.alto,
-    };
-    // El velo dice que lo de debajo esta esperando una respuesta.
-    p.rellenar(rf(ventana), tema.velo);
-    let d = cf::colocar(ventana, pend.rutas.len(), escala);
-    p.rellenar_redondeado(rf(d.caja), cf::RADIO as f32 * e, tema.lista);
-    p.empujar_recorte(rf(d.caja));
-
-    let mut args = fluent_bundle::FluentArgs::new();
-    args.set("cuantos", pend.rutas.len());
-    let (_, alto_titulo) = p.medir_texto("X", cf::TITULO_TAM * e);
-    p.texto_linea(
-        &textos.t_args("confirmar-titulo", &args),
-        d.cabecera.x as f32 + cf::TITULO_X as f32 * e,
-        d.cabecera.y as f32 + (d.cabecera.alto as f32 - alto_titulo) / 2.0,
-        cf::TITULO_TAM * e,
-        (d.cabecera.ancho as f32 - 2.0 * cf::TITULO_X as f32 * e).max(0.0),
-        tema.texto,
-    );
-
-    for (n, ruta) in pend.rutas.iter().enumerate().take(d.filas) {
-        let fila = d.fila(n, escala);
-        let (x, ancho) = d.texto(fila, escala);
-        let mini = d.miniatura(fila, escala);
-        // La foto de verdad si ya se leyo; si no, un recuadro. Aqui no se
-        // pide cargarla: las del cuadro se preparan antes del fotograma.
-        match c.miniaturas.ya(ruta) {
-            Some((b, w, h)) => {
-                p.empujar_recorte(rf(mini));
-                crate::miniaturas::pintar_recortado(p, b, rf(mini), w, h);
-                p.soltar_recorte();
-            }
-            None => p.rellenar_redondeado(rf(mini), cf::MINIATURA_RADIO as f32 * e, tema.chat),
-        }
-        let nombre = ruta
-            .file_name()
-            .map(|n| n.to_string_lossy().to_string())
-            .unwrap_or_default();
-        p.texto_linea(
-            &nombre,
-            x as f32,
-            fila.y as f32 + cf::NOMBRE_Y as f32 * e,
-            cf::NOMBRE_TAM * e,
-            ancho as f32,
-            tema.texto,
-        );
-        p.texto_linea(
-            &en_bytes(pend.tamanos.get(n).copied().unwrap_or(0)),
-            x as f32,
-            fila.y as f32 + cf::TAMANO_Y as f32 * e,
-            cf::TAMANO_TAM * e,
-            ancho as f32,
-            tema.apagado,
-        );
-    }
-    if let Some(linea) = d.linea_resto(escala) {
-        let mut args = fluent_bundle::FluentArgs::new();
-        args.set("cuantos", d.resto);
-        let (_, alto) = p.medir_texto("X", cf::TAMANO_TAM * e);
-        p.texto_linea(
-            &textos.t_args("confirmar-resto", &args),
-            linea.x as f32 + cf::NOMBRE_X as f32 * e,
-            linea.y as f32 + (linea.alto as f32 - alto) / 2.0,
-            cf::TAMANO_TAM * e,
-            (linea.ancho as f32 - cf::NOMBRE_X as f32 * e).max(0.0),
-            tema.apagado,
-        );
-    }
-
-    // El pie, con su texto en gris mientras esta vacio.
-    let caja_pie = Rect {
-        x: d.pie.x + (cf::PIE_X as f32 * e) as i32,
-        y: d.pie.y,
-        ancho: d
-            .pie
-            .ancho
-            .saturating_sub((2.0 * cf::PIE_X as f32 * e) as u32),
-        alto: d.pie.alto,
-    };
-    let (texto_pie, color_pie) = if pend.pie.is_empty() {
-        (textos.t("confirmar-pie"), tema.apagado)
-    } else {
-        (pend.pie.clone(), tema.texto)
-    };
-    let (_, alto_pie) = p.medir_texto(&texto_pie, cf::PIE_TAM * e);
-    p.texto_linea(
-        &texto_pie,
-        caja_pie.x as f32,
-        caja_pie.y as f32 + (caja_pie.alto as f32 - alto_pie) / 2.0,
-        cf::PIE_TAM * e,
-        caja_pie.ancho as f32,
-        color_pie,
-    );
-    // Una raya debajo dice que ahi se escribe, sin gastar una caja entera.
-    p.rellenar(
-        RectF {
-            x: caja_pie.x as f32,
-            y: caja_pie.abajo() as f32 - (1.0 * e).max(1.0),
-            ancho: caja_pie.ancho as f32,
-            alto: (1.0 * e).max(1.0),
-        },
-        tema.separador,
-    );
-
-    for (boton, clave, fuerte) in [
-        (d.cancelar, "confirmar-cancelar", false),
-        (d.aceptar, "confirmar-aceptar", true),
-    ] {
-        if fuerte {
-            p.rellenar_redondeado(rf(boton), cf::BOTON_RADIO as f32 * e, tema.enviar);
-        }
-        let rotulo = textos.t(clave);
-        let (w, h) = p.medir_texto(&rotulo, cf::BOTON_TAM * e);
-        p.texto(
-            &rotulo,
-            boton.x as f32 + (boton.ancho as f32 - w) / 2.0,
-            boton.y as f32 + (boton.alto as f32 - h) / 2.0,
-            cf::BOTON_TAM * e,
-            if fuerte {
-                tema.texto_elegido
-            } else {
-                tema.texto
-            },
-        );
-    }
-    p.soltar_recorte();
-}
-
 /// Un tamano de fichero como se le ensena a una persona.
 ///
 /// Se reparte de mil en mil, no de 1024 en 1024: es lo que dice el
 /// Explorador de Windows para el mismo fichero, y discrepar con el sistema
 /// operativo en el numero que el usuario acaba de ver es peor que ser exacto.
+#[cfg_attr(not(test), allow(dead_code))]
 fn en_bytes(bytes: u64) -> String {
     const UNIDADES: [&str; 4] = ["B", "kB", "MB", "GB"];
     let mut valor = bytes as f64;
@@ -7571,6 +7583,8 @@ pub(crate) fn escribir_lienzo(
     Ok(mensaje)
 }
 
+/// Copia unos ficheros al proyecto y los deja como mensajes. Devuelve
+/// cuantos entraron: uno que falle no puede llevarse los demas.
 fn meter_ficheros(
     ubicacion: &Ubicacion,
     a: &mut Abierto,
@@ -12557,6 +12571,7 @@ fn picos_de_voz(m: &pixpin_proyecto::cuaderno::Mensaje) -> Vec<i64> {
 /// la de pasar a texto— y una mini-app no lo llevan, y a ellas el menu se
 /// lo ofrece. Una clase que aqui no se conoce tampoco: sin fila no hay
 /// pastilla (`fila_de`), y quitarle la entrada la dejaria sin camino.
+#[cfg_attr(not(test), allow(dead_code))]
 fn tiene_boton_de_pinear(m: &pixpin_proyecto::cuaderno::Mensaje) -> bool {
     use pixpin_proyecto::cuaderno::Clase;
     !matches!(
@@ -13825,6 +13840,10 @@ fn pintar_aviso(p: &Pintor, d: &Disposicion, escala: u32, alto_caja: u32, texto:
 #[derive(Debug, Clone, PartialEq)]
 enum Accion {
     // El clip.
+    /// v2: la fila «Más» del menu de un mensaje, que abre su submenu.
+    Mas,
+    /// v2: «Captura» de la hoja del «+»: la de zona, por el camino del atajo.
+    AdjCaptura,
     AdjArchivo,
     AdjImagen,
     AdjLienzo,
@@ -13839,7 +13858,6 @@ enum Accion {
     AdjPaginaHoja(String, String),
     /// Los ajustes de PixPin, los mismos de la bandeja.
     Ajustes,
-    MiniApps,
     /// Una de las siete del movil, por su palabra de `Mensaje.miniapp`. La
     /// palabra es el dato guardado y no se renombra (`MiniApps.kt:94-99`).
     AdjMini(&'static str),
@@ -13879,7 +13897,6 @@ enum Accion {
     /// se tacha en el pin se guarda en el mensaje (`herramienta::Vinculo`).
     PinearLista(usize),
     Rescatar(usize),
-    Etiquetas(usize),
     Etiquetar(usize, Option<String>),
     Hilo(usize),
     /// Ofrecer las horas a las que avisar de este mensaje.
@@ -13944,12 +13961,17 @@ enum Accion {
     HacerLeccion(usize),
 }
 
-/// Una linea de menu: icono, nombre y lo que hace. Borrar va en rojo.
+/// Una linea de menu: icono, nombre, su tecla y lo que hace. Borrar va en
+/// rojo. `separada` pone una raya encima; `en_mas` la manda al submenu
+/// «Más» (v2, `Menus2.dc.html`).
 struct EntradaMenu {
     icono: Option<&'static Icono>,
     texto: String,
     peligro: bool,
     accion: Accion,
+    tecla: Option<menu_v2::Tecla>,
+    separada: bool,
+    en_mas: bool,
 }
 
 fn entrada(icono: Option<&'static Icono>, texto: String, accion: Accion) -> EntradaMenu {
@@ -13958,150 +13980,560 @@ fn entrada(icono: Option<&'static Icono>, texto: String, accion: Accion) -> Entr
         texto,
         peligro: false,
         accion,
+        tecla: None,
+        separada: false,
+        en_mas: false,
     }
+}
+
+impl EntradaMenu {
+    fn con_tecla(mut self, t: menu_v2::Tecla) -> EntradaMenu {
+        self.tecla = Some(t);
+        self
+    }
+
+    fn separada(mut self) -> EntradaMenu {
+        self.separada = true;
+        self
+    }
+
+    fn en_mas(mut self) -> EntradaMenu {
+        self.en_mas = true;
+        self
+    }
+}
+
+/// Lo que pasa al tocar un menu abierto (raton o teclado).
+#[derive(Debug, Clone, PartialEq)]
+enum Respuesta {
+    /// Se cierra sin hacer nada (clic fuera, Esc).
+    Fuera,
+    /// Sigue abierto (clic en su relleno, flechas, abrir «Más»...).
+    Sigue,
+    Hacer(Accion),
 }
 
 /// Un menu desplegado. Mide sus rotulos al pintarse, y el raton usa esas
 /// medidas: el ancho lo manda el mas largo y solo se sabe con la fuente.
+///
+/// Tambien es la hoja del «+» de la caja (`hoja`): asi todo lo que mira si
+/// hay un menu delante la ve igual, y lo que se elige en ella pasa por el
+/// mismo camino que una entrada del menu de antes.
 struct MenuAbierto {
     ancla: Punto,
     entradas: Vec<EntradaMenu>,
-    anchos: std::cell::RefCell<Vec<f32>>,
+    /// El submenu «Más», si lo hay.
+    mas: Vec<EntradaMenu>,
+    /// La fila de etiquetas de encima: el mensaje y la que ya tiene.
+    etiquetas: Option<(usize, Option<String>)>,
+    hoja: Option<hoja_adjuntar::Hoja>,
+    necesita: std::cell::RefCell<Vec<f32>>,
+    necesita_mas: std::cell::RefCell<Vec<f32>>,
+    /// Bajo el raton.
+    sobre: Option<menu_v2::Sitio>,
+    /// Elegido con las flechas: lo que hace Intro, en azul.
+    elegido: Option<menu_v2::Sitio>,
+    mas_abierto: bool,
 }
 
 impl MenuAbierto {
     fn nuevo(ancla: Punto, entradas: Vec<EntradaMenu>) -> MenuAbierto {
+        let (mas, entradas): (Vec<EntradaMenu>, Vec<EntradaMenu>) =
+            entradas.into_iter().partition(|e| e.en_mas);
+        // Una fila «Más» sin nada dentro seria un boton muerto.
+        let entradas: Vec<EntradaMenu> = if mas.is_empty() {
+            entradas.into_iter().filter(|e| e.accion != Accion::Mas).collect()
+        } else {
+            entradas
+        };
         MenuAbierto {
             ancla,
-            anchos: std::cell::RefCell::new(vec![0.0; entradas.len()]),
+            necesita: std::cell::RefCell::new(vec![0.0; entradas.len()]),
+            necesita_mas: std::cell::RefCell::new(vec![0.0; mas.len()]),
             entradas,
+            mas,
+            etiquetas: None,
+            hoja: None,
+            sobre: None,
+            elegido: None,
+            mas_abierto: false,
+        }
+    }
+
+    /// La hoja del «+» de la caja, que crece hacia arriba desde `ancla`.
+    fn de_hoja(ancla: Punto, hoja: hoja_adjuntar::Hoja) -> MenuAbierto {
+        let mut m = MenuAbierto::nuevo(ancla, Vec::new());
+        m.hoja = Some(hoja);
+        m
+    }
+
+    /// Con la fila de etiquetas encima, para el mensaje `i`.
+    fn con_etiquetas(mut self, i: usize, puesta: Option<String>) -> MenuAbierto {
+        self.etiquetas = Some((i, puesta));
+        self
+    }
+
+    fn limite(marco: Rect) -> Rect {
+        Rect {
+            x: 0,
+            y: 0,
+            ancho: marco.ancho,
+            alto: marco.alto,
         }
     }
 
     /// Donde cae, calculado igual al pintar y al pulsar.
-    fn colocado(&self, marco: Rect, escala: u32) -> menu::Menu {
-        chat::colocar_menu(
+    fn colocado(&self, marco: Rect, escala: u32) -> menu_v2::Colocado {
+        let separado: Vec<bool> = self.entradas.iter().map(|e| e.separada).collect();
+        let emojis = if self.etiquetas.is_some() {
+            chat::ETIQUETAS.len()
+        } else {
+            0
+        };
+        menu_v2::colocar(
             self.ancla,
-            Rect {
-                x: 0,
-                y: 0,
-                ancho: marco.ancho,
-                alto: marco.alto,
-            },
-            &self.anchos.borrow(),
-            (menu::TEXTO_TAM * escala as f32 / 100.0).ceil() as u32,
+            MenuAbierto::limite(marco),
+            &self.necesita.borrow(),
+            &separado,
+            emojis,
             escala,
         )
     }
+
+    /// El submenu «Más», si esta abierto.
+    fn colocado_mas(&self, marco: Rect, escala: u32) -> Option<menu_v2::Colocado> {
+        if !self.mas_abierto || self.mas.is_empty() {
+            return None;
+        }
+        let madre = self.colocado(marco, escala);
+        let n = self.entradas.iter().position(|e| e.accion == Accion::Mas)?;
+        let separado: Vec<bool> = self.mas.iter().map(|e| e.separada).collect();
+        Some(menu_v2::colocar_al_lado(
+            madre.caja,
+            *madre.filas.get(n)?,
+            MenuAbierto::limite(marco),
+            &self.necesita_mas.borrow(),
+            &separado,
+            escala,
+        ))
+    }
+
+    fn sitio_en(&self, p: Punto, marco: Rect, escala: u32) -> Option<menu_v2::Sitio> {
+        use menu_v2::Sitio;
+        if let Some(n) = self.colocado_mas(marco, escala).and_then(|c| c.fila_en(p)) {
+            return Some(Sitio::Mas(n));
+        }
+        let c = self.colocado(marco, escala);
+        if let Some(n) = c.emoji_en(p) {
+            return Some(Sitio::Emoji(n));
+        }
+        c.fila_en(p).map(Sitio::Principal)
+    }
+
+    fn dentro(&self, p: Punto, marco: Rect, escala: u32) -> bool {
+        self.colocado(marco, escala).contiene(p)
+            || self.colocado_mas(marco, escala).is_some_and(|c| c.contiene(p))
+    }
+
+    /// Lo que hace un sitio del menu. Una etiqueta ya puesta, pulsada otra
+    /// vez, se quita: es lo que se espera de una casilla.
+    fn accion_de(&self, s: menu_v2::Sitio) -> Option<Accion> {
+        use menu_v2::Sitio;
+        match s {
+            Sitio::Principal(n) => self.entradas.get(n).map(|e| e.accion.clone()),
+            Sitio::Mas(n) => self.mas.get(n).map(|e| e.accion.clone()),
+            Sitio::Emoji(n) => {
+                let (i, puesta) = self.etiquetas.as_ref()?;
+                let emoji = (*chat::ETIQUETAS.get(n)?).to_string();
+                Some(if puesta.as_deref() == Some(emoji.as_str()) {
+                    Accion::Etiquetar(*i, None)
+                } else {
+                    Accion::Etiquetar(*i, Some(emoji))
+                })
+            }
+        }
+    }
+
+    /// Hacer lo de un sitio: «Más» abre o cierra su submenu y deja el menu
+    /// abierto; lo demas se hace.
+    fn hacer(&mut self, s: menu_v2::Sitio) -> Respuesta {
+        match self.accion_de(s) {
+            Some(Accion::Mas) => {
+                self.mas_abierto = !self.mas_abierto;
+                self.elegido = Some(s);
+                Respuesta::Sigue
+            }
+            Some(a) => Respuesta::Hacer(a),
+            None => Respuesta::Sigue,
+        }
+    }
+
+    /// Un clic con el menu delante.
+    fn pulsar(&mut self, p: Punto, marco: Rect, escala: u32) -> Respuesta {
+        if let Some(h) = self.hoja.as_mut() {
+            return h.pulsar(p, self.ancla, marco, escala);
+        }
+        match self.sitio_en(p, marco, escala) {
+            Some(s) => self.hacer(s),
+            None if self.dentro(p, marco, escala) => Respuesta::Sigue,
+            None => Respuesta::Fuera,
+        }
+    }
+
+    /// El raton se mueve: el resalte sigue al raton y «Más» se abre al
+    /// pasar por encima, como un submenu de Windows. Devuelve si cambio algo.
+    fn mover(&mut self, p: Punto, marco: Rect, escala: u32) -> bool {
+        if let Some(h) = self.hoja.as_mut() {
+            return h.mover(p, self.ancla, marco, escala);
+        }
+        use menu_v2::Sitio;
+        let s = self.sitio_en(p, marco, escala);
+        let antes = (self.sobre, self.mas_abierto);
+        self.sobre = s;
+        if let Some(Sitio::Principal(n)) = s {
+            self.mas_abierto = self.entradas.get(n).is_some_and(|e| e.accion == Accion::Mas);
+        }
+        antes != (self.sobre, self.mas_abierto)
+    }
+
+    /// Una tecla pulsada con el menu abierto. Todas son suyas mientras
+    /// esta delante: que una flecha moviera la conversacion de debajo seria
+    /// sorprender a quien esta eligiendo.
+    fn tecla(&mut self, vk: u32, ctrl: bool) -> Respuesta {
+        if let Some(h) = self.hoja.as_mut() {
+            return h.tecla(vk);
+        }
+        use menu_v2::Sitio;
+        if vk == VK_ESCAPE {
+            if self.mas_abierto && matches!(self.elegido, Some(Sitio::Mas(_))) {
+                self.mas_abierto = false;
+                self.elegido = self.posicion_de_mas().map(Sitio::Principal);
+                return Respuesta::Sigue;
+            }
+            return Respuesta::Fuera;
+        }
+        if vk == VK_ENTRAR {
+            return match self.elegido {
+                Some(s) => self.hacer(s),
+                None => Respuesta::Sigue,
+            };
+        }
+        if vk == VK_ABAJO || vk == VK_ARRIBA {
+            let abajo = vk == VK_ABAJO;
+            self.elegido = match self.elegido {
+                Some(Sitio::Mas(n)) if self.mas_abierto => {
+                    menu_v2::siguiente(Some(n), self.mas.len(), abajo).map(Sitio::Mas)
+                }
+                Some(Sitio::Principal(n)) => {
+                    menu_v2::siguiente(Some(n), self.entradas.len(), abajo).map(Sitio::Principal)
+                }
+                _ => menu_v2::siguiente(None, self.entradas.len(), abajo).map(Sitio::Principal),
+            };
+            return Respuesta::Sigue;
+        }
+        if vk == VK_DERECHA {
+            if let Some(Sitio::Principal(n)) = self.elegido
+                && self.entradas.get(n).is_some_and(|e| e.accion == Accion::Mas)
+            {
+                self.mas_abierto = true;
+                self.elegido = (!self.mas.is_empty()).then_some(Sitio::Mas(0));
+            }
+            return Respuesta::Sigue;
+        }
+        if vk == VK_IZQUIERDA {
+            if matches!(self.elegido, Some(Sitio::Mas(_))) {
+                self.mas_abierto = false;
+                self.elegido = self.posicion_de_mas().map(Sitio::Principal);
+            }
+            return Respuesta::Sigue;
+        }
+        // Las teclas con chapita: Ctrl+C, Supr, F2... de las dos listas.
+        let de_tecla = |l: &[EntradaMenu]| {
+            l.iter()
+                .find(|e| e.tecla.is_some_and(|t| t.coincide_tecla(vk, ctrl)))
+                .map(|e| e.accion.clone())
+        };
+        match de_tecla(&self.entradas).or_else(|| de_tecla(&self.mas)) {
+            Some(a) => Respuesta::Hacer(a),
+            None => Respuesta::Sigue,
+        }
+    }
+
+    /// Un caracter escrito con el menu abierto: las letras de una tecla
+    /// («R» responder, «P» pinear...). Lo demas no se escribe en ningun
+    /// sitio: el menu esta delante de la caja.
+    fn caracter(&mut self, c: char) -> Respuesta {
+        if let Some(h) = self.hoja.as_mut() {
+            return h.caracter(c);
+        }
+        let de_letra = |l: &[EntradaMenu]| {
+            l.iter()
+                .find(|e| e.tecla.is_some_and(|t| t.coincide_caracter(c)))
+                .map(|e| e.accion.clone())
+        };
+        match de_letra(&self.entradas).or_else(|| de_letra(&self.mas)) {
+            Some(Accion::Mas) => {
+                self.mas_abierto = !self.mas_abierto;
+                Respuesta::Sigue
+            }
+            Some(a) => Respuesta::Hacer(a),
+            None => Respuesta::Sigue,
+        }
+    }
+
+    fn posicion_de_mas(&self) -> Option<usize> {
+        self.entradas.iter().position(|e| e.accion == Accion::Mas)
+    }
 }
 
-fn pintar_menu_abierto(p: &Pintor, tema: &Tema, escala: u32, m: &MenuAbierto, marco: Rect) {
-    let e = escala as f32 / 100.0;
-    let tam = menu::TEXTO_TAM * e;
-    *m.anchos.borrow_mut() = m
-        .entradas
+/// Las chapitas de una tecla, en el idioma de la ventana.
+fn chapas_de(t: menu_v2::Tecla, textos: &Catalogo) -> Vec<String> {
+    t.chapas(&textos.t("v2menus-tecla-supr"), &textos.t("v2menus-tecla-clic"))
+}
+
+/// Lo ancho que son unas chapitas puestas una detras de otra.
+fn ancho_chapas(p: &Pintor, chapas: &[String], e: f32) -> f32 {
+    if chapas.is_empty() {
+        return 0.0;
+    }
+    let tam = menu_v2::TAM_CHAPA * e;
+    chapas
         .iter()
-        .map(|n| p.medir_texto(&n.texto, tam).0)
-        .collect();
-    let colocado = m.colocado(marco, escala);
-    let caja = rf(colocado.caja);
-    let radio = menu::RADIO as f32 * e;
+        .map(|c| (p.medir_texto(c, tam).0 + 12.0 * e).max(menu_v2::CHAPA_MIN as f32 * e))
+        .sum::<f32>()
+        + menu_v2::CHAPA_HUECO as f32 * e * (chapas.len() - 1) as f32
+}
+
+/// Pinta unas chapitas con su borde derecho en `derecha`, centradas en
+/// la fila. Sobre la fila elegida (azul) van en blanco.
+fn pintar_chapas(p: &Pintor, tema: &Tema, chapas: &[String], derecha: f32, fila: Rect, e: f32, sobre_azul: bool) {
+    let tam = menu_v2::TAM_CHAPA * e;
+    let alto = menu_v2::CHAPA_ALTO as f32 * e;
+    let y = fila.y as f32 + (fila.alto as f32 - alto) / 2.0;
+    let mut x = derecha - ancho_chapas(p, chapas, e);
+    for c in chapas {
+        let (w, h) = p.medir_texto(c, tam);
+        let ancho = (w + 12.0 * e).max(menu_v2::CHAPA_MIN as f32 * e);
+        let caja = RectF { x, y, ancho, alto };
+        if sobre_azul {
+            p.rellenar_redondeado(caja, 5.0 * e, con_alfa(hex(0xffffff), 0.18));
+        } else {
+            p.rellenar_redondeado(caja, 5.0 * e, con_alfa(tema.texto, 0.10));
+            p.rellenar_redondeado(encoger(caja, 1.0), 4.0 * e, tema.cabecera);
+            p.rellenar_redondeado(encoger(caja, 1.0), 4.0 * e, con_alfa(tema.texto, 0.06));
+        }
+        let color = if sobre_azul { hex(0xffffff) } else { tema.apagado };
+        p.texto_linea(c, x + (ancho - w) / 2.0, y + (alto - h) / 2.0, tam, ancho, color);
+        x += ancho + menu_v2::CHAPA_HUECO as f32 * e;
+    }
+}
+
+/// La flecha de un submenu («›»), con su punta en `derecha`.
+fn pintar_flecha_sub(p: &Pintor, derecha: f32, fila: Rect, e: f32, color: Color) {
+    let cy = fila.y as f32 + fila.alto as f32 / 2.0;
+    let (w, h) = (4.0 * e, 5.0 * e);
+    let x = derecha - 4.0 * e;
+    p.polilinea(&[(x - w, cy - h), (x, cy), (x - w, cy + h)], 1.8 * e, color);
+}
+
+/// Los tres puntos de «Más».
+fn pintar_tres_puntos(p: &Pintor, caja: Rect, color: Color, e: f32) {
+    let cy = caja.y as f32 + caja.alto as f32 / 2.0;
+    let cx = caja.x as f32 + caja.ancho as f32 / 2.0;
+    for dx in [-6.5f32, 0.0, 6.5] {
+        p.circulo((cx + dx * e, cy), 1.9 * e, color);
+    }
+}
+
+/// El azul de lo elegido (`#0060DF` de la maqueta) y el rojo de Borrar.
+const AZUL_ELEGIDO: Color = hex(0x0060df);
+const ROJO_MENU: Color = hex(0xe5534b);
+
+/// Una lista de entradas en su recuadro ya colocado.
+#[allow(clippy::too_many_arguments)]
+fn pintar_lista_menu(
+    p: &Pintor,
+    tema: &Tema,
+    textos: &Catalogo,
+    escala: u32,
+    lista: &[EntradaMenu],
+    c: &menu_v2::Colocado,
+    sobre: Option<usize>,
+    azul: &dyn Fn(usize) -> bool,
+) {
+    let e = escala as f32 / 100.0;
+    let tam = menu_v2::TAM * e;
+    let caja = rf(c.caja);
+    let radio = menu_v2::RADIO as f32 * e;
+    // La sombra, un poco por debajo: el menu flota sobre la conversacion.
+    p.rellenar_redondeado(
+        RectF {
+            y: caja.y + 6.0 * e,
+            ..encoger(caja, -2.0 * e)
+        },
+        radio + 2.0 * e,
+        con_alfa(hex(0x000000), 0.22),
+    );
     p.rellenar_redondeado(caja, radio, tema.pildora_borde);
     p.rellenar_redondeado(encoger(caja, 1.0), (radio - 1.0).max(0.0), tema.cabecera);
-    let rojo = hex(0xe5534b);
-    for (n, entrada) in m.entradas.iter().enumerate() {
-        let fila = colocado.fila(n, escala);
-        let color = if entrada.peligro { rojo } else { tema.texto };
-        if let Some(icono) = entrada.icono {
-            p.icono(
-                icono,
-                rf(colocado.icono(fila, escala)),
-                if entrada.peligro { rojo } else { tema.apagado },
+    for y in &c.separadores {
+        p.rellenar(
+            RectF {
+                x: caja.x + 12.0 * e,
+                y: *y as f32,
+                ancho: (caja.ancho - 24.0 * e).max(0.0),
+                alto: e.max(1.0),
+            },
+            tema.separador,
+        );
+    }
+    for (n, entrada) in lista.iter().enumerate() {
+        let Some(fila) = c.filas.get(n).copied() else {
+            continue;
+        };
+        let es_azul = azul(n);
+        if es_azul {
+            p.rellenar_redondeado(rf(fila), menu_v2::RADIO_FILA as f32 * e, AZUL_ELEGIDO);
+        } else if sobre == Some(n) {
+            p.rellenar_redondeado(rf(fila), menu_v2::RADIO_FILA as f32 * e, con_alfa(tema.texto, 0.08));
+        }
+        let (color, color_icono) = if es_azul {
+            (hex(0xffffff), hex(0xffffff))
+        } else if entrada.peligro {
+            (ROJO_MENU, ROJO_MENU)
+        } else {
+            (tema.texto, tema.apagado)
+        };
+        let lado = menu_v2::ICONO as f32 * e;
+        let icono = RectF {
+            x: fila.x as f32 + menu_v2::ICONO_X as f32 * e,
+            y: fila.y as f32 + (fila.alto as f32 - lado) / 2.0,
+            ancho: lado,
+            alto: lado,
+        };
+        if entrada.accion == Accion::Mas {
+            pintar_tres_puntos(
+                p,
+                Rect {
+                    x: icono.x as i32,
+                    y: icono.y as i32,
+                    ancho: lado as u32,
+                    alto: lado as u32,
+                },
+                color_icono,
+                e,
             );
+        } else if let Some(i) = entrada.icono {
+            p.icono(i, icono, color_icono);
+        }
+        let derecha = fila.derecha() as f32 - menu_v2::DERECHA as f32 * e;
+        let chapas = entrada.tecla.map(|t| chapas_de(t, textos)).unwrap_or_default();
+        let ancho_ch = ancho_chapas(p, &chapas, e);
+        if entrada.tecla == Some(menu_v2::Tecla::Sub) {
+            pintar_flecha_sub(p, derecha, fila, e, color_icono);
+        } else {
+            pintar_chapas(p, tema, &chapas, derecha, fila, e, es_azul);
         }
         let (_, alto) = p.medir_texto(&entrada.texto, tam);
-        let x = colocado.texto(fila, escala) as f32;
+        let x = fila.x as f32 + menu_v2::TEXTO_X as f32 * e;
+        let reserva = if entrada.tecla == Some(menu_v2::Tecla::Sub) {
+            14.0 * e
+        } else if ancho_ch > 0.0 {
+            ancho_ch + menu_v2::HUECO_CHAPA as f32 * e
+        } else {
+            0.0
+        };
         p.texto_linea(
             &entrada.texto,
             x,
             fila.y as f32 + (fila.alto as f32 - alto) / 2.0,
             tam,
-            (colocado.caja.derecha() as f32 - x - menu::RELLENO_DERECHA as f32 * e).max(0.0),
+            (derecha - reserva - x).max(0.0),
             color,
         );
     }
 }
 
-/// El clip, con lo de la hoja de adjuntar del movil y en su orden (archivo,
-/// pagina, proyecto, conversacion, teleprompter, pronunciar, mini-app); y
-/// detras lo que solo tiene Windows: foto, lienzo nuevo y traer del movil.
+/// Lo que necesita cada fila: su rotulo y, si tiene, sus chapitas.
+fn medir_lista(p: &Pintor, textos: &Catalogo, lista: &[EntradaMenu], e: f32) -> Vec<f32> {
+    let tam = menu_v2::TAM * e;
+    lista
+        .iter()
+        .map(|n| {
+            let texto = p.medir_texto(&n.texto, tam).0;
+            let extra = match n.tecla {
+                Some(menu_v2::Tecla::Sub) => 14.0 * e + menu_v2::HUECO_CHAPA as f32 * e,
+                Some(t) => ancho_chapas(p, &chapas_de(t, textos), e) + menu_v2::HUECO_CHAPA as f32 * e,
+                None => 0.0,
+            };
+            texto + extra
+        })
+        .collect()
+}
+
+fn pintar_menu_abierto(p: &Pintor, c: &Pinta, m: &MenuAbierto, marco: Rect) {
+    use menu_v2::Sitio;
+    let (tema, escala, textos) = (c.tema, c.escala, c.textos);
+    if let Some(h) = m.hoja.as_ref() {
+        hoja_adjuntar::pintar(p, c, h, m.ancla, marco);
+        return;
+    }
+    let e = escala as f32 / 100.0;
+    *m.necesita.borrow_mut() = medir_lista(p, textos, &m.entradas, e);
+    *m.necesita_mas.borrow_mut() = medir_lista(p, textos, &m.mas, e);
+    let colocado = m.colocado(marco, escala);
+    // La fila de etiquetas, circulos sueltos encima del menu.
+    if let Some((_, puesta)) = m.etiquetas.as_ref() {
+        for (n, r) in colocado.emojis.iter().enumerate() {
+            let emoji = chat::ETIQUETAS[n];
+            let centro = (r.x as f32 + r.ancho as f32 / 2.0, r.y as f32 + r.alto as f32 / 2.0);
+            let radio = r.ancho as f32 / 2.0;
+            let elegida = puesta.as_deref() == Some(emoji);
+            let encima = matches!(m.sobre, Some(Sitio::Emoji(k)) if k == n)
+                || matches!(m.elegido, Some(Sitio::Emoji(k)) if k == n);
+            p.circulo(centro, radio, tema.pildora_borde);
+            p.circulo(
+                centro,
+                radio - 1.0,
+                if elegida {
+                    con_alfa(AZUL_ELEGIDO, 0.85)
+                } else if encima {
+                    tema.boton_sobre
+                } else {
+                    tema.cabecera
+                },
+            );
+            let tam = 18.0 * e;
+            let (w, h) = p.medir_texto(emoji, tam);
+            p.texto_linea(emoji, centro.0 - w / 2.0, centro.1 - h / 2.0, tam, w + 2.0, tema.texto);
+        }
+    }
+    let sobre = match m.sobre {
+        Some(Sitio::Principal(n)) => Some(n),
+        _ => None,
+    };
+    let mas = m.posicion_de_mas();
+    let elegido = m.elegido;
+    let mas_abierto = m.mas_abierto;
+    pintar_lista_menu(p, tema, textos, escala, &m.entradas, &colocado, sobre, &|n| {
+        elegido == Some(Sitio::Principal(n)) || (mas_abierto && mas == Some(n))
+    });
+    if let Some(sub) = m.colocado_mas(marco, escala) {
+        let sobre = match m.sobre {
+            Some(Sitio::Mas(n)) => Some(n),
+            _ => None,
+        };
+        pintar_lista_menu(p, tema, textos, escala, &m.mas, &sub, sobre, &|n| {
+            elegido == Some(Sitio::Mas(n))
+        });
+    }
+}
+
 /// «Pagina N», con el numero que se ve en el proyecto (desde 1).
 fn rotulo_de_pagina(textos: &Catalogo, n: u32) -> String {
     let mut args = fluent_bundle::FluentArgs::new();
     args.set("n", n);
     textos.t_args("chat-pagina-n", &args)
-}
-
-fn menu_del_clip(textos: &Catalogo) -> Vec<EntradaMenu> {
-    vec![
-        entrada(
-            Some(&mi::DESCRIPTION),
-            textos.t("chat-adj-archivo"),
-            Accion::AdjArchivo,
-        ),
-        entrada(
-            Some(&mi::MENU_BOOK),
-            textos.t("chat-adj-pagina"),
-            Accion::AdjPagina,
-        ),
-        entrada(
-            Some(&mi::FOLDER),
-            textos.t("chat-adj-proyecto"),
-            Accion::AdjProyectos,
-        ),
-        entrada(
-            Some(&mi::RECORD_VOICE_OVER),
-            textos.t("chat-adj-conversacion"),
-            Accion::Conversacion,
-        ),
-        entrada(
-            Some(&mi::SUBTITLES),
-            textos.t("chat-adj-telepronter"),
-            Accion::Telepronter,
-        ),
-        entrada(
-            Some(&mi::HEARING),
-            textos.t("chat-adj-pronunciar"),
-            Accion::Pronunciar,
-        ),
-        entrada(
-            Some(&mi::CHECKLIST),
-            textos.t("chat-adj-miniapp"),
-            Accion::MiniApps,
-        ),
-        entrada(
-            Some(&mi::IMAGE),
-            textos.t("adjuntar-imagen"),
-            Accion::AdjImagen,
-        ),
-        entrada(
-            Some(&mi::DRAW),
-            textos.t("adjuntar-lienzo"),
-            Accion::AdjLienzo,
-        ),
-        // La nota del boton «Nota» de Proyectos del movil (H12); el icono
-        // de renglones es el mas parecido a su `Notes`.
-        entrada(
-            Some(&mi::LIST),
-            textos.t("chat-adj-nota-md"),
-            Accion::AdjNotaMd,
-        ),
-        entrada(
-            Some(&mi::WIFI),
-            textos.t("adjuntar-del-movil"),
-            Accion::AdjDelMovil,
-        ),
-    ]
 }
 
 /// **Que texto se lee en el telepronter.**
@@ -14208,27 +14640,6 @@ fn icono_de_miniapp(cual: &str) -> &'static Icono {
         // con el que el movil rotula la hoja de mini-apps entera.
         _ => &mi::CHECKLIST,
     }
-}
-
-/// El menu del clip que ofrece las mini-apps: las siete del movil y, la
-/// ultima, la hoja de calculo, que solo existe en este equipo.
-fn menu_de_miniapps(textos: &Catalogo) -> Vec<EntradaMenu> {
-    let mut v: Vec<EntradaMenu> = pixpin_proyecto::mini::TODAS
-        .iter()
-        .filter_map(|cual| {
-            Some(entrada(
-                Some(icono_de_miniapp(cual)),
-                textos.t(clave_del_nombre(cual)?),
-                Accion::AdjMini(cual),
-            ))
-        })
-        .collect();
-    v.push(entrada(
-        Some(&mi::TABLE_CHART),
-        textos.t("chat-tabla"),
-        Accion::AdjTabla,
-    ));
-    v
 }
 
 /// Los tres puntos de la cabecera, en el orden del movil. La biblioteca y
@@ -14344,28 +14755,6 @@ fn menu_de_fondos(textos: &Catalogo, actual: usize) -> Vec<EntradaMenu> {
         .collect()
 }
 
-/// Las etiquetas del movil y, si ya tiene una, quitarla.
-fn menu_de_etiquetas(textos: &Catalogo, i: usize, puesta: Option<&str>) -> Vec<EntradaMenu> {
-    let mut v: Vec<EntradaMenu> = pixpin_ui::chat::ETIQUETAS
-        .iter()
-        .map(|e| {
-            entrada(
-                None,
-                (*e).to_string(),
-                Accion::Etiquetar(i, Some((*e).to_string())),
-            )
-        })
-        .collect();
-    if puesta.is_some() {
-        v.push(entrada(
-            Some(&mi::CLOSE),
-            textos.t("chat-quitar-etiqueta"),
-            Accion::Etiquetar(i, None),
-        ));
-    }
-    v
-}
-
 /// Las horas a las que se puede pedir el aviso, como el dialogo del movil
 /// (`DialogoDeRecordatorio`): unos cuantos atajos y nada de teclear.
 ///
@@ -14417,181 +14806,108 @@ fn menu_de_proyectos(
         .collect()
 }
 
-/// El menu de un mensaje: el de mantener pulsado en el movil, con Borrar el
-/// ultimo y en rojo (`Burbuja`, `DelMenu`). Solo salen las que valen para
-/// ESTE mensaje, igual que alli.
+/// El menu de un mensaje: el de mantener pulsado en el movil, ordenado como
+/// la v2 (`Menus2.dc.html`, a): lo diario arriba con su tecla, lo raro en
+/// «Más» y Borrar en rojo y apartado. Solo salen las que valen para ESTE
+/// mensaje, igual que en el movil. La etiqueta no va aqui: va en la fila de
+/// emojis de encima (`MenuAbierto::con_etiquetas`).
 fn menu_de_mensaje(a: &Abierto, i: usize, textos: &Catalogo) -> Vec<EntradaMenu> {
+    use menu_v2::Tecla;
     use pixpin_proyecto::cuaderno::Clase;
     let Some(m) = a.mensajes.get(i) else {
         return Vec::new();
     };
+    let ruta = ruta_del_mensaje(&a.raiz, &a.ficha.id, m).filter(|r| r.is_file());
     let mut v = Vec::new();
-    // **Cambiar el nombre, lo primero** (4-oct-2026 en el movil): de cualquier
-    // archivo, audios incluidos. El usuario lo pidio asi, «que sea notorio».
-    if renombrar::se_puede(m) {
-        v.push(entrada(Some(&mi::EDIT), textos.t("chat-renombrar"), Accion::Renombrar(i)));
+
+    // ── Lo diario ──
+    v.push(
+        entrada(Some(&mi::REPLY), textos.t("v2menus-responder"), Accion::Responder(i))
+            .con_tecla(Tecla::Letra('r')),
+    );
+    if !m.texto.trim().is_empty() && m.clase != Some(Clase::MiniApp) {
+        v.push(
+            entrada(Some(&mi::CONTENT_COPY), textos.t("chat-copiar"), Accion::Copiar(i))
+                .con_tecla(Tecla::Ctrl('c')),
+        );
     }
-    // Y su descripcion, el texto bajo la foto (`descripcion`).
+    // Pinear: el pin se hace de un fichero, y una nota escrita no lo tiene
+    // (ofrecerlo para contestar «no hay archivo» seria peor que no
+    // ofrecerlo). La v2 lo pone aqui tambien para fotos y archivos, aunque
+    // su burbuja lleve la pastilla: es lo que mas se hace con una foto.
+    if ruta.is_some() {
+        v.push(
+            entrada(Some(&mi::PUSH_PIN), textos.t("chat-pinear"), Accion::Pinear(i))
+                .con_tecla(Tecla::Letra('p')),
+        );
+    }
+    // Una lista de tareas no tiene fichero, pero si se pinea: el pin es la
+    // misma lista, viva, y lo que se tacha alli se guarda en el mensaje.
+    if m.clase == Some(Clase::MiniApp) && m.miniapp.as_deref() == Some(pixpin_proyecto::mini::TAREAS) {
+        v.push(
+            entrada(Some(&mi::PUSH_PIN), textos.t("chat-pinear"), Accion::PinearLista(i))
+                .con_tecla(Tecla::Letra('p')),
+        );
+    }
+    // Lo que solo tiene Windows con una foto: dibujar en la propia burbuja
+    // o en el lienzo grande.
+    if matches!(a.vistas.get(i), Some(Some(Ojeada::Foto { .. }))) {
+        v.push(
+            entrada(Some(&mi::DRAW), textos.t("v2menus-anotar-encima"), Accion::FotoAqui(i))
+                .con_tecla(Tecla::Letra('a')),
+        );
+        v.push(entrada(Some(&mi::EDIT), textos.t("menu-foto-lienzo"), Accion::FotoEnLienzo(i)));
+    }
+    // Su descripcion, el texto bajo la foto (`descripcion`).
     if descripcion::se_puede(m) {
         let clave = if m.texto.trim().is_empty() {
             "chat-describir"
         } else {
             "chat-describir-editar"
         };
-        v.push(entrada(Some(&mi::SUBTITLES), textos.t(clave), Accion::Describir(i)));
+        v.push(entrada(Some(&mi::SUBTITLES), textos.t(clave), Accion::Describir(i)).con_tecla(Tecla::Letra('e')));
     }
-    v.push(entrada(
-        Some(&mi::REPLY),
-        textos.t("chat-comentar"),
-        Accion::Responder(i),
-    ));
-    if !m.texto.trim().is_empty() && m.clase != Some(Clase::MiniApp) {
-        v.push(entrada(
-            Some(&mi::CONTENT_COPY),
-            textos.t("chat-copiar"),
-            Accion::Copiar(i),
-        ));
+    // Una nota escrita o un `.md`, en el editor de notas (H12).
+    if crate::notas_md::se_edita(m, ruta.as_deref()) {
+        v.push(entrada(Some(&mi::EDIT), textos.t("chat-editar-nota"), Accion::EditarNota(i)).con_tecla(Tecla::Letra('n')));
     }
-    v.push(entrada(
-        None,
-        textos.t(if m.fijado {
-            "chat-soltar"
-        } else {
-            "chat-fijar"
-        }),
-        Accion::Fijar(i),
-    ));
-    v.push(entrada(
-        Some(&mi::IOS_SHARE),
-        textos.t("chat-compartir"),
-        Accion::Compartir(i),
-    ));
-    let ruta = ruta_del_mensaje(&a.raiz, &a.ficha.id, m).filter(|r| r.is_file());
-    if let Some(ruta) = &ruta {
-        // Va pegada a «Compartir» porque es lo mismo visto de otra manera:
-        // alli el fichero sale por el panel Compartir de Windows, y aqui
-        // se manda al aparato de otra persona. Solo con un fichero detras:
-        // el envio manda archivos, no el texto de una nota.
-        v.push(entrada(
-            Some(&mi::WIFI),
-            textos.t("chat-enviar-wifi"),
-            Accion::EnviarWifi(i),
-        ));
-        // «Abrir aqui» va DELANTE de «Abrir con otra app» y solo cuando el
-        // visor sabe leer eso: ofrecerse para un `.zip` abriria una ventana
-        // en blanco, que es peor que mandarlo a Windows.
-        if ruta
-            .file_name()
-            .and_then(|n| n.to_str())
-            .is_some_and(crate::lector::tiene_lector)
-        {
-            v.push(entrada(
-                Some(&mi::MENU_BOOK),
-                textos.t("chat-abrir-aqui"),
-                Accion::AbrirAqui(i),
-            ));
-        }
-        v.push(entrada(
-            Some(&mi::LAUNCH),
-            textos.t("chat-abrir-con"),
-            Accion::AbrirCon(i),
-        ));
-        if es_pdf(ruta) {
-            // La entrada sale para cualquier PDF y no solo para los que se
-            // pueden aligerar: saberlo exige leer el fichero entero, y hacer
-            // eso al ABRIR un menu deja la ventana parada con un PDF grande.
-            // Si no se puede, al pulsarla se dice por que.
-            v.push(entrada(
-                Some(&mi::COMPRESS),
-                textos.t("chat-aligerar"),
-                Accion::Aligerar(i),
-            ));
+    if m.clase == Some(Clase::Voz) {
+        // Con texto es VOLVER a pasarlo (`MensajesActivity.kt:2620-2626`).
+        // Sin texto se ofrece tambien: la nota ya no se pasa a texto sola
+        // (lo pidio el usuario) y el menu es donde se busca. Solo con el
+        // audio en este equipo: sin el, no hay nada que escuchar.
+        if crate::voz::transcripcion_de(m).is_some() {
+            v.push(
+                entrada(Some(&mi::SUBTITLES), textos.t("chat-transcribir-otra-vez"), Accion::Transcribir(i))
+                    .con_tecla(Tecla::Letra('t')),
+            );
+        } else if ruta.is_some() {
+            v.push(
+                entrada(Some(&mi::SUBTITLES), textos.t("chat-transcribir"), Accion::Transcribir(i))
+                    .con_tecla(Tecla::Letra('t')),
+            );
         }
     }
     // Con dos o mas paginas del PDF elegidas (esta entre ellas): juntarlas
     // en un lienzo. Solo entonces, como la caja de lo marcado del movil.
     if a.marcados.contains(&m.id) && peticion_de_fusion(a).is_some() {
-        v.push(entrada(
-            Some(&mi::LIBRARY_ADD),
-            textos.t("fusionar-paginas"),
-            Accion::FusionarPaginas,
-        ));
+        v.push(entrada(Some(&mi::LIBRARY_ADD), textos.t("fusionar-paginas"), Accion::FusionarPaginas));
     }
-    // Una nota escrita o un `.md`, en el editor de notas (H12).
-    if crate::notas_md::se_edita(m, ruta.as_deref()) {
-        v.push(entrada(
-            Some(&mi::EDIT),
-            textos.t("chat-editar-nota"),
-            Accion::EditarNota(i),
-        ));
-    }
-    // Una hoja como pagina viva en una nota del proyecto (H12).
-    if crate::notas_md::paginas_vivas::se_puede_insertar(m) {
-        v.push(entrada(
-            Some(&mi::DESCRIPTION),
-            textos.t("chat-insertar-en-nota"),
-            Accion::InsertarEnNota(i),
-        ));
-    }
-    if m.clase == Some(Clase::Dibujo) && m.referencia.is_some() {
-        v.push(entrada(
-            Some(&mi::IOS_SHARE),
-            textos.t("exportar-chat"),
-            Accion::Exportar(i),
-        ));
-        v.push(entrada(None, textos.t("imprimir-chat"), Accion::Imprimir(i)));
-    }
-    // Solo lo que la burbuja no tiene ya a mano (v0.85, `MensajesActivity.kt:
-    // 2547-2556`): una foto, un archivo o un lienzo llevan su pastilla de
-    // sacar a la pantalla en la propia burbuja, y dos caminos al mismo sitio
-    // solo alargan el menu. Aqui ademas hace falta un fichero detras: el pin
-    // se hace de un fichero, y una nota escrita no lo tiene (ofrecerlo para
-    // contestar «no hay archivo» seria peor que no ofrecerlo).
-    if !tiene_boton_de_pinear(m) && ruta.is_some() {
-        v.push(entrada(
-            Some(&mi::OPEN_IN_NEW),
-            textos.t("chat-pinear"),
-            Accion::Pinear(i),
-        ));
-    }
-    // Una lista de tareas no tiene fichero, pero si se saca: el pin es la
-    // misma lista, viva, y lo que se tacha alli se guarda en el mensaje.
-    if m.clase == Some(Clase::MiniApp)
-        && m.miniapp.as_deref() == Some(pixpin_proyecto::mini::TAREAS)
-    {
-        v.push(entrada(
-            Some(&mi::OPEN_IN_NEW),
-            textos.t("chat-pinear"),
-            Accion::PinearLista(i),
-        ));
-    }
-    // Lo que solo tiene Windows con una foto: el lienzo grande o dibujar en
-    // la propia burbuja.
-    if matches!(a.vistas.get(i), Some(Some(Ojeada::Foto { .. }))) {
-        v.push(entrada(
-            Some(&mi::DRAW),
-            textos.t("menu-foto-lienzo"),
-            Accion::FotoEnLienzo(i),
-        ));
-        v.push(entrada(
-            Some(&mi::EDIT),
-            textos.t("menu-foto-aqui"),
-            Accion::FotoAqui(i),
-        ));
-    }
+
+    // ── Mandarlo a otro sitio y acordarse ──
+    v.push(
+        entrada(Some(&mi::FORWARD), textos.t("chat-reenviar"), Accion::Reenviar(vec![i]))
+            .con_tecla(Tecla::Letra('f'))
+            .separada(),
+    );
+    v.push(entrada(Some(&mi::IOS_SHARE), textos.t("chat-compartir"), Accion::Compartir(i)));
     // La hora a la que avisar. Con una puesta, la entrada pasa a quitarla en
-    // vez de volver a preguntar, como en el movil (`guardados_recordar_quitar`):
-    // el que ya tiene hora solo quiere una cosa de este menu.
+    // vez de volver a preguntar, como en el movil (`guardados_recordar_quitar`).
+    // En una nota de voz, recordar es **llamarse** (B11).
     let recordado = crate::recordatorios::hora_de(m).is_some();
-    // En una nota de voz, recordar es **llamarse** (B11): a esa hora suena
-    // como una llamada y la nota se oye por la salida de llamadas.
-    let es_voz = m.clase == Some(pixpin_proyecto::cuaderno::Clase::Voz);
-    v.push(entrada(
-        Some(if es_voz && !recordado {
-            &mi::CALL
-        } else {
-            &mi::ALARM
-        }),
+    let es_voz = m.clase == Some(Clase::Voz);
+    let recordar = entrada(
+        Some(if es_voz && !recordado { &mi::CALL } else { &mi::ALARM }),
         textos.t(if recordado {
             "chat-recordatorio-quitar"
         } else if es_voz {
@@ -14599,67 +14915,63 @@ fn menu_de_mensaje(a: &Abierto, i: usize, textos: &Catalogo) -> Vec<EntradaMenu>
         } else {
             "chat-recordar"
         }),
-        if recordado {
-            Accion::Olvidar(i)
-        } else {
-            Accion::Recordar(i)
-        },
-    ));
-    // **De un mensaje, una leccion** (`MensajesActivity.kt`, 3-oct): lo que
-    // paso suele estar ya en el chat. Donde el movil, tras recordar.
+        if recordado { Accion::Olvidar(i) } else { Accion::Recordar(i) },
+    );
+    // Recordar abre las horas: lleva la flecha de submenu.
+    v.push(if recordado { recordar } else { recordar.con_tecla(Tecla::Sub) });
+    // **De un mensaje, una leccion** (`MensajesActivity.kt`, 3-oct).
     if !crate::lecciones::almacen::es_leccion(m) {
-        v.push(entrada(None, textos.t("chat-hacer-leccion"), Accion::HacerLeccion(i)));
+        v.push(
+            entrada(Some(&mi::LIGHTBULB), textos.t("chat-hacer-leccion"), Accion::HacerLeccion(i))
+                .con_tecla(Tecla::Letra('l')),
+        );
     }
-    if m.en_buzon {
-        v.push(entrada(
-            Some(&mi::BOOKMARK_BORDER),
-            textos.t("chat-rescatar"),
-            Accion::Rescatar(i),
-        ));
+
+    // ── «Más»: lo que se usa poco ──
+    v.push(
+        entrada(None, textos.t("v2menus-mas"), Accion::Mas)
+            .con_tecla(Tecla::Sub)
+            .separada(),
+    );
+    // Cambiar el nombre de cualquier archivo, audios incluidos.
+    if renombrar::se_puede(m) {
+        v.push(
+            entrada(Some(&mi::EDIT), textos.t("chat-renombrar"), Accion::Renombrar(i))
+                .con_tecla(Tecla::F2)
+                .en_mas(),
+        );
     }
-    // «Ver el dibujo entero» / «Ver solo la foto» (`MensajesActivity.kt`,
-    // `alternarRecorte`). El movil la ofrece a toda foto con dibujo; aqui
-    // solo si lo dibujado se sale de la foto, porque si no las dos vistas
-    // son la misma y la entrada pareceria rota.
-    if let Some(Some(Ojeada::Foto { doc, trazos, .. })) = a.vistas.get(i)
-        && dibujo_se_sale(*doc, *trazos)
-    {
-        v.push(entrada(
-            Some(&mi::CROP),
-            textos.t(if solo_la_foto(m) {
-                "chat-ver-dibujo-entero"
-            } else {
-                "chat-solo-la-foto"
-            }),
-            Accion::AlternarRecorte(i),
-        ));
+    v.push(
+        entrada(
+            Some(&mi::FLAG),
+            textos.t(if m.fijado { "chat-soltar" } else { "chat-fijar" }),
+            Accion::Fijar(i),
+        )
+        .en_mas(),
+    );
+    if let Some(ruta) = &ruta {
+        // «Abrir aqui» DELANTE de «Abrir con otra app» y solo cuando el
+        // visor sabe leer eso: ofrecerse para un `.zip` abriria una ventana
+        // en blanco, que es peor que mandarlo a Windows.
+        if ruta
+            .file_name()
+            .and_then(|n| n.to_str())
+            .is_some_and(crate::lector::tiene_lector)
+        {
+            v.push(entrada(Some(&mi::MENU_BOOK), textos.t("chat-abrir-aqui"), Accion::AbrirAqui(i)).en_mas());
+        }
+        v.push(entrada(Some(&mi::LAUNCH), textos.t("chat-abrir-con"), Accion::AbrirCon(i)).en_mas());
+        // Mandarlo al aparato de otra persona: solo con un fichero detras.
+        v.push(entrada(Some(&mi::WIFI), textos.t("chat-enviar-wifi"), Accion::EnviarWifi(i)).en_mas());
+        if es_pdf(ruta) {
+            // Sale para cualquier PDF: saber si se puede aligerar exige
+            // leerlo entero, y hacerlo al ABRIR un menu lo dejaria parado.
+            v.push(entrada(Some(&mi::COMPRESS), textos.t("chat-aligerar"), Accion::Aligerar(i)).en_mas());
+        }
     }
-    if a.mensajes
-        .iter()
-        .any(|o| o.responde_a.as_deref() == Some(m.id.as_str()))
-    {
-        v.push(entrada(
-            Some(&mi::FORUM),
-            textos.t("chat-ver-hilo"),
-            Accion::Hilo(i),
-        ));
-    }
-    v.push(entrada(
-        Some(&mi::EMOJI_EMOTIONS),
-        textos.t("chat-etiquetar"),
-        Accion::Etiquetas(i),
-    ));
-    v.push(entrada(
-        Some(&mi::FORWARD),
-        textos.t("chat-reenviar"),
-        Accion::Reenviar(vec![i]),
-    ));
     // Unir al proyecto, o devolverle la hoja que se le quito. Se mira en el
-    // disco al ABRIR el menu, como en el movil: la hoja puede haberla quitado
-    // la ultima sincronizacion, y fiarse de `unido` diria que sigue ahi.
-    //
-    // En «Mensajes guardados» no se ofrece: alli habria que elegir a que
-    // proyecto va y copiarle el fichero, que es lo que ya hace «Reenviar».
+    // disco al ABRIR el menu, como en el movil. En «Mensajes guardados» no
+    // se puede: alli habria que elegir proyecto, que es «Reenviar».
     if !a.ficha.es_guardados() && se_puede_unir(m) {
         if !esta_en_las_hojas(a, i) {
             let (clave, accion) = if ya_esta_unido(m) {
@@ -14667,66 +14979,68 @@ fn menu_de_mensaje(a: &Abierto, i: usize, textos: &Catalogo) -> Vec<EntradaMenu>
             } else {
                 ("chat-unir", Accion::Unir(i))
             };
-            v.push(entrada(Some(&mi::LIBRARY_ADD), textos.t(clave), accion));
+            v.push(entrada(Some(&mi::LIBRARY_ADD), textos.t(clave), accion).en_mas());
         }
         // La otra salida del movil para un PDF: cada pagina como una foto
-        // clavada en su lienzo. Se ofrece siempre, no solo cuando no se
-        // puede pegar: quien quiera pintar libre encima de una pagina la
-        // quiere como imagen.
+        // clavada en su lienzo.
         if m.clase == Some(Clase::Archivo) {
-            v.push(entrada(
-                Some(&mi::IMAGE),
-                textos.t("unir-pdf-como-imagenes"),
-                Accion::ComoImagenes(i),
-            ));
+            v.push(entrada(Some(&mi::IMAGE), textos.t("unir-pdf-como-imagenes"), Accion::ComoImagenes(i)).en_mas());
         }
     } else if a.ficha.es_guardados() {
-        v.push(entrada(
-            Some(&mi::LIBRARY_ADD),
-            textos.t("chat-unir"),
-            Accion::Aviso("chat-no-hay-unir"),
-        ));
+        v.push(entrada(Some(&mi::LIBRARY_ADD), textos.t("chat-unir"), Accion::Aviso("chat-no-hay-unir")).en_mas());
     }
-    if m.clase == Some(Clase::Voz) {
-        // Con texto es VOLVER a pasarlo (`MensajesActivity.kt:2620-2626`).
-        // Sin texto el movil callaba porque ya lo pide el boton de la
-        // burbuja; aqui se ofrece tambien, porque la nota ya no se pasa a
-        // texto sola (lo pidio el usuario) y el menu es donde se busca. Solo
-        // con el audio en este equipo: sin el, no hay nada que escuchar.
-        if crate::voz::transcripcion_de(m).is_some() {
-            v.push(entrada(
-                Some(&mi::SUBTITLES),
-                textos.t("chat-transcribir-otra-vez"),
-                Accion::Transcribir(i),
-            ));
-        } else if ruta.is_some() {
-            v.push(entrada(
-                Some(&mi::SUBTITLES),
-                textos.t("chat-transcribir"),
-                Accion::Transcribir(i),
-            ));
-        }
-        // La letra, como en el movil, para toda nota con su audio detras:
-        // sin texto todavia, la pantalla lo dice en vez de esconderse.
-        if ruta.is_some() {
-            v.push(entrada(
-                Some(&mi::LYRICS),
-                textos.t("chat-letra"),
-                Accion::Letra(i),
-            ));
-        }
+    // Una hoja como pagina viva en una nota del proyecto (H12).
+    if crate::notas_md::paginas_vivas::se_puede_insertar(m) {
+        v.push(entrada(Some(&mi::DESCRIPTION), textos.t("chat-insertar-en-nota"), Accion::InsertarEnNota(i)).en_mas());
     }
-    v.push(entrada(
-        Some(&mi::CHECK_BOX),
-        textos.t("chat-elegir"),
-        Accion::Elegir(i),
-    ));
-    v.push(EntradaMenu {
-        icono: Some(&mi::DELETE),
-        texto: textos.t("chat-borrar"),
-        peligro: true,
-        accion: Accion::Borrar(vec![i]),
-    });
+    if m.clase == Some(Clase::Dibujo) && m.referencia.is_some() {
+        v.push(entrada(Some(&mi::IOS_SHARE), textos.t("exportar-chat"), Accion::Exportar(i)).en_mas());
+        v.push(entrada(None, textos.t("imprimir-chat"), Accion::Imprimir(i)).en_mas());
+    }
+    if m.en_buzon {
+        v.push(entrada(Some(&mi::BOOKMARK_BORDER), textos.t("chat-rescatar"), Accion::Rescatar(i)).en_mas());
+    }
+    // «Ver el dibujo entero» / «Ver solo la foto» (`alternarRecorte`): solo
+    // si lo dibujado se sale de la foto; si no, las dos vistas son la misma.
+    if let Some(Some(Ojeada::Foto { doc, trazos, .. })) = a.vistas.get(i)
+        && dibujo_se_sale(*doc, *trazos)
+    {
+        v.push(
+            entrada(
+                Some(&mi::CROP),
+                textos.t(if solo_la_foto(m) {
+                    "chat-ver-dibujo-entero"
+                } else {
+                    "chat-solo-la-foto"
+                }),
+                Accion::AlternarRecorte(i),
+            )
+            .en_mas(),
+        );
+    }
+    if a.mensajes
+        .iter()
+        .any(|o| o.responde_a.as_deref() == Some(m.id.as_str()))
+    {
+        v.push(entrada(Some(&mi::FORUM), textos.t("chat-ver-hilo"), Accion::Hilo(i)).en_mas());
+    }
+    // La letra, como en el movil, para toda nota con su audio detras.
+    if es_voz && ruta.is_some() {
+        v.push(entrada(Some(&mi::LYRICS), textos.t("chat-letra"), Accion::Letra(i)).en_mas());
+    }
+    v.push(
+        entrada(Some(&mi::CHECK_BOX), textos.t("v2menus-elegir-varios"), Accion::Elegir(i))
+            .con_tecla(Tecla::CtrlClic)
+            .separada()
+            .en_mas(),
+    );
+
+    // ── Borrar, en rojo y aparte ──
+    let mut borrar = entrada(Some(&mi::DELETE), textos.t("chat-borrar"), Accion::Borrar(vec![i]))
+        .con_tecla(Tecla::Supr)
+        .separada();
+    borrar.peligro = true;
+    v.push(borrar);
     v
 }
 
@@ -14851,10 +15165,6 @@ fn ejecutar(accion: Accion, a: &mut Abierto, cx: &Contexto) -> Efecto {
                 crate::recordatorios::cancelar(&m.id);
             }
             Efecto::Aviso(cx.textos.t("chat-recordatorio-quitado"))
-        }
-        Accion::Etiquetas(i) => {
-            let puesta = a.mensajes.get(i).and_then(|m| m.emoji.as_deref());
-            Efecto::Menu(menu_de_etiquetas(cx.textos, i, puesta))
         }
         // Se escribe el valor siempre, tambien el `true` de por defecto: asi
         // el otro aparato recibe la decision aunque la suya fuera otra.
@@ -15186,7 +15496,6 @@ fn ejecutar(accion: Accion, a: &mut Abierto, cx: &Contexto) -> Efecto {
                 Efecto::Aviso(cx.textos.t("chat-ajustes-bandeja"))
             }
         }
-        Accion::MiniApps => Efecto::Menu(menu_de_miniapps(cx.textos)),
         // El editor de notas vive en su hilo, como el lector: el chat sigue
         // usable detras, y lo guardado le llega por `refrescar` (H12).
         Accion::AdjNotaMd => {
@@ -15300,6 +15609,8 @@ fn ejecutar(accion: Accion, a: &mut Abierto, cx: &Contexto) -> Efecto {
         }
         // Lo demas lo atiende el bucle.
         Accion::AdjArchivo
+        | Accion::Mas
+        | Accion::AdjCaptura
         | Accion::AdjImagen
         | Accion::AdjLienzo
         | Accion::AdjTabla
@@ -16192,7 +16503,7 @@ mod pruebas_menu_sin_repetir {
         );
         assert!(
             v.contains(&Accion::Pinear(0)),
-            "su pastilla es la de texto: sacar a la pantalla queda en el menu"
+            "su pastilla es la de texto: pinear queda en el menu"
         );
         let _ = std::fs::remove_dir_all(raiz);
     }
@@ -16300,14 +16611,13 @@ mod pruebas_menu_sin_repetir {
     }
 
     #[test]
-    fn una_foto_o_un_archivo_no_repiten_en_el_menu_su_boton_de_sacar() {
+    fn una_foto_o_un_archivo_se_pinean_tambien_desde_el_menu() {
+        // v2 (`Menus2.dc.html`): «Pinear · P» es de lo diario, tambien con
+        // la pastilla en la burbuja: es lo que mas se hace con una foto.
         for (clase, nombre) in [(Clase::Imagen, "foto"), (Clase::Archivo, "pdf")] {
             let (a, raiz) = abierto_con(nombre, vec![mensaje(clase, Some("cosa.bin"))]);
             let v = acciones(&a);
-            assert!(
-                !v.contains(&Accion::Pinear(0)),
-                "{nombre}: ya esta en la burbuja"
-            );
+            assert!(v.contains(&Accion::Pinear(0)), "{nombre}: Pinear en el menu");
             assert!(
                 !v.contains(&Accion::Letra(0)),
                 "{nombre}: la letra es de la voz"
@@ -16382,6 +16692,130 @@ mod pruebas_menu_sin_repetir {
                 .all(|e| matches!(e.accion, Accion::RecordarEn(3, _))),
             "los atajos siguen delante"
         );
+    }
+
+    // ── v2-menus (`Menus2.dc.html`) ──
+
+    fn menu_de(a: &Abierto) -> MenuAbierto {
+        let textos = Catalogo::nuevo(pixpin_store::Idioma::Espanol);
+        MenuAbierto::nuevo(Punto { x: 50, y: 50 }, menu_de_mensaje(a, 0, &textos)).con_etiquetas(0, None)
+    }
+
+    #[test]
+    fn v2_lo_diario_arriba_mas_aparte_y_borrar_el_ultimo_en_rojo() {
+        let (a, raiz) = abierto_con("v2-orden", vec![mensaje(Clase::Imagen, Some("foto.png"))]);
+        let m = menu_de(&a);
+        let principal: Vec<&Accion> = m.entradas.iter().map(|e| &e.accion).collect();
+        assert_eq!(principal[0], &Accion::Responder(0), "Responder, lo primero");
+        let borrar = m.entradas.last().unwrap();
+        assert_eq!(borrar.accion, Accion::Borrar(vec![0]));
+        assert!(borrar.peligro && borrar.separada, "Borrar en rojo y apartado");
+        let n_mas = m.posicion_de_mas().expect("hay «Más»");
+        assert_eq!(n_mas, m.entradas.len() - 2, "«Más» justo encima de Borrar");
+        // Lo raro va al submenu: renombrar, fijar, abrir con, wifi.
+        let mas: Vec<&Accion> = m.mas.iter().map(|e| &e.accion).collect();
+        for a in [Accion::Renombrar(0), Accion::Fijar(0), Accion::AbrirCon(0), Accion::EnviarWifi(0)] {
+            assert!(mas.contains(&&a), "{a:?} en «Más»");
+            assert!(!principal.contains(&&a), "{a:?} no arriba");
+        }
+        // Caso negativo: la etiqueta ya no es una entrada, es la fila.
+        assert!(!principal.iter().chain(mas.iter()).any(|a| matches!(a, Accion::Etiquetar(..))));
+        assert!(m.etiquetas.is_some());
+        let _ = std::fs::remove_dir_all(raiz);
+    }
+
+    #[test]
+    fn v2_ninguna_tecla_se_repite_en_ningun_mensaje() {
+        for (n, clase, ruta) in [
+            (0, Clase::Imagen, Some("foto.png")),
+            (1, Clase::Archivo, Some("libro.pdf")),
+            (2, Clase::Voz, Some("voz-1.m4a")),
+            (3, Clase::Nota, None),
+            (4, Clase::Dibujo, None),
+        ] {
+            let (a, raiz) = abierto_con(&format!("v2-teclas-{n}"), vec![mensaje(clase.clone(), ruta)]);
+            let m = menu_de(&a);
+            let teclas: Vec<menu_v2::Tecla> =
+                m.entradas.iter().chain(m.mas.iter()).filter_map(|e| e.tecla).collect();
+            assert!(!menu_v2::hay_repetidas(&teclas), "{clase:?}: {teclas:?}");
+            let _ = std::fs::remove_dir_all(raiz);
+        }
+    }
+
+    #[test]
+    fn v2_las_teclas_de_una_letra_hacen_su_entrada() {
+        let (a, raiz) = abierto_con("v2-letras", vec![mensaje(Clase::Imagen, Some("foto.png"))]);
+        let mut m = menu_de(&a);
+        assert_eq!(m.caracter('r'), Respuesta::Hacer(Accion::Responder(0)));
+        assert_eq!(m.caracter('P'), Respuesta::Hacer(Accion::Pinear(0)));
+        assert_eq!(m.tecla(VK_C, true), Respuesta::Hacer(Accion::Copiar(0)));
+        assert_eq!(m.tecla(VK_SUPR, false), Respuesta::Hacer(Accion::Borrar(vec![0])));
+        // F2 es de «Más», pero vale sin abrirlo.
+        assert_eq!(m.tecla(0x71, false), Respuesta::Hacer(Accion::Renombrar(0)));
+        // Casos negativos: una letra sin entrada no hace nada ni cierra, y
+        // la C sola no es copiar.
+        assert_eq!(m.caracter('z'), Respuesta::Sigue);
+        assert_eq!(m.tecla(VK_C, false), Respuesta::Sigue);
+        assert_eq!(m.tecla(VK_ESCAPE, false), Respuesta::Fuera);
+        let _ = std::fs::remove_dir_all(raiz);
+    }
+
+    #[test]
+    fn v2_las_flechas_eligen_y_mas_se_abre_a_la_derecha() {
+        use menu_v2::Sitio;
+        let (a, raiz) = abierto_con("v2-flechas", vec![mensaje(Clase::Imagen, Some("foto.png"))]);
+        let mut m = menu_de(&a);
+        assert_eq!(m.tecla(VK_ABAJO, false), Respuesta::Sigue);
+        assert_eq!(m.elegido, Some(Sitio::Principal(0)));
+        assert_eq!(m.tecla(VK_ENTRAR, false), Respuesta::Hacer(Accion::Responder(0)));
+        // Hasta «Más» y a la derecha: se abre y se elige su primera.
+        let n = m.posicion_de_mas().unwrap();
+        m.elegido = Some(Sitio::Principal(n));
+        m.tecla(VK_DERECHA, false);
+        assert!(m.mas_abierto);
+        assert_eq!(m.elegido, Some(Sitio::Mas(0)));
+        // Esc dentro de «Más» solo lo cierra; el siguiente cierra el menu.
+        assert_eq!(m.tecla(VK_ESCAPE, false), Respuesta::Sigue);
+        assert!(!m.mas_abierto);
+        assert_eq!(m.tecla(VK_ESCAPE, false), Respuesta::Fuera);
+        let _ = std::fs::remove_dir_all(raiz);
+    }
+
+    #[test]
+    fn v2_un_clic_en_mas_lo_abre_sin_cerrar_el_menu_y_las_etiquetas_se_ponen() {
+        let (a, raiz) = abierto_con("v2-clic", vec![mensaje(Clase::Imagen, Some("foto.png"))]);
+        let mut m = menu_de(&a);
+        let marco = Rect { x: 0, y: 0, ancho: 1200, alto: 900 };
+        let c = m.colocado(marco, 100);
+        let fila = c.filas[m.posicion_de_mas().unwrap()];
+        assert_eq!(m.pulsar(Punto { x: fila.x + 5, y: fila.y + 5 }, marco, 100), Respuesta::Sigue);
+        assert!(m.mas_abierto);
+        let sub = m.colocado_mas(marco, 100).expect("submenu a la vista");
+        assert!(sub.caja.x > c.caja.x);
+        // Una etiqueta de la fila de arriba se pone; puesta, se quita.
+        let e = c.emojis[0];
+        let dentro = Punto { x: e.x + 5, y: e.y + 5 };
+        let estrella = pixpin_ui::chat::ETIQUETAS[0].to_string();
+        assert_eq!(m.pulsar(dentro, marco, 100), Respuesta::Hacer(Accion::Etiquetar(0, Some(estrella.clone()))));
+        let mut m2 = menu_de(&a).con_etiquetas(0, Some(estrella));
+        assert_eq!(m2.pulsar(dentro, marco, 100), Respuesta::Hacer(Accion::Etiquetar(0, None)));
+        // Caso negativo: fuera de todo, se cierra.
+        assert_eq!(m.pulsar(Punto { x: 1190, y: 890 }, marco, 100), Respuesta::Fuera);
+        let _ = std::fs::remove_dir_all(raiz);
+    }
+
+    #[test]
+    fn v2_un_menu_sin_nada_raro_no_ensena_mas_vacio() {
+        let textos = Catalogo::nuevo(pixpin_store::Idioma::Espanol);
+        let m = MenuAbierto::nuevo(
+            Punto { x: 0, y: 0 },
+            vec![
+                entrada(None, "uno".into(), Accion::Responder(0)),
+                entrada(None, textos.t("v2menus-mas"), Accion::Mas),
+            ],
+        );
+        assert_eq!(m.entradas.len(), 1);
+        assert!(m.posicion_de_mas().is_none());
     }
 }
 
