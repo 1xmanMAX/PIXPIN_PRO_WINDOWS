@@ -140,6 +140,18 @@ impl EstadoPin {
         self.gesto = Gesto::Ninguno;
     }
 
+    /// Si hay un gesto del raton a medias (mover, estirar o escalar): la
+    /// barra del pin se esconde mientras dura.
+    pub fn en_gesto(&self) -> bool {
+        self.gesto != Gesto::Ninguno
+    }
+
+    /// Si el gesto a medias es MOVER el pin entero: solo entonces salen las
+    /// guias para alinearlo con los demas.
+    pub fn moviendo(&self) -> bool {
+        matches!(self.gesto, Gesto::Moviendo { .. })
+    }
+
     fn zona(&self) -> u32 {
         ZONA_ESQUINA_LOGICA * self.escala_por_cien / 100
     }
@@ -467,5 +479,20 @@ mod pruebas {
         e.procesar(EventoPin::BotonPulsado(Punto { x: 378, y: 170 }));
         e.procesar(EventoPin::RatonMovido(Punto { x: 500, y: 400 }));
         assert!(e.rect().alto > 72, "una imagen si crece en alto");
+    }
+
+    #[test]
+    fn mover_es_un_gesto_y_soltar_lo_acaba() {
+        let mut e = pin();
+        assert!(!e.en_gesto(), "caso negativo: quieto no hay gesto");
+        e.procesar(EventoPin::BotonPulsado(Punto { x: 300, y: 250 }));
+        assert!(e.en_gesto() && e.moviendo());
+        e.procesar(EventoPin::BotonSoltado);
+        assert!(!e.en_gesto() && !e.moviendo());
+        // Caso negativo: estirar por la esquina es gesto, pero no es mover
+        // (no saca guias de alinear).
+        e.procesar(EventoPin::BotonPulsado(Punto { x: 499, y: 399 }));
+        assert!(e.en_gesto());
+        assert!(!e.moviendo());
     }
 }

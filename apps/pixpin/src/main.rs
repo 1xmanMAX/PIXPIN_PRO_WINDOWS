@@ -2171,6 +2171,8 @@ pub(crate) fn textos_del_pin(textos: &Catalogo) -> pixpin_pin::TextosPin {
             textos.t("pin-pauta-columnas"),
             textos.t("pin-pauta-puntos"),
         ],
+        // v2-pines: la barra, el menu y el panel «Pines abiertos».
+        v2: pines::textos_v2(textos),
     }
 }
 
