@@ -331,11 +331,14 @@ una capa superior.
 
 ```mermaid
 flowchart TB
-    subgraph L4[Capa 4 · la app]
+    subgraph L5[Capa 5 · la app]
       app[pixpin<br/>pixpinmax.exe]
     end
+    subgraph L4[Capa 4 · ventanas propias]
+      notas[pixpin-notas<br/>editor de notas]
+    end
     subgraph L3[Capa 3 · interfaz]
-      ui[pixpin-ui] --- notas[pixpin-notas] --- flow[pixpin-flow] --- plugin[pixpin-plugin]
+      ui[pixpin-ui] --- flow[pixpin-flow] --- plugin[pixpin-plugin]
     end
     subgraph L2[Capa 2 · funciones]
       cap[pixpin-capture] --- pin[pixpin-pin] --- pila[pixpin-pila] --- proy[pixpin-proyecto]
@@ -350,7 +353,7 @@ flowchart TB
     subgraph L0[Capa 0 · cimientos puros]
       geom[pixpin-geom] --- model[pixpin-model] --- nivel[pixpin-nivel] --- lecc[pixpin-lecciones]
     end
-    L4 --> L3 --> L2 --> L1 --> L0
+    L5 --> L4 --> L3 --> L2 --> L1 --> L0
 ```
 
 | Pieza | Qué hace |

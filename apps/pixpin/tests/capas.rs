@@ -44,8 +44,11 @@ fn capa(nombre: &str) -> Option<u8> {
         "pixpin-aligerar" => 2,
         // `pixpin-notas` es la ventana del editor de notas Markdown (H12): usa
         // las cuentas de `pixpin-docs` (capa 2), asi que va encima.
-        "pixpin-ui" | "pixpin-flow" | "pixpin-plugin" | "pixpin-notas" => 3,
-        "pixpin" => 4,
+        "pixpin-ui" | "pixpin-flow" | "pixpin-plugin" => 3,
+        // Usa los componentes de `pixpin-ui` (botones, cajas), asi que va justo
+        // encima de la interfaz y debajo de la app.
+        "pixpin-notas" => 4,
+        "pixpin" => 5,
         _ => return None,
     })
 }
