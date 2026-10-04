@@ -200,7 +200,7 @@ chat-describir = Add caption
 chat-describir-editar = Edit caption
 chat-describir-barra = Caption:
 chat-describir-teclas = Enter saves · Esc keeps it as it was
-chat-pinear = Put on screen
+chat-pinear = Pin
 chat-recordar = Remind me
 chat-rescatar = Keep this
 chat-solo-la-foto = Show only the photo
@@ -240,7 +240,7 @@ chat-reenviado = Forwarded
 chat-copiado = Copied
 chat-compartido = Copied to the clipboard: paste it wherever you want to share it
 chat-compartir-sin-panel = Windows did not open the Share panel: it is on the clipboard so you can paste it wherever you want
-chat-pineado = Put on screen
+chat-pineado = Pinned
 chat-sin-archivo = This message has no file on this computer
 chat-sin-origen = That canvas is not in this project
 chat-sin-proyectos-otros = There is no other project to send it to
@@ -1433,7 +1433,7 @@ galeria-titulo-cuantas = Captures · { $cuantas }
 galeria-vacia = No captures yet. The ones you copy with Alt + drag will show up here.
 galeria-abrir-carpeta = Open folder
 galeria-copiada = Copied to the clipboard
-galeria-pineada = Pinned on screen
+galeria-pineada = Pinned
 galeria-borrada = Moved to PixPin's recycle bin
 galeria-no-se-pudo = Couldn't do it: { $motivo }
 galeria-caducan = They delete themselves after 7 days (to the Windows recycle bin). Keep saves them in the chat.
@@ -1476,3 +1476,32 @@ tareas-pegar-repetida = That image is already in as { $ficha }.
 
 # Opening a photo that Windows can only read with a Microsoft Store extension.
 abrir-falta-extension = Can't open { $nombre }: Windows needs "{ $extension }", free in the Microsoft Store. Install it and open the file again.
+
+## v2-menus
+v2menus-responder = Reply
+v2menus-anotar-encima = Annotate on top
+v2menus-mas = More
+v2menus-elegir-varios = Select several
+v2menus-tecla-supr = Del
+v2menus-tecla-clic = click
+v2menus-adj-buscar = Search: table, stopwatch, PDF…
+v2menus-adj-mas = MORE
+v2menus-adj-nada = Nothing matches your search
+v2menus-adj-lienzo = Canvas
+v2menus-adj-tareas = To-do list
+v2menus-adj-tabla = Table
+v2menus-adj-conversacion = Conversation
+v2menus-adj-captura = Screenshot
+v2menus-adj-pagina = A project page
+v2menus-adj-proyecto = Whole project
+v2menus-adj-movil = Bring from phone
+v2menus-envio-enviar = Send
+v2menus-envio-anadir = Add
+v2menus-envio-fotos = { $cuantos ->
+    [one] 1 photo
+   *[other] { $cuantos } photos
+} · to { $proyecto }
+v2menus-envio-archivos = { $cuantos ->
+    [one] 1 file
+   *[other] { $cuantos } files
+} · to { $proyecto }

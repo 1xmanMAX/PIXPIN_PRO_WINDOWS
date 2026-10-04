@@ -493,14 +493,14 @@ fn resultado_funcion(f: Funcion, ctx: &Contexto) -> Resultado {
         Funcion::Capturar => ("Capturar zona", "Recorta una zona de la pantalla · «c»", glifo::CAPTURA, Accion::Pedido(pedido_capturar())),
         Funcion::Capturas => (
             "Capturas",
-            "Las últimas, para buscarlas y sacarlas como pin",
+            "Las últimas, para buscarlas y pinearlas",
             glifo::IMAGEN,
             Accion::Consulta(ctx.consulta("capturas ")),
         ),
         Funcion::Galeria => ("Galería de capturas", "Abre la galería · «g»", glifo::GALERIA, Accion::Pedido(pedido_ventana("galeria"))),
         Funcion::Ultima => (
             "Última captura",
-            "Sácala a la pantalla como pin · «u»",
+            "Pinéala · «u»",
             glifo::PIN,
             Accion::Pedido(pedido("pinear_ultima", json!({}))),
         ),
@@ -1626,13 +1626,13 @@ fn anadir_al_inbox(texto: &str, inbox: Option<&Lista>, proyectos: &[Proyecto], v
 fn resultado_ultima(ctx: &Contexto) -> Resultado {
     let mut r = Resultado::nuevo(
         "Última captura",
-        "Sácala a la pantalla como pin",
+        "Pinéala",
         glifo::PIN,
         Accion::Pedido(pedido("pinear_ultima", json!({}))),
     );
     r.clave = Some("funcion/ultima".into());
     if let Some(c) = ctx.raiz_de_datos().and_then(|raiz| crate::capturas::leer(&raiz, ctx.ahora).into_iter().next()) {
-        r.subtitulo = unir(&[&c.nombre, &crate::fecha::hace_con_horas(c.cuando, ctx.ahora), "Intro: sacarla como pin"]);
+        r.subtitulo = unir(&[&c.nombre, &crate::fecha::hace_con_horas(c.cuando, ctx.ahora), "Intro: pinearla"]);
         if !c.es_video() {
             r.icono = Some(c.ruta.to_string_lossy().to_string());
         }

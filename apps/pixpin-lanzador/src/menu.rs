@@ -5,7 +5,7 @@
 //! que hace falta, y aqui solo se ofrece lo que aplica:
 //!
 //! - `abrir`: lo que hace Intro (`{metodo, parametros}`) → «Abrir»;
-//! - `pin`: el pedido `pinear` → «Sacar a la pantalla (pin)»;
+//! - `pin`: el pedido `pinear` → «Pinear»;
 //! - `codigo` (y `proyecto`) → «Ver en el chat»;
 //! - `ruta` (fichero de este equipo) → «Abrir con el programa de Windows»,
 //!   «Mostrar en la carpeta», «Copiar ruta»;
@@ -123,7 +123,7 @@ pub fn menu(contexto: &Value, ctx: &Contexto) -> Vec<Resultado> {
             v.push(Resultado::nuevo("Copiar texto", muestra(t), glifo::COPIAR, Accion::Copiar(t.into())));
         }
         if let Some(pin) = contexto.get("pin").filter(|p| p.is_object()) {
-            v.push(Resultado::nuevo("Sacar su foto a la pantalla (pin)", "Como pin flotante, siempre encima", glifo::PIN, Accion::Pedido(pin.clone())));
+            v.push(Resultado::nuevo("Pinear su foto", "Como pin flotante, siempre encima", glifo::PIN, Accion::Pedido(pin.clone())));
         }
         if let Some(r) = texto_de("ruta") {
             let carpeta = std::path::Path::new(r).parent().map(|p| p.to_string_lossy().to_string()).unwrap_or_default();
@@ -139,7 +139,7 @@ pub fn menu(contexto: &Value, ctx: &Contexto) -> Vec<Resultado> {
     }
     if let Some(pin) = contexto.get("pin").filter(|p| p.is_object()) {
         v.push(Resultado::nuevo(
-            "Sacar a la pantalla (pin)",
+            "Pinear",
             "Como pin flotante, siempre encima",
             glifo::PIN,
             Accion::Pedido(pin.clone()),
