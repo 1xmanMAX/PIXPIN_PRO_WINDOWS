@@ -9,6 +9,7 @@ pub mod filtros;
 pub mod gif;
 pub mod imagen;
 pub mod portapapeles;
+pub mod vista;
 pub mod wic;
 
 pub use cosido::{

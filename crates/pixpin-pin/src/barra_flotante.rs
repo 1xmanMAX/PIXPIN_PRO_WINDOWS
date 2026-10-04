@@ -302,6 +302,19 @@ fn visible(h: HWND) -> bool {
     unsafe { IsWindowVisible(h) }.as_bool()
 }
 
+/// La destruye (si existe): su superficie es del dispositivo grafico, y al
+/// perderse este la barra renace con el nuevo en el siguiente `mostrar`.
+pub(crate) fn soltar() {
+    if let Some(h) = ventana() {
+        // SAFETY: ventana propia de este hilo; WM_NCDESTROY suelta su
+        // estado y borra `VENTANA`.
+        unsafe {
+            let _ = DestroyWindow(h);
+        }
+        VENTANA.with(|v| v.set(None));
+    }
+}
+
 /// Si la barra se ve ahora para este pin.
 pub(crate) fn es_de(dueno: HWND) -> bool {
     ventana().is_some_and(|h| visible(h) && interno_de(h).is_some_and(|i| i.dueno == dueno))

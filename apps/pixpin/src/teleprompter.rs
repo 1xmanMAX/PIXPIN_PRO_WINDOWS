@@ -126,8 +126,9 @@ pub fn lanzar(idioma: Idioma, texto: String, destino: PathBuf) -> Receiver<Lectu
         .name("telepronter".into())
         .spawn(move || {
             let _com = pixpin_shell::ComDelHilo::iniciar();
-            let hecho = Recursos::nuevos()
-                .and_then(|r| abrir(&r, idioma, &texto, &destino, &enviar, junto_a));
+            let hecho = crate::dispositivo_perdido::con_recursos("telepronter", |r| {
+                abrir(r, idioma, &texto, &destino, &enviar, junto_a)
+            });
             if let Err(e) = hecho {
                 tracing::warn!(?e, "no se pudo abrir el telepronter");
             }

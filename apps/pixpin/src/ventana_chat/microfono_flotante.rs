@@ -169,7 +169,9 @@ pub(crate) fn lanzar(pedido: Pedido, rotulos: Rotulos) {
         .name("microfono-flotante".into())
         .spawn(move || {
             let _com = pixpin_shell::ComDelHilo::iniciar();
-            if let Err(e) = Recursos::nuevos().and_then(|r| flotar(&r, &pedido, &rotulos)) {
+            if let Err(e) = crate::dispositivo_perdido::con_recursos("microfono flotante", |r| {
+                flotar(r, &pedido, &rotulos)
+            }) {
                 tracing::warn!(?e, "no se pudo abrir el microfono flotante");
             }
             ABIERTO.store(false, Ordering::SeqCst);

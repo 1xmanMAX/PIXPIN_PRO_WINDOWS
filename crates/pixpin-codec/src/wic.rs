@@ -18,8 +18,7 @@ use std::path::Path;
 
 use windows::Win32::Foundation::{GENERIC_READ, RPC_E_CHANGED_MODE};
 use windows::Win32::Graphics::Imaging::{
-    CLSID_WICImagingFactory, GUID_WICPixelFormat32bppRGBA, IWICBitmapFrameDecode,
-    IWICImagingFactory, WICBitmapDitherTypeNone, WICBitmapPaletteTypeCustom,
+    CLSID_WICImagingFactory, IWICBitmapFrameDecode, IWICImagingFactory,
     WICDecodeMetadataCacheOnDemand,
 };
 use windows::Win32::System::Com::{
@@ -79,10 +78,10 @@ pub fn extension_de_la_tienda(ruta: &Path) -> Option<&'static str> {
 /// COM en este hilo mientras dure: lo inicia si no lo estaba y lo cierra
 /// al soltarse. Si el hilo ya tenia COM en otro modo (el hilo de una
 /// ventana, en STA) se usa el que hay: WIC funciona en los dos.
-struct Com(bool);
+pub(crate) struct Com(bool);
 
 impl Com {
-    fn iniciar() -> Com {
+    pub(crate) fn iniciar() -> Com {
         // SAFETY: sin punteros; cada exito se empareja con su
         // `CoUninitialize` en el `Drop`.
         let hr = unsafe { CoInitializeEx(None, COINIT_MULTITHREADED) };
@@ -99,7 +98,7 @@ impl Drop for Com {
     }
 }
 
-fn primer_fotograma(
+pub(crate) fn primer_fotograma(
     ruta: &Path,
 ) -> windows::core::Result<(IWICImagingFactory, IWICBitmapFrameDecode)> {
     // SAFETY: fabrica de WIC del sistema, en proceso.
@@ -124,54 +123,26 @@ fn primer_fotograma(
 }
 
 /// Cuanto mide, leyendo solo la cabecera (WIC no descomprime hasta que se
-/// le piden los pixeles).
+/// le piden los pixeles). Ya girada segun su EXIF, como la da `cargar`.
 pub fn medidas(ruta: &Path) -> windows::core::Result<(u32, u32)> {
     let _com = Com::iniciar();
     let (_, fotograma) = primer_fotograma(ruta)?;
     let (mut ancho, mut alto) = (0u32, 0u32);
     // SAFETY: fotograma vivo; las dos salidas son variables locales.
     unsafe { fotograma.GetSize(&mut ancho, &mut alto)? };
-    Ok((ancho, alto))
+    let orientacion = crate::vista::orientacion_de(&fotograma);
+    Ok(crate::vista::medidas_giradas(ancho, alto, orientacion))
 }
 
-/// La imagen entera en RGBA recto de 8 bits, como `imagen::cargar`.
+/// La imagen entera en RGBA recto de 8 bits, como `imagen::cargar`, y
+/// derecha segun su orientacion EXIF (una foto del movil hecha en vertical
+/// sale en vertical).
 pub fn cargar(ruta: &Path) -> windows::core::Result<ImagenRgba> {
     let _com = Com::iniciar();
     let (fabrica, fotograma) = primer_fotograma(ruta)?;
-    // SAFETY: fabrica viva.
-    let conversor = unsafe { fabrica.CreateFormatConverter()? };
-    // SAFETY: fotograma y conversor vivos; el GUID es una constante; sin
-    // paleta (no se pasa a indexado).
-    unsafe {
-        conversor.Initialize(
-            &fotograma,
-            &GUID_WICPixelFormat32bppRGBA,
-            WICBitmapDitherTypeNone,
-            None,
-            0.0,
-            WICBitmapPaletteTypeCustom,
-        )?
-    };
-    let (mut ancho, mut alto) = (0u32, 0u32);
-    // SAFETY: conversor inicializado; salidas locales.
-    unsafe { conversor.GetSize(&mut ancho, &mut alto)? };
-    let fila = (ancho as usize)
-        .checked_mul(4)
-        .filter(|f| *f <= u32::MAX as usize)
-        .ok_or_else(|| windows::core::Error::from(windows::Win32::Foundation::E_OUTOFMEMORY))?;
-    let total = fila
-        .checked_mul(alto as usize)
-        .ok_or_else(|| windows::core::Error::from(windows::Win32::Foundation::E_OUTOFMEMORY))?;
-    let mut pixeles = vec![0u8; total];
-    // SAFETY: el buffer es propio y mide exactamente fila * alto; WIC
-    // escribe filas compactas de `fila` bytes (sin relleno, como pide
-    // `ImagenRgba`).
-    unsafe { conversor.CopyPixels(std::ptr::null(), fila as u32, &mut pixeles)? };
-    Ok(ImagenRgba {
-        ancho,
-        alto,
-        pixeles,
-    })
+    let orientacion = crate::vista::orientacion_de(&fotograma);
+    let fuente = crate::vista::fuente_derecha(&fabrica, &fotograma, orientacion, None)?;
+    crate::vista::a_imagen(&fuente)
 }
 
 #[cfg(test)]

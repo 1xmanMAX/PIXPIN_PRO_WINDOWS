@@ -22,6 +22,7 @@ pub mod imprimir_moderno;
 pub mod lectura;
 pub mod letras;
 pub mod lienzo;
+pub mod perdida;
 pub mod puntos;
 pub mod superficie;
 pub mod tinta;

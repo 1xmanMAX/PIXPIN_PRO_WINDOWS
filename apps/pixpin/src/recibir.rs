@@ -109,7 +109,9 @@ pub fn lanzar(idioma: pixpin_store::Idioma, ubicacion: Ubicacion) {
         .spawn(move || {
             let _com = pixpin_shell::ComDelHilo::iniciar();
             let textos = Catalogo::nuevo(idioma);
-            let hecho = Recursos::nuevos().and_then(|r| abrir(&r, &textos, &ubicacion));
+            let hecho = crate::dispositivo_perdido::con_recursos("recibir", |r| {
+                abrir(r, &textos, &ubicacion)
+            });
             if let Err(e) = hecho {
                 tracing::warn!(?e, "no se pudo abrir la ventana de recibir");
             }

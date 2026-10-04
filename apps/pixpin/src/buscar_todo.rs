@@ -107,7 +107,9 @@ pub fn abrir(idioma: Idioma, ubicacion: Ubicacion, opciones: Opciones) {
         .spawn(move || {
             let _com = pixpin_shell::ComDelHilo::iniciar();
             let textos = Catalogo::nuevo(idioma);
-            let hecho = Recursos::nuevos().and_then(|r| bucle(&r, &textos, &ubicacion, &opciones));
+            let hecho = crate::dispositivo_perdido::con_recursos("buscar", |r| {
+                bucle(r, &textos, &ubicacion, &opciones)
+            });
             if let Err(e) = hecho {
                 tracing::warn!(?e, "no se pudo abrir el buscador");
             }

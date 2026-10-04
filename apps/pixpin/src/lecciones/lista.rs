@@ -112,7 +112,8 @@ pub fn abrir(pedido: Pedido) {
         .name("lecciones".into())
         .spawn(move || {
             let _com = pixpin_shell::ComDelHilo::iniciar();
-            let hecho = Recursos::nuevos().and_then(|r| bucle(&r, pedido));
+            let hecho =
+                crate::dispositivo_perdido::con_recursos("lecciones", |r| bucle(r, pedido.clone()));
             if let Err(e) = hecho {
                 tracing::warn!(?e, "no se pudo abrir la lista de lecciones");
             }

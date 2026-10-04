@@ -89,7 +89,9 @@ pub fn abrir(idioma: Idioma, ubicacion: Ubicacion) {
         .spawn(move || {
             let _com = pixpin_shell::ComDelHilo::iniciar();
             let textos = Catalogo::nuevo(idioma);
-            let hecho = Recursos::nuevos().and_then(|r| bucle(&r, &textos, &ubicacion));
+            let hecho = crate::dispositivo_perdido::con_recursos("galeria", |r| {
+                bucle(r, &textos, &ubicacion)
+            });
             if let Err(e) = hecho {
                 tracing::warn!(?e, "no se pudo abrir la galeria de capturas");
             }

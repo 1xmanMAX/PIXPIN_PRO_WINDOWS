@@ -185,8 +185,9 @@ pub fn lanzar(idioma: Idioma, del_chat: Vec<DelChat>, destino: PathBuf) -> Recei
         .name("pronunciar".into())
         .spawn(move || {
             let _com = pixpin_shell::ComDelHilo::iniciar();
-            let hecho =
-                Recursos::nuevos().and_then(|r| abrir(&r, idioma, &del_chat, &destino, &enviar));
+            let hecho = crate::dispositivo_perdido::con_recursos("pronunciar", |r| {
+                abrir(r, idioma, &del_chat, &destino, &enviar)
+            });
             if let Err(e) = hecho {
                 tracing::warn!(?e, "no se pudo abrir Pronunciar");
             }

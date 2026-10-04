@@ -50,6 +50,7 @@
 #![forbid(unsafe_code)]
 
 mod abrir_hoja;
+mod abrir_imagen;
 mod aligerar;
 mod anotado_del_adjunto;
 mod anotador_al_chat;
@@ -68,6 +69,7 @@ mod conversacion;
 mod cuenta_atras;
 mod diapositivas;
 mod dibujo;
+mod dispositivo_perdido;
 mod editor;
 mod fondo_lienzo;
 mod foto_anotada;
@@ -553,6 +555,9 @@ fn arrancar(
     // sesion, no un ajuste que merezca ir al disco.
     let mut ultima_region: Option<pixpin_geom::Rect> = None;
     let hwnd = ventana.handle();
+    // Si la GPU se pierde (driver, TDR, suspension), el primer fallo
+    // despierta este bucle, que lo rehace todo (`dispositivo_perdido`).
+    dispositivo_perdido::instalar_aviso(hwnd);
     // La pila de capturas: toda captura que va al portapapeles pasa por
     // ella. Nace sin ventana y sin temporizador; con `apilar_segundos = 0`
     // se limita a copiar, como antes de existir.
@@ -642,6 +647,15 @@ fn arrancar(
     let mut pines_pasantes = false;
 
     ventana.ejecutar(|evento| {
+        // Antes de nada: si la GPU se perdio, todo lo de abajo (capturar,
+        // pinear) fallaria sobre el dispositivo muerto. Mirarlo es una
+        // consulta barata; rehacerlo, solo cuando de verdad se perdio.
+        dispositivo_perdido::rehacer_si_se_perdio(
+            &mut recursos_overlay,
+            &mut pines,
+            &mut pila,
+            &textos,
+        );
         // Todo lo que abre el overlay de captura, en un sitio: los atajos,
         // «Capturar» de la bandeja y los gestos con Alt (D81). El gesto
         // trae el punto donde ya esta pulsado el boton: el overlay arranca
@@ -1919,6 +1933,13 @@ fn abrir_ficheros(
             }
         }
         for foto in &de_la_tienda {
+            // HEIC, AVIF, RAW...: leidas a la medida del pin, como las demas
+            // fotos. Si Windows no puede (falta la extension), el camino de
+            // siempre, que dice cual instalar.
+            if p.pinear_foto(foto, &m).is_ok() {
+                cuantos += 1;
+                continue;
+            }
             match pixpin_codec::cargar(foto) {
                 Ok(img) => match p.pinear_imagen_centrada(&img, &m) {
                     Ok(_) => cuantos += 1,
@@ -2295,7 +2316,19 @@ fn pinear_portapapeles(
             for r in rutas {
                 // Una foto es una foto: se pinea como imagen y no como la
                 // ficha de un archivo. Se decide leyendola, porque las del
-                // movil no traen extension por la que guiarse.
+                // movil no traen extension por la que guiarse. Primero el
+                // camino rapido (leida a la medida del pin, copiada tal cual
+                // al almacen: `pines::foto`); si Windows no sabe leerla, el
+                // de siempre.
+                if r.is_file() {
+                    match pines.pinear_foto(&r, &monitor) {
+                        Ok(_) => {
+                            hechas += 1;
+                            continue;
+                        }
+                        Err(e) => tracing::debug!(?e, ruta = ?r, "sin camino rapido de foto"),
+                    }
+                }
                 if r.is_file()
                     && let Ok(img) = pixpin_codec::cargar(&r)
                 {

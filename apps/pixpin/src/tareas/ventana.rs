@@ -126,7 +126,9 @@ pub(super) fn abrir(idioma: Idioma, ubicacion: Ubicacion, aparato: String) {
         .spawn(move || {
             let _com = pixpin_shell::ComDelHilo::iniciar();
             let textos = Catalogo::nuevo(idioma);
-            let hecho = Recursos::nuevos().and_then(|r| bucle(&r, &textos, &ubicacion, &aparato));
+            let hecho = crate::dispositivo_perdido::con_recursos("tareas", |r| {
+                bucle(r, &textos, &ubicacion, &aparato)
+            });
             if let Err(e) = hecho {
                 tracing::warn!(?e, "no se pudo abrir la ventana de tareas");
             }

@@ -32,7 +32,7 @@ use windows::core::Interface;
 #[derive(Debug, thiserror::Error)]
 pub enum ErrorRender {
     #[error("error de Windows al dibujar: {0}")]
-    Windows(#[from] windows::core::Error),
+    Windows(#[source] windows::core::Error),
     #[error("la textura no expone una superficie DXGI")]
     SinDxgi,
     #[error("el buffer tiene {tiene} bytes pero {ancho}x{alto} necesita {espera}")]
@@ -42,6 +42,24 @@ pub enum ErrorRender {
         tiene: usize,
         espera: usize,
     },
+}
+
+/// A mano y no con `#[from]`: **todo** error de Windows que sale de pintar o
+/// presentar pasa por aqui, y es el unico sitio donde se mira si es que el
+/// dispositivo se perdio (`perdida::senalar`). Asi ninguna ventana tiene que
+/// acordarse de comprobarlo.
+impl From<windows::core::Error> for ErrorRender {
+    fn from(e: windows::core::Error) -> Self {
+        crate::perdida::senalar(&e);
+        ErrorRender::Windows(e)
+    }
+}
+
+impl ErrorRender {
+    /// Si el fallo es que el dispositivo grafico se perdio.
+    pub fn es_perdida(&self) -> bool {
+        matches!(self, ErrorRender::Windows(e) if crate::perdida::es_perdida(e.code()))
+    }
 }
 
 /// Validacion pura del buffer RGBA, separada para probarse sin GPU.

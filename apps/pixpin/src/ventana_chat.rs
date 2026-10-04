@@ -390,8 +390,9 @@ pub fn lanzar(idioma: pixpin_store::Idioma, ubicacion: Ubicacion, lienzo: Opcion
         .spawn(move || {
             let _com = pixpin_shell::ComDelHilo::iniciar();
             let textos = Catalogo::nuevo(idioma);
-            let hecho =
-                Recursos::nuevos().and_then(|r| abrir(&r, &textos, &ubicacion, lienzo, idioma));
+            let hecho = crate::dispositivo_perdido::con_recursos("chat", |r| {
+                abrir(r, &textos, &ubicacion, lienzo, idioma)
+            });
             if let Err(e) = hecho {
                 tracing::warn!(?e, "no se pudo abrir el chat de proyectos");
             }

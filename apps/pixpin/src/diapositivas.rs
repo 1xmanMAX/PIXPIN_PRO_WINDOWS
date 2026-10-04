@@ -272,8 +272,9 @@ pub fn lanzar(idioma: pixpin_store::Idioma, ubicacion: pixpin_store::Ubicacion, 
                 ofrecer_otra_app(&textos, clave, &ruta);
                 return;
             }
-            let hecho =
-                Recursos::nuevos().and_then(|r| presentar(&r, &textos, ubicacion.raiz(), &ruta));
+            let hecho = crate::dispositivo_perdido::con_recursos("diapositivas", |r| {
+                presentar(r, &textos, ubicacion.raiz(), &ruta)
+            });
             if let Err(e) = hecho {
                 tracing::warn!(?e, ruta = %ruta.display(), "no se pudo presentar");
             }

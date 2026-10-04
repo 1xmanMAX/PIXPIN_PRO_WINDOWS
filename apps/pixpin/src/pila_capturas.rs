@@ -278,6 +278,17 @@ impl PilaCapturas {
         });
     }
 
+    /// El dispositivo grafico se perdio y `recursos` ya es el nuevo: el
+    /// icono (su superficie y sus miniaturas eran del viejo) se suelta y,
+    /// si se veia, renace igual. Las capturas apiladas no se tocan.
+    pub fn cambiar_dispositivo(&mut self, recursos: &Recursos, textos: &Catalogo) {
+        if self.icono.take().is_some()
+            && let Err(e) = self.mostrar(recursos, textos)
+        {
+            tracing::warn!(?e, "el icono de la pila no pudo renacer");
+        }
+    }
+
     /// Crea el icono si no existe, lo pone al dia y rearma su desvanecido.
     fn mostrar(&mut self, recursos: &Recursos, textos: &Catalogo) -> Result<()> {
         let titulo = titulo_de(textos, self.pila.borrow().cuantas());

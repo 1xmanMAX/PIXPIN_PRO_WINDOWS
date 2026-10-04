@@ -111,7 +111,9 @@ pub fn lanzar(idioma: Idioma, destino: PathBuf) -> Receiver<Grabada> {
         .name("conversacion".into())
         .spawn(move || {
             let _com = pixpin_shell::ComDelHilo::iniciar();
-            let hecho = Recursos::nuevos().and_then(|r| abrir(&r, idioma, &destino, &enviar));
+            let hecho = crate::dispositivo_perdido::con_recursos("conversacion", |r| {
+                abrir(r, idioma, &destino, &enviar)
+            });
             if let Err(e) = hecho {
                 tracing::warn!(?e, "no se pudo abrir la conversacion");
             }

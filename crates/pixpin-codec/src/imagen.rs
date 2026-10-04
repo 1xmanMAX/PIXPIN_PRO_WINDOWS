@@ -115,7 +115,7 @@ impl ErrorCodec {
 
 /// El fallo de Windows, explicado: si es que no hay codec para un formato
 /// que da una extension de la tienda, se dice cual.
-fn error_de_windows(ruta: &Path, fuente: windows::core::Error) -> ErrorCodec {
+pub(crate) fn error_de_windows(ruta: &Path, fuente: windows::core::Error) -> ErrorCodec {
     use windows::Win32::Foundation::{
         WINCODEC_ERR_COMPONENTINITIALIZEFAILURE, WINCODEC_ERR_COMPONENTNOTFOUND,
         WINCODEC_ERR_UNKNOWNIMAGEFORMAT,
@@ -146,11 +146,25 @@ fn error_de_windows(ruta: &Path, fuente: windows::core::Error) -> ErrorCodec {
 /// Primero con `image` y, si no puede, con Windows (`wic`): asi se abren
 /// HEIC, AVIF, TIFF, GIF, ICO, JPEG XL y RAW sin meter sus codecs en el .exe.
 /// Los que `image` no tiene compilados van directos a Windows.
+///
+/// Sale **derecha segun su orientacion EXIF**: una foto del movil hecha en
+/// vertical se guarda tumbada con una etiqueta que dice como girarla, y sin
+/// mirarla salia de lado (4-oct-2026).
 pub fn cargar(ruta: &Path) -> Result<ImagenRgba, ErrorCodec> {
     if crate::wic::camino_de(ruta) == crate::wic::Camino::SoloWindows {
         return crate::wic::cargar(ruta).map_err(|e| error_de_windows(ruta, e));
     }
-    let dinamica = match lector(ruta).and_then(|l| l.decode()) {
+    let leida = lector(ruta).and_then(|l| {
+        use image::ImageDecoder;
+        let mut d = l.into_decoder()?;
+        let orientacion = d
+            .orientation()
+            .unwrap_or(image::metadata::Orientation::NoTransforms);
+        let mut img = image::DynamicImage::from_decoder(d)?;
+        img.apply_orientation(orientacion);
+        Ok(img)
+    });
+    let dinamica = match leida {
         Ok(d) => d,
         Err(fuente) => {
             let error = |fuente| ErrorCodec::Lectura {
@@ -165,7 +179,8 @@ pub fn cargar(ruta: &Path) -> Result<ImagenRgba, ErrorCodec> {
             return crate::wic::cargar(ruta).map_err(|_| error(fuente));
         }
     };
-    let rgba = dinamica.to_rgba8();
+    // `into` y no `to`: una PNG que ya es RGBA no se copia otra vez.
+    let rgba = dinamica.into_rgba8();
     Ok(ImagenRgba {
         ancho: rgba.width(),
         alto: rgba.height(),
@@ -173,7 +188,8 @@ pub fn cargar(ruta: &Path) -> Result<ImagenRgba, ErrorCodec> {
     })
 }
 
-/// Cuanto mide una imagen, SIN descomprimirla: solo su cabecera.
+/// Cuanto mide una imagen, SIN descomprimirla: solo su cabecera (y la
+/// etiqueta EXIF de orientacion: mide lo que da `cargar`, ya girada).
 ///
 /// Lo quiere el chat para cada foto que ensena: los trazos que se dibujan
 /// encima van en coordenadas de la foto, asi que hay que saber su tamano
@@ -184,7 +200,21 @@ pub fn medidas(ruta: &Path) -> Result<(u32, u32), ErrorCodec> {
         return crate::wic::medidas(ruta).map_err(|e| error_de_windows(ruta, e));
     }
     lector(ruta)
-        .and_then(|l| l.into_dimensions())
+        .and_then(|l| {
+            use image::ImageDecoder;
+            use image::metadata::Orientation as O;
+            let mut d = l.into_decoder()?;
+            let (ancho, alto) = d.dimensions();
+            let tumbada = matches!(
+                d.orientation().unwrap_or(O::NoTransforms),
+                O::Rotate90 | O::Rotate270 | O::Rotate90FlipH | O::Rotate270FlipH
+            );
+            Ok(if tumbada {
+                (alto, ancho)
+            } else {
+                (ancho, alto)
+            })
+        })
         .or_else(|fuente| {
             let error = |fuente| ErrorCodec::Lectura {
                 ruta: ruta.to_path_buf(),

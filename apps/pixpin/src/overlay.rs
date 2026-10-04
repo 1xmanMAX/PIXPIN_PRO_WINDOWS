@@ -210,6 +210,12 @@ impl Recursos {
         Rc::clone(&self.motor)
     }
 
+    /// Si el dispositivo se perdio, por que (`GetDeviceRemovedReason`). Es
+    /// barato: el bucle principal lo mira en cada vuelta.
+    pub fn perdido(&self) -> Option<windows::core::HRESULT> {
+        pixpin_render::perdida::motivo(self.dispositivo.d3d())
+    }
+
     pub fn dispositivo(&self) -> &Dispositivo {
         &self.dispositivo
     }

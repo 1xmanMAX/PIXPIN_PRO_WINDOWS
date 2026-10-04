@@ -63,7 +63,14 @@ struct CapaDComp {
 
 pub struct Superficie {
     dcomp: IDCompositionDevice,
-    _objetivo: IDCompositionTarget,
+    /// En `Option` solo para poder soltarlo ANTES de pedir otro para la
+    /// misma ventana (`rehacer`): DirectComposition no deja dos objetivos
+    /// sobre una ventana.
+    objetivo: Option<IDCompositionTarget>,
+    /// La ventana y el dispositivo sobre los que nacio, para `rehacer` y
+    /// para el fallo inyectado de las pruebas (`perdida`).
+    hwnd: HWND,
+    d3d_crudo: usize,
     /// El visual de la ESCENA (lo que lleva la swapchain). Es el que se
     /// mueve al desplazar y el que se estira al acercar.
     visual: IDCompositionVisual,
@@ -326,7 +333,9 @@ impl Superficie {
 
         let s = Self {
             dcomp,
-            _objetivo: objetivo,
+            objetivo: Some(objetivo),
+            hwnd,
+            d3d_crudo: d3d.as_raw() as usize,
             visual,
             _raiz: raiz,
             swapchain,
@@ -915,6 +924,7 @@ impl Superficie {
     /// llamarlo en cada fotograma: con flip, el backbuffer rota en cada
     /// present y el bitmap anterior queda apuntando al buffer equivocado.
     pub fn empezar(&self, motor: &MotorRender) -> Result<ID2D1Bitmap1, ErrorRender> {
+        self.fallo_inyectado()?;
         // SAFETY: el indice 0 es siempre el backbuffer escribible actual.
         let textura: ID3D11Texture2D = unsafe { self.swapchain.GetBuffer(0)? };
         motor.destino_backbuffer(&textura)
@@ -997,7 +1007,51 @@ impl Superficie {
         Ok(())
     }
 
+    /// **Rehace la superficie sobre otro dispositivo** (el de antes se
+    /// perdio), en la misma ventana y con el mismo tamano, colchon y
+    /// latencia. Lo pintado se pierde: quien llama repinta despues.
+    ///
+    /// Las capas de fondo (`montar_fondo`) no se rehacen: las monta quien
+    /// las usa, y ninguna ventana que se rehaga asi las tiene.
+    pub fn rehacer(&mut self, motor: &MotorRender, d3d: &ID3D11Device) -> Result<(), ErrorRender> {
+        let (ancho, alto) = self.asignado.get();
+        let margen = self.margen;
+        let baja_latencia = self.senal.is_some();
+        // Primero se suelta el objetivo viejo: DirectComposition no da un
+        // segundo objetivo para una ventana que ya tiene uno.
+        if let Some(objetivo) = self.objetivo.take() {
+            // SAFETY: objetos propios; con el dispositivo perdido estas
+            // llamadas pueden fallar, y da igual: solo se esta soltando.
+            unsafe {
+                let _ = objetivo.SetRoot(None);
+                let _ = self.dcomp.Commit();
+            }
+            drop(objetivo);
+        }
+        let nueva = Self::crear(
+            motor,
+            d3d,
+            self.hwnd,
+            ancho.saturating_sub(margen * 2),
+            alto.saturating_sub(margen * 2),
+            baja_latencia,
+            margen,
+        )?;
+        *self = nueva;
+        Ok(())
+    }
+
+    /// El fallo que una prueba inyecto en este dispositivo, si hay
+    /// (`perdida::inyectar_perdida`).
+    fn fallo_inyectado(&self) -> Result<(), ErrorRender> {
+        match crate::perdida::inyectado(self.d3d_crudo) {
+            Some(hr) => Err(windows::core::Error::from(hr).into()),
+            None => Ok(()),
+        }
+    }
+
     pub fn presentar(&self) -> Result<(), ErrorRender> {
+        self.fallo_inyectado()?;
         // SAFETY: present sin espera de vsync (0,0): el bucle es dirigido
         // por eventos y no debe bloquear el hilo de interfaz.
         unsafe { self.swapchain.Present(0, Default::default()).ok()? };
@@ -1028,6 +1082,7 @@ impl Superficie {
         if rect.is_some_and(|r| r.right <= r.left || r.bottom <= r.top) {
             rect = None;
         }
+        self.fallo_inyectado()?;
         let parametros = DXGI_PRESENT_PARAMETERS {
             DirtyRectsCount: u32::from(rect.is_some()),
             pDirtyRects: rect

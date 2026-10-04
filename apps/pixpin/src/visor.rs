@@ -136,7 +136,9 @@ pub fn lanzar(idioma: pixpin_store::Idioma, ubicacion: Ubicacion, ruta: &Path) {
         .spawn(move || {
             let _com = pixpin_shell::ComDelHilo::iniciar();
             let textos = Catalogo::nuevo(idioma);
-            let hecho = Recursos::nuevos().and_then(|r| abrir(&r, &textos, &ubicacion, &ruta));
+            let hecho = crate::dispositivo_perdido::con_recursos("visor", |r| {
+                abrir(r, &textos, &ubicacion, &ruta)
+            });
             if let Err(e) = hecho {
                 tracing::warn!(?e, ruta = %ruta.display(), "no se pudo abrir el visor");
             }

@@ -992,6 +992,10 @@ fn al_escribir(panel: &mut Panel, c: char) {
 // ------------------------------------------------------------- el hilo
 
 fn vivir() -> Result<()> {
+    // Si la GPU se pierde con el panel abierto, se cierra (WM_CLOSE); y con
+    // el cerrado, el hilo se va en cuanto llega un pedido (mas abajo), que
+    // lo vuelve a lanzar con un dispositivo nuevo.
+    pixpin_render::perdida::cerrar_ventanas_al_perder(true);
     let recursos = Recursos::nuevos()?;
     let motor = recursos.motor();
     let inicial = Rect {
@@ -1019,6 +1023,15 @@ fn vivir() -> Result<()> {
         let eventos = pixpin_shell::overlay::tomar_eventos_pendientes();
 
         let Some(p) = panel.as_mut() else {
+            // Cerrado con el dispositivo perdido: el hilo se va sin tocar el
+            // pedido, y al irse se relanza (ver `lanzar`) con uno nuevo.
+            if let Some(motivo) = recursos.perdido() {
+                tracing::warn!(
+                    motivo = %crate::dispositivo_perdido::describir(motivo),
+                    "dispositivo grafico perdido; el panel de la bandeja renace"
+                );
+                break;
+            }
             // Cerrado: esperar un pedido, o irse si tarda.
             if let Some(pedido) = tomar_pedido() {
                 match Panel::nuevo(pedido, hwnd) {

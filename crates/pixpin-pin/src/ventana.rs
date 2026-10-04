@@ -675,6 +675,14 @@ struct PinInterno {
     /// Donde quedaria el pin pegado a la guia que se ve mientras se
     /// arrastra; se pega al soltar (`guias.rs`).
     guia: Option<Rect>,
+    /// El fichero con la imagen ENTERA cuando la que se ve se leyo reducida
+    /// a la medida del pin (abrir una foto). Se lee de el, una vez, si el
+    /// pin se acerca mas alla de lo leido o se saca la lupa; `None` cuando
+    /// ya se tiene entera.
+    completa: Option<std::path::PathBuf>,
+    /// Si el ultimo fotograma se pinto y se presento sin fallo. Lo mira el
+    /// gestor tras rehacer el dispositivo (y la prueba de la perdida).
+    pintado_bien: Cell<bool>,
     al_cambiar: Box<dyn Fn(CambioPin)>,
 }
 
@@ -860,6 +868,8 @@ impl Pin {
             pizarra: None,
             opacidad: 1.0,
             guia: None,
+            completa: None,
+            pintado_bien: Cell::new(false),
             al_cambiar,
         });
         // SAFETY: la ventana es propia y viva; el Box se cede al USERDATA y
@@ -1122,6 +1132,67 @@ impl Pin {
 
     /// Dice que el pin es una pizarra, con su color y su pauta de ahora,
     /// para que el menu ofrezca cambiarlos.
+    /// **Pasa el pin a otro dispositivo grafico** (el suyo se perdio: driver
+    /// actualizado, TDR, la grafica dedicada apagada...). Rehace en la misma
+    /// ventana su superficie, el bitmap de la imagen (desde los pixeles que
+    /// el pin ya guarda, con sus filtros) y el reproductor si es un video,
+    /// y repinta. Sitio, tamano, zoom, giro, opacidad y anotaciones no se
+    /// tocan: son estado del pin, no de la GPU.
+    ///
+    /// La fuente de un pin en vivo vive en el gestor y la cambia el.
+    pub fn cambiar_dispositivo(
+        &self,
+        d3d: &ID3D11Device,
+        motor: Rc<MotorRender>,
+        ritmo_video_ms: u32,
+    ) -> Result<(), ErrorPin> {
+        let Some(i) = interno_de(self.hwnd) else {
+            return Ok(());
+        };
+        i.motor = motor;
+        i.d3d = d3d.clone();
+        // Lo cacheado era del motor viejo.
+        i.cache_grafito.borrow_mut().vaciar();
+        i.bitmap = None;
+        // La barra flotante tiene su propia superficie sobre el dispositivo
+        // viejo: se suelta y renace con el nuevo la proxima vez.
+        crate::barra_flotante::soltar();
+        i.superficie.rehacer(&i.motor, d3d)?;
+        rehacer_bitmap(i);
+        // El video: un reproductor nuevo sobre el dispositivo nuevo, en el
+        // mismo punto y con el mismo sonido.
+        if let (Some(viejo), Contenido::Video { ruta, .. }) = (i.video.take(), &i.contenido) {
+            let (segundos, _) = viejo.posicion();
+            let sonaba = !viejo.silenciado();
+            let pausado = !viejo.reproduciendo();
+            drop(viejo);
+            match Reproductor::nuevo(d3d, ruta) {
+                Ok(r) => {
+                    r.buscar(segundos, false);
+                    if sonaba {
+                        r.alternar_sonido();
+                    }
+                    if pausado {
+                        r.alternar_pausa();
+                    }
+                    i.video = Some(r);
+                    armar_temporizador_video(self.hwnd, ritmo_video_ms);
+                }
+                Err(e) => {
+                    tracing::warn!(?e, "el video no pudo reabrirse en el dispositivo nuevo");
+                    i.video_fallido = true;
+                }
+            }
+        }
+        pintar(i);
+        Ok(())
+    }
+
+    /// Si el ultimo fotograma se pinto y presento sin fallo.
+    pub fn pintado_bien(&self) -> bool {
+        interno_de(self.hwnd).is_some_and(|i| i.pintado_bien.get())
+    }
+
     pub fn poner_pizarra(&self, pizarra: Option<(u8, u8)>) {
         if let Some(i) = interno_de(self.hwnd) {
             i.pizarra = pizarra;
@@ -1140,6 +1211,54 @@ impl Pin {
                 pintar(i);
             }
         }
+    }
+
+    /// La imagen del pin se leyo **reducida** a la medida en que se ve
+    /// (abrir una foto: `pixpin_codec::vista`); la entera mide `nativa` y
+    /// esta en `fichero`. Desde aqui el «100 %», las anotaciones y el texto
+    /// reconocido van en pixeles de la entera, y el pin la lee el solo, una
+    /// vez, si se acerca mas alla de lo leido o se saca la lupa.
+    pub fn poner_resolucion_completa(&self, fichero: std::path::PathBuf, nativa: (u32, u32)) {
+        if let Some(i) = interno_de(self.hwnd)
+            && let Contenido::Imagen(img) = &i.contenido
+            && (img.ancho, img.alto) != nativa
+        {
+            i.imagen_nativa = nativa;
+            i.completa = Some(fichero);
+        }
+    }
+
+    /// Cambia la vista previa con que nacio el pin por la imagen buena, leida
+    /// en otro hilo (abrir una foto grande: `pixpin_codec::vista`). No toca
+    /// sitio, zoom ni anotaciones, y nunca empeora lo que hay: si el pin ya
+    /// leyo mas (se acerco y leyo la entera), se queda con eso.
+    pub fn poner_imagen_leida(&self, imagen: pixpin_codec::ImagenRgba) {
+        let Some(i) = interno_de(self.hwnd) else {
+            return;
+        };
+        let Contenido::Imagen(img) = &mut i.contenido else {
+            return;
+        };
+        if imagen.ancho as u64 * imagen.alto as u64 <= img.ancho as u64 * img.alto as u64 {
+            return;
+        }
+        let (nw, nh) = i.imagen_nativa;
+        if (imagen.ancho, imagen.alto) == (nw, nh) || (imagen.ancho, imagen.alto) == (nh, nw) {
+            // Ya es la entera: no queda nada que leer despues.
+            i.completa = None;
+        }
+        i.tapa_la_tarjeta = imagen.es_opaca();
+        *img = imagen;
+        rehacer_bitmap(i);
+        pintar(i);
+    }
+
+    /// Los pixeles que el pin tiene leidos de su imagen (ancho, alto).
+    pub fn resolucion_leida(&self) -> Option<(u32, u32)> {
+        interno_de(self.hwnd).and_then(|i| match &i.contenido {
+            Contenido::Imagen(img) => Some((img.ancho, img.alto)),
+            _ => None,
+        })
     }
 
     pub fn poner_ruta(&self, ruta: Option<std::path::PathBuf>) {
@@ -1754,6 +1873,11 @@ impl Pin {
     pub fn poner_lupa(&self, lupa: Option<LupaPin>) {
         if let Some(i) = interno_de(self.hwnd) {
             if i.lupa != lupa {
+                // La lupa ensena pixeles reales: con la foto leida reducida
+                // ampliaria pixeles ya estirados (y en otra escala).
+                if lupa.is_some() {
+                    asegurar_resolucion(i, true);
+                }
                 i.lupa = lupa;
                 pintar(i);
             }
@@ -1941,6 +2065,7 @@ fn ajustar_vista(i: &mut PinInterno, paso: f32, lparam: LPARAM) {
     i.vista_dy = cy - (cy - i.vista_dy) * ahora / antes;
     i.vista_escala = ahora;
     limitar_vista(i);
+    asegurar_resolucion(i, false);
 }
 
 /// Impide que el contenido se despegue de la tarjeta y deje un hueco: el
@@ -1975,6 +2100,67 @@ fn estirar_hasta(_hwnd: HWND, i: &PinInterno, rect: Rect) {
     let dx = rect.x as f32 + (base_ventana.x - base.x) as f32 * sx - v.x as f32;
     let dy = rect.y as f32 + (base_ventana.y - base.y) as f32 * sy - v.y as f32;
     i.superficie.estirar(sx, sy, dx, dy);
+}
+
+/// Si un pin que ensena `leida` pixeles necesita mas para verse nitido a
+/// `vista` (lo que ocupa en pantalla, ya contando el giro y el zoom de
+/// dentro). Un 5 % de holgura: el escalado de la GPU no se nota tan cerca, y
+/// leer la entera cuesta decenas de milisegundos.
+fn necesita_mas_resolucion(leida: (u32, u32), vista: (f32, f32)) -> bool {
+    vista.0 > leida.0 as f32 * 1.05 || vista.1 > leida.1 as f32 * 1.05
+}
+
+/// Si la imagen del pin se leyo reducida y ahora se ve mas grande que eso
+/// (o `siempre`: la lupa ensena pixeles reales), lee la ENTERA de su fichero
+/// y rehace el bitmap. Una sola vez: despues ya no hay fichero pendiente.
+fn asegurar_resolucion(i: &mut PinInterno, siempre: bool) {
+    let Some(fichero) = i.completa.clone() else {
+        return;
+    };
+    let Contenido::Imagen(img) = &i.contenido else {
+        i.completa = None;
+        return;
+    };
+    let r = i.estado.rect();
+    let zoom = i.vista_escala.max(1.0);
+    // Girado un cuarto, el ancho de la imagen ocupa el alto del pin.
+    let (vw, vh) = if i.giro % 2 == 1 {
+        (r.alto as f32, r.ancho as f32)
+    } else {
+        (r.ancho as f32, r.alto as f32)
+    };
+    if !siempre && !necesita_mas_resolucion((img.ancho, img.alto), (vw * zoom, vh * zoom)) {
+        return;
+    }
+    let t0 = std::time::Instant::now();
+    i.completa = None;
+    match pixpin_codec::cargar(&fichero) {
+        Ok(entera) => {
+            let (nw, nh) = i.imagen_nativa;
+            let cuadra =
+                (entera.ancho, entera.alto) == (nw, nh) || (entera.ancho, entera.alto) == (nh, nw);
+            if !cuadra {
+                tracing::warn!(
+                    leida = ?(entera.ancho, entera.alto),
+                    nativa = ?i.imagen_nativa,
+                    "la imagen entera no mide lo esperado; el pin sigue con la reducida"
+                );
+                return;
+            }
+            i.tapa_la_tarjeta = entera.es_opaca();
+            if let Contenido::Imagen(img) = &mut i.contenido {
+                *img = entera;
+            }
+            rehacer_bitmap(i);
+            tracing::info!(
+                ms = t0.elapsed().as_millis() as u64,
+                ancho = nw,
+                alto = nh,
+                "el pin leyo su imagen entera"
+            );
+        }
+        Err(e) => tracing::warn!(?e, "no se pudo leer la imagen entera del pin"),
+    }
 }
 
 /// El zoom del texto en por ciento, para persistirlo (100 fuera de las
@@ -2149,10 +2335,18 @@ fn zoom_por_cien_de(i: &PinInterno) -> u32 {
 }
 
 fn pintar(i: &PinInterno) {
+    i.pintado_bien.set(false);
     let destino = match i.superficie.empezar(&i.motor) {
         Ok(d) => d,
         Err(e) => {
-            tracing::warn!(?e, "el pin no pudo empezar a pintar");
+            // Con el dispositivo perdido fallaria cada fotograma: el aviso
+            // ya salio (`pixpin_render::perdida`) y el gestor lo rehace; una
+            // linea por fotograma solo llenaria el registro.
+            if e.es_perdida() {
+                tracing::debug!(?e, "el pin no pudo empezar a pintar: dispositivo perdido");
+            } else {
+                tracing::warn!(?e, "el pin no pudo empezar a pintar");
+            }
             return;
         }
     };
@@ -2184,7 +2378,7 @@ fn pintar(i: &PinInterno) {
     let (ox, oy) = origen_contenido(i.hwnd, contenido);
 
     let con_capa = i.opacidad < 0.999;
-    let _ = i.motor.dibujar(&destino, |p| {
+    let dibujado = i.motor.dibujar(&destino, |p| {
         p.limpiar_transparente();
         // La opacidad (v2): todo el pin, sombra incluida, en una capa
         // translucida. Opaco no se paga la capa.
@@ -2621,7 +2815,8 @@ fn pintar(i: &PinInterno) {
             unsafe { i.motor.contexto().PopLayer() };
         }
     });
-    let _ = i.superficie.presentar();
+    let presentado = i.superficie.presentar();
+    i.pintado_bien.set(dibujado.is_ok() && presentado.is_ok());
 }
 
 /// Pinta una nota ya dispuesta como Markdown: prefijos de lista, barra de
@@ -2976,6 +3171,9 @@ fn aplicar(hwnd: HWND, efecto: EfectoPin) {
             }
         }
         EfectoPin::Redimensionar(contenido) => {
+            // Una foto abierta reducida: si ya se ve mas grande que lo
+            // leido, se lee entera antes de pintar nitido.
+            asegurar_resolucion(i, false);
             let t0 = std::time::Instant::now();
             let v = ventana_visible(contenido, i.escala_por_cien);
             // SAFETY: SetWindowPos sobre ventana propia, con tamano.
@@ -3366,6 +3564,9 @@ extern "system" fn procedimiento_pin(
             // pediria otra vez el mismo `&mut`.
             let carga = interno_de(hwnd).and_then(|i| {
                 if tecla_pulsada(VK_CONTROL) && !i.anotando {
+                    // Lo que se lleva es la foto entera, no la leida a la
+                    // medida del pin.
+                    asegurar_resolucion(i, true);
                     crate::arrastre::carga_de(&i.contenido, i.ruta_origen.as_deref())
                 } else {
                     None
@@ -4631,6 +4832,144 @@ mod pruebas {
             alto: 2,
             pixeles: vec![255; 16],
         }
+    }
+
+    #[test]
+    fn una_foto_leida_reducida_pide_la_entera_solo_si_se_ve_mas_grande() {
+        assert!(necesita_mas_resolucion((1152, 864), (2304.0, 1728.0)));
+        assert!(necesita_mas_resolucion((1152, 864), (1152.0, 1000.0)));
+    }
+
+    #[test]
+    fn caso_negativo_vista_a_su_medida_o_menor_no_lee_nada() {
+        assert!(!necesita_mas_resolucion((1152, 864), (1152.0, 864.0)));
+        assert!(!necesita_mas_resolucion((1152, 864), (600.0, 450.0)));
+        // Dentro de la holgura del 5 %.
+        assert!(!necesita_mas_resolucion((1000, 1000), (1040.0, 1040.0)));
+    }
+
+    #[test]
+    #[ignore = "necesita GPU y sesion de escritorio; ejecutar con --ignored"]
+    fn la_lupa_hace_leer_la_foto_entera_una_vez() {
+        let dir = std::env::temp_dir().join("pixpin-pin-completa");
+        std::fs::create_dir_all(&dir).unwrap();
+        let fichero = dir.join("entera.png");
+        let entera = ImagenRgba {
+            ancho: 400,
+            alto: 300,
+            pixeles: [90u8, 90, 200, 255].repeat(400 * 300),
+        };
+        pixpin_codec::guardar(&entera, &fichero, pixpin_codec::FormatoImagen::Png).unwrap();
+        let d3d = d3d();
+        let motor = Rc::new(MotorRender::nuevo(&d3d).unwrap());
+        let reducida = ImagenRgba {
+            ancho: 100,
+            alto: 75,
+            pixeles: [90u8, 90, 200, 255].repeat(100 * 75),
+        };
+        let pin = Pin::nuevo(
+            &d3d,
+            motor,
+            Contenido::Imagen(reducida),
+            Rect {
+                x: 100,
+                y: 100,
+                ancho: 100,
+                alto: 75,
+            },
+            100,
+            true,
+            16,
+            Box::new(|_| {}),
+        )
+        .unwrap();
+        pin.poner_resolucion_completa(fichero, (400, 300));
+        assert_eq!(pin.resolucion_leida(), Some((100, 75)), "aun reducida");
+        pin.poner_lupa(Some(LupaPin {
+            fuente: Rect {
+                x: 10,
+                y: 10,
+                ancho: 20,
+                alto: 20,
+            },
+            destino: Rect {
+                x: 0,
+                y: 0,
+                ancho: 60,
+                alto: 60,
+            },
+        }));
+        assert_eq!(
+            pin.resolucion_leida(),
+            Some((400, 300)),
+            "la lupa la lee entera"
+        );
+        assert!(pin.pintado_bien());
+    }
+
+    /// La perdida de la GPU (4-oct-2026: `0x887A0005`, y ningun pin pintaba
+    /// hasta reiniciar). Un TDR de verdad no se puede provocar en una prueba:
+    /// se inyecta el fallo en el dispositivo y se comprueba que el pin deja
+    /// de pintar, que se avisa una vez, y que con un dispositivo nuevo vuelve
+    /// a pintar en el mismo sitio y con el mismo giro.
+    #[test]
+    #[ignore = "necesita GPU y sesion de escritorio; ejecutar con --ignored"]
+    fn tras_perder_el_dispositivo_el_pin_vuelve_a_pintar_en_su_sitio() {
+        use pixpin_render::perdida;
+        let viejo = d3d();
+        let motor = Rc::new(MotorRender::nuevo(&viejo).unwrap());
+        let sitio = Rect {
+            x: 120,
+            y: 140,
+            ancho: 240,
+            alto: 160,
+        };
+        let pin = Pin::nuevo(
+            &viejo,
+            motor,
+            Contenido::Imagen(ImagenRgba {
+                ancho: 4,
+                alto: 3,
+                pixeles: [10u8, 120, 220, 255].repeat(12),
+            }),
+            sitio,
+            100,
+            true,
+            16,
+            Box::new(|_| {}),
+        )
+        .expect("el pin deberia crearse");
+        pin.poner_giro(1, false, false);
+        assert!(pin.pintado_bien(), "con la GPU sana pinta");
+
+        let _ = perdida::tomar_aviso();
+        perdida::inyectar_perdida(&viejo, Some(perdida::DEVICE_REMOVED));
+        pin.repintar();
+        assert!(!pin.pintado_bien(), "con el dispositivo perdido no pinta");
+        assert_eq!(perdida::motivo(&viejo), Some(perdida::DEVICE_REMOVED));
+        assert!(perdida::tomar_aviso(), "la perdida se avisa");
+        assert!(!perdida::tomar_aviso(), "y una sola vez");
+
+        // Caso negativo: rehacer sobre el MISMO dispositivo perdido no
+        // arregla nada (el fallo sigue ahi).
+        let _ = pin.cambiar_dispositivo(&viejo, Rc::new(MotorRender::nuevo(&viejo).unwrap()), 16);
+        assert!(!pin.pintado_bien());
+
+        let nuevo = d3d();
+        let motor_nuevo = Rc::new(MotorRender::nuevo(&nuevo).unwrap());
+        pin.cambiar_dispositivo(&nuevo, motor_nuevo, 16)
+            .expect("el pin pasa al dispositivo nuevo");
+        perdida::inyectar_perdida(&viejo, None);
+        assert!(
+            pin.pintado_bien(),
+            "con el dispositivo nuevo vuelve a pintar"
+        );
+        assert_eq!(pin.rect_contenido(), sitio, "en el mismo sitio");
+        assert_eq!(pin.giro(), (1, false, false), "y con el mismo giro");
+        // Y sigue pintando despues (no fue un fotograma suelto).
+        pin.repintar();
+        assert!(pin.pintado_bien());
+        drop(pin);
     }
 
     #[test]

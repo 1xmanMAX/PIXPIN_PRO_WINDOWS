@@ -17,6 +17,8 @@ mod pizarra;
 mod sacar;
 // El panel «Pines abiertos» (rediseno v2).
 mod abiertos;
+mod dispositivo;
+pub(crate) mod foto;
 
 /// El catalogo de los rotulos que pintan las herramientas. El pintor de un
 /// pin se llama desde su `WM_PAINT`, sin el catalogo a mano; como el panel
@@ -322,6 +324,12 @@ pub struct Pines {
     /// el nivel de rendimiento al arrancar. `None` si el dispositivo no
     /// soporta video (D66): entonces los videos se ensenan como documento.
     ritmo_video: Option<u32>,
+    /// El tope de fotogramas con que se abrio el ultimo pin en vivo: al
+    /// rehacer el dispositivo su captura se vuelve a abrir con el mismo.
+    tope_en_vivo: std::time::Duration,
+    /// Las fotos grandes que nacieron con su vista previa y se leen bien en
+    /// otro hilo (`pines::foto`).
+    fotos_leidas: foto::Lecturas,
     /// Las herramientas pineadas (mini-apps y tablas), con su documento y lo
     /// de su interfaz. El documento tambien esta en el almacen; esto es lo
     /// que se pinta y se toca.
@@ -510,6 +518,8 @@ impl Pines {
             anotacion: None,
             lienzo_pedido: None,
             ritmo_video,
+            tope_en_vivo: std::time::Duration::ZERO,
+            fotos_leidas: foto::Lecturas::nuevas(),
             herramientas: HashMap::new(),
             pizarras: HashMap::new(),
             palabras: pixpin_pin::magia::por_defecto(),
@@ -722,6 +732,7 @@ impl Pines {
 
         let id = self.siguiente_en_vivo;
         self.siguiente_en_vivo += 1;
+        self.tope_en_vivo = tope;
         let cerrados = Rc::clone(&self.cerrados);
         let pedidos = Rc::clone(&self.pedidos);
         let hwnd_app = self.hwnd_app;
@@ -1114,11 +1125,18 @@ impl Pines {
     /// del cursor, encogido al 80 % del area de trabajo si no cabe.
     fn region_centrada(&self, contenido: &Contenido, monitor: &Monitor) -> Rect {
         let motor = Rc::clone(&self.motor);
-        let (mut w, mut h) = tamano_natural(
+        let natural = tamano_natural(
             contenido,
             monitor.escala_por_cien,
             &|t, tam, max, tramos| motor.medir_parrafo(t, tam, max, tramos),
         );
+        self.region_centrada_de(natural, monitor)
+    }
+
+    /// Como `region_centrada`, con el tamano natural ya sabido (una foto que
+    /// nace con su vista previa mide lo que medira la buena).
+    fn region_centrada_de(&self, natural: (u32, u32), monitor: &Monitor) -> Rect {
+        let (mut w, mut h) = natural;
 
         let tope_w = (monitor.area_trabajo.ancho as f32 * 0.8) as u32;
         let tope_h = (monitor.area_trabajo.alto as f32 * 0.8) as u32;
@@ -1202,7 +1220,29 @@ impl Pines {
         let mut restaurados = 0;
         for p in pendientes {
             let (id, guardado) = (p.id, p.guardado);
+            // Una foto abierta vuelve como se abrio: leida a la medida del
+            // pin, no entera (`pines::foto`).
+            let mut nativa_de_la_foto = None;
             let contenido = match p.tipo {
+                TipoEntrada::Imagen if p.origen == foto::ORIGEN_FOTO => {
+                    let caja = if guardado.giro % 2 == 1 {
+                        (guardado.alto, guardado.ancho)
+                    } else {
+                        (guardado.ancho, guardado.alto)
+                    };
+                    match pixpin_codec::vista::cargar_para_ver(&p.objeto, caja) {
+                        Ok(v) => {
+                            if v.reducida() {
+                                nativa_de_la_foto = Some((v.ancho_completo, v.alto_completo));
+                            }
+                            Contenido::Imagen(v.imagen)
+                        }
+                        Err(e) => {
+                            tracing::warn!(?e, id, "foto sin objeto legible; queda en el almacen");
+                            continue;
+                        }
+                    }
+                }
                 TipoEntrada::Imagen => match cargar(&p.objeto) {
                     Ok(i) => {
                         // Una pizarra vuelve con su fondo en el menu.
@@ -1259,6 +1299,9 @@ impl Pines {
             match self.crear_ventana(id, contenido, rect, escala) {
                 Ok(()) => {
                     restaurados += 1;
+                    if let Some(nativa) = nativa_de_la_foto {
+                        self.dar_resolucion_completa(id, nativa);
+                    }
                     // El zoom del texto de una nota vuelve con ella.
                     if guardado.zoom_por_cien != 100 {
                         if let Some(pin) = self.vivos.get(&id) {
@@ -1275,6 +1318,8 @@ impl Pines {
     /// Saca de la lista los pines que se cerraron desde su propio WndProc.
     /// Llamar desde el bucle principal; barato (dos punteros si esta vacia).
     pub fn purgar(&mut self) {
+        // Las fotos grandes que acabaron de leerse en otro hilo.
+        self.atender_fotos_leidas();
         let cerrados: Vec<u64> = self.cerrados.borrow_mut().drain(..).collect();
         // El panel «Pines abiertos» se repinta si algo cambio la lista: un
         // pin cerrado o un pedido que no sea de la tinta.
@@ -2156,10 +2201,16 @@ impl Pines {
                 .context("la entrada ya no esta en el almacen")?;
             (e.tipo, a.ruta_objeto(e))
         };
+        // Una foto abierta se guarda tal cual vino (un JPEG sigue siendo
+        // JPEG): el nombre sugerido lleva la extension de su copia.
         let sugerido = match tipo {
-            TipoEntrada::Nota => "nota.txt",
-            _ => "captura.png",
+            TipoEntrada::Nota => "nota.txt".to_string(),
+            _ => format!(
+                "captura.{}",
+                objeto.extension().and_then(|e| e.to_str()).unwrap_or("png")
+            ),
         };
+        let sugerido = sugerido.as_str();
         let hwnd = self
             .vivos
             .get(&id)

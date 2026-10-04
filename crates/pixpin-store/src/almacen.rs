@@ -219,6 +219,19 @@ impl Almacen {
         origen: &str,
         pin: Option<PinGuardado>,
     ) -> Result<u64, ErrorAlmacen> {
+        self.guardar_objeto_con(extension, tipo, origen, pin, |ruta| fs::write(ruta, bytes))
+    }
+
+    /// Como `guardar_objeto`, con lo que escribe el fichero aparte (bytes en
+    /// memoria o una copia de otro fichero).
+    fn guardar_objeto_con(
+        &mut self,
+        extension: &str,
+        tipo: TipoEntrada,
+        origen: &str,
+        pin: Option<PinGuardado>,
+        escribir: impl FnOnce(&Path) -> std::io::Result<()>,
+    ) -> Result<u64, ErrorAlmacen> {
         let id = self.indice.siguiente_id.max(1);
         self.indice.siguiente_id = id + 1;
 
@@ -228,7 +241,7 @@ impl Almacen {
         if let Some(padre) = ruta.parent() {
             fs::create_dir_all(padre).map_err(|e| ErrorAlmacen::Io(e, padre.to_path_buf()))?;
         }
-        fs::write(&ruta, bytes).map_err(|e| ErrorAlmacen::Io(e, ruta.clone()))?;
+        escribir(&ruta).map_err(|e| ErrorAlmacen::Io(e, ruta.clone()))?;
 
         self.indice.entradas.push(Entrada {
             id,
@@ -251,6 +264,22 @@ impl Almacen {
         pin: Option<PinGuardado>,
     ) -> Result<u64, ErrorAlmacen> {
         self.guardar_objeto(png, "png", TipoEntrada::Imagen, origen, pin)
+    }
+
+    /// Una imagen que ya es un fichero (una foto abierta con PixPin): se
+    /// copia TAL CUAL, con su extension. Recodificarla a PNG costaba mas que
+    /// todo lo demas de abrirla (una foto de 12 MP son cientos de ms y un
+    /// PNG cuatro veces mayor que el JPEG), y perdia su EXIF.
+    pub fn guardar_imagen_de_fichero(
+        &mut self,
+        fichero: &Path,
+        origen: &str,
+        pin: Option<PinGuardado>,
+    ) -> Result<u64, ErrorAlmacen> {
+        let extension = extension_de_objeto(fichero);
+        self.guardar_objeto_con(&extension, TipoEntrada::Imagen, origen, pin, |ruta| {
+            fs::copy(fichero, ruta).map(|_| ())
+        })
     }
 
     /// Una nota es un .txt UTF-8: se lee con el Bloc de notas (spec 5.1).
@@ -399,6 +428,19 @@ fn anio_mes_utc() -> (i64, u32) {
     (anio, mes)
 }
 
+/// La extension con que se guarda la copia de una imagen: la suya, en
+/// minusculas, si es corta y solo de letras y numeros; si no (una foto del
+/// movil sin extension, un nombre raro), `img`. Quien la lee mira DENTRO
+/// del fichero, no el nombre; la extension es para quien abra la carpeta.
+pub fn extension_de_objeto(fichero: &Path) -> String {
+    fichero
+        .extension()
+        .and_then(|e| e.to_str())
+        .filter(|e| !e.is_empty() && e.len() <= 5 && e.chars().all(|c| c.is_ascii_alphanumeric()))
+        .map(str::to_ascii_lowercase)
+        .unwrap_or_else(|| "img".to_string())
+}
+
 fn ahora_iso() -> String {
     let segundos = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -445,6 +487,44 @@ mod pruebas {
     /// Un PNG minimo valido no hace falta: el almacen guarda BYTES y no
     /// valida el formato (eso es del codec). Cuatro bytes bastan.
     const BYTES: &[u8] = &[0x89, b'P', b'N', b'G'];
+
+    #[test]
+    fn una_foto_abierta_se_copia_tal_cual_con_su_extension() {
+        let dir = raiz("foto-copiada");
+        let foto = dir.join("IMG_0001.JPG");
+        fs::write(&foto, b"\xFF\xD8 jpeg de mentira").unwrap();
+        let mut a = Almacen::abrir(&dir.join("almacen")).unwrap();
+        let id = a
+            .guardar_imagen_de_fichero(&foto, "abierta", Some(pin()))
+            .unwrap();
+        let e = a.entradas().iter().find(|e| e.id == id).unwrap();
+        assert_eq!(e.tipo, TipoEntrada::Imagen);
+        assert!(e.objeto.ends_with(".jpg"), "{}", e.objeto);
+        assert_eq!(
+            fs::read(a.ruta_objeto(e)).unwrap(),
+            b"\xFF\xD8 jpeg de mentira"
+        );
+        assert!(foto.exists(), "el original no se toca");
+    }
+
+    #[test]
+    fn caso_negativo_una_extension_rara_o_ausente_se_guarda_como_img() {
+        assert_eq!(extension_de_objeto(Path::new("C:/x/foto")), "img");
+        assert_eq!(extension_de_objeto(Path::new("C:/x/foto.a b")), "img");
+        assert_eq!(
+            extension_de_objeto(Path::new("C:/x/foto.demasiadolarga")),
+            "img"
+        );
+        assert_eq!(extension_de_objeto(Path::new("C:/x/foto.HEIC")), "heic");
+        // Un fichero que no existe no deja entrada a medias.
+        let dir = raiz("foto-que-no-esta");
+        let mut a = Almacen::abrir(&dir).unwrap();
+        assert!(
+            a.guardar_imagen_de_fichero(&dir.join("no.jpg"), "x", None)
+                .is_err()
+        );
+        assert!(a.entradas().is_empty());
+    }
 
     fn pin() -> PinGuardado {
         PinGuardado {

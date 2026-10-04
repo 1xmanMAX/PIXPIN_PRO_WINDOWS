@@ -151,7 +151,9 @@ pub(crate) fn lanzar(pedido: Pedido, rotulos: Rotulos) {
         .name("caja-de-soltar".into())
         .spawn(move || {
             let _com = pixpin_shell::ComDelHilo::iniciar();
-            if let Err(e) = Recursos::nuevos().and_then(|r| flotar(&r, &pedido, &rotulos)) {
+            if let Err(e) = crate::dispositivo_perdido::con_recursos("caja de soltar", |r| {
+                flotar(r, &pedido, &rotulos)
+            }) {
                 tracing::warn!(?e, "no se pudo abrir la caja de soltar");
             }
             con_abiertas(|v| soltar_reserva(v, &pedido.proyecto));
