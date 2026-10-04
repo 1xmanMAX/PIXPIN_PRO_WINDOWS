@@ -138,6 +138,11 @@ pub fn listar(raiz: &Path) -> Vec<Entrada> {
             let Some(leccion) = leer_archivo(&archivo) else {
                 continue;
             };
+            // Su mensaje dos veces (dos guardados a la vez en el movil,
+            // v0.103.1): la leccion sale una sola vez.
+            if salida.iter().any(|e: &Entrada| e.leccion.id == leccion.id) {
+                continue;
+            }
             salida.push(Entrada {
                 leccion,
                 mensaje: m,

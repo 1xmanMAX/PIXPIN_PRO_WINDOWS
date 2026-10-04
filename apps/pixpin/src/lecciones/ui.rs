@@ -28,7 +28,6 @@ pub const VK_V: u32 = 0x56;
 pub const PUESTO: Color = hex(0xffca28);
 pub const PUESTO_FONDO: Color = hex(0x3d3520);
 pub const FICHA: Color = hex(0x2c2c34);
-pub const NARANJA: Color = hex(0xff8a65);
 
 /// `LeccionesActivity.colorDe`: las cuatro areas de inicio con su color fijo;
 /// las demas, sacado de su nombre.
@@ -414,5 +413,241 @@ mod pruebas {
         assert_eq!(color_de("Trabajo"), hex(0x42a5f5));
         assert_eq!(color_de("Mi área"), color_de("Mi área"));
         assert_ne!(color_de("Mi área"), color_de("Otra"));
+    }
+}
+
+// ------------------------------------------------------------------ v2
+
+/// Los colores del rediseno v2 (maqueta `Lecciones2.dc.html`): el oscuro de
+/// siempre de las lecciones, con el azul de la accion principal y el rojo
+/// de borrar como en el resto de la app.
+pub mod v2 {
+    use crate::caja_dibujo::hex;
+    use pixpin_render::Color;
+
+    pub const FONDO: Color = hex(0x1c1c1e);
+    pub const COLUMNA: Color = hex(0x232326);
+    pub const CAJA: Color = hex(0x2c2c2e);
+    pub const ENCIMA: Color = hex(0x343437);
+    pub const LINEA: Color = hex(0x2e2e31);
+    pub const TEXTO: Color = hex(0xf5f5f7);
+    pub const CUERPO: Color = hex(0xededf0);
+    pub const SUAVE: Color = hex(0xc7c7cc);
+    pub const APAGADO: Color = hex(0x98989d);
+    /// La accion principal (Guardar, Siguiente).
+    pub const AZUL: Color = hex(0x0060df);
+    /// Lo elegido (la fila, el foco).
+    pub const ELEGIDO: Color = hex(0x0a84ff);
+    pub const CIAN: Color = hex(0x64d2ff);
+    pub const NARANJA: Color = hex(0xff9f0a);
+    pub const VERDE: Color = hex(0x30d158);
+    pub const ROJO: Color = hex(0xff453a);
+    pub const ROJO_TEXTO: Color = hex(0xff6961);
+    pub const AMARILLO: Color = hex(0xffd60a);
+    pub const OSCURO: Color = hex(0x1c1c1e);
+    pub const BLANCO: Color = hex(0xffffff);
+}
+
+/// El color de cada gravedad: leve verde, importante naranja, grave rojo.
+pub fn color_de_gravedad(g: i64) -> Color {
+    match g {
+        i64::MIN..=1 => v2::VERDE,
+        2 => v2::NARANJA,
+        _ => v2::ROJO,
+    }
+}
+
+fn letra_negrita() -> pixpin_render::letras::Letra<'static> {
+    pixpin_render::letras::Letra {
+        negrita: true,
+        ..pixpin_render::letras::Letra::de(pixpin_render::letras::LETRA_DEL_SISTEMA)
+    }
+}
+
+/// Un texto en negrita, partido en renglones a `ancho`.
+#[allow(clippy::too_many_arguments)] // pintor, texto, sitio, tamano, ancho y color
+pub fn negrita(p: &Pintor, texto: &str, x: f32, y: f32, tam: f32, ancho: f32, color: Color) {
+    p.texto_con_letra(texto, x, y, tam, ancho, &letra_negrita(), color);
+}
+
+/// Lo que mide en negrita, partido a `ancho`.
+pub fn medir_negrita(p: &Pintor, texto: &str, tam: f32, ancho: f32) -> (f32, f32) {
+    p.medir_con_letra(texto, tam, ancho, &letra_negrita())
+}
+
+/// **La chapita de un atajo** («Ctrl V», «Esc», «1»): lo que mide.
+pub fn ancho_de_chapa(p: &Pintor, tecla: &str, e: f32) -> f32 {
+    (p.medir_texto(tecla, 11.5 * e).0 + 12.0 * e).max(20.0 * e)
+}
+
+/// Pinta la chapita de un atajo con su borde fino, centrada en `cy`, desde
+/// `x`. Devuelve su ancho. `tinta` es el color de la letra (sobre un boton
+/// azul va en blanco).
+pub fn chapa(p: &Pintor, tecla: &str, x: f32, cy: f32, tinta: Color, fondo: Color, e: f32) -> f32 {
+    let tam = 11.5 * e;
+    let w = ancho_de_chapa(p, tecla, e);
+    let h = 20.0 * e;
+    let caja = RectF { x, y: cy - h / 2.0, ancho: w, alto: h };
+    p.rellenar_redondeado(caja, 5.0 * e, con_alfa(v2::BLANCO, 0.12));
+    p.rellenar_redondeado(encoger(caja, 1.0 * e), 4.0 * e, fondo);
+    let (tw, th) = p.medir_texto(tecla, tam);
+    p.texto(tecla, x + (w - tw) / 2.0, cy - th / 2.0, tam, tinta);
+    w
+}
+
+/// Lo que mide un boton v2 con icono, rotulo y chapita.
+pub fn ancho_de_boton(p: &Pintor, icono: bool, rotulo: &str, tecla: Option<&str>, e: f32) -> f32 {
+    let mut w = 28.0 * e + p.medir_texto(rotulo, 14.0 * e).0;
+    if icono {
+        w += 26.0 * e;
+    }
+    if let Some(t) = tecla {
+        w += 8.0 * e + ancho_de_chapa(p, t, e);
+    }
+    w
+}
+
+/// **Un boton del v2**: con icono, rotulo y la chapita de su atajo.
+/// `fondo` None = transparente (el de «Borrar»). Con el raton encima se
+/// aclara. Se apunta en `botones`.
+#[allow(clippy::too_many_arguments)] // pintor, botones, caja, que, icono, rotulo, tecla, colores y escala
+pub fn boton_v2<A: Copy>(
+    p: &Pintor,
+    botones: &mut Botones<A>,
+    caja: RectF,
+    que: A,
+    icono: Option<&pixpin_render::icono::Icono>,
+    rotulo: &str,
+    tecla: Option<&str>,
+    fondo: Option<Color>,
+    tinta: Color,
+    e: f32,
+) {
+    let encima = crate::ventanita::dentro(caja, botones.raton);
+    match (fondo, encima) {
+        (Some(c), true) => p.rellenar_redondeado(caja, 10.0 * e, aclarar(c, 0.07)),
+        (Some(c), false) => p.rellenar_redondeado(caja, 10.0 * e, c),
+        (None, true) => p.rellenar_redondeado(caja, 10.0 * e, con_alfa(v2::BLANCO, 0.08)),
+        (None, false) => {}
+    }
+    let ancho = ancho_de_boton(p, icono.is_some(), rotulo, tecla, e);
+    let mut x = caja.x + ((caja.ancho - ancho) / 2.0).max(0.0) + 14.0 * e;
+    let cy = caja.y + caja.alto / 2.0;
+    if let Some(i) = icono {
+        p.icono(i, RectF { x, y: cy - 9.0 * e, ancho: 18.0 * e, alto: 18.0 * e }, tinta);
+        x += 26.0 * e;
+    }
+    let (tw, th) = p.medir_texto(rotulo, 14.0 * e);
+    p.texto(rotulo, x, cy - th / 2.0, 14.0 * e, tinta);
+    x += tw + 8.0 * e;
+    if let Some(t) = tecla {
+        let azul = fondo.is_some_and(|c| c == v2::AZUL);
+        let fondo_chapa = if azul { aclarar(v2::AZUL, 0.12) } else { hex(0x2a2a2d) };
+        let tinta_chapa = if azul { v2::BLANCO } else { v2::SUAVE };
+        chapa(p, t, x, cy, tinta_chapa, fondo_chapa, e);
+    }
+    botones.zona(caja, que);
+}
+
+pub fn aclarar(c: Color, d: f32) -> Color {
+    Color {
+        r: (c.r + d).min(1.0),
+        g: (c.g + d).min(1.0),
+        b: (c.b + d).min(1.0),
+        a: c.a,
+    }
+}
+
+/// Dias de un instante en ms (desde 1970, en UTC).
+fn dias(ms: i64) -> i64 {
+    ms.div_euclid(pixpin_lecciones::leccion::DIA)
+}
+
+/// `(anio, mes 1..=12, dia)` de un instante en ms (UTC; Howard Hinnant,
+/// `civil_from_days`).
+pub fn fecha_de(ms: i64) -> (i64, u32, u32) {
+    let z = dias(ms) + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z - era * 146_097;
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let y = yoe + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = (doy - (153 * mp + 2) / 5 + 1) as u32;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 } as u32;
+    (if m <= 2 { y + 1 } else { y }, m, d)
+}
+
+/// Si dos instantes caen en el mismo mes (para «Este mes» / «Antes»).
+pub fn mismo_mes(a: i64, b: i64) -> bool {
+    let (ya, ma, _) = fecha_de(a);
+    let (yb, mb, _) = fecha_de(b);
+    (ya, ma) == (yb, mb)
+}
+
+/// Cuanto hace, en la unidad que se lee.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Hace {
+    Hoy,
+    Ayer,
+    Dias(i64),
+    Semanas(i64),
+    Meses(i64),
+    Anios(i64),
+}
+
+pub fn hace(cuando: i64, ahora: i64) -> Hace {
+    let d = dias(ahora) - dias(cuando);
+    match d {
+        i64::MIN..=0 => Hace::Hoy,
+        1 => Hace::Ayer,
+        2..=13 => Hace::Dias(d),
+        14..=59 => Hace::Semanas(d / 7),
+        60..=729 => Hace::Meses(d / 30),
+        _ => Hace::Anios(d / 365),
+    }
+}
+
+#[cfg(test)]
+mod pruebas_v2 {
+    use super::*;
+    use pixpin_lecciones::leccion::DIA;
+
+    #[test]
+    fn las_fechas_se_cuentan_bien_y_hace_elige_la_unidad() {
+        // 4-oct-2026 = 20730 dias desde 1970.
+        let hoy = 20_730 * DIA + 5_000;
+        assert_eq!(fecha_de(hoy), (2026, 10, 4));
+        assert_eq!(fecha_de(0), (1970, 1, 1));
+        assert_eq!(fecha_de(20_729 * DIA - 1), (2026, 10, 2));
+        assert!(mismo_mes(hoy, 20_727 * DIA));
+        assert_eq!(hace(hoy - 3 * DIA, hoy), Hace::Dias(3));
+        assert_eq!(hace(hoy - 15 * DIA, hoy), Hace::Semanas(2));
+        assert_eq!(hace(hoy - 65 * DIA, hoy), Hace::Meses(2));
+        assert_eq!(hace(hoy - DIA, hoy), Hace::Ayer);
+        // Caso negativo: el mes de antes no es «este mes», y algo del futuro
+        // (un reloj adelantado del otro aparato) es «hoy».
+        assert!(!mismo_mes(hoy, 20_725 * DIA));
+        assert_eq!(hace(hoy + 9 * DIA, hoy), Hace::Hoy);
+    }
+
+    #[test]
+    fn cada_gravedad_tiene_su_color() {
+        assert_eq!(color_de_gravedad(1), v2::VERDE);
+        assert_eq!(color_de_gravedad(2), v2::NARANJA);
+        assert_eq!(color_de_gravedad(3), v2::ROJO);
+        // Caso negativo: un valor raro del otro aparato no rompe nada.
+        assert_eq!(color_de_gravedad(0), v2::VERDE);
+        assert_eq!(color_de_gravedad(7), v2::ROJO);
+    }
+}
+
+/// `a` con un `t` de `b` encima (0 = todo `a`).
+pub fn mezclar(a: Color, b: Color, t: f32) -> Color {
+    Color {
+        r: a.r + (b.r - a.r) * t,
+        g: a.g + (b.g - a.g) * t,
+        b: a.b + (b.b - a.b) * t,
+        a: a.a,
     }
 }

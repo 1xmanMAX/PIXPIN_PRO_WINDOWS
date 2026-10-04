@@ -290,3 +290,90 @@ fn lo_que_llega_y_ya_lo_trae_todo_no_se_toca() {
     let otra = l("otra", "x");
     assert_eq!(fusion::al_llegar(&otra.escribir(), &llega.escribir()), None);
 }
+
+// ---------------------------------------------------------- v2 (lo del PC)
+
+#[test]
+fn el_repaso_de_tres_botones_dice_cuando_vuelve() {
+    use crate::leccion::Nota;
+    // Caja 3 (14 dias): recordar la lleva a 30, a medias a 7, olvidar a 1.
+    let x = Leccion { caja: 3, ..l("a", "Sellar grietas") };
+    assert_eq!(Repaso::dias_hasta(&x, Nota::Recordaba), 30);
+    assert_eq!(Repaso::dias_hasta(&x, Nota::AMedias), 7);
+    assert_eq!(Repaso::dias_hasta(&x, Nota::Olvide), 1);
+    let r = Repaso::calificar(&x, Nota::AMedias, 10 * DIA);
+    assert_eq!((r.caja, r.repasar), (2, 17 * DIA));
+    // Solo cambian caja y repasar: el JSON es el mismo que escribe el movil.
+    let antes = x.a_valor();
+    let despues = r.a_valor();
+    let distintos: Vec<&String> = antes
+        .as_object()
+        .unwrap()
+        .keys()
+        .filter(|k| antes[k.as_str()] != despues[k.as_str()])
+        .collect();
+    assert_eq!(distintos, vec!["caja", "repasar"]);
+    // Caso negativo: a medias en la primera caja no baja de 0 ni de un dia.
+    let nueva = l("b", "x");
+    assert_eq!(Repaso::a_medias(&nueva, 0).caja, 0);
+    assert_eq!(Repaso::dias_hasta(&nueva, Nota::AMedias), 1);
+}
+
+#[test]
+fn la_gravedad_se_propone_por_lo_que_cuenta() {
+    use crate::etiquetador::proponer_gravedad;
+    assert_eq!(proponer_gravedad("La escalera del sótano resbala con el polvo de yeso", None), 2);
+    assert_eq!(proponer_gravedad("Casi hay un accidente con la amoladora", None), 3);
+    assert_eq!(proponer_gravedad("Algo cualquiera", Some(TIPO_ERROR)), 2);
+    // Caso negativo: una frase neutra se queda en leve.
+    assert_eq!(proponer_gravedad("Revisar la escala antes de imprimir", None), 1);
+    // Ni «malo» por «mal» ni «gravedad» por «grave»: palabras enteras.
+    assert_eq!(proponer_gravedad("La gravedad del asunto es baja", None), 1);
+}
+
+#[test]
+fn la_barra_rapida_rellena_area_gravedad_y_proyecto() {
+    use crate::rapida;
+    let proyectos = vec![
+        ("f1".to_string(), "Obra Miraflores".to_string()),
+        ("f2".to_string(), "Tesis".to_string()),
+    ];
+    let previa = con("p", "Sellar grietas del muro antes de pintar", &[], "Construcción", 0);
+    let indices = vec![Indice::nuevo(previa)];
+    let de_quien = |id: &str| (id == "p").then(|| "f1".to_string());
+    let r = rapida::rellenar(
+        "La escalera del sótano en Miraflores resbala con el polvo de yeso; barrer antes de bajar material",
+        &etiquetador::Aprendido::default(),
+        &indices,
+        &proyectos,
+        &de_quien,
+    );
+    assert_eq!(r.gravedad, 2);
+    assert_eq!(r.proyecto.as_deref(), Some("f1"), "el nombre sale en la frase");
+    // Sin nombre, el de la que mas se parece.
+    let r2 = rapida::rellenar("Pintar el muro con grietas sin sellar", &Default::default(), &indices, &proyectos, &de_quien);
+    assert_eq!(r2.proyecto.as_deref(), Some("f1"));
+    // Caso negativo: nada parecido ni nombrado, sin proyecto.
+    let r3 = rapida::rellenar("Dormir antes del examen", &Default::default(), &indices, &proyectos, &de_quien);
+    assert_eq!(r3.proyecto, None);
+    assert_eq!(rapida::rellenar("  ", &Default::default(), &indices, &proyectos, &de_quien).gravedad, 1);
+}
+
+#[test]
+fn la_barra_rapida_reparte_la_frase_en_sus_campos() {
+    use crate::rapida;
+    let frase = "pasó que pintamos sin sellar porque había prisa, la próxima vez compro el sellador con la pintura #obra";
+    let p = etiquetador::proponer(frase, &Default::default(), &[]);
+    let x = rapida::leccion(frase, "id1", 500, &p, Some("Trabajo"), 2);
+    assert_eq!(x.que_paso, "Pintamos sin sellar");
+    assert_eq!(x.por_que, "Había prisa");
+    assert_eq!(x.titulo, "Compro el sellador con la pintura");
+    assert_eq!(x.proxima, "", "si hace de titulo no se repite");
+    assert_eq!(x.area, "Trabajo", "lo cambiado a mano gana a lo propuesto");
+    assert_eq!(x.gravedad, 2);
+    assert_eq!(x.etiquetas, vec!["obra"]);
+    assert!(!x.etiquetas_auto.contains(&"obra".to_string()));
+    assert_eq!((x.id.as_str(), x.creada), ("id1", 500));
+    // Caso negativo: una gravedad fuera de 1..=3 no se guarda tal cual.
+    assert_eq!(rapida::leccion("x y", "i", 1, &p, None, 9).gravedad, 3);
+}

@@ -403,3 +403,31 @@ pub fn proponer(texto_entero: &str, aprendido: &Aprendido, quitadas: &[String]) 
 pub fn conceptos_de(raiz: &str) -> Vec<&'static Concepto> {
     conceptos().iter().filter(|c| c.raices.iter().any(|r| r == raiz)).collect()
 }
+
+/// Palabras que delatan una leccion grave o importante. **Lo anade el PC**
+/// (v2, 4-oct-2026): el movil no propone la gravedad y la deja en «Leve»;
+/// la barra rapida de la lista la rellena sola y se cambia con un clic.
+const DE_GRAVE: &[&str] = &[
+    "grave", "peligro", "peligroso", "accidente", "herido", "herida", "lesión", "me lastimé", "incendio",
+    "inundación", "perdí todo", "lo perdí todo", "se perdió todo", "despido", "despidieron", "demanda",
+    "denuncia", "multa", "hospital", "urgencias", "electrocutado", "electrocutó","se derrumbó", "colapsó",
+];
+const DE_IMPORTANTE: &[&str] = &[
+    "importante", "rehacer", "tuve que rehacer", "repintar", "retraso", "se retrasó", "atraso", "costó",
+    "caro", "dinero", "rechazaron", "reclamo", "resbala", "resbaló", "resbaladizo", "se cayó", "caída",
+    "otra vez", "de nuevo", "volvió a pasar", "perdí", "se rompió", "rompí", "nota baja", "desaprobé",
+];
+
+/// **La gravedad que se propone** para un texto: 3 si habla de algo grave
+/// (un accidente, perderlo todo, una multa), 2 si de algo que costo
+/// (rehacer, un retraso, un resbalon) o es un error, 1 si no.
+pub fn proponer_gravedad(texto_entero: &str, tipo: Option<&str>) -> i64 {
+    let normal = texto::normal(texto_entero);
+    if dice(&normal, DE_GRAVE) {
+        3
+    } else if dice(&normal, DE_IMPORTANTE) || tipo == Some(TIPO_ERROR) {
+        2
+    } else {
+        1
+    }
+}

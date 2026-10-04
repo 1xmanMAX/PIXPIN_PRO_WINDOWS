@@ -8,9 +8,10 @@
 //! - [`almacen`]: donde viven (un archivo `.leccion` y un mensaje del chat
 //!   que lo senala, como en el movil) y como se guardan y se borran con las
 //!   funciones del chat.
-//! - [`ficha`]: «Nueva leccion» / editar (`LeccionActivity`).
-//! - [`lista`]: «Lecciones», con buscador, repaso y lista de comprobacion
-//!   (`LeccionesActivity`).
+//! - [`ficha`]: «Nueva leccion» y «Mas campos» (`LeccionActivity`).
+//! - [`lista`]: «Lecciones» (rediseno v2): la barra «¿Que aprendiste?», la
+//!   lista, la ficha que se edita en su sitio, el repaso y la lista de
+//!   comprobacion (`LeccionesActivity`).
 //! - [`dictar`]: el microfono de las dos, con Whisper.
 //!
 //! Por donde se entra (como en el movil: «muy facil»): el menu de un mensaje
@@ -65,13 +66,18 @@ pub fn nueva_con_fotos(
     });
 }
 
-/// Abre una leccion que ya existe, por su id.
+/// Abre una leccion que ya existe, por su id: la lista con ella elegida
+/// (v2: la ficha es la columna del centro y se edita en su sitio). Los
+/// campos de mas (tipo, causas, palabras para encontrarla) siguen en «Mas
+/// campos», que abre la ficha de siempre.
 pub fn editar(ubicacion: Ubicacion, idioma: Idioma, aparato: &str, id: &str) {
-    ficha::abrir(ficha::Pedido {
+    lista::abrir(lista::Pedido {
         ubicacion,
         idioma,
         aparato: aparato.to_string(),
-        que: ficha::Que::Editar { id: id.to_string() },
+        proyecto: None,
+        consulta: None,
+        seleccion: Some(id.to_string()),
     });
 }
 
@@ -83,6 +89,7 @@ pub fn lista(ubicacion: Ubicacion, idioma: Idioma, aparato: &str, proyecto: Opti
         aparato: aparato.to_string(),
         proyecto,
         consulta,
+        seleccion: None,
     });
 }
 

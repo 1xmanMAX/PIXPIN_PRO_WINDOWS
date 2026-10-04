@@ -1713,3 +1713,127 @@ buscar-todo-conservar = Keep
 buscar-todo-borrada = Screenshot deleted
 buscar-todo-deshacer = Undo
 buscar-todo-copiado = Copied
+## v2-lecciones
+# The lessons window of the v2 redesign (Lecciones2.dc.html and Lecciones2-repaso.dc.html).
+lec2-que-aprendiste = What did you learn? Type or dictate it and press Enter
+lec2-guardar = Save
+lec2-rellena-solo = Filled in for you, change it with a click:
+lec2-rellena-solo-vacio = Area, project and severity fill in by themselves as you type.
+lec2-area-de = Area: { $area }
+lec2-proyecto-de = Project: { $proyecto }
+lec2-ya-la-tienes = You already have it: “{ $titulo }” · It happened again
+lec2-pega-capturas = pastes screenshots
+lec2-guardada = Lesson saved in { $donde }
+lec2-apuntado-otra-vez = Noted: it happened again
+lec2-no-se-pudo = That didn’t work. Try again.
+lec2-solo-imagenes = Only images can be added to a lesson.
+lec2-sin-area = No area
+lec2-sin-proyecto = No project (general chat)
+lec2-buscar = Search: word, situation, tag…
+lec2-todas = All
+lec2-repetidas = Repeated
+lec2-graves = Serious
+lec2-para-repasar = To review today · { $n }
+lec2-que-harias-si = What would you do if it happened again?
+lec2-repasar = Review
+lec2-este-mes = This month
+lec2-antes = Earlier
+lec2-lista-vacia = No lessons yet. Write what you learned above.
+lec2-nada-con-filtro = Nothing with this filter.
+lec2-nada-con = Nothing with “{ $q }”. Try another word or note it above.
+lec2-moverse = move
+lec2-leve = Minor
+lec2-importante = Important
+lec2-grave = Serious
+lec2-hoy = today
+lec2-ayer = yesterday
+lec2-manana = tomorrow
+lec2-hace-dias = { $n } days ago
+lec2-hace-semanas = { $n ->
+    [one] 1 week ago
+   *[other] { $n } weeks ago
+  }
+lec2-hace-meses = { $n ->
+    [one] 1 month ago
+   *[other] { $n } months ago
+  }
+lec2-hace-anios = { $n ->
+    [one] 1 year ago
+   *[other] { $n } years ago
+  }
+lec2-en-dias = in { $n } days
+lec2-meses = Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec
+lec2-clic-para-editar = Click any text to edit it · saves by itself
+lec2-mas-campos = More fields…
+lec2-que-paso = What happened
+lec2-por-que = Why
+lec2-proxima = Next time
+lec2-que-paso-vacio = Add what happened…
+lec2-por-que-vacio = Add why it happened…
+lec2-proxima-vacio = Add what you’ll do differently next time…
+lec2-editar = Edit
+lec2-escribe-aqui = Type here
+lec2-ayuda-linea = Enter saves · Esc finishes
+lec2-ayuda-bloque = Enter saves · Shift+Enter new line · Tab to the next one
+lec2-nota-de-voz = Voice note
+lec2-anadir-foto = Add a photo
+lec2-ver-en-chat = See in chat
+lec2-pinear = Pin
+lec2-pineado = Pinned on screen
+lec2-borrar = Delete
+lec2-borrada = Lesson deleted
+lec2-deshacer = Undo
+lec2-veces = { $n ->
+    [one] time it happened
+   *[other] times it happened
+  }
+lec2-la-ultima = Last time: { $fecha }
+lec2-me-volvio = It happened again
+lec2-gravedad = Severity
+lec2-area = Area
+lec2-proyecto = Project
+lec2-etiquetas = Tags
+lec2-anadir = + Add
+lec2-nueva-etiqueta = tag and Enter
+lec2-relacionadas = Related
+lec2-proximo-repaso = Next review: { $cuando }
+lec2-vacia-titulo = Note what you learn so you don’t repeat mistakes
+lec2-vacia-texto = Write it above in one go: “what happened…, because…, next time…”. PixPin splits it, sets area, project and severity, and tells you if it happened before.
+lec2-comprobacion = Before you start, check: { $hechas } of { $total }
+lec2-comprobacion-vacia = Nothing under “next time…” yet. It’s the third block of each lesson.
+lec2-nada-que-repasar = Nothing to review today.
+lec2-repaso-titulo = Today’s review
+lec2-repaso-de = { $va } of { $total }
+lec2-salir = Exit
+lec2-paso-pensar = Think what you’d do
+lec2-paso-mirar = Look at what you noted
+lec2-paso-recordar = Did you remember?
+lec2-situacion = The situation
+lec2-repaso-cuando = When { $pista }…
+lec2-repaso-recuerda = Remember this lesson
+lec2-repaso-veces = it happened { $n } times
+lec2-que-harias = What would you do?
+lec2-escribe-o-dicta = Type or dictate
+lec2-dictar = Dictate
+lec2-mostrar = Show the answer
+lec2-mostrada = Answer shown
+lec2-lo-que-apuntaste = What you noted
+lec2-oculta = Think before looking: recalling sticks much better than rereading.
+lec2-por-que-paso = Why it happened: { $causa }
+lec2-abrir-completa = Open the full lesson
+lec2-lo-recordabas = Did you remember? Choose with the mouse or with
+lec2-nota-recordaba = I remembered
+lec2-nota-a-medias = Partly
+lec2-nota-olvide = I forgot
+lec2-vuelve-manana = Back tomorrow
+lec2-vuelve-en = Back in { $dias } days
+lec2-saltar = Skip this one
+lec2-repaso-pie = Your answer is for comparing: it isn’t saved.
+lec2-siguiente = Next
+lec2-repaso-elige = Choose 1, 2 or 3: did you remember?
+lec2-repaso-hecho = Review done
+lec2-repaso-hechas = { $n ->
+    [one] You reviewed 1 lesson. Come back when it’s due.
+   *[other] You reviewed { $n } lessons. They come back when due.
+  }
+lec2-repaso-volver = Back to the list

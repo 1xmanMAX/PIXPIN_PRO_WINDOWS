@@ -1714,3 +1714,127 @@ buscar-todo-conservar = Conservar
 buscar-todo-borrada = Captura borrada
 buscar-todo-deshacer = Deshacer
 buscar-todo-copiado = Copiado
+## v2-lecciones
+# La ventana de lecciones del rediseno v2 (Lecciones2.dc.html y Lecciones2-repaso.dc.html).
+lec2-que-aprendiste = ¿Qué aprendiste? Escríbelo o díctalo y pulsa Enter
+lec2-guardar = Guardar
+lec2-rellena-solo = Rellenado solo, cámbialo con un clic:
+lec2-rellena-solo-vacio = El área, el proyecto y la gravedad se rellenan solos al escribir.
+lec2-area-de = Área: { $area }
+lec2-proyecto-de = Proyecto: { $proyecto }
+lec2-ya-la-tienes = Ya la tienes: «{ $titulo }» · Me volvió a pasar
+lec2-pega-capturas = pega capturas
+lec2-guardada = Lección guardada en { $donde }
+lec2-apuntado-otra-vez = Apuntado: te volvió a pasar
+lec2-no-se-pudo = No se pudo hacer. Inténtalo otra vez.
+lec2-solo-imagenes = Solo se añaden imágenes a una lección.
+lec2-sin-area = Sin área
+lec2-sin-proyecto = Sin proyecto (chat general)
+lec2-buscar = Buscar: palabra, situación, etiqueta…
+lec2-todas = Todas
+lec2-repetidas = Repetidas
+lec2-graves = Graves
+lec2-para-repasar = Para repasar hoy · { $n }
+lec2-que-harias-si = ¿Qué harías si te vuelve a pasar?
+lec2-repasar = Repasar
+lec2-este-mes = Este mes
+lec2-antes = Antes
+lec2-lista-vacia = Aún no hay lecciones. Escribe arriba lo que aprendiste.
+lec2-nada-con-filtro = Nada con este filtro.
+lec2-nada-con = Nada con «{ $q }». Prueba con otra palabra o apúntala arriba.
+lec2-moverse = moverse
+lec2-leve = Leve
+lec2-importante = Importante
+lec2-grave = Grave
+lec2-hoy = hoy
+lec2-ayer = ayer
+lec2-manana = mañana
+lec2-hace-dias = hace { $n } días
+lec2-hace-semanas = { $n ->
+    [one] hace 1 semana
+   *[other] hace { $n } semanas
+  }
+lec2-hace-meses = { $n ->
+    [one] hace 1 mes
+   *[other] hace { $n } meses
+  }
+lec2-hace-anios = { $n ->
+    [one] hace 1 año
+   *[other] hace { $n } años
+  }
+lec2-en-dias = en { $n } días
+lec2-meses = ene feb mar abr may jun jul ago sep oct nov dic
+lec2-clic-para-editar = Clic en cualquier texto para editarlo · se guarda solo
+lec2-mas-campos = Más campos…
+lec2-que-paso = Qué pasó
+lec2-por-que = Por qué
+lec2-proxima = La próxima vez
+lec2-que-paso-vacio = Añade qué pasó…
+lec2-por-que-vacio = Añade por qué pasó…
+lec2-proxima-vacio = Añade qué harás distinto la próxima vez…
+lec2-editar = Editar
+lec2-escribe-aqui = Escribe aquí
+lec2-ayuda-linea = Enter guarda · Esc termina
+lec2-ayuda-bloque = Enter guarda · Mayús+Enter parte el renglón · Tab al siguiente
+lec2-nota-de-voz = Nota de voz
+lec2-anadir-foto = Añadir una foto
+lec2-ver-en-chat = Ver en el chat
+lec2-pinear = Pinear
+lec2-pineado = Pineada en la pantalla
+lec2-borrar = Borrar
+lec2-borrada = Lección borrada
+lec2-deshacer = Deshacer
+lec2-veces = { $n ->
+    [one] vez me ha pasado
+   *[other] veces me ha pasado
+  }
+lec2-la-ultima = La última: { $fecha }
+lec2-me-volvio = Me volvió a pasar
+lec2-gravedad = Gravedad
+lec2-area = Área
+lec2-proyecto = Proyecto
+lec2-etiquetas = Etiquetas
+lec2-anadir = + Añadir
+lec2-nueva-etiqueta = etiqueta y Enter
+lec2-relacionadas = Relacionadas
+lec2-proximo-repaso = Próximo repaso: { $cuando }
+lec2-vacia-titulo = Apunta lo que aprendes para no repetir errores
+lec2-vacia-texto = Escríbelo arriba de corrido: «pasó que…, porque…, la próxima vez…». PixPin lo reparte, le pone área, proyecto y gravedad, y te avisa si ya te pasó antes.
+lec2-comprobacion = Antes de empezar, repasa: { $hechas } de { $total }
+lec2-comprobacion-vacia = Aún no hay nada de «la próxima vez…». Se rellena en el tercer bloque de cada lección.
+lec2-nada-que-repasar = Hoy no toca repasar ninguna.
+lec2-repaso-titulo = Repaso de hoy
+lec2-repaso-de = { $va } de { $total }
+lec2-salir = Salir
+lec2-paso-pensar = Piensa qué harías
+lec2-paso-mirar = Mira lo que apuntaste
+lec2-paso-recordar = ¿Lo recordabas?
+lec2-situacion = La situación
+lec2-repaso-cuando = Cuando { $pista }…
+lec2-repaso-recuerda = Recuerda esta lección
+lec2-repaso-veces = te ha pasado { $n } veces
+lec2-que-harias = ¿Qué harías?
+lec2-escribe-o-dicta = Escribe o dicta
+lec2-dictar = Dictar
+lec2-mostrar = Mostrar la respuesta
+lec2-mostrada = Respuesta a la vista
+lec2-lo-que-apuntaste = Lo que apuntaste
+lec2-oculta = Piénsalo antes de mirar: recordar fija mucho más que releer.
+lec2-por-que-paso = Por qué pasó: { $causa }
+lec2-abrir-completa = Abrir la lección completa
+lec2-lo-recordabas = ¿Lo recordabas? Elige con el ratón o con
+lec2-nota-recordaba = Lo recordaba
+lec2-nota-a-medias = A medias
+lec2-nota-olvide = Lo olvidé
+lec2-vuelve-manana = Vuelve mañana
+lec2-vuelve-en = Vuelve en { $dias } días
+lec2-saltar = Saltar esta
+lec2-repaso-pie = Tu respuesta es para comparar: no se guarda.
+lec2-siguiente = Siguiente
+lec2-repaso-elige = Elige 1, 2 o 3: ¿lo recordabas?
+lec2-repaso-hecho = Repaso terminado
+lec2-repaso-hechas = { $n ->
+    [one] Repasaste 1 lección. Vuelve cuando toque.
+   *[other] Repasaste { $n } lecciones. Vuelven cuando toque.
+  }
+lec2-repaso-volver = Volver a la lista
