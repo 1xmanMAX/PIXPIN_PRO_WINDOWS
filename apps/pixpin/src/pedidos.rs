@@ -138,6 +138,19 @@ pub enum Pedido {
         a_proyecto: Option<String>,
         a_codigo: String,
     },
+    /// Quitar la tarea `indice` (desde 0, en el orden del documento) de la
+    /// lista `codigo`, como su aspa en la ventana de tareas.
+    QuitarTarea {
+        proyecto: Option<String>,
+        codigo: String,
+        indice: usize,
+    },
+    /// Borrar la lista `codigo` entera: su mensaje sale del chat como al
+    /// borrarlo alli, con su marca para que el movil tambien lo quite.
+    BorrarLista {
+        proyecto: Option<String>,
+        codigo: String,
+    },
     /// Abrir una de las ventanas de la bandeja.
     Ventana {
         cual: Cual,
@@ -675,6 +688,27 @@ fn hacer(p: Pedido, cx: &Contexto) -> Result<Hecho, Fallo> {
             return Ok(aviso(
                 "pedido-tarea-movida",
                 &[("tarea", tarea), ("lista", lista)],
+            ));
+        }
+        Pedido::QuitarTarea {
+            proyecto,
+            codigo,
+            indice,
+        } => {
+            let f = ficha_de(raiz, proyecto.as_deref(), cx.aparato, ahora)?;
+            let tarea = quitar_tarea(raiz, &f.id, &codigo, indice)?;
+            crate::ventana_chat::refrescar();
+            let (visible, _) = mini::partir(&tarea.texto);
+            let (texto, _) = mini::imagenes_de(visible);
+            return Ok(aviso("pedido-tarea-quitada", &[("tarea", texto)]));
+        }
+        Pedido::BorrarLista { proyecto, codigo } => {
+            let f = ficha_de(raiz, proyecto.as_deref(), cx.aparato, ahora)?;
+            let m = borrar_lista(raiz, &f.id, &codigo)?;
+            crate::ventana_chat::refrescar();
+            return Ok(aviso(
+                "pedido-lista-borrada",
+                &[("lista", nombre_de_lista(&m)), ("proyecto", f.nombre)],
             ));
         }
         Pedido::VentanaPrincipal {} => {
@@ -1240,6 +1274,61 @@ pub(crate) fn marcar_tarea(
     })
 }
 
+/// Quita la tarea numero `indice` (desde 0, en el orden del documento) con
+/// `mini::quitar` (`Tareas.borrar` del movil) y reescribe la lista. Devuelve
+/// la tarea quitada, tal cual estaba (con su fecha), para decirla y para
+/// poder reponerla.
+pub(crate) fn quitar_tarea(
+    raiz: &Path,
+    proyecto: &str,
+    codigo: &str,
+    indice: usize,
+) -> Result<mini::Tarea, Fallo> {
+    let mut m = mensaje_de(raiz, proyecto, codigo)?;
+    if !es_lista(&m) {
+        return Err(Fallo::NoEsLista);
+    }
+    let Some(tarea) = mini::leer_tareas(&m.texto).into_iter().nth(indice) else {
+        return Err(Fallo::SinTarea(indice));
+    };
+    m.texto = mini::quitar(&m.texto, indice);
+    reescribir(raiz, proyecto, &m)?;
+    Ok(tarea)
+}
+
+/// Borra una lista entera: su mensaje sale del cuaderno **por el mismo
+/// camino que borrar en el chat** —quitar su linea y dejar su marca de
+/// borrado (`vista::anotar_borrados`)—, que es lo que hace que el movil la
+/// quite tambien en la siguiente vuelta en vez de devolverla. Las imagenes
+/// de sus tareas se quedan en `archivos/`, como al borrar la lista en el
+/// chat: no son mensajes y otra tarea movida puede usarlas.
+///
+/// Devuelve el mensaje como estaba. El Inbox tambien se puede borrar: se
+/// vuelve a crear solo con la siguiente tarea que se apunte.
+pub(crate) fn borrar_lista(
+    raiz: &Path,
+    proyecto: &str,
+    codigo: &str,
+) -> Result<cuaderno::Mensaje, Fallo> {
+    let m = mensaje_de(raiz, proyecto, codigo)?;
+    if !es_lista(&m) {
+        return Err(Fallo::NoEsLista);
+    }
+    let ids = std::collections::BTreeSet::from([m.id.clone()]);
+    let quitados = cuaderno::quitar(&almacen::carpeta(raiz, proyecto), &ids)?;
+    if quitados.is_empty() {
+        // Se borro (o llego borrado del movil) entre leerlo y quitarlo.
+        return Err(Fallo::SinMensaje(codigo.to_string()));
+    }
+    // Con la hora del reloj (UTC), como el chat: se compara con la del movil.
+    let ahora_utc = pixpin_shell::entorno::ahora_utc_ms();
+    if let Err(e) = pixpin_proyecto::vista::anotar_borrados(raiz, proyecto, &quitados, ahora_utc) {
+        tracing::warn!(?e, "no se pudo apuntar la lista borrada para sincronizar");
+    }
+    REESCRITOS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    Ok(m)
+}
+
 /// Cuantas veces se reescribio un mensaje desde que arranco la app. Tachar
 /// una tarea deja el cuaderno del mismo tamano, y hay discos que no mueven
 /// la fecha a tiempo (paso en la CI): con esto la ventana de tareas se entera
@@ -1270,7 +1359,7 @@ mod pruebas {
 
     /// Un ejemplo de cada accion, con lo minimo que pide la tabla del
     /// protocolo.
-    const EJEMPLOS: [(&str, &str); 22] = [
+    const EJEMPLOS: [(&str, &str); 24] = [
         (
             "abrir",
             r#"{"pixpin":1,"accion":"abrir","que":{"tipo":"proyecto"}}"#,
@@ -1334,6 +1423,14 @@ mod pruebas {
         (
             "copiar_imagen",
             r#"{"pixpin":1,"accion":"copiar_imagen","ruta":"C:\\a\\foto.jpg"}"#,
+        ),
+        (
+            "quitar_tarea",
+            r#"{"pixpin":1,"accion":"quitar_tarea","codigo":"1","indice":0}"#,
+        ),
+        (
+            "borrar_lista",
+            r#"{"pixpin":1,"accion":"borrar_lista","codigo":"1"}"#,
         ),
     ];
 
@@ -1711,6 +1808,93 @@ mod pruebas {
             Err(Fallo::SinTarea(2))
         ));
         assert_eq!(mensaje_de(&raiz, &f.id, &l.id).unwrap().texto, doc);
+        let _ = std::fs::remove_dir_all(&raiz);
+    }
+
+    #[test]
+    fn quitar_tarea_y_borrar_lista_se_leen() {
+        assert_eq!(
+            leer(r#"{"pixpin":1,"accion":"quitar_tarea","proyecto":"p","codigo":"1","indice":2}"#)
+                .unwrap(),
+            Pedido::QuitarTarea {
+                proyecto: Some("p".into()),
+                codigo: "1".into(),
+                indice: 2
+            }
+        );
+        assert_eq!(
+            leer(r#"{"pixpin":1,"accion":"borrar_lista","proyecto":null,"codigo":"9"}"#).unwrap(),
+            Pedido::BorrarLista {
+                proyecto: None,
+                codigo: "9".into()
+            }
+        );
+        // Casos negativos: sin lo que tocan, o con un numero imposible.
+        for json in [
+            r#"{"pixpin":1,"accion":"quitar_tarea","codigo":"1"}"#,
+            r#"{"pixpin":1,"accion":"quitar_tarea","indice":0}"#,
+            r#"{"pixpin":1,"accion":"quitar_tarea","codigo":"1","indice":-1}"#,
+            r#"{"pixpin":1,"accion":"borrar_lista"}"#,
+        ] {
+            assert!(matches!(leer(json), Err(Fallo::Roto(_))), "{json}");
+        }
+    }
+
+    #[test]
+    fn quitar_tarea_saca_solo_la_pedida_y_dice_cual_fue() {
+        let (raiz, f) = almacen_de_prueba("quitar");
+        let l = anadir_tarea(&raiz, &f.id, "PC01", None, "pan", "Tareas").unwrap();
+        anadir_tarea(&raiz, &f.id, "PC01", None, "leche", "Tareas").unwrap();
+        anadir_tarea(&raiz, &f.id, "PC01", None, "sal", "Tareas").unwrap();
+        let t = quitar_tarea(&raiz, &f.id, &l.id, 1).unwrap();
+        assert_eq!(mini::partir(&t.texto).0, "leche");
+        let doc = mensaje_de(&raiz, &f.id, &l.id).unwrap().texto;
+        assert_eq!(sin_fechas(&doc), "# Tareas\n\n- [ ] pan\n- [ ] sal");
+        // Casos negativos: una que no existe, o algo que no es una lista,
+        // no tocan nada.
+        assert!(matches!(
+            quitar_tarea(&raiz, &f.id, &l.id, 2),
+            Err(Fallo::SinTarea(2))
+        ));
+        let nota = escribir_en_el_chat(&raiz, &f.id, "PC01", "- [ ] no soy lista", 5).unwrap();
+        assert!(matches!(
+            quitar_tarea(&raiz, &f.id, &nota.id, 0),
+            Err(Fallo::NoEsLista)
+        ));
+        assert_eq!(mensaje_de(&raiz, &f.id, &l.id).unwrap().texto, doc);
+        let _ = std::fs::remove_dir_all(&raiz);
+    }
+
+    #[test]
+    fn borrar_lista_la_quita_del_chat_con_su_marca_para_el_movil() {
+        let (raiz, f) = almacen_de_prueba("borrar-lista");
+        let l = anadir_tarea(&raiz, &f.id, "PC01", None, "pan", "Compra").unwrap();
+        let nota = escribir_en_el_chat(&raiz, &f.id, "PC01", "se queda", 5).unwrap();
+        let antes = reescritos();
+        let m = borrar_lista(&raiz, &f.id, &l.id).unwrap();
+        assert_eq!(nombre_de_lista(&m), "Compra");
+        let quedan = cuaderno_de(&raiz, &f.id);
+        assert!(quedan.iter().all(|x| x.id != l.id), "la lista se fue");
+        assert!(quedan.iter().any(|x| x.id == nota.id), "lo demas se queda");
+        assert!(reescritos() > antes, "la ventana de tareas se entera");
+        // La marca de borrado, la misma que deja el chat: sin ella la
+        // siguiente vuelta la traeria otra vez del movil.
+        let marcas =
+            std::fs::read_to_string(raiz.join("sincro").join("borrados.jsonl")).unwrap_or_default();
+        assert!(
+            marcas.contains(&m.codigo_unico()),
+            "sin marca de borrado: {marcas}"
+        );
+        // Casos negativos: otra vez (ya no esta) y algo que no es lista.
+        assert!(matches!(
+            borrar_lista(&raiz, &f.id, &l.id),
+            Err(Fallo::SinMensaje(_))
+        ));
+        assert!(matches!(
+            borrar_lista(&raiz, &f.id, &nota.id),
+            Err(Fallo::NoEsLista)
+        ));
+        assert_eq!(cuaderno_de(&raiz, &f.id).len(), quedan.len());
         let _ = std::fs::remove_dir_all(&raiz);
     }
 

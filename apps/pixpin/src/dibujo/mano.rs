@@ -1010,6 +1010,7 @@ mod pruebas {
     fn en_el_lienzo_una_herramienta_apagada_no_responde_a_su_letra_ni_a_su_atajo() {
         permitidas::fijar(pixpin_store::herramientas::Herramientas {
             apagadas: vec!["lapiz".into(), "lazo".into()],
+            ..Default::default()
         });
         let camara = Camara::nueva();
         let mut mano = Mano::con_tinta(Anfitrion::Lienzo, Default::default());
@@ -1068,6 +1069,7 @@ mod pruebas {
     fn un_boton_de_una_herramienta_apagada_no_la_elige_aunque_se_colara_en_la_caja() {
         permitidas::fijar(pixpin_store::herramientas::Herramientas {
             apagadas: vec!["rombo".into()],
+            ..Default::default()
         });
         let camara = Camara::nueva();
         let mut mano = Mano::con_tinta(Anfitrion::Lienzo, Default::default());

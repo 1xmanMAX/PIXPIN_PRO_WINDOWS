@@ -311,6 +311,9 @@ comando-sincronizar = Sync
 adjuntar-del-movil = Bring from phone…
 menu-foto-aqui = Draw right here
 proyecto-renombrar = Rename
+proyecto-logo-poner = Set logo image…
+proyecto-logo-quitar = Remove logo image
+proyecto-logo-error = Couldn't set that logo image
 proyecto-borrar = Delete project
 proyecto-borrar-varios = Delete selected
 proyecto-borrar-aviso = It will leave the list and its folder will go to the PixPin bin. Continue?
@@ -1313,6 +1316,13 @@ barra-pista-deshacer = Undo (Ctrl+Z)
 barra-pista-rehacer = Redo (Ctrl+Y)
 barra-pista-salir = Exit (Esc)
 ajustes-herramientas-sueltas = Always visible
+ajustes-herramientas-donde = Tools in
+ajustes-herramientas-donde-ayuda = Pick a place to turn off the tools you do not use there, without removing them elsewhere.
+ajustes-herramientas-sitio-todos = Everywhere
+ajustes-herramientas-sitio-pantalla = Screen
+ajustes-herramientas-sitio-pin = Pins
+ajustes-herramientas-sitio-lienzo = Canvas
+ajustes-herramientas-sitio-lector = Reader
 
 ## PDF reader: «To project» (the notes move to a project's sheets and travel when syncing)
 lector-al-proyecto = To project
@@ -1421,6 +1431,8 @@ pedido-sin-fichero = That file is no longer on disk.
 pedido-fallo-disco = What was asked couldn't be saved. Check PixPin's log.
 pedido-tarea-movida = “{ $tarea }” moved to “{ $lista }”.
 pedido-tarea-cambio = The list changed while the task was being moved; nothing was touched. Look it up again.
+pedido-tarea-quitada = “{ $tarea }” removed from its list.
+pedido-lista-borrada = List “{ $lista }” deleted from “{ $proyecto }”.
 pedido-sin-capturas = There are no captures yet.
 pedido-fuera-de-capturas = That file isn't in the captures folder; it's left alone.
 pedido-no-es-imagen = That file isn't an image.
@@ -2063,3 +2075,13 @@ tareas3-sin-resultados-pista = Searches each task's text and the name of its lis
 tareas3-vaciar-busqueda = Clear search
 tareas3-mover-intro = move
 tareas3-mover-esc = close
+tareas3-quitada = “{ $tarea }” removed
+tareas3-deshacer = Undo
+tareas3-repuesta = Task put back in its list
+tareas3-cambio-quitar = The list changed in the meantime; it's up to date now. Remove it again.
+tareas3-borrar-lista = Delete list
+tareas3-borrar-lista-aviso = Delete the list “{ $lista }” in “{ $chat }” with { $n ->
+    [one] its task
+   *[other] its { $n } tasks
+  }? It is also deleted from the chat and the phone, and can't be undone.
+tareas3-lista-borrada = List “{ $lista }” deleted

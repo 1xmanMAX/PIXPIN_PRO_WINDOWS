@@ -1490,6 +1490,8 @@ fn datos_barra(i: &PinInterno) -> crate::barra_flotante::DatosBarra {
                 silenciado: v.silenciado(),
             }
         }),
+        remoto: i.remoto,
+        en_pausa: i.vivo_pausado,
     }
 }
 
@@ -1617,6 +1619,7 @@ pub(crate) fn accion_de_barra(hwnd: HWND, evento: crate::barra_flotante::EventoB
                 }
                 actualizar_barra(i);
             }
+            A::Manejar => alternar_remoto(hwnd, i),
             A::Congelar => (i.al_cambiar)(CambioPin::CongelarPedido),
             A::Abrir => (i.al_cambiar)(CambioPin::AbrirPedido),
             A::Copiar => {
@@ -1758,6 +1761,23 @@ fn alternar_vivo(i: &mut PinInterno) {
     if i.fuente_viva.is_some() {
         i.vivo_pausado = !i.vivo_pausado;
         tracing::info!(pausado = i.vivo_pausado, "pin en vivo alternado");
+        // Al reanudar, ponerse al dia YA: con la zona quieta la captura no
+        // manda ningun aviso, y el pin seguia con la foto de cuando se
+        // pauso, como si no hubiera vuelto a en vivo (el usuario: «que se
+        // pueda volver de nuevo en vivo»). Lo capturado en la pausa ya esta
+        // en la fuente; el aviso solo hace que se copie y se pinte.
+        if !i.vivo_pausado {
+            // SAFETY: mensaje propio a la ventana propia.
+            unsafe {
+                let _ = windows::Win32::UI::WindowsAndMessaging::PostMessageW(
+                    Some(i.hwnd),
+                    MSG_FOTOGRAMA_VIVO,
+                    WPARAM(0),
+                    LPARAM(0),
+                );
+            }
+        }
+        actualizar_barra(i);
     }
 }
 
@@ -2282,6 +2302,34 @@ fn y_de_pantalla() -> i32 {
 /// que poder llamarla: `Pin` POSEE la ventana y la destruye al soltarlo,
 /// asi que fabricar uno ahi dentro mataria el pin en cuanto acabara la
 /// linea.
+/// Enciende o apaga el modo clic de un pin en vivo: desde el menu o desde su
+/// boton de la barra (el usuario lo queria a mano, arriba).
+fn alternar_remoto(hwnd: HWND, i: &mut PinInterno) {
+    i.remoto = !i.remoto;
+    i.pulsado_remoto = None;
+    // Encenderlo REANUDA el pin. Al usuario le paso a la primera: un doble
+    // clic de antes lo habia dejado en pausa, y manejando a distancia veia
+    // una foto fija mientras sus clics si actuaban en la ventana. Un mando a
+    // distancia sobre una imagen parada es manejar a ciegas.
+    if i.remoto && i.vivo_pausado {
+        i.vivo_pausado = false;
+        // Y un aviso de fotograma ya: con la pantalla quieta la captura no
+        // manda ninguno, y el pin se quedaria con la foto de cuando se pauso.
+        // SAFETY: mensaje propio a la ventana propia.
+        unsafe {
+            let _ = windows::Win32::UI::WindowsAndMessaging::PostMessageW(
+                Some(hwnd),
+                MSG_FOTOGRAMA_VIVO,
+                WPARAM(0),
+                LPARAM(0),
+            );
+        }
+    }
+    tracing::info!(remoto = i.remoto, "manejo a distancia alternado");
+    pintar(i);
+    actualizar_barra(i);
+}
+
 fn poner_pasante_en(hwnd: HWND, pasante: bool) {
     use windows::Win32::UI::WindowsAndMessaging::{
         GWL_EXSTYLE, GetWindowLongPtrW, SetWindowLongPtrW, WS_EX_LAYERED, WS_EX_TRANSPARENT,
@@ -3371,33 +3419,7 @@ fn abrir_menu(hwnd: HWND, punto: Option<(i32, i32)>) {
         None => {}
         // Tambien de esta ventana y de nadie mas: es como se
         // interpretan SUS clics.
-        Some(crate::menu::CMD_REMOTO) => {
-            i.remoto = !i.remoto;
-            i.pulsado_remoto = None;
-            // Encenderlo REANUDA el pin. Al usuario le paso a la
-            // primera: un doble clic de antes lo habia dejado en
-            // pausa, y manejando a distancia veia una foto fija
-            // mientras sus clics si actuaban en la ventana. Un
-            // mando a distancia sobre una imagen parada es
-            // manejar a ciegas.
-            if i.remoto && i.vivo_pausado {
-                i.vivo_pausado = false;
-                // Y un aviso de fotograma ya: con la pantalla
-                // quieta la captura no manda ninguno, y el pin se
-                // quedaria con la foto de cuando se pauso.
-                // SAFETY: mensaje propio a la ventana propia.
-                unsafe {
-                    let _ = windows::Win32::UI::WindowsAndMessaging::PostMessageW(
-                        Some(hwnd),
-                        MSG_FOTOGRAMA_VIVO,
-                        WPARAM(0),
-                        LPARAM(0),
-                    );
-                }
-            }
-            tracing::info!(remoto = i.remoto, "manejo a distancia alternado");
-            pintar(i);
-        }
+        Some(crate::menu::CMD_REMOTO) => alternar_remoto(hwnd, i),
         // Las dos que puede resolver la propia ventana se
         // resuelven aqui: pedirselas al gestor solo daria un
         // rodeo para volver al mismo sitio.

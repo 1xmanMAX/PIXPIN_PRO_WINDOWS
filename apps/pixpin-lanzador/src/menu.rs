@@ -17,7 +17,12 @@
 //! (`consulta`), lienzo y nota nuevos ahi, y su carpeta.
 //!
 //! Una tarea lleva ademas `mover` (`{proyecto, codigo, indice, destinos}`):
-//! «Mover a «lista»» por cada otra lista (pedido `mover_tarea`).
+//! «Mover a «lista»» por cada otra lista (pedido `mover_tarea`), y `quitar`
+//! (`{pedido, vuelta}`): «Quitar tarea» (pedido `quitar_tarea`), que vuelve
+//! a la misma lista sin cerrar Flow.
+//!
+//! Una lista lleva `borrar_lista` (`{pedido, vuelta, cuantas}`): «Borrar
+//! lista» (pedido `borrar_lista`), que vuelve a todas las listas.
 //!
 //! Una leccion (`tipo: "leccion"`, `ruta` de su `.leccion`, `titulo`, `texto`,
 //! `pin` de su primera foto): «Abrir la ficha», «Ver en la lista de
@@ -266,6 +271,39 @@ pub fn menu(contexto: &Value, ctx: &Contexto) -> Vec<Resultado> {
     if let Some(m) = contexto.get("mover").filter(|m| m.is_object()) {
         v.extend(mover_a(m));
     }
+    // Lo que borra va despues de lo demas, como «Borrar» en el chat.
+    if let Some((pedido, vuelta)) = pedido_y_vuelta(contexto.get("quitar")) {
+        v.push(Resultado::nuevo(
+            "Quitar tarea",
+            "La saca de su lista (también en el chat y el móvil)",
+            glifo::BORRAR,
+            Accion::PedirYSeguir {
+                pedido,
+                consulta: vuelta,
+            },
+        ));
+    }
+    if let Some((pedido, vuelta)) = pedido_y_vuelta(contexto.get("borrar_lista")) {
+        let cuantas = contexto
+            .get("borrar_lista")
+            .and_then(|b| b.get("cuantas"))
+            .and_then(Value::as_u64)
+            .unwrap_or(0);
+        let sub = match cuantas {
+            0 => "La lista vacía sale del chat y del móvil".to_string(),
+            1 => "Con su tarea; sale del chat y del móvil, sin deshacer".to_string(),
+            n => format!("Con sus {n} tareas; sale del chat y del móvil, sin deshacer"),
+        };
+        v.push(Resultado::nuevo(
+            "Borrar lista",
+            sub,
+            glifo::BORRAR,
+            Accion::PedirYSeguir {
+                pedido,
+                consulta: vuelta,
+            },
+        ));
+    }
     if ruta.is_none() {
         if let Some(c) = texto_de("carpeta") {
             v.push(Resultado::nuevo(
@@ -280,6 +318,15 @@ pub fn menu(contexto: &Value, ctx: &Contexto) -> Vec<Resultado> {
         }
     }
     v
+}
+
+/// El `{pedido, vuelta}` de «Quitar tarea» o «Borrar lista»: lo que se manda
+/// y la consulta a la que se vuelve sin cerrar Flow.
+fn pedido_y_vuelta(campo: Option<&Value>) -> Option<(Value, String)> {
+    let c = campo?;
+    let pedido = c.get("pedido").filter(|p| p.is_object())?.clone();
+    let vuelta = c.get("vuelta").and_then(Value::as_str)?.to_string();
+    Some((pedido, vuelta))
 }
 
 /// «Mover a «lista»» por cada destino de una tarea (pedido `mover_tarea`).

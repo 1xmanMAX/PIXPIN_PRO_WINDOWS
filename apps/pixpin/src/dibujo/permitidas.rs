@@ -181,7 +181,6 @@ pub fn de_nombre(nombre: &str) -> Option<Herramienta> {
 }
 
 /// El boton de un nombre del TOML: herramienta o accion.
-#[cfg(test)]
 pub fn boton_de_nombre(nombre: &str) -> Option<BotonCaja> {
     BOTONES_EDITOR
         .iter()
@@ -190,6 +189,30 @@ pub fn boton_de_nombre(nombre: &str) -> Option<BotonCaja> {
 }
 
 impl Anfitrion {
+    /// Su nombre en `[herramientas.por_sitio]` (`herramientas::SITIOS`). Las
+    /// dos pantallas son un solo sitio: para el usuario es «dibujar en la
+    /// pantalla», con la pantalla viva o congelada debajo.
+    pub fn sitio(self) -> &'static str {
+        match self {
+            Anfitrion::Lienzo => "lienzo",
+            Anfitrion::Lector => "lector",
+            Anfitrion::Pin => "pin",
+            Anfitrion::PantallaViva | Anfitrion::PantallaCongelada => "pantalla",
+        }
+    }
+
+    /// El anfitrion que representa a un sitio en la ventana de ajustes: lo
+    /// que ese sitio sabe hacer decide que interruptores salen.
+    pub fn de_sitio(sitio: &str) -> Option<Anfitrion> {
+        Some(match sitio {
+            "lienzo" => Anfitrion::Lienzo,
+            "lector" => Anfitrion::Lector,
+            "pin" => Anfitrion::Pin,
+            "pantalla" => Anfitrion::PantallaCongelada,
+            _ => return None,
+        })
+    }
+
     /// Si este anfitrion sabe hacer la herramienta (sin mirar los ajustes).
     pub fn admite(self, h: Herramienta) -> bool {
         use Herramienta as H;
@@ -273,7 +296,7 @@ fn ajustes() -> Herramientas {
 
 /// Pura: si `h` sale en `anfitrion` con esos ajustes.
 pub fn permitida_con(anfitrion: Anfitrion, h: Herramienta, ajustes: &Herramientas) -> bool {
-    anfitrion.admite(h) && nombre_de(h).is_none_or(|n| ajustes.activa(n))
+    anfitrion.admite(h) && nombre_de(h).is_none_or(|n| ajustes.activa_en(anfitrion.sitio(), n))
 }
 
 /// Si `h` sale ahora en `anfitrion`.
@@ -295,7 +318,8 @@ pub fn botones_con(anfitrion: Anfitrion, ajustes: &Herramientas) -> Vec<BotonCaj
 
 /// Pura: si el boton `b` sale en `anfitrion` con esos ajustes.
 pub fn boton_permitido_con(anfitrion: Anfitrion, b: BotonCaja, ajustes: &Herramientas) -> bool {
-    anfitrion.admite_boton(b) && nombre_de_boton(b).is_none_or(|n| ajustes.activa(n))
+    anfitrion.admite_boton(b)
+        && nombre_de_boton(b).is_none_or(|n| ajustes.activa_en(anfitrion.sitio(), n))
 }
 
 /// Si el boton `b` sale ahora en `anfitrion`.
@@ -348,9 +372,32 @@ pub fn asegurar(anfitrion: Anfitrion, gesto: &mut Gesto) {
 mod pruebas {
     use super::*;
 
+    #[test]
+    fn una_apagada_en_el_pin_falta_en_su_barra_y_sigue_en_el_lienzo_y_la_pantalla() {
+        let mut h = Herramientas::default();
+        h.poner_en("pin", "flecha", false);
+        let b = BotonCaja::Elegir(Herramienta::Flecha);
+        assert!(!botones_con(Anfitrion::Pin, &h).contains(&b));
+        assert!(botones_con(Anfitrion::Lienzo, &h).contains(&b));
+        assert!(botones_con(Anfitrion::PantallaViva, &h).contains(&b));
+        assert!(!permitida_con(Anfitrion::Pin, Herramienta::Flecha, &h));
+    }
+
+    #[test]
+    fn las_dos_pantallas_son_un_solo_sitio() {
+        assert_eq!(
+            Anfitrion::PantallaViva.sitio(),
+            Anfitrion::PantallaCongelada.sitio()
+        );
+        for s in pixpin_store::herramientas::SITIOS {
+            assert_eq!(Anfitrion::de_sitio(s).map(Anfitrion::sitio), Some(*s));
+        }
+    }
+
     fn con_apagadas(v: &[&str]) -> Herramientas {
         Herramientas {
             apagadas: v.iter().map(|s| s.to_string()).collect(),
+            ..Default::default()
         }
     }
 

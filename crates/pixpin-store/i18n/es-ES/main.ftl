@@ -312,6 +312,9 @@ comando-sincronizar = Sincronizar
 adjuntar-del-movil = Traer del movil…
 menu-foto-aqui = Dibujar aqui mismo
 proyecto-renombrar = Cambiar nombre
+proyecto-logo-poner = Poner imagen de logo…
+proyecto-logo-quitar = Quitar imagen de logo
+proyecto-logo-error = No se pudo poner esa imagen de logo
 proyecto-borrar = Borrar proyecto
 proyecto-borrar-varios = Borrar los marcados
 proyecto-borrar-aviso = Se quitara de la lista y su carpeta ira a la papelera de PixPin. ¿Seguir?
@@ -1314,6 +1317,13 @@ barra-pista-deshacer = Deshacer (Ctrl+Z)
 barra-pista-rehacer = Rehacer (Ctrl+Y)
 barra-pista-salir = Salir (Esc)
 ajustes-herramientas-sueltas = Siempre a la vista
+ajustes-herramientas-donde = Herramientas en
+ajustes-herramientas-donde-ayuda = Elige un sitio para apagar ahí las que no usas sin quitarlas de los demás.
+ajustes-herramientas-sitio-todos = Todos
+ajustes-herramientas-sitio-pantalla = Pantalla
+ajustes-herramientas-sitio-pin = Pines
+ajustes-herramientas-sitio-lienzo = Lienzo
+ajustes-herramientas-sitio-lector = Lector
 
 ## Lector de PDF: «Al proyecto» (lo anotado pasa a las hojas de un proyecto y viaja al sincronizar)
 lector-al-proyecto = Al proyecto
@@ -1422,6 +1432,8 @@ pedido-sin-fichero = Ese fichero ya no está en el disco.
 pedido-fallo-disco = No se pudo guardar lo que se pidió. Mira el registro de PixPin.
 pedido-tarea-movida = «{ $tarea }» movida a «{ $lista }».
 pedido-tarea-cambio = La lista cambió mientras se movía la tarea; no se tocó nada. Vuelve a buscarla.
+pedido-tarea-quitada = «{ $tarea }» quitada de su lista.
+pedido-lista-borrada = Lista «{ $lista }» borrada de «{ $proyecto }».
 pedido-sin-capturas = Todavía no hay ninguna captura.
 pedido-fuera-de-capturas = Ese fichero no está en la carpeta de capturas; no se toca.
 pedido-no-es-imagen = Ese fichero no es una imagen.
@@ -2064,3 +2076,13 @@ tareas3-sin-resultados-pista = Se busca en el texto de cada tarea y en el nombre
 tareas3-vaciar-busqueda = Vaciar la búsqueda
 tareas3-mover-intro = mover
 tareas3-mover-esc = cerrar
+tareas3-quitada = «{ $tarea }» quitada
+tareas3-deshacer = Deshacer
+tareas3-repuesta = Tarea devuelta a su lista
+tareas3-cambio-quitar = La lista cambió mientras tanto; ya está al día. Vuelve a quitarla.
+tareas3-borrar-lista = Borrar lista
+tareas3-borrar-lista-aviso = ¿Borrar la lista «{ $lista }» de «{ $chat }» con { $n ->
+    [one] su tarea
+   *[other] sus { $n } tareas
+  }? Se borra también del chat y del móvil, y no se puede deshacer.
+tareas3-lista-borrada = Lista «{ $lista }» borrada

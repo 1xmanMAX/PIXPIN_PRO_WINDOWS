@@ -1038,7 +1038,8 @@ pub(super) fn cumplir(pedido: Pedido, v: &mut VistaProyectos, b: &mut Bucle) -> 
         }
         Pedido::Menu(id) => menu_del_proyecto(v, b, &id),
         Pedido::PedirNombre(id) => {
-            if let Some(f) = b.ficha(&id) {
+            // «Mensajes guardados» no se renombra: se llama siempre asi.
+            if let Some(f) = b.ficha(&id).filter(|f| !f.es_guardados()) {
                 v.pedir_nombre(&id, &f.nombre, b.textos);
             }
             false
@@ -1230,6 +1231,8 @@ fn menu_del_proyecto(v: &mut VistaProyectos, b: &mut Bucle, id: &str) -> bool {
     const PAPELERA: u32 = 4;
     const BORRAR: u32 = 5;
     const FUSIONAR: u32 = 6;
+    const PONER_LOGO: u32 = 7;
+    const QUITAR_LOGO: u32 = 8;
     let Some(f) = b.ficha(id).cloned() else {
         return false;
     };
@@ -1245,8 +1248,16 @@ fn menu_del_proyecto(v: &mut VistaProyectos, b: &mut Bucle, id: &str) -> bool {
     if fusion.is_some() {
         entradas.push((FUSIONAR, b.textos.t("fusionar-paginas")));
     }
+    if !f.es_guardados() {
+        entradas.push((RENOMBRAR, b.textos.t("proyectos-renombrar")));
+    }
+    // El logo (solo del PC: el movil no tiene), junto al nombre, que es lo
+    // otro que se ve del proyecto en la lista.
+    entradas.push((PONER_LOGO, b.textos.t("proyecto-logo-poner")));
+    if super::logo::tiene(b.ubicacion.raiz(), id) {
+        entradas.push((QUITAR_LOGO, b.textos.t("proyecto-logo-quitar")));
+    }
     entradas.extend([
-        (RENOMBRAR, b.textos.t("proyectos-renombrar")),
         (
             ARCHIVAR,
             b.textos.t(if archivado {
@@ -1270,6 +1281,19 @@ fn menu_del_proyecto(v: &mut VistaProyectos, b: &mut Bucle, id: &str) -> bool {
         Some(RENOMBRAR) => {
             v.pedir_nombre(id, &f.nombre, b.textos);
             false
+        }
+        Some(c @ (PONER_LOGO | QUITAR_LOGO)) => {
+            let raiz = b.ubicacion.raiz();
+            let hecho = if c == PONER_LOGO {
+                super::logo::elegir_y_poner(b.ventana.handle(), raiz, id).map(|_| ())
+            } else {
+                super::logo::quitar(raiz, id).map_err(anyhow::Error::from)
+            };
+            if let Err(e) = hecho {
+                tracing::warn!(?e, "no se pudo cambiar el logo del proyecto");
+                b.avisar(b.textos.t("proyecto-logo-error"));
+            }
+            true
         }
         Some(ARCHIVAR) => {
             archivar(b.ubicacion, &f, !archivado);
@@ -1346,6 +1370,9 @@ fn menu_del_proyecto(v: &mut VistaProyectos, b: &mut Bucle, id: &str) -> bool {
 /// nada, y cuenta como tocarlo (sube arriba). Va al indice, que es lo que
 /// ensena la lista, y al `proyecto.json` si lo tiene, que es lo que viaja.
 fn renombrar(b: &mut Bucle, id: &str, nombre: &str) {
+    if b.ficha(id).is_some_and(|f| f.es_guardados()) {
+        return;
+    }
     let Some(limpio) = nombre_limpio(nombre) else {
         return;
     };

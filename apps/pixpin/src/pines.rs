@@ -231,6 +231,38 @@ fn cursor_pin_de(h: Herramienta) -> CursorAnotacion {
     }
 }
 
+/// El tamano al que lleva a `pin` un giro de rueda (D55); quien llama lo
+/// aplica con `escalar_persiguiendo`. `None` si no se toca: la ficha no se
+/// redimensiona, tampoco con la rueda.
+fn tamano_tras_rueda(pin: &Pin, delta: i32, cursor: Punto) -> Option<Rect> {
+    if !pin.redimensionable() {
+        return None;
+    }
+    // Desde el DESTINO en curso, no desde el fotograma intermedio: una
+    // rueda que sigue girando encadena pasos y la animacion los sigue
+    // sin saltos (el usuario los veia «de salto en salto»).
+    let r = pin.rect_objetivo();
+    if r.ancho == 0 || r.alto == 0 {
+        return None;
+    }
+    // Proporcional al giro: una rueda fina (tactil) da deltas pequenos
+    // y pasos pequenos; una muesca entera, el 10 %.
+    let paso = 1.1f32.powf(delta as f32 / 120.0);
+    // Anclado en el CURSOR, no en el centro: lo que el usuario esta
+    // mirando se queda bajo el puntero mientras crece todo lo demas. Con
+    // el centro, el detalle se le escapaba de debajo del raton.
+    // El tope es el mismo que el del zoom por arrastre: la ventana se
+    // recorta al escritorio, asi que un pin enorme no cuesta memoria.
+    let nuevo = pixpin_pin::escalar_anclado(
+        r,
+        paso,
+        cursor,
+        pixpin_pin::MINIMO_LOGICO,
+        pixpin_pin::MAXIMO_FISICO,
+    );
+    Some(nuevo)
+}
+
 /// Donde esta guardado un pin ahora mismo, si el almacen lo da por abierto.
 /// Se consulta justo antes de cerrarlo: al marcarlo cerrado esa posicion se
 /// pierde, y sin ella no se puede devolver a su sitio.
@@ -774,6 +806,8 @@ impl Pines {
         pin.poner_fuente_viva(Box::new(crate::pin_vivo::FuenteCompartida(Rc::clone(
             &recorte,
         ))));
+        // El recuadro en la zona: se va solo cuando se va el pin.
+        pixpin_shell::marco_zona::poner(encuadre.zona, escala, pin.hwnd());
         tracing::info!(id, ?zona, ?encuadre, ?sitio, "pin en vivo creado");
         self.en_vivo.insert(id, (pin, recorte));
         self.refrescar_panel();
@@ -852,6 +886,18 @@ impl Pines {
             CambioPin::RuedaRemota { x, y, delta } => {
                 if let Some(p) = self.punto_de_la_zona(id, x, y)? {
                     pixpin_shell::entrada::rueda_a_distancia(p, delta);
+                }
+                Ok(())
+            }
+            // La rueda sola (o `Ctrl + rueda` manejando a distancia) agranda
+            // el pin, como en cualquier otro. Antes caia en el `_` de abajo:
+            // el pin en vivo no tenia zoom, y el usuario lo echaba en falta
+            // al salir del modo clic. Sin guardar nada: no esta en el almacen.
+            CambioPin::RuedaGirada { delta, cursor } => {
+                if let Some((pin, _)) = self.en_vivo.get(&id)
+                    && let Some(nuevo) = tamano_tras_rueda(pin, delta, cursor)
+                {
+                    pin.escalar_persiguiendo(nuevo);
                 }
                 Ok(())
             }
@@ -2014,32 +2060,9 @@ impl Pines {
         let Some(pin) = self.vivos.get(&id) else {
             return Ok(());
         };
-        // La ficha no se redimensiona, tampoco con la rueda.
-        if !pin.redimensionable() {
+        let Some(nuevo) = tamano_tras_rueda(pin, delta, cursor) else {
             return Ok(());
-        }
-        // Desde el DESTINO en curso, no desde el fotograma intermedio: una
-        // rueda que sigue girando encadena pasos y la animacion los sigue
-        // sin saltos (el usuario los veia «de salto en salto»).
-        let r = pin.rect_objetivo();
-        if r.ancho == 0 || r.alto == 0 {
-            return Ok(());
-        }
-        // Proporcional al giro: una rueda fina (tactil) da deltas pequenos
-        // y pasos pequenos; una muesca entera, el 10 %.
-        let paso = 1.1f32.powf(delta as f32 / 120.0);
-        // Anclado en el CURSOR, no en el centro: lo que el usuario esta
-        // mirando se queda bajo el puntero mientras crece todo lo demas. Con
-        // el centro, el detalle se le escapaba de debajo del raton.
-        // El tope es el mismo que el del zoom por arrastre: la ventana se
-        // recorta al escritorio, asi que un pin enorme no cuesta memoria.
-        let nuevo = pixpin_pin::escalar_anclado(
-            r,
-            paso,
-            cursor,
-            pixpin_pin::MINIMO_LOGICO,
-            pixpin_pin::MAXIMO_FISICO,
-        );
+        };
         let zoom = pin.zoom_objetivo_por_cien(nuevo);
         pin.escalar_persiguiendo(nuevo);
         // Con la escala REAL del pin: guardar 100 en un monitor al 150 %
@@ -2689,9 +2712,24 @@ Todavia no se puede ver aqui; sigue dentro del proyecto.",
     /// todos a lo contrario de lo que haya de mas. Asi el comando siempre
     /// hace algo visible, en vez de dejar la pantalla igual.
     pub fn alternar_paso_de_clics(&mut self) -> (bool, usize) {
-        let pasantes = self.vivos.values().filter(|p| p.es_pasante()).count();
-        let hacia = pasantes * 2 <= self.vivos.len();
+        // Los pines en vivo cuentan y cambian igual: antes quedaban fuera, y
+        // uno en vivo puesto a «el clic atraviesa» no tenia vuelta (el
+        // usuario: «no lo puedo volver a quitar»). No tienen entrada en el
+        // almacen, asi que no se guarda nada de ellos.
+        let todos = || {
+            self.vivos
+                .values()
+                .chain(self.en_vivo.values().map(|(p, _)| p))
+        };
+        let pasantes = todos().filter(|p| p.es_pasante()).count();
+        let hacia = pasantes * 2 <= todos().count();
         let mut cambiados = 0;
+        for (pin, _) in self.en_vivo.values() {
+            if pin.es_pasante() != hacia {
+                pin.poner_pasante(hacia);
+                cambiados += 1;
+            }
+        }
         for (id, pin) in &self.vivos {
             if pin.es_pasante() == hacia {
                 continue;
@@ -2877,6 +2915,7 @@ mod pruebas {
         };
         crate::dibujo::permitidas::fijar(pixpin_store::herramientas::Herramientas {
             apagadas: vec!["flecha-codos".into()],
+            ..Default::default()
         });
         let caja = caja_del_pin(area, 100);
         // Lo que se puede coger: lo suelto y lo de dentro de cada grupo.

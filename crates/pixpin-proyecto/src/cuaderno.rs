@@ -418,6 +418,41 @@ pub fn cambiar(
     Ok(Some(m))
 }
 
+/// Quita del cuaderno los mensajes cuyo `id` este en `ids` y devuelve los
+/// que quito, tal como estaban: quien borra tiene que dejar su marca de
+/// borrado con ellos (`vista::anotar_borrados`), o la siguiente vuelta de
+/// sincronizar los traeria otra vez del otro aparato.
+///
+/// Es lo mismo que hace el chat al borrar (`quitar_del_cuaderno`) y la ficha
+/// de una leccion: lo que no se entiende se copia tal cual —borrar no puede
+/// ser la forma de perder lo que escribio una version mas nueva del movil—
+/// y se escribe a un temporal que se renombra, con el cerrojo tomado.
+pub fn quitar(
+    carpeta: &std::path::Path,
+    ids: &std::collections::BTreeSet<String>,
+) -> std::io::Result<Vec<Mensaje>> {
+    let _cerrojo = cerrojo();
+    let fichero = carpeta.join("guardados.jsonl");
+    let texto = std::fs::read_to_string(&fichero)?;
+    let mut salida = String::with_capacity(texto.len());
+    let mut quitados = Vec::new();
+    for linea in texto.lines() {
+        match serde_json::from_str::<Mensaje>(linea) {
+            Ok(m) if ids.contains(&m.id) => quitados.push(m),
+            _ => {
+                salida.push_str(linea);
+                salida.push('\n');
+            }
+        }
+    }
+    if !quitados.is_empty() {
+        let temporal = fichero.with_extension("jsonl.tmp");
+        std::fs::write(&temporal, salida)?;
+        std::fs::rename(&temporal, &fichero)?;
+    }
+    Ok(quitados)
+}
+
 /// El cuaderno `texto` con la linea de `m` cambiada por la nueva, escrito en
 /// `fichero`. Quien llama tiene el cerrojo.
 fn reescribir_con_el(fichero: &std::path::Path, texto: &str, m: &Mensaje) -> std::io::Result<bool> {
@@ -641,6 +676,36 @@ mod pruebas {
         ajeno.id = "m9".into();
         assert!(!reemplazar(&d, &ajeno).unwrap());
         assert_eq!(Cuaderno::leer_de(&d).unwrap().mensajes.len(), 2);
+    }
+
+    #[test]
+    fn quitar_saca_solo_los_pedidos_y_conserva_lo_que_no_se_entiende() {
+        let d = carpeta_temporal("quitar");
+        let mut uno = Mensaje::nota("primero", &sello(1, 1));
+        uno.id = "m1".into();
+        let mut dos = Mensaje::nota("segundo", &sello(2, 2));
+        dos.id = "m2".into();
+        anadir(&d, &uno).unwrap();
+        std::fs::OpenOptions::new()
+            .append(true)
+            .open(d.join("guardados.jsonl"))
+            .map(|mut f| std::io::Write::write_all(&mut f, b"{lo que venga del futuro}\n"))
+            .unwrap()
+            .unwrap();
+        anadir(&d, &dos).unwrap();
+
+        let ids = std::collections::BTreeSet::from(["m2".to_string()]);
+        let idos = quitar(&d, &ids).unwrap();
+        assert_eq!(idos.len(), 1);
+        assert_eq!(idos[0].texto, "segundo", "devuelve el quitado entero");
+        let c = Cuaderno::leer_de(&d).unwrap();
+        assert_eq!(c.mensajes.len(), 1);
+        assert_eq!(c.mensajes[0].id, "m1");
+        assert_eq!(c.lineas_rotas, 1, "la linea rara sigue ahi");
+        // Caso negativo: lo que ya no esta no quita ni reescribe nada.
+        assert!(quitar(&d, &ids).unwrap().is_empty());
+        assert_eq!(Cuaderno::leer_de(&d).unwrap().mensajes.len(), 1);
+        let _ = std::fs::remove_dir_all(&d);
     }
 
     #[test]

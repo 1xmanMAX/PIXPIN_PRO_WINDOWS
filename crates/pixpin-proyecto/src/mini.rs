@@ -657,6 +657,20 @@ pub fn renombrar(documento: &str, cual: usize, texto: &str) -> String {
     escribir_tareas(&titulo(documento), &tareas)
 }
 
+/// Quita una tarea de la lista (`Tareas.borrar`, `Tareas.kt:154-157`).
+///
+/// Una que no existe deja el documento **igual**: el indice puede venir de
+/// una ventana que se pinto antes de que el movil sincronizara, y borrar «la
+/// de al lado» seria peor que no hacer nada.
+pub fn quitar(documento: &str, cual: usize) -> String {
+    let mut tareas = leer_tareas(documento);
+    if cual >= tareas.len() {
+        return documento.to_string();
+    }
+    tareas.remove(cual);
+    escribir_tareas(&titulo(documento), &tareas)
+}
+
 /// Mueve una tarea de sitio (`Tareas.mover`, `Tareas.kt:140-145`).
 ///
 /// `hasta` se **recorta** en vez de rechazarse: pasarse del final quiere decir
@@ -1007,6 +1021,19 @@ mod pruebas {
         );
         assert_eq!(mover(d, 5, 0), d);
         assert_eq!(mover(d, 1, 1), d);
+    }
+
+    #[test]
+    fn quitar_saca_solo_la_suya_y_conserva_titulo_y_fechas() {
+        let d = "# L\n\n- [x] a\n- [ ] b \u{2795} 2026-10-01\n- [ ] c";
+        assert_eq!(quitar(d, 0), "# L\n\n- [ ] b \u{2795} 2026-10-01\n- [ ] c");
+        assert_eq!(quitar(d, 2), "# L\n\n- [x] a\n- [ ] b \u{2795} 2026-10-01");
+        // Caso negativo: una que no existe deja el documento igual.
+        assert_eq!(quitar(d, 3), d);
+        // Quitar la ultima deja la lista vacia pero viva: sigue siendo lista.
+        let vacia = quitar("# L\n\n- [ ] a", 0);
+        assert_eq!(titulo(&vacia), "L");
+        assert!(leer_tareas(&vacia).is_empty());
     }
 
     fn f(anio: i32, mes: u8, dia: u8) -> Fecha {

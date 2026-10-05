@@ -9,7 +9,7 @@
 //!
 //! **No hay una segunda copia de las tareas.** Cada lista es la mini-app
 //! `tareas` de un mensaje del chat (`mini/Tareas.kt` del movil) y aqui solo
-//! se lee: marcar y apuntar pasan por las mismas funciones que los pedidos
+//! se lee: marcar, apuntar, quitar y borrar pasan por las mismas funciones que los pedidos
 //! de otros programas (`pedidos::marcar_tarea`, `pedidos::anadir_tarea`),
 //! que reescriben el mensaje con `cuaderno::reemplazar` igual que la casilla
 //! del panel del chat. Lo que cambia aqui es un mensaje cambiado, y eso es
@@ -245,6 +245,48 @@ pub fn marcar(raiz: &Path, lista: &Lista, fila: &Fila, hecha: bool) -> Result<bo
     }
     pedidos::marcar_tarea(raiz, &lista.proyecto, &lista.codigo, fila.indice, hecha)?;
     Ok(true)
+}
+
+/// Quita una tarea de su lista (el aspa de su tarjeta, o Supr). Como al
+/// marcar, antes se comprueba que el numero sigue siendo esta tarea: si la
+/// lista cambio fuera, quitar «la de ese numero» seria quitar otra, asi que
+/// no se toca nada y se devuelve `Ok(None)`. Si se quito, devuelve la tarea
+/// tal cual estaba, para poder [`reponer`]la.
+pub fn quitar(raiz: &Path, lista: &Lista, fila: &Fila) -> Result<Option<mini::Tarea>, Fallo> {
+    let m = pedidos::mensaje_de(raiz, &lista.proyecto, &lista.codigo)?;
+    let sigue = mini::leer_tareas(&m.texto)
+        .get(fila.indice)
+        .is_some_and(|t| t.texto == fila.crudo);
+    if !sigue {
+        return Ok(None);
+    }
+    pedidos::quitar_tarea(raiz, &lista.proyecto, &lista.codigo, fila.indice).map(Some)
+}
+
+/// «Deshacer» de una tarea quitada: vuelve a su lista en el sitio que tenia
+/// (o al final, si la lista se acorto entre medias), con su fecha y su
+/// estado. Si la lista ya no esta (la borraron), se dice.
+pub fn reponer(
+    raiz: &Path,
+    proyecto: &str,
+    codigo: &str,
+    indice: usize,
+    tarea: mini::Tarea,
+) -> Result<(), Fallo> {
+    let mut m = pedidos::mensaje_de(raiz, proyecto, codigo)?;
+    if !pedidos::es_lista(&m) {
+        return Err(Fallo::NoEsLista);
+    }
+    let mut tareas = mini::leer_tareas(&m.texto);
+    tareas.insert(indice.min(tareas.len()), tarea);
+    m.texto = mini::escribir_tareas(&mini::titulo(&m.texto), &tareas);
+    pedidos::reescribir(raiz, proyecto, &m)
+}
+
+/// Borra la lista entera, con todas sus tareas: su mensaje sale del chat
+/// como al borrarlo alli (`pedidos::borrar_lista`), y asi tambien del movil.
+pub fn borrar_lista(raiz: &Path, lista: &Lista) -> Result<(), Fallo> {
+    pedidos::borrar_lista(raiz, &lista.proyecto, &lista.codigo).map(|_| ())
 }
 
 /// Como se llama la lista adonde va todo lo que se apunta desde la ventana
@@ -652,6 +694,55 @@ mod pruebas {
             .unwrap()
             .texto;
         assert_eq!(doc2, doc);
+        let _ = std::fs::remove_dir_all(&raiz);
+    }
+
+    #[test]
+    fn quitar_y_deshacer_la_devuelven_a_su_sitio_con_su_fecha() {
+        let (raiz, obra) = almacen_de_prueba("quitar");
+        for t in ["yeso", "arena", "cal"] {
+            pedidos::anadir_tarea(&raiz, &obra.id, "PC01", None, t, "Obra").unwrap();
+        }
+        let (listas, _) = reunir(&raiz);
+        let l = &listas[0];
+        let quitada = quitar(&raiz, l, &l.filas[1]).unwrap().unwrap();
+        assert_eq!(quitada.texto, l.filas[1].crudo, "con su fecha");
+        let (listas, _) = reunir(&raiz);
+        assert_eq!(
+            textos(&listas[0].filas.iter().collect::<Vec<_>>()),
+            ["yeso", "cal"]
+        );
+        // Caso negativo: la que se vio ya no esta en ese numero; no se toca.
+        let mut vieja = listas[0].filas[1].clone();
+        vieja.crudo = "otra".into();
+        assert!(quitar(&raiz, &listas[0], &vieja).unwrap().is_none());
+        reponer(&raiz, &obra.id, &l.codigo, 1, quitada).unwrap();
+        let (listas, _) = reunir(&raiz);
+        assert_eq!(
+            textos(&listas[0].filas.iter().collect::<Vec<_>>()),
+            ["yeso", "arena", "cal"]
+        );
+        assert_eq!(listas[0].filas[1].creada, Some(hoy()));
+        let _ = std::fs::remove_dir_all(&raiz);
+    }
+
+    #[test]
+    fn borrar_el_inbox_se_lleva_sus_tareas_y_apuntar_lo_vuelve_a_crear() {
+        let (raiz, _) = almacen_de_prueba("borrar-inbox");
+        apuntar(&raiz, "PC01", "pan").unwrap();
+        let (listas, _) = reunir(&raiz);
+        let inbox = listas.iter().find(|l| es_inbox(l)).unwrap();
+        borrar_lista(&raiz, inbox).unwrap();
+        assert!(reunir(&raiz).0.iter().all(|l| !es_inbox(l)));
+        // Caso negativo: borrarla otra vez dice que ya no esta.
+        assert!(matches!(
+            borrar_lista(&raiz, inbox),
+            Err(Fallo::SinMensaje(_))
+        ));
+        apuntar(&raiz, "PC01", "leche").unwrap();
+        let (listas, _) = reunir(&raiz);
+        let nuevo = listas.iter().find(|l| es_inbox(l)).unwrap();
+        assert_eq!(textos(&nuevo.filas.iter().collect::<Vec<_>>()), ["leche"]);
         let _ = std::fs::remove_dir_all(&raiz);
     }
 

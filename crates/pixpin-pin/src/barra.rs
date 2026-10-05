@@ -47,6 +47,9 @@ pub enum AccionBarra {
     Saltar,
     /// Silenciar o dar sonido (video). La rueda encima cambia el volumen.
     Sonido,
+    /// Manejar la zona de un pin en vivo con el raton sobre el pin (el
+    /// «modo clic»). Antes solo estaba en el menu.
+    Manejar,
     Congelar,
     /// Abrir el fichero de una ficha con su aplicacion.
     Abrir,
@@ -173,6 +176,8 @@ pub fn disponer(tipo: TipoBarra, escala: f32) -> Barra {
         }
         Propio::Vivo => {
             poner(&mut v, Pieza::Rotulo(Rotulo::EnVivo), ROTULO_EN_VIVO * e);
+            poner(&mut v, boton(AccionBarra::Reproducir), lado);
+            poner(&mut v, boton(AccionBarra::Manejar), lado);
             poner(&mut v, boton(AccionBarra::Congelar), lado);
         }
         Propio::Abrir => {
@@ -357,7 +362,13 @@ mod pruebas {
         assert!(!a.contains(&AccionBarra::Copiar));
         assert_eq!(
             a,
-            vec![AccionBarra::Congelar, AccionBarra::Mas, AccionBarra::Cerrar]
+            vec![
+                AccionBarra::Reproducir,
+                AccionBarra::Manejar,
+                AccionBarra::Congelar,
+                AccionBarra::Mas,
+                AccionBarra::Cerrar
+            ]
         );
     }
 

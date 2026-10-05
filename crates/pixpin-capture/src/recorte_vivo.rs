@@ -97,7 +97,7 @@ impl RecorteVivo {
         notificar: Option<(isize, u32)>,
     ) -> Result<RecorteVivo, ErrorCaptura> {
         let destino = crear_textura(dispositivo, encuadre.zona.ancho, encuadre.zona.alto)?;
-        let sesion = SesionViva::nueva(
+        let sesion = SesionViva::nueva_con_cursor(
             dispositivo,
             encuadre.id_monitor,
             minimo_entre_frames,

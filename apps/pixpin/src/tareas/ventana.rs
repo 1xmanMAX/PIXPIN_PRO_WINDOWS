@@ -15,9 +15,17 @@
 //! [`super::tarjetas`]); buscando, cada tarjeta lleva la chapita de su lista
 //! y su chat, porque los grupos se mezclan, y lo hecho que coincide se ve.
 //!
+//! **Quitar y borrar** (el usuario, 4-oct: «añade la opcion de quitar tareas
+//! y eliminar grupos de tareas facilmente»): con el raton encima, cada
+//! tarjeta ensena su aspa, que la quita al momento (`Tareas.borrar` del
+//! movil) con «Deshacer» en el aviso; y cada encabezado, su papelera, que
+//! borra la lista entera tras preguntar, por el mismo camino que borrar el
+//! mensaje en el chat (asi el movil tambien la quita).
+//!
 //! **Teclado**: Ctrl+F al buscador; Tab da la vuelta buscador, caja,
 //! tarjetas; las flechas pasan de tarjeta en tarjeta, Espacio marca la del
-//! foco e Intro abre su «Mover a…» (y en la eleccion, las flechas eligen e
+//! foco, Supr la quita (y Ctrl+Z la devuelve mientras dura el aviso) e
+//! Intro abre su «Mover a…» (y en la eleccion, las flechas eligen e
 //! Intro mueve). Esc va por capas: cierra la eleccion, vacia lo escrito,
 //! vacia la busqueda y, por ultimo, cierra la ventana.
 //!
@@ -82,6 +90,7 @@ const VK_ABAJO: u32 = 0x28;
 const VK_SUPRIMIR: u32 = 0x2E;
 const VK_F: u32 = 0x46;
 const VK_V: u32 = 0x56;
+const VK_Z: u32 = 0x5A;
 
 /// El tamano de la ventana, en pixeles logicos.
 const ANCHO_VENTANA: u32 = 660;
@@ -99,6 +108,8 @@ const HUECO: f32 = 8.0;
 const ENTRE_GRUPOS: f32 = 18.0;
 /// El objetivo de la casilla (el dibujo, de 24, va en medio).
 const CASILLA: f32 = 40.0;
+/// El objetivo del aspa que quita una tarea, y de la papelera de una lista.
+const ASPA: f32 = 36.0;
 const TARJETA_MIN: f32 = 56.0;
 /// La letra del texto de una tarea.
 const TAM_TAREA: f32 = 15.0;
@@ -468,7 +479,31 @@ enum Accion {
     /// La imagen `.2` de la tarea `.1` de la lista `.0`: pinearla, como
     /// «Pinear» del chat.
     Imagen(usize, usize, usize),
+    /// El aspa de la tarea `.1` de la lista `.0` (o Supr con su foco):
+    /// quitarla, al momento y con «Deshacer» en el aviso.
+    Quitar(usize, usize),
+    /// La papelera del encabezado de la lista `.0`: borrarla entera, tras
+    /// preguntar.
+    BorrarLista(usize),
+    /// «Deshacer» del aviso (o Ctrl+Z): devolver la ultima tarea quitada.
+    Deshacer,
 }
+
+/// La ultima tarea quitada, para «Deshacer»: de que lista era, en que sitio
+/// estaba y como estaba escrita (con su fecha y su estado).
+#[derive(Debug, Clone)]
+struct Quitada {
+    proyecto: String,
+    codigo: String,
+    indice: usize,
+    tarea: mini::Tarea,
+}
+
+/// Lo que dura el aviso de una tarea quitada, con su «Deshacer»: mas que un
+/// aviso normal, para que de tiempo a leerlo y arrepentirse.
+const DURA_DESHACER: Duration = Duration::from_secs(6);
+/// Lo que dura un aviso normal.
+const DURA_AVISO: Duration = Duration::from_millis(2_500);
 
 /// Donde va lo que se teclea.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -530,6 +565,10 @@ struct Estado {
     /// Donde quedo pintada cada ficha de la caja, y su imagen: con el raton
     /// encima se ensena.
     fichas_pintadas: Vec<(RectF, PathBuf)>,
+    /// La tarea recien quitada, mientras su aviso ofrece «Deshacer».
+    deshacer: Option<Quitada>,
+    /// La ventana, duena del cuadro que pregunta antes de borrar una lista.
+    hwnd: Option<windows::Win32::Foundation::HWND>,
 }
 
 impl Estado {
@@ -558,6 +597,8 @@ impl Estado {
             rutas: HashMap::new(),
             minis: crate::miniaturas::Miniaturas::con_lado(VISTA as u32 * 2),
             fichas_pintadas: Vec::new(),
+            deshacer: None,
+            hwnd: None,
         }
     }
 
@@ -612,8 +653,20 @@ impl Estado {
         self.hoy = super::hoy();
     }
 
+    /// Un aviso nuevo tapa al anterior, y con el su «Deshacer»: lo que se
+    /// ofrece deshacer es siempre lo que dice el aviso que se ve.
     fn decir(&mut self, t: String) {
         self.aviso = Some((t, Instant::now()));
+        self.deshacer = None;
+    }
+
+    /// Lo que dura el aviso que se ve.
+    fn dura_el_aviso(&self) -> Duration {
+        if self.deshacer.is_some() {
+            DURA_DESHACER
+        } else {
+            DURA_AVISO
+        }
     }
 
     fn buscando(&self) -> bool {
@@ -689,6 +742,7 @@ fn bucle(
     ABIERTA.store(ventana.handle().0 as isize, Ordering::SeqCst);
 
     let mut e = Estado::nuevo();
+    e.hwnd = Some(ventana.handle());
     e.recargar(ubicacion);
     tracing::info!(listas = e.listas.len(), "ventana de tareas abierta");
     let mut mirado = Instant::now();
@@ -765,11 +819,11 @@ fn bucle(
         if e.recien.len() != antes {
             pintar = true;
         }
-        if e.aviso
-            .as_ref()
-            .is_some_and(|(_, t)| t.elapsed() > Duration::from_millis(2_500))
-        {
+        let dura = e.dura_el_aviso();
+        if e.aviso.as_ref().is_some_and(|(_, t)| t.elapsed() > dura) {
+            // Ido el aviso, ya no se ofrece deshacer: lo quitado, quitado.
             e.aviso = None;
+            e.deshacer = None;
             pintar = true;
         }
 
@@ -869,6 +923,15 @@ fn tecla(
         (VK_F, _) if ctrl => {
             e.foco = Foco::Buscar;
             e.buscar.cursor = e.buscar.texto.len();
+        }
+        // Ctrl+Z, mientras el aviso lo ofrece, es su «Deshacer»: las cajas
+        // de escribir no tienen deshacer propio que pisar.
+        (VK_Z, _) if ctrl && e.deshacer.is_some() => {
+            return hacer(e, Accion::Deshacer, textos, ubicacion, aparato);
+        }
+        // Supr sobre la tarjeta con el foco la quita, como su aspa.
+        (VK_SUPRIMIR, Foco::Tarjeta(li, fi)) => {
+            return hacer(e, Accion::Quitar(li, fi), textos, ubicacion, aparato);
         }
         (VK_ESCAPE, _) => {
             match tarjetas::escape(
@@ -1069,6 +1132,114 @@ fn hacer(
                 }
             }
             // Se relee siempre: con lo escrito, o con lo que cambio fuera.
+            e.recargar(ubicacion);
+        }
+        Accion::Quitar(li, fi) => {
+            let Some((lista, fila)) = e.fila(li, fi).map(|(l, f)| (l.clone(), f.clone())) else {
+                return true;
+            };
+            // Si el foco era suyo pasa a la de al lado (la de abajo, o la de
+            // arriba si era la ultima): asi se quitan varias seguidas con Supr.
+            let siguiente = if e.foco == Foco::Tarjeta(li, fi) {
+                let orden = tarjetas::en_orden(&e.colocadas);
+                orden
+                    .iter()
+                    .position(|&x| x == (li, fi))
+                    .and_then(|p| {
+                        orden
+                            .get(p + 1)
+                            .or_else(|| p.checked_sub(1).and_then(|q| orden.get(q)))
+                    })
+                    .and_then(|&(l, f)| e.fila(l, f))
+                    .map(|(l, f)| (l.clave(), f.crudo.clone()))
+            } else {
+                None
+            };
+            match super::quitar(raiz, &lista, &fila) {
+                Ok(Some(tarea)) => {
+                    let mut args = fluent_bundle::FluentArgs::new();
+                    let nombre = if fila.texto.is_empty() {
+                        mini::ficha_de_imagen(1)
+                    } else {
+                        fila.texto.clone()
+                    };
+                    args.set("tarea", nombre);
+                    e.decir(textos.t_args("tareas3-quitada", &args));
+                    // Despues de `decir`, que suelta el «Deshacer» anterior.
+                    e.deshacer = Some(Quitada {
+                        proyecto: lista.proyecto.clone(),
+                        codigo: lista.codigo.clone(),
+                        indice: fila.indice,
+                        tarea,
+                    });
+                    e.recien.remove(&(lista.clave(), fila.crudo.clone()));
+                    crate::ventana_chat::refrescar();
+                }
+                Ok(None) => e.decir(textos.t("tareas3-cambio-quitar")),
+                Err(err) => {
+                    tracing::warn!(?err, "tareas: no se pudo quitar");
+                    e.decir(err.aviso(textos));
+                }
+            }
+            e.recargar(ubicacion);
+            if let Some((l, f)) =
+                siguiente.and_then(|(clave, crudo)| tarjetas::reubicar(&e.listas, &clave, &crudo))
+            {
+                e.foco = Foco::Tarjeta(l, f);
+                e.seguir_foco = true;
+            }
+        }
+        Accion::Deshacer => {
+            let Some(q) = e.deshacer.take() else {
+                return true;
+            };
+            let crudo = q.tarea.texto.clone();
+            match super::reponer(raiz, &q.proyecto, &q.codigo, q.indice, q.tarea) {
+                Ok(()) => {
+                    e.decir(textos.t("tareas3-repuesta"));
+                    crate::ventana_chat::refrescar();
+                }
+                Err(err) => {
+                    tracing::warn!(?err, "tareas: no se pudo devolver la tarea");
+                    e.decir(err.aviso(textos));
+                }
+            }
+            e.recargar(ubicacion);
+            // La devuelta, con el foco: se ve donde volvio.
+            let clave = format!("{}/{}", q.proyecto, q.codigo);
+            if let Some((l, f)) = tarjetas::reubicar(&e.listas, &clave, &crudo) {
+                e.foco = Foco::Tarjeta(l, f);
+                e.seguir_foco = true;
+            }
+        }
+        Accion::BorrarLista(li) => {
+            let Some(lista) = e.listas.get(li).cloned() else {
+                return true;
+            };
+            // Se lleva todas sus tareas y no tiene «Deshacer»: se pregunta,
+            // con «No» por defecto, como al borrar mensajes en el chat.
+            let mut args = fluent_bundle::FluentArgs::new();
+            args.set("lista", lista.titulo.clone());
+            args.set("chat", lista.chat.clone());
+            args.set("n", lista.filas.len() as i64);
+            let pregunta = textos.t_args("tareas3-borrar-lista-aviso", &args);
+            let si = e.hwnd.is_some_and(|h| {
+                pixpin_shell::confirmar_destructivo(h, &textos.t("tareas3-borrar-lista"), &pregunta)
+            });
+            if !si {
+                return true;
+            }
+            match super::borrar_lista(raiz, &lista) {
+                Ok(()) => {
+                    e.decir(textos.t_args("tareas3-lista-borrada", &args));
+                    e.abiertas.remove(&lista.clave());
+                    crate::ventana_chat::refrescar();
+                }
+                Err(err) => {
+                    tracing::warn!(?err, "tareas: no se pudo borrar la lista");
+                    e.decir(err.aviso(textos));
+                }
+            }
             e.recargar(ubicacion);
         }
     }
@@ -1273,14 +1444,27 @@ fn pintar_todo(e: &mut Estado, p: &Pintor, marco: Rect, s: f32, textos: &Catalog
         pintar_vista_de_ficha(e, p, w, s);
     }
 
-    if let Some((t, _)) = &e.aviso {
+    if let Some((t, _)) = e.aviso.clone() {
         let tam = 14.0 * s;
-        let (tw, th) = p.medir_texto_ajustado(t, tam, w - 60.0 * s);
+        // Con una tarea recien quitada, el aviso lleva su «Deshacer» dentro,
+        // a la derecha: es donde se mira justo despues de quitarla.
+        let deshacer = e.deshacer.is_some().then(|| {
+            let rotulo = textos.t("tareas3-deshacer");
+            let bw = ui::ancho_de_boton(p, true, &rotulo, Some("Ctrl Z"), s);
+            (rotulo, bw)
+        });
+        let extra = deshacer.as_ref().map_or(0.0, |(_, bw)| bw + 8.0 * s);
+        let (tw, th) = p.medir_texto_ajustado(&t, tam, (w - 60.0 * s - extra).max(40.0 * s));
+        let alto = if deshacer.is_some() {
+            (th + 16.0 * s).max(48.0 * s)
+        } else {
+            th + 16.0 * s
+        };
         let caja = RectF {
-            x: (w - tw) / 2.0 - 14.0 * s,
-            y: h - th - 34.0 * s,
-            ancho: tw + 28.0 * s,
-            alto: th + 16.0 * s,
+            x: (w - tw - extra) / 2.0 - 14.0 * s,
+            y: h - alto - 18.0 * s,
+            ancho: tw + extra + 28.0 * s,
+            alto,
         };
         p.rellenar_redondeado(
             caja,
@@ -1290,7 +1474,37 @@ fn pintar_todo(e: &mut Estado, p: &Pintor, marco: Rect, s: f32, textos: &Catalog
                 ..Color::NEGRO
             },
         );
-        p.texto_ajustado(t, caja.x + 14.0 * s, caja.y + 8.0 * s, tam, tw + 2.0, TEXTO);
+        // El aviso se apunta como fondo: un clic en su texto no cae en la
+        // tarjeta que asoma por debajo.
+        e.botones.zona(caja, Accion::Fondo);
+        p.texto_ajustado(
+            &t,
+            caja.x + 14.0 * s,
+            caja.y + (alto - th) / 2.0,
+            tam,
+            tw + 2.0,
+            TEXTO,
+        );
+        if let Some((rotulo, bw)) = deshacer {
+            let b = RectF {
+                x: caja.x + caja.ancho - 4.0 * s - bw,
+                y: caja.y + (alto - 40.0 * s) / 2.0,
+                ancho: bw,
+                alto: 40.0 * s,
+            };
+            ui::boton_v2(
+                p,
+                &mut e.botones,
+                b,
+                Accion::Deshacer,
+                Some(&mi::UNDO),
+                &rotulo,
+                Some("Ctrl Z"),
+                None,
+                hex(0x64D2FF),
+                s,
+            );
+        }
     }
 }
 
@@ -1807,10 +2021,12 @@ fn pintar_sin_resultados(
 }
 
 /// El encabezado de un grupo: el nombre de la lista en negrita, «· su
-/// chat» en gris y a la derecha cuantas quedan pendientes.
+/// chat» en gris y a la derecha cuantas quedan pendientes. Con el raton
+/// encima sale, a la derecha del todo, la papelera que borra la lista
+/// entera (pregunta antes).
 #[allow(clippy::too_many_arguments)] // estado, pintor, grupo, sitio, escala y textos
 fn pintar_encabezado(
-    e: &Estado,
+    e: &mut Estado,
     p: &Pintor,
     g: &tarjetas::Grupo,
     x: f32,
@@ -1819,16 +2035,37 @@ fn pintar_encabezado(
     s: f32,
     textos: &Catalogo,
 ) {
-    let Some(l) = e.listas.get(g.lista) else {
+    let Some(l) = e.listas.get(g.lista).cloned() else {
         return;
     };
     let tam = 15.0 * s;
     let (_, th) = p.medir_texto("Ag", tam);
     let ty = y + ENCABEZADO * s - th - 8.0 * s;
+    // El sitio de la papelera se reserva siempre: que el nombre no se
+    // recorte de otra forma al pasar el raton.
+    let papelera = RectF {
+        x: x + ancho - ASPA * s,
+        y: ty + th / 2.0 - ASPA * s / 2.0,
+        ancho: ASPA * s,
+        alto: ASPA * s,
+    };
+    if e.encima == Some(tarjetas::Pieza::Encabezado(g.lista)) {
+        let sobre = dentro(papelera, e.botones.raton);
+        if sobre {
+            p.rellenar_redondeado(papelera, 10.0 * s, blanco(0.1));
+        }
+        p.icono(
+            &mi::DELETE,
+            encoger(papelera, 8.0 * s),
+            if sobre { hex(0xFF6961) } else { GRIS },
+        );
+        e.botones.zona(papelera, Accion::BorrarLista(g.lista));
+    }
     let mut args = fluent_bundle::FluentArgs::new();
-    args.set("n", g.pendientes(l) as i64);
+    args.set("n", g.pendientes(&l) as i64);
     let cuenta = textos.t_args("tareas3-pendientes", &args);
     let (cw, ch) = p.medir_texto(&cuenta, 12.5 * s);
+    let cw = cw + ASPA * s + 4.0 * s;
     p.texto(
         &cuenta,
         x + ancho - cw - 4.0 * s,
@@ -1959,10 +2196,15 @@ fn hechura(
     };
     let pad = 16.0 * s;
     let texto_x = 8.0 * s + CASILLA * s + 10.0 * s;
-    let mut reserva = edad(f, e.hoy, textos).map_or(0.0, |t| p.medir_texto(&t, 12.0 * s).0);
+    // A la derecha va la edad o, con el raton encima, el aspa (y «Mover a…»
+    // en el Inbox): se reserva siempre el sitio del mas ancho, para que el
+    // texto no salte de renglon al pasar el raton.
+    let mut reserva = edad(f, e.hoy, textos)
+        .map_or(0.0, |t| p.medir_texto(&t, 12.0 * s).0)
+        .max(ASPA * s);
     if e.se_reparte(li, fi) {
         let b = ui::ancho_de_boton(p, true, &textos.t("tareas-mover"), Some("Intro"), s);
-        reserva = reserva.max(b);
+        reserva = reserva.max(b + ASPA * s + 4.0 * s);
     }
     if reserva > 0.0 {
         reserva += 12.0 * s;
@@ -2102,14 +2344,34 @@ fn pintar_tarjeta(
         }
     }
 
-    // Arriba a la derecha: la edad, o «Mover a…» con el raton o el foco.
+    // Arriba a la derecha: la edad o, con el raton o el foco, el aspa que la
+    // quita (como la del movil) y, si es del Inbox, «Mover a…» a su lado.
     let derecha = r.x + r.ancho - 16.0 * s;
-    if e.se_reparte(li, fi) && (encima || foco) && e.repartiendo.is_none() {
+    let a_mano = (encima || foco) && e.repartiendo.is_none();
+    if a_mano {
+        let aspa = RectF {
+            x: r.x + r.ancho - 8.0 * s - ASPA * s,
+            y: r.y + 10.0 * s,
+            ancho: ASPA * s,
+            alto: ASPA * s,
+        };
+        let sobre = dentro(aspa, e.botones.raton);
+        if sobre {
+            p.rellenar_redondeado(aspa, 10.0 * s, blanco(0.1));
+        }
+        p.icono(
+            &mi::CLOSE,
+            encoger(aspa, 9.0 * s),
+            if sobre { hex(0xFF6961) } else { GRIS },
+        );
+        e.botones.zona(aspa, Accion::Quitar(li, fi));
+    }
+    if e.se_reparte(li, fi) && a_mano {
         let rotulo = textos.t("tareas-mover");
         let tecla = foco.then_some("Intro");
         let bw = ui::ancho_de_boton(p, true, &rotulo, tecla, s);
         let b = RectF {
-            x: r.x + r.ancho - 8.0 * s - bw,
+            x: r.x + r.ancho - 8.0 * s - ASPA * s - 4.0 * s - bw,
             y: r.y + 8.0 * s,
             ancho: bw,
             alto: 40.0 * s,
@@ -2126,7 +2388,7 @@ fn pintar_tarjeta(
             ui::v2::BLANCO,
             s,
         );
-    } else if let Some(t) = edad(&f, e.hoy, textos) {
+    } else if !a_mano && let Some(t) = edad(&f, e.hoy, textos) {
         let (ew, eh) = p.medir_texto(&t, 12.0 * s);
         p.texto(&t, derecha - ew, r.y + 28.0 * s - eh / 2.0, 12.0 * s, GRIS);
     }

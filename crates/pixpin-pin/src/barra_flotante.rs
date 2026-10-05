@@ -26,7 +26,7 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{
 use windows::Win32::UI::WindowsAndMessaging::*;
 use windows::core::w;
 
-use crate::barra::{self, AccionBarra, Barra, Pieza, Rotulo, TipoBarra};
+use crate::barra::{self, AccionBarra, Barra, Pieza, Propio, Rotulo, TipoBarra};
 use crate::menu::TextosPin;
 
 /// Lo que ensena la barra de un video.
@@ -47,6 +47,11 @@ pub(crate) struct DatosBarra {
     /// La pagina que se ve (desde 0) y cuantas hay.
     pub pagina: Option<(u32, u32)>,
     pub video: Option<DatosVideo>,
+    /// Si el pin en vivo esta en modo clic: su boton se ve encendido.
+    pub remoto: bool,
+    /// Si el pin en vivo esta en pausa (quieto): su chapa se apaga y el
+    /// boton ofrece reanudar.
+    pub en_pausa: bool,
 }
 
 /// Lo que la barra devuelve al pin.
@@ -383,7 +388,9 @@ fn texto_de(t: &TextosPin, a: AccionBarra, datos: &DatosBarra) -> Option<(String
         AccionBarra::PaginaSiguiente => (&t.pagina_siguiente, Some(&v.tecla_av_pag)),
         AccionBarra::PinearPagina => (&v.pinear_pagina, None),
         AccionBarra::Reproducir => (
-            if datos.video.is_some_and(|d| d.reproduciendo) {
+            if datos.video.is_some_and(|d| d.reproduciendo)
+                || (datos.tipo.propio == Propio::Vivo && !datos.en_pausa)
+            {
                 &t.pausar
             } else {
                 &t.reproducir
@@ -392,6 +399,14 @@ fn texto_de(t: &TextosPin, a: AccionBarra, datos: &DatosBarra) -> Option<(String
         ),
         AccionBarra::Saltar => return None,
         AccionBarra::Sonido => (&t.sonido, Some("M")),
+        AccionBarra::Manejar => (
+            if datos.remoto {
+                &t.dejar_de_manejar
+            } else {
+                &t.manejar
+            },
+            None,
+        ),
         AccionBarra::Congelar => (&t.congelar, None),
         AccionBarra::Abrir => (&v.abrir, None),
         AccionBarra::Copiar => (&t.copiar, Some("Ctrl C")),
@@ -545,7 +560,14 @@ fn pintar_barra(p: &Pintor, i: &Interno) {
                         ancho: r.ancho - 4.0 * e,
                         alto: 28.0 * e,
                     };
-                    p.rellenar_redondeado(chapa, 7.0 * e, rgba(0xC9, 0x34, 0x2B, 1.0));
+                    // Roja en vivo; gris en pausa, que es cuando el pin
+                    // ya no sigue a su zona.
+                    let fondo = if i.datos.en_pausa {
+                        rgba(0x6B, 0x6B, 0x6B, 1.0)
+                    } else {
+                        rgba(0xC9, 0x34, 0x2B, 1.0)
+                    };
+                    p.rellenar_redondeado(chapa, 7.0 * e, fondo);
                     p.circulo(
                         (chapa.x + 13.0 * e, chapa.y + chapa.alto / 2.0),
                         3.5 * e,
@@ -566,7 +588,8 @@ fn pintar_barra(p: &Pintor, i: &Interno) {
             },
             Pieza::Boton(a) => {
                 let encima = i.encima == Some(a);
-                let primario = a == AccionBarra::Reproducir;
+                let primario =
+                    a == AccionBarra::Reproducir || (a == AccionBarra::Manejar && i.datos.remoto);
                 if primario {
                     p.rellenar_redondeado(r, 8.0 * e, azul);
                 } else if encima && a != AccionBarra::Saltar {
@@ -601,7 +624,8 @@ fn pintar_barra(p: &Pintor, i: &Interno) {
                     }
                     AccionBarra::PinearPagina => p.icono(&PUSH_PIN, icono_en(r), color),
                     AccionBarra::Reproducir => {
-                        let jugando = video.is_some_and(|v| v.reproduciendo);
+                        let jugando = video.is_some_and(|v| v.reproduciendo)
+                            || (i.datos.tipo.propio == Propio::Vivo && !i.datos.en_pausa);
                         p.icono(
                             if jugando { &PAUSE } else { &PLAY_ARROW },
                             icono_en(r),
@@ -633,6 +657,22 @@ fn pintar_barra(p: &Pintor, i: &Interno) {
                                 color,
                             );
                         }
+                    }
+                    AccionBarra::Manejar => {
+                        // La flecha del raton, a mano: no hay icono de puntero.
+                        let (x, y) = (r.x + r.ancho / 2.0 - 5.0 * e, r.y + r.alto / 2.0 - 9.0 * e);
+                        let punta = [
+                            (0.0, 0.0),
+                            (0.0, 15.0),
+                            (4.0, 11.5),
+                            (7.0, 18.0),
+                            (9.5, 17.0),
+                            (6.5, 10.5),
+                            (11.5, 10.5),
+                            (0.0, 0.0),
+                        ]
+                        .map(|(dx, dy)| (x + dx * e, y + dy * e));
+                        p.polilinea(&punta, 1.8 * e, color);
                     }
                     AccionBarra::Congelar => {
                         // Un copo: tres rayas por el centro.

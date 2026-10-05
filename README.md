@@ -99,6 +99,11 @@ Todo lo que se pinea queda **siempre encima**: fotos, vídeos, PDF, notas, lista
 herramientas (contador, ruleta, gastos…) y **pines en vivo** que copian una zona de la pantalla
 en tiempo real.
 
+El pin en vivo marca su zona con un recuadro azul (que no sale en ninguna captura), enseña el
+ratón cuando pasa por ella y se puede **manejar a distancia**: con el botón del ratón de su barra,
+los clics, los arrastres y la rueda sobre el pin actúan en la zona. Se pausa y se reanuda con
+▶/⏸ (o doble clic), y la rueda lo agranda como a cualquier pin.
+
 <table>
   <tr>
     <td width="58%" valign="top">
@@ -180,6 +185,8 @@ Tres botones redondos junto al buscador del chat abren tres ventanas.
 **Tareas**: todas las listas de todos los proyectos en una sola ventana. Lo que se apunta rápido
 entra en el **Inbox**, y «Mover a…» lo lleva a la lista que toque. Una tarea puede llevar
 imágenes: se pegan con `Ctrl V` y aparecen como `[img 01]`, como en una terminal.
+Arriba, un buscador; debajo, una tarjeta por tarea. La ✕ de cada tarjeta (o `Supr`) la quita, con
+«Deshacer» unos segundos, y la papelera de cada lista la borra entera tras preguntar.
 
 **Lecciones aprendidas**: lo que salió mal (o bien) para que no se repita.
 
@@ -267,6 +274,8 @@ dice cuál instalar.
 ### Flow Launcher
 
 Con [Flow Launcher](https://www.flowlauncher.com/) se usa PixPin sin abrirla: escribe **`p`**.
+El plugin tiene su propio repositorio:
+[PIXPIN_PRO_PLUGIN_FLOWLAUNCHER](https://github.com/1xmanMAX/PIXPIN_PRO_PLUGIN_FLOWLAUNCHER).
 
 ```
 p t comprar sellador [img 01]   → tarea al Inbox, con la imagen pegada (Ctrl V)
@@ -323,6 +332,9 @@ flowchart LR
 Todo lo que antes solo estaba en el archivo de ajustes tiene ahora su control, con un buscador,
 una explicación en cada opción y un **punto azul** en lo que has cambiado. Cada opción o sección
 se puede restablecer.
+
+En el lienzo se elige **qué herramientas se ven y dónde**: en todos los sitios a la vez o solo en la
+pantalla, los pines, el lienzo o el lector, para que cada barra lleve solo lo que se usa ahí.
 
 ![Ajustes](docs/img/v2/ajustes.png)
 

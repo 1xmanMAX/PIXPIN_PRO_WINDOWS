@@ -1036,8 +1036,18 @@ impl Ficha {
 /// lo que ya tenia dentro.
 pub fn asegurar_guardados(raiz: &Path, cuando: i64, aparato: &str) -> std::io::Result<Ficha> {
     let mut indice = Indice::leer_si_esta(raiz)?;
-    if let Some(f) = indice.proyectos.iter().find(|f| f.es_guardados()) {
-        return Ok(f.clone());
+    if let Some(f) = indice.proyectos.iter_mut().find(|f| f.es_guardados()) {
+        // Se llama SIEMPRE asi (el usuario: «siempre tiene que ser solo
+        // Mensajes guardados, que no se pueda cambiar de nombre»). Uno que se
+        // renombro antes de esta regla, o que llega renombrado de otro
+        // aparato, recupera aqui su nombre.
+        if f.nombre == NOMBRE_GUARDADOS {
+            return Ok(f.clone());
+        }
+        f.nombre = NOMBRE_GUARDADOS.to_string();
+        let f = f.clone();
+        indice.guardar(raiz)?;
+        return Ok(f);
     }
     let marca = (MARCA_GUARDADOS.to_string(), serde_json::Value::Bool(true));
     let ficha = match indice
@@ -2041,6 +2051,21 @@ mod pruebas {
         let (n, _) = borrar_proyectos(&raiz, std::slice::from_ref(&g.id), 1).unwrap();
         assert_eq!(n, 0);
         assert!(Indice::leer(&raiz).buscar(&g.id).is_some());
+        let _ = std::fs::remove_dir_all(&raiz);
+    }
+
+    #[test]
+    fn mensajes_guardados_renombrado_recupera_su_nombre() {
+        let raiz = carpeta_temporal("guardados-renombrado");
+        let g = asegurar_guardados(&raiz, 10, "K7Q2").unwrap();
+        let mut i = Indice::leer(&raiz);
+        i.proyectos[0].nombre = "Mensajes guardadospkjhal".into();
+        i.guardar(&raiz).unwrap();
+
+        let otra_vez = asegurar_guardados(&raiz, 20, "K7Q2").unwrap();
+        assert_eq!(otra_vez.id, g.id);
+        assert_eq!(otra_vez.nombre, NOMBRE_GUARDADOS);
+        assert_eq!(Indice::leer(&raiz).proyectos[0].nombre, NOMBRE_GUARDADOS);
         let _ = std::fs::remove_dir_all(&raiz);
     }
 

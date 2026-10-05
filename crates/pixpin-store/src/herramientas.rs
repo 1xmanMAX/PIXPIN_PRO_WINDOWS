@@ -17,6 +17,8 @@
 //! Los nombres son los estables de [`NOMBRES`]; el titulo que ve el usuario
 //! sale de `herramientas-<nombre>` en los `.ftl`.
 
+use std::collections::BTreeMap;
+
 use serde::{Deserialize, Serialize};
 
 /// Los nombres estables de las herramientas que se pueden apagar. La ventana
@@ -71,25 +73,52 @@ pub const NOMBRES: &[&str] = &[
 pub struct Herramientas {
     /// Los nombres de las apagadas. Vacia de fabrica: todas activas.
     pub apagadas: Vec<String>,
+    /// Las apagadas en UN sitio (`SITIOS`): el usuario queria elegir que
+    /// herramientas salen en cada situacion «para que no se muestren siempre
+    /// todas y saturen». `[herramientas.por_sitio]` con `pin = ["mosaico"]`.
+    /// Se suman a `apagadas`, que sigue valiendo para todos los sitios.
+    pub por_sitio: BTreeMap<String, Vec<String>>,
+}
+
+/// Los sitios con barra propia, en el orden de la ventana de ajustes.
+pub const SITIOS: &[&str] = &["pantalla", "pin", "lienzo", "lector"];
+
+fn esta(lista: &[String], nombre: &str) -> bool {
+    lista.iter().any(|a| a.trim().eq_ignore_ascii_case(nombre))
+}
+
+fn poner_en_lista(lista: &mut Vec<String>, nombre: &str, activa: bool) {
+    lista.retain(|a| !a.trim().eq_ignore_ascii_case(nombre));
+    if !activa {
+        lista.push(nombre.to_string());
+    }
 }
 
 impl Herramientas {
     /// Si la herramienta de ese nombre sale. Sin distinguir mayusculas: el
     /// fichero lo escribe a veces una persona.
     pub fn activa(&self, nombre: &str) -> bool {
-        !self
-            .apagadas
-            .iter()
-            .any(|a| a.trim().eq_ignore_ascii_case(nombre))
+        !esta(&self.apagadas, nombre)
     }
 
     /// Enciende o apaga una. Apagar dos veces no la repite en la lista, y
     /// encender una que no estaba apagada no hace nada.
     pub fn poner(&mut self, nombre: &str, activa: bool) {
-        self.apagadas
-            .retain(|a| !a.trim().eq_ignore_ascii_case(nombre));
-        if !activa {
-            self.apagadas.push(nombre.to_string());
+        poner_en_lista(&mut self.apagadas, nombre, activa);
+    }
+
+    /// Si sale en `sitio`: ni apagada en todos ni apagada ahi.
+    pub fn activa_en(&self, sitio: &str, nombre: &str) -> bool {
+        self.activa(nombre) && !self.por_sitio.get(sitio).is_some_and(|l| esta(l, nombre))
+    }
+
+    /// Enciende o apaga una en `sitio` solo. Un sitio que se queda sin
+    /// apagadas desaparece del fichero.
+    pub fn poner_en(&mut self, sitio: &str, nombre: &str, activa: bool) {
+        let lista = self.por_sitio.entry(sitio.to_string()).or_default();
+        poner_en_lista(lista, nombre, activa);
+        if lista.is_empty() {
+            self.por_sitio.remove(sitio);
         }
     }
 }
@@ -97,6 +126,32 @@ impl Herramientas {
 #[cfg(test)]
 mod pruebas {
     use super::*;
+
+    #[test]
+    fn apagar_en_un_sitio_no_la_quita_de_los_demas_y_va_y_vuelve_por_el_toml() {
+        let mut h = Herramientas::default();
+        h.poner_en("pin", "mosaico", false);
+        assert!(!h.activa_en("pin", "mosaico"));
+        assert!(h.activa_en("lienzo", "mosaico"));
+        assert!(h.activa("mosaico"), "la lista general no se toca");
+        let a = crate::Ajustes {
+            herramientas: h.clone(),
+            ..Default::default()
+        };
+        let vuelta: crate::Ajustes = toml::from_str(&toml::to_string_pretty(&a).unwrap()).unwrap();
+        assert_eq!(vuelta.herramientas, h);
+        h.poner_en("pin", "mosaico", true);
+        assert!(h.por_sitio.is_empty(), "un sitio sin apagadas desaparece");
+    }
+
+    #[test]
+    fn apagada_en_todos_tampoco_sale_en_ningun_sitio() {
+        let mut h = Herramientas::default();
+        h.poner("lazo", false);
+        for s in SITIOS {
+            assert!(!h.activa_en(s, "lazo"), "{s}");
+        }
+    }
 
     #[test]
     fn de_fabrica_estan_todas_activas() {
@@ -123,6 +178,7 @@ mod pruebas {
     fn un_nombre_escrito_a_mano_con_mayusculas_o_espacios_vale_igual() {
         let h = Herramientas {
             apagadas: vec![" Grafito ".into()],
+            ..Default::default()
         };
         assert!(!h.activa("grafito"));
     }

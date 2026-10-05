@@ -30,6 +30,7 @@ pub mod guardar;
 pub mod hechos;
 pub mod imprimir;
 pub mod instancia;
+pub mod marco_zona;
 pub mod mdns;
 pub mod mensajero;
 pub mod overlay;

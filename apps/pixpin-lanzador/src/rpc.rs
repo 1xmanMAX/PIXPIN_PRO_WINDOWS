@@ -387,13 +387,86 @@ impl<M: Mensajero, W: Write> Plugin<M, W> {
         let Some(p) = pedido.filter(|p| p.is_object()) else {
             return;
         };
+        // Antes de mandarla: cuantas tareas tiene ya su lista, para saber
+        // cuando la app la ha escrito (una mas al anadir, una menos al
+        // quitar; y al borrar la lista, que ya no este).
+        let espera = match p.get("accion").and_then(Value::as_str) {
+            Some("anadir_tarea") => self.tareas_en_destino(p).map(Espera::Mas),
+            Some("quitar_tarea") => self.tareas_en_destino(p).map(Espera::Menos),
+            Some("borrar_lista") => Some(Espera::SinLista),
+            _ => None,
+        };
         let envio = self.mandar(p);
         if envio == Envio::Aceptado {
-            self.adelantar(p);
+            // Una tarea nueva se espera en el DISCO, como una lista nueva:
+            // adelantarla solo en memoria no bastaba. Si el vigia releia el
+            // disco antes de que la app escribiera, la tarea se perdia de la
+            // lista, y nada la volvia a pintar (el usuario: «agregue uno nuevo
+            // y la lista no se actualiza»). Si la app tarda mas de la cuenta,
+            // se adelanta en memoria como antes. Quitar y borrar, igual: si
+            // no, la lista volveria a salir con lo que se acaba de quitar.
+            let escrita = espera.is_some_and(|e| {
+                let inicio = Instant::now();
+                loop {
+                    let hecho = match e {
+                        Espera::Mas(n) => self.tareas_en_destino(p).is_some_and(|m| m > n),
+                        Espera::Menos(n) => self.tareas_en_destino(p).is_some_and(|m| m < n),
+                        Espera::SinLista => !self.lista_sigue(p),
+                    };
+                    if hecho {
+                        break true;
+                    }
+                    if inicio.elapsed() >= self.espera_lista {
+                        break false;
+                    }
+                    std::thread::sleep(Duration::from_millis(50));
+                }
+            });
+            if !escrita {
+                self.adelantar(p);
+            }
         }
         if let Some(c) = consulta {
             self.llamar_a_flow("ChangeQuery", json!([c, true]));
         }
+    }
+
+    /// Cuantas tareas hay ahora en la lista de un pedido `anadir_tarea`: la
+    /// de su `codigo`, o, sin el (el Inbox, que la app crea si falta), todas
+    /// las del proyecto. `None` si no se sabe de que proyecto es.
+    fn tareas_en_destino(&mut self, p: &Value) -> Option<usize> {
+        let proyecto = match p.get("proyecto").and_then(Value::as_str) {
+            Some(id) => id.to_string(),
+            None => self.datos.id_de_guardados()?,
+        };
+        let codigo = p
+            .get("codigo")
+            .and_then(Value::as_str)
+            .filter(|c| !c.is_empty());
+        let ps = self.datos.proyectos();
+        Some(
+            resultados::listas(&ps)
+                .iter()
+                .filter(|l| ps[l.proyecto].id == proyecto && codigo.is_none_or(|c| l.codigo == c))
+                .map(|l| l.tareas.len())
+                .sum(),
+        )
+    }
+
+    /// Si la lista `codigo` de un pedido (`borrar_lista`) sigue en el disco.
+    fn lista_sigue(&mut self, p: &Value) -> bool {
+        let proyecto = match p.get("proyecto").and_then(Value::as_str) {
+            Some(id) => Some(id.to_string()),
+            None => self.datos.id_de_guardados(),
+        };
+        let (Some(proyecto), Some(codigo)) = (proyecto, p.get("codigo").and_then(Value::as_str))
+        else {
+            return false;
+        };
+        let ps = self.datos.proyectos();
+        resultados::listas(&ps)
+            .iter()
+            .any(|l| ps[l.proyecto].id == proyecto && l.codigo == codigo)
     }
 
     /// Lo que se espera que la app escriba, ya en la cache.
@@ -412,6 +485,12 @@ impl<M: Mensajero, W: Write> Plugin<M, W> {
                 self.datos.retocar(&proyecto, codigo, |d| {
                     datos::con_tarea_marcada(d, indice, hecha)
                 });
+            }
+            Some("quitar_tarea") => {
+                let indice = p.get("indice").and_then(Value::as_u64).unwrap_or(u64::MAX) as usize;
+                let _ = self.datos.proyectos();
+                self.datos
+                    .retocar(&proyecto, codigo, |d| datos::con_tarea_quitada(d, indice));
             }
             Some("anadir_tarea") => {
                 let texto = p
@@ -444,6 +523,15 @@ impl<M: Mensajero, W: Write> Plugin<M, W> {
             _ => {}
         }
     }
+}
+
+/// Lo que se espera ver en el disco tras un pedido de tareas: cuantas tenia
+/// su lista antes (para ver una mas o una menos), o que la lista ya no este.
+#[derive(Debug, Clone, Copy)]
+enum Espera {
+    Mas(usize),
+    Menos(usize),
+    SinLista,
 }
 
 /// `[x, ...]` → `x`; lo demas, tal cual.

@@ -54,6 +54,41 @@ impl SesionViva {
         minimo_entre_frames: Duration,
         notificar: Option<(isize, u32)>,
     ) -> Result<SesionViva, ErrorCaptura> {
+        Self::abrir(
+            dispositivo,
+            id_monitor,
+            minimo_entre_frames,
+            notificar,
+            false,
+        )
+    }
+
+    /// Como `nueva`, pero con el cursor dentro de la imagen: la del pin en
+    /// vivo, donde el usuario quiere ver el raton cuando pasa por la zona.
+    /// El overlay y la lupa no lo quieren: alli el cursor de verdad ya esta
+    /// encima, y saldria repetido.
+    pub fn nueva_con_cursor(
+        dispositivo: &Dispositivo,
+        id_monitor: u32,
+        minimo_entre_frames: Duration,
+        notificar: Option<(isize, u32)>,
+    ) -> Result<SesionViva, ErrorCaptura> {
+        Self::abrir(
+            dispositivo,
+            id_monitor,
+            minimo_entre_frames,
+            notificar,
+            true,
+        )
+    }
+
+    fn abrir(
+        dispositivo: &Dispositivo,
+        id_monitor: u32,
+        minimo_entre_frames: Duration,
+        notificar: Option<(isize, u32)>,
+        con_cursor: bool,
+    ) -> Result<SesionViva, ErrorCaptura> {
         let Some(handle) = handle_de_monitor(id_monitor) else {
             return Err(ErrorCaptura::MonitorDesconocido(id_monitor));
         };
@@ -143,8 +178,8 @@ impl SesionViva {
         let token = pool.FrameArrived(&manejador)?;
         let sesion = pool.CreateCaptureSession(&item)?;
 
-        // Mismo tratamiento del borde y el cursor que la instantanea: por
-        // capacidad, no por version.
+        // Mismo tratamiento del borde que la instantanea: por capacidad, no
+        // por version. El cursor, segun quien la pida (`nueva_con_cursor`).
         if let Ok(soportado) = windows::Foundation::Metadata::ApiInformation::IsPropertyPresent(
             &windows::core::HSTRING::from("Windows.Graphics.Capture.GraphicsCaptureSession"),
             &windows::core::HSTRING::from("IsBorderRequired"),
@@ -153,7 +188,7 @@ impl SesionViva {
                 let _ = sesion.SetIsBorderRequired(false);
             }
         }
-        let _ = sesion.SetIsCursorCaptureEnabled(false);
+        let _ = sesion.SetIsCursorCaptureEnabled(con_cursor);
 
         sesion.StartCapture()?;
 

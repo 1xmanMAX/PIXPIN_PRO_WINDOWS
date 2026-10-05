@@ -669,6 +669,7 @@ mod pruebas {
             },
             herramientas: crate::herramientas::Herramientas {
                 apagadas: vec!["lazo".into(), "mosaico".into()],
+                ..Default::default()
             },
             ..Ajustes::default()
         }

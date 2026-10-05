@@ -22,7 +22,7 @@ use windows::core::w;
 
 /// Pide ficheros al usuario, de cualquier clase.
 pub fn pedir_ficheros(hwnd_padre: HWND) -> Vec<PathBuf> {
-    pedir(hwnd_padre, false)
+    pedir(hwnd_padre, Clase::Todo)
 }
 
 /// Pide fotos o videos.
@@ -31,12 +31,27 @@ pub fn pedir_ficheros(hwnd_padre: HWND) -> Vec<PathBuf> {
 /// siempre puede cambiarlo a «todos». Por eso quien llama sigue teniendo que
 /// tragar con lo que venga: esto es comodidad, no una garantia.
 pub fn pedir_imagenes(hwnd_padre: HWND) -> Vec<PathBuf> {
-    pedir(hwnd_padre, true)
+    pedir(hwnd_padre, Clase::FotosYVideos)
+}
+
+/// Pide UNA foto, sin videos: el logo de un proyecto es una imagen fija y
+/// solo cabe una. Como arriba, el filtro es comodidad: quien llama tiene que
+/// aguantar un fichero que no se deje leer.
+pub fn pedir_una_imagen(hwnd_padre: HWND) -> Option<PathBuf> {
+    pedir(hwnd_padre, Clase::UnaFoto).into_iter().next()
+}
+
+/// Que se le pide al usuario.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Clase {
+    Todo,
+    FotosYVideos,
+    UnaFoto,
 }
 
 /// Lista vacia si cancela o si el dialogo falla: no poder abrirlo no puede
 /// tumbar la ventana que lo pidio.
-fn pedir(hwnd_padre: HWND, solo_imagenes: bool) -> Vec<PathBuf> {
+fn pedir(hwnd_padre: HWND, clase: Clase) -> Vec<PathBuf> {
     // SAFETY: COM ya esta inicializado en el hilo de interfaz (lo hace la
     // bandeja); el dialogo es un objeto local que muere al salir de aqui, y
     // cada cadena que devuelve se libera con CoTaskMemFree.
@@ -49,15 +64,24 @@ fn pedir(hwnd_padre: HWND, solo_imagenes: bool) -> Vec<PathBuf> {
         // Varios a la vez, y solo ficheros que existan: adjuntar algo que no
         // esta no tiene sentido.
         let opciones = dialogo.GetOptions().unwrap_or_default();
-        let _ = dialogo.SetOptions(opciones | FOS_ALLOWMULTISELECT | FOS_FILEMUSTEXIST);
-        if solo_imagenes {
+        let opciones = if clase == Clase::UnaFoto {
+            opciones
+        } else {
+            opciones | FOS_ALLOWMULTISELECT
+        };
+        let _ = dialogo.SetOptions(opciones | FOS_FILEMUSTEXIST);
+        if clase != Clase::Todo {
             // Las cadenas tienen que vivir hasta despues de la llamada: el
             // dialogo guarda los punteros, no copia.
-            let (fotos, todos) = (w!("Fotos y videos"), w!("Todos los archivos"));
-            let (patron, estrella) = (
-                w!("*.png;*.jpg;*.jpeg;*.gif;*.bmp;*.webp;*.avif;*.mp4;*.mov;*.mkv;*.webm"),
-                w!("*.*"),
-            );
+            let (fotos, patron) = if clase == Clase::UnaFoto {
+                (w!("Imagenes"), w!("*.png;*.jpg;*.jpeg;*.webp;*.bmp;*.gif"))
+            } else {
+                (
+                    w!("Fotos y videos"),
+                    w!("*.png;*.jpg;*.jpeg;*.gif;*.bmp;*.webp;*.avif;*.mp4;*.mov;*.mkv;*.webm"),
+                )
+            };
+            let (todos, estrella) = (w!("Todos los archivos"), w!("*.*"));
             let filtros = [
                 COMDLG_FILTERSPEC {
                     pszName: fotos,

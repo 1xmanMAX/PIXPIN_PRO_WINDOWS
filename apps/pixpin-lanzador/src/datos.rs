@@ -424,6 +424,23 @@ pub fn con_tarea_marcada(documento: &str, indice: usize, hecha: bool) -> String 
     lineas.join("\n")
 }
 
+/// El documento sin la casilla `indice` (para ensenar la tarea quitada sin
+/// esperar a que la app lo escriba). Una que no existe lo deja igual.
+pub fn con_tarea_quitada(documento: &str, indice: usize) -> String {
+    let mut n = 0;
+    documento
+        .split('\n')
+        .filter(|linea| {
+            if casilla(linea).is_none() {
+                return true;
+            }
+            n += 1;
+            n - 1 != indice
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 /// El documento con una tarea pendiente mas al final.
 pub fn con_tarea_anadida(documento: &str, texto: &str) -> String {
     let mut d = documento.trim_end_matches('\n').to_string();

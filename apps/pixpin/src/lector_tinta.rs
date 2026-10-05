@@ -1308,6 +1308,7 @@ mod pruebas {
     fn una_herramienta_apagada_no_sale_en_la_barra_del_lector_ni_responde_a_su_letra() {
         permitidas::fijar(pixpin_store::herramientas::Herramientas {
             apagadas: vec!["rectangulo".into()],
+            ..Default::default()
         });
         let caja = Tinta::caja(
             Rect {
@@ -1349,6 +1350,7 @@ mod pruebas {
         // Caso negativo con una que si tiene letra: apagada, su letra no hace nada.
         permitidas::fijar(pixpin_store::herramientas::Herramientas {
             apagadas: vec!["texto".into()],
+            ..Default::default()
         });
         let h = t.evento(
             &EventoOverlay::Caracter('t'),

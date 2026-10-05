@@ -17,6 +17,8 @@
 //! probada. Aqui estan las filas de cada seccion, que hace cada golpe y el
 //! pintado.
 
+use std::cell::Cell;
+
 use anyhow::{Context, Result};
 use fluent_bundle::FluentArgs;
 use pixpin_geom::{Punto, Rect};
@@ -31,6 +33,7 @@ use pixpin_store::ajustes::{
     PreferenciaNivel, Suavizado,
 };
 use pixpin_store::comandos::{CATALOGO, Comando, Enlaces};
+use pixpin_store::herramientas::SITIOS;
 use pixpin_store::{Catalogo, Ubicacion};
 use pixpin_ui::ajustes::{
     Control, Estado, Fila, Foco, Golpe, NAV_ANCHO, Parte, Recta, ancho_de_textos, borrar_busqueda,
@@ -246,6 +249,9 @@ enum Clave {
     ImanCentros,
     ImanRadio,
     Suavizado,
+    /// En que sitio se eligen las herramientas de debajo (no es un ajuste:
+    /// es por donde se mira, `SITIO_HERRAMIENTAS`).
+    SitioHerramientas,
     /// Una herramienta de dibujo, por su nombre estable del TOML.
     Herramienta(&'static str),
     // Voz
@@ -276,6 +282,7 @@ impl Clave {
         !matches!(
             self,
             Clave::Grupo
+                | Clave::SitioHerramientas
                 | Clave::Carpeta
                 | Clave::Ignorado(_)
                 | Clave::AnadirIgnorado
@@ -674,19 +681,55 @@ fn filas_de_seccion(s: Seccion, a: &Ajustes, cx: &Contexto) -> Vec<(Clave, Fila)
             // Las herramientas de dibujo, agrupadas como en la barra
             // (`permitidas::secciones_de_ajustes`). Un grupo con todas
             // apagadas desaparece de la barra.
+            //
+            // Encima, DONDE: en todos los sitios a la vez o en uno solo (el
+            // usuario: «elegir cuantas herramientas mostrar en diferentes
+            // situaciones... para que no se muestren siempre todas»). En un
+            // sitio solo salen las que ese sitio sabe hacer.
+            let sitio = sitio_elegido();
+            let mut opciones = vec![tt("ajustes-herramientas-sitio-todos")];
+            opciones.extend(
+                SITIOS
+                    .iter()
+                    .map(|s| tt(&format!("ajustes-herramientas-sitio-{s}"))),
+            );
+            v.push(op(
+                a,
+                Clave::SitioHerramientas,
+                tt("ajustes-herramientas-donde"),
+                tt("ajustes-herramientas-donde-ayuda"),
+                opcion(opciones, SITIO_HERRAMIENTAS.with(Cell::get)),
+            ));
+            let anfitrion = sitio.and_then(crate::dibujo::permitidas::Anfitrion::de_sitio);
             for (g, nombres) in crate::dibujo::permitidas::secciones_de_ajustes() {
+                let nombres: Vec<&'static str> = nombres
+                    .into_iter()
+                    .filter(|n| {
+                        anfitrion.is_none_or(|anf| {
+                            crate::dibujo::permitidas::boton_de_nombre(n)
+                                .is_none_or(|b| anf.admite_boton(b))
+                        })
+                    })
+                    .collect();
+                if nombres.is_empty() {
+                    continue;
+                }
                 let titulo = match g {
                     Some(g) => t.t(&format!("barra-grupo-{}", g.nombre())),
                     None => tt("ajustes-herramientas-sueltas"),
                 };
                 v.push((Clave::Grupo, Fila::grupo(titulo)));
                 for n in nombres {
+                    let activa = match sitio {
+                        None => a.herramientas.activa(n),
+                        Some(s) => a.herramientas.activa_en(s, n),
+                    };
                     v.push(op(
                         a,
                         Clave::Herramienta(n),
                         t.t(&format!("herramientas-{n}")),
                         String::new(),
-                        Control::Interruptor(a.herramientas.activa(n)),
+                        Control::Interruptor(activa),
                     ));
                 }
             }
@@ -968,7 +1011,11 @@ fn restablecer(clave: Clave, a: &mut Ajustes) {
         Clave::ImanCentros => a.enganche.centros = d.enganche.centros,
         Clave::ImanRadio => a.enganche.radio_px = d.enganche.radio_px,
         Clave::Suavizado => a.tinta.suavizado = d.tinta.suavizado,
-        Clave::Herramienta(n) => a.herramientas.poner(n, true),
+        Clave::SitioHerramientas => {}
+        Clave::Herramienta(n) => match sitio_elegido() {
+            None => a.herramientas.poner(n, true),
+            Some(s) => a.herramientas.poner_en(s, n, true),
+        },
         Clave::VozSegundo => a.voz.segundo_idioma = d.voz.segundo_idioma,
         Clave::VozModo => a.voz.modo_de_idiomas = d.voz.modo_de_idiomas,
         Clave::Presencia => a.sincro.presencia = d.sincro.presencia,
@@ -988,6 +1035,43 @@ fn restablecer(clave: Clave, a: &mut Ajustes) {
         | Clave::Region(_)
         | Clave::Predeterminada
         | Clave::Fichero => {}
+    }
+}
+
+thread_local! {
+    /// En que sitio se estan eligiendo las herramientas: 0 = en todos, y
+    /// desde 1 el de `SITIOS`. Es por donde se mira, no un ajuste: no se
+    /// guarda ni se deshace.
+    static SITIO_HERRAMIENTAS: Cell<usize> = const { Cell::new(0) };
+}
+
+/// El sitio elegido arriba de las herramientas, o `None` si son todos.
+fn sitio_elegido() -> Option<&'static str> {
+    SITIO_HERRAMIENTAS.with(|c| c.get().checked_sub(1).and_then(|i| SITIOS.get(i).copied()))
+}
+
+/// Enciende o apaga una herramienta: en todos los sitios (`None`) o en uno.
+///
+/// Encender en un sitio una que estaba apagada en TODOS la deja encendida
+/// solo ahi: sale de la lista general y se apaga en los demas sitios, que
+/// asi siguen como estaban.
+fn alternar_herramienta(a: &mut Ajustes, sitio: Option<&str>, n: &str) {
+    let h = &mut a.herramientas;
+    match sitio {
+        None => {
+            let activa = h.activa(n);
+            h.poner(n, !activa);
+        }
+        Some(s) if h.activa_en(s, n) => h.poner_en(s, n, false),
+        Some(s) => {
+            if !h.activa(n) {
+                h.poner(n, true);
+                for otro in SITIOS.iter().filter(|o| **o != s) {
+                    h.poner_en(otro, n, false);
+                }
+            }
+            h.poner_en(s, n, true);
+        }
     }
 }
 
@@ -1023,10 +1107,7 @@ fn aplicar_interruptor(a: &mut Ajustes, clave: Clave) {
         Clave::ImanEsquinas => a.enganche.esquinas = !a.enganche.esquinas,
         Clave::ImanMedios => a.enganche.medios = !a.enganche.medios,
         Clave::ImanCentros => a.enganche.centros = !a.enganche.centros,
-        Clave::Herramienta(n) => {
-            let activa = a.herramientas.activa(n);
-            a.herramientas.poner(n, !activa);
-        }
+        Clave::Herramienta(n) => alternar_herramienta(a, sitio_elegido(), n),
         Clave::Presencia => a.sincro.presencia = !a.sincro.presencia,
         Clave::LoMioManda => a.sincro.lo_mio_manda = !a.sincro.lo_mio_manda,
         Clave::AbrirCon => a.abrir_con = !a.abrir_con,
@@ -1039,6 +1120,7 @@ fn aplicar_interruptor(a: &mut Ajustes, clave: Clave) {
 
 fn aplicar_opcion(a: &mut Ajustes, clave: Clave, cual: usize) {
     match clave {
+        Clave::SitioHerramientas => SITIO_HERRAMIENTAS.with(|c| c.set(cual.min(SITIOS.len()))),
         Clave::Idioma => {
             a.idioma = match cual {
                 1 => PreferenciaIdioma::Espanol,
@@ -2436,6 +2518,23 @@ fn dibujar_fila(
 #[cfg(test)]
 mod pruebas {
     use super::*;
+
+    #[test]
+    fn encender_en_un_sitio_una_apagada_en_todos_la_deja_solo_ahi() {
+        let mut a = Ajustes::default();
+        alternar_herramienta(&mut a, None, "lazo");
+        assert!(!a.herramientas.activa("lazo"));
+        alternar_herramienta(&mut a, Some("pin"), "lazo");
+        assert!(a.herramientas.activa_en("pin", "lazo"));
+        for s in SITIOS.iter().filter(|s| **s != "pin") {
+            assert!(!a.herramientas.activa_en(s, "lazo"), "{s}");
+        }
+        // Y apagarla en un sitio no toca los demas.
+        let mut b = Ajustes::default();
+        alternar_herramienta(&mut b, Some("lienzo"), "mosaico");
+        assert!(!b.herramientas.activa_en("lienzo", "mosaico"));
+        assert!(b.herramientas.activa_en("pantalla", "mosaico"));
+    }
 
     fn textos() -> Catalogo {
         Catalogo::nuevo(pixpin_store::Idioma::Espanol)

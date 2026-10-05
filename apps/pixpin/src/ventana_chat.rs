@@ -48,6 +48,8 @@ mod hoja_portapapeles;
 mod icono_de_tipo;
 /// Un Excel del chat es un libro de tablas (D11).
 mod libro;
+/// El logo de un proyecto: una imagen en vez de las iniciales (4-oct).
+mod logo;
 /// Mayus+clic marca un tramo de burbujas.
 mod marcar;
 /// v2-menus: geometria y teclas de los menus (`Menus2.dc.html`).
@@ -2060,8 +2062,37 @@ pub fn abrir(
                             vec![id]
                         };
                         let con_carpeta_propia = fichas[orden[fila]].ubicacion.is_some();
-                        let elegido =
-                            menu_de_proyecto(&ventana, textos, ids.len(), con_carpeta_propia);
+                        let con_logo = logo::tiene(ubicacion.raiz(), &fichas[orden[fila]].id);
+                        let elegido = menu_de_proyecto(
+                            &ventana,
+                            textos,
+                            ids.len(),
+                            con_carpeta_propia,
+                            con_logo,
+                        );
+                        // El logo: se pone o se quita y la lista lo vuelve a
+                        // leer al pintar.
+                        if matches!(
+                            elegido,
+                            Some(DelMenuProyecto::PonerLogo | DelMenuProyecto::QuitarLogo)
+                        ) {
+                            let id = &fichas[orden[fila]].id;
+                            let hecho = if elegido == Some(DelMenuProyecto::PonerLogo) {
+                                logo::elegir_y_poner(ventana.handle(), ubicacion.raiz(), id)
+                                    .map(|_| ())
+                            } else {
+                                logo::quitar(ubicacion.raiz(), id).map_err(anyhow::Error::from)
+                            };
+                            if let Err(e) = hecho {
+                                tracing::warn!(?e, "no se pudo cambiar el logo del proyecto");
+                                aviso = Some((
+                                    textos.t("proyecto-logo-error"),
+                                    std::time::Instant::now(),
+                                ));
+                            }
+                            hay_que_pintar = true;
+                            continue;
+                        }
                         // Donde se guarda: moverlo, traerlo o ensenar su
                         // carpeta. Solo con uno: cada proyecto va a la suya.
                         let cambio = match elegido {
@@ -3345,6 +3376,19 @@ pub fn abrir(
             if vista_proyectos.activa() {
                 faltan_fondos |= vista_proyectos.preparar(&mut previas, &motor);
             }
+            // Los logos de las filas que se ven y el del abierto (su
+            // cabecera): leidos una vez, luego solo se pintan.
+            {
+                let (primera, cuantas) = disposicion.visibles(scroll, orden.len(), escala);
+                let filas = orden
+                    .iter()
+                    .skip(primera)
+                    .take(cuantas)
+                    .filter_map(|i| fichas.get(*i))
+                    .map(|f| f.id.as_str());
+                let del_abierto = abierto.as_ref().map(|a| a.ficha.id.as_str());
+                logo::preparar(ubicacion.raiz(), filas.chain(del_abierto), &motor);
+            }
             if let Ok(destino) = superficie.empezar(&motor) {
                 let lista = Lista {
                     fichas: &fichas,
@@ -3509,6 +3553,7 @@ pub fn abrir(
                     miniaturas.soltar();
                     previas.soltar();
                     CACHE_GRAFITO.with_borrow_mut(|c| c.vaciar());
+                    logo::soltar();
                     crate::tema_cosmos::soltar();
                     vista_proyectos.soltar();
                 }
@@ -4361,19 +4406,22 @@ fn pintar_filas(p: &Pintor, d: &Disposicion, tema: &Tema, escala: u32, lista: &L
         }
         let partes = pixpin_ui::chat::partes_fila(r, d.plegada, escala);
 
-        // El avatar: un circulo de su color con las iniciales.
+        // El avatar: su logo si le puso uno, o un circulo de su color con
+        // las iniciales.
         let a = rf(partes.avatar);
-        p.rellenar_redondeado(a, a.ancho / 2.0, color_avatar(&ficha.codigo_unico()));
-        let letras = iniciales(&ficha.nombre);
-        let tam = a.alto * 0.4;
-        let (w, h) = p.medir_texto(&letras, tam);
-        p.texto(
-            &letras,
-            a.x + (a.ancho - w) / 2.0,
-            a.y + (a.alto - h) / 2.0,
-            tam,
-            Color::BLANCO,
-        );
+        if !logo::pintar(p, &ficha.id, a) {
+            p.rellenar_redondeado(a, a.ancho / 2.0, color_avatar(&ficha.codigo_unico()));
+            let letras = iniciales(&ficha.nombre);
+            let tam = a.alto * 0.4;
+            let (w, h) = p.medir_texto(&letras, tam);
+            p.texto(
+                &letras,
+                a.x + (a.ancho - w) / 2.0,
+                a.y + (a.alto - h) / 2.0,
+                tam,
+                Color::BLANCO,
+            );
+        }
         if partes.ancho_texto == 0 {
             continue;
         }
@@ -6421,23 +6469,27 @@ fn pintar_cabecera(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto) {
         ancho: disco,
         alto: disco,
     };
-    p.rellenar_redondeado(circulo, disco / 2.0, tema.carpeta);
-    let icono: &Icono = if a.ficha.es_guardados() {
-        &mi::BOOKMARK_BORDER
-    } else {
-        &mi::FOLDER
-    };
-    let lado = 17.0 * e;
-    p.icono(
-        icono,
-        RectF {
-            x: x0 + (disco - lado) / 2.0,
-            y: y0 + (disco - lado) / 2.0,
-            ancho: lado,
-            alto: lado,
-        },
-        tema.carpeta_icono,
-    );
+    // Con logo puesto, el logo ocupa el disco de la carpeta: es el mismo
+    // proyecto que en la lista y tiene que reconocerse igual.
+    if !logo::pintar(p, &a.ficha.id, circulo) {
+        p.rellenar_redondeado(circulo, disco / 2.0, tema.carpeta);
+        let icono: &Icono = if a.ficha.es_guardados() {
+            &mi::BOOKMARK_BORDER
+        } else {
+            &mi::FOLDER
+        };
+        let lado = 17.0 * e;
+        p.icono(
+            icono,
+            RectF {
+                x: x0 + (disco - lado) / 2.0,
+                y: y0 + (disco - lado) / 2.0,
+                ancho: lado,
+                alto: lado,
+            },
+            tema.carpeta_icono,
+        );
+    }
     let tx = x0 + disco + 10.0 * e;
     let ancho_nombre = (caja.derecha() as f32 - 14.0 * e - tx - flecha - 2.0 * e).max(0.0);
     p.texto_linea(
@@ -11750,6 +11802,10 @@ enum DelMenuProyecto {
     AbrirCarpeta,
     /// La hoja de compartir con el proyecto entero (o los marcados).
     Compartir,
+    /// Elegir una imagen para su avatar (`logo`).
+    PonerLogo,
+    /// Volver al circulo con iniciales.
+    QuitarLogo,
 }
 
 /// El menu del clic derecho sobre un proyecto de la lista.
@@ -11762,11 +11818,15 @@ enum DelMenuProyecto {
 ///
 /// Lo de la carpeta, tambien solo con uno: cada proyecto va a la suya.
 /// «Volver a la ubicacion habitual» solo sale si tiene una propia.
+///
+/// El logo, tambien con uno solo, junto al nombre: es lo otro que se ve de
+/// el en la lista. «Quitar» solo si tiene uno puesto.
 fn menu_de_proyecto(
     ventana: &VentanaOverlay,
     textos: &Catalogo,
     cuantos: usize,
     con_carpeta_propia: bool,
+    con_logo: bool,
 ) -> Option<DelMenuProyecto> {
     const BORRAR: u32 = 1;
     const RENOMBRAR: u32 = 2;
@@ -11775,6 +11835,8 @@ fn menu_de_proyecto(
     const VOLVER_A_HABITUAL: u32 = 5;
     const ABRIR_CARPETA: u32 = 6;
     const COMPARTIR: u32 = 7;
+    const PONER_LOGO: u32 = 8;
+    const QUITAR_LOGO: u32 = 9;
     let rotulo = if cuantos > 1 {
         format!("{} ({cuantos})", textos.t("proyecto-borrar-varios"))
     } else {
@@ -11786,6 +11848,10 @@ fn menu_de_proyecto(
     let mut entradas = vec![(COMPARTIR, textos.t("compartir-proyecto"))];
     if cuantos == 1 {
         entradas.push((RENOMBRAR, textos.t("proyecto-renombrar")));
+        entradas.push((PONER_LOGO, textos.t("proyecto-logo-poner")));
+        if con_logo {
+            entradas.push((QUITAR_LOGO, textos.t("proyecto-logo-quitar")));
+        }
         entradas.push((CAMBIAR_UBICACION, textos.t("ubicacion-cambiar")));
         if con_carpeta_propia {
             entradas.push((VOLVER_A_HABITUAL, textos.t("ubicacion-habitual")));
@@ -11797,6 +11863,8 @@ fn menu_de_proyecto(
     entradas.push((PAPELERA, textos.t("proyecto-papelera")));
     match pixpin_shell::menu_llano(ventana.handle(), &entradas) {
         Some(RENOMBRAR) => Some(DelMenuProyecto::Renombrar),
+        Some(PONER_LOGO) => Some(DelMenuProyecto::PonerLogo),
+        Some(QUITAR_LOGO) => Some(DelMenuProyecto::QuitarLogo),
         Some(PAPELERA) => Some(DelMenuProyecto::Papelera),
         Some(CAMBIAR_UBICACION) => Some(DelMenuProyecto::CambiarUbicacion),
         Some(VOLVER_A_HABITUAL) => Some(DelMenuProyecto::VolverAHabitual),

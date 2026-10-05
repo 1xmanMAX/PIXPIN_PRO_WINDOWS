@@ -454,10 +454,13 @@ fn dentro_de_una_lista_marcar_y_anadir() {
             consulta: "pp tareas Compra · Mensajes guardados > ".into(),
         }
     );
-    // Lo que ya existe no se ofrece anadir, y el filtro deja solo esa.
+    // Lo que ya existe se puede anadir otra vez (avisando), y el filtro
+    // deja solo esa debajo.
     let v = buscar(&r, "tareas compra · mensajes guardados > Pan");
-    assert_eq!(v.len(), 1);
-    assert_eq!(v[0].titulo, "☐ pan");
+    assert_eq!(v.len(), 2);
+    assert_eq!(v[0].titulo, "Añadir tarea: Pan");
+    assert!(v[0].subtitulo.starts_with("Ya hay una igual"));
+    assert_eq!(v[1].titulo, "☐ pan");
     // Con el titulo solo vale tambien (la de Gestion, que es la mas nueva).
     let v = buscar(&r, "tareas compra > ");
     assert_eq!(v[0].titulo, "☐ tornillos");
@@ -1550,7 +1553,7 @@ fn tareas_ensena_el_inbox_primero_con_sus_tareas() {
             consulta: "pp tareas ".into(),
         }
     );
-    assert_eq!(v[1].subtitulo, "Tarea · Inbox · Intro: hecha");
+    assert_eq!(v[1].subtitulo, "Tarea · n.º 1 · Inbox · Intro: hecha");
     assert_eq!(
         *pedido_de(&v[3]),
         json!({ "pixpin": 1, "accion": "ventana", "cual": "tareas" })
@@ -1572,6 +1575,7 @@ fn mover_una_tarea_a_otra_lista_desde_el_menu() {
             "Copiar texto",
             "Mover a «Compra»",
             "Mover a «Compra»",
+            "Quitar tarea",
             "Abrir la carpeta del proyecto"
         ]
     );
@@ -1583,6 +1587,93 @@ fn mover_una_tarea_a_otra_lista_desde_el_menu() {
     );
     assert_eq!(pedido_de(&m[4])["a_proyecto"], Value::Null);
     assert_eq!(pedido_de(&m[4])["a_codigo"], "t1");
+}
+
+#[test]
+fn quitar_una_tarea_y_borrar_una_lista_desde_el_menu() {
+    let r = raiz_con_inbox("quitar-menu");
+    let v = buscar(&r, "tareas Compra · Mensajes guardados > ");
+    assert_eq!(v[1].titulo, "☐ huevos");
+    let m = menu_de(&v[1]);
+    let quitar = m.iter().find(|x| x.titulo == "Quitar tarea").unwrap();
+    // Vuelve a la misma lista, sin cerrar Flow.
+    assert_eq!(
+        quitar.accion,
+        Accion::PedirYSeguir {
+            pedido: json!({ "pixpin": 1, "accion": "quitar_tarea", "proyecto": null, "codigo": "t1", "indice": 2 }),
+            consulta: "pp tareas Compra · Mensajes guardados > ".into(),
+        }
+    );
+    // La lista, desde todas las listas: «Borrar lista» vuelve a ellas.
+    let v = buscar(&r, "tareas");
+    let compra = v
+        .iter()
+        .find(|x| x.titulo == "Compra" && x.subtitulo.contains("Mensajes guardados"))
+        .unwrap();
+    let m = menu_de(compra);
+    let borrar = m.iter().find(|x| x.titulo == "Borrar lista").unwrap();
+    assert_eq!(
+        borrar.accion,
+        Accion::PedirYSeguir {
+            pedido: json!({ "pixpin": 1, "accion": "borrar_lista", "proyecto": null, "codigo": "t1" }),
+            consulta: "pp tareas ".into(),
+        }
+    );
+    assert!(
+        borrar.subtitulo.contains("3 tareas"),
+        "{}",
+        borrar.subtitulo
+    );
+    assert_eq!(
+        m[m.len() - 2].titulo,
+        "Borrar lista",
+        "lo que borra, al final (antes de la carpeta)"
+    );
+    // Caso negativo: lo que no es una tarea ni una lista no ofrece ninguno.
+    let v = buscar(&r, "calculo");
+    let m = menu_de(&v[0]);
+    assert!(
+        m.iter()
+            .all(|x| x.titulo != "Quitar tarea" && x.titulo != "Borrar lista"),
+        "{:?}",
+        titulos(&m)
+    );
+}
+
+#[test]
+fn quitar_una_tarea_la_saca_de_la_lista_sin_cerrar_flow() {
+    let r = raiz("rpc-quitar");
+    let mut p = plugin(&r);
+    let q = "tareas Compra · Mensajes guardados > ";
+    // Lo que manda Flow al elegir «Quitar tarea» en el menu de «pan».
+    let pedido = json!({ "pixpin": 1, "accion": "quitar_tarea", "proyecto": null, "codigo": "t1", "indice": 0 });
+    p.atender(
+        &json!({ "jsonrpc": "2.0", "id": 1, "method": "pedir_y_seguir",
+            "params": [[pedido, format!("pp {q}")]] })
+        .to_string(),
+    );
+    assert_eq!(p.mensajero.pedidos[0]["accion"], "quitar_tarea");
+    // La app de mentira no escribe: se adelanta en la cache, sin «pan».
+    p.atender(&consulta(2, q));
+    let s = salida(&p);
+    let titulos: Vec<&str> = s.last().unwrap()["result"]["result"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|r| r["title"].as_str().unwrap())
+        .collect();
+    assert_eq!(titulos, ["☐ huevos", "☑ leche"]);
+}
+
+#[test]
+fn con_tarea_quitada_saca_solo_esa_casilla() {
+    let d = "# Compra\n\n- [ ] pan\nnota suelta\n- [x] leche\n- [ ] huevos";
+    assert_eq!(
+        crate::datos::con_tarea_quitada(d, 1),
+        "# Compra\n\n- [ ] pan\nnota suelta\n- [ ] huevos"
+    );
+    // Caso negativo: una que no existe lo deja igual.
+    assert_eq!(crate::datos::con_tarea_quitada(d, 3), d);
 }
 
 #[test]
@@ -1909,7 +2000,7 @@ fn los_campos_nuevos_de_flow_en_el_json() {
     assert!(j.get("progressBar").is_none());
     // El filtro de una lista se resalta en la tarea (en UTF-16: «☐ » son 2).
     let v = buscar(&r, "tareas Compra · Mensajes guardados > pan");
-    assert_eq!(v[0].a_json("i", 1)["titleHighlightData"], json!([2, 3, 4]));
+    assert_eq!(v[1].a_json("i", 1)["titleHighlightData"], json!([2, 3, 4]));
     // Y el del chat de un proyecto.
     let v = buscar(&r, "Gestión de proyectos > presupuesto");
     assert_eq!(v[0].titulo, "revisar el presupuesto");

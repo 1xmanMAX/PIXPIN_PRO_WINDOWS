@@ -1229,8 +1229,10 @@ fn resultado_lista(l: &Lista, proyectos: &[Proyecto], ctx: &Contexto) -> Resulta
     if !texto.is_empty() {
         r.ayuda_subtitulo = Some(para_ayuda(&texto));
     }
+    // «Borrar lista»: se vuelve a todas las listas, ya sin ella.
     r.con_menu(json!({ "tipo": "mensaje", "proyecto": p.id_para_pedido(), "codigo": l.codigo, "texto": texto,
-        "carpeta": p.carpeta.to_string_lossy() }));
+        "carpeta": p.carpeta.to_string_lossy(),
+        "borrar_lista": borrar_lista_del_menu(p, l, ctx) }));
     r
 }
 
@@ -1970,7 +1972,15 @@ pub(crate) fn resultado_tarea(
     };
     let mut r = Resultado::nuevo(
         format!("{marca} {}", t.texto),
-        unir(&["Tarea", &donde, &edad, que]),
+        // Con su numero: dos tareas iguales (se puede apuntar la misma dos
+        // veces) darian dos filas identicas, y Flow junta las identicas.
+        unir(&[
+            "Tarea",
+            &format!("n.º {}", t.indice + 1),
+            &donde,
+            &edad,
+            que,
+        ]),
         glifo,
         Accion::PedirYSeguir {
             pedido: pedido(
@@ -2022,6 +2032,11 @@ pub(crate) fn resultado_tarea(
         "texto": t.texto,
         "carpeta": p.carpeta.to_string_lossy(),
         "mover": { "proyecto": p.id_para_pedido(), "codigo": l.codigo, "indice": t.indice, "destinos": destinos },
+        // «Quitar tarea»: se vuelve a la misma lista, ya sin ella.
+        "quitar": {
+            "pedido": pedido("quitar_tarea", json!({ "proyecto": p.id_para_pedido(), "codigo": l.codigo, "indice": t.indice })),
+            "vuelta": vuelta,
+        },
     }));
     r
 }
@@ -2115,11 +2130,21 @@ fn en_lista(proyectos: &[Proyecto], lista: &str, filtro: &str, ctx: &Contexto) -
     let ahora_mismo = format!("{aqui}{filtro}");
     let q = normalizar(filtro);
     let mut v = Vec::new();
+    // Tambien con una igual ya en la lista: antes se escondia, y apuntar la
+    // misma tarea dos veces no hacia nada (el usuario: «ingrese una tarea dos
+    // veces y solo aparece una vez»). Se avisa, pero se deja.
     let exacta = l.tareas.iter().any(|t| normalizar(&t.texto) == q);
-    if !q.is_empty() && !exacta {
+    if !q.is_empty() {
         let mut r = Resultado::nuevo(
             format!("Añadir tarea: {filtro}"),
-            format!("Intro: añadirla a «{}» · {}", l.titulo, p.nombre),
+            if exacta {
+                format!(
+                    "Ya hay una igual · Intro: añadir otra a «{}» · {}",
+                    l.titulo, p.nombre
+                )
+            } else {
+                format!("Intro: añadirla a «{}» · {}", l.titulo, p.nombre)
+            },
             glifo::ANADIR,
             Accion::PedirYSeguir {
                 pedido: pedido(
@@ -2143,14 +2168,30 @@ fn en_lista(proyectos: &[Proyecto], lista: &str, filtro: &str, ctx: &Contexto) -
         v.push(resultado_tarea(l, t, proyectos, &todas, &ahora_mismo, ctx));
     }
     if l.tareas.is_empty() && q.is_empty() {
-        v.push(Resultado::nuevo(
+        let mut r = Resultado::nuevo(
             format!("«{}» está vacía", l.titulo),
             "Escribe una tarea y pulsa Intro para añadirla",
             glifo::TAREAS,
             Accion::Consulta(aqui),
-        ));
+        );
+        // Una lista vacia es la primera que se quiere borrar.
+        r.con_menu(
+            json!({ "tipo": "mensaje", "proyecto": p.id_para_pedido(), "codigo": l.codigo,
+            "borrar_lista": borrar_lista_del_menu(p, l, ctx) }),
+        );
+        v.push(r);
     }
     v
+}
+
+/// Lo que el menu necesita para «Borrar lista»: el pedido y adonde volver
+/// (todas las listas, ya sin ella).
+fn borrar_lista_del_menu(p: &Proyecto, l: &Lista, ctx: &Contexto) -> Value {
+    json!({
+        "pedido": pedido("borrar_lista", json!({ "proyecto": p.id_para_pedido(), "codigo": l.codigo })),
+        "vuelta": ctx.consulta("tareas "),
+        "cuantas": l.tareas.len(),
+    })
 }
 
 /// El menu contextual (flecha derecha o Mayus+Intro): ver [`crate::menu`].
