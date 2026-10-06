@@ -33,6 +33,7 @@ pixpin-shell = { version = "0.1.0", path = "../../crates/pixpin-shell" }
 pixpin-sincro = { version = "0.1.0", path = "../../crates/pixpin-sincro" }
 # Lecciones aprendidas: la logica pura (ficha, repaso, buscador, etiquetas).
 pixpin-lecciones = { path = "../../crates/pixpin-lecciones" }
+pixpin-timeline = { path = "../../crates/pixpin-timeline" }
 pixpin-store = { version = "0.1.0", path = "../../crates/pixpin-store" }
 pixpin-tinta = { version = "0.1.0", path = "../../crates/pixpin-tinta" }
 pixpin-ui = { version = "0.1.0", path = "../../crates/pixpin-ui" }

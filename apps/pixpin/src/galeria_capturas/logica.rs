@@ -1,6 +1,7 @@
-//! **Lo que la galeria decide sin pintar nada** (v2): los filtros del
-//! carril, el color de la caducidad, la busqueda, como caen los grupos por
-//! dia y las celdas, y adonde va el foco con las flechas.
+//! **Lo que la galeria decide sin pintar nada** (v2): el color de la
+//! caducidad, la busqueda, como caen los grupos por dia y las celdas, y
+//! adonde va el foco con las flechas. Los filtros del carril se fueron con
+//! el carril (5-oct): el usuario no los usaba.
 //!
 //! Aparte de la ventana para poder probarlo todo sin GPU.
 
@@ -21,127 +22,17 @@ pub fn dia_de_la_semana(dia: i64) -> u32 {
     (dia + 3).rem_euclid(7) as u32
 }
 
-/// El lunes de la semana de `dia`.
-pub fn lunes_de(dia: i64) -> i64 {
-    dia - dia_de_la_semana(dia) as i64
-}
-
 // ------------------------------------------------------------- caducidad
-
-/// El color de la pastilla de caducidad.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Tono {
-    /// Gris: queda mas de tres dias.
-    Lejos,
-    /// Naranja: dos o tres dias.
-    Pronto,
-    /// Rojo: hoy o manana.
-    Urgente,
-    /// Verde: no se va.
-    Conservada,
-}
-
-/// Que pone la pastilla.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Plazo {
-    Conservada,
-    Hoy,
-    Manana,
-    /// «Se borra en N dias» (2 o 3).
-    EnDias(i64),
-    /// «Se borra el 10 oct».
-    ElDia(i64),
-}
 
 /// Dias de calendario (locales) que faltan de `ahora` a `se_va`.
 pub fn dias_que_faltan(se_va: i64, ahora: i64) -> i64 {
     dia_local(se_va) - dia_local(ahora)
 }
 
-pub fn plazo(se_va: Option<i64>, ahora: i64) -> Plazo {
-    match se_va {
-        None => Plazo::Conservada,
-        Some(t) => match dias_que_faltan(t, ahora) {
-            f if f <= 0 => Plazo::Hoy,
-            1 => Plazo::Manana,
-            f @ 2..=3 => Plazo::EnDias(f),
-            _ => Plazo::ElDia(t),
-        },
-    }
-}
-
-pub fn tono(p: Plazo) -> Tono {
-    match p {
-        Plazo::Conservada => Tono::Conservada,
-        Plazo::Hoy | Plazo::Manana => Tono::Urgente,
-        Plazo::EnDias(_) => Tono::Pronto,
-        Plazo::ElDia(_) => Tono::Lejos,
-    }
-}
-
-// --------------------------------------------------------------- filtros
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum Filtro {
-    Todas,
-    Hoy,
-    Semana,
-    Conservadas,
-    Pronto,
-    Gif,
-    Videos,
-    ConTexto,
-}
-
-impl Filtro {
-    /// Los del carril, en su orden. `ConTexto` solo se ensena si hay OCR.
-    pub const CARRIL: [Filtro; 8] = [
-        Filtro::Todas,
-        Filtro::Hoy,
-        Filtro::Semana,
-        Filtro::Conservadas,
-        Filtro::Pronto,
-        Filtro::Gif,
-        Filtro::Videos,
-        Filtro::ConTexto,
-    ];
-
-    pub fn clave(self) -> &'static str {
-        match self {
-            Filtro::Todas => "galeria-filtro-todas",
-            Filtro::Hoy => "galeria-filtro-hoy",
-            Filtro::Semana => "galeria-filtro-semana",
-            Filtro::Conservadas => "galeria-filtro-conservadas",
-            Filtro::Pronto => "galeria-filtro-pronto",
-            Filtro::Gif => "galeria-filtro-gif",
-            Filtro::Videos => "galeria-filtro-videos",
-            Filtro::ConTexto => "galeria-filtro-con-texto",
-        }
-    }
-}
-
-/// Lo que hace falta saber de una captura para filtrarla.
-#[derive(Debug, Clone, Copy)]
-pub struct Ficha<'a> {
-    pub extension: &'a str,
-    /// Su fecha, en ms UTC.
-    pub cuando: i64,
-    pub se_va: Option<i64>,
-    /// El texto reconocido, si ya se leyo (`Some("")`: leida, sin texto).
-    pub texto: Option<&'a str>,
-}
-
-pub fn pasa(f: Filtro, c: &Ficha, ahora: i64) -> bool {
-    match f {
-        Filtro::Todas => true,
-        Filtro::Hoy => dia_local(c.cuando) == dia_local(ahora),
-        Filtro::Semana => lunes_de(dia_local(c.cuando)) == lunes_de(dia_local(ahora)),
-        Filtro::Conservadas => c.se_va.is_none(),
-        Filtro::Pronto => matches!(tono(plazo(c.se_va, ahora)), Tono::Pronto | Tono::Urgente),
-        Filtro::Gif => c.extension.eq_ignore_ascii_case("gif"),
-        Filtro::Videos => c.extension.eq_ignore_ascii_case("mp4"),
-        Filtro::ConTexto => c.texto.is_some_and(|t| !t.trim().is_empty()),
-    }
+/// **Los dias que le quedan** a una captura: el numero de su chapita roja
+/// (5-oct). 0 = se va hoy. `None` = conservada, no se va.
+pub fn dias_que_quedan(se_va: Option<i64>, ahora: i64) -> Option<i64> {
+    se_va.map(|t| dias_que_faltan(t, ahora).max(0))
 }
 
 // -------------------------------------------------------------- busqueda
@@ -173,10 +64,6 @@ pub fn encaja(consulta_plegada: &str, campos: &[&str]) -> bool {
 
 /// Medidas, en pixeles logicos.
 pub const CABECERA: f32 = 64.0;
-pub const CARRIL: f32 = 216.0;
-pub const PANEL: f32 = 340.0;
-/// Por debajo de este ancho (logico) el panel de detalle no cabe.
-pub const ANCHO_CON_PANEL: f32 = 1000.0;
 pub const LADO_REJILLA: f32 = 20.0;
 pub const CELDA_MIN: f32 = 180.0;
 pub const CELDA_ALTO: f32 = 140.0;
@@ -337,89 +224,30 @@ pub fn mover(d: &Disposicion, i: usize, f: Flecha) -> usize {
     }
 }
 
-/// «1,2 GB», «412 KB»: lo que ocupan, para el carril y el detalle.
-pub fn tamano_legible(bytes: u64, decimal: char) -> String {
-    const K: f64 = 1024.0;
-    let b = bytes as f64;
-    let (v, u) = if b >= K * K * K {
-        (b / (K * K * K), "GB")
-    } else if b >= K * K {
-        (b / (K * K), "MB")
-    } else {
-        ((b / K).max(if bytes > 0 { 1.0 } else { 0.0 }), "KB")
-    };
-    let texto = if u == "KB" || v >= 100.0 {
-        format!("{v:.0}")
-    } else {
-        format!("{v:.1}").replace('.', &decimal.to_string())
-    };
-    format!("{texto} {u}")
-}
-
 #[cfg(test)]
 mod pruebas {
     use super::*;
 
     #[test]
-    fn el_lunes_de_la_semana_y_el_dia_de_la_semana() {
-        // 1-1-1970, jueves; 5-1-1970, lunes.
+    fn el_dia_de_la_semana_empieza_en_lunes() {
+        // 1-1-1970, jueves; 5-1-1970, lunes; 11-1-1970, domingo.
         assert_eq!(dia_de_la_semana(0), 3);
         assert_eq!(dia_de_la_semana(4), 0);
-        assert_eq!(lunes_de(0), -3);
-        assert_eq!(lunes_de(10), 4, "el 11-1 (domingo) es de la semana del 5-1");
-        // Caso negativo: el lunes siguiente ya es otra semana.
-        assert_ne!(lunes_de(11), lunes_de(10));
+        assert_eq!(dia_de_la_semana(10), 6);
+        // Caso negativo: antes de 1970 tampoco se sale de 0..7.
+        assert_eq!(dia_de_la_semana(-1), 2);
     }
 
     #[test]
-    fn el_tono_va_de_gris_a_rojo_y_verde_si_se_conserva() {
+    fn la_chapita_dice_los_dias_que_quedan_y_nada_si_se_conserva() {
         let ahora = 100 * DIA_MS + DIA_MS / 2;
-        let en = |d: i64| plazo(Some(ahora + d * DIA_MS), ahora);
-        assert_eq!(tono(plazo(None, ahora)), Tono::Conservada);
-        assert_eq!(en(0), Plazo::Hoy);
-        assert_eq!(en(1), Plazo::Manana);
-        assert_eq!(tono(en(1)), Tono::Urgente);
-        assert_eq!(en(2), Plazo::EnDias(2));
-        assert_eq!(tono(en(3)), Tono::Pronto);
-        assert_eq!(tono(en(4)), Tono::Lejos);
-        // Caso negativo: lo ya pasado no sale como «lejos», sino «hoy».
-        assert_eq!(en(-2), Plazo::Hoy);
-    }
-
-    fn ficha(
-        ext: &'static str,
-        cuando: i64,
-        se_va: Option<i64>,
-        texto: Option<&'static str>,
-    ) -> Ficha<'static> {
-        Ficha {
-            extension: ext,
-            cuando,
-            se_va,
-            texto,
-        }
-    }
-
-    #[test]
-    fn los_filtros_dejan_pasar_lo_suyo() {
-        // A mediodia: a medianoche, «hace un segundo» ya es ayer en UTC (la CI).
-        let ahora = 1000 * DIA_MS + DIA_MS / 2;
-        let hoy = ficha("png", ahora - 1000, Some(ahora + 7 * DIA_MS), Some("hola"));
-        let vieja = ficha("gif", ahora - 20 * DIA_MS, Some(ahora + DIA_MS), Some(""));
-        let video = ficha("MP4", ahora - 20 * DIA_MS, None, None);
-        assert!(pasa(Filtro::Todas, &vieja, ahora));
-        assert!(pasa(Filtro::Hoy, &hoy, ahora) && !pasa(Filtro::Hoy, &vieja, ahora));
-        assert!(pasa(Filtro::Semana, &hoy, ahora) && !pasa(Filtro::Semana, &vieja, ahora));
-        assert!(
-            pasa(Filtro::Conservadas, &video, ahora) && !pasa(Filtro::Conservadas, &hoy, ahora)
-        );
-        assert!(pasa(Filtro::Pronto, &vieja, ahora) && !pasa(Filtro::Pronto, &hoy, ahora));
-        assert!(pasa(Filtro::Gif, &vieja, ahora) && !pasa(Filtro::Gif, &hoy, ahora));
-        assert!(pasa(Filtro::Videos, &video, ahora));
-        assert!(pasa(Filtro::ConTexto, &hoy, ahora));
-        // Casos negativos: leida sin texto, o aun sin leer, no tiene texto.
-        assert!(!pasa(Filtro::ConTexto, &vieja, ahora));
-        assert!(!pasa(Filtro::ConTexto, &video, ahora));
+        let en = |d: i64| dias_que_quedan(Some(ahora + d * DIA_MS), ahora);
+        assert_eq!(dias_que_quedan(None, ahora), None);
+        assert_eq!(en(0), Some(0));
+        assert_eq!(en(1), Some(1));
+        assert_eq!(en(6), Some(6));
+        // Caso negativo: lo ya pasado no da dias negativos.
+        assert_eq!(en(-2), Some(0));
     }
 
     #[test]
@@ -507,15 +335,5 @@ mod pruebas {
         assert!(c.y >= s && c.y + c.alto <= s + 600.0);
         // Caso negativo: si ya se ve, no se mueve.
         assert_eq!(d.scroll_para_ver(0, 0.0, 600.0, 1.0), 0.0);
-    }
-
-    #[test]
-    fn los_tamanos_se_leen_bien() {
-        assert_eq!(tamano_legible(412 * 1024, ','), "412 KB");
-        assert_eq!(tamano_legible(1_288_490_189, ','), "1,2 GB");
-        assert_eq!(tamano_legible(5 * 1024 * 1024 + 300_000, '.'), "5.3 MB");
-        // Caso negativo: nada es 0 KB, y un byte no es 0 KB.
-        assert_eq!(tamano_legible(0, ','), "0 KB");
-        assert_eq!(tamano_legible(1, ','), "1 KB");
     }
 }

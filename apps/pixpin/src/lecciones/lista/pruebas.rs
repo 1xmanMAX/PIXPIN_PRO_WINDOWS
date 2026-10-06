@@ -112,21 +112,18 @@ fn los_filtros_cuentan_y_filtran_y_la_eleccion_sigue_si_se_ve() {
     assert_eq!(f[0], (Filtro::Todas, 4));
     assert_eq!(f[1], (Filtro::Repetidas, 2));
     assert_eq!(f[2], (Filtro::Graves, 1));
-    assert_eq!(
-        f[3],
-        (Filtro::Area("Construcción".into()), 2),
-        "el area con mas va primero"
-    );
+    assert_eq!(f.len(), 3, "sin fichas por area (simplificado 5-oct-2026)");
     assert_eq!(e.sel.as_deref(), Some("a"), "sin eleccion, la primera");
-    e.sel = Some("d".into());
-    e.filtro = Filtro::Area("Construcción".into());
+    e.sel = Some("c".into());
+    e.filtro = Filtro::Repetidas;
     e.filtrar();
-    assert_eq!(e.visibles, vec![0, 3]);
+    assert_eq!(e.visibles, vec![0, 2]);
     assert_eq!(
         e.sel.as_deref(),
-        Some("d"),
+        Some("c"),
         "la elegida se ve: sigue elegida"
     );
+    e.sel = Some("a".into());
     e.filtro = Filtro::Graves;
     e.filtrar();
     assert_eq!(e.visibles, vec![2]);
@@ -231,18 +228,175 @@ fn en_el_repaso_valen_1_2_3_espacio_y_s() {
 }
 
 #[test]
-fn las_columnas_llenan_el_ancho_y_se_encogen_en_pantallas_estrechas() {
-    let (l, f, d) = columnas(1280.0, 820.0, 112.0, 1.0);
-    assert_eq!((l.ancho, d.ancho), (390.0, 290.0));
-    assert!((l.ancho + f.ancho + d.ancho - 1280.0).abs() < 0.01);
+fn las_dos_columnas_llenan_el_ancho_y_la_ficha_se_queda_lo_demas() {
+    let (l, f) = columnas(1280.0, 820.0, 112.0, 1.0);
+    assert_eq!(l.ancho, 390.0);
+    assert!((l.ancho + f.ancho - 1280.0).abs() < 0.01);
     assert_eq!(f.x, l.ancho);
     assert_eq!(l.alto, 820.0 - 112.0);
-    let (l2, f2, d2) = columnas(1000.0, 700.0, 112.0, 1.0);
-    assert_eq!((l2.ancho, d2.ancho), (310.0, 240.0));
-    assert!(f2.ancho >= 400.0, "la ficha conserva sitio para leer");
-    // Caso negativo: una ventana diminuta no da anchos negativos.
-    let (_, f3, _) = columnas(300.0, 50.0, 112.0, 1.0);
+    assert!(
+        f.ancho >= 880.0,
+        "sin la columna de datos, la ficha gana sus 290 px"
+    );
+    let (l2, f2) = columnas(1000.0, 700.0, 112.0, 1.0);
+    assert_eq!(l2.ancho, 310.0);
+    assert!(f2.ancho >= 650.0);
+    // Caso negativo: una ventana diminuta no da anchos negativos ni deja
+    // la lista mas ancha que la ventana.
+    let (l3, f3) = columnas(200.0, 50.0, 112.0, 1.0);
     assert!(f3.ancho >= 0.0 && f3.alto >= 0.0);
+    assert!(l3.ancho <= 200.0);
+}
+
+/// Si dos rectangulos se pisan.
+fn se_pisan(a: RectF, b: RectF) -> bool {
+    a.x < b.x + b.ancho && b.x < a.x + a.ancho && a.y < b.y + b.alto && b.y < a.y + a.alto
+}
+
+#[test]
+fn la_fila_de_datos_cabe_en_una_linea_sin_pisarse_y_con_objetivos_de_40() {
+    let f = fila_de_datos(100.0, 50.0, 800.0, 110.0, Some(44.0), 220.0, 130.0, 1.0);
+    assert_eq!(f.alto, 40.0);
+    let piezas = [f.gravedad, f.veces.unwrap(), f.otra_vez, f.mas];
+    for (i, a) in piezas.iter().enumerate() {
+        assert!(a.alto >= 40.0, "objetivo de 40 px");
+        assert_eq!(a.y, 50.0, "todas en la misma linea");
+        for b in &piezas[i + 1..] {
+            assert!(!se_pisan(*a, *b), "{a:?} pisa {b:?}");
+        }
+    }
+    assert_eq!(f.gravedad.x, 100.0, "la gravedad empieza la fila");
+    assert_eq!(
+        f.mas.x + f.mas.ancho,
+        900.0,
+        "«Mas campos…» al borde derecho"
+    );
+    // Sin repeticiones no hay «1×» y el boton se acerca.
+    let g = fila_de_datos(100.0, 50.0, 800.0, 110.0, None, 220.0, 130.0, 1.0);
+    assert_eq!(g.veces, None);
+    assert!(g.otra_vez.x < f.otra_vez.x);
+    // Caso negativo: estrecha, «Mas campos…» baja a otro renglon en vez de
+    // montarse sobre «Me volvio a pasar».
+    let h = fila_de_datos(0.0, 0.0, 420.0, 110.0, Some(44.0), 220.0, 130.0, 1.0);
+    assert!(!se_pisan(h.mas, h.otra_vez));
+    assert!(h.mas.y >= 40.0 && h.alto >= h.mas.y + h.mas.alto);
+}
+
+#[test]
+fn la_tarjeta_de_repasar_es_de_una_linea_con_el_boton_dentro() {
+    let (caja, b) = tarjeta_de_repaso(14.0, 120.0, 360.0, 130.0, 1.0);
+    assert!(caja.alto <= 56.0, "una linea, no la tarjeta alta de antes");
+    assert!(b.alto >= 40.0);
+    assert!(b.x >= caja.x && b.x + b.ancho <= caja.x + caja.ancho);
+    assert!(b.y >= caja.y && b.y + b.alto <= caja.y + caja.alto);
+    assert!(
+        (caja.x + caja.ancho - (b.x + b.ancho)) < 10.0,
+        "el boton a la derecha"
+    );
+    // Caso negativo: un boton mas ancho que la tarjeta no se sale.
+    let (caja, b) = tarjeta_de_repaso(0.0, 0.0, 100.0, 300.0, 1.0);
+    assert!(b.x >= caja.x && b.x + b.ancho <= caja.x + caja.ancho);
+}
+
+#[test]
+fn mas_campos_parte_las_etiquetas_en_renglones_y_nada_se_pisa() {
+    let etiquetas: Vec<String> = ["general", "✨ topografía", "obra", "pintura", "muro"]
+        .iter()
+        .map(|t| t.to_string())
+        .collect();
+    let q = PedidoMasCampos {
+        rotulos: ["Área", "Proyecto", "Etiquetas"],
+        area: "Vida diaria",
+        etiquetas: &etiquetas,
+        escribiendo: false,
+        anadir: "+ Añadir",
+        relacionadas: 2,
+        completa: "Tipo, causas y palabras…",
+    };
+    // Una letra de 7 px: basta para probar sin pantalla.
+    let medir = |t: &str| t.chars().count() as f32 * 7.0;
+    let d = disponer_mas_campos(&q, medir, 100.0, 200.0, 420.0, 1.0);
+    let fin = 100.0 + 420.0;
+    assert_eq!(d.etiquetas.len(), etiquetas.len() + 1, "y «+ Añadir»");
+    assert_eq!(d.etiquetas.last().unwrap().1, PiezaEtiqueta::Anadir);
+    assert!(
+        d.etiquetas.iter().any(|(r, _)| r.y > d.filas[2]),
+        "en 420 px no caben en un renglon"
+    );
+    let mut todo: Vec<RectF> = d.etiquetas.iter().map(|(r, _)| *r).collect();
+    todo.push(d.area);
+    todo.extend(d.relacionadas.iter().copied());
+    todo.push(d.completa);
+    for (i, a) in todo.iter().enumerate() {
+        assert!(a.alto >= 40.0, "objetivo de 40 px: {a:?}");
+        assert!(a.x + a.ancho <= fin + 0.01, "se sale: {a:?}");
+        assert!(a.y >= d.caja.y && a.y + a.alto <= d.caja.y + d.caja.alto);
+        for b in &todo[i + 1..] {
+            assert!(!se_pisan(*a, *b), "{a:?} pisa {b:?}");
+        }
+    }
+    assert!(
+        d.x_valor > d.x_rotulo,
+        "los valores a la derecha del rotulo"
+    );
+    // Caso negativo: sin relacionadas no hay rotulo ni filas, y escribiendo
+    // una etiqueta la caja sustituye a «+ Añadir».
+    let q2 = PedidoMasCampos {
+        relacionadas: 0,
+        escribiendo: true,
+        ..q
+    };
+    let d2 = disponer_mas_campos(&q2, medir, 100.0, 200.0, 420.0, 1.0);
+    assert!(d2.rotulo_relacionadas.is_none() && d2.relacionadas.is_empty());
+    assert!(d2.caja.alto < d.caja.alto);
+    assert_eq!(d2.etiquetas.last().unwrap().1, PiezaEtiqueta::Escribiendo);
+}
+
+#[test]
+fn la_gravedad_da_la_vuelta_y_mas_campos_se_despliega_y_se_pliega() {
+    assert_eq!(siguiente_gravedad(1), 2);
+    assert_eq!(siguiente_gravedad(2), 3);
+    assert_eq!(siguiente_gravedad(3), 1, "Grave vuelve a Leve");
+    // Caso negativo: un valor raro de otro aparato no se sale de 1..=3.
+    assert_eq!(siguiente_gravedad(0), 2);
+    assert_eq!(siguiente_gravedad(9), 1);
+    let mut e = estado();
+    assert!(!e.mas_campos, "plegado al abrir");
+    hacer(&mut e, Accion::MasCampos);
+    assert!(e.mas_campos);
+    // Sigue desplegado al pasar a otra leccion.
+    e.mover_sel(1);
+    assert!(e.mas_campos);
+    hacer(&mut e, Accion::MasCampos);
+    assert!(!e.mas_campos);
+    // Los rotulos nuevos existen en los dos idiomas (no sale la clave).
+    for idioma in [Idioma::Espanol, Idioma::Ingles] {
+        let tx = Catalogo::nuevo(idioma);
+        for k in ["lecs-menos-campos", "lecs-ficha-completa"] {
+            assert_ne!(tx.t(k), k);
+        }
+    }
+}
+
+#[test]
+fn una_fila_medio_tapada_solo_responde_en_lo_que_se_ve() {
+    let vista = RectF {
+        x: 0.0,
+        y: 200.0,
+        ancho: 390.0,
+        alto: 400.0,
+    };
+    let fila = RectF {
+        x: 8.0,
+        y: 180.0,
+        ancho: 374.0,
+        alto: 56.0,
+    };
+    let z = recortar(fila, vista).unwrap();
+    assert_eq!((z.y, z.alto), (200.0, 36.0));
+    // Caso negativo: una fila que no se ve no responde.
+    let fuera = RectF { y: 100.0, ..fila };
+    assert_eq!(recortar(fuera, vista), None);
 }
 
 #[test]
@@ -370,7 +524,6 @@ fn hace_y_el_proximo_repaso_se_leen_bien() {
         pintar::hace_texto(&tx, crate::lecciones::ui::Hace::Semanas(1)),
         "hace 1 semana"
     );
-    assert_eq!(pintar::fecha_corta(&tx, 20_724 * DIA), "28 sep");
     let l = Leccion {
         repasar: AHORA - DIA,
         ..Leccion::nueva("x", 0, "x")
@@ -409,14 +562,19 @@ fn muestra(nombre: &str, e: &mut Estado, ancho: u32, alto: u32) {
 #[ignore = "necesita GPU; ejecutar con --ignored y mirar el PNG"]
 fn muestra_de_la_ventana_v2() {
     let mut e = estado();
+    // En reposo, como se ve al abrirla (lo que el usuario vio saturado).
+    e.foco = None;
+    muestra("lecciones-v2-reposo", &mut e, 1280, 820);
     e.rapida.campo.poner("La escalera del sótano en Miraflores resbala con el polvo de yeso; barrer antes de bajar material");
     e.rapida.fotos.push(("x.png".into(), Vec::new()));
     e.recalcular_rapida();
     e.foco = Some(Foco::Rapida);
     e.botones.raton = (700.0, 400.0);
     muestra("lecciones-v2", &mut e, 1280, 820);
-    // Editando «Por que», con el menu de area abierto.
+    // Editando «Por que», con «Mas campos…» desplegado y su menu de area
+    // abierto.
     e.foco = None;
+    e.mas_campos = true;
     e.editar(Foco::PorQue);
     e.menu = Some(Menu::AreaFicha);
     muestra("lecciones-v2-editando", &mut e, 1280, 820);

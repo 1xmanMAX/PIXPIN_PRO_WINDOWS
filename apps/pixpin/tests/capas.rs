@@ -11,10 +11,12 @@ use std::path::{Path, PathBuf};
 /// Capa de cada crate. Numero menor = mas abajo en la arquitectura.
 fn capa(nombre: &str) -> Option<u8> {
     Some(match nombre {
+        // `pixpin-timeline` es el del timeline (5-oct): formato, fichero,
+        // frases clave, dias y la pagina exportada; solo serde y el disco.
         // `pixpin-lecciones` es la logica de las lecciones aprendidas copiada
         // del movil (JSON, buscador, etiquetador, repaso): solo serde_json, y
         // la usa `pixpin-sincro` para juntar dos versiones de una leccion.
-        "pixpin-geom" | "pixpin-model" | "pixpin-nivel" | "pixpin-lecciones" => 0,
+        "pixpin-geom" | "pixpin-model" | "pixpin-nivel" | "pixpin-lecciones" | "pixpin-timeline" => 0,
         // `pixpin-sincro` es el cable de WiFi: solo criptografia y JSON, sin
         // depender de ningun crate de PixPin, asi que vive abajo del todo
         // con los demas cimientos.
@@ -79,12 +81,12 @@ fn manifiestos() -> Vec<(String, PathBuf)> {
 }
 
 #[test]
-fn estan_los_treinta_y_un_paquetes() {
+fn estan_los_treinta_y_dos_paquetes() {
     let encontrados = manifiestos();
     assert_eq!(
         encontrados.len(),
-        31,
-        "se esperan 28 crates de libreria y los tres ejecutables, encontrados: {:?}",
+        32,
+        "se esperan 29 crates de libreria y los tres ejecutables, encontrados: {:?}",
         encontrados.iter().map(|(n, _)| n).collect::<Vec<_>>()
     );
 }

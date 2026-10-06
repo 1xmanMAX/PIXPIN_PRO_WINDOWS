@@ -2,22 +2,32 @@
 //! `Lecciones2.dc.html` y `Lecciones2-repaso.dc.html`, aprobadas el
 //! 4-oct-2026).
 //!
-//! Una ventana en tres columnas, con la barra de apuntar arriba:
+//! Una ventana en dos columnas (lista y ficha), con la barra de apuntar
+//! arriba. El 5-oct-2026 el usuario pidio simplificarla («esta muy
+//! saturada»): se quito la columna derecha de datos, los textos de ayuda
+//! (la pista bajo la barra, «Ctrl V pega capturas», «clic para editar», la
+//! leyenda de colores y «↑↓ moverse»), las fichas de filtro por area y el
+//! recuadro grande de «Anadir una foto». Los atajos siguen valiendo; lo que
+//! servia de la columna derecha cabe en una fila bajo el titulo y en «Mas
+//! campos…».
 //!
 //! - **«¿Que aprendiste?»**: una frase (escrita, dictada con Ctrl+Mayus+D o
 //!   con capturas pegadas con Ctrl+V) y Enter. El area, el proyecto y la
 //!   gravedad se rellenan solos (`pixpin_lecciones::rapida`) y se cambian
 //!   con un clic. Si ya habia una parecida, se ofrece «me volvio a pasar»,
 //!   como la hoja del movil.
-//! - **La lista**: buscador (Ctrl+F), filtros con su cuenta, el aviso de
-//!   «Para repasar hoy» (R) y las lecciones de este mes y de antes, con el
-//!   punto de su gravedad. Flechas para moverse.
-//! - **La ficha**, en tres bloques (Que paso, Por que, La proxima vez) que
-//!   se editan con un clic sobre el texto y se guardan solos; sus fotos y
-//!   notas de voz; «Ver en el chat», «Pinear» (P) y «Borrar» (Supr, con
-//!   «Deshacer» durante unos segundos en vez de preguntar).
-//! - **Los datos**: cuantas veces paso («Me volvio a pasar»), gravedad, area,
-//!   proyecto, etiquetas, relacionadas y el proximo repaso.
+//! - **La lista**: buscador (Ctrl+F), filtros Todas / Repetidas / Graves con
+//!   su cuenta, «Para repasar hoy» en una linea (R; solo si toca alguna) y
+//!   las lecciones de este mes y de antes, con el punto de su gravedad.
+//! - **La ficha**: el titulo; debajo, una fila con la gravedad (clic = la
+//!   siguiente), cuantas veces paso («3×»), «Me volvio a pasar +1» y «Mas
+//!   campos…», que despliega dentro de la ficha el area, el proyecto, las
+//!   etiquetas, las relacionadas, el proximo repaso y el enlace a la ficha
+//!   completa (tipo, causas, palabras). Luego los tres bloques (Que paso,
+//!   Por que, La proxima vez), que se editan con un clic y se guardan solos,
+//!   con las fotos y notas de voz en «Que paso». Abajo, «Ver en el chat»,
+//!   «Pinear» (P) y «Borrar» (Supr, con «Deshacer» unos segundos en vez de
+//!   preguntar).
 //! - **El repaso** ([`repaso`]), de una en una: pensar que harias, mirar lo
 //!   apuntado y contestar con 1, 2 o 3 (cada boton dice cuando vuelve).
 //!
@@ -158,13 +168,14 @@ impl Foco {
     }
 }
 
-/// El filtro de las fichas de arriba de la lista: uno a la vez.
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// El filtro de las fichas de arriba de la lista: uno a la vez. Las fichas
+/// por area se quitaron al simplificar (5-oct-2026): ocupaban otro renglon
+/// y el buscador ya encuentra por area.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Filtro {
     Todas,
     Repetidas,
     Graves,
-    Area(String),
 }
 
 /// Los menus que se despliegan bajo un boton.
@@ -205,7 +216,10 @@ enum Accion {
     Fila(usize),
     // La ficha.
     Editar(Foco),
+    /// Despliega o pliega «Mas campos…» dentro de la ficha.
     MasCampos,
+    /// La ficha de siempre en su ventana (tipo, causas, palabras).
+    FichaCompleta,
     Adjunto(usize),
     AnadirAdjunto,
     VerEnChat,
@@ -213,7 +227,9 @@ enum Accion {
     Borrar,
     Deshacer,
     OtraVez,
-    Gravedad(i64),
+    /// La gravedad de la elegida pasa a la siguiente (Leve → Importante →
+    /// Grave → Leve): un solo punto de color en vez de tres botones.
+    OtraGravedad,
     QuitarEtiqueta(usize),
     Relacionada(usize),
     // El repaso.
@@ -269,6 +285,9 @@ struct Estado {
     foco: Option<Foco>,
     /// Lo que se esta editando en la ficha.
     editando: Campo,
+    /// «Mas campos…» desplegado. Sigue asi al cambiar de leccion: quien lo
+    /// abre quiere ver esos datos en todas.
+    mas_campos: bool,
     rapida: Rapida,
     menu: Option<Menu>,
     /// Donde se pinto el boton del menu abierto: el menu cuelga de ahi.
@@ -327,6 +346,7 @@ impl Estado {
             visibles: Vec::new(),
             mirado: None,
             editando: Campo::default(),
+            mas_campos: false,
             rapida: Rapida::default(),
             menu: None,
             ancla: RectF {
@@ -436,8 +456,7 @@ impl Estado {
         v
     }
 
-    /// Las fichas de filtro, con su cuenta: Todas, Repetidas, Graves y las
-    /// areas que tienen alguna.
+    /// Las fichas de filtro, con su cuenta: Todas, Repetidas y Graves.
     fn filtros(&self) -> Vec<(Filtro, usize)> {
         let vivas: Vec<&Leccion> = self
             .todas
@@ -445,7 +464,7 @@ impl Estado {
             .map(|e| &e.leccion)
             .filter(|l| !self.se_esta_borrando(&l.id))
             .collect();
-        let mut v = vec![
+        vec![
             (Filtro::Todas, vivas.len()),
             (
                 Filtro::Repetidas,
@@ -455,20 +474,7 @@ impl Estado {
                 Filtro::Graves,
                 vivas.iter().filter(|l| l.gravedad >= 3).count(),
             ),
-        ];
-        let mut areas: Vec<(String, usize)> = Vec::new();
-        for l in &vivas {
-            if l.area.trim().is_empty() {
-                continue;
-            }
-            match areas.iter_mut().find(|(a, _)| *a == l.area) {
-                Some((_, n)) => *n += 1,
-                None => areas.push((l.area.clone(), 1)),
-            }
-        }
-        areas.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
-        v.extend(areas.into_iter().map(|(a, n)| (Filtro::Area(a), n)));
-        v
+        ]
     }
 
     fn se_esta_borrando(&self, id: &str) -> bool {
@@ -481,7 +487,7 @@ impl Estado {
     fn filtrar(&mut self) {
         let clave = (
             self.consulta.texto.clone(),
-            self.filtro.clone(),
+            self.filtro,
             self.proyecto.clone(),
             self.todas.len(),
             self.borrando.as_ref().map(|(x, _)| x.leccion.id.clone()),
@@ -497,7 +503,6 @@ impl Estado {
                         Filtro::Todas => true,
                         Filtro::Repetidas => !l.repeticiones.is_empty(),
                         Filtro::Graves => l.gravedad >= 3,
-                        Filtro::Area(a) => l.area == *a,
                     }
             })
             .collect();
@@ -1151,13 +1156,19 @@ fn atajo(
     }
 }
 
-/// Las tres columnas: lista, ficha y datos, bajo la cabecera. El ancho de la
-/// lista y de los datos se encoge en pantallas estrechas.
-fn columnas(w: f32, h: f32, arriba: f32, s: f32) -> (RectF, RectF, RectF) {
-    let lista = (w * 0.31).clamp(300.0 * s, 390.0 * s);
-    let datos = (w * 0.23).clamp(240.0 * s, 290.0 * s);
+/// La gravedad que sigue al pulsar su punto: Leve → Importante → Grave →
+/// Leve. Un valor raro (de otro aparato) cuenta como el extremo mas cercano.
+fn siguiente_gravedad(g: i64) -> i64 {
+    g.clamp(1, 3) % 3 + 1
+}
+
+/// Las dos columnas: lista y ficha, bajo la cabecera. La lista se encoge en
+/// pantallas estrechas; la ficha se queda con todo lo demas (antes lo
+/// partia con la columna de datos, que se quito al simplificar).
+fn columnas(w: f32, h: f32, arriba: f32, s: f32) -> (RectF, RectF) {
+    let lista = (w * 0.31).clamp(300.0 * s, 390.0 * s).min(w.max(0.0));
     let alto = (h - arriba).max(0.0);
-    let ficha = (w - lista - datos).max(0.0);
+    let ficha = (w - lista).max(0.0);
     (
         RectF {
             x: 0.0,
@@ -1171,13 +1182,290 @@ fn columnas(w: f32, h: f32, arriba: f32, s: f32) -> (RectF, RectF, RectF) {
             ancho: ficha,
             alto,
         },
-        RectF {
-            x: lista + ficha,
-            y: arriba,
-            ancho: datos,
-            alto,
-        },
     )
+}
+
+/// Alto de lo que se pulsa en la ficha y en la lista (regla del rediseno:
+/// objetivos de 40 px como poco).
+const OBJETIVO: f32 = 40.0;
+
+/// **La fila de datos bajo el titulo**: donde va cada pieza. Pintar y
+/// acertar el clic salen de aqui (pintar.rs apunta la zona con estos mismos
+/// rectangulos), para que lo que se ve sea lo que responde.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct FilaDatos {
+    /// El punto de la gravedad con su nombre (clic = la siguiente).
+    gravedad: RectF,
+    /// «3×»: solo si paso mas de una vez (un «1×» no dice nada).
+    veces: Option<RectF>,
+    /// «Me volvio a pasar +1».
+    otra_vez: RectF,
+    /// «Mas campos…» / «Menos campos», a la derecha; si no cabe, en un
+    /// segundo renglon.
+    mas: RectF,
+    /// Lo que mide la fila entera.
+    alto: f32,
+}
+
+/// Coloca la fila de datos desde `(x, y)` en `ancho`, con los anchos ya
+/// medidos de cada pieza.
+#[allow(clippy::too_many_arguments)] // sitio, ancho, cuatro anchos medidos y escala
+fn fila_de_datos(
+    x: f32,
+    y: f32,
+    ancho: f32,
+    w_gravedad: f32,
+    w_veces: Option<f32>,
+    w_otra: f32,
+    w_mas: f32,
+    s: f32,
+) -> FilaDatos {
+    let alto = OBJETIVO * s;
+    let hueco = 8.0 * s;
+    let gravedad = RectF {
+        x,
+        y,
+        ancho: w_gravedad,
+        alto,
+    };
+    let mut fin = gravedad.x + gravedad.ancho;
+    let veces = w_veces.map(|w| {
+        let r = RectF {
+            x: fin + hueco,
+            y,
+            ancho: w,
+            alto,
+        };
+        fin = r.x + r.ancho;
+        r
+    });
+    let otra_vez = RectF {
+        x: fin + hueco,
+        y,
+        ancho: w_otra,
+        alto,
+    };
+    fin = otra_vez.x + otra_vez.ancho;
+    let derecha = x + ancho - w_mas;
+    let (mas, total) = if derecha >= fin + 2.0 * hueco {
+        (
+            RectF {
+                x: derecha,
+                y,
+                ancho: w_mas,
+                alto,
+            },
+            alto,
+        )
+    } else {
+        (
+            RectF {
+                x,
+                y: y + alto + hueco,
+                ancho: w_mas,
+                alto,
+            },
+            2.0 * alto + hueco,
+        )
+    };
+    FilaDatos {
+        gravedad,
+        veces,
+        otra_vez,
+        mas,
+        alto: total,
+    }
+}
+
+/// **«Para repasar hoy · N» en una linea**: la tarjeta y su boton «Repasar
+/// R» a la derecha, centrado en alto. Como la fila de datos, pintar y el
+/// clic usan estos mismos rectangulos.
+fn tarjeta_de_repaso(x: f32, y: f32, ancho: f32, w_boton: f32, s: f32) -> (RectF, RectF) {
+    let margen = 6.0 * s;
+    let caja = RectF {
+        x,
+        y,
+        ancho,
+        alto: OBJETIVO * s + 2.0 * margen,
+    };
+    let w = w_boton.min(ancho - 2.0 * margen).max(0.0);
+    let boton = RectF {
+        x: x + ancho - w - margen,
+        y: y + margen,
+        ancho: w,
+        alto: OBJETIVO * s,
+    };
+    (caja, boton)
+}
+
+/// Una pieza de la fila de etiquetas de «Mas campos…».
+#[derive(Debug, Clone, PartialEq)]
+enum PiezaEtiqueta {
+    /// Una etiqueta con su «×» (el indice es el de `todas_las_etiquetas`).
+    Puesta(usize),
+    /// La caja donde se esta escribiendo una nueva.
+    Escribiendo,
+    /// «+ Anadir».
+    Anadir,
+}
+
+/// Lo que se le pide a [`disponer_mas_campos`]: los textos ya resueltos.
+struct PedidoMasCampos<'a> {
+    /// «Area», «Proyecto», «Etiquetas».
+    rotulos: [&'a str; 3],
+    area: &'a str,
+    /// Los rotulos de las etiquetas (con ✨ las automaticas).
+    etiquetas: &'a [String],
+    escribiendo: bool,
+    anadir: &'a str,
+    relacionadas: usize,
+    completa: &'a str,
+}
+
+/// **Donde va cada cosa de «Mas campos…»**. Como [`fila_de_datos`], el
+/// pintar y las zonas del clic salen de aqui. `medir` da el ancho de un
+/// texto a 13 px (se pasa para poder probarlo sin pantalla).
+#[derive(Debug, Clone, PartialEq)]
+struct MasCampos {
+    /// El fondo del desplegable entero.
+    caja: RectF,
+    x_rotulo: f32,
+    /// La y de cada fila con rotulo: area, proyecto, etiquetas.
+    filas: [f32; 3],
+    x_valor: f32,
+    ancho_valor: f32,
+    area: RectF,
+    etiquetas: Vec<(RectF, PiezaEtiqueta)>,
+    /// La y del rotulo «Relacionadas», si hay alguna.
+    rotulo_relacionadas: Option<f32>,
+    relacionadas: Vec<RectF>,
+    /// La fila del proximo repaso; a su derecha, `completa`.
+    repaso: f32,
+    /// «Tipo, causas y palabras…»: la ficha de siempre en su ventana.
+    completa: RectF,
+}
+
+fn disponer_mas_campos(
+    q: &PedidoMasCampos,
+    medir: impl Fn(&str) -> f32,
+    x: f32,
+    y0: f32,
+    ancho: f32,
+    s: f32,
+) -> MasCampos {
+    let obj = OBJETIVO * s;
+    let pad = 16.0 * s;
+    let hueco = 6.0 * s;
+    let col = q.rotulos.iter().map(|t| medir(t)).fold(0.0, f32::max) + 20.0 * s;
+    let x_rotulo = x + pad;
+    let x_valor = x_rotulo + col;
+    let ancho_valor = (x + ancho - pad - x_valor).max(80.0 * s);
+    let fin = x_valor + ancho_valor;
+    let mut y = y0 + 8.0 * s;
+    let area = RectF {
+        x: x_valor,
+        y,
+        ancho: (medir(q.area) + 66.0 * s).min(ancho_valor),
+        alto: obj,
+    };
+    let fila_area = y;
+    y += obj + 4.0 * s;
+    let fila_proyecto = y;
+    y += obj + 4.0 * s;
+    let fila_etiquetas = y;
+    // Las etiquetas en renglones que se parten al llegar al borde.
+    let mut piezas: Vec<(f32, PiezaEtiqueta)> = q
+        .etiquetas
+        .iter()
+        .enumerate()
+        .map(|(i, t)| (medir(t) + 36.0 * s, PiezaEtiqueta::Puesta(i)))
+        .collect();
+    piezas.push(if q.escribiendo {
+        (140.0 * s, PiezaEtiqueta::Escribiendo)
+    } else {
+        (medir(q.anadir) + 20.0 * s, PiezaEtiqueta::Anadir)
+    });
+    let mut etiquetas = Vec::with_capacity(piezas.len());
+    let mut ex = x_valor;
+    for (w, pieza) in piezas {
+        let w = w.min(ancho_valor);
+        if ex > x_valor && ex + w > fin {
+            ex = x_valor;
+            y += obj + hueco;
+        }
+        etiquetas.push((
+            RectF {
+                x: ex,
+                y,
+                ancho: w,
+                alto: obj,
+            },
+            pieza,
+        ));
+        ex += w + hueco;
+    }
+    y += obj + 8.0 * s;
+    let (rotulo_relacionadas, relacionadas) = if q.relacionadas > 0 {
+        let r = y;
+        y += 28.0 * s;
+        let v = (0..q.relacionadas)
+            .map(|_| {
+                let c = RectF {
+                    x: x_rotulo,
+                    y,
+                    ancho: ancho - 2.0 * pad,
+                    alto: obj + 4.0 * s,
+                };
+                y += c.alto + hueco;
+                c
+            })
+            .collect();
+        (Some(r), v)
+    } else {
+        (None, Vec::new())
+    };
+    let repaso = y;
+    let cw = medir(q.completa) + 20.0 * s;
+    let completa = RectF {
+        x: x + ancho - pad - cw + 10.0 * s,
+        y,
+        ancho: cw,
+        alto: obj,
+    };
+    y += obj + 4.0 * s;
+    MasCampos {
+        caja: RectF {
+            x,
+            y: y0,
+            ancho,
+            alto: y - y0,
+        },
+        x_rotulo,
+        filas: [fila_area, fila_proyecto, fila_etiquetas],
+        x_valor,
+        ancho_valor,
+        area,
+        etiquetas,
+        rotulo_relacionadas,
+        relacionadas,
+        repaso,
+        completa,
+    }
+}
+
+/// Lo que queda de `r` dentro de `vista` (una fila medio tapada por el
+/// buscador solo responde en lo que se ve), o nada si queda fuera.
+fn recortar(r: RectF, vista: RectF) -> Option<RectF> {
+    let x0 = r.x.max(vista.x);
+    let y0 = r.y.max(vista.y);
+    let x1 = (r.x + r.ancho).min(vista.x + vista.ancho);
+    let y1 = (r.y + r.alto).min(vista.y + vista.alto);
+    (x1 > x0 && y1 > y0).then_some(RectF {
+        x: x0,
+        y: y0,
+        ancho: x1 - x0,
+        alto: y1 - y0,
+    })
 }
 
 fn bucle(recursos: &Recursos, pedido: Pedido) -> Result<()> {
@@ -1525,7 +1813,9 @@ fn hacer(e: &mut Estado, a: Accion) -> bool {
         }
         Accion::Guardar => e.guardar_rapida(),
         Accion::AbrirMenu(m) => e.menu = if e.menu == Some(m) { None } else { Some(m) },
-        Accion::CicloGravedad => e.rapida.gravedad = Some(e.gravedad_rapida() % 3 + 1),
+        Accion::CicloGravedad => {
+            e.rapida.gravedad = Some(siguiente_gravedad(e.gravedad_rapida()));
+        }
         Accion::YaLaTengo => {
             if let Some(l) = e.rapida.parecida.clone()
                 && let Some(x) = e.todas.iter().find(|x| x.leccion.id == l.id).cloned()
@@ -1561,7 +1851,7 @@ fn hacer(e: &mut Estado, a: Accion) -> bool {
             e.filtrar();
         }
         Accion::Filtro(i) => {
-            if let Some((f, _)) = e.filtros().get(i).cloned() {
+            if let Some((f, _)) = e.filtros().get(i).copied() {
                 e.filtro = if e.filtro == f { Filtro::Todas } else { f };
                 e.filtrar();
             }
@@ -1591,7 +1881,8 @@ fn hacer(e: &mut Estado, a: Accion) -> bool {
             e.foco = None;
         }
         Accion::Editar(f) => e.editar(f),
-        Accion::MasCampos => {
+        Accion::MasCampos => e.mas_campos = !e.mas_campos,
+        Accion::FichaCompleta => {
             if let Some(x) = e.elegida() {
                 ficha::abrir(e.ficha(ficha::Que::Editar {
                     id: x.leccion.id.clone(),
@@ -1667,11 +1958,9 @@ fn hacer(e: &mut Estado, a: Accion) -> bool {
                 e.avisar(e.t("lec2-apuntado-otra-vez"));
             }
         }
-        Accion::Gravedad(g) => {
-            if let Some(mut l) = e.elegida().map(|x| x.leccion.clone())
-                && l.gravedad != g
-            {
-                l.gravedad = g;
+        Accion::OtraGravedad => {
+            if let Some(mut l) = e.elegida().map(|x| x.leccion.clone()) {
+                l.gravedad = siguiente_gravedad(l.gravedad);
                 e.guardar_elegida(l);
             }
         }

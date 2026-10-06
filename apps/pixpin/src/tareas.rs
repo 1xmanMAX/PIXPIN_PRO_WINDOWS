@@ -32,9 +32,13 @@
 //! - [`ventana`]: la ventana, en su propio hilo como la galeria de capturas.
 //! - [`tarjetas`]: lo puro de su vista en tarjetas: buscar, agrupar, colocar
 //!   y el foco.
+//! - [`rejilla`]: lo puro de la vista en cuadrados (tareas-v4).
+//! - [`emoticonos`]: los emoticonos de una tarea, que son sus etiquetas.
 
 #![forbid(unsafe_code)]
 
+mod emoticonos;
+pub(crate) mod rejilla;
 mod tarjetas;
 mod ventana;
 
@@ -283,6 +287,46 @@ pub fn reponer(
     pedidos::reescribir(raiz, proyecto, &m)
 }
 
+/// **Corrige el texto** de una tarea («Editar» de la ventana, F2): lo que
+/// se ve pasa a ser `texto`, con sus imagenes de antes y las nuevas pegadas
+/// en la caja (`imagenes`, sus fichas `[img NN]` cambiadas por la imagen ya
+/// copiada al chat de la lista) y su fecha de creacion: corregir una falta
+/// no la hace nueva (`mini::renombrar`, el `Tareas.renombrar` del movil).
+///
+/// Como al marcar, si el numero ya no es esta tarea no se toca nada y se
+/// devuelve `Ok(false)`. Un texto vacio no borra la tarea: eso es el aspa.
+pub fn corregir(
+    raiz: &Path,
+    lista: &Lista,
+    fila: &Fila,
+    texto: &str,
+    imagenes: &[(u32, PathBuf)],
+) -> Result<bool, Fallo> {
+    if mini::saneado(texto).is_empty() && imagenes.is_empty() && fila.imagenes.is_empty() {
+        return Err(Fallo::TareaVacia);
+    }
+    let mut m = pedidos::mensaje_de(raiz, &lista.proyecto, &lista.codigo)?;
+    let sigue = mini::leer_tareas(&m.texto)
+        .get(fila.indice)
+        .is_some_and(|t| t.texto == fila.crudo);
+    if !sigue {
+        return Ok(false);
+    }
+    let mut visible = con_imagenes_guardadas(raiz, &lista.proyecto, texto, imagenes)?;
+    // Las imagenes que ya tenia, detras: la caja solo corrige el texto. El
+    // rotulo de cada una no importa (el lector no lo mira).
+    let antes = mini::con_imagenes("", &fila.imagenes);
+    if !antes.is_empty() {
+        visible = format!("{} {antes}", visible.trim());
+    }
+    let nuevo = mini::renombrar(&m.texto, fila.indice, &visible);
+    if nuevo != m.texto {
+        m.texto = nuevo;
+        pedidos::reescribir(raiz, &lista.proyecto, &m)?;
+    }
+    Ok(true)
+}
+
 /// Borra la lista entera, con todas sus tareas: su mensaje sale del chat
 /// como al borrarlo alli (`pedidos::borrar_lista`), y asi tambien del movil.
 pub fn borrar_lista(raiz: &Path, lista: &Lista) -> Result<(), Fallo> {
@@ -377,18 +421,12 @@ pub fn mover(raiz: &Path, desde: &Lista, fila: &Fila, hasta: &Lista) -> Result<b
 
 // ------------------------------------------------------------- imagenes
 
-/// Las extensiones que se aceptan como imagen de una tarea: las que el
-/// movil pinta como imagen (`Markdown.claseDeMedio`) y el codec de aqui lee.
-pub const EXTENSIONES_DE_IMAGEN: [&str; 6] = ["png", "jpg", "jpeg", "bmp", "gif", "webp"];
-
 /// Si un fichero es una imagen de las que puede llevar una tarea, por su
-/// extension.
+/// extension. Las extensiones viven en `v2::pegar` (las mismas que pega
+/// cualquier caja v2); esta envoltura se queda porque los pedidos y el
+/// timeline preguntan aqui.
 pub fn es_imagen(ruta: &Path) -> bool {
-    ruta.extension().and_then(|e| e.to_str()).is_some_and(|e| {
-        EXTENSIONES_DE_IMAGEN
-            .iter()
-            .any(|x| x.eq_ignore_ascii_case(e))
-    })
+    crate::v2::pegar::es_imagen(ruta)
 }
 
 /// Copia una imagen a `archivos/` del chat `proyecto` y devuelve su enlace
@@ -939,6 +977,43 @@ mod pruebas {
             Err(Fallo::TareaVacia)
         ));
         assert!(reunir(&raiz).0.is_empty());
+        let _ = std::fs::remove_dir_all(&raiz);
+    }
+
+    #[test]
+    fn corregir_cambia_el_texto_y_conserva_la_fecha_y_las_imagenes() {
+        let (raiz, obra) = almacen_de_prueba("corregir");
+        let foto = foto_de_fuera(&raiz, "muro.png");
+        pedidos::anadir_tarea(&raiz, &obra.id, "PC01", None, "yeso", "Obra").unwrap();
+        let (listas, _) = reunir(&raiz);
+        let l = &listas[0];
+        // Primero con una imagen pegada en la caja: se guarda y se enlaza.
+        assert!(corregir(&raiz, l, &l.filas[0], "yeso fino [img 01]", &[(1, foto)]).unwrap());
+        let (listas, _) = reunir(&raiz);
+        let f = &listas[0].filas[0];
+        assert_eq!(f.texto, "yeso fino");
+        assert_eq!(f.imagenes.len(), 1);
+        assert_eq!(f.creada, Some(hoy()), "la fecha no cambia");
+        // Despues solo el texto: la imagen de antes se queda.
+        assert!(corregir(&raiz, &listas[0], f, "yeso grueso", &[]).unwrap());
+        let (listas, _) = reunir(&raiz);
+        let f2 = &listas[0].filas[0];
+        assert_eq!(f2.texto, "yeso grueso");
+        assert_eq!(f2.imagenes, f.imagenes);
+        // Caso negativo: si la tarea cambio fuera no se toca, y vaciarla no
+        // la borra.
+        let mut vieja = f2.clone();
+        vieja.crudo = "otra".into();
+        assert!(!corregir(&raiz, &listas[0], &vieja, "nada", &[]).unwrap());
+        let sin_imagen = Fila {
+            imagenes: vec![],
+            ..f2.clone()
+        };
+        assert!(matches!(
+            corregir(&raiz, &listas[0], &sin_imagen, "  ", &[]),
+            Err(Fallo::TareaVacia)
+        ));
+        assert_eq!(reunir(&raiz).0[0].filas[0].texto, "yeso grueso");
         let _ = std::fs::remove_dir_all(&raiz);
     }
 }

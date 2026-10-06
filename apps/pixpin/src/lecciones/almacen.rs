@@ -278,8 +278,6 @@ pub const NOMBRE_FOTO: &str = "Foto de la lección";
 /// **responde** al de la leccion (asi el chat no la ensena y el movil la
 /// reconoce como suya), y por ultimo la leccion otra vez con los ids de esos
 /// mensajes en `adjuntos`. Sin fotos es [`guardar`].
-// `numero` sale de `?` antes del bucle; el contador a mano se lee mejor.
-#[allow(clippy::explicit_counter_loop)]
 pub fn guardar_con_fotos(
     raiz: &Path,
     l: &Leccion,
@@ -287,7 +285,31 @@ pub fn guardar_con_fotos(
     aparato: &str,
     fotos: &[Foto],
 ) -> std::io::Result<Leccion> {
-    if fotos.is_empty() {
+    guardar_con_adjuntos(raiz, l, donde, aparato, fotos, None)
+}
+
+/// Una nota de voz que va con una leccion: el nombre de su fichero, sus
+/// bytes y lo que dura.
+pub type Voz = (String, Vec<u8>, i64);
+
+/// Como se llama en el chat el mensaje de una nota de voz de leccion.
+pub const NOMBRE_VOZ: &str = "Nota de voz de la lección";
+
+/// Como [`guardar_con_fotos`], y ademas una nota de voz (5-oct-2026: el
+/// timeline hace lecciones de sus momentos con un boton, y un momento
+/// dictado lleva su audio). La voz va como las fotos: un mensaje de clase
+/// `VOZ` que responde al de la leccion, con su duracion.
+// `numero` sale de `?` antes del bucle; el contador a mano se lee mejor.
+#[allow(clippy::explicit_counter_loop)]
+pub fn guardar_con_adjuntos(
+    raiz: &Path,
+    l: &Leccion,
+    donde: &Donde,
+    aparato: &str,
+    fotos: &[Foto],
+    voz: Option<&Voz>,
+) -> std::io::Result<Leccion> {
+    if fotos.is_empty() && voz.is_none() {
         return guardar(raiz, l, donde, aparato);
     }
     let (ficha, mensaje, archivo) = match donde {
@@ -307,7 +329,11 @@ pub fn guardar_con_fotos(
     let mut numero = crate::ventana_chat::siguiente_numero_en(raiz, &ficha)?;
     let ahora = pixpin_shell::entorno::ahora_utc_ms();
     let mut ids = Vec::with_capacity(fotos.len());
-    for (i, (nombre, bytes)) in fotos.iter().enumerate() {
+    let todos = fotos
+        .iter()
+        .map(|(n, b)| (n, b, Clase::Imagen, NOMBRE_FOTO, 0))
+        .chain(voz.map(|(n, b, d)| (n, b, Clase::Voz, NOMBRE_VOZ, *d)));
+    for (i, (nombre, bytes, clase, rotulo, duracion)) in todos.enumerate() {
         let ruta = almacen::guardar_adjunto(raiz, &ficha, nombre, bytes)?;
         // Un milisegundo cada una: el id del mensaje sale de la hora, y dos
         // fotos no pueden compartirlo.
@@ -317,13 +343,8 @@ pub fn guardar_con_fotos(
             aparato: aparato.to_string(),
             proyecto: ficha.clone(),
         };
-        let mut m = Mensaje::adjunto(
-            Clase::Imagen,
-            NOMBRE_FOTO,
-            &ruta,
-            bytes.len() as i64,
-            &sello,
-        );
+        let mut m = Mensaje::adjunto(clase, rotulo, &ruta, bytes.len() as i64, &sello);
+        m.duracion_ms = duracion;
         m.responde_a = Some(mensaje.clone());
         cuaderno::anadir(&carpeta, &m)?;
         ids.push(m.id);

@@ -1442,17 +1442,12 @@ pedido-sin-imagen = No se encuentra la imagen { $ruta }; no se apuntó la tarea.
 
 ## Galeria de capturas (2-oct)
 galeria-titulo = Capturas
-galeria-titulo-cuantas = Capturas · { $cuantas }
 galeria-vacia = Todavía no hay capturas. Las que copies con Alt + arrastrar aparecerán aquí.
 galeria-abrir-carpeta = Abrir carpeta
 galeria-copiada = Copiada al portapapeles
 galeria-pineada = Pineada
 galeria-borrada = Llevada a la papelera de PixPin
 galeria-no-se-pudo = No se pudo: { $motivo }
-galeria-caducan = Se borran solas a los 7 días (a la papelera de Windows). Conservar las guarda en el chat.
-galeria-se-borra = Se borra el { $fecha }
-galeria-se-borra-hoy = Se borra hoy
-galeria-conservada = Conservada
 galeria-conservada-aviso = Conservada: está en Mensajes guardados y ya no se borra
 bandeja-galeria-capturas = Galería de capturas…
 chat-galeria-capturas = Galería de capturas
@@ -1463,18 +1458,10 @@ chat-hacer-leccion = Hacer lección
 bandeja-lecciones = 💡 Lecciones…
 bandeja-leccion-nueva = Nueva lección…
 bandeja-tareas = ☑ Tareas…
+bandeja-timeline = 🕒 Timeline…
 
 ## Tareas (ventana)
 tareas-titulo = Tareas
-tareas-resumen = { $pendientes ->
-    [0] Nada pendiente
-    [one] 1 pendiente
-   *[other] { $pendientes } pendientes
-  } · { $listas ->
-    [one] 1 lista
-   *[other] { $listas } listas
-  }
-tareas-apuntar = Apunta una tarea en el Inbox y pulsa Intro (Ctrl+V pega imágenes)
 tareas-apuntar-boton = Apuntar
 tareas-hechas = Hechas ({ $n })
 tareas-vacia = Aún no hay tareas. Escribe arriba y pulsa Intro: irá al Inbox y desde ahí la pasas a su grupo.
@@ -1855,23 +1842,7 @@ galeria-subtitulo = { $cuantas } · duran 7 días
 galeria-buscar = Buscar, también el texto de las capturas
 galeria-buscar-sin-ocr = Buscar por nombre o fecha
 galeria-elegir = Seleccionar
-galeria-eligiendo = Seleccionando
-galeria-filtro-todas = Todas
-galeria-filtro-hoy = Hoy
-galeria-filtro-semana = Esta semana
-galeria-filtro-conservadas = Conservadas
-galeria-filtro-pronto = Se borran pronto
-galeria-filtro-gif = GIF
-galeria-filtro-videos = Vídeos
-galeria-filtro-con-texto = Con texto
-galeria-filtro-vacio = Ninguna captura en este filtro.
 galeria-sin-resultados = Ninguna captura con «{ $texto }».
-galeria-papelera = Papelera
-galeria-ocupan = Ocupan { $tamano }
-galeria-ayuda-mover = moverse
-galeria-tecla-espacio = Espacio
-galeria-ayuda-elegir = elegir ·
-galeria-ayuda-pinear = pinear
 galeria-hoy = Hoy
 galeria-ayer = Ayer
 galeria-dia-0 = lunes
@@ -1882,15 +1853,11 @@ galeria-dia-4 = viernes
 galeria-dia-5 = sábado
 galeria-dia-6 = domingo
 galeria-elegir-dia = Elegir todo el día
-galeria-se-borra-manana = Se borra mañana
-galeria-se-borra-en = Se borra en { $dias } días
 galeria-chip-video = Vídeo
-galeria-chip-texto = Aa texto
 galeria-pinear = Pinear
 galeria-copiar = Copiar
 galeria-conservar = Conservar
 galeria-borrar = Borrar
-galeria-dar-mas = Dar 7 días más
 galeria-elegidas = { $cuantas ->
     [one] 1 elegida
    *[other] { $cuantas } elegidas
@@ -1906,26 +1873,6 @@ galeria-pineadas = { $cuantas } pineadas en la pantalla
 galeria-copiadas = { $cuantas } copiadas como archivos
 galeria-conservadas-aviso = { $cuantas } conservadas: están en Mensajes guardados
 galeria-prorrogada = Siete días más: se borrará más tarde
-galeria-texto-copiado = Texto copiado
-galeria-detalle-vacio = Elige una captura para ver sus detalles.
-galeria-ver-grande = Doble clic: ver grande
-galeria-tipo-captura = Captura de pantalla
-galeria-tipo-gif = GIF animado
-galeria-tipo-video = Vídeo
-galeria-fecha = Fecha
-galeria-tamano = Tamaño
-galeria-en-dias = { $dias ->
-    [0] hoy
-    [one] mañana
-   *[other] en { $dias } días
-}
-galeria-conservada-detalle = Está en Mensajes guardados y no se borra.
-galeria-texto-reconocido = Texto reconocido
-galeria-copiar-texto = Copiar texto
-galeria-texto-leyendo = Leyendo el texto…
-galeria-texto-nada = No se encontró texto en esta captura.
-galeria-texto-video = Los vídeos no tienen texto reconocido.
-galeria-texto-sin-ocr = Este Windows no tiene ningún idioma de reconocimiento de texto instalado.
 ## v2-pines
 # La barra del pin, su menu del clic derecho y el panel «Pines abiertos».
 pin-v2-anotar = Anotar
@@ -2086,3 +2033,185 @@ tareas3-borrar-lista-aviso = ¿Borrar la lista «{ $lista }» de «{ $chat }» c
    *[other] sus { $n } tareas
   }? Se borra también del chat y del móvil, y no se puede deshacer.
 tareas3-lista-borrada = Lista «{ $lista }» borrada
+
+## timeline (5-oct-2026)
+timeline-titulo = Timeline
+timeline-sub-ultimas = Últimas 24 horas · { $n ->
+    [one] 1 momento
+   *[other] { $n } momentos
+  }
+timeline-sub-dia = { $n ->
+    [one] 1 momento
+   *[other] { $n } momentos
+  }
+timeline-ultimas-24h = Últimas 24 horas
+timeline-hoy = Hoy
+timeline-ayer = Ayer
+timeline-exportar = Exportar
+timeline-volver = Volver
+timeline-pista = ¿Qué está pasando? Escribe o dicta…
+timeline-vacio = Aún no hay nada en las últimas 24 horas.
+    Escribe o dicta lo que está pasando y pulsa Intro.
+    Al dictar, «con esto pasó…» es el título y «y así te lo cuento…» la descripción.
+timeline-vacio-dia = Ese día no tiene nada apuntado.
+timeline-nota-de-voz = Nota de voz
+timeline-sin-titulo-voz = Nota de voz
+timeline-sin-titulo-foto = Foto
+timeline-apuntado = Apuntado
+timeline-corregido = Corregido
+timeline-borrado = Momento borrado
+timeline-deshacer = Deshacer
+timeline-abrir = Abrir
+timeline-escribe-algo = Escribe algo para el título
+timeline-no-guardado = No se pudo guardar el timeline
+timeline-corrigiendo = Corrigiendo el momento de las { $hora } · Intro guarda, Esc cancela
+timeline-voz-esperando = 🎙 La nota de voz va con lo escrito: pulsa Intro
+timeline-pegar-no-imagen = Eso no es una imagen ni un texto
+timeline-cal-elegidos = { $n ->
+    [one] 1 día elegido
+   *[other] { $n } días elegidos
+  }
+timeline-cal-quitar = Quitar la elección
+timeline-exportar-html = Página web (HTML)
+timeline-exportar-pdf = Documento PDF
+timeline-tipo-html = Página web
+timeline-tipo-pdf = Documento PDF
+timeline-nada-que-exportar = No hay nada que exportar ahí
+timeline-no-exportado = No se pudo guardar el fichero
+timeline-exportado = Guardado: { $nombre }
+timeline-exportado-pie = Exportado con PixPin Max · { $fecha }
+timeline-pdf-haciendo = Haciendo el PDF…
+timeline-pdf-sin-edge = Para el PDF hace falta Microsoft Edge; exporta en HTML
+timeline-pdf-fallo = No se pudo hacer el PDF
+timeline-mic-abriendo = Abriendo el micrófono…
+timeline-mic-escuchando = Te escucho… pulsa el micrófono (o Ctrl+M) para terminar
+timeline-mic-guardando = Guardando lo dicho…
+timeline-mic-bajando = Bajando el modelo de voz (una vez)… { $pc } %
+timeline-mic-pasando = Pasando a texto… { $pc } %
+timeline-mic-sin-dictado = Este equipo no puede pasar voz a texto: escríbelo
+timeline-mic-no-abre = No se pudo abrir el micrófono
+timeline-mic-no-guarda = No se pudo guardar lo dicho
+timeline-mic-sin-microfono = No hay micrófono
+timeline-mic-corto = Demasiado corto: habla un poco más
+timeline-mic-error = No se pudo grabar: { $error }
+timeline-mic-sin-texto = No se entendió: se guarda solo el audio
+
+
+## simple-lecciones
+lecs-menos-campos = Menos campos
+lecs-ficha-completa = Tipo, causas y palabras…
+
+## galeria-menu (5-oct-2026, clic derecho)
+galeria-guardar-como = Guardar como…
+galeria-mostrar-en-carpeta = Mostrar en la carpeta
+galeria-guardadas = { $cuantas ->
+    [one] Guardada
+   *[other] { $cuantas } guardadas
+}
+galeria-prorrogar = Dar 7 días más
+
+## timeline-v2 (5-oct-2026): barra comun, pestanas como WeChat y detalle
+timeline-pestana-hoy = Hoy
+timeline-pestana-momentos = Momentos
+timeline-pestana-estado = Estado
+timeline-buscar-pista = Buscar en el timeline
+timeline-sub-buscar = { $n ->
+    [0] Nada encontrado
+    [one] 1 resultado
+   *[other] { $n } resultados
+  }
+timeline-sub-momentos = { $n ->
+    [0] Aún no hay momentos
+    [one] 1 momento en total
+   *[other] { $n } momentos en total
+  }
+timeline-sin-resultados = No hay ningún momento con eso.
+    Se busca en el título y la descripción, sin tildes ni mayúsculas.
+timeline-momentos-vacio = Aún no hay momentos. Apunta el primero en «Hoy».
+timeline-estado-sobre-todo = Sobre todo
+timeline-estado-lo-mas = «{ $que }»
+timeline-exportar-busqueda = Búsqueda: «{ $que }»
+timeline-pestana-lecciones = Lecciones
+timeline-sub-lecciones = { $n ->
+    [0] Ninguna lección
+    [one] 1 lección aprendida
+   *[other] { $n } lecciones aprendidas
+  }
+timeline-lecciones-vacio = Aún no hay lecciones. Pulsa la bombilla de un momento para hacerlo lección.
+timeline-gravedad-leve = Leve
+timeline-gravedad-importante = Importante
+timeline-gravedad-grave = Grave
+timeline-otra-vez = Me volvió a pasar +1
+timeline-otra-vez-hecho = Apuntado: van { $n } veces
+timeline-leccion = Lección
+timeline-leccion-hecha = 💡 Hecha lección: está en «Lecciones»
+timeline-leccion-quitada = Ya no está marcado. La lección sigue en «Lecciones».
+timeline-leccion-fallo = No se pudo guardar la lección
+timeline-leccion-por-que = Por qué
+timeline-leccion-proxima = La próxima vez
+timeline-tambien-lecciones = { $n ->
+    [one] También hay 1 lección con eso · Ver
+   *[other] También hay { $n } lecciones con eso · Ver
+  }
+timeline-copiar-imagen = Copiar como imagen
+timeline-guardar-imagen = Guardar como imagen…
+timeline-imagen-copiada = Copiada como imagen
+timeline-imagen-fallo = No se pudo hacer la imagen
+timeline-tipo-png = Imagen PNG
+timeline-compartido-pie = PixPin Max · Timeline
+
+## tareas-v4
+# La pista del buscador en la barra comun de arriba: mas corta que la de
+# tareas3-buscar, que no cabe en el hueco que deja la barra.
+tareas4-buscar = Buscar tareas…
+timeline-otra-vez-corto = ↻ Me volvió a pasar +1
+timeline-pagina-linea = Línea
+timeline-exportado-pesa = pesa { $mb } MB: puede costar mandarlo
+
+## v2-diseno
+# La galeria con el sistema de diseno v2 (6-oct).
+galeria-chapa-hoy = hoy
+galeria-pista-caduca = { $dias ->
+    [0] Se borra hoy
+    [one] Se borra mañana
+   *[other] Se borra en { $dias } días
+  } · clic derecho para conservar
+galeria-ya-conservadas = Ya estaban conservadas
+galeria-dia-cuantas = { $cuantas ->
+    [one] 1 captura
+   *[other] { $cuantas } capturas
+  }
+timeline-sub-estado-dias = { $n ->
+    [0] Aún no hay días con algo
+    [one] 1 día con algo
+   *[other] { $n } días con algo
+  }
+timeline-filtro-todas = Todas
+timeline-orden-recientes = Recientes
+timeline-orden-repetidas = Más repetidas
+timeline-lecciones-sin-resultados = No hay ninguna lección con eso.
+timeline-otra-vez-pildora = ↻ +1
+
+## tareas-v5
+# El subtitulo de la barra: lo pendiente ya lo cuenta cada grupo.
+tareas5-subtitulo = { $listas ->
+    [one] 1 lista
+   *[other] { $listas } listas
+  }
+tareas5-apuntar-pista = Nueva tarea…
+tareas5-corregir-pista = Texto de la tarea…
+tareas5-imagen-pista = Añadir imágenes · Ctrl+V pega una copiada
+tareas5-guardar = Guardar
+tareas5-corregida = Tarea corregida
+tareas5-vista-lista = Lista · Ctrl+L
+tareas5-vista-tarjetas = Tarjetas · Ctrl+T
+tareas5-marcar = Marcar como hecha
+tareas5-desmarcar = Marcar como pendiente
+tareas5-editar = Editar
+tareas5-copiar-texto = Copiar texto
+tareas5-copiada = Texto copiado
+tareas5-pinear-imagenes = { $n ->
+    [one] Pinear la imagen
+   *[other] Pinear las { $n } imágenes
+  }
+tareas5-quitar = Quitar

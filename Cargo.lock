@@ -728,6 +728,7 @@ dependencies = [
  "pixpin-shell",
  "pixpin-sincro",
  "pixpin-store",
+ "pixpin-timeline",
  "pixpin-tinta",
  "pixpin-ui",
  "pixpin-voz",
@@ -988,6 +989,14 @@ dependencies = [
  "toml_edit 0.23.10+spec-1.0.0",
  "tracing",
  "unic-langid",
+]
+
+[[package]]
+name = "pixpin-timeline"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

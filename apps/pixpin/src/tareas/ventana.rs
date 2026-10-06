@@ -1,3 +1,10 @@
+//! **tareas-v4** (5-oct): arriba, la barra comun de Galeria, Lecciones,
+//! Tareas y Timeline ([`crate::cabecera`]) con el titulo, el buscador y el
+//! conmutador Lista / Tarjetas. En «Tarjetas» cada tarea es un cuadrado
+//! ([`super::rejilla`]) con su primera foto de fondo, sus emoticonos como
+//! estados de WeChat ([`super::emoticonos`]) y, con varias fotos, la pila de
+//! bordes detras. La vista elegida se recuerda en `tareas-vista.txt`.
+//!
 //! La ventana de Tareas (tareas-v3): arriba del todo el buscador, debajo la
 //! caja para apuntar en el Inbox de «Mensajes guardados», y debajo las
 //! tareas, **una tarjeta por tarea**, agrupadas por su lista con un
@@ -49,19 +56,21 @@ use pixpin_render::{Color, Pintor, RectF, Superficie};
 use pixpin_shell::overlay::{EventoOverlay, VentanaOverlay};
 use pixpin_store::{Catalogo, Idioma, Ubicacion};
 
-use super::{Fila, Lista, tarjetas};
+use super::rejilla::{self, Vista};
+use super::{Fila, Lista, emoticonos, tarjetas};
 use crate::caja_dibujo::hex;
 use crate::lecciones::ui;
 use crate::overlay::Recursos;
-use crate::ventanita::{Botones, TEXTO, centrado, dentro};
+use crate::v2::aviso::Aviso;
+use crate::v2::color::{blanco, con_alfa, mezcla, negro};
+use crate::v2::geom::encoger;
+use crate::v2::pegar::{self, Pegada};
+use crate::v2::{ACENTO, FONDO, GRIS, TEXTO};
+use crate::ventanita::{Botones, centrado, dentro};
 
-// Los colores del rediseno v2 (los de la galeria y las lecciones). Como las
-// demas ventanitas, la de tareas es oscura: no tiene tema claro.
-const FONDO_V: Color = hex(0x1C1C1E);
-const TEXTO_V: Color = hex(0xF5F5F7);
-const GRIS: Color = hex(0x98989D);
-/// Lo elegido y el foco.
-const AZUL_V: Color = hex(0x0A84FF);
+// Los colores, radios y piezas son los del sistema de diseno v2
+// (`crate::v2`), los mismos de la galeria y el timeline. Aqui solo lo que es
+// de las tareas.
 /// Lo buscado, resaltado en el texto de la tarea.
 const RESALTE: Color = Color {
     a: 0.38,
@@ -70,7 +79,7 @@ const RESALTE: Color = Color {
 /// La ficha `[img 01]` de una imagen pegada: letra azul clara sobre el
 /// azul muy aguado, para que se vea que no es texto.
 const FICHA_LETRA: Color = hex(0x9cc4f0);
-const FICHA_FONDO: Color = Color { a: 0.24, ..AZUL_V };
+const FICHA_FONDO: Color = con_alfa(ACENTO, 0.24);
 /// Lado de la miniatura de una imagen de tarea, en su tarjeta.
 const MINI: f32 = 48.0;
 /// Lado mayor de la vista de una ficha con el raton encima.
@@ -89,27 +98,49 @@ const VK_DERECHA: u32 = 0x27;
 const VK_ABAJO: u32 = 0x28;
 const VK_SUPRIMIR: u32 = 0x2E;
 const VK_F: u32 = 0x46;
+const VK_L: u32 = 0x4C;
+const VK_T: u32 = 0x54;
 const VK_V: u32 = 0x56;
 const VK_Z: u32 = 0x5A;
+const VK_F2: u32 = 0x71;
+
+/// Dos clics en lo mismo antes de esto son un doble clic (el de la galeria).
+const DOBLE_CLIC: Duration = Duration::from_millis(500);
 
 /// El tamano de la ventana, en pixeles logicos.
 const ANCHO_VENTANA: u32 = 660;
 const ALTO_VENTANA: u32 = 800;
 
 /// Medidas, en pixeles logicos.
-const CABECERA: f32 = 56.0;
+/// El lado que se quiere para cada cuadrado de la vista en tarjetas, y el
+/// hueco entre ellos (el de verdad lo reparte [`rejilla::columnas`]).
+const LADO_CUADRADO: f32 = 200.0;
+const HUECO_REJILLA: f32 = 12.0;
+/// Encima de cada bloque de cuadrados: donde asoma la pila de los que
+/// llevan varias fotos.
+const RESPIRO: f32 = 12.0;
+/// Una tarea hecha en la vista en cuadrados: una fila de este alto.
+const FILA_HECHA: f32 = 44.0;
+/// Diametro de los circulos de emoticonos en la lista (en los cuadrados,
+/// [`rejilla::CHAPA`]).
+const ESTADO_LISTA: f32 = 34.0;
 const CAJA: f32 = 44.0;
 const MARGEN: f32 = 16.0;
-/// Lo que baja la rueda por muesca, en «filas» de este alto (x1,5).
+/// Lo que baja la rueda por muesca en la lista, en «filas» de este alto
+/// (x1,5).
 const FILA: f32 = 36.0;
+/// En cuadrados, la rueda baja media fila de la rejilla por muesca: con el
+/// paso de la lista se tardaba una eternidad en pasar una fila de 212.
+const MEDIA_FILA_REJILLA: f32 = (LADO_CUADRADO + HUECO_REJILLA) / 2.0;
 const ENCABEZADO: f32 = 40.0;
 const PLIEGUE: f32 = 40.0;
 const HUECO: f32 = 8.0;
 const ENTRE_GRUPOS: f32 = 18.0;
 /// El objetivo de la casilla (el dibujo, de 24, va en medio).
 const CASILLA: f32 = 40.0;
-/// El objetivo del aspa que quita una tarea, y de la papelera de una lista.
-const ASPA: f32 = 36.0;
+/// El objetivo del boton que quita una tarea, y de la papelera de una lista:
+/// el boton de icono del v2.
+const ASPA: f32 = crate::v2::BOTON;
 const TARJETA_MIN: f32 = 56.0;
 /// La letra del texto de una tarea.
 const TAM_TAREA: f32 = 15.0;
@@ -170,8 +201,9 @@ struct Campo {
     texto: String,
     /// Donde esta el cursor, en bytes (siempre en el borde de una letra).
     cursor: usize,
-    /// Las imagenes pegadas, con su numero (el de su ficha).
-    pegadas: Vec<Pegada>,
+    /// Las imagenes pegadas (`v2::pegar`, con su huella: una imagen, un
+    /// nombre), cada una con el numero de su ficha.
+    pegadas: Vec<(u32, Pegada)>,
     /// Lo que hay que decir despues de una tecla (la clave del aviso): un
     /// Ctrl+V con algo que no se puede pegar.
     aviso: Option<&'static str>,
@@ -179,48 +211,38 @@ struct Campo {
     aviso_ficha: Option<String>,
 }
 
-/// Una imagen pegada en la caja, esperando a Intro.
-#[derive(Debug, Clone)]
-struct Pegada {
-    numero: u32,
-    ruta: PathBuf,
-    /// Un PNG que se escribio al pegar un mapa de bits: se borra al vaciar
-    /// la caja. Un fichero copiado del Explorador no es nuestro y se deja.
-    temporal: bool,
-    /// La huella de su contenido (`pixpin_lanzador::imagenes::huella`):
-    /// una imagen, un nombre.
-    huella: u64,
+/// Donde van los PNG de los mapas de bits pegados, hasta Intro.
+fn carpeta_de_pegadas() -> PathBuf {
+    std::env::temp_dir().join("pixpin-tareas")
 }
 
 impl Campo {
     fn vaciar(&mut self) {
         self.texto.clear();
         self.cursor = 0;
-        for p in self.pegadas.drain(..) {
-            if p.temporal {
-                let _ = std::fs::remove_file(&p.ruta);
-            }
+        for (_, p) in self.pegadas.drain(..) {
+            p.soltar();
         }
     }
 
     /// Donde esta cada ficha de una imagen pegada que sigue en el texto (la
-    /// primera vez que sale), ordenadas.
-    fn fichas(&self) -> Vec<(std::ops::Range<usize>, &Pegada)> {
+    /// primera vez que sale), ordenadas, con su numero y su imagen.
+    fn fichas(&self) -> Vec<(std::ops::Range<usize>, u32, &Pegada)> {
         let mut v: Vec<_> = self
             .pegadas
             .iter()
-            .filter_map(|p| {
-                let f = mini::ficha_de_imagen(p.numero);
-                self.texto.find(&f).map(|i| (i..i + f.len(), p))
+            .filter_map(|(n, p)| {
+                let f = mini::ficha_de_imagen(*n);
+                self.texto.find(&f).map(|i| (i..i + f.len(), *n, p))
             })
             .collect();
-        v.sort_by_key(|(r, _)| r.start);
+        v.sort_by_key(|(r, _, _)| r.start);
         v
     }
 
     /// La ficha que acaba justo en el cursor, o la que empieza en el.
     fn ficha_en(&self, antes: bool) -> Option<std::ops::Range<usize>> {
-        self.fichas().into_iter().map(|(r, _)| r).find(|r| {
+        self.fichas().into_iter().map(|(r, _, _)| r).find(|r| {
             if antes {
                 r.end == self.cursor
             } else {
@@ -233,27 +255,27 @@ impl Campo {
     fn imagenes(&self) -> Vec<(u32, PathBuf)> {
         self.fichas()
             .into_iter()
-            .map(|(_, p)| (p.numero, p.ruta.clone()))
+            .map(|(_, n, p)| (n, p.ruta.clone()))
             .collect()
     }
 
     /// Lo que dice el aviso de la tarea apuntada: el texto sin las fichas.
     fn lo_que_se_lee(&self) -> String {
         let mut s = self.texto.clone();
-        for (r, _) in self.fichas().into_iter().rev() {
+        for (r, _, _) in self.fichas().into_iter().rev() {
             s.replace_range(r, " ");
         }
         let s = mini::saneado(&s);
         match self.fichas().first() {
-            Some((_, p)) if s.is_empty() => mini::ficha_de_imagen(p.numero),
+            Some((_, n, _)) if s.is_empty() => mini::ficha_de_imagen(*n),
             _ => s,
         }
     }
 
     /// Mete la ficha de una imagen en el cursor, separada por blancos de lo
     /// que tenga alrededor.
-    fn meter_imagen(&mut self, ruta: PathBuf, temporal: bool, huella: u64) {
-        let numero = self.pegadas.iter().map(|p| p.numero).max().unwrap_or(0) + 1;
+    fn meter_imagen(&mut self, pegada: Pegada) {
+        let numero = self.pegadas.iter().map(|(n, _)| *n).max().unwrap_or(0) + 1;
         let mut ficha = String::new();
         if self.texto[..self.cursor]
             .chars()
@@ -266,12 +288,7 @@ impl Campo {
         ficha.push(' ');
         self.texto.insert_str(self.cursor, &ficha);
         self.cursor += ficha.len();
-        self.pegadas.push(Pegada {
-            numero,
-            ruta,
-            temporal,
-            huella,
-        });
+        self.pegadas.push((numero, pegada));
     }
 
     /// **Una imagen, un nombre**: la ficha que sigue en el texto con una
@@ -280,8 +297,8 @@ impl Campo {
         let Some(numero) = self
             .fichas()
             .into_iter()
-            .find(|(_, p)| p.huella == huella)
-            .map(|(_, p)| p.numero)
+            .find(|(_, _, p)| p.huella == huella)
+            .map(|(_, n, _)| n)
         else {
             return false;
         };
@@ -290,47 +307,44 @@ impl Campo {
         true
     }
 
-    /// Lo que hace Ctrl+V con lo que haya en el portapapeles.
+    /// Mete las imagenes leidas del portapapeles o elegidas en el Explorador
+    /// (las repetidas no: se avisa y su PNG temporal se borra).
+    fn meter_imagenes(&mut self, nuevas: Vec<Pegada>) {
+        for p in nuevas {
+            if self.ya_pegada(p.huella) {
+                p.soltar();
+            } else {
+                self.meter_imagen(p);
+            }
+        }
+    }
+
+    /// Lo que hace Ctrl+V con lo que haya en el portapapeles: el texto se
+    /// escribe; las imagenes las lee `v2::pegar`, como en el timeline.
     fn pegar(&mut self, contenido: Option<pixpin_codec::ContenidoPortapapeles>) {
         use pixpin_codec::ContenidoPortapapeles as C;
-        use pixpin_lanzador::imagenes::huella;
         match contenido {
             Some(C::Texto(t)) => self.escribir(&t),
-            Some(C::Imagen(img)) if img.ancho > 0 && img.alto > 0 => {
-                // Los pixeles y el tamano: la misma imagen, la misma huella.
-                let mut bytes = Vec::with_capacity(img.pixeles.len() + 8);
-                bytes.extend_from_slice(&img.ancho.to_le_bytes());
-                bytes.extend_from_slice(&img.alto.to_le_bytes());
-                bytes.extend_from_slice(&img.pixeles);
-                let h = huella(&bytes);
-                if self.ya_pegada(h) {
-                    return;
-                }
-                match png_temporal(&img) {
-                    Ok(ruta) => self.meter_imagen(ruta, true, h),
-                    Err(e) => {
-                        tracing::warn!(?e, "tareas: la imagen pegada no se pudo guardar");
-                        self.aviso = Some("tareas-pegar-no-imagen");
-                    }
-                }
-            }
-            Some(C::Rutas(rutas)) => {
-                let imagenes: Vec<_> = rutas.into_iter().filter(|r| super::es_imagen(r)).collect();
-                if imagenes.is_empty() {
+            Some(c @ (C::Imagen(_) | C::Rutas(_))) => {
+                // Un mapa vacio no es nada que avisar: no habia imagen.
+                let vacio = matches!(&c, C::Imagen(img) if img.ancho == 0 || img.alto == 0);
+                let nuevas = pegar::pegadas_de(Some(c), &carpeta_de_pegadas());
+                if nuevas.is_empty() && !vacio {
                     self.aviso = Some("tareas-pegar-no-imagen");
                 }
-                for r in imagenes {
-                    // Por su contenido; si no se puede leer, por su ruta.
-                    let h = std::fs::read(&r)
-                        .map(|b| huella(&b))
-                        .unwrap_or_else(|_| huella(r.to_string_lossy().as_bytes()));
-                    if !self.ya_pegada(h) {
-                        self.meter_imagen(r, false, h);
-                    }
-                }
+                self.meter_imagenes(nuevas);
             }
             _ => {}
         }
+    }
+
+    /// Las imagenes elegidas con el icono de imagen de la caja: como si se
+    /// hubieran copiado en el Explorador y pegado.
+    fn elegidas(&mut self, rutas: Vec<PathBuf>) {
+        if rutas.is_empty() {
+            return;
+        }
+        self.pegar(Some(pixpin_codec::ContenidoPortapapeles::Rutas(rutas)));
     }
 
     fn escribir(&mut self, s: &str) {
@@ -432,27 +446,14 @@ impl Campo {
     }
 }
 
-/// Guarda un mapa de bits pegado en un PNG temporal, hasta Intro.
-fn png_temporal(img: &pixpin_codec::ImagenRgba) -> Result<PathBuf> {
-    static CUENTA: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
-    let carpeta = std::env::temp_dir().join("pixpin-tareas");
-    std::fs::create_dir_all(&carpeta)?;
-    let n = CUENTA.fetch_add(1, Ordering::Relaxed);
-    let ruta = carpeta.join(format!(
-        "pegada-{}-{}-{n}.png",
-        std::process::id(),
-        pixpin_shell::entorno::ahora_utc_ms()
-    ));
-    pixpin_codec::guardar(img, &ruta, pixpin_codec::FormatoImagen::Png)?;
-    Ok(ruta)
-}
-
 // --------------------------------------------------------------- la ventana
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 enum Accion {
     Mover,
     Cerrar,
+    /// Lo que no hace nada: el fondo, y la caja del aviso fuera de su boton.
+    #[default]
     Fondo,
     Apuntar,
     /// Pulsar el buscador: el foco a el.
@@ -487,6 +488,22 @@ enum Accion {
     BorrarLista(usize),
     /// «Deshacer» del aviso (o Ctrl+Z): devolver la ultima tarea quitada.
     Deshacer,
+    /// El conmutador de la barra de arriba: lista o cuadrados.
+    Vista(Vista),
+    /// El icono de imagen de la caja de apuntar: elegir imagenes en el
+    /// Explorador (lo mismo que pegarlas con Ctrl+V).
+    ElegirImagen,
+    /// La chapa «+N» de un cuadrado, o «Pinear imagenes» del menu: todas
+    /// las imagenes de la tarea `.1` de la lista `.0` a la pantalla.
+    PinearTodas(usize, usize),
+    /// El circulo del emoticono `.2` de la tarea `.1` de la lista `.0`:
+    /// buscar ese emoticono (son las etiquetas de las tareas).
+    BuscarEmo(usize, usize, usize),
+    /// Corregir el texto de la tarea `.1` de la lista `.0` (doble clic en
+    /// su texto, F2 o «Editar» del menu): pasa a la caja de apuntar.
+    Editar(usize, usize),
+    /// «Copiar texto» del menu: el texto de la tarea al portapapeles.
+    CopiarTexto(usize, usize),
 }
 
 /// La ultima tarea quitada, para «Deshacer»: de que lista era, en que sitio
@@ -499,11 +516,69 @@ struct Quitada {
     tarea: mini::Tarea,
 }
 
-/// Lo que dura el aviso de una tarea quitada, con su «Deshacer»: mas que un
-/// aviso normal, para que de tiempo a leerlo y arrepentirse.
-const DURA_DESHACER: Duration = Duration::from_secs(6);
-/// Lo que dura un aviso normal.
-const DURA_AVISO: Duration = Duration::from_millis(2_500);
+/// La tarea de una accion, si es de una tarea: lo que hay bajo el raton
+/// cuando se pulsa el boton derecho (su menu es el de esa tarea).
+fn tarea_de(a: Accion) -> Option<(usize, usize)> {
+    match a {
+        Accion::Enfocar(l, f)
+        | Accion::Marcar(l, f)
+        | Accion::Repartir(l, f)
+        | Accion::Imagen(l, f, _)
+        | Accion::Quitar(l, f)
+        | Accion::PinearTodas(l, f)
+        | Accion::BuscarEmo(l, f, _)
+        | Accion::Editar(l, f)
+        | Accion::CopiarTexto(l, f) => Some((l, f)),
+        _ => None,
+    }
+}
+
+/// Lo que hace un **doble clic** en una tarea fuera de sus botones (el
+/// primer clic ya le dio el foco): en un cuadrado con foto, pinear la foto,
+/// que es lo que se quiere de una foto; en lo demas, corregir el texto.
+/// Lo que no es una tarea se queda como estaba.
+fn al_doble_clic(a: Accion, vista: Vista, con_fotos: bool) -> Accion {
+    match a {
+        Accion::Enfocar(l, f) if vista == Vista::Tarjetas && con_fotos => Accion::Imagen(l, f, 0),
+        Accion::Enfocar(l, f) => Accion::Editar(l, f),
+        otra => otra,
+    }
+}
+
+/// Las entradas del **menu del boton derecho** de una tarea, con su atajo
+/// tras un tabulador (como el de la galeria) y la accion de cada una.
+/// «Mover a…» solo en lo pendiente del Inbox y «Pinear» solo con imagenes:
+/// lo que no se puede hacer no se ofrece.
+fn menu_de_tarea(
+    li: usize,
+    fi: usize,
+    hecha: bool,
+    se_reparte: bool,
+    imagenes: usize,
+    textos: &Catalogo,
+) -> Vec<(u32, String, Accion)> {
+    let mut v = vec![(
+        1,
+        format!(
+            "{}\tEspacio",
+            textos.t(if hecha { "tareas5-desmarcar" } else { "tareas5-marcar" })
+        ),
+        Accion::Marcar(li, fi),
+    )];
+    v.push((2, format!("{}\tF2", textos.t("tareas5-editar")), Accion::Editar(li, fi)));
+    if se_reparte {
+        v.push((3, format!("{}\tIntro", textos.t("tareas-mover")), Accion::Repartir(li, fi)));
+    }
+    v.push((4, textos.t("tareas5-copiar-texto"), Accion::CopiarTexto(li, fi)));
+    if imagenes > 0 {
+        let mut args = fluent_bundle::FluentArgs::new();
+        args.set("n", imagenes as i64);
+        v.push((5, textos.t_args("tareas5-pinear-imagenes", &args), Accion::PinearTodas(li, fi)));
+    }
+    v.push((6, format!("{}\tSupr", textos.t("tareas5-quitar")), Accion::Quitar(li, fi)));
+    v
+}
+
 
 /// Donde va lo que se teclea.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -553,7 +628,9 @@ struct Estado {
     /// el foco (se movio con las flechas).
     seguir_foco: bool,
     botones: Botones<Accion>,
-    aviso: Option<(String, Instant)>,
+    /// El aviso de abajo (`v2::aviso`, el mismo de la galeria y el
+    /// timeline); con una tarea recien quitada lleva su «Deshacer».
+    aviso: Option<Aviso<Accion>>,
     /// Arrastrando la ventana por su cabecera: donde se pulso, en pantalla,
     /// y donde estaba la ventana entonces.
     moviendo: Option<(pixpin_geom::Punto, Rect)>,
@@ -569,6 +646,18 @@ struct Estado {
     deshacer: Option<Quitada>,
     /// La ventana, duena del cuadro que pregunta antes de borrar una lista.
     hwnd: Option<windows::Win32::Foundation::HWND>,
+    /// Lista o cuadrados: la elegida se recuerda en `tareas-vista.txt`.
+    vista: Vista,
+    /// En la vista de cuadrados, la caja de cada pieza del ultimo fotograma
+    /// (desde el borde y lo alto del contenido): con ellas se pinta, se
+    /// acierta el clic y se mueven las flechas. En la lista, vacia.
+    celdas: Vec<rejilla::Celda>,
+    /// La tarea que se esta corrigiendo en la caja de apuntar (como se
+    /// leyo: al guardar se comprueba que sigue igual), o `None` si la caja
+    /// apunta una nueva.
+    corrigiendo: Option<(Lista, Fila)>,
+    /// El ultimo clic y cuando: dos en lo mismo seguidos son un doble clic.
+    ultimo_clic: Option<(Accion, Instant)>,
 }
 
 impl Estado {
@@ -599,6 +688,10 @@ impl Estado {
             fichas_pintadas: Vec::new(),
             deshacer: None,
             hwnd: None,
+            vista: Vista::Lista,
+            celdas: Vec::new(),
+            corrigiendo: None,
+            ultimo_clic: None,
         }
     }
 
@@ -656,18 +749,10 @@ impl Estado {
     /// Un aviso nuevo tapa al anterior, y con el su «Deshacer»: lo que se
     /// ofrece deshacer es siempre lo que dice el aviso que se ve.
     fn decir(&mut self, t: String) {
-        self.aviso = Some((t, Instant::now()));
+        self.aviso = Some(Aviso::nuevo(t));
         self.deshacer = None;
     }
 
-    /// Lo que dura el aviso que se ve.
-    fn dura_el_aviso(&self) -> Duration {
-        if self.deshacer.is_some() {
-            DURA_DESHACER
-        } else {
-            DURA_AVISO
-        }
-    }
 
     fn buscando(&self) -> bool {
         !self.buscar.texto.trim().is_empty()
@@ -704,6 +789,56 @@ impl Estado {
         self.buscar.poner("");
         self.scroll = 0.0;
         self.seguir_foco = true;
+    }
+
+    /// Si la tarea lleva alguna imagen (haya llegado o no a este equipo).
+    fn con_fotos(&self, li: usize, fi: usize) -> bool {
+        self.fila(li, fi).is_some_and(|(_, f)| !f.imagenes.is_empty())
+    }
+
+    /// Donde estan las imagenes de la tarea que ya estan en este equipo.
+    fn rutas_de_todas(&self, li: usize, fi: usize) -> Vec<PathBuf> {
+        let Some((l, f)) = self.fila(li, fi) else {
+            return Vec::new();
+        };
+        (0..f.imagenes.len())
+            .filter_map(|k| self.ruta_de(l, f, k))
+            .collect()
+    }
+
+    /// Deja de corregir: la caja vuelve a apuntar tareas nuevas, vacia.
+    fn soltar_correccion(&mut self) {
+        if self.corrigiendo.take().is_some() {
+            self.campo.vaciar();
+        }
+    }
+}
+
+/// El **menu del boton derecho** de una tarea, donde este el raton (el
+/// mismo menu del sistema que el de la galeria). Devuelve si la ventana
+/// sigue.
+fn menu(
+    e: &mut Estado,
+    li: usize,
+    fi: usize,
+    textos: &Catalogo,
+    ubicacion: &Ubicacion,
+    aparato: &str,
+) -> bool {
+    let Some(hwnd) = e.hwnd else {
+        return true;
+    };
+    let Some((_, f)) = e.fila(li, fi) else {
+        return true;
+    };
+    let entradas = menu_de_tarea(li, fi, f.hecha, e.se_reparte(li, fi), f.imagenes.len(), textos);
+    e.foco = Foco::Tarjeta(li, fi);
+    let lista: Vec<(u32, String)> = entradas.iter().map(|(id, t, _)| (*id, t.clone())).collect();
+    match pixpin_shell::menu_llano(hwnd, &lista)
+        .and_then(|id| entradas.iter().find(|(i, _, _)| *i == id))
+    {
+        Some(&(_, _, a)) => hacer(e, a, textos, ubicacion, aparato),
+        None => true,
     }
 }
 
@@ -743,6 +878,7 @@ fn bucle(
 
     let mut e = Estado::nuevo();
     e.hwnd = Some(ventana.handle());
+    e.vista = Vista::leer(ubicacion.raiz());
     e.recargar(ubicacion);
     tracing::info!(listas = e.listas.len(), "ventana de tareas abierta");
     let mut mirado = Instant::now();
@@ -776,8 +912,28 @@ fn bucle(
                             e.moviendo = Some((p, marco));
                             ventana.capturar_raton();
                         }
-                        Some(a) => vivo = hacer(&mut e, a, textos, ubicacion, aparato),
+                        Some(a) => {
+                            let doble = e
+                                .ultimo_clic
+                                .is_some_and(|(b, t)| b == a && t.elapsed() < DOBLE_CLIC);
+                            // Tras un doble clic se empieza de cero: un
+                            // tercero no es otro doble.
+                            e.ultimo_clic = (!doble).then(|| (a, Instant::now()));
+                            let a = if doble {
+                                let fotos = tarea_de(a).is_some_and(|(l, f)| e.con_fotos(l, f));
+                                al_doble_clic(a, e.vista, fotos)
+                            } else {
+                                a
+                            };
+                            vivo = hacer(&mut e, a, textos, ubicacion, aparato);
+                        }
                         None => {}
+                    }
+                }
+                EventoOverlay::BotonDerechoPulsado(p) => {
+                    e.botones.raton = local(p, marco);
+                    if let Some((li, fi)) = e.botones.bajo_el_raton().and_then(tarea_de) {
+                        vivo = menu(&mut e, li, fi, textos, ubicacion, aparato);
                     }
                 }
                 EventoOverlay::BotonSoltado(_) => {
@@ -785,8 +941,15 @@ fn bucle(
                         ventana.soltar_raton();
                     }
                 }
-                // La rueda llega en 120 por muesca (y en trozos desde un panel tactil).
-                EventoOverlay::Rueda(m) => e.scroll -= m as f32 / 120.0 * FILA * 1.5 * escala,
+                // La rueda llega en 120 por muesca (y en trozos desde un
+                // panel tactil). En cuadrados, media fila de la rejilla.
+                EventoOverlay::Rueda(m) => {
+                    let paso = match e.vista {
+                        Vista::Lista => FILA * 1.5,
+                        Vista::Tarjetas => MEDIA_FILA_REJILLA,
+                    };
+                    e.scroll -= m as f32 / 120.0 * paso * escala;
+                }
                 EventoOverlay::Caracter(c) => letra(&mut e, c),
                 EventoOverlay::Tecla {
                     vk, ctrl, shift, ..
@@ -819,8 +982,7 @@ fn bucle(
         if e.recien.len() != antes {
             pintar = true;
         }
-        let dura = e.dura_el_aviso();
-        if e.aviso.as_ref().is_some_and(|(_, t)| t.elapsed() > dura) {
+        if e.aviso.as_ref().is_some_and(Aviso::caducado) {
             // Ido el aviso, ya no se ofrece deshacer: lo quitado, quitado.
             e.aviso = None;
             e.deshacer = None;
@@ -924,6 +1086,23 @@ fn tecla(
             e.foco = Foco::Buscar;
             e.buscar.cursor = e.buscar.texto.len();
         }
+        // La vista, con el teclado: Ctrl+L la lista, Ctrl+T las tarjetas
+        // (ni las cajas ni las tarjetas usan esas dos).
+        (VK_L, _) if ctrl => {
+            return hacer(e, Accion::Vista(Vista::Lista), textos, ubicacion, aparato);
+        }
+        (VK_T, _) if ctrl => {
+            return hacer(e, Accion::Vista(Vista::Tarjetas), textos, ubicacion, aparato);
+        }
+        (VK_F2, Foco::Tarjeta(li, fi)) => {
+            return hacer(e, Accion::Editar(li, fi), textos, ubicacion, aparato);
+        }
+        // Corrigiendo, Esc deja la tarea como estaba y la caja vuelve a
+        // apuntar: antes que vaciar la busqueda o cerrar.
+        (VK_ESCAPE, _) if e.corrigiendo.is_some() => {
+            e.soltar_correccion();
+            e.foco = Foco::Apuntar;
+        }
         // Ctrl+Z, mientras el aviso lo ofrece, es su «Deshacer»: las cajas
         // de escribir no tienen deshacer propio que pisar.
         (VK_Z, _) if ctrl && e.deshacer.is_some() => {
@@ -965,6 +1144,22 @@ fn tecla(
         (VK_ABAJO, Foco::Buscar) => e.foco = Foco::Apuntar,
         (VK_ABAJO, Foco::Apuntar) => a_tarjeta(e, orden.first().copied()),
         (VK_ARRIBA, Foco::Apuntar) => e.foco = Foco::Buscar,
+        // En cuadrados las cuatro flechas recorren la rejilla.
+        (VK_ABAJO | VK_ARRIBA | VK_IZQUIERDA | VK_DERECHA, Foco::Tarjeta(li, fi))
+            if e.vista == Vista::Tarjetas =>
+        {
+            let d = match vk {
+                VK_ABAJO => rejilla::Direccion::Abajo,
+                VK_ARRIBA => rejilla::Direccion::Arriba,
+                VK_IZQUIERDA => rejilla::Direccion::Izquierda,
+                _ => rejilla::Direccion::Derecha,
+            };
+            match rejilla::vecina(&e.celdas, Some((li, fi)), d) {
+                Some(t) => a_tarjeta(e, Some(t)),
+                None if buscando => e.foco = Foco::Buscar,
+                None => e.foco = Foco::Apuntar,
+            }
+        }
         (VK_ABAJO | VK_ARRIBA, Foco::Tarjeta(li, fi)) => {
             let paso = if vk == VK_ABAJO { 1 } else { -1 };
             match tarjetas::vecina(&orden, Some((li, fi)), paso) {
@@ -978,7 +1173,12 @@ fn tecla(
         (VK_ESPACIO, Foco::Tarjeta(li, fi)) => {
             return hacer(e, Accion::Marcar(li, fi), textos, ubicacion, aparato);
         }
+        // Intro en un cuadrado con foto la pinea, como su doble clic: en
+        // cuadrados la foto es lo que se ve. Si no, «Mover a…» en el Inbox.
         (VK_ENTRAR, Foco::Tarjeta(li, fi)) => {
+            if e.vista == Vista::Tarjetas && e.con_fotos(li, fi) {
+                return hacer(e, Accion::Imagen(li, fi, 0), textos, ubicacion, aparato);
+            }
             if e.se_reparte(li, fi) {
                 return hacer(e, Accion::Repartir(li, fi), textos, ubicacion, aparato);
             }
@@ -997,21 +1197,27 @@ fn tecla(
         }
         (_, Foco::Apuntar) => {
             e.campo.tecla(vk, ctrl);
-            if let Some(clave) = e.campo.aviso.take() {
-                let aviso = match e.campo.aviso_ficha.take() {
-                    Some(ficha) => {
-                        let mut args = fluent_bundle::FluentArgs::new();
-                        args.set("ficha", ficha);
-                        textos.t_args(clave, &args)
-                    }
-                    None => textos.t(clave),
-                };
-                e.decir(aviso);
-            }
+            avisar_de_la_caja(e, textos);
         }
         _ => {}
     }
     true
+}
+
+/// Lo que la caja de apuntar dejo por decir (un Ctrl+V sin imagen, una
+/// imagen que ya estaba), al aviso de abajo.
+fn avisar_de_la_caja(e: &mut Estado, textos: &Catalogo) {
+    if let Some(clave) = e.campo.aviso.take() {
+        let aviso = match e.campo.aviso_ficha.take() {
+            Some(ficha) => {
+                let mut args = fluent_bundle::FluentArgs::new();
+                args.set("ficha", ficha);
+                textos.t_args(clave, &args)
+            }
+            None => textos.t(clave),
+        };
+        e.decir(aviso);
+    }
 }
 
 /// Lo que hace un clic (o Intro). Devuelve si la ventana sigue.
@@ -1026,6 +1232,14 @@ fn hacer(
     match a {
         Accion::Mover | Accion::Fondo => {}
         Accion::Cerrar => return false,
+        Accion::Vista(v) => {
+            if e.vista != v {
+                e.vista = v;
+                v.guardar(raiz);
+                // La tarjeta con el foco sigue a la vista en su nuevo sitio.
+                e.seguir_foco = true;
+            }
+        }
         Accion::EnfocarBuscar => e.foco = Foco::Buscar,
         Accion::EnfocarApuntar => e.foco = Foco::Apuntar,
         Accion::VaciarBusqueda => {
@@ -1039,6 +1253,90 @@ fn hacer(
                 if !e.abiertas.remove(&clave) {
                     e.abiertas.insert(clave);
                 }
+            }
+        }
+        // Corrigiendo, Intro guarda la tarea corregida en su sitio, por el
+        // mismo camino que marcarla (`cuaderno::reemplazar` del mensaje).
+        Accion::Apuntar if e.corrigiendo.is_some() => {
+            let Some((lista, fila)) = e.corrigiendo.clone() else {
+                return true;
+            };
+            match super::corregir(raiz, &lista, &fila, &e.campo.texto, &e.campo.imagenes()) {
+                Ok(true) => {
+                    e.decir(textos.t("tareas5-corregida"));
+                    e.soltar_correccion();
+                    crate::ventana_chat::refrescar();
+                }
+                Ok(false) => {
+                    e.decir(textos.t("tareas-cambio"));
+                    e.soltar_correccion();
+                }
+                Err(err) => {
+                    tracing::warn!(?err, "tareas: no se pudo corregir");
+                    e.decir(err.aviso(textos));
+                }
+            }
+            e.recargar(ubicacion);
+            // El foco, a la corregida: su texto cambio, pero no su sitio en
+            // la lista (su numero es tambien su sitio en `Lista::filas`).
+            let sitio = e
+                .listas
+                .iter()
+                .position(|l| l.clave() == lista.clave())
+                .filter(|&li| fila.indice < e.listas[li].filas.len());
+            if let Some(li) = sitio {
+                e.foco = Foco::Tarjeta(li, fila.indice);
+                e.seguir_foco = true;
+            }
+        }
+        Accion::Editar(li, fi) => {
+            let Some((l, f)) = e.fila(li, fi).map(|(l, f)| (l.clone(), f.clone())) else {
+                return true;
+            };
+            e.campo.vaciar();
+            e.campo.escribir(&f.texto);
+            e.corrigiendo = Some((l, f));
+            e.repartiendo = None;
+            e.foco = Foco::Apuntar;
+        }
+        Accion::ElegirImagen => {
+            let Some(h) = e.hwnd else {
+                return true;
+            };
+            let rutas = pixpin_shell::elegir::pedir_imagenes(h);
+            e.foco = Foco::Apuntar;
+            e.campo.cursor = e.campo.texto.len();
+            e.campo.elegidas(rutas);
+            avisar_de_la_caja(e, textos);
+        }
+        Accion::PinearTodas(li, fi) => {
+            let rutas = e.rutas_de_todas(li, fi);
+            if rutas.is_empty() {
+                e.decir(textos.t("tareas-imagen-no-esta"));
+            } else if pixpin_shell::mensajero::enviar_ficheros(&rutas) {
+                e.decir(textos.t("chat-pineado"));
+            } else {
+                tracing::warn!("tareas: no contesta la ventana principal");
+            }
+        }
+        Accion::BuscarEmo(li, fi, k) => {
+            let emo = e
+                .fila(li, fi)
+                .and_then(|(_, f)| emoticonos::emoticonos_de(&f.texto).1.get(k).cloned());
+            if let Some(emo) = emo {
+                e.buscar.poner(&emo);
+                e.buscar.cursor = e.buscar.texto.len();
+                e.foco = Foco::Buscar;
+                e.scroll = 0.0;
+            }
+        }
+        Accion::CopiarTexto(li, fi) => {
+            let Some((_, f)) = e.fila(li, fi) else {
+                return true;
+            };
+            match pixpin_codec::portapapeles::copiar_texto(&f.texto) {
+                Ok(()) => e.decir(textos.t("tareas5-copiada")),
+                Err(err) => tracing::warn!(?err, "tareas: no se pudo copiar el texto"),
             }
         }
         Accion::Apuntar => {
@@ -1165,7 +1463,13 @@ fn hacer(
                     };
                     args.set("tarea", nombre);
                     e.decir(textos.t_args("tareas3-quitada", &args));
-                    // Despues de `decir`, que suelta el «Deshacer» anterior.
+                    // Despues de `decir`, que suelta el «Deshacer» anterior:
+                    // el aviso con su boton, y lo que deshace.
+                    e.aviso = Some(Aviso::con_deshacer(
+                        textos.t_args("tareas3-quitada", &args),
+                        textos.t("tareas3-deshacer"),
+                        Accion::Deshacer,
+                    ));
                     e.deshacer = Some(Quitada {
                         proyecto: lista.proyecto.clone(),
                         codigo: lista.codigo.clone(),
@@ -1248,43 +1552,37 @@ fn hacer(
 
 // ---------------------------------------------------------------- pintar
 
-fn blanco(a: f32) -> Color {
-    Color { a, ..Color::BLANCO }
+/// Donde va la caja de apuntar (debajo de la barra comun de arriba, que
+/// lleva el buscador) y donde empieza el contenido desplazable, ya con la
+/// escala: `(caja, contenido)`.
+fn alturas(s: f32) -> (f32, f32) {
+    let caja = crate::cabecera::ALTO * s + 12.0 * s;
+    (caja, caja + CAJA * s + 16.0 * s)
 }
 
-/// Un recuadro redondeado con borde: el borde es el mismo recuadro un poco
-/// mayor por debajo (como en la galeria).
-fn con_borde(p: &Pintor, r: RectF, radio: f32, fondo: Color, borde: Color, grosor: f32) {
-    p.rellenar_redondeado(r, radio, borde);
-    p.rellenar_redondeado(encoger(r, grosor), (radio - grosor).max(0.0), fondo);
-}
-
-/// Donde empieza el contenido desplazable y donde van el buscador y la
-/// caja, ya con la escala: `(buscador, caja, contenido)`.
-fn alturas(s: f32) -> (f32, f32, f32) {
-    let buscador = CABECERA * s;
-    let caja = buscador + CAJA * s + 10.0 * s;
-    (buscador, caja, caja + CAJA * s + 16.0 * s)
+/// Si una celda de la rejilla es una fila (una hecha, ver
+/// `rejilla::disponer`) y no un cuadrado.
+fn es_fila(r: RectF) -> bool {
+    r.ancho > r.alto * 1.5
 }
 
 fn pintar_todo(e: &mut Estado, p: &Pintor, marco: Rect, s: f32, textos: &Catalogo) {
     let (w, h) = (marco.ancho as f32, marco.alto as f32);
-    p.limpiar(FONDO_V);
+    p.limpiar(FONDO);
     e.botones.vaciar();
-    e.botones.zona(
-        RectF {
-            x: 0.0,
-            y: 0.0,
-            ancho: w,
-            alto: h,
-        },
-        Accion::Fondo,
-    );
+    let todo = RectF {
+        x: 0.0,
+        y: 0.0,
+        ancho: w,
+        alto: h,
+    };
+    e.botones.zona(todo, Accion::Fondo);
     let m = MARGEN * s;
     let ancho = w - 2.0 * m;
-    let (y_buscar, y_caja, arriba) = alturas(s);
+    let (y_caja, arriba) = alturas(s);
 
-    // Lo que sale y donde: agrupar, medir cada tarjeta y colocarlas.
+    // Lo que sale y donde: agrupar, medir cada tarjeta y colocarlas. Los
+    // grupos son los mismos en las dos vistas; solo cambia como se colocan.
     let palabras = tarjetas::palabras(&e.buscar.texto);
     let buscando = !palabras.is_empty();
     let grupos = {
@@ -1293,27 +1591,50 @@ fn pintar_todo(e: &mut Estado, p: &Pintor, marco: Rect, s: f32, textos: &Catalog
             recien.contains_key(&(l.clave(), f.crudo.clone()))
         })
     };
-    let (colocadas, total) = {
+    let (colocadas, celdas, total) = {
         let abierta = |li: usize| {
             buscando
                 || e.listas
                     .get(li)
                     .is_some_and(|l| e.abiertas.contains(&l.clave()))
         };
-        let est: &Estado = e;
-        tarjetas::disponer(
-            &grupos,
-            &abierta,
-            &mut |li, fi| hechura(est, p, li, fi, ancho, s, buscando, textos).alto,
-            tarjetas::Medidas {
-                encabezado: ENCABEZADO * s,
-                pliegue: PLIEGUE * s,
-                hueco: HUECO * s,
-                entre_grupos: ENTRE_GRUPOS * s,
-            },
-        )
+        match e.vista {
+            Vista::Lista => {
+                let est: &Estado = e;
+                let (c, total) = tarjetas::disponer(
+                    &grupos,
+                    &abierta,
+                    &mut |li, fi| hechura(est, p, li, fi, ancho, s, buscando, textos).alto,
+                    tarjetas::Medidas {
+                        encabezado: ENCABEZADO * s,
+                        pliegue: PLIEGUE * s,
+                        hueco: HUECO * s,
+                        entre_grupos: ENTRE_GRUPOS * s,
+                    },
+                );
+                (c, Vec::new(), total)
+            }
+            Vista::Tarjetas => {
+                let (c, total) = rejilla::disponer(
+                    &grupos,
+                    &abierta,
+                    &rejilla::Medidas {
+                        ancho,
+                        lado: LADO_CUADRADO * s,
+                        hueco: HUECO_REJILLA * s,
+                        encabezado: ENCABEZADO * s,
+                        pliegue: PLIEGUE * s,
+                        entre_grupos: ENTRE_GRUPOS * s,
+                        respiro: RESPIRO * s,
+                        fila_hecha: FILA_HECHA * s,
+                    },
+                );
+                (rejilla::colocadas(&c), c, total)
+            }
+        }
     };
     e.colocadas = colocadas;
+    e.celdas = celdas;
     e.alto_contenido = total + 24.0 * s;
     let area = RectF {
         x: 0.0,
@@ -1334,7 +1655,11 @@ fn pintar_todo(e: &mut Estado, p: &Pintor, marco: Rect, s: f32, textos: &Catalog
     }
     e.scroll = e.scroll.clamp(0.0, (e.alto_contenido - area.alto).max(0.0));
     e.encima = if dentro(area, e.botones.raton) && e.repartiendo.is_none() {
-        tarjetas::pieza_en(&e.colocadas, e.botones.raton.1 - arriba + e.scroll)
+        let y = e.botones.raton.1 - arriba + e.scroll;
+        match e.vista {
+            Vista::Lista => tarjetas::pieza_en(&e.colocadas, y),
+            Vista::Tarjetas => rejilla::pieza_en(&e.celdas, e.botones.raton.0 - m, y),
+        }
     } else {
         None
     };
@@ -1345,20 +1670,55 @@ fn pintar_todo(e: &mut Estado, p: &Pintor, marco: Rect, s: f32, textos: &Catalog
     p.con_recorte(area, |p| {
         let y0 = arriba - e.scroll;
         if e.listas.is_empty() {
-            pintar_vacia(p, m, y0, ancho, s, textos);
+            let zona = RectF {
+                x: m,
+                y: area.y,
+                ancho,
+                alto: area.alto.min(320.0 * s),
+            };
+            crate::v2::vacio(p, zona, &mi::CHECKLIST, &textos.t("tareas-vacia"), s);
         } else if grupos.is_empty() {
-            pintar_sin_resultados(e, p, m, y0, ancho, s, textos);
+            pintar_sin_resultados(e, p, m, area.y, ancho, s, textos);
         } else {
-            let colocadas = e.colocadas.clone();
-            for c in colocadas {
-                let y = y0 + c.y;
-                if y + c.alto < area.y || y > area.y + area.alto {
+            // Cada pieza en su caja de ventana: la de la lista ocupa todo lo
+            // ancho; la de la rejilla, la que le dio `rejilla::disponer`.
+            let piezas: Vec<(tarjetas::Pieza, RectF)> = match e.vista {
+                Vista::Lista => e
+                    .colocadas
+                    .iter()
+                    .map(|c| {
+                        let r = RectF {
+                            x: m,
+                            y: y0 + c.y,
+                            ancho,
+                            alto: c.alto,
+                        };
+                        (c.pieza, r)
+                    })
+                    .collect(),
+                Vista::Tarjetas => e
+                    .celdas
+                    .iter()
+                    .map(|c| {
+                        let r = RectF {
+                            x: m + c.caja.x,
+                            y: y0 + c.caja.y,
+                            ..c.caja
+                        };
+                        (c.pieza, r)
+                    })
+                    .collect(),
+            };
+            // La pila de un cuadrado asoma un poco por encima: se cuenta.
+            let asoma = 2.0 * RESPIRO * s;
+            for (pieza, r) in piezas {
+                if r.y + r.alto < area.y || r.y - asoma > area.y + area.alto {
                     continue;
                 }
-                match c.pieza {
+                match pieza {
                     tarjetas::Pieza::Encabezado(li) => {
                         if let Some(g) = grupos.iter().find(|g| g.lista == li) {
-                            pintar_encabezado(e, p, g, m, y, ancho, s, textos);
+                            pintar_encabezado(e, p, g, m, r.y, ancho, s, textos);
                         }
                     }
                     tarjetas::Pieza::Pliegue(li) => {
@@ -1366,23 +1726,22 @@ fn pintar_todo(e: &mut Estado, p: &Pintor, marco: Rect, s: f32, textos: &Catalog
                             .iter()
                             .find(|g| g.lista == li)
                             .map_or(0, |g| g.hechas.len());
-                        pintar_pliegue(e, p, li, n, m, y, ancho, s, buscando, textos);
+                        pintar_pliegue(e, p, li, n, m, r.y, ancho, s, buscando, textos);
                     }
-                    tarjetas::Pieza::Tarjeta(li, fi) => {
-                        let r = RectF {
-                            x: m,
-                            y,
-                            ancho,
-                            alto: c.alto,
-                        };
-                        pintar_tarjeta(e, p, li, fi, r, s, &palabras, textos);
-                    }
+                    tarjetas::Pieza::Tarjeta(li, fi) => match e.vista {
+                        Vista::Lista => pintar_tarjeta(e, p, li, fi, r, s, &palabras, textos),
+                        Vista::Tarjetas if es_fila(r) => {
+                            pintar_fila_hecha(e, p, li, fi, r, s, &palabras, textos)
+                        }
+                        Vista::Tarjetas => pintar_cuadrado(e, p, li, fi, r, s, &palabras, textos),
+                    },
                 }
             }
         }
     });
 
-    // Lo de arriba, tapando lo que se desplazo bajo ello.
+    // Lo de arriba, tapando lo que se desplazo bajo ello: el fondo de la
+    // caja de apuntar, la caja, y encima de todo la barra comun.
     p.rellenar(
         RectF {
             x: 0.0,
@@ -1390,53 +1749,58 @@ fn pintar_todo(e: &mut Estado, p: &Pintor, marco: Rect, s: f32, textos: &Catalog
             ancho: w,
             alto: arriba,
         },
-        FONDO_V,
+        FONDO,
     );
-    let cab = RectF {
-        x: 0.0,
-        y: 0.0,
-        ancho: w,
-        alto: CABECERA * s,
-    };
-    e.botones.zona(cab, Accion::Mover);
-    let titulo = textos.t("tareas-titulo");
-    ui::negrita(p, &titulo, m, 14.0 * s, 20.0 * s, 300.0 * s, TEXTO_V);
-    let (tw, _) = ui::medir_negrita(p, &titulo, 20.0 * s, 300.0 * s);
+    // El subtitulo dice cuantas listas hay (o, buscando, cuantas salen): lo
+    // pendiente ya lo cuenta cada grupo en su encabezado, y repetirlo arriba
+    // era decir dos veces lo mismo.
     let resumen = if buscando {
         let n: usize = grupos.iter().map(|g| g.arriba.len() + g.hechas.len()).sum();
         let mut args = fluent_bundle::FluentArgs::new();
         args.set("n", n as i64);
         textos.t_args("tareas3-encontradas", &args)
     } else {
-        let pendientes: usize = e.listas.iter().map(Lista::cuantas_pendientes).sum();
         let mut args = fluent_bundle::FluentArgs::new();
-        args.set("pendientes", pendientes as i64);
         args.set("listas", e.listas.len() as i64);
-        textos.t_args("tareas-resumen", &args)
+        textos.t_args("tareas5-subtitulo", &args)
     };
-    let lado = 40.0 * s;
-    p.texto_linea(
-        &resumen,
-        m + tw + 12.0 * s,
-        21.0 * s,
-        13.0 * s,
-        (w - 2.0 * m - tw - 12.0 * s - lado - 8.0 * s).max(0.0),
-        GRIS,
-    );
-    let cerrar = RectF {
-        x: w - m - lado + 6.0 * s,
-        y: 8.0 * s,
-        ancho: lado,
-        alto: lado,
-    };
-    if dentro(cerrar, e.botones.raton) {
-        p.rellenar_redondeado(cerrar, 10.0 * s, blanco(0.08));
-    }
-    p.icono(&mi::CLOSE, encoger(cerrar, 10.0 * s), GRIS);
-    e.botones.zona(cerrar, Accion::Cerrar);
-
-    pintar_buscador(e, p, m, y_buscar, ancho, s, textos);
     pintar_caja(e, p, m, y_caja, ancho, s, textos);
+    // La barra comun de Galeria, Lecciones, Tareas y Timeline: el titulo,
+    // el buscador y el conmutador Lista / Tarjetas, una sola pastilla.
+    let titulo = textos.t("tareas-titulo");
+    let pista = textos.t("tareas4-buscar");
+    let pista_lista = textos.t("tareas5-vista-lista");
+    let pista_tarjetas = textos.t("tareas5-vista-tarjetas");
+    let iconos = [
+        crate::cabecera::SegmentoIcono {
+            icono: &mi::LIST,
+            activo: e.vista == Vista::Lista,
+            accion: Accion::Vista(Vista::Lista),
+            pista: &pista_lista,
+        },
+        crate::cabecera::SegmentoIcono {
+            icono: &mi::GRID_VIEW,
+            activo: e.vista == Vista::Tarjetas,
+            accion: Accion::Vista(Vista::Tarjetas),
+            pista: &pista_tarjetas,
+        },
+    ];
+    let cab = crate::cabecera::Cabecera {
+        titulo: &titulo,
+        subtitulo: &resumen,
+        buscador: Some(crate::cabecera::Buscador {
+            texto: &e.buscar.texto,
+            pista: &pista,
+            foco: e.foco == Foco::Buscar,
+            cursor: Some(e.buscar.cursor),
+            enfocar: Accion::EnfocarBuscar,
+            vaciar: Accion::VaciarBusqueda,
+        }),
+        botones: Vec::new(),
+        mover: Accion::Mover,
+        cerrar: Accion::Cerrar,
+    };
+    crate::cabecera::pintar_con_iconos(p, &mut e.botones, w, s, &cab, &iconos);
 
     if e.repartiendo.is_some() {
         pintar_eleccion(e, p, w, h, s, textos);
@@ -1444,167 +1808,20 @@ fn pintar_todo(e: &mut Estado, p: &Pintor, marco: Rect, s: f32, textos: &Catalog
         pintar_vista_de_ficha(e, p, w, s);
     }
 
-    if let Some((t, _)) = e.aviso.clone() {
-        let tam = 14.0 * s;
-        // Con una tarea recien quitada, el aviso lleva su «Deshacer» dentro,
-        // a la derecha: es donde se mira justo despues de quitarla.
-        let deshacer = e.deshacer.is_some().then(|| {
-            let rotulo = textos.t("tareas3-deshacer");
-            let bw = ui::ancho_de_boton(p, true, &rotulo, Some("Ctrl Z"), s);
-            (rotulo, bw)
-        });
-        let extra = deshacer.as_ref().map_or(0.0, |(_, bw)| bw + 8.0 * s);
-        let (tw, th) = p.medir_texto_ajustado(&t, tam, (w - 60.0 * s - extra).max(40.0 * s));
-        let alto = if deshacer.is_some() {
-            (th + 16.0 * s).max(48.0 * s)
-        } else {
-            th + 16.0 * s
-        };
-        let caja = RectF {
-            x: (w - tw - extra) / 2.0 - 14.0 * s,
-            y: h - alto - 18.0 * s,
-            ancho: tw + extra + 28.0 * s,
-            alto,
-        };
-        p.rellenar_redondeado(
-            caja,
-            8.0 * s,
-            Color {
-                a: 0.92,
-                ..Color::NEGRO
-            },
-        );
-        // El aviso se apunta como fondo: un clic en su texto no cae en la
-        // tarjeta que asoma por debajo.
-        e.botones.zona(caja, Accion::Fondo);
-        p.texto_ajustado(
-            &t,
-            caja.x + 14.0 * s,
-            caja.y + (alto - th) / 2.0,
-            tam,
-            tw + 2.0,
-            TEXTO,
-        );
-        if let Some((rotulo, bw)) = deshacer {
-            let b = RectF {
-                x: caja.x + caja.ancho - 4.0 * s - bw,
-                y: caja.y + (alto - 40.0 * s) / 2.0,
-                ancho: bw,
-                alto: 40.0 * s,
-            };
-            ui::boton_v2(
-                p,
-                &mut e.botones,
-                b,
-                Accion::Deshacer,
-                Some(&mi::UNDO),
-                &rotulo,
-                Some("Ctrl Z"),
-                None,
-                hex(0x64D2FF),
-                s,
-            );
-        }
+    // El aviso de abajo, el de todas las ventanas v2 (con su «Deshacer»
+    // dentro cuando se acaba de quitar una tarea).
+    if let Some(a) = &e.aviso {
+        crate::v2::aviso::pintar(a, p, &mut e.botones, todo, s);
     }
 }
 
-/// El buscador, arriba del todo: la lupa, lo escrito (o la pista) y a la
-/// derecha la chapita «Ctrl F» o, con algo escrito, la ✕ que lo vacia.
-fn pintar_buscador(
-    e: &mut Estado,
-    p: &Pintor,
-    x: f32,
-    y: f32,
-    ancho: f32,
-    s: f32,
-    textos: &Catalogo,
-) {
-    let lado = CAJA * s;
-    let caja = RectF {
-        x,
-        y,
-        ancho,
-        alto: lado,
-    };
-    let foco = e.foco == Foco::Buscar;
-    let borde = if foco {
-        AZUL_V
-    } else if dentro(caja, e.botones.raton) {
-        blanco(0.2)
-    } else {
-        blanco(0.1)
-    };
-    con_borde(p, caja, 12.0 * s, hex(0x2A2A2D), borde, 1.0 * s);
-    e.botones.zona(caja, Accion::EnfocarBuscar);
-    let li = 18.0 * s;
-    p.icono(
-        &mi::SEARCH,
-        RectF {
-            x: x + 14.0 * s,
-            y: y + (lado - li) / 2.0,
-            ancho: li,
-            alto: li,
-        },
-        if foco { AZUL_V } else { GRIS },
-    );
-    let derecha = if e.buscar.texto.is_empty() {
-        let cw = ui::ancho_de_chapa(p, "Ctrl F", s);
-        ui::chapa(
-            p,
-            "Ctrl F",
-            x + ancho - 12.0 * s - cw,
-            y + lado / 2.0,
-            hex(0xD1D1D6),
-            hex(0x2E2E31),
-            s,
-        );
-        cw + 20.0 * s
-    } else {
-        let l = 36.0 * s;
-        let b = RectF {
-            x: x + ancho - 4.0 * s - l,
-            y: y + (lado - l) / 2.0,
-            ancho: l,
-            alto: l,
-        };
-        if dentro(b, e.botones.raton) {
-            p.rellenar_redondeado(b, 9.0 * s, blanco(0.1));
-        }
-        p.icono(&mi::CLOSE, encoger(b, 9.0 * s), GRIS);
-        e.botones.zona(b, Accion::VaciarBusqueda);
-        l + 8.0 * s
-    };
-    let tx = x + 44.0 * s;
-    let tam = 15.0 * s;
-    let (_, th) = p.medir_texto("Ag", tam);
-    let campo = RectF {
-        x: tx,
-        y,
-        ancho: (x + ancho - derecha - tx).max(0.0),
-        alto: lado,
-    };
-    let pista = textos.t("tareas3-buscar");
-    let buscar = &e.buscar;
-    p.con_recorte(campo, |p| {
-        // Sin el cursor de las lecciones (amarillo): el azul del foco de
-        // esta ventana, como en la caja de apuntar.
-        let ty = y + (lado - th) / 2.0;
-        buscar.pintar_texto(p, tx, ty, 100_000.0, tam, false, &pista, s);
-        if foco {
-            let mut con_marca = buscar.texto.clone();
-            con_marca.insert(buscar.cursor, '\u{200B}');
-            let i = buscar.texto[..buscar.cursor].encode_utf16().count() as u32;
-            let cx = p
-                .cajas_de_trozo(&con_marca, tam, 100_000.0, &[], i, 1)
-                .first()
-                .map_or(0.0, |b| b.x);
-            p.linea((tx + cx, ty), (tx + cx, ty + th), 1.5 * s, AZUL_V);
-        }
-    });
-}
-
 /// La caja para apuntar: con el foco, lo que se escribe va a ella e Intro
-/// lo apunta en el Inbox.
+/// lo apunta en el Inbox (o, corrigiendo, guarda la tarea corregida).
+///
+/// Sencilla a proposito (tareas-v5): a la izquierda el «+» (o el lapiz al
+/// corregir), la pista «Nueva tarea…» y a la derecha el icono de imagen en
+/// gris, que recuerda que Ctrl+V pega imagenes y, pulsado, deja elegirlas.
+/// Antes la pista explicaba todo eso en una frase que no cabia.
 fn pintar_caja(e: &mut Estado, p: &Pintor, x: f32, y: f32, ancho: f32, s: f32, textos: &Catalogo) {
     let caja = RectF {
         x,
@@ -1614,37 +1831,67 @@ fn pintar_caja(e: &mut Estado, p: &Pintor, x: f32, y: f32, ancho: f32, s: f32, t
     };
     let foco = e.foco == Foco::Apuntar;
     let borde = if foco {
-        AZUL_V
+        con_alfa(ACENTO, 0.6)
     } else if dentro(caja, e.botones.raton) {
         blanco(0.2)
     } else {
         blanco(0.1)
     };
-    con_borde(p, caja, 12.0 * s, hex(0x2A2A2D), borde, 1.0 * s);
+    let radio = crate::v2::RADIO_TARJETA * s;
+    p.rellenar_redondeado(caja, radio, borde);
+    p.rellenar_redondeado(encoger(caja, 1.0 * s), radio - 1.0 * s, crate::v2::CAJA);
     e.botones.zona(caja, Accion::EnfocarApuntar);
     let tam = 15.0 * s;
     let (_, alto_linea) = p.medir_texto("Ag", tam);
     let ty = y + (caja.alto - alto_linea) / 2.0;
-    let mas = "＋";
-    let (mw, mh) = p.medir_texto(mas, 18.0 * s);
-    p.texto_color(
-        mas,
-        x + 16.0 * s,
-        y + (caja.alto - mh) / 2.0,
-        18.0 * s,
-        AZUL_V,
+    let li = 18.0 * s;
+    let icono = if e.corrigiendo.is_some() {
+        &mi::EDIT
+    } else {
+        &mi::ADD
+    };
+    p.icono(
+        icono,
+        RectF {
+            x: x + 14.0 * s,
+            y: y + (caja.alto - li) / 2.0,
+            ancho: li,
+            alto: li,
+        },
+        ACENTO,
     );
-    let tx = x + 16.0 * s + mw + 10.0 * s;
-    // A la derecha, con algo escrito, el boton de apuntar con su «Intro».
-    let mut fin = x + ancho - 18.0 * s;
+    let tx = x + 14.0 * s + li + 10.0 * s;
+
+    // A la derecha del todo, el icono de imagen: 40 de objetivo, 18 de dibujo.
+    let lado = crate::v2::BOTON * s;
+    let imagen = RectF {
+        x: x + ancho - 2.0 * s - lado,
+        y: y + (caja.alto - lado) / 2.0,
+        ancho: lado,
+        alto: lado,
+    };
+    let sobre_imagen = dentro(imagen, e.botones.raton);
+    p.icono(
+        &mi::IMAGE,
+        crate::v2::geom::centrado((imagen.x + lado / 2.0, imagen.y + lado / 2.0), li),
+        if sobre_imagen { TEXTO } else { GRIS },
+    );
+    e.botones.zona(imagen, Accion::ElegirImagen);
+    let mut fin = imagen.x - 4.0 * s;
+
+    // Con algo escrito, el boton de apuntar (o guardar) con su «Intro».
     if !e.campo.texto.trim().is_empty() {
-        let rotulo = textos.t("tareas-apuntar-boton");
+        let rotulo = textos.t(if e.corrigiendo.is_some() {
+            "tareas5-guardar"
+        } else {
+            "tareas-apuntar-boton"
+        });
         let bw = ui::ancho_de_boton(p, false, &rotulo, Some("Intro"), s);
         let b = RectF {
-            x: x + ancho - bw - 5.0 * s,
-            y: y + 5.0 * s,
+            x: fin - bw,
+            y: y + 4.0 * s,
             ancho: bw,
-            alto: caja.alto - 10.0 * s,
+            alto: caja.alto - 8.0 * s,
         };
         ui::boton_v2(
             p,
@@ -1654,23 +1901,11 @@ fn pintar_caja(e: &mut Estado, p: &Pintor, x: f32, y: f32, ancho: f32, s: f32, t
             None,
             &rotulo,
             Some("Intro"),
-            Some(ui::v2::AZUL),
-            ui::v2::BLANCO,
+            Some(crate::v2::AZUL_LLENO),
+            Color::BLANCO,
             s,
         );
         fin = b.x - 8.0 * s;
-    } else if foco {
-        let cw = ui::ancho_de_chapa(p, "Intro", s);
-        ui::chapa(
-            p,
-            "Intro",
-            x + ancho - 12.0 * s - cw,
-            y + caja.alto / 2.0,
-            hex(0xD1D1D6),
-            hex(0x2E2E31),
-            s,
-        );
-        fin = x + ancho - 20.0 * s - cw;
     }
     let hueco = (fin - tx).max(10.0);
     let recorte = RectF {
@@ -1681,12 +1916,46 @@ fn pintar_caja(e: &mut Estado, p: &Pintor, x: f32, y: f32, ancho: f32, s: f32, t
     };
     e.fichas_pintadas.clear();
     if e.campo.texto.is_empty() {
-        p.texto_linea(&textos.t("tareas-apuntar"), tx, ty, tam, hueco, GRIS);
+        // La pista, 3 px a la derecha del cursor: pegada a el parecia que
+        // el cursor era su primera letra.
+        let pista = textos.t(if e.corrigiendo.is_some() {
+            "tareas5-corregir-pista"
+        } else {
+            "tareas5-apuntar-pista"
+        });
+        p.texto_linea(&pista, tx + 3.0 * s, ty, tam, hueco - 3.0 * s, GRIS);
         if foco {
-            p.linea((tx, ty), (tx, ty + alto_linea), 1.5 * s, AZUL_V);
+            p.linea((tx, ty), (tx, ty + alto_linea), 1.5 * s, ACENTO);
         }
-        return;
+    } else {
+        pintar_texto_de_la_caja(e, p, tx, ty, alto_linea, hueco, recorte, foco, s);
     }
+    if sobre_imagen {
+        let limite = RectF {
+            x: 0.0,
+            y: 0.0,
+            ancho: x + ancho + MARGEN * s,
+            alto: 100_000.0,
+        };
+        crate::v2::pista::pintar(p, imagen, &textos.t("tareas5-imagen-pista"), limite, s);
+    }
+}
+
+/// Lo escrito en la caja: el texto y cada ficha de imagen como una chapa, y
+/// el cursor.
+#[allow(clippy::too_many_arguments)] // estado, pintor, sitio, renglon, hueco, recorte, foco y escala
+fn pintar_texto_de_la_caja(
+    e: &mut Estado,
+    p: &Pintor,
+    tx: f32,
+    ty: f32,
+    alto_linea: f32,
+    hueco: f32,
+    recorte: RectF,
+    foco: bool,
+    s: f32,
+) {
+    let tam = 15.0 * s;
     // Donde va el cursor: una marca de ancho cero en su sitio, y la caja que
     // le da DirectWrite (medir el trozo de antes se comeria los blancos del
     // final).
@@ -1707,7 +1976,7 @@ fn pintar_caja(e: &mut Estado, p: &Pintor, x: f32, y: f32, ancho: f32, s: f32, t
         .campo
         .fichas()
         .into_iter()
-        .map(|(r, peg)| (r, peg.ruta.clone()))
+        .map(|(r, _, peg)| (r, peg.ruta.clone()))
         .collect();
     let caja_de = |p: &Pintor, r: &std::ops::Range<usize>| {
         let inicio = texto[..r.start].encode_utf16().count() as u32;
@@ -1735,7 +2004,7 @@ fn pintar_caja(e: &mut Estado, p: &Pintor, x: f32, y: f32, ancho: f32, s: f32, t
             };
             let x0 = tx - corrido + b.x;
             match ruta {
-                None => p.texto(&texto[r.clone()], x0, ty, tam, TEXTO_V),
+                None => p.texto(&texto[r.clone()], x0, ty, tam, TEXTO),
                 Some(ruta) => {
                     let chapa = RectF {
                         x: x0 - 3.0 * s,
@@ -1743,7 +2012,7 @@ fn pintar_caja(e: &mut Estado, p: &Pintor, x: f32, y: f32, ancho: f32, s: f32, t
                         ancho: b.ancho + 6.0 * s,
                         alto: alto_linea + 4.0 * s,
                     };
-                    p.rellenar_redondeado(chapa, 5.0 * s, FICHA_FONDO);
+                    p.rellenar_redondeado(chapa, crate::v2::RADIO_CHAPA * s, FICHA_FONDO);
                     p.texto(&texto[r.clone()], x0, ty, tam, FICHA_LETRA);
                     pintadas.push((chapa, ruta.clone()));
                 }
@@ -1751,7 +2020,7 @@ fn pintar_caja(e: &mut Estado, p: &Pintor, x: f32, y: f32, ancho: f32, s: f32, t
         }
         if foco {
             let c = tx - corrido + cx;
-            p.linea((c, ty), (c, ty + alto_linea), 1.5 * s, AZUL_V);
+            p.linea((c, ty), (c, ty + alto_linea), 1.5 * s, ACENTO);
         }
     });
     e.fichas_pintadas = pintadas;
@@ -1781,7 +2050,7 @@ fn pintar_vista_de_ficha(e: &Estado, p: &Pintor, w: f32, s: f32) {
         ancho: dw + 2.0 * pad,
         alto: dh + 2.0 * pad,
     };
-    p.rellenar_redondeado(marco, 10.0 * s, hex(0x2C2C2E));
+    p.rellenar_redondeado(marco, crate::v2::RADIO_BOTON * s, crate::v2::CAJA);
     p.bitmap_con(
         b,
         RectF {
@@ -1796,8 +2065,8 @@ fn pintar_vista_de_ficha(e: &Estado, p: &Pintor, w: f32, s: f32) {
 }
 
 /// La eleccion del grupo adonde mover una tarea del Inbox: un velo que la
-/// cierra al pulsarlo y, encima, una tarjeta con un renglon por grupo (su
-/// titulo y su chat). Las flechas eligen e Intro mueve.
+/// cierra al pulsarlo y, encima, una tarjeta flotante con un renglon por
+/// grupo (su titulo y su chat). Las flechas eligen e Intro mueve.
 fn pintar_eleccion(e: &mut Estado, p: &Pintor, w: f32, h: f32, s: f32, textos: &Catalogo) {
     let Some((li, fi)) = e.repartiendo else {
         return;
@@ -1812,13 +2081,7 @@ fn pintar_eleccion(e: &mut Estado, p: &Pintor, w: f32, h: f32, s: f32, textos: &
         ancho: w,
         alto: h,
     };
-    p.rellenar(
-        todo,
-        Color {
-            a: 0.55,
-            ..Color::NEGRO
-        },
-    );
+    p.rellenar(todo, negro(0.55));
     e.botones.zona(todo, Accion::SoltarMenu);
     let renglon = 48.0 * s;
     let pad = 16.0 * s;
@@ -1833,7 +2096,10 @@ fn pintar_eleccion(e: &mut Estado, p: &Pintor, w: f32, h: f32, s: f32, textos: &
         ancho,
         alto,
     };
-    con_borde(p, caja, 14.0 * s, hex(0x2C2C2E), blanco(0.1), 1.0 * s);
+    // Lo flotante del v2: radio 14 y un canto de blanco al 10 %.
+    let radio = crate::v2::RADIO_FLOTANTE * s;
+    p.rellenar_redondeado(encoger(caja, -1.0 * s), radio + 1.0 * s, blanco(0.1));
+    p.rellenar_redondeado(caja, radio, crate::v2::CAJA);
     // La tarjeta se traga sus clics: fuera de un renglon no cierra.
     e.botones.zona(caja, Accion::Fondo);
     let mut args = fluent_bundle::FluentArgs::new();
@@ -1844,7 +2110,7 @@ fn pintar_eleccion(e: &mut Estado, p: &Pintor, w: f32, h: f32, s: f32, textos: &
         caja.y + 16.0 * s,
         15.0 * s,
         caja.ancho - 2.0 * pad,
-        TEXTO_V,
+        TEXTO,
     );
     // Abajo, los atajos: «↑↓ Intro» elige, «Esc» cierra.
     let yc = caja.y + caja.alto - pie / 2.0;
@@ -1854,7 +2120,7 @@ fn pintar_eleccion(e: &mut Estado, p: &Pintor, w: f32, h: f32, s: f32, textos: &
         ("Intro", Some(textos.t("tareas3-mover-intro"))),
         ("Esc", Some(textos.t("tareas3-mover-esc"))),
     ] {
-        xx += ui::chapa(p, t, xx, yc, hex(0xD1D1D6), hex(0x2E2E31), s) + 6.0 * s;
+        xx += ui::chapa(p, t, xx, yc, crate::v2::CUERPO, hex(0x2E2E31), s) + 6.0 * s;
         if let Some(r) = rotulo {
             let (rw, rh) = p.medir_texto(&r, 12.5 * s);
             p.texto(&r, xx, yc - rh / 2.0, 12.5 * s, GRIS);
@@ -1892,7 +2158,7 @@ fn pintar_eleccion(e: &mut Estado, p: &Pintor, w: f32, h: f32, s: f32, textos: &
                 continue;
             }
             if di == elegido {
-                p.rellenar_redondeado(r, 8.0 * s, Color { a: 0.22, ..AZUL_V });
+                p.rellenar_redondeado(r, 8.0 * s, con_alfa(ACENTO, 0.22));
             } else if dentro(r, e.botones.raton) {
                 p.rellenar_redondeado(r, 8.0 * s, blanco(0.06));
             }
@@ -1902,7 +2168,7 @@ fn pintar_eleccion(e: &mut Estado, p: &Pintor, w: f32, h: f32, s: f32, textos: &
                 r.y + 6.0 * s,
                 14.5 * s,
                 r.ancho - 2.0 * pad,
-                TEXTO_V,
+                TEXTO,
             );
             p.texto_linea(
                 &d.chat,
@@ -1928,35 +2194,8 @@ fn pintar_eleccion(e: &mut Estado, p: &Pintor, w: f32, h: f32, s: f32, textos: &
     }
 }
 
-/// Sin ninguna tarea: que se ve y como se empieza.
-fn pintar_vacia(p: &Pintor, x: f32, y: f32, ancho: f32, s: f32, textos: &Catalogo) {
-    let lado = 44.0 * s;
-    let y = y + 56.0 * s;
-    p.icono(
-        &mi::CHECKLIST,
-        RectF {
-            x: x + (ancho - lado) / 2.0,
-            y,
-            ancho: lado,
-            alto: lado,
-        },
-        GRIS,
-    );
-    let t = textos.t("tareas-vacia");
-    let anch = ancho.min(440.0 * s);
-    let (tw, _) = p.medir_texto_ajustado(&t, 15.0 * s, anch);
-    p.texto_ajustado(
-        &t,
-        x + (ancho - tw) / 2.0,
-        y + lado + 16.0 * s,
-        15.0 * s,
-        anch,
-        GRIS,
-    );
-}
-
-/// Buscando sin nada que coincida: lo que se busco, como buscar mejor y un
-/// boton para vaciar la busqueda (o Esc).
+/// Buscando sin nada que coincida: el estado vacio comun con lo que se
+/// busco, como buscar mejor y un boton para vaciar la busqueda (o Esc).
 fn pintar_sin_resultados(
     e: &mut Estado,
     p: &Pintor,
@@ -1966,37 +2205,22 @@ fn pintar_sin_resultados(
     s: f32,
     textos: &Catalogo,
 ) {
-    let lado = 44.0 * s;
-    let mut y = y + 48.0 * s;
-    p.icono(
-        &mi::SEARCH,
-        RectF {
-            x: x + (ancho - lado) / 2.0,
-            y,
-            ancho: lado,
-            alto: lado,
-        },
-        GRIS,
-    );
-    y += lado + 16.0 * s;
-    let anch = ancho.min(460.0 * s);
     let mut args = fluent_bundle::FluentArgs::new();
     args.set("busqueda", ui::corto(e.buscar.texto.trim(), 40));
     let titulo = textos.t_args("tareas3-sin-resultados", &args);
-    let (tw, th) = ui::medir_negrita(p, &titulo, 16.0 * s, anch);
-    ui::negrita(
-        p,
-        &titulo,
-        x + (ancho - tw) / 2.0,
+    let zona = RectF {
+        x,
         y,
-        16.0 * s,
-        anch,
-        TEXTO_V,
-    );
-    y += th + 8.0 * s;
+        ancho,
+        alto: 220.0 * s,
+    };
+    crate::v2::vacio(p, zona, &mi::SEARCH, &titulo, s);
+    let mut y = zona.y + zona.alto;
+    let anch = ancho.min(460.0 * s);
     let pista = textos.t("tareas3-sin-resultados-pista");
-    let (pw, ph) = p.medir_texto_ajustado(&pista, 13.5 * s, anch);
-    p.texto_ajustado(&pista, x + (ancho - pw) / 2.0, y, 13.5 * s, anch, GRIS);
+    let tam = crate::v2::LETRA_SECUNDARIO * s;
+    let (pw, ph) = p.medir_texto_ajustado(&pista, tam, anch);
+    p.texto_ajustado(&pista, x + (ancho - pw) / 2.0, y, tam, anch, GRIS);
     y += ph + 18.0 * s;
     let rotulo = textos.t("tareas3-vaciar-busqueda");
     let bw = ui::ancho_de_boton(p, false, &rotulo, Some("Esc"), s);
@@ -2004,7 +2228,7 @@ fn pintar_sin_resultados(
         x: x + (ancho - bw) / 2.0,
         y,
         ancho: bw,
-        alto: 40.0 * s,
+        alto: crate::v2::BOTON * s,
     };
     ui::boton_v2(
         p,
@@ -2014,16 +2238,17 @@ fn pintar_sin_resultados(
         None,
         &rotulo,
         Some("Esc"),
-        Some(hex(0x2C2C2E)),
-        TEXTO_V,
+        Some(crate::v2::CAJA),
+        TEXTO,
         s,
     );
 }
 
 /// El encabezado de un grupo: el nombre de la lista en negrita, «· su
-/// chat» en gris y a la derecha cuantas quedan pendientes. Con el raton
-/// encima sale, a la derecha del todo, la papelera que borra la lista
-/// entera (pregunta antes).
+/// chat» en gris (no en el Inbox: que es de «Mensajes guardados» ya se
+/// sabe) y, pegada al borde derecho, cuantas quedan pendientes. Con el raton
+/// encima, la papelera ocupa el sitio de la cuenta: borra la lista entera
+/// (pregunta antes).
 #[allow(clippy::too_many_arguments)] // estado, pintor, grupo, sitio, escala y textos
 fn pintar_encabezado(
     e: &mut Estado,
@@ -2038,44 +2263,41 @@ fn pintar_encabezado(
     let Some(l) = e.listas.get(g.lista).cloned() else {
         return;
     };
-    let tam = 15.0 * s;
+    let tam = crate::v2::LETRA_TITULO_TARJETA * s;
     let (_, th) = p.medir_texto("Ag", tam);
     let ty = y + ENCABEZADO * s - th - 8.0 * s;
-    // El sitio de la papelera se reserva siempre: que el nombre no se
-    // recorte de otra forma al pasar el raton.
     let papelera = RectF {
         x: x + ancho - ASPA * s,
         y: ty + th / 2.0 - ASPA * s / 2.0,
         ancho: ASPA * s,
         alto: ASPA * s,
     };
-    if e.encima == Some(tarjetas::Pieza::Encabezado(g.lista)) {
-        let sobre = dentro(papelera, e.botones.raton);
-        if sobre {
-            p.rellenar_redondeado(papelera, 10.0 * s, blanco(0.1));
-        }
-        p.icono(
-            &mi::DELETE,
-            encoger(papelera, 8.0 * s),
-            if sobre { hex(0xFF6961) } else { GRIS },
-        );
-        e.botones.zona(papelera, Accion::BorrarLista(g.lista));
-    }
     let mut args = fluent_bundle::FluentArgs::new();
     args.set("n", g.pendientes(&l) as i64);
     let cuenta = textos.t_args("tareas3-pendientes", &args);
-    let (cw, ch) = p.medir_texto(&cuenta, 12.5 * s);
-    let cw = cw + ASPA * s + 4.0 * s;
-    p.texto(
-        &cuenta,
-        x + ancho - cw - 4.0 * s,
-        ty + (th - ch) / 2.0,
-        12.5 * s,
-        GRIS,
-    );
-    let libre = (ancho - cw - 20.0 * s).max(0.0);
+    let tam_c = crate::v2::LETRA_SECUNDARIO * s;
+    let (cw, ch) = p.medir_texto(&cuenta, tam_c);
+    if e.encima == Some(tarjetas::Pieza::Encabezado(g.lista)) {
+        crate::v2::boton_icono(
+            p,
+            &mut e.botones,
+            papelera,
+            Accion::BorrarLista(g.lista),
+            &mi::DELETE,
+            false,
+            false,
+            s,
+        );
+    } else {
+        p.texto(&cuenta, x + ancho - cw, ty + (th - ch) / 2.0, tam_c, GRIS);
+    }
+    // Lo que queda para el nombre: lo mismo pase o no el raton, para que no
+    // se recorte de otra forma al pasar.
+    let derecha = cw.max(ASPA * s);
+    let libre = (ancho - derecha - 20.0 * s).max(0.0);
+    let con_chat = !super::es_inbox(&l);
     let (nw, _) = ui::medir_negrita(p, &l.titulo, tam, libre);
-    let nw = nw.min(libre * 0.7);
+    let nw = if con_chat { nw.min(libre * 0.7) } else { nw.min(libre) };
     p.con_recorte(
         RectF {
             x,
@@ -2083,16 +2305,18 @@ fn pintar_encabezado(
             ancho: nw + 6.0 * s,
             alto: ENCABEZADO * s,
         },
-        |p| ui::negrita(p, &l.titulo, x + 4.0 * s, ty, tam, 100_000.0, TEXTO_V),
+        |p| ui::negrita(p, &l.titulo, x + 4.0 * s, ty, tam, 100_000.0, TEXTO),
     );
-    p.texto_linea(
-        &format!("·  {}", l.chat),
-        x + 4.0 * s + nw + 8.0 * s,
-        ty + 1.0 * s,
-        13.5 * s,
-        (libre - nw - 12.0 * s).max(0.0),
-        GRIS,
-    );
+    if con_chat {
+        p.texto_linea(
+            &format!("·  {}", l.chat),
+            x + 4.0 * s + nw + 8.0 * s,
+            ty + 1.0 * s,
+            13.5 * s,
+            (libre - nw - 12.0 * s).max(0.0),
+            GRIS,
+        );
+    }
 }
 
 /// «Hechas (N)» con su flecha: abre y cierra lo hecho de la lista. Buscando
@@ -2121,7 +2345,7 @@ fn pintar_pliegue(
             .get(li)
             .is_some_and(|l| e.abiertas.contains(&l.clave()));
     if !buscando && e.encima == Some(tarjetas::Pieza::Pliegue(li)) {
-        p.rellenar_redondeado(r, 10.0 * s, blanco(0.05));
+        p.rellenar_redondeado(r, crate::v2::RADIO_BOTON * s, blanco(0.05));
     }
     let mut tx = x + 8.0 * s;
     if !buscando {
@@ -2161,6 +2385,11 @@ struct Hechura {
     minis_y: Option<f32>,
     /// Donde va la chapita de la lista y el chat (buscando).
     chapa_y: Option<f32>,
+    /// Lo que se lee: el texto sin sus emoticonos, que van aparte.
+    texto: String,
+    /// Los emoticonos de la tarea: sus etiquetas, en circulos entre la
+    /// casilla y el texto, como los estados de WeChat.
+    emos: Vec<String>,
 }
 
 /// El rotulo de la edad de una tarea («hace 2 días»), si tiene fecha.
@@ -2192,11 +2421,15 @@ fn hechura(
             texto_ancho: 0.0,
             minis_y: None,
             chapa_y: None,
+            texto: String::new(),
+            emos: Vec::new(),
         };
     };
     let pad = 16.0 * s;
-    let texto_x = 8.0 * s + CASILLA * s + 10.0 * s;
-    // A la derecha va la edad o, con el raton encima, el aspa (y «Mover a…»
+    let (texto, emos) = emoticonos::emoticonos_de(&f.texto);
+    let estados = ancho_de_estados(p, &emos, ESTADO_LISTA * s, s);
+    let texto_x = 8.0 * s + CASILLA * s + 10.0 * s + estados;
+    // A la derecha va la edad o, con el raton encima, quitar (y «Mover a…»
     // en el Inbox): se reserva siempre el sitio del mas ancho, para que el
     // texto no salte de renglon al pasar el raton.
     let mut reserva = edad(f, e.hoy, textos)
@@ -2210,11 +2443,10 @@ fn hechura(
         reserva += 12.0 * s;
     }
     let texto_ancho = (ancho - texto_x - pad - reserva).max(40.0 * s);
-    let texto_alto = if f.texto.is_empty() {
+    let texto_alto = if texto.is_empty() {
         0.0
     } else {
-        p.medir_texto_ajustado(&f.texto, TAM_TAREA * s, texto_ancho)
-            .1
+        p.medir_texto_ajustado(&texto, TAM_TAREA * s, texto_ancho).1
     };
     let mut y = 18.0 * s + texto_alto;
     let minis_y = (!f.imagenes.is_empty()).then(|| {
@@ -2237,14 +2469,266 @@ fn hechura(
         texto_ancho,
         minis_y,
         chapa_y,
+        texto,
+        emos,
     }
 }
+
+/// Lo que ocupa a lo ancho la pila de circulos de `emos` (con su «+N» y el
+/// hueco hasta lo siguiente). Sin emoticonos, nada.
+fn ancho_de_estados(p: &Pintor, emos: &[String], d: f32, s: f32) -> f32 {
+    if emos.is_empty() {
+        return 0.0;
+    }
+    let (_, mas) = emoticonos::pila_de_estados(0.0, d, emos.len());
+    let extra = if mas > 0 {
+        4.0 * s + ancho_de_mas(p, mas, s)
+    } else {
+        0.0
+    };
+    emoticonos::ancho_de_pila(d, emos.len()) + extra + 10.0 * s
+}
+
+/// La chapita «+N» de los emoticonos que no se ven.
+fn ancho_de_mas(p: &Pintor, n: usize, s: f32) -> f32 {
+    p.medir_texto(&format!("+{n}"), 12.5 * s).0 + 12.0 * s
+}
+
+// ------------------------------------------- piezas comunes de las tarjetas
+//
+// La tarjeta de la lista, el cuadrado y la fila de una hecha llevan las
+// mismas cosas (el texto con lo buscado y el tachado, la casilla, los
+// emoticonos, quitar): una sola funcion para cada una, asi no se separan.
+
+/// Como se pinta el texto de una tarea.
+#[derive(Clone, Copy)]
+struct Letra {
+    tam: f32,
+    negrita: bool,
+}
+
+impl Letra {
+    /// Los tramos de `texto` con esta letra: ninguno en la normal (la de
+    /// `texto_ajustado`), uno entero en negrita.
+    fn tramos(self, texto: &str) -> Vec<pixpin_render::Tramo> {
+        if !self.negrita {
+            return Vec::new();
+        }
+        vec![pixpin_render::Tramo {
+            inicio: 0,
+            longitud: texto.encode_utf16().count() as u32,
+            estilo: pixpin_render::EstiloTexto {
+                negrita: true,
+                ..Default::default()
+            },
+        }]
+    }
+
+    /// Lo que ocupa `texto` partido a `ancho`, como lo pinta
+    /// [`pintar_texto_tarea`].
+    fn medir(self, p: &Pintor, texto: &str, ancho: f32) -> (f32, f32) {
+        if self.negrita {
+            p.medir_parrafo(texto, self.tam, ancho, &self.tramos(texto))
+        } else {
+            p.medir_texto_ajustado(texto, self.tam, ancho)
+        }
+    }
+}
+
+/// **El texto de una tarea** en `(x, y)`, partido a `ancho`: lo buscado con
+/// un fondo amarillo debajo (en las mismas cajas que pinta DirectWrite), con
+/// `sombra` una copia negra 1 px mas abajo (sobre una foto, para que el
+/// blanco no se pierda en lo claro), y lo hecho tachado renglon a renglon,
+/// como en el movil.
+#[allow(clippy::too_many_arguments)] // pintor, texto, sitio, letra, palabras, color, estados y escala
+fn pintar_texto_tarea(
+    p: &Pintor,
+    texto: &str,
+    x: f32,
+    y: f32,
+    ancho: f32,
+    letra: Letra,
+    palabras: &[String],
+    color: Color,
+    hecha: bool,
+    sombra: bool,
+    s: f32,
+) {
+    if texto.is_empty() {
+        return;
+    }
+    let tramos = letra.tramos(texto);
+    let cajas = |inicio: u32, largo: u32| {
+        p.cajas_de_trozo(texto, letra.tam, ancho, &tramos, inicio, largo)
+    };
+    for palabra in palabras {
+        for t in pixpin_ui::resaltado::coincidencias(texto, palabra) {
+            let (inicio, largo) = t.en_utf16(texto);
+            if largo == 0 {
+                continue;
+            }
+            for b in cajas(inicio, largo) {
+                p.rellenar_redondeado(
+                    RectF {
+                        x: x + b.x - 1.0 * s,
+                        y: y + b.y,
+                        ancho: b.ancho + 2.0 * s,
+                        alto: b.alto,
+                    },
+                    3.0 * s,
+                    RESALTE,
+                );
+            }
+        }
+    }
+    let pintar = |x: f32, y: f32, c: Color| {
+        if letra.negrita {
+            p.parrafo(texto, x, y, letra.tam, ancho, &tramos, c);
+        } else {
+            p.texto_ajustado(texto, x, y, letra.tam, ancho, c);
+        }
+    };
+    if sombra {
+        pintar(x, y + 1.0 * s, negro(0.7));
+    }
+    pintar(x, y, color);
+    if hecha {
+        let largo = texto.encode_utf16().count() as u32;
+        for b in cajas(0, largo) {
+            let ly = y + b.y + b.alto * 0.55;
+            p.linea((x + b.x, ly), (x + b.x + b.ancho, ly), 1.2 * s, color);
+        }
+    }
+}
+
+/// **La casilla** de la tarea `(li, fi)` en `objetivo` (40 px, el dibujo de
+/// 24 en medio): lo unico que la tacha. Sobre una foto lleva un circulo
+/// oscuro detras para que se vea. `apagada`: la de una fila hecha, a media
+/// opacidad como el resto de la fila.
+#[allow(clippy::too_many_arguments)] // estado, pintor, sitio, tarea, estados y escala
+fn pintar_casilla(
+    e: &mut Estado,
+    p: &Pintor,
+    objetivo: RectF,
+    (li, fi): (usize, usize),
+    hecha: bool,
+    sobre_foto: bool,
+    apagada: bool,
+    s: f32,
+) {
+    let centro = (
+        objetivo.x + objetivo.ancho / 2.0,
+        objetivo.y + objetivo.alto / 2.0,
+    );
+    if sobre_foto {
+        p.circulo(centro, 15.0 * s, negro(0.45));
+    }
+    if dentro(objetivo, e.botones.raton) {
+        p.circulo(centro, 18.0 * s, blanco(0.12));
+    }
+    let icono = if hecha {
+        &mi::CHECK_BOX
+    } else {
+        &mi::CHECK_BOX_OUTLINE_BLANK
+    };
+    let tinta = match (hecha, sobre_foto) {
+        (true, _) => ACENTO,
+        (false, true) => Color::BLANCO,
+        (false, false) => hex(0xAEAEB2),
+    };
+    let tinta = if apagada { con_alfa(tinta, 0.5) } else { tinta };
+    p.icono(icono, encoger(objetivo, (CASILLA - 24.0) / 2.0 * s), tinta);
+    e.botones.zona(objetivo, Accion::Marcar(li, fi));
+}
+
+/// **Los emoticonos como los estados de WeChat**: circulos de diametro `d`
+/// con el emoticono dentro sobre su tono pastel (el mismo siempre para el
+/// mismo emoticono), el primero delante a la izquierda y los siguientes
+/// asomando detras, corridos a la derecha; a lo sumo tres, y el resto en
+/// «+N». Cada circulo lleva un aro del color `aro` (lo que hay detras, o
+/// blanco sobre una foto) que lo separa del de debajo. Cada circulo es un
+/// boton: buscar su emoticono.
+///
+/// POR QUE el emoticono va encima limpio: antes se apagaba el de detras con
+/// un velo negro pintado despues del emoticono, y el velo lo dejaba gris;
+/// ahora solo se oscurece el fondo del circulo y el emoticono sale con sus
+/// colores, al 60 % del diametro.
+#[allow(clippy::too_many_arguments)] // estado, pintor, tarea, emoticonos, sitio, tamano, aro y escala
+fn pintar_estados(
+    e: &mut Estado,
+    p: &Pintor,
+    (li, fi): (usize, usize),
+    emos: &[String],
+    x: f32,
+    cy: f32,
+    d: f32,
+    aro: Color,
+    sobre_foto: bool,
+    s: f32,
+) {
+    let (circulos, mas) = emoticonos::pila_de_estados(x, d, emos.len());
+    // De atras adelante: el de delante tapa a los demas (y su zona, que se
+    // apunta despues, gana).
+    for (k, &(cx, sombra)) in circulos.iter().enumerate().rev() {
+        let tono = mezcla(hex(emoticonos::tono_de(&emos[k])), Color::NEGRO, sombra);
+        p.circulo((cx, cy), d / 2.0 + 2.0 * s, aro);
+        p.circulo((cx, cy), d / 2.0, tono);
+        let tam = d * 0.6;
+        let (ew, eh) = p.medir_texto(&emos[k], tam);
+        p.texto_color(&emos[k], cx - ew / 2.0, cy - eh / 2.0, tam, Color::BLANCO);
+        e.botones
+            .zona(crate::v2::geom::centrado((cx, cy), d), Accion::BuscarEmo(li, fi, k));
+    }
+    if mas > 0 {
+        let t = format!("+{mas}");
+        let tam = 12.5 * s;
+        let (tw, th) = p.medir_texto(&t, tam);
+        let cw = ancho_de_mas(p, mas, s);
+        let chapa = RectF {
+            x: x + emoticonos::ancho_de_pila(d, emos.len()) + 4.0 * s,
+            y: cy - 11.0 * s,
+            ancho: cw,
+            alto: 22.0 * s,
+        };
+        let (fondo, letra) = if sobre_foto {
+            (negro(0.55), Color::BLANCO)
+        } else {
+            (blanco(0.1), crate::v2::CUERPO)
+        };
+        p.rellenar_redondeado(chapa, 11.0 * s, fondo);
+        p.texto(&t, chapa.x + (cw - tw) / 2.0, cy - th / 2.0, tam, letra);
+    }
+}
+
+/// El boton de **quitar** la tarea (la papelera del v2, como en la
+/// galeria): al momento, con «Deshacer» en el aviso.
+fn boton_quitar(
+    e: &mut Estado,
+    p: &Pintor,
+    caja: RectF,
+    (li, fi): (usize, usize),
+    sobre_foto: bool,
+    s: f32,
+) {
+    crate::v2::boton_icono(
+        p,
+        &mut e.botones,
+        caja,
+        Accion::Quitar(li, fi),
+        &mi::DELETE,
+        false,
+        sobre_foto,
+        s,
+    );
+}
+
+// ----------------------------------------------------------- las tarjetas
 
 /// Una tarea en su tarjeta: la casilla grande (lo unico que tacha), el
 /// texto entero en los renglones que haga falta (lo buscado resaltado), sus
 /// imagenes (un clic las pinea), buscando la chapita de su lista y su chat,
 /// y arriba a la derecha cuantos dias lleva o, con el raton encima o el
-/// foco, «Mover a…» si es del Inbox.
+/// foco, quitar y «Mover a…» si es del Inbox.
 #[allow(clippy::too_many_arguments)] // estado, pintor, tarea, sitio, escala, palabras y textos
 fn pintar_tarjeta(
     e: &mut Estado,
@@ -2263,108 +2747,67 @@ fn pintar_tarjeta(
     let hc = hechura(e, p, li, fi, r.ancho, s, buscando, textos);
     let encima = e.encima == Some(tarjetas::Pieza::Tarjeta(li, fi));
     let foco = e.foco == Foco::Tarjeta(li, fi);
-    let fondo = match (f.hecha, encima) {
-        (false, false) => hex(0x2A2A2D),
-        (false, true) => hex(0x313135),
-        (true, false) => hex(0x222225),
-        (true, true) => hex(0x29292C),
-    };
-    if foco {
-        con_borde(p, r, 12.0 * s, fondo, AZUL_V, 1.5 * s);
+    crate::v2::tarjeta::fondo(p, r, encima, foco, s);
+    let mut fondo = if encima {
+        crate::v2::TARJETA_ENCIMA
     } else {
-        con_borde(p, r, 12.0 * s, fondo, blanco(0.06), 1.0 * s);
+        crate::v2::TARJETA
+    };
+    if f.hecha {
+        // Lo hecho, hundido: mas oscuro que lo pendiente.
+        fondo = crate::v2::TARJETA_HECHA;
+        let g = 1.5 * s;
+        p.rellenar_redondeado(encoger(r, g), crate::v2::RADIO_TARJETA * s - g, fondo);
     }
     // La tarjeta entera da el foco; lo de dentro se apunta despues y gana.
     e.botones.zona(r, Accion::Enfocar(li, fi));
 
-    // La casilla: un objetivo de 40 px con el dibujo de 24 en medio.
     let objetivo = RectF {
         x: r.x + 8.0 * s,
         y: r.y + 8.0 * s,
         ancho: CASILLA * s,
         alto: CASILLA * s,
     };
-    if dentro(objetivo, e.botones.raton) {
-        p.circulo(
-            (
-                objetivo.x + objetivo.ancho / 2.0,
-                objetivo.y + objetivo.alto / 2.0,
-            ),
-            18.0 * s,
-            blanco(0.1),
-        );
-    }
-    let icono = if f.hecha {
-        &mi::CHECK_BOX
-    } else {
-        &mi::CHECK_BOX_OUTLINE_BLANK
-    };
-    p.icono(
-        icono,
-        encoger(objetivo, (CASILLA - 24.0) / 2.0 * s),
-        if f.hecha { AZUL_V } else { hex(0xAEAEB2) },
-    );
-    e.botones.zona(objetivo, Accion::Marcar(li, fi));
+    pintar_casilla(e, p, objetivo, (li, fi), f.hecha, false, false, s);
 
-    // El texto, partido en renglones; lo buscado con un fondo amarillo
-    // debajo, en las mismas cajas que pinta DirectWrite.
+    // Sus emoticonos, en circulos entre la casilla y el texto, a la altura
+    // de la casilla.
+    if !hc.emos.is_empty() {
+        let x = objetivo.x + objetivo.ancho + 8.0 * s;
+        let cy = objetivo.y + objetivo.alto / 2.0;
+        pintar_estados(e, p, (li, fi), &hc.emos, x, cy, ESTADO_LISTA * s, fondo, false, s);
+    }
+
     let tx = r.x + hc.texto_x;
-    let ty = r.y + 18.0 * s;
-    let tam = TAM_TAREA * s;
-    if !f.texto.is_empty() {
-        for palabra in palabras {
-            for t in pixpin_ui::resaltado::coincidencias(&f.texto, palabra) {
-                let (inicio, largo) = t.en_utf16(&f.texto);
-                if largo == 0 {
-                    continue;
-                }
-                for b in p.cajas_de_trozo(&f.texto, tam, hc.texto_ancho, &[], inicio, largo) {
-                    p.rellenar_redondeado(
-                        RectF {
-                            x: tx + b.x - 1.0 * s,
-                            y: ty + b.y,
-                            ancho: b.ancho + 2.0 * s,
-                            alto: b.alto,
-                        },
-                        3.0 * s,
-                        RESALTE,
-                    );
-                }
-            }
-        }
-        let color = if f.hecha { GRIS } else { TEXTO_V };
-        p.texto_ajustado(&f.texto, tx, ty, tam, hc.texto_ancho, color);
-        // Lo hecho se tacha, renglon a renglon, como en el movil.
-        if f.hecha {
-            let largo = f.texto.encode_utf16().count() as u32;
-            for b in p.cajas_de_trozo(&f.texto, tam, hc.texto_ancho, &[], 0, largo) {
-                let ly = ty + b.y + b.alto * 0.55;
-                p.linea((tx + b.x, ly), (tx + b.x + b.ancho, ly), 1.2 * s, GRIS);
-            }
-        }
-    }
+    pintar_texto_tarea(
+        p,
+        &hc.texto,
+        tx,
+        r.y + 18.0 * s,
+        hc.texto_ancho,
+        Letra {
+            tam: TAM_TAREA * s,
+            negrita: false,
+        },
+        palabras,
+        if f.hecha { GRIS } else { TEXTO },
+        f.hecha,
+        false,
+        s,
+    );
 
-    // Arriba a la derecha: la edad o, con el raton o el foco, el aspa que la
-    // quita (como la del movil) y, si es del Inbox, «Mover a…» a su lado.
+    // Arriba a la derecha: la edad o, con el raton o el foco, quitar y, si
+    // es del Inbox, «Mover a…» a su lado.
     let derecha = r.x + r.ancho - 16.0 * s;
     let a_mano = (encima || foco) && e.repartiendo.is_none();
     if a_mano {
         let aspa = RectF {
             x: r.x + r.ancho - 8.0 * s - ASPA * s,
-            y: r.y + 10.0 * s,
+            y: r.y + 8.0 * s,
             ancho: ASPA * s,
             alto: ASPA * s,
         };
-        let sobre = dentro(aspa, e.botones.raton);
-        if sobre {
-            p.rellenar_redondeado(aspa, 10.0 * s, blanco(0.1));
-        }
-        p.icono(
-            &mi::CLOSE,
-            encoger(aspa, 9.0 * s),
-            if sobre { hex(0xFF6961) } else { GRIS },
-        );
-        e.botones.zona(aspa, Accion::Quitar(li, fi));
+        boton_quitar(e, p, aspa, (li, fi), false, s);
     }
     if e.se_reparte(li, fi) && a_mano {
         let rotulo = textos.t("tareas-mover");
@@ -2374,7 +2817,7 @@ fn pintar_tarjeta(
             x: r.x + r.ancho - 8.0 * s - ASPA * s - 4.0 * s - bw,
             y: r.y + 8.0 * s,
             ancho: bw,
-            alto: 40.0 * s,
+            alto: crate::v2::BOTON * s,
         };
         ui::boton_v2(
             p,
@@ -2384,8 +2827,8 @@ fn pintar_tarjeta(
             Some(&mi::FORWARD),
             &rotulo,
             tecla,
-            Some(ui::v2::AZUL),
-            ui::v2::BLANCO,
+            Some(crate::v2::AZUL_LLENO),
+            Color::BLANCO,
             s,
         );
     } else if !a_mano && let Some(t) = edad(&f, e.hoy, textos) {
@@ -2416,7 +2859,7 @@ fn pintar_tarjeta(
                     crate::miniaturas::pintar_recortado(p, b, c, iw, ih);
                     if f.hecha {
                         // Apagada como el texto tachado.
-                        p.rellenar(c, Color { a: 0.45, ..fondo });
+                        p.rellenar(c, con_alfa(fondo, 0.45));
                     }
                 }
                 // Aun no llego del movil (o no se pudo leer): su hueco con el
@@ -2427,7 +2870,7 @@ fn pintar_tarjeta(
                 }
             }
             if dentro(c, e.botones.raton) {
-                p.trazar(c, 2.0 * s, AZUL_V);
+                p.trazar(c, 2.0 * s, ACENTO);
             }
             e.botones.zona(c, Accion::Imagen(li, fi, k));
             mx += mini + 8.0 * s;
@@ -2454,18 +2897,405 @@ fn pintar_tarjeta(
             chapa.y + (chapa.alto - ch) / 2.0,
             tam_c,
             cw,
-            hex(0xC7C7CC),
+            crate::v2::CUERPO,
         );
     }
 }
 
-fn encoger(r: RectF, m: f32) -> RectF {
-    RectF {
-        x: r.x + m,
-        y: r.y + m,
-        ancho: (r.ancho - 2.0 * m).max(0.0),
-        alto: (r.alto - 2.0 * m).max(0.0),
+/// Redondea las esquinas de algo pintado en `r` sin ellas (una foto):
+/// pinta, en cada esquina, lo que queda fuera del cuarto de circulo con el
+/// color de lo que hay detras. Direct2D no recorta con forma redonda sin
+/// capas, y para cuatro esquinas esto basta. Orden de `detras`: arriba
+/// izquierda, arriba derecha, abajo derecha, abajo izquierda.
+fn esquinas(p: &Pintor, r: RectF, radio: f32, detras: [Color; 4]) {
+    const PASOS: usize = 8;
+    let centros = [
+        (r.x + radio, r.y + radio, std::f32::consts::PI),
+        (r.x + r.ancho - radio, r.y + radio, 1.5 * std::f32::consts::PI),
+        (r.x + r.ancho - radio, r.y + r.alto - radio, 0.0),
+        (r.x + radio, r.y + r.alto - radio, 0.5 * std::f32::consts::PI),
+    ];
+    for (k, &(cx, cy, desde)) in centros.iter().enumerate() {
+        // El cuadrado de la esquina y, dentro, el cuarto de circulo que se
+        // respeta (el centro y su arco).
+        let marco = RectF {
+            x: if k == 0 || k == 3 { r.x } else { cx },
+            y: if k < 2 { r.y } else { cy },
+            ancho: radio,
+            alto: radio,
+        };
+        let mut quesito = vec![(cx, cy)];
+        for i in 0..=PASOS {
+            let a = desde + std::f32::consts::FRAC_PI_2 * i as f32 / PASOS as f32;
+            quesito.push((cx + radio * a.cos(), cy + radio * a.sin()));
+        }
+        p.velo(marco, &quesito, detras[k]);
     }
+}
+
+/// Donde empieza el velo oscuro de una foto, en fraccion de su alto: por
+/// encima, la foto se ve limpia.
+const VELO_DESDE: f32 = 0.45;
+/// Donde el velo ya es el de en medio (0,65), en fraccion del alto.
+const VELO_MEDIO: f32 = 0.72;
+
+/// El velo de un cuadrado con foto, para leer encima el texto en blanco:
+/// dos degradados de verdad, de nada a 0,65 y de 0,65 a 0,9 en el borde de
+/// abajo, que es donde va el texto. Antes eran 16 capas apiladas al 10 %
+/// desde el 36 % del alto: claro donde estaba la primera linea y con un
+/// escalon visible en cada capa. Y uno suave arriba, para los emoticonos y
+/// los botones.
+fn velo_de_foto(p: &Pintor, r: RectF) {
+    let y0 = r.y + r.alto * VELO_DESDE;
+    let y1 = r.y + r.alto * VELO_MEDIO;
+    let y2 = r.y + r.alto;
+    p.rect_degradado(
+        RectF {
+            x: r.x,
+            y: y0,
+            ancho: r.ancho,
+            alto: y1 - y0,
+        },
+        (r.x, y0),
+        (r.x, y1),
+        negro(0.0),
+        negro(0.65),
+    );
+    p.rect_degradado(
+        RectF {
+            x: r.x,
+            y: y1,
+            ancho: r.ancho,
+            alto: y2 - y1,
+        },
+        (r.x, y1),
+        (r.x, y2),
+        negro(0.65),
+        negro(0.9),
+    );
+    let arriba = r.alto * 0.3;
+    p.rect_degradado(
+        RectF { alto: arriba, ..r },
+        (r.x, r.y),
+        (r.x, r.y + arriba),
+        negro(0.35),
+        negro(0.0),
+    );
+}
+
+/// Una tarea en su cuadrado (la vista en tarjetas). Con foto, la primera
+/// llena el cuadrado, con un velo oscuro abajo para leer encima el texto en
+/// blanco y negrita; sin foto, el fondo de tarjeta tenido del tono de su
+/// primer emoticono y el texto arriba, mas grande. Arriba a la izquierda,
+/// sus emoticonos como estados de WeChat; con varias fotos, la pila de
+/// detras y «+N» abajo a la derecha (pinea todas). La casilla abajo a la
+/// izquierda, y con el raton encima o el foco quitar (y «Mover a…» en el
+/// Inbox) arriba a la derecha. Todo sale de [`rejilla::partes`].
+///
+/// Un clic da el foco, tambien con foto; el doble clic o Intro pinean la
+/// foto. Antes el clic pineaba siempre y un cuadrado con foto no se podia
+/// ni enfocar.
+#[allow(clippy::too_many_arguments)] // estado, pintor, tarea, sitio, escala, palabras y textos
+fn pintar_cuadrado(
+    e: &mut Estado,
+    p: &Pintor,
+    li: usize,
+    fi: usize,
+    r: RectF,
+    s: f32,
+    palabras: &[String],
+    textos: &Catalogo,
+) {
+    let Some((lista, f)) = e.fila(li, fi).map(|(l, f)| (l.clone(), f.clone())) else {
+        return;
+    };
+    let (texto, emos) = emoticonos::emoticonos_de(&f.texto);
+    let partes = rejilla::partes(r, s, !emos.is_empty());
+    let encima = e.encima == Some(tarjetas::Pieza::Tarjeta(li, fi));
+    let foco = e.foco == Foco::Tarjeta(li, fi);
+    let radio = crate::v2::RADIO_TARJETA * s;
+
+    // La pila de detras, la de todas las ventanas v2.
+    crate::v2::tarjeta::pila(p, r, f.imagenes.len(), s);
+    let hay_pila = crate::v2::tarjeta::cantos_de_pila(f.imagenes.len()) > 0;
+
+    let foto = e
+        .ruta_de(&lista, &f, 0)
+        .and_then(|ruta| e.minis.ya(&ruta).map(|(b, iw, ih)| (b.clone(), iw, ih)));
+    // Sin foto, el tono del primer emoticono aguado al 14 % sobre la
+    // tarjeta: el cuadrado tiene color sin gritar, y las tareas con la misma
+    // etiqueta se reconocen de lejos.
+    let tinte = emos.first().map(|x| hex(emoticonos::tono_de(x)));
+    let base = if encima {
+        crate::v2::TARJETA_ENCIMA
+    } else {
+        crate::v2::TARJETA
+    };
+    let fondo = tinte.map_or(base, |t| mezcla(base, t, 0.14));
+    if let Some((b, iw, ih)) = &foto {
+        if foco {
+            p.rellenar_redondeado(encoger(r, -2.0 * s), radio + 2.0 * s, ACENTO);
+        }
+        crate::miniaturas::pintar_recortado(p, b, r, *iw, *ih);
+        velo_de_foto(p, r);
+        if f.hecha {
+            p.rellenar(r, con_alfa(FONDO, 0.55));
+        }
+        if encima && !f.hecha {
+            p.rellenar(r, blanco(0.05));
+        }
+        // El canto de la pila asoma por la esquina de arriba a la derecha:
+        // ahi lo de detras es el tono de la tarjeta de justo debajo.
+        let detras_arriba_dcha = if hay_pila { hex(0x48484E) } else { FONDO };
+        let detras = if foco {
+            [ACENTO; 4]
+        } else {
+            [FONDO, detras_arriba_dcha, FONDO, FONDO]
+        };
+        esquinas(p, r, radio, detras);
+    } else {
+        crate::v2::tarjeta::fondo(p, r, encima, foco, s);
+        if tinte.is_some() {
+            let g = if foco { 1.5 * s } else { 1.0 * s };
+            p.rellenar_redondeado(encoger(r, g), radio - g, fondo);
+        }
+        if !f.imagenes.is_empty() {
+            // La foto aun no llego (o no se pudo leer): su dibujo en medio.
+            p.icono(
+                &mi::IMAGE,
+                crate::v2::geom::centrado((r.x + r.ancho / 2.0, r.y + r.alto / 2.0), 48.0 * s),
+                blanco(0.12),
+            );
+        }
+    }
+    let con_foto = foto.is_some();
+    // El cuadrado entero da el foco; lo de dentro se apunta despues y gana.
+    e.botones.zona(r, Accion::Enfocar(li, fi));
+
+    // Los emoticonos, arriba a la izquierda; sobre una foto, con un aro
+    // blanco que los despega de ella.
+    if !emos.is_empty() {
+        let aro = if con_foto { blanco(0.9) } else { fondo };
+        pintar_estados(
+            e,
+            p,
+            (li, fi),
+            &emos,
+            partes.chapas.x,
+            partes.chapas.y + partes.chapas.alto / 2.0,
+            rejilla::CHAPA * s,
+            aro,
+            con_foto,
+            s,
+        );
+    }
+
+    // El texto: con foto, pegado abajo, blanco, en negrita y con sombra,
+    // hasta tres renglones (los que caben bajo el comienzo del velo); sin
+    // foto, arriba y mas grande, hasta cinco. Si no cabe, «…».
+    let letra = Letra {
+        tam: if con_foto { 15.0 * s } else { 16.0 * s },
+        negrita: con_foto,
+    };
+    let (_, renglon) = letra.medir(p, "Ag", 1000.0 * s);
+    let renglones = if con_foto { 3.0 } else { 5.0 };
+    let caben = partes.texto.alto.min(renglon * renglones + 1.0);
+    let ancho_t = partes.texto.ancho;
+    let mostrado =
+        rejilla::recortar_a_renglones(&texto, caben, &mut |t| letra.medir(p, t, ancho_t).1);
+    if !mostrado.is_empty() {
+        let (_, th) = letra.medir(p, &mostrado, ancho_t);
+        let ty = if con_foto {
+            partes.texto.y + partes.texto.alto - th
+        } else {
+            partes.texto.y
+        };
+        let color = match (con_foto, f.hecha) {
+            (true, false) => Color::BLANCO,
+            (true, true) => blanco(0.6),
+            (false, false) => TEXTO,
+            (false, true) => GRIS,
+        };
+        pintar_texto_tarea(
+            p,
+            &mostrado,
+            partes.texto.x,
+            ty,
+            ancho_t,
+            letra,
+            palabras,
+            color,
+            f.hecha,
+            con_foto,
+            s,
+        );
+    }
+
+    pintar_casilla(e, p, partes.casilla, (li, fi), f.hecha, con_foto, false, s);
+
+    // Abajo a la derecha: «+N» con varias fotos (pulsarla las pinea todas);
+    // si no, la edad.
+    let (derecha, cy) = partes.pie;
+    if f.imagenes.len() > 1 {
+        let t = format!("+{}", f.imagenes.len() - 1);
+        let tam_c = 12.5 * s;
+        let (tw, th) = p.medir_texto(&t, tam_c);
+        let li_ = 14.0 * s;
+        let ancho_c = li_ + 4.0 * s + tw + 16.0 * s;
+        let chapa = RectF {
+            x: derecha - ancho_c,
+            y: cy - 12.0 * s,
+            ancho: ancho_c,
+            alto: 24.0 * s,
+        };
+        // El objetivo, de 40 de alto aunque la chapa se vea de 24.
+        let objetivo = RectF {
+            y: cy - crate::v2::OBJETIVO_MINIMO * s / 2.0,
+            alto: crate::v2::OBJETIVO_MINIMO * s,
+            ..chapa
+        };
+        let sobre = dentro(objetivo, e.botones.raton);
+        p.rellenar_redondeado(chapa, 12.0 * s, negro(if sobre { 0.8 } else { 0.6 }));
+        p.icono(
+            &mi::PHOTO_LIBRARY,
+            RectF {
+                x: chapa.x + 8.0 * s,
+                y: cy - li_ / 2.0,
+                ancho: li_,
+                alto: li_,
+            },
+            Color::BLANCO,
+        );
+        p.texto(&t, chapa.x + 8.0 * s + li_ + 4.0 * s, cy - th / 2.0, tam_c, Color::BLANCO);
+        e.botones.zona(objetivo, Accion::PinearTodas(li, fi));
+    } else if let Some(t) = edad(&f, e.hoy, textos) {
+        let tam_e = 12.0 * s;
+        let (ew, eh) = p.medir_texto(&t, tam_e);
+        let color = if con_foto { blanco(0.8) } else { GRIS };
+        p.texto(&t, derecha - ew, cy - eh / 2.0, tam_e, color);
+    }
+
+    // Con el raton encima o el foco: quitar y, en el Inbox, «Mover a…»
+    // (solo icono: en un cuadrado no cabe el rotulo; Intro sigue igual).
+    let a_mano = (encima || foco) && e.repartiendo.is_none();
+    if a_mano {
+        boton_quitar(e, p, partes.aspa, (li, fi), con_foto, s);
+        if e.se_reparte(li, fi) {
+            crate::v2::boton_icono(
+                p,
+                &mut e.botones,
+                partes.mover,
+                Accion::Repartir(li, fi),
+                &mi::FORWARD,
+                false,
+                con_foto,
+                s,
+            );
+        }
+    }
+}
+
+/// Una tarea **hecha en la vista en cuadrados**: una fila de 44 a media
+/// opacidad, no un cuadrado entero (ver `rejilla::disponer`). La casilla
+/// (para desmarcarla), el texto en un renglon y tachado, y a la derecha la
+/// edad o, con el raton encima o el foco, quitar.
+#[allow(clippy::too_many_arguments)] // estado, pintor, tarea, sitio, escala, palabras y textos
+fn pintar_fila_hecha(
+    e: &mut Estado,
+    p: &Pintor,
+    li: usize,
+    fi: usize,
+    r: RectF,
+    s: f32,
+    palabras: &[String],
+    textos: &Catalogo,
+) {
+    let Some(f) = e.fila(li, fi).map(|(_, f)| f.clone()) else {
+        return;
+    };
+    let encima = e.encima == Some(tarjetas::Pieza::Tarjeta(li, fi));
+    let foco = e.foco == Foco::Tarjeta(li, fi);
+    let radio = crate::v2::RADIO_BOTON * s;
+    let fondo = if encima {
+        crate::v2::TARJETA_ENCIMA
+    } else {
+        crate::v2::TARJETA
+    };
+    // La tarjeta a media opacidad sobre el fondo: «esto ya esta».
+    if foco {
+        p.rellenar_redondeado(r, radio, ACENTO);
+        p.rellenar_redondeado(encoger(r, 1.5 * s), radio - 1.5 * s, mezcla(FONDO, fondo, 0.5));
+    } else {
+        p.rellenar_redondeado(r, radio, mezcla(FONDO, fondo, 0.5));
+    }
+    e.botones.zona(r, Accion::Enfocar(li, fi));
+    let objetivo = RectF {
+        x: r.x + 2.0 * s,
+        y: r.y + (r.alto - CASILLA * s) / 2.0,
+        ancho: CASILLA * s,
+        alto: CASILLA * s,
+    };
+    pintar_casilla(e, p, objetivo, (li, fi), f.hecha, false, true, s);
+    let (texto, emos) = emoticonos::emoticonos_de(&f.texto);
+    // Sin texto (solo emoticonos), los emoticonos; solo una foto, la foto.
+    let texto = if texto.is_empty() { emos.join(" ") } else { texto };
+    let mut tx = objetivo.x + objetivo.ancho + 6.0 * s;
+    // Su primera foto, pequena y apagada como el resto: con ella se
+    // reconoce una tarea que era solo una foto.
+    let foto = e.fila(li, fi).and_then(|(l, f)| e.ruta_de(l, f, 0));
+    if let Some((b, iw, ih)) = foto.as_deref().and_then(|r| e.minis.ya(r)) {
+        let lado = 28.0 * s;
+        let c = RectF {
+            x: tx,
+            y: r.y + (r.alto - lado) / 2.0,
+            ancho: lado,
+            alto: lado,
+        };
+        crate::miniaturas::pintar_recortado(p, b, c, iw, ih);
+        p.rellenar(c, con_alfa(mezcla(FONDO, fondo, 0.5), 0.5));
+        tx += lado + 10.0 * s;
+    }
+    let a_mano = (encima || foco) && e.repartiendo.is_none();
+    let derecha = r.x + r.ancho - 4.0 * s;
+    let mut fin = derecha;
+    if a_mano {
+        let aspa = RectF {
+            x: derecha - ASPA * s,
+            y: r.y + (r.alto - ASPA * s) / 2.0,
+            ancho: ASPA * s,
+            alto: ASPA * s,
+        };
+        boton_quitar(e, p, aspa, (li, fi), false, s);
+        fin = aspa.x - 8.0 * s;
+    } else if let Some(t) = edad(&f, e.hoy, textos) {
+        let tam_e = 12.0 * s;
+        let (ew, eh) = p.medir_texto(&t, tam_e);
+        let x = derecha - 12.0 * s - ew;
+        p.texto(&t, x, r.y + (r.alto - eh) / 2.0, tam_e, con_alfa(GRIS, 0.6));
+        fin = x - 12.0 * s;
+    }
+    let letra = Letra {
+        tam: crate::v2::LETRA_CUERPO * s,
+        negrita: false,
+    };
+    let ancho_t = (fin - tx).max(20.0 * s);
+    // Un renglon: lo que no quepa, con «…».
+    let (_, renglon) = letra.medir(p, "Ag", 1000.0 * s);
+    let mostrado =
+        rejilla::recortar_a_renglones(&texto, renglon + 1.0, &mut |t| letra.medir(p, t, ancho_t).1);
+    pintar_texto_tarea(
+        p,
+        &mostrado,
+        tx,
+        r.y + (r.alto - renglon) / 2.0,
+        ancho_t,
+        letra,
+        palabras,
+        con_alfa(TEXTO, 0.5),
+        true,
+        false,
+        s,
+    );
 }
 
 #[cfg(test)]
@@ -2539,9 +3369,9 @@ mod pruebas {
             },
         )));
         assert_eq!(c.texto, "comprar yeso [img 01] ");
-        let temporal = c.pegadas[0].ruta.clone();
+        let temporal = c.pegadas[0].1.ruta.clone();
         assert!(
-            c.pegadas[0].temporal && temporal.is_file(),
+            c.pegadas[0].1.temporal && temporal.is_file(),
             "el mapa va a un PNG temporal"
         );
         // Un fichero de imagen copiado del Explorador: su ficha, sin copia.
@@ -2830,11 +3660,11 @@ mod pruebas {
         };
         let mut e = muestra_estado();
         // Sin buscar, con el raton encima de la tarea con imagenes del Inbox.
-        crate::ventanita::muestra("tareas-v3-sin-buscar", w, h, |p, motor| {
+        crate::ventanita::muestra("tareas-v5-sin-buscar", w, h, |p, motor| {
             cargar_minis(&mut e, motor);
             pintar_todo(&mut e, p, marco, 1.0, &textos);
             let c = tarjetas::sitio_de(&e.colocadas, 0, 1).expect("la grieta");
-            let (_, _, arriba) = alturas(1.0);
+            let (_, arriba) = alturas(1.0);
             e.botones.raton = (300.0, arriba - e.scroll + c.y + 20.0);
             pintar_todo(&mut e, p, marco, 1.0, &textos)
         });
@@ -2843,17 +3673,17 @@ mod pruebas {
         e.botones.raton = (0.0, 0.0);
         e.buscar.poner("fontan");
         e.foco = Foco::Buscar;
-        crate::ventanita::muestra("tareas-v3-buscando", w, h, |p, motor| {
+        crate::ventanita::muestra("tareas-v5-buscando", w, h, |p, motor| {
             cargar_minis(&mut e, motor);
             pintar_todo(&mut e, p, marco, 1.0, &textos)
         });
         e.buscar.poner("ayer pedir");
-        crate::ventanita::muestra("tareas-v3-buscando-ayer", w, h, |p, motor| {
+        crate::ventanita::muestra("tareas-v5-buscando-ayer", w, h, |p, motor| {
             cargar_minis(&mut e, motor);
             pintar_todo(&mut e, p, marco, 1.0, &textos)
         });
         e.buscar.poner("ventanas");
-        crate::ventanita::muestra("tareas-v3-sin-resultados", w, h, |p, motor| {
+        crate::ventanita::muestra("tareas-v5-sin-resultados", w, h, |p, motor| {
             cargar_minis(&mut e, motor);
             pintar_todo(&mut e, p, marco, 1.0, &textos)
         });
@@ -2861,20 +3691,282 @@ mod pruebas {
         e.buscar.poner("");
         e.foco = Foco::Tarjeta(0, 1);
         e.campo.escribir("regar las plantas");
-        crate::ventanita::muestra("tareas-v3-foco", w, h, |p, motor| {
+        // Con el aviso de una tarea recien quitada, con su «Deshacer».
+        e.aviso = Some(Aviso::con_deshacer("«comprar pan» quitada", "Deshacer", Accion::Deshacer));
+        crate::ventanita::muestra("tareas-v5-foco", w, h, |p, motor| {
             cargar_minis(&mut e, motor);
             pintar_todo(&mut e, p, marco, 1.0, &textos)
         });
         e.repartiendo = Some((0, 1));
-        crate::ventanita::muestra("tareas-v3-mover", w, h, |p, motor| {
+        e.aviso = None;
+        crate::ventanita::muestra("tareas-v5-mover", w, h, |p, motor| {
             cargar_minis(&mut e, motor);
             pintar_todo(&mut e, p, marco, 1.0, &textos)
         });
         e.campo.vaciar();
         // Sin ninguna tarea.
         let mut v = Estado::nuevo();
-        crate::ventanita::muestra("tareas-v3-vacia", w, h, |p, _| {
+        crate::ventanita::muestra("tareas-v5-vacia", w, h, |p, _| {
             pintar_todo(&mut v, p, marco, 1.0, &textos)
         });
+
+        // tareas-v4: los cuadrados, con fotos, pilas y emoticonos.
+        e.repartiendo = None;
+        con_fotos_y_emoticonos(&mut e);
+        e.foco = Foco::Apuntar;
+        crate::ventanita::muestra("tareas-v5-lista", w, h, |p, motor| {
+            cargar_minis(&mut e, motor);
+            pintar_todo(&mut e, p, marco, 1.0, &textos)
+        });
+        e.vista = Vista::Tarjetas;
+        crate::ventanita::muestra("tareas-v5-tarjetas", w, h, |p, motor| {
+            cargar_minis(&mut e, motor);
+            pintar_todo(&mut e, p, marco, 1.0, &textos);
+            // El raton encima de la grieta (dos fotos, del Inbox).
+            let c = e
+                .celdas
+                .iter()
+                .find(|c| c.pieza == tarjetas::Pieza::Tarjeta(0, 1))
+                .expect("la grieta")
+                .caja;
+            let (_, arriba) = alturas(1.0);
+            e.botones.raton = (MARGEN + c.x + 100.0, arriba - e.scroll + c.y + 100.0);
+            pintar_todo(&mut e, p, marco, 1.0, &textos)
+        });
+        e.botones.raton = (0.0, 0.0);
+        e.scroll = 520.0;
+        e.foco = Foco::Tarjeta(2, 1);
+        crate::ventanita::muestra("tareas-v5-tarjetas-abajo", w, h, |p, motor| {
+            cargar_minis(&mut e, motor);
+            pintar_todo(&mut e, p, marco, 1.0, &textos)
+        });
+        e.scroll = 0.0;
+        e.foco = Foco::Buscar;
+        e.buscar.poner("fontan");
+        crate::ventanita::muestra("tareas-v5-tarjetas-buscando", w, h, |p, motor| {
+            cargar_minis(&mut e, motor);
+            pintar_todo(&mut e, p, marco, 1.0, &textos)
+        });
+        // tareas-v5: las hechas en filas (abiertas las de la tesis), bajando
+        // hasta ellas; y corrigiendo una tarea, con el raton en el icono de
+        // imagen de la caja.
+        e.buscar.poner("");
+        e.abiertas.insert(e.listas[2].clave());
+        e.foco = Foco::Apuntar;
+        e.scroll = 100_000.0;
+        crate::ventanita::muestra("tareas-v5-tarjetas-hechas", w, h, |p, motor| {
+            cargar_minis(&mut e, motor);
+            pintar_todo(&mut e, p, marco, 1.0, &textos)
+        });
+        e.scroll = 0.0;
+        e.corrigiendo = Some((e.listas[1].clone(), e.listas[1].filas[0].clone()));
+        e.campo.escribir("revisar puntales del segundo piso");
+        let (y_caja, _) = alturas(1.0);
+        e.botones.raton = (w as f32 - MARGEN - 22.0, y_caja + CAJA / 2.0);
+        crate::ventanita::muestra("tareas-v5-corrigiendo", w, h, |p, motor| {
+            cargar_minis(&mut e, motor);
+            pintar_todo(&mut e, p, marco, 1.0, &textos)
+        });
+        e.corrigiendo = None;
+        e.campo.vaciar();
+        // El raton en el conmutador de la vista: su pista con el atajo.
+        e.botones.raton = (w as f32 - 16.0 - 40.0 - 12.0 - 30.0, 32.0);
+        crate::ventanita::muestra("tareas-v5-conmutador", w, h, |p, motor| {
+            cargar_minis(&mut e, motor);
+            pintar_todo(&mut e, p, marco, 1.0, &textos)
+        });
+    }
+
+    /// La muestra con mas de todo para la vista en cuadrados: emoticonos en
+    /// varias tareas, una con tres fotos, una solo foto ya hecha. Datos de
+    /// ejemplo, nunca del usuario.
+    fn con_fotos_y_emoticonos(e: &mut Estado) {
+        let enlace = |n: &str| format!("pixpin:files/tesis/pc/general/archivos/{n}");
+        let mas = super::super::filas_de(&format!(
+            "- [ ] 🔥 ❤️ 🇵🇪 👨‍💻 planos de la casa nueva para la reunion del lunes ![img 01]({}) ![img 02]({}) ![img 03]({}) ➕ 2026-10-01\n- [ ] 📚 resumen del articulo de Ostrom 🧠\n- [x] ![img 01]({}) ➕ 2026-09-30\n- [ ] ✅ 🛒 comprar cartulinas y cola",
+            enlace("p1.png"),
+            enlace("p2.png"),
+            enlace("p3.png"),
+            enlace("hecha.png"),
+        ));
+        let l = &mut e.listas[2];
+        l.filas.extend(mas);
+        for (i, f) in l.filas.iter_mut().enumerate() {
+            f.indice = i;
+        }
+        for (n, color) in [
+            ("p1.png", [60, 120, 220]),
+            ("p2.png", [60, 200, 120]),
+            ("p3.png", [200, 60, 160]),
+            ("hecha.png", [230, 200, 60]),
+        ] {
+            e.rutas.insert(("t".into(), enlace(n)), Some(foto(n, color)));
+        }
+        e.listas[0].filas[0].texto.push_str(" 🔧 🚿");
+    }
+
+    #[test]
+    fn en_cuadrados_las_flechas_recorren_la_rejilla_y_la_vista_se_cambia() {
+        let textos = Catalogo::nuevo(Idioma::Espanol);
+        let raiz = std::env::temp_dir().join(format!("pixpin-tareas-v4-{}", std::process::id()));
+        std::fs::create_dir_all(&raiz).unwrap();
+        let u = Ubicacion::Portable { raiz: raiz.clone() };
+        let mut e = muestra_estado();
+        assert!(hacer(&mut e, Accion::Vista(Vista::Tarjetas), &textos, &u, "PC01"));
+        assert_eq!(Vista::leer(&raiz), Vista::Tarjetas, "se recuerda");
+        let g = tarjetas::agrupar(&e.listas, &[], e.hoy, &|_, _| false);
+        let (c, _) = rejilla::disponer(
+            &g,
+            &|_| false,
+            &rejilla::Medidas {
+                ancho: 628.0,
+                lado: 200.0,
+                hueco: 12.0,
+                encabezado: 40.0,
+                pliegue: 40.0,
+                entre_grupos: 18.0,
+                respiro: 8.0,
+                fila_hecha: 44.0,
+            },
+        );
+        e.colocadas = rejilla::colocadas(&c);
+        e.celdas = c;
+        let orden = tarjetas::en_orden(&e.colocadas);
+        let t = |e: &mut Estado, vk: u32| tecla(e, vk, false, false, &textos, &u, "PC01");
+        t(&mut e, VK_ABAJO);
+        assert_eq!(e.foco, Foco::Tarjeta(orden[0].0, orden[0].1));
+        t(&mut e, VK_DERECHA);
+        assert_eq!(e.foco, Foco::Tarjeta(orden[1].0, orden[1].1));
+        // El Inbox tiene 5 pendientes: abajo de la segunda, la quinta.
+        t(&mut e, VK_ABAJO);
+        assert_eq!(e.foco, Foco::Tarjeta(orden[4].0, orden[4].1));
+        t(&mut e, VK_IZQUIERDA);
+        assert_eq!(e.foco, Foco::Tarjeta(orden[3].0, orden[3].1));
+        // Caso negativo: arriba desde la primera fila sale a la caja, y en
+        // la lista izquierda y derecha no mueven el foco.
+        t(&mut e, VK_ARRIBA);
+        t(&mut e, VK_ARRIBA);
+        assert_eq!(e.foco, Foco::Apuntar);
+        hacer(&mut e, Accion::Vista(Vista::Lista), &textos, &u, "PC01");
+        e.foco = Foco::Tarjeta(orden[1].0, orden[1].1);
+        t(&mut e, VK_DERECHA);
+        assert_eq!(e.foco, Foco::Tarjeta(orden[1].0, orden[1].1));
+        assert_eq!(Vista::leer(&raiz), Vista::Lista);
+        let _ = std::fs::remove_dir_all(&raiz);
+    }
+
+    #[test]
+    fn el_doble_clic_pinea_la_foto_de_un_cuadrado_y_si_no_corrige() {
+        let a = Accion::Enfocar(0, 1);
+        assert_eq!(al_doble_clic(a, Vista::Tarjetas, true), Accion::Imagen(0, 1, 0));
+        assert_eq!(al_doble_clic(a, Vista::Tarjetas, false), Accion::Editar(0, 1));
+        assert_eq!(al_doble_clic(a, Vista::Lista, true), Accion::Editar(0, 1));
+        // Caso negativo: el doble clic en la casilla o en un boton sigue
+        // siendo lo mismo (marcar dos veces es marcar y desmarcar).
+        assert_eq!(
+            al_doble_clic(Accion::Marcar(0, 1), Vista::Tarjetas, true),
+            Accion::Marcar(0, 1)
+        );
+        assert_eq!(al_doble_clic(Accion::Fondo, Vista::Lista, false), Accion::Fondo);
+    }
+
+    #[test]
+    fn el_boton_derecho_sabe_de_que_tarea_es_cada_zona() {
+        assert_eq!(tarea_de(Accion::BuscarEmo(2, 3, 0)), Some((2, 3)));
+        assert_eq!(tarea_de(Accion::PinearTodas(1, 0)), Some((1, 0)));
+        assert_eq!(tarea_de(Accion::Imagen(0, 4, 1)), Some((0, 4)));
+        // Caso negativo: el fondo, la caja o un encabezado no tienen menu.
+        assert_eq!(tarea_de(Accion::Fondo), None);
+        assert_eq!(tarea_de(Accion::EnfocarApuntar), None);
+        assert_eq!(tarea_de(Accion::BorrarLista(0)), None);
+    }
+
+    #[test]
+    fn el_menu_de_una_tarea_solo_ofrece_lo_que_se_puede_hacer() {
+        let textos = Catalogo::nuevo(Idioma::Espanol);
+        let acciones = |hecha, reparte, imagenes| -> Vec<Accion> {
+            menu_de_tarea(0, 1, hecha, reparte, imagenes, &textos)
+                .into_iter()
+                .map(|(_, _, a)| a)
+                .collect()
+        };
+        assert_eq!(
+            acciones(false, true, 2),
+            [
+                Accion::Marcar(0, 1),
+                Accion::Editar(0, 1),
+                Accion::Repartir(0, 1),
+                Accion::CopiarTexto(0, 1),
+                Accion::PinearTodas(0, 1),
+                Accion::Quitar(0, 1),
+            ]
+        );
+        let m = menu_de_tarea(0, 1, true, false, 2, &textos);
+        assert!(m[0].1.starts_with("Marcar como pendiente"), "{}", m[0].1);
+        assert!(m.iter().any(|(_, t, _)| t.contains("Pinear las 2")), "{m:?}");
+        // Caso negativo: sin imagenes no hay «Pinear», fuera del Inbox no
+        // hay «Mover a…», y los numeros no se repiten.
+        let poco = acciones(false, false, 0);
+        assert!(!poco.contains(&Accion::PinearTodas(0, 1)));
+        assert!(!poco.contains(&Accion::Repartir(0, 1)));
+        let ids: HashSet<u32> = menu_de_tarea(0, 1, false, true, 1, &textos)
+            .iter()
+            .map(|x| x.0)
+            .collect();
+        assert_eq!(ids.len(), 6);
+    }
+
+    #[test]
+    fn f2_pone_la_tarea_en_la_caja_y_esc_la_deja_como_estaba() {
+        let textos = Catalogo::nuevo(Idioma::Espanol);
+        let u = Ubicacion::Portable {
+            raiz: std::env::temp_dir().join("pixpin-tareas-f2-no-existe"),
+        };
+        let mut e = muestra_estado();
+        e.foco = Foco::Tarjeta(1, 0);
+        assert!(tecla(&mut e, VK_F2, false, false, &textos, &u, "PC01"));
+        assert_eq!(e.foco, Foco::Apuntar);
+        assert_eq!(e.campo.texto, "revisar puntales del segundo piso");
+        assert_eq!(e.corrigiendo.as_ref().map(|(_, f)| f.indice), Some(0));
+        // Esc suelta la correccion y vacia la caja, sin cerrar la ventana.
+        assert!(tecla(&mut e, VK_ESCAPE, false, false, &textos, &u, "PC01"));
+        assert!(e.corrigiendo.is_none() && e.campo.texto.is_empty());
+        // Caso negativo: F2 sin una tarea con el foco no hace nada.
+        tecla(&mut e, VK_F2, false, false, &textos, &u, "PC01");
+        assert!(e.corrigiendo.is_none());
+    }
+
+    #[test]
+    fn ctrl_l_y_ctrl_t_cambian_la_vista_y_un_emoticono_se_busca() {
+        let textos = Catalogo::nuevo(Idioma::Espanol);
+        let raiz = std::env::temp_dir().join(format!("pixpin-tareas-v5-{}", std::process::id()));
+        std::fs::create_dir_all(&raiz).unwrap();
+        let u = Ubicacion::Portable { raiz: raiz.clone() };
+        let mut e = muestra_estado();
+        con_fotos_y_emoticonos(&mut e);
+        tecla(&mut e, VK_T, true, false, &textos, &u, "PC01");
+        assert_eq!(e.vista, Vista::Tarjetas);
+        // Caso negativo: la L sin Ctrl no cambia la vista.
+        tecla(&mut e, VK_L, false, false, &textos, &u, "PC01");
+        assert_eq!(e.vista, Vista::Tarjetas);
+        tecla(&mut e, VK_L, true, false, &textos, &u, "PC01");
+        assert_eq!(e.vista, Vista::Lista);
+        // El circulo del primer emoticono de «planos de la casa» busca 🔥.
+        let fi = e.listas[2]
+            .filas
+            .iter()
+            .position(|f| f.texto.contains("planos"))
+            .unwrap();
+        hacer(&mut e, Accion::BuscarEmo(2, fi, 0), &textos, &u, "PC01");
+        assert_eq!((e.buscar.texto.as_str(), e.foco), ("🔥", Foco::Buscar));
+        let g = tarjetas::agrupar(
+            &e.listas,
+            &tarjetas::palabras(&e.buscar.texto),
+            e.hoy,
+            &|_, _| false,
+        );
+        let salen: usize = g.iter().map(|g| g.arriba.len() + g.hechas.len()).sum();
+        assert_eq!(salen, 1, "solo la que lleva 🔥");
+        let _ = std::fs::remove_dir_all(&raiz);
     }
 }

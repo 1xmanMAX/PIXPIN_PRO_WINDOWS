@@ -36,6 +36,13 @@ const fn relleno(d: &'static str, par_impar: bool) -> TrazoIcono {
     }
 }
 
+/// `add` (`src/content/add/materialicons/24px.svg`): el «+» de apuntar una
+/// tarea nueva (tareas-v5).
+pub const ADD: Icono = Icono {
+    vista: VISTA,
+    trazos: &[relleno("M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z", false)],
+};
+
 /// `alarm` (`src/action/alarm/materialicons/24px.svg`).
 pub const ALARM: Icono = Icono {
     vista: VISTA,
@@ -266,6 +273,16 @@ pub const FORWARD_10: Icono = Icono {
     ],
 };
 
+/// `grid_view` (`src/action/grid_view/materialicons/24px.svg`): la vista
+/// de Tareas en cuadrados (tareas-v5).
+pub const GRID_VIEW: Icono = Icono {
+    vista: VISTA,
+    trazos: &[relleno(
+        "M3 3v8h8V3H3zm6 6H5V5h4v4zm-6 4v8h8v-8H3zm6 6H5v-4h4v4zm4-16v8h8V3h-8zm6 6h-4V5h4v4zm-6 4v8h8v-8h-8zm6 6h-4v-4h4v4z",
+        false,
+    )],
+};
+
 /// `hearing` (`src/av/hearing/materialicons/24px.svg`).
 pub const HEARING: Icono = Icono {
     vista: VISTA,
@@ -285,6 +302,13 @@ pub const IMAGE: Icono = Icono {
 };
 
 /// `ios_share` (`src/social/ios_share/materialicons/24px.svg`).
+/// `file_download` (`src/file/file_download/materialicons/24px.svg`): el
+/// «Exportar» del timeline, que no es compartir.
+pub const FILE_DOWNLOAD: Icono = Icono {
+    vista: VISTA,
+    trazos: &[relleno("M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z", false)],
+};
+
 pub const IOS_SHARE: Icono = Icono {
     vista: VISTA,
     trazos: &[relleno(
@@ -654,8 +678,47 @@ pub const KEYBOARD_ARROW_UP: Icono = Icono {
         false,
     )],
 };
+
+/// `calendar_month` (`src/action/calendar_month/materialicons/24px.svg`):
+/// el calendario del timeline.
+pub const CALENDAR_MONTH: Icono = Icono {
+    vista: VISTA,
+    trazos: &[relleno(
+        "M19 4h-1V2h-2v2H8V2H6v2H5c-1.11 0-1.99.9-1.99 2L3 20c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V10h14v10zM9 14H7v-2h2v2zm4 0h-2v-2h2v2zm4 0h-2v-2h2v2zm-8 4H7v-2h2v2zm4 0h-2v-2h2v2zm4 0h-2v-2h2v2z",
+        false,
+    )],
+};
+
+/// `timeline` (`src/action/timeline/materialicons/24px.svg`): el boton y la
+/// entrada de la bandeja del timeline.
+pub const TIMELINE: Icono = Icono {
+    vista: VISTA,
+    trazos: &[relleno(
+        "M23 8c0 1.1-.9 2-2 2-.18 0-.35-.02-.51-.07l-3.56 3.55c.05.16.07.34.07.52 0 1.1-.9 2-2 2s-2-.9-2-2c0-.18.02-.36.07-.52l-2.55-2.55c-.16.05-.34.07-.52.07s-.36-.02-.52-.07l-4.55 4.56c.05.16.07.33.07.51 0 1.1-.9 2-2 2s-2-.9-2-2 .9-2 2-2c.18 0 .35.02.51.07l4.56-4.55C8.02 9.36 8 9.18 8 9c0-1.1.9-2 2-2s2 .9 2 2c0 .18-.02.36-.07.52l2.55 2.55c.16-.05.34-.07.52-.07s.36.02.52.07l3.55-3.56C19.02 8.35 19 8.18 19 8c0-1.1.9-2 2-2s2 .9 2 2z",
+        false,
+    )],
+};
+
+/// `chevron_left` y `chevron_right` (`src/navigation/…/materialicons/24px.svg`):
+/// el mes anterior y el siguiente del calendario del timeline.
+pub const CHEVRON_LEFT: Icono = Icono {
+    vista: VISTA,
+    trazos: &[relleno("M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z", false)],
+};
+
+pub const CHEVRON_RIGHT: Icono = Icono {
+    vista: VISTA,
+    trazos: &[relleno("M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z", false)],
+};
+
 /// Todos, para poder comprobarlos de una vez.
 pub const TODOS: &[Icono] = &[
+    ADD,
+    GRID_VIEW,
+    CALENDAR_MONTH,
+    TIMELINE,
+    CHEVRON_LEFT,
+    CHEVRON_RIGHT,
     LIGHTBULB,
     PHOTO_LIBRARY,
     FLAG,
@@ -691,6 +754,7 @@ pub const TODOS: &[Icono] = &[
     FORWARD_10,
     HEARING,
     IMAGE,
+    FILE_DOWNLOAD,
     IOS_SHARE,
     KEYBOARD_ARROW_DOWN,
     KEYBOARD_ARROW_UP,

@@ -1697,18 +1697,18 @@ pub fn abrir(
                         // Lecciones, galeria de capturas y tareas, cada una
                         // en su ventana (en el sitio del universo, 3-oct).
                         match extra {
-                            pixpin_ui::chat::Extra::Lecciones => crate::lecciones::lista(
-                                ubicacion.clone(),
-                                idioma,
-                                &identidad,
-                                None,
-                                None,
-                            ),
+                            // Las lecciones se ven en el timeline (5-oct).
+                            pixpin_ui::chat::Extra::Lecciones => {
+                                crate::timeline::abrir_lecciones(idioma, ubicacion.clone())
+                            }
                             pixpin_ui::chat::Extra::Galeria => {
                                 crate::galeria_capturas::abrir(idioma, ubicacion.clone())
                             }
                             pixpin_ui::chat::Extra::Tareas => {
                                 crate::tareas::abrir(idioma, ubicacion.clone(), &identidad)
+                            }
+                            pixpin_ui::chat::Extra::Timeline => {
+                                crate::timeline::abrir(idioma, ubicacion.clone())
                             }
                         }
                         buscando = false;
@@ -4240,6 +4240,10 @@ fn pintar(
         (
             d.boton_extra(pixpin_ui::chat::Extra::Lecciones, escala),
             &mi::LIGHTBULB,
+        ),
+        (
+            d.boton_extra(pixpin_ui::chat::Extra::Timeline, escala),
+            &mi::TIMELINE,
         ),
     ] {
         if boton.ancho == 0 {

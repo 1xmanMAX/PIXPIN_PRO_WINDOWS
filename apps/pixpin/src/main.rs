@@ -59,6 +59,7 @@ mod biblioteca_audio;
 mod buscador;
 mod buscar_todo;
 mod caducidad_capturas;
+mod cabecera;
 mod caja_dibujo;
 mod capa;
 mod captura2;
@@ -111,9 +112,11 @@ mod salto_por_enlace;
 mod scroll;
 mod sincronizar;
 mod tareas;
+mod timeline;
 mod teleprompter;
 mod tema_cosmos;
 mod turno_pesado;
+mod v2;
 mod ventana_ajustes;
 mod ventana_chat;
 mod ventana_editor;
@@ -176,6 +179,9 @@ const ID_LECCIONES: u32 = 905;
 const ID_LECCION_NUEVA: u32 = 906;
 /// «Tareas…» (3-oct): las listas de tareas de todos los chats juntas.
 const ID_TAREAS: u32 = 907;
+/// «Timeline…» (5-oct): lo que pasa en el dia, minuto a minuto, con la voz,
+/// a mano o con fotos; las ultimas 24 horas y el archivo por calendario.
+const ID_TIMELINE: u32 = 908;
 
 const _: () = assert!(
     ID_ABRIR_DOCUMENTO >= pixpin_shell::ventana::ID_MENU_GRUPO_TOPE,
@@ -204,6 +210,7 @@ fn acciones_de_bandeja(t: impl Fn(&str) -> String) -> Vec<(u32, String)> {
             v.push((ID_LECCION_NUEVA, t("bandeja-leccion-nueva")));
             v.push((ID_GALERIA_CAPTURAS, t("bandeja-galeria-capturas")));
             v.push((ID_TAREAS, t("bandeja-tareas")));
+            v.push((ID_TIMELINE, t("bandeja-timeline")));
             let s = Comando::Sincronizar.descriptor();
             if s.en_bandeja {
                 v.push((s.comando.id(), t(s.clave_titulo)));
@@ -1016,7 +1023,9 @@ fn arrancar(
                 Continuar::Si
             }
             Evento::Menu(id) if id == ID_LECCIONES => {
-                lecciones::lista(ubicacion.clone(), lengua, &identidad_equipo, None, None);
+                // Desde el 5-oct-2026 las lecciones se ven en el timeline,
+                // pestana «Lecciones» (el usuario pidio juntarlas).
+                timeline::abrir_lecciones(lengua, ubicacion.clone());
                 Continuar::Si
             }
             Evento::Menu(id) if id == ID_LECCION_NUEVA => {
@@ -1036,6 +1045,10 @@ fn arrancar(
             }
             Evento::Menu(id) if id == ID_TAREAS => {
                 tareas::abrir(lengua, ubicacion.clone(), &identidad_equipo);
+                Continuar::Si
+            }
+            Evento::Menu(id) if id == ID_TIMELINE => {
+                timeline::abrir(lengua, ubicacion.clone());
                 Continuar::Si
             }
             Evento::Menu(id) if id == ID_GRUPOS_VENTANAS => {
@@ -2467,14 +2480,15 @@ mod pruebas_bandeja {
             .iter()
             .position(|(id, _)| *id == comandos::Comando::AbrirChat.id())
             .expect("el chat esta en la bandeja");
-        let siguen: Vec<u32> = v[chat + 1..chat + 5].iter().map(|(id, _)| *id).collect();
+        let siguen: Vec<u32> = v[chat + 1..chat + 6].iter().map(|(id, _)| *id).collect();
         assert_eq!(
             siguen,
             [
                 ID_LECCIONES,
                 ID_LECCION_NUEVA,
                 ID_GALERIA_CAPTURAS,
-                ID_TAREAS
+                ID_TAREAS,
+                ID_TIMELINE
             ]
         );
     }
@@ -2486,9 +2500,9 @@ mod pruebas_bandeja {
             .iter()
             .position(|(id, _)| *id == comandos::Comando::AbrirChat.id())
             .expect("el chat esta en la bandeja");
-        // Chat, lecciones, galeria y tareas, y en seguida Sincronizar.
+        // Chat, lecciones, galeria, tareas y timeline, y en seguida Sincronizar.
         assert_eq!(
-            v.get(chat + 5),
+            v.get(chat + 6),
             Some(&(
                 comandos::Comando::Sincronizar.id(),
                 "comando-sincronizar".to_string()
@@ -2516,6 +2530,7 @@ mod pruebas_bandeja {
             ID_LECCION_NUEVA,
             ID_GALERIA_CAPTURAS,
             ID_TAREAS,
+            ID_TIMELINE,
         ] {
             assert_eq!(v.iter().filter(|(i, _)| *i == id).count(), 1, "{id}");
         }

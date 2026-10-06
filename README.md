@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <b>Captura</b> · <b>Pines flotantes</b> · <b>Chat por proyectos</b> · <b>Lienzo</b> · <b>Tareas</b> · <b>Lecciones</b> · <b>Sincroniza con Android</b>
+  <b>Captura</b> · <b>Pines flotantes</b> · <b>Chat por proyectos</b> · <b>Lienzo</b> · <b>Timeline</b> · <b>Tareas</b> · <b>Lecciones</b> · <b>Sincroniza con Android</b>
 </p>
 
 ---
@@ -35,7 +35,8 @@ la máquina de referencia es un Core i3 de 3.ª generación con 4 GB.
   - [Capturar](#capturar)
   - [Pines flotantes](#pines-flotantes)
   - [Proyectos y chat](#proyectos-y-chat)
-  - [Tareas, lecciones y galería](#tareas-lecciones-y-galería)
+  - [Timeline y lecciones](#timeline-y-lecciones)
+  - [Tareas y galería](#tareas-y-galería)
   - [Buscar en todo](#buscar-en-todo)
   - [La bandeja](#la-bandeja)
   - [El lienzo](#el-lienzo)
@@ -55,8 +56,10 @@ la máquina de referencia es un Core i3 de 3.ª generación con 4 GB.
 | Capturar y anotar sin abrir otra ventana | Buscar en todo PixPin |
 |---|---|
 | ![Captura: después de elegir la zona](docs/img/v2/captura-despues.png) | ![Buscar en PixPin](docs/img/v2/buscar-resultados.png) |
-| **Lecciones aprendidas** | **Galería de capturas que caducan** |
-| ![Lecciones](docs/img/v2/lecciones.png) | ![Galería de capturas](docs/img/v2/galeria.png) |
+| **Timeline: el día, minuto a minuto** | **Cada momento, como una historia** |
+| ![Timeline: Estado](docs/img/v2/timeline-estado.png) | ![Historia de un momento](docs/img/v2/timeline-historia-sin-foto.png) |
+| **Lecciones aprendidas, dentro del timeline** | **Galería de capturas que caducan** |
+| ![Lecciones](docs/img/v2/timeline-lecciones.png) | ![Galería de capturas](docs/img/v2/galeria.png) |
 
 ```mermaid
 flowchart LR
@@ -178,37 +181,68 @@ miniatura.
 |---|---|---|
 | ![](docs/img/proyectos-claro.png) | ![](docs/img/proyectos-oscuro.png) | ![](docs/img/proyectos-estrecha.png) |
 
-### Tareas, lecciones y galería
+### Timeline y lecciones
 
-Tres botones redondos junto al buscador del chat abren tres ventanas.
+Las cuatro ventanas de abajo comparten la misma barra: título, buscador (`Ctrl F`) y, a la derecha,
+solo los botones propios de cada una.
 
-**Tareas**: todas las listas de todos los proyectos en una sola ventana. Lo que se apunta rápido
-entra en el **Inbox**, y «Mover a…» lo lleva a la lista que toque. Una tarea puede llevar
-imágenes: se pegan con `Ctrl V` y aparecen como `[img 01]`, como en una terminal.
-Arriba, un buscador; debajo, una tarjeta por tarea. La ✕ de cada tarjeta (o `Supr`) la quita, con
-«Deshacer» unos segundos, y la papelera de cada lista la borra entera tras preguntar.
+**Timeline**: apuntar lo que pasa **en el momento**, minuto a minuto, con la voz, escribiendo o con
+una foto. Es tan rápido como un chat, pero se ve como una línea de tiempo. Al dictar, «con esto
+pasó…» abre el **título** y «y así te lo cuento…» la **descripción** (da igual cómo lo escriba el
+reconocimiento de voz). Se guarda también el audio, con la hora en que empezaste a hablar.
 
-**Lecciones aprendidas**: lo que salió mal (o bien) para que no se repita.
-
-| Ficha en tres bloques | Repaso espaciado |
+| Hoy: las últimas 24 horas | Momentos: el archivo, día a día |
 |---|---|
-| ![Lecciones](docs/img/v2/lecciones.png) | ![Repaso](docs/img/v2/lecciones-repaso.png) |
+| ![Timeline: Hoy](docs/img/v2/timeline-hoy.png) | ![Timeline: Momentos](docs/img/v2/timeline-momentos.png) |
+| **Estado: cada mes, sus días y sus emoticonos** | **Cada momento, como una historia** |
+| ![Timeline: Estado](docs/img/v2/timeline-estado.png) | ![Historia](docs/img/v2/timeline-historia.png) |
 
-- La barra **«¿Qué aprendiste?»** reparte la frase y rellena sola el área, el proyecto y la gravedad.
-- Cada ficha tiene tres bloques, **Qué pasó · Por qué · La próxima vez**, y se edita con un clic sobre el texto.
-- **Repaso** con tres botones: `1` lo recordaba (vuelve en 30 días), `2` a medias (en 7) y `3` lo olvidé (mañana).
-- Mismo formato que Android: se sincronizan.
+- **Hoy**, **Momentos** y **Estado** son los mismos momentos vistos de tres formas. En Estado, cada
+  día lleva los emoticonos que usaste, apilados, y cada mes dice el que más se repitió.
+- Al pulsar un momento se abre como una **historia**: la foto de fondo y el texto en el medio
+  (o un degradado si no tiene foto), barritas si tiene varias fotos, y la nota de voz.
+- **Compartir como imagen**: cada momento sale como una tarjeta de 1080×1350, lista para mandar.
+- **Exportar** a HTML o PDF lo que estás viendo, o los días que elijas. El HTML lleva dentro las
+  fotos **y los audios** y se ve igual que la app: línea de tiempo y, al pulsar, la historia.
+- Lo anterior a 24 horas no se borra: está en Momentos y en Estado, y el buscador lo encuentra.
+
+| Tarjeta para compartir | Página exportada, con la historia abierta |
+|---|---|
+| ![Tarjeta para compartir](docs/img/v2/timeline-compartida-sin-foto.png) | ![HTML exportado](docs/img/v2/timeline-exportado-historia.png) |
+
+**Lecciones aprendidas**: viven en el mismo sitio, como una pestaña más del timeline. La bombilla
+de cualquier momento lo convierte en lección.
+
+![Lecciones](docs/img/v2/timeline-lecciones.png)
+
+- Tarjetas con la **gravedad en emoticono y color**: 😌 leve, 😟 importante, 😡 grave.
+- **«Me volvió a pasar»** suma una vez más; se filtra por gravedad o por las más repetidas.
+- Siguen siendo las lecciones de siempre: el mismo formato que Android, se sincronizan y entran en
+  el **repaso espaciado** (`1` lo recordaba, `2` a medias, `3` lo olvidé).
+
+### Tareas y galería
+
+**Tareas**: todas las listas de todos los proyectos en una sola ventana, en **lista** o en
+**tarjetas**. Lo que se apunta rápido entra en el **Inbox**, y «Mover a…» lo lleva a la lista que
+toque. Una tarea puede llevar imágenes (`Ctrl V`): en la vista de tarjetas la foto es el fondo y,
+si hay varias, se ven apiladas. Los **emoticonos** de una tarea salen como estados de colores.
+
+| Tarjetas | Lista |
+|---|---|
+| ![Tareas en tarjetas](docs/img/v2/tareas-tarjetas.png) | ![Tareas en lista](docs/img/v2/tareas-lista.png) |
 
 **Galería de capturas**: las capturas hechas en el PC **se borran solas a los 7 días** (van a la
 papelera de PixPin y se pueden recuperar), salvo las que conservas.
 
-![Galería buscando por el texto de dentro](docs/img/v2/galeria-buscar.png)
+| Al pasar el ratón | Elegir varias |
+|---|---|
+| ![Galería](docs/img/v2/galeria.png) | ![Galería eligiendo](docs/img/v2/galeria-elegir.png) |
 
-- Filtros con su número: hoy, esta semana, conservadas, se borran pronto, GIF, vídeos, con texto.
+- Cada captura dice en rojo los **días que le quedan**.
+- **Clic derecho** (o el botón «⋯»): pinear, copiar, guardar como, mostrar en la carpeta,
+  conservar, dar 7 días más y borrar.
 - **Busca también el texto que hay dentro de las capturas** (OCR en segundo plano, con caché).
-- La caducidad se ve por colores (gris, naranja, rojo y verde para las conservadas), con
-  **Conservar** o **Dar 7 días más**.
-- Elegir varias, con barra de acciones; borrar sin preguntar y con **Deshacer** (`Ctrl Z`).
+- Borrar no pregunta: se deshace con **Deshacer** (`Ctrl Z`).
 
 ### Buscar en todo
 

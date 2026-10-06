@@ -13,6 +13,9 @@ use crate::caja_dibujo::hex;
 use crate::ventanita::dentro;
 
 const ALTO_FILA: f32 = 60.0;
+/// La cabecera mide siempre lo mismo: si creciera al escribir, toda la
+/// ventana saltaria con la primera letra.
+const ALTO_CABECERA: f32 = 112.0;
 
 pub(super) fn todo(e: &mut Estado, p: &Pintor, marco: Rect, s: f32) {
     let (w, h) = (marco.ancho as f32, marco.alto as f32);
@@ -30,33 +33,19 @@ pub(super) fn todo(e: &mut Estado, p: &Pintor, marco: Rect, s: f32) {
     if e.repaso.is_some() {
         repaso::pintar(e, p, w, h, s);
     } else {
-        let arriba = cabecera(e, p, w, s);
-        let (lista, ficha, datos) = columnas(w, h, arriba, s);
+        let (lista, ficha) = columnas(w, h, ALTO_CABECERA * s, s);
         columna_lista(e, p, lista, s);
         if e.comprobacion {
-            comprobacion(
-                e,
-                p,
-                RectF {
-                    ancho: ficha.ancho + datos.ancho,
-                    ..ficha
-                },
-                s,
-            );
+            comprobacion(e, p, ficha, s);
         } else if e.elegida().is_some() {
             columna_ficha(e, p, ficha, s);
-            columna_datos(e, p, datos, s);
         } else {
-            vacia(
-                e,
-                p,
-                RectF {
-                    ancho: ficha.ancho + datos.ancho,
-                    ..ficha
-                },
-                s,
-            );
+            vacia(e, p, ficha, s);
         }
+        // La cabecera despues de las columnas: lo de la ficha que se
+        // desplaza por debajo de ella no le quita el clic (gana la ultima
+        // zona apuntada).
+        cabecera(e, p, w, s);
         menu(e, p, w, h, s);
     }
     aviso(e, p, w, h, s);
@@ -64,11 +53,12 @@ pub(super) fn todo(e: &mut Estado, p: &Pintor, marco: Rect, s: f32) {
 
 // ------------------------------------------------------------ cabecera
 
-/// La cabecera: el titulo, la barra «¿Que aprendiste?» y lo rellenado solo.
-/// Devuelve su alto.
-fn cabecera(e: &mut Estado, p: &Pintor, w: f32, s: f32) -> f32 {
+/// La cabecera: el titulo, la barra «¿Que aprendiste?» y, mientras se
+/// escribe, lo rellenado solo (area, proyecto, gravedad) para cambiarlo.
+/// Sin texto no hay pista debajo: se quito al simplificar (5-oct-2026).
+fn cabecera(e: &mut Estado, p: &Pintor, w: f32, s: f32) {
     let tx = e.textos.clone();
-    let alto = 112.0 * s;
+    let alto = ALTO_CABECERA * s;
     e.botones.zona(
         RectF {
             x: 0.0,
@@ -242,21 +232,10 @@ fn cabecera(e: &mut Estado, p: &Pintor, w: f32, s: f32) -> f32 {
             w - x - 200.0 * s,
             if grabando { v2::ROJO } else { v2::APAGADO },
         );
-    } else if e.rapida.campo.texto.trim().is_empty() {
-        p.texto_linea(
-            &tx.t("lec2-rellena-solo-vacio"),
-            x,
-            fila_cy - 9.0 * s,
-            13.0 * s,
-            w - x - 200.0 * s,
-            v2::APAGADO,
-        );
-    } else {
+    } else if !e.rapida.campo.texto.trim().is_empty() {
+        // Solo el ✨: las etiquetas de al lado ya dicen que se cambian.
         p.texto_color("✨", x, fila_cy - 9.0 * s, 13.0 * s, v2::CIAN);
         x += 22.0 * s;
-        let t = tx.t("lec2-rellena-solo");
-        p.texto(&t, x, fila_cy - 9.0 * s, 13.0 * s, v2::SUAVE);
-        x += p.medir_texto(&t, 13.0 * s).0 + 10.0 * s;
         let area = e.area_rapida().unwrap_or_else(|| tx.t("lec2-sin-area"));
         let rot = t1(&tx, "lec2-area-de", "area", area);
         x = etiqueta(
@@ -358,25 +337,6 @@ fn cabecera(e: &mut Estado, p: &Pintor, w: f32, s: f32) -> f32 {
             }
         }
     }
-    // A la derecha: Ctrl V pega capturas.
-    let pega = tx.t("lec2-pega-capturas");
-    let pw = p.medir_texto(&pega, 13.0 * s).0;
-    let px = barra.x + barra.ancho - pw;
-    let cw = ui::ancho_de_chapa(p, "Ctrl V", s);
-    // Solo si cabe junto a lo rellenado.
-    if px - cw - 6.0 * s > x + 10.0 * s {
-        p.texto(&pega, px, fila_cy - 9.0 * s, 13.0 * s, v2::APAGADO);
-        ui::chapa(
-            p,
-            "Ctrl V",
-            px - cw - 6.0 * s,
-            fila_cy,
-            v2::SUAVE,
-            hex(0x2a2a2d),
-            s,
-        );
-    }
-    alto
 }
 
 /// Un boton redondo con solo icono (40 x 40).
@@ -571,11 +531,10 @@ fn columna_lista(e: &mut Estado, p: &Pintor, r: RectF, s: f32) {
         fichas.push((nombre, None, true, Accion::QuitarProyecto, Some("×".into())));
     }
     for (i, (f, n)) in e.filtros().into_iter().enumerate() {
-        let (rot, punto) = match &f {
+        let (rot, punto) = match f {
             Filtro::Todas => (tx.t("lec2-todas"), None),
             Filtro::Repetidas => (tx.t("lec2-repetidas"), None),
             Filtro::Graves => (tx.t("lec2-graves"), Some(v2::ROJO)),
-            Filtro::Area(a) => (a.clone(), None),
         };
         fichas.push((
             rot,
@@ -638,40 +597,31 @@ fn columna_lista(e: &mut Estado, p: &Pintor, r: RectF, s: f32) {
     }
     y += alto_ficha + 10.0 * s;
 
-    // Para repasar hoy.
+    // Para repasar hoy: una linea, y solo si toca alguna.
     if !e.hoy.is_empty() {
-        let caja = RectF {
-            x,
-            y,
-            ancho,
-            alto: 64.0 * s,
-        };
-        p.rellenar_redondeado(caja, 12.0 * s, ui::mezclar(v2::COLUMNA, v2::AMARILLO, 0.15));
-        ui::negrita(
-            p,
-            &t1(&tx, "lec2-para-repasar", "n", e.hoy.len() as i64),
-            x + 14.0 * s,
-            y + 13.0 * s,
-            14.0 * s,
-            ancho - 150.0 * s,
-            v2::TEXTO,
-        );
-        p.texto_linea(
-            &tx.t("lec2-que-harias-si"),
-            x + 14.0 * s,
-            y + 35.0 * s,
-            12.0 * s,
-            ancho - 150.0 * s,
-            v2::SUAVE,
-        );
         let rot = tx.t("lec2-repasar");
         let bw = ui::ancho_de_boton(p, false, &rot, Some("R"), s);
-        let b = RectF {
-            x: x + ancho - bw - 12.0 * s,
-            y: y + 12.0 * s,
-            ancho: bw,
-            alto: 40.0 * s,
-        };
+        let (caja, b) = super::tarjeta_de_repaso(x, y, ancho, bw, s);
+        p.rellenar_redondeado(caja, 12.0 * s, ui::mezclar(v2::COLUMNA, v2::AMARILLO, 0.15));
+        let titulo = t1(&tx, "lec2-para-repasar", "n", e.hoy.len() as i64);
+        let (_, th) = ui::medir_negrita(p, &titulo, 14.0 * s, 10_000.0);
+        p.con_recorte(
+            RectF {
+                ancho: (b.x - x - 8.0 * s).max(0.0),
+                ..caja
+            },
+            |p| {
+                ui::negrita(
+                    p,
+                    &titulo,
+                    x + 14.0 * s,
+                    caja.y + (caja.alto - th) / 2.0,
+                    14.0 * s,
+                    10_000.0,
+                    v2::TEXTO,
+                );
+            },
+        );
         let encima = dentro(b, e.botones.raton);
         p.rellenar_redondeado(
             b,
@@ -702,16 +652,16 @@ fn columna_lista(e: &mut Estado, p: &Pintor, r: RectF, s: f32) {
             s,
         );
         e.botones.zona(b, Accion::Repasar);
-        y += 64.0 * s + 8.0 * s;
+        y += caja.alto + 8.0 * s;
     }
 
-    // Las filas, desplazables, hasta el pie.
-    let pie = 44.0 * s;
+    // Las filas, desplazables, hasta abajo del todo (el pie con la leyenda
+    // de colores y «↑↓ moverse» se quito al simplificar).
     let vista = RectF {
         x: r.x,
         y,
         ancho: r.ancho,
-        alto: (r.y + r.alto - pie - y).max(0.0),
+        alto: (r.y + r.alto - y).max(0.0),
     };
     e.zona_lista = vista;
     e.scroll_lista = e
@@ -802,43 +752,6 @@ fn columna_lista(e: &mut Estado, p: &Pintor, r: RectF, s: f32) {
         total = yy - y0 + 8.0 * s;
     });
     e.alto_lista = total;
-
-    // El pie: la leyenda de los colores y las flechas.
-    let py = r.y + r.alto - pie;
-    p.rellenar(
-        RectF {
-            x: r.x,
-            y: py,
-            ancho: r.ancho - 1.0 * s,
-            alto: 1.0 * s,
-        },
-        v2::LINEA,
-    );
-    let cy = py + pie / 2.0;
-    let mut lx = x;
-    for g in 1..=3 {
-        p.circulo((lx + 5.0 * s, cy), 5.0 * s, color_de_gravedad(g));
-        let t = tx.t(nombre_de_gravedad(g));
-        p.texto(&t, lx + 14.0 * s, cy - 8.0 * s, 12.0 * s, v2::APAGADO);
-        lx += 14.0 * s + p.medir_texto(&t, 12.0 * s).0 + 12.0 * s;
-    }
-    let mover = tx.t("lec2-moverse");
-    let mw = p.medir_texto(&mover, 12.0 * s).0;
-    let mx = x + ancho - mw;
-    if mx > lx + 60.0 * s {
-        p.texto(&mover, mx, cy - 8.0 * s, 12.0 * s, v2::APAGADO);
-        let w2 = ui::ancho_de_chapa(p, "↓", s);
-        ui::chapa(p, "↓", mx - w2 - 6.0 * s, cy, v2::SUAVE, hex(0x2a2a2d), s);
-        ui::chapa(
-            p,
-            "↑",
-            mx - 2.0 * w2 - 10.0 * s,
-            cy,
-            v2::SUAVE,
-            hex(0x2a2a2d),
-            s,
-        );
-    }
 }
 
 /// Si la fila `pos` empieza otro grupo (este mes / antes).
@@ -940,7 +853,11 @@ fn fila(e: &mut Estado, p: &Pintor, i: usize, caja: RectF, vista: RectF, s: f32)
         ancho,
         v2::APAGADO,
     );
-    e.botones.zona(caja, Accion::Fila(i));
+    // Solo lo que se ve de la fila: medio tapada bajo los filtros, no debe
+    // quitarles el clic.
+    if let Some(z) = super::recortar(caja, vista) {
+        e.botones.zona(z, Accion::Fila(i));
+    }
 }
 
 pub fn hace_texto(tx: &pixpin_store::Catalogo, h: Hace) -> String {
@@ -952,18 +869,6 @@ pub fn hace_texto(tx: &pixpin_store::Catalogo, h: Hace) -> String {
         Hace::Meses(n) => t1(tx, "lec2-hace-meses", "n", n),
         Hace::Anios(n) => t1(tx, "lec2-hace-anios", "n", n),
     }
-}
-
-/// «28 sep»: el dia y el mes corto.
-pub fn fecha_corta(tx: &pixpin_store::Catalogo, ms: i64) -> String {
-    let (_, m, d) = ui::fecha_de(ms);
-    let meses = tx.t("lec2-meses");
-    let mes = meses
-        .split_whitespace()
-        .nth(m as usize - 1)
-        .unwrap_or("")
-        .to_string();
-    format!("{d} {mes}")
 }
 
 // --------------------------------------------------------------- ficha
@@ -1004,31 +909,8 @@ fn columna_ficha(e: &mut Estado, p: &Pintor, r: RectF, s: f32) {
     let raiz = e.raiz();
     let adjuntos = e.adjuntos.de(&raiz, &x, e.motor.as_deref()).clone();
     p.con_recorte(vista, |p| {
-        let y0 = r.y + 20.0 * s - e.scroll_ficha;
+        let y0 = r.y + 22.0 * s - e.scroll_ficha;
         let mut y = y0;
-        // La pista de arriba y «Mas campos».
-        p.texto(&tx.t("lec2-clic-para-editar"), ix, y, 12.0 * s, v2::APAGADO);
-        let mas = tx.t("lec2-mas-campos");
-        let mw = p.medir_texto(&mas, 12.0 * s).0;
-        let mc = RectF {
-            x: ix + iw - mw - 8.0 * s,
-            y: y - 8.0 * s,
-            ancho: mw + 8.0 * s,
-            alto: 32.0 * s,
-        };
-        p.texto(
-            &mas,
-            mc.x + 4.0 * s,
-            y,
-            12.0 * s,
-            if dentro(mc, e.botones.raton) {
-                hex(0xa0e4ff)
-            } else {
-                v2::CIAN
-            },
-        );
-        e.botones.zona(mc, Accion::MasCampos);
-        y += 22.0 * s;
 
         // El titulo.
         if e.foco == Some(Foco::Titulo) {
@@ -1067,7 +949,13 @@ fn columna_ficha(e: &mut Estado, p: &Pintor, r: RectF, s: f32) {
                 v2::APAGADO,
             );
             e.botones.zona(zona, Accion::Editar(Foco::Titulo));
-            y += th + 14.0 * s;
+            y += th + 10.0 * s;
+        }
+
+        // Lo que antes ocupaba la columna derecha, en una fila.
+        y = fila_de_datos(e, p, &x, ix, y, iw, s) + 14.0 * s;
+        if e.mas_campos {
+            y = mas_campos(e, p, &x, ix, y, iw, s) + 14.0 * s;
         }
 
         let bloques = [
@@ -1299,9 +1187,20 @@ fn bloque(
         p.medir_texto_ajustado(texto, tam, iw).1
     };
     let n_adj = adjuntos.map_or(0, Vec::len);
-    let con_fila = adjuntos.is_some();
-    let alto_adj = if con_fila { 12.0 * s + 72.0 * s } else { 0.0 };
-    let alto = 14.0 * s + 26.0 * s + alto_texto + alto_adj + 14.0 * s;
+    // Las miniaturas solo si hay; «Anadir una foto» es un enlace de una
+    // linea (antes, un recuadro punteado grande aunque no hubiera ninguna).
+    let alto_miniaturas = if n_adj > 0 { 12.0 * s + 72.0 * s } else { 0.0 };
+    let alto_adj = if adjuntos.is_some() {
+        alto_miniaturas + 4.0 * s + super::OBJETIVO * s
+    } else {
+        0.0
+    };
+    let pad_abajo = if adjuntos.is_some() {
+        6.0 * s
+    } else {
+        14.0 * s
+    };
+    let alto = 14.0 * s + 26.0 * s + alto_texto + alto_adj + pad_abajo;
     let caja = RectF { x, y, ancho, alto };
     let encima = dentro(caja, e.botones.raton);
     if b.verde {
@@ -1499,228 +1398,239 @@ fn bloque(
                 }
             }
         }
-        // Anadir una foto.
-        let mas = RectF {
-            x: ax,
-            y: ay + 8.0 * s,
-            ancho: 48.0 * s,
-            alto: 56.0 * s,
+        // Anadir una foto: un enlace pequeno bajo el texto (o bajo las
+        // miniaturas), que hace lo mismo que el recuadro de antes.
+        let rot = tx.t("lec2-anadir-foto");
+        let enlace = RectF {
+            x: x + pad_x - 8.0 * s,
+            y: ty + alto_texto + alto_miniaturas + 4.0 * s,
+            ancho: p.medir_texto(&rot, 13.0 * s).0 + 40.0 * s,
+            alto: super::OBJETIVO * s,
         };
-        let encima = dentro(mas, e.botones.raton);
+        let encima = dentro(enlace, e.botones.raton);
         if encima {
-            p.rellenar_redondeado(mas, 12.0 * s, con_alfa(v2::BLANCO, 0.06));
+            p.rellenar_redondeado(enlace, 8.0 * s, con_alfa(v2::BLANCO, 0.06));
         }
-        p.trazar_discontinuo(mas, 1.0 * s, con_alfa(v2::BLANCO, 0.30));
-        p.linea(
-            (mas.x + 24.0 * s, mas.y + 20.0 * s),
-            (mas.x + 24.0 * s, mas.y + 36.0 * s),
-            2.0 * s,
-            v2::SUAVE,
+        let tinta = if encima { hex(0xa0e4ff) } else { v2::CIAN };
+        let cy = enlace.y + enlace.alto / 2.0;
+        p.icono(
+            &mi::IMAGE,
+            RectF {
+                x: enlace.x + 8.0 * s,
+                y: cy - 8.0 * s,
+                ancho: 16.0 * s,
+                alto: 16.0 * s,
+            },
+            tinta,
         );
-        p.linea(
-            (mas.x + 16.0 * s, mas.y + 28.0 * s),
-            (mas.x + 32.0 * s, mas.y + 28.0 * s),
-            2.0 * s,
-            v2::SUAVE,
-        );
-        e.botones.zona(mas, Accion::AnadirAdjunto);
-        if n_adj == 0 {
-            p.texto(
-                &tx.t("lec2-anadir-foto"),
-                mas.x + 60.0 * s,
-                mas.y + 19.0 * s,
-                13.0 * s,
-                v2::APAGADO,
-            );
-        }
+        let (_, th) = p.medir_texto(&rot, 13.0 * s);
+        p.texto(&rot, enlace.x + 32.0 * s, cy - th / 2.0, 13.0 * s, tinta);
+        e.botones.zona(enlace, Accion::AnadirAdjunto);
     }
     y + alto
 }
 
-// --------------------------------------------------------------- datos
+// ------------------------------------------- los datos, dentro de la ficha
 
-fn columna_datos(e: &mut Estado, p: &Pintor, r: RectF, s: f32) {
+/// **La fila bajo el titulo**: el punto de la gravedad (clic = la
+/// siguiente), «3×», «Me volvio a pasar +1» y «Mas campos…». Condensa la
+/// columna derecha que se quito al simplificar. Donde va cada pieza lo
+/// decide `super::fila_de_datos`; aqui solo se mide, se pinta y se apunta
+/// el clic en esos mismos rectangulos. Devuelve la y de debajo.
+#[allow(clippy::too_many_arguments)] // estado, pintor, entrada, sitio, ancho y escala
+fn fila_de_datos(
+    e: &mut Estado,
+    p: &Pintor,
+    x: &super::Entrada,
+    ix: f32,
+    y: f32,
+    iw: f32,
+    s: f32,
+) -> f32 {
     let tx = e.textos.clone();
-    let Some(x) = e.elegida().cloned() else {
-        return;
-    };
-    let l = x.leccion.clone();
-    p.rellenar(
-        RectF {
-            x: r.x,
-            y: r.y,
-            ancho: 1.0 * s,
-            alto: r.alto,
-        },
-        v2::LINEA,
-    );
-    let pad = 18.0 * s;
-    let ix = r.x + pad;
-    let iw = r.ancho - 2.0 * pad;
-    let mut y = r.y + 20.0 * s;
-
-    // Cuantas veces paso.
-    let caja = RectF {
-        x: ix,
-        y,
-        ancho: iw,
-        alto: 128.0 * s,
-    };
-    p.rellenar_redondeado(caja, 14.0 * s, v2::CAJA);
+    let l = &x.leccion;
+    let tam = 13.0 * s;
+    let g = l.gravedad.clamp(1, 3);
+    let nombre = tx.t(nombre_de_gravedad(g));
+    let w_gravedad = 34.0 * s + p.medir_texto(&nombre, tam).0 + 12.0 * s;
     let n = l.veces_que_paso();
-    let num = n.to_string();
-    let (nw, _) = ui::medir_negrita(p, &num, 30.0 * s, 200.0 * s);
-    ui::negrita(
-        p,
-        &num,
-        ix + 14.0 * s,
-        y + 8.0 * s,
-        30.0 * s,
-        200.0 * s,
-        v2::AMARILLO,
+    let veces = format!("{n}×");
+    let w_veces = (n > 1).then(|| ui::medir_negrita(p, &veces, 14.0 * s, 10_000.0).0 + 20.0 * s);
+    let otra = tx.t("lec2-me-volvio");
+    let w_otra = ui::ancho_de_boton(p, true, &otra, Some("+1"), s);
+    let mas = if e.mas_campos {
+        tx.t("lecs-menos-campos")
+    } else {
+        tx.t("lec2-mas-campos")
+    };
+    let w_mas = p.medir_texto(&mas, tam).0 + 40.0 * s;
+    let f = super::fila_de_datos(ix, y, iw, w_gravedad, w_veces, w_otra, w_mas, s);
+
+    // La gravedad: su punto de color y su nombre, sobre su color apagado.
+    let c = color_de_gravedad(g);
+    let encima = dentro(f.gravedad, e.botones.raton);
+    p.rellenar_redondeado(
+        f.gravedad,
+        10.0 * s,
+        con_alfa(c, if encima { 0.26 } else { 0.16 }),
     );
-    p.texto_linea(
-        &t1(&tx, "lec2-veces", "n", n as i64),
-        ix + 22.0 * s + nw,
-        y + 22.0 * s,
-        14.0 * s,
-        iw - nw - 30.0 * s,
+    let cy = f.gravedad.y + f.gravedad.alto / 2.0;
+    p.circulo((f.gravedad.x + 18.0 * s, cy), 6.0 * s, c);
+    let (_, th) = p.medir_texto(&nombre, tam);
+    p.texto(
+        &nombre,
+        f.gravedad.x + 34.0 * s,
+        cy - th / 2.0,
+        tam,
         v2::TEXTO,
     );
-    let ultima = l.repeticiones.iter().copied().max().unwrap_or(l.creada);
-    let donde = if x.general {
-        String::new()
-    } else {
-        format!(" · {}", x.nombre_chat)
-    };
-    p.texto_linea(
-        &format!(
-            "{}{donde}",
-            t1(&tx, "lec2-la-ultima", "fecha", fecha_corta(&tx, ultima))
-        ),
-        ix + 14.0 * s,
-        y + 50.0 * s,
-        12.0 * s,
-        iw - 28.0 * s,
-        v2::APAGADO,
-    );
-    let b = RectF {
-        x: ix + 14.0 * s,
-        y: y + 74.0 * s,
-        ancho: iw - 28.0 * s,
-        alto: 40.0 * s,
-    };
-    let encima = dentro(b, e.botones.raton);
-    p.rellenar_redondeado(
-        b,
-        10.0 * s,
-        con_alfa(v2::AMARILLO, if encima { 0.24 } else { 0.16 }),
-    );
-    let rot = tx.t("lec2-me-volvio");
-    let rw = ui::medir_negrita(p, &rot, 14.0 * s, 400.0 * s).0;
-    let total_w = 26.0 * s + rw + 8.0 * s + ui::ancho_de_chapa(p, "+1", s);
-    let mut bx = b.x + ((b.ancho - total_w) / 2.0).max(6.0 * s);
-    p.icono(
-        &mi::REPLAY,
-        RectF {
-            x: bx,
-            y: b.y + 11.0 * s,
-            ancho: 18.0 * s,
-            alto: 18.0 * s,
-        },
-        v2::AMARILLO,
-    );
-    bx += 26.0 * s;
-    ui::negrita(p, &rot, bx, b.y + 11.0 * s, 14.0 * s, b.ancho, v2::AMARILLO);
-    if total_w + 12.0 * s <= b.ancho {
-        ui::chapa(
+    e.botones.zona(f.gravedad, Accion::OtraGravedad);
+
+    // Cuantas veces paso (no se pulsa: lo sube el boton de al lado).
+    if let Some(v) = f.veces {
+        let (vw, vh) = ui::medir_negrita(p, &veces, 14.0 * s, 10_000.0);
+        let cy = v.y + v.alto / 2.0;
+        p.rellenar_redondeado(
+            RectF {
+                y: cy - 14.0 * s,
+                alto: 28.0 * s,
+                ..v
+            },
+            8.0 * s,
+            con_alfa(v2::AMARILLO, 0.12),
+        );
+        ui::negrita(
             p,
-            "+1",
-            bx + rw + 8.0 * s,
-            b.y + 20.0 * s,
+            &veces,
+            v.x + (v.ancho - vw) / 2.0,
+            cy - vh / 2.0,
+            14.0 * s,
+            10_000.0,
             v2::AMARILLO,
-            ui::mezclar(v2::CAJA, v2::AMARILLO, 0.2),
-            s,
         );
     }
-    e.botones.zona(b, Accion::OtraVez);
-    y += caja.alto + 16.0 * s;
 
-    // Gravedad.
-    p.texto(&tx.t("lec2-gravedad"), ix, y, 12.0 * s, v2::APAGADO);
-    y += 20.0 * s;
-    let seg = RectF {
-        x: ix,
-        y,
-        ancho: iw,
-        alto: 42.0 * s,
-    };
-    p.rellenar_redondeado(seg, 10.0 * s, v2::CAJA);
-    let bw = (iw - 6.0 * s - 8.0 * s) / 3.0;
-    for g in 1..=3 {
-        let b = RectF {
-            x: ix + 3.0 * s + (g - 1) as f32 * (bw + 4.0 * s),
-            y: y + 3.0 * s,
-            ancho: bw,
-            alto: 36.0 * s,
-        };
-        let puesta = l.gravedad.clamp(1, 3) == g;
-        if puesta {
-            p.rellenar_redondeado(b, 8.0 * s, color_de_gravedad(g));
-        } else if dentro(b, e.botones.raton) {
-            p.rellenar_redondeado(b, 8.0 * s, con_alfa(v2::BLANCO, 0.08));
-        }
-        let t = tx.t(nombre_de_gravedad(g));
-        // La letra se encoge si el rotulo no cabe (columna estrecha).
-        let mut tam = 13.0 * s;
-        while tam > 10.0 * s && ui::medir_negrita(p, &t, tam, 10_000.0).0 > bw - 6.0 * s {
-            tam -= 0.5 * s;
-        }
-        let (tw, th) = if puesta {
-            ui::medir_negrita(p, &t, tam, 10_000.0)
-        } else {
-            p.medir_texto(&t, tam)
-        };
-        let (tx0, ty0) = (b.x + (b.ancho - tw) / 2.0, b.y + (b.alto - th) / 2.0);
-        if puesta {
-            ui::negrita(p, &t, tx0, ty0, tam, 10_000.0, v2::OSCURO);
-        } else {
-            p.texto(&t, tx0, ty0, tam, v2::TEXTO);
-        }
-        e.botones.zona(b, Accion::Gravedad(g));
+    // Me volvio a pasar.
+    ui::boton_v2(
+        p,
+        &mut e.botones,
+        f.otra_vez,
+        Accion::OtraVez,
+        Some(&mi::REPLAY),
+        &otra,
+        Some("+1"),
+        Some(con_alfa(v2::AMARILLO, 0.14)),
+        v2::AMARILLO,
+        s,
+    );
+
+    // Mas campos… (o Menos campos), como enlace con su flecha.
+    let encima = dentro(f.mas, e.botones.raton);
+    if encima {
+        p.rellenar_redondeado(f.mas, 8.0 * s, con_alfa(v2::BLANCO, 0.06));
     }
-    y += 42.0 * s + 14.0 * s;
+    let tinta = if encima { hex(0xa0e4ff) } else { v2::CIAN };
+    let cy = f.mas.y + f.mas.alto / 2.0;
+    let (mw, mh) = p.medir_texto(&mas, tam);
+    p.texto(&mas, f.mas.x + 10.0 * s, cy - mh / 2.0, tam, tinta);
+    p.icono(
+        if e.mas_campos {
+            &mi::KEYBOARD_ARROW_UP
+        } else {
+            &mi::KEYBOARD_ARROW_DOWN
+        },
+        RectF {
+            x: f.mas.x + 12.0 * s + mw,
+            y: cy - 8.0 * s,
+            ancho: 16.0 * s,
+            alto: 16.0 * s,
+        },
+        tinta,
+    );
+    e.botones.zona(f.mas, Accion::MasCampos);
+    y + f.alto
+}
 
-    // Area.
-    p.texto(&tx.t("lec2-area"), ix, y, 12.0 * s, v2::APAGADO);
-    y += 20.0 * s;
-    let pill = RectF {
-        x: ix,
-        y,
-        ancho: iw,
-        alto: 40.0 * s,
-    };
-    let encima = dentro(pill, e.botones.raton) || e.menu == Some(Menu::AreaFicha);
-    p.rellenar_redondeado(pill, 10.0 * s, if encima { v2::ENCIMA } else { v2::CAJA });
+/// **«Mas campos…» desplegado** dentro de la ficha: area (con su menu),
+/// proyecto, etiquetas, relacionadas, el proximo repaso y el enlace a la
+/// ficha completa. Plegado no se ve nada de esto: se rellena solo al
+/// escribir y casi nunca hace falta mirarlo. Donde va cada cosa lo decide
+/// `super::disponer_mas_campos`. Devuelve la y de debajo.
+#[allow(clippy::too_many_arguments)] // estado, pintor, entrada, sitio, ancho y escala
+fn mas_campos(
+    e: &mut Estado,
+    p: &Pintor,
+    x: &super::Entrada,
+    ix: f32,
+    y0: f32,
+    iw: f32,
+    s: f32,
+) -> f32 {
+    use super::PiezaEtiqueta as P;
+    let tx = e.textos.clone();
+    let l = x.leccion.clone();
+    let rotulos = ["lec2-area", "lec2-proyecto", "lec2-etiquetas"].map(|k| tx.t(k));
     let area = if l.area.trim().is_empty() {
         tx.t("lec2-sin-area")
     } else {
         l.area.clone()
     };
-    p.circulo((ix + 17.0 * s, y + 20.0 * s), 5.0 * s, color_de(&l.area));
+    let todas = l.todas_las_etiquetas();
+    let etiquetas: Vec<String> = todas
+        .iter()
+        .map(|t| {
+            if l.etiquetas.contains(t) {
+                t.clone()
+            } else {
+                format!("✨ {t}")
+            }
+        })
+        .collect();
+    let anadir = tx.t("lec2-anadir");
+    let completa = tx.t("lecs-ficha-completa");
+    let rel = e.relacionadas();
+    let d = super::disponer_mas_campos(
+        &super::PedidoMasCampos {
+            rotulos: [&rotulos[0], &rotulos[1], &rotulos[2]],
+            area: &area,
+            etiquetas: &etiquetas,
+            escribiendo: e.foco == Some(Foco::Etiqueta),
+            anadir: &anadir,
+            relacionadas: rel.len(),
+            completa: &completa,
+        },
+        |t| p.medir_texto(t, 13.0 * s).0,
+        ix,
+        y0,
+        iw,
+        s,
+    );
+    let obj = super::OBJETIVO * s;
+    p.rellenar_redondeado(d.caja, 14.0 * s, v2::COLUMNA);
+    for (t, y) in rotulos.iter().zip(d.filas) {
+        let (_, th) = p.medir_texto(t, 13.0 * s);
+        p.texto(t, d.x_rotulo, y + (obj - th) / 2.0, 13.0 * s, v2::APAGADO);
+    }
+
+    // Area: el menu de siempre.
+    let pill = d.area;
+    let encima = dentro(pill, e.botones.raton) || e.menu == Some(Menu::AreaFicha);
+    p.rellenar_redondeado(pill, 10.0 * s, if encima { v2::ENCIMA } else { v2::CAJA });
+    let cy = pill.y + pill.alto / 2.0;
+    p.circulo((pill.x + 17.0 * s, cy), 5.0 * s, color_de(&l.area));
     p.texto_linea(
         &area,
-        ix + 30.0 * s,
-        y + 11.0 * s,
+        pill.x + 30.0 * s,
+        cy - 9.0 * s,
         14.0 * s,
-        iw - 60.0 * s,
+        (pill.ancho - 60.0 * s).max(0.0),
         v2::TEXTO,
     );
     p.icono(
         &mi::KEYBOARD_ARROW_DOWN,
         RectF {
-            x: ix + iw - 28.0 * s,
-            y: y + 12.0 * s,
+            x: pill.x + pill.ancho - 28.0 * s,
+            y: cy - 8.0 * s,
             ancho: 16.0 * s,
             alto: 16.0 * s,
         },
@@ -1730,27 +1640,19 @@ fn columna_datos(e: &mut Estado, p: &Pintor, r: RectF, s: f32) {
     if e.menu == Some(Menu::AreaFicha) {
         e.ancla = pill;
     }
-    y += 40.0 * s + 14.0 * s;
 
-    // Proyecto (el chat donde vive: no se cambia desde aqui, como en el movil).
-    p.texto(&tx.t("lec2-proyecto"), ix, y, 12.0 * s, v2::APAGADO);
-    y += 20.0 * s;
-    let pill = RectF {
-        x: ix,
-        y,
-        ancho: iw,
-        alto: 40.0 * s,
-    };
-    p.rellenar_redondeado(pill, 10.0 * s, v2::CAJA);
+    // Proyecto: el chat donde vive (no se cambia desde aqui, como en el
+    // movil).
     let nombre = if x.general {
         tx.t("lec2-sin-proyecto")
     } else {
         x.nombre_chat.clone()
     };
+    let cy = d.filas[1] + obj / 2.0;
     p.rellenar_redondeado(
         RectF {
-            x: ix + 12.0 * s,
-            y: y + 15.0 * s,
+            x: d.x_valor + 2.0 * s,
+            y: cy - 5.0 * s,
             ancho: 10.0 * s,
             alto: 10.0 * s,
         },
@@ -1763,155 +1665,120 @@ fn columna_datos(e: &mut Estado, p: &Pintor, r: RectF, s: f32) {
     );
     p.texto_linea(
         &nombre,
-        ix + 30.0 * s,
-        y + 11.0 * s,
+        d.x_valor + 20.0 * s,
+        cy - 9.0 * s,
         14.0 * s,
-        iw - 40.0 * s,
+        d.ancho_valor - 20.0 * s,
         v2::TEXTO,
     );
-    y += 40.0 * s + 14.0 * s;
 
-    // Etiquetas.
-    p.texto(&tx.t("lec2-etiquetas"), ix, y, 12.0 * s, v2::APAGADO);
-    y += 20.0 * s;
-    let mut tx_ = ix;
-    for (i, t) in l.todas_las_etiquetas().iter().enumerate() {
-        let auto = !l.etiquetas.contains(t);
-        let rot = if auto { format!("✨ {t}") } else { t.clone() };
-        let w = p.medir_texto(&rot, 13.0 * s).0 + 20.0 * s + 16.0 * s;
-        if tx_ > ix && tx_ + w > ix + iw {
-            tx_ = ix;
-            y += 36.0 * s;
+    // Etiquetas: las puestas, las ✨ automaticas y «+ Anadir».
+    for (c, pieza) in &d.etiquetas {
+        let c = *c;
+        let cy = c.y + c.alto / 2.0;
+        match pieza {
+            P::Puesta(i) => {
+                let encima = dentro(c, e.botones.raton);
+                p.rellenar_redondeado(c, 8.0 * s, if encima { v2::ENCIMA } else { v2::CAJA });
+                p.con_recorte(c, |p| {
+                    p.texto_color(
+                        &etiquetas[*i],
+                        c.x + 10.0 * s,
+                        cy - 9.0 * s,
+                        13.0 * s,
+                        hex(0xe5e5ea),
+                    );
+                });
+                let xx = c.x + c.ancho - 16.0 * s;
+                let col = if encima { v2::TEXTO } else { v2::APAGADO };
+                p.linea(
+                    (xx - 3.5 * s, cy - 3.5 * s),
+                    (xx + 3.5 * s, cy + 3.5 * s),
+                    1.4 * s,
+                    col,
+                );
+                p.linea(
+                    (xx - 3.5 * s, cy + 3.5 * s),
+                    (xx + 3.5 * s, cy - 3.5 * s),
+                    1.4 * s,
+                    col,
+                );
+                e.botones.zona(c, Accion::QuitarEtiqueta(*i));
+            }
+            P::Escribiendo => {
+                p.rellenar_redondeado(ui::encoger(c, -2.0 * s), 9.0 * s, v2::ELEGIDO);
+                p.rellenar_redondeado(c, 8.0 * s, v2::CAJA);
+                let pista = tx.t("lec2-nueva-etiqueta");
+                let ed = &e.editando;
+                p.con_recorte(c, |p| {
+                    ed.pintar_texto(
+                        p,
+                        c.x + 10.0 * s,
+                        cy - 9.0 * s,
+                        100_000.0,
+                        13.0 * s,
+                        true,
+                        &pista,
+                        s,
+                    )
+                });
+                e.botones.zona(c, Accion::Editar(Foco::Etiqueta));
+            }
+            P::Anadir => {
+                if dentro(c, e.botones.raton) {
+                    p.rellenar_redondeado(c, 8.0 * s, con_alfa(v2::BLANCO, 0.06));
+                }
+                p.trazar_discontinuo(c, 1.0 * s, con_alfa(v2::BLANCO, 0.25));
+                p.texto(&anadir, c.x + 10.0 * s, cy - 9.0 * s, 13.0 * s, v2::SUAVE);
+                e.botones.zona(c, Accion::Editar(Foco::Etiqueta));
+            }
         }
-        let c = RectF {
-            x: tx_,
-            y,
-            ancho: w,
-            alto: 30.0 * s,
-        };
-        let encima = dentro(c, e.botones.raton);
-        p.rellenar_redondeado(c, 8.0 * s, if encima { v2::ENCIMA } else { v2::CAJA });
-        p.texto_color(&rot, tx_ + 10.0 * s, y + 6.0 * s, 13.0 * s, hex(0xe5e5ea));
-        let xx = c.x + c.ancho - 16.0 * s;
-        let col = if encima { v2::TEXTO } else { v2::APAGADO };
-        p.linea(
-            (xx - 3.5 * s, y + 11.5 * s),
-            (xx + 3.5 * s, y + 18.5 * s),
-            1.4 * s,
-            col,
-        );
-        p.linea(
-            (xx - 3.5 * s, y + 18.5 * s),
-            (xx + 3.5 * s, y + 11.5 * s),
-            1.4 * s,
-            col,
-        );
-        e.botones.zona(c, Accion::QuitarEtiqueta(i));
-        tx_ += w + 6.0 * s;
     }
-    if e.foco == Some(Foco::Etiqueta) {
-        if tx_ > ix && tx_ + 140.0 * s > ix + iw {
-            tx_ = ix;
-            y += 36.0 * s;
-        }
-        let w = (ix + iw - tx_).max(120.0 * s);
-        let c = RectF {
-            x: tx_,
-            y,
-            ancho: w,
-            alto: 30.0 * s,
-        };
-        p.rellenar_redondeado(ui::encoger(c, -2.0 * s), 9.0 * s, v2::ELEGIDO);
-        p.rellenar_redondeado(c, 8.0 * s, v2::CAJA);
-        let pista = tx.t("lec2-nueva-etiqueta");
-        let ed = &e.editando;
-        p.con_recorte(c, |p| {
-            ed.pintar_texto(
-                p,
-                c.x + 10.0 * s,
-                y + 6.0 * s,
-                100_000.0,
-                13.0 * s,
-                true,
-                &pista,
-                s,
-            )
-        });
-        e.botones.zona(c, Accion::Editar(Foco::Etiqueta));
-    } else {
-        let rot = tx.t("lec2-anadir");
-        let w = p.medir_texto(&rot, 13.0 * s).0 + 20.0 * s;
-        if tx_ > ix && tx_ + w > ix + iw {
-            tx_ = ix;
-            y += 36.0 * s;
-        }
-        let c = RectF {
-            x: tx_,
-            y,
-            ancho: w,
-            alto: 30.0 * s,
-        };
-        if dentro(c, e.botones.raton) {
-            p.rellenar_redondeado(c, 8.0 * s, con_alfa(v2::BLANCO, 0.06));
-        }
-        p.trazar_discontinuo(c, 1.0 * s, con_alfa(v2::BLANCO, 0.25));
-        p.texto(&rot, tx_ + 10.0 * s, y + 6.0 * s, 13.0 * s, v2::SUAVE);
-        e.botones.zona(c, Accion::Editar(Foco::Etiqueta));
-    }
-    y += 30.0 * s + 14.0 * s;
 
     // Relacionadas.
-    let rel = e.relacionadas();
-    let pie = r.y + r.alto - 40.0 * s;
-    if !rel.is_empty() && y + 64.0 * s < pie {
-        p.texto(&tx.t("lec2-relacionadas"), ix, y, 12.0 * s, v2::APAGADO);
-        y += 20.0 * s;
-        for (i, o) in rel.iter().enumerate() {
-            if y + 44.0 * s > pie {
-                break;
-            }
-            let c = RectF {
-                x: ix,
-                y,
-                ancho: iw,
-                alto: 44.0 * s,
-            };
-            let encima = dentro(c, e.botones.raton);
-            p.rellenar_redondeado(c, 10.0 * s, if encima { v2::ENCIMA } else { v2::CAJA });
-            p.circulo(
-                (ix + 15.0 * s, y + 22.0 * s),
-                5.0 * s,
-                color_de_gravedad(o.gravedad),
-            );
-            p.texto_linea(
-                &o.titulo.replace('\n', " "),
-                ix + 30.0 * s,
-                y + 13.0 * s,
-                13.0 * s,
-                iw - 56.0 * s,
-                v2::TEXTO,
-            );
-            p.icono(
-                &mi::ARROW_FORWARD,
-                RectF {
-                    x: ix + iw - 24.0 * s,
-                    y: y + 15.0 * s,
-                    ancho: 14.0 * s,
-                    alto: 14.0 * s,
-                },
-                v2::APAGADO,
-            );
-            e.botones.zona(c, Accion::Relacionada(i));
-            y += 50.0 * s;
-        }
+    if let Some(ry) = d.rotulo_relacionadas {
+        p.texto(
+            &tx.t("lec2-relacionadas"),
+            d.x_rotulo,
+            ry + 6.0 * s,
+            13.0 * s,
+            v2::APAGADO,
+        );
+    }
+    for (i, (c, o)) in d.relacionadas.iter().zip(&rel).enumerate() {
+        let c = *c;
+        let encima = dentro(c, e.botones.raton);
+        p.rellenar_redondeado(c, 10.0 * s, if encima { v2::ENCIMA } else { v2::CAJA });
+        let cy = c.y + c.alto / 2.0;
+        p.circulo((c.x + 15.0 * s, cy), 5.0 * s, color_de_gravedad(o.gravedad));
+        p.texto_linea(
+            &o.titulo.replace('\n', " "),
+            c.x + 30.0 * s,
+            cy - 9.0 * s,
+            13.0 * s,
+            c.ancho - 56.0 * s,
+            v2::TEXTO,
+        );
+        p.icono(
+            &mi::ARROW_FORWARD,
+            RectF {
+                x: c.x + c.ancho - 24.0 * s,
+                y: cy - 7.0 * s,
+                ancho: 14.0 * s,
+                alto: 14.0 * s,
+            },
+            v2::APAGADO,
+        );
+        e.botones.zona(c, Accion::Relacionada(i));
     }
 
-    // El proximo repaso.
+    // El proximo repaso y, a su derecha, la ficha completa.
+    let cy = d.repaso + obj / 2.0;
     p.icono(
         &mi::ALARM,
         RectF {
-            x: ix,
-            y: pie + 12.0 * s,
+            x: d.x_rotulo,
+            y: cy - 7.0 * s,
             ancho: 14.0 * s,
             alto: 14.0 * s,
         },
@@ -1919,12 +1786,27 @@ fn columna_datos(e: &mut Estado, p: &Pintor, r: RectF, s: f32) {
     );
     p.texto_linea(
         &proximo_repaso(&tx, &l, e.ahora),
-        ix + 20.0 * s,
-        pie + 11.0 * s,
+        d.x_rotulo + 20.0 * s,
+        cy - 8.0 * s,
         12.0 * s,
-        iw - 20.0 * s,
+        (d.completa.x - d.x_rotulo - 30.0 * s).max(0.0),
         v2::APAGADO,
     );
+    let c = d.completa;
+    let encima = dentro(c, e.botones.raton);
+    if encima {
+        p.rellenar_redondeado(c, 8.0 * s, con_alfa(v2::BLANCO, 0.06));
+    }
+    let (_, th) = p.medir_texto(&completa, 13.0 * s);
+    p.texto(
+        &completa,
+        c.x + 10.0 * s,
+        cy - th / 2.0,
+        13.0 * s,
+        if encima { hex(0xa0e4ff) } else { v2::CIAN },
+    );
+    e.botones.zona(c, Accion::FichaCompleta);
+    d.caja.y + d.caja.alto
 }
 
 /// «Proximo repaso: hoy / manana / en 5 dias».

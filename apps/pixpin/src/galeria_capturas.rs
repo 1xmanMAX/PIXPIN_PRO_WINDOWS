@@ -24,13 +24,26 @@
 //! donde se puede sacar a mano: nada se borra de verdad desde aqui, y por
 //! eso borrar no pregunta: avisa con «Deshacer» (Ctrl+Z).
 //!
-//! **La v2** (maqueta `Galeria2.dc.html`, 4-oct): filtros con su numero a
-//! la izquierda, buscador (que tambien encuentra el texto de dentro de las
-//! capturas, leido con el OCR de Windows en segundo plano), las capturas
-//! agrupadas por dia, la caducidad por colores (gris, naranja, rojo y verde
-//! de conservada), un modo de elegir varias con su barra de acciones, y un
-//! panel de detalle con «Conservar», «Dar 7 dias mas» y el texto reconocido.
-//! Lo que se decide sin pintar vive en [`logica`].
+//! **La v2** (maqueta `Galeria2.dc.html`, 4-oct): buscador (que tambien
+//! encuentra el texto de dentro de las capturas, leido con el OCR de
+//! Windows en segundo plano), las capturas agrupadas por dia, la caducidad
+//! por colores (gris, naranja, rojo y verde de conservada), un modo de
+//! elegir varias con su barra de acciones, y un panel de detalle con
+//! «Conservar» y «Dar 7 dias mas». Lo que se decide sin pintar vive en
+//! [`logica`].
+//!
+//! El 5-oct el usuario pidio quitar elementos que sobraban: la barra
+//! lateral de filtros (Hoy, Esta semana, Papelera... «no se usan»), la
+//! vista previa pequena del panel y el texto reconocido a la vista (en el
+//! panel y la chapita «Aa texto» de cada miniatura). El texto se sigue
+//! leyendo en segundo plano: es lo que deja buscar por lo que pone dentro.
+//!
+//! El 6-oct pasa al sistema de diseno comun (`crate::v2`) con lo que pidio
+//! el revisor: el foco solo tras un clic o una flecha (un solo anillo azul
+//! de esquinas rectas), un «⋯» al pasar por una celda que abre el mismo
+//! menu que el clic derecho, «hoy» y una pista en la chapita de los dias,
+//! la barra de elegidas con los botones v2 (y «Guardar como») y el buscador
+//! como una caja de verdad (`ui::Campo`).
 
 #![forbid(unsafe_code)]
 
@@ -43,19 +56,20 @@ use std::sync::mpsc::{Receiver, Sender, channel};
 use std::time::{Duration, Instant, SystemTime};
 
 use anyhow::{Context, Result};
-use logica::{Filtro, Plazo, Tono};
 use pixpin_codec::ImagenRgba;
 use pixpin_geom::Rect;
-use pixpin_render::icono::Icono;
 use pixpin_render::icono::material as mi;
-use pixpin_render::{Color, EstiloTexto, Pintor, RectF, Superficie, Tramo};
+use pixpin_render::{Color, Pintor, RectF, Superficie};
 use pixpin_shell::overlay::{EventoOverlay, VentanaOverlay};
 use pixpin_store::{Catalogo, Idioma, Ubicacion};
 use windows::Win32::Graphics::Direct2D::ID2D1Bitmap1;
 
-use crate::caja_dibujo::hex;
+use crate::lecciones::ui::{Campo, boton_v2};
 use crate::overlay::Recursos;
-use crate::ventanita::{APAGADO, Botones, centrado, dentro};
+use crate::v2::color::{blanco, negro, oscurecer};
+use crate::v2::geom::{cortar, encoger};
+use crate::v2::{self as d, aviso::Aviso};
+use crate::ventanita::{Botones, centrado, dentro};
 
 /// Lado mayor de la miniatura guardada: la celda mide hasta ~230 logicos
 /// de ancho; con 256 no se ve pastosa y pesa 256 KB como mucho.
@@ -221,10 +235,9 @@ pub(crate) fn borrar(
 
 // ----------------------------------------------------------- miniaturas
 
-/// Lo que devuelve el hilo de las miniaturas.
-/// Con la miniatura van las medidas de verdad de la captura (leidas de su
-/// cabecera, sin descomprimirla), que salen en el panel de detalle.
-type Hecha = (PathBuf, Option<ImagenRgba>, Option<(u32, u32)>);
+/// Lo que devuelve el hilo de las miniaturas: la captura y su miniatura
+/// (`None` si no se pudo leer).
+type Hecha = (PathBuf, Option<ImagenRgba>);
 
 enum Mini {
     Pedida,
@@ -260,8 +273,7 @@ fn lanzar_lector(cache: PathBuf, aviso: isize) -> (Sender<(Entrada, PathBuf)>, R
                     continue;
                 };
                 let mini = leer_reducida(&entrada.ruta, &en_cache);
-                let medidas = pixpin_codec::imagen::medidas(&entrada.ruta).ok();
-                if dar.send((entrada.ruta, mini, medidas)).is_err() {
+                if dar.send((entrada.ruta, mini)).is_err() {
                     return;
                 }
                 if aviso != 0 {
@@ -314,15 +326,15 @@ fn ruta_del_texto(cache: &Path, e: &Entrada) -> PathBuf {
 }
 
 /// **Lee el texto de las capturas en segundo plano**, con el OCR que trae
-/// Windows (`pixpin_ocr`), para buscar por lo que pone dentro y para el
-/// panel de detalle. Una captura de pantalla tarda de 170 a 670 ms (medido
+/// Windows (`pixpin_ocr`), para buscar por lo que pone dentro (no se
+/// ensena: el usuario lo quito de la vista el 5-oct). Una captura de pantalla tarda de 170 a 670 ms (medido
 /// en `main.rs`): por eso va en su hilo, de una en una, con un respiro entre
 /// una y otra para no quitarle el procesador al equipo, y lo leido se
 /// guarda en la cache: la segunda vez que se abre la galeria no se relee.
 ///
 /// Como las miniaturas, atiende primero lo ULTIMO pedido: la ventana pide
-/// todas al abrir (de la mas vieja a la mas nueva) y luego, cada vez que se
-/// elige una, esa, que asi sale enseguida en el detalle.
+/// todas al abrir (de la mas vieja a la mas nueva), asi que las nuevas,
+/// que son las que mas se buscan, se leen antes.
 fn lanzar_lector_de_texto(cache: PathBuf, aviso: isize) -> (Sender<Entrada>, Receiver<Leido>) {
     let (pedir, pedidos) = channel::<Entrada>();
     let (dar, leidos) = channel::<Leido>();
@@ -387,42 +399,20 @@ fn lanzar_lector_de_texto(cache: PathBuf, aviso: isize) -> (Sender<Entrada>, Rec
 
 // --------------------------------------------------------------- la ventana
 
-// Los colores de la maqueta v2 (`Galeria2.dc.html`). La galeria es oscura
-// como las demas ventanitas (`ventanita`), que no tienen tema claro.
-const FONDO_V: Color = hex(0x1C1C1E);
-const LATERAL: Color = hex(0x232326);
-const BARRA_ELEGIDAS: Color = hex(0x2C2C2E);
-const AZUL_V: Color = hex(0x0A84FF);
-const AZUL_PRI: Color = hex(0x0060DF);
-const VERDE_V: Color = hex(0x248A3D);
-const NARANJA: Color = hex(0xFF9F0A);
-const ROJO_V: Color = hex(0xC9342B);
-const ROJO_TEXTO: Color = hex(0xFF6961);
-const ENLACE: Color = hex(0x64D2FF);
-const GRIS: Color = hex(0x98989D);
-const CLARO: Color = hex(0xF5F5F7);
-const TINTA_OSCURA: Color = hex(0x1C1C1E);
+// Los colores, radios y medidas son los del sistema v2 (`crate::v2`): la
+// galeria es oscura como las demas ventanas del rediseno.
 const TECLA_DOBLE: Duration = Duration::from_millis(500);
 
-fn blanco(a: f32) -> Color {
-    Color { a, ..Color::BLANCO }
-}
-
-fn alfa(c: Color, a: f32) -> Color {
-    Color { a, ..c }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 enum Accion {
-    /// Una zona que se traga el clic (el fondo de un panel).
+    /// Una zona que se traga el clic (el fondo de un panel, el aviso).
+    #[default]
     Nada,
     Cerrar,
     Carpeta,
-    Papelera,
     Mover,
     Buscar,
     LimpiarBusqueda,
-    Filtro(Filtro),
     AlternarEligiendo,
     SalirEligiendo,
     ElegirDia(i64),
@@ -430,26 +420,16 @@ enum Accion {
     /// Las de abajo llevan la posicion en `lista`.
     Celda(usize),
     Marca(usize),
-    Pinear(usize),
-    Copiar(usize),
-    Conservar(usize),
-    Prorrogar(usize),
-    BorrarUna(usize),
     VerGrande(usize),
-    CopiarTexto(usize),
+    /// El «⋯» de una celda: el mismo menu que el clic derecho.
+    Mas(usize),
     /// La barra de las elegidas.
     BarraConservar,
     BarraPinear,
     BarraCopiar,
+    BarraGuardar,
     BarraBorrar,
     Deshacer,
-}
-
-struct Aviso {
-    texto: String,
-    desde: Instant,
-    /// Con boton de «Deshacer» (y dura mas).
-    deshacer: bool,
 }
 
 /// Una captura llevada a la papelera de PixPin, con lo que hace falta para
@@ -467,25 +447,28 @@ struct Estado {
     /// Cuando se va cada una y cuales se conservan (`caducidad_capturas`).
     registro: crate::caducidad_capturas::Registro,
     minis: HashMap<PathBuf, Mini>,
-    /// Ancho y alto de verdad de cada captura (no los de la miniatura).
-    medidas: HashMap<PathBuf, (u32, u32)>,
-    /// El texto reconocido de cada una, tal cual y plegado para buscar.
-    leidos: HashMap<PathBuf, (String, String)>,
+    /// El texto reconocido de cada una, ya plegado: solo sirve para buscar
+    /// (no se ensena), asi que no hace falta guardarlo tal cual.
+    leidos: HashMap<PathBuf, String>,
     /// Si hay OCR: `None` mientras no se sabe.
     ocr: Option<bool>,
-    filtro: Filtro,
-    consulta: String,
+    /// El buscador: una caja de verdad (cursor, flechas, Ctrl+Retroceso,
+    /// Ctrl+V), la misma de las lecciones.
+    consulta: Campo,
     /// El cursor esta en el buscador: las letras van ahi.
     escribiendo: bool,
     /// Las posiciones de `lista` que se ven, en orden.
     vista: Vec<usize>,
     disp: logica::Disposicion,
+    /// La captura con el foco del teclado. Nace vacio y solo se pone con un
+    /// clic o una flecha: con un foco puesto solo, Intro o Supr nada mas
+    /// abrir actuaban sobre una captura que nadie habia elegido.
     foco: Option<PathBuf>,
     eligiendo: bool,
     elegidas: BTreeSet<PathBuf>,
     scroll: f32,
     botones: Botones<Accion>,
-    aviso: Option<Aviso>,
+    aviso: Option<Aviso<Accion>>,
     /// Lo ultimo borrado, para «Deshacer».
     deshacer: Vec<Borrada>,
     moviendo: Option<(pixpin_geom::Punto, Rect)>,
@@ -497,7 +480,15 @@ struct Estado {
     /// rueda y el clic en la misma tanda): se atiende tras repintar, para que
     /// caiga en la foto que se ve y no en la de antes.
     clic_pendiente: Option<pixpin_geom::Punto>,
-    en_papelera: usize,
+    /// Lo mismo para el clic derecho: con la rueda de por medio, la celda
+    /// bajo el raton es la de despues de repintar, no la de antes.
+    derecho_pendiente: Option<pixpin_geom::Punto>,
+    /// El menu de la captura `.0`: sale tras repintar, con el foco ya en
+    /// ella.
+    menu_pendiente: Option<usize>,
+    /// «Guardar como» de la barra: el dialogo necesita la ventana, que
+    /// `hacer` no tiene; sale tras repintar, como el menu.
+    guardar_pendiente: bool,
     fotograma: u64,
     ahora: i64,
 }
@@ -508,11 +499,9 @@ impl Estado {
             lista,
             registro,
             minis: HashMap::new(),
-            medidas: HashMap::new(),
             leidos: HashMap::new(),
             ocr: None,
-            filtro: Filtro::Todas,
-            consulta: String::new(),
+            consulta: Campo::default(),
             escribiendo: false,
             vista: Vec::new(),
             disp: logica::disponer(&[], 0.0, 1.0),
@@ -527,7 +516,9 @@ impl Estado {
             ultimo_clic: None,
             scroll_pintado: 0.0,
             clic_pendiente: None,
-            en_papelera: 0,
+            derecho_pendiente: None,
+            menu_pendiente: None,
+            guardar_pendiente: false,
             fotograma: 0,
             ahora: pixpin_shell::entorno::ahora_utc_ms(),
         }
@@ -535,16 +526,6 @@ impl Estado {
 
     fn se_va(&self, i: usize) -> Option<i64> {
         crate::caducidad_capturas::se_va_el(&self.registro, &self.lista[i])
-    }
-
-    fn ficha(&self, i: usize) -> logica::Ficha<'_> {
-        let e = &self.lista[i];
-        logica::Ficha {
-            extension: e.ruta.extension().and_then(|x| x.to_str()).unwrap_or(""),
-            cuando: crate::caducidad_capturas::ms_de(e.cuando),
-            se_va: self.se_va(i),
-            texto: self.leidos.get(&e.ruta).map(|(t, _)| t.as_str()),
-        }
     }
 
     fn indice(&self, ruta: &Path) -> Option<usize> {
@@ -573,11 +554,13 @@ impl Estado {
     }
 
     fn avisar(&mut self, texto: String) {
-        self.aviso = Some(Aviso {
-            texto,
-            desde: Instant::now(),
-            deshacer: false,
-        });
+        self.aviso = Some(Aviso::nuevo(texto));
+    }
+
+    /// Vacia el buscador y vuelve arriba.
+    fn vaciar_busqueda(&mut self) {
+        self.consulta = Campo::default();
+        self.scroll = 0.0;
     }
 }
 
@@ -599,20 +582,19 @@ fn coincide(e: &Estado, i: usize, consulta: &str, textos: &Catalogo) -> bool {
     let dentro = e
         .leidos
         .get(&entrada.ruta)
-        .map(|(_, p)| p.as_str())
+        .map(String::as_str)
         .unwrap_or("");
     logica::encaja(consulta, &[&nombre, &fecha, dentro])
 }
 
-/// Rehace la vista (filtro y busqueda) y su disposicion para un ancho de
-/// rejilla. Barato: se hace antes de cada fotograma y de cada tecla.
+/// Rehace la vista (la busqueda) y su disposicion para un ancho de
+/// rejilla. Barato: se hace antes de cada fotograma y de cada tecla. Sin
+/// filtros: se quitaron con el carril (5-oct), asi que se ven todas.
 fn preparar(e: &mut Estado, ancho_rejilla: f32, escala: f32, textos: &Catalogo) {
     e.ahora = pixpin_shell::entorno::ahora_utc_ms();
-    let consulta = logica::plegar(e.consulta.trim());
+    let consulta = logica::plegar(e.consulta.texto.trim());
     let vista: Vec<usize> = (0..e.lista.len())
-        .filter(|&i| {
-            logica::pasa(e.filtro, &e.ficha(i), e.ahora) && coincide(e, i, &consulta, textos)
-        })
+        .filter(|&i| coincide(e, i, &consulta, textos))
         .collect();
     let dias: Vec<i64> = vista
         .iter()
@@ -620,10 +602,11 @@ fn preparar(e: &mut Estado, ancho_rejilla: f32, escala: f32, textos: &Catalogo) 
         .collect();
     e.disp = logica::disponer(&dias, ancho_rejilla, escala);
     e.vista = vista;
-    // Sin foco (o con uno que ya no se ve), la primera de la vista: el
-    // panel de detalle nunca se queda vacio habiendo capturas.
-    if e.foco_en_vista().is_none() {
-        e.foco = e.vista.first().map(|&i| e.lista[i].ruta.clone());
+    // Un foco que la busqueda esconde (o que se borro) se suelta: Intro o
+    // Supr no deben actuar sobre una captura que no se ve. Y no se pone
+    // ninguno solo: ver `Estado::foco`.
+    if e.foco.is_some() && e.foco_en_vista().is_none() {
+        e.foco = None;
     }
     // Las elegidas que se fueron de la carpeta dejan de estarlo.
     if !e.elegidas.is_empty() {
@@ -633,42 +616,24 @@ fn preparar(e: &mut Estado, ancho_rejilla: f32, escala: f32, textos: &Catalogo) 
     }
 }
 
-/// Las zonas de la ventana, en pixeles de la ventana.
+/// Las zonas de la ventana, en pixeles de la ventana. Sin carril a la
+/// izquierda ni panel de detalle a la derecha (5-oct): la rejilla es toda la
+/// ventana bajo la cabecera, y lo que se hace con una captura sale con el
+/// clic derecho.
 #[derive(Debug, Clone, Copy, PartialEq)]
 struct Zonas {
     rejilla: RectF,
-    carril: RectF,
-    panel: Option<RectF>,
 }
 
 fn zonas(w: f32, h: f32, escala: f32) -> Zonas {
     let cab = logica::CABECERA * escala;
-    let carril = logica::CARRIL * escala;
-    let con_panel = w >= logica::ANCHO_CON_PANEL * escala;
-    let panel = if con_panel {
-        logica::PANEL * escala
-    } else {
-        0.0
-    };
     Zonas {
-        carril: RectF {
+        rejilla: RectF {
             x: 0.0,
             y: cab,
-            ancho: carril,
+            ancho: w.max(0.0),
             alto: (h - cab).max(0.0),
         },
-        rejilla: RectF {
-            x: carril,
-            y: cab,
-            ancho: (w - carril - panel).max(0.0),
-            alto: (h - cab).max(0.0),
-        },
-        panel: con_panel.then_some(RectF {
-            x: w - panel,
-            y: cab,
-            ancho: panel,
-            alto: (h - cab).max(0.0),
-        }),
     }
 }
 
@@ -709,7 +674,6 @@ fn bucle(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion) -> Resul
         listar(&dir),
         crate::caducidad_capturas::leer(raiz, pixpin_shell::entorno::ahora_utc_ms()),
     );
-    e.en_papelera = contar_papelera(raiz);
     let mut pedidas_texto: std::collections::HashSet<PathBuf> = std::collections::HashSet::new();
     pedir_textos(&e, &pedir_texto, &mut pedidas_texto);
     tracing::info!(capturas = e.lista.len(), "galeria de capturas abierta");
@@ -757,17 +721,21 @@ fn bucle(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion) -> Resul
                     }
                 }
                 EventoOverlay::Rueda(m) => {
-                    let sobre_panel = z.panel.is_some_and(|r| dentro(r, e.botones.raton));
-                    if !sobre_panel {
-                        // `m` viene en 120 por muesca (y en trozos pequenos
-                        // desde un panel tactil): 0,6 filas por muesca. Sin
-                        // dividir, cada muesca saltaba al principio o al final.
-                        e.scroll = (e.scroll
-                            - m as f32 / 120.0
-                                * (logica::CELDA_ALTO + logica::HUECO)
-                                * escala
-                                * 0.6)
-                            .clamp(0.0, e.disp.scroll_maximo(z.rejilla.alto));
+                    // `m` viene en 120 por muesca (y en trozos pequenos
+                    // desde un panel tactil): 0,6 filas por muesca. Sin
+                    // dividir, cada muesca saltaba al principio o al final.
+                    e.scroll = (e.scroll
+                        - m as f32 / 120.0 * (logica::CELDA_ALTO + logica::HUECO) * escala * 0.6)
+                        .clamp(0.0, e.disp.scroll_maximo(z.rejilla.alto));
+                }
+                EventoOverlay::BotonDerechoPulsado(p) => {
+                    e.botones.raton = local(p, marco);
+                    if (e.scroll - e.scroll_pintado).abs() > 0.5 {
+                        // Como el izquierdo: las zonas son de antes de la
+                        // rueda, y el menu saldria de otra captura.
+                        e.derecho_pendiente = Some(p);
+                    } else {
+                        clic_derecho(&mut e);
                     }
                 }
                 EventoOverlay::Tecla { vk, ctrl, .. } => {
@@ -783,10 +751,7 @@ fn bucle(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion) -> Resul
         }
 
         // Las miniaturas que llegaron del hilo.
-        while let Ok((ruta, mini, medidas)) = hechas.try_recv() {
-            if let Some(m) = medidas {
-                e.medidas.insert(ruta.clone(), m);
-            }
+        while let Ok((ruta, mini)) = hechas.try_recv() {
             let m = match mini {
                 Some(imagen) => Mini::Lista {
                     bitmap: None,
@@ -801,14 +766,22 @@ fn bucle(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion) -> Resul
         // Y los textos.
         while let Ok(l) = leidos.try_recv() {
             match l {
-                Leido::SinOcr => e.ocr = Some(false),
+                Leido::SinOcr => {
+                    // Cambia la pista del buscador.
+                    e.ocr = Some(false);
+                    pintar = true;
+                }
                 Leido::Texto(ruta, t) => {
                     e.ocr = Some(true);
-                    let plegado = logica::plegar(&t);
-                    e.leidos.insert(ruta, (t, plegado));
+                    e.leidos.insert(ruta, logica::plegar(&t));
+                    // El texto ya no se ensena: solo cambia lo que se ve si
+                    // hay algo buscado (puede aparecer una que lo contiene).
+                    // Sin eso, no se repinta por cada una de cientos.
+                    if !e.consulta.texto.trim().is_empty() {
+                        pintar = true;
+                    }
                 }
             }
-            pintar = true;
         }
 
         // La carpeta, si cambio (una captura nueva, una borrada a mano).
@@ -824,25 +797,15 @@ fn bucle(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion) -> Resul
                 pintar = true;
             }
         }
-        if let Some(a) = &e.aviso {
-            let dura = if a.deshacer { 8_000 } else { 2_500 };
-            if a.desde.elapsed() > Duration::from_millis(dura) {
-                e.aviso = None;
-                pintar = true;
-            }
+        if e.aviso.as_ref().is_some_and(Aviso::caducado) {
+            e.aviso = None;
+            pintar = true;
         }
 
         if pintar {
             e.fotograma += 1;
             preparar(&mut e, z.rejilla.ancho, escala, textos);
             e.scroll = e.scroll.clamp(0.0, e.disp.scroll_maximo(z.rejilla.alto));
-            // El foco se lee antes que las demas: es lo que ensena el panel.
-            if let Some(i) = e.foco_i()
-                && !e.leidos.contains_key(&e.lista[i].ruta)
-                && tiene_miniatura(&e.lista[i].ruta)
-            {
-                let _ = pedir_texto.send(e.lista[i].clone());
-            }
             pedir_y_subir(&mut e, z, &pedir, &cache, &motor);
             if let Ok(d) = superficie.empezar(&motor) {
                 let _ = motor.dibujar(&d, |p: &Pintor| {
@@ -862,6 +825,23 @@ fn bucle(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion) -> Resul
                 pintar = true;
                 continue;
             }
+            if let Some(p) = e.derecho_pendiente.take() {
+                e.botones.raton = local_de(p, marco);
+                clic_derecho(&mut e);
+                pintar = true;
+                continue;
+            }
+            if let Some(i) = e.menu_pendiente.take() {
+                menu_de_captura(&mut e, i, &ventana, textos, ubicacion);
+                pintar = true;
+                continue;
+            }
+            if std::mem::take(&mut e.guardar_pendiente) {
+                let v = e.objetivos();
+                guardar_como(&mut e, &v, &ventana, textos);
+                pintar = true;
+                continue;
+            }
         }
         let espera = if e.aviso.is_some() || e.escribiendo {
             250
@@ -877,6 +857,24 @@ fn bucle(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion) -> Resul
 /// Un punto de pantalla en coordenadas de la ventana.
 fn local_de(p: pixpin_geom::Punto, m: Rect) -> (f32, f32) {
     ((p.x - m.x) as f32, (p.y - m.y) as f32)
+}
+
+/// Un clic derecho, sobre las zonas del ultimo pintado: sobre una captura
+/// (su celda, su circulo o su «⋯»), su menu. El menu sale tras repintar:
+/// asi se ve antes cual es la captura de la que se habla (el foco salta a
+/// ella). Devuelve si habia captura.
+fn clic_derecho(e: &mut Estado) -> bool {
+    let Some(Accion::Celda(i) | Accion::Marca(i) | Accion::Mas(i)) = e.botones.bajo_el_raton()
+    else {
+        return false;
+    };
+    let Some(r) = e.lista.get(i).map(|x| x.ruta.clone()) else {
+        return false;
+    };
+    e.escribiendo = false;
+    e.foco = Some(r);
+    e.menu_pendiente = Some(i);
+    true
 }
 
 /// Un clic con el boton izquierdo, sobre las zonas del ultimo pintado.
@@ -927,19 +925,13 @@ fn pedir_textos(
     }
 }
 
-fn contar_papelera(raiz: &Path) -> usize {
-    std::fs::read_dir(raiz.join("papelera").join("capturas"))
-        .map(|d| d.flatten().filter(|x| es_captura(&x.path())).count())
-        .unwrap_or(0)
-}
-
 fn fecha_de(dir: &Path) -> Option<SystemTime> {
     std::fs::metadata(dir).and_then(|m| m.modified()).ok()
 }
 
 /// Pide al hilo las miniaturas a la vista que faltan y sube a la GPU las
 /// que ya llegaron. Se hace ANTES de pintar: crear bitmaps a medio dibujo
-/// no se puede. La del foco tambien, que sale en el panel.
+/// no se puede.
 fn pedir_y_subir(
     e: &mut Estado,
     z: Zonas,
@@ -951,12 +943,9 @@ fn pedir_y_subir(
     let rango = e
         .disp
         .visibles(e.scroll - margen, e.scroll + z.rejilla.alto + margen);
-    let mut quiero: Vec<usize> = e.vista[rango].iter().rev().copied().collect();
-    if let Some(f) = e.foco_i() {
-        quiero.push(f);
-    }
     // Al reves: el hilo atiende primero lo ultimo pedido, y asi lo de arriba
     // de la vista llega antes.
+    let quiero: Vec<usize> = e.vista[rango].iter().rev().copied().collect();
     for i in quiero {
         let entrada = &e.lista[i];
         if !tiene_miniatura(&entrada.ruta) {
@@ -1001,11 +990,8 @@ fn soltar_lejanas(e: &mut Estado, z: Zonas) {
     let rango = e
         .disp
         .visibles(e.scroll - margen, e.scroll + z.rejilla.alto + margen);
-    let mut a_la_vista: std::collections::HashSet<&PathBuf> =
+    let a_la_vista: std::collections::HashSet<&PathBuf> =
         e.vista[rango].iter().map(|&i| &e.lista[i].ruta).collect();
-    if let Some(f) = &e.foco {
-        a_la_vista.insert(f);
-    }
     let mut viejas: Vec<(u64, PathBuf)> = e
         .minis
         .iter()
@@ -1036,7 +1022,6 @@ fn tecla(
     vivo: &mut bool,
 ) {
     const ESC: u32 = 0x1B;
-    const RETROCESO: u32 = 0x08;
     const INTRO: u32 = 0x0D;
     const ESPACIO: u32 = 0x20;
     const SUPR: u32 = 0x2E;
@@ -1048,20 +1033,18 @@ fn tecla(
     }
     if e.escribiendo {
         match vk {
-            ESC if !e.consulta.is_empty() => {
-                e.consulta.clear();
-                e.scroll = 0.0;
-            }
+            ESC if !e.consulta.texto.is_empty() => e.vaciar_busqueda(),
             ESC | INTRO | 0x28 => e.escribiendo = false,
-            RETROCESO if ctrl => {
-                e.consulta.clear();
-                e.scroll = 0.0;
+            _ => {
+                // Lo demas es de la caja (Retroceso, Ctrl+Retroceso, Supr,
+                // las flechas, Inicio/Fin, Ctrl+V). Si cambio lo buscado, la
+                // rejilla vuelve arriba: lo de antes ya no es lo mismo.
+                let antes = e.consulta.texto.clone();
+                e.consulta.tecla(vk, ctrl, false, false);
+                if e.consulta.texto != antes {
+                    e.scroll = 0.0;
+                }
             }
-            RETROCESO => {
-                e.consulta.pop();
-                e.scroll = 0.0;
-            }
-            _ => {}
         }
         return;
     }
@@ -1091,10 +1074,7 @@ fn tecla(
     let mut vale = |a: Accion, e: &mut Estado| hacer(e, a, false, textos, ubicacion, vivo);
     match vk {
         ESC if e.eligiendo => vale(Accion::SalirEligiendo, e),
-        ESC if !e.consulta.is_empty() => {
-            e.consulta.clear();
-            e.scroll = 0.0;
-        }
+        ESC if !e.consulta.texto.is_empty() => e.vaciar_busqueda(),
         ESC => vale(Accion::Cerrar, e),
         INICIO => mover_a(e, 0),
         FIN => mover_a(e, e.vista.len().saturating_sub(1)),
@@ -1125,8 +1105,9 @@ fn caracter(e: &mut Estado, c: char) {
         }
         e.escribiendo = true;
     }
-    e.consulta.push(c);
-    e.scroll = 0.0;
+    if e.consulta.letra(c) {
+        e.scroll = 0.0;
+    }
 }
 
 // --------------------------------------------------------------- acciones
@@ -1158,12 +1139,8 @@ fn hacer(
     match a {
         Accion::Nada | Accion::Mover => {}
         Accion::Cerrar => *vivo = false,
-        Accion::Carpeta | Accion::Papelera => {
-            let dir = if a == Accion::Carpeta {
-                carpeta(ubicacion)
-            } else {
-                raiz.join("papelera").join("capturas")
-            };
+        Accion::Carpeta => {
+            let dir = carpeta(ubicacion);
             let _ = std::fs::create_dir_all(&dir);
             if let Err(err) = pixpin_shell::abrir(&dir) {
                 e.avisar(fallo(textos, err.to_string()));
@@ -1171,13 +1148,8 @@ fn hacer(
         }
         Accion::Buscar => e.escribiendo = true,
         Accion::LimpiarBusqueda => {
-            e.consulta.clear();
+            e.vaciar_busqueda();
             e.escribiendo = true;
-            e.scroll = 0.0;
-        }
-        Accion::Filtro(f) => {
-            e.filtro = f;
-            e.scroll = 0.0;
         }
         Accion::AlternarEligiendo => {
             e.eligiendo = !e.eligiendo;
@@ -1246,34 +1218,6 @@ fn hacer(
                 }
             }
         }
-        Accion::Pinear(i) => pinear(e, &[i], textos),
-        Accion::Copiar(i) => copiar(e, &[i], textos),
-        Accion::Conservar(i) => conservar_varias(e, &[i], raiz, textos),
-        Accion::BorrarUna(i) => borrar_varias(e, &[i], raiz, textos),
-        Accion::Prorrogar(i) => {
-            if let Some(x) = e.lista.get(i).cloned() {
-                match crate::caducidad_capturas::prorrogar(
-                    raiz,
-                    &x,
-                    pixpin_shell::entorno::ahora_utc_ms(),
-                ) {
-                    Ok(reg) => {
-                        e.registro = reg;
-                        e.avisar(textos.t("galeria-prorrogada"));
-                    }
-                    Err(err) => e.avisar(fallo(textos, err.to_string())),
-                }
-            }
-        }
-        Accion::CopiarTexto(i) => {
-            if let Some((t, _)) = e.lista.get(i).and_then(|x| e.leidos.get(&x.ruta)) {
-                let aviso = match pixpin_codec::copiar_texto(t) {
-                    Ok(()) => textos.t("galeria-texto-copiado"),
-                    Err(err) => fallo(textos, err.to_string()),
-                };
-                e.avisar(aviso);
-            }
-        }
         Accion::BarraConservar => {
             let v = e.objetivos();
             conservar_varias(e, &v, raiz, textos);
@@ -1285,6 +1229,13 @@ fn hacer(
         Accion::BarraCopiar => {
             let v = e.objetivos();
             copiar(e, &v, textos);
+        }
+        Accion::BarraGuardar => e.guardar_pendiente = !e.objetivos().is_empty(),
+        Accion::Mas(i) => {
+            if let Some(r) = e.lista.get(i).map(|x| x.ruta.clone()) {
+                e.foco = Some(r);
+                e.menu_pendiente = Some(i);
+            }
         }
         Accion::BarraBorrar => {
             let v = e.objetivos();
@@ -1300,13 +1251,157 @@ fn hacer(
                 e.registro = reg;
             }
             e.lista = listar(&carpeta(ubicacion));
-            e.en_papelera = contar_papelera(raiz);
             if let Some(b) = borradas.first() {
                 e.foco = Some(b.original.clone());
             }
             e.avisar(con_cuantas(textos, "galeria-recuperadas", vueltas));
         }
     }
+}
+
+/// **El menu del clic derecho** (5-oct): lo que antes eran los botones de
+/// encima de cada miniatura y el panel de detalle de la derecha. El usuario:
+/// «que los botones de pinear, copiar y borrar aparezcan solo cuando le doy
+/// clic derecho, y que aparezca abrir carpeta y guardar como también; la
+/// barra lateral quítala porque el usuario se puede confundir». Conservar
+/// tambien va aqui: sin el panel no quedaba otro sitio, y sin el las
+/// capturas se irian a los siete dias sin remedio.
+///
+/// Sobre una de las elegidas, el menu vale para todas ellas.
+fn menu_de_captura(
+    e: &mut Estado,
+    i: usize,
+    ventana: &VentanaOverlay,
+    textos: &Catalogo,
+    ubicacion: &Ubicacion,
+) {
+    let raiz = ubicacion.raiz();
+    let sobre_elegida = e.eligiendo
+        && e
+            .lista
+            .get(i)
+            .is_some_and(|x| e.elegidas.contains(&x.ruta));
+    let v: Vec<usize> = if sobre_elegida {
+        e.objetivos()
+    } else {
+        vec![i]
+    };
+    if v.is_empty() {
+        return;
+    }
+    let alguna_caduca = v.iter().any(|&k| e.se_va(k).is_some());
+    let mut entradas = vec![
+        (1, format!("{}\tEnter", textos.t("galeria-pinear"))),
+        (2, format!("{}\tCtrl+C", textos.t("galeria-copiar"))),
+        (3, textos.t("galeria-guardar-como")),
+        (4, textos.t("galeria-mostrar-en-carpeta")),
+    ];
+    if alguna_caduca {
+        entradas.push((5, format!("{}\tCtrl+S", textos.t("galeria-conservar"))));
+        entradas.push((7, textos.t("galeria-prorrogar")));
+    }
+    entradas.push((6, format!("{}\tSupr", textos.t("galeria-borrar"))));
+    match pixpin_shell::menu_llano(ventana.handle(), &entradas) {
+        Some(1) => pinear(e, &v, textos),
+        Some(2) => copiar(e, &v, textos),
+        Some(3) => guardar_como(e, &v, ventana, textos),
+        Some(4) => {
+            if let Some(x) = e.lista.get(v[0]) {
+                mostrar_en_carpeta(&x.ruta);
+            }
+        }
+        Some(5) => conservar_varias(e, &v, raiz, textos),
+        Some(7) => prorrogar_varias(e, &v, raiz, textos),
+        Some(6) => borrar_varias(e, &v, raiz, textos),
+        _ => {}
+    }
+}
+
+/// «Dar 7 dias mas» a las que aun se van (lo que hacia el panel de detalle).
+fn prorrogar_varias(e: &mut Estado, v: &[usize], raiz: &Path, textos: &Catalogo) {
+    let ahora = pixpin_shell::entorno::ahora_utc_ms();
+    for &k in v {
+        if e.se_va(k).is_none() {
+            continue;
+        }
+        let Some(x) = e.lista.get(k).cloned() else {
+            continue;
+        };
+        match crate::caducidad_capturas::prorrogar(raiz, &x, ahora) {
+            Ok(reg) => e.registro = reg,
+            Err(err) => {
+                e.avisar(fallo(textos, err.to_string()));
+                return;
+            }
+        }
+    }
+    e.avisar(textos.t("galeria-prorrogada"));
+}
+
+/// La carpeta de la captura, con ella ya senalada (`explorer /select,`).
+fn mostrar_en_carpeta(ruta: &Path) {
+    use std::os::windows::process::CommandExt;
+    // `raw_arg`: Explorer quiere las comillas solo alrededor de la ruta; con
+    // las que pone `arg` alrededor de todo, abre «Documentos» y no senala nada.
+    let lanzado = std::process::Command::new("explorer.exe")
+        .raw_arg(format!("/select,\"{}\"", ruta.display()))
+        .spawn();
+    if let Err(err) = lanzado {
+        tracing::warn!(?err, "galeria: no se pudo abrir la carpeta");
+    }
+}
+
+/// «Guardar como…»: una captura, con el dialogo de guardar de Windows;
+/// varias, eligiendo la carpeta (sin pisar lo que ya hubiera alli).
+fn guardar_como(e: &mut Estado, v: &[usize], ventana: &VentanaOverlay, textos: &Catalogo) {
+    let rutas: Vec<PathBuf> = v
+        .iter()
+        .filter_map(|&k| e.lista.get(k).map(|x| x.ruta.clone()))
+        .collect();
+    let hwnd = ventana.handle();
+    let copiadas = if let [una] = rutas.as_slice() {
+        let nombre = una
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        let ext = una
+            .extension()
+            .and_then(|x| x.to_str())
+            .unwrap_or("png")
+            .to_ascii_lowercase();
+        let tipo = ext.to_ascii_uppercase();
+        let Some(destino) = pixpin_shell::guardar::pedir_ruta_para(hwnd, &nombre, &tipo, &ext) else {
+            return;
+        };
+        match std::fs::copy(una, &destino) {
+            Ok(_) => 1,
+            Err(err) => {
+                e.avisar(fallo(textos, err.to_string()));
+                return;
+            }
+        }
+    } else {
+        let Some(dir) = pixpin_shell::guardar::pedir_carpeta(hwnd) else {
+            return;
+        };
+        let mut n = 0;
+        for r in &rutas {
+            let Some(nombre) = r.file_name() else { continue };
+            let mut destino = dir.join(nombre);
+            let mut k = 2;
+            while destino.exists() {
+                let base = r.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+                let ext = r.extension().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+                destino = dir.join(format!("{base} ({k}).{ext}"));
+                k += 1;
+            }
+            if std::fs::copy(r, &destino).is_ok() {
+                n += 1;
+            }
+        }
+        n
+    };
+    e.avisar(con_cuantas(textos, "galeria-guardadas", copiadas));
 }
 
 fn pinear(e: &mut Estado, v: &[usize], textos: &Catalogo) {
@@ -1359,6 +1454,11 @@ fn conservar_varias(e: &mut Estado, v: &[usize], raiz: &Path, textos: &Catalogo)
         .map(|&i| e.lista[i].ruta.clone())
         .collect();
     if pendientes.is_empty() {
+        // Sin nada que conservar, pero con algo pedido: que se sepa por que
+        // no paso nada (Ctrl+S sobre una ya conservada).
+        if !v.is_empty() {
+            e.avisar(textos.t("galeria-ya-conservadas"));
+        }
         return;
     }
     let mut hechas = 0;
@@ -1412,7 +1512,6 @@ fn borrar_varias(e: &mut Estado, v: &[usize], raiz: &Path, textos: &Catalogo) {
     {
         e.foco = siguiente;
     }
-    e.en_papelera = contar_papelera(raiz);
     if let Some(m) = error {
         e.avisar(fallo(textos, m));
         e.deshacer = borradas;
@@ -1420,15 +1519,16 @@ fn borrar_varias(e: &mut Estado, v: &[usize], raiz: &Path, textos: &Catalogo) {
     }
     let n = borradas.len();
     e.deshacer = borradas;
-    e.aviso = Some(Aviso {
-        texto: if n == 1 {
-            textos.t("galeria-borrada")
-        } else {
-            con_cuantas(textos, "galeria-borradas", n)
-        },
-        desde: Instant::now(),
-        deshacer: true,
-    });
+    let texto = if n == 1 {
+        textos.t("galeria-borrada")
+    } else {
+        con_cuantas(textos, "galeria-borradas", n)
+    };
+    e.aviso = Some(Aviso::con_deshacer(
+        texto,
+        textos.t("galeria-deshacer"),
+        Accion::Deshacer,
+    ));
 }
 
 /// **Borra varias de una vez**, con lo que hace falta para deshacerlo: a la
@@ -1551,210 +1651,9 @@ pub(crate) fn conservar(
 
 // ---------------------------------------------------------------- pintar
 
-fn encoger(r: RectF, m: f32) -> RectF {
-    RectF {
-        x: r.x + m,
-        y: r.y + m,
-        ancho: (r.ancho - 2.0 * m).max(0.0),
-        alto: (r.alto - 2.0 * m).max(0.0),
-    }
-}
-
-/// Lo comun de dos recuadros, si lo hay.
-fn cortar(a: RectF, b: RectF) -> Option<RectF> {
-    let x0 = a.x.max(b.x);
-    let y0 = a.y.max(b.y);
-    let x1 = (a.x + a.ancho).min(b.x + b.ancho);
-    let y1 = (a.y + a.alto).min(b.y + b.alto);
-    (x1 > x0 && y1 > y0).then_some(RectF {
-        x: x0,
-        y: y0,
-        ancho: x1 - x0,
-        alto: y1 - y0,
-    })
-}
-
-fn tramo_negrita(t: &str) -> [Tramo; 1] {
-    [Tramo {
-        inicio: 0,
-        longitud: t.encode_utf16().count() as u32,
-        estilo: EstiloTexto {
-            negrita: true,
-            ..Default::default()
-        },
-    }]
-}
-
-fn negrita(p: &Pintor, t: &str, x: f32, y: f32, tam: f32, color: Color) {
-    p.parrafo(t, x, y, tam, 10_000.0, &tramo_negrita(t), color);
-}
-
-fn medir_negrita(p: &Pintor, t: &str, tam: f32) -> (f32, f32) {
-    p.medir_parrafo(t, tam, 10_000.0, &tramo_negrita(t))
-}
-
-/// Un recuadro redondeado con borde: el borde es el mismo recuadro un
-/// poco mayor por debajo (no hay trazo redondeado).
-fn con_borde(p: &Pintor, r: RectF, radio: f32, fondo: Color, borde: Color, grosor: f32) {
-    p.rellenar_redondeado(r, radio, borde);
-    p.rellenar_redondeado(encoger(r, grosor), (radio - grosor).max(0.0), fondo);
-}
-
-/// La chapita de un atajo («Ctrl C», «Esc»), centrada en vertical en `yc`.
-/// Devuelve su ancho.
-fn chapita(p: &Pintor, t: &str, x: f32, yc: f32, escala: f32, sobre_azul: bool) -> f32 {
-    let tam = 11.0 * escala;
-    let (tw, _) = p.medir_texto(t, tam);
-    let caja = RectF {
-        x,
-        y: yc - 9.0 * escala,
-        ancho: tw + 12.0 * escala,
-        alto: 18.0 * escala,
-    };
-    if sobre_azul {
-        p.rellenar_redondeado(caja, 5.0 * escala, blanco(0.2));
-    } else {
-        con_borde(
-            p,
-            caja,
-            5.0 * escala,
-            hex(0x2E2E31),
-            blanco(0.14),
-            1.0 * escala,
-        );
-    }
-    let (_, th) = p.medir_texto(t, tam);
-    p.texto(
-        t,
-        caja.x + 6.0 * escala,
-        yc - th / 2.0,
-        tam,
-        if sobre_azul {
-            Color::BLANCO
-        } else {
-            hex(0xD1D1D6)
-        },
-    );
-    caja.ancho
-}
-
-fn ancho_chapita(p: &Pintor, t: &str, escala: f32) -> f32 {
-    p.medir_texto(t, 11.0 * escala).0 + 12.0 * escala
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Estilo {
-    Normal,
-    Primario,
-    Verde,
-    /// Rojo y con borde, sin relleno: «Borrar».
-    Rojo,
-    /// Encendido (el modo de elegir).
-    Activo,
-    /// Sin nada que hacer: atenuado y sin zona.
-    Apagado,
-}
-
-/// Lo que mide un boton con icono, rotulo y chapita.
-fn ancho_boton(p: &Pintor, rotulo: &str, icono: bool, chapa: Option<&str>, escala: f32) -> f32 {
-    let mut w = 28.0 * escala;
-    if !rotulo.is_empty() {
-        w += p.medir_texto(rotulo, 14.0 * escala).0;
-    }
-    if icono {
-        w += 16.0 * escala + if rotulo.is_empty() { 0.0 } else { 8.0 * escala };
-    }
-    if let Some(c) = chapa {
-        w += 8.0 * escala + ancho_chapita(p, c, escala);
-    }
-    w
-}
-
-/// **Un boton de la v2**: alto de 40, icono de 16, texto de 14, y la
-/// chapita de su atajo si la tiene. Lo apunta para el raton (salvo
-/// apagado).
-#[allow(clippy::too_many_arguments)] // estado, pintor, caja, accion, rotulo, icono, estilo, chapita, escala
-fn boton(
-    e: &mut Estado,
-    p: &Pintor,
-    caja: RectF,
-    a: Accion,
-    rotulo: &str,
-    icono: Option<&Icono>,
-    estilo: Estilo,
-    chapa: Option<&str>,
-    escala: f32,
-) {
-    let encima = estilo != Estilo::Apagado && dentro(caja, e.botones.raton);
-    let radio = 10.0 * escala;
-    let (fondo, tinta) = match estilo {
-        Estilo::Normal => (blanco(if encima { 0.15 } else { 0.09 }), CLARO),
-        Estilo::Primario => (if encima { hex(0x1A73F0) } else { AZUL_PRI }, Color::BLANCO),
-        Estilo::Verde => (if encima { hex(0x2E9E49) } else { VERDE_V }, Color::BLANCO),
-        // Opaco: el borde es un recuadro mayor por debajo, y un relleno
-        // transparente lo dejaria ver entero (saldria rojo macizo).
-        Estilo::Rojo => (
-            mezcla(hex(0x2A2A2D), ROJO_TEXTO, if encima { 0.14 } else { 0.0 }),
-            ROJO_TEXTO,
-        ),
-        Estilo::Activo => (alfa(AZUL_V, if encima { 0.3 } else { 0.2 }), Color::BLANCO),
-        Estilo::Apagado => (blanco(0.05), blanco(0.35)),
-    };
-    match estilo {
-        Estilo::Rojo => con_borde(p, caja, radio, fondo, alfa(ROJO_TEXTO, 0.4), 1.0 * escala),
-        Estilo::Activo => con_borde(p, caja, radio, hex(0x1B2B40), AZUL_V, 1.0 * escala),
-        _ => p.rellenar_redondeado(caja, radio, fondo),
-    }
-    if estilo == Estilo::Activo && encima {
-        p.rellenar_redondeado(encoger(caja, 1.0 * escala), radio, fondo);
-    }
-    let tam = 14.0 * escala;
-    let (tw, th) = if rotulo.is_empty() {
-        (0.0, 0.0)
-    } else {
-        p.medir_texto(rotulo, tam)
-    };
-    let lado = 16.0 * escala;
-    let hueco = if rotulo.is_empty() || icono.is_none() {
-        0.0
-    } else {
-        8.0 * escala
-    };
-    let chapa_w = chapa.map_or(0.0, |c| 8.0 * escala + ancho_chapita(p, c, escala));
-    let total = icono.map_or(0.0, |_| lado) + hueco + tw + chapa_w;
-    let mut x = caja.x + (caja.ancho - total) / 2.0;
-    let yc = caja.y + caja.alto / 2.0;
-    if let Some(i) = icono {
-        p.icono(
-            i,
-            RectF {
-                x,
-                y: yc - lado / 2.0,
-                ancho: lado,
-                alto: lado,
-            },
-            tinta,
-        );
-        x += lado + hueco;
-    }
-    if !rotulo.is_empty() {
-        p.texto(rotulo, x, yc - th / 2.0, tam, tinta);
-        x += tw;
-    }
-    if let Some(c) = chapa {
-        chapita(
-            p,
-            c,
-            x + 8.0 * escala,
-            yc,
-            escala,
-            matches!(estilo, Estilo::Primario | Estilo::Verde),
-        );
-    }
-    if estilo != Estilo::Apagado {
-        e.botones.zona(caja, a);
-    }
-}
+/// El fondo de los botones de la barra de elegidas: un punto mas claro que
+/// la barra (CAJA), para que se vean como botones y no como texto suelto.
+const BOTON_BARRA: Color = crate::caja_dibujo::hex(0x3B3B3E);
 
 /// Una marca de «hecho» dibujada con dos trazos (no hay icono de check
 /// suelto en `material`).
@@ -1774,524 +1673,61 @@ fn pintar_check(p: &Pintor, c: (f32, f32), lado: f32, color: Color, grosor: f32)
     );
 }
 
-/// El dibujito de cada filtro del carril.
-fn glifo_filtro(p: &Pintor, f: Filtro, caja: RectF, color: Color, escala: f32) {
-    let g = 1.8 * escala;
-    let (cx, cy) = (caja.x + caja.ancho / 2.0, caja.y + caja.alto / 2.0);
-    let s = caja.ancho;
-    match f {
-        Filtro::Todas => {
-            let l = s * 0.36;
-            for (dx, dy) in [(0.1, 0.1), (0.54, 0.1), (0.1, 0.54), (0.54, 0.54)] {
-                p.trazar(
-                    RectF {
-                        x: caja.x + s * dx,
-                        y: caja.y + s * dy,
-                        ancho: l,
-                        alto: l,
-                    },
-                    g,
-                    color,
-                );
-            }
-        }
-        Filtro::Hoy => {
-            p.anillo((cx, cy), s * 0.2, g, color);
-            for k in 0..8 {
-                let ang = k as f32 * std::f32::consts::FRAC_PI_4;
-                let (sn, cs) = ang.sin_cos();
-                p.linea(
-                    (cx + cs * s * 0.33, cy + sn * s * 0.33),
-                    (cx + cs * s * 0.45, cy + sn * s * 0.45),
-                    g,
-                    color,
-                );
-            }
-        }
-        Filtro::Semana => {
-            let r = RectF {
-                x: caja.x + s * 0.1,
-                y: caja.y + s * 0.2,
-                ancho: s * 0.8,
-                alto: s * 0.7,
-            };
-            p.trazar(r, g, color);
-            p.linea(
-                (r.x, r.y + s * 0.22),
-                (r.x + r.ancho, r.y + s * 0.22),
-                g,
-                color,
-            );
-            p.linea(
-                (caja.x + s * 0.32, caja.y + s * 0.1),
-                (caja.x + s * 0.32, caja.y + s * 0.28),
-                g,
-                color,
-            );
-            p.linea(
-                (caja.x + s * 0.68, caja.y + s * 0.1),
-                (caja.x + s * 0.68, caja.y + s * 0.28),
-                g,
-                color,
-            );
-        }
-        Filtro::Conservadas => p.icono(&mi::BOOKMARK_BORDER, caja, color),
-        Filtro::Pronto => p.icono(&mi::ALARM, caja, color),
-        Filtro::Gif => {
-            let t = "GIF";
-            let tam = 8.5 * escala;
-            let (tw, th) = medir_negrita(p, t, tam);
-            p.rellenar_redondeado(encoger(caja, 1.0 * escala), 3.0 * escala, alfa(color, 0.25));
-            negrita(p, t, cx - tw / 2.0, cy - th / 2.0, tam, color);
-        }
-        Filtro::Videos => p.icono(&mi::PLAY_ARROW, caja, color),
-        Filtro::ConTexto => {
-            let t = "Aa";
-            let tam = 12.0 * escala;
-            let (tw, th) = medir_negrita(p, t, tam);
-            negrita(p, t, cx - tw / 2.0, cy - th / 2.0, tam, color);
-        }
-    }
-}
-
 fn pintar_todo(e: &mut Estado, p: &Pintor, w: f32, h: f32, escala: f32, textos: &Catalogo) {
-    p.limpiar(FONDO_V);
+    p.limpiar(d::FONDO);
     e.botones.vaciar();
     let z = zonas(w, h, escala);
     pintar_rejilla(e, p, z, escala, textos);
-    pintar_carril(e, p, z, escala, textos);
-    if let Some(panel) = z.panel {
-        pintar_panel(e, p, panel, escala, textos);
-    }
     pintar_cabecera(e, p, w, escala, textos);
 }
 
+/// La barra de arriba, la comun de las cuatro ventanas (`crate::cabecera`):
+/// el titulo, el buscador y, como botones propios, elegir varias y abrir la
+/// carpeta.
 fn pintar_cabecera(e: &mut Estado, p: &Pintor, w: f32, escala: f32, textos: &Catalogo) {
-    let alto = logica::CABECERA * escala;
-    let caja = RectF {
-        x: 0.0,
-        y: 0.0,
-        ancho: w,
-        alto,
-    };
-    p.rellenar(caja, FONDO_V);
-    p.rellenar(
-        RectF {
-            x: 0.0,
-            y: alto - 1.0 * escala,
-            ancho: w,
-            alto: 1.0 * escala,
-        },
-        blanco(0.07),
-    );
-    // Su zona de mover, antes que los botones (que le ganan).
-    e.botones.zona(caja, Accion::Mover);
-    let x0 = 20.0 * escala;
-    negrita(
-        p,
-        &textos.t("galeria-titulo"),
-        x0,
-        12.0 * escala,
-        17.0 * escala,
-        CLARO,
-    );
-    p.texto_linea(
-        &con_cuantas(textos, "galeria-subtitulo", e.lista.len()),
-        x0,
-        36.0 * escala,
-        12.0 * escala,
-        180.0 * escala,
-        GRIS,
-    );
-
-    // A la derecha, de fuera adentro: cerrar, la carpeta y elegir.
-    let lado = 40.0 * escala;
-    let yb = (alto - lado) / 2.0;
-    let cerrar = RectF {
-        x: w - 16.0 * escala - lado,
-        y: yb,
-        ancho: lado,
-        alto: lado,
-    };
-    boton(
-        e,
-        p,
-        cerrar,
-        Accion::Cerrar,
-        "",
-        Some(&mi::CLOSE),
-        Estilo::Normal,
-        None,
-        escala,
-    );
-    let rotulo = textos.t("galeria-abrir-carpeta");
-    let wc = ancho_boton(p, &rotulo, true, None, escala);
-    let carpeta_b = RectF {
-        x: cerrar.x - 10.0 * escala - wc,
-        y: yb,
-        ancho: wc,
-        alto: lado,
-    };
-    boton(
-        e,
-        p,
-        carpeta_b,
-        Accion::Carpeta,
-        &rotulo,
-        Some(&mi::FOLDER),
-        Estilo::Normal,
-        None,
-        escala,
-    );
-    let (rotulo, estilo, chapa) = if e.eligiendo {
-        (textos.t("galeria-eligiendo"), Estilo::Activo, Some("Esc"))
+    let titulo = textos.t("galeria-titulo");
+    let subtitulo = con_cuantas(textos, "galeria-subtitulo", e.lista.len());
+    let pista = if e.ocr == Some(false) {
+        textos.t("galeria-buscar-sin-ocr")
     } else {
-        (textos.t("galeria-elegir"), Estilo::Normal, None)
+        textos.t("galeria-buscar")
     };
-    let we = ancho_boton(p, &rotulo, true, chapa, escala);
-    let elegir = RectF {
-        x: carpeta_b.x - 10.0 * escala - we,
-        y: yb,
-        ancho: we,
-        alto: lado,
-    };
-    boton(
-        e,
-        p,
-        elegir,
-        Accion::AlternarEligiendo,
-        &rotulo,
-        Some(&mi::CHECK_BOX),
-        estilo,
-        chapa,
-        escala,
-    );
-
-    // El buscador, entre el titulo y los botones.
-    let xb = logica::CARRIL * escala + 4.0 * escala;
-    let ancho_b = (elegir.x - 16.0 * escala - xb).min(500.0 * escala);
-    if ancho_b < 120.0 * escala {
-        return;
-    }
-    let caja_b = RectF {
-        x: xb,
-        y: yb,
-        ancho: ancho_b,
-        alto: lado,
-    };
-    let borde = if e.escribiendo { AZUL_V } else { blanco(0.1) };
-    con_borde(p, caja_b, 10.0 * escala, hex(0x2A2A2D), borde, 1.0 * escala);
-    e.botones.zona(caja_b, Accion::Buscar);
-    let li = 16.0 * escala;
-    p.icono(
-        &mi::SEARCH,
-        RectF {
-            x: caja_b.x + 12.0 * escala,
-            y: caja_b.y + (lado - li) / 2.0,
-            ancho: li,
-            alto: li,
-        },
-        GRIS,
-    );
-    let tx = caja_b.x + 36.0 * escala;
-    let tam = 14.0 * escala;
-    // A la derecha, la chapita del atajo o, con algo escrito, la equis.
-    let derecha = if e.consulta.is_empty() {
-        let cw = ancho_chapita(p, "Ctrl F", escala);
-        chapita(
-            p,
-            "Ctrl F",
-            caja_b.x + caja_b.ancho - 12.0 * escala - cw,
-            caja_b.y + lado / 2.0,
-            escala,
-            false,
-        );
-        cw + 20.0 * escala
-    } else {
-        let l = 32.0 * escala;
-        let x = RectF {
-            x: caja_b.x + caja_b.ancho - 4.0 * escala - l,
-            y: caja_b.y + (lado - l) / 2.0,
-            ancho: l,
-            alto: l,
-        };
-        if dentro(x, e.botones.raton) {
-            p.rellenar_redondeado(x, 8.0 * escala, blanco(0.1));
-        }
-        p.icono(&mi::CLOSE, encoger(x, 8.0 * escala), GRIS);
-        e.botones.zona(x, Accion::LimpiarBusqueda);
-        l + 8.0 * escala
-    };
-    let ancho_t = (caja_b.x + caja_b.ancho - derecha - tx).max(0.0);
-    let (_, th) = p.medir_texto("Ag", tam);
-    let ty = caja_b.y + (lado - th) / 2.0;
-    if e.consulta.is_empty() {
-        let pista = if e.ocr == Some(false) {
-            textos.t("galeria-buscar-sin-ocr")
-        } else {
-            textos.t("galeria-buscar")
-        };
-        p.texto_linea(&pista, tx, ty, tam, ancho_t, GRIS);
-    } else {
-        p.texto_linea(&e.consulta, tx, ty, tam, ancho_t, CLARO);
-    }
-    if e.escribiendo {
-        let (cw, _) = if e.consulta.is_empty() {
-            (0.0, 0.0)
-        } else {
-            p.medir_texto(&e.consulta, tam)
-        };
-        let cx = (tx + cw + 1.0 * escala).min(tx + ancho_t);
-        p.rellenar(
-            RectF {
-                x: cx,
-                y: ty,
-                ancho: 1.5 * escala,
-                alto: th,
+    // El mismo rotulo encendido o apagado: si cambiara («Seleccionando»),
+    // el boton cambiaria de ancho y empujaria al buscador al pulsarlo. El
+    // estado lo dice el azul.
+    let elegir = textos.t("galeria-elegir");
+    let carpeta = textos.t("galeria-abrir-carpeta");
+    let c = crate::cabecera::Cabecera {
+        titulo: &titulo,
+        subtitulo: &subtitulo,
+        buscador: Some(crate::cabecera::Buscador {
+            texto: &e.consulta.texto,
+            pista: &pista,
+            foco: e.escribiendo,
+            cursor: Some(e.consulta.cursor),
+            enfocar: Accion::Buscar,
+            vaciar: Accion::LimpiarBusqueda,
+        }),
+        botones: vec![
+            crate::cabecera::Boton {
+                icono: Some(&mi::CHECK_BOX),
+                rotulo: &elegir,
+                chapa: None,
+                activo: e.eligiendo,
+                accion: Accion::AlternarEligiendo,
             },
-            AZUL_V,
-        );
-    }
-}
-
-fn pintar_carril(e: &mut Estado, p: &Pintor, z: Zonas, escala: f32, textos: &Catalogo) {
-    let c = z.carril;
-    p.rellenar(c, LATERAL);
-    p.rellenar(
-        RectF {
-            x: c.x + c.ancho - 1.0 * escala,
-            y: c.y,
-            ancho: 1.0 * escala,
-            alto: c.alto,
-        },
-        blanco(0.06),
-    );
-    e.botones.zona(c, Accion::Nada);
-    let x = c.x + 10.0 * escala;
-    let ancho = c.ancho - 20.0 * escala;
-    let fila = 44.0 * escala;
-    let mut y = c.y + 12.0 * escala;
-    let cuenta = |f: Filtro| {
-        (0..e.lista.len())
-            .filter(|&i| logica::pasa(f, &e.ficha(i), e.ahora))
-            .count()
+            crate::cabecera::Boton {
+                icono: Some(&mi::FOLDER),
+                rotulo: &carpeta,
+                chapa: None,
+                activo: false,
+                accion: Accion::Carpeta,
+            },
+        ],
+        mover: Accion::Mover,
+        cerrar: Accion::Cerrar,
     };
-    let cuentas: Vec<(Filtro, usize)> = Filtro::CARRIL
-        .iter()
-        .filter(|&&f| f != Filtro::ConTexto || e.ocr != Some(false))
-        .map(|&f| (f, cuenta(f)))
-        .collect();
-    let encima = e.botones.raton;
-    for (f, n) in cuentas {
-        if f == Filtro::Gif {
-            p.rellenar(
-                RectF {
-                    x: x + 6.0 * escala,
-                    y: y + 7.0 * escala,
-                    ancho: ancho - 12.0 * escala,
-                    alto: 1.0 * escala,
-                },
-                blanco(0.07),
-            );
-            y += 16.0 * escala;
-        }
-        let caja = RectF {
-            x,
-            y,
-            ancho,
-            alto: fila,
-        };
-        let elegido = e.filtro == f;
-        if elegido {
-            p.rellenar_redondeado(caja, 10.0 * escala, alfa(AZUL_V, 0.18));
-        } else if dentro(caja, encima) {
-            p.rellenar_redondeado(caja, 10.0 * escala, blanco(0.05));
-        }
-        let tinta_icono = match (elegido, f) {
-            (true, _) => AZUL_V,
-            (false, Filtro::Pronto) => NARANJA,
-            _ => GRIS,
-        };
-        let li = 18.0 * escala;
-        glifo_filtro(
-            p,
-            f,
-            RectF {
-                x: x + 12.0 * escala,
-                y: y + (fila - li) / 2.0,
-                ancho: li,
-                alto: li,
-            },
-            tinta_icono,
-            escala,
-        );
-        let tam = 14.0 * escala;
-        let (_, th) = p.medir_texto("Ag", tam);
-        let num = n.to_string();
-        let (nw, nh) = p.medir_texto(&num, 13.0 * escala);
-        p.texto_linea(
-            &textos.t(f.clave()),
-            x + 40.0 * escala,
-            y + (fila - th) / 2.0,
-            tam,
-            ancho - 60.0 * escala - nw,
-            if elegido {
-                Color::BLANCO
-            } else {
-                hex(0xE5E5EA)
-            },
-        );
-        let color_n = if f == Filtro::Pronto && n > 0 {
-            NARANJA
-        } else {
-            GRIS
-        };
-        p.texto(
-            &num,
-            x + ancho - 12.0 * escala - nw,
-            y + (fila - nh) / 2.0,
-            13.0 * escala,
-            color_n,
-        );
-        e.botones.zona(caja, Accion::Filtro(f));
-        y += fila + 2.0 * escala;
-    }
-
-    // Abajo: la papelera, lo que ocupan y la ayuda de teclas.
-    let mut yb = c.y + c.alto - 12.0 * escala;
-    let total: u64 = e.lista.iter().map(|x| x.bytes).sum();
-    let mut args = fluent_bundle::FluentArgs::new();
-    args.set(
-        "tamano",
-        logica::tamano_legible(total, pixpin_shell::entorno::separador_decimal()),
-    );
-    let ocupan = textos.t_args("galeria-ocupan", &args);
-    let (_, oh) = p.medir_texto(&ocupan, 12.0 * escala);
-    yb -= oh;
-    p.texto(&ocupan, x + 12.0 * escala, yb, 12.0 * escala, GRIS);
-    yb -= 4.0 * escala + fila;
-    let pap = RectF {
-        x,
-        y: yb,
-        ancho,
-        alto: fila,
-    };
-    if yb > y + 8.0 * escala {
-        if dentro(pap, encima) {
-            p.rellenar_redondeado(pap, 10.0 * escala, blanco(0.05));
-        }
-        let li = 18.0 * escala;
-        p.icono(
-            &mi::DELETE,
-            RectF {
-                x: x + 12.0 * escala,
-                y: yb + (fila - li) / 2.0,
-                ancho: li,
-                alto: li,
-            },
-            GRIS,
-        );
-        let tam = 14.0 * escala;
-        let (_, th) = p.medir_texto("Ag", tam);
-        p.texto(
-            &textos.t("galeria-papelera"),
-            x + 40.0 * escala,
-            yb + (fila - th) / 2.0,
-            tam,
-            hex(0xE5E5EA),
-        );
-        let num = e.en_papelera.to_string();
-        let (nw, nh) = p.medir_texto(&num, 13.0 * escala);
-        p.texto(
-            &num,
-            x + ancho - 12.0 * escala - nw,
-            yb + (fila - nh) / 2.0,
-            13.0 * escala,
-            GRIS,
-        );
-        e.botones.zona(pap, Accion::Papelera);
-        p.rellenar(
-            RectF {
-                x: x + 6.0 * escala,
-                y: yb - 6.0 * escala,
-                ancho: ancho - 12.0 * escala,
-                alto: 1.0 * escala,
-            },
-            blanco(0.07),
-        );
-    }
-    // La ayuda de las teclas, si cabe.
-    let tam = 12.0 * escala;
-    let linea = 22.0 * escala;
-    let y_ayuda = yb - 14.0 * escala - 2.0 * linea;
-    if y_ayuda > y + 8.0 * escala {
-        let mut xa = x + 10.0 * escala;
-        let yc = y_ayuda + linea / 2.0;
-        xa += chapita(p, "← → ↑ ↓", xa, yc, escala, false) + 6.0 * escala;
-        p.texto(
-            &textos.t("galeria-ayuda-mover"),
-            xa,
-            yc - p.medir_texto("Ag", tam).1 / 2.0,
-            tam,
-            GRIS,
-        );
-        let mut xa = x + 10.0 * escala;
-        let yc = yc + linea;
-        let th = p.medir_texto("Ag", tam).1;
-        xa += chapita(
-            p,
-            textos.t("galeria-tecla-espacio").as_str(),
-            xa,
-            yc,
-            escala,
-            false,
-        ) + 6.0 * escala;
-        let t = textos.t("galeria-ayuda-elegir");
-        p.texto(&t, xa, yc - th / 2.0, tam, GRIS);
-        xa += p.medir_texto(&t, tam).0 + 6.0 * escala;
-        xa += chapita(p, "Enter", xa, yc, escala, false) + 6.0 * escala;
-        p.texto(
-            &textos.t("galeria-ayuda-pinear"),
-            xa,
-            yc - th / 2.0,
-            tam,
-            GRIS,
-        );
-    }
-}
-
-/// Que pone la pastilla de caducidad y de que color va.
-fn pastilla(textos: &Catalogo, se_va: Option<i64>, ahora: i64) -> (String, Color, Color, Tono) {
-    let plazo = logica::plazo(se_va, ahora);
-    let texto = match plazo {
-        Plazo::Conservada => textos.t("galeria-conservada"),
-        Plazo::Hoy => textos.t("galeria-se-borra-hoy"),
-        Plazo::Manana => textos.t("galeria-se-borra-manana"),
-        Plazo::EnDias(n) => {
-            let mut args = fluent_bundle::FluentArgs::new();
-            args.set("dias", n);
-            textos.t_args("galeria-se-borra-en", &args)
-        }
-        Plazo::ElDia(t) => {
-            let mut args = fluent_bundle::FluentArgs::new();
-            args.set("fecha", crate::ventana_chat::fecha_corta(textos, t));
-            textos.t_args("galeria-se-borra", &args)
-        }
-    };
-    let tono = logica::tono(plazo);
-    let (fondo, tinta) = match tono {
-        Tono::Lejos => (
-            Color {
-                a: 0.85,
-                ..hex(0x141416)
-            },
-            hex(0xE5E5EA),
-        ),
-        Tono::Pronto => (NARANJA, TINTA_OSCURA),
-        Tono::Urgente => (ROJO_V, Color::BLANCO),
-        Tono::Conservada => (VERDE_V, Color::BLANCO),
-    };
-    (texto, fondo, tinta, tono)
+    crate::cabecera::pintar(p, &mut e.botones, w, escala, &c);
 }
 
 /// El nombre del dia de un grupo: «Hoy», «Ayer» o «Viernes».
@@ -2314,35 +1750,43 @@ fn titulo_del_dia(textos: &Catalogo, dia: i64, hoy: i64) -> (String, String) {
     }
 }
 
+/// Lo que dice la chapita de los dias de una captura: el numero, y «hoy»
+/// el ultimo dia (un 0 rojo parecia un error).
+fn rotulo_de_dias(textos: &Catalogo, dias: i64) -> String {
+    if dias <= 0 {
+        textos.t("galeria-chapa-hoy")
+    } else {
+        dias.to_string()
+    }
+}
+
+/// La pista al pasar por la chapita: cuando se va y como evitarlo.
+fn pista_de_dias(textos: &Catalogo, dias: i64) -> String {
+    let mut args = fluent_bundle::FluentArgs::new();
+    args.set("dias", dias.max(0));
+    textos.t_args("galeria-pista-caduca", &args)
+}
+
 fn pintar_rejilla(e: &mut Estado, p: &Pintor, z: Zonas, escala: f32, textos: &Catalogo) {
     let r = z.rejilla;
     if e.vista.is_empty() {
-        let t = if e.lista.is_empty() {
-            textos.t("galeria-vacia")
-        } else if !e.consulta.trim().is_empty() {
-            let mut args = fluent_bundle::FluentArgs::new();
-            args.set("texto", e.consulta.trim().to_string());
-            textos.t_args("galeria-sin-resultados", &args)
+        // Sin filtros, con capturas y nada a la vista solo puede ser la
+        // busqueda.
+        let (icono, t) = if e.lista.is_empty() {
+            (&mi::PHOTO_LIBRARY, textos.t("galeria-vacia"))
         } else {
-            textos.t("galeria-filtro-vacio")
+            let mut args = fluent_bundle::FluentArgs::new();
+            args.set("texto", e.consulta.texto.trim().to_string());
+            (&mi::SEARCH, textos.t_args("galeria-sin-resultados", &args))
         };
-        let tam = 15.0 * escala;
-        let ancho = r.ancho - 64.0 * escala;
-        let (tw, th) = p.medir_texto_ajustado(&t, tam, ancho);
-        p.texto_ajustado(
-            &t,
-            r.x + (r.ancho - tw) / 2.0,
-            r.y + (r.alto - th) / 2.0,
-            tam,
-            ancho,
-            GRIS,
-        );
+        d::vacio(p, r, icono, &t, escala);
     }
     let encima = e.botones.raton;
     let hoy = logica::dia_local(e.ahora);
     let (ox, oy) = (r.x, r.y - e.scroll);
     let grupos = e.disp.grupos.clone();
     let rango = e.disp.visibles(e.scroll - 4.0, e.scroll + r.alto + 4.0);
+    let mut pista = None;
     p.con_recorte(r, |p| {
         // Los titulos de los dias que asoman.
         for g in &grupos {
@@ -2352,36 +1796,45 @@ fn pintar_rejilla(e: &mut Estado, p: &Pintor, z: Zonas, escala: f32, textos: &Ca
             }
             let (titulo, sub) = titulo_del_dia(textos, g.dia, hoy);
             let x = ox + logica::LADO_REJILLA * escala;
-            let tam = 14.0 * escala;
-            let (tw, th) = medir_negrita(p, &titulo, tam);
+            let tam = d::LETRA_CUERPO * escala;
+            let (tw, th) = crate::lecciones::ui::medir_negrita(p, &titulo, tam, 10_000.0);
             let yt = y + (logica::TITULO_DIA * escala - th) / 2.0;
-            negrita(p, &titulo, x, yt, tam, CLARO);
-            let sub = format!("{sub} · {}", g.hasta - g.desde);
+            crate::lecciones::ui::negrita(p, &titulo, x, yt, tam, 10_000.0, d::TEXTO);
+            let sub = format!(
+                "{sub} · {}",
+                con_cuantas(textos, "galeria-dia-cuantas", g.hasta - g.desde)
+            );
             p.texto(
                 &sub,
                 x + tw + 10.0 * escala,
                 yt + 1.0 * escala,
-                13.0 * escala,
-                GRIS,
+                d::LETRA_SECUNDARIO * escala,
+                d::GRIS,
             );
+            // «Elegir todo el dia», solo eligiendo: fuera de ese modo era un
+            // enlace azul en cada grupo que nadie buscaba (el revisor).
+            if !e.eligiendo {
+                continue;
+            }
             let enlace = textos.t("galeria-elegir-dia");
-            let (ew, eh) = p.medir_texto(&enlace, 13.0 * escala);
+            let tam_e = d::LETRA_SECUNDARIO * escala;
+            let (ew, eh) = p.medir_texto(&enlace, tam_e);
             let ze = RectF {
                 x: r.x + r.ancho - logica::LADO_REJILLA * escala - ew - 8.0 * escala,
-                y: y + (logica::TITULO_DIA * escala - 32.0 * escala) / 2.0,
+                y: y + (logica::TITULO_DIA * escala - d::OBJETIVO_MINIMO * escala) / 2.0,
                 ancho: ew + 8.0 * escala,
-                alto: 32.0 * escala,
+                alto: d::OBJETIVO_MINIMO * escala,
             };
             let color = if dentro(ze, encima) {
-                hex(0xA0E4FF)
+                d::color::aclarar(d::ACENTO, 0.15)
             } else {
-                ENLACE
+                d::ACENTO
             };
             p.texto(
                 &enlace,
                 ze.x + 4.0 * escala,
                 ze.y + (ze.alto - eh) / 2.0,
-                13.0 * escala,
+                tam_e,
                 color,
             );
             if let Some(zz) = cortar(ze, r) {
@@ -2396,15 +1849,28 @@ fn pintar_rejilla(e: &mut Estado, p: &Pintor, z: Zonas, escala: f32, textos: &Ca
                 y: oy + rc.y,
                 ..rc
             };
-            pintar_celda(e, p, c, r, i, escala, textos);
+            if let Some(pi) = pintar_celda(e, p, c, r, i, escala, textos) {
+                pista = Some(pi);
+            }
         }
     });
-    if e.eligiendo {
-        pintar_barra_elegidas(e, p, r, escala, textos);
+    // La pista, encima de todas las celdas (la de al lado no la tapa).
+    if let Some((ancla, texto)) = pista {
+        d::pista::pintar(p, ancla, &texto, r, escala);
     }
-    pintar_aviso(e, p, r, escala, textos);
+    let mut zona_aviso = r;
+    if e.eligiendo {
+        let barra = pintar_barra_elegidas(e, p, r, escala, textos);
+        // El aviso, encima de la barra y no tapandola.
+        zona_aviso.alto = (barra.y - r.y).max(0.0);
+    }
+    if let Some(a) = &e.aviso {
+        d::aviso::pintar(a, p, &mut e.botones, zona_aviso, escala);
+    }
 }
 
+/// Pinta una celda y apunta sus zonas. Devuelve la pista que hay que
+/// ensenar si el raton esta sobre su chapita (se pinta despues de todas).
 #[allow(clippy::too_many_arguments)] // estado, pintor, celda, zona, indice, escala, textos
 fn pintar_celda(
     e: &mut Estado,
@@ -2414,38 +1880,30 @@ fn pintar_celda(
     i: usize,
     escala: f32,
     textos: &Catalogo,
-) {
+) -> Option<(RectF, String)> {
     let entrada = e.lista[i].clone();
-    let encima = dentro(c, e.botones.raton) && dentro(zona, e.botones.raton);
+    let raton = e.botones.raton;
+    let encima = dentro(c, raton) && dentro(zona, raton);
     let elegida = e.elegidas.contains(&entrada.ruta);
     let enfocada = e.foco.as_ref() == Some(&entrada.ruta);
-    let radio = 12.0 * escala;
-    // El anillo del foco y de elegida, por fuera de la celda.
-    if enfocada {
-        p.rellenar_redondeado(encoger(c, -6.0 * escala), radio + 6.0 * escala, CLARO);
-        p.rellenar_redondeado(encoger(c, -3.0 * escala), radio + 3.0 * escala, AZUL_V);
-    } else if elegida {
-        p.rellenar_redondeado(encoger(c, -3.0 * escala), radio + 3.0 * escala, AZUL_V);
+    // El marco del foco y de elegida: UN anillo azul de 2 px, a 3 de la
+    // celda, con esquinas RECTAS como la captura (5-oct: «aparece un marco
+    // con esquina redondeada pero la captura tiene esquina rectangular»).
+    // El blanco de fuera que llevaba el foco se quito: dos anillos se leian
+    // como dos estados distintos.
+    if enfocada || elegida {
+        p.rellenar(encoger(c, -3.0 * escala), d::ACENTO);
+        p.rellenar(encoger(c, -1.0 * escala), d::FONDO);
     } else if encima {
-        p.rellenar_redondeado(encoger(c, -escala), radio + 1.0 * escala, blanco(0.35));
+        p.rellenar(encoger(c, -1.0 * escala), blanco(0.35));
     }
-    p.rellenar_redondeado(c, radio, hex(0x2A2A2E));
+    p.rellenar(c, d::TARJETA);
     match e.minis.get(&entrada.ruta) {
         Some(Mini::Lista {
             bitmap: Some(b),
             imagen,
             ..
-        }) => {
-            // Un poco hacia dentro: las esquinas redondeadas se notan sin
-            // recortar el mapa de bits.
-            crate::miniaturas::pintar_recortado(
-                p,
-                b,
-                encoger(c, 2.0 * escala),
-                imagen.ancho,
-                imagen.alto,
-            )
-        }
+        }) => crate::miniaturas::pintar_recortado(p, b, c, imagen.ancho, imagen.alto),
         _ => {
             let lado = 40.0 * escala;
             let icono = if tiene_miniatura(&entrada.ruta) {
@@ -2461,70 +1919,72 @@ fn pintar_celda(
                     ancho: lado,
                     alto: lado,
                 },
-                APAGADO,
+                d::GRIS,
             );
         }
     }
     if let Some(zc) = cortar(c, zona) {
         e.botones.zona(zc, Accion::Celda(i));
     }
+    let mut pista = None;
 
-    // Arriba a la derecha, la caducidad.
-    let (texto, fondo, tinta, tono) = pastilla(textos, e.se_va(i), e.ahora);
+    // Arriba a la derecha, la caducidad: solo los dias que le quedan, en
+    // una chapita roja y pequena (5-oct: «que directamente solo muestre un
+    // numero en la esquina con fondo rojo»). Las conservadas, una marca
+    // verde. Lo que significa, en la pista al pasar por encima.
     let tam = 12.0 * escala;
-    let (tw, th) = p.medir_texto(&texto, tam);
-    let con_check = tono == Tono::Conservada;
-    let extra = if con_check { 17.0 * escala } else { 0.0 };
-    let ancho = (tw + 16.0 * escala + extra).min(c.ancho - 50.0 * escala);
-    let bd = RectF {
-        x: c.x + c.ancho - 8.0 * escala - ancho,
-        y: c.y + 8.0 * escala,
-        ancho,
-        alto: th + 6.0 * escala,
-    };
-    p.rellenar_redondeado(bd, 7.0 * escala, fondo);
-    if con_check {
-        pintar_check(
-            p,
-            (bd.x + 8.0 * escala + 6.0 * escala, bd.y + bd.alto / 2.0),
-            12.0 * escala,
-            tinta,
-            2.0 * escala,
-        );
+    let lado = 22.0 * escala;
+    match logica::dias_que_quedan(e.se_va(i), e.ahora) {
+        Some(n) => {
+            let t = rotulo_de_dias(textos, n);
+            let (tw, th) = p.medir_texto(&t, tam);
+            let ancho = (tw + 12.0 * escala).max(lado);
+            let bd = RectF {
+                x: c.x + c.ancho - 6.0 * escala - ancho,
+                y: c.y + 6.0 * escala,
+                ancho,
+                alto: lado,
+            };
+            p.rellenar_redondeado(bd, lado / 2.0, d::ROJO);
+            p.texto(
+                &t,
+                bd.x + (bd.ancho - tw) / 2.0,
+                bd.y + (lado - th) / 2.0,
+                tam,
+                Color::BLANCO,
+            );
+            if encima && dentro(encoger(bd, -4.0 * escala), raton) {
+                pista = Some((bd, pista_de_dias(textos, n)));
+            }
+        }
+        None => {
+            let centro = (
+                c.x + c.ancho - 6.0 * escala - lado / 2.0,
+                c.y + 6.0 * escala + lado / 2.0,
+            );
+            p.circulo(centro, lado / 2.0, oscurecer(d::VERDE, 0.12));
+            pintar_check(p, centro, 12.0 * escala, Color::BLANCO, 2.0 * escala);
+            let bd = d::geom::centrado(centro, lado);
+            if encima && dentro(encoger(bd, -4.0 * escala), raton) {
+                pista = Some((bd, textos.t("galeria-conservada-aviso")));
+            }
+        }
     }
-    p.texto_linea(
-        &texto,
-        bd.x + 8.0 * escala + extra,
-        bd.y + 3.0 * escala,
-        tam,
-        bd.ancho - 16.0 * escala - extra,
-        tinta,
-    );
 
-    // Abajo a la izquierda, lo que es: texto, GIF o video.
+    // Abajo a la izquierda, lo que es: GIF o video. Sin la de «Aa texto»
+    // (5-oct): el usuario no quiere el texto reconocido a la vista.
     let ext = entrada
         .ruta
         .extension()
         .and_then(|x| x.to_str())
         .unwrap_or("")
         .to_ascii_lowercase();
-    let chip = if ext == "mp4" {
-        Some(textos.t("galeria-chip-video"))
-    } else if ext == "gif" {
-        Some("GIF".to_string())
-    } else if e
-        .leidos
-        .get(&entrada.ruta)
-        .is_some_and(|(t, _)| !t.trim().is_empty())
-    {
-        Some(textos.t("galeria-chip-texto"))
-    } else {
-        None
+    let chip = match ext.as_str() {
+        "mp4" => Some(textos.t("galeria-chip-video")),
+        "gif" => Some("GIF".to_string()),
+        _ => None,
     };
-    let botones_encima = encima && !e.eligiendo;
-    if let Some(chip) = chip
-        && !botones_encima
-    {
+    if let Some(chip) = chip {
         let (cw, ch) = p.medir_texto(&chip, tam);
         let cc = RectF {
             x: c.x + 8.0 * escala,
@@ -2532,823 +1992,271 @@ fn pintar_celda(
             ancho: cw + 16.0 * escala,
             alto: ch + 6.0 * escala,
         };
-        p.rellenar_redondeado(
-            cc,
-            7.0 * escala,
-            Color {
-                a: 0.85,
-                ..hex(0x141416)
-            },
-        );
-        p.texto(
-            &chip,
-            cc.x + 8.0 * escala,
-            cc.y + 3.0 * escala,
-            tam,
-            hex(0xE5E5EA),
-        );
+        p.rellenar_redondeado(cc, 7.0 * escala, negro(0.75));
+        p.texto(&chip, cc.x + 8.0 * escala, cc.y + 3.0 * escala, tam, d::CUERPO);
     }
 
-    // Con el raton encima: Pinear, Copiar y Conservar.
-    if botones_encima && c.y >= zona.y && c.y + c.alto <= zona.y + zona.alto {
-        let lado = 40.0 * escala;
-        let hueco = 6.0 * escala;
-        let y = c.y + c.alto - 8.0 * escala - lado;
-        let conservada = e.se_va(i).is_none();
-        let n_iconos = if conservada { 1.0 } else { 2.0 };
-        let ancho_pin = c.ancho - 16.0 * escala - n_iconos * (lado + hueco);
-        let mut x = c.x + 8.0 * escala;
-        boton(
-            e,
-            p,
-            RectF {
-                x,
-                y,
-                ancho: ancho_pin,
-                alto: lado,
-            },
-            Accion::Pinear(i),
-            &textos.t("galeria-pinear"),
-            Some(&mi::PUSH_PIN),
-            Estilo::Primario,
-            None,
-            escala,
-        );
-        x += ancho_pin + hueco;
-        let caja = RectF {
-            x,
-            y,
-            ancho: lado,
-            alto: lado,
+    // Abajo a la derecha, al pasar, el «⋯»: la pista de que hay menu. El
+    // clic derecho no lo adivina nadie (el revisor); el «⋯» abre el mismo.
+    // Se ve de 28, pero su zona es de 40 (objetivo minimo).
+    if encima {
+        let zm = RectF {
+            x: c.x + c.ancho - d::OBJETIVO_MINIMO * escala,
+            y: c.y + c.alto - d::OBJETIVO_MINIMO * escala,
+            ancho: d::OBJETIVO_MINIMO * escala,
+            alto: d::OBJETIVO_MINIMO * escala,
         };
-        p.rellenar_redondeado(
-            caja,
-            10.0 * escala,
-            Color {
-                a: 0.9,
-                ..hex(0x1C1C1E)
-            },
-        );
-        boton(
-            e,
-            p,
-            caja,
-            Accion::Copiar(i),
-            "",
-            Some(&mi::CONTENT_COPY),
-            Estilo::Normal,
-            None,
-            escala,
-        );
-        x += lado + hueco;
-        if !conservada {
-            let caja = RectF {
-                x,
-                y,
-                ancho: lado,
-                alto: lado,
-            };
-            boton(
-                e,
-                p,
-                caja,
-                Accion::Conservar(i),
-                "",
-                Some(&mi::BOOKMARK_ADD),
-                Estilo::Verde,
-                None,
-                escala,
+        let centro = (zm.x + zm.ancho / 2.0, zm.y + zm.alto / 2.0);
+        let visto = d::geom::centrado(centro, 28.0 * escala);
+        let sobre = dentro(zm, raton);
+        p.rellenar_redondeado(visto, 8.0 * escala, negro(if sobre { 0.75 } else { 0.55 }));
+        for k in [-1.0f32, 0.0, 1.0] {
+            p.circulo(
+                (centro.0 + k * 6.0 * escala, centro.1),
+                1.8 * escala,
+                Color::BLANCO,
             );
-            // La pista del atajo, sobre el boton que esta bajo el raton.
-            if dentro(caja, e.botones.raton) {
-                pista(p, &textos.t("galeria-conservar"), "Ctrl S", caja, escala);
-            }
+        }
+        if let Some(z) = cortar(zm, zona) {
+            e.botones.zona(z, Accion::Mas(i));
         }
     }
 
-    // Arriba a la izquierda, la marca de elegir (al elegir, o al pasar).
+    // Arriba a la izquierda, la marca de elegir (al elegir, o al pasar). Se
+    // ve de 26, pero se pulsa en 40.
     if e.eligiendo || encima {
-        let d = 26.0 * escala;
-        let ck = RectF {
-            x: c.x + 8.0 * escala,
-            y: c.y + 8.0 * escala,
-            ancho: d,
-            alto: d,
-        };
-        let centro = (ck.x + d / 2.0, ck.y + d / 2.0);
+        let dm = 26.0 * escala;
+        let centro = (c.x + 8.0 * escala + dm / 2.0, c.y + 8.0 * escala + dm / 2.0);
+        let zm = d::geom::centrado(centro, d::OBJETIVO_MINIMO * escala);
         if elegida {
-            p.circulo(centro, d / 2.0, AZUL_V);
+            p.circulo(centro, dm / 2.0, d::ACENTO);
             pintar_check(p, centro, 16.0 * escala, Color::BLANCO, 2.5 * escala);
         } else {
-            p.circulo(
-                centro,
-                d / 2.0,
-                Color {
-                    a: 0.3,
-                    ..Color::NEGRO
-                },
-            );
-            let borde = if dentro(ck, e.botones.raton) {
+            // Un canto oscuro por fuera: sobre una captura clara, el aro
+            // blanco solo no se veia (quedaba una mancha gris).
+            p.circulo(centro, dm / 2.0 + 1.0 * escala, negro(0.35));
+            p.circulo(centro, dm / 2.0, negro(0.3));
+            let borde = if dentro(zm, raton) {
                 Color::BLANCO
             } else {
                 blanco(0.85)
             };
-            p.anillo(centro, d / 2.0 - 1.0 * escala, 2.0 * escala, borde);
+            p.anillo(centro, dm / 2.0 - 1.0 * escala, 2.0 * escala, borde);
         }
-        if let Some(zc) = cortar(encoger(ck, -4.0 * escala), zona) {
+        if let Some(zc) = cortar(zm, zona) {
             e.botones.zona(zc, Accion::Marca(i));
         }
     }
+    pista
 }
 
-/// Un globito con el nombre de una accion y su atajo, encima de `caja`.
-fn pista(p: &Pintor, t: &str, atajo: &str, caja: RectF, escala: f32) {
-    let tam = 12.0 * escala;
-    let (tw, th) = p.medir_texto(t, tam);
-    let cw = ancho_chapita(p, atajo, escala);
-    let ancho = tw + 6.0 * escala + cw + 16.0 * escala;
-    let alto = th.max(18.0 * escala) + 8.0 * escala;
-    let g = RectF {
-        x: caja.x + caja.ancho - ancho,
-        y: caja.y - 8.0 * escala - alto,
-        ancho,
-        alto,
-    };
-    p.rellenar_redondeado(g, 7.0 * escala, hex(0x3A3A3C));
-    p.texto(t, g.x + 8.0 * escala, g.y + (alto - th) / 2.0, tam, CLARO);
-    chapita(
-        p,
-        atajo,
-        g.x + 8.0 * escala + tw + 6.0 * escala,
-        g.y + alto / 2.0,
-        escala,
-        false,
-    );
+/// Un boton de la barra de elegidas: que hace, su icono, rotulo y atajo,
+/// fondo (`None` = sin fondo, el de «Borrar») y color de la letra.
+struct BotonBarra {
+    accion: Accion,
+    icono: &'static pixpin_render::icono::Icono,
+    rotulo: String,
+    chapa: &'static str,
+    fondo: Option<Color>,
+    tinta: Color,
 }
 
-fn pintar_barra_elegidas(e: &mut Estado, p: &Pintor, r: RectF, escala: f32, textos: &Catalogo) {
-    let alto = 60.0 * escala;
+/// La barra de abajo al elegir varias. De izquierda a derecha: cuantas,
+/// «Todas»; y a la derecha Pinear (la principal, en azul y siempre en el
+/// mismo sitio), Conservar, Copiar, Guardar como, una raya, Borrar
+/// (apartado, en rojo) y salir. Devuelve la barra.
+fn pintar_barra_elegidas(
+    e: &mut Estado,
+    p: &Pintor,
+    r: RectF,
+    escala: f32,
+    textos: &Catalogo,
+) -> RectF {
+    let s = escala;
+    let alto = 60.0 * s;
     let barra = RectF {
-        x: r.x + 20.0 * escala,
-        y: r.y + r.alto - 16.0 * escala - alto,
-        ancho: r.ancho - 40.0 * escala,
+        x: r.x + 20.0 * s,
+        y: r.y + r.alto - d::MARGEN * s - alto,
+        ancho: r.ancho - 40.0 * s,
         alto,
     };
+    p.rellenar_redondeado(encoger(barra, -8.0 * s), 20.0 * s, negro(0.35));
     p.rellenar_redondeado(
-        encoger(barra, -8.0 * escala),
-        20.0 * escala,
-        Color {
-            a: 0.35,
-            ..Color::NEGRO
-        },
-    );
-    con_borde(
-        p,
-        barra,
-        14.0 * escala,
-        BARRA_ELEGIDAS,
+        encoger(barra, -1.0 * s),
+        (d::RADIO_FLOTANTE + 1.0) * s,
         blanco(0.12),
-        1.0 * escala,
     );
+    p.rellenar_redondeado(barra, d::RADIO_FLOTANTE * s, d::CAJA);
     e.botones.zona(barra, Accion::Nada);
     let n = e.elegidas.len();
     let hay = n > 0;
-    let lado = 40.0 * escala;
+    let lado = d::BOTON * s;
     let yb = barra.y + (alto - lado) / 2.0;
-    // De derecha a izquierda: salir, borrar (apartado), copiar, pinear,
-    // conservar.
-    let mut x = barra.x + barra.ancho - 10.0 * escala - lado;
-    let salir = RectF {
-        x,
-        y: yb,
-        ancho: lado,
-        alto: lado,
-    };
-    if dentro(salir, e.botones.raton) {
-        p.rellenar_redondeado(salir, 10.0 * escala, blanco(0.08));
-    }
-    p.icono(&mi::CLOSE, encoger(salir, 11.0 * escala), hex(0xC7C7CC));
-    e.botones.zona(salir, Accion::SalirEligiendo);
-    let estilo = |s: Estilo| if hay { s } else { Estilo::Apagado };
-    let acciones = [
-        (
-            Accion::BarraBorrar,
-            textos.t("galeria-borrar"),
-            &mi::DELETE,
-            estilo(Estilo::Rojo),
-        ),
-        (
-            Accion::BarraCopiar,
-            textos.t("galeria-copiar"),
-            &mi::CONTENT_COPY,
-            estilo(Estilo::Normal),
-        ),
-        (
-            Accion::BarraPinear,
-            textos.t("galeria-pinear"),
-            &mi::PUSH_PIN,
-            estilo(Estilo::Normal),
-        ),
-        (
-            Accion::BarraConservar,
-            textos.t("galeria-conservar"),
-            &mi::BOOKMARK_ADD,
-            estilo(Estilo::Verde),
-        ),
+
+    let mut x = barra.x + barra.ancho - 10.0 * s - lado;
+    d::boton_icono(
+        p,
+        &mut e.botones,
+        RectF {
+            x,
+            y: yb,
+            ancho: lado,
+            alto: lado,
+        },
+        Accion::SalirEligiendo,
+        &mi::CLOSE,
+        false,
+        false,
+        s,
+    );
+
+    // De derecha a izquierda, como se colocan.
+    let botones = [
+        BotonBarra {
+            accion: Accion::BarraBorrar,
+            icono: &mi::DELETE,
+            rotulo: textos.t("galeria-borrar"),
+            chapa: "Supr",
+            fondo: None,
+            tinta: d::ROJO_TEXTO,
+        },
+        BotonBarra {
+            accion: Accion::BarraGuardar,
+            icono: &mi::IOS_SHARE,
+            rotulo: textos.t("galeria-guardar-como"),
+            chapa: "",
+            fondo: Some(BOTON_BARRA),
+            tinta: d::TEXTO,
+        },
+        BotonBarra {
+            accion: Accion::BarraCopiar,
+            icono: &mi::CONTENT_COPY,
+            rotulo: textos.t("galeria-copiar"),
+            chapa: "Ctrl C",
+            fondo: Some(BOTON_BARRA),
+            tinta: d::TEXTO,
+        },
+        BotonBarra {
+            accion: Accion::BarraConservar,
+            icono: &mi::BOOKMARK_ADD,
+            rotulo: textos.t("galeria-conservar"),
+            chapa: "Ctrl S",
+            fondo: Some(BOTON_BARRA),
+            tinta: d::VERDE,
+        },
+        BotonBarra {
+            accion: Accion::BarraPinear,
+            icono: &mi::PUSH_PIN,
+            rotulo: textos.t("galeria-pinear"),
+            chapa: "Intro",
+            fondo: Some(d::AZUL_LLENO),
+            tinta: Color::BLANCO,
+        },
     ];
-    for (k, (a, rotulo, icono, s)) in acciones.iter().enumerate() {
-        let wb = ancho_boton(p, rotulo, true, None, escala) - 4.0 * escala;
-        x -= 8.0 * escala + wb;
-        boton(
-            e,
-            p,
-            RectF {
-                x,
-                y: yb,
-                ancho: wb,
-                alto: lado,
-            },
-            *a,
-            rotulo,
-            Some(icono),
-            *s,
-            None,
-            escala,
-        );
+    let chapa = |b: &BotonBarra, con: bool| (con && !b.chapa.is_empty()).then_some(b.chapa);
+    let anchos = |con: bool| -> f32 {
+        botones
+            .iter()
+            .map(|b| crate::lecciones::ui::ancho_de_boton(p, true, &b.rotulo, chapa(b, con), s))
+            .sum::<f32>()
+            + d::HUECO * s * botones.len() as f32
+            + 9.0 * s
+    };
+    // A la izquierda se quiere sitio para «3 elegidas» y «Todas»: si no
+    // cabe todo, fuera las chapitas de los botones (los atajos siguen).
+    let cuantas = con_cuantas(textos, "galeria-elegidas", n);
+    let tam = d::LETRA_TITULO_TARJETA * s;
+    let (cw, ch) = crate::lecciones::ui::medir_negrita(p, &cuantas, tam, 10_000.0);
+    let todas = textos.t("galeria-elegir-todas");
+    let ancho_todas = crate::lecciones::ui::ancho_de_boton(p, false, &todas, Some("Ctrl A"), s);
+    let izquierda = 16.0 * s + cw + 10.0 * s + ancho_todas + 16.0 * s;
+    let con_chapas = izquierda + anchos(true) < x - barra.x;
+    for (k, b) in botones.iter().enumerate() {
+        let wb = crate::lecciones::ui::ancho_de_boton(p, true, &b.rotulo, chapa(b, con_chapas), s);
+        x -= d::HUECO * s + wb;
+        let caja = RectF {
+            x,
+            y: yb,
+            ancho: wb,
+            alto: lado,
+        };
+        if hay {
+            boton_v2(
+                p,
+                &mut e.botones,
+                caja,
+                b.accion,
+                Some(b.icono),
+                &b.rotulo,
+                chapa(b, con_chapas),
+                b.fondo,
+                b.tinta,
+                s,
+            );
+        } else {
+            // Sin ninguna elegida, apagados: atenuados y sin hacer nada
+            // (con la barra vacia, «Borrar» actuaria sobre el foco).
+            boton_v2(
+                p,
+                &mut e.botones,
+                caja,
+                Accion::Nada,
+                Some(b.icono),
+                &b.rotulo,
+                chapa(b, con_chapas),
+                Some(blanco(0.05)),
+                blanco(0.35),
+                s,
+            );
+        }
         if k == 0 {
             // La raya que aparta «Borrar» de lo demas.
-            x -= 9.0 * escala;
+            x -= 9.0 * s;
             p.rellenar(
                 RectF {
-                    x: x + 4.0 * escala,
-                    y: barra.y + (alto - 28.0 * escala) / 2.0,
-                    ancho: 1.0 * escala,
-                    alto: 28.0 * escala,
+                    x: x + 4.0 * s,
+                    y: barra.y + (alto - 28.0 * s) / 2.0,
+                    ancho: 1.0 * s,
+                    alto: 28.0 * s,
                 },
                 blanco(0.14),
             );
         }
     }
     // A la izquierda, cuantas y «Todas».
-    let xi = barra.x + 16.0 * escala;
-    let cuantas = con_cuantas(textos, "galeria-elegidas", n);
-    let tam = 15.0 * escala;
-    let (cw, ch) = medir_negrita(p, &cuantas, tam);
-    if xi + cw < x - 8.0 * escala {
-        negrita(p, &cuantas, xi, barra.y + (alto - ch) / 2.0, tam, CLARO);
-    }
-    let todas = textos.t("galeria-elegir-todas");
-    let (tw, th) = p.medir_texto(&todas, 13.0 * escala);
-    let chw = ancho_chapita(p, "Ctrl A", escala);
-    let xt = xi + cw + 10.0 * escala;
-    let con_chapa = xt + tw + 6.0 * escala + chw < x - 8.0 * escala;
-    if xt + tw < x - 8.0 * escala {
-        let zt = RectF {
-            x: xt - 4.0 * escala,
-            y: yb,
-            ancho: tw + 8.0 * escala + if con_chapa { 6.0 * escala + chw } else { 0.0 },
-            alto: lado,
-        };
-        let color = if dentro(zt, e.botones.raton) {
-            hex(0xA0E4FF)
-        } else {
-            ENLACE
-        };
-        p.texto(
-            &todas,
-            xt,
-            barra.y + (alto - th) / 2.0,
-            13.0 * escala,
-            color,
-        );
-        if con_chapa {
-            chapita(
-                p,
-                "Ctrl A",
-                xt + tw + 6.0 * escala,
-                barra.y + alto / 2.0,
-                escala,
-                false,
-            );
-        }
-        e.botones.zona(zt, Accion::ElegirTodas);
-    }
-}
-
-fn pintar_aviso(e: &mut Estado, p: &Pintor, r: RectF, escala: f32, textos: &Catalogo) {
-    let Some(aviso) = &e.aviso else {
-        return;
-    };
-    let texto = aviso.texto.clone();
-    let con_deshacer = aviso.deshacer && !e.deshacer.is_empty();
-    let tam = 14.0 * escala;
-    let (tw, th) = p.medir_texto(&texto, tam);
-    let rotulo = textos.t("galeria-deshacer");
-    let extra = if con_deshacer {
-        16.0 * escala
-            + p.medir_texto(&rotulo, tam).0
-            + 8.0 * escala
-            + ancho_chapita(p, "Ctrl Z", escala)
-    } else {
-        0.0
-    };
-    let alto = th.max(18.0 * escala) + 20.0 * escala;
-    let ancho = (tw + extra + 32.0 * escala).min(r.ancho - 32.0 * escala);
-    let abajo = if e.eligiendo {
-        16.0 + 60.0 + 12.0
-    } else {
-        24.0
-    } * escala;
-    let caja = RectF {
-        x: r.x + (r.ancho - ancho) / 2.0,
-        y: r.y + r.alto - abajo - alto,
-        ancho,
-        alto,
-    };
-    p.rellenar_redondeado(
-        caja,
-        10.0 * escala,
-        Color {
-            a: 0.94,
-            ..hex(0x3A3A3C)
-        },
-    );
-    e.botones.zona(caja, Accion::Nada);
-    p.texto_linea(
-        &texto,
-        caja.x + 16.0 * escala,
-        caja.y + (alto - th) / 2.0,
-        tam,
-        ancho - extra - 32.0 * escala,
-        CLARO,
-    );
-    if con_deshacer {
-        let x = caja.x + 16.0 * escala + tw + 16.0 * escala;
-        let (rw, _) = p.medir_texto(&rotulo, tam);
-        let zona = RectF {
-            x: x - 6.0 * escala,
-            y: caja.y,
-            ancho: caja.x + caja.ancho - x,
-            alto,
-        };
-        let color = if dentro(zona, e.botones.raton) {
-            hex(0xA0E4FF)
-        } else {
-            ENLACE
-        };
-        negrita(p, &rotulo, x, caja.y + (alto - th) / 2.0, tam, color);
-        chapita(
+    let xi = barra.x + 16.0 * s;
+    if xi + cw < x - 8.0 * s {
+        crate::lecciones::ui::negrita(
             p,
-            "Ctrl Z",
-            x + rw + 8.0 * escala,
-            caja.y + alto / 2.0,
-            escala,
-            false,
-        );
-        e.botones.zona(zona, Accion::Deshacer);
-    }
-}
-
-/// «Hoy, 10:42», «Ayer, 10:42», «3 oct, 10:42».
-fn fecha_y_hora(textos: &Catalogo, ms: i64, ahora: i64) -> String {
-    let local = pixpin_shell::entorno::a_local(ms);
-    let minutos = local.rem_euclid(logica::DIA_MS) / 60_000;
-    let hora = format!("{}:{:02}", minutos / 60, minutos % 60);
-    let dia = match logica::dia_local(ahora) - logica::dia_local(ms) {
-        0 => textos.t("galeria-hoy"),
-        1 => textos.t("galeria-ayer"),
-        _ => crate::ventana_chat::fecha_corta(textos, ms),
-    };
-    format!("{dia}, {hora}")
-}
-
-fn pintar_panel(e: &mut Estado, p: &Pintor, panel: RectF, escala: f32, textos: &Catalogo) {
-    p.rellenar(panel, LATERAL);
-    p.rellenar(
-        RectF {
-            x: panel.x,
-            y: panel.y,
-            ancho: 1.0 * escala,
-            alto: panel.alto,
-        },
-        blanco(0.06),
-    );
-    e.botones.zona(panel, Accion::Nada);
-    let pad = 16.0 * escala;
-    let x = panel.x + pad;
-    let ancho = panel.ancho - 2.0 * pad;
-    let Some(i) = e.foco_i().filter(|i| e.vista.contains(i)) else {
-        let t = textos.t("galeria-detalle-vacio");
-        let tam = 14.0 * escala;
-        let (tw, th) = p.medir_texto_ajustado(&t, tam, ancho);
-        p.texto_ajustado(
-            &t,
-            x + (ancho - tw) / 2.0,
-            panel.y + (panel.alto - th) / 2.0,
+            &cuantas,
+            xi,
+            barra.y + (alto - ch) / 2.0,
             tam,
-            ancho,
-            GRIS,
+            10_000.0,
+            d::TEXTO,
         );
-        return;
-    };
-    let entrada = e.lista[i].clone();
-    let mut y = panel.y + pad;
-
-    // La vista previa, entera (sin recortar), sobre fondo oscuro.
-    let previa = RectF {
-        x,
-        y,
-        ancho,
-        alto: 170.0 * escala,
-    };
-    p.rellenar_redondeado(previa, 12.0 * escala, FONDO_V);
-    match e.minis.get(&entrada.ruta) {
-        Some(Mini::Lista {
-            bitmap: Some(b),
-            imagen,
-            ..
-        }) => {
-            let (iw, ih) = (imagen.ancho as f32, imagen.alto as f32);
-            let f = (previa.ancho / iw).min(previa.alto / ih);
-            let (dw, dh) = (iw * f, ih * f);
-            p.bitmap_con(
-                b,
-                RectF {
-                    x: previa.x + (previa.ancho - dw) / 2.0,
-                    y: previa.y + (previa.alto - dh) / 2.0,
-                    ancho: dw,
-                    alto: dh,
-                },
-                None,
-                pixpin_render::Interpolacion::Lineal,
-            );
-        }
-        _ => {
-            let lado = 48.0 * escala;
-            let icono = if tiene_miniatura(&entrada.ruta) {
-                &mi::IMAGE
-            } else {
-                &mi::PLAY_ARROW
-            };
-            p.icono(
-                icono,
-                RectF {
-                    x: previa.x + (previa.ancho - lado) / 2.0,
-                    y: previa.y + (previa.alto - lado) / 2.0,
-                    ancho: lado,
-                    alto: lado,
-                },
-                APAGADO,
-            );
-        }
     }
-    let ver = textos.t("galeria-ver-grande");
-    let (vw, vh) = p.medir_texto(&ver, 12.0 * escala);
-    let cv = RectF {
-        x: previa.x + previa.ancho - 8.0 * escala - vw - 16.0 * escala,
-        y: previa.y + previa.alto - 8.0 * escala - vh - 6.0 * escala,
-        ancho: vw + 16.0 * escala,
-        alto: vh + 6.0 * escala,
-    };
-    p.rellenar_redondeado(
-        cv,
-        7.0 * escala,
-        Color {
-            a: 0.85,
-            ..hex(0x141416)
-        },
-    );
-    p.texto(
-        &ver,
-        cv.x + 8.0 * escala,
-        cv.y + 3.0 * escala,
-        12.0 * escala,
-        hex(0xE5E5EA),
-    );
-    e.botones.zona(previa, Accion::VerGrande(i));
-    y += previa.alto + 12.0 * escala;
-
-    // El nombre y lo que es.
-    let nombre = crate::caducidad_capturas::nombre(&entrada.ruta);
-    let (_, nh) = medir_negrita(p, "Ag", 16.0 * escala);
-    p.con_recorte(
-        RectF {
-            x,
-            y,
-            ancho,
-            alto: nh,
-        },
-        |p| negrita(p, &nombre, x, y, 16.0 * escala, CLARO),
-    );
-    y += nh + 2.0 * escala;
-    let ext = entrada
-        .ruta
-        .extension()
-        .and_then(|x| x.to_str())
-        .unwrap_or("")
-        .to_ascii_lowercase();
-    let tipo = textos.t(match ext.as_str() {
-        "mp4" => "galeria-tipo-video",
-        "gif" => "galeria-tipo-gif",
-        _ => "galeria-tipo-captura",
-    });
-    let (_, sh) = p.medir_texto(&tipo, 13.0 * escala);
-    p.texto(&tipo, x, y, 13.0 * escala, GRIS);
-    y += sh + 12.0 * escala;
-
-    // Pinear (la principal, en azul), Copiar y, apartado, Borrar.
-    let lado = 40.0 * escala;
-    let borrar = RectF {
-        x: x + ancho - lado,
-        y,
-        ancho: lado,
-        alto: lado,
-    };
-    let copiar_r = textos.t("galeria-copiar");
-    let wc = ancho_boton(p, &copiar_r, false, None, escala) - 4.0 * escala;
-    let copiar_b = RectF {
-        x: borrar.x - 14.0 * escala - wc,
-        y,
-        ancho: wc,
-        alto: lado,
-    };
-    let pinear_b = RectF {
-        x,
-        y,
-        ancho: copiar_b.x - 8.0 * escala - x,
-        alto: lado,
-    };
-    boton(
-        e,
-        p,
-        pinear_b,
-        Accion::Pinear(i),
-        &textos.t("galeria-pinear"),
-        None,
-        Estilo::Primario,
-        Some("Enter"),
-        escala,
-    );
-    boton(
-        e,
-        p,
-        copiar_b,
-        Accion::Copiar(i),
-        &copiar_r,
-        None,
-        Estilo::Normal,
-        None,
-        escala,
-    );
-    boton(
-        e,
-        p,
-        borrar,
-        Accion::BorrarUna(i),
-        "",
-        Some(&mi::DELETE),
-        Estilo::Rojo,
-        None,
-        escala,
-    );
-    if dentro(copiar_b, e.botones.raton) {
-        pista(p, &copiar_r, "Ctrl C", copiar_b, escala);
-    } else if dentro(borrar, e.botones.raton) {
-        pista(p, &textos.t("galeria-borrar"), "Supr", borrar, escala);
-    }
-    y += lado + 12.0 * escala;
-
-    // Fecha y tamano.
-    let ms = crate::caducidad_capturas::ms_de(entrada.cuando);
-    let peso = logica::tamano_legible(entrada.bytes, pixpin_shell::entorno::separador_decimal());
-    let tamano = match e.medidas.get(&entrada.ruta) {
-        Some((mw, mh)) => format!("{mw} × {mh} · {peso}"),
-        None => peso,
-    };
-    for (clave, valor) in [
-        ("galeria-fecha", fecha_y_hora(textos, ms, e.ahora)),
-        ("galeria-tamano", tamano),
-    ] {
-        let fila = 32.0 * escala;
-        let (_, th) = p.medir_texto("Ag", 14.0 * escala);
-        p.texto(
-            &textos.t(clave),
-            x,
-            y + (fila - th) / 2.0,
-            13.0 * escala,
-            GRIS,
-        );
-        p.texto_linea(
-            &valor,
-            x + 104.0 * escala,
-            y + (fila - th) / 2.0,
-            14.0 * escala,
-            ancho - 104.0 * escala,
-            CLARO,
-        );
-        y += fila;
-    }
-    y += 8.0 * escala;
-
-    // La caducidad, con su color, y lo que se puede hacer con ella.
-    let se_va = e.se_va(i);
-    let (texto, fondo, _, tono) = pastilla(textos, se_va, e.ahora);
-    let color = match tono {
-        Tono::Lejos => GRIS,
-        Tono::Pronto => NARANJA,
-        Tono::Urgente => ROJO_TEXTO,
-        Tono::Conservada => hex(0x30D158),
-    };
-    let _ = fondo;
-    let alto_caja = if se_va.is_some() { 108.0 } else { 70.0 } * escala;
-    let caja = RectF {
-        x,
-        y,
-        ancho,
-        alto: alto_caja,
-    };
-    con_borde(
-        p,
-        caja,
-        12.0 * escala,
-        Color {
-            a: 1.0,
-            ..mezcla(LATERAL, color, 0.08)
-        },
-        alfa(color, 0.3),
-        1.0 * escala,
-    );
-    let li = 16.0 * escala;
-    let yi = y + 12.0 * escala;
-    let icono = if se_va.is_some() {
-        &mi::ALARM
-    } else {
-        &mi::BOOKMARK_ADD
-    };
-    p.icono(
-        icono,
-        RectF {
-            x: x + 12.0 * escala,
-            y: yi + 1.0 * escala,
-            ancho: li,
-            alto: li,
-        },
-        color,
-    );
-    let (tw, th) = medir_negrita(p, &texto, 14.0 * escala);
-    negrita(p, &texto, x + 36.0 * escala, yi, 14.0 * escala, CLARO);
-    let detalle = match se_va {
-        Some(t) => {
-            let n = logica::dias_que_faltan(t, e.ahora).max(0);
-            let mut args = fluent_bundle::FluentArgs::new();
-            args.set("dias", n);
-            textos.t_args("galeria-en-dias", &args)
-        }
-        None => textos.t("galeria-conservada-detalle"),
-    };
-    if se_va.is_some() {
-        p.texto_linea(
-            &format!("· {detalle}"),
-            x + 36.0 * escala + tw + 6.0 * escala,
-            yi + 1.0 * escala,
-            13.0 * escala,
-            (ancho - 48.0 * escala - tw).max(0.0),
-            GRIS,
-        );
-        let yb = yi + th + 12.0 * escala;
-        let mitad = (ancho - 24.0 * escala - 8.0 * escala) / 2.0;
-        boton(
-            e,
+    let xt = xi + cw + 10.0 * s;
+    if xt + ancho_todas < x - 8.0 * s {
+        boton_v2(
             p,
+            &mut e.botones,
             RectF {
-                x: x + 12.0 * escala,
+                x: xt,
                 y: yb,
-                ancho: mitad,
+                ancho: ancho_todas,
                 alto: lado,
             },
-            Accion::Conservar(i),
-            &textos.t("galeria-conservar"),
+            Accion::ElegirTodas,
             None,
-            Estilo::Verde,
+            &todas,
+            Some("Ctrl A"),
             None,
-            escala,
-        );
-        boton(
-            e,
-            p,
-            RectF {
-                x: x + 12.0 * escala + mitad + 8.0 * escala,
-                y: yb,
-                ancho: mitad,
-                alto: lado,
-            },
-            Accion::Prorrogar(i),
-            &textos.t("galeria-dar-mas"),
-            None,
-            Estilo::Normal,
-            None,
-            escala,
-        );
-    } else {
-        p.texto_ajustado(
-            &detalle,
-            x + 36.0 * escala,
-            yi + th + 4.0 * escala,
-            13.0 * escala,
-            ancho - 48.0 * escala,
-            GRIS,
+            d::ACENTO,
+            s,
         );
     }
-    y += alto_caja + 12.0 * escala;
-
-    // El texto reconocido.
-    let resto = panel.y + panel.alto - pad - y;
-    if resto < 80.0 * escala {
-        return;
-    }
-    let leido = e
-        .leidos
-        .get(&entrada.ruta)
-        .map(|(t, _)| t.trim().to_string());
-    let (_, lh) = p.medir_texto("Ag", 13.0 * escala);
-    let fila = 32.0 * escala;
-    p.texto(
-        &textos.t("galeria-texto-reconocido"),
-        x,
-        y + (fila - lh) / 2.0,
-        13.0 * escala,
-        GRIS,
-    );
-    if leido.as_ref().is_some_and(|t| !t.is_empty()) {
-        let r = textos.t("galeria-copiar-texto");
-        let (rw, rh) = p.medir_texto(&r, 13.0 * escala);
-        let b = RectF {
-            x: x + ancho - rw - 20.0 * escala,
-            y,
-            ancho: rw + 20.0 * escala,
-            alto: fila,
-        };
-        p.rellenar_redondeado(
-            b,
-            8.0 * escala,
-            blanco(if dentro(b, e.botones.raton) {
-                0.15
-            } else {
-                0.09
-            }),
-        );
-        p.texto(
-            &r,
-            b.x + 10.0 * escala,
-            b.y + (fila - rh) / 2.0,
-            13.0 * escala,
-            CLARO,
-        );
-        e.botones.zona(b, Accion::CopiarTexto(i));
-    }
-    y += fila + 6.0 * escala;
-    let caja_t = RectF {
-        x,
-        y,
-        ancho,
-        alto: (panel.y + panel.alto - pad - y).max(0.0),
-    };
-    con_borde(
-        p,
-        caja_t,
-        10.0 * escala,
-        FONDO_V,
-        blanco(0.08),
-        1.0 * escala,
-    );
-    let (texto, color) = match (&leido, e.ocr) {
-        _ if !tiene_miniatura(&entrada.ruta) => (textos.t("galeria-texto-video"), GRIS),
-        (Some(t), _) if !t.is_empty() => (t.clone(), hex(0xE5E5EA)),
-        (Some(_), _) => (textos.t("galeria-texto-nada"), GRIS),
-        (None, Some(false)) => (textos.t("galeria-texto-sin-ocr"), GRIS),
-        (None, _) => (textos.t("galeria-texto-leyendo"), GRIS),
-    };
-    let dentro_t = encoger(caja_t, 10.0 * escala);
-    p.con_recorte(dentro_t, |p| {
-        p.texto_ajustado(
-            &texto,
-            dentro_t.x + 2.0 * escala,
-            dentro_t.y,
-            13.0 * escala,
-            dentro_t.ancho - 4.0 * escala,
-            color,
-        )
-    });
-}
-
-/// `a` con un poco (`t`) de `b` encima.
-fn mezcla(a: Color, b: Color, t: f32) -> Color {
-    Color {
-        r: a.r + (b.r - a.r) * t,
-        g: a.g + (b.g - a.g) * t,
-        b: a.b + (b.b - a.b) * t,
-        a: 1.0,
-    }
+    barra
 }
 
 #[cfg(test)]
@@ -3546,10 +2454,7 @@ mod pruebas {
         e.ocr = Some(true);
         e.leidos.insert(
             e.lista[0].ruta.clone(),
-            (
-                "Presupuesto Obra Miraflores".into(),
-                logica::plegar("Presupuesto Obra Miraflores"),
-            ),
+            logica::plegar("Presupuesto Obra Miraflores"),
         );
         e
     }
@@ -3561,33 +2466,49 @@ mod pruebas {
     }
 
     #[test]
-    fn filtrar_y_buscar_por_el_texto_de_dentro() {
+    fn sin_filtros_se_ven_todas_y_se_busca_por_el_texto_de_dentro() {
         let textos = Catalogo::nuevo(Idioma::Espanol);
         let mut e = estado();
         preparar(&mut e, 684.0, 1.0, &textos);
-        assert_eq!(e.vista.len(), 4);
-        assert_eq!(
-            e.foco.as_deref(),
-            Some(e.lista[0].ruta.as_path()),
-            "sin foco, la primera"
+        // Todas: la conservada, el video y la vieja tambien. Ya no hay
+        // filtro que las aparte.
+        assert_eq!(e.vista, vec![0, 1, 2, 3]);
+        assert!(
+            e.foco.is_none(),
+            "caso negativo: nadie eligio ninguna, asi que no hay foco"
         );
-        e.filtro = Filtro::Conservadas;
-        preparar(&mut e, 684.0, 1.0, &textos);
-        assert_eq!(e.vista, vec![1]);
-        e.filtro = Filtro::Videos;
-        preparar(&mut e, 684.0, 1.0, &textos);
-        assert_eq!(e.vista, vec![2]);
-        e.filtro = Filtro::Todas;
-        e.consulta = "miraflores".into();
+        // El texto reconocido no se ensena, pero se sigue buscando por el.
+        e.consulta = Campo::con("miraflores");
         preparar(&mut e, 684.0, 1.0, &textos);
         assert_eq!(e.vista, vec![0], "encuentra por el texto reconocido");
-        e.consulta = "0001".into();
+        e.consulta = Campo::con("0001");
         preparar(&mut e, 684.0, 1.0, &textos);
         assert_eq!(e.vista, vec![3], "y por el nombre");
         // Caso negativo: lo que no esta en ninguna, nada.
-        e.consulta = "ladrillo".into();
+        e.consulta = Campo::con("ladrillo");
         preparar(&mut e, 684.0, 1.0, &textos);
         assert!(e.vista.is_empty());
+    }
+
+    #[test]
+    fn al_abrir_intro_y_supr_no_tocan_una_captura_que_nadie_eligio() {
+        let textos = Catalogo::nuevo(Idioma::Espanol);
+        let ub = ubicacion();
+        let mut vivo = true;
+        let mut e = estado();
+        preparar(&mut e, 684.0, 1.0, &textos);
+        let z = zonas(1280.0, 820.0, 1.0);
+        // Caso negativo: sin foco, ni Supr borra ni Intro pinea ni Ctrl+C
+        // copia; no sale ni el aviso.
+        tecla(&mut e, 0x2E, false, z, 1.0, &textos, &ub, &mut vivo);
+        tecla(&mut e, 0x0D, false, z, 1.0, &textos, &ub, &mut vivo);
+        tecla(&mut e, u32::from(b'C'), true, z, 1.0, &textos, &ub, &mut vivo);
+        assert_eq!(e.lista.len(), 4);
+        assert!(e.deshacer.is_empty() && e.aviso.is_none());
+        assert!(e.objetivos().is_empty());
+        // Una flecha pone el foco en la primera: desde ahi si hay objetivo.
+        tecla(&mut e, 0x27, false, z, 1.0, &textos, &ub, &mut vivo);
+        assert_eq!(e.objetivos(), vec![0]);
     }
 
     #[test]
@@ -3598,27 +2519,31 @@ mod pruebas {
         let mut e = estado();
         preparar(&mut e, 684.0, 1.0, &textos);
         let z = zonas(1280.0, 820.0, 1.0);
-        // El espacio, sin buscador, elige la del foco.
+        // Caso negativo: sin foco, el espacio no elige nada.
+        tecla(&mut e, 0x20, false, z, 1.0, &textos, &ub, &mut vivo);
+        assert!(!e.eligiendo && e.elegidas.is_empty());
+        // Con el foco puesto (una flecha), el espacio elige la del foco.
+        tecla(&mut e, 0x27, false, z, 1.0, &textos, &ub, &mut vivo);
         caracter(&mut e, ' ');
         tecla(&mut e, 0x20, false, z, 1.0, &textos, &ub, &mut vivo);
         assert!(e.eligiendo && e.elegidas.contains(&e.lista[0].ruta));
         assert!(
-            e.consulta.is_empty(),
+            e.consulta.texto.is_empty(),
             "caso negativo: el espacio no se escribe"
         );
         // Una letra enfoca el buscador y se escribe.
         caracter(&mut e, 'm');
         caracter(&mut e, 'i');
         assert!(e.escribiendo);
-        assert_eq!(e.consulta, "mi");
+        assert_eq!(e.consulta.texto, "mi");
         // Ahi el espacio si se escribe, y Retroceso borra.
         caracter(&mut e, ' ');
         tecla(&mut e, 0x08, false, z, 1.0, &textos, &ub, &mut vivo);
-        assert_eq!(e.consulta, "mi");
+        assert_eq!(e.consulta.texto, "mi");
         // Esc limpia; otro Esc sale del buscador; otro sale de elegir; y el
         // ultimo cierra.
         tecla(&mut e, 0x1B, false, z, 1.0, &textos, &ub, &mut vivo);
-        assert!(e.consulta.is_empty() && e.escribiendo);
+        assert!(e.consulta.texto.is_empty() && e.escribiendo);
         tecla(&mut e, 0x1B, false, z, 1.0, &textos, &ub, &mut vivo);
         assert!(!e.escribiendo);
         tecla(&mut e, 0x1B, false, z, 1.0, &textos, &ub, &mut vivo);
@@ -3627,7 +2552,32 @@ mod pruebas {
         assert!(!vivo);
         // Caso negativo: Ctrl+C no escribe una «c» (llega como control).
         caracter(&mut e, '\u{3}');
-        assert!(e.consulta.is_empty());
+        assert!(e.consulta.texto.is_empty());
+    }
+
+    #[test]
+    fn el_buscador_es_una_caja_de_verdad_con_cursor_y_ctrl_retroceso() {
+        let textos = Catalogo::nuevo(Idioma::Espanol);
+        let ub = ubicacion();
+        let mut vivo = true;
+        let mut e = estado();
+        let z = zonas(1280.0, 820.0, 1.0);
+        for c in "obra lima".chars() {
+            caracter(&mut e, c);
+        }
+        // La flecha izquierda mueve el cursor (antes solo se podia borrar
+        // desde el final) y lo escrito entra donde esta.
+        for _ in 0..4 {
+            tecla(&mut e, 0x25, false, z, 1.0, &textos, &ub, &mut vivo);
+        }
+        caracter(&mut e, 'X');
+        assert_eq!(e.consulta.texto, "obra Xlima");
+        // Ctrl+Retroceso borra la palabra de antes del cursor, no todo.
+        tecla(&mut e, 0x08, true, z, 1.0, &textos, &ub, &mut vivo);
+        assert_eq!(e.consulta.texto, "obra lima");
+        // Caso negativo: las flechas de la caja no mueven el foco de la
+        // rejilla mientras se escribe.
+        assert!(e.foco.is_none());
     }
 
     #[test]
@@ -3638,14 +2588,20 @@ mod pruebas {
         let mut e = estado();
         preparar(&mut e, 684.0, 1.0, &textos);
         let z = zonas(1280.0, 820.0, 1.0);
+        // La primera flecha pone el foco en la primera; la siguiente lo mueve.
+        tecla(&mut e, 0x27, false, z, 1.0, &textos, &ub, &mut vivo);
+        assert_eq!(e.foco_i(), Some(0));
         tecla(&mut e, 0x27, false, z, 1.0, &textos, &ub, &mut vivo);
         assert_eq!(e.foco_i(), Some(1));
         // Abajo: de la fila de hoy al grupo de hace diez dias.
         tecla(&mut e, 0x28, false, z, 1.0, &textos, &ub, &mut vivo);
         assert_eq!(e.foco_i(), Some(3));
-        e.filtro = Filtro::Hoy;
+        // Una busqueda que la deja fuera: el foco se suelta (no salta a
+        // otra que nadie eligio).
+        e.consulta = Campo::con("presupuesto");
         preparar(&mut e, 684.0, 1.0, &textos);
-        assert_ne!(e.foco_i(), Some(3), "el foco se va de la que ya no se ve");
+        assert_eq!(e.vista, vec![0]);
+        assert_eq!(e.foco_i(), None, "el foco se va de la que ya no se ve");
         tecla(
             &mut e,
             u32::from(b'A'),
@@ -3656,9 +2612,10 @@ mod pruebas {
             &ub,
             &mut vivo,
         );
-        assert_eq!(e.elegidas.len(), 3);
-        assert_eq!(e.objetivos(), vec![0, 1, 2]);
-        // Otra vez Ctrl+A las suelta; sin elegidas, se actua sobre el foco.
+        // Caso negativo: las que la busqueda esconde no se eligen.
+        assert_eq!(e.elegidas.len(), 1);
+        assert_eq!(e.objetivos(), vec![0]);
+        // Otra vez Ctrl+A las suelta; sin elegidas ni foco, no hay objetivo.
         tecla(
             &mut e,
             u32::from(b'A'),
@@ -3670,7 +2627,108 @@ mod pruebas {
             &mut vivo,
         );
         assert!(e.elegidas.is_empty());
-        assert_eq!(e.objetivos().len(), 1);
+        assert!(e.objetivos().is_empty());
+    }
+
+    #[test]
+    fn el_clic_derecho_y_el_boton_de_mas_abren_el_menu_de_la_captura_de_debajo() {
+        let textos = Catalogo::nuevo(Idioma::Espanol);
+        let ub = ubicacion();
+        let mut vivo = true;
+        let mut e = estado();
+        preparar(&mut e, 684.0, 1.0, &textos);
+        let celda = RectF {
+            x: 20.0,
+            y: 100.0,
+            ancho: 200.0,
+            alto: 140.0,
+        };
+        e.botones.zona(celda, Accion::Celda(2));
+        e.botones.raton = (60.0, 150.0);
+        assert!(clic_derecho(&mut e));
+        assert_eq!((e.menu_pendiente, e.foco_i()), (Some(2), Some(2)));
+        // El «⋯» abre el mismo menu.
+        e.menu_pendiente = None;
+        hacer(&mut e, Accion::Mas(1), false, &textos, &ub, &mut vivo);
+        assert_eq!((e.menu_pendiente, e.foco_i()), (Some(1), Some(1)));
+        // Caso negativo: fuera de toda captura no sale menu.
+        e.menu_pendiente = None;
+        e.botones.raton = (600.0, 600.0);
+        assert!(!clic_derecho(&mut e));
+        assert_eq!(e.menu_pendiente, None);
+    }
+
+    #[test]
+    fn conservar_lo_ya_conservado_avisa_en_vez_de_callar() {
+        let textos = Catalogo::nuevo(Idioma::Espanol);
+        let raiz = temporal("ya-conservadas");
+        let mut e = estado();
+        // La 1 (captura-0002) ya esta conservada.
+        conservar_varias(&mut e, &[1], &raiz, &textos);
+        assert_eq!(
+            e.aviso.as_ref().map(|a| a.texto.as_str()),
+            Some("Ya estaban conservadas")
+        );
+        // Caso negativo: sin nada pedido no hay aviso.
+        e.aviso = None;
+        conservar_varias(&mut e, &[], &raiz, &textos);
+        assert!(e.aviso.is_none());
+        let _ = std::fs::remove_dir_all(&raiz);
+    }
+
+    #[test]
+    fn la_chapita_dice_hoy_el_ultimo_dia_y_su_pista_explica_que_hacer() {
+        let textos = Catalogo::nuevo(Idioma::Espanol);
+        assert_eq!(rotulo_de_dias(&textos, 0), "hoy");
+        assert_eq!(rotulo_de_dias(&textos, 6), "6");
+        let pista = pista_de_dias(&textos, 6);
+        assert!(pista.contains("6 días") && pista.contains("clic derecho"), "{pista}");
+        assert!(pista_de_dias(&textos, 0).contains("hoy"));
+        assert!(pista_de_dias(&textos, 1).contains("mañana"));
+        // Caso negativo: un numero negativo (reloj atrasado) no sale «-1».
+        assert_eq!(rotulo_de_dias(&textos, -1), "hoy");
+    }
+
+    #[test]
+    fn el_aviso_de_borrar_lleva_deshacer_y_dura_mas() {
+        let textos = Catalogo::nuevo(Idioma::Espanol);
+        let raiz = temporal("aviso-borrar");
+        let dir = carpeta_en(&raiz);
+        std::fs::create_dir_all(&dir).unwrap();
+        let a = dir.join("captura-0001.png");
+        std::fs::write(&a, b"x").unwrap();
+        let registro = crate::caducidad_capturas::Registro {
+            desde: 0,
+            conservadas: Default::default(),
+            prorrogadas: Default::default(),
+        };
+        let mut e = Estado::nuevo(listar(&dir), registro);
+        borrar_varias(&mut e, &[0], &raiz, &textos);
+        let aviso = e.aviso.as_ref().expect("avisa");
+        assert_eq!(
+            aviso.accion.as_ref().map(|x| x.accion),
+            Some(Accion::Deshacer)
+        );
+        assert_eq!(aviso.dura(), d::aviso::DURA_CON_ACCION);
+        // Caso negativo: copiar sin nada no avisa de nada.
+        e.aviso = None;
+        copiar(&mut e, &[], &textos);
+        assert!(e.aviso.is_none());
+        let _ = std::fs::remove_dir_all(&raiz);
+    }
+
+    #[test]
+    fn sin_carril_ni_panel_la_rejilla_es_toda_la_ventana_bajo_la_cabecera() {
+        let z = zonas(1280.0, 820.0, 1.0);
+        assert_eq!(z.rejilla.x, 0.0, "nada a su izquierda");
+        assert_eq!(z.rejilla.ancho, 1280.0, "nada a su derecha");
+        assert_eq!(z.rejilla.y + z.rejilla.alto, 820.0);
+        // Con escala 1,5 todo crece igual.
+        let z2 = zonas(1920.0, 1230.0, 1.5);
+        assert_eq!(z2.rejilla.y, logica::CABECERA * 1.5);
+        // Caso negativo: una ventana mas baja que la cabecera no da alto
+        // negativo.
+        assert_eq!(zonas(700.0, 10.0, 1.0).rejilla.alto, 0.0);
     }
 
     #[test]
@@ -3729,60 +2787,194 @@ mod pruebas {
         assert_eq!(e.objetivos(), vec![3]);
     }
 
+    /// Una «captura de pantalla» de ejemplo: una ventana de un color, con su
+    /// barra de titulo y unas lineas de texto, para que la muestra se lea
+    /// como la galeria de verdad y no como cuadros grises.
+    fn mini_de_ejemplo(k: usize) -> ImagenRgba {
+        const TONOS: [[u8; 3]; 8] = [
+            [236, 239, 244],
+            [30, 34, 44],
+            [250, 246, 238],
+            [22, 58, 96],
+            [244, 244, 246],
+            [40, 44, 52],
+            [232, 245, 236],
+            [255, 250, 230],
+        ];
+        const ACENTOS: [[u8; 3]; 6] = [
+            [10, 132, 255],
+            [255, 159, 10],
+            [48, 209, 88],
+            [191, 90, 242],
+            [255, 69, 58],
+            [100, 210, 255],
+        ];
+        let (w, h) = (256u32, 160u32);
+        let fondo = TONOS[k % TONOS.len()];
+        let acento = ACENTOS[k % ACENTOS.len()];
+        let oscuro = fondo.iter().map(|&c| u32::from(c)).sum::<u32>() < 300;
+        let tinta: [u8; 3] = if oscuro { [150, 156, 170] } else { [120, 124, 132] };
+        let mut px = Vec::with_capacity((w * h * 4) as usize);
+        for y in 0..h {
+            for x in 0..w {
+                let c = if y < 14 {
+                    // La barra de titulo, con sus tres botones.
+                    if y > 4 && y < 10 && (x % 10 < 6) && x > 222 {
+                        tinta
+                    } else if oscuro {
+                        [fondo[0] / 2, fondo[1] / 2, fondo[2] / 2]
+                    } else {
+                        [fondo[0] - 14, fondo[1] - 14, fondo[2] - 14]
+                    }
+                } else if x < 54 && k % 3 != 2 {
+                    // Una barra lateral.
+                    if (y - 14) % 18 < 8 && x > 8 && x < 46 && y > 24 {
+                        tinta
+                    } else if oscuro {
+                        [fondo[0] + 10, fondo[1] + 10, fondo[2] + 10]
+                    } else {
+                        [fondo[0] - 8, fondo[1] - 8, fondo[2] - 8]
+                    }
+                } else if y > 26 && y < 40 && x > 66 && x < 66 + 60 + (k as u32 * 23) % 110 {
+                    acento
+                } else if y > 48 && (y - 48) % 12 < 5 && x > 66 && x < 240 - ((y * 7 + k as u32 * 13) % 70) {
+                    tinta
+                } else {
+                    fondo
+                };
+                px.extend_from_slice(&[c[0], c[1], c[2], 255]);
+            }
+        }
+        ImagenRgba {
+            ancho: w,
+            alto: h,
+            pixeles: px,
+        }
+    }
+
+    /// Una galeria de ejemplo: 25 capturas en cuatro dias, dos conservadas
+    /// y una que se va hoy, con su miniatura cada una.
+    fn estado_de_ejemplo() -> Estado {
+        let ahora = pixpin_shell::entorno::ahora_utc_ms();
+        let seg = (ahora / 1000) as u64;
+        let mut lista = Vec::new();
+        let mut n = 300;
+        for (dia, cuantas) in [(0u64, 9u64), (1, 6), (7, 6), (9, 4)] {
+            for k in 0..cuantas {
+                let ext = if n % 11 == 0 {
+                    "gif"
+                } else if n % 13 == 0 {
+                    "mp4"
+                } else {
+                    "png"
+                };
+                lista.push(entrada(
+                    &format!("captura-{n:04}.{ext}"),
+                    seg - dia * 86_400 - k * 900 - 60,
+                ));
+                n -= 1;
+            }
+        }
+        ordenar(&mut lista);
+        let registro = crate::caducidad_capturas::Registro {
+            desde: ahora - 30 * 86_400_000,
+            conservadas: ["captura-0298.png", "captura-0285.png"]
+                .iter()
+                .map(|s| s.to_string())
+                .collect(),
+            prorrogadas: Default::default(),
+        };
+        let mut e = Estado::nuevo(lista, registro);
+        e.ocr = Some(true);
+        for (k, x) in e.lista.iter().enumerate() {
+            if tiene_miniatura(&x.ruta) {
+                e.minis.insert(
+                    x.ruta.clone(),
+                    Mini::Lista {
+                        bitmap: None,
+                        imagen: mini_de_ejemplo(k),
+                        visto: 0,
+                    },
+                );
+            }
+        }
+        e
+    }
+
+    /// Sube a la GPU las miniaturas de ejemplo (dentro del pintado de la
+    /// muestra: es el unico sitio donde hay motor).
+    fn subir_minis(e: &mut Estado, motor: &pixpin_render::MotorRender) {
+        for m in e.minis.values_mut() {
+            if let Mini::Lista { bitmap, imagen, .. } = m
+                && bitmap.is_none()
+            {
+                *bitmap = motor
+                    .bitmap_desde_pixeles(imagen.ancho, imagen.alto, &imagen.pixeles)
+                    .ok();
+            }
+        }
+    }
+
+    /// El centro de la celda `k` de la vista, en pixeles de la ventana.
+    fn sobre_la_celda(e: &Estado, k: usize, dx: f32, dy: f32) -> (f32, f32) {
+        let z = zonas(1280.0, 820.0, 1.0);
+        let c = e.disp.celdas[k];
+        (z.rejilla.x + c.x + dx, z.rejilla.y + c.y - e.scroll + dy)
+    }
+
     #[test]
     #[ignore = "necesita GPU; ejecutar con --ignored y mirar el PNG"]
     fn muestra_de_la_galeria() {
         let textos = Catalogo::nuevo(Idioma::Espanol);
-        let mut e = estado();
-        let ahora = e.ahora;
-        // Mas capturas, para que salgan los tres grupos y los cuatro colores.
-        let seg = |ms: i64| (ms / 1000) as u64;
-        for k in 4..9 {
-            e.lista.push(entrada(
-                &format!("captura-00{k:02}.gif"),
-                seg(ahora) - 86_400 - k * 60,
-            ));
-        }
-        e.lista
-            .push(entrada("captura-0020.png", seg(ahora) - 6 * 86_400));
-        ordenar(&mut e.lista);
-        e.registro.desde = ahora - 20 * 86_400_000;
-        e.foco = Some(e.lista[0].ruta.clone());
-        e.eligiendo = true;
-        e.elegidas.insert(e.lista[0].ruta.clone());
-        e.elegidas.insert(e.lista[2].ruta.clone());
-        e.consulta = String::new();
-        e.aviso = Some(Aviso {
-            texto: con_cuantas(&textos, "galeria-borradas", 2),
-            desde: Instant::now(),
-            deshacer: true,
+        let ancho_rejilla = zonas(1280.0, 820.0, 1.0).rejilla.ancho;
+
+        // 1. Sin elegir: una con el foco (se pulso) y el raton sobre la
+        // chapita de otra, que ensena el «⋯» y la pista.
+        let mut e = estado_de_ejemplo();
+        preparar(&mut e, ancho_rejilla, 1.0, &textos);
+        e.foco = Some(e.lista[e.vista[2]].ruta.clone());
+        let c = e.disp.celdas[0];
+        e.botones.raton = sobre_la_celda(&e, 0, c.ancho - 17.0, 17.0);
+        crate::ventanita::muestra("galeria-v2-encima", 1280, 820, |p, motor| {
+            subir_minis(&mut e, motor);
+            pintar_todo(&mut e, p, 1280.0, 820.0, 1.0, &textos);
         });
+
+        // 2. Eligiendo varias, con el aviso de borrar y su «Deshacer»
+        // encima de la barra, y el raton sobre una celda (su «⋯»).
+        let mut e = estado_de_ejemplo();
+        preparar(&mut e, ancho_rejilla, 1.0, &textos);
+        e.eligiendo = true;
+        for k in [0, 2, 3] {
+            e.elegidas.insert(e.lista[e.vista[k]].ruta.clone());
+        }
+        e.aviso = Some(Aviso::con_deshacer(
+            con_cuantas(&textos, "galeria-borradas", 2),
+            textos.t("galeria-deshacer"),
+            Accion::Deshacer,
+        ));
         e.deshacer = vec![Borrada {
             original: PathBuf::from("x.png"),
             destino: PathBuf::from("y.png"),
             conservada: false,
             prorroga: None,
         }];
-        preparar(
-            &mut e,
-            zonas(1280.0, 820.0, 1.0).rejilla.ancho,
-            1.0,
-            &textos,
-        );
-        // El raton sobre la segunda celda: salen sus botones.
-        let c = e.disp.celdas[1];
-        let z = zonas(1280.0, 820.0, 1.0);
-        e.botones.raton = (z.rejilla.x + c.x + 30.0, z.rejilla.y + c.y + 60.0);
-        crate::ventanita::muestra("galeria-capturas-v2", 1280, 820, |p, _| {
-            pintar_todo(&mut e, p, 1280.0, 820.0, 1.0, &textos)
+        e.botones.raton = sobre_la_celda(&e, 7, 60.0, 70.0);
+        crate::ventanita::muestra("galeria-v2-eligiendo", 1280, 820, |p, motor| {
+            subir_minis(&mut e, motor);
+            pintar_todo(&mut e, p, 1280.0, 820.0, 1.0, &textos);
         });
-        // Y sin elegir, con el buscador escribiendo.
-        let mut e2 = estado();
-        e2.escribiendo = true;
-        e2.consulta = "obra".into();
-        preparar(&mut e2, z.rejilla.ancho, 1.0, &textos);
-        crate::ventanita::muestra("galeria-capturas-v2-buscar", 1280, 820, |p, _| {
-            pintar_todo(&mut e2, p, 1280.0, 820.0, 1.0, &textos)
+
+        // 3. Buscando: el cursor en medio de lo escrito, y una busqueda sin
+        // nada (el estado vacio).
+        let mut e = estado_de_ejemplo();
+        e.escribiendo = true;
+        e.consulta = Campo::con("ladrillo");
+        e.consulta.cursor = 3;
+        preparar(&mut e, ancho_rejilla, 1.0, &textos);
+        crate::ventanita::muestra("galeria-v2-buscar", 1280, 820, |p, motor| {
+            subir_minis(&mut e, motor);
+            pintar_todo(&mut e, p, 1280.0, 820.0, 1.0, &textos);
         });
     }
 }

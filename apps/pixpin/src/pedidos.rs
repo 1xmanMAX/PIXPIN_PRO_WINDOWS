@@ -613,6 +613,13 @@ fn hacer(p: Pedido, cx: &Contexto) -> Result<Hecho, Fallo> {
                 fotos,
             );
         }
+        // Sin proyecto ni consulta, al timeline (pestana «Lecciones», donde
+        // se ven desde el 5-oct); con ellos, la lista de siempre, que sabe
+        // filtrar por proyecto.
+        Pedido::Lecciones {
+            proyecto: None,
+            consulta: None,
+        } => crate::timeline::abrir_lecciones(cx.idioma, cx.ubicacion.clone()),
         Pedido::Lecciones { proyecto, consulta } => {
             let ficha = match proyecto.as_deref().map(str::trim).filter(|p| !p.is_empty()) {
                 Some(_) => Some(ficha_de(raiz, proyecto.as_deref(), cx.aparato, ahora)?.id),
@@ -718,9 +725,7 @@ fn hacer(p: Pedido, cx: &Contexto) -> Result<Hecho, Fallo> {
         Pedido::Ventana { cual } => match cual {
             Cual::Tareas => crate::tareas::abrir(cx.idioma, cx.ubicacion.clone(), cx.aparato),
             Cual::Galeria => crate::galeria_capturas::abrir(cx.idioma, cx.ubicacion.clone()),
-            Cual::Lecciones => {
-                crate::lecciones::lista(cx.ubicacion.clone(), cx.idioma, cx.aparato, None, None)
-            }
+            Cual::Lecciones => crate::timeline::abrir_lecciones(cx.idioma, cx.ubicacion.clone()),
         },
         Pedido::Capturar { modo } => capturar(modo.unwrap_or(ModoCaptura::Zona)),
         Pedido::PinearUltima {} => {

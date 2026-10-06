@@ -1441,17 +1441,12 @@ pedido-sin-imagen = The image { $ruta } can't be found; the task wasn't added.
 
 ## Capture gallery (2-oct)
 galeria-titulo = Captures
-galeria-titulo-cuantas = Captures · { $cuantas }
 galeria-vacia = No captures yet. The ones you copy with Alt + drag will show up here.
 galeria-abrir-carpeta = Open folder
 galeria-copiada = Copied to the clipboard
 galeria-pineada = Pinned
 galeria-borrada = Moved to PixPin's recycle bin
 galeria-no-se-pudo = Couldn't do it: { $motivo }
-galeria-caducan = They delete themselves after 7 days (to the Windows recycle bin). Keep saves them in the chat.
-galeria-se-borra = Deleted on { $fecha }
-galeria-se-borra-hoy = Deleted today
-galeria-conservada = Kept
 galeria-conservada-aviso = Kept: it is in Saved messages and won't be deleted
 bandeja-galeria-capturas = Capture gallery…
 chat-galeria-capturas = Capture gallery
@@ -1462,18 +1457,10 @@ chat-hacer-leccion = Make a lesson
 bandeja-lecciones = 💡 Lessons…
 bandeja-leccion-nueva = New lesson…
 bandeja-tareas = ☑ Tasks…
+bandeja-timeline = 🕒 Timeline…
 
 ## Tareas (ventana)
 tareas-titulo = Tasks
-tareas-resumen = { $pendientes ->
-    [0] Nothing pending
-    [one] 1 pending
-   *[other] { $pendientes } pending
-  } · { $listas ->
-    [one] 1 list
-   *[other] { $listas } lists
-  }
-tareas-apuntar = Write a task for the Inbox and press Enter (Ctrl+V pastes images)
 tareas-apuntar-boton = Add
 tareas-hechas = Done ({ $n })
 tareas-vacia = No tasks yet. Type above and press Enter: it goes to the Inbox, and from there you move it to its group.
@@ -1854,23 +1841,7 @@ galeria-subtitulo = { $cuantas } · kept for 7 days
 galeria-buscar = Search, including the text in captures
 galeria-buscar-sin-ocr = Search by name or date
 galeria-elegir = Select
-galeria-eligiendo = Selecting
-galeria-filtro-todas = All
-galeria-filtro-hoy = Today
-galeria-filtro-semana = This week
-galeria-filtro-conservadas = Kept
-galeria-filtro-pronto = Deleted soon
-galeria-filtro-gif = GIF
-galeria-filtro-videos = Videos
-galeria-filtro-con-texto = With text
-galeria-filtro-vacio = No captures in this filter.
 galeria-sin-resultados = No captures with “{ $texto }”.
-galeria-papelera = Recycle bin
-galeria-ocupan = They take { $tamano }
-galeria-ayuda-mover = move
-galeria-tecla-espacio = Space
-galeria-ayuda-elegir = select ·
-galeria-ayuda-pinear = pin
 galeria-hoy = Today
 galeria-ayer = Yesterday
 galeria-dia-0 = Monday
@@ -1881,15 +1852,11 @@ galeria-dia-4 = Friday
 galeria-dia-5 = Saturday
 galeria-dia-6 = Sunday
 galeria-elegir-dia = Select the whole day
-galeria-se-borra-manana = Deleted tomorrow
-galeria-se-borra-en = Deleted in { $dias } days
 galeria-chip-video = Video
-galeria-chip-texto = Aa text
 galeria-pinear = Pin
 galeria-copiar = Copy
 galeria-conservar = Keep
 galeria-borrar = Delete
-galeria-dar-mas = 7 more days
 galeria-elegidas = { $cuantas ->
     [one] 1 selected
    *[other] { $cuantas } selected
@@ -1905,26 +1872,6 @@ galeria-pineadas = { $cuantas } pinned on screen
 galeria-copiadas = { $cuantas } copied as files
 galeria-conservadas-aviso = { $cuantas } kept: they are in Saved messages
 galeria-prorrogada = Seven more days: it will be deleted later
-galeria-texto-copiado = Text copied
-galeria-detalle-vacio = Choose a capture to see its details.
-galeria-ver-grande = Double-click: view large
-galeria-tipo-captura = Screen capture
-galeria-tipo-gif = Animated GIF
-galeria-tipo-video = Video
-galeria-fecha = Date
-galeria-tamano = Size
-galeria-en-dias = { $dias ->
-    [0] today
-    [one] tomorrow
-   *[other] in { $dias } days
-}
-galeria-conservada-detalle = It is in Saved messages and won't be deleted.
-galeria-texto-reconocido = Recognized text
-galeria-copiar-texto = Copy text
-galeria-texto-leyendo = Reading the text…
-galeria-texto-nada = No text found in this capture.
-galeria-texto-video = Videos have no recognized text.
-galeria-texto-sin-ocr = This Windows has no text recognition language installed.
 ## v2-pines
 # The pin toolbar, its right-click menu and the "Open pins" panel.
 pin-v2-anotar = Annotate
@@ -2085,3 +2032,185 @@ tareas3-borrar-lista-aviso = Delete the list “{ $lista }” in “{ $chat }”
    *[other] its { $n } tasks
   }? It is also deleted from the chat and the phone, and can't be undone.
 tareas3-lista-borrada = List “{ $lista }” deleted
+
+## timeline (5-oct-2026)
+timeline-titulo = Timeline
+timeline-sub-ultimas = Last 24 hours · { $n ->
+    [one] 1 moment
+   *[other] { $n } moments
+  }
+timeline-sub-dia = { $n ->
+    [one] 1 moment
+   *[other] { $n } moments
+  }
+timeline-ultimas-24h = Last 24 hours
+timeline-hoy = Today
+timeline-ayer = Yesterday
+timeline-exportar = Export
+timeline-volver = Back
+timeline-pista = What's happening? Type or dictate…
+timeline-vacio = Nothing in the last 24 hours yet.
+    Type or dictate what's happening and press Enter.
+    When dictating, «con esto pasó…» starts the title and «y así te lo cuento…» the description.
+timeline-vacio-dia = Nothing was noted that day.
+timeline-nota-de-voz = Voice note
+timeline-sin-titulo-voz = Voice note
+timeline-sin-titulo-foto = Photo
+timeline-apuntado = Noted
+timeline-corregido = Corrected
+timeline-borrado = Moment deleted
+timeline-deshacer = Undo
+timeline-abrir = Open
+timeline-escribe-algo = Type something for the title
+timeline-no-guardado = Couldn't save the timeline
+timeline-corrigiendo = Correcting the { $hora } moment · Enter saves, Esc cancels
+timeline-voz-esperando = 🎙 The voice note goes with the text: press Enter
+timeline-pegar-no-imagen = That's neither an image nor text
+timeline-cal-elegidos = { $n ->
+    [one] 1 day selected
+   *[other] { $n } days selected
+  }
+timeline-cal-quitar = Clear selection
+timeline-exportar-html = Web page (HTML)
+timeline-exportar-pdf = PDF document
+timeline-tipo-html = Web page
+timeline-tipo-pdf = PDF document
+timeline-nada-que-exportar = Nothing to export there
+timeline-no-exportado = Couldn't save the file
+timeline-exportado = Saved: { $nombre }
+timeline-exportado-pie = Exported with PixPin Max · { $fecha }
+timeline-pdf-haciendo = Making the PDF…
+timeline-pdf-sin-edge = The PDF needs Microsoft Edge; export as HTML
+timeline-pdf-fallo = Couldn't make the PDF
+timeline-mic-abriendo = Opening the microphone…
+timeline-mic-escuchando = Listening… press the microphone (or Ctrl+M) to finish
+timeline-mic-guardando = Saving what you said…
+timeline-mic-bajando = Downloading the voice model (once)… { $pc } %
+timeline-mic-pasando = Transcribing… { $pc } %
+timeline-mic-sin-dictado = This computer can't transcribe: type it
+timeline-mic-no-abre = Couldn't open the microphone
+timeline-mic-no-guarda = Couldn't save what you said
+timeline-mic-sin-microfono = No microphone
+timeline-mic-corto = Too short: speak a bit longer
+timeline-mic-error = Couldn't record: { $error }
+timeline-mic-sin-texto = Not understood: only the audio is kept
+
+
+## simple-lecciones
+lecs-menos-campos = Fewer fields
+lecs-ficha-completa = Type, causes and keywords…
+
+## galeria-menu (5-oct-2026, right click)
+galeria-guardar-como = Save as…
+galeria-mostrar-en-carpeta = Show in folder
+galeria-guardadas = { $cuantas ->
+    [one] Saved
+   *[other] { $cuantas } saved
+}
+galeria-prorrogar = Give 7 more days
+
+## timeline-v2 (5-oct-2026): common bar, WeChat-like tabs and detail
+timeline-pestana-hoy = Today
+timeline-pestana-momentos = Moments
+timeline-pestana-estado = Status
+timeline-buscar-pista = Search the timeline
+timeline-sub-buscar = { $n ->
+    [0] Nothing found
+    [one] 1 result
+   *[other] { $n } results
+  }
+timeline-sub-momentos = { $n ->
+    [0] No moments yet
+    [one] 1 moment in total
+   *[other] { $n } moments in total
+  }
+timeline-sin-resultados = No moment has that.
+    Title and description are searched, ignoring accents and case.
+timeline-momentos-vacio = No moments yet. Note the first one in "Today".
+timeline-estado-sobre-todo = Mostly
+timeline-estado-lo-mas = "{ $que }"
+timeline-exportar-busqueda = Search: "{ $que }"
+timeline-pestana-lecciones = Lessons
+timeline-sub-lecciones = { $n ->
+    [0] No lessons
+    [one] 1 lesson learned
+   *[other] { $n } lessons learned
+  }
+timeline-lecciones-vacio = No lessons yet. Press a moment's light bulb to make it a lesson.
+timeline-gravedad-leve = Minor
+timeline-gravedad-importante = Important
+timeline-gravedad-grave = Serious
+timeline-otra-vez = It happened again +1
+timeline-otra-vez-hecho = Noted: { $n } times now
+timeline-leccion = Lesson
+timeline-leccion-hecha = 💡 Made a lesson: it is in "Lessons"
+timeline-leccion-quitada = No longer marked. The lesson stays in "Lessons".
+timeline-leccion-fallo = Could not save the lesson
+timeline-leccion-por-que = Why
+timeline-leccion-proxima = Next time
+timeline-tambien-lecciones = { $n ->
+    [one] 1 lesson also matches · See
+   *[other] { $n } lessons also match · See
+  }
+timeline-copiar-imagen = Copy as image
+timeline-guardar-imagen = Save as image…
+timeline-imagen-copiada = Copied as image
+timeline-imagen-fallo = Could not make the image
+timeline-tipo-png = PNG image
+timeline-compartido-pie = PixPin Max · Timeline
+
+## tareas-v4
+# The search box hint in the shared top bar: shorter than tareas3-buscar,
+# which does not fit in the space the bar leaves.
+tareas4-buscar = Search tasks…
+timeline-otra-vez-corto = ↻ It happened again +1
+timeline-pagina-linea = Timeline
+timeline-exportado-pesa = it is { $mb } MB: it may be hard to send
+
+## v2-diseno
+# The gallery with the v2 design system (Oct 6).
+galeria-chapa-hoy = today
+galeria-pista-caduca = { $dias ->
+    [0] Deleted today
+    [one] Deleted tomorrow
+   *[other] Deleted in { $dias } days
+  } · right-click to keep
+galeria-ya-conservadas = They were already kept
+galeria-dia-cuantas = { $cuantas ->
+    [one] 1 capture
+   *[other] { $cuantas } captures
+  }
+timeline-sub-estado-dias = { $n ->
+    [0] No days with anything yet
+    [one] 1 day with something
+   *[other] { $n } days with something
+  }
+timeline-filtro-todas = All
+timeline-orden-recientes = Recent
+timeline-orden-repetidas = Most repeated
+timeline-lecciones-sin-resultados = No lesson has that.
+timeline-otra-vez-pildora = ↻ +1
+
+## tareas-v5
+# The bar subtitle: each group already counts what is pending.
+tareas5-subtitulo = { $listas ->
+    [one] 1 list
+   *[other] { $listas } lists
+  }
+tareas5-apuntar-pista = New task…
+tareas5-corregir-pista = Task text…
+tareas5-imagen-pista = Add images · Ctrl+V pastes a copied one
+tareas5-guardar = Save
+tareas5-corregida = Task updated
+tareas5-vista-lista = List · Ctrl+L
+tareas5-vista-tarjetas = Cards · Ctrl+T
+tareas5-marcar = Mark as done
+tareas5-desmarcar = Mark as pending
+tareas5-editar = Edit
+tareas5-copiar-texto = Copy text
+tareas5-copiada = Text copied
+tareas5-pinear-imagenes = { $n ->
+    [one] Pin the image
+   *[other] Pin the { $n } images
+  }
+tareas5-quitar = Remove

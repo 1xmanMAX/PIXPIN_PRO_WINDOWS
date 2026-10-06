@@ -253,10 +253,18 @@ pub enum Extra {
     Tareas = 0,
     Galeria = 1,
     Lecciones = 2,
+    /// El timeline (5-oct-2026): el mas a la izquierda, y por eso el primero
+    /// que se retira en una lista estrecha (tambien esta en la bandeja).
+    Timeline = 3,
 }
 
 impl Extra {
-    pub const TODOS: [Extra; 3] = [Extra::Tareas, Extra::Galeria, Extra::Lecciones];
+    pub const TODOS: [Extra; 4] = [
+        Extra::Tareas,
+        Extra::Galeria,
+        Extra::Lecciones,
+        Extra::Timeline,
+    ];
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -530,6 +538,7 @@ impl Disposicion {
             self.boton_extra(Extra::Tareas, escala_por_cien),
             self.boton_extra(Extra::Galeria, escala_por_cien),
             self.boton_extra(Extra::Lecciones, escala_por_cien),
+            self.boton_extra(Extra::Timeline, escala_por_cien),
         ]
         .iter()
         .filter(|b| b.ancho > 0)
@@ -1137,8 +1146,8 @@ mod pruebas_ventana {
     fn lecciones_galeria_y_tareas_van_a_la_izquierda_de_sincronizar_sin_pisar_el_buscador() {
         let d = Disposicion::calcular(1000, 700, 100, 320, Vista::Ambas);
         let (b, s) = (d.buscador(100), d.boton_sincro(100));
-        let [t, g, l] = Extra::TODOS.map(|x| d.boton_extra(x, 100));
-        for u in [t, g, l] {
+        let [t, g, l, tl] = Extra::TODOS.map(|x| d.boton_extra(x, 100));
+        for u in [t, g, l, tl] {
             assert_eq!((u.ancho, u.alto), (s.ancho, s.alto), "el mismo boton");
             assert_eq!(u.y, s.y);
             assert!(d.cabecera_lista.contiene(Punto {
@@ -1146,9 +1155,9 @@ mod pruebas_ventana {
                 y: u.y + u.alto as i32 / 2,
             }));
         }
-        assert!(b.derecha() < l.x, "el buscador acaba antes");
+        assert!(b.derecha() < tl.x, "el buscador acaba antes");
         assert!(
-            l.derecha() < g.x && g.derecha() < t.x && t.derecha() < s.x,
+            tl.derecha() < l.x && l.derecha() < g.x && g.derecha() < t.x && t.derecha() < s.x,
             "en fila, sin tocarse"
         );
     }

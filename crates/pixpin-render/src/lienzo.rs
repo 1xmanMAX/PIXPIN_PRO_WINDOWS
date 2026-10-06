@@ -11,6 +11,7 @@ use windows::Win32::Graphics::Direct2D::{
     D2D1_DRAW_TEXT_OPTIONS_ENABLE_COLOR_FONT, D2D1_ELLIPSE, D2D1_EXTEND_MODE_CLAMP, D2D1_GAMMA_2_2,
     D2D1_INTERPOLATION_MODE, D2D1_INTERPOLATION_MODE_HIGH_QUALITY_CUBIC,
     D2D1_INTERPOLATION_MODE_LINEAR, D2D1_INTERPOLATION_MODE_NEAREST_NEIGHBOR, D2D1_LINE_JOIN_ROUND,
+    D2D1_LINEAR_GRADIENT_BRUSH_PROPERTIES,
     D2D1_RADIAL_GRADIENT_BRUSH_PROPERTIES, D2D1_ROUNDED_RECT, D2D1_STROKE_STYLE_PROPERTIES1,
     ID2D1Bitmap1, ID2D1PathGeometry1, ID2D1RenderTarget, ID2D1SolidColorBrush, ID2D1StrokeStyle,
 };
@@ -667,6 +668,49 @@ impl Pintor<'_> {
         };
         // SAFETY: dentro del fotograma; pincel y contexto vivos.
         unsafe { destino.FillEllipse(&e, &pincel) };
+    }
+
+    /// Un rectangulo con un degradado lineal de `a` (en el punto `desde`) a
+    /// `b` (en `hasta`). Lo pide el timeline (5-oct-2026): los fondos de sus
+    /// historias y el velo que oscurece una foto para que el texto se lea.
+    /// Como `circulo_degradado`, crea el pincel en cada llamada: son pocos
+    /// por fotograma.
+    pub fn rect_degradado(&self, r: RectF, desde: (f32, f32), hasta: (f32, f32), a: Color, b: Color) {
+        let paradas = [
+            D2D1_GRADIENT_STOP {
+                position: 0.0,
+                color: a.a_d2d(),
+            },
+            D2D1_GRADIENT_STOP {
+                position: 1.0,
+                color: b.a_d2d(),
+            },
+        ];
+        let destino: &ID2D1RenderTarget = self.motor.contexto();
+        // SAFETY: dentro del fotograma; `paradas` vive hasta que la
+        // coleccion se crea, y Direct2D la copia.
+        let Ok(coleccion) = (unsafe {
+            destino.CreateGradientStopCollection(&paradas, D2D1_GAMMA_2_2, D2D1_EXTEND_MODE_CLAMP)
+        }) else {
+            return;
+        };
+        let props = D2D1_LINEAR_GRADIENT_BRUSH_PROPERTIES {
+            startPoint: Vector2 {
+                X: desde.0,
+                Y: desde.1,
+            },
+            endPoint: Vector2 {
+                X: hasta.0,
+                Y: hasta.1,
+            },
+        };
+        // SAFETY: props y coleccion vivas; el pincel nace dentro del fotograma.
+        let Ok(pincel) = (unsafe { destino.CreateLinearGradientBrush(&props, None, &coleccion) })
+        else {
+            return;
+        };
+        // SAFETY: dentro del fotograma; pincel y contexto vivos.
+        unsafe { destino.FillRectangle(&r.a_d2d(), &pincel) };
     }
 
     /// Lo mismo que `circulo_degradado` de `color` a transparente, pero con
