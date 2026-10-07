@@ -41,6 +41,7 @@ la máquina de referencia es un Core i3 de 3.ª generación con 4 GB.
   - [La bandeja](#la-bandeja)
   - [El lienzo](#el-lienzo)
   - [Abrir fotos, vídeos y audios](#abrir-fotos-vídeos-y-audios)
+  - [Compartir y arrastrar](#compartir-y-arrastrar)
   - [Flow Launcher](#flow-launcher)
   - [Sincronizar con el móvil](#sincronizar-con-el-móvil)
   - [Ajustes](#ajustes)
@@ -305,6 +306,19 @@ Al abrir un archivo sale como ventana flotante, en unos 200 ms:
 \* Necesitan la extensión gratuita de Microsoft Store (HEVC, AV1, VP9 o JPEG XL). Si falta, PixPin
 dice cuál instalar.
 
+### Compartir y arrastrar
+
+Al exportar o compartir algo (el timeline, un lienzo, un PDF anotado, capturas de la galería…)
+aparece una **ventanita encima de todo** con cada archivo como una tarjeta: se **arrastra con el
+ratón** a WhatsApp, al correo, a una carpeta o a cualquier app, o se comparte, copia, abre o
+pinea desde ahí.
+
+<img src="docs/img/v2/salida.png" width="420" alt="Ventanita para arrastrar lo exportado">
+
+- Una foto **con anotaciones** sale siempre **fusionada**: al arrastrar o copiar un pin dibujado,
+  al arrastrar una foto anotada del chat (también si se dibujó en el móvil) y al compartirla.
+- Un pin se arrastra a otra app con `Ctrl` + arrastrar.
+
 ### Flow Launcher
 
 Con [Flow Launcher](https://www.flowlauncher.com/) se usa PixPin sin abrirla: escribe **`p`**.
@@ -317,6 +331,7 @@ p n idea para la tesis          → nota nueva
 p g muro                        → buscar en la galería (también por el texto de dentro)
 p a revisar la escala           → lección nueva
 p lecciones grietas             → buscar lecciones
+p m [img 01]                    → enviar la imagen al lienzo abierto del móvil
 p c                             → capturar una zona
 ```
 
@@ -359,6 +374,10 @@ flowchart LR
 - Lo anotado sobre PDF, Word y EPUB viaja en las dos direcciones: tinta, marcadores y espacios
   para anotar. Hace falta PixPin Android 0.96 o superior.
 - Un lienzo enviado desde el PC se abre en el lienzo del móvil y al revés.
+- **Foto directa al lienzo del móvil**: desde Flow (`p m`) pegas una imagen, eliges el móvil del
+  grupo y aparece en el lienzo que tengas abierto, sin abrir Sincronizar. Necesita PixPin Android
+  con esa función ([guía](docs/investigacion/2026-10-06-foto-al-lienzo-android.md)); mientras
+  tanto, PixPin lo avisa y ofrece el envío de siempre.
 - Las lecciones se juntan campo a campo.
 
 ### Ajustes
