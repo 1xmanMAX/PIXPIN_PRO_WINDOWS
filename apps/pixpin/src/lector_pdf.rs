@@ -885,8 +885,11 @@ fn recibir(e: &mut Estado, l: Llega, motor: &pixpin_render::MotorRender, textos:
                 Ok(destino) => {
                     let mut args = fluent_bundle::FluentArgs::new();
                     args.set("nombre", pixpin_docs::nombre(&destino));
-                    let _ = pixpin_shell::abrir_ubicacion(&destino);
-                    textos.t_args("visor-guardado", &args)
+                    // A la Salida y no a la carpeta: desde ahi se arrastra,
+                    // se manda o se abre la carpeta si se quiere.
+                    let texto = textos.t_args("visor-guardado", &args);
+                    crate::salida::mostrar(vec![destino], textos.t("salida-titulo-exportado"));
+                    texto
                 }
                 Err(err) => {
                     tracing::warn!(%err, "no se pudo escribir el PDF anotado");

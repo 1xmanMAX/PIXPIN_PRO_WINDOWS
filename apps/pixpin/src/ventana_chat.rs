@@ -1903,7 +1903,7 @@ pub fn abrir(
                     {
                         let carga = abierto
                             .as_ref()
-                            .and_then(|a| carga_de_la_burbuja(a, indice));
+                            .and_then(|a| carga_fusionada(a, indice, textos));
                         if let Some(a) = abierto.as_mut() {
                             a.comentando = None;
                         }
@@ -5883,6 +5883,16 @@ const ARRASTRE_MINIMO: i32 = 4;
 /// cuando agarrar una burbuja deja de ser comentarla y pasa a sacarla.
 fn sale_de_la_ventana(l: Punto, ancho: u32, alto: u32) -> bool {
     l.x < 0 || l.y < 0 || l.x >= ancho as i32 || l.y >= alto as i32
+}
+
+/// Lo que se lleva la burbuja de verdad: una foto con algo dibujado encima
+/// (aqui o en el movil) viaja FUSIONADA, en un PNG hecho como lo hace la
+/// hoja de compartir; lo demas, como [`carga_de_la_burbuja`].
+fn carga_fusionada(a: &Abierto, i: usize, t: &Catalogo) -> Option<pixpin_pin::Carga> {
+    let m = a.mensajes.get(i)?;
+    crate::compartir::foto_fusionada(&a.raiz, &a.ficha.id, m, t)
+        .map(pixpin_pin::Carga::Fichero)
+        .or_else(|| carga_de_la_burbuja(a, i))
 }
 
 /// Que se lleva la burbuja al sacarla de la ventana: su fichero si lo tiene

@@ -108,6 +108,7 @@ mod recibir;
 mod recordatorios;
 mod renombrar_doc;
 mod reproductor;
+mod salida;
 mod salto_por_enlace;
 mod scroll;
 mod sincronizar;
@@ -565,6 +566,8 @@ fn arrancar(
     // Si la GPU se pierde (driver, TDR, suspension), el primer fallo
     // despierta este bucle, que lo rehace todo (`dispositivo_perdido`).
     dispositivo_perdido::instalar_aviso(hwnd);
+    // Mandar al movil acaba en otro hilo: deja su aviso y despierta el bucle.
+    sincronizar::al_movil::fijar_despertador(hwnd.0 as isize);
     // La pila de capturas: toda captura que va al portapapeles pasa por
     // ella. Nace sin ventana y sin temporizador; con `apilar_segundos = 0`
     // se limita a copiar, como antes de existir.
@@ -1653,6 +1656,10 @@ fn arrancar(
         // Lo que se haya pulsado en el panel de la pila de capturas. Como
         // `purgar`: la ventanita solo apunta el pedido y da un toque.
         pila.atender(&textos, &mut bandeja);
+        // Lo que dijo «mandar al movil» al acabar (pedido `enviar_al_movil`).
+        for aviso in sincronizar::al_movil::tomar_avisos() {
+            let _ = bandeja.avisar(&textos.t("app-nombre"), &aviso);
+        }
         // Lo que haya vencido mientras tanto. Va AQUI, tras el match y no
         // dentro de `Evento::Despertar`, por lo mismo que `purgar`: el toque
         // del vigia y otro evento cualquiera pueden llegar juntos, y entonces

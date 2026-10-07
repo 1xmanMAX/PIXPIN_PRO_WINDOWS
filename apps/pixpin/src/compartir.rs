@@ -503,6 +503,50 @@ pub(crate) fn originales(raiz: &Path, proyecto: &str, mensajes: &[Mensaje]) -> V
         .collect()
 }
 
+/// Si la foto del mensaje `m` tiene algo dibujado encima: en su lienzo del
+/// movil o en su `.pixpin2d` de este equipo.
+fn foto_con_dibujo(raiz: &Path, proyecto: &str, m: &Mensaje, foto: &Path) -> bool {
+    let movil = pixpin_codec::imagen::medidas(foto).is_ok_and(|(w, h)| {
+        crate::foto_anotada::dibujo_de_la_foto(raiz, proyecto, m, (w as f32, h as f32)).is_some()
+    });
+    movil
+        || pixpin_motor2d::cargar(&dibujo_de_foto(foto)).is_ok_and(|e| e.cuantos_visibles() > 0)
+}
+
+/// **La foto de un mensaje con lo dibujado encima, en un PNG**: lo que se
+/// lleva la burbuja al sacarla del chat (el usuario: «que al jalarlo no solo
+/// se pase la foto sino con sus anotaciones»). Por el mismo camino que la
+/// hoja de compartir, para que arrastrar y compartir den la misma imagen.
+///
+/// `None` si no es una foto o no tiene nada dibujado: entonces vale el
+/// fichero original, que no hace falta rehacer.
+pub(crate) fn foto_fusionada(
+    raiz: &Path,
+    proyecto: &str,
+    m: &Mensaje,
+    t: &Catalogo,
+) -> Option<PathBuf> {
+    if !matches!(m.clase, Some(Clase::Imagen)) {
+        return None;
+    }
+    let foto = ruta_de(raiz, proyecto, m)?;
+    if !foto_con_dibujo(raiz, proyecto, m, &foto) {
+        return None;
+    }
+    let titulo = pixpin_docs::sin_extension(&pixpin_docs::nombre(&foto));
+    let p = de_mensajes(raiz, proyecto, &titulo, std::slice::from_ref(m), t);
+    // Una carpeta por mensaje: arrastrar dos veces la misma foto pisa su
+    // PNG en vez de ir llenando la temporal.
+    let carpeta = carpeta_temporal().join(format!("arrastre-{}", nombre_de_fichero(&m.id)));
+    match generar(&p, PNG, std::slice::from_ref(&m.id), &carpeta) {
+        Ok(s) => s.ficheros.into_iter().next(),
+        Err(e) => {
+            tracing::warn!(?e, "no se pudo fusionar la foto con su dibujo");
+            None
+        }
+    }
+}
+
 /// Lo dibujado sobre una foto: a su lado, con `.pixpin2d` detras (D48).
 fn dibujo_de_foto(foto: &Path) -> PathBuf {
     let mut s = foto.as_os_str().to_owned();
@@ -640,19 +684,43 @@ fn anadir_mensaje(
             let Ok((w, h)) = pixpin_codec::imagen::medidas(&foto) else {
                 return false;
             };
-            // Con lo dibujado encima en el chat o en el editor, si lo hay.
-            let escena =
-                pixpin_motor2d::cargar(&dibujo_de_foto(&foto)).unwrap_or_else(|_| Escena::nueva());
-            let papel = Some((FuenteImagen::Fichero(foto), w as f32, h as f32));
-            let puesto = anadir_lienzo(
-                p,
-                &clave,
-                &t.t("compartir-tipo-foto"),
-                &escena,
-                papel,
-                &|_| None,
-                t,
-            );
+            // Lo dibujado en el movil vive en el lienzo propio de la foto
+            // (`foto_anotada`), con la foto dentro: si tiene algo encima, se
+            // comparte ese lienzo entero. Sin esto una foto anotada en el
+            // movil salia limpia al compartirla o arrastrarla desde aqui.
+            let del_movil = crate::foto_anotada::dibujo_de_la_foto(
+                raiz,
+                proyecto,
+                m,
+                (w as f32, h as f32),
+            )
+            .and_then(|_| lienzo_de_hoja(raiz, proyecto, &crate::foto_anotada::id_del_lienzo(m)));
+            let puesto = if let Some((escena, fotos)) = del_movil {
+                let fuente = |id: u64| fotos.get(&id).cloned().map(FuenteImagen::Fichero);
+                anadir_lienzo(
+                    p,
+                    &clave,
+                    &t.t("compartir-tipo-foto"),
+                    &escena,
+                    None,
+                    &fuente,
+                    t,
+                )
+            } else {
+                // Con lo dibujado encima en el chat o en el editor, si lo hay.
+                let escena = pixpin_motor2d::cargar(&dibujo_de_foto(&foto))
+                    .unwrap_or_else(|_| Escena::nueva());
+                let papel = Some((FuenteImagen::Fichero(foto), w as f32, h as f32));
+                anadir_lienzo(
+                    p,
+                    &clave,
+                    &t.t("compartir-tipo-foto"),
+                    &escena,
+                    papel,
+                    &|_| None,
+                    t,
+                )
+            };
             if let Some(pieza) = p.piezas.iter_mut().find(|x| x.pagina.clave == clave) {
                 pieza.pagina.nombre = pixpin_docs::sin_extension(&nombre);
             }

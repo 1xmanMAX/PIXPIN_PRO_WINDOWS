@@ -46,6 +46,7 @@ use crate::caja_dibujo::hex;
 use crate::overlay::Recursos;
 
 mod al_dia;
+pub(crate) mod al_movil;
 mod copias_ui;
 mod elegir;
 mod enviar_wifi;
@@ -1128,6 +1129,26 @@ fn sondear_uno(host: &str, puerto: u16) -> bool {
 /// pintar. Si no contesta, se busca por la red y lo encontrado se apunta
 /// (`AlDia.aparatos`, ver `al_dia`). Sin rastro de el, el mismo error que
 /// daria la conexion, pero sin esperar los 8 s de agotarla.
+/// Los del grupo que se anuncian ahora en la red (3 s de mDNS), menos este
+/// equipo. Sin grupo, nadie: sin etiqueta no se sabe a quien buscar.
+fn vistos_del_grupo(x: &Identidad) -> Vec<al_dia::Visto> {
+    let Some(codigo) = x.codigo.as_deref() else {
+        return Vec::new();
+    };
+    let etiqueta = etiqueta_de(codigo);
+    pixpin_shell::mdns::buscar(TIPO_MDNS, Duration::from_secs(3))
+        .unwrap_or_default()
+        .iter()
+        .filter(|v| es_del_grupo(v, &etiqueta, &x.yo.id))
+        .map(|v| al_dia::Visto {
+            id: v.datos.get("id").cloned().unwrap_or_default(),
+            nombre: v.datos.get("n").cloned().unwrap_or_default(),
+            host: v.host.to_string(),
+            puerto: v.puerto,
+        })
+        .collect()
+}
+
 fn llegar(raiz: &Path, host: &str, puerto: u16, nombre: &str) -> Result<(String, u16)> {
     let identidad = leer_identidad(raiz).ok();
     // El id sale de la direccion apuntada; si no, del nombre en el grupo.
@@ -1143,26 +1164,7 @@ fn llegar(raiz: &Path, host: &str, puerto: u16, nombre: &str) -> Result<(String,
                     .map(|m| m.id.clone())
             })
         });
-    let buscar = || -> Vec<al_dia::Visto> {
-        let Some(x) = identidad.as_ref() else {
-            return Vec::new();
-        };
-        let Some(codigo) = x.codigo.as_deref() else {
-            return Vec::new();
-        };
-        let etiqueta = etiqueta_de(codigo);
-        pixpin_shell::mdns::buscar(TIPO_MDNS, Duration::from_secs(3))
-            .unwrap_or_default()
-            .iter()
-            .filter(|v| es_del_grupo(v, &etiqueta, &x.yo.id))
-            .map(|v| al_dia::Visto {
-                id: v.datos.get("id").cloned().unwrap_or_default(),
-                nombre: v.datos.get("n").cloned().unwrap_or_default(),
-                host: v.host.to_string(),
-                puerto: v.puerto,
-            })
-            .collect()
-    };
+    let buscar = || identidad.as_ref().map(vistos_del_grupo).unwrap_or_default();
     match al_dia::donde_esta(id.as_deref(), nombre, host, puerto, sondear_uno, buscar) {
         al_dia::Donde::LaDeSiempre => Ok((host.to_string(), puerto)),
         al_dia::Donde::Nueva { host, puerto } => {

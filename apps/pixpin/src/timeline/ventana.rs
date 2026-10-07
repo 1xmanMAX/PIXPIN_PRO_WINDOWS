@@ -277,11 +277,13 @@ impl Pestana {
     }
 }
 
-/// Compartir una tarjeta como imagen: al portapapeles o a un fichero.
+/// Compartir una tarjeta como imagen: al portapapeles, a un fichero o a la
+/// Salida (un PNG temporal que se arrastra o se manda).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Destino {
     Copiar,
     Guardar,
+    Compartir,
 }
 
 /// Algo que se abre en el detalle o se comparte: un momento o una leccion,
@@ -1797,8 +1799,10 @@ fn guardar_pagina(e: &mut Estado, f: Formato, nombre: &str, pagina: String, text
     }
 }
 
-/// Lo ya exportado: el aviso con «Abrir».
+/// Lo ya exportado: el aviso con «Abrir» y, sobre todo, la Salida con el
+/// fichero, para arrastrarlo o mandarlo sin ir a buscarlo a la carpeta.
 fn exportado(e: &mut Estado, ruta: PathBuf, textos: &Catalogo) {
+    crate::salida::mostrar(vec![ruta.clone()], textos.t("salida-titulo-exportado"));
     let mut a = fluent_bundle::FluentArgs::new();
     a.set(
         "nombre",

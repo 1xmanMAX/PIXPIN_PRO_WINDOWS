@@ -1350,6 +1350,13 @@ impl Pin {
         (r.ancho as f32 / nw as f32, r.alto as f32 / nh as f32)
     }
 
+    /// **La imagen con lo anotado encima**, a su tamano real, para copiarla
+    /// o mandarla. `None` si el pin no es una imagen o no tiene nada
+    /// anotado: entonces vale la original, que quien llama ya sabe leer.
+    pub fn imagen_con_anotaciones(&self) -> Option<pixpin_codec::ImagenRgba> {
+        imagen_horneada(interno_de(self.hwnd)?)
+    }
+
     /// Quita el pin de la pantalla o lo devuelve, sin cerrarlo. Es lo que
     /// usa Ctrl+2 con los pines en vivo, que no tienen entrada en el almacen
     /// y cerrados no se podrian traer de vuelta. Oculto, un pin en vivo no
@@ -2980,8 +2987,6 @@ fn pintar_mandos_video(
 /// El motor produce geometria y el pintor la pinta: es la separacion que
 /// mantiene al motor puro y probable sin GPU.
 fn pintar_anotaciones(p: &pixpin_render::Pintor, i: &PinInterno, margen: f32) {
-    use pixpin_motor2d::Orden;
-
     // El origen del documento de anotacion es la esquina del CONTENIDO, no
     // la de la ventana: asi las anotaciones acompanan al pin al moverlo sin
     // recalcular ni un punto.
@@ -2991,14 +2996,147 @@ fn pintar_anotaciones(p: &pixpin_render::Pintor, i: &PinInterno, margen: f32) {
     // Sin escalar, agrandar el pin dejaba el dibujo con las medidas de
     // antes: se iba descolocando hacia un lado y acababa fuera de la
     // ventana. Lo reporto el usuario abriendo un proyecto del movil.
-    let (nw, nh) = i.imagen_nativa;
     let r = i.estado.rect();
-    let (fx, fy) = if nw > 0 && nh > 0 && r.ancho > 0 && r.alto > 0 {
-        (r.ancho as f32 / nw as f32, r.alto as f32 / nh as f32)
+    let escala = escala_de_anotacion(i.imagen_nativa, (r.ancho, r.alto));
+    pintar_ordenes(
+        p,
+        &CapaAnotada {
+            ordenes: &i.anotaciones,
+            grafitos: &i.grafitos,
+            cache: &i.cache_grafito,
+            escala,
+            margen,
+            marco: (r.ancho as f32, r.alto as f32),
+        },
+    );
+}
+
+/// Cuanto se multiplica una coordenada de lo anotado (pixeles de la imagen
+/// ORIGINAL, `nativa`) para caer en algo que mide `destino`: el pin en
+/// pantalla, o la propia imagen al hornearla (y entonces es 1).
+fn escala_de_anotacion(nativa: (u32, u32), destino: (u32, u32)) -> (f32, f32) {
+    let ((nw, nh), (w, h)) = (nativa, destino);
+    if nw > 0 && nh > 0 && w > 0 && h > 0 {
+        (w as f32 / nw as f32, h as f32 / nh as f32)
     } else {
         // Sin tamano nativo —una nota, un video— no hay nada que escalar.
         (1.0, 1.0)
+    }
+}
+
+/// Lo anotado de un pin y donde pintarlo: aparte de `PinInterno` para que
+/// la misma cuenta pinte en la ventana y al hornear la imagen que se
+/// arrastra o se copia. Dos copias de este `match` acabarian pintando cosas
+/// distintas en pantalla y en lo que se manda.
+struct CapaAnotada<'a> {
+    ordenes: &'a [pixpin_motor2d::Orden],
+    grafitos: &'a [pixpin_motor2d::tinta::grafito::GrafitoSuelto],
+    cache: &'a std::cell::RefCell<pixpin_render::CacheGrafito>,
+    escala: (f32, f32),
+    margen: f32,
+    /// Lo que mide el contenido donde se pinta (para el velo del foco).
+    marco: (f32, f32),
+}
+
+/// **La imagen del pin con lo anotado encima**, a su tamano real: lo que
+/// viaja al arrastrar el pin a otra aplicacion o al copiarlo. El usuario:
+/// «que al jalarlo no solo se pase la foto sino con sus anotaciones».
+///
+/// `None` si no es una imagen, si no tiene nada anotado (entonces vale la
+/// original tal cual, sin pasar por la GPU) o si la GPU no pudo: quien
+/// llama se queda con la original, que es mejor que no llevarse nada.
+fn imagen_horneada(i: &mut PinInterno) -> Option<pixpin_codec::ImagenRgba> {
+    if i.anotaciones.is_empty() && i.grafitos.is_empty() {
+        return None;
+    }
+    // Lo que se hornea es la foto entera, no la leida a la medida del pin.
+    asegurar_resolucion(i, true);
+    let Contenido::Imagen(img) = &i.contenido else {
+        return None;
     };
+    hornear(
+        &i.motor,
+        &i.d3d,
+        img,
+        &i.anotaciones,
+        &i.grafitos,
+        i.imagen_nativa,
+    )
+}
+
+/// Pinta `img` y encima lo anotado a una imagen nueva del mismo tamano,
+/// fuera de pantalla. Sin ventana a proposito: se prueba con la GPU sola.
+fn hornear(
+    motor: &MotorRender,
+    d3d: &ID3D11Device,
+    img: &pixpin_codec::ImagenRgba,
+    ordenes: &[pixpin_motor2d::Orden],
+    grafitos: &[pixpin_motor2d::tinta::grafito::GrafitoSuelto],
+    nativa: (u32, u32),
+) -> Option<pixpin_codec::ImagenRgba> {
+    let (w, h) = (img.ancho, img.alto);
+    let fondo = motor
+        .bitmap_desde_pixeles(w, h, &img.pixeles)
+        .inspect_err(|e| tracing::warn!(?e, "no se pudo subir la imagen para hornearla"))
+        .ok()?;
+    let fuera = pixpin_render::fuera_de_pantalla::FueraDePantalla::nuevo(motor, d3d, w, h)
+        .inspect_err(|e| tracing::warn!(?e, w, h, "sin superficie para hornear el pin"))
+        .ok()?;
+    // Una cache propia: la del pin guarda bitmaps de la pantalla y su
+    // limpieza la decide la ventana, no un arrastre suelto.
+    let cache = std::cell::RefCell::new(pixpin_render::CacheGrafito::nueva());
+    let capa = CapaAnotada {
+        ordenes,
+        grafitos,
+        cache: &cache,
+        escala: escala_de_anotacion(nativa, (w, h)),
+        margen: 0.0,
+        marco: (w as f32, h as f32),
+    };
+    motor
+        .dibujar(&fuera.destino, |p| {
+            p.limpiar_transparente();
+            p.bitmap(
+                &fondo,
+                RectF {
+                    x: 0.0,
+                    y: 0.0,
+                    ancho: w as f32,
+                    alto: h as f32,
+                },
+                None,
+                true,
+            );
+            pintar_ordenes(p, &capa);
+        })
+        .inspect_err(|e| tracing::warn!(?e, "no se pudo hornear lo anotado del pin"))
+        .ok()?;
+    fuera.esperar_gpu().ok()?;
+    let (_, _, pixeles) = fuera.leer_rgba().ok()?;
+    (pixeles.len() == img.pixeles.len()).then_some(pixpin_codec::ImagenRgba {
+        ancho: w,
+        alto: h,
+        pixeles,
+    })
+}
+
+/// Lo que se lleva un pin al arrastrarlo: su carga de siempre, con la
+/// imagen cambiada por la horneada si tiene algo anotado.
+fn carga_del_pin(i: &mut PinInterno) -> Option<crate::arrastre::Carga> {
+    if let Some(img) = imagen_horneada(i) {
+        return Some(crate::arrastre::Carga::Imagen(img));
+    }
+    // Lo que se lleva es la foto entera, no la leida a la medida del pin.
+    asegurar_resolucion(i, true);
+    crate::arrastre::carga_de(&i.contenido, i.ruta_origen.as_deref())
+}
+
+/// Pinta una [`CapaAnotada`].
+fn pintar_ordenes(p: &pixpin_render::Pintor, capa: &CapaAnotada<'_>) {
+    use pixpin_motor2d::Orden;
+
+    let (fx, fy) = capa.escala;
+    let margen = capa.margen;
     let mover = |q: &pixpin_motor2d::Punto2| (q.x * fx + margen, q.y * fy + margen);
     let color = |c: pixpin_motor2d::ColorRgba| Color {
         r: c.r,
@@ -3009,13 +3147,13 @@ fn pintar_anotaciones(p: &pixpin_render::Pintor, i: &PinInterno, margen: f32) {
 
     // El grafito, cada mapa justo antes de la orden que le toca: lo que se
     // dibujo despues va encima, como en el editor.
-    let mut grafitos = i.grafitos.iter().peekable();
+    let mut grafitos = capa.grafitos.iter().peekable();
     let mut pintar_grafitos_hasta = |k: usize| {
         while let Some(g) = grafitos.next_if(|g| g.antes_de <= k) {
-            pintar_grafito(p, &mut i.cache_grafito.borrow_mut(), g, (fx, fy), margen);
+            pintar_grafito(p, &mut capa.cache.borrow_mut(), g, (fx, fy), margen);
         }
     };
-    for (k, orden) in i.anotaciones.iter().enumerate() {
+    for (k, orden) in capa.ordenes.iter().enumerate() {
         pintar_grafitos_hasta(k);
         match orden {
             Orden::Poligono { puntos, color: c } | Orden::Relleno { puntos, color: c } => {
@@ -3110,12 +3248,11 @@ fn pintar_anotaciones(p: &pixpin_render::Pintor, i: &PinInterno, margen: f32) {
             // El velo del foco (D51) cubre el CONTENIDO del pin, no la
             // ventana entera: la sombra queda fuera del oscurecido.
             Orden::Velo { hueco, color: c } => {
-                let r = i.estado.rect();
                 let marco = RectF {
                     x: margen,
                     y: margen,
-                    ancho: r.ancho as f32,
-                    alto: r.alto as f32,
+                    ancho: capa.marco.0,
+                    alto: capa.marco.1,
                 };
                 let v: Vec<(f32, f32)> = hueco.iter().map(mover).collect();
                 p.velo(marco, &v, color(*c));
@@ -3586,10 +3723,9 @@ extern "system" fn procedimiento_pin(
             // pediria otra vez el mismo `&mut`.
             let carga = interno_de(hwnd).and_then(|i| {
                 if tecla_pulsada(VK_CONTROL) && !i.anotando {
-                    // Lo que se lleva es la foto entera, no la leida a la
-                    // medida del pin.
-                    asegurar_resolucion(i, true);
-                    crate::arrastre::carga_de(&i.contenido, i.ruta_origen.as_deref())
+                    // La foto entera y, si tiene algo anotado, con ello
+                    // encima: lo que se ve es lo que se lleva.
+                    carga_del_pin(i)
                 } else {
                     None
                 }
@@ -4854,6 +4990,59 @@ mod pruebas {
             alto: 2,
             pixeles: vec![255; 16],
         }
+    }
+
+    #[test]
+    fn lo_anotado_se_hornea_a_uno_por_uno_sobre_la_foto_entera() {
+        // Al hornear, la imagen ES la original: cada punto anotado cae en
+        // su pixel, sin escalar.
+        assert_eq!(escala_de_anotacion((800, 600), (800, 600)), (1.0, 1.0));
+        // En pantalla el pin a la mitad pinta lo anotado a la mitad.
+        assert_eq!(escala_de_anotacion((800, 600), (400, 300)), (0.5, 0.5));
+        // Caso negativo: sin tamano nativo (una nota) no se escala nada, y
+        // un destino vacio no da infinitos.
+        assert_eq!(escala_de_anotacion((0, 0), (400, 300)), (1.0, 1.0));
+        assert_eq!(escala_de_anotacion((800, 600), (0, 300)), (1.0, 1.0));
+    }
+
+    #[test]
+    #[ignore = "necesita GPU; ejecutar con --ignored"]
+    fn una_anotacion_cambia_los_pixeles_donde_va_y_sin_ella_la_foto_queda_igual() {
+        use pixpin_motor2d::{ColorRgba, Orden, Punto2};
+        let d3d = d3d();
+        let motor = MotorRender::nuevo(&d3d).unwrap();
+        // Una foto gris opaca de 40x30.
+        let foto = ImagenRgba {
+            ancho: 40,
+            alto: 30,
+            pixeles: [128u8, 128, 128, 255].repeat(40 * 30),
+        };
+        let px = |img: &ImagenRgba, x: u32, y: u32| {
+            let k = ((y * img.ancho + x) * 4) as usize;
+            [
+                img.pixeles[k],
+                img.pixeles[k + 1],
+                img.pixeles[k + 2],
+                img.pixeles[k + 3],
+            ]
+        };
+        // Un cuadrado rojo de 10x10 en (5, 5).
+        let rojo = Orden::Poligono {
+            puntos: vec![
+                Punto2::nuevo(5.0, 5.0),
+                Punto2::nuevo(15.0, 5.0),
+                Punto2::nuevo(15.0, 15.0),
+                Punto2::nuevo(5.0, 15.0),
+            ],
+            color: ColorRgba::opaco(1.0, 0.0, 0.0),
+        };
+        let con = hornear(&motor, &d3d, &foto, &[rojo], &[], (40, 30)).expect("horneada");
+        assert_eq!((con.ancho, con.alto), (40, 30));
+        assert_eq!(px(&con, 10, 10), [255, 0, 0, 255], "el trazo esta en su sitio");
+        assert_eq!(px(&con, 30, 25), [128, 128, 128, 255], "fuera del trazo, la foto");
+        // Caso negativo: sin nada anotado, la foto sale tal cual.
+        let sin = hornear(&motor, &d3d, &foto, &[], &[], (40, 30)).expect("horneada");
+        assert_eq!(sin.pixeles, foto.pixeles);
     }
 
     #[test]

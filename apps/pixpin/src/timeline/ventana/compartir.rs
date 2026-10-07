@@ -177,6 +177,35 @@ pub(super) fn hacer(
                 e.decir(textos.t("timeline-imagen-fallo"));
             }
         },
+        // A un PNG en la temporal y a la Salida: desde ahi se arrastra a un
+        // chat o al correo, o se manda con el panel de Windows.
+        Destino::Compartir => {
+            let d = Dia::de_instante(c.cuando, e.desfase);
+            let carpeta = crate::compartir::carpeta_temporal().join("timeline");
+            // Con el titulo en el nombre: es lo que ve quien lo recibe.
+            // La primera linea y corta: un nombre de fichero no es un texto.
+            let corto: String = c.titulo.lines().next().unwrap_or("").chars().take(60).collect();
+            let nombre = if corto.trim().is_empty() {
+                format!("timeline-{}.png", d.iso())
+            } else {
+                let titulo = pixpin_motor2d::exportar_html::nombre_de_fichero(&corto);
+                format!("{} - {titulo}.png", d.iso())
+            };
+            let ruta = carpeta.join(nombre);
+            let hecho = std::fs::create_dir_all(&carpeta)
+                .map_err(|err| err.to_string())
+                .and_then(|()| {
+                    pixpin_codec::guardar(&img, &ruta, pixpin_codec::FormatoImagen::Png)
+                        .map_err(|err| err.to_string())
+                });
+            match hecho {
+                Ok(()) => crate::salida::mostrar(vec![ruta], textos.t("salida-titulo")),
+                Err(err) => {
+                    tracing::warn!(%err, "timeline: no se pudo preparar la tarjeta");
+                    e.decir(textos.t("timeline-imagen-fallo"));
+                }
+            }
+        }
         Destino::Guardar => {
             let Some(h) = e.hwnd else { return };
             let d = Dia::de_instante(c.cuando, e.desfase);
@@ -253,7 +282,7 @@ pub(super) fn pintar_menu(e: &mut Estado, p: &Pintor, w: f32, h: f32, s: f32, te
     );
     let ancho = 250.0 * s;
     let fila = 44.0 * s;
-    let alto = 2.0 * fila + 8.0 * s;
+    let alto = 3.0 * fila + 8.0 * s;
     let caja = RectF {
         x: mx.min(w - ancho - 8.0 * s).max(8.0 * s),
         y: (my + 4.0 * s).min(h - alto - 8.0 * s).max(8.0 * s),
@@ -264,6 +293,7 @@ pub(super) fn pintar_menu(e: &mut Estado, p: &Pintor, w: f32, h: f32, s: f32, te
     p.rellenar_redondeado(encoger(caja, 1.0 * s), 11.0 * s, hex(0x2C2C2E));
     e.botones.zona(caja, Accion::Fondo);
     for (k, (d, icono, clave)) in [
+        (Destino::Compartir, &mi::IOS_SHARE, "salida-compartir-menu"),
         (Destino::Copiar, &mi::CONTENT_COPY, "timeline-copiar-imagen"),
         (Destino::Guardar, &mi::IMAGE, "timeline-guardar-imagen"),
     ]

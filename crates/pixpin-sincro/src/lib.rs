@@ -30,6 +30,7 @@
 //! - `disco`: lo que la sincronizacion lee y escribe de un aparato (un
 //!   trait: cada aparato pone como guarda sus chats) y lo que es igual en
 //!   todos; `copias`, la copia de antes de tocar nada.
+//! - `al_lienzo`: una foto suelta al lienzo abierto del movil (`suelto`).
 //! - `protocolo`: el `Respondedor` y la `Sesion`, peticion a peticion;
 //!   `vuelta`, una vuelta entera como la lleva la pantalla del movil.
 //!
@@ -38,6 +39,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod al_lienzo;
 pub mod anotado;
 pub mod base;
 pub mod canal;

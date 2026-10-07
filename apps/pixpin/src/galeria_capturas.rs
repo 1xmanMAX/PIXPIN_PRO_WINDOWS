@@ -1293,6 +1293,7 @@ fn menu_de_captura(
     let mut entradas = vec![
         (1, format!("{}\tEnter", textos.t("galeria-pinear"))),
         (2, format!("{}\tCtrl+C", textos.t("galeria-copiar"))),
+        (8, textos.t("salida-compartir-menu")),
         (3, textos.t("galeria-guardar-como")),
         (4, textos.t("galeria-mostrar-en-carpeta")),
     ];
@@ -1304,6 +1305,15 @@ fn menu_de_captura(
     match pixpin_shell::menu_llano(ventana.handle(), &entradas) {
         Some(1) => pinear(e, &v, textos),
         Some(2) => copiar(e, &v, textos),
+        // A la Salida: las capturas ya son planas (lo anotado va dentro), y
+        // desde ahi se arrastran a un chat o se mandan con el panel.
+        Some(8) => {
+            let rutas: Vec<PathBuf> = v
+                .iter()
+                .filter_map(|&k| e.lista.get(k).map(|x| x.ruta.clone()))
+                .collect();
+            crate::salida::mostrar(rutas, textos.t("salida-titulo"));
+        }
         Some(3) => guardar_como(e, &v, ventana, textos),
         Some(4) => {
             if let Some(x) = e.lista.get(v[0]) {

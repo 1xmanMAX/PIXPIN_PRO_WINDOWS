@@ -2215,3 +2215,37 @@ tareas5-pinear-imagenes = { $n ->
    *[other] Pinear las { $n } imágenes
   }
 tareas5-quitar = Quitar
+
+## salida (6-oct-2026): la ventanita flotante para arrastrar lo exportado
+salida-titulo = Listo para compartir
+salida-titulo-exportado = Exportado
+salida-titulo-guardado = Guardado
+salida-pista = Arrastra un archivo a otra app o a una carpeta
+salida-todos = Arrastrar los { $n } juntos
+salida-arrastra-todos = Mantén pulsado y arrastra para llevarlos todos
+salida-soltado = Soltado · puedes soltarlo en otro sitio
+salida-copiado = Copiado al portapapeles
+salida-pineado = Pineado
+salida-no-se-pudo = No se pudo hacer
+salida-compartir = Compartir
+salida-copiar = Copiar
+salida-abrir = Abrir
+salida-carpeta = Mostrar en la carpeta
+salida-pinear = Pinear
+salida-compartir-menu = Compartir…
+compartir-arrastrar = Arrastra desde aquí a otra app · pulsa para dejarlo en pantalla
+
+## al-movil (6-oct-2026): una foto del plugin de Flow al lienzo abierto del movil
+al-movil-lienzo = { $n ->
+    [one] Enviada al lienzo de { $movil }
+   *[other] { $n } imágenes enviadas al lienzo de { $movil }
+  }
+al-movil-chat = { $movil } la guardó en el chat (no tenía un lienzo abierto)
+al-movil-no-esta = { $movil } no está abierto: abre PixPin en el móvil
+al-movil-actualiza = Actualiza PixPin en { $movil }: aún no recibe fotos al lienzo. Te abro «Enviar por Wi-Fi».
+al-movil-ocupado = { $movil } está sincronizando con otro aparato. Prueba otra vez en un momento.
+al-movil-otra-version = { $movil } tiene otra versión de PixPin: actualiza los dos
+al-movil-cortado = No se pudo enviar a { $movil }: { $motivo }
+al-movil-sin-grupo = Este PC no está en un grupo: ábrelo en Sincronizar de PixPin
+al-movil-no-es-del-grupo = Ese aparato ya no está en el grupo de este PC
+al-movil-sin-imagenes = No había ninguna imagen que enviar

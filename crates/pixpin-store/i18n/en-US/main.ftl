@@ -2214,3 +2214,37 @@ tareas5-pinear-imagenes = { $n ->
    *[other] Pin the { $n } images
   }
 tareas5-quitar = Remove
+
+## salida (6-oct-2026): the floating window to drag out what was exported
+salida-titulo = Ready to share
+salida-titulo-exportado = Exported
+salida-titulo-guardado = Saved
+salida-pista = Drag a file to another app or a folder
+salida-todos = Drag all { $n } together
+salida-arrastra-todos = Hold and drag to take them all
+salida-soltado = Dropped · you can drop it somewhere else too
+salida-copiado = Copied to the clipboard
+salida-pineado = Pinned
+salida-no-se-pudo = Couldn't do it
+salida-compartir = Share
+salida-copiar = Copy
+salida-abrir = Open
+salida-carpeta = Show in folder
+salida-pinear = Pin
+salida-compartir-menu = Share…
+compartir-arrastrar = Drag from here to another app · click to keep it on screen
+
+## al-movil (6-oct-2026): a photo from the Flow plugin to the phone's open canvas
+al-movil-lienzo = { $n ->
+    [one] Sent to the canvas on { $movil }
+   *[other] { $n } images sent to the canvas on { $movil }
+  }
+al-movil-chat = { $movil } saved it in the chat (no canvas was open)
+al-movil-no-esta = { $movil } is not open: open PixPin on the phone
+al-movil-actualiza = Update PixPin on { $movil }: it can't receive photos to the canvas yet. Opening «Send over Wi-Fi».
+al-movil-ocupado = { $movil } is syncing with another device. Try again in a moment.
+al-movil-otra-version = { $movil } has another version of PixPin: update both
+al-movil-cortado = Couldn't send to { $movil }: { $motivo }
+al-movil-sin-grupo = This PC is not in a group: set it up in PixPin's Sync
+al-movil-no-es-del-grupo = That device is no longer in this PC's group
+al-movil-sin-imagenes = There was no image to send

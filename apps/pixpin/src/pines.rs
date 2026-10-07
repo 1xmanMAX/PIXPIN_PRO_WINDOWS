@@ -2595,7 +2595,12 @@ Todavia no se puede ver aqui; sigue dentro del proyecto.",
         };
         match tipo {
             TipoEntrada::Imagen => {
-                let img = cargar(&objeto).context("no se pudo leer la imagen del almacen")?;
+                // Con lo anotado encima, como se ve: copiar la foto limpia
+                // perdia justo lo que el usuario habia marcado.
+                let img = match self.vivos.get(&id).and_then(|p| p.imagen_con_anotaciones()) {
+                    Some(horneada) => horneada,
+                    None => cargar(&objeto).context("no se pudo leer la imagen del almacen")?,
+                };
                 pixpin_codec::copiar_imagen(&img).context("no se pudo copiar la imagen")?;
             }
             TipoEntrada::Nota => {

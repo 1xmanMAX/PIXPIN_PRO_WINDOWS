@@ -150,6 +150,19 @@ impl Salida {
         })
     }
 
+    /// Un fichero cualquiera de este equipo, tal cual y a trozos, sin pasar
+    /// por un `Disco`: es lo que manda «una foto al lienzo del movil»
+    /// (`al_lienzo`), que no es de ningun chat. Mismo troceo y misma cola que
+    /// un archivo de la sincronizacion, para que el otro lado lo reciba con
+    /// el `recibirTrozos` de siempre.
+    pub fn de_fichero(ruta: &std::path::Path) -> Resultado<Salida> {
+        let meta = std::fs::metadata(ruta)?;
+        Ok(Salida {
+            largo: meta.len() as i64,
+            fuente: Fuente::Archivo(ruta.to_path_buf(), disco::milis(&meta)),
+        })
+    }
+
     /// Manda los trozos y detras la cola con el resumen. Devuelve el resumen,
     /// o None si el archivo cambio mientras se leia (la cola dice
     /// «saltado» y el otro no lo escribe: medio viejo y medio nuevo no vale).

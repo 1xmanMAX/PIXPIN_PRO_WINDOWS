@@ -265,6 +265,9 @@ pub enum Salida {
     Copiar,
     /// A otro aparato por la wifi (el «Enviar por Wi-Fi» del movil).
     Wifi,
+    /// Dejar el fichero hecho en pantalla para ARRASTRARLO a otro sitio
+    /// (la «Salida»). Tambien se arrastra desde el propio boton.
+    Arrastrar,
 }
 
 /// Lo que hay bajo un punto de la hoja.
@@ -449,6 +452,7 @@ pub fn disponer(c: &Compartible, e: &Estado, escala: f32) -> Disposicion {
         (Salida::Guardar, ANCHO_BOTON),
         (Salida::Copiar, ANCHO_BOTON_ICONO),
         (Salida::Wifi, ANCHO_BOTON_ICONO),
+        (Salida::Arrastrar, ANCHO_BOTON_ICONO),
     ] {
         bx -= w * k;
         salidas.push((

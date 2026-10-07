@@ -848,3 +848,60 @@ fn lo_preparado_se_puede_llevar_al_hilo_de_los_ficheros() {
     es_send::<Preparado>();
     es_send::<Salida>();
 }
+
+/// Si la imagen tiene algo del trazo rojo de [`trazo`].
+fn tiene_rojo(img: &ImagenRgba) -> bool {
+    img.pixeles
+        .chunks_exact(4)
+        .any(|q| q[0] > 180 && q[1] < 80 && q[2] < 80)
+}
+
+#[test]
+fn arrastrar_una_foto_anotada_lleva_la_foto_fusionada_con_su_dibujo() {
+    let (dir, borrar) = carpeta("foto-fusionada");
+    let raiz = dir.join("datos");
+    let (ficha, mensajes) = proyecto_en_disco(&raiz);
+    let foto = mensajes.iter().find(|m| m.id == "m-foto").unwrap();
+    let png = foto_fusionada(&raiz, &ficha.id, foto, &textos()).expect("la foto anotada");
+    assert_eq!(png.extension().and_then(|e| e.to_str()), Some("png"));
+    let img = pixpin_codec::cargar(&png).unwrap();
+    assert!(tiene_rojo(&img), "el trazo de encima viaja con la foto");
+    // Caso negativo: una nota no es una foto y una foto sin nada encima va
+    // tal cual (sin rehacerla).
+    let nota = mensajes.iter().find(|m| m.id == "m-nota").unwrap();
+    assert!(foto_fusionada(&raiz, &ficha.id, nota, &textos()).is_none());
+    let original = pixpin_proyecto::vista::ruta_real(&raiz, &ficha.id, "fachada.png").unwrap();
+    std::fs::remove_file(dibujo_de_foto(&original)).unwrap();
+    assert!(foto_fusionada(&raiz, &ficha.id, foto, &textos()).is_none());
+    if borrar {
+        let _ = std::fs::remove_dir_all(dir);
+    }
+}
+
+#[test]
+fn una_foto_anotada_en_el_movil_se_comparte_con_el_dibujo_de_su_lienzo() {
+    // En el movil lo dibujado sobre la foto vive en su lienzo propio, no en
+    // el `.pixpin2d`: `asegurar` lo crea y pasa a el el trazo, como hace el
+    // movil. La hoja (y el arrastre) tienen que hornear ESE dibujo.
+    let (dir, borrar) = carpeta("foto-del-movil");
+    let raiz = dir.join("datos");
+    let (ficha, mensajes) = proyecto_en_disco(&raiz);
+    let foto = mensajes.iter().find(|m| m.id == "m-foto").unwrap();
+    let original = pixpin_proyecto::vista::ruta_real(&raiz, &ficha.id, "fachada.png").unwrap();
+    pixpin_proyecto::lienzo_de_la_foto::asegurar(&raiz, &ficha.id, foto, &original, (160, 120), 1)
+        .unwrap();
+    // Sin el `.pixpin2d`: lo unico dibujado es lo del lienzo.
+    let _ = std::fs::remove_file(dibujo_de_foto(&original));
+    assert!(crate::foto_anotada::lienzo_de_la_foto(&raiz, &ficha.id, foto).is_some());
+    let png = foto_fusionada(&raiz, &ficha.id, foto, &textos()).expect("la del movil");
+    let img = pixpin_codec::cargar(&png).unwrap();
+    assert!(tiene_rojo(&img), "el trazo del lienzo del movil");
+    // Y la foto va debajo: no es un lienzo en blanco con una raya.
+    assert!(
+        img.pixeles.chunks_exact(4).any(|q| q[2] > 140 && q[2] < 180 && q[1] > 100),
+        "la foto debajo del trazo"
+    );
+    if borrar {
+        let _ = std::fs::remove_dir_all(dir);
+    }
+}

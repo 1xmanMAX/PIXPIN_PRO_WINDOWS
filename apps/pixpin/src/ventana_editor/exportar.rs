@@ -730,6 +730,11 @@ pub(crate) fn exportar(propietaria: HWND, lienzo: &Lienzo<'_>, textos: &Catalogo
     }
     let escritos = exportar_a(&ruta, e, lienzo)?;
     tracing::info!(?escritos, formato = ?e.formato, que = ?e.que, "lienzo exportado");
+    // Lo exportado, en pantalla para arrastrarlo o mandarlo: sin esto habia
+    // que ir a buscarlo a la carpeta que se acababa de elegir.
+    if !escritos.is_empty() {
+        crate::salida::mostrar(escritos.clone(), textos.t("salida-titulo-exportado"));
+    }
     Ok(!escritos.is_empty())
 }
 

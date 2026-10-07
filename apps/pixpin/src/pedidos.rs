@@ -173,6 +173,18 @@ pub enum Pedido {
     CopiarImagen {
         ruta: PathBuf,
     },
+    /// Mandar imagenes al lienzo que el movil `aparato` (su `id` en el
+    /// grupo) tiene abierto, sin abrir Sincronizar en ninguno de los dos
+    /// (`sincronizar::al_movil`). `imagenes` y `archivos` van igual: el
+    /// movil decide (una imagen, al lienzo; lo demas, a su chat). Lo que
+    /// pase se dice en el globo cuando acaba, no al recibir el pedido.
+    EnviarAlMovil {
+        aparato: String,
+        #[serde(default)]
+        imagenes: Vec<PathBuf>,
+        #[serde(default)]
+        archivos: Vec<PathBuf>,
+    },
 }
 
 /// Que ventana abre `ventana`.
@@ -182,6 +194,8 @@ pub enum Cual {
     Tareas,
     Galeria,
     Lecciones,
+    /// Sincronizar: el plugin la ofrece cuando este PC aun no tiene grupo.
+    Sincronizar,
 }
 
 /// Que captura hace `capturar`. Solo la de zona, por ahora: la del atajo
@@ -726,6 +740,7 @@ fn hacer(p: Pedido, cx: &Contexto) -> Result<Hecho, Fallo> {
             Cual::Tareas => crate::tareas::abrir(cx.idioma, cx.ubicacion.clone(), cx.aparato),
             Cual::Galeria => crate::galeria_capturas::abrir(cx.idioma, cx.ubicacion.clone()),
             Cual::Lecciones => crate::timeline::abrir_lecciones(cx.idioma, cx.ubicacion.clone()),
+            Cual::Sincronizar => crate::sincronizar::lanzar(cx.idioma, cx.ubicacion.clone()),
         },
         Pedido::Capturar { modo } => capturar(modo.unwrap_or(ModoCaptura::Zona)),
         Pedido::PinearUltima {} => {
@@ -754,6 +769,31 @@ fn hacer(p: Pedido, cx: &Contexto) -> Result<Hecho, Fallo> {
                     pixpin_codec::copiar_imagen(&img).map_err(|e| Fallo::Imagen(e.to_string()))
                 })?;
             return Ok(aviso("galeria-copiada", &[]));
+        }
+        // En su hilo: localizar al movil y mandar puede tardar segundos, y
+        // este bucle no puede esperar. El globo llega al acabar.
+        Pedido::EnviarAlMovil {
+            aparato,
+            imagenes,
+            archivos,
+        } => {
+            let ficheros = ficheros_al_movil(imagenes, archivos)?;
+            // Quien no es del grupo se dice ya: no hay a quien buscar.
+            let del_grupo = crate::sincronizar::al_movil::aparatos(cx.ubicacion);
+            if !del_grupo.iter().any(|a| a.id == aparato) {
+                let clave = if del_grupo.is_empty() {
+                    "al-movil-sin-grupo"
+                } else {
+                    "al-movil-no-es-del-grupo"
+                };
+                return Ok(aviso(clave, &[]));
+            }
+            crate::sincronizar::al_movil::enviar(
+                cx.idioma,
+                cx.ubicacion.clone(),
+                aparato,
+                ficheros,
+            );
         }
     }
     Ok(Hecho::default())
@@ -837,6 +877,25 @@ fn imagen_a_copiar(ruta: &Path) -> Result<(), Fallo> {
         return Err(Fallo::SinFichero(ruta.to_path_buf()));
     }
     Ok(())
+}
+
+/// Lo que va al movil en `enviar_al_movil`, comprobado AQUI y no en el hilo:
+/// un pedido sin nada, o con una imagen que ya no esta, se dice con su aviso
+/// de pedido al momento, sin esperar a localizar al movil para nada.
+fn ficheros_al_movil(
+    imagenes: Vec<PathBuf>,
+    archivos: Vec<PathBuf>,
+) -> Result<Vec<PathBuf>, Fallo> {
+    let ficheros: Vec<PathBuf> = imagenes.into_iter().chain(archivos).collect();
+    if ficheros.is_empty() {
+        return Err(Fallo::Roto(
+            "enviar_al_movil sin imagenes ni archivos".into(),
+        ));
+    }
+    if let Some(r) = ficheros.iter().find(|r| !r.is_file()) {
+        return Err(Fallo::SinFichero(r.clone()));
+    }
+    Ok(ficheros)
 }
 
 /// Abre una hoja en el lienzo, en su propio hilo como la abre un grupo de
@@ -1364,7 +1423,11 @@ mod pruebas {
 
     /// Un ejemplo de cada accion, con lo minimo que pide la tabla del
     /// protocolo.
-    const EJEMPLOS: [(&str, &str); 24] = [
+    const EJEMPLOS: [(&str, &str); 25] = [
+        (
+            "enviar_al_movil",
+            r#"{"pixpin":1,"accion":"enviar_al_movil","aparato":"tel","imagenes":["C:\\a\\x.png"]}"#,
+        ),
         (
             "abrir",
             r#"{"pixpin":1,"accion":"abrir","que":{"tipo":"proyecto"}}"#,
@@ -2353,6 +2416,52 @@ mod pruebas {
         assert!(matches!(imagen_a_copiar(&texto), Err(Fallo::NoEsImagen(_))));
         assert!(matches!(
             imagen_a_copiar(&raiz.join("no.png")),
+            Err(Fallo::SinFichero(_))
+        ));
+        let _ = std::fs::remove_dir_all(&raiz);
+    }
+
+    #[test]
+    fn enviar_al_movil_se_lee_con_sus_imagenes_y_archivos() {
+        assert_eq!(
+            leer(
+                r#"{"pixpin":1,"accion":"enviar_al_movil","aparato":"tel","imagenes":["C:\\a\\x.png"],"archivos":["C:\\a\\y.pdf"],"texto":"[img 01]"}"#
+            )
+            .unwrap(),
+            Pedido::EnviarAlMovil {
+                aparato: "tel".into(),
+                imagenes: vec![PathBuf::from("C:\\a\\x.png")],
+                archivos: vec![PathBuf::from("C:\\a\\y.pdf")],
+            }
+        );
+        assert_eq!(
+            leer(r#"{"pixpin":1,"accion":"ventana","cual":"sincronizar"}"#).unwrap(),
+            Pedido::Ventana {
+                cual: Cual::Sincronizar
+            }
+        );
+        // Caso negativo: sin aparato no se sabe a quien mandarlo.
+        assert!(matches!(
+            leer(r#"{"pixpin":1,"accion":"enviar_al_movil","imagenes":["C:\\a\\x.png"]}"#),
+            Err(Fallo::Roto(_))
+        ));
+    }
+
+    #[test]
+    fn caso_negativo_al_movil_sin_nada_o_con_un_fichero_que_no_esta_no_sale() {
+        let (raiz, _) = almacen_de_prueba("al-movil");
+        let foto = raiz.join("foto.png");
+        std::fs::write(&foto, b"x").unwrap();
+        assert_eq!(
+            ficheros_al_movil(vec![foto.clone()], Vec::new()).unwrap(),
+            [foto.clone()]
+        );
+        assert!(matches!(
+            ficheros_al_movil(Vec::new(), Vec::new()),
+            Err(Fallo::Roto(_))
+        ));
+        assert!(matches!(
+            ficheros_al_movil(vec![foto], vec![raiz.join("no.pdf")]),
             Err(Fallo::SinFichero(_))
         ));
         let _ = std::fs::remove_dir_all(&raiz);

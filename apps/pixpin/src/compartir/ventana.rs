@@ -253,6 +253,8 @@ fn hilo(textos: &Catalogo, idioma: Idioma, ubicacion: Ubicacion, cosa: Cosa) -> 
 
     let mut hay_que_pintar = true;
     let mut vivo = true;
+    // Donde se agarro el boton «Arrastrar», mientras no se suelte.
+    let mut agarre: Option<pixpin_geom::Punto> = None;
     while vivo {
         pixpin_shell::overlay::bombear_pendientes();
         while let Ok(hecho) = rx_hechos.try_recv() {
@@ -262,6 +264,7 @@ fn hilo(textos: &Catalogo, idioma: Idioma, ubicacion: Ubicacion, cosa: Cosa) -> 
             hoja.hechos.insert(hecho.clave, hecho.salida.map(Arc::new));
             hay_que_pintar = true;
         }
+        let mut arrastrar_ya = false;
         for (hw, evento) in pixpin_shell::overlay::tomar_eventos_pendientes() {
             if hw != ventana.handle() {
                 continue;
@@ -270,11 +273,50 @@ fn hilo(textos: &Catalogo, idioma: Idioma, ubicacion: Ubicacion, cosa: Cosa) -> 
             let local = |p: pixpin_geom::Punto| ((p.x - area.x) as f32, (p.y - area.y) as f32);
             match evento {
                 EventoOverlay::Cerrar => vivo = false,
-                EventoOverlay::RatonMovido(p) => hoja.raton = local(p),
+                EventoOverlay::RatonMovido(p) => {
+                    hoja.raton = local(p);
+                    // Agarrar «Arrastrar» y moverse ya es llevarse el
+                    // fichero, sin pasar por la Salida.
+                    if let Some(desde) = agarre
+                        && crate::salida::supera_umbral((desde.x, desde.y), (p.x, p.y), escala)
+                    {
+                        agarre = None;
+                        arrastrar_ya = true;
+                    }
+                }
+                EventoOverlay::BotonSoltado(p) => {
+                    hoja.raton = local(p);
+                    // Pulsar «Arrastrar» sin moverse: el fichero se queda en
+                    // pantalla (la Salida), para arrastrarlo con calma.
+                    if agarre.take().is_some() {
+                        let d = hc::disponer(&hoja.c, &hoja.e, hoja.escala);
+                        if hc::destino_en(&d, hoja.raton.0, hoja.raton.1)
+                            == Destino::Salida(Boton::Arrastrar)
+                        {
+                            vivo = pulsar(
+                                &mut hoja,
+                                Boton::Arrastrar,
+                                &ventana,
+                                &preparado,
+                                textos,
+                                idioma,
+                                &ubicacion,
+                                &terminado,
+                            );
+                        }
+                    }
+                }
                 EventoOverlay::BotonPulsado(p) => {
                     hoja.raton = local(p);
                     let d = hc::disponer(&hoja.c, &hoja.e, hoja.escala);
                     match hc::destino_en(&d, hoja.raton.0, hoja.raton.1) {
+                        // Se decide al soltar o al moverse: puede ser un
+                        // clic o el principio de un arrastre.
+                        Destino::Salida(Boton::Arrastrar)
+                            if matches!(hoja.pie(), Pie::Listo(..)) =>
+                        {
+                            agarre = Some(p);
+                        }
                         Destino::Cerrar => vivo = false,
                         Destino::Formato(i) => hoja.e.elegir_formato(&hoja.c, i),
                         Destino::Pagina(k) => hoja.e.tocar_pagina(&hoja.c, &k),
@@ -353,6 +395,25 @@ fn hilo(textos: &Catalogo, idioma: Idioma, ubicacion: Ubicacion, cosa: Cosa) -> 
         }
         if !vivo {
             break;
+        }
+        if arrastrar_ya && let Some(s) = hoja.lista() {
+            // La captura fuera: `DoDragDrop` lleva el raton el solo.
+            ventana.soltar_raton();
+            let carga = match s.ficheros.as_slice() {
+                [uno] => pixpin_pin::Carga::Fichero(uno.clone()),
+                varios => pixpin_pin::Carga::Ficheros(varios.to_vec()),
+            };
+            match pixpin_pin::arrastrar(carga) {
+                Ok(pixpin_pin::ResultadoArrastre::Soltado) => {
+                    hoja.avisar(textos.t("salida-soltado"))
+                }
+                Ok(pixpin_pin::ResultadoArrastre::Cancelado) => {}
+                Err(e) => {
+                    tracing::warn!(?e, "no se pudo arrastrar desde la hoja de compartir");
+                    hoja.avisar(textos.t("compartir-no-se-pudo"));
+                }
+            }
+            hay_que_pintar = true;
         }
         // El panel de Windows ya se cerro, mandando algo o no: la hoja ya
         // no tiene nada que hacer.
@@ -516,6 +577,12 @@ fn pulsar(
             // La ventana de sincronizar se abre en su hilo con los ficheros:
             // la hoja ya ha cumplido.
             crate::sincronizar::enviar_por_wifi(idioma, ubicacion.clone(), salida.ficheros.clone());
+            false
+        }
+        Boton::Arrastrar => {
+            // El fichero hecho, en pantalla para arrastrarlo: la hoja tapa
+            // lo que hay detras y ya ha cumplido.
+            crate::salida::mostrar(salida.ficheros.clone(), textos.t("salida-titulo"));
             false
         }
     }
@@ -876,6 +943,7 @@ fn pintar(h: &Hoja, p: &Pintor, textos: &Catalogo, coma: char) {
         None => match encima {
             Destino::Salida(Boton::Copiar) => textos.t("compartir-copiar"),
             Destino::Salida(Boton::Wifi) => textos.t("compartir-wifi"),
+            Destino::Salida(Boton::Arrastrar) => textos.t("compartir-arrastrar"),
             // Encima del interruptor, que hace.
             Destino::Interruptor => {
                 h.e.formato(&h.c)
@@ -983,6 +1051,22 @@ fn pintar(h: &Hoja, p: &Pintor, textos: &Catalogo, coma: char) {
                         alto: lado,
                     },
                     con_alfa(TEXTO, alfa),
+                );
+            }
+            // Los puntitos de agarre, los de las tarjetas de la Salida: «esto
+            // se arrastra».
+            Boton::Arrastrar => {
+                p.rellenar_redondeado(
+                    r,
+                    8.0 * k,
+                    con_alfa(if sobre { ENCIMA } else { REDONDEL }, alfa),
+                );
+                crate::salida::agarre(
+                    p,
+                    r.x + r.ancho / 2.0,
+                    r.y + r.alto / 2.0,
+                    con_alfa(TEXTO, alfa),
+                    k * 1.2,
                 );
             }
         }

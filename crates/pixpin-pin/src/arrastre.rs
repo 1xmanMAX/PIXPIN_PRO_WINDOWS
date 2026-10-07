@@ -48,6 +48,8 @@ pub enum Carga {
     Imagen(ImagenRgba),
     Texto(String),
     Fichero(PathBuf),
+    /// Varios ficheros de una vez, en un solo `CF_HDROP`.
+    Ficheros(Vec<PathBuf>),
 }
 
 /// Como termino el gesto. No es un error que el usuario cambie de idea a
@@ -159,6 +161,12 @@ fn comprobar(carga: &Carga) -> Result<(), ErrorArrastre> {
         // dentro del nombre; se le pregunta ya, no cuando el raton este a
         // medio camino.
         Carga::Fichero(r) => pixpin_codec::construir_hdrop(std::slice::from_ref(r))
+            .map(|_| ())
+            .map_err(ErrorArrastre::Ficheros),
+        // Varios a la vez (la «Salida» con todo lo exportado): ninguno es
+        // una lista vacia, que soltaria nada en el destino.
+        Carga::Ficheros(v) if v.is_empty() => Err(ErrorArrastre::Vacia),
+        Carga::Ficheros(v) => pixpin_codec::construir_hdrop(v)
             .map(|_| ())
             .map_err(ErrorArrastre::Ficheros),
     }
@@ -368,7 +376,7 @@ impl ObjetoDatos {
         match self.carga {
             Carga::Imagen(_) => vec![CF_DIB.0, CF_HDROP.0],
             Carga::Texto(_) => vec![CF_UNICODETEXT.0],
-            Carga::Fichero(_) => vec![CF_HDROP.0],
+            Carga::Fichero(_) | Carga::Ficheros(_) => vec![CF_HDROP.0],
         }
     }
 
@@ -398,6 +406,8 @@ impl ObjetoDatos {
                 pixpin_codec::construir_hdrop(std::slice::from_ref(r))
                     .map_err(|e| fallo(ErrorArrastre::Ficheros(e)))
             }
+            (Carga::Ficheros(v), f) if f == CF_HDROP.0 => pixpin_codec::construir_hdrop(v)
+                .map_err(|e| fallo(ErrorArrastre::Ficheros(e))),
             _ => Err(windows::core::Error::from(DV_E_FORMATETC)),
         }
     }
@@ -756,6 +766,27 @@ mod pruebas {
         // Caso negativo: soltaria un renglon en blanco en el destino.
         assert!(comprobar(&Carga::Texto(String::new())).is_err());
         assert!(comprobar(&Carga::Texto("hola".into())).is_ok());
+    }
+
+    #[test]
+    fn varios_ficheros_viajan_juntos_y_una_lista_vacia_no_se_arrastra() {
+        let dos = vec![PathBuf::from(r"C:\tmp\a.png"), PathBuf::from(r"C:\tmp\b.pdf")];
+        assert!(comprobar(&Carga::Ficheros(dos.clone())).is_ok());
+        let o = ObjetoDatos {
+            carga: Carga::Ficheros(dos),
+            png: RefCell::new(None),
+        };
+        assert_eq!(o.formatos(), vec![CF_HDROP.0]);
+        // Caso negativo: nada que soltar, y una ruta relativa entre varias
+        // tumba el gesto entero antes de empezar.
+        assert!(comprobar(&Carga::Ficheros(Vec::new())).is_err());
+        assert!(
+            comprobar(&Carga::Ficheros(vec![
+                PathBuf::from(r"C:\tmp\a.png"),
+                PathBuf::from("b.pdf")
+            ]))
+            .is_err()
+        );
     }
 
     #[test]
