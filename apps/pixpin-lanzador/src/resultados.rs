@@ -62,6 +62,8 @@ pub mod glifo {
     pub const VENTANA: &str = "\u{E78B}";
     /// `CellPhone`: mandar al movil.
     pub const MOVIL: &str = "\u{E8EA}";
+    /// `Sync`: sincronizar con todos.
+    pub const SINCRONIZAR: &str = "\u{E895}";
 }
 
 /// El pedido `soltar`: el recuadro flotante donde se sueltan archivos, que
@@ -574,11 +576,11 @@ fn resultado_funcion(f: Funcion, ctx: &Contexto) -> Resultado {
             glifo::PIN,
             Accion::Pedido(pedido("pinear_ultima", json!({}))),
         ),
-        Funcion::Movil => (
-            "Enviar al móvil",
-            "Pega una imagen (Ctrl+V) y elige el móvil: va al lienzo que tenga abierto · «m»",
-            glifo::MOVIL,
-            Accion::Consulta(ctx.consulta("móvil ")),
+        Funcion::Sincronizar => (
+            "Sincronizar",
+            "Con tu móvil o con todos; pega una imagen (Ctrl+V) y va a su lienzo abierto · «s»",
+            glifo::SINCRONIZAR,
+            Accion::Consulta(ctx.consulta("sincronizar ")),
         ),
         Funcion::Abrir => (
             "Abrir PixPin",
@@ -1430,7 +1432,7 @@ pub fn resultados(proyectos: &[Proyecto], busqueda: &str, ctx: &Contexto) -> Vec
         } => !resto.trim().is_empty() || busqueda.trim().chars().count() == 1,
         // Y lo que va al movil: sin imagen no hay nada que mandar.
         Modo::Verbo {
-            funcion: Funcion::Movil,
+            funcion: Funcion::Sincronizar,
             proyecto: None,
             ..
         } => true,
@@ -1894,7 +1896,7 @@ fn verbo(
             v.push(resultado_ultima(ctx));
         }
         Funcion::Ultima => v.push(resultado_ultima(ctx)),
-        Funcion::Movil => v.extend(crate::al_movil::resultados(resto, ctx)),
+        Funcion::Sincronizar => v.extend(crate::al_movil::resultados(resto, ctx)),
         Funcion::Galeria => {
             v.push(crate::capturas::resultado_galeria());
             v.extend(crate::capturas::lista(ctx, resto));
@@ -1926,7 +1928,7 @@ fn verbo(
         | Funcion::Capturas
         | Funcion::Galeria
         | Funcion::Ultima
-        | Funcion::Movil => &[],
+        | Funcion::Sincronizar => &[],
     };
     // Sin texto, los mas recientes de ese tipo («pp voz»: los audios).
     if !tipos.is_empty() {

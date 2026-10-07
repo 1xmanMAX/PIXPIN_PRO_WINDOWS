@@ -781,7 +781,7 @@ pub fn resultado_pegar(busqueda: &str, ctx: &Contexto) -> Option<Resultado> {
             ..
         } => "la lección, como foto",
         Modo::Verbo {
-            funcion: Funcion::Movil,
+            funcion: Funcion::Sincronizar,
             ..
         } => "lo que mandas al móvil",
         _ => "la tarea",

@@ -107,6 +107,16 @@ fn leer_peticion<F: Read + Write>(c: &mut Canal<F>) -> Resultado<Peticion> {
     Ok(serde_json::from_slice(&datos)?)
 }
 
+/// La peticion y el JSON tal cual: `suelto` trae campos que `Peticion` no
+/// tiene (`nombre`, `mime`, `destino`).
+fn leer_peticion_cruda<F: Read + Write>(c: &mut Canal<F>) -> Resultado<(Peticion, Vec<u8>)> {
+    let (tipo, datos) = c.recibir()?;
+    if tipo != Tipo::Json {
+        return Err(fallo("Se esperaba una petición"));
+    }
+    Ok((serde_json::from_slice(&datos)?, datos))
+}
+
 /// `Protocolo.leerRespuesta`: un error del otro se convierte en error aqui.
 fn leer_respuesta<F: Read + Write>(c: &mut Canal<F>) -> Resultado<Respuesta> {
     let (tipo, datos) = c.recibir()?;
@@ -338,6 +348,9 @@ pub fn sacar_parche<D: Disco + ?Sized>(
 
 // ------------------------------------------------------------ responder
 
+/// Quien da, para cada archivo `suelto` que llega de `otro`, al que lo recibe.
+pub type FabricaDeSueltos<'a> = dyn Fn(&Aparato) -> Box<dyn crate::al_lienzo::Recibe + 'a> + 'a;
+
 /// **El lado que responde.** Atiende una conexion entera. Si viene alguien a
 /// unirse al grupo, le da la primera letra libre.
 pub struct Respondedor<'a, D: Disco + ?Sized> {
@@ -349,9 +362,40 @@ pub struct Respondedor<'a, D: Disco + ?Sized> {
     pub mi_puerto: u32,
     /// Quien vino y en que puerto escucha el.
     pub al_saludar: &'a dyn Fn(&Aparato, u32),
+    /// Quien atiende un archivo `suelto` (`al_lienzo`), uno nuevo por
+    /// archivo. Sin el, «No sé qué es «suelto»», como un aparato de antes.
+    /// No hace falta estar libre para esto: no toca lo sincronizado.
+    pub suelto: Option<&'a FabricaDeSueltos<'a>>,
 }
 
 impl<D: Disco + ?Sized> Respondedor<'_, D> {
+    /// Un `suelto` ya leido: lo atiende quien diga [`Respondedor::suelto`].
+    /// Solo devuelve error si la red se corto.
+    fn atender_suelto<F: Read + Write>(
+        &self,
+        canal: &mut Canal<F>,
+        otro: &Aparato,
+        cruda: &[u8],
+    ) -> Resultado<()> {
+        let Some(fabrica) = self.suelto else {
+            return enviar(
+                canal,
+                &Respuesta {
+                    error: Some(format!("No sé qué es «{}»", crate::al_lienzo::SUELTO)),
+                    ..Default::default()
+                },
+            );
+        };
+        let p: crate::al_lienzo::Suelto = serde_json::from_slice(cruda)?;
+        let carpeta = std::env::temp_dir().join("pixpin-suelto");
+        let mut quien = fabrica(otro);
+        crate::al_lienzo::responder(canal, &p, &carpeta, &mut *quien).map_err(|e| match e {
+            crate::al_lienzo::ErrorAlLienzo::Canal(c) => ErrorSincro::Canal(c),
+            crate::al_lienzo::ErrorAlLienzo::Io(i) => ErrorSincro::Io(i),
+            otro => fallo(otro.to_string()),
+        })
+    }
+
     pub fn atender<F: Read + Write>(&self, flujo: F, nonce: [u8; 32]) -> Resultado<()> {
         let d = self.disco;
         let id = d.identidad()?;
@@ -438,7 +482,15 @@ impl<D: Disco + ?Sized> Respondedor<'_, D> {
             // RST si su siguiente peticion ya viene de camino, y ese RST se
             // lleva el «ocupado» sin leer: el otro veria «conexion
             // interrumpida» en vez de lo que pasa.
-            while let Ok(p) = leer_peticion(&mut canal) {
+            while let Ok((p, cruda)) = leer_peticion_cruda(&mut canal) {
+                // Un archivo suelto no toca lo sincronizado: se atiende
+                // aunque este aparato este ocupado con otro.
+                if p.t == crate::al_lienzo::SUELTO {
+                    if self.atender_suelto(&mut canal, &otro, &cruda).is_err() {
+                        break;
+                    }
+                    continue;
+                }
                 let adios = p.t == "adios";
                 let r = if adios {
                     Respuesta::default()
@@ -463,11 +515,15 @@ impl<D: Disco + ?Sized> Respondedor<'_, D> {
         // Los resumenes ya calculados en esta conexion.
         let mut conocidos: HashMap<String, ArchivoInfo> = HashMap::new();
         loop {
-            let p = match leer_peticion(canal) {
+            let (p, cruda) = match leer_peticion_cruda(canal) {
                 Ok(p) => p,
                 Err(e) if e.es_corte() => return Ok(()),
                 Err(e) => return Err(e),
             };
+            if p.t == crate::al_lienzo::SUELTO {
+                self.atender_suelto(canal, otro, &cruda)?;
+                continue;
+            }
             if p.t == "adios" {
                 enviar(canal, &Respuesta::default())?;
                 canal.vaciar()?;

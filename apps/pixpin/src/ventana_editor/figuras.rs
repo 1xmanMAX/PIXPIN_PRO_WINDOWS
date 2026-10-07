@@ -2023,26 +2023,48 @@ pub(super) fn meter_imagen(ed: Editor<'_>) -> bool {
     else {
         return false;
     };
-    let Ok(img) = pixpin_codec::cargar(&ruta) else {
+    meter_imagen_de(
+        &ruta,
+        ed.imagenes,
+        ed.escena,
+        ed.gesto,
+        ed.camara,
+        ed.ancho_px,
+        ed.alto_px,
+    )
+}
+
+/// La foto de `ruta` en el medio de la vista, elegida: lo del boton de
+/// imagen y lo que llega de otro aparato al lienzo abierto (`al_frente`).
+pub(super) fn meter_imagen_de(
+    ruta: &std::path::Path,
+    imagenes: &mut ImagenesLienzo,
+    escena: &mut Escena,
+    gesto: &mut Gesto,
+    camara: &Camara,
+    ancho_px: f32,
+    alto_px: f32,
+) -> bool {
+    let Ok(img) = pixpin_codec::cargar(ruta) else {
         tracing::warn!(ruta = %ruta.display(), "imagen que no se pudo abrir");
         return false;
     };
-    let Some(id_objeto) = ed.imagenes.guardar(img) else {
+    let Some(id_objeto) = imagenes.guardar(img) else {
         return false;
     };
-    let Some((w, h)) = ed.imagenes.tamano(id_objeto) else {
+    let Some((w, h)) = imagenes.tamano(id_objeto) else {
         return false;
     };
-    let v = ed.camara.ventana(ed.ancho_px, ed.alto_px);
+    let v = camara.ventana(ancho_px, alto_px);
     let (ancho, alto) = crate::imagenes_lienzo::tamano_al_pegar(w, h, v.2 - v.0, v.3 - v.1);
     let (x, y) = crate::imagenes_lienzo::esquina_centrada(v, ancho, alto);
-    ed.escena.abrir_paso();
-    let id = ed.escena.anadir(crate::imagenes_lienzo::elemento_imagen(
+    escena.abrir_paso();
+    let id = escena.anadir(crate::imagenes_lienzo::elemento_imagen(
         id_objeto, x, y, ancho, alto,
     ));
-    ed.escena.cerrar_paso();
-    ed.gesto.seleccion.limpiar();
-    ed.gesto.seleccion.poner(id);
+    escena.cerrar_paso();
+    gesto.seleccion.limpiar();
+    gesto.seleccion.poner(id);
     true
 }
 

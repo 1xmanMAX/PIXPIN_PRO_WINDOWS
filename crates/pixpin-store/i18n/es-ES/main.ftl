@@ -2240,12 +2240,21 @@ al-movil-lienzo = { $n ->
     [one] Enviada al lienzo de { $movil }
    *[other] { $n } imágenes enviadas al lienzo de { $movil }
   }
-al-movil-chat = { $movil } la guardó en el chat (no tenía un lienzo abierto)
+al-movil-chat = { $movil } lo guardó en la conversación general (no tenía un chat ni un lienzo abierto)
+al-movil-chat-abierto = { $n ->
+    [one] Enviado al chat «{ $chat }» de { $movil }
+   *[other] { $n } archivos enviados al chat «{ $chat }» de { $movil }
+  }
+al-movil-solo-fotos = { $movil } tiene un lienzo abierto: solo acepta fotos. Abre un chat para mandarle archivos.
+al-movil-negados = { $negados ->
+    [one] 1 archivo no se envió: no era una foto y tiene un lienzo abierto
+   *[other] { $negados } archivos no se enviaron: no eran fotos y tiene un lienzo abierto
+  }
 al-movil-no-esta = { $movil } no está abierto: abre PixPin en el móvil
-al-movil-actualiza = Actualiza PixPin en { $movil }: aún no recibe fotos al lienzo. Te abro «Enviar por Wi-Fi».
+al-movil-actualiza = Actualiza PixPin en { $movil }: aún no recibe archivos directos. Te abro «Enviar por Wi-Fi».
 al-movil-ocupado = { $movil } está sincronizando con otro aparato. Prueba otra vez en un momento.
 al-movil-otra-version = { $movil } tiene otra versión de PixPin: actualiza los dos
 al-movil-cortado = No se pudo enviar a { $movil }: { $motivo }
 al-movil-sin-grupo = Este PC no está en un grupo: ábrelo en Sincronizar de PixPin
 al-movil-no-es-del-grupo = Ese aparato ya no está en el grupo de este PC
-al-movil-sin-imagenes = No había ninguna imagen que enviar
+al-movil-sin-imagenes = No había nada que enviar

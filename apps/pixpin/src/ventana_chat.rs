@@ -705,6 +705,16 @@ pub fn abrir(
 
     loop {
         pixpin_shell::overlay::bombear_pendientes();
+        // Delante, se apunta como lo abierto (`al_frente`) con el chat que
+        // ensena: es adonde va lo que llegue de otro aparato del grupo.
+        if pixpin_render::superficie::en_primer_plano(ventana.handle()) {
+            crate::al_frente::poner_chat(
+                ventana.handle().0 as isize,
+                abierto
+                    .as_ref()
+                    .map(|a| (a.ficha.id.as_str(), a.ficha.nombre.as_str())),
+            );
+        }
         // Lo primero: que el tamano con el que se pinta y se reparten los
         // clics sea el que la ventana ocupa DE VERDAD. Windows la cambia por
         // su cuenta —otro monitor con otro DPI, Win+flecha, maximizar desde

@@ -185,6 +185,12 @@ pub enum Pedido {
         #[serde(default)]
         archivos: Vec<PathBuf>,
     },
+    /// Sincronizar con `aparato` (su `id` en el grupo) o con `todos`, sin
+    /// abrir la ventana (`sincronizar::en_fondo`). Lo que pase se dice en el
+    /// globo al acabar.
+    Sincronizar {
+        aparato: String,
+    },
 }
 
 /// Que ventana abre `ventana`.
@@ -780,6 +786,18 @@ fn hacer(p: Pedido, cx: &Contexto) -> Result<Hecho, Fallo> {
             let ficheros = ficheros_al_movil(imagenes, archivos)?;
             // Quien no es del grupo se dice ya: no hay a quien buscar.
             let del_grupo = crate::sincronizar::al_movil::aparatos(cx.ubicacion);
+            // «Todos» (desde `p s`): a cada uno, cada cual con su globo.
+            if aparato == crate::sincronizar::en_fondo::TODOS && !del_grupo.is_empty() {
+                for a in del_grupo {
+                    crate::sincronizar::al_movil::enviar(
+                        cx.idioma,
+                        cx.ubicacion.clone(),
+                        a.id,
+                        ficheros.clone(),
+                    );
+                }
+                return Ok(Hecho::default());
+            }
             if !del_grupo.iter().any(|a| a.id == aparato) {
                 let clave = if del_grupo.is_empty() {
                     "al-movil-sin-grupo"
@@ -794,6 +812,10 @@ fn hacer(p: Pedido, cx: &Contexto) -> Result<Hecho, Fallo> {
                 aparato,
                 ficheros,
             );
+        }
+        // En su hilo, como la de arriba: una vuelta tarda segundos.
+        Pedido::Sincronizar { aparato } => {
+            crate::sincronizar::en_fondo::lanzar(cx.ubicacion, &aparato);
         }
     }
     Ok(Hecho::default())
@@ -1423,7 +1445,11 @@ mod pruebas {
 
     /// Un ejemplo de cada accion, con lo minimo que pide la tabla del
     /// protocolo.
-    const EJEMPLOS: [(&str, &str); 25] = [
+    const EJEMPLOS: [(&str, &str); 26] = [
+        (
+            "sincronizar",
+            r#"{"pixpin":1,"accion":"sincronizar","aparato":"todos"}"#,
+        ),
         (
             "enviar_al_movil",
             r#"{"pixpin":1,"accion":"enviar_al_movil","aparato":"tel","imagenes":["C:\\a\\x.png"]}"#,
@@ -1516,6 +1542,23 @@ mod pruebas {
                 pixpin_shell::mensajero::respuesta::ACEPTADO
             );
             assert!(leer(json).is_ok(), "{accion}: {:?}", leer(json));
+        }
+    }
+
+    #[test]
+    fn la_ventana_acepta_todas_las_acciones_que_entiende_la_aplicacion() {
+        // Al reves que la de arriba: un pedido nuevo que solo se anade aqui
+        // lo rechaza la ventana con «no entiende el pedido» (7-oct, con
+        // `sincronizar`), y ninguna prueba lo veia.
+        for (accion, json) in EJEMPLOS {
+            assert!(
+                pixpin_shell::mensajero::ACCIONES.contains(&accion),
+                "«{accion}» falta en mensajero::ACCIONES"
+            );
+            assert_eq!(
+                pixpin_shell::mensajero::validar_pedido(json),
+                pixpin_shell::mensajero::respuesta::ACEPTADO
+            );
         }
     }
 

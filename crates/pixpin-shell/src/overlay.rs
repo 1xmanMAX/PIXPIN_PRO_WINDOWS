@@ -43,6 +43,12 @@ pub fn despertar(hwnd: isize) {
     }
 }
 
+/// Si la ventana de otro hilo sigue viva (aunque este minimizada).
+pub fn existe(hwnd: isize) -> bool {
+    // SAFETY: consulta de solo lectura; un handle muerto responde «no».
+    unsafe { IsWindow(Some(HWND(hwnd as *mut _))).as_bool() }
+}
+
 /// Espera a que el compositor haya presentado lo ultimo que se dibujo.
 /// Dos vueltas: la primera cierra el fotograma en curso, la segunda
 /// garantiza que el nuestro ya esta en pantalla y, por tanto, en la

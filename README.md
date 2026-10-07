@@ -331,7 +331,8 @@ p n idea para la tesis          → nota nueva
 p g muro                        → buscar en la galería (también por el texto de dentro)
 p a revisar la escala           → lección nueva
 p lecciones grietas             → buscar lecciones
-p m [img 01]                    → enviar la imagen al lienzo abierto del móvil
+p s                             → sincronizar con un móvil o con todos (con su estado)
+p s [img 01] [archivo 02]       → enviar fotos y archivos a lo que tenga abierto el móvil elegido
 p c                             → capturar una zona
 ```
 
@@ -374,10 +375,14 @@ flowchart LR
 - Lo anotado sobre PDF, Word y EPUB viaja en las dos direcciones: tinta, marcadores y espacios
   para anotar. Hace falta PixPin Android 0.96 o superior.
 - Un lienzo enviado desde el PC se abre en el lienzo del móvil y al revés.
-- **Foto directa al lienzo del móvil**: desde Flow (`p m`) pegas una imagen, eliges el móvil del
-  grupo y aparece en el lienzo que tengas abierto, sin abrir Sincronizar. Necesita PixPin Android
-  con esa función ([guía](docs/investigacion/2026-10-06-foto-al-lienzo-android.md)); mientras
-  tanto, PixPin lo avisa y ofrece el envío de siempre.
+- **Desde Flow (`p s`)**: sale cada móvil del grupo con su estado (🟢 conectado / ⚪ sin conexión) y
+  «Todos». Elegir uno sincroniza solo con ese, sin abrir la ventana; al acabar lo dice el globo.
+- **Archivos directos a lo que tenga abierto**: en `p s` pegas fotos o archivos de cualquier tipo
+  (Ctrl+V), eliges el aparato y entran en el **chat** que tenga abierto; un **lienzo** abierto solo
+  acepta fotos (lo demás se niega y el globo lo dice); sin nada abierto, a la conversación general.
+  Un PC del grupo los recibe igual. En el móvil, el chat abierto necesita la versión de Android de
+  la [guía del 7-oct](docs/investigacion/2026-10-07-archivos-al-chat-abierto-android.md); hasta
+  entonces, las fotos van a su lienzo abierto y lo demás a su conversación general.
 - Las lecciones se juntan campo a campo.
 
 ### Ajustes

@@ -2239,12 +2239,21 @@ al-movil-lienzo = { $n ->
     [one] Sent to the canvas on { $movil }
    *[other] { $n } images sent to the canvas on { $movil }
   }
-al-movil-chat = { $movil } saved it in the chat (no canvas was open)
+al-movil-chat = { $movil } saved it in the general conversation (no chat or canvas was open)
+al-movil-chat-abierto = { $n ->
+    [one] Sent to the «{ $chat }» chat on { $movil }
+   *[other] { $n } files sent to the «{ $chat }» chat on { $movil }
+  }
+al-movil-solo-fotos = { $movil } has a canvas open: it only takes photos. Open a chat to send it files.
+al-movil-negados = { $negados ->
+    [one] 1 file was not sent: it was not a photo and a canvas is open
+   *[other] { $negados } files were not sent: they were not photos and a canvas is open
+  }
 al-movil-no-esta = { $movil } is not open: open PixPin on the phone
-al-movil-actualiza = Update PixPin on { $movil }: it can't receive photos to the canvas yet. Opening «Send over Wi-Fi».
+al-movil-actualiza = Update PixPin on { $movil }: it can't receive direct files yet. Opening «Send over Wi-Fi».
 al-movil-ocupado = { $movil } is syncing with another device. Try again in a moment.
 al-movil-otra-version = { $movil } has another version of PixPin: update both
 al-movil-cortado = Couldn't send to { $movil }: { $motivo }
 al-movil-sin-grupo = This PC is not in a group: set it up in PixPin's Sync
 al-movil-no-es-del-grupo = That device is no longer in this PC's group
-al-movil-sin-imagenes = There was no image to send
+al-movil-sin-imagenes = There was nothing to send

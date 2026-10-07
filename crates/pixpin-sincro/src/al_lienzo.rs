@@ -1,23 +1,32 @@
-//! **Una foto suelta al lienzo que el movil tiene abierto** (6-oct-2026).
+//! **Un archivo suelto a lo que el otro aparato tiene abierto** (6-oct-2026,
+//! ampliado el 7-oct).
 //!
-//! Lo pidio el usuario: «en el chat del plugin pueda yo pegar la imagen y
-//! elegir el dispositivo [...] y que se envie rapidamente y se inserte en el
-//! canvas que estoy trabajando en ese momento», sin abrir Sincronizar en el
-//! movil. Va por **el mismo canal cifrado del grupo** y el mismo puerto que la
-//! sincronizacion: el movil ya escucha ahi mientras PixPin esta a la vista
-//! (`sincro/Presencia.kt`), asi que no hace falta ni un servicio nuevo ni un
-//! codigo que teclear. La guia de Android esta en
-//! `docs/investigacion/2026-10-06-foto-al-lienzo-android.md`.
+//! Lo pidio el usuario el 6-oct: «en el chat del plugin pueda yo pegar la
+//! imagen y elegir el dispositivo [...] y que se envie rapidamente y se
+//! inserte en el canvas que estoy trabajando en ese momento», sin abrir
+//! Sincronizar en el movil. Y el 7-oct: «pasar archivos de todo tipo de
+//! formato rapidamente a cualquier chat que este abierto ese momento [...]
+//! en el caso del canvas solo recibe fotos pero el chat cualquier cosa», y
+//! con un lienzo delante, «directamente que se niegue a enviar».
+//!
+//! Va por **el mismo canal cifrado del grupo** y el mismo puerto que la
+//! sincronizacion: el otro ya escucha ahi mientras PixPin esta a la vista
+//! (`sincro/Presencia.kt` en el movil, `sincronizar::presencia` en el PC),
+//! asi que no hace falta ni un servicio nuevo ni un codigo que teclear. Las
+//! guias de Android: `docs/investigacion/2026-10-06-foto-al-lienzo-android.md`
+//! y `docs/investigacion/2026-10-07-archivos-al-chat-abierto-android.md`.
 //!
 //! El dialogo, tras el `hola` de siempre (protocolo 4, sin subirlo):
 //!
 //! ```text
-//! PC  → {"t":"suelto","nombre":"captura.png","mime":"image/png","bytes":N,"destino":"lienzo"}
-//! mov → {}                                   (vale: mandala)
+//! PC  → {"t":"suelto","nombre":"informe.pdf","mime":"application/pdf","bytes":N,"destino":"abierto"}
+//! otro→ {}                                   (vale: mandalo)
+//!       {"error":"…solo acepta fotos"}       (lienzo delante y no es imagen: no se manda)
 //! PC  → TROZO… TROZO (N bytes)  + {"resumen":"<sha256>"}   (la cola de siempre)
-//! mov → {"t":"listo","donde":"lienzo"}       (o "chat" si no habia lienzo abierto)
-//! ...otra foto, otra vez desde «suelto»...
-//! PC  → {"t":"adios"}   mov → {}
+//! otro→ {"t":"listo","donde":"chat_abierto","chat":"Tesis"}
+//!       (o "lienzo"; o "chat": la conversacion general, sin nada abierto)
+//! ...otro archivo, otra vez desde «suelto»...
+//! PC  → {"t":"adios"}   otro→ {}
 //! ```
 //!
 //! **Por que se espera el «vale» antes de los trozos**, y no se mandan detras
@@ -26,10 +35,11 @@
 //! detras, su `leerPeticion` se encontraria un TROZO donde espera JSON, lanza
 //! y corta la conexion a medias. Con el «vale» delante, un movil viejo solo ve
 //! una peticion que no conoce, la contesta y la conversacion sigue sana para
-//! despedirse. Cuesta una ida y vuelta por foto, nada a lado de los megas.
+//! despedirse. Y es lo que deja negarse sin gastar la red: un PDF a un lienzo
+//! se rechaza antes de que salga un solo byte.
 
 use std::io::{self, Read, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
@@ -41,12 +51,18 @@ use crate::protocolo::{ErrorSincro, Salida, recibir_trozos};
 pub const SUELTO: &str = "suelto";
 /// El `t` de la respuesta final.
 pub const LISTO: &str = "listo";
-/// A donde se quiere que vaya. Hoy solo hay uno; va escrito para que otro
-/// destino futuro («al chat de tal proyecto») no necesite otra peticion.
+/// El `destino` del 6-oct: el lienzo (y, sin lienzo, la conversacion). Lo
+/// que mandaba el PC de entonces; quien recibe lo trata igual que «abierto».
 pub const DESTINO_LIENZO: &str = "lienzo";
-/// Lo mas grande que acepta el lado que recibe de esta crate. Una foto de
-/// movil son pocos megas; mas de esto es un video o basura.
-pub const TOPE_DE_FOTO: i64 = 64 << 20;
+/// El `destino` del 7-oct: lo que el otro tenga abierto. Un chat recibe
+/// cualquier cosa; un lienzo, solo fotos.
+pub const DESTINO_ABIERTO: &str = "abierto";
+/// Lo mas grande que acepta el lado que recibe de esta crate: un video largo
+/// cabe; mas de esto no es algo que se pase «rapidamente».
+pub const TOPE_DE_SUELTO: i64 = 2 << 30;
+/// Lo que contesta quien tiene un lienzo delante a algo que no es una foto.
+/// Se reconoce por el final, para que cada lado pueda poner su nombre delante.
+pub const SOLO_FOTOS: &str = "tiene un lienzo abierto: solo acepta fotos";
 
 /// La peticion `suelto`. Los campos que Android aun no tiene en su
 /// `Peticion` (`nombre`, `mime`, `destino`) los ignora un movil viejo
@@ -68,12 +84,19 @@ impl Default for Suelto {
             nombre: String::new(),
             mime: String::new(),
             bytes: 0,
-            destino: DESTINO_LIENZO.into(),
+            destino: DESTINO_ABIERTO.into(),
         }
     }
 }
 
-/// Lo que contesta el movil a cada paso. `error` lleno es que no se hizo.
+impl Suelto {
+    /// Si es una foto: lo unico que acepta un lienzo.
+    pub fn es_imagen(&self) -> bool {
+        self.mime.starts_with("image/")
+    }
+}
+
+/// Lo que contesta el otro a cada paso. `error` lleno es que no se hizo.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Contestacion {
@@ -83,14 +106,20 @@ pub struct Contestacion {
     pub t: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub donde: Option<String>,
+    /// El nombre del chat abierto donde quedo, con `donde: "chat_abierto"`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub chat: Option<String>,
 }
 
-/// Donde quedo la foto en el movil.
+/// Donde quedo en el otro aparato.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Donde {
     /// En el lienzo que tenia delante, centrada en lo que se miraba.
     Lienzo,
-    /// No habia lienzo abierto: a la Conversacion general, como un envio.
+    /// En el chat que tenia abierto.
+    ChatAbierto,
+    /// No habia nada abierto: a la conversacion general (en el PC, «Mensajes
+    /// guardados»), como un envio.
     Chat,
 }
 
@@ -98,19 +127,33 @@ impl Donde {
     pub fn texto(self) -> &'static str {
         match self {
             Donde::Lienzo => "lienzo",
+            Donde::ChatAbierto => "chat_abierto",
             Donde::Chat => "chat",
         }
     }
 
-    /// Lo que no sea «lienzo» cuenta como chat: si el movil dice otra cosa,
-    /// lo seguro es buscarla en la conversacion, que es donde acaba todo lo
+    /// Lo que no se conozca cuenta como la conversacion general: si el otro
+    /// dice otra cosa, lo seguro es buscarlo ahi, que es donde acaba todo lo
     /// que llega sin sitio.
     fn de_texto(t: Option<&str>) -> Donde {
-        if t == Some("lienzo") {
-            Donde::Lienzo
-        } else {
-            Donde::Chat
+        match t {
+            Some("lienzo") => Donde::Lienzo,
+            Some("chat_abierto") => Donde::ChatAbierto,
+            _ => Donde::Chat,
         }
+    }
+}
+
+/// Donde quedo, y en que chat si fue en uno abierto.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Llegada {
+    pub donde: Donde,
+    pub chat: Option<String>,
+}
+
+impl Llegada {
+    pub fn en(donde: Donde) -> Llegada {
+        Llegada { donde, chat: None }
     }
 }
 
@@ -124,8 +167,12 @@ pub enum ErrorAlLienzo {
     #[error("JSON que no se entiende: {0}")]
     Json(#[from] serde_json::Error),
     /// Un PixPin de antes: no conoce «suelto». La conexion sigue sana.
-    #[error("el otro aparato aun no recibe fotos al lienzo")]
+    #[error("el otro aparato aun no recibe archivos sueltos")]
     MovilSinSoporte,
+    /// Tiene un lienzo delante y lo mandado no es una foto. La conexion sigue
+    /// sana: no salio ningun trozo.
+    #[error("{}", SOLO_FOTOS)]
+    SoloFotos,
     /// Esta sincronizando con otro aparato.
     #[error("{}", OCUPADO)]
     Ocupado,
@@ -162,8 +209,8 @@ pub fn es_sin_soporte(error: &str) -> bool {
     error.starts_with("No sé qué es") && error.contains(SUELTO)
 }
 
-/// El tipo de una foto por su extension. El movil lo mira para decidir si va
-/// al lienzo (una imagen) o a la conversacion (cualquier otra cosa).
+/// El tipo de un fichero por su extension. Quien recibe lo mira para
+/// decidir: una imagen puede ir a un lienzo; lo demas, solo a un chat.
 pub fn mime_de(nombre: &str) -> &'static str {
     let ext = nombre
         .rsplit_once('.')
@@ -175,6 +222,29 @@ pub fn mime_de(nombre: &str) -> &'static str {
         "gif" => "image/gif",
         "webp" => "image/webp",
         "bmp" => "image/bmp",
+        "heic" => "image/heic",
+        "pdf" => "application/pdf",
+        "txt" => "text/plain",
+        "md" => "text/markdown",
+        "csv" => "text/csv",
+        "html" | "htm" => "text/html",
+        "json" => "application/json",
+        "zip" => "application/zip",
+        "doc" => "application/msword",
+        "docx" => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "xls" => "application/vnd.ms-excel",
+        "xlsx" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "ppt" => "application/vnd.ms-powerpoint",
+        "pptx" => "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        "epub" => "application/epub+zip",
+        "mp3" => "audio/mpeg",
+        "m4a" => "audio/mp4",
+        "wav" => "audio/wav",
+        "ogg" | "opus" => "audio/ogg",
+        "mp4" => "video/mp4",
+        "mov" => "video/quicktime",
+        "mkv" => "video/x-matroska",
+        "webm" => "video/webm",
         _ => "application/octet-stream",
     }
 }
@@ -192,12 +262,14 @@ fn leer<F: Read + Write, T: for<'a> Deserialize<'a>>(c: &mut Canal<F>) -> Result
     Ok(serde_json::from_slice(&datos)?)
 }
 
-/// Un error del movil, con su tipo cuando lo tiene.
+/// Un error del otro, con su tipo cuando lo tiene.
 fn error_remoto(e: String) -> ErrorAlLienzo {
     if e == OCUPADO {
         ErrorAlLienzo::Ocupado
     } else if es_sin_soporte(&e) {
         ErrorAlLienzo::MovilSinSoporte
+    } else if e.ends_with(SOLO_FOTOS) {
+        ErrorAlLienzo::SoloFotos
     } else {
         ErrorAlLienzo::Remoto(e)
     }
@@ -205,10 +277,10 @@ fn error_remoto(e: String) -> ErrorAlLienzo {
 
 // ------------------------------------------------------------ quien manda
 
-/// Una conexion ya saludada con el movil, lista para mandarle fotos.
+/// Una conexion ya saludada con el otro, lista para mandarle archivos.
 pub struct Conexion<F: Read + Write> {
     canal: Canal<F>,
-    /// El movil, tal como se presento.
+    /// El otro, tal como se presento.
     pub otro: Aparato,
     /// En que puerto escucha el, para recordarlo.
     pub puerto_del_otro: u32,
@@ -218,7 +290,7 @@ pub struct Conexion<F: Read + Write> {
 impl<F: Read + Write> Conexion<F> {
     /// El saludo de siempre (`Sesion.abrir`): `hola` con quien soy y que
     /// version hablo. **No ocupa** este aparato como una vuelta de
-    /// sincronizar: mandar una foto no escribe nada de aqui, y no tiene
+    /// sincronizar: mandar un archivo no escribe nada de aqui, y no tiene
     /// sentido que espere a que acabe otra cosa.
     pub fn abrir(
         flujo: F,
@@ -254,11 +326,12 @@ impl<F: Read + Write> Conexion<F> {
         })
     }
 
-    /// Manda una foto y dice donde quedo. Un [ErrorAlLienzo::MovilSinSoporte]
-    /// deja la conexion sana: no salio ningun trozo.
-    pub fn mandar(&mut self, ruta: &Path, nombre: &str) -> Result<Donde, ErrorAlLienzo> {
+    /// Manda un archivo y dice donde quedo. [ErrorAlLienzo::MovilSinSoporte]
+    /// y [ErrorAlLienzo::SoloFotos] dejan la conexion sana: no salio ningun
+    /// trozo.
+    pub fn mandar(&mut self, ruta: &Path, nombre: &str) -> Result<Llegada, ErrorAlLienzo> {
         // Antes de pedir nada: si el fichero no esta, no se le promete al
-        // movil una foto que no llegara.
+        // otro algo que no llegara.
         let sale = Salida::de_fichero(ruta)?;
         enviar(
             &mut self.canal,
@@ -274,17 +347,20 @@ impl<F: Read + Write> Conexion<F> {
             return Err(error_remoto(e));
         }
         if sale.mandar(&mut self.canal, &mut |_| {})?.is_none() {
-            // La cola ya dijo «saltado»: el movil la tira y contesta.
+            // La cola ya dijo «saltado»: el otro lo tira y contesta.
             let _ = leer::<_, Contestacion>(&mut self.canal);
             return Err(ErrorAlLienzo::Protocolo(
-                "La imagen cambió mientras se mandaba".into(),
+                "El archivo cambió mientras se mandaba".into(),
             ));
         }
         let listo: Contestacion = leer(&mut self.canal)?;
         if let Some(e) = listo.error {
             return Err(error_remoto(e));
         }
-        Ok(Donde::de_texto(listo.donde.as_deref()))
+        Ok(Llegada {
+            donde: Donde::de_texto(listo.donde.as_deref()),
+            chat: listo.chat.filter(|c| !c.trim().is_empty()),
+        })
     }
 
     /// Se despide (`adios`). Si la conexion ya se rompio, no pasa nada.
@@ -305,7 +381,7 @@ impl<F: Read + Write> Conexion<F> {
 
 impl<F: Read + Write> Drop for Conexion<F> {
     fn drop(&mut self) {
-        // Sin despedirse, el `Respondedor` del movil se quedaria esperando la
+        // Sin despedirse, el `Respondedor` del otro se quedaria esperando la
         // siguiente peticion hasta agotar su espera.
         self.despedirse();
     }
@@ -313,45 +389,110 @@ impl<F: Read + Write> Drop for Conexion<F> {
 
 // ------------------------------------------------------------ quien recibe
 
-/// **El lado del movil**, para las pruebas y como modelo de lo que hay que
-/// escribir en Android: atiende una peticion `suelto` ya leida. `guardar`
-/// recibe la peticion y los bytes y dice donde los puso, o por que no.
+/// Lo que decide quien recibe: si lo acepta (antes de que viaje nada) y,
+/// cuando ha llegado entero, donde lo pone.
+pub trait Recibe {
+    /// Antes del «vale»: `Err` con el motivo para negarse (un lienzo delante
+    /// y no es una foto: [`SOLO_FOTOS`]).
+    fn aceptar(&mut self, p: &Suelto) -> Result<(), String>;
+    /// Lo llegado esta en `fichero` (temporal: quien lo guarda lo copia o lo
+    /// mueve; si sigue ahi al volver, se borra).
+    fn guardar(&mut self, p: &Suelto, fichero: &Path) -> Result<Llegada, String>;
+}
+
+/// Atiende una peticion `suelto` ya leida: el lado del PC que recibe y el
+/// modelo de lo que hace Android. Lo que llega va a un fichero en `carpeta`,
+/// no a memoria: un video de un giga no cabe en un equipo modesto.
 pub fn responder<F: Read + Write>(
     canal: &mut Canal<F>,
     p: &Suelto,
-    guardar: &mut dyn FnMut(&Suelto, Vec<u8>) -> Result<Donde, String>,
+    carpeta: &Path,
+    quien: &mut dyn Recibe,
 ) -> Result<(), ErrorAlLienzo> {
-    if !(0..=TOPE_DE_FOTO).contains(&p.bytes) {
+    let negarse = |canal: &mut Canal<F>, e: String| {
         // Sin «vale» no llega ningun trozo: basta con decirlo.
-        return enviar(
+        enviar(
             canal,
             &Contestacion {
-                error: Some("La imagen es demasiado grande".into()),
-                ..Default::default()
-            },
-        );
-    }
-    enviar(canal, &Contestacion::default())?;
-    let mut bytes = Vec::with_capacity(p.bytes as usize);
-    let entera = recibir_trozos(canal, p.bytes, &mut bytes, &mut |_| {})?;
-    let r = match entera {
-        None => Contestacion {
-            error: Some("La imagen cambió mientras se mandaba".into()),
-            ..Default::default()
-        },
-        Some(_) => match guardar(p, bytes) {
-            Ok(d) => Contestacion {
-                t: Some(LISTO.into()),
-                donde: Some(d.texto().into()),
-                ..Default::default()
-            },
-            Err(e) => Contestacion {
                 error: Some(e),
                 ..Default::default()
             },
-        },
+        )
     };
+    if !(0..=TOPE_DE_SUELTO).contains(&p.bytes) {
+        return negarse(canal, "El archivo es demasiado grande".into());
+    }
+    if let Err(e) = quien.aceptar(p) {
+        return negarse(canal, e);
+    }
+    let fichero = fichero_temporal(carpeta, &p.nombre);
+    let mut salida =
+        match std::fs::create_dir_all(carpeta).and_then(|_| std::fs::File::create(&fichero)) {
+            Ok(f) => io::BufWriter::new(f),
+            Err(e) => return negarse(canal, format!("No se pudo guardar: {e}")),
+        };
+    enviar(canal, &Contestacion::default())?;
+    let entera = recibir_trozos(canal, p.bytes, &mut salida, &mut |_| {});
+    let escrito = salida.into_inner().map_err(|e| e.into_error());
+    let r = match (entera, escrito) {
+        // La red corto a medias: no hay a quien contestar.
+        (Err(e), _) => {
+            let _ = std::fs::remove_file(&fichero);
+            return Err(e.into());
+        }
+        (Ok(None), _) => Contestacion {
+            error: Some("El archivo cambió mientras se mandaba".into()),
+            ..Default::default()
+        },
+        (Ok(Some(_)), Err(e)) => Contestacion {
+            error: Some(format!("No se pudo guardar: {e}")),
+            ..Default::default()
+        },
+        (Ok(Some(_)), Ok(f)) => {
+            drop(f);
+            match quien.guardar(p, &fichero) {
+                Ok(l) => Contestacion {
+                    t: Some(LISTO.into()),
+                    donde: Some(l.donde.texto().into()),
+                    chat: l.chat,
+                    ..Default::default()
+                },
+                Err(e) => Contestacion {
+                    error: Some(e),
+                    ..Default::default()
+                },
+            }
+        }
+    };
+    let _ = std::fs::remove_file(&fichero);
     enviar(canal, &r)
+}
+
+/// Un nombre que no pisa a otro que llegue a la vez, con la extension de
+/// siempre (quien lo guarda la mira).
+fn fichero_temporal(carpeta: &Path, nombre: &str) -> PathBuf {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static CUENTA: AtomicU64 = AtomicU64::new(0);
+    let limpio: String = Path::new(nombre)
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_default()
+        .chars()
+        .map(|c| {
+            if "<>:\"/\\|?*".contains(c) || c.is_control() {
+                '_'
+            } else {
+                c
+            }
+        })
+        .collect();
+    let limpio = if limpio.trim().is_empty() {
+        "archivo".to_string()
+    } else {
+        limpio
+    };
+    let n = CUENTA.fetch_add(1, Ordering::SeqCst);
+    carpeta.join(format!("{}-{n}-{limpio}", std::process::id()))
 }
 
 #[cfg(test)]
@@ -367,7 +508,10 @@ mod pruebas {
     #[derive(Clone, Copy)]
     enum Movil {
         /// Con la guia hecha; `lienzo`: si tiene un lienzo delante.
-        Nuevo { lienzo: bool },
+        Nuevo {
+            lienzo: bool,
+            chat: Option<&'static str>,
+        },
         /// Un PixPin de antes del 6-oct: «No sé qué es».
         Viejo,
         /// Sincronizando con otro: «ocupado» a todo, como el `Respondedor`.
@@ -399,6 +543,41 @@ mod pruebas {
             yo: aparato("pc", "Portatil"),
             reloj: 1,
             ..Default::default()
+        }
+    }
+
+    fn carpeta_temporal() -> PathBuf {
+        std::env::temp_dir().join(format!("pixpin-suelto-recibido-{}", std::process::id()))
+    }
+
+    /// Quien recibe, como lo haria el de verdad: con un lienzo delante solo
+    /// fotos; con un chat abierto, cualquier cosa y dice cual.
+    struct Falso<'a> {
+        lienzo: bool,
+        chat: Option<&'static str>,
+        fotos: &'a mut Vec<(Suelto, Vec<u8>)>,
+    }
+
+    impl Recibe for Falso<'_> {
+        fn aceptar(&mut self, p: &Suelto) -> Result<(), String> {
+            if self.lienzo && !p.es_imagen() {
+                return Err(format!("Telefono {SOLO_FOTOS}"));
+            }
+            Ok(())
+        }
+        fn guardar(&mut self, p: &Suelto, fichero: &Path) -> Result<Llegada, String> {
+            self.fotos.push((
+                p.clone(),
+                std::fs::read(fichero).map_err(|e| e.to_string())?,
+            ));
+            Ok(match (self.lienzo, self.chat) {
+                (true, _) => Llegada::en(Donde::Lienzo),
+                (false, Some(c)) => Llegada {
+                    donde: Donde::ChatAbierto,
+                    chat: Some(c.into()),
+                },
+                (false, None) => Llegada::en(Donde::Chat),
+            })
         }
     }
 
@@ -459,14 +638,14 @@ mod pruebas {
                         };
                         enviar(&mut c, &r).unwrap();
                     }
-                    Movil::Nuevo { lienzo } if t == SUELTO => {
+                    Movil::Nuevo { lienzo, chat } if t == SUELTO => {
                         let p: Suelto = serde_json::from_value(v).unwrap();
-                        let fotos = &mut rec.fotos;
-                        responder(&mut c, &p, &mut |p, b| {
-                            fotos.push((p.clone(), b));
-                            Ok(if lienzo { Donde::Lienzo } else { Donde::Chat })
-                        })
-                        .unwrap();
+                        let mut quien = Falso {
+                            lienzo,
+                            chat,
+                            fotos: &mut rec.fotos,
+                        };
+                        responder(&mut c, &p, &carpeta_temporal(), &mut quien).unwrap();
                     }
                     _ => {
                         let r = Respuesta {
@@ -496,14 +675,20 @@ mod pruebas {
 
     #[test]
     fn una_foto_llega_entera_al_lienzo_del_movil() {
-        let (puerto, hilo) = movil(CODIGO, Movil::Nuevo { lienzo: true });
+        let (puerto, hilo) = movil(
+            CODIGO,
+            Movil::Nuevo {
+                lienzo: true,
+                chat: None,
+            },
+        );
         // Mas de un tramo (1 MiB), para que vaya troceada de verdad.
         let bytes: Vec<u8> = (0..(1 << 20) + 777).map(|i| (i % 251) as u8).collect();
         let ruta = foto("grande.png", &bytes);
         let mut c = conectar(puerto, CODIGO).unwrap();
         assert_eq!(c.otro.nombre, "Telefono");
         assert_eq!(c.puerto_del_otro, 47474);
-        assert_eq!(c.mandar(&ruta, "captura.png").unwrap(), Donde::Lienzo);
+        assert_eq!(c.mandar(&ruta, "captura.png").unwrap().donde, Donde::Lienzo);
         c.adios();
         let rec = hilo.join().unwrap();
         assert!(rec.despedido);
@@ -511,7 +696,7 @@ mod pruebas {
         let (p, b) = &rec.fotos[0];
         assert_eq!(p.nombre, "captura.png");
         assert_eq!(p.mime, "image/png");
-        assert_eq!(p.destino, "lienzo");
+        assert_eq!(p.destino, "abierto");
         assert_eq!(p.bytes as usize, bytes.len());
         assert_eq!(b, &bytes);
     }
@@ -519,12 +704,18 @@ mod pruebas {
     #[test]
     fn varias_fotos_van_una_tras_otra_en_la_misma_conexion() {
         // Sin lienzo delante: el movil las deja en el chat y lo dice.
-        let (puerto, hilo) = movil(CODIGO, Movil::Nuevo { lienzo: false });
+        let (puerto, hilo) = movil(
+            CODIGO,
+            Movil::Nuevo {
+                lienzo: false,
+                chat: None,
+            },
+        );
         let a = foto("a.jpg", b"jpg a");
         let b = foto("b.bmp", b"BM b");
         let mut c = conectar(puerto, CODIGO).unwrap();
-        assert_eq!(c.mandar(&a, "a.jpg").unwrap(), Donde::Chat);
-        assert_eq!(c.mandar(&b, "b.bmp").unwrap(), Donde::Chat);
+        assert_eq!(c.mandar(&a, "a.jpg").unwrap().donde, Donde::Chat);
+        assert_eq!(c.mandar(&b, "b.bmp").unwrap().donde, Donde::Chat);
         drop(c); // al soltarla tambien se despide
         let rec = hilo.join().unwrap();
         assert!(rec.despedido);
@@ -556,7 +747,13 @@ mod pruebas {
     fn caso_negativo_con_otro_codigo_de_grupo_el_movil_corta_y_no_recibe_nada() {
         // El primero que descifra es el movil (nuestro `hola`): no puede y
         // cierra, como `Respondedor.atender`. Aqui solo se ve el corte.
-        let (puerto, hilo) = movil("ZZZZ9999", Movil::Nuevo { lienzo: true });
+        let (puerto, hilo) = movil(
+            "ZZZZ9999",
+            Movil::Nuevo {
+                lienzo: true,
+                chat: None,
+            },
+        );
         let e = conectar(puerto, CODIGO).err().unwrap();
         assert!(
             matches!(e, ErrorAlLienzo::Canal(_) | ErrorAlLienzo::Io(_)),
@@ -583,13 +780,19 @@ mod pruebas {
 
     #[test]
     fn caso_negativo_un_fichero_que_no_esta_no_se_le_promete_al_movil() {
-        let (puerto, hilo) = movil(CODIGO, Movil::Nuevo { lienzo: true });
+        let (puerto, hilo) = movil(
+            CODIGO,
+            Movil::Nuevo {
+                lienzo: true,
+                chat: None,
+            },
+        );
         let mut c = conectar(puerto, CODIGO).unwrap();
         let e = c.mandar(Path::new("Z:\\no\\existe.png"), "existe.png");
         assert!(matches!(e, Err(ErrorAlLienzo::Io(_))), "{e:?}");
         // Y la siguiente sigue pudiendo ir.
         let ruta = foto("despues.png", b"png");
-        assert_eq!(c.mandar(&ruta, "despues.png").unwrap(), Donde::Lienzo);
+        assert_eq!(c.mandar(&ruta, "despues.png").unwrap().donde, Donde::Lienzo);
         c.adios();
         assert_eq!(hilo.join().unwrap().fotos.len(), 1);
     }
@@ -604,7 +807,7 @@ mod pruebas {
         };
         assert_eq!(
             serde_json::to_string(&p).unwrap(),
-            r#"{"t":"suelto","nombre":"c.png","mime":"image/png","bytes":5,"destino":"lienzo"}"#
+            r#"{"t":"suelto","nombre":"c.png","mime":"image/png","bytes":5,"destino":"abierto"}"#
         );
         assert_eq!(
             serde_json::to_string(&Contestacion::default()).unwrap(),
@@ -619,5 +822,71 @@ mod pruebas {
         assert!(!es_sin_soporte("La imagen es demasiado grande"));
         assert_eq!(mime_de("FOTO.JPEG"), "image/jpeg");
         assert_eq!(mime_de("sin extension"), "application/octet-stream");
+    }
+
+    #[test]
+    fn con_un_chat_abierto_llega_cualquier_cosa_y_dice_a_que_chat() {
+        let (puerto, hilo) = movil(
+            CODIGO,
+            Movil::Nuevo {
+                lienzo: false,
+                chat: Some("Tesis"),
+            },
+        );
+        let pdf = foto("informe.pdf", b"%PDF-1.7 informe");
+        let mp4 = foto("clase.mp4", b"video");
+        let mut c = conectar(puerto, CODIGO).unwrap();
+        let l = c.mandar(&pdf, "informe.pdf").unwrap();
+        assert_eq!(l.donde, Donde::ChatAbierto);
+        assert_eq!(l.chat.as_deref(), Some("Tesis"));
+        assert_eq!(
+            c.mandar(&mp4, "clase.mp4").unwrap().donde,
+            Donde::ChatAbierto
+        );
+        c.adios();
+        let rec = hilo.join().unwrap();
+        assert_eq!(rec.fotos.len(), 2);
+        assert_eq!(rec.fotos[0].0.mime, "application/pdf");
+        assert_eq!(rec.fotos[0].1, b"%PDF-1.7 informe");
+        assert_eq!(rec.fotos[1].0.mime, "video/mp4");
+    }
+
+    #[test]
+    fn caso_negativo_con_un_lienzo_delante_lo_que_no_es_foto_se_niega_sin_mandarlo() {
+        let (puerto, hilo) = movil(
+            CODIGO,
+            Movil::Nuevo {
+                lienzo: true,
+                chat: None,
+            },
+        );
+        let pdf = foto("negado.pdf", b"%PDF");
+        let png = foto("vale.png", b"png");
+        let mut c = conectar(puerto, CODIGO).unwrap();
+        let e = c.mandar(&pdf, "negado.pdf").unwrap_err();
+        assert!(matches!(e, ErrorAlLienzo::SoloFotos), "{e:?}");
+        // La conexion sigue sana: una foto detras si entra.
+        assert_eq!(c.mandar(&png, "vale.png").unwrap().donde, Donde::Lienzo);
+        c.adios();
+        let rec = hilo.join().unwrap();
+        assert!(!rec.trozo_inesperado);
+        let nombres: Vec<_> = rec.fotos.iter().map(|(p, _)| p.nombre.as_str()).collect();
+        assert_eq!(nombres, ["vale.png"]);
+    }
+
+    #[test]
+    fn el_texto_de_donde_es_el_de_la_guia() {
+        for d in [Donde::Lienzo, Donde::ChatAbierto, Donde::Chat] {
+            assert_eq!(Donde::de_texto(Some(d.texto())), d);
+        }
+        // Un movil del 6-oct dice «chat» por la conversacion general.
+        assert_eq!(Donde::de_texto(Some("chat")), Donde::Chat);
+        assert_eq!(Donde::de_texto(None), Donde::Chat);
+        assert!(matches!(
+            error_remoto(format!("MaxPhone {SOLO_FOTOS}")),
+            ErrorAlLienzo::SoloFotos
+        ));
+        assert_eq!(mime_de("Informe.PDF"), "application/pdf");
+        assert!(mime_de("x.docx").contains("wordprocessingml"));
     }
 }

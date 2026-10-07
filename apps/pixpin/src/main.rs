@@ -50,6 +50,7 @@
 #![forbid(unsafe_code)]
 
 mod abrir_hoja;
+mod al_frente;
 mod abrir_imagen;
 mod aligerar;
 mod anotado_del_adjunto;

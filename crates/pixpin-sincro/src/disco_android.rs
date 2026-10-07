@@ -424,6 +424,7 @@ pub mod prueba {
                         ahora: &|| reloj.ahora(),
                         mi_puerto: 0,
                         al_saludar: &|_, _| {},
+                        suelto: None,
                     };
                     let _ = r.atender(flujo, [7u8; 32]);
                 }

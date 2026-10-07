@@ -49,6 +49,7 @@ mod al_dia;
 pub(crate) mod al_movil;
 mod copias_ui;
 mod elegir;
+pub(crate) mod en_fondo;
 mod enviar_wifi;
 pub(crate) mod presencia;
 mod recibir_wifi;
@@ -861,6 +862,11 @@ fn leer_identidad(raiz: &Path) -> std::io::Result<Identidad> {
 /// La hora de los relojes de los dos aparatos: milisegundos desde 1970 en
 /// UTC, como `System.currentTimeMillis()`. No la local: con ella el desfase
 /// saldria de horas en cuanto el movil estuviera en otra zona.
+/// La hora para nombres y sellos de fuera de este modulo (`al_frente`).
+pub(crate) fn ahora_para_nombres() -> i64 {
+    ahora_ms()
+}
+
 fn ahora_ms() -> i64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -1215,15 +1221,19 @@ fn sondear(raiz: PathBuf, vivo: Arc<AtomicBool>) {
                         presencia::difundir(presencia::Novedad::Identidad);
                     }
                     let dirs = leer_direcciones(&raiz);
+                    let mut responden = std::collections::BTreeMap::new();
                     for miembro in id.miembros.iter().filter(|x| x.id != id.yo.id) {
                         if let Some((_, h, p)) = dirs.iter().find(|(i, _, _)| *i == miembro.id) {
                             let si = sondear_uno(h, *p);
+                            responden.insert(miembro.id.clone(), si);
                             presencia::difundir(presencia::Novedad::Responde(
                                 miembro.id.clone(),
                                 si,
                             ));
                         }
                     }
+                    // Para el plugin (`p s`), que no puede salir a preguntar.
+                    en_fondo::apuntar_estado(&raiz, responden);
                 }
                 // A cachitos de 100 ms para que cerrar la aplicacion no tenga
                 // que esperar a que pase la espera entera.
@@ -1332,6 +1342,24 @@ fn responder(mut flujo: TcpStream, raiz: &Path, mi_puerto: u16) -> Result<()> {
                 apuntar_direccion(raiz, &otro.id, &d.ip().to_string(), puerto as u16);
             }
         },
+        // Un archivo suelto de otro aparato: al chat o lienzo abierto aqui.
+        suelto: Some(&|otro: &m::Aparato| {
+            let yo = leer_identidad(raiz)
+                .map(|i| i.yo.nombre)
+                .ok()
+                .filter(|n| !n.trim().is_empty())
+                .unwrap_or_else(nombre_del_equipo);
+            presencia::difundir(presencia::Novedad::Registro(format!(
+                "Archivo recibido de {}",
+                otro.nombre
+            )));
+            Box::new(crate::al_frente::AlFrente {
+                raiz: raiz.to_path_buf(),
+                yo,
+                de: otro.id.clone(),
+                carpeta_lienzo: carpeta_sincro(raiz).join("al-lienzo"),
+            })
+        }),
     };
     let hecho = r.atender(flujo, nonce().context("sin azar")?);
     // Lo que llego sin marco de la tinta (el movil de hoy no lo escribe)

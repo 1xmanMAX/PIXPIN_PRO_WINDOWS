@@ -7,7 +7,7 @@
 //! - una letra sola, o una letra y un blanco: el atajo de una funcion
 //!   (`t <texto>` apunta una tarea en el Inbox, `n` nota, `l` lienzo,
 //!   `g` galeria, `c` capturar, `u` ultima captura, `a` «aprendi»: una
-//!   leccion nueva, `m` mandar la imagen pegada al lienzo del movil). Una letra pegada a
+//!   leccion nueva, `s` sincronizar con el movil o mandarle la imagen pegada). Una letra pegada a
 //!   otras («tx», «nota») es lo de siempre;
 //! - `<proyecto> > [texto]`: el chat de ese proyecto, de lo ultimo a lo
 //!   primero (con un verbo delante tambien, si lo de antes de `>` es el
@@ -41,9 +41,10 @@ pub enum Funcion {
     Galeria,
     /// Sacar la ultima captura como pin (pedido `pinear_ultima`).
     Ultima,
-    /// Mandar las imagenes pegadas al lienzo abierto de un movil del grupo
+    /// Sincronizar con un aparato del grupo o con todos (pedido
+    /// `sincronizar`), o mandarle las imagenes pegadas a su lienzo abierto
     /// (pedido `enviar_al_movil`).
-    Movil,
+    Sincronizar,
     Abrir,
 }
 
@@ -62,7 +63,7 @@ impl Funcion {
         Funcion::Capturas,
         Funcion::Galeria,
         Funcion::Ultima,
-        Funcion::Movil,
+        Funcion::Sincronizar,
         Funcion::Abrir,
     ];
 
@@ -84,7 +85,7 @@ impl Funcion {
         Funcion::Capturas,
         Funcion::Galeria,
         Funcion::Ultima,
-        Funcion::Movil,
+        Funcion::Sincronizar,
         Funcion::Abrir,
     ];
 
@@ -117,7 +118,17 @@ impl Funcion {
             Funcion::Galeria => &["galeria", "gallery"],
             Funcion::Ultima => &["ultima", "last"],
             // «móvil» normalizado es «movil».
-            Funcion::Movil => &["movil", "enviar", "celular", "telefono", "phone", "mobile"],
+            Funcion::Sincronizar => &[
+                "sincronizar",
+                "sincro",
+                "sync",
+                "movil",
+                "enviar",
+                "celular",
+                "telefono",
+                "phone",
+                "mobile",
+            ],
             Funcion::Abrir => &["pixpin", "abrir", "open"],
         }
     }
@@ -130,12 +141,12 @@ impl Funcion {
             Funcion::Lecciones => "lecciones",
             Funcion::Galeria => "galería",
             Funcion::Ultima => "última",
-            Funcion::Movil => "móvil",
+            Funcion::Sincronizar => "sincronizar",
             _ => self.alias()[0],
         }
     }
 
-    /// La funcion de una letra sola (`t`, `n`, `l`, `g`, `c`, `u`, `a`, `m`). La
+    /// La funcion de una letra sola (`t`, `n`, `l`, `g`, `c`, `u`, `a`, `s`). La
     /// `a` es «aprendi»: apuntar una leccion (la `l` ya era del lienzo).
     pub fn atajo(letra: &str) -> Option<Funcion> {
         Some(match normalizar(letra).as_str() {
@@ -146,7 +157,7 @@ impl Funcion {
             "c" => Funcion::Capturar,
             "u" => Funcion::Ultima,
             "a" => Funcion::Leccion,
-            "m" => Funcion::Movil,
+            "s" => Funcion::Sincronizar,
             _ => return None,
         })
     }
@@ -161,7 +172,7 @@ impl Funcion {
             Funcion::Capturar => 'c',
             Funcion::Ultima => 'u',
             Funcion::Leccion => 'a',
-            Funcion::Movil => 'm',
+            Funcion::Sincronizar => 's',
             _ => return None,
         })
     }
@@ -487,8 +498,10 @@ mod pruebas {
     }
 
     #[test]
-    fn movil_enviar_y_celular_y_la_m_mandan_al_movil() {
-        let f = Funcion::Movil;
+    fn sincronizar_movil_celular_y_la_s_llevan_a_sincronizar() {
+        let f = Funcion::Sincronizar;
+        assert_eq!(analizar("sincronizar"), verbo(f, "", None));
+        assert_eq!(analizar("sync todos"), verbo(f, "todos", None));
         assert_eq!(analizar("móvil"), verbo(f, "", None));
         assert_eq!(analizar("movil [img 01]"), verbo(f, "[img 01]", None));
         assert_eq!(
@@ -496,11 +509,13 @@ mod pruebas {
             verbo(f, "[img 01] pixel", None)
         );
         assert_eq!(analizar("enviar [img 02]"), verbo(f, "[img 02]", None));
-        assert_eq!(analizar("m [img 01]"), verbo(f, "[img 01]", None));
-        assert_eq!(analizar("m"), verbo(f, "", None));
-        assert_eq!(Funcion::Movil.letra(), Some('m'));
-        // Caso negativo: la «m» pegada a otras letras es buscar («mapa»).
-        assert_eq!(analizar("mapa"), buscar("mapa", None));
-        assert_eq!(analizar("mx y"), buscar("mx y", None));
+        assert_eq!(analizar("s [img 01]"), verbo(f, "[img 01]", None));
+        assert_eq!(analizar("s"), verbo(f, "", None));
+        assert_eq!(Funcion::Sincronizar.letra(), Some('s'));
+        // Caso negativo: la «m» ya no es un atajo (no se llenan de atajos),
+        // y la «s» pegada a otras letras es buscar («sol»).
+        assert_eq!(analizar("m"), buscar("m", None));
+        assert_eq!(analizar("sol"), buscar("sol", None));
+        assert_eq!(analizar("sx y"), buscar("sx y", None));
     }
 }

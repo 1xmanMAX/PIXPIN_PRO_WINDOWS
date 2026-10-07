@@ -273,7 +273,7 @@ fn vacio_da_las_funciones_y_los_proyectos_recientes() {
             "Capturas",
             "Galería de capturas",
             "Última captura",
-            "Enviar al móvil",
+            "Sincronizar",
             "Abrir PixPin",
             "Gestión de proyectos",
             "Thesis",
@@ -2945,54 +2945,132 @@ fn pegar_una(r: &Path) -> PathBuf {
     img
 }
 
+/// La sonda de la app apunto, hace `hace_ms`, quien contesto.
+fn apuntar_estado(r: &Path, hace_ms: i64, responden: serde_json::Value) {
+    fs::write(
+        r.join("sincro").join("estado.json"),
+        json!({ "cuando": crate::datos::ahora_ms() - hace_ms, "responden": responden }).to_string(),
+    )
+    .unwrap();
+}
+
 #[test]
-fn con_una_imagen_pegada_sale_un_movil_por_aparato_del_grupo() {
+fn sin_imagen_sale_todos_y_un_sincronizar_por_aparato_con_su_estado() {
+    let r = raiz_en_grupo("sinc-lista", Some("ABCD2345"));
+    // La tableta contesta ahora y el Pixel no: el conectado, primero.
+    apuntar_estado(&r, 5_000, json!({ "tel": false, "tab": true }));
+    let v = buscar_con(&r, "s", imagenes::SIN_PORTAPAPELES);
+    let titulos: Vec<&str> = v.iter().map(|x| x.titulo.as_str()).collect();
+    assert_eq!(
+        titulos,
+        [
+            "Sincronizar con todos (2)",
+            "Sincronizar con Tableta",
+            "Sincronizar con Pixel de Max"
+        ]
+    );
+    let p = pedido_de(&v[0]);
+    assert_eq!(p["accion"], "sincronizar");
+    assert_eq!(p["aparato"], "todos");
+    assert!(
+        v[0].subtitulo.starts_with("1 de 2 conectados"),
+        "{}",
+        v[0].subtitulo
+    );
+    assert_eq!(v[0].glifo, crate::resultados::glifo::SINCRONIZAR);
+    assert_eq!(pedido_de(&v[1])["aparato"], "tab");
+    assert!(
+        v[1].subtitulo.starts_with("🟢 Conectado · Letra C"),
+        "{}",
+        v[1].subtitulo
+    );
+    assert!(
+        v[2].subtitulo.starts_with("⚪ Sin conexión"),
+        "{}",
+        v[2].subtitulo
+    );
+    // Lo escrito detras elige uno por su nombre, sin «Todos».
+    let v = buscar_con(&r, "sincronizar pixel", imagenes::SIN_PORTAPAPELES);
+    assert_eq!(v.len(), 1);
+    assert_eq!(pedido_de(&v[0])["aparato"], "tel");
+    // Y «todos», solo la de todos.
+    let v = buscar_con(&r, "s todos", imagenes::SIN_PORTAPAPELES);
+    assert_eq!(v.len(), 1);
+    assert_eq!(pedido_de(&v[0])["aparato"], "todos");
+}
+
+#[test]
+fn caso_negativo_un_estado_viejo_no_dice_conectado() {
+    let r = raiz_en_grupo("sinc-viejo", Some("ABCD2345"));
+    // De hace diez minutos: la app quiza ni esta abierta.
+    apuntar_estado(&r, 10 * 60_000, json!({ "tel": true, "tab": true }));
+    let v = buscar_con(&r, "s", imagenes::SIN_PORTAPAPELES);
+    assert!(v.iter().all(|x| !x.subtitulo.contains("🟢")));
+    let pixel = v
+        .iter()
+        .find(|x| x.titulo.ends_with("Pixel de Max"))
+        .unwrap();
+    assert!(
+        pixel.subtitulo.starts_with("⚪ Sin comprobar ahora"),
+        "{}",
+        pixel.subtitulo
+    );
+    let tab = v.iter().find(|x| x.titulo.ends_with("Tableta")).unwrap();
+    assert!(
+        tab.subtitulo.contains("Aún no se ha conectado"),
+        "{}",
+        tab.subtitulo
+    );
+    // Y sin fichero de estado, igual.
+    let r = raiz_en_grupo("sinc-sin-estado", Some("ABCD2345"));
+    let v = buscar_con(&r, "s", imagenes::SIN_PORTAPAPELES);
+    assert!(v.iter().all(|x| !x.subtitulo.contains("🟢")));
+}
+
+#[test]
+fn con_una_imagen_pegada_sale_enviar_a_todos_y_a_cada_aparato() {
     let r = raiz_en_grupo("movil-aparatos", Some("ABCD2345"));
     let img = pegar_una(&r);
-    let v = buscar_con(&r, "movil [img 01]", imagenes::SIN_PORTAPAPELES);
+    let v = buscar_con(&r, "s [img 01]", imagenes::SIN_PORTAPAPELES);
     let titulos: Vec<&str> = v.iter().map(|x| x.titulo.as_str()).collect();
     // Este PC no sale; el que ya contesto alguna vez, primero.
     assert_eq!(
         titulos,
         [
-            "Enviar a Pixel de Max · al lienzo abierto",
-            "Enviar a Tableta · al lienzo abierto"
+            "Enviar a todos (2) · a lo que tengan abierto",
+            "Enviar a Pixel de Max · a lo que tenga abierto",
+            "Enviar a Tableta · a lo que tenga abierto"
         ]
     );
-    let p = pedido_de(&v[0]);
-    assert_eq!(p["accion"], "enviar_al_movil");
-    assert_eq!(p["aparato"], "tel");
-    assert_eq!(p["imagenes"], json!([img.to_string_lossy()]));
+    for x in &v {
+        let p = pedido_de(x);
+        assert_eq!(p["accion"], "enviar_al_movil");
+        assert_eq!(p["imagenes"], json!([img.to_string_lossy()]));
+    }
+    assert_eq!(pedido_de(&v[0])["aparato"], "todos");
+    assert_eq!(pedido_de(&v[1])["aparato"], "tel");
     assert!(
-        v[0].subtitulo.starts_with("📎 1 imagen · Letra B"),
-        "{}",
-        v[0].subtitulo
-    );
-    assert!(
-        v[1].subtitulo.contains("Aún no se ha conectado"),
+        v[1].subtitulo
+            .starts_with("📎 1 imagen · ⚪ Sin comprobar ahora · Letra B"),
         "{}",
         v[1].subtitulo
     );
-    assert_eq!(v[0].glifo, crate::resultados::glifo::MOVIL);
-    // La «m» y lo escrito detras eligen el movil por su nombre.
-    let v = buscar_con(&r, "m [img 01] tabl", imagenes::SIN_PORTAPAPELES);
+    assert_eq!(v[1].glifo, crate::resultados::glifo::MOVIL);
+    // Lo escrito detras elige el movil por su nombre.
+    let v = buscar_con(&r, "movil [img 01] tabl", imagenes::SIN_PORTAPAPELES);
     assert_eq!(v.len(), 1);
     assert_eq!(pedido_de(&v[0])["aparato"], "tab");
 }
 
 #[test]
-fn caso_negativo_sin_imagen_pegada_se_explica_como_pegarla() {
+fn caso_negativo_una_imagen_caducada_no_manda_nada() {
     let r = raiz_en_grupo("movil-sin-imagen", Some("ABCD2345"));
-    let v = buscar_con(&r, "móvil", imagenes::SIN_PORTAPAPELES);
-    assert_eq!(v.len(), 1);
-    assert_eq!(v[0].titulo, "Pega una imagen con Ctrl+V");
-    assert!(matches!(v[0].accion, Accion::Consulta(_)));
     // Con una imagen copiada y la app cerrada se ofrece pegarla arriba.
-    let v = buscar_con(&r, "móvil", CON_IMAGEN);
+    let v = buscar_con(&r, "sincronizar", CON_IMAGEN);
     assert!(matches!(v[0].accion, Accion::PegarImagen { numero: 1, .. }));
     assert!(v[0].subtitulo.contains("móvil"), "{}", v[0].subtitulo);
     // Una ficha que ya no esta en el borrador no manda nada.
-    let v = buscar_con(&r, "movil [img 03]", imagenes::SIN_PORTAPAPELES);
+    let v = buscar_con(&r, "s [img 03]", imagenes::SIN_PORTAPAPELES);
     assert_eq!(v.len(), 1);
     assert!(
         v[0].titulo.starts_with("Esa imagen ya no está"),
@@ -3011,18 +3089,22 @@ fn caso_negativo_sin_grupo_se_ofrece_abrir_sincronizar() {
     let p = pedido_de(&v[0]);
     assert_eq!(p["accion"], "ventana");
     assert_eq!(p["cual"], "sincronizar");
+    let v = buscar_con(&r, "s", imagenes::SIN_PORTAPAPELES);
+    assert_eq!(v[0].titulo, "Este PC no está en un grupo");
     // Y sin carpeta `sincro` tampoco hay grupo.
     let r = raiz("movil-sin-sincro");
-    assert!(crate::al_movil::del_grupo(&r).is_none());
+    assert!(crate::al_movil::del_grupo(&r, crate::datos::ahora_ms()).is_none());
 }
 
 #[test]
-fn enviar_al_movil_sale_en_la_lista_de_funciones() {
+fn sincronizar_sale_en_la_lista_de_funciones() {
     let r = raiz("movil-funciones");
     let v = buscar_con(&r, "", imagenes::SIN_PORTAPAPELES);
     let f = v
         .iter()
-        .find(|x| x.titulo == "Enviar al móvil")
+        .find(|x| x.titulo == "Sincronizar")
         .expect("la funcion se ofrece");
-    assert_eq!(f.accion, Accion::Consulta("pp móvil ".into()));
+    assert_eq!(f.accion, Accion::Consulta("pp sincronizar ".into()));
+    // «Enviar al móvil» ya no es una funcion aparte.
+    assert!(v.iter().all(|x| x.titulo != "Enviar al móvil"));
 }

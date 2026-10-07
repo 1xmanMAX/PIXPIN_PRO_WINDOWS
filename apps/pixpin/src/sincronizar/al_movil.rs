@@ -19,7 +19,7 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicIsize, Ordering};
 
 use pixpin_proyecto::identidad::Identidad;
-use pixpin_sincro::al_lienzo::{Conexion, Donde, ErrorAlLienzo};
+use pixpin_sincro::al_lienzo::{Conexion, Donde, ErrorAlLienzo, Llegada};
 use pixpin_sincro::mensajes as m;
 use pixpin_store::{Catalogo, Ubicacion};
 
@@ -64,11 +64,13 @@ fn aparatos_de(raiz: &Path) -> Vec<AparatoDelGrupo> {
         .collect()
 }
 
-/// Lo que llego, y adonde.
+/// Lo que llego, y adonde; y cuantos se negaron (no eran fotos y tenia
+/// un lienzo delante).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Entregado {
     pub movil: String,
-    pub donde: Vec<Donde>,
+    pub donde: Vec<Llegada>,
+    pub negados: usize,
 }
 
 /// Por que no se pudo. Cada uno tiene su aviso: al usuario le sirve saber
@@ -85,6 +87,8 @@ pub enum Fallo {
     SinSoporte(String),
     Ocupado(String),
     OtraVersion(String),
+    /// Tiene un lienzo delante y nada de lo mandado era una foto.
+    SoloFotos(String),
     Cortado(String, String),
 }
 
@@ -159,20 +163,27 @@ fn mandar_ya(
         .unwrap_or(puerto);
     super::apuntar_direccion(raiz, &otro.id, &host, puerto_bueno);
     let mut donde = Vec::new();
+    let mut negados = 0usize;
     for f in fotos {
         let nombre_de_fichero = f
             .file_name()
             .map(|n| n.to_string_lossy().to_string())
             .unwrap_or_else(|| "imagen.png".into());
-        donde.push(
-            c.mandar(f, &nombre_de_fichero)
-                .map_err(|e| traducir(e, &nombre))?,
-        );
+        match c.mandar(f, &nombre_de_fichero) {
+            Ok(l) => donde.push(l),
+            // Un lienzo delante y no es una foto: ese no, los demas si.
+            Err(ErrorAlLienzo::SoloFotos) => negados += 1,
+            Err(e) => return Err(traducir(e, &nombre)),
+        }
     }
     c.adios();
+    if donde.is_empty() && negados > 0 {
+        return Err(Fallo::SoloFotos(nombre));
+    }
     Ok(Entregado {
         movil: nombre,
         donde,
+        negados,
     })
 }
 
@@ -222,11 +233,31 @@ fn traducir(e: ErrorAlLienzo, movil: &str) -> Fallo {
 fn aviso(t: &Catalogo, hecho: &Result<Entregado, Fallo>) -> String {
     let mut args = fluent_bundle::FluentArgs::new();
     let (clave, movil) = match hecho {
-        Ok(e) if e.donde.iter().all(|d| *d == Donde::Lienzo) => {
+        Ok(e) => {
             args.set("n", e.donde.len() as i64);
-            ("al-movil-lienzo", Some(&e.movil))
+            let chat = e.donde.iter().find_map(|l| l.chat.clone());
+            let clave = if e.donde.iter().all(|l| l.donde == Donde::Lienzo) {
+                "al-movil-lienzo"
+            } else if let (true, Some(c)) =
+                (e.donde.iter().all(|l| l.donde == Donde::ChatAbierto), chat)
+            {
+                args.set("chat", c);
+                "al-movil-chat-abierto"
+            } else {
+                "al-movil-chat"
+            };
+            let mut texto = {
+                args.set("movil", e.movil.clone());
+                t.t_args(clave, &args)
+            };
+            if e.negados > 0 {
+                args.set("negados", e.negados as i64);
+                texto.push('\n');
+                texto.push_str(&t.t_args("al-movil-negados", &args));
+            }
+            return texto;
         }
-        Ok(e) => ("al-movil-chat", Some(&e.movil)),
+        Err(Fallo::SoloFotos(n)) => ("al-movil-solo-fotos", Some(n)),
         Err(Fallo::SinGrupo) => ("al-movil-sin-grupo", None),
         Err(Fallo::NoEsDelGrupo) => ("al-movil-no-es-del-grupo", None),
         Err(Fallo::SinFicheros) => ("al-movil-sin-imagenes", None),
@@ -265,7 +296,7 @@ pub fn tomar_avisos() -> Vec<String> {
         .unwrap_or_default()
 }
 
-fn avisar(texto: String) {
+pub(super) fn avisar(texto: String) {
     if let Ok(mut v) = AVISOS.lock() {
         v.push(texto);
     }
@@ -383,9 +414,44 @@ mod pruebas {
         );
     }
 
+    /// El que recibe en el movil de mentira: con lienzo delante, solo fotos;
+    /// si no, el chat «Tesis» abierto.
+    struct Falso<'a> {
+        lienzo: bool,
+        fotos: &'a mut Vec<(String, Vec<u8>)>,
+    }
+
+    impl pixpin_sincro::al_lienzo::Recibe for Falso<'_> {
+        fn aceptar(&mut self, p: &pixpin_sincro::al_lienzo::Suelto) -> Result<(), String> {
+            if self.lienzo && !p.es_imagen() {
+                return Err(format!("Telefono {}", pixpin_sincro::al_lienzo::SOLO_FOTOS));
+            }
+            Ok(())
+        }
+        fn guardar(
+            &mut self,
+            p: &pixpin_sincro::al_lienzo::Suelto,
+            fichero: &Path,
+        ) -> Result<Llegada, String> {
+            self.fotos
+                .push((p.nombre.clone(), std::fs::read(fichero).unwrap()));
+            Ok(if self.lienzo {
+                Llegada::en(Donde::Lienzo)
+            } else {
+                Llegada {
+                    donde: Donde::ChatAbierto,
+                    chat: Some("Tesis".into()),
+                }
+            })
+        }
+    }
+
+    /// Lo que le llego al movil de mentira: nombre y bytes.
+    type Recibidas = Vec<(String, Vec<u8>)>;
+
     /// Un movil en 127.0.0.1: contesta a la sonda y atiende una conexion
     /// con `suelto` (lo nuevo de la guia) o sin el (un PixPin de antes).
-    fn movil(sabe: bool) -> (u16, std::thread::JoinHandle<Vec<(String, Vec<u8>)>>) {
+    fn movil(sabe: bool, lienzo: bool) -> (u16, std::thread::JoinHandle<Recibidas>) {
         let escucha = TcpListener::bind(("127.0.0.1", 0)).unwrap();
         let puerto = escucha.local_addr().unwrap().port();
         let hilo = std::thread::spawn(move || {
@@ -428,11 +494,14 @@ mod pruebas {
                         "suelto" if sabe => {
                             let p: pixpin_sincro::al_lienzo::Suelto =
                                 serde_json::from_value(v).unwrap();
-                            pixpin_sincro::al_lienzo::responder(&mut c, &p, &mut |p, b| {
-                                fotos.push((p.nombre.clone(), b));
-                                Ok(Donde::Lienzo)
-                            })
-                            .unwrap();
+                            let mut quien = Falso {
+                                lienzo,
+                                fotos: &mut fotos,
+                            };
+                            let carpeta = std::env::temp_dir()
+                                .join(format!("pixpin-al-movil-rec-{}", std::process::id()));
+                            pixpin_sincro::al_lienzo::responder(&mut c, &p, &carpeta, &mut quien)
+                                .unwrap();
                         }
                         t => mandar(
                             &mut c,
@@ -449,7 +518,7 @@ mod pruebas {
     fn con_la_direccion_recordada_las_fotos_llegan_sin_buscar_por_la_red() {
         let r = raiz("llegan");
         en_grupo(&r, Some(CODIGO));
-        let (puerto, hilo) = movil(true);
+        let (puerto, hilo) = movil(true, true);
         super::super::apuntar_direccion(&r, "tel", "127.0.0.1", puerto);
         let a = r.join("a.png");
         let b = r.join("b.jpg");
@@ -460,7 +529,8 @@ mod pruebas {
             hecho,
             Ok(Entregado {
                 movil: "Telefono".into(),
-                donde: vec![Donde::Lienzo, Donde::Lienzo],
+                donde: vec![Llegada::en(Donde::Lienzo), Llegada::en(Donde::Lienzo)],
+                negados: 0,
             })
         );
         let fotos = hilo.join().unwrap();
@@ -482,7 +552,7 @@ mod pruebas {
     fn caso_negativo_un_movil_viejo_pide_actualizar_y_se_despide_bien() {
         let r = raiz("viejo");
         en_grupo(&r, Some(CODIGO));
-        let (puerto, hilo) = movil(false);
+        let (puerto, hilo) = movil(false, false);
         super::super::apuntar_direccion(&r, "tel", "127.0.0.1", puerto);
         let a = r.join("a.png");
         std::fs::write(&a, b"png a").unwrap();
@@ -499,16 +569,18 @@ mod pruebas {
         let t = Catalogo::nuevo(pixpin_store::Idioma::Espanol);
         let una = Ok(Entregado {
             movil: "Pixel".into(),
-            donde: vec![Donde::Lienzo],
+            donde: vec![Llegada::en(Donde::Lienzo)],
+            negados: 0,
         });
         assert_eq!(aviso(&t, &una), "Enviada al lienzo de Pixel");
         let al_chat = Ok(Entregado {
             movil: "Pixel".into(),
-            donde: vec![Donde::Chat],
+            donde: vec![Llegada::en(Donde::Chat)],
+            negados: 0,
         });
         assert_eq!(
             aviso(&t, &al_chat),
-            "Pixel la guardó en el chat (no tenía un lienzo abierto)"
+            "Pixel lo guardó en la conversación general (no tenía un chat ni un lienzo abierto)"
         );
         assert_eq!(
             aviso(&t, &Err(Fallo::NoEsta("Pixel".into()))),
@@ -522,9 +594,73 @@ mod pruebas {
             Fallo::Ocupado("P".into()),
             Fallo::OtraVersion("P".into()),
             Fallo::Cortado("P".into(), "x".into()),
+            Fallo::SoloFotos("P".into()),
         ] {
             assert!(!aviso(&t, &Err(f.clone())).starts_with("al-movil"), "{f:?}");
         }
+    }
+
+    #[test]
+    fn con_un_chat_abierto_llega_cualquier_archivo_y_se_dice_en_cual() {
+        let r = raiz("chat-abierto");
+        en_grupo(&r, Some(CODIGO));
+        let (puerto, hilo) = movil(true, false);
+        super::super::apuntar_direccion(&r, "tel", "127.0.0.1", puerto);
+        let pdf = r.join("informe.pdf");
+        std::fs::write(&pdf, b"%PDF").unwrap();
+        let hecho = mandar_ya(&r, "tel", &[pdf], |_| Vec::new());
+        assert_eq!(
+            hecho,
+            Ok(Entregado {
+                movil: "Telefono".into(),
+                donde: vec![Llegada {
+                    donde: Donde::ChatAbierto,
+                    chat: Some("Tesis".into()),
+                }],
+                negados: 0,
+            })
+        );
+        assert_eq!(hilo.join().unwrap()[0].0, "informe.pdf");
+        let t = Catalogo::nuevo(pixpin_store::Idioma::Espanol);
+        assert_eq!(aviso(&t, &hecho), "Enviado al chat «Tesis» de Telefono");
+    }
+
+    #[test]
+    fn caso_negativo_un_lienzo_abierto_niega_lo_que_no_es_foto() {
+        let r = raiz("solo-fotos");
+        en_grupo(&r, Some(CODIGO));
+        let (puerto, hilo) = movil(true, true);
+        super::super::apuntar_direccion(&r, "tel", "127.0.0.1", puerto);
+        let pdf = r.join("informe.pdf");
+        let png = r.join("foto.png");
+        std::fs::write(&pdf, b"%PDF").unwrap();
+        std::fs::write(&png, b"png").unwrap();
+        // Con una foto al lado: la foto entra y del PDF se avisa.
+        let hecho = mandar_ya(&r, "tel", &[pdf.clone(), png], |_| Vec::new());
+        assert_eq!(
+            hecho,
+            Ok(Entregado {
+                movil: "Telefono".into(),
+                donde: vec![Llegada::en(Donde::Lienzo)],
+                negados: 1,
+            })
+        );
+        let t = Catalogo::nuevo(pixpin_store::Idioma::Espanol);
+        assert_eq!(
+            aviso(&t, &hecho),
+            "Enviada al lienzo de Telefono\n1 archivo no se envió: no era una foto y tiene un lienzo abierto"
+        );
+        let fotos = hilo.join().unwrap();
+        assert_eq!(fotos.len(), 1, "el PDF no viajo");
+        // Solo el PDF: se niega entero.
+        let (puerto, hilo) = movil(true, true);
+        super::super::apuntar_direccion(&r, "tel", "127.0.0.1", puerto);
+        let hecho = mandar_ya(&r, "tel", &[pdf], |_| Vec::new());
+        assert_eq!(hecho, Err(Fallo::SoloFotos("Telefono".into())));
+        assert!(hilo.join().unwrap().is_empty());
+        assert!(
+            aviso(&t, &hecho).starts_with("Telefono tiene un lienzo abierto: solo acepta fotos")
+        );
     }
 
     #[test]

@@ -61,6 +61,7 @@ el plugin de Flow Launcher (`apps/pixpin-lanzador`), y sirve igual para un scrip
 | `leccion_nueva` | `texto?`, `proyecto?`, `imagenes?` | Abre la ficha de una lección aprendida nueva, como «Nueva lección» del móvil. Con `texto`, se reparte solo («pasó que…, porque…, la próxima vez…») y se proponen etiquetas, área, tipo y causas. Nada se guarda hasta pulsar Guardar o Esc (que guarda, como el «atrás» del móvil); la «×» descarta. Irá al chat de `proyecto` (sin él, «Mensajes guardados»). `imagenes` (rutas absolutas, como en `anadir_tarea`) son **las fotos de la lección**: se leen al recibir el pedido, la ficha dice «📎 N fotos» y, al guardar, cada una va a `archivos/` del chat (`leccion-<ms>-NN.<ext>`, un `.bmp` como `.png`) con su mensaje `IMAGEN` «Foto de la lección» que **responde** al de la lección (`respondeA: "lec-<id>"`), y su id entra en `adjuntos` del `.leccion`, como hace el móvil. Las fichas `[img 01]`… salen del texto. Si falta una imagen o no lo es, no se abre nada y se avisa |
 | `lecciones` | `proyecto?`, `consulta?` | Abre la lista de lecciones (buscador, repaso de hoy, lista de comprobación). Con `proyecto`, primero las suyas y las que hablan de lo mismo; con `consulta`, ya buscando. Una sola ventana: pedirla otra vez la trae delante |
 | `enviar_al_movil` | `aparato`, `imagenes?`, `archivos?` | Manda esas imagenes (rutas absolutas) **al lienzo que el móvil `aparato` tiene abierto** (`aparato` es su `id` en el grupo, `sincro\identidad.json`), sin abrir Sincronizar en ninguno de los dos. Ver abajo. Sin nada que mandar, o con un fichero que no esta, no sale nada y se avisa |
+| `sincronizar` | `aparato` | Sincroniza con ese aparato del grupo (`id`), o con todos si `aparato` es `todos`, **sin abrir la ventana**: lo mismo que «Sincronizar con todos», sin preguntar y con lo elegido la última vez. Avisa al empezar y, al acabar, dice en el globo lo hecho o qué falló. Una sola a la vez. El plugin (`p s`) ensena si cada aparato contesta leyendo `sincroestado.json` (`{"cuando": ms, "responden": {id: bool}}`), que apunta la sonda de fondo. `enviar_al_movil` acepta también `aparato: "todos"` |
 
 ### Una imagen al lienzo del móvil (`enviar_al_movil`, 6-oct-2026)
 
@@ -82,9 +83,9 @@ el plugin de Flow Launcher (`apps/pixpin-lanzador`), y sirve igual para un scrip
   escucha con una pantalla de PixPin a la vista). Un PixPin del móvil anterior a esto contesta
   «No sé qué es «suelto»»: se dice «Actualiza PixPin en Pixel…» y se abre «Enviar por Wi-Fi» con
   los mismos ficheros, el envío de siempre.
-- En el lanzador: `p móvil` (o `enviar`, `celular`, `m`) + Ctrl+V de la imagen (`[img 01]`):
-  sale una fila por aparato del grupo; Intro manda. Lo escrito detras de las fichas elige el
-  móvil por su nombre (`p m [img 01] pixel`). Sin grupo, la fila abre Sincronizar
+- En el lanzador: `p s` (o `sincronizar`, `sync`, `móvil`, `celular`, `enviar`) + Ctrl+V de la imagen (`[img 01]`):
+  sale «Todos» (si hay más de uno) y una fila por aparato del grupo, con su estado; Intro manda. Lo escrito detras de las fichas elige el
+  móvil por su nombre (`p s [img 01] pixel`). Sin imagen, las mismas filas sincronizan (pedido `sincronizar`). Sin grupo, la fila abre Sincronizar
   (`ventana {cual:"sincronizar"}`).
 - Lo que tiene que hacer el móvil: `docs/investigacion/2026-10-06-foto-al-lienzo-android.md`.
 

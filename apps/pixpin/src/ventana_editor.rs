@@ -974,6 +974,35 @@ fn abrir_en_modo(
             motor.devolver_memoria(dispositivo.d3d());
         }
         en_primer_plano = delante;
+        // Lo que llega de otro aparato del grupo al lienzo abierto
+        // (`al_frente`): este se apunta como abierto mientras esta delante
+        // y recoge las fotos que le dejan. El anotador de pantalla no es un
+        // lienzo: no se apunta.
+        if pantalla.is_none() {
+            let h = ventana.handle().0 as isize;
+            if delante {
+                crate::al_frente::poner_lienzo(h);
+            }
+            let llegadas = crate::al_frente::tomar_para(h);
+            if !llegadas.is_empty() {
+                for r in &llegadas {
+                    figuras::meter_imagen_de(
+                        r,
+                        &mut imagenes,
+                        &mut escena,
+                        &mut gesto,
+                        &efectiva,
+                        ancho_px,
+                        alto_px,
+                    );
+                    let _ = std::fs::remove_file(r);
+                }
+                todo_sucio = true;
+                contenido_sucio = true;
+                interfaz_sucia = true;
+                ventana.invalidar();
+            }
+        }
         for (hwnd, ev) in pixpin_shell::overlay::tomar_eventos_pendientes() {
             // La pastilla del anotador de pantalla: sus clics son suyos.
             if let Some(ps) = pastilla.as_mut()
