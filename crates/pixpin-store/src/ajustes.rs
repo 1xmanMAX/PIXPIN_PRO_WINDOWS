@@ -427,6 +427,12 @@ pub struct Sincro {
     /// lado mande siempre es la excepcion que se pide a proposito, no lo que
     /// alguien espera sin haberlo tocado.
     pub lo_mio_manda: bool,
+    /// **Sincronizar solo, con la aplicacion abierta** (8-oct-2026). Con
+    /// los aparatos del grupo que contesten: al aparecer en la red, al
+    /// cambiar algo aqui (tras 30 s sin mas cambios) y cada diez minutos.
+    /// Sin globos salvo si llega algo o falla varias veces seguidas. Pide la
+    /// presencia encendida: sin sonda no se sabe quien contesta.
+    pub automatica: bool,
 }
 
 impl Default for Sincro {
@@ -434,6 +440,7 @@ impl Default for Sincro {
         Self {
             presencia: true,
             lo_mio_manda: false,
+            automatica: true,
         }
     }
 }

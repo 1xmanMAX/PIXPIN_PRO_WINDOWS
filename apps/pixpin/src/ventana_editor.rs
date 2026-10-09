@@ -2322,6 +2322,7 @@ fn abrir_en_modo(
                         &mut chat,
                         pa,
                         tinta,
+                        crate::anotador_al_chat::pegadas_de(&escena, |id| imagenes.rgba(id).cloned()),
                         pantalla::globo(exportar::textos()),
                         |pa| pantalla::foto_de_debajo(pa, fondo_ref, &ventana, ps, !pasante_fijo),
                     );
@@ -3131,6 +3132,7 @@ fn abrir_en_modo(
             &mut chat,
             pa,
             tinta,
+            crate::anotador_al_chat::pegadas_de(&escena, |id| imagenes.rgba(id).cloned()),
             pantalla::globo(exportar::textos()),
             |pa| pantalla::foto_al_salir(pa, fondo_ref, &ventana),
         );

@@ -1,0 +1,413 @@
+//! **Los textos del plano**, rellenos como triangulos para que vayan con
+//! todo lo demas en la tarjeta grafica: cada letra se saca de una fuente
+//! de Windows (su contorno, con `ttf-parser`), se rellena una vez
+//! (`lyon`) y se copia donde haga falta. Van en el nivel de su altura:
+//! de lejos, un texto de menos de un pixel no se dibuja.
+//!
+//! Las fuentes SHX de AutoCAD (romans, simplex, txt) no vienen con
+//! Windows: se dibujan con Arial Narrow, que se les parece en ancho, o con
+//! Arial. Un estilo con TrueType usa la suya si esta instalada.
+
+use std::collections::HashMap;
+use std::sync::Arc;
+
+use lyon_tessellation::geom::point;
+use lyon_tessellation::path::Path;
+use lyon_tessellation::{BuffersBuilder, FillOptions, FillRule, FillTessellator, FillVertex, VertexBuffers};
+
+use crate::convertir::Afin;
+use crate::modelo::Constructor;
+
+/// Una letra ya rellena, en unidades de em (alto de la M ≈ 0.72).
+struct Letra {
+    triangulos: Vec<[f32; 2]>,
+    avance: f32,
+}
+
+struct Fuente {
+    id: u32,
+    datos: Arc<Vec<u8>>,
+    letras: HashMap<char, Option<Letra>>,
+    /// Lo que mide una mayuscula en em: la altura de un texto de AutoCAD
+    /// es la de sus mayusculas.
+    alto_mayuscula: f32,
+}
+
+pub struct Textos {
+    fuentes: HashMap<String, Option<Fuente>>,
+}
+
+const CARPETA_FUENTES: &str = "C:\\Windows\\Fonts";
+
+/// El fichero de fuente de Windows para el `font_file` de un estilo.
+pub fn fichero_para(estilo: &str) -> Vec<String> {
+    let e = estilo.trim().to_ascii_lowercase();
+    let mut v = Vec::new();
+    if e.ends_with(".ttf") || e.ends_with(".otf") || e.ends_with(".ttc") {
+        v.push(e.rsplit(['\\', '/']).next().unwrap_or(&e).to_string());
+    }
+    if e.contains("arial") || e.is_empty() {
+        v.push("arial.ttf".into());
+    }
+    v.extend(["arialn.ttf".to_string(), "arial.ttf".to_string(), "segoeui.ttf".to_string()]);
+    v
+}
+
+impl Textos {
+    pub fn nuevo() -> Self {
+        Self { fuentes: HashMap::new() }
+    }
+
+    /// Lo que mide `texto` en pixeles con letra de `tam` (la barra).
+    pub fn medir_pantalla(&mut self, texto: &str, tam: f64) -> f64 {
+        self.ancho("segoeui.ttf", texto) as f64 * tam
+    }
+
+    /// Escribe en pixeles de la ventana (y hacia abajo), con Segoe UI, desde
+    /// `x` sobre la base `y`; si no cabe antes de `x_max`, lo corta con «…».
+    /// Devuelve lo que ocupa.
+    #[allow(clippy::too_many_arguments)]
+    pub fn en_pantalla(&mut self, c: &mut Constructor, texto: &str, x: f64, y: f64, tam: f64, color: u32, x_max: f64) -> f64 {
+        let mut t: String = texto.to_string();
+        if x + self.medir_pantalla(&t, tam) > x_max {
+            while !t.is_empty() && x + self.medir_pantalla(&format!("{t}…"), tam) > x_max {
+                t.pop();
+            }
+            t = format!("{}…", t.trim_end());
+        }
+        let m = Afin::traslacion(x, y, 0.0).por(&Afin::escala(tam, -tam, 1.0));
+        self.escribir(c, "segoeui.ttf", &t, &m, 1e6, color);
+        self.medir_pantalla(&t, tam)
+    }
+
+    fn fuente(&mut self, estilo: &str) -> Option<&mut Fuente> {
+        let clave = estilo.to_ascii_lowercase();
+        if !self.fuentes.contains_key(&clave) {
+            let mut f = None;
+            for nombre in fichero_para(&clave) {
+                let ruta = std::path::Path::new(CARPETA_FUENTES).join(&nombre);
+                if let Ok(datos) = std::fs::read(&ruta)
+                    && let Ok(cara) = ttf_parser::Face::parse(&datos, 0)
+                {
+                    let em = cara.units_per_em() as f32;
+                    let mayus = cara.capital_height().map(|h| h as f32 / em).filter(|h| *h > 0.2).unwrap_or(0.716);
+                    f = Some(Fuente {
+                        id: self.fuentes.len() as u32,
+                        datos: Arc::new(datos),
+                        letras: HashMap::new(),
+                        alto_mayuscula: mayus,
+                    });
+                    break;
+                }
+            }
+            self.fuentes.insert(clave.clone(), f);
+        }
+        self.fuentes.get_mut(&clave)?.as_mut()
+    }
+
+    /// Lo que mide `texto` en em.
+    fn ancho(&mut self, estilo: &str, texto: &str) -> f32 {
+        let Some(f) = self.fuente(estilo) else { return 0.0 };
+        texto.chars().map(|c| f.letra(c).map_or(0.5, |l| l.avance)).sum()
+    }
+
+    /// Escribe una linea en coordenadas locales (x hacia la derecha, base
+    /// en y = 0, unidades de em) llevadas al plano con `m`.
+    fn escribir(&mut self, c: &mut Constructor, estilo: &str, texto: &str, m: &Afin, alto_mundo: f64, color: u32) {
+        let Some(f) = self.fuente(estilo) else { return };
+        let id = f.id;
+        // De em al plano: las columnas de la matriz.
+        let mat = [m.m[0][0], m.m[0][1], m.m[1][0], m.m[1][1]];
+        let mut x = 0.0f64;
+        for ch in texto.chars() {
+            let Some(l) = f.letra(ch) else {
+                x += 0.5;
+                continue;
+            };
+            let avance = l.avance as f64;
+            if !l.triangulos.is_empty() {
+                let tri = &l.triangulos;
+                let g = c.glifo(id, ch, || tri.clone());
+                c.letra(g, m.punto(x, 0.0, 0.0), mat, color, alto_mundo);
+            }
+            x += avance;
+        }
+    }
+
+    /// Un TEXT o un ATTRIB: una linea con su alineacion.
+    #[allow(clippy::too_many_arguments)]
+    pub fn simple(
+        &mut self,
+        c: &mut Constructor,
+        texto: &str,
+        ins: [f64; 3],
+        alineado: Option<[f64; 3]>,
+        alto: f64,
+        giro: f64,
+        ancho: f64,
+        oblicuo: f64,
+        h: u8,
+        v: u8,
+        estilo: &str,
+        color: u32,
+        t: &Afin,
+    ) {
+        let texto = texto.trim_end();
+        if texto.is_empty() || !(alto > 0.0) || !alto.is_finite() {
+            return;
+        }
+        let mayus = self.fuente(estilo).map_or(0.716, |f| f.alto_mayuscula) as f64;
+        let ancho = if ancho > 0.0 && ancho.is_finite() { ancho } else { 1.0 };
+        let mut escala_y = alto / mayus;
+        let mut escala_x = escala_y * ancho;
+        let largo_em = self.ancho(estilo, texto) as f64;
+        let mut giro = giro;
+        // Donde se engancha: el punto de insercion si es «izquierda, base»,
+        // el de alineacion en lo demas.
+        let ancla = match alineado {
+            Some(a) if h != 0 || v != 0 => a,
+            _ => ins,
+        };
+        let (mut dx, mut dy) = (0.0, 0.0);
+        if (h == 3 || h == 5) && let Some(a) = alineado {
+            // Alineado / Ajustado: entre los dos puntos.
+            let (vx, vy) = (a[0] - ins[0], a[1] - ins[1]);
+            let largo = (vx * vx + vy * vy).sqrt();
+            if largo > 1e-12 && largo_em > 0.0 {
+                giro = vy.atan2(vx);
+                escala_x = largo / largo_em;
+                if h == 3 {
+                    escala_y = escala_x / ancho;
+                }
+            }
+            let m = t
+                .por(&Afin::traslacion(ins[0], ins[1], ins[2]))
+                .por(&Afin::giro_z(giro))
+                .por(&Afin::escala(escala_x, escala_y, 1.0))
+                .por(&oblicua(oblicuo));
+            self.escribir(c, estilo, texto, &m, alto, color);
+            return;
+        }
+        let largo = largo_em * escala_x;
+        match h {
+            1 | 4 => dx = -largo / 2.0,
+            2 => dx = -largo,
+            _ => {}
+        }
+        match (h, v) {
+            (4, _) | (_, 2) => dy = -alto / 2.0,
+            (_, 1) => dy = alto * 0.3,
+            (_, 3) => dy = -alto,
+            _ => {}
+        }
+        let m = t
+            .por(&Afin::traslacion(ancla[0], ancla[1], ancla[2]))
+            .por(&Afin::giro_z(giro))
+            .por(&Afin::traslacion(dx, dy, 0.0))
+            .por(&Afin::escala(escala_x, escala_y, 1.0))
+            .por(&oblicua(oblicuo));
+        self.escribir(c, estilo, texto, &m, alto, color);
+    }
+
+    /// Un MTEXT: sus renglones (ya partidos y sin formato), con su punto
+    /// de enganche (1 arriba-izquierda … 9 abajo-derecha) y, si tiene ancho
+    /// de caja, cortados por palabras.
+    #[allow(clippy::too_many_arguments)]
+    pub fn multilinea(
+        &mut self,
+        c: &mut Constructor,
+        parrafos: &[String],
+        ins: [f64; 3],
+        alto: f64,
+        giro: f64,
+        enganche: u8,
+        caja: f64,
+        estilo: &str,
+        color: u32,
+        t: &Afin,
+    ) {
+        if !(alto > 0.0) || !alto.is_finite() {
+            return;
+        }
+        let mayus = self.fuente(estilo).map_or(0.716, |f| f.alto_mayuscula) as f64;
+        let escala = alto / mayus;
+        // Cortar por palabras al ancho de la caja.
+        let mut renglones: Vec<String> = Vec::new();
+        for p in parrafos {
+            if caja > 0.0 && caja.is_finite() {
+                let mut actual = String::new();
+                for palabra in p.split(' ') {
+                    let prueba = if actual.is_empty() { palabra.to_string() } else { format!("{actual} {palabra}") };
+                    if !actual.is_empty() && self.ancho(estilo, &prueba) as f64 * escala > caja * 1.001 {
+                        renglones.push(std::mem::take(&mut actual));
+                        actual = palabra.to_string();
+                    } else {
+                        actual = prueba;
+                    }
+                }
+                renglones.push(actual);
+            } else {
+                renglones.push(p.clone());
+            }
+        }
+        let n = renglones.len().max(1) as f64;
+        let interlineado = alto * 5.0 / 3.0;
+        let total = alto + (n - 1.0) * interlineado;
+        let col = (enganche.clamp(1, 9) - 1) % 3;
+        let fila = (enganche.clamp(1, 9) - 1) / 3;
+        let y0 = match fila {
+            0 => -alto,
+            1 => total / 2.0 - alto,
+            _ => total - alto,
+        };
+        let anchos: Vec<f64> = renglones.iter().map(|r| self.ancho(estilo, r) as f64 * escala).collect();
+        let bloque = if caja > 0.0 { caja } else { anchos.iter().cloned().fold(0.0, f64::max) };
+        for (i, r) in renglones.iter().enumerate() {
+            if r.trim().is_empty() {
+                continue;
+            }
+            let x = match col {
+                0 => 0.0,
+                1 => -anchos[i] / 2.0,
+                _ => -anchos[i],
+            };
+            let _ = bloque;
+            let m = t
+                .por(&Afin::traslacion(ins[0], ins[1], ins[2]))
+                .por(&Afin::giro_z(giro))
+                .por(&Afin::traslacion(x, y0 - i as f64 * interlineado, 0.0))
+                .por(&Afin::escala(escala, escala, 1.0));
+            self.escribir(c, estilo, r, &m, alto, color);
+        }
+    }
+}
+
+fn oblicua(angulo: f64) -> Afin {
+    let mut a = Afin::IDENTIDAD;
+    if angulo.is_finite() && angulo.abs() > 1e-9 && angulo.abs() < 1.4 {
+        a.m[0][1] = angulo.tan();
+    }
+    a
+}
+
+impl Fuente {
+    fn letra(&mut self, ch: char) -> Option<&Letra> {
+        if !self.letras.contains_key(&ch) {
+            let l = rellenar_letra(&self.datos, ch);
+            self.letras.insert(ch, l);
+        }
+        self.letras.get(&ch)?.as_ref()
+    }
+}
+
+struct Trazador {
+    b: lyon_tessellation::path::path::Builder,
+    em: f32,
+    abierto: bool,
+}
+
+impl ttf_parser::OutlineBuilder for Trazador {
+    fn move_to(&mut self, x: f32, y: f32) {
+        if self.abierto {
+            self.b.end(true);
+        }
+        self.b.begin(point(x / self.em, y / self.em));
+        self.abierto = true;
+    }
+    fn line_to(&mut self, x: f32, y: f32) {
+        self.b.line_to(point(x / self.em, y / self.em));
+    }
+    fn quad_to(&mut self, x1: f32, y1: f32, x: f32, y: f32) {
+        self.b.quadratic_bezier_to(point(x1 / self.em, y1 / self.em), point(x / self.em, y / self.em));
+    }
+    fn curve_to(&mut self, x1: f32, y1: f32, x2: f32, y2: f32, x: f32, y: f32) {
+        self.b.cubic_bezier_to(point(x1 / self.em, y1 / self.em), point(x2 / self.em, y2 / self.em), point(x / self.em, y / self.em));
+    }
+    fn close(&mut self) {
+        if self.abierto {
+            self.b.end(true);
+            self.abierto = false;
+        }
+    }
+}
+
+fn rellenar_letra(datos: &[u8], ch: char) -> Option<Letra> {
+    let cara = ttf_parser::Face::parse(datos, 0).ok()?;
+    let id = cara.glyph_index(ch).or_else(|| cara.glyph_index('?'))?;
+    let em = cara.units_per_em() as f32;
+    let avance = cara.glyph_hor_advance(id).map_or(0.5, |a| a as f32 / em);
+    let mut tr = Trazador {
+        b: Path::builder(),
+        em,
+        abierto: false,
+    };
+    let mut triangulos = Vec::new();
+    if cara.outline_glyph(id, &mut tr).is_some() {
+        if tr.abierto {
+            tr.b.end(true);
+        }
+        let camino = tr.b.build();
+        let mut bufs: VertexBuffers<[f32; 2], u32> = VertexBuffers::new();
+        // Una tolerancia gruesa (1/150 de em): de cerca sigue siendo redonda y
+        // cada letra son pocas decenas de triangulos.
+        let ok = FillTessellator::new().tessellate_path(
+            &camino,
+            &FillOptions::tolerance(1.0 / 150.0).with_fill_rule(FillRule::NonZero),
+            &mut BuffersBuilder::new(&mut bufs, |v: FillVertex| v.position().to_array()),
+        );
+        if ok.is_ok() {
+            triangulos = bufs.indices.iter().map(|&i| bufs.vertices[i as usize]).collect();
+        }
+    }
+    Some(Letra { triangulos, avance })
+}
+
+/// Los renglones de un MTEXT sin sus codigos de formato (`\P`, `\f…;`,
+/// llaves, `\S` de las fracciones…), con la libreria.
+pub fn lineas_de_mtext(valor: &str) -> Vec<String> {
+    let doc = opencadcodec::entities::mtext_format::parse_mtext(valor, true);
+    let mut v: Vec<String> = doc
+        .paragraphs
+        .iter()
+        .map(|p| p.spans.iter().map(|s| s.text.as_str()).collect::<String>())
+        .collect();
+    if v.is_empty() {
+        v.push(String::new());
+    }
+    v
+}
+
+/// El texto de un TEXT con sus `%%d`, `%%c`... ya cambiados.
+pub fn texto_plano(valor: &str) -> String {
+    let doc = opencadcodec::entities::mtext_format::parse_plain_text(valor);
+    doc.paragraphs
+        .iter()
+        .map(|p| p.spans.iter().map(|s| s.text.as_str()).collect::<String>())
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+#[cfg(test)]
+mod pruebas {
+    use super::*;
+
+    #[test]
+    fn el_mtext_pierde_el_formato_y_parte_los_parrafos() {
+        let l = lineas_de_mtext("{\\fArial|b1;Hola}\\Pmundo");
+        assert_eq!(l, vec!["Hola".to_string(), "mundo".to_string()]);
+        assert_eq!(texto_plano("45%%d"), "45°");
+    }
+
+    #[test]
+    fn una_letra_de_arial_tiene_triangulos_y_avance() {
+        let mut t = Textos::nuevo();
+        let Some(f) = t.fuente("romans.shx") else {
+            return; // sin fuentes de Windows (no deberia pasar)
+        };
+        let a = f.letra('A').unwrap();
+        assert!(a.triangulos.len() >= 9 && a.avance > 0.3);
+        // Un espacio no tiene contorno pero si avance.
+        let e = f.letra(' ').unwrap();
+        assert!(e.triangulos.is_empty() && e.avance > 0.1);
+    }
+}

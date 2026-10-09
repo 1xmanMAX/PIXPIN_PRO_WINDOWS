@@ -270,6 +270,18 @@ pub(super) fn pintar(e: &mut Estado, p: &Pintor, area: RectF, s: f32, textos: &C
             }
             p.rellenar_redondeado(caja, 16.0 * s, TARJETA_MES);
             columna_del_mes(p, e, &pd, t.mes, caja, s);
+            // Las iniciales de la semana, encima de sus columnas.
+            let letras = dias::iniciales(e.ingles);
+            for (k, r) in t.semana.iter().enumerate() {
+                let (lw, lh) = p.medir_texto(letras[k], 12.0 * s);
+                p.texto(
+                    letras[k],
+                    r.x + (r.ancho - lw) / 2.0,
+                    y0 + r.y + (r.alto - lh) / 2.0,
+                    12.0 * s,
+                    GRIS,
+                );
+            }
             for c in &t.celdas {
                 let celda = RectF {
                     y: y0 + c.caja.y,
@@ -277,8 +289,22 @@ pub(super) fn pintar(e: &mut Estado, p: &Pintor, area: RectF, s: f32, textos: &C
                 };
                 let centro = (c.centro.0, y0 + c.centro.1);
                 if !c.con_algo {
-                    // Sin nada: un puntito, sin numero de relleno.
-                    p.circulo(centro, 2.0 * s, blanco(0.15));
+                    // Sin nada: su numero, apagado (es un calendario).
+                    let num = c.dia.dia.to_string();
+                    let (nw, nh) = p.medir_texto(&num, 13.0 * s);
+                    p.texto(
+                        &num,
+                        celda.x + (celda.ancho - nw) / 2.0,
+                        // En una semana con algo, a la altura de los otros
+                        // numeros; en una vacia, en medio.
+                        if celda.alto > 40.0 * s {
+                            celda.y + 3.0 * s
+                        } else {
+                            celda.y + (celda.alto - nh) / 2.0
+                        },
+                        13.0 * s,
+                        blanco(0.28),
+                    );
                     continue;
                 }
                 let Some(idx) = pd.get(&c.dia) else { continue };

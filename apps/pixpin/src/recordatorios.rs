@@ -394,7 +394,29 @@ impl Drop for Vigia {
 /// `recuerdaEn = null`), y por la misma razon: si no, la conversacion queda con
 /// una alarma fantasma que ya sono y que al siguiente arranque volveria a sonar.
 pub fn olvidar(carpeta: &std::path::Path, id: &str) -> std::io::Result<bool> {
+    // La de una tarea no esta en un campo del mensaje: es la marca de su texto.
+    if id.starts_with("tarea:") {
+        return crate::tareas::olvidar_hora(carpeta, id);
+    }
     guardar(carpeta, id, None)
+}
+
+/// **El archivo del mensaje** `id` de la carpeta de un chat, si es un archivo
+/// o una foto y esta en este equipo: lo que sale pineado junto al aviso.
+pub fn archivo_de(carpeta: &Path, id: &str) -> Option<PathBuf> {
+    let c = Cuaderno::leer_de(carpeta).ok()?;
+    let m = c.mensajes.iter().find(|m| m.id == id)?;
+    if !matches!(
+        m.clase,
+        Some(cuaderno::Clase::Archivo) | Some(cuaderno::Clase::Imagen)
+    ) {
+        return None;
+    }
+    let proyecto = carpeta.file_name()?.to_str()?;
+    let raiz = carpeta.parent()?.parent()?;
+    let ruta = pixpin_proyecto::vista::ruta_real(raiz, proyecto, m.ruta.as_deref()?)?;
+    ruta.is_file()
+        .then(|| pixpin_proyecto::vista::con_la_extension_del_nombre(raiz, ruta, &m.nombre))
 }
 
 /// Los recordatorios que hay que volver a poner tras una sincronizacion o al
@@ -410,6 +432,10 @@ pub fn agenda_de(carpeta: &std::path::Path) -> std::io::Result<Agenda> {
         pixpin_shell::entorno::ahora_utc_ms(),
         pixpin_shell::entorno::desfase_local_ms(),
     ) {
+        agenda.programar(r);
+    }
+    // Y las tareas con hora (`tareas::RELOJ`, 8-oct-2026).
+    for r in crate::tareas::avisos_del_cuaderno(&c) {
         agenda.programar(r);
     }
     Ok(agenda)

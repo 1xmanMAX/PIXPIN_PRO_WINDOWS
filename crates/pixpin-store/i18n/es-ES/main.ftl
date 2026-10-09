@@ -868,7 +868,15 @@ compartir-boton = Compartir
 compartir-guardar = Guardar como…
 compartir-copiar = Copiar al portapapeles
 compartir-wifi = Enviar por Wi-Fi
-compartir-web = Página web
+compartir-boton-copiar = Copiar
+compartir-boton-wifi = Wi-Fi
+compartir-boton-enlace = Enlace
+compartir-enlace-pista = Lo sube a litterbox (3 días) y copia el enlace: cualquiera con él puede abrirlo
+compartir-enlace-subiendo = Subiendo…
+compartir-enlace-copiado = Enlace copiado · se borra en 3 días
+compartir-enlace-fallo = No se pudo subir: { $motivo }
+compartir-web = HTML
+compartir-adjuntos = Adjuntos
 compartir-pdf = PDF
 compartir-png = PNG
 compartir-jpg = JPG
@@ -1458,7 +1466,7 @@ chat-hacer-leccion = Hacer lección
 bandeja-lecciones = 💡 Lecciones…
 bandeja-leccion-nueva = Nueva lección…
 bandeja-tareas = ☑ Tareas…
-bandeja-timeline = 🕒 Timeline…
+bandeja-timeline = 🕒 Timeline y lecciones…
 
 ## Tareas (ventana)
 tareas-titulo = Tareas
@@ -1912,6 +1920,14 @@ pin-v2-tipo-video = Vídeo
 pin-v2-tipo-archivo = Archivo
 pin-v2-tipo-vivo = Pin en vivo
 pin-v2-tipo-herramienta = Herramienta
+pin-v2-marca-copiar = Copiar
+pin-v2-marca-resaltar = Resaltar
+pin-v2-marca-ondulada = Ondulada
+pin-v2-marca-subrayar = Subrayar
+pin-v2-marca-tachar = Tachar
+pin-v2-marca-tapar = Tapar
+pin-v2-marca-quitar = Quitar la marca
+pin-v2-modo-texto = Seleccionar texto
 ## v2-captura
 captura2-zona = Zona
 captura2-ventana = Ventana
@@ -2113,7 +2129,7 @@ galeria-prorrogar = Dar 7 días más
 ## timeline-v2 (5-oct-2026): barra comun, pestanas como WeChat y detalle
 timeline-pestana-hoy = Hoy
 timeline-pestana-momentos = Momentos
-timeline-pestana-estado = Estado
+timeline-pestana-estado = Calendario
 timeline-buscar-pista = Buscar en el timeline
 timeline-sub-buscar = { $n ->
     [0] Nada encontrado
@@ -2127,7 +2143,9 @@ timeline-sub-momentos = { $n ->
   }
 timeline-sin-resultados = No hay ningún momento con eso.
     Se busca en el título y la descripción, sin tildes ni mayúsculas.
-timeline-momentos-vacio = Aún no hay momentos. Apunta el primero en «Hoy».
+timeline-momentos-vacio = Aquí van los momentos que elijas. En «Hoy», pasa el ratón por una tarjeta y pulsa el marcador para mandarla aquí.
+timeline-a-momentos = Mandado a Momentos
+timeline-fuera-de-momentos = Quitado de Momentos
 timeline-estado-sobre-todo = Sobre todo
 timeline-estado-lo-mas = «{ $que }»
 timeline-exportar-busqueda = Búsqueda: «{ $que }»
@@ -2154,6 +2172,7 @@ timeline-tambien-lecciones = { $n ->
    *[other] También hay { $n } lecciones con eso · Ver
   }
 timeline-copiar-imagen = Copiar como imagen
+timeline-compartir-html = Compartir como HTML
 timeline-guardar-imagen = Guardar como imagen…
 timeline-imagen-copiada = Copiada como imagen
 timeline-imagen-fallo = No se pudo hacer la imagen
@@ -2199,6 +2218,9 @@ tareas5-subtitulo = { $listas ->
    *[other] { $listas } listas
   }
 tareas5-apuntar-pista = Nueva tarea…
+tareas-recordare = ⏰ Te lo recordaré { $cuando }
+tareas-sin-recordatorio = Recordatorio quitado
+tareas-apuntar-en-pista = Nueva tarea en «{ $lista }»…
 tareas5-corregir-pista = Texto de la tarea…
 tareas5-imagen-pista = Añadir imágenes · Ctrl+V pega una copiada
 tareas5-guardar = Guardar

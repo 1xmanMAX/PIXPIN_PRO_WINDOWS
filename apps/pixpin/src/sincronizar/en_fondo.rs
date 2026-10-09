@@ -64,6 +64,11 @@ pub(super) fn apuntar_estado(raiz: &Path, responden: BTreeMap<String, bool>) {
 /// por el anuncio de la red antes de rendirse. `None`: no hay grupo, o ese
 /// aparato no es del grupo.
 fn lista(raiz: &Path, aparato: &str) -> Option<Vec<(String, String, u16)>> {
+    lista_de(raiz, |id| aparato == TODOS || id == aparato)
+}
+
+/// Como [`lista`], con los aparatos cuyo `id` cumple `quiero`.
+fn lista_de(raiz: &Path, quiero: impl Fn(&str) -> bool) -> Option<Vec<(String, String, u16)>> {
     let id = super::leer_identidad(raiz).ok()?;
     if id.codigo.as_deref().is_none_or(|c| c.trim().is_empty()) {
         return None;
@@ -73,7 +78,7 @@ fn lista(raiz: &Path, aparato: &str) -> Option<Vec<(String, String, u16)>> {
         .miembros
         .iter()
         .filter(|m| m.id != id.yo.id && !m.id.is_empty())
-        .filter(|m| aparato == TODOS || m.id == aparato)
+        .filter(|m| quiero(&m.id))
         .map(|m| {
             let (h, p) = dirs
                 .iter()
@@ -97,18 +102,49 @@ pub fn lanzar(ubicacion: &Ubicacion, aparato: &str) {
         });
         return;
     };
-    if EN_MARCHA.swap(true, Ordering::SeqCst) {
-        super::al_movil::avisar("Ya se está sincronizando: espera a que acabe".into());
-        return;
-    }
     let quien = if lista.len() == 1 {
         lista[0].0.clone()
     } else {
         format!("{} aparatos", lista.len())
     };
-    super::al_movil::avisar(format!("Sincronizando con {quien}…"));
+    let arrancada = arrancar(&raiz, lista, |fin| {
+        if let Some(texto) = fin.and_then(|f| contar(&f)) {
+            super::al_movil::avisar(texto);
+        }
+    });
+    super::al_movil::avisar(if arrancada {
+        format!("Sincronizando con {quien}…")
+    } else {
+        "Ya se está sincronizando: espera a que acabe".into()
+    });
+}
+
+/// **La de la sincronizacion automatica**: con los aparatos `ids` (los que
+/// contestan), sin decir nada al empezar. `al_acabar` recibe como acabo.
+/// `false` si ya habia una en marcha o ninguno de `ids` es del grupo.
+pub(super) fn lanzar_callada(
+    raiz: &Path,
+    ids: &[String],
+    al_acabar: impl FnOnce(Option<Fase>) + Send + 'static,
+) -> bool {
+    let Some(lista) = lista_de(raiz, |id| ids.iter().any(|x| x == id)) else {
+        return false;
+    };
+    arrancar(raiz, lista, al_acabar)
+}
+
+/// Pone en marcha la vuelta con `lista` en un hilo. `false` si ya habia una
+/// de fondo en marcha: dos vueltas con el mismo aparato a la par se pisarian.
+fn arrancar(
+    raiz: &Path,
+    lista: Vec<(String, String, u16)>,
+    al_acabar: impl FnOnce(Option<Fase>) + Send + 'static,
+) -> bool {
+    if EN_MARCHA.swap(true, Ordering::SeqCst) {
+        return false;
+    }
     let (tx, rx) = mpsc::channel();
-    super::lanzar_con_todos(&raiz, &tx, lista, super::presencia::puerto());
+    super::lanzar_con_todos(raiz, &tx, lista, super::presencia::puerto());
     // El que escucha suelta su `tx`: si la vuelta no arranca, `recv` acaba.
     drop(tx);
     let lanzado = std::thread::Builder::new()
@@ -128,24 +164,25 @@ pub fn lanzar(ubicacion: &Ubicacion, aparato: &str) {
                 }
             }
             EN_MARCHA.store(false, Ordering::SeqCst);
-            if let Some(texto) = fin.and_then(|f| contar(&f)) {
-                super::al_movil::avisar(texto);
-            }
+            al_acabar(fin);
         });
     if let Err(e) = lanzado {
         EN_MARCHA.store(false, Ordering::SeqCst);
         tracing::warn!(?e, "no se pudo lanzar el hilo de sincronizar de fondo");
+        return false;
     }
+    true
 }
 
 /// Lo que se dice en el globo: el titulo y lo hecho; los avisos, solo el
 /// primero (el globo no da para mas; el resto esta en la ventana).
-fn contar(f: &Fase) -> Option<String> {
+pub(super) fn contar(f: &Fase) -> Option<String> {
     match f {
         Fase::Terminado {
             titulo,
             texto,
             aviso,
+            ..
         } => {
             let mut t = titulo.clone();
             if let Some(l) = texto.lines().find(|l| !l.trim().is_empty()) {
@@ -260,6 +297,7 @@ mod pruebas {
     #[test]
     fn el_globo_dice_el_titulo_lo_hecho_y_el_primer_aviso() {
         let f = Fase::Terminado {
+            trajo: true,
             titulo: "Al día con Redmi".into(),
             texto: "3 mensajes nuevos\n1,2 MB en 2 s".into(),
             aviso: Some("Un archivo no llegó\n\nOtro aviso".into()),

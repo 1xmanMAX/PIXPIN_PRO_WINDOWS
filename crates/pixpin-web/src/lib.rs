@@ -25,6 +25,7 @@
 #![deny(clippy::undocumented_unsafe_blocks)]
 
 pub mod base64;
+pub mod pagina;
 pub mod puente;
 pub mod ruta;
 pub mod validacion;
@@ -174,7 +175,7 @@ impl Drop for VisorHtml {
 }
 
 /// Carpeta propia bajo el temporal del sistema, distinta por visor.
-fn carpeta_temporal() -> PathBuf {
+pub(crate) fn carpeta_temporal() -> PathBuf {
     static CONTADOR: AtomicU64 = AtomicU64::new(0);
     let n = CONTADOR.fetch_add(1, Ordering::Relaxed);
     std::env::temp_dir().join(format!("pixpin-web-{}-{n}", std::process::id()))
@@ -198,7 +199,7 @@ fn a_rect(area: Rect) -> RECT {
 /// La carpeta de datos de usuario se fuerza al temporal nuestro porque la de
 /// serie va al lado del ejecutable, y PixPin puede estar instalado en
 /// `Program Files`, donde no se escribe.
-fn crear_entorno(temporal: &Path) -> Result<ICoreWebView2Environment, ErrorWeb> {
+pub(crate) fn crear_entorno(temporal: &Path) -> Result<ICoreWebView2Environment, ErrorWeb> {
     let datos = CoTaskMemPWSTR::from(temporal.join("datos").to_string_lossy().as_ref());
     let (tx, rx) = std::sync::mpsc::channel();
 
@@ -232,7 +233,7 @@ fn crear_entorno(temporal: &Path) -> Result<ICoreWebView2Environment, ErrorWeb> 
 }
 
 /// Crea el controlador (la ventana hija de verdad) dentro de `padre`.
-fn crear_controlador(
+pub(crate) fn crear_controlador(
     entorno: &ICoreWebView2Environment,
     padre: HWND,
 ) -> Result<ICoreWebView2Controller, ErrorWeb> {

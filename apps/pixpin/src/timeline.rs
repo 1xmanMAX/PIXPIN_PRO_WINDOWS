@@ -25,8 +25,8 @@
 
 mod dictar;
 mod disposicion;
-mod exportar;
-mod tarjetas;
+pub(crate) mod exportar;
+pub(crate) mod tarjetas;
 mod ventana;
 
 use pixpin_store::{Idioma, Ubicacion};

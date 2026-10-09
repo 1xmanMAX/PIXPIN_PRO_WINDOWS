@@ -92,61 +92,51 @@ pub(super) fn contenido_del_detalle(e: &Estado, textos: &Catalogo) -> Option<Con
     contenido_de(e, e.item_en_detalle()?, textos)
 }
 
-/// El nombre de una gravedad, con su emoticono delante.
-pub(super) fn rotulo_de_gravedad(g: i64, textos: &Catalogo) -> String {
-    let gr = super::super::tarjetas::gravedad(g);
-    textos.t(gr.clave)
-}
-
-/// La chapita de gravedad: el emoticono en monocromo, pintado de su color,
-/// y su nombre, sobre un fondo suave del mismo color. Devuelve su caja.
-#[allow(clippy::too_many_arguments)] // pintor, gravedad, donde, fondo, escala y textos
-pub(super) fn chapa_de_gravedad(
-    p: &Pintor,
-    g: i64,
-    x: f32,
-    y: f32,
-    fondo: Option<Color>,
-    s: f32,
-    textos: &Catalogo,
-) -> RectF {
-    let gr = super::super::tarjetas::gravedad(g);
-    let rot = rotulo_de_gravedad(g, textos);
-    let tam = 13.0 * s;
-    let (rw, rh) = ui::medir_negrita(p, &rot, tam, 300.0 * s);
-    let alto = 30.0 * s;
-    let caja = RectF {
-        x,
-        y,
-        ancho: 34.0 * s + rw + 12.0 * s,
-        alto,
+/// **El momento (o la leccion) como pagina web**, con sus fotos y su nota de
+/// voz dentro, la misma pagina que exportar el timeline pero de uno solo. Va
+/// a la Salida, para arrastrarlo o copiarlo: la forma de compartir de toda
+/// la app (8-oct-2026).
+fn compartir_html(e: &mut Estado, c: &Contenido, textos: &Catalogo) {
+    let id = if c.semilla.is_empty() { "momento".to_string() } else { c.semilla.clone() };
+    let mut m = Momento::nuevo(id, c.cuando, c.titulo.clone(), c.texto.clone());
+    m.fotos = c.fotos.iter().map(|p| p.to_string_lossy().into_owned()).collect();
+    if let Some((a, d)) = &c.audio {
+        m.audio = Some(a.to_string_lossy().into_owned());
+        m.duracion_ms = *d;
+    }
+    let d = Dia::de_instante(c.cuando, e.desfase);
+    let secciones = [pixpin_timeline::html::Seccion {
+        rotulo: dias::nombre_del_dia(d, e.ingles),
+        momentos: vec![&m],
+    }];
+    let titulo = c.titulo.lines().next().unwrap_or("").trim().to_string();
+    let op = super::opciones(e, textos, titulo.clone(), dias::nombre_del_dia(d, e.ingles));
+    // Las rutas van enteras: un momento tiene sus ficheros en el almacen y
+    // una leccion, en el chat de su proyecto.
+    let dentro = |ruta: &str| {
+        let bytes = std::fs::read(ruta).ok()?;
+        Some(pixpin_timeline::html::data_uri(ruta, &bytes))
     };
-    p.rellenar_redondeado(
-        caja,
-        alto / 2.0,
-        fondo.unwrap_or(super::super::tarjetas::fondo_de(&gr)),
-    );
-    // Sin la opcion de fuente en color: el glifo sale en monocromo y toma
-    // el color del pincel. Es lo que pidio el usuario: «grave rojo pero el
-    // emoticon pintado de rojo».
-    let (ew, eh) = p.medir_texto(gr.emoticono, 16.0 * s);
-    p.texto(
-        gr.emoticono,
-        caja.x + 8.0 * s + (20.0 * s - ew) / 2.0,
-        caja.y + (alto - eh) / 2.0,
-        16.0 * s,
-        gr.color,
-    );
-    ui::negrita(
-        p,
-        &rot,
-        caja.x + 32.0 * s,
-        caja.y + (alto - rh) / 2.0,
-        tam,
-        rw + 2.0,
-        gr.color,
-    );
-    caja
+    let pagina = pixpin_timeline::html::pagina(&op, &secciones, &dentro, &dentro);
+    let corto: String = titulo.chars().take(60).collect();
+    let nombre = if corto.trim().is_empty() {
+        format!("timeline-{}.html", d.iso())
+    } else {
+        format!(
+            "{} - {}.html",
+            d.iso(),
+            pixpin_motor2d::exportar_html::nombre_de_fichero(&corto)
+        )
+    };
+    let carpeta = crate::compartir::carpeta_temporal().join("timeline");
+    let ruta = carpeta.join(nombre);
+    match std::fs::create_dir_all(&carpeta).and_then(|()| std::fs::write(&ruta, pagina)) {
+        Ok(()) => crate::salida::mostrar(vec![ruta], textos.t("salida-titulo")),
+        Err(err) => {
+            tracing::warn!(?err, "timeline: no se pudo hacer la pagina del momento");
+            e.decir(textos.t("timeline-no-exportado"));
+        }
+    }
 }
 
 /// Copia o guarda como imagen lo pedido en el menu de compartir.
@@ -161,6 +151,10 @@ pub(super) fn hacer(
     let Some(c) = contenido_de(e, item, textos) else {
         return;
     };
+    if destino == Destino::Html {
+        compartir_html(e, &c, textos);
+        return;
+    }
     let img = match imagen(e, &c, motor, d3d, textos) {
         Ok(i) => i,
         Err(err) => {
@@ -170,6 +164,8 @@ pub(super) fn hacer(
         }
     };
     match destino {
+        // Atendido arriba, sin pintar la tarjeta: no hace falta.
+        Destino::Html => {}
         Destino::Copiar => match pixpin_codec::portapapeles::copiar_imagen(&img) {
             Ok(()) => e.decir(textos.t("timeline-imagen-copiada")),
             Err(err) => {
@@ -282,7 +278,7 @@ pub(super) fn pintar_menu(e: &mut Estado, p: &Pintor, w: f32, h: f32, s: f32, te
     );
     let ancho = 250.0 * s;
     let fila = 44.0 * s;
-    let alto = 3.0 * fila + 8.0 * s;
+    let alto = 4.0 * fila + 8.0 * s;
     let caja = RectF {
         x: mx.min(w - ancho - 8.0 * s).max(8.0 * s),
         y: (my + 4.0 * s).min(h - alto - 8.0 * s).max(8.0 * s),
@@ -294,6 +290,7 @@ pub(super) fn pintar_menu(e: &mut Estado, p: &Pintor, w: f32, h: f32, s: f32, te
     e.botones.zona(caja, Accion::Fondo);
     for (k, (d, icono, clave)) in [
         (Destino::Compartir, &mi::IOS_SHARE, "salida-compartir-menu"),
+        (Destino::Html, &mi::OPEN_IN_NEW, "timeline-compartir-html"),
         (Destino::Copiar, &mi::CONTENT_COPY, "timeline-copiar-imagen"),
         (Destino::Guardar, &mi::IMAGE, "timeline-guardar-imagen"),
     ]

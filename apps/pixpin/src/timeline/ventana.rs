@@ -222,6 +222,10 @@ enum Accion {
     /// Abrir el detalle del momento `.0`.
     AbrirDetalle(Clave),
     /// Marcar o desmarcar el momento `.0` como leccion aprendida.
+    /// Mandar el momento a «Momentos», o sacarlo (8-oct-2026).
+    AMomentos(Clave),
+    /// Abrir la ventana de las lecciones (la que abre Flow).
+    AbrirVentanaLecciones,
     Leccion(Clave),
     /// Abrir el detalle de la leccion `.0` de `Estado::lecciones`.
     AbrirLeccion(Clave),
@@ -284,6 +288,9 @@ enum Destino {
     Copiar,
     Guardar,
     Compartir,
+    /// Como pagina web (8-oct-2026): el momento con sus fotos y su nota de
+    /// voz dentro, a la Salida.
+    Html,
 }
 
 /// Algo que se abre en el detalle o se comparte: un momento o una leccion,
@@ -344,6 +351,9 @@ struct Estado {
     /// Si Ctrl estaba pulsado en el ultimo clic (elegir dias en «Estado»).
     ctrl: bool,
     elegidos: BTreeSet<Dia>,
+    /// Las lecciones elegidas con Ctrl+clic (8-oct-2026): lo que comparte
+    /// el boton de arriba en «Lecciones». Vacio, todas las que se ven.
+    lecciones_elegidas: BTreeSet<String>,
     campo: ui::Campo,
     pegadas: Vec<Pegada>,
     /// Lo dictado mientras habia algo escrito: su texto se metio en la caja
@@ -362,6 +372,11 @@ struct Estado {
     exportado: Option<PathBuf>,
     /// El menu de exportar abierto.
     menu: bool,
+    /// La pagina hecha para compartir (en vez de guardarla): la recoge
+    /// `hacer`, que tiene con que abrir la hoja de compartir.
+    para_compartir: Option<(String, String)>,
+    /// Mientras se hace la pagina para compartir.
+    compartiendo: bool,
     /// El menu de compartir como imagen: de que y donde.
     menu_compartir: Option<(Item, (f32, f32))>,
     /// Lo pedido en ese menu, para el bucle (que tiene el motor de dibujo).
@@ -418,6 +433,7 @@ impl Estado {
             buscando: false,
             ctrl: false,
             elegidos: BTreeSet::new(),
+            lecciones_elegidas: BTreeSet::new(),
             campo: ui::Campo::default(),
             pegadas: Vec::new(),
             audio_pendiente: None,
@@ -431,6 +447,8 @@ impl Estado {
             deshacer: None,
             exportado: None,
             menu: false,
+            para_compartir: None,
+            compartiendo: false,
             menu_compartir: None,
             compartir: None,
             lecciones: Vec::new(),
@@ -689,6 +707,9 @@ impl Estado {
         // ella se olvidan, y exportar no se lleva una eleccion invisible.
         if p != Pestana::Estado {
             self.elegidos.clear();
+        }
+        if p != Pestana::Lecciones {
+            self.lecciones_elegidas.clear();
         }
     }
 
@@ -1387,7 +1408,43 @@ fn hacer(
             e.scroll = 0.0;
             e.abajo = e.modo() == Modo::Hoy;
         }
-        Accion::Exportar => e.menu = !e.menu,
+        // El boton de arriba comparte (8-oct-2026, el usuario: el
+        // «compartir unificado» de toda la app y no un «descargar»): la
+        // pagina de lo que se ve, a la hoja de compartir con HTML y PDF.
+        Accion::Exportar => {
+            e.menu = false;
+            e.compartiendo = true;
+            exportar_lo_que_se_ve(e, Formato::Html, textos);
+            e.compartiendo = false;
+            if let Some((nombre, pagina)) = e.para_compartir.take() {
+                let extras = vec![
+                    crate::compartir::Extra {
+                        id: "html",
+                        clave: "compartir-web",
+                        que: crate::compartir::Entero::Escrito {
+                            fichero: format!("{nombre}.html"),
+                            bytes: pagina.clone().into_bytes(),
+                        },
+                    },
+                    crate::compartir::Extra {
+                        id: "pdf-timeline",
+                        clave: "compartir-pdf",
+                        que: crate::compartir::Entero::PdfDeHtml {
+                            fichero: format!("{nombre}.pdf"),
+                            html: pagina,
+                        },
+                    },
+                ];
+                crate::compartir::ventana::abrir(
+                    idioma,
+                    ubicacion.clone(),
+                    crate::compartir::Cosa::Hecho {
+                        titulo: nombre,
+                        extras,
+                    },
+                );
+            }
+        }
         Accion::Formato(f) => {
             e.menu = false;
             exportar_lo_que_se_ve(e, f, textos);
@@ -1485,6 +1542,22 @@ fn hacer(
         }
         Accion::MomentoAnterior => e.mover_detalle(-1),
         Accion::MomentoSiguiente => e.mover_detalle(1),
+        Accion::AbrirVentanaLecciones => {
+            // «Nueva leccion»: la ventana universal para escribirlas.
+            crate::lecciones::nueva(ubicacion.clone(), idioma, &e.aparato.clone(), None, None, None);
+        }
+        Accion::AMomentos(c) => {
+            if let Some(i) = e.momento_de(c) {
+                let si = !e.momentos[i].en_momentos;
+                e.momentos[i].en_momentos = si;
+                e.guardar_todos(textos);
+                e.decir(textos.t(if si {
+                    "timeline-a-momentos"
+                } else {
+                    "timeline-fuera-de-momentos"
+                }));
+            }
+        }
         Accion::Leccion(c) => {
             if let Some(i) = e.momento_de(c) {
                 lecciones::alternar(e, i, textos);
@@ -1492,7 +1565,15 @@ fn hacer(
         }
         Accion::AbrirLeccion(c) => {
             if let Some(k) = e.leccion_de(c) {
-                e.abrir_leccion(k);
+                // Con Ctrl, elegirla (o soltarla) para compartir varias.
+                if e.ctrl {
+                    let id = e.lecciones[k].entrada.leccion.id.clone();
+                    if !e.lecciones_elegidas.remove(&id) {
+                        e.lecciones_elegidas.insert(id);
+                    }
+                } else {
+                    e.abrir_leccion(k);
+                }
             }
         }
         Accion::OtraVez(c) => {
@@ -1694,7 +1775,11 @@ fn opciones(e: &Estado, textos: &Catalogo, titulo: String, subtitulo: String) ->
 /// como un momento (su gravedad delante del titulo, los tres campos en el
 /// texto) con sus fotos y su nota de voz dentro.
 fn exportar_lecciones(e: &mut Estado, f: Formato, textos: &Catalogo) {
-    let visibles = lecciones::visibles(e);
+    // Las elegidas con Ctrl+clic, si hay; si no, todas las que se ven.
+    let mut visibles = lecciones::visibles(e);
+    if !e.lecciones_elegidas.is_empty() {
+        visibles.retain(|&k| e.lecciones_elegidas.contains(&e.lecciones[k].entrada.leccion.id));
+    }
     if visibles.is_empty() {
         e.decir(textos.t("timeline-nada-que-exportar"));
         return;
@@ -1747,6 +1832,11 @@ fn exportar_lecciones(e: &mut Estado, f: Formato, textos: &Catalogo) {
 
 /// Pide donde y guarda la pagina en HTML, o la imprime a PDF en un hilo.
 fn guardar_pagina(e: &mut Estado, f: Formato, nombre: &str, pagina: String, textos: &Catalogo) {
+    // Para compartir: la pagina a la hoja, sin preguntar donde guardarla.
+    if e.compartiendo {
+        e.para_compartir = Some((nombre.to_string(), pagina));
+        return;
+    }
     let pesa = pagina.len();
     let Some(h) = e.hwnd else {
         return;
@@ -2025,7 +2115,11 @@ fn pintar_todo(e: &mut Estado, p: &Pintor, marco: Rect, s: f32, textos: &Catalog
             textos.t_args("timeline-sub-dia", &a)
         }
         Modo::Buscar => con_n(textos, "timeline-sub-buscar", e.visibles().len()),
-        Modo::Momentos => con_n(textos, "timeline-sub-momentos", e.momentos.len()),
+        Modo::Momentos => con_n(
+            textos,
+            "timeline-sub-momentos",
+            e.momentos.iter().filter(|m| m.en_momentos).count(),
+        ),
         Modo::Estado => con_n(textos, "timeline-sub-estado-dias", dias::dias_con(&e.momentos, e.desfase).len()),
         Modo::Lecciones => con_n(
             textos,
@@ -2051,15 +2145,28 @@ fn pintar_todo(e: &mut Estado, p: &Pintor, marco: Rect, s: f32, textos: &Catalog
             accion: Accion::Pestana(*pe),
         })
         .collect();
-    // «Exportar», aparte y solo de icono (descargar, que no es compartir):
+    let mut botones = Vec::new();
+    // En «Lecciones», la ventana de las lecciones (la de Flow), con su ficha,
+    // su repaso y su buscador (8-oct-2026).
+    if e.pestana == Pestana::Lecciones {
+        botones.push(crate::cabecera::Boton {
+            icono: Some(&mi::LIGHTBULB),
+            // Solo el icono: con su nombre no cabia el buscador.
+            rotulo: "",
+            chapa: None,
+            activo: false,
+            accion: Accion::AbrirVentanaLecciones,
+        });
+    }
+    // «Compartir», aparte y solo de icono: el de toda la app (8-oct-2026).
     // `dis::caja_exportar` cuenta con que es el ultimo para colgar su menu.
-    let botones = vec![crate::cabecera::Boton {
-        icono: Some(&mi::FILE_DOWNLOAD),
+    botones.push(crate::cabecera::Boton {
+        icono: Some(&mi::IOS_SHARE),
         rotulo: "",
         chapa: None,
         activo: e.menu,
         accion: Accion::Exportar,
-    }];
+    });
     crate::cabecera::pintar_con_segmentos(
         p,
         &mut e.botones,
@@ -2359,6 +2466,19 @@ fn pintar_linea(e: &mut Estado, p: &Pintor, area: RectF, s: f32, textos: &Catalo
                                 &mi::LIGHTBULB,
                                 if marcado { ui::v2::AMARILLO } else { CUERPO },
                                 marcado.then_some(Color {
+                                    a: 0.22,
+                                    ..ui::v2::AMARILLO
+                                }),
+                            ),
+                            (
+                                Accion::AMomentos(cm),
+                                if mo.en_momentos {
+                                    &mi::BOOKMARK_BORDER
+                                } else {
+                                    &mi::BOOKMARK_ADD
+                                },
+                                if mo.en_momentos { ui::v2::AMARILLO } else { CUERPO },
+                                mo.en_momentos.then_some(Color {
                                     a: 0.22,
                                     ..ui::v2::AMARILLO
                                 }),

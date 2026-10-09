@@ -52,6 +52,10 @@ pub(crate) struct DatosBarra {
     /// Si el pin en vivo esta en pausa (quieto): su chapa se apaga y el
     /// boton ofrece reanudar.
     pub en_pausa: bool,
+    /// El modo texto esta puesto (su boton, en azul).
+    pub modo_texto: bool,
+    /// El color elegido para marcar (`barra_marcas::COLORES`).
+    pub color_marca: u8,
 }
 
 /// Lo que la barra devuelve al pin.
@@ -413,6 +417,16 @@ fn texto_de(t: &TextosPin, a: AccionBarra, datos: &DatosBarra) -> Option<(String
         AccionBarra::Anotar => (&v.anotar, Some("A")),
         AccionBarra::Mas => (&v.mas, None),
         AccionBarra::Cerrar => (&v.cerrar_pin, Some("Esc")),
+        AccionBarra::ModoTexto => (&v.modo_texto, Some("T")),
+        AccionBarra::ColorMarca(_) => return None,
+        AccionBarra::Marcar(m) => {
+            let k = crate::barra_marcas::MARCAS
+                .iter()
+                .position(|x| *x == m)
+                .unwrap_or(0);
+            (&v.marcas[k + 1], None)
+        }
+        AccionBarra::QuitarMarca => (&v.quitar_marca, None),
     };
     if nombre.is_empty() {
         return None;
@@ -588,8 +602,9 @@ fn pintar_barra(p: &Pintor, i: &Interno) {
             },
             Pieza::Boton(a) => {
                 let encima = i.encima == Some(a);
-                let primario =
-                    a == AccionBarra::Reproducir || (a == AccionBarra::Manejar && i.datos.remoto);
+                let primario = a == AccionBarra::Reproducir
+                    || (a == AccionBarra::Manejar && i.datos.remoto)
+                    || (a == AccionBarra::ModoTexto && i.datos.modo_texto);
                 if primario {
                     p.rellenar_redondeado(r, 8.0 * e, azul);
                 } else if encima && a != AccionBarra::Saltar {
@@ -693,6 +708,42 @@ fn pintar_barra(p: &Pintor, i: &Interno) {
                     AccionBarra::Anotar => p.icono(&EDIT, icono_en(r), color),
                     AccionBarra::Mas => tres_puntos(p, r, color, e),
                     AccionBarra::Cerrar => p.icono(&CLOSE, icono_en(r), color),
+                    AccionBarra::ModoTexto => {
+                        // Una «T» con el cursor de texto al lado: seleccionar texto.
+                        let tam = 17.0 * e;
+                        let (w, h) = p.medir_texto("T", tam);
+                        let x = r.x + (r.ancho - w) / 2.0 - 3.0 * e;
+                        p.texto_linea("T", x, r.y + (r.alto - h) / 2.0, tam, r.ancho, color);
+                        let cx = x + w + 4.0 * e;
+                        let (y0, y1) = (r.y + r.alto / 2.0 - 7.0 * e, r.y + r.alto / 2.0 + 7.0 * e);
+                        p.linea((cx, y0), (cx, y1), 1.4 * e, color);
+                        p.linea((cx - 2.5 * e, y0), (cx + 2.5 * e, y0), 1.4 * e, color);
+                        p.linea((cx - 2.5 * e, y1), (cx + 2.5 * e, y1), 1.4 * e, color);
+                    }
+                    AccionBarra::ColorMarca(k) => {
+                        let (cx, cy) = (r.x + r.ancho / 2.0, r.y + r.alto / 2.0);
+                        if k == i.datos.color_marca {
+                            p.circulo((cx, cy), 8.5 * e, tinta);
+                            p.circulo((cx, cy), 7.0 * e, fondo);
+                        }
+                        p.circulo((cx, cy), 5.5 * e, crate::barra_marcas::color(k));
+                    }
+                    AccionBarra::Marcar(m) => crate::barra_marcas::pintar_icono(
+                        p,
+                        Some(m),
+                        r,
+                        crate::barra_marcas::color(i.datos.color_marca),
+                        color,
+                        e,
+                    ),
+                    AccionBarra::QuitarMarca => crate::barra_marcas::pintar_icono(
+                        p,
+                        None,
+                        r,
+                        crate::barra_marcas::color(i.datos.color_marca),
+                        color,
+                        e,
+                    ),
                 }
             }
         }

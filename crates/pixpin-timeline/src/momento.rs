@@ -40,6 +40,15 @@ pub struct Momento {
     /// vio que marcar, desmarcar y marcar dejaba dos lecciones iguales.
     #[serde(default, rename = "leccionPrevia", skip_serializing_if = "Option::is_none")]
     pub leccion_previa: Option<String>,
+    /// Mandado a «Momentos» (8-oct-2026, el usuario: «que vaya a momentos
+    /// solo lo de hoy que me parecio relevante y decida mandar a momentos»).
+    /// «Hoy» lo ensena todo; «Momentos», solo lo que lleva esto.
+    #[serde(default, rename = "enMomentos", skip_serializing_if = "no")]
+    pub en_momentos: bool,
+}
+
+fn no(v: &bool) -> bool {
+    !*v
 }
 
 fn es_cero(v: &i64) -> bool {
@@ -60,6 +69,7 @@ impl Momento {
             dicho: None,
             leccion: None,
             leccion_previa: None,
+            en_momentos: false,
         }
     }
 

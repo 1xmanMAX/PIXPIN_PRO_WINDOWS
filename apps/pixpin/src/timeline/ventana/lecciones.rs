@@ -394,7 +394,7 @@ pub(super) fn pintar(e: &mut Estado, p: &Pintor, area: RectF, s: f32, textos: &C
             let c = clave(&t.entrada.leccion.id);
             zonas.push((pt.tarjeta, Accion::AbrirLeccion(c)));
             zonas.push((pt.otra_vez, Accion::OtraVez(c)));
-            zonas.push((pt.compartir, Accion::MenuCompartirLeccion(c)));
+
         }
     });
     for (r, a) in zonas {
@@ -402,6 +402,17 @@ pub(super) fn pintar(e: &mut Estado, p: &Pintor, area: RectF, s: f32, textos: &C
     }
 }
 
+/// **Una leccion en su tarjeta** (rehecha el 8-oct-2026). El usuario: «el
+/// emoticon solo en una esquina, sin la barra de arriba que dice grave,
+/// importante ni nada de eso; cada tarjeta no tiene que tener un boton de
+/// compartir [...] solo uno arriba; si tiene una imagen, que se muestre en
+/// todo el recuadro con los bordes difuminados». Asi:
+///
+/// - Con foto, la foto llena la tarjeta; sus bordes se funden con el fondo
+///   y un velo oscuro deja leer el texto en blanco.
+/// - Sin foto, el fondo de tarjeta apenas tenido del color de su gravedad.
+/// - Arriba a la derecha, su emoticono, del color de su gravedad.
+/// - Elegida con Ctrl+clic: un aro azul y su marca.
 #[allow(clippy::too_many_arguments)] // estado, pintor, tarjeta, partes, raton, escala y textos
 fn tarjeta(
     e: &Estado,
@@ -417,8 +428,8 @@ fn tarjeta(
     let l = &t.entrada.leccion;
     let gr = tarjetas::gravedad(l.gravedad);
     let radio = 14.0 * s;
-    // Varias fotos: los bordes de detras, como un monton (dentro de la
-    // celda: la tarjeta les deja sitio).
+    let elegida = e.lecciones_elegidas.contains(&l.id);
+    // Varias fotos: los bordes de detras, como un monton.
     for (n, c) in pt.pila.iter().enumerate() {
         let color = if n + 1 == pt.pila.len() {
             hex(0x48484A)
@@ -428,38 +439,70 @@ fn tarjeta(
         p.rellenar_redondeado(*c, radio, color);
     }
     let caja = pt.tarjeta;
-    p.rellenar_redondeado(caja, radio, if encima { hex(0x313134) } else { TARJETA });
-    // La franja de arriba: la foto o el color de su gravedad con su cara.
+    if elegida {
+        p.rellenar_redondeado(encoger(caja, -3.0 * s), radio + 3.0 * s, ACENTO);
+    }
+    let base = if encima { hex(0x313134) } else { TARJETA };
+    p.rellenar_redondeado(caja, radio, base);
+    let foto = t.fotos.first().and_then(|f| e.minis.ya(f));
     if p.empujar_recorte_redondeado(caja, radio) {
-        match t.fotos.first().and_then(|f| e.minis.ya(f)) {
-            Some((b, w, h)) => crate::miniaturas::pintar_recortado(p, b, pt.banda, w, h),
-            None if !t.fotos.is_empty() => p.rellenar(pt.banda, hex(0x3A3A3D)),
-            None => {
-                p.rellenar(pt.banda, Color { a: 0.16, ..gr.color });
-                let tam = 32.0 * s;
-                let (tw, th) = p.medir_texto(gr.emoticono, tam);
-                // En monocromo y del color de su gravedad: «grave rojo pero
-                // el emoticon pintado de rojo».
-                p.texto(
-                    gr.emoticono,
-                    pt.banda.x + pt.banda.ancho - tw - 18.0 * s,
-                    pt.banda.y + (pt.banda.alto - th) / 2.0,
-                    tam,
-                    gr.color,
-                );
+        match &foto {
+            Some((b, w, h)) => {
+                crate::miniaturas::pintar_recortado(p, b, caja, *w, *h);
+                // Los bordes difuminados: la foto se funde con el fondo en
+                // los cuatro lados.
+                let borde = (caja.ancho.min(caja.alto) * 0.16).max(10.0 * s);
+                let transparente = Color { a: 0.0, ..base };
+                let lados = [
+                    (RectF { ancho: borde, ..caja }, (caja.x, caja.y), (caja.x + borde, caja.y)),
+                    (
+                        RectF { x: caja.x + caja.ancho - borde, ancho: borde, ..caja },
+                        (caja.x + caja.ancho, caja.y),
+                        (caja.x + caja.ancho - borde, caja.y),
+                    ),
+                    (RectF { alto: borde, ..caja }, (caja.x, caja.y), (caja.x, caja.y + borde)),
+                    (
+                        RectF { y: caja.y + caja.alto - borde, alto: borde, ..caja },
+                        (caja.x, caja.y + caja.alto),
+                        (caja.x, caja.y + caja.alto - borde),
+                    ),
+                ];
+                for (r, desde, hasta) in lados {
+                    p.rect_degradado(r, desde, hasta, base, transparente);
+                }
+                // Y el velo, para leer encima en blanco.
+                p.rellenar(caja, Color { a: 0.42, ..Color::NEGRO });
             }
+            None => p.rellenar(caja, Color { a: 0.07, ..gr.color }),
         }
         p.soltar_recorte_redondeado();
     }
-    // La gravedad (sobre la foto, con un fondo oscuro debajo).
-    let fondo = (!t.fotos.is_empty()).then_some(Color {
-        a: 0.72,
-        ..Color::NEGRO
-    });
-    super::compartir::chapa_de_gravedad(p, l.gravedad, pt.gravedad.x, pt.gravedad.y, fondo, s, textos);
-    // El texto: el titulo (dos renglones) y «la proxima vez» si la hay; si
-    // no, lo que paso.
-    let tx = pt.texto;
+    // El emoticono, en la esquina de arriba a la derecha.
+    let tam_e = 24.0 * s;
+    let (ew, _) = p.medir_texto(gr.emoticono, tam_e);
+    p.texto(
+        gr.emoticono,
+        caja.x + caja.ancho - ew - 14.0 * s,
+        caja.y + 12.0 * s,
+        tam_e,
+        gr.color,
+    );
+    if elegida {
+        let r = 12.0 * s;
+        let c = (caja.x + 14.0 * s + r, caja.y + 14.0 * s + r);
+        p.circulo(c, r, Color::BLANCO);
+        p.icono(&mi::CHECK_CIRCLE, crate::v2::geom::centrado(c, 2.0 * r), ACENTO);
+    }
+    // El texto, desde arriba: el titulo (dos renglones) y «la proxima vez»
+    // si la hay; si no, lo que paso.
+    let b = pt.otra_vez;
+    let arriba = if elegida { 44.0 } else { 16.0 } * s;
+    let tx = RectF {
+        x: caja.x + 16.0 * s,
+        y: caja.y + arriba,
+        ancho: (caja.ancho - 16.0 * s - ew - 26.0 * s).max(0.0),
+        alto: (b.y - 8.0 * s - caja.y - arriba).max(0.0),
+    };
     let tam_t = 16.0 * s;
     let renglones = dis::cortar_renglones(
         dis::renglones(&l.titulo, tx.ancho, &|x| {
@@ -475,15 +518,20 @@ fn tarjeta(
     let resto = RectF {
         y: tx.y + th + 6.0 * s,
         alto: (tx.alto - th - 6.0 * s).max(0.0),
+        ancho: caja.ancho - 32.0 * s,
         ..tx
     };
+    let con_foto = foto.is_some();
     let (texto, color) = if !l.proxima.trim().is_empty() {
         (
             format!("{}: {}", textos.t("timeline-leccion-proxima"), l.proxima.trim()),
             ui::v2::VERDE,
         )
     } else {
-        (l.que_paso.trim().to_string(), CUERPO)
+        (
+            l.que_paso.trim().to_string(),
+            if con_foto { blanco(0.85) } else { CUERPO },
+        )
     };
     if resto.alto > 10.0 * s && !texto.is_empty() {
         p.con_recorte(resto, |p| {
@@ -491,7 +539,6 @@ fn tarjeta(
         });
     }
     // Abajo: «↻ +1», cuantas veces y la nota de voz.
-    let b = pt.otra_vez;
     ui::boton_v2(
         p,
         &mut Botones::default(),
@@ -528,11 +575,6 @@ fn tarjeta(
             ui::v2::CIAN,
         );
     }
-    let c = pt.compartir;
-    if dentro(c, raton) {
-        p.rellenar_redondeado(c, c.alto / 2.0, blanco(0.1));
-    }
-    p.icono(&mi::IOS_SHARE, encoger(c, 9.0 * s), if encima { CUERPO } else { GRIS });
 }
 
 /// En la busqueda de momentos, si lo buscado esta tambien en lecciones: una

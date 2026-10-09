@@ -645,7 +645,8 @@ fn hacer(p: Pedido, cx: &Contexto) -> Result<Hecho, Fallo> {
                 Some(_) => Some(ficha_de(raiz, proyecto.as_deref(), cx.aparato, ahora)?.id),
                 None => None,
             };
-            crate::lecciones::lista(cx.ubicacion.clone(), cx.idioma, cx.aparato, ficha, consulta);
+            let _ = (ficha, consulta);
+            crate::lecciones::lista(cx.ubicacion.clone(), cx.idioma);
         }
         Pedido::ListaNueva { titulo, proyecto } => {
             let f = ficha_de(raiz, proyecto.as_deref(), cx.aparato, ahora)?;

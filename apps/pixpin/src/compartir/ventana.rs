@@ -25,7 +25,6 @@
 
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, mpsc};
 use std::time::{Duration, Instant};
 
@@ -138,8 +137,8 @@ struct Hoja {
     /// llegar.
     pendiente: Option<Boton>,
     aviso: Option<(String, Instant)>,
-    /// El panel de Windows esta abierto sobre la hoja.
-    esperando_panel: bool,
+    /// La subida de «Enlace» en marcha: llega el enlace (o por que no).
+    subiendo: Option<mpsc::Receiver<std::result::Result<String, String>>>,
 }
 
 impl Hoja {
@@ -242,9 +241,8 @@ fn hilo(textos: &Catalogo, idioma: Idioma, ubicacion: Ubicacion, cosa: Cosa) -> 
         pedido: None,
         pendiente: None,
         aviso: None,
-        esperando_panel: false,
+        subiendo: None,
     };
-    let terminado = Arc::new(AtomicBool::new(false));
     let coma = textos
         .t("compartir-coma-decimal")
         .chars()
@@ -253,8 +251,6 @@ fn hilo(textos: &Catalogo, idioma: Idioma, ubicacion: Ubicacion, cosa: Cosa) -> 
 
     let mut hay_que_pintar = true;
     let mut vivo = true;
-    // Donde se agarro el boton «Arrastrar», mientras no se suelte.
-    let mut agarre: Option<pixpin_geom::Punto> = None;
     while vivo {
         pixpin_shell::overlay::bombear_pendientes();
         while let Ok(hecho) = rx_hechos.try_recv() {
@@ -264,7 +260,6 @@ fn hilo(textos: &Catalogo, idioma: Idioma, ubicacion: Ubicacion, cosa: Cosa) -> 
             hoja.hechos.insert(hecho.clave, hecho.salida.map(Arc::new));
             hay_que_pintar = true;
         }
-        let mut arrastrar_ya = false;
         for (hw, evento) in pixpin_shell::overlay::tomar_eventos_pendientes() {
             if hw != ventana.handle() {
                 continue;
@@ -273,50 +268,11 @@ fn hilo(textos: &Catalogo, idioma: Idioma, ubicacion: Ubicacion, cosa: Cosa) -> 
             let local = |p: pixpin_geom::Punto| ((p.x - area.x) as f32, (p.y - area.y) as f32);
             match evento {
                 EventoOverlay::Cerrar => vivo = false,
-                EventoOverlay::RatonMovido(p) => {
-                    hoja.raton = local(p);
-                    // Agarrar «Arrastrar» y moverse ya es llevarse el
-                    // fichero, sin pasar por la Salida.
-                    if let Some(desde) = agarre
-                        && crate::salida::supera_umbral((desde.x, desde.y), (p.x, p.y), escala)
-                    {
-                        agarre = None;
-                        arrastrar_ya = true;
-                    }
-                }
-                EventoOverlay::BotonSoltado(p) => {
-                    hoja.raton = local(p);
-                    // Pulsar «Arrastrar» sin moverse: el fichero se queda en
-                    // pantalla (la Salida), para arrastrarlo con calma.
-                    if agarre.take().is_some() {
-                        let d = hc::disponer(&hoja.c, &hoja.e, hoja.escala);
-                        if hc::destino_en(&d, hoja.raton.0, hoja.raton.1)
-                            == Destino::Salida(Boton::Arrastrar)
-                        {
-                            vivo = pulsar(
-                                &mut hoja,
-                                Boton::Arrastrar,
-                                &ventana,
-                                &preparado,
-                                textos,
-                                idioma,
-                                &ubicacion,
-                                &terminado,
-                            );
-                        }
-                    }
-                }
+                EventoOverlay::RatonMovido(p) => hoja.raton = local(p),
                 EventoOverlay::BotonPulsado(p) => {
                     hoja.raton = local(p);
                     let d = hc::disponer(&hoja.c, &hoja.e, hoja.escala);
                     match hc::destino_en(&d, hoja.raton.0, hoja.raton.1) {
-                        // Se decide al soltar o al moverse: puede ser un
-                        // clic o el principio de un arrastre.
-                        Destino::Salida(Boton::Arrastrar)
-                            if matches!(hoja.pie(), Pie::Listo(..)) =>
-                        {
-                            agarre = Some(p);
-                        }
                         Destino::Cerrar => vivo = false,
                         Destino::Formato(i) => hoja.e.elegir_formato(&hoja.c, i),
                         Destino::Pagina(k) => hoja.e.tocar_pagina(&hoja.c, &k),
@@ -325,8 +281,7 @@ fn hilo(textos: &Catalogo, idioma: Idioma, ubicacion: Ubicacion, cosa: Cosa) -> 
                         Destino::Interruptor => hoja.e.alternar_interruptor(&hoja.c),
                         Destino::Salida(s) => {
                             vivo = pulsar(
-                                &mut hoja, s, &ventana, &preparado, textos, idioma, &ubicacion,
-                                &terminado,
+                                &mut hoja, s, &ventana, textos, idioma, &ubicacion,
                             );
                         }
                         Destino::Nada => {}
@@ -344,11 +299,9 @@ fn hilo(textos: &Catalogo, idioma: Idioma, ubicacion: Ubicacion, cosa: Cosa) -> 
                             &mut hoja,
                             Boton::Compartir,
                             &ventana,
-                            &preparado,
                             textos,
                             idioma,
                             &ubicacion,
-                            &terminado,
                         )
                     }
                     (0x53, true) => {
@@ -356,11 +309,9 @@ fn hilo(textos: &Catalogo, idioma: Idioma, ubicacion: Ubicacion, cosa: Cosa) -> 
                             &mut hoja,
                             Boton::Guardar,
                             &ventana,
-                            &preparado,
                             textos,
                             idioma,
                             &ubicacion,
-                            &terminado,
                         )
                     }
                     (0x43, true) => {
@@ -368,11 +319,9 @@ fn hilo(textos: &Catalogo, idioma: Idioma, ubicacion: Ubicacion, cosa: Cosa) -> 
                             &mut hoja,
                             Boton::Copiar,
                             &ventana,
-                            &preparado,
                             textos,
                             idioma,
                             &ubicacion,
-                            &terminado,
                         )
                     }
                     (0x25 | 0x27, false) => {
@@ -396,29 +345,23 @@ fn hilo(textos: &Catalogo, idioma: Idioma, ubicacion: Ubicacion, cosa: Cosa) -> 
         if !vivo {
             break;
         }
-        if arrastrar_ya && let Some(s) = hoja.lista() {
-            // La captura fuera: `DoDragDrop` lleva el raton el solo.
-            ventana.soltar_raton();
-            let carga = match s.ficheros.as_slice() {
-                [uno] => pixpin_pin::Carga::Fichero(uno.clone()),
-                varios => pixpin_pin::Carga::Ficheros(varios.to_vec()),
-            };
-            match pixpin_pin::arrastrar(carga) {
-                Ok(pixpin_pin::ResultadoArrastre::Soltado) => {
-                    hoja.avisar(textos.t("salida-soltado"))
+        // La subida de «Enlace», si acabo.
+        if let Some(rx) = &hoja.subiendo
+            && let Ok(r) = rx.try_recv()
+        {
+            hoja.subiendo = None;
+            match r {
+                Ok(enlaces) => {
+                    let _ = pixpin_codec::portapapeles::copiar_texto(&enlaces);
+                    hoja.avisar(textos.t("compartir-enlace-copiado"));
                 }
-                Ok(pixpin_pin::ResultadoArrastre::Cancelado) => {}
-                Err(e) => {
-                    tracing::warn!(?e, "no se pudo arrastrar desde la hoja de compartir");
-                    hoja.avisar(textos.t("compartir-no-se-pudo"));
+                Err(motivo) => {
+                    let mut args = fluent_bundle::FluentArgs::new();
+                    args.set("motivo", motivo);
+                    hoja.avisar(textos.t_args("compartir-enlace-fallo", &args));
                 }
             }
             hay_que_pintar = true;
-        }
-        // El panel de Windows ya se cerro, mandando algo o no: la hoja ya
-        // no tiene nada que hacer.
-        if terminado.swap(false, Ordering::SeqCst) {
-            break;
         }
 
         // Lo elegido, a hacer si no esta hecho ni pedido.
@@ -435,7 +378,7 @@ fn hilo(textos: &Catalogo, idioma: Idioma, ubicacion: Ubicacion, cosa: Cosa) -> 
         {
             hoja.pendiente = None;
             vivo = pulsar(
-                &mut hoja, s, &ventana, &preparado, textos, idioma, &ubicacion, &terminado,
+                &mut hoja, s, &ventana, textos, idioma, &ubicacion,
             );
             hay_que_pintar = true;
         }
@@ -471,11 +414,9 @@ fn pulsar(
     hoja: &mut Hoja,
     s: Boton,
     ventana: &VentanaOverlay,
-    p: &Preparado,
     textos: &Catalogo,
     idioma: Idioma,
     ubicacion: &Ubicacion,
-    terminado: &Arc<AtomicBool>,
 ) -> bool {
     let salida = match hoja.pie() {
         Pie::MarcaAlguna => {
@@ -499,43 +440,13 @@ fn pulsar(
         },
     };
     match s {
+        // El boton principal deja el fichero hecho en la ventanita flotante
+        // (la Salida), lista para arrastrarlo o copiarlo: el usuario
+        // (8-oct-2026) lo queria asi en toda la app, en vez del panel
+        // Compartir de Windows.
         Boton::Compartir => {
-            if hoja.esperando_panel {
-                return true;
-            }
-            let titulo = match salida.ficheros.as_slice() {
-                [uno] => uno
-                    .file_name()
-                    .map(|n| n.to_string_lossy().into_owned())
-                    .unwrap_or_else(|| p.titulo.clone()),
-                _ => p.titulo.clone(),
-            };
-            let aviso = terminado.clone();
-            let hwnd_hoja = ventana.handle().0 as isize;
-            let al_terminar: pixpin_shell::compartir::AlTerminar = Arc::new(move || {
-                aviso.store(true, Ordering::SeqCst);
-                pixpin_shell::overlay::despertar(hwnd_hoja);
-            });
-            match pixpin_shell::compartir::compartir_avisando(
-                ventana.handle(),
-                &salida.ficheros,
-                &titulo,
-                al_terminar,
-            ) {
-                Ok(()) => {
-                    hoja.esperando_panel = true;
-                    hoja.avisar(textos.t("compartir-panel-abierto"));
-                }
-                Err(e) => {
-                    // Un Windows sin el panel o una directiva de empresa: se
-                    // deja en el portapapeles, que el gesto no se quede en
-                    // nada.
-                    tracing::warn!(?e, "el panel Compartir de Windows no se abrio");
-                    let _ = pixpin_codec::portapapeles::copiar_ficheros(&salida.ficheros);
-                    hoja.avisar(textos.t("chat-compartir-sin-panel"));
-                }
-            }
-            true
+            crate::salida::mostrar(salida.ficheros.clone(), textos.t("salida-titulo"));
+            false
         }
         Boton::Guardar => {
             let hecho = guardar(ventana, &salida, hoja, textos);
@@ -579,11 +490,44 @@ fn pulsar(
             crate::sincronizar::enviar_por_wifi(idioma, ubicacion.clone(), salida.ficheros.clone());
             false
         }
-        Boton::Arrastrar => {
-            // El fichero hecho, en pantalla para arrastrarlo: la hoja tapa
-            // lo que hay detras y ya ha cumplido.
-            crate::salida::mostrar(salida.ficheros.clone(), textos.t("salida-titulo"));
-            false
+        // Subirlo y pasar el enlace (`super::enlace`, los servicios del
+        // movil). En otro hilo: subir tarda, y la hoja sigue viva y dice
+        // «Subiendo…» hasta que llega el enlace, que va al portapapeles.
+        Boton::Enlace => {
+            if hoja.subiendo.is_some() {
+                return true;
+            }
+            let ficheros = salida.ficheros.clone();
+            let hwnd = ventana.handle().0 as isize;
+            let (tx, rx) = mpsc::channel();
+            let lanzado = std::thread::Builder::new()
+                .name("compartir-enlace".into())
+                .spawn(move || {
+                    // Uno por fichero, un enlace por renglon.
+                    let mut enlaces = Vec::new();
+                    let mut r = Ok(String::new());
+                    for f in &ficheros {
+                        match super::enlace::con_reserva(f, &mut |_| {}) {
+                            Ok((url, _)) => enlaces.push(url),
+                            Err(e) => {
+                                r = Err(e);
+                                break;
+                            }
+                        }
+                    }
+                    let r = r.map(|_| enlaces.join("
+"));
+                    let _ = tx.send(r);
+                    pixpin_shell::overlay::despertar(hwnd);
+                });
+            match lanzado {
+                Ok(_) => {
+                    hoja.subiendo = Some(rx);
+                    hoja.avisar(textos.t("compartir-enlace-subiendo"));
+                }
+                Err(e) => tracing::warn!(?e, "no se pudo lanzar la subida"),
+            }
+            true
         }
     }
 }
@@ -943,7 +887,7 @@ fn pintar(h: &Hoja, p: &Pintor, textos: &Catalogo, coma: char) {
         None => match encima {
             Destino::Salida(Boton::Copiar) => textos.t("compartir-copiar"),
             Destino::Salida(Boton::Wifi) => textos.t("compartir-wifi"),
-            Destino::Salida(Boton::Arrastrar) => textos.t("compartir-arrastrar"),
+            Destino::Salida(Boton::Enlace) => textos.t("compartir-enlace-pista"),
             // Encima del interruptor, que hace.
             Destino::Interruptor => {
                 h.e.formato(&h.c)
@@ -1031,42 +975,36 @@ fn pintar(h: &Hoja, p: &Pintor, textos: &Catalogo, coma: char) {
                     con_alfa(TEXTO, alfa),
                 );
             }
-            Boton::Copiar | Boton::Wifi => {
+            // Icono y nombre, todos iguales y en fila.
+            Boton::Copiar | Boton::Wifi | Boton::Enlace => {
                 p.rellenar_redondeado(
                     r,
                     8.0 * k,
                     con_alfa(if sobre { ENCIMA } else { REDONDEL }, alfa),
                 );
-                let lado = 20.0 * k;
+                let (icono, clave) = match s {
+                    Boton::Copiar => (&mi::CONTENT_COPY, "compartir-boton-copiar"),
+                    Boton::Wifi => (&mi::WIFI, "compartir-boton-wifi"),
+                    _ => (&mi::LINK, "compartir-boton-enlace"),
+                };
+                let lado = 18.0 * k;
                 p.icono(
-                    if *s == Boton::Copiar {
-                        &mi::CONTENT_COPY
-                    } else {
-                        &mi::WIFI
-                    },
+                    icono,
                     RectF {
-                        x: r.x + (r.ancho - lado) / 2.0,
+                        x: r.x + 10.0 * k,
                         y: r.y + (r.alto - lado) / 2.0,
                         ancho: lado,
                         alto: lado,
                     },
                     con_alfa(TEXTO, alfa),
                 );
-            }
-            // Los puntitos de agarre, los de las tarjetas de la Salida: «esto
-            // se arrastra».
-            Boton::Arrastrar => {
-                p.rellenar_redondeado(
-                    r,
-                    8.0 * k,
-                    con_alfa(if sobre { ENCIMA } else { REDONDEL }, alfa),
-                );
-                crate::salida::agarre(
-                    p,
-                    r.x + r.ancho / 2.0,
-                    r.y + r.alto / 2.0,
+                p.texto_linea(
+                    &textos.t(clave),
+                    r.x + 34.0 * k,
+                    r.y + r.alto / 2.0 - 9.0 * k,
+                    14.0 * k,
+                    r.ancho - 38.0 * k,
                     con_alfa(TEXTO, alfa),
-                    k * 1.2,
                 );
             }
         }
@@ -1089,7 +1027,7 @@ mod pruebas {
             pedido: None,
             pendiente: None,
             aviso: None,
-            esperando_panel: false,
+            subiendo: None,
         }
     }
 

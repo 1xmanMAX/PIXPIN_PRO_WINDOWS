@@ -121,6 +121,11 @@ const HUECO_REJILLA: f32 = 12.0;
 const RESPIRO: f32 = 12.0;
 /// Una tarea hecha en la vista en cuadrados: una fila de este alto.
 const FILA_HECHA: f32 = 44.0;
+/// La letra de una tarjeta sin foto y la de una fila de las hechas: mas
+/// grandes que antes (8-oct-2026, el usuario: «quiero que el texto sea mas
+/// grande»).
+const LETRA_CUADRO: f32 = 18.0;
+const LETRA_FILA: f32 = 16.0;
 /// Diametro de los circulos de emoticonos en la lista (en los cuadrados,
 /// [`rejilla::CHAPA`]).
 const ESTADO_LISTA: f32 = 34.0;
@@ -152,7 +157,24 @@ const SE_QUEDA: Duration = Duration::from_secs(5);
 /// a la vez, y pedirla otra vez la trae delante.
 static ABIERTA: AtomicIsize = AtomicIsize::new(0);
 
+/// La lista a la que hay que ir al abrir (su `Lista::clave`), si se pidio una:
+/// al pulsar una lista de tareas en el chat se abre ESTA ventana en ella, y
+/// no un panel distinto (el usuario, 8-oct-2026: «que la interfaz sea
+/// unificada»).
+/// Una cadena vacia es «abierta desde el boton»: la caja vuelve a apuntar en
+/// el Inbox.
+static PEDIDA: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
+
+pub(super) fn abrir_en(idioma: Idioma, ubicacion: Ubicacion, aparato: String, lista: Option<String>) {
+    *PEDIDA.lock().unwrap_or_else(|e| e.into_inner()) = Some(lista.unwrap_or_default());
+    lanzar(idioma, ubicacion, aparato);
+}
+
 pub(super) fn abrir(idioma: Idioma, ubicacion: Ubicacion, aparato: String) {
+    abrir_en(idioma, ubicacion, aparato, None);
+}
+
+fn lanzar(idioma: Idioma, ubicacion: Ubicacion, aparato: String) {
     let ya = ABIERTA.load(Ordering::SeqCst);
     if ya > 0 {
         VentanaOverlay::restaurar_de_hwnd(windows::Win32::Foundation::HWND(ya as *mut _));
@@ -486,6 +508,9 @@ enum Accion {
     /// La papelera del encabezado de la lista `.0`: borrarla entera, tras
     /// preguntar.
     BorrarLista(usize),
+    /// Compartir la lista `.0` entera (8-oct-2026): la hoja de compartir de
+    /// toda la app, con PDF, texto, HTML...
+    CompartirLista(usize),
     /// «Deshacer» del aviso (o Ctrl+Z): devolver la ultima tarea quitada.
     Deshacer,
     /// El conmutador de la barra de arriba: lista o cuadrados.
@@ -504,6 +529,11 @@ enum Accion {
     Editar(usize, usize),
     /// «Copiar texto» del menu: el texto de la tarea al portapapeles.
     CopiarTexto(usize, usize),
+    /// «Recordarmelo» de la tarea `.1` de la lista `.0`, a la hora local
+    /// `.2` (8-oct-2026): la marca `⏰` va en su texto (`tareas::RELOJ`).
+    Recordar(usize, usize, i64),
+    /// Quitarle la hora a la tarea.
+    OlvidarHora(usize, usize),
 }
 
 /// La ultima tarea quitada, para «Deshacer»: de que lista era, en que sitio
@@ -528,7 +558,9 @@ fn tarea_de(a: Accion) -> Option<(usize, usize)> {
         | Accion::PinearTodas(l, f)
         | Accion::BuscarEmo(l, f, _)
         | Accion::Editar(l, f)
-        | Accion::CopiarTexto(l, f) => Some((l, f)),
+        | Accion::CopiarTexto(l, f)
+        | Accion::Recordar(l, f, _)
+        | Accion::OlvidarHora(l, f) => Some((l, f)),
         _ => None,
     }
 }
@@ -555,6 +587,7 @@ fn menu_de_tarea(
     hecha: bool,
     se_reparte: bool,
     imagenes: usize,
+    con_hora: bool,
     textos: &Catalogo,
 ) -> Vec<(u32, String, Accion)> {
     let mut v = vec![(
@@ -574,6 +607,20 @@ fn menu_de_tarea(
         let mut args = fluent_bundle::FluentArgs::new();
         args.set("n", imagenes as i64);
         v.push((5, textos.t_args("tareas5-pinear-imagenes", &args), Accion::PinearTodas(li, fi)));
+    }
+    // La hora a la que recordarla: las mismas de «Recordarmelo» del chat.
+    if !hecha {
+        let ahora = pixpin_shell::entorno::ahora_local_ms();
+        for (k, (clave, cuando)) in crate::recordatorios::atajos(ahora).into_iter().enumerate() {
+            v.push((
+                10 + k as u32,
+                format!("⏰ {}", textos.t(clave)),
+                Accion::Recordar(li, fi, cuando),
+            ));
+        }
+    }
+    if con_hora {
+        v.push((20, textos.t("chat-recordatorio-quitar"), Accion::OlvidarHora(li, fi)));
     }
     v.push((6, format!("{}\tSupr", textos.t("tareas5-quitar")), Accion::Quitar(li, fi)));
     v
@@ -658,6 +705,12 @@ struct Estado {
     corrigiendo: Option<(Lista, Fila)>,
     /// El ultimo clic y cuando: dos en lo mismo seguidos son un doble clic.
     ultimo_clic: Option<(Accion, Instant)>,
+    /// La lista a la que llevar la vista en el proximo fotograma (ver
+    /// [`PEDIDA`]).
+    ir_a_lista: Option<String>,
+    /// Abierta desde una lista del chat, lo apuntado va a ESA lista (como en
+    /// el panel del chat que sustituye); desde el boton, al Inbox.
+    apuntar_en: Option<Lista>,
 }
 
 impl Estado {
@@ -692,6 +745,8 @@ impl Estado {
             celdas: Vec::new(),
             corrigiendo: None,
             ultimo_clic: None,
+            ir_a_lista: None,
+            apuntar_en: None,
         }
     }
 
@@ -831,7 +886,15 @@ fn menu(
     let Some((_, f)) = e.fila(li, fi) else {
         return true;
     };
-    let entradas = menu_de_tarea(li, fi, f.hecha, e.se_reparte(li, fi), f.imagenes.len(), textos);
+    let entradas = menu_de_tarea(
+        li,
+        fi,
+        f.hecha,
+        e.se_reparte(li, fi),
+        f.imagenes.len(),
+        super::hora_de_tarea(&f.texto).is_some(),
+        textos,
+    );
     e.foco = Foco::Tarjeta(li, fi);
     let lista: Vec<(u32, String)> = entradas.iter().map(|(id, t, _)| (*id, t.clone())).collect();
     match pixpin_shell::menu_llano(hwnd, &lista)
@@ -886,6 +949,16 @@ fn bucle(
     let mut pintar = true;
     while vivo {
         pixpin_shell::overlay::bombear_pendientes();
+        if let Some(k) = PEDIDA.lock().unwrap_or_else(|e| e.into_inner()).take() {
+            e.apuntar_en = e
+                .listas
+                .iter()
+                .chain(&e.destinos)
+                .find(|l| !k.is_empty() && l.clave() == k)
+                .cloned();
+            e.ir_a_lista = (!k.is_empty()).then_some(k);
+            pintar = true;
+        }
         for (h, ev) in pixpin_shell::overlay::tomar_eventos_pendientes() {
             if h != ventana.handle() {
                 continue;
@@ -1330,6 +1403,42 @@ fn hacer(
                 e.scroll = 0.0;
             }
         }
+        Accion::Recordar(li, fi, _) | Accion::OlvidarHora(li, fi) => {
+            let Some((l, f)) = e.fila(li, fi).map(|(l, f)| (l.clone(), f.clone())) else {
+                return true;
+            };
+            let (texto, cuando) = match a {
+                Accion::Recordar(_, _, t) => (super::con_hora(&f.texto, t), Some(t)),
+                _ => (super::sin_hora(&f.texto), None),
+            };
+            match super::corregir(raiz, &l, &f, &texto, &[]) {
+                Ok(true) => {
+                    // Al vigia, para que suene (o deje de sonar).
+                    crate::recordatorios::releer(raiz);
+                    crate::ventana_chat::refrescar();
+                    e.recargar(ubicacion);
+                    match cuando {
+                        Some(t) => {
+                            let mut args = fluent_bundle::FluentArgs::new();
+                            args.set(
+                                "cuando",
+                                crate::recordatorios::cuando_legible(
+                                    t,
+                                    pixpin_shell::entorno::ahora_local_ms(),
+                                ),
+                            );
+                            e.decir(textos.t_args("tareas-recordare", &args));
+                        }
+                        None => e.decir(textos.t("tareas-sin-recordatorio")),
+                    }
+                }
+                Ok(false) => e.recargar(ubicacion),
+                Err(err) => {
+                    tracing::warn!(?err, "tareas: no se pudo poner la hora");
+                    e.decir(err.aviso(textos));
+                }
+            }
+        }
         Accion::CopiarTexto(li, fi) => {
             let Some((_, f)) = e.fila(li, fi) else {
                 return true;
@@ -1343,7 +1452,11 @@ fn hacer(
             if e.campo.texto.trim().is_empty() {
                 return true;
             }
-            match super::apuntar_con(raiz, aparato, &e.campo.texto, &e.campo.imagenes()) {
+            let hecho = match &e.apuntar_en {
+                Some(l) => super::apuntar_en(raiz, aparato, l, &e.campo.texto, &e.campo.imagenes()),
+                None => super::apuntar_con(raiz, aparato, &e.campo.texto, &e.campo.imagenes()),
+            };
+            match hecho {
                 Ok(lista) => {
                     let mut args = fluent_bundle::FluentArgs::new();
                     args.set("tarea", e.campo.lo_que_se_lee());
@@ -1516,6 +1629,27 @@ fn hacer(
                 e.seguir_foco = true;
             }
         }
+        Accion::CompartirLista(li) => {
+            let Some(lista) = e.listas.get(li).cloned() else {
+                return true;
+            };
+            match crate::pedidos::mensaje_de(raiz, &lista.proyecto, &lista.codigo) {
+                Ok(m) => crate::compartir::ventana::abrir(
+                    crate::compartir::idioma_de(ubicacion),
+                    ubicacion.clone(),
+                    crate::compartir::Cosa::Mensajes {
+                        raiz: raiz.to_path_buf(),
+                        proyecto: lista.proyecto.clone(),
+                        titulo: lista.titulo.clone(),
+                        mensajes: vec![m],
+                    },
+                ),
+                Err(err) => {
+                    tracing::warn!(?err, "tareas: no se pudo leer la lista para compartirla");
+                    e.decir(err.aviso(textos));
+                }
+            }
+        }
         Accion::BorrarLista(li) => {
             let Some(lista) = e.listas.get(li).cloned() else {
                 return true;
@@ -1562,8 +1696,12 @@ fn alturas(s: f32) -> (f32, f32) {
 
 /// Si una celda de la rejilla es una fila (una hecha, ver
 /// `rejilla::disponer`) y no un cuadrado.
-fn es_fila(r: RectF) -> bool {
-    r.ancho > r.alto * 1.5
+/// Si la caja es una fila de las hechas (a todo lo ancho) y no una tarjeta.
+/// Por su ancho y no por su forma: una tarjeta de texto corto es mas ancha
+/// que alta y se pintaba como fila, en un renglon y con «…» (lo vio el
+/// usuario, 8-oct-2026).
+fn es_fila(r: RectF, s: f32) -> bool {
+    r.ancho > LADO_CUADRADO * s * 1.5
 }
 
 fn pintar_todo(e: &mut Estado, p: &Pintor, marco: Rect, s: f32, textos: &Catalogo) {
@@ -1615,9 +1753,11 @@ fn pintar_todo(e: &mut Estado, p: &Pintor, marco: Rect, s: f32, textos: &Catalog
                 (c, Vec::new(), total)
             }
             Vista::Tarjetas => {
+                let est: &Estado = e;
                 let (c, total) = rejilla::disponer(
                     &grupos,
                     &abierta,
+                    &mut |li, fi, lado| alto_de_cuadrado(est, p, li, fi, lado, s),
                     &rejilla::Medidas {
                         ancho,
                         lado: LADO_CUADRADO * s,
@@ -1642,6 +1782,16 @@ fn pintar_todo(e: &mut Estado, p: &Pintor, marco: Rect, s: f32, textos: &Catalog
         ancho: w,
         alto: (h - arriba).max(0.0),
     };
+    // Abierta desde una lista del chat: su encabezado arriba del todo.
+    if let Some(k) = e.ir_a_lista.take()
+        && let Some(li) = e.listas.iter().position(|l| l.clave() == k)
+        && let Some(c) = e
+            .colocadas
+            .iter()
+            .find(|c| c.pieza == tarjetas::Pieza::Encabezado(li))
+    {
+        e.scroll = (c.y - 8.0 * s).max(0.0);
+    }
     if std::mem::take(&mut e.seguir_foco) {
         match e.foco {
             Foco::Tarjeta(li, fi) => {
@@ -1730,7 +1880,7 @@ fn pintar_todo(e: &mut Estado, p: &Pintor, marco: Rect, s: f32, textos: &Catalog
                     }
                     tarjetas::Pieza::Tarjeta(li, fi) => match e.vista {
                         Vista::Lista => pintar_tarjeta(e, p, li, fi, r, s, &palabras, textos),
-                        Vista::Tarjetas if es_fila(r) => {
+                        Vista::Tarjetas if es_fila(r, s) => {
                             pintar_fila_hecha(e, p, li, fi, r, s, &palabras, textos)
                         }
                         Vista::Tarjetas => pintar_cuadrado(e, p, li, fi, r, s, &palabras, textos),
@@ -1918,11 +2068,15 @@ fn pintar_caja(e: &mut Estado, p: &Pintor, x: f32, y: f32, ancho: f32, s: f32, t
     if e.campo.texto.is_empty() {
         // La pista, 3 px a la derecha del cursor: pegada a el parecia que
         // el cursor era su primera letra.
-        let pista = textos.t(if e.corrigiendo.is_some() {
-            "tareas5-corregir-pista"
-        } else {
-            "tareas5-apuntar-pista"
-        });
+        let pista = match (&e.corrigiendo, &e.apuntar_en) {
+            (Some(_), _) => textos.t("tareas5-corregir-pista"),
+            (None, Some(l)) => {
+                let mut a = fluent_bundle::FluentArgs::new();
+                a.set("lista", l.titulo.clone());
+                textos.t_args("tareas-apuntar-en-pista", &a)
+            }
+            (None, None) => textos.t("tareas5-apuntar-pista"),
+        };
         p.texto_linea(&pista, tx + 3.0 * s, ty, tam, hueco - 3.0 * s, GRIS);
         if foco {
             p.linea((tx, ty), (tx, ty + alto_linea), 1.5 * s, ACENTO);
@@ -2288,12 +2442,25 @@ fn pintar_encabezado(
             false,
             s,
         );
+        crate::v2::boton_icono(
+            p,
+            &mut e.botones,
+            RectF {
+                x: papelera.x - ASPA * s - 4.0 * s,
+                ..papelera
+            },
+            Accion::CompartirLista(g.lista),
+            &mi::IOS_SHARE,
+            false,
+            false,
+            s,
+        );
     } else {
         p.texto(&cuenta, x + ancho - cw, ty + (th - ch) / 2.0, tam_c, GRIS);
     }
     // Lo que queda para el nombre: lo mismo pase o no el raton, para que no
     // se recorte de otra forma al pasar.
-    let derecha = cw.max(ASPA * s);
+    let derecha = cw.max(2.0 * ASPA * s + 4.0 * s);
     let libre = (ancho - derecha - 20.0 * s).max(0.0);
     let con_chat = !super::es_inbox(&l);
     let (nw, _) = ui::medir_negrita(p, &l.titulo, tam, libre);
@@ -2983,6 +3150,68 @@ fn velo_de_foto(p: &Pintor, r: RectF) {
     );
 }
 
+/// **El degradado de una lista** en la vista de tarjetas, siempre el mismo
+/// para la misma lista (sale de su clave). Tonos hondos, para que el texto
+/// claro se lea encima.
+fn degradado_de_lista(clave: &str) -> (Color, Color) {
+    const PARES: [(u32, u32); 8] = [
+        (0x3A2A6B, 0x1F3B73),
+        (0x0F5A3C, 0x123F45),
+        (0x6B2D3A, 0x3B1F4D),
+        (0x7A4A12, 0x5A2D14),
+        (0x124E66, 0x1B3358),
+        (0x5B2A6E, 0x2A1F5C),
+        (0x33521F, 0x1E3B33),
+        (0x6E3A1E, 0x4A1F2E),
+    ];
+    // FNV-1a: estable entre versiones, a diferencia de `DefaultHasher`.
+    let h = clave
+        .bytes()
+        .fold(0x811c_9dc5u32, |h, b| (h ^ u32::from(b)).wrapping_mul(0x0100_0193));
+    let (a, b) = PARES[h as usize % PARES.len()];
+    (hex(a), hex(b))
+}
+
+/// **Lo que mide de alto la tarjeta** de una tarea en la vista de tarjetas:
+/// con foto, el cuadrado entero (la foto es el fondo); sin foto, lo que
+/// pide su texto (hasta cinco renglones) con los emoticonos de arriba y la
+/// casilla de abajo. `rejilla::disponer` lo deja entre medio cuadrado y el
+/// cuadrado.
+fn alto_de_cuadrado(e: &Estado, p: &Pintor, li: usize, fi: usize, lado: f32, s: f32) -> f32 {
+    let Some((_, f)) = e.fila(li, fi) else {
+        return lado;
+    };
+    let (texto, emos) = emoticonos::emoticonos_de(&f.texto);
+    // Una fila de las hechas (`lado` es entonces todo el ancho): su texto
+    // entero entre la casilla y la edad, con su aire arriba y abajo.
+    if lado > LADO_CUADRADO * s * 1.5 {
+        let letra = Letra {
+            tam: LETRA_FILA * s,
+            negrita: false,
+        };
+        let ancho_t = (lado - CASILLA * s - 150.0 * s).max(40.0 * s);
+        let t = if texto.is_empty() { emos.join(" ") } else { texto };
+        return letra.medir(p, &t, ancho_t).1 + 24.0 * s;
+    }
+    if !f.imagenes.is_empty() {
+        return lado;
+    }
+    let caja = RectF {
+        x: 0.0,
+        y: 0.0,
+        ancho: lado,
+        alto: lado,
+    };
+    let partes = rejilla::partes(caja, s, !emos.is_empty());
+    let letra = Letra {
+        tam: LETRA_CUADRO * s,
+        negrita: false,
+    };
+    let (_, texto_alto) = letra.medir(p, &texto, partes.texto.ancho);
+    // Lo de encima del texto, el texto, y lo de debajo (la casilla).
+    partes.texto.y + texto_alto + (lado - partes.texto.y - partes.texto.alto)
+}
+
 /// Una tarea en su cuadrado (la vista en tarjetas). Con foto, la primera
 /// llena el cuadrado, con un velo oscuro abajo para leer encima el texto en
 /// blanco y negrita; sin foto, el fondo de tarjeta tenido del tono de su
@@ -3022,16 +3251,16 @@ fn pintar_cuadrado(
     let foto = e
         .ruta_de(&lista, &f, 0)
         .and_then(|ruta| e.minis.ya(&ruta).map(|(b, iw, ih)| (b.clone(), iw, ih)));
-    // Sin foto, el tono del primer emoticono aguado al 14 % sobre la
-    // tarjeta: el cuadrado tiene color sin gritar, y las tareas con la misma
-    // etiqueta se reconocen de lejos.
-    let tinte = emos.first().map(|x| hex(emoticonos::tono_de(x)));
-    let base = if encima {
-        crate::v2::TARJETA_ENCIMA
+    // Sin foto, el degradado de SU LISTA (8-oct-2026, el usuario: «un color
+    // unico con degradado, que todo ese grupo de tareas tenga el mismo»):
+    // las tareas de una lista se reconocen de lejos.
+    let (desde, hasta) = degradado_de_lista(&lista.clave());
+    let (desde, hasta) = if encima {
+        (mezcla(desde, Color::BLANCO, 0.08), mezcla(hasta, Color::BLANCO, 0.08))
     } else {
-        crate::v2::TARJETA
+        (desde, hasta)
     };
-    let fondo = tinte.map_or(base, |t| mezcla(base, t, 0.14));
+    let fondo = desde;
     if let Some((b, iw, ih)) = &foto {
         if foco {
             p.rellenar_redondeado(encoger(r, -2.0 * s), radio + 2.0 * s, ACENTO);
@@ -3055,9 +3284,17 @@ fn pintar_cuadrado(
         esquinas(p, r, radio, detras);
     } else {
         crate::v2::tarjeta::fondo(p, r, encima, foco, s);
-        if tinte.is_some() {
-            let g = if foco { 1.5 * s } else { 1.0 * s };
-            p.rellenar_redondeado(encoger(r, g), radio - g, fondo);
+        let g = if foco { 1.5 * s } else { 1.0 * s };
+        let dentro_r = encoger(r, g);
+        if p.empujar_recorte_redondeado(dentro_r, radio - g) {
+            p.rect_degradado(
+                dentro_r,
+                (dentro_r.x, dentro_r.y),
+                (dentro_r.x + dentro_r.ancho, dentro_r.y + dentro_r.alto),
+                desde,
+                hasta,
+            );
+            p.soltar_recorte_redondeado();
         }
         if !f.imagenes.is_empty() {
             // La foto aun no llego (o no se pudo leer): su dibujo en medio.
@@ -3091,15 +3328,20 @@ fn pintar_cuadrado(
     }
 
     // El texto: con foto, pegado abajo, blanco, en negrita y con sombra,
-    // hasta tres renglones (los que caben bajo el comienzo del velo); sin
-    // foto, arriba y mas grande, hasta cinco. Si no cabe, «…».
+    // hasta tres renglones (los que caben bajo el comienzo del velo). Sin
+    // foto, arriba, grande y ENTERO: la tarjeta crece lo que haga falta
+    // (`alto_de_cuadrado`; el usuario, 8-oct-2026: «que no se pierda el
+    // texto»).
     let letra = Letra {
-        tam: if con_foto { 15.0 * s } else { 16.0 * s },
+        tam: if con_foto { 15.0 * s } else { LETRA_CUADRO * s },
         negrita: con_foto,
     };
     let (_, renglon) = letra.medir(p, "Ag", 1000.0 * s);
-    let renglones = if con_foto { 3.0 } else { 5.0 };
-    let caben = partes.texto.alto.min(renglon * renglones + 1.0);
+    let caben = if con_foto {
+        partes.texto.alto.min(renglon * 3.0 + 1.0)
+    } else {
+        partes.texto.alto + renglon
+    };
     let ancho_t = partes.texto.ancho;
     let mostrado =
         rejilla::recortar_a_renglones(&texto, caben, &mut |t| letra.medir(p, t, ancho_t).1);
@@ -3275,19 +3517,23 @@ fn pintar_fila_hecha(
         fin = x - 12.0 * s;
     }
     let letra = Letra {
-        tam: crate::v2::LETRA_CUERPO * s,
+        tam: LETRA_FILA * s,
         negrita: false,
     };
     let ancho_t = (fin - tx).max(20.0 * s);
-    // Un renglon: lo que no quepa, con «…».
-    let (_, renglon) = letra.medir(p, "Ag", 1000.0 * s);
-    let mostrado =
-        rejilla::recortar_a_renglones(&texto, renglon + 1.0, &mut |t| letra.medir(p, t, ancho_t).1);
+    // Entero, en los renglones que haga falta: la fila ya mide lo suyo
+    // (`alto_de_cuadrado`). Uno solo, centrado; varios, desde arriba.
+    let (_, th) = letra.medir(p, &texto, ancho_t);
+    let ty = if th <= r.alto - 20.0 * s {
+        r.y + (r.alto - th) / 2.0
+    } else {
+        r.y + 12.0 * s
+    };
     pintar_texto_tarea(
         p,
-        &mostrado,
+        &texto,
         tx,
-        r.y + (r.alto - renglon) / 2.0,
+        ty,
         ancho_t,
         letra,
         palabras,
@@ -3818,6 +4064,7 @@ mod pruebas {
         let (c, _) = rejilla::disponer(
             &g,
             &|_| false,
+            &mut |_, _, l| l,
             &rejilla::Medidas {
                 ancho: 628.0,
                 lado: 200.0,
@@ -3885,9 +4132,12 @@ mod pruebas {
     fn el_menu_de_una_tarea_solo_ofrece_lo_que_se_puede_hacer() {
         let textos = Catalogo::nuevo(Idioma::Espanol);
         let acciones = |hecha, reparte, imagenes| -> Vec<Accion> {
-            menu_de_tarea(0, 1, hecha, reparte, imagenes, &textos)
+            menu_de_tarea(0, 1, hecha, reparte, imagenes, false, &textos)
                 .into_iter()
                 .map(|(_, _, a)| a)
+                // Las horas de «Recordarmelo» se miran aparte: dependen de
+                // cuando se pase la prueba.
+                .filter(|a| !matches!(a, Accion::Recordar(..)))
                 .collect()
         };
         assert_eq!(
@@ -3901,7 +4151,7 @@ mod pruebas {
                 Accion::Quitar(0, 1),
             ]
         );
-        let m = menu_de_tarea(0, 1, true, false, 2, &textos);
+        let m = menu_de_tarea(0, 1, true, false, 2, false, &textos);
         assert!(m[0].1.starts_with("Marcar como pendiente"), "{}", m[0].1);
         assert!(m.iter().any(|(_, t, _)| t.contains("Pinear las 2")), "{m:?}");
         // Caso negativo: sin imagenes no hay «Pinear», fuera del Inbox no
@@ -3909,11 +4159,27 @@ mod pruebas {
         let poco = acciones(false, false, 0);
         assert!(!poco.contains(&Accion::PinearTodas(0, 1)));
         assert!(!poco.contains(&Accion::Repartir(0, 1)));
-        let ids: HashSet<u32> = menu_de_tarea(0, 1, false, true, 1, &textos)
+        let ids: HashSet<u32> = menu_de_tarea(0, 1, false, true, 1, false, &textos)
             .iter()
             .map(|x| x.0)
             .collect();
-        assert_eq!(ids.len(), 6);
+        assert_eq!(ids.len(), 11, "seis y las cinco horas");
+        // La hora: cinco para elegir en lo pendiente, ninguna en lo hecho, y
+        // «Quitar el recordatorio» solo si tiene una.
+        let horas = |hecha, con| {
+            menu_de_tarea(0, 1, hecha, false, 0, con, &textos)
+                .iter()
+                .filter(|x| matches!(x.2, Accion::Recordar(..)))
+                .count()
+        };
+        assert_eq!(horas(false, false), 5);
+        assert_eq!(horas(true, false), 0);
+        let quitar = |con| {
+            menu_de_tarea(0, 1, false, false, 0, con, &textos)
+                .iter()
+                .any(|x| x.2 == Accion::OlvidarHora(0, 1))
+        };
+        assert!(quitar(true) && !quitar(false));
     }
 
     #[test]

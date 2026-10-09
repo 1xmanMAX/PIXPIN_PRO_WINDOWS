@@ -979,3 +979,71 @@ mod pruebas {
         assert!(es_relativa("archivos/x.pdf"));
     }
 }
+
+/// **El fichero de un mensaje con la extension de su nombre** (8-oct-2026).
+///
+/// Algunos ficheros llegan del movil guardados como `.bin` aunque el mensaje
+/// diga `informe.pdf` (el usuario: «me dice que no se puede abrir porque es
+/// un archivo .bin a pesar de que en su formato diga PDF»). El PC decide por
+/// la extension del disco como se abre, asi que un PDF de verdad acababa en
+/// el «¿Con que aplicacion?» de Windows.
+///
+/// Si `fichero` es `.bin` y `nombre` tiene otra extension, se devuelve un
+/// enlace (o una copia, si el enlace no se puede) con la extension buena en
+/// `<raiz>/cache/con-extension/`. Fuera de la carpeta sincronizada a
+/// proposito: un fichero de mas ahi viajaria al movil. En cualquier otro
+/// caso, el mismo `fichero`.
+pub fn con_la_extension_del_nombre(raiz: &Path, fichero: PathBuf, nombre: &str) -> PathBuf {
+    let es_bin = fichero
+        .extension()
+        .is_some_and(|e| e.eq_ignore_ascii_case("bin"));
+    let buena = Path::new(nombre)
+        .extension()
+        .map(|e| e.to_string_lossy().to_ascii_lowercase())
+        .filter(|e| !e.is_empty() && e != "bin" && e.chars().all(|c| c.is_ascii_alphanumeric()));
+    let (true, Some(ext), Some(tallo)) = (es_bin, buena, fichero.file_stem()) else {
+        return fichero;
+    };
+    let Ok(meta) = std::fs::metadata(&fichero) else {
+        return fichero;
+    };
+    let carpeta = raiz.join("cache").join("con-extension");
+    let destino = carpeta.join(format!("{}.{ext}", tallo.to_string_lossy()));
+    if std::fs::metadata(&destino).is_ok_and(|d| d.len() == meta.len()) {
+        return destino;
+    }
+    let _ = std::fs::remove_file(&destino);
+    let hecho = std::fs::create_dir_all(&carpeta).and_then(|()| {
+        std::fs::hard_link(&fichero, &destino).or_else(|_| std::fs::copy(&fichero, &destino).map(|_| ()))
+    });
+    // Si no se pudo, el de siempre: peor abrirlo como .bin que no ofrecerlo.
+    if hecho.is_ok() { destino } else { fichero }
+}
+
+#[cfg(test)]
+mod pruebas_con_extension {
+    use super::*;
+
+    #[test]
+    fn un_pdf_guardado_como_bin_se_abre_como_pdf_y_lo_demas_no_se_toca() {
+        let raiz = std::env::temp_dir().join(format!("pp-bin-{}", std::process::id()));
+        std::fs::create_dir_all(&raiz).unwrap();
+        let bin = raiz.join("123_abc.bin");
+        std::fs::write(&bin, b"%PDF-1.3").unwrap();
+        let bueno = con_la_extension_del_nombre(&raiz, bin.clone(), "manual.pdf");
+        assert_eq!(bueno.extension().unwrap(), "pdf");
+        assert_eq!(std::fs::read(&bueno).unwrap(), b"%PDF-1.3");
+        // Fuera de la carpeta del chat, en la cache.
+        assert!(bueno.starts_with(raiz.join("cache")));
+        // Una segunda vez, el mismo.
+        assert_eq!(con_la_extension_del_nombre(&raiz, bin.clone(), "manual.pdf"), bueno);
+        // Casos negativos: con su extension ya buena, o sin nombre que diga
+        // otra cosa, el fichero tal cual.
+        let png = raiz.join("foto.png");
+        std::fs::write(&png, b"x").unwrap();
+        assert_eq!(con_la_extension_del_nombre(&raiz, png.clone(), "foto.pdf"), png);
+        assert_eq!(con_la_extension_del_nombre(&raiz, bin.clone(), "sin extension"), bin);
+        assert_eq!(con_la_extension_del_nombre(&raiz, bin.clone(), "otro.bin"), bin);
+        let _ = std::fs::remove_dir_all(&raiz);
+    }
+}

@@ -9,9 +9,8 @@
 //!   que lo senala, como en el movil) y como se guardan y se borran con las
 //!   funciones del chat.
 //! - [`ficha`]: «Nueva leccion» y «Mas campos» (`LeccionActivity`).
-//! - [`lista`]: «Lecciones» (rediseno v2): la barra «¿Que aprendiste?», la
-//!   lista, la ficha que se edita en su sitio, el repaso y la lista de
-//!   comprobacion (`LeccionesActivity`).
+//! - Verlas: el timeline, pestana «Lecciones» ([`lista`]). La ventana de
+//!   lecciones con barra lateral se quito el 8-oct-2026.
 //! - [`dictar`]: el microfono de las dos, con Whisper.
 //!
 //! Por donde se entra (como en el movil: «muy facil»): el menu de un mensaje
@@ -22,7 +21,6 @@
 pub mod almacen;
 mod dictar;
 pub mod ficha;
-pub mod lista;
 pub(crate) mod ui;
 
 use pixpin_lecciones::buscador;
@@ -74,37 +72,24 @@ pub fn nueva_con_fotos(
     });
 }
 
-/// Abre una leccion que ya existe, por su id: la lista con ella elegida
-/// (v2: la ficha es la columna del centro y se edita en su sitio). Los
-/// campos de mas (tipo, causas, palabras para encontrarla) siguen en «Mas
-/// campos», que abre la ficha de siempre.
+/// Abre una leccion que ya existe, por su id, en la ficha (la misma ventana
+/// de «Nueva leccion»): desde el 8-oct-2026 es la unica para escribir
+/// lecciones (el usuario: «solo tiene que ser esa»).
 pub fn editar(ubicacion: Ubicacion, idioma: Idioma, aparato: &str, id: &str) {
-    lista::abrir(lista::Pedido {
+    ficha::abrir(ficha::Pedido {
         ubicacion,
         idioma,
         aparato: aparato.to_string(),
-        proyecto: None,
-        consulta: None,
-        seleccion: Some(id.to_string()),
+        que: ficha::Que::Editar { id: id.to_string() },
     });
 }
 
-/// Abre la lista. Con `proyecto` (la ficha de un chat), las suyas primero.
-pub fn lista(
-    ubicacion: Ubicacion,
-    idioma: Idioma,
-    aparato: &str,
-    proyecto: Option<String>,
-    consulta: Option<String>,
-) {
-    lista::abrir(lista::Pedido {
-        ubicacion,
-        idioma,
-        aparato: aparato.to_string(),
-        proyecto,
-        consulta,
-        seleccion: None,
-    });
+/// **Ver las lecciones**: en el timeline, pestana «Lecciones». Hubo una
+/// ventana propia con barra lateral; se quito el 8-oct-2026 (el usuario: «esa
+/// no es de utilidad, quitala»): para escribir esta «Nueva leccion»
+/// ([`nueva`]) y para verlas, el timeline.
+pub fn lista(ubicacion: Ubicacion, idioma: Idioma) {
+    crate::timeline::abrir_lecciones(idioma, ubicacion);
 }
 
 /// El id de la leccion de un archivo `<id>.leccion`, si lo es.

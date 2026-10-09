@@ -31,6 +31,11 @@ const ROTULO_PAGINA: f32 = 64.0;
 const ROTULO_TIEMPO: f32 = 48.0;
 const ROTULO_EN_VIVO: f32 = 84.0;
 const RECORRIDO: f32 = 132.0;
+/// Los colores de marcar van en pequeno: son cinco y se eligen de un vistazo.
+const PUNTO_COLOR: f32 = 22.0;
+/// Los botones de marcar, algo mas estrechos que los demas: son seis seguidos
+/// y la barra no debe crecer de mas (el usuario: «aparece demasiado grande»).
+const BOTON_MARCA: f32 = 34.0;
 
 /// Lo que hace un boton de la barra.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -57,6 +62,15 @@ pub enum AccionBarra {
     Anotar,
     Mas,
     Cerrar,
+    /// Entrar o salir del modo texto: con el, arrastrar sobre la imagen
+    /// selecciona su texto en vez de mover el pin (tecla T).
+    ModoTexto,
+    /// Con texto seleccionado: el color de la marca (`barra_marcas::COLORES`).
+    ColorMarca(u8),
+    /// Marcar lo seleccionado.
+    Marcar(crate::barra_marcas::Marca),
+    /// Quitar las marcas que toquen lo seleccionado.
+    QuitarMarca,
 }
 
 /// Un texto fijo de la barra: no se pulsa.
@@ -112,6 +126,12 @@ pub struct TipoBarra {
     pub anotable: bool,
     /// Copiar: lo que se ve (en un pin en vivo, el fotograma de ahora).
     pub copiable: bool,
+    /// Ofrece el modo texto (una foto, con reconocimiento en el equipo).
+    pub texto: bool,
+    /// Hay texto seleccionado: en el sitio del control propio van los
+    /// colores y las marcas (8-oct-2026, en vez de una barra aparte encima
+    /// del texto).
+    pub marcando: bool,
 }
 
 /// La barra ya dispuesta.
@@ -152,7 +172,16 @@ pub fn disponer(tipo: TipoBarra, escala: f32) -> Barra {
         x += ancho + HUECO * e;
     };
     let boton = |a| Pieza::Boton(a);
-    match tipo.propio {
+    if tipo.marcando {
+        for k in 0..crate::barra_marcas::COLORES.len() {
+            poner(&mut v, boton(AccionBarra::ColorMarca(k as u8)), PUNTO_COLOR * e);
+        }
+        for m in crate::barra_marcas::MARCAS {
+            poner(&mut v, boton(AccionBarra::Marcar(m)), BOTON_MARCA * e);
+        }
+        poner(&mut v, boton(AccionBarra::QuitarMarca), BOTON_MARCA * e);
+    }
+    match if tipo.marcando { Propio::Ninguno } else { tipo.propio } {
         Propio::Ninguno => {}
         Propio::Zoom => {
             poner(&mut v, boton(AccionBarra::Alejar), lado);
@@ -186,6 +215,9 @@ pub fn disponer(tipo: TipoBarra, escala: f32) -> Barra {
     }
     if !v.is_empty() {
         poner(&mut v, Pieza::Separador, SEPARADOR * e);
+    }
+    if tipo.texto {
+        poner(&mut v, boton(AccionBarra::ModoTexto), lado);
     }
     if tipo.copiable {
         poner(&mut v, boton(AccionBarra::Copiar), lado);
@@ -283,6 +315,8 @@ mod pruebas {
             propio,
             anotable: true,
             copiable: true,
+            texto: false,
+            marcando: false,
         }
     }
 
@@ -354,6 +388,8 @@ mod pruebas {
                 propio: Propio::Vivo,
                 anotable: false,
                 copiable: false,
+                texto: false,
+                marcando: false,
             },
             1.0,
         );
@@ -370,6 +406,39 @@ mod pruebas {
                 AccionBarra::Cerrar
             ]
         );
+    }
+
+    #[test]
+    fn con_texto_seleccionado_los_colores_y_las_marcas_van_en_el_sitio_del_zoom() {
+        let con = TipoBarra {
+            texto: true,
+            marcando: true,
+            ..tipo(Propio::Zoom)
+        };
+        let a = acciones(&disponer(con, 1.0));
+        assert_eq!(a[0], AccionBarra::ColorMarca(0));
+        assert_eq!(a[4], AccionBarra::ColorMarca(4));
+        assert_eq!(
+            a[5..11],
+            [
+                AccionBarra::Marcar(crate::barra_marcas::Marca::Resaltar),
+                AccionBarra::Marcar(crate::barra_marcas::Marca::Ondulada),
+                AccionBarra::Marcar(crate::barra_marcas::Marca::Subrayar),
+                AccionBarra::Marcar(crate::barra_marcas::Marca::Tachar),
+                AccionBarra::Marcar(crate::barra_marcas::Marca::Tapar),
+                AccionBarra::QuitarMarca,
+            ]
+        );
+        assert!(!a.contains(&AccionBarra::Acercar), "el zoom deja su sitio");
+        assert!(a.contains(&AccionBarra::ModoTexto) && a.contains(&AccionBarra::Cerrar));
+        // Caso negativo: sin seleccion, la barra de siempre con el boton T.
+        let sin = TipoBarra {
+            texto: true,
+            ..tipo(Propio::Zoom)
+        };
+        let a = acciones(&disponer(sin, 1.0));
+        assert_eq!(a[0], AccionBarra::Alejar);
+        assert!(!a.iter().any(|x| matches!(x, AccionBarra::Marcar(_))));
     }
 
     #[test]

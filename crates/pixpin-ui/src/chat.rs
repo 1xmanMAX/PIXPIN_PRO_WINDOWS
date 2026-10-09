@@ -252,19 +252,15 @@ pub enum Borde {
 pub enum Extra {
     Tareas = 0,
     Galeria = 1,
-    Lecciones = 2,
-    /// El timeline (5-oct-2026): el mas a la izquierda, y por eso el primero
-    /// que se retira en una lista estrecha (tambien esta en la bandeja).
-    Timeline = 3,
+    /// El timeline (5-oct-2026), con las lecciones dentro: el mas a la
+    /// izquierda, y por eso el primero que se retira en una lista estrecha
+    /// (tambien esta en la bandeja). Hubo un boton de lecciones aparte que
+    /// abria la misma ventana; se quito el 8-oct-2026 a peticion del usuario.
+    Timeline = 2,
 }
 
 impl Extra {
-    pub const TODOS: [Extra; 4] = [
-        Extra::Tareas,
-        Extra::Galeria,
-        Extra::Lecciones,
-        Extra::Timeline,
-    ];
+    pub const TODOS: [Extra; 3] = [Extra::Tareas, Extra::Galeria, Extra::Timeline];
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -537,7 +533,6 @@ impl Disposicion {
             self.boton_sincro(escala_por_cien),
             self.boton_extra(Extra::Tareas, escala_por_cien),
             self.boton_extra(Extra::Galeria, escala_por_cien),
-            self.boton_extra(Extra::Lecciones, escala_por_cien),
             self.boton_extra(Extra::Timeline, escala_por_cien),
         ]
         .iter()
@@ -1143,11 +1138,11 @@ mod pruebas_ventana {
     }
 
     #[test]
-    fn lecciones_galeria_y_tareas_van_a_la_izquierda_de_sincronizar_sin_pisar_el_buscador() {
+    fn timeline_galeria_y_tareas_van_a_la_izquierda_de_sincronizar_sin_pisar_el_buscador() {
         let d = Disposicion::calcular(1000, 700, 100, 320, Vista::Ambas);
         let (b, s) = (d.buscador(100), d.boton_sincro(100));
-        let [t, g, l, tl] = Extra::TODOS.map(|x| d.boton_extra(x, 100));
-        for u in [t, g, l, tl] {
+        let [t, g, tl] = Extra::TODOS.map(|x| d.boton_extra(x, 100));
+        for u in [t, g, tl] {
             assert_eq!((u.ancho, u.alto), (s.ancho, s.alto), "el mismo boton");
             assert_eq!(u.y, s.y);
             assert!(d.cabecera_lista.contiene(Punto {
@@ -1157,7 +1152,7 @@ mod pruebas_ventana {
         }
         assert!(b.derecha() < tl.x, "el buscador acaba antes");
         assert!(
-            tl.derecha() < l.x && l.derecha() < g.x && g.derecha() < t.x && t.derecha() < s.x,
+            tl.derecha() < g.x && g.derecha() < t.x && t.derecha() < s.x,
             "en fila, sin tocarse"
         );
     }
@@ -1166,10 +1161,10 @@ mod pruebas_ventana {
     fn en_una_lista_estrecha_se_retiran_de_izquierda_a_derecha_antes_que_sincronizar() {
         let paso = BUSCADOR_ALTO + BUSCADOR_MARGEN;
         let mut d = Disposicion::calcular(1000, 700, 100, 320, Vista::Ambas);
-        // Caben tareas y galeria pero no lecciones.
+        // Caben tareas y galeria pero no el timeline.
         d.cabecera_lista.ancho = 5 * paso + 4;
         assert!(d.boton_extra(Extra::Galeria, 100).ancho > 0);
-        assert_eq!(d.boton_extra(Extra::Lecciones, 100).ancho, 0);
+        assert_eq!(d.boton_extra(Extra::Timeline, 100).ancho, 0);
         // Caso negativo: caben tres botones de ancho pero no cuatro, y no
         // queda ninguno.
         d.cabecera_lista.ancho = 3 * paso + 4;

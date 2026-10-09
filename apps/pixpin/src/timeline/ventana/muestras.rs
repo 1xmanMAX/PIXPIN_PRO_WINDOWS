@@ -228,8 +228,6 @@ fn lecciones_de_ejemplo(fotos: &[&PathBuf]) -> Vec<lecciones::TarjetaLeccion> {
                     leccion: l,
                     mensaje: pixpin_proyecto::cuaderno::Mensaje::default(),
                     ficha: "ejemplo".into(),
-                    nombre_chat: "Ejemplo".into(),
-                    general: true,
                     archivo: PathBuf::new(),
                 },
                 fotos: fotos.iter().take(*n_fotos).map(|f| (*f).clone()).collect(),

@@ -14,8 +14,10 @@
 //!   una tarjeta** con el boton izquierdo la lleva a otra aplicacion por el
 //!   mismo `DoDragDrop` que los pines (`pixpin_pin::arrastrar`); con mas de
 //!   uno, una franja los lleva todos juntos.
-//! - Abajo, sobre la tarjeta elegida: Compartir (el panel de Windows),
-//!   Copiar, Abrir, Mostrar en la carpeta y Pinear.
+//! - Abajo, sobre la tarjeta elegida: Copiar (el principal, en azul), Abrir,
+//!   Mostrar en la carpeta y Pinear. Hubo un Compartir con el panel de
+//!   Windows; el usuario (8-oct-2026) lo cambio por Copiar: lo que se hace
+//!   aqui es arrastrar o copiar.
 //! - **Una sola a la vez**: lo que llega mientras esta abierta se suma
 //!   arriba. Soltar con exito NO la cierra: se puede querer soltar el mismo
 //!   fichero en otro sitio.
@@ -43,7 +45,6 @@ use crate::v2;
 use crate::v2::color::blanco;
 use crate::ventanita::Botones;
 use disposicion::{Boton, Disposicion, Zona};
-pub(crate) use disposicion::supera_umbral;
 
 const VK_ESCAPE: u32 = 0x1B;
 const VK_RETURN: u32 = 0x0D;
@@ -473,7 +474,7 @@ fn flotar(recursos: &Recursos, textos: &Catalogo, e: &mut Estado) -> Result<()> 
         if let Some(z) = pulsar {
             match z {
                 Zona::Cerrar => vivo = false,
-                Zona::Boton(b) => hacer(b, e, &ventana, textos),
+                Zona::Boton(b) => hacer(b, e, textos),
                 // Pulsar sin arrastrar: lo que hace es decir como se usa.
                 Zona::Todos => e.avisar(textos.t("salida-arrastra-todos"), true),
                 _ => {}
@@ -540,25 +541,12 @@ fn flotar(recursos: &Recursos, textos: &Catalogo, e: &mut Estado) -> Result<()> 
 }
 
 /// **Un boton de abajo**, sobre la tarjeta elegida.
-fn hacer(b: Boton, e: &mut Estado, ventana: &VentanaOverlay, textos: &Catalogo) {
+fn hacer(b: Boton, e: &mut Estado, textos: &Catalogo) {
     let Some(ruta) = e.elegida().map(|f| f.ruta.clone()) else {
         return;
     };
     let una = std::slice::from_ref(&ruta);
     match b {
-        Boton::Compartir => {
-            let titulo = pixpin_docs::nombre(&ruta);
-            let nada: pixpin_shell::compartir::AlTerminar = std::sync::Arc::new(|| {});
-            if let Err(err) =
-                pixpin_shell::compartir::compartir_avisando(ventana.handle(), una, &titulo, nada)
-            {
-                // Sin el panel (un Windows recortado, una directiva): al
-                // portapapeles, que el gesto no se quede en nada.
-                tracing::warn!(?err, "el panel Compartir de Windows no se abrio");
-                let _ = pixpin_codec::portapapeles::copiar_ficheros(una);
-                e.avisar(textos.t("chat-compartir-sin-panel"), true);
-            }
-        }
         Boton::Copiar => {
             let hecho = if es_imagen(&ruta) {
                 match pixpin_codec::cargar(&ruta) {
@@ -604,7 +592,6 @@ fn hacer(b: Boton, e: &mut Estado, ventana: &VentanaOverlay, textos: &Catalogo) 
 
 fn icono_de(b: Boton) -> &'static Icono {
     match b {
-        Boton::Compartir => &mi::IOS_SHARE,
         Boton::Copiar => &mi::CONTENT_COPY,
         Boton::Abrir => &mi::OPEN_IN_NEW,
         Boton::Carpeta => &mi::FOLDER,
@@ -615,7 +602,6 @@ fn icono_de(b: Boton) -> &'static Icono {
 /// La pista de un boton de icono, con su atajo si lo tiene.
 fn pista_de(b: Boton, textos: &Catalogo) -> String {
     match b {
-        Boton::Compartir => textos.t("salida-compartir"),
         Boton::Copiar => format!("{} · Ctrl C", textos.t("salida-copiar")),
         Boton::Abrir => format!("{} · Enter", textos.t("salida-abrir")),
         Boton::Carpeta => textos.t("salida-carpeta"),
@@ -803,14 +789,14 @@ fn pintar(
     // Los botones de abajo.
     let mut pista = None;
     for (b, r) in &d.botones {
-        if *b == Boton::Compartir {
+        if *b == Boton::Copiar {
             crate::lecciones::ui::boton_v2(
                 p,
                 botones,
                 *r,
                 Zona::Boton(*b),
                 Some(icono_de(*b)),
-                &textos.t("salida-compartir"),
+                &textos.t("salida-copiar"),
                 None,
                 Some(v2::AZUL_LLENO),
                 Color::BLANCO,
@@ -1033,5 +1019,26 @@ mod pruebas {
             .unwrap();
             println!("{nombre}: {}", ruta.display());
         }
+    }
+
+    /// **Para mirarla a ojo**: abre la Salida de verdad con una pagina web
+    /// que lleva una nota de voz dentro, y la deja 8 s en pantalla. Con
+    /// `PIXPIN_SALIDA_DE_VERDAD=1`.
+    #[test]
+    #[ignore]
+    fn muestra_la_salida_con_una_pagina_con_adjuntos() {
+        let dir = std::env::temp_dir().join("pixpin-muestra-salida");
+        std::fs::create_dir_all(&dir).unwrap();
+        let voz = dir.join("nota de voz.m4a");
+        std::fs::write(&voz, b"audio de prueba").unwrap();
+        let trozo = crate::compartir::adjuntos::html(&[voz], "Adjuntos");
+        let pagina = dir.join("Proyecto de prueba.html");
+        std::fs::write(
+            &pagina,
+            crate::compartir::adjuntos::pagina_sola("Proyecto de prueba", &trozo),
+        )
+        .unwrap();
+        mostrar(vec![pagina], "Listo para compartir".into());
+        std::thread::sleep(std::time::Duration::from_secs(8));
     }
 }

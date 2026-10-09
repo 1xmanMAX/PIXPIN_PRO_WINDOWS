@@ -18,6 +18,9 @@ mod sacar;
 // El panel «Pines abiertos» (rediseno v2).
 mod abiertos;
 mod dispositivo;
+// Resaltar, subrayar, tachar o tapar el texto reconocido (8-oct-2026).
+mod marcas_texto;
+use marcas_texto::Cambio;
 pub(crate) mod foto;
 
 /// El catalogo de los rotulos que pintan las herramientas. El pintor de un
@@ -78,6 +81,16 @@ pub(crate) fn textos_v2(t: &pixpin_store::Catalogo) -> pixpin_pin::TextosV2 {
         tipo_nota: t.t("pin-v2-tipo-nota"),
         tipo_pdf: t.t("pin-v2-tipo-pdf"),
         tipo_video: t.t("pin-v2-tipo-video"),
+        marcas: [
+            t.t("pin-v2-marca-copiar"),
+            t.t("pin-v2-marca-resaltar"),
+            t.t("pin-v2-marca-ondulada"),
+            t.t("pin-v2-marca-subrayar"),
+            t.t("pin-v2-marca-tachar"),
+            t.t("pin-v2-marca-tapar"),
+        ],
+        quitar_marca: t.t("pin-v2-marca-quitar"),
+        modo_texto: t.t("pin-v2-modo-texto"),
         tipo_archivo: t.t("pin-v2-tipo-archivo"),
         tipo_vivo: t.t("pin-v2-tipo-vivo"),
         tipo_herramienta: t.t("pin-v2-tipo-herramienta"),
@@ -368,6 +381,8 @@ pub struct Pines {
     herramientas: HashMap<u64, herramienta::Herramienta>,
     /// Las pizarras abiertas, con su color y su pauta.
     pizarras: HashMap<u64, (u8, u8)>,
+    /// Lo hecho con la barra de marcas en cada pin, para `Ctrl+Z`.
+    marcas: HashMap<u64, Vec<marcas_texto::Paso>>,
     /// Las palabras magicas (las de fabrica del movil).
     palabras: std::collections::BTreeMap<String, pixpin_pin::magia::MiniApp>,
     /// El panel «Pines abiertos», si esta abierto (v2), y lo que pidio.
@@ -554,6 +569,7 @@ impl Pines {
             fotos_leidas: foto::Lecturas::nuevas(),
             herramientas: HashMap::new(),
             pizarras: HashMap::new(),
+            marcas: HashMap::new(),
             palabras: pixpin_pin::magia::por_defecto(),
             panel: None,
             pedidos_panel: Rc::new(RefCell::new(Vec::new())),
@@ -729,7 +745,7 @@ impl Pines {
                     pin.poner_anotaciones_con_grafito(
                         ordenes,
                         grafitos,
-                        pixpin_motor2d::mosaico::cajas_tapadas(&escena.elementos),
+                        marcas_texto::tapadas(&escena.elementos),
                     );
                 }
             }
@@ -952,6 +968,67 @@ impl Pines {
     }
 
     /// Una nota del portapapeles: nace centrada en el monitor pedido (D32).
+    /// **Lo que sale al sonar un recordatorio de un archivo o una foto del
+    /// chat** (8-oct-2026, el usuario: «que aparezca el archivo mas el
+    /// recordatorio como pin juntos, para que sepa que hacer con el archivo a
+    /// esa hora»): el archivo (la foto como foto) en el centro, la nota con el
+    /// recordatorio pegada debajo (o encima, si abajo no cabe) y los dos del
+    /// mismo color de grupo. Sin archivo, la nota sola, como siempre.
+    pub fn pinear_recordatorio(
+        &mut self,
+        texto: &str,
+        ruta: Option<&Path>,
+        monitor: &Monitor,
+    ) -> Result<()> {
+        let Some(ruta) = ruta.filter(|r| r.is_file()) else {
+            return self.pinear_nota(texto, monitor);
+        };
+        let id_archivo = match crate::tareas::es_imagen(ruta)
+            .then(|| cargar(ruta).ok())
+            .flatten()
+        {
+            Some(img) => self.pinear_imagen_centrada(&img, monitor)?,
+            None => self.pinear_archivo_id(ruta, monitor)?,
+        };
+        let Some(junto) = self.vivos.get(&id_archivo).map(|p| p.rect_contenido()) else {
+            return self.pinear_nota(texto, monitor);
+        };
+        let contenido = Contenido::Nota {
+            texto: texto.to_string(),
+        };
+        let natural = self.region_centrada(&contenido, monitor);
+        let hueco = (12 * monitor.escala_por_cien / 100) as i32;
+        let area = monitor.area_trabajo;
+        let debajo = junto.abajo() + hueco;
+        let y = if debajo + natural.alto as i32 <= area.abajo() {
+            debajo
+        } else {
+            (junto.y - hueco - natural.alto as i32).max(area.y)
+        };
+        let x = junto
+            .x
+            .min(area.derecha() - natural.ancho as i32)
+            .max(area.x);
+        let region = Rect { x, y, ..natural };
+        let id_nota = self
+            .almacen
+            .borrow_mut()
+            .guardar_nota(
+                texto,
+                "recordatorio",
+                Some(Pines::guardado_desde(region, monitor.escala_por_cien, 100)),
+            )
+            .context("no se pudo guardar la nota del recordatorio")?;
+        self.crear_ventana(id_nota, contenido, region, monitor.escala_por_cien)?;
+        for id in [id_archivo, id_nota] {
+            if let Err(e) = self.poner_grupo(id, Some(ColorGrupo::Ambar)) {
+                tracing::warn!(?e, id, "no se pudo juntar el recordatorio por color");
+            }
+        }
+        tracing::info!(id_archivo, id_nota, "recordatorio con su archivo pineado");
+        Ok(())
+    }
+
     pub fn pinear_nota(&mut self, texto: &str, monitor: &Monitor) -> Result<()> {
         let contenido = Contenido::Nota {
             texto: texto.to_string(),
@@ -1108,6 +1185,11 @@ impl Pines {
 
     /// La ficha de un archivo o carpeta, por referencia (D28).
     pub fn pinear_archivo(&mut self, ruta: &Path, monitor: &Monitor) -> Result<()> {
+        self.pinear_archivo_id(ruta, monitor).map(|_| ())
+    }
+
+    /// Como [`Self::pinear_archivo`], diciendo el id del pin.
+    fn pinear_archivo_id(&mut self, ruta: &Path, monitor: &Monitor) -> Result<u64> {
         let t0 = std::time::Instant::now();
         let contenido = self.contenido_de_archivo(ruta, false);
         let tipo = match &contenido {
@@ -1139,7 +1221,7 @@ impl Pines {
             ms = t0.elapsed().as_millis() as u64,
             "archivo pineado"
         );
-        hecho
+        hecho.map(|()| id)
     }
 
     /// Una imagen del portapapeles: no viene de ninguna region de pantalla,
@@ -1375,6 +1457,7 @@ impl Pines {
             self.escondidos.remove(&id);
             self.herramientas.remove(&id);
             self.pizarras.remove(&id);
+            self.marcas.remove(&id);
             // Soltar el pin en vivo cierra tambien su captura (Drop).
             if let Some((_, recorte)) = self.en_vivo.remove(&id) {
                 tracing::info!(
@@ -1455,6 +1538,9 @@ impl Pines {
             // Solo lo pide un pin en vivo, y ese ya salio por arriba.
             CambioPin::CongelarPedido => Ok(()),
             CambioPin::CopiarPedido => self.copiar(id),
+            CambioPin::MarcarTexto { marca, color } => self.marcar_texto(id, marca, color),
+            CambioPin::QuitarMarcasTexto => self.quitar_marcas_texto(id),
+            CambioPin::DeshacerMarca => self.deshacer_marca(id),
             CambioPin::TextoPedido => self.copiar_texto(id),
             CambioPin::ReconocerPedido => self.reconocer_texto(id).map(|_| ()),
             CambioPin::PaginaPedida(salto) => self.cambiar_pagina(id, salto),
@@ -1587,7 +1673,7 @@ impl Pines {
         pin.poner_anotaciones_con_grafito(
             ordenes,
             grafitos,
-            pixpin_motor2d::mosaico::cajas_tapadas(&escena.elementos),
+            marcas_texto::tapadas(&escena.elementos),
         );
         self.anotacion = Some(Anotacion {
             id,
@@ -1829,7 +1915,7 @@ impl Pines {
                     pin.poner_anotaciones_con_grafito(
                         ordenes,
                         grafitos,
-                        pixpin_motor2d::mosaico::cajas_tapadas(&escena.elementos),
+                        marcas_texto::tapadas(&escena.elementos),
                     );
                 }
             }
@@ -2046,7 +2132,7 @@ impl Pines {
         let (ordenes, grafitos) = a.ordenes();
         // Lo que tapa un mosaico, aparte de las ordenes: una `Orden` ya no
         // dice de que figura salio.
-        let tapadas = pixpin_motor2d::mosaico::cajas_tapadas(&a.escena.elementos);
+        let tapadas = marcas_texto::tapadas(&a.escena.elementos);
         if let Some(pin) = self.vivos.get(&id) {
             // La lupa del anotador viejo no esta entre las herramientas del
             // pin (`permitidas`): se quita por si quedo puesta.
@@ -2177,6 +2263,7 @@ impl Pines {
         self.vivos.remove(&id);
         self.herramientas.remove(&id);
         self.pizarras.remove(&id);
+        self.marcas.remove(&id);
         Ok(())
     }
 
@@ -2583,6 +2670,124 @@ Todavia no se puede ver aqui; sigue dentro del proyecto.",
         Ok(())
     }
 
+    /// Cambia el dibujo del pin `id` con `cambiar`, lo guarda y lo vuelve a
+    /// pintar en el pin. Para las marcas de texto: van al MISMO `.pixpin2d`
+    /// que lo anotado a mano, asi que se ven en el lienzo y viajan al copiar.
+    fn cambiar_dibujo(
+        &mut self,
+        id: u64,
+        cambiar: impl FnOnce(&mut Escena) -> Cambio,
+    ) -> Result<()> {
+        // Anotando, el dibujo vivo es el de la sesion y no el del fichero:
+        // escribir el fichero aqui se perderia al salir. El pin no deja
+        // seleccionar texto mientras se anota, asi que no deberia pasar.
+        if self.anotacion.as_ref().is_some_and(|a| a.id == id) {
+            return Ok(());
+        }
+        let ruta = self
+            .ruta_anotacion(id)
+            .context("este pin no tiene dibujo donde marcar")?;
+        let mut escena = pixpin_motor2d::cargar(&ruta).context("no se pudo leer la anotacion")?;
+        let paso = match cambiar(&mut escena) {
+            Cambio::Nada => return Ok(()),
+            Cambio::Hecho(paso) => paso,
+        };
+        pixpin_motor2d::guardar(&ruta, &escena).context("no se pudo guardar la marca")?;
+        if let Some(pin) = self.vivos.get(&id) {
+            let (ordenes, grafitos) = anotaciones_de(&escena, &mut Default::default());
+            pin.poner_anotaciones_con_grafito(
+                ordenes,
+                grafitos,
+                marcas_texto::tapadas(&escena.elementos),
+            );
+        }
+        if let Some(paso) = paso {
+            let pila = self.marcas.entry(id).or_default();
+            pila.push(paso);
+            if pila.len() > marcas_texto::PASOS {
+                pila.remove(0);
+            }
+        }
+        Ok(())
+    }
+
+    /// La barra de marcas: marcar lo seleccionado del pin `id`.
+    fn marcar_texto(&mut self, id: u64, marca: pixpin_pin::Marca, color: u8) -> Result<()> {
+        let Some(pin) = self.vivos.get(&id) else {
+            return Ok(());
+        };
+        let cajas = pin.cajas_del_texto_seleccionado();
+        pin.quitar_seleccion_de_texto();
+        if cajas.is_empty() {
+            return Ok(());
+        }
+        let rgb = pixpin_pin::barra_marcas::COLORES
+            [(color as usize).min(pixpin_pin::barra_marcas::COLORES.len() - 1)];
+        // Un grupo por marca: asi se mueve entera en el lienzo.
+        let grupo = format!(
+            "{}-{}",
+            marcas_texto::GRUPO,
+            pixpin_shell::entorno::ahora_utc_ms()
+        );
+        let nuevos = marcas_texto::elementos(marca, rgb, &cajas, &grupo);
+        tracing::info!(id, ?marca, renglones = cajas.len(), "texto marcado");
+        self.cambiar_dibujo(id, move |escena| {
+            let ids = nuevos.into_iter().map(|e| escena.anadir(e)).collect();
+            Cambio::Hecho(Some(marcas_texto::Paso::Anadidos(ids)))
+        })
+    }
+
+    /// El circulo tachado: quita las marcas que caen en lo seleccionado. Lo
+    /// dibujado a mano no se toca.
+    fn quitar_marcas_texto(&mut self, id: u64) -> Result<()> {
+        let Some(pin) = self.vivos.get(&id) else {
+            return Ok(());
+        };
+        let cajas = pin.cajas_del_texto_seleccionado();
+        pin.quitar_seleccion_de_texto();
+        if cajas.is_empty() {
+            return Ok(());
+        }
+        self.cambiar_dibujo(id, |escena| {
+            let quitar: Vec<_> = escena
+                .visibles()
+                .filter(|e| marcas_texto::es_marca(e) && marcas_texto::toca(e, &cajas))
+                .cloned()
+                .collect();
+            if quitar.is_empty() {
+                return Cambio::Nada;
+            }
+            for e in &quitar {
+                escena.borrar(e.id);
+            }
+            tracing::info!(id, cuantas = quitar.len(), "marcas de texto quitadas");
+            Cambio::Hecho(Some(marcas_texto::Paso::Quitados(quitar)))
+        })
+    }
+
+    /// `Ctrl+Z` en un pin sin anotar: deshace la ultima marca de texto.
+    fn deshacer_marca(&mut self, id: u64) -> Result<()> {
+        let Some(paso) = self.marcas.get_mut(&id).and_then(Vec::pop) else {
+            return Ok(());
+        };
+        self.cambiar_dibujo(id, |escena| {
+            match paso {
+                marcas_texto::Paso::Anadidos(ids) => {
+                    for i in ids {
+                        escena.borrar(i);
+                    }
+                }
+                marcas_texto::Paso::Quitados(elementos) => {
+                    for e in elementos {
+                        escena.anadir(e);
+                    }
+                }
+            }
+            // Deshacer no apila nada: se guarda y se repinta, sin mas.
+            Cambio::Hecho(None)
+        })
+    }
+
     fn copiar(&self, id: u64) -> Result<()> {
         let (tipo, objeto, ruta) = {
             let a = self.almacen.borrow();
@@ -2645,6 +2850,7 @@ Todavia no se puede ver aqui; sigue dentro del proyecto.",
             self.vivos.remove(id);
             self.herramientas.remove(id);
             self.pizarras.remove(id);
+            self.marcas.remove(id);
         }
         // Los en vivo no tienen sitio que recordar: se cierran sin mas.
         let en_vivo = self.en_vivo.len();
@@ -2663,6 +2869,7 @@ Todavia no se puede ver aqui; sigue dentro del proyecto.",
         // Vuelven del almacen al mostrarlos, con su documento guardado.
         self.herramientas.clear();
         self.pizarras.clear();
+        self.marcas.clear();
         for (pin, _) in self.en_vivo.values() {
             pin.esconder(true);
         }

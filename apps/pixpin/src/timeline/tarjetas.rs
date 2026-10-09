@@ -48,11 +48,6 @@ pub fn gravedad(g: i64) -> Gravedad {
     }
 }
 
-/// El circulo suave de detras del emoticono: su color, muy apagado.
-pub fn fondo_de(g: &Gravedad) -> Color {
-    Color { a: 0.2, ..g.color }
-}
-
 /// Un clic en la gravedad le da la vuelta: leve, importante, grave, leve.
 pub fn siguiente_gravedad(g: i64) -> i64 {
     match g {

@@ -119,6 +119,13 @@ pub struct TextosV2 {
     pub tipo_archivo: String,
     pub tipo_vivo: String,
     pub tipo_herramienta: String,
+    /// La barra de marcar el texto reconocido (8-oct-2026), en el orden de
+    /// `barra_marcas::BOTONES`: copiar, resaltar, ondulada, subrayar, tachar,
+    /// tapar; y el del circulo tachado, quitar la marca.
+    pub marcas: [String; 6],
+    pub quitar_marca: String,
+    /// El boton T de la barra: entrar o salir del modo texto.
+    pub modo_texto: String,
 }
 
 /// Textos del pin, YA traducidos: este crate no conoce Fluent (vive en

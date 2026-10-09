@@ -25,7 +25,7 @@ pub const ALTO_TODOS: f32 = 40.0;
 pub const PIE: f32 = 56.0;
 pub const MARGEN: f32 = 12.0;
 pub const HUECO: f32 = 8.0;
-/// Lo ancho del boton principal (Compartir), con icono y rotulo.
+/// Lo ancho del boton principal (Copiar), con icono y rotulo.
 pub const ANCHO_PRINCIPAL: f32 = 132.0;
 /// Las tarjetas que caben a la vez: con mas, la ventana ya no es «una
 /// ventanita» y tapa lo que el usuario esta haciendo. Las mas viejas se van.
@@ -40,7 +40,6 @@ pub const AIRE_PANTALLA: u32 = 20;
 /// Lo que hacen los botones de abajo, sobre la tarjeta elegida.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Boton {
-    Compartir,
     Copiar,
     Abrir,
     Carpeta,
@@ -48,8 +47,7 @@ pub enum Boton {
 }
 
 /// Todos, en el orden en que se colocan de izquierda a derecha.
-pub const BOTONES: [Boton; 5] = [
-    Boton::Compartir,
+pub const BOTONES: [Boton; 4] = [
     Boton::Copiar,
     Boton::Abrir,
     Boton::Carpeta,
@@ -122,14 +120,15 @@ pub fn disponer(n: usize, s: f32) -> Disposicion {
         });
         y += (ALTO_TARJETA + HUECO) * s;
     }
-    // El pie: Compartir (la principal, azul) a la izquierda y los de icono
-    // pegados a la derecha. Como la hoja de compartir del movil: la accion
-    // principal siempre en el mismo sitio.
+    // El pie: Copiar (la principal, azul) a la izquierda y los de icono
+    // pegados a la derecha. Antes la principal era el panel Compartir de
+    // Windows; el usuario (8-oct-2026) la queria «Copiar en azul»: lo que se
+    // hace con esta ventana es arrastrar o copiar, no otro panel mas.
     let pie_y = y - HUECO * s;
     let by = pie_y + (PIE - crate::v2::BOTON) / 2.0 * s;
     let alto_boton = crate::v2::BOTON * s;
     let mut botones = vec![(
-        Boton::Compartir,
+        Boton::Copiar,
         RectF {
             x: dentro_x,
             y: by,

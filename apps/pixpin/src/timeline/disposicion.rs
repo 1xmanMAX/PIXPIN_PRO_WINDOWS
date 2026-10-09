@@ -107,7 +107,9 @@ const CELDA_MIN: f32 = 60.0;
 const RADIO: f32 = 24.0;
 /// El alto de una fila sin ningun dia con algo: solo puntitos. Asi un mes
 /// con tres dias no ocupa cuatro filas de numeros (lo vio un revisor).
-const FILA_VACIA: f32 = 22.0;
+const FILA_VACIA: f32 = 30.0;
+/// La fila de las iniciales de la semana, encima de los dias.
+const SEMANA: f32 = 24.0;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct CeldaDia {
@@ -126,13 +128,8 @@ pub struct TarjetaMes {
     pub mes: Mes,
     pub caja: RectF,
     pub celdas: Vec<CeldaDia>,
-}
-
-/// Cuantos dias van por fila en una tarjeta de `ancho` de ventana: diez,
-/// como en WeChat, o menos si no caben.
-pub fn dias_por_fila(ancho: f32, s: f32) -> usize {
-    let libre = derecha_de_la_tarjeta(ancho, s);
-    ((libre / (CELDA_MIN * s)).floor() as usize).clamp(1, 10)
+    /// Las iniciales de la semana (lunes a domingo) encima de sus columnas.
+    pub semana: Vec<RectF>,
 }
 
 fn derecha_de_la_tarjeta(ancho: f32, s: f32) -> f32 {
@@ -143,24 +140,52 @@ fn derecha_de_la_tarjeta(ancho: f32, s: f32) -> f32 {
 /// mes llega con sus dias ya en el orden en que se ven (al reves) y si
 /// tienen algo. `abajo` es lo que hay que dejar libre al final (la barra
 /// flotante de los dias elegidos, que no debe tapar la ultima fila).
+///
+/// **Un calendario de verdad** (8-oct-2026, el usuario: «que sea llamada
+/// calendario»): siete columnas de lunes a domingo con sus iniciales arriba,
+/// y cada dia en la de su dia de la semana. Antes eran diez por fila, del
+/// mas reciente al 1, como las tarjetas de estado de WeChat.
 pub fn estado(meses: &[(Mes, Vec<(Dia, bool)>)], ancho: f32, s: f32, abajo: f32) -> (Vec<TarjetaMes>, f32) {
-    let por_fila = dias_por_fila(ancho, s);
     let libre = derecha_de_la_tarjeta(ancho, s);
-    let celda_w = libre / por_fila as f32;
+    let celda_w = libre / 7.0;
+    let x_de = |col: usize| MARGEN * s + PAD * s + COLUMNA_MES * s + col as f32 * celda_w;
     let radio = (RADIO * s).min(celda_w / 2.0 - 5.0 * s).max(8.0 * s);
     let fila_llena = 22.0 * s + 6.0 * s + 2.0 * radio + 12.0 * s;
     let mut y = PISTA_ESTADO * s;
     let mut v = Vec::new();
     for (mes, dias) in meses {
         let y0 = y + PAD * s;
-        let mut fy = y0;
+        let semana: Vec<RectF> = (0..7)
+            .map(|k| RectF {
+                x: x_de(k),
+                y: y0,
+                ancho: celda_w,
+                alto: SEMANA * s,
+            })
+            .collect();
+        let mut fy = y0 + SEMANA * s;
         let mut celdas = Vec::with_capacity(dias.len());
-        for fila in dias.chunks(por_fila.max(1)) {
-            let llena = fila.iter().any(|(_, algo)| *algo);
+        // Del 1 al ultimo, cada uno en su semana y su columna.
+        let mut orden = dias.clone();
+        orden.sort_by_key(|(d, _)| d.numero());
+        let hueco = mes.primero().dia_de_la_semana() as usize;
+        let mut semanas: Vec<Vec<(usize, Dia, bool)>> = Vec::new();
+        for (d, algo) in orden {
+            let k = hueco + d.dia as usize - 1;
+            let (fila, col) = (k / 7, k % 7);
+            while semanas.len() <= fila {
+                semanas.push(Vec::new());
+            }
+            semanas[fila].push((col, d, algo));
+        }
+        for fila in &semanas {
+            let llena = fila.iter().any(|(_, _, algo)| *algo);
             let alto = if llena { fila_llena } else { FILA_VACIA * s };
-            for (k, (d, algo)) in fila.iter().enumerate() {
+            for &(col, d, algo) in fila {
+                let algo = &algo;
+                let d = &d;
                 let c = RectF {
-                    x: MARGEN * s + PAD * s + COLUMNA_MES * s + k as f32 * celda_w,
+                    x: x_de(col),
                     y: fy,
                     ancho: celda_w,
                     alto,
@@ -190,6 +215,7 @@ pub fn estado(meses: &[(Mes, Vec<(Dia, bool)>)], ancho: f32, s: f32, abajo: f32)
             mes: *mes,
             caja,
             celdas,
+            semana,
         });
         y += caja.alto + 12.0 * s;
     }
@@ -454,22 +480,25 @@ mod pruebas {
     }
 
     #[test]
-    fn el_estado_pone_diez_dias_por_fila_y_menos_si_es_estrecha() {
-        assert_eq!(dias_por_fila(900.0, 1.0), 10);
-        assert!(dias_por_fila(600.0, 1.0) < 10);
-        assert!(dias_por_fila(600.0, 1.0) >= 1);
+    fn el_calendario_pone_cada_dia_en_la_columna_de_su_dia_de_la_semana() {
+        // Septiembre de 2026 empieza en martes.
         let mes = Mes { anio: 2026, mes: 9 };
         let dias: Vec<(Dia, bool)> = archivo::dias_al_reves(mes, d(2026, 10, 5))
             .into_iter()
             .map(|x| (x, true))
             .collect();
         let (t, _) = estado(&[(mes, dias)], 900.0, 1.0, 0.0);
-        let c = &t[0].celdas;
+        let (c, semana) = (&t[0].celdas, &t[0].semana);
+        assert_eq!(semana.len(), 7);
         assert_eq!(c.len(), 30);
-        assert_eq!(c[0].dia.dia, 30);
-        // El undecimo baja de fila y vuelve a la izquierda.
-        assert_eq!(c[10].caja.x, c[0].caja.x);
-        assert!(c[10].caja.y > c[0].caja.y);
+        assert_eq!(c[0].dia.dia, 1, "del 1 al ultimo");
+        assert_eq!(c[0].caja.x, semana[1].x, "el 1 cae en martes");
+        // El 7 es lunes: primera columna y semana siguiente.
+        assert_eq!(c[6].dia.dia, 7);
+        assert_eq!(c[6].caja.x, semana[0].x);
+        assert!(c[6].caja.y > c[0].caja.y);
+        // Los dias, debajo de las iniciales.
+        assert!(c[0].caja.y >= semana[0].y + semana[0].alto);
         // Todo dentro de su tarjeta.
         for x in c {
             assert!(x.caja.y + x.caja.alto <= t[0].caja.y + t[0].caja.alto + 0.5);
@@ -495,7 +524,7 @@ mod pruebas {
             .filter(|x| dentro(x.caja, punto))
             .map(|x| x.dia.dia)
             .collect();
-        assert_eq!(tocadas, [4]);
+        assert_eq!(tocadas, [2]);
     }
 
     #[test]
@@ -508,10 +537,11 @@ mod pruebas {
             .collect();
         let (t, alto) = estado(&[(mes, dias.clone())], 900.0, 1.0, 0.0);
         let c = &t[0].celdas;
-        let alta = c[0].caja.alto;
-        let baja = c[10].caja.alto;
+        let de = |n: u8| c.iter().find(|x| x.dia.dia == n).unwrap();
+        let alta = de(29).caja.alto;
+        let baja = de(10).caja.alto;
         assert!(baja < alta / 2.0, "{baja} vs {alta}");
-        assert!(c[0].con_algo && !c[10].con_algo);
+        assert!(de(29).con_algo && !de(10).con_algo);
         // Caso negativo: sin la barra no se reserva nada; con ella, su alto.
         let (_, con_barra) = estado(&[(mes, dias)], 900.0, 1.0, 76.0);
         assert_eq!(con_barra, alto + 76.0);

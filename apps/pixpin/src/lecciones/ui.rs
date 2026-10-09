@@ -533,26 +533,14 @@ pub mod v2 {
     use crate::caja_dibujo::hex;
     use pixpin_render::Color;
 
-    pub const FONDO: Color = hex(0x1c1c1e);
-    pub const COLUMNA: Color = hex(0x232326);
-    pub const CAJA: Color = hex(0x2c2c2e);
-    pub const ENCIMA: Color = hex(0x343437);
-    pub const LINEA: Color = hex(0x2e2e31);
-    pub const TEXTO: Color = hex(0xf5f5f7);
-    pub const CUERPO: Color = hex(0xededf0);
     pub const SUAVE: Color = hex(0xc7c7cc);
-    pub const APAGADO: Color = hex(0x98989d);
     /// La accion principal (Guardar, Siguiente).
     pub const AZUL: Color = hex(0x0060df);
-    /// Lo elegido (la fila, el foco).
-    pub const ELEGIDO: Color = hex(0x0a84ff);
     pub const CIAN: Color = hex(0x64d2ff);
     pub const NARANJA: Color = hex(0xff9f0a);
     pub const VERDE: Color = hex(0x30d158);
     pub const ROJO: Color = hex(0xff453a);
-    pub const ROJO_TEXTO: Color = hex(0xff6961);
     pub const AMARILLO: Color = hex(0xffd60a);
-    pub const OSCURO: Color = hex(0x1c1c1e);
     pub const BLANCO: Color = hex(0xffffff);
 }
 
@@ -768,12 +756,3 @@ mod pruebas_v2 {
     }
 }
 
-/// `a` con un `t` de `b` encima (0 = todo `a`).
-pub fn mezclar(a: Color, b: Color, t: f32) -> Color {
-    Color {
-        r: a.r + (b.r - a.r) * t,
-        g: a.g + (b.g - a.g) * t,
-        b: a.b + (b.b - a.b) * t,
-        a: a.a,
-    }
-}

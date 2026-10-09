@@ -137,6 +137,16 @@ pub(crate) fn suscribir(tx: mpsc::Sender<Novedad>) -> Suscripcion {
     Suscripcion
 }
 
+/// Enterarse de lo que pasa SIN acelerar la sonda: para la sincronizacion
+/// automatica, que vive lo que la aplicacion y no esta mirando nadie.
+pub(crate) fn oir(tx: mpsc::Sender<Novedad>) {
+    if let Some(s) = SERVICIO.get()
+        && let Ok(mut o) = s.oyentes.lock()
+    {
+        o.push(tx);
+    }
+}
+
 pub(crate) struct Suscripcion;
 
 impl Drop for Suscripcion {

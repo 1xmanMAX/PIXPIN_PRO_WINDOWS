@@ -57,6 +57,12 @@ pub fn abrir(idioma: Idioma, ubicacion: Ubicacion, aparato: &str) {
     ventana::abrir(idioma, ubicacion, aparato.to_string());
 }
 
+/// Como [`abrir`], con la vista en la lista `clave` (`Lista::clave`): lo que
+/// abre una lista de tareas pulsada en el chat. Una sola interfaz de tareas.
+pub fn abrir_en(idioma: Idioma, ubicacion: Ubicacion, aparato: &str, clave: String) {
+    ventana::abrir_en(idioma, ubicacion, aparato.to_string(), Some(clave));
+}
+
 // ------------------------------------------------------------- la lectura
 
 /// Una tarea de una lista, ya leida.
@@ -381,6 +387,160 @@ pub fn apuntar_con(
         None => pedidos::nueva_lista(raiz, &f.id, aparato, INBOX)?,
     };
     pedidos::anadir_tarea(raiz, &f.id, aparato, Some(&inbox.id), texto, INBOX)
+}
+
+/// Como [`apuntar_con`], pero en la lista `lista` y no en el Inbox: la caja
+/// de la ventana de Tareas abierta desde una lista del chat.
+pub fn apuntar_en(
+    raiz: &Path,
+    aparato: &str,
+    lista: &Lista,
+    texto: &str,
+    imagenes: &[(u32, PathBuf)],
+) -> Result<cuaderno::Mensaje, Fallo> {
+    if mini::saneado(texto).is_empty() && imagenes.is_empty() {
+        return Err(Fallo::TareaVacia);
+    }
+    let texto = &con_imagenes_guardadas(raiz, &lista.proyecto, texto, imagenes)?;
+    pedidos::anadir_tarea(
+        raiz,
+        &lista.proyecto,
+        aparato,
+        Some(&lista.codigo),
+        texto,
+        &lista.titulo,
+    )
+}
+
+// --------------------------------------------------- los recordatorios
+//
+// **Una tarea puede recordarse a una hora** (8-oct-2026, el usuario: «añade
+// los recordatorios a las tareas, para que algunas tareas que son
+// importantes las recuerde cuando llegue el momento»). Android no lo tiene,
+// asi que la hora va DENTRO del texto de la tarea, al final:
+// `Llamar al banco ⏰ 2026-10-09 10:00`, en hora local. Asi viaja al
+// sincronizar sin inventar otro campo, y en el movil se lee como texto. Al
+// sonar, la marca se quita.
+
+/// Lo que marca la hora en el texto de una tarea.
+pub const RELOJ: char = '⏰';
+
+/// Los dias desde 1970-01-01 de una fecha (Howard Hinnant, `days_from_civil`).
+fn dias_de(y: i64, m: i64, d: i64) -> i64 {
+    let y = if m <= 2 { y - 1 } else { y };
+    let era = y.div_euclid(400);
+    let yoe = y - era * 400;
+    let mp = (m + 9) % 12;
+    let doy = (153 * mp + 2) / 5 + d - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    era * 146_097 + doe - 719_468
+}
+
+/// Al reves: la fecha de unos dias desde 1970.
+fn fecha_de(dias: i64) -> (i64, i64, i64) {
+    let z = dias + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z - era * 146_097;
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    (yoe + era * 400 + i64::from(m <= 2), m, d)
+}
+
+/// La marca de una hora local: `⏰ 2026-10-09 10:00`.
+pub fn marca_de_hora(local_ms: i64) -> String {
+    const DIA: i64 = 86_400_000;
+    let (y, m, d) = fecha_de(local_ms.div_euclid(DIA));
+    let min = local_ms.rem_euclid(DIA) / 60_000;
+    format!("{RELOJ} {y:04}-{m:02}-{d:02} {:02}:{:02}", min / 60, min % 60)
+}
+
+/// La hora (local) de una tarea y donde empieza su marca, si la lleva.
+fn marca_en(texto: &str) -> Option<(usize, i64)> {
+    let i = texto.rfind(RELOJ)?;
+    let resto = texto[i + RELOJ.len_utf8()..].trim_start();
+    let num = |a: usize, b: usize| resto.get(a..b).and_then(|s| s.parse::<i64>().ok());
+    let (y, mo, d, h, mi) = (num(0, 4)?, num(5, 7)?, num(8, 10)?, num(11, 13)?, num(14, 16)?);
+    let sep = resto.as_bytes();
+    if sep.get(4) != Some(&b'-') || sep.get(7) != Some(&b'-') || sep.get(13) != Some(&b':') {
+        return None;
+    }
+    if !(1..=12).contains(&mo) || !(1..=31).contains(&d) || h > 23 || mi > 59 {
+        return None;
+    }
+    Some((i, (dias_de(y, mo, d) * 1440 + h * 60 + mi) * 60_000))
+}
+
+/// La hora local a la que se recuerda una tarea, si tiene.
+pub fn hora_de_tarea(texto: &str) -> Option<i64> {
+    marca_en(texto).map(|(_, t)| t)
+}
+
+/// El texto sin la marca de la hora.
+pub fn sin_hora(texto: &str) -> String {
+    match marca_en(texto) {
+        Some((i, _)) => texto[..i].trim_end().to_string(),
+        None => texto.to_string(),
+    }
+}
+
+/// El texto con la hora `local_ms` (cambiando la que tuviera).
+pub fn con_hora(texto: &str, local_ms: i64) -> String {
+    format!("{} {}", sin_hora(texto).trim_end(), marca_de_hora(local_ms))
+}
+
+/// El id de agenda del recordatorio de una tarea: su lista y su hora.
+pub fn id_de_recordatorio(mensaje: &str, local_ms: i64) -> String {
+    format!("tarea:{mensaje}:{local_ms}")
+}
+
+/// Los recordatorios de las tareas pendientes de un cuaderno.
+pub fn avisos_del_cuaderno(c: &cuaderno::Cuaderno) -> Vec<crate::recordatorios::Recordatorio> {
+    c.mensajes
+        .iter()
+        .filter(|m| pedidos::es_lista(m))
+        .flat_map(|m| {
+            mini::leer_tareas(&m.texto)
+                .into_iter()
+                .filter(|t| !t.hecha)
+                .filter_map(|t| {
+                    let local = hora_de_tarea(&t.texto)?;
+                    Some(crate::recordatorios::Recordatorio {
+                        id: id_de_recordatorio(&m.id, local),
+                        cuando_utc_ms: crate::recordatorios::de_local_a_utc(local),
+                        texto: format!("☑ {}", mini::partir(&sin_hora(&t.texto)).0.trim()),
+                    })
+                })
+                .collect::<Vec<_>>()
+        })
+        .collect()
+}
+
+/// Quita la marca de la hora que sono (`id` de [`id_de_recordatorio`]).
+/// `Ok(false)` si no es de una tarea o ya no esta.
+pub fn olvidar_hora(carpeta: &Path, id: &str) -> std::io::Result<bool> {
+    let Some((mensaje, local)) = id
+        .strip_prefix("tarea:")
+        .and_then(|r| r.rsplit_once(':'))
+        .and_then(|(m, t)| Some((m, t.parse::<i64>().ok()?)))
+    else {
+        return Ok(false);
+    };
+    let c = cuaderno::Cuaderno::leer_de(carpeta)?;
+    let Some(m) = c.mensajes.iter().find(|m| m.id == mensaje) else {
+        return Ok(false);
+    };
+    let marca = marca_de_hora(local);
+    let Some(i) = m.texto.find(&marca) else {
+        return Ok(false);
+    };
+    let mut m = m.clone();
+    // Con el espacio de delante, que se puso al marcarla.
+    let desde = if m.texto[..i].ends_with(' ') { i - 1 } else { i };
+    m.texto.replace_range(desde..i + marca.len(), "");
+    cuaderno::reemplazar(carpeta, &m)
 }
 
 /// Pasa una tarea de su lista a otra (el boton «Mover a…» del Inbox): se
@@ -781,6 +941,71 @@ mod pruebas {
         let (listas, _) = reunir(&raiz);
         let nuevo = listas.iter().find(|l| es_inbox(l)).unwrap();
         assert_eq!(textos(&nuevo.filas.iter().collect::<Vec<_>>()), ["leche"]);
+        let _ = std::fs::remove_dir_all(&raiz);
+    }
+
+    #[test]
+    fn la_hora_de_una_tarea_va_y_vuelve_por_su_texto() {
+        // 2026-10-09 10:30, hora local.
+        let t = (dias_de(2026, 10, 9) * 1440 + 10 * 60 + 30) * 60_000;
+        assert_eq!(fecha_de(dias_de(2026, 10, 9)), (2026, 10, 9));
+        assert_eq!(fecha_de(dias_de(2024, 2, 29)), (2024, 2, 29), "bisiesto");
+        assert_eq!(marca_de_hora(t), "⏰ 2026-10-09 10:30");
+        let con = con_hora("Llamar al banco", t);
+        assert_eq!(con, "Llamar al banco ⏰ 2026-10-09 10:30");
+        assert_eq!(hora_de_tarea(&con), Some(t));
+        assert_eq!(sin_hora(&con), "Llamar al banco");
+        // Cambiarla no la repite.
+        let otra = con_hora(&con, t + 60_000);
+        assert_eq!(otra.matches(RELOJ).count(), 1);
+        // Casos negativos: un reloj suelto o una fecha imposible no son hora.
+        assert_eq!(hora_de_tarea("despertar ⏰ pronto"), None);
+        assert_eq!(hora_de_tarea("x ⏰ 2026-13-01 10:00"), None);
+        assert_eq!(sin_hora("x ⏰ pronto"), "x ⏰ pronto");
+    }
+
+    #[test]
+    fn una_tarea_con_hora_entra_en_la_agenda_y_al_sonar_pierde_su_marca() {
+        let (raiz, obra) = almacen_de_prueba("tarea-con-hora");
+        let t = (dias_de(2030, 1, 2) * 1440 + 9 * 60) * 60_000;
+        let texto = con_hora("yeso", t);
+        let m = pedidos::anadir_tarea(&raiz, &obra.id, "PC01", None, &texto, "Obra").unwrap();
+        pedidos::anadir_tarea(&raiz, &obra.id, "PC01", Some(&m.id), "arena", "Obra").unwrap();
+        let carpeta = almacen::carpeta(&raiz, &obra.id);
+        let c = cuaderno::Cuaderno::leer_de(&carpeta).unwrap();
+        let avisos = avisos_del_cuaderno(&c);
+        assert_eq!(avisos.len(), 1, "solo la que tiene hora");
+        assert!(avisos[0].texto.contains("yeso") && !avisos[0].texto.contains(RELOJ));
+        assert!(olvidar_hora(&carpeta, &avisos[0].id).unwrap());
+        let c = cuaderno::Cuaderno::leer_de(&carpeta).unwrap();
+        assert!(avisos_del_cuaderno(&c).is_empty());
+        let (listas, _) = reunir(&raiz);
+        let l = listas.iter().find(|l| !l.guardados).unwrap();
+        assert_eq!(textos(&l.filas.iter().collect::<Vec<_>>()), ["yeso", "arena"]);
+        // Caso negativo: un id que no es de tarea no toca nada.
+        assert!(!olvidar_hora(&carpeta, "otra-cosa").unwrap());
+        let _ = std::fs::remove_dir_all(&raiz);
+    }
+
+    #[test]
+    fn abierta_desde_una_lista_del_chat_apunta_en_esa_lista_y_no_en_el_inbox() {
+        let (raiz, obra) = almacen_de_prueba("apuntar-en");
+        pedidos::anadir_tarea(&raiz, &obra.id, "PC01", None, "yeso", "Obra").unwrap();
+        let (listas, _) = reunir(&raiz);
+        let grupo = listas.iter().find(|l| !l.guardados).unwrap().clone();
+        apuntar_en(&raiz, "PC01", &grupo, "arena", &[]).unwrap();
+        let (listas, _) = reunir(&raiz);
+        let grupo2 = listas.iter().find(|l| l.clave() == grupo.clave()).unwrap();
+        assert_eq!(
+            textos(&grupo2.filas.iter().collect::<Vec<_>>()),
+            ["yeso", "arena"]
+        );
+        assert!(listas.iter().all(|l| !es_inbox(l)), "el Inbox ni se crea");
+        // Caso negativo: vacia no apunta nada.
+        assert!(matches!(
+            apuntar_en(&raiz, "PC01", &grupo, "  ", &[]),
+            Err(Fallo::TareaVacia)
+        ));
         let _ = std::fs::remove_dir_all(&raiz);
     }
 

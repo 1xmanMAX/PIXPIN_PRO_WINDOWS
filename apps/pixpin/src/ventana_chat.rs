@@ -1498,6 +1498,7 @@ pub fn abrir(
                                 textos,
                                 lienzo,
                                 idioma,
+                                &identidad,
                             );
                             hay_que_pintar = true;
                             continue;
@@ -1707,16 +1708,14 @@ pub fn abrir(
                         // Lecciones, galeria de capturas y tareas, cada una
                         // en su ventana (en el sitio del universo, 3-oct).
                         match extra {
-                            // Las lecciones se ven en el timeline (5-oct).
-                            pixpin_ui::chat::Extra::Lecciones => {
-                                crate::timeline::abrir_lecciones(idioma, ubicacion.clone())
-                            }
                             pixpin_ui::chat::Extra::Galeria => {
                                 crate::galeria_capturas::abrir(idioma, ubicacion.clone())
                             }
                             pixpin_ui::chat::Extra::Tareas => {
                                 crate::tareas::abrir(idioma, ubicacion.clone(), &identidad)
                             }
+                            // Y con el las lecciones, en su pestana: un solo
+                            // boton para las dos (8-oct-2026, el usuario).
                             pixpin_ui::chat::Extra::Timeline => {
                                 crate::timeline::abrir(idioma, ubicacion.clone())
                             }
@@ -2315,6 +2314,7 @@ pub fn abrir(
                                 textos,
                                 lienzo,
                                 idioma,
+                                &identidad,
                             );
                             buscando = false;
                         } else if pixpin_ui::chat::comenta_al_soltar(corrida, escala)
@@ -3539,6 +3539,11 @@ pub fn abrir(
                         if let Some(pend) = pendientes_ref {
                             envio::pintar(p, &c, pend, marco, &a.ficha.nombre);
                         }
+                        // La hora a mano, en su ventanita encima de todo: en la
+                        // barra de abajo la tapaban otras cosas (8-oct-2026).
+                        if a.hora_a_mano.is_some() {
+                            pintar_hora_a_mano(p, &c, a, marco);
+                        }
                     }
                     // El menu, el ultimo: se despliega encima de todo.
                     if let Some(m) = menu_ref {
@@ -4246,10 +4251,6 @@ fn pintar(
         (
             d.boton_extra(pixpin_ui::chat::Extra::Galeria, escala),
             &mi::PHOTO_LIBRARY,
-        ),
-        (
-            d.boton_extra(pixpin_ui::chat::Extra::Lecciones, escala),
-            &mi::LIGHTBULB,
         ),
         (
             d.boton_extra(pixpin_ui::chat::Extra::Timeline, escala),
@@ -5517,7 +5518,24 @@ fn tocar_la_burbuja(
     textos: &Catalogo,
     lienzo: OpcionesLienzo,
     idioma: pixpin_store::Idioma,
+    identidad: &str,
 ) {
+    // Una lista de tareas se abre en la ventana de Tareas, en esa lista: la
+    // misma que el boton de Tareas (el usuario, 8-oct-2026: «que la interfaz
+    // sea unificada»). Antes se abria un panel propio dentro del chat.
+    if let Some(a) = abierto.as_ref()
+        && let Some(m) = a.mensajes.get(indice)
+        && m.clase == Some(pixpin_proyecto::cuaderno::Clase::MiniApp)
+        && m.miniapp.as_deref() == Some(pixpin_proyecto::mini::TAREAS)
+    {
+        crate::tareas::abrir_en(
+            idioma,
+            ubicacion.clone(),
+            identidad,
+            format!("{}/{}", a.ficha.id, m.id),
+        );
+        return;
+    }
     // Un proyecto adjunto es la puerta a ese proyecto: pulsarlo lo abre.
     let a_otro = abierto
         .as_ref()
@@ -7417,7 +7435,9 @@ fn ruta_del_mensaje(
     let relativa = m.ruta.as_deref().filter(|r| !r.is_empty())?;
     // `pixpin:files/…` es lo que llego sincronizando con el movil: la vista
     // de sincronizar sabe donde lo guardo (`vista::ruta_real`).
-    pixpin_proyecto::vista::ruta_real(raiz, proyecto, relativa)
+    let ruta = pixpin_proyecto::vista::ruta_real(raiz, proyecto, relativa)?;
+    // Un PDF que el movil guardo como `.bin`: con la extension de su nombre.
+    Some(pixpin_proyecto::vista::con_la_extension_del_nombre(raiz, ruta, &m.nombre))
 }
 
 /// **El fichero de un mensaje que esta en el disco**: el de su `ruta` o, en
@@ -13703,6 +13723,110 @@ fn pintar_barra_del_reproductor(p: &Pintor, barra: Rect, c: &Pinta, a: &Abierto)
     }
 }
 
+/// **La ventanita de la hora a mano** del recordatorio: una tarjeta en el
+/// centro, sobre un velo, encima de todo lo del chat. Antes era una barra
+/// sobre la caja de escribir, y otras cosas de la interfaz la tapaban y no
+/// dejaban escribir (el usuario, 8-oct-2026). Las teclas son las de antes:
+/// se escribe, Intro la pone y Esc la quita; la ✕ tambien.
+fn pintar_hora_a_mano(p: &Pintor, c: &Pinta, a: &Abierto, marco: Rect) {
+    let Some((_, escrito)) = &a.hora_a_mano else {
+        return;
+    };
+    let (tema, textos) = (c.tema, c.textos);
+    let e = c.escala as f32 / 100.0;
+    let (w, h) = (marco.ancho as f32, marco.alto as f32);
+    p.rellenar(
+        RectF {
+            x: 0.0,
+            y: 0.0,
+            ancho: w,
+            alto: h,
+        },
+        Color {
+            r: 0.0,
+            g: 0.0,
+            b: 0.0,
+            a: 0.45,
+        },
+    );
+    let ancho = (420.0 * e).min(w - 32.0 * e).max(1.0);
+    let alto = 168.0 * e;
+    let caja = RectF {
+        x: (w - ancho) / 2.0,
+        y: ((h - alto) / 2.0).max(8.0 * e),
+        ancho,
+        alto,
+    };
+    p.rellenar_redondeado(caja, 18.0 * e, tema.campo);
+    // La cabecera: el reloj, el titulo y la ✕.
+    let icono = 22.0 * e;
+    p.icono(
+        &mi::ALARM,
+        RectF {
+            x: caja.x + 18.0 * e,
+            y: caja.y + 18.0 * e,
+            ancho: icono,
+            alto: icono,
+        },
+        tema.enviar,
+    );
+    let titulo = textos.t("chat-recordar-hora");
+    p.texto_linea(
+        &titulo,
+        caja.x + 50.0 * e,
+        caja.y + 18.0 * e,
+        16.0 * e,
+        ancho - 110.0 * e,
+        tema.texto,
+    );
+    let cerrar = Rect {
+        x: (caja.x + ancho - 52.0 * e) as i32,
+        y: (caja.y + 6.0 * e) as i32,
+        ancho: (44.0 * e) as u32,
+        alto: (44.0 * e) as u32,
+    };
+    icono_centrado(p, &mi::CLOSE, cerrar, 20.0 * e, tema.campo_apagado);
+    a.zonas.borrow_mut().push((cerrar, Zona::CerrarHora));
+    // La caja con lo tecleado y su cursor.
+    let campo = RectF {
+        x: caja.x + 18.0 * e,
+        y: caja.y + 60.0 * e,
+        ancho: ancho - 36.0 * e,
+        alto: 44.0 * e,
+    };
+    p.rellenar_redondeado(campo, 10.0 * e, tema.chat);
+    p.trazar(campo, 1.5 * e, tema.enviar);
+    let rotulo = format!("{} {escrito}|", textos.t("chat-recordar-hora-a-las"));
+    let (_, alto_r) = p.medir_texto(&rotulo, 15.0 * e);
+    p.texto_linea(
+        &rotulo,
+        campo.x + 14.0 * e,
+        campo.y + (campo.alto - alto_r) / 2.0,
+        15.0 * e,
+        campo.ancho - 28.0 * e,
+        tema.texto,
+    );
+    // Debajo, a que hora queda de verdad: «09:00» tecleado a las diez es
+    // MANANA, y eso se ve antes de pulsar Intro, no despues.
+    let ahora = pixpin_shell::entorno::ahora_local_ms();
+    let pista = match crate::recordatorios::hora_escrita(escrito, ahora) {
+        Some(cuando) => {
+            let mut args = fluent_bundle::FluentArgs::new();
+            args.set("cuando", crate::recordatorios::cuando_legible(cuando, ahora));
+            textos.t_args("chat-recordar-hora-queda", &args)
+        }
+        None => textos.t("chat-recordar-hora-teclas"),
+    };
+    p.texto_linea(
+        &pista,
+        campo.x + 2.0 * e,
+        campo.y + campo.alto + 14.0 * e,
+        13.0 * e,
+        campo.ancho,
+        tema.campo_apagado,
+    );
+}
+
 fn pintar_redaccion(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto, alto_texto: u32) {
     let (tema, escala, textos) = (c.tema, c.escala, c.textos);
     let e = escala as f32 / 100.0;
@@ -13795,62 +13919,6 @@ fn pintar_redaccion(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto, alto_te
         let barra = d.encima_de_la_isla(alto_texto, escala);
         let cerrar = quien_llama::pintar_barra(p, barra, tema, textos, escrito, e);
         a.zonas.borrow_mut().push((cerrar, Zona::CerrarQuien));
-    } else if let Some((_, escrito)) = &a.hora_a_mano {
-        let barra = d.encima_de_la_isla(alto_texto, escala);
-        let caja = RectF {
-            alto: (barra.alto as f32 - 6.0 * e).max(1.0),
-            ..rf(barra)
-        };
-        p.rellenar_redondeado(caja, 16.0 * e, tema.campo);
-        let icono = 18.0 * e;
-        p.icono(
-            &mi::ALARM,
-            RectF {
-                x: caja.x + 12.0 * e,
-                y: caja.y + (caja.alto - icono) / 2.0,
-                ancho: icono,
-                alto: icono,
-            },
-            tema.enviar,
-        );
-        let cerrar = Rect {
-            x: (caja.x + caja.ancho - caja.alto) as i32,
-            y: caja.y as i32,
-            ancho: caja.alto as u32,
-            alto: caja.alto as u32,
-        };
-        icono_centrado(p, &mi::CLOSE, cerrar, 20.0 * e, tema.campo_apagado);
-        a.zonas.borrow_mut().push((cerrar, Zona::CerrarHora));
-        // Lo tecleado con su cursor, y a la derecha a que hora queda de
-        // verdad: «09:00» tecleado a las diez es MANANA, y eso se ve antes
-        // de pulsar Intro, no despues.
-        let ahora = pixpin_shell::entorno::ahora_local_ms();
-        let pista = match crate::recordatorios::hora_escrita(escrito, ahora) {
-            Some(cuando) => {
-                let mut args = fluent_bundle::FluentArgs::new();
-                args.set(
-                    "cuando",
-                    crate::recordatorios::cuando_legible(cuando, ahora),
-                );
-                textos.t_args("chat-recordar-hora-queda", &args)
-            }
-            None => textos.t("chat-recordar-hora-teclas"),
-        };
-        let tam = 12.0 * e;
-        let (w_pista, alto_r) = p.medir_texto(&pista, tam);
-        let y = caja.y + (caja.alto - alto_r) / 2.0;
-        let x_pista = (cerrar.x as f32 - w_pista - 6.0 * e).max(caja.x);
-        p.texto(&pista, x_pista, y, tam, tema.campo_apagado);
-        let rotulo = format!("{} {escrito}|", textos.t("chat-recordar-hora-a-las"));
-        let x = caja.x + 40.0 * e;
-        p.texto_linea(
-            &rotulo,
-            x,
-            y,
-            13.0 * e,
-            (x_pista - x - 8.0 * e).max(0.0),
-            tema.texto,
-        );
     } else if crate::audio::hay_algo() {
         pintar_barra_del_reproductor(p, d.encima_de_la_isla(alto_texto, escala), c, a);
     } else if let Some(cuantos) = resultados_de_la_busqueda(a) {
@@ -14177,12 +14245,7 @@ enum Accion {
     /// De una foto anotada, pasar de «solo la foto» a «el dibujo entero» o
     /// al reves (`soloLaFoto` del movil).
     AlternarRecorte(usize),
-    /// Mandar el adjunto a otra persona por la wifi: abre Sincronizar ya en
-    /// «Enviar por Wi-Fi» con el fichero puesto.
-    EnviarWifi(usize),
     AbrirCon(usize),
-    /// Abrirlo en el visor de PixPin, sin salir a otra aplicacion.
-    AbrirAqui(usize),
     Renombrar(usize),
     /// «Añadir descripción» / «Editar descripción» de una foto: la barra de
     /// renombrar, escribiendo su `texto` (`descripcion`).
@@ -15343,8 +15406,10 @@ fn menu_de_mensaje(a: &Abierto, i: usize, textos: &Catalogo) -> Vec<EntradaMenu>
     } else {
         recordar.con_tecla(Tecla::Sub)
     });
-    // **De un mensaje, una leccion** (`MensajesActivity.kt`, 3-oct).
-    if !crate::lecciones::almacen::es_leccion(m) {
+    // **De un mensaje, una leccion** (`MensajesActivity.kt`, 3-oct). No de un
+    // archivo (8-oct-2026, el usuario: «las lecciones no aceptan archivos»):
+    // de su texto, su nota de voz o su foto.
+    if !crate::lecciones::almacen::es_leccion(m) && m.clase != Some(Clase::Archivo) {
         v.push(
             entrada(
                 Some(&mi::LIGHTBULB),
@@ -15386,37 +15451,13 @@ fn menu_de_mensaje(a: &Abierto, i: usize, textos: &Catalogo) -> Vec<EntradaMenu>
         .en_mas(),
     );
     if let Some(ruta) = &ruta {
-        // «Abrir aqui» DELANTE de «Abrir con otra app» y solo cuando el
-        // visor sabe leer eso: ofrecerse para un `.zip` abriria una ventana
-        // en blanco, que es peor que mandarlo a Windows.
-        if ruta
-            .file_name()
-            .and_then(|n| n.to_str())
-            .is_some_and(crate::lector::tiene_lector)
-        {
-            v.push(
-                entrada(
-                    Some(&mi::MENU_BOOK),
-                    textos.t("chat-abrir-aqui"),
-                    Accion::AbrirAqui(i),
-                )
-                .en_mas(),
-            );
-        }
+        // Sin «Abrir aqui» (8-oct-2026, el usuario): es lo que ya hace pulsar
+        // la burbuja. Ni «Enviar por Wi-Fi»: vive en Compartir.
         v.push(
             entrada(
                 Some(&mi::LAUNCH),
                 textos.t("chat-abrir-con"),
                 Accion::AbrirCon(i),
-            )
-            .en_mas(),
-        );
-        // Mandarlo al aparato de otra persona: solo con un fichero detras.
-        v.push(
-            entrada(
-                Some(&mi::WIFI),
-                textos.t("chat-enviar-wifi"),
-                Accion::EnviarWifi(i),
             )
             .en_mas(),
         );
@@ -15698,25 +15739,6 @@ fn ejecutar(accion: Accion, a: &mut Abierto, cx: &Contexto) -> Efecto {
             };
             compartir_mensajes(a, &indices, cx)
         }
-        // Sincronizar vive en su propio hilo: el chat se queda abierto
-        // detras mientras el otro aparato recibe.
-        Accion::EnviarWifi(i) => match ruta_de(a, i) {
-            Some(ruta) => {
-                crate::sincronizar::enviar_por_wifi(cx.idioma, cx.ubicacion.clone(), vec![ruta]);
-                Efecto::Nada
-            }
-            None => Efecto::Aviso(cx.textos.t("chat-sin-archivo")),
-        },
-        // En su propio hilo, como el universo: el chat sigue abierto detras
-        // y se puede seguir escribiendo mientras se lee el documento.
-        Accion::AbrirAqui(i) => match ruta_de(a, i) {
-            Some(ruta) => {
-                let nombre = pixpin_docs::nombre(&ruta);
-                crate::lector::abrir_en_su_lector(cx.idioma, cx.ubicacion, &ruta, &nombre);
-                Efecto::Nada
-            }
-            None => Efecto::Aviso(cx.textos.t("chat-sin-archivo")),
-        },
         // El cuadro «Abrir con» de Windows, el del Explorador: elegir CON QUE
         // se abre, que es lo que dice la entrada. Abrirlo con lo de siempre
         // ya lo hace pulsar la burbuja.
@@ -16044,7 +16066,8 @@ fn ejecutar(accion: Accion, a: &mut Abierto, cx: &Contexto) -> Efecto {
         Accion::Lecciones => {
             // En la general, todas; en un proyecto, las suyas primero.
             let proyecto = (!a.ficha.es_guardados()).then(|| a.ficha.id.clone());
-            crate::lecciones::lista(cx.ubicacion.clone(), cx.idioma, cx.identidad, proyecto, None);
+            let _ = proyecto;
+            crate::lecciones::lista(cx.ubicacion.clone(), cx.idioma);
             Efecto::Nada
         }
         Accion::HacerLeccion(i) => {
@@ -17249,13 +17272,12 @@ mod pruebas_menu_sin_repetir {
         );
         let n_mas = m.posicion_de_mas().expect("hay «Más»");
         assert_eq!(n_mas, m.entradas.len() - 2, "«Más» justo encima de Borrar");
-        // Lo raro va al submenu: renombrar, fijar, abrir con, wifi.
+        // Lo raro va al submenu: renombrar, fijar, abrir con.
         let mas: Vec<&Accion> = m.mas.iter().map(|e| &e.accion).collect();
         for a in [
             Accion::Renombrar(0),
             Accion::Fijar(0),
             Accion::AbrirCon(0),
-            Accion::EnviarWifi(0),
         ] {
             assert!(mas.contains(&&a), "{a:?} en «Más»");
             assert!(!principal.contains(&&a), "{a:?} no arriba");

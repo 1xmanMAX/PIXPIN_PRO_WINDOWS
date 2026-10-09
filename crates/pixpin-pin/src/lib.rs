@@ -10,6 +10,7 @@
 pub mod arrastre;
 pub mod barra;
 mod barra_flotante;
+pub mod barra_marcas;
 pub mod contenido;
 pub mod estado;
 pub mod guias;
@@ -28,6 +29,7 @@ pub mod vivo;
 pub mod zoom;
 
 pub use arrastre::{Carga, ErrorArrastre, Resultado as ResultadoArrastre, arrastrar, carga_de};
+pub use barra_marcas::Marca;
 pub use contenido::{
     Contenido, DOCUMENTO_FRANJA_LOGICA, FICHA_ALTO_LOGICO, FICHA_ANCHO_LOGICO, Presentacion,
     presentacion_de, tamano_humano, tamano_natural,

@@ -193,6 +193,15 @@ impl CapaEstatica {
         };
         motor
             .dibujar(destino, |p| {
+                // **Se borra antes lo que habia** (8-oct-2026). `bitmap` pinta
+                // ENCIMA: con una capa opaca da igual, pero en el anotador de
+                // pantalla viva el papel es transparente, y donde la capa no
+                // tiene nada quedaba el fotograma anterior. Redimensionar una
+                // imagen pegada dejaba una estela de todos sus tamanos hasta
+                // soltar (lo vio el usuario).
+                p.empujar_recorte(caja);
+                p.limpiar_transparente();
+                p.soltar_recorte();
                 // Mismo rectangulo en origen y en destino: es una copia, no
                 // un escalado, asi que no hay interpolacion que valorar.
                 p.bitmap(bitmap, caja, Some(caja), true);

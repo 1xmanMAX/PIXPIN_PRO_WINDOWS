@@ -71,6 +71,8 @@ pub fn se_lee_al_tocar(nombre: &str) -> bool {
     ) && tiene_lector(nombre)
         // Tocar la burbuja de un PowerPoint lo presenta, como en el movil.
         || crate::diapositivas::es_presentacion(nombre)
+        // Un plano DWG o DXF, en su visor (como un pin).
+        || crate::plano_cad::se_abre(nombre)
 }
 
 /// Abre `ruta` en el lector que le toque, en su propio hilo. `false` si no
@@ -89,6 +91,9 @@ pub fn abrir_en_su_lector(
         true
     } else if crate::diapositivas::es_presentacion(nombre) {
         crate::diapositivas::lanzar(idioma, ubicacion.clone(), ruta);
+        true
+    } else if crate::plano_cad::se_abre(nombre) {
+        crate::plano_cad::lanzar(idioma, ubicacion.clone(), ruta);
         true
     } else {
         false

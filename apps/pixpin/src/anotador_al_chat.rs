@@ -55,6 +55,165 @@ pub const NOMBRE_DE_LA_CAPTURA: &str = "pantalla-anotada.png";
 pub struct Sesion {
     pub foto: pixpin_codec::ImagenRgba,
     pub tinta: Vec<Elemento>,
+    /// Las imagenes pegadas durante la edicion: van DENTRO de la foto
+    /// ([`componer`]), porque el lienzo de la foto solo lleva la foto como
+    /// fichero. Antes no se guardaban (el usuario, 8-oct-2026).
+    pub pegadas: Vec<Pegada>,
+}
+
+/// Una imagen pegada en el anotador: el elemento (sitio, tamano, giro) y
+/// sus pixeles.
+#[derive(Clone)]
+pub struct Pegada {
+    pub elemento: Elemento,
+    pub imagen: pixpin_codec::ImagenRgba,
+}
+
+/// **Pura**: el trozo de la foto que merece guardarse: la union de los
+/// monitores (en pixeles de la foto) que tocan algo dibujado o pegado.
+///
+/// La foto es el escritorio virtual entero, todos los monitores en fila; el
+/// movil reduce cualquier foto hasta que su lado largo no pasa de 2048 para
+/// dibujar encima (`lienzo_de_la_foto::LADO_MAXIMO`), y tres monitores en
+/// fila quedaban a un cuarto: el texto llegaba ilegible (el usuario,
+/// 8-oct-2026). Con solo el monitor donde se dibujo, llega a su tamano.
+/// `None`: entera (nada dibujado, o tocan todos).
+pub fn monitores_con_dibujo(
+    monitores: &[pixpin_geom::Rect],
+    cajas: &[(f32, f32, f32, f32)],
+    foto: (u32, u32),
+) -> Option<pixpin_geom::Rect> {
+    let toca = |m: &pixpin_geom::Rect| {
+        cajas.iter().any(|&(x0, y0, x1, y1)| {
+            x0 < m.derecha() as f32 && x1 > m.x as f32 && y0 < m.abajo() as f32 && y1 > m.y as f32
+        })
+    };
+    let union = monitores
+        .iter()
+        .filter(|m| toca(m))
+        .copied()
+        .reduce(|a, b| a.union(b))?;
+    // Dentro de la foto.
+    let x0 = union.x.max(0);
+    let y0 = union.y.max(0);
+    let x1 = union.derecha().min(foto.0 as i32);
+    let y1 = union.abajo().min(foto.1 as i32);
+    if x1 <= x0 || y1 <= y0 {
+        return None;
+    }
+    let r = pixpin_geom::Rect {
+        x: x0,
+        y: y0,
+        ancho: (x1 - x0) as u32,
+        alto: (y1 - y0) as u32,
+    };
+    (r.ancho < foto.0 || r.alto < foto.1).then_some(r)
+}
+
+/// El trozo `r` de `img`.
+pub fn recortar(img: &pixpin_codec::ImagenRgba, r: pixpin_geom::Rect) -> pixpin_codec::ImagenRgba {
+    let mut pixeles = Vec::with_capacity((r.ancho * r.alto * 4) as usize);
+    for y in r.y..r.y + r.alto as i32 {
+        let i = ((y as u32 * img.ancho + r.x as u32) * 4) as usize;
+        pixeles.extend_from_slice(&img.pixeles[i..i + (r.ancho * 4) as usize]);
+    }
+    pixpin_codec::ImagenRgba {
+        ancho: r.ancho,
+        alto: r.alto,
+        pixeles,
+    }
+}
+
+/// Corre la tinta y las imagenes pegadas `(-dx, -dy)`: del escritorio al
+/// trozo guardado.
+fn correr(tinta: &mut [Elemento], pegadas: &mut [Pegada], dx: f32, dy: f32) {
+    if dx == 0.0 && dy == 0.0 {
+        return;
+    }
+    for e in tinta.iter_mut() {
+        e.mover(-dx, -dy);
+    }
+    for p in pegadas.iter_mut() {
+        p.elemento.mover(-dx, -dy);
+    }
+}
+
+/// **Pura**: la foto con las imagenes pegadas encima, cada una en su caja
+/// (en pixeles de la foto, que son los del anotador), con su giro, su
+/// recorte y su opacidad, en el orden en que estan.
+pub fn componer(foto: &pixpin_codec::ImagenRgba, pegadas: &[Pegada]) -> pixpin_codec::ImagenRgba {
+    let mut out = foto.clone();
+    let (fw, fh) = (foto.ancho as i64, foto.alto as i64);
+    for p in pegadas {
+        let e = &p.elemento;
+        let img = &p.imagen;
+        if img.ancho == 0 || img.alto == 0 || e.ancho.abs() < 1.0 || e.alto.abs() < 1.0 {
+            continue;
+        }
+        // El trozo de la imagen que se ve (el recorte), en sus pixeles.
+        let (sx0, sy0, sx1, sy1) = e
+            .extras
+            .recorte
+            .and_then(|r| r.trozo_en(img.ancho as f32, img.alto as f32))
+            .unwrap_or((0.0, 0.0, img.ancho as f32, img.alto as f32));
+        let (x, y, w, h) = (
+            e.x.min(e.x + e.ancho),
+            e.y.min(e.y + e.alto),
+            e.ancho.abs(),
+            e.alto.abs(),
+        );
+        let (cx, cy) = (x + w / 2.0, y + h / 2.0);
+        let (sen, cos) = e.angulo.sin_cos();
+        // La caja girada, para no recorrer la foto entera.
+        let r = ((w * w + h * h).sqrt() / 2.0).ceil();
+        let (bx0, by0) = (
+            ((cx - r).floor() as i64).max(0),
+            ((cy - r).floor() as i64).max(0),
+        );
+        let (bx1, by1) = (
+            ((cx + r).ceil() as i64).min(fw),
+            ((cy + r).ceil() as i64).min(fh),
+        );
+        let opacidad = e.opacidad.clamp(0.0, 1.0);
+        for py in by0..by1 {
+            for px in bx0..bx1 {
+                // Del pixel de la foto al de la imagen: deshacer el giro.
+                let (dx, dy) = (px as f32 + 0.5 - cx, py as f32 + 0.5 - cy);
+                let (lx, ly) = (
+                    dx * cos + dy * sen + w / 2.0,
+                    -dx * sen + dy * cos + h / 2.0,
+                );
+                if lx < 0.0 || ly < 0.0 || lx >= w || ly >= h {
+                    continue;
+                }
+                let ix = (sx0 + lx / w * (sx1 - sx0))
+                    .floor()
+                    .clamp(0.0, img.ancho as f32 - 1.0) as usize;
+                let iy = (sy0 + ly / h * (sy1 - sy0))
+                    .floor()
+                    .clamp(0.0, img.alto as f32 - 1.0) as usize;
+                let s = (iy * img.ancho as usize + ix) * 4;
+                let d = (py as usize * foto.ancho as usize + px as usize) * 4;
+                let (Some(src), true) = (img.pixeles.get(s..s + 4), d + 4 <= out.pixeles.len())
+                else {
+                    continue;
+                };
+                let a = src[3] as f32 / 255.0 * opacidad;
+                if a <= 0.0 {
+                    continue;
+                }
+                let da = out.pixeles[d + 3] as f32 / 255.0;
+                let oa = a + da * (1.0 - a);
+                for c in 0..3 {
+                    let v = (src[c] as f32 * a + out.pixeles[d + c] as f32 * da * (1.0 - a))
+                        / oa.max(1e-6);
+                    out.pixeles[d + c] = v.round().clamp(0.0, 255.0) as u8;
+                }
+                out.pixeles[d + 3] = (oa * 255.0).round() as u8;
+            }
+        }
+    }
+    out
 }
 
 /// Donde quedo.
@@ -68,12 +227,16 @@ pub struct Guardado {
     pub lienzo: String,
     /// Cuantos trazos quedaron encima.
     pub trazos: usize,
+    /// El fichero de la foto, por si hay que rehacerla (cambiaron las
+    /// imagenes pegadas).
+    pub foto: PathBuf,
 }
 
 /// **Guarda la sesion** en «Mensajes guardados» (creandolo si no esta).
 pub fn guardar(raiz: &Path, aparato: &str, sesion: &Sesion, ahora: i64) -> io::Result<Guardado> {
     let ficha = almacen::asegurar_guardados(raiz, ahora, aparato)?;
-    let png = pixpin_codec::codificar_png(&sesion.foto).map_err(io::Error::other)?;
+    let compuesta = componer(&sesion.foto, &sesion.pegadas);
+    let png = pixpin_codec::codificar_png(&compuesta).map_err(io::Error::other)?;
     let mensajes = crate::ventana_chat::meter_en_proyecto(
         raiz,
         &ficha.id,
@@ -103,6 +266,7 @@ pub fn guardar(raiz: &Path, aparato: &str, sesion: &Sesion, ahora: i64) -> io::R
         mensaje: m.id,
         lienzo: hecho.id,
         trazos: hecho.adoptados,
+        foto,
     })
 }
 
@@ -175,21 +339,53 @@ pub fn poner_al_dia(
 pub struct EnElChat {
     /// La tinta tal como se mando la ultima vez.
     tinta: Option<Vec<Elemento>>,
+    /// Las imagenes pegadas tal como se mandaron (sus elementos).
+    pegadas: Vec<Elemento>,
+    /// La captura de fondo sin nada encima: si cambian las imagenes
+    /// pegadas, la foto se rehace desde ella.
+    limpia: Option<std::sync::Arc<pixpin_codec::ImagenRgba>>,
     /// Lo que mide la captura de fondo (la tinta va en sus pixeles).
     medidas: (u32, u32),
+    /// Donde empieza, dentro del escritorio, el trozo que se guardo (ver
+    /// [`monitores_con_dibujo`]): la tinta se corre esto antes de guardarla.
+    corrimiento: (f32, f32),
     /// El ultimo guardado lanzado; devuelve donde quedo.
     hilo: Option<std::thread::JoinHandle<Option<Guardado>>>,
 }
 
 impl EnElChat {
-    pub fn paso(&self, tinta: &[Elemento]) -> Paso {
-        que_hacer(self.tinta.as_deref(), tinta)
+    pub fn paso(&self, tinta: &[Elemento], pegadas: &[Elemento]) -> Paso {
+        match (&self.tinta, que_hacer(self.tinta.as_deref(), tinta)) {
+            // Solo imagenes pegadas, sin tinta: tambien se guarda.
+            (None, Paso::Nada) if !pegadas.is_empty() => Paso::Nuevo,
+            (Some(_), Paso::Nada) if self.pegadas != pegadas => Paso::AlDia,
+            (_, p) => p,
+        }
     }
 
     /// La primera vez: la captura de debajo con la tinta, a un mensaje nuevo.
-    pub fn guardar_nuevo(&mut self, raiz: PathBuf, sesion: Sesion, hwnd: isize, globo: Globo) {
-        self.medidas = (sesion.foto.ancho, sesion.foto.alto);
+    /// `recorte`: el trozo de la foto que se guarda (los monitores con algo
+    /// dibujado), en sus pixeles; `None`, entera.
+    pub fn guardar_nuevo(
+        &mut self,
+        raiz: PathBuf,
+        sesion: Sesion,
+        recorte: Option<pixpin_geom::Rect>,
+        hwnd: isize,
+        globo: Globo,
+    ) {
+        // Lo que se compara la proxima vez va SIN correr: es lo que se ve.
         self.tinta = Some(sesion.tinta.clone());
+        self.pegadas = sesion.pegadas.iter().map(|p| p.elemento.clone()).collect();
+        let mut sesion = sesion;
+        if let Some(r) = recorte {
+            sesion.foto = recortar(&sesion.foto, r);
+            self.corrimiento = (r.x as f32, r.y as f32);
+        }
+        let (dx, dy) = self.corrimiento;
+        correr(&mut sesion.tinta, &mut sesion.pegadas, dx, dy);
+        self.medidas = (sesion.foto.ancho, sesion.foto.alto);
+        self.limpia = Some(std::sync::Arc::new(sesion.foto.clone()));
         let previo = self.hilo.take();
         self.hilo = lanzar(move || {
             // Uno anterior que fallo no cuenta: este es el primero bueno.
@@ -217,8 +413,28 @@ impl EnElChat {
     }
 
     /// Las siguientes: el mismo lienzo con la tinta de ahora.
-    pub fn poner_al_dia(&mut self, raiz: PathBuf, tinta: Vec<Elemento>, hwnd: isize, globo: Globo) {
+    pub fn poner_al_dia(
+        &mut self,
+        raiz: PathBuf,
+        tinta: Vec<Elemento>,
+        pegadas: Vec<Pegada>,
+        hwnd: isize,
+        globo: Globo,
+    ) {
         self.tinta = Some(tinta.clone());
+        let firma: Vec<Elemento> = pegadas.iter().map(|p| p.elemento.clone()).collect();
+        // Si cambiaron las imagenes pegadas, la foto se rehace desde la limpia.
+        let rehacer = (firma != self.pegadas)
+            .then(|| self.limpia.clone())
+            .flatten();
+        self.pegadas = firma;
+        let (mut tinta, mut pegadas) = (tinta, pegadas);
+        correr(
+            &mut tinta,
+            &mut pegadas,
+            self.corrimiento.0,
+            self.corrimiento.1,
+        );
         let medidas = self.medidas;
         let previo = self.hilo.take();
         self.hilo = lanzar(move || {
@@ -235,6 +451,14 @@ impl EnElChat {
                     &globo,
                 );
             };
+            if let Some(limpia) = &rehacer {
+                let hecho = pixpin_codec::codificar_png(&componer(limpia, &pegadas))
+                    .map_err(io::Error::other)
+                    .and_then(|png| std::fs::write(&g.foto, png));
+                if let Err(e) = hecho {
+                    tracing::warn!(?e, "no se pudo rehacer la foto con las imagenes pegadas");
+                }
+            }
             avisar(
                 poner_al_dia(&raiz, &g, medidas, &tinta),
                 t0,
@@ -316,6 +540,24 @@ pub fn tinta_de(escena: &pixpin_motor2d::Escena) -> Vec<Elemento> {
         .collect()
 }
 
+/// Las imagenes pegadas que se ven, con sus pixeles (`imagen` los da por el
+/// `id_objeto`; la que no los tenga no se puede pegar en la foto y se salta).
+pub fn pegadas_de(
+    escena: &pixpin_motor2d::Escena,
+    imagen: impl Fn(u64) -> Option<pixpin_codec::ImagenRgba>,
+) -> Vec<Pegada> {
+    escena
+        .visibles()
+        .filter_map(|e| match e.figura {
+            pixpin_motor2d::Figura::Imagen { id_objeto } => Some(Pegada {
+                elemento: e.clone(),
+                imagen: imagen(id_objeto)?,
+            }),
+            _ => None,
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod pruebas {
     use super::*;
@@ -387,6 +629,7 @@ mod pruebas {
     fn guardar_la_pantalla_anotada_deja_una_foto_en_mensajes_guardados_con_su_lienzo_editable() {
         let r = raiz("guardar");
         let sesion = Sesion {
+            pegadas: Vec::new(),
             foto: pantalla(64, 18),
             tinta: vec![raya(&[(10.0, 4.0), (50.0, 14.0)])],
         };
@@ -427,6 +670,7 @@ mod pruebas {
     fn dos_sesiones_seguidas_son_dos_fotos_y_no_pisan_la_primera() {
         let r = raiz("dos");
         let s = Sesion {
+            pegadas: Vec::new(),
             foto: pantalla(8, 4),
             tinta: vec![raya(&[(1.0, 1.0), (6.0, 3.0)])],
         };
@@ -505,13 +749,15 @@ mod pruebas {
             flecha((5.0, 15.0), (60.0, 2.0)),
         ];
         let mut chat = EnElChat::default();
-        assert_eq!(chat.paso(&tinta), Paso::Nuevo);
+        assert_eq!(chat.paso(&tinta, &[]), Paso::Nuevo);
         chat.guardar_nuevo(
             r.clone(),
             Sesion {
+                pegadas: Vec::new(),
                 foto: pantalla(64, 18),
                 tinta: tinta.clone(),
             },
+            None,
             0,
             globo_mudo(),
         );
@@ -527,7 +773,7 @@ mod pruebas {
         );
         assert!(els[1..].iter().all(|e| !e.bloqueado), "la tinta, editable");
         // Salir otra vez sin haber tocado nada no guarda otra.
-        assert_eq!(chat.paso(&tinta), Paso::Nada);
+        assert_eq!(chat.paso(&tinta, &[]), Paso::Nada);
         let _ = std::fs::remove_dir_all(&r);
     }
 
@@ -536,7 +782,7 @@ mod pruebas {
         let r = raiz("salir-vacio");
         let chat = EnElChat::default();
         let e = pixpin_motor2d::Escena::nueva();
-        assert_eq!(chat.paso(&tinta_de(&e)), Paso::Nada);
+        assert_eq!(chat.paso(&tinta_de(&e), &[]), Paso::Nada);
         // Ni se crea «Mensajes guardados» por haber entrado y salido.
         assert!(almacen::Indice::leer(&r).proyectos.is_empty());
         let _ = std::fs::remove_dir_all(&r);
@@ -551,9 +797,11 @@ mod pruebas {
         chat.guardar_nuevo(
             r.clone(),
             Sesion {
+                pegadas: Vec::new(),
                 foto: pantalla(64, 18),
                 tinta: tinta.clone(),
             },
+            None,
             0,
             globo_mudo(),
         );
@@ -561,8 +809,8 @@ mod pruebas {
         // espera al primero.
         tinta.push(raya(&[(2.0, 2.0), (8.0, 16.0)]));
         tinta.push(flecha((30.0, 2.0), (62.0, 16.0)));
-        assert_eq!(chat.paso(&tinta), Paso::AlDia);
-        chat.poner_al_dia(r.clone(), tinta.clone(), 0, globo_mudo());
+        assert_eq!(chat.paso(&tinta, &[]), Paso::AlDia);
+        chat.poner_al_dia(r.clone(), tinta.clone(), Vec::new(), 0, globo_mudo());
         let g = chat.esperar().expect("puesto al dia");
         assert_eq!(g.trazos, 3);
         let (mensajes, els) = lo_guardado(&r, &g);
@@ -575,7 +823,7 @@ mod pruebas {
         assert!(els[0].bloqueado);
         // Y otra puesta al dia tras esperar sigue yendo al mismo sitio.
         tinta.pop();
-        chat.poner_al_dia(r.clone(), tinta.clone(), 0, globo_mudo());
+        chat.poner_al_dia(r.clone(), tinta.clone(), Vec::new(), 0, globo_mudo());
         let g2 = chat.esperar().unwrap();
         assert_eq!((g2.mensaje.as_str(), g2.trazos), (g.mensaje.as_str(), 2));
         assert_eq!(lo_guardado(&r, &g2).1.len(), 3);
@@ -589,6 +837,7 @@ mod pruebas {
         chat.poner_al_dia(
             r.clone(),
             vec![raya(&[(1.0, 1.0), (2.0, 2.0)])],
+            Vec::new(),
             0,
             globo_mudo(),
         );
@@ -602,6 +851,7 @@ mod pruebas {
      {
         let r = raiz("abrir");
         let s = Sesion {
+            pegadas: Vec::new(),
             foto: pantalla(64, 18),
             tinta: vec![
                 raya(&[(10.0, 4.0), (50.0, 14.0)]),
@@ -669,6 +919,7 @@ mod pruebas {
         let r = raiz("muestra-abierto");
         let (w, h) = (1600u32, 450u32);
         let s = Sesion {
+            pegadas: Vec::new(),
             foto: pantalla(w, h),
             tinta: vec![
                 flecha((500.0, 300.0), (1100.0, 120.0)),
@@ -683,7 +934,7 @@ mod pruebas {
             ],
         };
         let mut chat = EnElChat::default();
-        chat.guardar_nuevo(r.clone(), s, 0, globo_mudo());
+        chat.guardar_nuevo(r.clone(), s, None, 0, globo_mudo());
         let g = chat.esperar().unwrap();
         let c = cuaderno::Cuaderno::leer_de(&almacen::carpeta(&r, &g.proyecto)).unwrap();
         let m = c.mensajes[0].clone();
@@ -795,6 +1046,7 @@ mod pruebas {
         let r = raiz("muestra");
         let (w, h) = (1600u32, 450u32);
         let sesion = Sesion {
+            pegadas: Vec::new(),
             foto: pantalla(w, h),
             tinta: vec![
                 flecha((500.0, 300.0), (1100.0, 120.0)),
@@ -878,5 +1130,145 @@ mod pruebas {
         std::fs::write(&ruta, png).unwrap();
         println!("pantalla-anotada-en-burbuja: {}", ruta.display());
         let _ = std::fs::remove_dir_all(&r);
+    }
+
+    fn lisa(ancho: u32, alto: u32, rgba: [u8; 4]) -> pixpin_codec::ImagenRgba {
+        pixpin_codec::ImagenRgba {
+            ancho,
+            alto,
+            pixeles: rgba.repeat((ancho * alto) as usize),
+        }
+    }
+
+    fn pixel(img: &pixpin_codec::ImagenRgba, x: u32, y: u32) -> [u8; 4] {
+        let i = ((y * img.ancho + x) * 4) as usize;
+        [
+            img.pixeles[i],
+            img.pixeles[i + 1],
+            img.pixeles[i + 2],
+            img.pixeles[i + 3],
+        ]
+    }
+
+    fn pegada(x: f32, y: f32, w: f32, h: f32, img: pixpin_codec::ImagenRgba) -> Pegada {
+        Pegada {
+            elemento: Elemento {
+                figura: Figura::Imagen { id_objeto: 1 },
+                x,
+                y,
+                ancho: w,
+                alto: h,
+                ..Elemento::default()
+            },
+            imagen: img,
+        }
+    }
+
+    #[test]
+    fn la_imagen_pegada_entra_en_la_foto_en_su_caja_y_a_su_tamano() {
+        let foto = lisa(40, 30, [255, 255, 255, 255]);
+        // Una roja de 2x2 estirada a 10x10 en (5, 5).
+        let p = pegada(5.0, 5.0, 10.0, 10.0, lisa(2, 2, [255, 0, 0, 255]));
+        let c = componer(&foto, &[p]);
+        assert_eq!(pixel(&c, 10, 10), [255, 0, 0, 255]);
+        assert_eq!(pixel(&c, 14, 14), [255, 0, 0, 255]);
+        // Caso negativo: fuera de su caja, la foto como estaba.
+        assert_eq!(pixel(&c, 3, 3), [255, 255, 255, 255]);
+        assert_eq!(pixel(&c, 16, 16), [255, 255, 255, 255]);
+        // Medio transparente: se mezcla.
+        let mut q = pegada(0.0, 0.0, 4.0, 4.0, lisa(1, 1, [0, 0, 0, 255]));
+        q.elemento.opacidad = 0.5;
+        let c = componer(&foto, &[q]);
+        let v = pixel(&c, 1, 1)[0];
+        assert!(v > 100 && v < 160, "{v}");
+    }
+
+    #[test]
+    fn girada_un_cuarto_una_imagen_alargada_ocupa_lo_alto() {
+        let foto = lisa(40, 40, [0, 0, 0, 255]);
+        let mut p = pegada(10.0, 18.0, 20.0, 4.0, lisa(1, 1, [0, 255, 0, 255]));
+        p.elemento.angulo = std::f32::consts::FRAC_PI_2;
+        let c = componer(&foto, &[p]);
+        assert_eq!(pixel(&c, 20, 12), [0, 255, 0, 255], "arriba del centro");
+        assert_eq!(
+            pixel(&c, 12, 20),
+            [0, 0, 0, 255],
+            "caso negativo: ya no a lo ancho"
+        );
+    }
+
+    #[test]
+    fn solo_con_una_imagen_pegada_tambien_se_guarda_y_cambiarla_pone_al_dia() {
+        let chat = EnElChat::default();
+        let p = pegada(0.0, 0.0, 4.0, 4.0, lisa(1, 1, [0, 0, 0, 255]));
+        assert_eq!(chat.paso(&[], &[p.elemento.clone()]), Paso::Nuevo);
+        assert_eq!(
+            chat.paso(&[], &[]),
+            Paso::Nada,
+            "caso negativo: nada de nada"
+        );
+        let chat = EnElChat {
+            tinta: Some(Vec::new()),
+            pegadas: vec![p.elemento.clone()],
+            ..Default::default()
+        };
+        assert_eq!(chat.paso(&[], &[p.elemento.clone()]), Paso::Nada);
+        let mut movida = p.elemento.clone();
+        movida.x = 9.0;
+        assert_eq!(chat.paso(&[], &[movida]), Paso::AlDia);
+    }
+
+    fn monitor(x: i32, ancho: u32) -> pixpin_geom::Rect {
+        pixpin_geom::Rect {
+            x,
+            y: 0,
+            ancho,
+            alto: 1080,
+        }
+    }
+
+    #[test]
+    fn se_guarda_solo_el_monitor_donde_se_dibujo_a_su_tamano() {
+        // Tres monitores en fila, como el del usuario.
+        let m = [monitor(0, 1920), monitor(1920, 1920), monitor(3840, 1920)];
+        let foto = (5760, 1080);
+        // Un garabato en el del medio.
+        let r = monitores_con_dibujo(&m, &[(2000.0, 100.0, 2500.0, 600.0)], foto).unwrap();
+        assert_eq!((r.x, r.ancho, r.alto), (1920, 1920, 1080));
+        // Una flecha que cruza dos: los dos.
+        let r = monitores_con_dibujo(&m, &[(1800.0, 10.0, 2100.0, 20.0)], foto).unwrap();
+        assert_eq!((r.x, r.ancho), (0, 3840));
+        // Casos negativos: sin nada dibujado, o con algo en los tres, entera.
+        assert_eq!(monitores_con_dibujo(&m, &[], foto), None);
+        assert_eq!(
+            monitores_con_dibujo(&m, &[(10.0, 10.0, 5000.0, 20.0)], foto),
+            None
+        );
+    }
+
+    #[test]
+    fn el_trozo_guardado_lleva_la_tinta_corrida_a_su_sitio() {
+        let foto = lisa(8, 4, [0, 0, 0, 255]);
+        let mut foto2 = foto.clone();
+        // Un pixel blanco en (5, 1): en el trozo desde x = 4, queda en (1, 1).
+        let i = ((8 + 5) * 4) as usize;
+        foto2.pixeles[i..i + 4].copy_from_slice(&[255, 255, 255, 255]);
+        let r = pixpin_geom::Rect {
+            x: 4,
+            y: 0,
+            ancho: 4,
+            alto: 4,
+        };
+        let t = recortar(&foto2, r);
+        assert_eq!((t.ancho, t.alto), (4, 4));
+        assert_eq!(pixel(&t, 1, 1), [255, 255, 255, 255]);
+        let mut tinta = vec![raya(&[(5.0, 1.0), (6.0, 2.0)])];
+        correr(&mut tinta, &mut [], 4.0, 0.0);
+        match &tinta[0].figura {
+            Figura::Lapiz { puntos, .. } | Figura::Linea { puntos } => {
+                assert!((puntos[0].x - 1.0).abs() < 1e-3, "{:?}", puntos[0])
+            }
+            otra => panic!("{otra:?}"),
+        }
     }
 }

@@ -46,6 +46,7 @@ use crate::caja_dibujo::hex;
 use crate::overlay::Recursos;
 
 mod al_dia;
+pub(crate) mod automatica;
 pub(crate) mod al_movil;
 mod copias_ui;
 mod elegir;
@@ -202,8 +203,37 @@ enum Fase {
         texto: String,
         /// Lo que merece leerse aparte, en el color de los avisos.
         aviso: Option<String>,
+        /// Si llego algo del otro lado (traido o juntado): la automatica
+        /// solo avisa entonces.
+        trajo: bool,
     },
     Fallo(String),
+}
+
+/// Cuantas vueltas de sincronizar hay en marcha ahora, en los dos sentidos
+/// (las que pide este equipo y las que pide el movil al llamar). La
+/// sincronizacion automatica no arranca mientras haya alguna: dos vueltas a
+/// la vez sobre los mismos chats se pisarian.
+static EN_CURSO: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+struct EnCurso;
+
+impl EnCurso {
+    fn nueva() -> EnCurso {
+        EN_CURSO.fetch_add(1, Ordering::SeqCst);
+        EnCurso
+    }
+}
+
+impl Drop for EnCurso {
+    fn drop(&mut self) {
+        EN_CURSO.fetch_sub(1, Ordering::SeqCst);
+    }
+}
+
+/// Si hay alguna vuelta en marcha.
+pub(crate) fn hay_vueltas() -> bool {
+    EN_CURSO.load(Ordering::SeqCst) > 0
 }
 
 /// Lo que mandan los hilos de red a la ventana.
@@ -1307,6 +1337,8 @@ fn responder(mut flujo: TcpStream, raiz: &Path, mi_puerto: u16) -> Result<()> {
         flujo.write_all(pixpin_sincro::SONDA_RESPUESTA)?;
         return Ok(());
     }
+    // Mientras dura, la sincronizacion automatica no arranca otra.
+    let _en_curso = EnCurso::nueva();
     // Largo, como `Red.escuchar` del movil: mientras el otro decide que
     // sincronizar, aqui no llega nada, y cortarle a los dos minutos le
     // tiraria la vuelta.
@@ -1631,6 +1663,7 @@ fn lanzar_union(
                     Fase::Terminado {
                         aviso: None,
                         titulo: "Dentro del grupo".into(),
+                        trajo: false,
                         texto: format!(
                             "Este aparato es la letra «{letra}»: sus mensajes se nombran #1{letra}, #2{letra}…\n\nYa puedes sincronizar con {}.",
                             s.otro.nombre
@@ -1674,6 +1707,7 @@ fn lanzar_vuelta(
                     avisos.extend(v.avisos);
                     Fase::Terminado {
                         titulo: format!("Al día con {}", v.nombre),
+                        trajo: hecho.traidos > 0 || hecho.fusionados > 0,
                         texto: vuelta::contar_lo_hecho(&hecho, v.bytes, v.segundos),
                         aviso: (!avisos.is_empty()).then(|| avisos.join("\n\n")),
                     }
@@ -1700,6 +1734,7 @@ fn una_vuelta(
     hecho: &mut Hecho,
     rotulo: &str,
 ) -> Result<vuelta::Vuelta> {
+    let _en_curso = EnCurso::nueva();
     let _ = tx.send(Aviso::Fase(Fase::Trabajando(format!(
         "{rotulo}Conectando con {nombre}…"
     ))));
@@ -1809,6 +1844,9 @@ fn lanzar_con_todos(
     let _ = std::thread::Builder::new()
         .name("sincro-todos".into())
         .spawn(move || {
+            // Toda la ronda cuenta como una: entre aparato y aparato la
+            // automatica no puede colarse.
+            let _en_curso = EnCurso::nueva();
             let mut hecho = Hecho::default();
             let mut avisos: Vec<String> = Vec::new();
             let mut fallaron: Vec<(String, String)> = Vec::new();
@@ -1883,6 +1921,7 @@ fn lanzar_con_todos(
                     titulo,
                     texto,
                     aviso: (!todos.is_empty()).then(|| todos.join("\n\n")),
+                    trajo: hecho.traidos > 0 || hecho.fusionados > 0,
                 }
             };
             let _ = tx.send(Aviso::Identidad);

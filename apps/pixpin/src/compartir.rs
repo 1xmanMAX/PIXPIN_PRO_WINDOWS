@@ -23,6 +23,8 @@
 //! «Guardar como», copiar y la wifi), esta en [`ventana`]; la logica de que
 //! formatos se ven y donde cae cada mando, en `pixpin_ui::hoja_compartir`.
 
+pub(crate) mod adjuntos;
+pub(crate) mod enlace;
 pub(crate) mod documento_web;
 mod pdf;
 pub(crate) mod pdf_anotado;
@@ -79,6 +81,10 @@ pub(crate) enum Cosa {
     /// Un documento que se esta leyendo (PDF, Word, libro...), con lo
     /// anotado que tenga al lado.
     Documento(PathBuf),
+    /// **Algo ya hecho fuera de la hoja** (el timeline, 8-oct-2026): sus
+    /// formatos enteros, sin paginas que elegir. La hoja hace lo demas: el
+    /// peso, Guardar, Copiar y la Salida para arrastrarlo.
+    Hecho { titulo: String, extras: Vec<Extra> },
 }
 
 /// El idioma de la aplicacion, leido de sus ajustes: el editor y los
@@ -132,6 +138,9 @@ pub(crate) enum Entero {
     Ficheros(Vec<PathBuf>),
     /// Un fichero que se escribe con estos bytes.
     Escrito { fichero: String, bytes: Vec<u8> },
+    /// Un PDF impreso por Edge desde una pagina web (la del timeline): se
+    /// imprime al pedirlo, porque tarda un par de segundos.
+    PdfDeHtml { fichero: String, html: String },
     /// El `.pixpin` de unos proyectos `(raiz, id, fichero)`, que se empaqueta
     /// al pedirlo: puede pesar
     /// mucho y no hay por que hacerlo si no se elige.
@@ -169,6 +178,11 @@ pub(crate) struct Preparado {
     /// dibujo de la rejilla sino la tabla que sigue calculando en el
     /// navegador (J3, `pixpin_proyecto::tabla_web`).
     pub tablas: HashMap<String, pixpin_proyecto::tabla::Tabla>,
+    /// **Lo que va dentro de la pagina web sin ser una hoja**: las notas de
+    /// voz y los demas ficheros de lo compartido (ver [`adjuntos`]).
+    pub adjuntos: Vec<PathBuf>,
+    /// «Adjuntos», en el idioma de la app: la pagina no sabe de idiomas.
+    pub rotulo_adjuntos: String,
     siguiente_imagen: u64,
 }
 
@@ -184,6 +198,8 @@ impl Preparado {
             original_primero: false,
             documentos: Vec::new(),
             tablas: HashMap::new(),
+            adjuntos: Vec::new(),
+            rotulo_adjuntos: String::new(),
             // El cero lo reserva el escritor de PDF para «sin imagen».
             siguiente_imagen: 1,
         }
@@ -293,6 +309,12 @@ fn pagina(
 /// hojas. Se hace en el hilo de la hoja, no en el de quien la abre: un
 /// proyecto con muchos lienzos tarda en leerse y el chat no puede pararse.
 pub(crate) fn preparar(cosa: Cosa, t: &Catalogo) -> Result<Preparado> {
+    let mut p = preparar_sin_rotulos(cosa, t)?;
+    p.rotulo_adjuntos = t.t("compartir-adjuntos");
+    Ok(p)
+}
+
+fn preparar_sin_rotulos(cosa: Cosa, t: &Catalogo) -> Result<Preparado> {
     match cosa {
         Cosa::Lienzo(l) => Ok(de_lienzo_suelto(l, t)),
         Cosa::Mensajes {
@@ -302,6 +324,12 @@ pub(crate) fn preparar(cosa: Cosa, t: &Catalogo) -> Result<Preparado> {
             mensajes,
         } => Ok(de_mensajes(&raiz, &proyecto, &titulo, &mensajes, t)),
         Cosa::Proyectos { raiz, ids } => de_proyectos(&raiz, &ids, t),
+        Cosa::Hecho { titulo, extras } => {
+            let mut p = Preparado::nuevo(titulo);
+            p.extras = extras;
+            p.original_primero = true;
+            Ok(p)
+        }
         Cosa::Documento(ruta) => {
             let nombre = pixpin_docs::sin_extension(&pixpin_docs::nombre(&ruta));
             let mut p = Preparado::nuevo(nombre);
@@ -489,7 +517,9 @@ fn anadir_lienzo(
 /// Donde esta el fichero de un mensaje en este equipo, si esta.
 fn ruta_de(raiz: &Path, proyecto: &str, m: &Mensaje) -> Option<PathBuf> {
     let relativa = m.ruta.as_deref().filter(|r| !r.is_empty())?;
-    pixpin_proyecto::vista::ruta_real(raiz, proyecto, relativa).filter(|r| r.is_file())
+    pixpin_proyecto::vista::ruta_real(raiz, proyecto, relativa)
+        .filter(|r| r.is_file())
+        .map(|r| pixpin_proyecto::vista::con_la_extension_del_nombre(raiz, r, &m.nombre))
 }
 
 /// **Los originales** de unos mensajes: los ficheros que hay en este equipo
@@ -850,6 +880,8 @@ fn de_mensajes(
         anadir_mensaje(&mut p, raiz, proyecto, m, solo, t);
     }
     let rutas = originales(raiz, proyecto, mensajes);
+    // Las notas de voz y los ficheros, tambien dentro de la pagina web.
+    p.adjuntos = adjuntos::de_originales(&rutas);
     if !rutas.is_empty() {
         let (id, clave) = if rutas.len() == 1 {
             ("original", "compartir-original")
@@ -898,6 +930,8 @@ fn de_proyectos(raiz: &Path, ids: &[String], t: &Catalogo) -> Result<Preparado> 
             raiz, &ficha.id, &aparato,
         ));
         mensajes.sort_by_key(|m| m.cuando);
+        p.adjuntos
+            .extend(adjuntos::de_originales(&originales(raiz, &ficha.id, &mensajes)));
         let desde = p.piezas.len();
         for m in &mensajes {
             anadir_mensaje(&mut p, raiz, &ficha.id, m, false, t);
@@ -1598,6 +1632,11 @@ pub(crate) fn compartible(p: &Preparado, t: &Catalogo) -> Compartible {
         de_paginas.push(formato(JPG, "compartir-jpg", Cuantas::Una));
         de_paginas.push(formato(SVG, "compartir-svg", Cuantas::Una));
     }
+    // Sin hojas pero con notas de voz o ficheros: la pagina web los lleva
+    // igual, que es la forma de compartir de toda la app (8-oct-2026).
+    if p.piezas.is_empty() && !p.adjuntos.is_empty() {
+        de_paginas.push(formato(WEB, "compartir-web", Cuantas::Ninguna));
+    }
     let enteros: Vec<Formato> = p
         .extras
         .iter()
@@ -1773,6 +1812,12 @@ pub(crate) fn generar(
         None
     };
     let ficheros = match formato {
+        WEB | WEB_IMAGEN if piezas.is_empty() && !p.adjuntos.is_empty() => {
+            let trozo = adjuntos::html(&p.adjuntos, &p.rotulo_adjuntos);
+            let ruta = carpeta.join(format!("{base}.html"));
+            escribir(&ruta, adjuntos::pagina_sola(&p.titulo, &trozo).as_bytes())?;
+            vec![ruta]
+        }
         WEB | WEB_IMAGEN | PDF | PDF_LIMPIO if piezas.is_empty() => {
             anyhow::bail!("no hay paginas marcadas")
         }
@@ -1846,6 +1891,8 @@ pub(crate) fn generar(
                 p.excalidraw.as_deref(),
             )
             .context("sin hojas")?;
+            let pagina =
+                adjuntos::meter(pagina, &adjuntos::html(&p.adjuntos, &p.rotulo_adjuntos));
             let ruta = carpeta.join(format!("{base}.html"));
             escribir(&ruta, pagina.as_bytes())?;
             vec![ruta]
@@ -1890,6 +1937,12 @@ pub(crate) fn generar(
                 Entero::Escrito { fichero, bytes } => {
                     let ruta = carpeta.join(fichero);
                     escribir(&ruta, bytes)?;
+                    vec![ruta]
+                }
+                Entero::PdfDeHtml { fichero, html } => {
+                    let ruta = carpeta.join(fichero);
+                    crate::timeline::exportar::a_pdf(html, &ruta)
+                        .map_err(|m| anyhow::anyhow!("no se pudo imprimir el PDF: {m}"))?;
                     vec![ruta]
                 }
                 Entero::Proyectos(paquetes) => {

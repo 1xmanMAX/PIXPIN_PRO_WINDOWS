@@ -41,6 +41,7 @@ pub mod powerpoint;
 pub mod primer_plano;
 pub mod prioridad;
 pub mod puntero;
+pub mod subir;
 pub mod uia;
 pub mod union;
 pub mod ventana;

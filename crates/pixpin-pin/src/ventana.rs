@@ -204,6 +204,18 @@ pub enum CambioPin {
     Latido,
     /// Menu «Mas»: abrir el panel «Pines abiertos» (v2).
     PinesAbiertosPedido,
+    /// La barra de marcas: marcar el texto seleccionado (8-oct-2026). Lo
+    /// que esta seleccionado se lo pide el gestor al pin
+    /// ([`Pin::cajas_del_texto_seleccionado`]), y al acabar la quita.
+    MarcarTexto {
+        marca: crate::barra_marcas::Marca,
+        /// El indice en `barra_marcas::COLORES`.
+        color: u8,
+    },
+    /// El circulo tachado: quitar las marcas que toquen la seleccion.
+    QuitarMarcasTexto,
+    /// `Ctrl+Z` fuera del modo anotacion: deshacer la ultima marca.
+    DeshacerMarca,
 }
 
 /// La lupa dentro del pin (D52): que trozo del contenido se amplia y donde
@@ -604,6 +616,13 @@ struct PinInterno {
     seleccion_texto: Vec<pixpin_geom::seleccion_texto::Sitio>,
     /// Donde empezo el arrastre de seleccion, mientras dura.
     ancla_texto: Option<pixpin_geom::seleccion_texto::Sitio>,
+    /// El color de la barra de marcas (`barra_marcas::COLORES`). Se
+    /// recuerda mientras vive el pin: marcar varias cosas seguidas del
+    /// mismo color no obliga a elegirlo cada vez.
+    color_marca: u8,
+    /// El modo texto (tecla T): arrastrar sobre las letras las selecciona.
+    /// Fuera de el, arrastrar mueve el pin aunque haya texto reconocido.
+    modo_texto: bool,
     /// Gris, invertido y brillo. No tocan el original: se aplican al
     /// rehacer el bitmap, igual que el giro se aplica al pintar.
     filtros: pixpin_codec::filtros::Filtros,
@@ -844,6 +863,8 @@ impl Pin {
             ocr_pedido: false,
             seleccion_texto: Vec::new(),
             ancla_texto: None,
+            color_marca: crate::barra_marcas::COLOR_INICIAL,
+            modo_texto: false,
             filtros: pixpin_codec::filtros::Filtros::default(),
             pdf_paginas: None,
             pdf_pagina: 0,
@@ -1468,6 +1489,8 @@ fn tipo_barra(i: &PinInterno) -> crate::barra::TipoBarra {
         propio,
         anotable: crate::menu::anotable(&i.contenido),
         copiable: true,
+        texto: i.con_ocr && matches!(i.contenido, Contenido::Imagen(_)),
+        marcando: i.modo_texto && !i.seleccion_texto.is_empty(),
     }
 }
 
@@ -1499,6 +1522,8 @@ fn datos_barra(i: &PinInterno) -> crate::barra_flotante::DatosBarra {
         }),
         remoto: i.remoto,
         en_pausa: i.vivo_pausado,
+        modo_texto: i.modo_texto,
+        color_marca: i.color_marca,
     }
 }
 
@@ -1550,6 +1575,59 @@ fn recolocar_barra(i: &PinInterno) {
     if crate::barra_flotante::es_de(i.hwnd) {
         crate::barra_flotante::recolocar(i.hwnd, i.estado.rect(), area_de_trabajo(i.hwnd));
         crate::barra_flotante::actualizar(i.hwnd, datos_barra(i));
+    }
+}
+
+/// Quita la seleccion de texto; la barra vuelve a su control de siempre.
+fn quitar_seleccion(i: &mut PinInterno) {
+    i.ancla_texto = None;
+    if !i.seleccion_texto.is_empty() {
+        i.seleccion_texto.clear();
+        pintar(i);
+        actualizar_barra(i);
+    }
+}
+
+/// Entra o sale del modo texto (tecla T o su boton). Dentro, arrastrar sobre
+/// las letras las selecciona; fuera, arrastrar mueve el pin como siempre (el
+/// usuario: «muevo el pin y se seleccionan cosas, no me deja mover»).
+fn poner_modo_texto(i: &mut PinInterno, si: bool) {
+    if i.modo_texto == si {
+        return;
+    }
+    i.modo_texto = si;
+    if si {
+        // Se lee la imagen la primera vez que hace falta, y una sola vez.
+        if i.texto_ocr.is_none() && !i.ocr_pedido {
+            i.ocr_pedido = true;
+            (i.al_cambiar)(CambioPin::ReconocerPedido);
+        }
+    } else {
+        quitar_seleccion(i);
+    }
+    actualizar_barra(i);
+}
+
+/// Los botones de marcar de la barra del pin.
+fn accion_de_marcas(i: &mut PinInterno, accion: crate::barra::AccionBarra) {
+    use crate::barra::AccionBarra as A;
+    match accion {
+        A::ColorMarca(k) => {
+            i.color_marca = k;
+            actualizar_barra(i);
+        }
+        // La seleccion se queda hasta que el gestor la lea: la quita el al
+        // acabar (`quitar_seleccion_de_texto`).
+        A::Marcar(marca) => (i.al_cambiar)(CambioPin::MarcarTexto {
+            marca,
+            color: i.color_marca,
+        }),
+        A::QuitarMarca => (i.al_cambiar)(CambioPin::QuitarMarcasTexto),
+        A::ModoTexto => {
+            let si = !i.modo_texto;
+            poner_modo_texto(i, si);
+        }
+        _ => {}
     }
 }
 
@@ -1629,6 +1707,9 @@ pub(crate) fn accion_de_barra(hwnd: HWND, evento: crate::barra_flotante::EventoB
             A::Manejar => alternar_remoto(hwnd, i),
             A::Congelar => (i.al_cambiar)(CambioPin::CongelarPedido),
             A::Abrir => (i.al_cambiar)(CambioPin::AbrirPedido),
+            A::ModoTexto | A::ColorMarca(_) | A::Marcar(_) | A::QuitarMarca => {
+                accion_de_marcas(i, accion)
+            }
             A::Copiar => {
                 // Con texto marcado, copia ESO, como Ctrl+C.
                 if !copiar_seleccion(i) {
@@ -1980,6 +2061,28 @@ impl Pin {
         }
     }
 
+    /// Lo seleccionado del texto reconocido, un recuadro por renglon, en
+    /// pixeles de la imagen NATIVA: el mismo sistema que el dibujo anotado,
+    /// asi que una marca hecha con esto cae justo encima de las letras.
+    pub fn cajas_del_texto_seleccionado(&self) -> Vec<Rect> {
+        interno_de(self.hwnd)
+            .and_then(|i| {
+                let renglones = i.texto_ocr.as_ref()?;
+                Some(pixpin_geom::seleccion_texto::recuadros_de(
+                    renglones,
+                    &i.seleccion_texto,
+                ))
+            })
+            .unwrap_or_default()
+    }
+
+    /// Quita la seleccion de texto, y con ella la barra de marcas.
+    pub fn quitar_seleccion_de_texto(&self) {
+        if let Some(i) = interno_de(self.hwnd) {
+            quitar_seleccion(i);
+        }
+    }
+
     pub fn poner_textos(&self, textos: crate::menu::TextosPin) {
         if let Some(i) = interno_de(self.hwnd) {
             i.textos = Some(textos);
@@ -2093,6 +2196,19 @@ fn ajustar_vista(i: &mut PinInterno, paso: f32, lparam: LPARAM) {
     i.vista_escala = ahora;
     limitar_vista(i);
     asegurar_resolucion(i, false);
+}
+
+/// Un punto de la tarjeta (coordenadas del contenido) llevado al sitio de la
+/// imagen que se ve ahi con el zoom de dentro: lo contrario de `poner_vista`,
+/// que pinta `d + p * escala`. Sin zoom, el mismo punto.
+fn sin_vista(i: &PinInterno, x: f32, y: f32) -> (f32, f32) {
+    if i.vista_escala <= 1.0 {
+        return (x, y);
+    }
+    (
+        (x - i.vista_dx) / i.vista_escala,
+        (y - i.vista_dy) / i.vista_escala,
+    )
 }
 
 /// Impide que el contenido se despegue de la tarjeta y deje un hueco: el
@@ -2755,24 +2871,10 @@ fn pintar(i: &PinInterno) {
             }
         }
 
-        if con_vista {
-            p.desplazar(ox as f32 - m, oy as f32 - m);
-            p.soltar_recorte();
-        }
-
-        // Manejando a distancia, un marco de acento: con el modo encendido
-        // un clic sobre el pin ACTUA en otra parte de la pantalla, y eso
-        // tiene que verse antes de pulsar, no despues.
-        if i.remoto {
-            p.trazar(caja, 2.0 * escala, Color::ACENTO);
-        }
-
-        // Los mandos del video, encima de la imagen y solo con el raton
-        // encima: el resto del tiempo el pin es solo el video.
-        if let Some(v) = &i.video {
-            pintar_mandos_video(p, i, v, caja, escala);
-        }
-
+        // Lo marcado y lo anotado van DENTRO del zoom de dentro (Ctrl +
+        // rueda): estan pegados a la imagen, y si ella se amplia y se corre,
+        // ellos con ella. Fuera, el usuario veia agrandarse el fondo con las
+        // anotaciones quietas en su sitio.
         // El texto marcado, entre la imagen y las anotaciones: es una
         // seleccion sobre la imagen, asi que va encima de ella, pero lo
         // que el usuario ha dibujado manda sobre todo.
@@ -2815,6 +2917,24 @@ fn pintar(i: &PinInterno) {
         // el pin ensena solo su contenido: sin recorte se colaba por el
         // margen de la sombra.
         p.con_recorte(caja, |p| pintar_anotaciones(p, i, m));
+
+        if con_vista {
+            p.desplazar(ox as f32 - m, oy as f32 - m);
+            p.soltar_recorte();
+        }
+
+        // Manejando a distancia, un marco de acento: con el modo encendido
+        // un clic sobre el pin ACTUA en otra parte de la pantalla, y eso
+        // tiene que verse antes de pulsar, no despues.
+        if i.remoto {
+            p.trazar(caja, 2.0 * escala, Color::ACENTO);
+        }
+
+        // Los mandos del video, encima de la imagen y solo con el raton
+        // encima: el resto del tiempo el pin es solo el video.
+        if let Some(v) = &i.video {
+            pintar_mandos_video(p, i, v, caja, escala);
+        }
 
         // La lupa amplia el bitmap NATIVO del pin: si el pin esta escalado,
         // la fuente en pixeles del contenido se convierte a pixeles de la
@@ -3695,6 +3815,18 @@ extern "system" fn procedimiento_pin(
         }
     }
 
+    /// Como `punto_contenido`, pero en el sitio de la IMAGEN: con el zoom de
+    /// dentro (Ctrl + rueda) lo que hay bajo el cursor no es el mismo punto
+    /// de la tarjeta. Es lo que necesitan anotar y seleccionar texto.
+    fn punto_imagen(i: &PinInterno, lparam: LPARAM) -> Punto {
+        let c = punto_contenido(i, lparam);
+        let (x, y) = sin_vista(i, c.x as f32, c.y as f32);
+        Punto {
+            x: x.round() as i32,
+            y: y.round() as i32,
+        }
+    }
+
     /// Como `punto_contenido`, desde coordenadas del escritorio virtual y
     /// sin redondear: las muestras traen subpixel.
     fn muestra_a_contenido(i: &PinInterno, m: pixpin_shell::puntero::Muestra) -> (f32, f32) {
@@ -3704,7 +3836,8 @@ extern "system" fn procedimiento_pin(
             let _ = GetWindowRect(i.hwnd, &mut r);
         }
         let (ox, oy) = origen_contenido(i.hwnd, i.estado.rect());
-        (
+        sin_vista(
+            i,
             m.x() - r.left as f32 - ox as f32,
             m.y() - r.top as f32 - oy as f32,
         )
@@ -3753,16 +3886,23 @@ extern "system" fn procedimiento_pin(
             esconder_barra(hwnd);
             // Sobre una palabra reconocida, el boton izquierdo SELECCIONA
             // texto en vez de mover el pin: es lo que lo hace parecerse a
+            // Solo en modo texto (T): fuera de el, arrastrar mueve el pin
+            // aunque se pulse encima de las letras.
             // un documento. Fuera del texto, mover, como siempre.
             if let Some(i) = interno_de(hwnd) {
-                if !i.anotando {
+                if !i.anotando && i.modo_texto {
                     if let Some(renglones) = &i.texto_ocr {
-                        let nativo = a_pixeles_nativos(i, punto_contenido(i, lparam));
+                        let nativo = a_pixeles_nativos(i, punto_imagen(i, lparam));
                         if let Some(sitio) =
                             pixpin_geom::seleccion_texto::sitio_en(renglones, nativo, HOLGURA_TEXTO)
                         {
                             // SAFETY: captura sobre ventana propia; se
                             // suelta en WM_LBUTTONUP.
+                            // SAFETY: foco a la ventana propia: Esc y
+                            // Ctrl+Z tienen que llegar a este pin.
+                            unsafe {
+                                let _ = windows::Win32::UI::Input::KeyboardAndMouse::SetFocus(Some(hwnd));
+                            }
                             unsafe { SetCapture(hwnd) };
                             i.ancla_texto = Some(sitio);
                             i.seleccion_texto = vec![sitio];
@@ -3773,10 +3913,7 @@ extern "system" fn procedimiento_pin(
                     // Pulsar fuera del texto quita la seleccion: es lo que
                     // hace cualquier documento y evita que se quede una
                     // marca azul olvidada encima de la imagen.
-                    if !i.seleccion_texto.is_empty() {
-                        i.seleccion_texto.clear();
-                        pintar(i);
-                    }
+                    quitar_seleccion(i);
                 }
             }
             // SAFETY: captura para no perder el arrastre al salir del borde.
@@ -3801,7 +3938,7 @@ extern "system" fn procedimiento_pin(
                         let tiempo = unsafe { GetMessageTime() } as u32;
                         HISTORIAL.with(|h| h.borrow_mut().sembrar(p.x, p.y, tiempo));
                     }
-                    (i.al_cambiar)(CambioPin::PunteroPulsado(punto_contenido(i, lparam)));
+                    (i.al_cambiar)(CambioPin::PunteroPulsado(punto_imagen(i, lparam)));
                 } else {
                     // Ctrl + arrastrar: zoom (arriba agranda, abajo encoge).
                     // Desde que `Ctrl` + arrastrar saca el contenido hacia
@@ -4015,7 +4152,7 @@ extern "system" fn procedimiento_pin(
                 // repinta, y el pin NO se mueve.
                 if let Some(ancla) = i.ancla_texto {
                     if let Some(renglones) = &i.texto_ocr {
-                        let nativo = a_pixeles_nativos(i, punto_contenido(i, lparam));
+                        let nativo = a_pixeles_nativos(i, punto_imagen(i, lparam));
                         if let Some(hasta) =
                             pixpin_geom::seleccion_texto::sitio_en(renglones, nativo, HOLGURA_TEXTO)
                         {
@@ -4082,7 +4219,7 @@ extern "system" fn procedimiento_pin(
                             .map(|m| muestra_a_contenido(i, m))
                             .collect();
                     }
-                    let movido = punto_contenido(i, lparam);
+                    let movido = punto_imagen(i, lparam);
                     for (x, y) in muestras {
                         (i.al_cambiar)(CambioPin::MuestraPuntero {
                             x,
@@ -4117,6 +4254,13 @@ extern "system" fn procedimiento_pin(
         WM_LBUTTONUP if interno_de(hwnd).is_some_and(|i| i.ancla_texto.is_some()) => {
             if let Some(i) = interno_de(hwnd) {
                 i.ancla_texto = None;
+                // Al soltar con algo marcado, la barra del pin cambia su
+                // control propio por los colores y las marcas (8-oct-2026).
+                if crate::barra_flotante::es_de(hwnd) {
+                    actualizar_barra(i);
+                } else if quiere_barra(i) {
+                    ensenar_barra(i);
+                }
             }
             // SAFETY: libera la captura tomada al empezar la seleccion.
             unsafe {
@@ -4137,7 +4281,7 @@ extern "system" fn procedimiento_pin(
                     // en el siguiente.
                     HISTORIAL.with(|h| h.borrow_mut().olvidar());
                     ESTADO_LAPIZ.with(|e| e.set(pixpin_shell::puntero::EstadoLapiz::SinDatos));
-                    (i.al_cambiar)(CambioPin::PunteroSoltado(punto_contenido(i, lparam)));
+                    (i.al_cambiar)(CambioPin::PunteroSoltado(punto_imagen(i, lparam)));
                 } else {
                     let e = i.estado.procesar(EventoPin::BotonSoltado);
                     aplicar(hwnd, e);
@@ -4595,6 +4739,37 @@ extern "system" fn procedimiento_pin(
             }
             LRESULT(0)
         }
+        // En modo texto, Esc va por partes como en cualquier documento: el
+        // primero quita la seleccion, el siguiente sale del modo texto, y solo
+        // despues cierra el pin.
+        WM_KEYDOWN
+            if wparam.0 as u32 == VK_ESCAPE.0 as u32
+                && interno_de(hwnd).is_some_and(|i| {
+                    !i.anotando && (i.modo_texto || !i.seleccion_texto.is_empty())
+                }) =>
+        {
+            if let Some(i) = interno_de(hwnd) {
+                if i.seleccion_texto.is_empty() {
+                    poner_modo_texto(i, false);
+                } else {
+                    quitar_seleccion(i);
+                }
+            }
+            LRESULT(0)
+        }
+        // Ctrl+Z fuera del modo anotacion deshace la ultima marca de texto.
+        // Lo lleva el gestor, que es quien guarda el dibujo; sin marcas que
+        // deshacer no hace nada.
+        WM_KEYDOWN
+            if wparam.0 as u32 == b'Z' as u32
+                && tecla_pulsada(VK_CONTROL)
+                && interno_de(hwnd).is_some_and(|i| !i.anotando) =>
+        {
+            if let Some(i) = interno_de(hwnd) {
+                (i.al_cambiar)(CambioPin::DeshacerMarca);
+            }
+            LRESULT(0)
+        }
         WM_KEYDOWN if wparam.0 as u32 == VK_ESCAPE.0 as u32 => {
             if let Some(i) = interno_de(hwnd) {
                 if i.anotando {
@@ -4791,13 +4966,11 @@ extern "system" fn procedimiento_pin(
                 && !tecla_pulsada(VK_CONTROL)
                 && interno_de(hwnd).is_some_and(|i| i.con_ocr && !i.anotando) =>
         {
+            // T entra y sale del modo texto; al entrar se lee la imagen, una
+            // sola vez por imagen (`poner_modo_texto`).
             if let Some(i) = interno_de(hwnd) {
-                // Solo una vez por imagen: si ya esta reconocido, volver a
-                // pulsar no puede costar otro tiron.
-                if i.texto_ocr.is_none() {
-                    i.ocr_pedido = true;
-                    (i.al_cambiar)(CambioPin::ReconocerPedido);
-                }
+                let si = !i.modo_texto;
+                poner_modo_texto(i, si);
             }
             LRESULT(0)
         }
@@ -4865,12 +5038,14 @@ extern "system" fn procedimiento_pin(
                     // Barra de texto sobre lo que se puede seleccionar: es
                     // lo unico que avisa de que ahi hay texto, porque el
                     // texto reconocido no se ve.
-                    if let Some(renglones) = &i.texto_ocr {
+                    if let Some(renglones) = i.texto_ocr.as_ref().filter(|_| i.modo_texto) {
                         let (ox, oy) = origen_contenido(i.hwnd, i.estado.rect());
                         let r = i.estado.rect();
+                        let (dx, dy) =
+                            sin_vista(i, (p.x - r.x - ox) as f32, (p.y - r.y - oy) as f32);
                         let dentro = Punto {
-                            x: p.x - r.x - ox,
-                            y: p.y - r.y - oy,
+                            x: dx.round() as i32,
+                            y: dy.round() as i32,
                         };
                         if pixpin_geom::seleccion_texto::hay_texto_en(
                             renglones,

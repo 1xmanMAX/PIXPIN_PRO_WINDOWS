@@ -867,7 +867,15 @@ compartir-boton = Share
 compartir-guardar = Save as…
 compartir-copiar = Copy to the clipboard
 compartir-wifi = Send over Wi-Fi
-compartir-web = Web page
+compartir-boton-copiar = Copy
+compartir-boton-wifi = Wi-Fi
+compartir-boton-enlace = Link
+compartir-enlace-pista = Uploads it to litterbox (3 days) and copies the link: anyone with it can open it
+compartir-enlace-subiendo = Uploading…
+compartir-enlace-copiado = Link copied · deleted in 3 days
+compartir-enlace-fallo = Could not upload: { $motivo }
+compartir-web = HTML
+compartir-adjuntos = Attachments
 compartir-pdf = PDF
 compartir-png = PNG
 compartir-jpg = JPG
@@ -1457,7 +1465,7 @@ chat-hacer-leccion = Make a lesson
 bandeja-lecciones = 💡 Lessons…
 bandeja-leccion-nueva = New lesson…
 bandeja-tareas = ☑ Tasks…
-bandeja-timeline = 🕒 Timeline…
+bandeja-timeline = 🕒 Timeline and lessons…
 
 ## Tareas (ventana)
 tareas-titulo = Tasks
@@ -1911,6 +1919,14 @@ pin-v2-tipo-video = Video
 pin-v2-tipo-archivo = File
 pin-v2-tipo-vivo = Live pin
 pin-v2-tipo-herramienta = Tool
+pin-v2-marca-copiar = Copy
+pin-v2-marca-resaltar = Highlight
+pin-v2-marca-ondulada = Wavy line
+pin-v2-marca-subrayar = Underline
+pin-v2-marca-tachar = Strikethrough
+pin-v2-marca-tapar = Cover
+pin-v2-marca-quitar = Remove mark
+pin-v2-modo-texto = Select text
 ## v2-captura
 captura2-zona = Area
 captura2-ventana = Window
@@ -2112,7 +2128,7 @@ galeria-prorrogar = Give 7 more days
 ## timeline-v2 (5-oct-2026): common bar, WeChat-like tabs and detail
 timeline-pestana-hoy = Today
 timeline-pestana-momentos = Moments
-timeline-pestana-estado = Status
+timeline-pestana-estado = Calendar
 timeline-buscar-pista = Search the timeline
 timeline-sub-buscar = { $n ->
     [0] Nothing found
@@ -2126,7 +2142,9 @@ timeline-sub-momentos = { $n ->
   }
 timeline-sin-resultados = No moment has that.
     Title and description are searched, ignoring accents and case.
-timeline-momentos-vacio = No moments yet. Note the first one in "Today".
+timeline-momentos-vacio = The moments you pick go here. In "Today", hover a card and press the bookmark to send it here.
+timeline-a-momentos = Sent to Moments
+timeline-fuera-de-momentos = Removed from Moments
 timeline-estado-sobre-todo = Mostly
 timeline-estado-lo-mas = "{ $que }"
 timeline-exportar-busqueda = Search: "{ $que }"
@@ -2153,6 +2171,7 @@ timeline-tambien-lecciones = { $n ->
    *[other] { $n } lessons also match · See
   }
 timeline-copiar-imagen = Copy as image
+timeline-compartir-html = Share as HTML
 timeline-guardar-imagen = Save as image…
 timeline-imagen-copiada = Copied as image
 timeline-imagen-fallo = Could not make the image
@@ -2198,6 +2217,9 @@ tareas5-subtitulo = { $listas ->
    *[other] { $listas } lists
   }
 tareas5-apuntar-pista = New task…
+tareas-recordare = ⏰ I will remind you { $cuando }
+tareas-sin-recordatorio = Reminder removed
+tareas-apuntar-en-pista = New task in “{ $lista }”…
 tareas5-corregir-pista = Task text…
 tareas5-imagen-pista = Add images · Ctrl+V pastes a copied one
 tareas5-guardar = Save

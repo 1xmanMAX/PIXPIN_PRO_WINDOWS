@@ -265,9 +265,10 @@ pub enum Salida {
     Copiar,
     /// A otro aparato por la wifi (el «Enviar por Wi-Fi» del movil).
     Wifi,
-    /// Dejar el fichero hecho en pantalla para ARRASTRARLO a otro sitio
-    /// (la «Salida»). Tambien se arrastra desde el propio boton.
-    Arrastrar,
+    /// Subirlo a un servicio de archivos temporales y pasar el enlace (el
+    /// «Enlace» del movil, 8-oct-2026). Hubo un «Arrastrar» aqui: se quito,
+    /// porque compartir ya acaba en la Salida, que es donde se arrastra.
+    Enlace,
 }
 
 /// Lo que hay bajo un punto de la hoja.
@@ -284,7 +285,7 @@ pub enum Destino {
 }
 
 // Medidas en pixeles logicos, las del movil donde las hay (dp).
-pub const ANCHO_MINIMO: f32 = 600.0;
+pub const ANCHO_MINIMO: f32 = 760.0;
 pub const MARGEN: f32 = 20.0;
 pub const CABECERA: f32 = 56.0;
 /// Cada formato: el redondel de 56 y su nombre debajo, en 78 de ancho.
@@ -299,7 +300,7 @@ pub const FILAS_VISIBLES: usize = 7;
 pub const ALTO_PIE: f32 = 68.0;
 const ANCHO_BOTON_PRINCIPAL: f32 = 124.0;
 const ANCHO_BOTON: f32 = 112.0;
-const ANCHO_BOTON_ICONO: f32 = 44.0;
+const ANCHO_BOTON_CORTO: f32 = 96.0;
 const ALTO_BOTON: f32 = 40.0;
 const HUECO_BOTON: f32 = 8.0;
 
@@ -450,9 +451,11 @@ pub fn disponer(c: &Compartible, e: &Estado, escala: f32) -> Disposicion {
     for (s, w) in [
         (Salida::Compartir, ANCHO_BOTON_PRINCIPAL),
         (Salida::Guardar, ANCHO_BOTON),
-        (Salida::Copiar, ANCHO_BOTON_ICONO),
-        (Salida::Wifi, ANCHO_BOTON_ICONO),
-        (Salida::Arrastrar, ANCHO_BOTON_ICONO),
+        // Todas con su nombre, en fila (8-oct-2026: el Wi-Fi era un icono
+        // suelto y el usuario lo queria «junto a los demas»).
+        (Salida::Copiar, ANCHO_BOTON_CORTO),
+        (Salida::Wifi, ANCHO_BOTON_CORTO),
+        (Salida::Enlace, ANCHO_BOTON_CORTO),
     ] {
         bx -= w * k;
         salidas.push((

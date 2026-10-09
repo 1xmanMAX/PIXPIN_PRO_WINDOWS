@@ -46,10 +46,6 @@ pub struct Entrada {
     pub mensaje: Mensaje,
     /// La ficha (carpeta) del chat: `proyectos/<ficha>`.
     pub ficha: String,
-    /// El nombre del chat, para ensenarlo.
-    pub nombre_chat: String,
-    /// Si es «Mensajes guardados», la conversacion general.
-    pub general: bool,
     pub archivo: PathBuf,
 }
 
@@ -152,8 +148,6 @@ pub fn listar(raiz: &Path) -> Vec<Entrada> {
                 leccion,
                 mensaje: m,
                 ficha: f.id.clone(),
-                nombre_chat: f.nombre.clone(),
-                general: f.es_guardados(),
                 archivo,
             });
         }

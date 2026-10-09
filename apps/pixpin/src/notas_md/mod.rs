@@ -19,8 +19,10 @@
 
 pub mod adjuntos;
 pub mod comentarios;
+pub mod comentarios_web;
 pub mod guardar;
 pub mod incrustados;
+pub mod lector_web;
 pub mod paginas_vivas;
 
 use std::path::PathBuf;
@@ -164,9 +166,11 @@ fn rotulos(t: &Catalogo) -> pixpin_notas::Rotulos {
 /// Abre la nota en su ventana, en su propio hilo (como el lector): quien la
 /// pide sigue a lo suyo.
 pub fn abrir(idioma: pixpin_store::Idioma, ubicacion: Ubicacion, destino: Destino) {
+    tracing::info!(?destino, "abrir nota");
     if let Ok(v) = ABIERTAS.lock()
         && let Some((_, h)) = v.iter().find(|(d, _)| *d == destino)
     {
+        tracing::info!(hwnd = *h, "la nota ya estaba abierta: al frente");
         pixpin_shell::overlay::VentanaOverlay::restaurar_de_hwnd(windows::Win32::Foundation::HWND(
             *h as *mut _,
         ));
@@ -188,7 +192,7 @@ pub fn abrir(idioma: pixpin_store::Idioma, ubicacion: Ubicacion, destino: Destin
 /// `NOTA` del proyecto (el del cuaderno si lo hay, o uno hecho con su texto
 /// si es una hoja del movil o un `.md` suelto), que la hoja sabe sacar como
 /// texto, PDF, imagen o pagina web.
-fn compartir(
+pub(crate) fn compartir(
     idioma: pixpin_store::Idioma,
     ubicacion: &Ubicacion,
     destino: &Destino,
@@ -238,7 +242,74 @@ fn compartir(
     );
 }
 
+/// Abre la nota en el lector nuevo (`lector_web`, 8-oct-2026); si este
+/// equipo no tiene WebView2, o se pide desde el lector, en el de antes.
 fn correr(
+    textos: &Catalogo,
+    idioma: pixpin_store::Idioma,
+    ubicacion: &Ubicacion,
+    destino: Destino,
+) {
+    use crate::grupos_ventanas::{self, Clase};
+    use std::cell::RefCell;
+    use std::rc::Rc;
+    let raiz = ubicacion.raiz().to_path_buf();
+    let Some(texto) = guardar::leer_texto(&raiz, &destino) else {
+        tracing::warn!(?destino, "la nota ya no esta; no se abre para no pisarla");
+        return;
+    };
+    let aparato = pixpin_proyecto::identidad::Identidad::leer_o_crear(&raiz, "PC")
+        .map(|i| i.yo.codigo())
+        .unwrap_or_default();
+    let clase = Clase::Nota {
+        destino: destino.clone(),
+    };
+    let apunte = grupos_ventanas::apuntar(clase.clone());
+    let colocacion = grupos_ventanas::tomar_colocacion(&clase);
+    let inicial = destino.clone();
+    let actual = Rc::new(RefCell::new(destino));
+    let resultado = lector_web::correr(lector_web::Contexto {
+        textos,
+        idioma,
+        ubicacion,
+        aparato: &aparato,
+        actual: actual.clone(),
+        texto,
+        colocacion,
+        al_nacer: &mut |hwnd| {
+            apunte.con_ventana(hwnd);
+            if let Ok(mut v) = ABIERTAS.lock() {
+                v.push((inicial.clone(), hwnd));
+            }
+        },
+        al_cambiar_destino: &mut |antes, nuevo| {
+            apunte.cambiar_clase(Clase::Nota {
+                destino: nuevo.clone(),
+            });
+            if let Ok(mut v) = ABIERTAS.lock() {
+                for (d, _) in v.iter_mut().filter(|(d, _)| d == antes) {
+                    *d = nuevo.clone();
+                }
+            }
+        },
+    });
+    let fin = actual.borrow().clone();
+    if let Ok(mut v) = ABIERTAS.lock() {
+        v.retain(|(d, _)| *d != fin && *d != inicial);
+    }
+    drop(apunte);
+    match resultado {
+        Ok(lector_web::Salida::Cerrada) => {}
+        Ok(lector_web::Salida::EditorAnterior) => correr_anterior(textos, idioma, ubicacion, fin),
+        Err(e) => {
+            tracing::warn!(?e, "sin el lector nuevo; se abre el editor de antes");
+            correr_anterior(textos, idioma, ubicacion, fin);
+        }
+    }
+}
+
+/// El editor de antes (`pixpin-notas`, sobre el `RichEdit`).
+fn correr_anterior(
     textos: &Catalogo,
     idioma: pixpin_store::Idioma,
     ubicacion: &Ubicacion,

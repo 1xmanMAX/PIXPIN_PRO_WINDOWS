@@ -1205,6 +1205,7 @@ fn abrir_hoja(v: &mut VistaProyectos, b: &mut Bucle, id: &str, indice: usize) ->
         b.textos,
         b.lienzo,
         b.idioma,
+        b.identidad,
     );
     let Some(a) = tmp else {
         return true;

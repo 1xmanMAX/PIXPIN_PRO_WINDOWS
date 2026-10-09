@@ -27,7 +27,12 @@ pub(super) struct CacheArchivo {
 fn huella(e: &Estado) -> u64 {
     let mut h: u64 = 0xCBF2_9CE4_8422_2325;
     for m in &e.momentos {
-        for b in m.id.bytes().chain(m.cuando.to_le_bytes()) {
+        for b in m
+            .id
+            .bytes()
+            .chain(m.cuando.to_le_bytes())
+            .chain([u8::from(m.en_momentos)])
+        {
             h ^= u64::from(b);
             h = h.wrapping_mul(0x0100_0000_01B3);
         }
@@ -43,7 +48,11 @@ pub(super) fn disposicion(e: &Estado, w: f32, s: f32) -> Rc<CacheArchivo> {
     {
         return c.clone();
     }
-    let anios = arch::agrupar(&e.momentos, e.desfase);
+    // Solo lo que se mando a «Momentos» (8-oct-2026): «Hoy» ya lo ensena
+    // todo.
+    let elegidos: Vec<pixpin_timeline::Momento> =
+        e.momentos.iter().filter(|m| m.en_momentos).cloned().collect();
+    let anios = arch::agrupar(&elegidos, e.desfase);
     let (piezas, alto) = dis::archivo(&anios, w, s);
     let indice: std::collections::HashMap<&str, usize> = e
         .momentos

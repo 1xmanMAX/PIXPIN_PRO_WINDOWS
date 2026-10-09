@@ -905,3 +905,51 @@ fn una_foto_anotada_en_el_movil_se_comparte_con_el_dibujo_de_su_lienzo() {
         let _ = std::fs::remove_dir_all(dir);
     }
 }
+
+/// **Una nota de voz sola se comparte como HTML** (8-oct-2026): sin hojas,
+/// la hoja ofrece igual el HTML, y la pagina lleva el audio dentro. Y con
+/// hojas, el audio va ademas de ellas, en «Adjuntos».
+#[test]
+fn una_nota_de_voz_va_dentro_del_html_con_o_sin_hojas() {
+    let (dir, borrar) = carpeta("adjuntos");
+    let voz = dir.join("nota.m4a");
+    std::fs::write(&voz, b"aac").unwrap();
+    let t = textos();
+
+    let mut solo = Preparado::nuevo("Solo voz");
+    solo.adjuntos = vec![voz.clone()];
+    solo.rotulo_adjuntos = t.t("compartir-adjuntos");
+    let c = compartible(&solo, &t);
+    assert!(c.formatos.iter().any(|f| f.id == WEB), "ofrece el HTML");
+    let s = generar(&solo, WEB, &[], &dir.join("solo")).unwrap();
+    let html = std::fs::read_to_string(&s.ficheros[0]).unwrap();
+    assert!(html.contains("<audio controls") && html.contains("data:audio/mp4;base64,"));
+
+    // Caso negativo: sin hojas ni adjuntos no hay HTML que ofrecer.
+    let nada = Preparado::nuevo("Nada");
+    assert!(!compartible(&nada, &t).formatos.iter().any(|f| f.id == WEB));
+
+    // Con hojas: la pagina de siempre, y los adjuntos dentro.
+    let mut con = Preparado::nuevo("Con texto");
+    for (k, h) in hojas_de_texto(Some("Hola"), "texto").into_iter().enumerate() {
+        con.piezas.push(Pieza {
+            pagina: pixpin_ui::hoja_compartir::Pagina {
+                clave: format!("t{k}"),
+                nombre: "Texto".into(),
+                detalle: String::new(),
+                nivel: 0,
+            },
+            hoja: h,
+            fondo: BLANCO,
+            con_marcos: false,
+        });
+    }
+    con.adjuntos = vec![voz];
+    con.rotulo_adjuntos = t.t("compartir-adjuntos");
+    let s = generar(&con, WEB, &["t0".to_string()], &dir.join("con")).unwrap();
+    let html = std::fs::read_to_string(&s.ficheros[0]).unwrap();
+    assert!(html.contains("pp-adj-boton") && html.contains("<svg"));
+    if borrar {
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}

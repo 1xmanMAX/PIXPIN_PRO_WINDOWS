@@ -151,6 +151,7 @@ pub fn guardar_en_el_chat(
     chat: &mut crate::anotador_al_chat::EnElChat,
     pa: &mut Pantalla<'_>,
     tinta: Vec<pixpin_motor2d::Elemento>,
+    pegadas: Vec<crate::anotador_al_chat::Pegada>,
     globo: crate::anotador_al_chat::Globo,
     foto: impl FnOnce(&mut Pantalla<'_>) -> Option<pixpin_codec::ImagenRgba>,
 ) -> crate::anotador_al_chat::Paso {
@@ -158,7 +159,8 @@ pub fn guardar_en_el_chat(
     let Some(raiz) = pa.raiz.clone() else {
         return Paso::Nada;
     };
-    match chat.paso(&tinta) {
+    let firma: Vec<_> = pegadas.iter().map(|p| p.elemento.clone()).collect();
+    match chat.paso(&tinta, &firma) {
         Paso::Nada => Paso::Nada,
         Paso::Nuevo => match foto(pa) {
             Some(foto) => {
@@ -168,7 +170,31 @@ pub fn guardar_en_el_chat(
                     alto = foto.alto,
                     "anotador: a Mensajes guardados"
                 );
-                chat.guardar_nuevo(raiz, Sesion { foto, tinta }, pa.avisos, globo);
+                // Solo los monitores con algo dibujado, a su tamano: la foto
+                // del escritorio entero el movil la reducia hasta no leerse.
+                let monitores: Vec<Rect> = pixpin_capture::enumerar_monitores()
+                    .map(|d| {
+                        d.monitores()
+                            .iter()
+                            .map(|m| Rect {
+                                x: m.area.x - pa.escritorio.x,
+                                y: m.area.y - pa.escritorio.y,
+                                ..m.area
+                            })
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                let cajas: Vec<(f32, f32, f32, f32)> = tinta
+                    .iter()
+                    .chain(pegadas.iter().map(|p| &p.elemento))
+                    .map(|e| e.caja())
+                    .collect();
+                let recorte = crate::anotador_al_chat::monitores_con_dibujo(
+                    &monitores,
+                    &cajas,
+                    (foto.ancho, foto.alto),
+                );
+                chat.guardar_nuevo(raiz, Sesion { foto, tinta, pegadas }, recorte, pa.avisos, globo);
                 Paso::Nuevo
             }
             None => {
@@ -181,7 +207,7 @@ pub fn guardar_en_el_chat(
                 trazos = tinta.len(),
                 "anotador: al dia en Mensajes guardados"
             );
-            chat.poner_al_dia(raiz, tinta, pa.avisos, globo);
+            chat.poner_al_dia(raiz, tinta, pegadas, pa.avisos, globo);
             Paso::AlDia
         }
     }

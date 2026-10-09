@@ -120,7 +120,19 @@ pub fn columnas(ancho: f32, lado: f32, hueco: f32) -> (usize, f32) {
 /// para algo ya tachado pesaba tanto como lo pendiente, y con el pliegue
 /// abierto la rejilla se llenaba de pasado. Una fila de `fila_hecha` a todo
 /// lo ancho dice «esto ya esta» y deja lo pendiente como lo que se mira.
-pub fn disponer(grupos: &[Grupo], abierta: &dyn Fn(usize) -> bool, m: &Medidas) -> (Vec<Celda>, f32) {
+///
+/// **Cada tarjeta, del alto de lo suyo** (8-oct-2026, el usuario: «que no
+/// todas ocupen el mismo espacio: el ancho limitado pero no el alto, un
+/// contenedor que se adapte a la tarea [...] que no pueda crecer mas del
+/// cuadrado de hoy»). `alto_de(lista, fila, lado)` dice cuanto pide cada
+/// una; se queda entre la mitad del lado y el lado. Y se colocan como un
+/// muro: cada una en la columna que va mas corta, asi no quedan huecos.
+pub fn disponer(
+    grupos: &[Grupo],
+    abierta: &dyn Fn(usize) -> bool,
+    alto_de: &mut dyn FnMut(usize, usize, f32) -> f32,
+    m: &Medidas,
+) -> (Vec<Celda>, f32) {
     let (cols, lado) = columnas(m.ancho, m.lado, m.hueco);
     let mut v = Vec::new();
     let mut y = 0.0;
@@ -133,25 +145,41 @@ pub fn disponer(grupos: &[Grupo], abierta: &dyn Fn(usize) -> bool, m: &Medidas) 
             alto,
         },
     };
-    let bloque = |lista: usize, filas: &[usize], y: &mut f32, v: &mut Vec<Celda>| {
+    let bloque = |alto_de: &mut dyn FnMut(usize, usize, f32) -> f32,
+                  lista: usize,
+                  filas: &[usize],
+                  y: &mut f32,
+                  v: &mut Vec<Celda>| {
         if filas.is_empty() {
             return;
         }
         *y += m.respiro;
-        for (n, &fi) in filas.iter().enumerate() {
-            let (fila, col) = (n / cols, n % cols);
+        // Lo que lleva cada columna, desde lo alto del bloque.
+        let mut columna = vec![0.0f32; cols];
+        for &fi in filas {
+            // Del alto de su texto, sin cortarlo (8-oct-2026, noche: «que no
+            // se pierda el texto»); como poco, medio cuadrado.
+            let alto = alto_de(lista, fi, lado).max(lado * 0.5);
+            // La mas corta; a igualdad, la de mas a la izquierda.
+            let col = (0..cols)
+                .min_by(|a, b| {
+                    columna[*a]
+                        .partial_cmp(&columna[*b])
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                })
+                .unwrap_or(0);
             v.push(Celda {
                 pieza: Pieza::Tarjeta(lista, fi),
                 caja: RectF {
                     x: col as f32 * (lado + m.hueco),
-                    y: *y + fila as f32 * (lado + m.hueco),
+                    y: *y + columna[col],
                     ancho: lado,
-                    alto: lado,
+                    alto,
                 },
             });
+            columna[col] += alto + m.hueco;
         }
-        let filas_n = filas.len().div_ceil(cols);
-        *y += filas_n as f32 * lado + (filas_n - 1) as f32 * m.hueco;
+        *y += columna.iter().copied().fold(0.0, f32::max) - m.hueco;
     };
     for (k, g) in grupos.iter().enumerate() {
         if k > 0 {
@@ -159,7 +187,7 @@ pub fn disponer(grupos: &[Grupo], abierta: &dyn Fn(usize) -> bool, m: &Medidas) 
         }
         v.push(ancha(Pieza::Encabezado(g.lista), y, m.encabezado));
         y += m.encabezado;
-        bloque(g.lista, &g.arriba, &mut y, &mut v);
+        bloque(&mut *alto_de, g.lista, &g.arriba, &mut y, &mut v);
         if !g.hechas.is_empty() {
             if !g.arriba.is_empty() {
                 y += m.hueco;
@@ -172,8 +200,10 @@ pub fn disponer(grupos: &[Grupo], abierta: &dyn Fn(usize) -> bool, m: &Medidas) 
                     if n > 0 {
                         y += entre;
                     }
-                    v.push(ancha(Pieza::Tarjeta(g.lista, fi), y, m.fila_hecha));
-                    y += m.fila_hecha;
+                    // Del alto de su texto entero, como las de arriba.
+                    let alto = alto_de(g.lista, fi, m.ancho).max(m.fila_hecha);
+                    v.push(ancha(Pieza::Tarjeta(g.lista, fi), y, alto));
+                    y += alto;
                 }
             }
         }
@@ -421,7 +451,7 @@ mod pruebas {
     #[test]
     fn disponer_pone_cuadrados_en_filas_bajo_el_encabezado_de_su_lista() {
         let g = [grupo(0, &[5, 6, 7, 8], &[9]), grupo(1, &[0], &[])];
-        let (c, total) = disponer(&g, &|_| false, &M);
+        let (c, total) = disponer(&g, &|_| false, &mut |_, _, l| if l > 300.0 { 0.0 } else { l }, &M);
         let (_, lado) = columnas(M.ancho, M.lado, M.hueco);
         let piezas: Vec<Pieza> = c.iter().map(|c| c.pieza).collect();
         assert_eq!(
@@ -448,24 +478,24 @@ mod pruebas {
         assert_eq!(total, c[7].caja.y + lado);
         // Abierto, las hechas van en filas de 44 a todo lo ancho, no en
         // cuadrados.
-        let (c2, total2) = disponer(&g, &|l| l == 0, &M);
+        let (c2, total2) = disponer(&g, &|l| l == 0, &mut |_, _, l| if l > 300.0 { 0.0 } else { l }, &M);
         assert_eq!(c2[6].pieza, Pieza::Tarjeta(0, 9));
         assert_eq!(c2[6].caja, RectF { x: 0.0, y: c2[5].caja.y + 40.0, ancho: M.ancho, alto: 44.0 });
         assert_eq!(total2, total + 44.0);
         // Dos hechas: una debajo de otra, con medio hueco entre ellas.
         let g2 = [grupo(0, &[], &[1, 2])];
-        let (c3, _) = disponer(&g2, &|_| true, &M);
+        let (c3, _) = disponer(&g2, &|_| true, &mut |_, _, l| if l > 300.0 { 0.0 } else { l }, &M);
         assert_eq!(c3[3].caja.y, c3[2].caja.y + 44.0 + 6.0);
         assert_ne!(c3[3].caja.ancho, c3[3].caja.alto, "una fila, no un cuadrado");
         // Caso negativo: plegado, lo hecho no es celda; sin grupos, nada.
         assert!(!piezas.contains(&Pieza::Tarjeta(0, 9)));
-        assert_eq!(disponer(&[], &|_| true, &M), (vec![], 0.0));
+        assert_eq!(disponer(&[], &|_| true, &mut |_, _, l| if l > 300.0 { 0.0 } else { l }, &M), (vec![], 0.0));
     }
 
     #[test]
     fn el_clic_cae_en_la_tarjeta_que_se_pinto_y_los_huecos_no_son_de_nadie() {
         let g = [grupo(0, &[1, 2, 3, 4], &[])];
-        let (c, _) = disponer(&g, &|_| false, &M);
+        let (c, _) = disponer(&g, &|_| false, &mut |_, _, l| if l > 300.0 { 0.0 } else { l }, &M);
         let (_, lado) = columnas(M.ancho, M.lado, M.hueco);
         assert_eq!(pieza_en(&c, 10.0, 10.0), Some(Pieza::Encabezado(0)));
         assert_eq!(pieza_en(&c, 1.0, 50.0), Some(Pieza::Tarjeta(0, 1)));
@@ -491,7 +521,7 @@ mod pruebas {
         use Direccion::*;
         // Dos grupos: el primero con 4 (3 + 1), el segundo con 2.
         let g = [grupo(0, &[0, 1, 2, 3], &[]), grupo(1, &[0, 1], &[])];
-        let (c, _) = disponer(&g, &|_| false, &M);
+        let (c, _) = disponer(&g, &|_| false, &mut |_, _, l| if l > 300.0 { 0.0 } else { l }, &M);
         assert_eq!(vecina(&c, None, Abajo), Some((0, 0)), "sin foco, la primera");
         assert_eq!(vecina(&c, Some((0, 0)), Derecha), Some((0, 1)));
         assert_eq!(vecina(&c, Some((0, 2)), Derecha), Some((0, 3)), "pasa de fila");

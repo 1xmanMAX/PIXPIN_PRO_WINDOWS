@@ -102,6 +102,7 @@ mod pedidos;
 mod pegar_en_flow;
 mod pila_capturas;
 mod pin_vivo;
+mod plano_cad;
 mod pines;
 mod pronunciar;
 mod punto_de_proyecto;
@@ -208,11 +209,13 @@ fn acciones_de_bandeja(t: impl Fn(&str) -> String) -> Vec<(u32, String)> {
     }) {
         v.push((d.comando.id(), t(d.clave_titulo)));
         if d.comando == Comando::AbrirChat {
-            v.push((ID_LECCIONES, t("bandeja-lecciones")));
+            // Lecciones y timeline son UNA entrada (8-oct-2026, el usuario:
+            // «ambos me llevan a la misma ventana»). `ID_LECCIONES` se sigue
+            // atendiendo: herramientas y memorias del proyecto lo usan.
+            v.push((ID_TIMELINE, t("bandeja-timeline")));
             v.push((ID_LECCION_NUEVA, t("bandeja-leccion-nueva")));
             v.push((ID_GALERIA_CAPTURAS, t("bandeja-galeria-capturas")));
             v.push((ID_TAREAS, t("bandeja-tareas")));
-            v.push((ID_TIMELINE, t("bandeja-timeline")));
             let s = Comando::Sincronizar.descriptor();
             if s.en_bandeja {
                 v.push((s.comando.id(), t(s.clave_titulo)));
@@ -228,6 +231,11 @@ fn acciones_de_bandeja(t: impl Fn(&str) -> String) -> Vec<(u32, String)> {
 }
 
 fn main() -> Result<()> {
+    // PixPin llamada para leer un plano DWG en un proceso aparte
+    // (`plano_cad`): eso y nada mas.
+    if let Some(codigo) = plano_cad::convertir_si_toca() {
+        std::process::exit(codigo);
+    }
     // Con panic = "abort" y sin consola, un panico moria MUDO: ni log ni
     // dialogo (costo una sesion de depuracion a ciegas). El hook escribe al
     // registro antes del abort; tracing puede no estar inicializado aun, y
@@ -540,6 +548,8 @@ fn arrancar(
     // esperar para que me aparezca». Se puede apagar con `[sincro] presencia
     // = false`.
     sincronizar::presencia::instalar(ubicacion.raiz().to_path_buf(), config.sincro.presencia);
+    // Y con ella, sincronizar solo con los que contesten (8-oct-2026).
+    sincronizar::automatica::instalar(ubicacion.raiz().to_path_buf(), config.sincro.automatica);
     // 7d. El marco de la tinta de lo ya anotado (K21): una vez por almacen,
     // en un hilo aparte; no toca ninguna tinta.
     marco_de_la_tinta::al_arrancar(ubicacion.raiz().to_path_buf());
@@ -1776,8 +1786,13 @@ fn atender_recordatorios(
         if let Some(l) = secreta {
             llamada::lanzar(l, rotulos_de_la_llamada(textos), hwnd.0 as isize);
         } else if let Some(monitor) = &monitor {
+            // De un archivo o una foto: el archivo y el aviso, juntos.
+            let archivo = v
+                .carpeta
+                .as_deref()
+                .and_then(|c| recordatorios::archivo_de(c, &r.id));
             let pineado = preparar_pines(recursos, pines, ubicacion, textos, hwnd, ritmo_video)
-                .and_then(|p| p.pinear_nota(&r.texto, monitor));
+                .and_then(|p| p.pinear_recordatorio(&r.texto, archivo.as_deref(), monitor));
             if let Err(e) = pineado {
                 tracing::warn!(?e, "no se pudo sacar el pin del recordatorio");
             }
@@ -2482,23 +2497,19 @@ mod pruebas_bandeja {
     use super::*;
 
     #[test]
-    fn lecciones_galeria_y_tareas_salen_justo_debajo_del_chat() {
+    fn timeline_galeria_y_tareas_salen_justo_debajo_del_chat() {
         let v = acciones_de_bandeja(|clave| clave.to_string());
         let chat = v
             .iter()
             .position(|(id, _)| *id == comandos::Comando::AbrirChat.id())
             .expect("el chat esta en la bandeja");
-        let siguen: Vec<u32> = v[chat + 1..chat + 6].iter().map(|(id, _)| *id).collect();
+        let siguen: Vec<u32> = v[chat + 1..chat + 5].iter().map(|(id, _)| *id).collect();
         assert_eq!(
             siguen,
-            [
-                ID_LECCIONES,
-                ID_LECCION_NUEVA,
-                ID_GALERIA_CAPTURAS,
-                ID_TAREAS,
-                ID_TIMELINE
-            ]
+            [ID_TIMELINE, ID_LECCION_NUEVA, ID_GALERIA_CAPTURAS, ID_TAREAS]
         );
+        // Lecciones y timeline abren la misma ventana: un solo boton.
+        assert!(!v.iter().any(|(id, _)| *id == ID_LECCIONES));
     }
 
     #[test]
@@ -2508,9 +2519,9 @@ mod pruebas_bandeja {
             .iter()
             .position(|(id, _)| *id == comandos::Comando::AbrirChat.id())
             .expect("el chat esta en la bandeja");
-        // Chat, lecciones, galeria, tareas y timeline, y en seguida Sincronizar.
+        // Chat, timeline, nueva leccion, galeria y tareas, y en seguida Sincronizar.
         assert_eq!(
-            v.get(chat + 6),
+            v.get(chat + 5),
             Some(&(
                 comandos::Comando::Sincronizar.id(),
                 "comando-sincronizar".to_string()
@@ -2534,7 +2545,6 @@ mod pruebas_bandeja {
     fn cada_entrada_sale_una_sola_vez_y_salir_no_se_cuela() {
         let v = acciones_de_bandeja(|clave| clave.to_string());
         for id in [
-            ID_LECCIONES,
             ID_LECCION_NUEVA,
             ID_GALERIA_CAPTURAS,
             ID_TAREAS,
