@@ -4,9 +4,11 @@
 //! (`lyon`) y se copia donde haga falta. Van en el nivel de su altura:
 //! de lejos, un texto de menos de un pixel no se dibuja.
 //!
-//! Las fuentes SHX de AutoCAD (romans, simplex, txt) no vienen con
-//! Windows: se dibujan con Arial Narrow, que se les parece en ancho, o con
-//! Arial. Un estilo con TrueType usa la suya si esta instalada.
+//! Un estilo con fuente SHX de AutoCAD (romans, simplex, txt…) usa la suya
+//! si esta en el equipo (`shx`: las de AutoCAD y las de Windows), con sus
+//! trazos como rayas, como se ven en AutoCAD; lo que esa fuente no tenga,
+//! y los estilos sin SHX a mano, van con Arial Narrow (se le parece en
+//! ancho) o con Arial. Un estilo con TrueType usa la suya si esta.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -18,19 +20,32 @@ use lyon_tessellation::{BuffersBuilder, FillOptions, FillRule, FillTessellator, 
 use crate::convertir::Afin;
 use crate::modelo::Constructor;
 
-/// Una letra ya rellena, en unidades de em (alto de la M ≈ 0.72).
+/// Una letra ya hecha: triangulos (TrueType) o pares de puntos (SHX), en
+/// las unidades de su fuente, y lo que avanza.
 struct Letra {
     triangulos: Vec<[f32; 2]>,
+    rayas: bool,
     avance: f32,
 }
 
 struct Fuente {
     id: u32,
+    /// La SHX del estilo, si la hay: sus letras van primero. Con ella las
+    /// unidades son «una mayuscula = 1» y las TrueType se escalan a eso.
+    shx: Option<crate::shx::Shx>,
     datos: Arc<Vec<u8>>,
     letras: HashMap<char, Option<Letra>>,
     /// Lo que mide una mayuscula en em: la altura de un texto de AutoCAD
     /// es la de sus mayusculas.
     alto_mayuscula: f32,
+    /// Con SHX: lo que se agranda una letra TrueType para casar con ella.
+    escala_ttf: f32,
+}
+
+/// Las carpetas de fuentes SHX, buscadas una vez.
+fn carpetas_shx() -> &'static [std::path::PathBuf] {
+    static C: std::sync::OnceLock<Vec<std::path::PathBuf>> = std::sync::OnceLock::new();
+    C.get_or_init(crate::shx::carpetas)
 }
 
 pub struct Textos {
@@ -84,6 +99,11 @@ impl Textos {
         let clave = estilo.to_ascii_lowercase();
         if !self.fuentes.contains_key(&clave) {
             let mut f = None;
+            let shx = if clave.ends_with(".shx") || (!clave.is_empty() && !clave.contains('.')) {
+                crate::shx::buscar(&clave, carpetas_shx()).and_then(|r| crate::shx::abrir(&r))
+            } else {
+                None
+            };
             for nombre in fichero_para(&clave) {
                 let ruta = std::path::Path::new(CARPETA_FUENTES).join(&nombre);
                 if let Ok(datos) = std::fs::read(&ruta)
@@ -91,14 +111,20 @@ impl Textos {
                 {
                     let em = cara.units_per_em() as f32;
                     let mayus = cara.capital_height().map(|h| h as f32 / em).filter(|h| *h > 0.2).unwrap_or(0.716);
+                    let con_shx = shx.is_some();
                     f = Some(Fuente {
                         id: self.fuentes.len() as u32,
+                        shx: None,
                         datos: Arc::new(datos),
                         letras: HashMap::new(),
-                        alto_mayuscula: mayus,
+                        alto_mayuscula: if con_shx { 1.0 } else { mayus },
+                        escala_ttf: if con_shx { 1.0 / mayus } else { 1.0 },
                     });
                     break;
                 }
+            }
+            if let Some(f) = f.as_mut() {
+                f.shx = shx;
             }
             self.fuentes.insert(clave.clone(), f);
         }
@@ -127,7 +153,7 @@ impl Textos {
             let avance = l.avance as f64;
             if !l.triangulos.is_empty() {
                 let tri = &l.triangulos;
-                let g = c.glifo(id, ch, || tri.clone());
+                let g = c.glifo(id, ch, l.rayas, || tri.clone());
                 c.letra(g, m.punto(x, 0.0, 0.0), mat, color, alto_mundo);
             }
             x += avance;
@@ -293,7 +319,35 @@ fn oblicua(angulo: f64) -> Afin {
 impl Fuente {
     fn letra(&mut self, ch: char) -> Option<&Letra> {
         if !self.letras.contains_key(&ch) {
-            let l = rellenar_letra(&self.datos, ch);
+            let de_shx = self.shx.as_ref().and_then(|f| f.letra(ch)).filter(|l| !l.trazos.is_empty() || ch == ' ');
+            let l = match de_shx {
+                Some(l) => {
+                    // Cada trazo, en pares de puntos (LINELIST).
+                    let mut pares = Vec::new();
+                    for t in &l.trazos {
+                        for w in t.windows(2) {
+                            pares.push(w[0]);
+                            pares.push(w[1]);
+                        }
+                    }
+                    Some(Letra {
+                        triangulos: pares,
+                        rayas: true,
+                        avance: l.avance,
+                    })
+                }
+                None => rellenar_letra(&self.datos, ch).map(|mut l| {
+                    let k = self.escala_ttf;
+                    if k != 1.0 {
+                        for p in &mut l.triangulos {
+                            p[0] *= k;
+                            p[1] *= k;
+                        }
+                        l.avance *= k;
+                    }
+                    l
+                }),
+            };
             self.letras.insert(ch, l);
         }
         self.letras.get(&ch)?.as_ref()
@@ -359,7 +413,11 @@ fn rellenar_letra(datos: &[u8], ch: char) -> Option<Letra> {
             triangulos = bufs.indices.iter().map(|&i| bufs.vertices[i as usize]).collect();
         }
     }
-    Some(Letra { triangulos, avance })
+    Some(Letra {
+        triangulos,
+        rayas: false,
+        avance,
+    })
 }
 
 /// Los renglones de un MTEXT sin sus codigos de formato (`\P`, `\f…;`,
@@ -401,11 +459,17 @@ mod pruebas {
     #[test]
     fn una_letra_de_arial_tiene_triangulos_y_avance() {
         let mut t = Textos::nuevo();
-        let Some(f) = t.fuente("romans.shx") else {
+        let Some(f) = t.fuente("arial.ttf") else {
             return; // sin fuentes de Windows (no deberia pasar)
         };
         let a = f.letra('A').unwrap();
-        assert!(a.triangulos.len() >= 9 && a.avance > 0.3);
+        assert!(a.triangulos.len() >= 9 && a.avance > 0.3 && !a.rayas);
+        // Con AutoCAD en el equipo, romans.shx da rayas; sin el, Arial.
+        if let Some(r) = t.fuente("romans.shx") {
+            let a = r.letra('A').unwrap();
+            assert!(!a.triangulos.is_empty() && a.triangulos.len() % 2 == 0 || !a.rayas);
+        }
+        let Some(f) = t.fuente("arial.ttf") else { return };
         // Un espacio no tiene contorno pero si avance.
         let e = f.letra(' ').unwrap();
         assert!(e.triangulos.is_empty() && e.avance > 0.1);

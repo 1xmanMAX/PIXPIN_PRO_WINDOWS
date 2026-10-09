@@ -10,6 +10,7 @@ pub mod gpu;
 pub mod leer;
 pub mod modelo;
 pub mod relleno;
+pub mod shx;
 pub mod teselar;
 pub mod texto;
 pub mod ventana;

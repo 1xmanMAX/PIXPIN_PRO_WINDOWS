@@ -15,7 +15,7 @@ use std::ffi::c_void;
 use windows::Win32::Foundation::{HMODULE, HWND};
 use windows::Win32::Graphics::Direct3D::Fxc::D3DCompile;
 use windows::Win32::Graphics::Direct3D::{
-    D3D_DRIVER_TYPE, D3D_DRIVER_TYPE_HARDWARE, D3D_DRIVER_TYPE_WARP, D3D_PRIMITIVE_TOPOLOGY_LINESTRIP,
+    D3D_DRIVER_TYPE, D3D_DRIVER_TYPE_HARDWARE, D3D_DRIVER_TYPE_WARP, D3D_PRIMITIVE_TOPOLOGY_LINELIST, D3D_PRIMITIVE_TOPOLOGY_LINESTRIP,
     D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST, D3D_SRV_DIMENSION_BUFFEREX, ID3DBlob,
 };
 use windows::Win32::Graphics::Direct3D11::*;
@@ -104,13 +104,49 @@ StructuredBuffer<uint2> glifos : register(t3);
 
 Sal vs_letra(uint vid : SV_VertexID, float2 pos : POS, float4 m : MAT, uint c : COLOR, uint g : GLIFO) {
     uint2 gl = glifos[g];
+    uint n = gl.y & 0x7fffffff;
     Sal o;
     o.color = color_de(c);
-    if (vid >= gl.y) { o.pos = float4(0, 0, -2, 1); return o; }
+    if (vid >= n) { o.pos = float4(0, 0, -2, 1); return o; }
     float2 e = malla[gl.x + vid];
     float2 w = pos + float2(m.x * e.x + m.y * e.y, m.z * e.x + m.w * e.y);
     o.pos = a_pantalla(w);
     return o;
+}
+
+// ---- circulos y arcos, exactos a cualquier zoom: un cuadrado por arco y
+// en cada pixel la distancia a la circunferencia (una raya de un pixel).
+struct SalA {
+    float4 pos : SV_Position;
+    float4 color : COLOR;
+    float2 mundo : MUNDO;
+    nointerpolation float4 arco : ARCO;
+    nointerpolation float barrido : BARRIDO;
+};
+
+SalA vs_arco(uint vid : SV_VertexID, float2 c : CENTRO, float r : RADIO, float a0 : INICIO, float b : BARRIDO, uint col : COLOR) {
+    float2 esq[6] = { float2(-1, -1), float2(1, -1), float2(-1, 1), float2(1, -1), float2(1, 1), float2(-1, 1) };
+    float2 w = c + esq[vid] * (r + 2.0 * px);
+    SalA o;
+    o.pos = a_pantalla(w);
+    o.color = color_de(col);
+    o.mundo = w;
+    o.arco = float4(c, r, a0);
+    o.barrido = b;
+    return o;
+}
+
+float4 ps_arco(SalA i) : SV_Target {
+    float2 d = i.mundo - i.arco.xy;
+    float dist = abs(length(d) - i.arco.z) / px;
+    float a = saturate(1.1 - dist);
+    if (a <= 0.003) discard;
+    if (i.barrido < 6.2831) {
+        float ang = atan2(d.y, d.x) - i.arco.w;
+        ang = ang - floor(ang / 6.2831853) * 6.2831853;
+        if (ang > i.barrido) discard;
+    }
+    return float4(i.color.rgb, i.color.a * a);
 }
 "#;
 
@@ -137,6 +173,8 @@ pub struct PlanoGpu {
     malla: Option<ID3D11ShaderResourceView>,
     glifos: Option<ID3D11ShaderResourceView>,
     letras: Option<ID3D11Buffer>,
+    arcos: Option<ID3D11Buffer>,
+    pub tramos_arcos: Vec<Tramo>,
     pub tramos_lineas: Vec<Tramo>,
     pub tramos_triangulos: Vec<Tramo>,
     pub tramos_trama: Vec<Tramo>,
@@ -155,6 +193,9 @@ pub struct Gpu {
     vs_simple: ID3D11VertexShader,
     vs_trama: ID3D11VertexShader,
     vs_letra: ID3D11VertexShader,
+    vs_arco: ID3D11VertexShader,
+    ps_arco: ID3D11PixelShader,
+    il_arco: ID3D11InputLayout,
     ps_color: ID3D11PixelShader,
     ps_trama: ID3D11PixelShader,
     il_simple: ID3D11InputLayout,
@@ -251,6 +292,24 @@ impl Gpu {
             let vs_l = compilar(s!("vs_letra"), s!("vs_5_0"))?;
             let ps_c = compilar(s!("ps_color"), s!("ps_5_0"))?;
             let ps_t = compilar(s!("ps_trama"), s!("ps_5_0"))?;
+            let vs_a = compilar(s!("vs_arco"), s!("vs_5_0"))?;
+            let ps_a = compilar(s!("ps_arco"), s!("ps_5_0"))?;
+            let mut vs_arco = None;
+            let mut ps_arco = None;
+            dispositivo.CreateVertexShader(&vs_a, None, Some(&mut vs_arco))?;
+            dispositivo.CreatePixelShader(&ps_a, None, Some(&mut ps_arco))?;
+            let mut il_arco = None;
+            dispositivo.CreateInputLayout(
+                &[
+                    elemento(s!("CENTRO"), DXGI_FORMAT_R32G32_FLOAT, 0, true),
+                    elemento(s!("RADIO"), DXGI_FORMAT_R32_FLOAT, 8, true),
+                    elemento(s!("INICIO"), DXGI_FORMAT_R32_FLOAT, 12, true),
+                    elemento(s!("BARRIDO"), DXGI_FORMAT_R32_FLOAT, 16, true),
+                    elemento(s!("COLOR"), DXGI_FORMAT_R32_UINT, 20, true),
+                ],
+                &vs_a,
+                Some(&mut il_arco),
+            )?;
             let mut vs_simple = None;
             let mut vs_trama = None;
             let mut vs_letra = None;
@@ -343,6 +402,9 @@ impl Gpu {
                 vs_simple: vs_simple.ok_or_else(falta)?,
                 vs_trama: vs_trama.ok_or_else(falta)?,
                 vs_letra: vs_letra.ok_or_else(falta)?,
+                vs_arco: vs_arco.ok_or_else(falta)?,
+                ps_arco: ps_arco.ok_or_else(falta)?,
+                il_arco: il_arco.ok_or_else(falta)?,
                 ps_color: ps_color.ok_or_else(falta)?,
                 ps_trama: ps_trama.ok_or_else(falta)?,
                 il_simple: il_simple.ok_or_else(falta)?,
@@ -464,6 +526,8 @@ impl Gpu {
             malla: self.estructurado(bytes_de(&m.malla_letras), 8)?,
             glifos: self.estructurado(bytes_de(&m.glifos), 8)?,
             letras: self.buffer(bytes_de(&m.letras), D3D11_BIND_VERTEX_BUFFER, 0)?,
+            arcos: self.buffer(bytes_de(&m.arcos), D3D11_BIND_VERTEX_BUFFER, 0)?,
+            tramos_arcos: m.tramos_arcos.clone(),
             tramos_lineas: m.tramos_lineas.clone(),
             tramos_triangulos: m.tramos_triangulos.clone(),
             tramos_trama: m.tramos_trama.clone(),
@@ -534,16 +598,29 @@ impl Gpu {
                         ctx.DrawIndexed(n, d, 0);
                     }
                 }
+                // 3b. Circulos y arcos.
+                if let Some(ab) = &p.arcos {
+                    ctx.IASetInputLayout(&self.il_arco);
+                    ctx.IASetVertexBuffers(0, 1, Some(&Some(ab.clone())), Some(&32), Some(&0));
+                    ctx.IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+                    ctx.VSSetShader(&self.vs_arco, None);
+                    ctx.PSSetShader(&self.ps_arco, None);
+                    for (d, n) in visibles(&p.tramos_arcos, &caja, vista.px * 0.75) {
+                        ctx.DrawInstanced(6, n, 0, d);
+                    }
+                }
                 // 4. Letras: un texto de menos de 3 pixeles no se lee.
                 if let (Some(lb), Some(_)) = (&p.letras, &p.malla) {
                     ctx.IASetInputLayout(&self.il_letra);
                     ctx.IASetVertexBuffers(0, 1, Some(&Some(lb.clone())), Some(&32), Some(&0));
-                    ctx.IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
                     ctx.VSSetShader(&self.vs_letra, None);
                     ctx.PSSetShader(&self.ps_color, None);
                     ctx.VSSetShaderResources(2, Some(&[p.malla.clone(), p.glifos.clone()]));
                     for t in p.tramos_letras.iter().filter(|t| t.tamano >= vista.px * 3.0 && corta(&t.caja, &caja)) {
-                        ctx.DrawInstanced(t.clase, t.cuantos, 0, t.desde);
+                        // Las de una fuente SHX son rayas; las TrueType, triangulos.
+                        let rayas = t.clase & crate::modelo::GLIFO_DE_RAYAS != 0;
+                        ctx.IASetPrimitiveTopology(if rayas { D3D_PRIMITIVE_TOPOLOGY_LINELIST } else { D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST });
+                        ctx.DrawInstanced(t.clase & !crate::modelo::GLIFO_DE_RAYAS, t.cuantos, 0, t.desde);
                     }
                 }
             }

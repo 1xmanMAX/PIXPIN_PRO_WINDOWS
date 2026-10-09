@@ -88,6 +88,25 @@ pub struct Letra {
     pub glifo: u32,
 }
 
+/// Un circulo o un arco continuo, que la tarjeta pinta exacto a cualquier
+/// zoom (un cuadrado por arco; el sombreador mira la distancia al centro).
+/// La idea es de OpenCADStudio (su arquitectura, no su codigo).
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[repr(C)]
+pub struct Arco {
+    pub centro: [f32; 2],
+    pub radio: f32,
+    /// Donde empieza (radianes, contra reloj) y cuanto barre (2π: entero).
+    pub inicio: f32,
+    pub barrido: f32,
+    pub color: u32,
+    pub relleno: [u32; 2],
+}
+
+/// En `glifos`: el bit alto del numero de vertices dice que la letra es de
+/// rayas (una fuente SHX: pares de puntos, `LINELIST`) y no de triangulos.
+pub const GLIFO_DE_RAYAS: u32 = 0x8000_0000;
+
 /// El indice que corta una tira de lineas (`strip cut` de D3D11).
 pub const CORTE: u32 = u32::MAX;
 
@@ -127,13 +146,17 @@ pub struct Modelo {
     pub glifos: Vec<[u32; 2]>,
     pub letras: Vec<Letra>,
     pub tramos_letras: Vec<Tramo>,
+    pub arcos: Vec<Arco>,
+    pub tramos_arcos: Vec<Tramo>,
+    /// Las unidades del plano (`$INSUNITS`: 4 mm, 5 cm, 6 m…; 0 sin decir).
+    pub unidades: u32,
     /// Lo que no se pudo dibujar, por tipo (para decirlo, no para fallar).
     pub sin_dibujar: Vec<(String, u32)>,
 }
 
 impl Modelo {
     pub fn vacio(&self) -> bool {
-        self.lineas.is_empty() && self.triangulos.is_empty() && self.triangulos_trama.is_empty() && self.letras.is_empty()
+        self.lineas.is_empty() && self.triangulos.is_empty() && self.triangulos_trama.is_empty() && self.letras.is_empty() && self.arcos.is_empty()
     }
 
     /// Lo que ocupara en la tarjeta, en bytes (aproximado).
@@ -145,6 +168,7 @@ impl Modelo {
             + self.familias.len() * 64
             + self.malla_letras.len() * 8
             + self.letras.len() * 32
+            + self.arcos.len() * 32
     }
 }
 
@@ -189,6 +213,9 @@ pub struct Constructor {
     glifo_de: std::collections::HashMap<(u32, char), u32>,
     letras: Vec<([f64; 2], [f32; 4], u32, u32)>,
     piezas_le: Vec<Pieza>,
+    arcos: Vec<([f64; 2], f64, f64, f64, u32)>,
+    piezas_ar: Vec<Pieza>,
+    pub unidades: u32,
     caja: Option<[f64; 4]>,
     pub sin_dibujar: std::collections::BTreeMap<String, u32>,
     /// Tope de vertices, para no ahogar un portatil con un plano enorme.
@@ -231,7 +258,7 @@ impl Constructor {
     }
 
     pub fn vertices(&self) -> usize {
-        self.puntos.len() + self.puntos_trama.len() + self.letras.len() * 3
+        self.puntos.len() + self.puntos_trama.len() + self.letras.len() * 3 + self.arcos.len() * 3
     }
 
     pub fn lleno(&self) -> bool {
@@ -418,9 +445,27 @@ impl Constructor {
         });
     }
 
+    /// Un circulo o un arco (ya en el plano): `barrido` de 2π es entero.
+    pub fn arco(&mut self, centro: [f64; 2], radio: f64, inicio: f64, barrido: f64, color: u32) {
+        if !valido(centro) || !(radio > 0.0) || !radio.is_finite() || self.lleno() {
+            return;
+        }
+        let caja = [centro[0] - radio, centro[1] - radio, centro[0] + radio, centro[1] + radio];
+        self.sumar_caja(caja);
+        let i = self.arcos.len() as u32;
+        self.arcos.push((centro, radio, inicio, barrido, color));
+        self.piezas_ar.push(Pieza {
+            desde: i,
+            cuantos: 1,
+            caja,
+            nivel: nivel_de(radio * 2.0),
+            clase: 0,
+        });
+    }
+
     /// El numero de una letra distinta (fuente y caracter); la rellena con
-    /// `malla` la primera vez.
-    pub fn glifo(&mut self, fuente: u32, ch: char, malla: impl FnOnce() -> Vec<[f32; 2]>) -> u32 {
+    /// `malla` la primera vez. `rayas`: la malla son pares de puntos.
+    pub fn glifo(&mut self, fuente: u32, ch: char, rayas: bool, malla: impl FnOnce() -> Vec<[f32; 2]>) -> u32 {
         if let Some(g) = self.glifo_de.get(&(fuente, ch)) {
             return *g;
         }
@@ -428,7 +473,7 @@ impl Constructor {
         let desde = self.malla_letras.len() as u32;
         self.malla_letras.extend_from_slice(&m);
         let g = self.glifos.len() as u32;
-        self.glifos.push([desde, m.len() as u32]);
+        self.glifos.push([desde, m.len() as u32 | if rayas { GLIFO_DE_RAYAS } else { 0 }]);
         self.glifo_de.insert((fuente, ch), g);
         g
     }
@@ -437,6 +482,8 @@ impl Constructor {
     /// `alto` es el del texto, para no dibujarla si de lejos no se ve.
     pub fn letra(&mut self, glifo: u32, pos: [f64; 2], m: [f64; 4], color: u32, alto: f64) {
         let Some(&[_, n]) = self.glifos.get(glifo as usize) else { return };
+        let rayas = n & GLIFO_DE_RAYAS;
+        let n = n & !GLIFO_DE_RAYAS;
         if n == 0 || !valido(pos) || self.lleno() {
             return;
         }
@@ -454,7 +501,7 @@ impl Constructor {
             cuantos: 1,
             caja,
             nivel: nivel_de(alto),
-            clase: clase_de(n),
+            clase: clase_de(n) | rayas,
         });
     }
 
@@ -541,6 +588,21 @@ impl Constructor {
         let (otr, tramos_trama) = ordenar(self.piezas_tr);
         let triangulos_trama = reordenar(&otr, &self.triangulos_trama);
         let (ole, tramos_letras) = ordenar(self.piezas_le);
+        let (oar, tramos_arcos) = ordenar(self.piezas_ar);
+        let arcos = oar
+            .iter()
+            .map(|&(d, _)| {
+                let (c, r, a0, b, color) = self.arcos[d as usize];
+                Arco {
+                    centro: [(c[0] - origen[0]) as f32, (c[1] - origen[1]) as f32],
+                    radio: r as f32,
+                    inicio: a0 as f32,
+                    barrido: b as f32,
+                    color,
+                    relleno: [0; 2],
+                }
+            })
+            .collect();
         let letras = ole
             .iter()
             .map(|&(d, _)| {
@@ -600,6 +662,9 @@ impl Constructor {
             glifos: self.glifos,
             letras,
             tramos_letras,
+            arcos,
+            tramos_arcos,
+            unidades: self.unidades,
             sin_dibujar: self.sin_dibujar.into_iter().collect(),
         }
     }
@@ -613,7 +678,7 @@ fn clase_de(n: u32) -> u32 {
 
 // ------------------------------------------------------------- guardar
 
-const MAGIA: &[u8; 8] = b"PXCAD\0\0\x02";
+const MAGIA: &[u8; 8] = b"PXCAD\0\0\x03";
 
 /// Escribe y lee todo como palabras de 4 bytes (lo que tambien se sube a la
 /// tarjeta tal cual).
@@ -700,6 +765,22 @@ impl Palabras for Letra {
             m: [g(p[2]), g(p[3]), g(p[4]), g(p[5])],
             color: p[6],
             glifo: p[7],
+        }
+    }
+}
+impl Palabras for Arco {
+    const N: usize = 8;
+    fn poner(&self, v: &mut Vec<u32>) {
+        v.extend([f(self.centro[0]), f(self.centro[1]), f(self.radio), f(self.inicio), f(self.barrido), self.color, 0, 0]);
+    }
+    fn tomar(p: &[u32]) -> Self {
+        Arco {
+            centro: [g(p[0]), g(p[1])],
+            radio: g(p[2]),
+            inicio: g(p[3]),
+            barrido: g(p[4]),
+            color: p[5],
+            relleno: [0; 2],
         }
     }
 }
@@ -797,6 +878,9 @@ impl Modelo {
         poner_lista(&mut w, &self.glifos);
         poner_lista(&mut w, &self.letras);
         poner_lista(&mut w, &self.tramos_letras);
+        poner_lista(&mut w, &self.arcos);
+        poner_lista(&mut w, &self.tramos_arcos);
+        w.push(self.unidades);
         w.push(self.sin_dibujar.len() as u32);
         for (t, n) in &self.sin_dibujar {
             let b = t.as_bytes();
@@ -842,6 +926,9 @@ impl Modelo {
             glifos: r.lista()?,
             letras: r.lista()?,
             tramos_letras: r.lista()?,
+            arcos: r.lista()?,
+            tramos_arcos: r.lista()?,
+            unidades: r.uno()?,
             sin_dibujar: {
                 let n = r.uno()? as usize;
                 let mut v = Vec::new();
@@ -870,12 +957,13 @@ impl Modelo {
             && self.triangulos_trama.iter().all(|&i| i < nt)
             && self.vertices_trama.iter().all(|v| (v.trama as usize) < self.tramas.len())
             && self.tramas.iter().all(|t| (t.desde as usize + t.cuantas as usize) <= self.familias.len())
-            && self.glifos.iter().all(|g| (g[0] as usize + g[1] as usize) <= self.malla_letras.len())
+            && self.glifos.iter().all(|g| (g[0] as usize + (g[1] & !GLIFO_DE_RAYAS) as usize) <= self.malla_letras.len())
             && self.letras.iter().all(|l| (l.glifo as usize) < self.glifos.len())
             && ok_tramos(&self.tramos_lineas, self.lineas.len())
             && ok_tramos(&self.tramos_triangulos, self.triangulos.len())
             && ok_tramos(&self.tramos_trama, self.triangulos_trama.len())
             && ok_tramos(&self.tramos_letras, self.letras.len())
+            && ok_tramos(&self.tramos_arcos, self.arcos.len())
     }
 }
 
@@ -895,8 +983,12 @@ mod pruebas {
             [1.0, 0.0, 0.0, 1.0, 0.0, 0.0],
             &[FamiliaPlano { angulo: 0.0, base: [0.0, 0.0], desplazamiento: [0.0, 1.0], trazos: vec![] }],
         );
-        let g = c.glifo(0, 'A', || vec![[0.0, 0.0], [0.5, 1.0], [1.0, 0.0]]);
-        assert_eq!(c.glifo(0, 'A', || panic!("ya estaba")), g);
+        let g = c.glifo(0, 'A', false, || vec![[0.0, 0.0], [0.5, 1.0], [1.0, 0.0]]);
+        assert_eq!(c.glifo(0, 'A', false, || panic!("ya estaba")), g);
+        let r = c.glifo(1, 'L', true, || vec![[0.0, 1.0], [0.0, 0.0], [0.0, 0.0], [0.5, 0.0]]);
+        c.letra(r, [6.0, 5.0], [2.0, 0.0, 0.0, 2.0], 0xffffffff, 2.0);
+        c.arco([3.0, 3.0], 2.0, 0.0, std::f64::consts::TAU, 0xff0000ff);
+        c.unidades = 6;
         c.letra(g, [5.0, 5.0], [2.0, 0.0, 0.0, 2.0], 0xffffffff, 2.0);
         c.no_dibujado("SOLID3D");
         c.terminar()
@@ -912,8 +1004,10 @@ mod pruebas {
         assert_eq!(m.lineas.iter().filter(|i| **i == CORTE).count(), 2);
         assert_eq!(m.triangulos.len(), 3);
         assert_eq!((m.tramas.len(), m.familias.len(), m.triangulos_trama.len()), (1, 1, 3));
-        assert_eq!((m.glifos.len(), m.letras.len()), (1, 1));
-        assert_eq!(m.letras[0].pos, [-495.0, 0.0]);
+        assert_eq!((m.glifos.len(), m.letras.len()), (2, 2));
+        assert!(m.tramos_letras.iter().any(|t| t.clase & GLIFO_DE_RAYAS != 0));
+        assert!(m.tramos_letras.iter().any(|t| t.clase & GLIFO_DE_RAYAS == 0));
+        assert_eq!((m.arcos.len(), m.unidades), (1, 6));
         assert!(m.valido());
         // Casos negativos: lo que no es un numero no entra, y una linea de
         // un solo punto tampoco.

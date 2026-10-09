@@ -184,6 +184,7 @@ impl<'d> Convertidor<'d> {
         let (a, b) = (&self.doc.header.model_space_extents_min, &self.doc.header.model_space_extents_max);
         let lado = (b.x - a.x).max(b.y - a.y);
         teselar::poner_tamano_del_plano(if lado.is_finite() && lado > 0.0 && lado < 1e9 { lado } else { 0.0 });
+        self.c.unidades = self.doc.header.insertion_units.max(0) as u32;
         let entidades: Vec<&EntityType> = self.doc.model_space_entities().collect();
         let espacio: Vec<&EntityType> = if entidades.iter().any(|e| dibujable(e)) {
             entidades
@@ -272,6 +273,10 @@ impl<'d> Convertidor<'d> {
             EntityType::Circle(k) => {
                 let t = m.por(&ocs(&k.normal));
                 let z = k.center.z;
+                if let Some((c, r, _)) = como_circulo(&t, [k.center.x, k.center.y, z], k.radius, 0.0, std::f64::consts::TAU) {
+                    self.c.arco(c, r, 0.0, std::f64::consts::TAU, color);
+                    return;
+                }
                 let pts: Vec<_> = teselar::circulo([k.center.x, k.center.y], k.radius)
                     .into_iter()
                     .map(|p| t.punto(p[0], p[1], z))
@@ -281,6 +286,14 @@ impl<'d> Convertidor<'d> {
             EntityType::Arc(a) => {
                 let t = m.por(&ocs(&a.normal));
                 let z = a.center.z;
+                let mut barrido = a.end_angle - a.start_angle;
+                while barrido <= 0.0 {
+                    barrido += std::f64::consts::TAU;
+                }
+                if let Some((c, r, inicio)) = como_circulo(&t, [a.center.x, a.center.y, z], a.radius, a.start_angle, barrido.min(std::f64::consts::TAU)) {
+                    self.c.arco(c, r, inicio, barrido.min(std::f64::consts::TAU), color);
+                    return;
+                }
                 let pts: Vec<_> = teselar::arco([a.center.x, a.center.y], a.radius, a.start_angle, a.end_angle)
                     .into_iter()
                     .map(|p| t.punto(p[0], p[1], z))
@@ -669,6 +682,27 @@ impl<'d> Convertidor<'d> {
     }
 }
 
+/// Si `t` lleva un circulo a un circulo (giro, escala igual en los dos ejes,
+/// espejo), su centro, su radio y donde empieza el arco en el plano. Si no
+/// (escala distinta en x e y, o inclinado en 3D), `None`: se trocea.
+fn como_circulo(t: &Afin, centro: [f64; 3], radio: f64, inicio: f64, barrido: f64) -> Option<([f64; 2], f64, f64)> {
+    let (a, b, c, d) = (t.m[0][0], t.m[0][1], t.m[1][0], t.m[1][1]);
+    let s = (a * a + c * c).sqrt();
+    if !(s > 0.0) || !s.is_finite() {
+        return None;
+    }
+    let tol = s * 1e-6;
+    let giro = (a - d).abs() < tol && (b + c).abs() < tol;
+    let espejo = (a + d).abs() < tol && (b - c).abs() < tol;
+    if !giro && !espejo {
+        return None;
+    }
+    let psi = c.atan2(a);
+    let inicio_plano = if giro { inicio + psi } else { psi - (inicio + barrido) };
+    let cen = t.punto(centro[0], centro[1], centro[2]);
+    Some((cen, radio * s, inicio_plano))
+}
+
 fn dibujable(e: &EntityType) -> bool {
     !matches!(e, EntityType::Viewport(_) | EntityType::Block(_) | EntityType::BlockEnd(_) | EntityType::Seqend(_))
 }
@@ -719,6 +753,18 @@ mod pruebas {
         assert!((p[0] + 1.0).abs() < 1e-9);
         // Caso negativo: la normal de siempre no cambia nada.
         assert_eq!(ocs(&Vector3::new(0.0, 0.0, 1.0)), Afin::IDENTIDAD);
+    }
+
+    #[test]
+    fn un_circulo_girado_o_en_espejo_sigue_siendo_circulo_y_estirado_no() {
+        let (c, r, a) = como_circulo(&Afin::giro_z(1.0).por(&Afin::escala(2.0, 2.0, 1.0)), [1.0, 0.0, 0.0], 3.0, 0.5, 1.0).unwrap();
+        assert!((r - 6.0).abs() < 1e-9 && (a - 1.5).abs() < 1e-9);
+        assert!((c[0] - 2.0 * 1f64.cos()).abs() < 1e-9);
+        // En espejo (x -> -x): un arco de 0 a 90 queda de 90 a 180.
+        let (_, _, a) = como_circulo(&Afin::escala(-1.0, 1.0, 1.0), [0.0; 3], 1.0, 0.0, std::f64::consts::FRAC_PI_2).unwrap();
+        assert!((a - std::f64::consts::FRAC_PI_2).abs() < 1e-9, "{a}");
+        // Caso negativo: estirado no es un circulo.
+        assert!(como_circulo(&Afin::escala(2.0, 1.0, 1.0), [0.0; 3], 1.0, 0.0, 1.0).is_none());
     }
 
     #[test]
