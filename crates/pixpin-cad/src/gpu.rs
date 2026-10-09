@@ -31,7 +31,8 @@ cbuffer Vista : register(b0) {
     float2 centro;     // el punto del plano en el centro de la ventana
     float4 color7;     // el color 7 de AutoCAD sobre este fondo
     float  px;         // unidades del plano por pixel
-    float3 relleno_;
+    float  modo;       // 0 tal cual, 1 fondo oscuro, 2 fondo claro
+    float2 relleno_;
 };
 
 struct Sal { float4 pos : SV_Position; float4 color : COLOR; };
@@ -42,13 +43,40 @@ float4 color_de(uint c) {
     return r;
 }
 
+// Los colores del plano se pensaron para un fondo; en el otro, los que no
+// se leen se aclaran (u oscurecen) sin perder su tono, y los grises oscuros
+// se vuelven claros, como el color 7 de AutoCAD.
+float luz(float3 c) { return dot(c, float3(0.2126, 0.7152, 0.0722)); }
+float4 tinta(float4 c) {
+    if (modo < 0.5) return c;
+    float l = luz(c.rgb);
+    float sat = max(c.r, max(c.g, c.b)) - min(c.r, min(c.g, c.b));
+    if (modo < 1.5) {
+        if (sat < 0.15 && l < 0.5) c.rgb = 1.0 - c.rgb * 0.8;
+        else if (l < 0.55) c.rgb = lerp(c.rgb, 1.0, (0.55 - l) / (1.0 - l));
+    } else if (l > 0.62) {
+        c.rgb *= 0.5 / l;
+    }
+    return c;
+}
+// Los rellenos grandes, en oscuro, se apagan: un blanco o un amarillo de
+// tabla deslumbraba y las letras de encima (ya aclaradas) no se leian.
+float4 apagado(float4 c) {
+    if (modo < 0.5 || modo > 1.5) return c;
+    float sat = max(c.r, max(c.g, c.b)) - min(c.r, min(c.g, c.b));
+    if (sat < 0.15) c.rgb = 0.17 + (1.0 - c.rgb) * 0.22;
+    else c.rgb *= 0.42;
+    return c;
+}
+
 float4 a_pantalla(float2 p) { return float4((p - centro) * escala, 0.5, 1); }
 
 Sal vs_simple(float2 p : POS, uint c : COLOR) {
     Sal o; o.pos = a_pantalla(p); o.color = color_de(c); return o;
 }
 
-float4 ps_color(Sal i) : SV_Target { return i.color; }
+float4 ps_color(Sal i) : SV_Target { return tinta(i.color); }
+float4 ps_relleno(Sal i) : SV_Target { return apagado(i.color); }
 
 // ---- sombreados con patron
 struct Trama { float2 centro; float4 inv; float escala; uint desde; uint cuantas; };
@@ -95,7 +123,8 @@ float4 ps_trama(SalT i) : SV_Target {
         cob = max(cob, a);
     }
     if (cob <= 0.004) discard;
-    return float4(i.color.rgb, i.color.a * cob);
+    float4 t = tinta(i.color);
+    return float4(t.rgb, t.a * cob);
 }
 
 // ---- letras
@@ -146,7 +175,8 @@ float4 ps_arco(SalA i) : SV_Target {
         ang = ang - floor(ang / 6.2831853) * 6.2831853;
         if (ang > i.barrido) discard;
     }
-    return float4(i.color.rgb, i.color.a * a);
+    float4 t = tinta(i.color);
+    return float4(t.rgb, t.a * a);
 }
 "#;
 
@@ -158,7 +188,9 @@ pub struct Vista {
     pub centro: [f32; 2],
     pub color7: [f32; 4],
     pub px: f32,
-    pub relleno: [f32; 3],
+    /// 0 los colores tal cual; 1 fondo oscuro; 2 fondo claro.
+    pub modo: f32,
+    pub relleno: [f32; 2],
 }
 
 /// El plano en la tarjeta.
@@ -195,6 +227,7 @@ pub struct Gpu {
     vs_letra: ID3D11VertexShader,
     vs_arco: ID3D11VertexShader,
     ps_arco: ID3D11PixelShader,
+    ps_relleno: ID3D11PixelShader,
     il_arco: ID3D11InputLayout,
     ps_color: ID3D11PixelShader,
     ps_trama: ID3D11PixelShader,
@@ -296,6 +329,9 @@ impl Gpu {
             let ps_a = compilar(s!("ps_arco"), s!("ps_5_0"))?;
             let mut vs_arco = None;
             let mut ps_arco = None;
+            let ps_r = compilar(s!("ps_relleno"), s!("ps_5_0"))?;
+            let mut ps_relleno = None;
+            dispositivo.CreatePixelShader(&ps_r, None, Some(&mut ps_relleno))?;
             dispositivo.CreateVertexShader(&vs_a, None, Some(&mut vs_arco))?;
             dispositivo.CreatePixelShader(&ps_a, None, Some(&mut ps_arco))?;
             let mut il_arco = None;
@@ -404,6 +440,7 @@ impl Gpu {
                 vs_letra: vs_letra.ok_or_else(falta)?,
                 vs_arco: vs_arco.ok_or_else(falta)?,
                 ps_arco: ps_arco.ok_or_else(falta)?,
+                ps_relleno: ps_relleno.ok_or_else(falta)?,
                 il_arco: il_arco.ok_or_else(falta)?,
                 ps_color: ps_color.ok_or_else(falta)?,
                 ps_trama: ps_trama.ok_or_else(falta)?,
@@ -568,7 +605,7 @@ impl Gpu {
                     ctx.IASetIndexBuffer(ib, DXGI_FORMAT_R32_UINT, 0);
                     ctx.IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
                     ctx.VSSetShader(&self.vs_simple, None);
-                    ctx.PSSetShader(&self.ps_color, None);
+                    ctx.PSSetShader(&self.ps_relleno, None);
                     for (d, n) in visibles(&p.tramos_triangulos, &caja, vista.px * 1.0) {
                         ctx.DrawIndexed(n, d, 0);
                     }

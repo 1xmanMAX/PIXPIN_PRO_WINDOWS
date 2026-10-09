@@ -115,7 +115,7 @@ pub fn rgba(r: u8, g: u8, b: u8) -> u32 {
 /// El color 7 (blanco en fondo oscuro, negro en claro): alfa 0.
 pub const COLOR_7: u32 = 0x00ff_ffff;
 
-fn de_color(c: &Color) -> Option<u32> {
+pub(crate) fn de_color(c: &Color) -> Option<u32> {
     match c {
         Color::Index(7) => Some(COLOR_7),
         Color::Rgb { r, g, b } => Some(rgba(*r, *g, *b)),
@@ -395,7 +395,7 @@ impl<'d> Convertidor<'d> {
                 }
                 let t = &ml.context;
                 if !t.text_string.is_empty() {
-                    self.texto_mtext(&t.text_string, &t.text_location, t.text_height, 0.0, None, 1, 0.0, &Vector3::new(0., 0., 1.), color, &m);
+                    self.texto_mtext(&t.text_string, "", &t.text_location, t.text_height, 0.0, None, 1, 0.0, &Vector3::new(0., 0., 1.), color, &m);
                 }
             }
             EntityType::Insert(ins) => self.insertar(ins, capa, color, cx),
@@ -418,7 +418,7 @@ impl<'d> Convertidor<'d> {
             }
             EntityType::MText(t) => {
                 let ap = t.attachment_point as u8;
-                self.texto_mtext(&t.value, &t.insertion_point, t.height, t.rotation, t.dwg_x_direction.as_ref(), ap, t.rectangle_width, &t.normal, color, &m);
+                self.texto_mtext(&t.value, &t.style, &t.insertion_point, t.height, t.rotation, t.dwg_x_direction.as_ref(), ap, t.rectangle_width, &t.normal, color, &m);
             }
             EntityType::AttributeEntity(a) => self.atributo(a, color, &m),
             EntityType::Block(_)
@@ -435,7 +435,7 @@ impl<'d> Convertidor<'d> {
             return;
         }
         if let Some(mt) = &a.embedded_mtext {
-            self.texto_mtext(&mt.value, &mt.insertion_point, mt.height, mt.rotation, mt.dwg_x_direction.as_ref(), mt.attachment_point as u8, mt.rectangle_width, &mt.normal, color, m);
+            self.texto_mtext(&mt.value, &mt.style, &mt.insertion_point, mt.height, mt.rotation, mt.dwg_x_direction.as_ref(), mt.attachment_point as u8, mt.rectangle_width, &mt.normal, color, m);
             return;
         }
         let alt = Some(&a.alignment_point);
@@ -661,24 +661,46 @@ impl<'d> Convertidor<'d> {
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn texto_mtext(&mut self, valor: &str, ins: &Vector3, alto: f64, giro: f64, dir_x: Option<&Vector3>, ap: u8, caja: f64, normal: &Vector3, color: u32, m: &Afin) {
-        let lineas = crate::texto::lineas_de_mtext(valor);
-        self.cuentas.letras += lineas.iter().map(|l| l.chars().count()).sum::<usize>();
+    fn texto_mtext(&mut self, valor: &str, estilo: &str, ins: &Vector3, alto: f64, giro: f64, dir_x: Option<&Vector3>, ap: u8, caja: f64, normal: &Vector3, color: u32, m: &Afin) {
+        let mut lineas = crate::texto::parrafos_de_mtext(valor);
+        // El ancho de letra del estilo vale para todo el MTEXT salvo un \W.
+        let ancho_estilo = self.doc.text_styles.get(if estilo.is_empty() { "Standard" } else { estilo }).map_or(1.0, |s| s.width_factor);
+        if ancho_estilo > 0.0 && (ancho_estilo - 1.0).abs() > 1e-6 {
+            for t in lineas.iter_mut().flatten() {
+                t.ancho.get_or_insert(ancho_estilo);
+            }
+        }
+        self.cuentas.letras += lineas.iter().flatten().map(|l| l.texto.chars().count()).sum::<usize>();
         let (t, giro) = match dir_x {
             // `dwg_x_direction` va en WCS: el giro sale de ella.
             Some(d) if d.x.abs() + d.y.abs() > 1e-12 => (*m, d.y.atan2(d.x)),
             _ => (m.por(&ocs(normal)), giro),
         };
-        let fuente = self.fuente_de("");
+        let fuente = self.fuente_de(estilo);
         self.textos.multilinea(&mut self.c, &lineas, [ins.x, ins.y, ins.z], alto, giro, ap, caja, &fuente, color, &t);
     }
 
+    /// La fuente de un estilo: su SHX, o su TrueType por el nombre de la
+    /// familia (el registro de Windows dice que fichero es), o su fichero.
     fn fuente_de(&self, estilo: &str) -> String {
-        self.doc
-            .text_styles
-            .get(if estilo.is_empty() { "Standard" } else { estilo })
-            .map(|s| s.font_file.clone())
-            .unwrap_or_default()
+        let Some(s) = self.doc.text_styles.get(if estilo.is_empty() { "Standard" } else { estilo }) else {
+            return String::new();
+        };
+        let f = s.font_file.trim().to_lowercase();
+        if f.ends_with(".shx") {
+            return f;
+        }
+        if !s.true_type_font.trim().is_empty()
+            && let Some(k) = crate::texto::clave_de_familia(&s.true_type_font, false)
+        {
+            return k;
+        }
+        if !f.is_empty() && !f.contains('.')
+            && let Some(k) = crate::texto::clave_de_familia(&f, false)
+        {
+            return k;
+        }
+        s.font_file.clone()
     }
 }
 

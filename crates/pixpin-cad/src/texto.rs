@@ -54,11 +54,74 @@ pub struct Textos {
 
 const CARPETA_FUENTES: &str = "C:\\Windows\\Fonts";
 
+/// Las fuentes instaladas en Windows por su nombre de familia (el del
+/// registro: «agency fb», «agency fb bold»…) y su fichero. Se lee una vez.
+pub fn fuentes_instaladas() -> &'static HashMap<String, std::path::PathBuf> {
+    static F: std::sync::OnceLock<HashMap<String, std::path::PathBuf>> = std::sync::OnceLock::new();
+    F.get_or_init(|| {
+        use windows::Win32::System::Registry::{HKEY, HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, KEY_READ, RegCloseKey, RegEnumValueW, RegOpenKeyExW};
+        let mut mapa = HashMap::new();
+        for raiz in [HKEY_LOCAL_MACHINE, HKEY_CURRENT_USER] {
+            let mut k = HKEY::default();
+            // SAFETY: clave de solo lectura que se cierra al acabar; los
+            // bufferes son locales y van con su largo.
+            unsafe {
+                if RegOpenKeyExW(raiz, windows::core::w!("SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Fonts"), Some(0), KEY_READ, &mut k).is_err() {
+                    continue;
+                }
+                for i in 0..4096u32 {
+                    let mut nombre = [0u16; 512];
+                    let mut largo_n = nombre.len() as u32;
+                    let mut datos = [0u8; 1024];
+                    let mut largo_d = datos.len() as u32;
+                    let r = RegEnumValueW(k, i, Some(windows::core::PWSTR(nombre.as_mut_ptr())), &mut largo_n, None, None, Some(datos.as_mut_ptr()), Some(&mut largo_d));
+                    if r.is_err() {
+                        break;
+                    }
+                    let nombre = String::from_utf16_lossy(&nombre[..largo_n as usize]).to_lowercase();
+                    let u16s: Vec<u16> = datos[..largo_d as usize].chunks_exact(2).map(|c| u16::from_le_bytes([c[0], c[1]])).take_while(|&c| c != 0).collect();
+                    let fichero = String::from_utf16_lossy(&u16s);
+                    if fichero.is_empty() {
+                        continue;
+                    }
+                    let ruta = if fichero.contains(':') { std::path::PathBuf::from(&fichero) } else { std::path::Path::new(CARPETA_FUENTES).join(&fichero) };
+                    let limpio = nombre.replace(" (truetype)", "").replace(" (opentype)", "");
+                    for n in limpio.split(" & ") {
+                        mapa.entry(n.trim().to_string()).or_insert_with(|| ruta.clone());
+                    }
+                }
+                let _ = RegCloseKey(k);
+            }
+        }
+        mapa
+    })
+}
+
+/// La clave de fuente (para [`Textos`]) de una familia de Windows, con
+/// negrita si la hay: «ttf:<fichero>». `None` si no esta instalada.
+pub fn clave_de_familia(familia: &str, negrita: bool) -> Option<String> {
+    let f = familia.trim().trim_matches('"').to_lowercase();
+    if f.is_empty() {
+        return None;
+    }
+    if f.ends_with(".shx") || f.ends_with(".ttf") || f.ends_with(".otf") {
+        return Some(f);
+    }
+    let m = fuentes_instaladas();
+    // El registro nombra la negrita en el idioma de Windows.
+    let negritas = ["bold", "negrita", "gras", "fett", "grassetto", "negrito"];
+    let r = if negrita { negritas.iter().find_map(|n| m.get(&format!("{f} {n}"))).or_else(|| m.get(&f)) } else { m.get(&f).or_else(|| m.get(&format!("{f} regular"))) };
+    r.map(|p| format!("ttf:{}", p.display()))
+}
+
 /// El fichero de fuente de Windows para el `font_file` de un estilo.
 pub fn fichero_para(estilo: &str) -> Vec<String> {
     let e = estilo.trim().to_ascii_lowercase();
     let mut v = Vec::new();
-    if e.ends_with(".ttf") || e.ends_with(".otf") || e.ends_with(".ttc") {
+    if let Some(ruta) = e.strip_prefix("ttf:") {
+        v.push(ruta.to_string());
+    }
+    if !e.starts_with("ttf:") && (e.ends_with(".ttf") || e.ends_with(".otf") || e.ends_with(".ttc")) {
         v.push(e.rsplit(['\\', '/']).next().unwrap_or(&e).to_string());
     }
     if e.contains("arial") || e.is_empty() {
@@ -110,7 +173,15 @@ impl Textos {
                     && let Ok(cara) = ttf_parser::Face::parse(&datos, 0)
                 {
                     let em = cara.units_per_em() as f32;
-                    let mayus = cara.capital_height().map(|h| h as f32 / em).filter(|h| *h > 0.2).unwrap_or(0.716);
+                    // Muchas fuentes viejas (Agency FB, Stencil...) no dicen cuanto mide
+                    // una mayuscula: se mide la «H». Con 0,716 fijo salian un 7 % mas
+                    // grandes o mas pequeñas que en AutoCAD.
+                    let mayus = cara
+                        .capital_height()
+                        .map(|h| h as f32 / em)
+                        .filter(|h| *h > 0.2)
+                        .or_else(|| cara.glyph_index('H').and_then(|g| cara.glyph_bounding_box(g)).map(|b| b.y_max as f32 / em).filter(|h| *h > 0.2 && *h < 1.2))
+                        .unwrap_or(0.716);
                     let con_shx = shx.is_some();
                     f = Some(Fuente {
                         id: self.fuentes.len() as u32,
@@ -235,14 +306,15 @@ impl Textos {
         self.escribir(c, estilo, texto, &m, alto, color);
     }
 
-    /// Un MTEXT: sus renglones (ya partidos y sin formato), con su punto
+    /// Un MTEXT: sus parrafos con el formato de cada trozo (su letra, su
+    /// color, su altura: los `\\f`, `\\C`, `\\H` del texto), con su punto
     /// de enganche (1 arriba-izquierda … 9 abajo-derecha) y, si tiene ancho
     /// de caja, cortados por palabras.
     #[allow(clippy::too_many_arguments)]
     pub fn multilinea(
         &mut self,
         c: &mut Constructor,
-        parrafos: &[String],
+        parrafos: &[Vec<Trozo>],
         ins: [f64; 3],
         alto: f64,
         giro: f64,
@@ -255,57 +327,161 @@ impl Textos {
         if !(alto > 0.0) || !alto.is_finite() {
             return;
         }
-        let mayus = self.fuente(estilo).map_or(0.716, |f| f.alto_mayuscula) as f64;
-        let escala = alto / mayus;
-        // Cortar por palabras al ancho de la caja.
-        let mut renglones: Vec<String> = Vec::new();
-        for p in parrafos {
-            if caja > 0.0 && caja.is_finite() {
-                let mut actual = String::new();
-                for palabra in p.split(' ') {
-                    let prueba = if actual.is_empty() { palabra.to_string() } else { format!("{actual} {palabra}") };
-                    if !actual.is_empty() && self.ancho(estilo, &prueba) as f64 * escala > caja * 1.001 {
-                        renglones.push(std::mem::take(&mut actual));
-                        actual = palabra.to_string();
-                    } else {
-                        actual = prueba;
-                    }
-                }
-                renglones.push(actual);
-            } else {
-                renglones.push(p.clone());
-            }
+        // Cada palabra con su letra, su color, su alto y lo que mide.
+        struct Pieza {
+            texto: String,
+            fuente: String,
+            color: u32,
+            alto: f64,
+            escala_x: f64,
+            ancho: f64,
+            ancho_sin_espacio: f64,
         }
-        let n = renglones.len().max(1) as f64;
-        let interlineado = alto * 5.0 / 3.0;
-        let total = alto + (n - 1.0) * interlineado;
+        let mut renglones: Vec<Vec<Pieza>> = Vec::new();
+        for p in parrafos {
+            // Si el parrafo entero casi cabe en la caja, se estrecha un poco
+            // en vez de partirlo: las letras de aqui no miden exactamente
+            // como las de quien hizo el plano, y partir un «CT: 3825.8» en
+            // dos renglones lo monta encima de lo de abajo.
+            let mut estrechar = 1.0;
+            if caja > 0.0 && caja.is_finite() {
+                let mut total = 0.0;
+                for tr in p {
+                    let fuente = tr.fuente.clone().unwrap_or_else(|| estilo.to_string());
+                    let alto_t = match tr.alto {
+                        Some((true, f)) if f > 0.0 => alto * f,
+                        Some((false, a)) if a > 0.0 => a,
+                        _ => alto,
+                    };
+                    let mayus = self.fuente(&fuente).map_or(0.716, |f| f.alto_mayuscula) as f64;
+                    total += self.ancho(&fuente, tr.texto.trim_end()) as f64 * alto_t / mayus * tr.ancho.filter(|w| *w > 0.0).unwrap_or(1.0);
+                }
+                if total > caja && total <= caja * 1.08 {
+                    estrechar = caja / total;
+                }
+            }
+            let mut renglon: Vec<Pieza> = Vec::new();
+            let mut ancho_renglon = 0.0;
+            for tr in p {
+                let fuente = tr.fuente.clone().unwrap_or_else(|| estilo.to_string());
+                let alto_t = match tr.alto {
+                    Some((true, f)) if f > 0.0 => alto * f,
+                    Some((false, a)) if a > 0.0 => a,
+                    _ => alto,
+                };
+                let mayus = self.fuente(&fuente).map_or(0.716, |f| f.alto_mayuscula) as f64;
+                let wf = tr.ancho.filter(|w| *w > 0.0).unwrap_or(1.0) * estrechar;
+                let escala = alto_t / mayus;
+                for palabra in tr.texto.split_inclusive(' ') {
+                    let ancho = self.ancho(&fuente, palabra) as f64 * escala * wf;
+                    let ancho_sin = self.ancho(&fuente, palabra.trim_end()) as f64 * escala * wf;
+                    // Se corta solo si se pasa de verdad: las letras de aqui
+                    // y las del autor no miden exactamente igual.
+                    if caja > 0.0 && caja.is_finite() && !renglon.is_empty() && ancho_renglon + ancho_sin > caja * 1.01 {
+                        renglones.push(std::mem::take(&mut renglon));
+                        ancho_renglon = 0.0;
+                    }
+                    ancho_renglon += ancho;
+                    renglon.push(Pieza {
+                        texto: palabra.to_string(),
+                        fuente: fuente.clone(),
+                        color: tr.color.unwrap_or(color),
+                        alto: alto_t,
+                        escala_x: escala * wf,
+                        ancho,
+                        ancho_sin_espacio: ancho_sin,
+                    });
+                }
+            }
+            renglones.push(renglon);
+        }
+        let altos: Vec<f64> = renglones.iter().map(|r| r.iter().map(|p| p.alto).fold(alto, f64::max)).collect();
+        let total: f64 = altos.first().copied().unwrap_or(alto) + altos.iter().skip(1).map(|a| a * 5.0 / 3.0).sum::<f64>();
         let col = (enganche.clamp(1, 9) - 1) % 3;
         let fila = (enganche.clamp(1, 9) - 1) / 3;
-        let y0 = match fila {
-            0 => -alto,
-            1 => total / 2.0 - alto,
-            _ => total - alto,
+        let primero = altos.first().copied().unwrap_or(alto);
+        let mut y = match fila {
+            0 => -primero,
+            1 => total / 2.0 - primero,
+            _ => total - primero,
         };
-        let anchos: Vec<f64> = renglones.iter().map(|r| self.ancho(estilo, r) as f64 * escala).collect();
-        let bloque = if caja > 0.0 { caja } else { anchos.iter().cloned().fold(0.0, f64::max) };
         for (i, r) in renglones.iter().enumerate() {
-            if r.trim().is_empty() {
-                continue;
+            if i > 0 {
+                y -= altos[i] * 5.0 / 3.0;
             }
-            let x = match col {
+            let ancho: f64 = r.iter().map(|p| p.ancho).sum::<f64>() - r.last().map_or(0.0, |p| p.ancho - p.ancho_sin_espacio);
+            let mut x = match col {
                 0 => 0.0,
-                1 => -anchos[i] / 2.0,
-                _ => -anchos[i],
+                1 => -ancho / 2.0,
+                _ => -ancho,
             };
-            let _ = bloque;
-            let m = t
-                .por(&Afin::traslacion(ins[0], ins[1], ins[2]))
-                .por(&Afin::giro_z(giro))
-                .por(&Afin::traslacion(x, y0 - i as f64 * interlineado, 0.0))
-                .por(&Afin::escala(escala, escala, 1.0));
-            self.escribir(c, estilo, r, &m, alto, color);
+            for p in r {
+                if !p.texto.trim().is_empty() {
+                    let escala_y = p.alto / self.fuente(&p.fuente).map_or(0.716, |f| f.alto_mayuscula) as f64;
+                    let m = t
+                        .por(&Afin::traslacion(ins[0], ins[1], ins[2]))
+                        .por(&Afin::giro_z(giro))
+                        .por(&Afin::traslacion(x, y, 0.0))
+                        .por(&Afin::escala(p.escala_x, escala_y, 1.0));
+                    self.escribir(c, &p.fuente, &p.texto, &m, p.alto, p.color);
+                }
+                x += p.ancho;
+            }
         }
     }
+}
+
+/// Un trozo de un MTEXT con su formato: su letra (clave de [`Textos`]), su
+/// color, su alto (factor o absoluto) y su ancho.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Trozo {
+    pub texto: String,
+    pub fuente: Option<String>,
+    pub color: Option<u32>,
+    pub alto: Option<(bool, f64)>,
+    pub ancho: Option<f64>,
+}
+
+/// Los parrafos de un MTEXT con el formato de cada trozo.
+pub fn parrafos_de_mtext(valor: &str) -> Vec<Vec<Trozo>> {
+    use opencadcodec::entities::mtext_format::{MTextColor, MTextScalar};
+    let doc = opencadcodec::entities::mtext_format::parse_mtext(valor, true);
+    let mut v: Vec<Vec<Trozo>> = doc
+        .paragraphs
+        .iter()
+        .map(|p| {
+            p.spans
+                .iter()
+                .map(|s| {
+                    let pr = &s.properties;
+                    let texto = match &s.stacking {
+                        Some(st) if !st.numerator.is_empty() || !st.denominator.is_empty() => format!("{}{}/{}", s.text, st.numerator, st.denominator),
+                        _ => s.text.clone(),
+                    };
+                    let color = match (pr.color_rgb, pr.color) {
+                        (Some((r, g, b)), _) => Some(crate::convertir::rgba(r, g, b)),
+                        (None, Some(MTextColor::TrueColor(c))) => Some(crate::convertir::rgba((c >> 16) as u8, (c >> 8) as u8, c as u8)),
+                        (None, Some(MTextColor::Index(i))) if i > 0 && i < 256 => crate::convertir::de_color(&opencadcodec::types::Color::Index(i as u8)),
+                        _ => None,
+                    };
+                    Trozo {
+                        texto,
+                        fuente: pr.font.as_ref().and_then(|f| clave_de_familia(&f.name, f.bold)),
+                        color,
+                        alto: pr.height.map(|h| match h {
+                            MTextScalar::Factor(f) => (true, f),
+                            MTextScalar::Absolute(a) => (false, a),
+                        }),
+                        ancho: pr.width_factor,
+                    }
+                })
+                .collect()
+        })
+        .collect();
+    if v.is_empty() {
+        v.push(Vec::new());
+    }
+    v
 }
 
 fn oblicua(angulo: f64) -> Afin {
@@ -473,5 +649,20 @@ mod pruebas {
         // Un espacio no tiene contorno pero si avance.
         let e = f.letra(' ').unwrap();
         assert!(e.triangulos.is_empty() && e.avance > 0.1);
+    }
+}
+
+#[cfg(test)]
+mod medir_mayusculas {
+    #[test]
+    #[ignore = "mide fuentes del sistema"]
+    fn mayusculas() {
+        for f in ["AGENCYR.TTF", "AGENCYB.TTF", "FREESCPT.TTF", "STENCIL.TTF", "arial.ttf", "ARIALN.TTF"] {
+            let d = std::fs::read(format!("C:/Windows/Fonts/{f}")).unwrap();
+            let c = ttf_parser::Face::parse(&d, 0).unwrap();
+            let em = c.units_per_em() as f32;
+            let h = c.glyph_index('H').and_then(|g| c.glyph_bounding_box(g)).map(|b| b.y_max as f32 / em);
+            println!("{f}: capHeight={:?} H={:?} asc={}", c.capital_height().map(|v| v as f32 / em), h, c.ascender() as f32 / em);
+        }
     }
 }

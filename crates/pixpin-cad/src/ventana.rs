@@ -63,6 +63,8 @@ enum Ev {
 #[derive(Default)]
 struct Estado {
     eventos: VecDeque<(De, Ev)>,
+    /// La barra y su separacion del plano: el plano la arrastra consigo.
+    barra: Option<(HWND, i32)>,
 }
 
 thread_local! {
@@ -71,6 +73,33 @@ thread_local! {
 
 fn apuntar(de: De, e: Ev) {
     ESTADO.with(|s| s.borrow_mut().eventos.push_back((de, e)));
+}
+
+/// Pone la barra junto al plano. Se llama tambien mientras Windows arrastra
+/// la ventana (su bucle no deja correr el nuestro), asi la barra la sigue.
+/// No cambia el orden Z: subirla cada vez subia tambien el plano por
+/// encima del recorte de una captura.
+fn seguir_barra(plano: HWND) {
+    let Some((barra, sep)) = ESTADO.with(|s| s.borrow().barra) else { return };
+    // SAFETY: ventanas propias; estructuras locales.
+    unsafe {
+        if !IsWindowVisible(barra).as_bool() {
+            return;
+        }
+        let (mut r, mut rb) = (RECT::default(), RECT::default());
+        let _ = GetWindowRect(plano, &mut r);
+        let _ = GetWindowRect(barra, &mut rb);
+        let mon = MonitorFromWindow(plano, MONITOR_DEFAULTTONEAREST);
+        let mut info = MONITORINFO {
+            cbSize: std::mem::size_of::<MONITORINFO>() as u32,
+            ..Default::default()
+        };
+        let _ = GetMonitorInfoW(mon, &mut info);
+        let (x, y) = colocar_barra(r, info.rcWork, rb.right - rb.left, rb.bottom - rb.top, sep);
+        if (x, y) != (rb.left, rb.top) {
+            let _ = SetWindowPos(barra, None, x, y, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+        }
+    }
 }
 
 fn xy(l: LPARAM) -> (i32, i32) {
@@ -117,6 +146,8 @@ unsafe fn procedimiento(de: De, hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) ->
             return LRESULT(ht as isize);
         }
         WM_MOUSEACTIVATE if de == De::Barra => return LRESULT(MA_NOACTIVATE as isize),
+        // Sigue a DefWindowProc: de ahi salen WM_SIZE y WM_MOVE.
+        WM_WINDOWPOSCHANGED if de == De::Plano => seguir_barra(hwnd),
         WM_SIZE => {
             let (w, h) = xy(lp);
             apuntar(de, Ev::Tamano(w.max(1) as u32, h.max(1) as u32));
@@ -324,13 +355,14 @@ impl Camara {
         c
     }
 
-    fn vista(&self, w: u32, h: u32, color7: [f32; 4]) -> Vista {
+    fn vista(&self, w: u32, h: u32, color7: [f32; 4], modo: f32) -> Vista {
         Vista {
             escala: [(2.0 / (w as f64 * self.px)) as f32, (2.0 / (h as f64 * self.px)) as f32],
             centro: [self.centro[0] as f32, self.centro[1] as f32],
             color7,
             px: self.px as f32,
-            relleno: [0.0; 3],
+            modo,
+            relleno: [0.0; 2],
         }
     }
 }
@@ -653,7 +685,8 @@ fn vista_pantalla(m: &Modelo, w: u32, h: u32) -> Vista {
         centro: [(w as f64 / 2.0 - m.origen[0]) as f32, (h as f64 / 2.0 - m.origen[1]) as f32],
         color7: [1.0; 4],
         px: 1.0,
-        relleno: [0.0; 3],
+        modo: 0.0,
+        relleno: [0.0; 2],
     }
 }
 
@@ -725,6 +758,7 @@ pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo, String>>, textos_ui: 
     let (bw, bh) = (ancho_barra(e).ceil() as i32, (ALTO_BARRA * e).ceil() as i32);
     let hbarra = crear_barra(hwnd, bw, bh).map_err(|e| e.to_string())?;
     let mut gpu_barra = Gpu::nueva(hbarra, bw as u32, bh as u32).map_err(|e| e.to_string())?;
+    ESTADO.with(|s| s.borrow_mut().barra = Some((hbarra, (8.0 * e) as i32)));
     let mut textos = Textos::nuevo();
     let mut plano: Option<(Modelo, PlanoGpu)> = None;
     let mut enganches: Option<Enganches> = None;
@@ -774,6 +808,13 @@ pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo, String>>, textos_ui: 
                         match gpu.subir(&m) {
                             Ok(p) => {
                                 camara = Camara::encuadrar(m.caja, w, h);
+                                // Para las pruebas: PIXPIN_CAD_VISTA="x,y,ancho" (coordenadas del plano).
+                                if let Ok(v) = std::env::var("PIXPIN_CAD_VISTA") {
+                                    let n: Vec<f64> = v.split(',').filter_map(|t| t.trim().parse().ok()).collect();
+                                    if n.len() == 3 && n[2] > 0.0 {
+                                        camara = Camara { centro: [n[0] - m.origen[0], n[1] - m.origen[1]], px: n[2] / w.max(1) as f64 };
+                                    }
+                                }
                                 destino = camara;
                                 plano = Some((m, p));
                                 mensaje.clear();
@@ -1023,21 +1064,24 @@ pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo, String>>, textos_ui: 
             fuera_desde = None;
         }
         if mostrar && plano.is_some() {
-            // Donde va, segun donde este ahora el plano.
-            let mut r = RECT::default();
-            // SAFETY: ventanas propias; estructuras locales.
-            unsafe {
-                let _ = GetWindowRect(hwnd, &mut r);
-                let mon = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
-                let mut info = MONITORINFO {
-                    cbSize: std::mem::size_of::<MONITORINFO>() as u32,
-                    ..Default::default()
-                };
-                let _ = GetMonitorInfoW(mon, &mut info);
-                let (x, y) = colocar_barra(r, info.rcWork, bw, bh, (8.0 * e) as i32);
-                let _ = SetWindowPos(hbarra, Some(HWND_TOPMOST), x, y, bw, bh, SWP_NOACTIVATE | SWP_SHOWWINDOW);
-            }
-            if !barra_visible {
+            if barra_visible {
+                seguir_barra(hwnd);
+            } else {
+                // Al aparecer, una vez, delante; luego solo se mueve: subirla
+                // en cada vuelta peleaba con el recorte de las capturas.
+                let mut r = RECT::default();
+                // SAFETY: ventanas propias; estructuras locales.
+                unsafe {
+                    let _ = GetWindowRect(hwnd, &mut r);
+                    let mon = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+                    let mut info = MONITORINFO {
+                        cbSize: std::mem::size_of::<MONITORINFO>() as u32,
+                        ..Default::default()
+                    };
+                    let _ = GetMonitorInfoW(mon, &mut info);
+                    let (x, y) = colocar_barra(r, info.rcWork, bw, bh, (8.0 * e) as i32);
+                    let _ = SetWindowPos(hbarra, Some(HWND_TOPMOST), x, y, bw, bh, SWP_NOACTIVATE | SWP_SHOWWINDOW);
+                }
                 barra_visible = true;
                 barra_sucia = true;
             }
@@ -1083,7 +1127,7 @@ pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo, String>>, textos_ui: 
             let color7 = if claro { [0.0, 0.0, 0.0, 1.0] } else { [1.0, 1.0, 1.0, 1.0] };
             let mut capas: Vec<(&PlanoGpu, Vista)> = Vec::new();
             if let Some((_, p)) = &plano {
-                capas.push((p, camara.vista(w, h, color7)));
+                capas.push((p, camara.vista(w, h, color7, if claro { 2.0 } else { 1.0 })));
             }
             if mensaje.is_empty() {
                 aviso_ui = None;
