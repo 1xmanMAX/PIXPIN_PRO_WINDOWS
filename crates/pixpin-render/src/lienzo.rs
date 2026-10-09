@@ -1370,6 +1370,53 @@ impl Pintor<'_> {
         self.estilo_icono(true, true)
     }
 
+    /// **Muchas figuras de un color en una sola geometria**: rellenas
+    /// (`cerradas`, con la regla del devanado, asi los triangulos que se
+    /// tocan no dejan costuras) o trazadas a `grosor`. Es lo que necesita un
+    /// plano al imprimirse: miles de rayas y triangulos, y una orden por
+    /// figura lo haria eterno.
+    pub fn figuras(&self, figuras: &[Vec<(f32, f32)>], cerradas: bool, grosor: f32, color: Color) {
+        use windows::Win32::Graphics::Direct2D::Common::{
+            D2D1_FIGURE_BEGIN_FILLED, D2D1_FIGURE_BEGIN_HOLLOW, D2D1_FIGURE_END_CLOSED,
+            D2D1_FIGURE_END_OPEN, D2D1_FILL_MODE_WINDING,
+        };
+        let minimo = if cerradas { 3 } else { 2 };
+        if !figuras.iter().any(|f| f.len() >= minimo) {
+            return;
+        }
+        // SAFETY: como `geometria`: se rellena entre Open y Close y solo se
+        // usa cerrada; dentro del fotograma, con el pincel vivo.
+        unsafe {
+            let Ok(geometria) = self.motor.fabrica().CreatePathGeometry() else {
+                return;
+            };
+            self.motor.conto(|c| c.geometrias += 1);
+            let Ok(sumidero) = geometria.Open() else { return };
+            if cerradas {
+                sumidero.SetFillMode(D2D1_FILL_MODE_WINDING);
+            }
+            for f in figuras.iter().filter(|f| f.len() >= minimo) {
+                sumidero.BeginFigure(
+                    Vector2 { X: f[0].0, Y: f[0].1 },
+                    if cerradas { D2D1_FIGURE_BEGIN_FILLED } else { D2D1_FIGURE_BEGIN_HOLLOW },
+                );
+                let resto: Vec<Vector2> = f[1..].iter().map(|(x, y)| Vector2 { X: *x, Y: *y }).collect();
+                sumidero.AddLines(&resto);
+                sumidero.EndFigure(if cerradas { D2D1_FIGURE_END_CLOSED } else { D2D1_FIGURE_END_OPEN });
+            }
+            if sumidero.Close().is_err() {
+                return;
+            }
+            let Some(p) = self.pincel(color) else { return };
+            if cerradas {
+                self.motor.contexto().FillGeometry(&geometria, &p, None);
+            } else {
+                let estilo = self.estilo_redondo();
+                self.motor.contexto().DrawGeometry(&geometria, &p, grosor, estilo.as_ref());
+            }
+        }
+    }
+
     /// Traza una polilinea abierta de grosor constante.
     pub fn polilinea(&self, vertices: &[(f32, f32)], grosor: f32, color: Color) {
         if vertices.len() < 2 {

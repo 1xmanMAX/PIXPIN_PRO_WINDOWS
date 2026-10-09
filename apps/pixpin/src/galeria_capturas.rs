@@ -137,6 +137,55 @@ pub fn carpeta_en(raiz: &Path) -> PathBuf {
     raiz.join("capturas")
 }
 
+/// **La ruta de una captura nueva**: `captura-AAAAMMDD-HHMMSS.png` con la
+/// hora local `local_ms` (ms desde 1970 ya corridos al huso), y `-2`, `-3`…
+/// si en ese segundo ya hay otra con ese nombre (con cualquiera de las
+/// extensiones de la galeria: un GIF o un MP4 sale de la misma ruta).
+///
+/// Antes era `captura-NNNN` con el primer numero libre, y el numero se
+/// reutilizaba al borrar. Con la galeria que viaja (9-oct) eso no vale: el
+/// nombre es la clave de cada captura en todos los aparatos, y una nueva
+/// con el nombre de una borrada heredaria su marca de borrada y se iria de
+/// todos. Las `captura-NNNN` que ya habia se quedan como estan: como ya no
+/// se reparten numeros, su nombre no lo vuelve a coger ninguna.
+pub fn ruta_nueva_en(carpeta: &Path, local_ms: i64) -> PathBuf {
+    let base = nombre_por_hora(local_ms);
+    let ocupado = |stem: &str| {
+        EXTENSIONES
+            .iter()
+            .any(|e| carpeta.join(format!("{stem}.{e}")).exists())
+    };
+    let mut stem = base.clone();
+    let mut n = 2;
+    while ocupado(&stem) {
+        stem = format!("{base}-{n}");
+        n += 1;
+    }
+    carpeta.join(format!("{stem}.png"))
+}
+
+/// `captura-AAAAMMDD-HHMMSS` de una hora local en ms desde 1970.
+fn nombre_por_hora(local_ms: i64) -> String {
+    let s = local_ms.div_euclid(1000);
+    let (dias, resto) = (s.div_euclid(86_400), s.rem_euclid(86_400));
+    // Dias desde 1970 a fecha civil (Howard Hinnant, `civil_from_days`).
+    let z = dias + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z.rem_euclid(146_097);
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let a = yoe + era * 400 + i64::from(m <= 2);
+    format!(
+        "captura-{a:04}{m:02}{d:02}-{:02}{:02}{:02}",
+        resto / 3600,
+        (resto % 3600) / 60,
+        resto % 60
+    )
+}
+
 /// Si una ruta es de las que lista la galeria (por su extension).
 pub fn es_captura(ruta: &Path) -> bool {
     ruta.extension()
@@ -2330,6 +2379,35 @@ mod pruebas {
     }
 
     #[test]
+    fn una_captura_nueva_se_llama_por_su_hora_y_no_reutiliza_nombres() {
+        let dir = temporal("nombre-unico");
+        // 2026-10-09 14:25:07 (hora local ya corrida).
+        let t = 1_791_555_907_000;
+        let a = ruta_nueva_en(&dir, t);
+        assert_eq!(
+            a.file_name().unwrap().to_string_lossy(),
+            "captura-20261009-142507.png"
+        );
+        assert!(es_captura(&a));
+        // En el mismo segundo, otra: no pisa la primera (reservada o GIF).
+        std::fs::write(&a, b"").unwrap();
+        let b = ruta_nueva_en(&dir, t + 300);
+        assert!(b.ends_with("captura-20261009-142507-2.png"));
+        std::fs::write(dir.join("captura-20261009-142507-2.mp4"), b"x").unwrap();
+        assert!(ruta_nueva_en(&dir, t).ends_with("captura-20261009-142507-3.png"));
+        // Caso negativo: borrar una captura vieja no deja su nombre libre
+        // para la siguiente (antes, `captura-0001` volvia a salir).
+        std::fs::write(dir.join("captura-0001.png"), b"x").unwrap();
+        std::fs::remove_file(dir.join("captura-0001.png")).unwrap();
+        let c = ruta_nueva_en(&dir, t + 1000);
+        assert!(c.ends_with("captura-20261009-142508.png"));
+        // Un 29 de febrero y el cambio de ano, por la cuenta de fechas.
+        assert_eq!(nombre_por_hora(951_782_400_000), "captura-20000229-000000");
+        assert_eq!(nombre_por_hora(1_798_761_599_000), "captura-20261231-235959");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn listar_una_carpeta_real_ignora_lo_vacio_y_lo_ajeno() {
         let dir = temporal("listar");
         std::fs::write(dir.join("captura-0001.png"), b"x").unwrap();
@@ -2458,7 +2536,7 @@ mod pruebas {
         let registro = crate::caducidad_capturas::Registro {
             desde: ahora - 5 * 86_400_000,
             conservadas: ["captura-0002.png".to_string()].into_iter().collect(),
-            prorrogadas: Default::default(),
+            ..Default::default()
         };
         let mut e = Estado::nuevo(lista, registro);
         e.ocr = Some(true);
@@ -2709,8 +2787,7 @@ mod pruebas {
         std::fs::write(&a, b"x").unwrap();
         let registro = crate::caducidad_capturas::Registro {
             desde: 0,
-            conservadas: Default::default(),
-            prorrogadas: Default::default(),
+            ..Default::default()
         };
         let mut e = Estado::nuevo(listar(&dir), registro);
         borrar_varias(&mut e, &[0], &raiz, &textos);
@@ -2892,7 +2969,7 @@ mod pruebas {
                 .iter()
                 .map(|s| s.to_string())
                 .collect(),
-            prorrogadas: Default::default(),
+            ..Default::default()
         };
         let mut e = Estado::nuevo(lista, registro);
         e.ocr = Some(true);

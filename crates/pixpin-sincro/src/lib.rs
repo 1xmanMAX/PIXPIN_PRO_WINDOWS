@@ -31,6 +31,7 @@
 //!   trait: cada aparato pone como guarda sus chats) y lo que es igual en
 //!   todos; `copias`, la copia de antes de tocar nada.
 //! - `al_lienzo`: una foto suelta al lienzo abierto del movil (`suelto`).
+//! - `galeria`: la galeria de capturas que viaja, con sus fechas de irse.
 //! - `protocolo`: el `Respondedor` y la `Sesion`, peticion a peticion;
 //!   `vuelta`, una vuelta entera como la lleva la pantalla del movil.
 //!
@@ -52,6 +53,7 @@ pub mod disco;
 pub mod disco_android;
 pub mod envio;
 pub mod fusion;
+pub mod galeria;
 pub mod grupo;
 pub mod kotlin;
 pub mod mensajes;

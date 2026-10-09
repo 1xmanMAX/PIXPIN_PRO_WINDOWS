@@ -710,7 +710,13 @@ fn al_cuaderno(
             .then(|| mensaje_que_sustituye(raiz, &indice, elemento))
             .flatten();
         let bytes = std::fs::read(ruta)?;
-        let nombre = nombre_con_extension(elemento);
+        // Un `informe.bin` (o un `informe` sin extension) que por dentro es
+        // un PDF o una imagen se guarda como lo que es: con `.bin` el chat no
+        // lo ensenaba como foto ni sabia abrirlo (Android v0.108.0).
+        let nombre = pixpin_sincro::envio::nombre_por_contenido(
+            &nombre_con_extension(elemento),
+            &bytes[..bytes.len().min(16)],
+        );
         let donde = match antes {
             Some((suyo, _, viejo)) => {
                 copia_antes_de_tocar(raiz, &suyo, &format!("Antes de recibir «{nombre}»"))?;
@@ -763,6 +769,40 @@ fn al_cuaderno(
         let _ = indice.guardar(raiz);
     }
     Ok(salida)
+}
+
+/// **Lo que se abre de verdad al tocar un adjunto.** Un `.bin` o un fichero
+/// sin extension que viene del movil (hasta su v0.108.0 pegaba `bin` a lo
+/// que no sabia que era) no lo abre nadie en Windows, aunque sea un PDF. Si
+/// por dentro es un PDF o una imagen, se abre una copia con su extension en
+/// la carpeta temporal; lo demas, tal cual.
+///
+/// Copia y no renombrar: el fichero del chat es de la sincronizacion, que lo
+/// conoce por su ruta en los dos aparatos; cambiarle el nombre aqui lo haria
+/// pasar por otro en la siguiente vuelta.
+pub(crate) fn ruta_para_abrir(ruta: &std::path::Path) -> std::path::PathBuf {
+    let nombre = ruta
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_default();
+    if pixpin_sincro::envio::tiene_extension_conocida(&nombre) {
+        return ruta.to_path_buf();
+    }
+    let bueno =
+        pixpin_sincro::envio::nombre_por_contenido(&nombre, &pixpin_sincro::envio::cabeza_de(ruta));
+    if bueno == nombre {
+        return ruta.to_path_buf();
+    }
+    let carpeta = std::env::temp_dir().join("pixpin-abrir");
+    let copia = carpeta.join(&bueno);
+    let hecho = std::fs::create_dir_all(&carpeta).and_then(|_| std::fs::copy(ruta, &copia));
+    match hecho {
+        Ok(_) => copia,
+        Err(e) => {
+            tracing::warn!(?e, ruta = %ruta.display(), "no se pudo preparar la copia para abrir");
+            ruta.to_path_buf()
+        }
+    }
 }
 
 /// Escribe lo que llega **encima del archivo que ya tenia** ese mensaje, sin
@@ -925,5 +965,77 @@ mod pruebas {
         assert_ne!(ficha.id, antes.id);
         assert!(!ficha.misma_que(&antes), "estrena codigos y conviven");
         assert_eq!(almacen::Indice::leer(&raiz).proyectos.len(), 2);
+    }
+
+    fn elemento_suelto(nombre: &str) -> Elemento {
+        Elemento {
+            tipo: "archivo".into(),
+            mime: Some("application/octet-stream".into()),
+            identidad: format!("archivo:{nombre}"),
+            uid: None,
+            aparato: None,
+            ..elemento_de_proyecto(nombre, "x", 0)
+        }
+    }
+
+    #[test]
+    fn un_bin_que_es_un_pdf_o_una_foto_entra_al_chat_como_lo_que_es() {
+        let raiz = carpeta_temporal("bin");
+        std::fs::create_dir_all(&raiz).unwrap();
+        let pdf = raiz.join("llegado-1");
+        std::fs::write(&pdf, b"%PDF-1.4 informe").unwrap();
+        let foto = raiz.join("llegado-2");
+        std::fs::write(&foto, [0xFF, 0xD8, 0xFF, 0xE0, 1, 2, 3]).unwrap();
+        let otro = raiz.join("llegado-3");
+        std::fs::write(&otro, b"\0\0\0\0 vete a saber").unwrap();
+        let cosas = vec![
+            (elemento_suelto("informe.bin"), pdf),
+            (elemento_suelto("Fachada"), foto),
+            (elemento_suelto("datos.bin"), otro),
+        ];
+        al_cuaderno(&raiz, "ZZZZ", &cosas, &ComoNuevo::new()).unwrap();
+        let ficha = almacen::asegurar_guardados(&raiz, 0, "ZZZZ").unwrap();
+        let mensajes =
+            pixpin_proyecto::cuaderno::Cuaderno::leer_de(&almacen::carpeta(&raiz, &ficha.id))
+                .unwrap()
+                .mensajes;
+        let nombres: Vec<&str> = mensajes.iter().map(|m| m.nombre.as_str()).collect();
+        assert_eq!(nombres, ["informe.pdf", "Fachada.jpg", "datos.bin"]);
+        // La foto es una foto en el chat, no un archivo cualquiera.
+        assert_eq!(
+            mensajes[1].clase,
+            Some(pixpin_proyecto::cuaderno::Clase::Imagen)
+        );
+        // Y el fichero guardado lleva la extension buena.
+        assert!(
+            mensajes[0]
+                .ruta
+                .as_deref()
+                .is_some_and(|r| r.ends_with(".pdf")),
+            "{:?}",
+            mensajes[0].ruta
+        );
+        let _ = std::fs::remove_dir_all(&raiz);
+    }
+
+    #[test]
+    fn un_bin_del_chat_se_abre_como_lo_que_es_sin_tocar_el_del_chat() {
+        let raiz = carpeta_temporal("abrir-bin");
+        std::fs::create_dir_all(&raiz).unwrap();
+        let bin = raiz.join("123_informe.bin");
+        std::fs::write(&bin, b"%PDF-1.7 del movil").unwrap();
+        let abrir = ruta_para_abrir(&bin);
+        assert!(abrir.ends_with("123_informe.pdf"), "{}", abrir.display());
+        assert_eq!(std::fs::read(&abrir).unwrap(), b"%PDF-1.7 del movil");
+        assert!(bin.exists(), "el del chat sigue donde estaba");
+        // Casos negativos: con extension buena o sin saber que es, el mismo.
+        let png = raiz.join("foto.png");
+        std::fs::write(&png, b"%PDF").unwrap();
+        assert_eq!(ruta_para_abrir(&png), png);
+        let raro = raiz.join("datos.bin");
+        std::fs::write(&raro, b"\0\0").unwrap();
+        assert_eq!(ruta_para_abrir(&raro), raro);
+        let _ = std::fs::remove_file(&abrir);
+        let _ = std::fs::remove_dir_all(&raiz);
     }
 }

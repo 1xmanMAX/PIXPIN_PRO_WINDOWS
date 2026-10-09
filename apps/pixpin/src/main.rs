@@ -2464,24 +2464,20 @@ fn ejecutar_accion(
     }
 }
 
-/// La siguiente ruta `captura-NNNN.png` libre en la carpeta de capturas.
+/// La ruta libre de una captura nueva en la carpeta de capturas:
+/// `captura-AAAAMMDD-HHMMSS.png` con la hora local.
 ///
-/// Nombre por contador y no por fecha: `main` no tiene reloj inyectado y
-/// S1-C traera las plantillas de nombre configurables.
+/// Antes era `captura-NNNN.png` con el primer numero libre, pero el numero
+/// se reutilizaba al borrar y, con la galeria que viaja entre aparatos, el
+/// nombre es la clave de cada captura en todos (ver
+/// `galeria_capturas::ruta_nueva_en`).
 fn ruta_captura_libre(ubicacion: &Ubicacion) -> Result<std::path::PathBuf> {
     let carpeta = ubicacion.raiz().join("capturas");
     std::fs::create_dir_all(&carpeta)?;
-    let mut n = 1u32;
-    loop {
-        let candidata = carpeta.join(format!("captura-{n:04}.png"));
-        if !candidata.exists() {
-            return Ok(candidata);
-        }
-        n += 1;
-        if n > 9999 {
-            anyhow::bail!("demasiadas capturas en {}", carpeta.display());
-        }
-    }
+    Ok(galeria_capturas::ruta_nueva_en(
+        &carpeta,
+        pixpin_shell::entorno::ahora_local_ms(),
+    ))
 }
 
 /// Registro rotativo diario junto a los ajustes. Nada sale del equipo.

@@ -95,6 +95,26 @@ impl Afin {
     }
 }
 
+/// **El volteo de un TEXT** (DXF 71): 2 al reves (espejo en x), 4 cabeza
+/// abajo (espejo en y), alrededor de su punto de justificacion y en su giro,
+/// como AutoCAD. Va en el sistema del texto (OCS). Como PixPin Android v0.111.
+pub fn volteo_de_texto(flags: i16, ins: [f64; 3], alineado: Option<[f64; 3]>, h: u8, v: u8, giro: f64) -> Afin {
+    let fx = if flags & 2 != 0 { -1.0 } else { 1.0 };
+    let fy = if flags & 4 != 0 { -1.0 } else { 1.0 };
+    if fx > 0.0 && fy > 0.0 {
+        return Afin::IDENTIDAD;
+    }
+    let a = match alineado {
+        Some(a) if h != 0 || v != 0 => a,
+        _ => ins,
+    };
+    Afin::traslacion(a[0], a[1], a[2])
+        .por(&Afin::giro_z(giro))
+        .por(&Afin::escala(fx, fy, 1.0))
+        .por(&Afin::giro_z(-giro))
+        .por(&Afin::traslacion(-a[0], -a[1], -a[2]))
+}
+
 /// El OCS de una entidad con su `normal` (eje arbitrario de AutoCAD).
 pub fn ocs(normal: &Vector3) -> Afin {
     let n = normal;
@@ -418,7 +438,7 @@ impl<'d> Convertidor<'d> {
             EntityType::Hatch(h) => self.sombreado(h, color, &m),
             EntityType::Text(t) => {
                 let alt = t.alignment_point.as_ref();
-                self.texto_simple(&t.value, &t.insertion_point, alt, t.height, t.rotation, t.width_factor, t.oblique_angle, &t.style, t.horizontal_alignment as u8, t.vertical_alignment as u8, &t.normal, color, &m);
+                self.texto_simple(&t.value, &t.insertion_point, alt, t.height, t.rotation, t.width_factor, t.oblique_angle, &t.style, t.horizontal_alignment as u8, t.vertical_alignment as u8, &t.normal, color, &m, t.generation_flags);
             }
             EntityType::MText(t) => {
                 let ap = t.attachment_point as u8;
@@ -496,7 +516,7 @@ impl<'d> Convertidor<'d> {
                     let giro = dir[1].atan2(dir[0]);
                     let ancho = if *ancho > 0.0 { *ancho } else { 1.0 };
                     let z = Vector3::new(0.0, 0.0, 1.0);
-                    self.texto_simple(texto, &Vector3::new(pos[0], pos[1], pos[2]), None, *alto, giro, ancho, 0.0, "", 0, 0, &z, c.unwrap_or(color), m);
+                    self.texto_simple(texto, &Vector3::new(pos[0], pos[1], pos[2]), None, *alto, giro, ancho, 0.0, "", 0, 0, &z, c.unwrap_or(color), m, 0);
                 }
             }
         }
@@ -511,7 +531,7 @@ impl<'d> Convertidor<'d> {
             return;
         }
         let alt = Some(&a.alignment_point);
-        self.texto_simple(&a.value, &a.insertion_point, alt, a.height, a.rotation, a.width_factor, a.oblique_angle, &a.text_style, a.horizontal_alignment as u8, a.vertical_alignment as u8, &a.normal, color, m);
+        self.texto_simple(&a.value, &a.insertion_point, alt, a.height, a.rotation, a.width_factor, a.oblique_angle, &a.text_style, a.horizontal_alignment as u8, a.vertical_alignment as u8, &a.normal, color, m, 0);
     }
 
     fn insertar<'a>(&mut self, ins: &'a opencadcodec::entities::Insert, capa: &'a str, color: u32, cx: &Contexto<'a>)
@@ -724,10 +744,10 @@ impl<'d> Convertidor<'d> {
     // ---------------------------------------------------------------- textos
 
     #[allow(clippy::too_many_arguments)]
-    fn texto_simple(&mut self, valor: &str, ins: &Vector3, alineado: Option<&Vector3>, alto: f64, giro: f64, ancho: f64, oblicuo: f64, estilo: &str, h: u8, v: u8, normal: &Vector3, color: u32, m: &Afin) {
+    fn texto_simple(&mut self, valor: &str, ins: &Vector3, alineado: Option<&Vector3>, alto: f64, giro: f64, ancho: f64, oblicuo: f64, estilo: &str, h: u8, v: u8, normal: &Vector3, color: u32, m: &Afin, volteo: i16) {
         let texto = crate::texto::texto_plano(valor);
         self.cuentas.letras += texto.chars().count();
-        let t = m.por(&ocs(normal));
+        let t = m.por(&ocs(normal)).por(&volteo_de_texto(volteo, [ins.x, ins.y, ins.z], alineado.map(|a| [a.x, a.y, a.z]), h, v, giro));
         let fuente = self.fuente_de(estilo);
         self.textos.simple(&mut self.c, &texto, [ins.x, ins.y, ins.z], alineado.map(|a| [a.x, a.y, a.z]), alto, giro, ancho, oblicuo, h, v, &fuente, color, &t);
     }

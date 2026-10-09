@@ -159,6 +159,10 @@ pub struct Peticion {
     /// `aplicar`, `archivos`, `pon`, `parche`, `damecambios`, `dame`, `base`,
     /// `borrarchat`, `adios`.
     ///
+    /// La galeria (`galeria`, `galeriajunta`, `damecaptura`, `poncaptura`)
+    /// llego sin subir la version: quien no la conoce contesta «No sé qué
+    /// es» y se sigue sin ella.
+    ///
     /// `lapidas` y `borrarchat` son de la version 4. Al que no entiende un
     /// tipo se le muere la conversacion, asi que hay que contestarlos todos,
     /// aunque sea con una respuesta vacia.
@@ -243,6 +247,13 @@ pub struct Respuesta {
     /// no borre nada, y entonces no viaja siquiera.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub lapidas: Vec<LapidaDeChat>,
+    /// `galeria`: las entradas de la galeria compartida, como CADENA con
+    /// JSON dentro (igual que `parche`). Ver `galeria`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub galeria: Option<String>,
+    /// `galeria`: las capturas que tiene de verdad.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub tengo: Vec<String>,
 }
 
 /// El texto que manda Android cuando ya esta sincronizando con otro.

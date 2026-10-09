@@ -503,3 +503,78 @@ mod pruebas {
         assert!(f.letra('ñ').is_some() || f.letra('n').is_some());
     }
 }
+
+/// **Las SHX de PixPin**, para cuando falta la de AutoCAD (un equipo sin
+/// AutoCAD): las fuentes de Hershey pasadas a SHX, con tildes, ñ, °, ±, ² y Ø,
+/// hechas en PixPin Android (v0.111.0, `fuentes/hershey-a-shx.py`); ver
+/// `fuentes-shx/LEEME-HERSHEY.txt`. Van dentro del programa: 82 KB.
+const DE_PIXPIN: [(&str, &[u8]); 8] = [
+    ("romans.shx", include_bytes!("../fuentes-shx/romans.shx")),
+    ("romand.shx", include_bytes!("../fuentes-shx/romand.shx")),
+    ("romant.shx", include_bytes!("../fuentes-shx/romant.shx")),
+    ("italic.shx", include_bytes!("../fuentes-shx/italic.shx")),
+    ("scripts.shx", include_bytes!("../fuentes-shx/scripts.shx")),
+    ("scriptc.shx", include_bytes!("../fuentes-shx/scriptc.shx")),
+    ("gothice.shx", include_bytes!("../fuentes-shx/gothice.shx")),
+    ("greeks.shx", include_bytes!("../fuentes-shx/greeks.shx")),
+];
+
+/// Cual de las de PixPin va en lugar de una SHX que no esta: la de su nombre
+/// o la que mas se le parece (txt, simplex, isocp… → romans), como Android.
+/// Solo para lo que es SHX: un estilo «Arial» no pasa por aqui.
+pub fn reserva_para(clave: &str) -> Option<&'static str> {
+    let c = clave.trim().to_ascii_lowercase();
+    let base = c.rsplit(['/', '\\']).next().unwrap_or(&c);
+    let base = base.strip_suffix(".shx").unwrap_or(base);
+    let conocida = [
+        "txt", "simplex", "romans", "romand", "romanc", "romant", "complex", "italic", "italicc", "italict", "scripts", "scriptc", "gothice",
+        "gothicg", "gothici", "greeks", "greekc", "monotxt", "isocp", "isocp2", "isocp3", "isoct", "isoct2", "isoct3", "isocteur", "isocpeur",
+    ];
+    if !c.ends_with(".shx") && !conocida.contains(&base) {
+        return None;
+    }
+    Some(match base {
+        "romand" | "romanc" | "complex" => "romand.shx",
+        "romant" => "romant.shx",
+        "italic" | "italicc" | "italict" => "italic.shx",
+        "scripts" => "scripts.shx",
+        "scriptc" => "scriptc.shx",
+        "gothice" | "gothicg" | "gothici" => "gothice.shx",
+        "greeks" | "greekc" => "greeks.shx",
+        _ => "romans.shx",
+    })
+}
+
+/// La SHX de PixPin que va en lugar de `clave`, ya leida.
+pub fn de_reserva(clave: &str) -> Option<Shx> {
+    let nombre = reserva_para(clave)?;
+    DE_PIXPIN.iter().find(|(n, _)| *n == nombre).and_then(|(_, b)| Shx::leer(b))
+}
+
+#[cfg(test)]
+mod pruebas_reserva {
+    use super::*;
+
+    #[test]
+    fn las_shx_de_pixpin_se_leen_y_tienen_las_letras_del_castellano() {
+        for (n, b) in DE_PIXPIN {
+            let f = Shx::leer(b).unwrap_or_else(|| panic!("{n} no se lee"));
+            assert!(f.tiene('A') && f.tiene('a'), "{n}");
+        }
+        let r = de_reserva("romans.shx").unwrap();
+        for c in ['ñ', 'á', '°', '±', 'Ø'] {
+            assert!(r.tiene(c), "romans sin {c}");
+        }
+    }
+
+    #[test]
+    fn cada_shx_que_falta_va_a_la_que_mas_se_parece() {
+        assert_eq!(reserva_para("txt"), Some("romans.shx"));
+        assert_eq!(reserva_para("C:\\fuentes\\complex.shx"), Some("romand.shx"));
+        assert_eq!(reserva_para("isocp"), Some("romans.shx"));
+        assert_eq!(reserva_para("rara.shx"), Some("romans.shx"));
+        // Caso negativo: una TrueType no.
+        assert_eq!(reserva_para("arial"), None);
+        assert_eq!(reserva_para("arial.ttf"), None);
+    }
+}

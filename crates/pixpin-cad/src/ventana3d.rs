@@ -618,6 +618,7 @@ pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo3d, String>>, ui: Texto
                     M_CERRAR => break 'bucle,
                     _ => {}
                 },
+                (De::Plano, Ev::TeclaSoltada(_) | Ev::Caracter(_)) => {}
                 (De::Plano, Ev::Tecla(vk)) => match vk {
                     0x1B => {
                         if elegido.is_some() {

@@ -489,6 +489,29 @@ pub fn una<D: Disco + ?Sized, F: Read + Write>(
         progreso(Trabajo::solo(format!("{rotulo}Terminando «{nombre}»…")));
         s.cerrar(&prep, ahora())?;
     }
+    // **La galeria de capturas**, con sus fechas de irse (Android v0.107.0).
+    // Si el otro no sabe de galerias, no pasa nada.
+    if s.tiene_galeria() {
+        progreso(Trabajo::solo(format!(
+            "{rotulo}Juntando la galería con {}…",
+            otro.nombre
+        )));
+        let mut hechos = 0u64;
+        let t0 = std::time::Instant::now();
+        let mut ultimo = std::time::Instant::now() - std::time::Duration::from_secs(1);
+        s.galeria(hecho, ahora(), &mut |n| {
+            hechos += n;
+            if ultimo.elapsed().as_millis() > 150 {
+                ultimo = std::time::Instant::now();
+                let seg = t0.elapsed().as_secs_f64().max(0.001);
+                progreso(Trabajo::solo(format!(
+                    "{rotulo}Pasando capturas de la galería: {} · {}/s",
+                    tamano_legible(hechos as i64),
+                    tamano_legible((hechos as f64 / seg) as i64)
+                )));
+            }
+        })?;
+    }
     s.adios();
     if !hecho.saltados.is_empty() {
         let mut vistos = Vec::new();
@@ -573,6 +596,21 @@ pub fn contar_lo_hecho(h: &Hecho, bytes: u64, segundos: f64) -> String {
     }
     if h.fusionados > 0 {
         partes.push(format!("{} juntados de los dos", h.fusionados));
+    }
+    // La galeria, como `contarLoHecho` desde la v0.107.0 del movil.
+    if h.capturas > 0 {
+        partes.push(format!(
+            "{} {} de la galería",
+            h.capturas,
+            if h.capturas == 1 {
+                "captura"
+            } else {
+                "capturas"
+            }
+        ));
+    }
+    if h.capturas_tiradas > 0 {
+        partes.push(format!("{} quitadas de la galería", h.capturas_tiradas));
     }
     let primera = if partes.is_empty() {
         "Ya estaban iguales.".to_string()

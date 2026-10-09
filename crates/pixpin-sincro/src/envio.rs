@@ -628,6 +628,85 @@ pub fn nombre_sano(nombre: &str) -> String {
     }
 }
 
+/// Las extensiones que se reconocen (`EXTENSIONES_CONOCIDAS` de
+/// `guardados/Mensajes.kt`). `bin` NO esta: es «no se que es».
+const EXTENSIONES_CONOCIDAS: [&str; 46] = [
+    "pdf", "jpg", "jpeg", "png", "webp", "gif", "heic", "bmp", "svg", "m4a", "mp3", "ogg", "oga",
+    "opus", "wav", "flac", "aac", "amr", "3gp", "mp4", "mkv", "mov", "webm", "txt", "md", "csv",
+    "json", "xml", "html", "htm", "zip", "doc", "docx", "xls", "xlsx", "xlsm", "tsv", "ppt",
+    "pptx", "odt", "ods", "dxf", "dwg", "pixpin", "excalidraw", "epub",
+];
+
+/// Si `nombre` acaba en una extension de las que se reconocen
+/// (`tieneExtensionConocida`).
+pub fn tiene_extension_conocida(nombre: &str) -> bool {
+    nombre.rsplit_once('.').is_some_and(|(_, e)| {
+        EXTENSIONES_CONOCIDAS
+            .iter()
+            .any(|x| x.eq_ignore_ascii_case(e))
+    })
+}
+
+/// **La extension por lo que hay dentro** (`extensionPorContenido`, Android
+/// v0.108.0): los primeros bytes de un PDF, PNG, JPEG, GIF o WebP no
+/// enganan. `None` si no es ninguno.
+pub fn extension_por_contenido(cabeza: &[u8]) -> Option<&'static str> {
+    let empieza = |b: &[u8]| cabeza.starts_with(b);
+    if empieza(b"%PDF") {
+        Some("pdf")
+    } else if empieza(&[0x89, 0x50, 0x4E, 0x47]) {
+        Some("png")
+    } else if empieza(&[0xFF, 0xD8, 0xFF]) {
+        Some("jpg")
+    } else if empieza(b"GIF8") {
+        Some("gif")
+    } else if cabeza.len() >= 12 && empieza(b"RIFF") && &cabeza[8..12] == b"WEBP" {
+        Some("webp")
+    } else {
+        None
+    }
+}
+
+/// **El nombre que le toca a un adjunto por lo que lleva dentro.** Hasta la
+/// v0.108.0 el movil pegaba `bin` a lo que llegaba como
+/// `application/octet-stream` (muchas apps comparten asi un PDF) y el PC no
+/// sabia abrir `informe.bin`; desde entonces lo manda sin extension. Con una
+/// extension que se reconoce, el nombre se queda; con `.bin` o sin ninguna,
+/// se mira la cabeza: si es un PDF o una imagen, `informe.bin` pasa a
+/// `informe.pdf` (y `informe` a `informe.pdf`). Si no se sabe que es, tal
+/// cual.
+pub fn nombre_por_contenido(nombre: &str, cabeza: &[u8]) -> String {
+    if tiene_extension_conocida(nombre) {
+        return nombre.to_string();
+    }
+    let Some(ext) = extension_por_contenido(cabeza) else {
+        return nombre.to_string();
+    };
+    let base = match nombre.rsplit_once('.') {
+        Some((b, e)) if !b.is_empty() && e.eq_ignore_ascii_case("bin") => b,
+        _ => nombre,
+    };
+    format!("{base}.{ext}")
+}
+
+/// Los primeros bytes de un fichero, los que mira
+/// [`extension_por_contenido`]. Vacio si no se puede leer.
+pub fn cabeza_de(ruta: &std::path::Path) -> Vec<u8> {
+    use std::io::Read;
+    let mut b = [0u8; 16];
+    let Ok(mut f) = std::fs::File::open(ruta) else {
+        return Vec::new();
+    };
+    let mut n = 0;
+    while n < b.len() {
+        match f.read(&mut b[n..]) {
+            Ok(0) | Err(_) => break,
+            Ok(k) => n += k,
+        }
+    }
+    b[..n].to_vec()
+}
+
 /// Un nombre que no pise nada: `plano (2).pdf` si `plano.pdf` ya esta.
 pub fn ruta_libre(carpeta: &std::path::Path, nombre: &str) -> std::path::PathBuf {
     let mut destino = carpeta.join(nombre);
@@ -1065,5 +1144,43 @@ mod pruebas {
         std::fs::write(d.join("plano.pdf"), b"x").unwrap();
         assert_eq!(ruta_libre(&d, "plano.pdf"), d.join("plano (2).pdf"));
         assert_eq!(ruta_libre(&d, "otro.pdf"), d.join("otro.pdf"));
+    }
+
+    #[test]
+    fn un_bin_que_es_un_pdf_o_una_imagen_se_llama_por_lo_que_es() {
+        assert_eq!(extension_por_contenido(b"%PDF-1.7\n"), Some("pdf"));
+        assert_eq!(extension_por_contenido(&[0x89, b'P', b'N', b'G', 13, 10]), Some("png"));
+        assert_eq!(extension_por_contenido(&[0xFF, 0xD8, 0xFF, 0xE0]), Some("jpg"));
+        assert_eq!(extension_por_contenido(b"GIF89a"), Some("gif"));
+        assert_eq!(extension_por_contenido(b"RIFF\x10\0\0\0WEBPVP8 "), Some("webp"));
+        assert_eq!(nombre_por_contenido("informe.bin", b"%PDF-1.4"), "informe.pdf");
+        assert_eq!(nombre_por_contenido("informe.BIN", b"%PDF-1.4"), "informe.pdf");
+        assert_eq!(nombre_por_contenido("Plano de la nave", b"%PDF-1.4"), "Plano de la nave.pdf");
+        assert_eq!(nombre_por_contenido("Plano v1.2", &[0xFF, 0xD8, 0xFF]), "Plano v1.2.jpg");
+    }
+
+    #[test]
+    fn caso_negativo_lo_que_ya_tiene_extension_o_no_se_reconoce_no_se_toca() {
+        // Una extension conocida manda, aunque dentro haya otra cosa.
+        assert_eq!(nombre_por_contenido("foto.png", b"%PDF-1.4"), "foto.png");
+        // Un RIFF que no es WebP (un WAV) no es una imagen.
+        assert_eq!(extension_por_contenido(b"RIFF\x10\0\0\0WAVEfmt "), None);
+        // Corto o desconocido: tal cual, con su `.bin` si lo traia.
+        assert_eq!(extension_por_contenido(b"%PD"), None);
+        assert_eq!(nombre_por_contenido("datos.bin", b"\0\0\0\0"), "datos.bin");
+        assert_eq!(nombre_por_contenido("datos", b""), "datos");
+        // `.bin` solo no es un nombre con extension que quitar.
+        assert_eq!(nombre_por_contenido(".bin", b"%PDF"), ".bin.pdf");
+    }
+
+    #[test]
+    fn la_cabeza_de_un_fichero_son_sus_primeros_bytes() {
+        let d = std::env::temp_dir().join(format!("pixpin-cabeza-{}", std::process::id()));
+        std::fs::create_dir_all(&d).unwrap();
+        let f = d.join("x.bin");
+        std::fs::write(&f, b"%PDF-1.4 y mucho mas que dieciseis bytes").unwrap();
+        assert_eq!(cabeza_de(&f), b"%PDF-1.4 y mucho".to_vec());
+        assert!(cabeza_de(&d.join("no-esta")).is_empty());
+        let _ = std::fs::remove_dir_all(&d);
     }
 }

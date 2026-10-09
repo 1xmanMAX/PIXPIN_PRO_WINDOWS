@@ -8368,6 +8368,9 @@ fn abrir_mensaje(
         );
         return;
     }
+    // Un `.bin` del movil que por dentro es un PDF o una foto se abre como
+    // lo que es (`recibir::ruta_para_abrir`).
+    let ruta = crate::recibir::ruta_para_abrir(&ruta);
     // Una nota de voz **suena aqui**, no se manda al reproductor de Windows:
     // es lo que hace el movil al tocar la burbuja, y lo que permite pausarla,
     // adelantarla y cambiarle la velocidad desde la barra de abajo.

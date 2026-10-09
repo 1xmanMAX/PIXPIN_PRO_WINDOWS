@@ -678,7 +678,7 @@ fn clase_de(n: u32) -> u32 {
 
 // ------------------------------------------------------------- guardar
 
-const MAGIA: &[u8; 8] = b"PXCAD\0\0\x05";
+const MAGIA: &[u8; 8] = b"PXCAD\0\0\x06";
 
 /// Escribe y lee todo como palabras de 4 bytes (lo que tambien se sube a la
 /// tarjeta tal cual).

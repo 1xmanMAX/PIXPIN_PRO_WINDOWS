@@ -54,6 +54,8 @@ pub(crate) enum Ev {
     Doble(i32, i32),
     Rueda(i32, i32, i32),
     Tecla(u32),
+    TeclaSoltada(u32),
+    Caracter(u32),
     Tamano(u32, u32),
     Salir,
     Cerrar,
@@ -198,6 +200,15 @@ unsafe fn procedimiento(de: De, hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) ->
         }
         WM_KEYDOWN => {
             apuntar(de, Ev::Tecla(wp.0 as u32));
+            return LRESULT(0);
+        }
+        // Para escribir con el motor del lienzo al anotar.
+        WM_KEYUP => {
+            apuntar(de, Ev::TeclaSoltada(wp.0 as u32));
+            return LRESULT(0);
+        }
+        WM_CHAR => {
+            apuntar(de, Ev::Caracter(wp.0 as u32));
             return LRESULT(0);
         }
         WM_COMMAND => {
@@ -463,7 +474,7 @@ pub fn medida(d: f64, unidades: u32) -> String {
 
 // ------------------------------------------------------------------ pintar
 
-const BOTONES: [&str; 5] = ["asa", "tema", "acotar", "tres", "fijar"];
+const BOTONES: [&str; 7] = ["asa", "tema", "acotar", "marcos", "anotar", "tres", "fijar"];
 pub(crate) const ALTO_BARRA: f64 = 48.0;
 const BOTON: f64 = 40.0;
 
@@ -621,6 +632,36 @@ pub(crate) fn barra(e: f64, botones: &[&str], encima: Option<usize>, claro: bool
                 let corte = [p(-10.0, 3.0), p(5.0, 3.0), p(10.0, -2.0), p(-5.0, -2.0)];
                 c.triangulos(&[corte[0], corte[1], corte[2], corte[0], corte[2], corte[3]], (col & 0x00ff_ffff) | 0x7000_0000, Some(CAPA_RAYAS));
             }
+            "anotar" => {
+                // Un lapiz en diagonal, con su punta.
+                let (ux, uy) = (std::f64::consts::FRAC_1_SQRT_2, -std::f64::consts::FRAC_1_SQRT_2);
+                let (nx, ny) = (-uy, ux);
+                let q = |t: f64, s2: f64| [cx + ux * t * e + nx * s2 * e, cy + uy * t * e + ny * s2 * e];
+                let cuerpo = [q(-4.0, -2.6), q(-4.0, 2.6), q(9.0, 2.6), q(9.0, -2.6)];
+                for k in 0..4 {
+                    raya(&mut c, cuerpo[k], cuerpo[(k + 1) % 4], 1.5 * e, col);
+                }
+                raya(&mut c, q(-4.0, -2.6), q(-9.0, 0.0), 1.5 * e, col);
+                raya(&mut c, q(-4.0, 2.6), q(-9.0, 0.0), 1.5 * e, col);
+                raya(&mut c, q(6.0, -2.6), q(6.0, 2.6), 1.3 * e, col);
+            }
+            "marcos" => {
+                // Un recuadro a trazos con las marcas de corte en las esquinas.
+                let (x0, y0, x1, y1) = (cx - 8.0 * e, cy - 6.0 * e, cx + 8.0 * e, cy + 6.0 * e);
+                for (a, b2) in [([x0, y0], [x1, y0]), ([x1, y0], [x1, y1]), ([x1, y1], [x0, y1]), ([x0, y1], [x0, y0])] {
+                    let l = (b2[0] - a[0]).hypot(b2[1] - a[1]);
+                    let n = (l / (3.0 * e)).floor().max(1.0) as usize;
+                    for k in (0..n).step_by(2) {
+                        let t0 = k as f64 / n as f64;
+                        let t1 = ((k + 1) as f64 / n as f64).min(1.0);
+                        raya(&mut c, [a[0] + (b2[0] - a[0]) * t0, a[1] + (b2[1] - a[1]) * t0], [a[0] + (b2[0] - a[0]) * t1, a[1] + (b2[1] - a[1]) * t1], 1.5 * e, col);
+                    }
+                }
+                for (px, py, dx, dy) in [(x0, y0, -1.0, -1.0), (x1, y0, 1.0, -1.0), (x1, y1, 1.0, 1.0), (x0, y1, -1.0, 1.0)] {
+                    raya(&mut c, [px + dx * 1.5 * e, py], [px + dx * 4.0 * e, py], 1.4 * e, col);
+                    raya(&mut c, [px, py + dy * 1.5 * e], [px, py + dy * 4.0 * e], 1.4 * e, col);
+                }
+            }
             "aristas" | "tres" => {
                 // Un cubo de rayas.
                 let p = |x: f64, y: f64| [cx + x * e, cy + y * e];
@@ -661,6 +702,13 @@ pub(crate) fn barra(e: f64, botones: &[&str], encima: Option<usize>, claro: bool
     c.terminar()
 }
 
+/// Los marcos para imprimir, para pintarlos.
+struct Marcos<'a> {
+    hechos: &'a [[f64; 4]],
+    nuevo: Option<([f64; 2], [f64; 2])>,
+    marcando: bool,
+}
+
 /// Las cotas y lo demas que va encima del plano, en pixeles.
 struct Acotar {
     activo: bool,
@@ -668,11 +716,43 @@ struct Acotar {
     hechas: Vec<Vec<[f64; 2]>>,
     cursor: Option<[f64; 2]>,
     enganche: Option<[f64; 2]>,
+    /// De que clase es el enganche (cambia la marca).
+    tipo: crate::regla::Tipo,
+}
+
+/// Donde cae la mira: un punto, la perpendicular desde el ultimo punto, una
+/// raya o un arco (como Android v0.113.0), o libre (`None`).
+fn enganchar(g: Option<&(Enganches, crate::regla::Rayas)>, p: [f64; 2], radio: f64, desde: Option<[f64; 2]>) -> Option<([f64; 2], crate::regla::Tipo)> {
+    let (puntos, rayas) = g?;
+    let (q, t) = rayas.ajustar(p, radio, desde, Some(puntos));
+    (t != crate::regla::Tipo::Libre).then_some((q, t))
 }
 
 #[allow(clippy::too_many_arguments)]
-fn encima_del_plano(textos: &mut Textos, a: &Acotar, cam: &Camara, w: u32, h: u32, e: f64, unidades: u32, claro: bool, pista: &str) -> Modelo {
+fn encima_del_plano(textos: &mut Textos, a: &Acotar, marcos: &Marcos, cam: &Camara, w: u32, h: u32, e: f64, unidades: u32, claro: bool, pista: &str) -> Modelo {
     let mut c = Constructor::nuevo();
+    // Los marcos para imprimir: en azul, con su numero.
+    {
+        let azul = rgba(0x00, 0x78, 0xD4);
+        let rect_px = |c: &mut Constructor, a: [f64; 2], b: [f64; 2], grosor: f64| {
+            let (p, q) = (cam.pantalla(a, w, h), cam.pantalla(b, w, h));
+            for (u, v) in [([p[0], p[1]], [q[0], p[1]]), ([q[0], p[1]], [q[0], q[1]]), ([q[0], q[1]], [p[0], q[1]]), ([p[0], q[1]], [p[0], p[1]])] {
+                raya_en(c, u, v, grosor, azul, CAPA_ARRIBA);
+            }
+        };
+        for (i, m) in marcos.hechos.iter().enumerate() {
+            rect_px(&mut c, [m[0], m[3]], [m[2], m[1]], 2.0 * e);
+            let esquina = cam.pantalla([m[0], m[3]], w, h);
+            let t = format!("{}", i + 1);
+            let tam = 12.0 * e;
+            let ancho = textos.medir_pantalla(&t, tam);
+            rect_en(&mut c, esquina[0], esquina[1], esquina[0] + ancho + 12.0 * e, esquina[1] + 20.0 * e, azul, CAPA_ARRIBA * 0.5);
+            textos.en_pantalla(&mut c, &t, esquina[0] + 6.0 * e, esquina[1] + 15.0 * e, tam, rgba(255, 255, 255), esquina[0] + 80.0 * e);
+        }
+        if let Some((a, b)) = marcos.nuevo {
+            rect_px(&mut c, a, b, 1.5 * e);
+        }
+    }
     let naranja = rgba(0xFF, 0x8A, 0x00);
     let verde = rgba(0x30, 0xD1, 0x58);
     let (pildora, letra) = if claro { (0xEE1C1C1Eu32, rgba(255, 255, 255)) } else { (0xEEF5F5F7u32, rgba(0x1C, 0x1C, 0x1E)) };
@@ -719,12 +799,22 @@ fn encima_del_plano(textos: &mut Textos, a: &Acotar, cam: &Camara, w: u32, h: u3
         }
         let _ = es_viva;
     }
-    if a.activo {
-        if let Some(g) = a.enganche {
+    if a.activo || marcos.marcando {
+        if let Some(g) = a.enganche.filter(|_| a.activo) {
             let q = a_px(g);
             let s = 6.0 * e;
-            for (p0, p1) in [([-s, -s], [s, -s]), ([s, -s], [s, s]), ([s, s], [-s, s]), ([-s, s], [-s, -s])] {
+            let lados: Vec<([f64; 2], [f64; 2])> = match a.tipo {
+                // La perpendicular: ⊥ y su «90°».
+                crate::regla::Tipo::Perpendicular => vec![([-s, s], [s, s]), ([0.0, s], [0.0, -s])],
+                // En la raya: el reloj de arena de AutoCAD.
+                crate::regla::Tipo::EnLaRaya => vec![([-s, -s], [s, -s]), ([-s, s], [s, s]), ([-s, -s], [s, s]), ([s, -s], [-s, s])],
+                _ => vec![([-s, -s], [s, -s]), ([s, -s], [s, s]), ([s, s], [-s, s]), ([-s, s], [-s, -s])],
+            };
+            for (p0, p1) in lados {
                 raya_en(&mut c, [q[0] + p0[0], q[1] + p0[1]], [q[0] + p1[0], q[1] + p1[1]], 1.8 * e, verde, CAPA_ARRIBA);
+            }
+            if a.tipo == crate::regla::Tipo::Perpendicular {
+                textos.en_pantalla(&mut c, "90°", q[0] + s + 4.0 * e, q[1] - s - 2.0 * e, tam, verde, q[0] + 200.0 * e);
             }
         }
         // La pista, abajo a la izquierda.
@@ -791,8 +881,13 @@ const M_BORRAR: u32 = 4;
 const M_ENCIMA: u32 = 5;
 const M_CERRAR: u32 = 6;
 const M_TRES: u32 = 7;
+const M_MARCOS: u32 = 8;
+const M_IMPRIMIR: u32 = 9;
+const M_BORRAR_MARCOS: u32 = 10;
+const M_ANOTAR: u32 = 11;
 
-fn menu(hwnd: HWND, t: &TextosUi, acotando: bool, hay_cotas: bool, fijada: bool) {
+#[allow(clippy::too_many_arguments)]
+fn menu(hwnd: HWND, t: &TextosUi, acotando: bool, hay_cotas: bool, fijada: bool, marcando: bool, hay_marcos: bool) {
     // SAFETY: menu propio que se destruye antes de salir; cadenas vivas.
     unsafe {
         let Ok(m) = CreatePopupMenu() else { return };
@@ -813,6 +908,11 @@ fn menu(hwnd: HWND, t: &TextosUi, acotando: bool, hay_cotas: bool, fijada: bool)
         poner(M_BORRAR, &t.borrar_cotas, false, !hay_cotas);
         poner(M_TRES, &t.tres, false, false);
         let _ = AppendMenuW(m, MF_SEPARATOR, 0, PCWSTR::null());
+        poner(M_ANOTAR, &t.anotar, false, false);
+        poner(M_MARCOS, &t.marcos, marcando, false);
+        poner(M_IMPRIMIR, &t.imprimir, false, false);
+        poner(M_BORRAR_MARCOS, &t.borrar_marcos, false, !hay_marcos);
+        let _ = AppendMenuW(m, MF_SEPARATOR, 0, PCWSTR::null());
         poner(M_ENCIMA, &t.encima, fijada, false);
         poner(M_CERRAR, &t.cerrar, false, false);
         let mut p = POINT::default();
@@ -824,8 +924,44 @@ fn menu(hwnd: HWND, t: &TextosUi, acotando: bool, hay_cotas: bool, fijada: bool)
 
 /// **Abre la ventana del plano** y no vuelve hasta que se cierra. `cargando`
 /// trae el plano cuando esta listo (o el porque no).
-/// `abrir_3d`: lo que hace el boton «3D» (abrir el mismo plano en 3D).
-pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo, String>>, textos_ui: TextosUi, abrir_3d: Option<Box<dyn Fn()>>) -> Result<(), String> {
+/// Lo que el visor no sabe hacer solo y le da quien lo abre.
+#[derive(Default)]
+pub struct Acciones {
+    /// El boton «3D»: abrir el mismo plano en 3D.
+    pub abrir_3d: Option<Box<dyn Fn()>>,
+    /// Imprimir: la ventana del visor, el plano, los marcos (`[x0, y0, x1,
+    /// y1]` del plano; vacio: el plano entero) y las cotas puestas.
+    #[allow(clippy::type_complexity)]
+    pub imprimir: Option<Box<dyn Fn(isize, &Modelo, &[[f64; 4]], &[Vec<[f64; 2]>])>>,
+    /// Anotar encima: el motor del lienzo (ver [`crate::anotado`]). Se le
+    /// da el plano cuando llega, para leer su capa.
+    #[allow(clippy::type_complexity)]
+    pub anotador: Option<Box<dyn FnOnce(&Modelo) -> Box<dyn crate::anotado::Anotador>>>,
+}
+
+/// Lo que ve la ventana, para el motor del lienzo.
+fn vista_para_el_motor(hwnd: HWND, camara: &Camara, w: u32, h: u32, e: f64, m: &Modelo, claro: bool) -> crate::anotado::VistaPlano {
+    let mut p = POINT::default();
+    // SAFETY: ventana propia; punto local.
+    let _ = unsafe { windows::Win32::Graphics::Gdi::ClientToScreen(hwnd, &mut p) };
+    crate::anotado::VistaPlano {
+        centro: camara.centro,
+        px: camara.px,
+        ancho: w,
+        alto: h,
+        origen_pantalla: (p.x, p.y),
+        escala_por_cien: (e * 100.0).round() as u32,
+        unidad: crate::anotado::unidad_de_la_capa(m),
+        claro,
+    }
+}
+
+pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo, String>>, textos_ui: TextosUi, mut acciones: Acciones) -> Result<(), String> {
+    let abrir_3d = &acciones.abrir_3d;
+    // El motor del lienzo para anotar: nace cuando llega el plano.
+    let mut hacer_anotador = acciones.anotador.take();
+    let mut anotador: Option<Box<dyn crate::anotado::Anotador>> = None;
+    let mut anotando = false;
     let (hwnd, mut w, mut h) = crear_ventana(w!("PixPinPlanoCad"), &format!("{titulo} — PixPin")).map_err(|e| e.to_string())?;
     let mut gpu = match Gpu::nueva(hwnd, w, h) {
         Ok(g) => g,
@@ -844,7 +980,7 @@ pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo, String>>, textos_ui: 
     ESTADO.with(|s| s.borrow_mut().barra = Some((hbarra, (8.0 * e) as i32)));
     let mut textos = Textos::nuevo();
     let mut plano: Option<(Modelo, PlanoGpu)> = None;
-    let mut enganches: Option<Enganches> = None;
+    let mut enganches: Option<(Enganches, crate::regla::Rayas)> = None;
     let mut mensaje = textos_ui.abriendo.clone();
     let mut camara = Camara { centro: [0.0, 0.0], px: 1.0 };
     let mut destino = camara;
@@ -862,6 +998,7 @@ pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo, String>>, textos_ui: 
         hechas: Vec::new(),
         cursor: None,
         enganche: None,
+        tipo: crate::regla::Tipo::Libre,
     };
     let mut raton = (0i32, 0i32);
     let mut sucio = true;
@@ -869,6 +1006,11 @@ pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo, String>>, textos_ui: 
     let mut aviso_ui: Option<(Modelo, PlanoGpu)> = None;
     // Objetos de Civil 3D guardados sin su dibujo: cuantos, y hasta cuando se avisa.
     let mut sin_dibujo_civil = 0u32;
+    // Los marcos para imprimir (como Android v0.111): si se estan marcando y
+    // el que se arrastra ahora (dos esquinas del plano).
+    let mut marcos: Vec<[f64; 4]> = Vec::new();
+    let mut marcando = false;
+    let mut nuevo_marco: Option<([f64; 2], [f64; 2])> = None;
     let mut aviso_civil_hasta: Option<Instant> = None;
     'bucle: loop {
         let animando = camara != destino;
@@ -911,6 +1053,9 @@ pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo, String>>, textos_ui: 
                                 if sin_dibujo_civil > 0 {
                                     aviso_civil_hasta = Some(Instant::now() + Duration::from_secs(12));
                                 }
+                                if let Some(f) = hacer_anotador.take() {
+                                    anotador = Some(f(&m));
+                                }
                                 plano = Some((m, p));
                                 mensaje.clear();
                             }
@@ -942,7 +1087,52 @@ pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo, String>>, textos_ui: 
         let mut borrar_cotas = false;
         let mut encuadrar = false;
         let mut ver_en_3d = false;
+        let mut cambiar_marcos = false;
+        let mut cambiar_anotar = false;
+        let mut imprimir = false;
         for (de, ev) in eventos {
+            // **Anotando, el raton y el teclado son del motor del lienzo**
+            // (la rueda y el boton central siguen moviendo el plano).
+            if anotando
+                && de == De::Plano
+                && let (Some(a), Some((m, _))) = (anotador.as_mut(), &plano)
+            {
+                let v = vista_para_el_motor(hwnd, &camara, w, h, e, m, claro);
+                let (ox, oy) = v.origen_pantalla;
+                // SAFETY: lee el estado de las teclas.
+                let tecla = |vk: i32| unsafe { GetKeyState(vk) } < 0;
+                let ev_motor = match ev {
+                    Ev::Mover(x, y) => Some(crate::anotado::EventoPlano::Mover(x + ox, y + oy)),
+                    Ev::Bajar(x, y, 0) | Ev::Doble(x, y) => Some(crate::anotado::EventoPlano::Bajar(x + ox, y + oy)),
+                    Ev::Subir(x, y, 0) => Some(crate::anotado::EventoPlano::Subir(x + ox, y + oy)),
+                    Ev::Tecla(0x1B) if !a.quiere_escape() => None,
+                    Ev::Tecla(vk) => Some(crate::anotado::EventoPlano::Tecla { vk, shift: tecla(0x10), ctrl: tecla(0x11), alt: tecla(0x12) }),
+                    Ev::TeclaSoltada(vk) => Some(crate::anotado::EventoPlano::TeclaSoltada(vk)),
+                    Ev::Caracter(c) => char::from_u32(c).map(crate::anotado::EventoPlano::Caracter),
+                    _ => None,
+                };
+                if let Some(evm) = ev_motor {
+                    let r = a.evento(evm, &v);
+                    if r.arrastra {
+                        // SAFETY: ventana propia.
+                        unsafe { SetCapture(hwnd) };
+                    }
+                    if r.salir {
+                        cambiar_anotar = true;
+                    }
+                    sucio = true;
+                    if matches!(ev, Ev::Mover(..)) {
+                        dentro_plano = true;
+                    }
+                    if r.consumido || matches!(ev, Ev::Tecla(_) | Ev::TeclaSoltada(_) | Ev::Caracter(_)) {
+                        continue;
+                    }
+                }
+                if matches!(ev, Ev::Tecla(0x1B)) {
+                    cambiar_anotar = true;
+                    continue;
+                }
+            }
             match (de, ev) {
                 (_, Ev::Cerrar) => break 'bucle,
                 (De::Barra, Ev::Mover(x, _)) => {
@@ -969,8 +1159,10 @@ pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo, String>>, textos_ui: 
                     }
                     Some(1) => cambiar_tema = true,
                     Some(2) => cambiar_acotar = true,
-                    Some(3) => ver_en_3d = true,
-                    Some(4) => cambiar_encima = true,
+                    Some(3) => cambiar_marcos = true,
+                    Some(4) => cambiar_anotar = true,
+                    Some(5) => ver_en_3d = true,
+                    Some(6) => cambiar_encima = true,
                     _ => {}
                 },
                 (De::Barra, _) => {}
@@ -986,6 +1178,11 @@ pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo, String>>, textos_ui: 
                 (De::Plano, Ev::Mover(x, y)) => {
                     raton = (x, y);
                     dentro_plano = true;
+                    if let Some((a, _)) = nuevo_marco {
+                        nuevo_marco = Some((a, camara.plano(x as f64, y as f64, w, h)));
+                        sucio = true;
+                        continue;
+                    }
                     if let Some((x0, y0, c0, ventana)) = arrastre {
                         if ventana {
                             continue;
@@ -1003,7 +1200,9 @@ pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo, String>>, textos_ui: 
                     if acotar.activo {
                         let p = camara.plano(x as f64, y as f64, w, h);
                         acotar.cursor = Some(p);
-                        acotar.enganche = enganches.as_ref().and_then(|g| g.cerca(p, 12.0 * e * camara.px));
+                        let g = enganchar(enganches.as_ref(), p, 12.0 * e * camara.px, acotar.puntos.last().copied());
+                        acotar.enganche = g.map(|(q, _)| q);
+                        acotar.tipo = g.map_or(crate::regla::Tipo::Libre, |(_, t)| t);
                         sucio = true;
                     }
                 }
@@ -1025,18 +1224,31 @@ pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo, String>>, textos_ui: 
                             let _ = ReleaseCapture();
                             SendMessageW(hwnd, WM_NCLBUTTONDOWN, Some(WPARAM(HTCAPTION as usize)), Some(LPARAM(0)));
                         }
+                    } else if b == 0 && marcando && plano.is_some() {
+                        let p = camara.plano(x as f64, y as f64, w, h);
+                        nuevo_marco = Some((p, p));
                     } else if b <= 1 {
                         arrastre = Some((x, y, camara, false));
                     } else {
-                        menu(hwnd, &textos_ui, acotar.activo, !acotar.hechas.is_empty() || !acotar.puntos.is_empty(), fijada);
+                        let hay_cotas = !acotar.hechas.is_empty() || !acotar.puntos.is_empty();
+                        menu(hwnd, &textos_ui, acotar.activo, hay_cotas, fijada, marcando, !marcos.is_empty());
                     }
                 }
                 (De::Plano, Ev::Subir(x, y, b)) => {
+                    if let Some((a, _)) = nuevo_marco.take() {
+                        let q = camara.plano(x as f64, y as f64, w, h);
+                        // Un marco de menos de 8 pixeles es un clic, no un marco.
+                        if (q[0] - a[0]).abs() > 8.0 * camara.px && (q[1] - a[1]).abs() > 8.0 * camara.px {
+                            marcos.push([a[0].min(q[0]), a[1].min(q[1]), a[0].max(q[0]), a[1].max(q[1])]);
+                        }
+                        sucio = true;
+                        continue;
+                    }
                     let clic = arrastre.is_some_and(|(x0, y0, _, _)| (x - x0).abs() + (y - y0).abs() <= 3);
                     arrastre = None;
                     if b == 0 && clic && acotar.activo && plano.is_some() {
                         let p = camara.plano(x as f64, y as f64, w, h);
-                        let p = enganches.as_ref().and_then(|g| g.cerca(p, 12.0 * e * camara.px)).unwrap_or(p);
+                        let p = enganchar(enganches.as_ref(), p, 12.0 * e * camara.px, acotar.puntos.last().copied()).map_or(p, |(q, _)| q);
                         if acotar.puntos.last() != Some(&p) {
                             acotar.puntos.push(p);
                         }
@@ -1067,9 +1279,17 @@ pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo, String>>, textos_ui: 
                     M_BORRAR => borrar_cotas = true,
                     M_ENCIMA => cambiar_encima = true,
                     M_TRES => ver_en_3d = true,
+                    M_MARCOS => cambiar_marcos = true,
+                    M_ANOTAR => cambiar_anotar = true,
+                    M_IMPRIMIR => imprimir = true,
+                    M_BORRAR_MARCOS => {
+                        marcos.clear();
+                        sucio = true;
+                    }
                     M_CERRAR => break 'bucle,
                     _ => {}
                 },
+                (De::Plano, Ev::TeclaSoltada(_) | Ev::Caracter(_)) => {}
                 (De::Plano, Ev::Tecla(vk)) => match vk {
                     0x1B => {
                         if !acotar.puntos.is_empty() {
@@ -1091,7 +1311,17 @@ pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo, String>>, textos_ui: 
                         acotar.puntos.pop();
                         sucio = true;
                     }
+                    // Supr: marcando, el ultimo marco; si no, las cotas.
+                    0x2E if marcando => {
+                        marcos.pop();
+                        sucio = true;
+                    }
                     0x2E => borrar_cotas = true,
+                    // Ctrl+P imprimir, como en cualquier programa; I, los marcos.
+                    // SAFETY: lee el estado de la tecla Ctrl.
+                    0x50 if unsafe { GetKeyState(VK_CONTROL.0 as i32) } < 0 => imprimir = true,
+                    0x49 => cambiar_marcos = true,
+                    0x41 => cambiar_anotar = true,
                     0x46 | 0x24 => encuadrar = true,
                     0x42 => cambiar_tema = true,
                     0x4D => cambiar_acotar = true,
@@ -1116,13 +1346,55 @@ pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo, String>>, textos_ui: 
             aviso_ui = None;
             sucio = true;
         }
+        // Medir, marcar y anotar no van a la vez: el arrastre seria de todos.
+        if (cambiar_marcos && !marcando) || (cambiar_acotar && !acotar.activo) || imprimir {
+            if anotando {
+                cambiar_anotar = true;
+            }
+        }
+        if cambiar_anotar && anotador.is_some() {
+            anotando = !anotando;
+            if anotando {
+                marcando = false;
+                if acotar.activo {
+                    cambiar_acotar = true;
+                }
+            } else if let Some(a) = anotador.as_mut() {
+                // Lo que se escribia se queda escrito y la capa se guarda.
+                a.terminar();
+            }
+            barra_sucia = true;
+            sucio = true;
+        }
+        if cambiar_marcos {
+            marcando = !marcando;
+            nuevo_marco = None;
+            if marcando && acotar.activo {
+                cambiar_acotar = true;
+            }
+            barra_sucia = true;
+            sucio = true;
+        }
+        if cambiar_acotar && !acotar.activo && marcando {
+            marcando = false;
+            barra_sucia = true;
+        }
+        if imprimir
+            && let (Some(f), Some((m, _))) = (&acciones.imprimir, &plano)
+        {
+            let mut cotas = acotar.hechas.clone();
+            if acotar.puntos.len() >= 2 {
+                cotas.push(acotar.puntos.clone());
+            }
+            f(hwnd.0 as isize, m, &marcos, &cotas);
+        }
         if cambiar_acotar {
             acotar.activo = !acotar.activo;
             acotar.puntos.clear();
             if acotar.activo && enganches.is_none()
                 && let Some((m, _)) = &plano
             {
-                enganches = Some(Enganches::de(m));
+                enganches = Some((Enganches::de(m), crate::regla::Rayas::de(m)));
             }
             if acotar.activo {
                 acotar.cursor = Some(camara.plano(raton.0 as f64, raton.1 as f64, w, h));
@@ -1145,7 +1417,7 @@ pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo, String>>, textos_ui: 
             barra_sucia = true;
         }
         if ver_en_3d && plano.is_some()
-            && let Some(f) = &abrir_3d
+            && let Some(f) = abrir_3d
         {
             f();
         }
@@ -1219,7 +1491,7 @@ pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo, String>>, textos_ui: 
             sucio = true;
         }
         if barra_sucia && barra_visible {
-            let m = barra(e, &BOTONES, boton_encima, claro, &[false, false, acotar.activo, false, fijada]);
+            let m = barra(e, &BOTONES, boton_encima, claro, &[false, false, acotar.activo, marcando, anotando, false, fijada]);
             if let Ok(p) = gpu_barra.subir(&m) {
                 let (gw, gh) = gpu_barra.tamano();
                 let fondo = if claro { [0.976, 0.976, 0.984, 1.0] } else { [0.118, 0.118, 0.125, 1.0] };
@@ -1245,9 +1517,11 @@ pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo, String>>, textos_ui: 
                 capas.push((p, vista_pantalla(m, w, h)));
             }
             // Las cotas, encima de todo.
-            let encima = if acotar.activo || !acotar.hechas.is_empty() {
+            let encima = if acotar.activo || !acotar.hechas.is_empty() || marcando || !marcos.is_empty() {
                 let unidades = plano.as_ref().map_or(0, |(m, _)| m.unidades);
-                let m = encima_del_plano(&mut textos, &acotar, &camara, w, h, e, unidades, claro, &textos_ui.pista_acotar);
+                let pista = if marcando { &textos_ui.pista_marcos } else { &textos_ui.pista_acotar };
+                let vista_marcos = Marcos { hechos: &marcos, nuevo: nuevo_marco, marcando };
+                let m = encima_del_plano(&mut textos, &acotar, &vista_marcos, &camara, w, h, e, unidades, claro, pista);
                 gpu.subir(&m).ok().map(|p| (m, p))
             } else {
                 None
@@ -1265,11 +1539,21 @@ pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo, String>>, textos_ui: 
             if let Some((m, p)) = &civil {
                 capas.push((p, vista_pantalla(m, w, h)));
             }
-            if let Err(err) = gpu.dibujar(fondo, &capas) {
+            let dibujado = match (anotador.as_mut(), &plano) {
+                (Some(a), Some((m, _))) => {
+                    let v = vista_para_el_motor(hwnd, &camara, w, h, e, m, claro);
+                    gpu.dibujar_con(fondo, &capas, &mut |d, t| a.pintar(d, t, &v, anotando))
+                }
+                _ => gpu.dibujar(fondo, &capas),
+            };
+            if let Err(err) = dibujado {
                 tracing::warn!(error = %err, "no se pudo dibujar el plano");
             }
             sucio = false;
         }
+    }
+    if anotando && let Some(a) = anotador.as_mut() {
+        a.terminar();
     }
     // SAFETY: ventanas propias.
     unsafe {
@@ -1298,6 +1582,11 @@ pub struct TextosUi {
     pub encima: String,
     pub cerrar: String,
     pub tres: String,
+    pub marcos: String,
+    pub anotar: String,
+    pub imprimir: String,
+    pub borrar_marcos: String,
+    pub pista_marcos: String,
     /// Con `{n}`: cuantos objetos de Civil 3D vinieron sin su dibujo.
     pub sin_dibujo_civil: String,
 }
@@ -1316,6 +1605,11 @@ impl Default for TextosUi {
             encima: "Siempre encima\tT".into(),
             cerrar: "Cerrar\tEsc".into(),
             tres: "Ver en 3D\t3".into(),
+            marcos: "Marcos para imprimir\tI".into(),
+            anotar: "Anotar\tA".into(),
+            imprimir: "Imprimir…\tCtrl+P".into(),
+            borrar_marcos: "Borrar los marcos".into(),
+            pista_marcos: "Arrastra para marcar lo que se imprime · Ctrl+P: imprimir · Supr: quitar el último".into(),
             sin_dibujo_civil: "{n} objetos de Civil 3D se guardaron sin su dibujo: guárdalo con PROXYGRAPHICS = 1 o exporta a LandXML".into(),
         }
     }

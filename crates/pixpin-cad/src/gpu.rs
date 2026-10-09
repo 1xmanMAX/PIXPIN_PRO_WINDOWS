@@ -595,6 +595,19 @@ impl Gpu {
         self.presentar(&tex)
     }
 
+    /// [`Gpu::dibujar`] y, encima, lo que pinte `encima` (ver [`Gpu::presentar_con`]).
+    pub fn dibujar_con(&mut self, fondo: [f32; 4], planos: &[(&PlanoGpu, Vista)], encima: &mut dyn FnMut(&ID3D11Device, &ID3D11Texture2D)) -> windows::core::Result<()> {
+        let Some((tex, rtv)) = self.destino.clone() else {
+            return Ok(());
+        };
+        // SAFETY: destino de este dispositivo.
+        unsafe {
+            self.contexto.ClearRenderTargetView(&rtv, &fondo);
+        }
+        self.pasadas_2d(&rtv, planos);
+        self.presentar_con(&tex, Some(encima))
+    }
+
     pub(crate) fn ventana_entera(&self) -> D3D11_VIEWPORT {
         D3D11_VIEWPORT {
             TopLeftX: 0.0,
@@ -690,6 +703,13 @@ impl Gpu {
 
     /// Del destino a la ventana.
     pub(crate) fn presentar(&self, tex: &ID3D11Texture2D) -> windows::core::Result<()> {
+        self.presentar_con(tex, None)
+    }
+
+    /// Como [`Gpu::presentar`], dejando a `encima` pintar sobre el bufer de la
+    /// ventana ya hecho, antes de ensenarlo (la tinta del motor del lienzo,
+    /// con Direct2D en este mismo dispositivo).
+    pub(crate) fn presentar_con(&self, tex: &ID3D11Texture2D, encima: Option<&mut dyn FnMut(&ID3D11Device, &ID3D11Texture2D)>) -> windows::core::Result<()> {
         let ctx = &self.contexto;
         // SAFETY: recursos de este dispositivo y de este hilo.
         unsafe {
@@ -699,6 +719,10 @@ impl Gpu {
             } else {
                 let atras: ID3D11Texture2D = self.cadena.GetBuffer(0)?;
                 ctx.CopyResource(&atras, tex);
+            }
+            if let Some(f) = encima {
+                let atras: ID3D11Texture2D = self.cadena.GetBuffer(0)?;
+                f(&self.dispositivo, &atras);
             }
             self.cadena.Present(1, DXGI_PRESENT(0)).ok()?;
         }

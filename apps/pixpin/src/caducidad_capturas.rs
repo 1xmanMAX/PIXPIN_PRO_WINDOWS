@@ -23,17 +23,20 @@
 //!   aparte y opcional: un registro sin el se lee igual, y el plugin de Flow
 //!   (`pixpin-lanzador/src/capturas.rs`), que lee este mismo fichero, lo
 //!   tiene en cuenta al decir cuando se va cada una.
+//! - **La galeria que viaja** (Android v0.107.0, 9-oct) apunta en
+//!   [`Registro::fijadas`] la fecha exacta en que se va cada captura que se
+//!   sincronizo, la misma en todos los aparatos del grupo. Se mira despues
+//!   de `conservadas` y antes de la regla; «7 dias mas» mueve la fijada si
+//!   la hay. Tambien opcional. Ver `pixpin_sincro::galeria`.
 //!
 //! El registro vive en `<datos>/capturas-caducidad.json`, fuera de la
 //! carpeta de las capturas: dentro, cada escritura cambiaria la fecha de la
 //! carpeta y la galeria la releeria sin motivo.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::{Duration, SystemTime};
-
-use serde::{Deserialize, Serialize};
 
 use crate::galeria_capturas::{self, Entrada};
 
@@ -53,7 +56,8 @@ pub fn fijar_dias(dias: u32) {
     DIAS_ACTUALES.store(dias as i64, std::sync::atomic::Ordering::Relaxed);
 }
 
-fn dias() -> i64 {
+/// Los dias que valen ahora (tambien para la galeria que viaja).
+pub(crate) fn dias() -> i64 {
     DIAS_ACTUALES.load(std::sync::atomic::Ordering::Relaxed)
 }
 /// Cada cuanto se barre con la aplicacion abierta.
@@ -64,20 +68,13 @@ const FICHERO: &str = "capturas-caducidad.json";
 /// (al conservar) y el barrendero, cada uno en su hilo.
 static CERROJO: Mutex<()> = Mutex::new(());
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Registro {
-    /// La primera vez que se miro la caducidad, en ms UTC. Nada caduca
-    /// antes de `desde + DIAS`.
-    pub desde: i64,
-    /// Los nombres de fichero de las capturas que no se van.
-    #[serde(default)]
-    pub conservadas: BTreeSet<String>,
-    /// Las que se dejaron estar mas («Dar 7 dias mas»): nombre de fichero y
-    /// la fecha nueva en que se van, en ms UTC. Si es anterior a la de la
-    /// regla, gana la regla: prorrogar nunca acorta.
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub prorrogadas: BTreeMap<String, i64>,
-}
+/// El registro: `desde`, `conservadas`, `prorrogadas` y, desde la galeria que
+/// viaja (Android v0.107.0), **`fijadas`**: la fecha exacta en que se va una
+/// captura, acordada con el grupo al sincronizar. Manda sobre la regla y las
+/// prorrogas, para que se vaya el mismo dia en todos los aparatos. El tipo
+/// vive en `pixpin_sincro::galeria` porque las reglas de la galeria
+/// compartida lo leen y lo cambian; el fichero y su cerrojo siguen aqui.
+pub use pixpin_sincro::galeria::Caducidad as Registro;
 
 fn ruta_del_registro(raiz: &Path) -> PathBuf {
     raiz.join(FICHERO)
@@ -99,8 +96,7 @@ fn leer_sin_cerrojo(raiz: &Path, ahora: i64) -> Registro {
     }
     let nuevo = Registro {
         desde: ahora,
-        conservadas: BTreeSet::new(),
-        prorrogadas: BTreeMap::new(),
+        ..Default::default()
     };
     if ruta.exists() {
         // Estaba pero no se entiende: se aparta, no se pisa a ciegas.
@@ -156,16 +152,11 @@ pub fn se_va_el(r: &Registro, e: &Entrada) -> Option<i64> {
     se_va_el_con(r, e, dias())
 }
 
-/// [`se_va_el`] con un plazo dado. Con cero o menos no se va ninguna.
+/// [`se_va_el`] con un plazo dado. Con cero o menos no se va ninguna. Lo
+/// conservado no se va; lo acordado con el grupo (`fijadas`) va antes que la
+/// regla y sus prorrogas (`pixpin_sincro::galeria::se_va_el`).
 pub fn se_va_el_con(r: &Registro, e: &Entrada, dias: i64) -> Option<i64> {
-    if dias <= 0 || r.conservadas.contains(&nombre(&e.ruta)) {
-        return None;
-    }
-    let regla = ms_de(e.cuando).max(r.desde) + dias * DIA_MS;
-    Some(match r.prorrogadas.get(&nombre(&e.ruta)) {
-        Some(&t) => regla.max(t),
-        None => regla,
-    })
+    pixpin_sincro::galeria::se_va_el(r, &nombre(&e.ruta), ms_de(e.cuando), dias)
 }
 
 /// La fecha nueva de «Dar 7 dias mas»: siete dias despues de la que tenia,
@@ -174,12 +165,19 @@ pub fn fecha_prorrogada(r: &Registro, e: &Entrada, ahora: i64) -> Option<i64> {
     se_va_el(r, e).map(|t| t.max(ahora) + DIAS * DIA_MS)
 }
 
-/// **Da siete dias mas** a una captura y escribe el registro.
+/// **Da siete dias mas** a una captura y escribe el registro. Si su fecha
+/// esta acordada con el grupo, se mueve esa (es la que viaja y la que
+/// manda); si no, va a las prorrogas como siempre.
 pub fn prorrogar(raiz: &Path, e: &Entrada, ahora: i64) -> std::io::Result<Registro> {
     let n = nombre(&e.ruta);
     cambiar(raiz, ahora, |r| {
         if let Some(t) = fecha_prorrogada(r, e, ahora) {
-            r.prorrogadas.insert(n, t);
+            match r.fijadas.get_mut(&n) {
+                Some(f) => *f = t,
+                None => {
+                    r.prorrogadas.insert(n, t);
+                }
+            }
         }
     })
 }
@@ -260,9 +258,52 @@ mod pruebas {
     fn registro(desde: i64) -> Registro {
         Registro {
             desde,
-            conservadas: BTreeSet::new(),
-            prorrogadas: BTreeMap::new(),
+            ..Default::default()
         }
+    }
+
+    #[test]
+    fn la_fecha_acordada_con_el_grupo_manda_y_siete_dias_mas_la_mueve() {
+        let raiz =
+            std::env::temp_dir().join(format!("pixpin-caducidad-fijada-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&raiz);
+        std::fs::create_dir_all(&raiz).unwrap();
+        let e = entrada("a.png", 10 * DIA_MS);
+        // Por la regla se iria el 17; el grupo acordo el 13 (alli se hizo antes).
+        cambiar(&raiz, 0, |r| {
+            r.desde = 0;
+            r.fijadas.insert("a.png".into(), 13 * DIA_MS);
+            // Una prorroga vieja no le gana a lo acordado.
+            r.prorrogadas.insert("a.png".into(), 30 * DIA_MS);
+        })
+        .unwrap();
+        let r = leer(&raiz, 0);
+        assert_eq!(se_va_el(&r, &e), Some(13 * DIA_MS));
+        assert_eq!(caducadas(&r, std::slice::from_ref(&e), 13 * DIA_MS).len(), 1);
+        // «7 dias mas» mueve la acordada (es la que viaja), no la prorroga.
+        let r = prorrogar(&raiz, &e, 12 * DIA_MS).unwrap();
+        assert_eq!(r.fijadas.get("a.png"), Some(&(20 * DIA_MS)));
+        assert_eq!(r.prorrogadas.get("a.png"), Some(&(30 * DIA_MS)));
+        assert_eq!(se_va_el(&leer(&raiz, 0), &e), Some(20 * DIA_MS));
+        // Caso negativo: conservada no se va, tenga la fecha que tenga.
+        let r = cambiar(&raiz, 0, |r| {
+            r.conservadas.insert("a.png".into());
+        })
+        .unwrap();
+        assert_eq!(se_va_el(&r, &e), None);
+        let _ = std::fs::remove_dir_all(&raiz);
+    }
+
+    #[test]
+    fn un_registro_sin_fijadas_se_lee_y_sin_ellas_no_se_escriben() {
+        let viejo: Registro =
+            serde_json::from_str(r#"{"desde": 5, "conservadas": ["a.png"]}"#).unwrap();
+        assert!(viejo.fijadas.is_empty());
+        assert!(!serde_json::to_string(&viejo).unwrap().contains("fijadas"));
+        // Y con ellas, como lo escribe Android.
+        let con: Registro =
+            serde_json::from_str(r#"{"desde":5,"conservadas":[],"fijadas":{"b.png":9}}"#).unwrap();
+        assert_eq!(con.fijadas.get("b.png"), Some(&9));
     }
 
     #[test]

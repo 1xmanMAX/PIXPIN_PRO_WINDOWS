@@ -163,7 +163,10 @@ impl Textos {
         if !self.fuentes.contains_key(&clave) {
             let mut f = None;
             let shx = if clave.ends_with(".shx") || (!clave.is_empty() && !clave.contains('.')) {
-                crate::shx::buscar(&clave, carpetas_shx()).and_then(|r| crate::shx::abrir(&r))
+                // La de AutoCAD si esta; si no, la de PixPin que mas se le parece.
+                crate::shx::buscar(&clave, carpetas_shx())
+                    .and_then(|r| crate::shx::abrir(&r))
+                    .or_else(|| crate::shx::de_reserva(&clave))
             } else {
                 None
             };

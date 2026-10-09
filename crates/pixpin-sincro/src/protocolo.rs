@@ -21,6 +21,7 @@ use crate::canonico::{self, Json};
 use crate::diferencia::{self, Apunte, Paso};
 use crate::disco::{self, Disco, Identidad, es_texto, permitida};
 use crate::fusion::{self, Criterio, Cuenta};
+use crate::galeria::{self, CapturasDelAparato};
 use crate::grupo;
 use crate::kotlin;
 use crate::mensajes::{
@@ -279,6 +280,79 @@ pub fn recibir_trozos<F: Read + Write>(
     Ok(Some(r))
 }
 
+/// `Protocolo.leerRespuestaSinLanzar`: una respuesta con su error dentro en
+/// vez de convertirlo en error aqui, para lo opcional del protocolo (la
+/// galeria, que un aparato de antes no conoce).
+fn leer_respuesta_sin_lanzar<F: Read + Write>(c: &mut Canal<F>) -> Resultado<Respuesta> {
+    let (tipo, datos) = c.recibir()?;
+    if tipo != Tipo::Json {
+        return Err(fallo("Se esperaba una respuesta"));
+    }
+    Ok(serde_json::from_slice(&datos)?)
+}
+
+/// Un escritor que **aguanta los fallos del disco**: el primero se apunta y
+/// lo que sigue se tira. Asi un disco lleno a medio recibir no deja trozos
+/// sin leer en el cable (la conversacion seguiria descuadrada): se leen
+/// todos y la captura queda como no recibida.
+struct Aguanta<'w> {
+    dentro: &'w mut dyn Write,
+    fallo: bool,
+}
+
+impl Write for Aguanta<'_> {
+    fn write(&mut self, b: &[u8]) -> io::Result<usize> {
+        if !self.fallo && self.dentro.write_all(b).is_err() {
+            self.fallo = true;
+        }
+        Ok(b.len())
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        if !self.fallo && self.dentro.flush().is_err() {
+            self.fallo = true;
+        }
+        Ok(())
+    }
+}
+
+/// **Recibe una captura** de `largo` bytes que ya viene por el cable y la
+/// guarda con lo que dice su entrada. `true` si quedo entera. Pase lo que
+/// pase aqui, los trozos se leen todos: si no se pudo ni empezar a guardar,
+/// se leen y se tiran. Solo falla si fallo la red.
+fn recibir_captura<F: Read + Write>(
+    canal: &mut Canal<F>,
+    c: &dyn CapturasDelAparato,
+    e: &galeria::Entrada,
+    largo: i64,
+    avance: &mut dyn FnMut(u64),
+) -> Resultado<bool> {
+    let mut leidos = false;
+    let mut completo = false;
+    let guardado = c.guardar(e, &mut |w| {
+        leidos = true;
+        let mut a = Aguanta {
+            dentro: w,
+            fallo: false,
+        };
+        let resumen = recibir_trozos(canal, largo, &mut a, avance)?;
+        completo = true;
+        Ok(resumen.is_some() && !a.fallo)
+    });
+    let entera = match guardado {
+        Ok(b) => b,
+        // A medio leer y por la red: no hay conversacion que salvar.
+        Err(err) if leidos && !completo => return Err(err),
+        // Lo demas (no se pudo crear el fichero, ni ponerlo en su sitio)
+        // es de este aparato: la captura se queda para otra vez.
+        Err(_) => false,
+    };
+    if !leidos {
+        recibir_trozos(canal, largo, &mut io::sink(), &mut |_| {})?;
+    }
+    Ok(entera)
+}
+
 fn json(texto: &str) -> Resultado<Json> {
     Json::analizar(texto).map_err(|e| fallo(e.to_string()))
 }
@@ -397,6 +471,20 @@ impl<D: Disco + ?Sized> Respondedor<'_, D> {
     }
 
     pub fn atender<F: Read + Write>(&self, flujo: F, nonce: [u8; 32]) -> Resultado<()> {
+        self.atender_con_galeria(flujo, nonce, None)
+    }
+
+    /// [`Respondedor::atender`] con la galeria de capturas de este aparato
+    /// (`galeria`). Sin ella, las peticiones de la galeria se contestan «No
+    /// sé qué es», como un aparato de antes. Va aparte y no como un campo
+    /// mas para no romper a quien ya construye el `Respondedor` (el PC
+    /// simulado de las pruebas de Android, entre otros).
+    pub fn atender_con_galeria<F: Read + Write>(
+        &self,
+        flujo: F,
+        nonce: [u8; 32],
+        galeria: Option<&dyn CapturasDelAparato>,
+    ) -> Resultado<()> {
         let d = self.disco;
         let id = d.identidad()?;
         let codigo = id
@@ -503,12 +591,17 @@ impl<D: Disco + ?Sized> Respondedor<'_, D> {
             }
             return Ok(());
         }
-        let hecho = self.responder(&mut canal, &otro);
+        let hecho = self.responder(&mut canal, &otro, galeria);
         soltar(d);
         hecho
     }
 
-    fn responder<F: Read + Write>(&self, canal: &mut Canal<F>, otro: &Aparato) -> Resultado<()> {
+    fn responder<F: Read + Write>(
+        &self,
+        canal: &mut Canal<F>,
+        otro: &Aparato,
+        galeria: Option<&dyn CapturasDelAparato>,
+    ) -> Resultado<()> {
         // Lo que es de cada chat, calculado al preguntar por sus archivos:
         // sin esto, cada archivo pedido volveria a recorrer el chat entero.
         let mut alcance: Option<(String, HashSet<String>)> = None;
@@ -529,7 +622,17 @@ impl<D: Disco + ?Sized> Respondedor<'_, D> {
                 canal.vaciar()?;
                 return Ok(());
             }
-            match self.una(canal, otro, &p, &mut alcance, &mut conocidos) {
+            // **La galeria** (8-oct-2026). Sin capturas en este aparato,
+            // como uno de antes: «No sé qué es».
+            let hecho = if galeria::es_de_galeria(&p.t) {
+                match galeria {
+                    Some(c) => self.responder_galeria(canal, &p, c),
+                    None => Err(fallo(format!("No sé qué es «{}»", p.t))),
+                }
+            } else {
+                self.una(canal, otro, &p, &mut alcance, &mut conocidos)
+            };
+            match hecho {
                 Ok(()) => {}
                 // Lo de la red corta: el otro ya no esta.
                 Err(e @ ErrorSincro::Canal(_)) => return Err(e),
@@ -542,6 +645,88 @@ impl<D: Disco + ?Sized> Respondedor<'_, D> {
                     },
                 )?,
             }
+        }
+    }
+
+    /// **Las cuatro peticiones de la galeria** (`Respondedor.responderGaleria`).
+    /// Solo devuelve un error de red si la conversacion ya no se puede
+    /// seguir; lo demas va al otro como `{"error":…}`.
+    fn responder_galeria<F: Read + Write>(
+        &self,
+        canal: &mut Canal<F>,
+        p: &Peticion,
+        c: &dyn CapturasDelAparato,
+    ) -> Resultado<()> {
+        let ahora = (self.ahora)();
+        match p.t.as_str() {
+            galeria::PETICION => {
+                (self.estado)("Comparando la galería…");
+                let yo = self.disco.identidad()?.yo.id;
+                let e = galeria::poner_al_dia(c, &yo, ahora)?;
+                enviar(
+                    canal,
+                    &Respuesta {
+                        galeria: Some(galeria::entradas_a_texto(&e.entradas)),
+                        tengo: e.tenia.into_iter().collect(),
+                        ..Default::default()
+                    },
+                )
+            }
+            galeria::JUNTA => {
+                let juntas = galeria::entradas_de_texto(p.parche.as_deref().unwrap_or("[]"))?;
+                galeria::aplicar_juntas(c, &juntas, ahora)?;
+                c.avisar();
+                enviar(canal, &Respuesta::default())
+            }
+            galeria::DAME => {
+                let n = galeria::nombre_valido(p.ruta.as_deref()).map_err(fallo)?;
+                let sale = c
+                    .abrir(&n)
+                    .and_then(|r| Salida::de_fichero(&r).ok())
+                    .ok_or_else(|| fallo(format!("No tengo «{n}»")))?;
+                (self.estado)(&format!("Mandando «{n}»"));
+                enviar(
+                    canal,
+                    &Respuesta {
+                        bytes: sale.largo,
+                        ..Default::default()
+                    },
+                )?;
+                sale.mandar(canal, &mut |_| {})?;
+                Ok(())
+            }
+            galeria::PON => {
+                let n = match galeria::nombre_valido(p.ruta.as_deref()) {
+                    Ok(n) => n,
+                    Err(m) => {
+                        // Los trozos ya vienen de camino: se leen y se tiran,
+                        // o la conversacion se descuadra.
+                        recibir_trozos(canal, p.bytes, &mut io::sink(), &mut |_| {})?;
+                        return Err(fallo(m));
+                    }
+                };
+                // Lo que dice de ella: lo juntado, que llego justo antes con
+                // `galeriajunta`.
+                let e = galeria::leer(&c.raiz())
+                    .entradas
+                    .into_iter()
+                    .find(|x| x.nombre == n)
+                    .unwrap_or_else(|| galeria::Entrada::nueva(&n, ahora));
+                (self.estado)(&format!("Recibiendo «{n}»"));
+                let entera = recibir_captura(canal, c, &e, p.bytes, &mut |_| {})?;
+                if entera {
+                    galeria::apuntar_que_llego(c, &n)?;
+                    c.avisar();
+                }
+                enviar(
+                    canal,
+                    &Respuesta {
+                        saltado: !entera,
+                        ..Default::default()
+                    },
+                )
+            }
+            otra => Err(fallo(format!("No sé qué es «{otra}»"))),
         }
     }
 
@@ -865,6 +1050,10 @@ pub struct Hecho {
     pub ahorrados: i64,
     /// Lo que se estaba guardando mientras se mandaba.
     pub saltados: Vec<String>,
+    /// Capturas de la galeria que pasaron de un aparato a otro.
+    pub capturas: usize,
+    /// Las quitadas aqui por quitarse a mano en el otro.
+    pub capturas_tiradas: usize,
 }
 
 /// El paso 1 preparado: que pasa con los mensajes de un chat.
@@ -937,6 +1126,9 @@ pub struct Sesion<'a, D: Disco + ?Sized, F: Read + Write> {
     /// Quien decide cuando los dos lados no dicen lo mismo. Se pone desde la
     /// pantalla antes de `preparar`; ver [Sesion::quien_manda].
     mando: Mando,
+    /// Las capturas de este aparato, si la vuelta lleva galeria. Ver
+    /// [`Sesion::con_galeria`].
+    capturas: Option<&'a dyn CapturasDelAparato>,
 }
 
 impl<D: Disco + ?Sized, F: Read + Write> Drop for Sesion<'_, D, F> {
@@ -1030,6 +1222,7 @@ impl<'a, D: Disco + ?Sized, F: Read + Write> Sesion<'a, D, F> {
                 chat_de_la_vuelta: String::new(),
                 terminada: false,
                 mando: Mando::default(),
+                capturas: None,
             })
         })();
         match abierta {
@@ -1853,6 +2046,125 @@ impl<'a, D: Disco + ?Sized, F: Read + Write> Sesion<'a, D, F> {
         }
         self.terminada = true;
         soltar(self.disco);
+    }
+
+    /// **Con galeria**: la vuelta pasa tambien la galeria de capturas de este
+    /// aparato ([`Sesion::galeria`]), detras de los chats.
+    pub fn con_galeria(&mut self, capturas: &'a dyn CapturasDelAparato) {
+        self.capturas = Some(capturas);
+    }
+
+    /// Si esta vuelta lleva galeria.
+    pub fn tiene_galeria(&self) -> bool {
+        self.capturas.is_some()
+    }
+
+    /// Un `poncaptura` con el nombre que se quiera, para probar que el otro
+    /// rechaza lo que no es un nombre sin descuadrar la conversacion.
+    #[cfg(test)]
+    pub(crate) fn poncaptura_de_prueba(
+        &mut self,
+        nombre: &str,
+        fichero: &std::path::Path,
+        _hecho: &mut Hecho,
+    ) -> Resultado<Respuesta> {
+        let sale = Salida::de_fichero(fichero)?;
+        enviar(
+            &mut self.canal,
+            &Peticion {
+                t: galeria::PON.into(),
+                ruta: Some(nombre.into()),
+                bytes: sale.largo,
+                ..Default::default()
+            },
+        )?;
+        sale.mandar(&mut self.canal, &mut |_| {})?;
+        leer_respuesta(&mut self.canal)
+    }
+
+    /// **La galeria de capturas** (`Sesion.galeria`, ver `galeria`): se junta
+    /// lo de los dos, cada uno se queda con las capturas vivas que le faltan
+    /// y se tira lo quitado a mano en el otro. Devuelve `false` si el otro no
+    /// sabe de galerias (un aparato de antes) o aqui no hay: entonces no se
+    /// hace nada y la conversacion sigue sana. `avance` cuenta bytes, como
+    /// los archivos de los chats.
+    pub fn galeria(
+        &mut self,
+        hecho: &mut Hecho,
+        ahora: i64,
+        avance: &mut dyn FnMut(u64),
+    ) -> Resultado<bool> {
+        let Some(c) = self.capturas else {
+            return Ok(false);
+        };
+        enviar(&mut self.canal, &Peticion::de(galeria::PETICION))?;
+        let suya = leer_respuesta_sin_lanzar(&mut self.canal)?;
+        // «No sé qué es»: un aparato de antes, o sin galeria.
+        let (None, Some(sus_entradas)) = (suya.error, suya.galeria) else {
+            return Ok(false);
+        };
+        let yo = self.disco.identidad()?.yo.id;
+        let mia = galeria::poner_al_dia(c, &yo, ahora)?;
+        let juntas = galeria::juntar(&mia.entradas, &galeria::entradas_de_texto(&sus_entradas)?);
+        let mias = mia.tenia;
+        let suyas: BTreeSet<String> = suya.tengo.into_iter().collect();
+        // Primero lo acordado, alli y aqui: asi el otro sabe de cada captura
+        // que le llega (su fecha, su tipo) y lo quitado a mano se va antes de
+        // pasar nada.
+        enviar(
+            &mut self.canal,
+            &Peticion {
+                t: galeria::JUNTA.into(),
+                parche: Some(galeria::entradas_a_texto(&juntas)),
+                ..Default::default()
+            },
+        )?;
+        leer_respuesta(&mut self.canal)?;
+        hecho.capturas_tiradas += galeria::aplicar_juntas(c, &juntas, ahora)?;
+        for e in galeria::que_traer(&juntas, &mias, &suyas, ahora) {
+            enviar(
+                &mut self.canal,
+                &Peticion {
+                    t: galeria::DAME.into(),
+                    ruta: Some(e.nombre.clone()),
+                    ..Default::default()
+                },
+            )?;
+            let cabecera = leer_respuesta_sin_lanzar(&mut self.canal)?;
+            if cabecera.error.is_some() {
+                // Ya no la tiene: se quedara para otra vez.
+                continue;
+            }
+            let entera = recibir_captura(&mut self.canal, c, &e, cabecera.bytes, avance)?;
+            if entera {
+                galeria::apuntar_que_llego(c, &e.nombre)?;
+                hecho.capturas += 1;
+            } else {
+                hecho.saltados.push(e.nombre.clone());
+            }
+        }
+        for e in galeria::que_mandar(&juntas, &mias, &suyas, ahora) {
+            let Some(sale) = c.abrir(&e.nombre).and_then(|r| Salida::de_fichero(&r).ok()) else {
+                continue;
+            };
+            enviar(
+                &mut self.canal,
+                &Peticion {
+                    t: galeria::PON.into(),
+                    ruta: Some(e.nombre.clone()),
+                    bytes: sale.largo,
+                    ..Default::default()
+                },
+            )?;
+            let resumen = sale.mandar(&mut self.canal, avance)?;
+            if leer_respuesta(&mut self.canal)?.saltado || resumen.is_none() {
+                hecho.saltados.push(e.nombre.clone());
+            } else {
+                hecho.capturas += 1;
+            }
+        }
+        c.avisar();
+        Ok(true)
     }
 
     /// El disco de este lado, para quien lleva la vuelta.

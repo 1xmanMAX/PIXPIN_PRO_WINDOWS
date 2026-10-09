@@ -18,7 +18,7 @@ fn main() {
         });
     }
     let titulo = ruta.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
-    if let Err(e) = pixpin_cad::ventana::ver(&titulo, rx, Default::default(), None) {
+    if let Err(e) = pixpin_cad::ventana::ver(&titulo, rx, Default::default(), Default::default()) {
         eprintln!("error: {e}");
     }
 }

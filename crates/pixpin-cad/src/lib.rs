@@ -13,6 +13,8 @@ pub mod leer;
 pub mod modelo;
 pub mod modelo3d;
 pub mod proxy;
+pub mod regla;
+pub mod anotado;
 pub mod ventana3d;
 pub mod relleno;
 pub mod shx;

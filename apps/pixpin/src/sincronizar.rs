@@ -52,6 +52,7 @@ mod copias_ui;
 mod elegir;
 pub(crate) mod en_fondo;
 mod enviar_wifi;
+mod galeria;
 pub(crate) mod presencia;
 mod recibir_wifi;
 
@@ -1393,7 +1394,10 @@ fn responder(mut flujo: TcpStream, raiz: &Path, mi_puerto: u16) -> Result<()> {
             })
         }),
     };
-    let hecho = r.atender(flujo, nonce().context("sin azar")?);
+    // Con la galeria de capturas: si el otro la pide, la tiene (Android
+    // v0.107.0); uno de antes no la pide y no pasa nada.
+    let capturas = galeria::CapturasDelPc::nuevas(raiz);
+    let hecho = r.atender_con_galeria(flujo, nonce().context("sin azar")?, Some(&capturas));
     // Lo que llego sin marco de la tinta (el movil de hoy no lo escribe)
     // recibe el suyo, en otro hilo; viaja en la vuelta siguiente (K21).
     crate::marco_de_la_tinta::tras_sincronizar(raiz);
@@ -1752,6 +1756,9 @@ fn una_vuelta(
             crate::recordatorios::releer(&raiz_suya);
         }
     });
+    // Las capturas de este equipo, para la galeria que viaja (antes que la
+    // sesion: tienen que vivir mas que ella).
+    let capturas = galeria::CapturasDelPc::nuevas(raiz);
     let mut s = Sesion::conectar(
         flujo,
         &disco,
@@ -1769,6 +1776,10 @@ fn una_vuelta(
             anyhow::Error::from(e)
         }
     })?;
+    // **La galeria de capturas** viaja detras de los chats (Android
+    // v0.107.0): las capturas de cada uno pasan al otro con su fecha y se
+    // van el mismo dia en los dos. Ver `galeria`.
+    s.con_galeria(&capturas);
     // «Lo mio manda» (v0.79 del movil): con el encendido, lo de este equipo
     // se impone y del otro lado solo llega lo que aqui no existe. Se lee del
     // TOML en cada vuelta y no se guarda en la sesion: asi cambiarlo tiene
