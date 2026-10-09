@@ -115,6 +115,10 @@ pub fn rgba(r: u8, g: u8, b: u8) -> u32 {
 /// El color 7 (blanco en fondo oscuro, negro en claro): alfa 0.
 pub const COLOR_7: u32 = 0x00ff_ffff;
 
+/// Como se apunta en `sin_dibujar` un objeto guardado sin su dibujo de
+/// reserva (solo la caja): «sin dibujo: AeccDbSurfaceTin (AeccLand130)».
+pub const PROXY_SIN_DIBUJO: &str = "sin dibujo: ";
+
 pub(crate) fn de_color(c: &Color) -> Option<u32> {
     match c {
         Color::Index(7) => Some(COLOR_7),
@@ -426,7 +430,75 @@ impl<'d> Convertidor<'d> {
             | EntityType::Seqend(_)
             | EntityType::AttributeDefinition(_)
             | EntityType::Viewport(_) => {}
+            // Los objetos de otras aplicaciones (Civil 3D...): su dibujo de reserva.
+            EntityType::Unknown(u) => match u.common.graphic_data.as_deref().and_then(crate::proxy::leer) {
+                Some(crate::proxy::Reserva::Dibujo(prims)) => self.reserva(&prims, color, &m),
+                Some(crate::proxy::Reserva::SoloCaja(clase)) => self.c.no_dibujado(&format!("{PROXY_SIN_DIBUJO}{clase}")),
+                None => self.c.no_dibujado(&u.dxf_name),
+            },
+            EntityType::PolyfaceMesh(p) => {
+                let v: Vec<[f64; 2]> = p.vertices.iter().map(|v| m.p3(&v.location)).collect();
+                for f in &p.faces {
+                    let idx: Vec<i16> = f.vertex_indices();
+                    // Indices desde 1; negativo: arista invisible.
+                    for k in 0..idx.len() {
+                        let (a, b) = (idx[k], idx[(k + 1) % idx.len()]);
+                        if a <= 0 || b == 0 {
+                            continue;
+                        }
+                        if let (Some(pa), Some(pb)) = (v.get(a as usize - 1), v.get(b.unsigned_abs() as usize - 1)) {
+                            self.linea(&[*pa, *pb], color);
+                        }
+                    }
+                }
+            }
+            EntityType::PolygonMesh(p) => {
+                let (fm, cn) = (p.m_vertex_count.max(0) as usize, p.n_vertex_count.max(0) as usize);
+                let v: Vec<[f64; 2]> = p.vertices.iter().map(|v| m.p3(&v.location)).collect();
+                if fm * cn == v.len() {
+                    for i in 0..fm {
+                        self.linea(&v[i * cn..(i + 1) * cn], color);
+                    }
+                    for j in 0..cn {
+                        let col: Vec<[f64; 2]> = (0..fm).map(|i| v[i * cn + j]).collect();
+                        self.linea(&col, color);
+                    }
+                }
+            }
+            EntityType::Mesh(me) => {
+                let v: Vec<[f64; 2]> = me.vertices.iter().map(|q| m.p3(q)).collect();
+                for f in &me.faces {
+                    let mut pts: Vec<[f64; 2]> = f.vertices.iter().filter_map(|&i| v.get(i).copied()).collect();
+                    if pts.len() > 2 {
+                        pts.push(pts[0]);
+                        self.linea(&pts, color);
+                    }
+                }
+            }
             otro => self.c.no_dibujado(&otro.as_entity().entity_type().to_string()),
+        }
+    }
+
+    /// El dibujo de reserva de un objeto desconocido, visto desde arriba.
+    fn reserva(&mut self, prims: &[crate::proxy::Primitiva], color: u32, m: &Afin) {
+        use crate::proxy::Primitiva;
+        for p in prims {
+            match p {
+                Primitiva::Raya { puntos, color: c } => {
+                    let pts: Vec<[f64; 2]> = puntos.iter().map(|q| m.punto(q[0], q[1], q[2])).collect();
+                    self.linea(&pts, c.unwrap_or(color));
+                }
+                Primitiva::Caras { puntos, color: c } => {
+                    let pts: Vec<[f64; 2]> = puntos.iter().map(|q| m.punto(q[0], q[1], q[2])).collect();
+                    self.c.triangulos(&pts, c.unwrap_or(color), None);
+                }
+                Primitiva::Texto { pos, dir, alto, ancho, texto, color: c } => {
+                    let giro = dir[1].atan2(dir[0]);
+                    let ancho = if *ancho > 0.0 { *ancho } else { 1.0 };
+                    let z = Vector3::new(0.0, 0.0, 1.0);
+                    self.texto_simple(texto, &Vector3::new(pos[0], pos[1], pos[2]), None, *alto, giro, ancho, 0.0, "", 0, 0, &z, c.unwrap_or(color), m);
+                }
+            }
         }
     }
 

@@ -215,12 +215,14 @@ pub struct PlanoGpu {
 
 pub struct Gpu {
     pub dispositivo: ID3D11Device,
-    contexto: ID3D11DeviceContext,
+    pub(crate) contexto: ID3D11DeviceContext,
     cadena: IDXGISwapChain1,
-    muestras: u32,
-    destino: Option<(ID3D11Texture2D, ID3D11RenderTargetView)>,
-    ancho: u32,
-    alto: u32,
+    pub(crate) muestras: u32,
+    pub(crate) destino: Option<(ID3D11Texture2D, ID3D11RenderTargetView)>,
+    pub(crate) ancho: u32,
+    pub(crate) alto: u32,
+    /// Lo del 3D (sombreadores y profundidad), solo si se usa.
+    pub(crate) tres: Option<crate::gpu3d::Tres>,
     cb: ID3D11Buffer,
     vs_simple: ID3D11VertexShader,
     vs_trama: ID3D11VertexShader,
@@ -234,18 +236,22 @@ pub struct Gpu {
     il_simple: ID3D11InputLayout,
     il_trama: ID3D11InputLayout,
     il_letra: ID3D11InputLayout,
-    mezcla: ID3D11BlendState,
+    pub(crate) mezcla: ID3D11BlendState,
     raster: ID3D11RasterizerState,
 }
 
 fn compilar(punto: PCSTR, perfil: PCSTR) -> windows::core::Result<Vec<u8>> {
+    compilar_de(SOMBREADORES, punto, perfil)
+}
+
+pub(crate) fn compilar_de(fuente: &str, punto: PCSTR, perfil: PCSTR) -> windows::core::Result<Vec<u8>> {
     let mut codigo: Option<ID3DBlob> = None;
     let mut errores: Option<ID3DBlob> = None;
     // SAFETY: el texto vive durante la llamada; las salidas son locales.
     let r = unsafe {
         D3DCompile(
-            SOMBREADORES.as_ptr() as *const c_void,
-            SOMBREADORES.len(),
+            fuente.as_ptr() as *const c_void,
+            fuente.len(),
             s!("cad.hlsl"),
             None,
             None,
@@ -270,7 +276,7 @@ fn compilar(punto: PCSTR, perfil: PCSTR) -> windows::core::Result<Vec<u8>> {
     Ok(unsafe { std::slice::from_raw_parts(b.GetBufferPointer() as *const u8, b.GetBufferSize()) }.to_vec())
 }
 
-fn elemento(nombre: PCSTR, formato: DXGI_FORMAT, desplazamiento: u32, por_instancia: bool) -> D3D11_INPUT_ELEMENT_DESC {
+pub(crate) fn elemento(nombre: PCSTR, formato: DXGI_FORMAT, desplazamiento: u32, por_instancia: bool) -> D3D11_INPUT_ELEMENT_DESC {
     D3D11_INPUT_ELEMENT_DESC {
         SemanticName: nombre,
         SemanticIndex: 0,
@@ -432,6 +438,7 @@ impl Gpu {
                 cadena,
                 muestras,
                 destino: None,
+                tres: None,
                 ancho: ancho.max(1),
                 alto: alto.max(1),
                 cb: cb.ok_or_else(falta)?,
@@ -486,6 +493,9 @@ impl Gpu {
             return Ok(());
         }
         self.destino = None;
+        if let Some(t) = &mut self.tres {
+            t.soltar_destinos();
+        }
         // SAFETY: no queda ninguna vista de los bufferes de la cadena (se
         // piden en cada `presentar`), asi que se pueden rehacer.
         unsafe {
@@ -502,7 +512,7 @@ impl Gpu {
         (self.ancho, self.alto)
     }
 
-    fn buffer(&self, bytes: &[u8], bind: D3D11_BIND_FLAG, estructurado: u32) -> windows::core::Result<Option<ID3D11Buffer>> {
+    pub(crate) fn buffer(&self, bytes: &[u8], bind: D3D11_BIND_FLAG, estructurado: u32) -> windows::core::Result<Option<ID3D11Buffer>> {
         if bytes.is_empty() {
             return Ok(None);
         }
@@ -577,20 +587,34 @@ impl Gpu {
         let Some((tex, rtv)) = self.destino.clone() else {
             return Ok(());
         };
+        // SAFETY: destino de este dispositivo.
+        unsafe {
+            self.contexto.ClearRenderTargetView(&rtv, &fondo);
+        }
+        self.pasadas_2d(&rtv, planos);
+        self.presentar(&tex)
+    }
+
+    pub(crate) fn ventana_entera(&self) -> D3D11_VIEWPORT {
+        D3D11_VIEWPORT {
+            TopLeftX: 0.0,
+            TopLeftY: 0.0,
+            Width: self.ancho as f32,
+            Height: self.alto as f32,
+            MinDepth: 0.0,
+            MaxDepth: 1.0,
+        }
+    }
+
+    /// Lo plano encima de lo que ya hay en el destino (sin profundidad).
+    pub(crate) fn pasadas_2d(&self, rtv: &ID3D11RenderTargetView, planos: &[(&PlanoGpu, Vista)]) {
         let ctx = &self.contexto;
         // SAFETY: todo es de este dispositivo y de este hilo; los punteros a
         // datos locales viven durante cada llamada.
         unsafe {
             ctx.OMSetRenderTargets(Some(&[Some(rtv.clone())]), None);
-            ctx.ClearRenderTargetView(&rtv, &fondo);
-            ctx.RSSetViewports(Some(&[D3D11_VIEWPORT {
-                TopLeftX: 0.0,
-                TopLeftY: 0.0,
-                Width: self.ancho as f32,
-                Height: self.alto as f32,
-                MinDepth: 0.0,
-                MaxDepth: 1.0,
-            }]));
+            ctx.OMSetDepthStencilState(None, 0);
+            ctx.RSSetViewports(Some(&[self.ventana_entera()]));
             ctx.RSSetState(&self.raster);
             ctx.OMSetBlendState(&self.mezcla, None, 0xffff_ffff);
             ctx.VSSetConstantBuffers(0, Some(&[Some(self.cb.clone())]));
@@ -661,12 +685,20 @@ impl Gpu {
                     }
                 }
             }
+        }
+    }
+
+    /// Del destino a la ventana.
+    pub(crate) fn presentar(&self, tex: &ID3D11Texture2D) -> windows::core::Result<()> {
+        let ctx = &self.contexto;
+        // SAFETY: recursos de este dispositivo y de este hilo.
+        unsafe {
             if self.muestras > 1 {
                 let atras: ID3D11Texture2D = self.cadena.GetBuffer(0)?;
-                ctx.ResolveSubresource(&atras, 0, &tex, 0, DXGI_FORMAT_B8G8R8A8_UNORM);
+                ctx.ResolveSubresource(&atras, 0, tex, 0, DXGI_FORMAT_B8G8R8A8_UNORM);
             } else {
                 let atras: ID3D11Texture2D = self.cadena.GetBuffer(0)?;
-                ctx.CopyResource(&atras, &tex);
+                ctx.CopyResource(&atras, tex);
             }
             self.cadena.Present(1, DXGI_PRESENT(0)).ok()?;
         }

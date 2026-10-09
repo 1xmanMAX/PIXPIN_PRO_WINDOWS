@@ -313,7 +313,7 @@ fn abrir_fichero(idioma: pixpin_store::Idioma, ubicacion: &Ubicacion, r: &Path) 
         );
         return;
     }
-    if crate::lector::se_lee_al_tocar(&nombre)
+    if crate::lector::se_lee_al_tocar_burbuja(r)
         && crate::lector::abrir_en_su_lector(idioma, ubicacion, r, &nombre)
     {
         return;

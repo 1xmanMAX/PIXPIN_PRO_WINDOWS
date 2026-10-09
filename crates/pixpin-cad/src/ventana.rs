@@ -41,13 +41,13 @@ use crate::texto::Textos;
 
 /// De que ventana es un evento.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum De {
+pub(crate) enum De {
     Plano,
     Barra,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-enum Ev {
+pub(crate) enum Ev {
     Mover(i32, i32),
     Bajar(i32, i32, u8),
     Subir(i32, i32, u8),
@@ -61,14 +61,14 @@ enum Ev {
 }
 
 #[derive(Default)]
-struct Estado {
-    eventos: VecDeque<(De, Ev)>,
+pub(crate) struct Estado {
+    pub(crate) eventos: VecDeque<(De, Ev)>,
     /// La barra y su separacion del plano: el plano la arrastra consigo.
-    barra: Option<(HWND, i32)>,
+    pub(crate) barra: Option<(HWND, i32)>,
 }
 
 thread_local! {
-    static ESTADO: RefCell<Estado> = RefCell::new(Estado::default());
+    pub(crate) static ESTADO: RefCell<Estado> = RefCell::new(Estado::default());
 }
 
 fn apuntar(de: De, e: Ev) {
@@ -79,7 +79,7 @@ fn apuntar(de: De, e: Ev) {
 /// la ventana (su bucle no deja correr el nuestro), asi la barra la sigue.
 /// No cambia el orden Z: subirla cada vez subia tambien el plano por
 /// encima del recorte de una captura.
-fn seguir_barra(plano: HWND) {
+pub(crate) fn seguir_barra(plano: HWND) {
     let Some((barra, sep)) = ESTADO.with(|s| s.borrow().barra) else { return };
     // SAFETY: ventanas propias; estructuras locales.
     unsafe {
@@ -226,8 +226,9 @@ fn registrar() -> windows::core::Result<windows::Win32::Foundation::HINSTANCE> {
     unsafe {
         let inst: windows::Win32::Foundation::HINSTANCE = GetModuleHandleW(None)?.into();
         let icono = LoadIconW(Some(inst), PCWSTR(1 as _)).unwrap_or_default();
-        let procs: [(PCWSTR, bool, WNDPROC); 2] = [
+        let procs: [(PCWSTR, bool, WNDPROC); 3] = [
             (w!("PixPinPlanoCad"), true, Some(procedimiento_plano)),
+            (w!("PixPinModelo3d"), true, Some(procedimiento_plano)),
             (w!("PixPinPlanoBarra"), false, Some(procedimiento_barra)),
         ];
         for (clase, dobles, proc_) in procs {
@@ -248,7 +249,7 @@ fn registrar() -> windows::core::Result<windows::Win32::Foundation::HINSTANCE> {
     }
 }
 
-fn crear_ventana(titulo: &str) -> windows::core::Result<(HWND, u32, u32)> {
+pub(crate) fn crear_ventana(clase: PCWSTR, titulo: &str) -> windows::core::Result<(HWND, u32, u32)> {
     let inst = registrar()?;
     // SAFETY: ventana propia; cadenas vivas durante cada llamada.
     unsafe {
@@ -267,7 +268,7 @@ fn crear_ventana(titulo: &str) -> windows::core::Result<(HWND, u32, u32)> {
         let titulo: Vec<u16> = titulo.encode_utf16().chain(std::iter::once(0)).collect();
         let hwnd = CreateWindowExW(
             WS_EX_APPWINDOW | WS_EX_TOPMOST,
-            w!("PixPinPlanoCad"),
+            clase,
             PCWSTR(titulo.as_ptr()),
             WS_POPUP | WS_THICKFRAME | WS_MINIMIZEBOX | WS_MAXIMIZEBOX | WS_SYSMENU,
             t.left + (aw - w) / 2,
@@ -292,7 +293,7 @@ fn crear_ventana(titulo: &str) -> windows::core::Result<(HWND, u32, u32)> {
 
 /// La barra: una ventanita sin activar, duena del plano (va siempre encima
 /// de el), con las esquinas redondas de Windows 11.
-fn crear_barra(dueno: HWND, w: i32, h: i32) -> windows::core::Result<HWND> {
+pub(crate) fn crear_barra(dueno: HWND, w: i32, h: i32) -> windows::core::Result<HWND> {
     let inst = registrar()?;
     // SAFETY: ventana propia, nace oculta.
     unsafe {
@@ -462,44 +463,44 @@ pub fn medida(d: f64, unidades: u32) -> String {
 
 // ------------------------------------------------------------------ pintar
 
-const BOTONES: [&str; 4] = ["asa", "tema", "acotar", "fijar"];
-const ALTO_BARRA: f64 = 48.0;
+const BOTONES: [&str; 5] = ["asa", "tema", "acotar", "tres", "fijar"];
+pub(crate) const ALTO_BARRA: f64 = 48.0;
 const BOTON: f64 = 40.0;
 
-fn ancho_barra(e: f64) -> f64 {
-    (4.0 + 18.0 + 2.0 + BOTON + 2.0 + BOTON + 2.0 + BOTON + 4.0) * e
+/// Lo que mide la barra con `n` botones (el asa cuenta como uno).
+pub(crate) fn ancho_barra(e: f64, n: usize) -> f64 {
+    (4.0 + 18.0 + (2.0 + BOTON) * (n.max(1) - 1) as f64 + 4.0) * e
 }
 
-/// Donde cae cada boton de la barra (x desde, x hasta).
-fn botones_barra(e: f64) -> [(f64, f64); 4] {
+/// Donde cae cada boton de la barra (x desde, x hasta); el primero es el asa.
+pub(crate) fn botones_barra(e: f64, n: usize) -> Vec<(f64, f64)> {
     let x0 = 4.0 * e;
-    let asa = (x0, x0 + 18.0 * e);
-    let t = asa.1 + 2.0 * e;
-    let tema = (t, t + BOTON * e);
-    let a = tema.1 + 2.0 * e;
-    let acotar = (a, a + BOTON * e);
-    let f = acotar.1 + 2.0 * e;
-    [asa, tema, acotar, (f, f + BOTON * e)]
+    let mut v = vec![(x0, x0 + 18.0 * e)];
+    for _ in 1..n {
+        let a = v[v.len() - 1].1 + 2.0 * e;
+        v.push((a, a + BOTON * e));
+    }
+    v
 }
 
 /// Lo que va encima se dibuja despues: el modelo ordena por tamano (mayor
 /// primero) y por sitio, asi que en la barra y en las cotas el «tamano» es
 /// la capa: fondo, rayas, pastillas y marcas, en ese orden.
-const CAPA_FONDO: f64 = 1e9;
-const CAPA_RAYAS: f64 = 1e7;
-const CAPA_ENCIMA: f64 = 1e5;
+pub(crate) const CAPA_FONDO: f64 = 1e9;
+pub(crate) const CAPA_RAYAS: f64 = 1e7;
+pub(crate) const CAPA_ENCIMA: f64 = 1e5;
 const CAPA_ARRIBA: f64 = 1e3;
 
-fn rect_en(c: &mut Constructor, x0: f64, y0: f64, x1: f64, y1: f64, color: u32, capa: f64) {
+pub(crate) fn rect_en(c: &mut Constructor, x0: f64, y0: f64, x1: f64, y1: f64, color: u32, capa: f64) {
     c.triangulos(&[[x0, y0], [x1, y0], [x0, y1], [x1, y0], [x1, y1], [x0, y1]], color, Some(capa));
 }
 
-fn rect(c: &mut Constructor, x0: f64, y0: f64, x1: f64, y1: f64, color: u32) {
+pub(crate) fn rect(c: &mut Constructor, x0: f64, y0: f64, x1: f64, y1: f64, color: u32) {
     rect_en(c, x0, y0, x1, y1, color, CAPA_ENCIMA);
 }
 
 /// Una raya gruesa (de `g` pixeles) en pantalla.
-fn raya(c: &mut Constructor, a: [f64; 2], b: [f64; 2], g: f64, color: u32) {
+pub(crate) fn raya(c: &mut Constructor, a: [f64; 2], b: [f64; 2], g: f64, color: u32) {
     raya_en(c, a, b, g, color, CAPA_RAYAS);
 }
 
@@ -524,22 +525,23 @@ fn raya_en(c: &mut Constructor, a: [f64; 2], b: [f64; 2], g: f64, color: u32, ca
     );
 }
 
-/// `fijada`: el plano esta siempre encima de las demas ventanas (el pin
-/// sale en azul, como el de acotar cuando se mide).
-fn barra(e: f64, encima: Option<usize>, claro: bool, acotando: bool, fijada: bool) -> Modelo {
+/// La barra: `botones` por nombre (el primero, el asa) y cuales estan
+/// activos (en azul): acotar mientras se mide, el pin si el plano esta
+/// siempre encima de las demas ventanas.
+pub(crate) fn barra(e: f64, botones: &[&str], encima: Option<usize>, claro: bool, activos: &[bool]) -> Modelo {
     let mut c = Constructor::nuevo();
     let (fondo, tinta, hover, tenue) = if claro {
         (rgba(0xF9, 0xF9, 0xFB), rgba(0x1C, 0x1C, 0x1E), 0x14000000u32, rgba(0x6E, 0x6E, 0x73))
     } else {
         (rgba(0x1E, 0x1E, 0x20), rgba(0xF5, 0xF5, 0xF7), 0x24ffffffu32, rgba(0xC7, 0xC7, 0xCC))
     };
-    let (w, h) = (ancho_barra(e), ALTO_BARRA * e);
+    let (w, h) = (ancho_barra(e, botones.len()), ALTO_BARRA * e);
     rect_en(&mut c, 0.0, 0.0, w, h, fondo, CAPA_FONDO);
-    let b = botones_barra(e);
+    let b = botones_barra(e, botones.len());
     let y0 = (h - BOTON * e) / 2.0;
     let azul = rgba(0x00, 0x60, 0xDF);
     for (i, (x0, x1)) in b.iter().enumerate() {
-        let activo = (BOTONES[i] == "acotar" && acotando) || (BOTONES[i] == "fijar" && fijada);
+        let activo = activos.get(i).copied().unwrap_or(false);
         if activo {
             rect_en(&mut c, *x0, y0, *x1, y0 + BOTON * e, azul, CAPA_RAYAS * 10.0);
         } else if encima == Some(i) && i > 0 {
@@ -548,7 +550,7 @@ fn barra(e: f64, encima: Option<usize>, claro: bool, acotando: bool, fijada: boo
         let (cx, cy) = ((x0 + x1) / 2.0, h / 2.0);
         let r = 8.0 * e;
         let col = if activo { rgba(255, 255, 255) } else { tinta };
-        match BOTONES[i] {
+        match botones[i] {
             "asa" => {
                 // Seis puntos: de aqui se arrastra la ventana.
                 for (dx, dy) in [(-3.0, -6.0), (3.0, -6.0), (-3.0, 0.0), (3.0, 0.0), (-3.0, 6.0), (3.0, 6.0)] {
@@ -599,6 +601,42 @@ fn barra(e: f64, encima: Option<usize>, claro: bool, acotando: bool, fijada: boo
                 tri.extend_from_slice(&[ala[0], ala[1], ala[2], ala[0], ala[2], ala[3]]);
                 c.triangulos(&tri, col, Some(CAPA_RAYAS));
                 raya(&mut c, q(1.0, 0.0), q(9.5, 0.0), 1.6 * e, col);
+            }
+            "corte" => {
+                // Un cubo en perspectiva con un plano que lo corta.
+                let p = |x: f64, y: f64| [cx + x * e, cy + y * e];
+                for (a, b2) in [
+                    ((-7.0, -3.0), (2.0, -3.0)),
+                    ((2.0, -3.0), (2.0, 8.0)),
+                    ((2.0, 8.0), (-7.0, 8.0)),
+                    ((-7.0, 8.0), (-7.0, -3.0)),
+                    ((-7.0, -3.0), (-2.0, -8.0)),
+                    ((2.0, -3.0), (7.0, -8.0)),
+                    ((-2.0, -8.0), (7.0, -8.0)),
+                    ((7.0, -8.0), (7.0, 3.0)),
+                    ((2.0, 8.0), (7.0, 3.0)),
+                ] {
+                    raya(&mut c, p(a.0, a.1), p(b2.0, b2.1), 1.4 * e, col);
+                }
+                let corte = [p(-10.0, 3.0), p(5.0, 3.0), p(10.0, -2.0), p(-5.0, -2.0)];
+                c.triangulos(&[corte[0], corte[1], corte[2], corte[0], corte[2], corte[3]], (col & 0x00ff_ffff) | 0x7000_0000, Some(CAPA_RAYAS));
+            }
+            "aristas" | "tres" => {
+                // Un cubo de rayas.
+                let p = |x: f64, y: f64| [cx + x * e, cy + y * e];
+                for (a, b2) in [
+                    ((-7.0, -3.0), (3.0, -3.0)),
+                    ((3.0, -3.0), (3.0, 8.0)),
+                    ((3.0, 8.0), (-7.0, 8.0)),
+                    ((-7.0, 8.0), (-7.0, -3.0)),
+                    ((-7.0, -3.0), (-3.0, -8.0)),
+                    ((3.0, -3.0), (7.0, -8.0)),
+                    ((-3.0, -8.0), (7.0, -8.0)),
+                    ((7.0, -8.0), (7.0, 3.0)),
+                    ((3.0, 8.0), (7.0, 3.0)),
+                ] {
+                    raya(&mut c, p(a.0, a.1), p(b2.0, b2.1), 1.6 * e, col);
+                }
             }
             _ => {
                 // Una regla en diagonal con sus marcas.
@@ -698,8 +736,20 @@ fn encima_del_plano(textos: &mut Textos, a: &Acotar, cam: &Camara, w: u32, h: u3
     c.terminar()
 }
 
+/// Un aviso en una pastilla, abajo a la izquierda.
+fn pastilla_abajo(textos: &mut Textos, t: &str, h: u32, e: f64, claro: bool) -> Modelo {
+    let mut c = Constructor::nuevo();
+    let (pildora, letra) = if claro { (0xEE1C1C1Eu32, rgba(255, 255, 255)) } else { (0xEEF5F5F7u32, rgba(0x1C, 0x1C, 0x1E)) };
+    let tam = 12.5 * e;
+    let ancho = textos.medir_pantalla(t, tam);
+    let (x0, y0) = (12.0 * e, h as f64 - 34.0 * e);
+    rect(&mut c, x0, y0, x0 + ancho + 20.0 * e, y0 + 24.0 * e, pildora);
+    textos.en_pantalla(&mut c, t, x0 + 10.0 * e, y0 + 16.5 * e, tam, letra, x0 + ancho + 40.0 * e);
+    c.terminar()
+}
+
 /// Un aviso en el centro (abriendo, error).
-fn aviso(textos: &mut Textos, texto: &str, w: u32, h: u32, escala: f64, claro: bool) -> Modelo {
+pub(crate) fn aviso(textos: &mut Textos, texto: &str, w: u32, h: u32, escala: f64, claro: bool) -> Modelo {
     let mut c = Constructor::nuevo();
     let tam = 15.0 * escala;
     let tinta = if claro { rgba(0x6b, 0x6a, 0x66) } else { rgba(0x9a, 0x98, 0x93) };
@@ -709,7 +759,7 @@ fn aviso(textos: &mut Textos, texto: &str, w: u32, h: u32, escala: f64, claro: b
 }
 
 /// La vista de un modelo dibujado en pixeles de la ventana (y hacia abajo).
-fn vista_pantalla(m: &Modelo, w: u32, h: u32) -> Vista {
+pub(crate) fn vista_pantalla(m: &Modelo, w: u32, h: u32) -> Vista {
     Vista {
         escala: [2.0 / w as f32, -2.0 / h as f32],
         centro: [(w as f64 / 2.0 - m.origen[0]) as f32, (h as f64 / 2.0 - m.origen[1]) as f32],
@@ -740,6 +790,7 @@ const M_ACOTAR: u32 = 3;
 const M_BORRAR: u32 = 4;
 const M_ENCIMA: u32 = 5;
 const M_CERRAR: u32 = 6;
+const M_TRES: u32 = 7;
 
 fn menu(hwnd: HWND, t: &TextosUi, acotando: bool, hay_cotas: bool, fijada: bool) {
     // SAFETY: menu propio que se destruye antes de salir; cadenas vivas.
@@ -760,6 +811,7 @@ fn menu(hwnd: HWND, t: &TextosUi, acotando: bool, hay_cotas: bool, fijada: bool)
         poner(M_TEMA, &t.tema, false, false);
         poner(M_ACOTAR, &t.acotar, acotando, false);
         poner(M_BORRAR, &t.borrar_cotas, false, !hay_cotas);
+        poner(M_TRES, &t.tres, false, false);
         let _ = AppendMenuW(m, MF_SEPARATOR, 0, PCWSTR::null());
         poner(M_ENCIMA, &t.encima, fijada, false);
         poner(M_CERRAR, &t.cerrar, false, false);
@@ -772,8 +824,9 @@ fn menu(hwnd: HWND, t: &TextosUi, acotando: bool, hay_cotas: bool, fijada: bool)
 
 /// **Abre la ventana del plano** y no vuelve hasta que se cierra. `cargando`
 /// trae el plano cuando esta listo (o el porque no).
-pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo, String>>, textos_ui: TextosUi) -> Result<(), String> {
-    let (hwnd, mut w, mut h) = crear_ventana(&format!("{titulo} — PixPin")).map_err(|e| e.to_string())?;
+/// `abrir_3d`: lo que hace el boton «3D» (abrir el mismo plano en 3D).
+pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo, String>>, textos_ui: TextosUi, abrir_3d: Option<Box<dyn Fn()>>) -> Result<(), String> {
+    let (hwnd, mut w, mut h) = crear_ventana(w!("PixPinPlanoCad"), &format!("{titulo} — PixPin")).map_err(|e| e.to_string())?;
     let mut gpu = match Gpu::nueva(hwnd, w, h) {
         Ok(g) => g,
         Err(e) => {
@@ -785,7 +838,7 @@ pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo, String>>, textos_ui: 
     // SAFETY: ventana propia.
     let dpi = unsafe { GetDpiForWindow(hwnd) }.max(96);
     let e = dpi as f64 / 96.0;
-    let (bw, bh) = (ancho_barra(e).ceil() as i32, (ALTO_BARRA * e).ceil() as i32);
+    let (bw, bh) = (ancho_barra(e, BOTONES.len()).ceil() as i32, (ALTO_BARRA * e).ceil() as i32);
     let hbarra = crear_barra(hwnd, bw, bh).map_err(|e| e.to_string())?;
     let mut gpu_barra = Gpu::nueva(hbarra, bw as u32, bh as u32).map_err(|e| e.to_string())?;
     ESTADO.with(|s| s.borrow_mut().barra = Some((hbarra, (8.0 * e) as i32)));
@@ -814,6 +867,9 @@ pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo, String>>, textos_ui: 
     let mut sucio = true;
     let mut barra_sucia = true;
     let mut aviso_ui: Option<(Modelo, PlanoGpu)> = None;
+    // Objetos de Civil 3D guardados sin su dibujo: cuantos, y hasta cuando se avisa.
+    let mut sin_dibujo_civil = 0u32;
+    let mut aviso_civil_hasta: Option<Instant> = None;
     'bucle: loop {
         let animando = camara != destino;
         // SAFETY: bucle de mensajes de este hilo.
@@ -846,6 +902,15 @@ pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo, String>>, textos_ui: 
                                     }
                                 }
                                 destino = camara;
+                                sin_dibujo_civil = m
+                                    .sin_dibujar
+                                    .iter()
+                                    .filter(|(t, _)| t.starts_with(crate::convertir::PROXY_SIN_DIBUJO))
+                                    .map(|(_, n)| n)
+                                    .sum();
+                                if sin_dibujo_civil > 0 {
+                                    aviso_civil_hasta = Some(Instant::now() + Duration::from_secs(12));
+                                }
                                 plano = Some((m, p));
                                 mensaje.clear();
                             }
@@ -869,13 +934,14 @@ pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo, String>>, textos_ui: 
             }
         }
         let eventos: Vec<(De, Ev)> = ESTADO.with(|s| s.borrow_mut().eventos.drain(..).collect());
-        let b_barra = botones_barra(e);
+        let b_barra = botones_barra(e, BOTONES.len());
         let boton_en = |x: i32| -> Option<usize> { b_barra.iter().position(|(a, b)| (x as f64) >= *a && (x as f64) < *b) };
         let mut cambiar_tema = false;
         let mut cambiar_acotar = false;
         let mut cambiar_encima = false;
         let mut borrar_cotas = false;
         let mut encuadrar = false;
+        let mut ver_en_3d = false;
         for (de, ev) in eventos {
             match (de, ev) {
                 (_, Ev::Cerrar) => break 'bucle,
@@ -903,7 +969,8 @@ pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo, String>>, textos_ui: 
                     }
                     Some(1) => cambiar_tema = true,
                     Some(2) => cambiar_acotar = true,
-                    Some(3) => cambiar_encima = true,
+                    Some(3) => ver_en_3d = true,
+                    Some(4) => cambiar_encima = true,
                     _ => {}
                 },
                 (De::Barra, _) => {}
@@ -999,6 +1066,7 @@ pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo, String>>, textos_ui: 
                     M_ACOTAR => cambiar_acotar = true,
                     M_BORRAR => borrar_cotas = true,
                     M_ENCIMA => cambiar_encima = true,
+                    M_TRES => ver_en_3d = true,
                     M_CERRAR => break 'bucle,
                     _ => {}
                 },
@@ -1028,6 +1096,7 @@ pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo, String>>, textos_ui: 
                     0x42 => cambiar_tema = true,
                     0x4D => cambiar_acotar = true,
                     0x54 => cambiar_encima = true,
+                    0x33 | 0x63 => ver_en_3d = true,
                     0xBB | 0x6B => destino = destino.zoom(1.0 / 1.4, w as f64 / 2.0, h as f64 / 2.0, w, h),
                     0xBD | 0x6D => destino = destino.zoom(1.4, w as f64 / 2.0, h as f64 / 2.0, w, h),
                     0x25 => destino.centro[0] -= w as f64 * 0.15 * destino.px,
@@ -1074,6 +1143,15 @@ pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo, String>>, textos_ui: 
             fijada = !fijada;
             poner_encima(hwnd, fijada);
             barra_sucia = true;
+        }
+        if ver_en_3d && plano.is_some()
+            && let Some(f) = &abrir_3d
+        {
+            f();
+        }
+        if aviso_civil_hasta.is_some_and(|t| Instant::now() > t) {
+            aviso_civil_hasta = None;
+            sucio = true;
         }
         if acotar.activo {
             // SAFETY: cursor del sistema, sobre la ventana propia.
@@ -1141,7 +1219,7 @@ pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo, String>>, textos_ui: 
             sucio = true;
         }
         if barra_sucia && barra_visible {
-            let m = barra(e, boton_encima, claro, acotar.activo, fijada);
+            let m = barra(e, &BOTONES, boton_encima, claro, &[false, false, acotar.activo, false, fijada]);
             if let Ok(p) = gpu_barra.subir(&m) {
                 let (gw, gh) = gpu_barra.tamano();
                 let fondo = if claro { [0.976, 0.976, 0.984, 1.0] } else { [0.118, 0.118, 0.125, 1.0] };
@@ -1177,6 +1255,16 @@ pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo, String>>, textos_ui: 
             if let Some((m, p)) = &encima {
                 capas.push((p, vista_pantalla(m, w, h)));
             }
+            let civil = if aviso_civil_hasta.is_some() && !acotar.activo {
+                let t = textos_ui.sin_dibujo_civil.replace("{n}", &sin_dibujo_civil.to_string());
+                let m = pastilla_abajo(&mut textos, &t, h, e, claro);
+                gpu.subir(&m).ok().map(|p| (m, p))
+            } else {
+                None
+            };
+            if let Some((m, p)) = &civil {
+                capas.push((p, vista_pantalla(m, w, h)));
+            }
             if let Err(err) = gpu.dibujar(fondo, &capas) {
                 tracing::warn!(error = %err, "no se pudo dibujar el plano");
             }
@@ -1191,7 +1279,7 @@ pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo, String>>, textos_ui: 
     Ok(())
 }
 
-fn poner_encima(hwnd: HWND, si: bool) {
+pub(crate) fn poner_encima(hwnd: HWND, si: bool) {
     // SAFETY: ventana propia.
     let _ = unsafe { SetWindowPos(hwnd, Some(if si { HWND_TOPMOST } else { HWND_NOTOPMOST }), 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE) };
 }
@@ -1209,6 +1297,9 @@ pub struct TextosUi {
     pub borrar_cotas: String,
     pub encima: String,
     pub cerrar: String,
+    pub tres: String,
+    /// Con `{n}`: cuantos objetos de Civil 3D vinieron sin su dibujo.
+    pub sin_dibujo_civil: String,
 }
 
 impl Default for TextosUi {
@@ -1224,6 +1315,8 @@ impl Default for TextosUi {
             borrar_cotas: "Borrar las cotas\tSupr".into(),
             encima: "Siempre encima\tT".into(),
             cerrar: "Cerrar\tEsc".into(),
+            tres: "Ver en 3D\t3".into(),
+            sin_dibujo_civil: "{n} objetos de Civil 3D se guardaron sin su dibujo: guárdalo con PROXYGRAPHICS = 1 o exporta a LandXML".into(),
         }
     }
 }

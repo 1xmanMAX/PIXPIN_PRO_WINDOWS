@@ -73,6 +73,23 @@ pub fn se_lee_al_tocar(nombre: &str) -> bool {
         || crate::diapositivas::es_presentacion(nombre)
         // Un plano DWG o DXF, en su visor (como un pin).
         || crate::plano_cad::se_abre(nombre)
+        // Un modelo BIM (IFC o Revit), en su visor 3D.
+        || crate::modelo_bim::se_abre(nombre)
+}
+
+/// Como [`se_lee_al_tocar`], mirando tambien dentro del fichero: un
+/// LandXML o un fichero de puntos de Civil 3D van al visor 3D (un `.xml`,
+/// `.csv` o `.txt` cualquiera no). Para lo que el usuario abre o suelta en
+/// PixPin a proposito.
+pub fn se_lee_al_tocar_fichero(ruta: &std::path::Path) -> bool {
+    se_lee_al_tocar(&pixpin_docs::nombre(ruta)) || pixpin_bim::es_de_civil(ruta)
+}
+
+/// Para la burbuja del chat: los LandXML si; los `.csv` y `.txt` siguen
+/// yendo a su programa aunque sean puntos.
+pub fn se_lee_al_tocar_burbuja(ruta: &std::path::Path) -> bool {
+    let nombre = pixpin_docs::nombre(ruta);
+    se_lee_al_tocar(&nombre) || (pixpin_docs::extension(&nombre) == "xml" && pixpin_bim::es_de_civil(ruta))
 }
 
 /// Abre `ruta` en el lector que le toque, en su propio hilo. `false` si no
@@ -83,6 +100,12 @@ pub fn abrir_en_su_lector(
     ruta: &std::path::Path,
     nombre: &str,
 ) -> bool {
+    // Unos puntos o un LandXML (por su contenido) van al visor 3D antes
+    // que al de documentos, que tambien abre los .txt.
+    if pixpin_bim::es_de_civil(ruta) {
+        crate::modelo_bim::lanzar(idioma, ubicacion.clone(), ruta);
+        return true;
+    }
     if crate::lector_pdf::se_abre(nombre) {
         crate::lector_pdf::lanzar(idioma, ubicacion.clone(), ruta);
         true
@@ -94,6 +117,9 @@ pub fn abrir_en_su_lector(
         true
     } else if crate::plano_cad::se_abre(nombre) {
         crate::plano_cad::lanzar(idioma, ubicacion.clone(), ruta);
+        true
+    } else if crate::modelo_bim::se_abre(nombre) {
+        crate::modelo_bim::lanzar(idioma, ubicacion.clone(), ruta);
         true
     } else {
         false

@@ -102,6 +102,7 @@ mod pedidos;
 mod pegar_en_flow;
 mod pila_capturas;
 mod pin_vivo;
+mod modelo_bim;
 mod plano_cad;
 mod pines;
 mod pronunciar;
@@ -234,6 +235,10 @@ fn main() -> Result<()> {
     // PixPin llamada para leer un plano DWG en un proceso aparte
     // (`plano_cad`): eso y nada mas.
     if let Some(codigo) = plano_cad::convertir_si_toca() {
+        std::process::exit(codigo);
+    }
+    // Lo mismo para un modelo BIM (`modelo_bim`).
+    if let Some(codigo) = modelo_bim::convertir_si_toca() {
         std::process::exit(codigo);
     }
     // Con panic = "abort" y sin consola, un panico moria MUDO: ni log ni
@@ -2032,7 +2037,7 @@ enum DestinoDeFichero {
 fn destino_de_fichero(ruta: &std::path::Path) -> DestinoDeFichero {
     if notas_md::es_markdown(ruta) {
         DestinoDeFichero::Nota
-    } else if lector::se_lee_al_tocar(&pixpin_docs::nombre(ruta)) {
+    } else if lector::se_lee_al_tocar_fichero(ruta) {
         DestinoDeFichero::Lector
     } else if pixpin_shell::asociaciones::es_audio(ruta) {
         DestinoDeFichero::Audio

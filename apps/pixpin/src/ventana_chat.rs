@@ -8414,7 +8414,7 @@ fn abrir_mensaje(
         );
         return;
     }
-    if crate::lector::se_lee_al_tocar(&nombre)
+    if crate::lector::se_lee_al_tocar_burbuja(&ruta)
         && crate::lector::abrir_en_su_lector(idioma, ubicacion, &ruta, &nombre)
     {
         return;

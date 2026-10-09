@@ -122,6 +122,8 @@ fn textos(idioma: Idioma) -> pixpin_cad::ventana::TextosUi {
             borrar_cotas: "Clear measurements	Del".into(),
             encima: "Always on top	T".into(),
             cerrar: "Close	Esc".into(),
+            tres: "View in 3D	3".into(),
+            sin_dibujo_civil: "{n} Civil 3D objects were saved without their graphics: save with PROXYGRAPHICS = 1 or export to LandXML".into(),
         },
         _ => pixpin_cad::ventana::TextosUi::default(),
     }
@@ -138,7 +140,10 @@ pub fn lanzar(idioma: Idioma, ubicacion: Ubicacion, ruta: &Path) {
             let _ = tx.send(cargar(&raiz2, &r2));
         });
         let titulo = ruta.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
-        if let Err(e) = pixpin_cad::ventana::ver(&titulo, rx, textos(idioma)) {
+        // El boton «3D»: el mismo plano en el visor de modelos.
+        let (u3, r3) = (ubicacion.clone(), ruta.clone());
+        let abrir_3d: Box<dyn Fn()> = Box::new(move || crate::modelo_bim::lanzar(idioma, u3.clone(), &r3));
+        if let Err(e) = pixpin_cad::ventana::ver(&titulo, rx, textos(idioma), Some(abrir_3d)) {
             tracing::warn!(%e, "no se pudo abrir el visor de planos");
             let _ = pixpin_shell::abrir(&ruta);
         }

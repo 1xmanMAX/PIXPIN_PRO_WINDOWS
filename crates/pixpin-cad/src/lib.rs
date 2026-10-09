@@ -6,9 +6,14 @@
 //! - [`modelo`]: lo que va a la tarjeta grafica, ordenado para dibujar solo
 //!   lo que se ve, y su cache en disco.
 pub mod convertir;
+pub mod convertir3d;
 pub mod gpu;
+pub mod gpu3d;
 pub mod leer;
 pub mod modelo;
+pub mod modelo3d;
+pub mod proxy;
+pub mod ventana3d;
 pub mod relleno;
 pub mod shx;
 pub mod teselar;

@@ -117,3 +117,70 @@ mod volcar {
         }
     }
 }
+
+#[cfg(test)]
+mod civil {
+    /// Que objetos desconocidos (Civil 3D y otros) trae un plano y cuantos
+    /// con su dibujo de reserva (proxy).
+    #[test]
+    #[ignore = "vuelca los objetos desconocidos de PIXPIN_CAD_PLANO"]
+    fn volcar_desconocidos() {
+        use opencadcodec::entities::EntityType;
+        let ruta = std::env::var("PIXPIN_CAD_PLANO").unwrap();
+        let doc = super::leer(std::path::Path::new(&ruta)).unwrap();
+        let mut cuenta = std::collections::BTreeMap::<String, (usize, usize, usize)>::new();
+        let mut ver = |e: &EntityType| {
+            let c = e.common();
+            let nombre = match e {
+                EntityType::Unknown(u) => format!("?{}", u.dxf_name),
+                otro => otro.as_entity().entity_type().to_string(),
+            };
+            let g = c.graphic_data.as_ref().map_or(0, |g| g.len());
+            let x = cuenta.entry(nombre).or_default();
+            x.0 += 1;
+            if g > 0 {
+                x.1 += 1;
+                x.2 += g;
+            }
+        };
+        for e in doc.model_space_entities() {
+            ver(e);
+        }
+        for (k, v) in &cuenta {
+            println!("{k}: {} (con dibujo {} · {} bytes)", v.0, v.1, v.2);
+        }
+    }
+}
+
+#[cfg(test)]
+mod civil_registros {
+    /// Los registros del dibujo de reserva del primer objeto de cada clase.
+    #[test]
+    #[ignore = "vuelca los registros proxy de PIXPIN_CAD_PLANO"]
+    fn volcar_registros_proxy() {
+        use opencadcodec::entities::EntityType;
+        let ruta = std::env::var("PIXPIN_CAD_PLANO").unwrap();
+        let doc = super::leer(std::path::Path::new(&ruta)).unwrap();
+        let mut vistos = std::collections::BTreeSet::new();
+        for e in doc.model_space_entities() {
+            let EntityType::Unknown(u) = e else { continue };
+            if !vistos.insert(u.dxf_name.clone()) {
+                continue;
+            }
+            let Some(g) = &u.common.graphic_data else { continue };
+            let rd = |o: usize| u32::from_le_bytes(g[o..o + 4].try_into().unwrap());
+            let (total, n) = (rd(0), rd(4));
+            let mut o = 8;
+            let mut v = Vec::new();
+            for _ in 0..n {
+                if o + 8 > g.len() {
+                    break;
+                }
+                let (tam, tipo) = (rd(o) as usize, rd(o + 4));
+                v.push(format!("{tipo}:{tam}"));
+                o += tam.max(8);
+            }
+            println!("{} total={total} n={n} [{}] {:?}", u.dxf_name, v.join(" "), u.common.proxy_graphics().map(|p| p.records.iter().filter_map(|r| match r { opencadcodec::entities::ProxyGraphicRecord::UnicodeText(t) => Some(t.text.clone()), _ => None }).collect::<Vec<_>>()));
+        }
+    }
+}
