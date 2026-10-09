@@ -462,22 +462,24 @@ pub fn medida(d: f64, unidades: u32) -> String {
 
 // ------------------------------------------------------------------ pintar
 
-const BOTONES: [&str; 3] = ["asa", "tema", "acotar"];
+const BOTONES: [&str; 4] = ["asa", "tema", "acotar", "fijar"];
 const ALTO_BARRA: f64 = 48.0;
 const BOTON: f64 = 40.0;
 
 fn ancho_barra(e: f64) -> f64 {
-    (4.0 + 18.0 + 2.0 + BOTON + 2.0 + BOTON + 4.0) * e
+    (4.0 + 18.0 + 2.0 + BOTON + 2.0 + BOTON + 2.0 + BOTON + 4.0) * e
 }
 
 /// Donde cae cada boton de la barra (x desde, x hasta).
-fn botones_barra(e: f64) -> [(f64, f64); 3] {
+fn botones_barra(e: f64) -> [(f64, f64); 4] {
     let x0 = 4.0 * e;
     let asa = (x0, x0 + 18.0 * e);
     let t = asa.1 + 2.0 * e;
     let tema = (t, t + BOTON * e);
     let a = tema.1 + 2.0 * e;
-    [asa, tema, (a, a + BOTON * e)]
+    let acotar = (a, a + BOTON * e);
+    let f = acotar.1 + 2.0 * e;
+    [asa, tema, acotar, (f, f + BOTON * e)]
 }
 
 /// Lo que va encima se dibuja despues: el modelo ordena por tamano (mayor
@@ -522,7 +524,9 @@ fn raya_en(c: &mut Constructor, a: [f64; 2], b: [f64; 2], g: f64, color: u32, ca
     );
 }
 
-fn barra(e: f64, encima: Option<usize>, claro: bool, acotando: bool) -> Modelo {
+/// `fijada`: el plano esta siempre encima de las demas ventanas (el pin
+/// sale en azul, como el de acotar cuando se mide).
+fn barra(e: f64, encima: Option<usize>, claro: bool, acotando: bool, fijada: bool) -> Modelo {
     let mut c = Constructor::nuevo();
     let (fondo, tinta, hover, tenue) = if claro {
         (rgba(0xF9, 0xF9, 0xFB), rgba(0x1C, 0x1C, 0x1E), 0x14000000u32, rgba(0x6E, 0x6E, 0x73))
@@ -535,7 +539,7 @@ fn barra(e: f64, encima: Option<usize>, claro: bool, acotando: bool) -> Modelo {
     let y0 = (h - BOTON * e) / 2.0;
     let azul = rgba(0x00, 0x60, 0xDF);
     for (i, (x0, x1)) in b.iter().enumerate() {
-        let activo = BOTONES[i] == "acotar" && acotando;
+        let activo = (BOTONES[i] == "acotar" && acotando) || (BOTONES[i] == "fijar" && fijada);
         if activo {
             rect_en(&mut c, *x0, y0, *x1, y0 + BOTON * e, azul, CAPA_RAYAS * 10.0);
         } else if encima == Some(i) && i > 0 {
@@ -569,6 +573,32 @@ fn barra(e: f64, encima: Option<usize>, claro: bool, acotando: bool) -> Modelo {
                     tri.extend_from_slice(&[[cx, cy], [cx + r * a0.cos(), cy + r * a0.sin()], [cx + r * a1.cos(), cy + r * a1.sin()]]);
                 }
                 c.triangulos(&tri, col, Some(CAPA_RAYAS));
+            }
+            "fijar" => {
+                // Una chincheta inclinada: cabeza, cuerpo, ala y aguja.
+                let (ux, uy) = (std::f64::consts::FRAC_1_SQRT_2, -std::f64::consts::FRAC_1_SQRT_2);
+                let (nx, ny) = (-uy, ux);
+                // El eje va de arriba-derecha (cabeza) a abajo-izquierda (punta).
+                let q = |t: f64, s: f64| [cx - ux * t * e + nx * s * e, cy - uy * t * e + ny * s * e];
+                // Cabeza redonda, cuerpo, ala ancha y la aguja.
+                let cab: Vec<[f64; 2]> = (0..=24)
+                    .map(|k| {
+                        let a = k as f64 / 24.0 * std::f64::consts::TAU;
+                        let m = q(-8.0, 0.0);
+                        [m[0] + 4.2 * e * a.cos(), m[1] + 4.2 * e * a.sin()]
+                    })
+                    .collect();
+                let centro_cab = q(-8.0, 0.0);
+                let mut tri = Vec::new();
+                for v in cab.windows(2) {
+                    tri.extend_from_slice(&[centro_cab, v[0], v[1]]);
+                }
+                let cuerpo = [q(-8.0, -3.0), q(-8.0, 3.0), q(-1.5, 2.2), q(-1.5, -2.2)];
+                tri.extend_from_slice(&[cuerpo[0], cuerpo[1], cuerpo[2], cuerpo[0], cuerpo[2], cuerpo[3]]);
+                let ala = [q(-1.5, -5.5), q(-1.5, 5.5), q(1.0, 5.5), q(1.0, -5.5)];
+                tri.extend_from_slice(&[ala[0], ala[1], ala[2], ala[0], ala[2], ala[3]]);
+                c.triangulos(&tri, col, Some(CAPA_RAYAS));
+                raya(&mut c, q(1.0, 0.0), q(9.5, 0.0), 1.6 * e, col);
             }
             _ => {
                 // Una regla en diagonal con sus marcas.
@@ -873,6 +903,7 @@ pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo, String>>, textos_ui: 
                     }
                     Some(1) => cambiar_tema = true,
                     Some(2) => cambiar_acotar = true,
+                    Some(3) => cambiar_encima = true,
                     _ => {}
                 },
                 (De::Barra, _) => {}
@@ -1042,6 +1073,7 @@ pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo, String>>, textos_ui: 
         if cambiar_encima {
             fijada = !fijada;
             poner_encima(hwnd, fijada);
+            barra_sucia = true;
         }
         if acotar.activo {
             // SAFETY: cursor del sistema, sobre la ventana propia.
@@ -1109,7 +1141,7 @@ pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo, String>>, textos_ui: 
             sucio = true;
         }
         if barra_sucia && barra_visible {
-            let m = barra(e, boton_encima, claro, acotar.activo);
+            let m = barra(e, boton_encima, claro, acotar.activo, fijada);
             if let Ok(p) = gpu_barra.subir(&m) {
                 let (gw, gh) = gpu_barra.tamano();
                 let fondo = if claro { [0.976, 0.976, 0.984, 1.0] } else { [0.118, 0.118, 0.125, 1.0] };
