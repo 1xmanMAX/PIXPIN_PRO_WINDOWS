@@ -579,6 +579,10 @@ pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo3d, String>>, ui: Texto
     let mut elegido: Option<u32> = None;
     // El panel de niveles y categorias: lo que tiene el modelo y si se ve.
     let mut arbol_m: Option<Arbol> = None;
+    // El encuadre del principio, mientras nadie toque la vista: si la
+    // ventana cambia de tamano (el pin se coloca despues de abrirse), se
+    // vuelve a encuadrar a la medida nueva.
+    let mut sin_tocar = true;
     let mut panel = false;
     // El clic empezo en el panel: al soltar no se elige nada.
     let mut bajo_en_panel = false;
@@ -673,6 +677,9 @@ pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo3d, String>>, ui: Texto
         // Hasta donde puede ir la caja: el modelo entero y algo mas.
         let limite = modelo.as_ref().map_or([0f32; 6], |(m, _)| caja_inicial(caja_inicial(m.caja)));
         for (de, ev) in eventos {
+            if matches!((de, &ev), (De::Plano, Ev::Tecla(_))) {
+                sin_tocar = false;
+            }
             match (de, ev) {
                 (_, Ev::Cerrar) => break 'bucle,
                 (De::Barra, Ev::Mover(x, _)) => {
@@ -710,6 +717,10 @@ pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo3d, String>>, ui: Texto
                         let _ = gpu.redimensionar(w, h);
                         aviso_ui = None;
                         sucio = true;
+                        if sin_tocar && modelo.is_some() {
+                            cam = Orbita::encuadrar(caja_vista, w, h);
+                            destino = cam;
+                        }
                     }
                 }
                 (De::Plano, Ev::Mover(x, y)) => {
@@ -752,6 +763,7 @@ pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo3d, String>>, ui: Texto
                 (De::Plano, Ev::Salir) => dentro_plano = false,
                 (De::Plano, Ev::Bajar(x, y, b)) => {
                     pista_hasta = None;
+                    sin_tocar = false;
                     // SAFETY: lee el estado de Ctrl.
                     let ctrl = unsafe { GetKeyState(VK_CONTROL.0 as i32) } < 0;
                     if panel
@@ -857,6 +869,7 @@ pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo3d, String>>, ui: Texto
                 }
                 (De::Plano, Ev::Rueda(x, y, d)) => {
                     pista_hasta = None;
+                    sin_tocar = false;
                     if panel
                         && let Some(ar) = &mut arbol_m
                         && ar.dentro(x, y, h, e)

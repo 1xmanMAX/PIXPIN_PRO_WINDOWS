@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <b>Captura</b> · <b>Pines flotantes</b> · <b>Chat por proyectos</b> · <b>Lienzo</b> · <b>Timeline</b> · <b>Tareas</b> · <b>Lecciones</b> · <b>Sincroniza con Android</b>
+  <b>Captura</b> · <b>Pines flotantes</b> · <b>Chat por proyectos</b> · <b>Lienzo</b> · <b>Timeline</b> · <b>Tareas</b> · <b>Lecciones</b> · <b>Planos y modelos 3D</b> · <b>Sincroniza con Android</b>
 </p>
 
 ---
@@ -28,8 +28,25 @@ la máquina de referencia es un Core i3 de 3.ª generación con 4 GB.
 > El nombre **PixPin** pertenece a DepthPixel. Este proyecto es una implementación personal e
 > independiente, igual que su versión Android.
 
+## ¿Qué puedo hacer con PixPin Max?
+
+Dicho fácil, para cualquier persona:
+
+| | Quiero… | Con PixPin Max… |
+|:-:|---|---|
+| 📸 | Guardar algo que veo en la pantalla | Pulso `Ctrl Alt X`, elijo la zona y listo: la copio, la dejo flotando o la mando a un proyecto. |
+| 📌 | Tener algo siempre a la vista | Lo «pineo»: una foto, un vídeo, un PDF o una lista se queda encima de todas las ventanas. |
+| 💬 | Ordenar mis cosas por temas | Cada proyecto es un chat, como en el móvil: notas, fotos, audios y documentos, juntos. |
+| ✏️ | Marcar o explicar algo | Dibujo encima con lápiz, flechas, recuadros y texto. |
+| 📐 | Ver un plano de AutoCAD sin tener AutoCAD | Abro el `.dwg` y se ve al instante. Mido, marco, anoto e imprimo. |
+| 🏠 | Ver un edificio en 3D (Revit o IFC) | Lo giro con el ratón, lo corto con una caja, veo cada planta y lo que mide cada pieza. |
+| ⛰️ | Ver un terreno o una carretera | Abro el LandXML o los puntos de Civil 3D y salen con colores por altura y curvas de nivel. |
+| 📖 | Leer un PDF o un Word mientras trabajo | Se abre pequeño, como un pin, al lado de lo que hago; o a pantalla completa con `F11`. |
+| 📱 | Tenerlo también en el móvil | Se sincroniza con PixPin Android por Wi‑Fi, sin nube y sin cuentas. |
+
 ## Índice
 
+- [¿Qué puedo hacer?](#qué-puedo-hacer-con-pixpin-max)
 - [Un vistazo](#un-vistazo)
 - [Qué hace](#qué-hace)
   - [Capturar](#capturar)
@@ -41,6 +58,10 @@ la máquina de referencia es un Core i3 de 3.ª generación con 4 GB.
   - [La bandeja](#la-bandeja)
   - [El lienzo](#el-lienzo)
   - [Abrir fotos, vídeos y audios](#abrir-fotos-vídeos-y-audios)
+  - [Planos de AutoCAD](#planos-de-autocad)
+  - [Modelos 3D: Revit e IFC](#modelos-3d-revit-e-ifc)
+  - [Terrenos y carreteras (Civil 3D)](#terrenos-y-carreteras-civil-3d)
+  - [Leer PDF y Word como un pin](#leer-pdf-y-word-como-un-pin)
   - [Compartir y arrastrar](#compartir-y-arrastrar)
   - [Flow Launcher](#flow-launcher)
   - [Sincronizar con el móvil](#sincronizar-con-el-móvil)
@@ -61,6 +82,8 @@ la máquina de referencia es un Core i3 de 3.ª generación con 4 GB.
 | ![Timeline: Estado](docs/img/v2/timeline-estado.png) | ![Historia de un momento](docs/img/v2/timeline-historia-sin-foto.png) |
 | **Lecciones aprendidas, dentro del timeline** | **Galería de capturas que caducan** |
 | ![Lecciones](docs/img/v2/timeline-lecciones.png) | ![Galería de capturas](docs/img/v2/galeria.png) |
+| **Planos de AutoCAD, sin AutoCAD** | **Edificios en 3D, cortados por donde quieras** |
+| ![Plano de AutoCAD](docs/img/v2/plano-dwg.png) | ![Caja de sección](docs/img/v2/modelo-caja-seccion.png) |
 
 ```mermaid
 flowchart LR
@@ -301,10 +324,109 @@ Al abrir un archivo sale como ventana flotante, en unos 200 ms:
 | Fotos | png, jpg, jfif, webp, bmp, gif, tiff, ico, jxr, heic\*, avif\*, jxl\*, RAW | Pin de imagen |
 | Vídeos | mp4, mkv, mov, m4v, avi, wmv, mpg, ts, webm\* | Pin de vídeo con la GPU |
 | Audios | mp3, m4a, wav, aac, flac, ogg, opus, wma, 3gp, amr | Reproductor flotante, en cola si son varios |
-| Documentos | pdf, docx, epub, pptx, md | Su lector |
+| Documentos | pdf, docx, epub, pptx, md | Su lector, como un pin |
+| Planos | dwg, dxf | El visor de planos |
+| Modelos 3D | ifc, rvt (Revit 2023–2025) | El visor 3D |
+| Civil 3D | xml (LandXML), csv y txt de puntos | El visor 3D, como terreno |
 
 \* Necesitan la extensión gratuita de Microsoft Store (HEVC, AV1, VP9 o JPEG XL). Si falta, PixPin
 dice cuál instalar.
+
+### Planos de AutoCAD
+
+Abre un **DWG o DXF** con doble clic, desde el chat o arrastrándolo, y se ve al momento: **sin
+AutoCAD** y sin esperar. Sale como un pin, encima de todo, y se mueve y se estira como cualquier
+ventana.
+
+![Un plano de AutoCAD abierto en PixPin](docs/img/v2/plano-dwg.png)
+
+**Moverse por el plano**: la rueda acerca y aleja hacia donde apunta el ratón; arrastrar mueve el
+plano; doble clic (o `F`) lo enseña entero. Al pasar el ratón sale una barra arriba, fuera del
+plano, con estas herramientas:
+
+| Herramienta | Tecla | Para qué sirve |
+|---|:-:|---|
+| 📏 Medir | `M` | Mide distancias. La regla se engancha sola a las esquinas, a los centros, a cualquier punto de una línea y a la perpendicular (con su ⊥ y «90°»). |
+| 🖨️ Marcos | `I` | Arrastra para marcar las partes que quieres imprimir. `Ctrl P` saca cada marco en su hoja, con marco y membrete o sin él. |
+| ✏️ Anotar | `A` | Dibuja y escribe encima del plano con las mismas herramientas del lienzo. Lo anotado se guarda y sale al imprimir. |
+| 🧊 3D | `3` | Abre el mismo plano en 3D, si tiene volúmenes. |
+| 🌗 Tema | `B` | Fondo oscuro o claro. |
+| 📌 Encima | `T` | Deja el plano siempre encima, o no. |
+
+| Anotar encima del plano | Marcar lo que se imprime |
+|---|---|
+| ![Anotar un plano](docs/img/v2/plano-anotar.png) | ![Marcos para imprimir](docs/img/v2/plano-marcos.png) |
+
+- Los textos con **letras de AutoCAD (SHX)** se ven aunque no tengas AutoCAD instalado, con ñ,
+  tildes, ° y Ø. El texto al revés o cabeza abajo sale como en AutoCAD.
+- El grosor de la tinta se adapta al zoom: un trazo «fino» se ve fino en el plano, no gigante.
+
+### Modelos 3D: Revit e IFC
+
+Abre un modelo de **Revit** (`.rvt`) o **IFC** (`.ifc`) y se ve en 3D en una ventana como un pin.
+No hace falta tener Revit.
+
+![Una casa en IFC abierta en PixPin](docs/img/v2/modelo-3d.png)
+
+**Cómo se usa**, con el ratón:
+
+- **Girar**: arrastra con el botón izquierdo. Gira alrededor de lo que tocas; un punto naranja te
+  enseña dónde.
+- **Mover**: arrastra con el botón derecho (o `Mayús` + izquierdo).
+- **Acercar**: la rueda, hacia donde apunta el ratón.
+- **¿Qué es esto?**: un clic en una pieza. Abajo sale qué es, en qué planta está, su **volumen** y su
+  **área**.
+- **Aislar**: otro clic en la misma pieza y se queda sola, encuadrada. `Esc` vuelve a todo.
+
+| ✂️ Caja de sección (`C`) | 🗂️ Niveles y categorías (`L`) |
+|---|---|
+| ![Caja de sección](docs/img/v2/modelo-caja-seccion.png) | ![Niveles y categorías](docs/img/v2/modelo-niveles.png) |
+| Como la «Section Box» de Revit: el modelo queda dentro de una caja con **un tirador en cada cara**. Arrastra un tirador y esa cara corta el modelo. Lo cortado se ve **macizo**, no hueco. | Un panel con las **plantas** del edificio y las **categorías** (muros, losas, vigas…), con cuántas piezas hay y su volumen. Un clic oculta o muestra; `Ctrl` + clic deja solo esa. |
+
+| 🔍 Una pieza aislada, con lo que mide | 🏗️ Un modelo de Revit |
+|---|---|
+| ![Aislar una pieza](docs/img/v2/modelo-aislar.png) | ![Modelo de Revit](docs/img/v2/modelo-revit.png) |
+
+- Más teclas: `F` ver todo · `P` vista en planta · `B` fondo claro u oscuro · `A` aristas ·
+  `T` siempre encima · flechas para girar · `+` `−` para acercar.
+- **IFC**: se lee con [ifc-lite](https://github.com/LTplus-AG/ifc-lite). Salen las plantas
+  (`IfcBuildingStorey`) con sus nombres y cotas.
+- **Revit**: se lee con [rvt-rs](https://github.com/DrunkOnJava/rvt-rs), que entiende los
+  proyectos de **Revit 2023 a 2025** sin Revit. Lo que esa librería aún no sabe dibujar sale como
+  una caja; los Revit 2022 y anteriores todavía no se pueden abrir.
+- El volumen es exacto cuando la pieza es un sólido cerrado; si no, sale con «≈».
+
+### Terrenos y carreteras (Civil 3D)
+
+Lo de **Civil 3D** también se ve en 3D: superficies con **colores por altura** y **curvas de
+nivel**, ejes de carretera con su perfil, puntos, tuberías y parcelas.
+
+![Un terreno con su carretera, de un LandXML](docs/img/v2/civil-terreno.png)
+
+- **LandXML** (`.xml`): superficies, alineamientos y perfiles, puntos, redes de tuberías y parcelas.
+- **Ficheros de puntos** (`.csv` y `.txt`, en orden PNEZD o ENZ): se unen solos en un terreno.
+- **DWG de Civil 3D**: con el botón `3D` del visor de planos. Si el dibujo se guardó sin sus
+  gráficos (`PROXYGRAPHICS = 0`), PixPin avisa, porque esa información no viene en el archivo.
+
+### Leer PDF y Word como un pin
+
+Los **PDF, Word y EPUB** se abren **pequeños, como un pin**, para leer al lado de lo que estás
+haciendo. Arriba, fuera de la hoja, sale su barra:
+
+<img src="docs/img/v2/lector-pdf-pin.png" width="640" alt="Un PDF abierto como un pin, con su barra">
+
+| En la barra | Para qué sirve |
+|---|---|
+| ⠿ Asa | Mueve la ventana. |
+| Nombre · página | El nombre del documento y en qué página vas. Un clic lo cambia. |
+| 📑 Índice | Salta a un capítulo (en Word y EPUB). |
+| 🗣️ Escuchar | Te lo lee en voz alta. |
+| ⚙️ Ajustes | Las opciones del lector. |
+| ⛶ Pantalla completa | O `F11`. `Esc` vuelve a pin. |
+| 📌 Pin | Siempre encima, o no. |
+
+- Se estira por los bordes como cualquier pin.
+- Se puede anotar encima, con marcadores y búsqueda.
 
 ### Compartir y arrastrar
 
@@ -409,6 +531,9 @@ son letras que **solo valen dentro de la ventana abierta**, y cada botón muestr
 | En el chat | `R` `P` `A` `E` `F` `L` en el menú de un mensaje · `F2` cambiar el nombre · `1`–`8` en adjuntar |
 | Galería | flechas · `Espacio` elegir · `Enter` pinear · `Ctrl S` conservar · `Supr` borrar · `Ctrl Z` deshacer |
 | Lecciones | `Ctrl F` buscar · `R` repasar · `1` `2` `3` en el repaso · `S` saltar |
+| Plano (DWG) | `M` medir · `I` marcos · `Ctrl P` imprimir · `A` anotar · `3` ver en 3D · `F` todo · `B` tema · `T` encima · `+` `−` y flechas · `Esc` cerrar |
+| Modelo 3D | `C` caja de sección · `L` niveles y categorías · `I` aislar · `F` todo · `P` planta · `A` aristas · `B` fondo · `T` encima · flechas girar · `+` `−` · `Esc` soltar o cerrar |
+| Lector de PDF y Word | `F11` pantalla completa · `Esc` vuelve a pin · `Ctrl F` buscar |
 
 ## Instalar
 
@@ -421,7 +546,7 @@ carpeta y nada en el registro, así que se puede llevar en un USB.
 
 ## Cómo está hecho
 
-Un espacio de trabajo de Rust con **tres ejecutables** y **28 crates por capas**. Una prueba
+Un espacio de trabajo de Rust con **tres ejecutables** y **31 crates por capas**. Una prueba
 (`apps/pixpin/tests/capas.rs`) comprueba que ningún crate dependa de uno de su misma capa o de
 una capa superior.
 
@@ -430,7 +555,7 @@ flowchart TB
     L5["<b>Capa 5 · la app</b><br/>pixpin → pixpinmax.exe"]
     L4["<b>Capa 4 · ventanas propias</b><br/>pixpin-notas (editor de notas)"]
     L3["<b>Capa 3 · interfaz</b><br/>pixpin-ui · pixpin-flow · pixpin-plugin"]
-    L2["<b>Capa 2 · funciones</b><br/>pixpin-capture · pixpin-pin · pixpin-pila · pixpin-proyecto<br/>pixpin-pdf · pixpin-docs · pixpin-ocr · pixpin-record · pixpin-store<br/>pixpin-lanzador (Flow) · pixpin-aligerar (PDF)"]
+    L2["<b>Capa 2 · funciones</b><br/>pixpin-capture · pixpin-pin · pixpin-pila · pixpin-proyecto<br/>pixpin-pdf · pixpin-docs · pixpin-ocr · pixpin-record · pixpin-store<br/>pixpin-lanzador (Flow) · pixpin-aligerar (PDF)<br/>pixpin-cad (planos y 3D) · pixpin-bim (Revit, IFC, Civil 3D)"]
     L1["<b>Capa 1 · Windows y motores</b><br/>pixpin-shell · pixpin-render · pixpin-gpu · pixpin-codec<br/>pixpin-motor2d · pixpin-tinta · pixpin-sincro · pixpin-audio<br/>pixpin-voz · pixpin-web · pdfsqueeze-core"]
     L0["<b>Capa 0 · cimientos puros</b><br/>pixpin-geom · pixpin-model · pixpin-nivel · pixpin-lecciones"]
     L5 --> L4 --> L3 --> L2 --> L1 --> L0
@@ -447,6 +572,8 @@ flowchart TB
 | `pixpin-ocr`, `pixpin-voz`, `pixpin-audio` | Texto de las imágenes, transcripción y audio |
 | `pixpin-codec` | Imágenes: `image` y, para HEIC/AVIF/TIFF/RAW, los decodificadores de Windows (WIC) |
 | `pixpin-lecciones` | Lecciones aprendidas: buscador, etiquetador y repaso, igual que en Android |
+| `pixpin-cad` | El visor de planos DWG/DXF (con su regla, marcos e impresión) y el visor 3D con la GPU |
+| `pixpin-bim` | Leer Revit, IFC, LandXML y puntos de Civil 3D: niveles, medidas y terrenos |
 | `pixpin-lanzador` | El plugin de Flow Launcher |
 
 La interfaz no usa HTML ni un framework: cada ventana se dibuja con Direct2D, con tema claro y
