@@ -155,6 +155,33 @@ pub struct Modelo {
 }
 
 impl Modelo {
+    /// **La caja de lo que importa** para encuadrar: sin los pocos puntos
+    /// sueltos muy lejos (una raya con una cota absurda, un objeto olvidado a
+    /// kilometros) que dejan el plano diminuto, como si no abriera (10-oct-
+    /// 2026, el usuario: «hay un dwg que no abre»). Del 0,5 % al 99,5 % de
+    /// los vertices en cada eje, con un margen; igual que el visor 3D.
+    pub fn caja_util(&self) -> [f32; 4] {
+        let n = self.vertices.len();
+        if n < 200 {
+            return self.caja;
+        }
+        let paso = (n / 40_000).max(1);
+        let mut out = self.caja;
+        for k in 0..2 {
+            let mut v: Vec<f32> =
+                self.vertices.iter().step_by(paso).map(|p| if k == 0 { p.x } else { p.y }).filter(|x| x.is_finite()).collect();
+            if v.len() < 100 {
+                continue;
+            }
+            v.sort_by(f32::total_cmp);
+            let (a, b) = (v[v.len() / 200], v[v.len() - 1 - v.len() / 200]);
+            let margen = (b - a) * 0.05;
+            out[k] = (a - margen).max(self.caja[k]);
+            out[k + 2] = (b + margen).min(self.caja[k + 2]);
+        }
+        out
+    }
+
     pub fn vacio(&self) -> bool {
         self.lineas.is_empty() && self.triangulos.is_empty() && self.triangulos_trama.is_empty() && self.letras.is_empty() && self.arcos.is_empty()
     }
@@ -970,6 +997,27 @@ impl Modelo {
 #[cfg(test)]
 mod pruebas {
     use super::*;
+
+    #[test]
+    fn un_objeto_suelto_a_kilometros_no_cuenta_para_encuadrar() {
+        // El plano de demolicion del usuario: todo en una esquina de 1,5 km
+        // y dos cositas a 340 km, en la otra.
+        let mut c = Constructor::nuevo();
+        for i in 0..400 {
+            let x = -170_000.0 + (i % 20) as f64 * 70.0;
+            let y = -35_000.0 + (i / 20) as f64 * 40.0;
+            c.polilinea(&[[x, y], [x + 50.0, y + 20.0]], 0xff00_00ff, None);
+        }
+        c.polilinea(&[[170_600.0, 35_000.0], [170_700.0, 35_200.0]], 0xff00_00ff, None);
+        let m = c.terminar();
+        let u = m.caja_util();
+        assert!(u[2] - u[0] < 3_000.0 && u[3] - u[1] < 3_000.0, "{u:?} de {:?}", m.caja);
+        // Caso negativo: un plano normal (pocos puntos) se encuadra entero.
+        let mut c = Constructor::nuevo();
+        c.polilinea(&[[0.0, 0.0], [100.0, 50.0]], 0xff00_00ff, None);
+        let m = c.terminar();
+        assert_eq!(m.caja_util(), m.caja);
+    }
 
     fn de_prueba() -> Modelo {
         let mut c = Constructor::nuevo();

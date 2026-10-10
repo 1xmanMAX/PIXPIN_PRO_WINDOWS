@@ -1047,7 +1047,9 @@ pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo, String>>, textos_ui: 
                     } else {
                         match gpu.subir(&m) {
                             Ok(p) => {
-                                camara = Camara::encuadrar(m.caja, w, h);
+                                // Lo que importa, no la caja entera: un objeto suelto a
+                                // kilometros dejaba el plano diminuto, como si no abriera.
+                                camara = Camara::encuadrar(m.caja_util(), w, h);
                                 // Para las pruebas: PIXPIN_CAD_VISTA="x,y,ancho" (coordenadas del plano).
                                 if let Ok(v) = std::env::var("PIXPIN_CAD_VISTA") {
                                     let n: Vec<f64> = v.split(',').filter_map(|t| t.trim().parse().ok()).collect();
@@ -1350,7 +1352,7 @@ pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo, String>>, textos_ui: 
             }
         }
         if encuadrar && let Some((m, _)) = &plano {
-            destino = Camara::encuadrar(m.caja, w, h);
+            destino = Camara::encuadrar(m.caja_util(), w, h);
         }
         if cambiar_tema {
             claro = !claro;
