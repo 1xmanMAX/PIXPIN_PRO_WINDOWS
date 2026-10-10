@@ -102,6 +102,7 @@ mod pdf_del_proyecto;
 mod pdf_en_chat;
 mod pedidos;
 mod pegar_en_flow;
+mod vista_rapida;
 mod pila_capturas;
 mod pin_vivo;
 mod modelo_bim;
@@ -518,6 +519,8 @@ fn arrancar(
     // Ctrl+V de una imagen en Flow Launcher la pega como `[img 01]` en la
     // tarea que se esta escribiendo (el plugin no ve las teclas).
     let _pegar_en_flow = pegar_en_flow::instalar(ubicacion.raiz().to_path_buf());
+    // Espacio en el Explorador: abrir lo elegido en PixPin (vista rapida).
+    let _vista_rapida = vista_rapida::instalar(config.vista_rapida);
     for (id, atajo) in &fallidos {
         // Se registra el problema pero no se aborta: otra aplicacion puede
         // tener ese atajo y el resto de PixPin Max sigue siendo util.
@@ -693,6 +696,7 @@ fn arrancar(
             // aplicar sin reiniciar (el idioma, el nivel de rendimiento) queda
             // guardado y entra en el siguiente arranque.
             config = nuevos;
+            pixpin_shell::espacio_explorador::activar(config.vista_rapida);
             // M1: vale desde el siguiente chat que se abra.
             tema_cosmos::fijar(config.tema_cosmos);
             aligerar::configurar(&config.pdf);

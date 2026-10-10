@@ -267,6 +267,7 @@ enum Clave {
     // Apps predeterminadas
     AbrirCon,
     Predeterminada,
+    VistaRapida,
     // Apariencia
     TemaCosmos,
     // Avanzado
@@ -820,6 +821,13 @@ fn filas_de_seccion(s: Seccion, a: &Ajustes, cx: &Contexto) -> Vec<(Clave, Fila)
                 grupo(t, "ajustes2-g-apps"),
                 op(
                     a,
+                    Clave::VistaRapida,
+                    tt("ajustes2-vista-rapida"),
+                    tt("ajustes2-ayuda-vista-rapida"),
+                    Control::Interruptor(a.vista_rapida),
+                ),
+                op(
+                    a,
                     Clave::AbrirCon,
                     tt("ajustes2-abrir-con"),
                     tt("ajustes2-ayuda-abrir-con"),
@@ -1025,6 +1033,7 @@ fn restablecer(clave: Clave, a: &mut Ajustes) {
         Clave::Presencia => a.sincro.presencia = d.sincro.presencia,
         Clave::LoMioManda => a.sincro.lo_mio_manda = d.sincro.lo_mio_manda,
         Clave::AbrirCon => a.abrir_con = d.abrir_con,
+        Clave::VistaRapida => a.vista_rapida = d.vista_rapida,
         Clave::TemaCosmos => a.tema_cosmos = d.tema_cosmos,
         Clave::Nivel => a.rendimiento.nivel = d.rendimiento.nivel,
         Clave::MedirFotogramas => a.rendimiento.medir_fotogramas = d.rendimiento.medir_fotogramas,
@@ -1115,6 +1124,7 @@ fn aplicar_interruptor(a: &mut Ajustes, clave: Clave) {
         Clave::Presencia => a.sincro.presencia = !a.sincro.presencia,
         Clave::LoMioManda => a.sincro.lo_mio_manda = !a.sincro.lo_mio_manda,
         Clave::AbrirCon => a.abrir_con = !a.abrir_con,
+        Clave::VistaRapida => a.vista_rapida = !a.vista_rapida,
         Clave::MedirFotogramas => a.rendimiento.medir_fotogramas = !a.rendimiento.medir_fotogramas,
         Clave::Ritmo => a.rendimiento.ritmo = !a.rendimiento.ritmo,
         Clave::Paneo => a.rendimiento.paneo_por_composicion = !a.rendimiento.paneo_por_composicion,
@@ -2730,6 +2740,7 @@ mod pruebas {
             Clave::LoMioManda,
             Clave::AbrirCon,
             Clave::Predeterminada,
+            Clave::VistaRapida,
             Clave::TemaCosmos,
             Clave::Nivel,
             Clave::MedirFotogramas,

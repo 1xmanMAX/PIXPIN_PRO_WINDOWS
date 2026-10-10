@@ -256,6 +256,9 @@ pub struct Ajustes {
     /// por eso tiene interruptor: el modo portable promete no dejar rastro
     /// en el equipo. Apagarlo borra lo escrito, no solo deja de escribir.
     pub abrir_con: bool,
+    /// **Vista rapida**: el espacio en el Explorador (o el escritorio) abre
+    /// en PixPin lo elegido que sabe abrir (10-oct-2026).
+    pub vista_rapida: bool,
     /// A que se pega el cursor al dibujar (fase B.6).
     ///
     /// El tipo vive en el motor y no aqui, aunque eso ate `pixpin-store` a
@@ -497,6 +500,7 @@ impl Default for Ajustes {
             retardo_captura_s: 3,
             regiones: Vec::new(),
             abrir_con: true,
+            vista_rapida: true,
             enganche: pixpin_motor2d::enganche::Ajustes::default(),
             sincro: Sincro::default(),
             capturas: Capturas::default(),

@@ -504,28 +504,56 @@ fn quitar_anterior() {
     });
 }
 
-/// Si la ventana es de las que van siempre encima (el editor lo es).
-fn siempre_encima(v: HWND) -> bool {
-    // SAFETY: consulta de estilo de una ventana; si ya no existe da cero.
-    let estilo = unsafe { GetWindowLongPtrW(v, GWL_EXSTYLE) };
-    estilo as u32 & WS_EX_TOPMOST.0 != 0
+/// **Bajar las ventanas de PixPin que van siempre encima** mientras esta el
+/// dialogo de imprimir (10-oct-2026, el usuario: «la ventana de impresion
+/// desaparece cuando le doy a imprimir porque la ventana del pin esta sobre
+/// la pantalla»). El dialogo es de otro proceso: un pin, su barra o
+/// cualquier otro pin siempre encima lo tapaban. Devuelve las que se
+/// bajaron, para volver a subirlas con [`subir_las_de_encima`] al cerrarlo.
+pub fn bajar_las_de_encima() -> Vec<isize> {
+    use windows::Win32::Foundation::LPARAM;
+    use windows::Win32::UI::WindowsAndMessaging::{EnumWindows, GetWindowThreadProcessId, IsWindowVisible};
+    use windows::core::BOOL;
+    struct Busca {
+        pid: u32,
+        v: Vec<isize>,
+    }
+    extern "system" fn una(h: HWND, l: LPARAM) -> BOOL {
+        // SAFETY: `l` apunta a la `Busca` de abajo, viva durante
+        // EnumWindows; lo demas son consultas de solo lectura.
+        unsafe {
+            let b = &mut *(l.0 as *mut Busca);
+            let mut pid = 0;
+            GetWindowThreadProcessId(h, Some(&mut pid));
+            let estilo = GetWindowLongPtrW(h, GWL_EXSTYLE) as u32;
+            if pid == b.pid && IsWindowVisible(h).as_bool() && estilo & WS_EX_TOPMOST.0 != 0 {
+                b.v.push(h.0 as isize);
+            }
+        }
+        BOOL(1)
+    }
+    let mut b = Busca { pid: std::process::id(), v: Vec::new() };
+    // SAFETY: EnumWindows llama a `una` en este hilo, con el puntero a `b`.
+    let _ = unsafe { EnumWindows(Some(una), LPARAM(&mut b as *mut Busca as isize)) };
+    for &h in &b.v {
+        // SAFETY: solo el orden Z de una ventana de este proceso.
+        unsafe {
+            let _ = SetWindowPos(HWND(h as *mut _), Some(HWND_NOTOPMOST), 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+        }
+    }
+    b.v
 }
 
-fn poner_encima(v: HWND, encima: bool) {
-    // SAFETY: cambia solo el orden de una ventana de este proceso, sin
-    // moverla ni activarla; si ya no existe, falla sin efecto.
-    unsafe {
-        let _ = SetWindowPos(
-            v,
-            Some(if encima { HWND_TOPMOST } else { HWND_NOTOPMOST }),
-            0,
-            0,
-            0,
-            0,
-            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
-        );
+/// Las vuelve a poner encima (ver [`bajar_las_de_encima`]).
+pub fn subir_las_de_encima(ventanas: &[isize]) {
+    for &h in ventanas {
+        // SAFETY: solo el orden Z; una ventana que ya no existe falla sin mas.
+        unsafe {
+            let _ = SetWindowPos(HWND(h as *mut _), Some(HWND_TOPMOST), 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+        }
     }
 }
+
 
 /// **Abre el dialogo moderno** sobre `ventana` con `documento`. Vuelve en
 /// seguida: el dialogo sigue abierto por su cuenta, y lo que haga falta lo
@@ -581,30 +609,24 @@ pub fn mostrar(
     // El editor va siempre encima, y el dialogo es de otro proceso: sin
     // bajarlo, el dialogo podria abrirse detras y parecer que no pasa nada.
     // Se le devuelve su sitio al cerrar.
-    let bajada = siempre_encima(ventana);
-    if bajada {
-        poner_encima(ventana, false);
-    }
+    // Y no solo ella: los pines y sus barras tambien van siempre encima.
+    let bajadas = bajar_las_de_encima();
     // SAFETY: ventana de este proceso; el aviso de arriba esta puesto.
     let op: IAsyncOperation<bool> = match unsafe { interop.ShowPrintUIForWindowAsync(ventana) } {
         Ok(op) => op,
         Err(e) => {
             let _ = manager.RemovePrintTaskRequested(token);
-            if bajada {
-                poner_encima(ventana, true);
-            }
+            subir_las_de_encima(&bajadas);
             return Err(e.into());
         }
     };
     ANTERIOR.with(|a| *a.borrow_mut() = Some((manager.clone(), token)));
     let manager = Agil(manager);
-    let ventana_num = ventana.0 as isize;
     op.SetCompleted(&AsyncOperationCompletedHandler::new(
         move |_: Ref<IAsyncOperation<bool>>, estado: AsyncStatus| {
             let _ = manager.dentro().RemovePrintTaskRequested(token);
-            if bajada {
-                poner_encima(HWND(ventana_num as *mut _), true);
-            }
+            // Cerrado el dialogo, cada una vuelve a ir encima.
+            subir_las_de_encima(&bajadas);
             if estado == AsyncStatus::Error {
                 ROTO.store(true, Ordering::Relaxed);
             }

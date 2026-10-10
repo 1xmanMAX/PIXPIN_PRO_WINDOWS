@@ -22,6 +22,7 @@ pub mod elegir_carpeta;
 pub mod encima;
 pub mod entorno;
 pub mod entrada;
+pub mod espacio_explorador;
 pub mod explorador;
 pub mod exportar;
 pub mod gestos;

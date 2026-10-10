@@ -199,7 +199,10 @@ fn un_intento(
     // SAFETY: la estructura esta rellena y vive durante la llamada; los
     // intervalos son un arreglo local del tamano declarado. El dialogo es
     // modal sobre la ventana propietaria, que es del llamante.
+    // Lo de PixPin que va siempre encima (pines, barras) taparia el dialogo.
+    let bajadas = bajar_las_de_encima();
     let hecho = unsafe { PrintDlgExW(&mut pd) };
+    subir_las_de_encima(&bajadas);
     let resultado = pd.dwResultAction;
     let hdc = pd.hDC;
     let (h_devmode, h_devnames) = (pd.hDevMode, pd.hDevNames);
@@ -277,5 +280,57 @@ mod pruebas {
         assert!(r.incluye(1) && r.incluye(2) && r.incluye(5));
         assert!(!r.incluye(3) && !r.incluye(6));
         assert!(Rango::Todas.incluye(99));
+    }
+}
+
+/// **Bajar las ventanas de PixPin que van siempre encima** mientras esta el
+/// dialogo de imprimir (10-oct-2026, el usuario: «la ventana de impresion
+/// desaparece cuando le doy a imprimir porque la ventana del pin esta sobre
+/// la pantalla»). El dialogo es de otro proceso: un pin, su barra o
+/// cualquier otro pin siempre encima lo tapaban. Devuelve las que se
+/// bajaron, para volver a subirlas con [`subir_las_de_encima`] al cerrarlo.
+pub fn bajar_las_de_encima() -> Vec<isize> {
+    use windows::Win32::Foundation::LPARAM;
+    use windows::Win32::UI::WindowsAndMessaging::{EnumWindows, GetWindowThreadProcessId, IsWindowVisible};
+    use windows::core::BOOL;
+    use windows::Win32::UI::WindowsAndMessaging::{GWL_EXSTYLE, GetWindowLongPtrW, HWND_NOTOPMOST, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SetWindowPos, WS_EX_TOPMOST};
+    struct Busca {
+        pid: u32,
+        v: Vec<isize>,
+    }
+    extern "system" fn una(h: HWND, l: LPARAM) -> BOOL {
+        // SAFETY: `l` apunta a la `Busca` de abajo, viva durante
+        // EnumWindows; lo demas son consultas de solo lectura.
+        unsafe {
+            let b = &mut *(l.0 as *mut Busca);
+            let mut pid = 0;
+            GetWindowThreadProcessId(h, Some(&mut pid));
+            let estilo = GetWindowLongPtrW(h, GWL_EXSTYLE) as u32;
+            if pid == b.pid && IsWindowVisible(h).as_bool() && estilo & WS_EX_TOPMOST.0 != 0 {
+                b.v.push(h.0 as isize);
+            }
+        }
+        BOOL(1)
+    }
+    let mut b = Busca { pid: std::process::id(), v: Vec::new() };
+    // SAFETY: EnumWindows llama a `una` en este hilo, con el puntero a `b`.
+    let _ = unsafe { EnumWindows(Some(una), LPARAM(&mut b as *mut Busca as isize)) };
+    for &h in &b.v {
+        // SAFETY: solo el orden Z de una ventana de este proceso.
+        unsafe {
+            let _ = SetWindowPos(HWND(h as *mut _), Some(HWND_NOTOPMOST), 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+        }
+    }
+    b.v
+}
+
+/// Las vuelve a poner encima (ver [`bajar_las_de_encima`]).
+pub fn subir_las_de_encima(ventanas: &[isize]) {
+    use windows::Win32::UI::WindowsAndMessaging::{HWND_TOPMOST, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SetWindowPos};
+    for &h in ventanas {
+        // SAFETY: solo el orden Z; una ventana que ya no existe falla sin mas.
+        unsafe {
+            let _ = SetWindowPos(HWND(h as *mut _), Some(HWND_TOPMOST), 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+        }
     }
 }
