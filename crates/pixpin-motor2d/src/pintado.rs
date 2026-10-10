@@ -962,9 +962,6 @@ pub fn ordenes(e: &Elemento) -> Vec<Orden> {
             cursiva: false,
         }),
 
-        // El cronograma: rejilla, nombres y barras, liso (`cronograma.rs`).
-        Figura::Cronograma { .. } => salida.extend(crate::cronograma::ordenes(e, color)),
-
         Figura::Marco { nombre } => {
             // Liso y gris, no a mano alzada: el marco es andamiaje para
             // ordenar laminas, no parte del dibujo. Si temblara como una

@@ -638,6 +638,12 @@ struct PinInterno {
     /// central. Es lo que pidio el usuario para las notas: mismo tamano de
     /// caja, mas texto a la vista.
     vista_escala: f32,
+    /// **El pin en negativo** (N, o Alt+N en una herramienta; 10-oct-2026).
+    /// Solo cambia como se pinta (`Pintor::invertir_colores`): ni la imagen
+    /// ni el fichero se tocan, y no se guarda. No es el filtro del 6, que
+    /// rehace el bitmap de una foto y se guarda con ella: este vale para
+    /// cualquier pin, tambien la nota, el video o el pin en vivo.
+    en_negativo: bool,
     vista_dx: f32,
     vista_dy: f32,
     /// Desde donde se empezo a arrastrar con el boton central, para panear.
@@ -869,6 +875,7 @@ impl Pin {
             pdf_paginas: None,
             pdf_pagina: 0,
             vista_escala: 1.0,
+            en_negativo: false,
             vista_dx: 0.0,
             vista_dy: 0.0,
             paneo: None,
@@ -2198,17 +2205,45 @@ fn ajustar_vista(i: &mut PinInterno, paso: f32, lparam: LPARAM) {
     asegurar_resolucion(i, false);
 }
 
+/// Enciende o apaga el negativo del pin (N) y repinta. No avisa al gestor:
+/// no se guarda, es solo como se ve ahora.
+fn alternar_negativo(i: &mut PinInterno) {
+    i.en_negativo = !i.en_negativo;
+    pintar(i);
+}
+
 /// Un punto de la tarjeta (coordenadas del contenido) llevado al sitio de la
 /// imagen que se ve ahi con el zoom de dentro: lo contrario de `poner_vista`,
-/// que pinta `d + p * escala`. Sin zoom, el mismo punto.
+/// que pinta `d + p * escala` (con la base de [`base_de_vista`]). Sin zoom,
+/// el mismo punto.
 fn sin_vista(i: &PinInterno, x: f32, y: f32) -> (f32, f32) {
-    if i.vista_escala <= 1.0 {
+    sin_vista_en(i.vista_escala, (i.vista_dx, i.vista_dy), x, y)
+}
+
+/// La cuenta de [`sin_vista`], sin ventana, para poder probarla.
+fn sin_vista_en(escala: f32, (dx, dy): (f32, f32), x: f32, y: f32) -> (f32, f32) {
+    if escala <= 1.0 {
         return (x, y);
     }
-    (
-        (x - i.vista_dx) / i.vista_escala,
-        (y - i.vista_dy) / i.vista_escala,
-    )
+    ((x - dx) / escala, (y - dy) / escala)
+}
+
+/// La `base` que hay que pasarle a `poner_vista` para que el zoom de dentro
+/// sea justo el que deshace [`sin_vista`]: un punto `c` del contenido se
+/// pinta en `origen + d + c * escala` (pixeles de la ventana).
+///
+/// El pintado no trabaja en coordenadas del contenido sino en las de la
+/// ventana entera, con la tarjeta empezando en el margen de sombra `margen`:
+/// el punto `c` del contenido es ahi `margen + c`, y `poner_vista` lo lleva
+/// a `base + d + (margen + c) * escala`. Antes la base era `origen - margen`
+/// —la esquina de la sombra, la misma del pintado sin zoom—, y eso escalaba
+/// TAMBIEN el margen: todo lo de dentro se corria `margen * (escala - 1)`
+/// hacia abajo a la derecha. El raton se deshace sin margen y no se corria,
+/// asi que con el pin ampliado (Ctrl + rueda) y luego anotado la tinta salia
+/// desfasada del cursor. Lo reporto el usuario. Restando el margen YA
+/// escalado, el margen se cancela y las dos cuentas coinciden.
+fn base_de_vista((ox, oy): (i32, i32), margen: f32, escala: f32) -> (f32, f32) {
+    (ox as f32 - margen * escala, oy as f32 - margen * escala)
 }
 
 /// Impide que el contenido se despegue de la tarjeta y deje un hueco: el
@@ -2689,7 +2724,7 @@ fn pintar(i: &PinInterno) {
         if con_vista {
             p.empujar_recorte(caja);
             p.poner_vista(
-                (ox as f32 - m, oy as f32 - m),
+                base_de_vista((ox, oy), m, i.vista_escala),
                 i.vista_escala,
                 (i.vista_dx, i.vista_dy),
             );
@@ -2867,6 +2902,36 @@ fn pintar(i: &PinInterno) {
                     FICHA_DETALLE_LOGICO * escala,
                     ancho_texto,
                     color_detalle,
+                );
+            }
+        }
+
+        // **El negativo (N)**: lo ya pintado de la tarjeta —la foto, la
+        // pagina, la nota con su papel, la herramienta— pasa a `1 - color`
+        // en la GPU. Lo marcado y lo anotado se pintan DESPUES y conservan
+        // sus colores: son los que eligio el usuario, y un trazo rojo tiene
+        // que seguir siendo rojo. Se invierte la tarjeta entera en pixeles
+        // de la ventana, fuera de la vista de dentro (el recorte de la
+        // tarjeta sigue puesto), y se vuelve a la vista para lo de encima.
+        if i.en_negativo {
+            p.desplazar(ox as f32 - m, oy as f32 - m);
+            // La foto, el video y el pin en vivo tapan la tarjeta hasta las
+            // esquinas; lo demas va en su tarjeta redondeada, y fuera de ella
+            // esta la sombra, que no se invierte.
+            let redondeo = match i.contenido {
+                Contenido::Imagen(_) | Contenido::Video { .. } | Contenido::Vivo { .. }
+                    if i.bitmap.is_some() =>
+                {
+                    0.0
+                }
+                _ => radio,
+            };
+            p.invertir_colores(caja, redondeo);
+            if con_vista {
+                p.poner_vista(
+                    base_de_vista((ox, oy), m, i.vista_escala),
+                    i.vista_escala,
+                    (i.vista_dx, i.vista_dy),
                 );
             }
         }
@@ -3671,6 +3736,7 @@ fn abrir_menu(hwnd: HWND, punto: Option<(i32, i32)>) {
         remoto: i.remoto,
         pizarra: i.pizarra,
         opacidad: (i.opacidad * 100.0).round() as u8,
+        invertido: i.en_negativo,
     };
     match crate::menu::mostrar(hwnd, &i.contenido, estado, &t, punto) {
         None => {}
@@ -3695,6 +3761,7 @@ fn abrir_menu(hwnd: HWND, punto: Option<(i32, i32)>) {
         Some(crate::menu::CMD_ANOTAR) => (i.al_cambiar)(CambioPin::AnotarPedido),
         Some(crate::menu::CMD_ABRIR) => (i.al_cambiar)(CambioPin::AbrirPedido),
         Some(crate::menu::CMD_PINES_ABIERTOS) => (i.al_cambiar)(CambioPin::PinesAbiertosPedido),
+        Some(crate::menu::CMD_INVERTIR) => alternar_negativo(i),
         Some(c)
             if (crate::menu::CMD_OPACIDAD_BASE
                 ..crate::menu::CMD_OPACIDAD_BASE + crate::menu::OPACIDADES.len() as u32)
@@ -4691,6 +4758,20 @@ extern "system" fn procedimiento_pin(
             }
             LRESULT(0)
         }
+        // N: el pin en negativo y vuelta (10-oct-2026), en cualquier pin. En
+        // una herramienta la N sola ya se la llevo lo de arriba (se escribe),
+        // asi que alli es Alt+N, que llega como WM_SYSKEYDOWN.
+        WM_KEYDOWN | WM_SYSKEYDOWN
+            if wparam.0 as u32 == b'N' as u32
+                && !tecla_pulsada(VK_CONTROL)
+                && !tecla_pulsada(VK_SHIFT)
+                && interno_de(hwnd).is_some_and(|i| !i.anotando) =>
+        {
+            if let Some(i) = interno_de(hwnd) {
+                alternar_negativo(i);
+            }
+            LRESULT(0)
+        }
         // R gira a la derecha, Shift+R a la izquierda; H y V voltean. Como
         // el giro es de 90 grados, el pin intercambia ancho y alto.
         WM_KEYDOWN
@@ -5157,6 +5238,72 @@ mod pruebas {
             .expect("GPU real");
         }
         d.unwrap()
+    }
+
+    /// Lo que hace `Pintor::poner_vista` con un punto del pintado: la misma
+    /// matriz (`M11 = M22 = escala`, `M31/M32 = base + desplazamiento`).
+    fn por_la_vista(base: (f32, f32), escala: f32, d: (f32, f32), p: (f32, f32)) -> (f32, f32) {
+        (base.0 + d.0 + p.0 * escala, base.1 + d.1 + p.1 * escala)
+    }
+
+    /// Ida y vuelta del raton con el zoom de dentro: el punto de la ventana
+    /// donde esta el cursor, llevado al contenido (como hace `punto_imagen`)
+    /// y pintado de nuevo (como hace `pintar`), tiene que caer en el mismo
+    /// pixel. `None` = con esa base no vuelve al sitio.
+    fn ida_y_vuelta(
+        base: impl Fn((i32, i32), f32, f32) -> (f32, f32),
+        cursor: (f32, f32),
+    ) -> ((f32, f32), (f32, f32)) {
+        // Un pin con su sombra (margen 18 a 150 %), recortado al borde del
+        // escritorio (origen distinto del margen), ampliado y paneado.
+        let (ox, oy) = (11, 23);
+        let m = 18.0;
+        let escala = 2.5;
+        let d = (-140.0, -75.5);
+        // De la ventana al contenido (punto_contenido) y a la imagen.
+        let c = (cursor.0 - ox as f32, cursor.1 - oy as f32);
+        let en_la_imagen = sin_vista_en(escala, d, c.0, c.1);
+        // Lo anotado ahi se pinta en `margen + punto` bajo la vista.
+        let pintado = por_la_vista(
+            base((ox, oy), m, escala),
+            escala,
+            d,
+            (m + en_la_imagen.0, m + en_la_imagen.1),
+        );
+        (en_la_imagen, pintado)
+    }
+
+    #[test]
+    fn con_zoom_de_dentro_la_tinta_cae_bajo_el_cursor() {
+        for cursor in [(11.0, 23.0), (200.0, 140.0), (517.25, 333.75)] {
+            let (_, pintado) = ida_y_vuelta(base_de_vista, cursor);
+            assert!(
+                (pintado.0 - cursor.0).abs() < 1e-3 && (pintado.1 - cursor.1).abs() < 1e-3,
+                "el cursor estaba en {cursor:?} y la tinta salio en {pintado:?}"
+            );
+        }
+        // Y la esquina del contenido sin panear sigue en su esquina: el
+        // zoom no deja un hueco de tarjeta arriba a la izquierda.
+        let base = base_de_vista((11, 23), 18.0, 3.0);
+        assert_eq!(
+            por_la_vista(base, 3.0, (0.0, 0.0), (18.0, 18.0)),
+            (11.0, 23.0)
+        );
+        // Sin zoom, ni la ida ni la base cambian nada.
+        assert_eq!(sin_vista_en(1.0, (0.0, 0.0), 40.0, 7.0), (40.0, 7.0));
+        assert_eq!(base_de_vista((11, 23), 18.0, 1.0), (11.0 - 18.0, 23.0 - 18.0));
+    }
+
+    #[test]
+    fn la_base_de_la_esquina_de_la_sombra_desfasaba_la_tinta() {
+        // La base de antes: la esquina de la sombra, sin escalar el margen.
+        let antigua = |(ox, oy): (i32, i32), m: f32, _escala: f32| (ox as f32 - m, oy as f32 - m);
+        let cursor = (200.0, 140.0);
+        let (_, pintado) = ida_y_vuelta(antigua, cursor);
+        // Se corria justo `margen * (escala - 1)` hacia abajo a la derecha.
+        let desfase = 18.0 * (2.5 - 1.0);
+        assert!((pintado.0 - cursor.0 - desfase).abs() < 1e-3, "{pintado:?}");
+        assert!((pintado.1 - cursor.1 - desfase).abs() < 1e-3, "{pintado:?}");
     }
 
     fn imagen_2x2() -> ImagenRgba {

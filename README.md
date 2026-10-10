@@ -306,7 +306,7 @@ grupo enseña su última herramienta y despliega las demás.
 - **Tinta**: lápiz, grafito, resaltador, goma y bote de relleno exacto entre figuras.
 - **Construir**: recortar y extender, soldar vértices, puntos con letra, cotas, escala gráfica y calibrar.
 - **Señalar y tapar**: pasos numerados, foco, lupa, pixelar o desenfocar, láser y marcadores.
-- **Gráficas, tablas y cronogramas**; tablas pegadas de Excel o Sheets con celdas combinadas.
+- **Gráficas y tablas**; tablas pegadas de Excel o Sheets con celdas combinadas.
 - **Zona al chat**: un rectángulo del lienzo va al chat con su vínculo de vuelta.
 - **Imprimir y exportar** a PNG, JPG, SVG, PDF y una página web que se puede volver a anotar.
 

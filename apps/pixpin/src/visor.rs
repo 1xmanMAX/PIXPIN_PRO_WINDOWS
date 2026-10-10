@@ -115,6 +115,7 @@ const VK_G: u32 = 0x47;
 const VK_I: u32 = 0x49;
 const VK_L: u32 = 0x4C;
 const VK_M: u32 = 0x4D;
+const VK_N: u32 = 0x4E;
 const VK_S: u32 = 0x53;
 const VK_T: u32 = 0x54;
 const VK_Y: u32 = 0x59;
@@ -264,6 +265,9 @@ struct Estado {
     /// Lo corrido de la lista del indice, en pixeles.
     corrido_indice: f32,
     poniendo_marca: bool,
+    /// El contenido en negativo (N, 10-oct-2026): solo al pintar, sin
+    /// tocar el documento; la interfaz y la tinta quedan con sus colores.
+    en_negativo: bool,
     encima: DestinoRiel,
     aviso: Option<(String, u64)>,
     /// Las cajas que el raton puede pulsar en este fotograma.
@@ -376,6 +380,7 @@ pub fn abrir(
         viendo_indice: false,
         corrido_indice: 0.0,
         poniendo_marca: false,
+        en_negativo: false,
         encima: DestinoRiel::Fuera,
         aviso: None,
         botones: Vec::new(),
@@ -602,6 +607,8 @@ pub fn abrir(
             e.pedir_pantalla_completa = false;
             pin.alternar_pantalla_completa(&mut ventana);
         }
+        // Movida o estirada desde fuera (AltSnap, Win+flecha): el pin la sigue.
+        pin.seguir_ventana(&mut ventana);
         // **La ventana cambio** (estirada, llevada, a pantalla completa): la
         // superficie y el marco, a su medida nueva.
         if pin.area != area {
@@ -1081,7 +1088,25 @@ fn pintar(e: &mut Estado, p: &Pintor, m: Marco, textos: &Catalogo) {
     // La tinta, en la misma pasada y con la misma transformada que el
     // texto: no puede quedarse atras al desplazar ni al acercar. Sobre el
     // papel oscuro del lector la tinta oscura se aclara (`dibujo::tema`).
-    let papel = lector_tinta::papel(FONDO);
+    // N: el documento en negativo (el papel y lo escrito; la tinta y la
+    // interfaz, que van despues, no). En pixeles de la ventana, y luego de
+    // vuelta a la vista para la tinta, que se ajusta al papel invertido.
+    let papel = if e.en_negativo {
+        p.desplazar(0.0, 0.0);
+        p.invertir_colores(
+            RectF {
+                x: 0.0,
+                y: 0.0,
+                ancho: m.ancho,
+                alto: m.alto,
+            },
+            0.0,
+        );
+        p.poner_vista((0.0, 0.0), s, (-e.x * s, -e.y * s));
+        lector_tinta::papel(FONDO.invertido())
+    } else {
+        lector_tinta::papel(FONDO)
+    };
     e.tinta
         .pintar_capa(p, 0, &e.capa, vista_doc, s, papel, e.anotando);
     // Vuelta a pixeles de ventana para la interfaz.
@@ -1916,6 +1941,8 @@ fn tecla(
             e.panel = false;
             centrar_indice(e, m);
         }
+        // N: el documento en negativo y vuelta, como en los pines.
+        (VK_N, false) => e.en_negativo = !e.en_negativo,
         (v, true) if (0x31..=0x39).contains(&v) => ir_al_marcador(e, (v - 0x31) as usize),
         _ => e.pastilla_hasta = ahora_ms() + MS_DE_LA_PASTILLA,
     }
@@ -2654,6 +2681,7 @@ mod pruebas {
             viendo_indice: false,
             corrido_indice: 0.0,
             poniendo_marca: false,
+            en_negativo: false,
             encima: DestinoRiel::Fuera,
             aviso: None,
             botones: Vec::new(),

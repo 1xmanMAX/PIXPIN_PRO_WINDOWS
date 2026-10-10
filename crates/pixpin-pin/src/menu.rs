@@ -57,6 +57,8 @@ pub const CMD_ANOTAR: u32 = 19;
 pub const CMD_PINES_ABIERTOS: u32 = 20;
 /// Abrir una ficha con su aplicacion (lo mismo que el doble clic), v2.
 pub const CMD_ABRIR: u32 = 21;
+/// Ver el pin en negativo (N), 10-oct-2026. Solo cambia como se pinta.
+pub const CMD_INVERTIR: u32 = 22;
 pub const CMD_SIN_GRUPO: u32 = 100;
 pub const CMD_COLOR_BASE: u32 = 101;
 /// «Convertir en…» una nota: 200 + el indice en `MiniApp::TODAS`. En el PC
@@ -126,6 +128,8 @@ pub struct TextosV2 {
     pub quitar_marca: String,
     /// El boton T de la barra: entrar o salir del modo texto.
     pub modo_texto: String,
+    /// «Invertir colores» (N): el pin en negativo.
+    pub invertir_colores: String,
 }
 
 /// Textos del pin, YA traducidos: este crate no conoce Fluent (vive en
@@ -238,6 +242,8 @@ pub struct EstadoMenu {
     /// La opacidad de ahora, en por ciento. 0 se lee como 100 (el
     /// `Default` de las pruebas viejas).
     pub opacidad: u8,
+    /// El pin se ve en negativo (N).
+    pub invertido: bool,
 }
 
 /// Si a este contenido se le puede anotar encima: lo mismo que decide el
@@ -334,6 +340,7 @@ pub fn entradas_del_menu(
         remoto,
         pizarra,
         opacidad,
+        invertido,
     } = estado;
     let mut v = Vec::new();
     let es_vivo = matches!(contenido, Contenido::Vivo { .. });
@@ -442,6 +449,14 @@ pub fn entradas_del_menu(
         ));
     }
     v.push(submenu_opacidad(t, opacidad));
+    // El negativo, en todos los pines: con la marca puesta mientras dura.
+    // En una herramienta la N es de lo que se escribe; alli va con Alt.
+    v.push(EntradaMenu::Accion {
+        id: CMD_INVERTIR,
+        etiqueta: t.v2.invertir_colores.clone(),
+        atajo: Some(if contenido.interactivo() { "Alt+N" } else { "N" }.to_string()),
+        marcada: invertido,
+    });
 
     // 4. «Mas»: lo que se usa poco.
     let mut mas = Vec::new();
@@ -822,6 +837,47 @@ pub(crate) mod pruebas {
         assert_eq!(atajo_de(&v, CMD_TAMANO_ORIGINAL).as_deref(), Some("Ctrl+0"));
         // Caso negativo: lo de «Mas» no tiene tecla y no se inventa una.
         assert_eq!(atajo_de(&v, CMD_GUARDAR_COMO), None);
+    }
+
+    /// La entrada de invertir, si esta.
+    fn invertir_de(v: &[EntradaMenu]) -> Option<&EntradaMenu> {
+        todas(v)
+            .into_iter()
+            .find(|e| matches!(e, EntradaMenu::Accion { id, .. } if *id == CMD_INVERTIR))
+    }
+
+    #[test]
+    fn invertir_colores_esta_en_todos_los_pines_con_su_tecla_y_su_marca() {
+        let herramienta = Contenido::Herramienta {
+            ancho: 300,
+            alto: 200,
+        };
+        for (c, tecla) in [
+            (imagen(), "N"),
+            (video(), "N"),
+            (archivo(), "N"),
+            (Contenido::Nota { texto: "x".into() }, "N"),
+            (Contenido::Vivo { ancho: 10, alto: 10 }, "N"),
+            // En la herramienta la N se escribe: alli es con Alt.
+            (herramienta, "Alt+N"),
+        ] {
+            let v = entradas_del_menu(&c, EstadoMenu::default(), &textos());
+            assert_eq!(atajo_de(&v, CMD_INVERTIR).as_deref(), Some(tecla), "{c:?}");
+            assert!(matches!(
+                invertir_de(&v),
+                Some(EntradaMenu::Accion { marcada: false, .. })
+            ));
+        }
+        // Encendido, con la marca puesta.
+        let encendido = EstadoMenu {
+            invertido: true,
+            ..EstadoMenu::default()
+        };
+        let v = entradas_del_menu(&imagen(), encendido, &textos());
+        assert!(matches!(
+            invertir_de(&v),
+            Some(EntradaMenu::Accion { marcada: true, .. })
+        ));
     }
 
     #[test]

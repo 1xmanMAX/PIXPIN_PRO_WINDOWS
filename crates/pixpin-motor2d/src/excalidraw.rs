@@ -293,7 +293,6 @@ fn sellar(mapa: &mut Map<String, Value>, e: &Elemento, original: &Value) {
             Figura::Serie { .. } => "pixpin-serial",
             Figura::Region { .. } => "pixpin-region",
             Figura::Punto { .. } => "pixpin-point",
-            Figura::Cronograma { .. } => "pixpin-gantt",
         };
         mapa.insert("type".into(), Value::String(tipo.into()));
     }
@@ -835,15 +834,8 @@ fn elemento_desde(v: &Value) -> Option<Elemento> {
             angulo: num_o(v, "etiquetaAngulo", -std::f32::consts::FRAC_PI_4),
             radio: num_o(v, "etiquetaRadio", 22.0),
         },
-        // El cronograma (F12). Si sus filas o su escala traen algo que no se
-        // entiende, cae al carril ajeno y viaja intacto en vez de perderlo.
-        "pixpin-gantt" => Figura::Cronograma {
-            tareas: tareas_desde(v.get("tareas"))?,
-            periodos: match v.get("periodos") {
-                None | Some(Value::Null) => crate::cronograma::PERIODOS_DE_FABRICA,
-                Some(n) => n.as_f64().filter(|p| *p >= 1.0 && p.fract() == 0.0)? as u32,
-            },
-        },
+        // El cronograma (`pixpin-gantt`) se quito del lienzo: ya no se lee y
+        // cae con el resto al carril ajeno, que lo devuelve intacto al guardar.
         // El resto son suyos y no sabemos dibujarlos: `pixpin-solid`,
         // `pixpin-nudo`... Se conservan como ajenos.
         _ => return None,
@@ -992,9 +984,9 @@ fn extras_desde(v: &Value) -> Extras {
             .get("verticalAlign")
             .and_then(Value::as_str)
             .and_then(crate::texto::AlineacionVertical::desde_palabra),
-        // La letra de lo que rotula sin ser un texto (su `fontFamily`: el
-        // cronograma, la cota, el numero de serie, el punto, la escala); la
-        // de un texto va en su figura y no aqui. Antes solo la del cronograma:
+        // La letra de lo que rotula sin ser un texto (su `fontFamily`:
+        // la cota, el numero de serie, el punto, la escala); la
+        // de un texto va en su figura y no aqui. Antes no se leia y
         // una cota del movil en Caveat se veia aqui en la letra del sistema.
         familia: (v
             .get("type")
@@ -1003,11 +995,11 @@ fn extras_desde(v: &Value) -> Extras {
         .then(|| v.get("fontFamily").and_then(Value::as_u64))
         .flatten()
         .map(|n| crate::texto::nombre_de_familia(Some(n.min(u8::MAX as u64) as u8)).to_string()),
-        // El tamano de lo que rotula: el cronograma y el numero de la cota
+        // El tamano de lo que rotula: el numero de la cota
         // (`e.fontSize ?: MEASURE_TEXT_SIZE` en `drawMeasure`).
         tam_letra: matches!(
             v.get("type").and_then(Value::as_str),
-            Some("pixpin-gantt" | "pixpin-measure")
+            Some("pixpin-measure")
         )
         .then(|| num(v, "fontSize"))
         .flatten()
@@ -1519,23 +1511,6 @@ fn elemento_hacia(e: &Elemento, original: &Value, objetos: bool) -> Value {
             mapa.insert("type".into(), Value::String("pixpin-mosaic".to_string()));
             mapa.insert("mosaicBlur".into(), Value::Bool(*desenfoque));
         }
-        // El cronograma con sus filas y su escala, como `TareaDelCronograma`
-        // del movil: `nombre`, `desde`, `cuanto` y `color` (nulo = el de la
-        // figura, y entonces no se escribe).
-        Figura::Cronograma { tareas, periodos } => {
-            mapa.insert("type".into(), Value::String("pixpin-gantt".to_string()));
-            mapa.insert("tareas".into(), tareas_hacia(tareas));
-            mapa.insert("periodos".into(), Value::from(*periodos));
-            if let Some(f) = &e.extras.familia {
-                mapa.insert(
-                    "fontFamily".into(),
-                    Value::from(crate::texto::numero_de_familia(f)),
-                );
-            }
-            if let Some(t) = e.extras.tam_letra {
-                mapa.insert("fontSize".into(), Value::from(t as f64));
-            }
-        }
         // La lupa con sus nueve campos, como `Element` del movil. Lo que
         // vale `None` se borra en vez de escribirse a cero (ver
         // `lupa_elemento::escribir`).
@@ -1584,56 +1559,6 @@ fn elemento_hacia(e: &Elemento, original: &Value, objetos: bool) -> Value {
 /// cuenta no era esa caja. Dos verdades sobre el mismo texto.
 fn id_estable(texto: &str) -> u64 {
     crate::enlace::id_del_fichero(texto)
-}
-
-// --- El cronograma ---
-
-/// Las filas de un cronograma (`tareas` del movil). Sin el campo, ninguna;
-/// con algo que no es una lista de objetos, `None` y el elemento viaja como
-/// ajeno.
-fn tareas_desde(v: Option<&Value>) -> Option<Vec<crate::cronograma::Tarea>> {
-    let lista = match v {
-        None | Some(Value::Null) => return Some(Vec::new()),
-        Some(Value::Array(a)) => a,
-        Some(_) => return None,
-    };
-    lista
-        .iter()
-        .map(|t| {
-            let t = t.as_object()?;
-            let num = |k: &str, d: f32| t.get(k).and_then(Value::as_f64).map_or(d, |n| n as f32);
-            Some(crate::cronograma::Tarea {
-                nombre: t
-                    .get("nombre")
-                    .and_then(Value::as_str)
-                    .unwrap_or("")
-                    .to_string(),
-                desde: num("desde", 0.0),
-                cuanto: num("cuanto", 1.0),
-                color: color_desde(t.get("color")),
-            })
-        })
-        .collect()
-}
-
-/// Y de vuelta, con los nombres del movil. El color solo si la fila tiene
-/// el suyo (`explicitNulls = false` alli).
-fn tareas_hacia(tareas: &[crate::cronograma::Tarea]) -> Value {
-    Value::Array(
-        tareas
-            .iter()
-            .map(|t| {
-                let mut m = serde_json::Map::new();
-                m.insert("nombre".into(), Value::String(t.nombre.clone()));
-                m.insert("desde".into(), Value::from(t.desde as f64));
-                m.insert("cuanto".into(), Value::from(t.cuanto as f64));
-                if let Some(c) = t.color {
-                    m.insert("color".into(), Value::String(color_hacia(c)));
-                }
-                Value::Object(m)
-            })
-            .collect(),
-    )
 }
 
 // --- Colores ---
@@ -1739,8 +1664,8 @@ mod pruebas {
     /// implementar nunca: `pixpin-measure` sirvio para esto hasta que la
     /// tarea 3 le enseno a `elemento_desde` a entenderlo, y estas mismas
     /// pruebas se pusieron rojas por casualidad, no por ningun fallo. El
-    /// cronograma no esta en ninguna fase del plan, asi que es el candidato
-    /// con menos riesgo de que vuelva a pasar.
+    /// cronograma se quito del lienzo (no estaba bien hecho), asi que es el
+    /// candidato con menos riesgo de que vuelva a pasar.
     fn lienzo_mixto() -> &'static str {
         r##"{
           "type": "excalidraw",
@@ -2946,44 +2871,45 @@ mod pruebas {
     }
 
     #[test]
-    fn un_cronograma_del_movil_se_lee_con_sus_filas_y_vuelve_igual() {
-        // F12: el `pixpin-gantt` del movil ya no es ajeno: se pinta y se
-        // edita aqui, y vuelve con los nombres de `TareaDelCronograma`.
+    fn un_dibujo_con_un_cronograma_del_movil_se_abre_y_lo_demas_sobrevive() {
+        // El cronograma se quito del lienzo, pero los dibujos de antes (y los
+        // del movil, que lo sigue teniendo) pueden traerlo. Abrirlos no puede
+        // fallar ni perder nada: el cronograma cae al carril ajeno —no se
+        // pinta aqui— y vuelve intacto al guardar, con sus filas, en su sitio
+        // y sin tocar lo de alrededor.
         let json = r##"{"type":"excalidraw","elements":[
+            {"id":"a1","type":"rectangle","x":0,"y":0,"width":50,"height":30,
+             "strokeColor":"#1e1e1e","seed":7},
             {"id":"c1","type":"pixpin-gantt","x":10,"y":20,"width":400,"height":200,
-             "strokeColor":"#1e1e1e","groupIds":["g2"],"periodos":8,
+             "strokeColor":"#1e1e1e","groupIds":["g2"],"periodos":8,"fontFamily":2,
+             "fontSize":20,
              "tareas":[{"nombre":"Obra","desde":0,"cuanto":2.5},
-                       {"nombre":"Acabados","desde":2.5,"cuanto":1,"color":"#e03131"}]}
+                       {"nombre":"Acabados","desde":2.5,"cuanto":1,"color":"#e03131"}]},
+            {"id":"t1","type":"text","x":5,"y":300,"width":80,"height":25,
+             "text":"Hola","fontSize":20,"seed":3}
         ]}"##;
         let l = leer(json).unwrap();
-        assert_eq!(l.cuantos_ajenos(), 0);
-        let e = &l.elementos()[0];
-        let Figura::Cronograma { tareas, periodos } = &e.figura else {
-            panic!("no se leyo como cronograma: {:?}", e.figura);
-        };
-        assert_eq!(*periodos, 8);
-        assert_eq!(tareas[0].nombre, "Obra");
-        assert_eq!((tareas[0].desde, tareas[0].cuanto), (0.0, 2.5));
-        assert!(tareas[0].color.is_none());
-        assert!(tareas[1].color.is_some());
-        let vuelta = escribir(&l);
-        assert!(
-            vuelta.contains("pixpin-gantt") && vuelta.contains("\"Acabados\""),
-            "{vuelta}"
-        );
-        assert!(vuelta.contains("\"periodos\""), "{vuelta}");
-        assert!(vuelta.contains("#e03131"), "{vuelta}");
-        let otra = leer(&vuelta).unwrap();
-        assert_eq!(otra.elementos()[0].figura, e.figura, "va y vuelve igual");
-    }
+        assert_eq!(l.cuantos_ajenos(), 1, "el cronograma viaja como ajeno");
+        assert!(matches!(l.entradas[1], Entrada::Ajeno(_)), "en su sitio");
+        let escena = a_escena(&l);
+        let figuras: Vec<_> = escena.visibles().map(|e| e.figura.clone()).collect();
+        assert_eq!(figuras.len(), 2, "el rectangulo y el texto: {figuras:?}");
+        assert_eq!(figuras[0], Figura::Rectangulo);
+        assert!(matches!(figuras[1], Figura::Texto { .. }));
 
-    #[test]
-    fn un_cronograma_con_campos_que_no_se_entienden_viaja_como_ajeno() {
-        // Caso negativo: mejor intacto que mal leido.
-        let json = r#"{"type":"excalidraw","elements":[
-            {"type":"pixpin-gantt","x":0,"y":0,"tareas":"tres","periodos":4}
-        ]}"#;
-        assert_eq!(leer(json).unwrap().cuantos_ajenos(), 1);
+        // Guardar despues de pasar por la escena: el cronograma vuelve
+        // exactamente como vino y en el mismo orden.
+        let vuelta: Value =
+            serde_json::from_str(&escribir(&con_escena(&l, &escena))).unwrap();
+        let original: Value = serde_json::from_str(json).unwrap();
+        let tipos: Vec<_> = vuelta["elements"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|e| e["type"].as_str().unwrap_or("").to_string())
+            .collect();
+        assert_eq!(tipos, ["rectangle", "pixpin-gantt", "text"]);
+        assert_eq!(vuelta["elements"][1], original["elements"][1], "intacto");
     }
 
     #[test]

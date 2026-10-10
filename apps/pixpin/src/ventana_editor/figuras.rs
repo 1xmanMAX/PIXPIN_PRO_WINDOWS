@@ -180,11 +180,31 @@ pub(super) fn ruta_biblioteca() -> PathBuf {
 
 /// Las figuras guardadas, o ninguna. Un fichero ilegible es como si no
 /// hubiera: perderlas es malo, no poder abrir el lienzo por ellas es peor.
+///
+/// Se lee figura a figura y pieza a pieza: una pieza de un tipo que ya no
+/// existe (el cronograma, que se quito) se salta en vez de tirar la lista
+/// entera, que al guardar la siguiente borraria todas las figuras.
 pub(super) fn cargar_biblioteca(ruta: &std::path::Path) -> Vec<FiguraGuardada> {
-    std::fs::read(ruta)
+    let Some(lista) = std::fs::read(ruta)
         .ok()
-        .and_then(|b| serde_json::from_slice(&b).ok())
-        .unwrap_or_default()
+        .and_then(|b| serde_json::from_slice::<Vec<serde_json::Value>>(&b).ok())
+    else {
+        return Vec::new();
+    };
+    lista
+        .into_iter()
+        .filter_map(|mut v| {
+            if let Ok(f) = serde_json::from_value::<FiguraGuardada>(v.clone()) {
+                return Some(f);
+            }
+            let piezas = v.get_mut("elementos")?.as_array_mut()?;
+            piezas.retain(|p| serde_json::from_value::<Elemento>(p.clone()).is_ok());
+            if piezas.is_empty() {
+                return None;
+            }
+            serde_json::from_value::<FiguraGuardada>(v).ok()
+        })
+        .collect()
 }
 
 /// Escribe la lista entera, a un temporal y renombrando: un corte a medias
@@ -363,7 +383,7 @@ pub(super) fn menu(
 }
 
 // ---------------------------------------------------------------------------
-// El cajetin: la grafica, la tabla, el cronograma y el nombre de una figura
+// El cajetin: la grafica, la tabla y el nombre de una figura
 // ---------------------------------------------------------------------------
 
 /// Un campo del cajetin.
@@ -1896,123 +1916,6 @@ pub(super) fn editar_tabla(mut ed: Editor<'_>, t: &Catalogo) -> bool {
     true
 }
 
-/// El cajetin de un cronograma: cuantas filas, cuantas columnas y el nombre
-/// de cada fila (`AjustesDelCronograma` del movil: «un campo por fila y no un
-/// dialogo por nombre: con tres o cuatro tareas, abrir y cerrar una ventana
-/// por cada una cuesta mas que teclearlos seguidos»). Filas y columnas de dos
-/// en dos, como los limites de la grafica.
-pub(super) fn formulario_de_cronograma(
-    t: &Catalogo,
-    tareas: &[pixpin_motor2d::cronograma::Tarea],
-    periodos: u32,
-) -> Formulario {
-    let mut campos = vec![
-        Campo::nuevo(t.t("cronograma-filas"), tareas.len().to_string()).a_medias(),
-        Campo::nuevo(t.t("cronograma-columnas"), periodos.to_string()).a_medias(),
-    ];
-    for (i, tarea) in tareas.iter().enumerate() {
-        campos.push(Campo::nuevo(
-            format!("{} {}", t.t("cronograma-fila"), i + 1),
-            tarea.nombre.clone(),
-        ));
-    }
-    let mut f = Formulario::nuevo(
-        t.t("cronograma-titulo"),
-        campos,
-        t.t("cronograma-ayuda"),
-        t.t("tabla-aplicar"),
-        t.t("cajetin-cancelar"),
-    );
-    f.activo = 2.min(tareas.len() + 1);
-    f
-}
-
-/// Lo que dice el cajetin de un cronograma: filas, columnas y nombres. `Err`
-/// con el aviso si las cuentas no son numeros de verdad.
-pub(super) fn cronograma_de(
-    f: &Formulario,
-    t: &Catalogo,
-) -> Result<(usize, u32, Vec<String>), String> {
-    let entero = |i: usize| {
-        f.campos
-            .get(i)
-            .and_then(|c| c.texto.trim().parse::<i64>().ok())
-    };
-    let (Some(filas), Some(columnas)) = (entero(0), entero(1)) else {
-        return Err(t.t("cronograma-cuentas-mal"));
-    };
-    if !(0..=60).contains(&filas)
-        || !(1..=pixpin_motor2d::cronograma::MAXIMO_DE_PERIODOS as i64).contains(&columnas)
-    {
-        return Err(t.t("cronograma-cuentas-mal"));
-    }
-    let nombres = f.campos[2..]
-        .iter()
-        .map(|c| c.texto.trim().to_string())
-        .collect();
-    Ok((filas as usize, columnas as u32, nombres))
-}
-
-/// Aplica lo del cajetin al cronograma `id`, en un paso de deshacer: los
-/// nombres, luego las filas que sobran o faltan (las nuevas, detras de la
-/// ultima, como el «+» del movil) y las columnas. `true` si cambio algo.
-pub(super) fn aplicar_cronograma(
-    escena: &mut Escena,
-    id: u64,
-    filas: usize,
-    columnas: u32,
-    nombres: &[String],
-) -> bool {
-    let Some(antes) = escena.buscar(id).cloned() else {
-        return false;
-    };
-    escena.abrir_paso();
-    escena.apuntar_edicion(id);
-    if let Some(e) = escena.buscar_mut(id) {
-        if let pixpin_motor2d::Figura::Cronograma { tareas, .. } = &mut e.figura {
-            for (t, n) in tareas.iter_mut().zip(nombres) {
-                t.nombre = n.clone();
-            }
-        }
-        while let pixpin_motor2d::Figura::Cronograma { tareas, .. } = &e.figura {
-            let n = tareas.len();
-            if n < filas {
-                pixpin_motor2d::cronograma::con_tarea_nueva(e, "");
-            } else if n > filas {
-                pixpin_motor2d::cronograma::sin_la_ultima_tarea(e);
-            } else {
-                break;
-            }
-        }
-        pixpin_motor2d::cronograma::con_periodos(e, columnas as i64);
-        // Un nombre que no cabe ensancha la figura hacia la derecha en vez
-        // de salir recortado («Cimien…»): se acaba de teclear para leerlo.
-        if let Some(ancho) = pixpin_motor2d::cronograma::ancho_para_los_nombres(e) {
-            e.ancho = ancho;
-        }
-        e.tocar();
-    }
-    escena.cerrar_paso();
-    escena.buscar(id).is_some_and(|e| e.figura != antes.figura)
-}
-
-/// **Enter con un cronograma elegido**: su cajetin (F12).
-pub(super) fn editar_cronograma(mut ed: Editor<'_>, id: u64, t: &Catalogo) -> bool {
-    let Some(pixpin_motor2d::Figura::Cronograma { tareas, periodos }) =
-        ed.escena.buscar(id).map(|e| e.figura.clone())
-    else {
-        return false;
-    };
-    let mut f = formulario_de_cronograma(t, &tareas, periodos);
-    if !pedir(ed.lienzo(), &mut f, |f| cronograma_de(f, t).map(|_| ())) {
-        return false;
-    }
-    let Ok((filas, columnas, nombres)) = cronograma_de(&f, t) else {
-        return false;
-    };
-    aplicar_cronograma(ed.escena, id, filas, columnas, &nombres)
-}
-
 /// **Meter una imagen desde un fichero** (el boton de imagen): el selector
 /// de Windows, y la foto en el medio de la vista con el tamano con que se
 /// pega (`imagenes_lienzo::tamano_al_pegar`), elegida.
@@ -2439,98 +2342,28 @@ mod pruebas {
     }
 
     #[test]
-    fn el_cajetin_del_cronograma_pone_nombres_filas_y_columnas_en_un_paso() {
-        use pixpin_motor2d::cronograma;
-        let t = catalogo();
-        let mut escena = Escena::nueva();
-        let id = escena.anadir(Elemento {
-            figura: pixpin_motor2d::Figura::Cronograma {
-                tareas: cronograma::tareas_de_fabrica(),
-                periodos: 6,
-            },
-            ancho: 600.0,
-            alto: 300.0,
-            ..Default::default()
-        });
-        let (tareas, periodos) = match &escena.buscar(id).unwrap().figura {
-            pixpin_motor2d::Figura::Cronograma { tareas, periodos } => (tareas.clone(), *periodos),
-            _ => unreachable!(),
+    fn una_figura_guardada_con_un_cronograma_no_tira_la_biblioteca() {
+        // El cronograma se quito: una pieza suya guardada antes ya no se
+        // entiende. Se salta esa pieza y el resto de la biblioteca sigue.
+        let dir = std::env::temp_dir().join(format!("pixpin-figuras-cr-{}", std::process::id()));
+        let ruta = dir.join("figuras.json");
+        let buena = FiguraGuardada {
+            nombre: "Sello".into(),
+            elementos: vec![Elemento::default()],
         };
-        let mut f = formulario_de_cronograma(&t, &tareas, periodos);
-        assert_eq!(
-            f.campos.len(),
-            2 + 3,
-            "filas, columnas y un nombre por fila"
-        );
-        assert_eq!(f.activo, 2, "empieza en el nombre de la primera");
-        for c in "Obra".chars() {
-            f.tecla(c, false);
-        }
-        f.campos[0].texto = "4".into();
-        f.campos[1].texto = "9".into();
-        let (filas, columnas, nombres) = cronograma_de(&f, &t).unwrap();
-        assert!(aplicar_cronograma(
-            &mut escena,
-            id,
-            filas,
-            columnas,
-            &nombres
-        ));
-        match &escena.buscar(id).unwrap().figura {
-            pixpin_motor2d::Figura::Cronograma { tareas, periodos } => {
-                assert_eq!(tareas.len(), 4);
-                assert_eq!(tareas[0].nombre, "Obra");
-                assert_eq!(*periodos, 9);
-            }
-            _ => unreachable!(),
-        }
-        escena.deshacer();
-        assert!(matches!(
-            &escena.buscar(id).unwrap().figura,
-            pixpin_motor2d::Figura::Cronograma { tareas, periodos: 6 } if tareas.len() == 3
-        ));
-        // Caso negativo: una cuenta que no es un numero no se aplica.
-        f.campos[1].texto = "muchas".into();
-        assert!(cronograma_de(&f, &t).is_err());
-        f.campos[1].texto = "0".into();
-        assert!(cronograma_de(&f, &t).is_err());
-    }
-
-    #[test]
-    fn un_nombre_largo_en_el_cajetin_ensancha_el_cronograma_en_vez_de_recortarse() {
-        let mut escena = Escena::nueva();
-        let mut e = Elemento {
-            figura: pixpin_motor2d::Figura::Cronograma {
-                tareas: pixpin_motor2d::cronograma::tareas_de_fabrica(),
-                periodos: 6,
-            },
-            ancho: 300.0,
-            alto: 200.0,
-            ..Default::default()
-        };
-        e.extras.tam_letra = Some(20.0);
-        let id = escena.anadir(e);
-        let nombres = vec![
-            "Estructura y muros de carga".to_string(),
-            "B".into(),
-            "C".into(),
-        ];
-        assert!(aplicar_cronograma(&mut escena, id, 3, 6, &nombres));
-        let e = escena.buscar(id).unwrap();
-        assert!(e.ancho > 300.0, "no se ensancho: {}", e.ancho);
-        assert_eq!(e.x, 0.0, "se ensancha hacia la derecha");
-        // Caso negativo: con nombres cortos el ancho no se toca.
-        assert!(aplicar_cronograma(
-            &mut escena,
-            id,
-            3,
-            6,
-            &["A".into(), "B".into(), "C".into()]
-        ));
-        assert!(
-            escena.buscar(id).unwrap().ancho > 300.0,
-            "no encoge lo que el usuario ya tenia"
-        );
+        let mut v = serde_json::to_value(vec![buena.clone(), buena.clone(), buena.clone()]).unwrap();
+        let cronograma = serde_json::json!({"tipo": "cronograma", "periodos": 6,
+            "tareas": [{"nombre": "Obra", "desde": 0.0, "cuanto": 2.0, "color": null}]});
+        // La segunda: el sello y un cronograma. La tercera: solo el cronograma.
+        let mut pieza = v[1]["elementos"][0].clone();
+        pieza["figura"] = cronograma.clone();
+        v[1]["elementos"].as_array_mut().unwrap().push(pieza);
+        v[2]["elementos"][0]["figura"] = cronograma;
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(&ruta, serde_json::to_vec(&v).unwrap()).unwrap();
+        let leidas = cargar_biblioteca(&ruta);
+        assert_eq!(leidas, vec![buena.clone(), buena], "sin el cronograma, lo demas");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
@@ -2648,27 +2481,6 @@ mod pruebas {
             Punto2::nuevo(1250.0, 150.0),
             &medir,
         );
-        // Un cronograma con nombres y una barra de otro color.
-        let mut tareas = pixpin_motor2d::cronograma::tareas_de_fabrica();
-        tareas[0].nombre = "Cimientos".into();
-        tareas[1].nombre = "Estructura y muros de carga".into();
-        tareas[1].cuanto = 2.5;
-        tareas[2].desde = 3.5;
-        tareas[2].color = Some(grafica::color_de(0x2f9e44));
-        escena.anadir(Elemento {
-            figura: pixpin_motor2d::Figura::Cronograma {
-                tareas,
-                periodos: 6,
-            },
-            x: 680.0,
-            y: 330.0,
-            ancho: 520.0,
-            alto: 220.0,
-            trazo: ColorRgba::opaco(0.12, 0.12, 0.12),
-            relleno: Some(grafica::color_de(0x1971c2)),
-            grosor: 1.0,
-            ..Default::default()
-        });
         let fotos = |_: u64| None;
         let lienzo = super::super::exportar::Lienzo {
             escena: &escena,

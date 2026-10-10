@@ -7,9 +7,11 @@
 //! deja el resultado bajo un Mutex breve y despierta al bucle modal con
 //! PostMessage(MSG_DESPIERTA).
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{Receiver, SyncSender, TrySendError, sync_channel};
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
+use std::time::{Duration, Instant};
 
 use pixpin_geom::{Candidato, Punto, Rect};
 use windows::Win32::Foundation::{HWND, POINT, RECT};
@@ -35,6 +37,9 @@ pub struct Uia {
     envia: SyncSender<Peticion>,
     resultado: Arc<Mutex<Vec<Candidato>>>,
     hilo: Option<JoinHandle<()>>,
+    /// Se pone al detener: el hilo no empieza otra consulta aunque quede
+    /// una posicion en el canal.
+    parar: Arc<AtomicBool>,
 }
 
 impl Uia {
@@ -43,17 +48,20 @@ impl Uia {
         let (envia, recibe) = sync_channel::<Peticion>(1);
         let resultado = Arc::new(Mutex::new(Vec::new()));
         let resultado_hilo = Arc::clone(&resultado);
+        let parar = Arc::new(AtomicBool::new(false));
+        let parar_hilo = Arc::clone(&parar);
         // HWND no es Send en el crate windows: se pasa el valor crudo. Es
         // seguro porque PostMessageW tolera ventanas ya destruidas.
         let notificar_crudo = notificar.0 as isize;
         let hilo = std::thread::Builder::new()
             .name("pixpin-uia".into())
-            .spawn(move || trabajar(recibe, resultado_hilo, notificar_crudo))
+            .spawn(move || trabajar(recibe, resultado_hilo, notificar_crudo, parar_hilo))
             .expect("el hilo UIA deberia poder crearse");
         Uia {
             envia,
             resultado,
             hilo: Some(hilo),
+            parar,
         }
     }
 
@@ -72,10 +80,34 @@ impl Uia {
         self.resultado.lock().map(|v| v.clone()).unwrap_or_default()
     }
 
+    /// Para el hilo SIN quedarse colgado nunca.
+    ///
+    /// **El cuelgue del 10-oct-2026.** Antes era `send(Parar)` y `join()`
+    /// a secas, desde el hilo de interfaz. Pero el hilo UIA puede estar a
+    /// mitad de un `ElementFromPoint` sobre una ventana de ESTE proceso que
+    /// es de ese mismo hilo de interfaz (un pin recien creado: el segundo
+    /// recorte empezo encima del primero). UIA le manda entonces mensajes
+    /// sincronos (`WM_GETOBJECT`) que solo se atienden si el hilo de
+    /// interfaz bombea, y estaba parado en el `send` (canal lleno) o en el
+    /// `join`: abrazo mortal, la aplicacion «dejo de responder» y Windows la
+    /// cerro.
+    ///
+    /// Ahora: se avisa sin bloquear, se espera un rato ATENDIENDO los
+    /// mensajes sincronos que lleguen a este hilo y, si aun asi no acaba, se
+    /// le deja terminar solo (el canal queda cerrado al soltar `self`, asi
+    /// que sale en cuanto vuelva de lo que este haciendo).
     pub fn detener(mut self) {
-        let _ = self.envia.send(Peticion::Parar);
+        self.parar.store(true, Ordering::SeqCst);
+        let _ = self.envia.try_send(Peticion::Parar);
         if let Some(h) = self.hilo.take() {
-            let _ = h.join();
+            if esperar_bombeando(&h, TOPE_DETENER) {
+                let _ = h.join();
+            } else {
+                tracing::warn!(
+                    tope_ms = TOPE_DETENER.as_millis() as u64,
+                    "el hilo UIA no acabo a tiempo; se le deja terminar solo"
+                );
+            }
         }
     }
 }
@@ -84,11 +116,63 @@ impl Drop for Uia {
     fn drop(&mut self) {
         // Si detener() no se llamo, al menos pedir la parada sin join: no
         // bloquear un drop es mas importante que la limpieza perfecta.
+        self.parar.store(true, Ordering::SeqCst);
         let _ = self.envia.try_send(Peticion::Parar);
     }
 }
 
-fn trabajar(recibe: Receiver<Peticion>, resultado: Arc<Mutex<Vec<Candidato>>>, notificar: isize) {
+/// Cuanto espera `detener` al hilo UIA antes de dejarlo ir.
+const TOPE_DETENER: Duration = Duration::from_millis(300);
+
+/// Espera a que `hilo` acabe, como mucho `tope`, atendiendo mientras tanto
+/// los mensajes SINCRONOS que otros hilos manden a las ventanas de este (sin
+/// sacar de la cola ninguno de los encolados). `true` si acabo.
+///
+/// Es lo que hace falta para esperar desde el hilo de interfaz a un hilo que
+/// puede estar hablando con sus ventanas: un `join` a secas no bombea, y si
+/// el otro hilo espera respuesta de una de esas ventanas, ninguno de los dos
+/// vuelve jamas.
+pub(crate) fn esperar_bombeando(hilo: &JoinHandle<()>, tope: Duration) -> bool {
+    use windows::Win32::UI::WindowsAndMessaging::{
+        MSG, MSG_WAIT_FOR_MULTIPLE_OBJECTS_EX_FLAGS, MsgWaitForMultipleObjectsEx, PM_NOREMOVE,
+        PeekMessageW, QS_SENDMESSAGE,
+    };
+    let fin = Instant::now() + tope;
+    loop {
+        // Al mirar la cola, Windows entrega los mensajes sincronos
+        // pendientes; con PM_NOREMOVE no se retira ninguno de los nuestros.
+        let mut msg = MSG::default();
+        // SAFETY: `msg` es local y valido; no se retira nada de la cola.
+        unsafe {
+            let _ = PeekMessageW(&mut msg, None, 0, 0, PM_NOREMOVE);
+        }
+        if hilo.is_finished() {
+            return true;
+        }
+        let queda = fin.saturating_duration_since(Instant::now());
+        if queda.is_zero() {
+            return false;
+        }
+        // Duerme hasta que llegue un mensaje sincrono o pasen unos
+        // milisegundos (para volver a mirar si el hilo acabo).
+        // SAFETY: sin handles; solo espera a la cola de este hilo.
+        unsafe {
+            MsgWaitForMultipleObjectsEx(
+                None,
+                queda.min(Duration::from_millis(5)).as_millis() as u32,
+                QS_SENDMESSAGE,
+                MSG_WAIT_FOR_MULTIPLE_OBJECTS_EX_FLAGS(0),
+            );
+        }
+    }
+}
+
+fn trabajar(
+    recibe: Receiver<Peticion>,
+    resultado: Arc<Mutex<Vec<Candidato>>>,
+    notificar: isize,
+    parar: Arc<AtomicBool>,
+) {
     // SAFETY: cada hilo inicializa COM una vez y lo libera al salir.
     unsafe {
         let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
@@ -100,6 +184,9 @@ fn trabajar(recibe: Receiver<Peticion>, resultado: Arc<Mutex<Vec<Candidato>>>, n
     let mut cache_raiz: Option<(isize, Vec<Candidato>)> = None;
 
     while let Ok(Peticion::Cursor(p)) = recibe.recv() {
+        if parar.load(Ordering::SeqCst) {
+            break;
+        }
         let mut candidatos = Vec::new();
         if let Some((raiz, respaldo)) = candidato_respaldo(p) {
             candidatos.push(respaldo);
@@ -279,6 +366,51 @@ mod pruebas {
             candidatos.iter().all(|c| !c.rect.esta_vacio()),
             "ningun candidato puede tener area cero: {candidatos:?}"
         );
+    }
+
+    /// El cuelgue del 10-oct, en pequeno y sin UIA: un hilo que le MANDA un
+    /// mensaje sincrono a una ventana de este hilo y espera la respuesta. Un
+    /// `join` a secas se quedaria aqui para siempre (este hilo no bombea);
+    /// `esperar_bombeando` atiende el mensaje y el otro hilo acaba.
+    #[test]
+    fn esperar_atiende_lo_que_el_otro_hilo_manda_a_nuestras_ventanas() {
+        use windows::Win32::Foundation::{LPARAM, WPARAM};
+        use windows::Win32::UI::WindowsAndMessaging::{SendMessageW, WM_NULL};
+        let ventana = crate::ventana::VentanaMensajes::nueva().expect("ventana de prueba");
+        let crudo = ventana.handle().0 as isize;
+        let hilo = std::thread::spawn(move || {
+            // SAFETY: la ventana vive hasta que la prueba acaba, y la prueba
+            // no acaba sin que este hilo vuelva (o falla el aserto).
+            unsafe {
+                let _ = SendMessageW(
+                    HWND(crudo as *mut _),
+                    WM_NULL,
+                    Some(WPARAM(0)),
+                    Some(LPARAM(0)),
+                );
+            }
+        });
+        let t = Instant::now();
+        assert!(
+            esperar_bombeando(&hilo, Duration::from_secs(5)),
+            "el hilo no acabo: el mensaje sincrono no se atendio"
+        );
+        assert!(t.elapsed() < Duration::from_secs(2), "{:?}", t.elapsed());
+        hilo.join().unwrap();
+    }
+
+    /// Y si el otro hilo no acaba por lo que sea, la espera tiene tope.
+    #[test]
+    fn esperar_no_pasa_del_tope_aunque_el_hilo_no_acabe() {
+        let (tx, rx) = std::sync::mpsc::channel::<()>();
+        let hilo = std::thread::spawn(move || {
+            let _ = rx.recv_timeout(Duration::from_secs(10));
+        });
+        let t = Instant::now();
+        assert!(!esperar_bombeando(&hilo, Duration::from_millis(60)));
+        assert!(t.elapsed() < Duration::from_secs(2), "{:?}", t.elapsed());
+        drop(tx);
+        hilo.join().unwrap();
     }
 
     #[test]

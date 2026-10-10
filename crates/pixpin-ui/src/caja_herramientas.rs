@@ -123,7 +123,7 @@ pub const BOTONES: [BotonCaja; 14] = [
 /// cada anfitrion se queda con lo suyo (`dibujo::permitidas`) y
 /// `barra_superior` lo agrupa con [`BARRA_AGRUPADA`]. Con cuarenta botones
 /// sueltos no cabia en una fila ni a 120 % en 1080 p.
-pub const BOTONES_EDITOR: [BotonCaja; 40] = [
+pub const BOTONES_EDITOR: [BotonCaja; 39] = [
     BotonCaja::Elegir(Herramienta::Mano),
     BotonCaja::Elegir(Herramienta::Lazo),
     // La bolita, junto al lazo: las dos eligen sin marquesina (`Tool.BOLITA`).
@@ -155,7 +155,6 @@ pub const BOTONES_EDITOR: [BotonCaja; 40] = [
     BotonCaja::Elegir(Herramienta::EscalaGrafica),
     BotonCaja::Elegir(Herramienta::Marco),
     BotonCaja::Elegir(Herramienta::Zona),
-    BotonCaja::Elegir(Herramienta::Cronograma),
     // Las cinco que no dibujan nada: miran lo que ya hay y lo cambian.
     BotonCaja::Elegir(Herramienta::Relleno),
     BotonCaja::Elegir(Herramienta::Recortar),
@@ -192,9 +191,8 @@ pub const BOTONES_EDITOR: [BotonCaja; 40] = [
 ///   casi siempre. Aqui se asegura que lo estan.
 /// - Hay herramientas que el movil no tiene (el arco, la flecha de codos,
 ///   copiar estilo, el laser) y cada una va con sus parecidas.
-/// - La tabla y la grafica («Figuras») van con el cronograma: el movil deja
-///   el cronograma solo «porque su vecino natural -la tabla- no existe
-///   todavia»; aqui ya existe.
+/// - La tabla y la grafica («Figuras») van sueltas: su grupo era el del
+///   cronograma, que se quito por no estar bien hecho.
 /// - Compartir e imprimir, que el movil tiene en la barra de arriba, van en
 ///   su propio grupo al lado de deshacer: las dos sacan el dibujo.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -213,8 +211,6 @@ pub enum GrupoBarra {
     /// Lo que tapa o senala: pixelar, la lupa, el foco y el laser.
     Tapar,
     Medir,
-    /// Laminas con datos dentro: el cronograma, la tabla y la grafica.
-    Laminas,
     /// El marco y la imagen, como en el movil.
     Marco,
     /// Sacar el dibujo: compartir e imprimir.
@@ -222,7 +218,7 @@ pub enum GrupoBarra {
 }
 
 impl GrupoBarra {
-    pub const TODOS: [GrupoBarra; 11] = [
+    pub const TODOS: [GrupoBarra; 10] = [
         GrupoBarra::Elegir,
         GrupoBarra::Trazar,
         GrupoBarra::Formas,
@@ -231,7 +227,6 @@ impl GrupoBarra {
         GrupoBarra::Nombrar,
         GrupoBarra::Tapar,
         GrupoBarra::Medir,
-        GrupoBarra::Laminas,
         GrupoBarra::Marco,
         GrupoBarra::Sacar,
     ];
@@ -260,7 +255,6 @@ impl GrupoBarra {
             GrupoBarra::Nombrar => &[E(H::Texto), E(H::Serie), E(H::Punto)],
             GrupoBarra::Tapar => &[E(H::Mosaico), E(H::Lupa), E(H::Foco), E(H::Laser)],
             GrupoBarra::Medir => &[E(H::Cota), E(H::Escalar), E(H::EscalaGrafica)],
-            GrupoBarra::Laminas => &[E(H::Cronograma), BotonCaja::Figuras],
             GrupoBarra::Marco => &[E(H::Marco), BotonCaja::Imagen],
             GrupoBarra::Sacar => &[BotonCaja::Compartir, BotonCaja::Imprimir],
         }
@@ -278,7 +272,6 @@ impl GrupoBarra {
             GrupoBarra::Nombrar => "nombrar",
             GrupoBarra::Tapar => "tapar",
             GrupoBarra::Medir => "medir",
-            GrupoBarra::Laminas => "laminas",
             GrupoBarra::Marco => "marco",
             GrupoBarra::Sacar => "sacar",
         }
@@ -299,7 +292,7 @@ pub fn grupo_de_boton(b: BotonCaja) -> Option<GrupoBarra> {
 
 /// **La barra agrupada**, en el orden de la del movil: elegir, lo que pinta,
 /// las formas, las flechas, lo que arregla, lo que nombra, lo que tapa, lo
-/// que mide, las laminas, el marco y la goma; y al final lo que saca el
+/// que mide, la tabla y la grafica, el marco y la goma; y al final lo que saca el
 /// dibujo, el clic a traves (solo en la pantalla viva) y las acciones.
 /// Dieciocho botones en vez de cuarenta y uno.
 pub const BARRA_AGRUPADA: [BotonCaja; 18] = [
@@ -313,7 +306,9 @@ pub const BARRA_AGRUPADA: [BotonCaja; 18] = [
     BotonCaja::Grupo(GrupoBarra::Nombrar),
     BotonCaja::Grupo(GrupoBarra::Tapar),
     BotonCaja::Grupo(GrupoBarra::Medir),
-    BotonCaja::Grupo(GrupoBarra::Laminas),
+    // La tabla y la grafica, sueltas: eran un grupo con el cronograma, y sin
+    // el serian un grupo de uno.
+    BotonCaja::Figuras,
     BotonCaja::Grupo(GrupoBarra::Marco),
     // La goma al final de las herramientas, como en el movil.
     BotonCaja::Elegir(Herramienta::Borrador),
@@ -432,7 +427,7 @@ pub fn grupo(b: BotonCaja) -> u8 {
             | GrupoBarra::Flechas
             | GrupoBarra::Arreglar
             | GrupoBarra::Nombrar => 1,
-            GrupoBarra::Tapar | GrupoBarra::Medir | GrupoBarra::Laminas | GrupoBarra::Marco => 2,
+            GrupoBarra::Tapar | GrupoBarra::Medir | GrupoBarra::Marco => 2,
             GrupoBarra::Sacar => 3,
         }
     }
@@ -441,6 +436,8 @@ pub fn grupo(b: BotonCaja) -> u8 {
         BotonCaja::Elegir(Herramienta::Mano) => 0,
         BotonCaja::Elegir(Herramienta::Lapiz) => 1,
         BotonCaja::Elegir(Herramienta::Borrador) => 2,
+        // La tabla y la grafica, con lo que tapa, mide y enmarca.
+        BotonCaja::Figuras => 2,
         BotonCaja::Deshacer | BotonCaja::Rehacer | BotonCaja::Color | BotonCaja::Salir => 3,
         otro => grupo_de_boton(otro).map_or(1, seccion),
     }
@@ -976,8 +973,9 @@ mod pruebas {
             .filter(|b| matches!(b, BotonCaja::Elegir(_)))
             .count();
         // 28 desde que entro el grafito, junto al lapiz; 31 con la zona, el
-        // laser y el cronograma (F8, F14, F12); 32 con soldar vertices y 33 con la bolita.
-        assert_eq!(herramientas, 33, "faltan o sobran herramientas en la caja");
+        // laser y el cronograma (F8, F14, F12); 32 con soldar vertices, 33 con
+        // la bolita y 32 otra vez al quitar el cronograma.
+        assert_eq!(herramientas, 32, "faltan o sobran herramientas en la caja");
         assert!(BOTONES_EDITOR.contains(&BotonCaja::Imagen));
         assert!(BOTONES_EDITOR.contains(&BotonCaja::Figuras));
         assert!(BOTONES_EDITOR.contains(&BotonCaja::Elegir(Herramienta::Grafito)));

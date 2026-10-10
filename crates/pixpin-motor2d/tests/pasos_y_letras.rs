@@ -112,7 +112,7 @@ fn elegido(escena: &mut Escena, e: Elemento) -> Seleccion {
 }
 
 #[test]
-fn la_letra_se_cambia_en_la_cota_el_numero_el_punto_y_el_cronograma() {
+fn la_letra_se_cambia_en_la_cota_el_numero_y_el_punto() {
     for figura in [
         Figura::Serie { numero: 1 },
         Figura::Cota {
@@ -122,10 +122,6 @@ fn la_letra_se_cambia_en_la_cota_el_numero_el_punto_y_el_cronograma() {
             letra: "A".into(),
             angulo: 0.0,
             radio: 14.0,
-        },
-        Figura::Cronograma {
-            tareas: Vec::new(),
-            periodos: 6,
         },
     ] {
         let mut escena = Escena::nueva();

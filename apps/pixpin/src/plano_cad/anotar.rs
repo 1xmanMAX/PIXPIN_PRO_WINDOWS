@@ -64,16 +64,32 @@ pub struct MotorDelPlano {
     tinta: Tinta,
     /// El de Direct2D, sobre el dispositivo del visor (se rehace si cambia).
     motor: Option<(usize, MotorRender)>,
-    /// Los elementos ya puestos a la escala del plano (y los que ya habia).
-    a_escala: std::collections::HashSet<u64>,
+    /// Lo ultimo que se vio de cada elemento (su grosor y, si es texto, su
+    /// letra): asi se sabe que nacio o que se le cambio el tamano desde el
+    /// panel, y solo eso se pone a la escala del plano.
+    visto: std::collections::HashMap<u64, (f32, Option<f32>)>,
 }
 
-/// Los grosores con que nace algo en el motor (fino, medio y grueso de las
-/// formas, del lapiz y del resaltador): solo eso se pone a la escala del
-/// plano; lo pegado o duplicado ya la trae.
+/// Los grosores que pone el motor (fino, medio y grueso de las formas, del
+/// lapiz y del resaltador), al nacer algo o al elegirlos en el panel: solo
+/// eso se pone a la escala del plano; lo pegado o duplicado ya la trae.
 fn grosor_de_fabrica(g: f32) -> bool {
     use pixpin_motor2d::estilo::NivelGrosor as N;
     [N::Fino, N::Medio, N::Grueso].iter().any(|n| [n.de_forma(), n.de_tinta(), n.de_resaltador()].iter().any(|v| (v - g).abs() < 1e-4))
+}
+
+/// Lo mismo con la letra: los tamanos del panel y el de fabrica.
+fn letra_de_fabrica(t: f32, la_elegida: f32) -> bool {
+    (t - la_elegida).abs() < 1e-4 || pixpin_ui::panel_lateral::TAMANOS_DE_LETRA.iter().any(|v| (v - t).abs() < 1e-4)
+}
+
+/// El grosor y la letra de un elemento, para ver si cambiaron.
+fn medidas_de(e: &pixpin_motor2d::Elemento) -> (f32, Option<f32>) {
+    let letra = match &e.figura {
+        pixpin_motor2d::Figura::Texto { tam, .. } => Some(*tam),
+        _ => None,
+    };
+    (e.grosor, letra)
 }
 
 impl MotorDelPlano {
@@ -81,8 +97,8 @@ impl MotorDelPlano {
         let capa = Capa::leer(&ruta);
         let mut tinta = Tinta::nueva();
         tinta.hoja = Some(0);
-        let a_escala = capa.escena.elementos.iter().map(|e| e.id).collect();
-        MotorDelPlano { ruta, capa, tinta, motor: None, a_escala }
+        let visto = capa.escena.elementos.iter().map(|e| (e.id, medidas_de(e))).collect();
+        MotorDelPlano { ruta, capa, tinta, motor: None, visto }
     }
 
     /// **Los tamanos del lienzo, a la escala del plano** (lo pidio el usuario
@@ -92,26 +108,45 @@ impl MotorDelPlano {
     /// la escala de lo que se ve al dibujarlo (uno entre el zoom): un trazo «fino» se
     /// ve fino en la pantalla, como al anotar en AutoCAD, y se puede acercar
     /// para detallar.
+    ///
+    /// Vale tambien al **elegir otro tamano en el panel** (10-oct-2026, el
+    /// usuario: «al seleccionar el tamano de la letra o el lapiz con las
+    /// opciones disponibles se agrandan grandemente como antes y ya no hay
+    /// forma de volver a ese tamano pequeno»): el panel pone el valor de una
+    /// hoja tal cual, tanto a lo nuevo como a lo elegido; ahora, todo grosor
+    /// o letra del panel que aparezca (al nacer o al cambiar) se pasa a la
+    /// escala del plano. Lo que no viene del panel (estirar un texto, pegar,
+    /// deshacer) se deja como esta.
     fn a_la_escala_del_plano(&mut self, zoom: f32) {
-        let k = 1.0 / zoom.max(1e-6);
         let letra = self.tinta.gesto.estilo.tamano_letra;
-        for e in self.capa.escena.elementos.iter_mut() {
-            if !self.a_escala.insert(e.id) {
-                continue;
-            }
-            if grosor_de_fabrica(e.grosor) {
-                e.grosor *= k;
-            }
-            if let pixpin_motor2d::Figura::Texto { tam, .. } = &mut e.figura
-                && (*tam - letra).abs() < 1e-4
-            {
-                *tam *= k;
-                e.ancho *= k;
-                e.alto *= k;
-            }
-        }
+        poner_a_escala(&mut self.capa.escena.elementos, &mut self.visto, 1.0 / zoom.max(1e-6), letra);
     }
+}
 
+/// Ver [`MotorDelPlano::a_la_escala_del_plano`]: `k` es uno entre el zoom y
+/// `letra`, la letra elegida ahora en el motor.
+fn poner_a_escala(elementos: &mut [pixpin_motor2d::Elemento], visto: &mut std::collections::HashMap<u64, (f32, Option<f32>)>, k: f32, letra: f32) {
+    for e in elementos.iter_mut() {
+        let antes = visto.get(&e.id).copied();
+        let (g, t) = medidas_de(e);
+        let grosor_nuevo = antes.is_none_or(|(g0, _)| (g0 - g).abs() > 1e-6);
+        if grosor_nuevo && grosor_de_fabrica(g) {
+            e.grosor *= k;
+        }
+        let letra_nueva = antes.is_none_or(|(_, t0)| t0.is_none_or(|t0| t.is_some_and(|t| (t0 - t).abs() > 1e-6)));
+        if letra_nueva
+            && let pixpin_motor2d::Figura::Texto { tam, .. } = &mut e.figura
+            && letra_de_fabrica(*tam, letra)
+        {
+            *tam *= k;
+            e.ancho *= k;
+            e.alto *= k;
+        }
+        visto.insert(e.id, medidas_de(e));
+    }
+}
+
+impl MotorDelPlano {
     fn guardar(&mut self) {
         if let Some(d) = self.ruta.parent() {
             let _ = std::fs::create_dir_all(d);
@@ -222,5 +257,54 @@ impl ParaImprimir {
         p.poner_vista((0.0, 0.0), escala, cero);
         let blanco = lector_tinta::papel(Color { r: 1.0, g: 1.0, b: 1.0, a: 1.0 });
         self.tinta.borrow_mut().pintar_capa(p, 0, &self.capa, visible, escala, blanco, false);
+    }
+}
+
+#[cfg(test)]
+mod pruebas {
+    use super::*;
+    use pixpin_motor2d::estilo::NivelGrosor;
+
+    fn raya(id: u64, grosor: f32) -> pixpin_motor2d::Elemento {
+        let mut e = pixpin_motor2d::zona::marca((0.0, 0.0, 10.0, 10.0), "x");
+        e.id = id;
+        e.grosor = grosor;
+        e
+    }
+
+    #[test]
+    fn lo_elegido_en_el_panel_se_pone_a_la_escala_del_plano() {
+        let k = 0.01;
+        let mut visto = std::collections::HashMap::new();
+        // Nace con el grosor «grueso» del panel: a la escala del plano.
+        let grueso = NivelGrosor::Grueso.de_tinta();
+        let mut v = vec![raya(1, grueso)];
+        poner_a_escala(&mut v, &mut visto, k, 20.0);
+        assert!((v[0].grosor - grueso * k).abs() < 1e-6);
+        // Una vuelta sin cambios no lo vuelve a achicar.
+        poner_a_escala(&mut v, &mut visto, k, 20.0);
+        assert!((v[0].grosor - grueso * k).abs() < 1e-6);
+        // Se elige «fino» en el panel con la raya elegida: tambien a escala
+        // (antes se quedaba con el valor de una hoja, enorme en el plano).
+        v[0].grosor = NivelGrosor::Fino.de_tinta();
+        poner_a_escala(&mut v, &mut visto, k, 20.0);
+        assert!((v[0].grosor - NivelGrosor::Fino.de_tinta() * k).abs() < 1e-6);
+        // Un texto con la letra de 36 del panel.
+        let mut t = raya(2, NivelGrosor::Fino.de_forma());
+        t.figura = pixpin_motor2d::Figura::Texto { texto: "a".into(), tam: 36.0, familia: "Segoe UI".into() };
+        v.push(t);
+        poner_a_escala(&mut v, &mut visto, k, 20.0);
+        let pixpin_motor2d::Figura::Texto { tam, .. } = &v[1].figura else { panic!() };
+        assert!((tam - 0.36).abs() < 1e-5, "{tam}");
+        // Caso negativo: un cambio que no viene del panel (estirar el
+        // texto, pegar algo ya a escala) se deja como esta.
+        if let pixpin_motor2d::Figura::Texto { tam, .. } = &mut v[1].figura {
+            *tam = 0.5;
+        }
+        v.push(raya(3, 0.0123));
+        poner_a_escala(&mut v, &mut visto, k, 20.0);
+        let pixpin_motor2d::Figura::Texto { tam, .. } = &v[1].figura else { panic!() };
+        assert!((tam - 0.5).abs() < 1e-6);
+        assert!((v[2].grosor - 0.0123).abs() < 1e-7);
     }
 }

@@ -388,7 +388,7 @@ impl CambioForma {
             // Excalidraw: se guarda y cuenta en cuanto se meta en una caja.
             // **La letra, en todo lo que tiene letra** (`fontFamily` del movil,
             // que la guarda tambien en la cota, el numero de serie, el punto y
-            // el cronograma): el pedido del usuario fue «elegir el tipo de letra
+            // la escala): el pedido del usuario fue «elegir el tipo de letra
             // en todo lo que tenga letra».
             CambioForma::Familia(_) => lleva_letra(figura),
             // El tamano: el texto y el numero de serie (su circulo es la letra
@@ -422,7 +422,6 @@ pub fn lleva_letra(figura: &Figura) -> bool {
             | Figura::Serie { .. }
             | Figura::Cota { .. }
             | Figura::Punto { .. }
-            | Figura::Cronograma { .. }
             | Figura::EscalaGrafica
     )
 }
@@ -544,7 +543,7 @@ fn escribir_forma(e: &mut crate::elemento::Elemento, cambio: CambioForma) {
             if let Figura::Texto { familia, .. } = &mut e.figura {
                 *familia = crate::texto::nombre_de_familia(Some(n)).to_string();
             } else {
-                // La cota, el numero, el punto, el cronograma y la escala: su
+                // La cota, el numero, el punto y la escala: su
                 // letra va en los extras y sale en su `fontFamily`. Su rotulo
                 // se mide al pintarlo, asi que no hay caja que remedir.
                 e.extras.familia = Some(crate::texto::nombre_de_familia(Some(n)).to_string());
@@ -805,9 +804,6 @@ pub fn propiedades_de(figura: &Figura) -> &'static [Propiedad] {
         // La hoja no tiene estilo: es un limite, no un dibujo. Solo se
         // estira.
         Figura::Marco { .. } => &[],
-        // El cronograma: la tinta de la rejilla y los nombres, el fondo de
-        // las barras (sin el, las barras van de la tinta) y el grueso.
-        Figura::Cronograma { .. } => &[Trazo, Fondo, Grosor, Opacidad],
     }
 }
 

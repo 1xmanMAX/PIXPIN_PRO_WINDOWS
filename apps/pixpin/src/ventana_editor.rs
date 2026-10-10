@@ -1751,50 +1751,7 @@ fn abrir_en_modo(
                 ventana.invalidar();
                 continue;
             }
-            // F12: Intro con un cronograma elegido abre su cajetin (filas,
-            // columnas y el nombre de cada fila).
-            if let EventoOverlay::Tecla {
-                vk: 0x0D,
-                ctrl: false,
-                shift: false,
-                alt: false,
-            } = ev
-                && pantalla.is_none()
-                && !gesto.esta_escribiendo()
-                && gesto.en_reposo()
-                && let [id] = gesto.seleccion.ids()
-                && escena
-                    .buscar(*id)
-                    .is_some_and(|e| matches!(e.figura, Figura::Cronograma { .. }))
-            {
-                let id = *id;
-                let ed = figuras::Editor {
-                    ventana: &ventana,
-                    motor: &mut motor,
-                    superficie: &superficie,
-                    escena: &mut escena,
-                    camara: &efectiva,
-                    gesto: &mut gesto,
-                    cache: &mut cache,
-                    cache_tinta: &mut cache_tinta,
-                    rejilla: &mut rejilla,
-                    capa: &capa,
-                    fondo: &mut fondo,
-                    imagenes: &mut imagenes,
-                    caja: &caja,
-                    corrimiento_ui,
-                    escala_por_cien,
-                    ancho_px,
-                    alto_px,
-                };
-                figuras::editar_cronograma(ed, id, exportar::textos());
-                todo_sucio = true;
-                contenido_sucio = true;
-                interfaz_sucia = true;
-                ventana.invalidar();
-                continue;
-            }
-            // F12: e Intro con una tabla elegida, el suyo (celdas, filas,
+            // F12: Intro con una tabla elegida abre su cajetin (celdas, filas,
             // columnas y cabecera).
             if let EventoOverlay::Tecla {
                 vk: 0x0D,

@@ -91,6 +91,7 @@ pub(crate) fn textos_v2(t: &pixpin_store::Catalogo) -> pixpin_pin::TextosV2 {
         ],
         quitar_marca: t.t("pin-v2-marca-quitar"),
         modo_texto: t.t("pin-v2-modo-texto"),
+        invertir_colores: t.t("pin-v2-invertir-colores"),
         tipo_archivo: t.t("pin-v2-tipo-archivo"),
         tipo_vivo: t.t("pin-v2-tipo-vivo"),
         tipo_herramienta: t.t("pin-v2-tipo-herramienta"),

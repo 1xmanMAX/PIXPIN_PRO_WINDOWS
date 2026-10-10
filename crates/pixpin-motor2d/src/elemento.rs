@@ -228,22 +228,9 @@ pub enum Figura {
         #[serde(default = "radio_de_etiqueta")]
         radio: f32,
     },
-    /// **El cronograma** (`pixpin-gantt` del movil, F12): un plan dibujado,
-    /// no una hoja de calculo. Una columna de nombres, una escala arriba y una
-    /// barra por fila, todo repartido dentro de la caja: estirar la figura
-    /// estira el plan sin descuadrarlo, porque nada esta en coordenadas sino
-    /// en filas y columnas. Ver `cronograma.rs`.
-    Cronograma {
-        #[serde(default)]
-        tareas: Vec<crate::cronograma::Tarea>,
-        #[serde(default = "periodos_de_fabrica")]
-        periodos: u32,
-    },
-}
-
-/// Las columnas de un cronograma que no dice cuantas: las del movil.
-fn periodos_de_fabrica() -> u32 {
-    crate::cronograma::PERIODOS_DE_FABRICA
+    // El cronograma (`pixpin-gantt` del movil) se quito: no estaba bien
+    // hecho y no servia. Uno que llegue del movil viaja como ajeno (ver
+    // `excalidraw.rs`): no se pinta aqui, pero vuelve intacto al guardar.
 }
 
 /// Lo que el movil pone de fabrica cuando planta un punto etiquetado.
@@ -469,8 +456,8 @@ pub struct Extras {
     /// `None` por lo mismo que `alineacion`.
     #[serde(default)]
     pub alineacion_vertical: Option<crate::texto::AlineacionVertical>,
-    /// **La letra de una figura con rotulos que no es un texto** (el
-    /// cronograma: `fontFamily` del movil, que pinta sus nombres con ella).
+    /// **La letra de una figura con rotulos que no es un texto** (de
+    /// la cota, el punto...: `fontFamily` del movil, que los pinta con ella).
     /// Sin ella sus nombres salian en la letra del sistema, distinta de la
     /// de los textos de alrededor.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -555,7 +542,7 @@ impl Extras {
             // un texto alineado estrenaria las diez claves del movil.
             alineacion: None,
             alineacion_vertical: None,
-            // Ni la letra del cronograma: viaja en su `fontFamily`.
+            // Ni la letra de lo que rotula: viaja en su `fontFamily`.
             familia: None,
             tam_letra: None,
             ..self.clone()

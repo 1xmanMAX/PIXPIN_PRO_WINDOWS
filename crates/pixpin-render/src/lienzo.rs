@@ -573,6 +573,73 @@ impl Pintor<'_> {
         unsafe { self.motor.contexto().SetTransform(&m) };
     }
 
+    /// **Pone en negativo lo ya pintado dentro de `zona`** (redondeada con
+    /// `radio`, 0 = esquinas rectas), con la transformada de ahora: cada
+    /// canal pasa a `1 - canal`, igual que [`Color::invertido`]. Lo que se
+    /// pinte despues encima queda con sus colores.
+    ///
+    /// Se hace en la GPU, al pintar, y no toca ningun bitmap: es el modo de
+    /// mezcla `MASK_INVERT` de Direct2D con una mascara blanca de la forma de
+    /// la zona. La mascara se graba en una lista de ordenes con el contexto
+    /// aparte del motor (`contexto_de_mascaras`), porque al principal no se le
+    /// puede cambiar el destino a mitad de fotograma.
+    ///
+    /// Pensado para un fondo opaco (una foto, una hoja, la tarjeta del pin):
+    /// donde lo de debajo es transparente no hay color que invertir.
+    pub fn invertir_colores(&self, zona: RectF, radio: f32) {
+        use windows::Win32::Graphics::Direct2D::Common::D2D1_COMPOSITE_MODE_MASK_INVERT;
+        use windows::Win32::Graphics::Direct2D::ID2D1Image;
+        if !(zona.ancho > 0.0 && zona.alto > 0.0) {
+            return;
+        }
+        let Some(c2) = self.motor.contexto_de_mascaras() else {
+            return;
+        };
+        // SAFETY: protocolo SetTarget/BeginDraw/EndDraw completo sobre el
+        // contexto de mascaras, que no tiene nada empujado; el destino se
+        // desliga siempre, tambien si algo falla por el camino.
+        let mascara = unsafe {
+            (|| -> windows::core::Result<ID2D1Image> {
+                let pincel = c2.CreateSolidColorBrush(&Color::BLANCO.a_d2d(), None)?;
+                let lista = c2.CreateCommandList()?;
+                c2.SetTarget(&lista);
+                c2.BeginDraw();
+                c2.SetTransform(&windows_numerics::Matrix3x2::identity());
+                if radio > 0.0 {
+                    c2.FillRoundedRectangle(
+                        &D2D1_ROUNDED_RECT {
+                            rect: zona.a_d2d(),
+                            radiusX: radio,
+                            radiusY: radio,
+                        },
+                        &pincel,
+                    );
+                } else {
+                    c2.FillRectangle(&zona.a_d2d(), &pincel);
+                }
+                let fin = c2.EndDraw(None, None);
+                c2.SetTarget(None);
+                fin?;
+                lista.Close()?;
+                lista.cast()
+            })()
+        };
+        let Ok(mascara) = mascara else {
+            return;
+        };
+        // SAFETY: dentro del fotograma del contexto principal; la mascara es
+        // del mismo dispositivo.
+        unsafe {
+            self.motor.contexto().DrawImage(
+                &mascara,
+                None,
+                None,
+                D2D1_INTERPOLATION_MODE_NEAREST_NEIGHBOR,
+                D2D1_COMPOSITE_MODE_MASK_INVERT,
+            );
+        }
+    }
+
     pub fn rellenar(&self, r: RectF, color: Color) {
         if let Some(p) = self.pincel(color) {
             // SAFETY: dentro del fotograma; pincel y contexto vivos.
@@ -2256,5 +2323,87 @@ mod pruebas {
             }
         }
         assert!(rojo, "el cuadrado rojo tiene que salir rojo, no negro");
+    }
+
+    #[test]
+    fn el_negativo_de_un_color_invierte_los_canales_y_deja_el_alfa() {
+        let c = Color {
+            r: 0.25,
+            g: 0.5,
+            b: 1.0,
+            a: 0.4,
+        };
+        assert_eq!(
+            c.invertido(),
+            Color {
+                r: 0.75,
+                g: 0.5,
+                b: 0.0,
+                a: 0.4,
+            }
+        );
+        // Dos veces, el de antes: es un interruptor, no un filtro que se
+        // acumule.
+        assert_eq!(c.invertido().invertido(), c);
+        // Caso negativo: el blanco no se queda blanco ni el alfa se toca.
+        assert_eq!(Color::BLANCO.invertido(), Color::NEGRO);
+        assert_ne!(Color::BLANCO.invertido(), Color::BLANCO);
+    }
+
+    #[test]
+    #[ignore = "necesita GPU real; ejecutar con --ignored"]
+    fn invertir_colores_pone_en_negativo_solo_su_zona_y_lo_de_encima_no() {
+        let (d3d, ctx) = dispositivo();
+        let motor = MotorRender::nuevo(&d3d).unwrap();
+        let destino_tex = textura(&d3d, 128, 128);
+        let destino = motor.destino_desde_textura(&destino_tex).unwrap();
+        // 0.2/0.6/1.0 son 51/153/255 exactos en 8 bits.
+        let fondo = Color {
+            r: 0.2,
+            g: 0.6,
+            b: 1.0,
+            a: 1.0,
+        };
+        motor
+            .dibujar(&destino, |p| {
+                p.limpiar(fondo);
+                // Con una transformada puesta, como el pin con su sombra: la
+                // zona va en las coordenadas del pintado, no de la textura.
+                p.desplazar(16.0, 16.0);
+                p.invertir_colores(
+                    RectF {
+                        x: 0.0,
+                        y: 0.0,
+                        ancho: 64.0,
+                        alto: 64.0,
+                    },
+                    16.0,
+                );
+                // Lo de encima (la tinta) se pinta despues: queda tal cual.
+                p.rellenar(
+                    RectF {
+                        x: 24.0,
+                        y: 24.0,
+                        ancho: 8.0,
+                        alto: 8.0,
+                    },
+                    Color {
+                        r: 1.0,
+                        g: 0.0,
+                        b: 0.0,
+                        a: 1.0,
+                    },
+                );
+            })
+            .expect("el fotograma completo deberia dibujarse");
+        // BGRA. Dentro de la zona, el negativo exacto: 255-51, 255-153, 0.
+        assert_eq!(pixel(&d3d, &ctx, &destino_tex, 30, 60), [0, 102, 204, 255]);
+        // Lo pintado despues, con su color.
+        assert_eq!(pixel(&d3d, &ctx, &destino_tex, 44, 44), [0, 0, 255, 255]);
+        // Casos negativos: fuera de la zona y en la esquina que el redondeo
+        // deja fuera, el color de siempre.
+        assert_eq!(pixel(&d3d, &ctx, &destino_tex, 100, 100), [255, 153, 51, 255]);
+        assert_eq!(pixel(&d3d, &ctx, &destino_tex, 8, 8), [255, 153, 51, 255]);
+        assert_eq!(pixel(&d3d, &ctx, &destino_tex, 17, 17), [255, 153, 51, 255]);
     }
 }

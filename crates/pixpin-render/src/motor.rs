@@ -106,6 +106,19 @@ impl Color {
         a: 1.0,
     };
 
+    /// **El color en negativo**: cada canal pasa a `1 - canal` y el alfa se
+    /// queda. Es lo que hace `Pintor::invertir_colores` con cada pixel de una
+    /// zona; con esto, quien pinta algo que NO se invierte (la tinta de un
+    /// lector sobre su papel) sabe sobre que papel queda de verdad.
+    pub fn invertido(self) -> Color {
+        Color {
+            r: 1.0 - self.r,
+            g: 1.0 - self.g,
+            b: 1.0 - self.b,
+            a: self.a,
+        }
+    }
+
     /// El velo que oscurece lo no seleccionado.
     pub fn oscurecido() -> Color {
         Color {
@@ -218,6 +231,11 @@ pub struct MotorRender {
     /// El bitmap del trazo de grafito en curso (ver `grafito::Vivo`). Vive
     /// en el motor y no suelto porque es de su dispositivo: muere con el.
     pub(crate) grafito_vivo: std::cell::RefCell<Option<crate::grafito::Vivo>>,
+    /// Un segundo contexto del mismo dispositivo, solo para grabar la
+    /// mascara de `Pintor::invertir_colores` en una lista de ordenes. Con el
+    /// principal no se puede: cambiarle el destino a mitad de fotograma, con
+    /// recortes y capas empujados, lo deja en error. Se crea la primera vez.
+    pub(crate) contexto_mascara: std::cell::RefCell<Option<ID2D1DeviceContext>>,
 }
 
 impl MotorRender {
@@ -249,7 +267,23 @@ impl MotorRender {
             estilos_icono: std::cell::RefCell::new([None, None, None, None]),
             creados: std::cell::Cell::new(Contadores::default()),
             grafito_vivo: std::cell::RefCell::new(None),
+            contexto_mascara: std::cell::RefCell::new(None),
         })
+    }
+
+    /// El contexto de las mascaras (ver `contexto_mascara`), creado al
+    /// pedirlo por primera vez. `None` si el dispositivo no da otro.
+    pub(crate) fn contexto_de_mascaras(&self) -> Option<ID2D1DeviceContext> {
+        let mut c = self.contexto_mascara.borrow_mut();
+        if c.is_none() {
+            // SAFETY: el dispositivo D2D es del motor y esta vivo.
+            *c = unsafe {
+                self._dispositivo
+                    .CreateDeviceContext(D2D1_DEVICE_CONTEXT_OPTIONS_NONE)
+            }
+            .ok();
+        }
+        c.clone()
     }
 
     pub fn fabrica(&self) -> &ID2D1Factory1 {

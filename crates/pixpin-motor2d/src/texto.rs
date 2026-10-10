@@ -47,8 +47,8 @@ pub const SIN_PARTIR: f32 = 1.0e6;
 /// por defecto al leer un fichero sin `familia`.
 pub const FAMILIA_POR_DEFECTO: &str = "Excalifont";
 
-/// La letra de los rotulos que no son texto del usuario (los nombres del
-/// cronograma, las piezas de una ecuacion): la de la interfaz de Windows.
+/// La letra de los rotulos que no son texto del usuario (por ejemplo,
+/// las piezas de una ecuacion): la de la interfaz de Windows.
 pub const FAMILIA_DEL_SISTEMA: &str = "Segoe UI";
 
 /// Cuanto se inclina la cursiva, en unidades de sesgo horizontal por unidad de

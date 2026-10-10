@@ -159,7 +159,7 @@ pub fn escalar_desde(
                     e.alto = (e.alto * sy).max(MINIMO);
                 }
             }
-            // La letra de lo que rotula sin ser un texto (el cronograma), con
+            // La letra de lo que rotula sin ser un texto (la cota), con
             // la misma escala: en el movil todo `fontSize` crece igual.
             if let Some(t) = e.extras.tam_letra.as_mut() {
                 *t *= letra;

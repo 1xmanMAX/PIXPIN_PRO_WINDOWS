@@ -1010,13 +1010,6 @@ grafica-formula-mal = No se entiende:
 grafica-solo-x = Solo puede usar la x:
 presentar-ayuda = ← → Av Pág: pasar · B: negro · J: láser · L: lápiz · Esc: salir
 vista-mirando = Solo mirar · Alt+R: editar · F5: presentar
-herramientas-cronograma = Cronograma
-cronograma-titulo = Cronograma
-cronograma-filas = Filas
-cronograma-columnas = Columnas de la escala
-cronograma-fila = Fila
-cronograma-ayuda = Intro: aplicar · Tab: siguiente campo · Esc: cancelar · las barras se arrastran encima del dibujo
-cronograma-cuentas-mal = Filas de 0 a 60 y columnas de 1 a 40
 
 ## --- Voz: dos idiomas, letra, telepronter, pronunciar, conversacion, llamada (B6-B11) ---
 
@@ -1317,7 +1310,6 @@ barra-grupo-arreglar = Arreglar lo trazado
 barra-grupo-nombrar = Texto y nombres
 barra-grupo-tapar = Tapar y señalar
 barra-grupo-medir = Medir
-barra-grupo-laminas = Tablas, gráficas y cronograma
 barra-grupo-marco = Marco e imagen
 barra-grupo-sacar = Compartir e imprimir
 barra-pista-mano = Elegir y mover (M)
@@ -1928,6 +1920,7 @@ pin-v2-marca-tachar = Tachar
 pin-v2-marca-tapar = Tapar
 pin-v2-marca-quitar = Quitar la marca
 pin-v2-modo-texto = Seleccionar texto
+pin-v2-invertir-colores = Invertir colores
 ## v2-captura
 captura2-zona = Zona
 captura2-ventana = Ventana

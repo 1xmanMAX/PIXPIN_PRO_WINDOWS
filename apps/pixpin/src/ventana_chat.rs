@@ -75,6 +75,9 @@ mod papel_de_la_vista;
 mod proyectos;
 /// «Quien llama» en la llamada secreta de una nota de voz (B11, v0.98.6).
 mod quien_llama;
+/// El cursor de la caja de escribir: la rayita, lo seleccionado y que letra
+/// cae bajo el raton (10-oct).
+mod redaccion;
 mod renombrar;
 /// El reproductor flotante del pedido «reproducir»: un audio suena sin
 /// abrir el chat y la ventanita se va al acabar (3-oct).
@@ -1807,6 +1810,31 @@ pub fn abrir(
                         }
                         buscando = false;
                         hay_que_pintar = true;
+                    } else if let Some(i) =
+                        abierto.as_ref().and_then(|a| a.letras.borrow().indice_en(l))
+                    {
+                        // Un clic en lo escrito pone ahi la rayita; con
+                        // Mayusculas, elige desde donde estaba; dos seguidos
+                        // en la misma letra, la palabra entera. Y sin soltar
+                        // se sigue eligiendo al arrastrar.
+                        if let Some(a) = abierto.as_mut() {
+                            let doble = a
+                                .clic_en_caja
+                                .is_some_and(|(cuando, j)| j == i && cuando.elapsed() <= DOBLE_CLIC);
+                            if doble {
+                                let r = redaccion::palabra_en(&a.borrador, i);
+                                a.cursor.elegir(&a.borrador, r);
+                                a.clic_en_caja = None;
+                            } else {
+                                let shift = pixpin_shell::entrada::modificadores_pulsados().shift;
+                                a.cursor.poner(&a.borrador, i, shift);
+                                a.clic_en_caja = Some((std::time::Instant::now(), i));
+                                a.eligiendo_texto = true;
+                                ventana.capturar_raton();
+                            }
+                        }
+                        buscando = false;
+                        hay_que_pintar = true;
                     } else if let Some(fila) = disposicion.fila_en(l, scroll, orden.len(), escala) {
                         let i = orden[fila];
                         buscando = false;
@@ -1940,6 +1968,18 @@ pub fn abrir(
                         hay_que_pintar = true;
                         continue;
                     }
+                    // Arrastrando con el boton pulsado en la caja de
+                    // escribir: lo de en medio queda elegido, aunque el raton
+                    // se salga de la caja.
+                    if let Some(a) = abierto.as_mut().filter(|a| a.eligiendo_texto) {
+                        let i = a.letras.borrow().indice_cerca(l);
+                        if i != a.cursor.pos(&a.borrador) {
+                            a.cursor.poner(&a.borrador, i, true);
+                            hay_que_pintar = true;
+                        }
+                        ventana.poner_cursor(FormaCursorWin::Texto);
+                        continue;
+                    }
                     match &arrastre {
                         Some(Arrastre::Asa(agarre)) => {
                             let nuevo = chat::ancho_ajustado(l.x - agarre, marco.ancho, escala);
@@ -1968,6 +2008,13 @@ pub fn abrir(
                                 .map(cursor_de)
                                 .unwrap_or(if disposicion.asa.contiene(l) {
                                     FormaCursorWin::RedimEO
+                                } else if abierto
+                                    .as_ref()
+                                    .is_some_and(|a| a.letras.borrow().indice_en(l).is_some())
+                                {
+                                    // Sobre lo escrito, la barra de texto:
+                                    // ahi se puede pulsar para escribir.
+                                    FormaCursorWin::Texto
                                 } else {
                                     FormaCursorWin::Flecha
                                 });
@@ -2288,6 +2335,14 @@ pub fn abrir(
                     }
                 }
                 EventoOverlay::BotonSoltado(p) => {
+                    // Elegir lo escrito arrastrando termina al soltar: lo
+                    // elegido se queda elegido.
+                    if let Some(a) = abierto.as_mut().filter(|a| a.eligiendo_texto) {
+                        a.eligiendo_texto = false;
+                        ventana.soltar_raton();
+                        hay_que_pintar = true;
+                        continue;
+                    }
                     // Barrer para marcar termina al levantar el dedo: lo
                     // marcado ya esta puesto, no hay nada que confirmar.
                     if let Some(a) = abierto.as_mut().filter(|a| a.barriendo) {
@@ -3058,7 +3113,8 @@ pub fn abrir(
                     // esos se atienden por tecla, no como letra.
                     if c >= ' ' || c == '\n' {
                         if let Some(a) = abierto.as_mut() {
-                            a.borrador.push(c);
+                            let mut b = [0u8; 4];
+                            a.cursor.escribir(&mut a.borrador, c.encode_utf8(&mut b));
                             a.colocado.borrow_mut().ancho = 0;
                             hay_que_pintar = true;
                         }
@@ -3102,20 +3158,99 @@ pub fn abrir(
                         hay_que_pintar = true;
                     }
                 }
-                EventoOverlay::Tecla { vk, shift, .. } if vk == VK_RETROCESO => {
+                EventoOverlay::Tecla { vk, ctrl, .. } if vk == VK_RETROCESO => {
                     if let Some(a) = abierto.as_mut().filter(|a| !a.borrador.is_empty()) {
-                        a.borrador.pop();
+                        a.cursor.borrar_atras(&mut a.borrador, ctrl);
                         a.colocado.borrow_mut().ancho = 0;
                         hay_que_pintar = true;
                     }
-                    let _ = shift;
+                }
+                // La rayita de la caja de escribir: flechas, Inicio y Fin
+                // (con Mayusculas seleccionan, con Ctrl van por palabras),
+                // Suprimir, y Ctrl+A, Ctrl+C y Ctrl+X sobre lo escrito.
+                EventoOverlay::Tecla { vk, shift, ctrl, .. }
+                    if abierto.as_ref().is_some_and(|a| !a.borrador.is_empty())
+                        && (matches!(
+                            vk,
+                            VK_IZQUIERDA
+                                | VK_DERECHA
+                                | VK_ARRIBA
+                                | VK_ABAJO
+                                | VK_INICIO
+                                | VK_FIN
+                                | VK_SUPR
+                        ) || (ctrl && vk == VK_A)
+                            || (ctrl
+                                && (vk == VK_C || vk == VK_X)
+                                && abierto
+                                    .as_ref()
+                                    .is_some_and(|a| a.cursor.seleccion(&a.borrador).is_some()))) =>
+                {
+                    if let Some(a) = abierto.as_mut() {
+                        let t = &mut a.borrador;
+                        let c = &mut a.cursor;
+                        match vk {
+                            VK_IZQUIERDA => c.izquierda(t, shift, ctrl),
+                            VK_DERECHA => c.derecha(t, shift, ctrl),
+                            VK_INICIO => c.inicio(t, shift, ctrl),
+                            VK_FIN => c.fin(t, shift, ctrl),
+                            VK_SUPR => c.borrar_delante(t, ctrl),
+                            VK_A => c.todo(t),
+                            VK_ARRIBA | VK_ABAJO => {
+                                // Un renglon arriba o abajo a la misma
+                                // altura: se pregunta a las cajas pintadas
+                                // que letra hay ahi, como si se pulsara.
+                                let l = a.letras.borrow();
+                                if l.texto == *t {
+                                    let (x, y, alto) = redaccion::sitio_del_cursor(
+                                        &l.texto,
+                                        &l.cajas,
+                                        c.pos(t),
+                                        0.0,
+                                    );
+                                    let destino = if vk == VK_ARRIBA {
+                                        y - alto / 2.0
+                                    } else {
+                                        y + alto * 1.5
+                                    };
+                                    // Por encima del primer renglon o debajo
+                                    // del ultimo, al principio o al final.
+                                    let fondo = l
+                                        .cajas
+                                        .iter()
+                                        .map(|(_, b)| b.y + b.alto)
+                                        .fold(0.0, f32::max);
+                                    let i = if destino < 0.0 {
+                                        0
+                                    } else if destino >= fondo && !l.texto.ends_with('\n') {
+                                        l.texto.len()
+                                    } else {
+                                        redaccion::indice_en_punto(&l.texto, &l.cajas, x, destino)
+                                    };
+                                    c.poner(t, i, shift);
+                                }
+                            }
+                            _ => {
+                                // Ctrl+C o Ctrl+X con algo elegido.
+                                if let Some(s) = c.seleccionado(t) {
+                                    if let Err(e) = pixpin_codec::portapapeles::copiar_texto(s) {
+                                        tracing::warn!(?e, "no se pudo copiar lo escrito");
+                                    } else if vk == VK_X {
+                                        c.borrar_atras(t, false);
+                                    }
+                                }
+                            }
+                        }
+                        a.colocado.borrow_mut().ancho = 0;
+                    }
+                    hay_que_pintar = true;
                 }
                 EventoOverlay::Tecla { vk, shift, .. } if vk == VK_ENTRAR => {
                     if let Some(a) = abierto.as_mut() {
                         if shift {
                             // Mayusculas y entrar: un renglon mas, como en
                             // Telegram. Entrar solo, se envia.
-                            a.borrador.push('\n');
+                            a.cursor.escribir(&mut a.borrador, "\n");
                         } else if !a.borrador.trim().is_empty() {
                             match guardar_nota(ubicacion, a, &identidad) {
                                 Ok(()) => {
@@ -3141,7 +3276,15 @@ pub fn abrir(
                         && abierto.as_ref().is_some_and(|a| !a.borrador.is_empty()) =>
                 {
                     if let Some(a) = abierto.as_mut() {
-                        a.borrador.clear();
+                        // Con algo seleccionado, Escape solo suelta la
+                        // seleccion, como en cualquier caja de texto.
+                        if a.cursor.seleccion(&a.borrador).is_some() {
+                            let pos = a.cursor.pos(&a.borrador);
+                            a.cursor.poner(&a.borrador, pos, false);
+                        } else {
+                            a.borrador.clear();
+                            a.cursor.soltar();
+                        }
                         a.colocado.borrow_mut().ancho = 0;
                     }
                     hay_que_pintar = true;
@@ -3464,6 +3607,10 @@ pub fn abrir(
                         // Lo que se puede pulsar se apunta de nuevo en cada
                         // fotograma: lo que ya no se ve no se puede pulsar.
                         a.zonas.borrow_mut().clear();
+                        // Y la caja de escribir igual: si este fotograma no
+                        // la pinta (grabando, una pantalla encima), sus
+                        // letras no se pueden pulsar.
+                        a.letras.borrow_mut().zona = None;
                         // Medir lo escrito decide lo alta que es la caja y,
                         // con ello, donde acaba el historial. Se hace una
                         // vez y lo usan los dos.
@@ -3800,6 +3947,49 @@ impl Pendientes {
     }
 }
 
+/// Lo que el pintado de la caja de escribir deja apuntado para el raton: la
+/// caja de cada letra (de la MISMA disposicion con la que se pinta) y donde
+/// quedo el texto en la ventana.
+#[derive(Default)]
+struct LetrasPintadas {
+    /// El texto, la letra y el ancho con que se pidieron las cajas: si no
+    /// cambia nada, no se vuelven a pedir en cada fotograma.
+    texto: String,
+    tam: f32,
+    ancho: f32,
+    cajas: Vec<(usize, RectF)>,
+    /// La esquina del texto en la ventana.
+    origen: (f32, f32),
+    /// Donde se puede pulsar para poner la rayita: el campo de escribir.
+    /// Vacio mientras se dicta (lo que se ve no es aun lo escrito).
+    zona: Option<RectF>,
+}
+
+impl LetrasPintadas {
+    /// La letra bajo `l` (coordenadas de la ventana), si cae en la caja.
+    fn indice_en(&self, l: Punto) -> Option<usize> {
+        redaccion::indice_en(
+            &self.texto,
+            &self.cajas,
+            self.origen,
+            self.zona?,
+            l.x as f32,
+            l.y as f32,
+        )
+    }
+
+    /// Como `indice_en`, pero fuera de la caja tambien: arrastrando para
+    /// seleccionar, salirse por arriba o por un lado sigue eligiendo.
+    fn indice_cerca(&self, l: Punto) -> usize {
+        redaccion::indice_en_punto(
+            &self.texto,
+            &self.cajas,
+            l.x as f32 - self.origen.0,
+            l.y as f32 - self.origen.1,
+        )
+    }
+}
+
 /// El proyecto abierto en la columna de la derecha.
 struct Abierto {
     ficha: pixpin_proyecto::almacen::Ficha,
@@ -3820,6 +4010,16 @@ struct Abierto {
     fijado: Option<usize>,
     /// Lo escrito y todavia sin enviar.
     borrador: String,
+    /// La rayita y lo seleccionado dentro de `borrador`.
+    cursor: redaccion::Cursor,
+    /// La caja de cada letra de lo escrito tal como se pinto, para saber que
+    /// letra hay bajo el raton. La apunta el pintado (`pintar_redaccion`).
+    letras: std::cell::RefCell<LetrasPintadas>,
+    /// Se esta seleccionando lo escrito con el boton pulsado.
+    eligiendo_texto: bool,
+    /// El ultimo clic en la caja de escribir y donde cayo: el segundo, si
+    /// llega pronto y en la misma letra, elige la palabra.
+    clic_en_caja: Option<(std::time::Instant, usize)>,
     /// Lo alto que mide ese texto ya medido con la fuente. Lo apunta el
     /// pintado; la rueda lo necesita para saber donde acaba el historial.
     alto_caja: std::cell::Cell<u32>,
@@ -6985,6 +7185,10 @@ fn abrir_proyecto(ubicacion: &Ubicacion, ficha: &pixpin_proyecto::almacen::Ficha
         rotas: cuaderno.lineas_rotas,
         fijado,
         borrador: String::new(),
+        cursor: Default::default(),
+        letras: Default::default(),
+        eligiendo_texto: false,
+        clic_en_caja: None,
         info: None,
         scroll_info: 0,
         busqueda_info: String::new(),
@@ -7054,6 +7258,7 @@ fn guardar_nota(ubicacion: &Ubicacion, a: &mut Abierto, aparato: &str) -> std::i
     a.vistas.push(None);
     a.mensajes.push(mensaje);
     a.borrador.clear();
+    a.cursor.soltar();
     // La ficha de la lista sube al momento: es la misma conversacion.
     a.ficha.tocado = cuando;
     a.ficha.resumen = texto;
@@ -7137,7 +7342,10 @@ fn pegar(ubicacion: &Ubicacion, a: &mut Abierto, aparato: &str) -> std::io::Resu
         Que::Texto(t) => {
             // El texto va a la caja, no al cuaderno: pegar no es enviar, y
             // asi se puede retocar antes.
-            a.borrador.push_str(&t);
+            // Donde este la rayita, y con los saltos de Windows
+            // (`\r\n`) hechos uno: la rayita no puede caer entre los dos.
+            a.cursor
+                .escribir(&mut a.borrador, &t.replace("\r\n", "\n"));
             return Ok(0);
         }
         Que::Imagen(imagen) => {
@@ -7155,6 +7363,7 @@ fn pegar(ubicacion: &Ubicacion, a: &mut Abierto, aparato: &str) -> std::io::Resu
     // contaba como perdido (3-oct). Solo en el primero, como el pie del
     // cuadro de confirmar; si no entra ninguno, vuelve a la caja.
     let mut pie = std::mem::take(&mut a.borrador).trim().to_string();
+    a.cursor.soltar();
     let mut hechos = 0;
     for (nombre, bytes) in ficheros {
         if let Err(e) = adjuntar(ubicacion, a, aparato, &nombre, &bytes, &pie) {
@@ -9161,6 +9370,13 @@ const VK_IZQUIERDA: u32 = 0x25;
 const VK_ARRIBA: u32 = 0x26;
 const VK_DERECHA: u32 = 0x27;
 const VK_ABAJO: u32 = 0x28;
+/// Dos clics en la misma letra de la caja de escribir antes de esto eligen
+/// la palabra (lo mismo que la lista de proyectos).
+const DOBLE_CLIC: std::time::Duration = std::time::Duration::from_millis(500);
+const VK_FIN: u32 = 0x23;
+const VK_INICIO: u32 = 0x24;
+const VK_A: u32 = 0x41;
+const VK_X: u32 = 0x58;
 
 /// El hueco de la hoja: la conversacion menos su cabecera. La cabecera se
 /// queda porque es donde se lee de que proyecto es y por donde se vuelve.
@@ -14130,6 +14346,25 @@ fn pintar_redaccion(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto, alto_te
         }
         None => &a.borrador,
     };
+    // Las cajas de las letras, para el raton. Solo con lo escrito de verdad
+    // a la vista: con el dictado delante, lo que se ve aun no es el borrador
+    // y una posicion en el no valdria para escribir.
+    {
+        let mut l = a.letras.borrow_mut();
+        let campo = d.campo(alto_texto, escala);
+        l.zona = (provisional.is_none()).then(|| rf(campo));
+        l.origen = (x, y);
+        if l.texto != a.borrador || l.tam != tam || l.ancho != ancho {
+            l.cajas = redaccion::cajas_de_letras(&a.borrador, |desde, largo| {
+                p.cajas_de_trozo(&a.borrador, tam, ancho, &[], desde, largo)
+                    .first()
+                    .copied()
+            });
+            l.texto = a.borrador.clone();
+            l.tam = tam;
+            l.ancho = ancho;
+        }
+    }
     if borrador.is_empty() {
         let invitacion = if let Some(d) = a.dictado.as_ref() {
             textos.t(if d.oyendo {
@@ -14155,17 +14390,56 @@ fn pintar_redaccion(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto, alto_te
         return;
     }
     p.empujar_recorte(rf(zona));
+    if provisional.is_some() {
+        p.parrafo(borrador, x, y, tam, ancho, &[], tema.texto);
+        // Dictando, el cursor va al final de lo escrito y de lo oido.
+        let (_, alto_todo) = p.medir_texto_ajustado(borrador, tam, ancho);
+        let ultima = borrador.rsplit('\n').next().unwrap_or("");
+        let (ancho_ultima, _) = p.medir_texto(ultima, tam);
+        p.rellenar(
+            RectF {
+                x: x + ancho_ultima.min(ancho),
+                y: y + alto_todo - tam * 1.3,
+                ancho: (1.0 * e).max(1.0),
+                alto: tam * 1.3,
+            },
+            tema.texto,
+        );
+        p.soltar_recorte();
+        return;
+    }
+    let letras = a.letras.borrow();
+    // Lo seleccionado, debajo del texto: la caja de cada letra elegida.
+    if let Some(r) = a.cursor.seleccion(&a.borrador) {
+        for (_, b) in letras.cajas.iter().filter(|(i, _)| r.contains(i)) {
+            p.rellenar(
+                RectF {
+                    x: x + b.x,
+                    y: y + b.y,
+                    // El salto de renglon no tiene ancho; se le da un poco
+                    // para que se vea que tambien va elegido.
+                    ancho: b.ancho.max(4.0 * e),
+                    alto: b.alto,
+                },
+                con_alfa(tema.enviar, 0.35),
+            );
+        }
+    }
     p.parrafo(borrador, x, y, tam, ancho, &[], tema.texto);
-    // El cursor va al final de lo escrito.
-    let (_, alto_todo) = p.medir_texto_ajustado(borrador, tam, ancho);
-    let ultima = borrador.rsplit('\n').next().unwrap_or("");
-    let (ancho_ultima, _) = p.medir_texto(ultima, tam);
+    // La rayita donde diga el cursor, con la caja que le da DirectWrite a
+    // su letra.
+    let (cx, cy, alto_rayita) = redaccion::sitio_del_cursor(
+        &letras.texto,
+        &letras.cajas,
+        a.cursor.pos(&a.borrador),
+        tam * 1.3,
+    );
     p.rellenar(
         RectF {
-            x: x + ancho_ultima.min(ancho),
-            y: y + alto_todo - tam * 1.3,
+            x: x + cx.min(ancho),
+            y: y + cy,
             ancho: (1.0 * e).max(1.0),
-            alto: tam * 1.3,
+            alto: alto_rayita,
         },
         tema.texto,
     );

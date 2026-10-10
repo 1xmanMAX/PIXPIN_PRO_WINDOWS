@@ -55,7 +55,6 @@ pub const NOMBRES: &[&str] = &[
     "escala-grafica",
     "marco",
     "zona",
-    "cronograma",
     "relleno",
     "recortar",
     "extender",

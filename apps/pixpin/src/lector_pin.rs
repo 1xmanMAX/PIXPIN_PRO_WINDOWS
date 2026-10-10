@@ -244,6 +244,31 @@ impl PinLector {
         }
     }
 
+    /// **Si otro movio o estiro la ventana** (AltSnap, Win+flecha, un cambio
+    /// de monitor), el pin se entera aqui: Windows no avisa con un evento
+    /// del overlay y la barra se quedaba donde estaba (10-oct-2026, el
+    /// usuario: «se achica normal pero su barra superior se mantiene donde
+    /// estaba … cuando lo redimensiono usando AltSnap»). Se mira lo que la
+    /// ventana ocupa de verdad y, si no es lo que el pin cree, se toma eso.
+    /// `true` si cambio. Mientras el propio pin mueve o estira, manda el.
+    pub fn seguir_ventana(&mut self, ventana: &mut VentanaOverlay) -> bool {
+        if self.gesto.is_some() {
+            return false;
+        }
+        let Some(real) = ventana.rect_del_sistema() else { return false };
+        if real == self.area {
+            return false;
+        }
+        self.area = real;
+        // `mover` a donde ya esta no la mueve: solo deja al dia lo que la
+        // ventana cree que ocupa.
+        ventana.mover(real);
+        if !self.pantalla_completa {
+            self.area_pin = real;
+        }
+        true
+    }
+
     /// **Un evento de la ventana del lector**: estirar por los bordes.
     pub fn evento_ventana(&mut self, ev: &EventoOverlay, ventana: &mut VentanaOverlay) -> Respuesta {
         match *ev {

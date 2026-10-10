@@ -2461,10 +2461,24 @@ fn pintar_encabezado(
     // Lo que queda para el nombre: lo mismo pase o no el raton, para que no
     // se recorte de otra forma al pasar.
     let derecha = cw.max(2.0 * ASPA * s + 4.0 * s);
-    let libre = (ancho - derecha - 20.0 * s).max(0.0);
+    let libre = (ancho - derecha - 34.0 * s).max(0.0);
     let con_chat = !super::es_inbox(&l);
     let (nw, _) = ui::medir_negrita(p, &l.titulo, tam, libre);
     let nw = if con_chat { nw.min(libre * 0.7) } else { nw.min(libre) };
+    // Su color, el de sus tarjetas: una marca redonda delante del nombre.
+    let (color_grupo, _) = degradado_de_lista(e, g.lista);
+    let marca = 6.0 * s;
+    p.rellenar_redondeado(
+        RectF {
+            x: x + 4.0 * s,
+            y: ty + th / 2.0 - th * 0.38,
+            ancho: marca,
+            alto: th * 0.76,
+        },
+        marca / 2.0,
+        mezcla(color_grupo, Color::BLANCO, 0.25),
+    );
+    let x = x + marca + 8.0 * s;
     p.con_recorte(
         RectF {
             x,
@@ -3150,25 +3164,54 @@ fn velo_de_foto(p: &Pintor, r: RectF) {
     );
 }
 
-/// **El degradado de una lista** en la vista de tarjetas, siempre el mismo
-/// para la misma lista (sale de su clave). Tonos hondos, para que el texto
-/// claro se lea encima.
-fn degradado_de_lista(clave: &str) -> (Color, Color) {
-    const PARES: [(u32, u32); 8] = [
-        (0x3A2A6B, 0x1F3B73),
-        (0x0F5A3C, 0x123F45),
-        (0x6B2D3A, 0x3B1F4D),
-        (0x7A4A12, 0x5A2D14),
-        (0x124E66, 0x1B3358),
-        (0x5B2A6E, 0x2A1F5C),
-        (0x33521F, 0x1E3B33),
-        (0x6E3A1E, 0x4A1F2E),
-    ];
+/// Los degradados de los grupos: doce tonos bien distintos entre si
+/// (violeta, verde, rojo, naranja, azul, rosa, turquesa, oliva, marron,
+/// anil, magenta y dorado), hondos para que el texto claro se lea encima.
+const DEGRADADOS: [(u32, u32); 12] = [
+    (0x5B2DA8, 0x3A1F7A),
+    (0x0F7A4A, 0x0B5236),
+    (0xA8323E, 0x6E1F33),
+    (0xB8650F, 0x7A3D0C),
+    (0x1767A8, 0x0F3F75),
+    (0xA8306E, 0x6B1F52),
+    (0x0E7C86, 0x0A4F5E),
+    (0x6E7A12, 0x434D0C),
+    (0x7A4A2A, 0x4D2C1A),
+    (0x3A44B8, 0x232A7A),
+    (0x8A2AA8, 0x561A70),
+    (0x9C7A0E, 0x5E4808),
+];
+
+/// **El color de cada lista** (su sitio en [`DEGRADADOS`]), sin repetir
+/// mientras haya colores (10-oct-2026, el usuario: «que cada grupo de tareas
+/// tenga un color diferente, no el mismo color»). Antes salia solo de la
+/// clave y dos listas podian caer en el mismo. Cada lista parte del color de
+/// su clave y, si ya lo tiene otra, toma el siguiente libre; se reparten
+/// por orden de clave (no por el de la ventana, que cambia al tachar), asi
+/// una lista no cambia de color mientras no se creen o borren otras. Las
+/// listas vacias no gastan color.
+fn colores_de_listas(claves: &[(String, bool)]) -> Vec<usize> {
+    let n = DEGRADADOS.len();
     // FNV-1a: estable entre versiones, a diferencia de `DefaultHasher`.
-    let h = clave
-        .bytes()
-        .fold(0x811c_9dc5u32, |h, b| (h ^ u32::from(b)).wrapping_mul(0x0100_0193));
-    let (a, b) = PARES[h as usize % PARES.len()];
+    let semilla = |c: &str| c.bytes().fold(0x811c_9dc5u32, |h, b| (h ^ u32::from(b)).wrapping_mul(0x0100_0193)) as usize % n;
+    let mut orden: Vec<usize> = (0..claves.len()).filter(|&i| claves[i].1).collect();
+    orden.sort_by(|a, b| claves[*a].0.cmp(&claves[*b].0));
+    let mut usado = vec![false; n];
+    let mut out: Vec<usize> = claves.iter().map(|(c, _)| semilla(c)).collect();
+    for i in orden {
+        let desde = semilla(&claves[i].0);
+        let k = (0..n).map(|d| (desde + d) % n).find(|k| !usado[*k]).unwrap_or(desde);
+        usado[k] = true;
+        out[i] = k;
+    }
+    out
+}
+
+/// **El degradado de la lista `li`** de la ventana (ver [`colores_de_listas`]).
+fn degradado_de_lista(e: &Estado, li: usize) -> (Color, Color) {
+    let claves: Vec<(String, bool)> = e.listas.iter().map(|l| (l.clave(), !l.filas.is_empty())).collect();
+    let k = colores_de_listas(&claves).get(li).copied().unwrap_or(0);
+    let (a, b) = DEGRADADOS[k % DEGRADADOS.len()];
     (hex(a), hex(b))
 }
 
@@ -3254,7 +3297,7 @@ fn pintar_cuadrado(
     // Sin foto, el degradado de SU LISTA (8-oct-2026, el usuario: «un color
     // unico con degradado, que todo ese grupo de tareas tenga el mismo»):
     // las tareas de una lista se reconocen de lejos.
-    let (desde, hasta) = degradado_de_lista(&lista.clave());
+    let (desde, hasta) = degradado_de_lista(e, li);
     let (desde, hasta) = if encima {
         (mezcla(desde, Color::BLANCO, 0.08), mezcla(hasta, Color::BLANCO, 0.08))
     } else {
@@ -3542,6 +3585,34 @@ fn pintar_fila_hecha(
         false,
         s,
     );
+}
+
+#[cfg(test)]
+mod pruebas_colores {
+    use super::*;
+
+    #[test]
+    fn cada_lista_tiene_su_color_sin_repetir() {
+        let claves: Vec<(String, bool)> = (0..12).map(|i| (format!("lista {i}"), true)).collect();
+        let c = colores_de_listas(&claves);
+        let mut vistos = c.clone();
+        vistos.sort();
+        vistos.dedup();
+        assert_eq!(vistos.len(), 12, "{c:?}");
+        // El orden de la ventana no cambia el color de cada una.
+        let mut al_reves = claves.clone();
+        al_reves.reverse();
+        let r = colores_de_listas(&al_reves);
+        assert_eq!(r.iter().rev().copied().collect::<Vec<_>>(), c);
+        // Caso negativo: una lista vacia no quita color a las demas.
+        let mut con_vacia = claves[..11].to_vec();
+        con_vacia.push(("vacia".into(), false));
+        let v = colores_de_listas(&con_vacia);
+        let mut d = v[..11].to_vec();
+        d.sort();
+        d.dedup();
+        assert_eq!(d.len(), 11);
+    }
 }
 
 #[cfg(test)]

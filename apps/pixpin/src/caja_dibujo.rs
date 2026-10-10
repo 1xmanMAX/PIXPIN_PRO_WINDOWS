@@ -58,7 +58,6 @@ fn icono(b: BotonCaja) -> &'static pixpin_render::icono::Icono {
         // la biblioteca.
         BotonCaja::Elegir(Herramienta::Zona) => &i::CROP_ICON,
         BotonCaja::Elegir(Herramienta::Laser) => &i::LASER_POINTER_TOOL_ICON,
-        BotonCaja::Elegir(Herramienta::Cronograma) => &CRONOGRAMA,
         // Soldar vertices: la chincheta de Excalidraw, que es un clavo.
         BotonCaja::Elegir(Herramienta::Nudo) => &i::PIN_ICON,
         // La bolita elige: el icono de elegir todo de Excalidraw.
@@ -342,39 +341,6 @@ const MARCO: pixpin_render::icono::Icono = pixpin_render::icono::Icono {
         matriz: None,
         mascara: None,
     }],
-};
-
-/// **El cronograma** (F12): Excalidraw no tiene; el movil usa un icono de
-/// Material de barras. Aqui, un marco con la columna de los nombres y tres
-/// barras escalonadas, que es lo que se ve al ponerlo.
-const CRONOGRAMA: pixpin_render::icono::Icono = pixpin_render::icono::Icono {
-    vista: (0.0, 0.0, 24.0, 24.0),
-    trazos: &[
-        pixpin_render::icono::TrazoIcono {
-            d: "M3 5h18v14h-18zM8 5v14",
-            relleno: pixpin_render::icono::Pintura::Nada,
-            trazo: pixpin_render::icono::Pintura::Actual,
-            grosor: 1.5,
-            extremo_redondo: true,
-            union_redonda: true,
-            opacidad: 1.0,
-            par_impar: false,
-            matriz: None,
-            mascara: None,
-        },
-        pixpin_render::icono::TrazoIcono {
-            d: "M9.5 7.5h4v2h-4zM12.5 11h4v2h-4zM15.5 14.5h4v2h-4z",
-            relleno: pixpin_render::icono::Pintura::Actual,
-            trazo: pixpin_render::icono::Pintura::Nada,
-            grosor: 0.0,
-            extremo_redondo: false,
-            union_redonda: false,
-            opacidad: 1.0,
-            par_impar: false,
-            matriz: None,
-            mascara: None,
-        },
-    ],
 };
 
 /// **La impresora** (F11): «printer» de Tabler Icons (MIT, ver

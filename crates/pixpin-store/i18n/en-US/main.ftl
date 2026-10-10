@@ -1009,13 +1009,6 @@ grafica-formula-mal = Can't understand:
 grafica-solo-x = It can only use x:
 presentar-ayuda = ← → PgDn: next · B: black · J: laser · L: pen · Esc: exit
 vista-mirando = View only · Alt+R: edit · F5: present
-herramientas-cronograma = Timeline
-cronograma-titulo = Timeline
-cronograma-filas = Rows
-cronograma-columnas = Scale columns
-cronograma-fila = Row
-cronograma-ayuda = Enter: apply · Tab: next field · Esc: cancel · drag the bars on the drawing
-cronograma-cuentas-mal = Rows from 0 to 60 and columns from 1 to 40
 
 ## --- Voice: two languages, lyrics, teleprompter, pronounce, conversation, call (B6-B11) ---
 
@@ -1316,7 +1309,6 @@ barra-grupo-arreglar = Fix what is drawn
 barra-grupo-nombrar = Text and labels
 barra-grupo-tapar = Cover and point
 barra-grupo-medir = Measure
-barra-grupo-laminas = Tables, charts and timeline
 barra-grupo-marco = Frame and image
 barra-grupo-sacar = Share and print
 barra-pista-mano = Select and move (M)
@@ -1927,6 +1919,7 @@ pin-v2-marca-tachar = Strikethrough
 pin-v2-marca-tapar = Cover
 pin-v2-marca-quitar = Remove mark
 pin-v2-modo-texto = Select text
+pin-v2-invertir-colores = Invert colors
 ## v2-captura
 captura2-zona = Area
 captura2-ventana = Window

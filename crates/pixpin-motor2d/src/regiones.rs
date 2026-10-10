@@ -237,9 +237,6 @@ pub fn es_pared(e: &Elemento) -> bool {
         | Figura::Emoji { .. }
         | Figura::EscalaGrafica
         | Figura::Punto { .. }
-        // El cronograma tampoco (`esPared` del movil): es una lamina con
-        // datos, y contar su marco dejaria cada celda como un hueco.
-        | Figura::Cronograma { .. }
         | Figura::Region { .. } => false,
 
         Figura::Rectangulo

@@ -1,5 +1,5 @@
 //! **Muestras de las figuras de F12/F14**, antes y despues de arreglarlas:
-//! la grafica entera y estirada, la tabla, el cronograma y los cajetines.
+//! la grafica entera y estirada, la tabla y los cajetines.
 //! `cargo test -p pixpin --bin pixpinmax muestras_de_las_figuras -- --ignored
 //! --nocapture`. Necesita GPU; deja los PNG en `PIXPIN_MUESTRAS`, con el
 //! prefijo de `PIXPIN_MUESTRAS_PREFIJO` (por ejemplo «antes-»).
@@ -141,45 +141,7 @@ fn muestras_de_las_figuras() {
         guardar("tabla-estirada", &foto_de(&escena));
     }
 
-    // 3. El cronograma con nombres largos, como lo deja su cajetin.
-    {
-        let mut escena = Escena::nueva();
-        let mut g = Gesto::nuevo();
-        g.tomar_herramienta(Herramienta::Cronograma);
-        let ev = |g: &mut Gesto, e: &mut Escena, x: f32, y: f32, fase: u8| {
-            let p = Punto2::nuevo(x, y);
-            let evento = match fase {
-                0 => EventoGesto::Pulsar {
-                    p,
-                    shift: false,
-                    alt: false,
-                    presion: None,
-                },
-                1 => EventoGesto::Mover {
-                    p,
-                    shift: false,
-                    alt: false,
-                    presion: None,
-                },
-                _ => EventoGesto::Soltar { p },
-            };
-            g.evento(evento, e, 1.0);
-        };
-        ev(&mut g, &mut escena, 20.0, 20.0, 0);
-        ev(&mut g, &mut escena, 300.0, 150.0, 1);
-        ev(&mut g, &mut escena, 420.0, 200.0, 1);
-        ev(&mut g, &mut escena, 420.0, 200.0, 2);
-        let id = escena.elementos.last().unwrap().id;
-        let nombres = vec![
-            "Cimientos".to_string(),
-            "Estructura y muros".into(),
-            "Acabados".into(),
-        ];
-        aplicar_cronograma(&mut escena, id, 3, 6, &nombres);
-        guardar("cronograma", &foto_de(&escena));
-    }
-
-    // 4. Los cajetines, a 100 %, tal como se pintan encima del lienzo.
+    // 3. Los cajetines, a 100 %, tal como se pintan encima del lienzo.
     let t = Catalogo::nuevo(pixpin_store::Idioma::Espanol);
     let mut f = formulario_de_grafica(&t);
     f.campos[0].texto = "sin(x)\nx^2/4 - 1".into();
@@ -192,8 +154,6 @@ fn muestras_de_las_figuras() {
     let mut tb = formulario_de_tabla(&t, &filas, true, "tabla-pegada-titulo", "tabla-insertar");
     tb.activo = 4;
     cajetin_a_png(&mut motor, &d, "cajetin-tabla", &mut tb);
-    let mut cr = formulario_de_cronograma(&t, &pixpin_motor2d::cronograma::tareas_de_fabrica(), 6);
-    cajetin_a_png(&mut motor, &d, "cajetin-cronograma", &mut cr);
 }
 
 /// Pinta el cajetin `f` sobre un fondo gris claro, como si fuera el lienzo.

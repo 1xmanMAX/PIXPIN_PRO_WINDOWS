@@ -480,10 +480,47 @@ pub fn ejecutar_overlay(
         }
     }
 
+    // El trazo en marcha es el que reprodujo el gesto (no uno empezado a
+    // mano dentro del overlay): solo de ese sabe el gancho cuando se solto.
+    let mut trazo_del_gesto = matches!(arranque, ArranqueGesto::Arrastrando(_));
+
     // 4. El bucle modal. Las ventanas viven en `piezas`; el slice del
     //    contrato queda vacio porque el bombeo no filtra por ventana.
     if !ya_decidido {
         bucle_modal(&[], |hwnd, evento| {
+            if matches!(evento, EventoOverlay::BotonPulsado(_)) {
+                trazo_del_gesto = false;
+            }
+            // Red de seguridad: el gancho vio soltarse el boton del gesto y
+            // la soltada no llego aqui. Sin esto el overlay se quedaria
+            // trazando hasta un clic que la mano ya no va a dar.
+            if trazo_del_gesto
+                && let Some(p) = soltada_perdida(
+                    estado.fase() == Fase::Trazando && !sesion.dibujando,
+                    pixpin_shell::gesto_en_curso(),
+                    pixpin_shell::boton_del_raton_pulsado(),
+                    pixpin_shell::gestos::edad_de_la_soltada(),
+                    pixpin_shell::gestos::soltada_del_gesto().map(|(x, y)| Punto { x, y }),
+                )
+            {
+                trazo_del_gesto = false;
+                tracing::warn!(
+                    ?p,
+                    "la soltada del gesto no llego al overlay: se da por soltado donde la vio el gancho"
+                );
+                let seguir = procesar_evento(
+                    hwnd,
+                    EventoOverlay::BotonSoltado(p),
+                    &mut estado,
+                    &mut sesion,
+                    &mut muestra_color,
+                    &mut piezas,
+                    &ctx,
+                );
+                if seguir == Continuar::No {
+                    return Continuar::No;
+                }
+            }
             // El gesto de Alt + central (D140) termina al soltar el central: para
             // la seleccion es la misma soltada que la del izquierdo. Fuera de un
             // gesto el central no significa nada aqui.
@@ -630,6 +667,31 @@ fn arranque_del_gesto(
         (Some(desde), false, Some(hasta)) => ArranqueGesto::YaSoltado { desde, hasta },
         (Some(_), false, None) => ArranqueGesto::Ninguno,
     }
+}
+
+/// Cuanto se espera a la soltada de verdad despues de que el gancho la viera,
+/// antes de darla por perdida. Normalmente llega en milisegundos; con el
+/// hilo cargado puede tardar algo, y adelantarse solo cambia de donde sale
+/// el mismo punto.
+const ESPERA_SOLTADA_MS: u32 = 400;
+
+/// Si la soltada del gesto se perdio por el camino y donde fue: el overlay
+/// sigue trazando (`trazando`), el gancho ya no ve el boton abajo
+/// (`!en_curso`), Windows tampoco (`!pulsado`), y el gancho la vio hace mas
+/// de `ESPERA_SOLTADA_MS` en `soltada`.
+///
+/// Pura para poder probarla: el bucle le pasa lo que lee del gancho.
+fn soltada_perdida(
+    trazando: bool,
+    en_curso: bool,
+    pulsado: bool,
+    edad_ms: Option<u32>,
+    soltada: Option<Punto>,
+) -> Option<Punto> {
+    if !trazando || en_curso || pulsado {
+        return None;
+    }
+    soltada.filter(|_| edad_ms.is_some_and(|e| e > ESPERA_SOLTADA_MS))
 }
 
 /// Los eventos que reproducen ese arranque, en orden.
@@ -2007,6 +2069,26 @@ mod pruebas {
             arranque_del_gesto(Some(p), true, Some(r)),
             ArranqueGesto::Arrastrando(p)
         );
+    }
+
+    /// La red de seguridad del overlay que nunca recibe la soltada: solo
+    /// salta cuando de verdad nadie tiene el boton abajo y el gancho la vio
+    /// hace rato, y siempre en el punto que vio el gancho.
+    #[test]
+    fn una_soltada_que_no_llego_se_da_por_hecha_solo_si_nadie_tiene_el_boton() {
+        let q = Punto { x: 640, y: 480 };
+        let tarde = Some(ESPERA_SOLTADA_MS + 1);
+        assert_eq!(soltada_perdida(true, false, false, tarde, Some(q)), Some(q));
+        // Casos negativos: cualquiera de estos deja esperar a la de verdad.
+        assert_eq!(soltada_perdida(false, false, false, tarde, Some(q)), None, "no traza");
+        assert_eq!(soltada_perdida(true, true, false, tarde, Some(q)), None, "gesto en curso");
+        assert_eq!(soltada_perdida(true, false, true, tarde, Some(q)), None, "boton abajo");
+        assert_eq!(
+            soltada_perdida(true, false, false, Some(ESPERA_SOLTADA_MS), Some(q)),
+            None,
+            "todavia puede llegar"
+        );
+        assert_eq!(soltada_perdida(true, false, false, None, None), None, "el gancho no la vio");
     }
 
     #[test]

@@ -70,7 +70,6 @@ pub fn nombre_de(h: Herramienta) -> Option<&'static str> {
         Herramienta::CopiarEstilo => "copiar-estilo",
         Herramienta::Zona => "zona",
         Herramienta::Laser => "laser",
-        Herramienta::Cronograma => "cronograma",
         Herramienta::Nudo => "nudo",
         Herramienta::Bolita => "bolita",
     })
@@ -671,11 +670,12 @@ mod pruebas {
         }
         assert_eq!(todos.len(), pixpin_store::herramientas::NOMBRES.len());
         let de = |g: GrupoBarra| s.iter().find(|(x, _)| *x == Some(g)).unwrap().1.clone();
-        assert_eq!(s[0], (None, vec!["lapiz", "borrador"]));
+        // La tabla y la grafica van sueltas desde que se quito el cronograma,
+        // que era su grupo.
+        assert_eq!(s[0], (None, vec!["lapiz", "figuras", "borrador"]));
         assert!(de(GrupoBarra::Arreglar).contains(&"nudo"));
         assert!(de(GrupoBarra::Elegir).contains(&"bolita"));
         assert_eq!(de(GrupoBarra::Sacar), vec!["compartir", "imprimir"]);
-        assert_eq!(de(GrupoBarra::Laminas), vec!["cronograma", "figuras"]);
         // Caso negativo: la mano no se apaga y no sale.
         assert!(!todos.contains(&"mano"));
         // Sin resto: todas tienen grupo o van sueltas.

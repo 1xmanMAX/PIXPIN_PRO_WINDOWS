@@ -49,11 +49,13 @@ const LOS_VEINTITRES: [&str; 23] = [
 /// aqui, lo que se promete de el es que vuelve intacto. Cuando su grupo le
 /// ensene a dibujarse, hay que quitarlo de aqui — y la prueba de mas abajo
 /// obliga a ello.
-const LOS_AJENOS: [&str; 4] = [
+const LOS_AJENOS: [&str; 5] = [
     "pixpin-axes",
     "pixpin-number-line",
     "pixpin-space",
     "pixpin-solid",
+    // El cronograma se supo dibujar (F12) y se quito: no estaba bien hecho.
+    "pixpin-gantt",
 ];
 
 /// Lo unico que puede cambiar al mover un elemento.

@@ -18,7 +18,7 @@ use windows::Win32::Graphics::Dwm::{
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     EnumWindows, GW_OWNER, GWL_EXSTYLE, GetClassNameW, GetWindow, GetWindowLongPtrW,
-    GetWindowTextW, IsIconic, IsWindowVisible, WS_EX_TOOLWINDOW,
+    InternalGetWindowText, IsIconic, IsWindowVisible, WS_EX_TOOLWINDOW,
 };
 
 /// Una ventana de primer nivel que se ve.
@@ -91,7 +91,12 @@ unsafe fn leer(hwnd: HWND) -> Option<VentanaVisible> {
             return None;
         }
         let mut buf = [0u16; 256];
-        let largo = GetWindowTextW(hwnd, &mut buf);
+        // `InternalGetWindowText` y no `GetWindowTextW`: con una ventana de
+        // ESTE proceso, la segunda le MANDA `WM_GETTEXT` y espera a que su
+        // hilo conteste; si ese hilo esta parado esperando algo del que
+        // pregunta (el overlay corre en el hilo principal), no vuelve nunca.
+        // La primera lee el titulo guardado sin mandar nada.
+        let largo = InternalGetWindowText(hwnd, &mut buf);
         if largo <= 0 {
             return None;
         }

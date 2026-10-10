@@ -18,6 +18,10 @@
 //! pintado.
 
 use std::cell::Cell;
+use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, AtomicIsize, Ordering};
+
+use windows::Win32::Foundation::HWND;
 
 use anyhow::{Context, Result};
 use fluent_bundle::FluentArgs;
@@ -34,7 +38,7 @@ use pixpin_store::ajustes::{
 };
 use pixpin_store::comandos::{CATALOGO, Comando, Enlaces};
 use pixpin_store::herramientas::SITIOS;
-use pixpin_store::{Catalogo, Ubicacion};
+use pixpin_store::{Catalogo, Idioma, Ubicacion};
 use pixpin_ui::ajustes::{
     Control, Estado, Fila, Foco, Golpe, NAV_ANCHO, Parte, Recta, ancho_de_textos, borrar_busqueda,
     boton_restablecer_seccion, botones_del_pie, buscador, coincide, contenido, escribir, golpe_en,
@@ -1351,14 +1355,107 @@ fn aplicar_al_cerrar(antes: &Ajustes, a: &Ajustes, ubicacion: &Ubicacion) {
     }
 }
 
+// --- En su propio hilo --------------------------------------------------------
+//
+// **Por que un hilo propio (10-oct-2026).** La ventana se abria DENTRO del
+// bucle del hilo principal y no volvia hasta cerrarse: mientras tanto los
+// atajos y los gestos con Alt se quedaban en la cola, y al cerrar salian
+// todos de golpe (seis pines seguidos que nadie pidio, con recortes de
+// segundos antes). Ahora vive en su hilo, como el chat, Sincronizar o la
+// galeria: el principal sigue capturando con los ajustes abiertos y, al
+// cerrarse con cambios, los recoge (`tomar_cambios`) y los aplica el.
+
+/// La ventana abierta: su HWND, -1 mientras nace, 0 si no hay ninguna. Que
+/// dos peticiones seguidas no abran dos ventanas de ajustes.
+static ABIERTA: AtomicIsize = AtomicIsize::new(0);
+/// Los ajustes nuevos que dejo la ventana al cerrarse con cambios (ya
+/// guardados en el fichero), a la espera de que el hilo principal los aplique.
+static CAMBIOS: Mutex<Option<Ajustes>> = Mutex::new(None);
+/// Hay una fila grabando un atajo.
+static GRABANDO: AtomicBool = AtomicBool::new(false);
+/// La combinacion pulsada mientras se graba que ya era un atajo registrado:
+/// `RegisterHotKey` se la come antes de que llegue a esta ventana, asi que se
+/// la entrega el hilo principal (`entregar_atajo`).
+static ATAJO_ENTREGADO: Mutex<Option<Atajo>> = Mutex::new(None);
+
+/// Abre la ventana de ajustes en su propio hilo, o trae delante la que ya
+/// estuviera abierta. `app` es la ventana de mensajes del hilo principal: se
+/// la despierta al cerrar con cambios para que los aplique.
+pub fn lanzar(idioma: Idioma, actual: Ajustes, ubicacion: Ubicacion, app: isize) {
+    let ya = ABIERTA.load(Ordering::SeqCst);
+    if ya != 0 {
+        if ya > 0 {
+            VentanaOverlay::restaurar_de_hwnd(HWND(ya as *mut _));
+            pixpin_shell::overlay::despertar(ya);
+        }
+        return;
+    }
+    ABIERTA.store(-1, Ordering::SeqCst);
+    let lanzado = std::thread::Builder::new()
+        .name("ajustes".into())
+        .spawn(move || {
+            let _com = pixpin_shell::ComDelHilo::iniciar();
+            let textos = Catalogo::nuevo(idioma);
+            let mut cambiados: Option<Ajustes> = None;
+            let hecho = crate::dispositivo_perdido::con_recursos("ajustes", |r| {
+                cambiados = abrir(r, &actual, &textos, &ubicacion)?;
+                Ok(())
+            });
+            GRABANDO.store(false, Ordering::SeqCst);
+            match (hecho, cambiados) {
+                (Err(e), _) => tracing::warn!(?e, "no se pudo abrir la ventana de ajustes"),
+                (Ok(()), None) => tracing::info!("ajustes cerrados sin cambios"),
+                (Ok(()), Some(nuevos)) => {
+                    if let Ok(mut c) = CAMBIOS.lock() {
+                        *c = Some(nuevos);
+                    }
+                    pixpin_shell::despertar(HWND(app as *mut _));
+                }
+            }
+            ABIERTA.store(0, Ordering::SeqCst);
+        });
+    if let Err(e) = lanzado {
+        ABIERTA.store(0, Ordering::SeqCst);
+        tracing::warn!(?e, "no se pudo lanzar el hilo de los ajustes");
+    }
+}
+
+/// Los ajustes que dejo la ventana al cerrarse con cambios, una sola vez.
+/// Lo mira el hilo principal en cada vuelta de su bucle.
+pub fn tomar_cambios() -> Option<Ajustes> {
+    CAMBIOS.lock().ok().and_then(|mut c| c.take())
+}
+
+/// Si la ventana esta grabando un atajo ahora mismo.
+pub fn grabando_atajo() -> bool {
+    GRABANDO.load(Ordering::SeqCst)
+}
+
+/// Entrega a la fila que graba la combinacion de un atajo ya registrado (ver
+/// `ATAJO_ENTREGADO`) y despierta la ventana para que la recoja.
+pub fn entregar_atajo(atajo: Atajo) {
+    if let Ok(mut a) = ATAJO_ENTREGADO.lock() {
+        *a = Some(atajo);
+    }
+    let ya = ABIERTA.load(Ordering::SeqCst);
+    if ya > 0 {
+        pixpin_shell::overlay::despertar(ya);
+    }
+}
+
+fn tomar_atajo_entregado() -> Option<Atajo> {
+    ATAJO_ENTREGADO.lock().ok().and_then(|mut a| a.take())
+}
+
 // --- La ventana ---------------------------------------------------------------
 
-/// Abre la ventana y no vuelve hasta que se cierra.
+/// Abre la ventana y no vuelve hasta que se cierra. Corre en el hilo de
+/// `lanzar`, nunca en el principal.
 ///
 /// Devuelve los ajustes nuevos si algo cambio (ya guardados en el fichero),
 /// o `None` si se cerro sin tocar nada. Quien llama decide que hacer con
 /// ellos: volver a registrar los atajos, sobre todo.
-pub fn abrir(
+fn abrir(
     recursos: &crate::overlay::Recursos,
     actual: &Ajustes,
     textos: &Catalogo,
@@ -1393,6 +1490,9 @@ pub fn abrir(
     .context("sin superficie para los ajustes")?;
     ventana.mostrar();
     ventana.enfocar();
+    ABIERTA.store(ventana.handle().0 as isize, Ordering::SeqCst);
+    // Lo que se entregara para una grabacion vieja no vale para esta.
+    let _ = tomar_atajo_entregado();
 
     let cx = Contexto {
         t: textos,
@@ -1631,6 +1731,17 @@ pub fn abrir(
             let solo: Vec<Fila> = filas.iter().map(|(_, f)| f.clone()).collect();
             estado.desplazamiento = limitar_desplazamiento(estado.desplazamiento, &solo, zona);
         }
+        // Un atajo ya registrado pulsado mientras se graba: no llega como
+        // tecla (se lo come RegisterHotKey), lo entrega el hilo principal.
+        if let Some(atajo) = tomar_atajo_entregado() {
+            if let Some(i) = estado.capturando.take() {
+                if let Some((clave, _)) = filas.get(i).cloned() {
+                    copia.cambiar(|a| poner_atajo(a, clave, Some(atajo)));
+                }
+                version += 1;
+            }
+        }
+        GRABANDO.store(estado.capturando.is_some(), Ordering::SeqCst);
         if cerrar {
             break;
         }

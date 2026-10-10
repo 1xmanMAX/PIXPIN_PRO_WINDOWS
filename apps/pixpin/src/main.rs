@@ -684,6 +684,48 @@ fn arrancar(
             &mut pila,
             &textos,
         );
+        // La ventana de ajustes vive en su hilo (10-oct): si se cerro con
+        // cambios, se aplican aqui, que es donde viven los atajos.
+        if let Some(nuevos) = ventana_ajustes::tomar_cambios() {
+            // Los atajos se vuelven a registrar EN VIVO: es lo que evita el
+            // «reinicia para aplicar», y lo que hace que grabar un atajo en la
+            // ventana valga de algo al salir de ella. Lo que no se puede
+            // aplicar sin reiniciar (el idioma, el nivel de rendimiento) queda
+            // guardado y entra en el siguiente arranque.
+            config = nuevos;
+            // M1: vale desde el siguiente chat que se abra.
+            tema_cosmos::fijar(config.tema_cosmos);
+            aligerar::configurar(&config.pdf);
+            // Las herramientas apagadas valen desde el siguiente lienzo,
+            // lector, pin o anotador que se abra.
+            dibujo::permitidas::fijar(config.herramientas.clone());
+            let (enlaces, _) = comandos::Enlaces::de_ajustes(&config);
+            peticiones = enlaces.registrables();
+            let (de_regiones, _) = pixpin_store::regiones::registrables(&config.regiones);
+            peticiones.extend(de_regiones);
+            // Soltar el guardia viejo ANTES de registrar el nuevo: si no, las
+            // combinaciones que no cambiaron seguirian tomadas y el registro
+            // nuevo fallaria en ellas.
+            drop(registrados.take());
+            let (guardia, fallidos) = atajos::registrar(ventana.handle(), &peticiones);
+            registrados = Some(guardia);
+            tracing::info!(
+                pedidos = peticiones.len(),
+                fallidos = fallidos.len(),
+                "ajustes aplicados y atajos registrados de nuevo"
+            );
+        }
+        // Grabando un atajo en los ajustes, la combinacion que ya era un
+        // atajo no debe capturar nada: es la que el usuario esta grabando.
+        if let Evento::Atajo(id) = evento
+            && ventana_ajustes::grabando_atajo()
+        {
+            if let Some((_, atajo)) = peticiones.iter().find(|(i, _)| *i == id) {
+                ventana_ajustes::entregar_atajo(*atajo);
+            }
+            tracing::info!(id, "atajo pulsado mientras se graba en los ajustes: se entrega alli");
+            return Continuar::Si;
+        }
         // Todo lo que abre el overlay de captura, en un sitio: los atajos,
         // «Capturar» de la bandeja y los gestos con Alt (D81). El gesto
         // trae el punto donde ya esta pulsado el boton: el overlay arranca
@@ -934,47 +976,11 @@ fn arrancar(
                 Continuar::Si
             }
             _ if comando == Some(comandos::Comando::AbrirAjustes) => {
-                let recursos = match &mut recursos_overlay {
-                    Some(r) => Ok(&*r),
-                    nada => Recursos::nuevos().map(|r| &*nada.insert(r)),
-                };
-                let abierta =
-                    recursos.and_then(|r| ventana_ajustes::abrir(r, &config, &textos, &ubicacion));
-                match abierta {
-                    Err(e) => tracing::warn!(?e, "no se pudo abrir la ventana de ajustes"),
-                    Ok(None) => tracing::info!("ajustes cerrados sin cambios"),
-                    Ok(Some(nuevos)) => {
-                        // Los atajos se vuelven a registrar EN VIVO: es lo
-                        // que evita el «reinicia para aplicar», y lo que
-                        // hace que grabar un atajo en la ventana valga de
-                        // algo al salir de ella. Lo que no se puede aplicar
-                        // sin reiniciar (el idioma, el nivel de rendimiento)
-                        // queda guardado y entra en el siguiente arranque.
-                        config = nuevos;
-                        // M1: vale desde el siguiente chat que se abra.
-                        tema_cosmos::fijar(config.tema_cosmos);
-                        aligerar::configurar(&config.pdf);
-                        // Las herramientas apagadas valen desde el siguiente
-                        // lienzo, lector, pin o anotador que se abra.
-                        dibujo::permitidas::fijar(config.herramientas.clone());
-                        let (enlaces, _) = comandos::Enlaces::de_ajustes(&config);
-                        peticiones = enlaces.registrables();
-                        let (de_regiones, _) =
-                            pixpin_store::regiones::registrables(&config.regiones);
-                        peticiones.extend(de_regiones);
-                        // Soltar el guardia viejo ANTES de registrar el nuevo:
-                        // si no, las combinaciones que no cambiaron seguirian
-                        // tomadas y el registro nuevo fallaria en ellas.
-                        drop(registrados.take());
-                        let (guardia, fallidos) = atajos::registrar(ventana.handle(), &peticiones);
-                        registrados = Some(guardia);
-                        tracing::info!(
-                            pedidos = peticiones.len(),
-                            fallidos = fallidos.len(),
-                            "ajustes aplicados y atajos registrados de nuevo"
-                        );
-                    }
-                }
+                // En su propio hilo (10-oct), como el chat: con los ajustes
+                // abiertos los atajos y los gestos siguen capturando al
+                // momento. Lo que cambie se aplica arriba, al volver
+                // (`ventana_ajustes::tomar_cambios`).
+                ventana_ajustes::lanzar(lengua, config.clone(), ubicacion.clone(), hwnd.0 as isize);
                 Continuar::Si
             }
             Evento::AbrirFicheros(rutas) => {

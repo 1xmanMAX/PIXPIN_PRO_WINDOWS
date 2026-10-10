@@ -113,6 +113,7 @@ const VK_F: u32 = 0x46;
 const VK_F2: u32 = 0x71;
 const VK_F3: u32 = 0x72;
 const VK_M: u32 = 0x4D;
+const VK_N: u32 = 0x4E;
 const VK_L: u32 = 0x4C;
 const VK_S: u32 = 0x53;
 const VK_Y: u32 = 0x59;
@@ -438,6 +439,9 @@ struct Estado {
     pastilla_hasta: u64,
     panel: bool,
     poniendo_marca: bool,
+    /// El contenido en negativo (N, 10-oct-2026): solo al pintar, sin
+    /// tocar el documento; la interfaz y la tinta quedan con sus colores.
+    en_negativo: bool,
     encima: DestinoRiel,
     aviso: Option<(String, u64)>,
     botones: Vec<(RectF, Accion)>,
@@ -545,6 +549,7 @@ pub fn abrir(
         pastilla_hasta: ahora_ms() + MS_DE_LA_PASTILLA,
         panel: false,
         poniendo_marca: false,
+        en_negativo: false,
         encima: DestinoRiel::Fuera,
         aviso: None,
         botones: Vec::new(),
@@ -801,6 +806,8 @@ pub fn abrir(
             e.pedir_pantalla_completa = false;
             pin.alternar_pantalla_completa(&mut ventana);
         }
+        // Movida o estirada desde fuera (AltSnap, Win+flecha): el pin la sigue.
+        pin.seguir_ventana(&mut ventana);
         // **La ventana cambio** (estirada, llevada, a pantalla completa): la
         // superficie y el marco, a su medida nueva; las hojas se repintan al
         // ancho nuevo.
@@ -1213,6 +1220,19 @@ fn pintar(e: &mut Estado, p: &Pintor, m: Marco, textos: &Catalogo) {
                 );
             }
         }
+        // N: la hoja (y sus margenes de anotar) en negativo. Antes de lo
+        // encontrado, lo que suena y la tinta, que conservan sus colores.
+        if e.en_negativo {
+            p.invertir_colores(
+                RectF {
+                    x: -izq,
+                    y: 0.0,
+                    ancho: izq + vista::ANCHO_HOJA + der,
+                    alto,
+                },
+                0.0,
+            );
+        }
         marcas_de_busqueda(e, p, i);
         voz::pintar_lo_que_suena(e, p, i);
         if let Some(capa) = e.capas.get(&i) {
@@ -1230,7 +1250,13 @@ fn pintar(e: &mut Estado, p: &Pintor, m: Marco, textos: &Catalogo) {
                 capa,
                 vista_hoja,
                 s,
-                lector_tinta::papel(Color::BLANCO),
+                // En negativo el papel es negro: la tinta se ajusta a el
+                // como sobre cualquier papel oscuro y se sigue leyendo.
+                lector_tinta::papel(if e.en_negativo {
+                    Color::BLANCO.invertido()
+                } else {
+                    Color::BLANCO
+                }),
                 activa,
             );
         }
@@ -1777,6 +1803,8 @@ fn tecla(e: &mut Estado, vk: u32, shift: bool, ctrl: bool, ruta: &Path, m: Marco
         }
         (VK_A, false) => alternar_anotar(e, ruta),
         (VK_G, false) => e.panel = !e.panel,
+        // N: las hojas en negativo y vuelta, como en los pines.
+        (VK_N, false) => e.en_negativo = !e.en_negativo,
         (v, true) if (0x31..=0x39).contains(&v) => ir_a_la_marca(e, (v - 0x31) as usize),
         _ => e.pastilla_hasta = ahora_ms() + MS_DE_LA_PASTILLA,
     }
@@ -2390,6 +2418,7 @@ mod pruebas {
             pastilla_hasta: 0,
             panel: false,
             poniendo_marca: false,
+            en_negativo: false,
             encima: DestinoRiel::Fuera,
             aviso: None,
             botones: Vec::new(),

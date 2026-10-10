@@ -184,7 +184,6 @@ pub fn contornos_de(e: &Elemento, paso: f32) -> Vec<Contorno> {
         | Figura::Imagen { .. }
         | Figura::Mosaico { .. }
         | Figura::Marco { .. }
-        | Figura::Cronograma { .. }
         | Figura::EscalaGrafica => cerrado(caja()),
     }
 }

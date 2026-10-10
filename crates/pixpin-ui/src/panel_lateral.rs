@@ -495,7 +495,6 @@ impl Mandos {
             Herramienta::Serie
                 | Herramienta::Cota
                 | Herramienta::Punto
-                | Herramienta::Cronograma
                 | Herramienta::EscalaGrafica
         );
         Mandos {
@@ -584,7 +583,7 @@ impl Mandos {
                     }
                 }
                 // Lo que rotula sin ser un texto (el numero, la cota, el
-                // punto, el cronograma, la escala): su letra en los extras.
+                // punto, la escala): su letra en los extras.
                 // Sin elegir aun (la del sistema) sale la fila sin marcar.
                 f if pixpin_motor2d::estilo::lleva_letra(f) => {
                     m.familia = match &e.extras.familia {

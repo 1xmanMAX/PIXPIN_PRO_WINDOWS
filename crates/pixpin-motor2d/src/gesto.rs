@@ -155,9 +155,6 @@ pub enum Herramienta {
     /// **El puntero laser** (F14): una estela que se apaga sola. No deja
     /// nada en el dibujo (ver `puntero_laser.rs`).
     Laser,
-    /// **El cronograma** (F12, `Tool.CRONOGRAMA` del movil): se arrastra la
-    /// caja y nace un plan con tres filas dentro. Ver `cronograma.rs`.
-    Cronograma,
     /// **Soldar vertices** (`Tool.NUDO` del movil): un clic en el cruce o la
     /// junta de dos figuras las clava por ahi y desde entonces no se separan
     /// (ver `nudos.rs`). Otro clic en el clavo lo quita. No crea nada: los
@@ -313,15 +310,6 @@ enum Estado {
     Marquesina {
         origen: Punto2,
         hasta: Punto2,
-    },
-    /// Arrastrando una barra de un cronograma (F12): moviendola o
-    /// estirandola por la punta. `agarre` es por donde se cogio, en columnas
-    /// desde su principio, para que no salte al empezar.
-    BarraDelPlan {
-        id: u64,
-        indice: usize,
-        mano: crate::cronograma::ManoEnLaBarra,
-        agarre: f32,
     },
     /// Arrastrando la raya de `Escalar`. No hay id: no deja rastro, y sus
     /// puntos van en `trazo` en vez de en un elemento de la escena.
@@ -886,8 +874,6 @@ impl Gesto {
             // es el resaltado de la figura a la que se va a atar, y el iman
             // ademas se pegaria al punto viejo de la propia flecha.
             Estado::ArrastrandoPunta { .. } => None,
-            // La barra de un cronograma ya se engancha a cuartos de columna.
-            Estado::BarraDelPlan { .. } => None,
         }
     }
 
@@ -1062,12 +1048,6 @@ impl Gesto {
                 puntos: reservados(),
             },
             Herramienta::EscalaGrafica => Figura::EscalaGrafica,
-            // Nace con filas y no vacio: lo que uno quiere al poner un
-            // cronograma es ver ya la rejilla y empezar a arrastrar barras.
-            Herramienta::Cronograma => Figura::Cronograma {
-                tareas: crate::cronograma::tareas_de_fabrica(),
-                periodos: crate::cronograma::PERIODOS_DE_FABRICA,
-            },
             Herramienta::Marco => Figura::Marco {
                 // Sin nombre: ponerle uno automatico obligaria a contar los
                 // marcos aqui, y el motor no sabe de nombres bonitos.
@@ -1149,18 +1129,6 @@ impl Gesto {
                         .estilo
                         .familia
                         .map(|n| crate::texto::nombre_de_familia(Some(n)).to_string()),
-                    ..Default::default()
-                }
-            } else if self.herramienta == Herramienta::Cronograma {
-                // Con la letra del pincel, como `newElement` del movil con
-                // `fontFamily`: la de los textos de alrededor.
-                crate::elemento::Extras {
-                    familia: Some(crate::texto::nombre_de_familia(self.estilo.familia).to_string()),
-                    tam_letra: Some(if self.estilo.tamano_letra > 0.0 {
-                        self.estilo.tamano_letra
-                    } else {
-                        crate::texto::TAM_POR_DEFECTO
-                    }),
                     ..Default::default()
                 }
             } else {
@@ -1312,43 +1280,6 @@ impl Gesto {
                 }
                 None => {}
             }
-        }
-
-        // 1.a ¿La barra de un cronograma? (F12) Va antes que mover la figura:
-        //     dentro de un plan, lo que uno quiere arrastrar casi siempre es
-        //     una barra, no la lamina. La lamina se sigue moviendo agarrandola
-        //     por cualquier otro sitio.
-        if selecciona
-            && !shift
-            && let [id] = self.seleccion.ids()
-            && let Some(plan) = escena
-                .buscar(*id)
-                .filter(|e| !e.bloqueado && matches!(e.figura, Figura::Cronograma { .. }))
-            && let Some((indice, mano)) = crate::cronograma::toque_en_barra(plan, p, 4.0 * escala)
-        {
-            let id = *id;
-            let col = crate::cronograma::ancho_de_columna(plan);
-            let desde = match &plan.figura {
-                Figura::Cronograma { tareas, .. } => tareas[indice].desde,
-                _ => 0.0,
-            };
-            let agarre = if col <= 0.0 {
-                0.0
-            } else {
-                (p.x - crate::cronograma::x_de_la_escala(plan)) / col - desde
-            };
-            escena.apuntar_edicion(id);
-            self.estado = Estado::BarraDelPlan {
-                id,
-                indice,
-                mano,
-                agarre,
-            };
-            return Respuesta {
-                region: Region::Nada,
-                cursor: FormaCursor::Mover,
-                pide: None,
-            };
         }
 
         // 2. Lo ya seleccionado manda sobre lo de encima.
@@ -1867,34 +1798,6 @@ impl Gesto {
                 Respuesta {
                     region: Region::Todo,
                     cursor: FormaCursor::Flecha,
-                    pide: None,
-                }
-            }
-
-            // La barra del cronograma sigue al raton, enganchada a cuartos de
-            // columna (`tareaArrastrada` del movil).
-            Estado::BarraDelPlan {
-                id,
-                indice,
-                mano,
-                agarre,
-            } => {
-                let nueva = escena
-                    .buscar(id)
-                    .and_then(|e| crate::cronograma::tarea_arrastrada(e, indice, mano, p, agarre));
-                let mut cambio = false;
-                if let (Some(nueva), Some(e)) = (nueva, escena.buscar_mut(id))
-                    && let Figura::Cronograma { tareas, .. } = &mut e.figura
-                    && tareas.get(indice) != Some(&nueva)
-                {
-                    tareas[indice] = nueva;
-                    e.tocar();
-                    cambio = true;
-                }
-                self.arrastrado |= cambio;
-                Respuesta {
-                    region: if cambio { Region::Todo } else { Region::Nada },
-                    cursor: FormaCursor::Mover,
                     pide: None,
                 }
             }

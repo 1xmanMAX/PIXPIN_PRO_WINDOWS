@@ -131,7 +131,36 @@ thread_local! {
     /// los datos de la ventana porque el `WndProc` es una funcion `extern
     /// "system"` que no puede capturar entorno, y porque toda la interaccion
     /// con ventanas ocurre en el hilo de interfaz por exigencia de Win32.
-    static PENDIENTES: RefCell<Vec<Evento>> = const { RefCell::new(Vec::new()) };
+    ///
+    /// Cada evento va con su hora (reloj de `GetTickCount`): un gesto que
+    /// espero demasiado aqui ya no se atiende (`gestos::CADUCIDAD_GESTO_MS`).
+    static PENDIENTES: RefCell<Vec<(Evento, u32)>> = const { RefCell::new(Vec::new()) };
+}
+
+/// Deja un evento en la cola del hilo, con la hora en que se produjo.
+fn encolar(evento: Evento, hora: u32) {
+    PENDIENTES.with(|p| p.borrow_mut().push((evento, hora)));
+}
+
+/// Si un evento sacado de la cola ya no debe atenderse: solo los gestos con
+/// Alt caducan (ver `gestos::CADUCIDAD_GESTO_MS`). Un atajo o un clic en la
+/// bandeja se atienden siempre, por tarde que lleguen.
+fn caducado(evento: &Evento, hora: u32) -> bool {
+    let Evento::Gesto { boton, punto } = evento else {
+        return false;
+    };
+    let ahora = crate::gestos::reloj_ms();
+    let en_curso = crate::gestos::es_el_gesto_en_curso(punto.x, punto.y);
+    if !crate::gestos::gesto_caducado(hora, ahora, en_curso) {
+        return false;
+    }
+    tracing::info!(
+        ?boton,
+        ?punto,
+        espera_ms = crate::gestos::ms_entre(hora, ahora),
+        "gesto caducado en la cola: no se reproduce"
+    );
+    true
 }
 
 pub struct VentanaMensajes {
@@ -235,11 +264,18 @@ impl VentanaMensajes {
             // aplicacion parece ignorar el clic. Volver a drenar aqui,
             // sin pasar otra vez por `GetMessageW`, lo recoge de inmediato.
             loop {
-                let eventos: Vec<Evento> = PENDIENTES.with(|p| p.borrow_mut().drain(..).collect());
+                let eventos: Vec<(Evento, u32)> =
+                    PENDIENTES.with(|p| p.borrow_mut().drain(..).collect());
                 if eventos.is_empty() {
                     break;
                 }
-                for evento in eventos {
+                for (evento, hora) in eventos {
+                    // La hora se mira AQUI, evento a evento, y no al sacar la
+                    // tanda: lo que tarde en atenderse el anterior (un
+                    // overlay entero) cuenta para el siguiente.
+                    if caducado(&evento, hora) {
+                        continue;
+                    }
                     if al_recibir(evento) == Continuar::No {
                         return;
                     }
@@ -283,7 +319,7 @@ extern "system" fn procedimiento(
             if let Some(leido) = unsafe { crate::mensajero::pedido_de_copydata(lparam) } {
                 return match leido {
                     Ok(json) => {
-                        PENDIENTES.with(|p| p.borrow_mut().push(Evento::Pedido(json)));
+                        encolar(Evento::Pedido(json), crate::gestos::reloj_ms());
                         LRESULT(crate::mensajero::respuesta::ACEPTADO)
                     }
                     Err(rechazo) => LRESULT(rechazo),
@@ -298,7 +334,7 @@ extern "system" fn procedimiento(
             } else {
                 // Se contesta 1 para que el otro proceso sepa que llegaron
                 // y no arranque una copia entera para nada.
-                PENDIENTES.with(|p| p.borrow_mut().push(Evento::AbrirFicheros(rutas)));
+                encolar(Evento::AbrirFicheros(rutas), crate::gestos::reloj_ms());
                 return LRESULT(1);
             }
         }
@@ -340,7 +376,14 @@ extern "system" fn procedimiento(
     };
 
     if let Some(evento) = evento {
-        PENDIENTES.with(|p| p.borrow_mut().push(evento));
+        // La hora de un gesto es la de su `PostMessage` (la del gancho), no
+        // la de ahora: si el hilo estaba ocupado sin bombear, ya va tarde.
+        let hora = if mensaje == WM_GESTO {
+            crate::gestos::hora_del_mensaje()
+        } else {
+            crate::gestos::reloj_ms()
+        };
+        encolar(evento, hora);
         // Un mensaje ENVIADO desde otro hilo (la Shell manda asi el aviso del
         // icono de la bandeja) se atiende DENTRO de GetMessageW, que no
         // vuelve: el evento quedaba en la cola hasta que llegara un mensaje
@@ -426,7 +469,7 @@ pub fn tomar_atajos_pendientes() -> Vec<u32> {
     PENDIENTES.with(|p| {
         let mut cola = p.borrow_mut();
         let mut ids = Vec::new();
-        cola.retain(|e| match e {
+        cola.retain(|(e, _)| match e {
             Evento::Atajo(id) => {
                 ids.push(*id);
                 false
@@ -471,8 +514,40 @@ mod pruebas {
             respuesta::NO_SE_ENTIENDE
         );
 
-        let en_cola: Vec<Evento> = PENDIENTES.with(|p| p.borrow_mut().drain(..).collect());
+        let en_cola: Vec<Evento> =
+            PENDIENTES.with(|p| p.borrow_mut().drain(..).map(|(e, _)| e).collect());
         assert_eq!(en_cola, vec![Evento::Pedido(bueno.to_string())]);
+    }
+
+    /// El fallo del 10-oct: los gestos que esperaron segundos en la cola
+    /// salian todos al liberarse el hilo. El bucle los salta; lo reciente y
+    /// lo que no es un gesto (un atajo, por viejo que sea) llega igual.
+    #[test]
+    fn el_bucle_salta_los_gestos_caducados_y_atiende_lo_demas() {
+        use windows::Win32::UI::WindowsAndMessaging::{PostMessageW, WM_NULL};
+        let v = VentanaMensajes::nueva().expect("deberia poder crearse");
+        PENDIENTES.with(|p| p.borrow_mut().clear());
+        let ahora = crate::gestos::reloj_ms();
+        let gesto = |x| Evento::Gesto {
+            boton: BotonGesto::Derecho,
+            punto: pixpin_geom::Punto { x, y: 10 },
+        };
+        encolar(gesto(1), ahora.wrapping_sub(9157));
+        encolar(gesto(2), ahora);
+        encolar(gesto(3), ahora.wrapping_sub(2016));
+        encolar(Evento::Atajo(7), ahora.wrapping_sub(60_000));
+        // Algo en la cola de Win32 para que GetMessageW vuelva y se drene.
+        // SAFETY: mensaje nulo a la ventana propia, viva.
+        unsafe {
+            let _ = PostMessageW(Some(v.handle()), WM_NULL, WPARAM(0), LPARAM(0));
+        }
+        let mut atendidos = Vec::new();
+        v.ejecutar(|e| {
+            let fin = matches!(e, Evento::Atajo(_));
+            atendidos.push(e);
+            if fin { Continuar::No } else { Continuar::Si }
+        });
+        assert_eq!(atendidos, vec![gesto(2), Evento::Atajo(7)]);
     }
 
     #[test]

@@ -88,10 +88,6 @@ pub fn de_figura(f: &Figura) -> &'static [Propiedad] {
         // Un punto es un sitio: color y poco mas. Ni rugosidad —un punto
         // tembloroso no es un punto— ni relleno.
         Figura::Punto { .. } => &[ColorTrazo, Grosor, Opacidad, Fuente],
-        // El cronograma: la tinta de su rejilla y sus nombres, el fondo de
-        // sus barras y el grueso. Filas, columnas y nombres van en su
-        // cajetin (Intro con el elegido).
-        Figura::Cronograma { .. } => &[ColorTrazo, Relleno, Grosor, Opacidad, Fuente],
     }
 }
 
@@ -166,9 +162,6 @@ pub fn de_herramienta(h: Herramienta) -> &'static [Propiedad] {
         | Herramienta::Nudo
         // La bolita elige, como el lazo.
         | Herramienta::Bolita => &[],
-        // El cronograma: la tinta de su rejilla, el fondo de sus barras y el
-        // grueso, como el tipo que crea (`estilo::propiedades_de`).
-        Herramienta::Cronograma => &[ColorTrazo, Relleno, Grosor, Opacidad, Fuente],
     }
 }
 
