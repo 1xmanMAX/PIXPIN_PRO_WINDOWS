@@ -23,10 +23,14 @@ cbuffer Vista3d : register(b1) {
     row_major float4x4 mvp;
     float4 luz;      // hacia la luz (xyz)
     float4 ojo;      // la camara (xyz)
-    float4 corte;    // x: 1 si corta, y: la altura, z: el radio de los puntos en pixeles
+    float4 corte;    // x: 1 si hay caja de seccion, z: el radio de los puntos en pixeles
+    float4 sec_min;  // la caja de seccion (xyz), relativa al origen
+    float4 sec_max;
     uint elegido;    // elemento resaltado + 1 (0: ninguno)
     float claro;     // 1 fondo claro
     float2 pantalla; // ancho y alto en pixeles
+    uint aislado;    // el unico elemento que se ve + 1 (0: todos)
+    float3 relleno3;
 };
 
 struct S3 {
@@ -55,10 +59,48 @@ S3 vs_3d(float3 p : POS, uint n : NORMAL, uint c : COLOR, uint e : ELEM) {
     return o;
 }
 
-void cortar(float3 w) { if (corte.x > 0.5 && w.z > corte.y) discard; }
+// **La caja de seccion** (la de Revit): lo de fuera no se ve.
+void cortar(float3 w, uint e) {
+    if (corte.x > 0.5 && (any(w < sec_min.xyz) || any(w > sec_max.xyz))) discard;
+    // Aislado: solo ese elemento.
+    if (aislado != 0 && e + 1 != aislado) discard;
+}
 
-float4 ps_3d(S3 i) : SV_Target {
-    cortar(i.w);
+// Donde el rayo del ojo a `w` entra en la caja (en fraccion del camino;
+// <= 0 si el ojo ya esta dentro) y por que cara (su normal, hacia fuera).
+float entrada(float3 w, out float3 cara) {
+    float3 d = w - ojo.xyz;
+    d = (abs(d) < 1e-9) ? 1e-9 : d;
+    float3 t1 = (sec_min.xyz - ojo.xyz) / d;
+    float3 t2 = (sec_max.xyz - ojo.xyz) / d;
+    float3 tn = min(t1, t2);
+    float t = max(tn.x, max(tn.y, tn.z));
+    float3 eje = (tn.x >= t) ? float3(1, 0, 0) : ((tn.y >= t) ? float3(0, 1, 0) : float3(0, 0, 1));
+    cara = -eje * sign(d);
+    return t;
+}
+
+// **La tapa del corte**: con la caja puesta, lo que se ve de un solido por
+// el hueco que abre una cara de la caja es su cara de dentro. Esa es la
+// tapa: se pinta maciza, como la seccion. La cara se mira con su normal
+// geometrica (vuelta hacia el ojo) contra la guardada: asi las normales
+// suaves no enganan en los bordes.
+bool es_tapa(S3 i) {
+    if (corte.x < 0.5) return false;
+    float3 g = cross(ddx(i.w), ddy(i.w));
+    if (dot(g, ojo.xyz - i.w) < 0) g = -g;
+    float3 cara;
+    return dot(i.n, g) < 0 && entrada(i.w, cara) > 0;
+}
+
+// El punto de la tapa: donde el rayo entra en la caja.
+float3 en_el_corte(float3 w) {
+    float3 cara;
+    float t = max(entrada(w, cara), 0);
+    return ojo.xyz + (w - ojo.xyz) * t;
+}
+
+float4 sombrear(S3 i) {
     float3 n = normalize(i.n);
     float3 v = normalize(ojo.xyz - i.w);
     if (dot(n, v) < 0) n = -n;   // las dos caras
@@ -69,6 +111,32 @@ float4 ps_3d(S3 i) : SV_Target {
     float3 col = i.c.rgb * (0.30 + 0.22 * cielo + 0.55 * dif) + brillo;
     if (i.e + 1 == elegido) col = lerp(col, float3(0.10, 0.55, 1.0), 0.55);
     return float4(col, i.c.a);
+}
+
+// Lo opaco sin las tapas (van despues, en `ps_tapa`).
+float4 ps_3d(S3 i) : SV_Target {
+    cortar(i.w, i.e);
+    if (es_tapa(i)) discard;
+    return sombrear(i);
+}
+
+// Los vidrios: las dos caras, como siempre.
+float4 ps_vidrio(S3 i) : SV_Target {
+    cortar(i.w, i.e);
+    return sombrear(i);
+}
+
+// La tapa: plana, mirando arriba y algo mas oscura que el elemento, para
+// que se lea como corte.
+float4 ps_tapa(S3 i) : SV_Target {
+    cortar(i.w, i.e);
+    if (!es_tapa(i)) discard;
+    float3 cara;
+    entrada(i.w, cara);
+    float dif = saturate(dot(cara, luz.xyz));
+    float3 col = i.c.rgb * (0.40 + 0.12 * (0.5 + 0.5 * cara.z) + 0.55 * dif) * 0.8;
+    if (i.e + 1 == elegido) col = lerp(col, float3(0.10, 0.55, 1.0), 0.55);
+    return float4(col, 1);
 }
 
 // Un punto: 4 vertices en el mismo sitio; la esquina (byte alto de la
@@ -83,7 +151,7 @@ S3 vs_punto(float3 p : POS, uint n : NORMAL, uint c : COLOR, uint e : ELEM) {
 }
 
 float4 ps_punto(S3 i) : SV_Target {
-    cortar(i.w);
+    cortar(i.w, i.e);
     float r = length(i.n.xy);
     if (r > 1.0) discard;
     float3 col = i.c.rgb;
@@ -93,13 +161,13 @@ float4 ps_punto(S3 i) : SV_Target {
 }
 
 float4 ps_linea(S3 i) : SV_Target {
-    cortar(i.w);
+    cortar(i.w, i.e);
     if (i.e + 1 == elegido) return float4(0.10, 0.55, 1.0, 1);
     return i.c;
 }
 
 float4 ps_arista(S3 i) : SV_Target {
-    cortar(i.w);
+    cortar(i.w, i.e);
     float3 base = i.c.rgb * 0.28;
     if (i.e + 1 == elegido) base = float3(0.0, 0.30, 0.75);
     return float4(base, claro > 0.5 ? 0.75 : 0.85);
@@ -107,11 +175,13 @@ float4 ps_arista(S3 i) : SV_Target {
 
 struct Eleccion { uint id : SV_Target0; float4 mundo : SV_Target1; };
 Eleccion ps_id(S3 i) {
-    cortar(i.w);
+    cortar(i.w, i.e);
     if (i.n.z == 0 && length(i.n.xy) > 1.05) discard;
     Eleccion o;
     o.id = i.e + 1;
-    o.mundo = float4(i.w, 1);
+    // En una tapa, el punto es el del corte: alli se gira y se acerca.
+    // (Un punto no tiene cara: su normal geometrica es cero y no es tapa.)
+    o.mundo = float4(es_tapa(i) ? en_el_corte(i.w) : i.w, 1);
     return o;
 }
 "#;
@@ -124,9 +194,13 @@ pub struct Vista3d {
     pub luz: [f32; 4],
     pub ojo: [f32; 4],
     pub corte: [f32; 4],
+    pub sec_min: [f32; 4],
+    pub sec_max: [f32; 4],
     pub elegido: u32,
     pub claro: f32,
     pub pantalla: [f32; 2],
+    pub aislado: u32,
+    pub relleno: [f32; 3],
 }
 
 /// El modelo en la tarjeta.
@@ -150,6 +224,8 @@ pub(crate) struct Tres {
     ps_punto: ID3D11PixelShader,
     ps_linea: ID3D11PixelShader,
     ps: ID3D11PixelShader,
+    ps_vidrio: ID3D11PixelShader,
+    ps_tapa: ID3D11PixelShader,
     ps_arista: ID3D11PixelShader,
     ps_id: ID3D11PixelShader,
     il: ID3D11InputLayout,
@@ -202,6 +278,8 @@ impl Gpu {
         let vp = compilar_de(SOMBREADORES_3D, s!("vs_punto"), s!("vs_5_0"))?;
         let pp = compilar_de(SOMBREADORES_3D, s!("ps_punto"), s!("ps_5_0"))?;
         let pl = compilar_de(SOMBREADORES_3D, s!("ps_linea"), s!("ps_5_0"))?;
+        let pv = compilar_de(SOMBREADORES_3D, s!("ps_vidrio"), s!("ps_5_0"))?;
+        let pt = compilar_de(SOMBREADORES_3D, s!("ps_tapa"), s!("ps_5_0"))?;
         // SAFETY: llamadas sobre el dispositivo propio; descripciones locales.
         unsafe {
             let (mut v, mut p, mut p2, mut p3, mut il, mut cb) = (None, None, None, None, None, None);
@@ -213,6 +291,9 @@ impl Gpu {
             d.CreateVertexShader(&vp, None, Some(&mut v2))?;
             d.CreatePixelShader(&pp, None, Some(&mut p4))?;
             d.CreatePixelShader(&pl, None, Some(&mut p5))?;
+            let (mut p6, mut p7) = (None, None);
+            d.CreatePixelShader(&pv, None, Some(&mut p6))?;
+            d.CreatePixelShader(&pt, None, Some(&mut p7))?;
             d.CreateInputLayout(
                 &[
                     elemento(s!("POS"), DXGI_FORMAT_R32G32B32_FLOAT, 0, false),
@@ -263,6 +344,8 @@ impl Gpu {
                 ps_punto: p4.ok_or_else(falta)?,
                 ps_linea: p5.ok_or_else(falta)?,
                 ps: p.ok_or_else(falta)?,
+                ps_vidrio: p6.ok_or_else(falta)?,
+                ps_tapa: p7.ok_or_else(falta)?,
                 ps_arista: p2.ok_or_else(falta)?,
                 ps_id: p3.ok_or_else(falta)?,
                 il: il.ok_or_else(falta)?,
@@ -397,6 +480,17 @@ impl Gpu {
                     ctx.IASetIndexBuffer(ib, DXGI_FORMAT_R32_UINT, 0);
                     ctx.DrawIndexed(m.n_aristas, 0, 0);
                 }
+                // 2a. Las tapas de la caja de seccion: despues de las aristas,
+                // para que las de dentro del solido (las del fondo) queden tapadas.
+                if v.corte[0] > 0.5 && let Some(ib) = &m.opacos {
+                    ctx.OMSetBlendState(None, None, 0xffff_ffff);
+                    ctx.OMSetDepthStencilState(&t.prof, 0);
+                    ctx.RSSetState(&t.raster_solido);
+                    ctx.PSSetShader(&t.ps_tapa, None);
+                    ctx.IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+                    ctx.IASetIndexBuffer(ib, DXGI_FORMAT_R32_UINT, 0);
+                    ctx.DrawIndexed(m.n_opacos, 0, 0);
+                }
                 // 2b. Las rayas sueltas y los puntos.
                 if let Some(ib) = &m.lineas {
                     ctx.OMSetBlendState(&self.mezcla, None, 0xffff_ffff);
@@ -423,7 +517,7 @@ impl Gpu {
                     ctx.OMSetBlendState(&self.mezcla, None, 0xffff_ffff);
                     ctx.OMSetDepthStencilState(&t.prof_leer, 0);
                     ctx.RSSetState(&t.raster_solido);
-                    ctx.PSSetShader(&t.ps, None);
+                    ctx.PSSetShader(&t.ps_vidrio, None);
                     ctx.IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
                     ctx.IASetIndexBuffer(ib, DXGI_FORMAT_R32_UINT, 0);
                     ctx.DrawIndexed(m.n_transparentes, 0, 0);
