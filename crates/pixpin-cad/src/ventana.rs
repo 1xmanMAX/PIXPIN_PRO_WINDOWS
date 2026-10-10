@@ -515,7 +515,7 @@ pub(crate) fn raya(c: &mut Constructor, a: [f64; 2], b: [f64; 2], g: f64, color:
     raya_en(c, a, b, g, color, CAPA_RAYAS);
 }
 
-fn raya_en(c: &mut Constructor, a: [f64; 2], b: [f64; 2], g: f64, color: u32, capa: f64) {
+pub(crate) fn raya_en(c: &mut Constructor, a: [f64; 2], b: [f64; 2], g: f64, color: u32, capa: f64) {
     let (dx, dy) = (b[0] - a[0], b[1] - a[1]);
     let l = dx.hypot(dy);
     if l < 1e-9 {
@@ -660,6 +660,18 @@ pub(crate) fn barra(e: f64, botones: &[&str], encima: Option<usize>, claro: bool
                 for (px, py, dx, dy) in [(x0, y0, -1.0, -1.0), (x1, y0, 1.0, -1.0), (x1, y1, 1.0, 1.0), (x0, y1, -1.0, 1.0)] {
                     raya(&mut c, [px + dx * 1.5 * e, py], [px + dx * 4.0 * e, py], 1.4 * e, col);
                     raya(&mut c, [px, py + dy * 1.5 * e], [px, py + dy * 4.0 * e], 1.4 * e, col);
+                }
+            }
+            "capas" => {
+                // Una lista: tres rayas con su casilla delante.
+                for k in -1..=1 {
+                    let y = cy + k as f64 * 5.5 * e;
+                    c.triangulos(
+                        &[[cx - 9.0 * e, y - 1.8 * e], [cx - 5.4 * e, y - 1.8 * e], [cx - 5.4 * e, y + 1.8 * e], [cx - 9.0 * e, y - 1.8 * e], [cx - 5.4 * e, y + 1.8 * e], [cx - 9.0 * e, y + 1.8 * e]],
+                        col,
+                        Some(CAPA_RAYAS),
+                    );
+                    raya(&mut c, [cx - 2.5 * e, y], [cx + 9.0 * e, y], 1.6 * e, col);
                 }
             }
             "aristas" | "tres" => {

@@ -14,8 +14,13 @@
 //! - Barra: asa, tema, caja de seccion (la de Revit: el modelo dentro de una
 //!   caja con un tirador en cada cara; arrastrandolos se corta por donde se
 //!   quiera, y lo cortado se ve macizo) y el pin.
+//! - Niveles y categorias (boton de la barra o L): un panel para mostrar u
+//!   ocultar plantas y categorias; lo elegido dice su nivel, su volumen y su
+//!   area (sacados de su malla).
 //! - Teclas: Esc (suelta lo elegido; si no hay, cierra), B tema, C caja,
 //!   A aristas, T encima, P planta, flechas para girar.
+
+mod arbol;
 
 use std::sync::mpsc::Receiver;
 use std::time::{Duration, Instant};
@@ -31,7 +36,8 @@ use crate::convertir::rgba;
 use crate::gpu::{Gpu, PlanoGpu};
 use crate::gpu3d::{ModeloGpu, Vista3d};
 use crate::modelo::{Constructor, Modelo};
-use crate::modelo3d::{Modelo3d, tipo_legible};
+use crate::modelo3d::Modelo3d;
+use arbol::Arbol;
 use crate::texto::Textos;
 use crate::ventana::{
     ALTO_BARRA, CAPA_ENCIMA, De, ESTADO, Ev, ancho_barra, aviso, barra, botones_barra, colocar_barra, crear_barra, crear_ventana, poner_encima,
@@ -39,7 +45,7 @@ use crate::ventana::{
 };
 
 const INFINITE: u32 = u32::MAX;
-const BOTONES: [&str; 4] = ["asa", "tema", "corte", "fijar"];
+const BOTONES: [&str; 5] = ["asa", "tema", "corte", "capas", "fijar"];
 const FOV: f64 = 0.785_398; // 45 grados
 
 fn sub(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
@@ -250,6 +256,11 @@ pub struct TextosUi3d {
     pub tema: String,
     pub corte: String,
     pub aislar: String,
+    pub panel: String,
+    pub niveles: String,
+    pub categorias: String,
+    pub sin_nivel: String,
+    pub mostrar_todo: String,
     pub aristas: String,
     pub planta: String,
     pub encima: String,
@@ -268,6 +279,11 @@ impl Default for TextosUi3d {
             tema: "Fondo claro u oscuro\tB".into(),
             corte: "Caja de sección\tC".into(),
             aislar: "Aislar lo elegido\tI".into(),
+            panel: "Niveles y categorías\tL".into(),
+            niveles: "NIVELES".into(),
+            categorias: "CATEGORÍAS".into(),
+            sin_nivel: "Sin nivel".into(),
+            mostrar_todo: "Mostrar todo".into(),
             aristas: "Aristas\tA".into(),
             planta: "Vista en planta\tP".into(),
             encima: "Siempre encima\tT".into(),
@@ -286,8 +302,9 @@ const M_PLANTA: u32 = 5;
 const M_ENCIMA: u32 = 6;
 const M_CERRAR: u32 = 7;
 const M_AISLAR: u32 = 8;
+const M_PANEL: u32 = 9;
 
-fn menu(hwnd: HWND, t: &TextosUi3d, corte: bool, aislado: Option<bool>, aristas: bool, fijada: bool) {
+fn menu(hwnd: HWND, t: &TextosUi3d, corte: bool, aislado: Option<bool>, panel: bool, aristas: bool, fijada: bool) {
     // SAFETY: menu propio que se destruye antes de salir; cadenas vivas.
     unsafe {
         let Ok(m) = CreatePopupMenu() else { return };
@@ -303,6 +320,7 @@ fn menu(hwnd: HWND, t: &TextosUi3d, corte: bool, aislado: Option<bool>, aristas:
         if let Some(a) = aislado {
             poner(M_AISLAR, &t.aislar, a);
         }
+        poner(M_PANEL, &t.panel, panel);
         poner(M_ARISTAS, &t.aristas, aristas);
         let _ = AppendMenuW(m, MF_SEPARATOR, 0, PCWSTR::null());
         poner(M_ENCIMA, &t.encima, fijada);
@@ -450,7 +468,10 @@ fn disco(c: &mut Constructor, centro: [f64; 2], r: f64, color: u32) {
 }
 
 struct Encima<'a> {
-    elegido: Option<&'a crate::modelo3d::Elemento>,
+    /// Lo elegido, ya dicho: «Muro · nombre · 1ER PISO · 3.82 m³ · 21.80 m²».
+    elegido: Option<String>,
+    /// El panel de niveles y categorias, si esta abierto.
+    arbol: Option<&'a arbol::Arbol>,
     caja: Option<CajaVista>,
     /// Mientras se arrastra un tirador: que cara y donde queda (en el mundo).
     cara: Option<(usize, f64)>,
@@ -471,10 +492,8 @@ fn encima_del_modelo(textos: &mut Textos, a: &Encima, ui: &TextosUi3d, w: u32, h
         rect(c, x, y, x + ancho + 20.0 * e, y + 26.0 * e, pildora);
         textos.en_pantalla(c, t, x + 10.0 * e, y + 17.5 * e, tam, letra, x + ancho + 40.0 * e);
     };
-    if let Some(el) = a.elegido {
-        let tipo = tipo_legible(&el.tipo);
-        let t = if el.nombre.is_empty() { tipo } else { format!("{tipo} · {}", el.nombre) };
-        pastilla(textos, &mut c, &t, 12.0 * e, h as f64 - 38.0 * e);
+    if let Some(t) = &a.elegido {
+        pastilla(textos, &mut c, t, 12.0 * e, h as f64 - 38.0 * e);
     } else if let Some(p) = a.pista {
         pastilla(textos, &mut c, p, 12.0 * e, h as f64 - 38.0 * e);
     }
@@ -515,6 +534,10 @@ fn encima_del_modelo(textos: &mut Textos, a: &Encima, ui: &TextosUi3d, w: u32, h
         let y = (y - 13.0 * e).clamp(4.0 * e, (h as f64 - 30.0 * e).max(4.0 * e));
         pastilla(textos, &mut c, &t, x, y);
     }
+    // El panel, lo ultimo: encima de la caja y de todo.
+    if let Some(ar) = a.arbol {
+        ar.dibujar(&mut c, textos, ui, a.unidad, h, e, claro);
+    }
     c.terminar()
 }
 
@@ -554,6 +577,11 @@ pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo3d, String>>, ui: Texto
     let mut tirador: Option<(usize, i32, i32, f64, [f64; 2])> = None;
     let mut tirador_encima: Option<usize> = None;
     let mut elegido: Option<u32> = None;
+    // El panel de niveles y categorias: lo que tiene el modelo y si se ve.
+    let mut arbol_m: Option<Arbol> = None;
+    let mut panel = false;
+    // El clic empezo en el panel: al soltar no se elige nada.
+    let mut bajo_en_panel = false;
     // Aislado: el unico elemento que se ve y su caja.
     let mut aislado: Option<(u32, [f32; 6])> = None;
     let mut pista_hasta = Some(Instant::now() + Duration::from_secs(6));
@@ -615,6 +643,7 @@ pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo3d, String>>, ui: Texto
                             let c = m.caja;
                             radio = ((c[3] - c[0]).hypot(c[4] - c[1]).hypot(c[5] - c[2]) as f64 / 2.0).max(1e-3);
                             caja_vista = m.caja_util();
+                            arbol_m = Some(Arbol::de(&m, &ui));
                             cam = Orbita::encuadrar(caja_vista, w, h);
                             destino = cam;
                             modelo = Some((m, g));
@@ -634,6 +663,9 @@ pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo3d, String>>, ui: Texto
         let boton_en = |x: i32| -> Option<usize> { b_barra.iter().position(|(a, b)| (x as f64) >= *a && (x as f64) < *b) };
         let caja = caja_vista;
         let (mut cambiar_tema, mut cambiar_corte, mut cambiar_encima, mut encuadrar, mut planta) = (false, false, false, false, false);
+        // Cambio lo que se ve en el panel: hay que rehacer los indices.
+        let mut refiltrar = false;
+        let mut cambiar_panel = false;
         // Aislar lo elegido (Some(e)) o volver a todo (None).
         let mut aislar: Option<Option<u32>> = None;
         // Lo que se ve: el aislado o el modelo.
@@ -666,7 +698,8 @@ pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo3d, String>>, ui: Texto
                     }
                     Some(1) => cambiar_tema = true,
                     Some(2) => cambiar_corte = true,
-                    Some(3) => cambiar_encima = true,
+                    Some(3) => cambiar_panel = true,
+                    Some(4) => cambiar_encima = true,
                     _ => {}
                 },
                 (De::Barra, _) => {}
@@ -721,7 +754,17 @@ pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo3d, String>>, ui: Texto
                     pista_hasta = None;
                     // SAFETY: lee el estado de Ctrl.
                     let ctrl = unsafe { GetKeyState(VK_CONTROL.0 as i32) } < 0;
-                    if b == 0 && ctrl {
+                    if panel
+                        && let Some(ar) = &mut arbol_m
+                        && ar.dentro(x, y, h, e)
+                    {
+                        // **El panel**: mostrar u ocultar (Ctrl: solo ese).
+                        bajo_en_panel = true;
+                        if b == 0 && ar.tocar(x, y, ctrl, &ui, h, e) {
+                            refiltrar = true;
+                        }
+                        sucio = true;
+                    } else if b == 0 && ctrl {
                         // SAFETY: ventana propia.
                         unsafe {
                             let _ = ReleaseCapture();
@@ -761,12 +804,14 @@ pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo3d, String>>, ui: Texto
                     let era_tirador = tirador.take().is_some();
                     let movido = arrastre.is_some_and(|a| a.5);
                     arrastre = None;
-                    if era_tirador || movido {
+                    if std::mem::take(&mut bajo_en_panel) {
+                        // Del panel: ya se hizo al bajar.
+                    } else if era_tirador || movido {
                         // Fuera el pivote y la medida de la cara.
                         sucio = true;
                     } else if b == 2 {
                         let a = if aislado.is_some() { Some(true) } else { elegido.map(|_| false) };
-                        menu(hwnd, &ui, seccion.is_some(), a, aristas, fijada);
+                        menu(hwnd, &ui, seccion.is_some(), a, panel, aristas, fijada);
                     } else if b == 0
                         && let Some((_, g)) = &modelo
                     {
@@ -780,6 +825,20 @@ pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo3d, String>>, ui: Texto
                             sucio = true;
                         }
                     }
+                }
+                (De::Plano, Ev::Doble(x, y))
+                    if panel && arbol_m.as_ref().is_some_and(|ar| ar.dentro(x, y, h, e)) =>
+                {
+                    // Un doble clic en el panel son dos clics.
+                    // SAFETY: lee el estado de Ctrl.
+                    let ctrl = unsafe { GetKeyState(VK_CONTROL.0 as i32) } < 0;
+                    if let Some(ar) = &mut arbol_m
+                        && ar.tocar(x, y, ctrl, &ui, h, e)
+                    {
+                        refiltrar = true;
+                    }
+                    bajo_en_panel = true;
+                    sucio = true;
                 }
                 (De::Plano, Ev::Doble(x, y)) => {
                     // En un elemento lo aisla el clic que sigue (el de soltar);
@@ -798,6 +857,14 @@ pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo3d, String>>, ui: Texto
                 }
                 (De::Plano, Ev::Rueda(x, y, d)) => {
                     pista_hasta = None;
+                    if panel
+                        && let Some(ar) = &mut arbol_m
+                        && ar.dentro(x, y, h, e)
+                    {
+                        ar.rueda(d, h, e);
+                        sucio = true;
+                        continue;
+                    }
                     let factor = 1.2f64.powf(-(d as f64) / 120.0);
                     // El punto bajo el cursor: el tocado (si se sigue girando
                     // la rueda en el mismo sitio, el de antes).
@@ -820,6 +887,7 @@ pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo3d, String>>, ui: Texto
                     M_TEMA => cambiar_tema = true,
                     M_CORTE => cambiar_corte = true,
                     M_AISLAR => aislar = Some(if aislado.is_some() { None } else { elegido }),
+                    M_PANEL => cambiar_panel = true,
                     M_ARISTAS => {
                         aristas = !aristas;
                         sucio = true;
@@ -845,6 +913,7 @@ pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo3d, String>>, ui: Texto
                     0x42 => cambiar_tema = true,
                     0x43 => cambiar_corte = true,
                     0x49 => aislar = Some(if aislado.is_some() { None } else { elegido }),
+                    0x4C => cambiar_panel = true,
                     0x41 => {
                         aristas = !aristas;
                         sucio = true;
@@ -883,6 +952,23 @@ pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo3d, String>>, ui: Texto
             o.altura = ALTURA_MAX;
             o.dist = o.distancia_para(caja, w, h).max(1e-3);
             destino = o;
+        }
+        if cambiar_panel {
+            panel = !panel;
+            barra_sucia = true;
+            sucio = true;
+        }
+        if refiltrar
+            && let (Some((m, g)), Some(ar)) = (&mut modelo, &arbol_m)
+        {
+            let ver = |k: u32| m.elementos.get(k as usize).is_none_or(|el| ar.visible(el));
+            if let Err(err) = gpu.filtrar_3d(g, m, &ver) {
+                tracing::warn!(error = %err, "no se pudo ocultar");
+            }
+            // Lo elegido, si se oculto, se suelta.
+            if elegido.is_some_and(|k| !ver(k)) {
+                elegido = None;
+            }
         }
         if cambiar_tema {
             claro = !claro;
@@ -945,7 +1031,7 @@ pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo3d, String>>, ui: Texto
             sucio = true;
         }
         if barra_sucia && barra_visible {
-            let m = barra(e, &BOTONES, boton_encima, claro, &[false, false, seccion.is_some(), fijada]);
+            let m = barra(e, &BOTONES, boton_encima, claro, &[false, false, seccion.is_some(), panel, fijada]);
             if let Ok(p) = gpu_barra.subir(&m) {
                 let (gw, gh) = gpu_barra.tamano();
                 let fondo = if claro { [0.976, 0.976, 0.984, 1.0] } else { [0.118, 0.118, 0.125, 1.0] };
@@ -967,7 +1053,8 @@ pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo3d, String>>, ui: Texto
                 capas.push((p, vista_pantalla(m, w, h)));
             }
             let datos = Encima {
-                elegido: modelo.as_ref().and_then(|(m, _)| m.elementos.get(elegido? as usize)),
+                elegido: modelo.as_ref().and_then(|(m, _)| Some(arbol::describir(m.elementos.get(elegido? as usize)?, m, unidad_de(m.metros)))),
+                arbol: arbol_m.as_ref().filter(|_| panel),
                 caja: seccion.map(|c| caja_en_pantalla(c, &cam.matriz(w, h, radio), w, h, tirador_encima)),
                 cara: tirador.and_then(|t| Some((t.0, modelo.as_ref()?.0.origen[t.0 % 3] + seccion?[t.0] as f64))),
                 pivote: arrastre.filter(|a| a.5 && a.3 == 0).and_then(|a| en_pantalla(&cam.matriz(w, h, radio), a.4, w, h)),

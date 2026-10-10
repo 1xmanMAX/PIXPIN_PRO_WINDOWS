@@ -12,11 +12,12 @@
 //! El resultado es un [`pixpin_cad::modelo3d::Modelo3d`].
 
 pub mod civil;
+pub mod niveles;
 
 use std::path::Path;
 
 use ifc_lite_processing::{OpeningFilterMode, TessellationQuality, process_geometry_filtered_with_quality_and_ids};
-use pixpin_cad::modelo3d::{Constructor3d, Modelo3d};
+use pixpin_cad::modelo3d::{Constructor3d, Modelo3d, Nivel};
 
 /// Las extensiones que se abren aqui siempre (BIM).
 pub fn se_abre(extension: &str) -> bool {
@@ -88,6 +89,14 @@ pub fn de_ifc(ifc: &[u8]) -> Modelo3d {
         let normales: Vec<[f32; 3]> = m.normals.chunks_exact(3).map(|n| [n[0], n[1], n[2]]).collect();
         let normales = (normales.len() == puntos.len()).then_some(normales.as_slice());
         c.malla(e, &puntos, normales, &m.indices, m.color);
+    }
+    // Los niveles (plantas) y en cual esta cada elemento.
+    let esp = niveles::de_ifc(ifc);
+    if !esp.niveles.is_empty() {
+        let indice: std::collections::HashMap<u32, u32> = esp.niveles.iter().enumerate().map(|(k, n)| (n.id, k as u32)).collect();
+        let de: Vec<(u32, u32)> =
+            elementos.iter().filter_map(|(id, e)| Some((*e, *indice.get(esp.de.get(id)?)?))).collect();
+        c.niveles(esp.niveles.into_iter().map(|n| Nivel { nombre: n.nombre, cota: n.cota }).collect(), &de);
     }
     c.terminar()
 }

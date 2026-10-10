@@ -28,6 +28,34 @@ pub struct Elemento {
     /// La clase IFC tal cual (`IfcWall`).
     pub tipo: String,
     pub nombre: String,
+    /// En que nivel esta (indice en [`Modelo3d::niveles`]).
+    pub nivel: Option<u32>,
+    /// Lo que mide, sacado de sus triangulos (en unidades del modelo).
+    pub medidas: Medidas,
+}
+
+/// Lo que mide un elemento, de su malla.
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct Medidas {
+    /// El volumen encerrado (si la malla no es cerrada, aproximado).
+    pub volumen: f32,
+    /// El area en planta: lo que mira arriba, proyectado.
+    pub planta: f32,
+    /// El area de una cara en alzado: lo vertical, entre dos.
+    pub alzado: f32,
+    /// Toda la superficie.
+    pub superficie: f32,
+    /// Si la malla es cerrada (cada arista la comparten dos triangulos):
+    /// solo entonces el volumen es exacto.
+    pub cerrado: bool,
+}
+
+/// Un nivel (planta) del edificio: el `IfcBuildingStorey` o el Level de Revit.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Nivel {
+    pub nombre: String,
+    /// La cota, en metros.
+    pub cota: f64,
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -49,6 +77,8 @@ pub struct Modelo3d {
     /// pantalla.
     pub puntos: Vec<u32>,
     pub elementos: Vec<Elemento>,
+    /// Los niveles, de abajo arriba (vacio si el modelo no los tiene).
+    pub niveles: Vec<Nivel>,
     /// 1 si las medidas estan en metros (lo normal en IFC tras leerlo).
     pub metros: f32,
 }
@@ -89,7 +119,7 @@ impl Constructor3d {
     }
 
     pub fn elemento(&mut self, tipo: &str, nombre: &str) -> u32 {
-        self.m.elementos.push(Elemento { tipo: tipo.to_string(), nombre: nombre.to_string() });
+        self.m.elementos.push(Elemento { tipo: tipo.to_string(), nombre: nombre.to_string(), ..Default::default() });
         (self.m.elementos.len() - 1) as u32
     }
 
@@ -203,6 +233,23 @@ impl Constructor3d {
         self.m.puntos.extend([base, base + 1, base + 2, base + 1, base + 3, base + 2]);
     }
 
+    /// Los niveles del modelo y en cual esta cada elemento
+    /// (`(elemento, nivel)`). Se ordenan por cota.
+    pub fn niveles(&mut self, niveles: Vec<Nivel>, de: &[(u32, u32)]) {
+        let mut orden: Vec<usize> = (0..niveles.len()).collect();
+        orden.sort_by(|a, b| niveles[*a].cota.total_cmp(&niveles[*b].cota));
+        let mut nuevo = vec![0u32; niveles.len()];
+        for (i, k) in orden.iter().enumerate() {
+            nuevo[*k] = i as u32;
+        }
+        self.m.niveles = orden.iter().map(|k| niveles[*k].clone()).collect();
+        for (e, n) in de {
+            if let (Some(el), Some(n)) = (self.m.elementos.get_mut(*e as usize), nuevo.get(*n as usize)) {
+                el.nivel = Some(*n);
+            }
+        }
+    }
+
     pub fn terminar(mut self) -> Modelo3d {
         let o = self.origen.unwrap_or([0.0; 3]);
         self.m.origen = o;
@@ -216,7 +263,85 @@ impl Constructor3d {
                 (self.max[2] - o[2]) as f32,
             ];
         }
+        medir(&mut self.m);
         self.m
+    }
+}
+
+/// **Las medidas de cada elemento**, de sus triangulos: el volumen por el
+/// teorema de la divergencia (la suma de los tetraedros con el origen), las
+/// areas por la normal de cada triangulo, y si la malla es cerrada (cada
+/// arista, por su posicion, la comparten un numero par de triangulos).
+pub fn medir(m: &mut Modelo3d) {
+    let n = m.elementos.len();
+    if n == 0 {
+        return;
+    }
+    let mut vol = vec![0f64; n];
+    let mut me = vec![Medidas::default(); n];
+    // La rejilla para juntar vertices repetidos (uno por cara): una
+    // millonesima del modelo.
+    let lado = (m.caja[3] - m.caja[0]).max(m.caja[4] - m.caja[1]).max(m.caja[5] - m.caja[2]).max(1e-6) as f64;
+    let q = |p: [f32; 3]| -> u64 {
+        let k = |v: f32| ((v as f64 / lado * 1.0e6).round() as i64 & 0x1f_ffff) as u64;
+        k(p[0]) | k(p[1]) << 21 | k(p[2]) << 42
+    };
+    let mut aristas: Vec<(u32, u64, u64)> = Vec::new();
+    for lista in [&m.opacos, &m.transparentes] {
+        for t in lista.chunks_exact(3) {
+            let (a, b, c) = (m.vertices[t[0] as usize], m.vertices[t[1] as usize], m.vertices[t[2] as usize]);
+            let e = a.elemento as usize;
+            if e >= n {
+                continue;
+            }
+            let (p0, p1, p2) = (a.pos, b.pos, c.pos);
+            let d = |u: [f32; 3]| [u[0] as f64, u[1] as f64, u[2] as f64];
+            let (p0, p1, p2) = (d(p0), d(p1), d(p2));
+            let u = [p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]];
+            let v = [p2[0] - p0[0], p2[1] - p0[1], p2[2] - p0[2]];
+            let c3 = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
+            let area = 0.5 * (c3[0] * c3[0] + c3[1] * c3[1] + c3[2] * c3[2]).sqrt();
+            if area <= 0.0 {
+                continue;
+            }
+            // p0 · (p1 × p2) / 6
+            let x = [p1[1] * p2[2] - p1[2] * p2[1], p1[2] * p2[0] - p1[0] * p2[2], p1[0] * p2[1] - p1[1] * p2[0]];
+            vol[e] += (p0[0] * x[0] + p0[1] * x[1] + p0[2] * x[2]) / 6.0;
+            let nz = c3[2] / (2.0 * area);
+            let mm = &mut me[e];
+            mm.superficie += area as f32;
+            if nz > 0.0 {
+                mm.planta += (area * nz) as f32;
+            }
+            if nz.abs() < 0.3 {
+                mm.alzado += (area / 2.0) as f32;
+            }
+            let (k0, k1, k2) = (q(a.pos), q(b.pos), q(c.pos));
+            for (x, y) in [(k0, k1), (k1, k2), (k2, k0)] {
+                if x != y {
+                    aristas.push((e as u32, x.min(y), x.max(y)));
+                }
+            }
+        }
+    }
+    aristas.sort_unstable();
+    let mut abierto = vec![false; n];
+    let mut i = 0;
+    while i < aristas.len() {
+        let mut j = i + 1;
+        while j < aristas.len() && aristas[j] == aristas[i] {
+            j += 1;
+        }
+        if (j - i) % 2 == 1 {
+            abierto[aristas[i].0 as usize] = true;
+        }
+        i = j;
+    }
+    for (k, el) in m.elementos.iter_mut().enumerate() {
+        let mut mm = me[k];
+        mm.volumen = vol[k].abs() as f32;
+        mm.cerrado = mm.superficie > 0.0 && !abierto[k];
+        el.medidas = mm;
     }
 }
 
@@ -291,7 +416,7 @@ pub fn aristas_vivas(puntos: &[[f32; 3]], indices: &[u32], grados: f32) -> Vec<u
     out
 }
 
-const MAGIA: &[u8; 8] = b"PX3D\0\0\0\x02";
+const MAGIA: &[u8; 8] = b"PX3D\0\0\0\x03";
 
 impl Modelo3d {
     /// La caja de lo que importa: sin los pocos puntos sueltos muy lejos
@@ -354,6 +479,18 @@ impl Modelo3d {
                 b.extend_from_slice(&(s.len() as u32).to_le_bytes());
                 b.extend_from_slice(s.as_bytes());
             }
+            b.extend_from_slice(&e.nivel.unwrap_or(u32::MAX).to_le_bytes());
+            let md = e.medidas;
+            for x in [md.volumen, md.planta, md.alzado, md.superficie] {
+                b.extend_from_slice(&x.to_le_bytes());
+            }
+            b.push(md.cerrado as u8);
+        }
+        b.extend_from_slice(&(self.niveles.len() as u32).to_le_bytes());
+        for nv in &self.niveles {
+            b.extend_from_slice(&(nv.nombre.len() as u32).to_le_bytes());
+            b.extend_from_slice(nv.nombre.as_bytes());
+            b.extend_from_slice(&nv.cota.to_le_bytes());
         }
         b
     }
@@ -400,7 +537,21 @@ impl Modelo3d {
         for _ in 0..n {
             let tipo = r.texto()?;
             let nombre = r.texto()?;
-            m.elementos.push(Elemento { tipo, nombre });
+            let nivel = Some(r.u()?).filter(|n| *n != u32::MAX);
+            let medidas = Medidas { volumen: r.f()?, planta: r.f()?, alzado: r.f()?, superficie: r.f()?, cerrado: r.tomar(1)?[0] != 0 };
+            m.elementos.push(Elemento { tipo, nombre, nivel, medidas });
+        }
+        let n = r.u()? as usize;
+        if n > b.len() {
+            return None;
+        }
+        for _ in 0..n {
+            let nombre = r.texto()?;
+            let cota = f64::from_le_bytes(r.tomar(8)?.try_into().ok()?);
+            m.niveles.push(Nivel { nombre, cota });
+        }
+        if m.elementos.iter().any(|e| e.nivel.is_some_and(|k| k as usize >= m.niveles.len())) {
+            return None;
         }
         Some(m)
     }
@@ -515,6 +666,43 @@ mod pruebas {
         cubo(&mut c, e, [0.5, 0.7, 0.9, 0.3]);
         let m = c.terminar();
         assert!(m.opacos.is_empty() && m.transparentes.len() == 36 && m.aristas.is_empty());
+    }
+
+    #[test]
+    fn un_cubo_de_un_metro_mide_lo_suyo() {
+        let mut c = Constructor3d::nuevo();
+        let e = c.elemento("IfcWall", "");
+        cubo(&mut c, e, [0.8, 0.8, 0.8, 1.0]);
+        let md = c.terminar().elementos[0].medidas;
+        assert!((md.volumen - 1.0).abs() < 1e-4, "{md:?}");
+        assert!((md.planta - 1.0).abs() < 1e-4 && (md.alzado - 2.0).abs() < 1e-4 && (md.superficie - 6.0).abs() < 1e-4);
+        assert!(md.cerrado);
+        // Caso negativo: sin la tapa de arriba, abierto.
+        let mut c = Constructor3d::nuevo();
+        let e = c.elemento("IfcWall", "");
+        let p: Vec<[f64; 3]> = (0..8).map(|i| [(i & 1) as f64, ((i >> 1) & 1) as f64, ((i >> 2) & 1) as f64]).collect();
+        let mut idx = Vec::new();
+        for f in [[0, 1, 3, 2], [0, 4, 5, 1], [2, 3, 7, 6], [0, 2, 6, 4], [1, 5, 7, 3]] {
+            idx.extend([f[0], f[1], f[2], f[0], f[2], f[3]]);
+        }
+        c.malla(e, &p, None, &idx, [0.8, 0.8, 0.8, 1.0]);
+        assert!(!c.terminar().elementos[0].medidas.cerrado);
+    }
+
+    #[test]
+    fn los_niveles_se_ordenan_por_cota() {
+        let mut c = Constructor3d::nuevo();
+        let a = c.elemento("IfcWall", "");
+        let b = c.elemento("IfcSlab", "");
+        let _sin = c.elemento("IfcBeam", "");
+        c.niveles(vec![Nivel { nombre: "2DO PISO".into(), cota: 6.65 }, Nivel { nombre: "1ER PISO".into(), cota: 3.4 }], &[(a, 0), (b, 1)]);
+        cubo(&mut c, a, [0.8, 0.8, 0.8, 1.0]);
+        let m = c.terminar();
+        assert_eq!(m.niveles[0].nombre, "1ER PISO");
+        assert_eq!(m.elementos[0].nivel, Some(1));
+        assert_eq!(m.elementos[1].nivel, Some(0));
+        assert_eq!(m.elementos[2].nivel, None);
+        assert_eq!(Modelo3d::de_bytes(&m.a_bytes()).as_ref(), Some(&m));
     }
 
     #[test]

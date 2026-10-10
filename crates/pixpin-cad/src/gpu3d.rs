@@ -417,6 +417,22 @@ impl Gpu {
         })
     }
 
+    /// Lo que se ve, de nuevo: solo los elementos para los que `ver` dice
+    /// que si (los indices se rehacen; los vertices se quedan).
+    pub fn filtrar_3d(&self, g: &mut ModeloGpu, m: &Modelo3d, ver: &dyn Fn(u32) -> bool) -> windows::core::Result<()> {
+        let f = |l: &[u32], paso: usize| -> Vec<u32> {
+            l.chunks_exact(paso).filter(|t| m.vertices.get(t[0] as usize).is_some_and(|v| ver(v.elemento))).flatten().copied().collect()
+        };
+        let (o, t, a, l, p) = (f(&m.opacos, 3), f(&m.transparentes, 3), f(&m.aristas, 2), f(&m.lineas, 2), f(&m.puntos, 6));
+        g.opacos = self.buffer(bytes_de(&o), D3D11_BIND_INDEX_BUFFER, 0)?;
+        g.transparentes = self.buffer(bytes_de(&t), D3D11_BIND_INDEX_BUFFER, 0)?;
+        g.aristas = self.buffer(bytes_de(&a), D3D11_BIND_INDEX_BUFFER, 0)?;
+        g.lineas = self.buffer(bytes_de(&l), D3D11_BIND_INDEX_BUFFER, 0)?;
+        g.puntos = self.buffer(bytes_de(&p), D3D11_BIND_INDEX_BUFFER, 0)?;
+        (g.n_opacos, g.n_transparentes, g.n_aristas, g.n_lineas, g.n_puntos) = (o.len() as u32, t.len() as u32, a.len() as u32, l.len() as u32, p.len() as u32);
+        Ok(())
+    }
+
     fn poner_modelo(&self, t: &Tres, m: &ModeloGpu, v: &Vista3d) {
         let ctx = &self.contexto;
         // SAFETY: recursos propios; `v` vive durante la llamada.
