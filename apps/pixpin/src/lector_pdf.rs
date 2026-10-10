@@ -376,6 +376,8 @@ enum Accion {
     AlProyecto,
     /// Pulsar el nombre: cambiarlo (D5).
     Renombrar,
+    /// Pantalla completa o de vuelta a pin (`lector_pin`).
+    PantallaCompleta,
     /// Un boton de la caja de buscar (D9).
     Buscar(crate::buscador::Boton),
 }
@@ -452,6 +454,11 @@ struct Estado {
     voz: Option<voz::VozDelPdf>,
     /// Se pidio escuchar y el texto del PDF aun no habia llegado.
     escuchar_al_llegar: bool,
+    /// **Como un pin** (`lector_pin`): fuera de pantalla completa la pastilla
+    /// de arriba no se pinta (lo suyo va en la barra de fuera).
+    en_pin: bool,
+    /// Pantalla completa (o volver a pin) pedida desde dentro: la pastilla o Esc.
+    pedir_pantalla_completa: bool,
 }
 
 pub fn abrir(
@@ -469,15 +476,17 @@ pub fn abrir(
         .principal()
         .context("sin monitor principal")?
         .to_owned();
-    let area = monitor.area;
-    let marco = Marco {
+    let (area_pin, _) = crate::lector_pin::area_inicial();
+    let mut pin = crate::lector_pin::PinLector::nuevo(area_pin, monitor.escala_por_cien as f32 / 100.0);
+    let mut area = pin.area;
+    let mut marco = Marco {
         ancho: area.ancho as f32,
         alto: area.alto as f32,
         e: monitor.escala_por_cien as f32 / 100.0,
         escala_por_cien: monitor.escala_por_cien,
         area,
     };
-    let ventana = VentanaOverlay::nueva_normal(area, &textos.t("lector-pdf-titulo"))
+    let mut ventana = VentanaOverlay::nueva_normal(area, &textos.t("lector-pdf-titulo"))
         .context("no se pudo abrir la ventana del lector de PDF")?;
     let motor = recursos.motor();
     let superficie = Superficie::nueva(
@@ -492,6 +501,9 @@ pub fn abrir(
     ventana.enfocar();
     // Todos los puntos del trazo y la presion del lapiz, como en el lienzo.
     ventana.pedir_entrada_fina();
+    // Como un pin: siempre encima (se suelta con su pin) y su barra fuera.
+    ventana.poner_siempre_encima(true);
+    pin.crear_barra(&motor, &recursos.d3d(), &ventana);
 
     let (tx_pedidos, rx_pedidos) = mpsc::channel::<Pedido>();
     let (tx_llega, rx_llega) = mpsc::channel::<Llega>();
@@ -543,6 +555,8 @@ pub fn abrir(
         renombre: crate::renombrar_doc::Pastilla::de(ubicacion.raiz(), ruta),
         voz: None,
         escuchar_al_llegar: false,
+        en_pin: true,
+        pedir_pantalla_completa: false,
     };
 
     // El nombre de la pastilla: el del mensaje del chat si es de uno.
@@ -577,7 +591,29 @@ pub fn abrir(
             }
         }
         for (h, evento) in pixpin_shell::overlay::tomar_eventos_pendientes() {
+            if pin.es_de_la_barra(h) {
+                let (accion, _) = pin.evento_barra(&evento, &mut ventana);
+                match accion {
+                    Some(crate::lector_pin::AccionPin::Propio(id)) => {
+                        if let Some(a) = accion_del_pin(id) {
+                            hacer(&mut e, a, textos, ruta, ubicacion, &tx_pedidos, marco);
+                        }
+                    }
+                    Some(crate::lector_pin::AccionPin::Nombre) => hacer(&mut e, Accion::Renombrar, textos, ruta, ubicacion, &tx_pedidos, marco),
+                    Some(crate::lector_pin::AccionPin::PantallaCompleta) => pin.alternar_pantalla_completa(&mut ventana),
+                    Some(crate::lector_pin::AccionPin::Fijar) => pin.alternar_fijado(&ventana),
+                    Some(crate::lector_pin::AccionPin::Cerrar) => vivo = false,
+                    None => {}
+                }
+                hay_que_pintar = true;
+                continue;
+            }
             if h != ventana.handle() {
+                continue;
+            }
+            // Estirar por los bordes es del pin.
+            if pin.evento_ventana(&evento, &mut ventana).consumido {
+                hay_que_pintar = true;
                 continue;
             }
             hay_que_pintar = true;
@@ -759,6 +795,25 @@ pub fn abrir(
         if !vivo {
             break;
         }
+
+        // Pantalla completa pedida desde dentro (la pastilla o Esc).
+        if e.pedir_pantalla_completa {
+            e.pedir_pantalla_completa = false;
+            pin.alternar_pantalla_completa(&mut ventana);
+        }
+        // **La ventana cambio** (estirada, llevada, a pantalla completa): la
+        // superficie y el marco, a su medida nueva; las hojas se repintan al
+        // ancho nuevo.
+        if pin.area != area {
+            if (pin.area.ancho, pin.area.alto) != (area.ancho, area.alto) {
+                let _ = superficie.redimensionar(pin.area.ancho, pin.area.alto);
+            }
+            area = pin.area;
+            marco = Marco { ancho: area.ancho as f32, alto: area.alto as f32, area, ..marco };
+            hay_que_pintar = true;
+        }
+        e.en_pin = !pin.pantalla_completa;
+        pin.actualizar(&motor, &crate::lector_pin::nombre_limpio(&nombre_del_pin(&e)), &botones_del_pin(&e));
 
         let ahora = ahora_ms();
         if e.pastilla_hasta >= ahora && e.pastilla_hasta < ahora + 200 {
@@ -1257,7 +1312,7 @@ fn pintar(e: &mut Estado, p: &Pintor, m: Marco, textos: &Catalogo) {
         e.tinta
             .pintar_interfaz(p, activa, m.area, m.escala_por_cien);
     } else if e.renombre.editando.is_some()
-        || (!e.hallar.caja.abierto && (e.pastilla_hasta > ahora_ms() || e.panel))
+        || (!e.en_pin && !e.hallar.caja.abierto && (e.pastilla_hasta > ahora_ms() || e.panel))
     {
         pastilla(e, p, m, &mut botones);
     }
@@ -1322,7 +1377,8 @@ fn pastilla(e: &Estado, p: &Pintor, m: Marco, botones: &mut Vec<(RectF, Accion)>
     };
     let (w, h) = p.medir_texto(&hoja, tam);
     let lado = 34.0 * m.e;
-    let total = w + 28.0 * m.e + 2.0 * lado;
+    let iconos_n = if e.en_pin { 2.0 } else { 3.0 };
+    let total = w + 28.0 * m.e + iconos_n * lado;
     let caja = RectF {
         x: (m.ancho - total) / 2.0,
         y: 14.0 * m.e,
@@ -1375,8 +1431,11 @@ fn pastilla(e: &Estado, p: &Pintor, m: Marco, botones: &mut Vec<(RectF, Accion)>
             Accion::Escuchar,
         ),
         (&material::SETTINGS, e.panel, Accion::Engranaje),
+        // De pantalla completa, de vuelta a pin.
+        (&material::FULLSCREEN_EXIT, false, Accion::PantallaCompleta),
     ]
     .into_iter()
+    .filter(|(_, _, a)| *a != Accion::PantallaCompleta || !e.en_pin)
     .enumerate()
     {
         let zona = RectF {
@@ -1667,10 +1726,15 @@ fn tecla(e: &mut Estado, vk: u32, shift: bool, ctrl: bool, ruta: &Path, m: Marco
                 e.voz = None;
             } else if e.anotando {
                 alternar_anotar(e, ruta);
+            } else if !e.en_pin {
+                // En pantalla completa, Esc vuelve a pin; en pin, cierra.
+                e.pedir_pantalla_completa = true;
             } else {
                 return false;
             }
         }
+        // F11, pantalla completa y vuelta, como en cualquier programa.
+        (0x7A, _) => e.pedir_pantalla_completa = true,
         (VK_DOWN, false) => e.y += linea,
         (VK_UP, false) => e.y -= linea,
         (VK_NEXT, _) => e.y += pantalla,
@@ -1826,6 +1890,7 @@ fn hacer(
 ) {
     match a {
         Accion::Renombrar => e.renombre.empezar(),
+        Accion::PantallaCompleta => e.pedir_pantalla_completa = true,
         Accion::AlProyecto => al_proyecto(e, textos, ruta, ubicacion),
         Accion::Buscar(b) => {
             let h = e.hallar.caja.boton(b);
@@ -2335,6 +2400,8 @@ mod pruebas {
             renombre: Default::default(),
             voz: None,
             escuchar_al_llegar: false,
+            en_pin: false,
+            pedir_pantalla_completa: false,
         }
     }
 
@@ -3343,5 +3410,32 @@ mod pruebas {
                 "con {otras}: {suelto:?} -> {otra_vez:?}"
             );
         }
+    }
+}
+
+/// Los botones propios del lector de PDF en la barra de su pin: lo que iba
+/// en la pastilla de arriba (escuchar y los ajustes).
+fn botones_del_pin(e: &Estado) -> Vec<crate::lector_pin::BotonLector> {
+    use crate::lector_pin::BotonLector;
+    vec![
+        BotonLector { id: 1, icono: &material::RECORD_VOICE_OVER, encendido: e.voz.is_some() },
+        BotonLector { id: 2, icono: &material::SETTINGS, encendido: e.panel },
+    ]
+}
+
+fn accion_del_pin(id: u8) -> Option<Accion> {
+    Some(match id {
+        1 => Accion::Escuchar,
+        2 => Accion::Engranaje,
+        _ => return None,
+    })
+}
+
+/// El nombre que lleva la barra del pin, con la hoja que se ve: «Tema 3 · 4/20».
+fn nombre_del_pin(e: &Estado) -> String {
+    if e.hojas.cuantas() > 0 {
+        format!("{} · {}/{}", e.nombre, e.hojas.en(e.y.max(0.0)) + 1, e.hojas.cuantas())
+    } else {
+        e.nombre.clone()
     }
 }

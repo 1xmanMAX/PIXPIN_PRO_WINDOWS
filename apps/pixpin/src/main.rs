@@ -83,6 +83,8 @@ mod grupos_ventanas;
 mod imagenes_lienzo;
 mod lecciones;
 mod lector;
+/// Los lectores como un pin: su ventana y su barra de fuera.
+mod lector_pin;
 mod lector_pdf;
 mod lector_pdf_proyecto;
 mod lector_tinta;

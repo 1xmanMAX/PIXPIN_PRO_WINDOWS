@@ -210,6 +210,8 @@ enum Accion {
     IrA(usize),
     /// Pulsar el nombre de la pastilla: cambiarlo (D5).
     Renombrar,
+    /// Pantalla completa o de vuelta a pin (`lector_pin`).
+    PantallaCompleta,
     /// Un boton de la caja de buscar (D9).
     Buscar(crate::buscador::Boton),
 }
@@ -289,6 +291,12 @@ struct Estado {
     tinta_de_antes: bool,
     /// Algo cambio que tiene que ir al disco ya (la tinta mudada).
     guardar_ya: bool,
+    /// **Como un pin** (`lector_pin`): fuera de pantalla completa la pastilla
+    /// de arriba no se pinta (lo suyo va en la barra de fuera).
+    en_pin: bool,
+    /// Se pidio pantalla completa (o volver a pin) desde dentro: la pastilla
+    /// o Esc. Lo hace el bucle, que es quien tiene la ventana.
+    pedir_pantalla_completa: bool,
     /// **Escuchando** (la barra de abajo): la voz que lee el documento.
     voz: Option<LeerEnVoz>,
 }
@@ -312,8 +320,10 @@ pub fn abrir(
         .to_owned();
     // A pantalla completa de verdad: el «visor limpio» del movil tapa
     // incluso la barra de estado, y aqui la ventana ocupa el monitor.
-    let area = monitor.area;
-    let marco = Marco {
+    let (area_pin, _) = crate::lector_pin::area_inicial();
+    let mut pin = crate::lector_pin::PinLector::nuevo(area_pin, monitor.escala_por_cien as f32 / 100.0);
+    let mut area = pin.area;
+    let mut marco = Marco {
         ancho: area.ancho as f32,
         alto: area.alto as f32,
         e: monitor.escala_por_cien as f32 / 100.0,
@@ -321,7 +331,7 @@ pub fn abrir(
         area,
     };
 
-    let ventana = VentanaOverlay::nueva_normal(area, &textos.t("visor-titulo"))
+    let mut ventana = VentanaOverlay::nueva_normal(area, &textos.t("visor-titulo"))
         .context("no se pudo abrir la ventana del visor")?;
     let motor = recursos.motor();
     let superficie = Superficie::nueva(
@@ -336,6 +346,9 @@ pub fn abrir(
     ventana.enfocar();
     // Todos los puntos del trazo y la presion del lapiz, como en el lienzo.
     ventana.pedir_entrada_fina();
+    // Como un pin: siempre encima (se suelta con su pin) y su barra fuera.
+    ventana.poner_siempre_encima(true);
+    pin.crear_barra(&motor, &recursos.d3d(), &ventana);
 
     // De un adjunto del chat, lo que viaja con su mensaje (v0.96).
     let ajustes = crate::anotado_del_adjunto::leer(ruta);
@@ -379,6 +392,8 @@ pub fn abrir(
         hoja: Hoja::de(ruta),
         tinta_de_antes,
         guardar_ya: false,
+        en_pin: true,
+        pedir_pantalla_completa: false,
         voz: None,
     };
     // Se entra por donde se dejo. Como el sitio es una fraccion, hace falta
@@ -397,7 +412,29 @@ pub fn abrir(
         let ruta: &Path = &ruta_de_la_vuelta;
         pixpin_shell::overlay::bombear_pendientes();
         for (hwnd, evento) in pixpin_shell::overlay::tomar_eventos_pendientes() {
+            if pin.es_de_la_barra(hwnd) {
+                let (accion, _) = pin.evento_barra(&evento, &mut ventana);
+                match accion {
+                    Some(crate::lector_pin::AccionPin::Propio(id)) => {
+                        if let Some(a) = accion_del_pin(id) {
+                            hacer(&mut e, a, textos, ruta, ubicacion, marco);
+                        }
+                    }
+                    Some(crate::lector_pin::AccionPin::Nombre) => hacer(&mut e, Accion::Renombrar, textos, ruta, ubicacion, marco),
+                    Some(crate::lector_pin::AccionPin::PantallaCompleta) => pin.alternar_pantalla_completa(&mut ventana),
+                    Some(crate::lector_pin::AccionPin::Fijar) => pin.alternar_fijado(&ventana),
+                    Some(crate::lector_pin::AccionPin::Cerrar) => vivo = false,
+                    None => {}
+                }
+                hay_que_pintar = true;
+                continue;
+            }
             if hwnd != ventana.handle() {
+                continue;
+            }
+            // Estirar por los bordes es del pin.
+            if pin.evento_ventana(&evento, &mut ventana).consumido {
+                hay_que_pintar = true;
                 continue;
             }
             hay_que_pintar = true;
@@ -559,6 +596,24 @@ pub fn abrir(
             }
             hay_que_pintar = true;
         }
+
+        // Pantalla completa pedida desde dentro (la pastilla o Esc).
+        if e.pedir_pantalla_completa {
+            e.pedir_pantalla_completa = false;
+            pin.alternar_pantalla_completa(&mut ventana);
+        }
+        // **La ventana cambio** (estirada, llevada, a pantalla completa): la
+        // superficie y el marco, a su medida nueva.
+        if pin.area != area {
+            if (pin.area.ancho, pin.area.alto) != (area.ancho, area.alto) {
+                let _ = superficie.redimensionar(pin.area.ancho, pin.area.alto);
+            }
+            area = pin.area;
+            marco = Marco { ancho: area.ancho as f32, alto: area.alto as f32, area, ..marco };
+            hay_que_pintar = true;
+        }
+        e.en_pin = !pin.pantalla_completa;
+        pin.actualizar(&motor, &crate::lector_pin::nombre_limpio(&nombre_del_pin(&e)), &botones_del_pin(&e));
 
         let ahora = ahora_ms();
         // La pastilla se va sola y el aviso tambien: los dos hacen que haya
@@ -1070,7 +1125,7 @@ fn pintar(e: &mut Estado, p: &Pintor, m: Marco, textos: &Catalogo) {
         e.tinta
             .pintar_interfaz(p, Some(&e.capa), m.area, m.escala_por_cien);
     } else if e.nombre.editando.is_some()
-        || (!e.hallar.caja.abierto && (e.pastilla_hasta > ahora_ms() || e.panel || e.viendo_indice))
+        || (!e.en_pin && !e.hallar.caja.abierto && (e.pastilla_hasta > ahora_ms() || e.panel || e.viendo_indice))
     {
         pastilla(e, p, m, &mut botones);
     }
@@ -1171,6 +1226,8 @@ fn pastilla(e: &Estado, p: &Pintor, m: Marco, botones: &mut Vec<(RectF, Accion)>
             Accion::Escuchar,
         )),
         Some((&material::SETTINGS, e.panel, Accion::Engranaje)),
+        // De pantalla completa, de vuelta a pin.
+        (!e.en_pin).then_some((&material::FULLSCREEN_EXIT, false, Accion::PantallaCompleta)),
     ]
     .into_iter()
     .flatten()
@@ -1789,10 +1846,15 @@ fn tecla(
                 e.voz = None;
             } else if e.anotando {
                 alternar_anotar(e, ruta, m);
+            } else if !e.en_pin {
+                // En pantalla completa, Esc vuelve a pin; en pin, cierra.
+                e.pedir_pantalla_completa = true;
             } else {
                 return false;
             }
         }
+        // F11, pantalla completa y vuelta, como en cualquier programa.
+        (0x7A, _) => e.pedir_pantalla_completa = true,
         (VK_DOWN, false) => e.y += linea,
         (VK_UP, false) => e.y -= linea,
         (VK_NEXT, _) => e.y += pantalla,
@@ -2193,6 +2255,7 @@ fn hacer(
 ) {
     match a {
         Accion::Renombrar => e.nombre.empezar(),
+        Accion::PantallaCompleta => e.pedir_pantalla_completa = true,
         Accion::Escuchar => escuchar(e, textos, ruta, m),
         Accion::Voz(b) => boton_de_voz(e, b, ruta, m),
         Accion::Lado(b) => boton_de_lado(e, b, textos, ruta),
@@ -2607,6 +2670,8 @@ mod pruebas {
             hoja: Hoja::Word,
             tinta_de_antes: false,
             guardar_ya: false,
+            en_pin: false,
+            pedir_pantalla_completa: false,
             voz: None,
         }
     }
@@ -3518,5 +3583,36 @@ mod pruebas {
             p95 < 16.7,
             "el p95 ({p95:.2} ms) no cabe en un fotograma de 60 Hz"
         );
+    }
+}
+
+/// Los botones propios del lector en la barra de su pin: lo que iba en la
+/// pastilla de arriba (indice, escuchar, ajustes).
+fn botones_del_pin(e: &Estado) -> Vec<crate::lector_pin::BotonLector> {
+    use crate::lector_pin::BotonLector;
+    let mut v = Vec::new();
+    if !e.indice.is_empty() {
+        v.push(BotonLector { id: 0, icono: &material::LIST, encendido: e.viendo_indice });
+    }
+    v.push(BotonLector { id: 1, icono: &material::RECORD_VOICE_OVER, encendido: e.voz.is_some() });
+    v.push(BotonLector { id: 2, icono: &material::SETTINGS, encendido: e.panel });
+    v
+}
+
+fn accion_del_pin(id: u8) -> Option<Accion> {
+    Some(match id {
+        0 => Accion::Indice,
+        1 => Accion::Escuchar,
+        2 => Accion::Engranaje,
+        _ => return None,
+    })
+}
+
+/// El nombre que lleva la barra del pin: el del mensaje del chat, o el del fichero.
+fn nombre_del_pin(e: &Estado) -> String {
+    if e.nombre.visto.is_empty() {
+        pixpin_docs::sin_extension(&e.doc.titulo)
+    } else {
+        pixpin_docs::sin_extension(&e.nombre.visto)
     }
 }

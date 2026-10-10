@@ -348,6 +348,23 @@ impl VentanaOverlay {
         self.area = area;
     }
 
+    /// **Siempre encima, o como una ventana mas** (el pin de los lectores):
+    /// con `false` deja de estar por encima de las demas aplicaciones.
+    pub fn poner_siempre_encima(&self, si: bool) {
+        // SAFETY: SetWindowPos sobre la ventana propia y viva; solo el orden Z.
+        unsafe {
+            let _ = SetWindowPos(
+                self.hwnd,
+                Some(if si { HWND_TOPMOST } else { HWND_NOTOPMOST }),
+                0,
+                0,
+                0,
+                0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
+            );
+        }
+    }
+
     /// La pone por delante de las demas ventanas TOPMOST sin activarla ni
     /// moverla (D145). Crearla despues suele bastar, pero un pin que se
     /// reordene (su paleta, un clic) quedaria encima del lienzo.
@@ -1707,4 +1724,26 @@ mod pruebas {
         }
         assert!(a_por_encima, "la ventana traida encima sigue debajo");
     }
+}
+
+/// Donde esta el raton, en coordenadas del escritorio virtual.
+pub fn raton_en_pantalla() -> Punto {
+    let mut p = windows::Win32::Foundation::POINT::default();
+    // SAFETY: escribe en la variable local.
+    let _ = unsafe { GetCursorPos(&mut p) };
+    Punto { x: p.x, y: p.y }
+}
+
+/// El monitor donde cae `p`: su area entera y la de trabajo (sin la barra
+/// de tareas).
+pub fn monitor_de(p: Punto) -> (Rect, Rect) {
+    use windows::Win32::Graphics::Gdi::{GetMonitorInfoW, MONITOR_DEFAULTTONEAREST, MONITORINFO, MonitorFromPoint};
+    let mut info = MONITORINFO { cbSize: std::mem::size_of::<MONITORINFO>() as u32, ..Default::default() };
+    // SAFETY: estructura local con su tamano.
+    unsafe {
+        let m = MonitorFromPoint(windows::Win32::Foundation::POINT { x: p.x, y: p.y }, MONITOR_DEFAULTTONEAREST);
+        let _ = GetMonitorInfoW(m, &mut info);
+    }
+    let r = |r: RECT| Rect { x: r.left, y: r.top, ancho: (r.right - r.left).max(1) as u32, alto: (r.bottom - r.top).max(1) as u32 };
+    (r(info.rcMonitor), r(info.rcWork))
 }

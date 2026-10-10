@@ -713,6 +713,9 @@ pub const CHEVRON_RIGHT: Icono = Icono {
 
 /// Todos, para poder comprobarlos de una vez.
 pub const TODOS: &[Icono] = &[
+    FULLSCREEN,
+    FULLSCREEN_EXIT,
+    DRAG_INDICATOR,
     ADD,
     GRID_VIEW,
     CALENDAR_MONTH,
@@ -829,3 +832,26 @@ mod pruebas {
         }
     }
 }
+
+/// `fullscreen` (`src/navigation/fullscreen/materialicons/24px.svg`): los
+/// lectores, de pin a pantalla completa.
+pub const FULLSCREEN: Icono = Icono {
+    vista: VISTA,
+    trazos: &[relleno("M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z", false)],
+};
+
+/// `fullscreen_exit` (`src/navigation/fullscreen_exit/materialicons/24px.svg`).
+pub const FULLSCREEN_EXIT: Icono = Icono {
+    vista: VISTA,
+    trazos: &[relleno("M5 16h3v3h2v-5H5v2zm3-8H5v2h5V5H8v3zm6 11h2v-3h3v-2h-5v5zm2-11V5h-2v5h5V8h-3z", false)],
+};
+
+/// `drag_indicator` (`src/action/drag_indicator/materialicons/24px.svg`): el
+/// asa de la barra de un pin, de donde se arrastra la ventana.
+pub const DRAG_INDICATOR: Icono = Icono {
+    vista: VISTA,
+    trazos: &[relleno(
+        "M11 18c0 1.1-.9 2-2 2s-2-.9-2-2 .9-2 2-2 2 .9 2 2zm-2-8c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0-6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm6 4c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z",
+        false,
+    )],
+};
