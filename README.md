@@ -438,7 +438,21 @@ PixPin **dibuja él mismo** los archivos de Office: no abre Word, Excel ni Power
 nada en segundo plano. Se ven como en Office (páginas, letras, tablas, imágenes, colores del
 tema) y abren en una décima de segundo, aunque el documento tenga cien páginas.
 
-<img src="docs/img/v2/powerpoint-pin.png" width="420" alt="Una presentación abierta como un pin"> <img src="docs/img/v2/excel-pin.png" width="420" alt="Un Excel abierto como un pin">
+**Word**: la página tal cual, con su imagen y su tabla. A la derecha, anotada encima con el lápiz.
+
+<img src="docs/img/v2/word-pin.png" width="420" alt="Un Word abierto como un pin, con imagen"> <img src="docs/img/v2/word-anotado.png" width="420" alt="El mismo Word con anotaciones a mano">
+
+**PowerPoint**: cada diapositiva en su sitio, con sus formas y colores; también se anota.
+
+<img src="docs/img/v2/powerpoint-pin.png" width="420" alt="Una presentación abierta como un pin"> <img src="docs/img/v2/powerpoint-anotado.png" width="420" alt="Una diapositiva con anotaciones">
+
+**Excel**: anchos, colores, bordes, formatos de fecha y moneda, gráficos y pestañas.
+
+<img src="docs/img/v2/excel-pin.png" width="420" alt="Un presupuesto de Excel abierto como un pin"> <img src="docs/img/v2/excel-informe.png" width="420" alt="Un informe de ventas con formatos y gráficos">
+
+**Un Word antiguo** (`.doc`) se ve con la vista previa de Office, que se cierra con el pin:
+
+<img src="docs/img/v2/office-antiguo.png" width="420" alt="Un .doc antiguo en la vista previa de Office">
 
 | Archivo | Qué puedes hacer |
 |---|---|
