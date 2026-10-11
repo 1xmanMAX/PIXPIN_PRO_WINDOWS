@@ -41,6 +41,7 @@ Dicho fácil, para cualquier persona:
 | 📐 | Ver un plano de AutoCAD sin tener AutoCAD | Abro el `.dwg` y se ve al instante. Mido, marco, anoto e imprimo. |
 | 🏠 | Ver un edificio en 3D (Revit o IFC) | Lo giro con el ratón, lo corto con una caja, veo cada planta y lo que mide cada pieza. |
 | ⛰️ | Ver un terreno o una carretera | Abro el LandXML o los puntos de Civil 3D y salen con colores por altura y curvas de nivel. |
+| 📊 | Abrir Word, Excel y PowerPoint al instante | Sin abrir Office: PixPin los dibuja él mismo, en una décima de segundo. |
 | 📖 | Leer un PDF o un Word mientras trabajo | Se abre pequeño, como un pin, al lado de lo que hago; o a pantalla completa con `F11`. |
 | 📱 | Tenerlo también en el móvil | Se sincroniza con PixPin Android por Wi‑Fi, sin nube y sin cuentas. |
 
@@ -62,6 +63,7 @@ Dicho fácil, para cualquier persona:
   - [Modelos 3D: Revit e IFC](#modelos-3d-revit-e-ifc)
   - [Terrenos y carreteras (Civil 3D)](#terrenos-y-carreteras-civil-3d)
   - [Leer PDF y Word como un pin](#leer-pdf-y-word-como-un-pin)
+  - [Word, Excel y PowerPoint al instante](#word-excel-y-powerpoint-al-instante)
   - [Compartir y arrastrar](#compartir-y-arrastrar)
   - [Flow Launcher](#flow-launcher)
   - [Sincronizar con el móvil](#sincronizar-con-el-móvil)
@@ -325,6 +327,8 @@ Al abrir un archivo sale como ventana flotante, en unos 200 ms:
 | Vídeos | mp4, mkv, mov, m4v, avi, wmv, mpg, ts, webm\* | Pin de vídeo con la GPU |
 | Audios | mp3, m4a, wav, aac, flac, ogg, opus, wma, 3gp, amr | Reproductor flotante, en cola si son varios |
 | Documentos | pdf, docx, epub, pptx, md | Su lector, como un pin |
+| Hojas de cálculo | xlsx, xlsm | El visor de hojas, como un pin |
+| Office antiguos | doc, xls, ppt, rtf, odt, vsdx, msg | La vista previa de Office, solo mientras está abierta |
 | Planos | dwg, dxf | El visor de planos |
 | Modelos 3D | ifc, rvt (Revit 2023–2025) | El visor 3D |
 | Civil 3D | xml (LandXML), csv y txt de puntos | El visor 3D, como terreno |
@@ -427,6 +431,24 @@ haciendo. Arriba, fuera de la hoja, sale su barra:
 
 - Se estira por los bordes como cualquier pin.
 - Se puede anotar encima, con marcadores y búsqueda.
+
+### Word, Excel y PowerPoint al instante
+
+PixPin **dibuja él mismo** los archivos de Office: no abre Word, Excel ni PowerPoint y no deja
+nada en segundo plano. Se ven como en Office (páginas, letras, tablas, imágenes, colores del
+tema) y abren en una décima de segundo, aunque el documento tenga cien páginas.
+
+<img src="docs/img/v2/powerpoint-pin.png" width="420" alt="Una presentación abierta como un pin"> <img src="docs/img/v2/excel-pin.png" width="420" alt="Un Excel abierto como un pin">
+
+| Archivo | Qué puedes hacer |
+|---|---|
+| 📝 Word (`.docx`) | Páginas reales con imágenes y tablas; anotar, buscar, seleccionar y copiar texto, imprimir. |
+| 📽️ PowerPoint (`.pptx`) | Diapositiva a diapositiva con las flechas; ▶ o `F5` para presentar a pantalla completa. |
+| 📊 Excel (`.xlsx`) | Pestañas, filas y columnas fijas, colores y bordes; elegir celdas y `Ctrl C`. Hojas de 100 000 filas sin esperar. |
+| 🗂️ Antiguos (`.doc`, `.xls`, `.ppt`, Visio, correos `.msg`) | Con la vista previa que Office instala en Windows; Office se cierra al cerrar el pin. |
+
+- **Vista rápida**: en el Explorador o el escritorio, elige archivos y pulsa **Espacio**: se
+  abren en PixPin. Otro Espacio los cierra. Se apaga en Ajustes → Apps.
 
 ### Compartir y arrastrar
 
@@ -546,7 +568,7 @@ carpeta y nada en el registro, así que se puede llevar en un USB.
 
 ## Cómo está hecho
 
-Un espacio de trabajo de Rust con **tres ejecutables** y **31 crates por capas**. Una prueba
+Un espacio de trabajo de Rust con **tres ejecutables** y **33 crates por capas**. Una prueba
 (`apps/pixpin/tests/capas.rs`) comprueba que ningún crate dependa de uno de su misma capa o de
 una capa superior.
 
@@ -569,6 +591,7 @@ flowchart TB
 | `pixpin-pin` | Las ventanas flotantes: imagen, vídeo, PDF, en vivo, herramientas |
 | `pixpin-proyecto`, `pixpin-sincro` | Proyectos en disco (mismo formato que Android) y la sincronización por Wi‑Fi |
 | `pixpin-pdf`, `pixpin-docs`, `pdfsqueeze-core` | Leer y anotar PDF, Word y EPUB, y aligerar PDF |
+| `pixpin-office`, `pixpin-hojas` | Word y PowerPoint maquetados como en Office, y hojas de Excel, sin Office |
 | `pixpin-ocr`, `pixpin-voz`, `pixpin-audio` | Texto de las imágenes, transcripción y audio |
 | `pixpin-codec` | Imágenes: `image` y, para HEIC/AVIF/TIFF/RAW, los decodificadores de Windows (WIC) |
 | `pixpin-lecciones` | Lecciones aprendidas: buscador, etiquetador y repaso, igual que en Android |
