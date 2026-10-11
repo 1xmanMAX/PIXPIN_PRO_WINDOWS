@@ -85,8 +85,9 @@ fn un_xlsx_con_dos_hojas_visibles_estilos_fechas_y_formulas() {
     assert_eq!(ver(t, "B4"), "14");
     assert_eq!(crudo(t, "B5"), "=SUM(B3:B4)");
     assert_eq!(ver(t, "B5"), "34");
-    // Aqui no hay XLOOKUP (en el movil si): se queda con su valor.
-    assert_eq!(crudo(t, "C5"), "14");
+    // XLOOKUP ya se calcula aqui y da lo que dio Excel: sigue siendo formula.
+    assert_eq!(crudo(t, "C5"), "=XLOOKUP(7,A3:A4,B3:B4)");
+    assert_eq!(ver(t, "C5"), "14");
     assert_eq!(
         crudo(t, "D5"),
         "99",
@@ -101,7 +102,9 @@ fn un_xlsx_con_dos_hojas_visibles_estilos_fechas_y_formulas() {
     assert_eq!(ver(t, "F5"), "ab");
     assert_eq!(ver(t, "G5"), "VERDADERO");
     assert_eq!(t.anchos.get("A"), Some(&145));
-    assert_eq!(hojas[0].formulas_como_valor, 3);
+    // Solo CUBEVALUE se queda con su valor: XLOOKUP y el «&» (que antes
+    // tampoco habia) ya se calculan aqui y dan lo que dio Excel.
+    assert_eq!(hojas[0].formulas_como_valor, 1);
     assert_eq!(ver(&hojas[1].tabla, "A1"), "Hola");
 }
 

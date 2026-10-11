@@ -108,3 +108,9 @@ opt-level = 3
 opt-level = 3
 [profile.dev.package.lopdf]
 opt-level = 3
+# El motor de formulas de las hojas: recalcular una hoja de 2 000 celdas tiene
+# que bajar de 50 ms tambien en las pruebas (formula/pruebas_funciones.rs), y
+# sin optimizar tardaba ~80 ms. El nivel 1 lo deja en ~15 ms; el resto del
+# crate sigue igual de depurable.
+[profile.dev.package.pixpin-proyecto]
+opt-level = 1
