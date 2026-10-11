@@ -20,6 +20,7 @@
 pub mod dml;
 pub mod docx;
 pub mod geometria;
+pub mod grafico;
 pub mod medidor;
 pub mod pagina;
 pub mod paquete;

@@ -152,6 +152,12 @@ fn grafico_de(ctx: &mut Ctx, padre: &Nodo, w: f32, h: f32) -> Vec<Elemento> {
     let Some(datos) = padre.hijo("graphic").and_then(|g| g.hijo("graphicData")) else {
         return Vec::new();
     };
+    // Un grafico: dibujado con los datos de su cache.
+    let mapa = std::collections::HashMap::new();
+    let dctx = Contexto { tema: ctx.tema, mapa: &mapa };
+    if let Some(els) = crate::grafico::de_datos(ctx.paquete, ctx.rels, datos, dctx, ctx.medidor, w, h) {
+        return els;
+    }
     let mut v = Vec::new();
     for hijo in datos.elementos() {
         forma(ctx, hijo, Rect::nuevo(0.0, 0.0, w, h), &mut v);
