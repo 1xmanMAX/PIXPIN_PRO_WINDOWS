@@ -146,6 +146,23 @@ pub enum Tramo {
     Bezier((f32, f32), (f32, f32), (f32, f32)),
 }
 
+/// Como se tine una figura respecto al relleno de la forma (los
+/// `fill="darken"`, `"lighten"`, `"darkenLess"` y `"lightenLess"` de los
+/// trayectos de DrawingML: las caras del cubo y del bisel). Salvo `Ninguna`,
+/// el pintor las rellena aparte, encima del relleno de la forma.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Sombra {
+    #[default]
+    Ninguna,
+    Oscura,
+    OscuraSuave,
+    Clara,
+    ClaraSuave,
+    /// Mismo color que la forma, pero en una geometria aparte: para que dos
+    /// figuras que se solapan no se agujereen entre si (regla par-impar).
+    Aparte,
+}
+
 /// Una figura cerrada o abierta de un trayecto.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct Figura {
@@ -157,6 +174,8 @@ pub struct Figura {
     pub rellenar: bool,
     /// Si esta figura se traza.
     pub trazar: bool,
+    /// Su tinte respecto al relleno (`Sombra::Ninguna` en casi todas).
+    pub sombra: Sombra,
 }
 
 /// Que hay que escribir en un texto que depende de la paginacion.

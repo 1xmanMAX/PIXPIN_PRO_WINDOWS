@@ -440,6 +440,7 @@ impl Maquina<'_> {
             cerrada: false,
             rellenar: false,
             trazar: true,
+            ..Default::default()
         };
         c.els.push(Elemento::Trayecto { figuras: vec![figura], relleno: None, borde: Some(Trazo::solido(self.color, g)) });
         if let Some(d) = grado {
