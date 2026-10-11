@@ -12,13 +12,21 @@
 //!    `ASSOCSTR_SHELLEXTENSION` y el IID de `IPreviewHandler`; mira la
 //!    extension, su ProgID y `SystemFileAssociations`. Se guarda por
 //!    extension (el registro no cambia mientras se usa la app).
-//! 2. **La fabrica, caliente**: los de Office solo traen `LocalServer32`
-//!    (van SIEMPRE fuera de nuestro proceso: si el previsualizador se cae,
-//!    PixPin sigue). `CoGetClassObject` + `IClassFactory::LockServer(true)`
-//!    deja el servidor de vista previa de Office en marcha: la primera vez
-//!    tarda lo que tarda Office en arrancar, las siguientes es casi nada. A
-//!    los diez minutos sin usarla se suelta (`LockServer(false)`), y si el
-//!    servidor se murio se tira y se pide otra una vez.
+//! 2. **Office solo mientras hay pin** (el usuario, 10-oct: «no es buena
+//!    idea tener Office abierto, consume RAM en segundo plano y va contra la
+//!    filosofia de la app»). Los de Office solo traen `LocalServer32` (van
+//!    SIEMPRE fuera de nuestro proceso: si el previsualizador se cae, PixPin
+//!    sigue). Cada vista pide su fabrica (`CoGetClassObject`) y su objeto en
+//!    el momento, y al cerrar se descarga (`Unload`), se suelta TODO y se
+//!    llama a `CoFreeUnusedLibrariesEx`: sin pines abiertos el hilo no
+//!    sujeta nada de COM y el servidor de Office se va. Nada de fabricas
+//!    guardadas ni previsualizadores de repuesto: cada vista espera a que
+//!    Office arranque (medido el 10-oct: 5-9 s). Al cerrar, con el objeto
+//!    ya suelto, un `LockServer(true)`/`LockServer(false)` sobre la fabrica
+//!    de esa vista le hace mirar al servidor si le queda alguien: sin ese
+//!    aviso el de Word se quedaba en marcha mas de diez minutos (mas alla
+//!    de la limpieza de COM: no era una referencia nuestra); con el, Word y
+//!    PowerPoint se van a los 3-8 s y Excel al soltar el objeto.
 //! 3. **Iniciar**: con la ruta (`IInitializeWithFile`), si no con un flujo
 //!    del fichero (`IInitializeWithStream`), si no con el elemento del Shell
 //!    (`IInitializeWithItem`). Luego el marco (`IObjectWithSite::SetSite`
@@ -63,7 +71,7 @@ use windows::Win32::Graphics::Gdi::{
     TRANSPARENT,
 };
 use windows::Win32::System::Com::{
-    CLSCTX_LOCAL_SERVER, COINIT_APARTMENTTHREADED, CoGetClassObject, CoInitializeEx, CoUninitialize, IClassFactory,
+    CLSCTX_LOCAL_SERVER, COINIT_APARTMENTTHREADED, CoFreeUnusedLibrariesEx, CoGetClassObject, CoInitializeEx, CoUninitialize, IClassFactory,
     IStream, STGM_READ, STGM_SHARE_DENY_NONE,
 };
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
@@ -94,17 +102,10 @@ pub const TARDA: Duration = Duration::from_secs(4);
 /// Metido en una llamada a Office mas que esto: el hilo esta atascado y lo
 /// que se abra mientras va por su camino de siempre.
 const ATASCADO_MS: u64 = 8_000;
-/// La fabrica de un previsualizador sin usar se suelta a los diez minutos.
-const OCIOSA: Duration = Duration::from_secs(10 * 60);
 /// El aviso al buzon del hilo: hay ordenes en el canal.
 const MSG_ORDEN: u32 = WM_APP + 0x31;
-/// El temporizador del «tarda» de cada vista y el de soltar fabricas.
+/// El temporizador del «tarda» de cada vista.
 const RELOJ_TARDA: usize = 1;
-const RELOJ_OCIOSAS: usize = 2;
-const RELOJ_REPUESTO: usize = 3;
-/// Lo que se espera tras abrir o cerrar una vista para preparar el repuesto
-/// (que la vista de ahora se pinte antes).
-const ESPERA_REPUESTO_MS: u32 = 1500;
 
 // Los colores del cartel (los del lector: papel oscuro, letra clara). Un
 // COLORREF es 0x00BBGGRR.
@@ -220,9 +221,9 @@ pub fn bloqueado_por_internet(ruta: &Path) -> bool {
 pub enum Estado {
     /// Pedida; el previsualizador todavia no ha dicho «listo».
     Abriendo,
-    /// Pintada. `ms`, lo que tardo desde la orden; `en_frio`, si hubo que
-    /// arrancar el servidor del previsualizador.
-    Lista { ms: u64, en_frio: bool },
+    /// Pintada. `ms`, lo que tardo desde la orden (con Office arrancando:
+    /// no queda ninguno en marcha entre pines).
+    Lista { ms: u64 },
     /// No se pudo (el motivo, para el registro).
     Fallo(String),
     /// Solo un cartel (lo de internet): no hay previsualizador.
@@ -251,7 +252,6 @@ enum Orden {
     Abrir { id: u64, padre: isize, ruta: PathBuf, clsid: Option<GUID>, area: Rect, carteles: Carteles, c: Arc<Compartido> },
     Mover { id: u64, area: Rect },
     Cerrar { id: u64 },
-    Calentar { clsid: GUID },
     SoltarTodo { hecho: Sender<()> },
 }
 
@@ -262,9 +262,6 @@ struct Hilo {
 
 static HILO: OnceLock<Option<Hilo>> = OnceLock::new();
 static SIGUIENTE: AtomicU64 = AtomicU64::new(1);
-/// Ordenes mandadas y aun no recogidas por el hilo (un canal no deja mirar
-/// sin sacar).
-static EN_COLA: AtomicU64 = AtomicU64::new(0);
 /// Desde cuando (ms del reloj de la app) esta el hilo metido en una llamada
 /// a un previsualizador; 0, en ninguna.
 static EN_LLAMADA_DESDE: AtomicU64 = AtomicU64::new(0);
@@ -304,9 +301,7 @@ fn hilo() -> Option<&'static Hilo> {
 
 fn mandar(orden: Orden) -> bool {
     let Some(h) = hilo() else { return false };
-    EN_COLA.fetch_add(1, Ordering::Relaxed);
     if h.ordenes.send(orden).is_err() {
-        EN_COLA.fetch_sub(1, Ordering::Relaxed);
         return false;
     }
     // SAFETY: PostMessageW a la ventana buzon del hilo; si ya no existe,
@@ -317,20 +312,9 @@ fn mandar(orden: Orden) -> bool {
     true
 }
 
-/// **Calentar** el previsualizador de este fichero: pedir su fabrica (y
-/// arrancar su servidor) sin abrir nada todavia. Para llamarlo en cuanto se
-/// sabe que viene una vista, mientras se crea la ventana.
-pub fn calentar(ruta: &Path) {
-    if let Some(clsid) = manejador_de(ruta)
-        && !atascado()
-    {
-        mandar(Orden::Calentar { clsid });
-    }
-}
-
-/// **Al salir de la app**: suelta los previsualizadores, sus fabricas y los
-/// repuestos, para que los servidores de Office se vayan ya y no cuando COM
-/// note que el proceso murio (minutos). Espera como mucho `espera`. Si el
+/// **Al salir de la app**: descarga y suelta los previsualizadores de los
+/// pines que sigan abiertos, para que los servidores de Office se vayan ya
+/// y no cuando COM note que el proceso murio (minutos). Espera como mucho `espera`. Si el
 /// hilo nunca arranco, no hace nada (ni lo arranca).
 pub fn soltar_todo(espera: Duration) {
     if !matches!(HILO.get(), Some(Some(_))) {
@@ -526,35 +510,18 @@ impl IPreviewHandlerFrame_Impl for Marco_Impl {
 struct Viva {
     cartel: HWND,
     manejador: Option<IPreviewHandler>,
+    /// La fabrica de la que salio, sujeta SOLO mientras vive la vista (sin
+    /// `LockServer`): al cerrar sirve para avisar al servidor de que ya no
+    /// queda nadie (ver [`cerrar_en_el_hilo`]) y se suelta con ella.
+    fabrica: Option<IClassFactory>,
     c: Arc<Compartido>,
-    clsid: Option<GUID>,
 }
 
-/// Una fabrica caliente.
-struct Fabrica {
-    f: IClassFactory,
-    usada: Instant,
-}
-
+/// Lo que vive en el hilo: las vistas abiertas y nada mas (ni fabricas ni
+/// repuestos: sin pines, ningun objeto de Office).
 struct EstadoHilo {
     vistas: HashMap<u64, Viva>,
-    fabricas: HashMap<u128, Fabrica>,
     aceleradores: isize,
-    buzon: HWND,
-    /// Los previsualizadores cuyo servidor sirve UNA vista y se va al
-    /// soltarla, aunque se le haya pedido `LockServer` (el de Excel, medido
-    /// el 10-oct: muere a los milisegundos del `Unload`). Con esos la
-    /// fabrica no sirve de cache: lo que se guarda es un **repuesto**.
-    solo_uso: std::collections::HashSet<u128>,
-    /// Un previsualizador ya creado (su servidor arrancado) y sin fichero,
-    /// esperando a la proxima vista de su clase.
-    repuestos: HashMap<u128, Fabrica2>,
-}
-
-/// Un repuesto: el objeto y cuando se hizo.
-struct Fabrica2 {
-    m: IPreviewHandler,
-    hecho: Instant,
 }
 
 thread_local! {
@@ -705,10 +672,6 @@ fn bucle(rx: Receiver<Orden>, listo: Sender<isize>) {
         let _ = listo.send(0);
         return;
     };
-    // SAFETY: temporizador de una ventana de este hilo, cada minuto.
-    unsafe {
-        SetTimer(Some(buzon), RELOJ_OCIOSAS, 60_000, None);
-    }
     // La tabla de aceleradores del marco (Esc y F11), una para todas.
     let acel: Vec<ACCEL> = TECLAS_DEL_MARCO.iter().enumerate().map(|(i, vk)| ACCEL { fVirt: FVIRTKEY, key: *vk, cmd: i as u16 + 1 }).collect();
     // SAFETY: la tabla se copia; el slice vive durante la llamada.
@@ -716,20 +679,12 @@ fn bucle(rx: Receiver<Orden>, listo: Sender<isize>) {
     let _ = listo.send(buzon.0 as isize);
     tracing::info!("vista previa: hilo «office» en marcha");
 
-    let mut e = EstadoHilo {
-        vistas: HashMap::new(),
-        fabricas: HashMap::new(),
-        aceleradores,
-        buzon,
-        solo_uso: Default::default(),
-        repuestos: HashMap::new(),
-    };
+    let mut e = EstadoHilo { vistas: HashMap::new(), aceleradores };
     let mut msg = MSG::default();
     loop {
         // Las ordenes, antes de dormir: las que llegaron durante una llamada
         // (cuyo aviso se comio el bucle modal de COM) tambien.
         let mut pendientes: Vec<Orden> = rx.try_iter().collect();
-        EN_COLA.fetch_sub(pendientes.len() as u64, Ordering::Relaxed);
         // De varios «mover» seguidos de una vista, el ultimo basta.
         let mut i = 0;
         while i < pendientes.len() {
@@ -749,30 +704,18 @@ fn bucle(rx: Receiver<Orden>, listo: Sender<isize>) {
         if r.0 <= 0 {
             break;
         }
-        if msg.hwnd == buzon && msg.message == WM_TIMER && msg.wParam.0 == RELOJ_OCIOSAS {
-            soltar_ociosas(&mut e, OCIOSA);
-            continue;
-        }
-        if msg.hwnd == buzon && msg.message == WM_TIMER && msg.wParam.0 == RELOJ_REPUESTO {
-            // SAFETY: el temporizador es del buzon, de este hilo.
-            unsafe {
-                let _ = KillTimer(Some(buzon), RELOJ_REPUESTO);
-            }
-            // Si mientras tanto llego algo, primero eso: el repuesto espera.
-            if EN_COLA.load(Ordering::Relaxed) > 0 {
-                programar_repuesto(&e);
-            } else {
-                preparar_repuestos(&mut e);
-            }
-            continue;
-        }
         // SAFETY: el mensaje viene de GetMessageW.
         unsafe {
             let _ = TranslateMessage(&msg);
             DispatchMessageW(&msg);
         }
     }
-    soltar_ociosas(&mut e, Duration::ZERO);
+    let ids: Vec<u64> = e.vistas.keys().copied().collect();
+    for id in ids {
+        if let Some(v) = e.vistas.remove(&id) {
+            cerrar_en_el_hilo(v);
+        }
+    }
     drop(e);
     if com {
         // SAFETY: empareja el CoInitializeEx de arriba; ya no vive nada COM.
@@ -790,26 +733,17 @@ fn atender(e: &mut EstadoHilo, orden: Orden) {
         }
         Orden::Cerrar { id } => {
             if let Some(v) = e.vistas.remove(&id) {
-                cerrar_en_el_hilo(e, v);
+                cerrar_en_el_hilo(v);
             }
         }
         Orden::SoltarTodo { hecho } => {
             let ids: Vec<u64> = e.vistas.keys().copied().collect();
             for id in ids {
                 if let Some(v) = e.vistas.remove(&id) {
-                    cerrar_en_el_hilo(e, v);
+                    cerrar_en_el_hilo(v);
                 }
             }
-            soltar_ociosas(e, Duration::ZERO);
-            e.solo_uso.clear();
             let _ = hecho.send(());
-        }
-        Orden::Calentar { clsid } => {
-            let t = Instant::now();
-            match fabrica(e, clsid) {
-                Ok((_, en_frio)) => tracing::info!(ms = t.elapsed().as_millis() as u64, en_frio, "vista previa: previsualizador calentado"),
-                Err(err) => tracing::warn!(%err, "vista previa: no se pudo calentar"),
-            }
         }
     }
 }
@@ -823,8 +757,8 @@ fn en_llamada<T>(f: impl FnOnce() -> T) -> T {
     r
 }
 
-/// Si un error de COM es «el servidor se murio o no esta»: se tira la
-/// fabrica y se pide otra.
+/// Si un error de COM es «el servidor se murio o no esta» (se pide otra vez,
+/// una sola).
 pub fn servidor_caido(hr: i32) -> bool {
     const RPC_E_SERVERDIED: i32 = 0x8001_0007_u32 as i32;
     const RPC_E_SERVERDIED_DNE: i32 = 0x8001_0012_u32 as i32;
@@ -835,103 +769,20 @@ pub fn servidor_caido(hr: i32) -> bool {
     matches!(hr, RPC_E_SERVERDIED | RPC_E_SERVERDIED_DNE | RPC_E_DISCONNECTED | RPC_S_SERVER_UNAVAILABLE | RPC_S_CALL_FAILED | CO_E_OBJNOTCONNECTED)
 }
 
-/// La fabrica del previsualizador, de la cache o nueva (con su servidor
-/// sujeto). `true` si hubo que pedirla.
-fn fabrica(e: &mut EstadoHilo, clsid: GUID) -> windows::core::Result<(IClassFactory, bool)> {
-    let clave = clsid.to_u128();
-    if let Some(f) = e.fabricas.get_mut(&clave) {
-        f.usada = Instant::now();
-        return Ok((f.f.clone(), false));
-    }
+/// La fabrica del previsualizador, pedida ahora y para esta vista sola (no
+/// se guarda ni se sujeta su servidor con `LockServer`).
+fn fabrica(clsid: GUID) -> windows::core::Result<IClassFactory> {
     // SAFETY: el GUID vive durante la llamada; servidor local, fuera de
     // nuestro proceso.
-    let f: IClassFactory = en_llamada(|| unsafe { CoGetClassObject(&clsid, CLSCTX_LOCAL_SERVER, None) })?;
-    // Un servidor de un solo uso no se sujeta: la fabrica no se guarda.
-    if e.solo_uso.contains(&clave) {
-        return Ok((f, true));
-    }
-    // SAFETY: interfaz valida recien obtenida.
-    if let Err(err) = en_llamada(|| unsafe { f.LockServer(true) }) {
-        tracing::info!(%err, "vista previa: LockServer no se pudo (se sigue sin sujetar)");
-    }
-    e.fabricas.insert(clave, Fabrica { f: f.clone(), usada: Instant::now() });
-    Ok((f, true))
+    en_llamada(|| unsafe { CoGetClassObject(&clsid, CLSCTX_LOCAL_SERVER, None) })
 }
 
-/// Deja para dentro de un momento el preparar los repuestos (ver
-/// [`preparar_repuestos`]).
-fn programar_repuesto(e: &EstadoHilo) {
-    // SAFETY: temporizador del buzon, de este hilo; ponerlo otra vez lo
-    // reinicia, que es lo que se quiere.
-    unsafe {
-        SetTimer(Some(e.buzon), RELOJ_REPUESTO, ESPERA_REPUESTO_MS, None);
-    }
-}
-
-/// **Los repuestos**: con las fabricas que nadie usa ahora se mira si su
-/// servidor sigue vivo (un `LockServer` de prueba). Si se fue al cerrar la
-/// vista, es de un solo uso: se apunta y, para el y para los ya conocidos,
-/// se deja preparado un previsualizador nuevo (su servidor arrancado, sin
-/// fichero) para que la proxima vista no espere a que arranque Office.
-fn preparar_repuestos(e: &mut EstadoHilo) {
-    let en_uso: Vec<u128> = e.vistas.values().filter_map(|v| v.clsid.map(|g| g.to_u128())).collect();
-    let libres: Vec<u128> = e.fabricas.keys().filter(|k| !en_uso.contains(k)).copied().collect();
-    for k in libres {
-        let Some(f) = e.fabricas.get(&k) else { continue };
-        // SAFETY: interfaz valida; un servidor ido contesta con error.
-        let vivo = en_llamada(|| unsafe { f.f.LockServer(true).and_then(|_| f.f.LockServer(false)) });
-        if let Err(err) = vivo
-            && servidor_caido(err.code().0)
-        {
-            tracing::info!(clsid = ?GUID::from_u128(k), "vista previa: su servidor se va al cerrar la vista (un solo uso)");
-            e.fabricas.remove(&k);
-            e.solo_uso.insert(k);
-        }
-    }
-    let faltan: Vec<u128> = e.solo_uso.iter().filter(|k| !e.repuestos.contains_key(k)).copied().collect();
-    for k in faltan {
-        let t = Instant::now();
-        let clsid = GUID::from_u128(k);
-        let hecho = fabrica(e, clsid).and_then(|(f, _)| {
-            // SAFETY: fabrica valida; sin agregacion.
-            en_llamada(|| unsafe { f.CreateInstance::<_, IPreviewHandler>(None) })
-        });
-        match hecho {
-            Ok(m) => {
-                e.repuestos.insert(k, Fabrica2 { m, hecho: Instant::now() });
-                tracing::info!(clsid = ?clsid, ms = t.elapsed().as_millis() as u64, "vista previa: repuesto preparado");
-            }
-            Err(err) => tracing::warn!(%err, "vista previa: no se pudo preparar el repuesto"),
-        }
-    }
-}
-
-fn tirar_fabrica(e: &mut EstadoHilo, clsid: GUID) {
-    if let Some(f) = e.fabricas.remove(&clsid.to_u128()) {
-        // SAFETY: interfaz valida; si el servidor ya no esta, falla y ya.
-        let _ = unsafe { f.f.LockServer(false) };
-    }
-}
-
-fn soltar_ociosas(e: &mut EstadoHilo, ociosa: Duration) {
-    // Los repuestos sin usar tambien caducan (son un Office en marcha).
-    let viejos: Vec<u128> = e.repuestos.iter().filter(|(_, r)| r.hecho.elapsed() >= ociosa).map(|(k, _)| *k).collect();
-    for k in viejos {
-        if let Some(r) = e.repuestos.remove(&k) {
-            // SAFETY: interfaz valida; un fallo da igual.
-            let _ = en_llamada(|| unsafe { r.m.Unload() });
-            tracing::info!(clsid = ?GUID::from_u128(k), "vista previa: repuesto soltado por ocioso");
-        }
-    }
-    let en_uso: Vec<u128> = e.vistas.values().filter_map(|v| v.clsid.map(|g| g.to_u128())).collect();
-    let viejas: Vec<u128> = e.fabricas.iter().filter(|(k, f)| !en_uso.contains(k) && f.usada.elapsed() >= ociosa).map(|(k, _)| *k).collect();
-    for k in viejas {
-        if let Some(f) = e.fabricas.remove(&k) {
-            // SAFETY: interfaz valida; un fallo (servidor ido) da igual.
-            let _ = en_llamada(|| unsafe { f.f.LockServer(false) });
-            tracing::info!(clsid = ?GUID::from_u128(k), "vista previa: previsualizador soltado por ocioso");
-        }
-    }
+/// Que COM suelte ya lo que pueda de lo que se dejo de usar (los proxys y
+/// las DLL de COM sin objetos vivos), para que el servidor de Office se
+/// quede sin clientes cuanto antes.
+fn soltar_lo_que_sobra() {
+    // SAFETY: sin precondiciones; solo libera lo que COM ya no usa.
+    unsafe { CoFreeUnusedLibrariesEx(0, Some(0)) };
 }
 
 fn rect_de(area: Rect) -> RECT {
@@ -1046,7 +897,7 @@ fn abrir_en_el_hilo(e: &mut EstadoHilo, id: u64, padre: isize, ruta: &Path, clsi
         return;
     };
     CARTELES.with(|x| x.borrow_mut().insert(cartel.0 as isize, (carteles.abriendo.clone(), carteles.tarda.clone(), clsid.is_some())));
-    let mut viva = Viva { cartel, manejador: None, c: Arc::clone(&c), clsid };
+    let mut viva = Viva { cartel, manejador: None, fabrica: None, c: Arc::clone(&c) };
     let Some(clsid) = clsid else {
         e.vistas.insert(id, viva);
         return;
@@ -1064,54 +915,42 @@ fn abrir_en_el_hilo(e: &mut EstadoHilo, id: u64, padre: isize, ruta: &Path, clsi
     let delante_antes = unsafe { GetForegroundWindow() };
 
     let ext = extension_de(ruta);
-    let mut en_frio = false;
     let mut ms_fabrica = 0;
     let mut intento = 0;
-    // El repuesto, si lo hay: su servidor ya esta en marcha.
-    let mut repuesto = e.repuestos.remove(&clsid.to_u128()).map(|r| r.m);
-    let de_repuesto = repuesto.is_some();
-    let hecho: windows::core::Result<(IPreviewHandler, &'static str)> = loop {
+    let hecho: windows::core::Result<(IPreviewHandler, &'static str, IClassFactory)> = loop {
         intento += 1;
         let tf = Instant::now();
-        let mut de_la_cache = false;
-        let r = (|| -> windows::core::Result<(IPreviewHandler, &'static str)> {
-            if let Some(m) = repuesto.take() {
-                match iniciar_de(&m, ruta, Manera::Ruta) {
-                    Ok(true) => return Ok((m, "repuesto")),
-                    Ok(false) => {}
-                    Err(err) => tracing::info!(%err, "vista previa: el repuesto no sirvio"),
-                }
-            }
-            let (f, frio) = fabrica(e, clsid)?;
-            de_la_cache = !frio;
-            en_frio |= frio;
+        let r = (|| -> windows::core::Result<(IPreviewHandler, &'static str, IClassFactory)> {
+            let f = fabrica(clsid)?;
             ms_fabrica = tf.elapsed().as_millis() as u64;
-            crear_e_iniciar(&f, ruta)
+            let (m, como) = crear_e_iniciar(&f, ruta)?;
+            Ok((m, como, f))
         })();
         match r {
+            // El servidor se fue entre medias (otro cliente lo cerro, se
+            // cayo): se pide otro, una vez.
             Err(err) if intento == 1 && servidor_caido(err.code().0) => {
                 tracing::info!(%err, "vista previa: el servidor se habia ido, se pide otro");
-                tirar_fabrica(e, clsid);
-                // Una fabrica guardada cuyo servidor se fue sin que nadie lo
-                // soltara: es de un solo uso (ver `solo_uso`).
-                if de_la_cache {
-                    e.solo_uso.insert(clsid.to_u128());
-                }
             }
             // Recien arrancado, el servidor a veces dice «error sin
             // especificar» al primer fichero (medido el 10-oct con Word, y a
             // la segunda lo abrio): una vez mas, con otro objeto.
-            Err(err) if intento == 1 && en_frio && err.code() == windows::Win32::Foundation::E_FAIL => {
-                tracing::info!(%err, "vista previa: recien arrancado no pudo, otra vez");
+            // Lo mismo si Office estaba ocupado y rechazo la llamada
+            // (RPC_E_CALL_REJECTED, medido con un .rtf mientras otro
+            // programa usaba Word).
+            Err(err) if intento == 1 && (err.code() == windows::Win32::Foundation::E_FAIL || err.code().0 == 0x8001_0001_u32 as i32) => {
+                tracing::info!(%err, "vista previa: no pudo a la primera, otra vez");
             }
             r => break r,
         }
     };
     let ms_iniciar = t0.elapsed().as_millis() as u64;
-    let (manejador, como) = match hecho {
+    let (manejador, como, fabrica_de_la_vista) = match hecho {
         Ok(x) => x,
         Err(err) => {
             fallar(&viva, &carteles, format!("no se pudo iniciar: {err}"), &ext);
+            // Lo que se llego a crear ya se solto: que COM lo libere.
+            soltar_lo_que_sobra();
             e.vistas.insert(id, viva);
             return;
         }
@@ -1136,6 +975,7 @@ fn abrir_en_el_hilo(e: &mut EstadoHilo, id: u64, padre: isize, ruta: &Path, clsi
     let pintado = en_llamada(|| unsafe { manejador.SetWindow(cartel, &r).and_then(|_| manejador.DoPreview()) });
     let ms = t0.elapsed().as_millis() as u64;
     viva.manejador = Some(manejador);
+    viva.fabrica = Some(fabrica_de_la_vista);
     match pintado {
         Ok(()) => {
             // SAFETY: el temporizador es del cartel.
@@ -1143,12 +983,9 @@ fn abrir_en_el_hilo(e: &mut EstadoHilo, id: u64, padre: isize, ruta: &Path, clsi
                 let _ = KillTimer(Some(cartel), RELOJ_TARDA);
             }
             poner_cartel(cartel, "", false);
-            let _ = c.estado.lock().map(|mut x| *x = Estado::Lista { ms, en_frio });
-            tracing::info!(%ext, ms, ms_fabrica, ms_iniciar, en_frio, de_repuesto, como, "vista previa: lista");
+            let _ = c.estado.lock().map(|mut x| *x = Estado::Lista { ms });
+            tracing::info!(%ext, ms, ms_fabrica, ms_iniciar, como, "vista previa: lista");
             devolver_el_primer_plano(delante_antes, cartel, padre);
-            if e.solo_uso.contains(&clsid.to_u128()) {
-                programar_repuesto(e);
-            }
         }
         Err(err) => fallar(&viva, &carteles, format!("DoPreview: {err}"), &ext),
     }
@@ -1214,7 +1051,12 @@ fn mover_en_el_hilo(v: &Viva, area: Rect) {
     }
 }
 
-fn cerrar_en_el_hilo(e: &mut EstadoHilo, v: Viva) {
+/// **Cerrar una vista sin dejar Office detras**, en este orden: `Unload`
+/// (el previsualizador suelta el fichero y su ventana), quitarle el marco
+/// (`SetSite(None)`: deja de sujetar nuestro objeto), soltar el objeto (la
+/// ultima referencia: el servidor se queda sin clientes y se va), quitar la
+/// ventana del cartel y pedirle a COM que libere lo que sobre.
+fn cerrar_en_el_hilo(v: Viva) {
     let t = Instant::now();
     if let Some(m) = &v.manejador {
         use windows::core::Interface;
@@ -1226,24 +1068,26 @@ fn cerrar_en_el_hilo(e: &mut EstadoHilo, v: Viva) {
             }
         });
     }
-    if let Some(clsid) = v.clsid
-        && let Some(f) = e.fabricas.get_mut(&clsid.to_u128())
-    {
-        f.usada = Instant::now();
-    }
     drop(v.manejador);
+    // Sin objetos nuestros ya en el servidor, un `LockServer(true)` y su
+    // `LockServer(false)` le hacen mirar si le queda alguien: es cuando un
+    // servidor COM decide irse. El de Excel ya se fue al soltar el objeto
+    // (esto falla sin mas); el de Word, sin el aviso, se quedaba en marcha.
+    if let Some(f) = v.fabrica {
+        // SAFETY: interfaz valida; si el servidor ya no esta, falla y ya.
+        let r = en_llamada(|| unsafe { f.LockServer(true).and_then(|_| f.LockServer(false)) });
+        tracing::debug!(ok = r.is_ok(), "vista previa: aviso de cierre al servidor");
+        drop(f);
+    }
     CARTELES.with(|x| x.borrow_mut().remove(&(v.cartel.0 as isize)));
     // SAFETY: el cartel es de este hilo (si el padre ya murio, ya no existe
     // y esto falla sin mas).
     unsafe {
         let _ = DestroyWindow(v.cartel);
     }
+    soltar_lo_que_sobra();
     let _ = v.c.cerrada.lock().map(|mut x| *x = true);
-    tracing::info!(ms = t.elapsed().as_millis() as u64, "vista previa: cerrada");
-    // Se mira luego si su servidor sigue (y si no, se prepara un repuesto).
-    if v.clsid.is_some() {
-        programar_repuesto(e);
-    }
+    tracing::info!(ms = t.elapsed().as_millis() as u64, "vista previa: cerrada y soltada");
 }
 
 #[cfg(test)]

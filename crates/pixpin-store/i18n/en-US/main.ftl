@@ -546,7 +546,7 @@ visor-html-titulo = PixPin — page
 ## The Office pin: Office's preview as a pin (2026-10-10)
 office-titulo = Office preview
 office-abriendo = Opening with the Office preview…
-office-tarda = Office is taking a while (the first time it has to start). You can wait, or open it in its app with the ↗ button on the bar.
+office-tarda = Office is taking a while (it has to start). You can wait, or open it in its app with the ↗ button on the bar.
 office-fallo = Office couldn't preview this file. Open it in its app with the ↗ button on the bar.
 office-internet = This file comes from the internet and, for safety, Windows doesn't allow previewing it. Open it in its app with the ↗ button on the bar, or unblock it in its Properties.
 visor-titulo = PixPin viewer

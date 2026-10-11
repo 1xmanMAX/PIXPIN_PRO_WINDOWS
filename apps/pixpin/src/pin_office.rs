@@ -1,8 +1,14 @@
-//! **El pin de Office** (10-oct-2026): un Word, un Excel, un PowerPoint, un
-//! Visio o un correo `.msg` abiertos casi al instante, como un pin, con la
-//! vista previa que Office registra para el panel del Explorador
-//! (`pixpin_shell::vista_previa`). Se ve exactamente como en Office, sin
-//! convertir nada.
+//! **El pin de Office** (10-oct-2026): los formatos VIEJOS de Office y los
+//! que no son OOXML —un `.doc`, un `.xls`, un `.ppt`, un Visio, un correo
+//! `.msg`, un OpenDocument— abiertos como un pin con la vista previa que
+//! Office registra para el panel del Explorador
+//! (`pixpin_shell::vista_previa`). Se ven tal cual en Office, sin convertir.
+//!
+//! Los OOXML (`.docx`, `.xlsx`, `.pptx` y sus primos) NO pasan por aqui: los
+//! abrira el motor nativo de PixPin, sin Office. Y Office solo vive mientras
+//! el pin esta abierto (el usuario, 10-oct: «no es buena idea tener Office
+//! abierto, consume RAM en segundo plano y va contra la filosofia de la
+//! app»): al cerrar el pin, el servidor de Office se va.
 //!
 //! La ventana es la de los lectores como pin (`lector_pin`): del tamano de
 //! un pin, siempre encima, la barra fuera con el asa, el nombre, pantalla
@@ -12,16 +18,18 @@
 //! ventana de DirectComposition saldria negra.
 //!
 //! Sale en seguida con «Abriendo…» y la vista llega cuando Office la tiene
-//! (la primera vez Office tiene que arrancar). No le quita el foco a nadie:
+//! (Office tiene que arrancar cada vez). No le quita el foco a nadie:
 //! abierto con el espacio en el Explorador, el teclado sigue en el
 //! Explorador y otro espacio lo cierra.
 //!
 //! En la barra, segun lo que sea:
 //! - **Abrir con su programa** (siempre): Word, Excel... y el pin se cierra.
-//! - **Abrir en el lector de PixPin** (Word): el lector propio, con marcas,
-//!   tinta y lectura en voz alta (aqui no se anota: la vista es de Office).
-//! - **Presentar** (PowerPoint): el modo de presentar de siempre.
+//! - **Presentar** (`.ppt`, `.pps`, `.odp`): el modo de presentar de siempre.
 //! - El nombre: «Abrir con…» (elegir otro programa).
+//!
+//! Lo que viene de internet no se previsualiza (lo decide Windows en el
+//! Explorador por seguridad, y aqui se respeta): sale el pin con el aviso y
+//! «abrir con su programa».
 //!
 //! Este modulo no lleva `unsafe`: lo de Windows esta en `pixpin-shell`.
 
@@ -37,47 +45,36 @@ use pixpin_shell::overlay::{EventoOverlay, VentanaOverlay};
 use pixpin_shell::vista_previa::{self, Carteles, Estado, VistaPrevia};
 use pixpin_store::{Catalogo, Ubicacion};
 
-use crate::overlay::Recursos;
 use crate::lector_pin::{AccionPin, BotonLector, PinLector};
+use crate::overlay::Recursos;
 
 const VK_ESCAPE: u32 = 0x1B;
 const VK_F11: u32 = 0x7A;
 
-/// Lo que puede abrir el pin de Office, si el equipo tiene previsualizador
-/// para ello: Word, Excel, PowerPoint, Visio, OpenDocument y los correos de
-/// Outlook. Un `.csv` no: es de su hoja de calculo (o del Bloc de notas),
-/// como en el chat.
-pub const EXTENSIONES: [&str; 20] = [
-    "doc", "docx", "docm", "dot", "dotx", "rtf", "odt", // Word
-    "xls", "xlsx", "xlsm", "xlsb", "ods", // Excel
-    "ppt", "pptx", "pptm", "pps", "ppsx", "odp", // PowerPoint
-    "vsdx", "msg", // Visio y Outlook
+/// Lo que abre el pin de Office, si el equipo tiene previsualizador para
+/// ello: los formatos que el motor nativo NO lee. Word 97-2003 y RTF; Excel
+/// 97-2003 y binario; PowerPoint 97-2003; OpenDocument; Visio; los correos
+/// de Outlook. Ni los OOXML (motor nativo) ni un `.csv` (su hoja de calculo
+/// o el Bloc de notas, como en el chat).
+pub const EXTENSIONES: [&str; 17] = [
+    "doc", "dot", "rtf", // Word
+    "xls", "xlsb", "xlt", // Excel
+    "ppt", "pps", "pot", // PowerPoint
+    "odt", "ods", "odp", // OpenDocument
+    "vsd", "vsdx", "vsdm", "vssx", // Visio
+    "msg", // Outlook
 ];
-
-/// Los de Visio que no caben arriba (los viejos y las plantillas).
-const MAS_VISIO: [&str; 3] = ["vsd", "vsdm", "vssx"];
 
 /// Si la extension (sin punto, en minusculas) es de las del pin de Office.
 pub fn es_de_office(ext: &str) -> bool {
-    EXTENSIONES.contains(&ext) || MAS_VISIO.contains(&ext)
+    EXTENSIONES.contains(&ext)
 }
 
 /// **La decision, sin Windows** (para probarla): va al pin de Office si es
-/// de Office, el equipo tiene previsualizador, el hilo de las vistas no esta
-/// atascado y —siendo un Word que viene de internet— no hay que mandarlo al
-/// lector propio (Windows no deja previsualizar lo de internet; un Word se
-/// lee igual en PixPin, lo demas sale en el pin con el aviso y «abrir con su
-/// programa»).
-pub fn va_al_pin(ext: &str, hay_previsualizador: bool, atascado: bool, de_internet: bool) -> bool {
-    if !es_de_office(ext) || !hay_previsualizador || atascado {
-        return false;
-    }
-    !(de_internet && tiene_lector_propio(ext))
-}
-
-/// Los de Office que PixPin tambien sabe leer en su lector (Word).
-pub fn tiene_lector_propio(ext: &str) -> bool {
-    matches!(ext, "docx" | "docm")
+/// de los suyos, el equipo tiene previsualizador y el hilo de las vistas no
+/// esta atascado (un Office colgado).
+pub fn va_al_pin(ext: &str, hay_previsualizador: bool, atascado: bool) -> bool {
+    es_de_office(ext) && hay_previsualizador && !atascado
 }
 
 /// **Si este fichero se abre en el pin de Office** en este equipo, ahora.
@@ -87,16 +84,12 @@ pub fn se_abre(ruta: &Path) -> bool {
         return false;
     }
     let hay = vista_previa::manejador_de_extension(&ext).is_some();
-    // La marca de internet solo se mira si cambia algo (un Word).
-    let de_internet = hay && tiene_lector_propio(&ext) && vista_previa::bloqueado_por_internet(ruta);
-    va_al_pin(&ext, hay, vista_previa::atascado(), de_internet)
+    va_al_pin(&ext, hay, vista_previa::atascado())
 }
 
 /// Abre `ruta` en un pin de Office, en su propio hilo.
 pub fn lanzar(idioma: pixpin_store::Idioma, ubicacion: Ubicacion, ruta: &Path) {
     let ruta = ruta.to_path_buf();
-    // Que Office vaya arrancando mientras se crea la ventana.
-    vista_previa::calentar(&ruta);
     let lanzado = std::thread::Builder::new().name("pin-office".into()).spawn(move || {
         let _com = pixpin_shell::ComDelHilo::iniciar();
         let textos = Catalogo::nuevo(idioma);
@@ -112,14 +105,10 @@ pub fn lanzar(idioma: pixpin_store::Idioma, ubicacion: Ubicacion, ruta: &Path) {
 
 /// Los botones propios de la barra.
 const ABRIR_CON_SU_PROGRAMA: u8 = 0;
-const LECTOR_PROPIO: u8 = 1;
 const PRESENTAR: u8 = 2;
 
 fn botones(nombre: &str) -> Vec<BotonLector> {
     let mut v = Vec::new();
-    if crate::visor::se_abre(nombre) && tiene_lector_propio(&pixpin_docs::extension(nombre)) {
-        v.push(BotonLector { id: LECTOR_PROPIO, icono: &material::MENU_BOOK, encendido: false });
-    }
     if crate::diapositivas::es_presentacion(nombre) {
         v.push(BotonLector { id: PRESENTAR, icono: &material::PLAY_ARROW, encendido: false });
     }
@@ -196,8 +185,8 @@ fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion, ruta: &P
                         despues = Some(ABRIR_CON_SU_PROGRAMA);
                         vivo = false;
                     }
-                    Some(AccionPin::Propio(id @ (LECTOR_PROPIO | PRESENTAR))) => {
-                        despues = Some(id);
+                    Some(AccionPin::Propio(PRESENTAR)) => {
+                        despues = Some(PRESENTAR);
                         vivo = false;
                     }
                     Some(AccionPin::Propio(_)) => {}
@@ -247,9 +236,9 @@ fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion, ruta: &P
         }
         // Lo que tardo, al registro (una vez).
         match vista.estado() {
-            Estado::Lista { ms, en_frio } if !contado => {
+            Estado::Lista { ms } if !contado => {
                 contado = true;
-                tracing::info!(%ext, ms, en_frio, "pin de Office: listo");
+                tracing::info!(%ext, ms, "pin de Office: listo");
             }
             Estado::Fallo(motivo) if !contado => {
                 contado = true;
@@ -284,7 +273,6 @@ fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion, ruta: &P
                 tracing::warn!(?e, "pin de Office: no se pudo abrir con su programa");
             }
         }
-        Some(LECTOR_PROPIO) => crate::visor::lanzar(idioma, ubicacion.clone(), ruta),
         Some(PRESENTAR) => crate::diapositivas::lanzar(idioma, ubicacion.clone(), ruta),
         _ => {}
     }
@@ -296,30 +284,30 @@ mod pruebas {
     use super::*;
 
     #[test]
-    fn van_al_pin_los_de_office_con_previsualizador() {
-        for ext in ["xlsx", "xls", "xlsb", "doc", "docx", "rtf", "odt", "ods", "odp", "vsd", "vsdx", "msg", "pptx", "ppt"] {
-            assert!(va_al_pin(ext, true, false, false), "{ext}");
+    fn van_al_pin_los_formatos_viejos_con_previsualizador() {
+        for ext in ["doc", "dot", "rtf", "xls", "xlsb", "xlt", "ppt", "pps", "pot", "odt", "ods", "odp", "vsd", "vsdx", "vsdm", "vssx", "msg"] {
+            assert!(va_al_pin(ext, true, false), "{ext}");
+        }
+    }
+
+    #[test]
+    fn caso_negativo_los_ooxml_son_del_motor_nativo() {
+        for ext in ["docx", "docm", "dotx", "dotm", "xlsx", "xlsm", "pptx", "pptm", "ppsx", "potx"] {
+            assert!(!va_al_pin(ext, true, false), "{ext}");
         }
     }
 
     #[test]
     fn caso_negativo_sin_previsualizador_o_atascado_o_no_es_de_office() {
         // Sin previsualizador (un equipo sin Office): a lo de siempre.
-        assert!(!va_al_pin("xlsx", false, false, false));
-        assert!(!va_al_pin("docx", false, false, false));
+        assert!(!va_al_pin("xls", false, false));
+        assert!(!va_al_pin("doc", false, false));
         // El hilo de las vistas atascado (Office colgado): tampoco.
-        assert!(!va_al_pin("pptx", true, true, false));
+        assert!(!va_al_pin("ppt", true, true));
         // Lo que no es de Office, aunque Windows tenga vista previa para ello.
-        for ext in ["pdf", "png", "csv", "txt", "zip", "", "docx.txt"] {
-            assert!(!va_al_pin(ext, true, false, false), "{ext}");
+        for ext in ["pdf", "png", "csv", "txt", "zip", "", "doc.txt"] {
+            assert!(!va_al_pin(ext, true, false), "{ext}");
         }
-    }
-
-    #[test]
-    fn un_word_de_internet_va_al_lector_propio_y_un_excel_al_pin_con_aviso() {
-        assert!(!va_al_pin("docx", true, false, true), "el Word de internet se lee en PixPin");
-        assert!(va_al_pin("xlsx", true, false, true), "el Excel sale en el pin, con el aviso");
-        assert!(va_al_pin("doc", true, false, true), "un .doc no lo lee PixPin: pin con aviso");
     }
 
     #[test]
@@ -343,9 +331,10 @@ mod pruebas {
     #[test]
     fn la_barra_lleva_lo_que_toca_a_cada_uno() {
         let ids = |n: &str| botones(n).iter().map(|b| b.id).collect::<Vec<_>>();
-        assert_eq!(ids("Informe.docx"), vec![LECTOR_PROPIO, ABRIR_CON_SU_PROGRAMA]);
-        assert_eq!(ids("Clase.pptx"), vec![PRESENTAR, ABRIR_CON_SU_PROGRAMA]);
-        // Caso negativo: un Excel no se lee ni se presenta.
-        assert_eq!(ids("Gastos.xlsx"), vec![ABRIR_CON_SU_PROGRAMA]);
+        assert_eq!(ids("Clase.ppt"), vec![PRESENTAR, ABRIR_CON_SU_PROGRAMA]);
+        assert_eq!(ids("Clase.odp"), vec![PRESENTAR, ABRIR_CON_SU_PROGRAMA]);
+        // Caso negativo: un Excel o un Word no se presentan.
+        assert_eq!(ids("Gastos.xls"), vec![ABRIR_CON_SU_PROGRAMA]);
+        assert_eq!(ids("Carta.doc"), vec![ABRIR_CON_SU_PROGRAMA]);
     }
 }

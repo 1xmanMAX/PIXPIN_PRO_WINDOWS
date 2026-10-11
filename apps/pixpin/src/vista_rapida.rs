@@ -3,8 +3,8 @@
 //! espacio pulsado en la lista de ficheros del Explorador o del escritorio;
 //! aqui, en su hilo, se lee la seleccion y lo que PixPin sabe abrir va por el
 //! mismo camino que «Abrir con PixPin» (`Evento::AbrirFicheros`): fotos,
-//! videos, audios, PDF, Word, EPUB, PowerPoint, Excel, Visio, correos
-//! `.msg` (los de Office, en el pin de Office), Markdown, planos DWG/DXF y
+//! videos, audios, PDF, Word, EPUB, PowerPoint, los Office viejos (`.doc`,
+//! `.xls`, `.ppt`), Visio y correos `.msg` (en el pin de Office), Markdown, planos DWG/DXF y
 //! modelos IFC, Revit y de Civil 3D.
 //!
 //! Como en QuickLook: **otro espacio con lo mismo elegido lo cierra**, y un
@@ -33,8 +33,8 @@ pub fn se_abre(ruta: &Path) -> bool {
         || AUDIOS.contains(&ext.as_str())
         || crate::notas_md::es_markdown(ruta)
         || crate::lector::se_lee_al_tocar_fichero(ruta)
-        // Excel, Visio, correos... con la vista previa de Office (si el
-        // equipo la tiene): el pin de Office.
+        // Los Office viejos, Visio, correos, OpenDocument... con la vista
+        // previa de Office (si el equipo la tiene): el pin de Office.
         || crate::pin_office::se_abre(ruta)
 }
 

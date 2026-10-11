@@ -1894,9 +1894,9 @@ fn abrir_ficheros(
             notas_md::Destino::Fichero { ruta },
         );
     }
-    // Word, Excel, PowerPoint, Visio, correos: en el pin de Office, con la
-    // vista previa que Office registra (casi al instante y tal cual se ve en
-    // Office). Si el equipo no la tiene, siguen su camino de antes.
+    // Los Office viejos (.doc, .xls, .ppt), Visio, correos y OpenDocument: en
+    // el pin de Office, con la vista previa que Office registra (Office vive
+    // solo mientras el pin). Si el equipo no la tiene, su camino de antes.
     let (de_office, rutas): (Vec<_>, Vec<_>) = rutas
         .into_iter()
         .partition(|r| destino_de_fichero(r) == DestinoDeFichero::Office);
@@ -2048,8 +2048,8 @@ fn abrir_ficheros(
 enum DestinoDeFichero {
     /// Markdown: al editor de notas.
     Nota,
-    /// Word, Excel, PowerPoint, Visio, `.msg`... con previsualizador de
-    /// Office en el equipo: al pin de Office (`pin_office`).
+    /// `.doc`, `.xls`, `.ppt`, Visio, `.msg`, OpenDocument... (no los OOXML)
+    /// con previsualizador de Office en el equipo: al pin de Office.
     Office,
     /// PDF, Word, libro: a su lector.
     Lector,
@@ -2070,11 +2070,9 @@ fn destino_de_fichero(ruta: &std::path::Path) -> DestinoDeFichero {
 /// [`destino_de_fichero`] con la pregunta del pin de Office aparte (si hay
 /// previsualizador mira el registro del equipo): asi se prueba sin Office.
 ///
-/// Un Word va al pin de Office antes que al lector propio: se ve como en
-/// Word y al instante; el lector propio (marcas, tinta, voz) queda a un
-/// boton de la barra del pin. Un PowerPoint abierto desde el Explorador
-/// tambien: se ve en un momento, y «Presentar» esta en la barra (tocar uno
-/// en el chat sigue presentandolo, como en el movil: eso va por `lector`).
+/// Solo los formatos viejos o no OOXML (`.doc`, `.xls`, `.ppt`, Visio,
+/// `.msg`, OpenDocument...) van al pin de Office. Los OOXML (`.docx`,
+/// `.xlsx`, `.pptx`) siguen como antes: los abrira el motor nativo.
 fn destino_con(ruta: &std::path::Path, office: impl Fn(&std::path::Path) -> bool) -> DestinoDeFichero {
     if notas_md::es_markdown(ruta) {
         DestinoDeFichero::Nota
@@ -2127,16 +2125,22 @@ mod pruebas_abrir_ficheros {
 
     #[test]
     fn abrir_office_va_al_pin_de_office_si_hay_previsualizador() {
-        let con = |r: &str| destino_con(Path::new(r), |p| pin_office::va_al_pin(&pixpin_shell::vista_previa::extension_de(p), true, false, false));
+        let con = |r: &str| destino_con(Path::new(r), |p| pin_office::va_al_pin(&pixpin_shell::vista_previa::extension_de(p), true, false));
         let sin = |r: &str| destino_con(Path::new(r), |_| false);
-        for f in ["Gastos.xlsx", "viejo.xls", "Informe.docx", "Carta.doc", "a.rtf", "b.odt", "c.ods", "d.odp", "Plano.vsdx", "e.vsd", "Correo.msg", "Clase.pptx", "f.ppt"] {
+        for f in ["viejo.xls", "g.xlsb", "Carta.doc", "a.rtf", "b.odt", "c.ods", "d.odp", "Plano.vsdx", "e.vsd", "Correo.msg", "f.ppt", "h.pps"] {
             assert_eq!(con(f), DestinoDeFichero::Office, "{f}");
         }
-        // Sin previsualizador (un equipo sin Office): lo de antes. El Word
-        // y el PowerPoint a su lector; el Excel, como ficha.
-        assert_eq!(sin("Informe.docx"), DestinoDeFichero::Lector);
-        assert_eq!(sin("Clase.pptx"), DestinoDeFichero::Lector);
-        assert_eq!(sin("Gastos.xlsx"), DestinoDeFichero::Pin);
+        // Los OOXML, aunque haya Office, siguen su camino de antes (los
+        // abrira el motor nativo): el Word y el PowerPoint a su lector; el
+        // Excel, como ficha.
+        assert_eq!(con("Informe.docx"), DestinoDeFichero::Lector);
+        assert_eq!(con("Clase.pptx"), DestinoDeFichero::Lector);
+        assert_eq!(con("Gastos.xlsx"), DestinoDeFichero::Pin);
+        // Sin previsualizador (un equipo sin Office): un .doc o un .xls, como
+        // ficha; un .ppt, a presentar como antes.
+        assert_eq!(sin("Carta.doc"), DestinoDeFichero::Pin);
+        assert_eq!(sin("viejo.xls"), DestinoDeFichero::Pin);
+        assert_eq!(sin("f.ppt"), DestinoDeFichero::Lector);
         // Caso negativo: con Office tampoco cambian un PDF, una nota, una
         // foto o un CSV.
         assert_eq!(con("libro.pdf"), DestinoDeFichero::Lector);
