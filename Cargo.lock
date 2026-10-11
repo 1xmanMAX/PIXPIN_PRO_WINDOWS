@@ -1561,6 +1561,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "pixpin-office"
+version = "0.1.0"
+dependencies = [
+ "memchr",
+ "pixpin-docs",
+ "zip",
+]
+
+[[package]]
 name = "pixpin-pdf"
 version = "0.1.0"
 dependencies = [
@@ -1632,7 +1641,10 @@ dependencies = [
 name = "pixpin-render"
 version = "0.1.0"
 dependencies = [
+ "pixpin-codec",
  "pixpin-nivel",
+ "pixpin-office",
+ "pixpin-pdf",
  "serde_json",
  "thiserror",
  "windows",
