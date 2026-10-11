@@ -1396,7 +1396,7 @@ impl Recta {
 }
 
 fn figura(inicio: (f32, f32), tramos: Vec<Tramo>, cerrada: bool) -> Figura {
-    Figura { inicio, tramos, cerrada, rellenar: cerrada, trazar: true }
+    Figura { inicio, tramos, cerrada, rellenar: cerrada, trazar: true, ..Default::default() }
 }
 
 fn poligono(p: &[(f32, f32)], cerrada: bool) -> Option<Figura> {
@@ -1449,7 +1449,7 @@ fn suave(p: &[(f32, f32)]) -> Vec<Tramo> {
 /// rellena.
 fn figura_marcador(s: Simbolo, x: f32, y: f32, t: f32) -> Vec<Figura> {
     let r = t / 2.0;
-    let abierta = |a: (f32, f32), b: (f32, f32)| Figura { inicio: a, tramos: vec![Tramo::Linea(b.0, b.1)], cerrada: false, rellenar: false, trazar: true };
+    let abierta = |a: (f32, f32), b: (f32, f32)| Figura { inicio: a, tramos: vec![Tramo::Linea(b.0, b.1)], cerrada: false, rellenar: false, trazar: true, ..Default::default() };
     match s {
         Simbolo::Ninguno => Vec::new(),
         Simbolo::Circulo => vec![circulo(x, y, r)],
@@ -2462,7 +2462,7 @@ impl Dibujo<'_> {
                 let cerrar = |tramo: &mut Vec<(f32, f32)>, figuras: &mut Vec<Figura>| {
                     if tramo.len() >= 2 {
                         let tramos = if s.suave { suave(tramo) } else { tramo[1..].iter().map(|p| Tramo::Linea(p.0, p.1)).collect() };
-                        figuras.push(Figura { inicio: tramo[0], tramos, cerrada: false, rellenar: false, trazar: true });
+                        figuras.push(Figura { inicio: tramo[0], tramos, cerrada: false, rellenar: false, trazar: true, ..Default::default() });
                     }
                     tramo.clear();
                 };
@@ -2572,7 +2572,7 @@ impl Dibujo<'_> {
                             None => {
                                 if tramo.len() >= 2 {
                                     let tramos = if suave_s { suave(&tramo) } else { tramo[1..].iter().map(|p| Tramo::Linea(p.0, p.1)).collect() };
-                                    figuras.push(Figura { inicio: tramo[0], tramos, cerrada: false, rellenar: false, trazar: true });
+                                    figuras.push(Figura { inicio: tramo[0], tramos, cerrada: false, rellenar: false, trazar: true, ..Default::default() });
                                 }
                                 tramo.clear();
                             }

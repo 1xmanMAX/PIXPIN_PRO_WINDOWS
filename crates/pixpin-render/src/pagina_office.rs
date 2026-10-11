@@ -15,7 +15,7 @@ use std::sync::Arc;
 
 use pixpin_office::medidor::{Medidor, Metricas};
 use pixpin_office::pagina::{
-    Campo, Color as ColorO, Discontinuo, Efecto, Elemento, Figura, Letra, Pagina, Recursos, Relleno, Subrayado, Texto, Tramo, Trazo,
+    Campo, Color as ColorO, Discontinuo, Efecto, Elemento, Figura, Letra, Pagina, Recursos, Relleno, Sombra, Subrayado, Texto, Tramo, Trazo,
 };
 use windows::Win32::Graphics::Direct2D::Common::{
     D2D_RECT_F, D2D1_BEZIER_SEGMENT, D2D1_COLOR_F, D2D1_COMPOSITE_MODE_DESTINATION_IN, D2D1_COMPOSITE_MODE_SOURCE_OUT,
@@ -697,16 +697,47 @@ impl PintorOffice {
 
     fn trayecto(&self, c: &ID2D1DeviceContext, figuras: &[Figura], relleno: Option<&Relleno>, borde: Option<&Trazo>) {
         if let Some(r) = relleno {
-            let llenas: Vec<&Figura> = figuras.iter().filter(|f| f.rellenar).collect();
-            if !llenas.is_empty()
-                && let Some(g) = self.geometria(c, &llenas, true)
-            {
-                let geo: ID2D1Geometry = g.cast().expect("una geometria de trayecto es una geometria");
+            let llenas: Vec<&Figura> = figuras.iter().filter(|f| f.rellenar && f.sombra == Sombra::Ninguna).collect();
+            let todas: Vec<&Figura> = figuras.iter().filter(|f| f.rellenar).collect();
+            // La caja del degradado es la de toda la forma, no la de cada grupo.
+            let caja = self
+                .geometria(c, &todas, true)
+                .and_then(|g| g.cast::<ID2D1Geometry>().ok())
                 // SAFETY: geometria viva; Bounds rellena el rect local.
-                let caja = unsafe { geo.GetBounds(None) }.unwrap_or_default();
-                if let Some(b) = self.pincel_relleno(c, r, caja) {
+                .map(|geo| unsafe { geo.GetBounds(None) }.unwrap_or_default());
+            if let Some(caja) = caja
+                && let Some(b) = self.pincel_relleno(c, r, caja)
+            {
+                if !llenas.is_empty()
+                    && let Some(g) = self.geometria(c, &llenas, true)
+                {
+                    let geo: ID2D1Geometry = g.cast().expect("una geometria de trayecto es una geometria");
                     // SAFETY: dentro del fotograma.
                     unsafe { c.FillGeometry(&geo, &b, None) };
+                }
+                // Las caras tenidas (cubo, bisel) y las que van aparte: cada
+                // clase en su geometria, con el relleno y encima el tinte.
+                for (s, tinte) in [
+                    (Sombra::Aparte, None),
+                    (Sombra::ClaraSuave, Some(ColorO { r: 255, g: 255, b: 255, a: 46 })),
+                    (Sombra::Clara, Some(ColorO { r: 255, g: 255, b: 255, a: 92 })),
+                    (Sombra::OscuraSuave, Some(ColorO { r: 0, g: 0, b: 0, a: 46 })),
+                    (Sombra::Oscura, Some(ColorO { r: 0, g: 0, b: 0, a: 102 })),
+                ] {
+                    let grupo: Vec<&Figura> = figuras.iter().filter(|f| f.rellenar && f.sombra == s).collect();
+                    if grupo.is_empty() {
+                        continue;
+                    }
+                    let Some(g) = self.geometria(c, &grupo, true) else { continue };
+                    let geo: ID2D1Geometry = g.cast().expect("una geometria de trayecto es una geometria");
+                    // SAFETY: dentro del fotograma.
+                    unsafe { c.FillGeometry(&geo, &b, None) };
+                    if let Some(t) = tinte
+                        && let Some(p) = self.pincel(c, t)
+                    {
+                        // SAFETY: dentro del fotograma.
+                        unsafe { c.FillGeometry(&geo, &p, None) };
+                    }
                 }
             }
         }

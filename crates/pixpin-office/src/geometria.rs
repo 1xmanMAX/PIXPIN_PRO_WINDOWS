@@ -32,7 +32,7 @@ fn rect(x: f32, y: f32, w: f32, h: f32) -> Figura {
 }
 
 fn poligono(p: &[(f32, f32)]) -> Figura {
-    Figura { inicio: p[0], tramos: p[1..].iter().map(|&(x, y)| Tramo::Linea(x, y)).collect(), cerrada: true, rellenar: true, trazar: true }
+    Figura { inicio: p[0], tramos: p[1..].iter().map(|&(x, y)| Tramo::Linea(x, y)).collect(), cerrada: true, rellenar: true, trazar: true, ..Default::default() }
 }
 
 fn polilinea(p: &[(f32, f32)]) -> Figura {
@@ -55,70 +55,19 @@ pub fn elipse(x: f32, y: f32, w: f32, h: f32) -> Figura {
         cerrada: true,
         rellenar: true,
         trazar: true,
+        ..Default::default()
     }
 }
 
-/// Rectangulo con esquinas redondeadas de radio `r` (las cuatro, o solo las
-/// marcadas: arriba-izq, arriba-der, abajo-der, abajo-izq).
-fn redondeado(w: f32, h: f32, r: [f32; 4]) -> Figura {
-    let mut f = Figura { inicio: (r[0], 0.0), cerrada: true, rellenar: true, trazar: true, tramos: vec![] };
-    let t = &mut f.tramos;
-    t.push(Tramo::Linea(w - r[1], 0.0));
-    if r[1] > 0.0 {
-        t.push(Tramo::Bezier((w - r[1] + r[1] * K, 0.0), (w, r[1] - r[1] * K), (w, r[1])));
-    }
-    t.push(Tramo::Linea(w, h - r[2]));
-    if r[2] > 0.0 {
-        t.push(Tramo::Bezier((w, h - r[2] + r[2] * K), (w - r[2] + r[2] * K, h), (w - r[2], h)));
-    }
-    t.push(Tramo::Linea(r[3], h));
-    if r[3] > 0.0 {
-        t.push(Tramo::Bezier((r[3] - r[3] * K, h), (0.0, h - r[3] + r[3] * K), (0.0, h - r[3])));
-    }
-    t.push(Tramo::Linea(0.0, r[0]));
-    if r[0] > 0.0 {
-        t.push(Tramo::Bezier((0.0, r[0] - r[0] * K), (r[0] - r[0] * K, 0.0), (r[0], 0.0)));
-    }
-    f
-}
-
-/// Una forma predefinida de `w` x `h` puntos con origen en (0, 0).
-/// Devuelve tambien si es una linea (sin relleno).
+/// Una forma predefinida de `w` x `h` puntos con origen en (0, 0), con los
+/// ajustes del archivo (`a:avLst`) en `adj`. Una forma que no se conoce
+/// sale como rectangulo, que es lo que menos engana.
 pub fn predefinida(nombre: &str, w: f32, h: f32, adj: &HashMap<String, f32>) -> Vec<Figura> {
-    let a = |k: &str, def: f32| adj.get(k).copied().unwrap_or(def) / 100000.0;
-    let ss = w.min(h);
+    if let Some(f) = crate::formas::buscar(nombre, w, h, adj) {
+        return f;
+    }
+    let a = |k: &str, def: f32| adj.get(k).copied().filter(|v| v.is_finite()).unwrap_or(def).clamp(-1.0e7, 1.0e7) / 100000.0;
     match nombre {
-        "rect" | "flowChartProcess" | "flowChartPredefinedProcess" | "flowChartInternalStorage" | "frame" | "textBox" => {
-            vec![rect(0.0, 0.0, w, h)]
-        }
-        "roundRect" | "flowChartAlternateProcess" => {
-            let r = ss * a("adj", 16667.0);
-            vec![redondeado(w, h, [r; 4])]
-        }
-        "round2SameRect" => {
-            let r1 = ss * a("adj1", 16667.0);
-            let r2 = ss * a("adj2", 0.0);
-            vec![redondeado(w, h, [r1, r1, r2, r2])]
-        }
-        "round1Rect" => {
-            let r = ss * a("adj", 16667.0);
-            vec![redondeado(w, h, [0.0, r, 0.0, 0.0])]
-        }
-        "round2DiagRect" => {
-            let r1 = ss * a("adj1", 16667.0);
-            let r2 = ss * a("adj2", 0.0);
-            vec![redondeado(w, h, [r1, r2, r1, r2])]
-        }
-        "flowChartTerminator" => vec![redondeado(w, h, [ss / 2.0; 4])],
-        "ellipse" | "flowChartConnector" | "cloud" | "cloudCallout" => vec![elipse(0.0, 0.0, w, h)],
-        "donut" => {
-            let d = ss * a("adj", 25000.0);
-            let mut i = elipse(d, d, w - 2.0 * d, h - 2.0 * d);
-            // El agujero en sentido contrario para que la regla de relleno
-            // (alterna) lo deje vacio.
-            invertir(&mut i);
-            vec![elipse(0.0, 0.0, w, h), i]
-        }
         "line" | "straightConnector1" => vec![polilinea(&[(0.0, 0.0), (w, h)])],
         "bentConnector2" => vec![polilinea(&[(0.0, 0.0), (w, 0.0), (w, h)])],
         "bentConnector3" => {
@@ -141,234 +90,24 @@ pub fn predefinida(nombre: &str, w: f32, h: f32, adj: &HashMap<String, f32>) -> 
                 cerrada: false,
                 rellenar: false,
                 trazar: true,
+                ..Default::default()
             }]
         }
-        "triangle" | "flowChartExtract" => {
-            let x = w * a("adj", 50000.0);
-            vec![poligono(&[(x, 0.0), (w, h), (0.0, h)])]
-        }
-        "flowChartDelay" => {
-            let (rx, ry) = (w / 2.0, h / 2.0);
-            vec![Figura {
-                inicio: (0.0, 0.0),
-                tramos: vec![
-                    Tramo::Linea(rx, 0.0),
-                    Tramo::Bezier((rx + rx * K, 0.0), (w, ry - ry * K), (w, ry)),
-                    Tramo::Bezier((w, ry + ry * K), (rx + rx * K, h), (rx, h)),
-                    Tramo::Linea(0.0, h),
-                ],
-                cerrada: true,
-                rellenar: true,
-                trazar: true,
-            }]
-        }
-        "flowChartMerge" => vec![poligono(&[(0.0, 0.0), (w, 0.0), (w / 2.0, h)])],
-        "rtTriangle" => vec![poligono(&[(0.0, 0.0), (w, h), (0.0, h)])],
-        "diamond" | "flowChartDecision" => vec![poligono(&[(w / 2.0, 0.0), (w, h / 2.0), (w / 2.0, h), (0.0, h / 2.0)])],
-        "parallelogram" | "flowChartInputOutput" => {
-            let d = ss * a("adj", 25000.0);
-            let d = if nombre == "flowChartInputOutput" { w / 5.0 } else { d };
-            vec![poligono(&[(d, 0.0), (w, 0.0), (w - d, h), (0.0, h)])]
-        }
-        "trapezoid" | "flowChartManualOperation" => {
-            let d = if nombre == "trapezoid" { ss * a("adj", 25000.0) } else { w / 5.0 };
-            if nombre == "trapezoid" {
-                vec![poligono(&[(d, 0.0), (w - d, 0.0), (w, h), (0.0, h)])]
-            } else {
-                vec![poligono(&[(0.0, 0.0), (w, 0.0), (w - d, h), (d, h)])]
-            }
-        }
-        "pentagon" | "homePlate" => {
-            let d = ss * a("adj", 50000.0);
-            vec![poligono(&[(0.0, 0.0), (w - d, 0.0), (w, h / 2.0), (w - d, h), (0.0, h)])]
-        }
-        "chevron" => {
-            let d = ss * a("adj", 50000.0);
-            vec![poligono(&[(0.0, 0.0), (w - d, 0.0), (w, h / 2.0), (w - d, h), (0.0, h), (d, h / 2.0)])]
-        }
-        "hexagon" => {
-            let d = ss * a("adj", 25000.0);
-            vec![poligono(&[(d, 0.0), (w - d, 0.0), (w, h / 2.0), (w - d, h), (d, h), (0.0, h / 2.0)])]
-        }
-        "octagon" => {
-            let d = ss * a("adj", 29289.0);
-            vec![poligono(&[(d, 0.0), (w - d, 0.0), (w, d), (w, h - d), (w - d, h), (d, h), (0.0, h - d), (0.0, d)])]
-        }
-        "snip1Rect" => {
-            let d = ss * a("adj", 16667.0);
-            vec![poligono(&[(0.0, 0.0), (w - d, 0.0), (w, d), (w, h), (0.0, h)])]
-        }
-        "snip2SameRect" => {
-            let d = ss * a("adj1", 16667.0);
-            vec![poligono(&[(d, 0.0), (w - d, 0.0), (w, d), (w, h), (0.0, h), (0.0, d)])]
-        }
-        "plus" | "mathPlus" | "flowChartSummingJunction" => {
-            let d = ss * a("adj", 25000.0);
-            vec![poligono(&[
-                (d, 0.0),
-                (w - d, 0.0),
-                (w - d, d),
-                (w, d),
-                (w, h - d),
-                (w - d, h - d),
-                (w - d, h),
-                (d, h),
-                (d, h - d),
-                (0.0, h - d),
-                (0.0, d),
-                (d, d),
-            ])]
-        }
-        "rightArrow" | "leftArrow" | "upArrow" | "downArrow" | "notchedRightArrow" => {
-            // adj1: grosor del cuerpo (fraccion del alto), adj2: largo de la
-            // punta (fraccion del lado menor).
-            let horizontal = matches!(nombre, "rightArrow" | "leftArrow" | "notchedRightArrow");
-            let (largo, ancho) = if horizontal { (w, h) } else { (h, w) };
-            let cuerpo = ancho * a("adj1", 50000.0);
-            let punta = (ss * a("adj2", 50000.0)).min(largo);
-            let y0 = (ancho - cuerpo) / 2.0;
-            let x1 = largo - punta;
-            // En coordenadas «hacia la derecha»; luego se gira.
-            let base = [(0.0, y0), (x1, y0), (x1, 0.0), (largo, ancho / 2.0), (x1, ancho), (x1, ancho - y0), (0.0, ancho - y0)];
-            let p: Vec<(f32, f32)> = base
-                .iter()
-                .map(|&(x, y)| match nombre {
-                    "leftArrow" => (largo - x, y),
-                    "downArrow" => (y, x),
-                    "upArrow" => (y, largo - x),
-                    _ => (x, y),
-                })
-                .collect();
-            vec![poligono(&p)]
-        }
-        "leftRightArrow" => {
-            let cuerpo = h * a("adj1", 50000.0);
-            let punta = (ss * a("adj2", 50000.0)).min(w / 2.0);
-            let y0 = (h - cuerpo) / 2.0;
-            vec![poligono(&[
-                (0.0, h / 2.0),
-                (punta, 0.0),
-                (punta, y0),
-                (w - punta, y0),
-                (w - punta, 0.0),
-                (w, h / 2.0),
-                (w - punta, h),
-                (w - punta, h - y0),
-                (punta, h - y0),
-                (punta, h),
-            ])]
-        }
-        "upDownArrow" => {
-            let cuerpo = w * a("adj1", 50000.0);
-            let punta = (ss * a("adj2", 50000.0)).min(h / 2.0);
-            let x0 = (w - cuerpo) / 2.0;
-            vec![poligono(&[
-                (w / 2.0, 0.0),
-                (w, punta),
-                (w - x0, punta),
-                (w - x0, h - punta),
-                (w, h - punta),
-                (w / 2.0, h),
-                (0.0, h - punta),
-                (x0, h - punta),
-                (x0, punta),
-                (0.0, punta),
-            ])]
-        }
-        "star5" | "star4" | "star6" | "star8" | "star10" | "star12" | "star16" | "star24" | "star32" => {
-            let puntas: usize = nombre[4..].parse().unwrap_or(5);
-            let interior = match puntas {
-                5 => a("adj", 19098.0) * 2.0,
-                4 => a("adj", 12500.0) * 2.0,
-                6 => a("adj", 28868.0) * 2.0,
-                _ => a("adj", 37500.0) * 2.0,
-            };
-            let (cx, cy) = (w / 2.0, h / 2.0);
-            let mut p = Vec::new();
-            for i in 0..puntas * 2 {
-                let ang = -std::f32::consts::FRAC_PI_2 + i as f32 * std::f32::consts::PI / puntas as f32;
-                let r = if i % 2 == 0 { 1.0 } else { interior };
-                p.push((cx + cx * r * ang.cos(), cy + cy * r * ang.sin()));
-            }
-            vec![poligono(&p)]
-        }
-        "heart" => vec![Figura {
-            inicio: (w / 2.0, h / 4.0),
-            tramos: vec![
-                Tramo::Bezier((w / 2.0 + 3.0 * w / 8.0, -h / 4.0), (w + w / 4.0, h / 4.0), (w / 2.0, h)),
-                Tramo::Bezier((-w / 4.0, h / 4.0), (w / 2.0 - 3.0 * w / 8.0, -h / 4.0), (w / 2.0, h / 4.0)),
-            ],
-            cerrada: true,
-            rellenar: true,
-            trazar: true,
-        }],
-        "can" | "flowChartMagneticDisk" => {
-            let ry = (ss * a("adj", 25000.0)).min(h / 2.0) / 2.0;
-            let mut cuerpo = Figura {
-                inicio: (0.0, ry),
-                tramos: vec![
-                    Tramo::Linea(0.0, h - ry),
-                    Tramo::Bezier((0.0, h - ry + ry * K), (w / 2.0 - w / 2.0 * K, h), (w / 2.0, h)),
-                    Tramo::Bezier((w / 2.0 + w / 2.0 * K, h), (w, h - ry + ry * K), (w, h - ry)),
-                    Tramo::Linea(w, ry),
-                ],
-                cerrada: true,
-                rellenar: true,
-                trazar: true,
-            };
-            cuerpo.tramos.push(Tramo::Bezier((w, ry + ry * K), (w / 2.0 + w / 2.0 * K, 2.0 * ry), (w / 2.0, 2.0 * ry)));
-            cuerpo.tramos.push(Tramo::Bezier((w / 2.0 - w / 2.0 * K, 2.0 * ry), (0.0, ry + ry * K), (0.0, ry)));
-            vec![cuerpo, elipse(0.0, 0.0, w, 2.0 * ry)]
-        }
-        "wedgeRectCallout" | "wedgeRoundRectCallout" | "wedgeEllipseCallout" => {
-            // La caja y una cuna desde el borde mas cercano hasta la punta
-            // (`adj1`, `adj2`: la punta respecto al centro, en fracciones).
-            let tx = w / 2.0 + w * a("adj1", -20833.0);
-            let ty = h / 2.0 + h * a("adj2", 62500.0);
-            let mut v = match nombre {
-                "wedgeRoundRectCallout" => vec![redondeado(w, h, [ss * a("adj3", 16667.0); 4])],
-                "wedgeEllipseCallout" => vec![elipse(0.0, 0.0, w, h)],
-                _ => vec![rect(0.0, 0.0, w, h)],
-            };
-            let (dx, dy) = ((tx - w / 2.0) / w.max(1.0), (ty - h / 2.0) / h.max(1.0));
-            let cuna = if dy.abs() >= dx.abs() {
-                let y = if dy > 0.0 { h } else { 0.0 };
-                let c = tx.clamp(w * 0.2, w * 0.8);
-                [(c - w / 12.0, y), (tx, ty), (c + w / 12.0, y)]
-            } else {
-                let x = if dx > 0.0 { w } else { 0.0 };
-                let c = ty.clamp(h * 0.2, h * 0.8);
-                [(x, c - h / 12.0), (tx, ty), (x, c + h / 12.0)]
-            };
-            if !(0.0..=w).contains(&tx) || !(0.0..=h).contains(&ty) {
-                v.push(poligono(&cuna));
-            }
-            v
-        }
-        "flowChartDocument" | "flowChartMultidocument" | "foldedCorner" | "bevel" | "cube" | "plaque" => vec![rect(0.0, 0.0, w, h)],
+        // «textBox» y el resto: un rectangulo.
         _ => vec![rect(0.0, 0.0, w, h)],
     }
 }
 
-fn invertir(f: &mut Figura) {
-    // Recorre la figura al reves: reconstruye los puntos de cada tramo.
-    let mut puntos = vec![f.inicio];
-    for t in &f.tramos {
-        puntos.push(match *t {
-            Tramo::Linea(x, y) => (x, y),
-            Tramo::Bezier(_, _, p) => p,
-        });
+/// Los nombres de `prst` que `predefinida` dibuja de verdad (todos menos el
+/// rectangulo de reserva): sirve a las pruebas.
+pub fn conocidas() -> Vec<String> {
+    let mut v = crate::formas::nombres();
+    for n in ["line", "straightConnector1", "bentConnector2", "bentConnector3", "bentConnector4", "curvedConnector3"] {
+        v.push(n.to_string());
     }
-    let mut nuevos = Vec::new();
-    for i in (0..f.tramos.len()).rev() {
-        let destino = puntos[i];
-        nuevos.push(match f.tramos[i] {
-            Tramo::Linea(..) => Tramo::Linea(destino.0, destino.1),
-            Tramo::Bezier(c1, c2, _) => Tramo::Bezier(c2, c1, destino),
-        });
-    }
-    f.inicio = *puntos.last().unwrap_or(&f.inicio);
-    f.tramos = nuevos;
+    v.sort();
+    v.dedup();
+    v
 }
 
 /// Si la forma es de las que no tienen relleno (lineas y conectores).
@@ -383,6 +122,9 @@ pub fn es_linea(nombre: &str) -> bool {
             | "curvedConnector2"
             | "curvedConnector3"
             | "curvedConnector4"
+            | "curvedConnector5"
+            | "bentConnector5"
+            | "lineInv"
             | "arc"
     )
 }
@@ -392,6 +134,30 @@ pub fn es_linea(nombre: &str) -> bool {
 /// forma de `w` x `h` EMU, con las variables de siempre (`w`, `h`, `hc`,
 /// `ss`, `cd4`...).
 pub fn guias(cust: &Nodo, w: f64, h: f64) -> HashMap<String, f64> {
+    guias_con(cust, w, h, &HashMap::new())
+}
+
+/// Como `guias`, pero los ajustes (`avLst`) que estan en `ajustes` mandan sobre
+/// los del archivo de la geometria (los de `a:prstGeom/a:avLst`).
+pub fn guias_con(cust: &Nodo, w: f64, h: f64, ajustes: &HashMap<String, f32>) -> HashMap<String, f64> {
+    let mut v = variables_base(w, h);
+    for lista in ["avLst", "gdLst"] {
+        if let Some(l) = cust.hijo(lista) {
+            for gd in l.elementos().filter(|e| e.nombre == "gd") {
+                let nombre = gd.atributo("name");
+                let x = match ajustes.get(nombre) {
+                    Some(a) if lista == "avLst" => *a as f64,
+                    _ => evaluar(gd.atributo("fmla"), &v),
+                };
+                v.insert(nombre.to_string(), x);
+            }
+        }
+    }
+    v
+}
+
+/// Las variables de siempre de una forma de `w` x `h`.
+pub(crate) fn variables_base(w: f64, h: f64) -> HashMap<String, f64> {
     let mut v: HashMap<String, f64> = HashMap::new();
     let ss = w.min(h);
     let ls = w.max(h);
@@ -421,19 +187,11 @@ pub fn guias(cust: &Nodo, w: f64, h: f64) -> HashMap<String, f64> {
         v.insert(format!("hd{d}"), h / d);
         v.insert(format!("ssd{d}"), ss / d);
     }
-    for lista in ["avLst", "gdLst"] {
-        if let Some(l) = cust.hijo(lista) {
-            for gd in l.elementos().filter(|e| e.nombre == "gd") {
-                let x = evaluar(gd.atributo("fmla"), &v);
-                v.insert(gd.atributo("name").to_string(), x);
-            }
-        }
-    }
     v
 }
 
 /// Una formula de guia de DrawingML (`*/ a b c`, `+- a b c`, `sin r a`...).
-fn evaluar(fmla: &str, v: &HashMap<String, f64>) -> f64 {
+pub(crate) fn evaluar(fmla: &str, v: &HashMap<String, f64>) -> f64 {
     let p: Vec<&str> = fmla.split_whitespace().collect();
     let a = |i: usize| -> f64 {
         let s = p.get(i).copied().unwrap_or("0");
@@ -502,7 +260,7 @@ pub fn propia(cust: &Nodo, w: f32, h: f32) -> Vec<Figura> {
                         salida.push(f);
                     }
                     pos = pts.first().copied().unwrap_or((0.0, 0.0));
-                    actual = Some(Figura { inicio: pos, tramos: vec![], cerrada: false, rellenar, trazar });
+                    actual = Some(Figura { inicio: pos, tramos: vec![], cerrada: false, rellenar, trazar, ..Default::default() });
                 }
                 "lnTo" => {
                     if let Some(&p) = pts.first() {
@@ -557,6 +315,18 @@ pub fn arco(f: &mut Figura, pos: (f32, f32), wr: f32, hr: f32, st: f32, sw: f32)
         return pos;
     }
     let rad = |g: f32| g.to_radians();
+    // Los angulos de DrawingML son «visuales» (el de la recta desde el centro
+    // hasta el punto); la parametrizacion de la elipse usa otro. En un
+    // circulo son lo mismo; en una elipse no.
+    let parametrico = |a: f32| {
+        let t = (wr * rad(a).sin()).atan2(hr * rad(a).cos()).to_degrees();
+        t + 360.0 * ((a - t) / 360.0).round()
+    };
+    let (st, sw) = {
+        let (p0, p1) = (parametrico(st), parametrico(st + sw));
+        (p0, p1 - p0)
+    };
+    // El centro: `pos` es el punto de la elipse en el angulo `st`.|g: f32| g.to_radians();
     // El centro: `pos` es el punto de la elipse en el angulo `st`.
     let (cx, cy) = (pos.0 - wr * rad(st).cos(), pos.1 - hr * rad(st).sin());
     let trozos = (sw.abs() / 90.0).ceil().max(1.0) as usize;
