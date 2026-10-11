@@ -199,6 +199,8 @@ struct Estado<'l> {
     gesto: Option<Gesto>,
     raton: (f32, f32),
     encima_de: Option<Eje>,
+    /// La celda bajo el raton (lleva el boton de su lista desplegable).
+    bajo_raton: Option<(u32, u32)>,
     aviso: Option<(String, Instant)>,
     hwnd: isize,
 }
@@ -748,10 +750,58 @@ impl<'l> Estado<'l> {
             return true;
         }
         let Some(celda) = self.celda_bajo(p, false) else { return false };
+        if self.clic_en_flecha(p, celda) {
+            self.menu_de_lista(celda);
+            return false;
+        }
         let ab = self.abierta_mut();
         ab.sel = if mods.shift { Seleccion { ancla: ab.sel.ancla, activa: celda } } else { Seleccion::en(celda.0, celda.1) };
         self.gesto = Some(Gesto::Elegir { pulsada: celda, cuando: Instant::now(), ctrl: mods.ctrl });
         true
+    }
+
+    /// La celda bajo el raton si lleva una lista desplegable (en la zona de
+    /// celdas, no en los encabezados ni las barras).
+    fn celda_con_lista_bajo_el_raton(&self) -> Option<(u32, u32)> {
+        let p = self.raton;
+        let (_, celdas) = self.vista();
+        if !dentro(&celdas, p) {
+            return None;
+        }
+        let c = self.celda_bajo(p, false)?;
+        self.abierta().hoja.lista_en(c.0, c.1).map(|_| c)
+    }
+
+    /// El boton de la flecha de la lista de `celda` en pantalla, si la tiene y se ve.
+    fn caja_de_flecha(&self, celda: (u32, u32)) -> Option<[f32; 4]> {
+        let ab = self.abierta();
+        ab.hoja.lista_en(celda.0, celda.1)?;
+        let (v, celdas) = self.vista();
+        let caja = hoja_office::caja_de_celda(&ab.rejilla, &vista_celdas(&v, celdas), celdas, celda.0, celda.1)?;
+        hoja_office::caja_flecha(caja, (ab.zoom * ab.rejilla.ppp / 96.0) as f32)
+    }
+
+    fn clic_en_flecha(&self, (x, y): (f32, f32), celda: (u32, u32)) -> bool {
+        self.caja_de_flecha(celda).is_some_and(|[x0, y0, x1, y1]| x >= x0 && x < x1 && y >= y0 && y < y1)
+    }
+
+    /// **Los valores permitidos** de la lista de `celda`, en un menu de solo
+    /// lectura (elegir uno no cambia nada: el visor no edita). Marca el que
+    /// tiene la celda ahora.
+    fn menu_de_lista(&mut self, celda: (u32, u32)) {
+        let ab = self.abierta();
+        let Some(regla) = ab.hoja.lista_en(celda.0, celda.1).cloned() else { return };
+        let valores = pixpin_hojas::validacion::valores_lista(self.libro, &ab.hoja, &regla);
+        if valores.is_empty() {
+            return;
+        }
+        let actual = ab.hoja.celda(celda.0, celda.1).and_then(|c| self.libro.contenido(&ab.hoja, c)).map(|c| c.mostrado.texto).unwrap_or_default();
+        let entradas: Vec<(u32, String)> = valores
+            .iter()
+            .enumerate()
+            .map(|(i, v)| (i as u32 + 1, if *v == actual { format!("\u{2713} {v}") } else { v.clone() }))
+            .collect();
+        let _ = pixpin_shell::menu_llano(windows::Win32::Foundation::HWND(self.hwnd as *mut _), &entradas);
     }
 
     /// Al soltar: un clic corto en una celda con enlace lo abre.
@@ -836,6 +886,7 @@ fn abrir(recursos: &Recursos, textos: &Catalogo, libro: &Libro, ruta: &Path, t0:
         gesto: None,
         raton: (0.0, 0.0),
         encima_de: None,
+        bajo_raton: None,
         aviso: None,
         hwnd: ventana.handle().0 as isize,
     };
@@ -904,6 +955,11 @@ fn abrir(recursos: &Recursos, textos: &Catalogo, libro: &Libro, ruta: &Path, t0:
                             hay_que_pintar |= est.abierta().sel != antes;
                         }
                         None => {
+                            let bajo = est.celda_con_lista_bajo_el_raton();
+                            if bajo != est.bajo_raton {
+                                est.bajo_raton = bajo;
+                                hay_que_pintar = true;
+                            }
                             let encima = est.barra_bajo_el_raton();
                             if encima != est.encima_de {
                                 est.encima_de = encima;
@@ -1073,13 +1129,13 @@ fn pintar(p: &Pintor, est: &mut Estado, textos: &Catalogo) {
     let z = est.zonas();
     let (e, libro, ancho) = (est.e, est.libro, est.ancho);
     p.limpiar(Color::BLANCO);
-    let Estado { hojas, activa, cache, desde_pestana, encima_de, pestanas, aviso, .. } = est;
+    let Estado { hojas, activa, cache, desde_pestana, encima_de, pestanas, aviso, bajo_raton, .. } = est;
     let activa = *activa;
     let Some(ab) = hojas[activa].as_ref() else { return };
 
     // La hoja.
     let (v, celdas) = vista_de(ab, z.hoja);
-    let op = OpcionesHoja { encabezados: true, seleccion: Some(ab.sel.rango()) };
+    let op = OpcionesHoja { encabezados: true, seleccion: Some(ab.sel.rango()), activa: Some(ab.sel.activa), bajo_raton: *bajo_raton };
     hoja_office::pintar_hoja(p, cache, libro, &ab.hoja, &ab.rejilla, &v, z.hoja, &op);
 
     // Las barras de desplazamiento.

@@ -413,6 +413,10 @@ pub struct Nodo {
 /// hostil con millones de niveles no tumba la pila ni la memoria).
 const PROFUNDIDAD_MAX: usize = 128;
 
+/// Cuantos elementos como mucho en un arbol: las partes que se leen asi son
+/// chicas (libro, estilos, dibujos); lo que pase de aqui se ignora.
+const NODOS_MAX: usize = 4_000_000;
+
 impl Nodo {
     pub fn attr(&self, nombre: &str) -> Option<&str> {
         self.attrs.iter().find(|(n, _)| n == nombre).map(|(_, v)| v.as_str())
@@ -463,18 +467,24 @@ impl Nodo {
 /// hijos son los elementos de primer nivel. Nunca falla: lo mal formado se
 /// cierra como se pueda.
 pub fn arbol(d: &[u8]) -> Nodo {
+    arbol_lim(d, NODOS_MAX)
+}
+
+fn arbol_lim(d: &[u8], nodos_max: usize) -> Nodo {
     let mut pila: Vec<Nodo> = vec![Nodo::default()];
     let mut ignorar = 0usize;
+    let mut nodos = 0usize;
     let mut pos = 0usize;
     loop {
         match siguiente(d, &mut pos, true) {
             Paso::Evento(Evento::Abre { nombre, attrs, vacia }) => {
-                if ignorar > 0 || pila.len() > PROFUNDIDAD_MAX {
+                if ignorar > 0 || pila.len() > PROFUNDIDAD_MAX || nodos >= nodos_max {
                     if !vacia {
                         ignorar += 1;
                     }
                     continue;
                 }
+                nodos += 1;
                 let nodo = Nodo {
                     nombre: String::from_utf8_lossy(nombre).into_owned(),
                     attrs: atributos(attrs).map(|(n, v)| (String::from_utf8_lossy(n).into_owned(), desescapar(v).into_owned())).collect(),
@@ -580,5 +590,22 @@ mod pruebas {
         assert_eq!(n.hijos.len(), 1);
         let _ = arbol(b"<<<>>></a></b>&&&<a x=>");
         let _ = arbol(&[0xff, 0xfe, b'<', 0x80]);
+    }
+}
+
+#[cfg(test)]
+mod pruebas_limites {
+    use super::*;
+
+    #[test]
+    fn un_arbol_con_mas_nodos_que_el_tope_no_crece_sin_limite() {
+        let mut d = Vec::new();
+        d.extend_from_slice(b"<r>");
+        for _ in 0..1010 {
+            d.extend_from_slice(b"<a/>");
+        }
+        d.extend_from_slice(b"</r>");
+        let n = arbol_lim(&d, 1000);
+        assert_eq!(n.hijos[0].hijos.len(), 999, "la raiz cuenta como uno");
     }
 }

@@ -15,8 +15,45 @@
 
 use pixpin_docs::xml::{Hijo, Nodo, descodificar};
 
-/// Lee un documento entero.
+/// Hasta donde se anidan los elementos (un documento real no pasa de unas
+/// decenas; una bomba de anidamiento haria desbordar la pila al soltar el
+/// arbol o al recorrerlo).
+pub const MAX_PROFUNDIDAD: usize = 1024;
+/// Cuantos elementos como mucho en un solo arbol (un `document.xml` de 12 MB
+/// tiene del orden de medio millon).
+pub const MAX_ELEMENTOS: usize = 8_000_000;
+
+/// Por que se rechaza un XML.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ErrorXml {
+    Vacio,
+    DemasiadaProfundidad,
+    DemasiadosElementos,
+}
+
+impl std::fmt::Display for ErrorXml {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ErrorXml::Vacio => write!(f, "no hay ningun elemento XML"),
+            ErrorXml::DemasiadaProfundidad => write!(f, "el XML se anida demasiado (mas de {MAX_PROFUNDIDAD} niveles): archivo danado o malicioso"),
+            ErrorXml::DemasiadosElementos => write!(f, "el XML tiene demasiados elementos (mas de {MAX_ELEMENTOS}): archivo danado o malicioso"),
+        }
+    }
+}
+
+impl std::error::Error for ErrorXml {}
+
+/// Lee un documento entero (`None` si no hay nada o se pasa de los limites).
 pub fn leer(texto: &str) -> Option<Nodo> {
+    leer_con_limites(texto).ok()
+}
+
+/// Como [`leer`], diciendo por que no.
+pub fn leer_con_limites(texto: &str) -> Result<Nodo, ErrorXml> {
+    leer_i(texto).ok_or(ErrorXml::Vacio).and_then(|r| r)
+}
+
+fn leer_i(texto: &str) -> Option<Result<Nodo, ErrorXml>> {
     let mut i = 0;
     let b = texto.as_bytes();
     if texto.starts_with('\u{FEFF}') {
@@ -30,7 +67,11 @@ pub fn leer(texto: &str) -> Option<Nodo> {
         }
         i += 1;
     }
-    elemento_en(texto, i).map(|(n, _)| n)
+    let mut fallo = None;
+    match elemento_en_lim(texto, i, &mut fallo) {
+        Some((n, _)) => Some(Ok(n)),
+        None => fallo.map(Err),
+    }
 }
 
 /// Salta texto, comentarios, instrucciones y el DOCTYPE desde `i`.
@@ -182,12 +223,23 @@ fn texto_de(s: &str) -> String {
 /// que queda abierto al final se cierra solo, y un cierre que no
 /// corresponde cierra hasta donde puede.
 pub fn elemento_en(texto: &str, i: usize) -> Option<(Nodo, usize)> {
+    elemento_en_lim(texto, i, &mut None)
+}
+
+/// Como [`elemento_en`], pero si se pasa de los limites (profundidad o
+/// numero de elementos) deja el motivo en `fallo` y devuelve `None`.
+pub fn elemento_en_lim(texto: &str, i: usize, fallo: &mut Option<ErrorXml>) -> Option<(Nodo, usize)> {
+    elemento_en_max(texto, i, fallo, MAX_PROFUNDIDAD, MAX_ELEMENTOS)
+}
+
+fn elemento_en_max(texto: &str, i: usize, fallo: &mut Option<ErrorXml>, max_prof: usize, max_elem: usize) -> Option<(Nodo, usize)> {
     let b = texto.as_bytes();
     let (raiz, suelta, mut j) = apertura(texto, i)?;
     if suelta {
         return Some((raiz, j));
     }
     let mut pila: Vec<Nodo> = vec![raiz];
+    let mut elementos = 1usize;
     while j < b.len() {
         if b[j] != b'<' {
             let ini = j;
@@ -234,6 +286,15 @@ pub fn elemento_en(texto: &str, i: usize) -> Option<(Nodo, usize)> {
             _ => match apertura(texto, j) {
                 Some((nodo, suelta, sig)) => {
                     j = sig;
+                    elementos += 1;
+                    if elementos > max_elem {
+                        *fallo = Some(ErrorXml::DemasiadosElementos);
+                        return None;
+                    }
+                    if !suelta && pila.len() >= max_prof {
+                        *fallo = Some(ErrorXml::DemasiadaProfundidad);
+                        return None;
+                    }
                     if suelta {
                         if let Some(p) = pila.last_mut() {
                             p.hijos.push(Hijo::Elemento(nodo));
@@ -265,41 +326,49 @@ pub struct Hijos<'a> {
     texto: &'a str,
     pub pos: usize,
     pub acabado: bool,
+    /// Si se dejo de leer por pasarse de los limites, por que.
+    pub fallo: Option<ErrorXml>,
 }
 
 impl<'a> Hijos<'a> {
     pub fn nuevo(texto: &'a str, pos: usize) -> Hijos<'a> {
-        Hijos { texto, pos, acabado: false }
+        Hijos { texto, pos, acabado: false, fallo: None }
     }
 
     /// El siguiente hijo elemento y su posicion de inicio, o `None` al
     /// cerrar el padre o acabar el texto.
     pub fn siguiente(&mut self) -> Option<(Nodo, usize)> {
-        if self.acabado {
-            return None;
-        }
         let b = self.texto.as_bytes();
-        let Some(i) = saltar_no_elementos(b, self.pos) else {
-            self.acabado = true;
-            return None;
-        };
-        if b.get(i + 1) == Some(&b'/') {
-            self.acabado = true;
-            self.pos = i;
-            return None;
-        }
-        if b[i..].starts_with(b"<![CDATA[") {
-            self.pos = buscar(b, i + 9, b"]]>").map(|k| k + 3).unwrap_or(b.len());
-            return self.siguiente();
-        }
-        match elemento_en(self.texto, i) {
-            Some((n, fin)) => {
-                self.pos = fin;
-                Some((n, i))
+        loop {
+            if self.acabado {
+                return None;
             }
-            None => {
-                self.pos = i + 1;
-                self.siguiente()
+            let Some(i) = saltar_no_elementos(b, self.pos) else {
+                self.acabado = true;
+                return None;
+            };
+            if b.get(i + 1) == Some(&b'/') {
+                self.acabado = true;
+                self.pos = i;
+                return None;
+            }
+            if b[i..].starts_with(b"<![CDATA[") {
+                self.pos = buscar(b, i + 9, b"]]>").map(|k| k + 3).unwrap_or(b.len());
+                continue;
+            }
+            let mut fallo = None;
+            match elemento_en_lim(self.texto, i, &mut fallo) {
+                Some((n, fin)) => {
+                    self.pos = fin;
+                    return Some((n, i));
+                }
+                None if fallo.is_some() => {
+                    // Se paso de los limites: no se sigue leyendo.
+                    self.fallo = fallo;
+                    self.acabado = true;
+                    return None;
+                }
+                None => self.pos = i + 1,
             }
         }
     }
@@ -387,5 +456,41 @@ mod pruebas {
         }
         assert!(leer("").is_none());
         assert!(leer("solo texto").is_none());
+    }
+}
+
+#[cfg(test)]
+mod pruebas_limites {
+    use super::*;
+
+    #[test]
+    fn cien_mil_niveles_de_anidamiento_se_rechazan_sin_panico() {
+        let x = "<a>".repeat(100_000);
+        assert_eq!(leer_con_limites(&x).unwrap_err(), ErrorXml::DemasiadaProfundidad);
+        assert!(leer(&x).is_none());
+        assert!(leer_con_limites(&x).unwrap_err().to_string().contains("se anida demasiado"));
+        // Leyendo hijo a hijo, se detiene y dice por que.
+        let dentro = format!("<d>{x}</d>");
+        let mut h = Hijos::nuevo(&dentro, 3);
+        assert!(h.siguiente().is_none());
+        assert_eq!(h.fallo, Some(ErrorXml::DemasiadaProfundidad));
+    }
+
+    #[test]
+    fn un_anidamiento_normal_pasa() {
+        let x = "<a>".repeat(200);
+        assert!(leer_con_limites(&x).is_ok());
+        assert!(leer_con_limites("<a><b/><c>t</c></a>").is_ok());
+    }
+
+    #[test]
+    fn demasiados_elementos_se_rechazan() {
+        let y = format!("<r>{}</r>", "<a/>".repeat(60));
+        let mut fallo = None;
+        assert!(elemento_en_max(&y, 0, &mut fallo, 100, 50).is_none());
+        assert_eq!(fallo, Some(ErrorXml::DemasiadosElementos));
+        let mut fallo = None;
+        assert!(elemento_en_max(&y, 0, &mut fallo, 100, 100).is_some());
+        assert_eq!(fallo, None);
     }
 }

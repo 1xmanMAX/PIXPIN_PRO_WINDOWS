@@ -271,3 +271,39 @@ fn dibujos_anclados() {
     }
     assert_eq!(r.caja_dibujo(&h.cola.dibujos[1]), [0.0, 120.0, 100.0, 50.0]);
 }
+
+#[test]
+fn validacion_de_lista_de_punta_a_punta() {
+    use crate::validacion::{TipoValidacion, valores_lista};
+    let h1 = br#"<worksheet><sheetData><row r="1"><c r="A1" t="inlineStr"><is><t>x</t></is></c></row></sheetData>
+    <dataValidations count="3"><dataValidation type="list" sqref="A1:A3"><formula1>"si,no"</formula1></dataValidation>
+    <dataValidation type="list" sqref="B1"><formula1>Listas!$A$1:$A$3</formula1></dataValidation>
+    <dataValidation type="whole" operator="between" sqref="C1"><formula1>1</formula1><formula2>10</formula2></dataValidation>
+    <dataValidation type="list" sqref="D1"><formula1>INDIRECT("Z1")</formula1></dataValidation></dataValidations></worksheet>"#;
+    let h2 = br#"<worksheet><sheetData><row r="1"><c r="A1" t="inlineStr"><is><t>rojo</t></is></c></row><row r="2"><c r="A2"/></row>
+    <row r="3"><c r="A3" t="inlineStr"><is><t>verde</t></is></c></row></sheetData></worksheet>"#;
+    let z = zip_de(&[
+        ("_rels/.rels", RELS),
+        ("xl/workbook.xml", br#"<workbook><sheets><sheet name="Datos" r:id="rId1"/><sheet name="Listas" r:id="rId2"/></sheets></workbook>"#),
+        (
+            "xl/_rels/workbook.xml.rels",
+            br#"<Relationships><Relationship Id="rId1" Type="http://x/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://x/worksheet" Target="worksheets/sheet2.xml"/></Relationships>"#,
+        ),
+        ("xl/worksheets/sheet1.xml", h1),
+        ("xl/worksheets/sheet2.xml", h2),
+    ]);
+    let l = Libro::desde_bytes(z, Regional::en_us()).unwrap();
+    let mut h = l.abrir_hoja(0);
+    h.cargar_todo();
+    assert_eq!(h.cola.validaciones.len(), 4);
+    let literal = h.lista_en(2, 0).expect("A3 tiene lista");
+    assert_eq!(valores_lista(&l, &h, literal), ["si", "no"]);
+    let por_rango = h.lista_en(0, 1).expect("B1 tiene lista");
+    assert_eq!(valores_lista(&l, &h, por_rango), ["rojo", "verde"]);
+    // Un entero con limites no es una lista; una formula rara da una lista vacia.
+    assert!(h.lista_en(0, 2).is_none());
+    assert_eq!(h.cola.validaciones[2].tipo, TipoValidacion::Entero);
+    assert!(valores_lista(&l, &h, h.lista_en(0, 3).unwrap()).is_empty());
+    // Fuera de toda regla.
+    assert!(h.lista_en(9, 9).is_none());
+}

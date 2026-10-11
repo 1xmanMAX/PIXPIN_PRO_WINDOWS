@@ -18,6 +18,8 @@ pub enum ErrorOffice {
     NoEsZip,
     /// Es un ZIP pero le falta la parte principal.
     SinParte(&'static str),
+    /// Se pasa de los limites de seguridad (ZIP o XML danado o malicioso).
+    Limite(String),
     Disco(std::io::Error),
 }
 
@@ -26,6 +28,7 @@ impl std::fmt::Display for ErrorOffice {
         match self {
             ErrorOffice::NoEsZip => write!(f, "el archivo no es un documento de Office (.docx o .pptx)"),
             ErrorOffice::SinParte(p) => write!(f, "al documento le falta {p}"),
+            ErrorOffice::Limite(m) => write!(f, "el documento supera los limites de seguridad: {m}"),
             ErrorOffice::Disco(e) => write!(f, "no se pudo leer el archivo: {e}"),
         }
     }
@@ -42,6 +45,24 @@ impl From<std::io::Error> for ErrorOffice {
 /// Una parte no puede pesar mas que esto descomprimida: una bomba de ZIP no
 /// se lleva la memoria por delante.
 const TOPE_PARTE: u64 = 256 * 1024 * 1024;
+
+/// Los topes contra archivos danados o maliciosos; generosos (una tesis de
+/// 100 paginas o un pptx de 50 MB con fotos caben de sobra).
+#[derive(Debug, Clone, Copy)]
+pub struct Limites {
+    /// Entradas del ZIP.
+    pub entradas: usize,
+    /// Lo que puede dar una parte descomprimida (se mide al descomprimir).
+    pub parte: u64,
+    /// La suma de los tamanos declarados de todas las partes.
+    pub total_declarado: u64,
+}
+
+impl Default for Limites {
+    fn default() -> Self {
+        Limites { entradas: 20_000, parte: TOPE_PARTE, total_declarado: 8 * 1024 * 1024 * 1024 }
+    }
+}
 
 /// Una relacion de `_rels`.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -62,13 +83,32 @@ pub struct Paquete {
     /// Nombre en minusculas → nombre real: Office no distingue mayusculas en
     /// las rutas y hay generadores que las escriben como quieren.
     nombres: HashMap<String, String>,
+    limites: Limites,
+    /// Por que se rechazo la ultima parte XML, si fue por los limites.
+    pub ultimo_limite: Option<crate::xml::ErrorXml>,
 }
 
 impl Paquete {
     pub fn de_bytes(bytes: Arc<[u8]>) -> Result<Paquete, ErrorOffice> {
-        let zip = zip::ZipArchive::new(Cursor::new(bytes)).map_err(|_| ErrorOffice::NoEsZip)?;
+        Paquete::de_bytes_con(bytes, Limites::default())
+    }
+
+    pub fn de_bytes_con(bytes: Arc<[u8]>, limites: Limites) -> Result<Paquete, ErrorOffice> {
+        let mut zip = zip::ZipArchive::new(Cursor::new(bytes)).map_err(|_| ErrorOffice::NoEsZip)?;
+        if zip.len() > limites.entradas {
+            return Err(ErrorOffice::Limite(format!("el ZIP tiene {} entradas (el maximo es {})", zip.len(), limites.entradas)));
+        }
+        let mut total = 0u64;
+        for i in 0..zip.len() {
+            if let Ok(f) = zip.by_index_raw(i) {
+                total = total.saturating_add(f.size());
+            }
+        }
+        if total > limites.total_declarado {
+            return Err(ErrorOffice::Limite(format!("las partes declaran {total} bytes descomprimidos (el maximo es {})", limites.total_declarado)));
+        }
         let nombres = zip.file_names().map(|n| (n.to_ascii_lowercase(), n.to_string())).collect();
-        Ok(Paquete { zip, nombres })
+        Ok(Paquete { zip, nombres, limites, ultimo_limite: None })
     }
 
     pub fn abrir(ruta: &std::path::Path) -> Result<Paquete, ErrorOffice> {
@@ -85,11 +125,16 @@ impl Paquete {
         let real = self.nombres.get(&parte.trim_start_matches('/').to_ascii_lowercase())?.clone();
         let f = self.zip.by_name(&real).ok()?;
         let tam = f.size();
-        if tam > TOPE_PARTE {
+        if tam > self.limites.parte {
             return None;
         }
         let mut v = Vec::with_capacity(tam as usize);
-        f.take(TOPE_PARTE).read_to_end(&mut v).ok()?;
+        // Se mide lo que sale de verdad (no lo que declara el ZIP): se lee uno
+        // de mas para notar que sale mas de lo declarado.
+        f.take(tam + 1).read_to_end(&mut v).ok()?;
+        if v.len() as u64 > tam {
+            return None;
+        }
         Some(v)
     }
 
@@ -102,7 +147,15 @@ impl Paquete {
     /// Una parte XML leida como arbol.
     pub fn xml(&mut self, parte: &str) -> Option<Nodo> {
         let b = self.bytes(parte)?;
-        crate::xml::leer(&texto_de(&b))
+        match crate::xml::leer_con_limites(&texto_de(&b)) {
+            Ok(n) => Some(n),
+            Err(e) => {
+                if e != crate::xml::ErrorXml::Vacio {
+                    self.ultimo_limite = Some(e);
+                }
+                None
+            }
+        }
     }
 
     /// Las relaciones de una parte (`word/document.xml` →
@@ -268,5 +321,68 @@ mod pruebas {
     #[test]
     fn un_zip_roto_no_abre() {
         assert!(matches!(Paquete::de_bytes(Arc::from(&b"no soy un zip"[..])), Err(ErrorOffice::NoEsZip)));
+    }
+}
+
+#[cfg(test)]
+mod pruebas_limites {
+    use super::*;
+    use std::io::Write;
+
+    fn zip_de(partes: &[(String, Vec<u8>)]) -> Vec<u8> {
+        let mut w = zip::ZipWriter::new(Cursor::new(Vec::new()));
+        let op = zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
+        for (n, d) in partes {
+            w.start_file(n.as_str(), op).unwrap();
+            w.write_all(d).unwrap();
+        }
+        w.finish().unwrap().into_inner()
+    }
+
+    #[test]
+    fn un_archivo_normal_sigue_abriendo() {
+        let z = zip_de(&[("word/document.xml".into(), b"<d/>".to_vec())]);
+        let mut p = Paquete::de_bytes(Arc::from(z)).unwrap();
+        assert_eq!(p.bytes("word/document.xml").unwrap(), b"<d/>");
+        assert!(p.xml("word/document.xml").is_some());
+    }
+
+    #[test]
+    fn demasiadas_entradas_dan_un_error_claro() {
+        let partes: Vec<(String, Vec<u8>)> = (0..30).map(|i| (format!("p{i}.xml"), vec![1])).collect();
+        let z: Arc<[u8]> = Arc::from(zip_de(&partes));
+        let Err(ErrorOffice::Limite(m)) = Paquete::de_bytes_con(z.clone(), Limites { entradas: 10, ..Limites::default() }) else {
+            panic!("debia rechazarse")
+        };
+        assert!(m.contains("30 entradas"), "{m}");
+        assert!(Paquete::de_bytes(z).is_ok());
+    }
+
+    #[test]
+    fn una_bomba_zip_pequena_no_se_descomprime() {
+        let z = zip_de(&[("bomba.xml".into(), vec![0u8; 2 * 1024 * 1024])]);
+        assert!(z.len() < 10_000);
+        let lim = Limites { parte: 100_000, ..Limites::default() };
+        let mut p = Paquete::de_bytes_con(Arc::from(z.clone()), lim).unwrap();
+        assert!(p.bytes("bomba.xml").is_none());
+        let lim = Limites { total_declarado: 1000, ..Limites::default() };
+        assert!(matches!(Paquete::de_bytes_con(Arc::from(z), lim), Err(ErrorOffice::Limite(_))));
+    }
+
+    #[test]
+    fn un_zip_que_miente_en_su_tamano_no_pasa() {
+        let mut z = zip_de(&[("m.xml".into(), vec![0u8; 1_000_000])]);
+        let k = z.windows(4).position(|w| w == [0x50, 0x4b, 0x01, 0x02]).unwrap();
+        z[k + 24..k + 28].copy_from_slice(&10u32.to_le_bytes());
+        let mut p = Paquete::de_bytes(Arc::from(z)).unwrap();
+        assert!(p.bytes("m.xml").is_none());
+    }
+
+    #[test]
+    fn un_xml_demasiado_anidado_deja_el_motivo() {
+        let z = zip_de(&[("x.xml".into(), "<a>".repeat(100_000).into_bytes())]);
+        let mut p = Paquete::de_bytes(Arc::from(z)).unwrap();
+        assert!(p.xml("x.xml").is_none());
+        assert_eq!(p.ultimo_limite, Some(crate::xml::ErrorXml::DemasiadaProfundidad));
     }
 }

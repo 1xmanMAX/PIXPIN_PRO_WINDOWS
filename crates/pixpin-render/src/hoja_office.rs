@@ -79,7 +79,7 @@ pub struct CacheHoja {
     textos: HashMap<u64, EntradaTexto>,
     fotograma: u64,
     trazos: HashMap<(u8, u32), Option<ID2D1StrokeStyle>>,
-    imagenes: HashMap<String, Option<ID2D1Bitmap1>>,
+    imagenes: crate::cache_presupuesto::CachePresupuesto<String, Option<ID2D1Bitmap1>>,
     colecciones: HashMap<String, Option<IDWriteFontCollection>>,
     /// Los textos ya preparados de cada celda (ver `texto_cacheado`), validos
     /// para el libro, la hoja, su version y el zoom de `llave_celdas`.
@@ -108,6 +108,10 @@ pub struct OpcionesHoja {
     pub encabezados: bool,
     /// Rango seleccionado (se marca con el verde de Excel).
     pub seleccion: Option<Rango>,
+    /// La celda activa (lleva el boton de su lista desplegable, si la tiene).
+    pub activa: Option<(u32, u32)>,
+    /// La celda bajo el raton (tambien lleva el boton).
+    pub bajo_raton: Option<(u32, u32)>,
 }
 
 /// Cuanto miden los encabezados en pantalla: (ancho de la columna de los
@@ -248,7 +252,7 @@ impl CacheHoja {
 
     /// Olvida lo que es del dispositivo (tras perderlo).
     pub fn olvidar_dispositivo(&mut self) {
-        self.imagenes.clear();
+        self.imagenes.vaciar();
         self.trazos.clear();
         self.textos.clear();
     }
@@ -460,11 +464,17 @@ impl CacheHoja {
     /// La imagen de una parte del libro, descodificada con WIC y subida a la
     /// GPU la primera vez. `None` si no se puede (EMF/WMF, rota...).
     pub fn imagen(&mut self, motor: &MotorRender, libro: &Libro, ruta: &str) -> Option<ID2D1Bitmap1> {
-        if let Some(b) = self.imagenes.get(ruta) {
-            return b.clone();
+        if let Some(b) = self.imagenes.obtener(&ruta.to_string()) {
+            return b;
         }
         let b = libro.parte(ruta).and_then(|bytes| bitmap_wic(motor, &bytes).or_else(|| bitmap_emf(motor, &bytes)));
-        self.imagenes.insert(ruta.to_string(), b.clone());
+        // Peso en memoria: ancho x alto x 4 de lo decodificado.
+        let bytes = b.as_ref().map_or(0, |b| {
+            // SAFETY: GetPixelSize es una consulta del bitmap vivo.
+            let t = unsafe { b.GetPixelSize() };
+            t.width as usize * t.height as usize * 4
+        });
+        self.imagenes.insertar(ruta.to_string(), b.clone(), bytes);
         b
     }
 }
@@ -662,6 +672,112 @@ fn llenar(p: &Pintor, r: D2D_RECT_F, c: Rgb) {
     }
 }
 
+/// El boton de la flecha de una lista desplegable dentro de la celda
+/// `(x0, y0, x1, y1)` en pantalla: pegado a su borde derecho y abajo, de
+/// 17 x 20 px logicos como mucho (`k` = pixeles por pixel logico). `None` si
+/// la celda es demasiado pequena para llevarlo.
+pub fn caja_flecha(celda: [f32; 4], k: f32) -> Option<[f32; 4]> {
+    let [x0, y0, x1, y1] = celda;
+    let (ancho, alto) = (17.0 * k, (20.0 * k).min(y1 - y0 - 1.0));
+    if x1 - x0 < ancho * 1.6 || alto < 8.0 * k.max(0.5) {
+        return None;
+    }
+    Some([x1 - ancho - 1.0, y1 - alto - 1.0, x1 - 1.0, y1 - 1.0])
+}
+
+/// Donde cae la celda en pantalla (`x0, y0, x1, y1`) con esta vista, si esta
+/// a la vista. `celdas` es la zona de celdas (sin encabezados), la misma con
+/// que se pinta.
+pub fn caja_de_celda(rejilla: &Rejilla, vista: &Vista, celdas: RectF, fila: u32, col: u32) -> Option<[f32; 4]> {
+    let e = vista.escala.max(0.05);
+    let v = Vista { ancho: celdas.ancho as f64, alto: celdas.alto as f64, ..*vista };
+    for panel in &rejilla.paneles(&v) {
+        if fila < panel.fila0 || fila > panel.fila1 || col < panel.col0 || col > panel.col1 {
+            continue;
+        }
+        let m = Mapa::de(panel, celdas, e);
+        return Some([m.sx(rejilla, col), m.sy(rejilla, fila), m.sx(rejilla, col + 1), m.sy(rejilla, fila + 1)]);
+    }
+    None
+}
+
+const FLECHA_FONDO: Rgb = Rgb { r: 0xF2, g: 0xF2, b: 0xF2 };
+const FLECHA_BORDE: Rgb = Rgb { r: 0xA6, g: 0xA6, b: 0xA6 };
+const FLECHA_TINTA: Rgb = Rgb { r: 0x40, g: 0x40, b: 0x40 };
+const FLECHA_TENUE: Rgb = Rgb { r: 0x9A, g: 0x9A, b: 0x9A };
+
+/// Un triangulo hacia abajo de `ancho` px centrado en `cx`, con la punta en
+/// `y_punta`, hecho con tiras de una fila (sin geometrias de Direct2D).
+fn triangulo_abajo(p: &Pintor, cx: f32, y_punta: f32, ancho: f32, c: Rgb) {
+    let filas = (ancho / 2.0).round().max(1.0) as i32;
+    for i in 0..filas {
+        let w = ancho - 2.0 * i as f32;
+        if w <= 0.0 {
+            break;
+        }
+        let y = y_punta - (filas - i) as f32;
+        llenar(p, rect(cx - w / 2.0, y, cx + w / 2.0, y + 1.0), c);
+    }
+}
+
+/// **Las flechas de las listas desplegables** (solo para ver): el boton
+/// completo en la celda activa y en la que esta bajo el raton, como Excel; y,
+/// si no hay celda activa, un triangulito discreto en cada celda con lista.
+fn pintar_flechas(p: &Pintor, hoja: &Hoja, rejilla: &Rejilla, paneles: &[Panel], celdas: RectF, e: f64, op: &OpcionesHoja) {
+    use pixpin_hojas::validacion::TipoValidacion;
+    let listas: Vec<_> = hoja.cola.validaciones.iter().filter(|v| v.tipo == TipoValidacion::Lista && v.flecha).collect();
+    if listas.is_empty() {
+        return;
+    }
+    let k = (e * rejilla.ppp / 96.0) as f32;
+    p.empujar_recorte(celdas);
+    for panel in paneles {
+        let m = Mapa::de(panel, celdas, e);
+        let caja = |f: u32, c: u32| [m.sx(rejilla, c), m.sy(rejilla, f), m.sx(rejilla, c + 1), m.sy(rejilla, f + 1)];
+        let en_panel = |f: u32, c: u32| f >= panel.fila0 && f <= panel.fila1 && c >= panel.col0 && c <= panel.col1;
+        let mut con_boton: Vec<(u32, u32)> = Vec::new();
+        for celda in [op.activa, op.bajo_raton].into_iter().flatten() {
+            if en_panel(celda.0, celda.1) && !con_boton.contains(&celda) && listas.iter().any(|v| v.afecta(celda.0, celda.1)) {
+                con_boton.push(celda);
+            }
+        }
+        for &(f, c) in &con_boton {
+            let Some([bx0, by0, bx1, by1]) = caja_flecha(caja(f, c), k) else { continue };
+            llenar(p, rect(bx0, by0, bx1, by1), FLECHA_BORDE);
+            llenar(p, rect(bx0 + 1.0, by0 + 1.0, bx1 - 1.0, by1 - 1.0), FLECHA_FONDO);
+            triangulo_abajo(p, (bx0 + bx1) / 2.0, (by0 + by1) / 2.0 + 2.5 * k, (7.0 * k).round().max(3.0), FLECHA_TINTA);
+        }
+        if op.activa.is_some() {
+            continue;
+        }
+        // Sin celda activa: un triangulo discreto en las celdas a la vista.
+        let mut pintadas = 0u32;
+        for v in &listas {
+            for r in &v.rangos {
+                let (f0, f1) = (r.fila0.max(panel.fila0), r.fila1.min(panel.fila1));
+                let (c0, c1) = (r.col0.max(panel.col0), r.col1.min(panel.col1));
+                for f in f0..=f1 {
+                    for c in c0..=c1 {
+                        if pintadas >= 4000 {
+                            break;
+                        }
+                        if con_boton.contains(&(f, c)) {
+                            continue;
+                        }
+                        let [x0, y0, x1, y1] = caja(f, c);
+                        if x1 - x0 < 14.0 * k || y1 - y0 < 8.0 * k || rejilla.alto(f) <= 0.0 {
+                            continue;
+                        }
+                        triangulo_abajo(p, x1 - 6.0 * k, y1 - 3.0 * k, (6.0 * k).round().max(3.0), FLECHA_TENUE);
+                        pintadas += 1;
+                    }
+                }
+            }
+        }
+    }
+    p.soltar_recorte();
+}
+
 /// Un lado de celda en el mapa de bordes: horizontal (encima de `fila`) o
 /// vertical (a la izquierda de `col`).
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
@@ -676,6 +792,7 @@ struct Lado {
 #[allow(clippy::too_many_arguments)]
 pub fn pintar_hoja(p: &Pintor, cache: &mut CacheHoja, libro: &Libro, hoja: &Hoja, rejilla: &Rejilla, vista: &Vista, caja: RectF, op: &OpcionesHoja) {
     cache.fotograma += 1;
+    cache.imagenes.nuevo_fotograma();
     cache.medidas = Medidas::default();
     let e = vista.escala.max(0.05);
     let celdas = zona_de_celdas(hoja, rejilla, vista, caja, op.encabezados);
@@ -715,6 +832,7 @@ pub fn pintar_hoja(p: &Pintor, cache: &mut CacheHoja, libro: &Libro, hoja: &Hoja
         }
         p.soltar_recorte();
     }
+    pintar_flechas(p, hoja, rejilla, &paneles, celdas, e, op);
     if celdas.x > caja.x || celdas.y > caja.y {
         pintar_encabezados(p, cache, libro, rejilla, &paneles, celdas, caja, e * rejilla.ppp / 96.0, op.seleccion);
     }

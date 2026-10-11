@@ -39,6 +39,7 @@ pub mod libro;
 pub mod paquete;
 pub mod rejilla;
 pub mod tablas;
+pub mod validacion;
 pub mod textos;
 pub mod xml;
 
@@ -59,6 +60,8 @@ pub enum ErrorHojas {
     Binario,
     #[error("no se pudo leer: {0}")]
     Io(String),
+    #[error("el libro supera los limites de seguridad: {0}")]
+    Limite(String),
 }
 
 #[cfg(test)]

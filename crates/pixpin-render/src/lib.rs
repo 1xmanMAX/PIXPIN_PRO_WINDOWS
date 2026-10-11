@@ -10,6 +10,7 @@ pub mod motor;
 
 pub use motor::{Color, ErrorRender, MotorRender, premultiplicar, validar_tamano_rgba};
 
+pub mod cache_presupuesto;
 pub mod capa_estatica;
 pub mod fuera_de_pantalla;
 pub mod grafito;

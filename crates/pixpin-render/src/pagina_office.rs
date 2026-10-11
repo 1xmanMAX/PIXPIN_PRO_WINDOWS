@@ -320,7 +320,10 @@ impl Medidor for LetrasOffice {
 pub struct PintorOffice {
     pub letras: LetrasOffice,
     wic: Option<IWICImagingFactory>,
-    imagenes: RefCell<HashMap<Arc<str>, Option<ID2D1Bitmap1>>>,
+    imagenes: RefCell<crate::cache_presupuesto::CachePresupuesto<Arc<str>, Option<ID2D1Bitmap1>>>,
+    /// Paginas pintadas en el fotograma actual (por direccion): si vuelve
+    /// una, empieza otro fotograma y lo anterior ya se puede expulsar.
+    paginas_fotograma: RefCell<Vec<*const Pagina>>,
     pinceles: RefCell<HashMap<[u8; 4], ID2D1SolidColorBrush>>,
     trazos: RefCell<HashMap<u8, Option<ID2D1StrokeStyle>>>,
 }
@@ -333,7 +336,8 @@ impl PintorOffice {
         Some(PintorOffice {
             letras: LetrasOffice::nuevo(motor.dwrite())?,
             wic,
-            imagenes: RefCell::new(HashMap::new()),
+            imagenes: RefCell::new(Default::default()),
+            paginas_fotograma: RefCell::new(Vec::new()),
             pinceles: RefCell::new(HashMap::new()),
             trazos: RefCell::new(HashMap::new()),
         })
@@ -341,7 +345,7 @@ impl PintorOffice {
 
     /// Olvida las imagenes ya subidas (al cambiar de documento).
     pub fn olvidar_imagenes(&self) {
-        self.imagenes.borrow_mut().clear();
+        self.imagenes.borrow_mut().vaciar();
     }
 
     /// Pinta `pagina` con su esquina en `origen` (pixeles del destino) a
@@ -349,6 +353,15 @@ impl PintorOffice {
     /// campos `NUMPAGES`. Hay que llamarlo dentro de `MotorRender::dibujar`.
     pub fn pintar(&self, p: &Pintor, pagina: &Pagina, recursos: &Recursos, escala: f32, origen: (f32, f32), total: u32) {
         let c = p.motor.contexto();
+        {
+            let mut vistas = self.paginas_fotograma.borrow_mut();
+            let esta = pagina as *const Pagina;
+            if vistas.contains(&esta) {
+                vistas.clear();
+                self.imagenes.borrow_mut().nuevo_fotograma();
+            }
+            vistas.push(esta);
+        }
         let mut previa = Matrix3x2::default();
         // SAFETY: GetTransform rellena la matriz local; el contexto vive.
         unsafe { c.GetTransform(&mut previa) };
@@ -655,15 +668,18 @@ impl PintorOffice {
 
     fn imagen(&self, ctx: &Ctx, id: &Arc<str>, rect: pixpin_office::pagina::Rect, recorte: Option<[f32; 4]>, opacidad: f32) {
         let c = ctx.c;
-        let bitmap = {
-            let cache = self.imagenes.borrow();
-            cache.get(id).cloned()
-        };
+        let bitmap = self.imagenes.borrow_mut().obtener(id);
         let bitmap = match bitmap {
             Some(b) => b,
             None => {
                 let b = ctx.recursos.bytes(id).and_then(|bytes| self.decodificar(c, &bytes));
-                self.imagenes.borrow_mut().insert(id.clone(), b.clone());
+                // Peso en memoria: ancho x alto x 4 de lo decodificado.
+                let bytes = b.as_ref().map_or(0, |b| {
+                    // SAFETY: GetPixelSize es una consulta del bitmap vivo.
+                    let t = unsafe { b.GetPixelSize() };
+                    t.width as usize * t.height as usize * 4
+                });
+                self.imagenes.borrow_mut().insertar(id.clone(), b.clone(), bytes);
                 b
             }
         };

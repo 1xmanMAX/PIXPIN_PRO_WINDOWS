@@ -61,7 +61,12 @@ struct Herencia<'a> {
 impl Presentacion {
     pub fn de_paquete(mut paquete: Paquete) -> Result<Presentacion, ErrorOffice> {
         let principal = paquete.principal().unwrap_or_else(|| "ppt/presentation.xml".into());
-        let raiz = paquete.xml(&principal).ok_or(ErrorOffice::SinParte("ppt/presentation.xml"))?;
+        let Some(raiz) = paquete.xml(&principal) else {
+            return Err(match paquete.ultimo_limite {
+                Some(e) => ErrorOffice::Limite(e.to_string()),
+                None => ErrorOffice::SinParte("ppt/presentation.xml"),
+            });
+        };
         let rels = paquete.relaciones(&principal);
         let (mut ancho, mut alto) = (720.0, 540.0);
         if let Some(s) = raiz.hijo("sldSz") {

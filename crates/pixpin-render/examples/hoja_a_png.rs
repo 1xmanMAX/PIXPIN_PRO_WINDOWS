@@ -124,7 +124,7 @@ fn main() {
 
     // Pintar la primera pantalla (sin el resto cargado).
     let mut vista = Vista { ancho: ancho as f64, alto: alto as f64, escala, x: 0.0, y: rejilla.y(desde_fila) };
-    let op = OpcionesHoja { encabezados, seleccion: None };
+    let op = OpcionesHoja { encabezados, seleccion: None, activa: std::env::var("HOJA_ACTIVA").ok().and_then(|s| pixpin_hojas::hoja::Rango::leer(&s)).map(|r| (r.fila0, r.col0)), ..Default::default() };
     let t_pintar_primera;
     {
         let fuera = FueraDePantalla::nuevo(&motor, &disp, ancho.max(1), alto.max(1)).expect("superficie");

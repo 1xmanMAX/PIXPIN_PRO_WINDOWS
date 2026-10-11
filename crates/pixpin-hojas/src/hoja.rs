@@ -220,6 +220,8 @@ pub struct Cola {
     pub tablas: Vec<crate::tablas::Tabla>,
     /// Formato condicional (con sus cuentas hechas al acabar de cargar).
     pub condicionales: Vec<crate::condicional::Condicional>,
+    /// Validacion de datos (solo para ver: listas desplegables).
+    pub validaciones: Vec<crate::validacion::Validacion>,
 }
 
 /// Un trozo de hoja leido: filas y celdas con indices propios de la tanda.
@@ -771,6 +773,7 @@ impl Proceso {
             }
         }
         cola.condicionales = crate::condicional::leer(&raiz, tema, paleta);
+        cola.validaciones = crate::validacion::leer(&raiz);
         cola
     }
 }
@@ -1017,6 +1020,11 @@ impl Hoja {
     /// Las celdas de una fila (ordenadas por columna).
     pub fn celdas_de(&self, f: &Fila) -> &[Celda] {
         self.celdas.get(f.inicio as usize..f.fin as usize).unwrap_or(&[])
+    }
+
+    /// La regla de validacion de lista (con flecha) que afecta a la celda.
+    pub fn lista_en(&self, fila: u32, col: u32) -> Option<&crate::validacion::Validacion> {
+        self.cola.validaciones.iter().find(|v| v.tipo == crate::validacion::TipoValidacion::Lista && v.flecha && v.afecta(fila, col))
     }
 
     pub fn celda(&self, fila: u32, col: u32) -> Option<&Celda> {
