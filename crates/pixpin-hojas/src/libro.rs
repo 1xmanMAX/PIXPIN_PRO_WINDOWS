@@ -245,6 +245,33 @@ impl Libro {
         Some(Contenido { mostrado, clase, horizontal, tramos })
     }
 
+    /// El estilo de una tabla: el propio del libro o uno integrado.
+    pub fn estilo_de_tabla(&self, t: &crate::tablas::Tabla) -> Option<crate::estilos::EstiloTabla> {
+        self.estilos.estilos_tabla.get(&t.estilo).cloned().or_else(|| crate::tablas::integrado(&t.estilo, &self.tema))
+    }
+
+    /// Lo que el formato condicional hace a una celda con valor (`None` si
+    /// nada).
+    pub fn efecto_condicional(&self, hoja: &Hoja, fila: u32, c: &Celda) -> Option<crate::condicional::Efecto> {
+        if hoja.cola.condicionales.is_empty() || c.valor == Valor::Vacio {
+            return None;
+        }
+        let mut ef = crate::condicional::Efecto::default();
+        let mut alguno = false;
+        let mut texto: Option<String> = None;
+        for cf in &hoja.cola.condicionales {
+            if !cf.aplica(fila, c.col) {
+                continue;
+            }
+            alguno = true;
+            let t = texto.get_or_insert_with(|| self.texto_crudo(hoja, c));
+            if cf.evaluar(c, t, &self.estilos.dxfs, &mut ef) {
+                break;
+            }
+        }
+        (alguno && ef != crate::condicional::Efecto::default()).then_some(ef)
+    }
+
     /// El texto de una celda sin formato (para copiar o buscar).
     pub fn texto_crudo(&self, hoja: &Hoja, c: &Celda) -> String {
         match c.valor {

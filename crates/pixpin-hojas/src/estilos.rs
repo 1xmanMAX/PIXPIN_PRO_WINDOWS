@@ -437,6 +437,97 @@ pub struct Estilos {
     /// las filas sin `ht`).
     pub tam_por_xf: Vec<f32>,
     pub formatos: Formatos,
+    /// Formatos diferenciales (`<dxfs>`): los de formato condicional y los
+    /// de los estilos de tabla.
+    pub dxfs: Vec<Dxf>,
+    /// Estilos de tabla propios del libro (`<tableStyles>`), por nombre.
+    pub estilos_tabla: HashMap<String, EstiloTabla>,
+}
+
+/// Un formato diferencial: solo lo que cambia sobre lo que ya tiene la celda.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct Dxf {
+    pub color_fuente: Option<Rgb>,
+    pub negrita: Option<bool>,
+    pub cursiva: Option<bool>,
+    pub tachado: Option<bool>,
+    pub subrayado: Option<bool>,
+    pub relleno: Option<Rgb>,
+    pub izquierda: Option<Linea>,
+    pub derecha: Option<Linea>,
+    pub arriba: Option<Linea>,
+    pub abajo: Option<Linea>,
+    /// Lineas de dentro (entre filas y entre columnas) de una tabla.
+    pub horizontal: Option<Linea>,
+    pub vertical: Option<Linea>,
+}
+
+impl Dxf {
+    /// Pone encima lo que traiga `o`.
+    pub fn sobre(&mut self, o: &Dxf) {
+        macro_rules! pisa {
+            ($($c:ident),*) => {$(if o.$c.is_some() { self.$c = o.$c; })*};
+        }
+        pisa!(color_fuente, negrita, cursiva, tachado, subrayado, relleno, izquierda, derecha, arriba, abajo, horizontal, vertical);
+    }
+}
+
+/// Un estilo de tabla: el dxf de cada parte.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct EstiloTabla {
+    pub todo: Option<Dxf>,
+    pub encabezado: Option<Dxf>,
+    pub total: Option<Dxf>,
+    pub primera_columna: Option<Dxf>,
+    pub ultima_columna: Option<Dxf>,
+    pub banda_fila: Option<Dxf>,
+    pub banda_fila2: Option<Dxf>,
+    pub banda_columna: Option<Dxf>,
+    pub banda_columna2: Option<Dxf>,
+    pub alto_banda: u32,
+}
+
+fn dxf_de(n: &Nodo, tema: &Tema, paleta: &[u32]) -> Dxf {
+    let mut d = Dxf::default();
+    if let Some(f) = n.hijo("font") {
+        let si = |h: &Nodo| h.attr("val").is_none_or(|v| v != "0" && v != "false");
+        for h in &f.hijos {
+            match h.nombre.as_str() {
+                "b" => d.negrita = Some(si(h)),
+                "i" => d.cursiva = Some(si(h)),
+                "strike" => d.tachado = Some(si(h)),
+                "u" => d.subrayado = Some(h.attr("val") != Some("none")),
+                "color" => d.color_fuente = color_de(h, tema, paleta),
+                _ => {}
+            }
+        }
+    }
+    if let Some(p) = n.hijo("fill").and_then(|f| f.hijo("patternFill")) {
+        // En un dxf el color del relleno liso va en `bgColor` (al reves que
+        // en los rellenos de celda); algunos generadores lo ponen en fgColor.
+        let tipo = p.attr("patternType");
+        let bg = p.hijo("bgColor").and_then(|c| color_de(c, tema, paleta));
+        let fg = p.hijo("fgColor").and_then(|c| color_de(c, tema, paleta));
+        d.relleno = match tipo {
+            Some("none") => None,
+            Some("solid") if fg.is_some() && bg.is_none() => fg,
+            _ => bg.or(fg),
+        };
+    }
+    if let Some(b) = n.hijo("border") {
+        let linea = |k: &str| -> Option<Linea> {
+            let h = b.hijo(k)?;
+            let estilo = EstiloLinea::de(h.attr("style")?);
+            Some(Linea { estilo, color: h.hijo("color").and_then(|c| color_de(c, tema, paleta)).unwrap_or(Rgb::NEGRO) })
+        };
+        d.izquierda = linea("left").or_else(|| linea("start"));
+        d.derecha = linea("right").or_else(|| linea("end"));
+        d.arriba = linea("top");
+        d.abajo = linea("bottom");
+        d.horizontal = linea("horizontal");
+        d.vertical = linea("vertical");
+    }
+    d
 }
 
 impl Estilos {
@@ -493,7 +584,40 @@ impl Estilos {
             .unwrap_or(0);
         let fuente_normal = fuentes.get(normal).or(fuentes.first()).cloned().unwrap_or_default();
         let tam_por_xf = xfs.iter().map(|x| fuentes.get(x.fuente as usize).map_or(fuente_normal.tam, |f| f.tam)).collect();
-        Estilos { fuentes, rellenos, bordes, xfs, paleta, fuente_normal, tam_por_xf, formatos }
+        let dxfs: Vec<Dxf> = hoja.hijo("dxfs").map(|d| d.hijos_de("dxf").map(|n| dxf_de(n, tema, &paleta)).collect()).unwrap_or_default();
+        // Estilos de tabla propios: cada elemento apunta a un dxf.
+        let mut estilos_tabla = HashMap::new();
+        if let Some(ts) = hoja.hijo("tableStyles") {
+            for t in ts.hijos_de("tableStyle") {
+                let Some(nombre) = t.attr("name") else {
+                    continue;
+                };
+                let mut e = EstiloTabla::default();
+                for el in t.hijos_de("tableStyleElement") {
+                    let Some(d) = el.attr("dxfId").and_then(|v| v.parse::<usize>().ok()).and_then(|i| dxfs.get(i)) else {
+                        continue;
+                    };
+                    let tam = el.attr("size").and_then(|v| v.parse::<u32>().ok()).unwrap_or(1).max(1);
+                    match el.attr("type").unwrap_or("") {
+                        "wholeTable" => e.todo = Some(d.clone()),
+                        "headerRow" => e.encabezado = Some(d.clone()),
+                        "totalRow" => e.total = Some(d.clone()),
+                        "firstColumn" => e.primera_columna = Some(d.clone()),
+                        "lastColumn" => e.ultima_columna = Some(d.clone()),
+                        "firstRowStripe" => {
+                            e.banda_fila = Some(d.clone());
+                            e.alto_banda = tam;
+                        }
+                        "secondRowStripe" => e.banda_fila2 = Some(d.clone()),
+                        "firstColumnStripe" => e.banda_columna = Some(d.clone()),
+                        "secondColumnStripe" => e.banda_columna2 = Some(d.clone()),
+                        _ => {}
+                    }
+                }
+                estilos_tabla.insert(nombre.to_string(), e);
+            }
+        }
+        Estilos { fuentes, rellenos, bordes, xfs, paleta, fuente_normal, tam_por_xf, formatos, dxfs, estilos_tabla }
     }
 
     pub fn xf(&self, i: u32) -> &Xf {

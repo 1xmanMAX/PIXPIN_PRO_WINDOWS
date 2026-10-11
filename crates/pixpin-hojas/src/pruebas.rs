@@ -5,6 +5,36 @@ use std::io::Write;
 
 use crate::*;
 
+#[test]
+fn tablas_y_formato_condicional() {
+    let hoja = br#"<worksheet><sheetData><row r="1"><c r="A1" t="inlineStr"><is><t>Nombre</t></is></c><c r="B1" t="inlineStr"><is><t>Monto</t></is></c></row><row r="2"><c r="A2" t="inlineStr"><is><t>a</t></is></c><c r="B2"><v>5</v></c></row><row r="3"><c r="A3" t="inlineStr"><is><t>b</t></is></c><c r="B3"><v>50</v></c></row></sheetData><conditionalFormatting sqref="B2:B3"><cfRule type="cellIs" dxfId="0" priority="1" operator="greaterThan"><formula>10</formula></cfRule></conditionalFormatting><tableParts count="1"><tablePart r:id="rId1"/></tableParts></worksheet>"#;
+    let rels = br#"<Relationships><Relationship Id="rId1" Type="http://x/table" Target="../tables/table1.xml"/></Relationships>"#;
+    let tabla = br#"<table ref="A1:B3" headerRowCount="1"><tableStyleInfo name="TableStyleMedium2" showRowStripes="1"/></table>"#;
+    let estilos = br#"<styleSheet><dxfs><dxf><font><b/><color rgb="FFFF0000"/></font></dxf></dxfs><cellXfs><xf/></cellXfs></styleSheet>"#;
+    let z = zip_de(&[
+        ("_rels/.rels", RELS),
+        ("xl/workbook.xml", br#"<workbook><sheets><sheet name="H" r:id="rId1"/></sheets></workbook>"#),
+        (
+            "xl/_rels/workbook.xml.rels",
+            br#"<Relationships><Relationship Id="rId1" Type="http://x/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://x/styles" Target="styles.xml"/></Relationships>"#,
+        ),
+        ("xl/styles.xml", estilos),
+        ("xl/worksheets/sheet1.xml", hoja),
+        ("xl/worksheets/_rels/sheet1.xml.rels", rels),
+        ("xl/tables/table1.xml", tabla),
+    ]);
+    let l = Libro::desde_bytes(z, Regional::en_us()).unwrap();
+    let mut h = l.abrir_hoja(0);
+    h.cargar_todo();
+    assert_eq!(h.cola.tablas.len(), 1);
+    let t = &h.cola.tablas[0];
+    let e = l.estilo_de_tabla(t).unwrap();
+    assert_eq!(crate::tablas::formato_en(t, &e, 0, 0).negrita, Some(true));
+    let alto = l.efecto_condicional(&h, 2, h.celda(2, 1).unwrap()).unwrap();
+    assert_eq!(alto.dxf.color_fuente, Some(Rgb { r: 255, g: 0, b: 0 }));
+    assert!(l.efecto_condicional(&h, 1, h.celda(1, 1).unwrap()).is_none());
+}
+
 pub(crate) fn zip_de(partes: &[(&str, &[u8])]) -> Vec<u8> {
     let mut w = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
     let op = zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);

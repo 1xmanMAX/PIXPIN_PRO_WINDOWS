@@ -30,6 +30,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod condicional;
 pub mod dibujos;
 pub mod estilos;
 pub mod formato;
@@ -37,6 +38,7 @@ pub mod hoja;
 pub mod libro;
 pub mod paquete;
 pub mod rejilla;
+pub mod tablas;
 pub mod textos;
 pub mod xml;
 

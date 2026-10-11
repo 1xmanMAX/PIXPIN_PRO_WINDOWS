@@ -1267,6 +1267,26 @@ mod pruebas {
     }
 
     #[test]
+    fn el_separador_de_fechas_del_sistema() {
+        // Medido en un Excel en espanol con el separador de fechas cambiado
+        // a espacio: la barra y el guion de los integrados 15-17 lo usan.
+        let mut r = Regional::es_pe();
+        r.separador_fecha = ' ';
+        let f = |c: &str, v: f64| Formato::nuevo(c, &r).numero(v, false, &r).texto;
+        assert_eq!(f("d/m/yyyy", 1234.5678), "18 5 1903");
+        assert_eq!(f(integrado(15).unwrap(), 1234.5678), "18 May 03");
+        assert_eq!(f("mmmm", 1234.5678), "Mayo");
+        assert_eq!(f("dddd", 0.0), "sábado");
+        assert_eq!(f("h:mm AM/PM", 0.0), "12:00 a. m.");
+        assert_eq!(f("[$-409]mmmm d, yyyy", 0.0), "January 0, 1900");
+        assert_eq!(f("[h]:mm:ss", 0.000123), "0:00:11");
+        assert_eq!(f("mm:ss.0", 0.000123), "00:10.6");
+        assert_eq!(f("# ??/??", 1234.5678), "1234 46/81");
+        let en = Regional::en_us();
+        assert_eq!(Formato::nuevo(integrado(15).unwrap(), &en).numero(45000.0, false, &en).texto, "15-Mar-23");
+    }
+
+    #[test]
     fn codigos_raros_no_revientan() {
         for c in ["", ";;;;;;", "[", "\"", "0.0.0", "E+", "#/", "[h", "\\", "*", "_", "[Color99]0", "0,,,,,,", "?/0"] {
             let f = Formato::nuevo(c, &Regional::en_us());

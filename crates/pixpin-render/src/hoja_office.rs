@@ -721,6 +721,49 @@ pub fn pintar_hoja(p: &Pintor, cache: &mut CacheHoja, libro: &Libro, hoja: &Hoja
 }
 
 #[allow(clippy::too_many_arguments)]
+/// Las tablas que tocan la zona, con su estilo resuelto.
+fn tablas_visibles<'h>(
+    libro: &Libro,
+    hoja: &'h Hoja,
+    f0: u32,
+    f1: u32,
+    c0: u32,
+    c1: u32,
+) -> Vec<(&'h pixpin_hojas::tablas::Tabla, pixpin_hojas::estilos::EstiloTabla)> {
+    hoja.cola
+        .tablas
+        .iter()
+        .filter(|t| t.rango.fila1 >= f0 && t.rango.fila0 <= f1 && t.rango.col1 >= c0 && t.rango.col0 <= c1)
+        .filter_map(|t| libro.estilo_de_tabla(t).map(|e| (t, e)))
+        .collect()
+}
+
+/// Lo que la tabla y el formato condicional cambian del texto de una celda.
+fn extra_de(libro: &Libro, hoja: &Hoja, fila: u32, c: &pixpin_hojas::Celda) -> (Option<pixpin_hojas::estilos::Dxf>, bool) {
+    let mut d: Option<pixpin_hojas::estilos::Dxf> = None;
+    for t in &hoja.cola.tablas {
+        if t.rango.contiene(fila, c.col) {
+            if let Some(e) = libro.estilo_de_tabla(t) {
+                d = Some(pixpin_hojas::tablas::formato_en(t, &e, fila, c.col));
+            }
+            break;
+        }
+    }
+    let mut ocultar = false;
+    if let Some(ef) = libro.efecto_condicional(hoja, fila, c) {
+        ocultar = ef.ocultar_valor;
+        let mut base = d.unwrap_or_default();
+        base.sobre(&ef.dxf);
+        d = Some(base);
+    }
+    (d, ocultar)
+}
+
+fn color_de(c: Rgb) -> Color {
+    color(c)
+}
+
+#[allow(clippy::too_many_arguments)]
 fn pintar_panel(p: &Pintor, cache: &mut CacheHoja, libro: &Libro, hoja: &Hoja, rejilla: &Rejilla, panel: &Panel, m: &Mapa, zona: RectF) {
     let (f0, f1, c0, c1) = (panel.fila0, panel.fila1, panel.col0, panel.col1);
     let est = &libro.estilos;
@@ -830,6 +873,58 @@ fn pintar_panel(p: &Pintor, cache: &mut CacheHoja, libro: &Libro, hoja: &Hoja, r
             llenar(p, rect(m.sx(rejilla, r.col0) - 1.0, m.sy(rejilla, r.fila0) - 1.0, m.sx(rejilla, r.col1 + 1), m.sy(rejilla, r.fila1 + 1)), color);
         }
     }
+    // 3b. Tablas: su relleno donde la celda no trae uno propio (por debajo
+    // del de la celda, como en Excel).
+    let tablas = tablas_visibles(libro, hoja, f0, f1, c0, c1);
+    for (t, e) in &tablas {
+        let r = t.rango;
+        for f in r.fila0.max(f0)..=r.fila1.min(f1) {
+            let (y0, y1) = (m.sy(rejilla, f), m.sy(rejilla, f + 1));
+            if y1 <= y0 {
+                continue;
+            }
+            for c in r.col0.max(c0)..=r.col1.min(c1) {
+                let Some(color) = pixpin_hojas::tablas::formato_en(t, e, f, c).relleno else {
+                    continue;
+                };
+                if est.relleno(est.xf(hoja.xf_en(f, c))) != Relleno::Nada {
+                    continue;
+                }
+                llenar(p, rect(m.sx(rejilla, c) - 1.0, y0 - 1.0, m.sx(rejilla, c + 1), y1), color);
+            }
+        }
+    }
+    // 3c. Formato condicional: relleno, escala de color y barras de datos.
+    if !hoja.cola.condicionales.is_empty() {
+        for f in filas {
+            let (y0, y1) = (m.sy(rejilla, f.indice), m.sy(rejilla, f.indice + 1));
+            if y1 <= y0 {
+                continue;
+            }
+            let cs = hoja.celdas_de(f);
+            let ini = cs.partition_point(|c| c.col < c0);
+            let fin = cs.partition_point(|c| c.col <= c1);
+            for c in &cs[ini..fin] {
+                let Some(ef) = libro.efecto_condicional(hoja, f.indice, c) else {
+                    continue;
+                };
+                // En una combinacion, toda su caja.
+                let r = hoja.combinada_en(f.indice, c.col).unwrap_or(Rango { fila0: f.indice, col0: c.col, fila1: f.indice, col1: c.col });
+                let (x0, x1) = (m.sx(rejilla, r.col0), m.sx(rejilla, r.col1 + 1));
+                let (y0, y1) = (m.sy(rejilla, r.fila0), m.sy(rejilla, r.fila1 + 1));
+                if let Some(color) = ef.escala.or(ef.dxf.relleno) {
+                    llenar(p, rect(x0 - 1.0, y0 - 1.0, x1, y1), color);
+                }
+                if let Some((frac, color)) = ef.barra {
+                    let margen = (2.0 * m.e as f32).max(1.0);
+                    let ancho = ((x1 - x0 - 1.0 - 2.0 * margen) * frac).max(1.0);
+                    let r = RectF { x: x0 + margen, y: y0 + margen, ancho, alto: (y1 - y0 - 1.0 - 2.0 * margen).max(1.0) };
+                    // Degradado del color al blanco, como las barras de 2007.
+                    p.rect_degradado(r, (r.x, r.y), (r.x + r.ancho, r.y), color_de(color), color_de(color.mezcla(Rgb::BLANCO, 0.1)));
+                }
+            }
+        }
+    }
     // 4. Bordes: el mapa de lados con la linea mas fuerte de cada uno.
     let mut lados: HashMap<Lado, Linea> = HashMap::new();
     let mut diagonales: Vec<(u32, u32, Borde)> = Vec::new();
@@ -858,6 +953,21 @@ fn pintar_panel(p: &Pintor, cache: &mut CacheHoja, libro: &Libro, hoja: &Hoja, r
             poner(Lado { horizontal: false, fila: r, col: k + 1 }, b.derecha);
             if b.diagonal.estilo != EstiloLinea::Ninguno && (b.diagonal_sube || b.diagonal_baja) {
                 diagonales.push((r, k, b));
+            }
+        }
+    }
+    // Los bordes de las tablas (los de la celda, si los tiene, ganan por
+    // ser mas fuertes o iguales).
+    for (t, e) in &tablas {
+        let r = t.rango;
+        for f in r.fila0.max(f0.saturating_sub(1))..=r.fila1.min(f1.saturating_add(1)) {
+            for c in r.col0.max(c0.saturating_sub(1))..=r.col1.min(c1.saturating_add(1)) {
+                let d = pixpin_hojas::tablas::formato_en(t, e, f, c);
+                let lado = |o: Option<Linea>| o.unwrap_or_default();
+                poner(Lado { horizontal: true, fila: f, col: c }, lado(d.arriba));
+                poner(Lado { horizontal: true, fila: f + 1, col: c }, lado(d.abajo));
+                poner(Lado { horizontal: false, fila: f, col: c }, lado(d.izquierda));
+                poner(Lado { horizontal: false, fila: f, col: c + 1 }, lado(d.derecha));
             }
         }
     }
@@ -1104,7 +1214,20 @@ fn texto_de_celda(
     }
     let xf = libro.estilos.xf(c.xf);
     let al = xf.alineacion;
-    let fuente = libro.estilos.fuente(xf).clone();
+    let mut fuente = libro.estilos.fuente(xf).clone();
+    // Lo que ponen la tabla y el formato condicional.
+    let (extra, ocultar) = extra_de(libro, hoja, caja.fila0, c);
+    if ocultar {
+        return;
+    }
+    if let Some(d) = &extra {
+        fuente.negrita = d.negrita.unwrap_or(fuente.negrita);
+        fuente.cursiva = d.cursiva.unwrap_or(fuente.cursiva);
+        fuente.tachado = d.tachado.unwrap_or(fuente.tachado);
+        if let Some(s) = d.subrayado {
+            fuente.subrayado = if s { Subrayado::Simple } else { Subrayado::Ninguno };
+        }
+    }
     let zoom = m.e as f32;
     let e = (m.e * rejilla.ppp / 96.0) as f32;
     let tam = fuente.tam * 96.0 / 72.0 * e;
@@ -1115,7 +1238,12 @@ fn texto_de_celda(
     let margen = (2.0 * e).round().max(1.0);
     let ancho_util = (x1 - x0 - 1.0 - 2.0 * margen).max(1.0);
     let sangria = al.sangria as f32 * (rejilla.mdw as f32 + 2.0) * zoom;
-    let color_txt = libro.color_texto(xf, &cont.mostrado);
+    let mut color_txt = libro.color_texto(xf, &cont.mostrado);
+    if let Some(d) = &extra {
+        if let (None, Some(cf)) = (cont.mostrado.color, d.color_fuente) {
+            color_txt = cf;
+        }
+    }
     let ajustar = (al.ajustar || matches!(al.horizontal, Horizontal::Justificar | Horizontal::Distribuido) || al.vertical == Vertical::Justificar)
         && al.giro == 0;
     let alinear = match cont.horizontal {
@@ -1571,7 +1699,14 @@ fn pintar_grafico(
                 }
             }
             // Categorias.
-            let paso_cat = ((n as f32 * tam_p * 3.0) / plot.ancho).ceil().max(1.0) as usize;
+            // Una de cada tantas etiquetas, para que no se pisen.
+            let mut max_w = 0.0f32;
+            for t in categorias.iter().take(200) {
+                if let Some((_, w, _)) = cache.disposicion(p.motor, t, &pequeno, tam_p, None, DWRITE_TEXT_ALIGNMENT_LEADING, None, 1.0) {
+                    max_w = max_w.max(w);
+                }
+            }
+            let paso_cat = ((max_w + 6.0 * e) / ancho_cat.max(1.0)).ceil().max(1.0) as usize;
             if !tipo.contains("barH") {
                 for (i, t) in categorias.iter().enumerate().step_by(paso_cat) {
                     if let Some((d, w, _)) = cache.disposicion(p.motor, t, &pequeno, tam_p, None, DWRITE_TEXT_ALIGNMENT_LEADING, None, 1.0) {

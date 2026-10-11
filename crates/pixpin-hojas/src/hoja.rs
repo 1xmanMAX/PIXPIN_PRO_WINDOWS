@@ -217,6 +217,9 @@ pub struct Cola {
     pub combinadas: Vec<Rango>,
     pub hipervinculos: Vec<Hipervinculo>,
     pub dibujos: Vec<Dibujo>,
+    pub tablas: Vec<crate::tablas::Tabla>,
+    /// Formato condicional (con sus cuentas hechas al acabar de cargar).
+    pub condicionales: Vec<crate::condicional::Condicional>,
 }
 
 /// Un trozo de hoja leido: filas y celdas con indices propios de la tanda.
@@ -287,7 +290,6 @@ struct Proceso {
     tam_por_xf: Arc<[f32]>,
     tam_normal: f32,
     alto_normal: f32,
-    fuera: Vec<u8>,
 }
 
 impl LectorHoja {
@@ -329,7 +331,6 @@ impl LectorHoja {
                 tam_por_xf,
                 tam_normal,
                 alto_normal,
-                fuera: Vec::new(),
             },
         })
     }
@@ -760,7 +761,16 @@ impl Proceso {
                 cola.dibujos.extend(dibujos::leer(paquete, &r.destino, tema, paleta));
             }
         }
-        let _ = &self.fuera;
+        let mut v = Vec::new();
+        raiz.todos("tablePart", &mut v);
+        for d in v {
+            if let Some(r) = d.attr("id").and_then(|id| rels.iter().find(|r| r.id == id)) {
+                if let Some(t) = paquete.leer(&r.destino).and_then(|b| crate::tablas::leer(&xml::arbol(&b))) {
+                    cola.tablas.push(t);
+                }
+            }
+        }
+        cola.condicionales = crate::condicional::leer(&raiz, tema, paleta);
         cola
     }
 }
@@ -940,6 +950,12 @@ impl Hoja {
                 self.filas.dedup_by(|b, a| a.indice == b.indice);
                 self.desordenada = false;
             }
+            // Las cuentas del formato condicional, ya con todas las celdas.
+            let mut cs = std::mem::take(&mut self.cola.condicionales);
+            for c in &mut cs {
+                c.calcular(self);
+            }
+            self.cola.condicionales = cs;
         }
         self.version += 1;
     }
