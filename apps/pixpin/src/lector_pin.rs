@@ -57,7 +57,7 @@ const SEPARACION: f32 = 8.0;
 const NOMBRE_MAX: f32 = 260.0;
 const TAM_NOMBRE: f32 = 13.0;
 /// Lo que mide el borde que estira la ventana.
-const BORDE: f32 = 7.0;
+pub(crate) const BORDE: f32 = 7.0;
 /// Lo minimo que se deja estirar.
 const MINIMO: (u32, u32) = (360, 280);
 

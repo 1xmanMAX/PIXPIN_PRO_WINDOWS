@@ -544,6 +544,12 @@ papelera-recuperados = Recuperados { $n } de { $total } proyectos
 
 ## El visor de documentos: Word, libros EPUB y páginas (tarea 2.1)
 visor-html-titulo = PixPin — página
+## El pin de Office: la vista previa de Office como pin (10-oct-2026)
+office-titulo = vista previa de Office
+office-abriendo = Abriendo con la vista previa de Office…
+office-tarda = Office está tardando en abrirlo (la primera vez tiene que arrancar). Puedes esperar, o abrirlo con su programa con el botón ↗ de la barra.
+office-fallo = Office no pudo mostrar la vista previa de este archivo. Ábrelo con su programa con el botón ↗ de la barra.
+office-internet = Este archivo viene de internet y, por seguridad, Windows no deja verlo en vista previa. Ábrelo con su programa con el botón ↗ de la barra, o desbloquéalo en sus Propiedades.
 visor-titulo =Visor de PixPin
 visor-marcador = Marcador aquí
 visor-ajustes = Ajustes de lectura
