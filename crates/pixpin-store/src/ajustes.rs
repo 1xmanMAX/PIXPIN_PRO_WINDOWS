@@ -435,6 +435,10 @@ pub struct Sincro {
     /// cambiar algo aqui (tras 30 s sin mas cambios) y cada diez minutos.
     /// Sin globos salvo si llega algo o falla varias veces seguidas. Pide la
     /// presencia encendida: sin sonda no se sabe quien contesta.
+    ///
+    /// Tambien lleva **las tareas al instante** (10-oct-2026): lo que se
+    /// tacha, apunta o quita sale en cuanto se deja de tocar (600 ms) solo
+    /// con su chat. Apagada esta, tampoco.
     pub automatica: bool,
 }
 

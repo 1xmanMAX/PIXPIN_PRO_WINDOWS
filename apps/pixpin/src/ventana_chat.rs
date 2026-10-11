@@ -11552,6 +11552,11 @@ fn guardar_mini(ubicacion: &Ubicacion, a: &mut Abierto, m: &MiniAbierta) -> Resu
     // El temporizador y la alarma avisan a su hora: se pone, cambia o quita
     // el aviso con lo que acaba de guardarse.
     crate::mini_panel::avisar(&carpeta, &mensaje);
+    // Una casilla tachada en el panel del chat sale ya a los demas aparatos
+    // (las demas mini-apps esperan a la vuelta de siempre).
+    if m.cual == pixpin_proyecto::mini::TAREAS {
+        crate::sincronizar::automatica::avisar_tareas(&a.ficha.id);
+    }
     // El resumen de la burbuja cambio: hay que volver a colocar.
     a.colocado.borrow_mut().ancho = 0;
     Ok(())

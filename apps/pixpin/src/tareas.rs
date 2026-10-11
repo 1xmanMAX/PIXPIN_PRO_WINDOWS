@@ -63,6 +63,12 @@ pub fn abrir_en(idioma: Idioma, ubicacion: Ubicacion, aparato: &str, clave: Stri
     ventana::abrir_en(idioma, ubicacion, aparato.to_string(), Some(clave));
 }
 
+/// Que la ventana de tareas, si esta abierta, relea ya: lo llama la
+/// sincronizacion al escribir lo llegado de otro aparato.
+pub(crate) fn refrescar() {
+    ventana::refrescar();
+}
+
 // ------------------------------------------------------------- la lectura
 
 /// Una tarea de una lista, ya leida.
@@ -540,7 +546,12 @@ pub fn olvidar_hora(carpeta: &Path, id: &str) -> std::io::Result<bool> {
     // Con el espacio de delante, que se puso al marcarla.
     let desde = if m.texto[..i].ends_with(' ') { i - 1 } else { i };
     m.texto.replace_range(desde..i + marca.len(), "");
-    cuaderno::reemplazar(carpeta, &m)
+    let puesto = cuaderno::reemplazar(carpeta, &m)?;
+    if puesto {
+        // Sin la marca de la hora en los demas aparatos tambien, ya.
+        crate::sincronizar::automatica::avisar_tareas_en(carpeta);
+    }
+    Ok(puesto)
 }
 
 /// Pasa una tarea de su lista a otra (el boton «Mover a…» del Inbox): se

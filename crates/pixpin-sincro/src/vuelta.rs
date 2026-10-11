@@ -362,6 +362,48 @@ pub fn una<D: Disco + ?Sized, F: Read + Write>(
     ahora: &dyn Fn() -> i64,
     progreso: &mut dyn FnMut(Trabajo),
 ) -> Resultado<Vuelta> {
+    con_alcance(s, elegir, None, hecho, rotulo, ahora, progreso)
+}
+
+/// **Solo estos chats, sin preguntar**: la vuelta de «tareas al instante»
+/// (10-oct-2026, el usuario: «sincronizar las tareas de forma rapida a
+/// todos los dispositivos»). Es la de «con todos» ([una] sin `elegir`)
+/// recortada a `chats` (ids de chat como viajan, no fichas del PC):
+///
+/// - De `chats` solo entra lo que entraria en la vuelta entera: lo elegido
+///   la ultima vez con ese aparato (o todo la primera) y nada con lapida
+///   pendiente. Un chat desmarcado con ese aparato no se cuela por aqui.
+/// - **No se borra ningun proyecto** (como en toda vuelta sin preguntar) y
+///   solo se levantan las lapidas de `chats`.
+/// - **Sin la galeria de capturas**: es lo que mas tarda y no tiene que ver.
+///
+/// En el cable no cambia nada: quien responde atiende peticion a peticion
+/// (`catalogo`, `lapidas`, y por chat `inventario`… `base`) y nunca sabe ni
+/// pregunta cuantos chats se van a juntar; en el movil igual
+/// (`Respondedor.responder` de `Protocolo.kt`).
+pub fn solo_estos<D: Disco + ?Sized, F: Read + Write>(
+    s: &mut Sesion<'_, D, F>,
+    chats: &BTreeSet<String>,
+    hecho: &mut Hecho,
+    rotulo: &str,
+    ahora: &dyn Fn() -> i64,
+    progreso: &mut dyn FnMut(Trabajo),
+) -> Resultado<Vuelta> {
+    con_alcance(s, None, Some(chats), hecho, rotulo, ahora, progreso)
+}
+
+/// Lo de [una] y [solo_estos]: con `solo`, la vuelta se recorta a esos
+/// chats (y entonces nunca se pregunta).
+fn con_alcance<D: Disco + ?Sized, F: Read + Write>(
+    s: &mut Sesion<'_, D, F>,
+    elegir: Option<Elegir<'_>>,
+    solo: Option<&BTreeSet<String>>,
+    hecho: &mut Hecho,
+    rotulo: &str,
+    ahora: &dyn Fn() -> i64,
+    progreso: &mut dyn FnMut(Trabajo),
+) -> Resultado<Vuelta> {
+    let elegir = if solo.is_some() { None } else { elegir };
     let disco = s.disco();
     let otro = s.otro.clone();
     let lista_mia = disco.chats()?;
@@ -442,19 +484,30 @@ pub fn una<D: Disco + ?Sized, F: Read + Write>(
     } else {
         Mando::Acordar
     });
-    let decision = decidir_borrados(&plan, preguntado.then_some(&elegidos), lo_mio_manda);
+    let mut decision = decidir_borrados(&plan, preguntado.then_some(&elegidos), lo_mio_manda);
+    if let Some(solo) = solo {
+        // Recortada, solo se toca lo suyo: lo demas lo decide la vuelta
+        // entera. Sin preguntar no se borra nada, asi que basta con esto.
+        decision.levantar.retain(|c| solo.contains(c));
+    }
     ejecutar_borrados(s, &decision, &mios, &suyos, ahora(), progreso)?;
     let nombre_de = |c: &str| {
         mios.get(c)
             .or(suyos.get(c))
             .map_or(c.to_string(), |x| x.nombre.clone())
     };
-    let mut avisos = avisos_de_borrados(&decision, &nombre_de, &otro.nombre);
+    // Recortada, los avisos de lo pendiente de borrar son de la entera.
+    let mut avisos = if solo.is_some() {
+        Vec::new()
+    } else {
+        avisos_de_borrados(&decision, &nombre_de, &otro.nombre)
+    };
 
     let empezo = std::time::Instant::now();
     for chat in ids
         .iter()
         .filter(|c| elegidos.contains(*c) && !decision.fuera.contains(*c))
+        .filter(|c| solo.is_none_or(|x| x.contains(*c)))
     {
         let nombre = filas
             .iter()
@@ -491,7 +544,7 @@ pub fn una<D: Disco + ?Sized, F: Read + Write>(
     }
     // **La galeria de capturas**, con sus fechas de irse (Android v0.107.0).
     // Si el otro no sabe de galerias, no pasa nada.
-    if s.tiene_galeria() {
+    if solo.is_none() && s.tiene_galeria() {
         progreso(Trabajo::solo(format!(
             "{rotulo}Juntando la galería con {}…",
             otro.nombre

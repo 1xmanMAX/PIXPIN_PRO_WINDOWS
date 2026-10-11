@@ -1305,3 +1305,84 @@ fn con_lo_mio_manda_mi_proyecto_queda_entero_y_el_suyo_solo_viaja_si_aqui_no_hay
     assert_eq!(mio(&p.tab, "pr-1"), ["h1"], "y el suyo queda como el mio");
     assert_eq!(mio(&p.tel, "pr-2"), ["z1"], "el que aqui no hay, llega");
 }
+
+/// **Tareas al instante** (10-oct-2026): la vuelta recortada a un chat
+/// junta ese chat y nada mas, con el cable de siempre: quien responde no
+/// nota la diferencia.
+#[test]
+fn la_vuelta_de_solo_estos_chats_junta_esos_y_deja_los_demas_para_la_entera() {
+    let p = montar("solo-estos");
+    p.emparejar();
+    proyecto(
+        &p.tel,
+        json!({"id":"pr-1","nombre":"Obra","hojas":[],"tocado":5}),
+    );
+    mensaje(
+        &p.tel,
+        &p.reloj,
+        Nuevo {
+            proyecto: Some("pr-1"),
+            ..nota("o1", "- [ ] tarea")
+        },
+    );
+    mensaje(&p.tel, &p.reloj, nota("g1", "en guardados"));
+    let solo = |chats: &[&str]| {
+        conectado(&p.tel, &p.tab, false, None, &p.reloj, |s| {
+            let mut hecho = Hecho::default();
+            let elegidos: BTreeSet<String> = chats.iter().map(|c| c.to_string()).collect();
+            crate::vuelta::solo_estos(
+                s,
+                &elegidos,
+                &mut hecho,
+                "",
+                &|| p.reloj.ahora(),
+                &mut |_| {},
+            )
+            .unwrap();
+            hecho
+        })
+        .unwrap()
+    };
+    solo(&["pr-1"]);
+    assert_eq!(
+        senas(&p.tab, "pr-1"),
+        ["1a".to_string()].into(),
+        "el chat pedido llega"
+    );
+    assert!(
+        senas(&p.tab, GENERAL).is_empty(),
+        "caso negativo: el otro no viaja"
+    );
+    // Lo tachado despues tambien, y otra vez sin tocar «Guardados».
+    editar(&p.tel, "o1", |m| {
+        kotlin::poner(m, "texto", Json::cadena("- [x] tarea"))
+    });
+    solo(&["pr-1"]);
+    assert!(texto_de(&p.tab).contains(&"- [x] tarea".to_string()));
+    assert!(senas(&p.tab, GENERAL).is_empty());
+    // Un chat que no esta en ninguno de los dos no rompe nada.
+    solo(&["no-existe"]);
+    // La entera se lleva el resto.
+    p.vuelta_del_tel(None);
+    assert_eq!(senas(&p.tab, GENERAL), ["1a".to_string()].into());
+}
+
+/// Un chat desmarcado con ese aparato en «¿Que sincronizar?» no se cuela
+/// por la vuelta recortada.
+#[test]
+fn la_vuelta_recortada_respeta_lo_desmarcado_con_ese_aparato() {
+    let p = montar("solo-desmarcado");
+    p.emparejar();
+    mensaje(&p.tel, &p.reloj, nota("g1", "en guardados"));
+    p.tel
+        .guardar_elegidos("id-tab", &BTreeSet::from(["otro".to_string()]))
+        .unwrap();
+    conectado(&p.tel, &p.tab, false, None, &p.reloj, |s| {
+        let mut hecho = Hecho::default();
+        let chats = BTreeSet::from([GENERAL.to_string()]);
+        crate::vuelta::solo_estos(s, &chats, &mut hecho, "", &|| p.reloj.ahora(), &mut |_| {})
+            .unwrap();
+    })
+    .unwrap();
+    assert!(senas(&p.tab, GENERAL).is_empty());
+}

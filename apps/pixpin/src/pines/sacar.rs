@@ -417,8 +417,15 @@ impl Pines {
                                 false
                             }
                         });
-                    if let Err(e) = &guardado {
-                        tracing::warn!(?e, id, "no se pudo guardar la lista en su mensaje");
+                    match &guardado {
+                        Err(e) => {
+                            tracing::warn!(?e, id, "no se pudo guardar la lista en su mensaje")
+                        }
+                        // Tachada en el pin: a los demas aparatos, ya.
+                        Ok(Some(_)) if hecho == Some(Hecho::Guardar) => {
+                            crate::sincronizar::automatica::avisar_tareas_en(&v.carpeta)
+                        }
+                        Ok(_) => {}
                     }
                     match hecho {
                         // Releida, hay que repintar aunque el toque no hiciera nada.

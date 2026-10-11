@@ -433,6 +433,45 @@ pub fn anotar_borrados(
     disco::anotar_marcas_en(&d.sincro(), &disco::marcas_de(&chat, &portatiles, cuando))
 }
 
+/// La huella de un cuaderno: cuando se toco y cuanto pesa.
+type Huella = (std::time::SystemTime, u64);
+
+/// Los cuadernos que quedaron sellados, con el aparato con que se sellaron y
+/// su huella de entonces. Del proceso y no de un `DiscoPc` (cada vuelta hace
+/// el suyo).
+static SELLADOS: std::sync::Mutex<Vec<(PathBuf, String, Huella)>> =
+    std::sync::Mutex::new(Vec::new());
+
+fn huella_de(fichero: &Path) -> Option<Huella> {
+    let m = std::fs::metadata(fichero).ok()?;
+    Some((m.modified().ok()?, m.len()))
+}
+
+/// Si `fichero` sigue como quedo al sellarlo con `aparato`.
+fn ya_sellado(fichero: &Path, aparato: &str) -> bool {
+    let Some(h) = huella_de(fichero) else {
+        return false;
+    };
+    SELLADOS
+        .lock()
+        .map(|v| {
+            v.iter()
+                .any(|(f, a, x)| f == fichero && a == aparato && *x == h)
+        })
+        .unwrap_or(false)
+}
+
+/// Apunta que `fichero` queda sellado con `aparato`, con su huella de ahora.
+fn apuntar_sellado(fichero: &Path, aparato: &str) {
+    let Some(h) = huella_de(fichero) else {
+        return;
+    };
+    if let Ok(mut v) = SELLADOS.lock() {
+        v.retain(|(f, _, _)| f != fichero);
+        v.push((fichero.to_path_buf(), aparato.to_string(), h));
+    }
+}
+
 fn ahora() -> i64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -652,10 +691,21 @@ impl Disco for DiscoPc {
         let aparato = crate::codigos::de_aparato(&self.identidad()?.yo.id);
         for (chat, _) in self.mapa() {
             let _cerrojo = crate::cuaderno::cerrojo();
+            // **Lo ya sellado no se vuelve a leer** (10-oct-2026): se sella en
+            // cada `inventario`, dos veces por chat y por lado en cada vuelta,
+            // y recorrer TODOS los cuadernos cada vez era lo que mas tardaba
+            // en la vuelta de un solo chat de las tareas al instante. Un
+            // cuaderno que no se ha tocado desde que quedo sellado (misma
+            // fecha y tamano, mismo aparato) sigue sellado.
+            let fichero = self.carpeta_de(&chat).join("guardados.jsonl");
+            if ya_sellado(&fichero, &aparato) {
+                continue;
+            }
             let (mut buenas, crudas) = self.lineas(&chat)?;
             if !disco::sellar_chat(&mut buenas, &aparato).is_empty() {
                 self.escribir_lineas(&chat, &buenas, &crudas)?;
             }
+            apuntar_sellado(&fichero, &aparato);
         }
         Ok(())
     }
@@ -1014,7 +1064,8 @@ pub fn con_la_extension_del_nombre(raiz: &Path, fichero: PathBuf, nombre: &str) 
     }
     let _ = std::fs::remove_file(&destino);
     let hecho = std::fs::create_dir_all(&carpeta).and_then(|()| {
-        std::fs::hard_link(&fichero, &destino).or_else(|_| std::fs::copy(&fichero, &destino).map(|_| ()))
+        std::fs::hard_link(&fichero, &destino)
+            .or_else(|_| std::fs::copy(&fichero, &destino).map(|_| ()))
     });
     // Si no se pudo, el de siempre: peor abrirlo como .bin que no ofrecerlo.
     if hecho.is_ok() { destino } else { fichero }
@@ -1036,14 +1087,86 @@ mod pruebas_con_extension {
         // Fuera de la carpeta del chat, en la cache.
         assert!(bueno.starts_with(raiz.join("cache")));
         // Una segunda vez, el mismo.
-        assert_eq!(con_la_extension_del_nombre(&raiz, bin.clone(), "manual.pdf"), bueno);
+        assert_eq!(
+            con_la_extension_del_nombre(&raiz, bin.clone(), "manual.pdf"),
+            bueno
+        );
         // Casos negativos: con su extension ya buena, o sin nombre que diga
         // otra cosa, el fichero tal cual.
         let png = raiz.join("foto.png");
         std::fs::write(&png, b"x").unwrap();
-        assert_eq!(con_la_extension_del_nombre(&raiz, png.clone(), "foto.pdf"), png);
-        assert_eq!(con_la_extension_del_nombre(&raiz, bin.clone(), "sin extension"), bin);
-        assert_eq!(con_la_extension_del_nombre(&raiz, bin.clone(), "otro.bin"), bin);
+        assert_eq!(
+            con_la_extension_del_nombre(&raiz, png.clone(), "foto.pdf"),
+            png
+        );
+        assert_eq!(
+            con_la_extension_del_nombre(&raiz, bin.clone(), "sin extension"),
+            bin
+        );
+        assert_eq!(
+            con_la_extension_del_nombre(&raiz, bin.clone(), "otro.bin"),
+            bin
+        );
+        let _ = std::fs::remove_dir_all(&raiz);
+    }
+}
+
+#[cfg(test)]
+mod pruebas_de_sellar {
+    use super::*;
+
+    fn uids(carpeta: &Path) -> Vec<bool> {
+        std::fs::read_to_string(carpeta.join("guardados.jsonl"))
+            .unwrap()
+            .lines()
+            .map(|l| l.contains("\"uid\""))
+            .collect()
+    }
+
+    #[test]
+    fn lo_sellado_no_se_relee_pero_lo_escrito_despues_si_se_sella() {
+        let raiz = std::env::temp_dir().join(format!("pixpin-vista-sellar-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&raiz);
+        let ficha = Ficha::nueva("Obra", 5, "PC01");
+        let mut indice = Indice::default();
+        indice.proyectos.push(ficha.clone());
+        indice.guardar(&raiz).unwrap();
+        let d = DiscoPc::nuevo(&raiz);
+        d.guardar_identidad(&pixpin_sincro::disco::Identidad {
+            yo: Aparato {
+                id: "id-pc".into(),
+                nombre: "PC".into(),
+                ..Default::default()
+            },
+            ..Default::default()
+        })
+        .unwrap();
+        let carpeta = almacen::carpeta(&raiz, &ficha.id);
+        std::fs::create_dir_all(&carpeta).unwrap();
+        let linea = |id: &str, cuando: i64| {
+            format!(
+                "{{\"id\":\"{id}\",\"cuando\":{cuando},\"clase\":\"NOTA\",\"texto\":\"x\",\"numero\":{cuando}}}\n"
+            )
+        };
+        std::fs::write(carpeta.join("guardados.jsonl"), linea("a", 1)).unwrap();
+        d.sellar().unwrap();
+        assert_eq!(uids(&carpeta), [true]);
+        let sellado = std::fs::read(carpeta.join("guardados.jsonl")).unwrap();
+        // Sin tocar: la segunda no reescribe nada.
+        d.sellar().unwrap();
+        assert_eq!(
+            std::fs::read(carpeta.join("guardados.jsonl")).unwrap(),
+            sellado
+        );
+        // Caso negativo: lo anadido despues (otro tamano) se sella igual.
+        let mut f = std::fs::OpenOptions::new()
+            .append(true)
+            .open(carpeta.join("guardados.jsonl"))
+            .unwrap();
+        std::io::Write::write_all(&mut f, linea("b", 2).as_bytes()).unwrap();
+        drop(f);
+        d.sellar().unwrap();
+        assert_eq!(uids(&carpeta), [true, true]);
         let _ = std::fs::remove_dir_all(&raiz);
     }
 }
