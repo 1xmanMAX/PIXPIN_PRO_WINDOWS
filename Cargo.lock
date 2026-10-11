@@ -1651,6 +1651,7 @@ dependencies = [
  "serde_json",
  "thiserror",
  "tracing",
+ "tracing-subscriber",
  "windows",
  "windows-collections",
  "windows-core",
