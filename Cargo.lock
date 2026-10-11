@@ -1502,6 +1502,15 @@ name = "pixpin-gpu"
 version = "0.1.0"
 
 [[package]]
+name = "pixpin-hojas"
+version = "0.1.0"
+dependencies = [
+ "flate2",
+ "thiserror",
+ "zip",
+]
+
+[[package]]
 name = "pixpin-lanzador"
 version = "0.1.0"
 dependencies = [
@@ -1632,6 +1641,8 @@ dependencies = [
 name = "pixpin-render"
 version = "0.1.0"
 dependencies = [
+ "image",
+ "pixpin-hojas",
  "pixpin-nivel",
  "serde_json",
  "thiserror",

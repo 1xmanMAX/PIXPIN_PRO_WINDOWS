@@ -14,6 +14,7 @@ pub mod capa_estatica;
 pub mod fuera_de_pantalla;
 pub mod grafito;
 pub mod grano;
+pub mod hoja_office;
 mod halo;
 pub mod icono;
 pub mod iconos_excalidraw;
