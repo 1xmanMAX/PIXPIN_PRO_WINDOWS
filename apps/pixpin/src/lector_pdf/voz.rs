@@ -81,6 +81,11 @@ pub(super) fn pedir_el_texto(e: &mut Estado, ruta: &Path) {
     if e.hallar.texto.is_some() || e.hallar.leyendo.is_some() {
         return;
     }
+    // Un Word o un PowerPoint: su texto sale de sus hojas maquetadas.
+    if e.office.is_some() {
+        super::office::pedir_el_texto(e);
+        return;
+    }
     let (tx, rx) = mpsc::channel();
     let r = ruta.to_path_buf();
     let lanzado = std::thread::Builder::new()

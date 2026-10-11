@@ -1391,6 +1391,7 @@ dependencies = [
  "pixpin-nivel",
  "pixpin-notas",
  "pixpin-ocr",
+ "pixpin-office",
  "pixpin-pdf",
  "pixpin-pila",
  "pixpin-pin",
