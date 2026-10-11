@@ -120,8 +120,10 @@ mod pruebas {
         let xls = dir.join("Viejo.xls");
         std::fs::write(&xls, b"\xD0\xCF\x11\xE0...").unwrap();
         assert!(se_abre(&libro));
-        // Caso negativo: el .xls (binario) no lo lee el visor.
-        assert!(!se_abre(&xls));
+        // El .xls (binario) no lo lee el visor de hojas: solo se abre con el
+        // espacio si el equipo tiene la vista previa de Office (pin de Office).
+        assert!(!crate::visor_hoja::se_abre_fichero(&xls));
+        assert_eq!(se_abre(&xls), crate::pin_office::se_abre(&xls));
         let _ = std::fs::remove_dir_all(&dir);
     }
 
