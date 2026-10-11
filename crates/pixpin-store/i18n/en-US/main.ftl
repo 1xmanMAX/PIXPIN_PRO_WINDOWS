@@ -2274,3 +2274,12 @@ al-movil-cortado = Couldn't send to { $movil }: { $motivo }
 al-movil-sin-grupo = This PC is not in a group: set it up in PixPin's Sync
 al-movil-no-es-del-grupo = That device is no longer in this PC's group
 al-movil-sin-imagenes = There was nothing to send
+
+## Excel sheet viewer (visor_hoja)
+hoja-copiado = { $celdas ->
+    [one] 1 cell copied
+   *[other] { $celdas } cells copied
+  }
+hoja-demasiado = Too many cells to copy at once ({ $celdas })
+hoja-cargando = Loading… { $filas } rows
+hoja-enlace-no-abre = The link could not be opened

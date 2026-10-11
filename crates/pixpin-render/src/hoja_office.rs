@@ -1803,8 +1803,12 @@ fn pintar_encabezados(
     llenar(p, rect(caja.x, celdas.y, celdas.x, caja.y + caja.alto), ENCABEZADO_FONDO);
     let resalte = Rgb { r: 0xD2, g: 0xD2, b: 0xD2 };
     let texto_sel = Rgb { r: 0x21, g: 0x73, b: 0x46 };
+    // `e` trae los ppp de la pantalla (para la letra); las posiciones van
+    // con el zoom solo, como las celdas: la rejilla ya esta en px de esa
+    // pantalla (con 120 ppp los encabezados se iban un 25 % de las celdas).
+    let zoom = e * 96.0 / rejilla.ppp.max(1.0);
     for panel in paneles {
-        let m = Mapa::de(panel, celdas, e);
+        let m = Mapa::de(panel, celdas, zoom);
         if panel.pantalla[1] == 0.0 && eh > 0.0 {
             // Letras de las columnas.
             p.empujar_recorte(RectF { x: m.ox as f32, y: caja.y, ancho: panel.pantalla[2] as f32, alto: eh });

@@ -3,8 +3,8 @@
 //! espacio pulsado en la lista de ficheros del Explorador o del escritorio;
 //! aqui, en su hilo, se lee la seleccion y lo que PixPin sabe abrir va por el
 //! mismo camino que «Abrir con PixPin» (`Evento::AbrirFicheros`): fotos,
-//! videos, audios, PDF, Word, EPUB, PowerPoint, Markdown, planos DWG/DXF y
-//! modelos IFC, Revit y de Civil 3D.
+//! videos, audios, PDF, Word, EPUB, PowerPoint, Markdown, planos DWG/DXF,
+//! modelos IFC, Revit y de Civil 3D y libros de Excel (`.xlsx`, `.xlsm`).
 //!
 //! Como en QuickLook: **otro espacio con lo mismo elegido lo cierra**, y un
 //! espacio con otra cosa elegida cierra lo de antes y abre lo nuevo (se
@@ -104,6 +104,20 @@ mod pruebas {
         for n in ["a.zip", "b.exe", "c", "d.lnk"] {
             assert!(!se_abre(Path::new(n)), "{n}");
         }
+    }
+
+    #[test]
+    fn un_excel_se_abre_con_el_espacio_y_un_xls_no() {
+        let dir = std::env::temp_dir().join(format!("pixpin-vista-rapida-xlsx-{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+        let libro = dir.join("Presupuesto.xlsx");
+        std::fs::write(&libro, b"PK\x03\x04...").unwrap();
+        let xls = dir.join("Viejo.xls");
+        std::fs::write(&xls, b"\xD0\xCF\x11\xE0...").unwrap();
+        assert!(se_abre(&libro));
+        // Caso negativo: el .xls (binario) no lo lee el visor.
+        assert!(!se_abre(&xls));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

@@ -35,6 +35,8 @@ pixpin-sincro = { version = "0.1.0", path = "../../crates/pixpin-sincro" }
 pixpin-lecciones = { path = "../../crates/pixpin-lecciones" }
 pixpin-timeline = { path = "../../crates/pixpin-timeline" }
 pixpin-store = { version = "0.1.0", path = "../../crates/pixpin-store" }
+# Las hojas de Excel (.xlsx) en su visor como pin (`visor_hoja`).
+pixpin-hojas = { path = "../../crates/pixpin-hojas" }
 pixpin-tinta = { version = "0.1.0", path = "../../crates/pixpin-tinta" }
 pixpin-ui = { version = "0.1.0", path = "../../crates/pixpin-ui" }
 pixpin-cad = { path = "../../crates/pixpin-cad" }

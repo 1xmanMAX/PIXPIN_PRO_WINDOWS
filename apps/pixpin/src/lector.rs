@@ -82,14 +82,20 @@ pub fn se_lee_al_tocar(nombre: &str) -> bool {
 /// `.csv` o `.txt` cualquiera no). Para lo que el usuario abre o suelta en
 /// PixPin a proposito.
 pub fn se_lee_al_tocar_fichero(ruta: &std::path::Path) -> bool {
-    se_lee_al_tocar(&pixpin_docs::nombre(ruta)) || pixpin_bim::es_de_civil(ruta)
+    se_lee_al_tocar(&pixpin_docs::nombre(ruta))
+        || pixpin_bim::es_de_civil(ruta)
+        // Un libro de Excel moderno, en el visor de hojas (si es un ZIP).
+        || crate::visor_hoja::se_abre_fichero(ruta)
 }
 
 /// Para la burbuja del chat: los LandXML si; los `.csv` y `.txt` siguen
-/// yendo a su programa aunque sean puntos.
+/// yendo a su programa aunque sean puntos. (Un Excel del chat no llega
+/// aqui: antes se abre como tablas, `ventana_chat::libro`.)
 pub fn se_lee_al_tocar_burbuja(ruta: &std::path::Path) -> bool {
     let nombre = pixpin_docs::nombre(ruta);
-    se_lee_al_tocar(&nombre) || (pixpin_docs::extension(&nombre) == "xml" && pixpin_bim::es_de_civil(ruta))
+    se_lee_al_tocar(&nombre)
+        || (pixpin_docs::extension(&nombre) == "xml" && pixpin_bim::es_de_civil(ruta))
+        || crate::visor_hoja::se_abre_fichero(ruta)
 }
 
 /// Abre `ruta` en el lector que le toque, en su propio hilo. `false` si no
@@ -120,6 +126,10 @@ pub fn abrir_en_su_lector(
         true
     } else if crate::modelo_bim::se_abre(nombre) {
         crate::modelo_bim::lanzar(idioma, ubicacion.clone(), ruta);
+        true
+    } else if crate::visor_hoja::se_abre(nombre) {
+        // Un .xlsx que no se pueda leer se abre con su programa desde alli.
+        crate::visor_hoja::lanzar(idioma, ruta);
         true
     } else {
         false
@@ -582,6 +592,24 @@ mod pruebas {
             tira.marco
         );
         assert!(!riel(1600.0, 900.0, 100, 0, false).tira.is_some());
+    }
+
+    #[test]
+    fn un_excel_abierto_con_pixpin_va_al_visor_de_hojas_si_es_un_zip() {
+        let dir = std::env::temp_dir().join(format!("pixpin-lector-hoja-{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+        let libro = dir.join("Cuentas.xlsx");
+        std::fs::write(&libro, b"PK\x03\x04...").unwrap();
+        let viejo = dir.join("Antiguo.xlsx");
+        std::fs::write(&viejo, b"\xD0\xCF\x11\xE0...").unwrap();
+        assert!(se_lee_al_tocar_fichero(&libro));
+        assert!(se_lee_al_tocar_burbuja(&libro));
+        // Caso negativo: un .xls renombrado y un .xls siguen su camino de
+        // antes (su programa o un pin), y por el nombre solo tampoco.
+        assert!(!se_lee_al_tocar_fichero(&viejo));
+        assert!(!se_lee_al_tocar_fichero(&dir.join("hoja.xls")));
+        assert!(!se_lee_al_tocar("Cuentas.xlsx"));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
