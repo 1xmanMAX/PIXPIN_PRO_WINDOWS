@@ -81,6 +81,8 @@ mod gif;
 mod grabador;
 mod grupos_ventanas;
 mod imagenes_lienzo;
+// Solo para desarrollar: `PIXPIN_INSTANCIA` (ver el modulo).
+mod instancia_de_prueba;
 mod lecciones;
 mod lector;
 /// Los lectores como un pin: su ventana y su barra de fuera.
@@ -284,6 +286,12 @@ fn main() -> Result<()> {
 fn arrancar(
     guardia_registro: &mut Option<tracing_appender::non_blocking::WorkerGuard>,
 ) -> Result<()> {
+    // 0. Solo para desarrollar: con `PIXPIN_INSTANCIA` puesta, una PixPin de
+    // prueba aparte que solo abre los ficheros que se le pasan (ver
+    // `instancia_de_prueba`). Sin la variable, el arranque de siempre.
+    if let Some(nombre) = instancia_de_prueba::pedida() {
+        return instancia_de_prueba::arrancar(&nombre, guardia_registro);
+    }
     // 1. Una sola copia a la vez.
     //
     // Los dos casos de error se tratan distinto a proposito. Que ya haya otra

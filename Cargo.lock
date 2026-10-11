@@ -1392,6 +1392,7 @@ dependencies = [
  "pixpin-nivel",
  "pixpin-notas",
  "pixpin-ocr",
+ "pixpin-office",
  "pixpin-pdf",
  "pixpin-pila",
  "pixpin-pin",
@@ -1571,6 +1572,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "pixpin-office"
+version = "0.1.0"
+dependencies = [
+ "memchr",
+ "pixpin-docs",
+ "zip",
+]
+
+[[package]]
 name = "pixpin-pdf"
 version = "0.1.0"
 dependencies = [
@@ -1643,8 +1653,11 @@ name = "pixpin-render"
 version = "0.1.0"
 dependencies = [
  "image",
+ "pixpin-codec",
  "pixpin-hojas",
  "pixpin-nivel",
+ "pixpin-office",
+ "pixpin-pdf",
  "serde_json",
  "thiserror",
  "windows",

@@ -10,6 +10,13 @@
 //! maquetacion. Sin PowerPoint se dice, y se ofrece «Abrir con otra app»
 //! (el visor de la tienda, LibreOffice, lo que haya).
 //!
+//! **Desde el 10-oct-2026 presentar ya no abre PowerPoint**: un `.pptx` (y
+//! `.pptm`, `.ppsx`, `.potx`...) lo maqueta PixPin (`pixpin-office`) y cada
+//! diapositiva se pinta en vectores a la medida de la pantalla
+//! ([`presentar_nativa`], lo que pide «Presentar» en el lector de Office).
+//! PowerPoint queda para lo que PixPin no lee (`.ppt`, `.odp`, o un `.pptx`
+//! que no se deja) y para «Anadir al proyecto», que sigue uniendo su PDF.
+//!
 //! # Como se usa
 //!
 //! - **Tocar la burbuja** de un `.pptx` (o «Abrir aqui») lo **presenta**: la
@@ -40,6 +47,7 @@ use std::sync::mpsc;
 use anyhow::{Context, Result};
 use pixpin_codec::imagen::ImagenRgba;
 use pixpin_render::icono::material;
+use pixpin_render::pagina_office::PintorOffice;
 use pixpin_render::{Color, Pintor, RectF, Superficie};
 use pixpin_shell::overlay::{EventoOverlay, VentanaOverlay};
 use pixpin_store::Catalogo;
@@ -259,8 +267,53 @@ pub fn encajar(pagina: (f32, f32), pantalla: (f32, f32)) -> RectF {
 // Abrir
 
 /// **Presenta** esa presentacion (o dice por que no), en su propio hilo.
-/// Lo llama el chat al tocar la burbuja o «Abrir aqui» (`lector.rs`).
+/// Un `.pptx` y los suyos los maqueta PixPin (sin abrir PowerPoint); los
+/// demas (`.ppt`, `.odp`) van por PowerPoint, como antes.
 pub fn lanzar(idioma: pixpin_store::Idioma, ubicacion: pixpin_store::Ubicacion, ruta: &Path) {
+    if pixpin_office::tipo_de(&pixpin_docs::nombre(ruta)) == Some(pixpin_office::Tipo::PowerPoint) {
+        presentar_nativa(idioma, ubicacion, ruta, 0);
+    } else {
+        lanzar_con_powerpoint(idioma, ubicacion, ruta);
+    }
+}
+
+/// **Presenta un PowerPoint maquetado por PixPin** (`pixpin-office`) desde
+/// la diapositiva `desde`: lo que pide «Presentar» en el lector de Office.
+/// Si no se deja leer, por PowerPoint como antes.
+pub fn presentar_nativa(idioma: pixpin_store::Idioma, ubicacion: pixpin_store::Ubicacion, ruta: &Path, desde: usize) {
+    let ruta = ruta.to_path_buf();
+    let lanzado = std::thread::Builder::new().name("diapositivas".into()).spawn(move || {
+        let _com = pixpin_shell::ComDelHilo::iniciar();
+        let empezo = std::time::Instant::now();
+        let mut documento = match pixpin_office::Documento::abrir(&ruta) {
+            Ok(d) => Some(d),
+            Err(err) => {
+                tracing::warn!(%err, ruta = %ruta.display(), "presentacion que PixPin no lee; se pasa por PowerPoint");
+                lanzar_con_powerpoint(idioma, ubicacion, &ruta);
+                return;
+            }
+        };
+        tracing::info!(ms = empezo.elapsed().as_millis() as u64, "presentacion leida (sin PowerPoint)");
+        let textos = Catalogo::nuevo(idioma);
+        let hecho = crate::dispositivo_perdido::con_recursos("diapositivas", |r| {
+            let d = match documento.take() {
+                Some(d) => d,
+                None => pixpin_office::Documento::abrir(&ruta).map_err(|e| anyhow::anyhow!("{e}"))?,
+            };
+            presentar(r, &textos, ubicacion.raiz(), &ruta, Some((d, desde)))
+        });
+        if let Err(e) = hecho {
+            tracing::warn!(?e, ruta = %ruta.display(), "no se pudo presentar");
+        }
+    });
+    if let Err(e) = lanzado {
+        tracing::warn!(?e, "no se pudo lanzar el hilo de las diapositivas");
+    }
+}
+
+/// **Presenta por PowerPoint**: el camino de antes (convertir a PDF con el
+/// PowerPoint del equipo), para lo que PixPin no maqueta.
+pub fn lanzar_con_powerpoint(idioma: pixpin_store::Idioma, ubicacion: pixpin_store::Ubicacion, ruta: &Path) {
     let ruta = ruta.to_path_buf();
     let lanzado = std::thread::Builder::new()
         .name("diapositivas".into())
@@ -273,7 +326,7 @@ pub fn lanzar(idioma: pixpin_store::Idioma, ubicacion: pixpin_store::Ubicacion, 
                 return;
             }
             let hecho = crate::dispositivo_perdido::con_recursos("diapositivas", |r| {
-                presentar(r, &textos, ubicacion.raiz(), &ruta)
+                presentar(r, &textos, ubicacion.raiz(), &ruta, None)
             });
             if let Err(e) = hecho {
                 tracing::warn!(?e, ruta = %ruta.display(), "no se pudo presentar");
@@ -344,7 +397,42 @@ fn hilo(
 /// La pastilla se va sola tras esto, como la del lector.
 const MS_DE_LA_PASTILLA: u64 = 3000;
 
-fn presentar(recursos: &Recursos, textos: &Catalogo, raiz: &Path, ruta: &Path) -> Result<()> {
+/// Las diapositivas maquetadas por PixPin: el documento, su pintor (del
+/// motor de esta ventana) y las ya maquetadas.
+struct Nativas {
+    documento: pixpin_office::Documento,
+    pintor: PintorOffice,
+    recursos: std::sync::Arc<pixpin_office::Recursos>,
+    hechas: HashMap<usize, std::sync::Arc<pixpin_office::Pagina>>,
+}
+
+impl Nativas {
+    fn diapositiva(&mut self, i: usize) -> Option<std::sync::Arc<pixpin_office::Pagina>> {
+        if let Some(p) = self.hechas.get(&i) {
+            return Some(p.clone());
+        }
+        let p = self.documento.pagina(i, &self.pintor.letras)?;
+        self.hechas.insert(i, p.clone());
+        Some(p)
+    }
+}
+
+impl Drop for Nativas {
+    fn drop(&mut self) {
+        self.pintor.olvidar_imagenes();
+    }
+}
+
+/// La presentacion a pantalla completa. Con `nativa` (el documento y desde
+/// que diapositiva) las pinta PixPin en vectores; sin ella, las saca
+/// PowerPoint a un PDF en su hilo.
+fn presentar(
+    recursos: &Recursos,
+    textos: &Catalogo,
+    raiz: &Path,
+    ruta: &Path,
+    nativa: Option<(pixpin_office::Documento, usize)>,
+) -> Result<()> {
     let monitores = pixpin_capture::enumerar_monitores().context("sin monitores")?;
     let monitor = monitores
         .principal()
@@ -372,16 +460,32 @@ fn presentar(recursos: &Recursos, textos: &Catalogo, raiz: &Path, ruta: &Path) -
     let (tx_llega, rx) = mpsc::channel::<Llega>();
     let hwnd = ventana.handle().0 as isize;
     let (raiz_h, ruta_h) = (raiz.to_path_buf(), ruta.to_path_buf());
-    std::thread::Builder::new()
-        .name("diapositivas-hojas".into())
-        .spawn(move || hilo(raiz_h, ruta_h, rx_pedidos, tx_llega, hwnd))
-        .context("sin hilo para las diapositivas")?;
-
     let mut pase = Pase {
         pastilla: true,
         ..Default::default()
     };
     let mut medidas: Vec<(f32, f32)> = Vec::new();
+    // Sin PowerPoint: el documento ya leido, su pintor y cuantas hay.
+    let mut nativas = match nativa {
+        Some((documento, desde)) => {
+            let pintor = PintorOffice::nuevo(&motor).context("sin letras para pintar las diapositivas")?;
+            let recursos = documento.recursos();
+            let mut n = Nativas { documento, pintor, recursos, hechas: HashMap::new() };
+            pase.total = n.documento.total();
+            let tam = n.diapositiva(desde.min(pase.total.saturating_sub(1))).map(|p| (p.ancho, p.alto)).unwrap_or((960.0, 540.0));
+            medidas = vec![tam; pase.total];
+            pase.actual = desde.min(pase.total.saturating_sub(1));
+            drop((rx_pedidos, tx_llega));
+            Some(n)
+        }
+        None => {
+            std::thread::Builder::new()
+                .name("diapositivas-hojas".into())
+                .spawn(move || hilo(raiz_h, ruta_h, rx_pedidos, tx_llega, hwnd))
+                .context("sin hilo para las diapositivas")?;
+            None
+        }
+    };
     let mut pintadas: HashMap<usize, ID2D1Bitmap1> = HashMap::new();
     let mut pedida: Option<usize> = None;
     let mut fallo: Option<String> = None;
@@ -466,7 +570,7 @@ fn presentar(recursos: &Recursos, textos: &Catalogo, raiz: &Path, ruta: &Path) -
         // Se pide la que se mira; al llegar, la de al lado, para que pasar
         // sea instantaneo. Las lejanas se sueltan: cien diapositivas a
         // pantalla completa serian cientos de megas de video.
-        if pase.total > 0 {
+        if pase.total > 0 && nativas.is_none() {
             let quiero = if !pintadas.contains_key(&pase.actual) {
                 Some(pase.actual)
             } else if pase.actual + 1 < pase.total && !pintadas.contains_key(&(pase.actual + 1)) {
@@ -489,13 +593,20 @@ fn presentar(recursos: &Recursos, textos: &Catalogo, raiz: &Path, ruta: &Path) -
         if hay_que_pintar {
             hay_que_pintar = false;
             let mostrar_pastilla = pase.pastilla && pastilla_hasta > ahora;
+            // La de ahora, maquetada antes de pintar (fuera del fotograma).
+            let diapositiva = nativas.as_mut().and_then(|n| n.diapositiva(pase.actual));
             if let Ok(destino) = superficie.empezar(&motor) {
                 let _ = motor.dibujar(&destino, |p: &Pintor| {
+                    let vectores = match (&nativas, &diapositiva) {
+                        (Some(n), Some(d)) => Some((&n.pintor, &**d, &*n.recursos)),
+                        _ => None,
+                    };
                     botones = pintar(
                         p,
                         &pase,
                         &medidas,
                         &pintadas,
+                        vectores,
                         fallo.as_deref(),
                         mostrar_pastilla,
                         (ancho, alto),
@@ -518,6 +629,7 @@ fn pintar(
     pase: &Pase,
     medidas: &[(f32, f32)],
     pintadas: &HashMap<usize, ID2D1Bitmap1>,
+    vectores: Option<(&PintorOffice, &pixpin_office::Pagina, &pixpin_office::Recursos)>,
     fallo: Option<&str>,
     pastilla: bool,
     (ancho, alto): (f32, f32),
@@ -556,7 +668,11 @@ fn pintar(
     if pase.negro {
         return botones;
     }
-    if let (Some(b), Some(m)) = (pintadas.get(&pase.actual), medidas.get(pase.actual)) {
+    if let Some((pintor, pagina, recursos)) = vectores {
+        // Maquetada por PixPin: en vectores, a la medida de la pantalla.
+        let caja = encajar((pagina.ancho, pagina.alto), (ancho, alto));
+        pintor.pintar(p, pagina, recursos, caja.ancho / pagina.ancho.max(1.0), (caja.x, caja.y), pase.total as u32);
+    } else if let (Some(b), Some(m)) = (pintadas.get(&pase.actual), medidas.get(pase.actual)) {
         p.bitmap(b, encajar(*m, (ancho, alto)), None, false);
     }
     if !pastilla {

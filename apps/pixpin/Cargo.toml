@@ -20,6 +20,8 @@ pixpin-docs = { version = "0.1.0", path = "../../crates/pixpin-docs" }
 # porque este ejecutable no admite `unsafe`.
 pixpin-notas = { version = "0.1.0", path = "../../crates/pixpin-notas" }
 pixpin-pdf = { version = "0.1.0", path = "../../crates/pixpin-pdf" }
+# Word y PowerPoint maquetados como en Office (el pin de paginas de Office).
+pixpin-office = { path = "../../crates/pixpin-office" }
 pixpin-proyecto = { version = "0.1.0", path = "../../crates/pixpin-proyecto" }
 pixpin-codec = { version = "0.1.0", path = "../../crates/pixpin-codec" }
 pixpin-geom = { version = "0.1.0", path = "../../crates/pixpin-geom" }

@@ -55,6 +55,8 @@ pub const EMOJIS: [&str; 12] = pixpin_motor2d::marcas::EMOJIS;
 /// paginas y notas. Es lo que mira la entrada «Abrir aqui» del chat.
 pub fn tiene_lector(nombre: &str) -> bool {
     crate::lector_pdf::se_abre(nombre)
+        // Un Word o un PowerPoint de ahora, con sus paginas de Office.
+        || crate::lector_pdf::se_abre_office(nombre)
         || crate::visor::se_abre(nombre)
         // Un PowerPoint «se lee» presentandolo (D10).
         || crate::diapositivas::es_presentacion(nombre)
@@ -71,6 +73,9 @@ pub fn se_lee_al_tocar(nombre: &str) -> bool {
     ) && tiene_lector(nombre)
         // Tocar la burbuja de un PowerPoint lo presenta, como en el movil.
         || crate::diapositivas::es_presentacion(nombre)
+        // Un Word o un PowerPoint de ahora (tambien las plantillas), en el
+        // lector con sus paginas de Office.
+        || crate::lector_pdf::se_abre_office(nombre)
         // Un plano DWG o DXF, en su visor (como un pin).
         || crate::plano_cad::se_abre(nombre)
         // Un modelo BIM (IFC o Revit), en su visor 3D.
@@ -110,6 +115,13 @@ pub fn abrir_en_su_lector(
     // que al de documentos, que tambien abre los .txt.
     if pixpin_bim::es_de_civil(ruta) {
         crate::modelo_bim::lanzar(idioma, ubicacion.clone(), ruta);
+        return true;
+    }
+    // Un Word o un PowerPoint de ahora: sus paginas tal como las imprime
+    // Office, en el lector de paginas (si no se deja leer, el lanzador lo
+    // manda a donde iba antes: el lector de documentos o PowerPoint).
+    if crate::lector_pdf::se_abre_office(nombre) {
+        crate::lector_pdf::lanzar_office(idioma, ubicacion.clone(), ruta);
         return true;
     }
     if crate::lector_pdf::se_abre(nombre) {

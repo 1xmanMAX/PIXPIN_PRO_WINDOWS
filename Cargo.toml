@@ -38,6 +38,7 @@ pixpin-pdf = { path = "crates/pixpin-pdf" }
 # Word, libros y paginas leidos dentro (visor de documentos, tanda 2.1).
 pixpin-docs = { path = "crates/pixpin-docs" }
 pixpin-hojas = { path = "crates/pixpin-hojas" }
+pixpin-office = { path = "crates/pixpin-office" }
 pixpin-ocr = { path = "crates/pixpin-ocr" }
 pixpin-record = { path = "crates/pixpin-record" }
 pixpin-store = { path = "crates/pixpin-store" }

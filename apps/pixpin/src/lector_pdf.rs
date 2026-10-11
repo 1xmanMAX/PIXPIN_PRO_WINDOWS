@@ -42,6 +42,16 @@
 //! `M` marcador, Ctrl+1..9 ir, clic derecho en su punto: quitar. `A`
 //! anotar (P lapiz, R resaltador, E goma, 1-5 color, Ctrl+Z/Ctrl+Y). `G`
 //! ajustes. Esc salir.
+//!
+//! # Word y PowerPoint
+//!
+//! Un `.docx` o un `.pptx` se abre **en este mismo lector**, con sus paginas
+//! tal como las imprime Office: lo que cambia es de donde salen las hojas
+//! (maquetadas y pintadas en vectores en este hilo, ver `office`), y todo lo
+//! demas (el pin, el aumento, la tinta, buscar, escuchar, el negativo) es lo
+//! de un PDF. Ademas: elegir texto con el raton y Ctrl+C, los
+//! hipervinculos, imprimir (Ctrl+P) y, en un PowerPoint, pasar de una en una
+//! y presentar (F5).
 
 #![forbid(unsafe_code)]
 
@@ -68,7 +78,10 @@ use crate::lector::{
 use crate::lector_tinta::{self, Capa, Tinta};
 use crate::overlay::Recursos;
 
+mod office;
 mod voz;
+
+pub(crate) use office::DeOffice;
 
 /// La pastilla del nombre se va sola tras esto.
 const MS_DE_LA_PASTILLA: u64 = 2600;
@@ -118,6 +131,9 @@ const VK_L: u32 = 0x4C;
 const VK_S: u32 = 0x53;
 const VK_Y: u32 = 0x59;
 const VK_Z: u32 = 0x5A;
+const VK_C: u32 = 0x43;
+const VK_P: u32 = 0x50;
+const VK_F5: u32 = 0x74;
 const VK_MAS: u32 = 0xBB;
 const VK_MENOS: u32 = 0xBD;
 const VK_MAS_NUM: u32 = 0x6B;
@@ -149,6 +165,67 @@ pub fn lanzar(idioma: pixpin_store::Idioma, ubicacion: Ubicacion, ruta: &Path) {
 /// Si esto lo abre el lector de PDF.
 pub fn se_abre(nombre: &str) -> bool {
     pixpin_docs::extension(nombre) == "pdf"
+}
+
+/// Si esto lo abre el lector con sus paginas de Office: los Word y los
+/// PowerPoint de ahora (`.docx`, `.docm`, `.dotx`, `.dotm`, `.pptx`,
+/// `.pptm`, `.ppsx`, `.ppsm`, `.potx`, `.potm`). Los de antes (`.doc`,
+/// `.ppt`) no son un ZIP y van por otro camino.
+pub fn se_abre_office(nombre: &str) -> bool {
+    // Por la extension de verdad: un fichero llamado «docx» a secas no lo es.
+    pixpin_office::tipo_de(&format!("x.{}", pixpin_docs::extension(nombre))).is_some()
+}
+
+/// **Abre un Word o un PowerPoint** en el lector, como un pin, en su propio
+/// hilo. Leer el paquete son milisegundos; si no se deja (roto, cifrado,
+/// otra cosa con esa extension), va a donde iba antes: el Word al lector de
+/// documentos (`visor`) y el PowerPoint a presentarlo por PowerPoint.
+pub fn lanzar_office(idioma: pixpin_store::Idioma, ubicacion: Ubicacion, ruta: &Path) {
+    let empezo = std::time::Instant::now();
+    let ruta = ruta.to_path_buf();
+    let lanzado = std::thread::Builder::new().name("lector-office".into()).spawn(move || {
+        let _com = pixpin_shell::ComDelHilo::iniciar();
+        let documento = match pixpin_office::Documento::abrir(&ruta) {
+            Ok(d) => d,
+            Err(err) => {
+                tracing::warn!(%err, ruta = %ruta.display(), "office: no se pudo leer; se abre como antes");
+                como_antes(idioma, ubicacion, &ruta);
+                return;
+            }
+        };
+        tracing::info!(ms = empezo.elapsed().as_millis() as u64, tipo = ?documento.tipo(), "office: documento leido");
+        let textos = Catalogo::nuevo(idioma);
+        let mut documento = Some(documento);
+        let hecho = crate::dispositivo_perdido::con_recursos("lector_office", |r| {
+            // Si el dispositivo se pierde, la ventana se rehace y el
+            // documento se vuelve a leer (el de antes se fue con ella).
+            let documento = match documento.take() {
+                Some(d) => d,
+                None => pixpin_office::Documento::abrir(&ruta).map_err(|e| anyhow::anyhow!("{e}"))?,
+            };
+            abrir_con(r, &textos, &ubicacion, &ruta, Some(DeOffice { documento, idioma, empezo }))
+        });
+        if let Err(e) = hecho {
+            tracing::warn!(?e, ruta = %ruta.display(), "no se pudo abrir el lector de Office");
+        }
+    });
+    if let Err(e) = lanzado {
+        tracing::warn!(?e, "no se pudo lanzar el hilo del lector de Office");
+    }
+}
+
+/// A donde iba un Word o un PowerPoint antes de este lector.
+fn como_antes(idioma: pixpin_store::Idioma, ubicacion: Ubicacion, ruta: &Path) {
+    let nombre = pixpin_docs::nombre(ruta);
+    match pixpin_office::tipo_de(&nombre) {
+        Some(pixpin_office::Tipo::PowerPoint) => crate::diapositivas::lanzar_con_powerpoint(idioma, ubicacion, ruta),
+        _ if crate::visor::se_abre(&nombre) => crate::visor::lanzar(idioma, ubicacion, ruta),
+        _ => {
+            if let Err(e) = pixpin_shell::abrir::abrir(ruta) {
+                tracing::warn!(?e, "office: tampoco se pudo abrir con su programa");
+            }
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -381,6 +458,12 @@ enum Accion {
     PantallaCompleta,
     /// Un boton de la caja de buscar (D9).
     Buscar(crate::buscador::Boton),
+    /// Office: el dialogo de imprimir (Ctrl+P).
+    Imprimir,
+    /// PowerPoint: presentar desde la que se mira (F5).
+    Presentar,
+    /// Word: el documento reflujado en el lector de documentos.
+    ModoLectura,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -393,6 +476,8 @@ enum Arrastre {
     /// Anotando: el gesto entero va a la tinta (a la capa de su hoja, que
     /// guarda `Tinta::hoja`) aunque el raton se salga por abajo.
     Trazo,
+    /// Office: eligiendo texto (lo lleva `office`).
+    Elegir,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -463,6 +548,9 @@ struct Estado {
     en_pin: bool,
     /// Pantalla completa (o volver a pin) pedida desde dentro: la pastilla o Esc.
     pedir_pantalla_completa: bool,
+    /// **Un Word o un PowerPoint** (`office`): sus hojas maquetadas en vez
+    /// de las del hilo del PDF.
+    office: Option<office::HojasOffice>,
 }
 
 pub fn abrir(
@@ -471,6 +559,35 @@ pub fn abrir(
     ubicacion: &Ubicacion,
     ruta: &Path,
 ) -> Result<()> {
+    abrir_con(recursos, textos, ubicacion, ruta, None)
+}
+
+/// El lector, con las hojas de un PDF o (con `de_office`) las de un Word o
+/// un PowerPoint.
+fn abrir_con(
+    recursos: &Recursos,
+    textos: &Catalogo,
+    ubicacion: &Ubicacion,
+    ruta: &Path,
+    de_office: Option<DeOffice>,
+) -> Result<()> {
+    // Las hojas de Office se pintan con el motor de esta ventana: el pintor,
+    // antes que la ventana, y si no se puede (sin letras del sistema), como
+    // antes.
+    let office = match de_office {
+        Some(d) => {
+            let idioma = d.idioma;
+            match office::HojasOffice::nuevo(d, &recursos.motor()) {
+                Some(o) => Some(o),
+                None => {
+                    tracing::warn!("office: sin pintor (letras del sistema); se abre como antes");
+                    como_antes(idioma, ubicacion.clone(), ruta);
+                    return Ok(());
+                }
+            }
+        }
+        None => None,
+    };
     // Cuenta como abierto para los grupos de ventanas (H9) mientras viva.
     let _grupo = crate::grupos_ventanas::apuntar(crate::grupos_ventanas::Clase::Lector {
         ruta: ruta.to_path_buf(),
@@ -490,7 +607,8 @@ pub fn abrir(
         escala_por_cien: monitor.escala_por_cien,
         area,
     };
-    let mut ventana = VentanaOverlay::nueva_normal(area, &textos.t("lector-pdf-titulo"))
+    let titulo = if office.is_some() { "lector-office-titulo" } else { "lector-pdf-titulo" };
+    let mut ventana = VentanaOverlay::nueva_normal(area, &textos.t(titulo))
         .context("no se pudo abrir la ventana del lector de PDF")?;
     let motor = recursos.motor();
     let superficie = Superficie::nueva(
@@ -516,10 +634,18 @@ pub fn abrir(
     // adoptado en sus hojas. Se pinta su copia limpia si la tiene.
     let donde = crate::lector_pdf_proyecto::DondeVa::de(ubicacion.raiz(), ruta, ahora_ms() as i64);
     let ruta_hilo = donde.documento(ruta);
-    let hilo = std::thread::Builder::new()
-        .name("lector-pdf-hojas".into())
-        .spawn(move || hilo_de_hojas(ruta_hilo, rx_pedidos, tx_llega, hwnd))
-        .context("sin hilo para dibujar las hojas")?;
+    // Un Office no tiene hilo de hojas: se maquetan y pintan aqui.
+    let hilo = if office.is_none() {
+        Some(
+            std::thread::Builder::new()
+                .name("lector-pdf-hojas".into())
+                .spawn(move || hilo_de_hojas(ruta_hilo, rx_pedidos, tx_llega, hwnd))
+                .context("sin hilo para dibujar las hojas")?,
+        )
+    } else {
+        drop((rx_pedidos, tx_llega));
+        None
+    };
 
     // Con lo que viaja del chat encima, si es un adjunto (v0.96).
     let ajustes = crate::anotado_del_adjunto::leer(ruta);
@@ -562,11 +688,13 @@ pub fn abrir(
         escuchar_al_llegar: false,
         en_pin: true,
         pedir_pantalla_completa: false,
+        office,
     };
 
     // El nombre de la pastilla: el del mensaje del chat si es de uno.
     e.nombre = pixpin_docs::sin_extension(&e.renombre.visto);
-    if recoger_el_indice(&mut e, ruta) {
+    // El indice de marcadores es cosa de un PDF.
+    if e.office.is_none() && recoger_el_indice(&mut e, ruta) {
         guardar_ajustes(&mut e, ruta);
     }
     let mut hay_que_pintar = true;
@@ -594,6 +722,10 @@ pub fn abrir(
             if son_las_hojas {
                 al_saber_las_hojas(&e, ruta);
             }
+        }
+        // Un Office: unas cuantas hojas mas maquetadas en cada vuelta.
+        if office::vuelta(&mut e, ruta, marco) {
+            hay_que_pintar = true;
         }
         for (h, evento) in pixpin_shell::overlay::tomar_eventos_pendientes() {
             if pin.es_de_la_barra(h) {
@@ -714,6 +846,21 @@ pub fn abrir(
                 EventoOverlay::RatonMovido(p) => {
                     e.raton = local(p);
                     mover_raton(&mut e, marco);
+                    // Office: la mano en un hipervinculo, la barra en el texto.
+                    if let Some(forma) = office::cursor(&mut e, marco) {
+                        ventana.poner_cursor(forma);
+                    }
+                }
+                // Office: imprimir y presentar, que necesitan la ventana o
+                // donde viven los datos.
+                EventoOverlay::Tecla { vk: VK_P, ctrl: true, shift: false, .. } if e.office.is_some() => {
+                    office::imprimir(&mut e, ventana.handle().0 as isize, ruta, textos)
+                }
+                EventoOverlay::Tecla { vk: VK_F5, .. } if e.office.is_some() && !escribiendo(&e) => {
+                    hacer(&mut e, Accion::Presentar, textos, ruta, ubicacion, &tx_pedidos, marco)
+                }
+                EventoOverlay::Tecla { vk: VK_C, ctrl: true, .. } if e.office.is_some() && !escribiendo(&e) => {
+                    office::copiar(&mut e, Some(textos));
                 }
                 EventoOverlay::BotonPulsado(p) => {
                     e.raton = local(p);
@@ -806,6 +953,11 @@ pub fn abrir(
             e.pedir_pantalla_completa = false;
             pin.alternar_pantalla_completa(&mut ventana);
         }
+        // Imprimir pedido desde el panel (necesita la ventana).
+        if e.office.as_mut().is_some_and(|o| std::mem::take(&mut o.pedir_imprimir)) {
+            office::imprimir(&mut e, ventana.handle().0 as isize, ruta, textos);
+            hay_que_pintar = true;
+        }
         // Movida o estirada desde fuera (AltSnap, Win+flecha): el pin la sigue.
         pin.seguir_ventana(&mut ventana);
         // **La ventana cambio** (estirada, llevada, a pantalla completa): la
@@ -867,14 +1019,28 @@ pub fn abrir(
         if hay_que_pintar {
             hay_que_pintar = false;
             acotar(&mut e, marco);
-            pedir_hojas(&mut e, &tx_pedidos, marco);
+            if e.office.is_none() {
+                pedir_hojas(&mut e, &tx_pedidos, marco);
+            }
             cargar_capas_visibles(&mut e, ruta, marco);
             if let Ok(destino) = superficie.empezar(&motor) {
-                let _ = motor.dibujar(&destino, |p: &Pintor| pintar(&mut e, p, marco, textos));
+                let t = std::time::Instant::now();
+                let dibujado = motor.dibujar(&destino, |p: &Pintor| pintar(&mut e, p, marco, textos));
                 let _ = superficie.presentar();
+                // Office se pinta en vectores en cada fotograma: si uno
+                // tarda o falla, que quede escrito.
+                if e.office.is_some() {
+                    if let Err(err) = &dibujado {
+                        tracing::warn!(?err, zoom = e.zoom, "office: el fotograma no se pudo pintar");
+                    } else if t.elapsed().as_millis() > 50 {
+                        tracing::info!(ms = t.elapsed().as_millis() as u64, zoom = e.zoom, "office: fotograma lento");
+                    }
+                }
             }
         }
         let tope = if e.x_meta.is_some() { 16 } else { 50 };
+        // Con hojas de Office por maquetar, la siguiente vuelta enseguida.
+        let tope = if e.office.as_ref().is_some_and(|o| o.maquetando()) { 1 } else { tope };
         let tope = e.tinta.mano.tope_forma_ms().map_or(tope, |t| t.min(tope));
         pixpin_shell::overlay::esperar_eventos(Some(tope));
     }
@@ -890,7 +1056,9 @@ pub fn abrir(
     guardar_ajustes(&mut e, ruta);
     // Soltar el canal despierta al hilo, que ve que no hay nadie y acaba.
     drop(tx_pedidos);
-    if e.exportando {
+    if e.exportando
+        && let Some(hilo) = hilo
+    {
         // Un PDF anotado a medio escribir no se deja tirado: se espera.
         let _ = hilo.join();
     }
@@ -1057,6 +1225,11 @@ fn pedir_hojas(e: &mut Estado, tx: &mpsc::Sender<Pedido>, m: Marco) {
 /// Lee del disco lo anotado de las hojas que se ven (una vez cada una).
 fn cargar_capas_visibles(e: &mut Estado, ruta: &Path, m: Marco) {
     for i in visibles(e, m) {
+        // Una hoja de Office aun sin maquetar no sabe su alto de verdad: su
+        // tinta se lee cuando llegue.
+        if e.office.as_ref().is_some_and(|o| o.pagina(i).is_none()) {
+            continue;
+        }
         let (donde, espacios, alto) = (&e.donde, e.ajustes.espacios, alto_de(&e.hojas, i));
         e.capas
             .entry(i)
@@ -1196,7 +1369,10 @@ fn pintar(e: &mut Estado, p: &Pintor, m: Marco, textos: &Catalogo) {
             ancho: vista::ANCHO_HOJA,
             alto,
         };
+        // Un Office se pinta en vectores, a la transformada de la hoja.
+        let en_vectores = e.office.as_mut().is_some_and(|o| o.pintar_hoja(p, i));
         match e.pintadas.get(&i) {
+            _ if en_vectores => {}
             Some((_, b)) => p.bitmap(b, hoja, None, false),
             None => {
                 p.rellenar(hoja, Color::BLANCO);
@@ -1234,6 +1410,7 @@ fn pintar(e: &mut Estado, p: &Pintor, m: Marco, textos: &Catalogo) {
             );
         }
         marcas_de_busqueda(e, p, i);
+        office::pintar_seleccion(e, p, i);
         voz::pintar_lo_que_suena(e, p, i);
         if let Some(capa) = e.capas.get(&i) {
             let vista_hoja = (
@@ -1485,6 +1662,26 @@ fn pastilla(e: &Estado, p: &Pintor, m: Marco, botones: &mut Vec<(RectF, Accion)>
 }
 
 fn filas_del_panel(e: &Estado, textos: &Catalogo) -> Vec<(String, Accion)> {
+    // Un Word o un PowerPoint: imprimir en vez de exportar el PDF, y lo
+    // suyo (presentar, o leerlo reflujado).
+    if let Some(o) = &e.office {
+        let mut filas = vec![(textos.t("lector-escuchar"), Accion::Escuchar)];
+        if o.tipo == pixpin_office::Tipo::PowerPoint {
+            filas.push((textos.t("lector-presentar"), Accion::Presentar));
+        } else {
+            filas.push((textos.t("lector-modo-lectura"), Accion::ModoLectura));
+        }
+        filas.push((textos.t("lector-imprimir"), Accion::Imprimir));
+        // Compartir sabe de un Word (su texto); de un PowerPoint aun no.
+        if o.tipo == pixpin_office::Tipo::Word {
+            filas.push((textos.t("compartir-lector"), Accion::Compartir));
+        }
+        if !e.marcas.is_empty() {
+            filas.push((textos.t("visor-quitar-marcadores"), Accion::QuitarMarcas));
+        }
+        filas.push((textos.t("lector-quitar-tinta"), Accion::QuitarTinta));
+        return filas;
+    }
     let mut filas = vec![
         (textos.t("lector-escuchar"), Accion::Escuchar),
         (textos.t("compartir-lector"), Accion::Compartir),
@@ -1528,7 +1725,7 @@ fn panel(e: &Estado, p: &Pintor, m: Marco, textos: &Catalogo, botones: &mut Vec<
         ));
     }
     p.texto(
-        &textos.t("lector-ayuda-pdf"),
+        &textos.t(if e.office.is_some() { "lector-ayuda-office" } else { "lector-ayuda-pdf" }),
         x,
         m.alto - 22.0 * m.e,
         12.0 * m.e,
@@ -1585,6 +1782,7 @@ fn mover_raton(e: &mut Estado, m: Marco) {
         }
         // El trazo lo lleva la tinta, en el bucle.
         Some(Arrastre::Trazo) => {}
+        Some(Arrastre::Elegir) => office::mover(e, m),
         None => {}
     }
 }
@@ -1640,6 +1838,11 @@ fn pulsar(
         // Si llega aqui, la tinta no lo quiso (ver el bucle): nada.
         return false;
     }
+    // Office: sobre texto, se elige (o se sigue un hipervinculo).
+    if office::pulsar(e, m) {
+        e.arrastre = Some(Arrastre::Elegir);
+        return true;
+    }
     e.arrastre = Some(Arrastre::Mover {
         desde: e.raton,
         vista: (e.x, e.y),
@@ -1665,6 +1868,9 @@ fn soltar(e: &mut Estado, m: Marco) {
             };
         }
         Some(Arrastre::Mover { .. }) => fin_de_lateral(e, m),
+        Some(Arrastre::Elegir) => {
+            office::soltar(e);
+        }
         None => {}
     }
 }
@@ -1742,9 +1948,18 @@ fn tecla(e: &mut Estado, vk: u32, shift: bool, ctrl: bool, ruta: &Path, m: Marco
     if e.anotando && !ctrl && lector_tinta::letra_de_herramienta(vk) {
         return true;
     }
+    // Un PowerPoint pasa de diapositiva en diapositiva.
+    if !e.anotando && office::tecla_de_diapositivas(e, vk, shift, ctrl, m) {
+        acotar(e, m);
+        return true;
+    }
     match (vk, ctrl) {
         (VK_ESCAPE, _) => {
-            if e.poniendo_marca || e.panel {
+            if let Some(o) = e.office.as_mut()
+                && o.seleccion.take().is_some()
+            {
+                // La primera Esc quita lo elegido.
+            } else if e.poniendo_marca || e.panel {
                 e.poniendo_marca = false;
                 e.panel = false;
             } else if e.voz.is_some() {
@@ -1917,6 +2132,20 @@ fn hacer(
     m: Marco,
 ) {
     match a {
+        Accion::Imprimir => {
+            if let Some(o) = e.office.as_mut() {
+                o.pedir_imprimir = true;
+            }
+            e.panel = false;
+        }
+        Accion::Presentar => {
+            e.panel = false;
+            office::presentar(e, ubicacion, ruta, m);
+        }
+        Accion::ModoLectura => {
+            e.panel = false;
+            office::modo_lectura(e, ubicacion, ruta);
+        }
         Accion::Renombrar => e.renombre.empezar(),
         Accion::PantallaCompleta => e.pedir_pantalla_completa = true,
         Accion::AlProyecto => al_proyecto(e, textos, ruta, ubicacion),
@@ -2375,7 +2604,7 @@ fn saltar_a_la_actual(e: &mut Estado, m: Marco) {
 mod pruebas {
     use super::*;
 
-    fn marco() -> Marco {
+    pub(super) fn marco() -> Marco {
         Marco {
             ancho: 1920.0,
             alto: 1080.0,
@@ -2390,7 +2619,7 @@ mod pruebas {
         }
     }
 
-    fn estado(paginas: usize) -> Estado {
+    pub(super) fn estado(paginas: usize) -> Estado {
         let medidas = vec![(595.0, 842.0); paginas];
         Estado {
             nombre: "plano".into(),
@@ -2431,6 +2660,7 @@ mod pruebas {
             escuchar_al_llegar: false,
             en_pin: false,
             pedir_pantalla_completa: false,
+            office: None,
         }
     }
 
@@ -2508,6 +2738,41 @@ mod pruebas {
         assert!(se_abre("a.pdf"));
         assert!(!se_abre("a.docx"));
         assert!(!se_abre("pdf"));
+    }
+
+    #[test]
+    fn los_word_y_powerpoint_de_ahora_van_al_lector_con_sus_paginas() {
+        for si in ["tesis.docx", "a.DOCM", "plantilla.dotx", "b.dotm", "charla.pptx", "c.pptm", "d.ppsx", "e.potx"] {
+            assert!(se_abre_office(si), "{si}");
+            // Tocar la burbuja o abrir con PixPin los lleva a su lector.
+            assert!(crate::lector::se_lee_al_tocar(si), "{si}");
+            assert!(crate::lector::tiene_lector(si), "{si}");
+        }
+        // Caso negativo: los de antes (no son un ZIP), un PDF y una hoja de
+        // calculo van por su camino.
+        for no in ["viejo.doc", "viejo.ppt", "a.pdf", "b.xlsx", "docx"] {
+            assert!(!se_abre_office(no), "{no}");
+        }
+    }
+
+    #[test]
+    fn en_un_powerpoint_avpag_lleva_a_la_siguiente_diapositiva_centrada() {
+        let mut e = estado(3);
+        // Diapositivas apaisadas: caben enteras en la ventana.
+        e.medidas = vec![(960.0, 540.0); 3];
+        e.hojas = vista::Hojas::colocar(&e.medidas);
+        let m = marco();
+        office::ir_a(&mut e, 0, m);
+        assert_eq!(office::la_de_ahora(&e, m), 0);
+        office::ir_a(&mut e, 2, m);
+        assert_eq!(office::la_de_ahora(&e, m), 2);
+        // Centrada: tanto aire arriba como abajo.
+        let s = px(&e, m);
+        let arriba = (e.hojas.arriba[2] - e.y) * s;
+        let abajo = m.alto - arriba - e.hojas.altos[2] * s;
+        assert!((arriba - abajo).abs() < 1.0, "{arriba} {abajo}");
+        // Caso negativo: sin documento de PowerPoint las teclas no son suyas.
+        assert!(!office::tecla_de_diapositivas(&mut e, VK_NEXT, false, false, m));
     }
 
     #[test]
@@ -3446,16 +3711,22 @@ mod pruebas {
 /// en la pastilla de arriba (escuchar y los ajustes).
 fn botones_del_pin(e: &Estado) -> Vec<crate::lector_pin::BotonLector> {
     use crate::lector_pin::BotonLector;
-    vec![
+    let mut v = vec![
         BotonLector { id: 1, icono: &material::RECORD_VOICE_OVER, encendido: e.voz.is_some() },
         BotonLector { id: 2, icono: &material::SETTINGS, encendido: e.panel },
-    ]
+    ];
+    // Un PowerPoint: presentar, a mano en la barra.
+    if e.office.as_ref().is_some_and(|o| o.tipo == pixpin_office::Tipo::PowerPoint) {
+        v.insert(0, BotonLector { id: 3, icono: &material::PLAY_ARROW, encendido: false });
+    }
+    v
 }
 
 fn accion_del_pin(id: u8) -> Option<Accion> {
     Some(match id {
         1 => Accion::Escuchar,
         2 => Accion::Engranaje,
+        3 => Accion::Presentar,
         _ => return None,
     })
 }
