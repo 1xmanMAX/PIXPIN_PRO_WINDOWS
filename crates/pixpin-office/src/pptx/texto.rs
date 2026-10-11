@@ -9,7 +9,7 @@ use pixpin_docs::xml::Nodo;
 
 use crate::dml::Contexto;
 use crate::medidor::Medidor;
-use crate::pagina::{Campo, Color, Elemento, Letra, Rect, Subrayado};
+use crate::pagina::{Campo, Color, Efecto, Elemento, Letra, Rect, Subrayado};
 use crate::paquete::{attr_num, emu};
 use crate::renglones::{self, Alineacion, Config, Estilo, Pieza, TipoTope, Tope};
 use crate::tema;
@@ -31,6 +31,9 @@ pub struct PropR {
     /// Subida en fraccion del tamano (0.3 = superindice).
     pub subida: Option<f32>,
     pub resaltado: Option<Color>,
+    /// Los efectos del texto (`a:effectLst`); vacio = ninguno (y manda
+    /// sobre lo heredado).
+    pub efectos: Option<Arc<[Efecto]>>,
 }
 
 impl PropR {
@@ -38,7 +41,7 @@ impl PropR {
         macro_rules! m {
             ($($c:ident),*) => { $( if o.$c.is_some() { self.$c = o.$c.clone(); } )* };
         }
-        m!(tam, negrita, cursiva, subrayado, tachado, mayusculas, color, letra, letra_ea, espaciado, subida, resaltado);
+        m!(tam, negrita, cursiva, subrayado, tachado, mayusculas, color, letra, letra_ea, espaciado, subida, resaltado, efectos);
     }
 
     pub fn leer(n: &Nodo, ctx: Contexto) -> PropR {
@@ -86,6 +89,7 @@ impl PropR {
                 "latin" => p.letra = Some(e.atributo("typeface").to_string()).filter(|s| !s.is_empty()),
                 "ea" => p.letra_ea = Some(e.atributo("typeface").to_string()).filter(|s| !s.is_empty()),
                 "highlight" => p.resaltado = tema::color_hijo(e, ctx.tema, ctx.mapa, None),
+                "effectLst" => p.efectos = Some(Arc::from(crate::dml::efectos(e, ctx, None, 0.0))),
                 _ => {}
             }
         }
@@ -241,6 +245,9 @@ pub struct Cuerpo {
     pub partir: Option<bool>,
     pub escala: Option<f32>,
     pub reduccion: Option<f32>,
+    /// `normAutofit` sin `fontScale`: PowerPoint no guardo cuanto reducir,
+    /// asi que se reduce aqui, a pasos, hasta que quepa.
+    pub encoger: Option<bool>,
     pub vertical: Option<String>,
 }
 
@@ -264,11 +271,14 @@ impl Cuerpo {
             ..Default::default()
         };
         if let Some(a) = n.hijo("normAutofit") {
-            c.escala = Some(attr_num(a, "fontScale", 1.0).map(|v| v / 100000.0).unwrap_or(1.0));
+            let escala = attr_num(a, "fontScale", 1.0).map(|v| v / 100000.0);
+            c.escala = Some(escala.unwrap_or(1.0));
             c.reduccion = Some(attr_num(a, "lnSpcReduction", 1.0).map(|v| v / 100000.0).unwrap_or(0.0));
+            c.encoger = Some(escala.is_none());
         } else if n.hijo("noAutofit").is_some() || n.hijo("spAutoFit").is_some() {
             c.escala = Some(1.0);
             c.reduccion = Some(0.0);
+            c.encoger = Some(false);
         }
         c
     }
@@ -277,7 +287,7 @@ impl Cuerpo {
         macro_rules! m {
             ($($c:ident),*) => { $( if o.$c.is_some() { self.$c = o.$c.clone(); } )* };
         }
-        m!(izq, arriba, der, abajo, anclaje, centrado, partir, escala, reduccion, vertical);
+        m!(izq, arriba, der, abajo, anclaje, centrado, partir, escala, reduccion, encoger, vertical);
     }
 }
 
@@ -331,8 +341,8 @@ pub fn maquetar(tx: &Nodo, ancho: f32, alto: f32, niveles: &Niveles, cuerpo: &Cu
     let arriba = cuerpo.arriba.unwrap_or(3.6);
     let abajo = cuerpo.abajo.unwrap_or(3.6);
     let partir = cuerpo.partir.unwrap_or(true);
-    let escala = cuerpo.escala.unwrap_or(1.0).clamp(0.05, 1.0);
-    let reduccion = cuerpo.reduccion.unwrap_or(0.0).clamp(0.0, 0.9);
+    let escala_leida = cuerpo.escala.unwrap_or(1.0).clamp(0.05, 1.0);
+    let reduccion_leida = cuerpo.reduccion.unwrap_or(0.0).clamp(0.0, 0.9);
     // Sin partir renglones el ancho solo sirve para alinear.
     let ancho_util = (ancho - izq - der).max(1.0);
 
@@ -344,207 +354,230 @@ pub fn maquetar(tx: &Nodo, ancho: f32, alto: f32, niveles: &Niveles, cuerpo: &Cu
         despues: f32,
         alturas: Vec<(f32, f32)>,
     }
-    let mut bloques = Vec::new();
-    let mut contadores = [0u32; 9];
-    let mut nivel_previo: Option<usize> = None;
-    for p in tx.elementos().filter(|p| p.nombre == "p") {
-        let ppr_nodo = p.hijo("pPr");
-        let nivel = ppr_nodo.and_then(|x| x.atributo("lvl").parse::<usize>().ok()).unwrap_or(0).min(8);
-        let mut pp = niveles[nivel].clone();
-        if let Some(x) = ppr_nodo {
-            pp.mezclar(&PropP::leer(x, e.ctx));
-        }
-        let mut estilos: Vec<Estilo> = Vec::new();
-        let mut estilo_de = |r: &PropR, campo: Option<Campo>, enlace: Option<Arc<str>>| -> u32 {
-            let tam = r.tam.unwrap_or(18.0) * escala;
-            let letra = r.letra.as_deref().map(|l| e.ctx.tema.letra(l)).unwrap_or_else(|| e.ctx.tema.letra_texto.clone());
-            let subida = r.subida.unwrap_or(0.0) * tam;
-            let tam_real = if r.subida.is_some_and(|s| s.abs() > 0.01) { tam * 0.67 } else { tam };
-            let est = Estilo {
-                letra: Letra {
-                    familia: Arc::from(letra.as_str()),
-                    tam: tam_real.max(1.0),
-                    negrita: r.negrita.unwrap_or(false),
-                    cursiva: r.cursiva.unwrap_or(false),
-                },
-                color: r.color.unwrap_or(e.color),
-                subrayado: r.subrayado.flatten(),
-                tachado: r.tachado.unwrap_or(false),
-                espaciado: r.espaciado.unwrap_or(0.0) * escala,
-                subida,
-                fondo: r.resaltado,
-                enlace,
-                campo,
-            };
-            if let Some(i) = estilos.iter().position(|x| *x == est) {
-                return i as u32;
+    // Maqueta todos los parrafos con una escala de letra y una reduccion
+    // del interlineado (las del autoajuste).
+    let armar = |escala: f32, reduccion: f32| -> Vec<Bloque> {
+        let mut bloques = Vec::new();
+        let mut contadores = [0u32; 9];
+        let mut nivel_previo: Option<usize> = None;
+        for p in tx.elementos().filter(|p| p.nombre == "p") {
+            let ppr_nodo = p.hijo("pPr");
+            let nivel = ppr_nodo.and_then(|x| x.atributo("lvl").parse::<usize>().ok()).unwrap_or(0).min(8);
+            let mut pp = niveles[nivel].clone();
+            if let Some(x) = ppr_nodo {
+                pp.mezclar(&PropP::leer(x, e.ctx));
             }
-            estilos.push(est);
-            (estilos.len() - 1) as u32
-        };
-        let mut piezas = Vec::new();
-        let mut primer_rpr: Option<PropR> = None;
-        for r in p.elementos() {
-            match r.nombre.as_str() {
-                "r" | "fld" => {
-                    let mut rp = pp.def.clone();
-                    let mut enlace = None;
-                    if let Some(x) = r.hijo("rPr") {
-                        rp.mezclar(&PropR::leer(x, e.ctx));
-                        if x.hijo("hlinkClick").is_some() {
-                            enlace = Some(Arc::from("#"));
-                            if rp.color.is_none() || x.hijo("solidFill").is_none() {
-                                rp.color = e.ctx.tema.esquema("hlink", e.ctx.mapa).or(rp.color);
-                            }
-                            if rp.subrayado.is_none() {
-                                rp.subrayado = Some(Some(Subrayado::Simple));
-                            }
-                        }
-                    }
-                    let mut texto = r.hijo("t").map(|t| t.texto()).unwrap_or_default();
-                    let mut campo = None;
-                    if r.nombre == "fld" && r.atributo("type") == "slidenum" {
-                        texto = e.numero.to_string();
-                        campo = Some(Campo::Pagina);
-                    }
-                    match rp.mayusculas {
-                        Some(1) => texto = texto.to_uppercase(),
-                        Some(2) => texto = texto.to_uppercase(),
-                        _ => {}
-                    }
-                    if primer_rpr.is_none() {
-                        primer_rpr = Some(rp.clone());
-                    }
-                    // Los tabuladores dentro del texto.
-                    let mut trozos = texto.split('\t').peekable();
-                    while let Some(t) = trozos.next() {
-                        if !t.is_empty() {
-                            let est = estilo_de(&rp, campo, enlace.clone());
-                            piezas.push(Pieza::Texto { texto: t.replace(['\u{b}', '\r', '\n'], " "), estilo: est });
-                        }
-                        if trozos.peek().is_some() {
-                            let est = estilo_de(&rp, None, None);
-                            piezas.push(Pieza::Tab { estilo: est });
-                        }
-                    }
+            let mut estilos: Vec<Estilo> = Vec::new();
+            let mut estilo_de = |r: &PropR, campo: Option<Campo>, enlace: Option<Arc<str>>| -> u32 {
+                let tam = r.tam.unwrap_or(18.0) * escala;
+                let letra = r.letra.as_deref().map(|l| e.ctx.tema.letra(l)).unwrap_or_else(|| e.ctx.tema.letra_texto.clone());
+                let subida = r.subida.unwrap_or(0.0) * tam;
+                let tam_real = if r.subida.is_some_and(|s| s.abs() > 0.01) { tam * 0.67 } else { tam };
+                let est = Estilo {
+                    letra: Letra {
+                        familia: Arc::from(letra.as_str()),
+                        tam: tam_real.max(1.0),
+                        negrita: r.negrita.unwrap_or(false),
+                        cursiva: r.cursiva.unwrap_or(false),
+                    },
+                    color: r.color.unwrap_or(e.color),
+                    subrayado: r.subrayado.flatten(),
+                    tachado: r.tachado.unwrap_or(false),
+                    espaciado: r.espaciado.unwrap_or(0.0) * escala,
+                    subida,
+                    fondo: r.resaltado,
+                    enlace,
+                    campo,
+                    efectos: r.efectos.clone().filter(|e| !e.is_empty()),
+                };
+                if let Some(i) = estilos.iter().position(|x| *x == est) {
+                    return i as u32;
                 }
-                "br" => piezas.push(Pieza::Salto),
-                _ => {}
+                estilos.push(est);
+                (estilos.len() - 1) as u32
+            };
+            let mut piezas = Vec::new();
+            let mut primer_rpr: Option<PropR> = None;
+            for r in p.elementos() {
+                match r.nombre.as_str() {
+                    "r" | "fld" => {
+                        let mut rp = pp.def.clone();
+                        let mut enlace = None;
+                        if let Some(x) = r.hijo("rPr") {
+                            rp.mezclar(&PropR::leer(x, e.ctx));
+                            if x.hijo("hlinkClick").is_some() {
+                                enlace = Some(Arc::from("#"));
+                                if rp.color.is_none() || x.hijo("solidFill").is_none() {
+                                    rp.color = e.ctx.tema.esquema("hlink", e.ctx.mapa).or(rp.color);
+                                }
+                                if rp.subrayado.is_none() {
+                                    rp.subrayado = Some(Some(Subrayado::Simple));
+                                }
+                            }
+                        }
+                        let mut texto = r.hijo("t").map(|t| t.texto()).unwrap_or_default();
+                        let mut campo = None;
+                        if r.nombre == "fld" && r.atributo("type") == "slidenum" {
+                            texto = e.numero.to_string();
+                            campo = Some(Campo::Pagina);
+                        }
+                        match rp.mayusculas {
+                            Some(1) => texto = texto.to_uppercase(),
+                            Some(2) => texto = texto.to_uppercase(),
+                            _ => {}
+                        }
+                        if primer_rpr.is_none() {
+                            primer_rpr = Some(rp.clone());
+                        }
+                        // Los tabuladores dentro del texto.
+                        let mut trozos = texto.split('\t').peekable();
+                        while let Some(t) = trozos.next() {
+                            if !t.is_empty() {
+                                let est = estilo_de(&rp, campo, enlace.clone());
+                                piezas.push(Pieza::Texto { texto: t.replace(['\u{b}', '\r', '\n'], " "), estilo: est });
+                            }
+                            if trozos.peek().is_some() {
+                                let est = estilo_de(&rp, None, None);
+                                piezas.push(Pieza::Tab { estilo: est });
+                            }
+                        }
+                    }
+                    "br" => piezas.push(Pieza::Salto),
+                    _ => {}
+                }
             }
-        }
-        // El final de parrafo mide el renglon vacio.
-        let mut fin = pp.def.clone();
-        if let Some(x) = p.hijo("endParaRPr") {
-            fin.mezclar(&PropR::leer(x, e.ctx));
-        }
-        let marca = estilo_de(primer_rpr.as_ref().unwrap_or(&fin), None, None);
+            // El final de parrafo mide el renglon vacio.
+            let mut fin = pp.def.clone();
+            if let Some(x) = p.hijo("endParaRPr") {
+                fin.mezclar(&PropR::leer(x, e.ctx));
+            }
+            let marca = estilo_de(primer_rpr.as_ref().unwrap_or(&fin), None, None);
 
-        // La vineta o el numero.
-        let hay_texto = piezas.iter().any(|x| matches!(x, Pieza::Texto { texto, .. } if !texto.trim().is_empty()));
-        if nivel_previo.is_some_and(|n| n < nivel) {
-            contadores[nivel] = 0;
-        }
-        if let Some(np) = nivel_previo
-            && np > nivel
-        {
-            for c in contadores.iter_mut().skip(nivel + 1) {
-                *c = 0;
+            // La vineta o el numero.
+            let hay_texto = piezas.iter().any(|x| matches!(x, Pieza::Texto { texto, .. } if !texto.trim().is_empty()));
+            if nivel_previo.is_some_and(|n| n < nivel) {
+                contadores[nivel] = 0;
             }
-        }
-        nivel_previo = Some(nivel);
-        let marl = pp.marl.unwrap_or(0.0);
-        let sangria = pp.sangria.unwrap_or(0.0);
-        let mut topes = pp.topes.clone().unwrap_or_default();
-        if hay_texto {
-            let base = primer_rpr.clone().unwrap_or_else(|| fin.clone());
-            let vineta = match &pp.vineta {
-                Some(Vineta::Caracter(c)) => Some(c.to_string()),
-                Some(Vineta::Numero { tipo, inicio }) => {
-                    let n = *inicio + contadores[nivel];
-                    contadores[nivel] += 1;
-                    Some(numero_auto(tipo, n))
+            if let Some(np) = nivel_previo
+                && np > nivel
+            {
+                for c in contadores.iter_mut().skip(nivel + 1) {
+                    *c = 0;
                 }
-                _ => None,
+            }
+            nivel_previo = Some(nivel);
+            let marl = pp.marl.unwrap_or(0.0);
+            let sangria = pp.sangria.unwrap_or(0.0);
+            let mut topes = pp.topes.clone().unwrap_or_default();
+            if hay_texto {
+                let base = primer_rpr.clone().unwrap_or_else(|| fin.clone());
+                let vineta = match &pp.vineta {
+                    Some(Vineta::Caracter(c)) => Some(c.to_string()),
+                    Some(Vineta::Numero { tipo, inicio }) => {
+                        let n = *inicio + contadores[nivel];
+                        contadores[nivel] += 1;
+                        Some(numero_auto(tipo, n))
+                    }
+                    _ => None,
+                };
+                if let Some(v) = vineta {
+                    let mut rb = base.clone();
+                    rb.subrayado = Some(None);
+                    if let Some(Some(f)) = &pp.vineta_letra {
+                        rb.letra = Some(f.clone());
+                    }
+                    if let Some(Some(c)) = pp.vineta_color {
+                        rb.color = Some(c);
+                    }
+                    if let Some(t) = pp.vineta_tam {
+                        rb.tam = Some(base.tam.unwrap_or(18.0) * t);
+                    }
+                    let est = estilo_de(&rb, None, None);
+                    let est_tab = estilo_de(&base, None, None);
+                    let mut delante = vec![Pieza::Texto { texto: v, estilo: est }];
+                    // Con sangria francesa el texto empieza en el margen; sin
+                    // ella va pegado a la vineta (como PowerPoint).
+                    if sangria < 0.0 {
+                        delante.push(Pieza::Tab { estilo: est_tab });
+                        topes.push(Tope { pos: marl, tipo: TipoTope::Izquierda, relleno: None });
+                    }
+                    delante.append(&mut piezas);
+                    piezas = delante;
+                }
+            }
+            topes.sort_by(|a, b| a.pos.total_cmp(&b.pos));
+            let cfg = Config {
+                ancho: ancho_util,
+                sangria_izq: marl,
+                sangria_der: 0.0,
+                primera: sangria,
+                topes,
+                tope_defecto: pp.tope_defecto.unwrap_or(72.0),
+                alineacion: pp.alineacion.unwrap_or_default(),
+                partir,
+                encoger: 0.0,
             };
-            if let Some(v) = vineta {
-                let mut rb = base.clone();
-                rb.subrayado = Some(None);
-                if let Some(Some(f)) = &pp.vineta_letra {
-                    rb.letra = Some(f.clone());
-                }
-                if let Some(Some(c)) = pp.vineta_color {
-                    rb.color = Some(c);
-                }
-                if let Some(t) = pp.vineta_tam {
-                    rb.tam = Some(base.tam.unwrap_or(18.0) * t);
-                }
-                let est = estilo_de(&rb, None, None);
-                let est_tab = estilo_de(&base, None, None);
-                let mut delante = vec![Pieza::Texto { texto: v, estilo: est }];
-                // Con sangria francesa el texto empieza en el margen; sin
-                // ella va pegado a la vineta (como PowerPoint).
-                if sangria < 0.0 {
-                    delante.push(Pieza::Tab { estilo: est_tab });
-                    topes.push(Tope { pos: marl, tipo: TipoTope::Izquierda, relleno: None });
-                }
-                delante.append(&mut piezas);
-                piezas = delante;
-            }
+            let renglones = renglones::partir(&piezas, &estilos, marca, &cfg, e.medidor);
+            let tam_ref = estilos.get(marca as usize).map(|s| s.letra.tam).unwrap_or(18.0);
+            let alturas: Vec<(f32, f32)> = renglones
+                .iter()
+                .map(|r| {
+                    let natural = r.ascenso + r.descenso;
+                    // PowerPoint: el 100 % es 1,2 veces el tamano de la letra.
+                    let base = (r.tam_max.max(1.0) * 1.2).max(natural);
+                    match pp.interlineado {
+                        Some(Esp::Pts(v)) => (v, v - r.descenso),
+                        Some(Esp::Pct(pc)) => {
+                            let pc = (pc - reduccion).max(0.1);
+                            let h = base * pc;
+                            (h, h - r.descenso - (base - natural) * pc * 0.0)
+                        }
+                        None => {
+                            let h = base * (1.0 - reduccion);
+                            (h, h - r.descenso)
+                        }
+                    }
+                })
+                .collect();
+            let resolver = |x: Option<Esp>| match x {
+                Some(Esp::Pts(v)) => v,
+                Some(Esp::Pct(p)) => p * tam_ref * 1.2,
+                None => 0.0,
+            };
+            bloques.push(Bloque { renglones, estilos, antes: resolver(pp.antes), despues: resolver(pp.despues), alturas });
         }
-        topes.sort_by(|a, b| a.pos.total_cmp(&b.pos));
-        let cfg = Config {
-            ancho: ancho_util,
-            sangria_izq: marl,
-            sangria_der: 0.0,
-            primera: sangria,
-            topes,
-            tope_defecto: pp.tope_defecto.unwrap_or(72.0),
-            alineacion: pp.alineacion.unwrap_or_default(),
-            partir,
-            encoger: 0.0,
-        };
-        let renglones = renglones::partir(&piezas, &estilos, marca, &cfg, e.medidor);
-        let tam_ref = estilos.get(marca as usize).map(|s| s.letra.tam).unwrap_or(18.0);
-        let alturas: Vec<(f32, f32)> = renglones
-            .iter()
-            .map(|r| {
-                let natural = r.ascenso + r.descenso;
-                // PowerPoint: el 100 % es 1,2 veces el tamano de la letra.
-                let base = (r.tam_max.max(1.0) * 1.2).max(natural);
-                match pp.interlineado {
-                    Some(Esp::Pts(v)) => (v, v - r.descenso),
-                    Some(Esp::Pct(pc)) => {
-                        let pc = (pc - reduccion).max(0.1);
-                        let h = base * pc;
-                        (h, h - r.descenso - (base - natural) * pc * 0.0)
-                    }
-                    None => {
-                        let h = base * (1.0 - reduccion);
-                        (h, h - r.descenso)
-                    }
-                }
-            })
-            .collect();
-        let resolver = |x: Option<Esp>| match x {
-            Some(Esp::Pts(v)) => v,
-            Some(Esp::Pct(p)) => p * tam_ref * 1.2,
-            None => 0.0,
-        };
-        bloques.push(Bloque { renglones, estilos, antes: resolver(pp.antes), despues: resolver(pp.despues), alturas });
-    }
+        bloques
+    };
 
     // El alto total, para el anclaje.
-    let mut total = 0.0;
-    for (i, b) in bloques.iter().enumerate() {
-        if i > 0 {
-            total += b.antes;
+    let alto_total = |bloques: &[Bloque]| -> f32 {
+        let mut total = 0.0;
+        for (i, b) in bloques.iter().enumerate() {
+            if i > 0 {
+                total += b.antes;
+            }
+            total += b.alturas.iter().map(|a| a.0).sum::<f32>();
+            if i + 1 < bloques.len() {
+                total += b.despues;
+            }
         }
-        total += b.alturas.iter().map(|a| a.0).sum::<f32>();
-        if i + 1 < bloques.len() {
-            total += b.despues;
+        total
+    };
+    let mut bloques = armar(escala_leida, reduccion_leida);
+    let mut total = alto_total(&bloques);
+    let disponible = alto - arriba - abajo;
+    if cuerpo.encoger == Some(true) && alto > 0.0 && total > disponible + 0.5 {
+        // Como PowerPoint: primero se aprietan los renglones y despues se
+        // reduce la letra, a pasos, hasta que quepa (o hasta el minimo).
+        for (escala, reduccion) in PASOS_AUTOAJUSTE {
+            bloques = armar(escala, reduccion);
+            total = alto_total(&bloques);
+            if total <= disponible + 0.5 {
+                break;
+            }
         }
     }
-    let libre = alto - arriba - abajo - total;
+    let libre = disponible - total;
     let dy = match cuerpo.anclaje.as_deref() {
         Some("ctr") => libre / 2.0,
         Some("b") => libre,
@@ -576,6 +609,12 @@ pub fn maquetar(tx: &Nodo, ancho: f32, alto: f32, niveles: &Niveles, cuerpo: &Cu
     }
     salida
 }
+
+/// Los pasos del autoajuste cuando el archivo no trae `fontScale`: escala
+/// de la letra y reduccion del interlineado, como los que guarda
+/// PowerPoint (`fontScale="92500" lnSpcReduction="10000"`...).
+const PASOS_AUTOAJUSTE: [(f32, f32); 10] =
+    [(0.925, 0.1), (0.85, 0.2), (0.775, 0.2), (0.7, 0.2), (0.625, 0.2), (0.55, 0.2), (0.475, 0.2), (0.4, 0.2), (0.325, 0.2), (0.25, 0.2)];
 
 /// La caja de texto de un rectangulo, para quien la necesite.
 pub fn caja_util(caja: Rect, c: &Cuerpo) -> Rect {

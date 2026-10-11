@@ -370,6 +370,7 @@ impl Montador<'_> {
             fondo: r.resaltado.flatten().or(r.sombreado.flatten()),
             enlace: enlace.cloned(),
             campo,
+            efectos: None,
         };
         if let Some(i) = self.estilos.iter().position(|x| *x == e) {
             return i as u32;
@@ -994,7 +995,7 @@ pub fn renglon_a_elementos(
                 if texto.trim().is_empty() && e.subrayado.is_none() {
                     continue;
                 }
-                salida.push(Elemento::Texto(Texto {
+                let el = Elemento::Texto(Texto {
                     x: t.x,
                     y: base_y - e.subida,
                     letra: e.letra.clone(),
@@ -1007,7 +1008,11 @@ pub fn renglon_a_elementos(
                     ancho: t.ancho,
                     campo: e.campo,
                     enlace: e.enlace.clone(),
-                }));
+                });
+                salida.push(match &e.efectos {
+                    Some(ef) => el.con_efectos(ef.to_vec()),
+                    None => el,
+                });
             }
             Contenido::Objeto { id, alto } => {
                 if let Some(o) = objetos.get(*id as usize) {

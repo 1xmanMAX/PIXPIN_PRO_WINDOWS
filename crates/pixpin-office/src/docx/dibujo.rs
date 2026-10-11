@@ -192,7 +192,9 @@ fn forma(ctx: &mut Ctx, n: &Nodo, caja: Rect, salida: &mut Vec<Elemento>) {
             if let Some(ln) = sppr.and_then(|s| s.hijo("ln")).and_then(|l| dml::linea(l, dctx, None)).flatten() {
                 els.push(Elemento::Rect { rect: Rect::nuevo(0.0, 0.0, caja.ancho, caja.alto), relleno: None, borde: Some(ln) });
             }
-            salida.push(dml::colocar(els, caja, x.giro, x.voltear_h, x.voltear_v));
+            // La sombra de las imagenes (muy comun en Word).
+            let efectos = dml::efectos_forma(sppr, n.hijo("style"), &[], dctx, x.giro);
+            salida.push(dml::colocar(els, caja, x.giro, x.voltear_h, x.voltear_v).con_efectos(efectos));
         }
         "wsp" => {
             let Some(sppr) = n.hijo("spPr") else { return };
@@ -234,7 +236,8 @@ fn forma(ctx: &mut Ctx, n: &Nodo, caja: Rect, salida: &mut Vec<Elemento>) {
                     els.push(e);
                 }
             }
-            salida.push(dml::colocar(els, caja, x.giro, x.voltear_h, x.voltear_v));
+            let efectos = dml::efectos_forma(Some(sppr), n.hijo("style"), &[], dctx, x.giro);
+            salida.push(dml::colocar(els, caja, x.giro, x.voltear_h, x.voltear_v).con_efectos(efectos));
         }
         "wgp" | "grpSp" | "wpc" => {
             let gx = n.hijo("grpSpPr").map(dml::xfrm).unwrap_or_default();
@@ -249,7 +252,8 @@ fn forma(ctx: &mut Ctx, n: &Nodo, caja: Rect, salida: &mut Vec<Elemento>) {
                 let r = Rect::nuevo((hx.x - gx.hijo_x) * sx, (hx.y - gx.hijo_y) * sy, hx.ancho * sx, hx.alto * sy);
                 forma(ctx, h, r, &mut hijos);
             }
-            salida.push(dml::colocar(hijos, caja, gx.giro, gx.voltear_h, gx.voltear_v));
+            let efectos = dml::efectos_forma(n.hijo("grpSpPr"), None, &[], dctx, gx.giro);
+            salida.push(dml::colocar(hijos, caja, gx.giro, gx.voltear_h, gx.voltear_v).con_efectos(efectos));
         }
         _ => {}
     }

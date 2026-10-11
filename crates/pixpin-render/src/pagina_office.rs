@@ -15,11 +15,21 @@ use std::sync::Arc;
 
 use pixpin_office::medidor::{Medidor, Metricas};
 use pixpin_office::pagina::{
-    Campo, Color as ColorO, Discontinuo, Elemento, Figura, Letra, Pagina, Recursos, Relleno, Subrayado, Texto, Tramo, Trazo,
+    Campo, Color as ColorO, Discontinuo, Efecto, Elemento, Figura, Letra, Pagina, Recursos, Relleno, Subrayado, Texto, Tramo, Trazo,
 };
 use windows::Win32::Graphics::Direct2D::Common::{
-    D2D_RECT_F, D2D1_BEZIER_SEGMENT, D2D1_COLOR_F, D2D1_FIGURE_BEGIN_FILLED, D2D1_FIGURE_BEGIN_HOLLOW, D2D1_FIGURE_END_CLOSED, D2D1_FIGURE_END_OPEN,
+    D2D_RECT_F, D2D1_BEZIER_SEGMENT, D2D1_COLOR_F, D2D1_COMPOSITE_MODE_DESTINATION_IN, D2D1_COMPOSITE_MODE_SOURCE_OUT,
+    D2D1_COMPOSITE_MODE_SOURCE_OVER, D2D1_FIGURE_BEGIN_FILLED, D2D1_FIGURE_BEGIN_HOLLOW, D2D1_FIGURE_END_CLOSED, D2D1_FIGURE_END_OPEN,
     D2D1_FILL_MODE_ALTERNATE, D2D1_GRADIENT_STOP,
+};
+use windows::Win32::Graphics::Direct2D::{
+    CLSID_D2D1AlphaMask, CLSID_D2D1Composite, CLSID_D2D1Crop, CLSID_D2D1Flood, CLSID_D2D1GaussianBlur, CLSID_D2D1Morphology, CLSID_D2D1Shadow,
+    CLSID_D2D12DAffineTransform, D2D1_2DAFFINETRANSFORM_PROP_TRANSFORM_MATRIX, D2D1_COMPOSITE_PROP_MODE, D2D1_CROP_PROP_RECT,
+    D2D1_DEVICE_CONTEXT_OPTIONS_NONE, D2D1_FLOOD_PROP_COLOR, D2D1_GAUSSIANBLUR_PROP_STANDARD_DEVIATION, D2D1_INTERPOLATION_MODE_LINEAR,
+    D2D1_MORPHOLOGY_MODE_DILATE, D2D1_MORPHOLOGY_MODE_ERODE, D2D1_MORPHOLOGY_PROP_HEIGHT, D2D1_MORPHOLOGY_PROP_MODE, D2D1_MORPHOLOGY_PROP_WIDTH,
+    D2D1_PROPERTY_TYPE, D2D1_PROPERTY_TYPE_ENUM, D2D1_PROPERTY_TYPE_FLOAT, D2D1_PROPERTY_TYPE_MATRIX_3X2, D2D1_PROPERTY_TYPE_UINT32,
+    D2D1_PROPERTY_TYPE_VECTOR4, D2D1_SHADOW_PROP_BLUR_STANDARD_DEVIATION, D2D1_SHADOW_PROP_COLOR, D2D1_TEXT_ANTIALIAS_MODE_GRAYSCALE,
+    ID2D1CommandList, ID2D1Effect, ID2D1Image,
 };
 use windows::Win32::Graphics::Direct2D::{
     D2D1_ANTIALIAS_MODE_PER_PRIMITIVE, D2D1_CAP_STYLE_FLAT, D2D1_DASH_STYLE_DASH, D2D1_DASH_STYLE_DASH_DOT, D2D1_DASH_STYLE_DOT,
@@ -323,7 +333,16 @@ pub struct PintorOffice {
     imagenes: RefCell<HashMap<Arc<str>, Option<ID2D1Bitmap1>>>,
     pinceles: RefCell<HashMap<[u8; 4], ID2D1SolidColorBrush>>,
     trazos: RefCell<HashMap<u8, Option<ID2D1StrokeStyle>>>,
+    /// Contextos aparte del mismo dispositivo para grabar lo que lleva
+    /// efectos en una lista de ordenes (uno por nivel de anidamiento): al
+    /// principal no se le puede cambiar el destino a mitad de fotograma.
+    /// Se crean la primera vez que una pagina trae efectos.
+    auxiliares: RefCell<Vec<ID2D1DeviceContext>>,
 }
+
+/// Cuantos `Elemento::Efecto` anidados se pintan con sus efectos; los de
+/// mas adentro se pintan sin ellos.
+const NIVELES_EFECTO: usize = 3;
 
 impl PintorOffice {
     pub fn nuevo(motor: &MotorRender) -> Option<PintorOffice> {
@@ -336,6 +355,7 @@ impl PintorOffice {
             imagenes: RefCell::new(HashMap::new()),
             pinceles: RefCell::new(HashMap::new()),
             trazos: RefCell::new(HashMap::new()),
+            auxiliares: RefCell::new(Vec::new()),
         })
     }
 
@@ -368,7 +388,7 @@ impl PintorOffice {
         // Lo que se salga de la hoja no se ve.
         // SAFETY: dentro del fotograma; se quita al acabar.
         unsafe { c.PushAxisAlignedClip(&hoja, D2D1_ANTIALIAS_MODE_PER_PRIMITIVE) };
-        let ctx = Ctx { c, recursos, total };
+        let ctx = Ctx { c, recursos, total, nivel: 0 };
         for e in &pagina.elementos {
             self.elemento(&ctx, e, &base);
         }
@@ -509,6 +529,126 @@ impl PintorOffice {
                     c.SetTransform(transformada);
                 }
             }
+            Elemento::Efecto { efectos, elementos } => self.con_efectos(ctx, efectos, elementos, transformada),
+        }
+    }
+
+    /// El contexto auxiliar del nivel `n` (ver `auxiliares`).
+    fn auxiliar(&self, c: &ID2D1DeviceContext, n: usize) -> Option<ID2D1DeviceContext> {
+        if n >= NIVELES_EFECTO {
+            return None;
+        }
+        let mut v = self.auxiliares.borrow_mut();
+        while v.len() <= n {
+            // SAFETY: el dispositivo del contexto vivo da otro contexto suyo.
+            let nuevo = unsafe { c.GetDevice().and_then(|d| d.CreateDeviceContext(D2D1_DEVICE_CONTEXT_OPTIONS_NONE)) }.ok()?;
+            v.push(nuevo);
+        }
+        Some(v[n].clone())
+    }
+
+    /// Graba `elementos` (con la transformada `m`, en DIP del destino) en una
+    /// lista de ordenes, para usarla de entrada de los efectos.
+    fn grabar(&self, ctx: &Ctx, elementos: &[Elemento], m: &Matrix3x2) -> Option<ID2D1CommandList> {
+        let c2 = self.auxiliar(ctx.c, ctx.nivel)?;
+        // SAFETY: protocolo SetTarget/BeginDraw/EndDraw completo sobre el
+        // contexto auxiliar de este nivel, que no tiene nada empujado; el
+        // destino se desliga siempre, tambien si algo falla.
+        unsafe {
+            let lista = c2.CreateCommandList().ok()?;
+            let (mut dx, mut dy) = (96.0, 96.0);
+            ctx.c.GetDpi(&mut dx, &mut dy);
+            c2.SetDpi(dx, dy);
+            c2.SetTarget(&lista);
+            c2.BeginDraw();
+            // La silueta no necesita ClearType (y en una lista de ordenes
+            // transparente no se puede).
+            c2.SetTextAntialiasMode(D2D1_TEXT_ANTIALIAS_MODE_GRAYSCALE);
+            c2.SetTransform(m);
+            let sub = Ctx { c: &c2, recursos: ctx.recursos, total: ctx.total, nivel: ctx.nivel + 1 };
+            for e in elementos {
+                self.elemento(&sub, e, m);
+            }
+            let fin = c2.EndDraw(None, None);
+            c2.SetTarget(None);
+            fin.ok()?;
+            lista.Close().ok()?;
+            Some(lista)
+        }
+    }
+
+    /// **Lo que lleva efectos** (`a:effectLst`): debajo el brillo y la
+    /// sombra exterior, encima lo envuelto (desvanecido por el borde si lo
+    /// pide) y la sombra interior. Todo con los efectos de Direct2D sobre
+    /// una lista de ordenes con lo envuelto, en DIP del destino.
+    fn con_efectos(&self, ctx: &Ctx, efectos: &[Efecto], elementos: &[Elemento], m: &Matrix3x2) {
+        let c = ctx.c;
+        let pintar_tal_cual = || {
+            for h in elementos {
+                self.elemento(ctx, h, m);
+            }
+        };
+        let Some(lista) = self.grabar(ctx, elementos, m) else {
+            pintar_tal_cual();
+            return;
+        };
+        let Ok(lista) = lista.cast::<ID2D1Image>() else {
+            pintar_tal_cual();
+            return;
+        };
+        // De puntos de la pagina a DIP del destino.
+        let k = (m.M11 * m.M22 - m.M12 * m.M21).abs().sqrt();
+        let lineal = |dx: f32, dy: f32| (dx * m.M11 + dy * m.M21, dx * m.M12 + dy * m.M22);
+        // SAFETY: dentro del fotograma; la lista y los efectos son del mismo
+        // dispositivo; la transformada se restaura al final.
+        unsafe {
+            c.SetTransform(&Matrix3x2::identity());
+            let caja = c.GetImageLocalBounds(&lista).unwrap_or_default();
+            if !(caja.right > caja.left && caja.bottom > caja.top) {
+                c.SetTransform(m);
+                return;
+            }
+            for ef in efectos {
+                if let Efecto::Brillo { color, radio } = ef
+                    && let Some(img) = brillo(c, &lista, *color, radio * k)
+                {
+                    c.DrawImage(&img, None, None, D2D1_INTERPOLATION_MODE_LINEAR, D2D1_COMPOSITE_MODE_SOURCE_OVER);
+                }
+            }
+            for ef in efectos {
+                if let Efecto::SombraExterior { color, desenfoque, dx, dy, escala, sesgo, ancla } = ef
+                    && let Some(img) = sombra(c, &lista, *color, desenfoque * k)
+                {
+                    let (ox, oy) = lineal(*dx, *dy);
+                    let (ax, ay) = (caja.left + ancla.0 * (caja.right - caja.left), caja.top + ancla.1 * (caja.bottom - caja.top));
+                    let (tx, ty) = (sesgo.0.to_radians().tan(), sesgo.1.to_radians().tan());
+                    // p' = (p - ancla) * [sx, tan ky; tan kx, sy] + ancla + desplazamiento
+                    let (a, b, cc, d) = (escala.0, ty, tx, escala.1);
+                    let t = Matrix3x2 { M11: a, M12: b, M21: cc, M22: d, M31: ax - (ax * a + ay * cc) + ox, M32: ay - (ax * b + ay * d) + oy };
+                    c.SetTransform(&t);
+                    c.DrawImage(&img, None, None, D2D1_INTERPOLATION_MODE_LINEAR, D2D1_COMPOSITE_MODE_SOURCE_OVER);
+                    c.SetTransform(&Matrix3x2::identity());
+                }
+            }
+            let suave = efectos.iter().find_map(|e| if let Efecto::BordeSuave { radio } = e { Some(*radio) } else { None });
+            match suave.and_then(|r| borde_suave(c, &lista, r * k)) {
+                Some(img) => c.DrawImage(&img, None, None, D2D1_INTERPOLATION_MODE_LINEAR, D2D1_COMPOSITE_MODE_SOURCE_OVER),
+                None => {
+                    // Lo envuelto se pinta como siempre, directamente.
+                    c.SetTransform(m);
+                    pintar_tal_cual();
+                    c.SetTransform(&Matrix3x2::identity());
+                }
+            }
+            for ef in efectos {
+                if let Efecto::SombraInterior { color, desenfoque, dx, dy } = ef {
+                    let desplazamiento = lineal(*dx, *dy);
+                    if let Some(img) = sombra_interior(c, &lista, caja, *color, desenfoque * k, desplazamiento) {
+                        c.DrawImage(&img, None, None, D2D1_INTERPOLATION_MODE_LINEAR, D2D1_COMPOSITE_MODE_SOURCE_OVER);
+                    }
+                }
+            }
+            c.SetTransform(m);
         }
     }
 
@@ -739,6 +879,141 @@ struct Ctx<'a> {
     c: &'a ID2D1DeviceContext,
     recursos: &'a Recursos,
     total: u32,
+    /// Cuantos `Elemento::Efecto` hay por encima (el contexto auxiliar que
+    /// toca para grabar uno mas).
+    nivel: usize,
+}
+
+// --- Los efectos de Direct2D -------------------------------------------------
+
+fn poner(e: &ID2D1Effect, i: u32, tipo: D2D1_PROPERTY_TYPE, datos: &[u8]) {
+    // SAFETY: el indice y el tipo son los documentados de cada efecto y los
+    // datos tienen su tamano.
+    let _ = unsafe { e.SetValue(i, tipo, datos) };
+}
+
+fn poner_f32(e: &ID2D1Effect, i: u32, v: f32) {
+    poner(e, i, D2D1_PROPERTY_TYPE_FLOAT, &v.to_ne_bytes());
+}
+
+fn poner_u32(e: &ID2D1Effect, i: u32, tipo: D2D1_PROPERTY_TYPE, v: u32) {
+    poner(e, i, tipo, &v.to_ne_bytes());
+}
+
+fn poner_flotantes(e: &ID2D1Effect, i: u32, tipo: D2D1_PROPERTY_TYPE, v: &[f32]) {
+    let b: Vec<u8> = v.iter().flat_map(|x| x.to_ne_bytes()).collect();
+    poner(e, i, tipo, &b);
+}
+
+fn color_v4(c: ColorO) -> [f32; 4] {
+    [c.r as f32 / 255.0, c.g as f32 / 255.0, c.b as f32 / 255.0, c.a as f32 / 255.0]
+}
+
+fn efecto(c: &ID2D1DeviceContext, clsid: &windows::core::GUID, entradas: &[&ID2D1Image]) -> Option<ID2D1Effect> {
+    // SAFETY: los efectos integrados existen en todo Direct2D 1.1; las
+    // entradas son imagenes vivas del mismo dispositivo.
+    unsafe {
+        let e = c.CreateEffect(clsid).ok()?;
+        for (i, img) in entradas.iter().enumerate() {
+            e.SetInput(i as u32, *img, false);
+        }
+        Some(e)
+    }
+}
+
+fn salida(e: &ID2D1Effect) -> Option<ID2D1Image> {
+    // SAFETY: el efecto vive; la salida es una referencia nueva.
+    unsafe { e.GetOutput() }.ok()
+}
+
+/// La desviacion tipica del desenfoque de Direct2D para un `blurRad` de
+/// DrawingML (en DIP): la mitad, como lo ve PowerPoint a ojo.
+fn desviacion(radio: f32) -> f32 {
+    (radio * 0.5).clamp(0.0, 250.0)
+}
+
+/// La silueta de `img` de `color`, desenfocada `radio` DIP.
+fn sombra(c: &ID2D1DeviceContext, img: &ID2D1Image, color: ColorO, radio: f32) -> Option<ID2D1Image> {
+    let e = efecto(c, &CLSID_D2D1Shadow, &[img])?;
+    poner_f32(&e, D2D1_SHADOW_PROP_BLUR_STANDARD_DEVIATION.0 as u32, desviacion(radio));
+    poner_flotantes(&e, D2D1_SHADOW_PROP_COLOR.0 as u32, D2D1_PROPERTY_TYPE_VECTOR4, &color_v4(color));
+    salida(&e)
+}
+
+/// Engorda (o adelgaza) la silueta `radio` DIP con una morfologia (que no
+/// pasa de 100 de nucleo).
+fn morfologia(c: &ID2D1DeviceContext, img: &ID2D1Image, radio: f32, engordar: bool) -> Option<ID2D1Image> {
+    let n = (radio * 2.0).round().clamp(1.0, 100.0) as u32;
+    let e = efecto(c, &CLSID_D2D1Morphology, &[img])?;
+    let modo = if engordar { D2D1_MORPHOLOGY_MODE_DILATE } else { D2D1_MORPHOLOGY_MODE_ERODE };
+    poner_u32(&e, D2D1_MORPHOLOGY_PROP_MODE.0 as u32, D2D1_PROPERTY_TYPE_ENUM, modo.0 as u32);
+    poner_u32(&e, D2D1_MORPHOLOGY_PROP_WIDTH.0 as u32, D2D1_PROPERTY_TYPE_UINT32, n);
+    poner_u32(&e, D2D1_MORPHOLOGY_PROP_HEIGHT.0 as u32, D2D1_PROPERTY_TYPE_UINT32, n);
+    salida(&e)
+}
+
+/// El brillo (`a:glow`): la silueta engordada la mitad del radio y
+/// desenfocada el resto, del color del brillo.
+fn brillo(c: &ID2D1DeviceContext, img: &ID2D1Image, color: ColorO, radio: f32) -> Option<ID2D1Image> {
+    if radio < 0.5 {
+        return None;
+    }
+    let gorda = morfologia(c, img, radio * 0.5, true)?;
+    let e = efecto(c, &CLSID_D2D1Shadow, &[&gorda])?;
+    poner_f32(&e, D2D1_SHADOW_PROP_BLUR_STANDARD_DEVIATION.0 as u32, (radio * 0.25).clamp(0.0, 250.0));
+    poner_flotantes(&e, D2D1_SHADOW_PROP_COLOR.0 as u32, D2D1_PROPERTY_TYPE_VECTOR4, &color_v4(color));
+    salida(&e)
+}
+
+/// El borde suave (`a:softEdge`): lo envuelto con la opacidad de su propia
+/// silueta adelgazada y desenfocada, que se apaga hacia el borde.
+fn borde_suave(c: &ID2D1DeviceContext, img: &ID2D1Image, radio: f32) -> Option<ID2D1Image> {
+    if radio < 0.5 {
+        return None;
+    }
+    let flaca = morfologia(c, img, radio * 0.5, false)?;
+    let desenfoque = efecto(c, &CLSID_D2D1GaussianBlur, &[&flaca])?;
+    poner_f32(&desenfoque, D2D1_GAUSSIANBLUR_PROP_STANDARD_DEVIATION.0 as u32, (radio * 0.25).clamp(0.0, 250.0));
+    let mascara = salida(&desenfoque)?;
+    let e = efecto(c, &CLSID_D2D1AlphaMask, &[img, &mascara])?;
+    salida(&e)
+}
+
+/// La sombra interior (`a:innerShdw`): el color fuera de la silueta
+/// desplazada, desenfocado, y recortado por la silueta sin desplazar.
+fn sombra_interior(
+    c: &ID2D1DeviceContext,
+    img: &ID2D1Image,
+    caja: D2D_RECT_F,
+    color: ColorO,
+    radio: f32,
+    (dx, dy): (f32, f32),
+) -> Option<ID2D1Image> {
+    let margen = desviacion(radio) * 3.0 + dx.abs().max(dy.abs()) + 2.0;
+    let relleno = efecto(c, &CLSID_D2D1Flood, &[])?;
+    poner_flotantes(&relleno, D2D1_FLOOD_PROP_COLOR.0 as u32, D2D1_PROPERTY_TYPE_VECTOR4, &color_v4(color));
+    let relleno = salida(&relleno)?;
+    let recorte = efecto(c, &CLSID_D2D1Crop, &[&relleno])?;
+    poner_flotantes(
+        &recorte,
+        D2D1_CROP_PROP_RECT.0 as u32,
+        D2D1_PROPERTY_TYPE_VECTOR4,
+        &[caja.left - margen, caja.top - margen, caja.right + margen, caja.bottom + margen],
+    );
+    let relleno = salida(&recorte)?;
+    let mover = efecto(c, &CLSID_D2D12DAffineTransform, &[img])?;
+    poner_flotantes(&mover, D2D1_2DAFFINETRANSFORM_PROP_TRANSFORM_MATRIX.0 as u32, D2D1_PROPERTY_TYPE_MATRIX_3X2, &[1.0, 0.0, 0.0, 1.0, dx, dy]);
+    let movida = salida(&mover)?;
+    // Composite: la entrada 0 es el destino y la 1 la fuente.
+    let fuera = efecto(c, &CLSID_D2D1Composite, &[&movida, &relleno])?;
+    poner_u32(&fuera, D2D1_COMPOSITE_PROP_MODE.0 as u32, D2D1_PROPERTY_TYPE_ENUM, D2D1_COMPOSITE_MODE_SOURCE_OUT.0 as u32);
+    let fuera = salida(&fuera)?;
+    let desenfoque = efecto(c, &CLSID_D2D1GaussianBlur, &[&fuera])?;
+    poner_f32(&desenfoque, D2D1_GAUSSIANBLUR_PROP_STANDARD_DEVIATION.0 as u32, desviacion(radio));
+    let borrosa = salida(&desenfoque)?;
+    let dentro = efecto(c, &CLSID_D2D1Composite, &[&borrosa, img])?;
+    poner_u32(&dentro, D2D1_COMPOSITE_PROP_MODE.0 as u32, D2D1_PROPERTY_TYPE_ENUM, D2D1_COMPOSITE_MODE_DESTINATION_IN.0 as u32);
+    salida(&dentro)
 }
 
 fn d2d(c: ColorO) -> D2D1_COLOR_F {

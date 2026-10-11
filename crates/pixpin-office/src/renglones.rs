@@ -10,7 +10,7 @@
 use std::sync::Arc;
 
 use crate::medidor::Medidor;
-use crate::pagina::{Campo, Color, Letra, Subrayado};
+use crate::pagina::{Campo, Color, Efecto, Letra, Subrayado};
 
 /// El estilo de un trozo de texto, tal como lo necesita la maquetacion.
 #[derive(Debug, Clone, PartialEq)]
@@ -27,11 +27,24 @@ pub struct Estilo {
     pub fondo: Option<Color>,
     pub enlace: Option<Arc<str>>,
     pub campo: Option<Campo>,
+    /// Efectos del texto (la sombra o el brillo de un `a:rPr/a:effectLst`).
+    pub efectos: Option<Arc<[Efecto]>>,
 }
 
 impl Estilo {
     pub fn de_letra(letra: Letra) -> Estilo {
-        Estilo { letra, color: Color::NEGRO, subrayado: None, tachado: false, espaciado: 0.0, subida: 0.0, fondo: None, enlace: None, campo: None }
+        Estilo {
+            letra,
+            color: Color::NEGRO,
+            subrayado: None,
+            tachado: false,
+            espaciado: 0.0,
+            subida: 0.0,
+            fondo: None,
+            enlace: None,
+            campo: None,
+            efectos: None,
+        }
     }
 }
 

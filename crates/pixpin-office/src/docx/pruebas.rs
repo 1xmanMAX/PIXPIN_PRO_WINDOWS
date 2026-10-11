@@ -184,3 +184,32 @@ fn un_documento_roto_no_entra_en_panico() {
         }
     }
 }
+
+/// Hay algun `Elemento::Efecto` en la lista (a cualquier profundidad).
+fn hay_efecto(els: &[Elemento]) -> bool {
+    els.iter().any(|e| match e {
+        Elemento::Efecto { .. } => true,
+        Elemento::Grupo { elementos, .. } => hay_efecto(elementos),
+        _ => false,
+    })
+}
+
+#[test]
+fn la_sombra_de_una_imagen_de_word_se_lee() {
+    let foto = |efectos: &str| {
+        format!(
+            r#"<w:p><w:r><w:drawing><wp:inline xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"><wp:extent cx="635000" cy="635000"/><a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:graphicData><pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:blipFill><a:blip r:embed="rI"/></pic:blipFill><pic:spPr><a:prstGeom prst="rect"/>{efectos}</pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>"#
+        )
+    };
+    let rels = r#"<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rI" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/a.png"/></Relationships>"#;
+    let extra = [("word/_rels/document.xml.rels", rels), ("word/media/a.png", "no es un png")];
+    let m = MedidorFijo::default();
+    let sombra = r#"<a:effectLst><a:outerShdw blurRad="50800" dist="38100" dir="2700000"><a:prstClr val="black"><a:alpha val="40000"/></a:prstClr></a:outerShdw></a:effectLst>"#;
+    let mut d = documento(&foto(sombra), &extra);
+    assert!(hay_efecto(&d.pagina(0, &m).unwrap().elementos));
+    // Caso negativo: un effectLst vacio no pone nada.
+    let mut d = documento(&foto("<a:effectLst/>"), &extra);
+    let p = d.pagina(0, &m).unwrap();
+    assert!(!hay_efecto(&p.elementos));
+    assert!(!p.elementos.is_empty(), "la imagen sigue ahi");
+}

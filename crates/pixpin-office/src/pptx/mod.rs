@@ -313,7 +313,8 @@ impl Presentacion {
                 if let Some(t) = sppr.and_then(|s| s.hijo("ln")).and_then(|ln| dml::linea(ln, ctx, None)).flatten() {
                     els.push(Elemento::Rect { rect: Rect::nuevo(0.0, 0.0, x.ancho, x.alto), relleno: None, borde: Some(t) });
                 }
-                salida.push(dml::colocar(els, caja, x.giro, x.voltear_h, x.voltear_v));
+                let efectos = dml::efectos_forma(sppr, n.hijo("style"), &[], ctx, x.giro);
+                salida.push(dml::colocar(els, caja, x.giro, x.voltear_h, x.voltear_v).con_efectos(efectos));
             }
             "grpSp" => {
                 let gx = n.hijo("grpSpPr").and_then(|g| g.hijo("xfrm")).map(dml::xfrm).unwrap_or_default();
@@ -327,7 +328,9 @@ impl Presentacion {
                     let marco = Rect { x: gx.hijo_x, y: gx.hijo_y, ancho: sx, alto: sy };
                     self.forma(&mut hijos, l, h, rels, ctx, &[], niveles_de, es_diapositiva, Some(marco));
                 }
-                salida.push(dml::colocar(hijos, Rect::nuevo(gx.x, gx.y, gx.ancho, gx.alto), gx.giro, gx.voltear_h, gx.voltear_v));
+                let efectos = dml::efectos_forma(n.hijo("grpSpPr"), None, &[], ctx, gx.giro);
+                let grupo = dml::colocar(hijos, Rect::nuevo(gx.x, gx.y, gx.ancho, gx.alto), gx.giro, gx.voltear_h, gx.voltear_v);
+                salida.push(grupo.con_efectos(efectos));
             }
             "graphicFrame" => {
                 let x = n.hijo("xfrm").map(dml::xfrm).or_else(|| herencia_xfrm(&herencia));
@@ -335,7 +338,8 @@ impl Presentacion {
                 let Some(datos) = n.hijo("graphic").and_then(|g| g.hijo("graphicData")) else { return };
                 if let Some(t) = datos.hijo("tbl") {
                     let els = self.tabla(t, x.ancho, ctx, l);
-                    salida.push(dml::colocar(els, Rect::nuevo(x.x, x.y, x.ancho, x.alto), 0.0, false, false));
+                    let efectos = dml::efectos_forma(t.hijo("tblPr"), None, &[], ctx, 0.0);
+                    salida.push(dml::colocar(els, Rect::nuevo(x.x, x.y, x.ancho, x.alto), 0.0, false, false).con_efectos(efectos));
                 } else if datos.atributo("uri").ends_with("/diagram") {
                     // SmartArt: el dibujo que PowerPoint guarda ya hecho.
                     let dm = datos.hijo("relIds").map(|r| r.atributo_con_prefijo("r", "dm").to_string()).unwrap_or_default();
@@ -446,7 +450,8 @@ impl Presentacion {
         if els.is_empty() {
             return;
         }
-        salida.push(dml::colocar(els, Rect::nuevo(x.x, x.y, x.ancho, x.alto), x.giro, x.voltear_h, x.voltear_v));
+        let efectos = dml::efectos_forma(sppr, n.hijo("style"), &heredados, ctx, x.giro);
+        salida.push(dml::colocar(els, Rect::nuevo(x.x, x.y, x.ancho, x.alto), x.giro, x.voltear_h, x.voltear_v).con_efectos(efectos));
     }
 
     fn smartart(&mut self, rels: &Relaciones, dm: &str, ctx: Contexto, l: &Lienzo, niveles_de: &dyn Fn(&str) -> Niveles) -> Option<Vec<Elemento>> {
@@ -796,6 +801,7 @@ fn alto_de(els: &[Elemento]) -> f32 {
             Elemento::Texto(t) => t.y + t.letra.tam * 0.3,
             Elemento::Rect { rect, .. } | Elemento::Imagen { rect, .. } => rect.abajo(),
             Elemento::Linea { desde, hasta, .. } => desde.1.max(hasta.1),
+            Elemento::Efecto { elementos, .. } => alto_de(elementos),
             _ => 0.0,
         };
         m = m.max(abajo);

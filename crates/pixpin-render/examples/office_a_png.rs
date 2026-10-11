@@ -161,6 +161,11 @@ fn main() {
                             bajar(elementos, nivel + 1);
                             continue;
                         }
+                        pixpin_office::Elemento::Efecto { efectos, elementos } => {
+                            println!("{}Efecto {:?}", "  ".repeat(nivel), efectos);
+                            bajar(elementos, nivel + 1);
+                            continue;
+                        }
                     };
                     println!("{}{s}", "  ".repeat(nivel));
                 }
