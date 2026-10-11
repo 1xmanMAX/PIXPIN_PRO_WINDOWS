@@ -651,7 +651,8 @@ fn corrida(ctx: &mut Ctx, rc: &mut Recogida, r: &Nodo, base: &PropCorrida, enlac
                 }
             }
             "AlternateContent" => {
-                if let Some(c) = e.hijo("Choice").or_else(|| e.hijo("Fallback")) {
+                // La primera rama, salvo un grafico nuevo con respaldo.
+                if let Some(c) = crate::grafico::rama_alternativa(e) {
                     for x in c.elementos() {
                         let d = match x.nombre.as_str() {
                             "drawing" => dibujo::dibujo(ctx, x),

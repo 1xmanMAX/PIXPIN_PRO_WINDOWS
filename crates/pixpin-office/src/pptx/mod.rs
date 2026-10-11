@@ -336,6 +336,11 @@ impl Presentacion {
                 if let Some(t) = datos.hijo("tbl") {
                     let els = self.tabla(t, x.ancho, ctx, l);
                     salida.push(dml::colocar(els, Rect::nuevo(x.x, x.y, x.ancho, x.alto), 0.0, false, false));
+                } else if let Some(els) =
+                    crate::grafico::de_datos(&mut self.paquete, rels, datos, ctx, l.medidor, x.ancho, x.alto)
+                {
+                    // Un grafico: dibujado con los datos de su cache.
+                    salida.push(dml::colocar(els, Rect::nuevo(x.x, x.y, x.ancho, x.alto), 0.0, false, false));
                 } else if datos.atributo("uri").ends_with("/diagram") {
                     // SmartArt: el dibujo que PowerPoint guarda ya hecho.
                     let dm = datos.hijo("relIds").map(|r| r.atributo_con_prefijo("r", "dm").to_string()).unwrap_or_default();

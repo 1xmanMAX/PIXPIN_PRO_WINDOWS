@@ -184,3 +184,44 @@ fn un_documento_roto_no_entra_en_panico() {
         }
     }
 }
+
+/// Todos los textos de una lista de elementos, entrando en los grupos.
+fn textos_hondos(els: &[Elemento], v: &mut Vec<String>) {
+    for e in els {
+        match e {
+            Elemento::Texto(t) => v.push(t.texto.clone()),
+            Elemento::Grupo { elementos, .. } => textos_hondos(elementos, v),
+            _ => {}
+        }
+    }
+}
+
+#[test]
+fn un_grafico_en_linea_se_dibuja_y_el_nuevo_usa_su_respaldo() {
+    const A: &str = r#"xmlns:wp="x" xmlns:a="y" xmlns:mc="z""#;
+    let grafico = r#"<c:chartSpace xmlns:c="c"><c:chart><c:autoTitleDeleted val="1"/><c:plotArea><c:pieChart><c:varyColors val="1"/><c:ser><c:idx val="0"/><c:order val="0"/><c:cat><c:strLit><c:ptCount val="2"/><c:pt idx="0"><c:v>Si</c:v></c:pt><c:pt idx="1"><c:v>No</c:v></c:pt></c:strLit></c:cat><c:val><c:numLit><c:ptCount val="2"/><c:pt idx="0"><c:v>3</c:v></c:pt><c:pt idx="1"><c:v>1</c:v></c:pt></c:numLit></c:val><c:dLbls><c:showPercent val="1"/></c:dLbls></c:ser></c:pieChart></c:plotArea><c:legend><c:legendPos val="r"/></c:legend></c:chart></c:chartSpace>"#;
+    let rels = r#"<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rC" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/chart" Target="charts/chart1.xml"/></Relationships>"#;
+    let cuerpo = format!(
+        r#"<w:p {A}><w:r><w:drawing><wp:inline><wp:extent cx="2540000" cy="1905000"/><a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/chart"><c:chart xmlns:c="c" r:id="rC"/></a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>
+        <w:p {A}><w:r><mc:AlternateContent><mc:Choice Requires="cx1"><w:drawing><wp:inline><wp:extent cx="2540000" cy="635000"/><a:graphic><a:graphicData uri="http://schemas.microsoft.com/office/drawing/2014/chartex"/></a:graphic></wp:inline></w:drawing></mc:Choice><mc:Fallback><w:pict><v:rect xmlns:v="v" style="width:100pt;height:20pt"><v:textbox><w:txbxContent><w:p><w:r><w:t>respaldo</w:t></w:r></w:p></w:txbxContent></v:textbox></v:rect></w:pict></mc:Fallback></mc:AlternateContent></w:r></w:p>"#
+    );
+    let mut d = documento(&cuerpo, &[("word/charts/chart1.xml", grafico), ("word/_rels/document.xml.rels", rels)]);
+    let p = d.pagina(0, &MedidorFijo::default()).unwrap();
+    let mut t = Vec::new();
+    textos_hondos(&p.elementos, &mut t);
+    assert!(t.contains(&"75%".to_string()) && t.contains(&"Si".to_string()), "{t:?}");
+    assert!(t.contains(&"respaldo".to_string()), "el grafico nuevo deja su respaldo: {t:?}");
+}
+
+#[test]
+fn un_grafico_sin_su_parte_deja_un_aviso() {
+    const A: &str = r#"xmlns:wp="x" xmlns:a="y""#;
+    let cuerpo = format!(
+        r#"<w:p {A}><w:r><w:drawing><wp:inline><wp:extent cx="2540000" cy="1905000"/><a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/chart"><c:chart xmlns:c="c" r:id="rNo"/></a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>"#
+    );
+    let mut d = documento(&cuerpo, &[]);
+    let p = d.pagina(0, &MedidorFijo::default()).unwrap();
+    let mut t = Vec::new();
+    textos_hondos(&p.elementos, &mut t);
+    assert!(t.iter().any(|x| x.starts_with("Gráfico")), "{t:?}");
+}
