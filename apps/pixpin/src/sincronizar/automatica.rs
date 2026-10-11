@@ -20,15 +20,40 @@
 //!   vez, no en cada intento). Lo hecho queda en «Actividad» de la ventana.
 //! - Se apaga con `[sincro] automatica = false` en `ajustes.toml`.
 //!
-//! La decision es pura ([`Reloj::toca`]) y se prueba sin red.
+//! **Las tareas, al instante** (10-oct-2026, el usuario: «implementa una
+//! funcion para sincronizar las tareas de forma rapida a todos los
+//! dispositivos»). Esperar [`QUIETO`] esta bien para un mensaje que se
+//! escribe, no para una casilla: quien tacha en el PC mira el movil y la
+//! quiere tachada ya. Asi que lo que toca tareas lo dice ([`avisar_tareas`],
+//! desde `pedidos`, el panel del chat, el pin de la lista y el recordatorio)
+//! y, tras [`CALMA_TAREAS`] sin mas toques (o [`TOPE_TAREAS`] desde el
+//! primero, si no paran), sale una vuelta **solo con esos chats** con todos
+//! los que contestan (`vuelta::solo_estos`: el cable es el de siempre). Si
+//! ya hay una vuelta en marcha, espera a que acabe y sale detras; nunca a la
+//! par. Sin globos: lo hecho queda en «Actividad». Quien no contesta lo
+//! recibe con la vuelta entera al aparecer, como todo. La de siempre sigue
+//! detras ([`QUIETO`]): si la rapida no llego a alguno, esa lo arregla.
+//!
+//! La decision es pura ([`Reloj::siguiente`]) y se prueba sin red.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
-use std::sync::mpsc;
+use std::sync::{OnceLock, mpsc};
 use std::time::Duration;
 
 use super::Fase;
+use super::en_fondo::Arranque;
 use super::presencia::{self, Novedad};
+
+/// Lo que se espera sin mas toques en las tareas antes de mandarlas: lo
+/// justo para que tres casillas seguidas viajen en una vuelta.
+pub const CALMA_TAREAS: i64 = 600;
+/// Y lo mas que se espera desde el primer toque, aunque no paren: quien
+/// tacha una lista entera ve llegar las primeras mientras sigue.
+pub const TOPE_TAREAS: i64 = 1_500;
+/// Cada cuanto se vuelve a mirar si se puede, con tareas esperando a que
+/// acabe otra vuelta (la del movil que llamo, la de la ventana).
+const REINTENTO: Duration = Duration::from_millis(250);
 
 /// Lo que se espera sin cambios en los chats antes de mandarlos: escribir un
 /// mensaje o dibujar un trazo son muchos cambios seguidos.
@@ -39,8 +64,8 @@ pub const PERIODO: i64 = 10 * 60_000;
 pub const FALLOS_PARA_AVISAR: u32 = 3;
 /// Cada cuanto se mira si hay que hacer algo.
 const LATIDO: Duration = Duration::from_secs(5);
-/// Cada cuantos latidos se recorre la carpeta de los chats.
-const LATIDOS_POR_FIRMA: u32 = 3;
+/// Cada cuanto se recorre la carpeta de los chats (ms).
+const CADA_FIRMA: i64 = 15_000;
 
 /// Por que se sincroniza ahora.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -48,6 +73,51 @@ pub enum Motivo {
     Aparecio,
     Cambio,
     Periodo,
+}
+
+/// Lo que toca hacer ahora ([`Reloj::siguiente`]).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Paso {
+    Nada,
+    /// La vuelta rapida, con las fichas de los chats cuyas tareas cambiaron.
+    Tareas(BTreeSet<String>),
+    /// La vuelta entera de siempre.
+    Entera(Motivo),
+    /// Habia tareas esperando y no contesta nadie: se olvidan, que la vuelta
+    /// entera de cuando aparezca alguno ya las lleva.
+    Olvidar,
+}
+
+/// Lo que le llega al hilo de la automatica.
+enum Entrada {
+    Presencia(Novedad),
+    /// Cambiaron las tareas del chat de esta ficha (`almacen::Ficha::id`).
+    Tareas(String),
+    /// Acabo una vuelta lanzada por la automatica (`rapida`: la de tareas).
+    Fin {
+        fin: Option<Fase>,
+        rapida: bool,
+    },
+}
+
+/// Por donde se avisa al hilo; sin automatica (apagada), no hay.
+static AVISOS: OnceLock<mpsc::Sender<Entrada>> = OnceLock::new();
+
+/// **Cambiaron las tareas del chat `ficha`** (`almacen::Ficha::id`, la
+/// carpeta de `proyectos/`): que salgan ya hacia los aparatos que contestan.
+/// Lo llama quien acaba de escribirlas, despues de escribir. Con la
+/// automatica apagada no hace nada.
+pub(crate) fn avisar_tareas(ficha: &str) {
+    if let Some(tx) = AVISOS.get() {
+        let _ = tx.send(Entrada::Tareas(ficha.to_string()));
+    }
+}
+
+/// Como [`avisar_tareas`], con la carpeta del chat (`proyectos/<ficha>`).
+pub(crate) fn avisar_tareas_en(carpeta: &Path) {
+    if let Some(ficha) = carpeta.file_name().and_then(|n| n.to_str()) {
+        avisar_tareas(ficha);
+    }
 }
 
 /// **La huella de los chats**: cuantos ficheros, cuanto pesan y la suma de
@@ -98,6 +168,11 @@ pub struct Reloj {
     /// Cuando empezo la ultima vuelta automatica.
     pub ultima: Option<i64>,
     pub fallos_seguidos: u32,
+    /// Las fichas con tareas cambiadas que aun no han salido.
+    pub tareas: BTreeSet<String>,
+    /// Cuando llego el primer aviso de tareas sin mandar, y el ultimo.
+    pub tareas_desde: i64,
+    pub tareas_ultimo: i64,
 }
 
 impl Reloj {
@@ -151,8 +226,55 @@ impl Reloj {
         None
     }
 
-    /// Empezo una vuelta.
+    /// Cambiaron las tareas del chat de `ficha`, `ahora`.
+    pub fn avisan_tareas(&mut self, ficha: &str, ahora: i64) {
+        if self.tareas.is_empty() {
+            self.tareas_desde = ahora;
+        }
+        self.tareas.insert(ficha.to_string());
+        self.tareas_ultimo = ahora;
+    }
+
+    /// Cuanto falta para mandar las tareas que esperan (0: ya), o `None` si
+    /// no espera ninguna.
+    pub fn espera_tareas(&self, ahora: i64) -> Option<i64> {
+        if self.tareas.is_empty() {
+            return None;
+        }
+        let calma = self.tareas_ultimo + CALMA_TAREAS;
+        let tope = self.tareas_desde + TOPE_TAREAS;
+        Some((calma.min(tope) - ahora).max(0))
+    }
+
+    /// **Pura**: lo que toca `ahora`. Con `ocupado` (una vuelta en marcha,
+    /// nuestra o del movil que llamo) nada: lo que espera se queda y sale
+    /// detras. Las tareas van antes que la vuelta entera, que tarda mas.
+    pub fn siguiente(&self, ahora: i64, ocupado: bool) -> Paso {
+        if ocupado {
+            return Paso::Nada;
+        }
+        if self.espera_tareas(ahora) == Some(0) {
+            return if self.con_quien().is_empty() {
+                Paso::Olvidar
+            } else {
+                Paso::Tareas(self.tareas.clone())
+            };
+        }
+        match self.toca(ahora) {
+            Some(m) => Paso::Entera(m),
+            None => Paso::Nada,
+        }
+    }
+
+    /// Salieron (o se olvidan) las tareas que esperaban.
+    pub fn tomar_tareas(&mut self) -> BTreeSet<String> {
+        std::mem::take(&mut self.tareas)
+    }
+
+    /// Empezo una vuelta entera: lo que esperaba de tareas va dentro (se
+    /// aviso despues de escribirlo, y la vuelta lee el disco de ahora).
     pub fn empezo(&mut self, ahora: i64) {
+        self.tareas.clear();
         self.ultima = Some(ahora);
         self.aparecidos.clear();
     }
@@ -180,7 +302,27 @@ pub(crate) fn instalar(raiz: PathBuf, encendida: bool) {
         return;
     }
     let (tx, rx) = mpsc::channel();
-    presencia::oir(tx);
+    if AVISOS.set(tx.clone()).is_err() {
+        return;
+    }
+    // Lo de la presencia entra por el mismo canal que los avisos de tareas y
+    // los finales de vuelta: asi el hilo duerme en un solo sitio y despierta
+    // con cualquiera de los tres.
+    let (tx_presencia, rx_presencia) = mpsc::channel();
+    presencia::oir(tx_presencia);
+    let puente = std::thread::Builder::new()
+        .name("sincro-automatica-oye".into())
+        .spawn(move || {
+            while let Ok(n) = rx_presencia.recv() {
+                if tx.send(Entrada::Presencia(n)).is_err() {
+                    return;
+                }
+            }
+        });
+    if let Err(e) = puente {
+        tracing::warn!(?e, "no se pudo lanzar la sincronizacion automatica");
+        return;
+    }
     let lanzado = std::thread::Builder::new()
         .name("sincro-automatica".into())
         .spawn(move || bucle(&raiz, rx));
@@ -190,55 +332,133 @@ pub(crate) fn instalar(raiz: PathBuf, encendida: bool) {
     }
 }
 
-fn bucle(raiz: &Path, rx: mpsc::Receiver<Novedad>) {
+/// Cuanto dormir hasta la siguiente mirada.
+fn cuanto_dormir(reloj: &Reloj, ahora: i64, corriendo: bool) -> Duration {
+    if corriendo {
+        // El final de la vuelta despierta por el canal.
+        return LATIDO;
+    }
+    match reloj.espera_tareas(ahora) {
+        // Toca ya y no se pudo (otra vuelta en marcha): se reintenta pronto.
+        Some(0) => REINTENTO,
+        Some(ms) => Duration::from_millis(ms as u64).min(LATIDO),
+        None => LATIDO,
+    }
+}
+
+fn bucle(raiz: &Path, rx: mpsc::Receiver<Entrada>) {
     // La carpeta con todos los chats: lo que viaja.
     let carpeta = pixpin_proyecto::almacen::carpeta(raiz, "x")
         .parent()
         .map(Path::to_path_buf)
         .unwrap_or_else(|| raiz.to_path_buf());
     let mut reloj = Reloj::default();
-    let (tx_fin, rx_fin) = mpsc::channel::<Option<Fase>>();
     let mut corriendo = false;
-    let mut latidos = 0u32;
+    let mut firmado: Option<i64> = None;
     loop {
-        match rx.recv_timeout(LATIDO) {
-            Ok(Novedad::Responde(id, si)) => reloj.responde(&id, si),
-            Ok(_) | Err(mpsc::RecvTimeoutError::Timeout) => {}
+        let espera = cuanto_dormir(&reloj, super::ahora_ms(), corriendo);
+        let primera = match rx.recv_timeout(espera) {
+            Ok(e) => Some(e),
+            Err(mpsc::RecvTimeoutError::Timeout) => None,
             Err(mpsc::RecvTimeoutError::Disconnected) => return,
-        }
-        // Las demas novedades que hayan llegado juntas.
-        while let Ok(n) = rx.try_recv() {
-            if let Novedad::Responde(id, si) = n {
-                reloj.responde(&id, si);
+        };
+        // Y las demas que hayan llegado juntas.
+        for e in primera
+            .into_iter()
+            .chain(std::iter::from_fn(|| rx.try_recv().ok()))
+        {
+            let ahora = super::ahora_ms();
+            match e {
+                Entrada::Presencia(Novedad::Responde(id, si)) => reloj.responde(&id, si),
+                Entrada::Presencia(_) => {}
+                Entrada::Tareas(ficha) => reloj.avisan_tareas(&ficha, ahora),
+                Entrada::Fin { fin, rapida } => {
+                    corriendo = false;
+                    if rapida {
+                        acabo_rapida(fin);
+                    } else {
+                        acabo(&mut reloj, fin, firma_de(&carpeta), ahora);
+                    }
+                }
             }
         }
         let ahora = super::ahora_ms();
-        if let Ok(fin) = rx_fin.try_recv() {
-            corriendo = false;
-            acabo(&mut reloj, fin, firma_de(&carpeta), ahora);
-        }
-        latidos = latidos.wrapping_add(1);
-        if latidos % LATIDOS_POR_FIRMA == 0 || reloj.base.is_none() {
+        if firmado.is_none_or(|f| ahora - f >= CADA_FIRMA) {
+            firmado = Some(ahora);
             reloj.ver(firma_de(&carpeta), ahora);
         }
-        if corriendo || super::hay_vueltas() {
-            continue;
+        match reloj.siguiente(ahora, corriendo || super::hay_vueltas()) {
+            Paso::Nada => {}
+            Paso::Olvidar => {
+                reloj.tomar_tareas();
+            }
+            Paso::Tareas(fichas) => {
+                let chats: BTreeSet<String> = fichas
+                    .iter()
+                    .filter_map(|f| pixpin_proyecto::vista::chat_de_ficha(raiz, f))
+                    .collect();
+                if chats.is_empty() {
+                    reloj.tomar_tareas();
+                    continue;
+                }
+                let ids = reloj.con_quien();
+                let tx = AVISOS.get().cloned();
+                let lanzada =
+                    super::en_fondo::lanzar_tareas(raiz, &ids, chats.clone(), move |fin| {
+                        if let Some(tx) = tx {
+                            let _ = tx.send(Entrada::Fin { fin, rapida: true });
+                        }
+                    });
+                match lanzada {
+                    Arranque::Lanzada => {
+                        reloj.tomar_tareas();
+                        corriendo = true;
+                        tracing::info!(?chats, aparatos = ids.len(), "tareas al instante");
+                    }
+                    // La de Flow (u otra): se reintenta en cuanto acabe.
+                    Arranque::Ocupada => {}
+                    Arranque::SinNadie => {
+                        reloj.tomar_tareas();
+                    }
+                }
+            }
+            Paso::Entera(motivo) => {
+                let ids = reloj.con_quien();
+                let tx = AVISOS.get().cloned();
+                let lanzada = super::en_fondo::lanzar_callada(raiz, &ids, move |fin| {
+                    if let Some(tx) = tx {
+                        let _ = tx.send(Entrada::Fin { fin, rapida: false });
+                    }
+                });
+                // Si no se pudo (ya habia una de fondo, la de Flow), se cuenta como
+                // hecha: se vuelve a mirar en el siguiente periodo.
+                reloj.empezo(ahora);
+                if lanzada {
+                    tracing::info!(?motivo, aparatos = ids.len(), "sincronizacion automatica");
+                    corriendo = true;
+                }
+            }
         }
-        let Some(motivo) = reloj.toca(ahora) else {
-            continue;
-        };
-        let ids = reloj.con_quien();
-        let tx = tx_fin.clone();
-        let lanzada = super::en_fondo::lanzar_callada(raiz, &ids, move |fin| {
-            let _ = tx.send(fin);
-        });
-        // Si no se pudo (ya habia una de fondo, la de Flow), se cuenta como
-        // hecha: se vuelve a mirar en el siguiente periodo.
-        reloj.empezo(ahora);
-        if lanzada {
-            tracing::info!(?motivo, aparatos = ids.len(), "sincronizacion automatica");
-            corriendo = true;
+    }
+}
+
+/// Lo que se hace al acabar una vuelta de tareas: solo apuntarlo. Ni globo
+/// si sale bien (quien tacha ya lo ve) ni si falla: la vuelta entera de
+/// detras ([`QUIETO`]) lo vuelve a intentar, y esa si avisa si falla seguido.
+/// Tampoco se toca la huella: lo demas que cambiara en los chats sigue
+/// pendiente para esa vuelta.
+fn acabo_rapida(fin: Option<Fase>) {
+    match &fin {
+        Some(Fase::Terminado { titulo, .. }) => {
+            presencia::difundir(Novedad::Registro(format!("Tareas al instante: {titulo}")));
         }
+        Some(Fase::Fallo(e)) => {
+            tracing::info!(%e, "las tareas al instante no salieron");
+            presencia::difundir(Novedad::Registro(format!(
+                "Tareas al instante: no se pudo ({e})"
+            )));
+        }
+        _ => {}
     }
 }
 
@@ -343,7 +563,10 @@ mod pruebas {
         assert!(!r.acabo(false, firma(1), 0));
         assert!(!r.acabo(false, firma(1), 0));
         assert!(r.acabo(false, firma(1), 0), "el tercero avisa");
-        assert!(!r.acabo(false, firma(1), 0), "caso negativo: el cuarto ya no");
+        assert!(
+            !r.acabo(false, firma(1), 0),
+            "caso negativo: el cuarto ya no"
+        );
         assert!(!r.acabo(true, firma(1), 0));
         assert_eq!(r.fallos_seguidos, 0);
     }
@@ -358,5 +581,132 @@ mod pruebas {
         assert_ne!(a, b);
         assert_eq!(b.ficheros, a.ficheros + 1);
         let _ = std::fs::remove_dir_all(&d);
+    }
+
+    fn con_tel() -> Reloj {
+        let mut r = Reloj::default();
+        r.responde("tel", true);
+        r.ver(firma(1), 0);
+        // Lo de aparecer ya se hizo: aqui se mira lo de las tareas.
+        r.empezo(0);
+        r.acabo(true, firma(1), 0);
+        r
+    }
+
+    fn fichas(v: &[&str]) -> BTreeSet<String> {
+        v.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn una_tarea_tachada_sale_en_cuanto_se_calma_y_no_antes() {
+        let mut r = con_tel();
+        assert_eq!(r.siguiente(1_000, false), Paso::Nada);
+        r.avisan_tareas("obra", 1_000);
+        assert_eq!(r.espera_tareas(1_000), Some(CALMA_TAREAS));
+        assert_eq!(
+            r.siguiente(1_000 + CALMA_TAREAS - 1, false),
+            Paso::Nada,
+            "aun tachando"
+        );
+        assert_eq!(
+            r.siguiente(1_000 + CALMA_TAREAS, false),
+            Paso::Tareas(fichas(&["obra"]))
+        );
+        assert_eq!(r.tomar_tareas(), fichas(&["obra"]));
+        assert_eq!(
+            r.siguiente(1_000 + CALMA_TAREAS, false),
+            Paso::Nada,
+            "caso negativo: ya salio"
+        );
+        assert_eq!(r.espera_tareas(5_000), None);
+    }
+
+    #[test]
+    fn varias_casillas_seguidas_van_en_una_vuelta_y_el_tope_no_deja_esperar_de_mas() {
+        let mut r = con_tel();
+        // Un clic cada 400 ms: la calma no llega nunca, el tope si.
+        for (i, t) in [0, 400, 800, 1_200].into_iter().enumerate() {
+            r.avisan_tareas(if i % 2 == 0 { "obra" } else { "guardados" }, 10_000 + t);
+            if 10_000 + t < 10_000 + TOPE_TAREAS {
+                assert_eq!(r.siguiente(10_000 + t, false), Paso::Nada);
+            }
+        }
+        assert_eq!(r.siguiente(10_000 + TOPE_TAREAS - 1, false), Paso::Nada);
+        assert_eq!(
+            r.siguiente(10_000 + TOPE_TAREAS, false),
+            Paso::Tareas(fichas(&["guardados", "obra"])),
+            "dos chats en la misma vuelta"
+        );
+    }
+
+    #[test]
+    fn con_otra_vuelta_en_marcha_las_tareas_esperan_y_salen_detras() {
+        let mut r = con_tel();
+        r.avisan_tareas("obra", 0);
+        assert_eq!(r.siguiente(5_000, true), Paso::Nada, "nunca a la par");
+        // Mientras, otra tarea: se suma a la cola, no se pierde.
+        r.avisan_tareas("guardados", 5_100);
+        assert_eq!(r.siguiente(5_200, true), Paso::Nada);
+        // Acabo la otra: salen las dos juntas, y van antes que la entera.
+        assert_eq!(
+            r.siguiente(PERIODO + 1, false),
+            Paso::Tareas(fichas(&["guardados", "obra"]))
+        );
+        r.tomar_tareas();
+        assert_eq!(
+            r.siguiente(PERIODO + 1, false),
+            Paso::Entera(Motivo::Periodo)
+        );
+    }
+
+    #[test]
+    fn caso_negativo_sin_nadie_que_conteste_las_tareas_se_olvidan_sin_salir() {
+        let mut r = Reloj::default();
+        r.avisan_tareas("obra", 0);
+        assert_eq!(r.siguiente(CALMA_TAREAS, false), Paso::Olvidar);
+        r.responde("tel", false);
+        assert_eq!(r.siguiente(CALMA_TAREAS, false), Paso::Olvidar);
+        r.tomar_tareas();
+        assert_eq!(r.siguiente(CALMA_TAREAS, false), Paso::Nada);
+    }
+
+    #[test]
+    fn la_vuelta_entera_se_lleva_lo_que_esperaba_de_tareas() {
+        let mut r = con_tel();
+        r.responde("tel", false);
+        r.responde("tel", true);
+        r.avisan_tareas("obra", 100);
+        // Aun en calma: toca la entera (aparecio) y se lleva las tareas.
+        assert_eq!(r.siguiente(200, false), Paso::Entera(Motivo::Aparecio));
+        r.empezo(200);
+        assert_eq!(r.espera_tareas(10_000), None);
+    }
+
+    #[test]
+    fn el_hilo_duerme_lo_justo_para_mandar_las_tareas_a_tiempo() {
+        let mut r = con_tel();
+        assert_eq!(cuanto_dormir(&r, 0, false), LATIDO);
+        r.avisan_tareas("obra", 0);
+        assert_eq!(
+            cuanto_dormir(&r, 100, false),
+            Duration::from_millis((CALMA_TAREAS - 100) as u64)
+        );
+        assert_eq!(
+            cuanto_dormir(&r, CALMA_TAREAS, false),
+            REINTENTO,
+            "ocupado: reintentar pronto"
+        );
+        assert_eq!(
+            cuanto_dormir(&r, 0, true),
+            LATIDO,
+            "con una vuelta suya en marcha, la despierta su final"
+        );
+    }
+
+    #[test]
+    fn sin_automatica_avisar_tareas_no_hace_nada() {
+        // Caso negativo: en las pruebas no hay hilo; avisar no puede romper.
+        avisar_tareas("obra");
+        avisar_tareas_en(Path::new("C:/x/proyectos/obra"));
     }
 }

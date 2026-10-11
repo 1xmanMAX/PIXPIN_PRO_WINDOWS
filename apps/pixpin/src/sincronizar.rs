@@ -46,8 +46,8 @@ use crate::caja_dibujo::hex;
 use crate::overlay::Recursos;
 
 mod al_dia;
-pub(crate) mod automatica;
 pub(crate) mod al_movil;
+pub(crate) mod automatica;
 mod copias_ui;
 mod elegir;
 pub(crate) mod en_fondo;
@@ -789,7 +789,7 @@ fn atender(
         Accion::SincronizarCon(nombre, host, p) => {
             lanzar_vuelta(&s.raiz, tx, host, p, nombre, puerto)
         }
-        Accion::SincronizarConTodos(lista) => lanzar_con_todos(&s.raiz, tx, lista, puerto),
+        Accion::SincronizarConTodos(lista) => lanzar_con_todos(&s.raiz, tx, lista, puerto, None),
         Accion::Elegir(toque) => {
             if let Sub::Elegir(el) = &mut s.sub
                 && elegir::tocar(el, toque)
@@ -1354,6 +1354,9 @@ fn responder(mut flujo: TcpStream, raiz: &Path, mi_puerto: u16) -> Result<()> {
             // escribir DEBAJO de una ventana de chat abierta. Sin avisarla,
             // lo recien llegado no sale hasta cerrarla y volver a abrirla.
             crate::ventana_chat::refrescar();
+            // Y la ventana de Tareas, al momento: una tarea tachada en el
+            // movil se ve tachada aqui en cuanto llega.
+            crate::tareas::refrescar();
             // Y una hora puesta en el movil llega como un campo mas del
             // mensaje: sin releer la agenda no sonaria aqui hasta el
             // siguiente arranque. Solo con los mensajes, que es donde vive
@@ -1702,7 +1705,15 @@ fn lanzar_vuelta(
         .spawn(move || {
             let mut hecho = Hecho::default();
             let r = una_vuelta(
-                &raiz, &tx, &host, puerto, &nombre, mi_puerto, true, &mut hecho, "",
+                &raiz,
+                &tx,
+                &host,
+                puerto,
+                &nombre,
+                mi_puerto,
+                Alcance::Preguntar,
+                &mut hecho,
+                "",
             );
             let fase = match r {
                 Ok(v) if v.cancelada => Fase::Nada,
@@ -1723,8 +1734,20 @@ fn lanzar_vuelta(
         });
 }
 
+/// Que chats entran en una vuelta.
+#[derive(Debug, Clone, Copy)]
+enum Alcance<'a> {
+    /// Se pregunta en «¿Que sincronizar?».
+    Preguntar,
+    /// Lo elegido la ultima vez con ese aparato («con todos», la automatica).
+    ComoSiempre,
+    /// Solo estos chats (ids como viajan), de lo elegido la ultima vez: las
+    /// tareas al instante (`automatica::avisar_tareas`).
+    Solo(&'a std::collections::BTreeSet<String>),
+}
+
 /// `unaVuelta`: conecta, saluda, resuelve lo borrado y junta lo elegido
-/// (`preguntar`) o lo de la ultima vez con ese aparato. `rotulo` va delante
+/// (`alcance`) o lo de la ultima vez con ese aparato. `rotulo` va delante
 /// de lo que se ensena, para saber por donde va una ronda.
 #[allow(clippy::too_many_arguments)]
 fn una_vuelta(
@@ -1734,7 +1757,7 @@ fn una_vuelta(
     puerto: u16,
     nombre: &str,
     mi_puerto: Option<u16>,
-    preguntar: bool,
+    alcance: Alcance<'_>,
     hecho: &mut Hecho,
     rotulo: &str,
 ) -> Result<vuelta::Vuelta> {
@@ -1752,6 +1775,7 @@ fn una_vuelta(
     let raiz_suya = raiz.to_path_buf();
     let disco = DiscoPc::nuevo(raiz).con_avisos(move |c| {
         crate::ventana_chat::refrescar();
+        crate::tareas::refrescar();
         if c == pixpin_sincro::disco::Cambio::Mensajes {
             crate::recordatorios::releer(&raiz_suya);
         }
@@ -1819,14 +1843,20 @@ fn una_vuelta(
     let mut progreso = |t: vuelta::Trabajo| {
         let _ = tx.send(Aviso::Fase(Fase::Progreso(t)));
     };
-    let r = vuelta::una(
-        &mut s,
-        if preguntar { Some(&mut elegir) } else { None },
-        hecho,
-        rotulo,
-        &ahora_ms,
-        &mut progreso,
-    );
+    let r = match alcance {
+        Alcance::Preguntar => vuelta::una(
+            &mut s,
+            Some(&mut elegir),
+            hecho,
+            rotulo,
+            &ahora_ms,
+            &mut progreso,
+        ),
+        Alcance::ComoSiempre => vuelta::una(&mut s, None, hecho, rotulo, &ahora_ms, &mut progreso),
+        Alcance::Solo(chats) => {
+            vuelta::solo_estos(&mut s, chats, hecho, rotulo, &ahora_ms, &mut progreso)
+        }
+    };
     if r.is_err() {
         s.soltar();
     }
@@ -1841,11 +1871,16 @@ fn una_vuelta(
 /// primeros se quedaron con lo de antes de hablar con los ultimos; la
 /// segunda lo reparte, y cuesta poco porque solo viajan los cambios. Si uno
 /// falla se sigue con los demas y se dice al final cual quedo pendiente.
+///
+/// Con `solo`, la de las tareas al instante: solo esos chats (ids como
+/// viajan) y **una ronda**, que lo que corre es que lo cambiado aqui llegue
+/// a cada uno; lo que traiga uno para otro lo reparte la vuelta entera.
 fn lanzar_con_todos(
     raiz: &Path,
     tx: &mpsc::Sender<Aviso>,
     lista: Vec<(String, String, u16)>,
     mi_puerto: Option<u16>,
+    solo: Option<std::collections::BTreeSet<String>>,
 ) {
     if lista.is_empty() {
         return;
@@ -1864,7 +1899,15 @@ fn lanzar_con_todos(
             let mut al_dia: Vec<String> = Vec::new();
             let mut bytes = 0u64;
             let empezo = std::time::Instant::now();
-            let rondas = if lista.len() >= 2 { 2 } else { 1 };
+            let rondas = if lista.len() >= 2 && solo.is_none() {
+                2
+            } else {
+                1
+            };
+            let alcance = match &solo {
+                Some(chats) => Alcance::Solo(chats),
+                None => Alcance::ComoSiempre,
+            };
             for ronda in 1..=rondas {
                 for (nombre, host, puerto) in &lista {
                     // Uno que ya fallo no se reintenta: si estaba apagado lo
@@ -1878,7 +1921,7 @@ fn lanzar_con_todos(
                         String::new()
                     };
                     match una_vuelta(
-                        &raiz, &tx, host, *puerto, nombre, mi_puerto, false, &mut hecho, &rotulo,
+                        &raiz, &tx, host, *puerto, nombre, mi_puerto, alcance, &mut hecho, &rotulo,
                     ) {
                         Ok(v) if v.cancelada => {
                             let _ = tx.send(Aviso::Fase(Fase::Nada));

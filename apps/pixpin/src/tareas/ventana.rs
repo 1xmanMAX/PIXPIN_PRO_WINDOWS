@@ -45,7 +45,7 @@
 
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicIsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicIsize, Ordering};
 use std::time::{Duration, Instant, SystemTime};
 
 use anyhow::{Context, Result};
@@ -172,6 +172,22 @@ pub(super) fn abrir_en(idioma: Idioma, ubicacion: Ubicacion, aparato: String, li
 
 pub(super) fn abrir(idioma: Idioma, ubicacion: Ubicacion, aparato: String) {
     abrir_en(idioma, ubicacion, aparato, None);
+}
+
+/// Llego algo de otro aparato que puede tocar las tareas: la ventana relee
+/// ya, sin esperar a su mirada de cada segundo (ni a que el disco mueva la
+/// fecha del cuaderno). Ver [`refrescar`].
+static LLEGO: AtomicBool = AtomicBool::new(false);
+
+/// **Releer al momento** lo llegado de otro aparato (lo llama la
+/// sincronizacion cada vez que escribe, de los dos lados). Sin ventana
+/// abierta solo queda la marca, que se borra al abrir.
+pub(super) fn refrescar() {
+    LLEGO.store(true, Ordering::SeqCst);
+    let ya = ABIERTA.load(Ordering::SeqCst);
+    if ya > 0 {
+        pixpin_shell::overlay::despertar(ya);
+    }
 }
 
 fn lanzar(idioma: Idioma, ubicacion: Ubicacion, aparato: String) {
@@ -788,6 +804,10 @@ impl Estado {
                 .and_then(|l| Some((l.clave(), l.filas.get(fi)?.crudo.clone()))),
             _ => None,
         };
+        let repartiendo = self.repartiendo.and_then(|(li, fi)| {
+            let l = self.listas.get(li)?;
+            Some((l.clave(), l.filas.get(fi)?.crudo.clone()))
+        });
         self.listas = todas.into_iter().filter(|l| !l.filas.is_empty()).collect();
         if let Some((clave, crudo)) = con_foco {
             self.foco = match tarjetas::reubicar(&self.listas, &clave, &crudo) {
@@ -795,8 +815,22 @@ impl Estado {
                 None => Foco::Apuntar,
             };
         }
-        // Releida, la tarea que se repartia puede estar en otro sitio.
-        self.repartiendo = None;
+        // Releida, la tarea que se repartia puede estar en otro sitio: se la
+        // busca por lo que es, y la eleccion sigue abierta si aun esta (lo
+        // que llega de otro aparato mientras se elige no la cierra).
+        self.repartiendo = repartiendo
+            .and_then(|(clave, crudo)| tarjetas::reubicar(&self.listas, &clave, &crudo));
+        self.destino_elegido = self.destino_elegido.min(self.destinos.len().saturating_sub(1));
+        // Y la que se esta corrigiendo, tambien por lo que es: si llego otra
+        // tarea delante, su numero cambio, y guardar con el de antes diria
+        // «cambio la lista» y tiraria lo escrito. Si ya no esta tal cual
+        // (la cambiaron en otro aparato), se queda la de antes y guardar lo
+        // dira.
+        if let Some((lista, fila)) = &self.corrigiendo
+            && let Some((li, fi)) = tarjetas::reubicar(&self.listas, &lista.clave(), &fila.crudo)
+        {
+            self.corrigiendo = Some((self.listas[li].clone(), self.listas[li].filas[fi].clone()));
+        }
         self.proyectos = proyectos;
         self.hoy = super::hoy();
     }
@@ -942,6 +976,7 @@ fn bucle(
     let mut e = Estado::nuevo();
     e.hwnd = Some(ventana.handle());
     e.vista = Vista::leer(ubicacion.raiz());
+    LLEGO.store(false, Ordering::SeqCst);
     e.recargar(ubicacion);
     tracing::info!(listas = e.listas.len(), "ventana de tareas abierta");
     let mut mirado = Instant::now();
@@ -1036,7 +1071,12 @@ fn bucle(
             break;
         }
 
-        // Lo que cambio fuera (el chat, el movil): la huella, cada segundo.
+        // Lo que cambio fuera (el chat, el movil): la huella, cada segundo;
+        // y al momento, lo que la sincronizacion dice que acaba de escribir.
+        if LLEGO.swap(false, Ordering::SeqCst) {
+            e.recargar(ubicacion);
+            pintar = true;
+        }
         if mirado.elapsed() >= Duration::from_secs(1) {
             mirado = Instant::now();
             if super::firma(ubicacion.raiz(), &e.proyectos) != e.firma {

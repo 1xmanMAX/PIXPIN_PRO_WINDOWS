@@ -1163,6 +1163,7 @@ pub(crate) fn nueva_lista(
         numero,
     )?;
     crate::ventana_chat::subir_en_la_lista(raiz, proyecto, m.cuando, titulo)?;
+    crate::sincronizar::automatica::avisar_tareas(proyecto);
     Ok(m)
 }
 
@@ -1413,6 +1414,7 @@ pub(crate) fn borrar_lista(
         tracing::warn!(?e, "no se pudo apuntar la lista borrada para sincronizar");
     }
     REESCRITOS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    crate::sincronizar::automatica::avisar_tareas(proyecto);
     Ok(m)
 }
 
@@ -1434,6 +1436,9 @@ pub(crate) fn reescritos() -> u64 {
 pub(crate) fn reescribir(raiz: &Path, proyecto: &str, m: &cuaderno::Mensaje) -> Result<(), Fallo> {
     if cuaderno::reemplazar(&almacen::carpeta(raiz, proyecto), m)? {
         REESCRITOS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        // Todo lo que pasa por aqui es una lista de tareas (marcar, anadir,
+        // quitar, corregir, mover, reponer): a los demas aparatos, ya.
+        crate::sincronizar::automatica::avisar_tareas(proyecto);
         Ok(())
     } else {
         Err(Fallo::SinMensaje(m.id.clone()))

@@ -107,7 +107,7 @@ pub fn lanzar(ubicacion: &Ubicacion, aparato: &str) {
     } else {
         format!("{} aparatos", lista.len())
     };
-    let arrancada = arrancar(&raiz, lista, |fin| {
+    let arrancada = arrancar(&raiz, lista, None, |fin| {
         if let Some(texto) = fin.and_then(|f| contar(&f)) {
             super::al_movil::avisar(texto);
         }
@@ -130,21 +130,51 @@ pub(super) fn lanzar_callada(
     let Some(lista) = lista_de(raiz, |id| ids.iter().any(|x| x == id)) else {
         return false;
     };
-    arrancar(raiz, lista, al_acabar)
+    arrancar(raiz, lista, None, al_acabar)
 }
 
-/// Pone en marcha la vuelta con `lista` en un hilo. `false` si ya habia una
-/// de fondo en marcha: dos vueltas con el mismo aparato a la par se pisarian.
+/// Como acabo el intento de lanzar una vuelta de tareas.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum Arranque {
+    Lanzada,
+    /// Ya habia una de fondo (la de Flow, u otra automatica): se reintenta.
+    Ocupada,
+    /// Ninguno de `ids` es del grupo, o no hay grupo: no hay a quien mandar.
+    SinNadie,
+}
+
+/// **Las tareas al instante** ([`super::automatica::avisar_tareas`]): como
+/// [`lanzar_callada`], pero solo con `chats` (ids como viajan) y una ronda.
+pub(super) fn lanzar_tareas(
+    raiz: &Path,
+    ids: &[String],
+    chats: std::collections::BTreeSet<String>,
+    al_acabar: impl FnOnce(Option<Fase>) + Send + 'static,
+) -> Arranque {
+    let Some(lista) = lista_de(raiz, |id| ids.iter().any(|x| x == id)) else {
+        return Arranque::SinNadie;
+    };
+    if arrancar(raiz, lista, Some(chats), al_acabar) {
+        Arranque::Lanzada
+    } else {
+        Arranque::Ocupada
+    }
+}
+
+/// Pone en marcha la vuelta con `lista` en un hilo (con `solo`, recortada a
+/// esos chats). `false` si ya habia una de fondo en marcha: dos vueltas con
+/// el mismo aparato a la par se pisarian.
 fn arrancar(
     raiz: &Path,
     lista: Vec<(String, String, u16)>,
+    solo: Option<std::collections::BTreeSet<String>>,
     al_acabar: impl FnOnce(Option<Fase>) + Send + 'static,
 ) -> bool {
     if EN_MARCHA.swap(true, Ordering::SeqCst) {
         return false;
     }
     let (tx, rx) = mpsc::channel();
-    super::lanzar_con_todos(raiz, &tx, lista, super::presencia::puerto());
+    super::lanzar_con_todos(raiz, &tx, lista, super::presencia::puerto(), solo);
     // El que escucha suelta su `tx`: si la vuelta no arranca, `recv` acaba.
     drop(tx);
     let lanzado = std::thread::Builder::new()
@@ -277,6 +307,27 @@ mod pruebas {
         assert_eq!(lista(&r, "otro"), None);
         // Este PC no se sincroniza consigo mismo.
         assert_eq!(lista(&r, "pc"), None);
+    }
+
+    #[test]
+    fn caso_negativo_las_tareas_sin_nadie_del_grupo_no_lanzan_nada() {
+        let r = raiz("tareas-sin");
+        let chats = std::collections::BTreeSet::from(["general".to_string()]);
+        let nunca = |_: Option<Fase>| panic!("no tenia que lanzarse");
+        assert_eq!(
+            lanzar_tareas(&r, &["tel".into()], chats.clone(), nunca),
+            Arranque::SinNadie
+        );
+        con_grupo(&r);
+        // Uno que no es del grupo, o este mismo PC: tampoco.
+        assert_eq!(
+            lanzar_tareas(&r, &["otro".into(), "pc".into()], chats, nunca),
+            Arranque::SinNadie
+        );
+        assert!(
+            !EN_MARCHA.load(Ordering::SeqCst),
+            "y no deja la de fondo tomada"
+        );
     }
 
     #[test]
