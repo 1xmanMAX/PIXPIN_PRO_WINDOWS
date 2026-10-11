@@ -23,6 +23,9 @@ pub struct Tema {
     pub rellenos: Vec<Nodo>,
     pub rellenos_fondo: Vec<Nodo>,
     pub lineas: Vec<Nodo>,
+    /// Los `a:effectStyle` de `fmtScheme/effectStyleLst`, para los
+    /// `effectRef` con `idx` (1 = el primero; 0 = sin efectos).
+    pub efectos: Vec<Nodo>,
 }
 
 impl Tema {
@@ -54,6 +57,9 @@ impl Tema {
             }
             if let Some(l) = fmt.hijo("lnStyleLst") {
                 t.lineas = l.elementos().cloned().collect();
+            }
+            if let Some(l) = fmt.hijo("effectStyleLst") {
+                t.efectos = l.elementos().cloned().collect();
             }
         }
         t.con_huecos_rellenos()
