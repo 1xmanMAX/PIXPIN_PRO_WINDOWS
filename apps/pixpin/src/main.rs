@@ -131,6 +131,8 @@ mod ventana_editor;
 mod ventanita;
 mod visor;
 mod visor_html;
+// Las hojas de Excel (.xlsx) como pin (10-oct-2026).
+mod visor_hoja;
 mod voz;
 mod voz_en_chat;
 mod zona_al_chat;

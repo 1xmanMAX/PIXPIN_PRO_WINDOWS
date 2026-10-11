@@ -2281,3 +2281,12 @@ al-movil-cortado = No se pudo enviar a { $movil }: { $motivo }
 al-movil-sin-grupo = Este PC no está en un grupo: ábrelo en Sincronizar de PixPin
 al-movil-no-es-del-grupo = Ese aparato ya no está en el grupo de este PC
 al-movil-sin-imagenes = No había nada que enviar
+
+## Visor de hojas de Excel (visor_hoja)
+hoja-copiado = { $celdas ->
+    [one] 1 celda copiada
+   *[other] { $celdas } celdas copiadas
+  }
+hoja-demasiado = Son demasiadas celdas para copiar de una vez ({ $celdas })
+hoja-cargando = Cargando… { $filas } filas
+hoja-enlace-no-abre = No se pudo abrir el enlace
