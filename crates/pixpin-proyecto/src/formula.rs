@@ -28,11 +28,36 @@
 //! numeros y calla: es lo que el usuario esperaba al arrastrar el rango. En
 //! cambio `=B1*2` con «Importe» en la `B1` no significa nada, y dar cero ahi
 //! seria mentir; da [`ErrorFormula::Sintaxis`].
+//!
+//! # El motor (11-oct-2026)
+//!
+//! Una formula se trocea, se arma su arbol (`analisis`) y se calcula
+//! (`motor`). Calcular recorriendo el arbol, y no mientras se lee, es lo que
+//! deja a `SI` callar la rama que no toca. Las funciones, cada una con su
+//! nombre en espanol y en ingles (`SUMAR.SI` / `SUMIF`), estan por familias:
+//! `mates` (logicas, matematicas, recuentos), `criterio` (`CONTAR.SI`...),
+//! `busqueda` (`BUSCARV`...), `texto`, `fecha` y `info`; el catalogo de
+//! nombres y de cuantos argumentos admite cada una esta en `motor::CATALOGO`.
+//! La guia para portarlo a Android (semantica de los casos raros y tabla de
+//! pruebas) es `docs/investigacion/2026-10-11-formulas-android.md`.
+//!
+//! - **Operadores**: `+ - * / ^ %`, `&`, `= <> < > <= >=`, el signo de delante
+//!   (`-2^2` es 4, como Excel), texto entre comillas (`"a""b"`),
+//!   `VERDADERO` / `FALSO`. Separador de argumentos: `;` o `,`.
+//! - **Valores**: numero, texto, logico y error. Una celda vacia es el texto
+//!   vacio (vale 0 al comparar con un numero, y "" con un texto).
+//! - **Errores**: ademas de los de siempre, `#N/A` (lo buscado no esta) y
+//!   `#¡NUM!` (un numero que no existe o no cabe). Un ciclo nunca se tapa:
+//!   `SI.ERROR`, `ESERROR` y los recuentos lo dejan pasar.
+//! - **Volatiles**: `HOY`, `AHORA`, `ALEATORIO` y `ALEATORIO.ENTRE` se
+//!   calculan una vez por pasada, como cualquier otra celda.
 
 use std::collections::BTreeMap;
 use std::fmt;
 
-use crate::tabla::{Ref, Tabla, ref_de};
+#[cfg(test)]
+use crate::tabla::ref_de;
+use crate::tabla::{Ref, Tabla};
 
 /// Lo que vale una celda una vez calculada.
 #[derive(Debug, Clone, PartialEq)]
@@ -40,6 +65,8 @@ pub enum Valor {
     Numero(f64),
     /// Tambien lo que vale una celda vacia, con la cadena vacia dentro.
     Texto(String),
+    /// `VERDADERO` / `FALSO`, de una comparacion o de `Y`, `O`, `NO`.
+    Logico(bool),
     Error(ErrorFormula),
 }
 
@@ -55,6 +82,10 @@ pub enum ErrorFormula {
     DivisionPorCero,
     /// Una funcion que no existe.
     Nombre,
+    /// `#N/A`: lo buscado no esta (`BUSCARV`, `COINCIDIR`...).
+    NoDisponible,
+    /// `#¡NUM!`: un numero que no existe (la raiz de un negativo) o que no cabe.
+    Numero,
 }
 
 /// Cuantas celdas encadenadas se admiten antes de rendirse.
@@ -74,6 +105,8 @@ impl fmt::Display for ErrorFormula {
             ErrorFormula::Sintaxis => "#¡VALOR!",
             ErrorFormula::DivisionPorCero => "#¡DIV/0!",
             ErrorFormula::Nombre => "#¿NOMBRE?",
+            ErrorFormula::NoDisponible => "#N/A",
+            ErrorFormula::Numero => "#¡NUM!",
         };
         f.write_str(texto)
     }
@@ -86,6 +119,7 @@ impl fmt::Display for Valor {
             // diecisiete de 0.1+0.2. Ver `general`.
             Valor::Numero(n) => f.write_str(&general(*n)),
             Valor::Texto(t) => f.write_str(t),
+            Valor::Logico(b) => f.write_str(if *b { "VERDADERO" } else { "FALSO" }),
             Valor::Error(e) => write!(f, "{e}"),
         }
     }
@@ -135,13 +169,20 @@ pub fn evaluar(tabla: &Tabla, celda: Ref) -> Valor {
 /// necesita (ver `importar_hojas`).
 pub fn evaluar_todo(tabla: &Tabla) -> BTreeMap<String, Valor> {
     let mut m = Memoria::default();
-    let mut refs: Vec<(Ref, &String)> = tabla
-        .celdas
-        .keys()
+    // Cada celda se lee una vez por quien la cita, y buscarla por su nombre
+    // en el mapa de la tabla (haciendo antes el nombre) es lo mas caro de
+    // leerla: aqui se hace el indice por posicion de una vez.
+    let mut crudas = MapaRapido::default();
+    let mut refs: Vec<(Ref, &String)> = Vec::with_capacity(tabla.celdas.len());
+    for (clave, contenido) in &tabla.celdas {
         // Una clave que no es una celda es basura de otra version; ensenarla
         // no se puede, pero tampoco vale la pena tirar el resto por ella.
-        .filter_map(|clave| Some((ref_de(clave)?, clave)))
-        .collect();
+        if let Some(r) = analisis::celda_de(clave) {
+            crudas.insert(r, contenido.as_str());
+            refs.push((r, clave));
+        }
+    }
+    m.crudas = Some(crudas);
     refs.sort_by_key(|(r, _)| (r.columna, r.fila));
     let mut salida = BTreeMap::new();
     for (r, clave) in refs {
@@ -150,18 +191,56 @@ pub fn evaluar_todo(tabla: &Tabla) -> BTreeMap<String, Valor> {
     salida
 }
 
+/// Un mapa con una funcion de hash de una sola multiplicacion. Las claves son
+/// pares de enteros que ponemos nosotros: el hash resistente a ataques de la
+/// libreria estandar (SipHash) cuesta mas que lo que se busca, y se llama
+/// varias veces por celda.
+#[derive(Default, Clone, Copy)]
+struct HashRapido(u64);
+
+impl std::hash::Hasher for HashRapido {
+    fn finish(&self) -> u64 {
+        self.0
+    }
+    fn write(&mut self, bytes: &[u8]) {
+        for b in bytes {
+            self.write_u32(*b as u32);
+        }
+    }
+    fn write_u32(&mut self, n: u32) {
+        self.0 = (self.0.rotate_left(5) ^ n as u64).wrapping_mul(0x517c_c1b7_2722_0a95);
+    }
+}
+
+type MapaRapido<K, V> =
+    std::collections::HashMap<K, V, std::hash::BuildHasherDefault<HashRapido>>;
+
 /// Lo que se va sabiendo mientras se calcula: por donde se va (para cazar
 /// los ciclos), lo ya calculado y las celdas escritas ordenadas por columna
 /// (para recorrer un rango sin mirar la tabla entera).
 #[derive(Default)]
-struct Memoria {
+struct Memoria<'t> {
     camino: Vec<Ref>,
-    hechas: std::collections::HashMap<Ref, Valor>,
+    hechas: MapaRapido<Ref, Valor>,
     indice: Option<Vec<Ref>>,
+    /// (columnas, filas) que llegan las celdas escritas; sale del indice.
+    extension: Option<(u32, u32)>,
+    /// El instante del calculo (ms desde 1970, hora local): `HOY` y `AHORA`
+    /// dan lo mismo en toda la hoja aunque el calculo cruce la medianoche.
+    ahora_ms: Option<i64>,
+    semilla: Option<u64>,
+    /// Los rangos ya leidos con sus valores (ver `Ctx::rala`).
+    rangos: MapaRapido<motor::Rg, std::rc::Rc<Vec<(Ref, Valor)>>>,
+    /// El contenido de cada celda escrita por su posicion (solo al calcular
+    /// la tabla entera; para una celda suelta no compensa hacerlo).
+    crudas: Option<MapaRapido<Ref, &'t str>>,
+    /// Lo que dio ya cada `CONTAR.SI` / `SUMAR.SI`... con esos mismos rangos
+    /// y criterios: una hoja los repite en cada fila con el mismo criterio.
+    criterios: std::collections::HashMap<String, Valor>,
 }
 
 /// El valor de una celda sabiendo por donde se ha venido.
-fn evaluar_camino(tabla: &Tabla, celda: Ref, m: &mut Memoria) -> Valor {
+fn evaluar_camino<'t>(tabla: &'t Tabla, celda: Ref, m: &mut Memoria<'t>) -> Valor {
     if m.camino.contains(&celda) {
         return Valor::Error(ErrorFormula::Ciclo);
     }
@@ -175,7 +254,10 @@ fn evaluar_camino(tabla: &Tabla, celda: Ref, m: &mut Memoria) -> Valor {
         return Valor::Error(ErrorFormula::Ciclo);
     }
 
-    let contenido = tabla.celda(celda);
+    let contenido = match &m.crudas {
+        Some(c) => c.get(&celda).copied().unwrap_or(""),
+        None => tabla.celda(celda),
+    };
     if !Tabla::es_formula(contenido) {
         // Tambien se guarda: un rango de mil celdas sumado en mil filas lee
         // cada numero mil veces, y leer `1.234,50` no es gratis.
@@ -230,6 +312,13 @@ fn valor_escrito(contenido: &str) -> Valor {
 /// Solo cifras: «inf» y «NaN» (que `parse` si acepta) son texto, que un
 /// infinito colado aqui contagiaria toda la columna.
 pub fn numero_escrito(texto: &str) -> Option<f64> {
+    // Los casos de todos los dias, sin pasar por el reconocedor entero:
+    // enteros y decimales con punto («12», «-3.5»), y palabras corrientes
+    // que se descartan por su primera letra. Dan lo mismo que el camino
+    // largo; es solo que el 90 % de las celdas de una hoja son de estos.
+    if let Some(n) = numero_corriente(texto) {
+        return n;
+    }
     let mut t = texto.trim();
     if t.is_empty() {
         return None;
@@ -337,6 +426,30 @@ pub fn numero_escrito(texto: &str) -> Option<f64> {
     r.is_finite().then_some(r)
 }
 
+/// `Some(resultado)` si `texto` es de los casos que se resuelven de un vistazo
+/// (`None`: hay que mirarlo con calma).
+fn numero_corriente(texto: &str) -> Option<Option<f64>> {
+    let b = texto.as_bytes();
+    let (&primero, _) = b.split_first()?;
+    if primero.is_ascii_alphabetic() {
+        // Letra de entrada: solo las monedas «S/» y «US$» (y los «inf»/«NaN»
+        // que nunca fueron numeros) merecen la mirada larga; el resto es texto.
+        return if matches!(primero, b'S' | b'U' | b's' | b'u') { None } else { Some(None) };
+    }
+    let cuerpo = if primero == b'-' { &b[1..] } else { b };
+    let puntos = cuerpo.iter().filter(|c| **c == b'.').count();
+    let solo_cifras = !cuerpo.is_empty()
+        && cuerpo.len() <= 15
+        && puntos <= 1
+        && cuerpo.iter().all(|c| c.is_ascii_digit() || *c == b'.')
+        && cuerpo[0].is_ascii_digit()
+        && cuerpo[cuerpo.len() - 1].is_ascii_digit();
+    if !solo_cifras {
+        return None;
+    }
+    texto.parse::<f64>().ok().map(Some)
+}
+
 /// **Un numero como lo ensena la vista «General» de Excel** (y el movil,
 /// `CalculoFormato.general`): diez cifras significativas sin ceros de cola,
 /// los enteros enteros hasta 10^15 y en notacion cientifica lo que no cabe.
@@ -386,323 +499,29 @@ pub fn general(d: f64) -> String {
     format!("{signo}{plano}")
 }
 
+mod analisis;
+mod busqueda;
+mod criterio;
+mod fecha;
+mod formato;
+mod info;
+mod mates;
+mod motor;
+mod texto;
+
+#[cfg(test)]
+mod pruebas_funciones;
+
 /// Calcula una formula ya sin el `=` de delante.
-fn evaluar_formula(tabla: &Tabla, texto: &str, m: &mut Memoria) -> Valor {
-    let piezas = match trocear(texto) {
-        Ok(p) => p,
+fn evaluar_formula<'t>(tabla: &'t Tabla, texto: &str, m: &mut Memoria<'t>) -> Valor {
+    let arbol = match analisis::trocear(texto).and_then(analisis::analizar) {
+        Ok(a) => a,
         Err(e) => return Valor::Error(e),
     };
-    let mut analizador = Analizador {
-        piezas,
-        i: 0,
-        tabla,
-        m,
-    };
-    let valor = analizador.expresion();
-    // Lo que sobra tras la expresion es una formula a medias («=1 2»), y
-    // quedarse con el 1 callando seria peor que decir que no se entiende.
-    // Salvo que ya haya un error: al fallar se deja de leer a medias, y decir
-    // «no se entiende» taparia el «esa celda no existe», que es el util.
-    if analizador.i != analizador.piezas.len() && !matches!(valor, Valor::Error(_)) {
-        return Valor::Error(ErrorFormula::Sintaxis);
-    }
-    valor
+    let mut ctx = motor::Ctx { tabla, m };
+    ctx.valor(&arbol)
 }
 
-/// Cada cosa suelta de una formula, ya separada del texto.
-#[derive(Debug, Clone, PartialEq)]
-enum Pieza {
-    Numero(f64),
-    Celda(Ref),
-    /// Tiene forma de celda pero no lo es («A0»): se guarda aparte para poder
-    /// decir «referencia mala» en vez de un «no se entiende» generico.
-    CeldaMala,
-    Nombre(String),
-    Mas,
-    Menos,
-    Por,
-    Entre,
-    Abre,
-    Cierra,
-    DosPuntos,
-    Separador,
-}
-
-fn trocear(texto: &str) -> Result<Vec<Pieza>, ErrorFormula> {
-    let letras: Vec<char> = texto.chars().collect();
-    let mut piezas = Vec::new();
-    let mut i = 0;
-    while i < letras.len() {
-        let c = letras[i];
-        if c.is_whitespace() {
-            i += 1;
-            continue;
-        }
-        let simple = match c {
-            '+' => Some(Pieza::Mas),
-            '-' => Some(Pieza::Menos),
-            '*' => Some(Pieza::Por),
-            '/' => Some(Pieza::Entre),
-            '(' => Some(Pieza::Abre),
-            ')' => Some(Pieza::Cierra),
-            ':' => Some(Pieza::DosPuntos),
-            // El punto y coma tambien separa: es el que pone Windows en
-            // espanol, y una formula copiada de fuera lo trae.
-            ',' | ';' => Some(Pieza::Separador),
-            _ => None,
-        };
-        if let Some(p) = simple {
-            piezas.push(p);
-            i += 1;
-            continue;
-        }
-
-        if c.is_ascii_digit() || c == '.' {
-            let empieza = i;
-            while i < letras.len() && (letras[i].is_ascii_digit() || letras[i] == '.') {
-                i += 1;
-            }
-            let numero: String = letras[empieza..i].iter().collect();
-            // Aqui caen los «1.2.3»: mejor un error que quedarse con el 1.2.
-            let n: f64 = numero.parse().map_err(|_| ErrorFormula::Sintaxis)?;
-            piezas.push(Pieza::Numero(n));
-            continue;
-        }
-
-        // El `$` de `$A$1` solo fija la celda al copiar la formula; al
-        // calcular no cambia nada, y un libro de Excel lo trae a cada paso.
-        if c.is_alphabetic()
-            || (c == '$' && letras.get(i + 1).is_some_and(|s| s.is_ascii_alphabetic()))
-        {
-            let empieza = i;
-            while i < letras.len()
-                && (letras[i].is_alphanumeric()
-                    || (letras[i] == '$'
-                        && letras.get(i + 1).is_some_and(|s| s.is_ascii_alphanumeric())))
-            {
-                i += 1;
-            }
-            let crudo: String = letras[empieza..i].iter().collect();
-            let palabra = if crudo.contains('$') {
-                // Con dolar solo puede ser una celda: sin forma de celda, mala.
-                match ref_de(&crudo.replace('$', "")) {
-                    Some(r) => {
-                        piezas.push(Pieza::Celda(r));
-                        continue;
-                    }
-                    None => {
-                        piezas.push(Pieza::CeldaMala);
-                        continue;
-                    }
-                }
-            } else {
-                crudo
-            };
-            piezas.push(match ref_de(&palabra) {
-                Some(r) => Pieza::Celda(r),
-                // Con numeros dentro solo puede querer ser una celda; sin
-                // ellos es el nombre de una funcion.
-                None if palabra.chars().any(|c| c.is_ascii_digit()) => Pieza::CeldaMala,
-                None => Pieza::Nombre(palabra.to_uppercase()),
-            });
-            continue;
-        }
-
-        return Err(ErrorFormula::Sintaxis);
-    }
-    Ok(piezas)
-}
-
-/// Un argumento de una funcion: una cuenta suelta o un rango de celdas.
-enum Argumento {
-    Uno(Valor),
-    Rango(Ref, Ref),
-}
-
-struct Analizador<'a> {
-    piezas: Vec<Pieza>,
-    i: usize,
-    tabla: &'a Tabla,
-    m: &'a mut Memoria,
-}
-
-impl Analizador<'_> {
-    fn mira(&self) -> Option<&Pieza> {
-        self.piezas.get(self.i)
-    }
-
-    /// Si lo que viene es esa pieza, se la traga y dice que si.
-    fn traga(&mut self, pieza: &Pieza) -> bool {
-        if self.mira() == Some(pieza) {
-            self.i += 1;
-            return true;
-        }
-        false
-    }
-
-    /// Sumas y restas: lo de menos prioridad, y por eso lo de mas arriba.
-    fn expresion(&mut self) -> Valor {
-        let mut izquierda = self.termino();
-        loop {
-            let suma = if self.traga(&Pieza::Mas) {
-                true
-            } else if self.traga(&Pieza::Menos) {
-                false
-            } else {
-                return izquierda;
-            };
-            let derecha = self.termino();
-            izquierda = aritmetica(izquierda, derecha, |a, b| {
-                Ok(if suma { a + b } else { a - b })
-            });
-        }
-    }
-
-    /// Multiplicaciones y divisiones. Estan debajo de las sumas justo para
-    /// que `2+3*4` sean 14 y no 20.
-    fn termino(&mut self) -> Valor {
-        let mut izquierda = self.unario();
-        loop {
-            let por = if self.traga(&Pieza::Por) {
-                true
-            } else if self.traga(&Pieza::Entre) {
-                false
-            } else {
-                return izquierda;
-            };
-            let derecha = self.unario();
-            izquierda = aritmetica(izquierda, derecha, |a, b| {
-                if por {
-                    Ok(a * b)
-                } else if b == 0.0 {
-                    // Dividir entre cero da infinito en Rust, y un infinito
-                    // pintado en una celda no le dice nada a nadie.
-                    Err(ErrorFormula::DivisionPorCero)
-                } else {
-                    Ok(a / b)
-                }
-            });
-        }
-    }
-
-    /// El signo de delante: `-B1`, y tambien el `-3` de toda la vida.
-    fn unario(&mut self) -> Valor {
-        if self.traga(&Pieza::Menos) {
-            let valor = self.unario();
-            return aritmetica(Valor::Numero(0.0), valor, |a, b| Ok(a - b));
-        }
-        if self.traga(&Pieza::Mas) {
-            return self.unario();
-        }
-        self.primario()
-    }
-
-    fn primario(&mut self) -> Valor {
-        let Some(pieza) = self.mira().cloned() else {
-            // Se acabo la formula donde tenia que haber algo: «=1+».
-            return Valor::Error(ErrorFormula::Sintaxis);
-        };
-        self.i += 1;
-        match pieza {
-            Pieza::Numero(n) => Valor::Numero(n),
-            Pieza::CeldaMala => Valor::Error(ErrorFormula::Referencia),
-            Pieza::Celda(r) => {
-                // Un rango no vale para una cuenta: «=B1:B6*2» no significa
-                // nada, y elegir por el usuario cual de las seis celdas queria
-                // seria adivinar.
-                if self.mira() == Some(&Pieza::DosPuntos) {
-                    return Valor::Error(ErrorFormula::Sintaxis);
-                }
-                evaluar_camino(self.tabla, r, self.m)
-            }
-            Pieza::Abre => {
-                let dentro = self.expresion();
-                if !self.traga(&Pieza::Cierra) {
-                    return Valor::Error(ErrorFormula::Sintaxis);
-                }
-                dentro
-            }
-            Pieza::Nombre(nombre) => self.funcion(&nombre),
-            _ => Valor::Error(ErrorFormula::Sintaxis),
-        }
-    }
-
-    fn funcion(&mut self, nombre: &str) -> Valor {
-        if !self.traga(&Pieza::Abre) {
-            return Valor::Error(ErrorFormula::Sintaxis);
-        }
-        let mut argumentos = Vec::new();
-        if !self.traga(&Pieza::Cierra) {
-            loop {
-                match self.argumento() {
-                    Ok(a) => argumentos.push(a),
-                    Err(e) => return Valor::Error(e),
-                }
-                if self.traga(&Pieza::Separador) {
-                    continue;
-                }
-                if self.traga(&Pieza::Cierra) {
-                    break;
-                }
-                return Valor::Error(ErrorFormula::Sintaxis);
-            }
-        }
-
-        let numeros = match self.numeros_de(&argumentos) {
-            Ok(n) => n,
-            Err(e) => return Valor::Error(e),
-        };
-        aplicar(nombre, &numeros)
-    }
-
-    fn argumento(&mut self) -> Result<Argumento, ErrorFormula> {
-        // Un rango es lo unico que hay que mirar antes de calcular nada:
-        // `B1:B6` son tres piezas seguidas y no una cuenta.
-        if self.piezas.get(self.i + 1) == Some(&Pieza::DosPuntos) {
-            let a = self.piezas.get(self.i).cloned();
-            let b = self.piezas.get(self.i + 2).cloned();
-            self.i += 3;
-            return match (a, b) {
-                (Some(Pieza::Celda(a)), Some(Pieza::Celda(b))) => Ok(Argumento::Rango(a, b)),
-                // Los dos puntos ya dicen que esto queria ser un rango; que un
-                // extremo no exista («A0:A3») es un fallo de referencia, y
-                // llamarlo sintaxis mandaria a buscar el parentesis que falta.
-                _ => Err(ErrorFormula::Referencia),
-            };
-        }
-        Ok(Argumento::Uno(self.expresion()))
-    }
-
-    /// Los numeros que aportan los argumentos de una funcion.
-    ///
-    /// El texto y las celdas vacias no aportan nada —ni siquiera un cero— y
-    /// por eso `PROMEDIO` y `CONTAR` salen bien sin saber nada de ellos.
-    fn numeros_de(&mut self, argumentos: &[Argumento]) -> Result<Vec<f64>, ErrorFormula> {
-        let mut numeros = Vec::new();
-        for argumento in argumentos {
-            match argumento {
-                Argumento::Uno(valor) => match valor {
-                    Valor::Numero(n) => numeros.push(*n),
-                    Valor::Texto(_) => {}
-                    Valor::Error(e) => return Err(*e),
-                },
-                Argumento::Rango(a, b) => {
-                    for r in celdas_del_rango(self.tabla, *a, *b, &mut self.m.indice) {
-                        match evaluar_camino(self.tabla, r, self.m) {
-                            Valor::Numero(n) => numeros.push(n),
-                            Valor::Texto(_) => {}
-                            // Un error dentro del rango sube: una suma que se
-                            // salta la celda rota daria un total creible y
-                            // falso, que es lo peor que puede pasar aqui.
-                            Valor::Error(e) => return Err(e),
-                        }
-                    }
-                }
-            }
-        }
-        Ok(numeros)
-    }
-}
 
 /// Las celdas escritas que caen dentro de un rango.
 ///
@@ -721,7 +540,7 @@ fn celdas_del_rango(tabla: &Tabla, a: Ref, b: Ref, indice: &mut Option<Vec<Ref>>
         let mut v: Vec<Ref> = tabla
             .celdas
             .keys()
-            .filter_map(|clave| ref_de(clave))
+            .filter_map(|clave| analisis::celda_de(clave))
             .collect();
         v.sort_by_key(|r| (r.columna, r.fila));
         v
@@ -749,65 +568,6 @@ fn celdas_del_rango(tabla: &Tabla, a: Ref, b: Ref, indice: &mut Option<Vec<Ref>>
         i += 1;
     }
     salida
-}
-
-fn aplicar(nombre: &str, numeros: &[f64]) -> Valor {
-    // Los nombres ingleses valen igual: una tabla puede venir de fuera, y
-    // ensenar un error donde hay un `SUM` perfectamente claro no ayuda.
-    match nombre {
-        "SUMA" | "SUM" => Valor::Numero(numeros.iter().sum()),
-        "CONTAR" | "COUNT" => Valor::Numero(numeros.len() as f64),
-        "PROMEDIO" | "AVERAGE" => {
-            if numeros.is_empty() {
-                // Promediar tres celdas vacias no es cero: no hay nada que
-                // promediar, y decir cero seria inventarse un dato.
-                return Valor::Error(ErrorFormula::DivisionPorCero);
-            }
-            Valor::Numero(numeros.iter().sum::<f64>() / numeros.len() as f64)
-        }
-        // Se parte del primero y no de cero: una columna de numeros negativos
-        // tiene su maximo en el menos pequeno, no en un cero que no escribio
-        // nadie. Sin numeros si valen cero, como en cualquier hoja: es el
-        // hueco de una columna aun sin rellenar, no un error.
-        "MIN" | "MINIMO" => Valor::Numero(extremo(numeros, f64::min)),
-        "MAX" | "MAXIMO" => Valor::Numero(extremo(numeros, f64::max)),
-        _ => Valor::Error(ErrorFormula::Nombre),
-    }
-}
-
-/// El mayor o el menor de unos numeros; cero si no hay ninguno.
-fn extremo(numeros: &[f64], cual: fn(f64, f64) -> f64) -> f64 {
-    match numeros.split_first() {
-        Some((primero, resto)) => resto.iter().copied().fold(*primero, cual),
-        None => 0.0,
-    }
-}
-
-/// Una cuenta entre dos valores, arrastrando el primer error que aparezca.
-fn aritmetica(a: Valor, b: Valor, cuenta: impl Fn(f64, f64) -> Result<f64, ErrorFormula>) -> Valor {
-    let (a, b) = match (numero_de(a), numero_de(b)) {
-        (Err(e), _) | (_, Err(e)) => return Valor::Error(e),
-        (Ok(a), Ok(b)) => (a, b),
-    };
-    match cuenta(a, b) {
-        Ok(n) => Valor::Numero(n),
-        Err(e) => Valor::Error(e),
-    }
-}
-
-/// El numero de un valor para operar con el.
-fn numero_de(valor: Valor) -> Result<f64, ErrorFormula> {
-    match valor {
-        Valor::Numero(n) => Ok(n),
-        // La celda vacia vale cero: `=B1+B2` con una sin rellenar tiene que
-        // dar la otra, que es lo unico que el usuario puede esperar.
-        Valor::Texto(t) if t.is_empty() => Ok(0.0),
-        // El texto de verdad, no. Ver la cabecera del fichero: dentro de una
-        // funcion se ignora, pero multiplicar «Importe» por dos no significa
-        // nada y dar cero seria mentir con cara de resultado.
-        Valor::Texto(_) => Err(ErrorFormula::Sintaxis),
-        Valor::Error(e) => Err(e),
-    }
 }
 
 #[cfg(test)]
@@ -1236,7 +996,7 @@ mod pruebas {
 
     #[test]
     fn una_funcion_que_no_existe_se_dice_por_su_nombre() {
-        let t = tabla(&[("A1", "=BUSCARV(A3)"), ("A2", "=SUMA(A3:A4")]);
+        let t = tabla(&[("A1", "=NOEXISTE(A3)"), ("A2", "=SUMA(A3:A4")]);
         assert_eq!(valor(&t, "A1"), Valor::Error(ErrorFormula::Nombre));
         // Y un parentesis sin cerrar no es un nombre malo, es sintaxis.
         assert_eq!(valor(&t, "A2"), Valor::Error(ErrorFormula::Sintaxis));
