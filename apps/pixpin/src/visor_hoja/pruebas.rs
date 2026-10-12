@@ -141,3 +141,19 @@ fn ventana_de_verdad() {
     let ruta = PathBuf::from(std::env::var("PIXPIN_XLSX").expect("PIXPIN_XLSX"));
     ver(Idioma::Espanol, &ruta, Instant::now());
 }
+
+/// «Editar» solo sale en las hojas del chat (que es donde se guarda), y
+/// «Abrir con su programa» solo si hay archivo.
+#[test]
+fn editar_solo_en_las_hojas_del_chat() {
+    assert!(pide_editar(VK_F2, false, false));
+    assert!(pide_editar(VK_E, false, false));
+    // Casos negativos: Ctrl+E y Alt+E son otras cosas, y otra letra no.
+    assert!(!pide_editar(VK_E, true, false));
+    assert!(!pide_editar(VK_E, false, true));
+    assert!(!pide_editar(0x41, false, false));
+    let ids = |b: Vec<BotonLector>| b.iter().map(|x| x.id).collect::<Vec<_>>();
+    assert_eq!(ids(botones_de_ver(true, true)), [BOTON_EDITAR, BOTON_COPIAR, BOTON_SU_PROGRAMA]);
+    assert_eq!(ids(botones_de_ver(false, true)), [BOTON_COPIAR, BOTON_SU_PROGRAMA]);
+    assert_eq!(ids(botones_de_ver(true, false)), [BOTON_EDITAR, BOTON_COPIAR]);
+}

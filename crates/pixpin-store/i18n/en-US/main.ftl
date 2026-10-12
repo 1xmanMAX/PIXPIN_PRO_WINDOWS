@@ -980,6 +980,10 @@ libro-xls-antiguo = Old .xls files can't be read: open it and save it as .xlsx
 libro-abrir-fuera = Open it with another app?
 libro-no-es = The file isn't a valid spreadsheet
 libro-sin-hojas = The workbook has no sheet with data
+hoja-preparando = Getting the sheet ready to edit…
+hoja-editar-aviso = Changes are saved in the chat sheet; the original file stays the same
+hoja-editando = Editing · Esc to view
+hoja-rango-grande = Too many cells to do at once
 
 ## D9: find in the document (buscador.rs, visor.rs, lector_pdf.rs)
 buscar-pista = Find in document
