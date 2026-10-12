@@ -191,8 +191,11 @@ enum Tipo {
     Objeto { id: u32, alto: f32, bajo: f32 },
 }
 
+/// Una letra, tabulador, salto u objeto ya medido: lo que se reparte en
+/// renglones. Se guardan para volver a partir un parrafo sin medirlo otra
+/// vez (cuando un dibujo flotante le estrecha unos renglones).
 #[derive(Debug, Clone, Copy)]
-struct Unidad {
+pub struct Unidad {
     tipo: Tipo,
     avance: f32,
     estilo: u32,
@@ -223,7 +226,12 @@ fn corte_tras(u: &[Unidad], i: usize) -> bool {
 
 /// Parte las piezas en renglones.
 pub fn partir(piezas: &[Pieza], estilos: &[Estilo], marca: u32, cfg: &Config, medidor: &dyn Medidor) -> Vec<Renglon> {
-    // 1. Unidades medidas.
+    let mut u = medir(piezas, estilos, marca, medidor);
+    partir_unidades(&mut u, 0, true, estilos, marca, cfg, medidor).into_iter().map(|(r, _)| r).collect()
+}
+
+/// Las piezas medidas, listas para partir.
+pub fn medir(piezas: &[Pieza], estilos: &[Estilo], marca: u32, medidor: &dyn Medidor) -> Vec<Unidad> {
     let mut u: Vec<Unidad> = Vec::new();
     let mut avances = Vec::new();
     for p in piezas {
@@ -245,87 +253,179 @@ pub fn partir(piezas: &[Pieza], estilos: &[Estilo], marca: u32, cfg: &Config, me
             }
         }
     }
+    u
+}
 
+/// Parte en renglones a lo ancho de la caja desde la unidad `desde`
+/// (`primero`: el renglon que sale es el primero del parrafo, con su
+/// sangria). Cada renglon va con la unidad en que empieza.
+pub fn partir_unidades(
+    u: &mut [Unidad],
+    desde: usize,
+    primero: bool,
+    estilos: &[Estilo],
+    marca: u32,
+    cfg: &Config,
+    medidor: &dyn Medidor,
+) -> Vec<(Renglon, usize)> {
     let mut renglones = Vec::new();
     let mut xs = vec![0.0f32; u.len()];
     let mut rellenos: Vec<Option<char>> = vec![None; u.len()];
-    let mut i = 0;
+    let mut i = desde.min(u.len());
     let derecha = cfg.ancho - cfg.sangria_der;
+    let mut primero = primero;
     loop {
-        let primero = renglones.is_empty();
         let inicio_x = cfg.sangria_izq + if primero { cfg.primera } else { 0.0 };
-        let mut x = inicio_x;
-        let mut j = i;
-        // Donde se puede cortar: indice de la primera unidad del renglon
-        // siguiente.
-        let mut ultimo_corte: Option<usize> = None;
-        let mut forzado = false;
-        // Lo que miden los espacios del renglon (tras el ultimo tabulador).
-        let mut espacios = 0.0f32;
-        let mut fin_j = u.len();
-        while j < u.len() {
-            match u[j].tipo {
-                Tipo::Salto => {
-                    xs[j] = x;
-                    fin_j = j + 1;
-                    forzado = true;
-                    break;
-                }
-                Tipo::Tab => {
-                    let (nx, tope) = tabulador(&u, j, x, cfg);
-                    if cfg.partir && nx > derecha + 0.01 && j > i && !matches!(tope.map(|t| t.tipo), Some(TipoTope::Derecha)) {
-                        // El tabulador no cabe: pasa con lo que le sigue al
-                        // renglon siguiente.
-                        fin_j = j;
-                        break;
-                    }
-                    xs[j] = x;
-                    rellenos[j] = tope.and_then(|t| t.relleno);
-                    u[j].avance = (nx - x).max(0.0);
-                    x = nx;
-                    espacios = 0.0;
-                    ultimo_corte = Some(j + 1);
-                }
-                Tipo::Letra(c) if es_espacio(c) => {
-                    xs[j] = x;
-                    x += u[j].avance;
-                    espacios += u[j].avance;
-                    if corte_tras(&u, j) {
-                        ultimo_corte = Some(j + 1);
-                    }
-                }
-                _ => {
-                    if cfg.partir && x + u[j].avance - cfg.encoger * espacios > derecha + 0.01 && j > i {
-                        fin_j = match ultimo_corte {
-                            Some(c) if c > i => c,
-                            _ => j,
-                        };
-                        break;
-                    }
-                    xs[j] = x;
-                    x += u[j].avance;
-                    if corte_tras(&u, j) {
-                        ultimo_corte = Some(j + 1);
-                    }
-                }
-            }
-            j += 1;
-        }
-        let ultimo = fin_j >= u.len();
-        let renglon = montar(&u[i..fin_j], &xs[i..fin_j], &rellenos[i..fin_j], estilos, marca, ultimo, medidor);
-        let renglon = alinear(renglon, &u[i..fin_j], &xs[i..fin_j], cfg, derecha, ultimo || forzado);
-        renglones.push(renglon);
+        primero = false;
+        let (renglon, fin_j, forzado) = un_renglon(u, i, inicio_x, derecha, true, &mut xs, &mut rellenos, estilos, marca, cfg, medidor);
+        renglones.push((renglon, i));
         i = fin_j;
         if i >= u.len() {
             // Un salto de renglon al final deja la marca de parrafo sola en
             // un renglon nuevo, vacio pero con su alto.
             if forzado {
-                renglones.push(montar(&[], &[], &[], estilos, marca, true, medidor));
+                renglones.push((montar(&[], &[], &[], estilos, marca, true, medidor), i));
             }
             break;
         }
     }
     renglones
+}
+
+/// Un renglon hecho de tramos uno al lado del otro (el texto a los dos lados
+/// de un dibujo flotante), de la unidad `i` en adelante. `tramos` van de
+/// izquierda a derecha en x de la caja. Devuelve el renglon, la unidad en
+/// que empieza el siguiente y si acaba en un salto.
+pub fn renglon_en_tramos(
+    u: &mut [Unidad],
+    i: usize,
+    tramos: &[(f32, f32)],
+    estilos: &[Estilo],
+    marca: u32,
+    cfg: &Config,
+    medidor: &dyn Medidor,
+) -> (Renglon, usize, bool) {
+    let mut xs = vec![0.0f32; u.len()];
+    let mut rellenos: Vec<Option<char>> = vec![None; u.len()];
+    let mut total: Option<Renglon> = None;
+    let mut pos = i.min(u.len());
+    let mut forzado = false;
+    for (k, &(a, b)) in tramos.iter().enumerate() {
+        // El ultimo tramo tiene que llevarse algo si ninguno se llevo nada
+        // (si no, el parrafo no avanzaria).
+        let forzar = k + 1 == tramos.len() && pos == i;
+        let (r, fin, fz) = un_renglon(u, pos, a, b, forzar, &mut xs, &mut rellenos, estilos, marca, cfg, medidor);
+        if fin > pos || fz || total.is_none() && forzar {
+            total = Some(match total {
+                None => r,
+                Some(mut t) => {
+                    t.trozos.extend(r.trozos);
+                    t.ascenso = t.ascenso.max(r.ascenso);
+                    t.ascenso_texto = t.ascenso_texto.max(r.ascenso_texto);
+                    t.descenso = t.descenso.max(r.descenso);
+                    t.hueco = t.hueco.max(r.hueco);
+                    t.tam_max = t.tam_max.max(r.tam_max);
+                    t.alto_texto = t.ascenso_texto + t.descenso + t.hueco;
+                    t.alto_natural = t.ascenso.max(t.ascenso_texto + t.hueco) + t.descenso;
+                    t.fin = r.fin;
+                    t
+                }
+            });
+        }
+        pos = fin;
+        if fz {
+            forzado = true;
+            break;
+        }
+        if pos >= u.len() {
+            break;
+        }
+    }
+    let r = total.unwrap_or_else(|| montar(&[], &[], &[], estilos, marca, true, medidor));
+    (r, pos, forzado)
+}
+
+/// Un renglon de la unidad `i` en adelante, de `inicio_x` a `derecha`.
+/// `forzar`: lleva al menos una unidad aunque no quepa (partiendo una
+/// palabra por letras); sin forzar, una palabra que no cabe deja el renglon
+/// vacio. Devuelve el renglon, donde empieza el siguiente y si acaba en un
+/// salto.
+#[allow(clippy::too_many_arguments)]
+fn un_renglon(
+    u: &mut [Unidad],
+    i: usize,
+    inicio_x: f32,
+    derecha: f32,
+    forzar: bool,
+    xs: &mut [f32],
+    rellenos: &mut [Option<char>],
+    estilos: &[Estilo],
+    marca: u32,
+    cfg: &Config,
+    medidor: &dyn Medidor,
+) -> (Renglon, usize, bool) {
+    let mut x = inicio_x;
+    let mut j = i;
+    // Donde se puede cortar: indice de la primera unidad del renglon
+    // siguiente.
+    let mut ultimo_corte: Option<usize> = None;
+    let mut forzado = false;
+    // Lo que miden los espacios del renglon (tras el ultimo tabulador).
+    let mut espacios = 0.0f32;
+    let mut fin_j = u.len();
+    while j < u.len() {
+        match u[j].tipo {
+            Tipo::Salto => {
+                xs[j] = x;
+                fin_j = j + 1;
+                forzado = true;
+                break;
+            }
+            Tipo::Tab => {
+                let (nx, tope) = tabulador(u, j, x, cfg);
+                if cfg.partir && nx > derecha + 0.01 && (j > i || !forzar) && !matches!(tope.map(|t| t.tipo), Some(TipoTope::Derecha)) {
+                    // El tabulador no cabe: pasa con lo que le sigue al
+                    // renglon siguiente.
+                    fin_j = j;
+                    break;
+                }
+                xs[j] = x;
+                rellenos[j] = tope.and_then(|t| t.relleno);
+                u[j].avance = (nx - x).max(0.0);
+                x = nx;
+                espacios = 0.0;
+                ultimo_corte = Some(j + 1);
+            }
+            Tipo::Letra(c) if es_espacio(c) => {
+                xs[j] = x;
+                x += u[j].avance;
+                espacios += u[j].avance;
+                if corte_tras(u, j) {
+                    ultimo_corte = Some(j + 1);
+                }
+            }
+            _ => {
+                if cfg.partir && x + u[j].avance - cfg.encoger * espacios > derecha + 0.01 && (j > i || !forzar) {
+                    fin_j = match ultimo_corte {
+                        Some(c) if c > i => c,
+                        _ if forzar => j,
+                        _ => i,
+                    };
+                    break;
+                }
+                xs[j] = x;
+                x += u[j].avance;
+                if corte_tras(u, j) {
+                    ultimo_corte = Some(j + 1);
+                }
+            }
+        }
+        j += 1;
+    }
+    let ultimo = fin_j >= u.len();
+    let renglon = montar(&u[i..fin_j], &xs[i..fin_j], &rellenos[i..fin_j], estilos, marca, ultimo, medidor);
+    let renglon = alinear(renglon, &u[i..fin_j], &xs[i..fin_j], cfg, derecha, ultimo || forzado);
+    (renglon, fin_j, forzado)
 }
 
 /// Donde acaba un tabulador que empieza en `x`, y de que tipo es su tope.
