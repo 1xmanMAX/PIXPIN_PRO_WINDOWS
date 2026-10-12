@@ -11,6 +11,7 @@ pub mod dibujo;
 pub mod estilos;
 pub mod mate;
 pub mod numeracion;
+pub mod rodear;
 
 use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
@@ -22,7 +23,8 @@ use crate::pagina::{Color, Elemento, Pagina, Recursos, Relleno, Trazo};
 use crate::paquete::{ErrorOffice, Paquete, Relaciones, attr_num, twips};
 use crate::tema::Tema;
 use bloques::{Caja, Ctx, Franja, Salto};
-use dibujo::{Ajuste, Flotante, Referencia};
+use dibujo::{Flotante, Referencia};
+use rodear::Obstaculo;
 use estilos::Estilos;
 use numeracion::Numeracion;
 
@@ -324,7 +326,7 @@ struct EnCurso {
     notas: Vec<Caja>,
     alto_notas: f32,
     /// Dibujos que apartan el texto en esta pagina: (arriba, abajo, x0, x1).
-    obstaculos: Vec<(f32, f32, f32, f32)>,
+    obstaculos: Vec<Obstaculo>,
     /// La columna en curso empezo por un salto manual (`w:br`).
     tras_salto_manual: bool,
 }
@@ -663,12 +665,17 @@ impl DocumentoWord {
             ec.detras.push(e);
         }
         for (dy, f) in c.flotantes {
-            self.poner_flotante(ec, f, y + dy, true);
+            // Un dibujo del encabezado que aparta el texto tambien aparta el
+            // del cuerpo (un logotipo que baja hasta el texto).
+            if let (_, Some(o)) = self.poner_flotante(ec, f, y + dy, true) {
+                ec.obstaculos.push(o);
+            }
         }
     }
 
-    /// Coloca un dibujo anclado en la pagina. Devuelve su caja.
-    fn poner_flotante(&self, ec: &mut EnCurso, f: Flotante, y_parrafo: f32, de_cabecera: bool) -> (f32, f32, f32, f32) {
+    /// Coloca un dibujo anclado en la pagina. Devuelve su caja y, si aparta
+    /// el texto, lo que le estorba a este.
+    fn poner_flotante(&self, ec: &mut EnCurso, f: Flotante, y_parrafo: f32, de_cabecera: bool) -> ((f32, f32, f32, f32), Option<Obstaculo>) {
         let sec = &self.d.secciones[ec.seccion];
         let (cx, cw) = ec.cols.get(ec.columna).copied().unwrap_or((sec.margen[3], sec.util()));
         let (o_ancho, o_alto) = (f.objeto.ancho, f.objeto.alto);
@@ -698,12 +705,72 @@ impl DocumentoWord {
             Some("top") | Some("inside") => base_y,
             _ => base_y + f.v.desplazamiento,
         };
+        let caja = (x, y, x + o_ancho, y + o_alto);
+        let obstaculo = Obstaculo::de_flotante(caja, &f);
         let destino = if f.detras || de_cabecera { &mut ec.detras } else { &mut ec.delante };
         for mut e in f.objeto.elementos {
             e.trasladar(x, y);
             destino.push(e);
         }
-        (x, y, x + o_ancho, y + o_alto)
+        (caja, obstaculo)
+    }
+
+    /// Donde cae la franja `f` si empezara en `y` en la columna en curso:
+    /// la altura (mas abajo si salta un dibujo) y, para un renglon de
+    /// parrafo, los trozos en que tiene que ir (x de la caja; `None` = a lo
+    /// ancho).
+    fn sitio_de(ec: &EnCurso, f: &Franja, y: f32) -> (f32, Option<Vec<(f32, f32)>>) {
+        if ec.obstaculos.is_empty() || f.alto <= 0.0 {
+            return (y, None);
+        }
+        let (cx, cw) = ec.cols.get(ec.columna).copied().unwrap_or((72.0, 468.0));
+        let Some(rh) = &f.rehacer else {
+            return (rodear::debajo(&ec.obstaculos, y, f.alto, cx, cx + cw), None);
+        };
+        let cfg = &rh.cfg;
+        let lo = cx + cfg.sangria_izq + if f.linea == 0 { cfg.primera } else { 0.0 };
+        let hi = cx + cfg.ancho - cfg.sangria_der;
+        if hi - lo < 1.0 {
+            return (y, None);
+        }
+        let (y, t) = rodear::sitio(&ec.obstaculos, y, f.alto, lo, hi);
+        let entero = t.len() == 1 && (t[0].0 - lo).abs() < 0.01 && (t[0].1 - hi).abs() < 0.01;
+        (y, (!entero).then(|| t.into_iter().map(|(a, b)| (a - cx, b - cx)).collect()))
+    }
+
+    /// Si el renglon `f` se partio para otros trozos que los que le tocan
+    /// (`tramos`), lo vuelve a partir: deja en `f` el renglon nuevo y en la
+    /// cola los que le siguen, en lugar de los viejos de su parrafo.
+    fn rehacer_si_hace_falta(&mut self, f: &mut Franja, tramos: &Option<Vec<(f32, f32)>>, medidor: &dyn Medidor) -> bool {
+        let Some(rh) = f.rehacer.clone() else { return false };
+        let iguales = match tramos {
+            None => f.limites.is_empty(),
+            Some(t) => {
+                t.len() == f.limites.len() && t.iter().zip(&f.limites).all(|(a, b)| (a.0 - b.0).abs() < 0.5 && (a.1 - b.1).abs() < 0.5)
+            }
+        };
+        if iguales {
+            return false;
+        }
+        let mut nuevas = bloques::rehacer(&rh, f.linea, f.unidad, tramos.as_deref(), medidor);
+        if nuevas.is_empty() {
+            return false;
+        }
+        // Los renglones viejos que seguian a este.
+        while self.cola.front().is_some_and(|g| g.rehacer.as_ref().is_some_and(|r| Arc::ptr_eq(r, &rh))) {
+            self.cola.pop_front();
+        }
+        let mut primera = nuevas.remove(0);
+        // Lo que ya llevaba la franja y no sale de partir.
+        primera.flotantes = std::mem::take(&mut f.flotantes);
+        primera.inicio_bloque = f.inicio_bloque;
+        primera.salto = f.salto;
+        primera.salto_manual = f.salto_manual;
+        for g in nuevas.into_iter().rev() {
+            self.cola.push_front(g);
+        }
+        *f = primera;
+        true
     }
 
     fn siguiente_columna(&mut self, medidor: &dyn Medidor) {
@@ -891,6 +958,21 @@ impl DocumentoWord {
             let primera_del_todo = self.paginas.is_empty();
             let ec = self.en_curso.as_mut().expect("hay pagina");
             let (retroceso, antes) = espacio(ec, &f, primera_del_todo);
+            // Los dibujos que apartan el texto: el renglon se estrecha (se
+            // vuelve a partir) o baja.
+            let mut y_franja = ec.y - retroceso + antes;
+            if !ec.obstaculos.is_empty() || !f.limites.is_empty() {
+                for _ in 0..3 {
+                    let ec = self.en_curso.as_ref().expect("hay pagina");
+                    let (y, tramos) = Self::sitio_de(ec, &f, ec.y - retroceso + antes);
+                    y_franja = y;
+                    if !self.rehacer_si_hace_falta(&mut f, &tramos, medidor) {
+                        break;
+                    }
+                }
+            }
+            let ec = self.en_curso.as_mut().expect("hay pagina");
+            let antes = y_franja - (ec.y - retroceso);
             let disponible = ec.abajo - (ec.y - retroceso);
             let alto_col = ec.abajo - ec.zona_y;
             let vacia = ec.vacia;
@@ -932,22 +1014,38 @@ impl DocumentoWord {
         let (retroceso, antes) = espacio(&ec, &f, primera_del_todo);
         ec.y -= retroceso;
         let (cx, cw) = ec.cols.get(ec.columna).copied().unwrap_or((72.0, 468.0));
-        let mut y = ec.y + antes;
-        // Los dibujos que apartan el texto: el renglon salta por debajo.
-        for (a, b, x0, x1) in &ec.obstaculos {
-            if y + f.alto > *a && y < *b && *x0 < cx + cw && *x1 > cx {
-                y = *b;
-            }
-        }
-        for fl in f.flotantes.iter().cloned() {
-            let aparta = fl.ajuste != Ajuste::Ninguno && fl.objeto.ancho > cw * 0.55;
-            let margen = fl.margen;
-            let (x0, y0, x1, y1) = self.poner_flotante(&mut ec, fl, y, false);
-            if aparta {
-                ec.obstaculos.push((y0 - margen[0], y1 + margen[1], x0, x1));
-                if y0 <= y + 1.0 && y1 > y {
-                    y = y1 + margen[1];
+        let _ = cw;
+        let y_parrafo = ec.y + antes;
+        // Los dibujos que apartan el texto: el renglon baja si hace falta (ya
+        // se partio a su medida al colocarlo).
+        let mut y = Self::sitio_de(&ec, &f, y_parrafo).0;
+        let mut f = f;
+        if !f.flotantes.is_empty() {
+            let n = ec.obstaculos.len();
+            for fl in std::mem::take(&mut f.flotantes) {
+                if let (_, Some(o)) = self.poner_flotante(&mut ec, fl, y_parrafo, false) {
+                    ec.obstaculos.push(o);
                 }
+            }
+            if ec.obstaculos.len() > n {
+                // Los dibujos de este mismo parrafo ya le estorban a su
+                // primer renglon.
+                let tramos = Self::sitio_de(&ec, &f, y_parrafo).1;
+                self.en_curso = Some(ec);
+                self.rehacer_si_hace_falta(&mut f, &tramos, medidor);
+                ec = self.en_curso.take().expect("hay pagina");
+                let y3 = Self::sitio_de(&ec, &f, y_parrafo).0;
+                if y3 + f.alto - f.holgura > ec.abajo + 0.5 && y3 > y + 0.5 {
+                    // Ya no cabe bajo sus dibujos: sigue en la columna
+                    // siguiente (los dibujos se quedan en esta pagina).
+                    ec.vacia = false;
+                    ec.pagina_vacia = false;
+                    self.en_curso = Some(ec);
+                    self.cola.push_front(f);
+                    self.siguiente_columna(medidor);
+                    return;
+                }
+                y = y3;
             }
         }
         for mut e in bloques::materializar(&f) {

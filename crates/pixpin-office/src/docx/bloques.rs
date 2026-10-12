@@ -96,6 +96,60 @@ pub struct Franja {
     /// Espacio de abajo que puede quedar por debajo del margen (el de mas
     /// del interlineado multiple): Word solo mira que quepa el texto.
     pub holgura: f32,
+    /// Con que volver a partir este renglon y los que le siguen (los de un
+    /// parrafo), si un dibujo flotante se los estrecha.
+    pub rehacer: Option<Arc<Rehacer>>,
+    /// Que renglon del tramo de parrafo es, y en que unidad empieza.
+    pub linea: usize,
+    pub unidad: usize,
+    /// Los tramos (x de la caja) en que se partio el renglon; vacio = a lo
+    /// ancho de la caja.
+    pub limites: Vec<(f32, f32)>,
+}
+
+/// La geometria de un tramo de parrafo que hace falta para montar sus
+/// franjas.
+#[derive(Debug, Clone)]
+pub struct Geometria {
+    interlineado: Interlineado,
+    izq: f32,
+    der: f32,
+    primera: f32,
+    ancho: f32,
+    sombreado: Option<Color>,
+    hay_bordes: bool,
+    borde_arriba: Option<Trazo>,
+    borde_abajo: Option<Trazo>,
+    borde_izq: Option<Trazo>,
+    borde_der: Option<Trazo>,
+    estilo: Option<String>,
+    contextual: bool,
+    antes: f32,
+    despues: f32,
+    auto_antes: bool,
+    auto_despues: bool,
+    salto_antes: bool,
+    /// El salto que abre este tramo (los de despues del primero).
+    salto_tramo: Salto,
+    primer_tramo: bool,
+    ultimo_tramo: bool,
+    lineas_juntas: bool,
+    viudas: bool,
+    con_siguiente: bool,
+    /// Las notas al pie citadas en el parrafo (van con su ultimo renglon).
+    notas: Vec<(String, u32)>,
+}
+
+/// Lo que hace falta para volver a partir un tramo de parrafo ya
+/// maquetado: sus unidades medidas, estilos, objetos en linea y geometria.
+#[derive(Debug)]
+pub struct Rehacer {
+    unidades: Vec<renglones::Unidad>,
+    estilos: Arc<[Estilo]>,
+    objetos: Arc<[Objeto]>,
+    pub cfg: Config,
+    marca: u32,
+    g: Geometria,
 }
 
 /// Contenido apilado en una caja (celda, cuadro de texto, encabezado).
@@ -853,16 +907,42 @@ pub fn parrafo(ctx: &mut Ctx, n: &Nodo, ancho: f32, previo: Option<&Nodo>, sigui
     let (junto_antes, junto_despues) = if hay_bordes { (mismo(previo), mismo(siguiente)) } else { (false, false) };
     let borde_arriba = if junto_antes { p.bordes.entre.flatten() } else { p.bordes.arriba.flatten() };
     let borde_abajo = if junto_despues { None } else { p.bordes.abajo.flatten() };
-    let espacio_borde = |t: Option<Trazo>| t.map(|t| t.grosor + 1.0).unwrap_or(0.0);
 
     let n_tramos = rc.tramos.len().max(1);
     if rc.tramos.is_empty() {
         rc.tramos.push((Salto::Ninguno, Vec::new()));
     }
     let tramos = std::mem::take(&mut rc.tramos);
-    let estilos = rc.m.estilos.clone();
-    let mut primera_franja = true;
+    let estilos: Arc<[Estilo]> = Arc::from(std::mem::take(&mut rc.m.estilos));
+    let objetos: Arc<[Objeto]> = Arc::from(std::mem::take(&mut rc.objetos));
     let ultimo_tramo = n_tramos - 1;
+    let geometria = Geometria {
+        interlineado,
+        izq,
+        der,
+        primera,
+        ancho,
+        sombreado: p.sombreado.flatten(),
+        hay_bordes,
+        borde_arriba,
+        borde_abajo,
+        borde_izq: p.bordes.izq.flatten(),
+        borde_der: p.bordes.der.flatten(),
+        estilo: estilo.clone(),
+        contextual: p.contextual.unwrap_or(false),
+        antes,
+        despues,
+        auto_antes: p.antes_auto == Some(true),
+        auto_despues: p.despues_auto == Some(true),
+        salto_antes: p.salto_antes == Some(true),
+        salto_tramo: Salto::Ninguno,
+        primer_tramo: true,
+        ultimo_tramo: false,
+        lineas_juntas: p.lineas_juntas == Some(true),
+        viudas: p.viudas.unwrap_or(true),
+        con_siguiente: p.con_siguiente == Some(true),
+        notas: Vec::new(),
+    };
     for (k, (salto, piezas)) in tramos.into_iter().enumerate() {
         // Un salto de pagina al final del parrafo no deja renglon vacio.
         if k > 0 && k == ultimo_tramo && piezas.is_empty() {
@@ -870,94 +950,34 @@ pub fn parrafo(ctx: &mut Ctx, n: &Nodo, ancho: f32, previo: Option<&Nodo>, sigui
             continue;
         }
         let cfg_k = if k > 0 { Config { primera: 0.0, ..cfg.clone() } } else { cfg.clone() };
-        let renglones = renglones::partir(&piezas, &estilos, estilo_marca, &cfg_k, ctx.medidor);
+        let mut unidades = renglones::medir(&piezas, &estilos, estilo_marca, ctx.medidor);
+        let renglones = renglones::partir_unidades(&mut unidades, 0, true, &estilos, estilo_marca, &cfg_k, ctx.medidor);
         let total = renglones.len();
-        for (i, r) in renglones.iter().enumerate() {
-            let natural = r.alto_natural;
-            let natural_texto = r.alto_texto;
-            let (alto, base_y) = match interlineado {
-                Interlineado::Auto(m) => {
-                    let h = (natural + natural_texto * (m - 1.0)).max(natural * 0.5);
-                    // Word deja el espacio de mas DEBAJO del texto: la linea base
-                    // queda donde estaria con interlineado sencillo.
-                    (h, natural - r.descenso)
-                }
-                Interlineado::Exacto(v) => (v, v - r.descenso.min(v * 0.2)),
-                Interlineado::AlMenos(v) => {
-                    let h = natural.max(v);
-                    (h, h - r.descenso)
-                }
-            };
-            let es_primero = i == 0 && k == 0;
-            let es_ultimo = i == total - 1 && k == ultimo_tramo;
-            let arriba = if es_primero { espacio_borde(borde_arriba) } else { 0.0 };
-            let abajo = if es_ultimo { espacio_borde(borde_abajo) } else { 0.0 };
-            let mut els = Vec::new();
-            // Sombreado y bordes del parrafo.
-            let caja_p = Rect::nuevo(izq.min(izq + if es_primero { primera } else { 0.0 }), 0.0, ancho - der - izq, alto + arriba + abajo);
-            if let Some(Some(c)) = p.sombreado {
-                els.push(Elemento::Rect { rect: Rect { x: izq, ..caja_p }, relleno: Some(Relleno::Solido(c)), borde: None });
-            }
-            if hay_bordes {
-                let (x0, x1) = (izq - 4.0, ancho - der + 4.0);
-                if es_primero && let Some(t) = borde_arriba {
-                    els.push(Elemento::Linea { desde: (x0, t.grosor / 2.0), hasta: (x1, t.grosor / 2.0), trazo: t });
-                }
-                if es_ultimo && let Some(t) = borde_abajo {
-                    let y = alto + arriba + abajo - t.grosor / 2.0;
-                    els.push(Elemento::Linea { desde: (x0, y), hasta: (x1, y), trazo: t });
-                }
-                if let Some(Some(t)) = p.bordes.izq {
-                    els.push(Elemento::Linea { desde: (x0, 0.0), hasta: (x0, alto + arriba + abajo), trazo: t });
-                }
-                if let Some(Some(t)) = p.bordes.der {
-                    els.push(Elemento::Linea { desde: (x1, 0.0), hasta: (x1, alto + arriba + abajo), trazo: t });
-                }
-            }
-            renglon_a_elementos(r, &estilos, &rc.objetos, base_y + arriba, ctx.medidor, &mut els);
-            let mut f = Franja {
-                holgura: if let Interlineado::Auto(m) = interlineado { (natural_texto * (m - 1.0)).max(0.0) } else { 0.0 },
-                alto: alto + arriba + abajo,
-                elementos: els,
-                estilo: estilo.clone(),
-                contextual: p.contextual.unwrap_or(false),
-                ..Default::default()
-            };
-            if es_primero {
-                f.antes = antes;
-                f.auto_antes = p.antes_auto == Some(true);
-                if p.salto_antes == Some(true) {
-                    f.salto = Salto::Pagina;
-                }
+        let rh = Arc::new(Rehacer {
+            unidades,
+            estilos: estilos.clone(),
+            objetos: objetos.clone(),
+            cfg: cfg_k,
+            marca: estilo_marca,
+            g: Geometria {
+                salto_tramo: salto,
+                primer_tramo: k == 0,
+                ultimo_tramo: k == ultimo_tramo,
+                notas: if k == ultimo_tramo { rc.notas.clone() } else { Vec::new() },
+                ..geometria.clone()
+            },
+        });
+        let desde = salida.len();
+        for (i, (r, unidad)) in renglones.iter().enumerate() {
+            let mut f = franja_de_renglon(&rh, r, i, total, *unidad, Vec::new(), ctx.medidor);
+            if i == 0 && k == 0 {
                 f.flotantes = std::mem::take(&mut rc.flotantes);
             }
-            if i == 0 && k > 0 {
-                f.salto = salto;
-                f.salto_manual = true;
-            }
-            if es_ultimo {
-                f.despues = despues;
-                f.auto_despues = p.despues_auto == Some(true);
-            }
-            primera_franja = false;
             salida.push(f);
         }
         // Lineas viudas y huerfanas, y lo que tiene que ir junto.
-        let n = salida.len();
-        let desde = n - total;
-        if p.lineas_juntas == Some(true) {
-            for f in &mut salida[desde..n - 1] {
-                f.pegada_lineas = true;
-            }
-            if p.viudas.unwrap_or(true) && total >= 2 {
-                salida[desde].pegada = true;
-            }
-        } else if p.viudas.unwrap_or(true) && total >= 2 {
-            salida[desde].pegada = true;
-            salida[n - 2].pegada = true;
-        }
+        marcar_juntas(&rh.g, &mut salida[desde..], 0, total);
     }
-    let _ = primera_franja;
     if !rc.notas.is_empty()
         && let Some(f) = salida.last_mut()
     {
@@ -969,6 +989,141 @@ pub fn parrafo(ctx: &mut Ctx, n: &Nodo, ancho: f32, previo: Option<&Nodo>, sigui
     {
         f.pegada = true;
     }
+}
+
+/// La franja de un renglon de un tramo de parrafo (el `linea` de `total`).
+fn franja_de_renglon(
+    rh: &Arc<Rehacer>,
+    r: &renglones::Renglon,
+    linea: usize,
+    total: usize,
+    unidad: usize,
+    limites: Vec<(f32, f32)>,
+    medidor: &dyn Medidor,
+) -> Franja {
+    let g = &rh.g;
+    let espacio_borde = |t: Option<Trazo>| t.map(|t| t.grosor + 1.0).unwrap_or(0.0);
+    let natural = r.alto_natural;
+    let natural_texto = r.alto_texto;
+    let (alto, base_y) = match g.interlineado {
+        Interlineado::Auto(m) => {
+            let h = (natural + natural_texto * (m - 1.0)).max(natural * 0.5);
+            // Word deja el espacio de mas DEBAJO del texto: la linea base
+            // queda donde estaria con interlineado sencillo.
+            (h, natural - r.descenso)
+        }
+        Interlineado::Exacto(v) => (v, v - r.descenso.min(v * 0.2)),
+        Interlineado::AlMenos(v) => {
+            let h = natural.max(v);
+            (h, h - r.descenso)
+        }
+    };
+    let es_primero = linea == 0 && g.primer_tramo;
+    let es_ultimo = linea + 1 == total && g.ultimo_tramo;
+    let arriba = if es_primero { espacio_borde(g.borde_arriba) } else { 0.0 };
+    let abajo = if es_ultimo { espacio_borde(g.borde_abajo) } else { 0.0 };
+    let (izq, der, ancho) = (g.izq, g.der, g.ancho);
+    let mut els = Vec::new();
+    // Sombreado y bordes del parrafo.
+    let caja_p = Rect::nuevo(izq.min(izq + if es_primero { g.primera } else { 0.0 }), 0.0, ancho - der - izq, alto + arriba + abajo);
+    if let Some(c) = g.sombreado {
+        els.push(Elemento::Rect { rect: Rect { x: izq, ..caja_p }, relleno: Some(Relleno::Solido(c)), borde: None });
+    }
+    if g.hay_bordes {
+        let (x0, x1) = (izq - 4.0, ancho - der + 4.0);
+        if es_primero && let Some(t) = g.borde_arriba {
+            els.push(Elemento::Linea { desde: (x0, t.grosor / 2.0), hasta: (x1, t.grosor / 2.0), trazo: t });
+        }
+        if es_ultimo && let Some(t) = g.borde_abajo {
+            let y = alto + arriba + abajo - t.grosor / 2.0;
+            els.push(Elemento::Linea { desde: (x0, y), hasta: (x1, y), trazo: t });
+        }
+        if let Some(t) = g.borde_izq {
+            els.push(Elemento::Linea { desde: (x0, 0.0), hasta: (x0, alto + arriba + abajo), trazo: t });
+        }
+        if let Some(t) = g.borde_der {
+            els.push(Elemento::Linea { desde: (x1, 0.0), hasta: (x1, alto + arriba + abajo), trazo: t });
+        }
+    }
+    renglon_a_elementos(r, &rh.estilos, &rh.objetos, base_y + arriba, medidor, &mut els);
+    let mut f = Franja {
+        holgura: if let Interlineado::Auto(m) = g.interlineado { (natural_texto * (m - 1.0)).max(0.0) } else { 0.0 },
+        alto: alto + arriba + abajo,
+        elementos: els,
+        estilo: g.estilo.clone(),
+        contextual: g.contextual,
+        rehacer: Some(rh.clone()),
+        linea,
+        unidad,
+        limites,
+        ..Default::default()
+    };
+    if es_primero {
+        f.antes = g.antes;
+        f.auto_antes = g.auto_antes;
+        if g.salto_antes {
+            f.salto = Salto::Pagina;
+        }
+    }
+    if linea == 0 && !g.primer_tramo {
+        f.salto = g.salto_tramo;
+        f.salto_manual = true;
+    }
+    if es_ultimo {
+        f.despues = g.despues;
+        f.auto_despues = g.auto_despues;
+    }
+    f
+}
+
+/// Lineas viudas y huerfanas, y «conservar lineas juntas»: que renglones
+/// tienen que ir con el siguiente. `franjas` son los renglones `desde..` de
+/// un tramo de `total`.
+fn marcar_juntas(g: &Geometria, franjas: &mut [Franja], desde: usize, total: usize) {
+    for (k, f) in franjas.iter_mut().enumerate() {
+        let i = desde + k;
+        if g.lineas_juntas {
+            f.pegada_lineas = i + 1 < total;
+            f.pegada = g.viudas && total >= 2 && i == 0;
+        } else {
+            f.pegada = g.viudas && total >= 2 && (i == 0 || i + 2 == total);
+        }
+    }
+}
+
+/// Vuelve a partir un tramo de parrafo desde su renglon `linea` (que
+/// empieza en la unidad `unidad`): ese renglon en los `tramos` dados (x de
+/// la caja, de izquierda a derecha; `None` = a lo ancho) y los que le
+/// siguen a lo ancho de la caja. Las unidades ya estan medidas: no se mide
+/// nada otra vez.
+pub fn rehacer(rh: &Arc<Rehacer>, linea: usize, unidad: usize, tramos: Option<&[(f32, f32)]>, medidor: &dyn Medidor) -> Vec<Franja> {
+    let mut u = rh.unidades.clone();
+    let mut v: Vec<(renglones::Renglon, usize, Vec<(f32, f32)>)> = Vec::new();
+    let resto = match tramos {
+        Some(t) => {
+            let (r, fin, forzado) = renglones::renglon_en_tramos(&mut u, unidad, t, &rh.estilos, rh.marca, &rh.cfg, medidor);
+            v.push((r, unidad, t.to_vec()));
+            (fin < u.len() || forzado).then_some(fin)
+        }
+        None => Some(unidad),
+    };
+    if let Some(desde) = resto {
+        let primero = tramos.is_none() && linea == 0;
+        for (r, i) in renglones::partir_unidades(&mut u, desde, primero, &rh.estilos, rh.marca, &rh.cfg, medidor) {
+            v.push((r, i, Vec::new()));
+        }
+    }
+    let total = linea + v.len();
+    let mut franjas: Vec<Franja> =
+        v.into_iter().enumerate().map(|(k, (r, i, lim))| franja_de_renglon(rh, &r, linea + k, total, i, lim, medidor)).collect();
+    marcar_juntas(&rh.g, &mut franjas, linea, total);
+    if rh.g.ultimo_tramo
+        && let Some(f) = franjas.last_mut()
+    {
+        f.notas = rh.g.notas.clone();
+        f.pegada |= rh.g.con_siguiente;
+    }
+    franjas
 }
 
 /// Pinta un renglon con la linea base en `base_y` (desde arriba de la
@@ -1347,6 +1502,12 @@ pub fn tabla(ctx: &mut Ctx, t: &Nodo, ancho_disp: f32, salida: &mut Vec<Franja>)
             }
             if primera_fila && fi == 0 && ultima_col && fin == ultima_col_idx {
                 tipos.push("neCell");
+            }
+            if ultima_fila && fi == n_filas - 1 && primera_col && cl.col == 0 {
+                tipos.push("swCell");
+            }
+            if ultima_fila && fi == n_filas - 1 && ultima_col && fin == ultima_col_idx {
+                tipos.push("seCell");
             }
             let mut tcpr = tc_estilo.clone();
             let mut pp = pp_estilo.clone();
