@@ -58,6 +58,17 @@ pub struct Fila {
     fin: u32,
 }
 
+/// Una fila para armar una hoja de una vez ([`Hoja::desde_filas`]).
+#[derive(Debug, Clone)]
+pub struct FilaNueva {
+    pub indice: u32,
+    pub alto: f32,
+    pub oculta: bool,
+    pub xf: Option<u32>,
+    pub sin_alto: bool,
+    pub celdas: Vec<Celda>,
+}
+
 /// Un grupo de columnas `<col min max>`, en base 0 e inclusivo.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Columnas {
@@ -222,6 +233,13 @@ pub struct Cola {
     pub condicionales: Vec<crate::condicional::Condicional>,
     /// Validacion de datos (solo para ver: listas desplegables).
     pub validaciones: Vec<crate::validacion::Validacion>,
+    /// Minigraficos: sus grupos y, por celda (ordenados), cada uno.
+    pub grupos_mini: Vec<crate::minigraficos::GrupoMini>,
+    pub minigraficos: Vec<crate::minigraficos::Minigrafico>,
+    /// Notas y comentarios encadenados, ordenados por celda.
+    pub comentarios: Vec<crate::comentarios::Comentario>,
+    /// El autofiltro de la hoja (los de las tablas estan en cada tabla).
+    pub autofiltro: Option<crate::filtros::AutoFiltro>,
 }
 
 /// Un trozo de hoja leido: filas y celdas con indices propios de la tanda.
@@ -774,6 +792,9 @@ impl Proceso {
         }
         cola.condicionales = crate::condicional::leer(&raiz, tema, paleta);
         cola.validaciones = crate::validacion::leer(&raiz);
+        (cola.grupos_mini, cola.minigraficos) = crate::minigraficos::leer(&raiz, tema, paleta);
+        cola.comentarios = crate::comentarios::leer(paquete, &rels);
+        cola.autofiltro = raiz.hijo("autoFilter").and_then(|a| crate::filtros::AutoFiltro::leer(a, None));
         cola
     }
 }
@@ -906,6 +927,84 @@ impl Hoja {
         }
     }
 
+    /// Una hoja ya entera, armada fila a fila (los `.xls` antiguos, que se
+    /// leen de una vez, y las pruebas). Las filas deben venir ordenadas.
+    pub fn desde_filas(nombre: String, cabecera: Cabecera, cola: Cola, textos: Vec<String>, filas: Vec<FilaNueva>) -> Hoja {
+        let mut h = Hoja::nueva(nombre, None);
+        h.cabecera = cabecera;
+        h.cola = cola;
+        h.textos = textos;
+        if let Some(d) = h.cabecera.dimension {
+            h.max_col = d.col1.min(16383);
+        }
+        for f in filas {
+            let inicio = h.celdas.len() as u32;
+            for c in f.celdas {
+                if c.valor != Valor::Vacio && c.col > h.max_col {
+                    h.max_col = c.col;
+                }
+                h.celdas.push(c);
+            }
+            h.filas.push(Fila {
+                indice: f.indice,
+                alto: f.alto,
+                oculta: f.oculta,
+                xf: f.xf,
+                sin_alto: f.sin_alto,
+                inicio,
+                fin: h.celdas.len() as u32,
+            });
+        }
+        h.filas.sort_by_key(|f| f.indice);
+        let mut cs = std::mem::take(&mut h.cola.condicionales);
+        for c in &mut cs {
+            c.calcular(&h);
+        }
+        h.cola.condicionales = cs;
+        h.version = 1;
+        h
+    }
+
+    /// Una copia de una hoja ya entera (sin lector): lo que entrega
+    /// `Libro::abrir_hoja` de un `.xls`.
+    pub(crate) fn copia_entera(&self) -> Hoja {
+        Hoja {
+            nombre: self.nombre.clone(),
+            filas: self.filas.clone(),
+            celdas: self.celdas.clone(),
+            textos: self.textos.clone(),
+            cabecera: self.cabecera.clone(),
+            cola: self.cola.clone(),
+            completa: true,
+            max_col: self.max_col,
+            lector: None,
+            desordenada: false,
+            version: self.version,
+        }
+    }
+    #[cfg(test)]
+    pub(crate) fn vacia_para_pruebas() -> Hoja {
+        Hoja::nueva("P".into(), None)
+    }
+
+    /// Una columna de numeros en A1.. (para las pruebas).
+    #[cfg(test)]
+    pub(crate) fn poner_numeros_para_pruebas(&mut self, v: &[f64]) {
+        let filas = v
+            .iter()
+            .enumerate()
+            .map(|(i, &x)| FilaNueva {
+                indice: i as u32,
+                alto: f32::NAN,
+                oculta: false,
+                xf: None,
+                sin_alto: false,
+                celdas: vec![Celda { col: 0, xf: 0, valor: Valor::Numero(x) }],
+            })
+            .collect();
+        *self = Hoja::desde_filas(self.nombre.clone(), Cabecera::default(), Cola::default(), Vec::new(), filas);
+    }
+
     /// La vista guardada (paneles, cuadricula, zoom).
     pub fn vista(&self) -> &VistaHoja {
         &self.cabecera.vista
@@ -1020,6 +1119,12 @@ impl Hoja {
     /// Las celdas de una fila (ordenadas por columna).
     pub fn celdas_de(&self, f: &Fila) -> &[Celda] {
         self.celdas.get(f.inicio as usize..f.fin as usize).unwrap_or(&[])
+    }
+
+    /// El comentario de la celda, si lo tiene.
+    pub fn comentario_en(&self, fila: u32, col: u32) -> Option<&crate::comentarios::Comentario> {
+        let i = self.cola.comentarios.binary_search_by_key(&(fila, col), |c| (c.fila, c.col)).ok()?;
+        self.cola.comentarios.get(i)
     }
 
     /// La regla de validacion de lista (con flecha) que afecta a la celda.

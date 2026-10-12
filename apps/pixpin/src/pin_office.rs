@@ -83,6 +83,12 @@ pub fn se_abre(ruta: &Path) -> bool {
     if !es_de_office(&ext) {
         return false;
     }
+    // Un Excel 97-2003 que el visor de hojas abre sin Office (rapido, sin
+    // lanzar Office en segundo plano) ya no pasa por aqui. Si no lo
+    // entiende (cifrado, roto, Excel 5), el pin de Office queda de respaldo.
+    if matches!(ext.as_str(), "xls" | "xlt") && crate::visor_hoja::se_abre_fichero(ruta) {
+        return false;
+    }
     let hay = vista_previa::manejador_de_extension(&ext).is_some();
     va_al_pin(&ext, hay, vista_previa::atascado())
 }

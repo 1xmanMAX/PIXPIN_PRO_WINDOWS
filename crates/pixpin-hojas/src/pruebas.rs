@@ -307,3 +307,120 @@ fn validacion_de_lista_de_punta_a_punta() {
     // Fuera de toda regla.
     assert!(h.lista_en(9, 9).is_none());
 }
+
+const XLS_PEQUENO: &[u8] = include_bytes!("../tests/muestras/pequeno.xls");
+
+#[test]
+fn un_xls_de_verdad_se_abre_como_un_libro_normal() {
+    let l = Libro::desde_bytes(XLS_PEQUENO.to_vec(), Regional::en_us()).unwrap();
+    assert_eq!(l.hojas.iter().map(|h| h.nombre.as_str()).collect::<Vec<_>>(), vec!["Ventas", "Notas"]);
+    let mut h = l.abrir_hoja(0);
+    h.cargar_todo();
+    assert!(h.completa);
+    assert_eq!(texto(&l, &h, 0, 0), "Producto");
+    assert_eq!(texto(&l, &h, 1, 0), "Café ñandú");
+    assert_eq!(texto(&l, &h, 1, 1), "1,234.50");
+    assert_eq!(texto(&l, &h, 2, 1), "9.99");
+    assert_eq!(texto(&l, &h, 3, 0), "15/03/2026");
+    assert_eq!(h.cola.combinadas, vec![Rango { fila0: 5, col0: 0, fila1: 5, col1: 2 }]);
+    // Negrita y relleno de los estilos del archivo.
+    let c = h.celda(1, 1).unwrap();
+    let xf = l.xf(c);
+    assert!(l.estilos.fuente(xf).negrita);
+    assert!(matches!(l.estilos.relleno(xf), crate::estilos::Relleno::Liso(_)));
+    // La segunda hoja se lee al pedirla, y pedirla otra vez da lo mismo.
+    let h2 = l.abrir_hoja(1);
+    assert_eq!(texto(&l, &h2, 0, 0), "otra hoja");
+    assert_eq!(texto(&l, &l.abrir_hoja(1), 0, 0), "otra hoja");
+    // Una hoja que no existe se ve vacia, sin panico.
+    assert!(l.abrir_hoja(9).filas.is_empty());
+}
+
+#[test]
+fn un_xls_roto_o_cortado_da_error_y_nunca_panico() {
+    for corte in (0..XLS_PEQUENO.len()).step_by(211) {
+        if let Ok(l) = Libro::desde_bytes(XLS_PEQUENO[..corte].to_vec(), Regional::en_us()) {
+            for i in 0..l.hojas.len() {
+                let mut h = l.abrir_hoja(i);
+                h.cargar_todo();
+            }
+        }
+    }
+    // Un contenedor sin Workbook (o a medias) no es un libro.
+    assert!(Libro::desde_bytes(XLS_PEQUENO[..600].to_vec(), Regional::en_us()).is_err());
+    let mut malo = XLS_PEQUENO.to_vec();
+    for b in malo.iter_mut().skip(512).step_by(7) {
+        *b = 0xFF;
+    }
+    if let Ok(l) = Libro::desde_bytes(malo, Regional::en_us()) {
+        let _ = l.abrir_hoja(0);
+    }
+}
+
+#[test]
+fn comentarios_autofiltro_minigraficos_y_condicionales_x14_de_punta_a_punta() {
+    let hoja = br#"<worksheet xmlns:r="r"><sheetData><row r="1"><c r="A1" t="inlineStr"><is><t>Region</t></is></c><c r="B1" t="inlineStr"><is><t>V</t></is></c></row><row r="2" hidden="1"><c r="A2" t="inlineStr"><is><t>Sur</t></is></c><c r="B2"><v>1</v></c></row><row r="3"><c r="A3" t="inlineStr"><is><t>Norte</t></is></c><c r="B3"><v>5</v></c></row></sheetData>
+<autoFilter ref="A1:B3"><filterColumn colId="0"><filters><filter val="Norte"/></filters></filterColumn></autoFilter>
+<conditionalFormatting sqref="B2:B3"><cfRule type="iconSet" priority="1"><iconSet iconSet="3Arrows"><cfvo type="percent" val="0"/><cfvo type="percent" val="33"/><cfvo type="percent" val="67"/></iconSet></cfRule></conditionalFormatting>
+<legacyDrawing r:id="rId1"/>
+<extLst><ext xmlns:x14="x" xmlns:xm="m"><x14:sparklineGroups><x14:sparklineGroup type="column"><x14:sparklines><x14:sparkline><xm:f>B2:B3</xm:f><xm:sqref>C3</xm:sqref></x14:sparkline></x14:sparklines></x14:sparklineGroup></x14:sparklineGroups></ext></extLst></worksheet>"#;
+    let rels = br#"<Relationships><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments" Target="../comments1.xml"/><Relationship Id="rId3" Type="http://schemas.microsoft.com/office/2017/10/relationships/threadedComment" Target="../threadedComments/threadedComment1.xml"/></Relationships>"#;
+    let notas = br#"<comments><authors><author>Luis</author></authors><commentList><comment ref="B3" authorId="0"><text><t>Revisar</t></text></comment><comment ref="A1" authorId="0"><text><t>[Threaded comment] copia</t></text></comment></commentList></comments>"#;
+    let hilos = br#"<ThreadedComments><threadedComment ref="A1" personId="{P}" id="{1}"><text>Hilo real</text></threadedComment></ThreadedComments>"#;
+    let personas = br#"<personList><person displayName="Ana" id="{P}"/></personList>"#;
+    let z = zip_de(&[
+        ("_rels/.rels", RELS),
+        ("xl/workbook.xml", br#"<workbook><sheets><sheet name="H" r:id="rId1"/></sheets></workbook>"#),
+        ("xl/_rels/workbook.xml.rels", br#"<Relationships><Relationship Id="rId1" Type="http://x/worksheet" Target="worksheets/sheet1.xml"/></Relationships>"#),
+        ("xl/worksheets/sheet1.xml", hoja),
+        ("xl/worksheets/_rels/sheet1.xml.rels", rels),
+        ("xl/comments1.xml", notas),
+        ("xl/threadedComments/threadedComment1.xml", hilos),
+        ("xl/persons/person.xml", personas),
+    ]);
+    let l = Libro::desde_bytes(z, Regional::en_us()).unwrap();
+    let mut h = l.abrir_hoja(0);
+    h.cargar_todo();
+    // Comentarios: la nota de B3 y el hilo de A1 (que manda sobre su nota de compatibilidad).
+    assert_eq!(h.cola.comentarios.len(), 2);
+    assert_eq!(h.comentario_en(2, 1).map(|c| c.texto.as_str()), Some("Revisar"));
+    let hilo = h.comentario_en(0, 0).unwrap();
+    assert!(hilo.encadenado && hilo.autor == "Ana" && hilo.texto == "Hilo real");
+    assert!(h.comentario_en(1, 1).is_none());
+    // Autofiltro: boton en A1 y B1, filtro en A, y la fila 2 oculta ya viene asi.
+    let f = h.cola.autofiltro.as_ref().unwrap();
+    assert_eq!(f.columnas_con_boton().collect::<Vec<_>>(), vec![0, 1]);
+    assert!(f.tiene_filtro(0) && !f.tiene_filtro(1));
+    assert!(h.filas.iter().find(|x| x.indice == 1).unwrap().oculta);
+    // Minigrafico en C3 con datos de B2:B3.
+    assert_eq!(h.cola.minigraficos.len(), 1);
+    let m = &h.cola.minigraficos[0];
+    assert_eq!((m.fila, m.col), (2, 2));
+    assert_eq!(l.valores_mini(&h, m), vec![Some(1.0), Some(5.0)]);
+    let g = &h.cola.grupos_mini[0];
+    let eje = l.eje_mini(&h, m, &crate::minigraficos::puntos_de(g, &l.valores_mini(&h, m))).unwrap();
+    assert_eq!(eje, (0.0, 5.0), "columnas desde cero");
+    // Formato condicional de iconos: el 1 es el peor, el 5 el mejor.
+    let ef = |fila: u32| l.efecto_condicional(&h, fila, h.celda(fila, 1).unwrap()).and_then(|e| e.icono);
+    assert_eq!(ef(1), Some((crate::condicional::Conjunto::Flechas3, 0)));
+    assert_eq!(ef(2), Some((crate::condicional::Conjunto::Flechas3, 2)));
+}
+
+#[test]
+fn partes_de_comentarios_rotas_o_ausentes_no_rompen_la_hoja() {
+    let hoja = br#"<worksheet xmlns:r="r"><sheetData><row r="1"><c r="A1"><v>1</v></c></row></sheetData></worksheet>"#;
+    let rels = br#"<Relationships><Relationship Id="rId2" Type="http://x/comments" Target="../noexiste.xml"/><Relationship Id="rId3" Type="http://x/threadedComment" Target="../roto.xml"/></Relationships>"#;
+    let z = zip_de(&[
+        ("_rels/.rels", RELS),
+        ("xl/workbook.xml", br#"<workbook><sheets><sheet name="H" r:id="rId1"/></sheets></workbook>"#),
+        ("xl/_rels/workbook.xml.rels", br#"<Relationships><Relationship Id="rId1" Type="http://x/worksheet" Target="worksheets/sheet1.xml"/></Relationships>"#),
+        ("xl/worksheets/sheet1.xml", hoja),
+        ("xl/worksheets/_rels/sheet1.xml.rels", rels),
+        ("xl/roto.xml", b"<ThreadedComments><threadedComment ref=\"A1\"><text>sin cerrar"),
+    ]);
+    let l = Libro::desde_bytes(z, Regional::en_us()).unwrap();
+    let mut h = l.abrir_hoja(0);
+    h.cargar_todo();
+    assert!(h.cola.autofiltro.is_none() && h.cola.minigraficos.is_empty());
+    assert!(h.cola.comentarios.len() <= 1);
+}

@@ -201,6 +201,8 @@ struct Estado<'l> {
     encima_de: Option<Eje>,
     /// La celda bajo el raton (lleva el boton de su lista desplegable).
     bajo_raton: Option<(u32, u32)>,
+    /// La celda con comentario bajo el raton (sale su tarjeta).
+    comentario_bajo: Option<(u32, u32)>,
     aviso: Option<(String, Instant)>,
     hwnd: isize,
 }
@@ -772,6 +774,20 @@ impl<'l> Estado<'l> {
         self.abierta().hoja.lista_en(c.0, c.1).map(|_| c)
     }
 
+    /// La celda bajo el raton si tiene un comentario o una nota.
+    fn celda_con_comentario_bajo_el_raton(&self) -> Option<(u32, u32)> {
+        let p = self.raton;
+        let (_, celdas) = self.vista();
+        if !dentro(&celdas, p) {
+            return None;
+        }
+        let c = self.celda_bajo(p, false)?;
+        // Una celda combinada lleva el comentario en su esquina de arriba a la izquierda.
+        let ab = self.abierta();
+        let c = ab.hoja.combinada_en(c.0, c.1).map_or(c, |r| (r.fila0, r.col0));
+        ab.hoja.comentario_en(c.0, c.1).map(|_| c)
+    }
+
     /// El boton de la flecha de la lista de `celda` en pantalla, si la tiene y se ve.
     fn caja_de_flecha(&self, celda: (u32, u32)) -> Option<[f32; 4]> {
         let ab = self.abierta();
@@ -887,6 +903,7 @@ fn abrir(recursos: &Recursos, textos: &Catalogo, libro: &Libro, ruta: &Path, t0:
         raton: (0.0, 0.0),
         encima_de: None,
         bajo_raton: None,
+        comentario_bajo: None,
         aviso: None,
         hwnd: ventana.handle().0 as isize,
     };
@@ -958,6 +975,11 @@ fn abrir(recursos: &Recursos, textos: &Catalogo, libro: &Libro, ruta: &Path, t0:
                             let bajo = est.celda_con_lista_bajo_el_raton();
                             if bajo != est.bajo_raton {
                                 est.bajo_raton = bajo;
+                                hay_que_pintar = true;
+                            }
+                            let con_nota = est.celda_con_comentario_bajo_el_raton();
+                            if con_nota != est.comentario_bajo {
+                                est.comentario_bajo = con_nota;
                                 hay_que_pintar = true;
                             }
                             let encima = est.barra_bajo_el_raton();
@@ -1125,10 +1147,48 @@ fn texto_centrado_v(p: &Pintor, texto: &str, x: f32, caja: RectF, tam: f32, anch
     p.texto_linea(texto, x, caja.y + (caja.alto - h) / 2.0, tam, ancho.max(0.0), color);
 }
 
+/// El texto de la tarjeta de un comentario: el de una nota tal cual; el de un
+/// hilo, con el nombre de cada quien encima de lo que dijo.
+fn texto_de_comentario(c: &pixpin_hojas::comentarios::Comentario) -> String {
+    if !c.encadenado {
+        return c.texto.clone();
+    }
+    let mut s = format!("{}\n{}", c.autor, c.texto);
+    for (autor, texto) in &c.respuestas {
+        s.push_str(&format!("\n\n{autor}\n{texto}"));
+    }
+    s
+}
+
+/// **La tarjeta de un comentario** al pasar el raton por su celda: a la
+/// derecha de la celda (a la izquierda si no cabe), amarillo palido como la
+/// nota de Excel.
+fn tarjeta_de_comentario(p: &Pintor, ab: &Abierta, v: &Vista, celdas: RectF, area: RectF, celda: (u32, u32), e: f32) {
+    let Some(c) = ab.hoja.comentario_en(celda.0, celda.1) else { return };
+    let rango = ab.hoja.combinada_en(celda.0, celda.1).unwrap_or(Rango { fila0: celda.0, col0: celda.1, fila1: celda.0, col1: celda.1 });
+    let vc = vista_celdas(v, celdas);
+    let Some(caja) = hoja_office::caja_de_celda(&ab.rejilla, &vc, celdas, rango.fila0, rango.col0) else { return };
+    let derecha = hoja_office::caja_de_celda(&ab.rejilla, &vc, celdas, rango.fila0, rango.col1).map_or(caja[2], |c| c[2]);
+    let texto = texto_de_comentario(c);
+    let tam = TAM_TEXTO * e;
+    let (w, h) = p.medir_texto_ajustado(&texto, tam, 280.0 * e);
+    let (ancho, alto) = (w + 16.0 * e, h + 12.0 * e);
+    let mut x = derecha + 6.0 * e;
+    if x + ancho > area.x + area.ancho {
+        x = (caja[0] - ancho - 6.0 * e).max(area.x);
+    }
+    let y = caja[1].min(area.y + area.alto - alto).max(area.y);
+    let r = RectF { x, y, ancho, alto };
+    p.rellenar(r, Color { r: 1.0, g: 1.0, b: 0.88, a: 1.0 });
+    p.trazar(r, 1.0, Color { r: 0.45, g: 0.45, b: 0.45, a: 1.0 });
+    p.texto_ajustado(&texto, x + 8.0 * e, y + 6.0 * e, tam, 280.0 * e, TEXTO);
+}
+
 fn pintar(p: &Pintor, est: &mut Estado, textos: &Catalogo) {
     let z = est.zonas();
     let (e, libro, ancho) = (est.e, est.libro, est.ancho);
     p.limpiar(Color::BLANCO);
+    let con_nota = if est.gesto.is_none() { est.comentario_bajo } else { None };
     let Estado { hojas, activa, cache, desde_pestana, encima_de, pestanas, aviso, bajo_raton, .. } = est;
     let activa = *activa;
     let Some(ab) = hojas[activa].as_ref() else { return };
@@ -1137,6 +1197,9 @@ fn pintar(p: &Pintor, est: &mut Estado, textos: &Catalogo) {
     let (v, celdas) = vista_de(ab, z.hoja);
     let op = OpcionesHoja { encabezados: true, seleccion: Some(ab.sel.rango()), activa: Some(ab.sel.activa), bajo_raton: *bajo_raton };
     hoja_office::pintar_hoja(p, cache, libro, &ab.hoja, &ab.rejilla, &v, z.hoja, &op);
+    if let Some(celda) = con_nota {
+        tarjeta_de_comentario(p, ab, &v, celdas, z.hoja, celda, e);
+    }
 
     // Las barras de desplazamiento.
     let (bv, bh) = barras(ab, celdas, e, *encima_de);

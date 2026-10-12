@@ -11,22 +11,54 @@ use pixpin_hojas::{Rango, Regional};
 // ---------------------------------------------------------------------------
 // Que se abre
 
-/// Las extensiones de los libros que lee `pixpin-hojas` (los `.xls` y los
-/// `.xlsb` son binarios: siguen yendo a su programa).
+/// Las extensiones de los libros que lee `pixpin-hojas`: los de ahora
+/// (`.xlsx`...) y los de Excel 97-2003 (`.xls`, `.xlt`), que se leen sin
+/// Office. El `.xlsb` es binario de otra clase: sigue yendo a su programa.
 pub fn se_abre(nombre: &str) -> bool {
-    matches!(pixpin_docs::extension(nombre).as_str(), "xlsx" | "xlsm" | "xltx" | "xltm")
+    matches!(pixpin_docs::extension(nombre).as_str(), "xlsx" | "xlsm" | "xltx" | "xltm" | "xls" | "xlt")
 }
 
-/// Como [`se_abre`], mirando tambien que el fichero sea un ZIP (un `.xls`
-/// renombrado o un fichero roto se queda con su camino de antes).
+/// Como [`se_abre`], mirando tambien dentro del fichero: un ZIP (un libro de
+/// ahora) o un `.xls` que el lector de `pixpin-hojas` abre de verdad. Un
+/// fichero roto, cifrado o de Excel 5 se queda con su camino de antes (la
+/// vista previa de Office); y un `.xlsx` que en realidad es un `.xls`
+/// renombrado se abre aqui si se entiende.
 pub fn se_abre_fichero(ruta: &Path) -> bool {
-    se_abre(&pixpin_docs::nombre(ruta)) && empieza_como_zip(ruta)
+    se_abre(&pixpin_docs::nombre(ruta)) && (empieza_como_zip(ruta) || xls_legible(ruta))
 }
 
 fn empieza_como_zip(ruta: &Path) -> bool {
     use std::io::Read;
     let mut cabeza = [0u8; 4];
     std::fs::File::open(ruta).and_then(|mut f| f.read_exact(&mut cabeza)).is_ok() && cabeza == *b"PK\x03\x04"
+}
+
+/// Si el fichero es un `.xls` BIFF8 que `pixpin_hojas` abre bien. Lee y
+/// entiende el libro de verdad (globales y hoja activa), asi que se acuerda
+/// del ultimo resultado por ruta, tamano y fecha: quien pregunta varias
+/// veces seguidas no lo repite.
+fn xls_legible(ruta: &Path) -> bool {
+    use std::io::Read;
+    static ULTIMO: std::sync::Mutex<Option<(std::path::PathBuf, u64, Option<std::time::SystemTime>, bool)>> = std::sync::Mutex::new(None);
+    let Ok(meta) = std::fs::metadata(ruta) else { return false };
+    // Una cabecera de contenedor compuesto: si no, ni se lee.
+    let mut cabeza = [0u8; 8];
+    if std::fs::File::open(ruta).and_then(|mut f| f.read_exact(&mut cabeza)).is_err() || !pixpin_hojas::cfb::es_cfb(&cabeza) {
+        return false;
+    }
+    let clave = (ruta.to_path_buf(), meta.len(), meta.modified().ok());
+    if let Ok(g) = ULTIMO.lock() {
+        if let Some((r, n, t, ok)) = g.as_ref() {
+            if (r, *n, *t) == (&clave.0, clave.1, clave.2) {
+                return *ok;
+            }
+        }
+    }
+    let ok = std::fs::read(ruta).ok().is_some_and(|b| pixpin_hojas::xls::XlsAbierto::abrir(&b).is_ok());
+    if let Ok(mut g) = ULTIMO.lock() {
+        *g = Some((clave.0, clave.1, clave.2, ok));
+    }
+    ok
 }
 
 // ---------------------------------------------------------------------------
@@ -404,13 +436,41 @@ mod pruebas {
 
     #[test]
     fn se_abren_los_libros_de_excel_modernos_y_no_los_binarios() {
-        for n in ["a.xlsx", "B.XLSM", "plantilla.xltx", "macro.xltm"] {
+        for n in ["a.xlsx", "B.XLSM", "plantilla.xltx", "macro.xltm", "viejo.xls", "Plantilla.XLT"] {
             assert!(se_abre(n), "{n}");
         }
-        // Caso negativo: el .xls y el .xlsb son binarios; el .csv es texto.
-        for n in ["a.xls", "b.xlsb", "c.csv", "xlsx", "d.ods"] {
+        // Caso negativo: el .xlsb es binario de otra clase; el .csv es texto.
+        for n in ["b.xlsb", "c.csv", "xlsx", "d.ods", "xls"] {
             assert!(!se_abre(n), "{n}");
         }
+    }
+
+    #[test]
+    fn un_xls_legible_se_abre_en_el_visor_y_uno_roto_se_queda_con_office() {
+        let bueno = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../crates/pixpin-hojas/tests/muestras/pequeno.xls");
+        let datos = std::fs::read(&bueno).expect("la muestra de .xls");
+        assert!(se_abre_fichero(&bueno));
+        assert!(se_abre_fichero(&bueno), "la segunda vez sale de la memoria del ultimo resultado");
+        let dir = std::env::temp_dir().join(format!("pixpin-visor-hoja-xls-{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+        // Un .xls cortado (el contenedor no se entiende) se queda con Office.
+        let cortado = dir.join("cortado.xls");
+        std::fs::write(&cortado, &datos[..700]).unwrap();
+        assert!(!se_abre_fichero(&cortado));
+        // Con cabecera de contenedor pero sin libro dentro.
+        let falso = dir.join("falso.xls");
+        std::fs::write(&falso, [&pixpin_hojas::cfb::FIRMA[..], &[0u8; 600][..]].concat()).unwrap();
+        assert!(!se_abre_fichero(&falso));
+        // Un .xls que en verdad es un ZIP de ahora, y un .xlsx que en verdad es un .xls.
+        let zip = dir.join("moderno.xls");
+        std::fs::write(&zip, b"PK\x03\x04resto").unwrap();
+        assert!(se_abre_fichero(&zip));
+        let renombrado = dir.join("viejo.xlsx");
+        std::fs::write(&renombrado, &datos).unwrap();
+        assert!(se_abre_fichero(&renombrado));
+        // No existe: no.
+        assert!(!se_abre_fichero(&dir.join("no-esta.xls")));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
