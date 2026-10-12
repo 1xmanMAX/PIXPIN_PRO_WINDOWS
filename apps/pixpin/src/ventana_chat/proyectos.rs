@@ -1097,8 +1097,8 @@ fn accion(v: &mut VistaProyectos, b: &mut Bucle, a: AccionBarra, id: &str) -> bo
             v.olvidar(id);
             false
         }
-        // Una tabla con formulas. En el PC la hoja de calculo vive dentro del
-        // chat, asi que se abre alli, ya puesta.
+        // Una tabla con formulas: se guarda en el chat y se abre como pin,
+        // ya editando (`hoja_pin`), como el movil abre la suya al crearla.
         AccionBarra::Tabla => {
             let Some(mut a) = b.tomar_abierto(id) else {
                 return false;
@@ -1106,9 +1106,8 @@ fn accion(v: &mut VistaProyectos, b: &mut Bucle, a: AccionBarra, id: &str) -> bo
             match super::crear_tabla(b.ubicacion, &mut a, b.identidad, b.textos) {
                 Ok(()) => {
                     let i = a.mensajes.len() - 1;
-                    super::abrir_hoja(&mut a, i);
-                    b.poner_abierto(a);
-                    v.ver_chat();
+                    crate::hoja_pin::abrir_editando(b.idioma, b.ubicacion, &a.ficha.id, &a.mensajes, i);
+                    b.devolver_abierto(a);
                 }
                 Err(e) => {
                     tracing::warn!(?e, "no se pudo crear la tabla");
@@ -1210,9 +1209,9 @@ fn abrir_hoja(v: &mut VistaProyectos, b: &mut Bucle, id: &str, indice: usize) ->
     let Some(a) = tmp else {
         return true;
     };
-    // Si se abrio dentro del chat (una hoja de calculo, una mini-app, un
-    // libro de Excel), el chat pasa delante con ella.
-    if a.hoja.is_some() || a.mini.is_some() || a.biblioteca.is_some() {
+    // Si se abrio dentro del chat (una mini-app, la biblioteca), el chat pasa
+    // delante con ella. Una hoja de calculo o un Excel se abren como pin.
+    if a.mini.is_some() || a.biblioteca.is_some() {
         b.poner_abierto(a);
         v.ver_chat();
     } else {

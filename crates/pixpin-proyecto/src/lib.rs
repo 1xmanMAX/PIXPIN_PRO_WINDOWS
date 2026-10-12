@@ -42,6 +42,7 @@ pub mod para_el_movil;
 pub mod portapapeles_tabla;
 pub mod tabla;
 pub mod tabla_web;
+pub mod tabla_xlsx;
 pub mod ubicacion;
 pub mod vista;
 

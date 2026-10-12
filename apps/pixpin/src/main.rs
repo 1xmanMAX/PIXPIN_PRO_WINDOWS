@@ -80,6 +80,7 @@ mod galeria_capturas;
 mod gif;
 mod grabador;
 mod grupos_ventanas;
+mod hoja_pin;
 mod imagenes_lienzo;
 // Solo para desarrollar: `PIXPIN_INSTANCIA` (ver el modulo).
 mod instancia_de_prueba;

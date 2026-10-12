@@ -95,7 +95,7 @@ pub fn se_lee_al_tocar_fichero(ruta: &std::path::Path) -> bool {
 
 /// Para la burbuja del chat: los LandXML si; los `.csv` y `.txt` siguen
 /// yendo a su programa aunque sean puntos. (Un Excel del chat no llega
-/// aqui: antes se abre como tablas, `ventana_chat::libro`.)
+/// aqui: se abre como pin de hoja, `hoja_pin`.)
 pub fn se_lee_al_tocar_burbuja(ruta: &std::path::Path) -> bool {
     let nombre = pixpin_docs::nombre(ruta);
     se_lee_al_tocar(&nombre)

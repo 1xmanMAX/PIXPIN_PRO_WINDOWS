@@ -73,6 +73,67 @@ const PULGAR_ENCIMA: Color = Color { r: 0.0, g: 0.0, b: 0.0, a: 0.45 };
 /// Botones propios en la barra del pin.
 const BOTON_COPIAR: u8 = 1;
 const BOTON_SU_PROGRAMA: u8 = 2;
+/// «Editar»: la misma ventana pasa a la hoja editable (`hoja_pin`). Solo en
+/// las hojas del chat, que es donde se guarda lo editado.
+const BOTON_EDITAR: u8 = 3;
+/// F2, como en Excel, y la `E` de «Editar».
+const VK_F2: u32 = 0x71;
+const VK_E: u32 = 0x45;
+
+/// Como acaba el modo ver.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Fin {
+    Cerrar,
+    /// Pasar a editar, con la hoja que se estaba viendo.
+    Editar(usize),
+}
+
+/// **La ventana del pin**, que sigue siendo la misma al pasar de ver a
+/// editar y de vuelta: su superficie, la barra del pin y donde esta.
+pub(crate) struct Marco {
+    pub ventana: VentanaOverlay,
+    pub superficie: Superficie,
+    pub pin: PinLector,
+    pub area: pixpin_geom::Rect,
+    pub e: f32,
+    pub nombre: String,
+}
+
+/// **Una hoja del chat** (un Excel adjunto o una tabla) como pin, en modo
+/// ver y con «Editar» en su barra (`hoja_pin`). En su propio hilo.
+pub(crate) fn lanzar_editable(idioma: Idioma, editable: crate::hoja_pin::Editable) {
+    let t0 = Instant::now();
+    let lanzado = std::thread::Builder::new().name("visor-hoja".into()).spawn(move || ver_editable(idioma, editable, t0));
+    if let Err(e) = lanzado {
+        tracing::warn!(?e, "no se pudo lanzar el hilo del visor de hojas");
+    }
+}
+
+fn ver_editable(idioma: Idioma, mut ed: crate::hoja_pin::Editable, t0: Instant) {
+    let _com = pixpin_shell::ComDelHilo::iniciar();
+    let mut libro = match ed.libro_para_ver(regional_del_usuario(idioma)) {
+        Ok(l) => l,
+        Err(e) => {
+            tracing::warn!(%e, "el visor de hojas no puede ver esa hoja del chat");
+            if let Some(r) = ed.ruta_original()
+                && let Err(e) = pixpin_shell::abrir(&r)
+            {
+                tracing::warn!(?e, ruta = %r.display(), "tampoco se pudo abrir con su programa");
+            }
+            return;
+        }
+    };
+    tracing::info!(ms = ms(t0), hojas = libro.hojas.len(), "visor de hojas: hoja del chat abierta");
+    let textos = Catalogo::nuevo(idioma);
+    let ruta = ed.ruta_original();
+    let nombre = ed.nombre();
+    let hecho = crate::dispositivo_perdido::con_recursos("visor-hoja", |r| {
+        abrir(r, &textos, &mut libro, ruta.as_deref(), &nombre, t0, Some(&mut ed))
+    });
+    if let Err(e) = hecho {
+        tracing::warn!(?e, "no se pudo abrir el visor de hojas");
+    }
+}
 
 /// Abre el libro en su visor, en su propio hilo. Si no se puede leer, con
 /// su programa.
@@ -90,7 +151,7 @@ pub fn lanzar(idioma: Idioma, ruta: &Path) {
 fn ver(idioma: Idioma, ruta: &Path, t0: Instant) {
     // WIC (las imagenes del libro) necesita COM en este hilo.
     let _com = pixpin_shell::ComDelHilo::iniciar();
-    let libro = match Libro::abrir(ruta, regional_del_usuario(idioma)) {
+    let mut libro = match Libro::abrir(ruta, regional_del_usuario(idioma)) {
         Ok(l) => l,
         Err(e) => {
             tracing::warn!(%e, ruta = %ruta.display(), "el visor de hojas no puede leer el libro; se abre con su programa");
@@ -110,7 +171,8 @@ fn ver(idioma: Idioma, ruta: &Path, t0: Instant) {
         "visor de hojas: libro abierto"
     );
     let textos = Catalogo::nuevo(idioma);
-    let hecho = crate::dispositivo_perdido::con_recursos("visor-hoja", |r| abrir(r, &textos, &libro, ruta, t0));
+    let nombre = crate::lector_pin::nombre_limpio(&pixpin_docs::nombre(ruta));
+    let hecho = crate::dispositivo_perdido::con_recursos("visor-hoja", |r| abrir(r, &textos, &mut libro, Some(ruta), &nombre, t0, None));
     if let Err(e) = hecho {
         tracing::warn!(?e, ruta = %ruta.display(), "no se pudo abrir el visor de hojas");
         let _ = pixpin_shell::abrir(ruta);
@@ -858,23 +920,88 @@ fn escala_en(p: Punto) -> u32 {
         .map_or(100, |m| m.escala_por_cien)
 }
 
-fn abrir(recursos: &Recursos, textos: &Catalogo, libro: &Libro, ruta: &Path, t0: Instant) -> Result<()> {
+/// **La ventana del pin de la hoja**: la abre y alterna entre ver (aqui) y
+/// editar (`hoja_pin::editar`, si la hoja es del chat) sin cerrarla.
+#[allow(clippy::too_many_arguments)] // lo que se abre y de donde viene
+fn abrir(
+    recursos: &Recursos,
+    textos: &Catalogo,
+    libro: &mut Libro,
+    ruta: Option<&Path>,
+    nombre: &str,
+    t0: Instant,
+    mut editable: Option<&mut crate::hoja_pin::Editable>,
+) -> Result<()> {
     // Cuenta como abierta para los grupos de ventanas (H9) mientras viva.
-    let _grupo = crate::grupos_ventanas::apuntar(crate::grupos_ventanas::Clase::Lector { ruta: ruta.to_path_buf() });
+    let _grupo = ruta.map(|r| crate::grupos_ventanas::apuntar(crate::grupos_ventanas::Clase::Lector { ruta: r.to_path_buf() }));
+    if libro.hojas.is_empty() {
+        anyhow::bail!("el libro no tiene hojas");
+    }
     let (area_pin, _) = crate::lector_pin::area_inicial();
     let escala = escala_en(Punto { x: area_pin.x + area_pin.ancho as i32 / 2, y: area_pin.y + area_pin.alto as i32 / 2 });
     let e = escala as f32 / 100.0;
-    let mut pin = PinLector::nuevo(area_pin, e);
-    let mut area = pin.area;
-    let nombre = crate::lector_pin::nombre_limpio(&pixpin_docs::nombre(ruta));
-    let mut ventana = VentanaOverlay::nueva_normal(area, &nombre).context("no se pudo abrir la ventana del visor de hojas")?;
+    let pin = PinLector::nuevo(area_pin, e);
+    let area = pin.area;
+    let ventana = VentanaOverlay::nueva_normal(area, nombre).context("no se pudo abrir la ventana del visor de hojas")?;
     let motor = recursos.motor();
     let superficie =
         Superficie::nueva(&motor, &recursos.d3d(), ventana.handle(), area.ancho, area.alto).context("sin superficie para el visor de hojas")?;
+    ventana.mostrar();
+    ventana.enfocar();
+    // Como un pin: siempre encima (se suelta con su pin) y su barra fuera.
+    ventana.poner_siempre_encima(true);
+    let mut marco = Marco { ventana, superficie, pin, area, e, nombre: nombre.to_string() };
+    marco.pin.crear_barra(&motor, &recursos.d3d(), &marco.ventana);
+    // Desde cuando se cuenta la primera pantalla de cada vuelta a ver.
+    let mut desde = t0;
+    let mut activa = libro.hoja_activa.min(libro.hojas.len().saturating_sub(1));
+    // Una tabla recien creada se abre ya editando.
+    let mut empezar = editable.as_ref().is_some_and(|e| e.al_abrir_editar).then_some(Fin::Editar(activa));
+    loop {
+        let fin = match empezar.take() {
+            Some(f) => f,
+            None => {
+                let (m, fin) = ver_en(marco, &motor, textos, libro, activa, ruta, editable.is_some(), desde);
+                marco = m;
+                fin
+            }
+        };
+        let Fin::Editar(vista) = fin else { break };
+        activa = vista;
+        let Some(ed) = editable.as_deref_mut() else { continue };
+        match crate::hoja_pin::editar(&mut marco, &motor, textos, ed, libro, vista) {
+            crate::hoja_pin::Vuelta::Cerrar => break,
+            crate::hoja_pin::Vuelta::Ver { activa: a, libro: nuevo } => {
+                if let Some(n) = nuevo {
+                    *libro = n;
+                }
+                activa = a.min(libro.hojas.len().saturating_sub(1));
+                desde = Instant::now();
+            }
+        }
+    }
+    Ok(())
+}
+
+/// **El modo ver**: el bucle de la ventana con el libro hasta que se cierra
+/// o se pulsa «Editar». Devuelve la ventana para seguir con ella.
+#[allow(clippy::too_many_arguments)] // la ventana y lo que se ve en ella
+fn ver_en(
+    marco: Marco,
+    motor: &MotorRender,
+    textos: &Catalogo,
+    libro: &Libro,
+    activa: usize,
+    ruta: Option<&Path>,
+    editable: bool,
+    t0: Instant,
+) -> (Marco, Fin) {
+    let Marco { mut ventana, superficie, mut pin, mut area, e, nombre } = marco;
+    let mut fin = Fin::Cerrar;
     let mut est = Estado {
         libro,
         hojas: (0..libro.hojas.len()).map(|_| None).collect(),
-        activa: libro.hoja_activa.min(libro.hojas.len().saturating_sub(1)),
+        activa: activa.min(libro.hojas.len().saturating_sub(1)),
         cache: CacheHoja::nueva(),
         digito: None,
         ppp: 96.0 * e as f64,
@@ -890,37 +1017,41 @@ fn abrir(recursos: &Recursos, textos: &Catalogo, libro: &Libro, ruta: &Path, t0:
         aviso: None,
         hwnd: ventana.handle().0 as isize,
     };
-    if libro.hojas.is_empty() {
-        anyhow::bail!("el libro no tiene hojas");
-    }
     let activa = est.activa;
-    est.abrir_hoja(activa, &motor);
+    est.abrir_hoja(activa, motor);
     est.desde_pestana = activa.saturating_sub(3);
 
-    ventana.mostrar();
-    ventana.enfocar();
-    // Como un pin: siempre encima (se suelta con su pin) y su barra fuera.
-    ventana.poner_siempre_encima(true);
-    pin.crear_barra(&motor, &recursos.d3d(), &ventana);
-
-    let botones = [
-        BotonLector { id: BOTON_COPIAR, icono: &material::CONTENT_COPY, encendido: false },
-        BotonLector { id: BOTON_SU_PROGRAMA, icono: &material::OPEN_IN_NEW, encendido: false },
-    ];
+    let botones = botones_de_ver(editable, ruta.is_some());
     let mut hay_que_pintar = true;
     let mut primera = true;
     let mut vivo = true;
     while vivo {
         pixpin_shell::overlay::bombear_pendientes();
+        // Las ordenes de las pruebas del pin de hoja (`hoja_pin::prueba`).
+        #[cfg(test)]
+        match crate::hoja_pin::prueba::latido(ventana.handle().0 as isize, area, false) {
+            Some(crate::hoja_pin::prueba::EDITAR) => {
+                fin = Fin::Editar(est.activa);
+                vivo = false;
+            }
+            Some(crate::hoja_pin::prueba::CERRAR) => vivo = false,
+            _ => {}
+        }
         for (hwnd, evento) in pixpin_shell::overlay::tomar_eventos_pendientes() {
             if pin.es_de_la_barra(hwnd) {
                 let (accion, _) = pin.evento_barra(&evento, &mut ventana);
                 match accion {
                     Some(AccionPin::Propio(BOTON_COPIAR)) => est.copiar(textos),
                     Some(AccionPin::Propio(BOTON_SU_PROGRAMA)) => {
-                        if let Err(e) = pixpin_shell::abrir(ruta) {
+                        if let Some(ruta) = ruta
+                            && let Err(e) = pixpin_shell::abrir(ruta)
+                        {
                             tracing::warn!(?e, "no se pudo abrir el libro con su programa");
                         }
+                    }
+                    Some(AccionPin::Propio(BOTON_EDITAR)) => {
+                        fin = Fin::Editar(est.activa);
+                        vivo = false;
                     }
                     Some(AccionPin::PantallaCompleta) => pin.alternar_pantalla_completa(&mut ventana),
                     Some(AccionPin::Fijar) => pin.alternar_fijado(&ventana),
@@ -999,6 +1130,10 @@ fn abrir(recursos: &Recursos, textos: &Catalogo, libro: &Libro, ruta: &Path, t0:
                 EventoOverlay::RuedaHorizontal(delta) => {
                     est.rueda(delta, true);
                     hay_que_pintar = true;
+                }
+                EventoOverlay::Tecla { vk, ctrl, alt, .. } if editable && pide_editar(vk, ctrl, alt) => {
+                    fin = Fin::Editar(est.activa);
+                    vivo = false;
                 }
                 EventoOverlay::Tecla { vk, shift, ctrl, alt } => {
                     match logica::accion_de_tecla(vk, shift, ctrl, alt) {
@@ -1098,7 +1233,26 @@ fn abrir(recursos: &Recursos, textos: &Catalogo, libro: &Libro, ruta: &Path, t0:
         };
         pixpin_shell::overlay::esperar_eventos(Some(tope));
     }
-    Ok(())
+    (Marco { ventana, superficie, pin, area, e, nombre }, fin)
+}
+
+/// Los botones de la barra en modo ver: «Editar» si la hoja es del chat,
+/// copiar y, si hay archivo, abrirlo con su programa.
+fn botones_de_ver(editable: bool, con_archivo: bool) -> Vec<BotonLector> {
+    let mut b = Vec::with_capacity(3);
+    if editable {
+        b.push(BotonLector { id: BOTON_EDITAR, icono: &material::EDIT, encendido: false });
+    }
+    b.push(BotonLector { id: BOTON_COPIAR, icono: &material::CONTENT_COPY, encendido: false });
+    if con_archivo {
+        b.push(BotonLector { id: BOTON_SU_PROGRAMA, icono: &material::OPEN_IN_NEW, encendido: false });
+    }
+    b
+}
+
+/// F2 o la `E` sola (sin Ctrl ni Alt) pasan a editar.
+fn pide_editar(vk: u32, ctrl: bool, alt: bool) -> bool {
+    !ctrl && !alt && (vk == VK_F2 || vk == VK_E)
 }
 
 // ---------------------------------------------------------------------------

@@ -711,6 +711,36 @@ pub const CHEVRON_RIGHT: Icono = Icono {
     trazos: &[relleno("M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z", false)],
 };
 
+/// `redo` (`src/content/redo/materialicons/24px.svg`): «Rehacer» en la hoja
+/// del pin.
+pub const REDO: Icono = Icono {
+    vista: VISTA,
+    trazos: &[relleno(
+        "M18.4 10.6C16.55 8.99 14.15 8 11.5 8c-4.65 0-8.58 3.03-9.96 7.22L3.9 16c1.05-3.19 4.05-5.5 7.6-5.5 1.95 0 3.73.72 5.12 1.88L13 16h9V7l-3.6 3.6z",
+        false,
+    )],
+};
+
+/// `visibility` (`src/action/visibility/materialicons/24px.svg`): «Ver», de
+/// vuelta del modo editar de la hoja del pin.
+pub const VISIBILITY: Icono = Icono {
+    vista: VISTA,
+    trazos: &[relleno(
+        "M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z",
+        false,
+    )],
+};
+
+/// `format_bold` (`src/editor/format_bold/materialicons/24px.svg`): la
+/// negrita de la hoja del pin.
+pub const FORMAT_BOLD: Icono = Icono {
+    vista: VISTA,
+    trazos: &[relleno(
+        "M15.6 10.79c.97-.67 1.65-1.77 1.65-2.79 0-2.26-1.75-4-4-4H7v14h7.04c2.09 0 3.71-1.7 3.71-3.79 0-1.52-.86-2.82-2.15-3.42zM10 6.5h3c.83 0 1.5.67 1.5 1.5s-.67 1.5-1.5 1.5h-3v-3zm3.5 9H10v-3h3.5c.83 0 1.5.67 1.5 1.5s-.67 1.5-1.5 1.5z",
+        false,
+    )],
+};
+
 /// Todos, para poder comprobarlos de una vez.
 pub const TODOS: &[Icono] = &[
     FULLSCREEN,
@@ -731,6 +761,9 @@ pub const TODOS: &[Icono] = &[
     VOLUME_UP,
     REPLAY,
     UNDO,
+    REDO,
+    VISIBILITY,
+    FORMAT_BOLD,
     ALARM,
     ARROW_BACK,
     ARROW_FORWARD,

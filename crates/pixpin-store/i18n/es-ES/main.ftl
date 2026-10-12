@@ -981,6 +981,10 @@ libro-xls-antiguo = Los .xls antiguos no se pueden leer: ábrelo y guárdalo com
 libro-abrir-fuera = ¿Abrirlo con otra aplicación?
 libro-no-es = El archivo no es un libro de hojas de cálculo válido
 libro-sin-hojas = El libro no tiene ninguna hoja con datos
+hoja-preparando = Preparando la hoja para editar…
+hoja-editar-aviso = Los cambios se guardan en la hoja del chat, el archivo original no cambia
+hoja-editando = Editando · Esc para ver
+hoja-rango-grande = Son demasiadas celdas para hacerlo de una vez
 
 ## D9: buscar dentro del documento (buscador.rs, visor.rs, lector_pdf.rs)
 buscar-pista = Buscar en el documento
