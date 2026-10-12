@@ -217,3 +217,60 @@ fn la_sombra_de_una_forma_envuelve_la_forma() {
     textos(&d.elementos, 0.0, 0.0, &mut v);
     assert_eq!(v.len(), 1);
 }
+
+#[test]
+fn las_notas_se_leen_por_la_relacion_y_solo_al_pedirlas() {
+    let rel = format!(r#"<Relationship Id="rN" Type="{T}/notesSlide" Target="../notesSlides/notesSlide1.xml"/>"#);
+    let notas = format!(
+        r#"<p:notes {NS}><p:cSld><p:spTree><p:sp><p:nvSpPr><p:cNvPr id="3" name="N"/><p:cNvSpPr/><p:nvPr><p:ph type="body" idx="1"/></p:nvPr></p:nvSpPr><p:txBody><a:bodyPr/><a:p><a:r><a:t>Recordar la cifra</a:t></a:r></a:p></p:txBody></p:sp></p:spTree></p:cSld></p:notes>"#
+    );
+    let mut p = presentacion_con("", &rel, &[("ppt/notesSlides/notesSlide1.xml", notas.as_str())]);
+    assert_eq!(p.notas(0).as_deref(), Some("Recordar la cifra"));
+    assert_eq!(p.notas(7), None, "una diapositiva que no existe");
+    // Sin relacion de notas, o con la parte que falta: nada, sin fallar.
+    let mut sin = presentacion("");
+    assert_eq!(sin.notas(0), None);
+    let mut rota = presentacion_con("", &rel, &[]);
+    assert_eq!(rota.notas(0), None);
+    assert_eq!(rota.transicion(0), None, "sin p:transition");
+}
+
+#[test]
+fn un_video_sale_con_su_poster_y_el_boton_de_reproducir() {
+    let pic = r#"<p:pic><p:nvPicPr><p:cNvPr id="5" name="Video"/><p:cNvPicPr/><p:nvPr><a:videoFile r:link="rV"/><p:extLst><p:ext uri="{DAA4B4D4-6D71-4841-9C94-3DE7FCFB9230}"><p14:media xmlns:p14="http://schemas.microsoft.com/office/powerpoint/2010/main" r:embed="rM"/></p:ext></p:extLst></p:nvPr></p:nvPicPr><p:blipFill><a:blip r:embed="rI"/></p:blipFill><p:spPr><a:xfrm><a:off x="1270000" y="1270000"/><a:ext cx="2540000" cy="1270000"/></a:xfrm></p:spPr></p:pic>"#;
+    let rels = format!(
+        r#"<Relationship Id="rI" Type="{T}/image" Target="../media/image1.png"/><Relationship Id="rV" Type="{T}/video" Target="../media/media1.mp4"/><Relationship Id="rM" Type="http://schemas.microsoft.com/office/2007/relationships/media" Target="../media/media1.mp4"/>"#
+    );
+    let mut p = presentacion_con(pic, &rels, &[("ppt/media/image1.png", "poster"), ("ppt/media/media1.mp4", "video")]);
+    let d = p.diapositiva(0, &MedidorFijo::default()).unwrap();
+    fn cuenta(els: &[Elemento], imagenes: &mut usize, trayectos: &mut usize) {
+        for e in els {
+            match e {
+                Elemento::Imagen { .. } => *imagenes += 1,
+                Elemento::Trayecto { .. } => *trayectos += 1,
+                Elemento::Grupo { elementos, .. } | Elemento::Efecto { elementos, .. } => cuenta(elementos, imagenes, trayectos),
+                _ => {}
+            }
+        }
+    }
+    let (mut imagenes, mut trayectos) = (0, 0);
+    cuenta(&d.elementos, &mut imagenes, &mut trayectos);
+    assert_eq!(imagenes, 1, "el poster");
+    let trayectos_video = trayectos;
+    let medios = p.medios(0);
+    assert_eq!(medios.len(), 1);
+    assert_eq!(medios[0].parte.as_deref(), Some("ppt/media/media1.mp4"));
+    assert!(!medios[0].audio);
+    assert!((medios[0].rect.x - 100.0).abs() < 0.01 && (medios[0].rect.ancho - 200.0).abs() < 0.01);
+    assert_eq!(p.bytes_de_parte("ppt/media/media1.mp4").as_deref(), Some(&b"video"[..]));
+    // Una foto normal no lleva boton ni cuenta como medio.
+    let foto = r#"<p:pic><p:nvPicPr><p:cNvPr id="5" name="Foto"/><p:cNvPicPr/><p:nvPr/></p:nvPicPr><p:blipFill><a:blip r:embed="rI"/></p:blipFill><p:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="2540000" cy="1270000"/></a:xfrm></p:spPr></p:pic>"#;
+    let rel = format!(r#"<Relationship Id="rI" Type="{T}/image" Target="../media/image1.png"/>"#);
+    let mut p = presentacion_con(foto, &rel, &[("ppt/media/image1.png", "foto")]);
+    let d = p.diapositiva(0, &MedidorFijo::default()).unwrap();
+    let (mut imagenes, mut trayectos) = (0, 0);
+    cuenta(&d.elementos, &mut imagenes, &mut trayectos);
+    assert_eq!(imagenes, 1);
+    assert_eq!(trayectos_video, trayectos + 2, "el circulo y el triangulo encima del poster (el resto es del patron)");
+    assert!(p.medios(0).is_empty());
+}

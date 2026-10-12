@@ -968,6 +968,12 @@ diapositivas-abrir-con-otra = ¿Abrirlo con otra aplicación?
 diapositivas-preparando = Preparando la presentación con PowerPoint…
 diapositivas-no-se-pudo = No se pudo preparar la presentación
 diapositivas-no-esta = La presentación ya no está en este equipo
+diapositivas-siguiente = Siguiente
+diapositivas-notas = Notas
+diapositivas-sin-notas = Esta diapositiva no tiene notas
+diapositivas-fin = Fin de la presentación
+diapositivas-transiciones-si = Transiciones activadas (T)
+diapositivas-transiciones-no = Transiciones desactivadas (T)
 
 ## Chat: una pagina de un proyecto, la tarjeta del enlace, «Recibido de» y el buzon
 chat-sin-paginas = Ningún proyecto tiene páginas que adjuntar

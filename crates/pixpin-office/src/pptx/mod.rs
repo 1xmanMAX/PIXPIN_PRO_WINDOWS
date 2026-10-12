@@ -3,6 +3,7 @@
 //! diseno que se ven, y las suyas, con los marcadores heredando posicion,
 //! formato y estilo de texto del diseno y del patron.
 
+pub mod pase;
 pub mod texto;
 
 use std::collections::HashMap;
@@ -315,6 +316,10 @@ impl Presentacion {
                 let Some(id) = self.imagen(rels, bf) else { return };
                 let caja = Rect::nuevo(x.x, x.y, x.ancho, x.alto);
                 let mut els = vec![Elemento::Imagen { id, rect: Rect::nuevo(0.0, 0.0, x.ancho, x.alto), recorte: dml::recorte(bf), opacidad: 1.0 }];
+                if pase::medio_de(n).is_some() {
+                    // Un video o un audio: su poster con el boton de reproducir.
+                    els.extend(pase::icono_reproducir(x.ancho, x.alto));
+                }
                 if let Some(t) = sppr.and_then(|s| s.hijo("ln")).and_then(|ln| dml::linea(ln, ctx, None)).flatten() {
                     els.push(Elemento::Rect { rect: Rect::nuevo(0.0, 0.0, x.ancho, x.alto), relleno: None, borde: Some(t) });
                 }
