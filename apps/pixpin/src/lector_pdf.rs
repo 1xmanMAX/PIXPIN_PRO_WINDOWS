@@ -22,6 +22,20 @@
 //! que es gratis) y al parar se pide la hoja a la resolucion nueva: es lo
 //! que el movil aprendio con el pellizco.
 //!
+//! **La cola** (`cola`, 11-oct-2026): lo que se ve primero (la hoja mas
+//! cercana al centro delante), luego las vecinas y al final el texto de la
+//! hoja bajo el raton; cada lista nueva cancela lo que ya no se ve, lo
+//! repetido se funde y lo ya entregado no se dibuja dos veces. Pasando hojas
+//! deprisa no se pide nada (`MS_PASANDO`), y lo pintado se guarda dentro de
+//! `PRESUPUESTO_MAPAS`, soltando lo mas lejano. **Muy de cerca** la hoja
+//! entera se queda a `ANCHO_BASE` de fondo y lo que se ve llega nitido como
+//! un trozo (`Documento::renderizar_trozo`); mientras, se ve lo de antes
+//! estirado, sin huecos. Medido en `medir`.
+//!
+//! **Texto y enlaces** (`elegir`): leyendo, arrastrar sobre el texto lo
+//! elige (doble clic la palabra, triple el renglon, Ctrl+C copia) y un
+//! enlace del PDF lleva a su hoja o abre el navegador.
+//!
 //! # Las unidades y la tinta
 //!
 //! Cada hoja mide `vista::ANCHO_HOJA` (1400, el `PAGE_WIDTH` del movil) y
@@ -78,8 +92,12 @@ use crate::lector::{
 use crate::lector_tinta::{self, Capa, Tinta};
 use crate::overlay::Recursos;
 
+mod cola;
+mod elegir;
 mod office;
 mod voz;
+#[cfg(test)]
+mod medir;
 
 pub(crate) use office::DeOffice;
 
@@ -100,6 +118,23 @@ const PIXELES_POR_HOJA: f32 = 16_000_000.0;
 const ESCALON: u32 = 256;
 /// Hojas que se guardan pintadas por encima y por debajo de las que se ven.
 const HOJAS_DE_RESERVA: usize = 3;
+/// **El presupuesto de los mapas de bits** de las hojas: lo que se ve entra
+/// siempre; las vecinas, de la mas cercana a la mas lejana, mientras quepan.
+/// Medido con la tesis de muestra (306 hojas): sin el, al acercar al maximo
+/// se juntaban 110-160 MB de hojas a 16 megapixeles.
+const PRESUPUESTO_MAPAS: usize = 96 << 20;
+/// El ancho maximo de una hoja entera. Mas cerca, la hoja entera se queda a
+/// este ancho (de fondo) y lo que se ve llega nitido como un trozo
+/// (`cola::trozo_para`): una hoja entera a 7000 pixeles serian 200 MB y
+/// varios segundos; el trozo de la pantalla, unos megas y lo de una hoja.
+const ANCHO_BASE: u32 = 2048;
+/// Pasar hojas deprisa (cambia la de arriba dos veces en menos de esto): no
+/// se piden las que pasan, que llegarian cuando ya no se ven (medido: de
+/// 4 a 12 hojas dibujadas en vano al pasar cien con la rueda).
+const MS_PASANDO: u64 = 60;
+/// El PDF se guarda en memoria para sacar el texto de una hoja solo si es
+/// de este tamano o menos; mas grande, se lee cada vez.
+const BYTES_PARA_GUARDAR: u64 = 48 << 20;
 /// Aire arriba y abajo del documento, en unidades: una hoja sola no queda
 /// pegada al borde (el hueco del 28 % del movil con una hoja).
 const AIRE: f32 = 60.0;
@@ -232,9 +267,10 @@ fn como_antes(idioma: pixpin_store::Idioma, ubicacion: Ubicacion, ruta: &Path) {
 // El hilo que rasteriza
 
 enum Pedido {
-    /// Las hojas que hacen falta, por orden: sustituye a la lista anterior
-    /// (lo que ya no se ve no se pinta).
-    Quiero(Vec<(usize, u32)>),
+    /// Lo que hace falta, con su prioridad: sustituye a la lista anterior
+    /// (lo que ya no se ve no se pinta; ver `cola`). `visto` es la ultima
+    /// entrega que la ventana ya recogio.
+    Quiero { lista: Vec<(cola::Prioridad, cola::Trabajo)>, visto: u64 },
     /// El PDF entero con lo anotado: las ordenes de cada hoja que tiene
     /// algo, lo que se abre a cada lado y donde escribirlo.
     Exportar {
@@ -249,7 +285,11 @@ enum Pedido {
 
 enum Llega {
     Medidas(Vec<(f32, f32)>),
-    Hoja(usize, ImagenRgba),
+    /// Una hoja entera o un trozo, con su numero de entrega; sin imagen si
+    /// no se pudo dibujar (y no se vuelve a pedir).
+    Hecho { serie: u64, trabajo: cola::Trabajo, img: Option<ImagenRgba> },
+    /// El texto y los enlaces de una hoja (o nada si no se pudo leer).
+    Texto { serie: u64, hoja: usize, hoja_pdf: Option<elegir::HojaPdf> },
     NoSeAbre(String),
     Progreso(usize, usize),
     Exportado(std::result::Result<PathBuf, String>),
@@ -272,15 +312,26 @@ fn hilo_de_hojas(
             return;
         }
     };
-    avisar(Llega::Medidas(documento.medidas()));
-    let mut cola: std::collections::VecDeque<(usize, u32)> = Default::default();
+    let medidas = documento.medidas();
+    // La proporcion de cada hoja (alto entre ancho), para los trozos.
+    let proporciones: Vec<f32> = medidas
+        .iter()
+        .map(|&(w, h)| if w > 0.0 && h > 0.0 { h / w } else { 1.414 })
+        .collect();
+    avisar(Llega::Medidas(medidas));
+    let mut cola = cola::Cola::default();
+    // El PDF en memoria para el texto de las hojas, leido la primera vez.
+    let mut bytes: Option<Vec<u8>> = None;
     loop {
         // Sin trabajo se duerme hasta el siguiente pedido; con trabajo solo
         // mira si ha llegado una lista mas nueva.
-        let primero = if cola.is_empty() {
+        let primero = if cola.vacia() {
             match pedidos.recv() {
                 Ok(p) => Some(p),
-                Err(_) => return,
+                Err(_) => {
+                    tracing::debug!(cancelados = cola.cancelados, en_vano = cola.en_vano, "lector-pdf: cola de hojas");
+                    return;
+                }
             }
         } else {
             None
@@ -290,7 +341,7 @@ fn hilo_de_hojas(
             .chain(std::iter::from_fn(|| pedidos.try_recv().ok()))
         {
             match p {
-                Pedido::Quiero(lista) => cola = lista.into(),
+                Pedido::Quiero { lista, visto } => cola.pedir(lista, visto),
                 Pedido::Exportar {
                     tinta,
                     altos,
@@ -311,13 +362,51 @@ fn hilo_de_hojas(
                 }
             }
         }
-        if let Some((i, ancho)) = cola.pop_front() {
-            match documento.renderizar(i as u32, ancho) {
-                Ok(img) => avisar(Llega::Hoja(i, img)),
-                Err(e) => tracing::warn!(?e, hoja = i, "hoja del PDF que no se pudo dibujar"),
+        let Some(t) = cola.tomar() else { continue };
+        match t {
+            cola::Trabajo::Hoja { hoja, ancho } => {
+                let img = documento
+                    .renderizar(hoja as u32, ancho)
+                    .map_err(|e| tracing::warn!(?e, hoja, "hoja del PDF que no se pudo dibujar"))
+                    .ok();
+                let (serie, _) = cola.entregar(t);
+                avisar(Llega::Hecho { serie, trabajo: t, img });
+            }
+            cola::Trabajo::Trozo { hoja, .. } => {
+                let proporcion = proporciones.get(hoja).copied().unwrap_or(1.414);
+                let img = cola::trozo_en_fracciones(t, proporcion).and_then(|(f, w, h)| {
+                    documento
+                        .renderizar_trozo(hoja as u32, (f[0], f[1], f[2], f[3]), w, h)
+                        .map_err(|e| tracing::warn!(?e, hoja, "trozo del PDF que no se pudo dibujar"))
+                        .ok()
+                });
+                let (serie, _) = cola.entregar(t);
+                avisar(Llega::Hecho { serie, trabajo: t, img });
+            }
+            cola::Trabajo::Texto { hoja } => {
+                let hoja_pdf = texto_de_la_hoja(documento.ruta(), &mut bytes, hoja);
+                let (serie, _) = cola.entregar(t);
+                avisar(Llega::Texto { serie, hoja, hoja_pdf });
             }
         }
     }
+}
+
+/// El texto y los enlaces de una hoja, del PDF guardado en memoria (se lee
+/// la primera vez; si es muy grande, se lee cada vez y no se guarda).
+fn texto_de_la_hoja(ruta: &Path, bytes: &mut Option<Vec<u8>>, hoja: usize) -> Option<elegir::HojaPdf> {
+    let leer = |b: &[u8]| {
+        let (texto, enlaces) = pixpin_pdf::texto::hoja_con_enlaces(b, hoja).ok()?;
+        Some(elegir::HojaPdf { texto, enlaces })
+    };
+    if bytes.is_none() {
+        let leido = std::fs::read(ruta).ok()?;
+        if (leido.len() as u64) > BYTES_PARA_GUARDAR {
+            return leer(&leido);
+        }
+        *bytes = Some(leido);
+    }
+    leer(bytes.as_deref()?)
 }
 
 /// **Una hoja del PDF con lo anotado**, lista para cualquier formato: la
@@ -497,7 +586,20 @@ struct Estado {
     hojas: vista::Hojas,
     /// Cada hoja ya pintada: con que ancho y su bitmap.
     pintadas: HashMap<usize, (u32, ID2D1Bitmap1)>,
-    ultima_lista: Vec<(usize, u32)>,
+    ultima_lista: Vec<(cola::Prioridad, cola::Trabajo)>,
+    /// **El trozo nitido** de cada hoja que se ve muy de cerca: su trabajo,
+    /// su caja en unidades de la hoja y su bitmap. Se pinta encima de la hoja.
+    trozos: HashMap<usize, (cola::Trabajo, RectF, ID2D1Bitmap1)>,
+    /// La ultima entrega del hilo de las hojas que ya se recogio.
+    visto: u64,
+    /// Lo que el hilo no pudo dibujar: no se vuelve a pedir.
+    fallidos: std::collections::HashSet<cola::Trabajo>,
+    /// La hoja de arriba la ultima vez que cambio, y cuando: para saber si
+    /// se estan pasando hojas deprisa (`MS_PASANDO`).
+    paso: (usize, u64),
+    pasando_hasta: u64,
+    /// Elegir texto y seguir enlaces en un PDF (`elegir`).
+    elegir: elegir::ElegirPdf,
     x: f32,
     y: f32,
     zoom: f32,
@@ -658,6 +760,12 @@ fn abrir_con(
         hojas: vista::Hojas::default(),
         pintadas: HashMap::new(),
         ultima_lista: Vec::new(),
+        trozos: HashMap::new(),
+        visto: 0,
+        fallidos: Default::default(),
+        paso: (0, 0),
+        pasando_hasta: 0,
+        elegir: Default::default(),
         x: 0.0,
         y: 0.0,
         zoom_cambiado: 0,
@@ -850,6 +958,10 @@ fn abrir_con(
                     if let Some(forma) = office::cursor(&mut e, marco) {
                         ventana.poner_cursor(forma);
                     }
+                    // PDF: la mano en un enlace, la barra en el texto.
+                    if let Some(forma) = elegir::cursor(&mut e, marco) {
+                        ventana.poner_cursor(forma);
+                    }
                 }
                 // Office: imprimir y presentar, que necesitan la ventana o
                 // donde viven los datos.
@@ -861,6 +973,9 @@ fn abrir_con(
                 }
                 EventoOverlay::Tecla { vk: VK_C, ctrl: true, .. } if e.office.is_some() && !escribiendo(&e) => {
                     office::copiar(&mut e, Some(textos));
+                }
+                EventoOverlay::Tecla { vk: VK_C, ctrl: true, .. } if e.office.is_none() && !escribiendo(&e) && e.elegir.seleccion.is_some() => {
+                    elegir::copiar(&mut e, textos);
                 }
                 EventoOverlay::BotonPulsado(p) => {
                     e.raton = local(p);
@@ -996,6 +1111,11 @@ fn abrir_con(
             fin_de_lateral(&mut e, marco);
             hay_que_pintar = true;
         }
+        // Se dejo de pasar hojas deprisa: toca pedir las que se ven.
+        if e.pasando_hasta > 0 && ahora >= e.pasando_hasta {
+            e.pasando_hasta = 0;
+            hay_que_pintar = true;
+        }
         // El aumento acaba de quedarse quieto: toca pedir las hojas nitidas.
         if e.zoom_cambiado > 0 && ahora > e.zoom_cambiado + MS_ZOOM_FIRME {
             e.zoom_cambiado = 0;
@@ -1074,7 +1194,32 @@ fn recibir(e: &mut Estado, l: Llega, motor: &pixpin_render::MotorRender, textos:
             // marca de sitio arriba, un poco por debajo del borde.
             e.y = e.hojas.y_de(e.ajustes.pagina);
         }
-        Llega::Hoja(i, img) => {
+        Llega::Hecho { serie, trabajo, img } => {
+            e.visto = e.visto.max(serie);
+            let Some(img) = img else {
+                e.fallidos.insert(trabajo);
+                return;
+            };
+            let i = trabajo.hoja();
+            if let cola::Trabajo::Trozo { .. } = trabajo {
+                // El trozo va encima de su hoja, en su caja de unidades.
+                let proporcion = e.hojas.altos.get(i).map_or(1.414, |a| a / vista::ANCHO_HOJA);
+                let Some((f, _, _)) = cola::trozo_en_fracciones(trabajo, proporcion) else { return };
+                let alto = alto_de(&e.hojas, i);
+                let caja = RectF {
+                    x: f[0] * vista::ANCHO_HOJA,
+                    y: f[1] * alto,
+                    ancho: f[2] * vista::ANCHO_HOJA,
+                    alto: f[3] * alto,
+                };
+                match motor.bitmap_desde_pixeles(img.ancho, img.alto, &img.pixeles) {
+                    Ok(b) => {
+                        e.trozos.insert(i, (trabajo, caja, b));
+                    }
+                    Err(err) => tracing::warn!(?err, hoja = i, "no se pudo subir el trozo"),
+                }
+                return;
+            }
             // Una hoja girada llega con otra proporcion que la de su papel
             // (ver `pixpin_pdf::Documento::medidas`): se corrige su sitio sin
             // perder por donde se iba.
@@ -1097,6 +1242,14 @@ fn recibir(e: &mut Estado, l: Llega, motor: &pixpin_render::MotorRender, textos:
                     e.pintadas.insert(i, (img.ancho, b));
                 }
                 Err(err) => tracing::warn!(?err, hoja = i, "no se pudo subir la hoja"),
+            }
+        }
+        Llega::Texto { serie, hoja, hoja_pdf } => {
+            e.visto = e.visto.max(serie);
+            // Sin texto (cifrado, roto) queda vacia: tampoco se vuelve a pedir.
+            e.elegir.hojas.insert(hoja, std::sync::Arc::new(hoja_pdf.unwrap_or_default()));
+            if e.elegir.falta == Some(hoja) {
+                e.elegir.falta = None;
             }
         }
         Llega::NoSeAbre(texto) => e.error = Some(texto),
@@ -1173,18 +1326,42 @@ fn acotar(e: &mut Estado, m: Marco) {
     e.y = y - AIRE;
 }
 
-/// El ancho al que conviene rasterizar la hoja `i` con el aumento de ahora.
-fn ancho_para(e: &Estado, i: usize, m: Marco) -> u32 {
+/// El ancho que pide el aumento de ahora para una hoja, por escalones y sin
+/// mas tope que el de `Windows.Data.Pdf`: el de los trozos nitidos.
+fn ancho_deseado(e: &Estado, m: Marco) -> u32 {
     let deseado = (vista::ANCHO_HOJA * px(e, m)).ceil().max(1.0) as u32;
-    let escalonado = deseado.div_ceil(ESCALON) * ESCALON;
-    let proporcion = e
-        .hojas
-        .altos
-        .get(i)
-        .map_or(1.414, |a| a / vista::ANCHO_HOJA)
-        .max(0.05);
-    let cabe = (PIXELES_POR_HOJA / proporcion).sqrt() as u32;
-    escalonado.min(cabe).clamp(ESCALON, 8192)
+    (deseado.div_ceil(ESCALON) * ESCALON).clamp(ESCALON, pixpin_pdf::ANCHO_MAXIMO)
+}
+
+/// Alto entre ancho de la hoja `i`.
+fn proporcion_de(e: &Estado, i: usize) -> f32 {
+    e.hojas.altos.get(i).map_or(1.414, |a| a / vista::ANCHO_HOJA).max(0.05)
+}
+
+/// El ancho al que se rasteriza **la hoja entera** `i`: el que pide el
+/// aumento hasta `ANCHO_BASE` y el tope de pixeles (una hoja muy larga).
+/// Mas cerca, lo que se ve llega como un trozo (ver `lista_de_trabajos`).
+fn ancho_para(e: &Estado, i: usize, m: Marco) -> u32 {
+    let cabe = (PIXELES_POR_HOJA / proporcion_de(e, i)).sqrt() as u32;
+    ancho_deseado(e, m).min(ANCHO_BASE).min(cabe).max(ESCALON)
+}
+
+/// Los bytes de una hoja rasterizada a `ancho`.
+fn bytes_de(ancho: u32, proporcion: f32) -> usize {
+    ancho as usize * cola::alto_en_pixeles(ancho, proporcion) as usize * 4
+}
+
+/// Lo que se ve de la hoja `i`, en fracciones de ella (x0, y0, x1, y1).
+fn vista_de_la_hoja(e: &Estado, i: usize, m: Marco) -> [f32; 4] {
+    let s = px(e, m);
+    let arriba = e.hojas.arriba.get(i).copied().unwrap_or(0.0);
+    let alto = alto_de(&e.hojas, i).max(1.0);
+    [
+        e.x / vista::ANCHO_HOJA,
+        (e.y - arriba) / alto,
+        (e.x + m.ancho / s) / vista::ANCHO_HOJA,
+        (e.y + m.alto / s - arriba) / alto,
+    ]
 }
 
 /// Las hojas que se ven.
@@ -1193,33 +1370,163 @@ fn visibles(e: &Estado, m: Marco) -> std::ops::Range<usize> {
     e.hojas.visibles(e.y, e.y + m.alto / s)
 }
 
-/// Pide al hilo las hojas que faltan o que se ven borrosas, las que se ven
-/// primero. Tambien suelta las que ya quedan lejos.
+/// A cuantas hojas de lo que se ve esta la `i` (0: se ve).
+fn distancia(vis: &std::ops::Range<usize>, i: usize) -> usize {
+    if i < vis.start {
+        vis.start - i
+    } else if i >= vis.end {
+        i + 1 - vis.end
+    } else {
+        0
+    }
+}
+
+/// **Lo que hace falta pedir al hilo**, con su prioridad (`cola`):
+///
+/// - lo que se ve, la hoja mas cercana al centro de la ventana delante: la
+///   hoja entera (hasta `ANCHO_BASE`) si falta o se ve a otro aumento, y
+///   muy de cerca, el trozo nitido de lo que se ve si el que hay no lo cubre;
+/// - las dos vecinas, si caben en `PRESUPUESTO_MAPAS`;
+/// - el texto de la hoja bajo el raton, si se pidio (`elegir`).
+///
+/// Mientras la rueda cambia el aumento no se pide lo que ya hay pintado (se
+/// estira, que es gratis), y **pasando hojas deprisa** no se pide nada: lo
+/// que pasa llegaria cuando ya no se ve.
+fn lista_de_trabajos(e: &Estado, m: Marco, pasando: bool) -> Vec<(cola::Prioridad, cola::Trabajo)> {
+    use cola::{Prioridad, Trabajo};
+    let mut lista = Vec::new();
+    let n = e.hojas.cuantas();
+    if n == 0 {
+        return lista;
+    }
+    let firme = e.zoom_cambiado == 0;
+    let s = px(e, m);
+    let centro = e.y + m.alto / s / 2.0;
+    let vis = visibles(e, m);
+    let mut orden: Vec<usize> = vis.clone().collect();
+    orden.sort_by(|a, b| {
+        let d = |i: usize| (e.hojas.arriba[i] + e.hojas.altos[i] / 2.0 - centro).abs();
+        d(*a).total_cmp(&d(*b))
+    });
+    let deseado = ancho_deseado(e, m);
+    let mut usado = 0usize;
+    let pedir = |lista: &mut Vec<_>, p, t: Trabajo| {
+        if !e.fallidos.contains(&t) {
+            lista.push((p, t));
+        }
+    };
+    for i in orden {
+        let p = proporcion_de(e, i);
+        let base = ancho_para(e, i, m);
+        let tiene = e.pintadas.get(&i).map(|(a, _)| *a);
+        usado += bytes_de(base.max(tiene.unwrap_or(0)), p);
+        let falta = match tiene {
+            None => !pasando,
+            Some(a) => a != base && firme && !pasando,
+        };
+        if falta {
+            pedir(&mut lista, Prioridad::Visible, Trabajo::Hoja { hoja: i, ancho: base });
+        }
+        if firme && !pasando && deseado > base {
+            let vista_hoja = vista_de_la_hoja(e, i, m);
+            if let Some(t) = cola::trozo_para(i, deseado, p, vista_hoja) {
+                let ya = e.trozos.get(&i).is_some_and(|(t0, _, _)| {
+                    matches!(t0, Trabajo::Trozo { ancho, .. } if *ancho == deseado) && cola::cubre(*t0, p, vista_hoja)
+                });
+                if !ya {
+                    pedir(&mut lista, Prioridad::Visible, t);
+                }
+                if let Some((_, w, h)) = cola::trozo_en_fracciones(t, p) {
+                    usado += w as usize * h as usize * 4;
+                }
+            }
+        }
+    }
+    if !pasando {
+        let antes = vis.start.checked_sub(1);
+        let despues = (vis.end < n).then_some(vis.end);
+        for i in [despues, antes].into_iter().flatten() {
+            let p = proporcion_de(e, i);
+            let base = ancho_para(e, i, m);
+            let bytes = bytes_de(base, p);
+            if usado + bytes > PRESUPUESTO_MAPAS {
+                continue;
+            }
+            usado += bytes;
+            let falta = match e.pintadas.get(&i) {
+                None => true,
+                Some((a, _)) => *a != base && firme,
+            };
+            if falta {
+                pedir(&mut lista, Prioridad::Vecina, Trabajo::Hoja { hoja: i, ancho: base });
+            }
+        }
+    }
+    if e.office.is_none()
+        && let Some(i) = e.elegir.falta
+        && i < n
+        && !e.elegir.hojas.contains_key(&i)
+    {
+        pedir(&mut lista, Prioridad::Texto, Trabajo::Texto { hoja: i });
+    }
+    lista
+}
+
+/// Pide al hilo lo que falta (ver [`lista_de_trabajos`]) y suelta lo que ya
+/// no cabe: de lo pintado, lo que se ve siempre se queda; lo demas, de lo
+/// mas cercano a lo mas lejano mientras quepa en `PRESUPUESTO_MAPAS`.
 fn pedir_hojas(e: &mut Estado, tx: &mpsc::Sender<Pedido>, m: Marco) {
     if e.hojas.cuantas() == 0 {
         return;
     }
+    let ahora = ahora_ms();
     let vis = visibles(e, m);
-    let reserva = vis.start.saturating_sub(1)..(vis.end + 1).min(e.hojas.cuantas());
-    let firme = e.zoom_cambiado == 0;
-    let mut lista = Vec::new();
-    for i in vis
-        .clone()
-        .chain(reserva.clone().filter(|i| !vis.contains(i)))
-    {
-        let quiero = ancho_para(e, i, m);
-        match e.pintadas.get(&i) {
-            // Mientras la rueda cambia el aumento se estira lo que hay.
-            Some((ancho, _)) if *ancho == quiero || !firme => {}
-            _ => lista.push((i, quiero)),
+    if vis.start != e.paso.0 {
+        if ahora.saturating_sub(e.paso.1) < MS_PASANDO {
+            e.pasando_hasta = ahora + MS_PASANDO;
         }
+        e.paso = (vis.start, ahora);
     }
+    let pasando = ahora < e.pasando_hasta;
+    let lista = lista_de_trabajos(e, m, pasando);
     if lista != e.ultima_lista {
-        let _ = tx.send(Pedido::Quiero(lista.clone()));
+        let _ = tx.send(Pedido::Quiero {
+            lista: lista.clone(),
+            visto: e.visto,
+        });
         e.ultima_lista = lista;
     }
-    let lejos = vis.start.saturating_sub(HOJAS_DE_RESERVA)..vis.end + HOJAS_DE_RESERVA;
-    e.pintadas.retain(|i, _| lejos.contains(i));
+    // Los trozos, solo de lo que se ve y si sigue haciendo falta acercarse.
+    let de_cerca = ancho_deseado(e, m) > ANCHO_BASE || e.zoom_cambiado != 0;
+    e.trozos.retain(|i, _| de_cerca && vis.contains(i));
+    let en_trozos: usize = e
+        .trozos
+        .values()
+        .filter_map(|(t, _, _)| cola::trozo_en_fracciones(*t, proporcion_de(e, t.hoja())))
+        .map(|(_, w, h)| w as usize * h as usize * 4)
+        .sum();
+    let items: Vec<(usize, usize, usize)> = e
+        .pintadas
+        .iter()
+        .map(|(i, (a, _))| (*i, bytes_de(*a, proporcion_de(e, *i)), distancia(&vis, *i)))
+        .filter(|(_, _, d)| *d <= HOJAS_DE_RESERVA)
+        .collect();
+    let quedan = cola::lo_que_cabe(&items, PRESUPUESTO_MAPAS.saturating_sub(en_trozos));
+    e.pintadas.retain(|i, _| quedan.contains(i));
+    elegir::olvidar_lejos(e, vis);
+}
+
+/// Los bytes de los mapas de bits de las hojas y de los trozos.
+#[cfg(test)]
+fn bytes_en_mapas(e: &Estado) -> usize {
+    let hojas: usize = e.pintadas.iter().map(|(i, (a, _))| bytes_de(*a, proporcion_de(e, *i))).sum();
+    let trozos: usize = e
+        .trozos
+        .values()
+        .filter_map(|(t, _, _)| cola::trozo_en_fracciones(*t, proporcion_de(e, t.hoja())))
+        .map(|(_, w, h)| w as usize * h as usize * 4)
+        .sum();
+    hojas + trozos
 }
 
 /// Lee del disco lo anotado de las hojas que se ven (una vez cada una).
@@ -1380,6 +1687,11 @@ fn pintar(e: &mut Estado, p: &Pintor, m: Marco, textos: &Catalogo) {
                 p.texto(&n, 40.0, 40.0, 48.0, con_alfa(APAGADO, 0.6));
             }
         }
+        // Muy de cerca, lo que se ve nitido encima de la hoja (que hace de
+        // fondo mientras llega).
+        if !en_vectores && let Some((_, caja, b)) = e.trozos.get(&i) {
+            p.bitmap(b, *caja, None, false);
+        }
         if izq > 0.0 || der > 0.0 {
             // El canto de la hoja contra el margen: se ve donde acaba el
             // papel del documento y empieza el de anotar.
@@ -1411,6 +1723,7 @@ fn pintar(e: &mut Estado, p: &Pintor, m: Marco, textos: &Catalogo) {
         }
         marcas_de_busqueda(e, p, i);
         office::pintar_seleccion(e, p, i);
+        elegir::pintar_seleccion(e, p, i);
         voz::pintar_lo_que_suena(e, p, i);
         if let Some(capa) = e.capas.get(&i) {
             let vista_hoja = (
@@ -1782,7 +2095,8 @@ fn mover_raton(e: &mut Estado, m: Marco) {
         }
         // El trazo lo lleva la tinta, en el bucle.
         Some(Arrastre::Trazo) => {}
-        Some(Arrastre::Elegir) => office::mover(e, m),
+        Some(Arrastre::Elegir) if e.office.is_some() => office::mover(e, m),
+        Some(Arrastre::Elegir) => elegir::mover(e, m),
         None => {}
     }
 }
@@ -1843,6 +2157,11 @@ fn pulsar(
         e.arrastre = Some(Arrastre::Elegir);
         return true;
     }
+    // PDF: sobre texto se elige; en un enlace, se sigue al soltar.
+    if elegir::pulsar(e, m) {
+        e.arrastre = Some(Arrastre::Elegir);
+        return true;
+    }
     e.arrastre = Some(Arrastre::Mover {
         desde: e.raton,
         vista: (e.x, e.y),
@@ -1868,9 +2187,10 @@ fn soltar(e: &mut Estado, m: Marco) {
             };
         }
         Some(Arrastre::Mover { .. }) => fin_de_lateral(e, m),
-        Some(Arrastre::Elegir) => {
+        Some(Arrastre::Elegir) if e.office.is_some() => {
             office::soltar(e);
         }
+        Some(Arrastre::Elegir) => elegir::soltar(e, m),
         None => {}
     }
 }
@@ -1959,6 +2279,8 @@ fn tecla(e: &mut Estado, vk: u32, shift: bool, ctrl: bool, ruta: &Path, m: Marco
                 && o.seleccion.take().is_some()
             {
                 // La primera Esc quita lo elegido.
+            } else if e.elegir.seleccion.take().is_some() {
+                // Lo elegido en un PDF, tambien.
             } else if e.poniendo_marca || e.panel {
                 e.poniendo_marca = false;
                 e.panel = false;
@@ -2628,6 +2950,12 @@ mod pruebas {
             medidas,
             pintadas: HashMap::new(),
             ultima_lista: Vec::new(),
+            trozos: HashMap::new(),
+            visto: 0,
+            fallidos: Default::default(),
+            paso: (0, 0),
+            pasando_hasta: 0,
+            elegir: Default::default(),
             x: 0.0,
             y: 0.0,
             zoom: 1.0,
@@ -2925,11 +3253,11 @@ mod pruebas {
         let m = marco();
         acotar(&mut e, m);
         pedir_hojas(&mut e, &tx, m);
-        let Pedido::Quiero(lista) = rx.try_recv().expect("pide las que se ven") else {
+        let Ok(Pedido::Quiero { lista, .. }) = rx.try_recv() else {
             panic!("se esperaba una lista");
         };
         assert!(!lista.is_empty());
-        assert_eq!(lista[0].0, 0, "la que se ve primero");
+        assert_eq!(lista[0].1.hoja(), 0, "la que se ve primero");
         // La misma lista no se vuelve a mandar.
         pedir_hojas(&mut e, &tx, m);
         assert!(rx.try_recv().is_err());
