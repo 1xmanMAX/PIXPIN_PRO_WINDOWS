@@ -967,6 +967,12 @@ diapositivas-abrir-con-otra = Open it with another app?
 diapositivas-preparando = Preparing the presentation with PowerPoint…
 diapositivas-no-se-pudo = Could not prepare the presentation
 diapositivas-no-esta = The presentation is no longer on this computer
+diapositivas-siguiente = Next
+diapositivas-notas = Notes
+diapositivas-sin-notas = This slide has no notes
+diapositivas-fin = End of the presentation
+diapositivas-transiciones-si = Transitions on (T)
+diapositivas-transiciones-no = Transitions off (T)
 
 ## Chat: a page from a project, the link card, «Received from» and the inbox
 chat-sin-paginas = No project has pages to attach
