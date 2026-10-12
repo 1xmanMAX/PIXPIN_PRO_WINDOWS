@@ -67,7 +67,11 @@ pub struct Contenido {
 }
 
 pub struct Libro {
-    paquete: Paquete,
+    /// El ZIP del `.xlsx` (no hay en un `.xls`, que se lee entero al abrir).
+    paquete: Option<Paquete>,
+    /// Un `.xls` (se lee hoja a hoja al pedirla) y las hojas ya leidas.
+    xls: Option<crate::xls::XlsAbierto>,
+    precargadas: std::sync::Mutex<std::collections::HashMap<usize, Hoja>>,
     pub hojas: Vec<InfoHoja>,
     pub estilos: Estilos,
     pub textos: Textos,
@@ -79,6 +83,17 @@ pub struct Libro {
     pub tiempos: Tiempos,
     tam_por_xf: Arc<[f32]>,
     paleta: Arc<[u32]>,
+    /// Lo que los minigraficos necesitan de otras hojas y los limites de
+    /// eje de cada grupo: se calculan una vez y se guardan.
+    mini: std::sync::Mutex<CacheMini>,
+}
+
+#[derive(Default)]
+struct CacheMini {
+    /// Otras hojas abiertas, leidas hasta la fila que hizo falta.
+    externas: std::collections::HashMap<usize, Hoja>,
+    /// (hoja, grupo) -> (minimo, maximo) de todo el grupo.
+    limites: std::collections::HashMap<(String, u32), Option<(f64, f64)>>,
 }
 
 impl Libro {
@@ -90,6 +105,9 @@ impl Libro {
     pub fn desde_bytes(bytes: Vec<u8>, regional: Regional) -> Result<Libro, ErrorHojas> {
         let mut tiempos = Tiempos::default();
         let t0 = Instant::now();
+        if crate::cfb::es_cfb(&bytes) {
+            return Self::desde_xls(&bytes, regional);
+        }
         let paquete = Paquete::nuevo(Arc::from(bytes))?;
         tiempos.zip = ms(t0);
         let t0 = Instant::now();
@@ -153,7 +171,98 @@ impl Libro {
         tiempos.textos = ms(t0);
         let tam_por_xf: Arc<[f32]> = Arc::from(estilos.tam_por_xf.clone());
         let paleta: Arc<[u32]> = Arc::from(estilos.paleta.clone());
-        Ok(Libro { paquete, hojas, estilos, textos, tema: Arc::new(tema), fecha_1904, regional, hoja_activa, tiempos, tam_por_xf, paleta })
+        Ok(Libro { paquete: Some(paquete), xls: None, precargadas: Default::default(), hojas, estilos, textos, tema: Arc::new(tema), fecha_1904, regional, hoja_activa, tiempos, tam_por_xf, paleta, mini: Default::default() })
+    }
+
+    fn valores_con(&self, c: &mut CacheMini, hoja: &Hoja, m: &crate::minigraficos::Minigrafico) -> Vec<Option<f64>> {
+        use crate::minigraficos::valores_de;
+        let r = m.origen.rango;
+        let Some(nombre) = m.origen.hoja.as_deref().filter(|n| !n.eq_ignore_ascii_case(&hoja.nombre)) else {
+            return valores_de(hoja, r);
+        };
+        let Some(i) = self.hojas.iter().position(|h| h.nombre.eq_ignore_ascii_case(nombre) && h.tipo == TipoHoja::Hoja) else {
+            return Vec::new();
+        };
+        let otra = c.externas.entry(i).or_insert_with(|| self.abrir_hoja(i));
+        // Solo se lee hasta la fila que hace falta (con un tope).
+        otra.cargar_hasta_fila(r.fila1.min(r.fila0.saturating_add(crate::minigraficos::MAX_PUNTOS as u32)));
+        valores_de(otra, r)
+    }
+
+    /// Los valores de un minigrafico (sin resolver vacias). Si los datos
+    /// estan en otra hoja, se abre esa hoja una vez y se guarda.
+    pub fn valores_mini(&self, hoja: &Hoja, m: &crate::minigraficos::Minigrafico) -> Vec<Option<f64>> {
+        let Ok(mut c) = self.mini.lock() else { return Vec::new() };
+        self.valores_con(&mut c, hoja, m)
+    }
+
+    /// El eje vertical de un minigrafico, con los limites del grupo si los
+    /// pide (calculados una sola vez por grupo y hoja).
+    pub fn eje_mini(&self, hoja: &Hoja, m: &crate::minigraficos::Minigrafico, valores: &[Option<f64>]) -> Option<(f64, f64)> {
+        use crate::minigraficos::{LimiteEje, eje_vertical, extremos, puntos_de};
+        let g = hoja.cola.grupos_mini.get(m.grupo as usize)?;
+        let propios = extremos(valores);
+        let de_grupo = if g.min_tipo == LimiteEje::Grupo || g.max_tipo == LimiteEje::Grupo {
+            let Ok(mut c) = self.mini.lock() else { return eje_vertical(g, propios, None) };
+            let clave = (hoja.nombre.clone(), m.grupo);
+            match c.limites.get(&clave) {
+                Some(l) => *l,
+                // Con la hoja a medias, los datos pueden no estar todos: no se guarda.
+                None if !hoja.completa => None,
+                None => {
+                    let mut e: Option<(f64, f64)> = None;
+                    for otro in hoja.cola.minigraficos.iter().filter(|o| o.grupo == m.grupo) {
+                        let v = self.valores_con(&mut c, hoja, otro);
+                        if let Some((a, b)) = extremos(&puntos_de(g, &v)) {
+                            e = Some(e.map_or((a, b), |(x, y)| (x.min(a), y.max(b))));
+                        }
+                    }
+                    c.limites.insert(clave, e);
+                    e
+                }
+            }
+        } else {
+            None
+        };
+        eje_vertical(g, propios, de_grupo)
+    }
+
+    /// Un `.xls` antiguo (BIFF8) sin Office ([`crate::xls`]): al abrir se
+    /// leen los globales (estilos, textos, lista de hojas) y la hoja activa;
+    /// cada hoja se lee cuando se pide y queda guardada.
+    fn desde_xls(bytes: &[u8], regional: Regional) -> Result<Libro, ErrorHojas> {
+        let mut tiempos = Tiempos::default();
+        let t0 = Instant::now();
+        let mut x = crate::xls::XlsAbierto::abrir(bytes)?;
+        tiempos.zip = ms(t0);
+        let t0 = Instant::now();
+        let tema = Tema::default();
+        let estilos = Estilos::leer(&x.estilos_xml, &tema, &regional);
+        tiempos.estilos = ms(t0);
+        let t0 = Instant::now();
+        let textos = Textos::leer(std::mem::take(&mut x.textos_xml));
+        tiempos.textos = ms(t0);
+        let hojas: Vec<InfoHoja> =
+            x.hojas().into_iter().map(|(nombre, visibilidad, tipo)| InfoHoja { nombre, ruta: String::new(), visibilidad, tipo }).collect();
+        let tam_por_xf: Arc<[f32]> = Arc::from(estilos.tam_por_xf.clone());
+        let paleta: Arc<[u32]> = Arc::from(estilos.paleta.clone());
+        let (fecha_1904, hoja_activa) = (x.fecha_1904(), x.activa);
+        Ok(Libro {
+            paquete: None,
+            xls: Some(x),
+            precargadas: Default::default(),
+            hojas,
+            estilos,
+            textos,
+            tema: Arc::new(tema),
+            fecha_1904,
+            regional,
+            hoja_activa,
+            tiempos,
+            tam_por_xf,
+            paleta,
+            mini: Default::default(),
+        })
     }
 
     /// Abre la hoja `i` y lee su cabecera (columnas, vista, alto por
@@ -162,9 +271,20 @@ impl Libro {
         let Some(info) = self.hojas.get(i) else {
             return Hoja::nueva(String::new(), None);
         };
-        let lector = if info.tipo == TipoHoja::Hoja {
+        // Un `.xls` se lee hoja a hoja la primera vez y se guarda; se entrega una copia.
+        if let Some(x) = &self.xls {
+            let Ok(mut guardadas) = self.precargadas.lock() else { return Hoja::nueva(info.nombre.clone(), None) };
+            let h = guardadas.entry(i).or_insert_with(|| match x.hoja(i) {
+                Ok(h) => Hoja::desde_filas(h.nombre, h.cabecera, h.cola, h.textos, h.filas),
+                // Una hoja que no se entiende se ve vacia (la activa ya se comprobo al abrir).
+                Err(_) => Hoja::desde_filas(info.nombre.clone(), Default::default(), Default::default(), Vec::new(), Vec::new()),
+            });
+            return h.copia_entera();
+        }
+        let lector = if info.tipo == TipoHoja::Hoja && self.paquete.is_some() {
+            let Some(paquete) = &self.paquete else { return Hoja::nueva(info.nombre.clone(), None) };
             LectorHoja::nuevo(
-                &self.paquete,
+                paquete,
                 &info.ruta,
                 self.tam_por_xf.clone(),
                 self.estilos.fuente_normal.tam,
@@ -191,7 +311,7 @@ impl Libro {
 
     /// Los bytes de una parte del ZIP (las imagenes de los dibujos).
     pub fn parte(&self, ruta: &str) -> Option<Vec<u8>> {
-        self.paquete.leer(ruta)
+        self.paquete.as_ref()?.leer(ruta)
     }
 
     pub fn xf(&self, c: &Celda) -> &Xf {
@@ -253,19 +373,21 @@ impl Libro {
     /// Lo que el formato condicional hace a una celda con valor (`None` si
     /// nada).
     pub fn efecto_condicional(&self, hoja: &Hoja, fila: u32, c: &Celda) -> Option<crate::condicional::Efecto> {
-        if hoja.cola.condicionales.is_empty() || c.valor == Valor::Vacio {
+        if hoja.cola.condicionales.is_empty() {
             return None;
         }
         let mut ef = crate::condicional::Efecto::default();
         let mut alguno = false;
         let mut texto: Option<String> = None;
         for cf in &hoja.cola.condicionales {
-            if !cf.aplica(fila, c.col) {
+            // Una celda sin valor solo importa a las reglas de «vacias».
+            if (c.valor == Valor::Vacio && !cf.con_vacios) || !cf.aplica(fila, c.col) {
                 continue;
             }
             alguno = true;
-            let t = texto.get_or_insert_with(|| self.texto_crudo(hoja, c));
-            if cf.evaluar(c, t, &self.estilos.dxfs, &mut ef) {
+            // El texto solo se forma si alguna regla lo mira.
+            let t = if cf.necesita_texto { texto.get_or_insert_with(|| self.texto_crudo(hoja, c)).as_str() } else { "" };
+            if cf.evaluar(hoja, c, t, &self.estilos.dxfs, &mut ef) {
                 break;
             }
         }

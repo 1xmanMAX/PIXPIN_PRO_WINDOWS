@@ -245,8 +245,24 @@ impl Mapa {
     }
 }
 
+/// Le dice al formato condicional en que huso horario estamos (para las
+/// reglas de «hoy», «la semana pasada»...).
+fn fijar_hora_local() {
+    use windows::Win32::System::Time::{GetTimeZoneInformation, TIME_ZONE_INFORMATION};
+    let mut tz = TIME_ZONE_INFORMATION::default();
+    // SAFETY: salida local valida.
+    let id = unsafe { GetTimeZoneInformation(&mut tz) };
+    let extra = match id {
+        1 => tz.StandardBias,
+        2 => tz.DaylightBias,
+        _ => 0,
+    };
+    pixpin_hojas::condicional::fijar_desfase_horario(-(tz.Bias + extra));
+}
+
 impl CacheHoja {
     pub fn nueva() -> CacheHoja {
+        fijar_hora_local();
         CacheHoja::default()
     }
 
@@ -833,6 +849,7 @@ pub fn pintar_hoja(p: &Pintor, cache: &mut CacheHoja, libro: &Libro, hoja: &Hoja
         p.soltar_recorte();
     }
     pintar_flechas(p, hoja, rejilla, &paneles, celdas, e, op);
+    pintar_marcas(p, hoja, rejilla, &paneles, celdas, e);
     if celdas.x > caja.x || celdas.y > caja.y {
         pintar_encabezados(p, cache, libro, rejilla, &paneles, celdas, caja, e * rejilla.ppp / 96.0, op.seleccion);
     }
@@ -1033,16 +1050,34 @@ fn pintar_panel(p: &Pintor, cache: &mut CacheHoja, libro: &Libro, hoja: &Hoja, r
                 if let Some(color) = ef.escala.or(ef.dxf.relleno) {
                     llenar(p, rect(x0 - 1.0, y0 - 1.0, x1, y1), color);
                 }
-                if let Some((frac, color)) = ef.barra {
+                if let Some(b) = ef.barra {
                     let margen = (2.0 * m.e as f32).max(1.0);
-                    let ancho = ((x1 - x0 - 1.0 - 2.0 * margen) * frac).max(1.0);
-                    let r = RectF { x: x0 + margen, y: y0 + margen, ancho, alto: (y1 - y0 - 1.0 - 2.0 * margen).max(1.0) };
-                    // Degradado del color al blanco, como las barras de 2007.
-                    p.rect_degradado(r, (r.x, r.y), (r.x + r.ancho, r.y), color_de(color), color_de(color.mezcla(Rgb::BLANCO, 0.1)));
+                    let (ix0, iw) = (x0 + margen, x1 - x0 - 1.0 - 2.0 * margen);
+                    let alto = (y1 - y0 - 1.0 - 2.0 * margen).max(1.0);
+                    let r = RectF { x: ix0 + iw * b.desde, y: y0 + margen, ancho: (iw * (b.hasta - b.desde)).max(1.0), alto };
+                    if b.degradado {
+                        // Degradado del color al blanco, como las barras de 2007.
+                        p.rect_degradado(r, (r.x, r.y), (r.x + r.ancho, r.y), color_de(b.color), color_de(b.color.mezcla(Rgb::BLANCO, 0.1)));
+                    } else {
+                        llenar(p, rect(r.x, r.y, r.x + r.ancho, r.y + r.alto), b.color);
+                    }
+                    if let Some(bc) = b.borde {
+                        p.trazar(RectF { x: r.x + 0.5, y: r.y + 0.5, ancho: (r.ancho - 1.0).max(1.0), alto: (r.alto - 1.0).max(1.0) }, 1.0, color_de(bc));
+                    }
+                    if let Some((pos, ce)) = b.eje {
+                        let xe = (ix0 + iw * pos).round();
+                        llenar(p, rect(xe, y0 + margen * 0.5, xe + 1.0, y1 - 1.0 - margen * 0.5), ce);
+                    }
+                }
+                if let Some((conj, idx)) = ef.icono {
+                    let k = m.e as f32 * rejilla.ppp as f32 / 96.0;
+                    let lado = ((y1 - y0 - 1.0) * 0.8).min(15.0 * k).max(4.0);
+                    crate::hoja_iconos::pintar_icono(p, conj, idx, x0 + 2.0 * k + lado / 2.0, (y0 + y1 - 1.0) / 2.0, lado);
                 }
             }
         }
     }
+    pintar_minigraficos(p, libro, hoja, rejilla, m, f0, f1, c0, c1);
     // 4. Bordes: el mapa de lados con la linea mas fuerte de cada uno.
     let mut lados: HashMap<Lado, Linea> = HashMap::new();
     let mut diagonales: Vec<(u32, u32, Borde)> = Vec::new();
@@ -2057,4 +2092,186 @@ pub fn pintar_pestanas(p: &Pintor, cache: &mut CacheHoja, libro: &Libro, activa:
 }
 
 #[allow(dead_code)]
+/// **Minigraficos** (`x14:sparklineGroups`) de las celdas a la vista: linea,
+/// columnas o ganancia/perdida, con marcadores. Los valores y el eje salen
+/// del libro (los limites de grupo se calculan una vez por grupo).
+#[allow(clippy::too_many_arguments)]
+fn pintar_minigraficos(p: &Pintor, libro: &Libro, hoja: &Hoja, rejilla: &Rejilla, m: &Mapa, f0: u32, f1: u32, c0: u32, c1: u32) {
+    use pixpin_hojas::minigraficos::{TipoMini, extremos, puntos_de};
+    let minis = &hoja.cola.minigraficos;
+    if minis.is_empty() {
+        return;
+    }
+    let k = (m.e * rejilla.ppp / 96.0) as f32;
+    let desde = minis.partition_point(|x| x.fila < f0);
+    for mi in minis[desde..].iter().take_while(|x| x.fila <= f1) {
+        if mi.col < c0 || mi.col > c1 || rejilla.alto(mi.fila) <= 0.0 || rejilla.ancho(mi.col) <= 0.0 {
+            continue;
+        }
+        let Some(g) = hoja.cola.grupos_mini.get(mi.grupo as usize) else { continue };
+        let r = hoja.combinada_en(mi.fila, mi.col).unwrap_or(Rango { fila0: mi.fila, col0: mi.col, fila1: mi.fila, col1: mi.col });
+        let pad = (3.0 * k).round().max(1.0);
+        let (bx0, by0) = (m.sx(rejilla, r.col0) + pad, m.sy(rejilla, r.fila0) + pad);
+        let (bx1, by1) = (m.sx(rejilla, r.col1 + 1) - 1.0 - pad, m.sy(rejilla, r.fila1 + 1) - 1.0 - pad);
+        let (w, h) = (bx1 - bx0, by1 - by0);
+        if w < 4.0 || h < 4.0 {
+            continue;
+        }
+        let valores = libro.valores_mini(hoja, mi);
+        let puntos = puntos_de(g, &valores);
+        let Some((minimo, maximo)) = extremos(&puntos) else { continue };
+        let Some((lo, hi)) = libro.eje_mini(hoja, mi, &puntos) else { continue };
+        let n = puntos.len();
+        let y_de = |v: f64| by1 - (((v - lo) / (hi - lo)).clamp(0.0, 1.0) as f32) * h;
+        let y_cero = y_de(0.0).clamp(by0, by1);
+        // Posicion del primer maximo y minimo (los de «alto» y «bajo»).
+        let pos_de = |buscado: f64| puntos.iter().position(|v| *v == Some(buscado));
+        let (i_alto, i_bajo) = (pos_de(maximo), pos_de(minimo));
+        let color_de_punto = |i: usize, v: f64| -> Rgb {
+            if g.alto && Some(i) == i_alto {
+                g.c_alto
+            } else if g.bajo && Some(i) == i_bajo {
+                g.c_bajo
+            } else if g.primero && i == 0 {
+                g.c_primero
+            } else if g.ultimo && i + 1 == n {
+                g.c_ultimo
+            } else if g.negativos && v < 0.0 {
+                g.c_negativo
+            } else if matches!(g.tipo, TipoMini::Linea) {
+                g.c_marcadores
+            } else {
+                g.c_serie
+            }
+        };
+        p.empujar_recorte(RectF { x: bx0 - pad, y: by0 - pad, ancho: w + 2.0 * pad, alto: h + 2.0 * pad });
+        if g.eje_x && lo < 0.0 && hi > 0.0 {
+            llenar(p, rect(bx0, y_cero.round(), bx1, y_cero.round() + 1.0), g.c_eje);
+        }
+        match g.tipo {
+            TipoMini::Linea => {
+                let x_de = |i: usize| if n > 1 { bx0 + w * i as f32 / (n - 1) as f32 } else { bx0 + w / 2.0 };
+                let grosor = (g.peso * 96.0 / 72.0 * k).max(1.0);
+                // Tramos seguidos; un hueco corta la linea salvo que se pida unir.
+                let mut tramo: Vec<(f32, f32)> = Vec::new();
+                let unir = g.vacias == pixpin_hojas::minigraficos::Vacias::Unir;
+                for (i, v) in puntos.iter().enumerate() {
+                    match v {
+                        Some(v) => tramo.push((x_de(i), y_de(*v))),
+                        None if unir => {}
+                        None => {
+                            if tramo.len() > 1 {
+                                p.polilinea(&tramo, grosor, color(g.c_serie));
+                            }
+                            tramo.clear();
+                        }
+                    }
+                }
+                if tramo.len() > 1 {
+                    p.polilinea(&tramo, grosor, color(g.c_serie));
+                }
+                let lado = (grosor * 2.6).max(3.0);
+                for (i, v) in puntos.iter().enumerate() {
+                    let Some(v) = *v else { continue };
+                    let resaltado = (g.alto && Some(i) == i_alto)
+                        || (g.bajo && Some(i) == i_bajo)
+                        || (g.primero && i == 0)
+                        || (g.ultimo && i + 1 == n)
+                        || (g.negativos && v < 0.0);
+                    if g.marcadores || resaltado {
+                        let (x, y) = (x_de(i), y_de(v));
+                        llenar(p, rect(x - lado / 2.0, y - lado / 2.0, x + lado / 2.0, y + lado / 2.0), color_de_punto(i, v));
+                    }
+                }
+            }
+            TipoMini::Columna | TipoMini::GananciaPerdida => {
+                let hueco = (w / n as f32 * 0.2).max(1.0).min(3.0 * k);
+                let ancho = w / n as f32;
+                for (i, v) in puntos.iter().enumerate() {
+                    let Some(v) = *v else { continue };
+                    let x0 = bx0 + ancho * i as f32 + hueco / 2.0;
+                    let x1 = (bx0 + ancho * (i + 1) as f32 - hueco / 2.0).max(x0 + 1.0);
+                    let c = color_de_punto(i, v);
+                    let (ya, yb) = if matches!(g.tipo, TipoMini::GananciaPerdida) {
+                        let medio = by0 + h / 2.0;
+                        if v > 0.0 { (by0, medio - 1.0) } else if v < 0.0 { (medio + 1.0, by1) } else { continue }
+                    } else {
+                        let y = y_de(v);
+                        if v == 0.0 { continue } else { (y.min(y_cero), y.max(y_cero)) }
+                    };
+                    llenar(p, rect(x0, ya, x1, yb.max(ya + 1.0)), c);
+                }
+            }
+        }
+        p.soltar_recorte();
+    }
+}
+
+const COMENTARIO_ROJO: Rgb = Rgb { r: 0xE0, g: 0x30, b: 0x30 };
+const FILTRO_ACTIVO: Rgb = Rgb { r: 0x1F, g: 0x6F, b: 0xB5 };
+
+/// Un embudo (filtro puesto) de `ancho` px centrado en `(cx, cy)`.
+fn embudo(p: &Pintor, cx: f32, cy: f32, ancho: f32, c: Rgb) {
+    let (a, h) = (ancho / 2.0, ancho * 0.9);
+    let v = [(cx - a, cy - h / 2.0), (cx + a, cy - h / 2.0), (cx + a * 0.18, cy + h * 0.05), (cx + a * 0.18, cy + h / 2.0), (cx - a * 0.18, cy + h / 2.0 - h * 0.1), (cx - a * 0.18, cy + h * 0.05)];
+    p.poligono(&v, color(c));
+}
+
+/// **Marcas encima de las celdas** (solo para ver): el triangulo rojo de las
+/// notas y comentarios en la esquina de arriba a la derecha, y los botones
+/// del autofiltro (de la hoja y de las tablas) en la fila de encabezado.
+fn pintar_marcas(p: &Pintor, hoja: &Hoja, rejilla: &Rejilla, paneles: &[Panel], celdas: RectF, e: f64) {
+    let tablas: Vec<&pixpin_hojas::filtros::AutoFiltro> =
+        hoja.cola.tablas.iter().filter(|t| t.encabezado > 0).filter_map(|t| t.filtro.as_ref().map(|f| (t, f))).map(|(_, f)| f).collect();
+    let filtros: Vec<&pixpin_hojas::filtros::AutoFiltro> = hoja.cola.autofiltro.iter().chain(tablas).collect();
+    if filtros.is_empty() && hoja.cola.comentarios.is_empty() {
+        return;
+    }
+    let k = (e * rejilla.ppp / 96.0) as f32;
+    p.empujar_recorte(celdas);
+    for panel in paneles {
+        let m = Mapa::de(panel, celdas, e);
+        let recorte = RectF { x: m.ox as f32, y: m.oy as f32, ancho: panel.pantalla[2] as f32, alto: panel.pantalla[3] as f32 };
+        p.empujar_recorte(recorte);
+        for f in &filtros {
+            let fila = f.rango.fila0;
+            if fila < panel.fila0 || fila > panel.fila1 || rejilla.alto(fila) <= 0.0 {
+                continue;
+            }
+            for col in f.columnas_con_boton() {
+                if col < panel.col0 || col > panel.col1 || rejilla.ancho(col) <= 0.0 {
+                    continue;
+                }
+                let caja = [m.sx(rejilla, col), m.sy(rejilla, fila), m.sx(rejilla, col + 1), m.sy(rejilla, fila + 1)];
+                let Some([bx0, by0, bx1, by1]) = caja_flecha(caja, k) else { continue };
+                llenar(p, rect(bx0, by0, bx1, by1), FLECHA_BORDE);
+                llenar(p, rect(bx0 + 1.0, by0 + 1.0, bx1 - 1.0, by1 - 1.0), FLECHA_FONDO);
+                let (cx, cy) = ((bx0 + bx1) / 2.0, (by0 + by1) / 2.0);
+                if f.tiene_filtro(col) {
+                    embudo(p, cx, cy, (8.0 * k).round().max(5.0), FILTRO_ACTIVO);
+                } else {
+                    triangulo_abajo(p, cx, cy + 2.5 * k, (7.0 * k).round().max(3.0), FLECHA_TINTA);
+                }
+            }
+        }
+        let com = &hoja.cola.comentarios;
+        let desde = com.partition_point(|c| c.fila < panel.fila0);
+        for c in com[desde..].iter().take_while(|c| c.fila <= panel.fila1) {
+            if c.col < panel.col0 || c.col > panel.col1 || rejilla.alto(c.fila) <= 0.0 || rejilla.ancho(c.col) <= 0.0 {
+                continue;
+            }
+            // En una combinacion, la esquina de toda su caja.
+            let r = hoja.combinada_en(c.fila, c.col).unwrap_or(Rango { fila0: c.fila, col0: c.col, fila1: c.fila, col1: c.col });
+            let (x1, y0) = (m.sx(rejilla, r.col1 + 1) - 1.0, m.sy(rejilla, r.fila0));
+            let s = (6.0 * k).round().max(4.0);
+            if m.sx(rejilla, r.col1 + 1) - m.sx(rejilla, r.col0) < s * 1.5 {
+                continue;
+            }
+            p.poligono(&[(x1 - s, y0), (x1, y0), (x1, y0 + s)], color(COMENTARIO_ROJO));
+        }
+        p.soltar_recorte();
+    }
+    p.soltar_recorte();
+}
+
 fn sin_usar(_: D2D1_COLOR_F) {}

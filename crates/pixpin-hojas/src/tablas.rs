@@ -18,6 +18,8 @@ pub struct Tabla {
     pub bandas_columnas: bool,
     pub primera_columna: bool,
     pub ultima_columna: bool,
+    /// Los botones de filtro del encabezado (`<autoFilter>` de la tabla).
+    pub filtro: Option<crate::filtros::AutoFiltro>,
 }
 
 /// Lee `<table>`.
@@ -36,6 +38,7 @@ pub fn leer(raiz: &Nodo) -> Option<Tabla> {
         bandas_columnas: si("showColumnStripes"),
         primera_columna: si("showFirstColumn"),
         ultima_columna: si("showLastColumn"),
+        filtro: t.hijo("autoFilter").and_then(|a| crate::filtros::AutoFiltro::leer(a, Some(rango))),
     })
 }
 
@@ -277,6 +280,7 @@ mod pruebas {
             bandas_columnas: false,
             primera_columna: false,
             ultima_columna: false,
+            filtro: None,
         };
         let enc = formato_en(&t, &e, 0, 1);
         assert_eq!(enc.relleno, Some(tema.colores[4]));

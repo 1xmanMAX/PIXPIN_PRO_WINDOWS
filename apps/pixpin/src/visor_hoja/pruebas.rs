@@ -27,6 +27,7 @@ fn estado<'l>(libro: &'l Libro, e: f32, ancho: u32, alto: u32) -> Estado<'l> {
         raton: (0.0, 0.0),
         encima_de: None,
         bajo_raton: None,
+        comentario_bajo: None,
         aviso: None,
         hwnd: 0,
     }

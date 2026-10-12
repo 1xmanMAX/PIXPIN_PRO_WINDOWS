@@ -1,6 +1,7 @@
 //! **Hojas de calculo de Excel (`.xlsx`, `.xlsm`) leidas dentro de PixPin.**
 //!
-//! Crate puro: no sabe de Windows ni pinta. Lee el libro y deja todo listo
+//! Crate puro: no sabe de Windows ni pinta. Lee el libro (`.xlsx` y, sin
+//! Office, el `.xls` antiguo BIFF8: [`xls`], [`cfb`]) y deja todo listo
 //! para que `pixpin-render` (modulo `hoja_office`) lo pinte como lo pinta
 //! Excel: anchos de columna y altos de fila en pixeles, estilos ya
 //! resueltos (tema, matiz, paleta), formatos de numero y fecha aplicados,
@@ -30,23 +31,28 @@
 
 #![forbid(unsafe_code)]
 
+pub mod comentarios;
+pub mod cfb;
 pub mod condicional;
 pub mod dibujos;
 pub mod estilos;
+pub mod filtros;
 pub mod formato;
 pub mod hoja;
 pub mod libro;
+pub mod minigraficos;
 pub mod paquete;
 pub mod rejilla;
 pub mod tablas;
 pub mod validacion;
 pub mod textos;
+pub mod xls;
 pub mod xml;
 
 pub use dibujos::{Ancla, Contenido as ContenidoDibujo, Dibujo};
 pub use estilos::{Alineacion, Borde, EstiloLinea, Fuente, Horizontal, Linea, Relleno, Rgb, Subrayado, Vertical};
 pub use formato::{Mostrado, Regional};
-pub use hoja::{Celda, Fila, Hoja, LectorHoja, Rango, Tanda, Valor, VistaHoja, nombre_columna};
+pub use hoja::{Celda, Fila, FilaNueva, Hoja, LectorHoja, Rango, Tanda, Valor, VistaHoja, nombre_columna};
 pub use libro::{Clase, Contenido, InfoHoja, Libro, TipoHoja, Visibilidad};
 pub use rejilla::{Panel, Rejilla, Vista};
 
