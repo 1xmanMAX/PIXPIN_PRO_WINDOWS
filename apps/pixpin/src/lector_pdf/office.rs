@@ -363,7 +363,7 @@ pub(super) fn letra_cercana(t: &PaginaDeTexto, x: f32, y: f32) -> Option<usize> 
 }
 
 /// La letra que hay justo debajo de un punto (en fracciones de la hoja).
-fn letra_debajo(t: &PaginaDeTexto, x: f32, y: f32) -> bool {
+pub(super) fn letra_debajo(t: &PaginaDeTexto, x: f32, y: f32) -> bool {
     t.cajas.iter().flatten().any(|c| x >= c[0] && x <= c[2] && y >= c[1] && y <= c[3])
 }
 

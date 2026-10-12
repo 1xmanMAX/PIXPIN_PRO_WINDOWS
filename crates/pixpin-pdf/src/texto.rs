@@ -205,7 +205,7 @@ fn nombre_de(v: Option<&Valor>) -> Option<&[u8]> {
     }
 }
 
-fn numero_de(v: &Valor) -> Option<f32> {
+pub(crate) fn numero_de(v: &Valor) -> Option<f32> {
     match v {
         Valor::Numero(t) => std::str::from_utf8(t).ok()?.parse().ok(),
         _ => None,
@@ -723,7 +723,7 @@ fn cadena_literal(b: &[u8], mut i: usize) -> (Vec<u8>, usize) {
 // La hoja
 
 /// Lo que una hoja hereda de su arbol: se busca subiendo por `/Parent`.
-fn heredado(archivo: &Archivo, pagina: &Dicc, clave: &[u8]) -> Option<Valor> {
+pub(crate) fn heredado(archivo: &Archivo, pagina: &Dicc, clave: &[u8]) -> Option<Valor> {
     let mut d = pagina.clone();
     for _ in 0..32 {
         if let Some(v) = en(&d, clave) {
@@ -734,7 +734,7 @@ fn heredado(archivo: &Archivo, pagina: &Dicc, clave: &[u8]) -> Option<Valor> {
     None
 }
 
-fn caja_de(v: Option<Valor>) -> Option<[f32; 4]> {
+pub(crate) fn caja_de(v: Option<Valor>) -> Option<[f32; 4]> {
     let Some(Valor::Lista(l)) = v else {
         return None;
     };
@@ -782,10 +782,7 @@ fn pagina(archivo: &Archivo, n: u32, fuentes: &mut Fuentes) -> PaginaDeTexto {
     let caja = caja_de(heredado(archivo, &d, b"CropBox"))
         .or_else(|| caja_de(heredado(archivo, &d, b"MediaBox")))
         .unwrap_or([0.0, 0.0, 612.0, 792.0]);
-    let giro = heredado(archivo, &d, b"Rotate")
-        .as_ref()
-        .and_then(numero_de)
-        .map_or(0, |g| ((g as i64 % 360) + 360) % 360);
+    let giro = giro_de_la_hoja(archivo, &d);
     let recursos = heredado(archivo, &d, b"Resources")
         .and_then(|v| match v {
             Valor::Dicc(d) => Some(d),
@@ -1032,20 +1029,55 @@ impl Lectura<'_> {
     /// De puntos de la hoja a fracciones de lo que se ve de ella, desde
     /// arriba a la izquierda y con su giro.
     fn a_fraccion(&self, c: [f32; 4]) -> [f32; 4] {
-        let [bx0, by0, bx1, by1] = self.caja;
-        let (w, h) = (bx1 - bx0, by1 - by0);
-        let u0 = (c[0] - bx0) / w;
-        let u1 = (c[2] - bx0) / w;
-        let v0 = (by1 - c[3]) / h;
-        let v1 = (by1 - c[1]) / h;
-        let (a0, b0, a1, b1) = match self.giro {
-            90 => (1.0 - v1, u0, 1.0 - v0, u1),
-            180 => (1.0 - u1, 1.0 - v1, 1.0 - u0, 1.0 - v0),
-            270 => (v0, 1.0 - u1, v1, 1.0 - u0),
-            _ => (u0, v0, u1, v1),
-        };
-        [a0, b0, a1, b1]
+        a_fraccion(self.caja, self.giro, c)
     }
+}
+
+/// El giro de la hoja (heredado), en 0, 90, 180 o 270.
+pub(crate) fn giro_de_la_hoja(archivo: &Archivo, d: &Dicc) -> i64 {
+    heredado(archivo, d, b"Rotate")
+        .as_ref()
+        .and_then(numero_de)
+        .map_or(0, |g| ((g as i64 % 360) + 360) % 360)
+}
+
+/// Una caja en puntos de la hoja (`caja` es su papel, `giro` su `/Rotate`)
+/// en fracciones de lo que se ve de ella: 0..1 desde arriba a la izquierda.
+pub(crate) fn a_fraccion(caja: [f32; 4], giro: i64, c: [f32; 4]) -> [f32; 4] {
+    let [bx0, by0, bx1, by1] = caja;
+    let (w, h) = (bx1 - bx0, by1 - by0);
+    let u0 = (c[0] - bx0) / w;
+    let u1 = (c[2] - bx0) / w;
+    let v0 = (by1 - c[3]) / h;
+    let v1 = (by1 - c[1]) / h;
+    let (a0, b0, a1, b1) = match giro {
+        90 => (1.0 - v1, u0, 1.0 - v0, u1),
+        180 => (1.0 - u1, 1.0 - v1, 1.0 - u0, 1.0 - v0),
+        270 => (v0, 1.0 - u1, v1, 1.0 - u0),
+        _ => (u0, v0, u1, v1),
+    };
+    [a0, b0, a1, b1]
+}
+
+/// **El texto y los enlaces de una sola hoja** (desde 0), leyendo el indice
+/// del PDF una vez: lo que pide el lector para elegir texto y seguir
+/// enlaces en la hoja que se ve, sin leer el documento entero.
+pub fn hoja_con_enlaces(
+    bytes: &[u8],
+    i: usize,
+) -> Result<(PaginaDeTexto, Vec<crate::enlaces::Enlace>), SinTexto> {
+    let archivo = Archivo::leer(bytes).ok_or(SinTexto::NoEsPdf)?;
+    if archivo.cifrado() {
+        return Err(SinTexto::Cifrado);
+    }
+    let paginas = archivo.paginas();
+    let Some(&n) = paginas.get(i) else {
+        return Ok(Default::default());
+    };
+    let mut fuentes = Fuentes::default();
+    let texto = pagina(&archivo, n, &mut fuentes);
+    let enlaces = crate::enlaces::de_la_hoja_en(&archivo, &paginas, i);
+    Ok((texto, enlaces))
 }
 
 #[cfg(test)]
@@ -1249,6 +1281,21 @@ mod pruebas {
         );
         b = s.into_bytes();
         assert_eq!(de_bytes(&b), Err(SinTexto::Cifrado));
+    }
+
+    #[test]
+    fn una_sola_hoja_sale_con_su_texto_y_sus_enlaces() {
+        let b = una_hoja(
+            "BT /F1 10 Tf 20 50 Td (Hola) Tj ET",
+            "/Annots [<< /Subtype /Link /Rect [20 45 44 60] /A << /S /URI /URI (https://example.org) >> >>]",
+        );
+        let (t, e) = hoja_con_enlaces(&b, 0).unwrap();
+        assert_eq!(t, de_bytes(&b).unwrap()[0], "lo mismo que leyendo todas");
+        assert_eq!(e.len(), 1);
+        assert_eq!(e[0].destino, crate::enlaces::Destino::Web("https://example.org".into()));
+        // Casos negativos: una hoja que no existe sale vacia; un no-PDF, error.
+        assert_eq!(hoja_con_enlaces(&b, 3).unwrap(), Default::default());
+        assert_eq!(hoja_con_enlaces(b"nada", 0).unwrap_err(), SinTexto::NoEsPdf);
     }
 
     #[test]

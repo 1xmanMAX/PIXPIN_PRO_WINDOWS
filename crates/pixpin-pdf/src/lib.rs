@@ -18,6 +18,7 @@
 
 pub mod aligerar;
 pub mod cocido;
+pub mod enlaces;
 pub mod con_anotaciones;
 pub mod escribir;
 pub mod letra;
