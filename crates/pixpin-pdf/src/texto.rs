@@ -94,6 +94,45 @@ pub fn de_fichero(ruta: &std::path::Path) -> Result<Vec<PaginaDeTexto>, SinTexto
     de_bytes(&bytes)
 }
 
+/// **Un trozo de texto corrido**, para pasar el PDF a texto
+/// (`pixpin_docs::pdf_a_texto`, el `PdfAHtml.trozosDe` del movil): lo que
+/// escribe un `Tj` (o una cadena de un `TJ`), en **puntos** desde arriba a
+/// la izquierda de lo que se ve de la hoja (con su `/Rotate`). `x`..`fin`
+/// a lo ancho, `y` la linea base y `alto` el tamano de la letra. Solo sale
+/// lo que va derecho y de izquierda a derecha: un rotulo girado no es el
+/// texto corrido.
+#[derive(Debug, Clone, PartialEq)]
+pub struct TrozoDeTexto {
+    pub x: f32,
+    pub y: f32,
+    pub fin: f32,
+    pub alto: f32,
+    pub texto: String,
+    pub negrita: bool,
+    pub cursiva: bool,
+}
+
+/// **Los trozos de texto de cada hoja** (ver [`TrozoDeTexto`]). Una hoja
+/// sin texto (un escaneo) sale vacia, no falta.
+pub fn trozos_de_bytes(bytes: &[u8]) -> Result<Vec<Vec<TrozoDeTexto>>, SinTexto> {
+    let archivo = Archivo::leer(bytes).ok_or(SinTexto::NoEsPdf)?;
+    if archivo.cifrado() {
+        return Err(SinTexto::Cifrado);
+    }
+    let mut fuentes = Fuentes::default();
+    Ok(archivo
+        .paginas()
+        .into_iter()
+        .map(|n| leer_hoja(&archivo, n, &mut fuentes, true).1)
+        .collect())
+}
+
+/// Lo mismo, del fichero.
+pub fn trozos_de_fichero(ruta: &std::path::Path) -> Result<Vec<Vec<TrozoDeTexto>>, SinTexto> {
+    let bytes = std::fs::read(ruta).map_err(|_| SinTexto::NoEsPdf)?;
+    trozos_de_bytes(&bytes)
+}
+
 // ---------------------------------------------------------------------------
 // Matrices
 
@@ -144,6 +183,21 @@ struct Fuente {
     /// Lo que no dicen ni el `ToUnicode` ni las `Differences`, en MacRoman
     /// y no en WinAnsi (ver [`mac_roman`]).
     mac_roman: bool,
+    /// Por el nombre de la letra (`Arial-BoldMT`, `Times-Italic`): lo que
+    /// usa el PDF pasado a texto para los titulos en negrita.
+    negrita: bool,
+    cursiva: bool,
+}
+
+/// Negrita y cursiva por el nombre de la letra, que es lo unico que dicen
+/// casi todas (el `FontWeight` del descriptor no lo pone casi nadie).
+fn estilo_del_nombre(nombre: &[u8]) -> (bool, bool) {
+    let n = String::from_utf8_lossy(nombre).to_lowercase();
+    let negrita = ["bold", "black", "heavy", "semibold", "demi"]
+        .iter()
+        .any(|k| n.contains(k));
+    let cursiva = ["italic", "oblique"].iter().any(|k| n.contains(k));
+    (negrita, cursiva)
 }
 
 impl Fuente {
@@ -217,6 +271,9 @@ fn leer_fuente(archivo: &Archivo, d: &Dicc) -> Fuente {
         ancho_por_omision: 500.0,
         ..Default::default()
     };
+    if let Some(n) = nombre_de(en(d, b"BaseFont")) {
+        (f.negrita, f.cursiva) = estilo_del_nombre(n);
+    }
     let tipo0 = nombre_de(en(d, b"Subtype")) == Some(b"Type0");
     if tipo0 {
         f.dos_bytes = true;
@@ -761,6 +818,8 @@ struct Lectura<'a> {
     /// El final de la ultima letra puesta: `(x, y de la base, tamano)` en
     /// el espacio de la hoja, para decidir si hace falta un espacio.
     ultima: Option<(f32, f32, f32)>,
+    /// Los trozos de texto corrido, si se piden (`trozos_de_bytes`).
+    trozos: Option<Vec<TrozoDeTexto>>,
 }
 
 #[derive(Clone)]
@@ -776,8 +835,19 @@ struct EstadoTexto {
 }
 
 fn pagina(archivo: &Archivo, n: u32, fuentes: &mut Fuentes) -> PaginaDeTexto {
+    leer_hoja(archivo, n, fuentes, false).0
+}
+
+/// Una hoja leida: su texto con las cajas y, con `con_trozos`, sus trozos de
+/// texto corrido (sin ellos no se apunta nada de mas).
+fn leer_hoja(
+    archivo: &Archivo,
+    n: u32,
+    fuentes: &mut Fuentes,
+    con_trozos: bool,
+) -> (PaginaDeTexto, Vec<TrozoDeTexto>) {
     let Some(d) = archivo.dicc_de(Some(&Valor::Ref(n, 0))) else {
-        return PaginaDeTexto::default();
+        return Default::default();
     };
     let caja = caja_de(heredado(archivo, &d, b"CropBox"))
         .or_else(|| caja_de(heredado(archivo, &d, b"MediaBox")))
@@ -817,9 +887,10 @@ fn pagina(archivo: &Archivo, n: u32, fuentes: &mut Fuentes) -> PaginaDeTexto {
         giro,
         salida: PaginaDeTexto::default(),
         ultima: None,
+        trozos: con_trozos.then(Vec::new),
     };
     l.flujo(&datos, &recursos, IDENTIDAD, 0);
-    l.salida
+    (l.salida, l.trozos.unwrap_or_default())
 }
 
 impl Lectura<'_> {
@@ -975,6 +1046,9 @@ impl Lectura<'_> {
             return;
         };
         let paso = if fuente.dos_bytes { 2 } else { 1 };
+        // Para el trozo de texto corrido: donde empieza, que dice y donde acaba.
+        let apuntar = self.trozos.is_some();
+        let mut corrido: Option<(M, String, (f32, f32))> = None;
         for trozo in bytes.chunks(paso) {
             let codigo = trozo.iter().fold(0u32, |a, x| (a << 8) | *x as u32);
             let w0 = fuente.ancho(codigo) / 1000.0;
@@ -982,6 +1056,11 @@ impl Lectura<'_> {
             let trm = M([g.tam * g.th, 0.0, 0.0, g.tam, 0.0, g.rise])
                 .por(*tm)
                 .por(g.ctm);
+            if apuntar && let Some(letras) = fuente.letras(codigo) {
+                let c = corrido.get_or_insert_with(|| (trm, String::new(), (0.0, 0.0)));
+                c.1.extend(letras.chars().filter(|c| *c != '\0'));
+                c.2 = trm.punto(w0, 0.0);
+            }
             if let Some(letras) = fuente.letras(codigo) {
                 // La caja del glifo: su ancho y de la base un poco abajo a
                 // bastante arriba, que es donde caen las letras.
@@ -1002,6 +1081,53 @@ impl Lectura<'_> {
             let tx = (w0 * g.tam + g.tc + espacio) * g.th;
             *tm = M::mover(tx, 0.0).por(*tm);
         }
+        if let Some((trm, texto, fin)) = corrido
+            && let Some(t) = self.trozo_corrido(trm, texto, fin, &fuente)
+            && let Some(lista) = self.trozos.as_mut()
+        {
+            lista.push(t);
+        }
+    }
+
+    /// Un punto de la hoja en puntos de lo que se ve de ella, desde arriba a
+    /// la izquierda y con su giro.
+    fn a_la_vista(&self, p: (f32, f32)) -> (f32, f32) {
+        let f = a_fraccion(self.caja, self.giro, [p.0, p.1, p.0, p.1]);
+        let (w, h) = (self.caja[2] - self.caja[0], self.caja[3] - self.caja[1]);
+        let (w, h) = if matches!(self.giro, 90 | 270) { (h, w) } else { (w, h) };
+        (f[0] * w, f[1] * h)
+    }
+
+    /// El trozo de texto corrido de una cadena, si va derecho y de izquierda
+    /// a derecha (`PdfAHtml.trozosDe`): un rotulo girado o en espejo, no.
+    fn trozo_corrido(
+        &self,
+        trm: M,
+        texto: String,
+        fin: (f32, f32),
+        fuente: &Fuente,
+    ) -> Option<TrozoDeTexto> {
+        if texto.is_empty() {
+            return None;
+        }
+        let origen = self.a_la_vista(trm.punto(0.0, 0.0));
+        let eje_x = self.a_la_vista(trm.punto(1.0, 0.0));
+        let eje_y = self.a_la_vista(trm.punto(0.0, 1.0));
+        let (ax, ay) = (eje_x.0 - origen.0, eje_x.1 - origen.1);
+        let ancho = ax.hypot(ay);
+        let alto = (eje_y.0 - origen.0).hypot(eje_y.1 - origen.1);
+        if alto < 0.5 || ax <= 0.0 || ay.abs() > 0.2 * ancho {
+            return None;
+        }
+        Some(TrozoDeTexto {
+            x: origen.0,
+            y: origen.1,
+            fin: self.a_la_vista(fin).0,
+            alto,
+            texto,
+            negrita: fuente.negrita,
+            cursiva: fuente.cursiva,
+        })
     }
 
     fn poner(&mut self, letras: &str, caja: [f32; 4], base: f32, tam: f32) {
@@ -1130,6 +1256,79 @@ mod pruebas {
         // Las letras van de izquierda a derecha.
         let o = p[0].cajas[1].unwrap();
         assert!(o[0] >= h[2] - 1e-3);
+    }
+
+    // ---- Los trozos de texto corrido (el PDF pasado a texto) ----
+
+    fn uno(b: &[u8]) -> Vec<TrozoDeTexto> {
+        let mut hojas = trozos_de_bytes(b).unwrap();
+        assert_eq!(hojas.len(), 1);
+        hojas.remove(0)
+    }
+
+    fn cerca(a: f32, b: f32) -> bool {
+        (a - b).abs() < 0.01
+    }
+
+    #[test]
+    fn los_trozos_salen_en_puntos_desde_arriba_con_su_tamano() {
+        let t = uno(&una_hoja("BT /F1 10 Tf 20 50 Td (Hola) Tj ET", ""));
+        assert_eq!(t.len(), 1);
+        let t = &t[0];
+        assert_eq!(t.texto, "Hola");
+        // H 600 y «ola» 500 cada una, a 10 puntos: 21 de ancho.
+        assert!(cerca(t.x, 20.0) && cerca(t.fin, 41.0), "{t:?}");
+        // La base a 50 desde abajo en una hoja de 100: 50 desde arriba.
+        assert!(cerca(t.y, 50.0) && cerca(t.alto, 10.0), "{t:?}");
+        assert!(!t.negrita && !t.cursiva);
+    }
+
+    #[test]
+    fn lo_girado_no_es_texto_corrido_y_lo_derecho_si() {
+        let t = uno(&una_hoja(
+            "BT /F1 10 Tf 0 1 -1 0 100 10 Tm (Arriba) Tj ET\n\
+             BT /F1 10 Tf -1 0 0 1 150 70 Tm (Espejo) Tj ET\n\
+             BT /F1 10 Tf 20 50 Td (Derecho) Tj ET",
+            "",
+        ));
+        let textos: Vec<&str> = t.iter().map(|t| t.texto.as_str()).collect();
+        assert_eq!(textos, ["Derecho"]);
+    }
+
+    #[test]
+    fn en_una_hoja_girada_el_texto_que_se_ve_derecho_cuenta() {
+        // Con /Rotate 90 lo que va hacia arriba en el papel se ve de
+        // izquierda a derecha: la hoja vista mide 100 de ancho y 200 de alto.
+        let t = uno(&una_hoja("BT /F1 10 Tf 0 1 -1 0 50 20 Tm (Hola) Tj ET", "/Rotate 90"));
+        assert_eq!(t.len(), 1, "{t:?}");
+        assert!(cerca(t[0].x, 20.0) && cerca(t[0].y, 50.0) && cerca(t[0].fin, 41.0), "{t:?}");
+    }
+
+    #[test]
+    fn la_negrita_y_la_cursiva_salen_del_nombre_de_la_letra() {
+        let b = pdf(&[
+            "<< /Type /Catalog /Pages 2 0 R >>".into(),
+            "<< /Type /Pages /Kids [3 0 R] /Count 1 /MediaBox [0 0 200 100] >>".into(),
+            "<< /Type /Page /Parent 2 0 R /Resources << /Font << /F1 5 0 R /F2 6 0 R >> >> /Contents 4 0 R >>".into(),
+            flujo("BT /F1 12 Tf 10 80 Td (Titulo) Tj ET BT /F2 10 Tf 10 40 Td (nota) Tj ET"),
+            "<< /Type /Font /Subtype /Type1 /BaseFont /ABCDEF+Arial-BoldMT >>".into(),
+            "<< /Type /Font /Subtype /Type1 /BaseFont /Times-Italic >>".into(),
+        ]);
+        let t = uno(&b);
+        assert_eq!(t.len(), 2);
+        assert!(t[0].negrita && !t[0].cursiva, "{:?}", t[0]);
+        assert!(!t[1].negrita && t[1].cursiva, "{:?}", t[1]);
+        assert_eq!(estilo_del_nombre(b"Helvetica"), (false, false));
+    }
+
+    #[test]
+    fn sin_pdf_no_hay_trozos_y_un_escaneo_da_hojas_vacias() {
+        assert_eq!(trozos_de_bytes(b"esto no es un pdf"), Err(SinTexto::NoEsPdf));
+        let t = uno(&una_hoja("0 0 1 rg 10 10 50 50 re f", ""));
+        assert!(t.is_empty());
+        // Y pedir los trozos no cambia el texto de buscar.
+        let b = una_hoja("BT /F1 10 Tf 20 50 Td (Hola mundo) Tj ET", "");
+        assert_eq!(de_bytes(&b).unwrap()[0].texto, "Hola mundo");
     }
 
     #[test]

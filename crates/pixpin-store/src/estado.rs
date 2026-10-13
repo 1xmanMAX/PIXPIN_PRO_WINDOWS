@@ -45,6 +45,10 @@ pub struct Estado {
     /// entonces manda el tema de Windows, como en Android manda el del
     /// telefono.
     pub lectores_oscuros: Option<bool>,
+    /// **La velocidad de la pagina que sube sola** en los lectores, en
+    /// palabras por minuto (`auto:ppm` del movil): es del equipo, no del
+    /// documento. `None` es la de fabrica (230).
+    pub palabras_por_minuto: Option<u32>,
 }
 
 fn fichero(ubicacion: &Ubicacion) -> PathBuf {
@@ -93,6 +97,7 @@ mod pruebas {
             chat_ventana: Some([10, 20, 900, 700]),
             escala_interfaz: Some(125),
             lectores_oscuros: Some(true),
+            palabras_por_minuto: Some(260),
         };
         guardar(&u, &e).unwrap();
         assert_eq!(cargar(&u), e);

@@ -19,6 +19,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod auto_desplazar;
 pub mod buscar;
 pub mod documento;
 pub mod docx;
@@ -37,6 +38,8 @@ pub mod md_tabla;
 pub mod md_tabla_html;
 pub mod md_vivo;
 pub mod pdf;
+/// Un PDF pasado a texto para leerlo como un Word (Android v0.92-v0.93).
+pub mod pdf_a_texto;
 pub mod tabla;
 pub mod vista;
 pub mod voz_alta;

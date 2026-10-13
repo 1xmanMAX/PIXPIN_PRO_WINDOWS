@@ -279,6 +279,15 @@ impl Estado {
                 let n = etiqueta.as_bytes()[1] - b'0';
                 self.clase = Clase::Titulo(n);
             }
+            // La marca de cada hoja de un PDF leido como texto
+            // (`pdf_a_texto`) y los avisos de la pagina: en gris, como nota.
+            "p" if atributo(atributos, "class").is_some_and(|c| {
+                c.split_whitespace()
+                    .any(|k| k == crate::pdf_a_texto::CLASE_DE_HOJA || k == "nota")
+            }) =>
+            {
+                self.clase = Clase::Nota
+            }
             "li" => self.clase = Clase::Lista,
             "blockquote" => self.clase = Clase::Cita,
             "pre" => self.clase = Clase::Codigo,
@@ -612,6 +621,16 @@ mod pruebas {
         assert_eq!(b.len(), 2);
         assert_eq!(b[0].texto(), "uno dos");
         assert_eq!(b[1].texto().trim(), "tres");
+    }
+
+    #[test]
+    fn la_marca_de_hoja_de_un_pdf_es_una_nota_y_un_parrafo_cualquiera_no() {
+        let b = bloques(
+            "<p class=\"hoja-pdf\" id=\"hoja-1\" aria-hidden=\"true\">Hoja 1</p>\
+             <h1>Título</h1><p class=\"otra\">Texto</p><p class=\"nota\">Sin texto</p>",
+        );
+        let clases: Vec<Clase> = b.iter().map(|x| x.clase).collect();
+        assert_eq!(clases, [Clase::Nota, Clase::Titulo(1), Clase::Parrafo, Clase::Nota]);
     }
 
     #[test]

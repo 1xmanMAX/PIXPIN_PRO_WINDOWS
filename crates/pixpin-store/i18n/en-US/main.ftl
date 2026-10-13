@@ -599,6 +599,19 @@ lector-espacio-tope = No more room on that side
 lector-espacio-nada = That side has no space left
 lector-sin-lado = Sideways locked: it only scrolls up and down
 lector-con-lado = It moves everywhere
+lector-auto = Scroll by itself (D)
+lector-auto-ppm = { $ppm } words/min
+lector-auto-quedan = Done in { $cuanto } · at { $hora }
+lector-auto-menos-de-un-minuto = under 1 min
+lector-auto-terminado = Finished
+lector-auto-contando = Counting the words…
+lector-ver-como-texto = View as text (like a Word file)
+lector-pasando-a-texto = Turning the PDF into text…
+lector-texto-escaneo = This PDF has no text to extract: it is probably a scan (a photo of the pages)
+lector-texto-cifrado = The PDF is password protected
+lector-texto-no-se-lee = The PDF could not be read
+lector-ver-pdf-original = View the original PDF, as pages
+lector-hoja = Page
 sinc-presencia-apagada = Presence is off in the settings ([sincro] presencia = false): you can sync from here, but the phone will not find this computer or be able to call it.
 bandeja-abrir-documento = Open a document…
 
