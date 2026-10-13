@@ -46,6 +46,14 @@ pub fn leer(ruta: &Path) -> Result<CadDocument, String> {
     }
 }
 
+/// **El plano como DXF** (para exportar un DWG a algo que abre cualquier
+/// programa de CAD). Bloquea y puede caerse con un fichero roto: proceso
+/// aparte, como al abrir.
+pub fn a_dxf(entrada: &Path, salida: &Path) -> Result<(), String> {
+    let doc = leer(entrada)?;
+    opencadcodec::DxfWriter::new(&doc).write_to_file(salida).map_err(|e| e.to_string())
+}
+
 #[cfg(test)]
 mod pruebas {
     use super::*;

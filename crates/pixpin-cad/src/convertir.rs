@@ -12,7 +12,7 @@
 use std::collections::HashSet;
 
 use opencadcodec::entities::{BoundaryEdge, EntityType};
-use opencadcodec::types::{Color, Matrix3, Vector3};
+use opencadcodec::types::{Color, LineWeight, Matrix3, Vector3};
 use opencadcodec::CadDocument;
 
 use crate::modelo::{Constructor, Modelo};
@@ -158,7 +158,55 @@ struct Contexto<'a> {
     capa: Option<&'a str>,
     /// El color del INSERT ya resuelto, para lo *ByBlock*.
     color: u32,
+    /// El grosor del INSERT ya resuelto (centesimas de mm; [`GROSOR_NORMAL`]),
+    /// para lo *ByBlock*. Solo lo mira la conversion por capas.
+    grosor: i16,
     profundidad: u32,
+}
+
+/// El grosor «por defecto» de AutoCAD (una raya fina).
+pub const GROSOR_NORMAL: i16 = -3;
+
+/// **La conversion por capas** (para exportar a HTML, 13-oct-2026): un
+/// [`Constructor`] por cada capa y grosor, para poder encender y apagar las
+/// capas en la pagina y pintar cada raya con su grosor. El visor no la usa:
+/// a la tarjeta le da igual de que capa es cada raya.
+struct PorCapas {
+    actual: (String, i16),
+    aparcados: std::collections::HashMap<(String, i16), Constructor>,
+    imagenes: Vec<ImagenDelPlano>,
+}
+
+/// Un trozo del plano: lo de una capa con un grosor.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Grupo {
+    pub capa: String,
+    /// Centesimas de milimetro ([`GROSOR_NORMAL`]: el de por defecto).
+    pub grosor: i16,
+    /// Si la capa esta encendida en el plano (apagada o congelada: no).
+    pub encendida: bool,
+    pub modelo: Modelo,
+}
+
+/// Una imagen puesta en el plano (IMAGE): el fichero que dice y donde cae.
+/// Las rayas se convierten; la imagen la lee quien exporta.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ImagenDelPlano {
+    pub capa: String,
+    /// La ruta tal como la guarda el plano (puede ser relativa a el).
+    pub ruta: String,
+    /// La esquina de abajo a la izquierda y los lados (ancho y alto
+    /// enteros), en el plano.
+    pub esquina: [f64; 2],
+    pub u: [f64; 2],
+    pub v: [f64; 2],
+}
+
+/// El plano partido por capas, con sus imagenes.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct PlanoPorCapas {
+    pub grupos: Vec<Grupo>,
+    pub imagenes: Vec<ImagenDelPlano>,
 }
 
 /// Lo que da la conversion, ademas del modelo.
@@ -172,6 +220,8 @@ pub struct Cuentas {
 
 pub struct Convertidor<'d> {
     doc: &'d CadDocument,
+    /// `Some`: la conversion por capas (ver [`PorCapas`]).
+    por_capas: Option<PorCapas>,
     c: Constructor,
     pub cuentas: Cuentas,
     textos: Textos,
@@ -192,15 +242,83 @@ impl<'d> Convertidor<'d> {
             textos: Textos::nuevo(),
             abiertos: HashSet::new(),
             copias_minsert: 0,
+            por_capas: None,
+        }
+    }
+
+    /// Para [`Convertidor::convertir_por_capas`]: tambien lo de las capas
+    /// apagadas, que en la pagina se pueden encender.
+    pub fn por_capas(doc: &'d CadDocument) -> Self {
+        let mut c = Self::nuevo(doc);
+        c.por_capas = Some(PorCapas { actual: ("0".into(), GROSOR_NORMAL), aparcados: Default::default(), imagenes: Vec::new() });
+        c
+    }
+
+    /// **El plano partido por capas y grosores**, cada trozo con su modelo
+    /// (cada uno con su origen). Ordenados por capa y grosor.
+    pub fn convertir_por_capas(mut self) -> PlanoPorCapas {
+        if self.por_capas.is_none() {
+            self.por_capas = Some(PorCapas { actual: ("0".into(), GROSOR_NORMAL), aparcados: Default::default(), imagenes: Vec::new() });
+        }
+        self.recorrer();
+        let Some(pc) = self.por_capas.take() else { return PlanoPorCapas::default() };
+        let unidades = self.c.unidades;
+        let doc = self.doc;
+        let mut todos: Vec<((String, i16), Constructor)> = pc.aparcados.into_iter().collect();
+        todos.push((pc.actual, self.c));
+        let mut grupos: Vec<Grupo> = todos
+            .into_iter()
+            .map(|((capa, grosor), mut c)| {
+                c.unidades = unidades;
+                let encendida = doc.layers.get(&capa).is_none_or(|l| l.is_visible());
+                Grupo { capa, grosor, encendida, modelo: c.terminar() }
+            })
+            .filter(|g| !g.modelo.vacio())
+            .collect();
+        grupos.sort_by(|a, b| a.capa.to_lowercase().cmp(&b.capa.to_lowercase()).then(a.grosor.cmp(&b.grosor)));
+        PlanoPorCapas { grupos, imagenes: pc.imagenes }
+    }
+
+    /// Pasa a dibujar en el constructor de `clave` (la conversion por capas)
+    /// y dice cual habia.
+    fn cambiar_a(&mut self, clave: (String, i16)) -> Option<(String, i16)> {
+        let pc = self.por_capas.as_mut()?;
+        if pc.actual == clave {
+            return None;
+        }
+        let nuevo = pc.aparcados.remove(&clave).unwrap_or_else(Constructor::nuevo);
+        let viejo = std::mem::replace(&mut self.c, nuevo);
+        let antes = std::mem::replace(&mut pc.actual, clave);
+        pc.aparcados.insert(antes.clone(), viejo);
+        Some(antes)
+    }
+
+    /// El grosor de una entidad, en centesimas de mm.
+    fn grosor_de(&self, lw: &LineWeight, capa: &str, del_bloque: i16) -> i16 {
+        match lw {
+            LineWeight::ByBlock => del_bloque,
+            LineWeight::Default => GROSOR_NORMAL,
+            LineWeight::Value(v) if *v >= 0 => *v,
+            LineWeight::Value(_) | LineWeight::ByLayer => match self.doc.layers.get(capa).map(|l| &l.line_weight) {
+                Some(LineWeight::Value(v)) if *v >= 0 => *v,
+                _ => GROSOR_NORMAL,
+            },
         }
     }
 
     /// El espacio modelo; si esta vacio, el papel.
     pub fn convertir(mut self) -> (Modelo, Cuentas) {
+        self.recorrer();
+        let cuentas = self.cuentas.clone();
+        (self.c.terminar(), cuentas)
+    }
+
+    fn recorrer(&mut self) {
         let raiz = Contexto {
             m: Afin::IDENTIDAD,
             capa: None,
             color: COLOR_7,
+            grosor: GROSOR_NORMAL,
             profundidad: 0,
         };
         // Lo que mide el plano (de su cabecera, si es creible): para trocear
@@ -221,12 +339,11 @@ impl<'d> Convertidor<'d> {
             }
             self.entidad(e, &raiz);
         }
-        let cuentas = self.cuentas.clone();
-        (self.c.terminar(), cuentas)
     }
 
     fn capa_visible(&self, nombre: &str) -> bool {
-        self.doc.layers.get(nombre).is_none_or(|l| l.is_visible())
+        // Por capas va todo: en la pagina las apagadas se pueden encender.
+        self.por_capas.is_some() || self.doc.layers.get(nombre).is_none_or(|l| l.is_visible())
     }
 
     /// La capa efectiva y el color de una entidad.
@@ -270,6 +387,18 @@ impl<'d> Convertidor<'d> {
             return;
         };
         self.cuentas.entidades += 1;
+        if self.por_capas.is_some() {
+            // Cada cosa a lo de su capa y su grosor, y lo de despues (los
+            // atributos de un INSERT, la entidad siguiente) a lo de antes.
+            let grosor = self.grosor_de(&e.common().line_weight, capa, cx.grosor);
+            let cx = &Contexto { grosor, ..cx.clone() };
+            let antes = self.cambiar_a((capa.to_string(), grosor));
+            self.entidad_sin_medir(e, cx, capa, color);
+            if let Some(a) = antes {
+                self.cambiar_a(a);
+            }
+            return;
+        }
         let antes = self.c.vertices();
         self.entidad_sin_medir(e, cx, capa, color);
         if !matches!(e, EntityType::Insert(_) | EntityType::Dimension(_)) {
@@ -430,6 +559,7 @@ impl<'d> Convertidor<'d> {
                         m,
                         capa: Some(capa),
                         color,
+                        grosor: cx.grosor,
                         profundidad: cx.profundidad + 1,
                     };
                     self.bloque(&b.block_name, &hijo);
@@ -493,6 +623,24 @@ impl<'d> Convertidor<'d> {
                         pts.push(pts[0]);
                         self.linea(&pts, color);
                     }
+                }
+            }
+            // Una imagen: por capas se apunta, para que quien exporta la lea.
+            EntityType::RasterImage(im) if self.por_capas.is_some() => {
+                let o = m.p3(&im.insertion_point);
+                let (w, h) = (im.size.x.max(0.0), im.size.y.max(0.0));
+                let lado = |v: &Vector3, n: f64| {
+                    let a = m.punto(v.x * n, v.y * n, v.z * n);
+                    let z = m.punto(0.0, 0.0, 0.0);
+                    [a[0] - z[0], a[1] - z[1]]
+                };
+                let (u, v) = (lado(&im.u_vector, w), lado(&im.v_vector, h));
+                if let Some(pc) = self.por_capas.as_mut()
+                    && w > 0.0
+                    && h > 0.0
+                    && !im.file_path.trim().is_empty()
+                {
+                    pc.imagenes.push(ImagenDelPlano { capa: capa.to_string(), ruta: im.file_path.clone(), esquina: o, u, v });
                 }
             }
             otro => self.c.no_dibujado(&otro.as_entity().entity_type().to_string()),
@@ -576,6 +724,7 @@ impl<'d> Convertidor<'d> {
                 m,
                 capa: Some(capa),
                 color,
+                grosor: cx.grosor,
                 profundidad: cx.profundidad + 1,
             };
             self.bloque(&ins.block_name, &hijo);
@@ -835,6 +984,12 @@ pub fn polilinea_2d(v: &[([f64; 2], f64)], cerrada: bool) -> Vec<[f64; 2]> {
         teselar::tramo_bulge(p, q, b, &mut out);
     }
     out
+}
+
+/// Abre y convierte por capas (para exportar). Bloquea: proceso aparte.
+pub fn convertir_fichero_por_capas(ruta: &std::path::Path) -> Result<PlanoPorCapas, String> {
+    let doc = crate::leer::leer(ruta)?;
+    Ok(Convertidor::por_capas(&doc).convertir_por_capas())
 }
 
 /// Abre y convierte. Bloquea: hilo o proceso aparte.
