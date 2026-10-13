@@ -2396,3 +2396,21 @@ cc-no-encontrada = The invitation was not found. Check the code and that you are
 cc-se-corto = Interrupted: { $motivo }
 cc-abrir-chat = Open chat
 cc-no-se-abre = That chat is not here yet: sync again.
+
+## Pins like on Android (batch 6): color, stickers, paged note and own words
+pin-v2-pegatina = Sticker
+pin-v2-sin-pegatina = No sticker
+pin-v2-paginas = Pages
+pin-v2-leer-seguida = Read continuously
+pin-v2-pagina = Page
+pin-v2-minutos = min
+pin-color-copiado = Copied
+ajustes2-sec-pinear = Pinning
+ajustes2-sec-pinear-sub = The words that become a tool when pinned.
+ajustes2-g-palabras = Magic words
+ajustes2-ayuda-palabras = Copy one on its own and pin it: the tool opens. Separate them with commas.
+ajustes2-palabras-ninguna = None
+ajustes2-palabras-cambiar = Change
+ajustes2-palabras-fabrica = Factory words
+ajustes2-palabras-volver = Reset
+ajustes2-palabras-marcador = word, another word…

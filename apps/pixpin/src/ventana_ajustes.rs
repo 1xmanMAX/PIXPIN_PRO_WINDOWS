@@ -159,6 +159,7 @@ const DESHACER: Icono = Icono {
 enum Seccion {
     General,
     Captura,
+    Pinear,
     Lienzo,
     Voz,
     Atajos,
@@ -168,9 +169,10 @@ enum Seccion {
     Avanzado,
 }
 
-const SECCIONES: [Seccion; 9] = [
+const SECCIONES: [Seccion; 10] = [
     Seccion::General,
     Seccion::Captura,
+    Seccion::Pinear,
     Seccion::Lienzo,
     Seccion::Voz,
     Seccion::Atajos,
@@ -185,6 +187,7 @@ impl Seccion {
         match self {
             Seccion::General => "general",
             Seccion::Captura => "captura",
+            Seccion::Pinear => "pinear",
             Seccion::Lienzo => "lienzo",
             Seccion::Voz => "voz",
             Seccion::Atajos => "atajos",
@@ -207,6 +210,7 @@ impl Seccion {
         match self {
             Seccion::General => &mi::SETTINGS,
             Seccion::Captura => &mi::CROP,
+            Seccion::Pinear => &mi::PUSH_PIN,
             Seccion::Lienzo => &mi::DRAW,
             Seccion::Voz => &mi::MIC,
             Seccion::Atajos => &TECLADO,
@@ -246,6 +250,13 @@ enum Clave {
     AnadirIgnorado,
     /// Una de `regiones`, por su posicion: su atajo se graba aqui.
     Region(usize),
+    // Pinear (Tanda 6)
+    /// Las palabras magicas de una herramienta, por su indice en
+    /// `MiniApp::TODAS` (`PalabrasMagicasCard` del movil: una fila por
+    /// herramienta).
+    PalabrasDe(u8),
+    /// «De fabrica»: todas las palabras como vienen.
+    PalabrasFabrica,
     // Lienzo
     ImanActivo,
     ImanEsquinas,
@@ -294,6 +305,7 @@ impl Clave {
                 | Clave::Region(_)
                 | Clave::Predeterminada
                 | Clave::Fichero
+                | Clave::PalabrasFabrica
         )
     }
 }
@@ -847,6 +859,36 @@ fn filas_de_seccion(s: Seccion, a: &Ajustes, cx: &Contexto) -> Vec<(Clave, Fila)
             }
             v
         }
+        Seccion::Pinear => {
+            use pixpin_pin::magia::{self, MiniApp};
+            let palabras = magia::leer(a.pinear.guardadas());
+            let mut v = vec![grupo(t, "ajustes2-g-palabras")];
+            for (i, app) in MiniApp::TODAS.into_iter().enumerate() {
+                let suyas = magia::de_la_app(&palabras, app);
+                v.push(op(
+                    a,
+                    Clave::PalabrasDe(i as u8),
+                    tt(nombre_de_herramienta(app)),
+                    if suyas.is_empty() {
+                        tt("ajustes2-palabras-ninguna")
+                    } else {
+                        suyas.join(", ")
+                    },
+                    Control::Entrada {
+                        marcador: tt("ajustes2-palabras-marcador"),
+                        boton: tt("ajustes2-palabras-cambiar"),
+                    },
+                ));
+            }
+            v.push(op(
+                a,
+                Clave::PalabrasFabrica,
+                tt("ajustes2-palabras-fabrica"),
+                tt("ajustes2-ayuda-palabras"),
+                Control::Boton(tt("ajustes2-palabras-volver")),
+            ));
+            v
+        }
         Seccion::Apariencia => vec![
             grupo(t, "ajustes2-g-tema"),
             op(
@@ -1041,13 +1083,80 @@ fn restablecer(clave: Clave, a: &mut Ajustes) {
         Clave::Paneo => a.rendimiento.paneo_por_composicion = d.rendimiento.paneo_por_composicion,
         Clave::CorteMinimo => a.tinta.corte_minimo = d.tinta.corte_minimo,
         Clave::Beta => a.tinta.beta = d.tinta.beta,
+        Clave::PalabrasDe(i) => {
+            if let Some(app) = pixpin_pin::magia::MiniApp::por_indice(i) {
+                let de_fabrica =
+                    pixpin_pin::magia::de_la_app(&pixpin_pin::magia::por_defecto(), app);
+                let de_fabrica: Vec<&str> = de_fabrica.iter().map(String::as_str).collect();
+                poner_palabras(a, app, &de_fabrica);
+            }
+        }
         Clave::Grupo
         | Clave::Carpeta
         | Clave::Ignorado(_)
         | Clave::AnadirIgnorado
         | Clave::Region(_)
         | Clave::Predeterminada
-        | Clave::Fichero => {}
+        | Clave::Fichero
+        | Clave::PalabrasFabrica => {}
+    }
+}
+
+/// El nombre de una herramienta, el mismo del menu «Convertir en…».
+fn nombre_de_herramienta(app: pixpin_pin::magia::MiniApp) -> &'static str {
+    use pixpin_pin::magia::MiniApp;
+    match app {
+        MiniApp::Temporizador => "pin-herramienta-temporizador",
+        MiniApp::Cronometro => "pin-herramienta-cronometro",
+        MiniApp::Tareas => "pin-herramienta-tareas",
+        MiniApp::Contador => "pin-herramienta-contador",
+        MiniApp::Gastos => "pin-herramienta-gastos",
+        MiniApp::Pizarra => "pin-herramienta-pizarra",
+        MiniApp::Ruleta => "pin-herramienta-ruleta",
+        MiniApp::Lienzo => "pin-herramienta-lienzo",
+        MiniApp::Hoja => "pin-herramienta-hoja",
+    }
+}
+
+/// Cambia las palabras de una herramienta (`conLasDe`) y las deja en los
+/// ajustes. Si con eso quedan las de fabrica, se guarda «de fabrica» y no
+/// una copia: asi no sale el punto azul por algo que no ha cambiado.
+fn poner_palabras(a: &mut Ajustes, app: pixpin_pin::magia::MiniApp, nuevas: &[&str]) {
+    use pixpin_pin::magia;
+    let actuales = magia::leer(a.pinear.guardadas());
+    let cambiadas = magia::con_las_de(&actuales, app, nuevas);
+    a.pinear = if cambiadas == magia::por_defecto() {
+        pixpin_store::ajustes::Pinear::default()
+    } else {
+        pixpin_store::ajustes::Pinear {
+            palabras_propias: true,
+            palabras: magia::escribir(&cambiadas),
+        }
+    };
+}
+
+/// Lo que se escribe en la caja de una herramienta, partido por comas y
+/// renglones como en el dialogo del movil.
+fn poner_palabras_escritas(a: &mut Ajustes, clave: Clave, escrito: &str) {
+    if let Clave::PalabrasDe(i) = clave
+        && let Some(app) = pixpin_pin::magia::MiniApp::por_indice(i)
+    {
+        poner_palabras(a, app, &pixpin_pin::magia::partir_escrito(escrito));
+    }
+}
+
+/// Lo que sale en la caja de una herramienta al ir a escribir: sus palabras
+/// de ahora, para corregirlas en vez de teclearlas de nuevo (el dialogo del
+/// movil se abre con ellas puestas).
+fn palabras_para_editar(a: &Ajustes, clave: Clave) -> String {
+    match clave {
+        Clave::PalabrasDe(i) => pixpin_pin::magia::MiniApp::por_indice(i)
+            .map(|app| {
+                pixpin_pin::magia::de_la_app(&pixpin_pin::magia::leer(a.pinear.guardadas()), app)
+                    .join(", ")
+            })
+            .unwrap_or_default(),
+        _ => String::new(),
     }
 }
 
@@ -1555,6 +1664,20 @@ fn abrir(
                     // Cualquier clic termina una grabacion de atajo en curso
                     // y decide a donde va lo que se escriba.
                     estado.capturando = None;
+                    let foco_antes = estado.foco;
+                    let es_palabras =
+                        |i: usize| matches!(filas.get(i), Some((Clave::PalabrasDe(_), _)));
+                    // «Cambiar» en las palabras de una herramienta: la primera
+                    // vez abre su caja con lo de ahora; con la caja abierta,
+                    // guarda lo escrito (el Aceptar del dialogo del movil).
+                    let guardar_palabras = match golpe {
+                        Some(Golpe::Fila(i, Parte::Pulsar))
+                            if es_palabras(i) && foco_antes == Foco::Entrada(i) =>
+                        {
+                            Some(i)
+                        }
+                        _ => None,
+                    };
                     estado.foco = match golpe {
                         Some(Golpe::Buscador) | Some(Golpe::BorrarBusqueda) => Foco::Buscador,
                         Some(Golpe::Fila(i, Parte::Escribir)) => Foco::Entrada(i),
@@ -1564,8 +1687,33 @@ fn abrir(
                         {
                             Foco::Entrada(i)
                         }
+                        Some(Golpe::Fila(i, Parte::Pulsar))
+                            if es_palabras(i) && guardar_palabras.is_none() =>
+                        {
+                            Foco::Entrada(i)
+                        }
                         _ => Foco::Nada,
                     };
+                    if let Some(i) = guardar_palabras
+                        && let Some((clave, _)) = filas.get(i).cloned()
+                    {
+                        let escrito = std::mem::take(&mut estado.entrada);
+                        copia.cambiar(|a| poner_palabras_escritas(a, clave, &escrito));
+                    } else if estado.foco != foco_antes {
+                        // Al salir de la caja de unas palabras, lo escrito
+                        // sin guardar se olvida (como Cancelar); al entrar
+                        // en una, sale con sus palabras de ahora.
+                        if let Foco::Entrada(j) = foco_antes
+                            && es_palabras(j)
+                        {
+                            estado.entrada.clear();
+                        }
+                        if let Foco::Entrada(i) = estado.foco
+                            && let Some((clave @ Clave::PalabrasDe(_), _)) = filas.get(i)
+                        {
+                            estado.entrada = palabras_para_editar(&copia.a, *clave);
+                        }
+                    }
                     match golpe {
                         Some(Golpe::Seccion(i)) => {
                             estado.seccion = i;
@@ -1611,6 +1759,12 @@ fn abrir(
                                             anadir_ignorado(a, &texto);
                                         });
                                     }
+                                    // Ya resuelto arriba, con el foco.
+                                    Parte::Pulsar if matches!(clave, Clave::PalabrasDe(_)) => {}
+                                    Parte::Pulsar if clave == Clave::PalabrasFabrica => copia
+                                        .cambiar(|a| {
+                                            a.pinear = pixpin_store::ajustes::Pinear::default()
+                                        }),
                                     Parte::Pulsar => pulsar(clave, &copia.a, ubicacion),
                                 }
                             }
@@ -1690,6 +1844,12 @@ fn abrir(
                                     estado.busqueda.clear();
                                     estado.desplazamiento = 0;
                                 } else {
+                                    // Escape en las palabras es Cancelar.
+                                    if let Foco::Entrada(i) = estado.foco
+                                        && matches!(filas.get(i), Some((Clave::PalabrasDe(_), _)))
+                                    {
+                                        estado.entrada.clear();
+                                    }
                                     estado.foco = Foco::Nada;
                                 }
                             }
@@ -1710,6 +1870,16 @@ fn abrir(
                                     copia.cambiar(|a| {
                                         anadir_ignorado(a, &texto);
                                     });
+                                }
+                                // Intro guarda las palabras y cierra la caja.
+                                Foco::Entrada(i)
+                                    if matches!(filas.get(i), Some((Clave::PalabrasDe(_), _))) =>
+                                {
+                                    let texto = std::mem::take(&mut estado.entrada);
+                                    if let Some((clave, _)) = filas.get(i).cloned() {
+                                        copia.cambiar(|a| poner_palabras_escritas(a, clave, &texto));
+                                    }
+                                    estado.foco = Foco::Nada;
                                 }
                                 _ => estado.foco = Foco::Nada,
                             },
@@ -2571,7 +2741,9 @@ fn dibujar_fila(
                     if enfocada { AZUL } else { BORDE },
                     e,
                 );
-                let (texto, color) = if v.estado.entrada.is_empty() {
+                // Lo escrito, solo en la caja que tiene el foco: hay varias
+                // (programas, palabras) y comparten el mismo hueco.
+                let (texto, color) = if v.estado.entrada.is_empty() || !enfocada {
                     (marcador.clone(), TENUE)
                 } else {
                     (v.estado.entrada.clone(), TINTA)
@@ -2937,6 +3109,53 @@ mod pruebas {
     }
 
     #[test]
+    fn las_palabras_de_una_herramienta_se_cambian_y_vuelven_a_fabrica() {
+        let t = textos();
+        let cx = cx(&t);
+        let mut a = Ajustes::default();
+        let filas = filas_de_seccion(Seccion::Pinear, &a, &cx);
+        // Una fila por herramienta y la de fabrica, sin punto azul.
+        assert_eq!(
+            filas.iter().filter(|(c, _)| matches!(c, Clave::PalabrasDe(_))).count(),
+            pixpin_pin::magia::MiniApp::TODAS.len()
+        );
+        let (_, reloj) = &filas[1];
+        assert_eq!(reloj.etiqueta, "Temporizador");
+        assert!(reloj.ayuda.contains("pomodoro"), "{}", reloj.ayuda);
+        // La caja se abre con las de ahora.
+        assert!(palabras_para_editar(&a, Clave::PalabrasDe(0)).contains("time"));
+        // Cambiar: punto azul, y lo guardado es el formato del movil.
+        poner_palabras_escritas(&mut a, Clave::PalabrasDe(0), "Reloj, pomodoro");
+        assert_eq!(a.pinear.guardadas().map(|g| g.contains("reloj=TIMER")), Some(true));
+        let filas = filas_de_seccion(Seccion::Pinear, &a, &cx);
+        assert!(filas[1].1.cambiado);
+        assert!(!filas[2].1.cambiado, "caso negativo: el cronometro no cambio");
+        // Restablecer esa fila deja TODO de fabrica, no una copia.
+        restablecer(Clave::PalabrasDe(0), &mut a);
+        assert_eq!(a.pinear, pixpin_store::ajustes::Pinear::default());
+        // Sin ninguna palabra es una respuesta valida y distinta de fabrica.
+        poner_palabras_escritas(&mut a, Clave::PalabrasDe(6), "");
+        let mias = pixpin_pin::magia::leer(a.pinear.guardadas());
+        assert_eq!(
+            pixpin_pin::magia::detectar("ruleta", &mias),
+            None,
+            "la ruleta se quedo sin palabras"
+        );
+        restablecer_seccion(Seccion::Pinear, &mut a, &cx);
+        assert_eq!(a.pinear.guardadas(), None);
+        // Y el buscador las encuentra por su palabra.
+        let estado = Estado {
+            busqueda: "pomodoro".into(),
+            ..Estado::default()
+        };
+        assert!(
+            filas_actuales(&estado, &a, &cx)
+                .iter()
+                .any(|(c, _)| *c == Clave::PalabrasDe(0))
+        );
+    }
+
+    #[test]
     fn deshacer_vuelve_paso_a_paso_y_lo_que_no_cambia_no_cuenta() {
         let mut c = Copia {
             a: Ajustes::default(),
@@ -3026,7 +3245,7 @@ mod pruebas {
             (
                 "atajos",
                 Estado {
-                    seccion: 4,
+                    seccion: 5,
                     capturando: Some(3),
                     ..Estado::default()
                 },
@@ -3035,7 +3254,7 @@ mod pruebas {
             (
                 "avanzado",
                 Estado {
-                    seccion: 8,
+                    seccion: 9,
                     ..Estado::default()
                 },
                 None,
@@ -3043,7 +3262,17 @@ mod pruebas {
             (
                 "apps",
                 Estado {
-                    seccion: 6,
+                    seccion: 7,
+                    ..Estado::default()
+                },
+                None,
+            ),
+            (
+                "pinear",
+                Estado {
+                    seccion: 2,
+                    foco: Foco::Entrada(0),
+                    entrada: "reloj, pomodoro".into(),
                     ..Estado::default()
                 },
                 None,
@@ -3055,7 +3284,9 @@ mod pruebas {
             if let Foco::Entrada(_) = estado.foco {
                 let i = filas
                     .iter()
-                    .position(|(c, _)| *c == Clave::AnadirIgnorado)
+                    .position(|(c, _)| {
+                        *c == Clave::AnadirIgnorado || *c == Clave::PalabrasDe(0)
+                    })
                     .unwrap();
                 estado.foco = Foco::Entrada(i);
             }

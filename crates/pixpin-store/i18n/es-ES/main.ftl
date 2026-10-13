@@ -2397,3 +2397,21 @@ cc-no-encontrada = No se encontró la invitación. Comprueba el código y que es
 cc-se-corto = Se cortó: { $motivo }
 cc-abrir-chat = Abrir chat
 cc-no-se-abre = Ese chat aún no está aquí: sincroniza otra vez.
+
+## Pines como en Android (Tanda 6): color, pegatinas, nota en páginas y palabras propias
+pin-v2-pegatina = Pegatina
+pin-v2-sin-pegatina = Sin pegatina
+pin-v2-paginas = Páginas
+pin-v2-leer-seguida = Leer seguida
+pin-v2-pagina = Página
+pin-v2-minutos = min
+pin-color-copiado = Copiado
+ajustes2-sec-pinear = Pinear
+ajustes2-sec-pinear-sub = Las palabras que se convierten en herramienta al pinearlas.
+ajustes2-g-palabras = Palabras mágicas
+ajustes2-ayuda-palabras = Copia una sola y pinéala: se abre la herramienta. Sepáralas con comas.
+ajustes2-palabras-ninguna = Ninguna
+ajustes2-palabras-cambiar = Cambiar
+ajustes2-palabras-fabrica = Palabras de fábrica
+ajustes2-palabras-volver = De fábrica
+ajustes2-palabras-marcador = palabra, otra palabra…

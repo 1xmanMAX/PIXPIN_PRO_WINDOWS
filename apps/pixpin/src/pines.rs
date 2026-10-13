@@ -18,6 +18,8 @@ mod sacar;
 // El panel «Pines abiertos» (rediseno v2).
 mod abiertos;
 mod dispositivo;
+// La pegatina y la pagina de la nota de cada pin (Tanda 6).
+mod extras;
 // Resaltar, subrayar, tachar o tapar el texto reconocido (8-oct-2026).
 mod marcas_texto;
 use marcas_texto::Cambio;
@@ -95,6 +97,12 @@ pub(crate) fn textos_v2(t: &pixpin_store::Catalogo) -> pixpin_pin::TextosV2 {
         tipo_archivo: t.t("pin-v2-tipo-archivo"),
         tipo_vivo: t.t("pin-v2-tipo-vivo"),
         tipo_herramienta: t.t("pin-v2-tipo-herramienta"),
+        pegatina: t.t("pin-v2-pegatina"),
+        sin_pegatina: t.t("pin-v2-sin-pegatina"),
+        paginas: t.t("pin-v2-paginas"),
+        leer_seguida: t.t("pin-v2-leer-seguida"),
+        pagina: t.t("pin-v2-pagina"),
+        minutos: t.t("pin-v2-minutos"),
     }
 }
 
@@ -384,8 +392,10 @@ pub struct Pines {
     pizarras: HashMap<u64, (u8, u8)>,
     /// Lo hecho con la barra de marcas en cada pin, para `Ctrl+Z`.
     marcas: HashMap<u64, Vec<marcas_texto::Paso>>,
-    /// Las palabras magicas (las de fabrica del movil).
-    palabras: std::collections::BTreeMap<String, pixpin_pin::magia::MiniApp>,
+    /// La pegatina y la pagina de la nota de cada pin (`extras`). Las
+    /// palabras magicas ya no viven aqui: son las de los ajustes
+    /// (`magia::vigentes`).
+    extras: extras::Extras,
     /// El panel «Pines abiertos», si esta abierto (v2), y lo que pidio.
     panel: Option<pixpin_pin::panel_abiertos::PanelAbiertos>,
     pedidos_panel: Rc<RefCell<Vec<pixpin_pin::panel_abiertos::AccionPanel>>>,
@@ -571,7 +581,7 @@ impl Pines {
             herramientas: HashMap::new(),
             pizarras: HashMap::new(),
             marcas: HashMap::new(),
-            palabras: pixpin_pin::magia::por_defecto(),
+            extras: extras::Extras::abrir(raiz),
             panel: None,
             pedidos_panel: Rc::new(RefCell::new(Vec::new())),
             escondidos: std::collections::HashSet::new(),
@@ -727,6 +737,8 @@ impl Pines {
         self.recargar_anotaciones(id);
         // Y si es una herramienta o una pizarra, con lo suyo (`sacar`).
         self.vestir(id);
+        // Y con su pegatina y la pagina por la que se leia, si las tenia.
+        self.poner_extras(id);
         // Y el panel «Pines abiertos», si esta a la vista, lo cuenta ya.
         self.refrescar_panel();
         Ok(())
@@ -1538,6 +1550,12 @@ impl Pines {
         match cambio {
             // Solo lo pide un pin en vivo, y ese ya salio por arriba.
             CambioPin::CongelarPedido => Ok(()),
+            // Ctrl+C en un pin de color copia el color, como el toque.
+            CambioPin::CopiarPedido
+                if self.herramientas.get(&id).is_some_and(herramienta::Herramienta::es_color) =>
+            {
+                self.copiar_color(id)
+            }
             CambioPin::CopiarPedido => self.copiar(id),
             CambioPin::MarcarTexto { marca, color } => self.marcar_texto(id, marca, color),
             CambioPin::QuitarMarcasTexto => self.quitar_marcas_texto(id),
@@ -1558,6 +1576,11 @@ impl Pines {
             }
             CambioPin::OcultarGrupoPedido => self.ocultar_grupo_de(id),
             CambioPin::EliminarPedido => self.eliminar(id),
+            CambioPin::PegatinaPedida(cual) => self.pegatina_pedida(id, cual),
+            CambioPin::PaginaDeNota(pagina) => {
+                self.extras.cambiar(id, |e| e.pagina = pagina);
+                Ok(())
+            }
             CambioPin::AbrirPedido => self.abrir(id, false),
             CambioPin::AbrirUbicacionPedido => self.abrir(id, true),
             CambioPin::GuardarComoPedido => self.guardar_como(id),
@@ -2265,6 +2288,49 @@ impl Pines {
         self.herramientas.remove(&id);
         self.pizarras.remove(&id);
         self.marcas.remove(&id);
+        self.extras.quitar(id);
+        Ok(())
+    }
+
+    /// Cuelga en el pin su pegatina y, si es una nota, la pagina por la que
+    /// se leia.
+    fn poner_extras(&self, id: u64) {
+        let Some(pin) = self.vivos.get(&id) else {
+            return;
+        };
+        let e = self.extras.de(id);
+        if e.pegatina.is_some() {
+            pin.poner_pegatina(e.pegatina.as_deref());
+        }
+        if e.pagina.is_some() {
+            pin.poner_pagina_de_nota(e.pagina);
+        }
+    }
+
+    /// «Pegatina» del menu: la pone o la quita y la guarda. En un
+    /// temporizador, una de tiempo arranca ademas esos minutos
+    /// (`startTimer` + `setEmoji` del movil).
+    fn pegatina_pedida(&mut self, id: u64, cual: Option<u8>) -> Result<()> {
+        let temporizador = self
+            .herramientas
+            .get(&id)
+            .is_some_and(|h| h.cual == pixpin_proyecto::mini::TEMPORIZADOR);
+        let emoji = match cual {
+            None => None,
+            Some(i) => Some(
+                *pixpin_pin::pegatina::elegibles(temporizador)
+                    .get(i as usize)
+                    .context("pegatina fuera de la lista")?,
+            ),
+        };
+        if let Some(pin) = self.vivos.get(&id) {
+            pin.poner_pegatina(emoji);
+        }
+        self.extras
+            .cambiar(id, |e| e.pegatina = emoji.map(str::to_string));
+        if temporizador && let Some(m) = emoji.and_then(pixpin_pin::pegatina::minutos_de) {
+            self.arrancar_temporizador(id, m)?;
+        }
         Ok(())
     }
 

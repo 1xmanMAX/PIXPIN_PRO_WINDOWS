@@ -17,6 +17,9 @@ use pixpin_pin::{CambioPin, Contenido, Paleta};
 use super::herramienta::{self, Cuadro, Hecho, Herramienta};
 use super::{Pines, pizarra, textos};
 
+/// Lo que dura el «Copiado» de un pin de color.
+const DURA_EL_COPIADO_MS: u32 = 1500;
+
 /// Lo que se guarda junto a la imagen de una pizarra (`<objeto>.pizarra`).
 const EXTENSION_PIZARRA: &str = "pizarra";
 
@@ -33,13 +36,19 @@ fn reescribir(ruta: &std::path::Path, bytes: &[u8]) -> Result<()> {
 
 impl Pines {
     /// **Un texto del portapapeles**: una palabra magica sola saca su
-    /// herramienta, una tabla pegada sale como tabla y lo demas como nota
-    /// (`ContentClassifier` del movil).
+    /// herramienta, un color su muestra, una tabla pegada sale como tabla y
+    /// lo demas como nota (`ContentClassifier` del movil). Las palabras son
+    /// las de los ajustes (`magia::vigentes`).
     pub fn pinear_texto(&mut self, texto: &str, monitor: &Monitor) -> Result<()> {
-        match magia::clasificar(texto, &self.palabras) {
+        match magia::clasificar(texto, &magia::vigentes()) {
             Clasificado::Herramienta(app) => {
                 tracing::info!(herramienta = app.nombre(), "palabra magica");
                 self.pinear_herramienta(app, "", None, monitor).map(|_| ())
+            }
+            Clasificado::Color(argb) => {
+                tracing::info!(color = %pixpin_pin::color::a_hex(argb), "pin de color");
+                self.pinear_documento(herramienta::COLOR, texto.trim(), None, monitor)
+                    .map(|_| ())
             }
             Clasificado::Tabla => self
                 .pinear_documento(herramienta::TABLA, texto, None, monitor)
@@ -282,7 +291,13 @@ impl Pines {
         };
         let moneda = herramienta::moneda(textos());
         let ahora = pixpin_shell::entorno::ahora_utc_ms();
-        pin.poner_latido(h.late_cada_ms(&moneda, ahora));
+        // El de color late una vez tras copiarse, para quitar su «Copiado».
+        pin.poner_latido(if h.copiado {
+            Some(DURA_EL_COPIADO_MS)
+        } else {
+            h.late_cada_ms(&moneda, ahora)
+        });
+        pin.poner_temporizador(h.cual == pixpin_proyecto::mini::TEMPORIZADOR);
         let cuadro = Cuadro {
             herramienta: h.clone(),
             escala: pin.escala_por_cien(),
@@ -350,8 +365,57 @@ impl Pines {
         Ok(true)
     }
 
+    /// Copia el color de un pin de color como `#RRGGBB` (`copyColor`) y lo
+    /// dice en el propio pin un momento.
+    pub(super) fn copiar_color(&mut self, id: u64) -> Result<()> {
+        let Some(h) = self.herramientas.get_mut(&id) else {
+            return Ok(());
+        };
+        let argb = h.color().context("el pin de color no tiene color")?;
+        let hex = pixpin_pin::color::a_hex(argb);
+        pixpin_codec::copiar_texto(&hex).context("no se pudo copiar el color")?;
+        h.copiado = true;
+        tracing::info!(id, %hex, "color copiado");
+        self.colgar_herramienta(id);
+        Ok(())
+    }
+
+    /// Una pegatina de tiempo en un temporizador: lo deja en esos minutos y
+    /// en marcha desde ya (`startTimer` del movil), lo pinte y lo guarde.
+    pub(super) fn arrancar_temporizador(&mut self, id: u64, minutos: u32) -> Result<()> {
+        use pixpin_proyecto::mini::tiempos;
+        let Some(h) = self.herramientas.get_mut(&id) else {
+            return Ok(());
+        };
+        let ahora = pixpin_shell::entorno::ahora_utc_ms();
+        let t = tiempos::leer_temporizador(&h.documento);
+        let nuevo = tiempos::lanzar(
+            &tiempos::con_duracion(&tiempos::detener(&t), minutos as i64 * 60_000, ahora),
+            ahora,
+        );
+        h.documento =
+            tiempos::escribir_temporizador(&pixpin_proyecto::mini::titulo(&h.documento), &nuevo);
+        h.avisado = false;
+        self.colgar_herramienta(id);
+        self.guardar_herramienta(id)
+    }
+
     /// Un toque, una tecla, la rueda o el latido de una herramienta.
     fn dentro(&mut self, id: u64, cambio: CambioPin) -> Result<()> {
+        // El pin de color: un toque copia; el latido quita el «Copiado».
+        if self.herramientas.get(&id).is_some_and(Herramienta::es_color) {
+            match cambio {
+                CambioPin::ClicInterior { .. } => return self.copiar_color(id),
+                CambioPin::Latido => {
+                    if let Some(h) = self.herramientas.get_mut(&id) {
+                        h.copiado = false;
+                    }
+                    self.colgar_herramienta(id);
+                    return Ok(());
+                }
+                _ => {}
+            }
+        }
         let Some(pin) = self.vivos.get(&id) else {
             return Ok(());
         };
