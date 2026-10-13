@@ -156,15 +156,15 @@ pub fn lanzar(idioma: Idioma, ubicacion: Ubicacion, ruta: &Path) {
         // Imprimir: el dialogo de Windows con la vista previa, cada marco una hoja.
         let (r4, raiz4) = (ruta.clone(), raiz.clone());
         let imprimir: Box<dyn Fn(isize, &pixpin_cad::modelo::Modelo, &[[f64; 4]], &[Vec<[f64; 2]>])> = Box::new(move |v, m, marcos, cotas| {
-            let anotado = anotar::ParaImprimir::leer(&anotar::ruta_de_la_capa(&raiz4, &r4), m);
+            let anotado = anotar::ParaImprimir::leer(&anotar::rutas_de_la_capa(&raiz4, &r4), m);
             if let Err(e) = imprimir::imprimir(v, m, marcos, cotas, anotado, &r4) {
                 tracing::warn!(?e, "no se pudo imprimir el plano");
             }
         });
         // Anotar: el motor del lienzo sobre la capa del plano (anot-<uid>).
-        let capa = anotar::ruta_de_la_capa(&raiz, &ruta);
+        let capa = anotar::rutas_de_la_capa(&raiz, &ruta);
         let anotador: Box<dyn FnOnce(&pixpin_cad::modelo::Modelo) -> Box<dyn pixpin_cad::anotado::Anotador>> =
-            Box::new(move |_m| Box::new(anotar::MotorDelPlano::nuevo(capa)) as Box<dyn pixpin_cad::anotado::Anotador>);
+            Box::new(move |m| Box::new(anotar::MotorDelPlano::nuevo(capa, m)) as Box<dyn pixpin_cad::anotado::Anotador>);
         let acciones = pixpin_cad::ventana::Acciones { abrir_3d: Some(abrir_3d), imprimir: Some(imprimir), anotador: Some(anotador) };
         if let Err(e) = pixpin_cad::ventana::ver(&titulo, rx, textos(idioma), acciones) {
             tracing::warn!(%e, "no se pudo abrir el visor de planos");

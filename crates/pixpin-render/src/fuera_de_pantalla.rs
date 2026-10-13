@@ -54,6 +54,12 @@ impl FueraDePantalla {
         })
     }
 
+    /// La textura de debajo: para pintar encima con otro motor, como hace un
+    /// visor con su propio Direct2D sobre el bufer de su ventana.
+    pub fn textura(&self) -> &ID3D11Texture2D {
+        &self._textura
+    }
+
     /// Los pixeles pintados, RGBA sin premultiplicar y fila tras fila: para
     /// mirar a ojo lo que se midio (un PNG), no para medir.
     pub fn leer_rgba(&self) -> Result<(u32, u32, Vec<u8>), ErrorRender> {

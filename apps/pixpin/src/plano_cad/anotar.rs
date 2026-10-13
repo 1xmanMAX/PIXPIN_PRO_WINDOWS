@@ -13,32 +13,254 @@
 //!
 //! **La capa** es la `anot-<uid>` del plano, como la de un Word anotado: la
 //! lee y la guarda [`Capa`], que deja intacto lo que puso el movil, y viaja
-//! al sincronizar. Un plano que no es de ningun chat (abierto desde el
-//! disco) guarda su capa en la cache, solo en este PC. Sus unidades son las
-//! de Android: la milesima del lado mayor del plano, con la y hacia abajo.
+//! al sincronizar con su **`.hoja`** al lado (la caja del plano en unidades
+//! de la capa, `CapaDelPlano.kt` de Android). En memoria la capa va siempre
+//! en la unidad de la letra del plano (`pixpin_cad::anotado::unidad_de_la_capa`,
+//! la de Android desde su v0.115: con ella el lapiz no sale desproporcionado,
+//! 12-oct-2026); el fichero, en la que diga su `.hoja` (la de Android, la de
+//! antes...), y lo que no se toca vuelve a el tal cual.
+//!
+//! Tambien van en la capa, como en Android, **las cotas y los marcos para
+//! imprimir** (figuras del motor de los grupos `plano-cota` y `plano-marco`):
+//! asi todo lo hecho sobre el plano viaja, se junta figura por figura y lo
+//! borrado viaja como borrado. Un plano que no es de ningun chat (abierto
+//! desde el disco) guarda su capa en la cache, solo en este PC.
 
 use std::path::{Path, PathBuf};
 
-use pixpin_cad::anotado::{Anotador, EventoPlano, Respuesta, VistaPlano};
+use pixpin_cad::anotado::{Anotador, Encaje, EventoPlano, GRUPO_COTA, GRUPO_MARCO, Respuesta, VistaPlano};
+use pixpin_cad::modelo::Modelo;
 use pixpin_geom::{Punto, Rect};
 use pixpin_motor2d::camara::Camara;
+use pixpin_motor2d::{ColorRgba, Elemento, Figura, Punto2};
 use pixpin_render::{Color, MotorRender};
 use pixpin_shell::overlay::EventoOverlay;
+use pixpin_sincro::anotado::MarcoDeLaHoja;
 use windows::Win32::Graphics::Direct3D11::{ID3D11Device, ID3D11Texture2D};
 use windows::core::Interface;
 
-use crate::lector_tinta::{self, Capa, Tinta};
+use crate::lector_tinta::{self, Capa, Tinta, Unidades};
 
-/// Donde vive la capa de `plano`.
-pub fn ruta_de_la_capa(raiz: &Path, plano: &Path) -> PathBuf {
+/// Los ficheros de lo anotado sobre un plano: la capa y su `.hoja`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Rutas {
+    pub tinta: PathBuf,
+    pub hoja: PathBuf,
+}
+
+/// Donde vive lo anotado sobre `plano`: si es un adjunto de un chat, en los
+/// ficheros de su mensaje (`anot-<uid>.excalidraw.gz` y `anot-<uid>.hoja`,
+/// los que viajan); si no, en la cache.
+pub fn rutas_de_la_capa(raiz: &Path, plano: &Path) -> Rutas {
     use pixpin_proyecto::anotado as an;
     if let Some(r) = an::raiz_de(plano)
         && let Some(b) = an::base_del_documento(&r, plano)
     {
-        return b.tinta();
+        return Rutas { tinta: b.tinta(), hoja: b.marco() };
     }
     let clave = super::clave(plano).unwrap_or_else(|| "plano".into());
-    raiz.join("cache").join("cad").join(format!("{clave}.anot.excalidraw"))
+    let carpeta = raiz.join("cache").join("cad");
+    Rutas {
+        tinta: carpeta.join(format!("{clave}.anot.excalidraw")),
+        hoja: carpeta.join(format!("{clave}.anot.hoja")),
+    }
+}
+
+/// La `.hoja` escrita (aqui o en el movil), si se entiende.
+fn leer_hoja(ruta: &Path) -> Option<[f64; 4]> {
+    let m = MarcoDeLaHoja::de_texto(&pixpin_proyecto::anotado::leer(ruta)?)?;
+    Some([m.x0 as f64, m.y0 as f64, m.x1 as f64, m.y1 as f64])
+}
+
+/// Escribe la `.hoja` solo si no dice ya lo mismo (una fecha nueva es un
+/// envio mas al sincronizar).
+fn escribir_hoja(ruta: &Path, h: [f64; 4]) -> std::io::Result<()> {
+    let m = MarcoDeLaHoja::nuevo(h[0] as f32, h[1] as f32, h[2] as f32, h[3] as f32);
+    if let Some(ya) = pixpin_proyecto::anotado::leer(ruta).and_then(|t| MarcoDeLaHoja::de_texto(&t))
+        && ya.casi_igual(&m)
+    {
+        return Ok(());
+    }
+    if let Some(d) = ruta.parent() {
+        std::fs::create_dir_all(d)?;
+    }
+    pixpin_proyecto::anotado::escribir(ruta, &m.a_texto())
+}
+
+/// **Las unidades del fichero respecto de las de la memoria** (ver
+/// [`Unidades`]: `fichero = memoria * e + d`), las dos dichas por su encaje
+/// en el plano. Casi las mismas (un movil con la misma letra), las mismas.
+fn unidades_entre(memoria: &Encaje, fichero: &Encaje) -> Unidades {
+    let e = (memoria.u / fichero.u) as f32;
+    let u = Unidades {
+        ex: e,
+        ey: e,
+        dx: ((memoria.cero_x - fichero.cero_x) / fichero.u) as f32,
+        dy: ((fichero.cero_y - memoria.cero_y) / fichero.u) as f32,
+    };
+    if u.casi_iguales(&Unidades::DEL_PC) { Unidades::DEL_PC } else { u }
+}
+
+/// **Lee lo anotado sobre el plano `m`**: la capa en las unidades de la
+/// memoria (la letra del plano, con el cero en su origen) y el encaje del
+/// fichero. El del fichero es el de su `.hoja`; sin ella (o si no se
+/// entiende), el de antes si ya habia capa (`EscalaDeLaCapa.leerOPoner`
+/// de Android) o el de la memoria si es nueva.
+pub fn leer_capa(r: &Rutas, m: &Modelo) -> (Capa, Encaje, Encaje) {
+    let memoria = Encaje::de_unidad(pixpin_cad::anotado::unidad_de_la_capa(m));
+    let fichero = leer_hoja(&r.hoja).and_then(|h| Encaje::de_la_hoja(h, m.caja)).unwrap_or_else(|| {
+        if r.tinta.is_file() { Encaje::de_unidad(pixpin_cad::anotado::unidad_antigua(m)) } else { memoria }
+    });
+    (Capa::leer_en(&r.tinta, unidades_entre(&memoria, &fichero)), memoria, fichero)
+}
+
+/// Si es una cota o un marco del visor (no anotado a mano).
+fn es_del_plano(e: &Elemento) -> bool {
+    e.grupos.iter().any(|g| g == GRUPO_COTA || g == GRUPO_MARCO)
+}
+
+/// Las cotas y los marcos de la capa (`CapaDelPlano.leer`), en coordenadas del plano.
+fn leer_cotas_y_marcos(elementos: &[Elemento], memoria: &Encaje) -> (Vec<Vec<[f64; 2]>>, Vec<[f64; 4]>) {
+    let mut cotas = Vec::new();
+    let mut marcos = Vec::new();
+    for e in elementos.iter().filter(|e| !e.borrado) {
+        if e.grupos.iter().any(|g| g == GRUPO_COTA) {
+            if let Figura::Linea { puntos } = &e.figura
+                && puntos.len() >= 2
+            {
+                cotas.push(puntos.iter().map(|p| memoria.a_plano([p.x as f64, p.y as f64])).collect());
+            }
+        } else if e.grupos.iter().any(|g| g == GRUPO_MARCO) && matches!(e.figura, Figura::Marco { .. }) {
+            let a = memoria.a_plano([e.x as f64, e.y as f64]);
+            let b = memoria.a_plano([(e.x + e.ancho) as f64, (e.y + e.alto) as f64]);
+            marcos.push([a[0].min(b[0]), a[1].min(b[1]), a[0].max(b[0]), a[1].max(b[1])]);
+        }
+    }
+    (cotas, marcos)
+}
+
+fn color(hex: u32) -> ColorRgba {
+    let c = |d: u32| ((hex >> d) & 0xff) as f32 / 255.0;
+    ColorRgba::opaco(c(16), c(8), c(0))
+}
+
+/// Una cota como figura de la capa (`CapaDelPlano.elementoDeCota`): una
+/// raya naranja con los puntos de la cadena, y su id de su forma.
+fn elemento_de_cota(c: &[[f64; 2]], memoria: &Encaje) -> Elemento {
+    let puntos: Vec<Punto2> = c
+        .iter()
+        .map(|p| {
+            let q = memoria.a_capa(*p);
+            Punto2::nuevo(q[0] as f32, q[1] as f32)
+        })
+        .collect();
+    let (mut x0, mut y0, mut x1, mut y1) = (f32::MAX, f32::MAX, f32::MIN, f32::MIN);
+    for p in &puntos {
+        (x0, y0, x1, y1) = (x0.min(p.x), y0.min(p.y), x1.max(p.x), y1.max(p.y));
+    }
+    let numeros: Vec<f64> = c.iter().flat_map(|p| [p[0], p[1]]).collect();
+    let mut e = Elemento {
+        x: puntos[0].x,
+        y: puntos[0].y,
+        ancho: x1 - x0,
+        alto: y1 - y0,
+        trazo: color(0xff8a00),
+        grosor: 1.0,
+        grupos: vec![GRUPO_COTA.into()],
+        figura: Figura::Linea { puntos },
+        ..Default::default()
+    };
+    e.extras.id_de_fichero = Some(pixpin_cad::anotado::huella(GRUPO_COTA, &numeros));
+    e
+}
+
+/// Un marco para imprimir como figura de la capa (`elementoDeMarco`).
+fn elemento_de_marco(m: &[f64; 4], memoria: &Encaje) -> Elemento {
+    let a = memoria.a_capa([m[0], m[3]]);
+    let mut e = Elemento {
+        x: a[0] as f32,
+        y: a[1] as f32,
+        ancho: ((m[2] - m[0]) / memoria.u) as f32,
+        alto: ((m[3] - m[1]) / memoria.u) as f32,
+        trazo: color(0x3d8bff),
+        grosor: 1.0,
+        grupos: vec![GRUPO_MARCO.into()],
+        figura: Figura::Marco { nombre: String::new() },
+        ..Default::default()
+    };
+    e.extras.id_de_fichero = Some(pixpin_cad::anotado::huella(GRUPO_MARCO, m));
+    e
+}
+
+/// La forma de una cota o un marco de la capa en el plano: si es cota y sus
+/// numeros (los puntos de la cota; `[x0, y0, x1, y1]` del marco).
+fn forma_en_el_plano(e: &Elemento, memoria: &Encaje) -> Option<(bool, Vec<f64>)> {
+    let (cotas, marcos) = leer_cotas_y_marcos(std::slice::from_ref(&Elemento { borrado: false, ..e.clone() }), memoria);
+    if let Some(c) = cotas.first() {
+        return Some((true, c.iter().flat_map(|p| [p[0], p[1]]).collect()));
+    }
+    marcos.first().map(|m| (false, m.to_vec()))
+}
+
+/// **La capa con estas cotas y estos marcos** (`CapaDelPlano.con`): lo que ya
+/// estaba igual se queda tal cual (mismo id, misma version); lo nuevo entra;
+/// lo que ya no esta se marca borrado (y viaja como borrado); lo que se
+/// quito y vuelve, revive. Dice si cambio algo.
+///
+/// «Igual» es por su id (el de su forma, como en Android) **o por su forma**:
+/// una cota que llego del movil, leida aqui en `f32`, ya no da el mismo id
+/// al recalcularlo, y sin esto se borraria y volveria a nacer con otro en
+/// cada cambio, viajando de mas.
+fn poner_en_la_escena(escena: &mut pixpin_motor2d::Escena, memoria: &Encaje, cotas: &[Vec<[f64; 2]>], marcos: &[[f64; 4]]) -> bool {
+    let id_de = |e: &Elemento| e.extras.id_de_fichero.clone().unwrap_or_default();
+    // Lo querido: su elemento nuevo, si es cota y su forma.
+    let mut queridos: Vec<(Elemento, bool, Vec<f64>)> = Vec::new();
+    let de_cotas = cotas.iter().filter(|c| c.len() >= 2).map(|c| (elemento_de_cota(c, memoria), true, c.iter().flat_map(|p| [p[0], p[1]]).collect()));
+    let de_marcos = marcos.iter().map(|m| (elemento_de_marco(m, memoria), false, m.to_vec()));
+    for q in de_cotas.chain(de_marcos) {
+        if !queridos.iter().any(|(e, ..)| id_de(e) == id_de(&q.0)) {
+            queridos.push(q);
+        }
+    }
+    // Menos de una milesima de unidad de la capa es la misma forma.
+    let tope = memoria.u * 1e-3;
+    let igual = |a: &[f64], b: &[f64]| a.len() == b.len() && a.iter().zip(b).all(|(x, y)| (x - y).abs() <= tope);
+    let mut usados = vec![false; queridos.len()];
+    let mut cambio = false;
+    for e in escena.elementos.iter_mut().filter(|e| es_del_plano(e)) {
+        let forma = forma_en_el_plano(e, memoria);
+        let id = id_de(e);
+        let cual = queridos.iter().enumerate().position(|(i, (q, cota, numeros))| {
+            !usados[i] && (id_de(q) == id || forma.as_ref().is_some_and(|(c, f)| c == cota && igual(f, numeros)))
+        });
+        match cual {
+            Some(i) if e.borrado => {
+                // Vuelve: con su id de siempre, para que el otro aparato lo junte.
+                let (n, version, suyo) = (e.id, e.version, e.extras.id_de_fichero.clone());
+                *e = queridos[i].0.clone();
+                e.id = n;
+                e.version = version;
+                e.extras.id_de_fichero = suyo;
+                e.tocar();
+                usados[i] = true;
+                cambio = true;
+            }
+            Some(i) => usados[i] = true,
+            None if e.borrado => {}
+            None => {
+                e.borrado = true;
+                e.tocar();
+                cambio = true;
+            }
+        }
+    }
+    for (i, (q, ..)) in queridos.into_iter().enumerate() {
+        if !usados[i] {
+            escena.anadir(q);
+            cambio = true;
+        }
+    }
+    cambio
 }
 
 /// El papel del visor (el fondo claro u oscuro del plano): sobre el oscuro,
@@ -59,9 +281,14 @@ fn area_de(v: &VistaPlano) -> Rect {
 
 /// El motor del lienzo sobre un plano.
 pub struct MotorDelPlano {
-    ruta: PathBuf,
+    rutas: Rutas,
     capa: Capa,
     tinta: Tinta,
+    /// La caja del plano (para su `.hoja`).
+    caja: [f32; 4],
+    /// Como cae en el plano la capa en memoria y como la del fichero.
+    memoria: Encaje,
+    fichero: Encaje,
     /// El de Direct2D, sobre el dispositivo del visor (se rehace si cambia).
     motor: Option<(usize, MotorRender)>,
     /// Lo ultimo que se vio de cada elemento (su grosor y, si es texto, su
@@ -93,21 +320,19 @@ fn medidas_de(e: &pixpin_motor2d::Elemento) -> (f32, Option<f32>) {
 }
 
 impl MotorDelPlano {
-    pub fn nuevo(ruta: PathBuf) -> MotorDelPlano {
-        let capa = Capa::leer(&ruta);
+    pub fn nuevo(rutas: Rutas, m: &Modelo) -> MotorDelPlano {
+        let (capa, memoria, fichero) = leer_capa(&rutas, m);
         let mut tinta = Tinta::nueva();
         tinta.hoja = Some(0);
         let visto = capa.escena.elementos.iter().map(|e| (e.id, medidas_de(e))).collect();
-        MotorDelPlano { ruta, capa, tinta, motor: None, visto }
+        MotorDelPlano { rutas, capa, tinta, caja: m.caja, memoria, fichero, motor: None, visto }
     }
 
     /// **Los tamanos del lienzo, a la escala del plano** (lo pidio el usuario
-    /// el 9-oct-2026: «la tinta es muy grande para el plano»). Los grosores y
-    /// letras del motor son de una hoja; en un plano, la unidad de la capa
-    /// es la milesima del lado entero y salian enormes. Lo que nace se pone a
-    /// la escala de lo que se ve al dibujarlo (uno entre el zoom): un trazo «fino» se
-    /// ve fino en la pantalla, como al anotar en AutoCAD, y se puede acercar
-    /// para detallar.
+    /// el 9-oct-2026: «la tinta es muy grande para el plano»). Lo que nace
+    /// se pone a la escala de lo que se ve al dibujarlo (uno entre el zoom):
+    /// un trazo «fino» se ve fino en la pantalla, como al anotar en AutoCAD,
+    /// y se puede acercar para detallar (`escalaDeLoNuevo` de Android).
     ///
     /// Vale tambien al **elegir otro tamano en el panel** (10-oct-2026, el
     /// usuario: «al seleccionar el tamano de la letra o el lapiz con las
@@ -120,6 +345,58 @@ impl MotorDelPlano {
     fn a_la_escala_del_plano(&mut self, zoom: f32) {
         let letra = self.tinta.gesto.estilo.tamano_letra;
         poner_a_escala(&mut self.capa.escena.elementos, &mut self.visto, 1.0 / zoom.max(1e-6), letra);
+    }
+
+    /// Escribe lo anotado si cambio: primero la `.hoja` (una capa sin su
+    /// hoja al lado se leeria con otra escala, como en Android) y luego la
+    /// capa, en las unidades del fichero. Un plano sin nada hecho no deja
+    /// ficheros.
+    fn guardar(&mut self) {
+        if !self.capa.sucia {
+            return;
+        }
+        if self.capa.escena.elementos.is_empty() && !self.rutas.tinta.exists() {
+            self.capa.sucia = false;
+            return;
+        }
+        let hecho = escribir_hoja(&self.rutas.hoja, self.fichero.hoja(self.caja)).and_then(|()| {
+            if let Some(d) = self.rutas.tinta.parent() {
+                std::fs::create_dir_all(d)?;
+            }
+            self.capa.guardar(&self.rutas.tinta)
+        });
+        if let Err(e) = hecho {
+            tracing::warn!(?e, ruta = %self.rutas.tinta.display(), "no se pudo guardar lo anotado en el plano");
+        }
+    }
+
+    /// Pinta lo anotado (y, anotando, la barra y el panel) con `p`, ya puesto
+    /// sobre el fotograma del visor. Fuera de anotar no salen las cotas ni
+    /// los marcos (los pinta el visor, con sus medidas, como en Android).
+    fn pintar_con(&mut self, p: &pixpin_render::Pintor, v: &VistaPlano, anotando: bool) {
+        let cam = camara_de(v);
+        // Las cotas y los marcos, fuera mientras se pinta (sin tocar su version).
+        let ocultas: Vec<usize> = if anotando {
+            Vec::new()
+        } else {
+            self.capa.escena.elementos.iter().enumerate().filter(|(_, e)| !e.borrado && es_del_plano(e)).map(|(i, _)| i).collect()
+        };
+        for &i in &ocultas {
+            self.capa.escena.elementos[i].borrado = true;
+        }
+        let (capa, tinta) = (&self.capa, &mut self.tinta);
+        // Lo anotado, en las unidades de la capa con la camara del plano.
+        p.poner_vista((0.0, 0.0), cam.zoom, (-cam.x * cam.zoom, -cam.y * cam.zoom));
+        let vista = (cam.x, cam.y, cam.x + v.ancho as f32 / cam.zoom, cam.y + v.alto as f32 / cam.zoom);
+        tinta.pintar_capa(p, 0, capa, vista, cam.zoom, papel(v.claro), anotando);
+        // La barra y el panel del lienzo, en pixeles de la ventana.
+        p.desplazar(0.0, 0.0);
+        if anotando {
+            tinta.pintar_interfaz(p, Some(capa), area_de(v), v.escala_por_cien);
+        }
+        for &i in &ocultas {
+            self.capa.escena.elementos[i].borrado = false;
+        }
     }
 }
 
@@ -143,17 +420,6 @@ fn poner_a_escala(elementos: &mut [pixpin_motor2d::Elemento], visto: &mut std::c
             e.alto *= k;
         }
         visto.insert(e.id, medidas_de(e));
-    }
-}
-
-impl MotorDelPlano {
-    fn guardar(&mut self) {
-        if let Some(d) = self.ruta.parent() {
-            let _ = std::fs::create_dir_all(d);
-        }
-        if let Err(e) = self.capa.guardar(&self.ruta) {
-            tracing::warn!(?e, ruta = %self.ruta.display(), "no se pudo guardar lo anotado en el plano");
-        }
     }
 }
 
@@ -195,25 +461,13 @@ impl Anotador for MotorDelPlano {
                 }
             }
         }
-        let Some((_, motor)) = &self.motor else { return };
-        let Ok(bitmap) = motor.destino_backbuffer(destino) else { return };
-        let cam = camara_de(v);
-        let (capa, tinta) = (&self.capa, &mut self.tinta);
-        let area = area_de(v);
-        let r = motor.dibujar(&bitmap, |p| {
-            // Lo anotado, en las unidades de la capa con la camara del plano.
-            p.poner_vista((0.0, 0.0), cam.zoom, (-cam.x * cam.zoom, -cam.y * cam.zoom));
-            let vista = (cam.x, cam.y, cam.x + v.ancho as f32 / cam.zoom, cam.y + v.alto as f32 / cam.zoom);
-            tinta.pintar_capa(p, 0, capa, vista, cam.zoom, papel(v.claro), anotando);
-            // La barra y el panel del lienzo, en pixeles de la ventana.
-            p.desplazar(0.0, 0.0);
-            if anotando {
-                tinta.pintar_interfaz(p, Some(capa), area, v.escala_por_cien);
-            }
-        });
-        if let Err(e) = r {
+        let Some((_, motor)) = self.motor.take() else { return };
+        if let Ok(bitmap) = motor.destino_backbuffer(destino)
+            && let Err(e) = motor.dibujar(&bitmap, |p| self.pintar_con(p, v, anotando))
+        {
             tracing::warn!(?e, "no se pudo pintar la tinta del plano");
         }
+        self.motor = Some((clave, motor));
     }
 
     fn terminar(&mut self) {
@@ -230,10 +484,26 @@ impl Anotador for MotorDelPlano {
     fn quiere_escape(&self) -> bool {
         self.tinta.quiere_escape()
     }
+
+    fn cotas_y_marcos(&self) -> (Vec<Vec<[f64; 2]>>, Vec<[f64; 4]>) {
+        leer_cotas_y_marcos(&self.capa.escena.elementos, &self.memoria)
+    }
+
+    fn poner_cotas_y_marcos(&mut self, cotas: &[Vec<[f64; 2]>], marcos: &[[f64; 4]]) {
+        if poner_en_la_escena(&mut self.capa.escena, &self.memoria, cotas, marcos) {
+            // Lo puesto aqui ya va a su medida: no es «lo nuevo del panel».
+            for e in &self.capa.escena.elementos {
+                self.visto.insert(e.id, medidas_de(e));
+            }
+            self.capa.sucia = true;
+            self.guardar();
+        }
+    }
 }
 
 /// **Lo anotado, en una hoja impresa**: la capa con el motor (el mismo
-/// pintado que en pantalla), en papel blanco.
+/// pintado que en pantalla), en papel blanco. Sin las cotas ni los marcos
+/// de la capa: la hoja ya los dibuja a su manera.
 pub struct ParaImprimir {
     capa: Capa,
     tinta: std::cell::RefCell<Tinta>,
@@ -242,13 +512,12 @@ pub struct ParaImprimir {
 }
 
 impl ParaImprimir {
-    pub fn leer(ruta: &Path, m: &pixpin_cad::modelo::Modelo) -> Option<ParaImprimir> {
-        let capa = Capa::leer(ruta);
-        (!capa.vacia()).then(|| ParaImprimir {
-            capa,
-            tinta: std::cell::RefCell::new(Tinta::nueva()),
-            unidad: pixpin_cad::anotado::unidad_de_la_capa(m),
-        })
+    pub fn leer(rutas: &Rutas, m: &Modelo) -> Option<ParaImprimir> {
+        let (mut capa, memoria, _) = leer_capa(rutas, m);
+        for e in capa.escena.elementos.iter_mut().filter(|e| es_del_plano(e)) {
+            e.borrado = true;
+        }
+        (!capa.vacia()).then(|| ParaImprimir { capa, tinta: std::cell::RefCell::new(Tinta::nueva()), unidad: memoria.u })
     }
 
     /// Pinta la capa a `escala` (unidades del destino por unidad de la capa)
@@ -261,50 +530,7 @@ impl ParaImprimir {
 }
 
 #[cfg(test)]
-mod pruebas {
-    use super::*;
-    use pixpin_motor2d::estilo::NivelGrosor;
+mod pruebas;
 
-    fn raya(id: u64, grosor: f32) -> pixpin_motor2d::Elemento {
-        let mut e = pixpin_motor2d::zona::marca((0.0, 0.0, 10.0, 10.0), "x");
-        e.id = id;
-        e.grosor = grosor;
-        e
-    }
-
-    #[test]
-    fn lo_elegido_en_el_panel_se_pone_a_la_escala_del_plano() {
-        let k = 0.01;
-        let mut visto = std::collections::HashMap::new();
-        // Nace con el grosor «grueso» del panel: a la escala del plano.
-        let grueso = NivelGrosor::Grueso.de_tinta();
-        let mut v = vec![raya(1, grueso)];
-        poner_a_escala(&mut v, &mut visto, k, 20.0);
-        assert!((v[0].grosor - grueso * k).abs() < 1e-6);
-        // Una vuelta sin cambios no lo vuelve a achicar.
-        poner_a_escala(&mut v, &mut visto, k, 20.0);
-        assert!((v[0].grosor - grueso * k).abs() < 1e-6);
-        // Se elige «fino» en el panel con la raya elegida: tambien a escala
-        // (antes se quedaba con el valor de una hoja, enorme en el plano).
-        v[0].grosor = NivelGrosor::Fino.de_tinta();
-        poner_a_escala(&mut v, &mut visto, k, 20.0);
-        assert!((v[0].grosor - NivelGrosor::Fino.de_tinta() * k).abs() < 1e-6);
-        // Un texto con la letra de 36 del panel.
-        let mut t = raya(2, NivelGrosor::Fino.de_forma());
-        t.figura = pixpin_motor2d::Figura::Texto { texto: "a".into(), tam: 36.0, familia: "Segoe UI".into() };
-        v.push(t);
-        poner_a_escala(&mut v, &mut visto, k, 20.0);
-        let pixpin_motor2d::Figura::Texto { tam, .. } = &v[1].figura else { panic!() };
-        assert!((tam - 0.36).abs() < 1e-5, "{tam}");
-        // Caso negativo: un cambio que no viene del panel (estirar el
-        // texto, pegar algo ya a escala) se deja como esta.
-        if let pixpin_motor2d::Figura::Texto { tam, .. } = &mut v[1].figura {
-            *tam = 0.5;
-        }
-        v.push(raya(3, 0.0123));
-        poner_a_escala(&mut v, &mut visto, k, 20.0);
-        let pixpin_motor2d::Figura::Texto { tam, .. } = &v[1].figura else { panic!() };
-        assert!((tam - 0.5).abs() < 1e-6);
-        assert!((v[2].grosor - 0.0123).abs() < 1e-7);
-    }
-}
+#[cfg(test)]
+mod pruebas_con_el_movil;

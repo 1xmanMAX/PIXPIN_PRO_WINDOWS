@@ -167,7 +167,7 @@ fn escala_de(m: &Modelo, marco: &Marco, aw: f32, ah: f32) -> Option<(u32, f32)> 
 
 /// Dibuja `marco` del plano en la caja `(x, y, ancho, alto)` (DIP), centrado;
 /// con `fija` (DIP por unidad) a esa escala, si no lo mas grande que quepa.
-fn dibujar(p: &Pintor, m: &Modelo, marco: &Marco, cotas: &[Vec<[f64; 2]>], anotado: Option<(&ParaImprimir, f32)>, caja: (f32, f32, f32, f32), fija: Option<f32>) {
+pub(super) fn dibujar(p: &Pintor, m: &Modelo, marco: &Marco, cotas: &[Vec<[f64; 2]>], anotado: Option<(&ParaImprimir, f32)>, caja: (f32, f32, f32, f32), fija: Option<f32>) {
     let (ax, ay, aw, ah) = caja;
     let (mw, mh) = ((marco[2] - marco[0]) as f32, (marco[3] - marco[1]) as f32);
     let s = fija.unwrap_or((aw / mw).min(ah / mh));
@@ -296,7 +296,7 @@ fn dibujar(p: &Pintor, m: &Modelo, marco: &Marco, cotas: &[Vec<[f64; 2]>], anota
             }
         }
         // 6. Lo anotado, con el motor del lienzo: la capa (x a la derecha, y
-        // hacia abajo, en milesimas del plano) puesta en la hoja. `esc` es la
+        // hacia abajo, en la unidad de la letra del plano) puesta en la hoja. `esc` es la
         // vista del papel que ya habia (la de la miniatura, o 1).
         if let Some((a, esc)) = anotado {
             let u = a.unidad as f32;

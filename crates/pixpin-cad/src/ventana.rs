@@ -951,6 +951,20 @@ pub struct Acciones {
     pub anotador: Option<Box<dyn FnOnce(&Modelo) -> Box<dyn crate::anotado::Anotador>>>,
 }
 
+/// La firma de las cotas y los marcos (para saber si cambiaron y guardarlos
+/// en la capa del motor del lienzo, ver [`crate::anotado`]).
+fn firma_de(cotas: &[Vec<[f64; 2]>], marcos: &[[f64; 4]]) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    for c in cotas {
+        c.len().hash(&mut h);
+        c.iter().flatten().for_each(|v| v.to_bits().hash(&mut h));
+    }
+    marcos.len().hash(&mut h);
+    marcos.iter().flatten().for_each(|v| v.to_bits().hash(&mut h));
+    h.finish()
+}
+
 /// Lo que ve la ventana, para el motor del lienzo.
 fn vista_para_el_motor(hwnd: HWND, camara: &Camara, w: u32, h: u32, e: f64, m: &Modelo, claro: bool) -> crate::anotado::VistaPlano {
     let mut p = POINT::default();
@@ -1023,6 +1037,9 @@ pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo, String>>, textos_ui: 
     let mut marcos: Vec<[f64; 4]> = Vec::new();
     let mut marcando = false;
     let mut nuevo_marco: Option<([f64; 2], [f64; 2])> = None;
+    // La firma de las cotas y los marcos ya guardados en la capa: si cambia,
+    // se guardan (viajan con ella, como en Android).
+    let mut firma_guardada = firma_de(&acotar.hechas, &marcos);
     let mut aviso_civil_hasta: Option<Instant> = None;
     'bucle: loop {
         let animando = camara != destino;
@@ -1068,7 +1085,11 @@ pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo, String>>, textos_ui: 
                                     aviso_civil_hasta = Some(Instant::now() + Duration::from_secs(12));
                                 }
                                 if let Some(f) = hacer_anotador.take() {
-                                    anotador = Some(f(&m));
+                                    let a = f(&m);
+                                    // Las cotas y los marcos guardados en la capa (de aqui o del movil).
+                                    (acotar.hechas, marcos) = a.cotas_y_marcos();
+                                    firma_guardada = firma_de(&acotar.hechas, &marcos);
+                                    anotador = Some(a);
                                 }
                                 plano = Some((m, p));
                                 mensaje.clear();
@@ -1376,6 +1397,9 @@ pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo, String>>, textos_ui: 
             } else if let Some(a) = anotador.as_mut() {
                 // Lo que se escribia se queda escrito y la capa se guarda.
                 a.terminar();
+                // Anotando se pudo borrar o mover una cota o un marco con el motor.
+                (acotar.hechas, marcos) = a.cotas_y_marcos();
+                firma_guardada = firma_de(&acotar.hechas, &marcos);
             }
             barra_sucia = true;
             sucio = true;
@@ -1424,6 +1448,14 @@ pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo, String>>, textos_ui: 
             acotar.hechas.clear();
             acotar.puntos.clear();
             sucio = true;
+        }
+        // Una cota o un marco puesto o quitado: a la capa, que viaja.
+        let firma = firma_de(&acotar.hechas, &marcos);
+        if firma != firma_guardada
+            && let Some(a) = anotador.as_mut()
+        {
+            a.poner_cotas_y_marcos(&acotar.hechas, &marcos);
+            firma_guardada = firma;
         }
         if cambiar_encima {
             fijada = !fijada;
