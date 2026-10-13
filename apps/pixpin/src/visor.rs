@@ -39,6 +39,11 @@
 //!   (`leer_en_voz`, `pixpin_docs::voz_alta`). L o el boton de la pastilla.
 //! - **Espacio a cada lado** (23-sep-2026): los mandos de abajo (−, +, el
 //!   candado del lado), que viajan en la maqueta (`izq`, `der`).
+//! - **La pagina que sube sola** (v0.88): el boton de las dos flechas (o D),
+//!   a las palabras por minuto de cada uno, con «Terminas en…» abajo
+//!   (`pixpin_docs::auto_desplazar`, la barra en `lector`).
+//! - **Un PDF leido como texto** (v0.92-v0.93): su pagina se abre aqui como
+//!   cualquier otra (`como_texto`), con «Ver el PDF original» en el engranaje.
 //!
 //! Lo que se guarda va **junto al documento**: `<nombre>.pixpin-lectura`
 //! (letra, sitio, marcadores, aumento) y la carpeta
@@ -52,8 +57,8 @@
 //! Espacio, Inicio/Fin. `+`/`-` tamano de la letra, `T` tipo, `B` grosor.
 //! `M` marcador, Ctrl+1..9 ir al marcador, clic derecho en su punto:
 //! quitarlo. `A` anotar (P lapiz, R resaltador, E goma, 1-5 color,
-//! Ctrl+Z/Ctrl+Y). `I` indice, `G` ajustes, Ctrl+0 aumento normal, Esc
-//! salir.
+//! Ctrl+Z/Ctrl+Y). `I` indice, `G` ajustes, `D` que suba sola, Ctrl+0
+//! aumento normal, Esc salir.
 //!
 //! Este modulo no lleva `unsafe`: todo el dibujo pasa por el pintor seguro
 //! de `pixpin-render`.
@@ -81,6 +86,7 @@ use crate::leer_en_voz::{self, LeerEnVoz, Suceso};
 use crate::overlay::Recursos;
 use pixpin_docs::voz_alta;
 
+pub(crate) mod como_texto;
 mod imagenes;
 mod maqueta_movil;
 mod maqueta_vieja;
@@ -111,6 +117,7 @@ const VK_DOWN: u32 = 0x28;
 const VK_0: u32 = 0x30;
 const VK_A: u32 = 0x41;
 const VK_B: u32 = 0x42;
+const VK_D: u32 = 0x44;
 const VK_F: u32 = 0x46;
 const VK_F2: u32 = 0x71;
 const VK_F3: u32 = 0x72;
@@ -224,6 +231,12 @@ enum Accion {
     Oscuro,
     /// Un boton de la caja de buscar (D9).
     Buscar(crate::buscador::Boton),
+    /// **Que suba sola** (el boton de las dos flechas, o D).
+    Auto,
+    /// Un boton de la barra de la pagina que sube sola.
+    AutoBoton(lector::BotonAuto),
+    /// Un PDF leido como texto: «Ver el PDF original, en hojas».
+    VerPdf,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -325,6 +338,14 @@ struct Estado {
     pedir_pantalla_completa: bool,
     /// **Escuchando** (la barra de abajo): la voz que lee el documento.
     voz: Option<LeerEnVoz>,
+    /// **La pagina que sube sola** (la barra de abajo), si esta puesta.
+    auto: Option<pixpin_docs::auto_desplazar::Marcha>,
+    /// Las palabras del documento, contadas al empezar a desplazar.
+    palabras: usize,
+    /// Donde se recuerda la velocidad (`lector::ppm_guardadas`).
+    ubicacion: Ubicacion,
+    /// Si lo que se lee es un PDF pasado a texto (`como_texto`), ese PDF.
+    pdf_de_origen: Option<PathBuf>,
 }
 
 pub fn abrir(
@@ -427,6 +448,10 @@ pub fn abrir(
         en_pin: true,
         pedir_pantalla_completa: false,
         voz: None,
+        auto: None,
+        palabras: 0,
+        ubicacion: ubicacion.clone(),
+        pdf_de_origen: como_texto::pdf_de_origen(ubicacion.raiz(), ruta),
     };
     // Se entra por donde se dejo. Como el sitio es una fraccion, hace falta
     // medir antes, y medir necesita un fotograma: se apunta y se aplica en
@@ -649,6 +674,10 @@ pub fn abrir(
             }
             hay_que_pintar = true;
         }
+        // La pagina que sube sola: lo de esta vuelta.
+        if subir_sola(&mut e, marco) {
+            hay_que_pintar = true;
+        }
 
         // Pantalla completa pedida desde dentro (la pastilla o Esc).
         if e.pedir_pantalla_completa {
@@ -735,7 +764,7 @@ pub fn abrir(
         }
         // Veinte veces por segundo en reposo (la pastilla se desvanece a su
         // hora sin gastar nada), a sesenta mientras el iman se mueve.
-        let tope = if e.x_meta.is_some() { 16 } else { 50 };
+        let tope = if e.x_meta.is_some() || subiendo(&e) { 16 } else { 50 };
         // Con una pausa de forma rapida en marcha no llegan eventos: hay que
         // despertarse cuando se cumpla.
         let tope = e.tinta.mano.tope_forma_ms().map_or(tope, |t| t.min(tope));
@@ -1241,6 +1270,14 @@ fn pintar(e: &mut Estado, p: &Pintor, m: Marco, textos: &Catalogo) {
         for (r, b) in leer_en_voz::pintar_barra(p, m.ancho, m.alto, m.e, v) {
             botones.push((r, Accion::Voz(b)));
         }
+    } else if let Some(a) = e.auto.as_ref().filter(|_| !e.poniendo_marca && !e.anotando) {
+        // La pagina que sube sola: su barra, con lo que queda a esta velocidad.
+        let progreso = pixpin_docs::auto_desplazar::progreso(e.y, e.alto_doc, m.alto / px(e, m));
+        let quedan = lector::rotulo_de_lo_que_queda(textos, e.palabras, progreso, a.ppm, lector::minutos_de_hoy());
+        let velocidad = lector::rotulo_de_ppm(textos, a.ppm);
+        for (r, b) in lector::pintar_barra_de_auto(p, m.ancho, m.alto, m.e, &velocidad, a.en_marcha, &quedan) {
+            botones.push((r, Accion::AutoBoton(b)));
+        }
     } else if !e.anotando
         && !e.panel
         && !e.poniendo_marca
@@ -1331,6 +1368,8 @@ fn pastilla(e: &Estado, p: &Pintor, m: Marco, botones: &mut Vec<(RectF, Accion)>
             e.voz.is_some(),
             Accion::Escuchar,
         )),
+        // **Que suba sola** (`KeyboardDoubleArrowDown` de la pastilla del movil).
+        Some((&lector::DOBLE_FLECHA_ABAJO, e.auto.is_some(), Accion::Auto)),
         Some((&material::SETTINGS, e.panel, Accion::Engranaje)),
         // Luna/sol: el modo oscuro de los visores (en pin, en su barra).
         (!e.en_pin).then_some((if e.oscuro { &material::LIGHT_MODE } else { &material::DARK_MODE }, false, Accion::Oscuro)),
@@ -1646,13 +1685,20 @@ fn panel(e: &Estado, p: &Pintor, m: Marco, textos: &Catalogo, botones: &mut Vec<
 
 /// Lo que se puede hacer desde el engranaje, con su texto ya traducido.
 fn filas_del_panel(e: &Estado, textos: &Catalogo) -> Vec<(String, Accion)> {
-    let mut filas = vec![
+    let mut filas = Vec::new();
+    // Un PDF leido como texto: volver a sus hojas (`VisorHtmlActivity`, «Ver
+    // el PDF original, en hojas»).
+    if e.pdf_de_origen.is_some() {
+        filas.push((textos.t("lector-ver-pdf-original"), Accion::VerPdf));
+    }
+    filas.extend([
         (textos.t("lector-escuchar"), Accion::Escuchar),
+        (textos.t("lector-auto"), Accion::Auto),
         (textos.t("compartir-lector"), Accion::Compartir),
         (textos.t("visor-guardar-pagina"), Accion::GuardarPagina),
         (textos.t("visor-guardar-pdf"), Accion::GuardarPdf),
         (textos.t("visor-abrir-carpeta"), Accion::AbrirCarpeta),
-    ];
+    ]);
     if !e.ajustes.marcadores.is_empty() {
         filas.push((
             textos.t("visor-quitar-marcadores"),
@@ -2014,6 +2060,9 @@ fn tecla(
             } else if e.voz.is_some() {
                 // La primera Esc cierra la barra de escuchar; la segunda, el lector.
                 e.voz = None;
+            } else if e.auto.is_some() {
+                // Y la de la pagina que sube sola, igual (`salir` del movil).
+                e.auto = None;
             } else if e.anotando {
                 alternar_anotar(e, ruta, m);
             } else if !e.en_pin {
@@ -2075,6 +2124,7 @@ fn tecla(
             e.poniendo_marca = !e.poniendo_marca;
             e.panel = false;
         }
+        (VK_D, false) => alternar_auto(e, textos),
         (VK_A, false) => alternar_anotar(e, ruta, m),
         (VK_L, false) => escuchar(e, textos, ruta, m),
         (VK_G, false) => {
@@ -2203,9 +2253,86 @@ pub(crate) fn para_leer(colocados: &[Colocado]) -> Vec<usize> {
             !c.recuadro
                 && !matches!(c.clase, Clase::Regla | Clase::Capitulo)
                 && !c.texto.trim().is_empty()
+                // La marca «Hoja N» de un PDF leido como texto no se lee
+                // (`aria-hidden` en el movil, que tampoco la cuenta).
+                && !(c.clase == Clase::Nota && como_texto::es_marca(c.texto.trim()))
         })
         .map(|(i, _)| i)
         .collect()
+}
+
+// ---------------------------------------------------------------------------
+// La pagina que sube sola (`VisorHtmlActivity.empezarAAutoDesplazar`)
+
+/// Abre o cierra la barra de la pagina que sube sola. Al abrirla se deja de
+/// escuchar (son las dos barras de abajo) y se cuentan las palabras.
+fn alternar_auto(e: &mut Estado, textos: &Catalogo) {
+    if e.auto.take().is_some() {
+        return;
+    }
+    let palabras: usize = e
+        .doc
+        .bloques
+        .iter()
+        .map(|b| pixpin_docs::auto_desplazar::contar_palabras(&b.texto()))
+        .sum();
+    if palabras == 0 {
+        e.aviso = Some((textos.t("lector-sin-texto"), ahora_ms() + 3000));
+        return;
+    }
+    e.voz = None;
+    e.panel = false;
+    e.palabras = palabras;
+    e.auto = Some(pixpin_docs::auto_desplazar::Marcha::nueva(lector::ppm_guardadas(&e.ubicacion)));
+}
+
+/// Si la pagina esta subiendo ahora (para despertar a sesenta por segundo).
+fn subiendo(e: &Estado) -> bool {
+    e.auto.as_ref().is_some_and(|a| a.en_marcha) && !e.anotando && e.voz.is_none()
+}
+
+/// **Una vuelta del bucle** (`BucleDeAutoDesplazar`): baja lo que toque a
+/// esta velocidad, en pixeles enteros de pantalla. Las unidades por segundo
+/// salen del alto del documento entero, asi que agrandar la letra no cambia
+/// lo que se lee por minuto. La rueda puede mover la vista entre medias: se
+/// sigue desde donde quede. Al llegar al final se para. `true` si se movio.
+fn subir_sola(e: &mut Estado, m: Marco) -> bool {
+    let quieta = e.anotando || e.voz.is_some();
+    let s = px(e, m);
+    let (palabras, alto) = (e.palabras, e.alto_doc);
+    let Some(a) = e.auto.as_mut() else {
+        return false;
+    };
+    let v = pixpin_docs::auto_desplazar::pixeles_por_segundo(a.ppm, palabras, alto) * s;
+    let n = a.paso(ahora_ms(), v, quieta);
+    if n <= 0 {
+        return false;
+    }
+    let antes = e.y;
+    e.y += n as f32 / s;
+    acotar(e, m);
+    if e.y <= antes + 1e-4
+        && let Some(a) = e.auto.as_mut()
+    {
+        a.al_final();
+    }
+    true
+}
+
+/// Un boton de la barra de la pagina que sube sola. La velocidad nueva se
+/// recuerda en este equipo.
+fn boton_de_auto(e: &mut Estado, b: lector::BotonAuto) {
+    let Some(a) = e.auto.as_mut() else {
+        return;
+    };
+    match b {
+        lector::BotonAuto::Menos | lector::BotonAuto::Mas => {
+            a.cambiar(if b == lector::BotonAuto::Mas { 1 } else { -1 });
+            lector::guardar_ppm(&e.ubicacion, a.ppm);
+        }
+        lector::BotonAuto::Alternar => a.alternar(),
+        lector::BotonAuto::Cerrar => e.auto = None,
+    }
 }
 
 fn colocado_que_suena(e: &Estado) -> Option<&Colocado> {
@@ -2246,6 +2373,8 @@ fn escuchar(e: &mut Estado, textos: &Catalogo, ruta: &Path, m: Marco) {
         e.aviso = Some((textos.t("lector-sin-texto"), ahora_ms() + 3000));
         return;
     }
+    // Escuchar cierra la pagina que sube sola (`dejarDeAutoDesplazar`).
+    e.auto = None;
     let fracciones = fracciones_de(e, &idx);
     let desde = e
         .ajustes
@@ -2434,6 +2563,14 @@ fn hacer(
         }
         Accion::Escuchar => escuchar(e, textos, ruta, m),
         Accion::Voz(b) => boton_de_voz(e, b, ruta, m),
+        Accion::Auto => alternar_auto(e, textos),
+        Accion::AutoBoton(b) => boton_de_auto(e, b),
+        Accion::VerPdf => {
+            e.panel = false;
+            if let Some(pdf) = &e.pdf_de_origen {
+                crate::lector_pdf::lanzar(crate::compartir::idioma_de(ubicacion), ubicacion.clone(), pdf);
+            }
+        }
         Accion::Lado(b) => boton_de_lado(e, b, textos, ruta),
         Accion::Buscar(b) => {
             let h = e.hallar.caja.boton(b);
@@ -2855,7 +2992,141 @@ mod pruebas {
             en_pin: false,
             pedir_pantalla_completa: false,
             voz: None,
+            auto: None,
+            palabras: 0,
+            ubicacion: Ubicacion::Portable {
+                raiz: std::env::temp_dir().join("pixpin-visor-prueba"),
+            },
+            pdf_de_origen: None,
         }
+    }
+
+    // ---- La pagina que sube sola y el PDF leido como texto ----
+
+    fn con_parrafos(n: usize) -> Documento {
+        use pixpin_docs::documento::{Bloque, Trozo};
+        Documento {
+            titulo: "x".into(),
+            bloques: (0..n)
+                .map(|_| Bloque::nuevo(Clase::Parrafo, vec![Trozo::llano("cinco palabras en este bloque")]))
+                .collect(),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn la_pagina_sube_sola_y_escuchar_o_esc_la_cierran() {
+        let textos = Catalogo::nuevo(pixpin_store::Idioma::Espanol);
+        let m = marco();
+        // Sin texto no arranca: lo dice (caso negativo).
+        let mut vacio = estado_de_prueba();
+        alternar_auto(&mut vacio, &textos);
+        assert!(vacio.auto.is_none());
+        assert_eq!(vacio.aviso.as_ref().map(|a| a.0.clone()), Some(textos.t("lector-sin-texto")));
+
+        let mut e = estado_de_prueba();
+        e.doc = con_parrafos(40);
+        alternar_auto(&mut e, &textos);
+        assert_eq!(e.palabras, 200);
+        let a = e.auto.as_ref().expect("barra puesta");
+        assert!(a.en_marcha);
+        assert!((pixpin_docs::auto_desplazar::MINIMO..=pixpin_docs::auto_desplazar::MAXIMO).contains(&a.ppm));
+        // Corre: 200 palabras en 10.000 unidades.
+        subir_sola(&mut e, m);
+        std::thread::sleep(std::time::Duration::from_millis(40));
+        assert!(subir_sola(&mut e, m));
+        assert!(e.y > 0.0);
+        // Pausa: no corre.
+        boton_de_auto(&mut e, lector::BotonAuto::Alternar);
+        let y = e.y;
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        assert!(!subir_sola(&mut e, m));
+        assert_eq!(e.y, y);
+        // Esc la cierra antes que el lector.
+        assert!(tecla(&mut e, VK_ESCAPE, false, false, false, &textos, Path::new("x.docx"), m));
+        assert!(e.auto.is_none());
+        // Y D la vuelve a abrir.
+        tecla(&mut e, VK_D, false, false, false, &textos, Path::new("x.docx"), m);
+        assert!(e.auto.is_some());
+    }
+
+    #[test]
+    fn la_marca_de_hoja_no_se_lee_y_el_pdf_original_se_ofrece() {
+        let textos = Catalogo::nuevo(pixpin_store::Idioma::Espanol);
+        let colocado = |clase: Clase, texto: &str| Colocado {
+            texto: texto.into(),
+            tramos: Vec::new(),
+            clase,
+            tam: 16.0,
+            sangria: 0.0,
+            ancho: 100.0,
+            y: 0.0,
+            alto: 20.0,
+            color: TEXTO,
+            bloque: None,
+            caja: None,
+            letra: Letra::del_cuerpo(Hoja::Word, &lectura::Ajustes::default()),
+            recuadro: false,
+            imagen: None,
+            renglones: Vec::new(),
+        };
+        let c = [
+            colocado(Clase::Nota, "Hoja 1"),
+            colocado(Clase::Parrafo, "Texto"),
+            colocado(Clase::Nota, "[imagen]"),
+            colocado(Clase::Nota, "Page 2"),
+        ];
+        assert_eq!(para_leer(&c), vec![1, 2], "las marcas fuera; otra nota se sigue leyendo");
+        let mut e = estado_de_prueba();
+        let tiene = |e: &Estado| filas_del_panel(e, &textos).iter().any(|(_, a)| *a == Accion::VerPdf);
+        assert!(!tiene(&e), "un Word no tiene PDF original");
+        e.pdf_de_origen = Some(PathBuf::from("apuntes.pdf"));
+        assert!(tiene(&e));
+    }
+
+    /// **Un PDF leido como texto con la pagina subiendo sola**, en PNG para
+    /// mirarlo: la pagina de `como_texto` de un articulo a dos columnas,
+    /// abierta en el lector, con la pastilla y la barra de abajo. Necesita
+    /// GPU: `cargo test -p pixpin --bin pixpinmax muestra_del_pdf_como_texto
+    /// -- --ignored --nocapture`. Deja el PNG en `PIXPIN_MUESTRAS`.
+    #[test]
+    #[ignore = "necesita GPU; genera PNG para mirarlo"]
+    fn muestra_del_pdf_como_texto() {
+        use pixpin_render::MotorRender;
+        use pixpin_render::fuera_de_pantalla::FueraDePantalla;
+
+        let d = pixpin_capture::Dispositivo::nuevo().expect("GPU real");
+        let motor = MotorRender::nuevo(d.d3d()).expect("motor");
+        let m = Marco {
+            ancho: 1400.0,
+            alto: 900.0,
+            e: 1.0,
+            escala_por_cien: 100,
+            area: pixpin_geom::Rect { x: 0, y: 0, ancho: 1400, alto: 900 },
+        };
+        let fuera = FueraDePantalla::nuevo(&motor, d.d3d(), 1400, 900).expect("superficie");
+        let carpeta = std::env::var_os("PIXPIN_MUESTRAS").map(PathBuf::from).unwrap_or_else(std::env::temp_dir);
+        let textos = Catalogo::nuevo(pixpin_store::Idioma::Espanol);
+        let pdf = std::env::var_os("PIXPIN_PDF").map(PathBuf::from).expect("PIXPIN_PDF");
+        let html = como_texto::convertir(&std::fs::read(&pdf).unwrap(), "Artículo", "es", "Hoja").expect("texto");
+        let mut e = estado_de_prueba();
+        e.doc = pixpin_docs::html::pagina(&html, "Artículo");
+        e.alto_doc = 0.0;
+        e.pastilla_hasta = u64::MAX;
+        alternar_auto(&mut e, &textos);
+        motor
+            .dibujar(&fuera.destino, |p| {
+                medir(&mut e, p, m);
+                acotar(&mut e, m);
+                pintar(&mut e, p, m, &textos);
+            })
+            .expect("pintar");
+        fuera.esperar_gpu().expect("esperar");
+        let (ancho, alto, pixeles) = fuera.leer_rgba().expect("leer");
+        let png = pixpin_codec::imagen::codificar_png(&pixpin_codec::imagen::ImagenRgba { ancho, alto, pixeles }).expect("png");
+        let ruta = carpeta.join("lector-pdf-como-texto.png");
+        std::fs::write(&ruta, png).expect("guardar");
+        println!("{}", ruta.display());
     }
 
     fn colocado_para_leer(texto: &str, clase: Clase, y: f32, recuadro: bool) -> Colocado {
@@ -3780,6 +4051,7 @@ fn botones_del_pin(e: &Estado) -> Vec<crate::lector_pin::BotonLector> {
         v.push(BotonLector { id: 0, icono: &material::LIST, encendido: e.viendo_indice });
     }
     v.push(BotonLector { id: 1, icono: &material::RECORD_VOICE_OVER, encendido: e.voz.is_some() });
+    v.push(BotonLector { id: 3, icono: &lector::DOBLE_FLECHA_ABAJO, encendido: e.auto.is_some() });
     v.push(BotonLector { id: 2, icono: &material::SETTINGS, encendido: e.panel });
     v
 }
@@ -3789,6 +4061,7 @@ fn accion_del_pin(id: u8) -> Option<Accion> {
         0 => Accion::Indice,
         1 => Accion::Escuchar,
         2 => Accion::Engranaje,
+        3 => Accion::Auto,
         _ => return None,
     })
 }

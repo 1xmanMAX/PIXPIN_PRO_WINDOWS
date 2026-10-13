@@ -600,6 +600,19 @@ lector-espacio-tope = Ya no cabe más espacio a ese lado
 lector-espacio-nada = Ese lado ya no tiene espacio
 lector-sin-lado = De lado, bloqueado: solo sube y baja
 lector-con-lado = Se mueve a todas partes
+lector-auto = Desplazar sola (D)
+lector-auto-ppm = { $ppm } palabras/min
+lector-auto-quedan = Terminas en { $cuanto } · a las { $hora }
+lector-auto-menos-de-un-minuto = menos de 1 min
+lector-auto-terminado = Terminado
+lector-auto-contando = Contando las palabras…
+lector-ver-como-texto = Ver como texto (como un Word)
+lector-pasando-a-texto = Pasando el PDF a texto…
+lector-texto-escaneo = Este PDF no tiene texto que se pueda sacar: seguramente es un escaneo (una foto de las hojas)
+lector-texto-cifrado = El PDF está protegido con contraseña
+lector-texto-no-se-lee = No se pudo leer el PDF
+lector-ver-pdf-original = Ver el PDF original, en hojas
+lector-hoja = Hoja
 sinc-presencia-apagada = La presencia está apagada en los ajustes ([sincro] presencia = false): desde aquí puedes sincronizar, pero el móvil no podrá encontrar este equipo ni llamarlo.
 bandeja-abrir-documento = Abrir documento…
 

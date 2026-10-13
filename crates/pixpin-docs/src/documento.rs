@@ -406,7 +406,7 @@ pub fn base64(datos: &[u8]) -> String {
 /// colores del modo noche si toca, mas las reglas de impresion del libro
 /// (`EpubAHtml.kt`) para que «guardar como PDF» del navegador de algo
 /// decente.
-const ESTILO: &str = concat!(
+pub(crate) const ESTILO: &str = concat!(
     "html{-webkit-text-size-adjust:100%}",
     "body{margin:0;background:#fff;color:#1b1b1f;font:16px/1.55 system-ui,-apple-system,Segoe UI,sans-serif}",
     "main{max-width:46em;margin:0 auto;padding:18px 16px 48px;overflow-wrap:break-word}",

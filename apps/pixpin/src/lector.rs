@@ -533,6 +533,174 @@ pub fn desplazamiento_de_rueda(delta: i32, renglon: f32) -> f32 {
 /// raton nunca se queda quieto del todo al pulsar.
 pub const UMBRAL_DE_ARRASTRE: f32 = 4.0;
 
+// ---------------------------------------------------------------------------
+// La pagina que sube sola (Android v0.88/v0.92, `MandosDeLector.kt`)
+//
+// Las cuentas estan en `pixpin_docs::auto_desplazar`; aqui va lo que comparten
+// los dos lectores: el boton de la pastilla, la barra de abajo y la velocidad
+// que se recuerda en este equipo (`auto:ppm` de las preferencias del movil).
+
+/// `keyboard_double_arrow_down` de Material: el boton «Desplazar sola» de la
+/// pastilla del movil. Va aqui y no en `pixpin_render::icono::material`
+/// porque solo lo usan los lectores.
+pub const DOBLE_FLECHA_ABAJO: pixpin_render::icono::Icono = pixpin_render::icono::Icono {
+    vista: (0.0, 0.0, 24.0, 24.0),
+    trazos: &[pixpin_render::icono::TrazoIcono {
+        d: "M18 6.41 16.59 5 12 9.58 7.41 5 6 6.41l6 6zM18 13l-1.41-1.41L12 16.17l-4.59-4.58L6 13l6 6z",
+        relleno: pixpin_render::icono::Pintura::Actual,
+        trazo: pixpin_render::icono::Pintura::Nada,
+        grosor: 0.0,
+        extremo_redondo: false,
+        union_redonda: false,
+        opacidad: 1.0,
+        par_impar: false,
+        matriz: None,
+        mascara: None,
+    }],
+};
+
+/// Un boton de la barra de la pagina que sube sola.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BotonAuto {
+    /// Mas despacio.
+    Menos,
+    /// Mas deprisa.
+    Mas,
+    /// Pausa o seguir.
+    Alternar,
+    /// Dejar de desplazar (la barra se va).
+    Cerrar,
+}
+
+/// **La velocidad recordada en este equipo**, en palabras por minuto. Es del
+/// aparato, no del documento: en el movil va en sus preferencias.
+pub fn ppm_guardadas(ubicacion: &pixpin_store::Ubicacion) -> u32 {
+    pixpin_docs::auto_desplazar::valida(
+        pixpin_store::estado::cargar(ubicacion)
+            .palabras_por_minuto
+            .unwrap_or(pixpin_docs::auto_desplazar::POR_DEFECTO),
+    )
+}
+
+/// Guarda la velocidad sin tocar lo demas que se recuerda.
+pub fn guardar_ppm(ubicacion: &pixpin_store::Ubicacion, ppm: u32) {
+    let mut estado = pixpin_store::estado::cargar(ubicacion);
+    estado.palabras_por_minuto = Some(ppm);
+    if let Err(e) = pixpin_store::estado::guardar(ubicacion, &estado) {
+        tracing::warn!(?e, "no se pudo guardar la velocidad de leer");
+    }
+}
+
+/// Los minutos desde las 00:00 de hoy, en la hora de este equipo.
+pub fn minutos_de_hoy() -> i64 {
+    (pixpin_shell::entorno::ahora_local_ms() / 60_000).rem_euclid(24 * 60)
+}
+
+/// **«Terminas en 12 min · a las 18:40»** (`rotuloDeLoQueQueda`), para
+/// `palabras` a `ppm` con `progreso` de 0 a 1.
+pub fn rotulo_de_lo_que_queda(
+    textos: &pixpin_store::Catalogo,
+    palabras: usize,
+    progreso: f32,
+    ppm: u32,
+    ahora_en_minutos: i64,
+) -> String {
+    use pixpin_docs::auto_desplazar as auto;
+    let minutos = auto::minutos_que_quedan(palabras, progreso, ppm);
+    if minutos <= 0.0 {
+        return textos.t("lector-auto-terminado");
+    }
+    let mut args = fluent_bundle::FluentArgs::new();
+    args.set(
+        "cuanto",
+        auto::rotulo_con(minutos, &textos.t("lector-auto-menos-de-un-minuto"), ""),
+    );
+    args.set("hora", auto::hora_de_terminar(ahora_en_minutos, minutos));
+    textos.t_args("lector-auto-quedan", &args)
+}
+
+/// La velocidad como se lee en la barra: «230 palabras/min».
+pub fn rotulo_de_ppm(textos: &pixpin_store::Catalogo, ppm: u32) -> String {
+    let mut args = fluent_bundle::FluentArgs::new();
+    args.set("ppm", ppm);
+    textos.t_args("lector-auto-ppm", &args)
+}
+
+/// **La barra de la pagina que sube sola** (`BarraDeAutoDesplazarDeLector`),
+/// abajo y de cristal como la de escuchar: mas despacio, la velocidad, mas
+/// deprisa, pausa y cerrar; debajo, `quedan` («Terminas en 12 min…»).
+pub fn pintar_barra_de_auto(
+    p: &Pintor<'_>,
+    ancho: f32,
+    alto: f32,
+    e: f32,
+    velocidad: &str,
+    en_marcha: bool,
+    quedan: &str,
+) -> Vec<(RectF, BotonAuto)> {
+    let mut botones = Vec::new();
+    let lado = 40.0 * e;
+    let tam = 14.0 * e;
+    let (w_vel, h_vel) = p.medir_texto(velocidad, tam);
+    let ancho_vel = w_vel + 16.0 * e;
+    let fila = 4.0 * lado + ancho_vel;
+    let tam_debajo = 11.0 * e;
+    let (w_debajo, h_debajo) = p.medir_texto(quedan, tam_debajo);
+    let total = fila.max(w_debajo + 24.0 * e) + 12.0 * e;
+    let caja = RectF {
+        x: (ancho - total) / 2.0,
+        y: alto - 24.0 * e - lado - h_debajo - 10.0 * e,
+        ancho: total,
+        alto: lado + h_debajo + 10.0 * e,
+    };
+    p.rellenar_redondeado(caja, 20.0 * e, con_alfa(CRISTAL, 0.95));
+    let mut x = caja.x + (total - fila) / 2.0;
+    let y = caja.y;
+    let centrado = |p: &Pintor<'_>, t: &str, r: RectF, tam: f32| {
+        let (w, h) = p.medir_texto(t, tam);
+        p.texto(t, r.x + (r.ancho - w) / 2.0, r.y + (r.alto - h) / 2.0, tam, TEXTO);
+    };
+    let icono = |p: &Pintor<'_>, i: &pixpin_render::icono::Icono, r: RectF, l: f32| {
+        p.icono(
+            i,
+            RectF {
+                x: r.x + (r.ancho - l) / 2.0,
+                y: r.y + (r.alto - l) / 2.0,
+                ancho: l,
+                alto: l,
+            },
+            TEXTO,
+        );
+    };
+    let boton = |x: &mut f32, ancho: f32| {
+        let r = RectF { x: *x, y, ancho, alto: lado };
+        *x += ancho;
+        r
+    };
+    let r = boton(&mut x, lado);
+    centrado(p, "−", r, 18.0 * e);
+    botones.push((r, BotonAuto::Menos));
+    let r = boton(&mut x, ancho_vel);
+    p.texto(velocidad, r.x + (r.ancho - w_vel) / 2.0, r.y + (r.alto - h_vel) / 2.0, tam, TEXTO);
+    let r = boton(&mut x, lado);
+    centrado(p, "+", r, 18.0 * e);
+    botones.push((r, BotonAuto::Mas));
+    let r = boton(&mut x, lado);
+    icono(p, if en_marcha { &material::PAUSE } else { &material::PLAY_ARROW }, r, 28.0 * e);
+    botones.push((r, BotonAuto::Alternar));
+    let r = boton(&mut x, lado);
+    icono(p, &material::CLOSE, r, 20.0 * e);
+    botones.push((r, BotonAuto::Cerrar));
+    p.texto(
+        quedan,
+        caja.x + (total - w_debajo) / 2.0,
+        caja.y + lado,
+        tam_debajo,
+        con_alfa(TEXTO, 0.7),
+    );
+    botones
+}
+
 #[cfg(test)]
 mod pruebas {
     use super::*;
