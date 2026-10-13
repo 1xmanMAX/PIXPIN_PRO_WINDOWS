@@ -93,6 +93,8 @@ pub(super) enum Toque {
     CancelarQuitar,
     CampoCodigo,
     Entrar,
+    /// Ya dentro: llevar el chat de PixPin al chat recien traido.
+    AbrirChat,
     Cerrar,
 }
 
@@ -342,6 +344,16 @@ pub(super) fn tocar(p: &mut Personas, t: Toque, cx: &Contexto) -> bool {
             {
                 p.aviso = Some(Dicho::de("cc-buscando-invitacion"));
                 entrar_en_fondo(cx, p.turno, codigo, donde);
+            }
+        }
+        Toque::AbrirChat => {
+            if let Some(c) = &p.dentro_de {
+                if super::abrir_chat(&cx.raiz, &c.chat) {
+                    return true;
+                }
+                // Aqui no esta (no llego el proyecto): se dice, no se
+                // cierra.
+                p.aviso = Some(Dicho::de("cc-no-se-abre"));
             }
         }
         Toque::Cerrar => return true,
@@ -966,7 +978,15 @@ fn pintar_entrar(
             &con.texto(textos),
         );
         y += 16.0 * e;
-        l.boton(rect(x, y, w, 48.0 * e), &textos.t("cc-cerrar"), None, true, t(Toque::Cerrar));
+        let medio = (w - 10.0 * e) / 2.0;
+        l.boton(rect(x, y, medio, 48.0 * e), &textos.t("cc-cerrar"), None, false, t(Toque::Cerrar));
+        l.boton(
+            rect(x + medio + 10.0 * e, y, medio, 48.0 * e),
+            &textos.t("cc-abrir-chat"),
+            None,
+            true,
+            t(Toque::AbrirChat),
+        );
         return y + 48.0 * e;
     }
     y += caja_texto(l, x, y, w, None, &textos.t("cc-entrar-como"));
@@ -1015,6 +1035,40 @@ mod pruebas {
         assert_eq!(que_entrar("K7Q2"), None);
         assert_eq!(que_entrar("pixpin-envio:1:123456::0"), None);
         assert_eq!(que_entrar(""), None);
+    }
+
+    #[test]
+    fn abrir_chat_lleva_a_la_ficha_del_chat_traido_y_si_no_esta_lo_dice() {
+        let dir = std::env::temp_dir().join(format!("pixpin-abrir-cc-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let ficha = pixpin_proyecto::almacen::Ficha::nueva("Tesis", 1, "PCPC");
+        let mut i = pixpin_proyecto::almacen::Indice::leer(&dir);
+        i.proyectos.push(ficha.clone());
+        i.guardar(&dir).unwrap();
+        let chat = pixpin_proyecto::vista::chat_de_ficha(&dir, &ficha.id).unwrap();
+        assert_eq!(super::super::ficha_del_chat(&dir, &chat), Some(ficha.id.clone()));
+        // Caso negativo: un chat que aqui no hay no lleva a ninguna parte, y
+        // la pantalla lo dice en vez de cerrarse.
+        assert_eq!(super::super::ficha_del_chat(&dir, "chat-que-no-esta"), None);
+        let (tx, _rx) = std::sync::mpsc::channel();
+        let cx = Contexto {
+            raiz: dir.clone(),
+            nombre: "Max".into(),
+            id: "id-pc".into(),
+            tx,
+        };
+        let mut p = Personas::entrar(1, &cx);
+        p.dentro_de = Some(ChatCompartido {
+            chat: "chat-que-no-esta".into(),
+            nombre: "Otro".into(),
+            creador: "id-ana".into(),
+            creado: 1,
+            personas: Vec::new(),
+        });
+        assert!(!tocar(&mut p, Toque::AbrirChat, &cx));
+        assert_eq!(p.aviso, Some(Dicho::de("cc-no-se-abre")));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
@@ -1103,10 +1157,12 @@ mod pruebas {
         con_chat.aviso = Some(Dicho::con("cc-entro", "nombre", "Ana"));
         let mut entrar = Personas::entrar(2, &cx);
         entrar.tecleado = "k7q2m9xp".into();
+        let mut dentro = Personas::entrar(3, &cx);
+        dentro.dentro_de = Some(c.clone());
         let d = pixpin_capture::Dispositivo::nuevo().expect("GPU real");
         let motor = MotorRender::nuevo(d.d3d()).expect("motor");
         let textos = Catalogo::nuevo(pixpin_store::Idioma::Espanol);
-        for (nombre, s, alto) in [("cc-personas", &con_chat, 1300u32), ("cc-entrar", &entrar, 760)] {
+        for (nombre, s, alto) in [("cc-personas", &con_chat, 1300u32), ("cc-entrar", &entrar, 760), ("cc-dentro", &dentro, 520)] {
             let (w, h) = (480u32, alto);
             let fuera = FueraDePantalla::nuevo(&motor, d.d3d(), w, h).expect("superficie");
             motor

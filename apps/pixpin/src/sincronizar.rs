@@ -177,6 +177,37 @@ pub fn entrar_en_chat_compartido(idioma: pixpin_store::Idioma, ubicacion: Ubicac
     con_pedido(idioma, ubicacion, Some(Pedido::EntrarEnChat))
 }
 
+
+/// El idioma y la ubicacion con que se abrio la ventana: los que necesita
+/// el chat para abrirse desde aqui («Abrir chat» al entrar en uno
+/// compartido).
+static LANZADA_CON: std::sync::Mutex<Option<(pixpin_store::Idioma, Ubicacion)>> =
+    std::sync::Mutex::new(None);
+
+/// La ficha (`almacen::Ficha::id`) del chat `chat` tal como viaja, o nada si
+/// aqui no hay ese chat.
+fn ficha_del_chat(raiz: &Path, chat: &str) -> Option<String> {
+    DiscoPc::nuevo(raiz).ficha_de(chat).map(|f| f.id)
+}
+
+/// **Lleva el chat de PixPin al chat `chat`** (`MensajesActivity.abrirChatDe`
+/// del movil). Devuelve si se pudo.
+fn abrir_chat(raiz: &Path, chat: &str) -> bool {
+    let Some(ficha) = ficha_del_chat(raiz, chat) else {
+        return false;
+    };
+    let Some((idioma, ubicacion)) = LANZADA_CON.lock().ok().and_then(|g| g.clone()) else {
+        return false;
+    };
+    crate::ventana_chat::ir_a(
+        idioma,
+        ubicacion,
+        crate::notas_md::paginas_vivas::opciones_del_lienzo(),
+        ficha,
+        None,
+    );
+    true
+}
 fn con_pedido(idioma: pixpin_store::Idioma, ubicacion: Ubicacion, pedido: Option<Pedido>) {
     if let Some(p) = pedido {
         dejar_pedido(p);
@@ -197,6 +228,11 @@ fn con_pedido(idioma: pixpin_store::Idioma, ubicacion: Ubicacion, pedido: Option
         .name("sincronizar".into())
         .spawn(move || {
             let _com = pixpin_shell::ComDelHilo::iniciar();
+            // Con que se abrio: «Abrir chat» al entrar en uno compartido
+            // lleva el chat a el con lo mismo.
+            if let Ok(mut g) = LANZADA_CON.lock() {
+                *g = Some((idioma, ubicacion.clone()));
+            }
             let textos = Catalogo::nuevo(idioma);
             let hecho = crate::dispositivo_perdido::con_recursos("sincronizar", |r| {
                 abrir(r, &textos, &ubicacion)

@@ -600,7 +600,7 @@ pub fn poner_opciones_del_lienzo(o: crate::ventana_chat::OpcionesLienzo) {
     }
 }
 
-pub(super) fn opciones_del_lienzo() -> crate::ventana_chat::OpcionesLienzo {
+pub(crate) fn opciones_del_lienzo() -> crate::ventana_chat::OpcionesLienzo {
     OPCIONES
         .lock()
         .ok()
