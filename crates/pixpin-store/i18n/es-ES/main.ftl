@@ -1312,6 +1312,7 @@ lienzo-cota-angulo = Ángulo
 
 ## Lienzo: imagen (zona, lupa, pixelar, compartir y referencia; 26-sep)
 lienzo-referencia-menu = Imagen de referencia…
+lienzo-pegar-menu = Pegar
 lienzo-pista-compartir = Compartir… (Ctrl+Mayús+S)
 lienzo-pista-lupa = Lupa (Q): en el lienzo, toca una figura cerrada y enseña en grande lo de debajo; en la pantalla, amplía bajo el cursor
 lienzo-pista-mosaico = Pixelar (mosaico): arrastra sobre lo que quieras tapar

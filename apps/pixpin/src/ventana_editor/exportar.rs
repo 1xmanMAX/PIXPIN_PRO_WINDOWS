@@ -882,6 +882,16 @@ pub(crate) fn menu(propietaria: HWND, x: i32, y: i32) -> Option<Peticion> {
             id: 6,
             texto: t.t("lienzo-referencia-menu"),
         },
+        EntradaMenu {
+            id: 0,
+            texto: String::new(),
+        },
+        // «Pegar»: lo mismo que Ctrl+V (lo atiende el editor, ver
+        // `tomar_pegar`), donde se abrio el menu.
+        EntradaMenu {
+            id: 7,
+            texto: t.t("lienzo-pegar-menu"),
+        },
     ];
     match pixpin_shell::exportar::menu_emergente(propietaria, x, y, &entradas)? {
         1 => Some(Peticion::Exportar),
@@ -896,8 +906,20 @@ pub(crate) fn menu(propietaria: HWND, x: i32, y: i32) -> Option<Peticion> {
             super::referencia::pedir();
             None
         }
+        7 => {
+            PEGAR.store(true, std::sync::atomic::Ordering::SeqCst);
+            None
+        }
         _ => None,
     }
+}
+
+/// «Pegar» del menu, a la espera de que el editor lo atienda como un Ctrl+V.
+static PEGAR: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Si se eligio «Pegar» en el menu (y se olvida: una vez por eleccion).
+pub(crate) fn tomar_pegar() -> bool {
+    PEGAR.swap(false, std::sync::atomic::Ordering::SeqCst)
 }
 
 /// El ancho al que se dibuja la pagina de un PDF debajo de una hoja: el mismo

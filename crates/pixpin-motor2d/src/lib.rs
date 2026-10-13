@@ -73,6 +73,7 @@ pub mod serie;
 pub mod tabla_dibujada;
 pub mod texto;
 pub mod texto_en_figuras;
+pub mod texto_pegado;
 pub mod tinta;
 pub mod tiradores;
 pub mod transformar;
