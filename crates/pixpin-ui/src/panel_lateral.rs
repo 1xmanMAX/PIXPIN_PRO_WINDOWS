@@ -229,6 +229,12 @@ pub enum AccionPanel {
     /// **Si la cota pide su medida al trazarla** (`pedirLaMedida` del movil):
     /// si o no. Como la serie, va al gesto y no a lo elegido.
     PedirMedida(bool),
+    /// **El modo guia** (`modoReferencia` del movil): lo que se trace sera
+    /// linea de referencia. Va al gesto (`Gesto::poner_modo_guia`).
+    ModoGuia(bool),
+    /// **Ver o esconder las lineas de referencia** (`referenciasVisibles`):
+    /// va a la escena, que lo guarda en el fichero.
+    VerGuias(bool),
 }
 
 /// El titulo de cada seccion. Lo traduce quien pinta.
@@ -266,6 +272,10 @@ pub enum Seccion {
     SerieDePunto,
     /// Si al trazar una cota se pide su medida.
     PedirMedida,
+    /// La dureza del grafito: 4H ... 8B (`Propiedad.DUREZA` del movil).
+    Dureza,
+    /// El modo guia y el ojo de las lineas de referencia.
+    Guias,
     /// Pixelar o desenfocar un mosaico (`Propiedad.MOSAICO` del movil).
     Mosaico,
     /// Cuanto agranda una lupa (`Propiedad.LUPA`).
@@ -422,6 +432,14 @@ pub struct Mandos {
     pub serie_punto: Mando<pixpin_motor2d::puntos_etiquetados::SerieDePunto>,
     /// Si la cota pide su medida: solo con la cota en la mano.
     pub pedir_medida: Mando<bool>,
+    /// **La dureza del grafito**: con el grafito en la mano o algo de
+    /// grafito elegido (`propiedadesPara(GRAFITO)` y `propiedadesDe` del
+    /// movil: solo lo que es de `cuadritos`).
+    pub dureza: Mando<pixpin_motor2d::tinta::grafito::Dureza>,
+    /// **El modo guia** (si esta puesto) y, si hay alguna guia, **si se ven**
+    /// (`None`: no hay ninguna, y el ojo no sale, como en el movil). Lo pone
+    /// quien sabe del gesto y de la escena: [`Mandos::con_guias`].
+    pub guias: Option<(bool, Option<bool>)>,
     /// Pixelar (`false`) o desenfocar (`true`): con el mosaico en la mano o
     /// un mosaico elegido.
     pub mosaico: Mando<bool>,
@@ -452,6 +470,29 @@ impl Mandos {
         } else {
             Mando::Fuera
         };
+        self
+    }
+
+    /// **El modo guia y el ojo de las guias**: salen con cualquier
+    /// herramienta y con lo elegido, porque cualquier herramienta traza guias.
+    /// `visibles` es `None` si no hay ninguna guia (el ojo no sale); y todo
+    /// `None` si la seccion no toca.
+    pub fn con_guias(mut self, guias: Option<(bool, Option<bool>)>) -> Mandos {
+        self.guias = guias;
+        self
+    }
+
+    /// **La dureza de la mina**, solo con el grafito en la mano (la de lo
+    /// proximo, `estilo.dureza`); con algo elegido la pone
+    /// [`Mandos::de_seleccion`].
+    pub fn con_dureza(
+        mut self,
+        h: Herramienta,
+        dureza: pixpin_motor2d::tinta::grafito::Dureza,
+    ) -> Mandos {
+        if h == Herramienta::Grafito {
+            self.dureza = Mando::Vale(dureza);
+        }
         self
     }
 
@@ -553,6 +594,11 @@ impl Mandos {
             }
             if let Some(v) = pixpin_motor2d::estilo::variabilidad_de(e) {
                 m.presion = m.presion.juntar(v);
+            }
+            if e.material.es_grafito() {
+                m.dureza = m
+                    .dureza
+                    .juntar(pixpin_motor2d::tinta::grafito::Dureza::de(e));
             }
             if (CambioForma::Bordes { redondo: false }).admite(&e.figura) {
                 m.bordes = m.bordes.juntar(e.redondo);
@@ -687,6 +733,8 @@ pub fn admite(accion: &AccionPanel, e: &Elemento) -> bool {
             // El material no es mando del panel de Excalidraw ni de la
             // tabla de la interfaz: lo decide quien lo pide.
             CambioEstilo::Material(_) => true,
+            // La dureza, solo a lo que es de grafito.
+            CambioEstilo::Dureza(_) => e.material.es_grafito(),
         },
         // La vertical, solo el rotulo de una figura: a un texto suelto no le
         // cambiaria nada de lo que se ve, y un boton que no cambia nada es un
@@ -1371,6 +1419,23 @@ impl PanelLateral {
             c.fila(&[v(Variabilidad::Constante), v(Variabilidad::Variable)]);
             c.separar();
         }
+        // **La dureza del grafito**, de la 4H, fina y clara, a la 8B, gorda y
+        // negra (`LaDurezaQueHay` del panel del movil): siete botones con su
+        // nombre, como en la caja de lapices.
+        if m.dureza.sale() {
+            c.titulo(Seccion::Dureza);
+            let opciones: Vec<(AccionPanel, bool)> = pixpin_motor2d::tinta::grafito::Dureza::TODAS
+                .into_iter()
+                .map(|d| {
+                    (
+                        AccionPanel::Estilo(CambioEstilo::Dureza(d)),
+                        m.dureza.valor() == Some(d),
+                    )
+                })
+                .collect();
+            c.fila(&opciones);
+            c.separar();
+        }
         if tiene(Propiedad::Rugosidad) {
             c.titulo(Seccion::TrazoAMano);
             let r = |v: f32| {
@@ -1573,6 +1638,19 @@ impl PanelLateral {
         if tiene(Propiedad::Opacidad) {
             c.titulo(Seccion::Opacidad);
             c.deslizador(s.opacidad);
+            c.separar();
+        }
+        // **Las lineas de referencia**: el interruptor del modo guia y, si
+        // hay alguna, el ojo que las esconde (`DrawToolbar` del movil, que
+        // pone los dos junto a las herramientas). Sin borrar todas de golpe:
+        // el movil lo quito porque solo se pulsaba por error.
+        if let Some((modo, visibles)) = m.guias {
+            c.titulo(Seccion::Guias);
+            let mut opciones = vec![(AccionPanel::ModoGuia(!modo), modo)];
+            if let Some(v) = visibles {
+                opciones.push((AccionPanel::VerGuias(!v), !v));
+            }
+            c.fila(&opciones);
             c.separar();
         }
         if ctx.seleccionados >= 1 {

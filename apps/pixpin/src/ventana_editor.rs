@@ -3366,7 +3366,8 @@ fn pintar(
                 let Some(e) = elemento_por_id(escena, rejilla, id) else {
                     continue;
                 };
-                if e.borrado {
+                // Las guias escondidas no se pintan (`Escena::a_la_vista`).
+                if e.borrado || guia_escondida(escena, e) {
                     continue;
                 }
                 // El mosaico lo pinta `tapar::pasar`, con los pixeles de
@@ -3945,7 +3946,11 @@ fn pintar_seleccion_en_capa(
             );
             // En el orden de la escena, para que lo de encima siga encima.
             for e in &escena.elementos {
-                if e.borrado || !se_arrastra(gesto, e.id) || tapar::es_mosaico(e) {
+                if e.borrado
+                    || guia_escondida(escena, e)
+                    || !se_arrastra(gesto, e.id)
+                    || tapar::es_mosaico(e)
+                {
                     continue;
                 }
                 let grano = pixpin_motor2d::pintado::grano_de(e);
@@ -4379,7 +4384,7 @@ fn pintar_zona(
         let Some(e) = elemento_por_id(escena, rejilla, id) else {
             continue;
         };
-        if e.borrado || tapar::es_mosaico(e) {
+        if e.borrado || guia_escondida(escena, e) || tapar::es_mosaico(e) {
             continue;
         }
         let mut indice = 0u32;
@@ -6013,4 +6018,10 @@ mod pruebas {
             "los ajustes de prueba tienen que diferir de los de fabrica o esto no mide nada"
         );
     }
+}
+
+/// **Una linea de referencia escondida** (`referenciasVisibles` a falso): no
+/// se pinta, como en el movil. Ver `Escena::a_la_vista`.
+fn guia_escondida(escena: &Escena, e: &pixpin_motor2d::Elemento) -> bool {
+    !escena.referencias_visibles && e.extras.referencia
 }

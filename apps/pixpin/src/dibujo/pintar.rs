@@ -561,7 +561,8 @@ pub(crate) fn pintar_escena(
     sin_cache: impl Fn(u64) -> bool,
 ) {
     let (vx0, vy0, vx1, vy1) = vista;
-    for e in escena.visibles() {
+    // Lo que se ve: sin las guias escondidas.
+    for e in escena.a_la_vista() {
         if matches!(e.figura, Figura::Mosaico { .. }) {
             continue;
         }
@@ -620,6 +621,37 @@ pub(crate) fn pintar_iconos_de_enlace(
             p.polilinea(&v, r * 0.16, Color::BLANCO);
         }
     }
+}
+
+/// El brazo de la cruz del centro de un ovalo guia, en pixeles de pantalla
+/// (`CENTRO_BRAZO` del movil), y su trazo (`CENTRO_TRAZO`).
+const CENTRO_BRAZO: f32 = 7.0;
+const CENTRO_TRAZO: f32 = 1.4;
+
+/// **La marca del centro de los ovalos guia** (`marcarCentro` del movil):
+/// una cruz pequena en el centro de cada elipse y cada arco de referencia, del
+/// color de su trazo y del mismo tamano a cualquier aumento. Un ovalo de
+/// referencia esta para clavar el compas en su centro, y sin marca hay que
+/// adivinarlo. Solo en pantalla: exportar no pasa por aqui (`paraExportar`).
+pub(crate) fn pintar_centros_de_guias(
+    p: &pixpin_render::Pintor<'_>,
+    escena: &pixpin_motor2d::Escena,
+    zoom: f32,
+) {
+    let brazo = CENTRO_BRAZO / zoom.max(0.0001);
+    let trazo = CENTRO_TRAZO / zoom.max(0.0001);
+    for e in escena.a_la_vista().filter(|e| es_centro_de_guia(e)) {
+        let (x0, y0, x1, y1) = e.caja();
+        let (cx, cy) = ((x0 + x1) / 2.0, (y0 + y1) / 2.0);
+        let color = a_color(ColorRgba { a: 1.0, ..e.trazo });
+        p.polilinea(&[(cx - brazo, cy), (cx + brazo, cy)], trazo, color);
+        p.polilinea(&[(cx, cy - brazo), (cx, cy + brazo)], trazo, color);
+    }
+}
+
+/// Si `e` lleva marca de centro: un ovalo o un arco que es guia (`esRedonda`).
+pub(crate) fn es_centro_de_guia(e: &pixpin_motor2d::Elemento) -> bool {
+    e.extras.referencia && matches!(e.figura, Figura::Elipse | Figura::Arco { .. })
 }
 
 /// El contorno cerrado de una capsula horizontal de `desde` a `hasta` y
@@ -695,6 +727,7 @@ pub(crate) fn pintar_encima(
     // otra hoja». Solo en pantalla: exportar no pasa por aqui, como el
     // `paraExportar` del movil.
     pintar_iconos_de_enlace(p, escena, zoom);
+    pintar_centros_de_guias(p, escena, zoom);
     for orden in gesto.laser.ordenes(zoom) {
         dibujar_orden(p, &orden, vista, None, imagenes, zoom, None);
     }
@@ -814,6 +847,31 @@ mod muestras {
     use pixpin_motor2d::escena::Escena;
     use pixpin_motor2d::estilo::NivelGrosor;
     use pixpin_motor2d::gesto::{EventoGesto, Gesto, Herramienta};
+
+    #[test]
+    fn solo_los_ovalos_y_arcos_guia_llevan_marca_de_centro() {
+        let guia = |figura: Figura, referencia: bool| {
+            let mut e = Elemento {
+                figura,
+                ancho: 40.0,
+                alto: 40.0,
+                ..Default::default()
+            };
+            e.extras.referencia = referencia;
+            e
+        };
+        assert!(es_centro_de_guia(&guia(Figura::Elipse, true)));
+        assert!(es_centro_de_guia(&guia(
+            Figura::Arco {
+                inicio: 0.0,
+                barrido: None
+            },
+            true
+        )));
+        // Casos negativos: el ovalo de dibujo y el rectangulo guia.
+        assert!(!es_centro_de_guia(&guia(Figura::Elipse, false)));
+        assert!(!es_centro_de_guia(&guia(Figura::Rectangulo, true)));
+    }
 
     const BLANCO: Color = Color {
         r: 1.0,

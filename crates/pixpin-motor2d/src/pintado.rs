@@ -1183,7 +1183,7 @@ pub fn ordenes(e: &Elemento) -> Vec<Orden> {
 /// nada llamaba a esta ruta a comprobarlo en pantalla.
 pub fn ordenes_de_escena(escena: &Escena) -> Vec<Orden> {
     escena
-        .visibles()
+        .a_la_vista()
         .flat_map(|e| {
             ordenes(e).into_iter().chain(ordenes_medibles(
                 e,

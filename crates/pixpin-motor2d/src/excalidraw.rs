@@ -320,6 +320,8 @@ pub fn a_escena(lienzo: &Lienzo) -> crate::Escena {
     // Los clavos de soldar (`alfileres` del movil): siguen en `resto` y aqui
     // se traducen a los numeros de la escena. Ver `nudos::leer_del_fichero`.
     escena.alfileres = crate::nudos::leer_del_fichero(&lienzo.resto, &escena.elementos);
+    // Si las guias estan escondidas: es del dibujo y viaja con el.
+    escena.referencias_visibles = referencias_visibles(lienzo);
     escena
 }
 
@@ -400,6 +402,7 @@ pub fn con_escena(lienzo: &Lienzo, escena: &crate::Escena) -> Lienzo {
     // si sale la cruda de siempre o la nueva).
     salida.escala = escena.escala.clone();
     fondo_hacia(&mut salida, escena.fondo);
+    referencias_visibles_hacia(&mut salida, escena.referencias_visibles);
     let mut n: u64 = 0;
     for entrada in &mut salida.entradas {
         let Entrada::Nuestro { elemento, .. } = entrada else {
@@ -1004,7 +1007,59 @@ fn extras_desde(v: &Value) -> Extras {
         .then(|| num(v, "fontSize"))
         .flatten()
         .filter(|t| t.is_finite() && *t > 0.0),
+        // La dureza del grafito (v0.91 del movil). Una palabra que no
+        // conocemos se lee como «ninguna» (HB) y **se conserva**: ver
+        // `dureza_hacia`, la misma regla del `material`.
+        dureza: v
+            .get("dureza")
+            .and_then(Value::as_str)
+            .and_then(crate::tinta::grafito::Dureza::desde_rotulo),
     }
+}
+
+/// **La dureza de vuelta al JSON** (`dureza` del movil).
+///
+/// La que hay se escribe con su nombre («8B»). Sin ninguna (HB) la clave se
+/// quita, que es como la escribe el movil (`explicitNulls = false` con el
+/// campo a null) y como la lee: ausente es HB. Pero una palabra que aqui no
+/// se entiende —una dureza de una version futura— se deja intacta mientras
+/// aqui no se elija otra, como el `material` y el `fillStyle`.
+fn dureza_hacia(mapa: &mut Map<String, Value>, d: Option<crate::tinta::grafito::Dureza>) {
+    match d {
+        Some(d) => {
+            mapa.insert("dureza".into(), Value::String(d.rotulo().into()));
+        }
+        None => {
+            let conocida = mapa
+                .get("dureza")
+                .and_then(Value::as_str)
+                .is_some_and(|s| crate::tinta::grafito::Dureza::desde_rotulo(s).is_some());
+            if conocida || mapa.get("dureza").is_some_and(Value::is_null) {
+                mapa.remove("dureza");
+            }
+        }
+    }
+}
+
+/// **Si las lineas de referencia estan a la vista** (`referenciasVisibles`
+/// de la escena del movil). Sin la clave, a la vista, como el movil.
+pub fn referencias_visibles(lienzo: &Lienzo) -> bool {
+    lienzo
+        .resto
+        .get("referenciasVisibles")
+        .and_then(Value::as_bool)
+        .unwrap_or(true)
+}
+
+/// Y de vuelta. Solo si cambio: un lienzo que nadie toco no estrena la clave
+/// (el movil la escribe siempre, y la que trae vuelve tal cual).
+fn referencias_visibles_hacia(salida: &mut Lienzo, visibles: bool) {
+    if referencias_visibles(salida) == visibles {
+        return;
+    }
+    salida
+        .resto
+        .insert("referenciasVisibles".into(), Value::Bool(visibles));
 }
 
 /// El `crop` de una imagen. Sin sus cuatro medidas no hay recorte: uno a
@@ -1271,6 +1326,13 @@ fn elemento_hacia(e: &Elemento, original: &Value, objetos: bool) -> Value {
             "material".into(),
             Value::String(e.material.palabra().into()),
         );
+    }
+    dureza_hacia(&mut mapa, e.extras.dureza);
+    // **La guia que nace aqui** (modo guia): sin la clave el movil la leeria
+    // como dibujo. Se escribe si lo es o si el original ya la traia (una que
+    // deja de serlo tiene que decirlo); en lo demas, nada nuevo.
+    if e.extras.referencia || mapa.contains_key("reference") {
+        mapa.insert("reference".into(), Value::Bool(e.extras.referencia));
     }
     mapa.insert("strokeWidth".into(), Value::from(e.grosor as f64));
     mapa.insert(

@@ -177,6 +177,10 @@ pub struct Mano {
     /// Forma rapida: desde cuando esta quieto el cursor dibujando a mano, y
     /// donde. Quieto `PAUSA_FORMA` convierte el trazo en figura.
     pub quieto: Option<(std::time::Instant, Punto2)>,
+    /// Cuanto hay que estar quieto en el trazo de ahora: `PAUSA_FORMA`, o el
+    /// segundo del grafito (`Gesto::espera_de_la_forma_ms`). Se apunta al
+    /// pulsar, que es cuando se sabe con que se dibuja.
+    pub pausa: std::time::Duration,
     /// La punta predicha del trazo en curso (ver `tinta::prediccion`).
     pub predictor: pixpin_motor2d::tinta::prediccion::Predictor,
     /// C1, apagado de fabrica: el filtro de 1 euro de `pixpin-tinta`.
@@ -212,6 +216,7 @@ impl Mano {
             portapapeles: Vec::new(),
             borrando: false,
             quieto: None,
+            pausa: PAUSA_FORMA,
             predictor: pixpin_motor2d::tinta::prediccion::Predictor::nuevo(),
             filtro: pixpin_tinta::FiltroUnEuro::nuevo(mandos_de(tinta)),
             suavizado_natural: tinta.suavizado == pixpin_store::Suavizado::Natural,
@@ -431,8 +436,29 @@ impl Mano {
     /// `imagenes` es el almacen de imagenes pegadas si el anfitrion las
     /// sabe pintar; sin el, Ctrl+V solo pega lo copiado dentro. `ancho_px`
     /// y `alto_px` son los de la ventana, para centrar una imagen pegada.
+    ///
+    /// Todo pica en el mundo del modo guia (`impacto::Mundo`): la goma, el
+    /// cuentagotas y el lazo de aqui fuera tampoco tocan una guia fuera del
+    /// modo, ni dibujo dentro.
     #[allow(clippy::too_many_arguments)]
     pub fn herramienta(
+        &mut self,
+        ev: &EventoOverlay,
+        gesto: &mut Gesto,
+        escena: &mut Escena,
+        imagenes: Option<&mut ImagenesLienzo>,
+        vista: Vista<'_>,
+        ancho_px: f32,
+        alto_px: f32,
+    ) -> Atendido {
+        let mundo = gesto.mundo(escena);
+        pixpin_motor2d::impacto::con_mundo(mundo, || {
+            self.herramienta_en_su_mundo(ev, gesto, escena, imagenes, vista, ancho_px, alto_px)
+        })
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn herramienta_en_su_mundo(
         &mut self,
         ev: &EventoOverlay,
         gesto: &mut Gesto,
@@ -800,6 +826,7 @@ impl Mano {
                 self.predictor.reiniciar();
                 self.predictor.anotar(p, ms);
                 self.quieto = Some((std::time::Instant::now(), p));
+                self.pausa = std::time::Duration::from_millis(gesto.espera_de_la_forma_ms());
                 pulsado = Some(p);
             }
             EventoGesto::Mover { p, .. } => {
@@ -851,7 +878,7 @@ impl Mano {
             self.quieto = None;
             return false;
         }
-        if desde.elapsed() < PAUSA_FORMA {
+        if desde.elapsed() < self.pausa {
             return false;
         }
         // Una sola vez por pausa: si no parece nada, se sigue dibujando y la
@@ -868,7 +895,7 @@ impl Mano {
     /// mano quieta no llegan eventos.
     pub fn tope_forma_ms(&self) -> Option<u32> {
         self.quieto
-            .map(|(desde, _)| PAUSA_FORMA.saturating_sub(desde.elapsed()).as_millis() as u32 + 1)
+            .map(|(desde, _)| self.pausa.saturating_sub(desde.elapsed()).as_millis() as u32 + 1)
     }
 
     #[allow(clippy::too_many_arguments)]

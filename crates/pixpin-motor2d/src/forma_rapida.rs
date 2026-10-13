@@ -32,6 +32,29 @@ use crate::vector::{Punto2, distancia_a_segmento};
 /// despacio se endereza sola en mitad de una curva.
 pub const ESPERA_PARA_LA_FORMA_MS: u64 = 550;
 
+/// **Con el grafito, un segundo** (`ESPERA_DEL_GRAFITO` del movil, v0.92).
+/// El grafito es escritura libre: la mano se para a cada letra, y con el
+/// medio segundo del lapiz lo escrito se volvia raya —«me lo corrige»—. Los
+/// gestos los quiere igual, asi que piden mas tiempo quieto.
+pub const ESPERA_DEL_GRAFITO_MS: u64 = 1000;
+
+/// Lo que mide en pantalla, en pixeles, un trazo de grafito para que
+/// pararse lo vuelva raya, rectangulo o figura
+/// (`TRAZO_DE_FIGURA_DEL_GRAFITO` del movil): la diagonal de su caja. Una
+/// letra no llega; el compas no lo pide.
+pub const TRAZO_DE_FIGURA_DEL_GRAFITO_PX: f32 = 160.0;
+
+/// Si un trazo de grafito es lo bastante grande en pantalla para hacerse
+/// figura al pararse (ver `TRAZO_DE_FIGURA_DEL_GRAFITO_PX`). `zoom` son
+/// pixeles de pantalla por unidad de escena.
+pub fn trazo_de_figura_del_grafito(puntos: &[Punto2], zoom: f32) -> bool {
+    if puntos.is_empty() {
+        return false;
+    }
+    let (x0, y0, x1, y1) = caja(puntos);
+    (x1 - x0).hypot(y1 - y0) * zoom.max(0.0001) >= TRAZO_DE_FIGURA_DEL_GRAFITO_PX
+}
+
 /// Cuanto puede temblar el cursor, en pixeles de pantalla, sin dejar de estar
 /// parado (`TEMBLOR_DEL_DEDO` del movil). Con dos o tres la cuenta no llega a
 /// cumplirse nunca en una mano normal, ni con lapiz de tableta.

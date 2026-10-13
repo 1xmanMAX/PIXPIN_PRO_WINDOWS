@@ -2193,3 +2193,77 @@ fn una_nota_o_una_tabla_sin_referencia_no_es_una_tabla_del_movil() {
     };
     assert!(vista::tabla_del_movil(&p.raiz(), &g.id, &sin).is_none());
 }
+
+/// **Un lienzo del PC con grafito 8B y una guia, con las guias escondidas**
+/// (Tanda 3): llega al movil con `dureza`, `reference` y
+/// `referenciasVisibles` tal como su `Scene` los lee, y la vuelta siguiente no
+/// lo manda otra vez.
+#[test]
+fn el_grafito_con_dureza_y_las_guias_del_pc_llegan_al_movil_como_las_lee() {
+    use pixpin_motor2d::elemento::{Elemento, Extras, Figura};
+    use pixpin_motor2d::vector::Punto2;
+    let p = montar("dureza-guias");
+    let obra = proyecto_del_pc(&p);
+    let carpeta = almacen::carpeta(&p.raiz(), &obra.id);
+    let mut escena = pixpin_motor2d::Escena::nueva();
+    escena.anadir(Elemento {
+        figura: Figura::Lapiz {
+            puntos: (0..6)
+                .map(|i| Punto2::nuevo(i as f32 * 4.0, i as f32 * 2.0))
+                .collect(),
+            presiones: Vec::new(),
+            opciones: Some(Default::default()),
+        },
+        grosor: 3.0,
+        material: pixpin_motor2d::tinta::MaterialTinta::Cuadritos,
+        extras: Extras {
+            dureza: Some(pixpin_motor2d::tinta::grafito::Dureza::B8),
+            ..Default::default()
+        },
+        ..Elemento::default()
+    });
+    escena.anadir(Elemento {
+        figura: Figura::Elipse,
+        x: 50.0,
+        y: 50.0,
+        ancho: 40.0,
+        alto: 40.0,
+        grosor: 1.0,
+        extras: Extras {
+            referencia: true,
+            ..Default::default()
+        },
+        ..Elemento::default()
+    });
+    escena.referencias_visibles = false;
+    let texto = pixpin_motor2d::excalidraw::escribir(&pixpin_motor2d::excalidraw::con_escena(
+        &pixpin_motor2d::excalidraw::Lienzo::vacio(),
+        &escena,
+    ));
+    std::fs::write(carpeta.join("lienzos/d9.excalidraw"), &texto).unwrap();
+
+    p.vuelta_desde_pc();
+
+    let alli = de_gz(&p.movil.raiz().join("pins/draw/d9.excalidraw.gz"));
+    let v: serde_json::Value = serde_json::from_str(&alli).unwrap();
+    assert_eq!(v["elements"][0]["material"], "cuadritos", "{alli}");
+    assert_eq!(v["elements"][0]["dureza"], "8B", "{alli}");
+    assert_eq!(v["elements"][1]["reference"], true, "{alli}");
+    assert_eq!(v["referenciasVisibles"], false, "{alli}");
+    // Caso negativo: el trazo que no es guia no lleva `reference`, y el
+    // ovalo, que no es de grafito, no lleva `dureza`.
+    assert!(v["elements"][0].get("reference").is_none_or(|r| r == false));
+    assert!(v["elements"][1].get("dureza").is_none());
+    // Y lo que el movil leeria vuelve a ser lo mismo en el PC.
+    let vuelta = pixpin_motor2d::excalidraw::a_escena(
+        &pixpin_motor2d::excalidraw::leer(&alli).unwrap(),
+    );
+    assert_eq!(
+        vuelta.elementos[0].extras.dureza,
+        Some(pixpin_motor2d::tinta::grafito::Dureza::B8)
+    );
+    assert!(vuelta.elementos[1].extras.referencia);
+    assert!(!vuelta.referencias_visibles);
+    let chat = vista::chat_de_ficha(&p.raiz(), &obra.id).unwrap();
+    p.quieto(&chat);
+}
