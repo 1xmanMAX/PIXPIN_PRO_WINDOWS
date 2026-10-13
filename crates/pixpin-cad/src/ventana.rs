@@ -1738,7 +1738,9 @@ pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo, String>>, textos_ui: 
             if let Err(err) = dibujado {
                 tracing::warn!(error = %err, "no se pudo dibujar el plano");
             }
-            sucio = false;
+            // Lo anotado iba en su foto estirada (o a medio rehacer): otro
+            // fotograma, ya nitido, aunque la camara no se mueva.
+            sucio = anotador.as_ref().is_some_and(|a| a.falta_pintar());
         }
     }
     if anotando && let Some(a) = anotador.as_mut() {

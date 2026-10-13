@@ -579,6 +579,29 @@ pub struct Tinta {
     /// La capa (hoja) con la que se trabaja: la seleccion es suya. `None`
     /// hasta el primer toque.
     pub hoja: Option<usize>,
+    /// **Sin tirones al cambiar de zoom** (13-oct-2026, el visor de planos):
+    /// con `Some(t)`, al pasar de vez y media de zoom no se tira lo teselado
+    /// sino que se rehace poco a poco, `t` de teselar por pintado como mucho;
+    /// mientras, lo de antes se pinta (algo facetado acercando). Quien lo pone
+    /// tiene que volver a pintar mientras [`Tinta::pendientes`] no sea cero.
+    /// `None` (lo de siempre): todo de golpe.
+    pub presupuesto: Option<std::time::Duration>,
+    /// Lo que se pinto con lo de antes en la ultima capa pintada.
+    pendientes: u32,
+}
+
+/// Que parte de una capa pintar ([`Tinta::pintar_capa_parte`]).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Parte {
+    /// Lo dibujado y, si es la activa, lo de encima (lo de siempre).
+    Toda,
+    /// Solo lo dibujado, sin lo de encima: la foto de la capa.
+    Dibujado,
+    /// Lo dibujado que no cabe entero en esta caja del documento y lo de
+    /// encima: lo que va vivo sobre la foto.
+    FueraDe((f32, f32, f32, f32)),
+    /// Solo lo de encima (si es la activa): sobre la foto nitida.
+    Encima,
 }
 
 impl Tinta {
@@ -607,6 +630,8 @@ impl Tinta {
             imagenes: ImagenesLienzo::nuevo(4096),
             raton: None,
             hoja: None,
+            presupuesto: None,
+            pendientes: 0,
         }
     }
 
@@ -762,36 +787,65 @@ impl Tinta {
         papel: ColorRgba,
         activa: bool,
     ) {
+        self.pintar_capa_parte(p, hoja, capa, vista, zoom, papel, activa, Parte::Toda);
+    }
+
+    /// Como [`Tinta::pintar_capa`], pero solo `parte` de ella (ver [`Parte`]).
+    #[allow(clippy::too_many_arguments)]
+    pub fn pintar_capa_parte(
+        &mut self,
+        p: &Pintor,
+        hoja: usize,
+        capa: &Capa,
+        vista: (f32, f32, f32, f32),
+        zoom: f32,
+        papel: ColorRgba,
+        activa: bool,
+        parte: Parte,
+    ) {
         self.reloj += 1;
         let calculado = calculado_de(&mut self.calculado, self.reloj, hoja);
         // Las realizaciones se teselan a una escala: lejos de ella se verian
         // facetadas (acercando) o costarian de mas (alejando). El lienzo
         // espera a que el zoom se quede quieto; el lector, que repinta
-        // entero cada vez, las rehace al pasar de vez y media.
+        // entero cada vez, las rehace al pasar de vez y media: de golpe, o
+        // poco a poco si hay presupuesto (ver el campo).
         let r = zoom / calculado.tinta.escala().max(1e-3);
         if !(0.67..=1.5).contains(&r) {
-            calculado.tinta.fijar_escala(zoom);
+            if self.presupuesto.is_some() {
+                calculado.tinta.pasar_a_escala(zoom);
+            } else {
+                calculado.tinta.fijar_escala(zoom);
+            }
         }
+        calculado.tinta.presupuesto(self.presupuesto);
         let cache = &mut calculado.geometria;
         let cache_tinta = &mut calculado.tinta;
         let imagenes = &self.imagenes;
         let gesto = &self.gesto;
+        let encima = activa && parte != Parte::Dibujado;
         // El grafito de cada hoja, en su espacio del horno: por lo mismo que
         // las caches van por hoja (sus ids se repiten de una a otra).
         let espacio = self.espacio + hoja as u64;
         pixpin_motor2d::tinta::grafito::en_espacio(espacio, || {
             crate::dibujo::tema::con_papel(Some(papel), || {
-                crate::dibujo::pintar::pintar_escena(
-                    p,
-                    &capa.escena,
-                    cache,
-                    cache_tinta,
-                    imagenes,
-                    vista,
-                    zoom,
-                    |id| activa && gesto.elemento_en_curso().is_some_and(|(en, _)| en == id),
-                );
-                if activa {
+                if parte != Parte::Encima {
+                    crate::dibujo::pintar::pintar_escena_si(
+                        p,
+                        &capa.escena,
+                        cache,
+                        cache_tinta,
+                        imagenes,
+                        vista,
+                        zoom,
+                        |id| activa && gesto.elemento_en_curso().is_some_and(|(en, _)| en == id),
+                        |caja| match parte {
+                            Parte::FueraDe((x0, y0, x1, y1)) => !(caja.0 >= x0 && caja.1 >= y0 && caja.2 <= x1 && caja.3 <= y1),
+                            _ => true,
+                        },
+                    );
+                }
+                if encima {
                     crate::dibujo::pintar::pintar_encima(
                         p,
                         gesto,
@@ -805,11 +859,19 @@ impl Tinta {
                 }
             })
         });
+        self.pendientes = cache_tinta.pendientes();
         // Lo borrado y compactado no se queda en la cache para siempre. Con
         // la escena de SU hoja: la de otra le tiraria todo.
         if cache.sobran(capa.escena.cuantos_visibles()) {
             cache.podar(&capa.escena);
         }
+    }
+
+    /// Lo que se pinto con lo de antes (otra escala, otra octava) en la
+    /// ultima capa pintada por falta de tiempo ([`Tinta::presupuesto`]): si
+    /// no es cero, hay que volver a pintar para dejarlo nitido.
+    pub fn pendientes(&self) -> u32 {
+        self.pendientes
     }
 
     /// Cuantas veces se ha teselado algo de nuevo, en todas las hojas: lo

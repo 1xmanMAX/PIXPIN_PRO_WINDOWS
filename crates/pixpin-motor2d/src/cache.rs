@@ -172,6 +172,14 @@ impl Cache {
         &self.mapa.get(&e.id).expect("recien puesto").ordenes
     }
 
+    /// **La octava a la que esta guardada la geometria de `e`**, si la hay
+    /// de su version (de cualquier aumento). Quien pinta con prisa (un zoom
+    /// que no puede pararse a recalcular cientos de trazos al cambiar de
+    /// octava) pide las ordenes a esa octava y las rehace luego.
+    pub fn nivel_guardado(&self, e: &Elemento) -> Option<i8> {
+        self.mapa.get(&e.id).filter(|x| x.version == e.version).map(|x| x.nivel)
+    }
+
     /// **La cota entera y los cuadros de la barra**, calculandolos solo si
     /// cambio el elemento, la escala, la coma o el papel.
     ///

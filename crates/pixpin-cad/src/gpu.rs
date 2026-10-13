@@ -238,6 +238,9 @@ pub struct Gpu {
     il_letra: ID3D11InputLayout,
     pub(crate) mezcla: ID3D11BlendState,
     raster: ID3D11RasterizerState,
+    /// Cuantos refrescos espera `Present`: 1, y 0 solo al medir (ver
+    /// [`Gpu::para_medir`]: sin esperar al refresco se mide el trabajo).
+    intervalo: u32,
 }
 
 fn compilar(punto: PCSTR, perfil: PCSTR) -> windows::core::Result<Vec<u8>> {
@@ -456,6 +459,7 @@ impl Gpu {
                 il_letra: il_letra.ok_or_else(falta)?,
                 mezcla: mezcla.ok_or_else(falta)?,
                 raster: raster.ok_or_else(falta)?,
+                intervalo: 1,
             };
             g.preparar_destino()?;
             Ok(g)
@@ -510,6 +514,41 @@ impl Gpu {
 
     pub fn tamano(&self) -> (u32, u32) {
         (self.ancho, self.alto)
+    }
+
+    /// **Para medir fotogramas sin abrir nada** (pruebas de rendimiento de
+    /// quien pinta encima, como lo anotado): la misma tarjeta sobre una
+    /// ventana propia que nunca se muestra (no sale en el escritorio ni
+    /// recibe nada del usuario).
+    pub fn para_medir(ancho: u32, alto: u32) -> windows::core::Result<Gpu> {
+        use windows::Win32::UI::WindowsAndMessaging::{CreateWindowExW, WINDOW_EX_STYLE, WS_POPUP};
+        // SAFETY: una ventana de la clase de sistema STATIC, sin mostrar;
+        // cadenas estaticas.
+        let hwnd = unsafe {
+            CreateWindowExW(WINDOW_EX_STYLE(0), windows::core::w!("STATIC"), windows::core::w!("medir"), WS_POPUP, 0, 0, ancho as i32, alto as i32, None, None, None, None)?
+        };
+        let mut g = Gpu::nueva(hwnd, ancho, alto)?;
+        g.intervalo = 0;
+        Ok(g)
+    }
+
+    /// Espera a que la tarjeta acabe todo lo encolado: para medir lo que
+    /// cuesta de verdad un fotograma, no lo que tarda en encolarse.
+    pub fn esperar(&self) {
+        // SAFETY: consulta de evento del dispositivo propio, en su hilo;
+        // `hecho` es local y del tamano que se pide.
+        unsafe {
+            let mut q: Option<ID3D11Query> = None;
+            if self.dispositivo.CreateQuery(&D3D11_QUERY_DESC { Query: D3D11_QUERY_EVENT, MiscFlags: 0 }, Some(&mut q)).is_err() {
+                return;
+            }
+            let Some(q) = q else { return };
+            self.contexto.End(&q);
+            let mut hecho: i32 = 0;
+            while self.contexto.GetData(&q, Some(&mut hecho as *mut i32 as *mut c_void), 4, 0).is_err() || hecho == 0 {
+                std::hint::spin_loop();
+            }
+        }
     }
 
     pub(crate) fn buffer(&self, bytes: &[u8], bind: D3D11_BIND_FLAG, estructurado: u32) -> windows::core::Result<Option<ID3D11Buffer>> {
@@ -724,7 +763,7 @@ impl Gpu {
                 let atras: ID3D11Texture2D = self.cadena.GetBuffer(0)?;
                 f(&self.dispositivo, &atras);
             }
-            self.cadena.Present(1, DXGI_PRESENT(0)).ok()?;
+            self.cadena.Present(self.intervalo, DXGI_PRESENT(0)).ok()?;
         }
         Ok(())
     }

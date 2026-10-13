@@ -12,6 +12,7 @@ pub use motor::{Color, ErrorRender, MotorRender, premultiplicar, validar_tamano_
 
 pub mod cache_presupuesto;
 pub mod capa_estatica;
+pub mod foto_capa;
 pub mod fuera_de_pantalla;
 pub mod grafito;
 pub mod grano;
@@ -36,6 +37,7 @@ pub mod trayecto_svg;
 pub use superficie::{RitmoComposicion, Superficie};
 
 pub use capa_estatica::{CapaEstatica, Estampa, sigue_valiendo};
+pub use foto_capa::FotoDeCapa;
 pub use grafito::{CacheGrafito, MapaGrafito};
 pub use grano::{CacheGrano, GRADOS_DEL_GRANO};
 pub use lienzo::{EstiloTexto, Interpolacion, Pintor, RectF, Tramo};

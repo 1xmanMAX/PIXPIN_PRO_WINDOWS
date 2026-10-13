@@ -45,6 +45,10 @@ pub(crate) struct Realizada {
     pub(crate) ancla: (f32, f32),
     /// Cuanto hay que correrla para pintarla donde esta ahora.
     pub(crate) corrida: (f32, f32),
+    /// La escala a la que se teselo. Distinta de la de la cache solo tras
+    /// [`CacheTinta::pasar_a_escala`]: vale, algo facetada o de mas, hasta
+    /// que haya tiempo de rehacerla.
+    pub(crate) escala: f32,
 }
 
 /// Cuantas realizaciones se guardan a la vez, como mucho.
@@ -103,6 +107,14 @@ pub struct CacheTinta {
     realizadas: u64,
     /// Ver `reusar_trasladada`: no baja nunca, como `realizadas`.
     trasladadas: u64,
+    /// **Cuanto tiempo de teselar hay en este fotograma** (ver
+    /// [`CacheTinta::presupuesto`]): `None`, sin tope (lo de siempre).
+    presupuesto: Option<std::time::Duration>,
+    /// Lo gastado en teselar desde que se puso el presupuesto.
+    gastado: std::time::Duration,
+    /// Lo que se pinto con lo de antes por falta de tiempo desde que se
+    /// puso el presupuesto: si no es cero, hace falta otro fotograma.
+    pendientes: u32,
     /// **La tela con la que se tine la silueta**: las brochas de mosaico de
     /// `Pintor::grano`, una por material y color.
     ///
@@ -162,6 +174,9 @@ impl CacheTinta {
             sin_hueco_en: None,
             realizadas: 0,
             trasladadas: 0,
+            presupuesto: None,
+            gastado: std::time::Duration::ZERO,
+            pendientes: 0,
             grano: crate::grano::CacheGrano::nueva(),
         }
     }
@@ -189,6 +204,53 @@ impl CacheTinta {
             self.peso = 0;
             self.sin_hueco_en = None;
         }
+    }
+
+    /// **Otra escala sin tiron** (13-oct-2026, «en los CAD con anotaciones el
+    /// zoom va lagueado»): como [`CacheTinta::fijar_escala`], pero sin tirar
+    /// lo realizado. Lo de la escala de antes se sigue pintando (los
+    /// triangulos estan en coordenadas del documento: la transformada lo
+    /// pone en su sitio y a su tamano, solo algo facetado acercando) y se
+    /// rehace a la nueva conforme haya tiempo ([`CacheTinta::presupuesto`]).
+    ///
+    /// Medido en el visor de planos (`plano_cad::anotar::rendimiento`): con
+    /// 378 trazos a la vista, tirarlo todo al pasar de vez y media de zoom
+    /// era un fotograma de 140 a 260 ms (Direct2D tesela cada trazo de nuevo,
+    /// ~0,4 ms cada uno), varias veces por cada vuelta de rueda.
+    pub fn pasar_a_escala(&mut self, escala: f32) {
+        self.escala = escala;
+    }
+
+    /// **El tiempo de teselar de este fotograma**: a partir de aqui, una vez
+    /// gastado `tope` en teselar (lo apunta [`CacheTinta::gastar`]), lo que
+    /// tiene realizacion de otra escala se pinta con ella en vez de
+    /// rehacerla, y se cuenta como pendiente. Lo que no tiene ninguna se
+    /// realiza igual: lo nuevo no puede faltar. `None` quita el tope.
+    pub fn presupuesto(&mut self, tope: Option<std::time::Duration>) {
+        self.presupuesto = tope;
+        self.gastado = std::time::Duration::ZERO;
+        self.pendientes = 0;
+    }
+
+    /// Apunta tiempo gastado en teselar (o en calcular lo que se tesela).
+    pub fn gastar(&mut self, t: std::time::Duration) {
+        self.gastado += t;
+    }
+
+    /// Si ya no queda tiempo de teselar en este fotograma.
+    pub fn sin_tiempo(&self) -> bool {
+        self.presupuesto.is_some_and(|p| self.gastado >= p)
+    }
+
+    /// Apunta algo pintado con lo de antes por falta de tiempo.
+    pub fn apuntar_pendiente(&mut self) {
+        self.pendientes += 1;
+    }
+
+    /// Lo pintado con lo de antes desde [`CacheTinta::presupuesto`]: si no es
+    /// cero, quien pinta tiene que pedir otro fotograma para rehacerlo.
+    pub fn pendientes(&self) -> u32 {
+        self.pendientes
     }
 
     pub fn cuantas(&self) -> usize {
@@ -236,6 +298,7 @@ impl CacheTinta {
                 forma,
                 ancla,
                 corrida: (0.0, 0.0),
+                escala: self.escala,
             },
         ) {
             self.peso = self.peso.saturating_sub(vieja.peso as u64);
@@ -290,9 +353,18 @@ impl CacheTinta {
         fotograma: u64,
     ) -> Option<(ID2D1GeometryRealization, (f32, f32))> {
         let (id, version, indice) = clave;
+        let sin_tiempo = self.sin_tiempo();
+        let escala = self.escala;
         let r = self.mapa.get_mut(&(id, indice))?;
         if r.version != version {
             return None;
+        }
+        // De otra escala: se rehace si hay tiempo; si no, vale la de antes.
+        if r.escala != escala {
+            if !sin_tiempo {
+                return None;
+            }
+            self.pendientes += 1;
         }
         r.usado = fotograma;
         Some((r.realizacion.clone(), r.corrida))
@@ -320,10 +392,12 @@ impl CacheTinta {
         fotograma: u64,
     ) -> bool {
         let (id, version, indice) = clave;
+        let escala = self.escala;
         let Some(r) = self.mapa.get_mut(&(id, indice)) else {
             return false;
         };
-        if r.forma != forma {
+        // La de otra escala no se reusa: si se llego aqui es para rehacerla.
+        if r.forma != forma || r.escala != escala {
             return false;
         }
         r.version = version;

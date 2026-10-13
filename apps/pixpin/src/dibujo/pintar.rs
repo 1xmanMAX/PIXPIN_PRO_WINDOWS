@@ -560,7 +560,33 @@ pub(crate) fn pintar_escena(
     zoom: f32,
     sin_cache: impl Fn(u64) -> bool,
 ) {
+    pintar_escena_si(p, escena, cache, cache_tinta, imagenes, vista, zoom, sin_cache, |_| true);
+}
+
+/// Como [`pintar_escena`], pero solo lo que `pintar_este` diga de su caja
+/// (con la holgura del trazo, en unidades del documento): el visor de planos
+/// pinta asi, encima de la foto de la capa mientras se mueve, solo lo que la
+/// foto no tiene entero (`pixpin_render::FotoDeCapa`).
+///
+/// **Con el presupuesto de la cache de tinta** (`CacheTinta::presupuesto`):
+/// lo que se gasta en calcular y teselar cada elemento se apunta, y cuando
+/// ya no queda tiempo, lo que tiene su geometria de otra octava de zoom se
+/// pinta con ella (y queda pendiente) en vez de recalcularla. Sin
+/// presupuesto es lo de siempre.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn pintar_escena_si(
+    p: &pixpin_render::Pintor<'_>,
+    escena: &pixpin_motor2d::Escena,
+    cache: &mut Cache,
+    cache_tinta: &mut pixpin_render::CacheTinta,
+    imagenes: &ImagenesLienzo,
+    vista: (f32, f32, f32, f32),
+    zoom: f32,
+    sin_cache: impl Fn(u64) -> bool,
+    pintar_este: impl Fn((f32, f32, f32, f32)) -> bool,
+) {
     let (vx0, vy0, vx1, vy1) = vista;
+    let nivel = pixpin_motor2d::cache::nivel_de_detalle(zoom);
     // Lo que se ve: sin las guias escondidas.
     for e in escena.a_la_vista() {
         if matches!(e.figura, Figura::Mosaico { .. }) {
@@ -571,14 +597,29 @@ pub(crate) fn pintar_escena(
         if x1 + holgura < vx0 || x0 - holgura > vx1 || y1 + holgura < vy0 || y0 - holgura > vy1 {
             continue;
         }
+        if !pintar_este((x0 - holgura, y0 - holgura, x1 + holgura, y1 + holgura)) {
+            continue;
+        }
         let cacheable = !sin_cache(e.id);
         let grano = pixpin_motor2d::pintado::grano_de(e);
+        // Sin tiempo, las ordenes de la octava que ya estan (si las hay).
+        let zoom_ordenes = match cache.nivel_guardado(e) {
+            Some(n) if cacheable && n != nivel && cache_tinta.sin_tiempo() => {
+                cache_tinta.apuntar_pendiente();
+                2f32.powi(n as i32)
+            }
+            _ => zoom,
+        };
+        let (t, realizadas, fallos) = (std::time::Instant::now(), cache_tinta.realizadas(), cache.fallos());
         let mut indice = 0u32;
-        por_cada_orden(cache, e, zoom, escena.escala.as_ref(), |orden| {
+        por_cada_orden(cache, e, zoom_ordenes, escena.escala.as_ref(), |orden| {
             let tinta = cacheable.then_some((&mut *cache_tinta, (e.id, e.version, indice)));
             dibujar_orden(p, orden, vista, tinta, imagenes, zoom, grano);
             indice += 1;
         });
+        if cache_tinta.realizadas() != realizadas || cache.fallos() != fallos {
+            cache_tinta.gastar(t.elapsed());
+        }
     }
 }
 

@@ -39,7 +39,7 @@ use pixpin_sincro::anotado::MarcoDeLaHoja;
 use windows::Win32::Graphics::Direct3D11::{ID3D11Device, ID3D11Texture2D};
 use windows::core::Interface;
 
-use crate::lector_tinta::{self, Capa, Tinta, Unidades};
+use crate::lector_tinta::{self, Capa, Parte, Tinta, Unidades};
 
 /// Los ficheros de lo anotado sobre un plano: la capa y su `.hoja`.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -295,6 +295,56 @@ pub struct MotorDelPlano {
     /// letra): asi se sabe que nacio o que se le cambio el tamano desde el
     /// panel, y solo eso se pone a la escala del plano.
     visto: std::collections::HashMap<u64, (f32, Option<f32>)>,
+    /// **La foto de lo anotado** (ver [`MotorDelPlano::pintar`]): mientras el
+    /// plano se acerca o se arrastra, la capa no se repinta trazo a trazo.
+    foto: pixpin_render::FotoDeCapa,
+    /// La camara del ultimo fotograma: si la de ahora es otra, se esta moviendo.
+    ultima_camara: Option<(f32, f32, f32)>,
+    /// Lo ultimo pintado no quedo nitido (foto estirada, trazos de otra
+    /// escala): hace falta otro fotograma.
+    falta: bool,
+    /// Para medir (`rendimiento.rs`): el modo del ultimo fotograma y lo que
+    /// costo elegirlo (rehacer la foto incluido).
+    #[cfg(test)]
+    medida: (Modo, std::time::Duration),
+}
+
+/// Lo que se teselan como mucho por fotograma los trazos al cambiar de
+/// escala (ver `Tinta::presupuesto`): con la capa en su foto mientras se
+/// mueve, esto solo cuenta al pararse y al rehacer la foto.
+const PRESUPUESTO_DE_TESELAR: std::time::Duration = std::time::Duration::from_millis(4);
+
+/// Cuanto puede estirarse o encogerse la foto mientras se mueve antes de
+/// rehacerla: al doble se ve blanda; a la mitad deja mucho fuera (que se
+/// pinta vivo).
+const ESTIRAR_LA_FOTO: std::ops::RangeInclusive<f32> = 0.5..=2.0;
+
+/// Como se pinta lo anotado en un fotograma ([`MotorDelPlano::pintar`]).
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum Modo {
+    /// La capa entera, trazo a trazo (mientras se traza algo).
+    Directo,
+    /// La foto tal cual: hecha nitida con esta misma camara.
+    Foto,
+    /// La foto puesta con la camara de ahora, y vivo lo que no tiene.
+    Movida,
+}
+
+/// **La huella de lo que hay en la capa**: si cambia, la foto ya no vale.
+/// Cada elemento (su id, su version y si esta borrado), si se anota (fuera
+/// de anotar no salen las cotas ni los marcos) y el papel.
+fn huella_de_la_capa(capa: &Capa, anotando: bool, claro: bool) -> u64 {
+    let mut h: u64 = 0xcbf2_9ce4_8422_2325 ^ ((anotando as u64) << 1) ^ claro as u64;
+    let mut mezclar = |v: u64| {
+        h ^= v;
+        h = h.wrapping_mul(0x0000_0100_0000_01b3);
+    };
+    mezclar(capa.escena.elementos.len() as u64);
+    for e in &capa.escena.elementos {
+        mezclar(e.id);
+        mezclar(((e.version as u64) << 1) | e.borrado as u64);
+    }
+    h
 }
 
 /// Los grosores que pone el motor (fino, medio y grueso de las formas, del
@@ -324,8 +374,23 @@ impl MotorDelPlano {
         let (capa, memoria, fichero) = leer_capa(&rutas, m);
         let mut tinta = Tinta::nueva();
         tinta.hoja = Some(0);
+        tinta.presupuesto = Some(PRESUPUESTO_DE_TESELAR);
         let visto = capa.escena.elementos.iter().map(|e| (e.id, medidas_de(e))).collect();
-        MotorDelPlano { rutas, capa, tinta, caja: m.caja, memoria, fichero, motor: None, visto }
+        MotorDelPlano {
+            rutas,
+            capa,
+            tinta,
+            caja: m.caja,
+            memoria,
+            fichero,
+            motor: None,
+            visto,
+            foto: pixpin_render::FotoDeCapa::nueva(),
+            ultima_camara: None,
+            falta: false,
+            #[cfg(test)]
+            medida: (Modo::Directo, std::time::Duration::ZERO),
+        }
     }
 
     /// **Los tamanos del lienzo, a la escala del plano** (lo pidio el usuario
@@ -373,29 +438,103 @@ impl MotorDelPlano {
     /// Pinta lo anotado (y, anotando, la barra y el panel) con `p`, ya puesto
     /// sobre el fotograma del visor. Fuera de anotar no salen las cotas ni
     /// los marcos (los pinta el visor, con sus medidas, como en Android).
-    fn pintar_con(&mut self, p: &pixpin_render::Pintor, v: &VistaPlano, anotando: bool) {
+    ///
+    /// `modo` dice si la capa va trazo a trazo o en su foto (ver
+    /// [`MotorDelPlano::pintar`]).
+    fn pintar_con(&mut self, p: &pixpin_render::Pintor, v: &VistaPlano, anotando: bool, modo: Modo) {
         let cam = camara_de(v);
-        // Las cotas y los marcos, fuera mientras se pinta (sin tocar su version).
-        let ocultas: Vec<usize> = if anotando {
-            Vec::new()
-        } else {
-            self.capa.escena.elementos.iter().enumerate().filter(|(_, e)| !e.borrado && es_del_plano(e)).map(|(i, _)| i).collect()
+        let ocultas = self.ocultar_cotas(anotando);
+        let (capa, tinta, foto) = (&self.capa, &mut self.tinta, &self.foto);
+        let parte = match modo {
+            Modo::Directo => Parte::Toda,
+            Modo::Foto => Parte::Encima,
+            Modo::Movida => Parte::FueraDe(foto.cubre()),
         };
-        for &i in &ocultas {
-            self.capa.escena.elementos[i].borrado = true;
+        if modo != Modo::Directo {
+            // La foto, en pixeles de la ventana (la transformada aun es la
+            // identidad): una sola llamada por toda la capa.
+            foto.poner(p, (cam.x, cam.y, cam.zoom));
         }
-        let (capa, tinta) = (&self.capa, &mut self.tinta);
-        // Lo anotado, en las unidades de la capa con la camara del plano.
-        p.poner_vista((0.0, 0.0), cam.zoom, (-cam.x * cam.zoom, -cam.y * cam.zoom));
-        let vista = (cam.x, cam.y, cam.x + v.ancho as f32 / cam.zoom, cam.y + v.alto as f32 / cam.zoom);
-        tinta.pintar_capa(p, 0, capa, vista, cam.zoom, papel(v.claro), anotando);
+        if parte != Parte::Encima || anotando {
+            // Lo anotado, en las unidades de la capa con la camara del plano.
+            p.poner_vista((0.0, 0.0), cam.zoom, (-cam.x * cam.zoom, -cam.y * cam.zoom));
+            let vista = (cam.x, cam.y, cam.x + v.ancho as f32 / cam.zoom, cam.y + v.alto as f32 / cam.zoom);
+            tinta.pintar_capa_parte(p, 0, capa, vista, cam.zoom, papel(v.claro), anotando, parte);
+            if tinta.pendientes() > 0 {
+                self.falta = true;
+            }
+        }
         // La barra y el panel del lienzo, en pixeles de la ventana.
         p.desplazar(0.0, 0.0);
         if anotando {
             tinta.pintar_interfaz(p, Some(capa), area_de(v), v.escala_por_cien);
         }
+        self.mostrar_cotas(&ocultas);
+    }
+
+    /// Las cotas y los marcos, fuera mientras se pinta sin anotar (sin tocar
+    /// su version): los pinta el visor. Devuelve cuales se escondieron.
+    fn ocultar_cotas(&mut self, anotando: bool) -> Vec<usize> {
+        if anotando {
+            return Vec::new();
+        }
+        let ocultas: Vec<usize> = self.capa.escena.elementos.iter().enumerate().filter(|(_, e)| !e.borrado && es_del_plano(e)).map(|(i, _)| i).collect();
         for &i in &ocultas {
+            self.capa.escena.elementos[i].borrado = true;
+        }
+        ocultas
+    }
+
+    fn mostrar_cotas(&mut self, ocultas: &[usize]) {
+        for &i in ocultas {
             self.capa.escena.elementos[i].borrado = false;
+        }
+    }
+
+    /// **Que hacer con la capa en este fotograma.** Mientras se traza algo,
+    /// trazo a trazo (cambia en cada fotograma). Si no: con la camara quieta
+    /// y la foto nitida de esta camara, la foto tal cual; moviendose (acercar,
+    /// alejar, arrastrar) con una foto de lo mismo que no haya que estirar de
+    /// mas, la foto puesta con la camara de ahora; y si no, se rehace la foto.
+    fn elegir_modo(&mut self, motor: &MotorRender, v: &VistaPlano, anotando: bool, moviendose: bool) -> Modo {
+        if anotando && self.tinta.gesto.elemento_en_curso().is_some() {
+            return Modo::Directo;
+        }
+        let cam = camara_de(v);
+        let camara = (cam.x, cam.y, cam.zoom);
+        let tamano = (v.ancho, v.alto);
+        let huella = huella_de_la_capa(&self.capa, anotando, v.claro);
+        if self.foto.vale_tal_cual(huella, tamano, camara) {
+            return Modo::Foto;
+        }
+        if moviendose && self.foto.vale(huella, tamano) && ESTIRAR_LA_FOTO.contains(&(cam.zoom / self.foto.camara().2)) {
+            // Al pararse, otro fotograma nitido.
+            self.falta = true;
+            return Modo::Movida;
+        }
+        // La foto de nuevo, con lo anotado a esta camara.
+        let ocultas = self.ocultar_cotas(anotando);
+        let (capa, tinta) = (&self.capa, &mut self.tinta);
+        let vista = (cam.x, cam.y, cam.x + v.ancho as f32 / cam.zoom, cam.y + v.alto as f32 / cam.zoom);
+        let hecha = self.foto.hacer(motor, tamano, camara, huella, |p| {
+            p.poner_vista((0.0, 0.0), cam.zoom, (-cam.x * cam.zoom, -cam.y * cam.zoom));
+            tinta.pintar_capa_parte(p, 0, capa, vista, cam.zoom, papel(v.claro), anotando, Parte::Dibujado);
+        });
+        self.mostrar_cotas(&ocultas);
+        match hecha {
+            Ok(()) => {
+                if self.tinta.pendientes() > 0 {
+                    // Algo quedo de otra escala: se rehace en el siguiente.
+                    self.foto.no_nitida();
+                    self.falta = true;
+                }
+                Modo::Foto
+            }
+            Err(e) => {
+                tracing::warn!(?e, "sin foto de lo anotado: trazo a trazo");
+                self.foto.soltar();
+                Modo::Directo
+            }
         }
     }
 }
@@ -447,12 +586,28 @@ impl Anotador for MotorDelPlano {
         Respuesta { consumido: h.consumido, salir: h.salir, arrastra: h.arrastra }
     }
 
+    /// **Lo anotado, sin frenar el zoom** (13-oct-2026, el usuario: «en los
+    /// CAD con anotaciones el zoom va lagueado»). Medido en este PC
+    /// (`rendimiento.rs`, 378 trazos): repintar la capa trazo a trazo costaba
+    /// 7 a 12 ms por fotograma (una llamada de Direct2D por trazo), mas que
+    /// el plano entero; y al pasar de vez y media de zoom se teselaba todo de
+    /// golpe, de 140 a 260 ms. Ahora, mientras la camara se mueve, la capa va
+    /// en su foto (`FotoDeCapa`: una sola llamada, estirada con la camara de
+    /// ahora) y vivo solo lo que la foto no tiene; al pararse se pinta nitida
+    /// otra vez, y lo que hay que teselar a la escala nueva se rehace poco a
+    /// poco (`Tinta::presupuesto`), pintando mientras lo de antes.
     fn pintar(&mut self, d3d: &ID3D11Device, destino: &ID3D11Texture2D, v: &VistaPlano, anotando: bool) {
+        self.falta = false;
         if self.capa.vacia() && !anotando {
+            // Nada que pintar: ni foto que guardar.
+            self.foto.soltar();
+            self.ultima_camara = None;
             return;
         }
         let clave = d3d.as_raw() as usize;
         if self.motor.as_ref().is_none_or(|(k, _)| *k != clave) {
+            // Otro dispositivo: lo de la foto era del de antes.
+            self.foto.soltar();
             match MotorRender::nuevo(d3d) {
                 Ok(m) => self.motor = Some((clave, m)),
                 Err(e) => {
@@ -462,12 +617,27 @@ impl Anotador for MotorDelPlano {
             }
         }
         let Some((_, motor)) = self.motor.take() else { return };
+        let cam = camara_de(v);
+        let camara = (cam.x, cam.y, cam.zoom);
+        let moviendose = self.ultima_camara.is_some_and(|c| c != camara);
+        self.ultima_camara = Some(camara);
+        #[cfg(test)]
+        let t_modo = std::time::Instant::now();
+        let modo = self.elegir_modo(&motor, v, anotando, moviendose);
+        #[cfg(test)]
+        {
+            self.medida = (modo, t_modo.elapsed());
+        }
         if let Ok(bitmap) = motor.destino_backbuffer(destino)
-            && let Err(e) = motor.dibujar(&bitmap, |p| self.pintar_con(p, v, anotando))
+            && let Err(e) = motor.dibujar(&bitmap, |p| self.pintar_con(p, v, anotando, modo))
         {
             tracing::warn!(?e, "no se pudo pintar la tinta del plano");
         }
         self.motor = Some((clave, motor));
+    }
+
+    fn falta_pintar(&self) -> bool {
+        self.falta
     }
 
     fn terminar(&mut self) {
@@ -534,3 +704,9 @@ mod pruebas;
 
 #[cfg(test)]
 mod pruebas_con_el_movil;
+
+#[cfg(test)]
+mod rendimiento;
+
+#[cfg(test)]
+mod pruebas_foto;

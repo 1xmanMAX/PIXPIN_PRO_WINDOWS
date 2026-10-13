@@ -231,6 +231,12 @@ pub trait Anotador {
     /// motor, encima del fotograma ya hecho (`destino`, el bufer de la
     /// ventana) y antes de presentarlo.
     fn pintar(&mut self, dispositivo: &ID3D11Device, destino: &ID3D11Texture2D, vista: &VistaPlano, anotando: bool);
+    /// Si lo ultimo pintado no quedo nitido (lo anotado iba en su foto
+    /// estirada mientras se movia la camara, o con trazos aun sin rehacer a
+    /// la escala nueva): el visor pinta otro fotograma aunque no cambie nada.
+    fn falta_pintar(&self) -> bool {
+        false
+    }
     /// Dejar de anotar: cerrar lo que se escribia y guardar la capa.
     fn terminar(&mut self);
     /// Si quiere el Esc (cerrar un texto, soltar lo elegido) antes que el visor.
