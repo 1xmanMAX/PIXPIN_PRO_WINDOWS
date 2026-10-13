@@ -246,6 +246,251 @@ fn lo_anotado_sobre_un_plano_viaja_en_los_dos_sentidos_y_lo_ultimo_gana() {
     assert_eq!(MotorDelPlano::nuevo(r, &m).cotas_y_marcos().0.len(), 2);
 }
 
+// ------------------------------------------- el camino real del 13-oct
+
+/// El plano visto por el PC del usuario: el mismo de [`plano_de_obra`] con
+/// **otro origen** (el PC pone el cero en el centro de lo que importa y el
+/// movil en el de la caja: en `11.15 PLANO DE SENALIZACION VIAL HORIZONTAL`
+/// van 16,8 y 18,1 unidades de diferencia). Con la `.hoja` da igual; sin
+/// probarlo, la prueba de arriba no lo veia.
+fn plano_del_pc() -> Modelo {
+    let mut m = plano_de_obra();
+    m.caja = [m.caja[0] + CORRIDO[0], m.caja[1] + CORRIDO[1], m.caja[2] + CORRIDO[0], m.caja[3] + CORRIDO[1]];
+    m
+}
+
+/// Lo que va del cero del movil al del PC: un punto del plano en las
+/// coordenadas del PC es el del movil mas esto.
+const CORRIDO: [f32; 2] = [1234.0, -567.0];
+
+/// La capa como la escribe `CapaDelPlano` del movil: su encaje es la unidad
+/// de la letra con el cero en SU origen.
+fn encaje_propio_del_movil(m: &Modelo) -> Encaje {
+    Encaje::de_unidad(pixpin_cad::anotado::unidad_de_la_capa(m))
+}
+
+/// Un trazo del movil (`freedraw` del motor de Android, id de 21 letras)
+/// por los puntos del plano `pts`, en las unidades de su capa.
+fn trazo_del_movil(id: &str, pts: &[[f64; 2]], e: &Encaje, ahora: i64) -> Value {
+    let q: Vec<[f64; 2]> = pts.iter().map(|p| e.a_capa(*p)).collect();
+    let (x0, y0) = (q[0][0], q[0][1]);
+    json!({
+        "id": id, "type": "freedraw", "x": x0, "y": y0, "width": 10.0, "height": 10.0,
+        "strokeColor": "#1e1e1e", "strokeWidth": 1.0, "groupIds": [], "seed": 3,
+        "version": 1, "versionNonce": 11, "updated": ahora, "isDeleted": false,
+        "points": q.iter().map(|p| json!({"x": p[0] - x0, "y": p[1] - y0})).collect::<Vec<_>>(),
+    })
+}
+
+/// **Guardar del movil** (`PlanoActivity.guardarCapa`): la `.hoja` y la capa
+/// entera, sin lo borrado (`purgeDeleted`): lo que el movil quita ya no esta.
+fn guardar_en_el_movil(p: &Par, u: &str, elementos: &[Value], m_movil: &Modelo) {
+    let h = encaje_propio_del_movil(m_movil).hoja(m_movil.caja);
+    let hoja = MarcoDeLaHoja::nuevo(h[0] as f32, h[1] as f32, h[2] as f32, h[3] as f32);
+    let ruta_hoja = p.en_el_movil(&format!("pins/draw/anot-{u}.hoja"));
+    std::fs::create_dir_all(ruta_hoja.parent().unwrap()).unwrap();
+    std::fs::write(&ruta_hoja, hoja.a_texto()).unwrap();
+    let capa = p.en_el_movil(&format!("pins/draw/anot-{u}.excalidraw.gz"));
+    gz(&capa, &json!({"elements": elementos, "files": {}}).to_string());
+    adelantar(&capa);
+}
+
+/// Lo que tiene ahora el movil en la capa del plano `u`.
+fn en_el_movil_ahora(p: &Par, u: &str) -> Vec<Value> {
+    vivos(&de_gz(&p.en_el_movil(&format!("pins/draw/anot-{u}.excalidraw.gz"))))
+}
+
+fn ids(l: &[Value]) -> Vec<String> {
+    l.iter().map(|x| x["id"].as_str().unwrap().to_string()).collect()
+}
+
+/// Un trazo del lapiz del PC a la altura `y` de la ventana (otra que la de
+/// [`trazar`], para no pintar encima).
+fn trazar_en(motor: &mut MotorDelPlano, v: &VistaPlano, y: i32) -> Elemento {
+    motor.tinta.gesto.tomar_herramienta(pixpin_motor2d::gesto::Herramienta::Lapiz);
+    motor.evento(EventoPlano::Mover(300, y), v);
+    motor.evento(EventoPlano::Bajar(300, y), v);
+    for x in (303..=600).step_by(3) {
+        motor.evento(EventoPlano::Mover(x, y + (x / 3 % 2)), v);
+    }
+    motor.evento(EventoPlano::Subir(600, y), v);
+    motor.capa.escena.visibles().filter(|e| matches!(e.figura, Figura::Lapiz { .. })).last().cloned().expect("trazo")
+}
+
+/// **El fallo del usuario (13-oct-2026): lo anotado en el PC no llegaba al
+/// movil.** El camino de verdad: un DWG que mando el movil (`pixpin:files/
+/// guardados/…`), anotado alli primero (su `.hoja`, con SU origen), luego
+/// en el PC; el movil borra uno de sus trazos (y al guardar lo quita del
+/// fichero, `purgeDeleted`); el PC vuelve a abrir y anota otra vez.
+///
+/// El PC numeraba lo nuevo `pc<n>` con el numero de elementos que habia
+/// al abrir mas uno: con uno menos, el trazo nuevo salia con el id del
+/// trazo del PC de la vez anterior. Dos figuras con el mismo id no se
+/// juntan figura por figura al sincronizar (`fusion::con_ids`) y en el
+/// movil una tapa a la otra: lo nuevo del PC no aparecia.
+#[test]
+fn lo_anotado_en_el_pc_llega_al_movil_aunque_el_movil_haya_borrado_algo() {
+    let p = montar("pc-tras-borrar");
+    let u = p.plano_del_movil("pl", "11.15 PLANO.dwg");
+    p.desde_pc();
+    let (m_movil, m_pc) = (plano_de_obra(), plano_del_pc());
+    let e_movil = encaje_propio_del_movil(&m_movil);
+    // 1. En el movil: tres trazos.
+    let ahora = p.reloj.tic();
+    let suyos: Vec<Value> = (0..3)
+        .map(|i| {
+            let y = -2000.0 + 1000.0 * i as f64;
+            trazo_del_movil(&format!("movilTrazo{i}aaaaaaaaaa"), &[[-1000.0, y], [1000.0, y]], &e_movil, ahora)
+        })
+        .collect();
+    guardar_en_el_movil(&p, &u, &suyos, &m_movil);
+    p.desde_movil();
+    let r = rutas_de_la_capa(&p.raiz(), &p.en_el_pc("pl"));
+    assert!(r.tinta.ends_with(format!("lienzos/anot-{u}.excalidraw")), "{r:?}");
+
+    // 2. En el PC: un trazo; viaja.
+    let v = vista(2.5 / 20.0, pixpin_cad::anotado::unidad_de_la_capa(&m_pc));
+    let mut motor = MotorDelPlano::nuevo(r.clone(), &m_pc);
+    let primero = trazar_en(&mut motor, &v, 300);
+    motor.terminar();
+    p.desde_pc();
+    let alla = en_el_movil_ahora(&p, &u);
+    assert_eq!(alla.len(), 4, "{:?}", ids(&alla));
+    let id_primero = ids(&alla).into_iter().find(|i| !i.starts_with("movil")).unwrap();
+
+    // 3. En el movil: borra su primer trazo (y lo quita del fichero).
+    p.reloj.saltar(10_000);
+    let quedan: Vec<Value> = de_gz(&p.en_el_movil(&format!("pins/draw/anot-{u}.excalidraw.gz")))
+        .parse::<Value>()
+        .unwrap()["elements"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|x| x["id"] != "movilTrazo0aaaaaaaaaa")
+        .cloned()
+        .collect();
+    guardar_en_el_movil(&p, &u, &quedan, &m_movil);
+    p.desde_movil();
+
+    // 4. En el PC, otra vez: otro trazo.
+    p.reloj.saltar(10_000);
+    let mut motor = MotorDelPlano::nuevo(r.clone(), &m_pc);
+    let segundo = trazar_en(&mut motor, &v, 600);
+    motor.terminar();
+    p.desde_pc();
+
+    // En el movil: sus dos trazos y los dos del PC, cada uno con su id.
+    let alla = en_el_movil_ahora(&p, &u);
+    let todos = ids(&alla);
+    let distintos: std::collections::BTreeSet<&String> = todos.iter().collect();
+    assert_eq!(distintos.len(), todos.len(), "ids repetidos en el movil: {todos:?}");
+    assert_eq!(alla.len(), 4, "{todos:?}");
+    assert!(todos.contains(&id_primero), "el primero del PC sigue: {todos:?}");
+    assert!(!todos.contains(&"movilTrazo0aaaaaaaaaa".to_string()), "lo borrado en el movil no vuelve");
+    // Y cada trazo del PC cae en el movil donde se dibujo, con la cuenta de
+    // Android (`encajeDe` con la caja de SU plano, la de su origen).
+    let e = encaje_del_movil(&p, &u, &m_movil);
+    let memoria = Encaje::de_unidad(pixpin_cad::anotado::unidad_de_la_capa(&m_pc));
+    for (t, nacido) in [(&id_primero, &primero), (&todos.iter().find(|i| !i.starts_with("movil") && **i != id_primero).unwrap().clone(), &segundo)] {
+        let x = alla.iter().find(|x| x["id"] == t.as_str()).unwrap();
+        let en_movil = e.a_plano([x["x"].as_f64().unwrap(), x["y"].as_f64().unwrap()]);
+        let en_pc = memoria.a_plano([nacido.x as f64, nacido.y as f64]);
+        let fuera = [(en_movil[0] + CORRIDO[0] as f64 - en_pc[0]).abs(), (en_movil[1] + CORRIDO[1] as f64 - en_pc[1]).abs()];
+        assert!(fuera[0] < 0.5 && fuera[1] < 0.5, "{t}: {en_movil:?} + corrido contra {en_pc:?}");
+    }
+}
+
+/// **Lo que llega del movil con el plano abierto en el PC no se pisa al
+/// guardar** (el reflejo del fallo de Android, ver
+/// `docs/investigacion/2026-10-13-para-android.md`): el PC guardaba la capa
+/// que leyo al abrir mas lo suyo, y lo que el movil mando mientras tanto
+/// desaparecia (y, al sincronizar, desaparecia tambien en el movil). Ahora
+/// se junta con lo del disco como junta la sincronizacion (`fusion::json`).
+/// Caso negativo: lo que el movil borro mientras tanto no vuelve.
+#[test]
+fn lo_que_llega_con_el_plano_abierto_se_junta_al_guardar_y_lo_borrado_no_vuelve() {
+    let p = montar("abierto");
+    let u = p.plano_del_movil("pl", "plano.dwg");
+    p.desde_pc();
+    let (m_movil, m_pc) = (plano_de_obra(), plano_del_pc());
+    let e_movil = encaje_propio_del_movil(&m_movil);
+    let ahora = p.reloj.tic();
+    let suyo = trazo_del_movil("movilTrazoAaaaaaaaaaa", &[[0.0, 0.0], [500.0, 500.0]], &e_movil, ahora);
+    guardar_en_el_movil(&p, &u, std::slice::from_ref(&suyo), &m_movil);
+    p.desde_movil();
+    let r = rutas_de_la_capa(&p.raiz(), &p.en_el_pc("pl"));
+    let v = vista(2.5 / 20.0, pixpin_cad::anotado::unidad_de_la_capa(&m_pc));
+    let mut motor = MotorDelPlano::nuevo(r.clone(), &m_pc);
+    trazar_en(&mut motor, &v, 300);
+    motor.terminar();
+    p.desde_pc();
+    let id_viejo_del_pc = ids(&en_el_movil_ahora(&p, &u)).into_iter().find(|i| !i.starts_with("movil")).unwrap();
+
+    // El PC abre el plano y se queda abierto.
+    let mut motor = MotorDelPlano::nuevo(r.clone(), &m_pc);
+    // Mientras, el movil anota otro trazo y borra el del PC; sincroniza.
+    p.reloj.saltar(10_000);
+    let nuevo = trazo_del_movil("movilTrazoBbbbbbbbbbb", &[[-3000.0, 0.0], [-2000.0, 100.0]], &e_movil, p.reloj.tic());
+    guardar_en_el_movil(&p, &u, &[suyo.clone(), nuevo], &m_movil);
+    p.desde_movil();
+    // El PC, con lo que leyo al abrir, anota y guarda.
+    let _ = trazar_en(&mut motor, &v, 600);
+    motor.terminar();
+    let aqui = vivos(&std::fs::read_to_string(&r.tinta).unwrap());
+    let aqui_ids = ids(&aqui);
+    assert!(aqui_ids.iter().any(|i| i == "movilTrazoBbbbbbbbbbb"), "lo del movil se queda: {aqui_ids:?}");
+    assert!(!aqui_ids.contains(&id_viejo_del_pc), "lo borrado en el movil no vuelve: {aqui_ids:?}");
+    assert_eq!(aqui.len(), 3, "{aqui_ids:?}");
+    // Lo que queda en memoria es lo del disco (se sigue anotando sobre ello).
+    assert_eq!(motor.capa.escena.visibles().count(), 3);
+    // Y al movil llega lo mismo.
+    p.desde_pc();
+    let mut alla = ids(&en_el_movil_ahora(&p, &u));
+    let mut aqui_ids = aqui_ids;
+    alla.sort();
+    aqui_ids.sort();
+    assert_eq!(alla, aqui_ids);
+}
+
+/// **Lo que llega del movil se ve sin cerrar el plano**: el visor relee la
+/// capa cuando cambia en el disco y aqui no hay nada sin guardar. Caso
+/// negativo: con algo anotado sin guardar, no se relee (se juntara al
+/// guardar).
+#[test]
+fn lo_que_llega_del_movil_se_relee_con_el_plano_abierto_si_aqui_no_hay_nada_a_medias() {
+    let p = montar("releer");
+    let u = p.plano_del_movil("pl", "plano.dwg");
+    p.desde_pc();
+    let m_movil = plano_de_obra();
+    let e_movil = encaje_propio_del_movil(&m_movil);
+    let uno = trazo_del_movil("movilTrazoAaaaaaaaaaa", &[[0.0, 0.0], [500.0, 500.0]], &e_movil, p.reloj.tic());
+    guardar_en_el_movil(&p, &u, std::slice::from_ref(&uno), &m_movil);
+    p.desde_movil();
+    let r = rutas_de_la_capa(&p.raiz(), &p.en_el_pc("pl"));
+    let m_pc = plano_del_pc();
+    let mut motor = MotorDelPlano::nuevo(r.clone(), &m_pc);
+    assert_eq!(motor.capa.escena.visibles().count(), 1);
+    assert!(!motor.al_dia(), "sin cambios en el disco no se relee");
+    // Llega otro.
+    p.reloj.saltar(10_000);
+    let dos = trazo_del_movil("movilTrazoBbbbbbbbbbb", &[[100.0, 0.0], [600.0, 500.0]], &e_movil, p.reloj.tic());
+    guardar_en_el_movil(&p, &u, &[uno.clone(), dos.clone()], &m_movil);
+    p.desde_movil();
+    assert!(motor.al_dia(), "cambio en el disco: se relee");
+    assert_eq!(motor.capa.escena.visibles().count(), 2);
+    // Caso negativo: con un trazo sin guardar no se relee y no se pierde.
+    let v = vista(2.5 / 20.0, pixpin_cad::anotado::unidad_de_la_capa(&m_pc));
+    trazar_en(&mut motor, &v, 300);
+    p.reloj.saltar(10_000);
+    let tres = trazo_del_movil("movilTrazoCcccccccccc", &[[200.0, 0.0], [700.0, 500.0]], &e_movil, p.reloj.tic());
+    guardar_en_el_movil(&p, &u, &[uno, dos, tres], &m_movil);
+    p.desde_movil();
+    assert!(!motor.al_dia());
+    assert_eq!(motor.capa.escena.visibles().count(), 3, "el trazo del PC sigue en memoria");
+    motor.terminar();
+    assert_eq!(vivos(&std::fs::read_to_string(&r.tinta).unwrap()).len(), 4, "y al guardar se junta con lo que llego");
+}
+
 // ------------------------------------------------------- para mirarlo
 
 /// **El lapiz sobre un plano de verdad, a tres zooms**, antes (la unidad de

@@ -311,6 +311,29 @@ pub fn a_escena(lienzo: &Lienzo) -> crate::Escena {
     for e in lienzo.elementos() {
         escena.anadir(e);
     }
+    // **Lo que nazca aqui, con un id que el fichero no tenga** (13-oct-2026).
+    // Lo nuevo sale como `pc<numero>` (`sellar`) y el numero seguia a los
+    // elementos leidos: si el movil quito uno (lo borrado no se guarda alla),
+    // el siguiente trazo del PC repetia el id del ultimo que nacio aqui. Dos
+    // figuras con el mismo id no se juntan una a una al sincronizar
+    // (`fusion::con_ids`) y en el movil una tapa a la otra: lo anotado en el
+    // PC no llegaba. Asi, lo nuevo cuenta desde el mayor `pc<n>` que haya.
+    let mayor = lienzo
+        .entradas
+        .iter()
+        .filter_map(|e| match e {
+            Entrada::Nuestro { elemento, original } => elemento
+                .extras
+                .id_de_fichero
+                .as_deref()
+                .or_else(|| original.get("id").and_then(Value::as_str))
+                .and_then(numero_nacido_aqui),
+            Entrada::Ajeno(v) => v.get("id").and_then(Value::as_str).and_then(numero_nacido_aqui),
+        })
+        .max();
+    if let Some(n) = mayor {
+        escena.siguiente_id = escena.siguiente_id.max(n.saturating_add(1));
+    }
     // A mano y no con `poner_fondo`: abrir un lienzo no es un cambio que se
     // pueda deshacer.
     escena.fondo = fondo(lienzo);
@@ -328,6 +351,17 @@ pub fn a_escena(lienzo: &Lienzo) -> crate::Escena {
     escena.tablas = tablas(lienzo);
     escena.origen_coordenadas = origen_coordenadas(lienzo);
     escena
+}
+
+/// El numero de un id nacido en el PC (`pc` y hexadecimal, ver
+/// `enlace::id_de_texto`); `None` para los demas (los del movil son de 21
+/// letras al azar).
+fn numero_nacido_aqui(id: &str) -> Option<u64> {
+    let h = id.strip_prefix("pc")?;
+    if h.is_empty() || h.len() > 16 {
+        return None;
+    }
+    u64::from_str_radix(h, 16).ok()
 }
 
 /// **El papel del lienzo.** Primero el `backgroundColor` de ARRIBA, que es
@@ -3189,6 +3223,30 @@ mod pruebas {
         let v: Value = serde_json::from_str(&escribir(&con_escena(&l, &escena))).unwrap();
         assert_eq!(v["elements"][0]["fontSize"], 12.0);
         assert_eq!(v["elements"][1]["fontSize"], 20.0);
+    }
+
+    /// Lo que nace en el PC tras abrir una capa a la que el movil quito un
+    /// elemento (13-oct-2026): el id nuevo no repite el de ningun `pc<n>` del
+    /// fichero. Caso negativo: sin ids del PC se numera como siempre.
+    #[test]
+    fn lo_que_nace_aqui_no_repite_el_id_de_otro_nacido_aqui() {
+        let raya = |id: &str| format!(r#"{{"id":"{id}","type":"line","x":0,"y":0,"width":5,"height":0,"seed":1,"points":[[0,0],[5,0]]}}"#);
+        // Uno del movil y el `pc3` de otra vez: habia tres y el movil quito
+        // uno. Antes, lo nuevo era el tercero: `pc3` otra vez.
+        let json = format!(r#"{{"type":"excalidraw","elements":[{},{}]}}"#, raya("aaaaaaaaaaaaaaaaaaaaa"), raya("pc3"));
+        let l = leer(&json).unwrap();
+        let mut escena = a_escena(&l);
+        let nuevo = escena.anadir(crate::zona::marca((0.0, 0.0, 10.0, 10.0), "x"));
+        let v: Value = serde_json::from_str(&escribir(&con_escena(&l, &escena))).unwrap();
+        let ids: Vec<&str> = v["elements"].as_array().unwrap().iter().map(|e| e["id"].as_str().unwrap()).collect();
+        assert_eq!(ids.len(), 3);
+        assert_eq!(ids.iter().filter(|i| **i == "pc3").count(), 1, "{ids:?}");
+        assert_eq!(ids[2], crate::enlace::id_de_texto(nuevo), "lo nuevo, con el id de su numero");
+        assert_eq!(nuevo, 4);
+        // Caso negativo: solo del movil, lo nuevo va detras como siempre.
+        let json = format!(r#"{{"type":"excalidraw","elements":[{},{}]}}"#, raya("aaaaaaaaaaaaaaaaaaaaa"), raya("pcZZ"));
+        let mut escena = a_escena(&leer(&json).unwrap());
+        assert_eq!(escena.anadir(crate::zona::marca((0.0, 0.0, 10.0, 10.0), "x")), 3);
     }
 
     #[test]
