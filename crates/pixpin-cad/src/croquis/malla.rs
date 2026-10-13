@@ -31,6 +31,9 @@ use crate::modelo3d::{Elemento, Modelo3d, V3, color_a_u32, normal_a_u32};
 pub const SIN_LUZ: u32 = 1 << 29;
 /// El vertice va del color contrario al fondo (negro o blanco), con su alfa.
 pub const CONTRASTE: u32 = 1 << 30;
+/// El vertice se sombrea con el tono de pluma: su color en el medio, hacia el
+/// blanco en el lomo y hacia el negro en el flanco (`Croquis3DPluma.kt`).
+pub const PLUMA: u32 = 1 << 31;
 
 /// Una foto ya leida, en RGBA de 8 bits.
 #[derive(Debug, Clone)]
@@ -340,9 +343,9 @@ fn trazo(o: &mut Obra, c: &Croquis, t: &Trazo3D, sombras: &[([f32; 4], super::So
         (hacia_el_blanco(base, 0.35 * cuanta_luz.min(1.0)), SIN_LUZ)
     } else if t.alumbra() {
         let apagada = t.color_apagada.as_deref().and_then(color_de).unwrap_or([base[0] * 0.6, base[1] * 0.6, base[2] * 0.6, base[3]]);
-        (apagada, 0)
+        (apagada, PLUMA)
     } else {
-        (base, 0)
+        (base, PLUMA)
     };
     let color = con_alfa(color, t.opacidad.clamp(0.0, 1.0) as f32);
     let transparente = color[3] < 0.98;
@@ -359,12 +362,7 @@ fn trazo(o: &mut Obra, c: &Croquis, t: &Trazo3D, sombras: &[([f32; 4], super::So
             }
             Pincel::Resaltador | Pincel::Cuchilla => {
                 // La banda: tumbada en la hoja (rodillo) o de pie (cuchilla).
-                let lado: Vec<Pt3> = (0..p.len())
-                    .map(|i| {
-                        let n = normales.as_ref().map(|v| v[i]).unwrap_or_else(|| perpendicular(tg[i]));
-                        if vigente == Pincel::Cuchilla { n } else { normalizado(producto(n, tg[i])) }
-                    })
-                    .collect();
+                let lado = lados_de_la_banda(&tg, normales.as_deref(), vigente == Pincel::Cuchilla);
                 let (a, b): (Vec<Pt3>, Vec<Pt3>) = if vigente == Pincel::Cuchilla {
                     (p.clone(), p.iter().zip(&lado).map(|(q, s)| mas(*q, por(*s, ancho))).collect())
                 } else {
@@ -672,4 +670,31 @@ pub fn abre_claro(c: &Croquis) -> bool {
         return true;
     }
     tintas.iter().sum::<f32>() / (tintas.len() as f32) < 0.5
+}
+
+/// **El lado de la banda en cada muestra** (rodillo: `normal × tangente`;
+/// cuchilla: la normal). Donde el trazo va casi a lo largo de la normal —un
+/// salto de una hoja a otra, una hoja vista de canto— ese producto se queda
+/// en nada y su direccion baila: la banda se retorcia en un pico. Ahi se
+/// sigue con el lado de la muestra anterior, y nunca se da la vuelta de
+/// golpe (un lado al reves pliega la banda sobre si misma).
+pub(crate) fn lados_de_la_banda(tg: &[Pt3], normales: Option<&[Pt3]>, de_pie: bool) -> Vec<Pt3> {
+    let mut v: Vec<Pt3> = Vec::with_capacity(tg.len());
+    for i in 0..tg.len() {
+        let n = normales.and_then(|v| v.get(i).copied()).unwrap_or_else(|| perpendicular(tg[i]));
+        let crudo = if de_pie { n } else { producto(n, tg[i]) };
+        let previo = v.last().copied();
+        let mut lado = match previo {
+            Some(p) if largo(crudo) < 0.3 => p,
+            _ if largo(crudo) < 1e-9 => perpendicular(tg[i]),
+            _ => normalizado(crudo),
+        };
+        if let Some(p) = previo
+            && escalar(lado, p) < 0.0
+        {
+            lado = por(lado, -1.0);
+        }
+        v.push(lado);
+    }
+    v
 }

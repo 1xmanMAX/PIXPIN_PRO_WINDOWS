@@ -333,6 +333,7 @@ fn el_croquis_de_muestra_se_hace_triangulos() {
     };
     assert!(marca("Luz", SIN_LUZ) && marca("Imagen", SIN_LUZ) && marca("Bola", CONTRASTE));
     assert!(!marca("Rotulador", SIN_LUZ), "un trazo normal se sombrea");
+    assert!(marca("Rotulador", super::malla::PLUMA) && !marca("Bola", super::malla::PLUMA), "con el tono de pluma, solo los trazos");
     // El sol tira sombras (translucidas, en el suelo).
     assert!(!m.transparentes.is_empty());
     // Todos los indices apuntan a vertices que existen.
@@ -533,14 +534,26 @@ fn pintar(m: &Modelo3d, o: &Orbita, w: u32, h: u32, claro: bool) -> Vec<[f32; 3]
         let v = &m.vertices[vi];
         let c = v.color;
         let mut col = [(c & 255) as f32 / 255.0, (c >> 8 & 255) as f32 / 255.0, (c >> 16 & 255) as f32 / 255.0, (c >> 24 & 255) as f32 / 255.0];
-        let marca = (v.normal >> 29) & 3;
+        let marca = (v.normal >> 29) & 7;
         if marca & 2 != 0 {
             let k = if claro { 0.0 } else { 1.0 };
             col[0] = k;
             col[1] = k;
             col[2] = k;
         }
-        if marca == 0 {
+        if marca & 4 != 0 {
+            let s = |b: u32| ((b as u8) as i8) as f32 / 127.0;
+            let mut n = [s(v.normal), s(v.normal >> 8), s(v.normal >> 16)];
+            let p = [v.pos[0] as f64, v.pos[1] as f64, v.pos[2] as f64];
+            let vv = [ojo[0] - p[0], ojo[1] - p[1], ojo[2] - p[2]];
+            if (n[0] as f64 * vv[0] + n[1] as f64 * vv[1] + n[2] as f64 * vv[2]) < 0.0 {
+                n = [-n[0], -n[1], -n[2]];
+            }
+            let t = (n[0] * luz[0] as f32 + n[1] * luz[1] as f32 + n[2] * luz[2] as f32) * 0.42;
+            for c in col.iter_mut().take(3) {
+                *c = if t > 0.0 { *c + (1.0 - *c) * t } else { *c * (1.0 + t) };
+            }
+        } else if marca == 0 {
             let s = |b: u32| ((b as u8) as i8) as f32 / 127.0;
             let mut n = [s(v.normal), s(v.normal >> 8), s(v.normal >> 16)];
             let p = [v.pos[0] as f64, v.pos[1] as f64, v.pos[2] as f64];
@@ -661,8 +674,35 @@ fn pintar_croquis_a_png() {
     let claro = abre_claro(&c);
     guardar_png(&pintar(&m, &o, w, h, claro), w, h, &carpeta.join("croquis-abrir.png"));
     guardar_png(&pintar(&m, &o, w, h, !claro), w, h, &carpeta.join("croquis-otro-tema.png"));
+    // Y desde arriba, de frente y de lado, aunque el croquis no traiga vistas.
+    for (nombre, giro, inclinacion) in [("planta", 0.0, 1.5), ("frente", 0.0, 0.05), ("lado", PI / 2.0, 0.3)] {
+        let mut x = Orbita::encuadrar(caja, w, h);
+        x = x.girar(-giro - PI / 2.0 - x.rumbo, inclinacion - x.altura, x.objetivo);
+        guardar_png(&pintar(&m, &x, w, h, claro), w, h, &carpeta.join(format!("croquis-{nombre}.png")));
+    }
     for (i, v) in c.vistas.iter().enumerate() {
         let ov = orbita_de(v, m.origen, w, h, 1.0);
         guardar_png(&pintar(&m, &ov, w, h, claro), w, h, &carpeta.join(format!("croquis-vista-{}.png", i + 1)));
+    }
+}
+
+#[test]
+fn la_banda_no_se_retuerce_donde_el_trazo_va_por_la_normal() {
+    use super::malla::lados_de_la_banda;
+    let x = p3(1.0, 0.0, 0.0);
+    let z = p3(0.0, 0.0, 1.0);
+    // Tangente en x; en la muestra 2 el trazo va justo por la normal (un salto).
+    let tg = [x, x, z, x, x];
+    let n = [z, z, z, z, z];
+    let l = lados_de_la_banda(&tg, Some(&n), false);
+    for s in &l {
+        assert!((largo(*s) - 1.0).abs() < 1e-9, "el lado nunca se queda en nada");
+    }
+    assert!(largo(menos(l[2], l[1])) < 1e-9, "en el salto sigue el de antes");
+    // Caso negativo: una normal dada la vuelta no voltea la banda.
+    let n2 = [z, z, por(z, -1.0), por(z, -1.0), z];
+    let l2 = lados_de_la_banda(&[x; 5], Some(&n2), false);
+    for i in 1..5 {
+        assert!(escalar(l2[i], l2[i - 1]) > 0.0);
     }
 }

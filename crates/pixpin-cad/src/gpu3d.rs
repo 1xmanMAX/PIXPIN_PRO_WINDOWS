@@ -39,8 +39,8 @@ struct S3 {
     float4 c : COLOR;
     float3 w : MUNDO;
     nointerpolation uint e : ELEM;
-    // Las marcas del croquis (bits 29 y 30 de la normal): 1 sin luz, 2 de
-    // contraste (negro en fondo claro, blanco en oscuro). El BIM no las usa.
+    // Las marcas del croquis (bits 29 a 31 de la normal): 1 sin luz, 2 de
+    // contraste (negro en fondo claro, blanco en oscuro), 4 tono de pluma. El BIM no las usa.
     nointerpolation uint f : MARCA;
 };
 
@@ -59,7 +59,7 @@ S3 vs_3d(float3 p : POS, uint n : NORMAL, uint c : COLOR, uint e : ELEM) {
     o.c = color_de(c);
     o.w = p;
     o.e = e;
-    o.f = (n >> 29) & 3;
+    o.f = (n >> 29) & 7;
     return o;
 }
 
@@ -110,6 +110,17 @@ float3 en_el_corte(float3 w) {
 }
 
 float4 sombrear(S3 i) {
+    if ((i.f & 4) != 0) {
+        // **El tono de pluma del croquis** (`Croquis3DPluma.kt`): el color
+        // elegido en el medio, hacia el blanco donde da la luz y hacia el
+        // negro en el flanco, un 42 % a cada lado. Una tinta clara sigue clara.
+        float3 np = normalize(i.n);
+        if (dot(np, normalize(ojo.xyz - i.w)) < 0) np = -np;
+        float t = dot(np, luz.xyz) * 0.42;
+        float3 cp = t > 0 ? lerp(i.c.rgb, float3(1, 1, 1), t) : i.c.rgb * (1 + t);
+        if (i.e + 1 == elegido) cp = lerp(cp, float3(0.10, 0.55, 1.0), 0.55);
+        return float4(cp, i.c.a);
+    }
     if (i.f != 0) {
         float3 plano = de_contraste(i);
         if (i.e + 1 == elegido) plano = lerp(plano, float3(0.10, 0.55, 1.0), 0.55);
