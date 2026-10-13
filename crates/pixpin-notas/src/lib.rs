@@ -8,6 +8,8 @@
 pub mod barra_flotante;
 pub mod disposicion;
 pub mod editor;
+/// Las formulas `$…$` entendidas (`Formulas.kt` de Android).
+pub mod formulas;
 mod imagenes;
 pub mod incrustados;
 pub mod integracion;

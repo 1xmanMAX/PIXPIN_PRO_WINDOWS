@@ -553,6 +553,31 @@ fn poner_formato(edit: HWND, f: &CHARFORMAT2W) {
     );
 }
 
+/// Sube, baja o esconde los trozos de la formula `[desde, hasta)` (en
+/// UTF-16 del texto `u`), ver [`crate::formulas::toques`].
+fn formula_compuesta(edit: HWND, u: &[u16], desde: usize, hasta: usize) {
+    let Some(trozo) = u.get(desde..hasta) else { return };
+    for (a, b, toque) in crate::formulas::toques(&String::from_utf16_lossy(trozo)) {
+        let mut f = formato();
+        match toque {
+            crate::formulas::Toque::Arriba => {
+                f.Base.dwMask = CFM_SUPERSCRIPT;
+                f.Base.dwEffects = CFE_SUPERSCRIPT;
+            }
+            crate::formulas::Toque::Abajo => {
+                f.Base.dwMask = CFM_SUBSCRIPT;
+                f.Base.dwEffects = CFE_SUBSCRIPT;
+            }
+            crate::formulas::Toque::Oculto => {
+                f.Base.dwMask = CFM_HIDDEN;
+                f.Base.dwEffects = CFE_HIDDEN;
+            }
+        }
+        elegir(edit, desde + a, desde + b);
+        poner_formato(edit, &f);
+    }
+}
+
 fn poner_parrafo(edit: HWND, p: &PARAFORMAT2) {
     enviar(edit, EM_SETPARAFORMAT, 0, p as *const _ as isize);
 }
@@ -577,7 +602,9 @@ fn letra_base(s: &Estilos) -> CHARFORMAT2W {
         | CFM_HIDDEN
         | CFM_SIZE
         | CFM_COLOR
-        | CFM_BACKCOLOR;
+        | CFM_BACKCOLOR
+        // Lo subido o bajado de una formula vuelve a su sitio.
+        | CFM_SUPERSCRIPT;
     f.Base.dwEffects = CFE_AUTOBACKCOLOR;
     f.Base.yHeight = s.tamano;
     f.Base.crTextColor = color(s.tema.texto);
@@ -843,6 +870,12 @@ fn pintar(e: &mut Estado, solo: Option<&[usize]>) {
         let f = formato_de(t.estilo, activo, &e.estilos);
         if f.Base.dwMask.0 != 0 {
             poner_formato(edit, &f);
+        }
+        // Una formula fuera del renglon del cursor, compuesta lo que el
+        // RichEdit deja: exponentes arriba, subindices abajo, sin sus marcas
+        // (`formulas::toques`). En el renglon del cursor, tal cual se escribe.
+        if t.estilo == Estilo::Formula && !activo {
+            formula_compuesta(edit, &u, t.desde, t.hasta);
         }
     }
     // El color de las celdas pintadas, que lo de arriba acaba de quitar

@@ -13,6 +13,7 @@ import { StateField, RangeSetBuilder, EditorState } from '@codemirror/state'
 import { EditorView, Decoration, WidgetType } from '@codemirror/view'
 import { syntaxTree, ensureSyntaxTree } from '@codemirror/language'
 import { tabla, esTablaHtml } from './tablas.js'
+import { componer } from './formulas.mjs'
 
 export const AUDIO = ['mp3', 'ogg', 'oga', 'm4a', 'wav', 'flac', 'opus', 'aac']
 export const FOTO = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg', 'avif', 'ico']
@@ -93,6 +94,27 @@ class Casilla extends WidgetType {
     s.className = 'pp-casilla' + (this.marcada ? ' marcada' : '')
     s.setAttribute('aria-checked', String(this.marcada))
     s.innerHTML = this.marcada ? '<svg viewBox="0 0 16 16"><path d="M3.5 8.5l3 3 6-7" fill="none" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>' : ''
+    return s
+  }
+  ignoreEvent() {
+    return false
+  }
+}
+
+/** Una formula `$…$` compuesta (`FormulaUi.kt`): fuera del renglon del cursor. */
+class Formula extends WidgetType {
+  constructor(latex) {
+    super()
+    this.latex = latex
+  }
+  eq(o) {
+    return o.latex === this.latex
+  }
+  toDOM() {
+    const s = document.createElement('span')
+    s.className = 'pp-formula-compuesta'
+    s.title = this.latex
+    s.innerHTML = componer(this.latex)
     return s
   }
   ignoreEvent() {
@@ -490,6 +512,12 @@ function construir(state) {
     const a = m.index + m[1].length
     const b = a + m[2].length + 2
     if (tapados.has(doc.lineAt(a).number)) continue
+    // Fuera del renglon del cursor, compuesta (fracciones, raices,
+    // exponentes, como Android); en el del cursor, tal cual se escribe.
+    if (doc.lineAt(a).number !== lineaCursor) {
+      pon(a, b, Decoration.replace({ widget: new Formula(m[2]) }))
+      continue
+    }
     pon(a, a + 1, escondido)
     pon(a + 1, b - 1, marca('pp-formula'))
     pon(b - 1, b, escondido)
