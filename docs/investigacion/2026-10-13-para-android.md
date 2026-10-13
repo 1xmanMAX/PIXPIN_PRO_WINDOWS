@@ -54,3 +54,22 @@ Las pruebas del PC con un «móvil» simulado que habla el protocolo de verdad
 están en `crates/pixpin-proyecto/tests/sincronizar_con_el_movil.rs` y
 `apps/pixpin/src/plano_cad/anotar/pruebas_con_el_movil.rs`: describen, caso a
 caso, qué espera recibir y mandar cada lado.
+
+## URGENTE: las voces de Microsoft dejaron de hablar (12-oct)
+
+Desde el 12-oct `speech.platform.bing.com/.../edge/v1` contesta **403** a la
+petición de hablar (la lista de voces sigue funcionando). El PC ahora habla por
+`api.msedgeservices.com/tts/cognitiveservices/websocket/v1?Ocp-Apim-Subscription-Key=…`
+con el mismo token y el mismo `Sec-MS-GEC` (arreglo de rany2/edge-tts #491),
+probado en vivo. En Android hay que cambiar `EdgeVoz.urlDeHablar` igual. Ver
+`crates/pixpin-voz/src/edge.rs`.
+
+## También nuevo en el PC (13-oct)
+
+- Lo anotado sobre un PDF leído «como texto» viaja como `anot-<uid>-texto`
+  (tinta, `.marcas`, `.maqueta`, `.voz`, `.sitio`), como en Android.
+- Grafito con `dureza`, guías (`reference`, `referenciasVisibles`), fotos y
+  audios añadidos a lecciones viejas: mismo formato que Android, con pruebas
+  de ida y vuelta en `crates/pixpin-proyecto/tests/sincronizar_con_el_movil.rs`.
+- Chats compartidos con personas: compatibles byte a byte con v0.122
+  (comprobado contra Java); falta probar con teléfonos reales.
