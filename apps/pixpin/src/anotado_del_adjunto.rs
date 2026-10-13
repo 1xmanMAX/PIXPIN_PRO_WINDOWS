@@ -17,9 +17,12 @@
 //! | el verde de la voz | `.voz` (`parrafo:fraccion`) | el 🟢 de `.marcas` | el 🟢 de sus marcas |
 //!
 //! Lo demas (el aumento, la pagina del PDF) sigue en `<doc>.pixpin-lectura`,
-//! que es de esta pantalla, como en el movil siguen en sus preferencias. Lo
-//! que el PC no tiene (lo de un PDF leido como texto) no
-//! se toca: se queda en su fichero y se vuelve a mandar tal cual.
+//! que es de esta pantalla, como en el movil siguen en sus preferencias.
+//!
+//! **Un PDF leido como texto** (su pagina en `cache/pdf-como-texto/`) es un
+//! Word para todo esto, con la base `anot-<uid>-texto` del PDF, como en el
+//! movil: lo anotado y los marcadores de esa lectura viajan aparte de los
+//! del PDF en hojas ([`base_de`]).
 //!
 //! **La primera vez** lo de antes (junto al documento) pasa a los ficheros
 //! del mensaje si estos no existen aun, y no se borra nada (`migrar`).
@@ -54,7 +57,19 @@ fn es_pdf(doc: &Path) -> bool {
 }
 
 /// La base de lo anotado de `doc`, si es un adjunto del chat (o el PDF de un proyecto).
+///
+/// **Un PDF leido como texto** (`visor::como_texto`) se abre desde su
+/// pagina en la cache, que no es del chat; lo suyo es de su PDF, pero aparte
+/// de lo del PDF en hojas: otro dibujo, otra columna y marcadores por
+/// fraccion. Android lo nombra `anot-<uid>-texto`
+/// (`AnotacionesDelAdjunto.delDocumento` con el nombre del PDF) y se trata
+/// como un Word: tinta, `.marcas`, `.maqueta`, `.voz`, `.sitio` y `.hoja`.
+/// Asi viaja en los dos sentidos.
 fn base_de(doc: &Path) -> Option<Base> {
+    if let Some(pdf) = crate::visor::como_texto::origen_de_la_pagina(doc) {
+        let raiz = an::raiz_de(&pdf)?;
+        return an::base_del_documento(&raiz, &pdf);
+    }
     let raiz = an::raiz_de(doc)?;
     if es_pdf(doc) {
         let proyecto = pixpin_proyecto::capas_del_pdf::de_este_pdf(&raiz, doc).map(|p| p.ficha);
@@ -1038,6 +1053,117 @@ pub(crate) mod pruebas {
                 && !nacido_en_el_pc("pc0123456789abcdef0")
         );
         assert!(!nacido_en_el_pc("PC1"));
+    }
+
+    /// La pagina de un PDF leido como texto, en la cache de la app, como la
+    /// deja `visor::como_texto::preparar`.
+    fn pagina_como_texto(r: &Path, pdf: &Path) -> PathBuf {
+        let carpeta = r.join("app/cache/pdf-como-texto/00000000000000ab");
+        std::fs::create_dir_all(&carpeta).unwrap();
+        std::fs::write(carpeta.join("origen"), pdf.to_string_lossy().as_bytes()).unwrap();
+        let pagina = carpeta.join("apuntes.html");
+        std::fs::write(&pagina, "<html><body><p>Hola</p></body></html>").unwrap();
+        pagina
+    }
+
+    #[test]
+    fn lo_anotado_de_un_pdf_leido_como_texto_va_al_movil_como_anot_uid_texto() {
+        let r = raiz("texto-ida");
+        let pdf = con_adjunto(&r, "apuntes.pdf", b"%PDF");
+        let pagina = pagina_como_texto(&r, &pdf);
+        let b = base(&pagina);
+        // El nombre de Android (`AnotacionesDelAdjunto.delDocumento`).
+        let del_pdf = base(&pdf);
+        assert_eq!(b.base, format!("{}-texto", del_pdf.base));
+        assert!(
+            tinta_del_mensaje(&pagina)
+                .unwrap()
+                .to_string_lossy()
+                .contains("-texto.excalidraw"),
+            "la tinta de esa lectura va en el dibujo `anot-<uid>-texto`"
+        );
+        // Lo de aqui: marcadores, verde, sitio y la columna fijada.
+        let a = Ajustes {
+            columna: 640,
+            sitio: 0.4,
+            voz: Some((3, 0.25)),
+            marcadores: lectura::marcadores_de_texto("7:0.5:⭐"),
+            ..Ajustes::default()
+        };
+        escribir(&pagina, &a).unwrap();
+        assert_eq!(an::leer(&b.fichero(".marcas")).as_deref(), Some("7:0.5:⭐"));
+        assert_eq!(an::leer(&b.fichero(".voz")).as_deref(), Some("3:0.25"));
+        assert_eq!(an::leer(&b.fichero(".sitio")).as_deref(), Some("0.4"));
+        assert!(an::leer(&b.fichero(".maqueta")).unwrap().starts_with("640,"));
+        // Lo del PDF en hojas no se toca: es otra cosa.
+        assert!(!del_pdf.fichero(".marcas").exists());
+        // Y se lee igual al volver a abrir.
+        let leido = leer(&pagina);
+        assert_eq!(leido.voz, Some((3, 0.25)));
+        assert_eq!(leido.marcadores.len(), 1);
+        assert_eq!(leido.columna, 640);
+        let _ = std::fs::remove_dir_all(&r);
+    }
+
+    #[test]
+    fn lo_que_anota_el_movil_en_un_pdf_leido_como_texto_se_ve_en_el_pc() {
+        let r = raiz("texto-vuelta");
+        let pdf = con_adjunto(&r, "apuntes.pdf", b"%PDF");
+        let pagina = pagina_como_texto(&r, &pdf);
+        let b = base(&pagina);
+        // Lo que escribe Android con su lector de Word sobre el PDF.
+        an::escribir(&b.fichero(".marcas"), "1:0.2:🔥|2:0.8:⭐").unwrap();
+        an::escribir(&b.fichero(".voz"), "12:0.6").unwrap();
+        an::escribir(&b.fichero(".maqueta"), "420,140,140,110,1,0").unwrap();
+        an::escribir(&b.fichero(".sitio"), "0.75").unwrap();
+        // Las marcas del PDF en hojas (otra forma) no se mezclan.
+        an::escribir(&base(&pdf).fichero(".marcas"), "1:0.1:0.2:X").unwrap();
+        let a = leer(&pagina);
+        assert_eq!(
+            a.marcadores.iter().map(|m| m.emoji.as_str()).collect::<Vec<_>>(),
+            vec!["🔥", "⭐"]
+        );
+        assert_eq!(a.voz, Some((12, 0.6)));
+        assert_eq!(a.columna, 420);
+        assert_eq!(a.tamano, 110);
+        assert_eq!(a.sitio, 0.75);
+        // Volver a guardarlo sin cambios no reescribe lo del movil.
+        escribir(&pagina, &a).unwrap();
+        assert_eq!(an::leer(&b.fichero(".maqueta")).as_deref(), Some("420,140,140,110,1,0"));
+        assert_eq!(an::leer(&b.fichero(".voz")).as_deref(), Some("12:0.6"));
+        let _ = std::fs::remove_dir_all(&r);
+    }
+
+    #[test]
+    fn un_pdf_leido_como_texto_que_no_es_del_chat_no_crea_nada_que_viaje() {
+        let r = raiz("texto-fuera");
+        // Un PDF del Explorador, fuera de todo almacen.
+        let pdf = r.join("suelto.pdf");
+        std::fs::write(&pdf, b"%PDF").unwrap();
+        let pagina = pagina_como_texto(&r, &pdf);
+        assert!(base_de(&pagina).is_none());
+        escribir(
+            &pagina,
+            &Ajustes {
+                voz: Some((1, 0.1)),
+                ..Ajustes::default()
+            },
+        )
+        .unwrap();
+        // Se queda junto a la pagina, como cualquier documento suelto.
+        assert_eq!(leer(&pagina).voz, Some((1, 0.1)));
+        assert!(!r.join("android").exists());
+        // Ni una carpeta con ese nombre fuera de `cache`, ni un origen que
+        // no sea un PDF, cuentan como pagina de un PDF.
+        let otra = r.join("pdf-como-texto/x");
+        std::fs::create_dir_all(&otra).unwrap();
+        std::fs::write(otra.join("origen"), pdf.to_string_lossy().as_bytes()).unwrap();
+        assert!(crate::visor::como_texto::origen_de_la_pagina(&otra.join("p.html")).is_none());
+        let rara = r.join("app/cache/pdf-como-texto/y");
+        std::fs::create_dir_all(&rara).unwrap();
+        std::fs::write(rara.join("origen"), "C:/algo.docx").unwrap();
+        assert!(crate::visor::como_texto::origen_de_la_pagina(&rara.join("p.html")).is_none());
+        let _ = std::fs::remove_dir_all(&r);
     }
 
     #[test]

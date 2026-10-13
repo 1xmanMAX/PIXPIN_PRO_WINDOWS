@@ -336,6 +336,10 @@ fn arrancar(
     let ubicacion = rutas::resolver(&dir_exe, &appdata);
     // El modo oscuro de los visores (luna/sol), recordado en `estado.toml`.
     oscuro::iniciar(&ubicacion);
+    // Escuchar en voz alta es de la app, no de cada lector: sigue sonando
+    // con el lector cerrado y la manejan los mandos de Windows y las teclas
+    // multimedia (`leer_en_voz`). Su hilo espera sin gastar nada.
+    leer_en_voz::iniciar();
 
     // 3. Registro a fichero, antes de leer los ajustes: si el TOML esta mal
     // escrito, el fallo de mas abajo queda documentado en vez de perderse.
@@ -847,6 +851,8 @@ fn arrancar(
                 tracing::info!("salida pedida por el usuario");
                 // El PDF que se estuviera aligerando se deja como estaba.
                 aligerar::cancelar_todo();
+                // Lo que se estuviera escuchando se calla y sus mandos se van.
+                leer_en_voz::apagar();
                 Continuar::No
             }
             // Los comandos de pines: los tres necesitan la disposicion de
