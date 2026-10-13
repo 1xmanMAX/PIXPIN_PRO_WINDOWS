@@ -237,6 +237,15 @@ pub(super) enum Eleccion {
     EditarTabla,
     /// Meter en su celda lo elegido que esta encima de la tabla.
     MeterEnCelda,
+    /// **El instrumento de graficar** con tantos ejes: 1 la recta numerica,
+    /// 2 el plano cartesiano y 3 el espacio (las figuras de fabrica de
+    /// `Biblioteca.kt`). Uno solo con el numero de ejes como dato.
+    Instrumento(u8),
+    /// Abrir la tabla de coordenadas `i` (`None`: una serie nueva, con el
+    /// siguiente color libre y, si aun no hay eje, el eje en medio de la vista).
+    Coordenadas(Option<usize>),
+    /// Esconder o volver a ver la serie `i` sin perder lo tecleado.
+    VerSerie(usize),
 }
 
 /// Que tabla hay en lo elegido, para ofrecer lo suyo en el menu.
@@ -268,8 +277,58 @@ const ID_PEGAR: u32 = 3;
 const ID_GUARDAR: u32 = 4;
 const ID_EDITAR_TABLA: u32 = 5;
 const ID_METER: u32 = 6;
+/// La recta, el plano y el espacio: `ID_INSTRUMENTO + ejes`.
+const ID_INSTRUMENTO: u32 = 6;
+const ID_COORDENADAS_NUEVA: u32 = 10;
 const ID_FIGURA: u32 = 100;
 const ID_QUITAR: u32 = 1000;
+const ID_SERIE: u32 = 5000;
+const ID_VER_SERIE: u32 = 6000;
+/// Mas series que estas no caben en un menu; tampoco hay mas colores.
+const MAXIMAS_SERIES: u32 = 900;
+
+/// **Lo de graficar**, como en el panel de figuras del movil: el plano, la
+/// recta y el espacio (el mismo instrumento con dos, uno y tres ejes), y las
+/// tablas de coordenadas, una entrada por serie (`visibles[i]` dice si se ve)
+/// con la de crear otra y la de esconderla o verla.
+pub(super) fn entradas_de_graficar(t: &Catalogo, visibles: &[bool]) -> Vec<EntradaMenu> {
+    let mut v: Vec<EntradaMenu> = [(2, "figuras-plano"), (1, "figuras-recta"), (3, "figuras-espacio")]
+        .into_iter()
+        .map(|(ejes, clave)| EntradaMenu {
+            id: ID_INSTRUMENTO + ejes,
+            texto: t.t(clave),
+        })
+        .collect();
+    if visibles.is_empty() {
+        v.push(EntradaMenu {
+            id: ID_COORDENADAS_NUEVA,
+            texto: t.t("figuras-coordenadas"),
+        });
+        return v;
+    }
+    for (i, _) in visibles.iter().enumerate() {
+        v.push(EntradaMenu {
+            id: ID_SERIE + i as u32,
+            texto: format!("{} {}", t.t("figuras-coordenadas-serie"), i + 1),
+        });
+    }
+    v.push(EntradaMenu {
+        id: ID_COORDENADAS_NUEVA,
+        texto: t.t("figuras-coordenadas-nueva"),
+    });
+    for (i, ve) in visibles.iter().enumerate() {
+        let clave = if *ve {
+            "figuras-coordenadas-esconder"
+        } else {
+            "figuras-coordenadas-ver"
+        };
+        v.push(EntradaMenu {
+            id: ID_VER_SERIE + i as u32,
+            texto: format!("{} {}", t.t(clave), i + 1),
+        });
+    }
+    v
+}
 
 /// Las entradas del menu, puras (se prueban sin ventana). Con una tabla
 /// elegida, lo suyo arriba (editarla, meter en una celda lo que tiene
@@ -281,6 +340,17 @@ pub(super) fn entradas(
     figuras: &[FiguraGuardada],
     hay_seleccion: bool,
     tabla: TablaElegida,
+) -> Vec<EntradaMenu> {
+    entradas_con_series(t, figuras, hay_seleccion, tabla, &[])
+}
+
+/// Las mismas, con las series de coordenadas que tiene el dibujo.
+pub(super) fn entradas_con_series(
+    t: &Catalogo,
+    figuras: &[FiguraGuardada],
+    hay_seleccion: bool,
+    tabla: TablaElegida,
+    series: &[bool],
 ) -> Vec<EntradaMenu> {
     let mut v = Vec::new();
     if tabla != TablaElegida::Ninguna {
@@ -312,7 +382,12 @@ pub(super) fn entradas(
             id: ID_PEGAR,
             texto: t.t("figuras-pegar-tabla"),
         },
+        EntradaMenu {
+            id: 0,
+            texto: String::new(),
+        },
     ]);
+    v.extend(entradas_de_graficar(t, series));
     if !figuras.is_empty() {
         v.push(EntradaMenu {
             id: 0,
@@ -357,6 +432,16 @@ pub(super) fn eleccion_de(id: u32, figuras: usize) -> Option<Eleccion> {
         ID_GUARDAR => Eleccion::GuardarSeleccion,
         ID_EDITAR_TABLA => Eleccion::EditarTabla,
         ID_METER => Eleccion::MeterEnCelda,
+        i if (ID_INSTRUMENTO + 1..=ID_INSTRUMENTO + 3).contains(&i) => {
+            Eleccion::Instrumento((i - ID_INSTRUMENTO) as u8)
+        }
+        ID_COORDENADAS_NUEVA => Eleccion::Coordenadas(None),
+        i if (ID_SERIE..ID_SERIE + MAXIMAS_SERIES).contains(&i) => {
+            Eleccion::Coordenadas(Some((i - ID_SERIE) as usize))
+        }
+        i if (ID_VER_SERIE..ID_VER_SERIE + MAXIMAS_SERIES).contains(&i) => {
+            Eleccion::VerSerie((i - ID_VER_SERIE) as usize)
+        }
         i if (ID_QUITAR..ID_QUITAR + figuras as u32).contains(&i) => {
             Eleccion::Quitar((i - ID_QUITAR) as usize)
         }
@@ -367,7 +452,154 @@ pub(super) fn eleccion_de(id: u32, figuras: usize) -> Option<Eleccion> {
     })
 }
 
+/// **El instrumento de fabrica con el pincel de ahora** (`planoDeFunciones`
+/// y sus hermanos): el color, el grosor y la opacidad que haya puestos, y la
+/// letra si se eligio una; a tiralineas siempre.
+pub(super) fn instrumento_del_pincel(g: &Gesto, ejes: u8) -> Elemento {
+    let mut e = pixpin_motor2d::instrumento::elemento_de_fabrica(
+        ejes,
+        g.estilo.trazo,
+        g.estilo.grosor.de_forma(),
+        g.estilo.opacidad,
+    );
+    e.material = g.estilo.material;
+    e.extras.familia = g
+        .estilo
+        .familia
+        .map(|f| pixpin_motor2d::texto::nombre_de_familia(Some(f)).to_string());
+    e
+}
+
+/// **El cajetin de una tabla de coordenadas** (`EditorDeTabla` del movil):
+/// dos columnas, X e Y, una fila por punto y siempre una en blanco al final
+/// para seguir tecleando; con fila, quitar fila y pegar.
+pub(super) fn formulario_de_coordenadas(
+    t: &Catalogo,
+    tabla: &pixpin_motor2d::instrumento::tabla::TablaDeCoordenadas,
+    serie: usize,
+    unidad: &str,
+) -> Formulario {
+    use pixpin_motor2d::instrumento::tabla::numero;
+    let mut filas: Vec<Vec<String>> = tabla
+        .puntos
+        .iter()
+        .map(|p| vec![numero(p.x), numero(p.y)])
+        .collect();
+    filas.push(vec![String::new(), String::new()]);
+    let mut f = Formulario::nuevo(
+        format!(
+            "{} {} · X, Y ({unidad})",
+            t.t("coordenadas-titulo"),
+            serie + 1
+        ),
+        Vec::new(),
+        t.t("coordenadas-ayuda"),
+        t.t("tabla-aplicar"),
+        t.t("cajetin-cancelar"),
+    );
+    f.rejilla = Some(TablaEnCajetin {
+        columnas: 2,
+        cabecera: false,
+    });
+    f.coordenadas = true;
+    f.rotulos_de_acciones = ["tabla-mas-fila", "tabla-menos-fila", "tabla-pegar"]
+        .iter()
+        .map(|k| t.t(k))
+        .collect();
+    f.poner_celdas(&filas);
+    f
+}
+
+/// Los puntos que dice el cajetin. Las filas a medio escribir se caen: una
+/// coordenada incompleta no es un punto, y ponerla en el cero seria
+/// inventarse un dato (`resultado()` del `EditorDeTabla`).
+pub(super) fn puntos_del_formulario(
+    f: &Formulario,
+) -> Vec<pixpin_motor2d::instrumento::tabla::PuntoDeTabla> {
+    use pixpin_motor2d::instrumento::tabla::{PuntoDeTabla, leer_coordenada};
+    f.celdas()
+        .iter()
+        .filter_map(|fila| {
+            let x = leer_coordenada(fila.first()?)?;
+            let y = leer_coordenada(fila.get(1)?)?;
+            Some(PuntoDeTabla { x, y })
+        })
+        .collect()
+}
+
+/// **Las tablas despues de aceptar el cajetin** de la serie `cual` (`None`:
+/// una nueva con el siguiente color libre, `addTabla`), y su eje: se pone la
+/// primera vez en medio de lo que se ve y ya no se mueve, que moverlo
+/// desplazaria lo tecleado. Sin ningun punto la serie se quita
+/// (`removeTabla`); el eje se queda.
+pub(super) fn tablas_tras_aceptar(
+    escena: &Escena,
+    cual: Option<usize>,
+    puntos: Vec<pixpin_motor2d::instrumento::tabla::PuntoDeTabla>,
+    centro: Punto2,
+) -> (
+    Vec<pixpin_motor2d::instrumento::tabla::TablaDeCoordenadas>,
+    Option<Punto2>,
+) {
+    use pixpin_motor2d::instrumento::tabla::{TablaDeCoordenadas, color_libre};
+    let mut tablas = escena.tablas.clone();
+    let mut origen = escena.origen_coordenadas;
+    match cual.filter(|i| *i < tablas.len()) {
+        Some(i) if puntos.is_empty() => {
+            tablas.remove(i);
+        }
+        Some(i) => tablas[i].puntos = puntos,
+        None if puntos.is_empty() => {}
+        None => {
+            let usados: Vec<String> = tablas.iter().map(|t| t.color.clone()).collect();
+            let hora = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |d| d.as_nanos());
+            tablas.push(TablaDeCoordenadas {
+                id: format!("pc{hora:x}"),
+                nombre: String::new(),
+                color: color_libre(&usados).to_string(),
+                puntos,
+                visible: true,
+            });
+            origen = origen.or(Some(centro));
+        }
+    }
+    (tablas, origen)
+}
+
+/// Abre el cajetin de la serie `cual` y, al aceptar, deja las tablas en la
+/// escena en un paso de deshacer.
+pub(super) fn editar_coordenadas(
+    mut ed: Editor<'_>,
+    cual: Option<usize>,
+    centro: Punto2,
+    t: &Catalogo,
+) -> bool {
+    let cual = cual.filter(|i| *i < ed.escena.tablas.len());
+    let vacia = pixpin_motor2d::instrumento::tabla::TablaDeCoordenadas {
+        id: String::new(),
+        nombre: String::new(),
+        color: String::new(),
+        puntos: Vec::new(),
+        visible: true,
+    };
+    let tabla = cual.map_or(vacia, |i| ed.escena.tablas[i].clone());
+    let unidad = match &ed.escena.escala {
+        Some(e) if e.valida() => e.unidad.clone(),
+        _ => "px".to_string(),
+    };
+    let serie = cual.unwrap_or(ed.escena.tablas.len());
+    let mut f = formulario_de_coordenadas(t, &tabla, serie, &unidad);
+    if !pedir(ed.lienzo(), &mut f, |_| Ok(())) {
+        return false;
+    }
+    let (tablas, origen) = tablas_tras_aceptar(ed.escena, cual, puntos_del_formulario(&f), centro);
+    ed.escena.poner_tablas(tablas, origen)
+}
+
 /// El menu, bajo el boton de las figuras.
+#[allow(clippy::too_many_arguments)]
 pub(super) fn menu(
     propietaria: HWND,
     x: i32,
@@ -376,8 +608,9 @@ pub(super) fn menu(
     figuras: &[FiguraGuardada],
     hay_seleccion: bool,
     tabla: TablaElegida,
+    series: &[bool],
 ) -> Option<Eleccion> {
-    let v = entradas(t, figuras, hay_seleccion, tabla);
+    let v = entradas_con_series(t, figuras, hay_seleccion, tabla, series);
     let id = pixpin_shell::exportar::menu_emergente(propietaria, x, y, &v)?;
     eleccion_de(id, figuras.len())
 }
@@ -472,7 +705,16 @@ pub(super) struct Formulario {
     pub rejilla: Option<TablaEnCajetin>,
     /// Los rotulos de `ACCIONES`, en su orden (solo con rejilla).
     pub rotulos_de_acciones: Vec<String>,
+    /// **Es una tabla de coordenadas** (`EditorDeTabla` del movil): dos
+    /// columnas fijas, X e Y, sin cabecera; pegar AÑADE los pares que traiga
+    /// el portapapeles (`leerTablaPegada`) en vez de cambiar la rejilla.
+    pub coordenadas: bool,
 }
+
+/// Los botones de la tabla de coordenadas: fila, quitar fila y pegar. Las
+/// columnas son siempre dos (X e Y) y no hay cabecera.
+pub(super) const ACCIONES_DE_COORDENADAS: [Accion; 3] =
+    [Accion::MasFila, Accion::MenosFila, Accion::Pegar];
 
 /// Lo que hace una tecla o un clic en el cajetin.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -567,7 +809,45 @@ impl Formulario {
             teclado: false,
             rejilla: None,
             rotulos_de_acciones: Vec::new(),
+            coordenadas: false,
         }
+    }
+
+    /// Los botones que lleva la rejilla, en el orden de sus rotulos.
+    pub fn acciones(&self) -> &'static [Accion] {
+        if self.coordenadas {
+            &ACCIONES_DE_COORDENADAS
+        } else {
+            &ACCIONES
+        }
+    }
+
+    /// **Pega en la tabla de coordenadas** lo que traiga el portapapeles: se
+    /// AÑADEN los pares (`leerTablaPegada`), quitando antes la fila en blanco
+    /// del final y dejando otra detras para seguir tecleando, como el movil.
+    /// Devuelve cuantas filas entraron.
+    pub fn pegar_coordenadas(&mut self, texto: &str) -> usize {
+        let pegados = pixpin_motor2d::instrumento::tabla::leer_tabla_pegada(texto);
+        if pegados.is_empty() {
+            return 0;
+        }
+        let mut filas = self.celdas();
+        if filas
+            .last()
+            .is_some_and(|f| f.iter().all(|c| c.trim().is_empty()))
+        {
+            filas.pop();
+        }
+        for p in &pegados {
+            filas.push(vec![
+                pixpin_motor2d::instrumento::tabla::numero(p.x),
+                pixpin_motor2d::instrumento::tabla::numero(p.y),
+            ]);
+        }
+        filas.push(vec![String::new(), String::new()]);
+        self.poner_celdas(&filas);
+        self.activo = self.campos.len().saturating_sub(2);
+        pegados.len()
     }
 
     /// **Una tecla del cajetin**, pura: Intro acepta, Mayus+Intro abre otro
@@ -943,10 +1223,17 @@ pub(super) fn pedir(
                     Some(pixpin_codec::portapapeles::ContenidoPortapapeles::Texto(t)) => t,
                     _ => String::new(),
                 };
-                let filas =
-                    pixpin_motor2d::tabla_dibujada::rejilla_de_texto(&texto).unwrap_or_default();
-                if !f.poner_celdas(&filas) {
-                    f.aviso = Some(exportar_textos_sin_tabla());
+                if f.coordenadas {
+                    // La de coordenadas AÑADE los pares (`leerTablaPegada`).
+                    if f.pegar_coordenadas(&texto) == 0 {
+                        f.aviso = Some(exportar_textos_sin_tabla());
+                    }
+                } else {
+                    let filas = pixpin_motor2d::tabla_dibujada::rejilla_de_texto(&texto)
+                        .unwrap_or_default();
+                    if !f.poner_celdas(&filas) {
+                        f.aviso = Some(exportar_textos_sin_tabla());
+                    }
                 }
             }
             Tecla::Accion(_) | Tecla::Sigue => {}
@@ -1200,9 +1487,9 @@ pub(super) fn disponer(
             }
             y += (f.campos.len().div_ceil(cols)) as f32 * renglon + sep;
             // Los botones de la tabla, en una fila bajo la rejilla.
-            let n = ACCIONES.len() as f32;
+            let n = f.acciones().len() as f32;
             let w = (ancho - 2.0 * m - (n - 1.0) * 6.0 * k) / n;
-            for (i, a) in ACCIONES.iter().enumerate() {
+            for (i, a) in f.acciones().iter().enumerate() {
                 d.acciones
                     .push((rect(x0 + i as f32 * (w + 6.0 * k), y, w, 28.0 * k), *a));
             }
@@ -1711,11 +1998,28 @@ pub(super) fn atender_figuras(mut ed: Editor<'_>, en: pixpin_geom::Punto, t: &Ca
         &biblio,
         hay_seleccion,
         tabla,
+        &ed.escena.tablas.iter().map(|s| s.visible).collect::<Vec<_>>(),
     ) else {
         return false;
     };
     let centro = ed.centro();
     match eleccion {
+        // El instrumento de fabrica con el pincel de ahora, en medio de la
+        // vista y elegido para llevarlo a su sitio.
+        Eleccion::Instrumento(ejes) => {
+            let e = instrumento_del_pincel(ed.gesto, ejes);
+            estampar_en_la_vista(ed.escena, ed.gesto, centro, "instrumento", &[e])
+        }
+        Eleccion::Coordenadas(cual) => editar_coordenadas(ed, cual, centro, t),
+        Eleccion::VerSerie(i) => {
+            let mut tablas = ed.escena.tablas.clone();
+            let Some(s) = tablas.get_mut(i) else {
+                return false;
+            };
+            s.visible = !s.visible;
+            let origen = ed.escena.origen_coordenadas;
+            ed.escena.poner_tablas(tablas, origen)
+        }
         Eleccion::Grafica => {
             let mut f = formulario_de_grafica(t);
             if !pedir(ed.lienzo(), &mut f, |f| peticion_de(f, t).map(|_| ())) {
@@ -1984,6 +2288,99 @@ mod pruebas {
     }
 
     #[test]
+    fn el_menu_ofrece_un_solo_instrumento_con_uno_dos_o_tres_ejes_y_las_series() {
+        let t = catalogo();
+        let sin_series = entradas_de_graficar(&t, &[]);
+        let ids: Vec<u32> = sin_series.iter().map(|e| e.id).collect();
+        assert_eq!(ids, [8, 7, 9, ID_COORDENADAS_NUEVA]);
+        assert_eq!(eleccion_de(7, 0), Some(Eleccion::Instrumento(1)));
+        assert_eq!(eleccion_de(8, 0), Some(Eleccion::Instrumento(2)));
+        assert_eq!(eleccion_de(9, 0), Some(Eleccion::Instrumento(3)));
+        assert_eq!(eleccion_de(ID_COORDENADAS_NUEVA, 0), Some(Eleccion::Coordenadas(None)));
+        let con = entradas_de_graficar(&t, &[true, false]);
+        assert!(con.iter().any(|e| e.id == ID_SERIE + 1 && e.texto.ends_with('2')));
+        assert!(con.iter().any(|e| e.id == ID_VER_SERIE + 1 && e.texto.starts_with("Ver")));
+        assert!(con.iter().any(|e| e.id == ID_VER_SERIE && e.texto.starts_with("Esconder")));
+        assert_eq!(eleccion_de(ID_SERIE + 1, 0), Some(Eleccion::Coordenadas(Some(1))));
+        assert_eq!(eleccion_de(ID_VER_SERIE, 0), Some(Eleccion::VerSerie(0)));
+        // Caso negativo: un id que no es de nada no elige nada.
+        assert_eq!(eleccion_de(4999, 0), None);
+    }
+
+    #[test]
+    fn el_instrumento_nace_con_el_pincel_y_a_tiralineas() {
+        let mut g = Gesto::nuevo();
+        g.estilo.trazo = ColorRgba::opaco(1.0, 0.0, 0.0);
+        for ejes in 1..=3 {
+            let e = instrumento_del_pincel(&g, ejes);
+            assert_eq!(e.trazo, g.estilo.trazo);
+            assert_eq!(e.rugosidad, 0.0);
+            assert_eq!(
+                pixpin_motor2d::instrumento::de(&e).map(|i| i.ejes),
+                Some(ejes)
+            );
+        }
+    }
+
+    #[test]
+    fn el_cajetin_de_coordenadas_lee_las_filas_enteras_y_pegar_anade() {
+        use pixpin_motor2d::instrumento::tabla::{PuntoDeTabla, TablaDeCoordenadas};
+        let t = catalogo();
+        let tabla = TablaDeCoordenadas {
+            id: "a".into(),
+            nombre: String::new(),
+            color: "#e03131".into(),
+            puntos: vec![PuntoDeTabla { x: 1.0, y: -2.5 }],
+            visible: true,
+        };
+        let mut f = formulario_de_coordenadas(&t, &tabla, 0, "px");
+        assert_eq!(f.celdas(), vec![vec!["1", "-2.5"], vec!["", ""]]);
+        assert_eq!(f.acciones(), &ACCIONES_DE_COORDENADAS);
+        // Una fila a medias no es un punto.
+        f.campos[2].texto = "4,5".into();
+        assert_eq!(puntos_del_formulario(&f), tabla.puntos);
+        f.campos[3].texto = "-".into();
+        assert_eq!(puntos_del_formulario(&f).len(), 1);
+        // Pegar de Excel AÑADE, y deja la fila en blanco detras.
+        f.campos[2].texto.clear();
+        f.campos[3].texto.clear();
+        assert_eq!(f.pegar_coordenadas("P1\t3\t4\nP2\t5\t6"), 2);
+        assert_eq!(puntos_del_formulario(&f).len(), 3);
+        assert_eq!(f.celdas().last().unwrap(), &vec![String::new(), String::new()]);
+        // Caso negativo: lo que no trae pares no toca nada.
+        let antes = f.celdas();
+        assert_eq!(f.pegar_coordenadas("hola"), 0);
+        assert_eq!(f.celdas(), antes);
+    }
+
+    #[test]
+    fn la_primera_serie_pone_el_eje_en_la_vista_y_las_demas_no_lo_mueven() {
+        use pixpin_motor2d::instrumento::tabla::PuntoDeTabla;
+        let mut escena = Escena::nueva();
+        let p = vec![PuntoDeTabla { x: 1.0, y: 1.0 }];
+        let (tablas, origen) =
+            tablas_tras_aceptar(&escena, None, p.clone(), Punto2::nuevo(50.0, 60.0));
+        assert_eq!(origen, Some(Punto2::nuevo(50.0, 60.0)));
+        assert_eq!(tablas[0].color, "#e03131");
+        assert!(escena.poner_tablas(tablas, origen));
+        let (tablas, origen) =
+            tablas_tras_aceptar(&escena, None, p.clone(), Punto2::nuevo(900.0, 900.0));
+        assert_eq!(origen, Some(Punto2::nuevo(50.0, 60.0)), "el eje no se mueve");
+        assert_eq!(tablas[1].color, "#1971c2", "otro color, otra serie");
+        assert!(escena.poner_tablas(tablas, origen));
+        // Sin puntos la serie se quita y el eje se queda.
+        let (tablas, origen) = tablas_tras_aceptar(&escena, Some(0), Vec::new(), Punto2::nuevo(0.0, 0.0));
+        assert_eq!(tablas.len(), 1);
+        assert_eq!(origen, Some(Punto2::nuevo(50.0, 60.0)));
+        // Caso negativo: una serie nueva sin puntos no nace.
+        let (tablas, _) = tablas_tras_aceptar(&escena, None, Vec::new(), Punto2::nuevo(0.0, 0.0));
+        assert_eq!(tablas, escena.tablas);
+        // Y todo se deshace de un Ctrl+Z por aceptar.
+        assert!(escena.deshacer());
+        assert_eq!(escena.tablas.len(), 1);
+    }
+
+    #[test]
     fn el_menu_ofrece_las_de_fabrica_y_las_propias_y_guardar_solo_con_algo_elegido() {
         let t = catalogo();
         let propia = FiguraGuardada {
@@ -1991,7 +2388,9 @@ mod pruebas {
             elementos: vec![Elemento::default()],
         };
         let sin = entradas(&t, &[], false, TablaElegida::Ninguna);
-        assert_eq!(sin.iter().filter(|e| e.id != 0).count(), 3);
+        // La grafica, las dos tablas, el plano, la recta, el espacio y la
+        // tabla de coordenadas.
+        assert_eq!(sin.iter().filter(|e| e.id != 0).count(), 7);
         assert!(
             sin.iter().all(|e| e.id != ID_GUARDAR),
             "sin seleccion no se guarda"
@@ -2587,3 +2986,6 @@ mod pruebas {
 
 #[cfg(test)]
 mod muestras_figuras;
+
+#[cfg(test)]
+mod muestras_instrumentos;

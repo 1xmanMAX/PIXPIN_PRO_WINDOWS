@@ -7,7 +7,7 @@
 use super::*;
 use pixpin_motor2d::gesto::{EventoGesto, Herramienta};
 
-fn carpeta() -> PathBuf {
+pub(super) fn carpeta() -> PathBuf {
     let c = std::env::var_os("PIXPIN_MUESTRAS")
         .map(PathBuf::from)
         .unwrap_or_else(|| {
@@ -17,7 +17,7 @@ fn carpeta() -> PathBuf {
     c
 }
 
-fn guardar(nombre: &str, img: &pixpin_codec::ImagenRgba) {
+pub(super) fn guardar(nombre: &str, img: &pixpin_codec::ImagenRgba) {
     let prefijo = std::env::var("PIXPIN_MUESTRAS_PREFIJO").unwrap_or_default();
     let png = pixpin_codec::imagen::codificar_png(img).unwrap();
     let ruta = carpeta().join(format!("{prefijo}{nombre}.png"));
@@ -25,7 +25,7 @@ fn guardar(nombre: &str, img: &pixpin_codec::ImagenRgba) {
     println!("{nombre}: {}", ruta.display());
 }
 
-fn foto_de(escena: &Escena) -> pixpin_codec::ImagenRgba {
+pub(super) fn foto_de(escena: &Escena) -> pixpin_codec::ImagenRgba {
     let fotos = |_: u64| None;
     let lienzo = super::super::exportar::Lienzo {
         escena,
@@ -157,7 +157,7 @@ fn muestras_de_las_figuras() {
 }
 
 /// Pinta el cajetin `f` sobre un fondo gris claro, como si fuera el lienzo.
-fn cajetin_a_png(
+pub(super) fn cajetin_a_png(
     motor: &mut MotorRender,
     d: &pixpin_capture::Dispositivo,
     nombre: &str,

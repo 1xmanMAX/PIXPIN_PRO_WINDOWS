@@ -149,6 +149,10 @@ pub fn toca(e: &Elemento, p: Punto2) -> bool {
         // que contiene, y pinchar ahi tiene que elegir eso y no el marco.
         Figura::Marco { .. } => cerca_del_borde_del_rectangulo(p, e, margen),
 
+        // Los instrumentos se cogen por dentro: son una lamina con sus reglas
+        // (`Collision.kt`, pedido del usuario el 2-sep-2026).
+        Figura::Instrumento(_) => dentro_de_la_caja(p, e, margen),
+
         // Lo que se ve del foco es el hueco: se agarra por dentro.
         Figura::Foco { .. } => dentro_de_la_caja(p, e, margen),
 

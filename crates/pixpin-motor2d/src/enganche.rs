@@ -348,6 +348,67 @@ pub fn sitio_con(
     )
 }
 
+/// **Lo encontrado, o un punto tecleado o el eje si quedan mas cerca**
+/// (`anclajesDeTablas` y `anclajesDelEje` de `Tablas.kt`).
+///
+/// Los puntos de las tablas de coordenadas valen como una esquina: alguien
+/// los tecleo para que estuvieran ahi. Del eje se ofrecen su cero y la
+/// proyeccion del cursor sobre sus dos rectas, salvo **cerca del cero, donde
+/// manda el cero**: a un paso del origen la proyeccion siempre queda algo mas
+/// cerca que el origen mismo (un cateto contra su hipotenusa) y apuntar al
+/// cero daria «encima del eje, un poco a la derecha». A mano alzada no tira
+/// nada, como lo demas.
+pub fn con_coordenadas(
+    encontrado: Option<Anclaje>,
+    p: Punto2,
+    zoom: f32,
+    faena: Faena,
+    config: &Ajustes,
+    origen: Option<Punto2>,
+    puntos: &[Punto2],
+) -> Option<Anclaje> {
+    let ajustes = ajustes_para(faena, config);
+    if !ajustes.activo || !ajustes.esquinas || faena == Faena::AMano {
+        return encontrado;
+    }
+    let radio = ajustes.radio_px / zoom.max(0.0001);
+    let mut mejor = encontrado;
+    let mut mejor_d = encontrado.map_or(f32::MAX, |a| a.punto.distancia(p));
+    let mut considerar = |a: Anclaje| {
+        let d = a.punto.distancia(p);
+        if d > radio {
+            return;
+        }
+        let gana = d < mejor_d - EMPATE
+            || ((d - mejor_d).abs() <= EMPATE
+                && mejor.is_some_and(|m: Anclaje| prioridad(a.tipo) < prioridad(m.tipo)));
+        if gana {
+            mejor = Some(a);
+            mejor_d = d;
+        }
+    };
+    for &punto in puntos {
+        considerar(Anclaje {
+            punto,
+            tipo: TipoAnclaje::Esquina,
+            id: 0,
+        });
+    }
+    if let Some(o) = origen {
+        let eje = |punto| Anclaje {
+            punto,
+            tipo: TipoAnclaje::Eje,
+            id: 0,
+        };
+        considerar(eje(o));
+        if o.distancia(p) > radio {
+            considerar(eje(Punto2::nuevo(p.x, o.y)));
+            considerar(eje(Punto2::nuevo(o.x, p.y)));
+        }
+    }
+    mejor
+}
+
 fn sitio_fino_con(
     elementos: &[Elemento],
     p: Punto2,

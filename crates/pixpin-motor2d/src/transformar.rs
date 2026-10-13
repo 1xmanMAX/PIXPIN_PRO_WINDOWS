@@ -236,7 +236,46 @@ pub fn escalar(
         e.alto = ny1 - ny0;
     }
 
+    // **El instrumento se estira de dos maneras** (`resizeSingleElement`
+    // del movil): por un lado crece la caja y la unidad se queda, asi que
+    // salen mas numeros; por una esquina crece tambien la unidad, con la
+    // menor de las dos escalas, y se ven los mismos numeros mas grandes.
+    // Las cifras siguen al alto, como el `fontSize` de alli.
+    if let Figura::Instrumento(i) = &mut e.figura {
+        if mueve_x && mueve_y {
+            let k = sx.abs().min(sy.abs()) as f64;
+            let k = if k.is_finite() && k > 0.0 { k } else { 1.0 };
+            i.unidad = Some(i.unidad_util() * k);
+        }
+        if let Some(t) = e.extras.tam_letra.as_mut() {
+            *t *= sy.abs();
+        }
+    }
+
     e.tocar();
+}
+
+/// **El tirador de giro sobre el espacio de tres ejes** (`girarElEspacio`
+/// del movil): le da la vuelta al espacio y deja la caja derecha, para que
+/// los numeros se sigan leyendo. El angulo es el del puntero respecto del
+/// centro con el tirador arriba como cero, en grados de -180 a 180, a saltos
+/// de quince con `discreto`. Devuelve si `e` era un espacio.
+pub fn girar_el_espacio(e: &mut Elemento, p: Punto2, discreto: bool) -> bool {
+    if !matches!(&e.figura, Figura::Instrumento(i) if i.ejes == 3) {
+        return false;
+    }
+    let (x0, y0, x1, y1) = e.caja();
+    let c = Punto2::nuevo((x0 + x1) / 2.0, (y0 + y1) / 2.0);
+    let mut grados = (angulo_hacia(c, p) as f64).to_degrees();
+    if discreto {
+        grados = (grados / 15.0).round() * 15.0;
+    }
+    grados = ((grados % 360.0) + 540.0) % 360.0 - 180.0;
+    if let Figura::Instrumento(i) = &mut e.figura {
+        i.azimut = Some(grados);
+    }
+    e.tocar();
+    true
 }
 
 /// Gira `e` en `delta` radianes alrededor de `centro`.

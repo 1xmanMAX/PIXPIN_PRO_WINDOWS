@@ -293,6 +293,7 @@ fn sellar(mapa: &mut Map<String, Value>, e: &Elemento, original: &Value) {
             Figura::Serie { .. } => "pixpin-serial",
             Figura::Region { .. } => "pixpin-region",
             Figura::Punto { .. } => "pixpin-point",
+            Figura::Instrumento(i) => i.tipo(),
         };
         mapa.insert("type".into(), Value::String(tipo.into()));
     }
@@ -322,6 +323,10 @@ pub fn a_escena(lienzo: &Lienzo) -> crate::Escena {
     escena.alfileres = crate::nudos::leer_del_fichero(&lienzo.resto, &escena.elementos);
     // Si las guias estan escondidas: es del dibujo y viaja con el.
     escena.referencias_visibles = referencias_visibles(lienzo);
+    // Las tablas de coordenadas y su eje comun: de la escena, no de ningun
+    // elemento (`Scene.tablas`, `Scene.origenCoordenadas`).
+    escena.tablas = tablas(lienzo);
+    escena.origen_coordenadas = origen_coordenadas(lienzo);
     escena
 }
 
@@ -403,6 +408,7 @@ pub fn con_escena(lienzo: &Lienzo, escena: &crate::Escena) -> Lienzo {
     salida.escala = escena.escala.clone();
     fondo_hacia(&mut salida, escena.fondo);
     referencias_visibles_hacia(&mut salida, escena.referencias_visibles);
+    tablas_hacia(&mut salida, escena);
     let mut n: u64 = 0;
     for entrada in &mut salida.entradas {
         let Entrada::Nuestro { elemento, .. } = entrada else {
@@ -791,6 +797,13 @@ fn elemento_desde(v: &Value) -> Option<Elemento> {
             Figura::Cota { puntos }
         }
         "pixpin-scalebar" => Figura::EscalaGrafica,
+        // Los tres instrumentos de graficar del movil son uno solo aqui, con
+        // el numero de ejes sacado del tipo. Sus numeros se leen como `f64`
+        // para volver con los mismos bytes; uno que no es un numero se lee
+        // como ausente y se deja intacto al escribir (`instrumento_hacia`).
+        t if crate::instrumento::Instrumento::ejes_del_tipo(t).is_some() => {
+            Figura::Instrumento(instrumento_desde(v, t))
+        }
         // El arco: un trozo del ovalo de su caja. `arcStart` y `arcSweep`
         // van en RADIANES en los dos aparatos, asi que el numero pasa tal
         // cual: `Element.kt` los documenta «en radianes» y `Arco.kt` los
@@ -999,10 +1012,11 @@ fn extras_desde(v: &Value) -> Extras {
         .flatten()
         .map(|n| crate::texto::nombre_de_familia(Some(n.min(u8::MAX as u64) as u8)).to_string()),
         // El tamano de lo que rotula: el numero de la cota
-        // (`e.fontSize ?: MEASURE_TEXT_SIZE` en `drawMeasure`).
+        // (`e.fontSize ?: MEASURE_TEXT_SIZE` en `drawMeasure`) y las cifras
+        // de los instrumentos (`e.fontSize ?: TAM_DE_LA_CIFRA` en `drawPlano`).
         tam_letra: matches!(
             v.get("type").and_then(Value::as_str),
-            Some("pixpin-measure")
+            Some("pixpin-measure" | "pixpin-axes" | "pixpin-number-line" | "pixpin-space")
         )
         .then(|| num(v, "fontSize"))
         .flatten()
@@ -1060,6 +1074,110 @@ fn referencias_visibles_hacia(salida: &mut Lienzo, visibles: bool) {
     salida
         .resto
         .insert("referenciasVisibles".into(), Value::Bool(visibles));
+}
+
+/// **El instrumento de un elemento del movil** (`unidad`, `pasoDeNumeros`,
+/// `pasoDeCuadros`, `azimut`, `elevacion` de `Element.kt`), con sus ejes
+/// sacados del tipo. Lo que no es un numero se lee como ausente.
+fn instrumento_desde(v: &Value, tipo: &str) -> crate::instrumento::Instrumento {
+    let n = |clave: &str| v.get(clave).and_then(Value::as_f64).filter(|x| x.is_finite());
+    crate::instrumento::Instrumento {
+        ejes: crate::instrumento::Instrumento::ejes_del_tipo(tipo).unwrap_or(2),
+        unidad: n("unidad"),
+        paso_numeros: n("pasoDeNumeros"),
+        paso_cuadros: n("pasoDeCuadros"),
+        azimut: n("azimut"),
+        elevacion: n("elevacion"),
+    }
+}
+
+/// Y de vuelta. Solo se escribe lo que hay: un campo ausente no se estrena y
+/// uno que no se entendio (no era un numero) se queda como vino, la regla del
+/// `material` y del `fillStyle`.
+fn instrumento_hacia(mapa: &mut Map<String, Value>, i: &crate::instrumento::Instrumento) {
+    for (clave, valor) in [
+        ("unidad", i.unidad),
+        ("pasoDeNumeros", i.paso_numeros),
+        ("pasoDeCuadros", i.paso_cuadros),
+        ("azimut", i.azimut),
+        ("elevacion", i.elevacion),
+    ] {
+        if let Some(x) = valor {
+            mapa.insert(clave.into(), Value::from(x));
+        }
+    }
+}
+
+/// **Las tablas de coordenadas de la escena** (`Scene.tablas` del movil).
+/// Una lista rota se lee vacia, pero no se pisa al escribir mientras aqui no
+/// se cambie ninguna (`tablas_hacia`).
+pub fn tablas(lienzo: &Lienzo) -> Vec<crate::instrumento::tabla::TablaDeCoordenadas> {
+    lienzo
+        .resto
+        .get("tablas")
+        .and_then(|v| serde_json::from_value(v.clone()).ok())
+        .unwrap_or_default()
+}
+
+/// **El eje comun de las coordenadas** (`Scene.origenCoordenadas`): `{x, y}`
+/// como lo escribe el movil, o `[x, y]` como lo dejaba el PC antes de
+/// traducirlo (`para_el_movil::a_punto`).
+pub fn origen_coordenadas(lienzo: &Lienzo) -> Option<Punto2> {
+    let v = lienzo.resto.get("origenCoordenadas")?;
+    let (x, y) = match v {
+        Value::Object(m) => (m.get("x")?.as_f64()?, m.get("y")?.as_f64()?),
+        Value::Array(a) if a.len() >= 2 => (a[0].as_f64()?, a[1].as_f64()?),
+        _ => return None,
+    };
+    Some(Punto2::nuevo(x as f32, y as f32))
+}
+
+/// Las tablas y su eje de vuelta, **solo si cambiaron**: un lienzo del movil
+/// que nadie toco no cambia ni un byte. Cada tabla se escribe encima de la
+/// suya de antes (por su `id`), asi una clave que aqui no se conoce sigue
+/// ahi; y la que no cambio vuelve tal cual.
+fn tablas_hacia(salida: &mut Lienzo, escena: &crate::Escena) {
+    if tablas(salida) != escena.tablas {
+        let antes: Vec<Value> = match salida.resto.get("tablas") {
+            Some(Value::Array(l)) => l.clone(),
+            _ => Vec::new(),
+        };
+        let nuevas: Vec<Value> = escena
+            .tablas
+            .iter()
+            .map(|t| {
+                let suya = antes
+                    .iter()
+                    .find(|v| v.get("id").and_then(Value::as_str) == Some(t.id.as_str()));
+                if let Some(v) = suya
+                    && serde_json::from_value::<crate::instrumento::tabla::TablaDeCoordenadas>(
+                        v.clone(),
+                    )
+                    .ok()
+                    .as_ref()
+                        == Some(t)
+                {
+                    return v.clone();
+                }
+                let mut m = match suya {
+                    Some(Value::Object(m)) => m.clone(),
+                    _ => Map::new(),
+                };
+                if let Value::Object(nueva) = serde_json::to_value(t).unwrap_or(Value::Null) {
+                    m.extend(nueva);
+                }
+                Value::Object(m)
+            })
+            .collect();
+        salida.resto.insert("tablas".into(), Value::Array(nuevas));
+    }
+    if origen_coordenadas(salida) != escena.origen_coordenadas {
+        let valor = match escena.origen_coordenadas {
+            Some(p) => serde_json::json!({ "x": p.x as f64, "y": p.y as f64 }),
+            None => Value::Null,
+        };
+        salida.resto.insert("origenCoordenadas".into(), valor);
+    }
 }
 
 /// El `crop` de una imagen. Sin sus cuatro medidas no hay recorte: uno a
@@ -1516,6 +1634,13 @@ fn elemento_hacia(e: &Elemento, original: &Value, objetos: bool) -> Value {
         }
         Figura::EscalaGrafica => {
             mapa.insert("type".into(), Value::String("pixpin-scalebar".to_string()));
+        }
+        Figura::Instrumento(i) => {
+            mapa.insert("type".into(), Value::String(i.tipo().to_string()));
+            instrumento_hacia(&mut mapa, i);
+            if let Some(t) = e.extras.tam_letra {
+                mapa.insert("fontSize".into(), Value::from(t as f64));
+            }
         }
         Figura::Marco { nombre } => {
             mapa.insert("type".into(), Value::String("frame".to_string()));

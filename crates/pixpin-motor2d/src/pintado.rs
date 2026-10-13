@@ -1160,6 +1160,18 @@ pub fn ordenes(e: &Elemento) -> Vec<Orden> {
 
         // La barra entera depende de la escala: va en `ordenes_medibles`.
         Figura::EscalaGrafica => {}
+
+        // El instrumento de graficar, con uno, dos o tres ejes: un solo
+        // pintado para los tres (`instrumento::ordenes`), y por tanto el
+        // mismo en pantalla, PNG, SVG, PDF y la pagina web.
+        Figura::Instrumento(i) => {
+            salida.extend(crate::instrumento::ordenes(
+                e,
+                i,
+                color,
+                letra_de_rotulo(e),
+            ));
+        }
     }
 
     // El angulo se aplica aqui, una vez, sobre la geometria ya generada.
