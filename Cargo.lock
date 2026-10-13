@@ -1515,6 +1515,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "pixpin-ia"
+version = "0.1.0"
+dependencies = [
+ "pixpin-motor2d",
+ "pixpin-voz",
+ "serde_json",
+ "sha2 0.10.9",
+ "thiserror",
+ "tracing",
+ "windows",
+ "zip",
+]
+
+[[package]]
 name = "pixpin-lanzador"
 version = "0.1.0"
 dependencies = [
