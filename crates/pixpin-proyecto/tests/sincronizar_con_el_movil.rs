@@ -2267,3 +2267,58 @@ fn el_grafito_con_dureza_y_las_guias_del_pc_llegan_al_movil_como_las_lee() {
     let chat = vista::chat_de_ficha(&p.raiz(), &obra.id).unwrap();
     p.quieto(&chat);
 }
+
+/// **El instrumento de graficar y una tabla de coordenadas del PC** (Tanda 4):
+/// llegan al movil con los tipos y las claves de `Element.kt` y `Scene.kt`
+/// (`pixpin-axes`, `pixpin-space` con `unidad`, `azimut`...; `tablas`,
+/// `origenCoordenadas`), se leen igual de vuelta, y la vuelta siguiente no
+/// los manda otra vez.
+#[test]
+fn el_plano_el_espacio_y_las_coordenadas_del_pc_llegan_al_movil_como_los_lee() {
+    use pixpin_motor2d::instrumento::tabla::{PuntoDeTabla, TablaDeCoordenadas};
+    use pixpin_motor2d::vector::Punto2;
+    let p = montar("instrumentos");
+    let obra = proyecto_del_pc(&p);
+    let carpeta = almacen::carpeta(&p.raiz(), &obra.id);
+    let negro = pixpin_motor2d::ColorRgba::opaco(0.0, 0.0, 0.0);
+    let mut escena = pixpin_motor2d::Escena::nueva();
+    escena.anadir(pixpin_motor2d::instrumento::elemento_de_fabrica(2, negro, 2.0, 1.0));
+    escena.anadir(pixpin_motor2d::instrumento::elemento_de_fabrica(3, negro, 2.0, 1.0));
+    escena.tablas = vec![TablaDeCoordenadas {
+        id: "t1".into(),
+        nombre: String::new(),
+        color: "#e03131".into(),
+        puntos: vec![PuntoDeTabla { x: 3.0, y: -2.0 }],
+        visible: true,
+    }];
+    escena.origen_coordenadas = Some(Punto2::nuevo(160.0, 160.0));
+    let texto = pixpin_motor2d::excalidraw::escribir(&pixpin_motor2d::excalidraw::con_escena(
+        &pixpin_motor2d::excalidraw::Lienzo::vacio(),
+        &escena,
+    ));
+    std::fs::write(carpeta.join("lienzos/d9.excalidraw"), &texto).unwrap();
+
+    p.vuelta_desde_pc();
+
+    let alli = de_gz(&p.movil.raiz().join("pins/draw/d9.excalidraw.gz"));
+    let v: serde_json::Value = serde_json::from_str(&alli).unwrap();
+    assert_eq!(v["elements"][0]["type"], "pixpin-axes", "{alli}");
+    assert_eq!(v["elements"][0]["unidad"], 40.0, "{alli}");
+    assert_eq!(v["elements"][1]["type"], "pixpin-space", "{alli}");
+    assert_eq!(v["elements"][1]["elevacion"], 25.0, "{alli}");
+    assert_eq!(v["tablas"][0]["puntos"][0]["y"], -2.0, "{alli}");
+    assert_eq!(v["origenCoordenadas"]["x"], 160.0, "{alli}");
+    // Caso negativo: el plano no lleva las claves del espacio.
+    assert!(v["elements"][0].get("azimut").is_none(), "{alli}");
+    let vuelta = pixpin_motor2d::excalidraw::a_escena(
+        &pixpin_motor2d::excalidraw::leer(&alli).unwrap(),
+    );
+    assert_eq!(vuelta.tablas, escena.tablas);
+    assert_eq!(vuelta.origen_coordenadas, escena.origen_coordenadas);
+    assert_eq!(
+        pixpin_motor2d::instrumento::de(&vuelta.elementos[1]).map(|i| i.ejes),
+        Some(3)
+    );
+    let chat = vista::chat_de_ficha(&p.raiz(), &obra.id).unwrap();
+    p.quieto(&chat);
+}

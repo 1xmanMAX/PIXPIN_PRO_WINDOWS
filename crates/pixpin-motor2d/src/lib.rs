@@ -50,6 +50,7 @@ pub mod grafica;
 pub mod hojita;
 pub mod impacto;
 pub mod indice;
+pub mod instrumento;
 pub mod lazo;
 pub mod lupa_elemento;
 pub mod marcas;

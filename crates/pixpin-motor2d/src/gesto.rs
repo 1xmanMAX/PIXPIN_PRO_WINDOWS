@@ -990,6 +990,25 @@ impl Gesto {
         let excluye = |id: u64| dibujando == Some(id) || (moviendo && seleccion.contiene(id));
         let encontrado =
             crate::enganche::sitio_con(&escena.elementos, p, zoom, faena, &self.enganche, &excluye);
+        // Los puntos de las tablas de coordenadas y su eje tambien imantan.
+        let encontrado = if escena.origen_coordenadas.is_some() {
+            let tecleados = crate::instrumento::tabla::anclajes(
+                &escena.tablas,
+                escena.origen_coordenadas,
+                escena.escala.as_ref(),
+            );
+            crate::enganche::con_coordenadas(
+                encontrado,
+                p,
+                zoom,
+                faena,
+                &self.enganche,
+                escena.origen_coordenadas,
+                &tecleados,
+            )
+        } else {
+            encontrado
+        };
         self.anclaje_activo = encontrado;
         encontrado.map_or(p, |a| a.punto)
     }
@@ -1874,8 +1893,14 @@ impl Gesto {
                     for &id in self.seleccion.ids() {
                         escena.apuntar_edicion(id);
                     }
+                    let solo = self.seleccion.cuantos() == 1;
                     for e in escena.elementos.iter_mut() {
                         if self.seleccion.contiene(e.id) {
+                            // El espacio de tres ejes, solo, no se inclina:
+                            // se le da la vuelta (`girarElEspacio`).
+                            if solo && transformar::girar_el_espacio(e, p, shift) {
+                                continue;
+                            }
                             transformar::girar(e, centro, delta);
                         }
                     }

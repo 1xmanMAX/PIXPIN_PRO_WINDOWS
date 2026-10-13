@@ -435,6 +435,7 @@ pub fn lleva_letra(figura: &Figura) -> bool {
             | Figura::Cota { .. }
             | Figura::Punto { .. }
             | Figura::EscalaGrafica
+            | Figura::Instrumento(_)
     )
 }
 
@@ -789,6 +790,10 @@ pub fn propiedades_de(figura: &Figura) -> &'static [Propiedad] {
         // La reglita: ni relleno ni rugosidad, que una escala temblorosa no
         // se lee.
         Figura::EscalaGrafica => &[Trazo, Opacidad],
+        // El instrumento de graficar: el color de sus rayas, su grosor, su
+        // material y la letra de sus cifras; ni relleno ni temblor, que unos
+        // ejes temblorosos no se leen (`DrawProperties.kt`).
+        Figura::Instrumento(_) => &[Trazo, Grosor, Material, Opacidad],
         // El relleno de un hueco es **solo mancha**: su borde lo dibujan las
         // figuras que lo encierran, asi que ofrecerle color de trazo seria un
         // boton que no puede cambiar nada de lo que se ve.

@@ -236,6 +236,7 @@ pub fn es_pared(e: &Elemento) -> bool {
         | Figura::Texto { .. }
         | Figura::Emoji { .. }
         | Figura::EscalaGrafica
+        | Figura::Instrumento(_)
         | Figura::Punto { .. }
         | Figura::Region { .. } => false,
 
