@@ -192,6 +192,14 @@ pub struct Peticion {
     pub desde: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub resumen: Option<String>,
+    /// `compartidos`, `unirme`: la ficha de este aparato como persona de un
+    /// chat compartido, como CADENA con JSON dentro (Android 13-oct-2026).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub persona: Option<String>,
+    /// `compartidos`, `miembros`: las listas de los chats compartidos, como
+    /// CADENA con JSON dentro. Ver `compartidos`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub compartidos: Option<String>,
 }
 
 impl Peticion {
@@ -254,6 +262,14 @@ pub struct Respuesta {
     /// `galeria`: las capturas que tiene de verdad.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub tengo: Vec<String>,
+    /// `compartidos`, `unirme`: la ficha de este aparato como persona de un
+    /// chat compartido, como CADENA con JSON dentro (Android 13-oct-2026).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub persona: Option<String>,
+    /// `compartidos`, `miembros`: las listas de los chats compartidos, como
+    /// CADENA con JSON dentro. Ver `compartidos`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub compartidos: Option<String>,
 }
 
 /// El texto que manda Android cuando ya esta sincronizando con otro.

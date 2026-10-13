@@ -14,6 +14,14 @@ aes-gcm = "0.10.3"
 hmac = "0.12.1"
 pbkdf2 = { version = "0.12.2", default-features = false, features = ["hmac"] }
 sha2 = "0.10.9"
+# Chats compartidos con personas (13-oct-2026): el par de claves P-256 de cada
+# aparato, ECDH para la clave de la conversacion y ECDSA SHA-256 para firmar
+# entradas y salidas, como `Llaves` de Android (`KeyPairGenerator("EC")`,
+# `KeyAgreement("ECDH")`, `Signature("SHA256withECDSA")`), con las claves en
+# X.509 (SPKI) y PKCS#8 DER. RustCrypto, nada hecho a mano.
+p256 = { version = "0.13.2", default-features = false, features = ["ecdh", "ecdsa", "pkcs8", "std"] }
+rand_core = { version = "0.6.4", features = ["getrandom"] }
+base64 = "0.22.1"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 thiserror = "2.0"
