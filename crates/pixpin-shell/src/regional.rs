@@ -6,7 +6,7 @@
 //! Solo lee: `GetLocaleInfoEx` con la configuracion del usuario
 //! (`LOCALE_NAME_USER_DEFAULT`, que es el puntero nulo).
 
-use windows::Win32::Globalization::{GetLocaleInfoEx, LOCALE_SDATE, LOCALE_SDECIMAL, LOCALE_SSHORTDATE, LOCALE_STHOUSAND};
+use windows::Win32::Globalization::{GetLocaleInfoEx, LOCALE_SCURRENCY, LOCALE_SDATE, LOCALE_SDECIMAL, LOCALE_SSHORTDATE, LOCALE_STHOUSAND};
 use windows::core::PCWSTR;
 
 /// Lo que dice Windows, en crudo (cadenas vacias si no se pudo leer).
@@ -44,6 +44,14 @@ pub fn del_usuario() -> RegionalDelSistema {
         separador_fecha: leer(LOCALE_SDATE),
         fecha_corta: leer(LOCALE_SSHORTDATE),
     }
+}
+
+/// El simbolo de la moneda del usuario (`LOCALE_SCURRENCY`: «S/» en el Peru,
+/// «€» en Espana); `$` si no se pudo leer. Lo usa el formato «Moneda» de la
+/// hoja del pin.
+pub fn simbolo_moneda() -> String {
+    let s = leer(LOCALE_SCURRENCY);
+    if s.trim().is_empty() { "$".into() } else { s }
 }
 
 #[cfg(test)]

@@ -20,10 +20,16 @@
 //! flechas, RePag/AvPag, Inicio, Ctrl+Inicio/Fin y Ctrl+flecha como en
 //! Excel; clic elige una celda, arrastrar un rango, los encabezados eligen
 //! filas o columnas; Ctrl+C copia lo elegido como texto con tabuladores (lo
-//! que se ve en cada celda); un clic en un enlace lo abre (web o un sitio
+//! que se ve en cada celda; no hay boton «Copiar»: el usuario, 12-oct-2026,
+//! «Ctrl+C ya copia siempre»); un clic en un enlace lo abre (web o un sitio
 //! del libro); las pestanas de abajo o Ctrl+RePag/AvPag cambian de hoja.
 //! Arriba, una linea como la barra de formulas: la celda activa y lo que
 //! tiene.
+//!
+//! **Una hoja del chat se edita en este mismo visor** (`hoja_pin`): la
+//! misma ventana, el mismo pintor y los mismos gestos; editar solo anade
+//! escribir en las casillas, las formulas y la barra de formato. Pasar de
+//! ver a editar y de vuelta conserva el zoom, la posicion y la celda activa.
 //!
 //! Un libro que no se puede leer (un `.xls` renombrado, uno roto, uno
 //! binario) se abre con su programa, como antes.
@@ -69,24 +75,23 @@ const TENUE: Color = Color { r: 0.42, g: 0.42, b: 0.42, a: 1.0 };
 const ENLACE: Color = Color { r: 0.02, g: 0.39, b: 0.76, a: 1.0 };
 const PULGAR: Color = Color { r: 0.0, g: 0.0, b: 0.0, a: 0.28 };
 const PULGAR_ENCIMA: Color = Color { r: 0.0, g: 0.0, b: 0.0, a: 0.45 };
+/// El verde de Excel (lo que dice que se esta editando).
+const VERDE: Color = Color { r: 0.129, g: 0.451, b: 0.275, a: 1.0 };
+const AVISO_LARGO: Duration = Duration::from_millis(5000);
+/// Dos clics en la misma celda antes de esto, editando: escribir en ella.
+const DOBLE_CLIC: Duration = Duration::from_millis(450);
+/// Lo que se ignoran las letras al pasar a editar con una tecla (la `E` que
+/// trajo hasta aqui llega despues como caracter y no se escribe).
+const SIN_LETRAS: Duration = Duration::from_millis(250);
 
-/// Botones propios en la barra del pin.
-const BOTON_COPIAR: u8 = 1;
+/// Botones propios en la barra del pin (los de editar, en `hoja_pin`).
 const BOTON_SU_PROGRAMA: u8 = 2;
-/// «Editar»: la misma ventana pasa a la hoja editable (`hoja_pin`). Solo en
-/// las hojas del chat, que es donde se guarda lo editado.
+/// «Editar»: el mismo visor pasa a editar (`hoja_pin`). Solo en las hojas
+/// del chat, que es donde se guarda lo editado.
 const BOTON_EDITAR: u8 = 3;
 /// F2, como en Excel, y la `E` de «Editar».
 const VK_F2: u32 = 0x71;
 const VK_E: u32 = 0x45;
-
-/// Como acaba el modo ver.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Fin {
-    Cerrar,
-    /// Pasar a editar, con la hoja que se estaba viendo.
-    Editar(usize),
-}
 
 /// **La ventana del pin**, que sigue siendo la misma al pasar de ver a
 /// editar y de vuelta: su superficie, la barra del pin y donde esta.
@@ -226,6 +231,10 @@ enum Gesto {
     /// Llevando el pulgar de una barra; `agarre`: donde se cogio, desde su
     /// principio.
     Barra { eje: Eje, agarre: f32 },
+    /// Moviendo la hoja con el boton central (la rueda) pulsado, como el
+    /// lienzo y el lector: `desde`, donde se pulso; `x`, `y`, la vista de
+    /// entonces. No elige celdas.
+    Mano { desde: (f32, f32), x: f64, y: f64 },
 }
 
 /// Una barra de desplazamiento pintada: su pista y su pulgar, en pantalla.
@@ -245,8 +254,38 @@ struct Zonas {
     pestanas: RectF,
 }
 
+/// Donde se estaba mirando una hoja: se conserva al rehacer lo que se ve
+/// tras un cambio (editando), para que no salte nada.
+#[derive(Debug, Clone, Copy)]
+struct Posicion {
+    x: f64,
+    y: f64,
+    zoom: f64,
+    sel: Seleccion,
+}
+
+impl Abierta {
+    fn posicion(&self) -> Posicion {
+        Posicion { x: self.x, y: self.y, zoom: self.zoom, sel: self.sel }
+    }
+}
+
 struct Estado<'l> {
-    libro: &'l Libro,
+    /// Lo que se ve. Editando, se rehace con cada cambio (`hoja_pin`).
+    libro: &'l mut Libro,
+    /// La hoja del chat, si lo es (se puede editar).
+    ed: Option<&'l mut crate::hoja_pin::Editable>,
+    /// Editando (la barra de formato, escribir en las casillas).
+    editando: bool,
+    /// El ultimo clic en una celda, editando (dos seguidos: escribir).
+    ultimo_clic: Option<((u32, u32), Instant)>,
+    /// Hasta cuando no se escriben las letras que llegan.
+    sin_letras_hasta: Option<Instant>,
+    /// Cuantas veces se rehizo lo que se ve (para que el pintor no confunda
+    /// la hoja nueva con la de antes, que vive en la misma direccion).
+    generacion: u64,
+    /// Donde se miraban las hojas que se cerraron al rehacer lo que se ve.
+    guardadas: std::collections::HashMap<usize, Posicion>,
     hojas: Vec<Option<Abierta>>,
     activa: usize,
     cache: CacheHoja,
@@ -437,26 +476,57 @@ impl<'l> Estado<'l> {
         if self.hojas.get(i).is_none_or(|h| h.is_some()) {
             return;
         }
+        if self.digito.is_none() {
+            self.digito = self.cache.ancho_digito(motor, &self.libro.estilos.fuente_normal, self.ppp);
+        }
+        self.abrir_hoja_con_digito(i);
+    }
+
+    /// Lo de [`Estado::abrir_hoja`] con el ancho del digito ya medido (o sin
+    /// el: el de la letra por defecto).
+    fn abrir_hoja_con_digito(&mut self, i: usize) {
+        if self.hojas.get(i).is_none_or(|h| h.is_some()) {
+            return;
+        }
         let t = Instant::now();
-        let libro = self.libro;
+        let libro = &*self.libro;
         let mut hoja = libro.abrir_hoja(i);
+        // Rehecha tras un cambio: otra para el pintor aunque viva en el mismo
+        // sitio que la de antes.
+        hoja.version = hoja.version.wrapping_add(self.generacion << 32);
+        // Donde se estaba mirando antes de rehacerla, si se rehizo.
+        let antes = self.guardadas.remove(&i);
         // La cabecera (paneles, zoom, primera celda) y la primera fila.
         hoja.cargar_hasta_fila(0);
         let vh = hoja.vista().clone();
-        let zoom = logica::zoom_guardado(vh.zoom);
+        let zoom = antes.map_or_else(|| logica::zoom_guardado(vh.zoom), |p| p.zoom);
         // Las filas que caben, contando con filas bajas (12 px al 100 %).
         let alto_hoja = self.zonas().hoja.alto as f64;
-        let caben = (alto_hoja / (12.0 * self.ppp / 96.0 * zoom)).ceil() as u32 + 2;
-        let hasta = vh.primera_fila.max(vh.filas_fijas) + caben;
+        let fila_baja = 12.0 * self.ppp / 96.0;
+        let caben = (alto_hoja / (fila_baja * zoom)).ceil() as u32 + 2;
+        let desde = antes.map_or(vh.primera_fila.max(vh.filas_fijas), |p| (p.y / fila_baja).ceil() as u32);
+        let hasta = desde.saturating_add(caben);
         hoja.cargar_hasta_fila(hasta);
-        if self.digito.is_none() {
-            self.digito = self.cache.ancho_digito(motor, &libro.estilos.fuente_normal, self.ppp);
+        if antes.is_some() {
+            // Rehecha tras un cambio (una tabla en memoria): una tanda aqui
+            // mismo, para que una tabla normal no se vea «cargando» al
+            // escribir; lo que quede, en otro hilo como siempre.
+            for _ in 0..3 {
+                if hoja.cargar_tanda(TANDA_CELDAS / 2) {
+                    break;
+                }
+            }
         }
         let rejilla = Rejilla::nueva_en(&hoja, &libro.estilos.fuente_normal, self.digito, self.ppp);
         let tandas = hoja.tomar_lector().map(|l| leer_aparte(l, self.hwnd));
-        let sel = vh.celda_activa.map_or(Seleccion::en(vh.filas_fijas, vh.columnas_fijas), |(f, c)| Seleccion::en(f, c));
-        let x = rejilla.x(vh.primera_columna.max(vh.columnas_fijas));
-        let y = rejilla.y(vh.primera_fila.max(vh.filas_fijas));
+        let (x, y, sel) = match antes {
+            Some(p) => (p.x, p.y, p.sel),
+            None => (
+                rejilla.x(vh.primera_columna.max(vh.columnas_fijas)),
+                rejilla.y(vh.primera_fila.max(vh.filas_fijas)),
+                vh.celda_activa.map_or(Seleccion::en(vh.filas_fijas, vh.columnas_fijas), |(f, c)| Seleccion::en(f, c)),
+            ),
+        };
         tracing::info!(
             ms = ms(t),
             hoja = %hoja.nombre,
@@ -471,7 +541,35 @@ impl<'l> Estado<'l> {
         self.hojas[i] = Some(ab);
     }
 
-    fn cambiar_hoja(&mut self, i: usize, motor: &MotorRender) {
+    /// Cambia a la hoja `i`. Editando, a su tabla (dejando escrito lo que se
+    /// tecleaba); una hoja sin tabla (de graficos) no se abre mientras se
+    /// edita: se dice.
+    fn cambiar_hoja(&mut self, i: usize, motor: &MotorRender, textos: &Catalogo) {
+        if i >= self.libro.hojas.len() || i == self.activa {
+            return;
+        }
+        if self.editando {
+            let nombres: Vec<&str> = self.libro.hojas.iter().map(|h| h.nombre.as_str()).collect();
+            let Some(t) = self.ed.as_deref().and_then(|ed| ed.tabla_de_vista(&nombres, i)) else {
+                self.avisar(textos.t("hoja-no-editable"));
+                return;
+            };
+            if let Some(e) = self.editor_mut() {
+                e.confirmar();
+            }
+            // Si lo escrito rehizo lo que se ve, las hojas son ya las tablas.
+            let i = if self.al_dia(motor) { t } else { i };
+            if let Some(e) = self.editor_mut() {
+                e.cambiar_hoja(t);
+            }
+            self.ir_a_hoja(i, motor);
+            self.sel_al_editor();
+            return;
+        }
+        self.ir_a_hoja(i, motor);
+    }
+
+    fn ir_a_hoja(&mut self, i: usize, motor: &MotorRender) {
         if i >= self.libro.hojas.len() || i == self.activa {
             return;
         }
@@ -561,7 +659,7 @@ impl<'l> Estado<'l> {
             self.avisar(t);
             return;
         }
-        let (libro, hoja) = (self.libro, &ab.hoja);
+        let (libro, hoja) = (&*self.libro, &ab.hoja);
         let t = Instant::now();
         let texto = logica::tsv(r, |f, c| hoja.celda(f, c).and_then(|c| libro.contenido(hoja, c)).map(|x| x.mostrado.texto).unwrap_or_default());
         match pixpin_codec::copiar_texto(&texto) {
@@ -590,7 +688,7 @@ impl<'l> Estado<'l> {
                 if let Some(nombre) = hoja
                     && let Some(i) = self.libro.hojas.iter().position(|h| h.nombre.eq_ignore_ascii_case(&nombre))
                 {
-                    self.cambiar_hoja(i, motor);
+                    self.cambiar_hoja(i, motor, textos);
                 }
                 if let Some((f, c)) = celda {
                     let caja = self.zonas().hoja;
@@ -757,16 +855,36 @@ impl<'l> Estado<'l> {
         }
     }
 
+    /// **Pulsa el boton central**: empieza a mover la hoja con la mano.
+    fn empezar_mano(&mut self) {
+        let ab = self.abierta();
+        self.gesto = Some(Gesto::Mano { desde: self.raton, x: ab.x, y: ab.y });
+    }
+
+    /// Moviendo con el central: la hoja sigue al raton (lo que se movio en
+    /// pantalla, al zoom que se ve), sin pasarse de sus limites.
+    fn llevar_mano(&mut self) {
+        let Some(Gesto::Mano { desde, x, y }) = self.gesto else { return };
+        let (dx, dy) = (self.raton.0 - desde.0, self.raton.1 - desde.1);
+        let caja = self.zonas().hoja;
+        let ab = self.abierta_mut();
+        let z = ab.zoom.max(0.01);
+        ab.x = x - dx as f64 / z;
+        ab.y = y - dy as f64 / z;
+        let (_, celdas) = vista_de(ab, caja);
+        acotar(ab, celdas);
+    }
+
     /// **Un clic** en la ventana. `true` si empieza un arrastre (hay que
     /// capturar el raton).
-    fn pulsar(&mut self, motor: &MotorRender) -> bool {
+    fn pulsar(&mut self, motor: &MotorRender, textos: &Catalogo) -> bool {
         let p = self.raton;
         let z = self.zonas();
         // Las pestanas.
         if dentro(&z.pestanas, p) {
             if let Some(t) = self.pestanas.iter().find(|t| dentro(&t.caja, p)) {
                 let i = t.hoja;
-                self.cambiar_hoja(i, motor);
+                self.cambiar_hoja(i, motor, textos);
             }
             return false;
         }
@@ -814,12 +932,25 @@ impl<'l> Estado<'l> {
             return true;
         }
         let Some(celda) = self.celda_bajo(p, false) else { return false };
-        if self.clic_en_flecha(p, celda) {
+        if !self.editando && self.clic_en_flecha(p, celda) {
             self.menu_de_lista(celda);
             return false;
         }
         let ab = self.abierta_mut();
         ab.sel = if mods.shift { Seleccion { ancla: ab.sel.ancla, activa: celda } } else { Seleccion::en(celda.0, celda.1) };
+        if self.editando && !mods.shift {
+            // Dos clics en la misma celda: escribir en ella con lo que tiene.
+            let doble = self.ultimo_clic.is_some_and(|(c, t)| c == celda && t.elapsed() < DOBLE_CLIC);
+            if doble {
+                self.ultimo_clic = None;
+                self.sel_al_editor();
+                if let Some(e) = self.editor_mut() {
+                    e.empezar(true);
+                }
+                return false;
+            }
+            self.ultimo_clic = Some((celda, Instant::now()));
+        }
         self.gesto = Some(Gesto::Elegir { pulsada: celda, cuando: Instant::now(), ctrl: mods.ctrl });
         true
     }
@@ -869,7 +1000,7 @@ impl<'l> Estado<'l> {
     fn menu_de_lista(&mut self, celda: (u32, u32)) {
         let ab = self.abierta();
         let Some(regla) = ab.hoja.lista_en(celda.0, celda.1).cloned() else { return };
-        let valores = pixpin_hojas::validacion::valores_lista(self.libro, &ab.hoja, &regla);
+        let valores = pixpin_hojas::validacion::valores_lista(&*self.libro, &ab.hoja, &regla);
         if valores.is_empty() {
             return;
         }
@@ -885,7 +1016,9 @@ impl<'l> Estado<'l> {
     /// Al soltar: un clic corto en una celda con enlace lo abre.
     fn soltar(&mut self, textos: &Catalogo, motor: &MotorRender) {
         let gesto = self.gesto.take();
-        if let Some(Gesto::Elegir { pulsada, cuando, .. }) = gesto {
+        if let Some(Gesto::Elegir { pulsada, cuando, .. }) = gesto
+            && !self.editando
+        {
             let sel = self.abierta().sel;
             if sel.ancla == pulsada && sel.activa == pulsada && cuando.elapsed() < CLIC_DE_ENLACE {
                 self.abrir_enlace(pulsada, textos, motor);
@@ -895,7 +1028,11 @@ impl<'l> Estado<'l> {
 
     /// El cursor que toca: la mano sobre un enlace.
     fn cursor(&self) -> FormaCursorWin {
+        if matches!(self.gesto, Some(Gesto::Mano { .. })) {
+            return FormaCursorWin::Mover;
+        }
         if self.gesto.is_none()
+            && !self.editando
             && dentro(&self.vista().1, self.raton)
             && let Some((f, c)) = self.celda_bajo(self.raton, false)
             && self.abierta().hoja.hipervinculo_en(f, c).is_some()
@@ -924,6 +1061,240 @@ impl<'l> Estado<'l> {
 }
 
 // ---------------------------------------------------------------------------
+// Editar (una hoja del chat): lo que el visor hace con `hoja_pin`
+
+/// La celda del visor (fila, columna) como la del editor.
+fn a_ref((fila, columna): (u32, u32)) -> pixpin_proyecto::tabla::Ref {
+    pixpin_proyecto::tabla::Ref { columna, fila }
+}
+
+fn de_ref(r: pixpin_proyecto::tabla::Ref) -> (u32, u32) {
+    (r.fila, r.columna)
+}
+
+impl<'l> Estado<'l> {
+    fn editor(&self) -> Option<&crate::hoja_pin::editor::Editor> {
+        self.ed.as_deref().and_then(|ed| ed.editor())
+    }
+
+    fn editor_mut(&mut self) -> Option<&mut crate::hoja_pin::editor::Editor> {
+        self.ed.as_deref_mut().and_then(|ed| ed.editor_mut())
+    }
+
+    /// Escribiendo en una celda.
+    fn escribiendo(&self) -> bool {
+        self.editando && self.editor().is_some_and(|e| e.edicion.is_some())
+    }
+
+    /// Lo elegido en el visor pasa al editor (lo que se toca es eso).
+    fn sel_al_editor(&mut self) {
+        if !self.editando || self.hojas.get(self.activa).is_none_or(|h| h.is_none()) {
+            return;
+        }
+        let s = self.abierta().sel;
+        if let Some(e) = self.editor_mut() {
+            e.poner_seleccion(crate::hoja_pin::editor::Seleccion { ancla: a_ref(s.ancla), activa: a_ref(s.activa) });
+        }
+    }
+
+    /// Y al reves (deshacer y pegar mueven lo elegido), dejandolo a la vista.
+    fn sel_del_editor(&mut self) {
+        let Some(s) = self.editor().map(|e| e.hoja().sel) else { return };
+        let caja = self.zonas().hoja;
+        let ab = self.abierta_mut();
+        ab.sel = Seleccion { ancla: de_ref(s.ancla), activa: de_ref(s.activa) };
+        let (_, celdas) = vista_de(ab, caja);
+        asegurar_visible(ab, celdas, de_ref(s.activa));
+    }
+
+    /// **Lo que se ve, al dia con lo editado**: si el editor cambio algo, se
+    /// rehace el libro con sus tablas y se vuelve a abrir la hoja en el
+    /// MISMO sitio (zoom, desplazamiento y lo elegido): no salta nada. Las
+    /// otras hojas abiertas se recuerdan donde estaban y se abren al
+    /// volver a ellas. `true` si se rehizo.
+    fn al_dia(&mut self, motor: &MotorRender) -> bool {
+        let Some(ed) = self.ed.as_deref_mut() else { return false };
+        let era_original = ed.vista_original();
+        let Some(nuevo) = ed.libro_al_dia() else { return false };
+        let Some(e) = ed.editor() else { return false };
+        let tabla = e.activa;
+        let sel = e.hoja().sel;
+        let t = Instant::now();
+        // Viendo el original las hojas no son las tablas: solo se conserva
+        // la que se edita.
+        let mut guardadas: std::collections::HashMap<usize, Posicion> = if era_original {
+            Default::default()
+        } else {
+            self.hojas.iter().enumerate().filter_map(|(i, h)| Some((i, h.as_ref()?.posicion()))).collect()
+        };
+        if let Some(ab) = self.hojas.get(self.activa).and_then(|h| h.as_ref()) {
+            let mut p = ab.posicion();
+            p.sel = Seleccion { ancla: de_ref(sel.ancla), activa: de_ref(sel.activa) };
+            guardadas.insert(tabla, p);
+        }
+        *self.libro = nuevo;
+        self.generacion += 1;
+        let n = self.libro.hojas.len();
+        self.hojas = (0..n).map(|_| None).collect();
+        self.guardadas = guardadas;
+        self.activa = tabla.min(n.saturating_sub(1));
+        self.desde_pestana = self.desde_pestana.min(self.activa);
+        self.gesto = None;
+        let activa = self.activa;
+        self.abrir_hoja(activa, motor);
+        tracing::info!(ms = ms(t), hojas = n, "hoja del chat: lo editado ya se ve");
+        true
+    }
+
+    /// **Pasa a editar** (con «Editar», F2 o la `E`): las tablas se leen la
+    /// primera vez; la hoja que se ve es la que se edita, con lo elegido.
+    /// `false` si no se puede (sin tablas, o una hoja de graficos).
+    fn empezar_a_editar(&mut self, textos: &Catalogo) -> bool {
+        if self.editando {
+            return true;
+        }
+        let Some(ed) = self.ed.as_deref_mut() else { return false };
+        if let Err(e) = ed.montar_editor() {
+            tracing::warn!(%e, "hoja del chat: no se puede editar");
+            self.avisar(textos.t("hoja-no-editable"));
+            return false;
+        }
+        let nombres: Vec<&str> = self.libro.hojas.iter().map(|h| h.nombre.as_str()).collect();
+        let Some(t) = ed.tabla_de_vista(&nombres, self.activa) else {
+            self.avisar(textos.t("hoja-no-editable"));
+            return false;
+        };
+        let aviso = ed.aviso_al_editar();
+        if let Some(e) = ed.editor_mut() {
+            e.cancelar();
+            e.cambiar_hoja(t);
+        }
+        self.editando = true;
+        self.ultimo_clic = None;
+        self.sel_al_editor();
+        if let Some(clave) = aviso {
+            self.aviso = Some((textos.t(clave), Instant::now() + AVISO_LARGO));
+        }
+        tracing::info!(tabla = t, "hoja del chat: modo editar");
+        true
+    }
+
+    /// **Vuelve a ver**: deja escrito lo que se tecleaba y lo guarda en el
+    /// chat (nunca en el archivo). Lo que se ve ya esta al dia.
+    fn dejar_de_editar(&mut self, motor: &MotorRender) {
+        if !self.editando {
+            return;
+        }
+        if let Some(e) = self.editor_mut() {
+            e.confirmar();
+        }
+        self.al_dia(motor);
+        if let Some(ed) = self.ed.as_deref_mut()
+            && let Err(e) = ed.guardar()
+        {
+            tracing::error!(%e, "hoja del chat: no se pudo guardar; los cambios siguen en el pin");
+        }
+        self.editando = false;
+        self.ultimo_clic = None;
+        tracing::info!("hoja del chat: modo ver");
+    }
+
+    /// Una letra tecleada editando: entra en la celda activa (de cero si no
+    /// se escribia, como en cualquier hoja).
+    fn teclear(&mut self, c: char) {
+        if self.sin_letras_hasta.is_some_and(|t| Instant::now() < t) {
+            return;
+        }
+        if !self.escribiendo() {
+            self.sel_al_editor();
+        }
+        if let Some(e) = self.editor_mut() {
+            e.teclear(c);
+        }
+    }
+
+    /// **Lo que se hace editando** (teclas y botones). `true` si se vuelve
+    /// a ver.
+    fn hacer(&mut self, a: crate::hoja_pin::AccionEd, textos: &Catalogo, motor: &MotorRender) -> bool {
+        use crate::hoja_pin::AccionEd as A;
+        if !self.escribiendo() {
+            self.sel_al_editor();
+        }
+        let mueve_lo_elegido = matches!(a, A::Deshacer | A::Rehacer | A::Pegar);
+        let mut aviso = None;
+        {
+            let Some(e) = self.editor_mut() else { return false };
+            let grande = e.hoja().sel.celdas() > crate::hoja_pin::editor::MAXIMO_RANGO;
+            match a {
+                A::Ver => return true,
+                A::Confirmar => {
+                    e.confirmar();
+                }
+                A::Empezar => e.empezar(true),
+                A::Cancelar => e.cancelar(),
+                A::Retroceso => e.retroceso(),
+                A::Borrar => {
+                    if !e.borrar_seleccion() && grande {
+                        aviso = Some(textos.t("hoja-rango-grande"));
+                    }
+                }
+                A::Deshacer => {
+                    e.deshacer();
+                }
+                A::Rehacer => {
+                    e.rehacer();
+                }
+                A::Copiar => aviso = crate::hoja_pin::copiar(e, textos),
+                A::Cortar => {
+                    aviso = crate::hoja_pin::copiar(e, textos);
+                    if !grande {
+                        e.borrar_seleccion();
+                    }
+                }
+                A::Pegar => crate::hoja_pin::pegar(e),
+                A::Formato(f) => {
+                    if !e.formato(f) && grande {
+                        aviso = Some(textos.t("hoja-rango-grande"));
+                    }
+                }
+                A::Nada => {}
+            }
+        }
+        if let Some(t) = aviso {
+            self.avisar(t);
+        }
+        self.al_dia(motor);
+        if mueve_lo_elegido {
+            self.sel_del_editor();
+        }
+        false
+    }
+
+    /// Un boton de la barra al editar (los menus de colores y de formato de
+    /// numero salen junto al raton). `true` si se vuelve a ver.
+    fn boton_de_editar(&mut self, id: u8, textos: &Catalogo, motor: &MotorRender) -> bool {
+        use crate::hoja_pin::{AccionEd as A, PideBoton as P};
+        let Some(pide) = crate::hoja_pin::pide_boton(id) else { return false };
+        let accion = match pide {
+            P::Ver => return true,
+            P::Deshacer => A::Deshacer,
+            P::Rehacer => A::Rehacer,
+            P::Formato(f) => A::Formato(f),
+            P::Menu(m) => {
+                self.sel_al_editor();
+                let Some(e) = self.editor() else { return false };
+                let entradas = crate::hoja_pin::entradas_de_menu(m, e, textos);
+                let rotulos: Vec<(u32, String)> = entradas.iter().map(|(i, t, _)| (*i, t.clone())).collect();
+                let elegido = pixpin_shell::menu_llano(windows::Win32::Foundation::HWND(self.hwnd as *mut _), &rotulos);
+                let Some(f) = elegido.and_then(|id| entradas.into_iter().find(|(i, ..)| *i == id)).map(|(_, _, f)| f) else { return false };
+                A::Formato(f)
+            }
+        };
+        self.hacer(accion, textos, motor)
+    }
+}
+
+// ---------------------------------------------------------------------------
 // La ventana
 
 /// La escala del monitor donde cae el punto (o la del principal).
@@ -936,8 +1307,9 @@ fn escala_en(p: Punto) -> u32 {
         .map_or(100, |m| m.escala_por_cien)
 }
 
-/// **La ventana del pin de la hoja**: la abre y alterna entre ver (aqui) y
-/// editar (`hoja_pin::editar`, si la hoja es del chat) sin cerrarla.
+/// **La ventana del pin de la hoja**: la abre y la tiene hasta que se
+/// cierra, viendo o (si la hoja es del chat) editando, sin cambiar de
+/// ventana ni de pintor.
 #[allow(clippy::too_many_arguments)] // lo que se abre y de donde viene
 fn abrir(
     recursos: &Recursos,
@@ -946,7 +1318,7 @@ fn abrir(
     ruta: Option<&Path>,
     nombre: &str,
     t0: Instant,
-    mut editable: Option<&mut crate::hoja_pin::Editable>,
+    editable: Option<&mut crate::hoja_pin::Editable>,
 ) -> Result<()> {
     // Cuenta como abierta para los grupos de ventanas (H9) mientras viva.
     let _grupo = ruta.map(|r| crate::grupos_ventanas::apuntar(crate::grupos_ventanas::Clase::Lector { ruta: r.to_path_buf() }));
@@ -968,56 +1340,38 @@ fn abrir(
     ventana.poner_siempre_encima(true);
     let mut marco = Marco { ventana, superficie, pin, area, e, nombre: nombre.to_string() };
     marco.pin.crear_barra(&motor, &recursos.d3d(), &marco.ventana);
-    // Desde cuando se cuenta la primera pantalla de cada vuelta a ver.
-    let mut desde = t0;
-    let mut activa = libro.hoja_activa.min(libro.hojas.len().saturating_sub(1));
-    // Una tabla recien creada se abre ya editando.
-    let mut empezar = editable.as_ref().is_some_and(|e| e.al_abrir_editar).then_some(Fin::Editar(activa));
-    loop {
-        let fin = match empezar.take() {
-            Some(f) => f,
-            None => {
-                let (m, fin) = ver_en(marco, &motor, textos, libro, activa, ruta, editable.is_some(), desde);
-                marco = m;
-                fin
-            }
-        };
-        let Fin::Editar(vista) = fin else { break };
-        activa = vista;
-        let Some(ed) = editable.as_deref_mut() else { continue };
-        match crate::hoja_pin::editar(&mut marco, &motor, textos, ed, libro, vista) {
-            crate::hoja_pin::Vuelta::Cerrar => break,
-            crate::hoja_pin::Vuelta::Ver { activa: a, libro: nuevo } => {
-                if let Some(n) = nuevo {
-                    *libro = n;
-                }
-                activa = a.min(libro.hojas.len().saturating_sub(1));
-                desde = Instant::now();
-            }
-        }
-    }
+    let activa = libro.hoja_activa.min(libro.hojas.len().saturating_sub(1));
+    ver_en(marco, &motor, textos, libro, activa, ruta, editable, t0);
     Ok(())
 }
 
-/// **El modo ver**: el bucle de la ventana con el libro hasta que se cierra
-/// o se pulsa «Editar». Devuelve la ventana para seguir con ella.
+/// **El bucle de la ventana**: ver y editar son el MISMO visor (la misma
+/// hoja abierta, el mismo zoom y la misma posicion); editar solo cambia los
+/// botones de la barra, lo que hacen algunas teclas y la barra de formulas.
 #[allow(clippy::too_many_arguments)] // la ventana y lo que se ve en ella
 fn ver_en(
     marco: Marco,
     motor: &MotorRender,
     textos: &Catalogo,
-    libro: &Libro,
+    libro: &mut Libro,
     activa: usize,
     ruta: Option<&Path>,
-    editable: bool,
+    editable: Option<&mut crate::hoja_pin::Editable>,
     t0: Instant,
-) -> (Marco, Fin) {
+) {
     let Marco { mut ventana, superficie, mut pin, mut area, e, nombre } = marco;
-    let mut fin = Fin::Cerrar;
+    let al_abrir_editar = editable.as_ref().is_some_and(|e| e.al_abrir_editar);
+    let n = libro.hojas.len();
     let mut est = Estado {
         libro,
-        hojas: (0..libro.hojas.len()).map(|_| None).collect(),
-        activa: activa.min(libro.hojas.len().saturating_sub(1)),
+        ed: editable,
+        editando: false,
+        ultimo_clic: None,
+        sin_letras_hasta: None,
+        generacion: 0,
+        guardadas: Default::default(),
+        hojas: (0..n).map(|_| None).collect(),
+        activa: activa.min(n.saturating_sub(1)),
         cache: CacheHoja::nueva(),
         digito: None,
         ppp: 96.0 * e as f64,
@@ -1037,8 +1391,10 @@ fn ver_en(
     let activa = est.activa;
     est.abrir_hoja(activa, motor);
     est.desde_pestana = activa.saturating_sub(3);
+    // Una tabla recien creada se abre ya editando.
+    let mut quiere_editar = al_abrir_editar;
 
-    let botones = botones_de_ver(editable, ruta.is_some());
+    let editable = est.ed.is_some();
     let mut hay_que_pintar = true;
     let mut primera = true;
     let mut vivo = true;
@@ -1046,19 +1402,45 @@ fn ver_en(
         pixpin_shell::overlay::bombear_pendientes();
         // Las ordenes de las pruebas del pin de hoja (`hoja_pin::prueba`).
         #[cfg(test)]
-        match crate::hoja_pin::prueba::latido(ventana.handle().0 as isize, area, false) {
-            Some(crate::hoja_pin::prueba::EDITAR) => {
-                fin = Fin::Editar(est.activa);
-                vivo = false;
+        match crate::hoja_pin::prueba::latido(ventana.handle().0 as isize, area, est.editando) {
+            Some(crate::hoja_pin::prueba::EDITAR) => quiere_editar = true,
+            Some(crate::hoja_pin::prueba::VER) => {
+                est.dejar_de_editar(motor);
+                hay_que_pintar = true;
+            }
+            Some(crate::hoja_pin::prueba::ESCRIBIR) => {
+                if est.editando {
+                    if let Some(ed) = est.ed.as_deref_mut() {
+                        crate::hoja_pin::escribir_muestra(ed);
+                    }
+                    est.al_dia(motor);
+                    est.sel_del_editor();
+                    hay_que_pintar = true;
+                }
             }
             Some(crate::hoja_pin::prueba::CERRAR) => vivo = false,
             _ => {}
+        }
+        if std::mem::take(&mut quiere_editar) && editable && !est.editando {
+            // Leer un libro grande como tablas tarda: que se vea que se esta
+            // en ello (la primera vez; despues ya estan).
+            if est.editor().is_none() {
+                est.aviso = Some((textos.t("hoja-preparando"), Instant::now() + AVISO));
+                pintar_ya(&superficie, motor, &mut est, textos);
+                est.aviso = None;
+            }
+            est.empezar_a_editar(textos);
+            hay_que_pintar = true;
         }
         for (hwnd, evento) in pixpin_shell::overlay::tomar_eventos_pendientes() {
             if pin.es_de_la_barra(hwnd) {
                 let (accion, _) = pin.evento_barra(&evento, &mut ventana);
                 match accion {
-                    Some(AccionPin::Propio(BOTON_COPIAR)) => est.copiar(textos),
+                    Some(AccionPin::Propio(id)) if est.editando => {
+                        if est.boton_de_editar(id, textos, motor) {
+                            est.dejar_de_editar(motor);
+                        }
+                    }
                     Some(AccionPin::Propio(BOTON_SU_PROGRAMA)) => {
                         if let Some(ruta) = ruta
                             && let Err(e) = pixpin_shell::abrir(ruta)
@@ -1066,10 +1448,7 @@ fn ver_en(
                             tracing::warn!(?e, "no se pudo abrir el libro con su programa");
                         }
                     }
-                    Some(AccionPin::Propio(BOTON_EDITAR)) => {
-                        fin = Fin::Editar(est.activa);
-                        vivo = false;
-                    }
+                    Some(AccionPin::Propio(BOTON_EDITAR)) => quiere_editar = true,
                     Some(AccionPin::PantallaCompleta) => pin.alternar_pantalla_completa(&mut ventana),
                     Some(AccionPin::Fijar) => pin.alternar_fijado(&ventana),
                     Some(AccionPin::Cerrar) => vivo = false,
@@ -1097,6 +1476,10 @@ fn ver_en(
                             est.llevar_barra(eje, agarre);
                             hay_que_pintar = true;
                         }
+                        Some(Gesto::Mano { .. }) => {
+                            est.llevar_mano();
+                            hay_que_pintar = true;
+                        }
                         Some(_) => {
                             let antes = est.abierta().sel;
                             est.arrastrar_seleccion();
@@ -1122,25 +1505,53 @@ fn ver_en(
                     }
                     ventana.poner_cursor(est.cursor());
                 }
+                EventoOverlay::BotonPulsado(_) if matches!(est.gesto, Some(Gesto::Mano { .. })) => {}
                 EventoOverlay::BotonPulsado(p) => {
                     est.raton = local(p);
-                    let ctrl = pixpin_shell::entrada::modificadores_pulsados().ctrl;
-                    if est.pulsar(&motor) {
-                        ventana.capturar_raton();
+                    // Escribiendo, un clic fuera de la celda deja escrito lo
+                    // tecleado (uno en ella misma sigue escribiendo).
+                    if est.escribiendo() && est.celda_bajo(est.raton, false) != Some(est.abierta().sel.activa) {
+                        est.hacer(crate::hoja_pin::AccionEd::Confirmar, textos, motor);
                     }
-                    // Ctrl+clic en un enlace lo abre ya.
-                    if ctrl
-                        && let Some(Gesto::Elegir { pulsada, .. }) = est.gesto
-                        && est.abrir_enlace(pulsada, textos, &motor)
-                    {
-                        est.gesto = None;
-                        ventana.soltar_raton();
+                    if !(est.escribiendo() && est.celda_bajo(est.raton, false) == Some(est.abierta().sel.activa)) {
+                        let ctrl = pixpin_shell::entrada::modificadores_pulsados().ctrl;
+                        if est.pulsar(motor, textos) {
+                            ventana.capturar_raton();
+                        }
+                        // Ctrl+clic en un enlace lo abre ya (viendo).
+                        if ctrl
+                            && !est.editando
+                            && let Some(Gesto::Elegir { pulsada, .. }) = est.gesto
+                            && est.abrir_enlace(pulsada, textos, motor)
+                        {
+                            est.gesto = None;
+                            ventana.soltar_raton();
+                        }
                     }
                     hay_que_pintar = true;
                 }
+                // El boton central (la rueda) pulsado mueve la hoja, como el
+                // lienzo: cursor de mover y sin elegir celdas.
+                EventoOverlay::BotonCentralPulsado(p) if est.gesto.is_none() => {
+                    est.raton = local(p);
+                    est.empezar_mano();
+                    ventana.capturar_raton();
+                    ventana.poner_cursor(est.cursor());
+                }
+                EventoOverlay::BotonCentralSoltado(p) => {
+                    if matches!(est.gesto, Some(Gesto::Mano { .. })) {
+                        est.raton = local(p);
+                        est.llevar_mano();
+                        est.gesto = None;
+                        ventana.soltar_raton();
+                        ventana.poner_cursor(est.cursor());
+                        hay_que_pintar = true;
+                    }
+                }
+                EventoOverlay::BotonSoltado(_) if matches!(est.gesto, Some(Gesto::Mano { .. })) => {}
                 EventoOverlay::BotonSoltado(p) => {
                     est.raton = local(p);
-                    est.soltar(textos, &motor);
+                    est.soltar(textos, motor);
                     est.encima_de = est.barra_bajo_el_raton();
                     ventana.soltar_raton();
                     hay_que_pintar = true;
@@ -1153,50 +1564,39 @@ fn ver_en(
                     est.rueda(delta, true);
                     hay_que_pintar = true;
                 }
-                EventoOverlay::Tecla { vk, ctrl, alt, .. } if editable && pide_editar(vk, ctrl, alt) => {
-                    fin = Fin::Editar(est.activa);
-                    vivo = false;
+                EventoOverlay::Caracter(c) if est.editando && c >= ' ' => {
+                    est.teclear(c);
+                    hay_que_pintar = true;
+                }
+                EventoOverlay::Tecla { vk, ctrl, alt, .. } if editable && !est.editando && pide_editar(vk, ctrl, alt) => {
+                    quiere_editar = true;
+                    // La letra de la `E` llega despues: no se escribe.
+                    est.sin_letras_hasta = Some(Instant::now() + SIN_LETRAS);
                 }
                 EventoOverlay::Tecla { vk, shift, ctrl, alt } => {
-                    match logica::accion_de_tecla(vk, shift, ctrl, alt) {
-                        Some(AccionTecla::Mover(m, ext)) => est.mover(m, ext),
-                        Some(AccionTecla::HojaAnterior) => {
-                            if let Some(i) = est.hoja_vecina(false) {
-                                est.cambiar_hoja(i, &motor);
+                    use crate::hoja_pin::AccionEd;
+                    let al_visor = if est.editando && !alt {
+                        match crate::hoja_pin::accion_de_tecla(vk, shift, ctrl, est.escribiendo()) {
+                            Some(AccionEd::Ver) => {
+                                est.dejar_de_editar(motor);
+                                false
                             }
-                        }
-                        Some(AccionTecla::HojaSiguiente) => {
-                            if let Some(i) = est.hoja_vecina(true) {
-                                est.cambiar_hoja(i, &motor);
+                            // Lo escrito queda y la tecla mueve, como en el visor.
+                            Some(AccionEd::Confirmar) => {
+                                est.hacer(AccionEd::Confirmar, textos, motor);
+                                true
                             }
-                        }
-                        Some(AccionTecla::Copiar) => est.copiar(textos),
-                        Some(AccionTecla::SeleccionarTodo) => {
-                            let u = ultima(&est.abierta().hoja);
-                            est.abierta_mut().sel = Seleccion { ancla: (0, 0), activa: u };
-                        }
-                        Some(AccionTecla::ZoomInicial) => est.poner_zoom(1.0, None),
-                        Some(AccionTecla::Acercar) => {
-                            let z = est.abierta().zoom;
-                            est.poner_zoom(logica::zoom_con_rueda(z, 1.0), None);
-                        }
-                        Some(AccionTecla::Alejar) => {
-                            let z = est.abierta().zoom;
-                            est.poner_zoom(logica::zoom_con_rueda(z, -1.0), None);
-                        }
-                        Some(AccionTecla::PantallaCompleta) => pin.alternar_pantalla_completa(&mut ventana),
-                        Some(AccionTecla::AbrirEnlace) => {
-                            let a = est.abierta().sel.activa;
-                            est.abrir_enlace(a, textos, &motor);
-                        }
-                        Some(AccionTecla::Escape) => {
-                            if pin.pantalla_completa {
-                                pin.alternar_pantalla_completa(&mut ventana);
-                            } else {
-                                vivo = false;
+                            Some(a) => {
+                                est.hacer(a, textos, motor);
+                                false
                             }
+                            None => true,
                         }
-                        None => {}
+                    } else {
+                        true
+                    };
+                    if al_visor {
+                        vivo &= tecla_del_visor(&mut est, &mut pin, &mut ventana, (vk, shift, ctrl, alt), textos, motor);
                     }
                     hay_que_pintar = true;
                 }
@@ -1227,7 +1627,11 @@ fn ver_en(
             acotar(ab, celdas);
             hay_que_pintar = true;
         }
-        pin.actualizar(&motor, &nombre, &botones);
+        let botones = match est.editor() {
+            Some(ed) if est.editando => crate::hoja_pin::botones_de_editar(ed),
+            _ => botones_de_ver(editable, ruta.is_some()),
+        };
+        pin.actualizar(motor, &nombre, &botones);
         if est.aviso.as_ref().is_some_and(|(_, hasta)| Instant::now() >= *hasta) {
             est.aviso = None;
             hay_que_pintar = true;
@@ -1235,15 +1639,11 @@ fn ver_en(
 
         if hay_que_pintar {
             hay_que_pintar = false;
-            preparar(&mut est, &motor);
-            if let Ok(destino) = superficie.empezar(&motor) {
-                let t = Instant::now();
-                let _ = motor.dibujar(&destino, |p: &Pintor| pintar(p, &mut est, textos));
-                let _ = superficie.presentar();
-                if primera {
-                    primera = false;
-                    tracing::info!(ms = ms(t0), pintar_ms = ms(t), "visor de hojas: primera pantalla pintada");
-                }
+            let t = Instant::now();
+            pintar_ya(&superficie, motor, &mut est, textos);
+            if primera {
+                primera = false;
+                tracing::info!(ms = ms(t0), pintar_ms = ms(t), "visor de hojas: primera pantalla pintada");
             }
         }
         let tope = if est.gesto.is_some() {
@@ -1255,17 +1655,81 @@ fn ver_en(
         };
         pixpin_shell::overlay::esperar_eventos(Some(tope));
     }
-    (Marco { ventana, superficie, pin, area, e, nombre }, fin)
+    // Al cerrar editando se guarda (en el chat, nunca en el archivo).
+    est.dejar_de_editar(motor);
 }
 
-/// Los botones de la barra en modo ver: «Editar» si la hoja es del chat,
-/// copiar y, si hay archivo, abrirlo con su programa.
+/// Un fotograma, ya.
+fn pintar_ya(superficie: &Superficie, motor: &MotorRender, est: &mut Estado, textos: &Catalogo) {
+    preparar(est, motor);
+    if let Ok(destino) = superficie.empezar(motor) {
+        let _ = motor.dibujar(&destino, |p: &Pintor| pintar(p, est, textos));
+        let _ = superficie.presentar();
+    }
+}
+
+/// **Lo que hace una tecla en el visor** (viendo, y editando lo que no es de
+/// editar: moverse, el zoom, las hojas). `false` si cierra la ventana.
+fn tecla_del_visor(
+    est: &mut Estado,
+    pin: &mut PinLector,
+    ventana: &mut VentanaOverlay,
+    (vk, shift, ctrl, alt): (u32, bool, bool, bool),
+    textos: &Catalogo,
+    motor: &MotorRender,
+) -> bool {
+    match logica::accion_de_tecla(vk, shift, ctrl, alt) {
+        Some(AccionTecla::Mover(m, ext)) => est.mover(m, ext),
+        Some(AccionTecla::HojaAnterior) => {
+            if let Some(i) = est.hoja_vecina(false) {
+                est.cambiar_hoja(i, motor, textos);
+            }
+        }
+        Some(AccionTecla::HojaSiguiente) => {
+            if let Some(i) = est.hoja_vecina(true) {
+                est.cambiar_hoja(i, motor, textos);
+            }
+        }
+        Some(AccionTecla::Copiar) => est.copiar(textos),
+        Some(AccionTecla::SeleccionarTodo) => {
+            let u = ultima(&est.abierta().hoja);
+            est.abierta_mut().sel = Seleccion { ancla: (0, 0), activa: u };
+        }
+        Some(AccionTecla::ZoomInicial) => est.poner_zoom(1.0, None),
+        Some(AccionTecla::Acercar) => {
+            let z = est.abierta().zoom;
+            est.poner_zoom(logica::zoom_con_rueda(z, 1.0), None);
+        }
+        Some(AccionTecla::Alejar) => {
+            let z = est.abierta().zoom;
+            est.poner_zoom(logica::zoom_con_rueda(z, -1.0), None);
+        }
+        Some(AccionTecla::PantallaCompleta) => pin.alternar_pantalla_completa(ventana),
+        Some(AccionTecla::AbrirEnlace) => {
+            if !est.editando {
+                let a = est.abierta().sel.activa;
+                est.abrir_enlace(a, textos, motor);
+            }
+        }
+        Some(AccionTecla::Escape) => {
+            if pin.pantalla_completa {
+                pin.alternar_pantalla_completa(ventana);
+            } else {
+                return false;
+            }
+        }
+        None => {}
+    }
+    true
+}
+
+/// Los botones de la barra en modo ver: «Editar» si la hoja es del chat y,
+/// si hay archivo, abrirlo con su programa. Sin «Copiar»: Ctrl+C copia.
 fn botones_de_ver(editable: bool, con_archivo: bool) -> Vec<BotonLector> {
-    let mut b = Vec::with_capacity(3);
+    let mut b = Vec::with_capacity(2);
     if editable {
         b.push(BotonLector { id: BOTON_EDITAR, icono: &material::EDIT, encendido: false });
     }
-    b.push(BotonLector { id: BOTON_COPIAR, icono: &material::CONTENT_COPY, encendido: false });
     if con_archivo {
         b.push(BotonLector { id: BOTON_SU_PROGRAMA, icono: &material::OPEN_IN_NEW, encendido: false });
     }
@@ -1284,8 +1748,8 @@ fn pide_editar(vk: u32, ctrl: bool, alt: bool) -> bool {
 /// (texto ajustado), como hace Excel al abrir.
 fn preparar(est: &mut Estado, motor: &MotorRender) {
     let caja = est.zonas().hoja;
-    let libro = est.libro;
-    let Estado { hojas, activa, cache, .. } = est;
+    let Estado { libro, hojas, activa, cache, .. } = est;
+    let libro: &Libro = libro;
     let Some(ab) = hojas[*activa].as_mut() else { return };
     let (v, celdas) = vista_de(ab, caja);
     let paneles = ab.rejilla.paneles(&vista_celdas(&v, celdas));
@@ -1340,10 +1804,15 @@ fn tarjeta_de_comentario(p: &Pintor, ab: &Abierta, v: &Vista, celdas: RectF, are
 
 fn pintar(p: &Pintor, est: &mut Estado, textos: &Catalogo) {
     let z = est.zonas();
-    let (e, libro, ancho) = (est.e, est.libro, est.ancho);
+    let (e, ancho) = (est.e, est.ancho);
     p.limpiar(Color::BLANCO);
-    let con_nota = if est.gesto.is_none() { est.comentario_bajo } else { None };
-    let Estado { hojas, activa, cache, desde_pestana, encima_de, pestanas, aviso, bajo_raton, .. } = est;
+    let con_nota = if est.gesto.is_none() && !est.editando { est.comentario_bajo } else { None };
+    // Editando: lo que se escribe (o lo escrito tal cual, la formula) va en
+    // la barra de formulas, y lo tecleado tambien encima de su celda.
+    let editando = est.editando;
+    let en_la_barra = est.editor().filter(|_| editando).map(|ed| (ed.en_la_barra().to_string(), ed.edicion.clone()));
+    let Estado { libro, hojas, activa, cache, desde_pestana, encima_de, pestanas, aviso, bajo_raton, .. } = est;
+    let libro: &Libro = libro;
     let activa = *activa;
     let Some(ab) = hojas[activa].as_ref() else { return };
 
@@ -1353,6 +1822,13 @@ fn pintar(p: &Pintor, est: &mut Estado, textos: &Catalogo) {
     hoja_office::pintar_hoja(p, cache, libro, &ab.hoja, &ab.rejilla, &v, z.hoja, &op);
     if let Some(celda) = con_nota {
         tarjeta_de_comentario(p, ab, &v, celdas, z.hoja, celda, e);
+    }
+    if let Some((_, Some(tecleado))) = &en_la_barra
+        && let Some(caja) = hoja_office::caja_de_celda(&ab.rejilla, &vista_celdas(&v, celdas), celdas, ab.sel.activa.0, ab.sel.activa.1)
+    {
+        // Calibri 11, la letra de las tablas, al zoom que se ve.
+        let tam = (11.0 * ab.rejilla.ppp / 72.0 * ab.zoom) as f32;
+        crate::hoja_pin::pintar_escritura(p, tecleado, caja, tam, celdas);
     }
 
     // Las barras de desplazamiento.
@@ -1380,15 +1856,29 @@ fn pintar(p: &Pintor, est: &mut Estado, textos: &Catalogo) {
     let ancho_ref = 150.0 * e;
     texto_centrado_v(p, &referencia, f.x + 8.0 * e, f, tam, ancho_ref - 12.0 * e, TEXTO);
     p.rellenar(RectF { x: f.x + ancho_ref, y: f.y + 5.0 * e, ancho: 1.0, alto: f.alto - 10.0 * e }, LINEA);
-    let celda = ab.hoja.celda(fa, ca);
-    let contenido = celda.and_then(|c| libro.contenido(&ab.hoja, c)).map(|c| c.mostrado.texto).unwrap_or_default();
     let x0 = f.x + ancho_ref + 10.0 * e;
-    let enlace = ab.hoja.hipervinculo_en(fa, ca).map(|h| h.destino.clone());
-    let ancho_enlace = if enlace.is_some() { (f.ancho * 0.35).min(360.0 * e) } else { 0.0 };
-    let una_linea = contenido.replace(['\r', '\n'], " ⏎ ");
-    texto_centrado_v(p, &una_linea, x0, f, tam, f.x + f.ancho - x0 - ancho_enlace - 10.0 * e, TEXTO);
-    if let Some(d) = enlace {
-        texto_centrado_v(p, &d, f.x + f.ancho - ancho_enlace - 6.0 * e, f, tam, ancho_enlace, ENLACE);
+    if let Some((contenido, tecleado)) = &en_la_barra {
+        // A la derecha, que se esta editando (en el verde de Excel).
+        let modo = textos.t("hoja-editando");
+        let ancho_modo = p.medir_texto(&modo, tam).0 + 20.0 * e;
+        let una_linea = contenido.replace(['\r', '\n'], " ⏎ ");
+        let cabe = f.x + f.ancho - x0 - ancho_modo - 10.0 * e;
+        texto_centrado_v(p, &una_linea, x0, f, tam, cabe, TEXTO);
+        if tecleado.is_some() {
+            let cx = (x0 + p.medir_texto(&una_linea, tam).0 + 1.0).min(x0 + cabe);
+            p.rellenar(RectF { x: cx, y: f.y + 6.0 * e, ancho: e.max(1.0), alto: f.alto - 12.0 * e }, TEXTO);
+        }
+        texto_centrado_v(p, &modo, f.x + f.ancho - ancho_modo + 10.0 * e, f, tam, ancho_modo, VERDE);
+    } else {
+        let celda = ab.hoja.celda(fa, ca);
+        let contenido = celda.and_then(|c| libro.contenido(&ab.hoja, c)).map(|c| c.mostrado.texto).unwrap_or_default();
+        let enlace = ab.hoja.hipervinculo_en(fa, ca).map(|h| h.destino.clone());
+        let ancho_enlace = if enlace.is_some() { (f.ancho * 0.35).min(360.0 * e) } else { 0.0 };
+        let una_linea = contenido.replace(['\r', '\n'], " ⏎ ");
+        texto_centrado_v(p, &una_linea, x0, f, tam, f.x + f.ancho - x0 - ancho_enlace - 10.0 * e, TEXTO);
+        if let Some(d) = enlace {
+            texto_centrado_v(p, &d, f.x + f.ancho - ancho_enlace - 6.0 * e, f, tam, ancho_enlace, ENLACE);
+        }
     }
 
     // Las pestanas y, a la derecha, lo que falta por leer y el zoom.

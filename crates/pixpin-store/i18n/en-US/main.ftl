@@ -990,6 +990,23 @@ hoja-preparando = Getting the sheet ready to edit…
 hoja-editar-aviso = Changes are saved in the chat sheet; the original file stays the same
 hoja-editando = Editing · Esc to view
 hoja-rango-grande = Too many cells to do at once
+hoja-no-editable = This sheet has no table: it cannot be edited
+hoja-fondo-sin = No color
+hoja-letra-automatica = Automatic
+hoja-color-amarillo = Yellow
+hoja-color-verde = Green
+hoja-color-azul = Blue
+hoja-color-rosa = Pink
+hoja-color-morado = Purple
+hoja-color-naranja = Orange
+hoja-color-gris = Gray
+hoja-color-celeste = Light blue
+hoja-color-rojo = Red
+hoja-numero-general = General
+hoja-numero-numero = Number (1,234.50)
+hoja-numero-moneda = Currency
+hoja-numero-porcentaje = Percent (12.50 %)
+hoja-numero-fecha = Date
 
 ## D9: find in the document (buscador.rs, visor.rs, lector_pdf.rs)
 buscar-pista = Find in document

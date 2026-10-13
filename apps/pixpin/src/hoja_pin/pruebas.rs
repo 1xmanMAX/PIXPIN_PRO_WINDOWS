@@ -3,6 +3,8 @@
 //! (ignorada) la ventana de verdad fotografiada.
 
 use super::*;
+use pixpin_proyecto::tabla::Ref;
+use std::time::Duration;
 use pixpin_proyecto::cuaderno::{Cuaderno, Sello};
 use pixpin_proyecto::tabla::ref_de;
 use pixpin_proyecto::tabla_xlsx::{HojaParaVer, a_xlsx};
@@ -23,7 +25,7 @@ pub(super) fn escribir_muestra(e: &mut Editor) {
         e.teclear(c);
     }
     e.confirmar();
-    e.alternar_negrita();
+    e.formato(Formato::Alternar(Interruptor::Negrita));
     e.elegir(r("A2"), false);
     e.elegir(r("B4"), true);
 }
@@ -84,25 +86,44 @@ fn al_tocar_un_excel_o_una_tabla_se_abre_el_pin_y_lo_demas_no() {
 #[test]
 fn las_teclas_del_modo_editar() {
     use AccionEd::*;
+    let alternar = |i| Some(Formato(editor::Formato::Alternar(i)));
     assert_eq!(accion_de_tecla(0x5A, false, true, false), Some(Deshacer));
     assert_eq!(accion_de_tecla(0x5A, true, true, false), Some(Rehacer));
     assert_eq!(accion_de_tecla(0x59, false, true, false), Some(Rehacer));
-    assert_eq!(accion_de_tecla(0x4E, false, true, false), Some(Negrita));
-    assert_eq!(accion_de_tecla(0x42, false, true, false), Some(Negrita));
-    assert_eq!(accion_de_tecla(0x45, true, true, false), Some(Alinear(Alineacion::Centro)));
-    assert_eq!(accion_de_tecla(VK_ENTRAR, false, false, true), Some(Mover(0, 1, false)));
-    assert_eq!(accion_de_tecla(VK_ENTRAR, true, false, false), Some(Mover(0, -1, false)));
-    assert_eq!(accion_de_tecla(VK_DERECHA, true, false, false), Some(Mover(1, 0, true)));
+    // Los atajos de formato de la Excel espanola y de la inglesa.
+    for (vk, i) in [
+        (0x4E, Interruptor::Negrita),
+        (0x42, Interruptor::Negrita),
+        (0x4B, Interruptor::Cursiva),
+        (0x49, Interruptor::Cursiva),
+        (0x53, Interruptor::Subrayado),
+        (0x55, Interruptor::Subrayado),
+        (0x35, Interruptor::Tachado),
+    ] {
+        assert_eq!(accion_de_tecla(vk, false, true, false), alternar(i), "{vk:#x}");
+        assert_eq!(accion_de_tecla(vk, false, true, true), alternar(i), "{vk:#x} tambien escribiendo");
+    }
+    assert_eq!(accion_de_tecla(0x45, true, true, false), Some(Formato(editor::Formato::Alinear(Alineacion::Centro))));
+    // Escribiendo, Intro, Tab y las flechas dejan lo escrito y mueven (el
+    // visor); sin escribir son del visor.
+    assert_eq!(accion_de_tecla(VK_ENTRAR, false, false, true), Some(Confirmar));
+    assert_eq!(accion_de_tecla(VK_TAB, true, false, true), Some(Confirmar));
+    assert_eq!(accion_de_tecla(0x27, false, false, true), Some(Confirmar));
+    assert_eq!(accion_de_tecla(VK_ENTRAR, false, false, false), None);
+    assert_eq!(accion_de_tecla(0x27, true, false, false), None);
+    assert_eq!(accion_de_tecla(VK_F2, false, false, false), Some(Empezar));
     // Esc: escribiendo deshace lo tecleado; sin escribir, vuelve a ver.
     assert_eq!(accion_de_tecla(VK_ESCAPE, false, false, true), Some(Cancelar));
     assert_eq!(accion_de_tecla(VK_ESCAPE, false, false, false), Some(Ver));
     // Suprimir escribiendo no borra la celda entera.
     assert_eq!(accion_de_tecla(VK_SUPR, false, false, true), None);
     assert_eq!(accion_de_tecla(VK_SUPR, false, false, false), Some(Borrar));
-    // Casos negativos: una letra sola es un caracter, no una accion, y
-    // Ctrl+A escribiendo no elige la hoja.
+    // Casos negativos: una letra sola es un caracter, Ctrl+A escribiendo no
+    // elige la hoja, y Ctrl+0 (el zoom) es del visor.
     assert_eq!(accion_de_tecla(0x41, false, false, false), None);
-    assert_eq!(accion_de_tecla(0x41, false, true, true), None);
+    assert_eq!(accion_de_tecla(0x41, false, true, true), Some(Nada));
+    assert_eq!(accion_de_tecla(0x41, false, true, false), None);
+    assert_eq!(accion_de_tecla(0x30, false, true, false), None);
 }
 
 #[test]
@@ -111,37 +132,47 @@ fn ver_editar_ver_conserva_la_hoja_activa() {
     // tenga una hoja de graficos que no es tabla.
     let vista = ["Gastos", "Grafico", "Resumen"];
     let tablas = ["Cuentas · Gastos", "Cuentas · Resumen"];
-    let t = hoja_al_editar(true, &vista, &tablas, 2);
-    assert_eq!(t, 1, "Resumen es la segunda tabla");
-    assert_eq!(hoja_al_ver(true, &vista, &tablas, t, 2), 2, "y de vuelta, la tercera hoja");
-    assert_eq!(hoja_al_editar(true, &vista, &tablas, 0), 0);
-    // Caso negativo: la hoja de graficos no tiene tabla: se edita la primera
-    // y al volver se queda en la que se estaba viendo.
-    assert_eq!(hoja_al_editar(true, &vista, &tablas, 1), 0);
-    assert_eq!(hoja_al_ver(true, &vista, &tablas, 7, 1), 1);
+    assert_eq!(tabla_de_vista(true, &vista, &tablas, 2), Some(1), "Resumen es la segunda tabla");
+    assert_eq!(tabla_de_vista(true, &vista, &tablas, 0), Some(0));
+    // Caso negativo: la hoja de graficos no tiene tabla: no se edita.
+    assert_eq!(tabla_de_vista(true, &vista, &tablas, 1), None);
+    assert_eq!(tabla_de_vista(true, &vista, &tablas, 9), None);
+    // Una sola tabla: es esa, se llame como se llame la hoja.
+    assert_eq!(tabla_de_vista(true, &["Hoja1"], &["Cuentas"], 0), Some(0));
     // Viendo las tablas, la misma posicion.
-    let vista_t = ["Gastos", "Resumen"];
-    assert_eq!(hoja_al_editar(false, &vista_t, &tablas, 1), 1);
-    assert_eq!(hoja_al_ver(false, &vista_t, &tablas, 1, 0), 1);
-    assert_eq!(hoja_al_editar(false, &vista_t, &tablas, 9), 1, "no se sale");
+    assert_eq!(tabla_de_vista(false, &["Gastos", "Resumen"], &tablas, 1), Some(1));
+    assert_eq!(tabla_de_vista(false, &["Gastos", "Resumen"], &tablas, 5), None, "no se sale");
 }
 
 #[test]
-fn lo_visible_se_encuentra_igual_por_el_mapa_que_por_la_pantalla() {
-    let mut mapa = std::collections::BTreeMap::new();
-    for k in ["A1", "B2", "C3", "Z99", "B40", "basura"] {
-        mapa.insert(k.to_string(), ());
-    }
-    // Pantalla grande (se recorre el mapa) y pequena (se pregunta celda a
-    // celda): lo mismo.
-    let mut grande = celdas_visibles(&mapa, (0, 0, 10, 50));
-    let mut chica = celdas_visibles(&mapa, (1, 1, 3, 3));
-    grande.sort();
-    chica.sort();
-    assert_eq!(grande.iter().map(|(_, k)| k.as_str()).collect::<Vec<_>>(), ["A1", "B2", "B40", "C3"]);
-    assert_eq!(chica.iter().map(|(_, k)| k.as_str()).collect::<Vec<_>>(), ["B2", "C3"]);
-    // Caso negativo: fuera de la pantalla, nada.
-    assert!(celdas_visibles(&mapa, (30, 200, 40, 210)).is_empty());
+fn los_botones_de_formato_y_sus_menus() {
+    let mut t = Tabla::default();
+    t.poner(r("A1"), "1");
+    t.estilos.insert("A1".into(), pixpin_proyecto::tabla::EstiloDeCelda { k: true, a: Some("d".into()), f: Some("#d3f9d8".into()), ..Default::default() });
+    let mut e = Editor::nuevo(vec![HojaEditable::nueva("x".into(), t, None)], 0).unwrap();
+    let b = botones_de_editar(&e);
+    let encendido = |id: u8| b.iter().find(|x| x.id == id).unwrap().encendido;
+    assert!(encendido(BOTON_CURSIVA) && encendido(BOTON_RESALTAR) && encendido(BOTON_ALINEAR));
+    assert!(!encendido(BOTON_NEGRITA) && !encendido(BOTON_TACHADO));
+    let icono = |id: u8| b.iter().find(|x| x.id == id).unwrap().icono.trazos[0].d;
+    assert_eq!(icono(BOTON_ALINEAR), material::FORMAT_ALIGN_RIGHT.trazos[0].d, "ensena la alineacion que tiene");
+    assert!(!b.iter().any(|x| x.icono.trazos[0].d == material::CONTENT_COPY.trazos[0].d), "sin boton Copiar");
+    assert_eq!(pide_boton(BOTON_VER), Some(PideBoton::Ver));
+    assert_eq!(pide_boton(BOTON_ALINEAR), Some(PideBoton::Formato(Formato::AlinearSiguiente)));
+    assert_eq!(pide_boton(3), None, "los del modo ver no son de editar");
+    let textos = Catalogo::nuevo(pixpin_store::Idioma::Espanol);
+    let m = entradas_de_menu(Menu::Resaltar, &e, &textos);
+    assert_eq!(m.len(), editor::FONDOS.len() + 1, "la paleta del movil y sin color");
+    assert!(m.iter().any(|(_, t, f)| t.starts_with('\u{2713}') && *f == Formato::Fondo(Some("#d3f9d8".into()))), "marca el que tiene");
+    let n = entradas_de_menu(Menu::Numero, &e, &textos);
+    assert_eq!(n.len(), 5);
+    assert!(n[0].1.starts_with('\u{2713}'), "sin formato, General");
+    // Elegir del menu aplica a lo elegido y se deshace.
+    let (_, _, f) = n.iter().find(|(_, _, f)| *f == Formato::Numero(Some(FormatoNumero::Porcentaje))).unwrap().clone();
+    assert!(e.formato(f));
+    assert_eq!(e.hoja().tabla.estilos["A1"].nf.as_deref(), Some("porcentaje"));
+    assert!(e.deshacer());
+    assert_eq!(e.hoja().tabla.estilos["A1"].nf, None);
 }
 
 #[test]

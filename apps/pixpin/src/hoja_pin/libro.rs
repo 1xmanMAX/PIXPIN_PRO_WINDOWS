@@ -98,17 +98,6 @@ pub fn nombre_de_pestana(nombre: &str) -> &str {
     }
 }
 
-/// **Que tabla es la hoja `nombre_hoja`** del libro original: la que se
-/// llama «libro · hoja» (`importar_hojas` llama asi a cada una cuando hay
-/// varias) o, si solo hay una, esa. Las hojas de graficos y las que no traen
-/// datos no son tabla: entonces la primera.
-pub fn tabla_de_hoja(nombres: &[&str], nombre_hoja: &str) -> usize {
-    if nombres.len() <= 1 {
-        return 0;
-    }
-    nombres.iter().position(|n| nombre_de_pestana(n) == nombre_hoja).unwrap_or(0)
-}
-
 #[cfg(test)]
 mod pruebas {
     use super::*;
@@ -189,15 +178,10 @@ mod pruebas {
     }
 
     #[test]
-    fn cada_hoja_del_libro_encuentra_su_tabla_por_el_nombre() {
-        let nombres = ["Cuentas · Gastos", "Cuentas · Resumen"];
-        assert_eq!(tabla_de_hoja(&nombres, "Resumen"), 1);
-        assert_eq!(tabla_de_hoja(&nombres, "Gastos"), 0);
+    fn la_pestana_de_una_tabla_de_libro_es_el_nombre_de_su_hoja() {
         assert_eq!(nombre_de_pestana("Cuentas · Gastos"), "Gastos");
         assert_eq!(nombre_de_pestana("Cuentas"), "Cuentas");
-        // Una sola tabla: es esa, se llame como se llame la hoja.
-        assert_eq!(tabla_de_hoja(&["Cuentas"], "Hoja1"), 0);
-        // Caso negativo: una hoja de graficos no tiene tabla: la primera.
-        assert_eq!(tabla_de_hoja(&nombres, "Grafico1"), 0);
+        // Caso negativo: un separador sin hoja detras no corta el nombre.
+        assert_eq!(nombre_de_pestana("Cuentas · "), "Cuentas · ");
     }
 }

@@ -54,6 +54,15 @@ pub struct Tabla {
 /// (`motor/TablaDeCalculo.kt`): negrita, alineacion y fondo, con nombres de
 /// una letra porque se repiten en cada celda con estilo. Lo que no vale lo de
 /// por defecto no se escribe (`encodeDefaults = false` alli).
+///
+/// **Lo que anade el PC** (12-oct-2026, la barra de formato del pin de
+/// hoja): cursiva `k`, subrayado `s`, tachado `t`, color de letra `c`,
+/// ajustar texto `w` y formato de numero `nf`. El movil (a 12-oct) solo
+/// conoce `n`, `a`, `f` y `e`, y lee con `ignoreUnknownKeys = true`: estos
+/// campos los IGNORA sin romperse (la celda se le ve sin ellos). Ojo: si el
+/// movil vuelve a guardar esa tabla, los pierde, porque su `EstiloDeCelda`
+/// no los guarda; hasta que Android los anada, viajan de ida pero no
+/// sobreviven a una edicion alli.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct EstiloDeCelda {
@@ -68,6 +77,25 @@ pub struct EstiloDeCelda {
     /// Editable aunque la tabla este protegida (la pagina web lo mira).
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub e: bool,
+    /// Cursiva (la `k` de Ctrl+K en la Excel espanola; la `c` ya es el color).
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub k: bool,
+    /// Subrayado.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub s: bool,
+    /// Tachado.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub t: bool,
+    /// El color de la letra, `#rrggbb`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub c: Option<String>,
+    /// Ajustar el texto a la celda (varias lineas).
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub w: bool,
+    /// El formato del numero: una de [`FormatoNumero`] (`numero`, `moneda`,
+    /// `porcentaje`, `fecha`); sin nada, «General».
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub nf: Option<String>,
     #[serde(flatten)]
     pub resto: serde_json::Map<String, serde_json::Value>,
 }
@@ -75,7 +103,57 @@ pub struct EstiloDeCelda {
 impl EstiloDeCelda {
     /// Si no cambia nada: no vale la pena guardarlo.
     pub fn vacio(&self) -> bool {
-        !self.n && self.a.is_none() && self.f.is_none() && !self.e && self.resto.is_empty()
+        !self.e && self.resto.is_empty() && self.sin_formato()
+    }
+
+    /// Si no lleva formato que se vea (lo que quita «Borrar formato»; la
+    /// marca de editable `e` no es formato).
+    pub fn sin_formato(&self) -> bool {
+        !self.n && self.a.is_none() && self.f.is_none() && !self.k && !self.s && !self.t && self.c.is_none() && !self.w && self.nf.is_none()
+    }
+
+    /// **Borrar formato**: quita todo lo que se ve y deja la marca de
+    /// editable y lo que no se entiende (puede no ser formato).
+    pub fn borrar_formato(&mut self) {
+        *self = EstiloDeCelda { e: self.e, resto: std::mem::take(&mut self.resto), ..Default::default() };
+    }
+
+    /// El formato de numero, si es uno de los que se conocen.
+    pub fn formato_numero(&self) -> Option<FormatoNumero> {
+        self.nf.as_deref().and_then(FormatoNumero::de)
+    }
+}
+
+/// **Los formatos de numero** de la barra del pin (el `nf` de un estilo).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FormatoNumero {
+    /// Con miles y dos decimales.
+    Numero,
+    /// Con el simbolo de la moneda del equipo, miles y dos decimales.
+    Moneda,
+    /// Por cien, con `%` y dos decimales.
+    Porcentaje,
+    /// La fecha corta (el numero es el serial de Excel).
+    Fecha,
+}
+
+impl FormatoNumero {
+    pub const TODOS: [FormatoNumero; 4] = [FormatoNumero::Numero, FormatoNumero::Moneda, FormatoNumero::Porcentaje, FormatoNumero::Fecha];
+
+    /// La palabra que se guarda.
+    pub fn palabra(self) -> &'static str {
+        match self {
+            FormatoNumero::Numero => "numero",
+            FormatoNumero::Moneda => "moneda",
+            FormatoNumero::Porcentaje => "porcentaje",
+            FormatoNumero::Fecha => "fecha",
+        }
+    }
+
+    /// De la palabra guardada; una que no se conoce (de una version mas
+    /// nueva) es `None`: se ve como «General».
+    pub fn de(palabra: &str) -> Option<FormatoNumero> {
+        FormatoNumero::TODOS.into_iter().find(|f| f.palabra() == palabra)
     }
 }
 
@@ -285,5 +363,42 @@ mod pruebas {
         // Y sin los valores por defecto, como `encodeDefaults = false` del
         // movil: mil celdas con estilo no repiten mil veces `"n":false`.
         assert!(vuelta["estilos"]["C1"].get("n").is_none());
+    }
+
+    #[test]
+    fn el_formato_nuevo_del_pc_viaja_y_lo_que_el_movil_no_conoce_no_estorba() {
+        let mut e = EstiloDeCelda { n: true, k: true, s: true, t: true, w: true, e: true, ..Default::default() };
+        e.c = Some("#c00000".into());
+        e.nf = Some(FormatoNumero::Moneda.palabra().into());
+        e.resto.insert("futuro".into(), serde_json::Value::Bool(true));
+        let mut t = Tabla::default();
+        t.estilos.insert("A1".into(), e.clone());
+        let texto = t.escribir().unwrap();
+        let v: serde_json::Value = serde_json::from_str(&texto).unwrap();
+        let a1 = &v["estilos"]["A1"];
+        for campo in ["n", "k", "s", "t", "w", "e"] {
+            assert_eq!(a1[campo], true, "{campo}");
+        }
+        assert_eq!(a1["c"], "#c00000");
+        assert_eq!(a1["nf"], "moneda");
+        assert_eq!(Tabla::leer(&texto).unwrap().estilos["A1"], e, "ida y vuelta sin perder nada");
+        assert_eq!(e.formato_numero(), Some(FormatoNumero::Moneda));
+        // Una tabla del movil (sin los campos nuevos) se lee igual que antes.
+        let movil = Tabla::leer(r##"{"estilos":{"B1":{"n":true,"f":"#fff3bf"}}}"##).unwrap();
+        let b1 = &movil.estilos["B1"];
+        assert!(b1.n && !b1.k && !b1.s && !b1.t && !b1.w && b1.c.is_none() && b1.nf.is_none());
+        assert!(b1.resto.is_empty(), "nada va a parar a `resto`");
+        // Borrar formato deja la marca de editable y lo que no se entiende.
+        e.borrar_formato();
+        assert!(e.sin_formato() && e.e && e.resto.contains_key("futuro"));
+        assert!(!e.vacio());
+        // Casos negativos: una palabra que no se conoce no es un formato, y
+        // sin nada mas el estilo queda vacio.
+        assert_eq!(FormatoNumero::de("rarisimo"), None);
+        let mut x = EstiloDeCelda { nf: Some("rarisimo".into()), ..Default::default() };
+        assert_eq!(x.formato_numero(), None);
+        assert!(!x.vacio(), "se guarda tal cual: puede ser de una version nueva");
+        x.borrar_formato();
+        assert!(x.vacio());
     }
 }

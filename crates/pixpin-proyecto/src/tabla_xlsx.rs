@@ -6,7 +6,9 @@
 //! No es un exportador para Excel: es el camino mas corto para que el visor
 //! entienda una [`Tabla`]. Lleva lo que la tabla tiene —los VALORES ya
 //! calculados (el visor no calcula: ensena el ultimo resultado, como Excel
-//! al abrir), la negrita, la alineacion, el fondo y los anchos— y nada mas.
+//! al abrir), su formato (negrita, cursiva, subrayado, tachado, color de
+//! letra, fondo, alineacion, ajuste y formato de numero) y los anchos— y
+//! nada mas.
 //! Va sin comprimir (`Stored`): se hace y se lee en memoria al momento, y
 //! comprimir solo costaria tiempo.
 //!
@@ -17,7 +19,7 @@ use std::collections::BTreeMap;
 use std::io::Write;
 
 use crate::formula::{self, Valor};
-use crate::tabla::{EstiloDeCelda, Ref, Tabla, ref_a, ref_de};
+use crate::tabla::{EstiloDeCelda, FormatoNumero, Ref, Tabla, ref_a, ref_de};
 
 /// El ancho de una columna sin ancho propio, en pixeles (el de la rejilla
 /// del chat, `pixpin_ui::tabla::COLUMNA_ANCHO`, y el del editor del pin).
@@ -40,11 +42,17 @@ pub struct HojaParaVer<'a> {
 /// **El libro en bytes** (un ZIP), con `activa` como la hoja que se ve al
 /// abrir. Un libro sin hojas sale con una vacia: el visor necesita una.
 pub fn a_xlsx(hojas: &[HojaParaVer], activa: usize) -> std::io::Result<Vec<u8>> {
+    a_xlsx_con_moneda(hojas, activa, "$")
+}
+
+/// Lo mismo, con `moneda` como el simbolo del formato de moneda (el del
+/// equipo: `S/` en el Peru).
+pub fn a_xlsx_con_moneda(hojas: &[HojaParaVer], activa: usize, moneda: &str) -> std::io::Result<Vec<u8>> {
     let vacia = Tabla::default();
     let sola = [HojaParaVer { nombre: "Hoja1", tabla: &vacia, valores: None }];
     let hojas = if hojas.is_empty() { &sola[..] } else { hojas };
     let activa = activa.min(hojas.len() - 1);
-    let mut estilos = Estilos::default();
+    let mut estilos = Estilos::nuevos(moneda);
     let partes: Vec<String> = hojas.iter().map(|h| hoja_xml(h.tabla, h.valores, &mut estilos)).collect();
 
     let mut zip = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
@@ -96,23 +104,56 @@ pub fn a_xlsx(hojas: &[HojaParaVer], activa: usize) -> std::io::Result<Vec<u8>> 
     Ok(zip.finish().map_err(std::io::Error::other)?.into_inner())
 }
 
-/// Los formatos de celda que van saliendo (negrita, alineacion y fondo),
-/// cada uno una vez: el indice es su `s` en las celdas.
-#[derive(Default)]
-struct Estilos {
-    xfs: Vec<(bool, Option<char>, Option<String>)>,
+/// Lo que distingue un formato de celda (`xf`): la letra, el fondo, la
+/// alineacion, el ajuste y el formato de numero.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+struct ClaveXf {
+    letra: ClaveLetra,
+    fondo: Option<String>,
+    alinea: Option<char>,
+    ajustar: bool,
+    numero: Option<FormatoNumero>,
 }
 
+/// Una letra (`<font>`): Calibri 11 con lo que cambie.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+struct ClaveLetra {
+    negrita: bool,
+    cursiva: bool,
+    subrayado: bool,
+    tachado: bool,
+    color: Option<String>,
+}
+
+/// Los formatos de celda que van saliendo, cada uno una vez: el indice es
+/// su `s` en las celdas.
+struct Estilos {
+    xfs: Vec<ClaveXf>,
+    /// El simbolo del formato de moneda.
+    moneda: String,
+}
+
+/// El id del formato de moneda (los propios de un libro empiezan en 164).
+const ID_MONEDA: u32 = 164;
+
 impl Estilos {
+    fn nuevos(moneda: &str) -> Estilos {
+        Estilos { xfs: Vec::new(), moneda: moneda.to_string() }
+    }
+
     /// El `s` de una celda con este estilo (0, el de siempre, si no tiene).
     fn de(&mut self, e: Option<&EstiloDeCelda>) -> usize {
         let Some(e) = e else { return 0 };
-        let alinea = e.a.as_deref().and_then(|a| a.chars().next()).filter(|c| matches!(c, 'i' | 'c' | 'd'));
-        let fondo = e.f.as_deref().and_then(color_rgb);
-        if !e.n && alinea.is_none() && fondo.is_none() {
+        let clave = ClaveXf {
+            letra: ClaveLetra { negrita: e.n, cursiva: e.k, subrayado: e.s, tachado: e.t, color: e.c.as_deref().and_then(color_rgb) },
+            fondo: e.f.as_deref().and_then(color_rgb),
+            alinea: e.a.as_deref().and_then(|a| a.chars().next()).filter(|c| matches!(c, 'i' | 'c' | 'd')),
+            ajustar: e.w,
+            numero: e.formato_numero(),
+        };
+        if clave == ClaveXf::default() {
             return 0;
         }
-        let clave = (e.n, alinea, fondo);
         match self.xfs.iter().position(|x| *x == clave) {
             Some(i) => i + 1,
             None => {
@@ -123,15 +164,48 @@ impl Estilos {
     }
 
     fn xml(&self) -> String {
-        let fondos: Vec<&String> = {
-            let mut v: Vec<&String> = self.xfs.iter().filter_map(|x| x.2.as_ref()).collect();
-            v.sort();
-            v.dedup();
-            v
-        };
-        let mut s = String::from(
-            r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font></fonts>"#,
-        );
+        // Las letras y los fondos distintos, cada uno una vez (la letra 0 es
+        // la normal; los fondos 0 y 1, los que pide el estandar).
+        let normal = ClaveLetra::default();
+        let mut letras: Vec<&ClaveLetra> = vec![&normal];
+        for x in &self.xfs {
+            if !letras.contains(&&x.letra) {
+                letras.push(&x.letra);
+            }
+        }
+        let mut fondos: Vec<&String> = self.xfs.iter().filter_map(|x| x.fondo.as_ref()).collect();
+        fondos.sort();
+        fondos.dedup();
+        let mut s = String::from(r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">"#);
+        if self.xfs.iter().any(|x| x.numero == Some(FormatoNumero::Moneda)) {
+            // `"S/" #,##0.00`: el simbolo entre comillas (las suyas, quitadas)
+            // y el numero con miles y dos decimales.
+            let simbolo = self.moneda.replace('"', "");
+            let codigo = escapar(&format!("\"{simbolo}\" #,##0.00;-\"{simbolo}\" #,##0.00"));
+            s.push_str(&format!(r#"<numFmts count="1"><numFmt numFmtId="{ID_MONEDA}" formatCode="{codigo}"/></numFmts>"#));
+        }
+        s.push_str(&format!(r#"<fonts count="{}">"#, letras.len()));
+        for l in &letras {
+            s.push_str("<font>");
+            if l.negrita {
+                s.push_str("<b/>");
+            }
+            if l.cursiva {
+                s.push_str("<i/>");
+            }
+            if l.tachado {
+                s.push_str("<strike/>");
+            }
+            if l.subrayado {
+                s.push_str("<u/>");
+            }
+            s.push_str(r#"<sz val="11"/>"#);
+            if let Some(c) = &l.color {
+                s.push_str(&format!(r#"<color rgb="FF{c}"/>"#));
+            }
+            s.push_str(r#"<name val="Calibri"/></font>"#);
+        }
+        s.push_str("</fonts>");
         s.push_str(&format!(
             r#"<fills count="{}"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill>"#,
             fondos.len() + 2
@@ -141,23 +215,37 @@ impl Estilos {
         }
         s.push_str(r#"</fills><borders count="1"><border/></borders>"#);
         s.push_str(&format!(r#"<cellXfs count="{}"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/>"#, self.xfs.len() + 1));
-        for (negrita, alinea, fondo) in &self.xfs {
-            let fill = fondo.as_ref().and_then(|f| fondos.iter().position(|x| *x == f)).map_or(0, |i| i + 2);
-            s.push_str(&format!(
-                r#"<xf numFmtId="0" fontId="{}" fillId="{fill}" borderId="0""#,
-                if *negrita { 1 } else { 0 }
-            ));
-            match alinea {
-                Some(a) => {
-                    let h = match a {
-                        'c' => "center",
-                        'd' => "right",
-                        _ => "left",
-                    };
-                    s.push_str(&format!(r#" applyAlignment="1"><alignment horizontal="{h}"/></xf>"#));
-                }
-                None => s.push_str("/>"),
+        for x in &self.xfs {
+            let fill = x.fondo.as_ref().and_then(|f| fondos.iter().position(|y| *y == f)).map_or(0, |i| i + 2);
+            let font = letras.iter().position(|l| **l == x.letra).unwrap_or(0);
+            let num = match x.numero {
+                None => 0,
+                Some(FormatoNumero::Numero) => 4,
+                Some(FormatoNumero::Moneda) => ID_MONEDA,
+                Some(FormatoNumero::Porcentaje) => 10,
+                Some(FormatoNumero::Fecha) => 14,
+            };
+            s.push_str(&format!(r#"<xf numFmtId="{num}" fontId="{font}" fillId="{fill}" borderId="0""#));
+            if num != 0 {
+                s.push_str(r#" applyNumberFormat="1""#);
             }
+            if x.alinea.is_none() && !x.ajustar {
+                s.push_str("/>");
+                continue;
+            }
+            s.push_str(r#" applyAlignment="1"><alignment"#);
+            if let Some(a) = x.alinea {
+                let h = match a {
+                    'c' => "center",
+                    'd' => "right",
+                    _ => "left",
+                };
+                s.push_str(&format!(r#" horizontal="{h}""#));
+            }
+            if x.ajustar {
+                s.push_str(r#" wrapText="1""#);
+            }
+            s.push_str("/></xf>");
         }
         s.push_str("</cellXfs></styleSheet>");
         s
@@ -330,12 +418,59 @@ mod pruebas {
             assert!(color_rgb(malo).is_none(), "{malo}");
         }
         assert_eq!(escapar("a\u{1}b\tc\"d"), "ab\tc&quot;d");
-        let mut e = Estilos::default();
+        let mut e = Estilos::nuevos("$");
         // Un estilo que no cambia nada que se vea no gasta un formato.
         assert_eq!(e.de(Some(&EstiloDeCelda { e: true, ..Default::default() })), 0);
         assert_eq!(e.de(None), 0);
         let b = EstiloDeCelda { n: true, ..Default::default() };
         assert_eq!(e.de(Some(&b)), 1);
         assert_eq!(e.de(Some(&b)), 1, "el mismo formato se reutiliza");
+    }
+}
+
+#[cfg(test)]
+mod pruebas_formato {
+    use super::*;
+    use std::io::Read;
+
+    fn parte(bytes: &[u8], nombre: &str) -> String {
+        let mut z = zip::ZipArchive::new(std::io::Cursor::new(bytes)).unwrap();
+        let mut s = String::new();
+        z.by_name(nombre).unwrap().read_to_string(&mut s).unwrap();
+        s
+    }
+
+    #[test]
+    fn el_formato_de_la_barra_llega_al_libro() {
+        let mut t = Tabla::default();
+        for k in ["A1", "B1", "C1", "D1"] {
+            t.poner(ref_de(k).unwrap(), "1234.5");
+        }
+        let est = |f: fn(&mut EstiloDeCelda)| {
+            let mut e = EstiloDeCelda::default();
+            f(&mut e);
+            e
+        };
+        t.estilos.insert("A1".into(), est(|e| {
+            e.k = true;
+            e.s = true;
+            e.t = true;
+            e.c = Some("#c00000".into());
+        }));
+        t.estilos.insert("B1".into(), est(|e| e.nf = Some("moneda".into())));
+        t.estilos.insert("C1".into(), est(|e| {
+            e.nf = Some("porcentaje".into());
+            e.w = true;
+        }));
+        // Caso negativo: un formato de numero que no se conoce se ve General.
+        t.estilos.insert("D1".into(), est(|e| e.nf = Some("rarisimo".into())));
+        let x = a_xlsx_con_moneda(&[HojaParaVer { nombre: "H", tabla: &t, valores: None }], 0, "S/").unwrap();
+        let estilos = parte(&x, "xl/styles.xml");
+        assert!(estilos.contains("<font><i/><strike/><u/><sz val=\"11\"/><color rgb=\"FFC00000\"/>"), "{estilos}");
+        assert!(estilos.contains(r#"formatCode="&quot;S/&quot; #,##0.00"#), "{estilos}");
+        assert!(estilos.contains(r#"numFmtId="164""#));
+        assert!(estilos.contains(r#"numFmtId="10""#) && estilos.contains(r#"wrapText="1""#));
+        let hoja = parte(&x, "xl/worksheets/sheet1.xml");
+        assert!(hoja.contains(r#"<c r="D1"><v>"#), "sin formato que se vea, sin estilo: {hoja}");
     }
 }

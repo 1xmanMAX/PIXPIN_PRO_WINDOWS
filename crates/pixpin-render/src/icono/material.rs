@@ -741,8 +741,103 @@ pub const FORMAT_BOLD: Icono = Icono {
     )],
 };
 
+/// `format_italic` (`src/editor/format_italic/materialicons/24px.svg`): la
+/// cursiva de la hoja del pin.
+pub const FORMAT_ITALIC: Icono = Icono {
+    vista: VISTA,
+    trazos: &[relleno("M10 4v3h2.21l-3.42 8H6v3h8v-3h-2.21l3.42-8H18V4z", false)],
+};
+
+/// `format_underlined` (`src/editor/format_underlined/materialicons/24px.svg`).
+pub const FORMAT_UNDERLINED: Icono = Icono {
+    vista: VISTA,
+    trazos: &[relleno("M12 17c3.31 0 6-2.69 6-6V3h-2.5v8c0 1.93-1.57 3.5-3.5 3.5S8.5 12.93 8.5 11V3H6v8c0 3.31 2.69 6 6 6zm-7 2v2h14v-2H5z", false)],
+};
+
+/// `format_strikethrough` (`src/editor/format_strikethrough/materialicons/24px.svg`).
+pub const FORMAT_STRIKETHROUGH: Icono = Icono {
+    vista: VISTA,
+    trazos: &[relleno("M10 19h4v-3h-4v3zM5 4v3h5v3h4V7h5V4H5zM3 14h18v-2H3v2z", false)],
+};
+
+/// `format_color_fill` (`src/editor/format_color_fill/materialicons/24px.svg`):
+/// resaltar (el fondo de la celda).
+pub const FORMAT_COLOR_FILL: Icono = Icono {
+    vista: VISTA,
+    trazos: &[relleno(
+        "M16.56 8.94L7.62 0 6.21 1.41l2.38 2.38-5.15 5.15c-.59.59-.59 1.54 0 2.12l5.5 5.5c.29.29.68.44 1.06.44s.77-.15 1.06-.44l5.5-5.5c.59-.58.59-1.53 0-2.12zM5.21 10L10 5.21 14.79 10H5.21zM19 11.5s-2 2.17-2 3.5c0 1.1.9 2 2 2s2-.9 2-2c0-1.33-2-3.5-2-3.5zM2 20h20v4H2v-4z",
+        false,
+    )],
+};
+
+/// `format_color_text` (`src/editor/format_color_text/materialicons/24px.svg`):
+/// el color de la letra.
+pub const FORMAT_COLOR_TEXT: Icono = Icono {
+    vista: VISTA,
+    trazos: &[relleno("M2 20h20v4H2v-4zm3.49-3h2.42l1.27-3.58h5.65L16.09 17h2.42L13.25 3h-2.5L5.49 17zm4.42-5.61l2.03-5.79h.12l2.03 5.79H9.91z", false)],
+};
+
+/// `format_align_left` (`src/editor/format_align_left/materialicons/24px.svg`).
+pub const FORMAT_ALIGN_LEFT: Icono = Icono {
+    vista: VISTA,
+    trazos: &[relleno("M15 15H3v2h12v-2zm0-8H3v2h12V7zM3 13h18v-2H3v2zm0 8h18v-2H3v2zM3 3v2h18V3H3z", false)],
+};
+
+/// `format_align_center` (`src/editor/format_align_center/materialicons/24px.svg`).
+pub const FORMAT_ALIGN_CENTER: Icono = Icono {
+    vista: VISTA,
+    trazos: &[relleno("M7 15v2h10v-2H7zm-4 6h18v-2H3v2zm0-8h18v-2H3v2zm4-6v2h10V7H7zM3 3v2h18V3H3z", false)],
+};
+
+/// `format_align_right` (`src/editor/format_align_right/materialicons/24px.svg`).
+pub const FORMAT_ALIGN_RIGHT: Icono = Icono {
+    vista: VISTA,
+    trazos: &[relleno("M3 21h18v-2H3v2zm6-4h12v-2H9v2zm-6-4h18v-2H3v2zm6-4h12V7H9v2zM3 3v2h18V3H3z", false)],
+};
+
+/// `wrap_text` (`src/editor/wrap_text/materialicons/24px.svg`): ajustar el
+/// texto a la celda.
+pub const WRAP_TEXT: Icono = Icono {
+    vista: VISTA,
+    trazos: &[relleno(
+        "M4 19h6v-2H4v2zM20 5H4v2h16V5zm-3 6H4v2h13.25c1.1 0 2 .9 2 2s-.9 2-2 2H15v-2l-3 3 3 3v-2h2c2.21 0 4-1.79 4-4s-1.79-4-4-4z",
+        false,
+    )],
+};
+
+/// `format_clear` (`src/editor/format_clear/materialicons/24px.svg`): borrar
+/// el formato.
+pub const FORMAT_CLEAR: Icono = Icono {
+    vista: VISTA,
+    trazos: &[relleno(
+        "M3.27 5L2 6.27l6.97 6.97L6.5 19h3l1.57-3.66L16.73 21 18 19.73 3.55 5.27 3.27 5zM6 5v.18L8.82 8h2.4l-.72 1.68 2.1 2.1L14.21 8H20V5H6z",
+        false,
+    )],
+};
+
+/// `numbers` (`src/editor/numbers/materialicons/24px.svg`): el formato del
+/// numero (general, moneda, porcentaje, fecha).
+pub const NUMBERS: Icono = Icono {
+    vista: VISTA,
+    trazos: &[relleno(
+        "M20.5 10l.5-2h-4l1-4h-2l-1 4h-4l1-4h-2L9 8H5l-.5 2h4l-1 4h-4L3 16h4l-1 4h2l1-4h4l-1 4h2l1-4h4l.5-2h-4l1-4h4zm-7 4h-4l1-4h4l-1 4z",
+        false,
+    )],
+};
+
 /// Todos, para poder comprobarlos de una vez.
 pub const TODOS: &[Icono] = &[
+    FORMAT_ITALIC,
+    FORMAT_UNDERLINED,
+    FORMAT_STRIKETHROUGH,
+    FORMAT_COLOR_FILL,
+    FORMAT_COLOR_TEXT,
+    FORMAT_ALIGN_LEFT,
+    FORMAT_ALIGN_CENTER,
+    FORMAT_ALIGN_RIGHT,
+    WRAP_TEXT,
+    FORMAT_CLEAR,
+    NUMBERS,
     FULLSCREEN,
     FULLSCREEN_EXIT,
     DRAG_INDICATOR,

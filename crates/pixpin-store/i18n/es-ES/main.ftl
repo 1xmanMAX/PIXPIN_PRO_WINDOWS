@@ -991,6 +991,23 @@ hoja-preparando = Preparando la hoja para editar…
 hoja-editar-aviso = Los cambios se guardan en la hoja del chat, el archivo original no cambia
 hoja-editando = Editando · Esc para ver
 hoja-rango-grande = Son demasiadas celdas para hacerlo de una vez
+hoja-no-editable = Esta hoja no tiene tabla: no se puede editar
+hoja-fondo-sin = Sin color
+hoja-letra-automatica = Automático
+hoja-color-amarillo = Amarillo
+hoja-color-verde = Verde
+hoja-color-azul = Azul
+hoja-color-rosa = Rosa
+hoja-color-morado = Morado
+hoja-color-naranja = Naranja
+hoja-color-gris = Gris
+hoja-color-celeste = Celeste
+hoja-color-rojo = Rojo
+hoja-numero-general = General
+hoja-numero-numero = Número (1,234.50)
+hoja-numero-moneda = Moneda
+hoja-numero-porcentaje = Porcentaje (12.50 %)
+hoja-numero-fecha = Fecha
 
 ## D9: buscar dentro del documento (buscador.rs, visor.rs, lector_pdf.rs)
 buscar-pista = Buscar en el documento

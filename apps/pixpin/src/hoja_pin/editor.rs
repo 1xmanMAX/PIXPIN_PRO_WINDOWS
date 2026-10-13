@@ -1,12 +1,17 @@
 //! **La hoja editable del pin**, sin ventana: lo que se escribe, lo que se
-//! elige, las pestanas de las hojas y la pila de deshacer. Lo pinta y le
-//! pasa el raton y el teclado `hoja_pin`; aqui todo se prueba sin GPU.
+//! elige, el formato, las pestanas de las hojas y la pila de deshacer. La
+//! pinta y le pasa el raton y el teclado el visor de hojas (`visor_hoja`,
+//! que es el MISMO para ver y para editar); aqui todo se prueba sin GPU.
 //!
 //! Es lo que hacia la hoja de calculo pintada dentro del chat
 //! (`HojaAbierta` de `ventana_chat`, que ya no existe), con lo que le
 //! faltaba y tiene la de Android (`tabla/TablaActivity.kt`): deshacer y
-//! rehacer, elegir un rango, negrita y alineacion, y las hojas de un libro
-//! en pestanas.
+//! rehacer, elegir un rango, negrita, alineacion (que pasa de una a otra
+//! como en el movil: ninguna, izquierda, centro, derecha), el fondo con la
+//! misma paleta, y las hojas de un libro en pestanas. Y lo que pidio el
+//! usuario el 12-oct-2026 para el PC: cursiva, subrayado, tachado, color de
+//! letra, formato de numero, ajustar texto y borrar formato (ver
+//! `EstiloDeCelda` para como viaja al movil).
 //!
 //! **Deshacer es una pila de cambios de celda**: cada cambio guarda solo
 //! las celdas que toco, como estaban y como quedaron. Barato aunque la tabla
@@ -17,14 +22,37 @@ use std::collections::BTreeMap;
 
 use pixpin_proyecto::formula::{self, Valor};
 use pixpin_proyecto::importar_hojas::{MAX_COLS, MAX_FILAS};
-use pixpin_proyecto::tabla::{EstiloDeCelda, Ref, Tabla, ref_a, ref_de};
-use pixpin_proyecto::tabla_xlsx::{ALTO_FILA, ANCHO_COLUMNA};
+use pixpin_proyecto::tabla::{EstiloDeCelda, FormatoNumero, Ref, Tabla, ref_a, ref_de};
 
 /// Cuantos cambios se pueden deshacer.
 const MAXIMO_DESHACER: usize = 200;
 /// Mas celdas que esto de una vez (negrita, borrar) no se tocan: un rango
 /// de columnas enteras seria millones.
 pub const MAXIMO_RANGO: u64 = 200_000;
+
+/// Los fondos de «Resaltar»: la paleta del movil (`COLORES_DE_FONDO` de
+/// `TablaActivity.kt`), en su orden, con su nombre para el menu.
+pub const FONDOS: [(&str, &str); 8] = [
+    ("#fff3bf", "hoja-color-amarillo"),
+    ("#d3f9d8", "hoja-color-verde"),
+    ("#d0ebff", "hoja-color-azul"),
+    ("#ffe3e3", "hoja-color-rosa"),
+    ("#f3d9fa", "hoja-color-morado"),
+    ("#ffe8cc", "hoja-color-naranja"),
+    ("#e9ecef", "hoja-color-gris"),
+    ("#c5f6fa", "hoja-color-celeste"),
+];
+
+/// Los colores de letra: los fuertes de la paleta de Excel (el movil no
+/// tiene color de letra).
+pub const LETRAS: [(&str, &str); 6] = [
+    ("#c00000", "hoja-color-rojo"),
+    ("#0070c0", "hoja-color-azul"),
+    ("#00b050", "hoja-color-verde"),
+    ("#c65911", "hoja-color-naranja"),
+    ("#7030a0", "hoja-color-morado"),
+    ("#7f7f7f", "hoja-color-gris"),
+];
 
 /// Un rango de celdas elegido: donde se empezo (`ancla`) y la celda activa.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -47,6 +75,13 @@ impl Seleccion {
     pub fn celdas(&self) -> u64 {
         let (c0, f0, c1, f1) = self.esquinas();
         (c1 - c0 + 1) as u64 * (f1 - f0 + 1) as u64
+    }
+
+    /// La misma, sin salirse de lo que cabe en una tabla (la columna `ZZ`
+    /// y cien mil filas, como el movil).
+    pub fn acotada(self) -> Seleccion {
+        let a = |r: Ref| Ref { columna: r.columna.min(MAX_COLS - 1), fila: r.fila.min(MAX_FILAS - 1) };
+        Seleccion { ancla: a(self.ancla), activa: a(self.activa) }
     }
 }
 
@@ -73,128 +108,40 @@ pub struct HojaEditable {
     /// Si cambio algo desde que se guardo.
     pub tocada: bool,
     pub sel: Seleccion,
-    /// Lo desplazado, en pixeles de la hoja al 100 %.
-    pub x: f32,
-    pub y: f32,
-    /// Donde empieza cada columna (px al 100 %), hasta la ultima posible.
-    xs: Vec<f32>,
-    /// Lo que vale cada celda, calculado de una vez al pintar y olvidado al
-    /// cambiar una.
+    /// Lo que vale cada celda, calculado de una vez y olvidado al cambiar
+    /// una.
     valores: OnceCell<BTreeMap<String, Valor>>,
 }
 
 impl HojaEditable {
     pub fn nueva(nombre: String, tabla: Tabla, id_mensaje: Option<String>) -> HojaEditable {
-        let xs = columnas_de(&tabla);
-        HojaEditable {
-            nombre,
-            tabla,
-            id_mensaje,
-            tocada: false,
-            sel: Seleccion::en(Ref { columna: 0, fila: 0 }),
-            x: 0.0,
-            y: 0.0,
-            xs,
-            valores: OnceCell::new(),
-        }
+        HojaEditable { nombre, tabla, id_mensaje, tocada: false, sel: Seleccion::en(Ref { columna: 0, fila: 0 }), valores: OnceCell::new() }
     }
 
-    /// Donde empieza la columna `c` (px al 100 %).
-    pub fn x_de(&self, c: u32) -> f32 {
-        let c = (c as usize).min(self.xs.len() - 1);
-        self.xs[c]
-    }
-
-    pub fn ancho_de(&self, c: u32) -> f32 {
-        self.x_de(c + 1) - self.x_de(c)
-    }
-
-    pub fn y_de(f: u32) -> f32 {
-        f as f32 * ALTO_FILA as f32
-    }
-
-    /// La columna en `x` (px de hoja al 100 %).
-    pub fn columna_en(&self, x: f32) -> u32 {
-        if x <= 0.0 {
-            return 0;
-        }
-        let i = self.xs.partition_point(|&c| c <= x);
-        (i.saturating_sub(1) as u32).min(MAX_COLS - 1)
-    }
-
-    pub fn fila_en(y: f32) -> u32 {
-        ((y.max(0.0) / ALTO_FILA as f32) as u32).min(MAX_FILAS - 1)
+    /// Lo que vale cada celda (se calcula una vez).
+    pub fn valores(&self) -> &BTreeMap<String, Valor> {
+        self.valores.get_or_init(|| formula::evaluar_todo(&self.tabla))
     }
 
     /// Lo que se ve en la celda: el resultado de su formula, con el
     /// separador decimal del usuario.
+    #[cfg(test)]
     pub fn mostrado(&self, r: Ref, decimal: char) -> String {
         let clave = ref_a(r);
         if !self.tabla.celdas.contains_key(&clave) {
             return String::new();
         }
-        self.valores
-            .get_or_init(|| formula::evaluar_todo(&self.tabla))
-            .get(&clave)
-            .map(|v| v.mostrar(decimal))
-            .unwrap_or_default()
+        self.valores().get(&clave).map(|v| v.mostrar(decimal)).unwrap_or_default()
     }
 
-    /// Si el valor de la celda es un numero (va a la derecha, como en Excel).
-    pub fn es_numero(&self, r: Ref) -> bool {
-        let clave = ref_a(r);
-        self.tabla.celdas.contains_key(&clave)
-            && matches!(self.valores.get_or_init(|| formula::evaluar_todo(&self.tabla)).get(&clave), Some(Valor::Numero(_)))
-    }
-
-    /// Mueve la vista lo justo para que se vea la celda activa, con
-    /// `visible` (ancho, alto) en pixeles de hoja al 100 %.
-    pub fn seguir(&mut self, (ancho, alto): (f32, f32)) {
-        let a = self.sel.activa;
-        let (x0, x1) = (self.x_de(a.columna), self.x_de(a.columna + 1));
-        if x0 < self.x {
-            self.x = x0;
-        } else if x1 > self.x + ancho {
-            self.x = (x1 - ancho).min(x0);
-        }
-        let (y0, y1) = (Self::y_de(a.fila), Self::y_de(a.fila + 1));
-        if y0 < self.y {
-            self.y = y0;
-        } else if y1 > self.y + alto {
-            self.y = (y1 - alto).min(y0);
-        }
-    }
-
-    /// Los valores, si ya se calcularon (para no repetir la cuenta al pasar
-    /// la hoja al visor).
-    pub fn valores_hechos(&self) -> Option<&BTreeMap<String, Valor>> {
-        self.valores.get()
+    /// El estilo de la celda activa (para encender los botones).
+    pub fn estilo_activo(&self) -> Option<&EstiloDeCelda> {
+        self.tabla.estilos.get(&ref_a(self.sel.activa))
     }
 
     fn olvidar_valores(&mut self) {
         self.valores = OnceCell::new();
     }
-}
-
-/// Donde empieza cada columna con los anchos de la tabla.
-fn columnas_de(t: &Tabla) -> Vec<f32> {
-    let mut anchos = vec![ANCHO_COLUMNA as f32; MAX_COLS as usize];
-    for (letra, px) in &t.anchos {
-        if let Some(r) = ref_de(&format!("{letra}1"))
-            && *px > 0
-            && let Some(a) = anchos.get_mut(r.columna as usize)
-        {
-            *a = *px as f32;
-        }
-    }
-    let mut xs = Vec::with_capacity(anchos.len() + 1);
-    let mut x = 0.0;
-    xs.push(0.0);
-    for a in anchos {
-        x += a;
-        xs.push(x);
-    }
-    xs
 }
 
 /// Las celdas de `t` dentro de las esquinas, con su contenido y su estilo.
@@ -238,13 +185,85 @@ pub enum Alineacion {
 }
 
 impl Alineacion {
-    fn letra(self) -> &'static str {
+    pub fn letra(self) -> &'static str {
         match self {
             Alineacion::Izquierda => "i",
             Alineacion::Centro => "c",
             Alineacion::Derecha => "d",
         }
     }
+
+    pub fn de(letra: &str) -> Option<Alineacion> {
+        match letra {
+            "i" => Some(Alineacion::Izquierda),
+            "c" => Some(Alineacion::Centro),
+            "d" => Some(Alineacion::Derecha),
+            _ => None,
+        }
+    }
+
+    /// La siguiente al pulsar «Alinear», como el movil: ninguna, izquierda,
+    /// centro, derecha y otra vez ninguna.
+    pub fn siguiente(a: Option<Alineacion>) -> Option<Alineacion> {
+        match a {
+            None => Some(Alineacion::Izquierda),
+            Some(Alineacion::Izquierda) => Some(Alineacion::Centro),
+            Some(Alineacion::Centro) => Some(Alineacion::Derecha),
+            Some(Alineacion::Derecha) => None,
+        }
+    }
+}
+
+/// Un interruptor de formato: se pone si alguna celda de lo elegido no lo
+/// tiene y se quita si ya lo tienen todas (como Excel y el movil).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Interruptor {
+    Negrita,
+    Cursiva,
+    Subrayado,
+    Tachado,
+    Ajustar,
+}
+
+impl Interruptor {
+    pub fn en(self, e: &EstiloDeCelda) -> bool {
+        match self {
+            Interruptor::Negrita => e.n,
+            Interruptor::Cursiva => e.k,
+            Interruptor::Subrayado => e.s,
+            Interruptor::Tachado => e.t,
+            Interruptor::Ajustar => e.w,
+        }
+    }
+
+    fn poner(self, e: &mut EstiloDeCelda, si: bool) {
+        match self {
+            Interruptor::Negrita => e.n = si,
+            Interruptor::Cursiva => e.k = si,
+            Interruptor::Subrayado => e.s = si,
+            Interruptor::Tachado => e.t = si,
+            Interruptor::Ajustar => e.w = si,
+        }
+    }
+}
+
+/// **Un cambio de formato** en lo elegido (los botones y atajos de la barra
+/// de formato del pin).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Formato {
+    Alternar(Interruptor),
+    /// El fondo (`#rrggbb`); `None`, sin color.
+    Fondo(Option<String>),
+    /// El color de la letra; `None`, el automatico.
+    Letra(Option<String>),
+    /// La alineacion; la misma otra vez la quita.
+    Alinear(Alineacion),
+    /// La siguiente alineacion (el boton, como el movil).
+    AlinearSiguiente,
+    /// El formato de numero; `None`, General.
+    Numero(Option<FormatoNumero>),
+    /// Quitar todo el formato.
+    Borrar,
 }
 
 /// **El editor**: las hojas, la activa, lo que se esta tecleando y las
@@ -257,6 +276,9 @@ pub struct Editor {
     pub edicion: Option<String>,
     deshacer: Vec<Cambio>,
     rehacer: Vec<Cambio>,
+    /// Sube con cada cambio (y con deshacer y rehacer): quien ensena la hoja
+    /// sabe asi si lo que ve esta al dia.
+    cambios: u64,
 }
 
 impl Editor {
@@ -266,7 +288,7 @@ impl Editor {
             return None;
         }
         let activa = activa.min(hojas.len() - 1);
-        Some(Editor { hojas, activa, edicion: None, deshacer: Vec::new(), rehacer: Vec::new() })
+        Some(Editor { hojas, activa, edicion: None, deshacer: Vec::new(), rehacer: Vec::new(), cambios: 0 })
     }
 
     pub fn hoja(&self) -> &HojaEditable {
@@ -275,6 +297,11 @@ impl Editor {
 
     pub fn hoja_mut(&mut self) -> &mut HojaEditable {
         &mut self.hojas[self.activa]
+    }
+
+    /// Cuantos cambios lleva (ver [`Editor::cambios`]).
+    pub fn cambios(&self) -> u64 {
+        self.cambios
     }
 
     #[cfg(test)]
@@ -323,6 +350,7 @@ impl Editor {
         }
         h.tocada = true;
         h.olvidar_valores();
+        self.cambios += 1;
         self.deshacer.push(Cambio { hoja: activa, celdas, sel });
         if self.deshacer.len() > MAXIMO_DESHACER {
             self.deshacer.remove(0);
@@ -385,7 +413,9 @@ impl Editor {
     }
 
     /// Mueve la celda activa (confirmando lo tecleado); con `extender`,
-    /// alarga el rango desde el ancla.
+    /// alarga el rango desde el ancla. (En el pin mueve el visor; esto es
+    /// para las pruebas.)
+    #[cfg(test)]
     pub fn mover(&mut self, dx: i32, dy: i32, extender: bool) {
         self.confirmar();
         let h = self.hoja_mut();
@@ -398,18 +428,17 @@ impl Editor {
     }
 
     /// Elige una celda (un clic); con `extender` (Mayus), alarga el rango.
+    #[cfg(test)]
     pub fn elegir(&mut self, r: Ref, extender: bool) {
         self.confirmar();
         let h = self.hoja_mut();
         h.sel = if extender { Seleccion { ancla: h.sel.ancla, activa: r } } else { Seleccion::en(r) };
     }
 
-    /// Todo lo escrito de la hoja activa.
-    pub fn elegir_todo(&mut self) {
-        self.confirmar();
-        let (c, f) = self.hoja().tabla.tamano();
-        let h = self.hoja_mut();
-        h.sel = Seleccion { ancla: Ref { columna: 0, fila: 0 }, activa: Ref { columna: c.saturating_sub(1), fila: f.saturating_sub(1) } };
+    /// Pone la seleccion que viene del visor (sin confirmar: quien la pone
+    /// ya confirmo si hacia falta).
+    pub fn poner_seleccion(&mut self, s: Seleccion) {
+        self.hoja_mut().sel = s.acotada();
     }
 
     /// Cambia de hoja (confirmando lo tecleado en la que se deja).
@@ -420,30 +449,35 @@ impl Editor {
         }
     }
 
-    /// **Negrita** en lo elegido: si todo lo elegido ya la tiene, se quita;
-    /// si no, se pone (como Excel y el movil).
-    pub fn alternar_negrita(&mut self) -> bool {
+    /// **Un cambio de formato en lo elegido**, como un solo paso de
+    /// deshacer. `false` si no cambio nada o el rango es demasiado.
+    pub fn formato(&mut self, f: Formato) -> bool {
         self.confirmar();
         let sel = self.hoja().sel;
         if sel.celdas() > MAXIMO_RANGO {
             return false;
         }
         let (c0, f0, c1, f1) = sel.esquinas();
-        let t = &self.hoja().tabla;
-        let todas = (f0..=f1).all(|f| (c0..=c1).all(|c| t.estilos.get(&ref_a(Ref { columna: c, fila: f })).is_some_and(|e| e.n)));
-        self.estilo_en_rango(|e| e.n = !todas)
-    }
-
-    /// La alineacion de lo elegido; la misma otra vez la quita (vuelve a la
-    /// que toque por el valor).
-    pub fn alinear(&mut self, a: Alineacion) -> bool {
-        self.confirmar();
-        let sel = self.hoja().sel;
-        if sel.celdas() > MAXIMO_RANGO {
-            return false;
+        let activo = self.hoja().estilo_activo().cloned().unwrap_or_default();
+        match f {
+            Formato::Alternar(i) => {
+                let t = &self.hoja().tabla;
+                let todas = (f0..=f1).all(|f| (c0..=c1).all(|c| t.estilos.get(&ref_a(Ref { columna: c, fila: f })).is_some_and(|e| i.en(e))));
+                self.estilo_en_rango(|e| i.poner(e, !todas))
+            }
+            Formato::Fondo(color) => self.estilo_en_rango(|e| e.f = color.clone()),
+            Formato::Letra(color) => self.estilo_en_rango(|e| e.c = color.clone()),
+            Formato::Alinear(a) => {
+                let ya = activo.a.as_deref() == Some(a.letra());
+                self.estilo_en_rango(|e| e.a = if ya { None } else { Some(a.letra().to_string()) })
+            }
+            Formato::AlinearSiguiente => {
+                let siguiente = Alineacion::siguiente(activo.a.as_deref().and_then(Alineacion::de));
+                self.estilo_en_rango(|e| e.a = siguiente.map(|a| a.letra().to_string()))
+            }
+            Formato::Numero(n) => self.estilo_en_rango(|e| e.nf = n.map(|n| n.palabra().to_string())),
+            Formato::Borrar => self.estilo_en_rango(EstiloDeCelda::borrar_formato),
         }
-        let ya = self.hoja().tabla.estilos.get(&ref_a(sel.activa)).and_then(|e| e.a.as_deref()) == Some(a.letra());
-        self.estilo_en_rango(|e| e.a = if ya { None } else { Some(a.letra().to_string()) })
     }
 
     fn estilo_en_rango(&mut self, f: impl Fn(&mut EstiloDeCelda)) -> bool {
@@ -509,6 +543,7 @@ impl Editor {
         h.olvidar_valores();
         h.sel = c.sel;
         self.activa = c.hoja;
+        self.cambios += 1;
     }
 }
 
@@ -569,9 +604,12 @@ mod pruebas {
         assert!(!e.confirmar(), "lo mismo que habia no cuenta");
         assert!(!e.puede_deshacer());
         assert!(!e.hoja().tocada);
+        assert_eq!(e.cambios(), 0);
         e.teclear('a');
         e.confirmar();
+        assert_eq!(e.cambios(), 1, "cada cambio cuenta para quien lo ensena");
         e.deshacer();
+        assert_eq!(e.cambios(), 2, "y deshacer tambien");
         assert!(e.puede_rehacer());
         e.teclear('b');
         e.confirmar();
@@ -602,12 +640,12 @@ mod pruebas {
         e.elegir(r("A1"), false);
         e.mover(1, 2, true);
         assert_eq!(e.hoja().sel.esquinas(), (0, 0, 1, 2));
-        assert!(e.alternar_negrita());
+        assert!(e.formato(Formato::Alternar(Interruptor::Negrita)));
         assert!(e.hoja().tabla.estilos["B3"].n);
         assert_eq!(e.hoja().tabla.estilos.len(), 6);
-        assert!(e.alternar_negrita(), "todo en negrita: se quita");
+        assert!(e.formato(Formato::Alternar(Interruptor::Negrita)), "todo en negrita: se quita");
         assert!(e.hoja().tabla.estilos.is_empty(), "un estilo vacio no se guarda");
-        assert!(e.alinear(Alineacion::Centro));
+        assert!(e.formato(Formato::Alinear(Alineacion::Centro)));
         assert_eq!(e.hoja().tabla.estilos["A1"].a.as_deref(), Some("c"));
         assert!(e.borrar_seleccion());
         assert!(e.hoja().tabla.celdas.is_empty());
@@ -618,7 +656,71 @@ mod pruebas {
         e.elegir(r("A1"), false);
         e.elegir(r("ZZ100000"), true);
         assert!(!e.borrar_seleccion());
-        assert!(!e.alternar_negrita());
+        assert!(!e.formato(Formato::Alternar(Interruptor::Negrita)));
+    }
+
+    #[test]
+    fn cada_formato_se_pone_se_quita_y_se_deshace() {
+        let mut e = editor();
+        e.elegir(r("A1"), false);
+        e.elegir(r("B2"), true);
+        let a1 = |e: &Editor| e.hoja().tabla.estilos.get("A1").cloned().unwrap_or_default();
+        for i in [Interruptor::Negrita, Interruptor::Cursiva, Interruptor::Subrayado, Interruptor::Tachado, Interruptor::Ajustar] {
+            assert!(e.formato(Formato::Alternar(i)), "{i:?}");
+            assert!(i.en(&a1(&e)), "{i:?} puesto");
+            assert!(i.en(&e.hoja().tabla.estilos["B2"]), "{i:?} en todo el rango");
+        }
+        let e5 = e.cambios();
+        // Si una celda del rango no lo tiene, se pone en todas (no se quita).
+        e.hoja_mut().tabla.estilos.get_mut("B1").unwrap().k = false;
+        assert!(e.formato(Formato::Alternar(Interruptor::Cursiva)));
+        assert!(e.hoja().tabla.estilos["B1"].k && a1(&e).k);
+        assert!(e.formato(Formato::Fondo(Some("#fff3bf".into()))));
+        assert!(e.formato(Formato::Letra(Some("#c00000".into()))));
+        assert!(e.formato(Formato::Numero(Some(FormatoNumero::Porcentaje))));
+        let b2 = e.hoja().tabla.estilos["B2"].clone();
+        assert_eq!((b2.f.as_deref(), b2.c.as_deref(), b2.nf.as_deref()), (Some("#fff3bf"), Some("#c00000"), Some("porcentaje")));
+        assert!(e.cambios() > e5);
+        // Alinear con el boton pasa por las tres y vuelve a ninguna.
+        let mut vistas = Vec::new();
+        for _ in 0..4 {
+            e.formato(Formato::AlinearSiguiente);
+            vistas.push(a1(&e).a);
+        }
+        assert_eq!(vistas, [Some("i".into()), Some("c".into()), Some("d".into()), None]);
+        // Deshacer quita el ultimo formato de todo el rango de una vez.
+        e.formato(Formato::Letra(None));
+        assert_eq!(e.hoja().tabla.estilos["B2"].c, None, "el automatico es sin color");
+        assert!(e.deshacer());
+        assert_eq!(e.hoja().tabla.estilos["B2"].c.as_deref(), Some("#c00000"));
+        assert!(e.rehacer());
+        // Borrar formato lo quita todo, y se deshace.
+        assert!(e.formato(Formato::Borrar));
+        assert!(e.hoja().tabla.estilos.is_empty(), "sin formato no queda estilo");
+        assert!(e.deshacer());
+        assert!(e.hoja().tabla.estilos["B2"].n);
+        // Casos negativos: borrar el formato de lo que no tiene no es un
+        // cambio, y poner el fondo que ya hay tampoco.
+        e.elegir(r("H9"), false);
+        assert!(!e.formato(Formato::Borrar));
+        e.formato(Formato::Fondo(Some("#d3f9d8".into())));
+        assert!(!e.formato(Formato::Fondo(Some("#d3f9d8".into()))));
+        assert!(!e.formato(Formato::Numero(None)), "General sin formato no cambia nada");
+    }
+
+    #[test]
+    fn el_formato_se_guarda_en_la_tabla_del_chat_y_vuelve() {
+        let mut e = editor();
+        e.elegir(r("B2"), false);
+        e.formato(Formato::Alternar(Interruptor::Tachado));
+        e.formato(Formato::Numero(Some(FormatoNumero::Moneda)));
+        let texto = e.hoja().tabla.escribir().unwrap();
+        let v: serde_json::Value = serde_json::from_str(&texto).unwrap();
+        assert_eq!(v["estilos"]["B2"]["t"], true);
+        assert_eq!(v["estilos"]["B2"]["nf"], "moneda");
+        let vuelta = Tabla::leer(&texto).unwrap();
+        assert_eq!(vuelta.estilos["B2"].formato_numero(), Some(FormatoNumero::Moneda));
+        assert!(vuelta.estilos["B2"].t);
     }
 
     #[test]
@@ -637,35 +739,11 @@ mod pruebas {
     }
 
     #[test]
-    fn las_columnas_siguen_los_anchos_de_la_tabla() {
-        let mut t = Tabla::default();
-        t.anchos.insert("B".into(), 180);
-        let h = HojaEditable::nueva("x".into(), t, None);
-        assert_eq!(h.x_de(1), ANCHO_COLUMNA as f32);
-        assert_eq!(h.ancho_de(1), 180.0);
-        assert_eq!(h.columna_en(ANCHO_COLUMNA as f32 + 179.0), 1);
-        assert_eq!(h.columna_en(ANCHO_COLUMNA as f32 + 180.0), 2);
-        assert_eq!(h.columna_en(-5.0), 0);
-        assert_eq!(HojaEditable::fila_en(ALTO_FILA as f32 * 3.5), 3);
-        // Caso negativo: no se sale de la hoja.
-        assert_eq!(h.columna_en(1.0e9), MAX_COLS - 1);
-        assert_eq!(HojaEditable::fila_en(1.0e12), MAX_FILAS - 1);
+    fn la_seleccion_del_visor_no_se_sale_de_la_tabla() {
+        let mut e = editor();
+        let lejos = Seleccion { ancla: r("A1"), activa: Ref { columna: 16_000, fila: 1_000_000 } };
+        e.poner_seleccion(lejos);
+        assert_eq!(e.hoja().sel.activa, Ref { columna: MAX_COLS - 1, fila: MAX_FILAS - 1 });
         assert!(Editor::nuevo(Vec::new(), 0).is_none(), "sin hojas no hay editor");
-    }
-
-    #[test]
-    fn la_vista_sigue_a_la_celda_activa_lo_justo() {
-        let mut h = HojaEditable::nueva("x".into(), Tabla::default(), None);
-        let vis = (ANCHO_COLUMNA as f32 * 3.0, ALTO_FILA as f32 * 10.0);
-        h.sel = Seleccion::en(r("B5"));
-        h.seguir(vis);
-        assert_eq!((h.x, h.y), (0.0, 0.0), "lo que ya se ve no mueve nada");
-        h.sel = Seleccion::en(r("E20"));
-        h.seguir(vis);
-        assert_eq!(h.x, h.x_de(5) - vis.0, "la E queda en el borde derecho");
-        assert_eq!(h.y, HojaEditable::y_de(20) - vis.1);
-        h.sel = Seleccion::en(r("A1"));
-        h.seguir(vis);
-        assert_eq!((h.x, h.y), (0.0, 0.0), "y vuelve al principio");
     }
 }
