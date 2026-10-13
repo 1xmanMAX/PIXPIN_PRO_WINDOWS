@@ -1,0 +1,35 @@
+[package]
+name = "pixpin-ia"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+thiserror = "2.0.20"
+tracing = "0.1.44"
+# El protocolo con el modelo es JSON de punta a punta (peticiones al estilo
+# OpenAI, llamadas a herramientas, elementos de Excalidraw para el lienzo).
+serde_json = "1.0"
+# La huella de cada fichero bajado (modelo y motor). Ya estaba en el arbol
+# por pixpin-sincro y pdfsqueeze-core.
+sha2 = "0.10.9"
+# El motor (llama.cpp) llega en un .zip de su pagina de versiones; de el se
+# sacan solo los ficheros que hacen falta. Mismo crate y rasgos que
+# pixpin-docs, pixpin-hojas y pixpin-office.
+zip = { version = "2.2", default-features = false, features = ["deflate"] }
+# Bajar por HTTPS con WinHTTP (lo que ya trae Windows): se reutiliza el de la
+# voz, que ya sigue redirecciones, escribe en `.parte` y se deja cancelar.
+pixpin-voz = { path = "../pixpin-voz" }
+# El proceso del modelo va dentro de un «trabajo» de Windows que lo mata si
+# PixPin muere, y se lanza sin ventana.
+windows = { version = "0.62.2", features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_System_JobObjects",
+    "Win32_System_Threading",
+] }
+
+[dev-dependencies]
+# Solo en pruebas: comprobar que lo que se dibuja lo lee de verdad el lienzo.
+pixpin-motor2d = { path = "../pixpin-motor2d" }
