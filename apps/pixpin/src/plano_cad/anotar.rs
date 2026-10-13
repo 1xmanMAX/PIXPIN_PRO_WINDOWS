@@ -108,10 +108,96 @@ fn unidades_entre(memoria: &Encaje, fichero: &Encaje) -> Unidades {
 /// de Android) o el de la memoria si es nueva.
 pub fn leer_capa(r: &Rutas, m: &Modelo) -> (Capa, Encaje, Encaje) {
     let memoria = Encaje::de_unidad(pixpin_cad::anotado::unidad_de_la_capa(m));
-    let fichero = leer_hoja(&r.hoja).and_then(|h| Encaje::de_la_hoja(h, m.caja)).unwrap_or_else(|| {
-        if r.tinta.is_file() { Encaje::de_unidad(pixpin_cad::anotado::unidad_antigua(m)) } else { memoria }
-    });
+    let antigua = Encaje::de_unidad(pixpin_cad::anotado::unidad_antigua(m));
+    let fichero = encaje_del_fichero(r, m.caja, &antigua, &memoria);
     (Capa::leer_en(&r.tinta, unidades_entre(&memoria, &fichero)), memoria, fichero)
+}
+
+/// El encaje de lo que hay ahora en el disco (ver [`leer_capa`]).
+fn encaje_del_fichero(r: &Rutas, caja: [f32; 4], antigua: &Encaje, memoria: &Encaje) -> Encaje {
+    leer_hoja(&r.hoja)
+        .and_then(|h| Encaje::de_la_hoja(h, caja))
+        .unwrap_or_else(|| if r.tinta.is_file() { *antigua } else { *memoria })
+}
+
+/// **Como esta en el disco lo anotado**: fecha y tamano de la capa y de su
+/// `.hoja`. Cambia cuando la sincronizacion trae algo del movil.
+type Sello = [Option<(std::time::SystemTime, u64)>; 2];
+
+fn sello_de(r: &Rutas) -> Sello {
+    let de = |f: &Path| std::fs::metadata(f).ok().and_then(|m| Some((m.modified().ok()?, m.len())));
+    [de(&r.tinta), de(&r.hoja)]
+}
+
+/// **Una capa del disco pasada a otras unidades** `u` (`fichero = antes * e
+/// + d`), sin tocar nada mas: posicion, caja, puntos (relativos a su x, y),
+/// huecos, grosor y letra, como `CapaDelPlano.transformar` de Android. Ni
+/// version ni fecha: no es un cambio, es la misma capa contada en otra
+/// unidad. `None` si no se entiende.
+fn en_otras_unidades(texto: &str, u: Unidades) -> Option<String> {
+    use serde_json::Value;
+    let mut v: Value = serde_json::from_str(texto).ok()?;
+    let (ex, ey, k) = (u.ex as f64, u.ey as f64, u.media() as f64);
+    let por = |e: &mut serde_json::Map<String, Value>, clave: &str, f: f64| {
+        if let Some(n) = e.get(clave).and_then(Value::as_f64) {
+            e.insert(clave.into(), Value::from(n * f));
+        }
+    };
+    let puntos = |l: &mut Value| {
+        for p in l.as_array_mut().into_iter().flatten() {
+            match p {
+                Value::Array(a) if a.len() >= 2 => {
+                    let (x, y) = (a[0].as_f64().unwrap_or(0.0), a[1].as_f64().unwrap_or(0.0));
+                    a[0] = Value::from(x * ex);
+                    a[1] = Value::from(y * ey);
+                }
+                Value::Object(o) => {
+                    let (x, y) = (o.get("x").and_then(Value::as_f64), o.get("y").and_then(Value::as_f64));
+                    if let (Some(x), Some(y)) = (x, y) {
+                        o.insert("x".into(), Value::from(x * ex));
+                        o.insert("y".into(), Value::from(y * ey));
+                    }
+                }
+                _ => {}
+            }
+        }
+    };
+    for e in v.get_mut("elements")?.as_array_mut()?.iter_mut() {
+        let Some(e) = e.as_object_mut() else { continue };
+        if let (Some(x), Some(y)) = (e.get("x").and_then(Value::as_f64), e.get("y").and_then(Value::as_f64)) {
+            e.insert("x".into(), Value::from(x * ex + u.dx as f64));
+            e.insert("y".into(), Value::from(y * ey + u.dy as f64));
+        }
+        por(e, "width", ex);
+        por(e, "height", ey);
+        por(e, "strokeWidth", k);
+        por(e, "fontSize", k);
+        if let Some(l) = e.get_mut("points") {
+            puntos(l);
+        }
+        if let Some(Value::Array(anillos)) = e.get_mut("huecos") {
+            anillos.iter_mut().for_each(puntos);
+        }
+    }
+    serde_json::to_string(&v).ok()
+}
+
+/// **Junta lo de aqui con lo que hay ahora en el disco**, como junta la
+/// sincronizacion (`pixpin_sincro::fusion::json`, la de Android): `base` es
+/// la capa tal como se leyo o escribio aqui la ultima vez, `mio` lo que
+/// se escribiria ahora y `suyo` lo que dejo la sincronizacion mientras el
+/// plano estaba abierto. Lo nuevo de cualquiera entra; lo que uno borro se
+/// va si el otro no lo toco. `None` si `mio` o `suyo` no se entienden.
+fn juntar_con_el_disco(base: Option<&str>, mio: &str, suyo: &str) -> Option<String> {
+    use pixpin_sincro::canonico::Json;
+    use pixpin_sincro::fusion;
+    // Los tres por el mismo camino: un mismo numero escrito de dos maneras
+    // (`1.0E-7`, `1e-7`) seria un cambio que no hizo nadie.
+    let json = |t: &str| serde_json::from_str::<serde_json::Value>(t).ok().map(|v| Json::de_valor(&v));
+    let (mio, suyo) = (json(mio)?, json(suyo)?);
+    let base = base.and_then(json);
+    let junto = fusion::json(base.as_ref(), Some(&mio), Some(&suyo), &fusion::Criterio::default(), &mut fusion::Cuenta::default())?;
+    Some(junto.a_texto())
 }
 
 /// Si es una cota o un marco del visor (no anotado a mano).
@@ -295,7 +381,19 @@ pub struct MotorDelPlano {
     /// letra): asi se sabe que nacio o que se le cambio el tamano desde el
     /// panel, y solo eso se pone a la escala del plano.
     visto: std::collections::HashMap<u64, (f32, Option<f32>)>,
+    /// La unidad de antes del plano (para una capa sin `.hoja`).
+    antigua: Encaje,
+    /// **La capa del disco tal como se leyo o escribio aqui la ultima vez**
+    /// y su [`Sello`]: si el sello cambia, la sincronizacion trajo algo con
+    /// el plano abierto, y con esto se junta (13-oct-2026).
+    base: Option<String>,
+    sello: Sello,
+    /// Cuando se miro el disco por ultima vez (se mira sin prisa).
+    mirado: Option<std::time::Instant>,
 }
+
+/// Cada cuanto, como mucho, se mira si el disco cambio mientras se ve el plano.
+const MIRAR_EL_DISCO: std::time::Duration = std::time::Duration::from_millis(700);
 
 /// Los grosores que pone el motor (fino, medio y grueso de las formas, del
 /// lapiz y del resaltador), al nacer algo o al elegirlos en el panel: solo
@@ -321,11 +419,48 @@ fn medidas_de(e: &pixpin_motor2d::Elemento) -> (f32, Option<f32>) {
 
 impl MotorDelPlano {
     pub fn nuevo(rutas: Rutas, m: &Modelo) -> MotorDelPlano {
+        let (base, sello) = (pixpin_proyecto::anotado::leer(&rutas.tinta), sello_de(&rutas));
         let (capa, memoria, fichero) = leer_capa(&rutas, m);
         let mut tinta = Tinta::nueva();
         tinta.hoja = Some(0);
         let visto = capa.escena.elementos.iter().map(|e| (e.id, medidas_de(e))).collect();
-        MotorDelPlano { rutas, capa, tinta, caja: m.caja, memoria, fichero, motor: None, visto }
+        let antigua = Encaje::de_unidad(pixpin_cad::anotado::unidad_antigua(m));
+        MotorDelPlano { rutas, capa, tinta, caja: m.caja, memoria, fichero, motor: None, visto, antigua, base, sello, mirado: None }
+    }
+
+    /// **Relee la capa del disco** (lo que dejo la sincronizacion), con su
+    /// `.hoja`, y la toma como base. Lo elegido se suelta: los numeros de la
+    /// escena son otros.
+    fn releer(&mut self) {
+        let fichero = encaje_del_fichero(&self.rutas, self.caja, &self.antigua, &self.memoria);
+        self.base = pixpin_proyecto::anotado::leer(&self.rutas.tinta);
+        self.sello = sello_de(&self.rutas);
+        self.capa = Capa::leer_en(&self.rutas.tinta, unidades_entre(&self.memoria, &fichero));
+        self.fichero = fichero;
+        self.visto = self.capa.escena.elementos.iter().map(|e| (e.id, medidas_de(e))).collect();
+        self.tinta.gesto.seleccion.limpiar();
+        self.tinta.gesto.lazo = None;
+    }
+
+    /// **Lo que trajo la sincronizacion, a la vista** (13-oct-2026): si la
+    /// capa cambio en el disco y aqui no hay nada sin guardar, se relee. Dice
+    /// si releyo. Con algo a medias no: eso se junta al guardar.
+    pub fn al_dia(&mut self) -> bool {
+        if self.capa.sucia || self.tinta.gesto.esta_escribiendo() || sello_de(&self.rutas) == self.sello {
+            return false;
+        }
+        self.releer();
+        true
+    }
+
+    /// [`MotorDelPlano::al_dia`], sin mirar el disco mas de una vez cada
+    /// [`MIRAR_EL_DISCO`] (se llama al pintar cada fotograma).
+    fn mirar_el_disco(&mut self) {
+        if self.mirado.is_some_and(|t| t.elapsed() < MIRAR_EL_DISCO) {
+            return;
+        }
+        self.mirado = Some(std::time::Instant::now());
+        self.al_dia();
     }
 
     /// **Los tamanos del lienzo, a la escala del plano** (lo pidio el usuario
@@ -351,6 +486,10 @@ impl MotorDelPlano {
     /// hoja al lado se leeria con otra escala, como en Android) y luego la
     /// capa, en las unidades del fichero. Un plano sin nada hecho no deja
     /// ficheros.
+    ///
+    /// **Si la capa cambio en el disco desde que se leyo** (la trajo la
+    /// sincronizacion con el plano abierto), se junta con ella y no se pisa
+    /// (ver [`MotorDelPlano::guardar_juntando`]).
     fn guardar(&mut self) {
         if !self.capa.sucia {
             return;
@@ -359,15 +498,58 @@ impl MotorDelPlano {
             self.capa.sucia = false;
             return;
         }
-        let hecho = escribir_hoja(&self.rutas.hoja, self.fichero.hoja(self.caja)).and_then(|()| {
-            if let Some(d) = self.rutas.tinta.parent() {
-                std::fs::create_dir_all(d)?;
+        let hecho = if self.rutas.tinta.is_file() && sello_de(&self.rutas) != self.sello {
+            self.guardar_juntando()
+        } else {
+            escribir_hoja(&self.rutas.hoja, self.fichero.hoja(self.caja)).and_then(|()| {
+                if let Some(d) = self.rutas.tinta.parent() {
+                    std::fs::create_dir_all(d)?;
+                }
+                self.capa.guardar(&self.rutas.tinta)
+            })
+        };
+        match hecho {
+            Ok(()) => {
+                self.base = pixpin_proyecto::anotado::leer(&self.rutas.tinta);
+                self.sello = sello_de(&self.rutas);
             }
-            self.capa.guardar(&self.rutas.tinta)
-        });
-        if let Err(e) = hecho {
-            tracing::warn!(?e, ruta = %self.rutas.tinta.display(), "no se pudo guardar lo anotado en el plano");
+            Err(e) => tracing::warn!(?e, ruta = %self.rutas.tinta.display(), "no se pudo guardar lo anotado en el plano"),
         }
+    }
+
+    /// **Guardar sin pisar lo que llego** (13-oct-2026). Antes se escribia la
+    /// capa leida al abrir mas lo de aqui: lo que el movil mando mientras
+    /// tanto se perdia aqui y, en la vuelta siguiente, tambien alli (la base
+    /// lo tenia y el PC ya no: borrado). Ahora lo de aqui se escribe aparte,
+    /// se pasa a las unidades de la `.hoja` del disco si son otras, y se
+    /// junta con lo del disco con la regla de la sincronizacion. Luego se
+    /// relee lo junto: se sigue anotando sobre ello.
+    fn guardar_juntando(&mut self) -> std::io::Result<()> {
+        let aparte = self.rutas.tinta.with_extension("excalidraw.mio");
+        self.capa.guardar(&aparte)?;
+        let mio = std::fs::read_to_string(&aparte);
+        let _ = std::fs::remove_file(&aparte);
+        let mio = mio?;
+        let fichero = encaje_del_fichero(&self.rutas, self.caja, &self.antigua, &self.memoria);
+        let paso = unidades_entre(&self.fichero, &fichero);
+        let (base, mio) = if paso == Unidades::DEL_PC {
+            (self.base.clone(), Some(mio))
+        } else {
+            (self.base.as_deref().and_then(|b| en_otras_unidades(b, paso)), en_otras_unidades(&mio, paso))
+        };
+        let suyo = pixpin_proyecto::anotado::leer(&self.rutas.tinta).unwrap_or_default();
+        let junto = mio.as_deref().and_then(|m| juntar_con_el_disco(base.as_deref(), m, &suyo));
+        let Some(junto) = junto else {
+            // Algo no se entiende (el disco danado): lo de aqui, como antes.
+            tracing::warn!(ruta = %self.rutas.tinta.display(), "la capa del disco no se entiende: se escribe la de aqui");
+            escribir_hoja(&self.rutas.hoja, self.fichero.hoja(self.caja))?;
+            self.capa.sucia = true;
+            return self.capa.guardar(&self.rutas.tinta);
+        };
+        escribir_hoja(&self.rutas.hoja, fichero.hoja(self.caja))?;
+        pixpin_sincro::disco::escribir_atomico(&self.rutas.tinta, junto.as_bytes())?;
+        self.releer();
+        Ok(())
     }
 
     /// Pinta lo anotado (y, anotando, la barra y el panel) con `p`, ya puesto
@@ -448,6 +630,10 @@ impl Anotador for MotorDelPlano {
     }
 
     fn pintar(&mut self, d3d: &ID3D11Device, destino: &ID3D11Texture2D, v: &VistaPlano, anotando: bool) {
+        // Lo que trajo la sincronizacion, sin cerrar el plano.
+        if !anotando {
+            self.mirar_el_disco();
+        }
         if self.capa.vacia() && !anotando {
             return;
         }
