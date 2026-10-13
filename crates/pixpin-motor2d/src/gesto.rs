@@ -429,6 +429,15 @@ pub struct Gesto {
     pub pedir_la_medida: bool,
     /// El barrido de la bolita en curso, para pasarla y pintarla.
     pub bolita: crate::bolita::Bolita,
+    /// **El modo guia** (`modoReferencia` del movil): lo que se traza ahora
+    /// es **linea de referencia**, no dibujo, con cualquier herramienta. Es
+    /// un interruptor y no una lista de herramientas paralela: las de guia
+    /// tienen que ser exactamente las mismas que las normales.
+    ///
+    /// Y decide en que mundo se trabaja (`impacto::Mundo`): dentro solo se
+    /// eligen y se borran guias; fuera, solo dibujo. Se cambia con
+    /// [`Gesto::poner_modo_guia`], que suelta lo elegido.
+    modo_guia: bool,
 }
 
 impl Default for Gesto {
@@ -462,6 +471,7 @@ impl Default for Gesto {
             serie_de_punto: crate::puntos_etiquetados::SerieDePunto::Mayusculas,
             pedir_la_medida: true,
             bolita: crate::bolita::Bolita::default(),
+            modo_guia: false,
         }
     }
 }
@@ -511,6 +521,61 @@ impl Gesto {
 impl Gesto {
     pub fn nuevo() -> Self {
         Self::default()
+    }
+
+    /// Si el modo guia esta puesto.
+    pub fn modo_guia(&self) -> bool {
+        self.modo_guia
+    }
+
+    /// **Pone o quita el modo guia.** Lo elegido deja de ser tocable al
+    /// cambiar de mundo, asi que se suelta: los tiradores se quedarian
+    /// encima de algo que ya no responde, que es peor que no verlos (el
+    /// `set` de `modoReferencia` del movil). Devuelve si cambio.
+    pub fn poner_modo_guia(&mut self, si: bool) -> bool {
+        if self.modo_guia == si {
+            return false;
+        }
+        self.modo_guia = si;
+        self.seleccion.limpiar();
+        true
+    }
+
+    /// **Esconde o ensena las lineas de referencia** (`alternarReferencias`
+    /// del movil). No borra nada. Lo escondido no puede quedar elegido: los
+    /// tiradores flotarian sobre algo que ya no se ve.
+    pub fn alternar_referencias(&mut self, escena: &mut Escena) {
+        escena.referencias_visibles = !escena.referencias_visibles;
+        if !escena.referencias_visibles {
+            let quedan: Vec<u64> = self
+                .seleccion
+                .ids()
+                .iter()
+                .copied()
+                .filter(|id| escena.buscar(*id).is_none_or(|e| !e.extras.referencia))
+                .collect();
+            self.seleccion.poner_todos(quedan);
+        }
+    }
+
+    /// El mundo en el que pica este gesto en `escena` (ver `impacto::Mundo`).
+    pub fn mundo(&self, escena: &Escena) -> crate::impacto::Mundo {
+        crate::impacto::Mundo {
+            guias: self.modo_guia,
+            guias_visibles: escena.referencias_visibles,
+        }
+    }
+
+    /// **Cuanto tiene que quedarse quieto el cursor** para el gesto de
+    /// pararse: el medio segundo del lapiz, o el segundo entero del grafito
+    /// (`ESPERA_DEL_GRAFITO` del movil, v0.92: escribiendo, la mano se para
+    /// a cada letra).
+    pub fn espera_de_la_forma_ms(&self) -> u64 {
+        if self.herramienta == Herramienta::Grafito {
+            crate::forma_rapida::ESPERA_DEL_GRAFITO_MS
+        } else {
+            crate::forma_rapida::ESPERA_PARA_LA_FORMA_MS
+        }
     }
 
     pub fn en_reposo(&self) -> bool {
@@ -593,7 +658,18 @@ impl Gesto {
             return None;
         };
         let es_resaltador = matches!(e.figura, Figura::Resaltador { .. });
-        let forma = al_pararse(puntos, 1.0 / escala.max(0.0001))?;
+        let zoom = 1.0 / escala.max(0.0001);
+        let forma = al_pararse(puntos, zoom)?;
+        // **Escribiendo con grafito, una letra no es una raya** (v0.92 del
+        // movil): la recta, la «L» y la forma reconocida piden un trazo que
+        // en pantalla mida al menos `TRAZO_DE_FIGURA_DEL_GRAFITO_PX`. El
+        // compas no: clavar la punta sin moverla no pasa escribiendo.
+        if self.herramienta == Herramienta::Grafito
+            && !matches!(forma, AlPararse::Compas { .. })
+            && !crate::forma_rapida::trazo_de_figura_del_grafito(puntos, zoom)
+        {
+            return None;
+        }
         // **La figura del resaltador mide lo que media su tinta.** Con el
         // grosor de las lineas (1/2/4) una raya de resaltador grueso (15 de
         // tinta) se quedaba en 4 al pararse: «delgadisima». El movil tiene el
@@ -718,6 +794,12 @@ impl Gesto {
     }
 
     pub fn evento(&mut self, ev: EventoGesto, escena: &mut Escena, escala: f32) -> Respuesta {
+        // Todo lo que elige, mueve o borra pica en el mundo del modo guia.
+        let mundo = self.mundo(escena);
+        crate::impacto::con_mundo(mundo, || self.evento_en_su_mundo(ev, escena, escala))
+    }
+
+    fn evento_en_su_mundo(&mut self, ev: EventoGesto, escena: &mut Escena, escala: f32) -> Respuesta {
         match ev {
             // Aqui el punto va CRUDO, a proposito: `pulsar` criba con el
             // punto de verdad y solo engancha una vez decidido que la rama
@@ -819,7 +901,13 @@ impl Gesto {
                 }
             }
             EventoGesto::SeleccionarTodo => {
-                let vivos: Vec<u64> = escena.visibles().map(|e| e.id).collect();
+                // Todo lo de este mundo: fuera del modo guia, sin las guias.
+                let mundo = crate::impacto::mundo();
+                let vivos: Vec<u64> = escena
+                    .visibles()
+                    .filter(|e| mundo.admite(e))
+                    .map(|e| e.id)
+                    .collect();
                 self.seleccion.poner_todos(vivos);
                 Respuesta {
                     region: Region::Todo,
@@ -1056,7 +1144,7 @@ impl Gesto {
             // Rectangulo y todo lo demas que deje rastro.
             _ => Figura::Rectangulo,
         };
-        Elemento {
+        let mut e = Elemento {
             id: 0, // lo pone `Escena::anadir`
             figura,
             x: p.x,
@@ -1134,7 +1222,15 @@ impl Gesto {
             } else {
                 Default::default()
             },
+        };
+        // Lo que se traza con el modo guia puesto es guia, sea con lo que sea.
+        e.extras.referencia = self.modo_guia;
+        // **El grafito nace con la dureza elegida** (`dureza =
+        // scene.style.dureza` del movil). HB no se apunta.
+        if e.material.es_grafito() {
+            e.extras.dureza = self.estilo.dureza.para_guardar();
         }
+        e
     }
 
     /// Que cursor toca en este punto, estando en reposo.

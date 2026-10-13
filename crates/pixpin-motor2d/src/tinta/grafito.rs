@@ -37,6 +37,17 @@
 //! perfecto»). Esta cuenta es **la del movil, bit a bit**: con la misma casilla
 //! sale lo mismo en los dos aparatos.
 //!
+//! ## Escritura libre y siete durezas (v0.91-v0.92 del movil)
+//!
+//! El trazo **no se corrige**: van las muestras tal cual y entre una y otra la
+//! curva que pasa por todas (`curva_del_trazo`, la `CurvaDelTrazo` del movil),
+//! no rectas que se notan en las esquinas ni el `asentar_lo_rapido` de antes,
+//! que aplanaba lo rapido. Y la mina tiene dureza (`Dureza`, 4H ... 8B, la
+//! clave `dureza` del elemento): engorda el sello, carga cada estampa y cambia
+//! lo que coge el papel con los mismos tres numeros que el movil, asi que lo
+//! que alli es 8B aqui tambien lo es, en pantalla y en todo lo que se exporta
+//! (todo sale de este mapa).
+//!
 //! ## Se cuece una vez
 //!
 //! Un trazo son cientos o miles de sellos. Se estampan una vez en un mapa propio
@@ -86,6 +97,211 @@ pub const PESO_DE_LOS_LAPICES: usize = 96 * 1024 * 1024;
 /// La rejilla encaja en multiplos de esto: asi dos trazos vecinos comparten
 /// casillas y el diente del papel es el mismo debajo de los dos.
 pub const ENCAJE_DE_LA_REJILLA: f32 = 4.0;
+
+/// **La dureza de la mina** (v0.91 del movil, `DurezaDeGrafito` de
+/// `Element.kt`): la escala de siempre, de la 4H —mina fina, trazo claro, el
+/// grano del papel se nota— a la 8B —mina gorda, trazo oscuro que tapa el
+/// grano y se carga enseguida al repasar—. HB es el punto medio y es como
+/// pintaba el grafito antes de haberla.
+///
+/// Tres numeros por dureza, todos respecto a HB y **los del movil, tal
+/// cual**: `oscuro` multiplica la carga de cada sello, `gordo` el ancho de la
+/// mina y `agarre` lo que coge cada casilla del papel (menos = mas grano).
+/// Con los mismos numeros, lo que el telefono pinta 8B se ve 8B aqui.
+///
+/// En el fichero va en la clave `dureza` del elemento («4H», «2B»...). HB no
+/// se escribe: el movil lee la clave ausente como HB, y asi un trazo de
+/// fabrica no estrena una clave que no dice nada.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize,
+)]
+pub enum Dureza {
+    H4,
+    H2,
+    #[default]
+    Hb,
+    B2,
+    B4,
+    B6,
+    B8,
+}
+
+impl Dureza {
+    /// Las siete, de la mas dura a la mas blanda: el orden del panel.
+    pub const TODAS: [Dureza; 7] = [
+        Dureza::H4,
+        Dureza::H2,
+        Dureza::Hb,
+        Dureza::B2,
+        Dureza::B4,
+        Dureza::B6,
+        Dureza::B8,
+    ];
+
+    /// Su nombre, que es tambien la palabra del fichero.
+    pub fn rotulo(self) -> &'static str {
+        match self {
+            Dureza::H4 => "4H",
+            Dureza::H2 => "2H",
+            Dureza::Hb => "HB",
+            Dureza::B2 => "2B",
+            Dureza::B4 => "4B",
+            Dureza::B6 => "6B",
+            Dureza::B8 => "8B",
+        }
+    }
+
+    /// La dureza de una palabra del fichero; `None` si no es ninguna (una de
+    /// una version futura del movil, que entonces vuelve intacta).
+    pub fn desde_rotulo(s: &str) -> Option<Dureza> {
+        Dureza::TODAS.into_iter().find(|d| d.rotulo() == s)
+    }
+
+    /// `(oscuro, gordo, agarre)`, los de `Element.kt`.
+    fn numeros(self) -> (f32, f32, f32) {
+        match self {
+            Dureza::H4 => (0.42, 0.70, 0.55),
+            Dureza::H2 => (0.60, 0.80, 0.70),
+            Dureza::Hb => (1.00, 1.00, 1.00),
+            Dureza::B2 => (1.25, 1.10, 1.15),
+            Dureza::B4 => (1.55, 1.25, 1.30),
+            Dureza::B6 => (1.85, 1.40, 1.45),
+            Dureza::B8 => (2.20, 1.55, 1.60),
+        }
+    }
+
+    /// Lo que multiplica la carga de cada sello.
+    pub fn oscuro(self) -> f32 {
+        self.numeros().0
+    }
+
+    /// Lo que multiplica el ancho de la mina.
+    pub fn gordo(self) -> f32 {
+        self.numeros().1
+    }
+
+    /// Lo que multiplica lo que coge cada casilla del papel.
+    pub fn agarre(self) -> f32 {
+        self.numeros().2
+    }
+
+    /// La de un elemento: la suya, o HB si no dice ninguna.
+    pub fn de(e: &Elemento) -> Dureza {
+        e.extras.dureza.unwrap_or_default()
+    }
+
+    /// Lo que se guarda en el elemento: HB no se apunta (ver la cabecera).
+    pub fn para_guardar(self) -> Option<Dureza> {
+        (self != Dureza::Hb).then_some(self)
+    }
+}
+
+/// Como mucho, tantos trocitos entre dos muestras (`TOPE_POR_TRAMO` de
+/// `CurvaDelTrazo.kt`): una muestra suelta muy lejos no dispara la cuenta.
+const TOPE_POR_TRAMO: usize = 48;
+
+/// **Entre muestra y muestra, curva y no recta** (`CurvaDelTrazo` del movil,
+/// v0.91: «dibujo una zona curva y sale como un poligono, se nota en las
+/// esquinas»).
+///
+/// Una **Catmull-Rom centripeta** que **pasa por todas y cada una de las
+/// muestras**: no mueve ninguna —no es alisar ni corregir, lo trazado sigue
+/// ahi tal cual («el grafito es escritura libre»)— y solo decide como se va
+/// de una a la siguiente. La centripeta (alfa = 1/2) es la que no hace lazos
+/// ni se pasa de largo cuando dos muestras caen muy juntas y la siguiente
+/// lejos, que es justo lo que pasa al frenar.
+///
+/// Devuelve la curva cada `paso` unidades como mucho, sus presiones
+/// repartidas igual, y **en que punto de la curva cae cada muestra** (sin las
+/// repetidas): quien estampa el trazo en curso lo necesita para saber hasta
+/// donde no va a cambiar nada al llegar la muestra siguiente.
+pub fn curva_del_trazo(
+    puntos: &[[f64; 2]],
+    presiones: Option<&[f32]>,
+    paso: f64,
+) -> (Vec<[f64; 2]>, Option<Vec<f32>>, Vec<usize>) {
+    // Fuera las muestras repetidas: dos iguales seguidas no dicen hacia
+    // donde se va.
+    let presiones = presiones.filter(|p| p.len() == puntos.len());
+    let mut pts: Vec<[f64; 2]> = Vec::with_capacity(puntos.len());
+    let mut prs: Option<Vec<f32>> = presiones.map(|_| Vec::with_capacity(puntos.len()));
+    for (i, p) in puntos.iter().enumerate() {
+        if let Some(u) = pts.last()
+            && (p[0] - u[0]).hypot(p[1] - u[1]) < 1e-6
+        {
+            continue;
+        }
+        pts.push(*p);
+        if let (Some(v), Some(pr)) = (prs.as_mut(), presiones) {
+            v.push(pr[i]);
+        }
+    }
+    if pts.len() < 3 || paso <= 0.0 || paso.is_nan() {
+        let indices = (0..pts.len()).collect();
+        return (pts, prs, indices);
+    }
+    let mut sale = Vec::with_capacity(pts.len() * 4);
+    let mut sale_pr = prs.as_ref().map(|_| Vec::with_capacity(pts.len() * 4));
+    let mut indices = Vec::with_capacity(pts.len());
+    sale.push(pts[0]);
+    indices.push(0);
+    if let (Some(v), Some(pr)) = (sale_pr.as_mut(), prs.as_ref()) {
+        v.push(pr[0]);
+    }
+    for i in 0..pts.len() - 1 {
+        let (p1, p2) = (pts[i], pts[i + 1]);
+        // En las puntas no hay vecino: se refleja el que hay, asi la curva
+        // sale derecha hacia fuera.
+        let p0 = if i > 0 {
+            pts[i - 1]
+        } else {
+            [2.0 * p1[0] - p2[0], 2.0 * p1[1] - p2[1]]
+        };
+        let p3 = if i + 2 < pts.len() {
+            pts[i + 2]
+        } else {
+            [2.0 * p2[0] - p1[0], 2.0 * p2[1] - p1[1]]
+        };
+        let largo = (p2[0] - p1[0]).hypot(p2[1] - p1[1]);
+        let n = ((largo / paso).ceil() as usize).clamp(1, TOPE_POR_TRAMO);
+        for k in 1..=n {
+            let u = k as f64 / n as f64;
+            // La ultima de cada tramo es la muestra misma, sin cuentas que la
+            // muevan un pelo.
+            sale.push(if k == n {
+                p2
+            } else {
+                centripeta(p0, p1, p2, p3, u)
+            });
+            if let (Some(v), Some(pr)) = (sale_pr.as_mut(), prs.as_ref()) {
+                v.push(pr[i] + (pr[i + 1] - pr[i]) * u as f32);
+            }
+        }
+        indices.push(sale.len() - 1);
+    }
+    (sale, sale_pr, indices)
+}
+
+/// Un punto del tramo `p1 -> p2` en `u` (0..1), con la forma de Barry y
+/// Goldman (`CurvaDelTrazo.centripeta`).
+pub fn centripeta(p0: [f64; 2], p1: [f64; 2], p2: [f64; 2], p3: [f64; 2], u: f64) -> [f64; 2] {
+    let nudo = |a: [f64; 2], b: [f64; 2]| (b[0] - a[0]).hypot(b[1] - a[1]).sqrt().max(1e-4);
+    let t0 = 0.0;
+    let t1 = t0 + nudo(p0, p1);
+    let t2 = t1 + nudo(p1, p2);
+    let t3 = t2 + nudo(p2, p3);
+    let t = t1 + (t2 - t1) * u;
+    let mezcla = |a: [f64; 2], b: [f64; 2], ta: f64, tb: f64| {
+        let (wa, wb) = ((tb - t) / (tb - ta), (t - ta) / (tb - ta));
+        [a[0] * wa + b[0] * wb, a[1] * wa + b[1] * wb]
+    };
+    let a1 = mezcla(p0, p1, t0, t1);
+    let a2 = mezcla(p1, p2, t1, t2);
+    let a3 = mezcla(p2, p3, t2, t3);
+    let b1 = mezcla(a1, a2, t0, t2);
+    let b2 = mezcla(a2, a3, t1, t3);
+    mezcla(b1, b2, t1, t2)
+}
 
 /// **Un trazo de grafito cocido**: su mapa de casillas, tal como se ve.
 #[derive(Debug, Clone, PartialEq)]
@@ -637,12 +853,12 @@ pub fn diente(x: i32, y: i32) -> (f32, f32) {
 
 /// Pasa el mapa premultiplicado por el diente del papel y lo devuelve **sin
 /// premultiplicar**, listo para subir.
-fn pasar_el_diente(l: &Lienzo, x0: f32, y0: f32, finura: f32) -> Vec<u8> {
+fn pasar_el_diente(l: &Lienzo, x0: f32, y0: f32, finura: f32, agarre: f32) -> Vec<u8> {
     let mut salida = vec![0u8; l.px.len()];
     // Solo por donde se pinto: lo demas ya esta a cero.
     let origen = origen_en_casillas(x0, y0, finura);
     for r in l.tocado() {
-        diente_en(l, r, origen, &mut salida);
+        diente_en(l, r, origen, agarre, &mut salida);
     }
     salida
 }
@@ -696,7 +912,10 @@ impl Rect {
 
 /// **El diente del papel en un trozo del mapa**: escribe `salida` en `r`
 /// entero, tambien lo que queda vacio, que es lo que borra una cola vieja.
-fn diente_en(l: &Lienzo, r: Rect, (ox, oy): (i32, i32), salida: &mut [u8]) {
+///
+/// `agarre` es el de la dureza (`Dureza::agarre`): la mina dura coge menos de
+/// cada casilla (mas grano) y la blanda tapa el grano.
+fn diente_en(l: &Lienzo, r: Rect, (ox, oy): (i32, i32), agarre: f32, salida: &mut [u8]) {
     // `(1 - a)^coge` es `exp(coge * ln(1 - a))`, y el logaritmo solo tiene
     // 255 valores: sacado a una tabla, cada pixel paga una exponencial y no
     // una potencia, que en un fondo de grafito es casi todo lo que cuesta.
@@ -720,6 +939,7 @@ fn diente_en(l: &Lienzo, r: Rect, (ox, oy): (i32, i32), salida: &mut [u8]) {
             let sin = |c: u8| ((c as u32 * 255 + a / 2) / a).min(255) as f32;
             let (r, g, b) = (sin(l.px[i]), sin(l.px[i + 1]), sin(l.px[i + 2]));
             let (coge, tono) = diente(x as i32 + ox, y as i32 + oy);
+            let coge = coge * agarre;
             // Capas que se suman: `1 - (1 - a)^coge`. Cada repaso le anade un
             // poco a la vacia y otro poco a la tenue.
             let carga = if a >= 255 {
@@ -777,6 +997,7 @@ fn huella_de(e: &Elemento) -> u64 {
         }
     }
     mete(e.estilo_relleno as u64);
+    mete(Dureza::de(e) as u64);
     if let Some(p) = e.puntos() {
         mete(p.len() as u64);
         if let Some(u) = p.last() {
@@ -843,10 +1064,16 @@ fn rematar(c: &mut Cocido, e: &Elemento) {
 /// Lo que hace falta para estampar un trazo, sacado de una vez del elemento.
 struct Datos {
     crudos: Vec<Punto2>,
-    /// Los puntos ya asentados (F4).
+    /// La curva que pasa por las muestras (`curva_del_trazo`).
     puntos: Vec<[f64; 2]>,
     presiones: Option<Vec<f32>>,
+    /// El punto de la curva en el que cae la penultima muestra: lo de antes
+    /// ya no cambia aunque llegue otra (ver `lo_asentado`).
+    fijo_hasta: usize,
     gordo: f32,
+    /// La dureza de la mina: su carga y su agarre (el grueso ya va en
+    /// `gordo`).
+    dureza: Dureza,
     tinta: [f32; 3],
     largo: f64,
     semilla: u64,
@@ -883,24 +1110,42 @@ fn datos_del_trazo(e: &Elemento) -> Option<Datos> {
     } else {
         e.grosor / super::FACTOR_VARIABLE
     };
-    // Lo tirado deprisa, derecho (F4): el error del digitalizador no es
-    // pulso. **Dos veces**, como `cocerElLapiz`: el grafito lo pide mas que
-    // la tinta, porque cada onda se ve como una fila de sellos torcida.
-    let mut puntos: Vec<[f64; 2]> = crudos.iter().map(|p| [p.x as f64, p.y as f64]).collect();
-    super::freehand::asentar_lo_rapido(&mut puntos);
-    super::freehand::asentar_lo_rapido(&mut puntos);
+    let dureza = Dureza::de(e);
+    let gordo = (ancho * GORDO_DEL_LAPIZ * dureza.gordo()).max(1.5);
+    // **Sin corregir nada** (v0.91 del movil, «el grafito es escritura
+    // libre»). Antes pasaba dos veces por `asentar_lo_rapido`, que acerca
+    // cada muestra rapida al medio de sus vecinas: aplanaba las curvas
+    // rapidas en tramos rectos —«un poligono, se nota en las esquinas»— y el
+    // trazo no quedaba donde se puso. Ahora van **las muestras tal cual**, y
+    // entre una y otra la curva que pasa por todas, cada `gordo * 0,3`.
+    let muestras: Vec<[f64; 2]> = crudos.iter().map(|p| [p.x as f64, p.y as f64]).collect();
+    let constante = es_constante(e);
+    // Constante manda sobre el lapiz de verdad: el mando dice «sin presion»
+    // y asi sale, se pinte con lo que se pinte.
+    let con_presion = (!constante && presiones.len() == muestras.len()).then_some(&presiones[..]);
+    let (puntos, presiones, indices) =
+        curva_del_trazo(&muestras, con_presion, (gordo as f64 * 0.3).max(0.75));
+    if puntos.len() < 2 {
+        return None;
+    }
     let largo = puntos
         .windows(2)
         .map(|w| ((w[1][0] - w[0][0]).powi(2) + (w[1][1] - w[0][1]).powi(2)).sqrt())
         .sum();
-    let constante = es_constante(e);
+    // La penultima muestra: el tramo que sale de ella cambia cuando llega
+    // otra (su vecino de despues deja de ser un reflejo), los de antes no.
+    let fijo_hasta = indices
+        .len()
+        .checked_sub(2)
+        .and_then(|k| indices.get(k).copied())
+        .unwrap_or(0);
     Some(Datos {
         crudos: crudos.clone(),
-        // Constante manda sobre el lapiz de verdad: el mando dice «sin
-        // presion» y asi sale, se pinte con lo que se pinte.
-        presiones: (!constante && presiones.len() == puntos.len()).then(|| presiones.clone()),
+        presiones,
         puntos,
-        gordo: (ancho * GORDO_DEL_LAPIZ).max(1.5),
+        fijo_hasta,
+        gordo,
+        dureza,
         tinta: a_bytes(e.trazo),
         largo,
         semilla: e.id,
@@ -910,8 +1155,13 @@ fn datos_del_trazo(e: &Elemento) -> Option<Datos> {
 
 /// La carga del pincel para una presion `p`: *Opacity* 79 % por una carga
 /// que sube con la presion. En bytes, como el `Paint.alpha` del movil.
-fn carga_del_pincel(p: f32) -> f32 {
-    ((255.0 * OPACIDAD_DEL_LAPIZ * (0.16 + 0.34 * p)) as i32).clamp(1, 255) as f32 / 255.0
+///
+/// La dureza la multiplica (`dureza.oscuro` del movil): la 8B carga mas de
+/// dos veces lo que la HB en cada sello, y la 4H menos de la mitad.
+fn carga_del_pincel(p: f32, dureza: Dureza) -> f32 {
+    ((255.0 * OPACIDAD_DEL_LAPIZ * (0.16 + 0.34 * p) * dureza.oscuro()) as i32).clamp(1, 255)
+        as f32
+        / 255.0
 }
 
 /// El lado de un sello: el cuerpo, atado a la presion, y la punta afinada.
@@ -1027,7 +1277,12 @@ impl Paseo {
                 };
                 let lado = lado_del_sello(d.gordo, p, punta);
                 let grados = self.azar.flotante() * 360.0;
-                estampa(((self.ax, self.ay), lado, grados, carga_del_pincel(p)));
+                estampa((
+                    (self.ax, self.ay),
+                    lado,
+                    grados,
+                    carga_del_pincel(p, d.dureza),
+                ));
             }
             self.pendiente += tramo;
             self.recorrido += tramo as f64;
@@ -1041,15 +1296,15 @@ impl Paseo {
 /// **Lo que ya no va a cambiar de un trazo que crece**: hasta que tramo y
 /// hasta que recorrido.
 ///
-/// Un punto nuevo al final mueve, al asentar lo rapido (seis pasadas de un
-/// vecino cada una), hasta seis puntos hacia atras; y la punta afinada y la
-/// presion simulada miran lo que falta hasta el final en `LARGO_DE_LA_PUNTA`
-/// gruesos. Lo que queda antes de las dos cosas sale igual lo estampe quien
-/// lo estampe y cuando sea: se estampa una vez y ya.
+/// Una muestra nueva al final cambia, en la curva, solo el tramo que sale de
+/// la penultima (su vecino de despues deja de ser un reflejo; ver
+/// `curva_del_trazo`); y la punta afinada y la presion simulada miran lo que
+/// falta hasta el final en `LARGO_DE_LA_PUNTA` gruesos. Lo que queda antes de
+/// las dos cosas sale igual lo estampe quien lo estampe y cuando sea: se
+/// estampa una vez y ya.
 fn lo_asentado(d: &Datos) -> (usize, f64) {
-    let hasta = d.puntos.len().saturating_sub(8);
     let cola = (d.gordo * LARGO_DE_LA_PUNTA.max(3.0)) as f64;
-    (hasta, d.largo - cola)
+    (d.fijo_hasta, d.largo - cola)
 }
 
 /// Estampa `s` en `l`, cuyo pixel (0, 0) cae en la casilla `origen` del
@@ -1114,6 +1369,7 @@ struct Obra {
     crudos: Vec<Punto2>,
     con_presiones: bool,
     gordo: f32,
+    dureza: Dureza,
     tinta: [f32; 3],
     semilla: u64,
     constante: bool,
@@ -1137,6 +1393,7 @@ impl Obra {
             crudos: d.crudos.clone(),
             con_presiones: d.presiones.is_some(),
             gordo: d.gordo,
+            dureza: d.dureza,
             tinta: d.tinta,
             semilla: d.semilla,
             constante: d.constante,
@@ -1153,7 +1410,7 @@ impl Obra {
         obra.paseo.andar(d, paso, Some(lo_asentado(d)), |s| {
             estampar_en(lienzo, s, origen, finura, (0, 0), tinta)
         });
-        let mut rgba = pasar_el_diente(&obra.lienzo, x0, y0, finura);
+        let mut rgba = pasar_el_diente(&obra.lienzo, x0, y0, finura, d.dureza.agarre());
         obra.pintar_la_cola(d, &mut rgba);
         let mut c = Cocido {
             rgba,
@@ -1183,7 +1440,8 @@ impl Obra {
     fn pintar_la_cola(&mut self, d: &Datos, rgba: &mut [u8]) -> Rect {
         let origen_casillas = origen_en_casillas(self.x0, self.y0, self.finura);
         let antes = self.cola;
-        diente_en(&self.lienzo, antes, origen_casillas, rgba);
+        let agarre = self.dureza.agarre();
+        diente_en(&self.lienzo, antes, origen_casillas, agarre, rgba);
         let mut sellos: Vec<Sello> = Vec::new();
         self.paseo
             .clone()
@@ -1216,6 +1474,7 @@ impl Obra {
                 origen_casillas.0 + r.x as i32,
                 origen_casillas.1 + r.y as i32,
             ),
+            agarre,
             &mut salida,
         );
         for fila in 0..r.alto {
@@ -1233,6 +1492,7 @@ impl Obra {
         let mismo = d.crudos.len() >= self.crudos.len()
             && d.crudos[..self.crudos.len()] == self.crudos[..]
             && d.gordo == self.gordo
+            && d.dureza == self.dureza
             && d.tinta == self.tinta
             && d.semilla == self.semilla
             && d.constante == self.constante
@@ -1326,6 +1586,7 @@ impl Obra {
             &self.lienzo,
             sucio,
             origen_en_casillas(self.x0, self.y0, finura),
+            self.dureza.agarre(),
             &mut c.rgba,
         );
         sucio = sucio.union(self.pintar_la_cola(d, &mut c.rgba));
@@ -1363,6 +1624,7 @@ fn estampar_caminos(
     origen: (f32, f32),
     tinta: [f32; 3],
     con_puntas: bool,
+    dureza: Dureza,
 ) {
     let largo_de = |c: &[Punto2]| -> f32 { c.windows(2).map(|w| w[0].distancia(w[1])).sum() };
     let total: f32 = caminos.iter().map(|c| largo_de(c)).sum();
@@ -1370,7 +1632,7 @@ fn estampar_caminos(
         .max((total as f64 / SELLOS_POR_TRAZO) as f32)
         .max(0.4 / finura);
     let p = 0.6;
-    let pincel = carga_del_pincel(p);
+    let pincel = carga_del_pincel(p, dureza);
     for c in caminos.iter().filter(|c| c.len() >= 2) {
         let largo = largo_de(c);
         let cerrado = c[0].distancia(*c.last().expect("dos puntos")) < 1e-3;
@@ -1479,8 +1741,10 @@ fn cocer_figura(e: &Elemento) -> Option<Cocido> {
         maxx = maxx.max(p.x);
         maxy = maxy.max(p.y);
     }
-    // Las figuras miden su grosor en el doble de escala que el lapiz.
-    let gordo = (e.grosor * 0.5 * GORDO_DEL_LAPIZ).max(1.5);
+    // Las figuras miden su grosor en el doble de escala que el lapiz. Y la
+    // dureza las engorda igual que al trazo (`cocerLaFigura` del movil).
+    let dureza = Dureza::de(e);
+    let gordo = (e.grosor * 0.5 * GORDO_DEL_LAPIZ * dureza.gordo()).max(1.5);
     let (x0, y0, finura, ancho, alto) = marco_del_mapa(minx, miny, maxx, maxy, gordo)?;
     let mut lienzo = Lienzo::nuevo(ancho, alto);
     let origen = (x0, y0);
@@ -1513,6 +1777,7 @@ fn cocer_figura(e: &Elemento) -> Option<Cocido> {
                 origen,
                 fondo_color,
                 false,
+                dureza,
             );
         }
     }
@@ -1528,9 +1793,10 @@ fn cocer_figura(e: &Elemento) -> Option<Cocido> {
         origen,
         tinta,
         true,
+        dureza,
     );
     Some(Cocido {
-        rgba: pasar_el_diente(&lienzo, x0, y0, finura),
+        rgba: pasar_el_diente(&lienzo, x0, y0, finura, dureza.agarre()),
         ancho: ancho as u32,
         alto: alto as u32,
         x0,
@@ -2667,10 +2933,10 @@ mod pruebas {
             0.55,
         );
         let mut entero = vec![0u8; l.px.len()];
-        diente_en(&l, todo, (3, 5), &mut entero);
+        diente_en(&l, todo, (3, 5), 1.0, &mut entero);
         let mut por_tejas = vec![0u8; l.px.len()];
         for r in l.tocado() {
-            diente_en(&l, r, (3, 5), &mut por_tejas);
+            diente_en(&l, r, (3, 5), 1.0, &mut por_tejas);
         }
         assert!(entero.iter().any(|b| *b > 0), "no se pinto nada");
         assert_eq!(entero, por_tejas);
@@ -2701,7 +2967,7 @@ mod pruebas {
             .collect();
         let mut azar = AzarJava::nuevo(e.id);
         estampar_caminos(
-            &mut l, &mut azar, &caminos, 2.4, 1.0, origen, [0.0; 3], true,
+            &mut l, &mut azar, &caminos, 2.4, 1.0, origen, [0.0; 3], true, Dureza::Hb,
         );
         let tocado: usize = l.tocado().iter().map(|r| r.ancho * r.alto).sum();
         let total = l.ancho * l.alto;

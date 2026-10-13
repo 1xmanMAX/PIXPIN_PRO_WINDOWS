@@ -385,7 +385,7 @@ fn nombre_del_marco(m: &Elemento) -> String {
 }
 
 fn entero(escena: &Escena, papel: Option<(f32, f32)>) -> Option<Hoja> {
-    let visibles: Vec<&Elemento> = escena.visibles().collect();
+    let visibles: Vec<&Elemento> = escena.a_la_vista().collect();
     let contenido = visibles.iter().map(|e| caja_de(e)).reduce(union);
     let caja = match (papel, contenido) {
         // Con papel manda el papel (y lo que se salga de el), sin margen.
@@ -440,7 +440,7 @@ pub fn de_una_zona(
         .map(orden_del_papel)
         .into_iter()
         .collect();
-    for e in escena.visibles() {
+    for e in escena.a_la_vista() {
         if e.enlace.is_some() || !se_tocan(caja_de(e), caja) {
             continue;
         }
@@ -467,7 +467,7 @@ fn a_la_vista_en(escena: &Escena, m: &Elemento) -> Vec<u64> {
     let suyos = marco::contenidos(&escena.elementos, m);
     let caja = m.caja();
     escena
-        .visibles()
+        .a_la_vista()
         .filter(|e| e.id != m.id && !marco::es_marco(e))
         .filter(|e| suyos.contains(&e.id) || se_tocan(caja_de(e), caja))
         .map(|e| e.id)
@@ -490,7 +490,7 @@ fn de_un_marco(escena: &Escena, m: &Elemento, papel: Option<(f32, f32)>) -> Opti
     ordenes.extend(marco::ordenes_del_papel(m));
     // En el orden de pintado de la escena, no en el de `contenidos`: lo que
     // estaba encima en pantalla tiene que seguir encima en el papel.
-    for e in escena.visibles().filter(|e| dentro.contains(&e.id)) {
+    for e in escena.a_la_vista().filter(|e| dentro.contains(&e.id)) {
         meter(escena, e, &mut ordenes, &mut granos, &mut grafitos);
     }
     Some(Hoja {
@@ -515,7 +515,7 @@ fn por_marcos(escena: &Escena, papel: Option<(f32, f32)>) -> Vec<Hoja> {
 
 fn elegido(escena: &Escena, seleccion: &[u64], papel: Option<(f32, f32)>) -> Option<Hoja> {
     let elegidos: Vec<&Elemento> = escena
-        .visibles()
+        .a_la_vista()
         .filter(|e| seleccion.contains(&e.id))
         .collect();
     // Un marco solo elegido es «esta hoja»: sale recortado a el, como con
@@ -526,7 +526,7 @@ fn elegido(escena: &Escena, seleccion: &[u64], papel: Option<(f32, f32)>) -> Opt
         return de_un_marco(escena, solo, papel);
     }
     let ids = marco::con_contenidos(&escena.elementos, seleccion);
-    let dentro: Vec<&Elemento> = escena.visibles().filter(|e| ids.contains(&e.id)).collect();
+    let dentro: Vec<&Elemento> = escena.a_la_vista().filter(|e| ids.contains(&e.id)).collect();
     let caja = con_margen(dentro.iter().map(|e| caja_de(e)).reduce(union)?, MARGEN);
     if !es_valida(caja) {
         return None;

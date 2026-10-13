@@ -16,13 +16,85 @@ use crate::vector::{Punto2, distancia_a_segmento};
 /// sigue pudiendo tocar sin apuntar al pixel exacto.
 pub const TOLERANCIA: f32 = 6.0;
 
+/// **En que mundo se trabaja**: el del dibujo o el de las guias (el modo
+/// guia del movil, `DrawController.editable`).
+///
+/// Es toda la regla: dentro del modo guia se elige, se mueve, se estira y se
+/// borra **solo** el andamio; fuera, solo el dibujo, y **ninguna guia se
+/// puede borrar por accidente**. El andamio esta para pasarle el lapiz por
+/// encima, asi que la goma y el clic pasan por el todo el rato: sin separar
+/// los dos mundos, media faena era volver a trazar guias que uno mismo se
+/// habia llevado por delante. Y una guia escondida no se toca en ninguno.
+///
+/// Va aqui, en el picado, por lo mismo que lo bloqueado: lo respetan a la
+/// vez el clic, la marquesina, el lazo y la goma sin que nadie se acuerde.
+/// Quien sabe el modo (el gesto) lo pone mientras atiende un evento
+/// ([`con_mundo`]); fuera de eso rige el de fabrica, el del dibujo.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Mundo {
+    /// El modo guia puesto: lo tocable son las guias.
+    pub guias: bool,
+    /// Las guias a la vista (`Escena::referencias_visibles`).
+    pub guias_visibles: bool,
+}
+
+impl Default for Mundo {
+    fn default() -> Self {
+        Mundo {
+            guias: false,
+            guias_visibles: true,
+        }
+    }
+}
+
+impl Mundo {
+    /// Si `e` es de este mundo (sin mirar si esta borrado o bloqueado).
+    pub fn admite(&self, e: &Elemento) -> bool {
+        let guia = e.extras.referencia;
+        guia == self.guias && (self.guias_visibles || !guia)
+    }
+}
+
+thread_local! {
+    /// El mundo en el que se pica ahora, en este hilo (cada editor tiene el
+    /// suyo, ver `panel_dibujo`).
+    static MUNDO: std::cell::Cell<Mundo> = std::cell::Cell::new(Mundo::default());
+}
+
+/// Hace `f` picando en el mundo `m`, y deja el de antes al acabar.
+pub fn con_mundo<R>(m: Mundo, f: impl FnOnce() -> R) -> R {
+    let antes = MUNDO.with(|c| c.replace(m));
+    // Se devuelve el de antes tambien si `f` se rompe: un panico a mitad de
+    // un evento no puede dejar el hilo picando para siempre en las guias.
+    struct Devolver(Mundo);
+    impl Drop for Devolver {
+        fn drop(&mut self) {
+            MUNDO.with(|c| c.set(self.0));
+        }
+    }
+    let _devolver = Devolver(antes);
+    f()
+}
+
+/// El mundo en el que se pica ahora.
+pub fn mundo() -> Mundo {
+    MUNDO.with(std::cell::Cell::get)
+}
+
+/// Si `e` se puede elegir, mover o borrar ahora: ni borrado, ni bloqueado, y
+/// de este mundo.
+pub fn tocable(e: &Elemento) -> bool {
+    !e.borrado && !e.bloqueado && mundo().admite(e)
+}
+
 /// Si el punto toca el elemento.
 pub fn toca(e: &Elemento, p: Punto2) -> bool {
     // Un elemento bloqueado se ve pero no se toca: es lo que se pide al
     // bloquear un plano de fondo para dibujar encima sin arrastrarlo. Va
     // aqui, en el picado, y no en cada sitio que elige: asi lo respetan a la
-    // vez el clic, la marquesina y la goma, sin que nadie se acuerde.
-    if e.borrado || e.bloqueado {
+    // vez el clic, la marquesina y la goma, sin que nadie se acuerde. Lo
+    // mismo con el mundo: una guia fuera del modo guia (ver `Mundo`).
+    if !tocable(e) {
         return false;
     }
     // El angulo se deshace sobre el punto, no sobre la figura: girar el punto
@@ -242,7 +314,7 @@ pub fn dentro_de(elementos: &[Elemento], caja: (f32, f32, f32, f32)) -> Vec<u64>
     let (my0, my1) = (my0.min(my1), my0.max(my1));
     elementos
         .iter()
-        .filter(|e| !e.borrado && !e.bloqueado)
+        .filter(|e| tocable(e))
         .filter(|e| {
             esquinas_giradas(e)
                 .iter()

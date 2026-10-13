@@ -82,6 +82,17 @@ fn plantilla(gesto: &Gesto) -> Elemento {
         } else {
             gesto.estilo.material
         },
+        // Con el modo guia puesto, el relleno tambien es guia; y el de
+        // grafito, de la dureza elegida (`nuevaRegion` del movil).
+        extras: pixpin_motor2d::elemento::Extras {
+            referencia: gesto.modo_guia(),
+            dureza: if gesto.grafito_en_la_mano {
+                gesto.estilo.dureza.para_guardar()
+            } else {
+                None
+            },
+            ..Default::default()
+        },
         ..Default::default()
     }
 }

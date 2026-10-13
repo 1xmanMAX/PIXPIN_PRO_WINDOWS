@@ -200,7 +200,9 @@ pub fn atrapados(elementos: &[Elemento], contorno: &[Punto2], modo: ModoLazo) ->
 
     let mut salida = Vec::new();
     for e in elementos {
-        if e.borrado || e.bloqueado {
+        // Lo de otro mundo tampoco: fuera del modo guia el lazo no se lleva
+        // guias, y dentro no se lleva dibujo (`impacto::Mundo`).
+        if !crate::impacto::tocable(e) {
             continue;
         }
         // Criba por caja antes de sacar perimetros: es lo que hace que un

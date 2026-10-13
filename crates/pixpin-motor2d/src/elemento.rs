@@ -391,8 +391,8 @@ pub struct Extras {
     pub presion_firme: bool,
     /// **Es una linea de referencia, no dibujo** (`reference` del movil): el
     /// «lapiz azul» de los planos. Se pinta translucida (`pintado::ordenes`).
-    /// Se lee y no se escribe: nada de lo que nace aqui es referencia todavia,
-    /// y la de un elemento del movil vuelve intacta con su original.
+    /// Lo que se traza con el modo guia puesto nace asi (`Gesto::modo_guia`),
+    /// y fuera de el no se elige ni se borra (`impacto::Mundo`).
     #[serde(default)]
     pub referencia: bool,
     #[serde(default)]
@@ -467,6 +467,11 @@ pub struct Extras {
     /// nombres no cabian («Cimien…»).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tam_letra: Option<f32>,
+    /// **La dureza de la mina**, solo en lo de grafito (`dureza` del movil,
+    /// v0.91). `None` es HB, como el movil lee la clave ausente: asi un trazo
+    /// de fabrica no la estrena. Ver `tinta::grafito::Dureza`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dureza: Option<crate::tinta::grafito::Dureza>,
 }
 
 /// **El recorte de una imagen** (`crop` de Excalidraw).
@@ -545,6 +550,8 @@ impl Extras {
             // Ni la letra de lo que rotula: viaja en su `fontFamily`.
             familia: None,
             tam_letra: None,
+            // Ni la dureza: viaja en su propia clave (`dureza`).
+            dureza: None,
             ..self.clone()
         } == Extras::default()
     }

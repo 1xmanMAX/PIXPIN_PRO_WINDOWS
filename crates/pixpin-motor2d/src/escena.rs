@@ -47,6 +47,15 @@ pub struct Escena {
     /// figuras y no pertenece a ninguna de las dos.
     #[serde(default)]
     pub alfileres: Vec<crate::nudos::Alfiler>,
+    /// **Si las lineas de referencia estan a la vista**
+    /// (`Scene.referenciasVisibles` del movil, que viaja en el fichero).
+    ///
+    /// Esconderlas **no las borra**: es para mirar el dibujo limpio un
+    /// momento y volver. Escondidas no se pintan, no salen al exportar y no se
+    /// eligen ([`Escena::a_la_vista`], `impacto::Mundo`). No va al historial,
+    /// como en el movil: es mirar, no dibujar.
+    #[serde(default = "verdadero")]
+    pub referencias_visibles: bool,
     /// Lo que se ha hecho en ESTA sesion, para deshacerlo. No se guarda: el
     /// historial es estado de la interfaz, no del documento, y deshacer al
     /// abrir un dibujo de ayer un trazo que no se ve hacer confunde mas de
@@ -156,6 +165,10 @@ fn uno_u64() -> u64 {
     1
 }
 
+fn verdadero() -> bool {
+    true
+}
+
 /// El papel de un lienzo que no dice el suyo: blanco, el `#ffffff` que
 /// escriben por defecto Excalidraw (`COLOR_PALETTE.white`) y el movil
 /// (`DrawTheme.FONDO_DIA`).
@@ -174,6 +187,7 @@ impl Default for Escena {
             escala: None,
             fondo: FONDO_DE_FABRICA,
             alfileres: Vec::new(),
+            referencias_visibles: true,
             historia: Vec::new(),
             rehacer: Vec::new(),
             en_curso: None,
@@ -328,6 +342,22 @@ impl Escena {
 
     pub fn cuantos_visibles(&self) -> usize {
         self.visibles().count()
+    }
+
+    /// **Lo que se ve de verdad**: sin borrar y, si las lineas de referencia
+    /// estan escondidas, sin ellas (`visibleConReferencias` del movil). Es lo
+    /// que se pinta y lo que se exporta. `visibles` sigue contando las
+    /// escondidas a proposito: guardar las tiene que llevar igual.
+    pub fn a_la_vista(&self) -> impl Iterator<Item = &Elemento> {
+        let todas = self.referencias_visibles;
+        self.visibles()
+            .filter(move |e| todas || !e.extras.referencia)
+    }
+
+    /// Si hay alguna linea de referencia (`hayReferencias` del movil): sin
+    /// ninguna, el ojo de esconderlas no dice nada y no sale.
+    pub fn hay_referencias(&self) -> bool {
+        self.visibles().any(|e| e.extras.referencia)
     }
 
     /// Borrado logico. `true` si habia algo que borrar.

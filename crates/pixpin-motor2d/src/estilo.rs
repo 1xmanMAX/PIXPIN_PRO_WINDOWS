@@ -92,6 +92,9 @@ pub struct EstiloDibujo {
     /// color y no con la herramienta, porque es la otra mitad de «de que
     /// color va esto» (misma razon que en el movil).
     pub material: MaterialTinta,
+    /// **La dureza del grafito con que se dibuja** (`ItemStyle.dureza` del
+    /// movil): se recuerda como el color y solo la usa lo que es de grafito.
+    pub dureza: crate::tinta::grafito::Dureza,
     /// **Lo que Excalidraw recuerda aparte para lo siguiente**
     /// (`currentItemRoundness`, `currentItemArrowType`,
     /// `currentItemStart/EndArrowhead`, `currentItemFontFamily`,
@@ -145,6 +148,7 @@ impl Default for EstiloDibujo {
             rugosidad: 1.0,
             opacidad: 1.0,
             material: MaterialTinta::Lisa,
+            dureza: crate::tinta::grafito::Dureza::Hb,
             // En pico, como hasta ahora. Excalidraw nace redondo fuera de
             // sus pruebas, pero cambiarlo aqui cambiaria el aspecto de todo
             // lo que el usuario dibuja sin que lo haya pedido.
@@ -178,6 +182,9 @@ pub enum CambioEstilo {
     Opacidad(f32),
     /// De que esta hecha la tinta. Ver `tinta::material`.
     Material(MaterialTinta),
+    /// **La dureza de la mina** (4H ... 8B). Solo llega a lo que es de
+    /// grafito (`conEstilo` del movil: `if material == CUADRITOS`).
+    Dureza(crate::tinta::grafito::Dureza),
 }
 
 impl EstiloDibujo {
@@ -191,6 +198,7 @@ impl EstiloDibujo {
             CambioEstilo::Rugosidad(r) => self.rugosidad = r.clamp(0.0, 2.0),
             CambioEstilo::Opacidad(o) => self.opacidad = o.clamp(0.0, 1.0),
             CambioEstilo::Material(m) => self.material = m,
+            CambioEstilo::Dureza(d) => self.dureza = d,
         }
     }
 
@@ -279,6 +287,9 @@ pub fn aplicar_a(escena: &mut Escena, sel: &Seleccion, cambio: CambioEstilo) {
         CambioEstilo::Rugosidad(r) => e.rugosidad != r.clamp(0.0, 2.0),
         CambioEstilo::Opacidad(o) => e.opacidad != o.clamp(0.0, 1.0),
         CambioEstilo::Material(m) => e.material != m,
+        CambioEstilo::Dureza(d) => {
+            e.material.es_grafito() && e.extras.dureza != d.para_guardar()
+        }
     };
     let afectados: Vec<u64> = sel
         .ids()
@@ -302,6 +313,7 @@ pub fn aplicar_a(escena: &mut Escena, sel: &Seleccion, cambio: CambioEstilo) {
                 CambioEstilo::Rugosidad(r) => e.rugosidad = r.clamp(0.0, 2.0),
                 CambioEstilo::Opacidad(o) => e.opacidad = o.clamp(0.0, 1.0),
                 CambioEstilo::Material(m) => e.material = m,
+                CambioEstilo::Dureza(d) => e.extras.dureza = d.para_guardar(),
             }
             // Sin subir la version la cache seguiria pintando el aspecto
             // viejo.
@@ -824,6 +836,8 @@ pub struct EstiloCopiado {
     rugosidad: f32,
     opacidad: f32,
     material: MaterialTinta,
+    /// Va con el material: copiar un grafito 8B lleva el 8B.
+    dureza: Option<crate::tinta::grafito::Dureza>,
     redondo: bool,
 }
 
@@ -858,6 +872,7 @@ pub fn copiar(e: &crate::elemento::Elemento) -> EstiloCopiado {
         rugosidad: e.rugosidad,
         opacidad: e.opacidad,
         material: e.material,
+        dureza: e.extras.dureza,
         redondo: e.redondo,
     }
 }
@@ -926,7 +941,16 @@ fn aplicar_propiedad(e: &mut crate::elemento::Elemento, p: Propiedad, c: &Estilo
         Propiedad::Grosor => e.grosor = grosor_para(&e.figura, c.grosor),
         Propiedad::Rugosidad => e.rugosidad = c.rugosidad,
         Propiedad::Esquinas => e.redondo = c.redondo,
-        Propiedad::Material => e.material = c.material,
+        Propiedad::Material => {
+            e.material = c.material;
+            // La dureza es del grafito: se lleva con el, y lo que deja de ser
+            // grafito no se queda con una que ya no significa nada.
+            e.extras.dureza = if c.material.es_grafito() {
+                c.dureza
+            } else {
+                None
+            };
+        }
         Propiedad::Opacidad => e.opacidad = c.opacidad,
     }
 }
@@ -940,7 +964,9 @@ fn cambiaria(e: &crate::elemento::Elemento, c: &EstiloCopiado) -> bool {
         Propiedad::Grosor => e.grosor != grosor_para(&e.figura, c.grosor),
         Propiedad::Rugosidad => e.rugosidad != c.rugosidad,
         Propiedad::Esquinas => e.redondo != c.redondo,
-        Propiedad::Material => e.material != c.material,
+        Propiedad::Material => {
+            e.material != c.material || (c.material.es_grafito() && e.extras.dureza != c.dureza)
+        }
         Propiedad::Opacidad => e.opacidad != c.opacidad,
     })
 }

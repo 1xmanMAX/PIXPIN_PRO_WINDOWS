@@ -228,11 +228,26 @@ pub fn panel_para(
     escala_por_cien: u32,
 ) -> Option<PanelLateral> {
     let elegidos = elegidos(gesto, escena);
+    // El modo guia y el ojo salen con cualquier herramienta que dibuje y con
+    // lo elegido: cualquier herramienta traza guias. Con la mano y nada
+    // elegido, solo si hay guias o el modo esta puesto (si no, ese panel no
+    // existe y no tiene por que nacer por esto).
+    let guias = (
+        gesto.modo_guia(),
+        escena
+            .hay_referencias()
+            .then_some(escena.referencias_visibles),
+    );
+    let con_guias = !elegidos.is_empty()
+        || !pixpin_ui::propiedades::de_herramienta(gesto.herramienta).is_empty()
+        || guias.0
+        || guias.1.is_some();
+    let guias = con_guias.then_some(guias);
     let (propiedades, estilo, mandos) = match pl::estilo_de_seleccion(&elegidos) {
         Some(estilo) => (
             pl::propiedades_de_seleccion(&elegidos),
             estilo,
-            Mandos::de_seleccion(&elegidos),
+            Mandos::de_seleccion(&elegidos).con_guias(guias),
         ),
         None => {
             let mut s = gesto.estilo;
@@ -255,7 +270,9 @@ pub fn panel_para(
                 s,
                 Mandos::de_herramienta(gesto.herramienta, &s, gesto.variabilidad)
                     .con_serie_de_punto(gesto.herramienta, gesto.serie_de_punto)
-                    .con_pedir_la_medida(gesto.herramienta, gesto.pedir_la_medida),
+                    .con_pedir_la_medida(gesto.herramienta, gesto.pedir_la_medida)
+                    .con_dureza(gesto.herramienta, gesto.estilo.dureza)
+                    .con_guias(guias),
             )
         }
     };
@@ -443,6 +460,15 @@ pub fn aplicar(accion: AccionPanel, gesto: &mut Gesto, escena: &mut Escena) -> b
         AccionPanel::SeriePunto(s) => gesto.serie_de_punto = s,
         // Pedir la medida al trazar la cota: del gesto, como la serie.
         AccionPanel::PedirMedida(v) => gesto.pedir_la_medida = v,
+        // El modo guia, al gesto (suelta lo elegido: cambia de mundo).
+        AccionPanel::ModoGuia(v) => return gesto.poner_modo_guia(v),
+        // Ver o esconder las guias, a la escena: viaja con el fichero.
+        AccionPanel::VerGuias(v) => {
+            if escena.referencias_visibles == v {
+                return false;
+            }
+            gesto.alternar_referencias(escena);
+        }
     }
     true
 }
@@ -473,6 +499,12 @@ fn rotulo_de_imagen(accion: AccionPanel) -> Option<String> {
         // El foco: cuanto oscurece y cuanto ilumina, en por ciento.
         AccionPanel::Forma(CambioForma::Oscurecer(n)) => Some(format!("{n}%")),
         AccionPanel::Forma(CambioForma::ZonaFoco(z)) => Some(format!("{}%", (z * 100.0).round())),
+        // La dureza, con su nombre: «4H», «HB», «8B», como en la caja de
+        // lapices (`LaDurezaQueHay` del movil).
+        AccionPanel::Estilo(CambioEstilo::Dureza(d)) => Some(d.rotulo().into()),
+        // El modo guia: la palabra, que un icono de regla no dice que lo que
+        // se trace sera andamio.
+        AccionPanel::ModoGuia(_) => Some(textos().t("lienzo-guia-corto").to_string()),
         _ => None,
     }
 }
@@ -597,6 +629,13 @@ fn icono_de(accion: AccionPanel) -> Option<&'static pixpin_render::icono::Icono>
         // Si o no: la marca y el aspa.
         AccionPanel::PedirMedida(true) => &i::TABLER_CHECK_ICON,
         AccionPanel::PedirMedida(false) => &i::CLOSE_ICON,
+        // El modo guia se dice con su palabra (`rotulo_de_imagen`); el icono
+        // es el de reserva, el del editor de lineas.
+        AccionPanel::ModoGuia(_) => &i::LINE_EDITOR_ICON,
+        // El ojo de las guias: abierto mientras se ven (pulsarlo las
+        // esconde), cerrado y marcado mientras estan escondidas.
+        AccionPanel::VerGuias(false) => &i::EYE_ICON,
+        AccionPanel::VerGuias(true) => &i::EYE_CLOSED_ICON,
         _ => return None,
     })
 }
@@ -631,6 +670,8 @@ fn clave(s: Seccion) -> &'static str {
         Seccion::PapelesDelMovil => "fondo-papeles-del-movil",
         Seccion::SerieDePunto => "lienzo-punto-serie",
         Seccion::PedirMedida => "lienzo-cota-pedir",
+        Seccion::Dureza => "lienzo-panel-dureza",
+        Seccion::Guias => "lienzo-panel-guias",
         Seccion::Mosaico => "lienzo-panel-mosaico",
         Seccion::AumentoLupa => "lienzo-panel-aumento",
         Seccion::GuiaLupa => "lienzo-panel-guia",
@@ -1227,6 +1268,95 @@ mod pruebas {
         assert_eq!(gesto.variabilidad, Variabilidad::Constante);
     }
 
+    /// Las acciones de los botones del panel, en orden.
+    fn acciones(panel: &PanelLateral) -> Vec<(AccionPanel, bool)> {
+        panel
+            .controles
+            .iter()
+            .filter_map(|c| match c {
+                Control::Opcion { accion, activa, .. } => Some((*accion, *activa)),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn con_el_grafito_salen_las_siete_durezas_y_elegir_una_queda_para_el_proximo() {
+        use pixpin_motor2d::tinta::grafito::Dureza;
+        let mut escena = Escena::nueva();
+        let mut gesto = Gesto::default();
+        gesto.tomar_herramienta(Herramienta::Grafito);
+        let panel = panel_para(&gesto, &escena, area(), 100).unwrap();
+        let durezas: Vec<(Dureza, bool)> = acciones(&panel)
+            .into_iter()
+            .filter_map(|(a, activa)| match a {
+                AccionPanel::Estilo(CambioEstilo::Dureza(d)) => Some((d, activa)),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            durezas.iter().map(|d| d.0).collect::<Vec<_>>(),
+            Dureza::TODAS.to_vec()
+        );
+        assert_eq!(durezas.iter().filter(|d| d.1).map(|d| d.0).collect::<Vec<_>>(), [Dureza::Hb]);
+        // Cada boton dice su nombre.
+        for d in Dureza::TODAS {
+            assert_eq!(
+                rotulo_de_imagen(AccionPanel::Estilo(CambioEstilo::Dureza(d))).as_deref(),
+                Some(d.rotulo())
+            );
+        }
+        aplicar(
+            AccionPanel::Estilo(CambioEstilo::Dureza(Dureza::B6)),
+            &mut gesto,
+            &mut escena,
+        );
+        assert_eq!(gesto.estilo.dureza, Dureza::B6);
+        // Caso negativo: con el lapiz de tinta no sale.
+        gesto.tomar_herramienta(Herramienta::Lapiz);
+        let panel = panel_para(&gesto, &escena, area(), 100).unwrap();
+        assert!(
+            !acciones(&panel)
+                .iter()
+                .any(|(a, _)| matches!(a, AccionPanel::Estilo(CambioEstilo::Dureza(_))))
+        );
+    }
+
+    #[test]
+    fn el_modo_guia_sale_con_cualquier_herramienta_y_el_ojo_solo_si_hay_guias() {
+        let mut escena = Escena::nueva();
+        let mut gesto = Gesto::default();
+        gesto.tomar_herramienta(Herramienta::Rectangulo);
+        let guias = |gesto: &Gesto, escena: &Escena| -> Vec<(AccionPanel, bool)> {
+            acciones(&panel_para(gesto, escena, area(), 100).unwrap())
+                .into_iter()
+                .filter(|(a, _)| matches!(a, AccionPanel::ModoGuia(_) | AccionPanel::VerGuias(_)))
+                .collect()
+        };
+        assert_eq!(guias(&gesto, &escena), [(AccionPanel::ModoGuia(true), false)]);
+        assert!(aplicar(AccionPanel::ModoGuia(true), &mut gesto, &mut escena));
+        assert!(gesto.modo_guia());
+        assert_eq!(guias(&gesto, &escena), [(AccionPanel::ModoGuia(false), true)]);
+        // Una guia en la escena: sale el ojo, y pulsarlo la esconde.
+        let id = con(&mut escena, Figura::Elipse);
+        escena.buscar_mut(id).unwrap().extras.referencia = true;
+        assert_eq!(
+            guias(&gesto, &escena),
+            [
+                (AccionPanel::ModoGuia(false), true),
+                (AccionPanel::VerGuias(false), false)
+            ]
+        );
+        assert!(aplicar(AccionPanel::VerGuias(false), &mut gesto, &mut escena));
+        assert!(!escena.referencias_visibles);
+        // Pulsar lo que ya esta no cambia nada.
+        assert!(!aplicar(AccionPanel::VerGuias(false), &mut gesto, &mut escena));
+        assert!(!aplicar(AccionPanel::ModoGuia(true), &mut gesto, &mut escena));
+        // Con la mano y nada elegido sale por haber guias.
+        gesto.tomar_herramienta(Herramienta::Mano);
+        assert!(panel_para(&gesto, &escena, area(), 100).is_some());
+    }
+
     #[test]
     fn agrupar_desde_el_panel_mete_a_los_dos_en_el_mismo_grupo() {
         let mut escena = Escena::nueva();
@@ -1400,6 +1530,9 @@ mod pruebas {
             CambioEstilo::Rugosidad(r) => (e.rugosidad - r).abs() < 1e-3,
             CambioEstilo::Opacidad(o) => (e.opacidad - o).abs() < 1e-3,
             CambioEstilo::Material(m) => e.material == m,
+            CambioEstilo::Dureza(d) => {
+                pixpin_motor2d::tinta::grafito::Dureza::de(e) == d
+            }
         }
     }
 
@@ -1537,6 +1670,27 @@ mod pruebas {
                 }
                 if despues.elementos != antes.elementos {
                     return Err("el interruptor toco elementos".into());
+                }
+            }
+            // El modo guia va al gesto y suelta lo elegido; el ojo, a la
+            // escena. Ninguno toca un elemento.
+            AccionPanel::ModoGuia(v) => {
+                if gesto.modo_guia() != v {
+                    return Err(format!("el modo guia quedo {}", gesto.modo_guia()));
+                }
+                if !gesto.seleccion.ids().is_empty() {
+                    return Err("cambiar de mundo no solto lo elegido".into());
+                }
+                if despues.elementos != antes.elementos {
+                    return Err("el modo guia toco elementos".into());
+                }
+            }
+            AccionPanel::VerGuias(v) => {
+                if despues.referencias_visibles != v {
+                    return Err(format!("las guias quedaron {}", despues.referencias_visibles));
+                }
+                if despues.elementos != antes.elementos {
+                    return Err("esconder las guias toco elementos".into());
                 }
             }
             AccionPanel::SeriePunto(s) => {
@@ -1718,6 +1872,9 @@ mod pruebas {
         let elegidos: Vec<&Elemento> = ids.iter().map(|id| escena.buscar(*id).unwrap()).collect();
         match accion {
             AccionPanel::Abrir(_) | AccionPanel::EditarHex => false,
+            // El modo guia y el ojo no dibujan ni van al historial, como en
+            // el movil: los mira su propia prueba.
+            AccionPanel::ModoGuia(_) | AccionPanel::VerGuias(_) => false,
             AccionPanel::Capa(c) => !ya_esta(c, escena, ids),
             AccionPanel::Estilo(c) => elegidos
                 .iter()
@@ -2176,7 +2333,26 @@ mod pruebas {
             },
         );
 
-        let casos: [(&str, Vec<u64>, Option<Desplegable>); 6] = [
+        // Un grafito 4B y una guia: el panel del grafito con sus durezas, el
+        // modo guia y el ojo.
+        let grafito = con(
+            &mut escena,
+            Figura::Lapiz {
+                puntos: Vec::new(),
+                presiones: Vec::new(),
+                opciones: Some(Default::default()),
+            },
+        );
+        {
+            let g = escena.buscar_mut(grafito).unwrap();
+            g.material = pixpin_motor2d::tinta::MaterialTinta::Cuadritos;
+            g.extras.dureza = Some(pixpin_motor2d::tinta::grafito::Dureza::B4);
+        }
+        let guia = con(&mut escena, Figura::Elipse);
+        escena.buscar_mut(guia).unwrap().extras.referencia = true;
+
+        let casos: [(&str, Vec<u64>, Option<Desplegable>); 7] = [
+            ("grafito-y-guias", vec![grafito], None),
             ("rectangulo", vec![caja], None),
             (
                 "rectangulo-paleta-fondo",
