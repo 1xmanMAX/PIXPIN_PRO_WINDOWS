@@ -35,3 +35,4 @@ windows = { version = "0.62.2", features = [
 
 [dev-dependencies]
 tracing-subscriber = "0.3"
+png = "0.18"
