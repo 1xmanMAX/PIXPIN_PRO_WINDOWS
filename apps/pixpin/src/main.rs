@@ -390,6 +390,8 @@ fn arrancar(
     // de la barra y de sus teclas en el lienzo, el lector, los pines y el
     // anotador de pantalla (`dibujo::permitidas`).
     dibujo::permitidas::fijar(config.herramientas.clone());
+    // Las palabras magicas propias (Ajustes, «Pinear»), o las de fabrica.
+    pixpin_pin::magia::fijar(config.pinear.guardadas());
     // Aligerar los PDF que entran al chat: el nivel lo lee el trabajador de
     // `aligerar` cada vez, asi que cambiarlo en Ajustes vale sin reiniciar.
     aligerar::configurar(&config.pdf);
@@ -719,6 +721,7 @@ fn arrancar(
             // Las herramientas apagadas valen desde el siguiente lienzo,
             // lector, pin o anotador que se abra.
             dibujo::permitidas::fijar(config.herramientas.clone());
+            pixpin_pin::magia::fijar(config.pinear.guardadas());
             let (enlaces, _) = comandos::Enlaces::de_ajustes(&config);
             peticiones = enlaces.registrables();
             let (de_regiones, _) = pixpin_store::regiones::registrables(&config.regiones);

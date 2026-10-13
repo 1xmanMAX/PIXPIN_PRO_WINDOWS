@@ -25,6 +25,11 @@ use crate::mini_panel::{self, Efecto, Orden, Rotulo, Teclado, Vista};
 /// La tabla pegada: no es una mini-app del cuaderno, pero vive igual.
 pub const TABLA: &str = "tabla";
 
+/// El pin de color (`ColorPin` del movil): una muestra con su valor, que se
+/// copia de un toque. Su documento es el texto copiado tal cual («orange»,
+/// «#ff8800»): asi un PixPin viejo que no lo conozca ensena ese texto.
+pub const COLOR: &str = "color";
+
 /// Lo que va delante en el origen de la entrada del almacen.
 pub const PREFIJO_ORIGEN: &str = "mini:";
 
@@ -54,6 +59,9 @@ pub fn cual_de_origen(origen: &str) -> Option<&'static str> {
     let cual = cual.split_once('@').map_or(cual, |(c, _)| c);
     if cual == TABLA {
         return Some(TABLA);
+    }
+    if cual == COLOR {
+        return Some(COLOR);
     }
     mini::TODAS.into_iter().find(|m| *m == cual)
 }
@@ -148,6 +156,12 @@ pub fn documento_nuevo(cual: &str, texto: &str, moneda: &gastos::Moneda) -> Opti
     if cual == TABLA {
         return Some(texto.to_string());
     }
+    if cual == COLOR {
+        // Solo si de verdad es un color: un pin de color sin color no
+        // tendria nada que ensenar.
+        let t = texto.trim();
+        return pixpin_pin::color::leer(t).map(|_| t.to_string());
+    }
     let titulo = mini::titulo(texto);
     let mut documento = mini::documento_nuevo(cual, &titulo, moneda)?;
     if matches!(cual, mini::TAREAS | mini::GASTOS | mini::RULETA) {
@@ -200,6 +214,9 @@ pub struct Herramienta {
     /// De que mensaje del chat es, si se saco de alli: entonces su
     /// documento se lee y se guarda en el cuaderno, no en el almacen.
     pub vinculo: Option<Vinculo>,
+    /// El pin de color se acaba de copiar: su rotulo dice «Copiado» un
+    /// momento (el `toast` del movil, dentro del propio pin).
+    pub copiado: bool,
 }
 
 /// La moneda con la que nacen unos gastos: la del idioma elegido.
@@ -217,11 +234,23 @@ impl Herramienta {
             elegido: None,
             avisado: false,
             vinculo: None,
+            copiado: false,
         }
     }
 
     pub fn es_tabla(&self) -> bool {
         self.cual == TABLA
+    }
+
+    pub fn es_color(&self) -> bool {
+        self.cual == COLOR
+    }
+
+    /// El color de un pin de color, en ARGB.
+    pub fn color(&self) -> Option<u32> {
+        self.es_color()
+            .then(|| pixpin_pin::color::leer(self.documento.trim()))
+            .flatten()
     }
 
     /// Lo que se pinta ahora, con lo del teclado encima. `None` en la tabla.
@@ -377,7 +406,7 @@ impl Herramienta {
         ahora: i64,
         azar: f64,
     ) -> Hecho {
-        if self.es_tabla() {
+        if self.es_tabla() || self.es_color() {
             // La tabla solo se lee: Esc la cierra, como a cualquier pin.
             return if k.vk == 0x1B {
                 Hecho::Cerrar
@@ -399,7 +428,7 @@ impl Herramienta {
         ahora: i64,
         azar: f64,
     ) -> Hecho {
-        if self.es_tabla() {
+        if self.es_tabla() || self.es_color() {
             return Hecho::Nada;
         }
         let e = mini_panel::caracter(&self.cual, &self.documento, &mut self.teclado, c);
@@ -440,6 +469,10 @@ impl Herramienta {
 
 /// Alto de una fila de la tabla, en pixeles logicos.
 const FILA_TABLA: u32 = 26;
+/// La muestra del pin de color, su franja del rotulo y su margen.
+const LADO_COLOR: u32 = 96;
+const ROTULO_COLOR: u32 = 24;
+const MARGEN_COLOR: u32 = 8;
 /// Ancho que se le da a una columna de la tabla al nacer.
 const COLUMNA_TABLA: u32 = 110;
 
@@ -448,6 +481,10 @@ const COLUMNA_TABLA: u32 = 110;
 /// sitio para cinco lineas de lista. Luego se estira libre.
 pub fn tamano_natural(h: &Herramienta, escala: u32, moneda: &gastos::Moneda) -> (u32, u32) {
     let e = |v: u32| v * escala / 100;
+    if h.es_color() {
+        // La muestra cuadrada y su valor debajo (`ColorPinBody`: 96 dp).
+        return (e(LADO_COLOR + 2 * MARGEN_COLOR), e(LADO_COLOR + ROTULO_COLOR + 2 * MARGEN_COLOR));
+    }
     if h.es_tabla() {
         let filas = pixpin_pin::tabla::leer(&h.documento);
         let columnas = filas.first().map_or(1, Vec::len) as u32;
@@ -543,6 +580,10 @@ impl Cuadro {
         p.rellenar(caja, t.papel);
         if self.herramienta.es_tabla() {
             pintar_tabla(p, caja, &self.herramienta, self.escala, &t);
+            return;
+        }
+        if self.herramienta.es_color() {
+            pintar_color(p, caja, &self.herramienta, self.escala, &t, textos);
             return;
         }
         let ahora = pixpin_shell::entorno::ahora_utc_ms();
@@ -823,6 +864,85 @@ fn pintar_mini(
             color,
         );
     }
+}
+
+/// El pin de color: la muestra llena lo de arriba y el valor va debajo, en
+/// `#RRGGBB` (`ColorPinBody`). Estirado, la muestra crece con el pin.
+fn pintar_color(
+    p: &Pintor,
+    caja: RectF,
+    h: &Herramienta,
+    escala: u32,
+    tema: &Tema,
+    textos: &Catalogo,
+) {
+    let Some(argb) = h.color() else {
+        return;
+    };
+    let e = escala as f32 / 100.0;
+    let margen = MARGEN_COLOR as f32 * e;
+    let rotulo = ROTULO_COLOR as f32 * e;
+    let muestra = RectF {
+        x: caja.x + margen,
+        y: caja.y + margen,
+        ancho: (caja.ancho - 2.0 * margen).max(1.0),
+        alto: (caja.alto - 2.0 * margen - rotulo).max(1.0),
+    };
+    let (r, g, b) = pixpin_pin::color::componentes(argb);
+    let a = pixpin_pin::color::alfa(argb) as f32 / 255.0;
+    // Con transparencia, un damero debajo: si no, un color a medias se
+    // confundiria con uno mas claro.
+    if a < 1.0 {
+        let lado = 8.0 * e;
+        p.rellenar(muestra, hex(0xffffff));
+        p.empujar_recorte(muestra);
+        let (cols, filas) = (
+            (muestra.ancho / lado).ceil() as i32,
+            (muestra.alto / lado).ceil() as i32,
+        );
+        for f in 0..filas {
+            for c in 0..cols {
+                if (f + c) % 2 == 0 {
+                    p.rellenar(
+                        RectF {
+                            x: muestra.x + c as f32 * lado,
+                            y: muestra.y + f as f32 * lado,
+                            ancho: lado,
+                            alto: lado,
+                        },
+                        hex(0xd0d0d0),
+                    );
+                }
+            }
+        }
+        p.soltar_recorte();
+    }
+    p.rellenar_redondeado(
+        muestra,
+        6.0 * e,
+        Color {
+            r: r as f32 / 255.0,
+            g: g as f32 / 255.0,
+            b: b as f32 / 255.0,
+            a,
+        },
+    );
+    // Un filo para que un blanco no se pierda contra la tarjeta blanca.
+    p.trazar(muestra, 1.0, tema.borde);
+    let texto = if h.copiado {
+        format!("{} ✓", textos.t("pin-color-copiado"))
+    } else {
+        pixpin_pin::color::a_hex(argb)
+    };
+    let tam = 12.0 * e;
+    let (ancho, alto) = p.medir_texto(&texto, tam);
+    p.texto(
+        &texto,
+        caja.x + (caja.ancho - ancho).max(0.0) / 2.0,
+        muestra.y + muestra.alto + (rotulo + margen - alto) / 2.0,
+        tam,
+        if h.copiado { tema.acento } else { tema.texto },
+    );
 }
 
 /// La tabla pegada: columnas del mismo ancho y la primera fila de cabecera
@@ -1173,11 +1293,18 @@ mod pruebas {
             TABLA,
             "Mes\tIngresos\tGastos\nEnero\t1200\t800\nFebrero\t1350\t910".into(),
         );
+        let naranja = Herramienta::nueva(COLOR, "#ff8800".into());
+        let mut copiado = Herramienta::nueva(COLOR, "orange".into());
+        copiado.copiado = true;
+        let medio = Herramienta::nueva(COLOR, "rgba(33, 150, 243, 0.5)".into());
         for (nombre, h) in [
             ("tareas", tareas),
             ("gastos", gastos),
             ("contador", contador),
             ("tabla", tabla),
+            ("color", naranja),
+            ("color-copiado", copiado),
+            ("color-transparente", medio),
         ] {
             for claro in [true, false] {
                 let (w, alto) = tamano_natural(&h, 125, &euro());
@@ -1222,6 +1349,32 @@ mod pruebas {
                 .unwrap();
             }
         }
+    }
+
+    #[test]
+    fn el_pin_de_color_nace_de_un_color_y_se_reconoce_al_restaurar() {
+        let doc = documento_nuevo(COLOR, "  #FF8800 \n", &euro()).unwrap();
+        assert_eq!(doc, "#FF8800");
+        let h = Herramienta::nueva(COLOR, doc);
+        assert!(h.es_color() && !h.es_tabla());
+        assert_eq!(h.color(), Some(0xFFFF8800));
+        assert_eq!(cual_de_origen(&origen_de(COLOR)), Some(COLOR));
+        // Cuadrado y su rotulo: mas alto que ancho.
+        let (w, alto) = tamano_natural(&h, 100, &euro());
+        assert!(alto > w);
+        // Solo lee: Esc lo cierra y las letras no hacen nada.
+        let mut h = h;
+        let esc = mini_panel::Tecla {
+            vk: 0x1B,
+            shift: false,
+            ctrl: false,
+            alt: false,
+        };
+        assert_eq!(h.tecla(esc, (w, alto), 100, &euro(), 0, 0.0), Hecho::Cerrar);
+        assert_eq!(h.caracter('x', (w, alto), 100, &euro(), 0, 0.0), Hecho::Nada);
+        // Caso negativo: un texto que no es color no da pin de color.
+        assert_eq!(documento_nuevo(COLOR, "hola", &euro()), None);
+        assert_eq!(Herramienta::nueva(TABLA, "#fff".into()).color(), None);
     }
 
     #[test]

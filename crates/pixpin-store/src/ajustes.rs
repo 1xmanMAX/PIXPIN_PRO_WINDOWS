@@ -282,6 +282,33 @@ pub struct Ajustes {
     pub herramientas: crate::herramientas::Herramientas,
     /// Pasar notas de voz a texto con dos idiomas (`[voz]`). Tabla: al final.
     pub voz: Voz,
+    /// Las palabras magicas propias (`[pinear]`). Tabla: al final.
+    pub pinear: Pinear,
+}
+
+/// Seccion `[pinear]`: las palabras magicas que pone el usuario.
+///
+/// En el movil es una cadena que puede no existir (`palabrasMagicas`, null =
+/// las de fabrica). Aqui son dos claves porque el guardado que conserva los
+/// comentarios no borra lo que ya no esta: con una sola opcional, volver a
+/// las de fabrica dejaria escrita la lista vieja.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct Pinear {
+    /// Si mandan las de aqui. Apagado: las de fabrica, diga lo que diga la
+    /// lista.
+    pub palabras_propias: bool,
+    /// Una por linea, `palabra=APP`, el formato del movil
+    /// (`MagicWord.escribir`): «reloj=TIMER». Vacia con `palabras_propias`
+    /// es «ninguna».
+    pub palabras: String,
+}
+
+impl Pinear {
+    /// Lo guardado como lo lee `magia::leer`: `None` es «las de fabrica».
+    pub fn guardadas(&self) -> Option<&str> {
+        self.palabras_propias.then_some(self.palabras.as_str())
+    }
 }
 
 /// Cuanto se aprieta un PDF: los cuatro perfiles de pdfsqueeze, con los
@@ -511,6 +538,7 @@ impl Default for Ajustes {
             pdf: Pdf::default(),
             herramientas: crate::herramientas::Herramientas::default(),
             voz: Voz::default(),
+            pinear: Pinear::default(),
         }
     }
 }
@@ -686,8 +714,38 @@ mod pruebas {
                 apagadas: vec!["lazo".into(), "mosaico".into()],
                 ..Default::default()
             },
+            pinear: Pinear {
+                palabras_propias: true,
+                palabras: "reloj=TIMER
+sorteito=RULETA".into(),
+            },
             ..Ajustes::default()
         }
+    }
+
+    /// Las palabras propias sobreviven a cerrar y abrir PixPin, y volver a
+    /// las de fabrica tambien, aunque el guardado conserve lo que habia.
+    #[test]
+    fn las_palabras_propias_sobreviven_a_reiniciar_y_volver_a_fabrica_tambien() {
+        let u = temporal("palabras");
+        let mut a = Ajustes::default();
+        assert_eq!(a.pinear.guardadas(), None, "de fabrica, las de fabrica");
+        a.pinear = Pinear {
+            palabras_propias: true,
+            palabras: "reloj=TIMER".into(),
+        };
+        guardar_conservando(&u, &a).unwrap();
+        let leidos = cargar(&u).unwrap();
+        assert_eq!(leidos.pinear.guardadas(), Some("reloj=TIMER"));
+        // «Ninguna» (vacia) es distinto de «las de fabrica».
+        a.pinear.palabras.clear();
+        guardar_conservando(&u, &a).unwrap();
+        assert_eq!(cargar(&u).unwrap().pinear.guardadas(), Some(""));
+        // De fabrica otra vez: la lista vieja puede quedarse escrita, pero
+        // ya no manda.
+        a.pinear = Pinear::default();
+        guardar_conservando(&u, &a).unwrap();
+        assert_eq!(cargar(&u).unwrap().pinear.guardadas(), None);
     }
 
     #[test]

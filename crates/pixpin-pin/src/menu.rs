@@ -59,6 +59,10 @@ pub const CMD_PINES_ABIERTOS: u32 = 20;
 pub const CMD_ABRIR: u32 = 21;
 /// Ver el pin en negativo (N), 10-oct-2026. Solo cambia como se pinta.
 pub const CMD_INVERTIR: u32 = 22;
+/// Quitar la pegatina del pin.
+pub const CMD_SIN_PEGATINA: u32 = 23;
+/// Volver a leer seguida una nota que se leia por paginas.
+pub const CMD_NOTA_SEGUIDA: u32 = 24;
 pub const CMD_SIN_GRUPO: u32 = 100;
 pub const CMD_COLOR_BASE: u32 = 101;
 /// «Convertir en…» una nota: 200 + el indice en `MiniApp::TODAS`. En el PC
@@ -76,6 +80,13 @@ pub const PAUTAS_PIZARRA: u8 = 5;
 pub const CMD_OPACIDAD_BASE: u32 = 400;
 /// Las opacidades que ofrece el menu, en por ciento.
 pub const OPACIDADES: [u8; 8] = [100, 90, 80, 70, 60, 50, 40, 30];
+/// Una pegatina: 600 + su indice en `pegatina::elegibles`.
+pub const CMD_PEGATINA_BASE: u32 = 600;
+/// Ir a una pagina de la nota: 700 + la pagina, desde 0.
+pub const CMD_NOTA_PAGINA_BASE: u32 = 700;
+/// Cuantas paginas de una nota se listan en el menu. Una nota de mas de
+/// cien paginas se recorre con su pie y con RePag/AvPag.
+pub const PAGINAS_EN_MENU: u32 = 99;
 
 /// Textos nuevos del rediseno v2, ya traducidos. Van aparte para que
 /// anadirlos no toque mas que una linea de quien monta `TextosPin`.
@@ -130,6 +141,15 @@ pub struct TextosV2 {
     pub modo_texto: String,
     /// «Invertir colores» (N): el pin en negativo.
     pub invertir_colores: String,
+    /// «Pegatina» y «Sin pegatina» (`cd_emoji`, `emoji_none`).
+    pub pegatina: String,
+    pub sin_pegatina: String,
+    /// «Páginas», «Leer seguida» y «Página» (la de «Página 3»).
+    pub paginas: String,
+    pub leer_seguida: String,
+    pub pagina: String,
+    /// «min», tras los minutos de una pegatina de tiempo.
+    pub minutos: String,
 }
 
 /// Textos del pin, YA traducidos: este crate no conoce Fluent (vive en
@@ -244,6 +264,14 @@ pub struct EstadoMenu {
     pub opacidad: u8,
     /// El pin se ve en negativo (N).
     pub invertido: bool,
+    /// Lleva pegatina (sale «Sin pegatina»).
+    pub con_pegatina: bool,
+    /// Es un temporizador: sus pegatinas de tiempo van primero.
+    pub temporizador: bool,
+    /// Cuantas paginas tiene la nota. Con una o ninguna no se ofrece paginar.
+    pub nota_paginas: u32,
+    /// La pagina de la nota que se ve, o `None` si se lee seguida.
+    pub nota_pagina: Option<u32>,
 }
 
 /// Si a este contenido se le puede anotar encima: lo mismo que decide el
@@ -324,6 +352,48 @@ fn submenu_opacidad(t: &TextosPin, ahora: u8) -> EntradaMenu {
     }
 }
 
+/// El submenu de las pegatinas: las de tiempo arriba si es un
+/// temporizador, las de siempre y, si ya lleva una, quitarla.
+fn submenu_pegatina(t: &TextosPin, temporizador: bool, con_pegatina: bool) -> EntradaMenu {
+    let mut entradas = Vec::new();
+    for (i, emoji) in crate::pegatina::elegibles(temporizador).into_iter().enumerate() {
+        let etiqueta = match crate::pegatina::minutos_de(emoji) {
+            Some(m) => format!("{emoji}  {m} {}", t.v2.minutos),
+            None => emoji.to_string(),
+        };
+        entradas.push(accion(CMD_PEGATINA_BASE + i as u32, &etiqueta, None));
+        if temporizador && i + 1 == crate::pegatina::DE_TIEMPO.len() {
+            entradas.push(EntradaMenu::Separador);
+        }
+    }
+    if con_pegatina {
+        entradas.push(EntradaMenu::Separador);
+        entradas.push(accion(CMD_SIN_PEGATINA, &t.v2.sin_pegatina, None));
+    }
+    EntradaMenu::Submenu {
+        etiqueta: t.v2.pegatina.clone(),
+        entradas,
+    }
+}
+
+/// El submenu de las paginas de una nota: leerla seguida y cada pagina, con
+/// la de ahora marcada. Es la rejilla de paginas del movil hecha menu.
+fn submenu_paginas_de_nota(t: &TextosPin, cuantas: u32, ahora: Option<u32>) -> EntradaMenu {
+    let mut entradas = vec![marcada(CMD_NOTA_SEGUIDA, &t.v2.leer_seguida, ahora.is_none())];
+    entradas.push(EntradaMenu::Separador);
+    for n in 0..cuantas.min(PAGINAS_EN_MENU) {
+        entradas.push(marcada(
+            CMD_NOTA_PAGINA_BASE + n,
+            &format!("{} {}", t.v2.pagina, n + 1),
+            ahora == Some(n),
+        ));
+    }
+    EntradaMenu::Submenu {
+        etiqueta: format!("{} ({cuantas})", t.v2.paginas),
+        entradas,
+    }
+}
+
 /// Que entradas tiene el menu de este pin. PURA y probada en CI.
 pub fn entradas_del_menu(
     contenido: &Contenido,
@@ -341,6 +411,10 @@ pub fn entradas_del_menu(
         pizarra,
         opacidad,
         invertido,
+        con_pegatina,
+        temporizador,
+        nota_paginas,
+        nota_pagina,
     } = estado;
     let mut v = Vec::new();
     let es_vivo = matches!(contenido, Contenido::Vivo { .. });
@@ -484,10 +558,16 @@ pub fn entradas_del_menu(
         // tareas, los gastos o los nombres de la ruleta (C3, propio del PC).
         if matches!(contenido, Contenido::Nota { .. }) {
             mas.push(submenu_convertir(t));
+            // Una nota larga se maneja como un PDF, y solo si de verdad
+            // tiene mas de una pagina (`esNotaLarga`).
+            if nota_paginas > 1 {
+                mas.push(submenu_paginas_de_nota(t, nota_paginas, nota_pagina));
+            }
         }
         if paginas.is_some_and(|c| c > 1) {
             mas.push(accion(CMD_EXTRAER_TODAS, &t.v2.pinear_todas, None));
         }
+        mas.push(submenu_pegatina(t, temporizador, con_pegatina));
         mas.push(EntradaMenu::Separador);
         mas.push(submenu_grupo(t));
         if con_grupo {
@@ -708,6 +788,12 @@ pub(crate) mod pruebas {
                 panel_oculto: "Oculto".into(),
                 panel_ayuda: "Clic en una fila: trae el pin al centro y lo resalta.".into(),
                 panel_vacio: "No hay pines abiertos.".into(),
+                pegatina: "Pegatina".into(),
+                sin_pegatina: "Sin pegatina".into(),
+                paginas: "Páginas".into(),
+                leer_seguida: "Leer seguida".into(),
+                pagina: "Página".into(),
+                minutos: "min".into(),
                 ..Default::default()
             },
         }
@@ -1291,6 +1377,140 @@ pub(crate) mod pruebas {
         assert!(
             !v.iter()
                 .any(|e| matches!(e, EntradaMenu::Submenu { etiqueta, .. } if etiqueta == "Grupo"))
+        );
+    }
+
+    #[test]
+    fn todos_los_pines_guardables_ofrecen_pegatina_y_quitarla_si_la_llevan() {
+        let v = entradas_del_menu(&imagen(), EstadoMenu::default(), &textos());
+        let mas = submenu(&v, "Más").unwrap();
+        let s = submenu(mas, "Pegatina").expect("la pegatina va en «Mas»");
+        assert_eq!(ids(s).len(), crate::pegatina::PEGATINAS.len());
+        assert_eq!(etiqueta_de(s, CMD_PEGATINA_BASE), Some("⭐".into()));
+        // Caso negativo: sin pegatina no hay nada que quitar.
+        assert!(!ids(s).contains(&CMD_SIN_PEGATINA));
+        let con = entradas_del_menu(
+            &imagen(),
+            EstadoMenu {
+                con_pegatina: true,
+                ..Default::default()
+            },
+            &textos(),
+        );
+        assert!(ids(&con).contains(&CMD_SIN_PEGATINA));
+        // El pin en vivo no se guarda: no lleva pegatina.
+        let vivo = entradas_del_menu(
+            &Contenido::Vivo {
+                ancho: 10,
+                alto: 10,
+            },
+            EstadoMenu::default(),
+            &textos(),
+        );
+        assert!(submenu(&vivo, "Pegatina").is_none());
+    }
+
+    #[test]
+    fn en_un_temporizador_las_pegatinas_de_tiempo_van_arriba_con_sus_minutos() {
+        let h = Contenido::Herramienta {
+            ancho: 300,
+            alto: 300,
+        };
+        let v = entradas_del_menu(
+            &h,
+            EstadoMenu {
+                temporizador: true,
+                ..Default::default()
+            },
+            &textos(),
+        );
+        let s = submenu(&v, "Pegatina").unwrap();
+        assert_eq!(etiqueta_de(s, CMD_PEGATINA_BASE), Some("5️⃣  5 min".into()));
+        assert_eq!(etiqueta_de(s, CMD_PEGATINA_BASE + 3), Some("🕐  60 min".into()));
+        assert_eq!(s[4], EntradaMenu::Separador, "una raya tras las de tiempo");
+        assert_eq!(etiqueta_de(s, CMD_PEGATINA_BASE + 4), Some("⭐".into()));
+    }
+
+    #[test]
+    fn una_nota_larga_ofrece_sus_paginas_y_una_corta_no() {
+        let nota = Contenido::Nota {
+            texto: "larga".into(),
+        };
+        let corta = entradas_del_menu(
+            &nota,
+            EstadoMenu {
+                nota_paginas: 1,
+                ..Default::default()
+            },
+            &textos(),
+        );
+        assert!(submenu(&corta, "Páginas").is_none(), "una pagina no se pagina");
+        let leyendo = entradas_del_menu(
+            &nota,
+            EstadoMenu {
+                nota_paginas: 3,
+                nota_pagina: Some(1),
+                ..Default::default()
+            },
+            &textos(),
+        );
+        let s = submenu(&leyendo, "Páginas (3)").expect("tres paginas");
+        let marcadas: Vec<u32> = s
+            .iter()
+            .filter_map(|e| match e {
+                EntradaMenu::Accion {
+                    id, marcada: true, ..
+                } => Some(*id),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(marcadas, vec![CMD_NOTA_PAGINA_BASE + 1]);
+        assert_eq!(etiqueta_de(s, CMD_NOTA_PAGINA_BASE + 2), Some("Página 3".into()));
+        // Seguida, lo marcado es «Leer seguida».
+        let seguida = entradas_del_menu(
+            &nota,
+            EstadoMenu {
+                nota_paginas: 3,
+                ..Default::default()
+            },
+            &textos(),
+        );
+        let s = submenu(&seguida, "Páginas").unwrap();
+        assert!(matches!(
+            &s[0],
+            EntradaMenu::Accion { id: CMD_NOTA_SEGUIDA, marcada: true, .. }
+        ));
+        // Caso negativo: una imagen con paginas de nota (no deberia pasar)
+        // no ofrece nada.
+        let img = entradas_del_menu(
+            &imagen(),
+            EstadoMenu {
+                nota_paginas: 3,
+                ..Default::default()
+            },
+            &textos(),
+        );
+        assert!(submenu(&img, "Páginas").is_none());
+    }
+
+    #[test]
+    fn una_nota_enorme_lista_solo_las_primeras_paginas() {
+        let nota = Contenido::Nota { texto: "x".into() };
+        let v = entradas_del_menu(
+            &nota,
+            EstadoMenu {
+                nota_paginas: 500,
+                ..Default::default()
+            },
+            &textos(),
+        );
+        let s = submenu(&v, "Páginas").unwrap();
+        assert_eq!(ids(s).len() as u32, PAGINAS_EN_MENU + 1);
+        // Y los comandos no se pisan con los de otras listas.
+        assert!(CMD_NOTA_PAGINA_BASE + PAGINAS_EN_MENU < 800);
+        assert!(
+            CMD_PEGATINA_BASE + (crate::pegatina::elegibles(true).len() as u32)
+                < CMD_NOTA_PAGINA_BASE
         );
     }
 }

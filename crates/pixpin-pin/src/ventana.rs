@@ -216,6 +216,13 @@ pub enum CambioPin {
     QuitarMarcasTexto,
     /// `Ctrl+Z` fuera del modo anotacion: deshacer la ultima marca.
     DeshacerMarca,
+    /// Menu «Pegatina»: `Some(i)` es el indice en `pegatina::elegibles`
+    /// (con las de tiempo delante si es un temporizador), `None` quitarla.
+    /// La pone el gestor, que la guarda y arranca el temporizador.
+    PegatinaPedida(Option<u8>),
+    /// La nota paso a leerse por la pagina `Some(n)` (desde 0) o seguida.
+    /// El pin ya la ensena; el gestor solo la guarda.
+    PaginaDeNota(Option<u32>),
 }
 
 /// La lupa dentro del pin (D52): que trozo del contenido se amplia y donde
@@ -695,6 +702,13 @@ struct PinInterno {
     /// El color y la pauta de una pizarra, para su submenu; `None` si el pin
     /// no es una.
     pizarra: Option<(u8, u8)>,
+    /// La pegatina de la esquina (un emoji de `pegatina`), si lleva.
+    pegatina: Option<String>,
+    /// Es un temporizador: su menu ofrece las pegatinas de tiempo.
+    temporizador: bool,
+    /// La pagina de la nota que se ensena (desde 0), o `None` si se lee
+    /// seguida. Ver `paginado`.
+    nota_pagina: Option<usize>,
     /// La opacidad del pin entero, de 0,2 a 1 (v2). Mayus + rueda y el menu.
     opacidad: f32,
     /// Donde quedaria el pin pegado a la guia que se ve mientras se
@@ -894,6 +908,9 @@ impl Pin {
             pintor_interior: None,
             pulsado_interior: None,
             pizarra: None,
+            pegatina: None,
+            temporizador: false,
+            nota_pagina: None,
             opacidad: 1.0,
             guia: None,
             completa: None,
@@ -1225,6 +1242,46 @@ impl Pin {
         if let Some(i) = interno_de(self.hwnd) {
             i.pizarra = pizarra;
         }
+    }
+
+    /// Pone o quita la pegatina de la esquina. Una que no sea de la lista
+    /// no se ensena.
+    pub fn poner_pegatina(&self, pegatina: Option<&str>) {
+        if let Some(i) = interno_de(self.hwnd) {
+            let nueva = pegatina
+                .filter(|e| crate::pegatina::conocida(e))
+                .map(str::to_string);
+            if nueva != i.pegatina {
+                i.pegatina = nueva;
+                pintar(i);
+            }
+        }
+    }
+
+    /// Dice si el pin es un temporizador (sus pegatinas de tiempo).
+    pub fn poner_temporizador(&self, si: bool) {
+        if let Some(i) = interno_de(self.hwnd) {
+            i.temporizador = si;
+        }
+    }
+
+    /// Ensena la nota por la pagina `n` (desde 0) o seguida. Una pagina que
+    /// ya no existe (la nota encogio) se queda en la ultima.
+    pub fn poner_pagina_de_nota(&self, pagina: Option<u32>) {
+        if let Some(i) = interno_de(self.hwnd)
+            && let Contenido::Nota { texto } = &i.contenido
+        {
+            let cuantas = crate::paginado::cuantas(texto);
+            i.nota_pagina = pagina
+                .filter(|_| cuantas > 1)
+                .map(|n| (n as usize).min(cuantas - 1));
+            pintar(i);
+        }
+    }
+
+    /// La pagina de la nota que se ve, o `None` si se lee seguida.
+    pub fn pagina_de_nota(&self) -> Option<u32> {
+        interno_de(self.hwnd).and_then(|i| i.nota_pagina.map(|n| n as u32))
     }
 
     /// Cambia la imagen de un pin de imagen por otra DEL MISMO USO (el fondo
@@ -2801,7 +2858,25 @@ fn pintar(i: &PinInterno) {
                 let z = i.zoom_texto;
                 let margen = NOTA_MARGEN_LOGICO * escala * z;
                 let tam = NOTA_TEXTO_LOGICO * escala * z;
-                let bloques = crate::markdown::analizar(texto);
+                // Leida por paginas, solo la de ahora y su pie debajo
+                // (`PieDePaginas`). Seguida, el rollo de siempre.
+                let normal = crate::paginado::normalizar(texto);
+                let hoja = i.nota_pagina.and_then(|n| {
+                    let ps =
+                        crate::paginado::paginas(&normal, crate::paginado::RENGLONES_POR_PAGINA);
+                    let n = n.min(ps.len().saturating_sub(1));
+                    (ps.len() > 1).then(|| (ps[n], n, ps.len()))
+                });
+                let alto_pie = if hoja.is_some() {
+                    PIE_NOTA_LOGICO * escala
+                } else {
+                    0.0
+                };
+                let fuente: &str = match hoja {
+                    Some((pg, _, _)) => &normal[pg.desde..pg.hasta],
+                    None => texto,
+                };
+                let bloques = crate::markdown::analizar(fuente);
                 let ancho_texto = (w - 2.0 * margen).max(1.0);
                 let d = crate::markdown::disponer(
                     &bloques,
@@ -2824,7 +2899,7 @@ fn pintar(i: &PinInterno) {
                         x: m,
                         y: m,
                         ancho: w,
-                        alto: h,
+                        alto: (h - alto_pie).max(0.0),
                     },
                     |p| {
                         pintar_markdown(
@@ -2840,6 +2915,16 @@ fn pintar(i: &PinInterno) {
                         );
                     },
                 );
+                if let Some((_, n, total)) = hoja {
+                    pintar_pie_de_nota(
+                        p,
+                        pie_de_nota(caja, escala),
+                        n,
+                        total,
+                        escala,
+                        tinta,
+                    );
+                }
             }
 
             // La herramienta la pinta el gestor, recortada a la tarjeta: una
@@ -3050,6 +3135,12 @@ fn pintar(i: &PinInterno) {
             }
             p.trazar(destino, 2.0 * escala, Color::ACENTO);
         }
+        // La pegatina, lo ultimo: va por encima de la tarjeta y de lo
+        // anotado, en la esquina, sin el zoom de dentro ni recortes.
+        if let Some(emoji) = &i.pegatina {
+            p.desplazar(ox as f32 - m, oy as f32 - m);
+            pintar_pegatina(p, &i.motor, emoji, caja, escala, (ox as f32 - m, oy as f32 - m));
+        }
         if con_capa {
             // SAFETY: cierra el PushLayer de arriba, dentro del fotograma.
             unsafe { i.motor.contexto().PopLayer() };
@@ -3057,6 +3148,113 @@ fn pintar(i: &PinInterno) {
     });
     let presentado = i.superficie.presentar();
     i.pintado_bien.set(dibujado.is_ok() && presentado.is_ok());
+}
+
+/// Alto del pie de una nota por paginas, en px logicos.
+const PIE_NOTA_LOGICO: f32 = 26.0;
+
+/// El pie de una nota por paginas: la franja de abajo de la tarjeta.
+fn pie_de_nota(caja: RectF, escala: f32) -> RectF {
+    let alto = (PIE_NOTA_LOGICO * escala).min(caja.alto);
+    RectF {
+        x: caja.x,
+        y: caja.y + caja.alto - alto,
+        ancho: caja.ancho,
+        alto,
+    }
+}
+
+/// Que hace un clic en `(x, y)` sobre el pie: `-1` la anterior (mitad
+/// izquierda), `+1` la siguiente (mitad derecha), `None` si cae fuera.
+fn salto_en_el_pie(pie: RectF, x: f32, y: f32) -> Option<i32> {
+    if x < pie.x || x >= pie.x + pie.ancho || y < pie.y || y >= pie.y + pie.alto {
+        return None;
+    }
+    Some(if x < pie.x + pie.ancho / 2.0 { -1 } else { 1 })
+}
+
+/// Lleva la nota a la pagina `n` (o seguida con `None`), la repinta y se lo
+/// dice al gestor para que lo guarde. Fuera de rango se queda en el borde.
+fn ir_a_pagina_de_nota(i: &mut PinInterno, n: Option<usize>) {
+    let Contenido::Nota { texto } = &i.contenido else {
+        return;
+    };
+    let cuantas = crate::paginado::cuantas(texto);
+    let nueva = n.filter(|_| cuantas > 1).map(|n| n.min(cuantas - 1));
+    if nueva == i.nota_pagina {
+        return;
+    }
+    i.nota_pagina = nueva;
+    pintar(i);
+    (i.al_cambiar)(CambioPin::PaginaDeNota(nueva.map(|n| n as u32)));
+}
+
+/// El pie de la nota: « ‹ 3/12 › », dos circulos y la cuenta. En el
+/// extremo el circulo se apaga, no desaparece.
+fn pintar_pie_de_nota(
+    p: &pixpin_render::Pintor,
+    pie: RectF,
+    actual: usize,
+    total: usize,
+    escala: f32,
+    tinta: Color,
+) {
+    // Sin fondo propio: el texto de la pagina ya se recorta encima, y un
+    // relleno cuadrado taparia las esquinas redondeadas de la tarjeta.
+    let vivo = Color { a: 0.75, ..tinta };
+    let apagado = Color { a: 0.25, ..tinta };
+    let cuenta = format!("{}/{}", actual + 1, total);
+    let tam = 11.0 * escala;
+    let (aw, ah) = p.medir_texto(&cuenta, tam);
+    let cy = pie.y + pie.alto / 2.0;
+    let cx = pie.x + pie.ancho / 2.0;
+    p.texto(&cuenta, cx - aw / 2.0, cy - ah / 2.0, tam, vivo);
+    let radio = 10.0 * escala;
+    let hueco = aw / 2.0 + 14.0 * escala + radio;
+    for (lado, hay) in [(-1.0f32, actual > 0), (1.0, actual + 1 < total)] {
+        let centro = (cx + lado * hueco, cy);
+        let color = if hay { vivo } else { apagado };
+        p.circulo(centro, radio, Color { a: 0.08, ..tinta });
+        p.anillo(centro, radio, escala.max(1.0), Color { a: 0.5 * color.a, ..color });
+        // El galon, hacia donde va.
+        let b = 3.0 * escala;
+        let punta = (centro.0 + lado * b * 0.7, centro.1);
+        let grosor = 1.5 * escala;
+        p.linea((centro.0 - lado * b * 0.5, centro.1 - b), punta, grosor, color);
+        p.linea((centro.0 - lado * b * 0.5, centro.1 + b), punta, grosor, color);
+    }
+}
+
+/// La pegatina en la esquina de arriba a la derecha, girada 30 grados
+/// alrededor de su centro (`PinRoot` del movil). `base` es el
+/// desplazamiento con que pinta el pin, al que se vuelve al acabar.
+fn pintar_pegatina(
+    p: &pixpin_render::Pintor,
+    motor: &MotorRender,
+    emoji: &str,
+    caja: RectF,
+    escala: f32,
+    base: (f32, f32),
+) {
+    let (x, y, lado) =
+        crate::pegatina::caja((caja.x, caja.y, caja.ancho, caja.alto), escala);
+    let (cx, cy) = (x + lado / 2.0, y + lado / 2.0);
+    let (sin, cos) = crate::pegatina::GIRO_GRADOS.to_radians().sin_cos();
+    let m = windows_numerics::Matrix3x2 {
+        M11: cos,
+        M12: sin,
+        M21: -sin,
+        M22: cos,
+        M31: cx - (cx * cos - cy * sin) + base.0,
+        M32: cy - (cx * sin + cy * cos) + base.1,
+    };
+    // SAFETY: SetTransform sobre el contexto vivo, dentro del fotograma; se
+    // vuelve al desplazamiento de base justo despues.
+    unsafe { motor.contexto().SetTransform(&m) };
+    let tam = crate::pegatina::CUERPO_LOGICO * escala;
+    let (w, h) = p.medir_texto(emoji, tam);
+    p.texto_color(emoji, cx - w / 2.0, cy - h / 2.0, tam, Color::NEGRO);
+    p.desplazar(base.0, base.1);
 }
 
 /// Pinta una nota ya dispuesta como Markdown: prefijos de lista, barra de
@@ -3737,6 +3935,15 @@ fn abrir_menu(hwnd: HWND, punto: Option<(i32, i32)>) {
         pizarra: i.pizarra,
         opacidad: (i.opacidad * 100.0).round() as u8,
         invertido: i.en_negativo,
+        con_pegatina: i.pegatina.is_some(),
+        temporizador: i.temporizador,
+        // Se cuentan al abrir el menu, no al pintar: una nota de tres
+        // lineas no tiene que enterarse nunca de que hay paginas.
+        nota_paginas: match &i.contenido {
+            Contenido::Nota { texto } => crate::paginado::cuantas(texto) as u32,
+            _ => 0,
+        },
+        nota_pagina: i.nota_pagina.map(|n| n as u32),
     };
     match crate::menu::mostrar(hwnd, &i.contenido, estado, &t, punto) {
         None => {}
@@ -3762,6 +3969,25 @@ fn abrir_menu(hwnd: HWND, punto: Option<(i32, i32)>) {
         Some(crate::menu::CMD_ABRIR) => (i.al_cambiar)(CambioPin::AbrirPedido),
         Some(crate::menu::CMD_PINES_ABIERTOS) => (i.al_cambiar)(CambioPin::PinesAbiertosPedido),
         Some(crate::menu::CMD_INVERTIR) => alternar_negativo(i),
+        Some(crate::menu::CMD_SIN_PEGATINA) => (i.al_cambiar)(CambioPin::PegatinaPedida(None)),
+        Some(c)
+            if (crate::menu::CMD_PEGATINA_BASE
+                ..crate::menu::CMD_PEGATINA_BASE
+                    + crate::pegatina::elegibles(i.temporizador).len() as u32)
+                .contains(&c) =>
+        {
+            (i.al_cambiar)(CambioPin::PegatinaPedida(Some(
+                (c - crate::menu::CMD_PEGATINA_BASE) as u8,
+            )))
+        }
+        Some(crate::menu::CMD_NOTA_SEGUIDA) => ir_a_pagina_de_nota(i, None),
+        Some(c)
+            if (crate::menu::CMD_NOTA_PAGINA_BASE
+                ..crate::menu::CMD_NOTA_PAGINA_BASE + crate::menu::PAGINAS_EN_MENU)
+                .contains(&c) =>
+        {
+            ir_a_pagina_de_nota(i, Some((c - crate::menu::CMD_NOTA_PAGINA_BASE) as usize))
+        }
         Some(c)
             if (crate::menu::CMD_OPACIDAD_BASE
                 ..crate::menu::CMD_OPACIDAD_BASE + crate::menu::OPACIDADES.len() as u32)
@@ -3948,6 +4174,33 @@ extern "system" fn procedimiento_pin(
             {
                 let c = cursor_de_pantalla();
                 i.pulsado_video = Some((c.x, c.y));
+            }
+            // El pie de una nota por paginas: mitad izquierda, la anterior;
+            // mitad derecha, la siguiente (`pasarPaginaEn`). Se queda el
+            // toque aunque no haya pagina a la que ir: en el extremo el
+            // circulo esta apagado, y que moviera el pin seria un premio
+            // de consolacion raro.
+            if let Some(i) = interno_de(hwnd)
+                && !i.anotando
+                && let Some(n) = i.nota_pagina
+                && matches!(i.contenido, Contenido::Nota { .. })
+            {
+                let c = punto_contenido(i, lparam);
+                let r = i.estado.rect();
+                let caja = RectF {
+                    x: 0.0,
+                    y: 0.0,
+                    ancho: r.ancho as f32,
+                    alto: r.alto as f32,
+                };
+                let pie = pie_de_nota(caja, i.escala_por_cien as f32 / 100.0);
+                if let Some(salto) = salto_en_el_pie(pie, c.x as f32, c.y as f32) {
+                    let destino = n as i64 + salto as i64;
+                    if destino >= 0 {
+                        ir_a_pagina_de_nota(i, Some(destino as usize));
+                    }
+                    return LRESULT(0);
+                }
             }
             // La barra se esconde mientras se arrastra el pin.
             esconder_barra(hwnd);
@@ -4675,6 +4928,24 @@ extern "system" fn procedimiento_pin(
             poner_pasante_en(hwnd, true);
             if let Some(i) = interno_de(hwnd) {
                 (i.al_cambiar)(CambioPin::Movido(colocacion_de(i, i.estado.rect())));
+            }
+            LRESULT(0)
+        }
+        // RePag y AvPag en una nota que se lee por paginas.
+        WM_KEYDOWN
+            if matches!(wparam.0 as u32, 0x21 | 0x22)
+                && interno_de(hwnd).is_some_and(|i| !i.anotando && i.nota_pagina.is_some()) =>
+        {
+            if let Some(i) = interno_de(hwnd)
+                && let Some(n) = i.nota_pagina
+            {
+                if wparam.0 as u32 == 0x21 {
+                    if n > 0 {
+                        ir_a_pagina_de_nota(i, Some(n - 1));
+                    }
+                } else {
+                    ir_a_pagina_de_nota(i, Some(n + 1));
+                }
             }
             LRESULT(0)
         }
@@ -6062,5 +6333,108 @@ mod pruebas {
         drop(nota);
         drop(foto);
         bombear(100);
+    }
+
+    /// La nota por paginas con su pie y una pegatina, pintadas fuera de
+    /// pantalla con las mismas funciones que el pin, a
+    /// `PIXPIN_MUESTRAS_PINES` (o la carpeta temporal).
+    #[test]
+    #[ignore = "necesita GPU; genera PNG de muestra"]
+    fn muestra_de_la_nota_por_paginas_con_pegatina() {
+        let d3d = d3d();
+        let motor = MotorRender::nuevo(&d3d).unwrap();
+        let dir = std::env::var_os("PIXPIN_MUESTRAS_PINES")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(std::env::temp_dir);
+        let texto = (1..=120)
+            .map(|n| format!("Párrafo número {n} de la nota."))
+            .collect::<Vec<_>>()
+            .join("\n\n");
+        let texto = format!("# Apuntes largos\n\n{texto}");
+        let paginas = crate::paginado::paginas(&texto, crate::paginado::RENGLONES_POR_PAGINA);
+        assert!(paginas.len() > 2);
+        for (nombre, pagina, emoji, claro) in [
+            ("pin-nota-pagina-1", 0usize, "⭐", true),
+            ("pin-nota-pagina-2-oscuro", 1, "🔥", false),
+        ] {
+            let escala = 1.25f32;
+            let m = MARGEN_SOMBRA_LOGICO as f32 * escala;
+            let (w, h) = (320.0 * escala, 420.0 * escala);
+            let fuera = pixpin_render::fuera_de_pantalla::FueraDePantalla::nuevo(
+                &motor,
+                &d3d,
+                (w + 2.0 * m) as u32,
+                (h + 2.0 * m) as u32,
+            )
+            .unwrap();
+            let (lienzo, tinta) = if claro {
+                (Color::BLANCO, Color { r: 0.1, g: 0.1, b: 0.11, a: 1.0 })
+            } else {
+                (
+                    Color { r: 0.11, g: 0.11, b: 0.12, a: 1.0 },
+                    Color { r: 0.93, g: 0.93, b: 0.94, a: 1.0 },
+                )
+            };
+            let caja = RectF { x: m, y: m, ancho: w, alto: h };
+            motor
+                .dibujar(&fuera.destino, |p| {
+                    p.limpiar_transparente();
+                    p.rellenar_redondeado(caja, 8.0 * escala, lienzo);
+                    let pg = paginas[pagina];
+                    let bloques = crate::markdown::analizar(&texto[pg.desde..pg.hasta]);
+                    let margen = NOTA_MARGEN_LOGICO * escala;
+                    let tam = NOTA_TEXTO_LOGICO * escala;
+                    let ancho_texto = w - 2.0 * margen;
+                    let d = crate::markdown::disponer(
+                        &bloques,
+                        ancho_texto,
+                        tam,
+                        &|t, tam, max, tramos| p.medir_parrafo(t, tam, max, tramos),
+                    );
+                    let pie = pie_de_nota(caja, escala);
+                    p.con_recorte(
+                        RectF { alto: h - pie.alto, ..caja },
+                        |p| {
+                            pintar_markdown(
+                                p,
+                                &bloques,
+                                &d,
+                                m + margen,
+                                m + margen,
+                                ancho_texto,
+                                tam,
+                                tinta,
+                                Color { a: 0.55, ..tinta },
+                            )
+                        },
+                    );
+                    pintar_pie_de_nota(p, pie, pagina, paginas.len(), escala, tinta);
+                    pintar_pegatina(p, &motor, emoji, caja, escala, (0.0, 0.0));
+                })
+                .unwrap();
+            let (ancho, alto, pixeles) = fuera.leer_rgba().unwrap();
+            // La pegatina asoma fuera de la tarjeta, arriba a la derecha.
+            let asoma = (0..(m as u32 - 2))
+                .flat_map(|y| ((ancho - m as u32)..ancho).map(move |x| (x, y)))
+                .any(|(x, y)| pixeles[((y * ancho + x) * 4 + 3) as usize] > 0);
+            assert!(asoma, "la pegatina no sobresale");
+            std::fs::write(
+                dir.join(format!("{nombre}.png")),
+                pixpin_codec::codificar_png(&ImagenRgba { ancho, alto, pixeles }).unwrap(),
+            )
+            .unwrap();
+        }
+    }
+
+    #[test]
+    fn el_pie_de_la_nota_reparte_el_clic_por_mitades() {
+        let caja = RectF { x: 0.0, y: 0.0, ancho: 200.0, alto: 300.0 };
+        let pie = pie_de_nota(caja, 1.0);
+        assert_eq!(pie.y, 300.0 - PIE_NOTA_LOGICO);
+        assert_eq!(salto_en_el_pie(pie, 10.0, 290.0), Some(-1));
+        assert_eq!(salto_en_el_pie(pie, 190.0, 290.0), Some(1));
+        // Caso negativo: encima del pie es la nota, no el pie.
+        assert_eq!(salto_en_el_pie(pie, 100.0, 100.0), None);
+        assert_eq!(salto_en_el_pie(pie, 250.0, 290.0), None);
     }
 }

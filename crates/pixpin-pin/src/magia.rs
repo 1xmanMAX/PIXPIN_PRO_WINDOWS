@@ -199,11 +199,76 @@ pub fn escribir(palabras: &BTreeMap<String, MiniApp>) -> String {
         .join("\n")
 }
 
+/// Las palabras de una herramienta, en el orden del mapa (`deLaApp`).
+///
+/// El mapa del PC va por orden alfabetico (un `BTreeMap`) y el del movil por
+/// orden de llegada: la lista sale ordenada, pero las palabras son las mismas
+/// y se guardan con el mismo formato.
+pub fn de_la_app(palabras: &BTreeMap<String, MiniApp>, app: MiniApp) -> Vec<String> {
+    palabras
+        .iter()
+        .filter(|(_, m)| **m == app)
+        .map(|(p, _)| p.clone())
+        .collect()
+}
+
+/// Cambia de golpe las palabras de una herramienta y deja las demas
+/// (`conLasDe`). Una palabra solo abre una cosa, asi que darsela a esta se
+/// la quita a la que la tuviera; lo que no podria dispararse nunca (vacio,
+/// con blancos, larguisimo) se cae, y lo repetido cuenta una vez.
+pub fn con_las_de(
+    palabras: &BTreeMap<String, MiniApp>,
+    app: MiniApp,
+    nuevas: &[&str],
+) -> BTreeMap<String, MiniApp> {
+    let limpias: Vec<String> = nuevas.iter().filter_map(|p| normalizar(p)).collect();
+    let mut salida: BTreeMap<String, MiniApp> = palabras
+        .iter()
+        .filter(|(p, m)| **m != app && !limpias.contains(p))
+        .map(|(p, m)| (p.clone(), *m))
+        .collect();
+    for p in limpias {
+        salida.insert(p, app);
+    }
+    salida
+}
+
+/// Lo escrito en la caja de una herramienta, partido como en el dialogo del
+/// movil: por comas y por saltos de linea.
+pub fn partir_escrito(escrito: &str) -> Vec<&str> {
+    escrito.split([',', '\n']).collect()
+}
+
+/// Las palabras que manda el usuario, puestas por quien lee los ajustes
+/// (`fijar`). Vacio hasta entonces: mandan las de fabrica.
+static VIGENTES: std::sync::Mutex<Option<BTreeMap<String, MiniApp>>> =
+    std::sync::Mutex::new(None);
+
+/// Fija las palabras guardadas (`None` = las de fabrica). Lo llama quien
+/// tiene los ajustes, al arrancar y al cerrarse la ventana de ajustes.
+pub fn fijar(guardadas: Option<&str>) {
+    if let Ok(mut v) = VIGENTES.lock() {
+        *v = Some(leer(guardadas));
+    }
+}
+
+/// Las palabras que valen ahora: las fijadas, o las de fabrica.
+pub fn vigentes() -> BTreeMap<String, MiniApp> {
+    VIGENTES
+        .lock()
+        .ok()
+        .and_then(|v| v.clone())
+        .unwrap_or_else(por_defecto)
+}
+
 /// Lo que se pinea con un texto del portapapeles (`ContentClassifier`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Clasificado {
     /// Una palabra magica: la herramienta.
     Herramienta(MiniApp),
+    /// Un color (`ColorPin`): una muestra que se copia de un toque. El valor
+    /// es ARGB, ver [`crate::color`].
+    Color(u32),
     /// Texto con tabuladores (o barras de Markdown) pegado de una hoja de
     /// calculo: sin rejilla se lee en crudo justo cuando mas importa que las
     /// cifras queden alineadas.
@@ -212,8 +277,9 @@ pub enum Clasificado {
     Vacio,
 }
 
-/// El orden del movil: primero la palabra magica, luego la tabla, luego el
-/// texto. (El color del movil va entre medias; el PC no tiene pin de color.)
+/// El orden del movil: primero la palabra magica, luego el color, luego la
+/// tabla y si no, texto. La palabra va antes que el color: ninguna es un
+/// nombre de color CSS, pero si algun dia lo fuera, mandaria la herramienta.
 pub fn clasificar(texto: &str, palabras: &BTreeMap<String, MiniApp>) -> Clasificado {
     let t = texto.trim();
     if t.is_empty() {
@@ -221,6 +287,9 @@ pub fn clasificar(texto: &str, palabras: &BTreeMap<String, MiniApp>) -> Clasific
     }
     if let Some(m) = detectar(t, palabras) {
         return Clasificado::Herramienta(m);
+    }
+    if let Some(c) = crate::color::leer(t) {
+        return Clasificado::Color(c);
     }
     if crate::tabla::parece_tabla(t) {
         return Clasificado::Tabla;
@@ -324,5 +393,113 @@ mod pruebas {
         assert_eq!(clasificar("a\tb\n1\t2", &p), Clasificado::Tabla);
         assert_eq!(clasificar("hola que tal", &p), Clasificado::Texto);
         assert_eq!(clasificar("  \n ", &p), Clasificado::Vacio);
+    }
+
+    // ---- `classify devuelve el tipo correcto` (ContentClassifierTest) ----
+
+    #[test]
+    fn el_color_va_despues_de_la_palabra_y_antes_de_la_tabla() {
+        let p = por_defecto();
+        assert_eq!(clasificar("#29B8DB", &p), Clasificado::Color(0xFF29B8DB));
+        assert_eq!(clasificar("  orange \n", &p), Clasificado::Color(0xFFFF9800));
+        assert_eq!(clasificar("texto cualquiera", &p), Clasificado::Texto);
+        assert_eq!(clasificar("   ", &p), Clasificado::Vacio);
+        // Una palabra propia que se llama como un color abre la herramienta.
+        let mias = leer(Some("red=TIMER"));
+        assert_eq!(
+            clasificar("red", &mias),
+            Clasificado::Herramienta(MiniApp::Temporizador)
+        );
+        // Caso negativo: un color dentro de una frase es texto.
+        assert_eq!(clasificar("el #fff de fondo", &p), Clasificado::Texto);
+    }
+
+    // ---- Las que pone el usuario (MagicWordTest) ----
+
+    #[test]
+    fn una_palabra_propia_abre_su_herramienta_y_las_de_fabrica_ya_no() {
+        let mias = leer(Some("reloj=TIMER\nsorteito=RULETA"));
+        assert_eq!(detectar("Reloj", &mias), Some(MiniApp::Temporizador));
+        assert_eq!(detectar("sorteito", &mias), Some(MiniApp::Ruleta));
+        assert_eq!(detectar("time", &mias), None);
+    }
+
+    #[test]
+    fn sin_ninguna_palabra_no_se_abre_nada() {
+        let ninguna = leer(Some(""));
+        assert!(ninguna.is_empty());
+        assert_eq!(detectar("time", &ninguna), None);
+    }
+
+    #[test]
+    fn lo_que_no_se_entiende_se_salta() {
+        let mias = leer(Some("reloj=TIMER\nbasura\n=TIMER\nx=NOEXISTE\ndos palabras=TIMER"));
+        assert_eq!(mias.len(), 1);
+        assert_eq!(mias.get("reloj"), Some(&MiniApp::Temporizador));
+    }
+
+    #[test]
+    fn una_palabra_solo_puede_abrir_una_cosa() {
+        let antes: BTreeMap<String, MiniApp> = [("x".to_string(), MiniApp::Temporizador)].into();
+        let despues = con_las_de(&antes, MiniApp::Ruleta, &["x"]);
+        assert_eq!(despues.get("x"), Some(&MiniApp::Ruleta));
+        assert_eq!(despues.len(), 1);
+    }
+
+    #[test]
+    fn cambiar_las_de_una_herramienta_deja_las_demas() {
+        let antes: BTreeMap<String, MiniApp> = [
+            ("time".to_string(), MiniApp::Temporizador),
+            ("crono".to_string(), MiniApp::Cronometro),
+        ]
+        .into();
+        let despues = con_las_de(&antes, MiniApp::Temporizador, &["reloj", "temporizador"]);
+        assert_eq!(despues.get("crono"), Some(&MiniApp::Cronometro));
+        assert_eq!(despues.get("time"), None);
+        assert_eq!(
+            de_la_app(&despues, MiniApp::Temporizador),
+            vec!["reloj".to_string(), "temporizador".to_string()]
+        );
+    }
+
+    #[test]
+    fn al_guardar_se_limpian_los_espacios_las_mayusculas_y_lo_repetido() {
+        let r = con_las_de(
+            &BTreeMap::new(),
+            MiniApp::Ruleta,
+            &partir_escrito("  Sorteo ,sorteo,, dos palabras\nazar"),
+        );
+        // En orden alfabetico (el movil las deja en el de llegada).
+        assert_eq!(
+            de_la_app(&r, MiniApp::Ruleta),
+            vec!["azar".to_string(), "sorteo".to_string()]
+        );
+    }
+
+    #[test]
+    fn una_herramienta_se_puede_quedar_sin_palabras() {
+        let r = con_las_de(&por_defecto(), MiniApp::Temporizador, &[]);
+        assert!(de_la_app(&r, MiniApp::Temporizador).is_empty());
+        assert_eq!(detectar("time", &r), None);
+        assert_eq!(detectar("crono", &r), Some(MiniApp::Cronometro));
+    }
+
+    #[test]
+    fn las_palabras_retiradas_del_croquis_no_abren_nada() {
+        let p = por_defecto();
+        for palabra in ["croquis", "cad", "sketch", "hazme un croquis"] {
+            assert_eq!(detectar(palabra, &p), None, "{palabra}");
+        }
+        assert_eq!(detectar("Excalidraw", &p), Some(MiniApp::Lienzo));
+    }
+
+    #[test]
+    fn las_fijadas_mandan_y_sin_fijar_las_de_fabrica() {
+        // Es la unica prueba que toca el estado global.
+        fijar(Some("reloj=TIMER"));
+        assert_eq!(detectar("reloj", &vigentes()), Some(MiniApp::Temporizador));
+        assert_eq!(detectar("time", &vigentes()), None);
+        fijar(None);
+        assert_eq!(vigentes(), por_defecto());
     }
 }
