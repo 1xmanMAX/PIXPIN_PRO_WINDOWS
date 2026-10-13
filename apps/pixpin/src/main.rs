@@ -86,6 +86,7 @@ mod imagenes_lienzo;
 // Solo para desarrollar: `PIXPIN_INSTANCIA` (ver el modulo).
 mod instancia_de_prueba;
 mod lecciones;
+mod lista_del_icono;
 mod lector;
 /// Los lectores como un pin: su ventana y su barra de fuera.
 mod lector_pin;
@@ -310,7 +311,10 @@ fn arrancar(
             // esta copia se iria en silencio llevandose la ruta, y el
             // usuario veria que su fichero no se abre.
             let rutas = pixpin_shell::mensajero::rutas_de_los_argumentos();
-            if !rutas.is_empty() {
+            // Un atajo de la Jump List del icono: a la copia que corre, como pedido.
+            if let Some(pedido) = lista_del_icono::pedido_del_arranque() {
+                pixpin_shell::mensajero::enviar_pedido(&pedido);
+            } else if !rutas.is_empty() {
                 pixpin_shell::mensajero::enviar_ficheros(&rutas);
             } else {
                 // Sin ficheros, abrir PixPin otra vez es pedir SU ventana: el
@@ -667,6 +671,14 @@ fn arrancar(
         // otra cosa.
         pixpin_shell::despertar(ventana.handle());
     }
+    // La Jump List del icono (los atajos del icono de Android): si esta
+    // copia la lanzo un atajo, su pedido, por el mismo camino que los de
+    // fuera; y la lista, al dia con los ultimos proyectos.
+    if let Some(pedido) = lista_del_icono::pedido_del_arranque() {
+        pixpin_shell::mensajero::enviar_pedido(&pedido);
+        pixpin_shell::despertar(ventana.handle());
+    }
+    lista_del_icono::poner_al_dia(lengua, ubicacion.clone());
 
     // El chat de proyectos es la interfaz principal (D141): se abre al
     // arrancar, como la ventana de cualquier aplicacion. Cerrarlo deja
