@@ -40,6 +40,16 @@ use crate::almacen::{self, Ficha, Indice};
 pub const MARCA_SINCRO: &str = "sincro";
 /// Donde se guarda el id de chat de una ficha cuando no es el suyo.
 pub const MARCA_CHAT: &str = "chat";
+/// **Archivado, en la ficha de un proyecto nacido aqui**, el que no tiene
+/// `proyecto.json` donde apuntarlo (la pantalla de Proyectos lo escribe con
+/// este nombre). Sale al movil como el `archivado` de su `Proyecto`; en
+/// cuanto el proyecto tiene `proyecto.json`, la verdad es ese.
+pub const MARCA_ARCHIVADO: &str = "archivado";
+
+/// Si la ficha lleva la marca de archivado.
+fn archivado_en_ficha(f: &Ficha) -> bool {
+    f.resto.get(MARCA_ARCHIVADO).and_then(|v| v.as_bool()) == Some(true)
+}
 
 /// El `Disco` de este equipo.
 pub struct DiscoPc {
@@ -246,6 +256,11 @@ impl DiscoPc {
                 kotlin::poner(&mut p, campo, Json::cadena(v));
             }
         }
+        // Archivado en el PC un proyecto sin `proyecto.json`: lo dice la
+        // marca de su ficha. Sin esto el movil no se enteraba (12-oct-2026).
+        if archivado_en_ficha(f) {
+            kotlin::poner(&mut p, "archivado", Json::booleano(true));
+        }
         kotlin::poner(&mut p, "id", Json::cadena(chat));
         kotlin::poner(&mut p, "nombre", Json::cadena(f.nombre.clone()));
         if let Some(u) = &f.uid {
@@ -359,6 +374,31 @@ pub fn ruta_real(raiz: &Path, ficha_id: &str, ruta: &str) -> Option<PathBuf> {
         return None;
     }
     Some(almacen::carpeta(raiz, ficha_id).join(ruta))
+}
+
+/// La clase de un mensaje con una tabla del movil (`Clase.TABLA`).
+pub const CLASE_TABLA: &str = "TABLA";
+
+/// **El fichero de una tabla hecha en el movil** (`Clase.TABLA` con su
+/// `referencia`): `tablas/<referencia>.json` alli (`TablasEnDisco.archivo`),
+/// que la sincronizacion trae a `android/tablas/` de la carpeta del chat.
+/// Es la verdad de la tabla: se lee y se guarda AHI, con el mismo JSON
+/// (`TablaDeCalculo`), y viaja como cualquier tabla del movil, celda a
+/// celda. `None` si el mensaje no es una tabla del movil.
+pub fn tabla_del_movil(raiz: &Path, ficha_id: &str, m: &crate::cuaderno::Mensaje) -> Option<PathBuf> {
+    if m.clase != Some(crate::cuaderno::Clase::Otra(CLASE_TABLA.into())) {
+        return None;
+    }
+    let referencia = m.referencia.as_deref().filter(|r| !r.trim().is_empty())?;
+    let rel = format!("tablas/{}.json", limpio(referencia));
+    let chat = chat_de_ficha(raiz, ficha_id).unwrap_or_else(|| ficha_id.to_string());
+    Some(DiscoPc::nuevo(raiz).ruta(&chat, &rel))
+}
+
+/// Guarda una tabla del movil en su fichero ([tabla_del_movil]), por un
+/// temporal: a medias no queda nada que la sincronizacion pueda mandar.
+pub fn guardar_tabla_del_movil(archivo: &Path, texto: &str) -> io::Result<()> {
+    escribir_atomico(archivo, texto.as_bytes())
 }
 
 /// Al reves que [ruta_real]: la ruta portatil (`pixpin:files/…`) de un
@@ -663,6 +703,10 @@ impl Disco for DiscoPc {
         {
             self.borrar_anotado(chat, &kotlin::unico(m));
         }
+        // Y su adjunto, como el movil (`adjuntosFuera`) y como borra el chat
+        // de aqui: sin esto, lo borrado en el telefono se quedaba en el disco
+        // del PC (una leccion seguia en su carpeta).
+        self.borrar_adjuntos(chat, &quitados, &salida);
         // La ficha, al dia: la lista del chat ensena lo ultimo.
         let mut indice = Indice::leer(&self.raiz);
         if let Some(f) = indice.proyectos.iter_mut().find(|f| f.id == ficha.id) {
@@ -781,6 +825,9 @@ impl Disco for DiscoPc {
                 .map_or(0, |l| l.len() as u32);
             f.resto
                 .insert(MARCA_SINCRO.into(), serde_json::Value::Bool(true));
+            // Ya tiene `proyecto.json`, que dice si esta archivado: la marca
+            // de la ficha diria lo contrario si el movil lo desarchivo.
+            f.resto.remove(MARCA_ARCHIVADO);
             indice.guardar(&self.raiz)?;
             self.olvidar_mapa();
         }
@@ -870,6 +917,48 @@ impl Disco for DiscoPc {
 }
 
 impl DiscoPc {
+    /// **El fichero adjunto de unos mensajes borrados en el otro aparato**
+    /// (`Disco.aplicarMensajes`: `adjuntosFuera`, solo lo de `guardados/`).
+    ///
+    /// Mas prudente que el movil en dos cosas, porque aqui un mismo fichero
+    /// puede tener dos usos: solo los adjuntos de verdad (archivo, imagen,
+    /// voz; un lienzo o una pagina son hojas del proyecto, como dice el
+    /// borrar del chat), y nunca uno que otro mensaje que se queda, o el
+    /// documento del proyecto, siguen senalando.
+    fn borrar_adjuntos(&self, chat: &str, quitados: &[Json], quedan: &[Json]) {
+        let rel_de = |m: &Json| -> Option<String> {
+            let r = kotlin::cadena(m, "ruta")?;
+            match r.strip_prefix(PORTATIL) {
+                Some(rel) => Some(rel.to_string()),
+                None if es_relativa(r) => Some(virtual_de(chat, r)),
+                None => None,
+            }
+        };
+        let mut en_uso: HashSet<String> = quedan.iter().filter_map(rel_de).collect();
+        if let Ok(Some(p)) = self.proyecto_portatil(chat) {
+            for campo in ["pdfOrigen", "pdfLimpio"] {
+                if let Some(rel) = kotlin::cadena(&p, campo).and_then(|r| r.strip_prefix(PORTATIL)) {
+                    en_uso.insert(rel.to_string());
+                }
+            }
+        }
+        for m in quitados {
+            let adjunto = matches!(
+                kotlin::cadena(m, "clase"),
+                Some("ARCHIVO" | "IMAGEN" | "VOZ")
+            );
+            let Some(rel) = rel_de(m).filter(|_| adjunto) else {
+                continue;
+            };
+            if !rel.starts_with("guardados/") || !disco::permitida(&rel) || en_uso.contains(&rel) {
+                continue;
+            }
+            // Como el movil (`File.delete()`): si no se deja, se queda; el
+            // mensaje ya se fue y nada lo vuelve a mandar.
+            let _ = std::fs::remove_file(self.ruta(chat, &rel));
+        }
+    }
+
     /// Las fotos de un lienzo nacido aqui (`imagenes/<id>`), como las veria
     /// el movil.
     fn fotos_a_portatil(&self, chat: &str, texto: String) -> String {

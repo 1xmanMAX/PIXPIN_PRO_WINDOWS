@@ -1903,3 +1903,293 @@ fn cuando_dirige_el_movil_tambien_se_lleva_los_md_con_parentesis() {
         Some(&b"# Tres"[..])
     );
 }
+
+// ------------------------------------- lo que no viajaba (12-oct-2026)
+
+/// El `archivado` del proyecto `id` en el movil.
+fn archivado_en_movil(p: &Par, id: &str) -> Option<bool> {
+    p.movil
+        .leer_proyectos()
+        .iter()
+        .find(|x| kotlin::cadena(x, "id") == Some(id))
+        .map(|x| {
+            x.como_objeto()
+                .and_then(|o| o.obtener("archivado"))
+                .and_then(Json::contenido)
+                == Some("true")
+        })
+}
+
+/// Cambia el `archivado` de un proyecto en el movil, como
+/// `Proyectos.archivado` (que tambien lo da por tocado).
+fn archivar_en_movil(p: &Par, id: &str, si: bool) {
+    let lista: Vec<Json> = p
+        .movil
+        .leer_proyectos()
+        .into_iter()
+        .map(|x| {
+            if kotlin::cadena(&x, "id") != Some(id) {
+                return x;
+            }
+            let mut x = x;
+            kotlin::poner(&mut x, "archivado", Json::booleano(si));
+            kotlin::poner(&mut x, "tocado", Json::numero(p.reloj.tic()));
+            x
+        })
+        .collect();
+    p.movil.escribir_proyectos(&lista).unwrap();
+}
+
+/// Archiva en el PC como `proyectos::archivar`: en su `proyecto.json` si lo
+/// tiene, y si no con la marca de su ficha.
+fn archivar_en_pc(p: &Par, ficha_id: &str, si: bool) {
+    let raiz = p.raiz();
+    let carpeta = almacen::carpeta(&raiz, ficha_id);
+    let json = carpeta.join("proyecto.json");
+    let con_json = json.is_file();
+    if con_json {
+        let mut pr: pixpin_proyecto::Proyecto =
+            serde_json::from_str(&std::fs::read_to_string(&json).unwrap()).unwrap();
+        pr.archivado = si;
+        pr.tocado = p.reloj.tic();
+        std::fs::write(&json, serde_json::to_string(&pr).unwrap()).unwrap();
+        adelantar(&json);
+    }
+    let mut i = Indice::leer(&raiz);
+    let f = i.proyectos.iter_mut().find(|f| f.id == ficha_id).unwrap();
+    if si && !con_json {
+        f.resto.insert(vista::MARCA_ARCHIVADO.into(), json!(true));
+    } else {
+        f.resto.remove(vista::MARCA_ARCHIVADO);
+    }
+    i.guardar(&raiz).unwrap();
+}
+
+/// Si el PC lo ensena archivado: lo que lee su lista de Proyectos.
+fn archivado_en_pc(p: &Par, ficha_id: &str) -> bool {
+    let raiz = p.raiz();
+    let json = almacen::carpeta(&raiz, ficha_id).join("proyecto.json");
+    let en_json = std::fs::read_to_string(json)
+        .ok()
+        .and_then(|t| serde_json::from_str::<pixpin_proyecto::Proyecto>(&t).ok())
+        .is_some_and(|pr| pr.archivado);
+    let en_ficha = Indice::leer(&raiz)
+        .proyectos
+        .iter()
+        .find(|f| f.id == ficha_id)
+        .and_then(|f| f.resto.get(vista::MARCA_ARCHIVADO).and_then(|v| v.as_bool()))
+        == Some(true);
+    en_json || en_ficha
+}
+
+#[test]
+fn archivar_un_proyecto_viaja_en_los_dos_sentidos_y_dos_veces() {
+    let p = montar("archivar");
+    let obra = proyecto_del_pc(&p);
+    let chat = vista::chat_de_ficha(&p.raiz(), &obra.id).unwrap();
+    p.desde_pc(&[&chat]);
+    assert_eq!(archivado_en_movil(&p, &chat), Some(false), "sin archivar, llega sin archivar");
+
+    // 1. Archivado en el PC (proyecto nacido aqui, sin `proyecto.json`).
+    p.reloj.saltar(1_000);
+    archivar_en_pc(&p, &obra.id, true);
+    p.desde_pc(&[&chat]);
+    assert_eq!(archivado_en_movil(&p, &chat), Some(true), "el movil se entera");
+    p.quieto(&chat);
+
+    // 2. Desarchivado en el movil: el PC deja de ensenarlo archivado.
+    p.reloj.saltar(1_000);
+    archivar_en_movil(&p, &chat, false);
+    p.desde_movil(&[&chat]);
+    assert!(!archivado_en_pc(&p, &obra.id), "ni el proyecto.json ni la ficha lo dicen");
+    p.quieto(&chat);
+
+    // 3. Y otra vez en el PC, ahora ya con `proyecto.json`.
+    p.reloj.saltar(1_000);
+    archivar_en_pc(&p, &obra.id, true);
+    p.desde_pc(&[&chat]);
+    assert_eq!(archivado_en_movil(&p, &chat), Some(true), "la segunda vez tambien");
+    assert!(archivado_en_pc(&p, &obra.id));
+    p.quieto(&chat);
+}
+
+#[test]
+fn una_marca_de_archivado_que_no_es_si_no_archiva_nada() {
+    // Caso negativo: una ficha con la marca a `false` (o con otra cosa) no
+    // sale archivada, y la de otro proyecto no se contagia.
+    let p = montar("archivar-no");
+    let obra = proyecto_del_pc(&p);
+    let otra = Ficha::nueva("Otra", p.reloj.tic(), &p.aparato_pc());
+    let mut i = Indice::leer(&p.raiz());
+    i.proyectos.push(otra.clone());
+    i.proyectos
+        .iter_mut()
+        .find(|f| f.id == obra.id)
+        .unwrap()
+        .resto
+        .insert(vista::MARCA_ARCHIVADO.into(), json!(false));
+    i.proyectos
+        .iter_mut()
+        .find(|f| f.id == otra.id)
+        .unwrap()
+        .resto
+        .insert(vista::MARCA_ARCHIVADO.into(), json!("si"));
+    i.guardar(&p.raiz()).unwrap();
+    p.nota_pc(&otra, "algo");
+    let c1 = vista::chat_de_ficha(&p.raiz(), &obra.id).unwrap();
+    let c2 = vista::chat_de_ficha(&p.raiz(), &otra.id).unwrap();
+    p.desde_pc(&[&c1, &c2]);
+    assert_eq!(archivado_en_movil(&p, &c1), Some(false));
+    assert_eq!(archivado_en_movil(&p, &c2), Some(false));
+}
+
+#[test]
+fn un_adjunto_borrado_en_el_movil_se_va_tambien_del_disco_del_pc() {
+    let p = montar("borrar-adjunto");
+    let uid = adjunto_movil(&p, "lec", "lecciones/k1.leccion", b"leccion");
+    let otro = adjunto_movil(&p, "foto", "9_foto.jpg", b"JPG");
+    p.desde_pc(&[GENERAL]);
+    let (lec, foto) = (doc_en_pc(&p, "lec"), doc_en_pc(&p, "foto"));
+    assert!(lec.is_file() && foto.is_file(), "llegaron al PC");
+
+    // Borrado en el movil, como borra su chat: fuera, con su marca.
+    p.reloj.saltar(1_000);
+    p.movil
+        .aplicar_mensajes(GENERAL, &[], std::slice::from_ref(&uid), p.reloj.tic())
+        .unwrap();
+    p.desde_movil(&[GENERAL]);
+    let g = p.pc.ficha_de(GENERAL).unwrap();
+    assert!(!p.mensajes_pc(&g.id).iter().any(|m| m.id == "lec"), "el mensaje se fue");
+    assert!(!lec.exists(), "y su fichero tambien, como en el movil");
+    assert!(foto.is_file(), "lo demas no se toca");
+    p.quieto(GENERAL);
+    let _ = otro;
+}
+
+#[test]
+fn un_fichero_que_otro_mensaje_sigue_senalando_no_se_borra() {
+    // Caso negativo: dos mensajes con el mismo fichero (reenviado en el
+    // chat del movil); borrar uno no deja al otro sin su adjunto en el PC.
+    let p = montar("borrar-adjunto-compartido");
+    let uid = adjunto_movil(&p, "a", "5_plano.pdf", b"%PDF");
+    let m = Json::de_valor(&json!({
+        "id": "b", "cuando": p.reloj.tic(), "clase": "ARCHIVO",
+        "ruta": p.movil.absoluta("guardados/5_plano.pdf"), "nombre": "5_plano.pdf",
+        "numero": 9, "letra": "a",
+    }));
+    p.movil.anadir_mensaje(&m).unwrap();
+    p.desde_pc(&[GENERAL]);
+    let doc = doc_en_pc(&p, "b");
+    assert!(doc.is_file());
+    p.reloj.saltar(1_000);
+    // El movil lo borraria de su disco; aqui se quita solo el mensaje.
+    let quedan: Vec<Json> = p
+        .movil
+        .leer_mensajes()
+        .into_iter()
+        .filter(|x| kotlin::cadena(x, "id") != Some("a"))
+        .collect();
+    p.movil.escribir_mensajes(&quedan).unwrap();
+    p.movil
+        .anotar_borrados(&[pixpin_sincro::disco::Marca {
+            chat: GENERAL.into(),
+            sena: String::new(),
+            cuando: p.reloj.tic(),
+            uid: Some(uid),
+        }])
+        .unwrap();
+    p.desde_movil(&[GENERAL]);
+    let g = p.pc.ficha_de(GENERAL).unwrap();
+    assert!(!p.mensajes_pc(&g.id).iter().any(|m| m.id == "a"));
+    assert!(doc.is_file(), "el otro mensaje lo sigue senalando");
+}
+
+/// Una tabla hecha en el movil (`Clase.TABLA` y `tablas/<ref>.json`).
+fn tabla_movil(p: &Par, id: &str, referencia: &str, texto: &str) {
+    escribir_movil(p, &format!("tablas/{referencia}.json"), texto);
+    p.movil
+        .anadir_mensaje(&Json::de_valor(&json!({
+            "id": id, "cuando": p.reloj.tic(), "clase": "TABLA", "referencia": referencia,
+            "nombre": "Metrados", "numero": p.movil.leer_mensajes().len() + 1, "letra": "a",
+        })))
+        .unwrap();
+}
+
+/// Cambia una celda de una tabla en su fichero, como la guarda el pin de
+/// hoja del PC (`Tabla::escribir`), con un estilo que el movil no conoce.
+fn celda_en_pc(archivo: &Path, celda: &str, valor: &str, cursiva: bool) {
+    use pixpin_proyecto::tabla::{Tabla, ref_de};
+    let mut t = Tabla::leer(&std::fs::read_to_string(archivo).unwrap()).unwrap();
+    t.poner(ref_de(celda).unwrap(), valor);
+    if cursiva {
+        t.estilos.entry(celda.into()).or_default().k = true;
+    }
+    std::fs::write(archivo, t.escribir().unwrap()).unwrap();
+    adelantar(archivo);
+}
+
+/// Cambia una celda en el fichero del movil, como `TablasEnDisco.guardar`
+/// (su `EstiloDeCelda` solo guarda `n`, `a`, `f` y `e`).
+fn celda_en_movil(p: &Par, rel: &str, celda: &str, valor: &str) {
+    let f = p.movil.raiz().join(rel);
+    let mut v: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&f).unwrap()).unwrap();
+    v["celdas"][celda] = json!(valor);
+    v["tocado"] = json!(p.reloj.tic());
+    if let Some(e) = v["estilos"].as_object_mut() {
+        for (_, x) in e.iter_mut() {
+            if let Some(o) = x.as_object_mut() {
+                o.retain(|k, _| matches!(k.as_str(), "n" | "a" | "f" | "e"));
+            }
+        }
+    }
+    std::fs::write(&f, serde_json::to_string(&v).unwrap()).unwrap();
+    adelantar(&f);
+}
+
+fn celdas_movil(p: &Par, rel: &str) -> serde_json::Value {
+    let v: serde_json::Value = serde_json::from_str(&leer_movil(p, rel).unwrap()).unwrap();
+    v["celdas"].clone()
+}
+
+#[test]
+fn una_tabla_del_movil_se_cambia_en_el_pc_y_vuelve_celda_a_celda() {
+    let p = montar("tabla-movil");
+    tabla_movil(&p, "t", "t-1", r#"{"nombre":"Metrados","celdas":{"A1":"1","B1":"2"},"tocado":1}"#);
+    p.desde_pc(&[GENERAL]);
+    let g = p.pc.ficha_de(GENERAL).unwrap();
+    let m = p.mensajes_pc(&g.id).into_iter().find(|m| m.id == "t").unwrap();
+    let archivo = vista::tabla_del_movil(&p.raiz(), &g.id, &m).expect("es una tabla del movil");
+    assert!(archivo.is_file(), "su fichero llego donde el PC la busca");
+
+    // 1. Cambiada en el PC, con formato del PC: llega al movil.
+    p.reloj.saltar(1_000);
+    celda_en_pc(&archivo, "A1", "10", true);
+    p.desde_pc(&[GENERAL]);
+    assert_eq!(celdas_movil(&p, "tablas/t-1.json")["A1"], "10");
+    p.quieto(GENERAL);
+
+    // 2. Cambiada en los dos a la vez, cada uno una celda: quedan las dos.
+    p.reloj.saltar(1_000);
+    celda_en_pc(&archivo, "C1", "pc", false);
+    celda_en_movil(&p, "tablas/t-1.json", "D1", "movil");
+    p.desde_movil(&[GENERAL]);
+    let c = celdas_movil(&p, "tablas/t-1.json");
+    assert_eq!((c["A1"].as_str(), c["C1"].as_str(), c["D1"].as_str()), (Some("10"), Some("pc"), Some("movil")));
+    let en_pc: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&archivo).unwrap()).unwrap();
+    assert_eq!(en_pc["celdas"], c, "los dos quedan con la misma tabla");
+    p.quieto(GENERAL);
+}
+
+#[test]
+fn una_nota_o_una_tabla_sin_referencia_no_es_una_tabla_del_movil() {
+    let p = montar("tabla-movil-no");
+    let g = p.guardados();
+    let nota = p.nota_pc(&g, "tablas/t-1.json");
+    assert!(vista::tabla_del_movil(&p.raiz(), &g.id, &nota).is_none());
+    let sin = Mensaje {
+        clase: Some(Clase::Otra("TABLA".into())),
+        referencia: None,
+        ..nota
+    };
+    assert!(vista::tabla_del_movil(&p.raiz(), &g.id, &sin).is_none());
+}

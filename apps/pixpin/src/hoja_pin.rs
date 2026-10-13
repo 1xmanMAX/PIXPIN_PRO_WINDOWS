@@ -38,6 +38,8 @@ pub mod editor;
 pub mod libro;
 #[cfg(test)]
 mod pruebas;
+#[cfg(test)]
+mod pruebas_movil;
 
 /// **Mandar al pin desde una prueba** (solo en las pruebas): sin teclas ni
 /// clics simulados, la prueba deja una orden y el bucle de la ventana la
@@ -106,6 +108,10 @@ pub enum Que {
     Libro,
     /// Una tabla creada en el chat (la mini-app `tabla`).
     Tabla,
+    /// Una tabla hecha en el movil (`Clase.TABLA`): vive en su fichero
+    /// `tablas/<referencia>.json`, no en el mensaje (12-oct-2026: antes el
+    /// PC no la abria y no se podia cambiar aqui).
+    TablaDelMovil,
 }
 
 /// **Si una burbuja se abre como pin de hoja**, y como. Un `.xls` antiguo no:
@@ -113,6 +119,9 @@ pub enum Que {
 pub fn que_abrir(m: &Mensaje) -> Option<Que> {
     if m.clase == Some(Clase::MiniApp) && m.miniapp.as_deref() == Some(pixpin_proyecto::tabla::MINIAPP) {
         return Some(Que::Tabla);
+    }
+    if m.clase == Some(Clase::Otra(pixpin_proyecto::vista::CLASE_TABLA.into())) && m.referencia.as_deref().is_some_and(|r| !r.trim().is_empty()) {
+        return Some(Que::TablaDelMovil);
     }
     (libro::es_libro(m) && libro::extension(m) != "xls").then_some(Que::Libro)
 }
@@ -124,6 +133,10 @@ pub(crate) enum Origen {
     Libro { mensaje: Mensaje, ruta: PathBuf, tablas: Vec<Mensaje> },
     /// Una tabla del chat.
     Tabla { mensaje: Mensaje },
+    /// Una tabla del movil: su mensaje (con el JSON del fichero en `texto`,
+    /// para leerla como las del chat) y el fichero, que es donde se guarda
+    /// (`vista::tabla_del_movil`).
+    TablaDelMovil { mensaje: Mensaje, archivo: PathBuf },
 }
 
 /// **Una hoja del chat abierta en el pin**: de donde viene y, desde que se
@@ -169,6 +182,12 @@ fn abrir(idioma: pixpin_store::Idioma, ubicacion: &Ubicacion, proyecto: &str, me
     let Some(m) = mensajes.get(indice) else { return false };
     let origen = match que_abrir(m) {
         Some(Que::Tabla) => Origen::Tabla { mensaje: m.clone() },
+        Some(Que::TablaDelMovil) => {
+            let Some((mensaje, archivo)) = tabla_del_movil(ubicacion.raiz(), proyecto, m) else {
+                return false;
+            };
+            Origen::TablaDelMovil { mensaje, archivo }
+        }
         Some(Que::Libro) => {
             let Some(ruta) = m
                 .ruta
@@ -210,7 +229,7 @@ impl Editable {
     pub(crate) fn ruta_original(&self) -> Option<PathBuf> {
         match &self.origen {
             Origen::Libro { ruta, .. } => Some(ruta.clone()),
-            Origen::Tabla { .. } => None,
+            Origen::Tabla { .. } | Origen::TablaDelMovil { .. } => None,
         }
     }
 
@@ -224,7 +243,7 @@ impl Editable {
                     mensaje.nombre.clone()
                 }
             }
-            Origen::Tabla { mensaje } => mensaje.nombre.clone(),
+            Origen::Tabla { mensaje } | Origen::TablaDelMovil { mensaje, .. } => mensaje.nombre.clone(),
         };
         let n = crate::lector_pin::nombre_limpio(&n);
         if n.trim().is_empty() { "Tabla".into() } else { n }
@@ -312,7 +331,7 @@ impl Editable {
         }
         let t = Instant::now();
         let hojas = match &self.origen {
-            Origen::Tabla { mensaje } => {
+            Origen::Tabla { mensaje } | Origen::TablaDelMovil { mensaje, .. } => {
                 let tabla = Tabla::leer(&mensaje.texto).map_err(|e| format!("tabla que no se entiende: {e}"))?;
                 let nombre = if tabla.nombre.trim().is_empty() { mensaje.nombre.clone() } else { tabla.nombre.clone() };
                 vec![HojaEditable::nueva(nombre, tabla, Some(mensaje.id.clone()))]
@@ -402,6 +421,13 @@ impl Editable {
             }
             *tablas = nuevos;
             tracing::info!(hojas = ed.hojas.len(), "hoja del chat: el libro editado queda como tablas del chat");
+        } else if let Origen::TablaDelMovil { archivo, .. } = &self.origen {
+            // Una tabla del movil se guarda en SU fichero, el que viaja.
+            for h in ed.hojas.iter_mut().filter(|h| h.tocada) {
+                let texto = tabla_del_movil_al_guardar(&mut h.tabla, ahora)?;
+                pixpin_proyecto::vista::guardar_tabla_del_movil(archivo, &texto).map_err(|e| e.to_string())?;
+                h.tocada = false;
+            }
         } else {
             for h in ed.hojas.iter_mut().filter(|h| h.tocada) {
                 let Some(id) = h.id_mensaje.clone() else { continue };
@@ -436,6 +462,26 @@ impl Editable {
 /// (`libro::editada`) aunque se guarde en el mismo segundo en que nacio.
 fn editada_a(ahora: i64, cuando: i64) -> i64 {
     ahora.max(cuando + 2_001)
+}
+
+/// **Una tabla del movil, lista para abrirla**: su mensaje con el JSON de su
+/// fichero en `texto` (asi se lee como cualquier tabla del chat) y el
+/// fichero. `None` si el fichero aun no llego o no se lee: mejor no abrir
+/// que abrir en blanco y guardar encima.
+pub(crate) fn tabla_del_movil(raiz: &std::path::Path, proyecto: &str, m: &Mensaje) -> Option<(Mensaje, PathBuf)> {
+    let archivo = pixpin_proyecto::vista::tabla_del_movil(raiz, proyecto, m)?;
+    let texto = std::fs::read_to_string(&archivo).ok()?;
+    Tabla::leer(&texto).ok()?;
+    let mut mensaje = m.clone();
+    mensaje.texto = texto;
+    Some((mensaje, archivo))
+}
+
+/// El JSON con que se guarda una tabla del movil, con su `tocado` a la hora
+/// de guardar (`TablaDeCalculo.tocado`, lo que su lista ensena).
+fn tabla_del_movil_al_guardar(tabla: &mut Tabla, ahora: i64) -> Result<String, String> {
+    tabla.tocado = tabla.tocado.max(ahora);
+    tabla.escribir().map_err(|e| e.to_string())
 }
 
 /// **Que tabla es la hoja `vista`** de lo que se ve: viendo las tablas, la
