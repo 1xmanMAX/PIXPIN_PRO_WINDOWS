@@ -18,6 +18,7 @@
 //! («Lecciones», «Nueva leccion»), la bandeja, y los pedidos `leccion_nueva`
 //! y `lecciones` de otros programas (`docs/protocolo-pedidos.md`).
 
+pub mod adjuntos;
 pub mod almacen;
 mod dictar;
 pub mod ficha;
