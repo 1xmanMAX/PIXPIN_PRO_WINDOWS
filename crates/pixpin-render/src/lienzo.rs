@@ -944,6 +944,64 @@ impl Pintor<'_> {
         };
     }
 
+    /// **Un bitmap en modo oscuro** (`crate::oscuro`): como [`Pintor::bitmap`]
+    /// con interpolacion lineal, pero cada pixel con la luz invertida y el
+    /// tono conservado (lo blanco a gris muy oscuro, lo negro a claro). Es un
+    /// efecto `ColorMatrix` de Direct2D al pintar: lo hace la GPU en el
+    /// mismo fotograma y el bitmap guardado (la cache de hojas de un PDF)
+    /// ni se toca ni se duplica. Si el efecto no se puede crear, se pinta
+    /// tal cual.
+    pub fn bitmap_oscuro(&self, b: &ID2D1Bitmap1, destino: RectF, fuente: Option<RectF>) {
+        use windows::Win32::Graphics::Direct2D::Common::D2D1_COMPOSITE_MODE_SOURCE_OVER;
+        use windows::Win32::Graphics::Direct2D::{
+            CLSID_D2D1ColorMatrix, D2D1_COLORMATRIX_PROP_CLAMP_OUTPUT, D2D1_COLORMATRIX_PROP_COLOR_MATRIX, D2D1_PROPERTY_TYPE_BOOL,
+            D2D1_PROPERTY_TYPE_MATRIX_5X4,
+        };
+        let c = self.motor.contexto();
+        // SAFETY: GetSize es una consulta del bitmap vivo.
+        let tam = unsafe { b.GetSize() };
+        let f = fuente.unwrap_or(RectF { x: 0.0, y: 0.0, ancho: tam.width, alto: tam.height });
+        if !(f.ancho > 0.0 && f.alto > 0.0 && destino.ancho > 0.0 && destino.alto > 0.0) {
+            return;
+        }
+        let datos: Vec<u8> = crate::oscuro::matriz_d2d().iter().flatten().flat_map(|x| x.to_ne_bytes()).collect();
+        // SAFETY: el efecto integrado existe en todo Direct2D 1.1; su entrada
+        // es un bitmap vivo del mismo dispositivo; los datos de la matriz
+        // tienen los 20 flotantes que pide su tipo.
+        let img = unsafe {
+            c.CreateEffect(&CLSID_D2D1ColorMatrix).ok().and_then(|e| {
+                e.SetInput(0, b, false);
+                let _ = e.SetValue(D2D1_COLORMATRIX_PROP_COLOR_MATRIX.0 as u32, D2D1_PROPERTY_TYPE_MATRIX_5X4, &datos);
+                let _ = e.SetValue(D2D1_COLORMATRIX_PROP_CLAMP_OUTPUT.0 as u32, D2D1_PROPERTY_TYPE_BOOL, &1u32.to_ne_bytes());
+                e.GetOutput().ok()
+            })
+        };
+        let Some(img) = img else {
+            self.bitmap_con(b, destino, fuente, Interpolacion::Lineal);
+            return;
+        };
+        // La fuente cae en el destino: escala y traslado delante de la
+        // transformada de ahora, que se restaura al acabar.
+        let (sx, sy) = (destino.ancho / f.ancho, destino.alto / f.alto);
+        let (dx, dy) = (destino.x - f.x * sx, destino.y - f.y * sy);
+        let mut antes = windows_numerics::Matrix3x2::default();
+        // SAFETY: dentro del fotograma; la transformada se lee y se repone.
+        unsafe {
+            c.GetTransform(&mut antes);
+            let m = windows_numerics::Matrix3x2 {
+                M11: sx * antes.M11,
+                M12: sx * antes.M12,
+                M21: sy * antes.M21,
+                M22: sy * antes.M22,
+                M31: dx * antes.M11 + dy * antes.M21 + antes.M31,
+                M32: dx * antes.M12 + dy * antes.M22 + antes.M32,
+            };
+            c.SetTransform(&m);
+            c.DrawImage(&img, None, Some(&f.a_d2d()), D2D1_INTERPOLATION_MODE_LINEAR, D2D1_COMPOSITE_MODE_SOURCE_OVER);
+            c.SetTransform(&antes);
+        }
+    }
+
     fn disposicion(&self, texto: &str, tam: f32) -> Option<(IDWriteTextLayout, f32, f32)> {
         self.disposicion_ajustada(texto, tam, f32::MAX)
     }

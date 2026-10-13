@@ -133,6 +133,22 @@ pub struct Documento {
 /// imagen de verdad.
 pub const MARCA_IMAGEN: &str = "[imagen]";
 
+/// Cuantas imagenes lleva una fila de tabla en sus celdas. Tambien estan en
+/// `Documento::imagenes`, en su orden: quien recorre los bloques contando
+/// imagenes tiene que sumarlas o las de despues de la tabla le salen
+/// corridas una.
+pub fn imagenes_de_fila(b: &Bloque) -> usize {
+    match &b.fila {
+        Some(f) => f
+            .celdas
+            .iter()
+            .flat_map(|c| &c.trozos)
+            .filter(|t| t.texto == MARCA_IMAGEN)
+            .count(),
+        None => 0,
+    }
+}
+
 impl Documento {
     /// Cuanto texto tiene, en letras. Sirve para saber si el documento
     /// estaba vacio sin recorrerlo dos veces desde fuera.
@@ -231,6 +247,8 @@ pub fn a_html(d: &Documento) -> String {
                     s.push_str("</td>");
                 }
                 s.push_str("</tr>\n");
+                // Las de sus celdas tambien estan en la lista.
+                imagen += imagenes_de_fila(b);
             }
             Clase::Nota if b.texto() == MARCA_IMAGEN => {
                 match d.imagenes.get(imagen) {
@@ -497,6 +515,8 @@ pub fn cuerpo_para_anotar(d: &Documento, imagen: &dyn Fn(&Imagen) -> Option<Stri
                 s.push_str("</pre>\n");
             }
             Clase::Fila => {
+                // Las imagenes de sus celdas tambien estan en la lista.
+                n_imagen += imagenes_de_fila(b);
                 s.push_str("<p class=\"fila\" data-b>");
                 tramos_html(b, &mut s);
                 s.push_str("</p>\n");
@@ -712,5 +732,45 @@ mod pruebas_para_anotar {
         let html = cuerpo_para_anotar(&d, &|_| None);
         assert!(html.contains("<p class=\"aparte\" data-b>[imagen]</p>"));
         assert_eq!(html.matches("data-b").count(), 7);
+    }
+}
+
+#[cfg(test)]
+mod pruebas_imagenes_en_tablas {
+    use super::*;
+    use crate::tabla::{Celda, FilaDeTabla};
+
+    /// Una fila con una imagen en su celda y, despues, otra imagen suelta.
+    fn documento() -> Documento {
+        let mut fila = Bloque::nuevo(Clase::Fila, vec![Trozo::llano(MARCA_IMAGEN)]);
+        fila.fila = Some(FilaDeTabla {
+            tabla: 0,
+            rejilla: Vec::new(),
+            pagina: 0,
+            celdas: vec![Celda::llana(vec![Trozo::llano(MARCA_IMAGEN)])],
+        });
+        let im = |d: &[u8]| Imagen {
+            mime: "image/png".into(),
+            datos: d.to_vec(),
+        };
+        Documento {
+            bloques: vec![fila, Bloque::nota(MARCA_IMAGEN)],
+            imagenes: vec![im(b"celda"), im(b"suelta")],
+            ..Documento::default()
+        }
+    }
+
+    #[test]
+    fn la_imagen_de_despues_de_una_tabla_es_la_suya() {
+        let d = documento();
+        assert_eq!(imagenes_de_fila(&d.bloques[0]), 1);
+        // Caso negativo: lo que no es una fila de Word no cuenta.
+        assert_eq!(imagenes_de_fila(&d.bloques[1]), 0);
+        let html = a_html(&d);
+        assert!(html.contains(&base64(b"suelta")), "{html}");
+        assert!(!html.contains(&base64(b"celda")));
+        let src = |i: &Imagen| Some(String::from_utf8_lossy(&i.datos).into_owned());
+        let anotar = cuerpo_para_anotar(&d, &src);
+        assert!(anotar.contains("src=\"suelta\""), "{anotar}");
     }
 }

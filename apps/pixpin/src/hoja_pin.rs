@@ -727,10 +727,13 @@ pub(crate) fn pintar_escritura(p: &Pintor, texto: &str, caja: [f32; 4], tam: f32
     let ancho = (w + 2.0 * relleno + 2.0).max(celda.ancho);
     let r = RectF { ancho, ..celda };
     p.empujar_recorte(recorte);
-    p.rellenar(r, Color::BLANCO);
+    // Con el modo oscuro de los visores, la luz invertida como el resto.
+    let oscuro = crate::oscuro::activo();
+    let k = |c: Color| pixpin_render::oscuro::si(oscuro, c);
+    p.rellenar(r, k(Color::BLANCO));
     let y = r.y + (r.alto - th) / 2.0;
-    p.texto_con_letra(texto, r.x + relleno, y, tam, pixpin_render::letras::SIN_PARTIR, &l, TEXTO);
-    p.rellenar(RectF { x: r.x + relleno + w + 1.0, y: y + 1.0, ancho: (tam / 14.0).max(1.0), alto: (th - 2.0).max(1.0) }, TEXTO);
-    p.trazar(r, (tam / 7.0).round().max(2.0), VERDE);
+    p.texto_con_letra(texto, r.x + relleno, y, tam, pixpin_render::letras::SIN_PARTIR, &l, k(TEXTO));
+    p.rellenar(RectF { x: r.x + relleno + w + 1.0, y: y + 1.0, ancho: (tam / 14.0).max(1.0), alto: (th - 2.0).max(1.0) }, k(TEXTO));
+    p.trazar(r, (tam / 7.0).round().max(2.0), k(VERDE));
     p.soltar_recorte();
 }

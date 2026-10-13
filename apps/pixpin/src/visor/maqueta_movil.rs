@@ -369,6 +369,7 @@ impl Obra<'_, '_> {
             caja: None,
             letra,
             recuadro: false,
+            imagen: None,
             renglones,
         });
     }
@@ -468,7 +469,7 @@ pub(crate) fn colocar(
                 {
                     hasta += 1;
                 }
-                tabla(&mut o, doc, i, hasta);
+                tabla(&mut o, doc, i, hasta, &mut imagen);
                 i = hasta;
                 continue;
             }
@@ -487,8 +488,8 @@ pub(crate) fn colocar(
             }
             Clase::Nota if b.texto() == MARCA_IMAGEN => {
                 let datos = doc.imagenes.get(imagen);
+                colocar_imagen(&mut o, datos, i, imagen);
                 imagen += 1;
-                colocar_imagen(&mut o, datos, i);
             }
             Clase::Titulo(n) => {
                 let tam = base * css.titulos[usize::from(n.clamp(1, 6)) - 1];
@@ -639,6 +640,7 @@ fn raya(clase: Clase, x: f32, ancho: f32, y: f32, bloque: Option<usize>, letra: 
         caja: None,
         letra,
         recuadro: false,
+        imagen: None,
         renglones: Vec::new(),
     }
 }
@@ -714,13 +716,24 @@ pub(crate) fn medidas_de_imagen(d: &[u8]) -> Option<(u32, u32)> {
 /// Una imagen del documento: en el movil va dentro de su `<p>`, a su tamano
 /// y como mucho del ancho del texto (`img{max-width:100%;height:auto}`),
 /// sentada en la linea base del renglon, asi que debajo queda lo que baja la
-/// letra. Aqui se deja su hueco con un recuadro que dice que imagen es: se ve
-/// entera al guardar la pagina.
-fn colocar_imagen(o: &mut Obra, datos: Option<&pixpin_docs::documento::Imagen>, i: usize) {
+/// letra. Aqui va su hueco a ese tamano y el visor pinta la imagen dentro
+/// (`imagenes`), descodificada solo cuando se ve. El hueco sale de la
+/// cabecera, sin descodificar: medir sigue siendo instantaneo y, como el
+/// movil la pone del mismo alto, la tinta de debajo cae en la misma palabra.
+///
+/// Si su cabecera no se deja leer (rota, o un formato que el `WebView` no
+/// pinta), queda un renglon con un recuadro que lo dice y sin `imagen`: ni
+/// se descodifica ni se saca como pin. `n` es su numero en `doc.imagenes`.
+fn colocar_imagen(
+    o: &mut Obra,
+    datos: Option<&pixpin_docs::documento::Imagen>,
+    i: usize,
+    n: usize,
+) {
     let base = o.base;
     let renglon = base * o.cuerpo.interlineado;
-    let (w, h) = datos
-        .and_then(|d| medidas_de_imagen(&d.datos))
+    let medida = datos.and_then(|d| medidas_de_imagen(&d.datos));
+    let (w, h) = medida
         .map(|(w, h)| {
             let w = w as f32;
             let ancho = w.min(o.ancho);
@@ -735,7 +748,13 @@ fn colocar_imagen(o: &mut Obra, datos: Option<&pixpin_docs::documento::Imagen>, 
     let y = o.flujo.bloque(m, alto, m);
     let peso = datos.map(|d| d.datos.len() / 1024).unwrap_or(0);
     o.salida.push(Colocado {
-        texto: format!("🖼 imagen ({peso} kB) — se ve al guardar la página"),
+        // Con la imagen pintada encima no hace falta decir nada; sin ella,
+        // que hay una y que no se puede ensenar.
+        texto: if medida.is_some() {
+            String::new()
+        } else {
+            format!("🖼 imagen ({peso} kB) — no se puede mostrar")
+        },
         tramos: Vec::new(),
         clase: Clase::Nota,
         tam: base * 0.85,
@@ -748,6 +767,7 @@ fn colocar_imagen(o: &mut Obra, datos: Option<&pixpin_docs::documento::Imagen>, 
         caja: None,
         letra: o.cuerpo,
         recuadro: true,
+        imagen: medida.map(|_| n),
         renglones: Vec::new(),
     });
 }
@@ -757,8 +777,9 @@ fn colocar_imagen(o: &mut Obra, datos: Option<&pixpin_docs::documento::Imagen>, 
 
 /// Los parrafos de una celda: el movil pone cada parrafo de Word en su `<p>`
 /// (y uno vacio, `<p>&nbsp;</p>`, ocupa su renglon); la continuacion de una
-/// celda unida hacia abajo es un `<td></td>` sin nada.
-fn parrafos_de_celda(c: &Celda) -> Vec<(String, Vec<Tramo>)> {
+/// celda unida hacia abajo es un `<td></td>` sin nada. Con cada parrafo,
+/// cuantas imagenes lleva (para seguir contandolas en `doc.imagenes`).
+fn parrafos_de_celda(c: &Celda) -> Vec<(String, Vec<Tramo>, usize)> {
     if c.sigue {
         return Vec::new();
     }
@@ -783,7 +804,30 @@ fn parrafos_de_celda(c: &Celda) -> Vec<(String, Vec<Tramo>)> {
             }
         }
     }
-    parrafos.iter().map(|p| texto_de(p)).collect()
+    parrafos
+        .iter()
+        .map(|p| {
+            let (texto, tramos) = texto_de(p);
+            let imagenes = p.iter().filter(|t| t.texto == MARCA_IMAGEN).count();
+            (texto, tramos, imagenes)
+        })
+        .collect()
+}
+
+/// **Una imagen dentro de una celda** (el `<img>` en el `<p>` de su `<td>`):
+/// el parrafo que es solo su marca, con su numero en `doc.imagenes` y lo que
+/// mide por su cabecera. Si no se deja medir, se queda como el texto que es.
+fn imagen_de_parrafo(
+    doc: &Documento,
+    texto: &str,
+    cuantas: usize,
+    n: usize,
+) -> Option<(usize, (f32, f32))> {
+    if cuantas != 1 || texto != MARCA_IMAGEN {
+        return None;
+    }
+    let (w, h) = medidas_de_imagen(&doc.imagenes.get(n)?.datos)?;
+    Some((n, (w as f32, h as f32)))
 }
 
 /// **El reparto de columnas de una tabla automatica**, como el del
@@ -814,7 +858,7 @@ pub(crate) fn repartir_columnas(minimo: &[f32], maximo: &[f32], disponible: f32)
 /// Coloca las filas `desde..hasta` como una tabla del movil.
 // Parrafos y celdas intermedios, de un solo uso; un alias no aclara nada.
 #[allow(clippy::type_complexity)]
-fn tabla(o: &mut Obra, doc: &Documento, desde: usize, hasta: usize) {
+fn tabla(o: &mut Obra, doc: &Documento, desde: usize, hasta: usize, imagen: &mut usize) {
     let base = o.base;
     let cuerpo = o.cuerpo;
     let filas: Vec<Vec<Celda>> = doc.bloques[desde..hasta]
@@ -822,10 +866,29 @@ fn tabla(o: &mut Obra, doc: &Documento, desde: usize, hasta: usize) {
         .map(pixpin_docs::tabla::celdas_de)
         .collect();
     let n = pixpin_docs::tabla::columnas_de(&filas).max(1);
-    let parrafos: Vec<Vec<Vec<(String, Vec<Tramo>)>>> = filas
+    // Cada parrafo con su imagen, si es una: las de las celdas tambien
+    // estan en `doc.imagenes`, en orden, asi que se siguen contando aqui
+    // (si no, todas las de despues de la tabla saldrian corridas).
+    let parrafos: Vec<Vec<Vec<(String, Vec<Tramo>, Option<(usize, (f32, f32))>)>>> = filas
         .iter()
-        .map(|f| f.iter().map(parrafos_de_celda).collect())
+        .map(|f| {
+            f.iter()
+                .map(|c| {
+                    parrafos_de_celda(c)
+                        .into_iter()
+                        .map(|(t, tramos, cuantas)| {
+                            let img = imagen_de_parrafo(doc, &t, cuantas, *imagen);
+                            *imagen += cuantas;
+                            (t, tramos, img)
+                        })
+                        .collect()
+                })
+                .collect()
+        })
         .collect();
+    // Lo que queda del renglon por debajo de la imagen (`colocar_imagen`).
+    let renglon_img = base * cuerpo.interlineado;
+    let debajo = (renglon_img - base) / 2.0 + base * 0.2;
 
     // Minimo y maximo de cada columna, por sus celdas de una columna.
     let relleno = 2.0 * CELDA_ANCHO + RAYA;
@@ -837,7 +900,13 @@ fn tabla(o: &mut Obra, doc: &Documento, desde: usize, hasta: usize) {
         for (c, pc) in f.iter().zip(ps) {
             let span = usize::from(c.columnas.max(1));
             let (mut mi, mut ma) = (0.0f32, 0.0f32);
-            for (t, tramos) in pc {
+            for (t, tramos, img) in pc {
+                if let Some((_, (w, _))) = img {
+                    // `max-width:100%`: el navegador la deja encoger hasta
+                    // nada (no pone minimo) y como mucho pide su ancho.
+                    ma = ma.max(*w);
+                    continue;
+                }
                 if t.trim().is_empty() {
                     continue;
                 }
@@ -905,7 +974,7 @@ fn tabla(o: &mut Obra, doc: &Documento, desde: usize, hasta: usize) {
         let mut celdas: Vec<(
             usize,
             usize,
-            Vec<(String, Vec<Tramo>, f32, Vec<(u32, u32)>)>,
+            Vec<(String, Vec<Tramo>, f32, Vec<(u32, u32)>, Option<(usize, f32, f32)>)>,
             f32,
         )> = Vec::new();
         let mut g = 0usize;
@@ -918,7 +987,18 @@ fn tabla(o: &mut Obra, doc: &Documento, desde: usize, hasta: usize) {
             let ancho = (xs[fin] - xs[g] - relleno).max(1.0);
             let mut dentro = Vec::with_capacity(pc.len());
             let mut alto = 0.0f32;
-            for (t, tramos) in pc {
+            for (t, tramos, img) in pc {
+                if let Some((k, (w, h))) = *img {
+                    // A su tamano y como mucho del ancho de la celda,
+                    // sentada en la linea base como fuera de las tablas.
+                    let aw = w.min(ancho);
+                    let ih = h * aw / w;
+                    let renglon_alto = (ih + debajo).max(renglon_img);
+                    alto += renglon_alto;
+                    let img = Some((k, aw, ih));
+                    dentro.push((String::new(), Vec::new(), renglon_alto, Vec::new(), img));
+                    continue;
+                }
                 let (h, renglones) = if t.trim().is_empty() {
                     (renglon, Vec::new())
                 } else {
@@ -926,7 +1006,7 @@ fn tabla(o: &mut Obra, doc: &Documento, desde: usize, hasta: usize) {
                     (m.alto.max(renglon), m.renglones)
                 };
                 alto += h;
-                dentro.push((t.clone(), tramos.clone(), h, renglones));
+                dentro.push((t.clone(), tramos.clone(), h, renglones, None));
             }
             if !dentro.is_empty() {
                 // Los margenes de sus parrafos: arriba, entre ellos y abajo
@@ -959,7 +1039,28 @@ fn tabla(o: &mut Obra, doc: &Documento, desde: usize, hasta: usize) {
                     .push(celda_vacia(caja, i, cuerpo, texto_x, texto_ancho, ty, base));
                 continue;
             }
-            for (n_p, (t, tramos, h, renglones)) in dentro.into_iter().enumerate() {
+            for (n_p, (t, tramos, h, renglones, img)) in dentro.into_iter().enumerate() {
+                if let Some((k, aw, ih)) = img {
+                    o.salida.push(Colocado {
+                        texto: String::new(),
+                        tramos: Vec::new(),
+                        clase: Clase::Fila,
+                        tam: base * 0.85,
+                        sangria: texto_x,
+                        ancho: aw,
+                        y: ty,
+                        alto: ih.max(1.0),
+                        color: APAGADO,
+                        bloque: Some(i),
+                        caja: (n_p == 0).then_some(caja),
+                        letra: cuerpo,
+                        recuadro: true,
+                        imagen: Some(k),
+                        renglones: Vec::new(),
+                    });
+                    ty += h + margen_p;
+                    continue;
+                }
                 o.salida.push(Colocado {
                     texto: if t.trim().is_empty() {
                         String::new()
@@ -978,6 +1079,7 @@ fn tabla(o: &mut Obra, doc: &Documento, desde: usize, hasta: usize) {
                     caja: (n_p == 0).then_some(caja),
                     letra: cuerpo,
                     recuadro: false,
+                    imagen: None,
                     renglones,
                 });
                 ty += h + margen_p;
@@ -1013,6 +1115,7 @@ fn celda_vacia(
         caja: Some(caja),
         letra,
         recuadro: false,
+        imagen: None,
         renglones: Vec::new(),
     }
 }

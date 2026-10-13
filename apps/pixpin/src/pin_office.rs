@@ -147,7 +147,9 @@ fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion, ruta: &P
     let monitor = monitores.principal().context("sin monitor principal")?.to_owned();
     let e = monitor.escala_por_cien as f32 / 100.0;
     let (area_pin, _) = crate::lector_pin::area_inicial();
-    let mut pin = PinLector::nuevo(area_pin, e);
+    // Sin luna/sol: la vista previa la pinta Office en su ventana y no se
+    // puede oscurecer desde aqui.
+    let mut pin = PinLector::nuevo(area_pin, e).con_extension(&pixpin_docs::extension(&nombre_fichero)).sin_oscuro();
     let mut area = pin.area;
     let mut ventana = VentanaOverlay::nueva_llana(area, &format!("{nombre} — {}", textos.t("office-titulo"))).context("no se pudo abrir la ventana del pin de Office")?;
     // Como un pin: siempre encima, y SIN quitarle el foco a nadie.

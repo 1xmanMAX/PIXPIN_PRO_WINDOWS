@@ -333,6 +333,22 @@ fn ver_y_editar_tienen_la_misma_cara() {
     foto(&mut est, "4-editar-con-formato");
     est.dejar_de_editar(&motor);
     foto(&mut est, "5-ver-con-formato");
+    // Con el modo oscuro de los visores, editar se oscurece igual (en las
+    // pruebas la preferencia no se guarda: no hay ubicacion).
+    let antes = crate::oscuro::activo();
+    if !antes {
+        crate::oscuro::alternar();
+    }
+    assert!(est.empezar_a_editar(&textos));
+    est.abierta_mut().sel = Seleccion::en(2, 2);
+    for c in "Oscuro".chars() {
+        est.teclear(c);
+    }
+    foto(&mut est, "6-editar-oscuro");
+    est.hacer(AccionEd::Cancelar, &textos, &motor);
+    if !antes {
+        crate::oscuro::alternar();
+    }
     let _ = std::fs::remove_dir_all(&raiz);
 }
 

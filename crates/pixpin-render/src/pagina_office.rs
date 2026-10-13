@@ -8,7 +8,7 @@
 //! de las mismas medidas si la hay (Carlito por Calibri...) y si no, Arial o
 //! Times New Roman segun sea de palo seco o con remates.
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -341,6 +341,15 @@ pub struct PintorOffice {
     /// principal no se le puede cambiar el destino a mitad de fotograma.
     /// Se crean la primera vez que una pagina trae efectos.
     auxiliares: RefCell<Vec<ID2D1DeviceContext>>,
+    /// Modo oscuro pedido ([`PintorOffice::poner_oscuro`]).
+    oscuro: Cell<bool>,
+    /// La pagina que se esta pintando va en oscuro: se pidio y no trae
+    /// fondo propio.
+    en_oscuro: Cell<bool>,
+    /// Lo que ya tiene un relleno propio en esta pagina (una celda
+    /// sombreada, una forma, una imagen), en pixeles del destino: el texto
+    /// y las rayas que caen encima se quedan con sus colores.
+    rellenos: RefCell<Vec<D2D_RECT_F>>,
 }
 
 /// Cuantos `Elemento::Efecto` anidados se pintan con sus efectos; los de
@@ -360,12 +369,71 @@ impl PintorOffice {
             pinceles: RefCell::new(HashMap::new()),
             trazos: RefCell::new(HashMap::new()),
             auxiliares: RefCell::new(Vec::new()),
+            oscuro: Cell::new(false),
+            en_oscuro: Cell::new(false),
+            rellenos: RefCell::new(Vec::new()),
         })
     }
 
     /// Olvida las imagenes ya subidas (al cambiar de documento).
     pub fn olvidar_imagenes(&self) {
         self.imagenes.borrow_mut().vaciar();
+    }
+
+    /// **Modo oscuro** (`crate::oscuro`), como el de Word: la hoja sin
+    /// fondo propio pasa a gris muy oscuro y el texto y las rayas oscuras
+    /// que no tienen un relleno debajo se aclaran conservando su tono; los
+    /// rellenos, las imagenes y los graficos se quedan con sus colores (y lo
+    /// que va encima de ellos tambien). Un relleno casi blanco se toma por
+    /// papel y se oscurece con el. Vale para lo que se pinte despues.
+    pub fn poner_oscuro(&self, si: bool) {
+        self.oscuro.set(si);
+    }
+
+    /// La caja `r` (en las coordenadas de ahora de `c`) en pixeles del
+    /// destino.
+    fn en_destino(c: &ID2D1DeviceContext, r: D2D_RECT_F) -> D2D_RECT_F {
+        let mut m = Matrix3x2::default();
+        // SAFETY: GetTransform rellena la matriz local; el contexto vive.
+        unsafe { c.GetTransform(&mut m) };
+        let p = |x: f32, y: f32| (x * m.M11 + y * m.M21 + m.M31, x * m.M12 + y * m.M22 + m.M32);
+        let esquinas = [p(r.left, r.top), p(r.right, r.top), p(r.left, r.bottom), p(r.right, r.bottom)];
+        let (mut x0, mut y0, mut x1, mut y1) = (f32::MAX, f32::MAX, f32::MIN, f32::MIN);
+        for (x, y) in esquinas {
+            (x0, y0, x1, y1) = (x0.min(x), y0.min(y), x1.max(x), y1.max(y));
+        }
+        D2D_RECT_F { left: x0, top: y0, right: x1, bottom: y1 }
+    }
+
+    /// Apunta que en `r` hay un relleno propio (solo en oscuro).
+    fn apuntar_relleno(&self, c: &ID2D1DeviceContext, r: D2D_RECT_F) {
+        if self.en_oscuro.get() {
+            self.rellenos.borrow_mut().push(Self::en_destino(c, r));
+        }
+    }
+
+    /// El color de un texto o una raya (`raya`) que ocupa `r`: en oscuro y
+    /// sin un relleno propio debajo de su centro, legible sobre el papel
+    /// oscuro (de las rayas, solo las casi negras: las de color son del
+    /// grafico).
+    fn color_sobre_papel(&self, c: &ID2D1DeviceContext, col: ColorO, r: D2D_RECT_F, raya: bool) -> ColorO {
+        if !self.en_oscuro.get() {
+            return col;
+        }
+        let d = Self::en_destino(c, r);
+        let (cx, cy) = ((d.left + d.right) / 2.0, (d.top + d.bottom) / 2.0);
+        let encima = self.rellenos.borrow().iter().rev().any(|f| cx >= f.left && cx <= f.right && cy >= f.top && cy <= f.bottom);
+        if encima {
+            return col;
+        }
+        let (r, g, b) = if raya { crate::oscuro::raya_legible_u8(col.r, col.g, col.b) } else { crate::oscuro::legible_u8(col.r, col.g, col.b) };
+        ColorO { r, g, b, a: col.a }
+    }
+
+    /// En oscuro, un relleno liso casi blanco es papel: se pinta del papel
+    /// oscuro (`Some`) y no cuenta como relleno propio.
+    fn relleno_de_papel(&self, r: &Relleno) -> Option<Relleno> {
+        (self.en_oscuro.get() && casi_blanco(r)).then(|| Relleno::Solido(a_office(crate::oscuro::PAPEL)))
     }
 
     /// Pinta `pagina` con su esquina en `origen` (pixeles del destino) a
@@ -389,10 +457,17 @@ impl PintorOffice {
         // SAFETY: dentro del fotograma; se restaura al acabar.
         unsafe { c.SetTransform(&base) };
         let hoja = D2D_RECT_F { left: 0.0, top: 0.0, right: pagina.ancho, bottom: pagina.alto };
+        // En oscuro, la hoja de papel: la que no trae fondo (la de Word) o lo
+        // trae blanco liso (las diapositivas sencillas). La que trae un
+        // fondo de color, un degradado o una imagen se ve como la diseno su
+        // autor, como en PowerPoint: solo se oscurece alrededor.
+        self.en_oscuro.set(self.oscuro.get() && pagina.fondo.as_ref().is_none_or(casi_blanco));
+        self.rellenos.borrow_mut().clear();
         match &pagina.fondo {
-            Some(r) => self.rellenar_rect(c, hoja, r),
-            None => {
-                if let Some(b) = self.pincel(c, ColorO::BLANCO) {
+            Some(r) if !self.en_oscuro.get() => self.rellenar_rect(c, hoja, r),
+            _ => {
+                let papel = if self.en_oscuro.get() { a_office(crate::oscuro::PAPEL) } else { ColorO::BLANCO };
+                if let Some(b) = self.pincel(c, papel) {
                     // SAFETY: dentro del fotograma.
                     unsafe { c.FillRectangle(&hoja, &b) };
                 }
@@ -508,18 +583,31 @@ impl PintorOffice {
             Elemento::Rect { rect, relleno, borde } => {
                 let r = D2D_RECT_F { left: rect.x, top: rect.y, right: rect.x + rect.ancho, bottom: rect.y + rect.alto };
                 if let Some(rel) = relleno {
-                    self.rellenar_rect(c, r, rel);
+                    match self.relleno_de_papel(rel) {
+                        Some(papel) => self.rellenar_rect(c, r, &papel),
+                        None => {
+                            self.rellenar_rect(c, r, rel);
+                            self.apuntar_relleno(c, r);
+                        }
+                    }
                 }
                 if let Some(t) = borde
-                    && let Some(b) = self.pincel(c, t.color)
+                    && let Some(b) = self.pincel(c, self.color_sobre_papel(c, t.color, r, true))
                 {
                     let s = self.estilo_trazo(c, t.discontinuo);
                     // SAFETY: dentro del fotograma.
                     unsafe { c.DrawRectangle(&r, &b, t.grosor, s.as_ref()) };
                 }
             }
-            Elemento::Linea { desde, hasta, trazo } => self.linea(c, *desde, *hasta, trazo),
-            Elemento::Imagen { id, rect, recorte, opacidad } => self.imagen(ctx, id, *rect, *recorte, *opacidad),
+            Elemento::Linea { desde, hasta, trazo } => {
+                let caja = D2D_RECT_F { left: desde.0.min(hasta.0), top: desde.1.min(hasta.1), right: desde.0.max(hasta.0), bottom: desde.1.max(hasta.1) };
+                let color = self.color_sobre_papel(c, trazo.color, caja, true);
+                self.linea(c, *desde, *hasta, &Trazo { color, ..*trazo })
+            }
+            Elemento::Imagen { id, rect, recorte, opacidad } => {
+                self.imagen(ctx, id, *rect, *recorte, *opacidad);
+                self.apuntar_relleno(c, D2D_RECT_F { left: rect.x, top: rect.y, right: rect.x + rect.ancho, bottom: rect.y + rect.alto });
+            }
             Elemento::Trayecto { figuras, relleno, borde } => self.trayecto(c, figuras, relleno.as_ref(), borde.as_ref()),
             Elemento::Grupo { transformada: t, recorte, elementos } => {
                 let propia = Matrix3x2 { M11: t[0], M12: t[1], M21: t[2], M22: t[3], M31: t[4], M32: t[5] };
@@ -697,6 +785,9 @@ impl PintorOffice {
 
     fn trayecto(&self, c: &ID2D1DeviceContext, figuras: &[Figura], relleno: Option<&Relleno>, borde: Option<&Trazo>) {
         if let Some(r) = relleno {
+            // En oscuro, un relleno casi blanco es papel (y no cuenta).
+            let papel = self.relleno_de_papel(r);
+            let r = papel.as_ref().unwrap_or(r);
             let llenas: Vec<&Figura> = figuras.iter().filter(|f| f.rellenar && f.sombra == Sombra::Ninguna).collect();
             let todas: Vec<&Figura> = figuras.iter().filter(|f| f.rellenar).collect();
             // La caja del degradado es la de toda la forma, no la de cada grupo.
@@ -739,13 +830,20 @@ impl PintorOffice {
                         unsafe { c.FillGeometry(&geo, &p, None) };
                     }
                 }
+                if papel.is_none() {
+                    self.apuntar_relleno(c, caja);
+                }
             }
         }
         if let Some(t) = borde {
             let trazadas: Vec<&Figura> = figuras.iter().filter(|f| f.trazar).collect();
             if !trazadas.is_empty()
                 && let Some(g) = self.geometria(c, &trazadas, false)
-                && let Some(p) = self.pincel(c, t.color)
+                && let Some(p) = self.pincel(c, {
+                    // SAFETY: geometria viva; Bounds rellena el rect local.
+                    let caja = g.cast::<ID2D1Geometry>().ok().map(|geo| unsafe { geo.GetBounds(None) }.unwrap_or_default()).unwrap_or_default();
+                    self.color_sobre_papel(c, t.color, caja, true)
+                })
             {
                 let s = self.estilo_trazo(c, t.discontinuo);
                 // SAFETY: dentro del fotograma.
@@ -766,7 +864,14 @@ impl PintorOffice {
         };
         let mut glifos = Vec::with_capacity(texto.len());
         self.letras.glifos(texto, &t.letra, &mut glifos);
-        let Some(pincel) = self.pincel(c, t.color) else { return };
+        // En oscuro, legible sobre el papel si no lleva un relleno debajo.
+        let color = self.color_sobre_papel(
+            c,
+            t.color,
+            D2D_RECT_F { left: t.x, top: t.y - t.letra.tam * 0.9, right: t.x + t.ancho.max(1.0), bottom: t.y + t.letra.tam * 0.3 },
+            false,
+        );
+        let Some(pincel) = self.pincel(c, color) else { return };
         let tam = t.letra.tam;
         let mut x = t.x;
         let chars: Vec<char> = texto.chars().collect();
@@ -818,7 +923,7 @@ impl PintorOffice {
             let grosor = (m[4] * tam).max(0.5) * if s == Subrayado::Grueso { 2.0 } else { 1.0 };
             let y = t.y - m[3] * tam;
             let trazo = Trazo {
-                color: t.color,
+                color,
                 grosor,
                 discontinuo: match s {
                     Subrayado::Puntos => Discontinuo::Puntos,
@@ -833,7 +938,7 @@ impl PintorOffice {
         }
         if t.tachado {
             let y = t.y - m[5] * tam;
-            self.linea(c, (t.x, y), (t.x + ancho, y), &Trazo::solido(t.color, (m[6] * tam).max(0.5)));
+            self.linea(c, (t.x, y), (t.x + ancho, y), &Trazo::solido(color, (m[6] * tam).max(0.5)));
         }
     }
 
@@ -1063,8 +1168,19 @@ fn sombra_interior(
     salida(&dentro)
 }
 
+/// Un relleno liso casi blanco: en oscuro, es papel.
+fn casi_blanco(r: &Relleno) -> bool {
+    matches!(r, Relleno::Solido(col) if col.a > 200 && col.r.min(col.g).min(col.b) >= 0xF0)
+}
+
 fn d2d(c: ColorO) -> D2D1_COLOR_F {
     D2D1_COLOR_F { r: c.r as f32 / 255.0, g: c.g as f32 / 255.0, b: c.b as f32 / 255.0, a: c.a as f32 / 255.0 }
+}
+
+/// Un color del motor (0..1) como color de Office (0..255).
+fn a_office(c: crate::motor::Color) -> ColorO {
+    let q = |x: f32| (x * 255.0).round().clamp(0.0, 255.0) as u8;
+    ColorO { r: q(c.r), g: q(c.g), b: q(c.b), a: q(c.a) }
 }
 
 /// `a` y despues `b` (como en Direct2D: el punto se multiplica por `a`
@@ -1077,5 +1193,23 @@ fn componer(a: &Matrix3x2, b: &Matrix3x2) -> Matrix3x2 {
         M22: a.M21 * b.M12 + a.M22 * b.M22,
         M31: a.M31 * b.M11 + a.M32 * b.M21 + b.M31,
         M32: a.M31 * b.M12 + a.M32 * b.M22 + b.M32,
+    }
+}
+
+#[cfg(test)]
+mod pruebas_oscuro {
+    use super::*;
+
+    #[test]
+    fn en_oscuro_solo_el_blanco_liso_es_papel() {
+        assert!(casi_blanco(&Relleno::Solido(ColorO::BLANCO)));
+        assert!(casi_blanco(&Relleno::Solido(ColorO::rgb(0xF2, 0xF2, 0xF2))));
+        // Caso negativo: un color, un gris medio o un degradado son del
+        // autor y se quedan.
+        assert!(!casi_blanco(&Relleno::Solido(ColorO::rgb(0xFF, 0xF2, 0xCC))));
+        assert!(!casi_blanco(&Relleno::Solido(ColorO::rgb(0xD9, 0xD9, 0xD9))));
+        assert!(!casi_blanco(&Relleno::Lineal { paradas: vec![(0.0, ColorO::BLANCO), (1.0, ColorO::BLANCO)], angulo: 0.0 }));
+        // Un blanco transparente no tapa nada: no es papel.
+        assert!(!casi_blanco(&Relleno::Solido(ColorO { r: 255, g: 255, b: 255, a: 40 })));
     }
 }

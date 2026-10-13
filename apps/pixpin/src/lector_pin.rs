@@ -19,6 +19,16 @@
 //! Esto no sabe nada de lo que se lee: da la ventana, los gestos de moverla
 //! y estirarla y la barra. Cada lector (`visor.rs`, `lector_pdf.rs`) le dice
 //! que botones propios lleva y hace lo que se pulse.
+//!
+//! Dos cosas son de todos los lectores y por eso van aqui (12-oct-2026):
+//! - **Luna/sol**, el modo oscuro de los visores (`crate::oscuro`): lo
+//!   cambia la propia barra para toda la app, y [`PinLector::actualizar`]
+//!   avisa al lector (devuelve `true`) cuando le toca repintarse, tambien
+//!   si lo cambio el pin de otro documento. El que no sabe pintarse en
+//!   oscuro (la vista previa de Office) lo quita con [`PinLector::sin_oscuro`].
+//! - **El recuadro del tipo de archivo** junto al nombre, del color de los
+//!   iconos de extension del chat y con la extension dentro
+//!   ([`PinLector::con_extension`]).
 
 use pixpin_geom::{Punto, Rect};
 use pixpin_render::icono::{Icono, material};
@@ -56,6 +66,9 @@ const SEPARACION: f32 = 8.0;
 /// El nombre, como mucho.
 const NOMBRE_MAX: f32 = 260.0;
 const TAM_NOMBRE: f32 = 13.0;
+/// El recuadro del tipo de archivo, de lado (y su separacion del nombre).
+const CUADRO: f32 = 24.0;
+const CUADRO_AIRE: f32 = 7.0;
 /// Lo que mide el borde que estira la ventana.
 pub(crate) const BORDE: f32 = 7.0;
 /// Lo minimo que se deja estirar.
@@ -74,6 +87,8 @@ enum Pieza {
     Asa,
     Nombre,
     Boton(AccionPin),
+    /// Luna/sol: lo resuelve la barra (`crate::oscuro::alternar`).
+    Oscuro,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -114,8 +129,16 @@ pub struct PinLector {
     visible: bool,
     fuera_desde: Option<std::time::Instant>,
     encima_de: Option<Pieza>,
-    /// Lo que se pinto la ultima vez (para no repintar si nada cambio).
-    pintado: Option<(Vec<(u8, bool)>, String, Option<Pieza>, bool)>,
+    /// Lo que se pinto la ultima vez (para no repintar si nada cambio): los
+    /// botones, el nombre, lo de debajo del raton, el pin y el modo oscuro.
+    pintado: Option<(Vec<(u8, bool)>, String, Option<Pieza>, bool, bool)>,
+    /// La extension del archivo (`pdf`, `xlsx`...) para el recuadro de color
+    /// junto al nombre; vacia, sin recuadro.
+    ext: String,
+    /// Si lleva el boton luna/sol (el lector sabe pintarse en oscuro).
+    con_oscuro: bool,
+    /// La `crate::oscuro::version` que ya se le aviso al lector.
+    oscuro_visto: u32,
     piezas: Vec<(f32, f32, Pieza)>,
     /// Al abrir, la barra se ve un rato aunque el raton no este encima: asi
     /// se sabe que esta (como la pastilla de antes).
@@ -192,7 +215,29 @@ impl PinLector {
             pintado: None,
             piezas: Vec::new(),
             al_abrir: std::time::Instant::now() + std::time::Duration::from_secs(4),
+            ext: String::new(),
+            con_oscuro: true,
+            oscuro_visto: crate::oscuro::version(),
         }
+    }
+
+    /// Con el recuadro de color del tipo de archivo junto al nombre
+    /// (`ext` sin punto, en cualquier caja: «PDF», «xlsx»).
+    pub fn con_extension(mut self, ext: &str) -> PinLector {
+        self.ext = ext.trim_start_matches('.').to_lowercase();
+        self
+    }
+
+    /// Sin el boton luna/sol: para el lector que no sabe pintarse en oscuro
+    /// (la vista previa de Office es una ventana de Office).
+    pub fn sin_oscuro(mut self) -> PinLector {
+        self.con_oscuro = false;
+        self
+    }
+
+    /// Si este lector va en oscuro ahora.
+    pub fn oscuro(&self) -> bool {
+        self.con_oscuro && crate::oscuro::activo()
     }
 
     /// Crea la barra (escondida), duena la ventana del lector: va siempre
@@ -340,6 +385,13 @@ impl PinLector {
                         }
                     }
                     Some(Pieza::Nombre) => return (Some(AccionPin::Nombre), Respuesta::default()),
+                    Some(Pieza::Oscuro) => {
+                        // Para toda la app; este lector se entera en su
+                        // `actualizar`, como los demas abiertos.
+                        crate::oscuro::alternar();
+                        self.pintado = None;
+                        return (None, Respuesta { consumido: true, cambio: false });
+                    }
                     Some(Pieza::Boton(a)) => return (Some(a), Respuesta::default()),
                     _ => {}
                 }
@@ -402,7 +454,29 @@ impl PinLector {
     /// **La barra, al dia**: sale con el raton encima de la ventana o de
     /// ella, se va un poco despues de salir de las dos, sigue a la ventana y
     /// se repinta si cambio algo.
-    pub fn actualizar(&mut self, motor: &MotorRender, nombre: &str, propios: &[BotonLector]) {
+    ///
+    /// Devuelve `true` si el lector tiene que repintarse porque cambio el
+    /// modo oscuro (con su luna/sol o con la de otro lector abierto).
+    pub fn actualizar(&mut self, motor: &MotorRender, nombre: &str, propios: &[BotonLector]) -> bool {
+        let v = crate::oscuro::version();
+        let cambio = self.con_oscuro && v != self.oscuro_visto;
+        self.oscuro_visto = v;
+        if cambio {
+            self.pintado = None;
+        }
+        self.actualizar_barra(motor, nombre, propios);
+        cambio
+    }
+
+    /// El ancho de la pieza del nombre: el recuadro (si hay extension) y el
+    /// texto, como mucho `NOMBRE_MAX`.
+    fn ancho_nombre(nombre: &str, ext: &str, e: f32) -> f32 {
+        let cuadro = if ext.is_empty() { 0.0 } else { (CUADRO + CUADRO_AIRE) * e };
+        let texto = if nombre.is_empty() { 0.0 } else { (nombre.chars().count() as f32 * TAM_NOMBRE * 0.56 * e).min(NOMBRE_MAX * e) };
+        if cuadro + texto == 0.0 { 0.0 } else { cuadro + texto + 16.0 * e }
+    }
+
+    fn actualizar_barra(&mut self, motor: &MotorRender, nombre: &str, propios: &[BotonLector]) {
         if self.pantalla_completa || self.barra.is_none() {
             self.esconder_barra();
             return;
@@ -427,12 +501,14 @@ impl PinLector {
         // Las piezas y lo que mide.
         let e = self.e;
         let estado: Vec<(u8, bool)> = propios.iter().map(|b| (b.id, b.encendido)).collect();
-        let quieto = self.pintado.as_ref().is_some_and(|(s, n, h, f)| *s == estado && n == nombre && *h == self.encima_de && *f == self.fijado);
+        let oscuro = self.oscuro();
+        let quieto =
+            self.pintado.as_ref().is_some_and(|(s, n, h, f, o)| *s == estado && n == nombre && *h == self.encima_de && *f == self.fijado && *o == oscuro);
         let mut piezas = Vec::new();
         let mut x = 4.0 * e;
         piezas.push((x, x + ASA * e, Pieza::Asa));
         x += ASA * e + 2.0 * e;
-        let ancho_nombre = if nombre.is_empty() { 0.0 } else { (nombre.chars().count() as f32 * TAM_NOMBRE * 0.56 * e).min(NOMBRE_MAX * e) + 16.0 * e };
+        let ancho_nombre = Self::ancho_nombre(nombre, &self.ext, e);
         if ancho_nombre > 0.0 {
             piezas.push((x, x + ancho_nombre, Pieza::Nombre));
             x += ancho_nombre + 2.0 * e;
@@ -442,6 +518,10 @@ impl PinLector {
             x += BOTON * e + 2.0 * e;
         }
         x += 6.0 * e;
+        if self.con_oscuro {
+            piezas.push((x, x + BOTON * e, Pieza::Oscuro));
+            x += BOTON * e + 2.0 * e;
+        }
         for a in [AccionPin::PantallaCompleta, AccionPin::Fijar, AccionPin::Cerrar] {
             piezas.push((x, x + BOTON * e, Pieza::Boton(a)));
             x += BOTON * e + 2.0 * e;
@@ -471,8 +551,9 @@ impl PinLector {
         if quieto && !redimensionada {
             return;
         }
-        self.pintado = Some((estado, nombre.to_string(), self.encima_de, self.fijado));
+        self.pintado = Some((estado, nombre.to_string(), self.encima_de, self.fijado, oscuro));
         let (encima_de, fijado, piezas) = (self.encima_de, self.fijado, self.piezas.clone());
+        let ext = self.ext.clone();
         let Ok(destino) = b.superficie.empezar(motor) else { return };
         let _ = motor.dibujar(&destino, |p| {
             p.limpiar_transparente();
@@ -493,9 +574,16 @@ impl PinLector {
                 match pieza {
                     Pieza::Asa => p.icono(&material::DRAG_INDICATOR, centrado, TENUE),
                     Pieza::Nombre => {
+                        let mut x = caja.x + 8.0 * e;
+                        if !ext.is_empty() {
+                            cuadro_de_tipo(p, &ext, RectF { x, y: caja.y + (lado - CUADRO * e) / 2.0, ancho: CUADRO * e, alto: CUADRO * e }, e);
+                            x += (CUADRO + CUADRO_AIRE) * e;
+                        }
                         let (_, th) = p.medir_texto("Ag", TAM_NOMBRE * e);
-                        p.texto_linea(nombre, caja.x + 8.0 * e, caja.y + (lado - th) / 2.0, TAM_NOMBRE * e, caja.ancho - 16.0 * e, TINTA);
+                        p.texto_linea(nombre, x, caja.y + (lado - th) / 2.0, TAM_NOMBRE * e, caja.x + caja.ancho - 8.0 * e - x, TINTA);
                     }
+                    // La luna para pasar a oscuro; en oscuro, el sol para volver.
+                    Pieza::Oscuro => p.icono(if oscuro { &material::LIGHT_MODE } else { &material::DARK_MODE }, centrado, TINTA),
                     Pieza::Boton(AccionPin::Propio(id)) => {
                         if let Some(b) = propios.iter().find(|b| b.id == *id) {
                             p.icono(b.icono, centrado, if b.encendido { DORADO } else { TINTA });
@@ -510,6 +598,39 @@ impl PinLector {
         });
         let _ = b.superficie.presentar();
     }
+}
+
+/// El color del recuadro del tipo de archivo: el de los iconos de extension
+/// del chat (Excel verde, Word azul, PDF rojo...).
+pub fn color_de_tipo(ext: &str) -> Color {
+    let (r, g, b) = pixpin_ui::chat::color_de_extension(ext);
+    Color { r, g, b, a: 1.0 }
+}
+
+/// **El recuadro del tipo de archivo**: un cuadradito redondeado del color
+/// de su extension con la extension en pequeno dentro, en blanco o en
+/// oscuro segun lo pida su color, como el icono de archivo del chat.
+fn cuadro_de_tipo(p: &pixpin_render::Pintor, ext: &str, r: RectF, e: f32) {
+    p.rellenar_redondeado(r, 5.0 * e, color_de_tipo(ext));
+    let nombre = format!("x.{ext}");
+    let rotulo = pixpin_ui::color_de_extension::rotulo(&nombre);
+    if rotulo.is_empty() {
+        return;
+    }
+    let tinta = if pixpin_ui::color_de_extension::de(&nombre).texto_oscuro {
+        Color { r: 0x3a as f32 / 255.0, g: 0x2b as f32 / 255.0, b: 0.0, a: 1.0 }
+    } else {
+        Color { r: 1.0, g: 1.0, b: 1.0, a: 1.0 }
+    };
+    // La letra mas grande que deja la extension dentro, con un margen.
+    let mut tam = 9.5 * e;
+    let (mut w, mut h) = p.medir_texto(&rotulo, tam);
+    let cabe = r.ancho - 4.0 * e;
+    if w > cabe && w > 0.0 {
+        tam *= cabe / w;
+        (w, h) = p.medir_texto(&rotulo, tam);
+    }
+    p.texto_linea(&rotulo, r.x + (r.ancho - w) / 2.0, r.y + (r.alto - h) / 2.0, tam, r.ancho, tinta);
 }
 
 impl Drop for PinLector {
@@ -532,6 +653,36 @@ mod pruebas {
         // Caso negativo: sin sitio fuera, dentro y arriba.
         let v = Rect { x: 0, y: 0, ancho: 1920, alto: 1040 };
         assert_eq!(colocar(v, t, 400, 48, 8), (8, 8));
+    }
+
+    #[test]
+    fn el_recuadro_del_tipo_lleva_el_color_del_chat_y_hace_sitio() {
+        // Excel verde, Word azul, PDF rojo: los del chat.
+        let (x, w, pdf) = (color_de_tipo("xlsx"), color_de_tipo("DOCX"), color_de_tipo("pdf"));
+        assert!(x.g > x.r && x.g > x.b, "excel {x:?}");
+        assert!(w.b > w.r && w.b > w.g, "word {w:?}");
+        assert!(pdf.r > pdf.g && pdf.r > pdf.b, "pdf {pdf:?}");
+        let (r, g, b) = pixpin_ui::chat::color_de_extension("xlsx");
+        assert_eq!((x.r, x.g, x.b), (r, g, b));
+        // El nombre hace sitio al recuadro.
+        let con = PinLector::ancho_nombre("Tesis", "pdf", 1.0);
+        let sin = PinLector::ancho_nombre("Tesis", "", 1.0);
+        assert!((con - sin - (CUADRO + CUADRO_AIRE)).abs() < 1e-3);
+        // Caso negativo: sin nombre ni extension, no hay pieza.
+        assert_eq!(PinLector::ancho_nombre("", "", 1.0), 0.0);
+        // Con solo la extension, el recuadro se ve.
+        assert!(PinLector::ancho_nombre("", "pdf", 1.0) > CUADRO);
+    }
+
+    #[test]
+    fn la_extension_se_guarda_sin_punto_y_en_minusculas() {
+        let a = Rect { x: 0, y: 0, ancho: 800, alto: 600 };
+        let p = PinLector::nuevo(a, 1.0).con_extension(".XLSX");
+        assert_eq!(p.ext, "xlsx");
+        assert!(p.con_oscuro);
+        // Caso negativo: la vista previa de Office no lleva luna/sol.
+        let q = PinLector::nuevo(a, 1.0).sin_oscuro();
+        assert!(!q.con_oscuro && !q.oscuro());
     }
 
     #[test]
@@ -563,5 +714,48 @@ mod pruebas_nombre {
         assert_eq!(super::nombre_limpio("1791239986208_Tesis_Max_v4"), "Tesis_Max_v4");
         // Caso negativo: un nombre con numeros cortos se queda igual.
         assert_eq!(super::nombre_limpio("2024_informe"), "2024_informe");
+    }
+}
+
+#[cfg(test)]
+mod muestras {
+    use super::*;
+
+    /// El recuadro del tipo y la luna/sol como salen en la barra, a PNG:
+    /// `cargo test -p pixpin --bin pixpinmax muestra_de_la_barra_del_lector -- --ignored --nocapture`.
+    #[test]
+    #[ignore = "necesita GPU; genera un PNG para mirarlo"]
+    fn muestra_de_la_barra_del_lector() {
+        use pixpin_render::fuera_de_pantalla::FueraDePantalla;
+        let carpeta = std::env::var_os("PIXPIN_MUESTRAS").map(std::path::PathBuf::from).unwrap_or_else(std::env::temp_dir);
+        let d = pixpin_capture::Dispositivo::nuevo().expect("GPU real");
+        let motor = MotorRender::nuevo(d.d3d()).expect("motor");
+        let e = 1.5;
+        let exts = ["pdf", "docx", "xlsx", "pptx", "epub", "html"];
+        let (w, h) = ((exts.len() as f32 * 190.0 * e) as u32, (ALTO * e) as u32);
+        let fuera = FueraDePantalla::nuevo(&motor, d.d3d(), w, h).expect("superficie");
+        motor
+            .dibujar(&fuera.destino, |p| {
+                p.limpiar(Color { r: 0.5, g: 0.5, b: 0.5, a: 1.0 });
+                for (k, ext) in exts.iter().enumerate() {
+                    let x = k as f32 * 190.0 * e;
+                    p.rellenar_redondeado(RectF { x: x + 2.0, y: 0.0, ancho: 186.0 * e, alto: h as f32 }, 10.0 * e, FONDO);
+                    let lado = BOTON * e;
+                    let y0 = (h as f32 - lado) / 2.0;
+                    cuadro_de_tipo(p, ext, RectF { x: x + 8.0 * e, y: y0 + (lado - CUADRO * e) / 2.0, ancho: CUADRO * e, alto: CUADRO * e }, e);
+                    let (_, th) = p.medir_texto("Ag", TAM_NOMBRE * e);
+                    p.texto_linea("Tesis", x + (8.0 + CUADRO + CUADRO_AIRE) * e, y0 + (lado - th) / 2.0, TAM_NOMBRE * e, 80.0 * e, TINTA);
+                    let icono = 20.0 * e;
+                    let c = RectF { x: x + 140.0 * e, y: (h as f32 - icono) / 2.0, ancho: icono, alto: icono };
+                    p.icono(if k % 2 == 0 { &material::DARK_MODE } else { &material::LIGHT_MODE }, c, TINTA);
+                }
+            })
+            .expect("pintar");
+        fuera.esperar_gpu().expect("esperar");
+        let (ancho, alto, pixeles) = fuera.leer_rgba().expect("leer");
+        let png = pixpin_codec::imagen::codificar_png(&pixpin_codec::imagen::ImagenRgba { ancho, alto, pixeles }).expect("png");
+        let salida = carpeta.join("barra-del-lector.png");
+        std::fs::write(&salida, png).expect("guardar");
+        println!("{}", salida.display());
     }
 }

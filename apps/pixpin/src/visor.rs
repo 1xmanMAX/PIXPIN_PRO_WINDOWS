@@ -6,9 +6,11 @@
 //! lo ensena un `WebView`; aqui no hay navegador ni se va a arrastrar uno:
 //! `pixpin-docs` deja el documento en bloques de texto con estilo y esto
 //! los pinta con el mismo `Pintor` (Direct2D + DirectWrite) que el resto de
-//! la aplicacion. Se pierde la maquetacion fina —las imagenes se anuncian;
-//! las tablas si van como tablas, celda a celda (`tablas`)— y se gana lo que el usuario queria:
-//! **leerlo**, abrir al instante y que nada tiemble.
+//! la aplicacion. Se pierde la maquetacion fina —las tablas si van como
+//! tablas, celda a celda (`tablas`), y las imagenes en su sitio y a su
+//! tamano, descodificadas solo al verse; un clic en una saca un pin con
+//! ella (`imagenes`)— y se gana lo que el usuario queria: **leerlo**, abrir
+//! al instante y que nada tiemble.
 //!
 //! Lo que se copia del movil:
 //!
@@ -79,6 +81,7 @@ use crate::leer_en_voz::{self, LeerEnVoz, Suceso};
 use crate::overlay::Recursos;
 use pixpin_docs::voz_alta;
 
+mod imagenes;
 mod maqueta_movil;
 mod maqueta_vieja;
 mod tablas;
@@ -180,6 +183,10 @@ pub(crate) struct Colocado {
     pub(crate) letra: Letra,
     /// Una imagen: su hueco con un recuadro y lo que es.
     pub(crate) recuadro: bool,
+    /// Que imagen del documento (`doc.imagenes`) va en ese hueco, si su
+    /// cabecera dijo lo que mide: se pinta dentro y un clic la saca como
+    /// pin (`imagenes`).
+    pub(crate) imagen: Option<usize>,
     /// Donde empieza y acaba cada renglon, como se partio al medir (las
     /// reglas del navegador, `pixpin_render::lectura::partir`): se pinta
     /// por ahi y no por donde partiria DirectWrite.
@@ -213,6 +220,8 @@ enum Accion {
     Renombrar,
     /// Pantalla completa o de vuelta a pin (`lector_pin`).
     PantallaCompleta,
+    /// Luna/sol en pantalla completa (en pin va en su barra).
+    Oscuro,
     /// Un boton de la caja de buscar (D9).
     Buscar(crate::buscador::Boton),
 }
@@ -268,6 +277,9 @@ struct Estado {
     /// El contenido en negativo (N, 10-oct-2026): solo al pintar, sin
     /// tocar el documento; la interfaz y la tinta quedan con sus colores.
     en_negativo: bool,
+    /// El modo oscuro de los visores (luna/sol). Este lector ya es oscuro
+    /// (el modo noche del movil): en claro se pinta en negativo.
+    oscuro: bool,
     encima: DestinoRiel,
     aviso: Option<(String, u64)>,
     /// Las cajas que el raton puede pulsar en este fotograma.
@@ -295,6 +307,16 @@ struct Estado {
     tinta_de_antes: bool,
     /// Algo cambio que tiene que ir al disco ya (la tinta mudada).
     guardar_ya: bool,
+    /// Las imagenes del documento, descodificadas al verse (`imagenes`).
+    imagenes: imagenes::Imagenes,
+    /// La imagen sobre la que se pulso: si se suelta sin arrastrar, sale
+    /// como pin.
+    imagen_pulsada: Option<usize>,
+    /// La imagen que hay que sacar como pin en esta vuelta del bucle.
+    pinear: Option<usize>,
+    /// El cursor que se puso leyendo (la mano sobre una imagen), para no
+    /// ponerlo otra vez en cada movimiento.
+    cursor: Option<pixpin_shell::overlay::FormaCursorWin>,
     /// **Como un pin** (`lector_pin`): fuera de pantalla completa la pastilla
     /// de arriba no se pinta (lo suyo va en la barra de fuera).
     en_pin: bool,
@@ -325,7 +347,7 @@ pub fn abrir(
     // A pantalla completa de verdad: el «visor limpio» del movil tapa
     // incluso la barra de estado, y aqui la ventana ocupa el monitor.
     let (area_pin, _) = crate::lector_pin::area_inicial();
-    let mut pin = crate::lector_pin::PinLector::nuevo(area_pin, monitor.escala_por_cien as f32 / 100.0);
+    let mut pin = crate::lector_pin::PinLector::nuevo(area_pin, monitor.escala_por_cien as f32 / 100.0).con_extension(&pixpin_docs::extension(&pixpin_docs::nombre(ruta)));
     let mut area = pin.area;
     let mut marco = Marco {
         ancho: area.ancho as f32,
@@ -381,6 +403,7 @@ pub fn abrir(
         corrido_indice: 0.0,
         poniendo_marca: false,
         en_negativo: false,
+        oscuro: true,
         encima: DestinoRiel::Fuera,
         aviso: None,
         botones: Vec::new(),
@@ -397,6 +420,10 @@ pub fn abrir(
         hoja: Hoja::de(ruta),
         tinta_de_antes,
         guardar_ya: false,
+        imagenes: imagenes::Imagenes::de_la_aplicacion(ubicacion.raiz()),
+        imagen_pulsada: None,
+        pinear: None,
+        cursor: None,
         en_pin: true,
         pedir_pantalla_completa: false,
         voz: None,
@@ -439,6 +466,8 @@ pub fn abrir(
             }
             // Estirar por los bordes es del pin.
             if pin.evento_ventana(&evento, &mut ventana).consumido {
+                // Puede haber puesto el de estirar: el de leer, otra vez.
+                e.cursor = None;
                 hay_que_pintar = true;
                 continue;
             }
@@ -513,6 +542,9 @@ pub fn abrir(
                 EventoOverlay::RatonMovido(p) => {
                     e.raton = local(p);
                     mover_raton(&mut e, marco);
+                    if let Some(f) = cursor_leyendo(&mut e, marco) {
+                        ventana.poner_cursor(f);
+                    }
                 }
                 EventoOverlay::BotonPulsado(p) => {
                     e.raton = local(p);
@@ -544,7 +576,13 @@ pub fn abrir(
                     e.raton = local(p);
                     pulsar_derecho(&mut e, ruta, marco);
                 }
-                EventoOverlay::Rueda(delta) => rueda(&mut e, delta, marco),
+                EventoOverlay::Rueda(delta) => {
+                    rueda(&mut e, delta, marco);
+                    // Lo de debajo del raton cambio sin moverlo.
+                    if let Some(f) = cursor_leyendo(&mut e, marco) {
+                        ventana.poner_cursor(f);
+                    }
+                }
                 EventoOverlay::RuedaHorizontal(delta) => {
                     lado(&mut e, lector::muescas(delta) * 60.0, marco);
                 }
@@ -588,6 +626,16 @@ pub fn abrir(
             break;
         }
 
+        // Un clic en una imagen: fuera, como pin.
+        if let Some(n) = e.pinear.take() {
+            sacar_imagen(&mut e, n, textos);
+            hay_que_pintar = true;
+        }
+        // Las imagenes que el hilo ya descodifico, a la GPU y a la vista.
+        if e.imagenes.recibir(&motor) {
+            hay_que_pintar = true;
+        }
+
         // La voz: el trozo siguiente, el parrafo siguiente o el final.
         if let Some(suceso) = e.voz.as_mut().and_then(|v| v.vuelta()) {
             match suceso {
@@ -620,7 +668,10 @@ pub fn abrir(
             hay_que_pintar = true;
         }
         e.en_pin = !pin.pantalla_completa;
-        pin.actualizar(&motor, &crate::lector_pin::nombre_limpio(&nombre_del_pin(&e)), &botones_del_pin(&e));
+        if pin.actualizar(&motor, &crate::lector_pin::nombre_limpio(&nombre_del_pin(&e)), &botones_del_pin(&e)) {
+            hay_que_pintar = true;
+        }
+        e.oscuro = pin.oscuro();
 
         let ahora = ahora_ms();
         // La pastilla se va sola y el aviso tambien: los dos hacen que haya
@@ -959,6 +1010,7 @@ fn bloque_arriba(e: &Estado) -> usize {
 /// cuentas, asi que no pueden separarse.
 fn pintar(e: &mut Estado, p: &Pintor, m: Marco, textos: &Catalogo) {
     let mut botones: Vec<(RectF, Accion)> = Vec::new();
+    e.imagenes.nuevo_fotograma();
     p.rellenar(
         RectF {
             x: 0.0,
@@ -1023,13 +1075,36 @@ fn pintar(e: &mut Estado, p: &Pintor, m: Marco, textos: &Catalogo) {
             continue;
         }
         if c.recuadro {
-            // El hueco de una imagen, a su tamano, y que imagen es.
+            // Una imagen que abre su celda lleva la caja de la celda.
+            if let Some(k) = &c.caja {
+                tablas::pintar_caja(p, c, k, 1.0 / s);
+            }
             let r = RectF {
                 x: c.sangria,
                 y: c.y,
                 ancho: c.ancho,
                 alto: c.alto,
             };
+            // **La imagen en su hueco** (`imagenes`): descodificada solo al
+            // verse y reducida a lo que puede ocupar acercando el doble.
+            if let Some(n) = c.imagen
+                && let Some(img) = e.doc.imagenes.get(n)
+            {
+                let lado = (c.ancho.max(c.alto) * m.e * 2.0).ceil() as u32;
+                match e.imagenes.ver(n, img, lado) {
+                    imagenes::Vista::Lista(b) => {
+                        p.bitmap(&b, r, None, false);
+                        continue;
+                    }
+                    // Mientras llega, su sitio apenas marcado.
+                    imagenes::Vista::Cargando => {
+                        p.rellenar(r, con_alfa(RAYA, 0.10));
+                        continue;
+                    }
+                    imagenes::Vista::Rota => {}
+                }
+            }
+            // El hueco de una imagen que no se puede ensenar, y que lo es.
             p.rellenar(r, con_alfa(RAYA, 0.18));
             let linea = 1.0 / s;
             for raya in [
@@ -1049,8 +1124,13 @@ fn pintar(e: &mut Estado, p: &Pintor, m: Marco, textos: &Catalogo) {
                 p.rellenar(raya, con_alfa(RAYA, 0.8));
             }
             let dentro = (c.ancho - 2.0 * c.tam).max(1.0);
+            let texto = if c.texto.is_empty() {
+                "🖼 imagen — no se puede mostrar"
+            } else {
+                c.texto.as_str()
+            };
             p.parrafo_de_lectura(
-                &c.texto,
+                texto,
                 c.sangria + c.tam,
                 c.y + c.tam * 0.6,
                 c.tam,
@@ -1091,7 +1171,8 @@ fn pintar(e: &mut Estado, p: &Pintor, m: Marco, textos: &Catalogo) {
     // N: el documento en negativo (el papel y lo escrito; la tinta y la
     // interfaz, que van despues, no). En pixeles de la ventana, y luego de
     // vuelta a la vista para la tinta, que se ajusta al papel invertido.
-    let papel = if e.en_negativo {
+    // Luna/sol en claro: el papel claro, por el mismo camino que la N.
+    let papel = if e.en_negativo == e.oscuro {
         p.desplazar(0.0, 0.0);
         p.invertir_colores(
             RectF {
@@ -1251,6 +1332,8 @@ fn pastilla(e: &Estado, p: &Pintor, m: Marco, botones: &mut Vec<(RectF, Accion)>
             Accion::Escuchar,
         )),
         Some((&material::SETTINGS, e.panel, Accion::Engranaje)),
+        // Luna/sol: el modo oscuro de los visores (en pin, en su barra).
+        (!e.en_pin).then_some((if e.oscuro { &material::LIGHT_MODE } else { &material::DARK_MODE }, false, Accion::Oscuro)),
         // De pantalla completa, de vuelta a pin.
         (!e.en_pin).then_some((&material::FULLSCREEN_EXIT, false, Accion::PantallaCompleta)),
     ]
@@ -1645,6 +1728,59 @@ fn en_el_documento(e: &Estado, m: Marco) -> Punto2 {
     Punto2::nuevo(e.x + e.raton.0 / s, e.y + e.raton.1 / s)
 }
 
+/// La imagen bajo el raton que un clic sacaria como pin (`imagenes`): ni
+/// rota ni tapada por el riel, un boton o un panel abierto.
+fn imagen_bajo_raton(e: &Estado, m: Marco) -> Option<usize> {
+    if e.anotando || e.panel || e.viendo_indice || e.poniendo_marca || que_hay_debajo(e).is_some() {
+        return None;
+    }
+    if !matches!(
+        riel_de(e, m).destino(lector::punto(e.raton.0, e.raton.1)),
+        DestinoRiel::Fuera
+    ) {
+        return None;
+    }
+    let s = px(e, m);
+    let n = imagenes::imagen_en(&e.colocados, e.x + e.raton.0 / s, e.y + e.raton.1 / s)?;
+    (!e.imagenes.rota(n)).then_some(n)
+}
+
+/// **Saca la imagen `n` a la pantalla como pin de imagen**, por el camino de
+/// «Sacar a la pantalla» del chat, y lo dice.
+fn sacar_imagen(e: &mut Estado, n: usize, textos: &Catalogo) {
+    let Some(img) = e.doc.imagenes.get(n) else {
+        return;
+    };
+    if e.imagenes.sacar_como_pin(img) {
+        e.aviso = Some((textos.t("chat-pineado"), ahora_ms() + 2000));
+    } else {
+        tracing::warn!(n, "visor: la imagen no salio como pin");
+    }
+}
+
+/// **La forma del cursor leyendo**: la mano sobre una imagen (se saca como
+/// pin), la flecha en lo demas. `None` si no cambia o si es de la tinta.
+fn cursor_leyendo(e: &mut Estado, m: Marco) -> Option<pixpin_shell::overlay::FormaCursorWin> {
+    use pixpin_shell::overlay::FormaCursorWin;
+    if e.anotando {
+        // El de la tinta manda; al dejar de anotar se vuelve a poner.
+        e.cursor = None;
+        return None;
+    }
+    let arrastrando = matches!(e.arrastre, Some(Arrastre::Mover { movido: true, .. }));
+    // `Giro` es IDC_HAND (ver su nota en `FormaCursorWin`).
+    let forma = if !arrastrando && imagen_bajo_raton(e, m).is_some() {
+        FormaCursorWin::Giro
+    } else {
+        FormaCursorWin::Flecha
+    };
+    if e.cursor == Some(forma) {
+        return None;
+    }
+    e.cursor = Some(forma);
+    Some(forma)
+}
+
 fn mover_raton(e: &mut Estado, m: Marco) {
     let destino = riel_de(e, m).destino(lector::punto(e.raton.0, e.raton.1));
     e.encima = destino;
@@ -1727,6 +1863,9 @@ fn pulsar(e: &mut Estado, textos: &Catalogo, ruta: &Path, ubicacion: &Ubicacion,
         // Si llega aqui, la tinta no lo quiso (ver el bucle): nada.
         return false;
     }
+    // Sobre una imagen, el clic la saca como pin al soltar; si se arrastra,
+    // mueve el documento como en cualquier otro sitio.
+    e.imagen_pulsada = imagen_bajo_raton(e, m);
     e.arrastre = Some(Arrastre::Mover {
         desde: e.raton,
         vista: (e.x, e.y),
@@ -1737,9 +1876,15 @@ fn pulsar(e: &mut Estado, textos: &Catalogo, ruta: &Path, ubicacion: &Ubicacion,
 }
 
 fn soltar(e: &mut Estado, m: Marco) {
+    let imagen = e.imagen_pulsada.take();
     match e.arrastre.take() {
         Some(Arrastre::Trazo) => {
             e.ultimo_trazo = ahora_ms();
+        }
+        Some(Arrastre::Mover { movido: false, .. }) if imagen.is_some() => {
+            // Un clic en una imagen: fuera, como pin (lo hace el bucle).
+            e.lateral = None;
+            e.pinear = imagen;
         }
         Some(Arrastre::Mover { movido: false, .. }) => {
             // Un toque en el papel saca (o esconde) la pastilla.
@@ -2283,6 +2428,10 @@ fn hacer(
     match a {
         Accion::Renombrar => e.nombre.empezar(),
         Accion::PantallaCompleta => e.pedir_pantalla_completa = true,
+        // Para toda la app; el lector se repinta en la vuelta (`lector_pin`).
+        Accion::Oscuro => {
+            crate::oscuro::alternar();
+        }
         Accion::Escuchar => escuchar(e, textos, ruta, m),
         Accion::Voz(b) => boton_de_voz(e, b, ruta, m),
         Accion::Lado(b) => boton_de_lado(e, b, textos, ruta),
@@ -2682,6 +2831,7 @@ mod pruebas {
             corrido_indice: 0.0,
             poniendo_marca: false,
             en_negativo: false,
+            oscuro: true,
             encima: DestinoRiel::Fuera,
             aviso: None,
             botones: Vec::new(),
@@ -2698,6 +2848,10 @@ mod pruebas {
             hoja: Hoja::Word,
             tinta_de_antes: false,
             guardar_ya: false,
+            imagenes: imagenes::Imagenes::nueva(std::env::temp_dir().join("pixpin-visor-imagenes")),
+            imagen_pulsada: None,
+            pinear: None,
+            cursor: None,
             en_pin: false,
             pedir_pantalla_completa: false,
             voz: None,
@@ -2719,6 +2873,7 @@ mod pruebas {
             caja: None,
             letra: Letra::del_cuerpo(Hoja::Word, &lectura::Ajustes::default()),
             recuadro,
+            imagen: None,
             renglones: Vec::new(),
         }
     }
@@ -3056,6 +3211,7 @@ mod pruebas {
             caja: None,
             letra: Letra::del_cuerpo(Hoja::Word, &lectura::Ajustes::default()),
             recuadro: false,
+            imagen: None,
             renglones: Vec::new(),
         }
     }
@@ -3118,6 +3274,7 @@ mod pruebas {
             caja: None,
             letra: Letra::del_cuerpo(Hoja::Word, &lectura::Ajustes::default()),
             recuadro: false,
+            imagen: None,
             renglones: Vec::new(),
         };
         e.colocados = vec![

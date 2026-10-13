@@ -99,6 +99,7 @@ mod mini_panel;
 mod miniaturas;
 mod navegacion;
 mod notas_md;
+mod oscuro;
 mod overlay;
 mod panel_dibujo;
 mod pdf_del_proyecto;
@@ -332,6 +333,8 @@ fn arrancar(
     let dir_exe = entorno::directorio_del_ejecutable().context("no se pudo localizar el .exe")?;
     let appdata = entorno::appdata().context("no se pudo localizar APPDATA")?;
     let ubicacion = rutas::resolver(&dir_exe, &appdata);
+    // El modo oscuro de los visores (luna/sol), recordado en `estado.toml`.
+    oscuro::iniciar(&ubicacion);
 
     // 3. Registro a fichero, antes de leer los ajustes: si el TOML esta mal
     // escrito, el fallo de mas abajo queda documentado en vez de perderse.
