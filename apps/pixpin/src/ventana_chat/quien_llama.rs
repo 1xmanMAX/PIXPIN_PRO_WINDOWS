@@ -86,7 +86,7 @@ pub(super) fn al_pulsar_intro(
 ) -> Option<super::MenuAbierto> {
     let (id, escrito) = a.quien_llama.take()?;
     let i = a.mensajes.iter().position(|m| m.id == id)?;
-    if let Err(e) = crate::llamada::poner_quien_llama(raiz, &id, &escrito) {
+    if let Err(e) = crate::llamada::poner_quien_llama(raiz, &id, escrito.texto()) {
         tracing::warn!(?e, "no se pudo apuntar quien llama");
     }
     // El menu cuelga del aspa de la barra, que es lo ultimo que se pinto.
@@ -118,12 +118,10 @@ pub(super) fn al_poner_la_hora(raiz: &Path, carpeta: &Path, m: &Mensaje) {
     }
 }
 
-/// Una letra tecleada en la barra: cualquiera que se escriba, sin pasar de
-/// [`MAXIMO`].
-pub(super) fn teclear(escrito: &mut String, c: char) {
-    if !c.is_control() && escrito.chars().count() < MAXIMO {
-        escrito.push(c);
-    }
+/// La caja de la barra, con el nombre que hay: la caja de una linea comun
+/// (`caja_texto::CajaLinea`) con su tope de [`MAXIMO`] letras.
+pub(super) fn caja(nombre: &str) -> crate::caja_texto::CajaLinea {
+    crate::caja_texto::CajaLinea::con_texto(nombre).con_maximo(MAXIMO)
 }
 
 /// La barra de teclear quien llama, en `barra` (encima de la isla). Devuelve
@@ -133,7 +131,7 @@ pub(super) fn pintar_barra(
     barra: Rect,
     tema: &Tema,
     textos: &Catalogo,
-    escrito: &str,
+    escrito: &crate::caja_texto::CajaLinea,
     e: f32,
 ) -> Rect {
     let caja = RectF {
@@ -163,15 +161,26 @@ pub(super) fn pintar_barra(
     let y = caja.y + (caja.alto - alto_r) / 2.0;
     let x_pista = (cerrar.x as f32 - w_pista - 6.0 * e).max(caja.x);
     p.texto(&pista, x_pista, y, tam, tema.campo_apagado);
-    let rotulo = format!("{} {escrito}|", textos.t("chat-quien-llama-barra"));
+    // El rotulo y detras la caja de una linea comun, con su rayita.
+    let rotulo = textos.t("chat-quien-llama-barra");
     let x = caja.x + 40.0 * e;
-    p.texto_linea(
-        &rotulo,
-        x,
-        y,
+    let (w_rotulo, _) = p.medir_texto(&rotulo, 13.0 * e);
+    p.texto(&rotulo, x, y, 13.0 * e, tema.texto);
+    let x_caja = x + w_rotulo + 6.0 * e;
+    let hueco = RectF {
+        x: x_caja,
+        ancho: (x_pista - x_caja - 8.0 * e).max(0.0),
+        ..caja
+    };
+    escrito.pintar(
+        p,
+        hueco,
+        hueco,
         13.0 * e,
-        (x_pista - x - 8.0 * e).max(0.0),
-        tema.texto,
+        "",
+        &super::colores_de_caja(tema, tema.texto, tema.campo_apagado),
+        true,
+        std::time::Instant::now(),
     );
     cerrar
 }
@@ -242,17 +251,18 @@ mod pruebas {
 
     #[test]
     fn en_la_barra_se_teclea_un_nombre_y_no_mas_de_cuarenta_letras() {
-        let mut s = String::new();
+        // La caja de una linea comun, con su tope.
+        let mut s = caja("");
         for c in "Mama Rosa".chars() {
-            teclear(&mut s, c);
+            s.caracter(c);
         }
-        assert_eq!(s, "Mama Rosa");
+        assert_eq!(s.texto(), "Mama Rosa");
         // Casos negativos: un salto o un tabulador no son letras.
-        teclear(&mut s, '\r');
-        teclear(&mut s, '\t');
-        assert_eq!(s, "Mama Rosa");
+        s.caracter('\r');
+        s.caracter('\t');
+        assert_eq!(s.texto(), "Mama Rosa");
         for _ in 0..100 {
-            teclear(&mut s, 'a');
+            s.caracter('a');
         }
         assert_eq!(s.chars().count(), MAXIMO);
     }

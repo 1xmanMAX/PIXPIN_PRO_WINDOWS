@@ -66,6 +66,9 @@ mod buscar_todo;
 mod caducidad_capturas;
 mod cabecera;
 mod caja_dibujo;
+/// El componente de escribir de toda la app: el cursor de la caja del chat
+/// y la caja de una linea (buscar, renombrar, codigos) hecha con el.
+mod caja_texto;
 mod capa;
 mod captura2;
 mod centro_bandeja;

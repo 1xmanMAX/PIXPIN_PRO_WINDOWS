@@ -51,7 +51,7 @@ pub(super) struct Opcion {
 /// La hoja abierta: lo escrito en el buscador y lo resaltado.
 pub(super) struct Hoja {
     pub opciones: Vec<Opcion>,
-    pub busqueda: String,
+    pub busqueda: crate::caja_texto::CajaLinea,
     /// Indice en `visibles()` bajo el raton.
     pub sobre: Option<usize>,
     /// Indice en `visibles()` elegido con las flechas (lo que hace Intro).
@@ -232,7 +232,7 @@ impl Hoja {
         Hoja {
             anchos: RefCell::new(vec![100.0; opciones.len()]),
             opciones,
-            busqueda: String::new(),
+            busqueda: crate::caja_texto::CajaLinea::nueva(),
             sobre: None,
             elegido: None,
             pista: textos.t("v2menus-adj-buscar"),
@@ -287,6 +287,21 @@ impl Hoja {
     }
 
     pub(super) fn tecla(&mut self, vk: u32) -> Respuesta {
+        // El buscador es la caja de una linea comun: Ctrl+Retroceso, Supr,
+        // Inicio/Fin, Ctrl+A/C/X/V/Z... Las flechas sin Ctrl ni Mayusculas
+        // siguen moviendo lo elegido entre las baldosas.
+        let m = pixpin_shell::entrada::modificadores_pulsados();
+        let flecha_sola = matches!(
+            vk,
+            super::VK_DERECHA | super::VK_IZQUIERDA | super::VK_ABAJO | super::VK_ARRIBA
+        ) && !m.ctrl
+            && !m.shift;
+        if !flecha_sola && crate::caja_texto::CajaLinea::es_suya(vk, m.shift, m.ctrl) {
+            if super::tecla_en_caja(&mut self.busqueda, vk, m.shift, m.ctrl).cambio() {
+                self.elegido = None;
+            }
+            return Respuesta::Sigue;
+        }
         let visibles = self.visibles();
         let baldosas = visibles
             .iter()
@@ -294,16 +309,11 @@ impl Hoja {
             .count();
         match vk {
             super::VK_ESCAPE if !self.busqueda.is_empty() => {
-                self.busqueda.clear();
+                self.busqueda.vaciar();
                 self.elegido = None;
                 Respuesta::Sigue
             }
             super::VK_ESCAPE => Respuesta::Fuera,
-            super::VK_RETROCESO => {
-                self.busqueda.pop();
-                self.elegido = None;
-                Respuesta::Sigue
-            }
             super::VK_ENTRAR => {
                 let i = self.elegido.unwrap_or(0);
                 match visibles.get(i) {
@@ -333,8 +343,7 @@ impl Hoja {
             }
             return Respuesta::Sigue;
         }
-        if c >= ' ' {
-            self.busqueda.push(c);
+        if self.busqueda.caracter(c) {
             self.elegido = None;
         }
         Respuesta::Sigue
@@ -558,21 +567,22 @@ pub(super) fn pintar(p: &Pintor, c: &Pinta, h: &Hoja, ancla: Punto, marco: Rect)
         tema.apagado,
     );
     let tam_b = TAM_BUSCADOR * e;
-    let (texto, color) = if h.busqueda.is_empty() {
-        (h.pista.clone(), tema.apagado)
-    } else {
-        (format!("{}|", h.busqueda), tema.texto)
-    };
-    let (_, alto_b) = p.medir_texto("X", tam_b);
     let esc = vec!["Esc".to_string()];
     let ancho_esc = super::ancho_chapas(p, &esc, e);
-    p.texto_linea(
-        &texto,
-        b.x + 36.0 * e,
-        b.y + (b.alto - alto_b) / 2.0,
+    // La caja de una linea comun: la rayita parpadea donde se escribe.
+    h.busqueda.pintar(
+        p,
+        b,
+        RectF {
+            x: b.x + 36.0 * e,
+            ancho: (b.ancho - 56.0 * e - ancho_esc).max(0.0),
+            ..b
+        },
         tam_b,
-        (b.ancho - 56.0 * e - ancho_esc).max(0.0),
-        color,
+        &h.pista,
+        &super::colores_de_caja(tema, tema.texto, tema.apagado),
+        true,
+        std::time::Instant::now(),
     );
     super::pintar_chapas(
         p,

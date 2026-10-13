@@ -74,8 +74,9 @@ mod proyectos;
 /// «Quien llama» en la llamada secreta de una nota de voz (B11, v0.98.6).
 mod quien_llama;
 /// El cursor de la caja de escribir: la rayita, lo seleccionado y que letra
-/// cae bajo el raton (10-oct).
-mod redaccion;
+/// cae bajo el raton (10-oct). Vive en `caja_texto`, comun a toda la app:
+/// las cajas de una linea (buscar, renombrar, codigos) usan el mismo.
+use crate::caja_texto as redaccion;
 mod renombrar;
 /// El reproductor flotante del pedido «reproducir»: un audio suena sin
 /// abrir el chat y la ventanita se va al acabar (3-oct).
@@ -323,6 +324,29 @@ fn rf(r: Rect) -> RectF {
         ancho: r.ancho as f32,
         alto: r.alto as f32,
     }
+}
+
+/// Los colores de una caja de una linea del chat (buscar, renombrar): el
+/// texto y su invitacion los pone cada sitio; lo elegido va con el azul de
+/// enviar, como en la caja de escribir, y la rayita del color del texto.
+fn colores_de_caja(tema: &Tema, texto: Color, invitacion: Color) -> redaccion::Colores {
+    redaccion::Colores {
+        texto,
+        invitacion,
+        seleccion: con_alfa(tema.enviar, 0.35),
+        rayita: texto,
+    }
+}
+
+/// La tecla para la caja de una linea que tenga el teclado, con el
+/// portapapeles de Windows.
+fn tecla_en_caja(
+    caja: &mut redaccion::CajaLinea,
+    vk: u32,
+    shift: bool,
+    ctrl: bool,
+) -> redaccion::Respuesta {
+    caja.tecla(vk, shift, ctrl, &mut redaccion::PortapapelesWindows)
 }
 
 /// El mismo rectangulo, metido `cuanto` hacia dentro por los cuatro lados.
@@ -658,9 +682,13 @@ pub fn abrir(
     // Lo escrito y sin enviar de cada proyecto, para que cambiar de
     // conversacion y volver no se lo lleve por delante.
     let mut borradores: std::collections::HashMap<String, String> = Default::default();
-    // Lo escrito en el buscador de la lista.
-    let mut busqueda = String::new();
+    // Lo escrito en el buscador de la lista: la caja de una linea comun
+    // (`caja_texto`), con su rayita, Ctrl+Retroceso y lo demas.
+    let mut busqueda = redaccion::CajaLinea::nueva();
     let mut buscando = false;
+    // Como estaba la rayita de las cajas con el teclado en el ultimo
+    // fotograma: si cambia (parpadea), se vuelve a pintar.
+    let mut rayita_pintada: Vec<bool> = Vec::new();
     // Que fichas se ensenan y en que orden. Con el buscador vacio son
     // todas; al escribir, solo las que coinciden. `elegida` sigue siendo un
     // indice de `fichas`, para que filtrar no cambie de proyecto abierto.
@@ -1026,6 +1054,39 @@ pub fn abrir(
                 }
             }
             match evento {
+                // Eligiendo con el raton en una caja de una linea (buscar,
+                // renombrar): el raton es suyo hasta soltar, aunque se salga
+                // de la caja, como en cualquier caja de Windows.
+                EventoOverlay::RatonMovido(p)
+                    if cajas_de_una_linea(&busqueda, abierto.as_ref())
+                        .iter()
+                        .any(|c| c.eligiendo()) =>
+                {
+                    let l = local(p);
+                    if busqueda.eligiendo() {
+                        busqueda.arrastrar(l);
+                    } else if let Some(a) = abierto.as_mut() {
+                        for c in a.cajas_de_una_linea_mut() {
+                            c.arrastrar(l);
+                        }
+                    }
+                    ventana.poner_cursor(FormaCursorWin::Texto);
+                    hay_que_pintar = true;
+                }
+                EventoOverlay::BotonSoltado(_)
+                    if cajas_de_una_linea(&busqueda, abierto.as_ref())
+                        .iter()
+                        .any(|c| c.eligiendo()) =>
+                {
+                    busqueda.soltar_raton();
+                    if let Some(a) = abierto.as_mut() {
+                        for c in a.cajas_de_una_linea_mut() {
+                            c.soltar_raton();
+                        }
+                    }
+                    ventana.soltar_raton();
+                    hay_que_pintar = true;
+                }
                 // v2-menus: con un menu (o la hoja del «+») delante, el
                 // teclado es suyo: sus teclas de una letra, las flechas,
                 // Intro y Esc. Van las primeras para que nada de debajo
@@ -1260,6 +1321,22 @@ pub fn abrir(
                             Respuesta::Hacer(accion) => hacer_del_menu!(ancla, Some(accion)),
                         }
                         hay_que_pintar = true;
+                    } else if abierto
+                        .as_mut()
+                        .filter(|a| a.info.is_none())
+                        .is_some_and(|a| {
+                            let shift = pixpin_shell::entrada::modificadores_pulsados().shift;
+                            let ahora = std::time::Instant::now();
+                            a.cajas_de_una_linea_mut()
+                                .into_iter()
+                                .any(|c| c.pulsar(l, shift, ahora))
+                        })
+                    {
+                        // En una caja de una linea abierta (la lupa de la
+                        // conversacion, el nombre que se escribe): la rayita
+                        // donde cae el clic, y arrastrando se elige.
+                        ventana.capturar_raton();
+                        hay_que_pintar = true;
                     } else if let Some((r, zona)) = abierto.as_ref().and_then(|a| {
                         a.zonas
                             .borrow()
@@ -1302,7 +1379,7 @@ pub fn abrir(
                                 // escondida haria parecer el chat vacio.
                                 Zona::Buscar => {
                                     a.busqueda = match a.busqueda {
-                                        None => Some(String::new()),
+                                        None => Some(redaccion::CajaLinea::nueva()),
                                         Some(_) => None,
                                     };
                                     // Y con la lupa se va el chip de
@@ -1508,7 +1585,7 @@ pub fn abrir(
                             if let Some(a) = abierto.as_mut() {
                                 a.info = None;
                                 a.buscando_info = false;
-                                a.busqueda_info.clear();
+                                a.busqueda_info.vaciar();
                             }
                             tocar_la_burbuja(
                                 indice,
@@ -1535,21 +1612,34 @@ pub fn abrir(
                             if !d.panel.contiene(l) {
                                 a.info = None;
                                 a.buscando_info = false;
-                                a.busqueda_info.clear();
+                                a.busqueda_info.vaciar();
                                 hay_que_pintar = true;
                                 continue;
                             }
                             if d.volver.contiene(l) {
                                 a.info = None;
                                 a.buscando_info = false;
-                                a.busqueda_info.clear();
+                                a.busqueda_info.vaciar();
+                            } else if a.buscando_info
+                                && d.caja_buscar(escala).contiene(l)
+                                && a.busqueda_info.pulsar(
+                                    l,
+                                    pixpin_shell::entrada::modificadores_pulsados().shift,
+                                    std::time::Instant::now(),
+                                )
+                            {
+                                // En la caja de buscar: la rayita donde cae
+                                // el clic, como en cualquier caja de texto.
+                                ventana.capturar_raton();
                             } else if d.buscar(escala).contiene(l) {
                                 // La lupa enciende y apaga. Al apagarla se
                                 // limpia: dejar una busqueda escondida haria
                                 // que la seccion pareciera vacia sin motivo.
                                 a.buscando_info = !a.buscando_info;
-                                if !a.buscando_info {
-                                    a.busqueda_info.clear();
+                                if a.buscando_info {
+                                    a.busqueda_info.despertar();
+                                } else {
+                                    a.busqueda_info.vaciar();
                                 }
                                 a.scroll_info = 0;
                             } else if let Some(i) = {
@@ -1566,7 +1656,7 @@ pub fn abrir(
                                 // se escribe en la cabecera de la
                                 // conversacion, que es donde se ve de verdad.
                                 a.info = None;
-                                a.renombrando = true;
+                                a.empezar_a_renombrar();
                             }
                             hay_que_pintar = true;
                         }
@@ -1691,7 +1781,7 @@ pub fn abrir(
                                 orden = filtrar(&fichas, &busqueda);
                                 elegida = Some(fichas.len() - 1);
                                 let mut nuevo = abrir_proyecto(ubicacion, &ficha);
-                                nuevo.renombrando = true;
+                                nuevo.empezar_a_renombrar();
                                 abierto = Some(nuevo);
                                 scroll = 0;
                             }
@@ -1726,7 +1816,16 @@ pub fn abrir(
                         buscando = false;
                         hay_que_pintar = true;
                     } else if disposicion.buscador(escala).contiene(l) {
+                        // El clic pone la rayita donde cae (dos, la palabra;
+                        // tres, todo) y sin soltar se elige arrastrando.
+                        let shift = pixpin_shell::entrada::modificadores_pulsados().shift;
+                        if !buscando {
+                            busqueda.despertar();
+                        }
                         buscando = true;
+                        if busqueda.pulsar(l, shift, std::time::Instant::now()) {
+                            ventana.capturar_raton();
+                        }
                         hay_que_pintar = true;
                     } else if let Some(clip) = abierto
                         .as_ref()
@@ -2018,6 +2117,9 @@ pub fn abrir(
                                 } else if abierto
                                     .as_ref()
                                     .is_some_and(|a| a.letras.borrow().indice_en(l).is_some())
+                                    || cajas_de_una_linea(&busqueda, abierto.as_ref())
+                                        .iter()
+                                        .any(|c| c.contiene(l))
                                 {
                                     // Sobre lo escrito, la barra de texto:
                                     // ahi se puede pulsar para escribir.
@@ -2112,7 +2214,7 @@ pub fn abrir(
                             orden = filtrar(&fichas, &busqueda);
                             elegida = Some(fichas.len() - 1);
                             let mut nuevo = abrir_proyecto(ubicacion, &ficha);
-                            nuevo.renombrando = true;
+                            nuevo.empezar_a_renombrar();
                             abierto = Some(nuevo);
                             scroll = 0;
                             if let Some(t) = dicho {
@@ -2224,12 +2326,12 @@ pub fn abrir(
                             }
                             elegida = Some(cual);
                             match abierto.as_mut() {
-                                Some(a) => a.renombrando = true,
+                                Some(a) => a.empezar_a_renombrar(),
                                 None => {
                                     let mut nuevo = abrir_proyecto(ubicacion, &fichas[cual]);
                                     nuevo.borrador =
                                         borradores.remove(&fichas[cual].id).unwrap_or_default();
-                                    nuevo.renombrando = true;
+                                    nuevo.empezar_a_renombrar();
                                     abierto = Some(nuevo);
                                 }
                             }
@@ -2326,7 +2428,7 @@ pub fn abrir(
                     });
                     if en_el_titulo {
                         if let Some(a) = abierto.as_mut() {
-                            a.busqueda = Some(String::new());
+                            a.busqueda = Some(redaccion::CajaLinea::nueva());
                             a.info = None;
                             a.scroll = None;
                         }
@@ -2442,23 +2544,33 @@ pub fn abrir(
                     if let Some((_, escrito)) =
                         abierto.as_mut().and_then(|a| a.quien_llama.as_mut())
                     {
-                        quien_llama::teclear(escrito, c);
+                        escrito.caracter(c);
+                    }
+                    hay_que_pintar = true;
+                }
+                // La barra es la caja de una linea comun: Ctrl+Retroceso,
+                // las flechas, Mayus+flechas, Ctrl+A/C/X/V/Z.
+                EventoOverlay::Tecla { vk, shift, ctrl, .. }
+                    if pendientes.is_none()
+                        && menu.is_none()
+                        && redaccion::CajaLinea::es_suya(vk, shift, ctrl)
+                        && abierto.as_ref().is_some_and(|a| a.quien_llama.is_some()) =>
+                {
+                    if let Some((_, escrito)) =
+                        abierto.as_mut().and_then(|a| a.quien_llama.as_mut())
+                    {
+                        tecla_en_caja(escrito, vk, shift, ctrl);
                     }
                     hay_que_pintar = true;
                 }
                 EventoOverlay::Tecla { vk, .. }
                     if pendientes.is_none()
                         && menu.is_none()
-                        && matches!(vk, VK_RETROCESO | VK_ESCAPE | VK_ENTRAR)
+                        && matches!(vk, VK_ESCAPE | VK_ENTRAR)
                         && abierto.as_ref().is_some_and(|a| a.quien_llama.is_some()) =>
                 {
                     if let Some(a) = abierto.as_mut() {
                         match vk {
-                            VK_RETROCESO => {
-                                if let Some((_, escrito)) = a.quien_llama.as_mut() {
-                                    escrito.pop();
-                                }
-                            }
                             VK_ESCAPE => a.quien_llama = None,
                             _ => menu = quien_llama::al_pulsar_intro(a, ubicacion.raiz(), textos),
                         }
@@ -2737,7 +2849,7 @@ pub fn abrir(
                 {
                     match abierto.as_mut() {
                         Some(a) => {
-                            a.busqueda.get_or_insert_with(String::new);
+                            a.busqueda.get_or_insert_with(redaccion::CajaLinea::nueva);
                             a.info = None;
                             a.scroll = None;
                         }
@@ -2753,29 +2865,40 @@ pub fn abrir(
                             .as_ref()
                             .is_some_and(|a| a.renombrando_mensaje.is_some()) =>
                 {
-                    if c >= ' '
-                        && let Some((_, escrito)) = abierto
-                            .as_mut()
-                            .and_then(|a| a.renombrando_mensaje.as_mut())
+                    if let Some((_, escrito)) = abierto
+                        .as_mut()
+                        .and_then(|a| a.renombrando_mensaje.as_mut())
                     {
-                        escrito.push(c);
-                        hay_que_pintar = true;
+                        escrito.caracter(c);
                     }
+                    hay_que_pintar = true;
+                }
+                // Es la caja de una linea comun: Ctrl+Retroceso, las flechas,
+                // Mayus+flechas, Ctrl+A/C/X/V/Z como en cualquier caja.
+                EventoOverlay::Tecla { vk, shift, ctrl, .. }
+                    if redaccion::CajaLinea::es_suya(vk, shift, ctrl)
+                        && pendientes.is_none()
+                        && abierto
+                            .as_ref()
+                            .is_some_and(|a| a.renombrando_mensaje.is_some()) =>
+                {
+                    if let Some((_, escrito)) = abierto
+                        .as_mut()
+                        .and_then(|a| a.renombrando_mensaje.as_mut())
+                    {
+                        tecla_en_caja(escrito, vk, shift, ctrl);
+                    }
+                    hay_que_pintar = true;
                 }
                 EventoOverlay::Tecla { vk, .. }
                     if pendientes.is_none()
                         && abierto
                             .as_ref()
                             .is_some_and(|a| a.renombrando_mensaje.is_some())
-                        && (vk == VK_RETROCESO || vk == VK_ENTRAR || vk == VK_ESCAPE) =>
+                        && (vk == VK_ENTRAR || vk == VK_ESCAPE) =>
                 {
                     if let Some(a) = abierto.as_mut() {
                         match vk {
-                            VK_RETROCESO => {
-                                if let Some((_, escrito)) = a.renombrando_mensaje.as_mut() {
-                                    escrito.pop();
-                                }
-                            }
                             // Escapar deja el nombre como estaba.
                             VK_ESCAPE => a.renombrando_mensaje = None,
                             _ => {
@@ -2783,6 +2906,7 @@ pub fn abrir(
                                 // descripcion de una foto (`describiendo`).
                                 if let Some((i, escrito)) = a.renombrando_mensaje.take() {
                                     if std::mem::take(&mut a.describiendo) {
+                                        let escrito = descripcion_escrita(a, i, &escrito);
                                         guardar_descripcion(ubicacion, a, i, &escrito);
                                     } else {
                                         guardar_nombre_de_mensaje(ubicacion, a, i, escrito.trim());
@@ -2817,25 +2941,29 @@ pub fn abrir(
                 // Poniendole nombre al proyecto, lo que se teclea es el
                 // nombre. Manda sobre escribir una nota: un proyecto recien
                 // creado no tiene nombre, y eso es lo primero que resolver.
+                // El nombre se escribe en la caja de una linea comun: con
+                // su rayita, Ctrl+Retroceso, Mayus+flechas, Ctrl+Z...
                 EventoOverlay::Caracter(c)
                     if pendientes.is_none() && abierto.as_ref().is_some_and(|a| a.renombrando) =>
                 {
-                    if c >= ' ' {
-                        if let Some(a) = abierto.as_mut() {
-                            a.ficha.nombre.push(c);
-                            hay_que_pintar = true;
-                        }
+                    if let Some(a) = abierto.as_mut()
+                        && a.nombre_escrito.caracter(c)
+                    {
+                        a.ficha.nombre = a.nombre_escrito.texto().to_owned();
                     }
+                    hay_que_pintar = true;
                 }
-                EventoOverlay::Tecla { vk, .. }
-                    if vk == VK_RETROCESO
+                EventoOverlay::Tecla { vk, shift, ctrl, .. }
+                    if redaccion::CajaLinea::es_suya(vk, shift, ctrl)
                         && pendientes.is_none()
                         && abierto.as_ref().is_some_and(|a| a.renombrando) =>
                 {
-                    if let Some(a) = abierto.as_mut() {
-                        a.ficha.nombre.pop();
-                        hay_que_pintar = true;
+                    if let Some(a) = abierto.as_mut()
+                        && tecla_en_caja(&mut a.nombre_escrito, vk, shift, ctrl).cambio()
+                    {
+                        a.ficha.nombre = a.nombre_escrito.texto().to_owned();
                     }
+                    hay_que_pintar = true;
                 }
                 // Entrar o escapar dejan de escribir el nombre. Los dos
                 // guardan: escapar aqui no puede «deshacer», porque el
@@ -2946,23 +3074,27 @@ pub fn abrir(
                         }
                     }
                 }
+                // La lupa del panel: la caja de una linea comun, con todo lo
+                // de una caja de Windows (Ctrl+Retroceso, Mayus+flechas,
+                // Ctrl+Z, pegar...). Lo que no es de la caja sigue abajo.
                 EventoOverlay::Caracter(c) if abierto.as_ref().is_some_and(|a| a.buscando_info) => {
-                    if c >= ' ' {
-                        if let Some(a) = abierto.as_mut() {
-                            a.busqueda_info.push(c);
-                            a.scroll_info = 0;
-                            hay_que_pintar = true;
-                        }
-                    }
-                }
-                EventoOverlay::Tecla { vk, .. }
-                    if vk == VK_RETROCESO && abierto.as_ref().is_some_and(|a| a.buscando_info) =>
-                {
-                    if let Some(a) = abierto.as_mut() {
-                        a.busqueda_info.pop();
+                    if let Some(a) = abierto.as_mut()
+                        && a.busqueda_info.caracter(c)
+                    {
                         a.scroll_info = 0;
-                        hay_que_pintar = true;
                     }
+                    hay_que_pintar = true;
+                }
+                EventoOverlay::Tecla { vk, shift, ctrl, .. }
+                    if redaccion::CajaLinea::es_suya(vk, shift, ctrl)
+                        && abierto.as_ref().is_some_and(|a| a.buscando_info) =>
+                {
+                    if let Some(a) = abierto.as_mut()
+                        && tecla_en_caja(&mut a.busqueda_info, vk, shift, ctrl).cambio()
+                    {
+                        a.scroll_info = 0;
+                    }
+                    hay_que_pintar = true;
                 }
                 // Escapar apaga la lupa antes que cerrar el panel, y el panel
                 // antes que la ventana.
@@ -2971,7 +3103,7 @@ pub fn abrir(
                 {
                     if let Some(a) = abierto.as_mut() {
                         a.buscando_info = false;
-                        a.busqueda_info.clear();
+                        a.busqueda_info.vaciar();
                         a.scroll_info = 0;
                     }
                     hay_que_pintar = true;
@@ -2996,28 +3128,29 @@ pub fn abrir(
                 }
                 // Lo que se teclea con la lupa de la conversacion encendida es
                 // para ella y no para la caja de escribir. Va ANTES que el
-                // borrador, que si no lo escrito acabaria en un mensaje.
+                // borrador, que si no lo escrito acabaria en un mensaje. Es la
+                // caja de una linea comun (`caja_texto`): la misma rayita y
+                // los mismos atajos que la caja de escribir.
                 EventoOverlay::Caracter(c)
                     if abierto.as_ref().is_some_and(|a| a.busqueda.is_some()) =>
                 {
-                    if c >= ' '
-                        && let Some(q) = abierto.as_mut().and_then(|a| a.busqueda.as_mut())
+                    if let Some(a) = abierto.as_mut()
+                        && a.busqueda.as_mut().is_some_and(|q| q.caracter(c))
                     {
-                        q.push(c);
-                        if let Some(a) = abierto.as_mut() {
-                            a.scroll = None;
-                        }
+                        a.scroll = None;
                     }
                     hay_que_pintar = true;
                 }
-                EventoOverlay::Tecla { vk, .. }
-                    if vk == VK_RETROCESO
+                EventoOverlay::Tecla { vk, shift, ctrl, .. }
+                    if redaccion::CajaLinea::es_suya(vk, shift, ctrl)
                         && abierto.as_ref().is_some_and(|a| a.busqueda.is_some()) =>
                 {
-                    if let Some(q) = abierto.as_mut().and_then(|a| a.busqueda.as_mut()) {
-                        q.pop();
-                    }
-                    if let Some(a) = abierto.as_mut() {
+                    if let Some(a) = abierto.as_mut()
+                        && a
+                            .busqueda
+                            .as_mut()
+                            .is_some_and(|q| tecla_en_caja(q, vk, shift, ctrl).cambio())
+                    {
                         a.scroll = None;
                     }
                     hay_que_pintar = true;
@@ -3034,25 +3167,28 @@ pub fn abrir(
                     }
                     hay_que_pintar = true;
                 }
+                // El buscador de la lista, igual: la caja de una linea comun.
                 EventoOverlay::Caracter(c) if buscando => {
-                    if c >= ' ' {
-                        busqueda.push(c);
+                    if busqueda.caracter(c) {
                         orden = filtrar(&fichas, &busqueda);
                         scroll = 0;
-                        hay_que_pintar = true;
                     }
+                    hay_que_pintar = true;
                 }
-                EventoOverlay::Tecla { vk, .. } if buscando && vk == VK_RETROCESO => {
-                    busqueda.pop();
-                    orden = filtrar(&fichas, &busqueda);
-                    scroll = 0;
+                EventoOverlay::Tecla { vk, shift, ctrl, .. }
+                    if buscando && redaccion::CajaLinea::es_suya(vk, shift, ctrl) =>
+                {
+                    if tecla_en_caja(&mut busqueda, vk, shift, ctrl).cambio() {
+                        orden = filtrar(&fichas, &busqueda);
+                        scroll = 0;
+                    }
                     hay_que_pintar = true;
                 }
                 // Escapar del buscador lo limpia y suelta el foco, antes que
                 // cerrar la ventana entera.
                 EventoOverlay::Tecla { vk, .. } if buscando && vk == VK_ESCAPE => {
                     buscando = false;
-                    busqueda.clear();
+                    busqueda.vaciar();
                     orden = filtrar(&fichas, &busqueda);
                     hay_que_pintar = true;
                 }
@@ -3434,6 +3570,29 @@ pub fn abrir(
             aviso = None;
             hay_que_pintar = true;
         }
+        // La rayita de la caja de una linea que tiene el teclado parpadea:
+        // cuando cambia de encendida a apagada hay que volver a pintar. A
+        // los cinco segundos quieta deja de parpadear y esto ya no despierta.
+        let rayita_ahora = rayita_con_teclado(
+            &busqueda,
+            buscando,
+            menu.as_ref().and_then(|m| m.hoja.as_ref()).map(|h| &h.busqueda),
+            abierto.as_ref(),
+            std::time::Instant::now(),
+        );
+        if rayita_ahora != rayita_pintada {
+            rayita_pintada = rayita_ahora;
+            hay_que_pintar = true;
+        }
+        // El IME (japones, chino) compone encima de la rayita de la caja
+        // con el teclado, no en una esquina de la pantalla.
+        if hay_que_pintar
+            && let Some(sitio) = cajas_con_teclado(&busqueda, buscando, menu.as_ref().and_then(|m| m.hoja.as_ref()).map(|h| &h.busqueda), abierto.as_ref())
+            .first()
+            .and_then(|c| c.sitio_ime())
+        {
+            ventana.poner_posicion_ime(sitio);
+        }
 
         if hay_que_pintar {
             hay_que_pintar = false;
@@ -3504,6 +3663,7 @@ pub fn abrir(
                     ahora,
                     textos,
                     busqueda: &busqueda,
+                    buscando,
                     marcados: &marcados,
                 };
                 // Con Proyectos delante, el chat no se pinta: no se ve.
@@ -3782,7 +3942,14 @@ pub fn abrir(
             .as_ref()
             .filter(|a| a.leyendo.is_some() || a.voz.espera())
             .map(|_| 400u32);
+        // Y hasta que toque encender o apagar la rayita de la caja que tiene
+        // el teclado (solo mientras parpadea).
+        let hasta_la_rayita = cajas_con_teclado(&busqueda, buscando, menu.as_ref().and_then(|m| m.hoja.as_ref()).map(|h| &h.busqueda), abierto.as_ref())
+            .iter()
+            .filter_map(|c| c.ms_hasta_parpadeo(std::time::Instant::now()))
+            .min();
         let dormir = [
+            hasta_la_rayita,
             hasta_el_aviso,
             hasta_el_resalte,
             hasta_el_latido,
@@ -3932,6 +4099,103 @@ impl LetrasPintadas {
     }
 }
 
+/// Las cajas de una linea que tienen el teclado: el buscador de la hoja del
+/// «+» si esta abierta, el de la lista si se esta escribiendo en el y las
+/// abiertas del proyecto. Son las que ensenan la rayita.
+fn cajas_con_teclado<'a>(
+    lista: &'a redaccion::CajaLinea,
+    buscando: bool,
+    hoja: Option<&'a redaccion::CajaLinea>,
+    abierto: Option<&'a Abierto>,
+) -> Vec<&'a redaccion::CajaLinea> {
+    let mut v: Vec<&redaccion::CajaLinea> = hoja.into_iter().collect();
+    if buscando {
+        v.push(lista);
+    }
+    if let Some(a) = abierto {
+        v.extend(a.cajas_de_una_linea());
+    }
+    v
+}
+
+/// Si se ve ahora la rayita de cada caja con el teclado: lo que hay que
+/// volver a pintar cuando cambia (el parpadeo).
+fn rayita_con_teclado(
+    lista: &redaccion::CajaLinea,
+    buscando: bool,
+    hoja: Option<&redaccion::CajaLinea>,
+    abierto: Option<&Abierto>,
+    ahora: std::time::Instant,
+) -> Vec<bool> {
+    cajas_con_teclado(lista, buscando, hoja, abierto)
+        .iter()
+        .map(|c| c.rayita_visible(ahora))
+        .collect()
+}
+
+/// Las cajas de una linea a la vista: el buscador de la lista y las que
+/// tenga abiertas el proyecto (ver [`Abierto::cajas_de_una_linea`]). Para
+/// el raton: la barra de texto encima y elegir arrastrando.
+fn cajas_de_una_linea<'a>(
+    lista: &'a redaccion::CajaLinea,
+    abierto: Option<&'a Abierto>,
+) -> Vec<&'a redaccion::CajaLinea> {
+    let mut v = vec![lista];
+    if let Some(a) = abierto {
+        v.extend(a.cajas_de_una_linea());
+    }
+    v
+}
+
+impl Abierto {
+    /// Las cajas de una linea abiertas ahora en el proyecto: la lupa de la
+    /// conversacion, la del panel, el nombre que se escribe... Todas son la
+    /// misma caja (`caja_texto::CajaLinea`).
+    fn cajas_de_una_linea(&self) -> Vec<&redaccion::CajaLinea> {
+        let mut v: Vec<&redaccion::CajaLinea> = self.busqueda.iter().collect();
+        if self.buscando_info && self.info.is_some() {
+            v.push(&self.busqueda_info);
+        }
+        if self.renombrando {
+            v.push(&self.nombre_escrito);
+        }
+        if let Some((_, c)) = &self.renombrando_mensaje {
+            v.push(c);
+        }
+        if let Some((_, c)) = &self.quien_llama {
+            v.push(c);
+        }
+        v
+    }
+
+    fn cajas_de_una_linea_mut(&mut self) -> Vec<&mut redaccion::CajaLinea> {
+        let mut v: Vec<&mut redaccion::CajaLinea> = self.busqueda.iter_mut().collect();
+        if self.buscando_info && self.info.is_some() {
+            v.push(&mut self.busqueda_info);
+        }
+        if self.renombrando {
+            v.push(&mut self.nombre_escrito);
+        }
+        if let Some((_, c)) = &mut self.renombrando_mensaje {
+            v.push(c);
+        }
+        if let Some((_, c)) = &mut self.quien_llama {
+            v.push(c);
+        }
+        v
+    }
+
+    /// Empieza a escribir el nombre del proyecto en la cabecera: la caja
+    /// arranca con el nombre que tenga, todo elegido (escribir lo
+    /// sustituye; una flecha lo suelta para corregirlo), como al renombrar
+    /// un fichero en Windows.
+    fn empezar_a_renombrar(&mut self) {
+        self.renombrando = true;
+        self.nombre_escrito.poner_texto(&self.ficha.nombre);
+        self.nombre_escrito.elegir_todo();
+    }
+}
+
 /// El proyecto abierto en la columna de la derecha.
 struct Abierto {
     ficha: pixpin_proyecto::almacen::Ficha,
@@ -3972,11 +4236,14 @@ struct Abierto {
     /// Lo que se busca DENTRO del proyecto, desde la lupa del panel. Vacio
     /// es «no se esta buscando»: no hace falta un booleano aparte, porque
     /// una busqueda en blanco no filtra nada (ver `resaltado`).
-    busqueda_info: String,
+    busqueda_info: redaccion::CajaLinea,
     /// Se esta escribiendo el nombre del proyecto en la cabecera. Un
     /// proyecto recien creado nace asi: teclear es mas rapido que borrar
     /// un nombre puesto por la aplicacion para poner el de verdad.
     renombrando: bool,
+    /// El nombre mientras se escribe: la caja de una linea comun. Cada
+    /// cambio se copia a `ficha.nombre`, que es lo que ensena todo lo demas.
+    nombre_escrito: redaccion::CajaLinea,
     /// La lupa esta encendida. Va aparte de `busqueda_info` porque al
     /// pulsarla la caja aparece vacia, y sin esto no habria donde escribir.
     buscando_info: bool,
@@ -3986,7 +4253,7 @@ struct Abierto {
     /// lupa apagada, `Some("")` es la caja abierta y vacia —que no esconde
     /// ninguna burbuja— y `Some(texto)` es buscando. Con un booleano aparte
     /// habria que mantener dos cosas a la vez y se descuadran.
-    busqueda: Option<String>,
+    busqueda: Option<redaccion::CajaLinea>,
     /// La etiqueta por la que se filtra, de los chips que salen bajo la
     /// cabecera mientras se busca (`porEtiqueta` del movil).
     ///
@@ -4010,7 +4277,7 @@ struct Abierto {
     /// escribe la respuesta, como en el movil.
     respondiendo: Option<String>,
     /// El mensaje al que se le cambia el nombre, y lo escrito hasta ahora.
-    renombrando_mensaje: Option<(usize, String)>,
+    renombrando_mensaje: Option<(usize, redaccion::CajaLinea)>,
     /// Que esa misma barra escribe la descripcion de la foto y no su nombre
     /// («Añadir descripción», `descripcion`).
     describiendo: bool,
@@ -4090,7 +4357,7 @@ struct Abierto {
     hora_a_mano: Option<(String, String)>,
     /// «Quien llama» (B11, v0.98.6): la nota de voz (por id) y el nombre
     /// tecleado. Intro lo guarda y vuelve a sacar las horas.
-    quien_llama: Option<(String, String)>,
+    quien_llama: Option<(String, redaccion::CajaLinea)>,
 }
 
 /// La pantalla de la letra abierta: de que nota es y como se esta leyendo.
@@ -4155,8 +4422,10 @@ struct Lista<'a> {
     /// La hora local de ahora, para decidir si una fecha es de hoy.
     ahora: i64,
     textos: &'a Catalogo,
-    /// Lo que hay escrito en el buscador.
-    busqueda: &'a str,
+    /// El buscador: lo escrito, la rayita y lo elegido.
+    busqueda: &'a redaccion::CajaLinea,
+    /// El buscador tiene el teclado: se ve su rayita.
+    buscando: bool,
     /// Los proyectos marcados para borrar, por `id`.
     marcados: &'a std::collections::BTreeSet<String>,
 }
@@ -4405,19 +4674,22 @@ fn pintar(
     let caja = d.buscador(escala);
     if caja.ancho > 0 {
         p.rellenar_redondeado(rf(caja), chat::BUSCADOR_RADIO as f32 * e, tema.buscador);
-        let (texto_busqueda, color) = if lista.busqueda.is_empty() {
-            (textos.t("chat-buscar"), tema.apagado)
-        } else {
-            (lista.busqueda.to_string(), tema.texto)
-        };
-        let (_, alto_texto) = p.medir_texto(&texto_busqueda, chat::BUSCADOR_TAM * e);
-        p.texto_linea(
-            &texto_busqueda,
-            caja.x as f32 + chat::BUSCADOR_TEXTO_X as f32 * e,
-            caja.y as f32 + (caja.alto as f32 - alto_texto) / 2.0,
+        // La caja de una linea comun: con el teclado, su rayita parpadea
+        // donde se escribe y el texto se corre para que se vea.
+        let margen = chat::BUSCADOR_TEXTO_X as f32 * e;
+        lista.busqueda.pintar(
+            p,
+            rf(caja),
+            RectF {
+                x: caja.x as f32 + margen,
+                ancho: (caja.ancho as f32 - 2.0 * margen).max(0.0),
+                ..rf(caja)
+            },
             chat::BUSCADOR_TAM * e,
-            (caja.ancho as f32 - 2.0 * chat::BUSCADOR_TEXTO_X as f32 * e).max(0.0),
-            color,
+            &textos.t("chat-buscar"),
+            &colores_de_caja(tema, tema.texto, tema.apagado),
+            lista.buscando,
+            std::time::Instant::now(),
         );
     }
 
@@ -4849,7 +5121,7 @@ fn pintar_historial(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto) {
     // Medir el texto necesita la fuente, asi que se hace aqui; pero solo
     // cuando cambia el ancho, no en cada fotograma.
     let ancho_contenido = h::ancho_contenido(area, escala);
-    let aguja = a.busqueda.clone().unwrap_or_default();
+    let aguja = a.busqueda.as_deref().unwrap_or_default().to_owned();
     {
         let mut c = a.colocado.borrow_mut();
         if c.ancho != ancho_contenido
@@ -5223,7 +5495,7 @@ fn pintar_historial(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto) {
                 );
             } else {
                 let nombre = match &a.renombrando_mensaje {
-                    Some((n, escrito)) if *n == i && !a.describiendo => format!("{escrito}|"),
+                    Some((n, escrito)) if *n == i && !a.describiendo => escrito.texto().to_owned(),
                     _ => f.nombre.clone(),
                 };
                 let (_, alto_nombre) = p.medir_texto(&nombre, FICHA_NOMBRE_TAM * e);
@@ -6541,7 +6813,7 @@ fn pintar_cabecera(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto) {
     // Buscando, la caja de buscar SUSTITUYE al titulo dentro de la pastilla
     // del centro, como en el movil: una caja debajo empujaria la conversacion
     // hacia abajo cada vez que se abre la lupa.
-    if let Some(aguja) = a.busqueda.as_deref() {
+    if let Some(caja) = a.busqueda.as_ref() {
         let sitio = Rect {
             y: cab.y + (2.0 * e) as i32,
             alto: cab.alto.saturating_sub((4.0 * e) as u32),
@@ -6565,21 +6837,23 @@ fn pintar_cabecera(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto) {
             },
             tema.pildora_sub,
         );
-        let (escrito, color) = if aguja.is_empty() {
-            (textos.t("chat-buscar-aqui"), tema.pildora_sub)
-        } else {
-            (format!("{aguja}|"), tema.pildora_texto)
-        };
-        let tam = 15.0 * e;
-        let (_, alto_escrito) = p.medir_texto(&escrito, tam);
+        // Antes era el texto con una barrita «|» pegada al final: no se veia
+        // donde se escribia. Ahora es la caja de una linea comun, con su
+        // rayita parpadeando en su sitio y el texto corrido para verla.
         let tx = x0 + lupa + 8.0 * e;
-        p.texto_linea(
-            &escrito,
-            tx,
-            sitio.y as f32 + (sitio.alto as f32 - alto_escrito) / 2.0,
-            tam,
-            (sitio.derecha() as f32 - 14.0 * e - tx).max(0.0),
-            color,
+        caja.pintar(
+            p,
+            rf(sitio),
+            RectF {
+                x: tx,
+                ancho: (sitio.derecha() as f32 - 14.0 * e - tx).max(0.0),
+                ..rf(sitio)
+            },
+            15.0 * e,
+            &textos.t("chat-buscar-aqui"),
+            &colores_de_caja(tema, tema.pildora_texto, tema.pildora_sub),
+            true,
+            std::time::Instant::now(),
         );
         return;
     }
@@ -6587,10 +6861,12 @@ fn pintar_cabecera(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto) {
     // El titulo: disco amarillo con la carpeta (el marcador en «Mensajes
     // guardados»), el nombre con su flechita y debajo cuantas cosas guarda y
     // cuanto ocupan, que es lo que se pregunta de un cajon de documentos.
-    let (nombre, color_nombre) = if a.renombrando && a.ficha.nombre.is_empty() {
+    // Escribiendolo, se mide lo escrito (o la invitacion) y se pinta con la
+    // caja de una linea comun, que pone la rayita donde va.
+    let (nombre, color_nombre) = if a.renombrando && a.nombre_escrito.is_empty() {
         (textos.t("chat-nombre-nuevo"), tema.pildora_sub)
     } else if a.renombrando {
-        (format!("{}|", a.ficha.nombre), tema.pildora_texto)
+        (a.nombre_escrito.texto().to_owned(), tema.pildora_texto)
     } else {
         (a.ficha.nombre.clone(), tema.pildora_texto)
     };
@@ -6652,14 +6928,33 @@ fn pintar_cabecera(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto) {
     }
     let tx = x0 + disco + 10.0 * e;
     let ancho_nombre = (caja.derecha() as f32 - 14.0 * e - tx - flecha - 2.0 * e).max(0.0);
-    p.texto_linea(
-        &nombre,
-        tx,
-        y0 + (disco - alto_nombre) / 2.0,
-        tam_nombre,
-        ancho_nombre,
-        color_nombre,
-    );
+    if a.renombrando {
+        let hueco = RectF {
+            x: tx,
+            y: y0,
+            ancho: ancho_nombre,
+            alto: disco,
+        };
+        a.nombre_escrito.pintar(
+            p,
+            hueco,
+            hueco,
+            tam_nombre,
+            &nombre,
+            &colores_de_caja(tema, tema.pildora_texto, color_nombre),
+            true,
+            std::time::Instant::now(),
+        );
+    } else {
+        p.texto_linea(
+            &nombre,
+            tx,
+            y0 + (disco - alto_nombre) / 2.0,
+            tam_nombre,
+            ancho_nombre,
+            color_nombre,
+        );
+    }
     p.icono(
         &mi::KEYBOARD_ARROW_DOWN,
         RectF {
@@ -7109,8 +7404,9 @@ fn abrir_proyecto(ubicacion: &Ubicacion, ficha: &pixpin_proyecto::almacen::Ficha
         clic_en_caja: None,
         info: None,
         scroll_info: 0,
-        busqueda_info: String::new(),
+        busqueda_info: redaccion::CajaLinea::nueva(),
         renombrando: false,
+        nombre_escrito: redaccion::CajaLinea::nueva(),
         buscando_info: false,
         alto_info: std::cell::Cell::new(0),
         hojas_uid: pixpin_proyecto::almacen::uids_de_hojas(ubicacion.raiz(), &ficha.id),
@@ -8808,19 +9104,21 @@ fn pintar_info(
         // no se sepa ya.
         let b = i.caja_buscar(escala);
         p.rellenar_redondeado(rf(b), b.alto as f32 / 2.0, tema.buscador);
-        let (texto, color) = if a.busqueda_info.is_empty() {
-            (textos.t("chat-buscar"), tema.apagado)
-        } else {
-            (a.busqueda_info.clone(), tema.texto)
-        };
-        let (_, alto_texto) = p.medir_texto(&texto, info::BUSCAR_TAM * e);
-        p.texto_linea(
-            &texto,
-            b.x as f32 + info::BUSCAR_TEXTO_X as f32 * e,
-            b.y as f32 + (b.alto as f32 - alto_texto) / 2.0,
+        // La caja de una linea comun, con su rayita donde se escribe.
+        let margen = info::BUSCAR_TEXTO_X as f32 * e;
+        a.busqueda_info.pintar(
+            p,
+            rf(b),
+            RectF {
+                x: b.x as f32 + margen,
+                ancho: (b.ancho as f32 - 2.0 * margen).max(0.0),
+                ..rf(b)
+            },
             info::BUSCAR_TAM * e,
-            (b.ancho as f32 - 2.0 * info::BUSCAR_TEXTO_X as f32 * e).max(0.0),
-            color,
+            &textos.t("chat-buscar"),
+            &colores_de_caja(tema, tema.texto, tema.apagado),
+            true,
+            std::time::Instant::now(),
         );
     } else {
         p.texto_linea(
@@ -13639,25 +13937,28 @@ fn pintar_redaccion(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto, alto_te
         let x_pista = (cerrar.x as f32 - w_pista - 6.0 * e).max(caja.x);
         p.texto(&pista, x_pista, y, tam, tema.campo_apagado);
         let x = caja.x + 40.0 * e;
-        let cabe = (x_pista - x - 8.0 * e).max(0.0);
-        // Un renglon: los saltos de una descripcion se ven como espacios, y
-        // si no cabe se ensena el FINAL, que es donde se esta escribiendo.
-        let rotulo_de = |s: &str| format!("{} {s}|", textos.t(barra_clave));
-        let seguido = escrito.replace('\n', " ");
-        // Se empieza por los ultimos 200 signos: medir uno a uno un texto
-        // largo en cada fotograma seria tirar el rato.
-        let mut desde = seguido.char_indices().rev().nth(200).map_or(0, |(i, _)| i);
-        while desde < seguido.len()
-            && p.medir_texto(&rotulo_de(&seguido[desde..]), 13.0 * e).0 > cabe
-        {
-            desde += seguido[desde..].chars().next().map_or(1, char::len_utf8);
-        }
-        let rotulo = if desde == 0 {
-            rotulo_de(&seguido)
-        } else {
-            rotulo_de(&format!("…{}", &seguido[desde..]))
+        // El rotulo («Nombre:») y detras la caja de una linea comun: la
+        // rayita donde se escribe, el texto corrido para que se vea, y los
+        // atajos de siempre. Antes era el final del texto con una «|».
+        let rotulo = textos.t(barra_clave);
+        let (w_rotulo, _) = p.medir_texto(&rotulo, 13.0 * e);
+        p.texto(&rotulo, x, y, 13.0 * e, tema.texto);
+        let x_caja = x + w_rotulo + 6.0 * e;
+        let hueco = RectF {
+            x: x_caja,
+            ancho: (x_pista - x_caja - 8.0 * e).max(0.0),
+            ..caja
         };
-        p.texto_linea(&rotulo, x, y, 13.0 * e, cabe, tema.texto);
+        escrito.pintar(
+            p,
+            hueco,
+            hueco,
+            13.0 * e,
+            "",
+            &colores_de_caja(tema, tema.texto, tema.campo_apagado),
+            true,
+            std::time::Instant::now(),
+        );
     } else if let Some((_, escrito)) = &a.quien_llama {
         let barra = d.encima_de_la_isla(alto_texto, escala);
         let cerrar = quien_llama::pintar_barra(p, barra, tema, textos, escrito, e);
@@ -15484,7 +15785,7 @@ fn ejecutar(accion: Accion, a: &mut Abierto, cx: &Contexto) -> Efecto {
             a.quien_llama = a
                 .mensajes
                 .get(i)
-                .map(|m| (m.id.clone(), quien_llama::nombre_actual(&carpeta, m)));
+                .map(|m| (m.id.clone(), quien_llama::caja(&quien_llama::nombre_actual(&carpeta, m))));
             Efecto::Cambio
         }
         Accion::RecordarAMano(i) => {
@@ -15626,7 +15927,7 @@ fn ejecutar(accion: Accion, a: &mut Abierto, cx: &Contexto) -> Efecto {
                     }
                     _ => nombre_de_la_fila(m, cx.textos),
                 };
-                a.renombrando_mensaje = Some((i, escrito));
+                a.renombrando_mensaje = Some((i, redaccion::CajaLinea::con_texto(&escrito)));
                 a.describiendo = false;
             }
             Efecto::Cambio
@@ -15634,7 +15935,7 @@ fn ejecutar(accion: Accion, a: &mut Abierto, cx: &Contexto) -> Efecto {
         Accion::Describir(i) => {
             // Empieza con la que tiene, para retocarla y no reescribirla.
             if let Some(m) = a.mensajes.get(i) {
-                a.renombrando_mensaje = Some((i, m.texto.trim().to_string()));
+                a.renombrando_mensaje = Some((i, redaccion::CajaLinea::con_texto(m.texto.trim())));
                 a.describiendo = true;
             }
             Efecto::Cambio
@@ -16653,6 +16954,19 @@ fn fijar_marcados(ubicacion: &Ubicacion, a: &mut Abierto, textos: &Catalogo) -> 
         Efecto::Aviso(textos.t("chat-no-se-pudo"))
     } else {
         Efecto::Cambio
+    }
+}
+
+/// La descripcion que se guarda al pulsar Intro en la barra. La caja es de
+/// una linea (`caja_texto::CajaLinea`) y una descripcion de antes puede
+/// traer saltos de renglon: si no se toco nada, se guarda la de antes tal
+/// cual, sin aplanarla.
+fn descripcion_escrita(a: &Abierto, i: usize, caja: &redaccion::CajaLinea) -> String {
+    let antes = a.mensajes.get(i).map_or("", |m| m.texto.trim());
+    if redaccion::en_una_linea(antes) == caja.texto() {
+        antes.to_owned()
+    } else {
+        caja.texto().to_owned()
     }
 }
 
@@ -17905,5 +18219,95 @@ mod pruebas_descripcion {
             .collect();
         assert!(!acciones.iter().any(|x| matches!(x, Accion::Describir(_))));
         let _ = std::fs::remove_dir_all(&raiz);
+    }
+}
+
+/// Las cajas de una linea del chat son el componente comun
+/// (`caja_texto::CajaLinea`) y no una caja propia: lo pidio el usuario al
+/// ver que la de buscar no borraba palabras con Ctrl+Retroceso.
+#[cfg(test)]
+mod pruebas_caja_de_buscar {
+    use super::*;
+    use pixpin_proyecto::cuaderno::{Clase, Mensaje};
+
+    const VK_RETROCESO_: u32 = 0x08;
+
+    fn abierto(nombre: &str, textos: &[&str]) -> (Abierto, std::path::PathBuf) {
+        let raiz = std::env::temp_dir().join(format!(
+            "pixpin-caja-buscar-{nombre}-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&raiz);
+        std::fs::create_dir_all(&raiz).unwrap();
+        let u = Ubicacion::Portable { raiz: raiz.clone() };
+        let ficha = pixpin_proyecto::almacen::Ficha::nueva("obra", 0, "PC");
+        std::fs::create_dir_all(pixpin_proyecto::almacen::carpeta(&raiz, &ficha.id)).unwrap();
+        let mut a = abrir_proyecto(&u, &ficha);
+        a.mensajes = textos
+            .iter()
+            .enumerate()
+            .map(|(i, t)| Mensaje {
+                id: format!("m{i}"),
+                clase: Some(Clase::Nota),
+                texto: (*t).into(),
+                ..Mensaje::default()
+            })
+            .collect();
+        a.vistas = a.mensajes.iter().map(|_| None).collect();
+        (a, raiz)
+    }
+
+    #[test]
+    fn la_lupa_de_la_conversacion_es_la_caja_comun_y_ctrl_retroceso_borra_la_palabra() {
+        let (mut a, raiz) = abierto("lupa", &["muro norte", "viga sur", "muro sur"]);
+        // El tipo lo dice: la lupa guarda una `CajaLinea`, no un `String`.
+        a.busqueda = Some(redaccion::CajaLinea::nueva());
+        for c in "muro sur".chars() {
+            a.busqueda.as_mut().unwrap().caracter(c);
+        }
+        assert_eq!(indices_visibles(&a), vec![2]);
+        // Ctrl+Retroceso se lleva «sur» entero, y el filtro se rehace.
+        let r = tecla_en_caja(a.busqueda.as_mut().unwrap(), VK_RETROCESO_, false, true);
+        assert!(r.cambio());
+        assert_eq!(a.busqueda.as_deref(), Some("muro "));
+        assert_eq!(indices_visibles(&a), vec![0, 2]);
+        // Caso negativo: al principio no borra nada.
+        let q = a.busqueda.as_mut().unwrap();
+        q.tecla(0x24, false, false, &mut redaccion::PortapapelesWindows);
+        assert!(!tecla_en_caja(q, VK_RETROCESO_, false, true).cambio());
+        assert_eq!(a.busqueda.as_deref(), Some("muro "));
+        // Y se ve como caja con teclado (rayita y parpadeo).
+        assert_eq!(a.cajas_de_una_linea().len(), 1);
+        let _ = std::fs::remove_dir_all(&raiz);
+    }
+
+    #[test]
+    fn el_nombre_del_proyecto_se_escribe_en_la_caja_comun_con_todo_elegido() {
+        let (mut a, raiz) = abierto("nombre", &[]);
+        a.ficha.nombre = "Obra vieja".into();
+        a.empezar_a_renombrar();
+        assert_eq!(a.nombre_escrito.seleccionado(), Some("Obra vieja"));
+        // Escribir sustituye lo elegido, como al renombrar en Windows.
+        a.nombre_escrito.caracter('X');
+        assert_eq!(a.nombre_escrito.texto(), "X");
+        assert!(a.cajas_de_una_linea().iter().any(|c| c.texto() == "X"));
+        // Sin renombrar, la caja no tiene el teclado.
+        a.renombrando = false;
+        assert!(a.cajas_de_una_linea().is_empty());
+        let _ = std::fs::remove_dir_all(&raiz);
+    }
+
+    #[test]
+    fn la_lista_de_proyectos_filtra_con_la_caja_comun() {
+        let fichas: Vec<pixpin_proyecto::almacen::Ficha> = ["Casa Lima", "Puente Sur"]
+            .iter()
+            .map(|n| pixpin_proyecto::almacen::Ficha::nueva(n, 0, "PC"))
+            .collect();
+        let mut q = redaccion::CajaLinea::con_texto("puente sur");
+        assert_eq!(filtrar(&fichas, &q), vec![1]);
+        tecla_en_caja(&mut q, VK_RETROCESO_, false, true);
+        tecla_en_caja(&mut q, VK_RETROCESO_, false, true);
+        assert!(q.is_empty());
+        assert_eq!(filtrar(&fichas, &q).len(), 2);
     }
 }
