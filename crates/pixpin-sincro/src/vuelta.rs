@@ -565,6 +565,12 @@ fn con_alcance<D: Disco + ?Sized, F: Read + Write>(
             }
         })?;
     }
+    // **Las listas de los chats compartidos** (Android 13-oct-2026): mi otro
+    // aparato entra en los que comparto con otras personas. Un aparato de
+    // antes contesta «No sé» y no pasa nada.
+    if solo.is_none() {
+        s.compartidos_del_grupo(ahora())?;
+    }
     s.adios();
     if !hecho.saltados.is_empty() {
         let mut vistos = Vec::new();

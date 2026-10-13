@@ -69,6 +69,50 @@ pub enum ErrorCanal {
     TramoRaro(i32),
     #[error("tipo de tramo desconocido: {0}")]
     TipoDesconocido(u8),
+    /// `Canal.NoEsMiembro`: quien llama (o a quien se llama) no esta en
+    /// ningun chat compartido con este aparato.
+    #[error("No compartís ningún chat")]
+    NoEsMiembro,
+}
+
+/// **Una persona de un chat compartido** (`Canal.MAGIA_DE_PERSONA`).
+pub const MAGIA_DE_PERSONA: &[u8; 4] = b"PXC1";
+/// **Alguien que viene con una invitacion a un chat compartido**.
+pub const MAGIA_DE_INVITACION: &[u8; 4] = b"PXI1";
+/// Lo mas largo que se acepta como clave publica del otro: una P-256 en
+/// X.509 son 91 bytes.
+const TOPE_DE_CLAVE: usize = 512;
+
+/// Las claves de una conversacion entre personas (ver
+/// [Canal::entre_personas]).
+pub fn claves_entre_personas(
+    secreto: &[u8; 32],
+    nonce_inicia: &[u8; NONCE],
+    nonce_responde: &[u8; NONCE],
+    clave_inicia: &[u8],
+    clave_responde: &[u8],
+    inicia: bool,
+) -> Claves {
+    let mut semilla = Vec::with_capacity(8 + NONCE * 2 + clave_inicia.len() + clave_responde.len());
+    semilla.extend_from_slice(b"personas");
+    semilla.extend_from_slice(nonce_inicia);
+    semilla.extend_from_slice(nonce_responde);
+    semilla.extend_from_slice(clave_inicia);
+    semilla.extend_from_slice(clave_responde);
+    let sesion = hmac(secreto, &semilla);
+    let ida = hmac(&sesion, b"ida");
+    let vuelta = hmac(&sesion, b"vuelta");
+    if inicia {
+        Claves {
+            salida: ida,
+            entrada: vuelta,
+        }
+    } else {
+        Claves {
+            salida: vuelta,
+            entrada: ida,
+        }
+    }
 }
 
 /// Las dos claves de una sesion, ya repartidas por sentido.
@@ -137,20 +181,33 @@ impl<F: Read + Write> Canal<F> {
     /// `nonce_propio` se pasa desde fuera para poder probar esto sin azar; en
     /// la aplicacion sale de un generador criptografico.
     pub fn saludar(
-        mut flujo: F,
+        flujo: F,
         clave_grupo: &[u8; 32],
         nonce_propio: [u8; NONCE],
         inicia: bool,
     ) -> Result<Canal<F>, ErrorCanal> {
+        Canal::saludar_con(flujo, clave_grupo, nonce_propio, inicia, MAGIA)
+    }
+
+    /// [Canal::saludar] con otra magia: la de una invitacion a un chat
+    /// compartido ([MAGIA_DE_INVITACION]), con la clave que sale del codigo
+    /// de la invitacion (`Canal.abrir(..., magia)` del movil).
+    pub fn saludar_con(
+        mut flujo: F,
+        clave_grupo: &[u8; 32],
+        nonce_propio: [u8; NONCE],
+        inicia: bool,
+        magia: &[u8; 4],
+    ) -> Result<Canal<F>, ErrorCanal> {
         // Los dos escriben antes de leer: si los dos leyeran primero, se
         // quedarian esperandose el uno al otro para siempre.
-        flujo.write_all(MAGIA)?;
+        flujo.write_all(magia)?;
         flujo.write_all(&nonce_propio)?;
         flujo.flush()?;
 
         let mut saludo = [0u8; 4 + NONCE];
         flujo.read_exact(&mut saludo)?;
-        if &saludo[..4] != MAGIA {
+        if &saludo[..4] != magia {
             return Err(ErrorCanal::NoEsPixPin);
         }
         let mut nonce_otro = [0u8; NONCE];
@@ -169,6 +226,81 @@ impl<F: Read + Write> Canal<F> {
             enviados: 0,
             recibidos: 0,
         })
+    }
+
+    /// **El canal entre dos personas de un chat compartido**
+    /// (`Canal.abrirEntrePersonas`, Android 13-oct-2026). Aqui no hay codigo
+    /// de grupo que los dos sepan: cada lado manda `PXC1`, el largo de su
+    /// clave publica (u16 big-endian, `writeShort`), la clave (X.509) y 32
+    /// bytes al azar. Con la clave del otro, `aceptar` dice si es alguien
+    /// conocido (si no, se corta antes de hablar nada); con la privada propia
+    /// y la publica del otro sale el mismo secreto en los dos (ECDH), y de el
+    /// la clave de esta conversacion:
+    ///
+    /// `sesion = HMAC(secreto, "personas" ‖ azarI ‖ azarR ‖ claveI ‖ claveR)`
+    ///
+    /// Quien no tenga la privada de la clave que ensena no descifra ni el
+    /// primer tramo: esa es la prueba de que es quien dice ser. Devuelve el
+    /// canal y la clave publica del otro.
+    pub fn entre_personas(
+        mut flujo: F,
+        llaves: &crate::compartidos::Llaves,
+        nonce_propio: [u8; NONCE],
+        inicia: bool,
+        aceptar: impl FnOnce(&[u8]) -> bool,
+    ) -> Result<(Canal<F>, Vec<u8>), ErrorCanal> {
+        let mi_clave = llaves.publica().to_vec();
+        let mut saludo = Vec::with_capacity(4 + 2 + mi_clave.len() + NONCE);
+        saludo.extend_from_slice(MAGIA_DE_PERSONA);
+        saludo.extend_from_slice(&(mi_clave.len() as u16).to_be_bytes());
+        saludo.extend_from_slice(&mi_clave);
+        saludo.extend_from_slice(&nonce_propio);
+        flujo.write_all(&saludo)?;
+        flujo.flush()?;
+
+        let mut magia = [0u8; 4];
+        flujo.read_exact(&mut magia)?;
+        if &magia != MAGIA_DE_PERSONA {
+            return Err(ErrorCanal::NoEsPixPin);
+        }
+        let mut largo = [0u8; 2];
+        flujo.read_exact(&mut largo)?;
+        let largo = u16::from_be_bytes(largo) as usize;
+        if !(1..=TOPE_DE_CLAVE).contains(&largo) {
+            return Err(ErrorCanal::TramoRaro(largo as i32));
+        }
+        let mut su_clave = vec![0u8; largo];
+        flujo.read_exact(&mut su_clave)?;
+        let mut nonce_otro = [0u8; NONCE];
+        flujo.read_exact(&mut nonce_otro)?;
+        if !aceptar(&su_clave) {
+            return Err(ErrorCanal::NoEsMiembro);
+        }
+        let secreto = llaves
+            .acordar(&su_clave)
+            .map_err(|_| ErrorCanal::NoEsMiembro)?;
+        let (ni, nr) = if inicia {
+            (nonce_propio, nonce_otro)
+        } else {
+            (nonce_otro, nonce_propio)
+        };
+        let (ci, cr) = if inicia {
+            (mi_clave.as_slice(), su_clave.as_slice())
+        } else {
+            (su_clave.as_slice(), mi_clave.as_slice())
+        };
+        let claves = claves_entre_personas(&secreto, &ni, &nr, ci, cr, inicia);
+        Ok((
+            Canal {
+                flujo,
+                claves,
+                contador_salida: 0,
+                contador_entrada: 0,
+                enviados: 0,
+                recibidos: 0,
+            },
+            su_clave,
+        ))
     }
 
     pub fn claves(&self) -> Claves {
@@ -410,5 +542,81 @@ mod pruebas {
         uno.flush().unwrap();
         let r = Canal::saludar(otro, &clave_de_grupo("K7Q2M9XMPA"), [1u8; NONCE], false);
         assert!(matches!(r, Err(ErrorCanal::NoEsPixPin)));
+    }
+
+    use crate::compartidos::{Llaves, mezcladas};
+
+    /// Los dos lados de una conversacion entre personas, a la vez. `acepta`
+    /// dice que claves acepta cada uno.
+    fn personas(
+        uno: (Llaves, fn(&[u8]) -> bool),
+        otro: (Llaves, fn(&[u8]) -> bool),
+    ) -> (
+        Result<(Canal<Tuberia>, Vec<u8>), ErrorCanal>,
+        Result<(Canal<Tuberia>, Vec<u8>), ErrorCanal>,
+    ) {
+        let (a, b) = par();
+        let hilo = std::thread::spawn(move || {
+            Canal::entre_personas(b, &otro.0, [9u8; NONCE], false, otro.1)
+        });
+        let r = Canal::entre_personas(a, &uno.0, [7u8; NONCE], true, uno.1);
+        (r, hilo.join().unwrap())
+    }
+
+    #[test]
+    fn dos_personas_con_sus_claves_se_entienden_y_cada_una_ve_la_del_otro() {
+        let (max, ana) = (Llaves::nuevas(), Llaves::nuevas());
+        let (pub_max, pub_ana) = (max.publica().to_vec(), ana.publica().to_vec());
+        let (r1, r2) = personas((max, |_| true), (ana, |_| true));
+        let (mut c1, su1) = r1.unwrap();
+        let (mut c2, su2) = r2.unwrap();
+        assert_eq!(su1, pub_ana);
+        assert_eq!(su2, pub_max);
+        c1.mandar(Tipo::Json, b"{\"t\":\"hola\"}").unwrap();
+        assert_eq!(c2.recibir().unwrap().1, b"{\"t\":\"hola\"}");
+        c2.mandar(Tipo::Json, b"{}").unwrap();
+        assert_eq!(c1.recibir().unwrap().1, b"{}");
+    }
+
+    #[test]
+    fn a_quien_no_se_conoce_se_le_corta_antes_de_hablar() {
+        let (r1, r2) = personas((Llaves::nuevas(), |_| true), (Llaves::nuevas(), |_| false));
+        assert!(matches!(r2, Err(ErrorCanal::NoEsMiembro)));
+        // El que llama si saluda (los dos escriben antes de leer), pero lo
+        // que mande ya no lo lee nadie.
+        assert!(r1.is_ok());
+    }
+
+    #[test]
+    fn quien_ensena_la_clave_de_otro_sin_su_privada_no_descifra() {
+        let (ana, eva) = (Llaves::nuevas(), Llaves::nuevas());
+        // Eva se presenta con la publica de Ana: se la aceptan, pero el
+        // secreto que saca no es el de Max y su primer tramo no descifra.
+        let impostora = mezcladas(&ana, &eva);
+        let (r1, r2) = personas((impostora, |_| true), (Llaves::nuevas(), |_| true));
+        let (mut c1, _) = r1.unwrap();
+        let (mut c2, _) = r2.unwrap();
+        c1.mandar(Tipo::Json, b"{\"t\":\"hola\"}").unwrap();
+        assert!(matches!(c2.recibir(), Err(ErrorCanal::CodigoDistinto)));
+    }
+
+    #[test]
+    fn una_clave_absurda_se_rechaza_sin_reservar_memoria() {
+        let (mut uno, otro) = par();
+        uno.write_all(MAGIA_DE_PERSONA).unwrap();
+        uno.write_all(&u16::MAX.to_be_bytes()).unwrap();
+        uno.flush().unwrap();
+        let r = Canal::entre_personas(otro, &Llaves::nuevas(), [1u8; NONCE], false, |_| true);
+        assert!(matches!(r, Err(ErrorCanal::TramoRaro(_))));
+    }
+
+    #[test]
+    fn una_invitacion_no_se_confunde_con_el_grupo() {
+        let clave = clave_de_grupo("K7Q2M9XMPA");
+        let (uno, otro) = par();
+        let hilo = std::thread::spawn(move || Canal::saludar(otro, &clave, [9u8; NONCE], false));
+        let r = Canal::saludar_con(uno, &clave, [7u8; NONCE], true, MAGIA_DE_INVITACION);
+        assert!(matches!(r, Err(ErrorCanal::NoEsPixPin)));
+        assert!(matches!(hilo.join().unwrap(), Err(ErrorCanal::NoEsPixPin)));
     }
 }

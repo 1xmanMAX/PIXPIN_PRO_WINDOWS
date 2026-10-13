@@ -65,6 +65,7 @@ const A_SOLAS_MS: u64 = 60_000;
 /// se deja el servicio puesto para que la ventana pueda preguntar y decir que
 /// esta apagado.
 pub(crate) fn instalar(raiz: PathBuf, encendida: bool) {
+    super::compartidos_ui::fijar_raiz(&raiz);
     if SERVICIO.get().is_some() {
         return;
     }

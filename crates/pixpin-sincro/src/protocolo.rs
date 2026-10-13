@@ -16,7 +16,8 @@ use std::path::PathBuf;
 use std::sync::Mutex;
 
 use crate::base::{Base, Mapa};
-use crate::canal::{Canal, ErrorCanal, TOPE_DE_TRAMO, Tipo};
+use crate::canal::{Canal, ErrorCanal, MAGIA_DE_INVITACION, TOPE_DE_TRAMO, Tipo};
+use crate::compartidos::{self, AccesoDePersona, ChatCompartido, CompartidosEnDisco};
 use crate::canonico::{self, Json};
 use crate::diferencia::{self, Apunte, Paso};
 use crate::disco::{self, Disco, Identidad, es_texto, permitida};
@@ -559,39 +560,11 @@ impl<D: Disco + ?Sized> Respondedor<'_, D> {
         }
         (self.al_saludar)(&otro, hola.puerto);
         if !ocupar(d) {
-            let ocupado = Respuesta {
-                error: Some(OCUPADO.into()),
-                ..Default::default()
-            };
-            enviar(&mut canal, &ocupado)?;
-            canal.vaciar()?;
-            // Se sigue contestando «ocupado» hasta que el otro se despida o
-            // corte. Cerrar aqui mismo, como el movil, en Windows manda un
-            // RST si su siguiente peticion ya viene de camino, y ese RST se
-            // lleva el «ocupado» sin leer: el otro veria «conexion
-            // interrumpida» en vez de lo que pasa.
-            while let Ok((p, cruda)) = leer_peticion_cruda(&mut canal) {
-                // Un archivo suelto no toca lo sincronizado: se atiende
-                // aunque este aparato este ocupado con otro.
-                if p.t == crate::al_lienzo::SUELTO {
-                    if self.atender_suelto(&mut canal, &otro, &cruda).is_err() {
-                        break;
-                    }
-                    continue;
-                }
-                let adios = p.t == "adios";
-                let r = if adios {
-                    Respuesta::default()
-                } else {
-                    ocupado.clone()
-                };
-                if enviar(&mut canal, &r).is_err() || adios {
-                    break;
-                }
-            }
-            return Ok(());
+            // Un archivo suelto no toca lo sincronizado: se atiende aunque
+            // este aparato este ocupado con otro.
+            return self.contestar_ocupado(&mut canal, &otro, true);
         }
-        let hecho = self.responder(&mut canal, &otro, galeria);
+        let hecho = self.responder(&mut canal, &otro, galeria, None);
         soltar(d);
         hecho
     }
@@ -601,6 +574,7 @@ impl<D: Disco + ?Sized> Respondedor<'_, D> {
         canal: &mut Canal<F>,
         otro: &Aparato,
         galeria: Option<&dyn CapturasDelAparato>,
+        acceso: Option<&AccesoDePersona<'_, D>>,
     ) -> Resultado<()> {
         // Lo que es de cada chat, calculado al preguntar por sus archivos:
         // sin esto, cada archivo pedido volveria a recorrer el chat entero.
@@ -613,6 +587,20 @@ impl<D: Disco + ?Sized> Respondedor<'_, D> {
                 Err(e) if e.es_corte() => return Ok(()),
                 Err(e) => return Err(e),
             };
+            // **A una persona de un chat compartido, lo del aparato entero no
+            // se le contesta**: como un PixPin de antes (`SOLO_DEL_GRUPO`).
+            // (Un `suelto` espera el «vale» antes de mandar los trozos: con
+            // el «no», no llega ninguno y la conversacion sigue sana.)
+            if acceso.is_some() && solo_del_grupo(&p.t) {
+                enviar(
+                    canal,
+                    &Respuesta {
+                        error: Some(format!("No sé qué es «{}»", p.t)),
+                        ..Default::default()
+                    },
+                )?;
+                continue;
+            }
             if p.t == crate::al_lienzo::SUELTO {
                 self.atender_suelto(canal, otro, &cruda)?;
                 continue;
@@ -630,7 +618,7 @@ impl<D: Disco + ?Sized> Respondedor<'_, D> {
                     None => Err(fallo(format!("No sé qué es «{}»", p.t))),
                 }
             } else {
-                self.una(canal, otro, &p, &mut alcance, &mut conocidos)
+                self.una(canal, otro, &p, &mut alcance, &mut conocidos, acceso)
             };
             match hecho {
                 Ok(()) => {}
@@ -737,10 +725,21 @@ impl<D: Disco + ?Sized> Respondedor<'_, D> {
         p: &Peticion,
         alcance: &mut Option<(String, HashSet<String>)>,
         conocidos: &mut HashMap<String, ArchivoInfo>,
+        acceso: Option<&AccesoDePersona<'_, D>>,
     ) -> Resultado<()> {
         let d = self.disco;
         let ahora = (self.ahora)();
-        let chat = || p.chat.clone().ok_or_else(|| fallo("Falta el chat"));
+        // `chatPermitido`: con una persona, cualquier peticion con un chat
+        // que no compartimos los dos es un error, sea cual sea.
+        let chat = || -> Resultado<String> {
+            let c = p.chat.clone().ok_or_else(|| fallo("Falta el chat"))?;
+            if let Some(a) = acceso
+                && !a.puede(&c)
+            {
+                return Err(fallo("No es un chat compartido contigo"));
+            }
+            Ok(c)
+        };
         let ruta = || p.ruta.clone().ok_or_else(|| fallo("Falta la ruta"));
         let nombre = |rel: &str| rel.rsplit('/').next().unwrap_or(rel).to_string();
         match p.t.as_str() {
@@ -757,25 +756,40 @@ impl<D: Disco + ?Sized> Respondedor<'_, D> {
             // Filtrar aqui exigiria un campo nuevo en `Peticion`, y un
             // movil que no lo manda se quedaria sin catalogo: seria romper
             // el alambre para adelantar un recorte que el otro lado ya hace.
+            //
+            // A una persona de un chat compartido, eso si: solo los chats
+            // donde estamos dentro los dos.
             "catalogo" => enviar(
                 canal,
                 &Respuesta {
-                    chats: d.chats()?,
+                    chats: d
+                        .chats()?
+                        .into_iter()
+                        .filter(|c| acceso.is_none_or(|a| a.puede(&c.id)))
+                        .collect(),
                     ..Default::default()
                 },
             ),
             // Que proyectos se borraron aqui, para que el otro no los
-            // devuelva.
+            // devuelva. A una persona, nada: borrar un chat compartido es
+            // salir de el, no borrarselo a ella.
             "lapidas" => enviar(
                 canal,
                 &Respuesta {
-                    lapidas: d.lapidas(),
+                    lapidas: if acceso.is_none() {
+                        d.lapidas()
+                    } else {
+                        Vec::new()
+                    },
                     ..Default::default()
                 },
             ),
             // Borralo tu tambien: alli se borro y aqui no se ha tocado desde
             // entonces.
             "borrarchat" => {
+                if acceso.is_some() {
+                    return Err(fallo("Una persona no borra proyectos"));
+                }
                 let c = chat()?;
                 (self.estado)(&format!(
                     "Borrando «{}», borrado en {}…",
@@ -834,6 +848,26 @@ impl<D: Disco + ?Sized> Respondedor<'_, D> {
             }
             "aplicar" => {
                 let c = chat()?;
+                if let Some(a) = acceso {
+                    // **De una persona, solo lo de este chat**: ni mensajes
+                    // que nombren archivos de otros chats, ni otro proyecto;
+                    // y al borrar, nada de otros chats.
+                    let vedado = |rel: &str| a.vedado(&c, rel);
+                    let poner = crate::valla::solo_de_este_chat(d, &c, &p.poner, &vedado);
+                    crate::valla::aplicar_mensajes_guardando(
+                        d,
+                        &c,
+                        &poner,
+                        &p.borrar,
+                        ahora,
+                        &a.prohibidos(),
+                    )?;
+                    let llega = p.proyecto.as_deref().and_then(kotlin::proyecto_de_texto);
+                    if let Some(pr) = crate::valla::proyecto_seguro(d, &c, llega, &vedado) {
+                        d.guardar_proyecto(&pr)?;
+                    }
+                    return enviar(canal, &Respuesta::default());
+                }
                 d.aplicar_mensajes(&c, &p.poner, &p.borrar, ahora)?;
                 if let Some(pr) = p.proyecto.as_deref().and_then(kotlin::proyecto_de_texto) {
                     // Si llega el proyecto es que alli decidieron que sigue
@@ -846,7 +880,10 @@ impl<D: Disco + ?Sized> Respondedor<'_, D> {
             }
             "archivos" => {
                 let c = chat()?;
-                let lista = d.archivos(&c, conocidos)?;
+                let mut lista = d.archivos(&c, conocidos)?;
+                if let Some(a) = acceso {
+                    lista.retain(|x| !a.vedado(&c, &x.ruta));
+                }
                 for a in &lista {
                     conocidos.insert(a.ruta.clone(), a.clone());
                 }
@@ -861,6 +898,15 @@ impl<D: Disco + ?Sized> Respondedor<'_, D> {
             }
             "pon" => {
                 let rel = ruta()?;
+                // **De una persona, solo lo de este chat**: los trozos ya
+                // vienen por el cable; se leen y se tiran, o la conversacion
+                // se descuadra. Y se dice que no.
+                if let Some(a) = acceso
+                    && !p.chat.as_deref().is_some_and(|c| a.puede_escribir(c, &rel))
+                {
+                    recibir_trozos(canal, p.bytes, &mut io::sink(), &mut |_| {})?;
+                    return Err(fallo(format!("No es de este chat: {rel}")));
+                }
                 // Sin `chat` y sin un «archivos» previo que lo diga no se
                 // sabe DE QUE conversacion es esto. Antes caia a la cadena
                 // vacia, que no es un chat: el fichero se escribia con un id
@@ -915,6 +961,12 @@ impl<D: Disco + ?Sized> Respondedor<'_, D> {
                 if !(permitida(&rel) && es_texto(&rel)) {
                     return Err(fallo(format!("No se puede parchear: {rel}")));
                 }
+                if let Some(a) = acceso {
+                    let c = chat()?;
+                    if !a.puede_escribir(&c, &rel) {
+                        return Err(fallo(format!("No es de este chat: {rel}")));
+                    }
+                }
                 (self.estado)(&format!("Recibiendo cambios de {}", nombre(&rel)));
                 conocidos.remove(&rel);
                 let puesto = poner_parche(
@@ -936,7 +988,9 @@ impl<D: Disco + ?Sized> Respondedor<'_, D> {
             "damecambios" => {
                 let rel = ruta()?;
                 let c = chat()?;
-                let es_suyo = suyo(d, alcance, &c, &rel)?;
+                // De una persona, ademas, nada que sea tambien de otro chat.
+                let es_suyo = suyo(d, alcance, &c, &rel)?
+                    && acceso.is_none_or(|a| !a.vedado(&c, &rel));
                 if !(permitida(&rel) && es_texto(&rel) && es_suyo) {
                     return Err(fallo(format!("No es de este chat: {rel}")));
                 }
@@ -957,7 +1011,9 @@ impl<D: Disco + ?Sized> Respondedor<'_, D> {
             "dame" => {
                 let rel = ruta()?;
                 let c = chat()?;
-                let es_suyo = suyo(d, alcance, &c, &rel)?;
+                // De una persona, ademas, nada que sea tambien de otro chat.
+                let es_suyo = suyo(d, alcance, &c, &rel)?
+                    && acceso.is_none_or(|a| !a.vedado(&c, &rel));
                 if !(permitida(&rel) && es_suyo) {
                     return Err(fallo(format!("No es de este chat: {rel}")));
                 }
@@ -987,9 +1043,256 @@ impl<D: Disco + ?Sized> Respondedor<'_, D> {
                 ));
                 Ok(())
             }
+            // **Las listas de los chats compartidos, entre aparatos del
+            // grupo** (13-oct-2026): se juntan enteras —son mias— y el otro
+            // aparato entra en los que estoy yo.
+            "compartidos" if acceso.is_none() => {
+                let cd = CompartidosEnDisco::nuevo(&d.raiz());
+                let yo = cd.yo_de(d)?;
+                let su_ficha = compartidos::ficha_de_texto(p.persona.as_deref())
+                    .filter(|f| f.id == otro.id);
+                let suyos = compartidos::de_texto(p.compartidos.as_deref());
+                let juntos = cd.cambiar(|mios| -> io::Result<_> {
+                    Ok(compartidos::juntar_del_grupo(
+                        &mios,
+                        &suyos,
+                        &yo,
+                        su_ficha.as_ref(),
+                        ahora,
+                    ))
+                })?;
+                d.avisar(disco::Cambio::Identidad);
+                enviar(
+                    canal,
+                    &Respuesta {
+                        compartidos: Some(compartidos::a_texto(&juntos)),
+                        persona: Some(compartidos::ficha_a_texto(&yo.ficha(0))),
+                        ..Default::default()
+                    },
+                )
+            }
+            // **Las listas, con una persona**: solo las de los chats donde
+            // constamos los dos, y sin admitir chats nuevos. Asi se entera
+            // cada uno de quien entro y quien salio.
+            "miembros" => {
+                let Some(a) = acceso else {
+                    return Err(fallo("No sé qué es «miembros»"));
+                };
+                let cd = CompartidosEnDisco::nuevo(&d.raiz());
+                let rastro = compartidos::con_rastro(&cd.leer(), &a.yo, &otro.id);
+                let suyos: Vec<ChatCompartido> = compartidos::de_texto(p.compartidos.as_deref())
+                    .into_iter()
+                    .filter(|c| rastro.contains(&c.chat))
+                    .collect();
+                let juntos = cd.cambiar(|mios| -> io::Result<_> {
+                    Ok(compartidos::juntar_todos(&mios, &suyos, |_| false))
+                })?;
+                let mios: Vec<ChatCompartido> = juntos
+                    .into_iter()
+                    .filter(|c| rastro.contains(&c.chat))
+                    .collect();
+                enviar(
+                    canal,
+                    &Respuesta {
+                        compartidos: Some(compartidos::a_texto(&mios)),
+                        ..Default::default()
+                    },
+                )
+            }
             otra => Err(fallo(format!("No sé qué es «{otra}»"))),
         }
     }
+
+    /// Se sigue contestando «ocupado» hasta que el otro se despida o corte.
+    /// Cerrar aqui mismo, como el movil, en Windows manda un RST si su
+    /// siguiente peticion ya viene de camino, y ese RST se lleva el «ocupado»
+    /// sin leer.
+    fn contestar_ocupado<F: Read + Write>(
+        &self,
+        canal: &mut Canal<F>,
+        otro: &Aparato,
+        con_sueltos: bool,
+    ) -> Resultado<()> {
+        let ocupado = Respuesta {
+            error: Some(OCUPADO.into()),
+            ..Default::default()
+        };
+        enviar(canal, &ocupado)?;
+        canal.vaciar()?;
+        while let Ok((p, cruda)) = leer_peticion_cruda(canal) {
+            if con_sueltos && p.t == crate::al_lienzo::SUELTO {
+                if self.atender_suelto(canal, otro, &cruda).is_err() {
+                    break;
+                }
+                continue;
+            }
+            let adios = p.t == "adios";
+            let r = if adios {
+                Respuesta::default()
+            } else {
+                ocupado.clone()
+            };
+            if enviar(canal, &r).is_err() || adios {
+                break;
+            }
+        }
+        Ok(())
+    }
+
+    /// **Atiende a una persona de un chat compartido**
+    /// (`Respondedor.atenderPersona`, 13-oct-2026): la conversacion empieza
+    /// con `PXC1` y no con el codigo del grupo. Solo se habla con quien esta
+    /// en la lista de algun chat compartido conmigo, y solo de los chats
+    /// donde estamos dentro los dos ([AccesoDePersona]). Lo del aparato
+    /// entero (la galeria, borrar proyectos, archivos sueltos, las listas del
+    /// grupo) se le contesta como un PixPin de antes.
+    pub fn atender_persona<F: Read + Write>(&self, flujo: F, nonce: [u8; 32]) -> Resultado<()> {
+        let d = self.disco;
+        let cd = CompartidosEnDisco::nuevo(&d.raiz());
+        let yo = cd.yo_de(d)?;
+        let lista = cd.leer();
+        let mut quien: Option<compartidos::Persona> = None;
+        let (mut canal, _) = Canal::entre_personas(flujo, &yo.llaves, nonce, false, |clave| {
+            quien = compartidos::por_clave(&lista, &yo.id, &compartidos::b64(clave));
+            quien.is_some()
+        })?;
+        let persona = quien.ok_or(ErrorSincro::Canal(ErrorCanal::NoEsMiembro))?;
+        let hola = leer_peticion(&mut canal)?
+            .hola
+            .ok_or_else(|| fallo("Faltó el saludo"))?;
+        // La clave manda: el id que dice tener tiene que ser el de la ficha
+        // de esa clave.
+        if hola.yo.id != persona.id {
+            return Err(fallo("No es quien dice ser"));
+        }
+        let otro = Aparato {
+            id: persona.id.clone(),
+            nombre: persona.nombre.clone(),
+            ..Default::default()
+        };
+        enviar(
+            &mut canal,
+            &Respuesta {
+                hola: Some(Hola {
+                    yo: Aparato {
+                        id: yo.id.clone(),
+                        nombre: yo.nombre.clone(),
+                        ..Default::default()
+                    },
+                    reloj: (self.ahora)(),
+                    puerto: self.mi_puerto,
+                    ..Default::default()
+                }),
+                ..Default::default()
+            },
+        )?;
+        (self.al_saludar)(&otro, hola.puerto);
+        if !ocupar(d) {
+            return self.contestar_ocupado(&mut canal, &otro, false);
+        }
+        let acceso = AccesoDePersona::nuevo(d, &yo.id, &persona.id);
+        let hecho = self.responder(&mut canal, &otro, None, Some(&acceso));
+        soltar(d);
+        hecho
+    }
+
+    /// **Alguien viene con una invitacion** (`Respondedor.atenderInvitacion`)
+    /// al chat `chat`: el canal va con la clave del codigo de la invitacion
+    /// (`PXI1`). Se le mete en la lista, firmado por este aparato, y se le da
+    /// la lista entera; el chat en si lo pide despues como persona, ya con su
+    /// clave ([Respondedor::atender_persona]). Devuelve su ficha, para decir
+    /// quien entro.
+    pub fn atender_invitacion<F: Read + Write>(
+        &self,
+        flujo: F,
+        nonce: [u8; 32],
+        codigo: &str,
+        chat: &str,
+    ) -> Resultado<compartidos::Persona> {
+        let d = self.disco;
+        let clave = crate::invitacion::clave(codigo);
+        let mut canal = Canal::saludar_con(flujo, &clave, nonce, false, MAGIA_DE_INVITACION)?;
+        let p = leer_peticion(&mut canal)?;
+        if p.t != "unirme" {
+            return Err(fallo("Se esperaba «unirme»"));
+        }
+        let hola = p.hola.ok_or_else(|| fallo("Faltó el saludo"))?;
+        let ficha = compartidos::ficha_de_texto(p.persona.as_deref())
+            .filter(|f| f.id == hola.yo.id && !f.clave.trim().is_empty())
+            .ok_or_else(|| fallo("Faltó su ficha"))?;
+        let cd = CompartidosEnDisco::nuevo(&d.raiz());
+        let yo = cd.yo_de(d)?;
+        let ahora = (self.ahora)();
+        let hecho = cd.cambiar(|l| -> Resultado<_> {
+            let c = l
+                .iter()
+                .find(|c| c.chat == chat)
+                .ok_or_else(|| fallo("Este chat ya no está compartido"))?;
+            let nuevo = compartidos::invitar(c, &yo, &ficha, ahora).map_err(fallo)?;
+            Ok(l.into_iter()
+                .map(|x| if x.chat == chat { nuevo.clone() } else { x })
+                .collect())
+        });
+        let junto = match hecho {
+            Ok(l) => l
+                .into_iter()
+                .find(|c| c.chat == chat)
+                .ok_or_else(|| fallo("Este chat ya no está compartido"))?,
+            Err(e) => {
+                let _ = enviar(
+                    &mut canal,
+                    &Respuesta {
+                        error: Some(e.to_string()),
+                        ..Default::default()
+                    },
+                );
+                let _ = canal.vaciar();
+                return Err(e);
+            }
+        };
+        enviar(
+            &mut canal,
+            &Respuesta {
+                hola: Some(Hola {
+                    yo: Aparato {
+                        id: yo.id.clone(),
+                        nombre: yo.nombre.clone(),
+                        ..Default::default()
+                    },
+                    reloj: ahora,
+                    puerto: self.mi_puerto,
+                    ..Default::default()
+                }),
+                compartidos: Some(compartidos::a_texto(std::slice::from_ref(&junto))),
+                ..Default::default()
+            },
+        )?;
+        (self.al_saludar)(
+            &Aparato {
+                id: ficha.id.clone(),
+                nombre: ficha.nombre.clone(),
+                ..Default::default()
+            },
+            hola.puerto,
+        );
+        // El «adios»: si no llega, lo hecho hecho esta.
+        if leer_peticion(&mut canal).is_ok() {
+            let _ = enviar(&mut canal, &Respuesta::default());
+            let _ = canal.vaciar();
+        }
+        d.avisar(disco::Cambio::Identidad);
+        (self.estado)(&format!("{} entró en «{}»", ficha.nombre, junto.nombre));
+        Ok(ficha)
+    }
+}
+
+/// Lo que es del aparato entero y no de un chat: a una persona no se le
+/// contesta (`SOLO_DEL_GRUPO`).
+fn solo_del_grupo(t: &str) -> bool {
+    t == crate::al_lienzo::SUELTO
+        || galeria::es_de_galeria(t)
+        || t == "compartidos"
+        || t == "borrarchat"
 }
 
 fn suyo<D: Disco + ?Sized>(
@@ -1129,6 +1432,11 @@ pub struct Sesion<'a, D: Disco + ?Sized, F: Read + Write> {
     /// Las capturas de este aparato, si la vuelta lleva galeria. Ver
     /// [`Sesion::con_galeria`].
     capturas: Option<&'a dyn CapturasDelAparato>,
+    /// **Con una persona de un chat compartido** y no con un aparato del
+    /// grupo (ver [Sesion::conectar_con_persona]): solo se trabaja en los
+    /// chats que compartimos y nada de los demas sale ni se pisa aqui,
+    /// aunque lo que llega lo nombre. Nulo con el grupo.
+    acceso: Option<AccesoDePersona<'a, D>>,
 }
 
 impl<D: Disco + ?Sized, F: Read + Write> Drop for Sesion<'_, D, F> {
@@ -1223,6 +1531,7 @@ impl<'a, D: Disco + ?Sized, F: Read + Write> Sesion<'a, D, F> {
                 terminada: false,
                 mando: Mando::default(),
                 capturas: None,
+                acceso: None,
             })
         })();
         match abierta {
@@ -1235,6 +1544,182 @@ impl<'a, D: Disco + ?Sized, F: Read + Write> Sesion<'a, D, F> {
                 Err(e)
             }
         }
+    }
+
+    /// **Se presenta a una persona de un chat compartido**
+    /// (`Sesion.conectarConPersona`, 13-oct-2026), con las claves de este
+    /// aparato y no con el codigo del grupo. Solo se habla con alguien que
+    /// esta en la lista de un chat donde tambien estoy yo; con `a_quien`,
+    /// ademas, tiene que ser ese aparato. La sesion queda limitada a lo que
+    /// compartimos ([Sesion::acceso]).
+    pub fn conectar_con_persona(
+        flujo: F,
+        disco: &'a D,
+        a_quien: Option<&str>,
+        ahora: impl Fn() -> i64 + 'a,
+        mi_puerto: u32,
+        nonce: [u8; 32],
+    ) -> Resultado<Sesion<'a, D, F>> {
+        if !ocupar(disco) {
+            return Err(ErrorSincro::Remoto(OCUPADO.into()));
+        }
+        let ahora: Box<dyn Fn() -> i64 + 'a> = Box::new(ahora);
+        let abierta = (|| -> Resultado<Sesion<'a, D, F>> {
+            let cd = CompartidosEnDisco::nuevo(&disco.raiz());
+            let yo = cd.yo_de(disco)?;
+            let lista = cd.leer();
+            let mut quien: Option<compartidos::Persona> = None;
+            let (mut canal, _) = Canal::entre_personas(flujo, &yo.llaves, nonce, true, |clave| {
+                quien = compartidos::por_clave(&lista, &yo.id, &compartidos::b64(clave))
+                    .filter(|p| a_quien.is_none_or(|q| q == p.id));
+                quien.is_some()
+            })?;
+            let persona = quien.ok_or(ErrorSincro::Canal(ErrorCanal::NoEsMiembro))?;
+            let antes = ahora();
+            enviar(
+                &mut canal,
+                &Peticion {
+                    t: "hola".into(),
+                    hola: Some(Hola {
+                        yo: Aparato {
+                            id: yo.id.clone(),
+                            nombre: yo.nombre.clone(),
+                            ..Default::default()
+                        },
+                        reloj: antes,
+                        puerto: mi_puerto,
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                },
+            )?;
+            let r = leer_respuesta(&mut canal)?;
+            let despues = ahora();
+            let hola = r
+                .hola
+                .ok_or_else(|| fallo(format!("{} no saludó", persona.nombre)))?;
+            if hola.version != crate::VERSION {
+                return Err(fallo(format!(
+                    "{} tiene otra versión de PixPin: actualizad los dos",
+                    persona.nombre
+                )));
+            }
+            if hola.yo.id != persona.id {
+                return Err(fallo("No es quien dice ser"));
+            }
+            Ok(Sesion {
+                canal,
+                disco,
+                ahora: Box::new(|| 0),
+                otro: Aparato {
+                    id: persona.id.clone(),
+                    nombre: persona.nombre.clone(),
+                    ..Default::default()
+                },
+                desfase: hola.reloj - (antes + despues) / 2,
+                puerto_del_otro: hola.puerto,
+                pasados: HashMap::new(),
+                conocidos: HashMap::new(),
+                chat_de_la_vuelta: String::new(),
+                terminada: false,
+                mando: Mando::default(),
+                capturas: None,
+                acceso: Some(AccesoDePersona::nuevo(disco, &yo.id, &persona.id)),
+            })
+        })();
+        match abierta {
+            Ok(mut s) => {
+                s.ahora = ahora;
+                Ok(s)
+            }
+            Err(e) => {
+                soltar(disco);
+                Err(e)
+            }
+        }
+    }
+
+    /// Con una persona, lo que se puede tocar; con el grupo, nada.
+    pub fn acceso(&self) -> Option<&AccesoDePersona<'a, D>> {
+        self.acceso.as_ref()
+    }
+
+    /// Si `rel` de `chat` es de otro chat (solo con una persona).
+    fn vedado(&self, chat: &str, rel: &str) -> bool {
+        self.acceso.as_ref().is_some_and(|a| a.vedado(chat, rel))
+    }
+
+    /// **Las listas de los chats compartidos con otro aparato del grupo**
+    /// (`Sesion.compartidosDelGrupo`): se juntan enteras, y cada uno mete al
+    /// otro en los chats compartidos donde esta el (son la misma persona).
+    /// Dos idas: en la primera el otro me mete a mi; en la segunda le llega
+    /// lo que yo hice con el. Devuelve `false` si el otro no sabe de esto (un
+    /// PixPin de antes): no pasa nada.
+    pub fn compartidos_del_grupo(&mut self, ahora: i64) -> Resultado<bool> {
+        if self.acceso.is_some() {
+            return Ok(false);
+        }
+        let cd = CompartidosEnDisco::nuevo(&self.disco.raiz());
+        let yo = cd.yo_de(self.disco)?;
+        for _ in 0..2 {
+            enviar(
+                &mut self.canal,
+                &Peticion {
+                    compartidos: Some(compartidos::a_texto(&cd.leer())),
+                    persona: Some(compartidos::ficha_a_texto(&yo.ficha(0))),
+                    ..Peticion::de("compartidos")
+                },
+            )?;
+            let r = leer_respuesta_sin_lanzar(&mut self.canal)?;
+            if r.error.is_some() {
+                return Ok(false);
+            }
+            let su_ficha = compartidos::ficha_de_texto(r.persona.as_deref())
+                .filter(|f| f.id == self.otro.id);
+            let suyos = compartidos::de_texto(r.compartidos.as_deref());
+            cd.cambiar(|mios| -> io::Result<_> {
+                Ok(compartidos::juntar_del_grupo(
+                    &mios,
+                    &suyos,
+                    &yo,
+                    su_ficha.as_ref(),
+                    ahora,
+                ))
+            })?;
+        }
+        self.disco.avisar(disco::Cambio::Identidad);
+        Ok(true)
+    }
+
+    /// **Las listas de los chats que compartimos, con una persona**
+    /// (`Sesion.juntarMiembros`): se juntan las de los chats donde constamos
+    /// los dos. Va antes que los chats: si me quitaron, me entero aqui y ya
+    /// no se pide nada mas.
+    pub fn juntar_miembros(&mut self) -> Resultado<()> {
+        let Some(a) = &self.acceso else {
+            return Ok(());
+        };
+        let yo = a.yo.clone();
+        let cd = CompartidosEnDisco::nuevo(&self.disco.raiz());
+        let rastro = compartidos::con_rastro(&cd.leer(), &yo, &self.otro.id);
+        let mios: Vec<ChatCompartido> = cd
+            .leer()
+            .into_iter()
+            .filter(|c| rastro.contains(&c.chat))
+            .collect();
+        let r = self.pedir(&Peticion {
+            compartidos: Some(compartidos::a_texto(&mios)),
+            ..Peticion::de("miembros")
+        })?;
+        let suyos: Vec<ChatCompartido> = compartidos::de_texto(r.compartidos.as_deref())
+            .into_iter()
+            .filter(|c| rastro.contains(&c.chat))
+            .collect();
+        cd.cambiar(|mios| -> io::Result<_> {
+            Ok(compartidos::juntar_todos(&mios, &suyos, |_| false))
+        })?;
+        self.disco.avisar(disco::Cambio::Identidad);
+        Ok(())
     }
 
     /// **Lo mio manda** (`Sesion.loMioManda`, `sincro/Protocolo.kt:404-412`):
@@ -1293,6 +1778,14 @@ impl<'a, D: Disco + ?Sized, F: Read + Write> Sesion<'a, D, F> {
     /// Paso 1: que pasa con los mensajes de `chat`.
     pub fn preparar(&mut self, chat: &str) -> Resultado<Preparado> {
         let d = self.disco;
+        if let Some(a) = &self.acceso
+            && !a.puede(chat)
+        {
+            return Err(fallo(format!(
+                "No es un chat compartido con {}",
+                self.otro.nombre
+            )));
+        }
         // Sin copia no se sincroniza: ver `Disco::hacer_copia`.
         d.hacer_copia(
             chat,
@@ -1392,7 +1885,14 @@ impl<'a, D: Disco + ?Sized, F: Read + Write> Sesion<'a, D, F> {
             .filter(|k| borrado(&prep.suyos, k) == Some(true))
             .cloned()
             .collect();
-        let llegan = self.pedir_mensajes(chat, &traer_vivos)?;
+        let mut llegan = self.pedir_mensajes(chat, &traer_vivos)?;
+        // De una persona, solo lo que es de este chat y no nombra nada de los
+        // otros (`Disco.soloDeEsteChat`).
+        let valla = self.acceso.as_ref().map(AccesoDePersona::valla);
+        let vedado = |rel: &str| valla.as_ref().is_some_and(|v| v.vedado(chat, rel));
+        if self.acceso.is_some() {
+            llegan = crate::valla::solo_de_este_chat(d, chat, &llegan, &vedado);
+        }
 
         // Lo cambiado en los dos, junto campo a campo, y el texto por
         // parrafos.
@@ -1435,12 +1935,26 @@ impl<'a, D: Disco + ?Sized, F: Read + Write> Sesion<'a, D, F> {
                     juntos.push(junto.a_texto());
                 }
             }
+            if self.acceso.is_some() {
+                juntos = crate::valla::solo_de_este_chat(d, chat, &juntos, &vedado);
+            }
             hecho.fusionados += juntos.len();
             hecho.rescatados += cuenta.rescatados as usize;
         }
         let mut poner_aqui = llegan.clone();
         poner_aqui.extend(juntos.iter().cloned());
-        d.aplicar_mensajes(chat, &poner_aqui, &borrar_aqui, (self.ahora)())?;
+        match &self.acceso {
+            // Lo que se borra por una persona no se lleva nada de otro chat.
+            Some(a) => crate::valla::aplicar_mensajes_guardando(
+                d,
+                chat,
+                &poner_aqui,
+                &borrar_aqui,
+                (self.ahora)(),
+                &a.prohibidos(),
+            )?,
+            None => d.aplicar_mensajes(chat, &poner_aqui, &borrar_aqui, (self.ahora)())?,
+        }
         hecho.traidos += llegan.len();
         hecho.borrados += borrar_aqui.len();
 
@@ -1461,10 +1975,13 @@ impl<'a, D: Disco + ?Sized, F: Read + Write> Sesion<'a, D, F> {
         // El proyecto, juntado. Para saber que hojas se cambiaron en cada
         // lado hacen falta los resumenes de sus archivos.
         let mio = d.proyecto_portatil(chat)?;
-        let suyo = prep
+        let mut suyo = prep
             .suyo_proyecto
             .as_deref()
             .and_then(kotlin::proyecto_de_texto);
+        if self.acceso.is_some() {
+            suyo = crate::valla::proyecto_seguro(d, chat, suyo, &vedado);
+        }
         let mut junto = mio.clone().or(suyo.clone());
         // Con `LoMioManda` ni se pregunta por los archivos del otro: el
         // proyecto de aqui queda entero y solo viaja el suyo si aqui no hay
@@ -1579,7 +2096,8 @@ impl<'a, D: Disco + ?Sized, F: Read + Write> Sesion<'a, D, F> {
         let s: Vec<Apunte> = suyos.values().map(apunte).collect();
         let pasos = diferencia::plan(&m, &s, &acordado)
             .into_iter()
-            .filter(|p| permitida(p.sena()))
+            // Con una persona, lo de los demas chats no entra en ningun plan.
+            .filter(|p| permitida(p.sena()) && !self.vedado(&chat, p.sena()))
             .collect();
         PreparadoArchivos {
             chat,
@@ -1630,11 +2148,11 @@ impl<'a, D: Disco + ?Sized, F: Read + Write> Sesion<'a, D, F> {
             let mio = prep.mios.get(rel);
             let suyo = prep.suyos.get(rel);
             let acordado = prep.acordado.get(rel).map(String::as_str);
-            let puesto = match p {
+            let intento: Resultado<Option<String>> = match p {
                 // Lo mio manda: lo que tengo yo, va; solo se trae lo que aqui
                 // no existe (`Protocolo.kt:680`).
                 _ if self.mando == Mando::LoMioManda && mio.is_some() => {
-                    self.mandar_archivo(rel, suyo, acordado, avance, hecho)?
+                    self.mandar_archivo(rel, suyo, acordado, avance, hecho)
                 }
                 Paso::Fusionar(_) if texto && mio.is_some() && suyo.is_some() => self
                     .fusionar_archivo(
@@ -1644,7 +2162,7 @@ impl<'a, D: Disco + ?Sized, F: Read + Write> Sesion<'a, D, F> {
                         acordado,
                         &mut cuenta,
                         hecho,
-                    )?,
+                    ),
                 // Una leccion aprendida cambiada en los dos se junta (mejora
                 // del PC): se trae la suya, se une con la de aqui y la union
                 // va de vuelta, para que los dos queden iguales.
@@ -1653,7 +2171,7 @@ impl<'a, D: Disco + ?Sized, F: Read + Write> Sesion<'a, D, F> {
                         && mio.is_some()
                         && suyo.is_some() =>
                 {
-                    self.fusionar_leccion(rel, suyo, acordado, avance, hecho)?
+                    self.fusionar_leccion(rel, suyo, acordado, avance, hecho)
                 }
                 // Un PDF o una foto no se juntan: se queda la version tocada
                 // mas tarde (la otra sigue en la copia).
@@ -1661,13 +2179,21 @@ impl<'a, D: Disco + ?Sized, F: Read + Write> Sesion<'a, D, F> {
                     let tm = mio.map_or(0, |a| a.tocado);
                     let ts = suyo.map_or(0, |a| a.tocado);
                     if tm >= ts - self.desfase {
-                        self.mandar_archivo(rel, suyo, acordado, avance, hecho)?
+                        self.mandar_archivo(rel, suyo, acordado, avance, hecho)
                     } else {
-                        self.traer_archivo(rel, mio, acordado, avance, hecho)?
+                        self.traer_archivo(rel, mio, acordado, avance, hecho)
                     }
                 }
-                Paso::Mandar(_) => self.mandar_archivo(rel, suyo, acordado, avance, hecho)?,
-                Paso::Traer(_) => self.traer_archivo(rel, mio, acordado, avance, hecho)?,
+                Paso::Mandar(_) => self.mandar_archivo(rel, suyo, acordado, avance, hecho),
+                Paso::Traer(_) => self.traer_archivo(rel, mio, acordado, avance, hecho),
+            };
+            let puesto = match intento {
+                Ok(x) => x,
+                // **Una persona dijo que no** a ese archivo: en su aparato
+                // tambien es de otro chat suyo (un adjunto reenviado). Se
+                // deja y se sigue; con el grupo, como siempre.
+                Err(ErrorSincro::Remoto(_)) if self.acceso.is_some() => None,
+                Err(e) => return Err(e),
             };
             let Some(r) = puesto else {
                 hecho.saltados.push(prep.nombre_de(rel));

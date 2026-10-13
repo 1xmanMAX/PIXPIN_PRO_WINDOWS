@@ -1233,6 +1233,7 @@ fn menu_del_proyecto(v: &mut VistaProyectos, b: &mut Bucle, id: &str) -> bool {
     const FUSIONAR: u32 = 6;
     const PONER_LOGO: u32 = 7;
     const QUITAR_LOGO: u32 = 8;
+    const PERSONAS: u32 = 9;
     let Some(f) = b.ficha(id).cloned() else {
         return false;
     };
@@ -1256,6 +1257,11 @@ fn menu_del_proyecto(v: &mut VistaProyectos, b: &mut Bucle, id: &str) -> bool {
     entradas.push((PONER_LOGO, b.textos.t("proyecto-logo-poner")));
     if super::logo::tiene(b.ubicacion.raiz(), id) {
         entradas.push((QUITAR_LOGO, b.textos.t("proyecto-logo-quitar")));
+    }
+    // Compartir el chat con otras personas (Android 13-oct-2026): no el de
+    // «Mensajes guardados», que no es de un proyecto.
+    if !f.es_guardados() {
+        entradas.push((PERSONAS, b.textos.t("cc-menu-compartir")));
     }
     entradas.extend([
         (
@@ -1320,6 +1326,17 @@ fn menu_del_proyecto(v: &mut VistaProyectos, b: &mut Bucle, id: &str) -> bool {
         }
         Some(PAPELERA) => {
             crate::sincronizar::abrir_papelera(b.idioma, b.ubicacion.clone());
+            false
+        }
+        Some(PERSONAS) => {
+            let chat = pixpin_proyecto::vista::chat_de_ficha(b.ubicacion.raiz(), id)
+                .unwrap_or_else(|| id.to_string());
+            crate::sincronizar::compartir_con_personas(
+                b.idioma,
+                b.ubicacion.clone(),
+                chat,
+                f.nombre.clone(),
+            );
             false
         }
         Some(BORRAR) => {

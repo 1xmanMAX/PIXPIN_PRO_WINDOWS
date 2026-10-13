@@ -32,6 +32,9 @@
 //!   todos; `copias`, la copia de antes de tocar nada.
 //! - `al_lienzo`: una foto suelta al lienzo abierto del movil (`suelto`).
 //! - `galeria`: la galeria de capturas que viaja, con sus fechas de irse.
+//! - `compartidos`, `valla` e `invitacion`: los chats compartidos con otras
+//!   personas (Android v0.122.0): llaves P-256, listas firmadas, la valla de
+//!   archivos, la invitacion `PXI1` y la vuelta entre personas `PXC1`.
 //! - `protocolo`: el `Respondedor` y la `Sesion`, peticion a peticion;
 //!   `vuelta`, una vuelta entera como la lleva la pantalla del movil.
 //!
@@ -46,6 +49,7 @@ pub mod base;
 pub mod canal;
 pub mod canonico;
 pub mod codigo;
+pub mod compartidos;
 pub mod copias;
 pub mod diferencia;
 pub mod disco;
@@ -55,10 +59,12 @@ pub mod envio;
 pub mod fusion;
 pub mod galeria;
 pub mod grupo;
+pub mod invitacion;
 pub mod kotlin;
 pub mod mensajes;
 pub mod mezcla;
 pub mod protocolo;
+pub mod valla;
 pub mod vuelta;
 
 /// La version del protocolo que se habla. Viaja en el saludo `hola`.
@@ -95,3 +101,6 @@ pub const APARATOS_POR_GRUPO: usize = 26;
 
 #[cfg(test)]
 mod de_verdad;
+
+#[cfg(test)]
+mod compartidos_de_verdad;

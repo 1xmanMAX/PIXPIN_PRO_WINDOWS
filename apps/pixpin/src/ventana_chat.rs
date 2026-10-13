@@ -2051,8 +2051,15 @@ pub fn abrir(
                             // lista vacia no hay proyecto sobre el que pulsar
                             // y «recuperar» es otra forma de tener uno.
                             (3, textos.t("proyecto-papelera")),
+                            // Un chat que otra persona comparte contigo, con
+                            // su codigo (Android 13-oct-2026).
+                            (4, textos.t("cc-menu-entrar")),
                         ];
                         let creado = match pixpin_shell::menu_llano(ventana.handle(), &entradas) {
+                            Some(4) => {
+                                crate::sincronizar::entrar_en_chat_compartido(idioma, ubicacion.clone());
+                                None
+                            }
                             Some(3) => {
                                 crate::sincronizar::abrir_papelera(idioma, ubicacion.clone());
                                 None
@@ -2110,6 +2117,7 @@ pub fn abrir(
                             ids.len(),
                             con_carpeta_propia,
                             con_logo,
+                            !fichas[orden[fila]].es_guardados(),
                         );
                         // El logo: se pone o se quita y la lista lo vuelve a
                         // leer al pintar.
@@ -2211,6 +2219,20 @@ pub fn abrir(
                         // marcados) entero. Lo dibujado a medias en una
                         // burbuja se guarda antes, que si no se quedaria
                         // fuera (el `antes` de `CompartirPaginas.de`).
+                        // «Compartir con personas»: sus personas, en Sincronizar.
+                        if elegido == Some(DelMenuProyecto::Personas) {
+                            if let Some(f) = ids.first().and_then(|id| fichas.iter().find(|f| f.id == *id)) {
+                                let chat = pixpin_proyecto::vista::chat_de_ficha(ubicacion.raiz(), &f.id)
+                                    .unwrap_or_else(|| f.id.clone());
+                                crate::sincronizar::compartir_con_personas(
+                                    idioma,
+                                    ubicacion.clone(),
+                                    chat,
+                                    f.nombre.clone(),
+                                );
+                            }
+                            continue;
+                        }
                         if elegido == Some(DelMenuProyecto::Compartir) {
                             if let Some(a) = abierto.as_mut().filter(|a| ids.contains(&a.ficha.id))
                             {
@@ -11514,6 +11536,8 @@ enum DelMenuProyecto {
     AbrirCarpeta,
     /// La hoja de compartir con el proyecto entero (o los marcados).
     Compartir,
+    /// Sus personas: compartir el chat con otras (`sincronizar::compartidos_ui`).
+    Personas,
     /// Elegir una imagen para su avatar (`logo`).
     PonerLogo,
     /// Volver al circulo con iniciales.
@@ -11539,7 +11563,9 @@ fn menu_de_proyecto(
     cuantos: usize,
     con_carpeta_propia: bool,
     con_logo: bool,
+    compartible: bool,
 ) -> Option<DelMenuProyecto> {
+    const PERSONAS: u32 = 10;
     const BORRAR: u32 = 1;
     const RENOMBRAR: u32 = 2;
     const PAPELERA: u32 = 3;
@@ -11558,6 +11584,11 @@ fn menu_de_proyecto(
     // la lista, y con varios marcados van todos (la caja de exportar unica
     // del movil).
     let mut entradas = vec![(COMPARTIR, textos.t("compartir-proyecto"))];
+    // Un chat compartido con otras personas (Android 13-oct-2026): solo
+    // uno a la vez, y nunca «Mensajes guardados», que no es de un proyecto.
+    if cuantos == 1 && compartible {
+        entradas.push((PERSONAS, textos.t("cc-menu-compartir")));
+    }
     if cuantos == 1 {
         entradas.push((RENOMBRAR, textos.t("proyecto-renombrar")));
         entradas.push((PONER_LOGO, textos.t("proyecto-logo-poner")));
@@ -11582,6 +11613,7 @@ fn menu_de_proyecto(
         Some(VOLVER_A_HABITUAL) => Some(DelMenuProyecto::VolverAHabitual),
         Some(ABRIR_CARPETA) => Some(DelMenuProyecto::AbrirCarpeta),
         Some(COMPARTIR) => Some(DelMenuProyecto::Compartir),
+        Some(PERSONAS) => Some(DelMenuProyecto::Personas),
         Some(BORRAR) => pixpin_shell::confirmar_destructivo(
             ventana.handle(),
             &rotulo,
@@ -13062,7 +13094,12 @@ pub(crate) fn chapa_de_codigo(m: &pixpin_proyecto::cuaderno::Mensaje) -> Option<
         (Some(a), _) if a.chars().count() > 6 => {
             format!("·{}", pixpin_proyecto::codigos::de_aparato(a))
         }
-        (Some(a), _) => format!("·{a}"),
+        // En un chat compartido, ademas, quien lo escribio: `#47·K7Q2 · Ana`
+        // (Android 13-oct-2026, por el codigo del aparato).
+        (Some(a), _) => match crate::sincronizar::compartidos_ui::autor_aqui(a) {
+            Some(n) => format!("·{a} · {n}"),
+            None => format!("·{a}"),
+        },
         (None, Some(l)) => l.to_string(),
         (None, None) => String::new(),
     };
