@@ -37,7 +37,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use pixpin_geom::Rect;
 use webview2_com::Microsoft::Web::WebView2::Win32::{
     COREWEBVIEW2_DOWNLOAD_STATE_COMPLETED, CreateCoreWebView2EnvironmentWithOptions,
-    GetAvailableCoreWebView2BrowserVersionString, ICoreWebView2, ICoreWebView2_4,
+    COREWEBVIEW2_PREFERRED_COLOR_SCHEME_DARK, COREWEBVIEW2_PREFERRED_COLOR_SCHEME_LIGHT,
+    GetAvailableCoreWebView2BrowserVersionString, ICoreWebView2, ICoreWebView2_4, ICoreWebView2_13,
     ICoreWebView2Controller, ICoreWebView2Environment, ICoreWebView2EnvironmentOptions,
 };
 use webview2_com::{
@@ -128,6 +129,28 @@ impl VisorHtml {
             controlador,
             temporal,
         })
+    }
+
+    /// **Modo oscuro** de la pagina (la luna/sol de los visores de PixPin):
+    /// se le dice al WebView2 el esquema de color que se prefiere, el
+    /// `prefers-color-scheme` de CSS. Las paginas con estilo oscuro (las de
+    /// PixPin lo traen) lo usan al momento; las que no lo tienen se ven
+    /// igual, sin invertir nada (una foto o un grafico no salen en negativo).
+    /// Con un runtime de WebView2 viejo, sin `ICoreWebView2_13`, no hace nada.
+    pub fn poner_oscuro(&self, oscuro: bool) {
+        let esquema = if oscuro { COREWEBVIEW2_PREFERRED_COLOR_SCHEME_DARK } else { COREWEBVIEW2_PREFERRED_COLOR_SCHEME_LIGHT };
+        // SAFETY: `self.controlador` vive mientras `self`; las interfaces que
+        // se piden salen de el y solo se usan en esta llamada.
+        let hecho = unsafe {
+            self.controlador
+                .CoreWebView2()
+                .and_then(|v| v.cast::<ICoreWebView2_13>())
+                .and_then(|v| v.Profile())
+                .and_then(|p| p.SetPreferredColorScheme(esquema))
+        };
+        if let Err(e) = hecho {
+            tracing::warn!(error = %e, "el WebView2 no deja elegir el esquema de color");
+        }
     }
 
     /// Recoloca el WebView2 dentro de la ventana padre.

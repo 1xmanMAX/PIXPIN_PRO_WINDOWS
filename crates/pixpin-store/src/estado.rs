@@ -40,6 +40,11 @@ pub struct Estado {
     /// quiere verlo igual de grande en el portatil y en el monitor de casa,
     /// y cada uno tiene su DPI.
     pub escala_interfaz: Option<u32>,
+    /// **El modo oscuro de los visores** (el boton luna/sol de la barra de
+    /// los pines-lector): uno para todos. `None` es «nunca se toco», y
+    /// entonces manda el tema de Windows, como en Android manda el del
+    /// telefono.
+    pub lectores_oscuros: Option<bool>,
 }
 
 fn fichero(ubicacion: &Ubicacion) -> PathBuf {
@@ -87,6 +92,7 @@ mod pruebas {
             gif_por_segundo: Some(25),
             chat_ventana: Some([10, 20, 900, 700]),
             escala_interfaz: Some(125),
+            lectores_oscuros: Some(true),
         };
         guardar(&u, &e).unwrap();
         assert_eq!(cargar(&u), e);

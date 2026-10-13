@@ -956,7 +956,8 @@ fn abrir(
     let (area_pin, _) = crate::lector_pin::area_inicial();
     let escala = escala_en(Punto { x: area_pin.x + area_pin.ancho as i32 / 2, y: area_pin.y + area_pin.alto as i32 / 2 });
     let e = escala as f32 / 100.0;
-    let pin = PinLector::nuevo(area_pin, e);
+    let ext = ruta.map(|r| pixpin_docs::extension(&pixpin_docs::nombre(r))).filter(|x| !x.is_empty()).unwrap_or_else(|| "xlsx".into());
+    let pin = PinLector::nuevo(area_pin, e).con_extension(&ext);
     let area = pin.area;
     let ventana = VentanaOverlay::nueva_normal(area, nombre).context("no se pudo abrir la ventana del visor de hojas")?;
     let motor = recursos.motor();
@@ -1227,7 +1228,9 @@ fn ver_en(
             acotar(ab, celdas);
             hay_que_pintar = true;
         }
-        pin.actualizar(&motor, &nombre, &botones);
+        if pin.actualizar(&motor, &nombre, &botones) {
+            hay_que_pintar = true;
+        }
         if est.aviso.as_ref().is_some_and(|(_, hasta)| Instant::now() >= *hasta) {
             est.aviso = None;
             hay_que_pintar = true;
@@ -1333,15 +1336,20 @@ fn tarjeta_de_comentario(p: &Pintor, ab: &Abierta, v: &Vista, celdas: RectF, are
     }
     let y = caja[1].min(area.y + area.alto - alto).max(area.y);
     let r = RectF { x, y, ancho, alto };
-    p.rellenar(r, Color { r: 1.0, g: 1.0, b: 0.88, a: 1.0 });
-    p.trazar(r, 1.0, Color { r: 0.45, g: 0.45, b: 0.45, a: 1.0 });
-    p.texto_ajustado(&texto, x + 8.0 * e, y + 6.0 * e, tam, 280.0 * e, TEXTO);
+    let k = |c: Color| pixpin_render::oscuro::si(crate::oscuro::activo(), c);
+    p.rellenar(r, k(Color { r: 1.0, g: 1.0, b: 0.88, a: 1.0 }));
+    p.trazar(r, 1.0, k(Color { r: 0.45, g: 0.45, b: 0.45, a: 1.0 }));
+    p.texto_ajustado(&texto, x + 8.0 * e, y + 6.0 * e, tam, 280.0 * e, k(TEXTO));
 }
 
 fn pintar(p: &Pintor, est: &mut Estado, textos: &Catalogo) {
     let z = est.zonas();
     let (e, libro, ancho) = (est.e, est.libro, est.ancho);
-    p.limpiar(Color::BLANCO);
+    // Modo oscuro (luna/sol): el marco con la luz invertida; la hoja, en
+    // su pintor (`OpcionesHoja::oscuro`).
+    let oscuro = crate::oscuro::activo();
+    let k = |c: Color| pixpin_render::oscuro::si(oscuro, c);
+    p.limpiar(k(Color::BLANCO));
     let con_nota = if est.gesto.is_none() { est.comentario_bajo } else { None };
     let Estado { hojas, activa, cache, desde_pestana, encima_de, pestanas, aviso, bajo_raton, .. } = est;
     let activa = *activa;
@@ -1349,7 +1357,7 @@ fn pintar(p: &Pintor, est: &mut Estado, textos: &Catalogo) {
 
     // La hoja.
     let (v, celdas) = vista_de(ab, z.hoja);
-    let op = OpcionesHoja { encabezados: true, seleccion: Some(ab.sel.rango()), activa: Some(ab.sel.activa), bajo_raton: *bajo_raton };
+    let op = OpcionesHoja { encabezados: true, seleccion: Some(ab.sel.rango()), activa: Some(ab.sel.activa), bajo_raton: *bajo_raton, oscuro };
     hoja_office::pintar_hoja(p, cache, libro, &ab.hoja, &ab.rejilla, &v, z.hoja, &op);
     if let Some(celda) = con_nota {
         tarjeta_de_comentario(p, ab, &v, celdas, z.hoja, celda, e);
@@ -1359,7 +1367,7 @@ fn pintar(p: &Pintor, est: &mut Estado, textos: &Catalogo) {
     let (bv, bh) = barras(ab, celdas, e, *encima_de);
     for (eje, b) in [(Eje::Vertical, bv), (Eje::Horizontal, bh)] {
         if let Some(b) = b {
-            let color = if *encima_de == Some(eje) { PULGAR_ENCIMA } else { PULGAR };
+            let color = k(if *encima_de == Some(eje) { PULGAR_ENCIMA } else { PULGAR });
             let r = b.pulgar.ancho.min(b.pulgar.alto) / 2.0;
             p.rellenar_redondeado(b.pulgar, r, color);
         }
@@ -1367,8 +1375,8 @@ fn pintar(p: &Pintor, est: &mut Estado, textos: &Catalogo) {
 
     // La barra de formulas: la celda activa y lo que tiene.
     let f = z.formula;
-    p.rellenar(f, FONDO_BARRA);
-    p.rellenar(RectF { y: f.y + f.alto - 1.0, alto: 1.0, ..f }, LINEA);
+    p.rellenar(f, k(FONDO_BARRA));
+    p.rellenar(RectF { y: f.y + f.alto - 1.0, alto: 1.0, ..f }, k(LINEA));
     let tam = TAM_TEXTO * e;
     let (fa, ca) = ab.sel.activa;
     let r = ab.sel.rango();
@@ -1378,17 +1386,17 @@ fn pintar(p: &Pintor, est: &mut Estado, textos: &Catalogo) {
         format!("{}{}:{}{}", nombre_columna(r.col0), r.fila0 + 1, nombre_columna(r.col1), r.fila1 + 1)
     };
     let ancho_ref = 150.0 * e;
-    texto_centrado_v(p, &referencia, f.x + 8.0 * e, f, tam, ancho_ref - 12.0 * e, TEXTO);
-    p.rellenar(RectF { x: f.x + ancho_ref, y: f.y + 5.0 * e, ancho: 1.0, alto: f.alto - 10.0 * e }, LINEA);
+    texto_centrado_v(p, &referencia, f.x + 8.0 * e, f, tam, ancho_ref - 12.0 * e, k(TEXTO));
+    p.rellenar(RectF { x: f.x + ancho_ref, y: f.y + 5.0 * e, ancho: 1.0, alto: f.alto - 10.0 * e }, k(LINEA));
     let celda = ab.hoja.celda(fa, ca);
     let contenido = celda.and_then(|c| libro.contenido(&ab.hoja, c)).map(|c| c.mostrado.texto).unwrap_or_default();
     let x0 = f.x + ancho_ref + 10.0 * e;
     let enlace = ab.hoja.hipervinculo_en(fa, ca).map(|h| h.destino.clone());
     let ancho_enlace = if enlace.is_some() { (f.ancho * 0.35).min(360.0 * e) } else { 0.0 };
     let una_linea = contenido.replace(['\r', '\n'], " ⏎ ");
-    texto_centrado_v(p, &una_linea, x0, f, tam, f.x + f.ancho - x0 - ancho_enlace - 10.0 * e, TEXTO);
+    texto_centrado_v(p, &una_linea, x0, f, tam, f.x + f.ancho - x0 - ancho_enlace - 10.0 * e, k(TEXTO));
     if let Some(d) = enlace {
-        texto_centrado_v(p, &d, f.x + f.ancho - ancho_enlace - 6.0 * e, f, tam, ancho_enlace, ENLACE);
+        texto_centrado_v(p, &d, f.x + f.ancho - ancho_enlace - 6.0 * e, f, tam, ancho_enlace, k(ENLACE));
     }
 
     // Las pestanas y, a la derecha, lo que falta por leer y el zoom.
@@ -1404,12 +1412,13 @@ fn pintar(p: &Pintor, est: &mut Estado, textos: &Catalogo) {
     let estado = estado.join("   ·   ");
     let ancho_estado = if estado.is_empty() { 0.0 } else { p.medir_texto(&estado, tam).0 + 24.0 * e };
     let tira = RectF { ancho: (z.pestanas.ancho - ancho_estado).max(0.0), ..z.pestanas };
+    hoja_office::poner_oscuro(oscuro);
     *pestanas = hoja_office::pintar_pestanas(p, cache, libro, activa, *desde_pestana, tira, e);
     if ancho_estado > 0.0 {
         let caja = RectF { x: z.pestanas.x + z.pestanas.ancho - ancho_estado, ancho: ancho_estado, ..z.pestanas };
-        p.rellenar(caja, Color { r: 0.953, g: 0.953, b: 0.953, a: 1.0 });
-        p.rellenar(RectF { alto: 1.0, ..caja }, LINEA);
-        texto_centrado_v(p, &estado, caja.x + 12.0 * e, caja, tam, ancho_estado - 16.0 * e, TENUE);
+        p.rellenar(caja, k(Color { r: 0.953, g: 0.953, b: 0.953, a: 1.0 }));
+        p.rellenar(RectF { alto: 1.0, ..caja }, k(LINEA));
+        texto_centrado_v(p, &estado, caja.x + 12.0 * e, caja, tam, ancho_estado - 16.0 * e, k(TENUE));
     }
 
     if let Some((texto, _)) = aviso {
