@@ -18218,3 +18218,93 @@ mod pruebas_descripcion {
         let _ = std::fs::remove_dir_all(&raiz);
     }
 }
+
+/// Las cajas de una linea del chat son el componente comun
+/// (`caja_texto::CajaLinea`) y no una caja propia: lo pidio el usuario al
+/// ver que la de buscar no borraba palabras con Ctrl+Retroceso.
+#[cfg(test)]
+mod pruebas_caja_de_buscar {
+    use super::*;
+    use pixpin_proyecto::cuaderno::{Clase, Mensaje};
+
+    const VK_RETROCESO_: u32 = 0x08;
+
+    fn abierto(nombre: &str, textos: &[&str]) -> (Abierto, std::path::PathBuf) {
+        let raiz = std::env::temp_dir().join(format!(
+            "pixpin-caja-buscar-{nombre}-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&raiz);
+        std::fs::create_dir_all(&raiz).unwrap();
+        let u = Ubicacion::Portable { raiz: raiz.clone() };
+        let ficha = pixpin_proyecto::almacen::Ficha::nueva("obra", 0, "PC");
+        std::fs::create_dir_all(pixpin_proyecto::almacen::carpeta(&raiz, &ficha.id)).unwrap();
+        let mut a = abrir_proyecto(&u, &ficha);
+        a.mensajes = textos
+            .iter()
+            .enumerate()
+            .map(|(i, t)| Mensaje {
+                id: format!("m{i}"),
+                clase: Some(Clase::Nota),
+                texto: (*t).into(),
+                ..Mensaje::default()
+            })
+            .collect();
+        a.vistas = a.mensajes.iter().map(|_| None).collect();
+        (a, raiz)
+    }
+
+    #[test]
+    fn la_lupa_de_la_conversacion_es_la_caja_comun_y_ctrl_retroceso_borra_la_palabra() {
+        let (mut a, raiz) = abierto("lupa", &["muro norte", "viga sur", "muro sur"]);
+        // El tipo lo dice: la lupa guarda una `CajaLinea`, no un `String`.
+        a.busqueda = Some(redaccion::CajaLinea::nueva());
+        for c in "muro sur".chars() {
+            a.busqueda.as_mut().unwrap().caracter(c);
+        }
+        assert_eq!(indices_visibles(&a), vec![2]);
+        // Ctrl+Retroceso se lleva «sur» entero, y el filtro se rehace.
+        let r = tecla_en_caja(a.busqueda.as_mut().unwrap(), VK_RETROCESO_, false, true);
+        assert!(r.cambio());
+        assert_eq!(a.busqueda.as_deref(), Some("muro "));
+        assert_eq!(indices_visibles(&a), vec![0, 2]);
+        // Caso negativo: al principio no borra nada.
+        let q = a.busqueda.as_mut().unwrap();
+        q.tecla(0x24, false, false, &mut redaccion::PortapapelesWindows);
+        assert!(!tecla_en_caja(q, VK_RETROCESO_, false, true).cambio());
+        assert_eq!(a.busqueda.as_deref(), Some("muro "));
+        // Y se ve como caja con teclado (rayita y parpadeo).
+        assert_eq!(a.cajas_de_una_linea().len(), 1);
+        let _ = std::fs::remove_dir_all(&raiz);
+    }
+
+    #[test]
+    fn el_nombre_del_proyecto_se_escribe_en_la_caja_comun_con_todo_elegido() {
+        let (mut a, raiz) = abierto("nombre", &[]);
+        a.ficha.nombre = "Obra vieja".into();
+        a.empezar_a_renombrar();
+        assert_eq!(a.nombre_escrito.seleccionado(), Some("Obra vieja"));
+        // Escribir sustituye lo elegido, como al renombrar en Windows.
+        a.nombre_escrito.caracter('X');
+        assert_eq!(a.nombre_escrito.texto(), "X");
+        assert!(a.cajas_de_una_linea().iter().any(|c| c.texto() == "X"));
+        // Sin renombrar, la caja no tiene el teclado.
+        a.renombrando = false;
+        assert!(a.cajas_de_una_linea().is_empty());
+        let _ = std::fs::remove_dir_all(&raiz);
+    }
+
+    #[test]
+    fn la_lista_de_proyectos_filtra_con_la_caja_comun() {
+        let fichas: Vec<pixpin_proyecto::almacen::Ficha> = ["Casa Lima", "Puente Sur"]
+            .iter()
+            .map(|n| pixpin_proyecto::almacen::Ficha::nueva(n, 0, "PC"))
+            .collect();
+        let mut q = redaccion::CajaLinea::con_texto("puente sur");
+        assert_eq!(filtrar(&fichas, &q), vec![1]);
+        tecla_en_caja(&mut q, VK_RETROCESO_, false, true);
+        tecla_en_caja(&mut q, VK_RETROCESO_, false, true);
+        assert!(q.is_empty());
+        assert_eq!(filtrar(&fichas, &q).len(), 2);
+    }
+}

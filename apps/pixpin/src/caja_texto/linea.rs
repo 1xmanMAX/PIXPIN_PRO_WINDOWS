@@ -303,16 +303,6 @@ impl CajaLinea {
         self.despertar();
     }
 
-    /// Suelta lo elegido dejando la rayita donde estaba. Devuelve si habia
-    /// algo elegido: Escape lo usa para soltar antes de cerrar.
-    pub(crate) fn soltar_seleccion(&mut self) -> bool {
-        if self.cursor.seleccion(&self.texto).is_none() {
-            return false;
-        }
-        let p = self.pos();
-        self.cursor.poner(&self.texto, p, false);
-        true
-    }
 
     /// La rayita vuelve a encenderse ahora: al ganar el foco o tras tocarla.
     pub(crate) fn despertar(&mut self) {
@@ -1119,5 +1109,94 @@ mod pruebas {
         // Ctrl+F (abrir la busqueda) y el zoom son de la ventana.
         assert!(!CajaLinea::es_suya(0x46, false, true));
         assert!(!CajaLinea::es_suya(0xBB, false, true));
+    }
+
+    /// **La caja pintada**, para mirarla: un texto largo que no cabe, con la
+    /// rayita en medio (el texto se corre para que se vea) y, debajo, la
+    /// misma caja con una palabra elegida y otra vacia con su invitacion.
+    ///
+    /// ```text
+    /// cargo test -p pixpin --bin pixpinmax muestra_de_la_caja_de_una_linea -- --ignored --nocapture
+    /// ```
+    /// Deja el PNG en `PIXPIN_MUESTRAS` o en `%TEMP%/pixpin-muestras-caja`.
+    #[test]
+    #[ignore = "necesita GPU; genera un PNG para mirarlo"]
+    fn muestra_de_la_caja_de_una_linea() {
+        use pixpin_render::MotorRender;
+        use pixpin_render::fuera_de_pantalla::FueraDePantalla;
+
+        let d3 = pixpin_capture::Dispositivo::nuevo().expect("GPU real");
+        let motor = MotorRender::nuevo(d3.d3d()).expect("motor");
+        let (ancho, alto) = (520u32, 200u32);
+        let destino = FueraDePantalla::nuevo(&motor, d3.d3d(), ancho, alto).expect("destino");
+        let fondo = Color { r: 0.09, g: 0.13, b: 0.17, a: 1.0 };
+        let campo = Color { r: 0.17, g: 0.22, b: 0.28, a: 1.0 };
+        let colores = Colores {
+            texto: Color { r: 0.95, g: 0.95, b: 0.95, a: 1.0 },
+            invitacion: Color { r: 0.55, g: 0.6, b: 0.65, a: 1.0 },
+            seleccion: Color { r: 0.33, g: 0.6, b: 0.95, a: 0.35 },
+            rayita: Color { r: 0.95, g: 0.95, b: 0.95, a: 1.0 },
+        };
+        // La rayita en medio de un texto mas largo que la caja.
+        let mut larga = caja(
+            "planos de la obra Miraflores, revision del muro norte y las vigas del segundo piso",
+        );
+        for _ in 0..30 {
+            tecla(&mut larga, VK_IZQUIERDA, false, true);
+        }
+        for _ in 0..9 {
+            tecla(&mut larga, VK_DERECHA, false, true);
+        }
+        // Otra con «Miraflores» elegida con Mayus+Ctrl+flecha.
+        let mut elegida = caja("buscar Miraflores");
+        tecla(&mut elegida, VK_IZQUIERDA, true, true);
+        let vacia = CajaLinea::nueva();
+        let ahora = larga.tocada;
+        let filas = [(&larga, ""), (&elegida, ""), (&vacia, "Buscar en el chat")];
+        // Dos vueltas: la primera apunta las cajas de las letras y la
+        // segunda corre el texto con ellas, como al teclear de verdad.
+        for _ in 0..2 {
+            motor
+                .dibujar(&destino.destino, |p| {
+                    p.rellenar(
+                        RectF { x: 0.0, y: 0.0, ancho: ancho as f32, alto: alto as f32 },
+                        fondo,
+                    );
+                    for (n, (c, invitacion)) in filas.iter().enumerate() {
+                        let zona = RectF {
+                            x: 20.0,
+                            y: 20.0 + n as f32 * 60.0,
+                            ancho: 300.0,
+                            alto: 40.0,
+                        };
+                        p.rellenar_redondeado(zona, 20.0, campo);
+                        let hueco = RectF { x: zona.x + 16.0, ancho: zona.ancho - 32.0, ..zona };
+                        c.pintar(p, zona, hueco, 15.0, invitacion, &colores, true, ahora);
+                    }
+                })
+                .expect("fotograma");
+            destino.esperar_gpu().expect("GPU");
+        }
+        let (w, h, pixeles) = destino.leer_rgba().expect("leer");
+        // La rayita esta en medio y a la vista: dentro del hueco y corrida.
+        let p = larga.pintado.borrow();
+        assert!(p.corrido > 0.0, "el texto largo se corre");
+        let (cx, _, _) = sitio_del_cursor(&larga.texto, &p.cajas, larga.pos(), 20.0);
+        let x = p.origen.0 + cx;
+        assert!((36.0..=304.0).contains(&x), "rayita a la vista: {x}");
+        assert!(larga.pos() > 0 && larga.pos() < larga.len(), "en medio del texto");
+        let png = pixpin_codec::imagen::codificar_png(&pixpin_codec::imagen::ImagenRgba {
+            ancho: w,
+            alto: h,
+            pixeles,
+        })
+        .expect("codificar");
+        let salida = std::env::var_os("PIXPIN_MUESTRAS")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| std::env::temp_dir().join("pixpin-muestras-caja"));
+        std::fs::create_dir_all(&salida).unwrap();
+        let ruta = salida.join("caja-de-una-linea.png");
+        std::fs::write(&ruta, png).unwrap();
+        println!("caja: {}", ruta.display());
     }
 }

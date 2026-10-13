@@ -184,7 +184,7 @@ fn muestras_de_los_menus_v2() {
                 elegida: Some(0),
                 ahora,
                 textos: &textos,
-                busqueda: &redaccion::CajaLinea::nueva(),
+                busqueda: &crate::caja_texto::CajaLinea::nueva(),
                 buscando: false,
                 marcados: &marcados,
             };
