@@ -47,6 +47,61 @@ const ENCABEZADO_TEXTO: Rgb = Rgb { r: 0x44, g: 0x44, b: 0x44 };
 const LINEA_FIJA: Rgb = Rgb { r: 0x9B, g: 0x9B, b: 0x9B };
 const SELECCION: Rgb = Rgb { r: 0x21, g: 0x73, b: 0x46 };
 
+thread_local! {
+    /// Si el fotograma que se esta pintando va en modo oscuro (lo pone
+    /// [`pintar_hoja`] con [`OpcionesHoja::oscuro`]; lo leen las pestanas, que
+    /// se pintan en el mismo fotograma). Un hilo pinta un fotograma a la vez.
+    static OSCURO: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+fn oscuro() -> bool {
+    OSCURO.with(|o| o.get())
+}
+
+/// Pone el modo oscuro para lo que se pinte despues en este hilo (lo hace
+/// [`pintar_hoja`]; quien pinte solo las pestanas puede llamarlo antes).
+pub fn poner_oscuro(si: bool) {
+    OSCURO.with(|o| o.set(si));
+}
+
+fn rgb_de(c: (u8, u8, u8)) -> Rgb {
+    Rgb { r: c.0, g: c.1, b: c.2 }
+}
+
+/// **Un color del marco de Excel** (fondo, rejilla, encabezados, pestanas):
+/// en oscuro, con la luz invertida y su tono (`crate::oscuro`).
+fn ui(c: Rgb) -> Rgb {
+    if oscuro() { rgb_de(crate::oscuro::invertir_luz_u8(c.r, c.g, c.b)) } else { c }
+}
+
+/// Lo blanco de la hoja (las celdas sin relleno).
+fn papel() -> Rgb {
+    ui(Rgb::BLANCO)
+}
+
+/// Un texto o una raya sobre el papel: en oscuro, si es oscura, se aclara.
+fn legible(c: Rgb) -> Rgb {
+    if oscuro() { rgb_de(crate::oscuro::legible_u8(c.r, c.g, c.b)) } else { c }
+}
+
+/// Un borde de celda sobre el papel: en oscuro, el casi negro se aclara; los
+/// de color se quedan.
+fn raya(c: Rgb) -> Rgb {
+    if oscuro() { rgb_de(crate::oscuro::raya_legible_u8(c.r, c.g, c.b)) } else { c }
+}
+
+/// Un relleno liso casi blanco: en oscuro es papel (muchos libros rellenan
+/// de blanco toda la hoja para esconder la cuadricula).
+fn casi_blanco(c: Rgb) -> bool {
+    c.r.min(c.g).min(c.b) >= 0xF0
+}
+
+/// El color con que se pinta el relleno de una celda: el suyo, salvo el
+/// casi blanco en oscuro, que es papel.
+fn relleno_de(c: Rgb) -> Rgb {
+    if oscuro() && casi_blanco(c) { papel() } else { c }
+}
+
 fn color(c: Rgb) -> Color {
     Color { r: c.r as f32 / 255.0, g: c.g as f32 / 255.0, b: c.b as f32 / 255.0, a: 1.0 }
 }
@@ -112,6 +167,11 @@ pub struct OpcionesHoja {
     pub activa: Option<(u32, u32)>,
     /// La celda bajo el raton (tambien lleva el boton).
     pub bajo_raton: Option<(u32, u32)>,
+    /// **Modo oscuro** (el boton luna/sol de los pines): papel, rejilla,
+    /// encabezados y pestanas oscuros y el texto sin relleno debajo, claro.
+    /// Los rellenos de las celdas, las imagenes y los graficos se quedan con
+    /// sus colores (y el texto encima de un relleno, tambien: ya se lee).
+    pub oscuro: bool,
 }
 
 /// Cuanto miden los encabezados en pantalla: (ancho de la columna de los
@@ -759,9 +819,9 @@ fn pintar_flechas(p: &Pintor, hoja: &Hoja, rejilla: &Rejilla, paneles: &[Panel],
         }
         for &(f, c) in &con_boton {
             let Some([bx0, by0, bx1, by1]) = caja_flecha(caja(f, c), k) else { continue };
-            llenar(p, rect(bx0, by0, bx1, by1), FLECHA_BORDE);
-            llenar(p, rect(bx0 + 1.0, by0 + 1.0, bx1 - 1.0, by1 - 1.0), FLECHA_FONDO);
-            triangulo_abajo(p, (bx0 + bx1) / 2.0, (by0 + by1) / 2.0 + 2.5 * k, (7.0 * k).round().max(3.0), FLECHA_TINTA);
+            llenar(p, rect(bx0, by0, bx1, by1), ui(FLECHA_BORDE));
+            llenar(p, rect(bx0 + 1.0, by0 + 1.0, bx1 - 1.0, by1 - 1.0), ui(FLECHA_FONDO));
+            triangulo_abajo(p, (bx0 + bx1) / 2.0, (by0 + by1) / 2.0 + 2.5 * k, (7.0 * k).round().max(3.0), ui(FLECHA_TINTA));
         }
         if op.activa.is_some() {
             continue;
@@ -784,7 +844,7 @@ fn pintar_flechas(p: &Pintor, hoja: &Hoja, rejilla: &Rejilla, paneles: &[Panel],
                         if x1 - x0 < 14.0 * k || y1 - y0 < 8.0 * k || rejilla.alto(f) <= 0.0 {
                             continue;
                         }
-                        triangulo_abajo(p, x1 - 6.0 * k, y1 - 3.0 * k, (6.0 * k).round().max(3.0), FLECHA_TENUE);
+                        triangulo_abajo(p, x1 - 6.0 * k, y1 - 3.0 * k, (6.0 * k).round().max(3.0), ui(FLECHA_TENUE));
                         pintadas += 1;
                     }
                 }
@@ -810,10 +870,11 @@ pub fn pintar_hoja(p: &Pintor, cache: &mut CacheHoja, libro: &Libro, hoja: &Hoja
     cache.fotograma += 1;
     cache.imagenes.nuevo_fotograma();
     cache.medidas = Medidas::default();
+    poner_oscuro(op.oscuro);
     let e = vista.escala.max(0.05);
     let celdas = zona_de_celdas(hoja, rejilla, vista, caja, op.encabezados);
     let v = Vista { ancho: celdas.ancho as f64, alto: celdas.alto as f64, ..*vista };
-    llenar(p, rect(caja.x, caja.y, caja.x + caja.ancho, caja.y + caja.alto), Rgb::BLANCO);
+    llenar(p, rect(caja.x, caja.y, caja.x + caja.ancho, caja.y + caja.alto), papel());
     let paneles = rejilla.paneles(&v);
     for panel in &paneles {
         let m = Mapa::de(panel, celdas, e);
@@ -827,13 +888,13 @@ pub fn pintar_hoja(p: &Pintor, cache: &mut CacheHoja, libro: &Libro, hoja: &Hoja
     if cf > 0 {
         let x = (celdas.x as f64 + rejilla.x(cf) * e).round() as f32;
         if x < celdas.x + celdas.ancho {
-            llenar(p, rect(x - 1.0, celdas.y, x, celdas.y + celdas.alto), LINEA_FIJA);
+            llenar(p, rect(x - 1.0, celdas.y, x, celdas.y + celdas.alto), ui(LINEA_FIJA));
         }
     }
     if ff > 0 {
         let y = (celdas.y as f64 + rejilla.y(ff) * e).round() as f32;
         if y < celdas.y + celdas.alto {
-            llenar(p, rect(celdas.x, y - 1.0, celdas.x + celdas.ancho, y), LINEA_FIJA);
+            llenar(p, rect(celdas.x, y - 1.0, celdas.x + celdas.ancho, y), ui(LINEA_FIJA));
         }
     }
     if let Some(sel) = op.seleccion {
@@ -841,7 +902,7 @@ pub fn pintar_hoja(p: &Pintor, cache: &mut CacheHoja, libro: &Libro, hoja: &Hoja
         for panel in &paneles {
             let m = Mapa::de(panel, celdas, e);
             let (x0, y0, x1, y1) = (m.sx(rejilla, sel.col0), m.sy(rejilla, sel.fila0), m.sx(rejilla, sel.col1 + 1), m.sy(rejilla, sel.fila1 + 1));
-            if let Some(b) = pincel(p, SELECCION) {
+            if let Some(b) = pincel(p, legible(SELECCION)) {
                 // SAFETY: dentro del fotograma; objetos vivos.
                 unsafe { ctx(p).DrawRectangle(&rect(x0 - 1.0, y0 - 1.0, x1 - 0.0, y1 - 0.0), &b, 2.0, None) };
             }
@@ -940,7 +1001,7 @@ fn pintar_panel(p: &Pintor, cache: &mut CacheHoja, libro: &Libro, hoja: &Hoja, r
     let (x_ini, x_fin) = (zona.x, zona.x + zona.ancho);
     let (y_ini, y_fin) = (zona.y, zona.y + zona.alto);
     if hoja.vista().cuadricula {
-        if let Some(b) = pincel(p, CUADRICULA) {
+        if let Some(b) = pincel(p, ui(CUADRICULA)) {
             for c in c0..=c1 {
                 if rejilla.ancho(c) <= 0.0 {
                     continue;
@@ -961,10 +1022,10 @@ fn pintar_panel(p: &Pintor, cache: &mut CacheHoja, libro: &Libro, hoja: &Hoja, r
         }
         for r in &combinadas {
             let (x0, y0, x1, y1) = (m.sx(rejilla, r.col0), m.sy(rejilla, r.fila0), m.sx(rejilla, r.col1 + 1), m.sy(rejilla, r.fila1 + 1));
-            llenar(p, rect(x0, y0, x1 - 1.0, y1 - 1.0), Rgb::BLANCO);
+            llenar(p, rect(x0, y0, x1 - 1.0, y1 - 1.0), papel());
         }
         for b in &borrar {
-            llenar(p, *b, Rgb::BLANCO);
+            llenar(p, *b, papel());
         }
     }
     // 3. Rellenos: columnas, filas, celdas, combinaciones.
@@ -974,7 +1035,7 @@ fn pintar_panel(p: &Pintor, cache: &mut CacheHoja, libro: &Libro, hoja: &Hoja, r
         }
         if let Relleno::Liso(color) = est.relleno(est.xf(col.xf)) {
             let (a, b) = (col.min.max(c0), col.max.min(c1));
-            llenar(p, rect(m.sx(rejilla, a) - 1.0, y_ini, m.sx(rejilla, b + 1), y_fin), color);
+            llenar(p, rect(m.sx(rejilla, a) - 1.0, y_ini, m.sx(rejilla, b + 1), y_fin), relleno_de(color));
         }
     }
     for f in filas {
@@ -984,7 +1045,7 @@ fn pintar_panel(p: &Pintor, cache: &mut CacheHoja, libro: &Libro, hoja: &Hoja, r
         }
         if let Some(x) = f.xf {
             if let Relleno::Liso(color) = est.relleno(est.xf(x)) {
-                llenar(p, rect(x_ini, y0 - 1.0, x_fin, y1), color);
+                llenar(p, rect(x_ini, y0 - 1.0, x_fin, y1), relleno_de(color));
             }
         }
         let cs = hoja.celdas_de(f);
@@ -998,14 +1059,14 @@ fn pintar_panel(p: &Pintor, cache: &mut CacheHoja, libro: &Libro, hoja: &Hoja, r
                 if en_combinada(f.indice, c.col).is_some() {
                     continue;
                 }
-                llenar(p, rect(m.sx(rejilla, c.col) - 1.0, y0 - 1.0, m.sx(rejilla, c.col + 1), y1), color);
+                llenar(p, rect(m.sx(rejilla, c.col) - 1.0, y0 - 1.0, m.sx(rejilla, c.col + 1), y1), relleno_de(color));
             }
         }
     }
     for r in &combinadas {
         let xf = hoja.xf_en(r.fila0, r.col0);
         if let Relleno::Liso(color) = est.relleno(est.xf(xf)) {
-            llenar(p, rect(m.sx(rejilla, r.col0) - 1.0, m.sy(rejilla, r.fila0) - 1.0, m.sx(rejilla, r.col1 + 1), m.sy(rejilla, r.fila1 + 1)), color);
+            llenar(p, rect(m.sx(rejilla, r.col0) - 1.0, m.sy(rejilla, r.fila0) - 1.0, m.sx(rejilla, r.col1 + 1), m.sy(rejilla, r.fila1 + 1)), relleno_de(color));
         }
     }
     // 3b. Tablas: su relleno donde la celda no trae uno propio (por debajo
@@ -1025,7 +1086,7 @@ fn pintar_panel(p: &Pintor, cache: &mut CacheHoja, libro: &Libro, hoja: &Hoja, r
                 if est.relleno(est.xf(hoja.xf_en(f, c))) != Relleno::Nada {
                     continue;
                 }
-                llenar(p, rect(m.sx(rejilla, c) - 1.0, y0 - 1.0, m.sx(rejilla, c + 1), y1), color);
+                llenar(p, rect(m.sx(rejilla, c) - 1.0, y0 - 1.0, m.sx(rejilla, c + 1), y1), relleno_de(color));
             }
         }
     }
@@ -1048,7 +1109,7 @@ fn pintar_panel(p: &Pintor, cache: &mut CacheHoja, libro: &Libro, hoja: &Hoja, r
                 let (x0, x1) = (m.sx(rejilla, r.col0), m.sx(rejilla, r.col1 + 1));
                 let (y0, y1) = (m.sy(rejilla, r.fila0), m.sy(rejilla, r.fila1 + 1));
                 if let Some(color) = ef.escala.or(ef.dxf.relleno) {
-                    llenar(p, rect(x0 - 1.0, y0 - 1.0, x1, y1), color);
+                    llenar(p, rect(x0 - 1.0, y0 - 1.0, x1, y1), relleno_de(color));
                 }
                 if let Some(b) = ef.barra {
                     let margen = (2.0 * m.e as f32).max(1.0);
@@ -1193,7 +1254,7 @@ fn pintar_panel(p: &Pintor, cache: &mut CacheHoja, libro: &Libro, hoja: &Hoja, r
 
 /// Una linea de borde sobre la frontera `b` (pixel entero), de `a0` a `a1`.
 fn linea_borde(p: &Pintor, cache: &mut CacheHoja, horizontal: bool, b: f32, a0: f32, a1: f32, li: Linea) {
-    let Some(br) = pincel(p, li.color) else {
+    let Some(br) = pincel(p, raya(li.color)) else {
         return;
     };
     let g = li.estilo.grosor();
@@ -1220,7 +1281,7 @@ fn linea_borde(p: &Pintor, cache: &mut CacheHoja, horizontal: bool, b: f32, a0: 
             unsafe {
                 c.FillRectangle(&tramo(-2.0, 1.0, 1.0), &br);
             }
-            llenar(p, tramo(-1.0, 0.0, -1.0), Rgb::BLANCO);
+            llenar(p, tramo(-1.0, 0.0, -1.0), papel());
         }
         _ => {
             let estilo = cache.trazo(p.motor, li.estilo, g);
@@ -1297,7 +1358,13 @@ fn texto_cacheado(
     trabajos: &mut Vec<Trabajo>,
     borrar: &mut Vec<D2D_RECT_F>,
 ) {
-    let llave = (libro as *const Libro as usize, hoja as *const Hoja as usize, hoja.version, m.e.to_bits() ^ rejilla.ppp.to_bits().rotate_left(17));
+    // El modo oscuro cambia el color de los textos: tambien es de la llave.
+    let llave = (
+        libro as *const Libro as usize,
+        hoja as *const Hoja as usize,
+        hoja.version,
+        m.e.to_bits() ^ rejilla.ppp.to_bits().rotate_left(17) ^ ((oscuro() as u64) << 63),
+    );
     if cache.llave_celdas != llave {
         cache.llave_celdas = llave;
         cache.celdas.clear();
@@ -1397,7 +1464,22 @@ fn texto_de_celda(
             color_txt = cf;
         }
     }
-    let ajustar = (al.ajustar || matches!(al.horizontal, Horizontal::Justificar | Horizontal::Distribuido) || al.vertical == Vertical::Justificar)
+    // Modo oscuro: sin relleno debajo el papel es oscuro y el texto oscuro
+    // (el «automatico») se aclara; con relleno propio se queda como lo puso
+    // su autor, que ya se lee sobre el.
+    if oscuro() {
+        // El relleno blanco no cuenta: en oscuro es papel.
+        let con_relleno = matches!(libro.estilos.relleno(xf), Relleno::Liso(c) if !casi_blanco(c))
+            || extra.as_ref().is_some_and(|d| d.relleno.is_some_and(|c| !casi_blanco(c)))
+            || libro.efecto_condicional(hoja, caja.fila0, c).is_some_and(|ef| ef.escala.is_some());
+        if !con_relleno {
+            color_txt = legible(color_txt);
+            for t in cont.tramos.iter_mut().flatten() {
+                t.fuente.color = t.fuente.color.map(legible);
+            }
+        }
+    }
+    let ajustar =(al.ajustar || matches!(al.horizontal, Horizontal::Justificar | Horizontal::Distribuido) || al.vertical == Vertical::Justificar)
         && al.giro == 0;
     let alinear = match cont.horizontal {
         Horizontal::Centro | Horizontal::CentroSeleccion => DWRITE_TEXT_ALIGNMENT_CENTER,
@@ -1952,10 +2034,10 @@ fn pintar_encabezados(
     let tam = (11.0 * 96.0 / 72.0 * e) as f32;
     let (ew, eh) = (celdas.x - caja.x, celdas.y - caja.y);
     // Fondo.
-    llenar(p, rect(caja.x, caja.y, caja.x + caja.ancho, celdas.y), ENCABEZADO_FONDO);
-    llenar(p, rect(caja.x, celdas.y, celdas.x, caja.y + caja.alto), ENCABEZADO_FONDO);
-    let resalte = Rgb { r: 0xD2, g: 0xD2, b: 0xD2 };
-    let texto_sel = Rgb { r: 0x21, g: 0x73, b: 0x46 };
+    llenar(p, rect(caja.x, caja.y, caja.x + caja.ancho, celdas.y), ui(ENCABEZADO_FONDO));
+    llenar(p, rect(caja.x, celdas.y, celdas.x, caja.y + caja.alto), ui(ENCABEZADO_FONDO));
+    let resalte = ui(Rgb { r: 0xD2, g: 0xD2, b: 0xD2 });
+    let texto_sel = legible(Rgb { r: 0x21, g: 0x73, b: 0x46 });
     // `e` trae los ppp de la pantalla (para la letra); las posiciones van
     // con el zoom solo, como las celdas: la rejilla ya esta en px de esa
     // pantalla (con 120 ppp los encabezados se iban un 25 % de las celdas).
@@ -1974,7 +2056,7 @@ fn pintar_encabezados(
                 if sel {
                     llenar(p, rect(x0, caja.y, x1, celdas.y), resalte);
                 }
-                llenar(p, rect(x1 - 1.0, caja.y, x1, celdas.y), ENCABEZADO_LINEA);
+                llenar(p, rect(x1 - 1.0, caja.y, x1, celdas.y), ui(ENCABEZADO_LINEA));
                 let t = nombre_columna(c);
                 if let Some((d, w, h)) = cache.disposicion(p.motor, &t, &fuente, tam, None, DWRITE_TEXT_ALIGNMENT_LEADING, None, 1.0) {
                     dibujar_trabajo(
@@ -1984,7 +2066,7 @@ fn pintar_encabezados(
                             x: ((x0 + x1 - 1.0 - w) / 2.0).round(),
                             y: (caja.y + (eh - h) / 2.0).round(),
                             recorte: rect(x0, caja.y, x1 - 1.0, celdas.y),
-                            color: if sel { texto_sel } else { ENCABEZADO_TEXTO },
+                            color: if sel { texto_sel } else { ui(ENCABEZADO_TEXTO) },
                             giro: None,
                             medida: None,
                         },
@@ -2005,7 +2087,7 @@ fn pintar_encabezados(
                 if sel {
                     llenar(p, rect(caja.x, y0, celdas.x, y1), resalte);
                 }
-                llenar(p, rect(caja.x, y1 - 1.0, celdas.x, y1), ENCABEZADO_LINEA);
+                llenar(p, rect(caja.x, y1 - 1.0, celdas.x, y1), ui(ENCABEZADO_LINEA));
                 let t = (f + 1).to_string();
                 if let Some((d, w, h)) = cache.disposicion(p.motor, &t, &fuente, tam, None, DWRITE_TEXT_ALIGNMENT_LEADING, None, 1.0) {
                     dibujar_trabajo(
@@ -2015,7 +2097,7 @@ fn pintar_encabezados(
                             x: ((caja.x + celdas.x - 1.0 - w) / 2.0).round(),
                             y: ((y0 + y1 - 1.0 - h) / 2.0).round(),
                             recorte: rect(caja.x, y0, celdas.x - 1.0, y1 - 1.0),
-                            color: if sel { texto_sel } else { ENCABEZADO_TEXTO },
+                            color: if sel { texto_sel } else { ui(ENCABEZADO_TEXTO) },
                             giro: None,
                             medida: None,
                         },
@@ -2026,12 +2108,12 @@ fn pintar_encabezados(
         }
     }
     // Bordes de los encabezados y la esquina.
-    llenar(p, rect(caja.x, celdas.y - 1.0, caja.x + caja.ancho, celdas.y), ENCABEZADO_LINEA);
-    llenar(p, rect(celdas.x - 1.0, caja.y, celdas.x, caja.y + caja.alto), ENCABEZADO_LINEA);
+    llenar(p, rect(caja.x, celdas.y - 1.0, caja.x + caja.ancho, celdas.y), ui(ENCABEZADO_LINEA));
+    llenar(p, rect(celdas.x - 1.0, caja.y, celdas.x, caja.y + caja.alto), ui(ENCABEZADO_LINEA));
     // El triangulito de la esquina.
     let (cx, cy) = (celdas.x - 4.0 * e as f32, celdas.y - 4.0 * e as f32);
     let l = 9.0 * e as f32;
-    p.poligono(&[(cx, cy - l), (cx, cy), (cx - l, cy)], color(Rgb { r: 0xB4, g: 0xB4, b: 0xB4 }));
+    p.poligono(&[(cx, cy - l), (cx, cy), (cx - l, cy)], color(ui(Rgb { r: 0xB4, g: 0xB4, b: 0xB4 })));
 }
 
 /// Una pestana pintada: su indice de hoja y su caja (para el hit-test).
@@ -2045,9 +2127,9 @@ pub struct Pestana {
 /// `desde`: la primera pestana que se ve (para desplazar la tira). Devuelve
 /// donde quedo cada una.
 pub fn pintar_pestanas(p: &Pintor, cache: &mut CacheHoja, libro: &Libro, activa: usize, desde: usize, caja: RectF, escala: f32) -> Vec<Pestana> {
-    let fondo = Rgb { r: 0xF3, g: 0xF3, b: 0xF3 };
+    let fondo = ui(Rgb { r: 0xF3, g: 0xF3, b: 0xF3 });
     llenar(p, rect(caja.x, caja.y, caja.x + caja.ancho, caja.y + caja.alto), fondo);
-    llenar(p, rect(caja.x, caja.y, caja.x + caja.ancho, caja.y + 1.0), ENCABEZADO_LINEA);
+    llenar(p, rect(caja.x, caja.y, caja.x + caja.ancho, caja.y + 1.0), ui(ENCABEZADO_LINEA));
     let f = Fuente { tam: 11.0, negrita: false, ..libro.estilos.fuente_normal.clone() };
     let tam = 11.0 * 96.0 / 72.0 * escala;
     let mut x = caja.x + 8.0 * escala;
@@ -2065,10 +2147,10 @@ pub fn pintar_pestanas(p: &Pintor, cache: &mut CacheHoja, libro: &Libro, activa:
         let ancho = w + 24.0 * escala;
         let r = RectF { x, y: caja.y, ancho, alto: caja.alto };
         if es {
-            llenar(p, rect(r.x, r.y, r.x + r.ancho, r.y + r.alto), Rgb::BLANCO);
-            llenar(p, rect(r.x + 6.0 * escala, r.y + r.alto - 3.0 * escala, r.x + r.ancho - 6.0 * escala, r.y + r.alto - 1.0 * escala), SELECCION);
+            llenar(p, rect(r.x, r.y, r.x + r.ancho, r.y + r.alto), papel());
+            llenar(p, rect(r.x + 6.0 * escala, r.y + r.alto - 3.0 * escala, r.x + r.ancho - 6.0 * escala, r.y + r.alto - 1.0 * escala), legible(SELECCION));
         }
-        llenar(p, rect(r.x + r.ancho, r.y + 6.0 * escala, r.x + r.ancho + 1.0, r.y + r.alto - 6.0 * escala), ENCABEZADO_LINEA);
+        llenar(p, rect(r.x + r.ancho, r.y + 6.0 * escala, r.x + r.ancho + 1.0, r.y + r.alto - 6.0 * escala), ui(ENCABEZADO_LINEA));
         dibujar_trabajo(
             p,
             &Trabajo {
@@ -2076,7 +2158,7 @@ pub fn pintar_pestanas(p: &Pintor, cache: &mut CacheHoja, libro: &Libro, activa:
                 x: r.x + 12.0 * escala,
                 y: r.y + (r.alto - hh) / 2.0,
                 recorte: rect(r.x, r.y, r.x + r.ancho, r.y + r.alto),
-                color: if es { SELECCION } else { ENCABEZADO_TEXTO },
+                color: if es { legible(SELECCION) } else { ui(ENCABEZADO_TEXTO) },
                 giro: None,
                 medida: None,
             },
@@ -2275,3 +2357,27 @@ fn pintar_marcas(p: &Pintor, hoja: &Hoja, rejilla: &Rejilla, paneles: &[Panel], 
 }
 
 fn sin_usar(_: D2D1_COLOR_F) {}
+
+#[cfg(test)]
+mod pruebas_oscuro {
+    use super::*;
+
+    #[test]
+    fn en_oscuro_el_relleno_de_color_se_queda_y_el_blanco_es_papel() {
+        let amarillo = Rgb { r: 0xFF, g: 0xEB, b: 0x9C };
+        poner_oscuro(true);
+        // Un relleno explicito de color conserva su color.
+        assert_eq!(relleno_de(amarillo), amarillo);
+        // El blanco liso es papel, como el fondo.
+        assert_eq!(relleno_de(Rgb::BLANCO), papel());
+        assert_eq!(papel(), Rgb { r: 0x1F, g: 0x1F, b: 0x22 });
+        // El texto negro se aclara; la rejilla se oscurece.
+        assert!(legible(Rgb::NEGRO).r > 200);
+        assert!(ui(CUADRICULA).r < 0x60);
+        poner_oscuro(false);
+        // Caso negativo: en claro no cambia nada.
+        assert_eq!(relleno_de(Rgb::BLANCO), Rgb::BLANCO);
+        assert_eq!(legible(Rgb::NEGRO), Rgb::NEGRO);
+        assert_eq!(ui(CUADRICULA), CUADRICULA);
+    }
+}

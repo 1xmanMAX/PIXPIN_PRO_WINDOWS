@@ -553,6 +553,8 @@ enum Accion {
     Presentar,
     /// Word: el documento reflujado en el lector de documentos.
     ModoLectura,
+    /// Luna/sol en pantalla completa (en pin va en su barra).
+    Oscuro,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -629,6 +631,11 @@ struct Estado {
     /// El contenido en negativo (N, 10-oct-2026): solo al pintar, sin
     /// tocar el documento; la interfaz y la tinta quedan con sus colores.
     en_negativo: bool,
+    /// **Modo oscuro** (luna/sol de la barra, `crate::oscuro`): la hoja de
+    /// un PDF con la luz invertida y el tono conservado al pintarla (sin
+    /// tocar la cache de hojas); la de un Word o un PowerPoint, con el papel
+    /// oscuro y su texto claro (`PintorOffice::poner_oscuro`).
+    oscuro: bool,
     encima: DestinoRiel,
     aviso: Option<(String, u64)>,
     botones: Vec<(RectF, Accion)>,
@@ -700,7 +707,7 @@ fn abrir_con(
         .context("sin monitor principal")?
         .to_owned();
     let (area_pin, _) = crate::lector_pin::area_inicial();
-    let mut pin = crate::lector_pin::PinLector::nuevo(area_pin, monitor.escala_por_cien as f32 / 100.0);
+    let mut pin = crate::lector_pin::PinLector::nuevo(area_pin, monitor.escala_por_cien as f32 / 100.0).con_extension(&pixpin_docs::extension(&pixpin_docs::nombre(ruta)));
     let mut area = pin.area;
     let mut marco = Marco {
         ancho: area.ancho as f32,
@@ -784,6 +791,7 @@ fn abrir_con(
         panel: false,
         poniendo_marca: false,
         en_negativo: false,
+        oscuro: false,
         encima: DestinoRiel::Fuera,
         aviso: None,
         botones: Vec::new(),
@@ -1087,7 +1095,11 @@ fn abrir_con(
             hay_que_pintar = true;
         }
         e.en_pin = !pin.pantalla_completa;
-        pin.actualizar(&motor, &crate::lector_pin::nombre_limpio(&nombre_del_pin(&e)), &botones_del_pin(&e));
+        // Luna/sol (de este pin o de otro): a repintar con el modo nuevo.
+        if pin.actualizar(&motor, &crate::lector_pin::nombre_limpio(&nombre_del_pin(&e)), &botones_del_pin(&e)) {
+            hay_que_pintar = true;
+        }
+        e.oscuro = pin.oscuro();
 
         let ahora = ahora_ms();
         if e.pastilla_hasta >= ahora && e.pastilla_hasta < ahora + 200 {
@@ -1616,7 +1628,9 @@ fn pintar(e: &mut Estado, p: &Pintor, m: Marco, textos: &Catalogo) {
             ancho: m.ancho,
             alto: m.alto,
         },
-        FONDO_PDF,
+        // En oscuro, mas oscuro que la hoja (que es gris muy oscuro): que se
+        // vea donde acaba cada una.
+        if e.oscuro { Color { r: 0.055, g: 0.055, b: 0.063, a: 1.0 } } else { FONDO_PDF },
     );
     if let Some(err) = &e.error {
         let texto = format!("{} — {err}", textos.t("lector-pdf-no-se-abre"));
@@ -1642,6 +1656,19 @@ fn pintar(e: &mut Estado, p: &Pintor, m: Marco, textos: &Catalogo) {
     let s = px(e, m);
     let (izq, der) = vista::espacios_del_pdf(e.ajustes.espacios);
     let vis = visibles(e, m);
+    // Modo oscuro: el papel (la hoja que aun no llega, los margenes de
+    // anotar) y el de la tinta, oscuros; las hojas, al pintarlas.
+    let papel = if e.oscuro { pixpin_render::oscuro::PAPEL } else { Color::BLANCO };
+    let papel_margen = if e.oscuro { pixpin_render::oscuro::invertir_luz(PAPEL_DEL_MARGEN) } else { PAPEL_DEL_MARGEN };
+    if let Some(o) = e.office.as_ref() {
+        o.poner_oscuro(e.oscuro);
+    }
+    // La hoja de un PDF en oscuro: la matriz de color en la GPU, sin tocar
+    // ni duplicar la cache.
+    let oscuro = e.oscuro;
+    let hoja_pdf = |b: &ID2D1Bitmap1, caja: RectF| {
+        if oscuro { p.bitmap_oscuro(b, caja, None) } else { p.bitmap(b, caja, None, false) }
+    };
     for i in vis {
         let arriba = e.hojas.arriba[i];
         let alto = e.hojas.altos[i];
@@ -1656,7 +1683,7 @@ fn pintar(e: &mut Estado, p: &Pintor, m: Marco, textos: &Catalogo) {
                     ancho: izq,
                     alto,
                 },
-                PAPEL_DEL_MARGEN,
+                papel_margen,
             );
         }
         if der > 0.0 {
@@ -1667,7 +1694,7 @@ fn pintar(e: &mut Estado, p: &Pintor, m: Marco, textos: &Catalogo) {
                     ancho: der,
                     alto,
                 },
-                PAPEL_DEL_MARGEN,
+                papel_margen,
             );
         }
         let hoja = RectF {
@@ -1680,9 +1707,9 @@ fn pintar(e: &mut Estado, p: &Pintor, m: Marco, textos: &Catalogo) {
         let en_vectores = e.office.as_mut().is_some_and(|o| o.pintar_hoja(p, i));
         match e.pintadas.get(&i) {
             _ if en_vectores => {}
-            Some((_, b)) => p.bitmap(b, hoja, None, false),
+            Some((_, b)) => hoja_pdf(b, hoja),
             None => {
-                p.rellenar(hoja, Color::BLANCO);
+                p.rellenar(hoja, papel);
                 let n = format!("{}", i + 1);
                 p.texto(&n, 40.0, 40.0, 48.0, con_alfa(APAGADO, 0.6));
             }
@@ -1690,7 +1717,7 @@ fn pintar(e: &mut Estado, p: &Pintor, m: Marco, textos: &Catalogo) {
         // Muy de cerca, lo que se ve nitido encima de la hoja (que hace de
         // fondo mientras llega).
         if !en_vectores && let Some((_, caja, b)) = e.trozos.get(&i) {
-            p.bitmap(b, *caja, None, false);
+            hoja_pdf(b, *caja);
         }
         if izq > 0.0 || der > 0.0 {
             // El canto de la hoja contra el margen: se ve donde acaba el
@@ -1742,11 +1769,7 @@ fn pintar(e: &mut Estado, p: &Pintor, m: Marco, textos: &Catalogo) {
                 s,
                 // En negativo el papel es negro: la tinta se ajusta a el
                 // como sobre cualquier papel oscuro y se sigue leyendo.
-                lector_tinta::papel(if e.en_negativo {
-                    Color::BLANCO.invertido()
-                } else {
-                    Color::BLANCO
-                }),
+                lector_tinta::papel(if e.en_negativo { papel.invertido() } else { papel }),
                 activa,
             );
         }
@@ -1893,7 +1916,8 @@ fn pastilla(e: &Estado, p: &Pintor, m: Marco, botones: &mut Vec<(RectF, Accion)>
     };
     let (w, h) = p.medir_texto(&hoja, tam);
     let lado = 34.0 * m.e;
-    let iconos_n = if e.en_pin { 2.0 } else { 3.0 };
+    // En pantalla completa, ademas: luna/sol y volver a pin.
+    let iconos_n = if e.en_pin { 2.0 } else { 4.0 };
     let total = w + 28.0 * m.e + iconos_n * lado;
     let caja = RectF {
         x: (m.ancho - total) / 2.0,
@@ -1947,11 +1971,13 @@ fn pastilla(e: &Estado, p: &Pintor, m: Marco, botones: &mut Vec<(RectF, Accion)>
             Accion::Escuchar,
         ),
         (&material::SETTINGS, e.panel, Accion::Engranaje),
+        // Luna/sol: el modo oscuro de los visores (en pin, en su barra).
+        (if e.oscuro { &material::LIGHT_MODE } else { &material::DARK_MODE }, false, Accion::Oscuro),
         // De pantalla completa, de vuelta a pin.
         (&material::FULLSCREEN_EXIT, false, Accion::PantallaCompleta),
     ]
     .into_iter()
-    .filter(|(_, _, a)| *a != Accion::PantallaCompleta || !e.en_pin)
+    .filter(|(_, _, a)| !matches!(a, Accion::PantallaCompleta | Accion::Oscuro) || !e.en_pin)
     .enumerate()
     {
         let zona = RectF {
@@ -2469,6 +2495,10 @@ fn hacer(
             office::modo_lectura(e, ubicacion, ruta);
         }
         Accion::Renombrar => e.renombre.empezar(),
+        // Para toda la app; el lector se repinta en la vuelta (`lector_pin`).
+        Accion::Oscuro => {
+            crate::oscuro::alternar();
+        }
         Accion::PantallaCompleta => e.pedir_pantalla_completa = true,
         Accion::AlProyecto => al_proyecto(e, textos, ruta, ubicacion),
         Accion::Buscar(b) => {
@@ -2976,6 +3006,7 @@ mod pruebas {
             panel: false,
             poniendo_marca: false,
             en_negativo: false,
+            oscuro: false,
             encima: DestinoRiel::Fuera,
             aviso: None,
             botones: Vec::new(),
@@ -3733,6 +3764,69 @@ mod pruebas {
             "en otra escala con su marco, en el mismo sitio"
         );
         assert!(!igual(cajas[1], cajas[3]), "sin marco, en otro sitio");
+    }
+
+    /// **Una hoja de PDF en modo oscuro** (luna/sol), pintada fuera de
+    /// pantalla a PNG para mirarla: la misma hoja en claro y en oscuro. La
+    /// hoja oscura sale de la matriz de color al pintar: el bitmap guardado
+    /// es el mismo. `PIXPIN_PDF` es el PDF (una copia, nunca el original) y
+    /// `PIXPIN_MUESTRAS` la carpeta de los PNG:
+    /// `cargo test -p pixpin --bin pixpinmax muestra_del_lector_de_pdf_en_oscuro -- --ignored --nocapture`.
+    #[test]
+    #[ignore = "necesita GPU y un PDF de muestra"]
+    fn muestra_del_lector_de_pdf_en_oscuro() {
+        use pixpin_render::MotorRender;
+        use pixpin_render::fuera_de_pantalla::FueraDePantalla;
+
+        let Some(ruta) = std::env::var_os("PIXPIN_PDF").map(std::path::PathBuf::from) else {
+            println!("sin PIXPIN_PDF");
+            return;
+        };
+        let carpeta = std::env::var_os("PIXPIN_MUESTRAS").map(std::path::PathBuf::from).unwrap_or_else(std::env::temp_dir);
+        let d = pixpin_capture::Dispositivo::nuevo().expect("GPU real");
+        let motor = MotorRender::nuevo(d.d3d()).expect("motor");
+        let m = Marco { ancho: 1200.0, alto: 900.0, e: 1.0, escala_por_cien: 100, area: pixpin_geom::Rect { x: 0, y: 0, ancho: 1200, alto: 900 } };
+        let fuera = FueraDePantalla::nuevo(&motor, d.d3d(), 1200, 900).expect("superficie");
+        let textos = Catalogo::nuevo(pixpin_store::Idioma::Espanol);
+        let documento = pixpin_pdf::Documento::abrir(&ruta).expect("abre");
+        let mut e = estado(0);
+        e.medidas = documento.medidas();
+        e.hojas = vista::Hojas::colocar(&e.medidas);
+        let hoja: usize = std::env::var("PIXPIN_PDF_HOJA").ok().and_then(|s| s.parse().ok()).unwrap_or(0).min(e.hojas.cuantas() - 1);
+        e.zoom = 0.5;
+        acotar(&mut e, m);
+        e.y = e.hojas.arriba[hoja];
+        acotar(&mut e, m);
+        for i in visibles(&e, m) {
+            let img = documento.renderizar(i as u32, ancho_para(&e, i, m)).expect("hoja");
+            let b = motor.bitmap_desde_pixeles(img.ancho, img.alto, &img.pixeles).expect("bitmap");
+            e.pintadas.insert(i, (img.ancho, b));
+        }
+        let mut medias = Vec::new();
+        for (oscuro, nombre) in [(false, "lector-pdf-claro.png"), (true, "lector-pdf-oscuro.png")] {
+            e.oscuro = oscuro;
+            motor.dibujar(&fuera.destino, |p| pintar(&mut e, p, m, &textos)).expect("pintar");
+            fuera.esperar_gpu().expect("esperar");
+            let (ancho, alto, pixeles) = fuera.leer_rgba().expect("leer");
+            // La luz media del centro de la ventana (la hoja).
+            let mut suma = 0u64;
+            let mut n = 0u64;
+            for y in (alto / 4)..(alto * 3 / 4) {
+                for x in (ancho / 4)..(ancho * 3 / 4) {
+                    let k = ((y * ancho + x) * 4) as usize;
+                    suma += (pixeles[k] as u64 + pixeles[k + 1] as u64 + pixeles[k + 2] as u64) / 3;
+                    n += 1;
+                }
+            }
+            medias.push(suma / n.max(1));
+            let png = pixpin_codec::imagen::codificar_png(&ImagenRgba { ancho, alto, pixeles }).expect("png");
+            let salida = carpeta.join(nombre);
+            std::fs::write(&salida, png).expect("guardar");
+            println!("{}", salida.display());
+        }
+        println!("luz media de la hoja: claro {} / oscuro {}", medias[0], medias[1]);
+        assert!(medias[0] > 160, "en claro la hoja es clara");
+        assert!(medias[1] < 90, "en oscuro la hoja es oscura");
     }
 
     fn muestra_del_lector_de_pdf_inventado() {

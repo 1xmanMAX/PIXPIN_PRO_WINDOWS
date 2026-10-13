@@ -92,6 +92,11 @@ pub fn abrir(textos: &Catalogo, ruta: &Path) -> Result<bool> {
         Box::new(move || aviso_de_cierre.set(true)),
     )
     .map_err(|e| anyhow::anyhow!("no se pudo abrir el visor de HTML: {e}"))?;
+    // El modo oscuro de los visores (luna/sol, `crate::oscuro`): este no
+    // tiene barra de pin, asi que solo lo sigue, tambien si cambia con el
+    // abierto.
+    visor.poner_oscuro(crate::oscuro::activo());
+    let mut oscuro_visto = crate::oscuro::version();
 
     let mut guardados = 0usize;
     let mut vivo = true;
@@ -116,6 +121,10 @@ pub fn abrir(textos: &Catalogo, ruta: &Path) -> Result<bool> {
                 // un visor a pantalla completa no lo necesita.
                 _ => {}
             }
+        }
+        if crate::oscuro::version() != oscuro_visto {
+            oscuro_visto = crate::oscuro::version();
+            visor.poner_oscuro(crate::oscuro::activo());
         }
         // Lo que la pagina haya mandado guardar, al fichero del chat. Se
         // escribe aqui y no dentro del aviso del WebView2 para no tocar el

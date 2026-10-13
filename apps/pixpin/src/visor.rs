@@ -220,6 +220,8 @@ enum Accion {
     Renombrar,
     /// Pantalla completa o de vuelta a pin (`lector_pin`).
     PantallaCompleta,
+    /// Luna/sol en pantalla completa (en pin va en su barra).
+    Oscuro,
     /// Un boton de la caja de buscar (D9).
     Buscar(crate::buscador::Boton),
 }
@@ -275,6 +277,9 @@ struct Estado {
     /// El contenido en negativo (N, 10-oct-2026): solo al pintar, sin
     /// tocar el documento; la interfaz y la tinta quedan con sus colores.
     en_negativo: bool,
+    /// El modo oscuro de los visores (luna/sol). Este lector ya es oscuro
+    /// (el modo noche del movil): en claro se pinta en negativo.
+    oscuro: bool,
     encima: DestinoRiel,
     aviso: Option<(String, u64)>,
     /// Las cajas que el raton puede pulsar en este fotograma.
@@ -342,7 +347,7 @@ pub fn abrir(
     // A pantalla completa de verdad: el «visor limpio» del movil tapa
     // incluso la barra de estado, y aqui la ventana ocupa el monitor.
     let (area_pin, _) = crate::lector_pin::area_inicial();
-    let mut pin = crate::lector_pin::PinLector::nuevo(area_pin, monitor.escala_por_cien as f32 / 100.0);
+    let mut pin = crate::lector_pin::PinLector::nuevo(area_pin, monitor.escala_por_cien as f32 / 100.0).con_extension(&pixpin_docs::extension(&pixpin_docs::nombre(ruta)));
     let mut area = pin.area;
     let mut marco = Marco {
         ancho: area.ancho as f32,
@@ -398,6 +403,7 @@ pub fn abrir(
         corrido_indice: 0.0,
         poniendo_marca: false,
         en_negativo: false,
+        oscuro: true,
         encima: DestinoRiel::Fuera,
         aviso: None,
         botones: Vec::new(),
@@ -662,7 +668,10 @@ pub fn abrir(
             hay_que_pintar = true;
         }
         e.en_pin = !pin.pantalla_completa;
-        pin.actualizar(&motor, &crate::lector_pin::nombre_limpio(&nombre_del_pin(&e)), &botones_del_pin(&e));
+        if pin.actualizar(&motor, &crate::lector_pin::nombre_limpio(&nombre_del_pin(&e)), &botones_del_pin(&e)) {
+            hay_que_pintar = true;
+        }
+        e.oscuro = pin.oscuro();
 
         let ahora = ahora_ms();
         // La pastilla se va sola y el aviso tambien: los dos hacen que haya
@@ -1162,7 +1171,8 @@ fn pintar(e: &mut Estado, p: &Pintor, m: Marco, textos: &Catalogo) {
     // N: el documento en negativo (el papel y lo escrito; la tinta y la
     // interfaz, que van despues, no). En pixeles de la ventana, y luego de
     // vuelta a la vista para la tinta, que se ajusta al papel invertido.
-    let papel = if e.en_negativo {
+    // Luna/sol en claro: el papel claro, por el mismo camino que la N.
+    let papel = if e.en_negativo == e.oscuro {
         p.desplazar(0.0, 0.0);
         p.invertir_colores(
             RectF {
@@ -1322,6 +1332,8 @@ fn pastilla(e: &Estado, p: &Pintor, m: Marco, botones: &mut Vec<(RectF, Accion)>
             Accion::Escuchar,
         )),
         Some((&material::SETTINGS, e.panel, Accion::Engranaje)),
+        // Luna/sol: el modo oscuro de los visores (en pin, en su barra).
+        (!e.en_pin).then_some((if e.oscuro { &material::LIGHT_MODE } else { &material::DARK_MODE }, false, Accion::Oscuro)),
         // De pantalla completa, de vuelta a pin.
         (!e.en_pin).then_some((&material::FULLSCREEN_EXIT, false, Accion::PantallaCompleta)),
     ]
@@ -2416,6 +2428,10 @@ fn hacer(
     match a {
         Accion::Renombrar => e.nombre.empezar(),
         Accion::PantallaCompleta => e.pedir_pantalla_completa = true,
+        // Para toda la app; el lector se repinta en la vuelta (`lector_pin`).
+        Accion::Oscuro => {
+            crate::oscuro::alternar();
+        }
         Accion::Escuchar => escuchar(e, textos, ruta, m),
         Accion::Voz(b) => boton_de_voz(e, b, ruta, m),
         Accion::Lado(b) => boton_de_lado(e, b, textos, ruta),
@@ -2815,6 +2831,7 @@ mod pruebas {
             corrido_indice: 0.0,
             poniendo_marca: false,
             en_negativo: false,
+            oscuro: true,
             encima: DestinoRiel::Fuera,
             aviso: None,
             botones: Vec::new(),

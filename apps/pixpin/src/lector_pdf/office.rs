@@ -191,6 +191,11 @@ impl HojasOffice {
         self.paginas.get(i)
     }
 
+    /// El modo oscuro para las hojas que se pinten despues (luna/sol).
+    pub(super) fn poner_oscuro(&self, si: bool) {
+        self.pintor.poner_oscuro(si);
+    }
+
     /// Pinta la hoja `i` en la transformada de la hoja (cero en su esquina,
     /// `vista::ANCHO_HOJA` de ancho). `false` si aun no esta maquetada.
     pub(super) fn pintar_hoja(&mut self, p: &Pintor, i: usize) -> bool {
@@ -878,6 +883,13 @@ mod pruebas {
         e.en_negativo = true;
         motor.dibujar(&fuera.destino, |p| pintar(&mut e, p, m, &textos)).expect("pintar");
         guardar("lector-office-negativo.png", &fuera);
+        // En oscuro (luna/sol): el papel oscuro y el texto claro; las
+        // imagenes y los rellenos con sus colores.
+        e.en_negativo = false;
+        e.oscuro = true;
+        motor.dibujar(&fuera.destino, |p| pintar(&mut e, p, m, &textos)).expect("pintar");
+        guardar("lector-office-oscuro.png", &fuera);
+        e.oscuro = false;
 
         // La primera hoja tal como va a la impresora, en un A4.
         let o = e.office.as_ref().unwrap();
