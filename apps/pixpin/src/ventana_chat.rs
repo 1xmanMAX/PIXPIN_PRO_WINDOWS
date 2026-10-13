@@ -33,6 +33,8 @@ use crate::caja_dibujo::hex;
 use crate::overlay::Recursos;
 
 /// La caja flotante a la que se sueltan ficheros para un proyecto (2-oct).
+// El asistente local en la conversacion (`crate::asistente`).
+mod asistente;
 mod caja_de_soltar;
 /// La descripcion de una foto: su `texto`, como en el movil (3-oct).
 mod descripcion;
@@ -642,6 +644,14 @@ pub fn abrir(
     ) {
         tracing::warn!(?e, "no se pudo crear «Mensajes guardados»");
     }
+    // Y el del asistente local, fijo tambien (`asistente`, 13-oct-2026).
+    if let Err(e) = pixpin_proyecto::almacen::asegurar_asistente(
+        ubicacion.raiz(),
+        pixpin_shell::entorno::ahora_utc_ms(),
+        &identidad,
+    ) {
+        tracing::warn!(?e, "no se pudo crear el chat «Asistente»");
+    }
     let indice = pixpin_proyecto::almacen::Indice::leer(ubicacion.raiz());
     let mut fichas: Vec<pixpin_proyecto::almacen::Ficha> =
         indice.ordenadas().into_iter().cloned().collect();
@@ -691,6 +701,8 @@ pub fn abrir(
     // (`pdf_en_chat`): que despierten a esta ventana cuando acaben.
     crate::pdf_en_chat::avisar_a(ventana.handle().0 as isize);
     crate::aligerar::avisar_a(ventana.handle().0 as isize);
+    // Y lo que el asistente pida dibujar con ningun lienzo abierto.
+    crate::asistente::al_lienzo::avisar_al_chat(ventana.handle().0 as isize);
     // La fecha del indice la ultima vez que se leyo, para enterarse de lo
     // que llegue por fuera (del movil, de otra ventana).
     let mut sello_indice: Option<std::time::SystemTime> = None;
@@ -1592,6 +1604,9 @@ pub fn abrir(
                             }
                             hay_que_pintar = true;
                         }
+                    } else if abierto.as_ref().is_some_and(|a| asistente::tocar(ubicacion, a, l)) {
+                        // La tarjeta de bajar el asistente (ya hizo lo suyo).
+                        hay_que_pintar = true;
                     } else if abierto.is_some() && disposicion.cabecera_chat.contiene(l) {
                         // El papel de entre las pastillas no hace nada: la
                         // cabecera son sus tres pastillas, como en el movil.
@@ -1741,7 +1756,11 @@ pub fn abrir(
                             .contiene(l)
                     }) {
                         if let Some(a) = abierto.as_mut() {
-                            if a.dictado.is_some() {
+                            if a.borrador.trim().is_empty() && asistente::ocupado(&a.ficha.id) {
+                                // Mientras el asistente contesta, el boton es
+                                // «parar», como en los chats de IA.
+                                asistente::parar(&a.ficha.id);
+                            } else if a.dictado.is_some() {
                                 // Dictando, el boton es «ya he terminado»: lo
                                 // dicho queda en la caja para repasarlo antes
                                 // de enviarlo, no se envia solo.
@@ -1783,6 +1802,9 @@ pub fn abrir(
                                 match guardar_nota(ubicacion, a, &identidad) {
                                     Ok(()) => {
                                         a.scroll = None;
+                                        if let Some(t) = asistente::al_enviar(ubicacion, a, textos) {
+                                            aviso = Some((t, std::time::Instant::now()));
+                                        }
                                         if let Some(i) = elegida {
                                             fichas[i].tocado = a.ficha.tocado;
                                             fichas[i].resumen = a.ficha.resumen.clone();
@@ -3183,6 +3205,10 @@ pub fn abrir(
                                     // Vuelve al final: lo que acabas de
                                     // escribir tiene que verse.
                                     a.scroll = None;
+                                    // Si era para el asistente, contesta.
+                                    if let Some(t) = asistente::al_enviar(ubicacion, a, textos) {
+                                        aviso = Some((t, std::time::Instant::now()));
+                                    }
                                     if let Some(i) = elegida {
                                         fichas[i].tocado = a.ficha.tocado;
                                         fichas[i].resumen = a.ficha.resumen.clone();
@@ -3595,6 +3621,7 @@ pub fn abrir(
                             None => {
                                 pintar_historial(p, &disposicion, &c, a);
                                 pintar_redaccion(p, &disposicion, &c, a, alto_texto);
+                                asistente::pintar_tarjeta(p, &disposicion, &c, a);
                             }
                         }
                         // Encima de todo, panel incluido: esta esperando una
@@ -3704,6 +3731,16 @@ pub fn abrir(
             .as_ref()
             .and_then(|a| a.grabando.as_ref())
             .map(|_| 100u32);
+        // El asistente: lo que va escribiendo, lo que pide meter en un
+        // lienzo y la descarga del modelo (`ventana_chat/asistente.rs`).
+        let (cambio_ia, aviso_ia) = asistente::latido(ubicacion, abierto.as_mut());
+        if cambio_ia {
+            hay_que_pintar = true;
+        }
+        if let Some(clave) = aviso_ia {
+            aviso = Some((textos.t(&clave), std::time::Instant::now()));
+        }
+        let hasta_el_asistente = asistente::espera();
         // La transcripcion, igual: el hilo deja el texto cuando le toca y
         // nadie va a mover el raton para enterarse. Se mira aqui —una vez
         // por vuelta— y no al pintar, porque escribe en el cuaderno.
@@ -3754,6 +3791,7 @@ pub fn abrir(
             hasta_la_transcripcion,
             hasta_el_dictado,
             hasta_la_lectura,
+            hasta_el_asistente,
         ]
         .into_iter()
         .flatten()
@@ -13780,7 +13818,16 @@ fn pintar_redaccion(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto, alto_te
     // Un sitio, dos caras: el microfono, o enviar si hay algo escrito. Y el
     // clip se retira al escribir, como en el movil.
     let hay_texto = !a.borrador.trim().is_empty();
-    if a.dictado.is_some() {
+    if !hay_texto && asistente::ocupado(&a.ficha.id) {
+        // El asistente contestando: el boton es «parar».
+        icono_centrado(
+            p,
+            &mi::STOP,
+            d.boton_enviar(alto_texto, escala),
+            icono,
+            tema.enviar,
+        );
+    } else if a.dictado.is_some() {
         // Dictando, el boton es el microfono encendido: pulsarlo termina.
         icono_centrado(
             p,

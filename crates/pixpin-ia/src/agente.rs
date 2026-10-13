@@ -17,7 +17,7 @@
 //! Android.
 
 use crate::ErrorIa;
-use crate::herramientas::{Herramienta, Llamada, validar};
+use crate::herramientas::{Herramienta, Llamada, colores_del_pedido, validar};
 use crate::motor::{Fin, Mensaje, Motor, Peticion, Respuesta, Rol, Seguir, Trozo};
 
 /// Cuantas veces se deja al modelo corregir una llamada mal hecha en un
@@ -76,11 +76,33 @@ pub fn turno(
     for _ in 0..VUELTAS + REINTENTOS {
         let mut peticion = Peticion::nueva(historial.clone());
         peticion.herramientas = herramientas.to_vec();
+        // Un dibujo con muchas figuras son 1500-2000 tokens de JSON: con el
+        // tope de 1024 la llamada salia cortada (medido con el 2B, 13-oct).
+        peticion.max_tokens = MAX_TOKENS_CON_HERRAMIENTAS;
         let respuesta = motor.completar(&peticion, &mut |t| match t {
             Trozo::Texto(s) => al_evento(Evento::Texto(s.clone())),
             Trozo::Llamando { nombre } => al_evento(Evento::Llamando(nombre.clone())),
             Trozo::Pensando(_) => Seguir::Si,
-        })?;
+        });
+        let respuesta = match respuesta {
+            Ok(r) => r,
+            // `llama-server` no deja pasar una llamada cuyo JSON no cierra
+            // (HTTP 500): es una llamada mal hecha como cualquier otra, y se
+            // le pide al modelo que la repita mas corta.
+            Err(ErrorIa::Protocolo(m)) if llamada_rota(&m) && reintentos < REINTENTOS => {
+                reintentos += 1;
+                let motivo = "ERROR: tu llamada a la herramienta salio cortada o con JSON roto. \
+                              Vuelve a llamarla con menos figuras (20 como mucho) y un JSON completo."
+                    .to_string();
+                if al_evento(Evento::Reintento { motivo: motivo.clone() }) == Seguir::Parar {
+                    cortado = true;
+                    break;
+                }
+                historial.push(Mensaje::usuario(motivo));
+                continue;
+            }
+            Err(e) => return Err(e),
+        };
         historial.push(mensaje_del_asistente(&respuesta));
         if respuesta.fin == Fin::Cortado {
             cortado = true;
@@ -95,9 +117,19 @@ pub fn turno(
             });
         }
         let mut alguna_mal = false;
+        // Lo que pidio el usuario, para los colores que el modelo olvide.
+        let pedido = historial
+            .iter()
+            .rev()
+            .find(|m| m.rol == Rol::Usuario)
+            .map(Mensaje::texto_entero)
+            .unwrap_or_default();
         for cruda in &respuesta.llamadas {
             match validar(cruda, herramientas) {
-                Ok(v) => {
+                Ok(mut v) => {
+                    if let Llamada::Dibujar(figuras) = &mut v.llamada {
+                        colores_del_pedido(figuras, &pedido);
+                    }
                     al_evento(Evento::Herramienta {
                         llamada: v.llamada.clone(),
                         avisos: v.avisos.clone(),
@@ -142,6 +174,10 @@ pub fn turno(
     // vez de dejar la burbuja vacia.
     let texto = if cortado {
         String::new()
+    } else if hechas > 0 {
+        // Algo si salio (medido: el 2B dibuja bien y luego insiste en
+        // anadir mas con datos rotos): no se dice que no se hizo nada.
+        "Hecho en parte: lo demas no me salio con las herramientas.".to_string()
     } else {
         "No he sabido hacerlo con las herramientas; prueba a pedirlo de otra forma.".to_string()
     };
@@ -151,6 +187,16 @@ pub fn turno(
         reintentos,
         cortado,
     })
+}
+
+/// Tope de tokens de cada vuelta del agente.
+pub const MAX_TOKENS_CON_HERRAMIENTAS: u32 = 2048;
+
+/// Si el error del motor es una llamada a herramienta con el JSON roto (lo
+/// que contesta `llama-server` cuando no la puede leer).
+fn llamada_rota(m: &str) -> bool {
+    let m = m.to_lowercase();
+    m.contains("tool call") && (m.contains("json") || m.contains("parse"))
 }
 
 fn mensaje_del_asistente(r: &Respuesta) -> Mensaje {
@@ -164,7 +210,8 @@ fn mensaje_del_asistente(r: &Respuesta) -> Mensaje {
 pub fn instrucciones() -> String {
     "Eres el asistente de PixPin, una app de capturas, notas y lienzo. \
      Contesta en el idioma del usuario, breve y claro. \
-     Si pide dibujar algo, o copiar una imagen al lienzo, usa dibujar_en_lienzo. \
+     Si pide dibujar algo, o copiar una imagen al lienzo, usa dibujar_en_lienzo, \
+     poniendo el color de cada figura. \
      Si da datos para graficar, usa grafica. \
      Si quiere el texto de un documento escaneado, usa ocr. \
      Despues de usar una herramienta, di en una frase lo que hiciste."
@@ -312,8 +359,48 @@ mod pruebas {
             .map(|_| Respuesta::de_llamada("ocr", "{}"))
             .collect();
         let (f, _, _, motor) = correr(bucle, &mut ej);
-        assert!(f.texto.contains("No he sabido"));
+        // Las llamadas si se hicieron: no se dice que no se hizo nada.
+        assert!(f.texto.contains("Hecho en parte"), "{}", f.texto);
         assert_eq!(motor.recibido.lock().unwrap().len(), VUELTAS + REINTENTOS);
+    }
+
+    /// Falla la primera vez como `llama-server` con una llamada cortada.
+    struct CortaUnaVez(std::sync::atomic::AtomicBool, MotorGuionado);
+
+    impl Motor for CortaUnaVez {
+        fn completar(
+            &self,
+            p: &Peticion,
+            t: &mut dyn FnMut(&Trozo) -> Seguir,
+        ) -> Result<Respuesta, ErrorIa> {
+            assert_eq!(p.max_tokens, MAX_TOKENS_CON_HERRAMIENTAS);
+            if !self.0.swap(true, std::sync::atomic::Ordering::SeqCst) {
+                return Err(ErrorIa::Protocolo(
+                    "HTTP 500: Failed to parse tool call arguments as JSON: unexpected end of input".into(),
+                ));
+            }
+            self.1.completar(p, t)
+        }
+    }
+
+    #[test]
+    fn una_llamada_cortada_por_el_servidor_se_reintenta() {
+        let motor = CortaUnaVez(
+            Default::default(),
+            MotorGuionado::nuevo(vec![
+                Respuesta::de_llamada("dibujar_en_lienzo", r#"{"elementos":[{"tipo":"rombo","x":1,"y":1}]}"#),
+                Respuesta::de_texto("Listo."),
+            ]),
+        );
+        let mut h = historial();
+        let mut ej = Apunta::default();
+        let f = turno(&motor, &mut h, &catalogo(), &mut ej, &mut |_| Seguir::Si).unwrap();
+        assert_eq!(f.reintentos, 1);
+        assert_eq!(f.herramientas_hechas, 1);
+        assert!(h.iter().any(|m| m.texto_entero().contains("salio cortada")));
+        // Otro error del motor no se reintenta.
+        let vacio = MotorGuionado::nuevo(vec![]);
+        assert!(turno(&vacio, &mut historial(), &catalogo(), &mut ej, &mut |_| Seguir::Si).is_err());
     }
 
     #[test]

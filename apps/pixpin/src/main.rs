@@ -54,6 +54,8 @@ mod croquis3d;
 mod al_frente;
 mod abrir_imagen;
 mod aligerar;
+// El asistente local del chat (modelo pequeno con llama.cpp, `pixpin-ia`).
+mod asistente;
 mod anotado_del_adjunto;
 mod anotador_al_chat;
 mod audio;
