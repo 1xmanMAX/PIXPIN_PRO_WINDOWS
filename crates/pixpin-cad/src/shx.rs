@@ -411,9 +411,17 @@ impl Pluma {
     }
 }
 
-/// Donde buscar las fuentes SHX: las de AutoCAD (todas las versiones) y las
-/// de Windows.
+/// Donde buscar las fuentes SHX: primero la carpeta de letras de PixPin (las
+/// que puso el usuario mandan, ver [`crate::letras`]), luego las de AutoCAD
+/// (todas las versiones) y las de Windows.
 pub fn carpetas() -> Vec<PathBuf> {
+    let mut v = crate::letras::carpetas_del_usuario();
+    v.extend(carpetas_del_sistema());
+    v
+}
+
+/// Las de AutoCAD y las de Windows, sin las del usuario.
+pub fn carpetas_del_sistema() -> Vec<PathBuf> {
     let mut v = Vec::new();
     for base in ["C:\\Program Files\\Autodesk", "C:\\Program Files (x86)\\Autodesk"] {
         if let Ok(d) = std::fs::read_dir(base) {
