@@ -435,7 +435,8 @@ impl Banco {
                 elegida,
                 ahora: 0,
                 textos: &textos,
-                busqueda: s.busqueda,
+                busqueda: &crate::caja_texto::CajaLinea::con_texto(s.busqueda),
+                buscando: false,
                 marcados: &marcados,
             };
             let c = Pinta {

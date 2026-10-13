@@ -10,6 +10,19 @@
 //! le da DirectWrite, la MISMA disposicion con la que pinta el texto) y con
 //! esas cajas se decide donde cae un clic ([`indice_en_punto`]) y donde se
 //! dibuja la rayita ([`sitio_del_cursor`]).
+//!
+//! **Es el componente de escribir de toda la app** (13-oct-2026). El
+//! usuario conto que la caja de buscar del chat «no acepta todas las
+//! funciones de los espacios de texto, como Ctrl+Borrar» y que «no se ve
+//! donde estoy escribiendo»: cada caja de una linea llevaba su propio
+//! `push`/`pop`. Su regla es un solo componente con variables, no copias:
+//! la caja de escribir del chat usa este [`Cursor`], y las de una linea
+//! (buscar, renombrar, codigos) usan [`CajaLinea`], que es este mismo
+//! cursor con deshacer, raton, portapapeles y su pintado.
+
+mod linea;
+
+pub(crate) use linea::{CajaLinea, Colores, Portapapeles, PortapapelesWindows, Respuesta, en_una_linea};
 
 use std::ops::Range;
 
