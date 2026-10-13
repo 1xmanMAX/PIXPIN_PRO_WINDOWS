@@ -40,8 +40,11 @@ pub fn convertir_si_toca() -> Option<i32> {
         return Some(2);
     };
     let (entrada, salida) = (PathBuf::from(entrada), PathBuf::from(salida));
-    Some(match pixpin_cad::convertir::convertir_fichero(&entrada) {
-        Ok((modelo, _)) => {
+    // La carpeta de letras del usuario (el boton «Aa»), si la hay: manda
+    // sobre las de Autodesk, Windows y Hershey.
+    let letras = args.get(4).map(PathBuf::from);
+    Some(match pixpin_cad::letras::convertir_con_letras(&entrada, letras) {
+        Ok(modelo) => {
             let temporal = salida.with_extension("tmp");
             let escrito = std::fs::write(&temporal, modelo.a_bytes()).and_then(|()| std::fs::rename(&temporal, &salida));
             if escrito.is_ok() { 0 } else { 3 }
@@ -67,6 +70,21 @@ pub fn clave(ruta: &Path) -> Option<String> {
     Some(format!("{h:016x}"))
 }
 
+/// Cambia cuando cambia lo que se guarda del plano leido: la `l1` trae las
+/// letras que faltan (lo leido antes no las tenia y se vuelve a leer).
+const REVISION_DE_LETRAS: &str = "l1";
+
+/// El nombre del plano leido en la cache: su clave, la revision y, si el
+/// usuario puso letras, su huella (`huellaDeLetras` de Android): con una
+/// letra nueva el plano se vuelve a leer con ella.
+fn nombre_en_cache(clave: &str, huella: &str) -> String {
+    if huella.is_empty() {
+        format!("{clave}-{REVISION_DE_LETRAS}.pxcad")
+    } else {
+        format!("{clave}-{REVISION_DE_LETRAS}-{huella}.pxcad")
+    }
+}
+
 /// Deja solo los `EN_CACHE` planos mas recientes.
 fn podar(carpeta: &Path) {
     let Ok(d) = std::fs::read_dir(carpeta) else { return };
@@ -85,7 +103,8 @@ fn cargar(raiz: &Path, ruta: &Path) -> Result<pixpin_cad::modelo::Modelo, String
     let carpeta = raiz.join("cache").join("cad");
     std::fs::create_dir_all(&carpeta).map_err(|e| e.to_string())?;
     let clave = clave(ruta).ok_or("no se puede leer el fichero")?;
-    let destino = carpeta.join(format!("{clave}.pxcad"));
+    let letras = pixpin_cad::letras::carpeta_en(raiz);
+    let destino = carpeta.join(nombre_en_cache(&clave, &pixpin_cad::letras::huella(&letras)));
     if let Ok(b) = std::fs::read(&destino)
         && let Some(m) = pixpin_cad::modelo::Modelo::de_bytes(&b)
     {
@@ -95,7 +114,7 @@ fn cargar(raiz: &Path, ruta: &Path) -> Result<pixpin_cad::modelo::Modelo, String
     }
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
     let mut orden = std::process::Command::new(exe);
-    orden.arg(ORDEN).arg(ruta).arg(&destino);
+    orden.arg(ORDEN).arg(ruta).arg(&destino).arg(&letras);
     {
         use std::os::windows::process::CommandExt;
         // Sin ventana de consola.
@@ -134,9 +153,32 @@ fn textos(idioma: Idioma) -> pixpin_cad::ventana::TextosUi {
             pista_marcos: "Drag to frame what is printed · Ctrl+P: print · Del: remove the last one".into(),
             anotar: "Annotate	A".into(),
             sin_dibujo_civil: "{n} Civil 3D objects were saved without their graphics: save with PROXYGRAPHICS = 1 or export to LandXML".into(),
+            letras: "Drawing fonts…	L".into(),
+            letras_faltan: "This drawing asks for fonts that are not here; its texts use similar ones and may not fit their boxes:".into(),
+            letras_no_falta: "No font that the drawing names is missing.".into(),
+            letras_donde: concat!(
+                r"SHX fonts are usually in C:\Program Files\Autodesk\AutoCAD 20xx\Fonts or next to the drawing you were sent;",
+                "\n",
+                r"TrueType ones, in C:\Windows\Fonts. The ones you add here win over AutoCAD's, Windows' and PixPin's."
+            )
+            .into(),
+            letras_anadir: "Add fonts (SHX, TTF, OTF, TTC)…".into(),
+            letras_quitar: "Remove mine ({n})".into(),
+            faltan_letras: "{n} fonts of the drawing are missing: click Aa above to add them".into(),
+            releyendo: "Reading the drawing with your fonts…".into(),
         },
         _ => pixpin_cad::ventana::TextosUi::default(),
     }
+}
+
+/// Lee el plano en otro hilo; llega por el canal.
+fn leer_aparte(raiz: &Path, ruta: &Path) -> std::sync::mpsc::Receiver<Result<pixpin_cad::modelo::Modelo, String>> {
+    let (tx, rx) = std::sync::mpsc::channel();
+    let (r2, raiz2) = (ruta.to_path_buf(), raiz.to_path_buf());
+    let _ = std::thread::Builder::new().name("plano-cad-leer".into()).spawn(move || {
+        let _ = tx.send(cargar(&raiz2, &r2));
+    });
+    rx
 }
 
 /// Abre el plano en su ventana, en su propio hilo.
@@ -144,11 +186,9 @@ pub fn lanzar(idioma: Idioma, ubicacion: Ubicacion, ruta: &Path) {
     let ruta = ruta.to_path_buf();
     let raiz = ubicacion.raiz().to_path_buf();
     let lanzado = std::thread::Builder::new().name("plano-cad".into()).spawn(move || {
-        let (tx, rx) = std::sync::mpsc::channel();
-        let (r2, raiz2) = (ruta.clone(), raiz.clone());
-        let _ = std::thread::Builder::new().name("plano-cad-leer".into()).spawn(move || {
-            let _ = tx.send(cargar(&raiz2, &r2));
-        });
+        // El dialogo «Abrir» del boton «Aa» es COM.
+        let _com = pixpin_shell::ComDelHilo::iniciar();
+        let rx = leer_aparte(&raiz, &ruta);
         let titulo = ruta.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
         // El boton «3D»: el mismo plano en el visor de modelos.
         let (u3, r3) = (ubicacion.clone(), ruta.clone());
@@ -165,7 +205,19 @@ pub fn lanzar(idioma: Idioma, ubicacion: Ubicacion, ruta: &Path) {
         let capa = anotar::rutas_de_la_capa(&raiz, &ruta);
         let anotador: Box<dyn FnOnce(&pixpin_cad::modelo::Modelo) -> Box<dyn pixpin_cad::anotado::Anotador>> =
             Box::new(move |m| Box::new(anotar::MotorDelPlano::nuevo(capa, m)) as Box<dyn pixpin_cad::anotado::Anotador>);
-        let acciones = pixpin_cad::ventana::Acciones { abrir_3d: Some(abrir_3d), imprimir: Some(imprimir), anotador: Some(anotador) };
+        // El boton «Aa»: las letras del usuario, en `<raiz>/fuentes-shx`.
+        let carpeta = pixpin_cad::letras::carpeta_en(&raiz);
+        let (c1, c2, c3, r5, raiz5) = (carpeta.clone(), carpeta.clone(), carpeta, ruta.clone(), raiz.clone());
+        let letras = pixpin_cad::ventana::Letras {
+            mias: Box::new(move || pixpin_cad::letras::letras_en(&c1).len()),
+            anadir: Box::new(move |v| {
+                let elegidas = pixpin_shell::elegir::pedir_ficheros(windows::Win32::Foundation::HWND(v as *mut _));
+                pixpin_cad::letras::anadir(&c2, &elegidas)
+            }),
+            quitar: Box::new(move || pixpin_cad::letras::quitar_todas(&c3)),
+            releer: Box::new(move || leer_aparte(&raiz5, &r5)),
+        };
+        let acciones = pixpin_cad::ventana::Acciones { abrir_3d: Some(abrir_3d), imprimir: Some(imprimir), anotador: Some(anotador), letras: Some(letras) };
         if let Err(e) = pixpin_cad::ventana::ver(&titulo, rx, textos(idioma), acciones) {
             tracing::warn!(%e, "no se pudo abrir el visor de planos");
             let _ = pixpin_shell::abrir(&ruta);
@@ -185,6 +237,22 @@ mod pruebas {
         assert!(se_abre("Planta.DWG") && se_abre("corte.dxf"));
         // Caso negativo: lo demas no.
         assert!(!se_abre("plano.pdf") && !se_abre("dwg"));
+    }
+
+    #[test]
+    fn con_letras_nuevas_el_plano_se_vuelve_a_leer() {
+        // Sin letras del usuario, el nombre no lleva huella.
+        assert_eq!(nombre_en_cache("abc", ""), "abc-l1.pxcad");
+        let d = std::env::temp_dir().join(format!("pixpin-cad-huella-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        let vacia = pixpin_cad::letras::huella(&d);
+        assert_eq!(nombre_en_cache("abc", &vacia), "abc-l1.pxcad");
+        std::fs::create_dir_all(&d).unwrap();
+        std::fs::write(d.join("romans.shx"), b"x").unwrap();
+        let con = nombre_en_cache("abc", &pixpin_cad::letras::huella(&d));
+        assert_ne!(con, "abc-l1.pxcad");
+        assert!(con.starts_with("abc-l1-") && con.ends_with(".pxcad"));
+        let _ = std::fs::remove_dir_all(&d);
     }
 
     #[test]

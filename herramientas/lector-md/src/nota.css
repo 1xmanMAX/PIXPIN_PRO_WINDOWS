@@ -402,6 +402,61 @@ body.ctrl .pp-enlace {
   font-style: italic;
   color: var(--formula);
 }
+/* La formula compuesta (formulas.mjs): fraccion con raya, indices y raiz. */
+.pp-formula-compuesta {
+  font-family: 'Cambria Math', Cambria, serif;
+  color: var(--formula);
+  white-space: nowrap;
+  padding: 0 1px;
+}
+.pp-formula-compuesta i {
+  font-style: italic;
+}
+.ppf-frac {
+  display: inline-flex;
+  flex-direction: column;
+  vertical-align: middle;
+  text-align: center;
+  font-size: 0.85em;
+  margin: 0 2px;
+  line-height: 1.15;
+}
+.ppf-num {
+  border-bottom: max(1px, 0.07em) solid currentColor;
+  padding: 0 2px;
+}
+.ppf-den {
+  padding: 0 2px;
+}
+.ppf-sup,
+.ppf-sub {
+  font-size: 0.72em;
+  line-height: 0;
+}
+.ppf-ind {
+  display: inline-flex;
+  flex-direction: column;
+  vertical-align: middle;
+  font-size: 0.72em;
+  line-height: 1.05;
+}
+.ppf-raiz {
+  white-space: nowrap;
+}
+.ppf-raiz-i {
+  font-size: 0.55em;
+  margin-right: -0.35em;
+}
+.ppf-signo {
+  font-size: 1.15em;
+}
+.ppf-dentro {
+  border-top: max(1px, 0.07em) solid currentColor;
+  padding: 0 1px;
+}
+.ppf-par {
+  font-size: 1.1em;
+}
 .pp-minuto {
   font-weight: 700;
   color: var(--acento);

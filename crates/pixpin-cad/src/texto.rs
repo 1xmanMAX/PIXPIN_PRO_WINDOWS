@@ -42,10 +42,13 @@ struct Fuente {
     escala_ttf: f32,
 }
 
-/// Las carpetas de fuentes SHX, buscadas una vez.
-fn carpetas_shx() -> &'static [std::path::PathBuf] {
+/// Las carpetas de fuentes SHX: las del usuario (que pueden cambiar entre
+/// un plano y otro) y las del sistema, buscadas una vez.
+fn carpetas_shx() -> Vec<std::path::PathBuf> {
     static C: std::sync::OnceLock<Vec<std::path::PathBuf>> = std::sync::OnceLock::new();
-    C.get_or_init(crate::shx::carpetas)
+    let mut v = crate::letras::carpetas_del_usuario();
+    v.extend(C.get_or_init(crate::shx::carpetas_del_sistema).iter().cloned());
+    v
 }
 
 pub struct Textos {
@@ -107,11 +110,21 @@ pub fn clave_de_familia(familia: &str, negrita: bool) -> Option<String> {
     if f.ends_with(".shx") || f.ends_with(".ttf") || f.ends_with(".otf") {
         return Some(f);
     }
+    // Las del usuario (carpeta de letras de PixPin) mandan sobre las de Windows.
+    let mias = crate::letras::familias_del_usuario();
     let m = fuentes_instaladas();
     // El registro nombra la negrita en el idioma de Windows.
     let negritas = ["bold", "negrita", "gras", "fett", "grassetto", "negrito"];
-    let r = if negrita { negritas.iter().find_map(|n| m.get(&format!("{f} {n}"))).or_else(|| m.get(&f)) } else { m.get(&f).or_else(|| m.get(&format!("{f} regular"))) };
-    r.map(|p| format!("ttf:{}", p.display()))
+    let buscar = |m: &HashMap<String, std::path::PathBuf>| -> Option<std::path::PathBuf> {
+        let r = if negrita { negritas.iter().find_map(|n| m.get(&format!("{f} {n}"))).or_else(|| m.get(&f)) } else { m.get(&f).or_else(|| m.get(&format!("{f} regular"))) };
+        r.cloned()
+    };
+    let r = buscar(&mias).or_else(|| buscar(m)).map(|p| format!("ttf:{}", p.display()));
+    if r.is_none() {
+        // Se dice en el visor: «este plano pide letras que no estan».
+        crate::letras::falta(familia.trim().trim_matches('"'));
+    }
+    r
 }
 
 /// El fichero de fuente de Windows para el `font_file` de un estilo.
@@ -164,14 +177,20 @@ impl Textos {
             let mut f = None;
             let shx = if clave.ends_with(".shx") || (!clave.is_empty() && !clave.contains('.')) {
                 // La de AutoCAD si esta; si no, la de PixPin que mas se le parece.
-                crate::shx::buscar(&clave, carpetas_shx())
+                // Antes, si el plano la pide y no esta, se apunta para decirlo.
+                crate::shx::buscar(&clave, &carpetas_shx())
                     .and_then(|r| crate::shx::abrir(&r))
+                    .or_else(|| {
+                        crate::letras::falta_shx(&clave);
+                        None
+                    })
                     .or_else(|| crate::shx::de_reserva(&clave))
             } else {
                 None
             };
+            crate::letras::revisar_ttf(&clave, std::path::Path::new(CARPETA_FUENTES));
             for nombre in fichero_para(&clave) {
-                let ruta = std::path::Path::new(CARPETA_FUENTES).join(&nombre);
+                let ruta = crate::letras::ruta_de_fuente(std::path::Path::new(CARPETA_FUENTES), &nombre);
                 if let Ok(datos) = std::fs::read(&ruta)
                     && let Ok(cara) = ttf_parser::Face::parse(&datos, 0)
                 {
@@ -652,6 +671,66 @@ mod pruebas {
         // Un espacio no tiene contorno pero si avance.
         let e = f.letra(' ').unwrap();
         assert!(e.triangulos.is_empty() && e.avance > 0.1);
+    }
+}
+
+#[cfg(test)]
+mod pruebas_letras_del_usuario {
+    use super::*;
+    use crate::letras;
+
+    fn carpeta(nombre: &str) -> std::path::PathBuf {
+        let d = std::env::temp_dir().join(format!("pixpin-texto-letras-{nombre}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        d
+    }
+
+    /// Una SHX que el plano pide y no esta se apunta (y se escribe con la de
+    /// Hershey); puesta en la carpeta del usuario, se usa y ya no falta.
+    #[test]
+    fn la_shx_que_falta_se_dice_y_la_del_usuario_manda() {
+        let _g = letras::UNA_A_LA_VEZ.lock().unwrap_or_else(|e| e.into_inner());
+        letras::poner_carpeta(None);
+        letras::sacar_lo_que_falta();
+        let mut t = Textos::nuevo();
+        assert!(t.fuente("pixpin-prueba-rara.shx").is_some(), "la de reserva escribe igual");
+        assert_eq!(letras::sacar_lo_que_falta(), vec!["pixpin-prueba-rara.shx".to_string()]);
+        // Ahora el usuario la pone (aqui, las rayas de romans con ese nombre).
+        let d = carpeta("shx");
+        std::fs::write(d.join("PIXPIN-PRUEBA-RARA.SHX"), include_bytes!("../fuentes-shx/romans.shx")).unwrap();
+        letras::poner_carpeta(Some(d.clone()));
+        let mut t = Textos::nuevo();
+        let f = t.fuente("pixpin-prueba-rara.shx").expect("la del usuario");
+        assert!(f.letra('A').is_some_and(|l| l.rayas));
+        assert!(letras::sacar_lo_que_falta().is_empty(), "ya no falta");
+        letras::poner_carpeta(None);
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    /// Una familia TrueType que no esta se apunta; la del usuario (por su
+    /// nombre de verdad, no el del fichero) manda sobre la de Windows.
+    #[test]
+    fn la_familia_que_falta_se_dice_y_la_del_usuario_manda() {
+        let _g = letras::UNA_A_LA_VEZ.lock().unwrap_or_else(|e| e.into_inner());
+        letras::poner_carpeta(None);
+        letras::sacar_lo_que_falta();
+        assert_eq!(clave_de_familia("Familia Que No Existe", false), None);
+        assert_eq!(letras::sacar_lo_que_falta(), vec!["Familia Que No Existe".to_string()]);
+        let arial = std::path::Path::new(CARPETA_FUENTES).join("arial.ttf");
+        if !arial.is_file() {
+            return;
+        }
+        let d = carpeta("ttf");
+        std::fs::copy(&arial, d.join("copia-de-arial.ttf")).unwrap();
+        letras::poner_carpeta(Some(d.clone()));
+        let k = clave_de_familia("Arial", false).unwrap();
+        assert!(k.to_lowercase().ends_with("copia-de-arial.ttf"), "{k}");
+        // Un fichero pedido por su nombre tambien sale de la carpeta del usuario.
+        assert_eq!(letras::ruta_de_fuente(std::path::Path::new(CARPETA_FUENTES), "COPIA-DE-ARIAL.TTF"), d.join("copia-de-arial.ttf"));
+        assert!(letras::sacar_lo_que_falta().is_empty());
+        letras::poner_carpeta(None);
+        let _ = std::fs::remove_dir_all(&d);
     }
 }
 

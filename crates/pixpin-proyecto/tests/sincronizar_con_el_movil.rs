@@ -2267,3 +2267,69 @@ fn el_grafito_con_dureza_y_las_guias_del_pc_llegan_al_movil_como_las_lee() {
     let chat = vista::chat_de_ficha(&p.raiz(), &obra.id).unwrap();
     p.quieto(&chat);
 }
+
+/// **Fotos y audios en una leccion vieja, ida y vuelta** (Tanda 7,
+/// `AdjuntosDeLaLeccion.kt` v0.102): la leccion y su foto vienen del movil;
+/// en el PC se le pone un audio que **le responde** y se le quita la foto,
+/// como hace `lecciones::almacen::guardar_con_cambios` (adjunto en
+/// `archivos/`, mensaje con `respondeA`; quitar = fuera del cuaderno con su
+/// marca de borrado). El movil recibe el audio con sus claves y pierde la
+/// foto, y la vuelta siguiente no la resucita.
+#[test]
+fn en_una_leccion_vieja_anadir_y_quitar_viaja_ida_y_vuelta() {
+    let p = montar("leccion-adjuntos");
+    adjunto_movil(&p, "lec-k1", "lecciones/k1.leccion", br#"{"id":"k1","titulo":"Curar el concreto"}"#);
+    // La foto que el movil le puso: le responde.
+    let rel = "guardados/leccion_1.jpg";
+    let f = p.movil.raiz().join(rel);
+    std::fs::write(&f, b"JPG").unwrap();
+    p.movil
+        .anadir_mensaje(&Json::de_valor(&json!({
+            "id": "foto-1", "cuando": p.reloj.tic(), "clase": "IMAGEN", "ruta": p.movil.absoluta(rel),
+            "nombre": "Foto de la lección", "respondeA": "lec-k1", "numero": 2, "letra": "a",
+        })))
+        .unwrap();
+    p.desde_pc(&[GENERAL]);
+    let g = p.pc.ficha_de(GENERAL).unwrap();
+    assert!(p.mensajes_pc(&g.id).iter().any(|m| m.id == "foto-1" && m.responde_a.as_deref() == Some("lec-k1")), "la foto llego respondiendo");
+
+    // En el PC: un audio nuevo que responde a la leccion...
+    let carpeta = almacen::carpeta(&p.raiz(), &g.id);
+    let ruta = almacen::guardar_adjunto(&p.raiz(), &g.id, "voz_1.m4a", b"M4A").unwrap();
+    let numero = Cuaderno::leer_de(&carpeta).unwrap().mensajes.iter().map(|m| m.numero).max().unwrap_or(0) + 1;
+    let mut audio = Mensaje::adjunto(
+        Clase::Voz,
+        "Audio de la lección",
+        &ruta,
+        3,
+        &Sello { cuando: p.reloj.tic(), numero, aparato: p.aparato_pc(), proyecto: g.id.clone() },
+    );
+    audio.duracion_ms = 4_200;
+    audio.responde_a = Some("lec-k1".into());
+    cuaderno::anadir(&carpeta, &audio).unwrap();
+    // ...y la foto fuera, con su marca.
+    let quitados = cuaderno::quitar(&carpeta, &["foto-1".to_string()].into()).unwrap();
+    assert_eq!(quitados.len(), 1);
+    vista::anotar_borrados(&p.raiz(), &g.id, &quitados, p.reloj.tic()).unwrap();
+
+    p.desde_pc(&[GENERAL]);
+    let en_movil = p.movil.leer_mensajes();
+    assert!(!en_movil.iter().any(|m| kotlin::cadena(m, "id") == Some("foto-1")), "la foto quitada se va del movil");
+    let a = en_movil.iter().find(|m| kotlin::cadena(m, "clase") == Some("VOZ")).expect("el audio llega al movil");
+    assert_eq!(kotlin::cadena(a, "respondeA"), Some("lec-k1"), "le responde a la leccion");
+    assert_eq!(kotlin::numero(a, "duracionMs"), Some(4_200));
+    assert_eq!(kotlin::cadena(a, "nombre"), Some("Audio de la lección"));
+    let ruta_movil = kotlin::cadena(a, "ruta").unwrap();
+    let base = p.movil.absoluta("");
+    let rel_movil = ruta_movil.strip_prefix(base.trim_end_matches('/')).unwrap().trim_start_matches('/');
+    assert!(p.movil.raiz().join(rel_movil).is_file(), "con su archivo: {ruta_movil}");
+
+    // Ida y vuelta: dirija quien dirija, nada resucita ni se pierde.
+    p.desde_movil(&[GENERAL]);
+    let pc = p.mensajes_pc(&g.id);
+    assert!(!pc.iter().any(|m| m.id == "foto-1"), "no resucita en el PC");
+    let vuelto = pc.iter().find(|m| m.clase == Some(Clase::Voz)).unwrap();
+    assert_eq!(vuelto.responde_a.as_deref(), Some("lec-k1"));
+    assert_eq!(vuelto.duracion_ms, 4_200);
+    p.quieto(GENERAL);
+}

@@ -474,7 +474,7 @@ pub fn medida(d: f64, unidades: u32) -> String {
 
 // ------------------------------------------------------------------ pintar
 
-const BOTONES: [&str; 7] = ["asa", "tema", "acotar", "marcos", "anotar", "tres", "fijar"];
+const BOTONES: [&str; 8] = ["asa", "tema", "acotar", "marcos", "anotar", "tres", "letras", "fijar"];
 pub(crate) const ALTO_BARRA: f64 = 48.0;
 const BOTON: f64 = 40.0;
 
@@ -540,6 +540,12 @@ pub(crate) fn raya_en(c: &mut Constructor, a: [f64; 2], b: [f64; 2], g: f64, col
 /// activos (en azul): acotar mientras se mide, el pin si el plano esta
 /// siempre encima de las demas ventanas.
 pub(crate) fn barra(e: f64, botones: &[&str], encima: Option<usize>, claro: bool, activos: &[bool]) -> Modelo {
+    barra_con_avisos(e, botones, encima, claro, activos, &[])
+}
+
+/// Como [`barra`], y los botones de `avisos` en ambar (el «Aa» cuando el
+/// plano pide letras que no estan, como en Android).
+pub(crate) fn barra_con_avisos(e: f64, botones: &[&str], encima: Option<usize>, claro: bool, activos: &[bool], avisos: &[bool]) -> Modelo {
     let mut c = Constructor::nuevo();
     let (fondo, tinta, hover, tenue) = if claro {
         (rgba(0xF9, 0xF9, 0xFB), rgba(0x1C, 0x1C, 0x1E), 0x14000000u32, rgba(0x6E, 0x6E, 0x73))
@@ -560,8 +566,31 @@ pub(crate) fn barra(e: f64, botones: &[&str], encima: Option<usize>, claro: bool
         }
         let (cx, cy) = ((x0 + x1) / 2.0, h / 2.0);
         let r = 8.0 * e;
-        let col = if activo { rgba(255, 255, 255) } else { tinta };
+        let col = if activo {
+            rgba(255, 255, 255)
+        } else if avisos.get(i).copied().unwrap_or(false) {
+            rgba(0xFF, 0xB0, 0x20)
+        } else {
+            tinta
+        };
         match botones[i] {
+            "letras" => {
+                // «Aa»: una A grande y una a pequeña, de rayas.
+                let p = |x: f64, y: f64| [cx + x * e, cy + y * e];
+                raya(&mut c, p(-10.0, 7.0), p(-5.0, -7.0), 1.6 * e, col);
+                raya(&mut c, p(-5.0, -7.0), p(0.0, 7.0), 1.6 * e, col);
+                raya(&mut c, p(-8.0, 2.5), p(-2.0, 2.5), 1.4 * e, col);
+                let anillo: Vec<[f64; 2]> = (0..=24)
+                    .map(|k| {
+                        let a = k as f64 / 24.0 * std::f64::consts::TAU;
+                        p(5.5 + 3.4 * a.cos(), 3.6 + 3.4 * a.sin())
+                    })
+                    .collect();
+                for v in anillo.windows(2) {
+                    raya(&mut c, v[0], v[1], 1.4 * e, col);
+                }
+                raya(&mut c, p(8.9, -0.5), p(8.9, 7.0), 1.4 * e, col);
+            }
             "asa" => {
                 // Seis puntos: de aqui se arrastra la ventana.
                 for (dx, dy) in [(-3.0, -6.0), (3.0, -6.0), (-3.0, 0.0), (3.0, 0.0), (-3.0, 6.0), (3.0, 6.0)] {
@@ -897,6 +926,61 @@ const M_MARCOS: u32 = 8;
 const M_IMPRIMIR: u32 = 9;
 const M_BORRAR_MARCOS: u32 = 10;
 const M_ANOTAR: u32 = 11;
+const M_LETRAS: u32 = 12;
+// Las del menu del boton «Aa».
+const M_ANADIR_LETRAS: u32 = 40;
+const M_QUITAR_LETRAS: u32 = 41;
+const M_NADA: u32 = 49;
+
+/// **El menu del boton «Aa»** (el dialogo «Letras del plano» de Android):
+/// que letras pide el plano y no estan, donde suelen estar, añadir las
+/// propias y quitarlas. Devuelve lo elegido.
+fn menu_letras(hwnd: HWND, t: &TextosUi, faltan: &[String], mias: usize) -> Option<u32> {
+    // SAFETY: menu propio que se destruye antes de salir; cadenas vivas
+    // durante cada AppendMenuW (las copia el sistema).
+    unsafe {
+        let m = CreatePopupMenu().ok()?;
+        let poner = |id: u32, texto: &str, gris: bool| {
+            let v: Vec<u16> = texto.encode_utf16().chain(std::iter::once(0)).collect();
+            let f = if gris { MF_STRING | MF_GRAYED } else { MF_STRING };
+            let _ = AppendMenuW(m, f, id as usize, PCWSTR(v.as_ptr()));
+        };
+        if faltan.is_empty() {
+            poner(M_NADA, &t.letras_no_falta, true);
+        } else {
+            poner(M_NADA, &t.letras_faltan, true);
+            for f in faltan {
+                poner(M_NADA, &format!("      {f}"), true);
+            }
+        }
+        let _ = AppendMenuW(m, MF_SEPARATOR, 0, PCWSTR::null());
+        for l in t.letras_donde.lines() {
+            poner(M_NADA, l, true);
+        }
+        let _ = AppendMenuW(m, MF_SEPARATOR, 0, PCWSTR::null());
+        poner(M_ANADIR_LETRAS, &t.letras_anadir, false);
+        poner(M_QUITAR_LETRAS, &t.letras_quitar.replace("{n}", &mias.to_string()), mias == 0);
+        let mut p = POINT::default();
+        let _ = GetCursorPos(&mut p);
+        let _ = SetForegroundWindow(hwnd);
+        let r = TrackPopupMenu(m, TPM_LEFTALIGN | TPM_RETURNCMD, p.x, p.y, Some(0), hwnd, None);
+        let _ = DestroyMenu(m);
+        (r.0 != 0).then_some(r.0 as u32)
+    }
+}
+
+/// Las letras del usuario, para el boton «Aa»: cuantas hay, añadir (con el
+/// dialogo de Windows), quitarlas y volver a leer el plano con ellas.
+pub struct Letras {
+    pub mias: Box<dyn Fn() -> usize>,
+    /// Pide las letras con el dialogo «Abrir» (sobre la ventana dada) y las
+    /// copia; devuelve cuantas.
+    pub anadir: Box<dyn Fn(isize) -> usize>,
+    pub quitar: Box<dyn Fn() -> usize>,
+    /// Lee el plano otra vez (con la huella nueva de las letras).
+    #[allow(clippy::type_complexity)]
+    pub releer: Box<dyn Fn() -> Receiver<Result<Modelo, String>>>,
+}
 
 #[allow(clippy::too_many_arguments)]
 fn menu(hwnd: HWND, t: &TextosUi, acotando: bool, hay_cotas: bool, fijada: bool, marcando: bool, hay_marcos: bool) {
@@ -919,6 +1003,7 @@ fn menu(hwnd: HWND, t: &TextosUi, acotando: bool, hay_cotas: bool, fijada: bool,
         poner(M_ACOTAR, &t.acotar, acotando, false);
         poner(M_BORRAR, &t.borrar_cotas, false, !hay_cotas);
         poner(M_TRES, &t.tres, false, false);
+        poner(M_LETRAS, &t.letras, false, false);
         let _ = AppendMenuW(m, MF_SEPARATOR, 0, PCWSTR::null());
         poner(M_ANOTAR, &t.anotar, false, false);
         poner(M_MARCOS, &t.marcos, marcando, false);
@@ -949,6 +1034,8 @@ pub struct Acciones {
     /// da el plano cuando llega, para leer su capa.
     #[allow(clippy::type_complexity)]
     pub anotador: Option<Box<dyn FnOnce(&Modelo) -> Box<dyn crate::anotado::Anotador>>>,
+    /// El boton «Aa»: las letras del usuario (ver [`crate::letras`]).
+    pub letras: Option<Letras>,
 }
 
 /// La firma de las cotas y los marcos (para saber si cambiaron y guardarlos
@@ -983,6 +1070,13 @@ fn vista_para_el_motor(hwnd: HWND, camara: &Camara, w: u32, h: u32, e: f64, m: &
 }
 
 pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo, String>>, textos_ui: TextosUi, mut acciones: Acciones) -> Result<(), String> {
+    let mut cargando = cargando;
+    // Releyendo el plano con letras nuevas: el de antes sigue a la vista.
+    let mut releyendo = false;
+    // Las letras que el plano pide y no estan (el «Aa» en ambar) y hasta
+    // cuando se dice abajo, como el aviso de Android al abrir.
+    let mut faltan_letras: Vec<String> = Vec::new();
+    let mut aviso_letras_hasta: Option<Instant> = None;
     let abrir_3d = &acciones.abrir_3d;
     // El motor del lienzo para anotar: nace cuando llega el plano.
     let mut hacer_anotador = acciones.anotador.take();
@@ -1046,7 +1140,7 @@ pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo, String>>, textos_ui: 
         // SAFETY: bucle de mensajes de este hilo.
         unsafe {
             if !animando && !sucio && !barra_sucia {
-                let espera = if plano.is_none() || barra_visible || fuera_desde.is_some() { 50 } else { INFINITE };
+                let espera = if plano.is_none() || releyendo || barra_visible || fuera_desde.is_some() { 50 } else { INFINITE };
                 let _ = MsgWaitForMultipleObjectsEx(None, espera, QS_ALLINPUT, MWMO_INPUTAVAILABLE);
             }
             let mut m = MSG::default();
@@ -1056,8 +1150,13 @@ pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo, String>>, textos_ui: 
             }
         }
         // El plano, cuando llega.
-        if plano.is_none() && mensaje == textos_ui.abriendo {
-            match cargando.try_recv() {
+        if (plano.is_none() && mensaje == textos_ui.abriendo) || releyendo {
+            let otra_vez = releyendo;
+            let llegado = cargando.try_recv();
+            if !matches!(llegado, Err(std::sync::mpsc::TryRecvError::Empty)) {
+                releyendo = false;
+            }
+            match llegado {
                 Ok(Ok(m)) => {
                     if m.vacio() {
                         mensaje = textos_ui.vacio.clone();
@@ -1066,9 +1165,18 @@ pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo, String>>, textos_ui: 
                             Ok(p) => {
                                 // Lo que importa, no la caja entera: un objeto suelto a
                                 // kilometros dejaba el plano diminuto, como si no abriera.
-                                camara = Camara::encuadrar(m.caja_util(), w, h);
+                                // Releido con otras letras, se queda donde se miraba.
+                                if !otra_vez {
+                                    camara = Camara::encuadrar(m.caja_util(), w, h);
+                                }
+                                enganches = None;
+                                faltan_letras = crate::letras::las_que_faltan(&m.sin_dibujar);
+                                aviso_letras_hasta = (!faltan_letras.is_empty()).then(|| Instant::now() + Duration::from_secs(8));
+                                barra_sucia = true;
                                 // Para las pruebas: PIXPIN_CAD_VISTA="x,y,ancho" (coordenadas del plano).
-                                if let Ok(v) = std::env::var("PIXPIN_CAD_VISTA") {
+                                if let Ok(v) = std::env::var("PIXPIN_CAD_VISTA")
+                                    && !otra_vez
+                                {
                                     let n: Vec<f64> = v.split(',').filter_map(|t| t.trim().parse().ok()).collect();
                                     if n.len() == 3 && n[2] > 0.0 {
                                         camara = Camara { centro: [n[0] - m.origen[0], n[1] - m.origen[1]], px: n[2] / w.max(1) as f64 };
@@ -1125,6 +1233,7 @@ pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo, String>>, textos_ui: 
         let mut cambiar_marcos = false;
         let mut cambiar_anotar = false;
         let mut imprimir = false;
+        let mut ver_letras = false;
         for (de, ev) in eventos {
             // **Anotando, el raton y el teclado son del motor del lienzo**
             // (la rueda y el boton central siguen moviendo el plano).
@@ -1197,7 +1306,8 @@ pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo, String>>, textos_ui: 
                     Some(3) => cambiar_marcos = true,
                     Some(4) => cambiar_anotar = true,
                     Some(5) => ver_en_3d = true,
-                    Some(6) => cambiar_encima = true,
+                    Some(6) => ver_letras = true,
+                    Some(7) => cambiar_encima = true,
                     _ => {}
                 },
                 (De::Barra, _) => {}
@@ -1316,6 +1426,7 @@ pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo, String>>, textos_ui: 
                     M_TRES => ver_en_3d = true,
                     M_MARCOS => cambiar_marcos = true,
                     M_ANOTAR => cambiar_anotar = true,
+                    M_LETRAS => ver_letras = true,
                     M_IMPRIMIR => imprimir = true,
                     M_BORRAR_MARCOS => {
                         marcos.clear();
@@ -1357,6 +1468,7 @@ pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo, String>>, textos_ui: 
                     0x50 if unsafe { GetKeyState(VK_CONTROL.0 as i32) } < 0 => imprimir = true,
                     0x49 => cambiar_marcos = true,
                     0x41 => cambiar_anotar = true,
+                    0x4C => ver_letras = true,
                     0x46 | 0x24 => encuadrar = true,
                     0x42 => cambiar_tema = true,
                     0x4D => cambiar_acotar = true,
@@ -1467,6 +1579,31 @@ pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo, String>>, textos_ui: 
         {
             f();
         }
+        // El boton «Aa»: las letras que faltan, añadir las propias o quitarlas.
+        // Con letras nuevas, el plano se vuelve a leer (su cache lleva la huella).
+        if ver_letras
+            && plano.is_some()
+            && !releyendo
+            && let Some(l) = &acciones.letras
+        {
+            let cambiadas = match menu_letras(hwnd, &textos_ui, &faltan_letras, (l.mias)()) {
+                Some(M_ANADIR_LETRAS) => (l.anadir)(hwnd.0 as isize),
+                Some(M_QUITAR_LETRAS) => (l.quitar)(),
+                _ => 0,
+            };
+            if cambiadas > 0 {
+                cargando = (l.releer)();
+                releyendo = true;
+                mensaje = textos_ui.releyendo.clone();
+                aviso_ui = None;
+                aviso_letras_hasta = None;
+                sucio = true;
+            }
+        }
+        if aviso_letras_hasta.is_some_and(|t| Instant::now() > t) {
+            aviso_letras_hasta = None;
+            sucio = true;
+        }
         if aviso_civil_hasta.is_some_and(|t| Instant::now() > t) {
             aviso_civil_hasta = None;
             sucio = true;
@@ -1537,7 +1674,8 @@ pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo, String>>, textos_ui: 
             sucio = true;
         }
         if barra_sucia && barra_visible {
-            let m = barra(e, &BOTONES, boton_encima, claro, &[false, false, acotar.activo, marcando, anotando, false, fijada]);
+            let avisos = [false, false, false, false, false, false, !faltan_letras.is_empty(), false];
+            let m = barra_con_avisos(e, &BOTONES, boton_encima, claro, &[false, false, acotar.activo, marcando, anotando, false, false, fijada], &avisos);
             if let Ok(p) = gpu_barra.subir(&m) {
                 let (gw, gh) = gpu_barra.tamano();
                 let fondo = if claro { [0.976, 0.976, 0.984, 1.0] } else { [0.118, 0.118, 0.125, 1.0] };
@@ -1577,6 +1715,11 @@ pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo, String>>, textos_ui: 
             }
             let civil = if aviso_civil_hasta.is_some() && !acotar.activo {
                 let t = textos_ui.sin_dibujo_civil.replace("{n}", &sin_dibujo_civil.to_string());
+                let m = pastilla_abajo(&mut textos, &t, h, e, claro);
+                gpu.subir(&m).ok().map(|p| (m, p))
+            } else if aviso_letras_hasta.is_some() && !acotar.activo {
+                // Como el aviso de Android al abrir: «Faltan N letras… toca Aa».
+                let t = textos_ui.faltan_letras.replace("{n}", &faltan_letras.len().to_string());
                 let m = pastilla_abajo(&mut textos, &t, h, e, claro);
                 gpu.subir(&m).ok().map(|p| (m, p))
             } else {
@@ -1635,6 +1778,18 @@ pub struct TextosUi {
     pub pista_marcos: String,
     /// Con `{n}`: cuantos objetos de Civil 3D vinieron sin su dibujo.
     pub sin_dibujo_civil: String,
+    /// El boton «Aa» (como «Letras del plano» de Android).
+    pub letras: String,
+    pub letras_faltan: String,
+    pub letras_no_falta: String,
+    /// Donde suelen estar, un renglon del menu por linea.
+    pub letras_donde: String,
+    pub letras_anadir: String,
+    /// Con `{n}`: cuantas puso el usuario.
+    pub letras_quitar: String,
+    /// Con `{n}`: cuantas faltan.
+    pub faltan_letras: String,
+    pub releyendo: String,
 }
 
 impl Default for TextosUi {
@@ -1657,6 +1812,19 @@ impl Default for TextosUi {
             borrar_marcos: "Borrar los marcos".into(),
             pista_marcos: "Arrastra para marcar lo que se imprime · Ctrl+P: imprimir · Supr: quitar el último".into(),
             sin_dibujo_civil: "{n} objetos de Civil 3D se guardaron sin su dibujo: guárdalo con PROXYGRAPHICS = 1 o exporta a LandXML".into(),
+            letras: "Letras del plano…	L".into(),
+            letras_faltan: "Este plano pide letras que no están; sus textos salen con otras parecidas y pueden no caber en sus recuadros:".into(),
+            letras_no_falta: "No falta ninguna letra que el plano diga por su nombre.".into(),
+            letras_donde: concat!(
+                r"Las SHX suelen estar en C:\Program Files\Autodesk\AutoCAD 20xx\Fonts o junto al plano que te pasaron;",
+                "\n",
+                r"las TrueType, en C:\Windows\Fonts. Las que añadas aquí mandan sobre las de AutoCAD, Windows y PixPin."
+            )
+            .into(),
+            letras_anadir: "Añadir letras (SHX, TTF, OTF, TTC)…".into(),
+            letras_quitar: "Quitar las mías ({n})".into(),
+            faltan_letras: "Faltan {n} letras del plano: pulsa Aa arriba para añadirlas".into(),
+            releyendo: "Leyendo el plano con tus letras…".into(),
         }
     }
 }
@@ -1722,5 +1890,43 @@ mod pruebas {
         // Caso negativo: sin sitio fuera, dentro y arriba.
         let p = RECT { left: 0, top: 0, right: 1920, bottom: 1040 };
         assert_eq!(colocar_barra(p, t, 120, 48, 8), (8, 8));
+    }
+}
+
+#[cfg(test)]
+mod pruebas_letras {
+    use super::*;
+
+    /// El boton «Aa» esta en la barra, antes de la chincheta, y el menu
+    /// tiene su entrada; sin letras que falten, el «Aa» no va en ambar.
+    #[test]
+    fn el_boton_aa_esta_en_la_barra_y_en_el_menu() {
+        let i = BOTONES.iter().position(|b| *b == "letras").unwrap();
+        assert_eq!(BOTONES[i + 1], "fijar");
+        let t = TextosUi::default();
+        assert!(t.letras.contains("\tL") && t.faltan_letras.contains("{n}") && t.letras_quitar.contains("{n}"));
+        // Con aviso, el «Aa» cambia de color; sin aviso, no.
+        let con = barra_con_avisos(1.0, &BOTONES, None, false, &[], &[false, false, false, false, false, false, true, false]);
+        let sin = barra(1.0, &BOTONES, None, false, &[]);
+        let colores = |m: &Modelo| m.vertices.iter().map(|v| v.color).collect::<std::collections::BTreeSet<u32>>();
+        assert!(colores(&con).contains(&rgba(0xFF, 0xB0, 0x20)));
+        assert!(!colores(&sin).contains(&rgba(0xFF, 0xB0, 0x20)));
+    }
+
+    /// Para mirarla: `PIXPIN_CAD_PNG=<png> cargo test -p pixpin-cad --lib barra_con_aa -- --ignored`.
+    #[test]
+    #[ignore = "pinta la barra del visor de planos a PNG"]
+    fn barra_con_aa_a_png() {
+        let ruta = std::env::var("PIXPIN_CAD_PNG").unwrap_or_else(|_| "barra-planos.png".into());
+        let e = 2.0;
+        let avisos = [false, false, false, false, false, false, true, false];
+        let m = barra_con_avisos(e, &BOTONES, None, false, &[false, false, false, false, false, false, false, true], &avisos);
+        let (w, h) = (ancho_barra(e, BOTONES.len()), ALTO_BARRA * e);
+        let mut l = crate::pruebas_png::Lienzo::nuevo(&m, [w / 2.0, h / 2.0], w, w.ceil() as usize, h.ceil() as usize);
+        l.pintar(&m);
+        // La barra va hacia abajo y el lienzo de pruebas hacia arriba.
+        let filas: Vec<Vec<[u8; 4]>> = l.px.chunks(l.w).map(|f| f.to_vec()).rev().collect();
+        l.px = filas.concat();
+        l.guardar(&ruta);
     }
 }

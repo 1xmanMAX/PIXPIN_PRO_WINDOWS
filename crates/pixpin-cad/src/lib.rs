@@ -11,6 +11,7 @@ pub mod convertir3d;
 pub mod gpu;
 pub mod gpu3d;
 pub mod leer;
+pub mod letras;
 pub mod modelo;
 pub mod modelo3d;
 pub mod proxy;

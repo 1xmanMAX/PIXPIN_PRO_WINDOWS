@@ -639,3 +639,22 @@ fn muestra_foto() {
     }
     let _ = p;
 }
+
+/// Las formulas `$…$` compuestas fuera del renglon del cursor (exponentes,
+/// subindices, `a/b`) y tal cual en el del cursor (la ultima).
+#[test]
+#[ignore]
+fn muestra_formulas() {
+    let _com = pixpin_shell::ComDelHilo::iniciar();
+    let texto = "# Fórmulas\nEl área es $\\pi r^2$ y la energía $E = mc^2$.\nLa serie $a_1 + a_2 + a_n$ y la mitad $1/2$.\nUn exponente largo $x^{n+1}_i$ y un precio de $5 y $6.\nCon el cursor: $x^2 + y^2 = r^2$";
+    let mut e = abrir_con(pedido(texto), true, (900, 420));
+    let t = leer(e.edit);
+    let pos = t.find("x^2 + y").unwrap() + 2;
+    let pos = t[..pos].encode_utf16().count();
+    elegir(e.edit, pos, pos);
+    pintar(&mut e, None);
+    let arriba = POINT::default();
+    enviar(e.edit, EM_SETSCROLLPOS, 0, &arriba as *const _ as isize);
+    guardar_png(&muestra(&e), "nota-md-formulas.png");
+    desmontar(e);
+}
