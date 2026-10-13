@@ -32,6 +32,9 @@
 //!   todos; `copias`, la copia de antes de tocar nada.
 //! - `al_lienzo`: una foto suelta al lienzo abierto del movil (`suelto`).
 //! - `galeria`: la galeria de capturas que viaja, con sus fechas de irse.
+//! - `compartidos`, `valla` e `invitacion`: los chats compartidos con otras
+//!   personas (Android v0.122.0): llaves P-256, listas firmadas, la valla de
+//!   archivos, la invitacion `PXI1` y la vuelta entre personas `PXC1`.
 //! - `protocolo`: el `Respondedor` y la `Sesion`, peticion a peticion;
 //!   `vuelta`, una vuelta entera como la lleva la pantalla del movil.
 //!

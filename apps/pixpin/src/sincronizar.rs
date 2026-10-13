@@ -48,6 +48,7 @@ use crate::overlay::Recursos;
 mod al_dia;
 pub(crate) mod al_movil;
 pub(crate) mod automatica;
+pub(crate) mod compartidos_ui;
 mod copias_ui;
 mod elegir;
 pub(crate) mod en_fondo;
@@ -112,6 +113,11 @@ pub enum Pedido {
     /// borrados»: la papelera que los recupera enteros.
     // La pide `abrir_papelera` (menu del clic derecho de un proyecto).
     Copias,
+    /// «Compartir con personas» desde un proyecto: sus personas, invitar,
+    /// quitar y salir (Android 13-oct-2026).
+    Compartir { chat: String, nombre: String },
+    /// «Entrar en un chat compartido» con el codigo de quien invita.
+    EntrarEnChat,
 }
 
 /// El pedido que espera a que la ventana lo recoja. Solo cabe uno: si se
@@ -153,6 +159,22 @@ pub fn enviar_por_wifi(idioma: pixpin_store::Idioma, ubicacion: Ubicacion, rutas
 // Sincronizar → Copias de seguridad.
 pub fn abrir_papelera(idioma: pixpin_store::Idioma, ubicacion: Ubicacion) {
     con_pedido(idioma, ubicacion, Some(Pedido::Copias))
+}
+
+/// **«Compartir con personas»** desde un proyecto (Android 13-oct-2026):
+/// abre Sincronizar YA en las personas de ese chat.
+pub fn compartir_con_personas(
+    idioma: pixpin_store::Idioma,
+    ubicacion: Ubicacion,
+    chat: String,
+    nombre: String,
+) {
+    con_pedido(idioma, ubicacion, Some(Pedido::Compartir { chat, nombre }))
+}
+
+/// **«Entrar en un chat compartido»** con el codigo de quien invita.
+pub fn entrar_en_chat_compartido(idioma: pixpin_store::Idioma, ubicacion: Ubicacion) {
+    con_pedido(idioma, ubicacion, Some(Pedido::EntrarEnChat))
 }
 
 fn con_pedido(idioma: pixpin_store::Idioma, ubicacion: Ubicacion, pedido: Option<Pedido>) {
@@ -250,6 +272,7 @@ enum Aviso {
     /// pantalla que los lanzo: lo de una pantalla ya cerrada no pisa la nueva.
     Recibir(u64, recibir_wifi::Estado),
     Enviar(u64, enviar_wifi::Novedad),
+    Compartidos(u64, compartidos_ui::Novedad),
     /// La vuelta pregunta que chats: se abre «¿Que sincronizar?» y el hilo
     /// espera la respuesta por `responde`.
     Elegir {
@@ -287,6 +310,9 @@ enum Sub {
     /// «Copias de seguridad»: volver a como estaba antes de un envio o de
     /// una sincronizacion (`sincro/CopiasActivity.kt`).
     Copias(Box<copias_ui::Copias>),
+    /// Las personas de un chat compartido, o entrar en uno con un codigo
+    /// (`sincro/ChatCompartidoActivity.kt`).
+    Compartidos(Box<compartidos_ui::Personas>),
 }
 
 /// Que se esta escribiendo.
@@ -342,6 +368,10 @@ enum Accion {
     /// «Copias de seguridad», desde la portada.
     AbrirCopias,
     Copias(copias_ui::Toque),
+    /// Las personas de un chat compartido, o entrar en uno.
+    Compartidos(compartidos_ui::Toque),
+    /// «Entrar en un chat compartido», desde la portada.
+    AbrirEntrarChat,
     Enviar(enviar_wifi::Toque),
     /// La flecha de una sub-pantalla: a la portada.
     Volver,
@@ -405,6 +435,7 @@ impl Pantalla {
         }
         match &self.sub {
             Sub::Portada | Sub::Elegir(_) | Sub::Copias(_) => false,
+            Sub::Compartidos(c) => c.animando(),
             Sub::Recibir(r) => r.animando(),
             Sub::Enviar(e) => e.animando(),
         }
@@ -416,6 +447,7 @@ impl Pantalla {
             Sub::Portada | Sub::Elegir(_) | Sub::Copias(_) => false,
             Sub::Recibir(r) => recibir_wifi::tecla(r, t, &cx),
             Sub::Enviar(e) => enviar_wifi::tecla(e, t, &cx),
+            Sub::Compartidos(c) => compartidos_ui::tecla(c, t, &cx),
         }
     }
 }
@@ -505,6 +537,24 @@ pub fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion) -> R
                     pantalla.entrar(|t| {
                         Sub::Enviar(Box::new(enviar_wifi::Enviar::con_archivos(t, rutas, &cx)))
                     });
+                }
+                Pedido::Compartir { chat, nombre } => {
+                    pantalla.fase = Fase::Nada;
+                    pantalla.campo = None;
+                    pantalla.saliendo = false;
+                    let cx = pantalla.contexto();
+                    pantalla.entrar(|t| {
+                        Sub::Compartidos(Box::new(compartidos_ui::Personas::de_chat(
+                            t, &cx, chat, nombre,
+                        )))
+                    });
+                }
+                Pedido::EntrarEnChat => {
+                    pantalla.fase = Fase::Nada;
+                    pantalla.campo = None;
+                    pantalla.saliendo = false;
+                    let cx = pantalla.contexto();
+                    pantalla.entrar(|t| Sub::Compartidos(Box::new(compartidos_ui::Personas::entrar(t, &cx))));
                 }
                 Pedido::Copias => {
                     pantalla.fase = Fase::Nada;
@@ -657,11 +707,25 @@ pub fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion) -> R
                 Aviso::Responde(id, si) => {
                     pantalla.responden.insert(id, si);
                 }
+                Aviso::Compartidos(turno, n) => {
+                    let cx = pantalla.contexto();
+                    if let Sub::Compartidos(c) = &mut pantalla.sub
+                        && c.turno == turno
+                    {
+                        compartidos_ui::novedad(c, n, &cx);
+                    }
+                }
                 Aviso::Identidad => {
                     if let Ok(i) = leer_identidad(&raiz) {
                         pantalla.identidad = i;
                     }
                     pantalla.direcciones = leer_direcciones(&raiz);
+                    // La lista de un chat compartido pudo cambiar (alguien
+                    // entro, salio o llego por la red).
+                    let cx = pantalla.contexto();
+                    if let Sub::Compartidos(c) = &mut pantalla.sub {
+                        c.releer(&cx);
+                    }
                 }
                 Aviso::Registro(linea) => {
                     pantalla.registro.insert(0, linea);
@@ -793,6 +857,18 @@ fn atender(
         Accion::Elegir(toque) => {
             if let Sub::Elegir(el) = &mut s.sub
                 && elegir::tocar(el, toque)
+            {
+                s.volver();
+            }
+        }
+        Accion::AbrirEntrarChat => {
+            let cx = s.contexto();
+            s.entrar(|t| Sub::Compartidos(Box::new(compartidos_ui::Personas::entrar(t, &cx))))
+        }
+        Accion::Compartidos(toque) => {
+            let cx = s.contexto();
+            if let Sub::Compartidos(c) = &mut s.sub
+                && compartidos_ui::tocar(c, toque, &cx)
             {
                 s.volver();
             }
@@ -1332,7 +1408,16 @@ fn escuchar(raiz: PathBuf, vivo: Arc<AtomicBool>) -> Option<u16> {
 /// almacen de este equipo visto como el del movil (`vista::DiscoPc`).
 fn responder(mut flujo: TcpStream, raiz: &Path, mi_puerto: u16) -> Result<()> {
     let mut cuatro = [0u8; 4];
-    let n = flujo.peek(&mut cuatro)?;
+    let mut n = flujo.peek(&mut cuatro)?;
+    // Los cuatro primeros pueden no llegar juntos: se espera un poco a que
+    // esten, que de ellos sale a quien se atiende.
+    for _ in 0..40 {
+        if n >= 4 || n == 0 {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(25));
+        n = flujo.peek(&mut cuatro)?;
+    }
     if n == 4 && &cuatro == pixpin_sincro::SONDA {
         flujo.read_exact(&mut cuatro)?;
         flujo.write_all(pixpin_sincro::SONDA_RESPUESTA)?;
@@ -1399,8 +1484,15 @@ fn responder(mut flujo: TcpStream, raiz: &Path, mi_puerto: u16) -> Result<()> {
     };
     // Con la galeria de capturas: si el otro la pide, la tiene (Android
     // v0.107.0); uno de antes no la pide y no pasa nada.
-    let capturas = galeria::CapturasDelPc::nuevas(raiz);
-    let hecho = r.atender_con_galeria(flujo, nonce().context("sin azar")?, Some(&capturas));
+    // **Quien llama dice con los cuatro primeros bytes** si es del grupo
+    // (`PXS1`) o una persona de un chat compartido (`PXC1`, Android
+    // 13-oct-2026): a esa solo se le deja tocar los chats que compartimos.
+    let hecho = if n == 4 && &cuatro == pixpin_sincro::canal::MAGIA_DE_PERSONA {
+        r.atender_persona(flujo, nonce().context("sin azar")?)
+    } else {
+        let capturas = galeria::CapturasDelPc::nuevas(raiz);
+        r.atender_con_galeria(flujo, nonce().context("sin azar")?, Some(&capturas))
+    };
     // Lo que llego sin marco de la tinta (el movil de hoy no lo escribe)
     // recibe el suyo, en otro hilo; viaja en la vuelta siguiente (K21).
     crate::marco_de_la_tinta::tras_sincronizar(raiz);
@@ -1582,13 +1674,27 @@ fn anunciarse(raiz: PathBuf, puerto: u16, vivo: Arc<AtomicBool>) {
         .name("sincro-anuncio".into())
         .spawn(move || {
             let mut anuncio: Option<pixpin_shell::mdns::Anuncio> = None;
-            let mut con: Option<(String, String, String)> = None;
+            let mut con: Option<(Option<String>, String, String)> = None;
             let mut etiqueta = (String::new(), String::new());
+            // Si estoy en algun chat compartido, mirado solo cuando la lista
+            // cambia (`compartidos::version`), no cada medio segundo.
+            let mut compartidos: Option<(u64, bool)> = None;
             while vivo.load(Ordering::SeqCst) {
                 if let Ok(id) = leer_identidad(&raiz) {
-                    let clave = id.codigo.clone().map(|c| {
+                    let v = pixpin_sincro::compartidos::version();
+                    if compartidos.is_none_or(|(x, _)| x != v) {
+                        let hay = pixpin_sincro::compartidos::CompartidosEnDisco::nuevo(&raiz)
+                            .hay_alguno(&id.yo.id);
+                        compartidos = Some((v, hay));
+                    }
+                    let en_compartidos = compartidos.is_some_and(|(_, h)| h);
+                    // **Tambien con chats compartidos** (Android 13-oct-2026):
+                    // las personas de esos chats llaman aqui aunque este
+                    // equipo no este en ningun grupo. Sin grupo, sin «g»: no
+                    // sale como aparato propio de nadie.
+                    let clave = (id.codigo.is_some() || en_compartidos).then(|| {
                         (
-                            c,
+                            id.codigo.clone(),
                             id.yo.letra.clone().unwrap_or_default(),
                             id.yo.nombre.clone(),
                         )
@@ -1598,20 +1704,22 @@ fn anunciarse(raiz: PathBuf, puerto: u16, vivo: Arc<AtomicBool>) {
                         if let Some((codigo, letra, nombre)) = &clave {
                             // La etiqueta cuesta 60 000 vueltas de PBKDF2:
                             // se calcula una vez por codigo.
-                            if etiqueta.0 != *codigo {
+                            if let Some(codigo) = codigo
+                                && etiqueta.0 != *codigo
+                            {
                                 etiqueta = (codigo.clone(), etiqueta_de(codigo));
                             }
                             let corto: String = nombre.chars().take(40).collect();
+                            let mut datos: Vec<(&str, &str)> = Vec::new();
+                            if codigo.is_some() {
+                                datos.push(("g", &etiqueta.1));
+                            }
+                            datos.extend([("id", id.yo.id.as_str()), ("l", letra), ("n", &corto)]);
                             match pixpin_shell::mdns::anunciar(
                                 TIPO_MDNS,
                                 &format!("PixPin {nombre}"),
                                 puerto,
-                                &[
-                                    ("g", &etiqueta.1),
-                                    ("id", &id.yo.id),
-                                    ("l", letra),
-                                    ("n", &corto),
-                                ],
+                                &datos,
                             ) {
                                 Ok(a) => anuncio = Some(a),
                                 Err(e) => tracing::warn!(?e, "no se pudo anunciar en la red"),
@@ -2288,6 +2396,9 @@ fn pintar(
         Sub::Elegir(el) => {
             y = elegir::pintar(&mut l, textos, el, &s.identidad.yo.nombre, ancho, y);
         }
+        Sub::Compartidos(c) => {
+            y = compartidos_ui::pintar(&mut l, textos, c, 20.0 * e, ancho - 40.0 * e, y);
+        }
         Sub::Copias(c) => {
             y = copias_ui::pintar(&mut l, textos, c, 20.0 * e, ancho - 40.0 * e, y);
         }
@@ -2318,6 +2429,7 @@ fn pintar(
             Accion::Elegir(elegir::Toque::Cancelar),
         ),
         Sub::Copias(_) => (textos.t("cop-titulo"), Accion::Volver),
+        Sub::Compartidos(c) => (c.titulo(textos), Accion::Volver),
     };
     l.icono(&VOLVER, 28.0 * e, barra / 2.0, TEXTO, vuelta);
     let tam = 24.0 * e;
@@ -2470,6 +2582,23 @@ fn pintar_portada(
     );
     l.parrafo(&tambien, xi, yb + 56.0 * e, wi, 12.0 * e, SUAVE);
     y += hp;
+
+    // **Chats compartidos** (Android 13-oct-2026): entrar en uno con el
+    // codigo de quien invita. Compartir uno se hace desde su proyecto.
+    l.titulo(&textos.t("cc-portada-titulo"), x0, &mut y);
+    let ccc = textos.t("cc-portada-como");
+    let hccc = l.alto_de(&ccc, 14.0 * e, wi);
+    let hbc = 16.0 * e + hccc + 12.0 * e + 48.0 * e + 16.0 * e;
+    caja(p, rect(x0, y, w, hbc), e);
+    l.parrafo(&ccc, xi, y + 16.0 * e, wi, 14.0 * e, TEXTO);
+    l.boton(
+        rect(xi, y + 28.0 * e + hccc, wi, 48.0 * e),
+        &textos.t("cc-portada-entrar"),
+        None,
+        false,
+        Accion::AbrirEntrarChat,
+    );
+    y += hbc;
 
     // Copias de seguridad (`CopiasActivity` del movil): el sitio al que ir
     // cuando un envio o una vuelta ha pisado algo.
