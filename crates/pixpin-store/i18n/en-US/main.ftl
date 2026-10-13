@@ -2378,3 +2378,25 @@ cc-entrando = Joining…
 cc-trayendo = Bringing over “{ $nombre }”…
 cc-no-encontrada = The invitation was not found. Check the code and that you are on the same Wi-Fi.
 cc-se-corto = Interrupted: { $motivo }
+
+## Local assistant (13-oct-2026)
+asistente-titulo = Local assistant
+asistente-explica = A small model that runs on this PC, offline: it answers, draws on the canvas, makes charts and reads the text of scanned PDFs and photos. Download it once; it shuts down by itself after 5 idle minutes and gives the memory back.
+asistente-modelo-normal = Qwen3.5 2B (recommended)
+asistente-modelo-ligero = Qwen3.5 0.8B (light)
+asistente-detalle-normal = Draws and sees well · ~2.9 GB of memory while answering
+asistente-detalle-ligero = For low-memory computers · draws and sees worse
+asistente-bajar = Download
+asistente-si-bajar = Yes, download
+asistente-cancelar = Cancel
+asistente-pregunta = Download now?
+asistente-bajando = Downloading
+asistente-comprobando = Checking
+asistente-cancelada = Download cancelled.
+asistente-poca-memoria = This computer has less than 8 GB of memory: the light one is better.
+asistente-listo = The assistant is ready.
+asistente-ocupado = The assistant is still answering: wait or press stop.
+asistente-sin-modelo = First download the assistant in the «Asistente» chat.
+asistente-fallo = The assistant could not start answering.
+ajustes-asistente-modelo = Assistant model
+ajustes2-ayuda-asistente-modelo = The local model of the «Asistente» chat. The 2B draws and sees better; the 0.8B is smaller and uses less memory. Changing it downloads nothing: the chat offers it.

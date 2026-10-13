@@ -2379,3 +2379,25 @@ cc-entrando = Entrando…
 cc-trayendo = Trayendo «{ $nombre }»…
 cc-no-encontrada = No se encontró la invitación. Comprueba el código y que estáis en la misma Wi-Fi.
 cc-se-corto = Se cortó: { $motivo }
+
+## Asistente local (13-oct-2026)
+asistente-titulo = Asistente local
+asistente-explica = Un modelo pequeño que funciona en este PC, sin internet: contesta, dibuja en el lienzo, hace gráficas y lee el texto de PDFs escaneados y fotos. Hay que bajarlo una sola vez; se apaga solo a los 5 minutos sin usarlo y devuelve la memoria.
+asistente-modelo-normal = Qwen3.5 2B (recomendado)
+asistente-modelo-ligero = Qwen3.5 0.8B (ligero)
+asistente-detalle-normal = Dibuja y ve bien · ~2,9 GB de memoria mientras contesta
+asistente-detalle-ligero = Para equipos con poca memoria · dibuja y ve peor
+asistente-bajar = Bajar
+asistente-si-bajar = Sí, bajar
+asistente-cancelar = Cancelar
+asistente-pregunta = ¿Bajar ahora?
+asistente-bajando = Bajando
+asistente-comprobando = Comprobando
+asistente-cancelada = Descarga cancelada.
+asistente-poca-memoria = Este equipo tiene menos de 8 GB de memoria: mejor el ligero.
+asistente-listo = El asistente está listo.
+asistente-ocupado = El asistente todavía está contestando: espera o pulsa parar.
+asistente-sin-modelo = Primero baja el asistente en el chat «Asistente».
+asistente-fallo = El asistente no pudo empezar a contestar.
+ajustes-asistente-modelo = Modelo del asistente
+ajustes2-ayuda-asistente-modelo = El modelo local del chat «Asistente». El 2B dibuja y ve mejor; el 0.8B pesa menos y gasta menos memoria. Cambiarlo no baja nada: lo ofrece el propio chat.

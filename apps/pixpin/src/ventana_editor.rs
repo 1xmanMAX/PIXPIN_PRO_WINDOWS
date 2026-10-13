@@ -942,6 +942,12 @@ fn abrir_en_modo(
     let mut presentacion: Option<presentar::Presentacion> = None;
     let mut solo_mirar = false;
     let mut arrastre_mirar: Option<presentar::Arrastre> = None;
+    // Lo que dibuje el asistente mientras este lienzo esta abierto cae aqui,
+    // centrado en lo que se ve (`asistente::al_lienzo`). El anotador de
+    // pantalla no es un lienzo.
+    let _para_el_asistente = pantalla
+        .is_none()
+        .then(|| crate::asistente::al_lienzo::EditorAbierto::nuevo(ventana.handle().0 as isize));
 
     'bucle: loop {
         // D129: se mide siempre (unos nanosegundos por `Instant::now`); solo
@@ -982,6 +988,13 @@ fn abrir_en_modo(
             let h = ventana.handle().0 as isize;
             if delante {
                 crate::al_frente::poner_lienzo(h);
+            }
+            let (x0, y0, x1, y1) = efectiva.ventana(ancho_px, alto_px);
+            if crate::asistente::al_lienzo::atender_en_editor(&mut escena, ((x0 + x1) / 2.0, (y0 + y1) / 2.0)) {
+                todo_sucio = true;
+                contenido_sucio = true;
+                interfaz_sucia = true;
+                ventana.invalidar();
             }
             let llegadas = crate::al_frente::tomar_para(h);
             if !llegadas.is_empty() {

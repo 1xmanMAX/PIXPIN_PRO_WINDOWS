@@ -70,7 +70,7 @@ pub fn catalogo() -> Vec<Herramienta> {
     vec![
         Herramienta {
             nombre: DIBUJAR.into(),
-            descripcion: "Dibuja figuras en el lienzo de PixPin. Lienzo de 800x600 pixeles, origen arriba a la izquierda. Para copiar una imagen, describe sus formas principales con estas figuras.".into(),
+            descripcion: "Dibuja figuras en el lienzo de PixPin. Lienzo de 800x600 pixeles, origen arriba a la izquierda. Usa pocas figuras (20 como mucho). Cada elemento lleva su «color» (el que pidio el usuario o el que se ve en la foto) y, si va lleno, su «relleno». Para copiar una imagen, describe sus formas principales con estas figuras.".into(),
             parametros: json!({
                 "type": "object",
                 "required": ["elementos"],
@@ -85,8 +85,8 @@ pub fn catalogo() -> Vec<Herramienta> {
                         "alto": {"type": "number"},
                         "x2": {"type": "number", "description": "fin de linea o flecha"},
                         "y2": {"type": "number", "description": "fin de linea o flecha"},
-                        "color": {"type": "string", "description": "color del trazo, ej. #e03131 o rojo"},
-                        "relleno": {"type": "string", "description": "color de relleno; omitir si no tiene"},
+                        "color": {"type": "string", "description": "color del trazo: rojo, azul, verde, amarillo, naranja, morado, rosa, gris, marron, negro, blanco o #rrggbb"},
+                        "relleno": {"type": "string", "description": "color de relleno (los mismos nombres); omitir si va vacia"},
                         "texto": {"type": "string", "description": "obligatorio si tipo es texto"},
                         "tam_letra": {"type": "number"}
                     }
@@ -177,6 +177,9 @@ pub struct Figura {
     pub relleno: Option<Color>,
     pub texto: String,
     pub tam_letra: f64,
+    /// Si el modelo puso algun color (de trazo o de relleno). Sin el, el
+    /// color se saca del pedido ([`colores_del_pedido`]).
+    pub con_color: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -435,14 +438,25 @@ fn validar_figura(i: usize, v: &Value, avisos: &mut Vec<String>) -> Result<Figur
         let h = alto.unwrap_or(a);
         (a, h, x + a, y + h)
     };
-    let trazo = match texto_en(o, "color") {
-        None => Color("#1e1e1e".into()),
+    // Los modelos pequenos a veces escriben el color con otro nombre
+    // («fill», «stroke», «fondo»): se aceptan los sinonimos.
+    let color_txt = ["color", "colour", "stroke", "trazo"].iter().find_map(|c| texto_en(o, c));
+    let relleno_txt = ["relleno", "fill", "fondo", "background"].iter().find_map(|c| texto_en(o, c));
+    let con_color = color_txt.is_some() || relleno_txt.is_some();
+    let trazo = match color_txt {
+        // Sin color pero con relleno: el borde del mismo color (un «circulo
+        // rojo» lleno no debe salir con el borde negro).
+        None => relleno_txt
+            .as_deref()
+            .and_then(color)
+            .filter(|c| c.0 != "#ffffff")
+            .unwrap_or_else(|| Color("#1e1e1e".into())),
         Some(c) => color(&c).unwrap_or_else(|| {
             avisos.push(format!("{donde}: color «{c}» desconocido, se usa negro"));
             Color("#1e1e1e".into())
         }),
     };
-    let relleno = match texto_en(o, "relleno") {
+    let relleno = match relleno_txt {
         None => None,
         Some(c) if matches!(c.to_lowercase().as_str(), "ninguno" | "none" | "transparent" | "transparente") => None,
         Some(c) => match color(&c) {
@@ -465,7 +479,62 @@ fn validar_figura(i: usize, v: &Value, avisos: &mut Vec<String>) -> Result<Figur
         relleno,
         texto,
         tam_letra,
+        con_color,
     })
+}
+
+/// **Los colores que el modelo olvido, sacados del pedido.**
+///
+/// Medido con el 2B (13-oct): a «un circulo rojo y un cuadrado azul»
+/// contesta con las dos figuras bien puestas pero sin `color`, aunque la
+/// descripcion se lo pida. Si el pedido dice «<figura> <color>», a cada
+/// figura sin color se le pone el de su tipo, en el orden en que se
+/// nombraron (y lleno, que es lo que se entiende por «un circulo rojo»).
+/// Solo toca figuras sin color: nunca corrige lo que el modelo si puso.
+pub fn colores_del_pedido(figuras: &mut [Figura], pedido: &str) {
+    let palabras: Vec<String> = pedido
+        .to_lowercase()
+        .split(|c: char| !c.is_alphanumeric() && c != '#')
+        .filter(|p| !p.is_empty())
+        .map(str::to_string)
+        .collect();
+    let tipo_de = |p: &str| -> Option<TipoFigura> {
+        Some(match p {
+            "circulo" | "círculo" | "circulos" | "círculos" | "elipse" | "ovalo" | "óvalo" | "sol" | "pelota" | "bola"
+            | "circle" | "ellipse" => TipoFigura::Elipse,
+            "cuadrado" | "cuadrados" | "rectangulo" | "rectángulo" | "caja" | "square" | "rectangle" => {
+                TipoFigura::Rectangulo
+            }
+            "rombo" | "diamante" | "diamond" => TipoFigura::Rombo,
+            "linea" | "línea" | "raya" | "line" => TipoFigura::Linea,
+            "flecha" | "arrow" => TipoFigura::Flecha,
+            "titulo" | "título" | "texto" | "letrero" | "title" | "text" => TipoFigura::Texto,
+            _ => return None,
+        })
+    };
+    // (tipo, color) en el orden del pedido: el color en las 3 palabras
+    // siguientes («circulo grande rojo», «cuadrado de color azul»).
+    let mut pares: Vec<(TipoFigura, Color)> = Vec::new();
+    for (i, p) in palabras.iter().enumerate() {
+        let Some(t) = tipo_de(p) else { continue };
+        if let Some(c) = palabras[i + 1..]
+            .iter()
+            .take(3)
+            .take_while(|q| tipo_de(q).is_none())
+            .find_map(|q| color(q))
+        {
+            pares.push((t, c));
+        }
+    }
+    for f in figuras.iter_mut().filter(|f| !f.con_color) {
+        let Some(i) = pares.iter().position(|(t, _)| *t == f.tipo) else { continue };
+        let (_, c) = pares.remove(i);
+        if matches!(f.tipo, TipoFigura::Rectangulo | TipoFigura::Elipse | TipoFigura::Rombo) {
+            f.relleno = Some(c.clone());
+        }
+        f.color = c;
+        f.con_color = true;
+    }
 }
 
 /// `#rgb`, `#rrggbb` o un nombre en espanol o ingles. Los nombres caen en la
@@ -643,6 +712,62 @@ mod pruebas {
         assert_eq!(f[0].tipo, TipoFigura::Elipse);
         assert_eq!(f[1].x2, 750.0);
         assert!(v.avisos.is_empty());
+    }
+
+    #[test]
+    fn los_colores_con_otro_nombre_tambien_valen() {
+        let v = validar_(
+            DIBUJAR,
+            r#"{"elementos":[
+                {"tipo":"elipse","x":1,"y":1,"fill":"red"},
+                {"tipo":"rectangulo","x":1,"y":1,"stroke":"azul","fondo":"amarillo"},
+                {"tipo":"rombo","x":1,"y":1,"relleno":"blanco"}]}"#,
+        )
+        .unwrap();
+        let Llamada::Dibujar(f) = v.llamada else { panic!() };
+        // Lleno de rojo y sin «color»: el borde, rojo tambien.
+        assert_eq!(f[0].color.0, "#e03131");
+        assert_eq!(f[0].relleno.as_ref().unwrap().0, "#e03131");
+        assert_eq!(f[1].color.0, "#1971c2");
+        assert_eq!(f[1].relleno.as_ref().unwrap().0, "#f08c00");
+        // Un relleno blanco no deja el borde blanco (no se veria).
+        assert_eq!(f[2].color.0, "#1e1e1e");
+    }
+
+    #[test]
+    fn los_colores_olvidados_salen_del_pedido() {
+        // La llamada real del 2B (13-oct): las figuras sin color.
+        let v = validar_(
+            DIBUJAR,
+            r#"{"elementos":[{"tipo":"elipse","x":100,"y":150,"ancho":100,"alto":100},
+                             {"tipo":"rectangulo","x":600,"y":150,"ancho":100,"alto":100},
+                             {"tipo":"texto","x":300,"y":20,"texto":"CASA"},
+                             {"tipo":"rectangulo","x":1,"y":1,"color":"verde"}]}"#,
+        )
+        .unwrap();
+        let Llamada::Dibujar(mut f) = v.llamada else { panic!() };
+        colores_del_pedido(
+            &mut f,
+            "Dibuja un circulo rojo a la izquierda y un cuadrado azul a la derecha, con el titulo CASA arriba.",
+        );
+        assert_eq!(f[0].color.0, "#e03131");
+        assert_eq!(f[0].relleno.as_ref().unwrap().0, "#e03131");
+        assert_eq!(f[1].color.0, "#1971c2");
+        // Sin color en el pedido: negro, como estaba.
+        assert_eq!(f[2].color.0, "#1e1e1e");
+        // Lo que el modelo si puso no se toca.
+        assert_eq!(f[3].color.0, "#2f9e44");
+        // Un pedido sin colores no cambia nada.
+        let antes = f.clone();
+        colores_del_pedido(&mut f, "dibuja una casa");
+        assert_eq!(f, antes);
+    }
+
+    #[test]
+    fn la_descripcion_pide_el_color_siempre() {
+        let d = &catalogo()[0];
+        assert!(d.descripcion.contains("Cada elemento lleva su «color»"));
+        assert!(d.parametros.to_string().contains("rojo, azul"));
     }
 
     #[test]

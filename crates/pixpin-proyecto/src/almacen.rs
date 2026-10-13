@@ -254,6 +254,8 @@ impl Indice {
             // es el unico chat que tiene que estar siempre en el mismo sitio.
             b.es_guardados()
                 .cmp(&a.es_guardados())
+                // Y el del asistente detras, tambien fijo (13-oct-2026).
+                .then_with(|| b.es_asistente().cmp(&a.es_asistente()))
                 .then_with(|| b.tocado.cmp(&a.tocado))
                 .then_with(|| a.nombre.cmp(&b.nombre))
         });
@@ -1069,6 +1071,36 @@ pub fn asegurar_guardados(raiz: &Path, cuando: i64, aparato: &str) -> std::io::R
     };
     indice.guardar(raiz)?;
     Ok(ficha)
+}
+
+/// Como se llama el chat del asistente local (`crates/pixpin-ia`).
+pub const NOMBRE_ASISTENTE: &str = "Asistente";
+/// Su marca en el indice, como la de «Mensajes guardados»: renombrado sigue
+/// siendo el, y un chat del usuario que se llame igual no lo suplanta.
+const MARCA_ASISTENTE: &str = "asistente";
+
+impl Ficha {
+    /// Si es el chat fijo del asistente: todo lo que se escribe en el se le
+    /// pregunta al modelo local.
+    pub fn es_asistente(&self) -> bool {
+        self.resto.get(MARCA_ASISTENTE).and_then(|v| v.as_bool()) == Some(true)
+    }
+}
+
+/// El chat «Asistente», creandolo si no esta. Nace sin nada dentro: la
+/// tarjeta de bajar el modelo la pinta el chat, no es un mensaje.
+pub fn asegurar_asistente(raiz: &Path, cuando: i64, aparato: &str) -> std::io::Result<Ficha> {
+    let mut indice = Indice::leer_si_esta(raiz)?;
+    if let Some(f) = indice.proyectos.iter().find(|f| f.es_asistente()) {
+        return Ok(f.clone());
+    }
+    let mut nueva = Ficha::nueva(NOMBRE_ASISTENTE, cuando, aparato);
+    nueva
+        .resto
+        .insert(MARCA_ASISTENTE.to_string(), serde_json::Value::Bool(true));
+    indice.proyectos.push(nueva.clone());
+    indice.guardar(raiz)?;
+    Ok(nueva)
 }
 
 /// Donde van a parar los proyectos borrados.

@@ -282,6 +282,8 @@ pub struct Ajustes {
     pub herramientas: crate::herramientas::Herramientas,
     /// Pasar notas de voz a texto con dos idiomas (`[voz]`). Tabla: al final.
     pub voz: Voz,
+    /// El asistente local (`[asistente]`). Tabla: al final.
+    pub asistente: Asistente,
 }
 
 /// Cuanto se aprieta un PDF: los cuatro perfiles de pdfsqueeze, con los
@@ -481,6 +483,18 @@ pub struct Voz {
     pub modo_de_idiomas: ModoDeIdiomas,
 }
 
+// --- Asistente local (13-oct-2026) ---------------------------------------
+
+/// Seccion `[asistente]`: el modelo de lenguaje local del chat
+/// (`crates/pixpin-ia`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct Asistente {
+    /// El id del modelo (`qwen3.5-2b`, `qwen3.5-0.8b`). Vacio: el 2B, el
+    /// recomendado.
+    pub modelo: String,
+}
+
 impl Default for Ajustes {
     fn default() -> Self {
         Self {
@@ -511,6 +525,7 @@ impl Default for Ajustes {
             pdf: Pdf::default(),
             herramientas: crate::herramientas::Herramientas::default(),
             voz: Voz::default(),
+            asistente: Asistente::default(),
         }
     }
 }
