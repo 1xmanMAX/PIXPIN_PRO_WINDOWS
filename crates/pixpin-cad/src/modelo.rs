@@ -277,6 +277,44 @@ fn lado(c: &[f64; 4]) -> f64 {
 }
 
 impl Constructor {
+    /// **Lo que importa del plano**: del 0,5 % al 99,5 % de los puntos en
+    /// cada eje (la caja entera si son pocos). Su centro es el origen de las
+    /// coordenadas `f32` y en ella va la rejilla para dibujar solo lo que se
+    /// ve.
+    ///
+    /// Un `f32` guarda unos 7 digitos: a 4 000 km del origen ya solo
+    /// distingue medio metro. Con el centro de la caja, un objeto olvidado
+    /// lejos (en el plano de señalizacion del usuario, un cuadradito de 10 cm
+    /// al doble de sus coordenadas UTM) dejaba el plano entero a 4 000 km
+    /// del origen: cada vertice caia a la rejilla de 0,5 m mas cercana, las
+    /// letras de las placas salian partidas y a saltos y las franjas de un
+    /// paso de cebra o una rampa, torcidas (12-oct-2026); y todo el plano en
+    /// una sola celda de la rejilla. Con esta caja lo que se mira va preciso;
+    /// lo suelto y lejano pierde decimales, no el plano.
+    fn caja_util(&self, caja: [f64; 4]) -> [f64; 4] {
+        let n = self.puntos.len() + self.puntos_trama.len() + self.letras.len() + self.arcos.len();
+        if n < 200 {
+            return caja;
+        }
+        let paso = (n / 40_000).max(1);
+        let todos = self
+            .puntos
+            .iter()
+            .map(|p| p.0)
+            .chain(self.puntos_trama.iter().map(|p| p.0))
+            .chain(self.letras.iter().map(|l| l.0))
+            .chain(self.arcos.iter().map(|a| a.0))
+            .step_by(paso);
+        let (mut xs, mut ys): (Vec<f64>, Vec<f64>) = todos.map(|p| (p[0], p[1])).unzip();
+        let mut out = caja;
+        for (k, v) in [&mut xs, &mut ys].into_iter().enumerate() {
+            v.sort_by(f64::total_cmp);
+            out[k] = v[v.len() / 200];
+            out[k + 2] = v[v.len() - 1 - v.len() / 200];
+        }
+        out
+    }
+
     pub fn nuevo() -> Self {
         Self {
             tope: 30_000_000,
@@ -544,7 +582,8 @@ impl Constructor {
                 ..Default::default()
             };
         };
-        let origen = [(caja[0] + caja[2]) / 2.0, (caja[1] + caja[3]) / 2.0];
+        let util = self.caja_util(caja);
+        let origen = [(util[0] + util[2]) / 2.0, (util[1] + util[3]) / 2.0];
         let rel = |c: [f64; 4]| -> [f32; 4] {
             [
                 (c[0] - origen[0]) as f32,
@@ -554,10 +593,10 @@ impl Constructor {
             ]
         };
         const REJILLA: f64 = 24.0;
-        let (ancho, alto) = ((caja[2] - caja[0]).max(1e-9), (caja[3] - caja[1]).max(1e-9));
+        let (ancho, alto) = ((util[2] - util[0]).max(1e-9), (util[3] - util[1]).max(1e-9));
         let celda = |c: &[f64; 4]| -> u32 {
-            let cx = (((c[0] + c[2]) / 2.0 - caja[0]) / ancho * REJILLA).clamp(0.0, REJILLA - 1.0);
-            let cy = (((c[1] + c[3]) / 2.0 - caja[1]) / alto * REJILLA).clamp(0.0, REJILLA - 1.0);
+            let cx = (((c[0] + c[2]) / 2.0 - util[0]) / ancho * REJILLA).clamp(0.0, REJILLA - 1.0);
+            let cy = (((c[1] + c[3]) / 2.0 - util[1]) / alto * REJILLA).clamp(0.0, REJILLA - 1.0);
             cy as u32 * REJILLA as u32 + cx as u32
         };
         // Ordena las piezas por (nivel de mayor a menor, celda, clase) y
@@ -705,7 +744,8 @@ fn clase_de(n: u32) -> u32 {
 
 // ------------------------------------------------------------- guardar
 
-const MAGIA: &[u8; 8] = b"PXCAD\0\0\x06";
+/// 7: el origen va en el centro de lo que importa, no en el de la caja.
+const MAGIA: &[u8; 8] = b"PXCAD\0\0\x07";
 
 /// Escribe y lee todo como palabras de 4 bytes (lo que tambien se sube a la
 /// tarjeta tal cual).
@@ -1017,6 +1057,49 @@ mod pruebas {
         c.polilinea(&[[0.0, 0.0], [100.0, 50.0]], 0xff00_00ff, None);
         let m = c.terminar();
         assert_eq!(m.caja_util(), m.caja);
+    }
+
+    #[test]
+    fn un_objeto_suelto_lejos_no_quita_precision_al_plano() {
+        // El plano de señalizacion del usuario (12-oct-2026): calles en UTM
+        // (378 900, 8 285 000) y un cuadradito de 10 cm al doble de eso.
+        let (x0, y0) = (378_900.123_4, 8_285_000.371_9);
+        let mut puntos = Vec::new();
+        let mut c = Constructor::nuevo();
+        for i in 0..300 {
+            let p = [x0 + (i % 20) as f64 * 3.17, y0 + (i / 20) as f64 * 0.659];
+            let q = [p[0] + 0.413, p[1] + 0.251];
+            c.polilinea(&[p, q], 0xff00_00ff, None);
+            puntos.extend([p, q]);
+        }
+        let g = c.glifo(0, 'J', false, || vec![[0.0, 0.0], [0.5, 0.7], [0.1, 0.0]]);
+        let letra = [378_979.965_3, 8_285_059.720_7];
+        c.letra(g, letra, [0.92, 0.016, -0.016, 0.92], 0xffff_ffff, 0.66);
+        let suelto = [[758_222.917, 16_570_059.798], [758_223.025, 16_570_059.798], [758_223.025, 16_570_059.690]];
+        c.polilinea(&suelto, 0xff00_00ff, None);
+        let m = c.terminar();
+        // La causa: con el origen en el centro de la caja, un f32 solo
+        // distingue medio metro en el plano.
+        let medio = [(x0 + suelto[0][0]) / 2.0, (y0 + suelto[0][1]) / 2.0];
+        let viejo = puntos.iter().map(|p| (((p[1] - medio[1]) as f32) as f64 + medio[1] - p[1]).abs()).fold(0.0, f64::max);
+        assert!(viejo > 0.1, "{viejo}");
+        // Con el origen en lo que importa, cada vertice vuelve a su sitio.
+        let mut peor = 0.0f64;
+        for (v, p) in m.vertices.iter().zip(puntos.iter()) {
+            peor = peor.max((v.x as f64 + m.origen[0] - p[0]).abs()).max((v.y as f64 + m.origen[1] - p[1]).abs());
+        }
+        assert!(peor < 1e-3, "error de {peor} m");
+        let l = m.letras[0];
+        assert!((l.pos[0] as f64 + m.origen[0] - letra[0]).abs() < 1e-3 && (l.pos[1] as f64 + m.origen[1] - letra[1]).abs() < 1e-3);
+        // Caso negativo: lo suelto no se pierde (solo va menos fino) y la
+        // caja lo sigue contando.
+        assert_eq!(m.vertices.len(), puntos.len() + suelto.len());
+        let s = m.vertices[puntos.len()];
+        assert!((s.x as f64 + m.origen[0] - suelto[0][0]).abs() < 1.0 && (s.y as f64 + m.origen[1] - suelto[0][1]).abs() < 1.0);
+        assert!(m.caja[3] as f64 + m.origen[1] > 16_000_000.0);
+        // Y la rejilla reparte el plano en celdas (con la caja entera, todo
+        // caia en una y se dibujaba siempre entero).
+        assert!(m.tramos_lineas.len() >= 4, "{}", m.tramos_lineas.len());
     }
 
     fn de_prueba() -> Modelo {

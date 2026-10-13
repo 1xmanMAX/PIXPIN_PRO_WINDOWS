@@ -1456,6 +1456,7 @@ version = "0.1.0"
 dependencies = [
  "lyon_tessellation",
  "opencadcodec",
+ "png",
  "tracing",
  "tracing-subscriber",
  "ttf-parser",
