@@ -1,5 +1,5 @@
-//! **La ventana del plano, como un pin**: sin bordes, siempre encima (se
-//! puede soltar), se estira por los bordes. Lo que el usuario pidio el
+//! **La ventana del plano, como un pin**: sin bordes, nace sin fijar (se
+//! fija con su pin, [`FIJADA_AL_NACER`]), se estira por los bordes. Lo que el usuario pidio el
 //! 8-oct-2026: «como un pin normal: una barra fuera del pin que aparece y
 //! desaparece», con solo el tema (claro u oscuro) y «acotar plano» para
 //! medir.
@@ -298,6 +298,9 @@ pub(crate) fn crear_ventana(clase: PCWSTR, titulo: &str) -> windows::core::Resul
         let _ = SetWindowPos(hwnd, None, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
         let _ = ShowWindow(hwnd, SW_SHOW);
         let _ = SetForegroundWindow(hwnd);
+        // Nace TOPMOST (asi sale delante aunque Windows no deje darle el
+        // foco) y se baja en seguida a una ventana mas: al frente, sin fijar.
+        poner_encima(hwnd, FIJADA_AL_NACER);
         Ok((hwnd, w as u32, h as u32))
     }
 }
@@ -1105,7 +1108,7 @@ pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo, String>>, textos_ui: 
     let mut camara = Camara { centro: [0.0, 0.0], px: 1.0 };
     let mut destino = camara;
     let mut claro = false;
-    let mut fijada = true;
+    let mut fijada = crate::ventana::FIJADA_AL_NACER;
     let mut dentro_plano = false;
     let mut dentro_barra = false;
     let mut fuera_desde: Option<Instant> = None;
@@ -1645,7 +1648,7 @@ pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo, String>>, textos_ui: 
                     };
                     let _ = GetMonitorInfoW(mon, &mut info);
                     let (x, y) = colocar_barra(r, info.rcWork, bw, bh, (8.0 * e) as i32);
-                    let _ = SetWindowPos(hbarra, Some(HWND_TOPMOST), x, y, bw, bh, SWP_NOACTIVATE | SWP_SHOWWINDOW);
+                    let _ = SetWindowPos(hbarra, Some(if fijada { HWND_TOPMOST } else { HWND_NOTOPMOST }), x, y, bw, bh, SWP_NOACTIVATE | SWP_SHOWWINDOW);
                 }
                 barra_visible = true;
                 barra_sucia = true;
@@ -1751,6 +1754,12 @@ pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo, String>>, textos_ui: 
     }
     Ok(())
 }
+
+/// **Si el plano (o el modelo 3D) nace «siempre encima»: no** (13-oct-2026,
+/// el usuario: «los archivos que no aparezcan pineados ... por defecto»). Es
+/// un archivo abierto para verlo junto a lo demas; el pin de la barra (o la
+/// T) lo fija.
+pub const FIJADA_AL_NACER: bool = false;
 
 pub(crate) fn poner_encima(hwnd: HWND, si: bool) {
     // SAFETY: ventana propia.
@@ -1878,6 +1887,12 @@ mod pruebas {
         assert_eq!(medida(123.456, 6), "123.46 m");
         assert_eq!(medida(1234.5, 4), "1234.5 mm");
         assert_eq!(medida(2.0, 0), "2.000");
+    }
+
+    #[test]
+    fn el_plano_y_el_modelo_nacen_sin_fijar() {
+        // Un archivo abierto es una ventana mas; el pin (o la T) lo fija.
+        assert!(!FIJADA_AL_NACER);
     }
 
     #[test]

@@ -15551,12 +15551,15 @@ fn ejecutar(accion: Accion, a: &mut Abierto, cx: &Contexto) -> Efecto {
         }
         // El cuadro «Abrir con» de Windows, el del Explorador: elegir CON QUE
         // se abre, que es lo que dice la entrada. Abrirlo con lo de siempre
-        // ya lo hace pulsar la burbuja.
+        // ya lo hace pulsar la burbuja. Se le pasa el fichero de verdad del
+        // adjunto (un `.bin` del movil que es un PDF, como PDF, igual que al
+        // tocar la burbuja) y, si no sale, el motivo con palabras.
         Accion::AbrirCon(i) => match ruta_de(a, i) {
             Some(ruta) => {
-                match pixpin_shell::abrir_con_otra::abrir_con_otra(cx.ventana.handle(), &ruta) {
+                let ruta = crate::recibir::ruta_para_abrir(&ruta);
+                match crate::abrir_con::abrir_con(cx.ventana.handle(), &ruta, cx.textos) {
                     Ok(_) => Efecto::Nada,
-                    Err(e) => fallo(&e),
+                    Err(aviso) => Efecto::Aviso(aviso),
                 }
             }
             None => Efecto::Aviso(cx.textos.t("chat-sin-archivo")),

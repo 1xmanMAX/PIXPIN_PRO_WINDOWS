@@ -755,8 +755,9 @@ fn abrir_con(
     ventana.enfocar();
     // Todos los puntos del trazo y la presion del lapiz, como en el lienzo.
     ventana.pedir_entrada_fina();
-    // Como un pin: siempre encima (se suelta con su pin) y su barra fuera.
-    ventana.poner_siempre_encima(true);
+    // Como un pin pero sin fijar (lo fija su pin): al frente, una ventana
+    // mas entre las demas, y su barra fuera.
+    pin.al_nacer(&ventana);
     pin.crear_barra(&motor, &recursos.d3d(), &ventana);
 
     let (tx_pedidos, rx_pedidos) = mpsc::channel::<Pedido>();

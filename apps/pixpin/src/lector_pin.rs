@@ -5,7 +5,11 @@
 //!
 //! La ventana del lector nace del tamano de un pin, sin marco: se estira por
 //! sus bordes, se lleva por el asa de su barra y se queda siempre encima o
-//! no (el pin, en azul cuando lo esta). La barra va FUERA, encima de la
+//! no (el pin, en azul cuando lo esta). **Nace sin fijar** (13-oct-2026, el
+//! usuario: «los archivos que no aparezcan pineados, o sea sobre todas las
+//! demas aplicaciones, por defecto»): una ventana normal en el orden Z, al
+//! frente al abrirse; el pin la fija. Los pines de captura e imagen no
+//! pasan por aqui y siguen siempre encima ([`FIJADO_AL_NACER`]). La barra va FUERA, encima de la
 //! ventana y pegada a su lado izquierdo (o debajo si arriba no cabe), como la
 //! de los pines y la del visor de planos; aparece con el raton encima y se
 //! va un poco despues de salir. Lleva lo que antes iba en la pastilla
@@ -118,6 +122,9 @@ pub struct PinLector {
     pub pantalla_completa: bool,
     /// Siempre encima de las demas aplicaciones.
     pub fijado: bool,
+    /// La ventana del lector (la duena de la barra), para saber si otra
+    /// aplicacion la tapa donde esta el raton.
+    dueno: Option<windows::Win32::Foundation::HWND>,
     /// Donde esta la ventana ahora.
     pub area: Rect,
     /// La de pin, para volver de pantalla completa.
@@ -143,6 +150,17 @@ pub struct PinLector {
     /// Al abrir, la barra se ve un rato aunque el raton no este encima: asi
     /// se sabe que esta (como la pastilla de antes).
     al_abrir: std::time::Instant,
+}
+
+/// **Si un visor de archivos nace «siempre encima»: no.** Un documento se
+/// abre para leerlo junto a lo demas, como cualquier ventana; quien lo
+/// quiera encima pulsa el pin. (Los pines de captura e imagen de
+/// `pixpin-pin` si nacen encima: son notas pegadas a la pantalla.)
+pub const FIJADO_AL_NACER: bool = false;
+
+/// Si la ventana que se ve bajo el raton (`bajo`) es el lector o su barra.
+fn es_mia(bajo: windows::Win32::Foundation::HWND, lector: windows::Win32::Foundation::HWND, barra: Option<windows::Win32::Foundation::HWND>) -> bool {
+    !bajo.is_invalid() && (bajo == lector || Some(bajo) == barra)
 }
 
 /// El sitio de pin al abrir: en el monitor del raton, centrado, del 55 % de
@@ -203,7 +221,8 @@ impl PinLector {
     pub fn nuevo(area: Rect, e: f32) -> PinLector {
         PinLector {
             pantalla_completa: false,
-            fijado: true,
+            fijado: FIJADO_AL_NACER,
+            dueno: None,
             area,
             area_pin: area,
             e,
@@ -247,6 +266,12 @@ impl PinLector {
         let Ok(ventana) = VentanaOverlay::nueva(area) else { return };
         ventana.poner_sin_activar();
         ventana.poner_dueno(dueno.handle());
+        self.dueno = Some(dueno.handle());
+        // La barra nace TOPMOST (es un overlay); con el lector sin fijar,
+        // como el: por encima de su duena y no de las demas aplicaciones.
+        if !self.fijado {
+            ventana.poner_siempre_encima(false);
+        }
         let Ok(superficie) = Superficie::nueva(motor, d3d, ventana.handle(), area.ancho, area.alto) else { return };
         self.barra = Some(Barra { ventana, superficie, area });
     }
@@ -433,7 +458,24 @@ impl PinLector {
     pub fn alternar_fijado(&mut self, ventana: &VentanaOverlay) {
         self.fijado = !self.fijado;
         ventana.poner_siempre_encima(self.fijado);
+        // Windows lleva las poseidas con su duena al cambiarla, pero no
+        // cuesta nada decirselo a la barra tambien.
+        if let Some(b) = &self.barra {
+            b.ventana.poner_siempre_encima(self.fijado);
+        }
         self.pintado = None;
+    }
+
+    /// **El orden Z al abrir** (llamarlo una vez, con la ventana ya creada):
+    /// sin fijar ([`FIJADO_AL_NACER`]), al frente de las aplicaciones
+    /// normales pero sin «siempre encima» y sin robar el foco; fijado,
+    /// siempre encima.
+    pub fn al_nacer(&self, ventana: &VentanaOverlay) {
+        if self.fijado {
+            ventana.poner_siempre_encima(true);
+        } else {
+            ventana.al_frente_sin_fijar();
+        }
     }
 
     fn esconder_barra(&mut self) {
@@ -483,7 +525,11 @@ impl PinLector {
         }
         let raton = pixpin_shell::overlay::raton_en_pantalla();
         let en_la_barra = self.barra.as_ref().is_some_and(|b| self.visible && dentro(&b.area, raton));
-        let quiere = dentro(&self.area, raton) || en_la_barra || self.gesto.is_some() || std::time::Instant::now() < self.al_abrir;
+        // Sin fijar, otra aplicacion puede taparla: el raton sobre esa otra
+        // no cuenta como encima del lector (si no, la barra saldria sobre
+        // ella).
+        let tapada = !self.fijado && self.dueno.is_some_and(|d| !es_mia(pixpin_shell::overlay::ventana_bajo(raton), d, self.barra.as_ref().map(|b| b.ventana.handle())));
+        let quiere = (dentro(&self.area, raton) && !tapada) || en_la_barra || self.gesto.is_some() || std::time::Instant::now() < self.al_abrir;
         if quiere {
             self.fuera_desde = None;
         } else if self.visible && self.fuera_desde.is_none() {
@@ -545,6 +591,8 @@ impl PinLector {
             b.ventana.mostrar();
             if self.fijado {
                 b.ventana.traer_encima();
+            } else {
+                b.ventana.poner_siempre_encima(false);
             }
             self.visible = true;
         }
@@ -683,6 +731,48 @@ mod pruebas {
         // Caso negativo: la vista previa de Office no lleva luna/sol.
         let q = PinLector::nuevo(a, 1.0).sin_oscuro();
         assert!(!q.con_oscuro && !q.oscuro());
+    }
+
+    #[test]
+    fn un_visor_de_archivos_nace_sin_fijar() {
+        let a = Rect { x: 0, y: 0, ancho: 800, alto: 600 };
+        assert!(!FIJADO_AL_NACER);
+        let p = PinLector::nuevo(a, 1.0);
+        assert!(!p.fijado, "nace como una ventana mas");
+        // Tambien el de Office (sin luna/sol) y con extension.
+        assert!(!PinLector::nuevo(a, 1.0).sin_oscuro().con_extension("xls").fijado);
+    }
+
+    #[test]
+    fn el_raton_sobre_otra_aplicacion_no_saca_la_barra() {
+        use windows::Win32::Foundation::HWND;
+        let (lector, barra, otra) = (HWND(1 as _), HWND(2 as _), HWND(3 as _));
+        assert!(es_mia(lector, lector, Some(barra)));
+        assert!(es_mia(barra, lector, Some(barra)));
+        // Casos negativos: otra aplicacion encima, o nada bajo el raton.
+        assert!(!es_mia(otra, lector, Some(barra)));
+        assert!(!es_mia(HWND::default(), lector, None));
+    }
+
+    /// Lo que hace el lector al nacer, sobre una ventana de verdad pero sin
+    /// ensenarla (ni foco ni nada en la pantalla del usuario).
+    #[test]
+    #[ignore = "necesita sesion de escritorio; ejecutar con --ignored"]
+    fn al_nacer_no_queda_siempre_encima_y_el_pin_lo_alterna() {
+        let a = Rect { x: -3000, y: -3000, ancho: 300, alto: 200 };
+        for v in [VentanaOverlay::nueva_normal(a, "prueba").unwrap(), VentanaOverlay::nueva_llana(a, "prueba").unwrap()] {
+            let mut p = PinLector::nuevo(a, 1.0);
+            p.al_nacer(&v);
+            assert!(!v.siempre_encima(), "nace sin fijar");
+            p.alternar_fijado(&v);
+            assert!(p.fijado && v.siempre_encima(), "el pin la fija");
+            p.alternar_fijado(&v);
+            assert!(!p.fijado && !v.siempre_encima(), "y la suelta");
+            // Caso negativo: uno que si nace fijado queda encima.
+            p.fijado = true;
+            p.al_nacer(&v);
+            assert!(v.siempre_encima());
+        }
     }
 
     #[test]

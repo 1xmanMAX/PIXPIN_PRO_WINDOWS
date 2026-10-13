@@ -49,6 +49,7 @@
 // atributo es la unica guarda que lo habria detectado.
 #![forbid(unsafe_code)]
 
+mod abrir_con;
 mod abrir_hoja;
 mod croquis3d;
 mod al_frente;

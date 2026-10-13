@@ -85,7 +85,7 @@ const DOBLE_CLIC: Duration = Duration::from_millis(450);
 const SIN_LETRAS: Duration = Duration::from_millis(250);
 
 /// Botones propios en la barra del pin (los de editar, en `hoja_pin`).
-const BOTON_SU_PROGRAMA: u8 = 2;
+const BOTON_ABRIR_CON: u8 = 2;
 /// «Editar»: el mismo visor pasa a editar (`hoja_pin`). Solo en las hojas
 /// del chat, que es donde se guarda lo editado.
 const BOTON_EDITAR: u8 = 3;
@@ -1337,8 +1337,9 @@ fn abrir(
         Superficie::nueva(&motor, &recursos.d3d(), ventana.handle(), area.ancho, area.alto).context("sin superficie para el visor de hojas")?;
     ventana.mostrar();
     ventana.enfocar();
-    // Como un pin: siempre encima (se suelta con su pin) y su barra fuera.
-    ventana.poner_siempre_encima(true);
+    // Como un pin pero sin fijar (lo fija su pin): al frente, una ventana
+    // mas entre las demas, y su barra fuera.
+    pin.al_nacer(&ventana);
     let mut marco = Marco { ventana, superficie, pin, area, e, nombre: nombre.to_string() };
     marco.pin.crear_barra(&motor, &recursos.d3d(), &marco.ventana);
     let activa = libro.hoja_activa.min(libro.hojas.len().saturating_sub(1));
@@ -1442,11 +1443,13 @@ fn ver_en(
                             est.dejar_de_editar(motor);
                         }
                     }
-                    Some(AccionPin::Propio(BOTON_SU_PROGRAMA)) => {
+                    // «Abrir con…»: el cuadro de Windows con las apps que
+                    // abren el formato; si no sale, el motivo en el aviso.
+                    Some(AccionPin::Propio(BOTON_ABRIR_CON)) => {
                         if let Some(ruta) = ruta
-                            && let Err(e) = pixpin_shell::abrir(ruta)
+                            && let Err(aviso) = crate::abrir_con::abrir_con(ventana.handle(), ruta, textos)
                         {
-                            tracing::warn!(?e, "no se pudo abrir el libro con su programa");
+                            est.aviso = Some((aviso, Instant::now() + AVISO));
                         }
                     }
                     Some(AccionPin::Propio(BOTON_EDITAR)) => quiere_editar = true,
@@ -1729,14 +1732,14 @@ fn tecla_del_visor(
 }
 
 /// Los botones de la barra en modo ver: «Editar» si la hoja es del chat y,
-/// si hay archivo, abrirlo con su programa. Sin «Copiar»: Ctrl+C copia.
+/// si hay archivo, «Abrir con…». Sin «Copiar»: Ctrl+C copia.
 fn botones_de_ver(editable: bool, con_archivo: bool) -> Vec<BotonLector> {
     let mut b = Vec::with_capacity(2);
     if editable {
         b.push(BotonLector { id: BOTON_EDITAR, icono: &material::EDIT, encendido: false });
     }
     if con_archivo {
-        b.push(BotonLector { id: BOTON_SU_PROGRAMA, icono: &material::OPEN_IN_NEW, encendido: false });
+        b.push(BotonLector { id: BOTON_ABRIR_CON, icono: &material::OPEN_IN_NEW, encendido: false });
     }
     b
 }

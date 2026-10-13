@@ -573,11 +573,11 @@ impl Ventana<'_> {
             Orden::BorrarCaptura(r) => self.borrar_captura(&r),
             Orden::Deshacer => self.deshacer(),
             Orden::AbrirCon(f) => {
-                match pixpin_shell::abrir_con_otra::abrir_con_otra(hwnd, Path::new(&f)) {
+                match crate::abrir_con::abrir_con(hwnd, Path::new(&f), self.textos) {
                     Ok(true) => Tras::Cerrar,
                     Ok(false) => Tras::Nada,
-                    Err(e) => {
-                        tracing::warn!(?e, "no se pudo abrir «Abrir con»");
+                    Err(aviso) => {
+                        self.aviso = Some((aviso, Instant::now()));
                         Tras::Nada
                     }
                 }
