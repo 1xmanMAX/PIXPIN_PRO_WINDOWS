@@ -130,6 +130,14 @@ pub fn marco_de_antes(
 ) -> Option<MarcoDeLaHoja> {
     let doc = t.doc.as_deref()?;
     match t.que {
+        // La capa de un plano: su `.hoja` es la caja del plano y la escribe
+        // el visor al guardar (`plano_cad::anotar`); sin ella, el visor la
+        // lee con la regla de antes. Aqui no hay columna que valga.
+        QueTinta::Documento
+            if doc.file_name().is_some_and(|n| crate::plano_cad::se_abre(&n.to_string_lossy())) =>
+        {
+            None
+        }
         QueTinta::Documento if !es_pdf(doc) => {
             crate::anotado_del_adjunto::marco_de_antes_del_documento(doc, &t.base)
         }
@@ -236,6 +244,22 @@ mod pruebas {
     use super::*;
     use crate::anotado_del_adjunto::pruebas::{con_adjunto, raiz};
     use crate::lector_pdf_proyecto::DondeVa;
+
+    #[test]
+    fn la_pasada_no_le_pone_marco_de_word_a_la_capa_de_un_plano() {
+        let r = raiz("pasada-plano");
+        let doc = con_adjunto(&r, "planta.dwg", b"AC1032");
+        let b = an::base_del_documento(&r, &doc).unwrap();
+        // Una maqueta del mensaje como la de un Word: aun asi, nada.
+        an::escribir(&b.fichero(".maqueta"), "420,280,280,100,1,0").unwrap();
+        std::fs::create_dir_all(b.tinta().parent().unwrap()).unwrap();
+        std::fs::write(b.tinta(), TINTA).unwrap();
+        pasada(&r, false);
+        // Su `.hoja` la escribe el visor de planos (la caja del plano).
+        assert!(!b.marco().exists());
+        // Caso negativo: el mismo mensaje con un Word si la recibe (ver abajo).
+        let _ = std::fs::remove_dir_all(&r);
+    }
 
     /// Tinta del movil sin espacios (unidades x2,5 con el cero en -1050).
     const TINTA: &str = r#"{"elements":[{"id":"jDNyxAFkaxm2qZ-KsluKG","type":"freedraw","x":-800,"y":1000,"width":250,"height":0,"strokeWidth":1,"version":1,"points":[{"x":0.0,"y":0.0},{"x":250.0,"y":0.0}]}]}"#;
