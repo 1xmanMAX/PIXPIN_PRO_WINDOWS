@@ -1311,6 +1311,7 @@ lienzo-cota-angulo = Angle
 
 ## Canvas: image (zone, magnifier, pixelate, share and reference; Sep 26)
 lienzo-referencia-menu = Reference image…
+lienzo-pegar-menu = Paste
 lienzo-pista-compartir = Share… (Ctrl+Shift+S)
 lienzo-pista-lupa = Magnifier (Q): on the canvas, tap a closed shape to show what lies beneath, enlarged; on screen, zooms under the cursor
 lienzo-pista-mosaico = Pixelate (mosaic): drag over what you want to hide

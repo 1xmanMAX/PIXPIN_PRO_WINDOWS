@@ -1016,7 +1016,7 @@ fn abrir_en_modo(
                 ventana.invalidar();
             }
         }
-        for (hwnd, ev) in pixpin_shell::overlay::tomar_eventos_pendientes() {
+        for (hwnd, mut ev) in pixpin_shell::overlay::tomar_eventos_pendientes() {
             // La pastilla del anotador de pantalla: sus clics son suyos.
             if let Some(ps) = pastilla.as_mut()
                 && hwnd == ps.handle()
@@ -1720,7 +1720,18 @@ fn abrir_en_modo(
                 }
                 todo_sucio = true;
                 ventana.invalidar();
-                continue;
+                // «Pegar» del menu: es Ctrl+V, por el mismo camino (tabla de
+                // Excel, lo copiado dentro, imagen o texto), y el raton sigue
+                // donde se abrio el menu, que es donde nace lo pegado.
+                if !exportar::tomar_pegar() {
+                    continue;
+                }
+                ev = EventoOverlay::Tecla {
+                    vk: b'V' as u32,
+                    ctrl: true,
+                    shift: false,
+                    alt: false,
+                };
             }
             // **Las herramientas** (`dibujo::mano`): la tabla de atajos del
             // motor, las letras, la pluma, el portapapeles, el lazo, el
@@ -1743,7 +1754,7 @@ fn abrir_en_modo(
             } = ev
                 && vk == b'V' as u32
                 && pantalla.is_none()
-                && mano.portapapeles.is_empty()
+                && !mano.copiado_vigente()
                 && !gesto.esta_escribiendo()
                 && let Some(pixpin_codec::portapapeles::ContenidoPortapapeles::Texto(t)) =
                     pixpin_codec::portapapeles::leer()
