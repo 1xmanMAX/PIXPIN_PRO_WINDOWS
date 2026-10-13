@@ -98,6 +98,84 @@ enum Entrada {
         fin: Option<Fase>,
         rapida: bool,
     },
+    /// Si una persona de un chat compartido contesto en su ultima direccion.
+    RespondePersona(String, bool),
+    /// Se acabo de mirar quien de ellas contesta (el sondeo va en otro hilo).
+    SondeoAcabado,
+    /// Acabo la vuelta con las personas: si fue bien, lo que trajo (para
+    /// avisar) y el fallo, si lo hubo.
+    FinPersonas {
+        bien: bool,
+        trajo: Vec<String>,
+        fallo: Option<String>,
+    },
+}
+
+/// **Cada cuanto se mira si las personas de los chats compartidos estan en
+/// la red** (Android 13-oct-2026, `SincronizacionAutomatica.conPersonas`).
+/// Las del grupo las sondea la presencia; a estas, la automatica, y sin
+/// prisa: un minuto, lo que tarda la sonda de la presencia sin nadie
+/// mirando. Solo si hay alguna persona con direccion conocida.
+pub const SONDEO_PERSONAS: i64 = 60_000;
+
+/// **Con quien de los chats compartidos se sincroniza solo**: las personas
+/// que estan dentro de un chat donde tambien estoy yo dentro, sin mis propios
+/// aparatos (con esos ya va la vuelta del grupo). Una vez cada una.
+pub fn personas_a_llamar(
+    lista: &[pixpin_sincro::compartidos::ChatCompartido],
+    yo: &str,
+    mios: &BTreeSet<String>,
+) -> Vec<(String, String)> {
+    let mut salida: Vec<(String, String)> = Vec::new();
+    for c in lista
+        .iter()
+        .filter(|c| pixpin_sincro::compartidos::dentro(c, yo))
+    {
+        for p in c.personas.iter().filter(|p| p.dentro()) {
+            if p.id != yo && !mios.contains(&p.id) && !salida.iter().any(|(i, _)| *i == p.id) {
+                salida.push((p.id.clone(), p.nombre.clone()));
+            }
+        }
+    }
+    salida
+}
+
+/// Las personas a llamar con su ultima direccion conocida (`id`, nombre,
+/// host y puerto). Sin direccion no se busca por la red: como el movil, se
+/// espera a que llame ella o a que se sincronice a mano.
+fn personas_con_direccion(raiz: &Path) -> Vec<(String, String, String, u16)> {
+    let Ok(id) = super::leer_identidad(raiz) else {
+        return Vec::new();
+    };
+    let lista = pixpin_sincro::compartidos::CompartidosEnDisco::nuevo(raiz).leer();
+    if lista.is_empty() {
+        return Vec::new();
+    }
+    let mut mios: BTreeSet<String> = id.miembros.iter().map(|m| m.id.clone()).collect();
+    mios.insert(id.yo.id.clone());
+    let dirs = super::leer_direcciones(raiz);
+    personas_a_llamar(&lista, &id.yo.id, &mios)
+        .into_iter()
+        .filter_map(|(pid, nombre)| {
+            let (_, h, p) = dirs.iter().find(|(i, _, _)| *i == pid)?;
+            Some((pid, nombre, h.clone(), *p))
+        })
+        .collect()
+}
+
+/// Lo hecho con una persona, en una linea (`resumen` del movil).
+fn resumen(h: &pixpin_sincro::protocolo::Hecho) -> String {
+    let mut v = Vec::new();
+    if h.traidos > 0 {
+        v.push(format!("{} traídos", h.traidos));
+    }
+    if h.fusionados > 0 {
+        v.push(format!("{} juntados", h.fusionados));
+    }
+    if h.borrados > 0 {
+        v.push(format!("{} borrados", h.borrados));
+    }
+    v.join(" · ")
 }
 
 /// Por donde se avisa al hilo; sin automatica (apagada), no hay.
@@ -355,6 +433,11 @@ fn bucle(raiz: &Path, rx: mpsc::Receiver<Entrada>) {
     let mut reloj = Reloj::default();
     let mut corriendo = false;
     let mut firmado: Option<i64> = None;
+    // **Las personas de los chats compartidos llevan su propio reloj**:
+    // aparecer, un cambio aqui o el periodo, por cada una (como el movil).
+    let mut personas = Reloj::default();
+    let mut sondeado: Option<i64> = None;
+    let mut sondeando = false;
     loop {
         let espera = cuanto_dormir(&reloj, super::ahora_ms(), corriendo);
         let primera = match rx.recv_timeout(espera) {
@@ -372,6 +455,22 @@ fn bucle(raiz: &Path, rx: mpsc::Receiver<Entrada>) {
                 Entrada::Presencia(Novedad::Responde(id, si)) => reloj.responde(&id, si),
                 Entrada::Presencia(_) => {}
                 Entrada::Tareas(ficha) => reloj.avisan_tareas(&ficha, ahora),
+                Entrada::RespondePersona(id, si) => personas.responde(&id, si),
+                Entrada::SondeoAcabado => sondeando = false,
+                Entrada::FinPersonas { bien, trajo, fallo } => {
+                    corriendo = false;
+                    let avisar = personas.acabo(bien, firma_de(&carpeta), ahora);
+                    for t in trajo {
+                        presencia::difundir(Novedad::Registro(t.clone()));
+                        super::al_movil::avisar(t);
+                    }
+                    if let Some(e) = fallo {
+                        presencia::difundir(Novedad::Registro(e.clone()));
+                        if avisar {
+                            super::al_movil::avisar(e);
+                        }
+                    }
+                }
                 Entrada::Fin { fin, rapida } => {
                     corriendo = false;
                     if rapida {
@@ -385,7 +484,36 @@ fn bucle(raiz: &Path, rx: mpsc::Receiver<Entrada>) {
         let ahora = super::ahora_ms();
         if firmado.is_none_or(|f| ahora - f >= CADA_FIRMA) {
             firmado = Some(ahora);
-            reloj.ver(firma_de(&carpeta), ahora);
+            let f = firma_de(&carpeta);
+            reloj.ver(f, ahora);
+            personas.ver(f, ahora);
+        }
+        // Quien de las personas contesta, sin prisa y en otro hilo (una que
+        // no esta tarda segundos en no contestar). Sin chats compartidos, ni
+        // se mira: ni red ni disco de mas.
+        if !sondeando && sondeado.is_none_or(|s| ahora - s >= SONDEO_PERSONAS) {
+            sondeado = Some(ahora);
+            let quienes = personas_con_direccion(raiz);
+            personas
+                .responden
+                .retain(|id, _| quienes.iter().any(|(q, ..)| q == id));
+            if !quienes.is_empty()
+                && let Some(tx) = AVISOS.get().cloned()
+            {
+                sondeando = true;
+                let lanzado = std::thread::Builder::new()
+                    .name("sincro-personas-sonda".into())
+                    .spawn(move || {
+                        for (id, _, host, puerto) in quienes {
+                            let si = super::sondear_uno(&host, puerto);
+                            let _ = tx.send(Entrada::RespondePersona(id, si));
+                        }
+                        let _ = tx.send(Entrada::SondeoAcabado);
+                    });
+                if lanzado.is_err() {
+                    sondeando = false;
+                }
+            }
         }
         match reloj.siguiente(ahora, corriendo || super::hay_vueltas()) {
             Paso::Nada => {}
@@ -439,7 +567,88 @@ fn bucle(raiz: &Path, rx: mpsc::Receiver<Entrada>) {
                 }
             }
         }
+        // **Con las personas de los chats compartidos** (`conPersonas` del
+        // movil): las que contestan en su ultima direccion, por las mismas
+        // tres razones que el grupo. Solo esos chats, una vuelta cada una, y
+        // nunca a la par que otra vuelta.
+        if !corriendo
+            && !super::hay_vueltas()
+            && personas.toca(ahora).is_some()
+            && let Some(tx) = AVISOS.get().cloned()
+        {
+            let ids = personas.con_quien();
+            personas.empezo(ahora);
+            corriendo = true;
+            let raiz = raiz.to_path_buf();
+            let lanzado = std::thread::Builder::new()
+                .name("sincro-personas".into())
+                .spawn(move || {
+                    let fin = con_personas(&raiz, &ids);
+                    let _ = tx.send(fin);
+                });
+            if lanzado.is_err() {
+                corriendo = false;
+            }
+        }
     }
+}
+
+/// Una vuelta con cada persona que contesto (`VueltaConPersona`), con la
+/// direccion apuntada. Devuelve lo que contar al acabar.
+fn con_personas(raiz: &Path, ids: &[String]) -> Entrada {
+    // Mientras dura, ni la ventana ni el grupo arrancan otra.
+    let _en_curso = super::EnCurso::nueva();
+    let disco = pixpin_proyecto::vista::DiscoPc::nuevo(raiz).con_avisos(|c| {
+        if c == pixpin_sincro::disco::Cambio::Identidad {
+            presencia::difundir(Novedad::Identidad);
+        } else {
+            crate::ventana_chat::refrescar();
+            crate::tareas::refrescar();
+        }
+    });
+    let quienes = personas_con_direccion(raiz);
+    let mi_puerto = presencia::puerto().map_or(0, u32::from);
+    let (mut trajo, mut fallo, mut bien) = (Vec::new(), None, true);
+    for (id, nombre, host, puerto) in quienes.into_iter().filter(|(i, ..)| ids.contains(i)) {
+        let Some(n) = super::nonce() else { continue };
+        let r = super::conectar(&host, puerto)
+            .map_err(|e| e.to_string())
+            .and_then(|flujo| {
+                pixpin_sincro::invitacion::vuelta_con_persona(
+                    flujo,
+                    &disco,
+                    Some(&id),
+                    None,
+                    &super::ahora_ms,
+                    mi_puerto,
+                    n,
+                    &mut |_| {},
+                )
+                .map_err(|e| e.to_string())
+            });
+        match r {
+            Ok(r) => {
+                if r.puerto > 0 {
+                    super::apuntar_direccion(raiz, &id, &host, r.puerto as u16);
+                }
+                if r.trajo_algo() {
+                    trajo.push(format!(
+                        "Chat compartido con {}: {}",
+                        r.quien.nombre,
+                        resumen(&r.hecho)
+                    ));
+                }
+            }
+            // Ocupado (otra vuelta en marcha alli) no es un fallo: la
+            // proxima.
+            Err(e) if e == pixpin_sincro::mensajes::OCUPADO => {}
+            Err(e) => {
+                bien = false;
+                fallo = Some(format!("No se pudo sincronizar solo con {nombre} ({e})"));
+            }
+        }
+    }
+    Entrada::FinPersonas { bien, trajo, fallo }
 }
 
 /// Lo que se hace al acabar una vuelta de tareas: solo apuntarlo. Ni globo
@@ -708,5 +917,62 @@ mod pruebas {
         // Caso negativo: en las pruebas no hay hilo; avisar no puede romper.
         avisar_tareas("obra");
         avisar_tareas_en(Path::new("C:/x/proyectos/obra"));
+    }
+
+    fn persona(id: &str, nombre: &str) -> pixpin_sincro::compartidos::Yo {
+        pixpin_sincro::compartidos::Yo {
+            id: id.into(),
+            nombre: nombre.into(),
+            codigo: pixpin_sincro::grupo::codigo_de_aparato(id),
+            llaves: pixpin_sincro::compartidos::Llaves::nuevas(),
+        }
+    }
+
+    #[test]
+    fn solo_se_llama_a_las_personas_de_chats_donde_estamos_dentro() {
+        use pixpin_sincro::compartidos::{crear, invitar, quitar};
+        let (yo, tab, ana, eva, luis) = (
+            persona("id-pc", "Max"),
+            persona("id-tab", "Max"),
+            persona("id-ana", "Ana"),
+            persona("id-eva", "Eva"),
+            persona("id-luis", "Luis"),
+        );
+        let mut tesis = crear("p1", "Tesis", &yo, 1);
+        tesis = invitar(&tesis, &yo, &tab.ficha(0), 2).unwrap();
+        tesis = invitar(&tesis, &yo, &ana.ficha(0), 3).unwrap();
+        tesis = invitar(&tesis, &yo, &eva.ficha(0), 4).unwrap();
+        // Eva se fue: ya no se la llama.
+        tesis = quitar(&tesis, &eva, "id-eva", 5).unwrap();
+        // Un chat del que yo sali: Luis no se llama por el.
+        let mut otro = crear("p2", "Otro", &yo, 1);
+        otro = invitar(&otro, &yo, &luis.ficha(0), 2).unwrap();
+        otro = invitar(&otro, &yo, &ana.ficha(0), 3).unwrap();
+        otro = quitar(&otro, &yo, "id-pc", 4).unwrap();
+        let mios: BTreeSet<String> = ["id-pc".to_string(), "id-tab".into()].into();
+        let l = personas_a_llamar(&[tesis.clone(), otro.clone()], "id-pc", &mios);
+        // Ana, una sola vez; ni yo, ni mi tableta (va por el grupo), ni Eva,
+        // ni Luis.
+        assert_eq!(l, [("id-ana".to_string(), "Ana".to_string())]);
+        // Caso negativo: sin chats compartidos no hay a nadie que llamar, ni
+        // red que gastar.
+        assert!(personas_a_llamar(&[], "id-pc", &mios).is_empty());
+        // Y quien no esta en ningun chat tampoco llama a nadie.
+        assert!(personas_a_llamar(&[tesis, otro], "id-desconocido", &BTreeSet::new()).is_empty());
+    }
+
+    #[test]
+    fn con_las_personas_el_reloj_es_el_del_grupo_y_sin_respuesta_no_se_llama() {
+        // Las personas llevan su propio `Reloj`: aparecer dispara, y sin
+        // ninguna que conteste no se intenta nunca (no se gasta red).
+        let mut r = Reloj::default();
+        assert_eq!(r.toca(0), None);
+        r.responde("id-ana", false);
+        assert_eq!(r.toca(10 * PERIODO), None);
+        r.responde("id-ana", true);
+        assert_eq!(r.toca(0), Some(Motivo::Aparecio));
+        r.empezo(0);
+        assert_eq!(r.toca(1_000), None);
+        assert!(SONDEO_PERSONAS >= 60_000, "las personas se miran sin prisa");
     }
 }
