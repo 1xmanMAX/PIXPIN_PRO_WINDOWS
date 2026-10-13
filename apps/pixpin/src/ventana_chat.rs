@@ -5625,6 +5625,13 @@ fn tocar_la_burbuja(
         crate::notas_md::abrir(idioma, ubicacion.clone(), destino);
         return;
     }
+    // Un croquis 3D del movil se abre en el visor 3D (`croquis3d`, tanda 5).
+    if let Some(a) = abierto.as_ref()
+        && let Some(m) = a.mensajes.get(indice)
+        && crate::croquis3d::abrir_desde_chat(idioma, ubicacion.raiz(), &a.ficha.id, m)
+    {
+        return;
+    }
     // Un Excel, un .ods, un CSV o una tabla del chat se abren como un pin de
     // hoja, en modo ver y con «Editar» en su barra (`hoja_pin`; el usuario,
     // 11-oct-2026). Antes se abrian en una hoja pintada dentro del historial.

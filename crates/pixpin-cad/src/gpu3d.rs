@@ -39,6 +39,9 @@ struct S3 {
     float4 c : COLOR;
     float3 w : MUNDO;
     nointerpolation uint e : ELEM;
+    // Las marcas del croquis (bits 29 y 30 de la normal): 1 sin luz, 2 de
+    // contraste (negro en fondo claro, blanco en oscuro). El BIM no las usa.
+    nointerpolation uint f : MARCA;
 };
 
 float3 normal_de(uint n) {
@@ -56,7 +59,13 @@ S3 vs_3d(float3 p : POS, uint n : NORMAL, uint c : COLOR, uint e : ELEM) {
     o.c = color_de(c);
     o.w = p;
     o.e = e;
+    o.f = (n >> 29) & 3;
     return o;
+}
+
+float3 de_contraste(S3 i) {
+    if ((i.f & 2) != 0) return claro > 0.5 ? float3(0, 0, 0) : float3(1, 1, 1);
+    return i.c.rgb;
 }
 
 // **La caja de seccion** (la de Revit): lo de fuera no se ve.
@@ -101,6 +110,11 @@ float3 en_el_corte(float3 w) {
 }
 
 float4 sombrear(S3 i) {
+    if (i.f != 0) {
+        float3 plano = de_contraste(i);
+        if (i.e + 1 == elegido) plano = lerp(plano, float3(0.10, 0.55, 1.0), 0.55);
+        return float4(plano, i.c.a);
+    }
     float3 n = normalize(i.n);
     float3 v = normalize(ojo.xyz - i.w);
     if (dot(n, v) < 0) n = -n;   // las dos caras
@@ -163,7 +177,7 @@ float4 ps_punto(S3 i) : SV_Target {
 float4 ps_linea(S3 i) : SV_Target {
     cortar(i.w, i.e);
     if (i.e + 1 == elegido) return float4(0.10, 0.55, 1.0, 1);
-    return i.c;
+    return float4(de_contraste(i), i.c.a);
 }
 
 float4 ps_arista(S3 i) : SV_Target {
@@ -621,5 +635,31 @@ impl Gpu {
             ctx.Unmap(&d.copia_mundo, 0);
             Ok(Some((id - 1, [w[0], w[1], w[2]])))
         }
+    }
+}
+
+#[cfg(test)]
+mod pruebas {
+    use super::*;
+
+    /// Los sombreadores 3D compilan (sin ventana ni tarjeta): con las marcas
+    /// del croquis (sin luz, de contraste) no se puede romper el del BIM.
+    #[test]
+    fn los_sombreadores_3d_compilan() {
+        for (punto, perfil) in [
+            (s!("vs_3d"), s!("vs_5_0")),
+            (s!("vs_punto"), s!("vs_5_0")),
+            (s!("ps_3d"), s!("ps_5_0")),
+            (s!("ps_arista"), s!("ps_5_0")),
+            (s!("ps_id"), s!("ps_5_0")),
+            (s!("ps_punto"), s!("ps_5_0")),
+            (s!("ps_linea"), s!("ps_5_0")),
+            (s!("ps_vidrio"), s!("ps_5_0")),
+            (s!("ps_tapa"), s!("ps_5_0")),
+        ] {
+            assert!(compilar_de(SOMBREADORES_3D, punto, perfil).is_ok());
+        }
+        // Caso negativo: un punto de entrada que no existe no compila.
+        assert!(compilar_de(SOMBREADORES_3D, s!("ps_no_esta"), s!("ps_5_0")).is_err());
     }
 }

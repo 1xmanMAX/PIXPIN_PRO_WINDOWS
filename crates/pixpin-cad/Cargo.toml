@@ -16,6 +16,10 @@ lyon_tessellation = "1.0"
 # El contorno de las letras de las fuentes de Windows (MIT/Apache).
 ttf-parser = "0.25"
 tracing = "0.1"
+# Leer el croquis 3D del movil (`croquis3d/<id>.croquis.gz`): JSON en gzip.
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+flate2 = "1.1"
 windows = { version = "0.62.2", features = [
     "Win32_Foundation",
     "Win32_Graphics_Direct3D",

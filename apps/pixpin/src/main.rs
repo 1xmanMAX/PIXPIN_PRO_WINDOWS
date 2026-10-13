@@ -50,6 +50,7 @@
 #![forbid(unsafe_code)]
 
 mod abrir_hoja;
+mod croquis3d;
 mod al_frente;
 mod abrir_imagen;
 mod aligerar;

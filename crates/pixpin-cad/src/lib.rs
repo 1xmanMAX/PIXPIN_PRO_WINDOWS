@@ -6,6 +6,7 @@
 //! - [`modelo`]: lo que va a la tarjeta grafica, ordenado para dibujar solo
 //!   lo que se ve, y su cache en disco.
 pub mod convertir;
+pub mod croquis;
 pub mod convertir3d;
 pub mod gpu;
 pub mod gpu3d;

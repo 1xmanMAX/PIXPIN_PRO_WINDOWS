@@ -46,7 +46,7 @@ use crate::ventana::{
 
 const INFINITE: u32 = u32::MAX;
 const BOTONES: [&str; 5] = ["asa", "tema", "corte", "capas", "fijar"];
-const FOV: f64 = 0.785_398; // 45 grados
+pub(crate) const FOV: f64 = 0.785_398; // 45 grados
 
 fn sub(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
     [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
@@ -78,7 +78,7 @@ pub struct Orbita {
     pub dist: f64,
 }
 
-const ALTURA_MAX: f64 = 1.5697; // casi 90 grados: la planta
+pub(crate) const ALTURA_MAX: f64 = 1.5697; // casi 90 grados: la planta
 
 impl Orbita {
     /// Desde el ojo hacia el objetivo, unitario.
@@ -303,8 +303,11 @@ const M_ENCIMA: u32 = 6;
 const M_CERRAR: u32 = 7;
 const M_AISLAR: u32 = 8;
 const M_PANEL: u32 = 9;
+/// La primera vista guardada; las demas, seguidas.
+const M_VISTA: u32 = 100;
 
-fn menu(hwnd: HWND, t: &TextosUi3d, corte: bool, aislado: Option<bool>, panel: bool, aristas: bool, fijada: bool) {
+#[allow(clippy::too_many_arguments)]
+fn menu(hwnd: HWND, t: &TextosUi3d, corte: bool, aislado: Option<bool>, panel: bool, aristas: bool, fijada: bool, vistas: &[String]) {
     // SAFETY: menu propio que se destruye antes de salir; cadenas vivas.
     unsafe {
         let Ok(m) = CreatePopupMenu() else { return };
@@ -322,6 +325,14 @@ fn menu(hwnd: HWND, t: &TextosUi3d, corte: bool, aislado: Option<bool>, panel: b
         }
         poner(M_PANEL, &t.panel, panel);
         poner(M_ARISTAS, &t.aristas, aristas);
+        // Las vistas guardadas del croquis, con su tecla (1 a 9).
+        if !vistas.is_empty() {
+            let _ = AppendMenuW(m, MF_SEPARATOR, 0, PCWSTR::null());
+            for (i, n) in vistas.iter().enumerate() {
+                let texto = if i < 9 { format!("{n}	{}", i + 1) } else { n.clone() };
+                poner(M_VISTA + i as u32, &texto, false);
+            }
+        }
         let _ = AppendMenuW(m, MF_SEPARATOR, 0, PCWSTR::null());
         poner(M_ENCIMA, &t.encima, fijada);
         poner(M_CERRAR, &t.cerrar, false);
@@ -541,8 +552,44 @@ fn encima_del_modelo(textos: &mut Textos, a: &Encima, ui: &TextosUi3d, w: u32, h
     c.terminar()
 }
 
+/// **Lo que un croquis 3D le pide de mas a la ventana** (tanda 5): su fondo,
+/// con que tema abre, que se encuadra al abrir, desde donde se mira y sus
+/// vistas guardadas. Para un modelo BIM, todo vacio ([`ver`]).
+#[derive(Debug, Clone, Default)]
+pub struct Extras {
+    /// El fondo propio (`colorDelFondo`), mientras no se cambie el tema.
+    pub fondo: Option<[f32; 4]>,
+    /// Con que tema abre (por defecto, oscuro).
+    pub claro: Option<bool>,
+    /// Lo que se encuadra (en el mundo, absoluto), si no es todo el modelo:
+    /// el suelo y las hojas sin fin no cuentan.
+    pub encuadre: Option<[f64; 6]>,
+    /// Desde donde se mira al abrir y al pulsar F: rumbo y altura.
+    pub orientacion: Option<(f64, f64)>,
+    /// Las vistas congeladas del croquis: en el menu y con las teclas 1 a 9.
+    pub vistas: Vec<crate::croquis::Vista3D>,
+}
+
 /// **Abre la ventana del modelo** y no vuelve hasta que se cierra.
 pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo3d, String>>, ui: TextosUi3d) -> Result<(), String> {
+    ver_con(titulo, cargando, ui, Extras::default())
+}
+
+/// [`ver`], con lo que pide un croquis ([`Extras`]).
+pub fn ver_con(titulo: &str, cargando: Receiver<Result<Modelo3d, String>>, ui: TextosUi3d, extras: Extras) -> Result<(), String> {
+    let nombres_de_vistas: Vec<String> = extras.vistas.iter().map(|v| v.nombre.clone()).collect();
+    // Encuadrar con la orientacion del croquis, si la trae.
+    let encuadre = |caja: [f32; 6], w: u32, h: u32| {
+        let mut o = Orbita::encuadrar(caja, w, h);
+        if let Some((rumbo, altura)) = extras.orientacion {
+            o.rumbo = rumbo;
+            o.altura = altura.clamp(-ALTURA_MAX, ALTURA_MAX);
+            o.dist = o.distancia_para(caja, w, h).max(1e-3);
+        }
+        o
+    };
+    // El tema se ha tocado: el fondo propio deja de mandar.
+    let mut tema_tocado = false;
     let (hwnd, mut w, mut h) = crear_ventana(w!("PixPinModelo3d"), &format!("{titulo} — PixPin")).map_err(|e| e.to_string())?;
     let mut gpu = match Gpu::nueva(hwnd, w, h) {
         Ok(g) => g,
@@ -567,7 +614,7 @@ pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo3d, String>>, ui: Texto
     let mut radio = 10.0;
     // Lo que se encuadra y se corta: la caja sin los puntos sueltos lejanos.
     let mut caja_vista = [0f32; 6];
-    let mut claro = false;
+    let mut claro = extras.claro.unwrap_or(false);
     let mut fijada = true;
     let mut aristas = true;
     // La caja de seccion (relativa al origen del modelo), si esta puesta.
@@ -647,8 +694,13 @@ pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo3d, String>>, ui: Texto
                             let c = m.caja;
                             radio = ((c[3] - c[0]).hypot(c[4] - c[1]).hypot(c[5] - c[2]) as f64 / 2.0).max(1e-3);
                             caja_vista = m.caja_util();
+                            if let Some(a) = extras.encuadre {
+                                let o = m.origen;
+                                let r = |k: usize| (a[k] - o[k % 3]) as f32;
+                                caja_vista = [r(0), r(1), r(2), r(3), r(4), r(5)];
+                            }
                             arbol_m = Some(Arbol::de(&m, &ui));
-                            cam = Orbita::encuadrar(caja_vista, w, h);
+                            cam = encuadre(caja_vista, w, h);
                             destino = cam;
                             modelo = Some((m, g));
                             mensaje.clear();
@@ -672,6 +724,8 @@ pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo3d, String>>, ui: Texto
         let mut cambiar_panel = false;
         // Aislar lo elegido (Some(e)) o volver a todo (None).
         let mut aislar: Option<Option<u32>> = None;
+        // Una vista guardada del croquis, pedida por el menu o su tecla.
+        let mut vista_pedida: Option<usize> = None;
         // Lo que se ve: el aislado o el modelo.
         let caja = aislado.map_or(caja, |a| a.1);
         // Hasta donde puede ir la caja: el modelo entero y algo mas.
@@ -718,7 +772,7 @@ pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo3d, String>>, ui: Texto
                         aviso_ui = None;
                         sucio = true;
                         if sin_tocar && modelo.is_some() {
-                            cam = Orbita::encuadrar(caja_vista, w, h);
+                            cam = encuadre(caja_vista, w, h);
                             destino = cam;
                         }
                     }
@@ -823,7 +877,7 @@ pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo3d, String>>, ui: Texto
                         sucio = true;
                     } else if b == 2 {
                         let a = if aislado.is_some() { Some(true) } else { elegido.map(|_| false) };
-                        menu(hwnd, &ui, seccion.is_some(), a, panel, aristas, fijada);
+                        menu(hwnd, &ui, seccion.is_some(), a, panel, aristas, fijada, &nombres_de_vistas);
                     } else if b == 0
                         && let Some((_, g)) = &modelo
                     {
@@ -908,6 +962,7 @@ pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo3d, String>>, ui: Texto
                     M_PLANTA => planta = true,
                     M_ENCIMA => cambiar_encima = true,
                     M_CERRAR => break 'bucle,
+                    n if (M_VISTA..M_VISTA + extras.vistas.len() as u32).contains(&n) => vista_pedida = Some((n - M_VISTA) as usize),
                     _ => {}
                 },
                 (De::Plano, Ev::TeclaSoltada(_) | Ev::Caracter(_)) => {}
@@ -933,6 +988,8 @@ pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo3d, String>>, ui: Texto
                     }
                     0x50 => planta = true,
                     0x54 => cambiar_encima = true,
+                    // 1 a 9: las vistas guardadas del croquis.
+                    0x31..=0x39 => vista_pedida = Some((vk - 0x31) as usize),
                     0xBB | 0x6B => destino = destino.zoom(1.0 / 1.4, destino.objetivo),
                     0xBD | 0x6D => destino = destino.zoom(1.4, destino.objetivo),
                     0x25 => destino = destino.girar(0.26, 0.0, destino.objetivo),
@@ -949,15 +1006,21 @@ pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo3d, String>>, ui: Texto
             // Aislar y encuadrarlo; o volver a todo, encuadrado.
             aislado = que.and_then(|e| Some((e, caja_de_elemento(m, e)?)));
             let c = aislado.map_or(caja_vista, |a| a.1);
-            destino = Orbita::encuadrar(c, w, h);
+            destino = encuadre(c, w, h);
             if let Some(e) = que {
                 elegido = Some(e);
             }
             sucio = true;
         }
+        if let Some(i) = vista_pedida
+            && let (Some(v), Some((m, _))) = (extras.vistas.get(i), &modelo)
+        {
+            destino = crate::croquis::orbita_de(v, m.origen, w, h, e);
+            sin_tocar = false;
+        }
         let caja = aislado.map_or(caja_vista, |a| a.1);
         if encuadrar && modelo.is_some() {
-            destino = Orbita::encuadrar(caja, w, h);
+            destino = encuadre(caja, w, h);
         }
         if planta && modelo.is_some() {
             let mut o = Orbita::encuadrar(caja, w, h);
@@ -985,6 +1048,7 @@ pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo3d, String>>, ui: Texto
         }
         if cambiar_tema {
             claro = !claro;
+            tema_tocado = true;
             barra_sucia = true;
             aviso_ui = None;
             sucio = true;
@@ -1058,7 +1122,11 @@ pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo3d, String>>, ui: Texto
             sucio = true;
         }
         if sucio {
-            let fondo = if claro { [0.955, 0.958, 0.965, 1.0] } else { [0.13, 0.15, 0.19, 1.0] };
+            let fondo = match extras.fondo {
+                Some(f) if !tema_tocado => f,
+                _ if claro => [0.955, 0.958, 0.965, 1.0],
+                _ => [0.13, 0.15, 0.19, 1.0],
+            };
             let mut capas: Vec<(&PlanoGpu, crate::gpu::Vista)> = Vec::new();
             if mensaje.is_empty() {
                 aviso_ui = None;

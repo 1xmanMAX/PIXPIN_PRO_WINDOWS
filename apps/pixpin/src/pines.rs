@@ -2486,16 +2486,19 @@ impl Pines {
                 return Ok(true);
             }
         }
-        // Un croquis del espacio todavia no se sabe dibujar aqui. Se avisa
-        // en vez de saltarselo en silencio: el usuario tiene que poder ver
-        // que esa hoja existe y que su contenido sigue dentro del fichero.
+        // Un croquis del espacio se abre en el visor 3D (`croquis3d`, tanda 5).
+        // Si el paquete no lo trae dentro, se avisa en vez de saltarselo en
+        // silencio: el usuario tiene que poder ver que esa hoja existe.
         if hoja.dibujo.is_none() {
             if let Some(croquis) = &hoja.croquis {
+                if crate::croquis3d::abrir_de_paquete(crate::croquis3d::idioma_del_sistema(), paquete, croquis, &hoja.nombre) {
+                    return Ok(true);
+                }
                 let aviso = format!(
                     "{}
 
 Croquis del espacio ({croquis}).
-Todavia no se puede ver aqui; sigue dentro del proyecto.",
+El proyecto no lo trae dentro.",
                     hoja.nombre
                 );
                 self.pinear_nota(&aviso, monitor)?;
