@@ -126,12 +126,13 @@ pub fn para_el_pedido(pedido: &str, con_imagen: bool) -> Vec<Herramienta> {
     }
     // Estable: a igual puntuacion, el orden del catalogo.
     puntuadas.sort_by(|a, b| b.0.cmp(&a.0));
-    let elegidas: Vec<Herramienta> = puntuadas
-        .into_iter()
-        .filter(|(s, _)| *s >= 2)
-        .take(MAXIMO)
-        .map(|(_, h)| h)
-        .collect();
+    let mut elegidas: Vec<(u32, Herramienta)> = puntuadas.into_iter().filter(|(s, _)| *s >= 2).take(MAXIMO).collect();
+    // «Saca las tareas de esta acta»: con las dos a mano, el 2B las apuntaba
+    // una a una en el Inbox y no creaba la lista pedida (medido, 14-oct).
+    if let Some(varias) = elegidas.iter().find(|(_, h)| h.nombre == "anadir_tareas").map(|x| x.0) {
+        elegidas.retain(|(s, h)| !(h.nombre == "anadir_tarea" && *s <= varias));
+    }
+    let elegidas: Vec<Herramienta> = elegidas.into_iter().map(|(_, h)| h).collect();
     if elegidas.is_empty() {
         return [DIBUJAR, GRAFICA, AYUDA].iter().filter_map(|n| de(n)).collect();
     }
@@ -165,11 +166,22 @@ mod pruebas {
             ("Crea una nota nueva que diga: comprar cemento", false, "nota_nueva"),
             ("Sincroniza con el movil", false, "sincronizar_movil"),
             ("Lee el texto de este pdf escaneado", false, "ocr"),
+            ("Saca las tareas de esta acta y ponlas en una lista nueva", false, "anadir_tareas"),
+            ("¿Qué tengo pendiente esta semana?", false, "consultar_tareas"),
+            ("Aplaza la tarea llamar al banco al viernes", false, "editar_tarea"),
         ] {
             let n = nombres(pedido, img);
             assert!(n.iter().any(|x| x == debe), "«{pedido}» → {n:?}");
             assert!(n.len() <= MAXIMO, "«{pedido}» → {n:?}");
         }
+    }
+
+    #[test]
+    fn sacar_las_tareas_de_un_acta_no_ofrece_apuntarlas_de_una_en_una() {
+        let n = nombres("Saca las tareas de esta acta y ponlas en una lista nueva llamada Acta", false);
+        assert!(n.contains(&"anadir_tareas".to_string()) && !n.contains(&"anadir_tarea".to_string()), "{n:?}");
+        // Una sola tarea sigue con la suya.
+        assert!(nombres("Apunta la tarea comprar pan", false).contains(&"anadir_tarea".to_string()));
     }
 
     #[test]

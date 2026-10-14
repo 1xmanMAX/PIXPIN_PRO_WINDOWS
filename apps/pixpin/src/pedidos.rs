@@ -145,6 +145,15 @@ pub enum Pedido {
         codigo: String,
         indice: usize,
     },
+    /// Cambiar lo que se lee de la tarea `indice` de la lista `codigo` por
+    /// `texto` (con su marca ⏰ si lleva fecha), como «Editar» de la ventana
+    /// de tareas: conserva su fecha de creacion y sus imagenes.
+    CorregirTarea {
+        proyecto: Option<String>,
+        codigo: String,
+        indice: usize,
+        texto: String,
+    },
     /// Borrar la lista `codigo` entera: su mensaje sale del chat como al
     /// borrarlo alli, con su marca para que el movil tambien lo quite.
     BorrarLista {
@@ -729,6 +738,25 @@ fn hacer(p: Pedido, cx: &Contexto) -> Result<Hecho, Fallo> {
             let (visible, _) = mini::partir(&tarea.texto);
             let (texto, _) = mini::imagenes_de(visible);
             return Ok(aviso("pedido-tarea-quitada", &[("tarea", texto)]));
+        }
+        Pedido::CorregirTarea {
+            proyecto,
+            codigo,
+            indice,
+            texto,
+        } => {
+            let lista = lista_pedida(raiz, proyecto.as_deref(), &codigo, cx.aparato, ahora)?;
+            let Some(fila) = lista.filas.get(indice) else {
+                return Err(Fallo::SinTarea(indice));
+            };
+            if !crate::tareas::corregir(raiz, &lista, fila, &texto, &[])? {
+                return Err(Fallo::TareaCambio);
+            }
+            crate::recordatorios::releer(raiz);
+            crate::ventana_chat::refrescar();
+            let (visible, _) = mini::partir(&texto);
+            let (visible, _) = mini::imagenes_de(&crate::tareas::sin_hora(visible));
+            return Ok(aviso("pedido-tarea-corregida", &[("tarea", visible)]));
         }
         Pedido::BorrarLista { proyecto, codigo } => {
             let f = ficha_de(raiz, proyecto.as_deref(), cx.aparato, ahora)?;
@@ -1451,7 +1479,7 @@ mod pruebas {
 
     /// Un ejemplo de cada accion, con lo minimo que pide la tabla del
     /// protocolo.
-    const EJEMPLOS: [(&str, &str); 26] = [
+    const EJEMPLOS: [(&str, &str); 27] = [
         (
             "sincronizar",
             r#"{"pixpin":1,"accion":"sincronizar","aparato":"todos"}"#,
@@ -1527,6 +1555,10 @@ mod pruebas {
         (
             "quitar_tarea",
             r#"{"pixpin":1,"accion":"quitar_tarea","codigo":"1","indice":0}"#,
+        ),
+        (
+            "corregir_tarea",
+            r#"{"pixpin":1,"accion":"corregir_tarea","codigo":"1","indice":0,"texto":"pan integral"}"#,
         ),
         (
             "borrar_lista",

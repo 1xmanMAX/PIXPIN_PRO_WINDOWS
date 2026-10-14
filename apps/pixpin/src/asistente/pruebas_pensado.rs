@@ -328,6 +328,7 @@ fn de_verdad_conversacion_larga_con_reinicios() {
             ventana,
             reiniciado,
             ampliar: false,
+            ..Default::default()
         };
         let mut t = Turno::lanzar_con_memoria(
             motor.clone(),

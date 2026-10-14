@@ -90,6 +90,12 @@ impl Motor for MotorPerezoso {
             m.soltar();
         }
     }
+
+    fn precalentar(&self) {
+        if self.servidor.is_file() && self.modelo.is_file() {
+            self.motor().precalentar();
+        }
+    }
 }
 
 static MOTOR: Mutex<Option<(&'static str, Arc<dyn Motor>)>> = Mutex::new(None);
@@ -116,12 +122,22 @@ pub fn del_proceso(raiz: &Path, m: &Modelo) -> Result<Arc<dyn Motor>, String> {
 /// Carga el modelo en un hilo, sin esperar (al abrir el chat «Asistente»,
 /// para que la primera respuesta no tarde los 20 s de la carga).
 pub fn precargar(motor: Arc<dyn Motor>) {
-    let _ = std::thread::Builder::new().name("asistente-precarga".into()).spawn(move || {
-        // Una peticion vacia de un token: carga el modelo y vuelve.
-        let mut p = Peticion::nueva(vec![pixpin_ia::Mensaje::usuario("hola")]);
-        p.max_tokens = 1;
-        let _ = motor.completar(&p, &mut |_| Seguir::Si);
+    // Una sola a la vez: abrir y cerrar el chat deprisa no lanza diez.
+    static EN_CURSO: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+    if EN_CURSO.swap(true, std::sync::atomic::Ordering::SeqCst) {
+        return;
+    }
+    let lanzado = std::thread::Builder::new().name("asistente-precarga".into()).spawn(move || {
+        // Arranca `llama-server` y carga el modelo (la nube no hace nada):
+        // la primera pregunta ya no espera la carga.
+        let t0 = std::time::Instant::now();
+        motor.precalentar();
+        tracing::info!(ms = t0.elapsed().as_millis() as u64, "asistente: precargado");
+        EN_CURSO.store(false, std::sync::atomic::Ordering::SeqCst);
     });
+    if lanzado.is_err() {
+        EN_CURSO.store(false, std::sync::atomic::Ordering::SeqCst);
+    }
 }
 
 /// Suelta el modelo ya (al cambiar de modelo en los ajustes).

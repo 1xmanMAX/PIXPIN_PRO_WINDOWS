@@ -64,6 +64,11 @@ pub struct Memoria {
     /// Que la vuelta de planear pueda anadir herramientas del catalogo entero
     /// a las de la seleccion (`Opciones::ampliar`).
     pub ampliar: bool,
+    /// Donde viven los chats: con ella, el asistente lee las listas de tareas
+    /// y las pide por su nombre.
+    pub raiz: Option<PathBuf>,
+    /// Las ordenes simples sin modelo (`pixpin_ia::rapido`, 14-oct).
+    pub rapido: bool,
 }
 
 /// Lo que se va juntando de los eventos para el registro del turno.
@@ -205,10 +210,11 @@ impl Turno {
                     .find(|m| m.rol == Rol::Usuario)
                     .map(Mensaje::texto_entero)
                     .unwrap_or_default();
-                let mut ejecutor =
-                    EjecutorDelChat::nuevo(tx.clone(), proyecto, adjuntos, parar_hilo.clone()).hacia(destino);
                 let con_memoria = memoria.is_some();
                 let memoria = memoria.unwrap_or_default();
+                let mut ejecutor = EjecutorDelChat::nuevo(tx.clone(), proyecto, adjuntos, parar_hilo.clone())
+                    .hacia(destino)
+                    .con_raiz(memoria.raiz.clone());
                 let buscar = |c: &str| contexto::buscar(&memoria.fuentes, c, 3);
                 let todas = pixpin_ia::herramientas::catalogo();
                 let opciones = Opciones {
@@ -222,6 +228,9 @@ impl Turno {
                     // contestar (medido, 13-oct).
                     buscar: (con_memoria && (memoria.reiniciado || memoria.hoja.reinicios > 0)).then_some(&buscar as &dyn Fn(&str) -> String),
                     ampliar: memoria.ampliar.then_some(&todas[..]),
+                    rapido: memoria.rapido.then(|| {
+                        pixpin_ia::fechas::Momento::de_ms_locales(pixpin_shell::entorno::ahora_local_ms())
+                    }),
                 };
                 let mut recogido = Recogido::default();
                 let resultado = agente::turno_con(

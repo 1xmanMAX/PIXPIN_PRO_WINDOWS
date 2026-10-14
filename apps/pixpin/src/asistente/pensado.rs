@@ -234,6 +234,9 @@ pub fn preparar_turno(
         ventana,
         reiniciado,
         ampliar: true,
+        // Las tareas por su nombre y el camino rapido (14-oct).
+        raiz: Some(raiz.to_path_buf()),
+        rapido: true,
     };
     (historial, memoria)
 }

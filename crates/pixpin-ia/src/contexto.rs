@@ -83,6 +83,24 @@ pub fn pasa_del_umbral(tokens: u32, reserva_respuesta: u32, ventana: u32) -> boo
     ventana > 0 && (tokens + reserva_respuesta) as f32 > ventana as f32 * UMBRAL
 }
 
+/// Lo que [`sistema_con_hoja`] anade debajo de las instrucciones, en el
+/// orden en que lo pone: de aqui en adelante cambia cada turno.
+const PARTES_QUE_CAMBIAN: &[&str] = &[
+    "\n\n# Hoja de trabajo\n",
+    "\n\n# Peticion mejorada",
+    "\n\nLa conversacion de antes ya no esta cargada",
+];
+
+/// **Parte el sistema** en lo fijo (las instrucciones) y lo que cambia cada
+/// turno (la hoja, la peticion mejorada), para que lo fijo sea un prefijo
+/// que se cachea (`nube::instrucciones::en_dos`).
+pub fn partir_sistema(s: &str) -> (&str, &str) {
+    match PARTES_QUE_CAMBIAN.iter().filter_map(|m| s.find(m)).min() {
+        Some(i) => s.split_at(i),
+        None => (s, ""),
+    }
+}
+
 /// **Las instrucciones con la hoja y la peticion mejorada** debajo.
 pub fn sistema_con_hoja(instrucciones: &str, hoja: &HojaDeTrabajo, plan: Option<&Plan>) -> String {
     let mut s = instrucciones.trim_end().to_string();

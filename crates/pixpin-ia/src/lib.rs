@@ -48,6 +48,9 @@
 //!   que borra o sale del PC lleva su pregunta de confirmacion.
 //! - [`seleccion`]: las 6 herramientas que vienen a cuento en cada turno.
 //! - [`conocimiento`]: el resumen de PixPin y el indice de `ayuda_app`.
+//! - [`rapido`], [`tareas`] y [`fechas`] (14-oct): las ordenes simples sin
+//!   modelo (<100 ms), las tareas por su nombre («la tarea comprar pan»,
+//!   «mañana a las 10») y las consultas («¿que tengo pendiente?»).
 //!
 //! ## Puntos de enganche para la UI (otros agentes)
 //!
@@ -64,6 +67,7 @@ pub mod calcar;
 pub mod conocimiento;
 pub mod contexto;
 pub mod descarga;
+pub mod fechas;
 pub mod herramientas;
 pub mod hoja_trabajo;
 pub mod lienzo;
@@ -71,9 +75,11 @@ pub mod modelos;
 pub mod motor;
 pub mod nube;
 pub mod pensar;
+pub mod rapido;
 pub mod seleccion;
 pub mod servidor;
 pub mod sse;
+pub mod tareas;
 
 pub use agente::{Ejecutor, Evento, turno};
 pub use herramientas::{Herramienta, Llamada, catalogo};

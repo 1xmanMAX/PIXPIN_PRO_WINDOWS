@@ -63,10 +63,18 @@ impl Acumulador {
         if let Some(u) = v.get("usage").filter(|u| !u.is_null()) {
             self.medidas.tokens_entrada = num(u, "prompt_tokens") as u32;
             self.medidas.tokens_salida = num(u, "completion_tokens") as u32;
+            // DeepSeek: lo que acerto su cache de disco.
+            if num(u, "prompt_cache_hit_tokens") > 0.0 {
+                self.medidas.tokens_cache_leidos = num(u, "prompt_cache_hit_tokens") as u32;
+            }
         }
         if let Some(t) = v.get("timings").filter(|t| !t.is_null()) {
             self.medidas.tokens_por_segundo_lectura = num(t, "prompt_per_second") as f32;
             self.medidas.tokens_por_segundo_escritura = num(t, "predicted_per_second") as f32;
+            // llama.cpp: los tokens del principio que reutilizo de la ranura.
+            if num(t, "cache_n") > 0.0 {
+                self.medidas.tokens_cache_leidos = num(t, "cache_n") as u32;
+            }
         }
         let Some(eleccion) = v.get("choices").and_then(|c| c.get(0)) else {
             return Ok(());

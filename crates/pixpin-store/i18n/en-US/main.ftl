@@ -1521,6 +1521,7 @@ pedido-fallo-disco = What was asked couldn't be saved. Check PixPin's log.
 pedido-tarea-movida = “{ $tarea }” moved to “{ $lista }”.
 pedido-tarea-cambio = The list changed while the task was being moved; nothing was touched. Look it up again.
 pedido-tarea-quitada = “{ $tarea }” removed from its list.
+pedido-tarea-corregida = Task changed: “{ $tarea }”.
 pedido-lista-borrada = List “{ $lista }” deleted from “{ $proyecto }”.
 pedido-sin-capturas = There are no captures yet.
 pedido-fuera-de-capturas = That file isn't in the captures folder; it's left alone.

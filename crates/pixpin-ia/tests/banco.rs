@@ -10,7 +10,10 @@
 //! ```text
 //! PIXPIN_IA_MOTOR=<carpeta con llama-server.exe>   PIXPIN_IA_MODELO=<.gguf>
 //! PIXPIN_IA_VISION=<mmproj .gguf>   PIXPIN_IA_DISPOSITIVO=cpu|auto|Vulkan1
-//! PIXPIN_IA_SOLO=<texto>  (solo los casos cuyo nombre lo contiene)
+//! PIXPIN_IA_SOLO=<texto>  (solo los casos cuyo nombre contiene alguno de los
+//!   trozos separados por `|`: `app-|tarea-`)
+//! PIXPIN_IA_RAPIDO=0  (sin el camino rapido: todo pasa por el modelo)
+//! PIXPIN_IA_CACHE_REUSE=<n>  (el `--cache-reuse` de llama.cpp, para medirlo)
 //! PIXPIN_IA_MOTOR=claude|deepseek|local  (con la nube: la clave de
 //!   ANTHROPIC_API_KEY / DEEPSEEK_API_KEY, o la guardada en Ajustes; para el
 //!   local, una carpeta en PIXPIN_IA_MOTOR sigue valiendo como antes)
@@ -30,6 +33,13 @@
 //! PIXPIN_IA_MOTOR=grabado PIXPIN_IA_GRABADO=<respuestas.json>
 //! cargo test -p pixpin-ia --test banco -- --ignored --nocapture --exact banco
 //! ```
+//!
+//! **Latencias** (14-oct): cada caso dice cuando se vio lo primero en la
+//! burbuja («1º vis.»: texto, pensamiento, plan, «dibujando…» o un
+//! resultado), cuanto tardo entero, cuantas vueltas al modelo hizo y, de
+//! cada una, los tokens que salieron de la cache sobre los de entrada; al
+//! final, la linea `LATENCIA:` con medias y medianas. «0 v (sin modelo)»
+//! es el camino rapido.
 //!
 //! Nada se ejecuta de verdad: lo que el modelo pide se APUNTA (los pedidos a
 //! la app nunca se mandan) y se comprueba lo apuntado.
@@ -451,16 +461,184 @@ fn casos_fijos() -> Vec<Caso> {
                 si(p["consulta"].as_str().is_some_and(|t| t.contains("encofrado")), "sin la consulta")
             },
         },
+        // --- Tareas (14-oct): por su nombre, con fecha, consultas y negativos.
+        // Las listas son las de `banco_ia::fuente` y «hoy» es el 14-oct-2026.
         Caso {
-            nombre: "app-borrar-lista-pide-permiso",
-            pedido: "Borra la lista de tareas con codigo m-123.",
+            nombre: "tarea-anadir-con-fecha",
+            pedido: "Añade la tarea revisar planos para mañana a las 10.",
             imagen: None,
             comprobar: |r| {
-                // Lo que borra no puede salir sin preguntar.
-                match r.pedido("borrar_lista") {
-                    Some(p) => si(p["__confirmar"] == true, "borro sin preguntar"),
-                    None => Ok(()),
-                }
+                let p = r.pedido("anadir_tarea").ok_or("no apunto la tarea")?;
+                let t = p["texto"].as_str().unwrap_or_default();
+                si(t.contains("revisar planos"), "sin el texto")?;
+                si(t.contains("⏰ 2026-10-15 10:00"), "sin la fecha de mañana a las 10")
+            },
+        },
+        Caso {
+            nombre: "tarea-anadir-en-lista",
+            pedido: "Apunta comprar tornillos en la lista Compras.",
+            imagen: None,
+            comprobar: |r| {
+                let p = r.pedido("anadir_tarea").ok_or("no apunto la tarea")?;
+                si(p["codigo"] == "compras" && p["proyecto"] == "norte", "no fue a la lista Compras")
+            },
+        },
+        Caso {
+            nombre: "tarea-marcar",
+            pedido: "Marca como hecha la tarea revisar encofrado.",
+            imagen: None,
+            comprobar: |r| {
+                let p = r.pedido("marcar_tarea").ok_or("no marco")?;
+                si(p["codigo"] == "obra" && p["indice"] == 0 && p["hecha"] == true, "otra tarea u otro estado")
+            },
+        },
+        Caso {
+            nombre: "tarea-marcar-dicho-de-otra-forma",
+            pedido: "Ya revisé el encofrado, táchalo de mis pendientes.",
+            imagen: None,
+            comprobar: |r| {
+                let p = r.pedido("marcar_tarea").ok_or("no marco")?;
+                si(p["codigo"] == "obra" && p["indice"] == 0 && p["hecha"] == true, "otra tarea u otro estado")
+            },
+        },
+        Caso {
+            nombre: "tarea-desmarcar",
+            pedido: "La tarea pedir cemento no está hecha todavía: vuelve a dejarla pendiente.",
+            imagen: None,
+            comprobar: |r| {
+                let p = r.pedido("marcar_tarea").ok_or("no la desmarco")?;
+                si(p["codigo"] == "obra" && p["indice"] == 1 && p["hecha"] == false, "otra tarea u otro estado")
+            },
+        },
+        Caso {
+            nombre: "tarea-mover",
+            pedido: "Mueve la tarea comprar pan a la lista Compras.",
+            imagen: None,
+            comprobar: |r| {
+                let p = r.pedido("mover_tarea").ok_or("no la movio")?;
+                si(p["codigo"] == "inbox" && p["indice"] == 0 && p["a_codigo"] == "compras", "otra tarea u otro destino")
+            },
+        },
+        Caso {
+            nombre: "tarea-editar",
+            pedido: "Cambia la tarea comprar pan por comprar pan integral.",
+            imagen: None,
+            comprobar: |r| {
+                let p = r.pedido("corregir_tarea").ok_or("no la cambio")?;
+                si(p["indice"] == 0 && p["texto"].as_str().is_some_and(|t| t.contains("integral")), "otro texto")
+            },
+        },
+        Caso {
+            nombre: "tarea-aplazar",
+            pedido: "Aplaza la tarea llamar al banco al viernes.",
+            imagen: None,
+            comprobar: |r| {
+                let p = r.pedido("corregir_tarea").ok_or("no le cambio la fecha")?;
+                si(p["texto"].as_str().is_some_and(|t| t.contains("⏰ 2026-10-16")), "no es el viernes 16")
+            },
+        },
+        Caso {
+            nombre: "tarea-quitar-pide-permiso",
+            pedido: "Quita la tarea comprar pan.",
+            imagen: None,
+            comprobar: |r| {
+                let p = r.pedido("quitar_tarea").ok_or("no pidio quitarla")?;
+                si(p["__confirmar"] == true, "la quito sin preguntar")
+            },
+        },
+        Caso {
+            nombre: "tarea-borrar-lista-pide-permiso",
+            pedido: "Borra la lista Compras.",
+            imagen: None,
+            comprobar: |r| {
+                let p = r.pedido("borrar_lista").ok_or("no pidio borrarla")?;
+                si(p["__confirmar"] == true, "la borro sin preguntar")
+            },
+        },
+        Caso {
+            nombre: "tarea-pendientes",
+            pedido: "¿Qué tengo pendiente?",
+            imagen: None,
+            comprobar: |r| {
+                si(r.pedido("(consulta)").is_some(), "no consulto las tareas")?;
+                let t = r.todo_el_texto();
+                si(t.contains("revisar encofrado") && t.contains("comprar pan"), "no las dice")
+            },
+        },
+        Caso {
+            nombre: "tarea-vencidas-semana",
+            pedido: "¿Qué tareas me vencieron esta semana?",
+            imagen: None,
+            comprobar: |r| {
+                let t = r.todo_el_texto();
+                si(t.contains("llamar al banco"), "no dice la vencida")?;
+                si(!t.contains("comprar clavos"), "dice una que no vencio")
+            },
+        },
+        Caso {
+            nombre: "tarea-de-un-chat",
+            pedido: "¿Qué tareas tengo en el chat Casa Lima?",
+            imagen: None,
+            comprobar: |r| {
+                si(r.pedido("(consulta)").is_some(), "no consulto las tareas")?;
+                let t = r.todo_el_texto();
+                si(t.contains("revisar encofrado"), "no dice la del chat")?;
+                si(!t.contains("comprar pan"), "mezcla las de otro chat")
+            },
+        },
+        Caso {
+            nombre: "tarea-de-un-acta",
+            pedido: "Saca las tareas de esta acta y ponlas en una lista nueva llamada Acta obra:\n\
+                     ACTA DE REUNION 13/10/2026. Asistentes: Juan, Ana, Pedro.\n\
+                     1. Juan enviara el presupuesto revisado el viernes.\n\
+                     2. Ana revisara los planos de estructura.\n\
+                     3. Pedro pedira muestras de ceramica al proveedor.\n\
+                     Proxima reunion: 20/10.",
+            imagen: None,
+            comprobar: |r| {
+                let nueva = r.pedido("lista_nueva").ok_or("no creo la lista")?;
+                si(nueva["titulo"].as_str().is_some_and(|t| t.contains("Acta")), "otra lista")?;
+                let n = r.llamadas.iter().filter(|(_, v)| v["accion"] == "anadir_tarea" && v["__confirmar"] == false).count();
+                si(n >= 3, "menos de 3 tareas")
+            },
+        },
+        // Negativos: lo que no casa no se hace a ciegas.
+        Caso {
+            nombre: "tarea-inexistente",
+            pedido: "Marca como hecha la tarea pintar la luna.",
+            imagen: None,
+            comprobar: |r| {
+                si(r.pedido("marcar_tarea").is_none(), "marco otra tarea")?;
+                si(!r.texto.trim().is_empty(), "no dijo nada")
+            },
+        },
+        Caso {
+            nombre: "tarea-fecha-imposible",
+            pedido: "Añade la tarea pagar el alquiler para el 31 de febrero.",
+            imagen: None,
+            comprobar: |r| {
+                let t = r.todo_el_texto();
+                let apunto = r.pedido("anadir_tarea").is_some();
+                si(!apunto || t.contains("febrero") || t.contains("fecha"), "la apunto sin decir nada de la fecha")?;
+                si(t.contains("febrero") || t.contains("fecha") || t.contains("existe"), "no explica lo de la fecha")
+            },
+        },
+        Caso {
+            nombre: "tarea-lista-de-otro-chat",
+            pedido: "Añade revisar grietas a la lista Compras del chat Casa Lima.",
+            imagen: None,
+            comprobar: |r| {
+                let t = r.todo_el_texto();
+                si(r.pedido("anadir_tarea").is_none() || t.contains("obra norte"), "la apunto en otro sitio sin decirlo")
+            },
+        },
+        Caso {
+            nombre: "orden-doble-va-al-modelo",
+            pedido: "Apunta la tarea comprar yeso y dibuja un círculo rojo.",
+            imagen: None,
+            comprobar: |r| {
+                si(r.pedido("anadir_tarea").is_some(), "no apunto la tarea")?;
+                si(r.llamo(pixpin_ia::herramientas::DIBUJAR).is_some(), "no dibujo")
             },
         },
         // --- Preguntas sobre la app ----------------------------------------
@@ -518,6 +696,45 @@ struct Apunta<'a> {
 
 impl Ejecutor for Apunta<'_> {
     fn ejecutar(&mut self, llamada: &Llamada) -> Result<String, String> {
+        // Las acciones de la app, por el mismo camino que la app
+        // (`tareas::hacer`) con unas listas de ejemplo: lo que se mandaria se
+        // apunta; lo que pide permiso se apunta con `__confirmar` y NO se
+        // manda (se contesta que no).
+        if let Llamada::App(a) = llamada {
+            let fuente = banco_ia::Viva(std::cell::RefCell::new(banco_ia::fuente()));
+            let preguntado = std::cell::Cell::new(false);
+            let mut mandados: Vec<Value> = Vec::new();
+            let r = pixpin_ia::tareas::hacer(
+                a,
+                &fuente,
+                &|_| {
+                    preguntado.set(true);
+                    false
+                },
+                &mut |p| {
+                    fuente.atender(p);
+                    mandados.push(p.clone());
+                    Ok(())
+                },
+            );
+            if preguntado.get() {
+                let mut v = a.pedido.clone();
+                v["__confirmar"] = Value::Bool(true);
+                self.r.llamadas.push((a.herramienta.to_string(), v));
+            }
+            if a.es_consulta() {
+                let mut v = serde_json::json!({"accion": "(consulta)"});
+                for (k, x) in &a.por_resolver {
+                    v[k] = x.clone();
+                }
+                self.r.llamadas.push((a.herramienta.to_string(), v));
+            }
+            for mut p in mandados {
+                p["__confirmar"] = Value::Bool(false);
+                self.r.llamadas.push((a.herramienta.to_string(), p));
+            }
+            return r;
+        }
         let (nombre, limpio, elementos) = banco_ia::resumir(llamada, self.imagen.as_deref())?;
         let n = elementos.len();
         self.r.elementos.extend(elementos);
@@ -578,7 +795,11 @@ fn motor_local() -> MotorLlama {
         }
         Ok(otro) => Dispositivo::Gpu(otro.to_string()),
     };
-    println!("dispositivo: {:?}", config.dispositivo);
+    // `PIXPIN_IA_CACHE_REUSE=256`: el `--cache-reuse` de llama.cpp, para medirlo.
+    if let Some(n) = std::env::var("PIXPIN_IA_CACHE_REUSE").ok().and_then(|n| n.parse().ok()) {
+        config.reutilizar = Some(n);
+    }
+    println!("dispositivo: {:?} · cache-reuse: {:?}", config.dispositivo, config.reutilizar);
     MotorLlama::nuevo(config)
 }
 
@@ -588,13 +809,17 @@ fn banco() {
     // Con `grabado` no hay motor comun: uno por caso, con su respuesta.
     let grabadas = grabado::respuestas();
     let comun = grabadas.is_none().then(motor);
+    // `PIXPIN_IA_SOLO=app-|tarea-`: varios trozos separados por `|`.
     let solo = std::env::var("PIXPIN_IA_SOLO").ok();
     let mut bien = 0;
     let mut total = 0;
     let mut fallos = Vec::new();
+    // (primero visible, total) de cada caso, en segundos.
+    let mut tiempos: Vec<(f32, f32)> = Vec::new();
     let t_total = Instant::now();
+    println!("     {:<32} {:>7} {:>7}  {:<16} herramientas", "caso", "1º vis.", "total", "vueltas cache");
     for caso in casos() {
-        if solo.as_deref().is_some_and(|s| !caso.nombre.contains(s)) {
+        if solo.as_deref().is_some_and(|s| !s.split('|').any(|x| caso.nombre.contains(x))) {
             continue;
         }
         total += 1;
@@ -621,7 +846,17 @@ fn banco() {
             herramientas = pixpin_ia::herramientas::catalogo();
         }
         let mut r = Resultado::default();
+        let medido = crono::Medido::nuevo(motor);
+        // El camino rapido (14-oct), salvo con `PIXPIN_IA_RAPIDO=0` (para medir
+        // el modelo solo).
+        let opciones = agente::Opciones {
+            rapido: (std::env::var("PIXPIN_IA_RAPIDO").as_deref() != Ok("0")).then(banco_ia::ahora),
+            ..Default::default()
+        };
         let t0 = Instant::now();
+        // Lo primero que el usuario veria cambiar en la burbuja (un trozo de
+        // texto, de pensamiento, el plan, «dibujando…» o un resultado).
+        let mut primero: Option<f32> = None;
         let mut eventos = Vec::new();
         let mut invalidas = Vec::new();
         let fin = {
@@ -629,7 +864,10 @@ fn banco() {
                 r: &mut r,
                 imagen: imagen.clone(),
             };
-            agente::turno(motor, &mut historial, &herramientas, &mut ej, &mut |e| {
+            agente::turno_con(&medido, &mut historial, &herramientas, &mut ej, &opciones, &mut |e| {
+                if primero.is_none() && crono::se_ve(&e) {
+                    primero = Some(t0.elapsed().as_secs_f32());
+                }
                 if let Evento::Reintento { motivo } = &e {
                     invalidas.push(motivo.clone());
                 }
@@ -651,11 +889,16 @@ fn banco() {
         }
         let ok = veredicto.is_ok();
         bien += usize::from(ok);
+        let t = t0.elapsed().as_secs_f32();
+        let primero = primero.unwrap_or(t);
+        tiempos.push((primero, t));
         println!(
-            "{} {:<32} {:>5.1} s  {}{}",
+            "{} {:<32} {:>6.2}s {:>6.1}s  {:<16} {}{}",
             if ok { "BIEN" } else { "MAL " },
             caso.nombre,
-            t0.elapsed().as_secs_f32(),
+            primero,
+            t,
+            medido.resumen(),
             r.llamadas.iter().map(|(n, _)| n.as_str()).collect::<Vec<_>>().join(","),
             veredicto.as_ref().err().map(|m| format!("  <- {m}")).unwrap_or_default()
         );
@@ -681,6 +924,7 @@ fn banco() {
         bien as f64 * 100.0 / total.max(1) as f64,
         t_total.elapsed().as_secs_f32()
     );
+    println!("{}", crono::latencias(&tiempos));
     if let Some(m) = comun {
         m.soltar();
     }
@@ -708,7 +952,7 @@ fn volcar_para_haiku() {
     let herramientas = pixpin_ia::herramientas::catalogo();
     agente::turno(&captura, &mut historial, &herramientas, &mut grabado::NoEjecuta, &mut |_| Seguir::Si).unwrap();
     let peticion = captura.primera();
-    let cuerpo = pixpin_ia::nube::claude::cuerpo(&peticion, &HashMap::new(), true, pixpin_ia::nube::claude::MAX_TOKENS);
+    let cuerpo = pixpin_ia::nube::claude::cuerpo(&peticion, &HashMap::new(), pixpin_ia::nube::claude::MAX_TOKENS);
     let sistema = cuerpo["system"][0]["text"].as_str().unwrap();
     std::fs::write(dir.join("sistema.txt"), sistema).unwrap();
     std::fs::write(dir.join("herramientas.json"), serde_json::to_string_pretty(&cuerpo["tools"]).unwrap()).unwrap();
@@ -858,6 +1102,95 @@ mod grabado {
 /// modelo y como se apunta lo que pide.
 mod banco_ia {
     use super::*;
+
+    /// Las listas del banco, que crecen con `lista_nueva` (para las tareas
+    /// que van a una lista recien creada).
+    pub struct Viva(pub std::cell::RefCell<pixpin_ia::tareas::Fijas>);
+
+    impl Viva {
+        pub fn atender(&self, p: &Value) {
+            if p["accion"] == "lista_nueva" {
+                let mut f = self.0.borrow_mut();
+                let n = f.listas.len();
+                let proyecto = p["proyecto"].as_str().unwrap_or("g").to_string();
+                let chat = f.chats.iter().find(|c| c.id == proyecto).map(|c| c.nombre.clone()).unwrap_or_default();
+                f.listas.push(pixpin_ia::tareas::VistaLista {
+                    guardados: proyecto == "g",
+                    proyecto,
+                    chat,
+                    codigo: format!("nueva-{n}"),
+                    titulo: p["titulo"].as_str().unwrap_or_default().to_string(),
+                    cuando: n as i64,
+                    tareas: Vec::new(),
+                });
+            }
+        }
+    }
+
+    impl pixpin_ia::tareas::FuenteTareas for Viva {
+        fn listas(&self) -> Vec<pixpin_ia::tareas::VistaLista> {
+            self.0.borrow().listas.clone()
+        }
+        fn chats(&self) -> Vec<pixpin_ia::tareas::Chat> {
+            self.0.borrow().chats.clone()
+        }
+        fn ahora(&self) -> pixpin_ia::fechas::Momento {
+            ahora()
+        }
+    }
+
+    /// El «ahora» del banco: miercoles 14-oct-2026, 10:30 (las fechas de los
+    /// casos se comprueban contra el).
+    pub fn ahora() -> pixpin_ia::fechas::Momento {
+        pixpin_ia::fechas::Momento {
+            dia: pixpin_ia::fechas::dias_de(2026, 10, 14),
+            minuto: 630,
+        }
+    }
+
+    /// Las listas del banco: Inbox (guardados), «Obra» del chat «Casa Lima»
+    /// y «Compras» del chat «Obra Norte».
+    pub fn fuente() -> pixpin_ia::tareas::Fijas {
+        use pixpin_ia::fechas::Momento;
+        use pixpin_ia::tareas::{Chat, Fijas, VistaLista, VistaTarea};
+        let hoy = ahora().dia;
+        let t = |indice: usize, texto: &str, hecha: bool, vence: Option<(i64, u32)>| VistaTarea {
+            indice,
+            texto: texto.into(),
+            hecha,
+            creada: None,
+            vence: vence.map(|(d, m)| Momento { dia: hoy + d, minuto: m }),
+        };
+        let lista = |proyecto: &str, chat: &str, guardados: bool, codigo: &str, titulo: &str, tareas| VistaLista {
+            proyecto: proyecto.into(),
+            chat: chat.into(),
+            guardados,
+            codigo: codigo.into(),
+            titulo: titulo.into(),
+            cuando: 0,
+            tareas,
+        };
+        Fijas {
+            listas: vec![
+                lista("g", "Mensajes guardados", true, "inbox", "Inbox", vec![
+                    t(0, "comprar pan", false, None),
+                    t(1, "llamar al banco", false, Some((-1, 600))),
+                    t(2, "pagar la luz", true, None),
+                ]),
+                lista("casa", "Casa Lima", false, "obra", "Obra", vec![
+                    t(0, "revisar encofrado", false, Some((1, 540))),
+                    t(1, "pedir cemento", true, None),
+                ]),
+                lista("norte", "Obra Norte", false, "compras", "Compras", vec![t(0, "comprar clavos", false, Some((20, 540)))]),
+            ],
+            chats: vec![
+                Chat { id: "g".into(), nombre: "Mensajes guardados".into(), guardados: true },
+                Chat { id: "casa".into(), nombre: "Casa Lima".into(), guardados: false },
+                Chat { id: "norte".into(), nombre: "Obra Norte".into(), guardados: false },
+            ],
+            ahora: Some(ahora()),
+        }
+    }
 
     /// Las instrucciones de siempre (con el resumen de la app) y solo las
     /// herramientas que vienen a cuento (`seleccion::para_el_pedido`), como
@@ -1041,5 +1374,150 @@ mod imagenes {
             }
         }
         !c
+    }
+}
+
+/// **Las latencias**: un motor que cronometra cada vuelta (lo que tarda en
+/// llegar el primer trozo y el total) y apunta lo que acerto la cache.
+mod crono {
+    use std::sync::Mutex;
+
+    use pixpin_ia::ErrorIa;
+    use pixpin_ia::agente::Evento;
+    use pixpin_ia::motor::{Motor, Peticion, Respuesta, Seguir, Trozo};
+
+    pub struct Vuelta {
+        pub entrada: u32,
+        pub cache: u32,
+    }
+
+    pub struct Medido<'a> {
+        dentro: &'a dyn Motor,
+        pub vueltas: Mutex<Vec<Vuelta>>,
+    }
+
+    impl<'a> Medido<'a> {
+        pub fn nuevo(dentro: &'a dyn Motor) -> Medido<'a> {
+            Medido {
+                dentro,
+                vueltas: Mutex::new(Vec::new()),
+            }
+        }
+
+        /// «2 v · 1830/2410»: vueltas al modelo y, de la ultima con cache,
+        /// los tokens que salieron de la cache sobre los de entrada.
+        pub fn resumen(&self) -> String {
+            let v = self.vueltas.lock().unwrap();
+            if v.is_empty() {
+                return "0 v (sin modelo)".into();
+            }
+            let caches: Vec<String> = v.iter().map(|x| format!("{}/{}", x.cache, x.entrada)).collect();
+            format!("{} v · {}", v.len(), caches.join(" "))
+        }
+    }
+
+    impl Motor for Medido<'_> {
+        fn completar(&self, p: &Peticion, al_trozo: &mut dyn FnMut(&Trozo) -> Seguir) -> Result<Respuesta, ErrorIa> {
+            let r = self.dentro.completar(p, al_trozo);
+            let (entrada, cache) = r
+                .as_ref()
+                .map(|r| (r.medidas.tokens_entrada, r.medidas.tokens_cache_leidos))
+                .unwrap_or_default();
+            self.vueltas.lock().unwrap().push(Vuelta {
+                entrada,
+                cache,
+            });
+            r
+        }
+
+        fn soltar(&self) {
+            self.dentro.soltar();
+        }
+
+        fn catalogo_completo(&self) -> bool {
+            self.dentro.catalogo_completo()
+        }
+    }
+
+    /// Si el evento cambia algo que el usuario ve en la burbuja.
+    pub fn se_ve(e: &Evento) -> bool {
+        match e {
+            Evento::Texto(t) | Evento::Pensando(t) => !t.trim().is_empty(),
+            Evento::Reinicio { .. } | Evento::Reintento { .. } => false,
+            _ => true,
+        }
+    }
+
+    fn mediana(mut v: Vec<f32>) -> f32 {
+        if v.is_empty() {
+            return 0.0;
+        }
+        v.sort_by(|a, b| a.total_cmp(b));
+        v[v.len() / 2]
+    }
+
+    /// La linea de resumen que se copia a la tabla del informe.
+    pub fn latencias(t: &[(f32, f32)]) -> String {
+        let n = t.len().max(1) as f32;
+        let p: Vec<f32> = t.iter().map(|x| x.0).collect();
+        let s: Vec<f32> = t.iter().map(|x| x.1).collect();
+        format!(
+            "LATENCIA: 1º visible media {:.2} s, mediana {:.2} s · total media {:.1} s, mediana {:.1} s ({} casos)",
+            p.iter().sum::<f32>() / n,
+            mediana(p),
+            s.iter().sum::<f32>() / n,
+            mediana(s),
+            t.len()
+        )
+    }
+}
+
+/// **¿Acierta la cache de la nube entre preguntas?** Dos preguntas seguidas
+/// de la misma conversacion, cada una con su hoja de trabajo distinta (como
+/// en la app, que la reescribe en cada turno): la segunda tiene que leer de
+/// la cache lo fijo (herramientas + reglas). Gasta 2 peticiones cortas.
+///
+/// ```text
+/// PIXPIN_IA_MOTOR=claude ANTHROPIC_API_KEY=... cargo test -p pixpin-ia --test banco -- --ignored --nocapture cache_entre_preguntas
+/// ```
+#[test]
+#[ignore = "habla con la API de la nube"]
+fn cache_entre_preguntas() {
+    use pixpin_ia::hoja_trabajo::HojaDeTrabajo;
+    use pixpin_ia::motor::Peticion;
+    let motor = motor();
+    let base = agente::instrucciones();
+    let mut historial = Vec::new();
+    for (i, (objetivo, pregunta)) in [("saludar", "Hola, contesta solo: hola."), ("despedirse", "Ahora contesta solo: adios.")]
+        .into_iter()
+        .enumerate()
+    {
+        let mut hoja = HojaDeTrabajo::default();
+        hoja.objetivo = objetivo.into();
+        let mut sistema = pixpin_ia::contexto::sistema_con_hoja(&base, &hoja, None);
+        // `PIXPIN_IA_SIN_PARTIR=1`: como antes del 14-oct (la hoja dentro del
+        // mismo bloque que lo fijo), para comparar.
+        if std::env::var("PIXPIN_IA_SIN_PARTIR").is_ok() {
+            sistema = sistema.replace("# Hoja de trabajo", "# Hoja");
+        }
+        historial.retain(|m: &Mensaje| m.rol != pixpin_ia::motor::Rol::Sistema);
+        historial.insert(0, Mensaje::sistema(sistema));
+        historial.push(Mensaje::usuario(pregunta));
+        let mut p = Peticion::nueva(historial.clone());
+        p.herramientas = pixpin_ia::herramientas::catalogo();
+        p.max_tokens = 64;
+        let r = motor.completar(&p, &mut |_| Seguir::Si).unwrap();
+        println!(
+            "pregunta {}: entrada {} · leidos de la cache {} · escritos {} · «{}»",
+            i + 1,
+            r.medidas.tokens_entrada,
+            r.medidas.tokens_cache_leidos,
+            r.medidas.tokens_cache_escritos,
+            r.texto.trim()
+        );
+        if i == 1 {
+            assert!(r.medidas.tokens_cache_leidos > 0, "la segunda pregunta no leyo nada de la cache");
+        }
+        historial.push(Mensaje::texto(pixpin_ia::motor::Rol::Asistente, r.texto));
     }
 }
