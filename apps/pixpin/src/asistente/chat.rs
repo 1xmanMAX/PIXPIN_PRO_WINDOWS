@@ -66,18 +66,244 @@ pub fn conversacion(anteriores: &[Nota]) -> Vec<(bool, String)> {
         .collect()
 }
 
-/// La foto que se le enseña: la ultima imagen escrita desde la ultima
-/// respuesta del asistente (adjuntar una foto y luego preguntar).
+/// Cuantos mensajes hacia atras se busca la foto de la que se habla.
+pub const FOTO_ATRAS: usize = 4;
+
+/// La foto que se le enseña: la ultima imagen de los ultimos
+/// [`FOTO_ATRAS`] mensajes (contando el nuevo), sea cual sea la respuesta
+/// que hubo en medio.
+///
+/// Antes se cortaba en la ultima respuesta del asistente, y eso rompia lo
+/// mas natural: mandar la foto (el asistente la describe) y luego pedir
+/// «dibuja eso»; el modelo ya no la veia y dibujaba lineas a ciegas hasta
+/// quedarse sin tokens (13-oct).
 pub fn foto_reciente(mensajes: &[Nota]) -> Option<&Nota> {
-    for m in mensajes.iter().rev() {
-        if es_del_asistente(m) {
-            return None;
-        }
-        if m.clase == Some(Clase::Imagen) {
-            return Some(m);
-        }
+    mensajes
+        .iter()
+        .rev()
+        .take(FOTO_ATRAS)
+        .find(|m| m.clase == Some(Clase::Imagen) && !es_del_asistente(m))
+}
+
+/// Lo que se le pregunta al modelo cuando llega una foto sin texto: que
+/// conteste siempre, aunque el usuario no haya escrito nada.
+pub const PREGUNTA_SOLO_FOTO: &str =
+    "Te mando esta imagen. Descríbela en una o dos frases y pregúntame qué quiero hacer con ella.";
+
+/// Si el mensaje nuevo es para el asistente, la pregunta (sin la mencion).
+/// En el chat «Asistente» todo lo es: una foto sola tambien, con
+/// [`PREGUNTA_SOLO_FOTO`]. En otro chat, solo lo que lo menciona (en una
+/// foto, en su pie).
+pub fn pregunta_de(m: &Nota, chat_del_asistente: bool) -> Option<String> {
+    if es_del_asistente(m) {
+        return None;
     }
-    None
+    let foto = m.clase == Some(Clase::Imagen);
+    if !(es_nota(m) || foto) {
+        return None;
+    }
+    let pregunta = if chat_del_asistente {
+        m.texto.trim().to_string()
+    } else {
+        mencion(&m.texto)?
+    };
+    if pregunta.is_empty() {
+        return foto.then(|| PREGUNTA_SOLO_FOTO.to_string());
+    }
+    Some(pregunta)
+}
+
+// ---------------------------------------------------------------------------
+// Lienzos: el propio, los mencionados y «Abrir lienzo»
+
+/// En la nota de una respuesta, el lienzo donde dibujo (su referencia).
+/// Va en `resto`, que el cuaderno guarda tal cual y el movil respeta.
+pub const LIENZO_DE_LA_RESPUESTA: &str = "lienzoIa";
+
+/// El prefijo de la mencion de un lienzo: `@lienzo:<nombre>`.
+pub const MENCION_LIENZO: &str = "@lienzo:";
+
+/// Si es un lienzo (o una hoja de PDF con dibujo) en el que se puede dibujar.
+pub fn es_lienzo(m: &Nota) -> bool {
+    matches!(m.clase, Some(Clase::Dibujo) | Some(Clase::Pagina)) && m.referencia.as_deref().is_some_and(|r| !r.is_empty())
+}
+
+/// Como se le llama a un lienzo en la lista y en la mencion.
+pub fn nombre_de_lienzo(m: &Nota) -> String {
+    // Un lienzo sin nombre lleva el de su fichero (`<id>.excalidraw`), que
+    // no le dice nada a nadie.
+    let n = m.nombre.trim();
+    if !n.is_empty() && !n.ends_with(".excalidraw") {
+        n.to_string()
+    } else if m.clase == Some(Clase::Pagina) {
+        format!("Hoja {}", m.pagina.map_or(m.numero, |p| p as i64 + 1))
+    } else {
+        format!("Lienzo {}", m.numero)
+    }
+}
+
+/// La mencion que se escribe para un lienzo: sin espacios (el `_` los
+/// hace), para que acabe donde acaba la palabra.
+pub fn mencion_de_lienzo(m: &Nota) -> String {
+    format!("{MENCION_LIENZO}{}", nombre_de_lienzo(m).replace(char::is_whitespace, "_"))
+}
+
+fn sin_tildes(s: &str) -> String {
+    s.to_lowercase()
+        .chars()
+        .map(|c| match c {
+            'á' | 'à' | 'ä' => 'a',
+            'é' | 'è' | 'ë' => 'e',
+            'í' | 'ì' | 'ï' => 'i',
+            'ó' | 'ò' | 'ö' => 'o',
+            'ú' | 'ù' | 'ü' => 'u',
+            '_' => ' ',
+            c => c,
+        })
+        .collect()
+}
+
+/// **La pregunta con sus menciones de lienzo resueltas**: el texto para el
+/// modelo (la mencion cambiada por «nombre») y la referencia del lienzo
+/// nombrado, si existe en la conversacion. Una mencion que no casa con
+/// ningun lienzo se deja tal cual y no cambia el destino.
+pub fn resolver_lienzo(pregunta: &str, mensajes: &[Nota]) -> (String, Option<String>) {
+    let mut texto = String::new();
+    let mut destino = None;
+    let mut resto = pregunta;
+    while let Some(i) = resto.to_lowercase().find(MENCION_LIENZO) {
+        texto.push_str(&resto[..i]);
+        let tras = &resto[i + MENCION_LIENZO.len()..];
+        let fin = tras.find(char::is_whitespace).unwrap_or(tras.len());
+        let nombre = tras[..fin].trim_end_matches([',', '.', ';', ':', '?', '!']);
+        let buscado = sin_tildes(nombre);
+        let hallado = mensajes
+            .iter()
+            .rev()
+            .filter(|m| es_lienzo(m))
+            .find(|m| sin_tildes(&nombre_de_lienzo(m)) == buscado);
+        match hallado {
+            Some(m) => {
+                texto.push_str(&format!("el lienzo «{}»", nombre_de_lienzo(m)));
+                destino = m.referencia.clone();
+            }
+            None => texto.push_str(&resto[i..i + MENCION_LIENZO.len() + nombre.len()]),
+        }
+        resto = &tras[nombre.len()..];
+    }
+    texto.push_str(resto);
+    (texto, destino)
+}
+
+/// El lienzo propio del asistente en esta conversacion: el ultimo que creo
+/// el (su `aparato` es [`APARATO`]).
+pub fn lienzo_propio(mensajes: &[Nota]) -> Option<usize> {
+    mensajes
+        .iter()
+        .rposition(|m| m.clase == Some(Clase::Dibujo) && es_del_asistente(m) && es_lienzo(m))
+}
+
+/// Si en la pregunta se pide abrir el lienzo al terminar («dibuja… y
+/// ábrelo»). Sin pedirlo, se dibuja en segundo plano y la respuesta lleva
+/// «Abrir lienzo».
+pub fn pide_abrir(pregunta: &str) -> bool {
+    let t = sin_tildes(pregunta);
+    [
+        "abrelo",
+        "abremelo",
+        "abre el lienzo",
+        "abrir el lienzo",
+        "abre el dibujo",
+        "abrelo al terminar",
+        "muestramelo",
+        "ensenamelo",
+        "y abre",
+        "y abrir",
+    ]
+    .iter()
+    .any(|p| t.contains(p))
+}
+
+/// El lienzo al que apunta una respuesta, por su posicion en la
+/// conversacion.
+pub fn lienzo_de_la_respuesta(m: &Nota, mensajes: &[Nota]) -> Option<usize> {
+    if !es_del_asistente(m) {
+        return None;
+    }
+    let r = m.resto.get(LIENZO_DE_LA_RESPUESTA)?.as_str()?;
+    mensajes.iter().rposition(|x| es_lienzo(x) && x.referencia.as_deref() == Some(r))
+}
+
+// ---------------------------------------------------------------------------
+// La lista de `@` mientras se escribe
+
+/// Lo que se puede elegir en la lista de `@`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Opcion {
+    /// Lo que se ve en la lista.
+    pub rotulo: String,
+    /// Lo que se escribe en la caja al elegirla (con un espacio detras).
+    pub mencion: String,
+}
+
+/// Cuantas opciones se ensenan como mucho.
+pub const OPCIONES_MAX: usize = 6;
+
+/// **Si se esta escribiendo una mencion**: donde empieza su `@` (en bytes)
+/// y lo escrito detras, hasta la rayita. Solo si el `@` empieza palabra y
+/// no hay un espacio entre el y la rayita.
+pub fn consulta_de_mencion(texto: &str, cursor: usize) -> Option<(usize, String)> {
+    let antes = texto.get(..cursor)?;
+    let arroba = antes.rfind('@')?;
+    let escrito = &antes[arroba + 1..];
+    if escrito.chars().any(char::is_whitespace) {
+        return None;
+    }
+    let empieza = antes[..arroba].chars().next_back().is_none_or(char::is_whitespace);
+    empieza.then(|| (arroba, escrito.to_string()))
+}
+
+/// Las opciones para lo escrito tras el `@`: el asistente (fuera de su
+/// chat) y los lienzos y hojas de la conversacion, del mas nuevo al mas
+/// viejo.
+pub fn opciones_de_mencion(mensajes: &[Nota], escrito: &str, chat_del_asistente: bool) -> Vec<Opcion> {
+    let buscado = sin_tildes(escrito);
+    let casa = |o: &Opcion| {
+        buscado.is_empty()
+            || sin_tildes(&o.rotulo).contains(&buscado)
+            || sin_tildes(o.mencion.trim_start_matches('@')).starts_with(&buscado)
+    };
+    let mut v = Vec::new();
+    if !chat_del_asistente {
+        v.push(Opcion {
+            rotulo: "🤖 Asistente".into(),
+            mencion: MENCION.into(),
+        });
+    }
+    let mut vistas = std::collections::HashSet::new();
+    for m in mensajes.iter().rev().filter(|m| es_lienzo(m)) {
+        // Una hoja repetida (la misma referencia dos veces) sale una vez.
+        if !vistas.insert(m.referencia.clone()) {
+            continue;
+        }
+        let icono = if m.clase == Some(Clase::Pagina) { "📄" } else { "🎨" };
+        v.push(Opcion {
+            rotulo: format!("{icono} {}", nombre_de_lienzo(m)),
+            mencion: mencion_de_lienzo(m),
+        });
+    }
+    v.retain(casa);
+    v.truncate(OPCIONES_MAX);
+    v
+}
+
+/// Escribe la opcion elegida en lugar de lo que se llevaba escrito desde el
+/// `@`. Devuelve donde queda la rayita (en bytes).
+pub fn poner_mencion(texto: &mut String, arroba: usize, cursor: usize, o: &Opcion) -> usize {
+    let cursor = cursor.min(texto.len()).max(arroba);
+    let puesta = format!("{} ", o.mencion);
+    texto.replace_range(arroba..cursor, &puesta);
+    arroba + puesta.len()
 }
 
 /// Los adjuntos que el OCR puede leer (fotos y PDF), del mas viejo al mas
@@ -98,16 +324,6 @@ pub fn adjuntos(mensajes: &[Nota], ruta: impl Fn(&Nota) -> Option<PathBuf>) -> V
             })
         })
         .collect()
-}
-
-/// El ultimo lienzo de la conversacion, si hay alguno.
-pub fn ultimo_lienzo(mensajes: &[Nota]) -> Option<usize> {
-    mensajes
-        .iter()
-        .enumerate()
-        .rev()
-        .find(|(_, m)| m.clase == Some(Clase::Dibujo) && m.referencia.as_deref().is_some_and(|r| !r.is_empty()))
-        .map(|(i, _)| i)
 }
 
 /// **La burbuja que se escribe en vivo.**
@@ -174,10 +390,12 @@ impl EnVivo {
                 }
             }
             Err(e) => {
+                // `e` ya viene en palabras del usuario
+                // (`agente::para_el_usuario`): lo tecnico esta en el registro.
                 if !self.texto.is_empty() {
                     self.texto.push_str("\n\n");
                 }
-                self.texto.push_str(&format!("⚠️ No pude contestar: {e}"));
+                self.texto.push_str(&format!("⚠️ {e}"));
             }
         }
     }

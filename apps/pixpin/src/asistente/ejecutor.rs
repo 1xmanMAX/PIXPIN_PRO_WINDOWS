@@ -35,6 +35,9 @@ pub struct EjecutorDelChat {
     parar: Arc<AtomicBool>,
     espera: Duration,
     llamadas: u64,
+    /// El lienzo del chat donde dibujar si no hay uno abierto (la mencion
+    /// `@lienzo:`), por su referencia.
+    destino: Option<String>,
 }
 
 impl EjecutorDelChat {
@@ -46,7 +49,14 @@ impl EjecutorDelChat {
             parar,
             espera: ESPERA_LIENZO,
             llamadas: 0,
+            destino: None,
         }
+    }
+
+    /// Adonde va lo dibujado si no hay un lienzo abierto.
+    pub fn hacia(mut self, destino: Option<String>) -> EjecutorDelChat {
+        self.destino = destino;
+        self
     }
 
     #[cfg(test)]
@@ -74,9 +84,17 @@ impl EjecutorDelChat {
         }
         let documento = lienzo::documento(elementos);
         // Que lo lea el lienzo de verdad ANTES de molestar a la ventana.
-        pixpin_motor2d::excalidraw::leer(&documento).map_err(|e| format!("el lienzo no lo entiende: {e}"))?;
+        pixpin_motor2d::excalidraw::leer(&documento).map_err(|e| {
+            tracing::warn!(%e, "asistente: el lienzo no lee lo dibujado");
+            "el lienzo no pudo leer las figuras".to_string()
+        })?;
         let (responder, rx) = channel();
-        super::al_lienzo::pedir(super::al_lienzo::Pedido::nuevo(self.proyecto.clone(), documento, responder));
+        super::al_lienzo::pedir(super::al_lienzo::Pedido::nuevo(
+            self.proyecto.clone(),
+            self.destino.clone(),
+            documento,
+            responder,
+        ));
         let hasta = Instant::now() + self.espera;
         loop {
             if self.parar.load(Ordering::Relaxed) {
