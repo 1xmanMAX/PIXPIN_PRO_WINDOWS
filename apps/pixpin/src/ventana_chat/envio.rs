@@ -505,20 +505,22 @@ pub(super) fn pintar(p: &Pintor, c: &Pinta, pend: &Pendientes, marco: Rect, proy
     let pie = rf(d.pie);
     p.rellenar_redondeado(pie, 12.0 * e, tema.pildora_borde);
     p.rellenar_redondeado(encoger(pie, 1.0), 11.0 * e, tema.chat);
-    let (texto, color) = if pend.pie.is_empty() {
-        (textos.t("confirmar-pie"), tema.apagado)
-    } else {
-        (format!("{}|", pend.pie), tema.texto)
-    };
+    // La caja de una linea comun: la rayita donde se escribe (antes era una
+    // «|» pegada al final) y el texto corrido si no cabe.
     let tam = 14.0 * e;
-    let (_, alto) = p.medir_texto("X", tam);
-    p.texto_linea(
-        &texto,
-        pie.x + 12.0 * e,
-        pie.y + (pie.alto - alto) / 2.0,
-        tam,
-        pie.ancho - 24.0 * e,
-        color,
+    pend.pie.pintar(
+        p,
+        pie,
+        RectF {
+            x: pie.x + 12.0 * e,
+            ancho: (pie.ancho - 24.0 * e).max(1.0),
+            ..pie
+        },
+        14.0 * e,
+        &textos.t("confirmar-pie"),
+        &super::colores_de_caja(tema, tema.texto, tema.apagado),
+        true,
+        std::time::Instant::now(),
     );
 
     // «3 fotos · a Obra», y los dos botones.

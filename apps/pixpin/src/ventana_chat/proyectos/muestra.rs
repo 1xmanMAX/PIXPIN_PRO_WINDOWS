@@ -470,7 +470,7 @@ impl Banco {
                         }
                         (None, Some(i)) => {
                             let f = &s.fichas[i];
-                            super::pintar(p, v, &d, &c, f, &f.nombre, false, claro, s.u.raiz());
+                            super::pintar(p, v, &d, &c, f, &f.nombre, None, claro, s.u.raiz());
                         }
                         (None, None) => {}
                     }

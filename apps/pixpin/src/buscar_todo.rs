@@ -468,17 +468,12 @@ impl Ventana<'_> {
             return Tras::Buscar;
         }
         if let Some(pixpin_codec::ContenidoPortapapeles::Texto(t)) = pixpin_codec::leer() {
-            let linea = t
-                .lines()
-                .map(str::trim)
-                .find(|l| !l.is_empty())
-                .unwrap_or("");
-            if linea.is_empty() {
-                return Tras::Nada;
-            }
-            let c = format!("{}{}", self.estado.consulta, linea);
-            self.estado.poner_consulta(&c);
-            return Tras::Buscar;
+            // Donde esta la rayita (sobre lo elegido) y en una linea: la
+            // caja comun quita los saltos de renglon.
+            return match self.estado.pegar_texto(&t) {
+                modelo::Orden::Buscar => Tras::Buscar,
+                _ => Tras::Nada,
+            };
         }
         Tras::Nada
     }
@@ -563,7 +558,7 @@ impl Ventana<'_> {
                     if let Some(r) = self.estado.elegido().cloned() {
                         self.recientes.apuntar_abierto(&r);
                     }
-                    let c = self.estado.consulta.clone();
+                    let c = self.estado.consulta.texto().to_owned();
                     self.recientes.apuntar_busqueda(&c);
                     self.recientes.guardar(&self.raiz());
                 }
@@ -706,6 +701,7 @@ fn bucle(
     let mut dispo = disposicion::Disposicion::default();
     let mut vivo = true;
     let mut pintar = true;
+    let mut rayita_pintada = true;
     tracing::info!("buscador abierto");
     while vivo {
         pixpin_shell::overlay::bombear_pendientes();
@@ -719,10 +715,31 @@ fn bucle(
                 EventoOverlay::Cerrar => vivo = false,
                 EventoOverlay::RatonMovido(p) => {
                     raton = ((p.x - marco.x) as f32, (p.y - marco.y) as f32);
+                    // Eligiendo lo escrito con el boton pulsado.
+                    v.estado.consulta.arrastrar(pixpin_geom::Punto {
+                        x: p.x - marco.x,
+                        y: p.y - marco.y,
+                    });
                 }
                 EventoOverlay::BotonPulsado(p) => {
                     raton = ((p.x - marco.x) as f32, (p.y - marco.y) as f32);
-                    tras.push(clic(&mut v, &dispo, raton, ventana.handle()));
+                    // En la caja de escribir: la rayita donde cae el clic
+                    // (dos, la palabra; tres, todo), como en cualquier caja.
+                    let shift = pixpin_shell::entrada::modificadores_pulsados().shift;
+                    let punto = pixpin_geom::Punto {
+                        x: p.x - marco.x,
+                        y: p.y - marco.y,
+                    };
+                    if v.estado.consulta.pulsar(punto, shift, Instant::now()) {
+                        ventana.capturar_raton();
+                    } else {
+                        tras.push(clic(&mut v, &dispo, raton, ventana.handle()));
+                    }
+                }
+                EventoOverlay::BotonSoltado(_) => {
+                    if v.estado.consulta.soltar_raton() {
+                        ventana.soltar_raton();
+                    }
                 }
                 EventoOverlay::Rueda(m) => {
                     let paso = if m > 0 {
@@ -745,6 +762,12 @@ fn bucle(
                     let o = if vk == modelo::VK_RIGHT
                         && v.estado.menu.is_none()
                         && !v.estado.es_inicio()
+                        // Con la rayita en medio de lo escrito, la flecha
+                        // es de la caja: mueve la rayita.
+                        && !shift
+                        && !ctrl
+                        && v.estado.consulta.pos() == v.estado.consulta.len()
+                        && v.estado.consulta.seleccionado().is_none()
                     {
                         let opciones = v.opciones_de_menu();
                         v.estado.abrir_menu(opciones)
@@ -797,6 +820,13 @@ fn bucle(
             pintar = true;
         }
 
+        // La rayita de la caja parpadea (y a los cinco segundos quieta deja
+        // de hacerlo): cuando cambia, otra vuelta de pintado.
+        let rayita = v.estado.consulta.rayita_visible(Instant::now());
+        if rayita != rayita_pintada {
+            rayita_pintada = rayita;
+            pintar = true;
+        }
         if pintar {
             // Las fotos que hacen falta: la de cada fila visible y la del
             // elegido.
@@ -848,6 +878,11 @@ fn bucle(
         } else {
             1_000
         };
+        let espera = v
+            .estado
+            .consulta
+            .ms_hasta_parpadeo(Instant::now())
+            .map_or(espera, |ms| espera.min(ms));
         pixpin_shell::overlay::esperar_eventos(Some(espera));
     }
     v.fuente.datos.guardar_cache();

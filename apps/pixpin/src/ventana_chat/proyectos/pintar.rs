@@ -187,7 +187,8 @@ struct Cx<'a> {
 /// El panel derecho del chat (`d.chat`) con la tarjeta del proyecto `f`: el
 /// circulo de volver del chat arriba a la izquierda, la tarjeta y la barra
 /// de cristal. `nombre` es el que se ve: el que se esta escribiendo, con el
-/// cursor detras si `escribiendo` (un proyecto recien creado con el «+»).
+/// cursor (la caja de una linea comun) si `escribiendo` (un proyecto recien
+/// creado con el «+»).
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn pintar(
     p: &Pintor,
@@ -196,7 +197,7 @@ pub(crate) fn pintar(
     c: &Pinta,
     f: &Ficha,
     nombre: &str,
-    escribiendo: bool,
+    escribiendo: Option<&crate::caja_texto::CajaLinea>,
     claro: bool,
     raiz: &Path,
 ) {
@@ -280,16 +281,21 @@ fn nombre_de(cx: &Cx, h: &Hoja) -> String {
 
 /// Una tarjeta: nombre, detalle, botones y lo de las hojas. `nombre` es el
 /// que se ve (el que se esta escribiendo, si se esta poniendo), con el
-/// cursor detras si `escribiendo`.
-fn tarjeta(p: &Pintor, cx: &Cx, f: &Ficha, nombre: &str, escribiendo: bool, r: Rect) {
+/// cursor si `escribiendo`.
+fn tarjeta(
+    p: &Pintor,
+    cx: &Cx,
+    f: &Ficha,
+    nombre: &str,
+    escribiendo: Option<&crate::caja_texto::CajaLinea>,
+    r: Rect,
+) {
     let (e, pal, v) = (cx.e, cx.pal, cx.v);
     p.rellenar_redondeado(rf(r), ui::RADIO_TARJETA as f32 * e, pal.tarjeta);
     zona(v, r, cx.visible, Zona::Tarjeta(f.id.clone()));
-    let nombre = if escribiendo {
-        format!("{nombre}|")
-    } else {
-        nombre.to_string()
-    };
+    // Escribiendo el nombre (un proyecto recien creado con el «+»), lo
+    // escrito en la caja de una linea comun; si no, el nombre.
+    let nombre = escribiendo.map_or_else(|| nombre.to_string(), |c| c.texto().to_owned());
     let d = v.datos(&f.id);
     let est = v.tarjeta(&f.id);
     let visibles = d
@@ -324,24 +330,48 @@ fn tarjeta(p: &Pintor, cx: &Cx, f: &Ficha, nombre: &str, escribiendo: bool, r: R
         est.rejilla,
     );
     let texto = rf(t.texto);
-    p.empujar_recorte(RectF {
-        alto: alto_nombre,
-        ..texto
-    });
-    p.texto_con_letra(
-        &nombre,
-        texto.x,
-        texto.y,
-        tam,
-        texto.ancho.max(1.0),
-        &letra,
-        if archivado {
-            pal.texto_suave
-        } else {
-            pal.texto
-        },
-    );
-    p.soltar_recorte();
+    if let Some(caja) = escribiendo {
+        // La caja de una linea comun: la rayita donde se escribe y lo
+        // elegido, en vez de una «|» pegada al final.
+        let sitio = RectF {
+            alto: alto_nombre,
+            ..texto
+        };
+        caja.pintar(
+            p,
+            sitio,
+            sitio,
+            tam,
+            "",
+            &crate::caja_texto::Colores {
+                texto: pal.texto,
+                invitacion: pal.texto_suave,
+                seleccion: Color { a: 0.30, ..pal.texto },
+                rayita: pal.texto,
+            },
+            true,
+            std::time::Instant::now(),
+        );
+    } else {
+        p.empujar_recorte(RectF {
+            alto: alto_nombre,
+            ..texto
+        });
+        p.texto_con_letra(
+            &nombre,
+            texto.x,
+            texto.y,
+            tam,
+            texto.ancho.max(1.0),
+            &letra,
+            if archivado {
+                pal.texto_suave
+            } else {
+                pal.texto
+            },
+        );
+        p.soltar_recorte();
+    }
     p.texto_linea(
         &det,
         texto.x,

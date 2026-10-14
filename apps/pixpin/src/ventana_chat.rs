@@ -1201,7 +1201,7 @@ pub fn abrir(
                             Some(envio::Sitio::Enviar) => {
                                 if let (Some(p), Some(a)) = (pendientes.take(), abierto.as_mut()) {
                                     let hechos =
-                                        meter_ficheros(ubicacion, a, &identidad, &p.rutas, &p.pie);
+                                        meter_ficheros(ubicacion, a, &identidad, &p.rutas, &p.pie_escrito());
                                     if hechos > 0 {
                                         a.scroll = None;
                                         if let Some(i) = elegida {
@@ -2584,28 +2584,36 @@ pub fn abrir(
                     if pendientes.is_none()
                         && abierto.as_ref().is_some_and(|a| a.hora_a_mano.is_some()) =>
                 {
+                    // La caja comun, con su tope de cinco y su filtro de
+                    // cifras y separadores (`con_filtro`).
                     if let Some((_, escrito)) =
                         abierto.as_mut().and_then(|a| a.hora_a_mano.as_mut())
-                        && (c.is_ascii_digit() || c == ':' || c == '.')
-                        && escrito.chars().count() < 5
                     {
-                        escrito.push(c);
+                        escrito.caracter(c);
+                    }
+                    hay_que_pintar = true;
+                }
+                EventoOverlay::Tecla { vk, shift, ctrl, .. }
+                    if pendientes.is_none()
+                        && menu.is_none()
+                        && redaccion::CajaLinea::es_suya(vk, shift, ctrl)
+                        && abierto.as_ref().is_some_and(|a| a.hora_a_mano.is_some()) =>
+                {
+                    if let Some((_, escrito)) =
+                        abierto.as_mut().and_then(|a| a.hora_a_mano.as_mut())
+                    {
+                        tecla_en_caja(escrito, vk, shift, ctrl);
                     }
                     hay_que_pintar = true;
                 }
                 EventoOverlay::Tecla { vk, .. }
                     if pendientes.is_none()
                         && menu.is_none()
-                        && matches!(vk, VK_RETROCESO | VK_ESCAPE | VK_ENTRAR)
+                        && matches!(vk, VK_ESCAPE | VK_ENTRAR)
                         && abierto.as_ref().is_some_and(|a| a.hora_a_mano.is_some()) =>
                 {
                     if let Some(a) = abierto.as_mut() {
                         match vk {
-                            VK_RETROCESO => {
-                                if let Some((_, escrito)) = a.hora_a_mano.as_mut() {
-                                    escrito.pop();
-                                }
-                            }
                             VK_ESCAPE => a.hora_a_mano = None,
                             _ => {
                                 let ahora = pixpin_shell::entorno::ahora_local_ms();
@@ -2985,19 +2993,21 @@ pub fn abrir(
                 }
                 // El cuadro de confirmar es modal tambien para el teclado: lo
                 // que se escribe es el pie, escapar cancela y entrar acepta.
+                // El pie es la caja de una linea comun: su rayita, las
+                // flechas, Ctrl+Retroceso, Ctrl+A/C/X/V/Z...
                 EventoOverlay::Caracter(c) if pendientes.is_some() => {
-                    if c >= ' ' {
-                        if let Some(p) = pendientes.as_mut() {
-                            p.pie.push(c);
-                            hay_que_pintar = true;
-                        }
-                    }
-                }
-                EventoOverlay::Tecla { vk, .. } if pendientes.is_some() && vk == VK_RETROCESO => {
                     if let Some(p) = pendientes.as_mut() {
-                        p.pie.pop();
-                        hay_que_pintar = true;
+                        p.pie.caracter(c);
                     }
+                    hay_que_pintar = true;
+                }
+                EventoOverlay::Tecla { vk, shift, ctrl, .. }
+                    if pendientes.is_some() && redaccion::CajaLinea::es_suya(vk, shift, ctrl) =>
+                {
+                    if let Some(p) = pendientes.as_mut() {
+                        tecla_en_caja(&mut p.pie, vk, shift, ctrl);
+                    }
+                    hay_que_pintar = true;
                 }
                 EventoOverlay::Tecla { vk, .. } if pendientes.is_some() && vk == VK_ESCAPE => {
                     if let Some(p) = pendientes.take() {
@@ -3007,7 +3017,7 @@ pub fn abrir(
                 }
                 EventoOverlay::Tecla { vk, .. } if pendientes.is_some() && vk == VK_ENTRAR => {
                     if let (Some(p), Some(a)) = (pendientes.take(), abierto.as_mut()) {
-                        let hechos = meter_ficheros(ubicacion, a, &identidad, &p.rutas, &p.pie);
+                        let hechos = meter_ficheros(ubicacion, a, &identidad, &p.rutas, &p.pie_escrito());
                         if hechos > 0 {
                             a.scroll = None;
                             if let Some(i) = elegida {
@@ -3701,7 +3711,7 @@ pub fn abrir(
                             &c,
                             f,
                             &a.ficha.nombre,
-                            a.renombrando,
+                            a.renombrando.then_some(&a.nombre_escrito),
                             claro,
                             ubicacion.raiz(),
                         );
@@ -3981,7 +3991,10 @@ struct Pendientes {
     /// Lo que se escriba acompanara al primero, como el pie de una foto en
     /// Android. Va al primero y no a todos porque repetir el mismo texto en
     /// veinte mensajes no ayuda a nadie.
-    pie: String,
+    pie: redaccion::CajaLinea,
+    /// El pie tal como vino de la caja de escribir (puede traer saltos de
+    /// renglon): si se cancela sin tocarlo, vuelve tal cual, sin aplanar.
+    pie_de_antes: String,
     /// El tamano de cada uno, ya leido. Se mira una vez al abrir el cuadro y
     /// no en cada fotograma: preguntarle al disco sesenta veces por segundo
     /// por algo que no cambia es tirar el rato.
@@ -4022,7 +4035,9 @@ impl Pendientes {
             .collect();
         Some(Pendientes {
             rutas,
-            pie: String::new(),
+            // Quieta: el cuadro solo se repinta al tocar algo.
+            pie: redaccion::CajaLinea::nueva().sin_parpadeo(),
+            pie_de_antes: String::new(),
             tamanos,
             arrastre: None,
             sobre: None,
@@ -4041,16 +4056,27 @@ impl Pendientes {
     ) -> Option<Pendientes> {
         let mut p = Pendientes::de(rutas)?;
         if let Some(a) = a {
-            p.pie = std::mem::take(&mut a.borrador).trim().to_string();
+            p.pie_de_antes = std::mem::take(&mut a.borrador).trim().to_string();
+            p.pie.poner_texto(&p.pie_de_antes);
             a.colocado.borrow_mut().ancho = 0;
         }
         Some(p)
     }
 
+    /// El pie que vale: lo escrito en su caja (de una linea) o, si no se
+    /// toco, el de antes tal cual, con sus saltos de renglon.
+    fn pie_escrito(&self) -> String {
+        if self.pie.texto() == redaccion::en_una_linea(&self.pie_de_antes) {
+            self.pie_de_antes.clone()
+        } else {
+            self.pie.texto().to_owned()
+        }
+    }
+
     /// Cancelar el cuadro: el pie vuelve a la caja de escribir.
     fn cancelar(self, a: Option<&mut Abierto>) {
         if let Some(a) = a {
-            descripcion::pie_de_vuelta(&mut a.borrador, self.pie);
+            descripcion::pie_de_vuelta(&mut a.borrador, self.pie_escrito());
             a.colocado.borrow_mut().ancho = 0;
         }
     }
@@ -4162,6 +4188,9 @@ impl Abierto {
         if let Some((_, c)) = &self.renombrando_mensaje {
             v.push(c);
         }
+        if let Some((_, c)) = &self.hora_a_mano {
+            v.push(c);
+        }
         if let Some((_, c)) = &self.quien_llama {
             v.push(c);
         }
@@ -4177,6 +4206,9 @@ impl Abierto {
             v.push(&mut self.nombre_escrito);
         }
         if let Some((_, c)) = &mut self.renombrando_mensaje {
+            v.push(c);
+        }
+        if let Some((_, c)) = &mut self.hora_a_mano {
             v.push(c);
         }
         if let Some((_, c)) = &mut self.quien_llama {
@@ -4354,7 +4386,7 @@ struct Abierto {
     /// «Elegir la hora…»: el mensaje (por id) y lo tecleado hasta ahora. Se
     /// teclea en una barra encima de la caja de escribir; Intro la pone y
     /// Escape la deja.
-    hora_a_mano: Option<(String, String)>,
+    hora_a_mano: Option<(String, redaccion::CajaLinea)>,
     /// «Quien llama» (B11, v0.98.6): la nota de voz (por id) y el nombre
     /// tecleado. Intro lo guarda y vuelve a sacar las horas.
     quien_llama: Option<(String, redaccion::CajaLinea)>,
@@ -13769,6 +13801,15 @@ fn pintar_barra_del_reproductor(p: &Pintor, barra: Rect, c: &Pinta, a: &Abierto)
 /// sobre la caja de escribir, y otras cosas de la interfaz la tapaban y no
 /// dejaban escribir (el usuario, 8-oct-2026). Las teclas son las de antes:
 /// se escribe, Intro la pone y Esc la quita; la ✕ tambien.
+/// La caja de teclear la hora de un recordatorio: la de una linea comun,
+/// con cinco signos como mucho (`18:30`) y solo cifras y separadores, que
+/// una letra ahi no significa nada (tampoco pegada).
+fn caja_de_la_hora() -> redaccion::CajaLinea {
+    redaccion::CajaLinea::nueva()
+        .con_maximo(5)
+        .con_filtro(|c| c.is_ascii_digit() || c == ':' || c == '.')
+}
+
 fn pintar_hora_a_mano(p: &Pintor, c: &Pinta, a: &Abierto, marco: Rect) {
     let Some((_, escrito)) = &a.hora_a_mano else {
         return;
@@ -13837,15 +13878,31 @@ fn pintar_hora_a_mano(p: &Pintor, c: &Pinta, a: &Abierto, marco: Rect) {
     };
     p.rellenar_redondeado(campo, 10.0 * e, tema.chat);
     p.trazar(campo, 1.5 * e, tema.enviar);
-    let rotulo = format!("{} {escrito}|", textos.t("chat-recordar-hora-a-las"));
-    let (_, alto_r) = p.medir_texto(&rotulo, 15.0 * e);
-    p.texto_linea(
+    // «A las» y detras la caja de una linea comun, con su rayita.
+    let rotulo = textos.t("chat-recordar-hora-a-las");
+    let (w_rotulo, alto_r) = p.medir_texto(&rotulo, 15.0 * e);
+    p.texto(
         &rotulo,
         campo.x + 14.0 * e,
         campo.y + (campo.alto - alto_r) / 2.0,
         15.0 * e,
-        campo.ancho - 28.0 * e,
         tema.texto,
+    );
+    let x_caja = campo.x + 14.0 * e + w_rotulo + 6.0 * e;
+    let hueco = RectF {
+        x: x_caja,
+        ancho: (campo.x + campo.ancho - 14.0 * e - x_caja).max(1.0),
+        ..campo
+    };
+    escrito.pintar(
+        p,
+        hueco,
+        hueco,
+        15.0 * e,
+        "",
+        &colores_de_caja(tema, tema.texto, tema.campo_apagado),
+        true,
+        std::time::Instant::now(),
     );
     // Debajo, a que hora queda de verdad: «09:00» tecleado a las diez es
     // MANANA, y eso se ve antes de pulsar Intro, no despues.
@@ -15790,7 +15847,10 @@ fn ejecutar(accion: Accion, a: &mut Abierto, cx: &Contexto) -> Efecto {
         }
         Accion::RecordarAMano(i) => {
             a.quien_llama = None;
-            a.hora_a_mano = a.mensajes.get(i).map(|m| (m.id.clone(), String::new()));
+            a.hora_a_mano = a
+                .mensajes
+                .get(i)
+                .map(|m| (m.id.clone(), caja_de_la_hora()));
             Efecto::Cambio
         }
         // La hora viaja en el mensaje, como en el movil, asi que ponerla es

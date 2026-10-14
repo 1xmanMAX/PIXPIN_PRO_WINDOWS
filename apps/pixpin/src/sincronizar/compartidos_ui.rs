@@ -21,13 +21,15 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 use pixpin_proyecto::vista::DiscoPc;
+
+use crate::caja_texto::CajaLinea;
 use pixpin_render::icono::material;
 use pixpin_sincro::compartidos::{self, ChatCompartido, CompartidosEnDisco, Persona};
 use pixpin_sincro::invitacion::{self, AvisoDePuerta, Puerta};
 use pixpin_sincro::protocolo::ErrorSincro;
 use pixpin_store::Catalogo;
 
-use super::recibir_wifi::{boton_apagado, campo_grande, hex_blanco};
+use super::recibir_wifi::{boton_apagado, hex_blanco};
 use super::{
     Accion, Aviso, BORDE, CONTENEDOR, Contexto, ERROR, FONDO, Lienzo, PRIMARIO, SOBRE_CONTENEDOR,
     SUAVE, TEXTO, Tecla, VARIANTE, caja, menos, rect,
@@ -115,9 +117,9 @@ pub(super) struct Personas {
     /// Mi nombre en los chats compartidos, como esta guardado y como se
     /// esta escribiendo.
     nombre: String,
-    nombre_escrito: String,
+    nombre_escrito: CajaLinea,
     en_nombre: bool,
-    tecleado: String,
+    tecleado: CajaLinea,
     invitando: Option<Invitando>,
     aviso: Option<Dicho>,
     trabajando: Arc<AtomicBool>,
@@ -148,9 +150,11 @@ impl Personas {
             yo: String::new(),
             mis_aparatos: HashSet::new(),
             nombre: String::new(),
-            nombre_escrito: String::new(),
+            nombre_escrito: CajaLinea::nueva()
+                .con_maximo(compartidos::NOMBRE_MAX)
+                .sin_parpadeo(),
             en_nombre: false,
-            tecleado: String::new(),
+            tecleado: CajaLinea::nueva().con_maximo(80).sin_parpadeo(),
             invitando: None,
             aviso: None,
             trabajando: Arc::new(AtomicBool::new(false)),
@@ -168,8 +172,8 @@ impl Personas {
             self.mis_aparatos.insert(id.yo.id.clone());
         }
         let nombre = cd.nombre().unwrap_or_else(|| cx.nombre.clone());
-        if !self.en_nombre || self.nombre_escrito == self.nombre {
-            self.nombre_escrito = nombre.clone();
+        if !self.en_nombre || self.nombre_escrito.texto() == self.nombre {
+            self.nombre_escrito.poner_texto(&nombre);
         }
         self.nombre = nombre;
         self.lista = self.chat.as_ref().and_then(|(c, _)| cd.de(c));
@@ -214,27 +218,36 @@ pub(super) fn novedad(p: &mut Personas, n: Novedad, cx: &Contexto) {
     p.releer(cx);
 }
 
-/// Lo que se escribe. Devuelve si cambio algo.
+/// Lo que se escribe. Devuelve si cambio algo. Los dos campos (el codigo y
+/// mi nombre) son la caja de una linea comun de la app: su rayita donde se
+/// escribe, Ctrl+Retroceso, Mayus+flechas, Ctrl+A/C/X/V/Z...
 pub(super) fn tecla(p: &mut Personas, t: Tecla, cx: &Contexto) -> bool {
     let en_codigo = p.chat.is_none() && !p.en_nombre && p.dentro_de.is_none();
     if !p.en_nombre && !en_codigo {
         return false;
     }
-    let (campo, tope) = if en_codigo {
-        (&mut p.tecleado, 80)
+    let campo = if en_codigo {
+        &mut p.tecleado
     } else {
-        (&mut p.nombre_escrito, compartidos::NOMBRE_MAX)
+        &mut p.nombre_escrito
     };
     match t {
         Tecla::Letra(c) => {
-            if campo.chars().count() < tope {
-                campo.push(c);
-            }
+            campo.caracter(c);
         }
         Tecla::Borrar => {
-            campo.pop();
+            campo.tecla(0x08, false, false, &mut crate::caja_texto::PortapapelesWindows);
         }
-        Tecla::Pegar(texto) => *campo = texto.trim().chars().take(tope).collect(),
+        Tecla::Caja { vk, shift, ctrl } => {
+            return campo
+                .tecla(vk, shift, ctrl, &mut crate::caja_texto::PortapapelesWindows)
+                .atendida();
+        }
+        // El texto de un QR pegado: donde esta la rayita (sobre lo elegido),
+        // sin blancos a los lados.
+        Tecla::Pegar(texto) => {
+            campo.pegar_texto(texto.trim());
+        }
         Tecla::Intro => {
             if en_codigo {
                 tocar(p, Toque::Entrar, cx);
@@ -699,18 +712,52 @@ pub(crate) fn autor_aqui(aparato: &str) -> Option<String> {
 // ------------------------------------------------------------------ pintar
 
 /// Un campo de una linea con su rotulo encima (`OutlinedTextField`).
-fn campo_linea(l: &mut Lienzo<'_>, r: pixpin_render::RectF, texto: &str, activo: bool, a: Accion) {
+fn campo_linea(
+    l: &mut Lienzo<'_>,
+    r: pixpin_render::RectF,
+    caja: &CajaLinea,
+    activo: bool,
+    a: Accion,
+) {
     let (p, e) = (l.p, l.e);
     p.rellenar_redondeado(r, 6.0 * e, if activo { PRIMARIO } else { super::CONTORNO });
     p.rellenar_redondeado(menos(r, if activo { 2.0 } else { 1.0 } * e), 5.0 * e, FONDO);
-    let tam = 15.0 * e;
-    let (w, h) = p.medir_texto(texto, tam);
-    p.texto_linea(texto, r.x + 14.0 * e, r.y + (r.alto - h) / 2.0, tam, r.ancho - 28.0 * e, TEXTO);
-    if activo {
-        let xc = (r.x + 14.0 * e + w + 2.0 * e).min(r.x + r.ancho - 10.0 * e);
-        p.rellenar(rect(xc, r.y + 12.0 * e, 2.0 * e, r.alto - 24.0 * e), PRIMARIO);
-    }
+    pintar_caja(p, r, caja, "", 15.0 * e, activo, e);
     l.zonas.push((r, a));
+}
+
+/// Lo escrito en un campo: la caja de una linea comun de la app, con su
+/// rayita donde se escribe (no siempre al final), lo elegido y el texto
+/// corrido si no cabe.
+fn pintar_caja(
+    p: &pixpin_render::Pintor,
+    r: pixpin_render::RectF,
+    caja: &CajaLinea,
+    pista: &str,
+    tam: f32,
+    activo: bool,
+    e: f32,
+) {
+    let hueco = pixpin_render::RectF {
+        x: r.x + 14.0 * e,
+        ancho: (r.ancho - 28.0 * e).max(1.0),
+        ..r
+    };
+    caja.pintar(
+        p,
+        hueco,
+        hueco,
+        tam,
+        pista,
+        &crate::caja_texto::Colores {
+            texto: TEXTO,
+            invitacion: SUAVE,
+            seleccion: pixpin_render::Color { a: 0.35, ..PRIMARIO },
+            rayita: PRIMARIO,
+        },
+        activo,
+        Instant::now(),
+    );
 }
 
 /// Pinta la pantalla desde `y` y devuelve donde acaba.
@@ -994,18 +1041,24 @@ fn pintar_entrar(
     l.centrado(&textos.t("cc-escribe-codigo"), x, w, y, 14.0 * e, SUAVE);
     y += 26.0 * e;
     let wc = w.min(300.0 * e);
-    let mostrar = if invitacion::leer_qr(&s.tecleado).is_some() || s.tecleado.contains(':') {
-        s.tecleado.clone()
-    } else {
-        invitacion::legible(&invitacion::limpiar(&s.tecleado))
-    };
-    campo_grande(
-        l,
-        rect(x + (w - wc) / 2.0, y, wc, 64.0 * e),
-        &mostrar,
+    // El codigo, en la caja de una linea comun: se ve tal como se escribe,
+    // con la rayita donde va (antes se reformateaba y la rayita iba
+    // siempre al final). Un QR pegado es largo: letra mas pequena.
+    let p = l.p;
+    let rc = rect(x + (w - wc) / 2.0, y, wc, 64.0 * e);
+    p.rellenar_redondeado(rc, 6.0 * e, PRIMARIO);
+    p.rellenar_redondeado(menos(rc, 2.0 * e), 5.0 * e, FONDO);
+    let largo = s.tecleado.chars().count() > 14;
+    pintar_caja(
+        p,
+        rc,
+        &s.tecleado,
         "XXXX-XXXX",
-        t(Toque::CampoCodigo),
+        if largo { 13.0 } else { 26.0 } * e,
+        true,
+        e,
     );
+    l.zonas.push((rc, t(Toque::CampoCodigo)));
     y += 76.0 * e;
     let rb = rect(x + (w - wc) / 2.0, y, wc, 48.0 * e);
     if que_entrar(&s.tecleado).is_some() && !s.ocupada() {

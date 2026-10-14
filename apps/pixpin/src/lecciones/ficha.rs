@@ -192,7 +192,7 @@ impl Estado {
     }
 
     fn titulo(&self) -> &str {
-        &self.campo(CampoId::Titulo).texto
+        &self.campo(CampoId::Titulo).texto()
     }
 
     /// Rellena con lo que habia (editar).
@@ -238,7 +238,7 @@ impl Estado {
         }
         if ORDEN[1..4]
             .iter()
-            .any(|c| !self.campo(*c).texto.trim().is_empty())
+            .any(|c| !self.campo(*c).texto().trim().is_empty())
         {
             self.detalle = true;
         }
@@ -247,7 +247,7 @@ impl Estado {
     fn texto_entero(&self) -> String {
         ORDEN[..5]
             .iter()
-            .map(|c| self.campo(*c).texto.as_str())
+            .map(|c| self.campo(*c).texto())
             .collect::<Vec<_>>()
             .join("\n")
     }
@@ -262,7 +262,7 @@ impl Estado {
         self.parecidas = if self.existente.is_some() {
             Vec::new()
         } else {
-            let texto = format!("{} {}", self.titulo(), self.campo(CampoId::Paso).texto);
+            let texto = format!("{} {}", self.titulo(), self.campo(CampoId::Paso).texto());
             buscador::parecidas_por_defecto(&self.indices, &texto)
         };
         self.mirado = Some(t);
@@ -307,7 +307,7 @@ impl Estado {
     fn poner_etiqueta(&mut self) {
         let e = self
             .campo(CampoId::Etiqueta)
-            .texto
+            .texto()
             .trim_matches([' ', ',', '#'])
             .to_lowercase();
         if !e.is_empty() && !self.etiquetas.contains(&e) {
@@ -331,9 +331,9 @@ impl Estado {
         Leccion {
             tocada: ahora,
             titulo: self.titulo().trim().to_string(),
-            que_paso: self.campo(CampoId::Paso).texto.trim().to_string(),
-            por_que: self.campo(CampoId::PorQue).texto.trim().to_string(),
-            proxima: self.campo(CampoId::Proxima).texto.trim().to_string(),
+            que_paso: self.campo(CampoId::Paso).texto().trim().to_string(),
+            por_que: self.campo(CampoId::PorQue).texto().trim().to_string(),
+            proxima: self.campo(CampoId::Proxima).texto().trim().to_string(),
             tipo: self.tipo_final(),
             area: self.area_final().unwrap_or_default(),
             gravedad: self.gravedad,
@@ -342,7 +342,7 @@ impl Estado {
             quitadas: self.quitadas.clone(),
             referencias: self
                 .campo(CampoId::Referencias)
-                .texto
+                .texto()
                 .split([',', ';'])
                 .map(|s| s.trim().to_string())
                 .filter(|s| !s.is_empty())
@@ -1348,7 +1348,7 @@ fn campo_con_rotulo(
 ) -> f32 {
     let tam = 15.0 * s;
     let c = e.campo(id);
-    let y = if c.texto.is_empty() {
+    let y = if c.texto().is_empty() {
         y
     } else {
         rotulo(p, pista, x, y, s)
@@ -1405,7 +1405,7 @@ mod pruebas {
     fn lo_dictado_se_reparte_y_lo_propuesto_va_a_la_leccion() {
         let mut e = estado();
         e.poner("pasó que no revisé el encofrado y la losa se fisuró porque había prisa, la próxima vez reviso los puntales #obra");
-        assert_eq!(e.campo(CampoId::Proxima).texto, "");
+        assert_eq!(e.campo(CampoId::Proxima).texto(), "");
         assert_eq!(e.titulo(), "Reviso los puntales");
         assert!(e.detalle);
         assert_eq!(e.etiquetas, vec!["obra"]);
