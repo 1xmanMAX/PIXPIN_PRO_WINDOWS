@@ -6,6 +6,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use pixpin_ia::agente::{Evento, Final};
+use pixpin_ia::herramientas::catalogo_base;
 use pixpin_ia::hoja_trabajo::{HojaDeTrabajo, Registro};
 use pixpin_ia::motor::{MotorGuionado, Respuesta};
 use pixpin_ia::pensar::Plan;
@@ -183,7 +184,7 @@ fn preparar_el_turno_reinicia_al_70_y_apunta_desde_donde() {
         objetivo: "Planear la fiesta de Lucia".into(),
         ..Default::default()
     };
-    let (h, reiniciado) = pensado::preparar_con_hoja(&mut hoja, &notas, "¿y la hora?", 8192);
+    let (h, reiniciado) = pensado::preparar_con_hoja(&mut hoja, &notas, "¿y la hora?", 8192, &catalogo_base());
     assert!(reiniciado);
     assert_eq!(h.len(), 4, "sistema + 2 + el nuevo");
     assert!(h[0].texto_entero().contains("Objetivo: Planear la fiesta de Lucia"));
@@ -194,14 +195,14 @@ fn preparar_el_turno_reinicia_al_70_y_apunta_desde_donde() {
     let mut mas = notas.clone();
     mas.push(nota(21, false, "¿y la hora?"));
     mas.push(nota(22, true, "A las 17:00."));
-    let (h, reiniciado) = pensado::preparar_con_hoja(&mut hoja, &mas, "gracias", 8192);
+    let (h, reiniciado) = pensado::preparar_con_hoja(&mut hoja, &mas, "gracias", 8192, &catalogo_base());
     assert!(!reiniciado);
     assert_eq!(h.len(), 6, "sistema + las 4 desde el reinicio + el nuevo");
     assert!(h[0].texto_entero().contains("buscar_historial"));
     assert_eq!(hoja.reinicios, 1);
     // Con una ventana grande no hace falta.
     let mut otra = HojaDeTrabajo::default();
-    let (h, reiniciado) = pensado::preparar_con_hoja(&mut otra, &notas[..4], "x", 32768);
+    let (h, reiniciado) = pensado::preparar_con_hoja(&mut otra, &notas[..4], "x", 32768, &catalogo_base());
     assert!(!reiniciado && h.len() == 6 && otra.reinicio_desde.is_none());
 }
 
@@ -277,7 +278,8 @@ fn de_verdad_conversacion_larga_con_reinicios() {
     let t0 = Instant::now();
     for (i, pedido) in pedidos.iter().enumerate() {
         let n = notas.len() as i64;
-        let (historial, reiniciado) = pensado::preparar_con_hoja(&mut hoja, &notas, pedido, VENTANA);
+        let herramientas = super::acciones::herramientas_para(&[pixpin_ia::Mensaje::usuario(*pedido)], &[], false);
+        let (historial, reiniciado) = pensado::preparar_con_hoja(&mut hoja, &notas, pedido, VENTANA, &herramientas);
         let memoria = Memoria {
             fuentes: pensado::fuentes(&notas, &hoja),
             hoja: hoja.clone(),
@@ -292,7 +294,7 @@ fn de_verdad_conversacion_larga_con_reinicios() {
             historial,
             vec![],
             None,
-            pixpin_ia::herramientas::catalogo(),
+            herramientas,
             Some(memoria),
         );
         let (vivo, avisos) = hasta_el_final_largo(&mut t);

@@ -38,6 +38,14 @@
 //!   la vista, la peticion mejorada, la hoja de trabajo que el agente
 //!   reescribe cada turno y el reinicio del contexto al 70 % con
 //!   `buscar_historial` para lo viejo ([`agente::turno_con`]).
+//! - [`calcar`]: copiar una imagen al lienzo con un algoritmo clasico
+//!   (k-medias + marching squares, o Canny + cadenas; RDP y suavizado): el
+//!   modelo solo elige el detalle.
+//! - [`acciones`]: toda la app como herramientas, generadas de UNA tabla
+//!   que produce pedidos del protocolo (`docs/protocolo-pedidos.md`); lo
+//!   que borra o sale del PC lleva su pregunta de confirmacion.
+//! - [`seleccion`]: las 6 herramientas que vienen a cuento en cada turno.
+//! - [`conocimiento`]: el resumen de PixPin y el indice de `ayuda_app`.
 //!
 //! ## Puntos de enganche para la UI (otros agentes)
 //!
@@ -47,8 +55,11 @@
 //! - El lienzo recibe un `.excalidraw` ya hecho ([`lienzo::documento`]) y lo
 //!   lee con `pixpin_motor2d::excalidraw::leer`, como un fichero del movil.
 
+pub mod acciones;
 pub mod agente;
 pub mod base64;
+pub mod calcar;
+pub mod conocimiento;
 pub mod contexto;
 pub mod descarga;
 pub mod herramientas;
@@ -57,6 +68,7 @@ pub mod lienzo;
 pub mod modelos;
 pub mod motor;
 pub mod pensar;
+pub mod seleccion;
 pub mod servidor;
 pub mod sse;
 

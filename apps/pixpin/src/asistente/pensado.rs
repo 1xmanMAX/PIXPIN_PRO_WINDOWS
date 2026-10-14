@@ -25,7 +25,7 @@ use std::rc::Rc;
 
 use pixpin_ia::agente::MAX_TOKENS_CON_HERRAMIENTAS;
 use pixpin_ia::contexto::{self, Fuente};
-use pixpin_ia::herramientas::catalogo;
+use pixpin_ia::herramientas::Herramienta;
 use pixpin_ia::hoja_trabajo::{HojaDeTrabajo, Registro};
 use pixpin_ia::motor::Mensaje;
 use pixpin_ia::pensar::Plan;
@@ -203,7 +203,8 @@ const ULTIMOS: usize = 12;
 const LARGO: usize = 1500;
 
 /// **El historial y la memoria de un turno nuevo.** `anteriores`: las notas
-/// del chat antes de la pregunta.
+/// del chat antes de la pregunta; `herramientas`: las de este turno (las
+/// que se mandan, y por eso cuentan en la ventana).
 pub fn preparar_turno(
     raiz: &Path,
     ficha: &str,
@@ -211,10 +212,11 @@ pub fn preparar_turno(
     pregunta: &str,
     pensar: bool,
     ventana: u32,
+    herramientas: &[Herramienta],
 ) -> (Vec<Mensaje>, Memoria) {
     let mut hoja = hoja_del_chat(raiz, ficha, anteriores);
     let fuentes = fuentes(anteriores, &hoja);
-    let (historial, reiniciado) = preparar_con_hoja(&mut hoja, anteriores, pregunta, ventana);
+    let (historial, reiniciado) = preparar_con_hoja(&mut hoja, anteriores, pregunta, ventana, herramientas);
     let memoria = Memoria {
         hoja,
         fuentes,
@@ -233,6 +235,7 @@ pub fn preparar_con_hoja(
     anteriores: &[Nota],
     pregunta: &str,
     ventana: u32,
+    herramientas: &[Herramienta],
 ) -> (Vec<Mensaje>, bool) {
     let mut conv = super::chat::conversacion_con_ids(anteriores);
     if let Some(desde) = hoja.reinicio_desde.as_deref()
@@ -247,7 +250,7 @@ pub fn preparar_con_hoja(
         .map(|(_, _, u, t)| (*u, t.chars().take(LARGO).collect()))
         .collect();
     let sistema = contexto::sistema_con_hoja(&pixpin_ia::agente::instrucciones(), hoja, None);
-    let mut herramientas = catalogo();
+    let mut herramientas = herramientas.to_vec();
     herramientas.push(contexto::herramienta_buscar());
     let p = contexto::preparar(
         sistema,

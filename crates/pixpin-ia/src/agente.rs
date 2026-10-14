@@ -90,6 +90,10 @@ pub struct Opciones<'a> {
     /// Buscar en la conversacion guardada: con esto el modelo tiene la
     /// herramienta `buscar_historial`.
     pub buscar: Option<&'a dyn Fn(&str) -> String>,
+    /// Todas las herramientas que podria usar (el catalogo entero). La
+    /// vuelta de planear elige entre ellas, y las que nombre se anaden a las
+    /// del turno aunque la seleccion por palabras no las diera.
+    pub ampliar: Option<&'a [Herramienta]>,
 }
 
 /// Tope de la vuelta de planear: sin pensar, cinco lineas; pensando, lo que
@@ -296,11 +300,28 @@ fn turno_dentro(
     if opciones.buscar.is_some() && !lista.iter().any(|h| h.nombre == contexto::BUSCAR_HISTORIAL) {
         lista.push(contexto::herramienta_buscar());
     }
-    let herramientas = &lista[..];
     let mut plan = None;
     if opciones.planificar {
-        match planear(motor, historial, herramientas, opciones, crono, al_evento)? {
-            Some(p) => plan = Some(p),
+        // El plan elige entre todas las que hay (`ampliar`), no solo entre
+        // las que la seleccion por palabras dio a este turno: «ponle tres
+        // ventanas» no dice «dibuja», pero el plan si lo entiende.
+        let mut posibles = lista.clone();
+        for h in opciones.ampliar.unwrap_or_default() {
+            if !posibles.iter().any(|x| x.nombre == h.nombre) {
+                posibles.push(h.clone());
+            }
+        }
+        match planear(motor, historial, &posibles, opciones, crono, al_evento)? {
+            Some(p) => {
+                for n in &p.herramientas {
+                    if !lista.iter().any(|x| &x.nombre == n)
+                        && let Some(h) = posibles.iter().find(|x| &x.nombre == n)
+                    {
+                        lista.push(h.clone());
+                    }
+                }
+                plan = Some(p);
+            }
             None => {
                 return Ok(Final {
                     texto: String::new(),
@@ -311,6 +332,7 @@ fn turno_dentro(
             }
         }
     }
+    let herramientas = &lista[..];
     if opciones.hoja.is_some() || plan.is_some() {
         let base = match historial.first() {
             Some(m) if m.rol == Rol::Sistema => m.texto_entero(),
@@ -482,12 +504,16 @@ fn mensaje_del_asistente(r: &Respuesta) -> Mensaje {
 pub fn instrucciones() -> String {
     "Eres el asistente de PixPin, una app de capturas, notas y lienzo. \
      Contesta en el idioma del usuario, breve y claro. \
-     Si pide dibujar algo, o copiar una imagen al lienzo, usa dibujar_en_lienzo, \
+     Si pide dibujar algo, usa dibujar_en_lienzo, \
      poniendo el color de cada figura. \
+     Si pide copiar o calcar al lienzo una imagen adjunta, usa calcar_imagen. \
      Si da datos para graficar, usa grafica. \
      Si quiere el texto de un documento escaneado, usa ocr. \
-     Despues de usar una herramienta, di en una frase lo que hiciste."
+     Si pide hacer algo en la app (notas, tareas, ventanas, capturas, abrir ficheros), usa su herramienta. \
+     Si pregunta donde esta algo o como se hace en PixPin, usa ayuda_app y contesta con lo que diga, sin inventar. \
+     Despues de usar una herramienta, di en una frase lo que hiciste. "
         .to_string()
+        + crate::conocimiento::RESUMEN
 }
 
 #[cfg(test)]
@@ -569,7 +595,7 @@ mod pruebas {
         let mut ej = Apunta::default();
         let (f, eventos, _, motor) = correr(
             vec![
-                Respuesta::de_llamada("dibujar_en_lienzo", r#"{"elementos":[{"tipo":"texto","x":1,"y":1}]}"#),
+                Respuesta::de_llamada("dibujar_en_lienzo", r#"{"elementos":[{"tipo":"dragon","x":1,"y":1}]}"#),
                 Respuesta::de_llamada("dibujar_en_lienzo", r#"{"elementos":[{"tipo":"texto","x":1,"y":1,"texto":"CASA"}]}"#),
                 Respuesta::de_texto("Hecho."),
             ],
@@ -578,7 +604,7 @@ mod pruebas {
         assert_eq!(f.reintentos, 1);
         assert_eq!(f.herramientas_hechas, 1);
         assert_eq!(ej.hechas.len(), 1, "la mala no se ejecuta");
-        assert!(eventos.iter().any(|e| matches!(e, Evento::Reintento { motivo } if motivo.contains("«texto»"))));
+        assert!(eventos.iter().any(|e| matches!(e, Evento::Reintento { motivo } if motivo.contains("dragon"))));
         let pedidas = motor.recibido.lock().unwrap();
         assert!(pedidas[1].mensajes.last().unwrap().texto_entero().starts_with("ERROR:"));
     }
@@ -885,14 +911,18 @@ mod pruebas {
             ventana: 8192,
             ..Default::default()
         };
-        let (_, eventos, motor) = con_opciones(
-            vec![
-                Respuesta::de_texto("ENTIENDO: Anadir la puerta al plano de la casa de Ana.\nHARE: dibujarla."),
-                Respuesta::de_texto("Puerta puesta."),
-            ],
-            &mut h,
-            &o,
-        );
+        // Con las herramientas de un turno (la seleccion), no el catalogo
+        // entero: ese solo ya no cabe en una ventana pequena.
+        let motor = MotorGuionado::nuevo(vec![
+            Respuesta::de_texto("ENTIENDO: Anadir la puerta al plano de la casa de Ana.\nHARE: dibujarla."),
+            Respuesta::de_texto("Puerta puesta."),
+        ]);
+        let mut eventos = Vec::new();
+        turno_con(&motor, &mut h, &crate::herramientas::catalogo_base(), &mut Apunta::default(), &o, &mut |e| {
+            eventos.push(e);
+            Seguir::Si
+        })
+        .unwrap();
         let reinicio = eventos.iter().find_map(|e| match e {
             Evento::Reinicio { antes, despues } => Some((*antes, *despues)),
             _ => None,
@@ -910,6 +940,25 @@ mod pruebas {
         assert!(sistema.contains("Objetivo: Hacer el plano de la casa de Ana"), "{sistema}");
         assert!(sistema.contains("Anadir la puerta"), "{sistema}");
         assert_eq!(actuar.last().unwrap().texto_entero(), "y ahora la puerta");
+    }
+
+    #[test]
+    fn el_plan_anade_las_herramientas_que_la_seleccion_no_dio() {
+        let todas = catalogo();
+        let solo_ocr: Vec<Herramienta> = todas.iter().filter(|h| h.nombre == "ocr").cloned().collect();
+        let o = Opciones {
+            planificar: true,
+            ampliar: Some(&todas),
+            ..Default::default()
+        };
+        let motor = MotorGuionado::nuevo(vec![Respuesta::de_texto(PLAN_CASA), Respuesta::de_texto("Vale.")]);
+        let mut h = historial();
+        turno_con(&motor, &mut h, &solo_ocr, &mut Apunta::default(), &o, &mut |_| Seguir::Si).unwrap();
+        let pedidas = motor.recibido.lock().unwrap();
+        // Planear ve todos los nombres; actuar, la seleccion mas lo del plan.
+        assert!(pedidas[0].mensajes[0].texto_entero().contains("dibujar_en_lienzo"));
+        let nombres: Vec<&str> = pedidas[1].herramientas.iter().map(|x| x.nombre.as_str()).collect();
+        assert_eq!(nombres, vec!["ocr", "dibujar_en_lienzo"]);
     }
 
     #[test]

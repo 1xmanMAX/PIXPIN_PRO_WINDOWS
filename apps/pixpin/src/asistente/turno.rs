@@ -16,7 +16,7 @@ use std::sync::mpsc::{Receiver, TryRecvError, channel};
 
 use pixpin_ia::agente::{self, Evento, Final, Opciones};
 use pixpin_ia::contexto::{self, Fuente};
-use pixpin_ia::herramientas::{Herramienta, catalogo};
+use pixpin_ia::herramientas::Herramienta;
 use pixpin_ia::hoja_trabajo::{HojaDeTrabajo, Registro, ResumenDelTurno};
 use pixpin_ia::motor::{Mensaje, Motor, Rol, Seguir};
 use pixpin_ia::pensar::Plan;
@@ -134,7 +134,8 @@ impl Turno {
         adjuntos: Vec<Adjunto>,
         foto: Option<PathBuf>,
     ) -> Turno {
-        Turno::lanzar_con(motor, proyecto, historial, adjuntos, foto, catalogo())
+        let herramientas = super::acciones::herramientas_para(&historial, &adjuntos, foto.is_some());
+        Turno::lanzar_con(motor, proyecto, historial, adjuntos, foto, herramientas)
     }
 
     #[cfg_attr(not(test), allow(dead_code))]
@@ -182,12 +183,14 @@ impl Turno {
                 let con_memoria = memoria.is_some();
                 let memoria = memoria.unwrap_or_default();
                 let buscar = |c: &str| contexto::buscar(&memoria.fuentes, c, 3);
+                let todas = pixpin_ia::herramientas::catalogo();
                 let opciones = Opciones {
                     planificar: memoria.planificar,
                     pensar: memoria.pensar,
                     hoja: con_memoria.then_some(&memoria.hoja),
                     ventana: memoria.ventana,
                     buscar: if con_memoria { Some(&buscar) } else { None },
+                    ampliar: con_memoria.then_some(&todas[..]),
                 };
                 let mut recogido = Recogido::default();
                 let resultado = agente::turno_con(

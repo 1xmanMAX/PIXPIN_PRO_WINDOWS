@@ -178,9 +178,17 @@ fn lanzar_con(
     let pregunta_id = nueva.first().map(|m| m.id.clone());
     let foto = ia_chat::foto_reciente(anteriores).and_then(|m| ruta_del_mensaje(&raiz, &proyecto, m));
     let adjuntos = ia_chat::adjuntos(&a.mensajes, |m| ruta_del_mensaje(&raiz, &proyecto, m).filter(|r| r.is_file()));
+    // Las herramientas de este turno (`acciones::herramientas_para`): con la
+    // memoria, la vuelta de planear puede anadir las que nombre.
+    let herramientas = crate::asistente::acciones::herramientas_para(
+        &[pixpin_ia::Mensaje::usuario(pregunta.clone())],
+        &adjuntos,
+        foto.is_some(),
+    );
     let (historial, memoria) = match pensando {
         Some((pensar, ventana)) => {
-            let (h, m) = ia_pensado::preparar_turno(&raiz, &proyecto, anteriores, &pregunta, pensar, ventana);
+            let (h, m) =
+                ia_pensado::preparar_turno(&raiz, &proyecto, anteriores, &pregunta, pensar, ventana, &herramientas);
             (h, Some(m))
         }
         None => {
@@ -218,7 +226,7 @@ fn lanzar_con(
         historial,
         adjuntos,
         foto,
-        pixpin_ia::herramientas::catalogo(),
+        herramientas,
         memoria,
     );
     SESIONES.with_borrow_mut(|s| {
