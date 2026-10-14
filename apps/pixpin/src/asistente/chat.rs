@@ -335,7 +335,22 @@ pub struct EnVivo {
     /// Lo que fue mal por el camino (se dice al final, en una linea).
     pub fallos: Vec<String>,
     pub acabado: bool,
+    /// La pregunta de una accion que borra o envia, mientras espera el «Sí»
+    /// o el «No» de la tarjeta de la burbuja. Contestada, pasa al texto.
+    pub pendiente: Option<String>,
 }
+
+/// Como acabo una pregunta de confirmar.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Contestacion {
+    Si,
+    No,
+    /// Nadie contesto: se cerro el chat, se paro o paso el tiempo.
+    Caducada,
+}
+
+/// Cuanto espera una pregunta antes de darse por no contestada.
+pub const CADUCA_LA_PREGUNTA: std::time::Duration = std::time::Duration::from_secs(5 * 60);
 
 /// Lo que se ensena mientras se usa cada herramienta.
 pub fn rotulo_de(nombre: &str) -> String {
@@ -366,7 +381,8 @@ impl EnVivo {
                 self.estado = Some(rotulo_de(llamada.nombre()));
             }
             Evento::Resultado { ok, texto, .. } => {
-                if !ok {
+                // Un «No» en la tarjeta no es un fallo: ya lo dice su linea.
+                if !ok && !texto.contains("dijo que no") {
                     self.fallos.push(texto.trim_start_matches("ERROR: ").to_string());
                 }
                 self.estado = Some("💭 …".into());
@@ -375,8 +391,34 @@ impl EnVivo {
         }
     }
 
+    /// Llega una pregunta: la burbuja ensena su tarjeta con «Sí» y «No».
+    pub fn preguntar(&mut self, pregunta: &str) {
+        // Una anterior sin contestar (no deberia: el turno espera) caduca.
+        self.contestar(Contestacion::Caducada);
+        self.pendiente = Some(pregunta.trim().to_string());
+        self.estado = Some("✋ esperando tu respuesta…".into());
+    }
+
+    /// **La pregunta contestada queda en el historial**, en su linea:
+    /// «❓ ¿Borrar la lista «Obra»? → ✅ Sí». `false` si no habia ninguna.
+    pub fn contestar(&mut self, c: Contestacion) -> bool {
+        let Some(p) = self.pendiente.take() else { return false };
+        if !self.texto.is_empty() && !self.texto.ends_with('\n') {
+            self.texto.push('\n');
+        }
+        let fin = match c {
+            Contestacion::Si => "✅ Sí",
+            Contestacion::No => "✖️ No",
+            Contestacion::Caducada => "⌛ sin respuesta: no se hizo nada",
+        };
+        self.texto.push_str(&format!("❓ {p} → {fin}\n"));
+        self.estado = (!self.acabado).then(|| "💭 …".to_string());
+        true
+    }
+
     /// El final del turno.
     pub fn acabar(&mut self, r: &Result<Final, String>) {
+        self.contestar(Contestacion::Caducada);
         self.acabado = true;
         self.estado = None;
         match r {

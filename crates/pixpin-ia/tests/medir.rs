@@ -204,3 +204,94 @@ fn bajar_y_arrancar_el_ligero() {
     assert!(!r.texto.trim().is_empty());
     motor.soltar();
 }
+
+/// **Gemma 4 E2B de verdad** (el de mejor vista, 13-oct-2026): se asegura
+/// con su huella (si ya esta del tamano justo, solo se verifica), lee el
+/// texto de la imagen de prueba, y en el relevo con Qwen3.5-2B nunca estan
+/// los dos cargados.
+///
+/// ```text
+/// PIXPIN_IA_RAIZ=<carpeta de modelos> (por omision la de la app)
+/// cargo test -p pixpin-ia --test medir -- --ignored --nocapture gemma_de_verdad
+/// ```
+#[test]
+#[ignore = "baja (o verifica) 4,1 GB y carga Gemma 4 E2B"]
+fn gemma_de_verdad_lee_la_foto_y_se_releva_con_qwen() {
+    use std::sync::Arc;
+    use std::sync::atomic::AtomicBool;
+
+    use pixpin_ia::descarga;
+    use pixpin_ia::modelos::{GEMMA4_E2B, LLAMA_CPP, Modelo, QWEN35_2B};
+    use pixpin_ia::relevo::Relevo;
+
+    let raiz = std::env::var("PIXPIN_IA_RAIZ")
+        .map(PathBuf::from)
+        .ok()
+        .or_else(descarga::carpeta_base)
+        .expect("carpeta de modelos");
+    let t0 = Instant::now();
+    let mut ultimo = 0.0;
+    descarga::asegurar(
+        &raiz,
+        &GEMMA4_E2B,
+        &LLAMA_CPP,
+        &mut |p| {
+            let f = p.fraccion();
+            if f - ultimo >= 0.1 || p.verificando {
+                ultimo = f;
+                println!("{:>5.1}% {}{}", f * 100.0, p.fichero, if p.verificando { " (huella)" } else { "" });
+            }
+        },
+        &AtomicBool::new(false),
+    )
+    .unwrap();
+    println!("Gemma asegurado (huellas comprobadas) en {:.1} s", t0.elapsed().as_secs_f32());
+    assert!(descarga::modelo_listo(&raiz, &GEMMA4_E2B));
+
+    let llama = |m: &Modelo| {
+        let c = descarga::carpeta_modelo(&raiz, m);
+        let servidor = descarga::ruta_servidor(&raiz, &LLAMA_CPP);
+        let mut config = Config::nueva(servidor.clone(), c.join(m.pesos.nombre), m.vision.map(|v| c.join(v.nombre)));
+        config.dispositivo = elegir_dispositivo(&listar_dispositivos(&servidor), m.pesos.bytes);
+        println!("{}: {:?}", m.nombre, config.dispositivo);
+        Arc::new(MotorLlama::nuevo(config))
+    };
+    let gemma = llama(&GEMMA4_E2B);
+    let relevo = Relevo::nuevo();
+    let g = gemma.clone();
+    let m_gemma = relevo.motor(GEMMA4_E2B.id, move || g);
+    let qwen = descarga::modelo_listo(&raiz, &QWEN35_2B).then(|| llama(&QWEN35_2B));
+    let m_qwen = qwen.clone().map(|q| relevo.motor(QWEN35_2B.id, move || q));
+
+    if let Some(mq) = &m_qwen {
+        let r = mq
+            .completar(&Peticion::nueva(vec![Mensaje::usuario("Di hola en una palabra.")]), &mut |_| Seguir::Si)
+            .unwrap();
+        println!("Qwen: «{}»", r.texto.trim());
+        assert!(qwen.as_ref().unwrap().cargado());
+    }
+
+    let png = std::fs::read(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("medir/prueba.png")).unwrap();
+    let mut p = Peticion::nueva(vec![Mensaje::usuario_con_imagen(
+        "¿Qué texto pone en la imagen? Contesta solo con el texto.",
+        png,
+        "image/png",
+    )]);
+    p.max_tokens = 64;
+    let t1 = Instant::now();
+    let r = m_gemma.completar(&p, &mut |_| Seguir::Si).unwrap();
+    println!(
+        "Gemma leyo «{}» en {:.1} s (carga {:.1} s, pico {} MB)",
+        r.texto.trim(),
+        t1.elapsed().as_secs_f32(),
+        gemma.tiempo_de_carga().map_or(0.0, |d| d.as_secs_f32()),
+        gemma.pid().map_or(0, pico_mb)
+    );
+    if let Some(q) = &qwen {
+        assert!(!q.cargado(), "Qwen tenia que soltarse antes de cargar Gemma");
+    }
+    let leido = r.texto.to_uppercase();
+    assert!(leido.contains("PIXPIN"), "no leyo el texto: «{}»", r.texto);
+    relevo.soltar_todo();
+    assert!(!gemma.cargado());
+}

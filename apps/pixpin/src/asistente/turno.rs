@@ -36,6 +36,14 @@ pub enum Aviso {
     /// El texto entero que leyo el OCR (al modelo le llega recortado), para
     /// ensenarlo en el chat y ofrecer guardarlo.
     TextoLeido { de: Adjunto, texto: String },
+    /// **Una accion que borra o envia pide permiso**: la burbuja ensena la
+    /// pregunta con «Sí» y «No» y contesta por `responder` (`true`: si).
+    /// El turno espera sin bloquear la ventana; si el chat se cierra, el
+    /// `Sender` muere con el y la pregunta cuenta como «no».
+    Confirmar {
+        pregunta: String,
+        responder: std::sync::mpsc::Sender<bool>,
+    },
     /// Se acabo. (La conversacion siguiente se rehace del chat, que es lo
     /// que el usuario ve y puede borrar.)
     Fin { resultado: Result<Final, String> },
@@ -105,8 +113,12 @@ impl Turno {
                 if let Some(ruta) = foto {
                     poner_foto(&mut historial, &ruta);
                 }
-                let mut ejecutor =
-                    EjecutorDelChat::nuevo(tx.clone(), proyecto, adjuntos, parar_hilo.clone()).hacia(destino);
+                // Lo que borra o envia pregunta en la burbuja, no en un
+                // cuadro de Windows (13-oct-2026).
+                let confirmar = super::acciones::confirmar_en_la_burbuja(tx.clone(), parar_hilo.clone());
+                let mut ejecutor = EjecutorDelChat::nuevo(tx.clone(), proyecto, adjuntos, parar_hilo.clone())
+                    .hacia(destino)
+                    .con_acciones(confirmar, super::acciones::mandar_a_pixpin());
                 let resultado = agente::turno(motor.as_ref(), &mut historial, &herramientas, &mut ejecutor, &mut |e| {
                     let _ = tx.send(Aviso::Evento(e));
                     if parar_hilo.load(Ordering::Relaxed) {

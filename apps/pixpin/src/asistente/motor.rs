@@ -1,10 +1,11 @@
 //! **Un motor por proceso de PixPin.**
 //!
 //! El modelo ocupa ~2,9 GB mientras esta cargado: dos ventanas de chat no
-//! pueden tener cada una el suyo. Aqui vive el unico [`MotorLlama`] del
-//! proceso, del modelo elegido en los ajustes; si el usuario cambia de
-//! modelo, el viejo se suelta (y su proceso muere) al acabar el turno que lo
-//! estuviera usando.
+//! pueden tener cada una el suyo. Aqui viven los motores locales del
+//! proceso, en un **relevo** (`pixpin_ia::relevo`): el de los ajustes y,
+//! si el usuario lo encendio y lo bajo, el de mejor vista (Gemma 4 E2B) para
+//! mirar fotos ([`modelo_para_el_turno`]). Solo uno tiene su `llama-server`
+//! cargado: antes de contestar uno, el otro se suelta (y su proceso muere).
 //!
 //! Crear el motor no carga nada: el modelo se carga en la primera pregunta
 //! (o con [`precargar`] al abrir el chat «Asistente») y se cierra solo tras
@@ -15,11 +16,12 @@
 //! ventana: [`MotorPerezoso`].
 
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, OnceLock};
 
 use pixpin_ia::ErrorIa;
 use pixpin_ia::descarga;
-use pixpin_ia::modelos::{LLAMA_CPP, Modelo, QWEN35_2B};
+use pixpin_ia::modelos::{GEMMA4_E2B, LLAMA_CPP, MODELOS, Modelo, QWEN35_2B};
+use pixpin_ia::relevo::Relevo;
 use pixpin_ia::motor::{Motor, Peticion, Respuesta, Seguir, Trozo};
 use pixpin_ia::servidor::{Config, MotorLlama, elegir_dispositivo, listar_dispositivos};
 
@@ -35,9 +37,10 @@ pub fn raiz() -> Option<PathBuf> {
         .or_else(descarga::carpeta_base)
 }
 
-/// El modelo de los ajustes (`asistente_modelo`); sin ajuste, el 2B.
+/// El modelo de los ajustes (`asistente_modelo`); sin ajuste, el 2B. El de
+/// mejor vista nunca es «el de siempre»: va aparte (`modelo_para_el_turno`).
 pub fn modelo_elegido(id: Option<&str>) -> Modelo {
-    id.and_then(pixpin_ia::modelos::por_id).unwrap_or(QWEN35_2B)
+    id.and_then(|id| MODELOS.iter().copied().find(|m| m.id == id)).unwrap_or(QWEN35_2B)
 }
 
 /// Menos de esto de memoria y se sugiere el ligero (documento §5.4).
@@ -92,25 +95,62 @@ impl Motor for MotorPerezoso {
     }
 }
 
-static MOTOR: Mutex<Option<(&'static str, Arc<dyn Motor>)>> = Mutex::new(None);
+/// Los motores locales del proceso: **un solo `llama-server` cargado a la
+/// vez** (`pixpin_ia::relevo`). El de siempre y el de mejor vista se
+/// relevan: antes de contestar uno, el otro se suelta y su memoria vuelve.
+fn relevo() -> &'static Relevo {
+    static RELEVO: OnceLock<Relevo> = OnceLock::new();
+    RELEVO.get_or_init(Relevo::nuevo)
+}
+
+/// La llave de un motor en el relevo: el modelo y su carpeta (las pruebas
+/// apuntan a otras carpetas).
+fn llave(raiz: &Path, m: &Modelo) -> String {
+    format!("{}@{}", m.id, raiz.display())
+}
 
 /// El motor del proceso para este modelo. `Err` si falta bajarlo.
 pub fn del_proceso(raiz: &Path, m: &Modelo) -> Result<Arc<dyn Motor>, String> {
     if !super::descarga::listo(raiz, m) {
         return Err(ErrorIa::Falta(m.nombre.to_string()).to_string());
     }
-    let mut g = MOTOR.lock().map_err(|_| "candado envenenado".to_string())?;
-    if let Some((id, motor)) = g.as_ref()
-        && *id == m.id
-    {
-        return Ok(motor.clone());
+    let (raiz, modelo) = (raiz.to_path_buf(), *m);
+    Ok(relevo().motor(&llave(&raiz, m), move || Arc::new(MotorPerezoso::nuevo(&raiz, &modelo))))
+}
+
+/// **El modelo de ESTE turno**: el de mejor vista (Gemma 4 E2B) si esta
+/// encendido en los ajustes, bajado, y lo que se pide es mirar la foto
+/// (`seleccion::pide_mejor_vista`); si no, el de siempre.
+pub fn modelo_para_el_turno(a: &pixpin_store::ajustes::Asistente, raiz: &Path, pedido: &str, con_foto: bool) -> Modelo {
+    elegir_para_el_turno(a, || super::descarga::listo(raiz, &GEMMA4_E2B), pedido, con_foto)
+}
+
+/// La regla de [`modelo_para_el_turno`], con «¿esta bajado?» aparte (el
+/// disco se mira solo si hace falta).
+pub fn elegir_para_el_turno(
+    a: &pixpin_store::ajustes::Asistente,
+    gemma_bajado: impl FnOnce() -> bool,
+    pedido: &str,
+    con_foto: bool,
+) -> Modelo {
+    if a.mejor_vista && pixpin_ia::seleccion::pide_mejor_vista(pedido, con_foto) && gemma_bajado() {
+        tracing::info!("asistente: foto para mirar, con el modelo de mejor vista");
+        return GEMMA4_E2B;
     }
-    if let Some((_, viejo)) = g.take() {
-        viejo.soltar();
+    modelo_elegido(Some(a.modelo.as_str()).filter(|m| !m.is_empty()))
+}
+
+/// La ayuda del interruptor «Mejor vista con fotos»: si esta bajado o
+/// cuanto falta.
+pub fn estado_mejor_vista(t: &pixpin_store::Catalogo) -> String {
+    let bajado = raiz().is_some_and(|r| super::descarga::listo(&r, &GEMMA4_E2B));
+    if bajado {
+        t.t("ajustes2-ayuda-mejor-vista-lista")
+    } else {
+        let mut args = fluent_bundle::FluentArgs::new();
+        args.set("tamano", super::descarga::tamano(GEMMA4_E2B.bytes()));
+        t.t_args("ajustes2-ayuda-mejor-vista", &args)
     }
-    let nuevo: Arc<dyn Motor> = Arc::new(MotorPerezoso::nuevo(raiz, m));
-    *g = Some((m.id, nuevo.clone()));
-    Ok(nuevo)
 }
 
 /// Carga el modelo en un hilo, sin esperar (al abrir el chat «Asistente»,
@@ -124,12 +164,15 @@ pub fn precargar(motor: Arc<dyn Motor>) {
     });
 }
 
-/// Suelta el modelo ya (al cambiar de modelo en los ajustes).
+/// Suelta los modelos ya (al cambiar de modelo en los ajustes).
 pub fn soltar_todo() {
-    if let Ok(mut g) = MOTOR.lock()
-        && let Some((_, m)) = g.take()
-    {
-        m.soltar();
+    relevo().soltar_todo();
+}
+
+/// Suelta el de mejor vista (se apago su interruptor).
+pub fn soltar_mejor_vista() {
+    if let Some(r) = raiz() {
+        relevo().quitar(&llave(&r, &GEMMA4_E2B));
     }
 }
 

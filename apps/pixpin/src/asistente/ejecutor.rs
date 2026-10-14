@@ -53,7 +53,7 @@ impl EjecutorDelChat {
             espera: ESPERA_LIENZO,
             llamadas: 0,
             destino: None,
-            confirmar: super::acciones::confirmar_con_cuadro(),
+            confirmar: super::acciones::decir_que_no(),
             mandar: super::acciones::mandar_a_pixpin(),
         }
     }
@@ -66,7 +66,6 @@ impl EjecutorDelChat {
 
     /// Cambia como se pregunta antes de lo que borra y adonde van los
     /// pedidos (la UI, o las pruebas para no tocar la PixPin del usuario).
-    #[allow(dead_code)] // el enganche para la UI del chat (el «¿Si?» en la burbuja)
     pub fn con_acciones(
         mut self,
         confirmar: super::acciones::Confirmar,

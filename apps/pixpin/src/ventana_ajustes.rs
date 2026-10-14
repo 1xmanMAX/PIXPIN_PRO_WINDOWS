@@ -301,6 +301,8 @@ enum Clave {
     AsistenteMotor,
     /// Seguir con el local si la nube falla (`[asistente] respaldo_local`).
     AsistenteRespaldo,
+    /// Gemma 4 E2B para mirar fotos (`[asistente] mejor_vista`).
+    AsistenteMejorVista,
     /// La caja de la clave de un proveedor (indice en `Proveedor::TODOS`).
     /// No es un ajuste: la clave va cifrada a su fichero, nunca al TOML.
     ClaveNube(u8),
@@ -863,6 +865,16 @@ fn filas_de_seccion(s: Seccion, a: &Ajustes, cx: &Contexto) -> Vec<(Clave, Fila)
                     tt("ajustes2-ayuda-asistente-respaldo"),
                     Control::Interruptor(a.asistente.respaldo_local),
                 ),
+                // El modelo de mejor vista (Gemma 4 E2B): opcional, se baja
+                // aparte desde el chat «Asistente» y solo se usa para MIRAR
+                // una foto (`seleccion::pide_mejor_vista`).
+                op(
+                    a,
+                    Clave::AsistenteMejorVista,
+                    tt("ajustes2-asistente-mejor-vista"),
+                    crate::asistente::motor::estado_mejor_vista(t),
+                    Control::Interruptor(a.asistente.mejor_vista),
+                ),
                 grupo(t, "ajustes2-g-claves"),
             ];
             for (i, p) in Proveedor::TODOS.into_iter().enumerate() {
@@ -1181,6 +1193,7 @@ fn restablecer(clave: Clave, a: &mut Ajustes) {
         Clave::AsistenteModelo => a.asistente.modelo = d.asistente.modelo.clone(),
         Clave::AsistenteMotor => a.asistente.motor = d.asistente.motor.clone(),
         Clave::AsistenteRespaldo => a.asistente.respaldo_local = d.asistente.respaldo_local,
+        Clave::AsistenteMejorVista => a.asistente.mejor_vista = d.asistente.mejor_vista,
         Clave::Presencia => a.sincro.presencia = d.sincro.presencia,
         Clave::LoMioManda => a.sincro.lo_mio_manda = d.sincro.lo_mio_manda,
         Clave::AbrirCon => a.abrir_con = d.abrir_con,
@@ -1327,6 +1340,13 @@ fn aplicar_interruptor(a: &mut Ajustes, clave: Clave) {
         Clave::Arranque => a.arranque_con_windows = !a.arranque_con_windows,
         Clave::TemaCosmos => a.tema_cosmos = !a.tema_cosmos,
         Clave::AsistenteRespaldo => a.asistente.respaldo_local = !a.asistente.respaldo_local,
+        Clave::AsistenteMejorVista => {
+            a.asistente.mejor_vista = !a.asistente.mejor_vista;
+            // Apagado, Gemma no se queda ocupando memoria.
+            if !a.asistente.mejor_vista {
+                crate::asistente::motor::soltar_mejor_vista();
+            }
+        }
         Clave::PdfAligerar => a.pdf.aligerar_al_entrar = !a.pdf.aligerar_al_entrar,
         Clave::Apilar => {
             // Cero apaga la pila; encenderla vuelve a su numero de fabrica
@@ -3178,6 +3198,7 @@ mod pruebas {
             Clave::VozSegundo,
             Clave::VozModo,
             Clave::AsistenteModelo,
+            Clave::AsistenteMejorVista,
             Clave::Presencia,
             Clave::LoMioManda,
             Clave::AbrirCon,

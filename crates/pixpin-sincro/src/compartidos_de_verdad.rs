@@ -487,7 +487,7 @@ fn pedir_a_mano_un_archivo_de_otro_chat_se_rechaza() {
         assert!(r.error.is_some());
         // Ni borrar proyectos, ni la galeria, ni las listas del grupo, ni
         // un archivo suelto.
-        for t in ["borrarchat", "galeria", "compartidos", "suelto"] {
+        for t in ["borrarchat", "galeria", "compartidos", "suelto", "recetas"] {
             let r = pedir(&mut c, &Peticion::sobre(t, "p2"));
             assert!(r.error.is_some(), "{t}");
         }

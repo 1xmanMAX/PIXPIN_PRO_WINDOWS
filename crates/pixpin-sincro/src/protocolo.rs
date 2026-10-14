@@ -29,6 +29,7 @@ use crate::mensajes::{
     Aparato, ArchivoInfo, Chat, Hola, LapidaDeChat, OCUPADO, Peticion, Respuesta,
 };
 use crate::mezcla::Mando;
+use crate::recetas;
 
 /// Lo que puede salir mal hablando con el otro.
 #[derive(Debug, thiserror::Error)]
@@ -1043,6 +1044,25 @@ impl<D: Disco + ?Sized> Respondedor<'_, D> {
                 ));
                 Ok(())
             }
+            // **Las recetas del asistente, entre aparatos del grupo**
+            // (13-oct-2026): se juntan y se devuelve lo juntado. Con una
+            // persona no llega aqui (`solo_del_grupo`).
+            recetas::PETICION if acceso.is_none() => {
+                let Some(suyas) = p.parche.as_deref().and_then(recetas::de_texto) else {
+                    return Err(fallo("recetas que no se entienden".to_string()));
+                };
+                let raiz = d.raiz();
+                let mias = recetas::leer(&raiz).unwrap_or_default();
+                let juntas = recetas::juntar(&mias, &suyas, ahora);
+                recetas::guardar(&raiz, &juntas)?;
+                enviar(
+                    canal,
+                    &Respuesta {
+                        parche: Some(recetas::a_texto(&juntas)),
+                        ..Default::default()
+                    },
+                )
+            }
             // **Las listas de los chats compartidos, entre aparatos del
             // grupo** (13-oct-2026): se juntan enteras —son mias— y el otro
             // aparato entra en los que estoy yo.
@@ -1292,6 +1312,7 @@ fn solo_del_grupo(t: &str) -> bool {
     t == crate::al_lienzo::SUELTO
         || galeria::es_de_galeria(t)
         || t == "compartidos"
+        || t == recetas::PETICION
         || t == "borrarchat"
 }
 
@@ -1647,6 +1668,39 @@ impl<'a, D: Disco + ?Sized, F: Read + Write> Sesion<'a, D, F> {
     /// Si `rel` de `chat` es de otro chat (solo con una persona).
     fn vedado(&self, chat: &str, rel: &str) -> bool {
         self.acceso.as_ref().is_some_and(|a| a.vedado(chat, rel))
+    }
+
+    /// **Las recetas del asistente entre mis aparatos** (`recetas`,
+    /// 13-oct-2026): mando las mias, el otro junta, guarda y me devuelve lo
+    /// juntado, que guardo. `false` si el otro no sabe de recetas (un
+    /// aparato de antes) o si es una persona: a una persona nunca.
+    pub fn recetas(&mut self, ahora: i64) -> Resultado<bool> {
+        if self.acceso.is_some() {
+            return Ok(false);
+        }
+        let raiz = self.disco.raiz();
+        // Un fichero roto aqui no se manda ni se pisa a ciegas: se junta
+        // como si no hubiera ninguna y `guardar` lo aparta antes.
+        let mias = recetas::leer(&raiz).unwrap_or_default();
+        enviar(
+            &mut self.canal,
+            &Peticion {
+                parche: Some(recetas::a_texto(&mias)),
+                ..Peticion::de(recetas::PETICION)
+            },
+        )?;
+        let r = leer_respuesta_sin_lanzar(&mut self.canal)?;
+        if r.error.is_some() {
+            return Ok(false);
+        }
+        let Some(juntas) = r.parche.as_deref().and_then(recetas::de_texto) else {
+            return Ok(false);
+        };
+        // Lo de el ya es lo juntado; se junta otra vez con lo mio por si
+        // algo cambio aqui entre tanto (juntar es idempotente).
+        let juntas = recetas::juntar(&mias, &juntas, ahora);
+        recetas::guardar(&raiz, &juntas)?;
+        Ok(true)
     }
 
     /// **Las listas de los chats compartidos con otro aparato del grupo**
@@ -2583,6 +2637,14 @@ impl<'a, D: Disco + ?Sized, F: Read + Write> Sesion<'a, D, F> {
     /// Si esta vuelta lleva galeria.
     pub fn tiene_galeria(&self) -> bool {
         self.capturas.is_some()
+    }
+
+    /// Una peticion cualquiera y su respuesta tal cual (con su error si lo
+    /// hay), para probar lo que el otro hace con algo raro.
+    #[cfg(test)]
+    pub(crate) fn pedir_de_prueba(&mut self, p: &Peticion) -> Resultado<Respuesta> {
+        enviar(&mut self.canal, p)?;
+        leer_respuesta_sin_lanzar(&mut self.canal)
     }
 
     /// Un `poncaptura` con el nombre que se quiera, para probar que el otro

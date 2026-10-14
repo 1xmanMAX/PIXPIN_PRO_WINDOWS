@@ -85,8 +85,43 @@ pub const QWEN35_08B: Modelo = Modelo {
 
 pub const MODELOS: [Modelo; 2] = [QWEN35_2B, QWEN35_08B];
 
+/// **El de mejor vista** (opcional, 13-oct-2026): Gemma 4 E2B de Google
+/// (Apache-2.0), 4 bits, con su proyector de vision. ~4,1 GB de descarga y
+/// ~3,7 GB de RAM (medido, documento §4.2): leyo «HOLA PIXPIN 2026» exacto
+/// donde el 2B leyo «HOLPIXIN». Por eso NO es el de siempre: se baja solo si
+/// el usuario lo pide (Ajustes → Asistente → «Mejor vista con fotos») y se
+/// usa solo con una foto dificil (`seleccion::pide_mejor_vista`); para lo
+/// demas sigue el 2B, que llama herramientas mejor y pesa la mitad.
+///
+/// Las URL van a la revision exacta del repositorio
+/// (`unsloth/gemma-4-E2B-it-GGUF`, `0314792d…`, del 17-jul-2026) y las
+/// huellas son las del LFS de Hugging Face, comprobadas el 13-oct-2026
+/// contra la API (`/api/models/…/tree/main`) y contra los ficheros bajados
+/// para las medidas.
+pub const GEMMA4_E2B: Modelo = Modelo {
+    id: "gemma-4-e2b",
+    nombre: "Gemma 4 E2B (mejor vista)",
+    licencia: "Apache-2.0",
+    pesos: Fichero {
+        nombre: "gemma-4-E2B-it-Q4_K_M.gguf",
+        url: "https://huggingface.co/unsloth/gemma-4-E2B-it-GGUF/resolve/0314792d7f1f7e229411f620751375812bb9faf2/gemma-4-E2B-it-Q4_K_M.gguf",
+        bytes: 3_106_738_272,
+        sha256: "740185b21d22ceb83a11c3aa62ad5842ef32c70f6096d756bbee85a1e4ec34b8",
+    },
+    vision: Some(Fichero {
+        nombre: "mmproj-F16.gguf",
+        url: "https://huggingface.co/unsloth/gemma-4-E2B-it-GGUF/resolve/0314792d7f1f7e229411f620751375812bb9faf2/mmproj-F16.gguf",
+        bytes: 985_654_080,
+        sha256: "140be8d7849741f88c50757d529b84373ee8e27052cc2236855b537f4a8215fa",
+    }),
+    ram_mb: 3700,
+};
+
+/// Los que se bajan solo si se piden y no se eligen como «el de siempre».
+pub const OPCIONALES: [Modelo; 1] = [GEMMA4_E2B];
+
 pub fn por_id(id: &str) -> Option<Modelo> {
-    MODELOS.iter().copied().find(|m| m.id == id)
+    MODELOS.iter().chain(OPCIONALES.iter()).copied().find(|m| m.id == id)
 }
 
 /// El motor: la version de llama.cpp con Vulkan para Windows x64. Trae
@@ -147,7 +182,7 @@ mod pruebas {
 
     #[test]
     fn las_huellas_son_sha256_en_hexadecimal() {
-        let mut todas: Vec<Fichero> = MODELOS.iter().flat_map(|m| m.ficheros()).collect();
+        let mut todas: Vec<Fichero> = MODELOS.iter().chain(OPCIONALES.iter()).flat_map(|m| m.ficheros()).collect();
         todas.push(LLAMA_CPP.zip);
         for f in todas {
             assert_eq!(f.sha256.len(), 64, "{}", f.nombre);
@@ -172,6 +207,10 @@ mod pruebas {
     #[test]
     fn se_encuentran_por_id() {
         assert_eq!(por_id("qwen3.5-2b"), Some(QWEN35_2B));
+        assert_eq!(por_id("gemma-4-e2b"), Some(GEMMA4_E2B));
+        // El opcional no es uno de los «de siempre» de la tarjeta.
+        assert!(!MODELOS.contains(&GEMMA4_E2B));
+        assert!(GEMMA4_E2B.bytes() > 4_000_000_000 && GEMMA4_E2B.bytes() < 4_200_000_000);
         assert_eq!(por_id("gpt-9"), None);
     }
 }
