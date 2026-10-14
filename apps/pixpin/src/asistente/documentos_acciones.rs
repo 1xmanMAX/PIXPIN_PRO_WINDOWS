@@ -278,10 +278,12 @@ pub fn elegir(cx: &Contexto, archivo: Option<&str>, s: Sirve) -> Result<Candidat
             .iter()
             .take(5)
             .enumerate()
-            .map(|(i, c)| format!("{}) «{}» (chat {})", i + 1, c.nombre, c.proyecto_nombre))
+            .map(|(i, c)| format!("{}) {} (chat {})", i + 1, c.nombre, c.proyecto_nombre))
             .collect();
+        // La pregunta ya hecha: un modelo pequeno la copia tal cual (medido
+        // 14-oct: con solo «pregunta cual», el 2B preguntaba sin la lista).
         return Err(format!(
-            "hay {} archivos que encajan con «{descripcion}»; pregunta al usuario cual con esta lista corta y vuelve a llamar con su nombre exacto: {}",
+            "no abras nada todavia; contesta al usuario EXACTAMENTE esto: «Hay {} que encajan: {}. ¿Cual?» y, cuando elija, vuelve a llamar con su nombre exacto",
             parecidos.len(),
             lista.join("; ")
         ));

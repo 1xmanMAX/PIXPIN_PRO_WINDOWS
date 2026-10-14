@@ -1474,6 +1474,19 @@ pub(crate) fn tabla_de_filas(nombre: &str, filas: &[Vec<String>], cabecera: bool
             }
         }
     }
+    // Cada columna, del ancho de su texto mas largo (como al pegar una
+    // tabla): sin esto un nombre de calle se corta en la rejilla.
+    let columnas = filas.iter().map(Vec::len).max().unwrap_or(0).min(200);
+    for c in 0..columnas {
+        let letras = filas.iter().filter_map(|f| f.get(c)).map(|s| s.trim().chars().count()).max().unwrap_or(0);
+        let ancho = (letras as u32 * 8 + 16).clamp(64, 320);
+        if ancho > 88 {
+            t.anchos.insert(
+                pixpin_proyecto::tabla::ref_a(Ref { columna: c as u32, fila: 0 }).trim_end_matches(|c: char| c.is_ascii_digit()).to_string(),
+                ancho,
+            );
+        }
+    }
     t
 }
 
@@ -2331,6 +2344,8 @@ mod pruebas {
         assert!(!t.celdas.contains_key("B3"), "una celda vacia no se escribe");
         assert!(t.estilos.get("A1").is_some_and(|e| e.n));
         assert!(!t.estilos.contains_key("A2"));
+        assert!(t.anchos.get("A").is_some_and(|a| *a > 88), "la columna ancha se ensancha");
+        assert!(!t.anchos.contains_key("B"), "la estrecha se queda como siempre");
         // Sin cabecera, nada en negrita; sin nombre, «Tabla».
         let m = nueva_tabla(&raiz, &f.id, "PC01", "", &filas, false, 5).unwrap();
         assert_eq!(m.nombre, "Tabla");

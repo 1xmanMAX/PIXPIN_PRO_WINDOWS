@@ -85,7 +85,7 @@ fn el_archivo_se_elige_por_lo_que_dice_el_usuario_y_si_hay_dos_se_pregunta() {
     assert!(c.ruta.is_file());
     // Dos que encajan igual: se pregunta con la lista corta.
     let e = elegir(&cx, Some("plano de señalización vertical"), Sirve::Cualquiera).unwrap_err();
-    assert!(e.contains("pregunta al usuario") && e.contains("tahuantinsuyo") && e.contains("florida"), "{e}");
+    assert!(e.contains("¿Cual?") && e.contains("tahuantinsuyo") && e.contains("florida"), "{e}");
     // El tipo dicho cuenta: «el pdf de la memoria».
     assert_eq!(elegir(&cx, Some("el pdf de la memoria"), Sirve::Cualquiera).unwrap().nombre, "Memoria descriptiva.pdf");
     // Sin nombre: lo mas reciente de este chat.
