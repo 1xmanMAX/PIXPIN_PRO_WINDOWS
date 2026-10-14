@@ -94,7 +94,7 @@ use crate::overlay::Recursos;
 
 mod cola;
 mod elegir;
-mod office;
+pub(crate) mod office;
 mod voz;
 #[cfg(test)]
 mod medir;
@@ -193,6 +193,23 @@ pub fn abrir_en_la_pagina(ruta: &Path, pagina: u32) {
 /// La pagina pedida para `ruta`, si la hay (y se olvida).
 fn tomar_pagina_al_abrir(ruta: &Path) -> Option<u32> {
     let mut v = PAGINA_AL_ABRIR.lock().unwrap_or_else(|e| e.into_inner());
+    let i = v.iter().position(|(r, _)| r == ruta)?;
+    Some(v.remove(i).1)
+}
+
+/// Lo que se busca al abrir un fichero (el asistente: `abrir` con
+/// `buscar`). Como [`PAGINA_AL_ABRIR`], se toma al abrir.
+static BUSQUEDA_AL_ABRIR: std::sync::Mutex<Vec<(std::path::PathBuf, String)>> = std::sync::Mutex::new(Vec::new());
+
+/// **Que la proxima vez que se abra `ruta` busque `texto`** y lo ensene.
+pub fn abrir_buscando(ruta: &Path, texto: &str) {
+    let mut v = BUSQUEDA_AL_ABRIR.lock().unwrap_or_else(|e| e.into_inner());
+    v.retain(|(r, _)| r != ruta);
+    v.push((ruta.to_path_buf(), texto.to_string()));
+}
+
+fn tomar_busqueda_al_abrir(ruta: &Path) -> Option<String> {
+    let mut v = BUSQUEDA_AL_ABRIR.lock().unwrap_or_else(|e| e.into_inner());
     let i = v.iter().position(|(r, _)| r == ruta)?;
     Some(v.remove(i).1)
 }
@@ -871,6 +888,13 @@ fn abrir_con(
     // Se estaba escuchando con el lector cerrado: hace falta su texto para
     // engancharse (`voz::vuelta`).
     if e.engancharse {
+        voz::pedir_el_texto(&mut e, ruta);
+    }
+    // Abierto por el asistente para ensenar un texto: la caja de buscar ya
+    // escrita; al llegar el texto (`recoger_texto`) salta a la coincidencia
+    // desde la pagina pedida y la marca, como con Ctrl+F.
+    if let Some(q) = tomar_busqueda_al_abrir(ruta) {
+        e.hallar.caja.buscar_ya(&q);
         voz::pedir_el_texto(&mut e, ruta);
     }
     let mut hay_que_pintar = true;

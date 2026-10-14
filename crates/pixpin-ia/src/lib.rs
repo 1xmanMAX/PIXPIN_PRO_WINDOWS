@@ -60,6 +60,7 @@
 //!   lee con `pixpin_motor2d::excalidraw::leer`, como un fichero del movil.
 
 pub mod acciones;
+pub mod acciones_documentos;
 pub mod agente;
 pub mod base64;
 pub mod calcar;
@@ -76,6 +77,7 @@ pub mod nube;
 pub mod pensar;
 pub mod seleccion;
 pub mod servidor;
+pub mod tabla_escaneada;
 pub mod sse;
 
 pub use agente::{Ejecutor, Evento, turno};

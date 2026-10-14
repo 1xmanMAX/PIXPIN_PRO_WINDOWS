@@ -1507,6 +1507,7 @@ soltar-anadidos = { $n } added to the chat
 soltar-ninguno = Nothing could be added
 chat-anadir-arrastrando = Add by dragging…
 pedido-lista-hecha = List “{ $lista }” created in “{ $proyecto }”.
+pedido-tabla-hecha = Table “{ $tabla }” created in “{ $proyecto }”.
 pedido-tarea-anadida = “{ $tarea }” added to “{ $lista }”.
 pedido-tarea-hecha = “{ $tarea }” marked as done.
 pedido-tarea-pendiente = “{ $tarea }” is pending again.

@@ -17,9 +17,35 @@ use pixpin_store::{Idioma, Ubicacion};
 /// Imprimir los marcos del plano, con su lamina y su membrete.
 mod imprimir;
 /// Lo anotado sobre el plano (la capa anot-<uid>).
-mod anotar;
+pub(crate) mod anotar;
 /// Exportar el plano: HTML por capas, PDF, PNG y DXF (13-oct-2026).
 pub(crate) mod exportar;
+/// Los textos del plano con su sitio, para buscar en ellos (14-oct-2026).
+pub(crate) mod textos;
+
+/// Donde mirar al abrir un plano (`[x, y, ancho]` del dibujo): el
+/// asistente llevando a un texto encontrado (`abrir` con `zona`). Como la
+/// pagina del lector de PDF, se toma al abrir.
+static VISTA_AL_ABRIR: std::sync::Mutex<Vec<(PathBuf, [f64; 3])>> = std::sync::Mutex::new(Vec::new());
+
+/// **Que la proxima vez que se abra `plano` mire ahi.**
+pub fn abrir_en(plano: &Path, vista: [f64; 3]) {
+    let mut v = VISTA_AL_ABRIR.lock().unwrap_or_else(|e| e.into_inner());
+    v.retain(|(r, _)| r != plano);
+    v.push((plano.to_path_buf(), vista));
+}
+
+fn tomar_vista_al_abrir(plano: &Path) -> Option<[f64; 3]> {
+    let mut v = VISTA_AL_ABRIR.lock().unwrap_or_else(|e| e.into_inner());
+    let i = v.iter().position(|(r, _)| r == plano)?;
+    Some(v.remove(i).1)
+}
+
+/// El plano leido (de la cache o en el proceso aparte), para quien no es
+/// el visor: el asistente anotando encima.
+pub(crate) fn modelo(raiz: &Path, plano: &Path) -> Result<pixpin_cad::modelo::Modelo, String> {
+    cargar(raiz, plano)
+}
 
 /// La orden con que PixPin se llama a si misma para exportar un plano.
 pub const ORDEN_EXPORTAR: &str = exportar::ORDEN;
@@ -40,6 +66,9 @@ pub fn convertir_si_toca() -> Option<i32> {
     let args: Vec<std::ffi::OsString> = std::env::args_os().collect();
     if args.get(1).is_some_and(|a| a == ORDEN_EXPORTAR) {
         return Some(exportar::en_este_proceso(&args[2..]));
+    }
+    if args.get(1).is_some_and(|a| a == textos::ORDEN) {
+        return Some(textos::en_este_proceso(&args[2..]));
     }
     if args.get(1).is_none_or(|a| a != ORDEN) {
         return None;
@@ -119,6 +148,11 @@ fn cargar(raiz: &Path, ruta: &Path) -> Result<pixpin_cad::modelo::Modelo, String
         // Tocarlo: es de los recientes.
         let _ = std::fs::File::options().append(true).open(&destino);
         return Ok(m);
+    }
+    // En las pruebas el ejecutable es el de las pruebas, que no sabe la
+    // orden: se lee aqui mismo.
+    if cfg!(test) {
+        return pixpin_cad::letras::convertir_con_letras(ruta, Some(letras));
     }
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
     let mut orden = std::process::Command::new(exe);
@@ -238,6 +272,7 @@ pub fn lanzar(idioma: Idioma, ubicacion: Ubicacion, ruta: &Path) {
             anotador: Some(anotador),
             letras: Some(letras),
             exportar: Some(exportar),
+            vista_inicial: tomar_vista_al_abrir(&ruta),
         };
         if let Err(e) = pixpin_cad::ventana::ver(&titulo, rx, textos(idioma), acciones) {
             tracing::warn!(%e, "no se pudo abrir el visor de planos");

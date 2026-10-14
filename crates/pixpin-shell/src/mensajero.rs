@@ -165,7 +165,7 @@ pub mod respuesta {
 /// accion desconocida sin esperar al bucle. La aplicacion tiene una prueba
 /// que comprueba que entiende todas (`pedidos.rs`): si una se anade aqui y
 /// no alli, falla.
-pub const ACCIONES: [&str; 28] = [
+pub const ACCIONES: [&str; 29] = [
     "abrir",
     "chat",
     "nota_nueva",
@@ -196,6 +196,8 @@ pub const ACCIONES: [&str; 28] = [
     // automatizaciones.
     "asistente",
     "automatizacion",
+    // 14-oct: una tabla del chat ya rellena (el asistente, tabla escaneada).
+    "tabla_nueva",
 ];
 
 /// Mira un pedido por encima: lo justo para contestar en el acto.

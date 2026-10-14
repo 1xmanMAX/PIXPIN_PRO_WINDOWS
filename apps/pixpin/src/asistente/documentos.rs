@@ -498,7 +498,7 @@ pub fn poner_ubicacion(u: Ubicacion) {
     s.ubicacion = Some(u);
 }
 
-fn raiz() -> Option<PathBuf> {
+pub(crate) fn raiz() -> Option<PathBuf> {
     servicio().ubicacion.as_ref().map(|u| u.raiz().to_path_buf())
 }
 

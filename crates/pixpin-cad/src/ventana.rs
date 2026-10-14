@@ -1044,6 +1044,10 @@ pub struct Acciones {
     /// Exportar (HTML, PDF, PNG, DXF...): lo mismo que imprimir recibe.
     #[allow(clippy::type_complexity)]
     pub exportar: Option<Box<dyn Fn(isize, &Modelo, &[[f64; 4]], &[Vec<[f64; 2]>])>>,
+    /// Donde mirar al abrir, en vez del plano entero: `[x, y, ancho]` en
+    /// coordenadas del dibujo (el centro y lo que cabe a lo ancho). Lo pide
+    /// el asistente al llevar a un texto encontrado (`abrir` con `zona`).
+    pub vista_inicial: Option<[f64; 3]>,
 }
 
 /// La firma de las cotas y los marcos (para saber si cambiaron y guardarlos
@@ -1088,6 +1092,7 @@ pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo, String>>, textos_ui: 
     let abrir_3d = &acciones.abrir_3d;
     // El motor del lienzo para anotar: nace cuando llega el plano.
     let mut hacer_anotador = acciones.anotador.take();
+    let vista_inicial = acciones.vista_inicial.take();
     let mut anotador: Option<Box<dyn crate::anotado::Anotador>> = None;
     let mut anotando = false;
     let (hwnd, mut w, mut h) = crear_ventana(w!("PixPinPlanoCad"), &format!("{titulo} — PixPin")).map_err(|e| e.to_string())?;
@@ -1189,6 +1194,15 @@ pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo, String>>, textos_ui: 
                                     if n.len() == 3 && n[2] > 0.0 {
                                         camara = Camara { centro: [n[0] - m.origen[0], n[1] - m.origen[1]], px: n[2] / w.max(1) as f64 };
                                     }
+                                }
+                                // Lo pedido al abrir (el asistente llevando a un texto).
+                                if let Some([x, y, ancho]) = vista_inicial
+                                    && !otra_vez
+                                    && ancho > 0.0
+                                    && x.is_finite()
+                                    && y.is_finite()
+                                {
+                                    camara = Camara { centro: [x - m.origen[0], y - m.origen[1]], px: ancho / w.max(1) as f64 };
                                 }
                                 destino = camara;
                                 sin_dibujo_civil = m

@@ -70,6 +70,20 @@ pub enum Pedido {
         titulo: String,
         proyecto: Option<String>,
     },
+    /// Una tabla del chat (la mini-app `tabla`, la del pin de hoja que
+    /// viaja al movil) ya rellena: `filas[f][c]`, en texto. `cabecera`: la
+    /// primera fila en negrita. `abrir`: sacarla ya como pin. Lo usa el
+    /// asistente al pasar una tabla escaneada (14-oct-2026).
+    TablaNueva {
+        nombre: String,
+        proyecto: Option<String>,
+        #[serde(default)]
+        filas: Vec<Vec<String>>,
+        #[serde(default)]
+        cabecera: bool,
+        #[serde(default)]
+        abrir: bool,
+    },
     /// `imagenes`: rutas absolutas de imagenes que van con la tarea. En
     /// `texto`, `[img 01]`, `[img 02]`… (desde 1, en el orden de la lista)
     /// marcan donde va cada una; la que no tenga ficha va al final.
@@ -279,8 +293,23 @@ pub enum Que {
         /// paginas: la cita de `buscar_en_mis_cosas` lleva a ella.
         #[serde(default)]
         pagina: Option<u32>,
+        /// Un texto que ensenar (14-oct, el asistente: «¿donde dice JR.
+        /// ANTISUYO?»): un PDF o un Office se abre con la caja de buscar ya
+        /// escrita y salta a la primera coincidencia desde `pagina`.
+        #[serde(default)]
+        buscar: Option<String>,
+        /// Donde mirar en un plano: `[x, y, ancho]` en coordenadas del
+        /// dibujo (el centro y lo que cabe a lo ancho).
+        #[serde(default)]
+        zona: Option<Zona>,
     },
 }
+
+/// `[x, y, ancho]` de un plano. Aparte para que el pedido siga siendo `Eq`.
+#[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
+pub struct Zona(pub [f64; 3]);
+
+impl Eq for Zona {}
 
 /// Lee un pedido. Un fallo aqui es un pedido que paso el vistazo de la
 /// ventana (version y accion buenas) pero le falta un campo o lo trae de
@@ -527,12 +556,25 @@ fn hacer(p: Pedido, cx: &Contexto) -> Result<Hecho, Fallo> {
                     },
                 );
             }
-            Que::Fichero { ruta, pagina } => {
+            Que::Fichero {
+                ruta,
+                pagina,
+                buscar,
+                zona,
+            } => {
                 if !ruta.is_file() {
                     return Err(Fallo::SinFichero(ruta));
                 }
                 if let Some(p) = pagina.filter(|p| *p >= 1) {
                     crate::lector_pdf::abrir_en_la_pagina(&ruta, p - 1);
+                }
+                if let Some(q) = buscar.as_deref().map(str::trim).filter(|q| !q.is_empty()) {
+                    crate::lector_pdf::abrir_buscando(&ruta, q);
+                }
+                if let Some(Zona(z)) = zona
+                    && crate::plano_cad::se_abre(&ruta.to_string_lossy())
+                {
+                    crate::plano_cad::abrir_en(&ruta, z);
                 }
                 // Una leccion abre su ficha, no un visor de archivos
                 // (`MensajesActivity.kt`).
@@ -696,6 +738,25 @@ fn hacer(p: Pedido, cx: &Contexto) -> Result<Hecho, Fallo> {
             };
             let _ = (ficha, consulta);
             crate::lecciones::lista(cx.ubicacion.clone(), cx.idioma);
+        }
+        Pedido::TablaNueva {
+            nombre,
+            proyecto,
+            filas,
+            cabecera,
+            abrir,
+        } => {
+            let f = ficha_de(raiz, proyecto.as_deref(), cx.aparato, ahora)?;
+            let m = nueva_tabla(raiz, &f.id, cx.aparato, &nombre, &filas, cabecera, ahora)?;
+            crate::ventana_chat::refrescar();
+            if abrir {
+                crate::hoja_pin::abrir_desde_chat(cx.idioma, cx.ubicacion, &f.id, std::slice::from_ref(&m), 0);
+                return Ok(Hecho::default());
+            }
+            return Ok(aviso(
+                "pedido-tabla-hecha",
+                &[("tabla", m.nombre), ("proyecto", f.nombre)],
+            ));
         }
         Pedido::ListaNueva { titulo, proyecto } => {
             let f = ficha_de(raiz, proyecto.as_deref(), cx.aparato, ahora)?;
@@ -1341,6 +1402,81 @@ pub(crate) fn nueva_lista(
     Ok(m)
 }
 
+/// **Una tabla del chat ya rellena** (`pixpin_proyecto::tabla`), como la que
+/// crea el clip pero con sus celdas: `filas[f][c]` va a la celda de la
+/// columna `c` y la fila `f` (A1 arriba a la izquierda). Con `cabecera`, la
+/// primera fila en negrita (lo unico de cabecera que entiende Android).
+/// Las celdas que son numeros escritos a la espanola o con miles («1 250,50»)
+/// se guardan como numero, para que sumen.
+pub(crate) fn nueva_tabla(
+    raiz: &Path,
+    proyecto: &str,
+    aparato: &str,
+    nombre: &str,
+    filas: &[Vec<String>],
+    cabecera: bool,
+    ahora: i64,
+) -> Result<cuaderno::Mensaje, Fallo> {
+    let t = tabla_de_filas(nombre, filas, cabecera, ahora);
+    let nombre = t.nombre.clone();
+    let documento = t.escribir().map_err(|e| Fallo::Roto(e.to_string()))?;
+    let numero = crate::ventana_chat::siguiente_numero_en(raiz, proyecto)?;
+    let m = cuaderno::Mensaje::miniapp(
+        pixpin_proyecto::tabla::MINIAPP,
+        &nombre,
+        &documento,
+        &cuaderno::Sello {
+            cuando: pixpin_shell::entorno::ahora_utc_ms(),
+            numero,
+            aparato: aparato.to_string(),
+            proyecto: proyecto.to_string(),
+        },
+    );
+    cuaderno::anadir(&almacen::carpeta(raiz, proyecto), &m)?;
+    crate::ventana_chat::subir_en_la_lista(raiz, proyecto, m.cuando, &nombre)?;
+    Ok(m)
+}
+
+/// La tabla de unas filas de texto (ver [`nueva_tabla`]); tambien la del
+/// Excel del asistente.
+pub(crate) fn tabla_de_filas(nombre: &str, filas: &[Vec<String>], cabecera: bool, ahora: i64) -> pixpin_proyecto::tabla::Tabla {
+    use pixpin_proyecto::tabla::{EstiloDeCelda, Ref, Tabla, ref_a};
+    let nombre = match nombre.trim() {
+        "" => "Tabla",
+        n => n,
+    };
+    let mut t = Tabla {
+        nombre: nombre.to_string(),
+        tocado: ahora,
+        ..Default::default()
+    };
+    for (f, fila) in filas.iter().enumerate().take(5000) {
+        for (c, texto) in fila.iter().enumerate().take(200) {
+            let r = Ref {
+                columna: c as u32,
+                fila: f as u32,
+            };
+            let texto = texto.trim();
+            let valor = if f == 0 && cabecera {
+                texto.to_string()
+            } else {
+                pixpin_ia::tabla_escaneada::como_numero(texto).unwrap_or_else(|| texto.to_string())
+            };
+            t.poner(r, &valor);
+            if f == 0 && cabecera && !texto.is_empty() {
+                t.estilos.insert(
+                    ref_a(r),
+                    EstiloDeCelda {
+                        n: true,
+                        ..Default::default()
+                    },
+                );
+            }
+        }
+    }
+    t
+}
+
 /// La lista de tareas en la que se apunta: la pedida por su codigo, o si no
 /// se pidio ninguna la ultima del chat (la mas reciente), o una nueva con
 /// `titulo_nueva` si el chat no tiene ninguna.
@@ -1625,7 +1761,7 @@ mod pruebas {
 
     /// Un ejemplo de cada accion, con lo minimo que pide la tabla del
     /// protocolo.
-    const EJEMPLOS: [(&str, &str); 28] = [
+    const EJEMPLOS: [(&str, &str); 29] = [
         (
             "asistente",
             r#"{"pixpin":1,"accion":"asistente","texto":"apunta comprar yeso","proyecto":"pr-1"}"#,
@@ -1633,6 +1769,10 @@ mod pruebas {
         (
             "automatizacion",
             r#"{"pixpin":1,"accion":"automatizacion","operacion":"crear","receta":{"nombre":"Resumen","disparador":{"tipo":"a_la_hora","hora":"08:00"},"pasos":"[\"Resume mis tareas pendientes\"]"}}"#,
+        ),
+        (
+            "tabla_nueva",
+            r#"{"pixpin":1,"accion":"tabla_nueva","nombre":"Costos","filas":[["Calle","Costo"],["Jr. Antisuyo","1 250,50"]],"cabecera":true}"#,
         ),
         (
             "sincronizar",
@@ -1792,6 +1932,8 @@ mod pruebas {
                 que: Que::Fichero {
                     ruta: PathBuf::from(r"C:\a b\ñ.pdf"),
                     pagina: None,
+                    buscar: None,
+                    zona: None,
                 }
             }
         );
@@ -1804,9 +1946,29 @@ mod pruebas {
                 que: Que::Fichero {
                     ruta: PathBuf::from(r"C:\t.pdf"),
                     pagina: Some(12),
+                    buscar: None,
+                    zona: None,
                 }
             }
         );
+        // Llevando a un texto (PDF) o a un sitio del plano (el asistente).
+        let f = leer(
+            r#"{"pixpin":1,"accion":"abrir","que":{"tipo":"fichero","ruta":"C:\\p.dwg","buscar":"JR. ANTISUYO","zona":[10.5,-3,80]}}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            f,
+            Pedido::Abrir {
+                que: Que::Fichero {
+                    ruta: PathBuf::from(r"C:\p.dwg"),
+                    pagina: None,
+                    buscar: Some("JR. ANTISUYO".into()),
+                    zona: Some(Zona([10.5, -3.0, 80.0])),
+                }
+            }
+        );
+        // Caso negativo: una zona sin sus tres numeros no se inventa.
+        assert!(leer(r#"{"pixpin":1,"accion":"abrir","que":{"tipo":"fichero","ruta":"C:\\p.dwg","zona":[1,2]}}"#).is_err());
         // Y el pedido que arma el asistente se lee igual.
         let p = pixpin_ia::documentos::Abrir::Fichero {
             ruta: PathBuf::from(r"C:\t.pdf"),
@@ -2143,6 +2305,41 @@ mod pruebas {
             Err(Fallo::SinTarea(2))
         ));
         assert_eq!(mensaje_de(&raiz, &f.id, &l.id).unwrap().texto, doc);
+        let _ = std::fs::remove_dir_all(&raiz);
+    }
+
+    /// La tabla del asistente es una tabla del chat como la del clip: la
+    /// mini-app `tabla`, con sus celdas en A1, la cabecera en negrita y los
+    /// numeros del papel ya como numeros (para que sumen en el movil).
+    #[test]
+    fn una_tabla_nueva_llega_rellena_al_chat() {
+        let (raiz, f) = almacen_de_prueba("tabla-nueva");
+        let filas = vec![
+            vec!["Calle".to_string(), "Costo".to_string()],
+            vec!["Jr. Antisuyo".to_string(), "1 250,50".to_string()],
+            vec!["R-1".to_string(), String::new()],
+        ];
+        let m = nueva_tabla(&raiz, &f.id, "PC01", " Costos ", &filas, true, 5).unwrap();
+        let guardado = cuaderno_de(&raiz, &f.id);
+        assert_eq!(guardado.len(), 1);
+        assert_eq!(guardado[0].miniapp.as_deref(), Some(pixpin_proyecto::tabla::MINIAPP));
+        assert_eq!(m.nombre, "Costos");
+        let t = pixpin_proyecto::tabla::Tabla::leer(&guardado[0].texto).unwrap();
+        assert_eq!(t.celdas.get("A1").map(String::as_str), Some("Calle"));
+        assert_eq!(t.celdas.get("B2").map(String::as_str), Some("1250.50"));
+        assert_eq!(t.celdas.get("A3").map(String::as_str), Some("R-1"));
+        assert!(!t.celdas.contains_key("B3"), "una celda vacia no se escribe");
+        assert!(t.estilos.get("A1").is_some_and(|e| e.n));
+        assert!(!t.estilos.contains_key("A2"));
+        // Sin cabecera, nada en negrita; sin nombre, «Tabla».
+        let m = nueva_tabla(&raiz, &f.id, "PC01", "", &filas, false, 5).unwrap();
+        assert_eq!(m.nombre, "Tabla");
+        assert!(pixpin_proyecto::tabla::Tabla::leer(&m.texto).unwrap().estilos.is_empty());
+        // El pedido que la crea se lee.
+        assert!(matches!(
+            leer(r#"{"pixpin":1,"accion":"tabla_nueva","nombre":"x","proyecto":"no-esta"}"#).map(|p| matches!(p, Pedido::TablaNueva { .. })),
+            Ok(true)
+        ));
         let _ = std::fs::remove_dir_all(&raiz);
     }
 

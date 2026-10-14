@@ -1508,6 +1508,7 @@ soltar-anadidos = { $n } añadidos al chat
 soltar-ninguno = No se pudo añadir nada
 chat-anadir-arrastrando = Añadir arrastrando…
 pedido-lista-hecha = Lista «{ $lista }» creada en «{ $proyecto }».
+pedido-tabla-hecha = Tabla «{ $tabla }» creada en «{ $proyecto }».
 pedido-tarea-anadida = «{ $tarea }» añadida a «{ $lista }».
 pedido-tarea-hecha = «{ $tarea }» marcada como hecha.
 pedido-tarea-pendiente = «{ $tarea }» vuelve a estar pendiente.

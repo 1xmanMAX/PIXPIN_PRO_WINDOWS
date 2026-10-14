@@ -180,6 +180,29 @@ impl Ejecutor for EjecutorDelChat {
                 let elementos = super::acciones::calcar_fichero(&ruta, p, semilla)?;
                 self.al_lienzo_elementos(elementos)
             }
+            // Los documentos (tabla escaneada, anotar, buscar dentro, abrir
+            // por su nombre, exportar): con los adjuntos de este chat.
+            Llamada::App(a) if pixpin_ia::acciones_documentos::es_de_documentos(a.herramienta) => {
+                let ubicacion = crate::oscuro::ubicacion();
+                let raiz = super::documentos::raiz()
+                    .or_else(|| ubicacion.as_ref().map(|u| u.raiz().to_path_buf()))
+                    .ok_or("no se sabe donde estan los datos de PixPin")?;
+                let idioma = ubicacion
+                    .as_ref()
+                    .map(crate::compartir::idioma_de)
+                    .unwrap_or(pixpin_store::Idioma::Espanol);
+                super::documentos_acciones::hacer(
+                    a,
+                    &super::documentos_acciones::Contexto {
+                        raiz: &raiz,
+                        proyecto: &self.proyecto,
+                        adjuntos: &self.adjuntos,
+                        mandar: &self.mandar,
+                        parar: &self.parar,
+                        idioma,
+                    },
+                )
+            }
             Llamada::App(a) => super::acciones::hacer(a, &self.confirmar, &self.mandar),
             Llamada::Ayuda(pregunta) => Ok(pixpin_ia::conocimiento::responder(pregunta)),
             Llamada::Buscar(p) => self.buscar(p),

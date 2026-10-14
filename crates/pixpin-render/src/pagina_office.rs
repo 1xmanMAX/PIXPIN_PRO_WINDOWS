@@ -127,6 +127,16 @@ fn es_serif(familia: &str) -> bool {
 }
 
 impl LetrasOffice {
+    /// Las de la fabrica compartida de DirectWrite, sin motor ni ventana:
+    /// para maquetar un Word en un hilo de fondo y saber donde cae cada
+    /// letra (el asistente buscando un texto, 14-oct-2026).
+    pub fn sin_motor() -> Option<LetrasOffice> {
+        use windows::Win32::Graphics::DirectWrite::{DWRITE_FACTORY_TYPE_SHARED, DWriteCreateFactory};
+        // SAFETY: crear la fabrica compartida no toma punteros del llamante.
+        let f: IDWriteFactory = unsafe { DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED) }.ok()?;
+        LetrasOffice::nuevo(&f)
+    }
+
     pub fn nuevo(dwrite: &IDWriteFactory) -> Option<LetrasOffice> {
         let mut coleccion = None;
         // SAFETY: la factoria vive; `coleccion` es la salida local.
