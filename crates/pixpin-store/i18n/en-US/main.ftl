@@ -2491,3 +2491,19 @@ ajustes2-clave-borrar = Delete
 ajustes2-clave-guardada = Saved and encrypted on this PC:
 ajustes2-clave-falta = No key. Get one at
 ajustes2-clave-probando = testing…
+
+## Assistant voice (13-oct-2026): talk to it and hear the answer
+ajustes2-g-asistente-voz = Assistant voice
+ajustes2-asistente-revisar-voz = Review what you said before sending
+ajustes2-ayuda-asistente-revisar-voz = With the microphone of the «Asistente» chat: what you say is written in the box so you can fix it and send it yourself. Off, it is sent right away.
+ajustes2-asistente-leer = Always read answers aloud
+ajustes2-ayuda-asistente-leer = Each answer is read aloud when it finishes, with the readers' voice (Microsoft's if turned on). Without this, press the speaker on the bubble.
+asistente-voz-pasando = Turning your voice into text… { $pct } %
+asistente-voz-bajando = Downloading the speech recognizer (once, ~160 MB)… { $pct } %
+asistente-voz-nada = Nothing was heard: speak closer to the microphone and try again.
+asistente-voz-sin-whisper = This PC can't turn voice into text: Windows' ONNX Runtime is missing.
+asistente-voz-fallo = Your voice couldn't be turned into text.
+asistente-voz-cancelado = Cancelled: nothing was sent.
+asistente-voz-nada-que-leer = This answer has no text to read.
+asistente-voz-leer = Read aloud
+asistente-voz-callar = Stop reading

@@ -332,6 +332,8 @@ pub(super) fn latido(ubicacion: &Ubicacion, mut abierto: Option<&mut Abierto>) -
                     tracing::warn!(?e, "asistente: no se pudo guardar la respuesta");
                 }
                 if acabo {
+                    // «Leer siempre las respuestas» (`voz_del_asistente`).
+                    super::voz_del_asistente::al_acabar(&s.proyecto, &s.nota);
                     let resumen: String = texto.chars().take(120).collect();
                     let _ = subir_en_la_lista(&raiz, &s.proyecto, pixpin_shell::entorno::ahora_utc_ms(), &resumen);
                 }

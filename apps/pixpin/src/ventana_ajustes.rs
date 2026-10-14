@@ -301,6 +301,11 @@ enum Clave {
     AsistenteMotor,
     /// Seguir con el local si la nube falla (`[asistente] respaldo_local`).
     AsistenteRespaldo,
+    /// Ver lo dicho al microfono del asistente antes de enviarlo
+    /// (`[asistente] revisar_lo_dicho`).
+    AsistenteRevisarVoz,
+    /// Leer en voz alta cada respuesta (`[asistente] leer_respuestas`).
+    AsistenteLeerSiempre,
     /// La caja de la clave de un proveedor (indice en `Proveedor::TODOS`).
     /// No es un ajuste: la clave va cifrada a su fichero, nunca al TOML.
     ClaveNube(u8),
@@ -863,6 +868,24 @@ fn filas_de_seccion(s: Seccion, a: &Ajustes, cx: &Contexto) -> Vec<(Clave, Fila)
                     tt("ajustes2-ayuda-asistente-respaldo"),
                     Control::Interruptor(a.asistente.respaldo_local),
                 ),
+                // La voz: el microfono de la caja (Whisper) y el altavoz de
+                // las respuestas (el lector de voz de la app). Valen igual
+                // con los tres motores.
+                grupo(t, "ajustes2-g-asistente-voz"),
+                op(
+                    a,
+                    Clave::AsistenteRevisarVoz,
+                    tt("ajustes2-asistente-revisar-voz"),
+                    tt("ajustes2-ayuda-asistente-revisar-voz"),
+                    Control::Interruptor(a.asistente.revisar_lo_dicho),
+                ),
+                op(
+                    a,
+                    Clave::AsistenteLeerSiempre,
+                    tt("ajustes2-asistente-leer"),
+                    tt("ajustes2-ayuda-asistente-leer"),
+                    Control::Interruptor(a.asistente.leer_respuestas),
+                ),
                 grupo(t, "ajustes2-g-claves"),
             ];
             for (i, p) in Proveedor::TODOS.into_iter().enumerate() {
@@ -1181,6 +1204,8 @@ fn restablecer(clave: Clave, a: &mut Ajustes) {
         Clave::AsistenteModelo => a.asistente.modelo = d.asistente.modelo.clone(),
         Clave::AsistenteMotor => a.asistente.motor = d.asistente.motor.clone(),
         Clave::AsistenteRespaldo => a.asistente.respaldo_local = d.asistente.respaldo_local,
+        Clave::AsistenteRevisarVoz => a.asistente.revisar_lo_dicho = d.asistente.revisar_lo_dicho,
+        Clave::AsistenteLeerSiempre => a.asistente.leer_respuestas = d.asistente.leer_respuestas,
         Clave::Presencia => a.sincro.presencia = d.sincro.presencia,
         Clave::LoMioManda => a.sincro.lo_mio_manda = d.sincro.lo_mio_manda,
         Clave::AbrirCon => a.abrir_con = d.abrir_con,
@@ -1327,6 +1352,8 @@ fn aplicar_interruptor(a: &mut Ajustes, clave: Clave) {
         Clave::Arranque => a.arranque_con_windows = !a.arranque_con_windows,
         Clave::TemaCosmos => a.tema_cosmos = !a.tema_cosmos,
         Clave::AsistenteRespaldo => a.asistente.respaldo_local = !a.asistente.respaldo_local,
+        Clave::AsistenteRevisarVoz => a.asistente.revisar_lo_dicho = !a.asistente.revisar_lo_dicho,
+        Clave::AsistenteLeerSiempre => a.asistente.leer_respuestas = !a.asistente.leer_respuestas,
         Clave::PdfAligerar => a.pdf.aligerar_al_entrar = !a.pdf.aligerar_al_entrar,
         Clave::Apilar => {
             // Cero apaga la pila; encenderla vuelve a su numero de fabrica
