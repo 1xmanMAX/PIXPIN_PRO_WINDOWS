@@ -274,6 +274,31 @@ impl DondeVa {
         }
     }
 
+    /// **La capa de la hoja `i`, escrita en `destino`** y en las unidades
+    /// en que la escribiria [`DondeVa::guardar_capa`], sin tocar su marco:
+    /// lo de aqui, aparte, para juntarlo con lo que cambio en el disco con
+    /// el lector abierto (`lector_pdf::al_dia`).
+    pub fn escribir_aparte(
+        &self,
+        i: usize,
+        capa: &mut crate::lector_tinta::Capa,
+        destino: &Path,
+    ) -> std::io::Result<()> {
+        match self.marco(i) {
+            Some(_) => capa.guardar_en(destino, crate::lector_tinta::Unidades::DEL_PC),
+            None => capa.guardar(destino),
+        }
+    }
+
+    /// El marco de la hoja `i` tras escribir lo junto (solo lo tiene un
+    /// adjunto del chat; ver [`DondeVa::guardar_capa`]).
+    pub fn apuntar_marco(&self, i: usize, alto: f32) -> std::io::Result<()> {
+        match self.marco(i) {
+            Some(b) => b.escribir_marco(&hoja_propia(alto)),
+            None => Ok(()),
+        }
+    }
+
     /// De donde se lee la capa de la hoja `i` (desde 0). No cambia nada.
     pub fn para_leer(&self, pdf: &Path, i: usize) -> PathBuf {
         self.ruta(pdf, i, false)

@@ -422,6 +422,12 @@ pub fn lanzar(app: DeLaApp, e: Encargo) {
         texto: crate::asistente::rapido::ESTADO_INICIAL.into(),
         abrir: None,
         acabado: false,
+        // Si el turno pide permiso, «Abrir» lleva a la burbuja de la pregunta.
+        chat: Some(crate::ventana_chat::sin_ventana::Chat {
+            idioma: app.idioma,
+            ubicacion: app.entorno.ubicacion.clone(),
+            opciones: app.opciones,
+        }),
     });
     let lanzado = std::thread::Builder::new().name("asistente-encargo".into()).spawn(move || {
         let textos = pixpin_store::Catalogo::nuevo(app.idioma);
@@ -437,7 +443,8 @@ pub fn lanzar(app: DeLaApp, e: Encargo) {
             )
         });
         let (texto, abrir) = match r {
-            Ok(r) => (resumen_de(&r.texto), Some((r.proyecto, r.codigo))),
+            // Entera: el aviso la recorta a lo que cabe y se desplaza dentro.
+            Ok(r) => (respuesta_para_el_aviso(&r.texto), Some((r.proyecto, r.codigo))),
             Err(x) => (format!("⚠️ {x}"), None),
         };
         aviso.poner(texto, abrir.map(|(p, c)| (app.idioma, app.entorno.ubicacion.clone(), app.opciones, p, c)));
@@ -456,7 +463,15 @@ fn titulo_de(e: &Encargo) -> String {
     }
 }
 
-/// La respuesta para el aviso: sin la linea de estado y corta.
+/// La respuesta para el aviso flotante, entera («Hecho.» si no dijo nada):
+/// el aviso ensena lo que cabe y lo demas se desplaza (14-oct-2026; antes,
+/// cortada a 280 letras y 31 tareas no se veian).
+pub fn respuesta_para_el_aviso(texto: &str) -> String {
+    let t = texto.trim();
+    if t.is_empty() { "Hecho.".into() } else { t.to_string() }
+}
+
+/// La respuesta corta (el error de un paso de una automatizacion).
 pub fn resumen_de(texto: &str) -> String {
     let t = texto.trim();
     if t.is_empty() {

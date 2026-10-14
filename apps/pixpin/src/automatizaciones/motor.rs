@@ -264,14 +264,21 @@ fn correr(app: &DeLaApp, a: &Automatizacion, vars: Vars) {
         app: app.clone(),
         abrir: None,
     };
-    let informe = super::ejecutar(a, vars, &mut h);
-    tracing::info!(id = %a.id, bien = informe.bien(), pasos = ?informe.pasos, "automatizacion: acabo");
+    // El aviso sale ya, no al acabar (14-oct-2026): si un paso pide permiso
+    // para borrar o enviar, la pregunta se ve en el, con «Sí»/«No».
     let mando = crate::ventana_chat::sin_ventana::avisar(crate::ventana_chat::sin_ventana::Aviso {
         titulo: format!("⚙️ {}", super::recortar(&a.nombre, 44)),
-        texto: String::new(),
+        texto: "⚙️ …".into(),
         abrir: None,
         acabado: false,
+        chat: Some(crate::ventana_chat::sin_ventana::Chat {
+            idioma: app.idioma,
+            ubicacion: app.entorno.ubicacion.clone(),
+            opciones: app.opciones,
+        }),
     });
+    let informe = super::ejecutar(a, vars, &mut h);
+    tracing::info!(id = %a.id, bien = informe.bien(), pasos = ?informe.pasos, "automatizacion: acabo");
     mando.poner(
         informe.resumen(a.pasos.len()),
         h.abrir

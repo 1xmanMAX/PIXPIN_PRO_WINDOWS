@@ -92,6 +92,8 @@ use crate::lector::{
 use crate::lector_tinta::{self, Capa, Tinta};
 use crate::overlay::Recursos;
 
+/// Lo que otro escribe en las capas con el lector abierto, a la vista.
+mod al_dia;
 mod cola;
 mod elegir;
 pub(crate) mod office;
@@ -653,6 +655,9 @@ struct Estado {
     zoom_cambiado: u64,
     marcas: Vec<Marca>,
     capas: HashMap<usize, Capa>,
+    /// Como estaba en el disco cada capa leida: lo que escriba otro (el
+    /// asistente, la sincronizacion) se ve sin reabrir (`al_dia`).
+    al_dia: al_dia::AlDia,
     /// Donde va la capa de cada hoja: la hoja del proyecto si el PDF es de
     /// uno (y viaja al sincronizar, como en el movil), o junto al PDF.
     donde: crate::lector_pdf_proyecto::DondeVa,
@@ -841,6 +846,7 @@ fn abrir_con(
         y: 0.0,
         zoom_cambiado: 0,
         capas: HashMap::new(),
+        al_dia: Default::default(),
         donde,
         hechos: Vec::new(),
         deshechos: Vec::new(),
@@ -1245,6 +1251,11 @@ fn abrir_con(
             e.ultimo_trazo = ahora;
             hay_que_pintar = true;
         }
+        // Lo que el asistente o la sincronizacion escribio en una capa
+        // abierta, a la vista (sin pisar lo que se este anotando).
+        if al_dia::mirar(&mut e, ruta) {
+            hay_que_pintar = true;
+        }
         let sucias = e.capas.values().any(|c| c.sucia) && !e.tinta.trazando();
         if sucias && ahora > e.ultimo_trazo + MS_PARA_GUARDAR {
             guardar_capas(&mut e, ruta);
@@ -1257,6 +1268,7 @@ fn abrir_con(
                 pedir_hojas(&mut e, &tx_pedidos, marco);
             }
             cargar_capas_visibles(&mut e, ruta, marco);
+            al_dia::apuntar(&mut e, ruta);
             if let Ok(destino) = superficie.empezar(&motor) {
                 let t = std::time::Instant::now();
                 let dibujado = motor.dibujar(&destino, |p: &Pintor| pintar(&mut e, p, marco, textos));
@@ -2887,6 +2899,7 @@ fn al_proyecto(e: &mut Estado, textos: &Catalogo, ruta: &Path, ubicacion: &Ubica
             e.donde =
                 crate::lector_pdf_proyecto::DondeVa::de(ubicacion.raiz(), ruta, ahora_ms() as i64);
             e.capas.clear();
+            e.al_dia.olvidar();
             e.hechos.clear();
             e.deshechos.clear();
             e.tinta.olvidar_lo_calculado();
@@ -2985,19 +2998,11 @@ fn alto_de(hojas: &vista::Hojas, i: usize) -> f32 {
     hojas.altos.get(i).copied().unwrap_or(0.0)
 }
 
+/// Solo lo que cambio: pedir donde escribir le pone su dibujo a la hoja del
+/// proyecto, y mirar una hoja no la anota. Lo que cambio tambien en el
+/// disco con el lector abierto se junta, no se pisa (`al_dia`).
 fn guardar_capas(e: &mut Estado, ruta: &Path) {
-    let donde = &e.donde;
-    for (i, c) in e.capas.iter_mut() {
-        // Solo lo que cambio: pedir donde escribir le pone su dibujo a la
-        // hoja del proyecto, y mirar una hoja no la anota.
-        if !c.sucia {
-            continue;
-        }
-        // La tinta y, al lado, su marco (`anot-<uid>-p<i>.hoja`).
-        if let Err(err) = donde.guardar_capa(ruta, *i, c, alto_de(&e.hojas, *i)) {
-            tracing::warn!(?err, hoja = i, "no se pudo guardar lo anotado en la hoja");
-        }
-    }
+    al_dia::guardar(e, ruta);
 }
 
 // ---------------------------------------------------------------------------
@@ -3258,6 +3263,7 @@ mod pruebas {
             zoom_cambiado: 0,
             marcas: Vec::new(),
             capas: HashMap::new(),
+            al_dia: Default::default(),
             donde: crate::lector_pdf_proyecto::DondeVa::solo_leer(Path::new("plano.pdf")),
             hechos: Vec::new(),
             deshechos: Vec::new(),

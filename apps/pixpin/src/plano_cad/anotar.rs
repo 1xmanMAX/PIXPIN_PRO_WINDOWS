@@ -188,7 +188,8 @@ fn en_otras_unidades(texto: &str, u: Unidades) -> Option<String> {
 /// se escribiria ahora y `suyo` lo que dejo la sincronizacion mientras el
 /// plano estaba abierto. Lo nuevo de cualquiera entra; lo que uno borro se
 /// va si el otro no lo toco. `None` si `mio` o `suyo` no se entienden.
-fn juntar_con_el_disco(base: Option<&str>, mio: &str, suyo: &str) -> Option<String> {
+/// La usa tambien el lector de PDF y Word (`lector_pdf::al_dia`).
+pub(crate) fn juntar_con_el_disco(base: Option<&str>, mio: &str, suyo: &str) -> Option<String> {
     use pixpin_sincro::canonico::Json;
     use pixpin_sincro::fusion;
     // Los tres por el mismo camino: un mismo numero escrito de dos maneras
