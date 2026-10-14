@@ -5,6 +5,14 @@ Punto de entrada único para quien trabaje en PixPin Android
 `1xmanMAX/PIXPIN_PRO_WINDOWS` (6fb6b4f y siguientes). Cada punto remite a su
 guía detallada en esta misma carpeta.
 
+## El asistente (14-oct): manual para portarlo
+
+Todo el asistente del PC (motores, las 45 herramientas, los formatos que se sincronizan, la UI y
+los algoritmos) está en **[`docs/manual-asistente-android.md`](../manual-asistente-android.md)**,
+con los esquemas exactos en `docs/manual-asistente-android/herramientas.json`. Lo urgente para
+no perder datos aunque Android aún no tenga asistente: que `Mensaje` conserve `lienzoIa` y
+`fuentesIa` (o todo lo que no conoce), §3.1 del manual.
+
 ## Qué hay que hacer en Android (por orden)
 
 0. **URGENTE — el visor de planos pisa lo que llega del PC** (ver la sección
