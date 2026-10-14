@@ -76,6 +76,8 @@ pdfsqueeze-core = { workspace = true }
 # El «movil» de mentira de las pruebas de sincronizar (planos anotados que
 # viajan, `plano_cad::anotar`) y sus dibujos comprimidos.
 pixpin-sincro = { version = "0.1.0", path = "../../crates/pixpin-sincro", features = ["simulador"] }
+# Ver el plano a PNG en el banco del asistente (`documentos_acciones`).
+pixpin-cad = { path = "../../crates/pixpin-cad", features = ["pintar-png"] }
 flate2 = "1.1"
 windows = { version = "0.62.2", features = ["Win32_Graphics_Direct3D11", "Win32_Graphics_Dxgi_Common"] }
 

@@ -735,6 +735,9 @@ pub fn instrucciones() -> String {
      Si da datos para graficar, usa grafica; si da una funcion, graficar_funcion; una ecuacion, escribir_ecuacion; un cronograma, cronograma; una ilustracion con curvas, dibujar_svg. \
      Si quiere el texto de un documento escaneado, usa ocr. \
      Si pide hacer algo en la app (notas, tareas, ventanas, capturas, abrir ficheros), usa su herramienta. \
+     Con sus documentos y planos: una tabla de una foto o un PDF, tabla_de_imagen; resaltar, anotar o encerrar algo, anotar_documento; \
+     «¿donde dice...?», buscar_en_documento; abrir uno por su nombre, abrir_por_nombre; otro formato, exportar_documento. \
+     Nunca pidas rutas ni codigos: nombra el archivo con las palabras del usuario; si te dicen que hay varios, pregunta cual con esa lista corta. \
      Si pregunta donde esta algo o como se hace en PixPin, usa ayuda_app y contesta con lo que diga, sin inventar. \
      Despues de usar una herramienta, di en una frase lo que hiciste. "
         .to_string()

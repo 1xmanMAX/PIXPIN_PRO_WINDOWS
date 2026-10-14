@@ -765,7 +765,9 @@ pub struct Anotado {
     /// Hoja (desde 0) de un PDF/Word; `None` en un plano.
     pub pagina: Option<usize>,
     pub figuras: usize,
+    /// Donde se marco y cuantas veces aparecia el texto en total.
     pub sitios: usize,
+    pub hallados: usize,
     /// La vista del plano donde quedo (para abrirlo ahi).
     pub vista: Option<[f64; 3]>,
 }
@@ -788,7 +790,7 @@ pub fn anotar_en(raiz: &Path, ruta: &Path, args: &Value, parar: &AtomicBool) -> 
     let p = paginas(ruta, parar)?;
     // Donde: el texto (todas sus apariciones en la hoja elegida o en la
     // primera que lo tenga), la zona, o arriba a la derecha para una nota.
-    let (hoja, cajas, sitios) = match texto {
+    let (hoja, cajas, sitios, hallados) = match texto {
         Some(t) if como != ComoAnotar::Nota || zona.len() < 4 => {
             let s = buscar_en_paginas(&p, t, pagina, 40);
             let Some(primera) = s.first() else {
@@ -801,13 +803,14 @@ pub fn anotar_en(raiz: &Path, ruta: &Path, args: &Value, parar: &AtomicBool) -> 
                 ComoAnotar::Resaltar | ComoAnotar::Subrayar | ComoAnotar::Tachar => de_la_hoja.iter().flat_map(|x| x.cajas.clone()).collect(),
                 _ => primera.cajas.clone(),
             };
-            (hoja, cajas, de_la_hoja.len())
+            let marcados = if matches!(como, ComoAnotar::Resaltar | ComoAnotar::Subrayar | ComoAnotar::Tachar) { de_la_hoja.len() } else { 1 };
+            (hoja, cajas, marcados, s.len())
         }
         _ => {
             let hoja = pagina.unwrap_or(0).min(p.altos.len().saturating_sub(1));
             let marco = [0.0, 0.0, ANCHO_HOJA, p.altos.get(hoja).copied().unwrap_or(ANCHO_HOJA * 1.414)];
             let caja = zona_en(&zona, marco).unwrap_or([ANCHO_HOJA * 0.6, 60.0, ANCHO_HOJA * 0.62, 90.0]);
-            (hoja, vec![caja], 1)
+            (hoja, vec![caja], 1, 0)
         }
     };
     let alto = p.altos.get(hoja).copied().unwrap_or(ANCHO_HOJA * 1.414);
@@ -819,7 +822,7 @@ pub fn anotar_en(raiz: &Path, ruta: &Path, args: &Value, parar: &AtomicBool) -> 
     }
     let n = nuevas.len();
     escribir_en_la_hoja(raiz, ruta, hoja, alto, nuevas)?;
-    Ok(Anotado { pagina: Some(hoja), figuras: n, sitios, vista: None })
+    Ok(Anotado { pagina: Some(hoja), figuras: n, sitios, hallados, vista: None })
 }
 
 /// Escribe en la capa de la hoja `i` de un PDF o un Word: la MISMA que lee
@@ -850,7 +853,7 @@ fn anotar_plano(
     let m = crate::plano_cad::modelo(raiz, ruta)?;
     let origen = m.origen;
     // Las cajas en coordenadas del plano (relativas a su origen, y arriba).
-    let (cajas_plano, sitios, letra_plano): (Vec<[f64; 4]>, usize, f64) = match texto {
+    let (cajas_plano, hallados, letra_plano): (Vec<[f64; 4]>, usize, f64) = match texto {
         Some(t) if como != ComoAnotar::Nota || zona.len() < 4 => {
             let ts = crate::plano_cad::textos::del_plano(raiz, ruta)?;
             let h = crate::plano_cad::textos::buscar(&ts, t, 10);
@@ -880,7 +883,7 @@ fn anotar_plano(
                 _ => [x1 - (x1 - x0) * 0.2, y1 - (y1 - y0) * 0.1, x1 - (x1 - x0) * 0.05, y1 - (y1 - y0) * 0.05],
             };
             let letra = ((caja[3] - caja[1]) * 0.2).max((y1 - y0) * 0.01);
-            (vec![caja], 1, letra)
+            (vec![caja], 0, letra)
         }
     };
     let rutas = crate::plano_cad::anotar::rutas_de_la_capa(raiz, ruta);
@@ -911,7 +914,7 @@ fn anotar_plano(
     let c = cajas_plano[0];
     let ancho = ((c[2] - c[0]) * 6.0).max(letra_plano * 40.0);
     let vista = [(c[0] + c[2]) / 2.0 + origen[0], (c[1] + c[3]) / 2.0 + origen[1], ancho];
-    Ok(Anotado { pagina: None, figuras: n, sitios, vista: Some(vista) })
+    Ok(Anotado { pagina: None, figuras: n, sitios: cajas_plano.len(), hallados, vista: Some(vista) })
 }
 
 fn anotar(args: &Value, cx: &Contexto) -> Result<String, String> {
@@ -927,12 +930,13 @@ fn anotar(args: &Value, cx: &Contexto) -> Result<String, String> {
     }
     mandar(cx, json!({"pixpin": 1, "accion": "abrir", "que": que}))?;
     Ok(format!(
-        "hecho: {} en «{}»{} ({} figuras, {} sitios); ya esta abierto ahi y viaja al movil al sincronizar",
+        "hecho: {} en «{}»{}: marcado en {} sitio(s){} ({} figuras); ya esta abierto ahi y viaja al movil al sincronizar",
         texto_de(args, "tipo").unwrap_or("anotado"),
         c.nombre,
         hecho.pagina.map(|p| format!(", pagina {}", p + 1)).unwrap_or_default(),
-        hecho.figuras,
-        hecho.sitios
+        hecho.sitios,
+        if hecho.hallados > hecho.sitios { format!(" (aparece {} veces en todo el documento; se marco lo de esta pagina o, al encerrar, lo primero)", hecho.hallados) } else { String::new() },
+        hecho.figuras
     ))
 }
 
@@ -1050,3 +1054,6 @@ fn exportar(args: &Value, cx: &Contexto) -> Result<String, String> {
 
 #[cfg(test)]
 mod pruebas;
+
+#[cfg(test)]
+mod banco;
