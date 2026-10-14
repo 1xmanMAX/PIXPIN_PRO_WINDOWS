@@ -2491,6 +2491,15 @@ ajustes2-clave-borrar = Delete
 ajustes2-clave-guardada = Saved and encrypted on this PC:
 ajustes2-clave-falta = No key. Get one at
 ajustes2-clave-probando = testing…
+ajustes-asistente-pensar = Think before answering
+ajustes2-ayuda-asistente-pensar = Before acting, the assistant thinks and writes what it understood; its thinking shows, folded, above its answer. With the model on this PC thinking takes several minutes more: on automatic only Claude and DeepSeek think.
+asistente-pensar-auto = Automatic (cloud yes; this PC no)
+asistente-pensar-si = Always
+asistente-pensar-no = Never
+asistente-pensando = Thinking…
+asistente-penso = Thought for { $s } s
+asistente-penso-poco = Thought for a moment
+asistente-reiniciado = Context renewed: continuing from the worksheet
 
 ## Assistant voice (13-oct-2026): talk to it and hear the answer
 ajustes2-g-asistente-voz = Assistant voice

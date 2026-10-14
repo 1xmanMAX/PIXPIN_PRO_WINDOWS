@@ -520,6 +520,11 @@ pub struct Asistente {
     /// El id del modelo (`qwen3.5-2b`, `qwen3.5-0.8b`). Vacio: el 2B, el
     /// recomendado.
     pub modelo: String,
+    /// Si piensa antes de contestar (lo que piensa se ve, plegable, en la
+    /// burbuja del chat). `None`: automatico, la nube si y el modelo de
+    /// este PC no, que pensando tarda minutos (medido, 14-oct).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pensar: Option<bool>,
     /// Quien contesta (13-oct-2026): vacio o `local` (el modelo de este PC),
     /// `claude` (Claude Haiku 5.5) o `deepseek` (DeepSeek V4.1 Flash). Las
     /// claves de la nube NO van aqui: van cifradas en su fichero propio
@@ -542,6 +547,7 @@ impl Default for Asistente {
             modelo: String::new(),
             motor: String::new(),
             respaldo_local: true,
+            pensar: None,
             revisar_lo_dicho: false,
             leer_respuestas: false,
         }

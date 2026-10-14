@@ -2492,6 +2492,15 @@ ajustes2-clave-borrar = Borrar
 ajustes2-clave-guardada = Guardada y cifrada en este PC:
 ajustes2-clave-falta = Sin clave. Sácala en
 ajustes2-clave-probando = probando…
+ajustes-asistente-pensar = Pensar antes de contestar
+ajustes2-ayuda-asistente-pensar = Antes de actuar, el asistente piensa y escribe lo que entendió; lo que piensa se ve, plegable, encima de su respuesta. Con el modelo de este PC pensar tarda varios minutos más: en automático solo piensan Claude y DeepSeek.
+asistente-pensar-auto = Automático (la nube sí; este PC no)
+asistente-pensar-si = Siempre
+asistente-pensar-no = Nunca
+asistente-pensando = Pensando…
+asistente-penso = Pensó { $s } s
+asistente-penso-poco = Pensó un momento
+asistente-reiniciado = Contexto renovado: sigo con la hoja de trabajo
 
 ## Voz del asistente (13-oct-2026): hablarle y que conteste en voz alta
 ajustes2-g-asistente-voz = Voz del asistente
