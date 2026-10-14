@@ -204,3 +204,64 @@ fn al_cambiar_de_zoom_se_tesela_poco_a_poco_y_acaba_nitido() {
     assert_eq!(motor.tinta.realizaciones(), antes, "nitido: nada mas que teselar");
     let _ = std::fs::remove_dir_all(&d);
 }
+
+/// **Lo que trae la sincronizacion** con el plano abierto: la capa del disco
+/// cambia por fuera con el MISMO id y la MISMA version (lo peor: una capa
+/// releida en otras unidades), el trazo en otro sitio. Al releerla
+/// (`al_dia`) y al guardar juntando con el disco, la foto de antes no vale.
+#[test]
+fn lo_releido_del_disco_no_deja_la_foto_vieja_pintada() {
+    let d = carpeta("foto-releer");
+    let m = plano_de_obra();
+    let r = rutas_en(&d);
+    let b = Banco::nuevo();
+    let v = vista_en(&m, [0.0, 0.0], PX);
+    let mut motor = MotorDelPlano::nuevo(r.clone(), &m);
+    let a = trazar_en(&mut motor, &v, 200);
+    motor.terminar();
+    let px = b.pintar(&mut motor, &v);
+    assert!(tinta_en(&px, 200) > 50);
+    assert!(!motor.al_dia(), "sin cambios en el disco no se relee");
+
+    // Por fuera: el mismo trazo (id y version) 120 pixeles mas abajo.
+    // Tocando el fichero (no por `Capa`, que al guardar sube la version):
+    // el trazo mas bajo, sus puntos van respecto a su x, y.
+    let bajar = |ruta: &Path, dy_pantalla: f64, cambio: bool| {
+        let mut j: serde_json::Value = serde_json::from_str(&pixpin_proyecto::anotado::leer(ruta).unwrap()).unwrap();
+        let zoom = v.camara().2;
+        let els = j["elements"].as_array_mut().unwrap();
+        let e = els.iter_mut().filter(|e| e["isDeleted"] != true).max_by(|a, b| a["y"].as_f64().unwrap().total_cmp(&b["y"].as_f64().unwrap())).unwrap();
+        e["y"] = (e["y"].as_f64().unwrap() + dy_pantalla / zoom).into();
+        if cambio {
+            // Un cambio de verdad en el otro aparato (al juntar, gana el nuevo).
+            e["version"] = (e["version"].as_i64().unwrap() + 5).into();
+            e["updated"] = (e["updated"].as_i64().unwrap_or(0) + 60_000).into();
+        }
+        pixpin_proyecto::anotado::escribir(ruta, &j.to_string()).unwrap();
+        let t = std::time::SystemTime::now() + std::time::Duration::from_secs(60);
+        std::fs::OpenOptions::new().write(true).open(ruta).unwrap().set_modified(t).unwrap();
+    };
+    let antes = motor.capa.escena.buscar(a).map(|e| e.version);
+    bajar(&r.tinta, 120.0, false);
+    assert!(motor.al_dia(), "la sincronizacion trajo algo: se relee");
+    assert_eq!(motor.capa.escena.buscar(a).map(|e| e.version), antes, "lo peor: misma version, otro sitio");
+    // Moviendose (la foto valdria si no se invalidara) y quieta.
+    for vista in [corrida(&v, 1.0), corrida(&v, 1.0)] {
+        let px = b.pintar(&mut motor, &vista);
+        assert_eq!(tinta_en(&px, 200), 0, "caso negativo: el trazo no sigue donde estaba");
+        assert!(tinta_en(&px, 320) > 50, "el trazo, donde lo dejo la sincronizacion");
+    }
+
+    // Guardar juntando: algo hecho aqui y, mientras, otra vez por fuera.
+    let vb = corrida(&v, 1.0);
+    trazar_en(&mut motor, &vb, 120);
+    bajar(&r.tinta, 100.0, true);
+    motor.terminar();
+    for vista in [corrida(&vb, 1.0), corrida(&vb, 1.0)] {
+        let px = b.pintar(&mut motor, &vista);
+        assert_eq!(tinta_en(&px, 320), 0, "caso negativo: tras juntar, nada de la foto de antes");
+        assert!(tinta_en(&px, 420) > 50, "lo del disco, junto");
+        assert!(tinta_en(&px, 120) > 50, "lo de aqui, junto");
+    }
+    let _ = std::fs::remove_dir_all(&d);
+}

@@ -1,5 +1,5 @@
 //! **La ventana de un modelo 3D (BIM), como un pin**: la misma que la de los
-//! planos (sin bordes, siempre encima o no, la barra fuera que aparece y se
+//! planos (sin bordes, nace sin fijar y su pin la deja encima, la barra fuera que aparece y se
 //! va), con lo que pide un modelo: girarlo, acercarse y cortarlo. Lo pidio el
 //! usuario el 9-oct-2026: «un visor sencillo como un pin, que se pueda ver
 //! facilmente cualquier modelo».
@@ -615,7 +615,7 @@ pub fn ver_con(titulo: &str, cargando: Receiver<Result<Modelo3d, String>>, ui: T
     // Lo que se encuadra y se corta: la caja sin los puntos sueltos lejanos.
     let mut caja_vista = [0f32; 6];
     let mut claro = extras.claro.unwrap_or(false);
-    let mut fijada = true;
+    let mut fijada = crate::ventana::FIJADA_AL_NACER;
     let mut aristas = true;
     // La caja de seccion (relativa al origen del modelo), si esta puesta.
     let mut seccion: Option<[f32; 6]> = None;
@@ -1092,7 +1092,7 @@ pub fn ver_con(titulo: &str, cargando: Receiver<Result<Modelo3d, String>>, ui: T
                     let mut info = MONITORINFO { cbSize: std::mem::size_of::<MONITORINFO>() as u32, ..Default::default() };
                     let _ = GetMonitorInfoW(mon, &mut info);
                     let (x, y) = colocar_barra(r, info.rcWork, bw, bh, (8.0 * e) as i32);
-                    let _ = SetWindowPos(hbarra, Some(HWND_TOPMOST), x, y, bw, bh, SWP_NOACTIVATE | SWP_SHOWWINDOW);
+                    let _ = SetWindowPos(hbarra, Some(if fijada { HWND_TOPMOST } else { HWND_NOTOPMOST }), x, y, bw, bh, SWP_NOACTIVATE | SWP_SHOWWINDOW);
                 }
                 barra_visible = true;
                 barra_sucia = true;

@@ -185,6 +185,16 @@ pub fn contornos_de(e: &Elemento, paso: f32) -> Vec<Contorno> {
         | Figura::Mosaico { .. }
         | Figura::Marco { .. }
         | Figura::EscalaGrafica => cerrado(caja()),
+
+        // Los instrumentos dan sus ejes y no su caja, que no esta dibujada:
+        // es a lo que se pega el iman (`Perimetros.kt`).
+        Figura::Instrumento(i) => crate::instrumento::ejes_en_escena(e, i)
+            .into_iter()
+            .map(|[a, b]| Contorno {
+                puntos: girar(vec![a, b]),
+                cerrado: false,
+            })
+            .collect(),
     }
 }
 

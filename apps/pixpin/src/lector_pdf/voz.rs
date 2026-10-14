@@ -166,7 +166,20 @@ pub(super) fn escuchar(e: &mut Estado, textos: &Catalogo, ruta: &Path, m: Marco)
         .collect();
     let de_la_app = leer_en_voz::idioma_de_la_app(textos);
     let idioma = voz_alta::idioma_para_leer(&muestra, "", &de_la_app);
-    let Some(mut lector) = LeerEnVoz::arrancar(&idioma, &de_la_app, parrafos, 1.0) else {
+    let donde: Vec<(usize, f32)> = trozos
+        .iter()
+        .map(|t| (t.0, altura_del_trozo(paginas, t)))
+        .collect();
+    let doc = leer_en_voz::documento(
+        textos,
+        e.ubicacion.raiz(),
+        ruta,
+        pixpin_docs::sin_extension(&pixpin_docs::nombre(ruta)),
+        parrafos,
+        idioma.clone(),
+        apuntar_el_verde(ruta, donde),
+    );
+    let Some(mut lector) = LeerEnVoz::arrancar(doc) else {
         e.aviso = Some((leer_en_voz::sin_voz(textos, &idioma), ahora_ms() + 6000));
         return;
     };
@@ -177,11 +190,73 @@ pub(super) fn escuchar(e: &mut Estado, textos: &Catalogo, ruta: &Path, m: Marco)
     al_sonar(e, desde, ruta, m, true);
 }
 
+/// **El verde de un PDF con su lector cerrado**: la voz es de la app y
+/// sigue sonando; en cada trozo mueve el 🟢 de las marcas del PDF (las que
+/// viajan, `anot-<uid>.marcas`) a la hoja y la altura de ese trozo, y al
+/// acabar lo quita (`ExportarDocumentoAnotado.ponerVoz`).
+fn apuntar_el_verde(ruta: &Path, donde: Vec<(usize, f32)>) -> leer_en_voz::Apuntar {
+    let ruta = ruta.to_path_buf();
+    Box::new(move |p| {
+        let mut a = crate::anotado_del_adjunto::leer(&ruta);
+        let sin_verde: Vec<Marca> = marcas::de_texto(&a.marcas)
+            .into_iter()
+            .filter(|x| x.emoji != voz_alta::EMOJI_DE_VOZ)
+            .collect();
+        let todas = match p.and_then(|i| donde.get(i)) {
+            Some(&(pagina, alto)) => {
+                let (x, y) = marcas::en_la_pagina(pagina as i32, f64::from(alto), 0.5);
+                marcas::con(&sin_verde, x, y, voz_alta::EMOJI_DE_VOZ, ahora_ms() as i64)
+            }
+            None => sin_verde,
+        };
+        a.marcas = marcas::a_texto(&todas);
+        if let Err(err) = crate::anotado_del_adjunto::escribir(&ruta, &a) {
+            tracing::info!(?err, "no se pudo apuntar el verde del PDF");
+        }
+    })
+}
+
+/// **Deja de escuchar** (la X de la barra, Esc, la pagina que sube sola): la
+/// voz se calla y olvida el PDF. Cerrar el lector solo la suelta.
+pub(super) fn dejar(e: &mut Estado) {
+    if let Some(v) = e.voz.take() {
+        v.lector.soltar();
+    }
+}
+
+/// **Volver a abrir un PDF que se esta escuchando**: con su texto ya aqui,
+/// el lector se engancha a la voz de la app (barra, ambar, verde) y va al
+/// trozo que suena.
+fn engancharse(e: &mut Estado, ruta: &Path, m: Marco) -> bool {
+    if !e.engancharse {
+        return false;
+    }
+    let trozos = match &e.hallar.texto {
+        None => return false,
+        Some(Err(_)) => {
+            e.engancharse = false;
+            return false;
+        }
+        Some(Ok(paginas)) => trozos_de(paginas),
+    };
+    e.engancharse = false;
+    let Some(lector) = LeerEnVoz::enganchar(ruta, trozos.len()) else {
+        return false;
+    };
+    let i = lector.actual();
+    e.voz = Some(VozDelPdf { lector, trozos });
+    al_sonar(e, i, ruta, m, true);
+    true
+}
+
 /// Una vuelta del bucle: la voz sigue, y si llego el texto que se esperaba
 /// para empezar, se empieza. `true` si hay que repintar.
 pub(super) fn vuelta(e: &mut Estado, textos: &Catalogo, ruta: &Path, m: Marco) -> bool {
     if e.escuchar_al_llegar && e.hallar.texto.is_some() {
         escuchar(e, textos, ruta, m);
+        return true;
+    }
+    if engancharse(e, ruta, m) {
         return true;
     }
     let Some(suceso) = e.voz.as_mut().and_then(|v| v.lector.vuelta()) else {
@@ -194,6 +269,9 @@ pub(super) fn vuelta(e: &mut Estado, textos: &Catalogo, ruta: &Path, m: Marco) -
             e.marcas.retain(|x| x.emoji != voz_alta::EMOJI_DE_VOZ);
             guardar_ajustes(e, ruta);
         }
+        // Parada desde los mandos de Windows, u otro documento.
+        Suceso::Fuera => e.voz = None,
+        Suceso::Cambio => {}
     }
     true
 }
@@ -261,10 +339,10 @@ pub(super) fn verde_aqui(e: &mut Estado, ruta: &Path) {
             pagina.max(0) as usize,
             (s - s.floor()) as f32,
         );
-        if v.lector.leyendo {
+        if v.lector.leyendo() {
             v.lector.leer(i);
         } else {
-            let actual = v.lector.actual as isize;
+            let actual = v.lector.actual() as isize;
             v.lector.saltar(i as isize - actual);
         }
     }
@@ -286,7 +364,7 @@ pub(super) fn boton(e: &mut Estado, b: BotonVoz, ruta: &Path, m: Marco) {
         BotonVoz::Velocidad => {
             v.lector.otra_velocidad();
         }
-        BotonVoz::Cerrar => e.voz = None,
+        BotonVoz::Cerrar => dejar(e),
     }
 }
 
@@ -296,7 +374,7 @@ pub(super) fn pintar_lo_que_suena(e: &Estado, p: &Pintor, i: usize) {
     else {
         return;
     };
-    let Some(t) = v.trozos.get(v.lector.actual).filter(|t| t.0 == i) else {
+    let Some(t) = v.trozos.get(v.lector.actual()).filter(|t| t.0 == i) else {
         return;
     };
     let Some(pagina) = paginas.get(i) else {

@@ -726,6 +726,11 @@ pub(crate) fn pintar_encima(
     sin_marquesina: bool,
 ) {
     let escala = 1.0 / zoom;
+    // Los puntos tecleados y su eje, encima de lo dibujado y debajo de la
+    // seleccion: son la referencia contra la que se dibuja.
+    for orden in ordenes_de_las_tablas(escena, zoom, Some(vista)) {
+        dibujar_orden(p, &orden, vista, None, imagenes, zoom, None);
+    }
     // `Gesto::tiradores` es la MISMA llamada que usa el gesto para decidir
     // que agarra el clic: pintar con una copia propia del angulo es como se
     // desincronizaron una vez -tiradores rectos que se picaban girados-.
@@ -873,7 +878,28 @@ pub(crate) fn ordenes_encima(
         v.extend(super::construir::angulos_en_vivo(escena, gesto, zoom));
     }
     v.extend(pixpin_motor2d::nudos::ordenes_de_clavos(escena, zoom));
+    // Las tablas de coordenadas con su eje (sin la vista no se tiran las
+    // rectas del eje de lado a lado; queda la cruz del cero).
+    v.splice(0..0, ordenes_de_las_tablas(escena, zoom, None));
     v
+}
+
+/// **Los puntos de las tablas de coordenadas y su eje**, en pantalla: del
+/// mismo tamano a cualquier aumento y encima de lo dibujado, como en el
+/// movil (`Renderer.drawTabla`, `drawEjeDeCoordenadas`). Exportar no pasa
+/// por aqui: alli salen los puntos y no el eje (`exportar`).
+pub(crate) fn ordenes_de_las_tablas(
+    escena: &pixpin_motor2d::Escena,
+    zoom: f32,
+    vista: Option<(f32, f32, f32, f32)>,
+) -> Vec<Orden> {
+    pixpin_motor2d::instrumento::tabla::ordenes(
+        &escena.tablas,
+        escena.origen_coordenadas,
+        escena.escala.as_ref(),
+        Some(zoom),
+        vista,
+    )
 }
 
 /// **Las muestras del texto, las letras y el resaltador**, pintadas con las

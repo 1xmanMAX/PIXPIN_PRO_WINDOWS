@@ -531,6 +531,8 @@ enum Accion {
     Escuchar,
     /// Un boton de la barra de escuchar.
     Voz(crate::leer_en_voz::BotonVoz),
+    /// Lo de la voz en el engranaje (las voces de Microsoft).
+    AjusteVoz(crate::leer_en_voz::AjusteVoz),
     /// Un boton de los mandos de los lados.
     Lado(lector::BotonLado),
     Exportar,
@@ -659,6 +661,11 @@ struct Estado {
     voz: Option<voz::VozDelPdf>,
     /// Se pidio escuchar y el texto del PDF aun no habia llegado.
     escuchar_al_llegar: bool,
+    /// Se pidio el menu de las voces de Microsoft (lo saca el bucle).
+    elegir_voz: bool,
+    /// Engancharse a la voz de la app en cuanto llegue el texto: el PDF se
+    /// estaba escuchando con el lector cerrado.
+    engancharse: bool,
     /// **Como un pin** (`lector_pin`): fuera de pantalla completa la pastilla
     /// de arriba no se pinta (lo suyo va en la barra de fuera).
     en_pin: bool,
@@ -748,8 +755,9 @@ fn abrir_con(
     ventana.enfocar();
     // Todos los puntos del trazo y la presion del lapiz, como en el lienzo.
     ventana.pedir_entrada_fina();
-    // Como un pin: siempre encima (se suelta con su pin) y su barra fuera.
-    ventana.poner_siempre_encima(true);
+    // Como un pin pero sin fijar (lo fija su pin): al frente, una ventana
+    // mas entre las demas, y su barra fuera.
+    pin.al_nacer(&ventana);
     pin.crear_barra(&motor, &recursos.d3d(), &ventana);
 
     let (tx_pedidos, rx_pedidos) = mpsc::channel::<Pedido>();
@@ -818,6 +826,10 @@ fn abrir_con(
         renombre: crate::renombrar_doc::Pastilla::de(ubicacion.raiz(), ruta),
         voz: None,
         escuchar_al_llegar: false,
+        elegir_voz: false,
+        // Si se esta escuchando este PDF con su lector cerrado: se engancha
+        // al llegar el texto (se pide abajo).
+        engancharse: crate::leer_en_voz::suena(ruta),
         en_pin: true,
         pedir_pantalla_completa: false,
         office,
@@ -832,6 +844,11 @@ fn abrir_con(
     // El indice de marcadores es cosa de un PDF.
     if e.office.is_none() && recoger_el_indice(&mut e, ruta) {
         guardar_ajustes(&mut e, ruta);
+    }
+    // Se estaba escuchando con el lector cerrado: hace falta su texto para
+    // engancharse (`voz::vuelta`).
+    if e.engancharse {
+        voz::pedir_el_texto(&mut e, ruta);
     }
     let mut hay_que_pintar = true;
     let mut vivo = true;
@@ -1107,6 +1124,13 @@ fn abrir_con(
             e.pedir_pantalla_completa = false;
             pin.alternar_pantalla_completa(&mut ventana);
         }
+        // «Voz de Microsoft» en el engranaje: el menu de las voces.
+        if std::mem::take(&mut e.elegir_voz) {
+            if let Some(aviso) = crate::leer_en_voz::elegir_voz(ventana.handle(), textos, e.ubicacion.raiz()) {
+                e.aviso = Some((aviso, ahora_ms() + 4000));
+            }
+            hay_que_pintar = true;
+        }
         // Imprimir pedido desde el panel (necesita la ventana).
         if e.office.as_mut().is_some_and(|o| std::mem::take(&mut o.pedir_imprimir)) {
             office::imprimir(&mut e, ventana.handle().0 as isize, ruta, textos);
@@ -1209,14 +1233,15 @@ fn abrir_con(
     }
 
     let ruta: &Path = &ruta_viva;
-    // La voz se calla con el lector (el verde ya esta en las marcas).
-    e.voz = None;
     guardar_capas(&mut e, ruta);
     if !e.hojas.arriba.is_empty() {
         e.ajustes.pagina = e.hojas.sitio(e.y);
     }
     e.ajustes.zoom = e.zoom;
     guardar_ajustes(&mut e, ruta);
+    // La voz sigue con el lector cerrado (es de la app): solo se suelta, ya
+    // guardado lo de aqui, y desde ahora el verde lo apunta ella.
+    e.voz = None;
     // Soltar el canal despierta al hilo, que ve que no hay nadie y acaba.
     drop(tx_pedidos);
     if e.exportando
@@ -2092,7 +2117,13 @@ fn filas_del_panel(e: &Estado, textos: &Catalogo) -> Vec<(String, Accion)> {
 }
 
 fn panel(e: &Estado, p: &Pintor, m: Marco, textos: &Catalogo, botones: &mut Vec<(RectF, Accion)>) {
-    let filas = filas_del_panel(e, textos);
+    let mut filas = filas_del_panel(e, textos);
+    // El apartado «Voz» del movil: las voces de Microsoft y cual.
+    filas.extend(
+        crate::leer_en_voz::filas(textos, e.ubicacion.raiz())
+            .into_iter()
+            .map(|(t, a)| (t, Accion::AjusteVoz(a))),
+    );
     let alto_panel = (60.0 + filas.len() as f32 * 30.0) * m.e;
     let caja = RectF {
         x: 0.0,
@@ -2365,7 +2396,7 @@ fn tecla(e: &mut Estado, vk: u32, shift: bool, ctrl: bool, ruta: &Path, m: Marco
                 e.panel = false;
             } else if e.voz.is_some() {
                 // La primera Esc cierra la barra de escuchar.
-                e.voz = None;
+                voz::dejar(e);
             } else if e.auto.is_some() {
                 // Y la de la pagina que sube sola (el `BackHandler` del movil).
                 e.auto = None;
@@ -2451,7 +2482,7 @@ fn alternar_auto(e: &mut Estado, ruta: &Path) {
     if e.auto.take().is_some() || e.hojas.cuantas() == 0 {
         return;
     }
-    e.voz = None;
+    voz::dejar(e);
     voz::pedir_el_texto(e, ruta);
     e.auto = Some(pixpin_docs::auto_desplazar::Marcha::nueva(lector::ppm_guardadas(&e.ubicacion)));
 }
@@ -2704,6 +2735,11 @@ fn hacer(
             voz::escuchar(e, textos, ruta, m)
         }
         Accion::Voz(b) => voz::boton(e, b, ruta, m),
+        Accion::AjusteVoz(crate::leer_en_voz::AjusteVoz::Microsoft) => {
+            crate::leer_en_voz::alternar_microsoft(e.ubicacion.raiz());
+        }
+        // El menu necesita la ventana: lo saca el bucle.
+        Accion::AjusteVoz(crate::leer_en_voz::AjusteVoz::ElegirVoz) => e.elegir_voz = true,
         Accion::Auto => {
             e.panel = false;
             alternar_auto(e, ruta);
@@ -3217,6 +3253,8 @@ mod pruebas {
             renombre: Default::default(),
             voz: None,
             escuchar_al_llegar: false,
+            elegir_voz: false,
+            engancharse: false,
             en_pin: false,
             pedir_pantalla_completa: false,
             office: None,

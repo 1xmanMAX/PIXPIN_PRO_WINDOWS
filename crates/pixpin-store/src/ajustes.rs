@@ -284,6 +284,8 @@ pub struct Ajustes {
     pub voz: Voz,
     /// Las palabras magicas propias (`[pinear]`). Tabla: al final.
     pub pinear: Pinear,
+    /// El asistente local (`[asistente]`). Tabla: al final.
+    pub asistente: Asistente,
 }
 
 /// Seccion `[pinear]`: las palabras magicas que pone el usuario.
@@ -508,6 +510,18 @@ pub struct Voz {
     pub modo_de_idiomas: ModoDeIdiomas,
 }
 
+// --- Asistente local (13-oct-2026) ---------------------------------------
+
+/// Seccion `[asistente]`: el modelo de lenguaje local del chat
+/// (`crates/pixpin-ia`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct Asistente {
+    /// El id del modelo (`qwen3.5-2b`, `qwen3.5-0.8b`). Vacio: el 2B, el
+    /// recomendado.
+    pub modelo: String,
+}
+
 impl Default for Ajustes {
     fn default() -> Self {
         Self {
@@ -539,6 +553,7 @@ impl Default for Ajustes {
             herramientas: crate::herramientas::Herramientas::default(),
             voz: Voz::default(),
             pinear: Pinear::default(),
+            asistente: Asistente::default(),
         }
     }
 }

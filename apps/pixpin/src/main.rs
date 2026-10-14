@@ -49,11 +49,14 @@
 // atributo es la unica guarda que lo habria detectado.
 #![forbid(unsafe_code)]
 
+mod abrir_con;
 mod abrir_hoja;
 mod croquis3d;
 mod al_frente;
 mod abrir_imagen;
 mod aligerar;
+// El asistente local del chat (modelo pequeno con llama.cpp, `pixpin-ia`).
+mod asistente;
 mod anotado_del_adjunto;
 mod anotador_al_chat;
 mod audio;
@@ -63,6 +66,9 @@ mod buscar_todo;
 mod caducidad_capturas;
 mod cabecera;
 mod caja_dibujo;
+/// El componente de escribir de toda la app: el cursor de la caja del chat
+/// y la caja de una linea (buscar, renombrar, codigos) hecha con el.
+mod caja_texto;
 mod capa;
 mod captura2;
 mod centro_bandeja;
@@ -340,6 +346,10 @@ fn arrancar(
     let ubicacion = rutas::resolver(&dir_exe, &appdata);
     // El modo oscuro de los visores (luna/sol), recordado en `estado.toml`.
     oscuro::iniciar(&ubicacion);
+    // Escuchar en voz alta es de la app, no de cada lector: sigue sonando
+    // con el lector cerrado y la manejan los mandos de Windows y las teclas
+    // multimedia (`leer_en_voz`). Su hilo espera sin gastar nada.
+    leer_en_voz::iniciar();
 
     // 3. Registro a fichero, antes de leer los ajustes: si el TOML esta mal
     // escrito, el fallo de mas abajo queda documentado en vez de perderse.
@@ -862,6 +872,8 @@ fn arrancar(
                 tracing::info!("salida pedida por el usuario");
                 // El PDF que se estuviera aligerando se deja como estaba.
                 aligerar::cancelar_todo();
+                // Lo que se estuviera escuchando se calla y sus mandos se van.
+                leer_en_voz::apagar();
                 Continuar::No
             }
             // Los comandos de pines: los tres necesitan la disposicion de

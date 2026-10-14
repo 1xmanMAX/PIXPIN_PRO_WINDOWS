@@ -212,6 +212,8 @@ enum Accion {
     Escuchar,
     /// Un boton de la barra de escuchar.
     Voz(leer_en_voz::BotonVoz),
+    /// Lo de la voz en el engranaje (las voces de Microsoft).
+    AjusteVoz(leer_en_voz::AjusteVoz),
     /// Un boton de los mandos de los lados (espacio y candado).
     Lado(lector::BotonLado),
     /// La hoja de compartir de toda la aplicacion, con este documento.
@@ -327,6 +329,8 @@ struct Estado {
     imagen_pulsada: Option<usize>,
     /// La imagen que hay que sacar como pin en esta vuelta del bucle.
     pinear: Option<usize>,
+    /// Se pidio el menu de las voces de Microsoft (lo saca el bucle).
+    elegir_voz: bool,
     /// El cursor que se puso leyendo (la mano sobre una imagen), para no
     /// ponerlo otra vez en cada movimiento.
     cursor: Option<pixpin_shell::overlay::FormaCursorWin>,
@@ -338,6 +342,9 @@ struct Estado {
     pedir_pantalla_completa: bool,
     /// **Escuchando** (la barra de abajo): la voz que lee el documento.
     voz: Option<LeerEnVoz>,
+    /// Engancharse a la voz de la app en cuanto se mida: el documento se
+    /// estaba escuchando con el lector cerrado (`engancharse_a_la_voz`).
+    engancharse: bool,
     /// **La pagina que sube sola** (la barra de abajo), si esta puesta.
     auto: Option<pixpin_docs::auto_desplazar::Marcha>,
     /// Las palabras del documento, contadas al empezar a desplazar.
@@ -393,8 +400,9 @@ pub fn abrir(
     ventana.enfocar();
     // Todos los puntos del trazo y la presion del lapiz, como en el lienzo.
     ventana.pedir_entrada_fina();
-    // Como un pin: siempre encima (se suelta con su pin) y su barra fuera.
-    ventana.poner_siempre_encima(true);
+    // Como un pin pero sin fijar (lo fija su pin): al frente, una ventana
+    // mas entre las demas, y su barra fuera.
+    pin.al_nacer(&ventana);
     pin.crear_barra(&motor, &recursos.d3d(), &ventana);
 
     // De un adjunto del chat, lo que viaja con su mensaje (v0.96).
@@ -444,10 +452,14 @@ pub fn abrir(
         imagenes: imagenes::Imagenes::de_la_aplicacion(ubicacion.raiz()),
         imagen_pulsada: None,
         pinear: None,
+        elegir_voz: false,
         cursor: None,
         en_pin: true,
         pedir_pantalla_completa: false,
         voz: None,
+        // Si se esta escuchando este documento (con su lector cerrado), se
+        // engancha en cuanto haya algo medido.
+        engancharse: leer_en_voz::suena(ruta),
         auto: None,
         palabras: 0,
         ubicacion: ubicacion.clone(),
@@ -652,6 +664,13 @@ pub fn abrir(
         }
 
         // Un clic en una imagen: fuera, como pin.
+        // «Voz de Microsoft» en el engranaje: el menu de las voces.
+        if std::mem::take(&mut e.elegir_voz) {
+            if let Some(aviso) = leer_en_voz::elegir_voz(ventana.handle(), textos, e.ubicacion.raiz()) {
+                e.aviso = Some((aviso, ahora_ms() + 4000));
+            }
+            hay_que_pintar = true;
+        }
         if let Some(n) = e.pinear.take() {
             sacar_imagen(&mut e, n, textos);
             hay_que_pintar = true;
@@ -661,7 +680,12 @@ pub fn abrir(
             hay_que_pintar = true;
         }
 
-        // La voz: el trozo siguiente, el parrafo siguiente o el final.
+        // Se estaba escuchando con el lector cerrado: se engancha a la voz.
+        if engancharse_a_la_voz(&mut e, ruta, marco) {
+            hay_que_pintar = true;
+        }
+        // La voz (que es de la app): el parrafo que suena, el final, o que
+        // ya no es de este documento.
         if let Some(suceso) = e.voz.as_mut().and_then(|v| v.vuelta()) {
             match suceso {
                 Suceso::Parrafo(i) => al_sonar(&mut e, i, ruta, marco),
@@ -671,6 +695,9 @@ pub fn abrir(
                     e.ajustes.voz = None;
                     guardar_ajustes(&e, ruta);
                 }
+                // Parada desde los mandos de Windows, u otro documento.
+                Suceso::Fuera => e.voz = None,
+                Suceso::Cambio => {}
             }
             hay_que_pintar = true;
         }
@@ -774,13 +801,14 @@ pub fn abrir(
     // Por donde se iba, para volver aqui la proxima vez. Con el nombre que
     // tenga ahora: si se cambio (D5), sus cosas ya estan en el nuevo.
     let ruta: &Path = &ruta_viva;
-    // La voz se calla con el lector (el verde ya esta apuntado).
-    e.voz = None;
     e.ajustes.sitio = fraccion(&e);
     e.ajustes.zoom = e.zoom;
     guardar_ajustes(&e, ruta);
     guardar_capa(&mut e, ruta);
     dejar_medidas(&e, ruta);
+    // La voz sigue con el lector cerrado (es de la app): solo se suelta, ya
+    // guardado lo de aqui, y desde ahora el verde lo apunta ella.
+    e.voz = None;
     Ok(())
 }
 
@@ -1699,6 +1727,12 @@ fn filas_del_panel(e: &Estado, textos: &Catalogo) -> Vec<(String, Accion)> {
         (textos.t("visor-guardar-pdf"), Accion::GuardarPdf),
         (textos.t("visor-abrir-carpeta"), Accion::AbrirCarpeta),
     ]);
+    // El apartado «Voz» del movil: las voces de Microsoft y cual.
+    filas.extend(
+        leer_en_voz::filas(textos, e.ubicacion.raiz())
+            .into_iter()
+            .map(|(t, a)| (t, Accion::AjusteVoz(a))),
+    );
     if !e.ajustes.marcadores.is_empty() {
         filas.push((
             textos.t("visor-quitar-marcadores"),
@@ -2059,7 +2093,7 @@ fn tecla(
                 e.viendo_indice = false;
             } else if e.voz.is_some() {
                 // La primera Esc cierra la barra de escuchar; la segunda, el lector.
-                e.voz = None;
+                dejar_de_escuchar(e);
             } else if e.auto.is_some() {
                 // Y la de la pagina que sube sola, igual (`salir` del movil).
                 e.auto = None;
@@ -2280,7 +2314,7 @@ fn alternar_auto(e: &mut Estado, textos: &Catalogo) {
         e.aviso = Some((textos.t("lector-sin-texto"), ahora_ms() + 3000));
         return;
     }
-    e.voz = None;
+    dejar_de_escuchar(e);
     e.panel = false;
     e.palabras = palabras;
     e.auto = Some(pixpin_docs::auto_desplazar::Marcha::nueva(lector::ppm_guardadas(&e.ubicacion)));
@@ -2337,7 +2371,7 @@ fn boton_de_auto(e: &mut Estado, b: lector::BotonAuto) {
 
 fn colocado_que_suena(e: &Estado) -> Option<&Colocado> {
     let v = e.voz.as_ref()?;
-    let i = *para_leer(&e.colocados).get(v.actual)?;
+    let i = *para_leer(&e.colocados).get(v.actual())?;
     e.colocados.get(i)
 }
 
@@ -2397,7 +2431,29 @@ fn escuchar(e: &mut Estado, textos: &Catalogo, ruta: &Path, m: Marco) {
         .collect();
     let de_la_app = leer_en_voz::idioma_de_la_app(textos);
     let idioma = voz_alta::idioma_para_leer(&muestra, "", &de_la_app);
-    let Some(mut v) = LeerEnVoz::arrancar(&idioma, &de_la_app, parrafos, 1.0) else {
+    // La voz es de la app y sigue con el lector cerrado: entonces es ella
+    // quien apunta el verde en cada parrafo (`ExportarDocumentoAnotado.ponerVoz`).
+    let apuntar: leer_en_voz::Apuntar = {
+        let ruta = ruta.to_path_buf();
+        let fracciones = fracciones.clone();
+        Box::new(move |p| {
+            let mut a = crate::anotado_del_adjunto::leer(&ruta);
+            a.voz = p.map(|i| (i, fracciones.get(i).copied().unwrap_or(0.0)));
+            if let Err(err) = crate::anotado_del_adjunto::escribir(&ruta, &a) {
+                tracing::info!(?err, "no se pudo apuntar el verde de la voz");
+            }
+        })
+    };
+    let doc = leer_en_voz::documento(
+        textos,
+        e.ubicacion.raiz(),
+        ruta,
+        titulo_para_la_voz(e, ruta),
+        parrafos,
+        idioma.clone(),
+        apuntar,
+    );
+    let Some(mut v) = LeerEnVoz::arrancar(doc) else {
         e.aviso = Some((leer_en_voz::sin_voz(textos, &idioma), ahora_ms() + 6000));
         return;
     };
@@ -2406,6 +2462,46 @@ fn escuchar(e: &mut Estado, textos: &Catalogo, ruta: &Path, m: Marco) {
     e.poniendo_marca = false;
     e.panel = false;
     al_sonar(e, desde, ruta, m);
+}
+
+/// El nombre del documento para los mandos de Windows (sin extension).
+fn titulo_para_la_voz(e: &Estado, ruta: &Path) -> String {
+    let t = e.doc.titulo.trim();
+    if t.is_empty() {
+        pixpin_docs::sin_extension(&pixpin_docs::nombre(ruta))
+    } else {
+        t.to_string()
+    }
+}
+
+/// **Deja de escuchar** (la X de la barra, Esc): la voz se calla y olvida el
+/// documento. Cerrar el lector no la calla: solo la suelta (`e.voz = None`).
+fn dejar_de_escuchar(e: &mut Estado) {
+    if let Some(v) = e.voz.take() {
+        v.soltar();
+    }
+}
+
+/// **Volver a abrir un documento que se esta escuchando** (`engancharALaVoz`):
+/// el lector se engancha a la voz de la app —barra, resaltado, verde— y la
+/// vista va al parrafo que suena. Se intenta una vez, con algo ya medido.
+fn engancharse_a_la_voz(e: &mut Estado, ruta: &Path, m: Marco) -> bool {
+    if !e.engancharse || e.colocados.is_empty() {
+        return false;
+    }
+    e.engancharse = false;
+    let idx = para_leer(&e.colocados);
+    let Some(v) = LeerEnVoz::enganchar(ruta, idx.len()) else {
+        return false;
+    };
+    let i = v.actual();
+    e.voz = Some(v);
+    if let Some(&k) = idx.get(i) {
+        let visto = m.alto / px(e, m);
+        e.y = (e.colocados[k].y - visto * 0.25).max(0.0);
+        acotar(e, m);
+    }
+    true
 }
 
 /// **Suena otro parrafo**: el verde se mueve a el (en cada parrafo, no solo
@@ -2451,10 +2547,10 @@ fn poner_el_verde_aqui(e: &mut Estado, ruta: &Path) {
     e.ajustes.voz = Some((p, f));
     guardar_ajustes(e, ruta);
     if let Some(v) = e.voz.as_mut() {
-        if v.leyendo {
+        if v.leyendo() {
             v.leer(p);
         } else {
-            let actual = v.actual as isize;
+            let actual = v.actual() as isize;
             v.saltar(p as isize - actual);
         }
     }
@@ -2475,7 +2571,7 @@ fn boton_de_voz(e: &mut Estado, b: leer_en_voz::BotonVoz, ruta: &Path, m: Marco)
         BotonVoz::Velocidad => {
             v.otra_velocidad();
         }
-        BotonVoz::Cerrar => e.voz = None,
+        BotonVoz::Cerrar => dejar_de_escuchar(e),
     }
 }
 
@@ -2563,6 +2659,11 @@ fn hacer(
         }
         Accion::Escuchar => escuchar(e, textos, ruta, m),
         Accion::Voz(b) => boton_de_voz(e, b, ruta, m),
+        Accion::AjusteVoz(leer_en_voz::AjusteVoz::Microsoft) => {
+            leer_en_voz::alternar_microsoft(e.ubicacion.raiz());
+        }
+        // El menu necesita la ventana: lo saca el bucle.
+        Accion::AjusteVoz(leer_en_voz::AjusteVoz::ElegirVoz) => e.elegir_voz = true,
         Accion::Auto => alternar_auto(e, textos),
         Accion::AutoBoton(b) => boton_de_auto(e, b),
         Accion::VerPdf => {
@@ -2988,10 +3089,12 @@ mod pruebas {
             imagenes: imagenes::Imagenes::nueva(std::env::temp_dir().join("pixpin-visor-imagenes")),
             imagen_pulsada: None,
             pinear: None,
+            elegir_voz: false,
             cursor: None,
             en_pin: false,
             pedir_pantalla_completa: false,
             voz: None,
+            engancharse: false,
             auto: None,
             palabras: 0,
             ubicacion: Ubicacion::Portable {

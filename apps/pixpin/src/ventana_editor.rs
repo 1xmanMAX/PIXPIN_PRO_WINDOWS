@@ -942,6 +942,12 @@ fn abrir_en_modo(
     let mut presentacion: Option<presentar::Presentacion> = None;
     let mut solo_mirar = false;
     let mut arrastre_mirar: Option<presentar::Arrastre> = None;
+    // Lo que dibuje el asistente mientras este lienzo esta abierto cae aqui,
+    // centrado en lo que se ve (`asistente::al_lienzo`). El anotador de
+    // pantalla no es un lienzo.
+    let _para_el_asistente = pantalla
+        .is_none()
+        .then(|| crate::asistente::al_lienzo::EditorAbierto::nuevo(ventana.handle().0 as isize));
 
     'bucle: loop {
         // D129: se mide siempre (unos nanosegundos por `Instant::now`); solo
@@ -983,6 +989,13 @@ fn abrir_en_modo(
             if delante {
                 crate::al_frente::poner_lienzo(h);
             }
+            let (x0, y0, x1, y1) = efectiva.ventana(ancho_px, alto_px);
+            if crate::asistente::al_lienzo::atender_en_editor(&mut escena, ((x0 + x1) / 2.0, (y0 + y1) / 2.0)) {
+                todo_sucio = true;
+                contenido_sucio = true;
+                interfaz_sucia = true;
+                ventana.invalidar();
+            }
             let llegadas = crate::al_frente::tomar_para(h);
             if !llegadas.is_empty() {
                 for r in &llegadas {
@@ -1003,7 +1016,7 @@ fn abrir_en_modo(
                 ventana.invalidar();
             }
         }
-        for (hwnd, ev) in pixpin_shell::overlay::tomar_eventos_pendientes() {
+        for (hwnd, mut ev) in pixpin_shell::overlay::tomar_eventos_pendientes() {
             // La pastilla del anotador de pantalla: sus clics son suyos.
             if let Some(ps) = pastilla.as_mut()
                 && hwnd == ps.handle()
@@ -1707,7 +1720,18 @@ fn abrir_en_modo(
                 }
                 todo_sucio = true;
                 ventana.invalidar();
-                continue;
+                // «Pegar» del menu: es Ctrl+V, por el mismo camino (tabla de
+                // Excel, lo copiado dentro, imagen o texto), y el raton sigue
+                // donde se abrio el menu, que es donde nace lo pegado.
+                if !exportar::tomar_pegar() {
+                    continue;
+                }
+                ev = EventoOverlay::Tecla {
+                    vk: b'V' as u32,
+                    ctrl: true,
+                    shift: false,
+                    alt: false,
+                };
             }
             // **Las herramientas** (`dibujo::mano`): la tabla de atajos del
             // motor, las letras, la pluma, el portapapeles, el lazo, el
@@ -1730,7 +1754,7 @@ fn abrir_en_modo(
             } = ev
                 && vk == b'V' as u32
                 && pantalla.is_none()
-                && mano.portapapeles.is_empty()
+                && !mano.copiado_vigente()
                 && !gesto.esta_escribiendo()
                 && let Some(pixpin_codec::portapapeles::ContenidoPortapapeles::Texto(t)) =
                     pixpin_codec::portapapeles::leer()

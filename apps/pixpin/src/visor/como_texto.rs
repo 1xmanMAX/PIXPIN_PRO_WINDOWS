@@ -136,6 +136,23 @@ pub(crate) fn pdf_de_origen(raiz: &Path, ruta: &Path) -> Option<PathBuf> {
     origen.is_file().then_some(origen)
 }
 
+/// **El PDF del que sale una pagina leida como texto**, sin saber donde
+/// vive la app: la pagina esta en `…/cache/pdf-como-texto/<huella>/` con su
+/// `origen` al lado. Lo usa `anotado_del_adjunto` para que lo anotado viaje
+/// como `anot-<uid>-texto`. `None` si no es una de esas paginas.
+pub(crate) fn origen_de_la_pagina(ruta: &Path) -> Option<PathBuf> {
+    let carpeta = ruta.parent()?;
+    let cache = carpeta.parent()?;
+    if cache.file_name()? != CARPETA || cache.parent()?.file_name()? != "cache" {
+        return None;
+    }
+    let origen = PathBuf::from(std::fs::read_to_string(carpeta.join(ORIGEN)).ok()?.trim());
+    origen
+        .extension()
+        .is_some_and(|e| e.eq_ignore_ascii_case("pdf"))
+        .then_some(origen)
+}
+
 /// Si un bloque es la marca «Hoja N» de un PDF leido como texto (en los dos
 /// idiomas de la app): no se lee en voz alta.
 pub(crate) fn es_marca(texto: &str) -> bool {

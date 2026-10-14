@@ -15,6 +15,8 @@ fluent-bundle = "0.16.0"
 pixpin-audio = { version = "0.1.0", path = "../../crates/pixpin-audio" }
 pixpin-capture = { version = "0.1.0", path = "../../crates/pixpin-capture" }
 pixpin-ocr = { version = "0.1.0", path = "../../crates/pixpin-ocr" }
+# El asistente local del chat: motor llama.cpp aparte, herramientas y bucle.
+pixpin-ia = { path = "../../crates/pixpin-ia" }
 pixpin-docs = { version = "0.1.0", path = "../../crates/pixpin-docs" }
 # El editor de notas Markdown (H12): el RichEdit de Windows, en su crate
 # porque este ejecutable no admite `unsafe`.

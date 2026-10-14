@@ -70,6 +70,9 @@ pub fn de_figura(f: &Figura) -> &'static [Propiedad] {
         // Cuantos cuadros y cuanto mide cada uno lo decide la escala, no el
         // usuario: ofrecerlo seria ofrecer mentir.
         Figura::EscalaGrafica => &[ColorTrazo, Opacidad, Fuente],
+        // El instrumento de graficar (recta, plano o espacio): el color de sus
+        // rayas, su grosor y la letra de sus cifras (`DrawProperties.kt`).
+        Figura::Instrumento(_) => &[ColorTrazo, Grosor, Opacidad, Fuente],
         // El marco es andamiaje, no dibujo: se pinta siempre igual y no
         // ofrece nada que cambiar. Ofrecer color seria invitar a usarlo como
         // una figura mas.

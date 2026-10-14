@@ -341,6 +341,32 @@ pub fn imagen_entera(
     ))
 }
 
+/// **Los puntos de las tablas de coordenadas**, encima de todo y sin el eje,
+/// que es andamio de la pantalla (`paraExportar` del `Renderer` del movil):
+/// lo tecleado si sale en el PNG, el SVG, el PDF y la web.
+fn ordenes_de_las_tablas(escena: &Escena) -> Vec<Orden> {
+    crate::instrumento::tabla::ordenes(
+        &escena.tablas,
+        escena.origen_coordenadas,
+        escena.escala.as_ref(),
+        None,
+        None,
+    )
+}
+
+/// Lo que ocupan esos puntos, para que el encuadre de «todo» no los corte.
+fn caja_de_las_tablas(escena: &Escena) -> Option<(f32, f32, f32, f32)> {
+    let r = crate::instrumento::tabla::TABLA_PUNTO * 2.0;
+    crate::instrumento::tabla::anclajes(
+        &escena.tablas,
+        escena.origen_coordenadas,
+        escena.escala.as_ref(),
+    )
+    .into_iter()
+    .map(|p| (p.x - r, p.y - r, p.x + r, p.y + r))
+    .reduce(union)
+}
+
 fn union(a: (f32, f32, f32, f32), b: (f32, f32, f32, f32)) -> (f32, f32, f32, f32) {
     (a.0.min(b.0), a.1.min(b.1), a.2.max(b.2), a.3.max(b.3))
 }
@@ -386,7 +412,11 @@ fn nombre_del_marco(m: &Elemento) -> String {
 
 fn entero(escena: &Escena, papel: Option<(f32, f32)>) -> Option<Hoja> {
     let visibles: Vec<&Elemento> = escena.a_la_vista().collect();
-    let contenido = visibles.iter().map(|e| caja_de(e)).reduce(union);
+    let contenido = visibles
+        .iter()
+        .map(|e| caja_de(e))
+        .chain(caja_de_las_tablas(escena))
+        .reduce(union);
     let caja = match (papel, contenido) {
         // Con papel manda el papel (y lo que se salga de el), sin margen.
         (Some((w, h)), Some(c)) => union((0.0, 0.0, w, h), c),
@@ -403,6 +433,7 @@ fn entero(escena: &Escena, papel: Option<(f32, f32)>) -> Option<Hoja> {
     for e in &visibles {
         meter(escena, e, &mut ordenes, &mut granos, &mut grafitos);
     }
+    ordenes.extend(ordenes_de_las_tablas(escena));
     if ordenes.is_empty() && grafitos.is_empty() {
         return None;
     }
@@ -493,6 +524,7 @@ fn de_un_marco(escena: &Escena, m: &Elemento, papel: Option<(f32, f32)>) -> Opti
     for e in escena.a_la_vista().filter(|e| dentro.contains(&e.id)) {
         meter(escena, e, &mut ordenes, &mut granos, &mut grafitos);
     }
+    ordenes.extend(ordenes_de_las_tablas(escena));
     Some(Hoja {
         nombre: nombre_del_marco(m),
         caja,

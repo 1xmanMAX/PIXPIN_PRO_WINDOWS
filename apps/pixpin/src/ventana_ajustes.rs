@@ -272,6 +272,8 @@ enum Clave {
     // Voz
     VozSegundo,
     VozModo,
+    /// El modelo del asistente local: 2B o 0.8B (`[asistente] modelo`).
+    AsistenteModelo,
     // Sincronizar
     Presencia,
     LoMioManda,
@@ -783,6 +785,19 @@ fn filas_de_seccion(s: Seccion, a: &Ajustes, cx: &Contexto) -> Vec<(Clave, Fila)
                     },
                 ),
             ),
+            // El asistente local del chat (13-oct-2026): el modelo que se
+            // baja y se usa. Cambiarlo no baja nada: lo pide la tarjeta del
+            // chat «Asistente».
+            op(
+                a,
+                Clave::AsistenteModelo,
+                tt("ajustes-asistente-modelo"),
+                tt("ajustes2-ayuda-asistente-modelo"),
+                opcion(
+                    vec![tt("asistente-modelo-normal"), tt("asistente-modelo-ligero")],
+                    usize::from(a.asistente.modelo == pixpin_ia::modelos::QWEN35_08B.id),
+                ),
+            ),
         ],
         Seccion::Atajos => {
             let (enlaces, _) = Enlaces::de_ajustes(a);
@@ -1072,6 +1087,7 @@ fn restablecer(clave: Clave, a: &mut Ajustes) {
         },
         Clave::VozSegundo => a.voz.segundo_idioma = d.voz.segundo_idioma,
         Clave::VozModo => a.voz.modo_de_idiomas = d.voz.modo_de_idiomas,
+        Clave::AsistenteModelo => a.asistente.modelo = d.asistente.modelo.clone(),
         Clave::Presencia => a.sincro.presencia = d.sincro.presencia,
         Clave::LoMioManda => a.sincro.lo_mio_manda = d.sincro.lo_mio_manda,
         Clave::AbrirCon => a.abrir_con = d.abrir_con,
@@ -1270,6 +1286,15 @@ fn aplicar_opcion(a: &mut Ajustes, clave: Clave, cual: usize) {
                 .get(cual)
                 .map(|(c, _)| c.to_string())
                 .unwrap_or_default();
+        }
+        Clave::AsistenteModelo => {
+            a.asistente.modelo = if cual == 1 {
+                pixpin_ia::modelos::QWEN35_08B.id.to_string()
+            } else {
+                pixpin_ia::modelos::QWEN35_2B.id.to_string()
+            };
+            // El motor del otro modelo se suelta ya (su memoria vuelve).
+            crate::asistente::motor::soltar_todo();
         }
         Clave::VozModo => {
             a.voz.modo_de_idiomas = if cual == 1 {
@@ -2908,6 +2933,7 @@ mod pruebas {
             Clave::Suavizado,
             Clave::VozSegundo,
             Clave::VozModo,
+            Clave::AsistenteModelo,
             Clave::Presencia,
             Clave::LoMioManda,
             Clave::AbrirCon,

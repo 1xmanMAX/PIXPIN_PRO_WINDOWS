@@ -464,10 +464,8 @@ fn ofrecer_otra_app(textos: &Catalogo, clave: &str, ruta: &Path) {
         textos.t("diapositivas-abrir-con-otra")
     );
     let nula = windows::Win32::Foundation::HWND::default();
-    if pixpin_shell::preguntar(nula, &textos.t("diapositivas-titulo"), &pregunta)
-        && let Err(e) = pixpin_shell::abrir_con_otra::abrir_con_otra(nula, ruta)
-    {
-        tracing::warn!(?e, "no se pudo abrir con otra app");
+    if pixpin_shell::preguntar(nula, &textos.t("diapositivas-titulo"), &pregunta) {
+        crate::abrir_con::abrir_con_o_avisar(nula, ruta, textos);
     }
 }
 

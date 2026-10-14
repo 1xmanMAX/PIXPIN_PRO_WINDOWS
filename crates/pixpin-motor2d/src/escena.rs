@@ -56,6 +56,15 @@ pub struct Escena {
     /// como en el movil: es mirar, no dibujar.
     #[serde(default = "verdadero")]
     pub referencias_visibles: bool,
+    /// **Las tablas de coordenadas** (`Scene.tablas` del movil): series de
+    /// puntos tecleados, de la escena y no de ningun elemento. Ver
+    /// `instrumento::tabla`.
+    #[serde(default)]
+    pub tablas: Vec<crate::instrumento::tabla::TablaDeCoordenadas>,
+    /// **El eje comun de las coordenadas** (`Scene.origenCoordenadas`): uno
+    /// para todo el dibujo, para que dos series se puedan comparar.
+    #[serde(default)]
+    pub origen_coordenadas: Option<Punto2>,
     /// Lo que se ha hecho en ESTA sesion, para deshacerlo. No se guarda: el
     /// historial es estado de la interfaz, no del documento, y deshacer al
     /// abrir un dibujo de ayer un trazo que no se ve hacer confunde mas de
@@ -109,6 +118,9 @@ enum Cambio {
     /// Los clavos **antes** del cambio (`nudos`): tampoco son de ningun
     /// elemento.
     Alfileres(Vec<crate::nudos::Alfiler>),
+    /// Las tablas de coordenadas y su eje **antes** del cambio: tampoco son
+    /// de ningun elemento.
+    Tablas(Vec<crate::instrumento::tabla::TablaDeCoordenadas>, Option<Punto2>),
 }
 
 /// Todo lo que hizo un gesto. Un arrastre que mueve cuarenta elementos es
@@ -132,6 +144,13 @@ impl Cambio {
             Cambio::Reordenado(orden) => size_of::<Cambio>() + orden.len() * size_of::<u64>(),
             Cambio::Escala(escala) => {
                 size_of::<Cambio>() + escala.as_ref().map_or(0, |e| e.unidad.len())
+            }
+            Cambio::Tablas(lista, _) => {
+                size_of::<Cambio>()
+                    + lista
+                        .iter()
+                        .map(|t| t.id.len() + t.nombre.len() + t.color.len() + t.puntos.len() * 16)
+                        .sum::<usize>()
             }
             Cambio::Alfileres(lista) => {
                 size_of::<Cambio>()
@@ -188,6 +207,8 @@ impl Default for Escena {
             fondo: FONDO_DE_FABRICA,
             alfileres: Vec::new(),
             referencias_visibles: true,
+            tablas: Vec::new(),
+            origen_coordenadas: None,
             historia: Vec::new(),
             rehacer: Vec::new(),
             en_curso: None,
@@ -437,6 +458,31 @@ impl Escena {
         }
     }
 
+    /// **Pone las tablas de coordenadas y su eje**, apuntandolo para
+    /// deshacerlo (aceptar el editor de una tabla, quitarla, abrir una serie
+    /// nueva: `updateTabla`, `removeTabla`, `addTabla` del movil). Devuelve
+    /// si cambio algo: aceptar sin tocar nada no gasta un `Ctrl+Z`.
+    pub fn poner_tablas(
+        &mut self,
+        tablas: Vec<crate::instrumento::tabla::TablaDeCoordenadas>,
+        origen: Option<Punto2>,
+    ) -> bool {
+        if self.tablas == tablas && self.origen_coordenadas == origen {
+            return false;
+        }
+        let ya_apuntado = self
+            .en_curso
+            .as_ref()
+            .is_some_and(|p| p.cambios.iter().any(|c| matches!(c, Cambio::Tablas(..))));
+        if !ya_apuntado {
+            let antes = Cambio::Tablas(self.tablas.clone(), self.origen_coordenadas);
+            self.empujar_cambio(antes);
+        }
+        self.tablas = tablas;
+        self.origen_coordenadas = origen;
+        true
+    }
+
     /// **Cambia el color del papel**, apuntandolo para deshacerlo. Devuelve
     /// si cambio algo: elegir el papel que ya estaba no gasta un `Ctrl+Z`.
     ///
@@ -632,6 +678,11 @@ impl Escena {
                 Cambio::Alfileres(anterior) => {
                     let actual = std::mem::replace(&mut self.alfileres, anterior.clone());
                     inverso.cambios.push(Cambio::Alfileres(actual));
+                }
+                Cambio::Tablas(tablas, origen) => {
+                    let actual = std::mem::replace(&mut self.tablas, tablas.clone());
+                    let eje = std::mem::replace(&mut self.origen_coordenadas, *origen);
+                    inverso.cambios.push(Cambio::Tablas(actual, eje));
                 }
             }
         }

@@ -142,7 +142,8 @@ fn muestra_del_chat_con_la_zona() {
             elegida: Some(0),
             ahora,
             textos: &textos,
-            busqueda: "",
+            busqueda: &crate::caja_texto::CajaLinea::nueva(),
+            buscando: false,
             marcados: &marcados,
         };
         motor

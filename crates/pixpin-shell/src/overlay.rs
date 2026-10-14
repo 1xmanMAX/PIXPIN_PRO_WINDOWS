@@ -365,6 +365,23 @@ impl VentanaOverlay {
         }
     }
 
+    /// **Al frente, pero como una ventana mas** (un visor de archivos al
+    /// nacer, 13-oct-2026): delante de las aplicaciones normales y sin
+    /// «siempre encima», sin activarla. `HWND_NOTOPMOST` solo no basta: en
+    /// una ventana que no es TOPMOST no hace nada, y si `enfocar` no pudo
+    /// robar el primer plano (Windows a veces no deja) la ventana nueva
+    /// quedaria debajo de la que se estaba usando. Subirla a TOPMOST y
+    /// bajarla en seguida la deja la primera de las normales.
+    pub fn al_frente_sin_fijar(&self) {
+        self.poner_siempre_encima(true);
+        self.poner_siempre_encima(false);
+    }
+
+    /// Si esta «siempre encima» ahora (`WS_EX_TOPMOST`).
+    pub fn siempre_encima(&self) -> bool {
+        self.estilo_extendido() & WS_EX_TOPMOST.0 != 0
+    }
+
     /// La pone por delante de las demas ventanas TOPMOST sin activarla ni
     /// moverla (D145). Crearla despues suele bastar, pero un pin que se
     /// reordene (su paleta, un clic) quedaria encima del lienzo.
@@ -1732,6 +1749,18 @@ pub fn raton_en_pantalla() -> Punto {
     // SAFETY: escribe en la variable local.
     let _ = unsafe { GetCursorPos(&mut p) };
     Punto { x: p.x, y: p.y }
+}
+
+/// La ventana de primer nivel que se ve en `p` (la que recibiria un clic),
+/// o una nula. Para saber si una ventana que no esta «siempre encima» esta
+/// tapada por otra aplicacion justo donde esta el raton.
+pub fn ventana_bajo(p: Punto) -> HWND {
+    // SAFETY: consultas de solo lectura; un manejador que desaparezca entre
+    // medias da una ventana nula, que no es de nadie.
+    unsafe {
+        let h = WindowFromPoint(windows::Win32::Foundation::POINT { x: p.x, y: p.y });
+        if h.is_invalid() { h } else { GetAncestor(h, GA_ROOT) }
+    }
 }
 
 /// El monitor donde cae `p`: su area entera y la de trabajo (sin la barra

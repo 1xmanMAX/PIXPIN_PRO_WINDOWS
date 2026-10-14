@@ -228,6 +228,10 @@ pub enum Figura {
         #[serde(default = "radio_de_etiqueta")]
         radio: f32,
     },
+    /// **El instrumento de graficar** (`pixpin-number-line`, `pixpin-axes`,
+    /// `pixpin-space` del movil): uno solo, con el numero de ejes como dato
+    /// (1 recta numerica, 2 plano cartesiano, 3 espacio). Ver `instrumento`.
+    Instrumento(crate::instrumento::Instrumento),
     // El cronograma (`pixpin-gantt` del movil) se quito: no estaba bien
     // hecho y no servia. Uno que llegue del movil viaja como ajeno (ver
     // `excalidraw.rs`): no se pinta aqui, pero vuelve intacto al guardar.

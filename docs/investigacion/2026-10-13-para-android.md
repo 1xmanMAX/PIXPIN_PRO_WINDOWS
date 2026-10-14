@@ -7,6 +7,12 @@ guía detallada en esta misma carpeta.
 
 ## Qué hay que hacer en Android (por orden)
 
+0. **URGENTE — el visor de planos pisa lo que llega del PC** (ver la sección
+   «Lo anotado en un plano del PC que no se veía en el móvil», al final):
+   `PlanoActivity` lee la capa una vez y la reescribe en cada `onPause`, así
+   que lo anotado en el PC con el plano abierto en el móvil no se ve y se
+   borra en los dos aparatos. Releer al llegar algo, no guardar sin cambios y
+   juntar al guardar, como hace ya el PC.
 1. **Guardar el formato nuevo de las celdas** (A1 de
    `2026-10-12-que-se-sincroniza.md`). El PC añade a `EstiloDeCelda` las claves
    `k` (cursiva), `s` (subrayado), `t` (tachado), `c` (color de letra), `w`
@@ -54,3 +60,105 @@ Las pruebas del PC con un «móvil» simulado que habla el protocolo de verdad
 están en `crates/pixpin-proyecto/tests/sincronizar_con_el_movil.rs` y
 `apps/pixpin/src/plano_cad/anotar/pruebas_con_el_movil.rs`: describen, caso a
 caso, qué espera recibir y mandar cada lado.
+
+## URGENTE: las voces de Microsoft dejaron de hablar (12-oct)
+
+Desde el 12-oct `speech.platform.bing.com/.../edge/v1` contesta **403** a la
+petición de hablar (la lista de voces sigue funcionando). El PC ahora habla por
+`api.msedgeservices.com/tts/cognitiveservices/websocket/v1?Ocp-Apim-Subscription-Key=…`
+con el mismo token y el mismo `Sec-MS-GEC` (arreglo de rany2/edge-tts #491),
+probado en vivo. En Android hay que cambiar `EdgeVoz.urlDeHablar` igual. Ver
+`crates/pixpin-voz/src/edge.rs`.
+
+## También nuevo en el PC (13-oct)
+
+- Lo anotado sobre un PDF leído «como texto» viaja como `anot-<uid>-texto`
+  (tinta, `.marcas`, `.maqueta`, `.voz`, `.sitio`), como en Android.
+- Grafito con `dureza`, guías (`reference`, `referenciasVisibles`), fotos y
+  audios añadidos a lecciones viejas: mismo formato que Android, con pruebas
+  de ida y vuelta en `crates/pixpin-proyecto/tests/sincronizar_con_el_movil.rs`.
+- Chats compartidos con personas: compatibles byte a byte con v0.122
+  (comprobado contra Java); falta probar con teléfonos reales.
+
+## Lo anotado en un plano del PC que no se veía en el móvil (13-oct, tarde)
+
+El usuario: «las anotaciones de AutoCAD no se están sincronizando de la PC al
+celular, solo del celular a la PC». Arreglado en el PC lo que era del PC (rama
+`cad-sincro`); lo de Android, aquí.
+
+### Lo que se midió en sus datos
+
+- El PC guarda lo anotado de un plano del chat donde toca:
+  `lienzos/anot-<uid>.excalidraw` de la carpeta del chat (lo que la
+  sincronización manda como `pins/draw/anot-<uid>.excalidraw.gz`) y
+  `android/pins/draw/anot-<uid>.hoja`. **Viaja**: la base de la última vuelta
+  con el móvil tiene, para `anot-7G5G8874YS` (*11.15 PLANO DE SEÑALIZACIÓN
+  VIAL HORIZONTAL*), el mismo resumen que la capa del PC con el rectángulo
+  que el usuario dibujó allí a las 13:04:58 (`pc104`).
+- **Cae en su sitio**: la caja de ese plano en el PC es
+  `[-721.1, -371.6, 754.3, 407.8]` (origen en el centro de lo que importa) y
+  la que dice la `.hoja` del móvil `[-738.0, -389.9, 738.0, 389.7]` (origen en
+  el centro de la caja); con `encajeDe` el rectángulo cae en el mismo punto
+  del plano en los dos.
+- El móvil cortó la conexión cinco veces entre las 12:45 y las 13:03 mientras
+  el usuario dibujaba en el plano («An existing connection was forcibly
+  closed by the remote host»). Conviene mirar por qué.
+
+### Lo que falla en Android: `PlanoActivity` no relee y pisa al salir
+
+1. **Lee la capa una sola vez**, al abrir (`LaunchedEffect(original)`). Lo que
+   trae la sincronización con el plano abierto (o en la pila de pantallas) no
+   se ve: `Disco` avisa con `Cambio.ARCHIVOS` y `Red` sube
+   `ExcalidrawStore.revision`, pero `PlanoActivity` no la mira.
+2. **Guarda en cada `onPause`, aunque no haya cambiado nada**, la capa que
+   tiene en memoria (`guardarCapa` → `ExcalidrawStore.guardar`), que no tiene
+   lo que llegó del PC: el fichero del móvil lo pierde.
+3. En la vuelta siguiente la base lo tiene y el móvil no: para la fusión es
+   **un borrado en el móvil**, y se borra también en el PC.
+
+Así: el usuario dibuja en el PC con el plano abierto en el móvil, sincroniza,
+no lo ve; sale del plano y lo del PC desaparece en los dos. Al revés no
+pasaba porque el PC solo escribe si se anotó algo.
+
+**Qué cambiar** (lo que hace ya el PC, `apps/pixpin/src/plano_cad/anotar.rs`):
+
+- **Releer al llegar algo**: observar `ExcalidrawStore.revisionDe(idCapa)` (o
+  fecha y tamaño de `anot-<uid>.excalidraw.gz` y de su `.hoja`) y, si no se
+  está anotando y no hay nada sin guardar, volver a leer la capa con su
+  `.hoja` (`encajeDe` → `unidadesEntre` → `aLaMemoria`) y con ella las cotas y
+  los marcos (`CapaDelPlano.leer`). En el PC: `MotorDelPlano::al_dia`, mirado
+  al pintar, como mucho cada 0,7 s.
+- **No guardar si no cambió nada**: `onPause` no es un cambio.
+- **Al guardar, juntar con lo del disco si cambió desde que se leyó**, con
+  `Fusion.json` (la de la sincronización): `base` = el texto de la capa tal
+  como se leyó o escribió aquí la última vez, `mio` = lo que se va a
+  escribir, `suyo` = lo que hay ahora. Si la `.hoja` del disco es otra, pasar
+  antes `base` y `mio` a sus unidades (`transformar`, sin subir versiones).
+  Después, releer lo junto. En el PC: `MotorDelPlano::guardar_juntando`.
+
+### Ids repetidos (arreglado en el PC; Android debería comprobarlo)
+
+El PC nombraba lo nuevo `pc<n>` con el número de elementos leídos más uno.
+Si el móvil quitaba uno (lo borrado no se guarda, `purgeDeleted`), el
+siguiente trazo del PC salía **con el id del último trazo del PC**. Con dos
+figuras con el mismo id la fusión no junta figura por figura (`conIds` falla)
+y en el móvil una tapa a la otra: lo nuevo del PC no aparecía. Desde hoy lo
+nuevo del PC cuenta desde el mayor `pc<n>` del fichero
+(`pixpin_motor2d::excalidraw::a_escena`). En los datos del usuario ya hay
+cuatro dibujos así (`anot-34FJGS8TT2-p3`, `anot-34FJGS8TT2-p4`, `FM5RQ7G7DE`,
+`Z2C3WQFTHJ`; ninguno es de un plano). En Android: que una escena con ids
+repetidos no esconda ninguno al pintar y, al guardar, dar id nuevo al
+repetido de versión más baja, para que esos dibujos se arreglen solos.
+
+### Lo ya anotado
+
+- Los `lienzos/anot-*.excalidraw` del PC **no son copias que no viajaron**:
+  son el sitio de siempre del PC para `pins/draw/anot-*.excalidraw.gz`, con
+  el mismo contenido que el móvil (mismos resúmenes en la base). No hay que
+  moverlos.
+- Lo que el móvil ya pisó al salir del plano se borró en los dos y no vuelve.
+- Tres trazos del PC en `anot-3DSRX435ZU` (*VERTICAL - TAHUANTINSUYO*, 12-oct
+  22:01, con el PC de antes) caen fuera del plano en los dos aparatos: se
+  dibujaron sin `.hoja`, con la unidad y el origen de antes (el centro de la
+  caja entera, que en ese plano llega hasta el (0, 0) del mundo); la `.hoja`
+  de hoy ya se escribió con el origen nuevo. No se mueven solos.

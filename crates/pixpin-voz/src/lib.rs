@@ -96,6 +96,8 @@
 
 pub mod credibilidad;
 pub mod dos_idiomas;
+/// Las voces de Microsoft Edge para leer en voz alta (los lectores).
+pub mod edge;
 pub mod idiomas;
 pub mod telepronter;
 pub mod tiempos;

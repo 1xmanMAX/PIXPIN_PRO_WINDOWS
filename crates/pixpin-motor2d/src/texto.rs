@@ -612,6 +612,18 @@ impl EdicionTexto {
         self.cursor += 1;
     }
 
+    /// Mete una cadena entera donde esta el cursor (pegar) y deja el cursor
+    /// detras de ella. Devuelve si cambio algo.
+    pub fn insertar_texto(&mut self, s: &str) -> bool {
+        if s.is_empty() {
+            return false;
+        }
+        let b = self.byte_de(self.cursor);
+        self.texto.insert_str(b, s);
+        self.cursor += s.chars().count();
+        true
+    }
+
     /// Aplica una tecla. Devuelve si cambio algo: con `false` no hay nada que
     /// repintar, y una tecla en el borde (Retroceso al principio) no puede
     /// hacer creer a la ventana que el texto se movio.

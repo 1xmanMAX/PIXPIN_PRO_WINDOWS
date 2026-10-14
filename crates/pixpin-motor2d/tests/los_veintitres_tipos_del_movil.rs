@@ -49,10 +49,11 @@ const LOS_VEINTITRES: [&str; 23] = [
 /// aqui, lo que se promete de el es que vuelve intacto. Cuando su grupo le
 /// ensene a dibujarse, hay que quitarlo de aqui — y la prueba de mas abajo
 /// obliga a ello.
-const LOS_AJENOS: [&str; 5] = [
-    "pixpin-axes",
-    "pixpin-number-line",
-    "pixpin-space",
+///
+/// Los tres instrumentos de graficar (`pixpin-axes`, `pixpin-number-line`,
+/// `pixpin-space`) salieron de aqui el 13-oct-2026: se leen como un solo
+/// instrumento con su numero de ejes (`instrumento`).
+const LOS_AJENOS: [&str; 2] = [
     "pixpin-solid",
     // El cronograma se supo dibujar (F12) y se quito: no estaba bien hecho.
     "pixpin-gantt",
@@ -213,7 +214,10 @@ fn lienzo_con_los_veintitres() -> String {
                 m.insert("etiquetaRadio".into(), Value::from(16.0));
             }
             "pixpin-axes" | "pixpin-number-line" | "pixpin-space" => {
-                m.insert("unidad".into(), Value::String("cm".into()));
+                // `unidad` es un numero en `Element.kt` (pixeles por unidad):
+                // aqui ponia «cm», que el movil ni sabria leer.
+                m.insert("unidad".into(), Value::from(37.5));
+                m.insert("fontSize".into(), Value::from(14.0));
                 m.insert("pasoDeNumeros".into(), Value::from(1.0));
                 m.insert("pasoDeCuadros".into(), Value::from(0.5));
                 if tipo == "pixpin-space" {
@@ -333,7 +337,7 @@ fn abrir_y_guardar_sin_tocar_nada_devuelve_los_veintitres_byte_a_byte() {
 }
 
 #[test]
-fn el_pc_sabe_dibujar_diecinueve_de_los_veintitres_y_los_otros_cuatro_viajan() {
+fn el_pc_sabe_dibujar_veintiuno_de_los_veintitres_y_los_otros_dos_viajan() {
     let l = leer(&lienzo_con_los_veintitres()).unwrap();
     let mut ajenos = Vec::new();
     for (entrada, (tipo, _)) in l
