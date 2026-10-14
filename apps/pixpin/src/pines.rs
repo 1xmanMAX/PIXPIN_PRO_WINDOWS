@@ -21,7 +21,7 @@ mod dispositivo;
 // La pegatina y la pagina de la nota de cada pin (Tanda 6).
 mod extras;
 // Resaltar, subrayar, tachar o tapar el texto reconocido (8-oct-2026).
-mod marcas_texto;
+pub(crate) mod marcas_texto;
 use marcas_texto::Cambio;
 pub(crate) mod foto;
 

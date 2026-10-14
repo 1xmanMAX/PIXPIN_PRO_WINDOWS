@@ -158,6 +158,15 @@ impl Buscador {
         Some(Hecho::Escrito)
     }
 
+    /// **Abre la caja con `consulta` ya escrita**, como si el usuario la
+    /// hubiera tecleado (el asistente: «¿donde dice JR. ANTISUYO?» abre el
+    /// lector buscando eso). Quien llama vuelve a buscar.
+    pub fn buscar_ya(&mut self, consulta: &str) {
+        self.caja.poner_texto(consulta);
+        self.llevar();
+        self.abierto = true;
+    }
+
     /// El boton pulsado, como si fuera su tecla.
     pub fn boton(&mut self, b: Boton) -> Hecho {
         match b {

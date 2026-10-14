@@ -731,12 +731,12 @@ pub fn con_topes(herramientas: &[Herramienta], tope: u64) -> Vec<Herramienta> {
                 let max = o.get("maxItems").and_then(|m| m.as_u64()).map_or(tope, |m| m.min(tope));
                 o.insert("maxItems".into(), max.into());
             }
-            Some("string") if !o.contains_key("enum") => {
-                let max = o
-                    .get("maxLength")
-                    .and_then(|m| m.as_u64())
-                    .map_or(TOPE_TEXTO, |m| m.min(TOPE_TEXTO));
-                o.insert("maxLength".into(), max.into());
+            // Un texto sin tope propio es una etiqueta o un titulo: [`TOPE_TEXTO`].
+            // Los largos por naturaleza (un SVG, una nota, los pasos de una
+            // automatizacion) traen el suyo en su esquema y se respeta: con 120
+            // para todos, un SVG llegaba cortado a 120 letras (14-oct).
+            Some("string") if !o.contains_key("enum") && !o.contains_key("maxLength") => {
+                o.insert("maxLength".into(), TOPE_TEXTO.into());
             }
             _ => {}
         }
@@ -853,6 +853,9 @@ pub fn instrucciones() -> String {
      Si da datos para graficar, usa grafica; si da una funcion, graficar_funcion; una ecuacion, escribir_ecuacion; un cronograma, cronograma; una ilustracion con curvas, dibujar_svg. \
      Si quiere el texto de un documento escaneado, usa ocr. \
      Si pide hacer algo en la app (notas, tareas, ventanas, capturas, abrir ficheros), usa su herramienta. \
+     Con sus documentos y planos: una tabla de una foto o un PDF, tabla_de_imagen; resaltar, anotar o encerrar algo, anotar_documento; \
+     «¿donde dice...?», buscar_en_documento; abrir uno por su nombre, abrir_por_nombre; otro formato, exportar_documento. \
+     Nunca pidas rutas ni codigos: nombra el archivo con las palabras del usuario; si te dicen que hay varios, pregunta cual con esa lista corta. \
      Si pregunta donde esta algo o como se hace en PixPin, usa ayuda_app y contesta con lo que diga, sin inventar. \
      Despues de usar una herramienta, di en una frase lo que hiciste. "
         .to_string()
@@ -1653,4 +1656,45 @@ mod pruebas_rapidez {
         let largo = recortar_resultado("x".repeat(RESULTADO_MAXIMO + 50));
         assert!(largo.chars().count() < RESULTADO_MAXIMO + 80 && largo.contains("recortado"));
     }
+}
+
+#[cfg(test)]
+mod pruebas_topes {
+    use super::*;
+    use crate::herramientas::catalogo;
+
+    fn esquema<'a>(hs: &'a [Herramienta], nombre: &str) -> &'a serde_json::Value {
+        &hs.iter().find(|h| h.nombre == nombre).unwrap_or_else(|| panic!("falta {nombre}")).parametros["properties"]
+    }
+
+    /// **El tope de 120 es para etiquetas**; lo largo por naturaleza lleva
+    /// el suyo, que sale del esquema de cada herramienta (hallado el 14-oct:
+    /// un SVG llegaba al modelo local acotado a 120 letras).
+    #[test]
+    fn los_textos_largos_llevan_su_tope_y_las_etiquetas_el_corto() {
+        let hs = con_topes(&catalogo(), TOPE_LISTAS);
+        let largo = |h: &str, campo: &str| esquema(&hs, h)[campo]["maxLength"].as_u64().unwrap();
+        assert_eq!(largo(crate::svg::NOMBRE, "svg"), crate::svg::MAX_BYTES as u64);
+        assert_eq!(largo("nota_nueva", "texto"), crate::acciones::LARGO_LARGO as u64);
+        assert_eq!(largo("escribir_en_chat", "texto"), crate::acciones::LARGO_LARGO as u64);
+        assert_eq!(largo("crear_automatizacion", "pasos"), crate::acciones::LARGO_LARGO as u64);
+        assert_eq!(largo(crate::ecuacion::NOMBRE, "ecuacion"), crate::ecuacion::MAX_LARGO as u64);
+        // Las etiquetas de las figuras, cortas.
+        let fig = &esquema(&hs, DIBUJAR_)["elementos"]["items"]["properties"];
+        assert_eq!(fig["texto"]["maxLength"].as_u64(), Some(TOPE_TEXTO));
+        // Un SVG de 5 KB cabe entero; una etiqueta de 500 no.
+        let svg = format!("<svg>{}</svg>", "<rect width=\"1\" height=\"1\"/>".repeat(180));
+        assert!(svg.len() > 5000 && (svg.len() as u64) < largo(crate::svg::NOMBRE, "svg"));
+        assert!(500 > fig["texto"]["maxLength"].as_u64().unwrap());
+        // Y la validacion de la tabla deja pasar una nota de 5000 letras y
+        // corta una de 9000 a su tope.
+        let a = crate::acciones::por_nombre("nota_nueva").unwrap();
+        let args = |n: usize| serde_json::json!({"texto": "x".repeat(n)}).as_object().unwrap().clone();
+        let v = crate::acciones::validar(a, &args(5000)).unwrap();
+        assert_eq!(v.pedido["texto"].as_str().unwrap().len(), 5000);
+        let v = crate::acciones::validar(a, &args(9000)).unwrap();
+        assert_eq!(v.pedido["texto"].as_str().unwrap().len(), crate::acciones::LARGO_LARGO);
+    }
+
+    const DIBUJAR_: &str = crate::herramientas::DIBUJAR;
 }

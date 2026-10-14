@@ -58,6 +58,8 @@ pub enum Tipo {
     Entero,
     SiNo,
     Opciones(&'static [&'static str]),
+    /// Lista de numeros (una zona, unos puntos).
+    Numeros,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -72,6 +74,23 @@ pub struct Param {
     pub descripcion: &'static str,
     /// Lo que vale si el modelo no lo pone (JSON).
     pub defecto: Option<&'static str>,
+    /// Cuantas letras como mucho (texto o cada elemento de una lista de
+    /// textos). `None`: [`LARGO_TEXTO`]. Va al esquema como `maxLength`, y
+    /// con la gramatica de llama.cpp el modelo no puede pasarse.
+    pub largo: Option<usize>,
+}
+
+/// El largo de un texto de la tabla si la fila no dice otro: de sobra para
+/// una tarea, un titulo o una ruta.
+pub const LARGO_TEXTO: usize = 2000;
+/// Y el de los largos por naturaleza: una nota, un mensaje, los pasos de una
+/// automatizacion.
+pub const LARGO_LARGO: usize = 8000;
+
+/// Un parametro con su propio largo maximo.
+pub const fn l(largo: usize, mut p: Param) -> Param {
+    p.largo = Some(largo);
+    p
 }
 
 /// La marca de los parametros que no van tal cual al pedido.
@@ -89,6 +108,7 @@ const fn p(nombre: &'static str, tipo: Tipo, obligatorio: bool, descripcion: &'s
         obligatorio,
         descripcion,
         defecto: None,
+        largo: None,
     }
 }
 
@@ -201,7 +221,7 @@ pub const ACCIONES: &[Accion] = &[
         categoria: Categoria::Notas,
         claves: &["guarda en el chat", "escribe en el chat", "manda al chat", "mensaje al chat", "apunta en el chat"],
         fijos: "{}",
-        params: &[p("texto", Tipo::Texto, true, "el mensaje")],
+        params: &[l(LARGO_LARGO, p("texto", Tipo::Texto, true, "el mensaje"))],
         confirmar: None,
         hecho: "Escrito en «Mensajes guardados».",
     },
@@ -212,7 +232,7 @@ pub const ACCIONES: &[Accion] = &[
         categoria: Categoria::Notas,
         claves: &["nota", "apunte", "markdown", "escribe una nota"],
         fijos: "{}",
-        params: &[p("texto", Tipo::Texto, false, "el contenido de la nota")],
+        params: &[l(LARGO_LARGO, p("texto", Tipo::Texto, false, "el contenido de la nota"))],
         confirmar: None,
         hecho: "Nota nueva creada[: «{texto}»].",
     },
@@ -478,7 +498,7 @@ pub const ACCIONES: &[Accion] = &[
         categoria: Categoria::Lecciones,
         claves: &["leccion nueva", "nueva leccion", "aprendi", "aprendida"],
         fijos: "{}",
-        params: &[p("texto", Tipo::Texto, false, "lo que paso y lo aprendido")],
+        params: &[l(LARGO_LARGO, p("texto", Tipo::Texto, false, "lo que paso y lo aprendido"))],
         confirmar: None,
         hecho: "Ficha de lección nueva abierta.",
     },
@@ -552,16 +572,22 @@ pub const ACCIONES: &[Accion] = &[
                 ),
             ),
             a("receta.disparador.hora", p("hora", Tipo::Texto, false, "HH:MM")),
-            a("receta.pasos", p("pasos", Tipo::Texto, true, "lista JSON: texto para el asistente u {herramienta,args,proyecto}; {captura} {resultado}")),
+            a("receta.pasos", l(LARGO_LARGO, p("pasos", Tipo::Texto, true, "lista JSON: texto para el asistente u {herramienta,args,proyecto}; {captura} {resultado}"))),
         ],
         confirmar: Some("¿Creo la automatización «{nombre}» ({disparador}) con estos pasos: {pasos}?"),
         hecho: "Automatización «{nombre}» creada.",
     },
 ];
 
+/// **Todas las filas**: las de esta tabla y las de los documentos
+/// ([`crate::acciones_documentos`], que hace el chat con sus adjuntos).
+pub fn todas() -> impl Iterator<Item = &'static Accion> {
+    ACCIONES.iter().chain(crate::acciones_documentos::ACCIONES_DOCUMENTOS.iter())
+}
+
 /// Busca una fila por el nombre de su herramienta.
 pub fn por_nombre(nombre: &str) -> Option<&'static Accion> {
-    ACCIONES.iter().find(|a| a.herramienta == nombre)
+    todas().find(|a| a.herramienta == nombre)
 }
 
 /// **La herramienta que ve el modelo**, generada de la fila.
@@ -570,11 +596,14 @@ pub fn herramienta(a: &Accion) -> Herramienta {
     let mut obligatorios = Vec::new();
     for p in a.params {
         let mut esquema = match p.tipo {
-            Tipo::Texto | Tipo::Ruta => json!({"type": "string"}),
-            Tipo::Rutas | Tipo::Textos => json!({"type": "array", "items": {"type": "string"}}),
+            Tipo::Texto | Tipo::Ruta => json!({"type": "string", "maxLength": p.largo.unwrap_or(LARGO_TEXTO)}),
+            Tipo::Rutas | Tipo::Textos => {
+                json!({"type": "array", "items": {"type": "string", "maxLength": p.largo.unwrap_or(LARGO_TEXTO)}})
+            }
             Tipo::Entero => json!({"type": "integer"}),
             Tipo::SiNo => json!({"type": "boolean"}),
             Tipo::Opciones(o) => json!({"type": "string", "enum": o}),
+            Tipo::Numeros => json!({"type": "array", "items": {"type": "number"}}),
         };
         esquema["description"] = json!(p.descripcion);
         propiedades.insert(p.nombre.into(), esquema);
@@ -595,7 +624,7 @@ pub fn herramienta(a: &Accion) -> Herramienta {
 
 /// Todas las de la app.
 pub fn herramientas() -> Vec<Herramienta> {
-    ACCIONES.iter().map(herramienta).collect()
+    todas().map(herramienta).collect()
 }
 
 /// Una accion de la app ya validada: el pedido listo para
@@ -719,7 +748,7 @@ fn valor(p: &Param, v: &Value) -> Result<Value, ErrorHerramienta> {
     let campo = p.nombre;
     Ok(match p.tipo {
         Tipo::Texto => match v {
-            Value::String(s) if !s.trim().is_empty() => json!(s.trim().chars().take(4000).collect::<String>()),
+            Value::String(s) if !s.trim().is_empty() => json!(s.trim().chars().take(p.largo.unwrap_or(LARGO_TEXTO)).collect::<String>()),
             Value::Number(n) => json!(n.to_string()),
             _ => return Err(mal(format!("«{campo}» tiene que ser un texto"))),
         },
@@ -766,6 +795,25 @@ fn valor(p: &Param, v: &Value) -> Result<Value, ErrorHerramienta> {
             },
             _ => return Err(mal(format!("«{campo}» tiene que ser true o false"))),
         },
+        Tipo::Numeros => {
+            // Plana o de pares, y tambien «[0.1, 0.2]» escrito como texto.
+            let lista = match v {
+                Value::String(s) => serde_json::from_str::<Value>(s.trim()).unwrap_or(Value::Null),
+                otro => otro.clone(),
+            };
+            let mut n: Vec<f64> = Vec::new();
+            let bien = match &lista {
+                Value::Array(l) if !l.is_empty() => l.iter().all(|e| match e {
+                    Value::Array(par) => par.iter().all(|x| x.as_f64().filter(|f| f.is_finite()).map(|f| n.push(f)).is_some()),
+                    x => x.as_f64().filter(|f| f.is_finite()).map(|f| n.push(f)).is_some(),
+                }),
+                _ => false,
+            };
+            if !bien || n.len() > 400 {
+                return Err(mal(format!("«{campo}» tiene que ser una lista de numeros")));
+            }
+            json!(n)
+        }
         Tipo::Opciones(o) => {
             let s = v.as_str().map(|s| normalizar(s.trim())).unwrap_or_default();
             match o.iter().find(|x| **x == s || (s.len() >= 4 && x.starts_with(&s[..4]))) {

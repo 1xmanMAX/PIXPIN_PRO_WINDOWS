@@ -12,7 +12,7 @@
 //! - con una imagen adjunta van primero `calcar_imagen` y `dibujar_en_lienzo`;
 //! - si nada encaja, las de siempre (dibujar, grafica y ayuda).
 
-use crate::acciones::{ACCIONES, normalizar};
+use crate::acciones::normalizar;
 use crate::herramientas::{
     AYUDA, CALCAR, CRONOGRAMA, DIBUJAR, ECUACION, FIGURAS, FUNCION, GRAFICA, Herramienta, OCR, SVG, catalogo_base,
 };
@@ -123,6 +123,15 @@ pub fn pide_la_imagen(palabras: &[&str]) -> bool {
     calca || con_pronombre || (palabras.iter().any(verbo) && objeto)
 }
 
+/// Si el pedido habla de una tabla o un Excel («pasa esta tabla a Excel»):
+/// con una foto adjunta no es calcarla, es leer sus celdas
+/// (`tabla_de_imagen`).
+pub fn pide_una_tabla(palabras: &[&str]) -> bool {
+    palabras
+        .iter()
+        .any(|p| p.starts_with("tabla") || p.starts_with("excel") || *p == "xlsx" || p.starts_with("celda"))
+}
+
 /// Si el pedido sobre una imagen quiere una interpretacion (dibujarla con
 /// figuras, a lapiz, con grafito, como boceto) y no una copia exacta.
 pub fn pide_interpretar(q: &str) -> bool {
@@ -151,14 +160,23 @@ pub fn para_el_pedido(pedido: &str, con_imagen: bool) -> Vec<Herramienta> {
         .filter(|p| !p.is_empty())
         .collect();
     if es_pregunta_de_ayuda(&q) {
+        // «¿Donde dice JR. ANTISUYO en el plano?» es buscar DENTRO de un
+        // documento y llevar ahi (`acciones_documentos`), no la ayuda.
+        let dentro: Vec<Herramienta> = crate::acciones_documentos::para_una_pregunta(&q)
+            .into_iter()
+            .map(crate::acciones::herramienta)
+            .collect();
         // «¿Donde mande el plano?» es sobre sus cosas, no sobre la app:
         // primero buscar, y la ayuda por si acaso.
-        if es_sobre_sus_documentos(&q) {
-            return [crate::documentos::BUSCAR, AYUDA].iter().filter_map(|n| de(n)).collect();
+        if es_sobre_sus_documentos(&q) || !dentro.is_empty() {
+            let mut v = dentro;
+            v.extend([crate::documentos::BUSCAR, AYUDA].iter().filter_map(|n| de(n)));
+            v.truncate(MAXIMO);
+            return v;
         }
         return de(AYUDA).into_iter().collect();
     }
-    if con_imagen && pide_la_imagen(&palabras) {
+    if con_imagen && pide_la_imagen(&palabras) && !pide_una_tabla(&palabras) {
         // «Dibujala con figuras», «a lapiz», «con grafito»: interpretarla,
         // no calcarla. El modelo la ve y la redibuja con las herramientas
         // del lienzo (o en SVG, que da curvas).
@@ -179,7 +197,7 @@ pub fn para_el_pedido(pedido: &str, con_imagen: bool) -> Vec<Herramienta> {
         }
         puntuadas.push((s, h.clone()));
     }
-    for a in ACCIONES {
+    for a in crate::acciones::todas() {
         puntuadas.push((puntuar(a.claves, &q, &palabras), crate::acciones::herramienta(a)));
     }
     // Estable: a igual puntuacion, el orden del catalogo.
@@ -384,5 +402,29 @@ mod pruebas {
         }
         // Sin imagen, aunque hable de «esta imagen», no hay nada que calcar.
         assert!(!nombres("copia esta imagen", false).contains(&"calcar_imagen".to_string()));
+    }
+
+    /// Los documentos (14-oct): cada pedido trae su herramienta, tambien
+    /// las preguntas «¿donde dice...?» y la foto de una tabla.
+    #[test]
+    fn los_pedidos_de_documentos_traen_su_herramienta() {
+        use crate::acciones_documentos::{ABRIR, ANOTAR, BUSCAR_EN, EXPORTAR, TABLA};
+        for (pedido, img, debe) in [
+            ("Convierte esta tabla escaneada a Excel", true, TABLA),
+            ("Pasa la tabla del PDF a una tabla del chat", false, TABLA),
+            ("Resalta JR. ANTISUYO en el PDF", false, ANOTAR),
+            ("Encierra en rojo la leyenda del plano", false, ANOTAR),
+            ("¿Dónde dice JR. ANTISUYO en el plano?", false, BUSCAR_EN),
+            ("Llevame a donde dice Av. Tahuantinsuyo", false, BUSCAR_EN),
+            ("Abre el plano de señalización de Tahuantinsuyo", false, ABRIR),
+            ("Exporta el plano a PDF", false, EXPORTAR),
+        ] {
+            let n = nombres(pedido, img);
+            assert!(n.iter().any(|x| x == debe), "«{pedido}» → {n:?}");
+            assert!(n.len() <= MAXIMO, "«{pedido}» → {n:?}");
+            assert!(!n.contains(&"calcar_imagen".to_string()), "«{pedido}» → {n:?}");
+        }
+        // Caso negativo: una pregunta sobre la app sigue siendo de la ayuda.
+        assert_eq!(nombres("¿Donde estan los ajustes de PixPin?", false), vec!["ayuda_app"]);
     }
 }

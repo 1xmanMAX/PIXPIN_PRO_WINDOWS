@@ -228,6 +228,22 @@ pub struct Convertidor<'d> {
     /// Los bloques que se estan desplegando (para no entrar en bucle).
     abiertos: HashSet<String>,
     copias_minsert: usize,
+    /// `Some`: ademas de dibujar, apunta cada texto con su sitio (ver
+    /// [`textos_del_fichero`]).
+    recogidos: Option<Vec<TextoDelPlano>>,
+}
+
+/// **Un texto del plano y donde esta**, en coordenadas del dibujo (las de
+/// AutoCAD, las mismas que `PIXPIN_CAD_VISTA`). Para que el asistente
+/// encuentre «JR. ANTISUYO» y lleve ahi el visor (14-oct-2026).
+#[derive(Debug, Clone, PartialEq)]
+pub struct TextoDelPlano {
+    pub texto: String,
+    /// El punto de insercion.
+    pub x: f64,
+    pub y: f64,
+    /// El alto de la letra, ya escalado por los bloques.
+    pub alto: f64,
 }
 
 const PROFUNDIDAD_MAX: u32 = 32;
@@ -243,6 +259,7 @@ impl<'d> Convertidor<'d> {
             abiertos: HashSet::new(),
             copias_minsert: 0,
             por_capas: None,
+            recogidos: None,
         }
     }
 
@@ -897,6 +914,12 @@ impl<'d> Convertidor<'d> {
         let texto = crate::texto::texto_plano(valor);
         self.cuentas.letras += texto.chars().count();
         let t = m.por(&ocs(normal)).por(&volteo_de_texto(volteo, [ins.x, ins.y, ins.z], alineado.map(|a| [a.x, a.y, a.z]), h, v, giro));
+        if let Some(r) = self.recogidos.as_mut()
+            && !texto.trim().is_empty()
+        {
+            let p = t.punto(ins.x, ins.y, ins.z);
+            r.push(TextoDelPlano { texto: texto.trim().to_string(), x: p[0], y: p[1], alto: alto * t.escala_media() });
+        }
         let fuente = self.fuente_de(estilo);
         self.textos.simple(&mut self.c, &texto, [ins.x, ins.y, ins.z], alineado.map(|a| [a.x, a.y, a.z]), alto, giro, ancho, oblicuo, h, v, &fuente, color, &t);
     }
@@ -917,6 +940,17 @@ impl<'d> Convertidor<'d> {
             Some(d) if d.x.abs() + d.y.abs() > 1e-12 => (*m, d.y.atan2(d.x)),
             _ => (m.por(&ocs(normal)), giro),
         };
+        if let Some(r) = self.recogidos.as_mut() {
+            let junto: Vec<String> = lineas
+                .iter()
+                .map(|l| l.iter().map(|t| t.texto.as_str()).collect::<String>())
+                .filter(|l| !l.trim().is_empty())
+                .collect();
+            if !junto.is_empty() {
+                let p = t.punto(ins.x, ins.y, ins.z);
+                r.push(TextoDelPlano { texto: junto.join(" ").trim().to_string(), x: p[0], y: p[1], alto: alto * t.escala_media() });
+            }
+        }
         let fuente = self.fuente_de(estilo);
         self.textos.multilinea(&mut self.c, &lineas, [ins.x, ins.y, ins.z], alto, giro, ap, caja, &fuente, color, &t);
     }
@@ -990,6 +1024,17 @@ pub fn polilinea_2d(v: &[([f64; 2], f64)], cerrada: bool) -> Vec<[f64; 2]> {
 pub fn convertir_fichero_por_capas(ruta: &std::path::Path) -> Result<PlanoPorCapas, String> {
     let doc = crate::leer::leer(ruta)?;
     Ok(Convertidor::por_capas(&doc).convertir_por_capas())
+}
+
+/// **Los textos del plano con su sitio** (TEXT, MTEXT y atributos, tambien
+/// los de dentro de los bloques, ya colocados). Recorre el plano como al
+/// dibujarlo, asi que cae donde se ve. Bloquea: proceso aparte, como leer.
+pub fn textos_del_fichero(ruta: &std::path::Path) -> Result<Vec<TextoDelPlano>, String> {
+    let doc = crate::leer::leer(ruta)?;
+    let mut c = Convertidor::nuevo(&doc);
+    c.recogidos = Some(Vec::new());
+    c.recorrer();
+    Ok(c.recogidos.take().unwrap_or_default())
 }
 
 /// Abre y convierte. Bloquea: hilo o proceso aparte.

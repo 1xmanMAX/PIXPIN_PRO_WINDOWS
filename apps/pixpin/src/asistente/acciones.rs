@@ -107,7 +107,7 @@ fn hay_imagen(adjuntos: &[Adjunto], con_foto: bool) -> bool {
 pub fn es_para_calcar(historial: &[pixpin_ia::Mensaje], adjuntos: &[Adjunto], con_foto: bool) -> bool {
     let q = pixpin_ia::acciones::normalizar(&ultimo_pedido(historial));
     let palabras: Vec<&str> = q.split(|c: char| !c.is_alphanumeric()).filter(|p| !p.is_empty()).collect();
-    hay_imagen(adjuntos, con_foto) && pixpin_ia::seleccion::pide_la_imagen(&palabras)
+    hay_imagen(adjuntos, con_foto) && pixpin_ia::seleccion::pide_la_imagen(&palabras) && !pixpin_ia::seleccion::pide_una_tabla(&palabras)
 }
 
 /// **Las herramientas de este turno**: las que vienen a cuento del ultimo
@@ -291,6 +291,7 @@ mod pruebas {
                 Tipo::Entero => json!(1),
                 Tipo::SiNo => json!(true),
                 Tipo::Opciones(o) => json!(o[0]),
+                Tipo::Numeros => json!([0.1, 0.2, 0.3, 0.4]),
             };
             m.insert(p.nombre.into(), v);
         }

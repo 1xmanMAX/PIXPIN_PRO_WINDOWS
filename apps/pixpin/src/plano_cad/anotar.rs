@@ -930,6 +930,50 @@ impl ParaImprimir {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Desde fuera del visor (el asistente, 14-oct-2026).
+
+/// Las cotas y los marcos de la capa de `plano` (para exportarlo sin abrir
+/// el visor), en coordenadas del plano.
+pub(crate) fn cotas_y_marcos_de(rutas: &Rutas, m: &Modelo) -> (Vec<Vec<[f64; 2]>>, Vec<[f64; 4]>) {
+    let (capa, memoria, _) = leer_capa(rutas, m);
+    leer_cotas_y_marcos(&capa.escena.elementos, &memoria)
+}
+
+/// Un marco para imprimir (`plano-marco`), `[x0, y0, x1, y1]` del plano,
+/// como lo pone el visor.
+pub(crate) fn marco_del_plano(marco: &[f64; 4], encaje: &Encaje) -> Elemento {
+    elemento_de_marco(marco, encaje)
+}
+
+/// **Anade figuras a la capa del plano sin el visor**: se lee la capa tal
+/// cual esta en el disco (en sus unidades, las de su `.hoja`), `hacer`
+/// construye las figuras con ese encaje (coordenadas del plano → capa) y se
+/// escribe primero la `.hoja` y luego la capa, como al guardar desde el
+/// visor. Lo que puso el movil se queda tal cual. Si el plano esta abierto,
+/// el visor lo relee solo (`MotorDelPlano::al_dia`). Devuelve cuantas.
+pub(crate) fn anadir_figuras(rutas: &Rutas, m: &Modelo, hacer: impl FnOnce(&Encaje) -> Vec<Elemento>) -> std::io::Result<usize> {
+    let memoria = Encaje::de_unidad(pixpin_cad::anotado::unidad_de_la_capa(m));
+    let antigua = Encaje::de_unidad(pixpin_cad::anotado::unidad_antigua(m));
+    let fichero = encaje_del_fichero(rutas, m.caja, &antigua, &memoria);
+    let mut capa = Capa::leer(&rutas.tinta);
+    let nuevas = hacer(&fichero);
+    let n = nuevas.len();
+    if n == 0 {
+        return Ok(0);
+    }
+    for e in nuevas {
+        capa.escena.anadir(e);
+    }
+    capa.sucia = true;
+    escribir_hoja(&rutas.hoja, fichero.hoja(m.caja))?;
+    if let Some(d) = rutas.tinta.parent() {
+        std::fs::create_dir_all(d)?;
+    }
+    capa.guardar(&rutas.tinta)?;
+    Ok(n)
+}
+
 #[cfg(test)]
 mod pruebas;
 

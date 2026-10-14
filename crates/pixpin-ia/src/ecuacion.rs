@@ -46,7 +46,7 @@ pub fn herramienta() -> Herramienta {
             "type": "object",
             "required": ["ecuacion"],
             "properties": {
-                "ecuacion": {"type": "string"},
+                "ecuacion": {"type": "string", "maxLength": MAX_LARGO},
                 "x": {"type": "number"},
                 "y": {"type": "number"},
                 "tam_letra": {"type": "number", "description": "por omision 32"},

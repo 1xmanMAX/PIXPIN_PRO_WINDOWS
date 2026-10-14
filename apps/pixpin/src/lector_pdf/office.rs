@@ -278,7 +278,7 @@ pub(super) fn medidas_estimadas(listas: &[(f32, f32)], total: usize, acabado: bo
 /// Entre trozos de un mismo renglon se pone un espacio si estan separados;
 /// al cambiar de renglon, un salto si hay hueco de parrafo, y si no un
 /// espacio (un parrafo que sigue en el renglon de abajo).
-pub(super) fn texto_de_pagina(pagina: &Pagina, medidor: &dyn Medidor) -> PaginaDeTexto {
+pub(crate) fn texto_de_pagina(pagina: &Pagina, medidor: &dyn Medidor) -> PaginaDeTexto {
     let (w, h) = (pagina.ancho.max(1.0), pagina.alto.max(1.0));
     let mut texto = String::new();
     let mut cajas: Vec<Option<[f32; 4]>> = Vec::new();

@@ -41,11 +41,11 @@ impl Lienzo {
         }
     }
 
-    fn a_pixel(&self, p: [f32; 2]) -> [f64; 2] {
+    pub fn a_pixel(&self, p: [f32; 2]) -> [f64; 2] {
         [(p[0] as f64 - self.x0) / self.upp, self.h as f64 - (p[1] as f64 - self.y0) / self.upp]
     }
 
-    fn mezclar(&mut self, x: i64, y: i64, c: [u8; 3], a: f32) {
+    pub fn mezclar(&mut self, x: i64, y: i64, c: [u8; 3], a: f32) {
         if x < 0 || y < 0 || x >= self.w as i64 || y >= self.h as i64 {
             return;
         }

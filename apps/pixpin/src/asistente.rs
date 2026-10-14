@@ -37,6 +37,7 @@ pub mod al_lienzo;
 pub mod chat;
 pub mod descarga;
 pub mod documentos;
+pub mod documentos_acciones;
 pub mod ejecutor;
 pub mod foto;
 pub mod motor;

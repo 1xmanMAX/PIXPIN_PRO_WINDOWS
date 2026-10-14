@@ -24,5 +24,7 @@ pub mod teselar;
 pub mod texto;
 pub mod ventana;
 pub mod web;
-#[cfg(test)]
-mod pruebas_png;
+/// Pintar un plano a PNG en la CPU: para las pruebas y, con el rasgo
+/// `pintar-png`, para las de la app (el banco del asistente).
+#[cfg(any(test, feature = "pintar-png"))]
+pub mod pruebas_png;

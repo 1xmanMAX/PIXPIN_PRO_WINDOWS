@@ -582,7 +582,7 @@ fn motor_que_borra(raiz: &std::path::Path, proyecto: &str, titulo: &str) -> (Arc
     let m = Arc::new(MotorGuionado::nuevo(vec![
         Respuesta::de_llamada("borrar_lista", &format!(r#"{{"lista":"{titulo}"}}"#)),
         Respuesta::de_texto("Listo."),
-    ])));
+    ]));
     (m, lista.id)
 }
 
