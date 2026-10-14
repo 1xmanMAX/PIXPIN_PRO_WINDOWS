@@ -339,6 +339,15 @@ impl Motor for MotorGuionado {
             .map_err(|_| ErrorIa::Protocolo("candado envenenado".into()))?
             .pop_front()
             .ok_or_else(|| ErrorIa::Protocolo("el guion se acabo".into()))?;
+        // Lo pensado sale antes que lo dicho, a trozos, como de verdad.
+        for palabra in r.pensamiento.split_inclusive(' ') {
+            if al_trozo(&Trozo::Pensando(palabra.to_string())) == Seguir::Parar {
+                return Ok(Respuesta {
+                    fin: Fin::Cortado,
+                    ..r
+                });
+            }
+        }
         for palabra in r.texto.split_inclusive(' ') {
             if al_trozo(&Trozo::Texto(palabra.to_string())) == Seguir::Parar {
                 return Ok(Respuesta {

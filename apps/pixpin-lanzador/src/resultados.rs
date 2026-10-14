@@ -64,6 +64,10 @@ pub mod glifo {
     pub const MOVIL: &str = "\u{E8EA}";
     /// `Sync`: sincronizar con todos.
     pub const SINCRONIZAR: &str = "\u{E895}";
+    /// `Robot`: el asistente.
+    pub const ASISTENTE: &str = "\u{E99A}";
+    /// `Play`: correr una automatizacion.
+    pub const AUTOMATIZACION: &str = "\u{E768}";
 }
 
 /// El pedido `soltar`: el recuadro flotante donde se sueltan archivos, que
@@ -581,6 +585,12 @@ fn resultado_funcion(f: Funcion, ctx: &Contexto) -> Resultado {
             "Con tu móvil o con todos; pega una imagen (Ctrl+V) y va a su lienzo abierto · «s»",
             glifo::SINCRONIZAR,
             Accion::Consulta(ctx.consulta("sincronizar ")),
+        ),
+        Funcion::Asistente => (
+            "Asistente",
+            "Pídele algo y lo hace sin abrir el chat · «ia <pedido>» o «? <pedido>»",
+            glifo::ASISTENTE,
+            Accion::Consulta(ctx.consulta("ia ")),
         ),
         Funcion::Abrir => (
             "Abrir PixPin",
@@ -1430,6 +1440,12 @@ pub fn resultados(proyectos: &[Proyecto], busqueda: &str, ctx: &Contexto) -> Vec
             resto,
             proyecto: None,
         } => !resto.trim().is_empty() || busqueda.trim().chars().count() == 1,
+        // Y lo que se le pide al asistente: la foto de la que se habla.
+        Modo::Verbo {
+            funcion: Funcion::Asistente,
+            proyecto: None,
+            ..
+        } => true,
         // Y lo que va al movil: sin imagen no hay nada que mandar.
         Modo::Verbo {
             funcion: Funcion::Sincronizar,
@@ -1897,6 +1913,7 @@ fn verbo(
         }
         Funcion::Ultima => v.push(resultado_ultima(ctx)),
         Funcion::Sincronizar => v.extend(crate::al_movil::resultados(resto, ctx)),
+        Funcion::Asistente => v.extend(crate::asistente::resultados(proyectos, resto, destino_id.clone(), &destino, ctx)),
         Funcion::Galeria => {
             v.push(crate::capturas::resultado_galeria());
             v.extend(crate::capturas::lista(ctx, resto));
@@ -1928,7 +1945,8 @@ fn verbo(
         | Funcion::Capturas
         | Funcion::Galeria
         | Funcion::Ultima
-        | Funcion::Sincronizar => &[],
+        | Funcion::Sincronizar
+        | Funcion::Asistente => &[],
     };
     // Sin texto, los mas recientes de ese tipo («pp voz»: los audios).
     if !tipos.is_empty() {

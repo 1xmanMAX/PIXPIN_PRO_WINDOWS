@@ -2497,3 +2497,44 @@ ajustes2-clave-borrar = Delete
 ajustes2-clave-guardada = Saved and encrypted on this PC:
 ajustes2-clave-falta = No key. Get one at
 ajustes2-clave-probando = testing…
+
+## Assistant automations (Oct 13)
+automatizacion-creada = Automation “{ $nombre }” created.
+automatizacion-activada = Automation “{ $nombre }” turned on.
+automatizacion-desactivada = Automation “{ $nombre }” turned off.
+automatizacion-borrada = Automation “{ $nombre }” deleted.
+automatizacion-en-marcha = Running “{ $nombre }”…
+automatizacion-no-esta = There is no automation “{ $id }”.
+automatizacion-rota = The automation could not be saved: { $motivo }
+ajustes2-g-automatizaciones = Automations
+ajustes2-automatizaciones-vacio = None yet
+ajustes2-ayuda-automatizaciones-vacio = Ask the assistant: “every time I capture, put it in the site chat”, “every day at 8, summary of pending tasks”.
+ajustes2-automatizacion-correr = Run now
+ajustes2-automatizacion-otro-aparato = runs on { $aparato }
+ajustes2-automatizacion-rota = Not understood: { $motivo }
+ajustes2-automatizacion-borrar = Delete the automation “{ $nombre }”? This cannot be undone.
+ajustes-asistente-pensar = Think before answering
+ajustes2-ayuda-asistente-pensar = Before acting, the assistant thinks and writes what it understood; its thinking shows, folded, above its answer. With the model on this PC thinking takes several minutes more: on automatic only Claude and DeepSeek think.
+asistente-pensar-auto = Automatic (cloud yes; this PC no)
+asistente-pensar-si = Always
+asistente-pensar-no = Never
+asistente-pensando = Thinking…
+asistente-penso = Thought for { $s } s
+asistente-penso-poco = Thought for a moment
+asistente-reiniciado = Context renewed: continuing from the worksheet
+
+## Assistant voice (13-oct-2026): talk to it and hear the answer
+ajustes2-g-asistente-voz = Assistant voice
+ajustes2-asistente-revisar-voz = Review what you said before sending
+ajustes2-ayuda-asistente-revisar-voz = With the microphone of the «Asistente» chat: what you say is written in the box so you can fix it and send it yourself. Off, it is sent right away.
+ajustes2-asistente-leer = Always read answers aloud
+ajustes2-ayuda-asistente-leer = Each answer is read aloud when it finishes, with the readers' voice (Microsoft's if turned on). Without this, press the speaker on the bubble.
+asistente-voz-pasando = Turning your voice into text… { $pct } %
+asistente-voz-bajando = Downloading the speech recognizer (once, ~160 MB)… { $pct } %
+asistente-voz-nada = Nothing was heard: speak closer to the microphone and try again.
+asistente-voz-sin-whisper = This PC can't turn voice into text: Windows' ONNX Runtime is missing.
+asistente-voz-fallo = Your voice couldn't be turned into text.
+asistente-voz-cancelado = Cancelled: nothing was sent.
+asistente-voz-nada-que-leer = This answer has no text to read.
+asistente-voz-leer = Read aloud
+asistente-voz-callar = Stop reading

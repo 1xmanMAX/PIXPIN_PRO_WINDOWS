@@ -409,6 +409,44 @@ pub const ACCIONES: &[Accion] = &[
         ],
         confirmar: Some("¿Mando {imagenes} al movil?"),
     },
+    // 13-oct: las automatizaciones («cada vez que capture…», «cada dia a
+    // las 8…»), `apps/pixpin/src/automatizaciones.rs`. Se crean preguntando.
+    Accion {
+        herramienta: "crear_automatizacion",
+        accion: "automatizacion",
+        // Corta a proposito: con el catalogo entero (la nube) cada letra
+        // cuenta en el contexto (`agente::tope_de_tokens`).
+        descripcion: "Crea una automatizacion (se dispara sola y hace pasos).",
+        categoria: Categoria::Tareas,
+        claves: &[
+            "cada vez",
+            "cada dia",
+            "todos los dias",
+            "cada manana",
+            "cada semana",
+            "siempre que",
+            "automatiz",
+            "al capturar",
+            "cuando capture",
+            "cuando sincronice",
+        ],
+        fijos: r#"{"operacion":"crear"}"#,
+        params: &[
+            a("receta.nombre", p("nombre", Tipo::Texto, true, "nombre corto")),
+            a(
+                "receta.disparador.tipo",
+                p(
+                    "disparador",
+                    Tipo::Opciones(&["al_capturar", "a_la_hora", "al_sincronizar", "a_mano"]),
+                    true,
+                    "cuando",
+                ),
+            ),
+            a("receta.disparador.hora", p("hora", Tipo::Texto, false, "HH:MM")),
+            a("receta.pasos", p("pasos", Tipo::Texto, true, "lista JSON: texto para el asistente u {herramienta,args,proyecto}; {captura} {resultado}")),
+        ],
+        confirmar: Some("¿Creo la automatización «{nombre}» ({disparador}) con estos pasos: {pasos}?"),
+    },
 ];
 
 /// Busca una fila por el nombre de su herramienta.

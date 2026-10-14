@@ -276,7 +276,9 @@ pub fn elementos_de_calcado(c: &crate::calcar::Calcado, origen: (f64, f64), semi
         if let Some(e) = f.salida.last_mut() {
             e["roughness"] = json!(0);
             if !matches!(t, Trazo::Linea { .. }) {
-                e["strokeWidth"] = json!(1);
+                // 2: el borde del mismo color tapa la rendija que deja el
+                // simplificado entre dos manchas vecinas.
+                e["strokeWidth"] = json!(2);
             }
         }
     }

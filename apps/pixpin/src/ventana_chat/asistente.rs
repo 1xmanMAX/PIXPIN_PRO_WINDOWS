@@ -31,7 +31,7 @@ use super::*;
 use crate::asistente::chat::{self as ia_chat, EnVivo};
 use crate::asistente::descarga::{self as ia_descarga, AvisoDescarga, Descarga};
 use crate::asistente::turno::{Aviso, Turno};
-use crate::asistente::{al_lienzo, motor as ia_motor, nube as ia_nube, turno as ia_turno};
+use crate::asistente::{al_lienzo, motor as ia_motor, nube as ia_nube, pensado as ia_pensado, turno as ia_turno};
 
 /// Cada cuanto se escribe en el disco lo que va contestando (en memoria se
 /// ve al momento). Un turno de minuto y medio no son cien escrituras.
@@ -42,9 +42,13 @@ struct Sesion {
     proyecto: String,
     /// El id de la nota de la respuesta.
     nota: String,
+    /// Su codigo unico: con el se nombra lo que penso (`pensado`).
+    codigo: String,
     turno: Turno,
     vivo: EnVivo,
     guardado: Instant,
+    /// Lo que penso y la hoja reescrita, para guardar al acabar.
+    registro: Option<pixpin_ia::hoja_trabajo::Registro>,
     /// El lienzo del chat donde dibujo (sin uno abierto), por su
     /// referencia: la respuesta lo apunta para su «Abrir lienzo».
     lienzo: Option<String>,
@@ -124,7 +128,7 @@ pub(super) fn espera() -> Option<u32> {
 
 /// El motor elegido en Ajustes → Asistente: el local (si esta bajado) o la
 /// nube con su clave, con el local de respaldo si se quiere y esta bajado.
-fn motor_de_los_ajustes(ubicacion: &Ubicacion, textos: &Catalogo) -> Result<Arc<dyn Motor>, String> {
+pub(super) fn motor_de_los_ajustes(ubicacion: &Ubicacion, textos: &Catalogo) -> Result<Arc<dyn Motor>, String> {
     let aj = pixpin_store::cargar(ubicacion).unwrap_or_default();
     let modelo = ia_motor::modelo_elegido(Some(aj.asistente.modelo.as_str()).filter(|m| !m.is_empty()));
     let local = || ia_motor::raiz().and_then(|raiz| ia_motor::del_proceso(&raiz, &modelo).ok());
@@ -151,7 +155,15 @@ pub(super) fn al_enviar(ubicacion: &Ubicacion, a: &mut Abierto, textos: &Catalog
         Ok(m) => m,
         Err(aviso) => return Some(aviso),
     };
-    match lanzar(ubicacion, a, motor, pregunta) {
+    // Pensar y la ventana: el local segun su modelo; la nube piensa por su
+    // cuenta (Claude resumido, DeepSeek `reasoning_content`) y tiene
+    // ventana de sobra, pero la hoja y el reinicio valen igual.
+    let aj = pixpin_store::cargar(ubicacion).unwrap_or_default().asistente;
+    let (pensar, ventana) = match ia_nube::eleccion(&aj) {
+        ia_nube::Eleccion::Nube(_) => (aj.pensar.unwrap_or(true), ia_pensado::VENTANA_NUBE),
+        ia_nube::Eleccion::Local => (ia_pensado::pensar_local(aj.pensar), ia_pensado::ventana_local()),
+    };
+    match lanzar_pensando(ubicacion, a, motor, pregunta, pensar, ventana) {
         Ok(()) => None,
         Err(e) => {
             tracing::warn!(?e, "asistente: no se pudo empezar a contestar");
@@ -160,26 +172,80 @@ pub(super) fn al_enviar(ubicacion: &Ubicacion, a: &mut Abierto, textos: &Catalog
     }
 }
 
-/// Lanza el turno con este motor (las pruebas le pasan uno de mentira).
+/// Lanza el turno con este motor (las pruebas le pasan uno de mentira), sin
+/// pensar ni hoja de trabajo: el turno de antes del 13-oct.
+#[cfg_attr(not(test), allow(dead_code))]
 pub(super) fn lanzar(
     ubicacion: &Ubicacion,
     a: &mut Abierto,
     motor: Arc<dyn Motor>,
     pregunta: String,
 ) -> std::io::Result<()> {
+    lanzar_con(ubicacion, a, motor, pregunta, None)
+}
+
+/// **Lanza el turno con memoria** (13-oct): piensa si `pensar`, planea la
+/// peticion mejorada, lleva la hoja de trabajo del chat y reinicia el
+/// contexto al pasar del 70 % de `ventana`.
+pub(super) fn lanzar_pensando(
+    ubicacion: &Ubicacion,
+    a: &mut Abierto,
+    motor: Arc<dyn Motor>,
+    pregunta: String,
+    pensar: bool,
+    ventana: u32,
+) -> std::io::Result<()> {
+    lanzar_con(ubicacion, a, motor, pregunta, Some((pensar, ventana)))
+}
+
+fn lanzar_con(
+    ubicacion: &Ubicacion,
+    a: &mut Abierto,
+    motor: Arc<dyn Motor>,
+    pregunta: String,
+    pensando: Option<(bool, u32)>,
+) -> std::io::Result<()> {
     let raiz = ubicacion.raiz().to_path_buf();
     let proyecto = a.ficha.id.clone();
     let n = a.mensajes.len();
     let (anteriores, nueva) = a.mensajes.split_at(n.saturating_sub(1));
     let pregunta_id = nueva.first().map(|m| m.id.clone());
-    let conversacion = ia_chat::conversacion(anteriores);
     // La foto puede ser la misma que se acaba de mandar.
     let foto = ia_chat::foto_reciente(&a.mensajes).and_then(|m| ruta_del_mensaje(&raiz, &proyecto, m));
     let adjuntos = ia_chat::adjuntos(&a.mensajes, |m| ruta_del_mensaje(&raiz, &proyecto, m).filter(|r| r.is_file()));
     // `@lienzo:<nombre>`: donde dibujar si no hay un lienzo abierto.
     let (para_el_modelo, destino) = ia_chat::resolver_lienzo(&pregunta, &a.mensajes);
     let abrir = ia_chat::pide_abrir(&pregunta);
-    let historial = ia_turno::historial_para_el_modelo(&conversacion, &para_el_modelo, None);
+    // Las herramientas de este turno (`acciones::herramientas_para`): con la
+    // memoria, la vuelta de planear puede anadir las que nombre.
+    // (Claude y DeepSeek, el catalogo entero, como en `Turno::lanzar_hacia`.)
+    let herramientas = if motor.catalogo_completo() {
+        pixpin_ia::herramientas::catalogo()
+    } else {
+        crate::asistente::acciones::herramientas_para(
+            &[pixpin_ia::Mensaje::usuario(para_el_modelo.clone())],
+            &adjuntos,
+            foto.is_some(),
+        )
+    };
+    let (historial, memoria) = match pensando {
+        Some((pensar, ventana)) => {
+            let (h, m) = ia_pensado::preparar_turno(
+                &raiz,
+                &proyecto,
+                anteriores,
+                &para_el_modelo,
+                pensar,
+                ventana,
+                &herramientas,
+            );
+            (h, Some(m))
+        }
+        None => {
+            let conversacion = ia_chat::conversacion(anteriores);
+            (ia_turno::historial_para_el_modelo(&conversacion, &para_el_modelo, None), None)
+        }
+    };
 
     // La burbuja de la respuesta nace ya, con el cursor: el usuario ve que
     // se le esta contestando aunque el modelo tarde en cargar.
@@ -199,18 +265,30 @@ pub(super) fn lanzar(
         responde_a,
     )?;
     let id = nota.id.clone();
+    let codigo = nota.codigo_unico();
     a.vistas.push(None);
     a.mensajes.push(nota);
     a.colocado.borrow_mut().ancho = 0;
 
-    let turno = Turno::lanzar_hacia(motor, proyecto.clone(), historial, adjuntos, foto, destino);
+    let turno = Turno::lanzar_con_memoria(
+        motor,
+        proyecto.clone(),
+        historial,
+        adjuntos,
+        foto,
+        destino,
+        herramientas,
+        memoria,
+    );
     SESIONES.with_borrow_mut(|s| {
         s.push(Sesion {
             proyecto,
             nota: id,
+            codigo,
             turno,
             vivo,
             guardado: Instant::now(),
+            registro: None,
             lienzo: None,
             abrir,
             citas: Vec::new(),
@@ -316,10 +394,25 @@ pub(super) fn latido(ubicacion: &Ubicacion, mut abierto: Option<&mut Abierto>) -
                     Aviso::Evento(e) => s.vivo.aplicar(&e),
                     Aviso::TextoLeido { de, texto } => leidos.push((s.proyecto.clone(), de, texto)),
                     Aviso::Citas(c) => s.citas = c,
+                    Aviso::Registro(r) => s.registro = Some(r),
                     Aviso::Fin { resultado } => {
                         s.vivo.acabar(&resultado);
                         acabo = true;
                     }
+                }
+            }
+            // Lo que piensa y la peticion mejorada, encima de la burbuja: si
+            // cambio, la burbuja cambia de alto y hay que volver a medir.
+            if ia_pensado::poner_en_vivo(&s.nota, ia_pensado::Seccion::de_vivo(&s.vivo))
+                && let Some(a) = abierto.as_deref_mut().filter(|a| a.ficha.id == s.proyecto)
+            {
+                a.colocado.borrow_mut().ancho = 0;
+                cambio = true;
+            }
+            if acabo {
+                match s.registro.take() {
+                    Some(r) => ia_pensado::guardar(&raiz, &s.proyecto, &s.nota, &s.codigo, r),
+                    None => ia_pensado::olvidar_en_vivo(&s.nota),
                 }
             }
             let texto = s.vivo.mostrar();
@@ -360,6 +453,8 @@ pub(super) fn latido(ubicacion: &Ubicacion, mut abierto: Option<&mut Abierto>) -
                     tracing::warn!(?e, "asistente: no se pudo guardar la respuesta");
                 }
                 if acabo {
+                    // «Leer siempre las respuestas» (`voz_del_asistente`).
+                    super::voz_del_asistente::al_acabar(&s.proyecto, &s.nota);
                     let resumen: String = texto.chars().take(120).collect();
                     let _ = subir_en_la_lista(&raiz, &s.proyecto, pixpin_shell::entorno::ahora_utc_ms(), &resumen);
                 }
@@ -414,7 +509,7 @@ pub(super) fn latido(ubicacion: &Ubicacion, mut abierto: Option<&mut Abierto>) -
 /// mismo) y el mismo texto como `.txt` adjunto (se guarda o se envia como
 /// cualquier fichero). Un PDF con capa de texto no se puede escribir con lo
 /// que hay en el repo (ver `asistente::ocr`).
-fn dejar_texto_leido(
+pub(super) fn dejar_texto_leido(
     raiz: &std::path::Path,
     mut abierto: Option<&mut Abierto>,
     proyecto: &str,
@@ -953,6 +1048,7 @@ pub(super) fn olvidar_para_pruebas() {
     SESIONES.with_borrow_mut(Vec::clear);
     DESCARGA.with_borrow_mut(|d| *d = None);
     TARJETA.with_borrow_mut(|t| *t = Tarjeta::default());
+    ia_pensado::olvidar_para_pruebas();
 }
 
 #[cfg(test)]
@@ -962,3 +1058,5 @@ pub(super) fn noticia_para_pruebas() -> Option<String> {
 
 #[cfg(test)]
 mod pruebas;
+#[cfg(test)]
+mod pruebas_pensado;
