@@ -89,7 +89,7 @@ pub(super) fn visibles(e: &Estado) -> Vec<usize> {
     let todas: Vec<&Leccion> = e.lecciones.iter().map(|t| &t.entrada.leccion).collect();
     tarjetas::filtrar(
         &todas,
-        &e.busqueda.texto,
+        &e.busqueda.texto(),
         e.filtro_gravedad,
         e.orden_lecciones,
     )
@@ -98,11 +98,11 @@ pub(super) fn visibles(e: &Estado) -> Vec<usize> {
 /// Cuantas lecciones casan con lo buscado (para la franja de la busqueda de
 /// momentos). Cero sin busqueda.
 pub(super) fn cuantas_buscadas(e: &Estado) -> usize {
-    if e.busqueda.texto.trim().is_empty() {
+    if e.busqueda.texto().trim().is_empty() {
         return 0;
     }
     let todas: Vec<&Leccion> = e.lecciones.iter().map(|t| &t.entrada.leccion).collect();
-    tarjetas::buscar(&todas, &e.busqueda.texto).len()
+    tarjetas::buscar(&todas, &e.busqueda.texto()).len()
 }
 
 /// Las portadas que se ven, con la `y` (desde lo alto del contenido) de su

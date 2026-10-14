@@ -26,6 +26,8 @@ use std::path::{Path, PathBuf};
 
 use pixpin_proyecto::cuaderno::{Cuaderno, Mensaje};
 
+use crate::caja_texto::CajaLinea;
+
 /// Cuantas letras admite el nombre, como el campo del movil.
 const LARGO_MAXIMO: usize = 80;
 
@@ -302,7 +304,6 @@ pub fn aviso(
     }
 }
 
-const VK_BACK: u32 = 0x08;
 const VK_RETURN: u32 = 0x0D;
 const VK_ESCAPE: u32 = 0x1B;
 const VK_F2: u32 = 0x71;
@@ -313,7 +314,8 @@ const VK_F2: u32 = 0x71;
 pub struct Pastilla {
     pub dueno: Dueno,
     pub visto: String,
-    pub editando: Option<String>,
+    /// Lo que se escribe: la caja de una linea comun de la app.
+    pub editando: Option<CajaLinea>,
 }
 
 /// Lo que hizo una tecla en la pastilla.
@@ -350,22 +352,33 @@ impl Pastilla {
     }
 
     /// Empieza a escribir, con el nombre sin su extension (como el campo del
-    /// movil).
+    /// movil), todo elegido como al renombrar con F2 en Windows: escribir lo
+    /// sustituye y una flecha lo suelta para corregirlo.
     pub fn empezar(&mut self) {
         if self.se_puede() {
-            self.editando = Some(sin_extension(&self.visto));
+            let mut caja = CajaLinea::con_texto(&sin_extension(&self.visto))
+                .con_maximo(LARGO_MAXIMO)
+                .sin_parpadeo();
+            caja.elegir_todo();
+            self.editando = Some(caja);
         }
     }
 
     /// F2 empieza; escribiendo, Intro guarda, Esc deja el nombre como estaba
-    /// y las letras son del campo (no atajos del lector).
-    pub fn tecla(&mut self, vk: u32, ctrl: bool) -> Tecla {
-        if self.editando.is_none() {
+    /// y las letras son del campo (no atajos del lector). El campo es la
+    /// caja de una linea comun de la app: flechas, Inicio/Fin, Mayusculas
+    /// para elegir, Ctrl+Retroceso, Ctrl+A/C/X/V/Z...
+    pub fn tecla(&mut self, vk: u32, shift: bool, ctrl: bool) -> Tecla {
+        let Some(caja) = self.editando.as_mut() else {
             if vk == VK_F2 && !ctrl && self.se_puede() {
                 self.empezar();
                 return Tecla::Consumida;
             }
             return Tecla::NoEsMia;
+        };
+        if CajaLinea::es_suya(vk, shift, ctrl) {
+            caja.tecla(vk, shift, ctrl, &mut crate::caja_texto::PortapapelesWindows);
+            return Tecla::Consumida;
         }
         match vk {
             VK_RETURN => Tecla::Confirmar,
@@ -373,10 +386,10 @@ impl Pastilla {
                 self.editando = None;
                 Tecla::Consumida
             }
-            // Con Ctrl sigue siendo del lector (Ctrl+S, Ctrl+Z...); todo lo
-            // demas se escribe o llega luego como caracter.
+            // Con Ctrl sigue siendo del lector (Ctrl+S...); arriba, abajo y
+            // las de pagina mueven el documento; lo demas se escribe o llega
+            // luego como caracter.
             _ if ctrl => Tecla::NoEsMia,
-            VK_BACK => Tecla::Consumida,
             0x21..=0x28 => Tecla::NoEsMia,
             _ => Tecla::Consumida,
         }
@@ -384,14 +397,65 @@ impl Pastilla {
 
     /// Un caracter tecleado. `false` si no se esta escribiendo.
     pub fn caracter(&mut self, c: char) -> bool {
-        let Some(t) = self.editando.as_mut() else {
+        let Some(caja) = self.editando.as_mut() else {
             return false;
         };
-        if c == '\u{8}' {
-            t.pop();
-        } else if c >= ' ' && c != '\u{7f}' && t.chars().count() < LARGO_MAXIMO {
-            t.push(c);
-        }
+        caja.caracter(c);
+        true
+    }
+
+    /// Lo escrito, si se esta escribiendo.
+    pub fn escrito(&self) -> Option<&str> {
+        self.editando.as_ref().map(|c| c.texto())
+    }
+
+    /// **Pinta lo que se escribe** en la pastilla del lector: la caja de una
+    /// linea comun (con su rayita donde se escribe y lo elegido) y un
+    /// subrayado, como el campo del movil. `x0` es donde empieza el texto y
+    /// `ancho` lo que mide. Devuelve `false` si no se esta escribiendo (y no
+    /// pinta nada: el lector pinta su nombre).
+    pub fn pintar_escribiendo(
+        &self,
+        p: &pixpin_render::Pintor,
+        caja: pixpin_render::RectF,
+        x0: f32,
+        ancho: f32,
+        tam: f32,
+        e: f32,
+    ) -> bool {
+        use crate::lector::{APAGADO, DORADO, TEXTO, con_alfa};
+        let Some(t) = &self.editando else {
+            return false;
+        };
+        let hueco = pixpin_render::RectF {
+            x: x0,
+            ancho: ancho + 3.0 * e,
+            ..caja
+        };
+        t.pintar(
+            p,
+            hueco,
+            hueco,
+            tam,
+            "",
+            &crate::caja_texto::Colores {
+                texto: TEXTO,
+                invitacion: APAGADO,
+                seleccion: con_alfa(DORADO, 0.35),
+                rayita: DORADO,
+            },
+            true,
+            std::time::Instant::now(),
+        );
+        p.rellenar(
+            pixpin_render::RectF {
+                x: x0,
+                y: caja.y + caja.alto - 6.0 * e,
+                ancho: ancho.max(40.0 * e),
+                alto: 1.0 * e,
+            },
+            DORADO,
+        );
         true
     }
 
@@ -405,7 +469,7 @@ impl Pastilla {
         let Some(escrito) = self.editando.take() else {
             return Confirmado::default();
         };
-        let r = renombrar(raiz, ruta, &self.dueno, &self.visto, &escrito);
+        let r = renombrar(raiz, ruta, &self.dueno, &self.visto, escrito.texto());
         let aviso = aviso(textos, &r);
         let mut hecho = Confirmado {
             aviso,
@@ -441,32 +505,42 @@ mod pruebas {
             ..Default::default()
         };
         assert_eq!(
-            p.tecla(0x54, false),
+            p.tecla(0x54, false, false),
             Tecla::NoEsMia,
             "sin escribir, la T es del lector"
         );
-        assert_eq!(p.tecla(VK_F2, false), Tecla::Consumida);
+        assert_eq!(p.tecla(VK_F2, false, false), Tecla::Consumida);
         assert_eq!(
             p.editando.as_deref(),
             Some("Informe"),
             "sin la extension, como el movil"
         );
         assert_eq!(
-            p.tecla(0x54, false),
+            p.tecla(0x54, false, false),
             Tecla::Consumida,
             "escribiendo, la T es del campo"
         );
+        // Nace todo elegido (como F2 en Windows): la flecha lo suelta al
+        // final, y Retroceso es la tecla de la caja comun (su 0x08 de
+        // WM_CHAR ya no borra otra letra).
+        assert_eq!(p.tecla(0x27, false, false), Tecla::Consumida);
+        assert_eq!(p.tecla(0x08, false, false), Tecla::Consumida);
         assert!(p.caracter('\u{8}'));
         assert!(p.caracter('X'));
         assert_eq!(p.editando.as_deref(), Some("InformX"));
+        // Ctrl+Retroceso se lleva la palabra entera.
+        assert_eq!(p.tecla(0x08, false, true), Tecla::Consumida);
+        assert_eq!(p.escrito(), Some(""));
+        assert_eq!(p.tecla(0x5A, false, true), Tecla::Consumida, "Ctrl+Z la devuelve");
+        assert_eq!(p.escrito(), Some("InformX"));
         assert_eq!(
-            p.tecla(0x53, true),
+            p.tecla(0x53, false, true),
             Tecla::NoEsMia,
             "Ctrl+S sigue siendo del lector"
         );
-        assert_eq!(p.tecla(VK_RETURN, false), Tecla::Confirmar);
-        assert_eq!(p.tecla(VK_ESCAPE, false), Tecla::Consumida);
-        assert_eq!(p.editando, None);
+        assert_eq!(p.tecla(VK_RETURN, false, false), Tecla::Confirmar);
+        assert_eq!(p.tecla(VK_ESCAPE, false, false), Tecla::Consumida);
+        assert!(p.editando.is_none());
         assert_eq!(p.visto, "Informe.docx");
         assert!(
             !p.caracter('a'),
@@ -481,9 +555,9 @@ mod pruebas {
             visto: "x.pdf".into(),
             editando: None,
         };
-        assert_eq!(p.tecla(VK_F2, false), Tecla::NoEsMia);
+        assert_eq!(p.tecla(VK_F2, false, false), Tecla::NoEsMia);
         p.empezar();
-        assert_eq!(p.editando, None);
+        assert!(p.editando.is_none());
     }
 
     fn carpeta_de_prueba(nombre: &str) -> PathBuf {

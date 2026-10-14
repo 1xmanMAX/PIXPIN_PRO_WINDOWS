@@ -14,13 +14,14 @@
 #![forbid(unsafe_code)]
 
 use pixpin_docs::buscar::Busqueda;
+
+use crate::caja_texto::CajaLinea;
 use pixpin_render::icono::material;
 use pixpin_render::{Color, Pintor, RectF};
 use pixpin_store::Catalogo;
 
 use crate::lector::{APAGADO, CRISTAL, DORADO, RAYA, TEXTO, con_alfa};
 
-const VK_BACK: u32 = 0x08;
 const VK_RETURN: u32 = 0x0D;
 const VK_ESCAPE: u32 = 0x1B;
 const VK_F: u32 = 0x46;
@@ -71,19 +72,43 @@ pub enum Boton {
     Cerrar,
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct Buscador {
     pub abierto: bool,
     pub busqueda: Busqueda,
+    /// Lo escrito: la caja de una linea comun de la app
+    /// (`caja_texto::CajaLinea`), con su rayita donde se escribe,
+    /// Ctrl+Retroceso, Mayus+flechas, Ctrl+A/C/X/V/Z... Cada cambio se copia
+    /// a `busqueda.consulta`, que es con lo que se busca.
+    caja: CajaLinea,
+}
+
+impl Default for Buscador {
+    fn default() -> Self {
+        Buscador {
+            abierto: false,
+            busqueda: Busqueda::default(),
+            // Quieta: los lectores no repintan solos para hacerla parpadear.
+            caja: CajaLinea::nueva().sin_parpadeo().con_maximo(LARGO_MAXIMO),
+        }
+    }
 }
 
 impl Buscador {
+    /// Lo escrito en la caja pasa a la busqueda.
+    fn llevar(&mut self) {
+        self.busqueda.consulta = self.caja.texto().to_owned();
+    }
+
     /// Atiende una tecla. Con la caja abierta, las letras sin Ctrl son suyas
     /// aunque lleguen luego como caracter: la `T` que se escribe no puede
-    /// cambiar la letra del lector ni la `A` ponerse a anotar.
+    /// cambiar la letra del lector ni la `A` ponerse a anotar. Y las de una
+    /// caja de texto (flechas de lado, Inicio/Fin, Retroceso y Supr con o
+    /// sin Ctrl, Ctrl+A/C/X/V/Z/Y) son de la caja.
     pub fn tecla(&mut self, vk: u32, shift: bool, ctrl: bool) -> Hecho {
         if vk == VK_F && ctrl && !shift {
             self.abierto = true;
+            self.caja.elegir_todo();
             return Hecho::Abierta;
         }
         if vk == VK_F3 && !self.busqueda.consulta.trim().is_empty() {
@@ -96,6 +121,16 @@ impl Buscador {
         if !self.abierto {
             return Hecho::NoEsMia;
         }
+        if CajaLinea::es_suya(vk, shift, ctrl) {
+            let r = self
+                .caja
+                .tecla(vk, shift, ctrl, &mut crate::caja_texto::PortapapelesWindows);
+            if r.cambio() {
+                self.llevar();
+                return Hecho::Escrito;
+            }
+            return Hecho::Nada;
+        }
         match vk {
             VK_ESCAPE => {
                 self.abierto = false;
@@ -103,34 +138,23 @@ impl Buscador {
             }
             VK_RETURN if shift => Hecho::Anterior,
             VK_RETURN => Hecho::Siguiente,
-            // Borrar llega tambien como caracter; se atiende alli.
-            VK_BACK => Hecho::Nada,
             // Letras, cifras, espacio y signos: son de la caja.
             _ if !ctrl && es_de_escribir(vk) => Hecho::Nada,
             _ => Hecho::NoEsMia,
         }
     }
 
-    /// Un caracter tecleado. `None` si no era para la caja.
+    /// Un caracter tecleado. `None` si no era para la caja. Retroceso y
+    /// Ctrl+Retroceso tambien llegan como caracter, pero ya los atendio la
+    /// caja por su tecla.
     pub fn caracter(&mut self, c: char) -> Option<Hecho> {
         if !self.abierto {
             return None;
         }
-        if c == '\u{8}' {
-            return Some(if self.busqueda.consulta.pop().is_some() {
-                Hecho::Escrito
-            } else {
-                Hecho::Nada
-            });
-        }
-        // Intro, tabulador y demas de control: ya los atendio la tecla.
-        if c < ' ' || c == '\u{7f}' {
+        if !self.caja.caracter(c) {
             return Some(Hecho::Nada);
         }
-        if self.busqueda.consulta.chars().count() >= LARGO_MAXIMO {
-            return Some(Hecho::Nada);
-        }
-        self.busqueda.consulta.push(c);
+        self.llevar();
         Some(Hecho::Escrito)
     }
 
@@ -211,34 +235,29 @@ impl Buscador {
             tam_cuenta,
             color_cuenta,
         );
-        // Lo escrito, con el cursor detras.
+        // Lo escrito: la caja de una linea comun, con su rayita donde se
+        // escribe (no siempre al final) y el texto corrido si no cabe.
         let izquierda = caja.x + 12.0 * e + lado_icono + 10.0 * e;
         let hueco = (x - wc - 16.0 * e - izquierda).max(20.0 * e);
-        let escrito = if self.busqueda.consulta.is_empty() {
-            None
-        } else {
-            Some(self.busqueda.consulta.as_str())
+        let sitio = RectF {
+            x: izquierda,
+            ancho: hueco,
+            ..caja
         };
-        let (texto, color) = match escrito {
-            Some(t) => (t.to_string(), TEXTO),
-            None => (textos.t("buscar-pista"), APAGADO),
-        };
-        let (wt, ht) = p.medir_texto(&texto, tam);
-        let y_texto = caja.y + (alto - ht) / 2.0;
-        p.texto_linea(&texto, izquierda, y_texto, tam, hueco, color);
-        let x_cursor = if escrito.is_some() {
-            izquierda + wt.min(hueco) + 1.0
-        } else {
-            izquierda
-        };
-        p.rellenar(
-            RectF {
-                x: x_cursor,
-                y: y_texto + 2.0 * e,
-                ancho: 1.5 * e,
-                alto: ht - 4.0 * e,
+        self.caja.pintar(
+            p,
+            sitio,
+            sitio,
+            tam,
+            &textos.t("buscar-pista"),
+            &crate::caja_texto::Colores {
+                texto: TEXTO,
+                invitacion: APAGADO,
+                seleccion: con_alfa(DORADO, 0.35),
+                rayita: DORADO,
             },
-            DORADO,
+            true,
+            std::time::Instant::now(),
         );
         // Una raya fina separa los botones.
         p.rellenar(
@@ -327,8 +346,34 @@ mod pruebas {
         // Las flechas y AvPag siguen moviendo el documento.
         assert_eq!(b.tecla(0x28, false, false), Hecho::NoEsMia);
         assert_eq!(b.tecla(0x22, false, false), Hecho::NoEsMia);
-        // Y los atajos con Ctrl siguen siendo del lector.
-        assert_eq!(b.tecla(0x5A, false, true), Hecho::NoEsMia);
+        // Y los atajos con Ctrl que no son de una caja de texto siguen
+        // siendo del lector (Ctrl+S); Ctrl+Z, con la caja abierta, deshace
+        // lo escrito.
+        assert_eq!(b.tecla(0x53, false, true), Hecho::NoEsMia);
+        assert_eq!(b.tecla(0x5A, false, true), Hecho::Nada);
+    }
+
+    #[test]
+    fn la_caja_de_buscar_es_la_comun_ctrl_retroceso_y_la_rayita_en_medio() {
+        let mut b = Buscador::default();
+        b.tecla(VK_F, false, true);
+        for c in "muro norte".chars() {
+            b.caracter(c);
+        }
+        // Ctrl+Retroceso se lleva la palabra, y su 0x7F no se escribe.
+        assert_eq!(b.tecla(0x08, false, true), Hecho::Escrito);
+        assert_eq!(b.caracter('\u{7f}'), Some(Hecho::Nada));
+        assert_eq!(b.busqueda.consulta, "muro ");
+        // Inicio y escribir: en medio, no al final.
+        b.tecla(0x24, false, false);
+        b.caracter('X');
+        assert_eq!(b.busqueda.consulta, "Xmuro ");
+        // Ctrl+Z deshace lo escrito.
+        assert_eq!(b.tecla(0x5A, false, true), Hecho::Escrito);
+        assert_eq!(b.busqueda.consulta, "muro ");
+        // Caso negativo: Ctrl+Retroceso al principio no cambia nada.
+        b.tecla(0x24, false, false);
+        assert_eq!(b.tecla(0x08, false, true), Hecho::Nada);
     }
 
     #[test]
@@ -340,12 +385,14 @@ mod pruebas {
         assert_eq!(b.caracter('á'), Some(Hecho::Escrito));
         assert_eq!(b.caracter('r'), Some(Hecho::Escrito));
         assert_eq!(b.busqueda.consulta, "ár");
-        assert_eq!(b.caracter('\u{8}'), Some(Hecho::Escrito));
+        // Retroceso es la tecla (su caracter 0x08 no se escribe).
+        assert_eq!(b.tecla(0x08, false, false), Hecho::Escrito);
+        assert_eq!(b.caracter('\u{8}'), Some(Hecho::Nada));
         assert_eq!(b.busqueda.consulta, "á");
-        b.caracter('\u{8}');
+        b.tecla(0x08, false, false);
         assert_eq!(
-            b.caracter('\u{8}'),
-            Some(Hecho::Nada),
+            b.tecla(0x08, false, false),
+            Hecho::Nada,
             "borrar en vacio no cambia nada"
         );
         // Intro llega tambien como caracter y no se escribe.

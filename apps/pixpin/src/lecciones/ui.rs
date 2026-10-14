@@ -2,27 +2,34 @@
 //! (chips) que se marcan con un toque, el color de cada area y el bucle de
 //! una ventana propia (como `galeria_capturas`).
 //!
-//! La caja de texto es minima a proposito: escribir, borrar, moverse con las
-//! flechas, Inicio/Fin, pegar con Ctrl+V. Con eso se rellena una leccion; lo
-//! demas (seleccionar con el raton, deshacer) no hace falta para una frase.
+//! La caja de texto ya no es propia: es la caja comun de la app
+//! (`caja_texto::CajaLinea`) en su variante de varios renglones; ver
+//! [`Campo`].
 
 #![forbid(unsafe_code)]
 
 use pixpin_render::{Color, Pintor, RectF};
 
+use crate::caja_texto::CajaLinea;
+
 use crate::caja_dibujo::hex;
 use crate::ventanita::{APAGADO, Botones, CRISTAL, TEXTO};
 
+// Solo las pruebas de `Campo` la usan ya: las teclas las atiende la caja comun.
+#[cfg_attr(not(test), allow(dead_code))]
 pub const VK_RETROCESO: u32 = 0x08;
 pub const VK_TAB: u32 = 0x09;
 pub const VK_ENTRAR: u32 = 0x0D;
 pub const VK_ESCAPE: u32 = 0x1B;
+// Solo las pruebas de `Campo` la usan ya: las teclas las atiende la caja comun.
+#[cfg_attr(not(test), allow(dead_code))]
 pub const VK_FIN: u32 = 0x23;
-pub const VK_INICIO: u32 = 0x24;
+// Solo las pruebas de `Campo` la usan ya: las teclas las atiende la caja comun.
+#[cfg_attr(not(test), allow(dead_code))]
 pub const VK_IZQUIERDA: u32 = 0x25;
-pub const VK_DERECHA: u32 = 0x27;
+// Solo las pruebas de `Campo` la usan ya: las teclas las atiende la caja comun.
+#[cfg_attr(not(test), allow(dead_code))]
 pub const VK_SUPRIMIR: u32 = 0x2E;
-pub const VK_V: u32 = 0x56;
 
 /// El acento de las lecciones: el amarillo de la bombilla.
 pub const PUESTO: Color = hex(0xffca28);
@@ -73,126 +80,81 @@ pub fn con_alfa(c: Color, a: f32) -> Color {
     Color { a, ..c }
 }
 
-/// Una caja de texto.
-#[derive(Debug, Clone, Default)]
+/// **Una caja de texto** de las lecciones, la timeline, la galeria y las
+/// tareas. Ya no es una caja propia (13-oct-2026, regla del usuario: un solo
+/// componente con variables): es la caja comun de la app
+/// (`caja_texto::CajaLinea`, el mismo cursor que la caja de escribir del
+/// chat) en su variante de varios renglones y con la rayita quieta, porque
+/// estas ventanas no repintan solas. Asi tienen todas lo mismo: elegir con
+/// Mayusculas y con el raton, Ctrl+Retroceso, Ctrl+A/C/X/V, deshacer...
+/// Aqui solo queda lo que cambia: el fondo de la caja y sus colores.
+#[derive(Debug, Clone)]
 pub struct Campo {
-    pub texto: String,
-    /// Donde esta el cursor, en bytes (siempre en el borde de una letra).
-    pub cursor: usize,
+    caja: CajaLinea,
+}
+
+impl Default for Campo {
+    fn default() -> Self {
+        Campo {
+            caja: CajaLinea::nueva().en_varias_lineas().sin_parpadeo(),
+        }
+    }
+}
+
+impl std::ops::Deref for Campo {
+    type Target = CajaLinea;
+    fn deref(&self) -> &CajaLinea {
+        &self.caja
+    }
+}
+
+impl std::ops::DerefMut for Campo {
+    fn deref_mut(&mut self) -> &mut CajaLinea {
+        &mut self.caja
+    }
 }
 
 impl Campo {
+    #[cfg_attr(not(test), allow(dead_code))]
     pub fn con(texto: &str) -> Campo {
-        Campo {
-            texto: texto.to_string(),
-            cursor: texto.len(),
-        }
+        let mut c = Campo::default();
+        c.caja.poner_texto(texto);
+        c
     }
 
     pub fn poner(&mut self, texto: &str) {
-        self.texto = texto.to_string();
-        self.cursor = self.texto.len();
+        self.caja.poner_texto(texto);
     }
 
+    /// Escribe `s` donde esta el cursor (lo dictado, lo que llega de fuera).
     pub fn escribir(&mut self, s: &str) {
-        let s: String = s
-            .chars()
-            .filter(|c| *c == '\n' || !c.is_control())
-            .collect();
-        self.texto.insert_str(self.cursor, &s);
-        self.cursor += s.len();
-    }
-
-    fn anterior(&self) -> usize {
-        self.texto[..self.cursor]
-            .char_indices()
-            .next_back()
-            .map_or(0, |(i, _)| i)
-    }
-
-    fn siguiente(&self) -> usize {
-        self.texto[self.cursor..]
-            .chars()
-            .next()
-            .map_or(self.cursor, |c| self.cursor + c.len_utf8())
+        self.caja.pegar_texto(s);
     }
 
     /// Atiende una tecla. `multilinea`: si Intro (con Mayusculas) parte el
-    /// renglon. Devuelve si la tecla era suya.
+    /// renglon; sin ella, la caja se porta como una de una linea (pegar
+    /// quita los saltos). Devuelve si la tecla era suya.
     pub fn tecla(&mut self, vk: u32, ctrl: bool, shift: bool, multilinea: bool) -> bool {
-        match vk {
-            VK_RETROCESO => {
-                if ctrl {
-                    // La palabra de antes entera, como en cualquier caja.
-                    let antes = &self.texto[..self.cursor];
-                    let sin_blancos = antes.trim_end();
-                    let corte = sin_blancos.rfind(char::is_whitespace).map_or(0, |i| i + 1);
-                    self.texto.replace_range(corte..self.cursor, "");
-                    self.cursor = corte;
-                } else if self.cursor > 0 {
-                    let a = self.anterior();
-                    self.texto.replace_range(a..self.cursor, "");
-                    self.cursor = a;
-                }
-                true
-            }
-            VK_SUPRIMIR => {
-                let s = self.siguiente();
-                self.texto.replace_range(self.cursor..s, "");
-                true
-            }
-            VK_IZQUIERDA => {
-                self.cursor = self.anterior();
-                true
-            }
-            VK_DERECHA => {
-                self.cursor = self.siguiente();
-                true
-            }
-            VK_INICIO => {
-                self.cursor = if ctrl {
-                    0
-                } else {
-                    self.texto[..self.cursor].rfind('\n').map_or(0, |i| i + 1)
-                };
-                true
-            }
-            VK_FIN => {
-                self.cursor = if ctrl {
-                    self.texto.len()
-                } else {
-                    self.texto[self.cursor..]
-                        .find('\n')
-                        .map_or(self.texto.len(), |i| self.cursor + i)
-                };
-                true
-            }
-            VK_V if ctrl => {
-                if let Some(pixpin_codec::ContenidoPortapapeles::Texto(t)) =
-                    pixpin_codec::portapapeles::leer()
-                {
-                    let t = t.replace("\r\n", "\n");
-                    let t = if multilinea { t } else { t.replace('\n', " ") };
-                    self.escribir(&t);
-                }
-                true
-            }
-            VK_ENTRAR if multilinea && shift => {
-                self.escribir("\n");
-                true
-            }
-            _ => false,
+        if !multilinea && vk == VK_ENTRAR {
+            return false;
         }
+        let antes = self.caja.es_de_varias_lineas();
+        if antes != multilinea {
+            let c = std::mem::take(&mut self.caja);
+            self.caja = if multilinea {
+                c.en_varias_lineas()
+            } else {
+                c.en_una_sola_linea()
+            };
+        }
+        self.caja
+            .tecla(vk, shift, ctrl, &mut crate::caja_texto::PortapapelesWindows)
+            .atendida()
     }
 
     /// Una letra escrita (`WM_CHAR`). Las de control llegan por [`tecla`].
     pub fn letra(&mut self, c: char) -> bool {
-        if c.is_control() {
-            return false;
-        }
-        let mut b = [0u8; 4];
-        self.escribir(c.encode_utf8(&mut b));
-        true
+        self.caja.caracter(c)
     }
 
     /// Pinta la caja en `caja` (de alto lo que devuelve [`alto`]) con la
@@ -217,7 +179,7 @@ impl Campo {
         }
         let pad = 10.0 * e;
         let ancho = (caja.ancho - 2.0 * pad - reserva).max(10.0);
-        self.pintar_texto(p, caja.x + pad, caja.y + pad, ancho, tam, foco, pista, e);
+        self.pintar_en(p, caja, caja.x + pad, caja.y + pad, ancho, tam, foco, pista);
     }
 
     /// Solo el texto (o la pista) y el cursor, sin la caja: para quien pone
@@ -232,29 +194,62 @@ impl Campo {
         tam: f32,
         foco: bool,
         pista: &str,
-        e: f32,
+        _e: f32,
     ) {
-        if self.texto.is_empty() {
-            p.texto_ajustado(pista, x0, y0, tam, ancho, APAGADO);
-        } else {
-            p.texto_ajustado(&self.texto, x0, y0, tam, ancho, TEXTO);
-        }
-        if foco {
-            let (_, alto_linea) = p.medir_texto("Ag", tam);
-            let (cx, cy) = if self.texto.is_empty() {
-                (x0, y0)
-            } else {
-                // Una marca de ancho cero donde esta el cursor: la caja que
-                // DirectWrite le da es donde va la raya.
-                let mut con_marca = self.texto.clone();
-                con_marca.insert(self.cursor, '\u{200B}');
-                let i = self.texto[..self.cursor].encode_utf16().count() as u32;
-                p.cajas_de_trozo(&con_marca, tam, ancho, &[], i, 1)
-                    .first()
-                    .map_or((x0, y0), |b| (x0 + b.x, y0 + b.y))
-            };
-            p.linea((cx, cy), (cx, cy + alto_linea), 1.5 * e, PUESTO);
-        }
+        let (_, alto) = p.medir_texto_ajustado(
+            if self.caja.is_empty() { "Ag" } else { self.caja.texto() },
+            tam,
+            ancho.max(1.0),
+        );
+        let zona = RectF {
+            x: x0,
+            y: y0,
+            ancho,
+            alto: alto.max(tam * 1.3),
+        };
+        self.pintar_en(p, zona, x0, y0, ancho, tam, foco, pista);
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn pintar_en(
+        &self,
+        p: &Pintor,
+        zona: RectF,
+        x0: f32,
+        y0: f32,
+        ancho: f32,
+        tam: f32,
+        foco: bool,
+        pista: &str,
+    ) {
+        let (_, alto) = p.medir_texto_ajustado(
+            &format!("{}.", self.caja.texto()),
+            tam,
+            ancho.max(1.0),
+        );
+        let hueco = RectF {
+            x: x0,
+            y: y0,
+            ancho,
+            // Un poco mas que el texto: que la rayita del ultimo renglon (o
+            // el de despues de un salto) no se corte.
+            alto: alto + tam,
+        };
+        self.caja.pintar(
+            p,
+            zona,
+            hueco,
+            tam,
+            pista,
+            &crate::caja_texto::Colores {
+                texto: TEXTO,
+                invitacion: APAGADO,
+                seleccion: con_alfa(PUESTO, 0.30),
+                rayita: PUESTO,
+            },
+            foco,
+            std::time::Instant::now(),
+        );
     }
 
     /// Lo que mide la caja con este texto y al menos `lineas` renglones.
@@ -269,14 +264,15 @@ impl Campo {
     ) -> f32 {
         let pad = 10.0 * e;
         let (_, alto_linea) = p.medir_texto("Ag", tam);
-        let (_, h) = if self.texto.is_empty() {
+        let texto = self.caja.texto();
+        let (_, h) = if texto.is_empty() {
             (0.0, alto_linea)
         } else {
             // Un renglon que acaba en salto no lo cuenta DirectWrite.
-            let t = if self.texto.ends_with('\n') {
-                format!("{}.", self.texto)
+            let t = if texto.ends_with('\n') {
+                format!("{texto}.")
             } else {
-                self.texto.clone()
+                texto.to_string()
             };
             p.medir_texto_ajustado(&t, tam, (ancho - 2.0 * pad - reserva).max(10.0))
         };
@@ -497,21 +493,21 @@ mod pruebas {
         assert!(c.tecla(VK_IZQUIERDA, false, false, false));
         assert!(c.tecla(VK_IZQUIERDA, false, false, false));
         c.letra('x');
-        assert_eq!(c.texto, "axño");
+        assert_eq!(c.texto(), "axño");
         c.tecla(VK_SUPRIMIR, false, false, false);
-        assert_eq!(c.texto, "axo");
+        assert_eq!(c.texto(), "axo");
         c.tecla(VK_FIN, false, false, false);
         c.tecla(VK_RETROCESO, false, false, false);
-        assert_eq!(c.texto, "ax");
+        assert_eq!(c.texto(), "ax");
         // Ctrl+Retroceso se lleva la palabra.
         let mut d = Campo::con("revisar la escala");
         d.tecla(VK_RETROCESO, true, false, false);
-        assert_eq!(d.texto, "revisar la ");
+        assert_eq!(d.texto(), "revisar la ");
         // Intro solo parte renglon con Mayusculas y si la caja es de varios.
         assert!(!d.tecla(VK_ENTRAR, false, false, true));
         assert!(!d.tecla(VK_ENTRAR, false, true, false));
         assert!(d.tecla(VK_ENTRAR, false, true, true));
-        assert!(d.texto.ends_with('\n'));
+        assert!(d.texto().ends_with('\n'));
         // Caso negativo: una letra de control no se escribe.
         assert!(!d.letra('\u{8}'));
     }

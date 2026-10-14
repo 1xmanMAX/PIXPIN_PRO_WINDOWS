@@ -494,7 +494,7 @@ impl Estado {
     }
 
     fn modo(&self) -> Modo {
-        let buscando = !self.busqueda.texto.trim().is_empty();
+        let buscando = !self.busqueda.texto().trim().is_empty();
         // En «Lecciones», lo buscado filtra sus tarjetas; en lo demas, busca
         // en todos los momentos.
         if self.pestana == Pestana::Lecciones {
@@ -520,7 +520,7 @@ impl Estado {
         let elegidos: Vec<&Momento> = match self.modo() {
             Modo::Hoy => dias::ultimas_24h(&self.momentos, Self::ahora()),
             Modo::Dia(d) => dias::del_dia(&self.momentos, d, self.desfase),
-            Modo::Buscar => pixpin_timeline::buscar::buscar(&self.momentos, &self.busqueda.texto),
+            Modo::Buscar => pixpin_timeline::buscar::buscar(&self.momentos, &self.busqueda.texto()),
             Modo::Momentos | Modo::Estado | Modo::Lecciones => Vec::new(),
         };
         self.indices(&elegidos)
@@ -819,7 +819,7 @@ impl Estado {
 
     /// Intro: apunta lo de la caja, o guarda la correccion.
     fn enviar(&mut self, textos: &Catalogo) {
-        let texto = self.campo.texto.trim().to_string();
+        let texto = self.campo.texto().trim().to_string();
         if let Some(id) = self.corrigiendo.clone() {
             let (titulo, descripcion) = frases::partir(&texto);
             let Some(m) = self.momentos.iter_mut().find(|m| m.id == id) else {
@@ -853,12 +853,12 @@ impl Estado {
     fn dictado_listo(&mut self, d: Dicho, textos: &Catalogo) {
         // Con algo escrito o corrigiendo, lo dicho se suma a la caja y espera
         // a Intro; con la caja vacia, se apunta ya: es lo rapido.
-        if !self.campo.texto.trim().is_empty() || self.corrigiendo.is_some() {
+        if !self.campo.texto().trim().is_empty() || self.corrigiendo.is_some() {
             let mut t = d.texto.clone();
-            if !self.campo.texto.is_empty() && !self.campo.texto.ends_with([' ', '\n']) {
+            if !self.campo.texto().is_empty() && !self.campo.texto().ends_with([' ', '\n']) {
                 t.insert(0, ' ');
             }
-            self.campo.cursor = self.campo.texto.len();
+            self.campo.al_final();
             self.campo.escribir(&t);
             if self.corrigiendo.is_none() {
                 if let Some(viejo) = self.audio_pendiente.replace(d) {
@@ -1246,9 +1246,9 @@ fn tecla(
             // Intro deja el foco: los resultados ya estan a la vista.
             VK_ENTRAR => e.buscando = false,
             _ => {
-                let antes = e.busqueda.texto.clone();
+                let antes = e.busqueda.texto().to_owned();
                 e.busqueda.tecla(vk, ctrl, shift, false);
-                if e.busqueda.texto != antes {
+                if e.busqueda.texto() != antes {
                     e.scroll = 0.0;
                 }
             }
@@ -1258,11 +1258,11 @@ fn tecla(
     match vk {
         VK_ESCAPE => {
             if std::mem::take(&mut e.menu) || e.menu_compartir.take().is_some() {
-            } else if !e.busqueda.texto.is_empty() {
+            } else if !e.busqueda.texto().is_empty() {
                 e.vaciar_busqueda();
             } else if e.corrigiendo.is_some() {
                 e.vaciar_caja();
-            } else if !e.campo.texto.is_empty() || !e.pegadas.is_empty() {
+            } else if !e.campo.texto().is_empty() || !e.pegadas.is_empty() {
                 e.vaciar_caja();
             } else if e.dia.is_some() {
                 return hacer(e, Accion::VolverDelDia, textos, ubicacion, idioma);
@@ -1285,7 +1285,7 @@ fn tecla(
         VK_ENTRAR if !shift => return hacer(e, Accion::Enviar, textos, ubicacion, idioma),
         VK_V if ctrl => pegar(e, textos),
         // Como en Telegram: flecha arriba con la caja vacia corrige el ultimo.
-        VK_ARRIBA if e.campo.texto.is_empty() && e.corrigiendo.is_none() => {
+        VK_ARRIBA if e.campo.texto().is_empty() && e.corrigiendo.is_none() => {
             if let Some(&i) = e.visibles().last() {
                 let c = clave(&e.momentos[i].id);
                 return hacer(e, Accion::Corregir(c), textos, ubicacion, idioma);
@@ -1645,7 +1645,7 @@ fn hacer(
             e.scroll = 0.0;
         }
         Accion::VerLeccionesBuscadas => {
-            let q = e.busqueda.texto.clone();
+            let q = e.busqueda.texto().to_owned();
             e.cambiar_pestana(Pestana::Lecciones);
             e.busqueda.poner(&q);
         }
@@ -1687,7 +1687,7 @@ fn exportar_lo_que_se_ve(e: &mut Estado, f: Formato, textos: &Catalogo) {
         ),
         Modo::Buscar => {
             let mut a = fluent_bundle::FluentArgs::new();
-            a.set("que", e.busqueda.texto.trim().to_string());
+            a.set("que", e.busqueda.texto().trim().to_string());
             (
                 format!("timeline-busqueda-{}", hoy.iso()),
                 textos.t_args("timeline-exportar-busqueda", &a),
@@ -1724,7 +1724,7 @@ fn exportar_lo_que_se_ve(e: &mut Estado, f: Formato, textos: &Catalogo) {
     };
     let secciones: Vec<Seccion<'_>> = if dias_sueltos.is_empty() {
         let mut v = if e.modo() == Modo::Buscar {
-            pixpin_timeline::buscar::buscar(&e.momentos, &e.busqueda.texto)
+            pixpin_timeline::buscar::buscar(&e.momentos, &e.busqueda.texto())
         } else {
             dias::ultimas_24h(&e.momentos, Estado::ahora())
         };
@@ -2176,10 +2176,10 @@ fn pintar_todo(e: &mut Estado, p: &Pintor, marco: Rect, s: f32, textos: &Catalog
             titulo: &titulo,
             subtitulo: &subtitulo,
             buscador: Some(crate::cabecera::Buscador {
-                texto: &e.busqueda.texto,
+                texto: &e.busqueda.texto(),
                 pista: &pista,
                 foco: e.buscando,
-                cursor: Some(e.busqueda.cursor),
+                cursor: Some(e.busqueda.pos()),
                 enfocar: Accion::EnfocarBusqueda,
                 vaciar: Accion::VaciarBusqueda,
             }),
@@ -2702,7 +2702,7 @@ fn pintar_caja(e: &mut Estado, p: &Pintor, zona: RectF, s: f32, textos: &Catalog
     let by = caja.y + caja.alto - lado - 6.0 * s;
     let mut bx = caja.x + caja.ancho - 6.0 * s - lado;
     let hay =
-        !e.campo.texto.trim().is_empty() || !e.pegadas.is_empty() || e.audio_pendiente.is_some();
+        !e.campo.texto().trim().is_empty() || !e.pegadas.is_empty() || e.audio_pendiente.is_some();
     boton_icono(
         p,
         &mut e.botones,

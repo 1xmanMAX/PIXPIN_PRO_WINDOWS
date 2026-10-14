@@ -261,6 +261,9 @@ pub(super) fn tecla(s: &mut Enviar, t: Tecla, cx: &Contexto) -> bool {
             s.tecleado.pop();
         }
         Tecla::Pegar(texto) => s.tecleado = texto.trim().chars().take(80).collect(),
+        // Las teclas de caja de texto (`caja_texto`) aun no son de este campo:
+        // Retroceso le llega como `Borrar`.
+        Tecla::Caja { .. } => return false,
         Tecla::Intro => {
             tocar(s, Toque::Mandar, cx, &|| Vec::new());
         }

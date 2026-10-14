@@ -614,50 +614,34 @@ fn pintar_campo(p: &Pintor, v: &Vista, pal: &Paleta, textos: &Catalogo, d: &Disp
         derecha -= w + 12.0 * e;
     }
     let hueco = (derecha - x).max(20.0 * e);
-    // El cursor azul delante de la pista, o detras de lo escrito.
-    let (texto, color) = if est.consulta.is_empty() {
-        (textos.t("buscar-todo-pista"), pal.apagado)
-    } else {
-        (est.consulta.clone(), pal.texto)
+    // La caja de una linea comun de la app (`caja_texto::CajaLinea`): la
+    // rayita azul donde se escribe (no siempre al final), lo elegido, y el
+    // texto largo corrido para que la rayita se vea.
+    let caja = RectF {
+        x,
+        y: c.y,
+        ancho: hueco,
+        alto: c.alto,
     };
-    let (w, h) = p.medir_texto(&texto, tam);
-    let y = c.y + (c.alto - h) / 2.0;
-    if est.consulta.is_empty() {
-        p.rellenar(
-            RectF {
-                x: x - 2.0 * e,
-                y: c.y + (c.alto - 26.0 * e) / 2.0,
-                ancho: 2.0 * e,
-                alto: 26.0 * e,
-            },
-            pal.azul,
-        );
-        p.texto_linea(&texto, x + 6.0 * e, y, tam, hueco - 6.0 * e, color);
-    } else {
-        // Lo escrito largo se ve por el final, que es donde se escribe.
-        let desplazado = (w - hueco + 4.0 * e).max(0.0);
-        p.con_recorte(
-            RectF {
-                x,
-                y: c.y,
-                ancho: hueco,
-                alto: c.alto,
-            },
-            |p| {
-                p.texto(&texto, x - desplazado, y, tam, color);
-            },
-        );
-        let xc = x + w.min(hueco - 4.0 * e) + 1.0;
-        p.rellenar(
-            RectF {
-                x: xc,
-                y: c.y + (c.alto - 26.0 * e) / 2.0,
-                ancho: 2.0 * e,
-                alto: 26.0 * e,
-            },
-            pal.azul,
-        );
-    }
+    est.consulta.pintar(
+        p,
+        caja,
+        RectF {
+            x: x + 2.0 * e,
+            ancho: (hueco - 4.0 * e).max(1.0),
+            ..caja
+        },
+        tam,
+        &textos.t("buscar-todo-pista"),
+        &crate::caja_texto::Colores {
+            texto: pal.texto,
+            invitacion: pal.apagado,
+            seleccion: con_alfa(pal.azul, 0.35),
+            rayita: pal.azul,
+        },
+        true,
+        std::time::Instant::now(),
+    );
 }
 
 fn pintar_pestanas(

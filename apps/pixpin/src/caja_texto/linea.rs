@@ -26,6 +26,23 @@
 //! ñ y lo que compone el IME entran igual que una letra cualquiera; los
 //! mandos que tambien llegan como caracter (Ctrl+Retroceso manda un 0x7F)
 //! se descartan aqui y no acaban escritos.
+//!
+//! **Las variables** (lo unico que cambia de una caja a otra): un tope de
+//! letras (`con_maximo`), un filtro de letras (`con_filtro`: la hora de un
+//! recordatorio), la rayita quieta para las ventanas que no repintan solas
+//! (`sin_parpadeo`) y la variante de **varios renglones**
+//! (`en_varias_lineas`: Mayus+Intro parte el renglon, arriba/abajo van de
+//! renglon en renglon y el texto se ajusta al ancho), que es la caja de las
+//! lecciones, la timeline, la galeria y las tareas (`lecciones::ui::Campo`).
+//!
+//! La usan (14-oct-2026): en el chat, el buscador de la lista, la lupa de la
+//! conversacion y la del panel, el nombre del proyecto (tambien en la
+//! tarjeta de Proyectos), el nombre y la descripcion de un mensaje, «Quien
+//! llama», la hora a mano, el pie del cuadro de enviar y el buscador de la
+//! hoja del «+»; fuera, Buscar todo, los dos buscadores de Ajustes, el
+//! codigo y el nombre de los chats compartidos, la caja de buscar de los
+//! lectores (`buscador`), el nombre que se cambia con F2 en ellos
+//! (`renombrar_doc`) y `lecciones::ui::Campo`.
 
 use std::cell::RefCell;
 use std::time::{Duration, Instant};
@@ -36,6 +53,9 @@ use pixpin_render::{Color, Pintor, RectF};
 use super::{Cursor, cajas_de_letras, indice_en_punto, palabra_en, sitio_del_cursor};
 
 const VK_RETROCESO: u32 = 0x08;
+const VK_ENTRAR: u32 = 0x0D;
+const VK_ARRIBA: u32 = 0x26;
+const VK_ABAJO: u32 = 0x28;
 const VK_FIN: u32 = 0x23;
 const VK_INICIO: u32 = 0x24;
 const VK_IZQUIERDA: u32 = 0x25;
@@ -153,6 +173,8 @@ struct Pintado {
     zona: Option<RectF>,
     /// La esquina del texto (ya corrido) en la ventana.
     origen: (f32, f32),
+    /// El ancho con que se partieron los renglones (sin fin en una linea).
+    ancho: f32,
     /// Cuanto se corre el texto a la izquierda para que se vea la rayita.
     corrido: f32,
 }
@@ -160,7 +182,7 @@ struct Pintado {
 /// **Una caja de texto de una linea.** Se lee como un `&str` (`Deref`), asi
 /// que filtrar con ella es igual que con el `String` de antes.
 #[derive(Debug, Clone)]
-pub(crate) struct CajaLinea {
+pub struct CajaLinea {
     texto: String,
     cursor: Cursor,
     deshacer: Vec<(String, Cursor)>,
@@ -177,6 +199,17 @@ pub(crate) struct CajaLinea {
     /// Cuantas letras caben como mucho (`None`, sin tope): un nombre de
     /// quien llama, un codigo de seis cifras...
     maximo: Option<usize>,
+    /// La variante de varios renglones (una leccion, una nota de la
+    /// timeline): Mayus+Intro parte el renglon, las flechas de arriba y
+    /// abajo van de renglon en renglon y el texto se ajusta al ancho en vez
+    /// de correrse. Es el MISMO cursor; solo cambia esto.
+    varias: bool,
+    /// Si la rayita parpadea. Las ventanas que no repintan solas (sin
+    /// temporizador) la quieren quieta: si no, podria quedarse apagada.
+    parpadea: bool,
+    /// Que letras admite (`None`, todas): la hora de un recordatorio solo
+    /// cifras y separadores. Vale para lo tecleado y para lo pegado.
+    filtro: Option<fn(char) -> bool>,
 }
 
 impl From<&str> for CajaLinea {
@@ -238,6 +271,9 @@ impl CajaLinea {
             tocada: Instant::now(),
             pintado: RefCell::new(Pintado::default()),
             maximo: None,
+            varias: false,
+            parpadea: true,
+            filtro: None,
         }
     }
 
@@ -267,14 +303,82 @@ impl CajaLinea {
         s.char_indices().nth(caben).map_or(s, |(i, _)| &s[..i])
     }
 
+    /// La variante de varios renglones (ver `varias`). Lo que hubiera
+    /// escrito se queda como esta.
+    pub(crate) fn en_varias_lineas(mut self) -> Self {
+        self.varias = true;
+        self
+    }
+
+    /// La variante de una linea otra vez (lo que ya hay escrito no cambia).
+    pub(crate) fn en_una_sola_linea(mut self) -> Self {
+        self.varias = false;
+        self
+    }
+
+    /// La rayita quieta, sin parpadear (ver `parpadea`).
+    pub(crate) fn sin_parpadeo(mut self) -> Self {
+        self.parpadea = false;
+        self
+    }
+
+    /// Solo admite las letras que diga `filtro` (ver `filtro`).
+    pub(crate) fn con_filtro(mut self, filtro: fn(char) -> bool) -> Self {
+        self.filtro = Some(filtro);
+        self
+    }
+
+    pub(crate) fn es_de_varias_lineas(&self) -> bool {
+        self.varias
+    }
+
+    /// Lo que entra de fuera (pegado, puesto), segun la variante: en una
+    /// linea, sin saltos; en varias, con los saltos de Windows hechos `\n`.
+    /// Y con el filtro, si lo hay.
+    fn limpiar(&self, s: &str) -> String {
+        let limpio: String = if !self.varias {
+            en_una_linea(s)
+        } else {
+            s.replace("\r\n", "\n")
+                .chars()
+                .map(|c| match c {
+                    '\r' => '\n',
+                    '\t' => ' ',
+                    c => c,
+                })
+                .filter(|c| *c == '\n' || !c.is_control())
+                .collect()
+        };
+        match self.filtro {
+            Some(f) => limpio.chars().filter(|c| f(*c)).collect(),
+            None => limpio,
+        }
+    }
+
     pub(crate) fn texto(&self) -> &str {
         &self.texto
+    }
+
+    /// La rayita en `i` (bytes; se ajusta al borde de una letra).
+    #[cfg_attr(not(test), allow(dead_code))]
+    pub(crate) fn ir_a(&mut self, i: usize) {
+        self.cursor.poner(&self.texto, i, false);
+        self.despertar();
+    }
+
+    /// La rayita al final de lo escrito, sin nada elegido.
+    pub(crate) fn al_final(&mut self) {
+        self.cursor.soltar();
+        self.despertar();
     }
 
     /// Cambia todo lo escrito desde fuera (abrir la caja con un nombre ya
     /// puesto): la rayita al final y el deshacer en blanco.
     pub(crate) fn poner_texto(&mut self, t: &str) {
-        self.texto = en_una_linea(t);
+        self.texto = self.limpiar(t);
+        if let Some(m) = self.maximo {
+            self.texto = self.texto.chars().take(m).collect();
+        }
         self.cursor.soltar();
         self.deshacer.clear();
         self.rehacer.clear();
@@ -326,7 +430,10 @@ impl CajaLinea {
     pub(crate) fn caracter(&mut self, c: char) -> bool {
         let mut b = [0u8; 4];
         let letra = &*c.encode_utf8(&mut b);
-        if c.is_control() || self.lo_que_cabe(letra).is_empty() {
+        if c.is_control()
+            || self.filtro.is_some_and(|f| !f(c))
+            || self.lo_que_cabe(letra).is_empty()
+        {
             return false;
         }
         self.guardar(Edicion::Escribir);
@@ -338,7 +445,7 @@ impl CajaLinea {
     /// Pega `s` donde esta la rayita, en una sola linea (y hasta el tope,
     /// si lo hay).
     pub(crate) fn pegar_texto(&mut self, s: &str) -> bool {
-        let s = en_una_linea(s);
+        let s = self.limpiar(s);
         let s = self.lo_que_cabe(&s).to_owned();
         if s.is_empty() {
             return false;
@@ -435,9 +542,33 @@ impl CajaLinea {
         ctrl: bool,
         pp: &mut dyn Portapapeles,
     ) -> Respuesta {
+        // Lo propio de la variante de varios renglones: Mayus+Intro parte
+        // el renglon y arriba/abajo van de renglon en renglon (si no hay a
+        // donde ir, la tecla vuelve a la ventana, que la usa para su lista).
+        if self.varias {
+            if vk == VK_ENTRAR && shift && !ctrl {
+                let hecho = self.pegar_texto("\n");
+                return if hecho {
+                    Respuesta::Cambiada
+                } else {
+                    Respuesta::Movida
+                };
+            }
+            if (vk == VK_ARRIBA || vk == VK_ABAJO) && !ctrl {
+                if self.renglon(vk == VK_ABAJO, shift) {
+                    self.ultima = None;
+                    self.despertar();
+                    return Respuesta::Movida;
+                }
+                return Respuesta::NoEsMia;
+            }
+        }
         if !Self::es_suya(vk, shift, ctrl) {
             return Respuesta::NoEsMia;
         }
+        // En una linea, Inicio y Fin van al principio y al final de todo; en
+        // varias, del renglon (con Ctrl, de todo), como en Windows.
+        let todo = ctrl || !self.varias;
         let t = &self.texto;
         let r = match vk {
             VK_IZQUIERDA => {
@@ -449,11 +580,11 @@ impl CajaLinea {
                 Respuesta::Movida
             }
             VK_INICIO => {
-                self.cursor.inicio(t, shift, true);
+                self.cursor.inicio(t, shift, todo);
                 Respuesta::Movida
             }
             VK_FIN => {
-                self.cursor.fin(t, shift, true);
+                self.cursor.fin(t, shift, todo);
                 Respuesta::Movida
             }
             VK_RETROCESO => self.si_cambio(|c| c.borrar(true, ctrl)),
@@ -519,9 +650,36 @@ impl CajaLinea {
             // Aun no se repinto con lo ultimo escrito: al final.
             return self.texto.len();
         }
-        // Una sola linea: la altura no importa, se pregunta por su centro.
-        let y = p.cajas.first().map_or(0.0, |(_, b)| b.y + b.alto / 2.0);
+        // En una linea la altura no importa: se pregunta por su centro.
+        let y = if self.varias {
+            l.y as f32 - p.origen.1
+        } else {
+            p.cajas.first().map_or(0.0, |(_, b)| b.y + b.alto / 2.0)
+        };
         indice_en_punto(&self.texto, &p.cajas, l.x as f32 - p.origen.0, y)
+    }
+
+    /// Un renglon arriba o abajo, a la misma altura, preguntando a las cajas
+    /// pintadas que letra hay ahi (como la caja de escribir del chat).
+    /// Devuelve si se movio: en el primer renglon no hay arriba, ni abajo en
+    /// el ultimo.
+    fn renglon(&mut self, abajo: bool, shift: bool) -> bool {
+        let i = {
+            let p = self.pintado.borrow();
+            if p.texto != self.texto || p.cajas.is_empty() {
+                return false;
+            }
+            let (x, y, alto) = sitio_del_cursor(&self.texto, &p.cajas, self.pos(), p.tam * 1.3);
+            let destino = if abajo { y + alto * 1.5 } else { y - alto / 2.0 };
+            let fondo = p.cajas.iter().map(|(_, b)| b.y + b.alto).fold(0.0, f32::max);
+            let ultimo_vacio = self.texto.ends_with('\n');
+            if destino < 0.0 || (destino >= fondo && !(ultimo_vacio && y < fondo)) {
+                return false;
+            }
+            indice_en_punto(&self.texto, &p.cajas, x, destino)
+        };
+        self.cursor.poner(&self.texto, i, shift);
+        true
     }
 
     /// El punto cae en la caja (tal como se pinto).
@@ -599,14 +757,14 @@ impl CajaLinea {
     /// Si la rayita se ve en este instante.
     pub(crate) fn rayita_visible(&self, ahora: Instant) -> bool {
         let t = ahora.saturating_duration_since(self.tocada);
-        t >= PARPADEO_HASTA || (t.as_millis() / PARPADEO_MS) % 2 == 0
+        !self.parpadea || t >= PARPADEO_HASTA || (t.as_millis() / PARPADEO_MS) % 2 == 0
     }
 
     /// Dentro de cuanto cambia la rayita (para dormir el bucle hasta
     /// entonces), o `None` si ya no parpadea.
     pub(crate) fn ms_hasta_parpadeo(&self, ahora: Instant) -> Option<u32> {
         let t = ahora.saturating_duration_since(self.tocada);
-        if t >= PARPADEO_HASTA {
+        if !self.parpadea || t >= PARPADEO_HASTA {
             return None;
         }
         Some((PARPADEO_MS - t.as_millis() % PARPADEO_MS) as u32 + 1)
@@ -633,29 +791,49 @@ impl CajaLinea {
         ahora: Instant,
     ) {
         let mut pin = self.pintado.borrow_mut();
-        if pin.texto != self.texto || pin.tam != tam {
+        // En una linea no se parte nunca (ancho sin fin) y el texto se corre;
+        // en varias se ajusta al ancho del hueco, como lo pinta DirectWrite.
+        let ancho_disp = if self.varias {
+            hueco.ancho.max(1.0)
+        } else {
+            f32::MAX
+        };
+        if pin.texto != self.texto || pin.tam != tam || pin.ancho != ancho_disp {
             pin.cajas = cajas_de_letras(&self.texto, |desde, largo| {
-                p.cajas_de_trozo(&self.texto, tam, f32::MAX, &[], desde, largo)
+                p.cajas_de_trozo(&self.texto, tam, ancho_disp, &[], desde, largo)
                     .first()
                     .copied()
             });
             pin.texto = self.texto.clone();
             pin.tam = tam;
+            pin.ancho = ancho_disp;
         }
         let (_, alto_linea) = p.medir_texto("Ág", tam);
-        let y = hueco.y + (hueco.alto - alto_linea) / 2.0;
+        let y = if self.varias {
+            hueco.y
+        } else {
+            hueco.y + (hueco.alto - alto_linea) / 2.0
+        };
         let grosor = (tam / 14.0).max(1.0).round();
         let (cx, cy, alto_rayita) =
             sitio_del_cursor(&self.texto, &pin.cajas, self.pos(), alto_linea);
-        let largo = pin.cajas.last().map_or(0.0, |(_, b)| b.x + b.ancho);
-        pin.corrido = corrido_para_ver(pin.corrido, cx, largo, hueco.ancho - grosor);
+        if self.varias {
+            pin.corrido = 0.0;
+        } else {
+            let largo = pin.cajas.last().map_or(0.0, |(_, b)| b.x + b.ancho);
+            pin.corrido = corrido_para_ver(pin.corrido, cx, largo, hueco.ancho - grosor);
+        }
         let ox = hueco.x - pin.corrido;
         pin.origen = (ox, y);
         pin.zona = Some(zona);
 
         p.empujar_recorte(hueco);
         if self.texto.is_empty() {
-            p.texto_linea(invitacion, hueco.x, y, tam, hueco.ancho, colores.invitacion);
+            if self.varias {
+                p.texto_ajustado(invitacion, hueco.x, y, tam, ancho_disp, colores.invitacion);
+            } else {
+                p.texto_linea(invitacion, hueco.x, y, tam, hueco.ancho, colores.invitacion);
+            }
         } else {
             if enfocada && let Some(r) = self.cursor.seleccion(&self.texto) {
                 for (_, b) in pin.cajas.iter().filter(|(i, _)| r.contains(i)) {
@@ -663,13 +841,20 @@ impl CajaLinea {
                         RectF {
                             x: ox + b.x,
                             y: y + b.y,
-                            ..*b
+                            // El salto de renglon no tiene ancho: un poco,
+                            // para que se vea que tambien va elegido.
+                            ancho: b.ancho.max(grosor * 3.0),
+                            alto: b.alto,
                         },
                         colores.seleccion,
                     );
                 }
             }
-            p.texto(&self.texto, ox, y, tam, colores.texto);
+            if self.varias {
+                p.texto_ajustado(&self.texto, ox, y, tam, ancho_disp, colores.texto);
+            } else {
+                p.texto(&self.texto, ox, y, tam, colores.texto);
+            }
         }
         if enfocada && self.rayita_visible(ahora) {
             p.rellenar(
@@ -1073,6 +1258,99 @@ mod pruebas {
         assert_eq!(f(&c), 5);
     }
 
+    /// Cajas de 10 de ancho y renglones de 20, partiendo en cada salto: lo
+    /// que daria DirectWrite con un ancho de sobra.
+    fn pintada_en_varias(t: &str) -> CajaLinea {
+        let mut c = CajaLinea::nueva().en_varias_lineas();
+        c.poner_texto(t);
+        {
+            let mut p = c.pintado.borrow_mut();
+            p.texto = t.to_owned();
+            p.tam = 15.0;
+            let (mut x, mut y) = (0.0, 0.0);
+            p.cajas = t
+                .char_indices()
+                .map(|(i, ch)| {
+                    let b = RectF {
+                        x,
+                        y,
+                        ancho: if ch == '\n' { 0.0 } else { 10.0 },
+                        alto: 20.0,
+                    };
+                    if ch == '\n' {
+                        x = 0.0;
+                        y += 20.0;
+                    } else {
+                        x += 10.0;
+                    }
+                    (i, b)
+                })
+                .collect();
+            p.zona = Some(RectF {
+                x: 0.0,
+                y: 0.0,
+                ancho: 300.0,
+                alto: 100.0,
+            });
+        }
+        c
+    }
+
+    #[test]
+    fn en_varias_lineas_mayus_intro_parte_y_las_flechas_van_por_renglones() {
+        let mut c = pintada_en_varias("uno\ndos");
+        // Pegar conserva los saltos (en una linea se harian espacios).
+        let mut pp = Pp(Some("a\r\nb".into()));
+        tecla(&mut c, VK_INICIO, false, true);
+        c.tecla(VK_V, false, true, &mut pp);
+        assert_eq!(c.texto(), "a\nbuno\ndos");
+        // Mayus+Intro parte el renglon; Intro solo no es de la caja.
+        let mut d = pintada_en_varias("uno\ndos");
+        assert_eq!(tecla(&mut d, VK_ENTRAR, false, false), Respuesta::NoEsMia);
+        // Inicio y Fin van al principio y al final del renglon.
+        tecla(&mut d, VK_INICIO, false, false);
+        assert_eq!(d.pos(), 4);
+        // Arriba sube al renglon de encima a la misma altura...
+        tecla(&mut d, VK_DERECHA, false, false);
+        assert_eq!(tecla(&mut d, VK_ARRIBA, false, false), Respuesta::Movida);
+        assert_eq!(d.pos(), 1);
+        // ...y en el primero no hay arriba: la tecla vuelve a la ventana.
+        assert_eq!(tecla(&mut d, VK_ARRIBA, false, false), Respuesta::NoEsMia);
+        assert_eq!(tecla(&mut d, VK_ABAJO, false, false), Respuesta::Movida);
+        assert_eq!(d.pos(), 5);
+        assert_eq!(tecla(&mut d, VK_ENTRAR, true, false), Respuesta::Cambiada);
+        assert_eq!(d.texto(), "uno\nd\nos");
+        // Caso negativo: en una linea, arriba no es de la caja.
+        let mut una = caja("uno");
+        assert_eq!(tecla(&mut una, VK_ARRIBA, false, false), Respuesta::NoEsMia);
+        assert_eq!(tecla(&mut una, VK_ENTRAR, true, false), Respuesta::NoEsMia);
+    }
+
+    #[test]
+    fn el_filtro_deja_solo_lo_que_admite_tecleado_y_pegado() {
+        let mut c = CajaLinea::nueva()
+            .con_maximo(5)
+            .con_filtro(|c| c.is_ascii_digit() || c == ':');
+        for l in "1a8:3b0x".chars() {
+            c.caracter(l);
+        }
+        assert_eq!(c.texto(), "18:30");
+        c.vaciar();
+        let mut pp = Pp(Some("las 9:45 h".into()));
+        c.tecla(VK_V, false, true, &mut pp);
+        assert_eq!(c.texto(), "9:45");
+        // Caso negativo: una letra no entra.
+        assert!(!c.caracter('h'));
+    }
+
+    #[test]
+    fn sin_parpadeo_la_rayita_siempre_se_ve() {
+        let c = CajaLinea::nueva().sin_parpadeo();
+        let t = c.tocada;
+        assert!(c.rayita_visible(t + Duration::from_millis(600)));
+        assert_eq!(c.ms_hasta_parpadeo(t + Duration::from_millis(100)), None);
+    }
+
     #[test]
     fn con_tope_no_entra_mas_ni_tecleado_ni_pegado() {
         let mut c = CajaLinea::nueva().con_maximo(5);
@@ -1127,7 +1405,7 @@ mod pruebas {
 
         let d3 = pixpin_capture::Dispositivo::nuevo().expect("GPU real");
         let motor = MotorRender::nuevo(d3.d3d()).expect("motor");
-        let (ancho, alto) = (520u32, 200u32);
+        let (ancho, alto) = (520u32, 320u32);
         let destino = FueraDePantalla::nuevo(&motor, d3.d3d(), ancho, alto).expect("destino");
         let fondo = Color { r: 0.09, g: 0.13, b: 0.17, a: 1.0 };
         let campo = Color { r: 0.17, g: 0.22, b: 0.28, a: 1.0 };
@@ -1151,6 +1429,12 @@ mod pruebas {
         let mut elegida = caja("buscar Miraflores");
         tecla(&mut elegida, VK_IZQUIERDA, true, true);
         let vacia = CajaLinea::nueva();
+        // Y la variante de varios renglones (las lecciones, la timeline):
+        // el texto se ajusta al ancho y la rayita va en medio.
+        let mut varias = CajaLinea::nueva().en_varias_lineas();
+        varias.poner_texto("Revisar el encofrado antes del vaciado\nla losa del segundo piso");
+        tecla(&mut varias, VK_INICIO, false, false);
+        tecla(&mut varias, VK_DERECHA, false, true);
         let ahora = larga.tocada;
         let filas = [(&larga, ""), (&elegida, ""), (&vacia, "Buscar en el chat")];
         // Dos vueltas: la primera apunta las cajas de las letras y la
@@ -1173,6 +1457,10 @@ mod pruebas {
                         let hueco = RectF { x: zona.x + 16.0, ancho: zona.ancho - 32.0, ..zona };
                         c.pintar(p, zona, hueco, 15.0, invitacion, &colores, true, ahora);
                     }
+                    let zona = RectF { x: 20.0, y: 200.0, ancho: 300.0, alto: 100.0 };
+                    p.rellenar_redondeado(zona, 12.0, campo);
+                    let hueco = RectF { x: 36.0, y: 210.0, ancho: 268.0, alto: 80.0 };
+                    varias.pintar(p, zona, hueco, 15.0, "", &colores, true, ahora);
                 })
                 .expect("fotograma");
             destino.esperar_gpu().expect("GPU");

@@ -148,6 +148,7 @@ fn muestras_de_los_menus_v2() {
         let mut pend_local = pendientes.map(|p| Pendientes {
             rutas: p.rutas.clone(),
             pie: p.pie.clone(),
+            pie_de_antes: p.pie_de_antes.clone(),
             tamanos: p.tamanos.clone(),
             arrastre: None,
             sobre: None,
