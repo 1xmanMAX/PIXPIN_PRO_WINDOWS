@@ -1209,6 +1209,10 @@ pub fn abrir(
                                         meter_ficheros(ubicacion, a, &identidad, &p.rutas, &p.pie_escrito());
                                     if hechos > 0 {
                                         a.scroll = None;
+                                        // Una foto al asistente tambien se contesta.
+                                        if let Some(t) = asistente::al_enviar(ubicacion, a, textos) {
+                                            aviso = Some((t, std::time::Instant::now()));
+                                        }
                                         if let Some(i) = elegida {
                                             fichas[i].tocado = a.ficha.tocado;
                                             fichas[i].resumen = a.ficha.resumen.clone();
@@ -1342,6 +1346,9 @@ pub fn abrir(
                         // donde cae el clic, y arrastrando se elige.
                         ventana.capturar_raton();
                         hay_que_pintar = true;
+                    } else if abierto.as_mut().is_some_and(|a| asistente::tocar_lista(a, l)) {
+                        // La lista de `@` esta encima de las burbujas: el clic es suyo.
+                        hay_que_pintar = true;
                     } else if let Some((r, zona)) = abierto.as_ref().and_then(|a| {
                         a.zonas
                             .borrow()
@@ -1354,6 +1361,9 @@ pub fn abrir(
                         // cabecera, las pastillas de las burbujas, la tarjeta
                         // «Viene de», las citas y la barra de la seleccion.
                         let mut volver = false;
+                        // «Abrir lienzo» de una respuesta del asistente: se abre DESPUES,
+                        // como un toque en la burbuja del lienzo (se lleva `abierto` entero).
+                        let mut abrir_lienzo: Option<usize> = None;
                         if let Some(a) = abierto.as_mut() {
                             let cx = Contexto {
                                 ubicacion,
@@ -1433,7 +1443,13 @@ pub fn abrir(
                                 Zona::VieneDe(i) => {
                                     abrir_el_origen(ubicacion, a, i, lienzo, textos)
                                 }
-                                Zona::Enlace(i) => abrir_enlace(a, i, textos),
+                                Zona::Enlace(i) => match asistente::lienzo_de(a, i) {
+                                    Some(j) => {
+                                        abrir_lienzo = Some(j);
+                                        Efecto::Nada
+                                    }
+                                    None => abrir_enlace(a, i, textos),
+                                },
                                 Zona::Ir(j) => ejecutar(Accion::Ir(j), a, &cx),
                                 Zona::Lecciones => ejecutar(Accion::Lecciones, a, &cx),
                                 Zona::CerrarRespuesta => {
@@ -1583,6 +1599,20 @@ pub fn abrir(
                             }
                             elegida = None;
                         }
+                        if let Some(j) = abrir_lienzo {
+                            tocar_la_burbuja(
+                                j,
+                                ubicacion,
+                                &mut abierto,
+                                &fichas,
+                                &mut elegida,
+                                &mut borradores,
+                                textos,
+                                lienzo,
+                                idioma,
+                                &identidad,
+                            );
+                        }
                         hay_que_pintar = true;
                     } else if abierto.as_ref().is_some_and(|a| a.info.is_some()) {
                         // Una miniatura de la galeria abre lo que ensena, como
@@ -1705,7 +1735,7 @@ pub fn abrir(
                             }
                             hay_que_pintar = true;
                         }
-                    } else if abierto.as_ref().is_some_and(|a| asistente::tocar(ubicacion, a, l)) {
+                    } else if abierto.as_mut().is_some_and(|a| asistente::tocar(ubicacion, a, l)) {
                         // La tarjeta de bajar el asistente (ya hizo lo suyo).
                         hay_que_pintar = true;
                     } else if abierto.is_some() && disposicion.cabecera_chat.contiene(l) {
@@ -3031,6 +3061,10 @@ pub fn abrir(
                         let hechos = meter_ficheros(ubicacion, a, &identidad, &p.rutas, &p.pie_escrito());
                         if hechos > 0 {
                             a.scroll = None;
+                            // Una foto al asistente tambien se contesta.
+                            if let Some(t) = asistente::al_enviar(ubicacion, a, textos) {
+                                aviso = Some((t, std::time::Instant::now()));
+                            }
                             if let Some(i) = elegida {
                                 fichas[i].tocado = a.ficha.tocado;
                                 fichas[i].resumen = a.ficha.resumen.clone();
@@ -3213,6 +3247,19 @@ pub fn abrir(
                     orden = filtrar(&fichas, &busqueda);
                     hay_que_pintar = true;
                 }
+                // La lista de `@` (el asistente, los lienzos del chat) se
+                // lleva las flechas, Entrar, Tab y Escape mientras se ve:
+                // Entrar elige, no envia.
+                EventoOverlay::Tecla { vk, .. }
+                    if !buscando
+                        && asistente::tecla_de_la_lista(vk)
+                        && abierto.as_ref().is_some_and(asistente::menciones_abiertas) =>
+                {
+                    if let Some(a) = abierto.as_mut() {
+                        asistente::tecla_de_menciones(a, vk);
+                    }
+                    hay_que_pintar = true;
+                }
                 EventoOverlay::Caracter(c) if abierto.is_some() => {
                     // WM_CHAR trae tambien los mandos (retroceso, enter);
                     // esos se atienden por tecla, no como letra.
@@ -3251,6 +3298,10 @@ pub fn abrir(
                         match pegar(ubicacion, a, &identidad) {
                             Ok(cuantos) if cuantos > 0 => {
                                 a.scroll = None;
+                                // Una foto al asistente tambien se contesta.
+                                if let Some(t) = asistente::al_enviar(ubicacion, a, textos) {
+                                    aviso = Some((t, std::time::Instant::now()));
+                                }
                                 if let Some(i) = elegida {
                                     fichas[i].tocado = a.ficha.tocado;
                                     fichas[i].resumen = a.ficha.resumen.clone();
@@ -3803,6 +3854,7 @@ pub fn abrir(
                                 pintar_historial(p, &disposicion, &c, a);
                                 pintar_redaccion(p, &disposicion, &c, a, alto_texto);
                                 asistente::pintar_tarjeta(p, &disposicion, &c, a);
+                                asistente::pintar_menciones(p, &disposicion, &c, a);
                             }
                         }
                         // Encima de todo, panel incluido: esta esperando una
@@ -3920,6 +3972,23 @@ pub fn abrir(
         }
         if let Some(clave) = aviso_ia {
             aviso = Some((textos.t(&clave), std::time::Instant::now()));
+        }
+        // «…y ábrelo»: el lienzo donde acaba de dibujar, abierto como si se
+        // hubiera tocado su burbuja.
+        if let Some(j) = abierto.as_ref().and_then(asistente::lienzo_por_abrir) {
+            tocar_la_burbuja(
+                j,
+                ubicacion,
+                &mut abierto,
+                &fichas,
+                &mut elegida,
+                &mut borradores,
+                textos,
+                lienzo,
+                idioma,
+                &identidad,
+            );
+            hay_que_pintar = true;
         }
         let hasta_el_asistente = asistente::espera();
         // La transcripcion, igual: el hilo deja el texto cuando le toca y
@@ -5175,6 +5244,9 @@ fn pintar_historial(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto) {
             // Buscando, solo se miden y se colocan las que casan: el movil
             // FILTRA la conversacion («quien busca "factura enero" quiere las
             // cinco juntas para compararlas»), no salta de una a otra.
+            // Con el asistente de por medio, cada uno a su lado (una vez,
+            // no por mensaje: mirarlo es recorrer la conversacion).
+            let con_ia = asistente::conversacion_con_ia(a);
             let visibles = indices_visibles(a);
             let mut entradas = Vec::with_capacity(visibles.len());
             let mut todas = Vec::with_capacity(visibles.len());
@@ -5191,6 +5263,7 @@ fn pintar_historial(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto) {
                         e,
                         ahora,
                         aguja: &aguja,
+                        con_ia,
                     },
                 );
                 entradas.push(entrada);
@@ -5329,7 +5402,13 @@ fn pintar_historial(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto) {
 
         // Todas del mismo azul, el de la burbuja del movil, y con el contorno
         // del color de su lienzo si viene de uno (`colorDelDibujo`).
-        let (color, color_texto, color_hora) = (tema.burbuja_mia, tema.texto_mio, tema.hora_mia);
+        // Las del asistente, del otro color (`burbuja_otra`, la blanca de
+        // Telegram): con cada uno a su lado, el color dice tambien quien habla.
+        let (color, color_texto, color_hora) = if crate::asistente::chat::es_del_asistente(m) {
+            (tema.burbuja_otra, tema.texto, tema.apagado)
+        } else {
+            (tema.burbuja_mia, tema.texto_mio, tema.hora_mia)
+        };
         let radio = RADIO_BURBUJA * e;
         let grosor = GROSOR_BORDE * e;
         let dentro_del_borde = match piezas.borde {
@@ -5689,7 +5768,8 @@ fn pintar_historial(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto) {
             );
             let lado = 18.0 * e;
             p.icono(
-                &mi::LINK,
+                // Sin direccion es el «Abrir lienzo» del asistente.
+                if en.url.is_empty() { &mi::DRAW } else { &mi::LINK },
                 RectF {
                     x: caja.x + 13.0 * e,
                     y: caja.y + (caja.alto - lado) / 2.0,
@@ -6464,6 +6544,9 @@ struct Medir<'a> {
     /// pintar: lo encontrado va en negrita, la negrita ocupa mas, y midiendo
     /// sin ella la ultima linea se saldria de la burbuja.
     aguja: &'a str,
+    /// Si se habla con el asistente: lo del usuario va a la derecha
+    /// (`asistente::a_la_derecha`).
+    con_ia: bool,
 }
 
 /// Mide un mensaje y decide de que piezas se compone, como la `Burbuja` del
@@ -6569,7 +6652,7 @@ fn medir_mensaje(
         let entrada = h::Entrada {
             ancho: (w - relleno_x).max(0.0).ceil() as u32,
             alto: (alto_vista + extra - relleno_y).max(0.0).ceil() as u32,
-            mio: false,
+            mio: asistente::a_la_derecha(cx.con_ia, m),
             cuando: m.cuando,
             dia: pixpin_shell::entorno::a_local(m.cuando).div_euclid(86_400_000),
         };
@@ -6654,8 +6737,16 @@ fn medir_mensaje(
     // La tarjeta del enlace, ENCIMA del texto como en cualquier mensajeria:
     // lo que se toca es la tarjeta, y al final obligaria a leer la nota
     // entera para llegar a ella. Solo en las notas (`Clase.NOTA`).
+    // En una respuesta del asistente que dibujo, la tarjeta es «Abrir
+    // lienzo» (`asistente::lienzo_de`): el lienzo se pinto en segundo plano
+    // y este es el camino a el.
+    let lienzo_ia = asistente::lienzo_de(a, indice).and_then(|j| a.mensajes.get(j)).map(|l| tarjetas::Enlace {
+        url: String::new(),
+        donde: textos.t("asistente-abrir-lienzo"),
+        de_que: crate::asistente::chat::nombre_de_lienzo(l),
+    });
     let enlace = matches!(m.clase, None | Some(pixpin_proyecto::cuaderno::Clase::Nota))
-        .then(|| tarjetas::primer_enlace(&m.texto))
+        .then(|| lienzo_ia.or_else(|| tarjetas::primer_enlace(&m.texto)))
         .flatten()
         .map(|en| {
             let (wd, hd) = p.medir_texto(&en.donde, ENLACE_TAM * e);
@@ -6714,8 +6805,10 @@ fn medir_mensaje(
         alto: alto.ceil() as u32,
         ancho: ancho.ceil() as u32,
         // Todas a la izquierda, como en el movil: es un cuaderno propio, no
-        // una conversacion entre dos, y alternar lados no decia nada.
-        mio: false,
+        // una conversacion entre dos, y alternar lados no decia nada. Salvo
+        // hablando con el asistente: ahi SI son dos, y cada uno a su lado
+        // (el usuario, 13-oct: «que se comporte como un chat»).
+        mio: asistente::a_la_derecha(cx.con_ia, m),
         cuando: m.cuando,
         dia: pixpin_shell::entorno::a_local(m.cuando).div_euclid(86_400_000),
     };

@@ -2450,6 +2450,8 @@ ajustes2-palabras-marcador = word, another word…
 
 ## Local assistant (13-oct-2026)
 asistente-titulo = Local assistant
+asistente-mencionar = Mention: the assistant or where to draw
+asistente-abrir-lienzo = Open canvas
 asistente-explica = A small model that runs on this PC, offline: it answers, draws on the canvas, makes charts and reads the text of scanned PDFs and photos. Download it once; it shuts down by itself after 5 idle minutes and gives the memory back.
 asistente-modelo-normal = Qwen3.5 2B (recommended)
 asistente-modelo-ligero = Qwen3.5 0.8B (light)

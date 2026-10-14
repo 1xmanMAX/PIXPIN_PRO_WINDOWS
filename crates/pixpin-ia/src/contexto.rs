@@ -39,6 +39,13 @@ const TOKENS_IMAGEN: u32 = 450;
 /// Lo que anade la plantilla por mensaje (rol, separadores).
 const TOKENS_POR_MENSAJE: u32 = 6;
 
+/// Lo que se cuenta para la respuesta al medir contra el 70 %: una
+/// respuesta normal. No el tope entero de una vuelta con herramientas
+/// (`agente::MAX_TOKENS_CON_HERRAMIENTAS`): ese ya lo encoge
+/// `agente::tope_de_tokens` a lo que quepa, y contarlo entero reiniciaria
+/// casi en cada turno.
+pub const RESERVA_RESPUESTA: u32 = 1536;
+
 /// Cuantos mensajes de antes se quedan al reiniciar.
 pub const QUEDAN_AL_REINICIAR: usize = 2;
 

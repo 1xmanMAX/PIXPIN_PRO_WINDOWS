@@ -7,10 +7,15 @@
 //!
 //! - **Hay un lienzo abierto** ([`EditorAbierto`]): lo vacia el bucle del
 //!   editor y lo dibujado cae **centrado en lo que se ve** ([`meter`]).
-//! - **No hay**: lo vacia el chat, que lo mete en el ultimo lienzo de esa
-//!   conversacion (o en uno nuevo) sin abrirlo; como el editor encuadra lo
+//! - **No hay**: lo vacia el chat, que lo mete sin abrirlo en el lienzo
+//!   nombrado en la pregunta (`@lienzo:<nombre>`) o, si no, en el **lienzo
+//!   propio del asistente** en esa conversacion (uno suyo, creado la primera
+//!   vez); la respuesta lleva «Abrir lienzo». Como el editor encuadra lo
 //!   dibujado al abrirse, lo nuevo se pone **a la derecha de lo que ya
 //!   habia** ([`meter_al_lado`]) para no taparlo.
+//!
+//! Antes, sin lienzo abierto, iba al ultimo lienzo del chat, fuera de quien
+//! fuera: el usuario no sabia donde buscarlo (13-oct).
 //!
 //! En los dos casos es `portapapeles::pegar`: **un solo paso de deshacer**,
 //! y el lienzo se guarda por su camino de siempre (`guardar_hoja_dibujada`),
@@ -28,15 +33,24 @@ pub struct Pedido {
     /// La conversacion desde la que se pidio (adonde va si no hay lienzo
     /// abierto).
     pub proyecto: String,
+    /// El lienzo de esa conversacion que se nombro con `@lienzo:` (su
+    /// referencia). Sin el, el propio del asistente.
+    pub destino: Option<String>,
     /// Un `.excalidraw` hecho por `pixpin_ia::lienzo::documento`.
     pub documento: String,
     responder: Sender<Result<String, String>>,
 }
 
 impl Pedido {
-    pub fn nuevo(proyecto: String, documento: String, responder: Sender<Result<String, String>>) -> Pedido {
+    pub fn nuevo(
+        proyecto: String,
+        destino: Option<String>,
+        documento: String,
+        responder: Sender<Result<String, String>>,
+    ) -> Pedido {
         Pedido {
             proyecto,
+            destino,
             documento,
             responder,
         }

@@ -119,7 +119,7 @@ fn el_turno_con_memoria_reescribe_la_hoja_y_manda_el_registro_antes_del_fin() {
         pixpin_ia::Mensaje::sistema(pixpin_ia::agente::instrucciones()),
         pixpin_ia::Mensaje::usuario("dibuja una casa roja"),
     ];
-    let mut t = Turno::lanzar_con_memoria(motor.clone(), "p".into(), historial, vec![], None, vec![], Some(memoria));
+    let mut t = Turno::lanzar_con_memoria(motor.clone(), "p".into(), historial, vec![], None, None, vec![], Some(memoria));
     let (vivo, avisos) = hasta_el_final(&mut t);
     assert_eq!(vivo.mostrar(), "Listo, una casa roja.");
     let i_reg = avisos.iter().position(|a| matches!(a, Aviso::Registro(_))).expect("registro");
@@ -163,11 +163,12 @@ fn un_turno_que_falla_deja_lo_que_falta_en_la_hoja() {
         vec![pixpin_ia::Mensaje::usuario("dibuja una casa roja")],
         vec![],
         None,
+        None,
         vec![],
         Some(memoria),
     );
     let (vivo, avisos) = hasta_el_final(&mut t);
-    assert!(vivo.mostrar().contains("No pude contestar"));
+    assert!(vivo.acabado, "{}", vivo.mostrar());
     let r = avisos
         .iter()
         .find_map(|a| if let Aviso::Registro(r) = a { Some(r.clone()) } else { None })
@@ -293,6 +294,7 @@ fn de_verdad_conversacion_larga_con_reinicios() {
             "p".into(),
             historial,
             vec![],
+            None,
             None,
             herramientas,
             Some(memoria),

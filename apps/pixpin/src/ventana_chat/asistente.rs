@@ -1,4 +1,4 @@
-//! **El asislet modelo = TARJETA.with_borrow_mut(|t| elegido(t, &a.raiz));ente local en la ventana del chat** (encargo 1): lo que engancha
+//! **El asistente local en la ventana del chat** (encargo 1): lo que engancha
 //! `crate::asistente` con la conversacion abierta.
 //!
 //! El chat solo llama a cinco cosas, en sitios contados:
@@ -12,7 +12,10 @@
 //! - [`espera`]: cada cuanto volver a mirar mientras hay algo en marcha.
 //! - [`ocupado`]/[`parar`]: el boton de enviar es «parar» mientras contesta.
 //! - [`pintar_tarjeta`]/[`tocar`]: la tarjeta de bajar el modelo, la
-//!   primera vez, en el chat «Asistente».
+//!   primera vez, en el chat «Asistente»; y la lista de `@` mientras se
+//!   escribe ([`pintar_menciones`], [`tecla_de_menciones`]).
+//! - [`lienzo_por_abrir`]: el lienzo que pidio abrir al terminar («…y
+//!   ábrelo»); [`lienzo_de`]: el de «Abrir lienzo» de una respuesta.
 //!
 //! Todo vive en el hilo de la ventana (`thread_local`): el bucle del chat es
 //! uno y no hay que compartir nada con otros hilos salvo por los canales.
@@ -46,6 +49,11 @@ struct Sesion {
     guardado: Instant,
     /// Lo que penso y la hoja reescrita, para guardar al acabar.
     registro: Option<pixpin_ia::hoja_trabajo::Registro>,
+    /// El lienzo del chat donde dibujo (sin uno abierto), por su
+    /// referencia: la respuesta lo apunta para su «Abrir lienzo».
+    lienzo: Option<String>,
+    /// Se pidio abrirlo al terminar («…y ábrelo»).
+    abrir: bool,
 }
 
 /// La tarjeta de la primera vez.
@@ -79,6 +87,18 @@ thread_local! {
     static SESIONES: RefCell<Vec<Sesion>> = const { RefCell::new(Vec::new()) };
     static DESCARGA: RefCell<Option<Descarga>> = const { RefCell::new(None) };
     static TARJETA: RefCell<Tarjeta> = RefCell::new(Tarjeta::default());
+    /// El lienzo que se pidio abrir al terminar: (proyecto, referencia).
+    static POR_ABRIR: RefCell<Option<(String, String)>> = const { RefCell::new(None) };
+    /// La lista de `@`: la opcion marcada, lo pulsable como se pinto, y si
+    /// se cerro con Escape para ese `@` (su posicion).
+    static MENCIONES: RefCell<Menciones> = RefCell::new(Menciones::default());
+}
+
+#[derive(Default)]
+struct Menciones {
+    marcada: usize,
+    botones: Vec<(Rect, usize)>,
+    cerrada_en: Option<(String, usize)>,
 }
 
 /// Si el asistente esta contestando en este chat.
@@ -107,15 +127,16 @@ fn modelo_de_los_ajustes(ubicacion: &Ubicacion) -> pixpin_ia::modelos::Modelo {
     ia_motor::modelo_elegido(Some(aj.asistente.modelo.as_str()).filter(|m| !m.is_empty()))
 }
 
-/// **Despues de guardar una nota**: si era para el asistente, lanza el
-/// turno. Devuelve un aviso para el usuario si no se pudo.
+/// **Despues de guardar una nota o adjuntar una foto**: si era para el
+/// asistente, lanza el turno. Devuelve un aviso para el usuario si no se
+/// pudo.
+///
+/// Una foto tambien: en el chat «Asistente» una foto sola se contesta
+/// (antes no se llamaba a nadie al adjuntarla y el usuario se quedaba
+/// esperando una respuesta que no iba a llegar, 13-oct).
 pub(super) fn al_enviar(ubicacion: &Ubicacion, a: &mut Abierto, textos: &Catalogo) -> Option<String> {
     let nueva = a.mensajes.last()?;
-    let pregunta = if a.ficha.es_asistente() {
-        nueva.texto.trim().to_string()
-    } else {
-        ia_chat::mencion(&nueva.texto)?
-    };
+    let pregunta = ia_chat::pregunta_de(nueva, a.ficha.es_asistente())?;
     if ocupado(&a.ficha.id) {
         return Some(textos.t("asistente-ocupado"));
     }
@@ -176,24 +197,35 @@ fn lanzar_con(
     let n = a.mensajes.len();
     let (anteriores, nueva) = a.mensajes.split_at(n.saturating_sub(1));
     let pregunta_id = nueva.first().map(|m| m.id.clone());
-    let foto = ia_chat::foto_reciente(anteriores).and_then(|m| ruta_del_mensaje(&raiz, &proyecto, m));
+    // La foto puede ser la misma que se acaba de mandar.
+    let foto = ia_chat::foto_reciente(&a.mensajes).and_then(|m| ruta_del_mensaje(&raiz, &proyecto, m));
     let adjuntos = ia_chat::adjuntos(&a.mensajes, |m| ruta_del_mensaje(&raiz, &proyecto, m).filter(|r| r.is_file()));
+    // `@lienzo:<nombre>`: donde dibujar si no hay un lienzo abierto.
+    let (para_el_modelo, destino) = ia_chat::resolver_lienzo(&pregunta, &a.mensajes);
+    let abrir = ia_chat::pide_abrir(&pregunta);
     // Las herramientas de este turno (`acciones::herramientas_para`): con la
     // memoria, la vuelta de planear puede anadir las que nombre.
     let herramientas = crate::asistente::acciones::herramientas_para(
-        &[pixpin_ia::Mensaje::usuario(pregunta.clone())],
+        &[pixpin_ia::Mensaje::usuario(para_el_modelo.clone())],
         &adjuntos,
         foto.is_some(),
     );
     let (historial, memoria) = match pensando {
         Some((pensar, ventana)) => {
-            let (h, m) =
-                ia_pensado::preparar_turno(&raiz, &proyecto, anteriores, &pregunta, pensar, ventana, &herramientas);
+            let (h, m) = ia_pensado::preparar_turno(
+                &raiz,
+                &proyecto,
+                anteriores,
+                &para_el_modelo,
+                pensar,
+                ventana,
+                &herramientas,
+            );
             (h, Some(m))
         }
         None => {
             let conversacion = ia_chat::conversacion(anteriores);
-            (ia_turno::historial_para_el_modelo(&conversacion, &pregunta, None), None)
+            (ia_turno::historial_para_el_modelo(&conversacion, &para_el_modelo, None), None)
         }
     };
 
@@ -226,6 +258,7 @@ fn lanzar_con(
         historial,
         adjuntos,
         foto,
+        destino,
         herramientas,
         memoria,
     );
@@ -238,9 +271,42 @@ fn lanzar_con(
             vivo,
             guardado: Instant::now(),
             registro: None,
+            lienzo: None,
+            abrir,
         })
     });
     Ok(())
+}
+
+/// **El lienzo que pidio abrir al terminar** («dibuja… y ábrelo»), por su
+/// posicion en la conversacion abierta. Se entrega una vez.
+pub(super) fn lienzo_por_abrir(a: &Abierto) -> Option<usize> {
+    let (proyecto, referencia) = POR_ABRIR.with_borrow(Clone::clone)?;
+    if proyecto != a.ficha.id {
+        return None;
+    }
+    POR_ABRIR.with_borrow_mut(|p| *p = None);
+    a.mensajes
+        .iter()
+        .rposition(|m| ia_chat::es_lienzo(m) && m.referencia.as_deref() == Some(referencia.as_str()))
+}
+
+/// El lienzo de «Abrir lienzo» de la respuesta `i`, si lo lleva.
+pub(super) fn lienzo_de(a: &Abierto, i: usize) -> Option<usize> {
+    ia_chat::lienzo_de_la_respuesta(a.mensajes.get(i)?, &a.mensajes)
+}
+
+/// A que lado va un mensaje: en una conversacion con el asistente (su chat,
+/// o uno donde ya contesto), lo del usuario a la DERECHA y lo del asistente
+/// a la izquierda, como en cualquier mensajeria. Lo demas, todo a la
+/// izquierda como siempre (es un cuaderno propio, como en el movil).
+pub(super) fn a_la_derecha(con_ia: bool, m: &cuaderno::Mensaje) -> bool {
+    con_ia && !ia_chat::es_del_asistente(m)
+}
+
+/// Si en esta conversacion se habla con el asistente.
+pub(super) fn conversacion_con_ia(a: &Abierto) -> bool {
+    a.ficha.es_asistente() || a.mensajes.iter().any(ia_chat::es_del_asistente)
 }
 
 /// **Una vez por vuelta del bucle.** Devuelve si hay que repintar y un
@@ -253,8 +319,25 @@ pub(super) fn latido(ubicacion: &Ubicacion, mut abierto: Option<&mut Abierto>) -
     //    hay, lo atiende su bucle).
     if !al_lienzo::hay_editor() {
         for p in al_lienzo::tomar() {
-            let r = meter_en_el_lienzo_del_chat(ubicacion, abierto.as_deref_mut(), &p.proyecto, &p.documento);
+            let r = meter_en_el_lienzo_del_chat(
+                ubicacion,
+                abierto.as_deref_mut(),
+                &p.proyecto,
+                p.destino.as_deref(),
+                &p.documento,
+            );
             cambio = true;
+            let r = match r {
+                Ok((resumen, referencia)) => {
+                    SESIONES.with_borrow_mut(|s| {
+                        if let Some(s) = s.iter_mut().find(|s| s.proyecto == p.proyecto) {
+                            s.lienzo = Some(referencia);
+                        }
+                    });
+                    Ok(resumen)
+                }
+                Err(e) => Err(e),
+            };
             p.responder(r);
         }
     }
@@ -295,19 +378,33 @@ pub(super) fn latido(ubicacion: &Ubicacion, mut abierto: Option<&mut Abierto>) -
                 }
             }
             let texto = s.vivo.mostrar();
+            // Al acabar, la respuesta apunta el lienzo donde dibujo: de ahi
+            // sale su «Abrir lienzo».
+            let lienzo = s.lienzo.clone().filter(|_| acabo);
+            let apuntar = |m: &mut cuaderno::Mensaje| {
+                if let Some(r) = &lienzo {
+                    m.resto
+                        .insert(ia_chat::LIENZO_DE_LA_RESPUESTA.into(), serde_json::Value::String(r.clone()));
+                }
+            };
             if let Some(a) = abierto.as_deref_mut().filter(|a| a.ficha.id == s.proyecto)
                 && let Some(m) = a.mensajes.iter_mut().find(|m| m.id == s.nota)
-                && m.texto != texto
+                && (m.texto != texto || lienzo.is_some())
             {
                 m.texto = texto.clone();
+                apuntar(m);
                 a.colocado.borrow_mut().ancho = 0;
                 cambio = true;
+            }
+            if acabo && s.abrir && let Some(r) = &lienzo {
+                POR_ABRIR.with_borrow_mut(|p| *p = Some((s.proyecto.clone(), r.clone())));
             }
             if acabo || s.guardado.elapsed() >= GUARDAR_CADA {
                 s.guardado = Instant::now();
                 let carpeta = pixpin_proyecto::almacen::carpeta(&raiz, &s.proyecto);
                 if let Err(e) = cuaderno::cambiar(&carpeta, &s.nota, |m| {
                     m.texto = texto.clone();
+                    apuntar(m);
                     true
                 }) {
                     tracing::warn!(?e, "asistente: no se pudo guardar la respuesta");
@@ -408,14 +505,20 @@ fn dejar_texto_leido(
     Ok(())
 }
 
-/// **Lo dibujado, al ultimo lienzo del chat** (o a uno nuevo), sin abrirlo:
-/// leerlo, pegar en un paso y guardarlo por el camino de siempre.
-fn meter_en_el_lienzo_del_chat(
+/// El nombre del lienzo propio del asistente, al crearlo.
+pub(super) const NOMBRE_LIENZO_PROPIO: &str = "Lienzo del asistente";
+
+/// **Lo dibujado, a un lienzo del chat**, sin abrirlo: el mencionado
+/// (`destino`) o, si no, el propio del asistente (creandolo la primera vez).
+/// Leerlo, pegar en un paso y guardarlo por el camino de siempre. Devuelve
+/// el resumen para el modelo y la referencia del lienzo.
+pub(super) fn meter_en_el_lienzo_del_chat(
     ubicacion: &Ubicacion,
     mut abierto: Option<&mut Abierto>,
     proyecto: &str,
+    destino: Option<&str>,
     documento: &str,
-) -> Result<String, String> {
+) -> Result<(String, String), String> {
     let raiz = ubicacion.raiz();
     let es_el_abierto = abierto.as_deref().is_some_and(|a| a.ficha.id == proyecto);
     let mensajes: Vec<cuaderno::Mensaje> = match abierto.as_deref() {
@@ -424,15 +527,26 @@ fn meter_en_el_lienzo_del_chat(
             .map(|c| c.mensajes)
             .unwrap_or_default(),
     };
-    let (indice, mensaje, nuevo) = match ia_chat::ultimo_lienzo(&mensajes) {
+    let elegido = destino
+        .and_then(|r| {
+            mensajes
+                .iter()
+                .rposition(|m| ia_chat::es_lienzo(m) && m.referencia.as_deref() == Some(r))
+        })
+        .or_else(|| ia_chat::lienzo_propio(&mensajes));
+    let (indice, mensaje, nuevo) = match elegido {
         Some(i) => (Some(i), mensajes[i].clone(), false),
         None => {
             let numero = mensajes.iter().map(|m| m.numero).max().unwrap_or(0) + 1;
-            let m = escribir_lienzo(raiz, proyecto, ia_chat::APARATO, numero, Some("Asistente"))
-                .map_err(|e| format!("no se pudo crear un lienzo: {e}"))?;
+            let m = escribir_lienzo(raiz, proyecto, ia_chat::APARATO, numero, Some(NOMBRE_LIENZO_PROPIO))
+                .map_err(|e| {
+                    tracing::warn!(?e, "asistente: no se pudo crear su lienzo");
+                    "no se pudo crear un lienzo".to_string()
+                })?;
             (None, m, true)
         }
     };
+    let referencia = mensaje.referencia.clone().unwrap_or_default();
     let hoja = preparar_hoja(raiz, proyecto, &mensaje, pixpin_shell::entorno::ahora_utc_ms())
         .ok_or("no se pudo abrir el lienzo")?;
     let mut escena = hoja.escena;
@@ -451,11 +565,14 @@ fn meter_en_el_lienzo_del_chat(
         }
         a.colocado.borrow_mut().ancho = 0;
     }
-    let nombre = if mensaje.nombre.is_empty() { "Asistente".to_string() } else { mensaje.nombre.clone() };
-    Ok(format!(
-        "{} «{nombre}»{}",
-        al_lienzo::resumen(n),
-        if nuevo { " (lienzo nuevo en este chat)" } else { "" }
+    let nombre = ia_chat::nombre_de_lienzo(&mensaje);
+    Ok((
+        format!(
+            "{} «{nombre}»{}",
+            al_lienzo::resumen(n),
+            if nuevo { " (lienzo nuevo en este chat)" } else { "" }
+        ),
+        referencia,
     ))
 }
 
@@ -667,8 +784,11 @@ fn a_rect(r: RectF) -> Rect {
     }
 }
 
-/// **Un clic en la tarjeta.** `true` si era suyo.
-pub(super) fn tocar(ubicacion: &Ubicacion, a: &Abierto, l: Punto) -> bool {
+/// **Un clic en la tarjeta o en la lista de `@`.** `true` si era suyo.
+pub(super) fn tocar(ubicacion: &Ubicacion, a: &mut Abierto, l: Punto) -> bool {
+    if tocar_lista(a, l) {
+        return true;
+    }
     if !a.ficha.es_asistente() {
         return false;
     }
@@ -731,6 +851,142 @@ fn guardar_modelo(ubicacion: &Ubicacion, id: &str) {
         tracing::warn!(?e, "asistente: no se pudo guardar el modelo elegido");
     }
     ia_motor::soltar_todo();
+}
+
+// ---------------------------------------------------------------------------
+// La lista de `@` mientras se escribe
+
+const VK_TAB: u32 = 0x09;
+
+/// La lista que toca ahora, si toca: donde esta el `@`, la rayita y las
+/// opciones (el asistente fuera de su chat, y los lienzos y hojas).
+fn menciones_ahora(a: &Abierto) -> Option<(usize, usize, Vec<ia_chat::Opcion>)> {
+    let cursor = a.cursor.pos(&a.borrador);
+    let (arroba, escrito) = ia_chat::consulta_de_mencion(&a.borrador, cursor)?;
+    let cerrada = MENCIONES.with_borrow(|m| {
+        m.cerrada_en
+            .as_ref()
+            .is_some_and(|(p, i)| *p == a.ficha.id && *i == arroba)
+    });
+    if cerrada {
+        return None;
+    }
+    let opciones = ia_chat::opciones_de_mencion(&a.mensajes, &escrito, a.ficha.es_asistente());
+    (!opciones.is_empty()).then_some((arroba, cursor, opciones))
+}
+
+/// Si la lista de `@` esta a la vista (y por tanto las flechas, Entrar,
+/// Tab y Escape son suyas).
+pub(super) fn menciones_abiertas(a: &Abierto) -> bool {
+    menciones_ahora(a).is_some()
+}
+
+/// Escribe la opcion `cual` en la caja.
+fn elegir_mencion(a: &mut Abierto, cual: usize) -> bool {
+    let Some((arroba, cursor, opciones)) = menciones_ahora(a) else {
+        return false;
+    };
+    let Some(o) = opciones.get(cual) else { return false };
+    let fin = ia_chat::poner_mencion(&mut a.borrador, arroba, cursor, o);
+    a.cursor.poner(&a.borrador, fin, false);
+    MENCIONES.with_borrow_mut(|m| m.marcada = 0);
+    a.colocado.borrow_mut().ancho = 0;
+    true
+}
+
+/// Las teclas que se lleva la lista mientras se ve.
+pub(super) fn tecla_de_la_lista(vk: u32) -> bool {
+    matches!(vk, VK_ARRIBA | VK_ABAJO | VK_ENTRAR | VK_TAB | VK_ESCAPE)
+}
+
+/// **Una tecla con la lista abierta.** `true` si era suya: las flechas
+/// mueven la marca, Entrar o Tab eligen (Entrar NO envia mientras se elige
+/// un lienzo), Escape la cierra para ese `@`.
+pub(super) fn tecla_de_menciones(a: &mut Abierto, vk: u32) -> bool {
+    let Some((arroba, _, opciones)) = menciones_ahora(a) else {
+        return false;
+    };
+    let n = opciones.len();
+    match vk {
+        VK_ARRIBA => MENCIONES.with_borrow_mut(|m| m.marcada = (m.marcada + n - 1) % n),
+        VK_ABAJO => MENCIONES.with_borrow_mut(|m| m.marcada = (m.marcada + 1) % n),
+        VK_ENTRAR | VK_TAB => {
+            let cual = MENCIONES.with_borrow(|m| m.marcada.min(n - 1));
+            elegir_mencion(a, cual);
+        }
+        VK_ESCAPE => MENCIONES.with_borrow_mut(|m| {
+            m.cerrada_en = Some((a.ficha.id.clone(), arroba));
+            m.marcada = 0;
+        }),
+        _ => return false,
+    }
+    true
+}
+
+/// **Un clic en la lista de `@`.** `true` si era suyo.
+pub(super) fn tocar_lista(a: &mut Abierto, l: Punto) -> bool {
+    if !menciones_abiertas(a) {
+        return false;
+    }
+    let cual = MENCIONES.with_borrow(|m| m.botones.iter().find(|(r, _)| r.contiene(l)).map(|(_, i)| *i));
+    match cual {
+        Some(i) => elegir_mencion(a, i),
+        None => false,
+    }
+}
+
+/// **Pinta la lista de `@`** encima de la caja de escribir, pegada abajo a
+/// la izquierda del historial, como la de cualquier mensajeria.
+pub(super) fn pintar_menciones(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto) {
+    let Some((_, _, opciones)) = menciones_ahora(a) else {
+        MENCIONES.with_borrow_mut(|m| {
+            m.botones.clear();
+            m.marcada = 0;
+        });
+        return;
+    };
+    let (tema, e) = (c.tema, c.escala as f32 / 100.0);
+    let area = area_del_historial(d, a, c.escala);
+    let fila = 34.0 * e;
+    let pad = 6.0 * e;
+    let ancho = (300.0 * e).min(area.ancho as f32 - 24.0 * e).max(120.0);
+    let alto = fila * opciones.len() as f32 + 2.0 * pad + 22.0 * e;
+    let caja = RectF {
+        x: area.x as f32 + 12.0 * e,
+        y: area.abajo() as f32 - alto - 6.0 * e,
+        ancho,
+        alto,
+    };
+    MENCIONES.with_borrow_mut(|m| {
+        m.marcada = m.marcada.min(opciones.len() - 1);
+        m.botones.clear();
+        p.rellenar_redondeado(caja, 12.0 * e, tema.burbuja_otra);
+        p.trazar(caja, (1.0 * e).max(1.0), tema.isla_borde);
+        p.texto_linea(
+            &c.textos.t("asistente-mencionar"),
+            caja.x + 12.0 * e,
+            caja.y + pad,
+            11.0 * e,
+            ancho - 24.0 * e,
+            tema.apagado,
+        );
+        let mut y = caja.y + pad + 22.0 * e;
+        for (i, o) in opciones.iter().enumerate() {
+            let r = RectF {
+                x: caja.x + pad,
+                y,
+                ancho: ancho - 2.0 * pad,
+                alto: fila,
+            };
+            if i == m.marcada {
+                p.rellenar_redondeado(r, 8.0 * e, con_alfa(tema.enviar, 0.16));
+            }
+            let (_, h) = p.medir_texto(&o.rotulo, 14.0 * e);
+            p.texto_linea(&o.rotulo, r.x + 8.0 * e, r.y + (fila - h) / 2.0, 14.0 * e, r.ancho - 16.0 * e, tema.texto);
+            m.botones.push((a_rect(r), i));
+            y += fila;
+        }
+    });
 }
 
 #[cfg(test)]

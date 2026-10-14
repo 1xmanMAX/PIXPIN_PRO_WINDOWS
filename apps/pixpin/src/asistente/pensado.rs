@@ -23,7 +23,6 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
-use pixpin_ia::agente::MAX_TOKENS_CON_HERRAMIENTAS;
 use pixpin_ia::contexto::{self, Fuente};
 use pixpin_ia::herramientas::Herramienta;
 use pixpin_ia::hoja_trabajo::{HojaDeTrabajo, Registro};
@@ -192,9 +191,10 @@ pub fn pensar_segun_ajuste(ajuste: Option<bool>, modelo_id: &str) -> bool {
     ajuste.unwrap_or(modelo_id != pixpin_ia::modelos::QWEN35_08B.id)
 }
 
-/// La ventana del motor local (la de `servidor::Config`).
+/// La ventana del motor local (`servidor::CONTEXTO`, la que se le pide a
+/// `llama-server`).
 pub fn ventana_local() -> u32 {
-    pixpin_ia::servidor::Config::nueva(PathBuf::new(), PathBuf::new(), None).contexto
+    pixpin_ia::servidor::CONTEXTO
 }
 
 /// Cuantos mensajes de antes se mandan como mucho, y cuanto de cada uno
@@ -258,7 +258,7 @@ pub fn preparar_con_hoja(
         Mensaje::usuario(pregunta),
         &herramientas,
         ventana,
-        MAX_TOKENS_CON_HERRAMIENTAS,
+        contexto::RESERVA_RESPUESTA,
     );
     if p.reiniciado {
         hoja.reinicio_desde = conv.get(p.primero).map(|(id, _, _, _)| id.clone());

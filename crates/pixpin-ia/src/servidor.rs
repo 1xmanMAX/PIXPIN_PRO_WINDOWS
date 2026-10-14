@@ -46,6 +46,10 @@ use crate::sse::Acumulador;
 /// `CREATE_NO_WINDOW`: que no asome una consola negra.
 const SIN_VENTANA: u32 = 0x0800_0000;
 
+/// Los tokens de contexto con los que se arranca el modelo. El agente los
+/// usa para no pedir mas respuesta de la que cabe (`agente::tope_de_tokens`).
+pub const CONTEXTO: u32 = 8192;
+
 /// Donde corre el modelo.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Dispositivo {
@@ -81,7 +85,7 @@ impl Config {
             servidor,
             modelo,
             vision,
-            contexto: 8192,
+            contexto: CONTEXTO,
             hilos: None,
             dispositivo: Dispositivo::Cpu,
             reposo: Duration::from_secs(5 * 60),

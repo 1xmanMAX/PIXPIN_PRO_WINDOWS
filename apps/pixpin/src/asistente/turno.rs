@@ -126,7 +126,7 @@ impl Turno {
     /// mensaje nuevo del usuario al final.
     /// `foto`: la imagen que tiene que ver con la pregunta (se reduce y se
     /// pega al ultimo mensaje en el hilo, no en el de la ventana).
-    #[cfg_attr(not(test), allow(dead_code))]
+    #[cfg(test)]
     pub fn lanzar(
         motor: Arc<dyn Motor>,
         proyecto: String,
@@ -134,20 +134,33 @@ impl Turno {
         adjuntos: Vec<Adjunto>,
         foto: Option<PathBuf>,
     ) -> Turno {
-        let herramientas = super::acciones::herramientas_para(&historial, &adjuntos, foto.is_some());
-        Turno::lanzar_con(motor, proyecto, historial, adjuntos, foto, herramientas)
+        Turno::lanzar_hacia(motor, proyecto, historial, adjuntos, foto, None)
     }
 
-    #[cfg_attr(not(test), allow(dead_code))]
+    /// Lo mismo con el lienzo donde dibujar si no hay uno abierto (la
+    /// mencion `@lienzo:` de la pregunta): su referencia en el chat.
+    pub fn lanzar_hacia(
+        motor: Arc<dyn Motor>,
+        proyecto: String,
+        historial: Vec<Mensaje>,
+        adjuntos: Vec<Adjunto>,
+        foto: Option<PathBuf>,
+        destino: Option<String>,
+    ) -> Turno {
+        let herramientas = super::acciones::herramientas_para(&historial, &adjuntos, foto.is_some());
+        Turno::lanzar_con(motor, proyecto, historial, adjuntos, foto, destino, herramientas)
+    }
+
     pub fn lanzar_con(
         motor: Arc<dyn Motor>,
         proyecto: String,
         historial: Vec<Mensaje>,
         adjuntos: Vec<Adjunto>,
         foto: Option<PathBuf>,
+        destino: Option<String>,
         herramientas: Vec<Herramienta>,
     ) -> Turno {
-        Turno::lanzar_con_memoria(motor, proyecto, historial, adjuntos, foto, herramientas, None)
+        Turno::lanzar_con_memoria(motor, proyecto, historial, adjuntos, foto, destino, herramientas, None)
     }
 
     /// Lanza el turno con su [`Memoria`]: piensa, planea, reescribe la hoja
@@ -158,6 +171,7 @@ impl Turno {
         mut historial: Vec<Mensaje>,
         adjuntos: Vec<Adjunto>,
         foto: Option<PathBuf>,
+        destino: Option<String>,
         herramientas: Vec<Herramienta>,
         memoria: Option<Memoria>,
     ) -> Turno {
@@ -179,7 +193,8 @@ impl Turno {
                     .find(|m| m.rol == Rol::Usuario)
                     .map(Mensaje::texto_entero)
                     .unwrap_or_default();
-                let mut ejecutor = EjecutorDelChat::nuevo(tx.clone(), proyecto, adjuntos, parar_hilo.clone());
+                let mut ejecutor =
+                    EjecutorDelChat::nuevo(tx.clone(), proyecto, adjuntos, parar_hilo.clone()).hacia(destino);
                 let con_memoria = memoria.is_some();
                 let memoria = memoria.unwrap_or_default();
                 let buscar = |c: &str| contexto::buscar(&memoria.fuentes, c, 3);
@@ -209,7 +224,11 @@ impl Turno {
                         }
                     },
                 )
-                .map_err(|e| e.to_string());
+                .map_err(|e| {
+                    // Lo tecnico, al registro; a la burbuja, en palabras.
+                    tracing::warn!(error = %e, "asistente: el turno no pudo acabar");
+                    agente::para_el_usuario(&e)
+                });
                 if con_memoria {
                     let r = recogido.registro(memoria.hoja.clone(), &pedido, &resultado, memoria.reiniciado);
                     let _ = tx.send(Aviso::Registro(r));
@@ -218,8 +237,9 @@ impl Turno {
             }
         });
         if let Err(e) = lanzado {
+            tracing::warn!(?e, "asistente: no se pudo lanzar el hilo del turno");
             let _ = tx.send(Aviso::Fin {
-                resultado: Err(format!("no se pudo lanzar el hilo del asistente: {e}")),
+                resultado: Err("No pude empezar a contestar. Prueba otra vez.".into()),
             });
         }
         Turno {

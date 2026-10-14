@@ -2451,6 +2451,8 @@ ajustes2-palabras-marcador = palabra, otra palabra…
 
 ## Asistente local (13-oct-2026)
 asistente-titulo = Asistente local
+asistente-mencionar = Mencionar: el asistente o dónde dibujar
+asistente-abrir-lienzo = Abrir lienzo
 asistente-explica = Un modelo pequeño que funciona en este PC, sin internet: contesta, dibuja en el lienzo, hace gráficas y lee el texto de PDFs escaneados y fotos. Hay que bajarlo una sola vez; se apaga solo a los 5 minutos sin usarlo y devuelve la memoria.
 asistente-modelo-normal = Qwen3.5 2B (recomendado)
 asistente-modelo-ligero = Qwen3.5 0.8B (ligero)

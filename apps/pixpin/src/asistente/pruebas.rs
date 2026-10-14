@@ -135,7 +135,9 @@ fn un_motor_que_falla_deja_el_motivo_en_la_burbuja() {
     let mut t = Turno::lanzar(motor, "p".into(), historial("hola"), vec![], None);
     let (vivo, _) = hasta_el_final(&mut t, None);
     assert!(vivo.acabado);
-    assert!(vivo.mostrar().contains("No pude contestar"), "{}", vivo.mostrar());
+    // Un aviso en palabras; lo tecnico («el guion se acabo») va al registro.
+    assert!(vivo.mostrar().starts_with("⚠️"), "{}", vivo.mostrar());
+    assert!(!vivo.mostrar().contains("guion"), "{}", vivo.mostrar());
 }
 
 /// Un motor que escribe despacio, para parar a mitad.
@@ -242,9 +244,150 @@ fn la_conversacion_separa_usuario_y_asistente_y_la_foto_es_la_reciente() {
     let c = chat::conversacion(&ms);
     assert_eq!(c, vec![(true, "hola".to_string()), (false, "que tal".to_string())]);
     assert_eq!(chat::foto_reciente(&ms).map(|m| m.id.as_str()), Some("f"));
-    // Una foto de antes de la ultima respuesta ya se vio: no se manda otra vez.
-    let ms2 = vec![foto, nota("vista", chat::APARATO)];
-    assert!(chat::foto_reciente(&ms2).is_none());
+    // La foto de la que se hablo antes sigue a la vista: «dibuja eso» tras
+    // la descripcion tiene que verla (13-oct).
+    let ms2 = vec![foto.clone(), nota("es un plano", chat::APARATO), nota("dibuja eso", "K7Q2")];
+    assert_eq!(chat::foto_reciente(&ms2).map(|m| m.id.as_str()), Some("f"));
+    // Pero no una de hace mucho.
+    let mut ms3 = vec![foto];
+    ms3.extend((0..chat::FOTO_ATRAS).map(|i| nota(&format!("m{i}"), "K7Q2")));
+    assert!(chat::foto_reciente(&ms3).is_none());
+}
+
+fn nota_de(texto: &str, aparato: &str) -> pixpin_proyecto::cuaderno::Mensaje {
+    pixpin_proyecto::cuaderno::Mensaje {
+        id: texto.into(),
+        texto: texto.into(),
+        aparato: Some(aparato.into()),
+        ..Default::default()
+    }
+}
+
+fn lienzo_de_prueba(nombre: &str, referencia: &str, aparato: &str) -> pixpin_proyecto::cuaderno::Mensaje {
+    pixpin_proyecto::cuaderno::Mensaje {
+        id: referencia.into(),
+        clase: Some(pixpin_proyecto::cuaderno::Clase::Dibujo),
+        nombre: nombre.into(),
+        referencia: Some(referencia.into()),
+        aparato: Some(aparato.into()),
+        numero: 7,
+        ..Default::default()
+    }
+}
+
+#[test]
+fn una_foto_sola_al_asistente_es_una_pregunta() {
+    use pixpin_proyecto::cuaderno::Clase;
+    let foto = pixpin_proyecto::cuaderno::Mensaje {
+        clase: Some(Clase::Imagen),
+        aparato: Some("K7Q2".into()),
+        ..Default::default()
+    };
+    // En su chat, sin pie: se le pide que la describa y pregunte.
+    assert_eq!(chat::pregunta_de(&foto, true).as_deref(), Some(chat::PREGUNTA_SOLO_FOTO));
+    // Con pie, el pie es la pregunta.
+    let con_pie = pixpin_proyecto::cuaderno::Mensaje {
+        texto: "¿qué es?".into(),
+        ..foto.clone()
+    };
+    assert_eq!(chat::pregunta_de(&con_pie, true).as_deref(), Some("¿qué es?"));
+    // En otro chat, solo si el pie lo menciona.
+    assert_eq!(chat::pregunta_de(&foto, false), None);
+    let mencion = pixpin_proyecto::cuaderno::Mensaje {
+        texto: "@asistente ¿qué es?".into(),
+        ..foto.clone()
+    };
+    assert_eq!(chat::pregunta_de(&mencion, false).as_deref(), Some("¿qué es?"));
+    // Lo suyo no se contesta a si mismo, y un PDF suelto no es pregunta.
+    assert_eq!(chat::pregunta_de(&nota_de("hola", chat::APARATO), true), None);
+    let pdf = pixpin_proyecto::cuaderno::Mensaje {
+        clase: Some(Clase::Archivo),
+        ..foto
+    };
+    assert_eq!(chat::pregunta_de(&pdf, true), None);
+}
+
+#[test]
+fn una_foto_sola_siempre_tiene_respuesta_aunque_el_modelo_calle() {
+    let c = carpeta("foto-sola");
+    let ruta = c.join("foto.png");
+    let img = pixpin_codec::ImagenRgba {
+        ancho: 64,
+        alto: 64,
+        pixeles: vec![90; 64 * 64 * 4],
+    };
+    std::fs::write(&ruta, pixpin_codec::imagen::codificar_png(&img).unwrap()).unwrap();
+    // El modelo no dice nada: la burbuja no se queda vacia.
+    let motor = Arc::new(MotorGuionado::nuevo(vec![Respuesta::de_texto("")]));
+    let mut t = Turno::lanzar(motor.clone(), "p".into(), historial(chat::PREGUNTA_SOLO_FOTO), vec![], Some(ruta));
+    let (vivo, _) = hasta_el_final(&mut t, None);
+    assert_eq!(vivo.mostrar(), pixpin_ia::agente::SIN_PALABRAS);
+    // Y la foto le llego.
+    assert!(motor.recibido.lock().unwrap()[0].mensajes.last().unwrap().tiene_imagen());
+    let _ = std::fs::remove_dir_all(&c);
+}
+
+#[test]
+fn la_mencion_de_un_lienzo_se_resuelve_por_su_nombre() {
+    let ms = vec![
+        lienzo_de_prueba("Plano casa", "ref-plano", "K7Q2"),
+        lienzo_de_prueba("", "ref-sin", "K7Q2"),
+        lienzo_de_prueba("Lienzo del asistente", "ref-ia", chat::APARATO),
+    ];
+    assert_eq!(chat::mencion_de_lienzo(&ms[0]), "@lienzo:Plano_casa");
+    let (t, d) = chat::resolver_lienzo("dibuja una puerta en @lienzo:Plano_casa, por favor", &ms);
+    assert_eq!(t, "dibuja una puerta en el lienzo «Plano casa», por favor");
+    assert_eq!(d.as_deref(), Some("ref-plano"));
+    // Sin tildes ni mayusculas.
+    let (_, d) = chat::resolver_lienzo("en @LIENZO:plano_CASA", &ms);
+    assert_eq!(d.as_deref(), Some("ref-plano"));
+    // Un lienzo sin nombre se llama por su numero, no por su fichero.
+    assert_eq!(chat::nombre_de_lienzo(&lienzo_de_prueba("x.excalidraw", "r", "K")), "Lienzo 7");
+    // Una mencion que no casa no cambia nada.
+    let (t, d) = chat::resolver_lienzo("en @lienzo:Fachada ya", &ms);
+    assert_eq!(t, "en @lienzo:Fachada ya");
+    assert_eq!(d, None);
+    // El propio del asistente es el suyo, no el ultimo.
+    assert_eq!(chat::lienzo_propio(&ms), Some(2));
+    assert_eq!(chat::lienzo_propio(&ms[..2]), None);
+}
+
+#[test]
+fn pedir_que_lo_abra() {
+    assert!(chat::pide_abrir("dibuja una casa y ábrelo"));
+    assert!(chat::pide_abrir("Dibújalo y abre el lienzo al terminar"));
+    assert!(!chat::pide_abrir("dibuja una casa"));
+    assert!(!chat::pide_abrir("¿qué es esto?"));
+}
+
+#[test]
+fn la_lista_de_arroba() {
+    let ms = vec![
+        lienzo_de_prueba("Plano casa", "ref-plano", "K7Q2"),
+        lienzo_de_prueba("Fachada", "ref-fachada", "K7Q2"),
+    ];
+    // Se abre con un `@` que empieza palabra, hasta el primer espacio.
+    let t = "hola @pla";
+    assert_eq!(chat::consulta_de_mencion(t, t.len()), Some((5, "pla".into())));
+    assert_eq!(chat::consulta_de_mencion("correo@pla", 10), None);
+    assert_eq!(chat::consulta_de_mencion("@pla casa", 9), None);
+    assert_eq!(chat::consulta_de_mencion("sin nada", 8), None);
+    // Fuera del chat del asistente sale tambien el asistente.
+    let todas = chat::opciones_de_mencion(&ms, "", false);
+    assert_eq!(todas.len(), 3);
+    assert_eq!(todas[0].mencion, "@asistente");
+    // Del mas nuevo al mas viejo, y filtradas por lo escrito.
+    assert_eq!(todas[1].mencion, "@lienzo:Fachada");
+    let pla = chat::opciones_de_mencion(&ms, "pla", true);
+    assert_eq!(pla.len(), 1);
+    assert_eq!(pla[0].mencion, "@lienzo:Plano_casa");
+    assert!(chat::opciones_de_mencion(&ms, "lienzo:fa", true)[0].mencion.ends_with("Fachada"));
+    assert!(chat::opciones_de_mencion(&ms, "zzz", true).is_empty());
+    // Elegir escribe la mencion y deja la rayita detras del espacio.
+    let mut texto = "hola @pla y mas".to_string();
+    let fin = chat::poner_mencion(&mut texto, 5, 9, &pla[0]);
+    assert_eq!(texto, "hola @lienzo:Plano_casa  y mas");
+    assert_eq!(&texto[..fin], "hola @lienzo:Plano_casa ");
 }
 
 #[test]
@@ -618,11 +761,133 @@ fn de_verdad() {
     motor.soltar();
 }
 
+/// **Los tres fallos del 13-oct, con el modelo de verdad** (2B con su
+/// vision, en la CPU para no pelear con la app abierta por la tarjeta):
+///
+/// 1. una foto sola tiene respuesta;
+/// 2. «dibuja esto» con la foto deja figuras en el lienzo (PNG);
+/// 3. un pedido que daria una llamada enorme no acaba en un error tecnico.
+///
+/// ```text
+/// PIXPIN_IA_MOTOR=<carpeta con llama-server.exe>
+/// PIXPIN_IA_MODELO=<Qwen3.5-2B-Q4_K_M.gguf>  PIXPIN_IA_VISION=<mmproj-F16.gguf>
+/// PIXPIN_IA_SALIDA=<carpeta de los PNG>
+/// PIXPIN_IA_PASOS=1,2,3 (los que se quieran; por omision, todos)
+/// PIXPIN_IA_DISPOSITIVO=Vulkan1 (por omision, la CPU)
+/// cargo test -p pixpin -- --ignored --nocapture asistente::pruebas::de_verdad_arreglos
+/// ```
+#[test]
+#[ignore = "necesita el motor, el modelo y su vision bajados (ver la cabecera)"]
+fn de_verdad_arreglos() {
+    use pixpin_ia::servidor::{Config, MotorLlama};
+    let motor_dir = PathBuf::from(std::env::var("PIXPIN_IA_MOTOR").expect("PIXPIN_IA_MOTOR"));
+    let modelo = PathBuf::from(std::env::var("PIXPIN_IA_MODELO").expect("PIXPIN_IA_MODELO"));
+    let vision = PathBuf::from(std::env::var("PIXPIN_IA_VISION").expect("PIXPIN_IA_VISION"));
+    let salida = PathBuf::from(std::env::var("PIXPIN_IA_SALIDA").unwrap_or_else(|_| std::env::temp_dir().display().to_string()));
+    std::fs::create_dir_all(&salida).unwrap();
+    let mut config = Config::nueva(motor_dir.join("llama-server.exe"), modelo, Some(vision));
+    config.registro = Some(salida.join("servidor-arreglos.log"));
+    // En la CPU por omision; `PIXPIN_IA_DISPOSITIVO=Vulkan1` para la tarjeta.
+    if let Ok(d) = std::env::var("PIXPIN_IA_DISPOSITIVO")
+        && d != "cpu"
+    {
+        config.dispositivo = pixpin_ia::servidor::Dispositivo::Gpu(d);
+    }
+    let motor: Arc<dyn pixpin_ia::Motor> = Arc::new(MotorLlama::nuevo(config));
+
+    // La foto: una casa sencilla (cuadrado azul, tejado rojo, puerta).
+    let c = carpeta("de-verdad-arreglos");
+    let foto = c.join("casa.png");
+    {
+        let (w, h) = (400u32, 400u32);
+        let mut px = vec![255u8; (w * h * 4) as usize];
+        for y in 0..h {
+            for x in 0..w {
+                let i = ((y * w + x) * 4) as usize;
+                let (xf, yf) = (x as i32, y as i32);
+                let tejado = yf >= 60 && yf < 170 && (xf - 200).abs() <= (yf - 60) * 140 / 110;
+                let muro = (100..340).contains(&x) && (170..360).contains(&y);
+                let puerta = (180..230).contains(&x) && (270..360).contains(&y);
+                let col = if puerta {
+                    [120, 70, 30]
+                } else if muro {
+                    [40, 90, 220]
+                } else if tejado {
+                    [220, 40, 40]
+                } else {
+                    [255, 255, 255]
+                };
+                px[i..i + 3].copy_from_slice(&col);
+            }
+        }
+        let img = pixpin_codec::ImagenRgba { ancho: w, alto: h, pixeles: px };
+        std::fs::write(&foto, pixpin_codec::imagen::codificar_png(&img).unwrap()).unwrap();
+    }
+
+    let paso = |n: &str| std::env::var("PIXPIN_IA_PASOS").map_or(true, |p| p.split(',').any(|x| x.trim() == n));
+    // 1. La foto sola.
+    if paso("1") {
+        let mut nada = pixpin_motor2d::Escena::nueva();
+        let t0 = Instant::now();
+        let mut t = Turno::lanzar(motor.clone(), "p".into(), historial(chat::PREGUNTA_SOLO_FOTO), vec![], Some(foto.clone()));
+        let (vivo, _) = hasta_el_final_largo(&mut t, &mut nada);
+        println!("1. foto sola ({:.1} s): {}", t0.elapsed().as_secs_f32(), vivo.mostrar());
+        assert!(!vivo.mostrar().trim().is_empty());
+        assert!(!vivo.mostrar().starts_with("⚠️"), "{}", vivo.mostrar());
+    }
+
+    // 2. «Dibuja esto» con la foto, a un lienzo «abierto».
+    if paso("2") {
+        al_lienzo::vaciar_para_pruebas();
+        let editor = al_lienzo::EditorAbierto::nuevo(1);
+        let mut escena = pixpin_motor2d::Escena::nueva();
+        let t0 = Instant::now();
+        let mut t = Turno::lanzar(motor.clone(), "p".into(), historial("Dibuja esto en el lienzo."), vec![], Some(foto.clone()));
+        let (vivo, _) = hasta_el_final_largo(&mut t, &mut escena);
+        drop(editor);
+        println!("2. dibuja esto ({:.1} s, {} elementos): {}", t0.elapsed().as_secs_f32(), escena.cuantos_visibles(), vivo.mostrar());
+        pintar_a_png(&escena, &salida.join("asistente-dibuja-esto.png"));
+        assert!(escena.cuantos_visibles() > 0, "{}", vivo.mostrar());
+    }
+
+    // 3. Un pedido que pide una llamada enorme.
+    if paso("3") {
+        al_lienzo::vaciar_para_pruebas();
+        let editor = al_lienzo::EditorAbierto::nuevo(1);
+        let mut escena = pixpin_motor2d::Escena::nueva();
+        let t0 = Instant::now();
+        let mut t = Turno::lanzar(
+            motor.clone(),
+            "p".into(),
+            historial(
+                "Dibuja 150 lineas, cada una con su color distinto y un texto largo al lado, formando una espiral muy detallada.",
+            ),
+            vec![],
+            None,
+        );
+        let (vivo, avisos) = hasta_el_final_largo(&mut t, &mut escena);
+        drop(editor);
+        println!("3. llamada enorme ({:.1} s, {} elementos): {}", t0.elapsed().as_secs_f32(), escena.cuantos_visibles(), vivo.mostrar());
+        pintar_a_png(&escena, &salida.join("asistente-llamada-enorme.png"));
+        let texto = vivo.mostrar();
+        for tecnico in ["HTTP", "json", "JSON", "Failed", "parse", "{\""] {
+            assert!(!texto.contains(tecnico), "se ve algo tecnico ({tecnico}): {texto}");
+        }
+        assert!(avisos.iter().any(|a| matches!(a, Aviso::Fin { resultado: Ok(_) })), "{texto}");
+        assert!(escena.cuantos_visibles() as u64 <= pixpin_ia::agente::TOPE_LISTAS * 4);
+    }
+    motor.soltar();
+    let _ = std::fs::remove_dir_all(&c);
+}
+
 fn hasta_el_final_largo(t: &mut Turno, escena: &mut pixpin_motor2d::Escena) -> (EnVivo, Vec<Aviso>) {
     let mut vivo = EnVivo::default();
     let mut todos = Vec::new();
     let t0 = Instant::now();
-    let hasta = t0 + Duration::from_secs(600);
+    // Solo para no colgarse: con la CPU ocupada en otra cosa, un turno
+    // puede ir a 0,3 tokens/s (medido con dos compilaciones a la vez).
+    let espera = std::env::var("PIXPIN_IA_ESPERA_S").ok().and_then(|s| s.parse().ok()).unwrap_or(1800);
+    let hasta = t0 + Duration::from_secs(espera);
     while Instant::now() < hasta {
         al_lienzo::atender_en_editor(escena, (400.0, 300.0));
         for a in t.recibir() {
@@ -644,7 +909,7 @@ fn hasta_el_final_largo(t: &mut Turno, escena: &mut pixpin_motor2d::Escena) -> (
         std::thread::sleep(Duration::from_millis(20));
     }
     t.parar();
-    panic!("el turno no acabo en 10 min: {}", vivo.mostrar());
+    panic!("el turno no acabo en {espera} s: {}", vivo.mostrar());
 }
 
 /// La escena pintada a PNG por el mismo camino que el PDF (exportar → PDF de
