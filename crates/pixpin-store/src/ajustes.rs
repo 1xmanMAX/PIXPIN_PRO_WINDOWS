@@ -521,8 +521,8 @@ pub struct Asistente {
     /// recomendado.
     pub modelo: String,
     /// Si piensa antes de contestar (lo que piensa se ve, plegable, en la
-    /// burbuja del chat). `None`: automatico, el 2B si y el 0.8B no, que
-    /// pensando va lento.
+    /// burbuja del chat). `None`: automatico, la nube si y el modelo de
+    /// este PC no, que pensando tarda minutos (medido, 14-oct).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pensar: Option<bool>,
     /// Quien contesta (13-oct-2026): vacio o `local` (el modelo de este PC),

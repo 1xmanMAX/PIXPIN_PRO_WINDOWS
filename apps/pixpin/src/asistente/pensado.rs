@@ -89,7 +89,8 @@ thread_local! {
 /// Donde va el registro de una respuesta.
 pub fn ruta_del_registro(raiz: &Path, ficha: &str, codigo_unico: &str) -> PathBuf {
     let rel = an::rel(&format!("{}{codigo_unico}", an::PREFIJO), an::ASISTENTE);
-    let chat = pixpin_proyecto::vista::chat_de_ficha(raiz, ficha).unwrap_or_else(|| ficha.to_string());
+    let chat =
+        pixpin_proyecto::vista::chat_de_ficha(raiz, ficha).unwrap_or_else(|| ficha.to_string());
     pixpin_proyecto::vista::DiscoPc::nuevo(raiz).ruta(&chat, &rel)
 }
 
@@ -185,10 +186,12 @@ pub fn fuentes(notas: &[Nota], hoja: &HojaDeTrabajo) -> Vec<Fuente> {
     v
 }
 
-/// **Si piensa**: lo de los ajustes o, en automatico, el 2B si y el ligero
-/// no (pensando, el 0.8B tarda mucho y a veces se enreda).
-pub fn pensar_segun_ajuste(ajuste: Option<bool>, modelo_id: &str) -> bool {
-    ajuste.unwrap_or(modelo_id != pixpin_ia::modelos::QWEN35_08B.id)
+/// **Si piensa el modelo local**: lo de los ajustes o, en automatico, no.
+/// Medido el 14-oct con el 2B en este PC: pensar le costaba 100-240 s mas
+/// por turno (pensaba en ingles hasta el tope), y el 0.8B se enreda. Con
+/// «Siempre» piensa igual; la nube piensa en automatico (ver el chat).
+pub fn pensar_local(ajuste: Option<bool>) -> bool {
+    ajuste.unwrap_or(false)
 }
 
 /// La ventana que se mide con Claude o DeepSeek. Les caben mucho mas
@@ -221,7 +224,8 @@ pub fn preparar_turno(
 ) -> (Vec<Mensaje>, Memoria) {
     let mut hoja = hoja_del_chat(raiz, ficha, anteriores);
     let fuentes = fuentes(anteriores, &hoja);
-    let (historial, reiniciado) = preparar_con_hoja(&mut hoja, anteriores, pregunta, ventana, herramientas);
+    let (historial, reiniciado) =
+        preparar_con_hoja(&mut hoja, anteriores, pregunta, ventana, herramientas);
     let memoria = Memoria {
         hoja,
         fuentes,

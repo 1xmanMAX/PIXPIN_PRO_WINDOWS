@@ -383,12 +383,21 @@ fn turno_dentro(
     // [`TOPE_LISTAS`] y baja a [`TOPE_LISTAS_REINTENTO`] si una salio
     // cortada. Con la gramatica de llama.cpp el modelo NO PUEDE pasarse.
     let mut tope = TOPE_LISTAS;
+    // `buscar_historial` vale UNA vuelta por turno: medido con el 2B (13-oct),
+    // con ella a mano la llamaba seis veces seguidas y no contestaba nunca.
+    // Tras usarla se quita, y el modelo contesta con lo que encontro.
+    let mut ya_busco = false;
     for _ in 0..VUELTAS + REINTENTOS {
         if opciones.ventana > 0 {
             vigilar_contexto(historial, herramientas, opciones.ventana, al_evento);
         }
         let mut peticion = Peticion::nueva(historial.clone());
-        peticion.herramientas = con_topes(herramientas, tope);
+        let ofrecidas: Vec<Herramienta> = herramientas
+            .iter()
+            .filter(|h| !(ya_busco && h.nombre == contexto::BUSCAR_HISTORIAL))
+            .cloned()
+            .collect();
+        peticion.herramientas = con_topes(&ofrecidas, tope);
         peticion.max_tokens = tope_de_tokens(&peticion);
         let mut sep = Separador::nuevo();
         let respuesta = motor.completar(&peticion, &mut |t| repartir(t, &mut sep, crono, None, al_evento));
@@ -442,6 +451,7 @@ fn turno_dentro(
             });
         }
         let mut alguna_mal = false;
+        let mut busco_bien = false;
         // Lo que pidio el usuario, para los colores que el modelo olvide.
         let pedido = historial
             .iter()
@@ -453,11 +463,13 @@ fn turno_dentro(
             // `buscar_historial` no es del chat: lo contesta el propio turno.
             if let Some(buscar) = opciones.buscar.filter(|_| cruda.nombre.trim() == contexto::BUSCAR_HISTORIAL) {
                 let texto = match contexto::consulta_de(&cruda.argumentos) {
+                    _ if ya_busco => "Ya buscaste en este turno: contesta ahora con lo que encontraste.".into(),
                     Some(c) => buscar(&c),
                     None => "ERROR: falta «consulta». Llama a buscar_historial con {\"consulta\": \"que buscar\"}."
                         .into(),
                 };
                 let ok = !texto.starts_with("ERROR");
+                busco_bien |= ok;
                 alguna_mal |= !ok;
                 al_evento(Evento::Resultado {
                     nombre: contexto::BUSCAR_HISTORIAL.to_string(),
@@ -511,6 +523,7 @@ fn turno_dentro(
                 }
             }
         }
+        ya_busco |= busco_bien;
         if cortado {
             break;
         }
@@ -1075,8 +1088,9 @@ mod pruebas {
         let mut h = historial();
         let (f, eventos, motor) = con_opciones(
             vec![
-                Respuesta::de_llamada(contexto::BUSCAR_HISTORIAL, r#"{"consulta":"ventas de enero"}"#),
                 Respuesta::de_llamada(contexto::BUSCAR_HISTORIAL, r#"{}"#),
+                Respuesta::de_llamada(contexto::BUSCAR_HISTORIAL, r#"{"consulta":"ventas de enero"}"#),
+                Respuesta::de_llamada(contexto::BUSCAR_HISTORIAL, r#"{"consulta":"otra vez"}"#),
                 Respuesta::de_texto("Fueron 120."),
             ],
             &mut h,
@@ -1087,8 +1101,11 @@ mod pruebas {
         assert_eq!(f.reintentos, 1, "la llamada sin consulta cuenta como mal hecha");
         let pedidas = motor.recibido.lock().unwrap();
         assert!(pedidas[0].herramientas.iter().any(|x| x.nombre == contexto::BUSCAR_HISTORIAL));
-        assert!(pedidas[1].mensajes.last().unwrap().texto_entero().contains("[#3 usuario] Las ventas de enero fueron 120."));
-        assert!(pedidas[2].mensajes.last().unwrap().texto_entero().starts_with("ERROR"));
+        assert!(pedidas[1].mensajes.last().unwrap().texto_entero().starts_with("ERROR"));
+        assert!(pedidas[2].mensajes.last().unwrap().texto_entero().contains("[#3 usuario] Las ventas de enero fueron 120."));
+        // Tras una busqueda buena ya no se ofrece, y si insiste se le dice que conteste.
+        assert!(!pedidas[2].herramientas.iter().any(|x| x.nombre == contexto::BUSCAR_HISTORIAL));
+        assert!(pedidas[3].mensajes.last().unwrap().texto_entero().starts_with("Ya buscaste"));
         assert!(eventos.iter().any(|e| matches!(e, Evento::Resultado { ok: true, nombre, .. } if nombre == contexto::BUSCAR_HISTORIAL)));
         // Sin `buscar`, la herramienta no se ofrece y es una inventada.
         let mut h = historial();

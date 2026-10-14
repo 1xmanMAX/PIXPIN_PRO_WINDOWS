@@ -158,10 +158,7 @@ pub(super) fn al_enviar(ubicacion: &Ubicacion, a: &mut Abierto, textos: &Catalog
     let aj = pixpin_store::cargar(ubicacion).unwrap_or_default().asistente;
     let (pensar, ventana) = match ia_nube::eleccion(&aj) {
         ia_nube::Eleccion::Nube(_) => (aj.pensar.unwrap_or(true), ia_pensado::VENTANA_NUBE),
-        ia_nube::Eleccion::Local => {
-            let modelo = ia_motor::modelo_elegido(Some(aj.modelo.as_str()).filter(|m| !m.is_empty()));
-            (ia_pensado::pensar_segun_ajuste(aj.pensar, modelo.id), ia_pensado::ventana_local())
-        }
+        ia_nube::Eleccion::Local => (ia_pensado::pensar_local(aj.pensar), ia_pensado::ventana_local()),
     };
     match lanzar_pensando(ubicacion, a, motor, pregunta, pensar, ventana) {
         Ok(()) => None,

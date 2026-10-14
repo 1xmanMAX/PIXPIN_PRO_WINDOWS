@@ -40,8 +40,16 @@ fn clave_peticion(id: &str) -> String {
 }
 
 /// Un clic en la cabecera (`pensado`) o en la peticion: pliega o despliega.
-pub(super) fn alternar(desplegados: &mut std::collections::BTreeSet<String>, id: &str, pensado: bool) {
-    let k = if pensado { clave_pensado(id) } else { clave_peticion(id) };
+pub(super) fn alternar(
+    desplegados: &mut std::collections::BTreeSet<String>,
+    id: &str,
+    pensado: bool,
+) {
+    let k = if pensado {
+        clave_pensado(id)
+    } else {
+        clave_peticion(id)
+    };
     if !desplegados.remove(&k) {
         desplegados.insert(k);
     }
@@ -101,7 +109,15 @@ pub(super) fn medir(
     e: f32,
 ) -> Option<Pieza> {
     let s = datos::seccion_de(&a.raiz, &a.ficha.id, m)?;
-    medir_seccion(p, &s, a.desplegados.contains(&clave_pensado(&m.id)), a.desplegados.contains(&clave_peticion(&m.id)), ancho_max, textos, e)
+    medir_seccion(
+        p,
+        &s,
+        a.desplegados.contains(&clave_pensado(&m.id)),
+        a.desplegados.contains(&clave_peticion(&m.id)),
+        ancho_max,
+        textos,
+        e,
+    )
 }
 
 /// Lo mismo a partir de la seccion (para las pruebas).
@@ -144,19 +160,23 @@ pub(super) fn medir_seccion(
             }
         }
     }
-    let peticion = s.plan.as_ref().filter(|pl| !pl.entiendo.is_empty()).map(|pl| {
-        if peticion_abierta {
-            let t = format!("📝 {}", pl.lineas());
-            let (w, h) = p.medir_texto_ajustado(&t, PENSADO_TAM * e, ancho_max);
-            sumar(w, h);
-            (t, h, true)
-        } else {
-            let t = format!("📝 {}", pl.entiendo);
-            let (w, h) = p.medir_texto(&t, PENSADO_TAM * e);
-            sumar(w, h);
-            (t, h, false)
-        }
-    });
+    let peticion = s
+        .plan
+        .as_ref()
+        .filter(|pl| !pl.entiendo.is_empty())
+        .map(|pl| {
+            if peticion_abierta {
+                let t = format!("📝 {}", pl.lineas());
+                let (w, h) = p.medir_texto_ajustado(&t, PENSADO_TAM * e, ancho_max);
+                sumar(w, h);
+                (t, h, true)
+            } else {
+                let t = format!("📝 {}", pl.entiendo);
+                let (w, h) = p.medir_texto(&t, PENSADO_TAM * e);
+                sumar(w, h);
+                (t, h, false)
+            }
+        });
     let reinicio = s.reinicio.then(|| {
         let t = format!("🔄 {}", textos.t("asistente-reiniciado"));
         let (w, h) = p.medir_texto(&t, PENSADO_TAM * e);
@@ -207,22 +227,46 @@ pub(super) fn pintar(
         let lado = 14.0 * e;
         pintar_flechita(
             p,
-            RectF { x, y: y + (pieza.alto_cabecera - lado) / 2.0, ancho: lado, alto: lado },
+            RectF {
+                x,
+                y: y + (pieza.alto_cabecera - lado) / 2.0,
+                ancho: lado,
+                alto: lado,
+            },
             *abierto,
             apagado,
             e,
         );
-        p.texto_linea(r, x + 18.0 * e, y, CABECERA_TAM * e, (ancho - 18.0 * e).max(1.0), apagado);
+        p.texto_linea(
+            r,
+            x + 18.0 * e,
+            y,
+            CABECERA_TAM * e,
+            (ancho - 18.0 * e).max(1.0),
+            apagado,
+        );
         zona_pensado = Some(caja(x, y, ancho, pieza.alto_cabecera));
         y += pieza.alto_cabecera;
         if let Some((t, h)) = &pieza.pensado {
             y += HUECO * e;
             p.rellenar_redondeado(
-                RectF { x: x + 2.0 * e, y, ancho: 2.0 * e, alto: *h },
+                RectF {
+                    x: x + 2.0 * e,
+                    y,
+                    ancho: 2.0 * e,
+                    alto: *h,
+                },
                 1.0 * e,
                 con_alfa(apagado, 0.6),
             );
-            p.texto_ajustado(t, x + SANGRIA * e, y, PENSADO_TAM * e, (ancho - SANGRIA * e).max(1.0), con_alfa(tinta, 0.72));
+            p.texto_ajustado(
+                t,
+                x + SANGRIA * e,
+                y,
+                PENSADO_TAM * e,
+                (ancho - SANGRIA * e).max(1.0),
+                con_alfa(tinta, 0.72),
+            );
             y += h;
         }
     }

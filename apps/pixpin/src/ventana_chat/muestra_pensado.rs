@@ -19,8 +19,8 @@ use pixpin_render::fuera_de_pantalla::FueraDePantalla;
 use pixpin_store::{Catalogo, Idioma, Ubicacion};
 
 use super::{
-    Abierto, CLARO, Lista, OSCURO, Pinta, Tema, abrir_proyecto, disponer, escribir_nota, papel_de, pintar,
-    pintar_historial, pintar_redaccion,
+    Abierto, CLARO, Lista, OSCURO, Pinta, Tema, abrir_proyecto, disponer, escribir_nota, papel_de,
+    pintar, pintar_historial, pintar_redaccion,
 };
 use crate::asistente::pensado::{self, Seccion};
 
@@ -49,8 +49,18 @@ fn a_png(a: &Abierto, ficha: &Ficha, tema: &Tema, claro: bool, nombre: &str) -> 
     let (ancho, alto) = (900u32, 760u32);
     let destino = FueraDePantalla::nuevo(&motor, d3.d3d(), ancho, alto).expect("destino");
     let escala = 100;
-    let marco = Rect { x: 0, y: 0, ancho, alto };
-    let d = disponer(marco, escala, pixpin_ui::chat::ancho_inicial(ancho, escala), Some(a));
+    let marco = Rect {
+        x: 0,
+        y: 0,
+        ancho,
+        alto,
+    };
+    let d = disponer(
+        marco,
+        escala,
+        pixpin_ui::chat::ancho_inicial(ancho, escala),
+        Some(a),
+    );
     let miniaturas = crate::miniaturas::Miniaturas::nuevo();
     let previas = crate::miniaturas::Miniaturas::con_lado(super::PREVIA_LADO);
     let fichas = vec![ficha.clone()];
@@ -72,7 +82,16 @@ fn a_png(a: &Abierto, ficha: &Ficha, tema: &Tema, claro: bool, nombre: &str) -> 
         };
         motor
             .dibujar(&destino.destino, |p| {
-                pintar(p, &d, tema, papel_de(0, claro), escala, &textos, None, &lista);
+                pintar(
+                    p,
+                    &d,
+                    tema,
+                    papel_de(0, claro),
+                    escala,
+                    &textos,
+                    None,
+                    &lista,
+                );
                 a.zonas.borrow_mut().clear();
                 let c = Pinta {
                     tema,
@@ -120,8 +139,26 @@ fn muestra_de_pensando() {
     let cuando = pixpin_shell::entorno::ahora_utc_ms() - 60_000;
     let id = ficha.id.clone();
     escribir_nota(&raiz, &id, "K7Q2", "Dibuja una casa roja", cuando, 1, None).unwrap();
-    let r1 = escribir_nota(&raiz, &id, "IA", "Listo: una casa roja en el lienzo «Asistente».", cuando + 1000, 2, None).unwrap();
-    escribir_nota(&raiz, &id, "K7Q2", "Ahora ponle 3 ventanas", cuando + 20_000, 3, None).unwrap();
+    let r1 = escribir_nota(
+        &raiz,
+        &id,
+        "IA",
+        "Listo: una casa roja en el lienzo «Asistente».",
+        cuando + 1000,
+        2,
+        None,
+    )
+    .unwrap();
+    escribir_nota(
+        &raiz,
+        &id,
+        "K7Q2",
+        "Ahora ponle 3 ventanas",
+        cuando + 20_000,
+        3,
+        None,
+    )
+    .unwrap();
     let r2 = escribir_nota(&raiz, &id, "IA", "💭 …", cuando + 21_000, 4, None).unwrap();
     // La primera ya pensada y guardada con su nota.
     pensado::guardar(
@@ -130,7 +167,9 @@ fn muestra_de_pensando() {
         &r1.id,
         &r1.codigo_unico(),
         Registro {
-            pensamiento: "Quiere una casa. Un rectangulo rojo para el cuerpo y un triangulo para el tejado.".into(),
+            pensamiento:
+                "Quiere una casa. Un rectangulo rojo para el cuerpo y un triangulo para el tejado."
+                    .into(),
             segundos: Some(4.2),
             plan: Some(Plan {
                 entiendo: "Dibujar una casa roja en el lienzo.".into(),

@@ -78,7 +78,10 @@ impl Separador {
                 if self.hubo_texto {
                     // Lo de antes ya salio como texto: la etiqueta se deja
                     // en el texto para que [`separar`] lo arregle al final.
-                    empujar(&mut salida, Trozo::Texto(buf[..c + CIERRA.len()].to_string()));
+                    empujar(
+                        &mut salida,
+                        Trozo::Texto(buf[..c + CIERRA.len()].to_string()),
+                    );
                     buf = buf[c + CIERRA.len()..].to_string();
                     continue;
                 }
@@ -255,7 +258,14 @@ impl Plan {
     /// A falta de algo mejor: el propio pedido.
     pub fn por_omision(pedido: &str) -> Plan {
         Plan {
-            entiendo: cortar(pedido.split_whitespace().collect::<Vec<_>>().join(" ").as_str(), 240),
+            entiendo: cortar(
+                pedido
+                    .split_whitespace()
+                    .collect::<Vec<_>>()
+                    .join(" ")
+                    .as_str(),
+                240,
+            ),
             ..Plan::default()
         }
     }
@@ -270,8 +280,13 @@ impl Plan {
         };
         let mut alguna = false;
         for linea in texto.lines() {
-            let linea = linea.trim().trim_start_matches(['-', '*', '#', ' ', '•']).trim();
-            let Some((clave, valor)) = linea.split_once(':') else { continue };
+            let linea = linea
+                .trim()
+                .trim_start_matches(['-', '*', '#', ' ', '•'])
+                .trim();
+            let Some((clave, valor)) = linea.split_once(':') else {
+                continue;
+            };
             let clave = sin_tildes(&clave.replace('*', "").trim().to_lowercase());
             let valor = valor.replace("**", "").trim().to_string();
             let vacio = es_nada(&valor);
@@ -345,14 +360,22 @@ impl Plan {
 
     pub fn de_json(v: &serde_json::Value) -> Option<Plan> {
         let o = v.as_object()?;
-        let cadena = |k: &str| o.get(k).and_then(|x| x.as_str()).unwrap_or_default().to_string();
+        let cadena = |k: &str| {
+            o.get(k)
+                .and_then(|x| x.as_str())
+                .unwrap_or_default()
+                .to_string()
+        };
         let p = Plan {
             entiendo: cadena("entiendo"),
             hare: cadena("hare"),
             herramientas: cadenas(o.get("herramientas")),
             datos: cadenas(o.get("datos")),
             decidido: cadenas(o.get("decidido")),
-            del_modelo: o.get("del_modelo").and_then(|x| x.as_bool()).unwrap_or(false),
+            del_modelo: o
+                .get("del_modelo")
+                .and_then(|x| x.as_bool())
+                .unwrap_or(false),
         };
         (!p.entiendo.is_empty()).then_some(p)
     }
@@ -360,7 +383,12 @@ impl Plan {
 
 pub(crate) fn cadenas(v: Option<&serde_json::Value>) -> Vec<String> {
     v.and_then(|x| x.as_array())
-        .map(|l| l.iter().filter_map(|x| x.as_str()).map(str::to_string).collect())
+        .map(|l| {
+            l.iter()
+                .filter_map(|x| x.as_str())
+                .map(str::to_string)
+                .collect()
+        })
         .unwrap_or_default()
 }
 
@@ -376,7 +404,13 @@ fn lista(valor: &str) -> Vec<String> {
 
 fn es_nada(v: &str) -> bool {
     let v = sin_tildes(&v.trim().trim_end_matches('.').to_lowercase());
-    v.is_empty() || matches!(v.as_str(), "nada" | "ninguna" | "ninguno" | "-" | "no" | "none" | "n/a")
+    v.is_empty()
+        || matches!(v.as_str(), "nada" | "ninguna" | "ninguno" | "-" | "no" | "none" | "n/a")
+        // «No se ha decidido todavia…», «aun nada»: el 2B lo escribe asi
+        // en vez de «nada» (medido, 13-oct).
+        || ["no se ha", "aun no", "todavia no", "nada ", "ninguna ", "ninguno ", "sin decidir"]
+            .iter()
+            .any(|p| v.starts_with(p))
 }
 
 /// Para comparar sin que importen las tildes.
@@ -411,7 +445,11 @@ pub fn instrucciones_del_plan(herramientas: &[Herramienta]) -> String {
          HERRAMIENTAS: las que usaras de esta lista, separadas por comas, o ninguna: {}.\n\
          DATOS: cifras, nombres o colores concretos que haya que recordar, separados por punto y coma, o nada.\n\
          DECIDIDO: lo que el usuario eligio o prefiere, o nada.",
-        if nombres.is_empty() { "ninguna".to_string() } else { nombres.join(", ") }
+        if nombres.is_empty() {
+            "ninguna".to_string()
+        } else {
+            nombres.join(", ")
+        }
     )
 }
 
@@ -440,7 +478,13 @@ mod pruebas {
 
     #[test]
     fn las_etiquetas_partidas_entre_trozos_se_separan() {
-        let (p, t) = pasar(&["<thi", "nk>Veamos: una ca", "sa roja.</th", "ink>\n\nHecho", ", la dibujé."]);
+        let (p, t) = pasar(&[
+            "<thi",
+            "nk>Veamos: una ca",
+            "sa roja.</th",
+            "ink>\n\nHecho",
+            ", la dibujé.",
+        ]);
         assert_eq!(p, "Veamos: una casa roja.");
         assert_eq!(t, "Hecho, la dibujé.");
     }
@@ -470,15 +514,23 @@ mod pruebas {
     #[test]
     fn los_trozos_de_pensamiento_y_llamadas_pasan_tal_cual() {
         let mut s = Separador::nuevo();
-        assert_eq!(s.meter(&Trozo::Pensando("x".into())), vec![Trozo::Pensando("x".into())]);
-        let l = Trozo::Llamando { nombre: "ocr".into() };
+        assert_eq!(
+            s.meter(&Trozo::Pensando("x".into())),
+            vec![Trozo::Pensando("x".into())]
+        );
+        let l = Trozo::Llamando {
+            nombre: "ocr".into(),
+        };
         assert_eq!(s.meter(&l), vec![l]);
     }
 
     #[test]
     fn separar_un_texto_entero() {
         assert_eq!(separar("<think>a</think>b"), ("a".into(), "b".into()));
-        assert_eq!(separar("<think>sin cerrar"), ("sin cerrar".into(), "".into()));
+        assert_eq!(
+            separar("<think>sin cerrar"),
+            ("sin cerrar".into(), "".into())
+        );
     }
 
     #[test]
@@ -508,11 +560,15 @@ mod pruebas {
     #[test]
     fn el_plan_se_lee_aunque_venga_con_markdown_y_tildes() {
         let t = "**ENTIENDO:** Dibujar la casa de antes en rojo.\n- HARÉ: llamar a dibujar con rojo.\n\
-                 HERRAMIENTAS: dibujar_en_lienzo, volar\nDATOS: color rojo; 3 ventanas\nDECIDIDO: nada";
+                 HERRAMIENTAS: dibujar_en_lienzo, volar\nDATOS: color rojo; 3 ventanas\nDECIDIDO: No se ha decidido todavía.";
         let p = Plan::leer(t, &catalogo()).unwrap();
         assert_eq!(p.entiendo, "Dibujar la casa de antes en rojo.");
         assert_eq!(p.hare, "llamar a dibujar con rojo.");
-        assert_eq!(p.herramientas, vec!["dibujar_en_lienzo"], "las inventadas no");
+        assert_eq!(
+            p.herramientas,
+            vec!["dibujar_en_lienzo"],
+            "las inventadas no"
+        );
         assert_eq!(p.datos, vec!["color rojo", "3 ventanas"]);
         assert!(p.decidido.is_empty());
         assert!(p.lineas().lines().count() >= 2 && p.lineas().lines().count() <= 4);

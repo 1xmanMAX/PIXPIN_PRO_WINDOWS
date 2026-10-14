@@ -119,13 +119,30 @@ fn el_turno_con_memoria_reescribe_la_hoja_y_manda_el_registro_antes_del_fin() {
         pixpin_ia::Mensaje::sistema(pixpin_ia::agente::instrucciones()),
         pixpin_ia::Mensaje::usuario("dibuja una casa roja"),
     ];
-    let mut t = Turno::lanzar_con_memoria(motor.clone(), "p".into(), historial, vec![], None, None, vec![], Some(memoria));
+    let mut t = Turno::lanzar_con_memoria(
+        motor.clone(),
+        "p".into(),
+        historial,
+        vec![],
+        None,
+        None,
+        vec![],
+        Some(memoria),
+    );
     let (vivo, avisos) = hasta_el_final(&mut t);
     assert_eq!(vivo.mostrar(), "Listo, una casa roja.");
-    let i_reg = avisos.iter().position(|a| matches!(a, Aviso::Registro(_))).expect("registro");
-    let i_fin = avisos.iter().position(|a| matches!(a, Aviso::Fin { .. })).unwrap();
+    let i_reg = avisos
+        .iter()
+        .position(|a| matches!(a, Aviso::Registro(_)))
+        .expect("registro");
+    let i_fin = avisos
+        .iter()
+        .position(|a| matches!(a, Aviso::Fin { .. }))
+        .unwrap();
     assert!(i_reg < i_fin);
-    let Aviso::Registro(r) = &avisos[i_reg] else { unreachable!() };
+    let Aviso::Registro(r) = &avisos[i_reg] else {
+        unreachable!()
+    };
     assert_eq!(r.pensamiento, "El usuario quiere una casa. Sera roja.");
     assert!(r.segundos.is_some());
     assert_eq!(r.plan.as_ref().unwrap().entiendo, "Dibujar una casa roja.");
@@ -146,7 +163,11 @@ fn sin_memoria_el_turno_es_el_de_siempre() {
     let mut t = Turno::lanzar(motor.clone(), "p".into(), historial, vec![], None);
     let (_, avisos) = hasta_el_final(&mut t);
     assert!(!avisos.iter().any(|a| matches!(a, Aviso::Registro(_))));
-    assert_eq!(motor.recibido.lock().unwrap().len(), 1, "sin vuelta de planear");
+    assert_eq!(
+        motor.recibido.lock().unwrap().len(),
+        1,
+        "sin vuelta de planear"
+    );
 }
 
 #[test]
@@ -171,7 +192,13 @@ fn un_turno_que_falla_deja_lo_que_falta_en_la_hoja() {
     assert!(vivo.acabado, "{}", vivo.mostrar());
     let r = avisos
         .iter()
-        .find_map(|a| if let Aviso::Registro(r) = a { Some(r.clone()) } else { None })
+        .find_map(|a| {
+            if let Aviso::Registro(r) = a {
+                Some(r.clone())
+            } else {
+                None
+            }
+        })
         .unwrap();
     assert_eq!(r.hoja.falta, vec!["usar dibujar_en_lienzo."]);
     assert!(r.hoja.hecho[0].ends_with("(sin acabar)"));
@@ -185,10 +212,14 @@ fn preparar_el_turno_reinicia_al_70_y_apunta_desde_donde() {
         objetivo: "Planear la fiesta de Lucia".into(),
         ..Default::default()
     };
-    let (h, reiniciado) = pensado::preparar_con_hoja(&mut hoja, &notas, "¿y la hora?", 8192, &catalogo_base());
+    let (h, reiniciado) =
+        pensado::preparar_con_hoja(&mut hoja, &notas, "¿y la hora?", 8192, &catalogo_base());
     assert!(reiniciado);
     assert_eq!(h.len(), 4, "sistema + 2 + el nuevo");
-    assert!(h[0].texto_entero().contains("Objetivo: Planear la fiesta de Lucia"));
+    assert!(
+        h[0].texto_entero()
+            .contains("Objetivo: Planear la fiesta de Lucia")
+    );
     assert_eq!(hoja.reinicio_desde.as_deref(), Some(notas[18].id.as_str()));
     assert_eq!(hoja.reinicios, 1);
     // El turno siguiente empieza desde ahi: con dos notas mas cabe sin
@@ -196,20 +227,25 @@ fn preparar_el_turno_reinicia_al_70_y_apunta_desde_donde() {
     let mut mas = notas.clone();
     mas.push(nota(21, false, "¿y la hora?"));
     mas.push(nota(22, true, "A las 17:00."));
-    let (h, reiniciado) = pensado::preparar_con_hoja(&mut hoja, &mas, "gracias", 8192, &catalogo_base());
+    let (h, reiniciado) =
+        pensado::preparar_con_hoja(&mut hoja, &mas, "gracias", 8192, &catalogo_base());
     assert!(!reiniciado);
     assert_eq!(h.len(), 6, "sistema + las 4 desde el reinicio + el nuevo");
     assert!(h[0].texto_entero().contains("buscar_historial"));
     assert_eq!(hoja.reinicios, 1);
     // Con una ventana grande no hace falta.
     let mut otra = HojaDeTrabajo::default();
-    let (h, reiniciado) = pensado::preparar_con_hoja(&mut otra, &notas[..4], "x", 32768, &catalogo_base());
+    let (h, reiniciado) =
+        pensado::preparar_con_hoja(&mut otra, &notas[..4], "x", 32768, &catalogo_base());
     assert!(!reiniciado && h.len() == 6 && otra.reinicio_desde.is_none());
 }
 
 #[test]
 fn las_fuentes_de_buscar_historial_son_las_notas_y_lo_pensado() {
-    let notas = vec![nota(1, false, "La fiesta es en el parque Kennedy"), nota(2, true, "Apuntado.")];
+    let notas = vec![
+        nota(1, false, "La fiesta es en el parque Kennedy"),
+        nota(2, true, "Apuntado."),
+    ];
     let mut hoja = HojaDeTrabajo::default();
     hoja.turnos.push(pixpin_ia::hoja_trabajo::TurnoResumido {
         n: 1,
@@ -226,13 +262,10 @@ fn las_fuentes_de_buscar_historial_son_las_notas_y_lo_pensado() {
     assert!(pixpin_ia::contexto::buscar(&f, "miraflores", 2).starts_with("[T1 pensado]"));
 }
 
-#[test]
-fn pensar_en_automatico_es_el_2b_si_y_el_ligero_no() {
-    use pixpin_ia::modelos::{QWEN35_08B, QWEN35_2B};
-    assert!(pensado::pensar_segun_ajuste(None, QWEN35_2B.id));
-    assert!(!pensado::pensar_segun_ajuste(None, QWEN35_08B.id));
-    assert!(pensado::pensar_segun_ajuste(Some(true), QWEN35_08B.id));
-    assert!(!pensado::pensar_segun_ajuste(Some(false), QWEN35_2B.id));
+fn pensar_en_local_es_solo_si_se_pide() {
+    assert!(!pensado::pensar_local(None));
+    assert!(pensado::pensar_local(Some(true)));
+    assert!(!pensado::pensar_local(Some(false)));
     assert_eq!(pensado::ventana_local(), 8192);
 }
 
@@ -240,8 +273,7 @@ fn pensar_en_automatico_es_el_2b_si_y_el_ligero_no() {
 // De verdad
 
 /// **Una conversacion larga con el 2B de verdad**, con la ventana forzada a
-/// pequena (6144 en vez de 8192, con 2048 reservados para contestar) para
-/// que se reinicie varias veces: al final se pregunta por
+/// pequena (4096 en vez de 8192; `PIXPIN_IA_VENTANA`) para que se reinicie: al final se pregunta por
 /// datos del primer mensaje, que ya no estan cargados, y la respuesta tiene
 /// que traerlos (de la hoja de trabajo o con `buscar_historial`).
 ///
@@ -254,8 +286,10 @@ fn pensar_en_automatico_es_el_2b_si_y_el_ligero_no() {
 #[ignore = "necesita el motor y el modelo bajados (ver la cabecera)"]
 fn de_verdad_conversacion_larga_con_reinicios() {
     use pixpin_ia::servidor::{Config, Dispositivo, MotorLlama};
-    let motor_dir = std::path::PathBuf::from(std::env::var("PIXPIN_IA_MOTOR").expect("PIXPIN_IA_MOTOR"));
-    let modelo = std::path::PathBuf::from(std::env::var("PIXPIN_IA_MODELO").expect("PIXPIN_IA_MODELO"));
+    let motor_dir =
+        std::path::PathBuf::from(std::env::var("PIXPIN_IA_MOTOR").expect("PIXPIN_IA_MOTOR"));
+    let modelo =
+        std::path::PathBuf::from(std::env::var("PIXPIN_IA_MODELO").expect("PIXPIN_IA_MODELO"));
     let mut config = Config::nueva(motor_dir.join("llama-server.exe"), modelo, None);
     config.dispositivo = match std::env::var("PIXPIN_IA_DISPOSITIVO").as_deref() {
         Ok("cpu") | Err(_) => Dispositivo::Cpu,
@@ -263,7 +297,9 @@ fn de_verdad_conversacion_larga_con_reinicios() {
     };
     let pensar = std::env::var("PIXPIN_IA_PENSAR").map_or(true, |v| v != "0");
     let motor: Arc<dyn pixpin_ia::Motor> = Arc::new(MotorLlama::nuevo(config));
-    const VENTANA: u32 = 6144;
+    // 4096 por omision: el pedido sin pensar y sin herramientas es corto, y
+    // con 6144 no llegaba al 70 % (medido, 14-oct). `PIXPIN_IA_VENTANA` la cambia.
+    let ventana: u32 = std::env::var("PIXPIN_IA_VENTANA").ok().and_then(|v| v.parse().ok()).unwrap_or(4096);
     let pedidos = [
         "Vamos a organizar el cumpleaños de Lucía: es el sábado 18 a las 17:00 en el parque Kennedy y vienen 12 niños. Apúntalo, que luego te lo preguntaré.",
         "Dame cinco ideas de juegos para niños de 7 años, explicando cada uno en dos frases.",
@@ -282,13 +318,14 @@ fn de_verdad_conversacion_larga_con_reinicios() {
         // Sin herramientas del chat (aqui no hay ventana que las haga): solo
         // `buscar_historial`, que es lo que se prueba.
         let herramientas: Vec<pixpin_ia::Herramienta> = Vec::new();
-        let (historial, reiniciado) = pensado::preparar_con_hoja(&mut hoja, &notas, pedido, VENTANA, &herramientas);
+        let (historial, reiniciado) =
+            pensado::preparar_con_hoja(&mut hoja, &notas, pedido, ventana, &herramientas);
         let memoria = Memoria {
             fuentes: pensado::fuentes(&notas, &hoja),
             hoja: hoja.clone(),
             pensar,
             planificar: true,
-            ventana: VENTANA,
+            ventana,
             reiniciado,
             ampliar: false,
         };
@@ -305,17 +342,31 @@ fn de_verdad_conversacion_larga_con_reinicios() {
         let (vivo, avisos) = hasta_el_final_largo(&mut t);
         let registro: Registro = avisos
             .iter()
-            .find_map(|a| if let Aviso::Registro(r) = a { Some(r.clone()) } else { None })
+            .find_map(|a| {
+                if let Aviso::Registro(r) = a {
+                    Some(r.clone())
+                } else {
+                    None
+                }
+            })
             .expect("registro");
         reinicios += usize::from(registro.reinicio);
         println!(
             "\n=== T{} ({:.0} s){}\n> {pedido}\n· penso {:?} s: {}\n· peticion: {}\n< {}",
             i + 1,
             t0.elapsed().as_secs_f32(),
-            if registro.reinicio { " [contexto renovado]" } else { "" },
+            if registro.reinicio {
+                " [contexto renovado]"
+            } else {
+                ""
+            },
             registro.segundos.map(|s| s.round()),
             pixpin_ia::pensar::resumir(&registro.pensamiento, 200),
-            registro.plan.as_ref().map(|p| p.lineas().replace('\n', " | ")).unwrap_or_default(),
+            registro
+                .plan
+                .as_ref()
+                .map(|p| p.lineas().replace('\n', " | "))
+                .unwrap_or_default(),
             vivo.mostrar()
         );
         hoja = registro.hoja.clone();
@@ -325,11 +376,18 @@ fn de_verdad_conversacion_larga_con_reinicios() {
         ultima = vivo.mostrar();
     }
     motor.soltar();
-    assert!(reinicios > 0, "con {VENTANA} tokens tenia que reiniciarse alguna vez");
     let bajo = ultima.to_lowercase();
-    let aciertos = [bajo.contains("17"), bajo.contains("kennedy"), bajo.contains("12") || bajo.contains("doce")];
-    println!("\naciertos (hora, sitio, niños): {aciertos:?}");
-    assert!(aciertos.iter().filter(|x| **x).count() >= 2, "perdio el objetivo tras reiniciar: {ultima}");
+    let aciertos = [
+        bajo.contains("17"),
+        bajo.contains("kennedy"),
+        bajo.contains("12") || bajo.contains("doce"),
+    ];
+    println!("\naciertos (hora, sitio, niños): {aciertos:?}; reinicios: {reinicios}");
+    assert!(reinicios > 0, "con {ventana} tokens tenia que reiniciarse alguna vez");
+    assert!(
+        aciertos.iter().filter(|x| **x).count() >= 2,
+        "perdio el objetivo tras reiniciar: {ultima}"
+    );
 }
 
 fn hasta_el_final_largo(t: &mut Turno) -> (EnVivo, Vec<Aviso>) {

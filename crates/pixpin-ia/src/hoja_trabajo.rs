@@ -81,7 +81,10 @@ pub struct ResumenDelTurno {
 
 impl HojaDeTrabajo {
     pub fn esta_vacia(&self) -> bool {
-        self.objetivo.is_empty() && self.hechos.is_empty() && self.hecho.is_empty() && self.turnos.is_empty()
+        self.objetivo.is_empty()
+            && self.hechos.is_empty()
+            && self.hecho.is_empty()
+            && self.turnos.is_empty()
     }
 
     /// El numero del turno siguiente.
@@ -121,7 +124,11 @@ impl HojaDeTrabajo {
         }
         empujar_con_tope(&mut self.hecho, cortar(&linea, LARGO_LINEA), MAX_HECHO);
         if turno.incompleto {
-            let falta = if plan.hare.is_empty() { plan.entiendo.clone() } else { plan.hare.clone() };
+            let falta = if plan.hare.is_empty() {
+                plan.entiendo.clone()
+            } else {
+                plan.hare.clone()
+            };
             if !falta.trim().is_empty() {
                 anadir_sin_repetir(&mut self.falta, &falta, MAX_FALTA);
             }
@@ -187,7 +194,12 @@ impl HojaDeTrabajo {
     /// llenar el contexto). Solo falla si no es un objeto.
     pub fn de_json(v: &Value) -> Result<HojaDeTrabajo, String> {
         let o = v.as_object().ok_or("la hoja no es un objeto")?;
-        let cadena = |k: &str| o.get(k).and_then(Value::as_str).unwrap_or_default().to_string();
+        let cadena = |k: &str| {
+            o.get(k)
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string()
+        };
         let recortar = |v: Vec<String>, n: usize| -> Vec<String> {
             let desde = v.len().saturating_sub(n);
             v[desde..].iter().map(|x| cortar(x, LARGO_LINEA)).collect()
@@ -200,9 +212,20 @@ impl HojaDeTrabajo {
                     .filter_map(Value::as_object)
                     .map(|t| TurnoResumido {
                         n: t.get("n").and_then(Value::as_u64).unwrap_or(0) as u32,
-                        peticion: t.get("peticion").and_then(Value::as_str).unwrap_or_default().to_string(),
-                        pensado: cortar(t.get("pensado").and_then(Value::as_str).unwrap_or_default(), LARGO_PENSADO),
-                        resultado: t.get("resultado").and_then(Value::as_str).unwrap_or_default().to_string(),
+                        peticion: t
+                            .get("peticion")
+                            .and_then(Value::as_str)
+                            .unwrap_or_default()
+                            .to_string(),
+                        pensado: cortar(
+                            t.get("pensado").and_then(Value::as_str).unwrap_or_default(),
+                            LARGO_PENSADO,
+                        ),
+                        resultado: t
+                            .get("resultado")
+                            .and_then(Value::as_str)
+                            .unwrap_or_default()
+                            .to_string(),
                     })
                     .collect()
             })
@@ -215,7 +238,10 @@ impl HojaDeTrabajo {
             falta: recortar(cadenas(o.get("falta")), MAX_FALTA),
             decisiones: recortar(cadenas(o.get("decisiones")), MAX_DECISIONES),
             turnos: turnos[desde..].to_vec(),
-            reinicio_desde: o.get("reinicio_desde").and_then(Value::as_str).map(str::to_string),
+            reinicio_desde: o
+                .get("reinicio_desde")
+                .and_then(Value::as_str)
+                .map(str::to_string),
             reinicios: o.get("reinicios").and_then(Value::as_u64).unwrap_or(0) as u32,
         })
     }
@@ -278,7 +304,11 @@ impl Registro {
             return Err(format!("version desconocida: {version}"));
         }
         Ok(Registro {
-            pensamiento: o.get("pensamiento").and_then(Value::as_str).unwrap_or_default().to_string(),
+            pensamiento: o
+                .get("pensamiento")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string(),
             segundos: o.get("segundos").and_then(Value::as_f64).map(|s| s as f32),
             plan: o.get("plan").and_then(Plan::de_json),
             hoja: match o.get("hoja") {
@@ -349,9 +379,18 @@ mod pruebas {
         }
         assert_eq!(h.objetivo, "objetivo 19");
         assert_eq!(h.hechos.len(), MAX_HECHOS);
-        assert_eq!(h.hechos.iter().filter(|x| *x == "color rojo").count(), 1, "sin repetir");
+        assert_eq!(
+            h.hechos.iter().filter(|x| *x == "color rojo").count(),
+            1,
+            "sin repetir"
+        );
         assert_eq!(h.hecho.len(), MAX_HECHO);
-        assert!(h.hecho.last().unwrap().starts_with("T20: [dibujar_en_lienzo] Hecho 19."));
+        assert!(
+            h.hecho
+                .last()
+                .unwrap()
+                .starts_with("T20: [dibujar_en_lienzo] Hecho 19.")
+        );
         assert_eq!(h.turnos.len(), MAX_TURNOS);
         assert_eq!(h.decisiones, vec!["sin texto"]);
         let t = h.a_texto();
@@ -363,7 +402,13 @@ mod pruebas {
     #[test]
     fn lo_que_falta_se_apunta_y_se_borra_al_acabar_bien() {
         let mut h = HojaDeTrabajo::default();
-        h.reescribir(&plan("casa"), &ResumenDelTurno { incompleto: true, ..Default::default() });
+        h.reescribir(
+            &plan("casa"),
+            &ResumenDelTurno {
+                incompleto: true,
+                ..Default::default()
+            },
+        );
         assert_eq!(h.falta, vec!["dibujar"]);
         assert!(h.hecho[0].ends_with("(sin acabar)"));
         h.reescribir(&plan("casa"), &ResumenDelTurno::default());
@@ -382,7 +427,8 @@ mod pruebas {
             reinicio: true,
             ..Default::default()
         };
-        r.hoja.reescribir(&plan("casa"), &ResumenDelTurno::default());
+        r.hoja
+            .reescribir(&plan("casa"), &ResumenDelTurno::default());
         r.hoja.reinicio_desde = Some("m7".into());
         r.escribir(&ruta).unwrap();
         let leido = Registro::leer(&ruta).unwrap().unwrap();
@@ -402,11 +448,16 @@ mod pruebas {
         std::fs::write(&ruta, b"{\"version\":1, \"hoja\": {\"objetivo\": ").unwrap();
         assert!(Registro::leer(&ruta).is_err());
         std::fs::write(&ruta, b"{\"version\":99}").unwrap();
-        assert!(Registro::leer(&ruta).is_err(), "una version del futuro no se lee a medias");
+        assert!(
+            Registro::leer(&ruta).is_err(),
+            "una version del futuro no se lee a medias"
+        );
         std::fs::write(&ruta, b"{\"version\":1,\"hoja\":7}").unwrap();
         assert!(Registro::leer(&ruta).is_err());
         // Una hoja enorme (escrita a mano) se recorta a los topes.
-        let mucho: Vec<String> = (0..100).map(|i| format!("{i} {}", "x".repeat(400))).collect();
+        let mucho: Vec<String> = (0..100)
+            .map(|i| format!("{i} {}", "x".repeat(400)))
+            .collect();
         let h = HojaDeTrabajo::de_json(&json!({"hechos": mucho, "turnos": "no es lista"})).unwrap();
         assert_eq!(h.hechos.len(), MAX_HECHOS);
         assert!(h.hechos.iter().all(|x| x.chars().count() <= LARGO_LINEA));

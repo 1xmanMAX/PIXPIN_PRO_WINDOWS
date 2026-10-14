@@ -213,7 +213,11 @@ impl Turno {
                     pensar: memoria.pensar,
                     hoja: con_memoria.then_some(&memoria.hoja),
                     ventana: memoria.ventana,
-                    buscar: if con_memoria { Some(&buscar) } else { None },
+                    // Buscar en lo viejo solo cuando hay algo viejo que no esta
+                    // cargado (tras un reinicio): antes, todo esta delante, y
+                    // con la herramienta a mano el 2B la llamaba en vez de
+                    // contestar (medido, 13-oct).
+                    buscar: (con_memoria && (memoria.reiniciado || memoria.hoja.reinicios > 0)).then_some(&buscar as &dyn Fn(&str) -> String),
                     ampliar: memoria.ampliar.then_some(&todas[..]),
                 };
                 let mut recogido = Recogido::default();

@@ -24,8 +24,8 @@
 
 use serde_json::json;
 
-use crate::hoja_trabajo::HojaDeTrabajo;
 use crate::herramientas::Herramienta;
+use crate::hoja_trabajo::HojaDeTrabajo;
 use crate::motor::{Mensaje, Parte, Rol};
 use crate::pensar::{Plan, cortar, sin_tildes};
 
@@ -50,7 +50,8 @@ pub const RESERVA_RESPUESTA: u32 = 1536;
 pub const QUEDAN_AL_REINICIAR: usize = 2;
 
 /// La marca de un resultado de herramienta ya recortado.
-const RECORTADO: &str = "(resultado recortado para ahorrar contexto; usa buscar_historial si lo necesitas)";
+const RECORTADO: &str =
+    "(resultado recortado para ahorrar contexto; usa buscar_historial si lo necesitas)";
 
 pub fn tokens_de_texto(s: &str) -> u32 {
     (s.chars().count() as f32 / LETRAS_POR_TOKEN).ceil() as u32
@@ -88,6 +89,7 @@ pub fn sistema_con_hoja(instrucciones: &str, hoja: &HojaDeTrabajo, plan: Option<
     if !hoja.esta_vacia() {
         s.push_str("\n\n");
         s.push_str(hoja.a_texto().trim_end());
+        s.push_str("\nSi lo que te piden ya esta en la hoja de trabajo, contesta directamente con ello, sin herramientas.");
     }
     if let Some(p) = plan {
         s.push_str("\n\n# Peticion mejorada (lo que entendiste antes de actuar)\n");
@@ -188,7 +190,9 @@ pub fn preparar(
             primero: 0,
         };
     }
-    let con_texto: Vec<usize> = (0..anteriores.len()).filter(|&i| !anteriores[i].1.trim().is_empty()).collect();
+    let con_texto: Vec<usize> = (0..anteriores.len())
+        .filter(|&i| !anteriores[i].1.trim().is_empty())
+        .collect();
     let primero = con_texto
         .get(con_texto.len().saturating_sub(QUEDAN_AL_REINICIAR))
         .copied()
@@ -210,13 +214,13 @@ pub fn podar_en_turno(historial: &mut [Mensaje]) -> bool {
         return false;
     };
     let mut cambio = false;
-    for m in historial[..ultima].iter_mut().filter(|m| m.rol == Rol::Herramienta) {
+    for m in historial[..ultima]
+        .iter_mut()
+        .filter(|m| m.rol == Rol::Herramienta)
+    {
         let t = m.texto_entero();
         if t.chars().count() > 200 && !t.contains(RECORTADO) {
-            let corto = format!(
-                "{} {RECORTADO}",
-                cortar(&t, 160)
-            );
+            let corto = format!("{} {RECORTADO}", cortar(&t, 160));
             m.partes = vec![Parte::Texto(corto)];
             cambio = true;
         }
@@ -253,14 +257,20 @@ pub struct Fuente {
 /// Los argumentos de una llamada a `buscar_historial`: la consulta.
 pub fn consulta_de(argumentos: &str) -> Option<String> {
     let v: serde_json::Value = serde_json::from_str(argumentos.trim()).ok()?;
-    let c = v.get("consulta").or_else(|| v.get("query"))?.as_str()?.trim();
+    let c = v
+        .get("consulta")
+        .or_else(|| v.get("query"))?
+        .as_str()?
+        .trim();
     (!c.is_empty()).then(|| c.to_string())
 }
 
 fn palabras(s: &str) -> Vec<String> {
     sin_tildes(&s.to_lowercase())
         .split(|c: char| !c.is_alphanumeric())
-        .filter(|p| p.chars().count() >= 3 || p.chars().all(|c| c.is_ascii_digit()) && !p.is_empty())
+        .filter(|p| {
+            p.chars().count() >= 3 || p.chars().all(|c| c.is_ascii_digit()) && !p.is_empty()
+        })
         .map(str::to_string)
         .collect()
 }
@@ -297,7 +307,11 @@ pub fn buscar(fuentes: &[Fuente], consulta: &str, max: usize) -> String {
     puntuadas.sort_by(|a, b| b.0.total_cmp(&a.0).then(b.1.cmp(&a.1)));
     let mut s = String::new();
     for (_, _, f) in puntuadas.into_iter().take(max.max(1)) {
-        s.push_str(&format!("[{}] {}\n", f.etiqueta, alrededor(&f.texto, &buscadas, 300)));
+        s.push_str(&format!(
+            "[{}] {}\n",
+            f.etiqueta,
+            alrededor(&f.texto, &buscadas, 300)
+        ));
     }
     s.trim_end().to_string()
 }
@@ -311,7 +325,11 @@ fn alrededor(texto: &str, buscadas: &[String], max: usize) -> String {
     }
     let bajo: Vec<char> = sin_tildes(&limpio.to_lowercase()).chars().collect();
     let bajo_s: String = bajo.iter().collect();
-    let pos_byte = buscadas.iter().filter_map(|b| bajo_s.find(b.as_str())).min().unwrap_or(0);
+    let pos_byte = buscadas
+        .iter()
+        .filter_map(|b| bajo_s.find(b.as_str()))
+        .min()
+        .unwrap_or(0);
     let pos = bajo_s[..pos_byte].chars().count();
     let inicio = pos.saturating_sub(max / 3);
     let fin = (inicio + max).min(letras.len());
@@ -335,12 +353,21 @@ mod pruebas {
     fn la_cuenta_crece_con_el_texto_las_imagenes_y_el_catalogo() {
         let a = estimar(&[Mensaje::usuario("hola")], &[]);
         let b = estimar(&[Mensaje::usuario("hola ".repeat(400))], &[]);
-        let c = estimar(&[Mensaje::usuario_con_imagen("hola", vec![1], "image/png")], &[]);
+        let c = estimar(
+            &[Mensaje::usuario_con_imagen("hola", vec![1], "image/png")],
+            &[],
+        );
         let d = estimar(&[Mensaje::usuario("hola")], &catalogo());
-        assert!(b > a + 500 && c >= a + TOKENS_IMAGEN && d > a + 300, "{a} {b} {c} {d}");
+        assert!(
+            b > a + 500 && c >= a + TOKENS_IMAGEN && d > a + 300,
+            "{a} {b} {c} {d}"
+        );
         assert!(!pasa_del_umbral(1000, 500, 8192));
         assert!(pasa_del_umbral(5000, 900, 8192));
-        assert!(!pasa_del_umbral(99_999, 0, 0), "sin ventana conocida no se reinicia");
+        assert!(
+            !pasa_del_umbral(99_999, 0, 0),
+            "sin ventana conocida no se reinicia"
+        );
     }
 
     fn largo(i: usize) -> String {
@@ -367,7 +394,11 @@ mod pruebas {
     #[test]
     fn reiniciar_no_deja_resultados_huerfanos() {
         let mut llamada = Mensaje::texto(Rol::Asistente, "");
-        llamada.llamadas = vec![LlamadaCruda { id: "a".into(), nombre: "ocr".into(), argumentos: "{}".into() }];
+        llamada.llamadas = vec![LlamadaCruda {
+            id: "a".into(),
+            nombre: "ocr".into(),
+            argumentos: "{}".into(),
+        }];
         let h = vec![
             Mensaje::sistema("S"),
             Mensaje::usuario("lee esto"),
@@ -393,7 +424,11 @@ mod pruebas {
     #[test]
     fn podar_recorta_los_resultados_viejos_y_no_el_ultimo() {
         let mut llamada = Mensaje::texto(Rol::Asistente, "");
-        llamada.llamadas = vec![LlamadaCruda { id: "a".into(), nombre: "ocr".into(), argumentos: "{}".into() }];
+        llamada.llamadas = vec![LlamadaCruda {
+            id: "a".into(),
+            nombre: "ocr".into(),
+            argumentos: "{}".into(),
+        }];
         let mut h = vec![
             Mensaje::usuario("lee"),
             llamada.clone(),
@@ -411,26 +446,48 @@ mod pruebas {
     #[test]
     fn buscar_encuentra_lo_mas_parecido_y_lo_mas_reciente() {
         let f = vec![
-            Fuente { etiqueta: "#1 usuario".into(), texto: "Las ventas de enero fueron 120 y las de febrero 95.".into() },
-            Fuente { etiqueta: "#2 asistente".into(), texto: "Dibuje una casa roja.".into() },
-            Fuente { etiqueta: "#9 usuario".into(), texto: "La venta de marzo: 140.".into() },
+            Fuente {
+                etiqueta: "#1 usuario".into(),
+                texto: "Las ventas de enero fueron 120 y las de febrero 95.".into(),
+            },
+            Fuente {
+                etiqueta: "#2 asistente".into(),
+                texto: "Dibuje una casa roja.".into(),
+            },
+            Fuente {
+                etiqueta: "#9 usuario".into(),
+                texto: "La venta de marzo: 140.".into(),
+            },
         ];
         let r = buscar(&f, "¿cuáles eran las ventas?", 2);
         let lineas: Vec<&str> = r.lines().collect();
         assert_eq!(lineas.len(), 2, "{r}");
         assert!(lineas[0].starts_with("[#1 usuario]"), "{r}");
-        assert!(lineas[1].starts_with("[#9 usuario]"), "la raiz «venta» tambien vale: {r}");
+        assert!(
+            lineas[1].starts_with("[#9 usuario]"),
+            "la raiz «venta» tambien vale: {r}"
+        );
         assert!(buscar(&f, "avion", 3).starts_with("No hay nada"));
         assert!(buscar(&f, "  ", 3).starts_with("ERROR"));
-        assert_eq!(consulta_de(r#"{"consulta":" ventas "}"#).as_deref(), Some("ventas"));
+        assert_eq!(
+            consulta_de(r#"{"consulta":" ventas "}"#).as_deref(),
+            Some("ventas")
+        );
         assert_eq!(consulta_de("{roto"), None);
         assert_eq!(consulta_de(r#"{"consulta":""}"#), None);
     }
 
     #[test]
     fn buscar_recorta_alrededor_de_lo_encontrado() {
-        let texto = format!("{} el codigo secreto es 4477 {}", "relleno ".repeat(100), "cola ".repeat(100));
-        let f = vec![Fuente { etiqueta: "#3".into(), texto }];
+        let texto = format!(
+            "{} el codigo secreto es 4477 {}",
+            "relleno ".repeat(100),
+            "cola ".repeat(100)
+        );
+        let f = vec![Fuente {
+            etiqueta: "#3".into(),
+            texto,
+        }];
         let r = buscar(&f, "codigo secreto", 1);
         assert!(r.contains("4477"), "{r}");
         assert!(r.chars().count() < 330);
@@ -439,16 +496,34 @@ mod pruebas {
     #[test]
     fn preparar_reinicia_solo_al_pasar_del_70() {
         let anteriores: Vec<(bool, String)> = (0..12).map(|i| (i % 2 == 0, largo(i))).collect();
-        let p = preparar("S".into(), &anteriores, Mensaje::usuario("nuevo"), &[], 8192, 2048);
+        let p = preparar(
+            "S".into(),
+            &anteriores,
+            Mensaje::usuario("nuevo"),
+            &[],
+            8192,
+            2048,
+        );
         assert!(!p.reiniciado);
         assert_eq!(p.historial.len(), 14);
         // Con una ventana pequena, se queda con los dos ultimos.
-        let p = preparar("S".into(), &anteriores, Mensaje::usuario("nuevo"), &[], 1500, 300);
+        let p = preparar(
+            "S".into(),
+            &anteriores,
+            Mensaje::usuario("nuevo"),
+            &[],
+            1500,
+            300,
+        );
         assert!(p.reiniciado);
         assert_eq!(p.primero, 10);
         assert_eq!(p.historial.len(), 4);
         assert!(p.historial[1].texto_entero().starts_with("mensaje 10"));
-        assert!(!pasa_del_umbral(p.tokens, 300, 1500), "cabe tras reiniciar: {}", p.tokens);
+        assert!(
+            !pasa_del_umbral(p.tokens, 300, 1500),
+            "cabe tras reiniciar: {}",
+            p.tokens
+        );
         // Sin nada antes no hay que reiniciar nada.
         let p = preparar("S".into(), &[], Mensaje::usuario("x"), &[], 10, 0);
         assert_eq!(p.historial.len(), 2);
@@ -456,8 +531,14 @@ mod pruebas {
 
     #[test]
     fn el_sistema_lleva_la_hoja_y_el_plan() {
-        let mut hoja = HojaDeTrabajo { objetivo: "una casa".into(), ..Default::default() };
-        let plan = Plan { entiendo: "casa roja".into(), ..Default::default() };
+        let mut hoja = HojaDeTrabajo {
+            objetivo: "una casa".into(),
+            ..Default::default()
+        };
+        let plan = Plan {
+            entiendo: "casa roja".into(),
+            ..Default::default()
+        };
         let s = sistema_con_hoja("Eres X.", &hoja, Some(&plan));
         assert!(s.contains("Objetivo: una casa") && s.contains("Entiendo: casa roja"));
         assert!(!s.contains("buscar_historial"));
