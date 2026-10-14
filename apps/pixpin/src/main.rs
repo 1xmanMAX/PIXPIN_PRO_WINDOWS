@@ -60,6 +60,9 @@ mod asistente;
 /// Las automatizaciones del asistente y el asistente sin abrir el chat
 /// (`p ia` de Flow), 13-oct.
 mod automatizaciones;
+/// La biblioteca de figuras del lienzo, en el chat «Asistente» para que viaje
+/// con los aparatos propios (como las automatizaciones).
+mod biblioteca_figuras;
 mod anotado_del_adjunto;
 mod anotador_al_chat;
 mod audio;

@@ -167,16 +167,8 @@ pub(super) fn pegar_tabla(
 /// cada dibujo** (`BibliotecaStore` del movil), para que una figura guardada
 /// en un croquis este puesta al abrir el siguiente.
 pub(crate) fn ruta_biblioteca() -> PathBuf {
-    let dir_exe = std::env::current_exe()
-        .ok()
-        .and_then(|p| p.parent().map(std::path::Path::to_path_buf))
-        .unwrap_or_default();
-    let appdata = std::env::var_os("APPDATA")
-        .map(PathBuf::from)
-        .unwrap_or_default();
-    pixpin_store::resolver(&dir_exe, &appdata)
-        .raiz()
-        .join("figuras.json")
+    // En el chat «Asistente», para que viaje con los aparatos propios.
+    crate::biblioteca_figuras::ruta()
 }
 
 /// Las figuras guardadas, o ninguna (`biblioteca::cargar`: lee el formato
@@ -187,7 +179,7 @@ pub(super) fn cargar_biblioteca(ruta: &std::path::Path) -> Vec<FiguraGuardada> {
 
 /// Escribe la lista entera en el formato del movil (`biblioteca::guardar`).
 pub(super) fn guardar_biblioteca(ruta: &std::path::Path, figuras: &[FiguraGuardada]) -> bool {
-    biblioteca::guardar(ruta, figuras)
+    crate::biblioteca_figuras::guardar(ruta, figuras)
 }
 
 // ---------------------------------------------------------------------------

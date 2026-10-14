@@ -889,22 +889,54 @@ pub fn cambiar<R>(
 /// El mensaje ARCHIVO del chat «Asistente» que senala el fichero (asi viaja
 /// con la sincronizacion, como un `.leccion`). Si ya esta, no se toca.
 fn asegurar_mensaje(raiz: &Path, proyecto: &str, aparato: &str, ahora: i64) -> std::io::Result<()> {
-    use pixpin_proyecto::{almacen, cuaderno};
-    let carpeta = almacen::carpeta(raiz, proyecto);
-    let c = match cuaderno::Cuaderno::leer_de(&carpeta) {
+    let carpeta = pixpin_proyecto::almacen::carpeta(raiz, proyecto);
+    senalar_fichero(
+        &carpeta,
+        proyecto,
+        aparato,
+        ahora,
+        &FicheroQueViaja {
+            id_mensaje: ID_MENSAJE,
+            nombre: "automatizaciones.json",
+            ruta_portatil: RUTA_PORTATIL,
+            en_el_chat: RUTA_EN_EL_CHAT,
+            texto: "⚙️ Las automatizaciones del asistente (se cambian en Ajustes → Asistente)",
+        },
+    )
+}
+
+/// Un fichero suelto que viaja **solo con los aparatos propios**, senalado
+/// por un mensaje ARCHIVO fijo del chat «Asistente» (que no se comparte con
+/// personas): las automatizaciones y la biblioteca de figuras.
+pub struct FicheroQueViaja {
+    /// El id fijo del mensaje (uno por fichero, nunca dos).
+    pub id_mensaje: &'static str,
+    pub nombre: &'static str,
+    /// `pixpin:files/...`: donde lo deja el movil.
+    pub ruta_portatil: &'static str,
+    /// Dentro de la carpeta del chat (`android/...`).
+    pub en_el_chat: &'static str,
+    pub texto: &'static str,
+}
+
+/// **Pone el mensaje ARCHIVO que hace viajar el fichero**, si no esta (el
+/// fichero cambia; el mensaje es el mismo y la sincro mira el fichero).
+pub fn senalar_fichero(carpeta: &Path, proyecto: &str, aparato: &str, ahora: i64, f: &FicheroQueViaja) -> std::io::Result<()> {
+    use pixpin_proyecto::cuaderno;
+    let c = match cuaderno::Cuaderno::leer_de(carpeta) {
         Ok(c) => c,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Default::default(),
         Err(e) => return Err(e),
     };
-    if c.mensajes.iter().any(|m| m.id == ID_MENSAJE) {
+    if c.mensajes.iter().any(|m| m.id == f.id_mensaje) {
         return Ok(());
     }
     let numero = c.mensajes.iter().map(|m| m.numero).max().unwrap_or(0) + 1;
-    let bytes = std::fs::metadata(fichero_en(&carpeta)).map(|m| m.len() as i64).unwrap_or(0);
+    let bytes = std::fs::metadata(carpeta.join(f.en_el_chat)).map(|m| m.len() as i64).unwrap_or(0);
     let mut m = cuaderno::Mensaje::adjunto(
         cuaderno::Clase::Archivo,
-        "automatizaciones.json",
-        RUTA_PORTATIL,
+        f.nombre,
+        f.ruta_portatil,
         bytes,
         &cuaderno::Sello {
             cuando: ahora,
@@ -913,9 +945,9 @@ fn asegurar_mensaje(raiz: &Path, proyecto: &str, aparato: &str, ahora: i64) -> s
             proyecto: proyecto.to_string(),
         },
     );
-    m.id = ID_MENSAJE.into();
-    m.texto = "⚙️ Las automatizaciones del asistente (se cambian en Ajustes → Asistente)".into();
-    cuaderno::anadir(&carpeta, &m)
+    m.id = f.id_mensaje.into();
+    m.texto = f.texto.into();
+    cuaderno::anadir(carpeta, &m)
 }
 
 /// Un id nuevo.

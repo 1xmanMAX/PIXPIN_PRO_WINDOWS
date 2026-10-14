@@ -195,7 +195,7 @@ impl EjecutorDelChat {
                     nombre: nombre.clone(),
                     elementos: biblioteca::normalizar(&piezas),
                 };
-                if !biblioteca::anadir(&ruta, figura) {
+                if !crate::biblioteca_figuras::anadir(&ruta, figura) {
                     return Err("no se pudo escribir la biblioteca de figuras".into());
                 }
                 Ok(format!(
