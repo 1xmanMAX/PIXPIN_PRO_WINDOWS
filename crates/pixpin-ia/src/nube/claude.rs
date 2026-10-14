@@ -16,12 +16,16 @@
 //!   explicito para que no cambie si cambia el de fabrica.
 //! - **Sin `temperature`/`top_p`/`top_k`** (400 en Haiku 5.5) y **sin
 //!   prefill**: la conversacion siempre acaba en un turno del usuario.
-//! - **Herramientas propias `strict: true`** con `additionalProperties: false` y sin
-//!   las restricciones que el modo estricto no admite (topes numericos y de
-//!   listas, que se pasan a la descripcion y se siguen validando aqui), y
-//!   `eager_input_streaming: true` porque la peticion va en streaming: la
-//!   entrada llega sin validar del servidor y la valida
-//!   `herramientas::validar` antes de ejecutar nada.
+//! - **Sin `strict: true`** (medido con la API real el 13-oct, ver
+//!   `grabaciones/`): con el modo estricto Haiku 5.5 dibujaba figuras sin
+//!   tamano ni texto (`{"tipo":"rectangulo","x":0,"y":0}`) y numeros
+//!   deformes, y el banco caia al 50 % en los dibujos; sin el, 100 %. La
+//!   decodificacion restringida sigue el orden del esquema (serde_json lo
+//!   escribe por orden alfabetico): tras «tipo» solo le quedaban «x» e «y».
+//!   La validacion estricta la hace igual `herramientas::validar` antes de
+//!   ejecutar, con el reintento corto del agente.
+//! - `eager_input_streaming: true` porque la peticion va en streaming: la
+//!   entrada llega sin validar del servidor y se valida aqui.
 //! - `tool_choice: auto`. Todos los resultados de una vuelta en **un solo**
 //!   mensaje `user`, con `is_error` en los que fallaron.
 //! - **Cache**: un punto en el ultimo bloque del `system` (cachea herramientas
@@ -30,7 +34,7 @@
 
 use std::collections::HashMap;
 
-use serde_json::{Map, Value, json};
+use serde_json::{Value, json};
 
 use crate::ErrorIa;
 use crate::herramientas::Herramienta;
@@ -46,75 +50,14 @@ pub const ESFUERZO: &str = "medium";
 /// (el del modelo local) un dibujo grande despues de pensar salia cortado.
 pub const MAX_TOKENS: u32 = 16_000;
 
-/// Las palabras del JSON Schema que el modo estricto no admite. Se quitan
-/// del esquema que se manda (y se dicen en la descripcion); la validacion de
-/// `herramientas::validar` las sigue comprobando.
-const NO_ESTRICTAS: &[&str] = &[
-    "minItems",
-    "maxItems",
-    "minimum",
-    "maximum",
-    "exclusiveMinimum",
-    "exclusiveMaximum",
-    "multipleOf",
-    "minLength",
-    "maxLength",
-    "uniqueItems",
-];
-
-/// El esquema en la forma que admite el modo estricto.
-pub fn esquema_estricto(v: &Value) -> Value {
-    match v {
-        Value::Object(o) => {
-            let mut n = Map::new();
-            let mut notas = Vec::new();
-            for (k, x) in o {
-                if NO_ESTRICTAS.contains(&k.as_str()) {
-                    match k.as_str() {
-                        "maxItems" => notas.push(format!("como mucho {x}")),
-                        "minItems" => notas.push(format!("al menos {x}")),
-                        "minimum" => notas.push(format!("minimo {x}")),
-                        "maximum" => notas.push(format!("maximo {x}")),
-                        _ => {}
-                    }
-                    continue;
-                }
-                n.insert(k.clone(), esquema_estricto(x));
-            }
-            let es_objeto = o.get("type").and_then(Value::as_str) == Some("object") || o.contains_key("properties");
-            if es_objeto {
-                n.insert("additionalProperties".into(), Value::Bool(false));
-                if !n.contains_key("properties") {
-                    n.insert("properties".into(), json!({}));
-                }
-            }
-            if !notas.is_empty() {
-                let d = n.get("description").and_then(Value::as_str).unwrap_or("").to_string();
-                let extra = notas.join(", ");
-                n.insert(
-                    "description".into(),
-                    json!(if d.is_empty() { extra } else { format!("{d} ({extra})") }),
-                );
-            }
-            Value::Object(n)
-        }
-        Value::Array(a) => Value::Array(a.iter().map(esquema_estricto).collect()),
-        otro => otro.clone(),
-    }
-}
-
-/// Una herramienta en la forma de Anthropic.
-pub fn herramienta(h: &Herramienta, estricto: bool) -> Value {
-    let mut t = json!({
+/// Una herramienta en la forma de Anthropic. Sin `strict` (ver la cabecera).
+pub fn herramienta(h: &Herramienta) -> Value {
+    json!({
         "name": h.nombre,
         "description": h.descripcion,
-        "input_schema": if estricto { esquema_estricto(&h.parametros) } else { h.parametros.clone() },
+        "input_schema": h.parametros,
         "eager_input_streaming": true,
-    });
-    if estricto {
-        t["strict"] = json!(true);
-    }
-    t
+    })
 }
 
 fn imagen(bytes: &[u8], mime: &str) -> Value {
@@ -210,7 +153,7 @@ pub fn mensajes(lista: &[Mensaje], memoria: &HashMap<String, Value>) -> Vec<Valu
 }
 
 /// **El cuerpo de la peticion.**
-pub fn cuerpo(p: &Peticion, memoria: &HashMap<String, Value>, estricto: bool, max_tokens: u32) -> Value {
+pub fn cuerpo(p: &Peticion, memoria: &HashMap<String, Value>, max_tokens: u32) -> Value {
     let base = p
         .mensajes
         .first()
@@ -237,18 +180,7 @@ pub fn cuerpo(p: &Peticion, memoria: &HashMap<String, Value>, estricto: bool, ma
         "output_config": {"effort": ESFUERZO},
     });
     if !p.herramientas.is_empty() {
-        // Estrictas solo las propias del asistente (dibujar, calcar, grafica…),
-        // donde la forma de los argumentos es lo dificil: el modo estricto
-        // tiene topes de herramientas y de campos opcionales por peticion, y
-        // las acciones de la app son de pocos campos sencillos que valida
-        // `herramientas::validar` igual.
-        let propias: Vec<String> = crate::herramientas::catalogo_base().into_iter().map(|h| h.nombre).collect();
-        c["tools"] = Value::Array(
-            p.herramientas
-                .iter()
-                .map(|h| herramienta(h, estricto && propias.contains(&h.nombre)))
-                .collect(),
-        );
+        c["tools"] = Value::Array(p.herramientas.iter().map(herramienta).collect());
         c["tool_choice"] = json!({"type": "auto"});
     }
     c
@@ -505,28 +437,68 @@ mod pruebas {
     }
 
     #[test]
-    fn el_esquema_estricto_cierra_los_objetos_y_quita_los_topes() {
-        let h = &por_nombre(crate::herramientas::DIBUJAR);
-        let e = esquema_estricto(&h.parametros);
-        assert_eq!(e["additionalProperties"], false);
-        let elementos = &e["properties"]["elementos"];
-        assert!(elementos.get("maxItems").is_none() && elementos.get("minItems").is_none());
-        assert!(elementos["description"].as_str().unwrap().contains("como mucho 60"));
-        assert_eq!(elementos["items"]["additionalProperties"], false);
-        assert_eq!(elementos["items"]["required"], json!(["tipo"]));
-        // Un objeto sin propiedades (la ocr sin nada obligatorio) tambien.
-        let t = herramienta(&por_nombre(crate::herramientas::OCR), true);
-        assert_eq!(t["strict"], true);
+    fn ninguna_herramienta_va_estricta_y_el_esquema_va_tal_cual() {
+        // Con `strict` Haiku 5.5 dibujaba figuras vacias (ver la cabecera).
+        let h = por_nombre(crate::herramientas::DIBUJAR);
+        let t = herramienta(&h);
+        assert!(t.get("strict").is_none());
         assert_eq!(t["eager_input_streaming"], true);
-        assert_eq!(t["input_schema"]["additionalProperties"], false);
-        assert!(herramienta(&por_nombre(crate::herramientas::OCR), false).get("strict").is_none());
+        assert_eq!(t["input_schema"], h.parametros);
+    }
+
+    /// Lo que el modelo escribio, juntando los `partial_json` del SSE a mano.
+    fn juntar_a_mano(sse: &str) -> String {
+        sse.lines()
+            .filter_map(|l| l.strip_prefix("data: "))
+            .filter_map(|d| serde_json::from_str::<Value>(d.trim()).ok())
+            .filter_map(|v| v.pointer("/delta/partial_json").and_then(Value::as_str).map(str::to_string))
+            .collect()
+    }
+
+    fn leer_grabada(sse: &str) -> Salida {
+        let mut l = Lector::nuevo();
+        // A pedazos que cortan lineas, como llega por la red.
+        for c in sse.as_bytes().chunks(53) {
+            l.meter(c).unwrap();
+        }
+        assert!(l.acabado);
+        l.acabar(false)
+    }
+
+    #[test]
+    fn el_sse_real_se_junta_byte_a_byte() {
+        // Grabadas con la API real (13-oct, `PIXPIN_IA_GRABAR`): la misma
+        // casa pedida con y sin `strict`. Lo que se junta es exactamente lo
+        // que mando el modelo: la deformacion no era nuestra.
+        for sse in [include_str!("grabaciones/casa-sin-strict.sse"), include_str!("grabaciones/casa-con-strict.sse")] {
+            let s = leer_grabada(sse);
+            assert_eq!(s.respuesta.llamadas.len(), 1);
+            assert_eq!(s.respuesta.llamadas[0].argumentos, juntar_a_mano(sse));
+            assert_eq!(s.respuesta.fin, Fin::Herramientas);
+        }
+    }
+
+    #[test]
+    fn la_casa_sin_strict_trae_tamanos_y_colores_y_la_de_strict_no() {
+        let validar = |sse: &str| {
+            let s = leer_grabada(sse);
+            crate::herramientas::validar(&s.respuesta.llamadas[0], &catalogo())
+        };
+        let buena = validar(include_str!("grabaciones/casa-sin-strict.sse")).unwrap();
+        let crate::herramientas::Llamada::Dibujar(figuras) = &buena.llamada else { panic!() };
+        assert_eq!(figuras.len(), 3);
+        assert!(figuras.iter().all(|f| f.con_color), "{figuras:?}");
+        assert!(figuras.iter().filter(|f| f.ancho > 0.0 && f.alto > 0.0).count() >= 2, "{figuras:?}");
+        // Caso negativo: lo que salia con `strict` (`{"tipo":"rectangulo",
+        // "x":0}`, sin tamano, color ni «y») no pasa la validacion.
+        assert!(validar(include_str!("grabaciones/casa-con-strict.sse")).is_err());
     }
 
     #[test]
     fn el_cuerpo_sigue_las_reglas_de_haiku_5_5() {
         let mut p = Peticion::nueva(vec![Mensaje::sistema("Eres el asistente."), Mensaje::usuario("hola")]);
         p.herramientas = catalogo();
-        let c = cuerpo(&p, &HashMap::new(), true, MAX_TOKENS);
+        let c = cuerpo(&p, &HashMap::new(), MAX_TOKENS);
         assert_eq!(c["model"], "claude-haiku-5-5");
         assert_eq!(c["thinking"], json!({"type": "adaptive", "display": "summarized"}));
         assert_eq!(c["output_config"]["effort"], "medium");
