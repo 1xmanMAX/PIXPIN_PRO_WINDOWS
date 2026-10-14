@@ -207,7 +207,7 @@ mod pruebas {
     fn la_clave_no_aparece_en_claro_en_ningun_fichero() {
         let c = carpeta_de_prueba("claro");
         guardar_en(&c, Proveedor::Claude, CLAVE).unwrap();
-        guardar_en(&c, Proveedor::DeepSeek, "sk-0123456789abcdef0123456789abcdef").unwrap();
+        guardar_en(&c, Proveedor::DeepSeek, "clave-de-prueba-deepseek-0123456789abcdef").unwrap();
         let mut ficheros = 0;
         for e in std::fs::read_dir(&c).unwrap() {
             let bytes = std::fs::read(e.unwrap().path()).unwrap();
