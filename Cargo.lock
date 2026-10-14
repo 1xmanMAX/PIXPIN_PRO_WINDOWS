@@ -1646,6 +1646,7 @@ dependencies = [
 name = "pixpin-ia"
 version = "0.1.0"
 dependencies = [
+ "image",
  "pixpin-motor2d",
  "pixpin-voz",
  "serde_json",

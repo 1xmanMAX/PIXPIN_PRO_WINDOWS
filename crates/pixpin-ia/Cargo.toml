@@ -33,3 +33,5 @@ windows = { version = "0.62.2", features = [
 [dev-dependencies]
 # Solo en pruebas: comprobar que lo que se dibuja lo lee de verdad el lienzo.
 pixpin-motor2d = { path = "../pixpin-motor2d" }
+# Solo en pruebas: leer las imagenes de muestra del banco y del calcado.
+image = { version = "0.25.9", default-features = false, features = ["png", "jpeg"] }

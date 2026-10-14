@@ -15,7 +15,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{Receiver, TryRecvError, channel};
 
 use pixpin_ia::agente::{self, Evento, Final};
-use pixpin_ia::herramientas::{Herramienta, catalogo};
+use pixpin_ia::herramientas::Herramienta;
 use pixpin_ia::motor::{Mensaje, Motor, Seguir};
 
 use super::ejecutor::EjecutorDelChat;
@@ -60,7 +60,8 @@ impl Turno {
         adjuntos: Vec<Adjunto>,
         foto: Option<PathBuf>,
     ) -> Turno {
-        Turno::lanzar_con(motor, proyecto, historial, adjuntos, foto, catalogo())
+        let herramientas = super::acciones::herramientas_para(&historial, &adjuntos, foto.is_some());
+        Turno::lanzar_con(motor, proyecto, historial, adjuntos, foto, herramientas)
     }
 
     pub fn lanzar_con(
