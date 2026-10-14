@@ -172,6 +172,11 @@ pub struct Mano {
     /// Lo copiado con Ctrl+C. Vive con el anfitrion: cerrarlo se lo lleva,
     /// que es lo que espera cualquiera.
     pub portapapeles: Vec<Elemento>,
+    /// El numero de cambios del portapapeles de Windows cuando se copio
+    /// dentro (`pixpin_codec::portapapeles::secuencia`). Si luego se copia
+    /// algo fuera (un texto en el navegador), eso es mas nuevo y manda: ver
+    /// `copiado_vigente`.
+    secuencia_al_copiar: u32,
     /// La goma esta pulsada: borra lo que vaya tocando hasta soltar.
     pub borrando: bool,
     /// Forma rapida: desde cuando esta quieto el cursor dibujando a mano, y
@@ -214,6 +219,7 @@ impl Mano {
         Mano {
             anfitrion,
             portapapeles: Vec::new(),
+            secuencia_al_copiar: 0,
             borrando: false,
             quieto: None,
             pausa: PAUSA_FORMA,
@@ -227,6 +233,15 @@ impl Mano {
             desplegado: None,
             pulso_en_caja: false,
         }
+    }
+
+    /// **Si lo copiado dentro sigue siendo lo ultimo copiado.** Ctrl+C en el
+    /// lienzo no toca el portapapeles de Windows; si despues se copio algo
+    /// en otro programa (un texto, una captura), Ctrl+V tiene que pegar eso,
+    /// que es lo ultimo que el usuario copio, y no la flecha de antes.
+    pub fn copiado_vigente(&self) -> bool {
+        !self.portapapeles.is_empty()
+            && pixpin_codec::portapapeles::secuencia() == self.secuencia_al_copiar
     }
 
     /// Los milisegundos del reloj de la mano (el del predictor y el filtro).
@@ -400,6 +415,21 @@ impl Mano {
             const VK_ESCAPE_TEXTO: u32 = 0x1B;
             const VK_ENTRAR: u32 = 0x0D;
             let atendido = match *ev {
+                // Ctrl+V escribiendo: el texto del portapapeles entra en ESTE
+                // texto, donde esta el cursor (no nace otro; donde y cuanto
+                // de ancho no cuentan). Una imagen o nada no hacen nada: aqui
+                // solo cabe texto.
+                EventoOverlay::Tecla {
+                    vk,
+                    ctrl: true,
+                    shift: false,
+                    alt: false,
+                } if vk == b'V' as u32 => match leer_portapapeles() {
+                    Some(pixpin_codec::ContenidoPortapapeles::Texto(t)) => gesto
+                        .pegar_texto(escena, &t, Punto2::nuevo(0.0, 0.0), 0.0)
+                        .is_some(),
+                    _ => false,
+                },
                 // Los mandos llegan tambien como caracter; se atienden por
                 // tecla, que es donde se distinguen bien.
                 EventoOverlay::Caracter(c) if c >= ' ' => gesto.escribir(c, escena),
@@ -915,10 +945,12 @@ impl Mano {
         match vk {
             v if v == b'C' as u32 => {
                 self.portapapeles = pp::copiar(escena, &gesto.seleccion);
+                self.secuencia_al_copiar = pixpin_codec::portapapeles::secuencia();
                 false
             }
             v if v == b'X' as u32 => {
                 self.portapapeles = pp::copiar(escena, &gesto.seleccion);
+                self.secuencia_al_copiar = pixpin_codec::portapapeles::secuencia();
                 !self.portapapeles.is_empty()
                     && crate::panel_dibujo::aplicar(AccionPanel::Borrar, gesto, escena)
             }
@@ -927,13 +959,14 @@ impl Mano {
                 // El portapapeles del sistema solo se abre si no hay nada
                 // copiado dentro, y solo si el anfitrion sabe pintar
                 // imagenes: ver `decidir_pegado`.
-                let del_sistema = if self.portapapeles.is_empty() && imagenes.is_some() {
-                    pixpin_codec::portapapeles::leer()
+                let vigente = self.copiado_vigente();
+                let del_sistema = if !vigente && imagenes.is_some() {
+                    leer_portapapeles()
                 } else {
                     None
                 };
                 let nuevos =
-                    match img::decidir_pegado(!self.portapapeles.is_empty(), del_sistema) {
+                    match img::decidir_pegado(vigente, del_sistema) {
                         img::Pegado::Elementos => pp::pegar(
                             escena,
                             &self.portapapeles,
@@ -963,6 +996,17 @@ impl Mano {
                                 }
                             }
                         },
+                        // Un texto: el de la herramienta Texto, donde esta el
+                        // raton si esta sobre el lienzo y si no en el centro
+                        // de lo que se ve (`Gesto::pegar_texto`).
+                        img::Pegado::Texto(t) => {
+                            let (centro, ancho_maximo) =
+                                donde_pegar_texto(&vista, ancho_px, alto_px, raton());
+                            gesto
+                                .pegar_texto(escena, &t, centro, ancho_maximo)
+                                .into_iter()
+                                .collect()
+                        }
                         img::Pegado::Nada => Vec::new(),
                     };
                 let hubo = !nuevos.is_empty();
@@ -1002,6 +1046,54 @@ pub fn mandos_de(t: pixpin_store::Tinta) -> pixpin_tinta::Mandos {
         beta: t.beta.unwrap_or(d.beta),
         ..d
     }
+}
+
+/// Lo que hay en el portapapeles del sistema. En las pruebas, lo que la
+/// prueba haya dejado (`pruebas::poner_portapapeles`): el de verdad es del
+/// usuario y no se toca.
+fn leer_portapapeles() -> Option<pixpin_codec::ContenidoPortapapeles> {
+    #[cfg(test)]
+    {
+        pruebas::PORTAPAPELES.with(|p| p.borrow().clone())
+    }
+    #[cfg(not(test))]
+    {
+        pixpin_codec::portapapeles::leer()
+    }
+}
+
+/// Donde esta el raton, en coordenadas del escritorio. En las pruebas, lo que
+/// la prueba diga.
+fn raton() -> Option<Punto> {
+    #[cfg(test)]
+    {
+        pruebas::RATON.with(|r| r.get())
+    }
+    #[cfg(not(test))]
+    {
+        Some(pixpin_shell::entorno::posicion_del_cursor())
+    }
+}
+
+/// **Donde nace un texto pegado y lo mas ancho que puede ser**, en el
+/// documento: en el raton si esta sobre el lienzo (`lastViewportPosition`
+/// de Excalidraw) y si no en el centro de lo que se ve; de ancho, la mitad
+/// de lo que se ve entre 200 y 800 (`texto_pegado::ancho_maximo`).
+fn donde_pegar_texto(
+    vista: &Vista<'_>,
+    ancho_px: f32,
+    alto_px: f32,
+    raton: Option<Punto>,
+) -> (Punto2, f32) {
+    let v = vista.camara.ventana(ancho_px, alto_px);
+    let centro = match raton {
+        Some(p) if vista.area.contiene(p) => vista.al_documento(p),
+        _ => Punto2::nuevo((v.0 + v.2) / 2.0, (v.1 + v.3) / 2.0),
+    };
+    (
+        centro,
+        pixpin_motor2d::texto_pegado::ancho_maximo(v.2 - v.0),
+    )
 }
 
 #[cfg(test)]
@@ -1237,5 +1329,309 @@ mod pruebas {
         );
         assert!(escena.deshacer());
         assert_eq!(escena.cuantos_visibles(), 0);
+    }
+
+    // **Pegar texto** (13-oct-2026). El portapapeles y el raton de verdad son
+    // del usuario: aqui los pone cada prueba.
+    thread_local! {
+        pub(super) static PORTAPAPELES: std::cell::RefCell<Option<pixpin_codec::ContenidoPortapapeles>> =
+            const { std::cell::RefCell::new(None) };
+        pub(super) static RATON: std::cell::Cell<Option<Punto>> = const { std::cell::Cell::new(None) };
+    }
+
+    fn poner_portapapeles(c: Option<pixpin_codec::ContenidoPortapapeles>) {
+        PORTAPAPELES.with(|p| *p.borrow_mut() = c);
+    }
+
+    fn ctrl(letra: u8) -> EventoOverlay {
+        EventoOverlay::Tecla {
+            vk: letra as u32,
+            shift: false,
+            ctrl: true,
+            alt: false,
+        }
+    }
+
+    /// Un Ctrl+V en el lienzo: interfaz (escribiendo) y herramientas, como
+    /// el bucle del editor. Devuelve si algo cambio.
+    fn pegar(
+        mano: &mut Mano,
+        gesto: &mut Gesto,
+        escena: &mut Escena,
+        imagenes: &mut ImagenesLienzo,
+        camara: &Camara,
+    ) -> bool {
+        let a = mano.interfaz(&ctrl(b'V'), gesto, escena, None, false, vista_de(camara));
+        if a.consumido {
+            return a.repinte != Repinte::NADA;
+        }
+        let b = mano.herramienta(
+            &ctrl(b'V'),
+            gesto,
+            escena,
+            Some(imagenes),
+            vista_de(camara),
+            1600.0,
+            900.0,
+        );
+        b.repinte != Repinte::NADA
+    }
+
+    fn textos(escena: &Escena) -> Vec<String> {
+        escena
+            .visibles()
+            .filter_map(|e| match &e.figura {
+                pixpin_motor2d::Figura::Texto { texto, .. } => Some(texto.clone()),
+                _ => None,
+            })
+            .collect()
+    }
+
+    fn imagen_de_prueba(lado: u32) -> pixpin_codec::ImagenRgba {
+        pixpin_codec::ImagenRgba {
+            ancho: lado,
+            alto: lado,
+            pixeles: vec![255; (lado * lado * 4) as usize],
+        }
+    }
+
+    #[test]
+    fn ctrl_v_con_texto_crea_un_texto_en_el_raton_o_en_el_centro() {
+        let camara = Camara::nueva();
+        let mut mano = Mano::con_tinta(Anfitrion::Lienzo, Default::default());
+        let mut gesto = Gesto::nuevo();
+        let mut escena = Escena::nueva();
+        let mut imagenes = ImagenesLienzo::nuevo(4096);
+        poner_portapapeles(Some(pixpin_codec::ContenidoPortapapeles::Texto(
+            "Hola, ñandú 😀\r\nsegunda línea".into(),
+        )));
+        // El raton fuera de la ventana: al centro de lo que se ve.
+        RATON.with(|r| r.set(Some(Punto { x: -50, y: -50 })));
+        assert!(pegar(
+            &mut mano,
+            &mut gesto,
+            &mut escena,
+            &mut imagenes,
+            &camara
+        ));
+        assert_eq!(textos(&escena), vec!["Hola, ñandú 😀\nsegunda línea"]);
+        let id = gesto.seleccion.ids()[0];
+        let e = escena.buscar(id).unwrap();
+        let v = camara.ventana(1600.0, 900.0);
+        assert!((e.x + e.ancho / 2.0 - (v.0 + v.2) / 2.0).abs() < 0.5);
+        assert!((e.y + e.alto / 2.0 - (v.1 + v.3) / 2.0).abs() < 0.5);
+        // Con el raton sobre el lienzo: ahi.
+        RATON.with(|r| r.set(Some(Punto { x: 300, y: 200 })));
+        assert!(pegar(
+            &mut mano,
+            &mut gesto,
+            &mut escena,
+            &mut imagenes,
+            &camara
+        ));
+        let id = gesto.seleccion.ids()[0];
+        let e = escena.buscar(id).unwrap();
+        let p = vista_de(&camara).al_documento(Punto { x: 300, y: 200 });
+        assert!((e.x + e.ancho / 2.0 - p.x).abs() < 0.5);
+        assert!((e.y + e.alto / 2.0 - p.y).abs() < 0.5);
+        assert_eq!(textos(&escena).len(), 2);
+        // Cada pegado es un paso de deshacer.
+        assert!(escena.deshacer());
+        assert_eq!(textos(&escena).len(), 1);
+        poner_portapapeles(None);
+        RATON.with(|r| r.set(None));
+    }
+
+    #[test]
+    fn la_imagen_manda_sobre_el_texto_y_lo_raro_no_hace_nada() {
+        let camara = Camara::nueva();
+        let mut mano = Mano::con_tinta(Anfitrion::Lienzo, Default::default());
+        let mut gesto = Gesto::nuevo();
+        let mut escena = Escena::nueva();
+        let mut imagenes = ImagenesLienzo::nuevo(4096);
+        // `leer` ya da la imagen antes que el texto si estan los dos.
+        poner_portapapeles(Some(pixpin_codec::ContenidoPortapapeles::Imagen(
+            imagen_de_prueba(2),
+        )));
+        assert!(pegar(
+            &mut mano,
+            &mut gesto,
+            &mut escena,
+            &mut imagenes,
+            &camara
+        ));
+        assert!(textos(&escena).is_empty());
+        assert_eq!(escena.visibles().count(), 1);
+        // Vacio, solo espacios, rutas que no son imagenes: nada, sin romper.
+        for raro in [
+            None,
+            Some(pixpin_codec::ContenidoPortapapeles::Texto(" \r\n\t".into())),
+            Some(pixpin_codec::ContenidoPortapapeles::Rutas(vec![
+                "C:\\no-existe\\video.mp4".into(),
+            ])),
+        ] {
+            poner_portapapeles(raro);
+            assert!(!pegar(
+                &mut mano,
+                &mut gesto,
+                &mut escena,
+                &mut imagenes,
+                &camara
+            ));
+            assert_eq!(escena.visibles().count(), 1);
+        }
+        poner_portapapeles(None);
+    }
+
+    #[test]
+    fn lo_copiado_dentro_manda_sobre_el_texto_del_sistema() {
+        let camara = Camara::nueva();
+        let mut mano = Mano::con_tinta(Anfitrion::Lienzo, Default::default());
+        let mut gesto = Gesto::nuevo();
+        let mut escena = Escena::nueva();
+        let mut imagenes = ImagenesLienzo::nuevo(4096);
+        gesto
+            .pegar_texto(
+                &mut escena,
+                "copiado dentro",
+                Punto2::nuevo(0.0, 0.0),
+                800.0,
+            )
+            .unwrap();
+        mano.herramienta(
+            &ctrl(b'C'),
+            &mut gesto,
+            &mut escena,
+            Some(&mut imagenes),
+            vista_de(&camara),
+            1600.0,
+            900.0,
+        );
+        poner_portapapeles(Some(pixpin_codec::ContenidoPortapapeles::Texto(
+            "hola".into(),
+        )));
+        // Si nadie copio nada fuera entre medias (el contador del sistema no
+        // se movio), se pega lo de dentro y no el texto del sistema.
+        if mano.copiado_vigente() {
+            assert!(pegar(
+                &mut mano,
+                &mut gesto,
+                &mut escena,
+                &mut imagenes,
+                &camara
+            ));
+            assert_eq!(textos(&escena), vec!["copiado dentro", "copiado dentro"]);
+        }
+        poner_portapapeles(None);
+    }
+
+    #[test]
+    fn escribiendo_ctrl_v_pega_dentro_del_texto() {
+        let camara = Camara::nueva();
+        let mut mano = Mano::con_tinta(Anfitrion::Lienzo, Default::default());
+        let mut gesto = Gesto::nuevo();
+        let mut escena = Escena::nueva();
+        let mut imagenes = ImagenesLienzo::nuevo(4096);
+        gesto.tomar_herramienta(Herramienta::Texto);
+        let p = Punto2::nuevo(100.0, 100.0);
+        gesto.evento(
+            EventoGesto::Pulsar {
+                p,
+                shift: false,
+                alt: false,
+                presion: None,
+            },
+            &mut escena,
+            1.0,
+        );
+        gesto.evento(EventoGesto::Soltar { p }, &mut escena, 1.0);
+        gesto.escribir('a', &mut escena);
+        poner_portapapeles(Some(pixpin_codec::ContenidoPortapapeles::Texto(
+            " bé 😀".into(),
+        )));
+        assert!(pegar(
+            &mut mano,
+            &mut gesto,
+            &mut escena,
+            &mut imagenes,
+            &camara
+        ));
+        assert_eq!(textos(&escena), vec!["a bé 😀"], "dentro, sin nacer otro");
+        assert!(gesto.esta_escribiendo());
+        // Con una imagen en el portapapeles, escribiendo no se pega nada.
+        poner_portapapeles(Some(pixpin_codec::ContenidoPortapapeles::Imagen(
+            imagen_de_prueba(1),
+        )));
+        assert!(!pegar(
+            &mut mano,
+            &mut gesto,
+            &mut escena,
+            &mut imagenes,
+            &camara
+        ));
+        assert_eq!(escena.visibles().count(), 1);
+        poner_portapapeles(None);
+    }
+
+    /// **Para VERLO**: pega un texto con tildes, emojis, varios parrafos, una
+    /// URL y un renglon largo (que se parte) con la letra y el color del panel,
+    /// y pinta el lienzo como lo exporta el editor. Deja el PNG en
+    /// `PIXPIN_PNG` (o en la carpeta temporal).
+    /// `cargo test -p pixpin -- --ignored --test-threads=1 texto_pegado_a_png`
+    #[test]
+    #[ignore = "pinta con la GPU y deja un PNG para mirarlo"]
+    fn texto_pegado_a_png() {
+        let camara = Camara::nueva();
+        let mut mano = Mano::con_tinta(Anfitrion::Lienzo, Default::default());
+        let mut gesto = Gesto::nuevo();
+        let mut escena = Escena::nueva();
+        let mut imagenes = ImagenesLienzo::nuevo(4096);
+        gesto.estilo.tamano_letra = 28.0;
+        gesto.estilo.trazo = pixpin_motor2d::elemento::ColorRgba {
+            r: 0.11,
+            g: 0.36,
+            b: 0.78,
+            a: 1.0,
+        };
+        pixpin_motor2d::texto::con_medidor(crate::dibujo::pintar::medir_para_el_motor, || {
+            poner_portapapeles(Some(pixpin_codec::ContenidoPortapapeles::Texto(
+                "Texto pegado desde el portapapeles ✔\r\n\r\n\
+                 Canción, ñandú y acentos: áéíóú ÁÉÍÓÚ 😀👍\r\n\
+                 Un párrafo bastante largo que no cabe en un solo renglón y \
+                 por eso se parte por palabras al pegarlo en el lienzo.\r\n\
+                 https://github.com/1xmanMAX/PIXPIN_PRO_ANDROID/blob/main/README.md"
+                    .into(),
+            )));
+            RATON.with(|r| r.set(Some(Punto { x: 700, y: 400 })));
+            assert!(pegar(
+                &mut mano,
+                &mut gesto,
+                &mut escena,
+                &mut imagenes,
+                &camara
+            ));
+            poner_portapapeles(None);
+            RATON.with(|r| r.set(None));
+        });
+        let caja = escena.caja().expect("con dibujo");
+        let caja = (caja.0 - 30.0, caja.1 - 30.0, caja.2 + 30.0, caja.3 + 30.0);
+        let hoja = pixpin_motor2d::exportar::de_una_zona(&escena, caja, None).expect("hoja");
+        let sin_fotos = |_: u64| None;
+        let lienzo = crate::ventana_editor::exportar::Lienzo {
+            escena: &escena,
+            seleccion: gesto.seleccion.ids(),
+            papel: None,
+            fotos: &sin_fotos,
+            nombre: String::new(),
+        };
+        let img = crate::dibujo::tema::con_papel(Some(escena.fondo), || {
+            crate::ventana_editor::exportar::a_imagen(&hoja, 1.0, Some(escena.fondo), &lienzo)
+        })
+        .expect("el editor pinta");
+        let ruta = std::env::var_os("PIXPIN_PNG")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| std::env::temp_dir().join("pixpin-texto-pegado.png"));
+        pixpin_codec::guardar(&img, &ruta, pixpin_codec::FormatoImagen::Png).expect("png");
+        println!("PNG: {}", ruta.display());
     }
 }

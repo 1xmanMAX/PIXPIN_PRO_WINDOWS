@@ -22,6 +22,9 @@ use crate::imagen::{ErrorCodec, ImagenRgba};
 /// Las celdas de una tabla: `HTML Format` y texto con tabuladores (J2).
 pub mod tabla;
 
+/// El texto plano de un HTML o un RTF, cuando no hay `CF_UNICODETEXT`.
+pub mod texto_plano;
+
 /// Formato de portapapeles para un mapa de bits independiente del dispositivo.
 const CF_DIB: u32 = 8;
 /// Texto Unicode.
@@ -251,7 +254,19 @@ pub fn leer() -> Option<ContenidoPortapapeles> {
     if let Some(imagen) = leer_dib() {
         return Some(ContenidoPortapapeles::Imagen(imagen));
     }
-    leer_texto().map(ContenidoPortapapeles::Texto)
+    // Sin texto plano, el de un HTML o un RTF (`texto_plano`): copiar con
+    // formato en un programa que no deja el plano tambien es texto.
+    leer_texto()
+        .or_else(texto_plano::leer_con_formato)
+        .map(ContenidoPortapapeles::Texto)
+}
+
+/// **El numero de cambios del portapapeles** (`GetClipboardSequenceNumber`):
+/// sube cada vez que alguien copia algo. Sirve para saber si lo del sistema
+/// es mas nuevo que algo copiado dentro de PixPin, sin abrir el portapapeles.
+pub fn secuencia() -> u32 {
+    // SAFETY: sin argumentos; solo lee un contador de la sesion.
+    unsafe { windows::Win32::System::DataExchange::GetClipboardSequenceNumber() }
 }
 
 /// Copia texto plano como `CF_UNICODETEXT`. La pareja de `copiar_imagen`

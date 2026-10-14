@@ -191,7 +191,10 @@ chat-copiar = Copy
 chat-fijar = Pin to top
 chat-soltar = Unpin from top
 chat-compartir = Share…
-chat-abrir-con = Open with another app
+chat-abrir-con = Open with…
+abrir-con = Open with…
+abrir-con-no-existe = Can’t find the file “{ $nombre }”: it may have been moved or deleted.
+abrir-con-fallo = Windows couldn’t show “Open with…” for this file.
 chat-aligerar = Make the PDF lighter
 chat-renombrar = Rename
 chat-renombrar-barra = Name:
@@ -546,9 +549,9 @@ visor-html-titulo = PixPin — page
 ## The Office pin: Office's preview as a pin (2026-10-10)
 office-titulo = Office preview
 office-abriendo = Opening with the Office preview…
-office-tarda = Office is taking a while (it has to start). You can wait, or open it in its app with the ↗ button on the bar.
-office-fallo = Office couldn't preview this file. Open it in its app with the ↗ button on the bar.
-office-internet = This file comes from the internet and, for safety, Windows doesn't allow previewing it. Open it in its app with the ↗ button on the bar, or unblock it in its Properties.
+office-tarda = Office is taking a while (it has to start). You can wait, or choose an app with “Open with…” (the ↗ button on the bar).
+office-fallo = Office couldn't preview this file. Open it in another app with “Open with…” (the ↗ button on the bar).
+office-internet = This file comes from the internet and, for safety, Windows doesn't allow previewing it. Open it in another app with “Open with…” (the ↗ button on the bar), or unblock it in its Properties.
 visor-titulo = PixPin viewer
 visor-marcador = Bookmark here
 visor-ajustes = Reading settings
@@ -1314,6 +1317,7 @@ lienzo-cota-angulo = Angle
 
 ## Canvas: image (zone, magnifier, pixelate, share and reference; Sep 26)
 lienzo-referencia-menu = Reference image…
+lienzo-pegar-menu = Paste
 lienzo-pista-compartir = Share… (Ctrl+Shift+S)
 lienzo-pista-lupa = Magnifier (Q): on the canvas, tap a closed shape to show what lies beneath, enlarged; on screen, zooms under the cursor
 lienzo-pista-mosaico = Pixelate (mosaic): drag over what you want to hide

@@ -11,7 +11,7 @@
 //! app»): al cerrar el pin, el servidor de Office se va.
 //!
 //! La ventana es la de los lectores como pin (`lector_pin`): del tamano de
-//! un pin, siempre encima, la barra fuera con el asa, el nombre, pantalla
+//! un pin (nace sin fijar; su pin lo deja encima), la barra fuera con el asa, el nombre, pantalla
 //! completa (F11, y Esc para volver), el pin y cerrar; se estira por los
 //! bordes. Es una ventana «llana» (sin `WS_EX_NOREDIRECTIONBITMAP`): la
 //! vista de Office es una ventana de Windows metida dentro, y bajo una
@@ -23,13 +23,14 @@
 //! Explorador y otro espacio lo cierra.
 //!
 //! En la barra, segun lo que sea:
-//! - **Abrir con su programa** (siempre): Word, Excel... y el pin se cierra.
+//! - **Abrir con…** (siempre, el ↗): el cuadro de Windows con las apps que
+//!   abren el formato (Word, Excel, LibreOffice...); elegida, el pin se cierra.
 //! - **Presentar** (`.ppt`, `.pps`, `.odp`): el modo de presentar de siempre.
-//! - El nombre: «Abrir con…» (elegir otro programa).
+//! - El nombre: lo mismo, «Abrir con…».
 //!
 //! Lo que viene de internet no se previsualiza (lo decide Windows en el
 //! Explorador por seguridad, y aqui se respeta): sale el pin con el aviso y
-//! «abrir con su programa».
+//! «Abrir con…».
 //!
 //! Este modulo no lleva `unsafe`: lo de Windows esta en `pixpin-shell`.
 
@@ -110,7 +111,7 @@ pub fn lanzar(idioma: pixpin_store::Idioma, ubicacion: Ubicacion, ruta: &Path) {
 }
 
 /// Los botones propios de la barra.
-const ABRIR_CON_SU_PROGRAMA: u8 = 0;
+const ABRIR_CON: u8 = 0;
 const PRESENTAR: u8 = 2;
 
 fn botones(nombre: &str) -> Vec<BotonLector> {
@@ -118,7 +119,7 @@ fn botones(nombre: &str) -> Vec<BotonLector> {
     if crate::diapositivas::es_presentacion(nombre) {
         v.push(BotonLector { id: PRESENTAR, icono: &material::PLAY_ARROW, encendido: false });
     }
-    v.push(BotonLector { id: ABRIR_CON_SU_PROGRAMA, icono: &material::OPEN_IN_NEW, encendido: false });
+    v.push(BotonLector { id: ABRIR_CON, icono: &material::OPEN_IN_NEW, encendido: false });
     v
 }
 
@@ -152,8 +153,9 @@ fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion, ruta: &P
     let mut pin = PinLector::nuevo(area_pin, e).con_extension(&pixpin_docs::extension(&nombre_fichero)).sin_oscuro();
     let mut area = pin.area;
     let mut ventana = VentanaOverlay::nueva_llana(area, &format!("{nombre} — {}", textos.t("office-titulo"))).context("no se pudo abrir la ventana del pin de Office")?;
-    // Como un pin: siempre encima, y SIN quitarle el foco a nadie.
-    ventana.poner_siempre_encima(true);
+    // Como un pin pero sin fijar (lo fija su pin): al frente, una ventana
+    // mas, y SIN quitarle el foco a nadie.
+    pin.al_nacer(&ventana);
     ventana.mostrar();
     let motor = recursos.motor();
     pin.crear_barra(&motor, &recursos.d3d(), &ventana);
@@ -189,20 +191,20 @@ fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion, ruta: &P
             if pin.es_de_la_barra(hwnd) {
                 let (accion, _) = pin.evento_barra(&evento, &mut ventana);
                 match accion {
-                    Some(AccionPin::Propio(ABRIR_CON_SU_PROGRAMA)) => {
-                        despues = Some(ABRIR_CON_SU_PROGRAMA);
-                        vivo = false;
+                    // «Abrir con…» (el ↗ y el nombre): el cuadro de Windows
+                    // sobre el pin. Elegida la app, el pin se cierra (y
+                    // Office suelta el fichero mientras la otra arranca);
+                    // cerrado el cuadro sin elegir, el pin sigue.
+                    Some(AccionPin::Propio(ABRIR_CON)) | Some(AccionPin::Nombre) => {
+                        if crate::abrir_con::abrir_con_o_avisar(ventana.handle(), ruta, textos) {
+                            vivo = false;
+                        }
                     }
                     Some(AccionPin::Propio(PRESENTAR)) => {
                         despues = Some(PRESENTAR);
                         vivo = false;
                     }
                     Some(AccionPin::Propio(_)) => {}
-                    Some(AccionPin::Nombre) => match pixpin_shell::abrir_con_otra::abrir_con_otra(ventana.handle(), ruta) {
-                        Ok(true) => vivo = false,
-                        Ok(false) => {}
-                        Err(e) => tracing::warn!(?e, "pin de Office: «Abrir con…» no se pudo"),
-                    },
                     Some(AccionPin::PantallaCompleta) => pin.alternar_pantalla_completa(&mut ventana),
                     Some(AccionPin::Fijar) => pin.alternar_fijado(&ventana),
                     Some(AccionPin::Cerrar) => vivo = false,
@@ -276,11 +278,6 @@ fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion, ruta: &P
         std::mem::forget(ventana);
     }
     match despues {
-        Some(ABRIR_CON_SU_PROGRAMA) => {
-            if let Err(e) = pixpin_shell::abrir(ruta) {
-                tracing::warn!(?e, "pin de Office: no se pudo abrir con su programa");
-            }
-        }
         Some(PRESENTAR) => crate::diapositivas::lanzar(idioma, ubicacion.clone(), ruta),
         _ => {}
     }
@@ -339,10 +336,10 @@ mod pruebas {
     #[test]
     fn la_barra_lleva_lo_que_toca_a_cada_uno() {
         let ids = |n: &str| botones(n).iter().map(|b| b.id).collect::<Vec<_>>();
-        assert_eq!(ids("Clase.ppt"), vec![PRESENTAR, ABRIR_CON_SU_PROGRAMA]);
-        assert_eq!(ids("Clase.odp"), vec![PRESENTAR, ABRIR_CON_SU_PROGRAMA]);
+        assert_eq!(ids("Clase.ppt"), vec![PRESENTAR, ABRIR_CON]);
+        assert_eq!(ids("Clase.odp"), vec![PRESENTAR, ABRIR_CON]);
         // Caso negativo: un Excel o un Word no se presentan.
-        assert_eq!(ids("Gastos.xls"), vec![ABRIR_CON_SU_PROGRAMA]);
-        assert_eq!(ids("Carta.doc"), vec![ABRIR_CON_SU_PROGRAMA]);
+        assert_eq!(ids("Gastos.xls"), vec![ABRIR_CON]);
+        assert_eq!(ids("Carta.doc"), vec![ABRIR_CON]);
     }
 }

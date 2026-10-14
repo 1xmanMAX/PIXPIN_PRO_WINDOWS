@@ -163,8 +163,8 @@ fn editar_solo_en_las_hojas_del_chat() {
     assert!(!pide_editar(VK_E, false, true));
     assert!(!pide_editar(0x41, false, false));
     let ids = |b: Vec<BotonLector>| b.iter().map(|x| x.id).collect::<Vec<_>>();
-    assert_eq!(ids(botones_de_ver(true, true)), [BOTON_EDITAR, BOTON_SU_PROGRAMA], "sin Copiar: Ctrl+C copia");
-    assert_eq!(ids(botones_de_ver(false, true)), [BOTON_SU_PROGRAMA]);
+    assert_eq!(ids(botones_de_ver(true, true)), [BOTON_EDITAR, BOTON_ABRIR_CON], "sin Copiar: Ctrl+C copia");
+    assert_eq!(ids(botones_de_ver(false, true)), [BOTON_ABRIR_CON]);
     assert_eq!(ids(botones_de_ver(true, false)), [BOTON_EDITAR]);
     assert!(botones_de_ver(false, false).is_empty());
 }

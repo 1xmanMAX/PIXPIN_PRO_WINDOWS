@@ -57,7 +57,7 @@ pub fn leer_tabla_con_estilos() -> Option<(Option<String>, Option<String>, Optio
 }
 
 /// Los bytes de `HTML Format`, con el portapapeles ya abierto.
-fn leer_html() -> Option<Vec<u8>> {
+pub(super) fn leer_html() -> Option<Vec<u8>> {
     let formato = formato_html();
     if formato == 0 {
         return None;

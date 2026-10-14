@@ -2185,6 +2185,72 @@ fn anadir_a_lapiz(
 }
 
 impl Gesto {
+    /// **Pega un texto del portapapeles** (`texto_pegado`).
+    ///
+    /// - Escribiendo un texto: entra en ESE texto, donde esta el cursor, como
+    ///   si se hubiera tecleado (no nace otro).
+    /// - Si no: nace un texto nuevo con la letra, el tamano, el color y la
+    ///   alineacion «actuales» del panel (los mismos con que nace el de la
+    ///   herramienta Texto), centrado en `centro`, partido en renglones que
+    ///   no pasen de `ancho_maximo`, elegido y en UN paso de deshacer.
+    ///
+    /// Devuelve el id del texto, o `None` si no habia nada que pegar.
+    pub fn pegar_texto(
+        &mut self,
+        escena: &mut Escena,
+        crudo: &str,
+        centro: Punto2,
+        ancho_maximo: f32,
+    ) -> Option<u64> {
+        if let Some((id, edicion)) = self.escribiendo.as_mut() {
+            // Dentro de un texto no se recorta: el espacio de delante de lo
+            // pegado lo puso el usuario.
+            let texto = crate::texto_pegado::preparar_para_insertar(crudo)?;
+            edicion.insertar_texto(&texto);
+            let id = *id;
+            let ahora = edicion.texto().to_string();
+            Self::volcar_texto(escena, id, &ahora);
+            return Some(id);
+        }
+        let texto = crate::texto_pegado::preparar(crudo)?;
+        // Nace como lo haria con la herramienta Texto en la mano, tenga la
+        // que tenga: el mismo `nuevo_elemento`, nada copiado.
+        let antes = std::mem::replace(&mut self.herramienta, Herramienta::Texto);
+        let mut e = self.nuevo_elemento(centro);
+        self.herramienta = antes;
+        let tam = self.estilo.tamano_letra;
+        let familia = self
+            .estilo
+            .familia
+            .map_or(crate::texto::FAMILIA_POR_DEFECTO, |n| {
+                crate::texto::nombre_de_familia(Some(n))
+            })
+            .to_string();
+        let estilo = crate::texto::EstiloDeTexto {
+            negrita: e.extras.negrita,
+            cursiva: e.extras.cursiva,
+            tachado: false,
+        };
+        let mide = |r: &str| crate::texto::ancho_real(r, tam, &familia, estilo);
+        let texto = crate::texto_pegado::ajustar(&texto, ancho_maximo, &mide);
+        let (ancho, alto) = crate::texto::medida(&texto, tam, &familia, estilo);
+        e.figura = Figura::Texto {
+            texto,
+            tam,
+            familia,
+        };
+        e.ancho = ancho;
+        e.alto = alto;
+        // Centrado donde se pega (`x - width / 2` de Excalidraw).
+        e.x = centro.x - ancho / 2.0;
+        e.y = centro.y - alto / 2.0;
+        escena.abrir_paso();
+        let id = escena.anadir(e);
+        escena.cerrar_paso();
+        self.seleccion.poner(id);
+        Some(id)
+    }
+
     /// Mete una letra en el texto que se esta escribiendo. Devuelve si algo
     /// cambio, para que la ventana sepa si repintar.
     pub fn escribir(&mut self, c: char, escena: &mut Escena) -> bool {

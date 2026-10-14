@@ -367,6 +367,9 @@ pub enum Pegado {
     Elementos,
     /// Pegar una imagen que viene del portapapeles del sistema.
     Imagen(ImagenRgba),
+    /// Pegar un texto del portapapeles del sistema como un texto del lienzo
+    /// (`Gesto::pegar_texto`).
+    Texto(String),
     Nada,
 }
 
@@ -378,8 +381,10 @@ pub enum Pegado {
 /// primero convertiria «copio esta flecha y la pego» en «aparece una captura
 /// de antes», que es lo que el usuario no ha pedido.
 ///
-/// Del sistema solo se acepta una imagen: texto y rutas los pega la bandeja
-/// como pines, que es otra cosa.
+/// Del sistema, una imagen (o el fichero de una imagen) y, si no, un texto,
+/// que nace como un texto del lienzo (pedido del 13-oct-2026: «texto
+/// copiado, pegarlo en el canvas»). Las rutas que no son imagenes no pegan
+/// nada: las pega la bandeja como pines, que es otra cosa.
 pub fn decidir_pegado(
     hay_elementos_copiados: bool,
     del_sistema: Option<pixpin_codec::ContenidoPortapapeles>,
@@ -397,6 +402,9 @@ pub fn decidir_pegado(
             Some(img) => Pegado::Imagen(img),
             None => Pegado::Nada,
         },
+        Some(pixpin_codec::ContenidoPortapapeles::Texto(t)) if !t.trim().is_empty() => {
+            Pegado::Texto(t)
+        }
         _ => Pegado::Nada,
     }
 }
@@ -695,7 +703,7 @@ mod pruebas {
     fn pegar_sin_imagen_en_el_portapapeles_no_crea_nada() {
         assert_eq!(decidir_pegado(false, None), Pegado::Nada);
         assert_eq!(
-            decidir_pegado(false, Some(ContenidoPortapapeles::Texto("hola".into()))),
+            decidir_pegado(false, Some(ContenidoPortapapeles::Texto(" \r\n\t".into()))),
             Pegado::Nada
         );
         assert_eq!(
@@ -719,6 +727,16 @@ mod pruebas {
             decidir_pegado(false, Some(ContenidoPortapapeles::Imagen(imagen(2, 2)))),
             Pegado::Imagen(_)
         ));
+        // Un texto, sin nada copiado dentro, es un texto del lienzo; con
+        // algo copiado dentro, manda lo de dentro.
+        assert_eq!(
+            decidir_pegado(false, Some(ContenidoPortapapeles::Texto("hola".into()))),
+            Pegado::Texto("hola".into())
+        );
+        assert_eq!(
+            decidir_pegado(true, Some(ContenidoPortapapeles::Texto("hola".into()))),
+            Pegado::Elementos
+        );
     }
 
     #[test]

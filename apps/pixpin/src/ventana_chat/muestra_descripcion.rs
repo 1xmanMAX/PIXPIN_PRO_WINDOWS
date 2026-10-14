@@ -124,7 +124,8 @@ fn muestra_de_la_foto_con_descripcion() {
             elegida: Some(0),
             ahora,
             textos: &textos,
-            busqueda: "",
+            busqueda: &crate::caja_texto::CajaLinea::nueva(),
+            buscando: false,
             marcados: &marcados,
         };
         motor
