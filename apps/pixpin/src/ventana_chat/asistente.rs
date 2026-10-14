@@ -47,7 +47,7 @@ const GUARDAR_CADA: Duration = Duration::from_secs(2);
 /// Lo que se ve en la burbuja de la respuesta desde el primer instante,
 /// antes de que llegue nada del modelo (regla del usuario: algo visible en
 /// menos de medio segundo).
-pub(super) const ESTADO_INICIAL: &str = "💭 Pensando…";
+pub(super) use crate::asistente::rapido::ESTADO_INICIAL;
 
 /// Un turno en marcha y su burbuja.
 struct Sesion {
@@ -177,27 +177,6 @@ pub(super) fn espera() -> Option<u32> {
 }
 
 
-/// Si el mensaje es una orden simple que el camino rapido hace sin modelo
-/// (`pixpin_ia::rapido`).
-fn es_orden_rapida(pregunta: &str) -> bool {
-    let ahora = pixpin_ia::fechas::Momento::de_ms_locales(pixpin_shell::entorno::ahora_local_ms());
-    pixpin_ia::rapido::interpretar(pregunta, ahora).is_some()
-}
-
-/// El «motor» cuando no hay ninguno (sin bajar, sin clave): el camino
-/// rapido no lo necesita, y si hiciera falta, dice por que no hay.
-struct SinMotor(String);
-
-impl Motor for SinMotor {
-    fn completar(
-        &self,
-        _: &pixpin_ia::motor::Peticion,
-        _: &mut dyn FnMut(&pixpin_ia::motor::Trozo) -> pixpin_ia::motor::Seguir,
-    ) -> Result<pixpin_ia::motor::Respuesta, pixpin_ia::ErrorIa> {
-        Err(pixpin_ia::ErrorIa::Nube(self.0.clone()))
-    }
-}
-
 /// Cada cuanto, como mucho, se vuelve a precargar por escribir `@asistente`
 /// en el mismo chat (menos que el reposo de 5 min del motor: si se sigue
 /// escribiendo, sigue cargado).
@@ -270,11 +249,11 @@ pub(super) fn al_enviar(ubicacion: &Ubicacion, a: &mut Abierto, textos: &Catalog
         return Some(textos.t("asistente-ocupado"));
     }
     let con_foto = ia_chat::foto_reciente(&a.mensajes).is_some();
-    let motor = match motor_de_los_ajustes(ubicacion, textos, &pregunta, con_foto) {
+    // Sin modelo (o sin clave) las ordenes simples igual se hacen: van por
+    // el camino rapido (`asistente::rapido`, el mismo que Flow Launcher y las
+    // automatizaciones). Lo demas dira el aviso.
+    let motor = match crate::asistente::rapido::motor_o_sin(motor_de_los_ajustes(ubicacion, textos, &pregunta, con_foto), &pregunta) {
         Ok(m) => m,
-        // Sin modelo (o sin clave) las ordenes simples igual se hacen: van
-        // por el camino rapido y no lo necesitan. Lo demas dira el aviso.
-        Err(aviso) if es_orden_rapida(&pregunta) => Arc::new(SinMotor(aviso)),
         Err(aviso) => return Some(aviso),
     };
     // Pensar y la ventana: el local segun su modelo; la nube piensa por su

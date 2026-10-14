@@ -156,7 +156,7 @@ pub fn hacer(
     // 2. La burbuja de la respuesta.
     let numero = crate::ventana_chat::siguiente_numero_en(&raiz, &asistente).map_err(|x| x.to_string())?;
     let mut vivo0 = EnVivo::default();
-    vivo0.estado = Some("💭 …".into());
+    vivo0.estado = Some(crate::asistente::rapido::ESTADO_INICIAL.into());
     let nota = crate::ventana_chat::escribir_nota(
         &raiz,
         &asistente,
@@ -195,7 +195,13 @@ pub fn hacer(
     let mut guardado = Instant::now();
     let resultado: Result<Final, String> = {
         let _com = pixpin_shell::ComDelHilo::iniciar();
-        agente::turno(motor.as_ref(), &mut historial, &herramientas, &mut ejecutor, &mut |ev: Evento| {
+        // El camino rapido, el mismo que el chat (`asistente::rapido`): una
+        // orden simple se hace en milisegundos sin tocar el modelo.
+        let opciones = agente::Opciones {
+            rapido: Some(crate::asistente::rapido::ahora()),
+            ..Default::default()
+        };
+        agente::turno_con(motor.as_ref(), &mut historial, &herramientas, &mut ejecutor, &opciones, &mut |ev: Evento| {
             let mut vivo = vivo.lock().unwrap_or_else(|x| x.into_inner());
             vivo.aplicar(&ev);
             if guardado.elapsed() >= GUARDAR_CADA {
@@ -413,13 +419,15 @@ pub struct DeLaApp {
 pub fn lanzar(app: DeLaApp, e: Encargo) {
     let aviso = crate::ventana_chat::sin_ventana::avisar(crate::ventana_chat::sin_ventana::Aviso {
         titulo: titulo_de(&e),
-        texto: "💭 …".into(),
+        texto: crate::asistente::rapido::ESTADO_INICIAL.into(),
         abrir: None,
         acabado: false,
     });
     let lanzado = std::thread::Builder::new().name("asistente-encargo".into()).spawn(move || {
         let textos = pixpin_store::Catalogo::nuevo(app.idioma);
-        let r = crate::ventana_chat::sin_ventana::motor(&app.entorno.ubicacion, &textos).and_then(|motor| {
+        // Sin modelo, una orden rapida se hace igual (como en el chat).
+        let motor = crate::ventana_chat::sin_ventana::motor(&app.entorno.ubicacion, &textos);
+        let r = crate::asistente::rapido::motor_o_sin(motor, &e.texto).and_then(|motor| {
             hacer(
                 &app.entorno,
                 motor,

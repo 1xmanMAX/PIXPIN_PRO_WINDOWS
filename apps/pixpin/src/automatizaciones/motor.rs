@@ -307,7 +307,11 @@ impl Hacedor for DeVerdad {
 
     fn asistente(&mut self, pedido: &str, proyecto: Option<&str>, imagenes: &[PathBuf], bloquear: Tipo) -> Result<String, String> {
         let textos = pixpin_store::Catalogo::nuevo(self.app.idioma);
-        let motor = crate::ventana_chat::sin_ventana::motor(&self.app.entorno.ubicacion, &textos)?;
+        // Sin modelo, una orden rapida se hace igual (`asistente::rapido`).
+        let motor = crate::asistente::rapido::motor_o_sin(
+            crate::ventana_chat::sin_ventana::motor(&self.app.entorno.ubicacion, &textos),
+            pedido,
+        )?;
         let r = encargo::hacer(
             &self.app.entorno,
             motor,

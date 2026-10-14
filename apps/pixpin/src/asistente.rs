@@ -46,6 +46,7 @@ pub mod ocr;
 pub mod permiso;
 pub mod recetas;
 pub mod pensado;
+pub mod rapido;
 pub mod turno;
 
 #[cfg(test)]

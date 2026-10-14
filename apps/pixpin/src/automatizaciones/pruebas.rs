@@ -666,3 +666,48 @@ fn el_encargo_sin_ventana_pregunta_en_su_burbuja() {
         let _ = std::fs::remove_dir_all(&raiz);
     }
 }
+
+/// **El pedido `asistente` (Flow, automatizaciones) va por el camino
+/// rapido, como el chat**: «¿que tengo pendiente?» se contesta sin tocar el
+/// motor y al momento; algo que no es simple si va al modelo.
+#[test]
+fn el_encargo_con_una_orden_rapida_no_toca_el_modelo() {
+    let raiz = raiz_de_prueba("encargo-rapido");
+    crate::tareas::apuntar(&raiz, "PC01", "comprar pan").unwrap();
+    let ent = encargo::Entorno {
+        ubicacion: pixpin_store::Ubicacion::Instalado { raiz: raiz.clone() },
+        aparato: "PC01".into(),
+    };
+    let pedir = |texto: &str, motor: Arc<MotorGuionado>| {
+        let t0 = std::time::Instant::now();
+        let r = encargo::hacer(
+            &ent,
+            motor,
+            &encargo::Encargo {
+                texto: texto.into(),
+                ..Default::default()
+            },
+            encargo::Permiso::Fijo(Box::new(|_| false)),
+            Box::new(|_| 1),
+        )
+        .unwrap();
+        (r, t0.elapsed())
+    };
+    // Sin guion: si se le pidiera algo al motor, fallaria.
+    let vacio = Arc::new(MotorGuionado::nuevo(vec![]));
+    let (r, t) = pedir("¿Qué tengo pendiente?", vacio.clone());
+    println!("encargo rapido: {t:?}");
+    assert!(r.bien && r.texto.contains("comprar pan"), "{}", r.texto);
+    assert!(vacio.recibido.lock().unwrap().is_empty(), "no se toca el modelo");
+    assert!(t < std::time::Duration::from_millis(500), "{t:?}");
+    // Y sin ningun motor (sin bajar, sin clave) la orden rapida se hace igual.
+    let sin = crate::asistente::rapido::motor_o_sin(Err("falta el modelo".into()), "¿Qué tengo pendiente?");
+    assert!(sin.is_ok());
+    assert!(crate::asistente::rapido::motor_o_sin(Err("falta el modelo".into()), "dibuja una casa").is_err());
+    // Negativo: lo que no es simple si va al modelo.
+    let motor = Arc::new(MotorGuionado::nuevo(vec![Respuesta::de_texto("Una casa con tejado.")]));
+    let (r, _) = pedir("Describe una casa bonita", motor.clone());
+    assert_eq!(motor.recibido.lock().unwrap().len(), 1);
+    assert!(r.texto.contains("Una casa"), "{}", r.texto);
+    let _ = std::fs::remove_dir_all(&raiz);
+}

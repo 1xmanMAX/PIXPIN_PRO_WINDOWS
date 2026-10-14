@@ -247,9 +247,7 @@ impl Turno {
                     // contestar (medido, 13-oct).
                     buscar: (con_memoria && (memoria.reiniciado || memoria.hoja.reinicios > 0)).then_some(&buscar as &dyn Fn(&str) -> String),
                     ampliar: memoria.ampliar.then_some(&todas[..]),
-                    rapido: memoria.rapido.then(|| {
-                        pixpin_ia::fechas::Momento::de_ms_locales(pixpin_shell::entorno::ahora_local_ms())
-                    }),
+                    rapido: memoria.rapido.then(super::rapido::ahora),
                 };
                 let mut recogido = Recogido::default();
                 let resultado = agente::turno_con(
