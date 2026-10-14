@@ -121,7 +121,7 @@ pub(super) fn espera() -> Option<u32> {
 
 /// El motor elegido en Ajustes → Asistente: el local (si esta bajado) o la
 /// nube con su clave, con el local de respaldo si se quiere y esta bajado.
-fn motor_de_los_ajustes(ubicacion: &Ubicacion, textos: &Catalogo) -> Result<Arc<dyn Motor>, String> {
+pub(super) fn motor_de_los_ajustes(ubicacion: &Ubicacion, textos: &Catalogo) -> Result<Arc<dyn Motor>, String> {
     let aj = pixpin_store::cargar(ubicacion).unwrap_or_default();
     let modelo = ia_motor::modelo_elegido(Some(aj.asistente.modelo.as_str()).filter(|m| !m.is_empty()));
     let local = || ia_motor::raiz().and_then(|raiz| ia_motor::del_proceso(&raiz, &modelo).ok());
@@ -386,7 +386,7 @@ pub(super) fn latido(ubicacion: &Ubicacion, mut abierto: Option<&mut Abierto>) -
 /// mismo) y el mismo texto como `.txt` adjunto (se guarda o se envia como
 /// cualquier fichero). Un PDF con capa de texto no se puede escribir con lo
 /// que hay en el repo (ver `asistente::ocr`).
-fn dejar_texto_leido(
+pub(super) fn dejar_texto_leido(
     raiz: &std::path::Path,
     mut abierto: Option<&mut Abierto>,
     proyecto: &str,

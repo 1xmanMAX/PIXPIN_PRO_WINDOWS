@@ -2492,3 +2492,19 @@ ajustes2-clave-borrar = Borrar
 ajustes2-clave-guardada = Guardada y cifrada en este PC:
 ajustes2-clave-falta = Sin clave. Sácala en
 ajustes2-clave-probando = probando…
+
+## Automatizaciones del asistente (13-oct)
+automatizacion-creada = Automatización «{ $nombre }» creada.
+automatizacion-activada = Automatización «{ $nombre }» encendida.
+automatizacion-desactivada = Automatización «{ $nombre }» apagada.
+automatizacion-borrada = Automatización «{ $nombre }» borrada.
+automatizacion-en-marcha = Corriendo «{ $nombre }»…
+automatizacion-no-esta = No hay ninguna automatización «{ $id }».
+automatizacion-rota = No se pudo guardar la automatización: { $motivo }
+ajustes2-g-automatizaciones = Automatizaciones
+ajustes2-automatizaciones-vacio = Ninguna todavía
+ajustes2-ayuda-automatizaciones-vacio = Pídeselas al asistente: «cada vez que capture, ponlo en el chat de la obra», «cada día a las 8, resumen de tareas pendientes».
+ajustes2-automatizacion-correr = Correr ahora
+ajustes2-automatizacion-otro-aparato = corre en { $aparato }
+ajustes2-automatizacion-rota = No se entiende: { $motivo }
+ajustes2-automatizacion-borrar = ¿Borro la automatización «{ $nombre }»? No se puede deshacer.

@@ -2491,3 +2491,19 @@ ajustes2-clave-borrar = Delete
 ajustes2-clave-guardada = Saved and encrypted on this PC:
 ajustes2-clave-falta = No key. Get one at
 ajustes2-clave-probando = testing…
+
+## Assistant automations (Oct 13)
+automatizacion-creada = Automation “{ $nombre }” created.
+automatizacion-activada = Automation “{ $nombre }” turned on.
+automatizacion-desactivada = Automation “{ $nombre }” turned off.
+automatizacion-borrada = Automation “{ $nombre }” deleted.
+automatizacion-en-marcha = Running “{ $nombre }”…
+automatizacion-no-esta = There is no automation “{ $id }”.
+automatizacion-rota = The automation could not be saved: { $motivo }
+ajustes2-g-automatizaciones = Automations
+ajustes2-automatizaciones-vacio = None yet
+ajustes2-ayuda-automatizaciones-vacio = Ask the assistant: “every time I capture, put it in the site chat”, “every day at 8, summary of pending tasks”.
+ajustes2-automatizacion-correr = Run now
+ajustes2-automatizacion-otro-aparato = runs on { $aparato }
+ajustes2-automatizacion-rota = Not understood: { $motivo }
+ajustes2-automatizacion-borrar = Delete the automation “{ $nombre }”? This cannot be undone.

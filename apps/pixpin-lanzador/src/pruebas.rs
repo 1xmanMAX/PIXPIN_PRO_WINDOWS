@@ -274,6 +274,7 @@ fn vacio_da_las_funciones_y_los_proyectos_recientes() {
             "Galería de capturas",
             "Última captura",
             "Sincronizar",
+            "Asistente",
             "Abrir PixPin",
             "Gestión de proyectos",
             "Thesis",
@@ -293,15 +294,15 @@ fn vacio_da_las_funciones_y_los_proyectos_recientes() {
     );
     // Un proyecto ya no abre la app: entra en su chat.
     assert_eq!(
-        v[14].accion,
+        v[15].accion,
         Accion::Consulta("pp Gestión de proyectos > ".into())
     );
     assert_eq!(
-        v[14].autocompletar.as_deref(),
+        v[15].autocompletar.as_deref(),
         Some("pp Gestión de proyectos > ")
     );
     assert_eq!(
-        v[16].accion,
+        v[17].accion,
         Accion::Consulta("pp Mensajes guardados > ".into())
     );
 }
@@ -3107,4 +3108,103 @@ fn sincronizar_sale_en_la_lista_de_funciones() {
     assert_eq!(f.accion, Accion::Consulta("pp sincronizar ".into()));
     // «Enviar al móvil» ya no es una funcion aparte.
     assert!(v.iter().all(|x| x.titulo != "Enviar al móvil"));
+}
+
+// --- El asistente (`p ia`, 13-oct) -------------------------------------------
+
+#[test]
+fn ia_y_la_interrogacion_piden_al_asistente_con_su_proyecto() {
+    use crate::consulta::{Funcion, Modo, analizar};
+    for q in ["ia apunta pan", "? apunta pan", "asistente apunta pan", "AI apunta pan"] {
+        assert_eq!(
+            analizar(q),
+            Modo::Verbo {
+                funcion: Funcion::Asistente,
+                resto: "apunta pan".into(),
+                proyecto: None
+            },
+            "{q}"
+        );
+    }
+    let r = raiz("ia-pedir");
+    let v = buscar(&r, "ia apunta comprar yeso @thesis");
+    assert_eq!(v[0].titulo, "Pedir al asistente: apunta comprar yeso");
+    assert_eq!(v[0].glifo, crate::resultados::glifo::ASISTENTE);
+    let p = pedido_de(&v[0]);
+    assert_eq!(p["accion"], "asistente");
+    assert_eq!(p["texto"], "apunta comprar yeso");
+    assert_eq!(p["proyecto"], "P2");
+    assert!(v[0].subtitulo.contains("sobre el chat «Thesis»"), "{}", v[0].subtitulo);
+    // Sin `@`, sin proyecto; y la fila de abrir el chat «Asistente».
+    let v = buscar(&r, "? que tengo pendiente");
+    assert!(pedido_de(&v[0])["proyecto"].is_null());
+    assert_eq!(v[1].titulo, "Abrir el chat «Asistente»");
+    assert_eq!(pedido_de(&v[1]), &json!({"pixpin": 1, "accion": "asistente"}));
+    // Caso negativo: «iaas» o «ia» pegado a otra palabra es buscar.
+    assert!(matches!(analizar("iaas"), Modo::Buscar { .. }));
+    assert!(matches!(analizar("?x"), Modo::Buscar { .. }));
+}
+
+#[test]
+fn ia_sin_texto_ofrece_las_automatizaciones_para_correrlas() {
+    let r = raiz("ia-autos");
+    let v = buscar(&r, "ia");
+    assert_eq!(v[0].titulo, "Pídele algo al asistente…");
+    assert_eq!(v[0].accion, Accion::Consulta("pp ia ".into()));
+    assert_eq!(v.len(), 2, "sin automatizaciones, solo pedir y abrir el chat");
+    // La app las guarda en la carpeta del chat «Asistente».
+    let fichero = r.join("proyectos/P3").join(crate::asistente::FICHERO);
+    fs::create_dir_all(fichero.parent().unwrap()).unwrap();
+    fs::write(
+        &fichero,
+        json!({"version": 1, "automatizaciones": [
+            {"id": "a1", "nombre": "Resumen de pendientes", "activa": true,
+             "disparador": {"tipo": "a_la_hora", "hora": "08:00"}, "pasos": []},
+            {"id": "a2", "nombre": "Informe", "activa": false, "disparador": {"tipo": "a_mano"}, "pasos": []},
+            {"id": "", "nombre": "sin id", "disparador": {"tipo": "a_mano"}},
+            {"nombre": "rota"}
+        ]})
+        .to_string(),
+    )
+    .unwrap();
+    let v = buscar(&r, "?");
+    let t: Vec<&str> = v.iter().map(|x| x.titulo.as_str()).collect();
+    assert_eq!(
+        t,
+        [
+            "Pídele algo al asistente…",
+            "Abrir el chat «Asistente»",
+            "▶ Resumen de pendientes",
+            "▶ Informe"
+        ]
+    );
+    assert!(v[2].subtitulo.contains("cada día a las 08:00"), "{}", v[2].subtitulo);
+    assert!(v[3].subtitulo.contains("apagada"), "{}", v[3].subtitulo);
+    assert_eq!(
+        pedido_de(&v[2]),
+        &json!({"pixpin": 1, "accion": "asistente", "automatizacion": "a1"})
+    );
+    // Caso negativo: un fichero roto no rompe la lista.
+    fs::write(&fichero, "{roto").unwrap();
+    assert_eq!(buscar(&r, "ia").len(), 2);
+}
+
+#[test]
+fn ia_con_la_imagen_pegada_la_manda_con_el_pedido() {
+    let r = raiz_en_grupo("ia-imagen", None);
+    let img = pegar_una(&r);
+    let v = buscar_con(&r, "ia [img 01] que dice esto", imagenes::SIN_PORTAPAPELES);
+    let p = pedido_de(&v[0]);
+    assert_eq!(p["accion"], "asistente");
+    assert_eq!(p["imagenes"], json!([img.to_string_lossy()]));
+    // La ficha se queda en el texto: la quita la app (como en `chat`).
+    assert_eq!(p["texto"], "[img 01] que dice esto");
+    assert!(v[0].subtitulo.contains("📎 1 imagen"), "{}", v[0].subtitulo);
+    // Con la app cerrada y una imagen copiada, se ofrece pegarla arriba.
+    let v = buscar_con(&r, "ia que dice", CON_IMAGEN);
+    assert!(matches!(v[0].accion, Accion::PegarImagen { numero: 2, .. } | Accion::PegarImagen { numero: 1, .. }));
+    assert!(v[0].subtitulo.contains("asistente"), "{}", v[0].subtitulo);
+    // Caso negativo: con la app abierta pega ella; aqui no sale la fila.
+    let v = buscar_con(&r, "ia que dice", CON_LA_APP);
+    assert!(!matches!(v[0].accion, Accion::PegarImagen { .. }));
 }

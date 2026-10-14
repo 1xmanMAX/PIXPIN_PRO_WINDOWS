@@ -82,6 +82,9 @@ pub fn herramientas_para(
 
 /// **Hace una accion de la app**, preguntando antes si hace falta.
 pub fn hacer(a: &AccionApp, confirmar: &Confirmar, mandar: &Mandar) -> Result<String, String> {
+    // Una automatizacion mal hecha se le dice al modelo ya, para que la
+    // arregle, y no despues en un globo (el pedido solo contesta «aceptado»).
+    crate::automatizaciones::revisar_pedido(&a.pedido)?;
     if let Some(pregunta) = &a.confirmar
         && !confirmar(pregunta)
     {

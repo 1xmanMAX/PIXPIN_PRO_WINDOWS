@@ -191,6 +191,48 @@ pub enum Pedido {
     Sincronizar {
         aparato: String,
     },
+    /// **Un encargo al asistente sin abrir el chat** (`p ia <pedido>` de
+    /// Flow, 13-oct): lo hace con el motor de Ajustes, guarda la
+    /// conversacion en el chat «Asistente» y lo dice en el aviso flotante
+    /// con «Abrir». `proyecto`: el chat sobre el que se pide. `imagenes`:
+    /// como en `chat` (`[img NN]` en `texto`). Sin `texto` ni `imagenes`,
+    /// abre el chat «Asistente». Con `automatizacion` (su id), corre esa
+    /// automatizacion a mano y no mira lo demas.
+    Asistente {
+        #[serde(default)]
+        texto: String,
+        proyecto: Option<String>,
+        #[serde(default)]
+        imagenes: Vec<PathBuf>,
+        automatizacion: Option<String>,
+    },
+    /// Crear, encender, apagar, borrar o correr una automatizacion
+    /// (`crate::automatizaciones`). `receta` (al crear) es lo que arma la
+    /// fila `crear_automatizacion` del asistente; se guarda como texto JSON
+    /// para que el pedido siga siendo comparable.
+    Automatizacion {
+        operacion: Operacion,
+        id: Option<String>,
+        #[serde(default, deserialize_with = "como_texto_json")]
+        receta: Option<String>,
+    },
+}
+
+/// Lo que se hace con `automatizacion`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Operacion {
+    Crear,
+    Activar,
+    Desactivar,
+    Borrar,
+    Ejecutar,
+}
+
+/// Cualquier JSON, guardado como su texto.
+fn como_texto_json<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<String>, D::Error> {
+    let v = Option::<serde_json::Value>::deserialize(d)?;
+    Ok(v.filter(|v| !v.is_null()).map(|v| v.to_string()))
 }
 
 /// Que ventana abre `ventana`.
@@ -290,7 +332,7 @@ impl Fallo {
     /// Lo que va al registro: el globo dice que paso, el registro con que
     /// (que id, que ruta, que dijo el disco), que es lo que hace falta para
     /// arreglar el script que lo mando.
-    fn detalle(&self) -> String {
+    pub(crate) fn detalle(&self) -> String {
         match self {
             Fallo::Roto(e) => format!("pedido mal formado: {e}"),
             Fallo::SinProyecto(id) => format!("no hay proyecto «{id}»"),
@@ -818,8 +860,133 @@ fn hacer(p: Pedido, cx: &Contexto) -> Result<Hecho, Fallo> {
         Pedido::Sincronizar { aparato } => {
             crate::sincronizar::en_fondo::lanzar(cx.ubicacion, &aparato);
         }
+        // En su hilo: un turno tarda segundos (o minutos en el local). Lo
+        // que conteste sale en el aviso flotante del asistente.
+        Pedido::Asistente {
+            texto,
+            proyecto,
+            imagenes,
+            automatizacion,
+        } => {
+            if let Some(id) = automatizacion {
+                return automatizacion_pedida(cx, Operacion::Ejecutar, Some(id), None);
+            }
+            if texto.trim().is_empty() && imagenes.is_empty() {
+                let (id, _) = crate::automatizaciones::chat_del_asistente(raiz, cx.aparato, ahora)?;
+                ir_al_chat(id, None);
+                return Ok(Hecho::default());
+            }
+            let proyecto = match proyecto.as_deref() {
+                Some(p) => Some(ficha_de(raiz, Some(p), cx.aparato, ahora)?.id),
+                None => None,
+            };
+            if let Some(r) = imagenes.iter().find(|r| !r.is_file()) {
+                return Err(Fallo::SinImagen(r.clone()));
+            }
+            if let Some(r) = imagenes.iter().find(|r| !crate::tareas::es_imagen(r)) {
+                return Err(Fallo::NoEsImagen(r.clone()));
+            }
+            crate::automatizaciones::encargo::lanzar(
+                crate::automatizaciones::encargo::DeLaApp {
+                    entorno: crate::automatizaciones::encargo::Entorno {
+                        ubicacion: cx.ubicacion.clone(),
+                        aparato: cx.aparato.to_string(),
+                    },
+                    idioma: cx.idioma,
+                    opciones: cx.opciones,
+                },
+                crate::automatizaciones::encargo::Encargo {
+                    texto,
+                    proyecto,
+                    imagenes,
+                    origen: None,
+                    bloquear: None,
+                },
+            );
+        }
+        Pedido::Automatizacion {
+            operacion,
+            id,
+            receta,
+        } => return automatizacion_pedida(cx, operacion, id, receta),
     }
     Ok(Hecho::default())
+}
+
+/// **El pedido `automatizacion`**: lo que se hace con la lista del chat
+/// «Asistente» (`crate::automatizaciones`). Borrar no pregunta: quien lo
+/// manda ya pregunto (como `borrar_lista`); crear llega del asistente, que
+/// pregunto antes de mandarlo.
+fn automatizacion_pedida(
+    cx: &Contexto,
+    operacion: Operacion,
+    id: Option<String>,
+    receta: Option<String>,
+) -> Result<Hecho, Fallo> {
+    use crate::automatizaciones as au;
+    let raiz = cx.ubicacion.raiz();
+    let ahora = pixpin_shell::entorno::ahora_utc_ms();
+    let t = cx.textos;
+    let aviso = |clave: &str, pares: &[(&str, String)]| {
+        let mut args = fluent_bundle::FluentArgs::new();
+        for (k, v) in pares {
+            args.set(*k, v.clone());
+        }
+        Hecho {
+            aviso: Some(t.t_args(clave, &args)),
+            ficheros: Vec::new(),
+        }
+    };
+    let roto = |motivo: String| aviso("automatizacion-rota", &[("motivo", motivo)]);
+    if operacion == Operacion::Crear {
+        let receta: serde_json::Value = match receta.as_deref().map(serde_json::from_str) {
+            Some(Ok(v)) => v,
+            _ => return Ok(roto("falta la receta".into())),
+        };
+        let r = au::cambiar(raiz, cx.aparato, ahora, |lista| {
+            let a = au::de_receta(&receta, au::id_nuevo(ahora), cx.aparato, ahora)?;
+            let nombre = a.nombre.clone();
+            lista.anadir(a)?;
+            Ok(nombre)
+        });
+        return Ok(match r {
+            Ok(nombre) => aviso("automatizacion-creada", &[("nombre", nombre)]),
+            Err(m) => roto(m),
+        });
+    }
+    let Some(id) = id.filter(|i| !i.trim().is_empty()) else {
+        return Err(Fallo::Roto("falta el id de la automatizacion".into()));
+    };
+    let nombre_de = |l: &au::Lista| l.buscar(&id).map(|a| a.nombre.clone());
+    let no_esta = || aviso("automatizacion-no-esta", &[("id", id.clone())]);
+    let r = match operacion {
+        Operacion::Activar | Operacion::Desactivar => au::cambiar(raiz, cx.aparato, ahora, |l| {
+            let n = nombre_de(l);
+            l.activar(&id, operacion == Operacion::Activar, ahora);
+            Ok(n)
+        }),
+        Operacion::Borrar => au::cambiar(raiz, cx.aparato, ahora, |l| {
+            let n = nombre_de(l).or_else(|| l.borrar(&id).then(|| id.clone()));
+            l.borrar(&id);
+            Ok(n)
+        }),
+        Operacion::Ejecutar => au::leer(raiz, cx.aparato).map(|l| nombre_de(&l)),
+        Operacion::Crear => unreachable!("crear se hace arriba"),
+    };
+    let nombre = match r {
+        Ok(Some(n)) => n,
+        Ok(None) => return Ok(no_esta()),
+        Err(m) => return Ok(roto(m)),
+    };
+    Ok(match operacion {
+        Operacion::Activar => aviso("automatizacion-activada", &[("nombre", nombre)]),
+        Operacion::Desactivar => aviso("automatizacion-desactivada", &[("nombre", nombre)]),
+        Operacion::Borrar => aviso("automatizacion-borrada", &[("nombre", nombre)]),
+        _ => {
+            au::motor::a_mano(&id);
+            aviso("automatizacion-en-marcha", &[("nombre", nombre)])
+        }
+    })
 }
 
 /// Lo que espera el lanzador antes de que salga la captura: su propia
@@ -1032,7 +1199,7 @@ fn escribir_en_el_chat(
 /// nada se comprueba que esten todas. Con `archivos` (pegados como
 /// `[archivo NN]`), cada fichero va detras de las fotos como un adjunto con
 /// su nombre, igual que al soltarlo en el chat (`meter_en_proyecto`).
-fn chat_con_imagenes(
+pub(crate) fn chat_con_imagenes(
     raiz: &Path,
     proyecto: &str,
     aparato: &str,
@@ -1451,7 +1618,15 @@ mod pruebas {
 
     /// Un ejemplo de cada accion, con lo minimo que pide la tabla del
     /// protocolo.
-    const EJEMPLOS: [(&str, &str); 26] = [
+    const EJEMPLOS: [(&str, &str); 28] = [
+        (
+            "asistente",
+            r#"{"pixpin":1,"accion":"asistente","texto":"apunta comprar yeso","proyecto":"pr-1"}"#,
+        ),
+        (
+            "automatizacion",
+            r#"{"pixpin":1,"accion":"automatizacion","operacion":"crear","receta":{"nombre":"Resumen","disparador":{"tipo":"a_la_hora","hora":"08:00"},"pasos":"[\"Resume mis tareas pendientes\"]"}}"#,
+        ),
         (
             "sincronizar",
             r#"{"pixpin":1,"accion":"sincronizar","aparato":"todos"}"#,
