@@ -21,8 +21,20 @@
 //! guardada es un contenedor aparte, igual que alli —no hay campo del elemento
 //! que la mencione— y por eso abrir un `.pixpin` no trae la biblioteca del
 //! otro ni se la lleva.
+//!
+//! ## El fichero, el del movil
+//!
+//! `figuras.json` es una lista de `{id, nombre, elementos, propia}` con las
+//! piezas **como elementos de Excalidraw** (`BibliotecaStore.kt`, que las
+//! escribe con `ExcalidrawJson`): el mismo fichero se abre en el telefono y
+//! aqui. Antes el PC escribia sus piezas con el formato interno del motor y
+//! el movil no las entendia; ese formato viejo se sigue leyendo
+//! ([`desde_json`]) y al guardar sale ya en el del movil.
+
+use std::path::Path;
 
 use serde::{Deserialize, Serialize};
+use serde_json::{Value, json};
 
 use crate::elemento::Elemento;
 use crate::vector::Punto2;
@@ -31,6 +43,10 @@ use crate::vector::Punto2;
 /// normalizadas al origen.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct FiguraGuardada {
+    /// El `id` del movil (con el se quita una de la lista). Las del PC de
+    /// antes no traian ninguno: se les da uno al leerlas.
+    #[serde(default)]
+    pub id: String,
     pub nombre: String,
     /// Las piezas, con su esquina superior izquierda comun en `(0, 0)`.
     pub elementos: Vec<Elemento>,
@@ -86,9 +102,117 @@ pub fn de_la_seleccion(
         return None;
     }
     Some(FiguraGuardada {
+        id: id_nuevo(),
         nombre: nombre.to_string(),
         elementos: normalizar(&piezas),
     })
+}
+
+/// Un id que no se repite (`randomId` del movil): la hora y un contador.
+pub fn id_nuevo() -> String {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static N: AtomicU64 = AtomicU64::new(0);
+    let hora = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_nanos() as u64);
+    format!("pc{:x}{:x}", hora, N.fetch_add(1, Ordering::Relaxed))
+}
+
+// ---------------------------------------------------------------------------
+// El fichero
+// ---------------------------------------------------------------------------
+
+/// Cuantas piezas como mucho se leen de una figura: una biblioteca con una
+/// figura de un millon de piezas (rota, o de otro programa) no puede colgar
+/// la apertura del lienzo.
+pub const MAX_PIEZAS: usize = 20_000;
+
+/// **La lista en el formato del movil**: piezas como elementos de Excalidraw.
+pub fn a_json(figuras: &[FiguraGuardada]) -> String {
+    let lista: Vec<Value> = figuras
+        .iter()
+        .map(|f| {
+            json!({
+                "id": if f.id.is_empty() { id_nuevo() } else { f.id.clone() },
+                "nombre": f.nombre,
+                "elementos": crate::excalidraw::elementos_a_json(&f.elementos),
+                "propia": true,
+            })
+        })
+        .collect();
+    serde_json::to_string(&lista).unwrap_or_else(|_| "[]".into())
+}
+
+/// **Lee la lista**, en el formato del movil o en el viejo del PC. Nunca
+/// falla: lo ilegible se salta figura a figura y pieza a pieza (perder una
+/// figura es malo; no poder abrir el lienzo por ella es peor), y una figura
+/// sin ninguna pieza que se entienda no entra.
+pub fn desde_json(texto: &str) -> Vec<FiguraGuardada> {
+    let Ok(Value::Array(lista)) = serde_json::from_str::<Value>(texto) else {
+        return Vec::new();
+    };
+    lista
+        .into_iter()
+        .filter_map(|v| {
+            let piezas = v.get("elementos")?.as_array()?;
+            let piezas = &piezas[..piezas.len().min(MAX_PIEZAS)];
+            // Del movil: elementos de Excalidraw, con su `type`. Del PC de
+            // antes: el formato interno, con su `figura`.
+            let elementos: Vec<Elemento> = if piezas.iter().any(|p| p.get("type").is_some()) {
+                crate::excalidraw::elementos_de_json(piezas)
+            } else {
+                piezas
+                    .iter()
+                    .filter_map(|p| serde_json::from_value::<Elemento>(p.clone()).ok())
+                    .collect()
+            };
+            if elementos.is_empty() {
+                return None;
+            }
+            let nombre = v.get("nombre").and_then(Value::as_str).unwrap_or("Figura").trim();
+            Some(FiguraGuardada {
+                id: v
+                    .get("id")
+                    .and_then(Value::as_str)
+                    .filter(|s| !s.is_empty())
+                    .map_or_else(id_nuevo, str::to_string),
+                nombre: if nombre.is_empty() {
+                    "Figura".into()
+                } else {
+                    nombre.chars().take(80).collect()
+                },
+                elementos: normalizar(&elementos),
+            })
+        })
+        .collect()
+}
+
+/// Las figuras guardadas en `ruta`, o ninguna.
+pub fn cargar(ruta: &Path) -> Vec<FiguraGuardada> {
+    std::fs::read_to_string(ruta)
+        .map(|t| desde_json(&t))
+        .unwrap_or_default()
+}
+
+/// Escribe la lista entera, a un temporal y renombrando: un corte a medias
+/// no puede dejar la biblioteca rota (`BibliotecaStore.guardar`).
+pub fn guardar(ruta: &Path, figuras: &[FiguraGuardada]) -> bool {
+    if let Some(dir) = ruta.parent() {
+        let _ = std::fs::create_dir_all(dir);
+    }
+    let temporal = ruta.with_extension("json.tmp");
+    std::fs::write(&temporal, a_json(figuras)).is_ok() && std::fs::rename(&temporal, ruta).is_ok()
+}
+
+/// **Anade una figura al principio** (lo ultimo guardado es lo que se esta
+/// usando: `BibliotecaStore.anadir`). Si ya habia una con el mismo nombre,
+/// la nueva la sustituye: «guarda esto como arbol» dos veces no deja dos
+/// arboles que no se distinguen.
+pub fn anadir(ruta: &Path, figura: FiguraGuardada) -> bool {
+    let mut lista = cargar(ruta);
+    lista.retain(|f| !f.nombre.eq_ignore_ascii_case(&figura.nombre));
+    lista.insert(0, figura);
+    guardar(ruta, &lista)
 }
 
 /// Estampa la figura **centrada** en `centro`.
@@ -245,6 +369,76 @@ mod pruebas {
             vec!["interno".to_string(), "sello".to_string()]
         );
         assert_eq!(e[1].grupos, vec!["sello".to_string()]);
+    }
+
+    #[test]
+    fn el_fichero_va_en_el_formato_del_movil_y_vuelve_igual() {
+        let mut f = guardada();
+        f.elementos[1].figura = Figura::Elipse;
+        let texto = a_json(std::slice::from_ref(&f));
+        let v: Value = serde_json::from_str(&texto).unwrap();
+        // Lo que escribe `BibliotecaStore.kt`: piezas de Excalidraw.
+        assert_eq!(v[0]["id"], f.id.as_str());
+        assert_eq!(v[0]["propia"], true);
+        assert_eq!(v[0]["elementos"][0]["type"], "rectangle");
+        assert_eq!(v[0]["elementos"][1]["type"], "ellipse");
+        let vuelta = desde_json(&texto);
+        assert_eq!(vuelta.len(), 1);
+        assert_eq!(vuelta[0].id, f.id);
+        assert_eq!(vuelta[0].nombre, "flecha");
+        assert_eq!(vuelta[0].tamano(), f.tamano());
+        assert!(matches!(vuelta[0].elementos[1].figura, Figura::Elipse));
+        // Y otra vuelta da lo mismo: ni se mueve ni cambia.
+        let otra = desde_json(&a_json(&vuelta));
+        assert_eq!(otra[0].tamano(), vuelta[0].tamano());
+        assert_eq!(otra[0].elementos.len(), vuelta[0].elementos.len());
+    }
+
+    #[test]
+    fn se_lee_una_figura_hecha_en_el_movil() {
+        let movil = r##"[{"id":"abc","nombre":"Norte","propia":true,"elementos":[
+            {"id":"e1","type":"arrow","x":10,"y":10,"width":0,"height":50,"points":[[0,0],[0,-50]],
+             "strokeColor":"#1e1e1e","backgroundColor":"transparent","strokeWidth":2,"seed":3,"version":1,"isDeleted":false},
+            {"id":"e2","type":"text","x":4,"y":-70,"width":12,"height":20,"text":"N","fontSize":20,"fontFamily":1,
+             "strokeColor":"#1e1e1e","backgroundColor":"transparent","seed":4,"version":1,"isDeleted":false}]}]"##;
+        let l = desde_json(movil);
+        assert_eq!(l.len(), 1);
+        assert_eq!(l[0].id, "abc");
+        assert_eq!(l[0].elementos.len(), 2);
+        // Normalizada al origen al leerla.
+        let (x0, y0, _, _) = caja_de(&l[0].elementos).unwrap();
+        assert!(x0.abs() < 0.01 && y0.abs() < 0.01, "{x0} {y0}");
+    }
+
+    #[test]
+    fn una_biblioteca_rota_no_tumba_nada() {
+        // Casos negativos: no es JSON, no es una lista, figuras sin piezas,
+        // piezas que no se entienden. Y el formato viejo del PC se lee.
+        assert!(desde_json("no es json").is_empty());
+        assert!(desde_json(r#"{"a":1}"#).is_empty());
+        assert!(desde_json(r#"[{"nombre":"vacia","elementos":[]}, 7, {"nombre":"sin"}]"#).is_empty());
+        assert!(desde_json(r#"[{"nombre":"rara","elementos":[{"type":"pixpin-solido-raro"}]}]"#).is_empty());
+        let viejo = serde_json::to_string(&vec![guardada()]).unwrap();
+        let l = desde_json(&viejo);
+        assert_eq!(l.len(), 1);
+        assert_eq!(l[0].elementos.len(), 2);
+    }
+
+    #[test]
+    fn anadir_pone_la_nueva_primero_y_sustituye_la_del_mismo_nombre() {
+        let dir = std::env::temp_dir().join(format!("pixpin-biblio-{}", id_nuevo()));
+        let ruta = dir.join("figuras.json");
+        assert!(cargar(&ruta).is_empty(), "sin fichero, lista vacia");
+        let mut a = guardada();
+        a.nombre = "arbol".into();
+        let mut b = guardada();
+        b.nombre = "casa".into();
+        assert!(anadir(&ruta, a.clone()));
+        assert!(anadir(&ruta, b));
+        assert!(anadir(&ruta, a));
+        let l = cargar(&ruta);
+        assert_eq!(l.iter().map(|f| f.nombre.as_str()).collect::<Vec<_>>(), ["arbol", "casa"]);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

@@ -393,7 +393,7 @@ pub fn instrucciones() -> String {
      Si pide dibujar algo, usa dibujar_en_lienzo, \
      poniendo el color de cada figura. \
      Si pide dibujar, copiar o calcar al lienzo lo de una imagen adjunta (este perro, la foto), usa calcar_imagen. \
-     Si da datos para graficar, usa grafica. \
+     Si da datos para graficar, usa grafica; si da una funcion, graficar_funcion; una ecuacion, escribir_ecuacion; un cronograma, cronograma; una ilustracion con curvas, dibujar_svg. \
      Si quiere el texto de un documento escaneado, usa ocr. \
      Si pide hacer algo en la app (notas, tareas, ventanas, capturas, abrir ficheros), usa su herramienta. \
      Si pregunta donde esta algo o como se hace en PixPin, usa ayuda_app y contesta con lo que diga, sin inventar. \
@@ -578,7 +578,10 @@ mod pruebas {
         );
         let mut h = historial();
         let mut ej = Apunta::default();
-        let f = turno(&motor, &mut h, &catalogo(), &mut ej, &mut |_| Seguir::Si).unwrap();
+        // Las del pedido, como al modelo local (el catalogo entero no cabe
+        // con el tope entero en sus 8192 de contexto).
+        let pocas = crate::seleccion::para_el_pedido("dibuja una casa", false);
+        let f = turno(&motor, &mut h, &pocas, &mut ej, &mut |_| Seguir::Si).unwrap();
         assert_eq!(f.reintentos, 1);
         assert_eq!(f.herramientas_hechas, 1);
         assert!(h.iter().any(|m| m.texto_entero().contains("salio cortada")));

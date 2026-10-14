@@ -134,6 +134,32 @@ impl Lienzo {
     }
 }
 
+/// **Unos elementos sueltos como elementos de Excalidraw**, escritos por el
+/// mismo camino que un lienzo entero (`con_escena` + `elemento_hacia`): la
+/// biblioteca de figuras en el formato del movil y lo que dibuja el
+/// asistente con piezas del motor (grafica, ecuacion, instrumento) salen
+/// asi, sin un segundo escritor.
+pub fn elementos_a_json(elementos: &[Elemento]) -> Vec<Value> {
+    let mut escena = crate::Escena::nueva();
+    for e in elementos.iter().filter(|e| !e.borrado) {
+        escena.anadir(e.clone());
+    }
+    con_escena(&Lienzo::vacio(), &escena)
+        .entradas
+        .iter()
+        .filter_map(|en| match en {
+            Entrada::Nuestro { elemento, original } => Some(elemento_hacia(elemento, original, false)),
+            Entrada::Ajeno(_) => None,
+        })
+        .collect()
+}
+
+/// Y al reves: los que se sepan leer de una lista de elementos de
+/// Excalidraw (los demas se saltan).
+pub fn elementos_de_json(lista: &[Value]) -> Vec<Elemento> {
+    lista.iter().filter_map(elemento_desde).collect()
+}
+
 /// Lee un lienzo.
 pub fn leer(json: &str) -> Result<Lienzo, ErrorExcalidraw> {
     let raiz: Value = serde_json::from_str(json)?;

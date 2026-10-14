@@ -990,6 +990,8 @@ fn abrir_en_modo(
                 crate::al_frente::poner_lienzo(h);
             }
             let (x0, y0, x1, y1) = efectiva.ventana(ancho_px, alto_px);
+            // «Guarda esto como figura»: lo elegido, para el asistente.
+            crate::asistente::al_lienzo::contestar_lo_elegido(&escena, gesto.seleccion.ids());
             if crate::asistente::al_lienzo::atender_en_editor(&mut escena, ((x0 + x1) / 2.0, (y0 + y1) / 2.0)) {
                 todo_sucio = true;
                 contenido_sucio = true;
@@ -4833,6 +4835,9 @@ mod cota;
 pub(crate) mod exportar;
 /// F8, F12, F14: la zona, la grafica, las tablas, la biblioteca y la imagen.
 mod figuras;
+/// Donde viven las figuras guardadas: el asistente guarda y estampa en la
+/// misma biblioteca que el panel del lienzo.
+pub(crate) use figuras::ruta_biblioteca;
 /// La hojita: el recado que se pega como pin (F6).
 mod hojita;
 /// La pasada de las lupas: lo que mira cada una, agrandado (lienzo-imagen).
