@@ -1,0 +1,212 @@
+[
+  {
+    "nombre": "lienzo-persona-con-figuras",
+    "pedido": "Dibuja esta persona con figuras en el lienzo (interpretala, no la calques).",
+    "con_imagen": true
+  },
+  {
+    "nombre": "lienzo-perro-a-grafito",
+    "pedido": "Dibuja este perro a lapiz, con grafito 6B.",
+    "con_imagen": true
+  },
+  {
+    "nombre": "lienzo-arbol-isometrico",
+    "pedido": "Dibuja un arbol en isometrico para arquitectura, en tres posiciones distintas.",
+    "con_imagen": false
+  },
+  {
+    "nombre": "lienzo-ecuacion",
+    "pedido": "Escribe en el lienzo la formula general de la ecuacion de segundo grado, bien compuesta.",
+    "con_imagen": false
+  },
+  {
+    "nombre": "lienzo-funciones",
+    "pedido": "Grafica en el lienzo y = x^2 - 2 y y = 2 sin(x) entre x = -3 y x = 3.",
+    "con_imagen": false
+  },
+  {
+    "nombre": "lienzo-cronograma",
+    "pedido": "Hazme un cronograma de una obra pequena: excavacion del 2 al 6 de noviembre de 2026, cimientos del 9 al 20 de noviembre despues de la excavacion, muros del 23 de noviembre al 4 de diciembre despues de los cimientos, y el hito de entrega el 4 de diciembre.",
+    "con_imagen": false
+  },
+  {
+    "nombre": "lienzo-plano-con-tabla",
+    "pedido": "Dibuja un plano cartesiano con los puntos (1, 2), (-3, 1) y (2, -2) en su tabla de coordenadas.",
+    "con_imagen": false
+  },
+  {
+    "nombre": "lienzo-grafito-durezas",
+    "pedido": "Dibuja tres trazos ondulados a mano alzada con grafito: uno 4H, uno HB y uno 8B, uno debajo de otro.",
+    "con_imagen": false
+  },
+  {
+    "nombre": "dibujo-circulo-y-cuadrado",
+    "pedido": "Dibuja un circulo rojo a la izquierda y un cuadrado azul a la derecha.",
+    "con_imagen": false
+  },
+  {
+    "nombre": "dibujo-triangulo",
+    "pedido": "Dibuja un triangulo verde en el centro del lienzo.",
+    "con_imagen": false
+  },
+  {
+    "nombre": "dibujo-casa",
+    "pedido": "Dibuja una casa: un cuadrado, un techo triangular encima y una puerta.",
+    "con_imagen": false
+  },
+  {
+    "nombre": "dibujo-diagrama-de-flujo",
+    "pedido": "Haz un diagrama de flujo con tres cajas: Inicio, Proceso y Fin, unidas con flechas.",
+    "con_imagen": false
+  },
+  {
+    "nombre": "dibujo-titulo",
+    "pedido": "Escribe el titulo «Plan 2026» en grande arriba del lienzo.",
+    "con_imagen": false
+  },
+  {
+    "nombre": "dibujo-estrella",
+    "pedido": "Dibuja una estrella de cinco puntas amarilla.",
+    "con_imagen": false
+  },
+  {
+    "nombre": "dibujo-onda",
+    "pedido": "Dibuja una curva suave en forma de onda, de color azul, de izquierda a derecha.",
+    "con_imagen": false
+  },
+  {
+    "nombre": "dibujo-flecha-con-texto",
+    "pedido": "Dibuja una flecha de izquierda a derecha con el texto «paso 1».",
+    "con_imagen": false
+  },
+  {
+    "nombre": "dibujo-muneco",
+    "pedido": "Dibuja un muñeco de palitos: cabeza redonda, cuerpo, brazos y piernas.",
+    "con_imagen": false
+  },
+  {
+    "nombre": "calcar-copiar-imagen",
+    "pedido": "Copia esta imagen en el lienzo.",
+    "con_imagen": true
+  },
+  {
+    "nombre": "calcar-solo-contornos",
+    "pedido": "Calca solo los contornos de esta imagen en el lienzo.",
+    "con_imagen": true
+  },
+  {
+    "nombre": "calcar-dibujo-casa",
+    "pedido": "Pasa este dibujo al lienzo con sus colores.",
+    "con_imagen": true
+  },
+  {
+    "nombre": "calcar-perrito-emoji",
+    "pedido": "Dibuja este perrito de la imagen adjunta dentro del lienzo.",
+    "con_imagen": true
+  },
+  {
+    "nombre": "grafica-barras",
+    "pedido": "Hazme una grafica de barras de ventas: enero 120, febrero 95, marzo 140.",
+    "con_imagen": false
+  },
+  {
+    "nombre": "grafica-pastel",
+    "pedido": "Grafica de pastel de la encuesta: si 60, no 40.",
+    "con_imagen": false
+  },
+  {
+    "nombre": "grafica-lineas",
+    "pedido": "Dibuja una grafica de lineas de la temperatura: lunes 20, martes 22, miercoles 19, jueves 25.",
+    "con_imagen": false
+  },
+  {
+    "nombre": "app-nota-nueva",
+    "pedido": "Crea una nota nueva que diga: comprar cemento y arena.",
+    "con_imagen": false
+  },
+  {
+    "nombre": "app-anadir-tarea",
+    "pedido": "Apunta la tarea: llamar al ingeniero mañana.",
+    "con_imagen": false
+  },
+  {
+    "nombre": "app-lista-nueva",
+    "pedido": "Crea una lista de tareas que se llame Obra.",
+    "con_imagen": false
+  },
+  {
+    "nombre": "app-ventana-tareas",
+    "pedido": "Abre la ventana de tareas.",
+    "con_imagen": false
+  },
+  {
+    "nombre": "app-galeria",
+    "pedido": "Enseñame la galeria de capturas.",
+    "con_imagen": false
+  },
+  {
+    "nombre": "app-capturar",
+    "pedido": "Haz una captura de una zona de la pantalla.",
+    "con_imagen": false
+  },
+  {
+    "nombre": "app-pinear-ultima",
+    "pedido": "Saca como pin la ultima captura.",
+    "con_imagen": false
+  },
+  {
+    "nombre": "app-lienzo-nuevo",
+    "pedido": "Crea un lienzo nuevo llamado Croquis.",
+    "con_imagen": false
+  },
+  {
+    "nombre": "app-grabar",
+    "pedido": "Graba una nota de voz que se llame reunion.",
+    "con_imagen": false
+  },
+  {
+    "nombre": "app-abrir-fichero",
+    "pedido": "Abre el archivo C:\\Users\\yo\\Desktop\\plano.pdf",
+    "con_imagen": false
+  },
+  {
+    "nombre": "app-lecciones",
+    "pedido": "Busca en mis lecciones aprendidas las de encofrado.",
+    "con_imagen": false
+  },
+  {
+    "nombre": "app-borrar-lista-pide-permiso",
+    "pedido": "Borra la lista de tareas con codigo m-123.",
+    "con_imagen": false
+  },
+  {
+    "nombre": "ayuda-ajustes",
+    "pedido": "¿Donde estan los ajustes de PixPin?",
+    "con_imagen": false
+  },
+  {
+    "nombre": "ayuda-como-capturar",
+    "pedido": "¿Como hago una captura de pantalla con PixPin?",
+    "con_imagen": false
+  },
+  {
+    "nombre": "ayuda-sincronizar",
+    "pedido": "¿Como paso mis cosas al movil?",
+    "con_imagen": false
+  },
+  {
+    "nombre": "ayuda-tareas",
+    "pedido": "¿Donde veo mis tareas pendientes?",
+    "con_imagen": false
+  },
+  {
+    "nombre": "charla-saludo",
+    "pedido": "Hola, ¿que tal?",
+    "con_imagen": false
+  },
+  {
+    "nombre": "copiar-perrito",
+    "pedido": "Copia este perrito en el lienzo.",
+    "con_imagen": true
+  }
+]

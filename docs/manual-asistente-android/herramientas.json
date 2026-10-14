@@ -1,0 +1,1359 @@
+[
+  {
+    "type": "function",
+    "function": {
+      "name": "dibujar_en_lienzo",
+      "description": "Dibuja figuras en el lienzo de PixPin (800x600, origen arriba a la izquierda). Cada elemento lleva su «color» (el que pidio el usuario) y, si va lleno, su «relleno». Tipos: rectangulo, elipse, rombo, triangulo, estrella y onda (con «caja»:[x,y,ancho,alto]; un circulo tambien con «centro»:[x,y] y «radio»); linea, flecha, curva (suave), poligono y lapiz (a mano alzada) (con «puntos»:[x1,y1,x2,y2,...]); texto (con «x», «y» y «texto»); punto (con «x», «y» y su letra en «texto»); instrumento (plano cartesiano con «ejes»:2, recta con 1, espacio con 3; «caja», «unidad» en px y «tabla»:[[x,y],...] de coordenadas). Opcionales: «grosor», «trazo» (solido, discontinuo, punteado), «opacidad» (0-100), «relleno_estilo» (solido, rayado, cruzado), «material» del lapiz (lisa, tiza, grafito) con su «dureza» (4H, 2H, HB, 2B, 4B, 6B, 8B) y «capa» (las mayores van encima). Una figura con «texto» lo lleva escrito dentro (o encima si es flecha). «grupo»: un nombre comun para agrupar varias. Ejemplo, una casa: {\"elementos\":[{\"tipo\":\"rectangulo\",\"caja\":[300,280,200,160],\"color\":\"marron\"},{\"tipo\":\"triangulo\",\"caja\":[280,170,240,110],\"color\":\"rojo\",\"relleno\":\"rojo\"},{\"tipo\":\"rectangulo\",\"caja\":[380,360,40,80],\"color\":\"azul\",\"relleno\":\"azul\"}]}. Un paso de un diagrama: {\"tipo\":\"rectangulo\",\"caja\":[60,260,160,70],\"texto\":\"Inicio\"},{\"tipo\":\"flecha\",\"puntos\":[220,295,320,295]}. Para copiar exacta una foto adjunta usa calcar_imagen; para dibujarla con figuras o a lapiz, interpretala con estas figuras. Para ilustraciones con curvas o mucho detalle, mejor dibujar_svg.",
+      "parameters": {
+        "properties": {
+          "elementos": {
+            "items": {
+              "properties": {
+                "caja": {
+                  "description": "[x, y, ancho, alto]",
+                  "items": {
+                    "type": "number"
+                  },
+                  "maxItems": 32,
+                  "type": "array"
+                },
+                "capa": {
+                  "description": "orden: las mayores encima",
+                  "type": "number"
+                },
+                "centro": {
+                  "description": "[x, y] de un circulo",
+                  "items": {
+                    "type": "number"
+                  },
+                  "maxItems": 32,
+                  "type": "array"
+                },
+                "color": {
+                  "description": "color del trazo: rojo, azul, verde, amarillo, naranja, morado, rosa, gris, marron, negro, blanco o #rrggbb",
+                  "maxLength": 120,
+                  "type": "string"
+                },
+                "dureza": {
+                  "enum": [
+                    "4H",
+                    "2H",
+                    "HB",
+                    "2B",
+                    "4B",
+                    "6B",
+                    "8B"
+                  ],
+                  "type": "string"
+                },
+                "ejes": {
+                  "description": "instrumento: 1, 2 o 3",
+                  "type": "number"
+                },
+                "grosor": {
+                  "description": "grosor del trazo, 1 a 40",
+                  "type": "number"
+                },
+                "grupo": {
+                  "maxLength": 120,
+                  "type": "string"
+                },
+                "material": {
+                  "enum": [
+                    "lisa",
+                    "tiza",
+                    "grafito",
+                    "lapiz2b",
+                    "seco"
+                  ],
+                  "type": "string"
+                },
+                "opacidad": {
+                  "description": "0 a 100",
+                  "type": "number"
+                },
+                "puntos": {
+                  "description": "[x1, y1, x2, y2, ...] de linea, flecha, curva o poligono",
+                  "items": {
+                    "type": "number"
+                  },
+                  "maxItems": 32,
+                  "type": "array"
+                },
+                "radio": {
+                  "type": "number"
+                },
+                "relleno": {
+                  "description": "color de relleno (los mismos nombres); omitir si va vacia",
+                  "maxLength": 120,
+                  "type": "string"
+                },
+                "relleno_estilo": {
+                  "enum": [
+                    "solido",
+                    "rayado",
+                    "cruzado"
+                  ],
+                  "type": "string"
+                },
+                "tabla": {
+                  "description": "instrumento: [[x, y], ...]",
+                  "items": {
+                    "items": {
+                      "type": "number"
+                    },
+                    "maxItems": 32,
+                    "type": "array"
+                  },
+                  "maxItems": 32,
+                  "type": "array"
+                },
+                "tam_letra": {
+                  "type": "number"
+                },
+                "texto": {
+                  "maxLength": 120,
+                  "type": "string"
+                },
+                "tipo": {
+                  "enum": [
+                    "rectangulo",
+                    "elipse",
+                    "rombo",
+                    "triangulo",
+                    "estrella",
+                    "onda",
+                    "linea",
+                    "flecha",
+                    "curva",
+                    "poligono",
+                    "lapiz",
+                    "texto",
+                    "punto",
+                    "instrumento"
+                  ],
+                  "type": "string"
+                },
+                "trazo": {
+                  "enum": [
+                    "solido",
+                    "discontinuo",
+                    "punteado"
+                  ],
+                  "type": "string"
+                },
+                "unidad": {
+                  "description": "instrumento: px por unidad",
+                  "type": "number"
+                },
+                "x": {
+                  "type": "number"
+                },
+                "y": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "tipo"
+              ],
+              "type": "object"
+            },
+            "maxItems": 16,
+            "minItems": 1,
+            "type": "array"
+          },
+          "origen": {
+            "description": "[x, y] que se suma a todas las coordenadas",
+            "items": {
+              "type": "number"
+            },
+            "maxItems": 32,
+            "type": "array"
+          }
+        },
+        "required": [
+          "elementos"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "grafica",
+      "description": "Dibuja en el lienzo una grafica de barras, lineas o pastel a partir de datos.",
+      "parameters": {
+        "properties": {
+          "etiquetas": {
+            "items": {
+              "maxLength": 120,
+              "type": "string"
+            },
+            "maxItems": 32,
+            "type": "array"
+          },
+          "tipo": {
+            "enum": [
+              "barras",
+              "lineas",
+              "pastel"
+            ],
+            "type": "string"
+          },
+          "titulo": {
+            "maxLength": 120,
+            "type": "string"
+          },
+          "valores": {
+            "items": {
+              "type": "number"
+            },
+            "maxItems": 32,
+            "type": "array"
+          }
+        },
+        "required": [
+          "tipo",
+          "etiquetas",
+          "valores"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "dibujar_svg",
+      "description": "Dibuja en el lienzo una ilustracion escrita en SVG: path (con curvas C, Q y arcos A), rect, circle, ellipse, line, polyline, polygon, text, g con transform, fill, stroke, stroke-width, opacity. Sale como figuras del lienzo, editables. Usala para dibujos con curvas o detalle: personas, animales, arboles, objetos, vistas isometricas. Pon viewBox; sin scripts ni imagenes; como mucho 400 figuras. «trazo»: liso (por omision), a_mano, lapiz o grafito (con «dureza»). Ejemplo: {\"svg\":\"<svg viewBox='0 0 100 100'><circle cx='50' cy='40' r='30' fill='#2f9e44'/><rect x='45' y='65' width='10' height='30' fill='#8b5a2b'/></svg>\"}",
+      "parameters": {
+        "properties": {
+          "caja": {
+            "description": "[x, y, ancho, alto] del lienzo 800x600 donde encajarlo; omitir para el centro",
+            "items": {
+              "type": "number"
+            },
+            "maxItems": 32,
+            "type": "array"
+          },
+          "dureza": {
+            "enum": [
+              "4H",
+              "2H",
+              "HB",
+              "2B",
+              "4B",
+              "6B",
+              "8B"
+            ],
+            "type": "string"
+          },
+          "svg": {
+            "description": "el SVG entero, de <svg> a </svg>",
+            "maxLength": 120,
+            "type": "string"
+          },
+          "trazo": {
+            "enum": [
+              "liso",
+              "a_mano",
+              "lapiz",
+              "grafito"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "svg"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "graficar_funcion",
+      "description": "Grafica funciones y = f(x) en el lienzo, como curvas sobre un plano cartesiano, con su ecuacion al lado. Las calcula la app: tu solo pon las formulas (x^2, sin(x), 2x+1, sqrt(x), abs(x), ln(x), e^x; por partes: x^2 si x<0; x si x>=0) y el dominio. Ejemplo: {\"funciones\":[\"x^2\",\"2x+1\"],\"x_desde\":-3,\"x_hasta\":3}",
+      "parameters": {
+        "properties": {
+          "funciones": {
+            "description": "formulas en x",
+            "items": {
+              "maxLength": 120,
+              "type": "string"
+            },
+            "maxItems": 6,
+            "type": "array"
+          },
+          "titulo": {
+            "maxLength": 120,
+            "type": "string"
+          },
+          "x_desde": {
+            "type": "number"
+          },
+          "x_hasta": {
+            "type": "number"
+          },
+          "y_desde": {
+            "description": "omitir: se ajusta a la curva",
+            "type": "number"
+          },
+          "y_hasta": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "funciones"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "escribir_ecuacion",
+      "description": "Escribe en el lienzo una ecuacion bien compuesta (fracciones, raices, exponentes, subindices, griegas), en LaTeX o escrita normal. Varias lineas: separalas con \\\\ o con saltos de linea. Ejemplo: {\"ecuacion\":\"x = \\\\frac{-b \\\\pm \\\\sqrt{b^2 - 4ac}}{2a}\"}",
+      "parameters": {
+        "properties": {
+          "color": {
+            "maxLength": 120,
+            "type": "string"
+          },
+          "ecuacion": {
+            "maxLength": 120,
+            "type": "string"
+          },
+          "tam_letra": {
+            "description": "por omision 32",
+            "type": "number"
+          },
+          "x": {
+            "type": "number"
+          },
+          "y": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "ecuacion"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "cronograma",
+      "description": "Dibuja en el lienzo un cronograma (diagrama de Gantt): escala de tiempo, una barra por tarea, hitos y flechas de dependencia. «inicio» y «fin» como fechas AAAA-MM-DD o como numeros de dia/semana; un hito lleva «hito»:true (o fin igual a inicio). Ejemplo: {\"titulo\":\"Obra\",\"tareas\":[{\"nombre\":\"Excavacion\",\"inicio\":\"2026-11-02\",\"fin\":\"2026-11-06\"},{\"nombre\":\"Cimientos\",\"inicio\":\"2026-11-09\",\"fin\":\"2026-11-20\",\"depende_de\":[\"Excavacion\"]},{\"nombre\":\"Fin de cimientos\",\"inicio\":\"2026-11-20\",\"hito\":true,\"depende_de\":[\"Cimientos\"]}]}",
+      "parameters": {
+        "properties": {
+          "tareas": {
+            "items": {
+              "properties": {
+                "color": {
+                  "maxLength": 120,
+                  "type": "string"
+                },
+                "depende_de": {
+                  "items": {
+                    "type": [
+                      "string",
+                      "number"
+                    ]
+                  },
+                  "maxItems": 32,
+                  "type": "array"
+                },
+                "duracion": {
+                  "type": "number"
+                },
+                "fin": {
+                  "type": [
+                    "string",
+                    "number"
+                  ]
+                },
+                "hito": {
+                  "type": "boolean"
+                },
+                "inicio": {
+                  "type": [
+                    "string",
+                    "number"
+                  ]
+                },
+                "nombre": {
+                  "maxLength": 120,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "nombre",
+                "inicio"
+              ],
+              "type": "object"
+            },
+            "maxItems": 16,
+            "type": "array"
+          },
+          "titulo": {
+            "maxLength": 120,
+            "type": "string"
+          },
+          "unidad": {
+            "description": "si inicio y fin son numeros",
+            "enum": [
+              "dias",
+              "semanas",
+              "meses"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "tareas"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "figuras_guardadas",
+      "description": "La biblioteca de figuras propias del lienzo. «accion»: guardar (lo elegido en el lienzo, o si no lo ultimo que dibujaste, con el «nombre» que diga el usuario), poner (estampa en el lienzo la figura de ese «nombre») o lista (las que hay). Ejemplo: {\"accion\":\"poner\",\"nombre\":\"arbol isometrico\"}",
+      "parameters": {
+        "properties": {
+          "accion": {
+            "enum": [
+              "guardar",
+              "poner",
+              "lista"
+            ],
+            "type": "string"
+          },
+          "nombre": {
+            "maxLength": 120,
+            "type": "string"
+          }
+        },
+        "required": [
+          "accion"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "ocr",
+      "description": "Reconoce el texto de un PDF escaneado o de una imagen sin texto seleccionable, con el OCR de Windows. Usala cuando el usuario quiera el texto de un documento adjunto.",
+      "parameters": {
+        "properties": {
+          "archivo": {
+            "description": "nombre del adjunto; omitir para el ultimo adjunto",
+            "maxLength": 120,
+            "type": "string"
+          },
+          "idioma": {
+            "enum": [
+              "es",
+              "en",
+              "auto"
+            ],
+            "type": "string"
+          },
+          "paginas": {
+            "description": "ej. 1-3,5; omitir para todas",
+            "maxLength": 120,
+            "type": "string"
+          }
+        },
+        "type": "object"
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "calcar_imagen",
+      "description": "Copia (calca) en el lienzo la imagen o foto adjunta, con sus formas y colores exactos. Usala siempre que pidan copiar, pasar o calcar una imagen al lienzo.",
+      "parameters": {
+        "properties": {
+          "colores": {
+            "description": "omitir; false solo si piden blanco y negro",
+            "type": "boolean"
+          },
+          "detalle": {
+            "description": "omitir: medio",
+            "enum": [
+              "bajo",
+              "medio",
+              "alto"
+            ],
+            "type": "string"
+          },
+          "imagen": {
+            "description": "nombre del adjunto; omitir para la ultima imagen",
+            "maxLength": 120,
+            "type": "string"
+          },
+          "solo_contornos": {
+            "description": "omitir; true solo si piden solo los contornos o bordes",
+            "type": "boolean"
+          },
+          "zona": {
+            "description": "[x, y, ancho, alto] en fracciones de 0 a 1, para calcar solo un trozo",
+            "items": {
+              "type": "number"
+            },
+            "maxItems": 32,
+            "type": "array"
+          }
+        },
+        "type": "object"
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "ayuda_app",
+      "description": "Busca en la ayuda de PixPin donde esta algo o como se hace (menus, atajos, ventanas). Usala ante cualquier pregunta sobre la app, antes de contestar.",
+      "parameters": {
+        "properties": {
+          "pregunta": {
+            "maxLength": 120,
+            "type": "string"
+          }
+        },
+        "required": [
+          "pregunta"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "buscar_en_mis_cosas",
+      "description": "Busca en los PDF, Word, Excel, PowerPoint, notas y chats del usuario (y en los nombres de lo que mando). Usala si pregunta que dice algo suyo o donde mando o apunto algo. Cita la fuente con su numero: [1].",
+      "parameters": {
+        "properties": {
+          "consulta": {
+            "description": "palabras clave, p. ej. «cunetas pendiente»",
+            "maxLength": 120,
+            "type": "string"
+          },
+          "proyecto": {
+            "description": "nombre del proyecto; omitir: todos",
+            "maxLength": 120,
+            "type": "string"
+          }
+        },
+        "required": [
+          "consulta"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "abrir_chat",
+      "description": "Abre (o trae delante) la ventana del chat de proyectos.",
+      "parameters": {
+        "properties": {},
+        "type": "object"
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "abrir_fichero",
+      "description": "Abre un fichero en PixPin (PDF, Word, Excel, imagen, plano...), como «Abrir con PixPin».",
+      "parameters": {
+        "properties": {
+          "ruta": {
+            "description": "ruta absoluta del fichero en este PC",
+            "maxLength": 120,
+            "type": "string"
+          }
+        },
+        "required": [
+          "ruta"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "abrir_mensaje",
+      "description": "Abre el chat en un mensaje concreto, resaltado.",
+      "parameters": {
+        "properties": {
+          "codigo": {
+            "description": "id del mensaje",
+            "maxLength": 120,
+            "type": "string"
+          }
+        },
+        "required": [
+          "codigo"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "abrir_nota",
+      "description": "Abre una nota existente en el editor de notas.",
+      "parameters": {
+        "properties": {
+          "codigo": {
+            "description": "id del mensaje de la nota",
+            "maxLength": 120,
+            "type": "string"
+          }
+        },
+        "required": [
+          "codigo"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "abrir_hoja",
+      "description": "Abre un lienzo u hoja de un proyecto por su referencia.",
+      "parameters": {
+        "properties": {
+          "referencia": {
+            "description": "referencia de la hoja o lienzo",
+            "maxLength": 120,
+            "type": "string"
+          }
+        },
+        "required": [
+          "referencia"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "escribir_en_chat",
+      "description": "Deja un mensaje de texto en el chat de «Mensajes guardados».",
+      "parameters": {
+        "properties": {
+          "texto": {
+            "description": "el mensaje",
+            "maxLength": 120,
+            "type": "string"
+          }
+        },
+        "required": [
+          "texto"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "nota_nueva",
+      "description": "Crea una nota nueva (Markdown) y la abre en el editor.",
+      "parameters": {
+        "properties": {
+          "texto": {
+            "description": "el contenido de la nota",
+            "maxLength": 120,
+            "type": "string"
+          }
+        },
+        "type": "object"
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "lienzo_nuevo",
+      "description": "Crea un lienzo nuevo, vacio, y lo abre.",
+      "parameters": {
+        "properties": {
+          "nombre": {
+            "description": "nombre del lienzo",
+            "maxLength": 120,
+            "type": "string"
+          }
+        },
+        "type": "object"
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "grabar_voz",
+      "description": "Saca el microfono flotante y graba una nota de voz con ese nombre.",
+      "parameters": {
+        "properties": {
+          "nombre": {
+            "description": "nombre de la grabacion",
+            "maxLength": 120,
+            "type": "string"
+          }
+        },
+        "required": [
+          "nombre"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "reproducir_audio",
+      "description": "Hace sonar un audio (m4a, mp3, wav) en el reproductor flotante.",
+      "parameters": {
+        "properties": {
+          "ruta": {
+            "description": "ruta absoluta del fichero en este PC",
+            "maxLength": 120,
+            "type": "string"
+          },
+          "titulo": {
+            "description": "lo que se lee en la barra",
+            "maxLength": 120,
+            "type": "string"
+          }
+        },
+        "required": [
+          "ruta"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "lista_nueva",
+      "description": "Crea una lista de tareas nueva con ese titulo.",
+      "parameters": {
+        "properties": {
+          "titulo": {
+            "description": "titulo de la lista",
+            "maxLength": 120,
+            "type": "string"
+          }
+        },
+        "required": [
+          "titulo"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "anadir_tarea",
+      "description": "Apunta una tarea pendiente (va a la lista Inbox si no se dice otra).",
+      "parameters": {
+        "properties": {
+          "codigo": {
+            "description": "id de otra lista; omitir para el Inbox",
+            "maxLength": 120,
+            "type": "string"
+          },
+          "texto": {
+            "description": "lo que hay que hacer",
+            "maxLength": 120,
+            "type": "string"
+          }
+        },
+        "required": [
+          "texto"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "marcar_tarea",
+      "description": "Marca (o desmarca) una tarea de una lista como hecha.",
+      "parameters": {
+        "properties": {
+          "codigo": {
+            "description": "id del mensaje de la lista de tareas",
+            "maxLength": 120,
+            "type": "string"
+          },
+          "hecha": {
+            "description": "true hecha, false pendiente",
+            "type": "boolean"
+          },
+          "indice": {
+            "description": "numero de la tarea, desde 0",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "codigo",
+          "indice"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "mover_tarea",
+      "description": "Pasa una tarea a otra lista.",
+      "parameters": {
+        "properties": {
+          "a_codigo": {
+            "description": "id de la lista de destino",
+            "maxLength": 120,
+            "type": "string"
+          },
+          "codigo": {
+            "description": "id del mensaje de la lista de tareas",
+            "maxLength": 120,
+            "type": "string"
+          },
+          "indice": {
+            "description": "numero de la tarea, desde 0",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "codigo",
+          "indice",
+          "a_codigo"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "quitar_tarea",
+      "description": "Quita una tarea de una lista.",
+      "parameters": {
+        "properties": {
+          "codigo": {
+            "description": "id del mensaje de la lista de tareas",
+            "maxLength": 120,
+            "type": "string"
+          },
+          "indice": {
+            "description": "numero de la tarea, desde 0",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "codigo",
+          "indice"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "borrar_lista",
+      "description": "Borra una lista de tareas entera.",
+      "parameters": {
+        "properties": {
+          "codigo": {
+            "description": "id del mensaje de la lista de tareas",
+            "maxLength": 120,
+            "type": "string"
+          }
+        },
+        "required": [
+          "codigo"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "abrir_ventana",
+      "description": "Abre una ventana de PixPin: tareas, galeria (de capturas), lecciones o sincronizar.",
+      "parameters": {
+        "properties": {
+          "cual": {
+            "description": "que ventana",
+            "enum": [
+              "tareas",
+              "galeria",
+              "lecciones",
+              "sincronizar"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "cual"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "capturar_pantalla",
+      "description": "Empieza una captura de una zona de la pantalla (el usuario elige la zona).",
+      "parameters": {
+        "properties": {},
+        "type": "object"
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "pinear_ultima_captura",
+      "description": "Saca a la pantalla como pin la captura mas reciente.",
+      "parameters": {
+        "properties": {},
+        "type": "object"
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "pinear_fichero",
+      "description": "Saca un fichero (imagen, PDF...) a la pantalla como pin.",
+      "parameters": {
+        "properties": {
+          "ruta": {
+            "description": "ruta absoluta del fichero en este PC",
+            "maxLength": 120,
+            "type": "string"
+          }
+        },
+        "required": [
+          "ruta"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "conservar_captura",
+      "description": "Conserva una captura (no caduca y va a «Mensajes guardados»).",
+      "parameters": {
+        "properties": {
+          "ruta": {
+            "description": "ruta de la captura",
+            "maxLength": 120,
+            "type": "string"
+          }
+        },
+        "required": [
+          "ruta"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "borrar_captura",
+      "description": "Manda una captura a la papelera de PixPin.",
+      "parameters": {
+        "properties": {
+          "ruta": {
+            "description": "ruta de la captura",
+            "maxLength": 120,
+            "type": "string"
+          }
+        },
+        "required": [
+          "ruta"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "copiar_imagen",
+      "description": "Pone una imagen en el portapapeles, como imagen.",
+      "parameters": {
+        "properties": {
+          "ruta": {
+            "description": "ruta absoluta del fichero en este PC",
+            "maxLength": 120,
+            "type": "string"
+          }
+        },
+        "required": [
+          "ruta"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "caja_para_soltar",
+      "description": "Saca una caja flotante a la que soltar ficheros para meterlos en el chat.",
+      "parameters": {
+        "properties": {},
+        "type": "object"
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "leccion_nueva",
+      "description": "Abre la ficha de una leccion aprendida nueva (paso que..., porque..., la proxima vez...).",
+      "parameters": {
+        "properties": {
+          "texto": {
+            "description": "lo que paso y lo aprendido",
+            "maxLength": 120,
+            "type": "string"
+          }
+        },
+        "type": "object"
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "buscar_lecciones",
+      "description": "Abre la lista de lecciones aprendidas, buscando lo que se diga.",
+      "parameters": {
+        "properties": {
+          "consulta": {
+            "description": "lo que se busca",
+            "maxLength": 120,
+            "type": "string"
+          }
+        },
+        "type": "object"
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "sincronizar_movil",
+      "description": "Sincroniza ahora con el movil (o con todos los aparatos del grupo).",
+      "parameters": {
+        "properties": {
+          "aparato": {
+            "description": "id del aparato; omitir para todos",
+            "maxLength": 120,
+            "type": "string"
+          }
+        },
+        "type": "object"
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "enviar_al_movil",
+      "description": "Manda imagenes al lienzo abierto en el movil.",
+      "parameters": {
+        "properties": {
+          "aparato": {
+            "description": "id del aparato; omitir para todos",
+            "maxLength": 120,
+            "type": "string"
+          },
+          "imagenes": {
+            "description": "rutas absolutas de las imagenes",
+            "items": {
+              "maxLength": 120,
+              "type": "string"
+            },
+            "maxItems": 32,
+            "type": "array"
+          }
+        },
+        "required": [
+          "imagenes"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "crear_automatizacion",
+      "description": "Crea una automatizacion (se dispara sola y hace pasos).",
+      "parameters": {
+        "properties": {
+          "disparador": {
+            "description": "cuando",
+            "enum": [
+              "al_capturar",
+              "a_la_hora",
+              "al_sincronizar",
+              "a_mano"
+            ],
+            "type": "string"
+          },
+          "hora": {
+            "description": "HH:MM",
+            "maxLength": 120,
+            "type": "string"
+          },
+          "nombre": {
+            "description": "nombre corto",
+            "maxLength": 120,
+            "type": "string"
+          },
+          "pasos": {
+            "description": "lista JSON: texto para el asistente u {herramienta,args,proyecto}; {captura} {resultado}",
+            "maxLength": 120,
+            "type": "string"
+          }
+        },
+        "required": [
+          "nombre",
+          "disparador",
+          "pasos"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "tabla_de_imagen",
+      "description": "Pasa la tabla de una foto o un PDF (escaneado o no) a una tabla del chat o a un Excel. Las celdas las lee PixPin; tu solo eliges destino, nombre y si la primera fila es cabecera.",
+      "parameters": {
+        "properties": {
+          "archivo": {
+            "description": "nombre o descripcion del documento (ej. «plano de senalizacion Tahuantinsuyo»); omitir: el adjunto mas reciente del chat",
+            "maxLength": 120,
+            "type": "string"
+          },
+          "cabecera": {
+            "description": "si la primera fila son titulos; omitir si no se sabe",
+            "type": "boolean"
+          },
+          "destino": {
+            "description": "tabla del chat o fichero Excel",
+            "enum": [
+              "tabla",
+              "excel"
+            ],
+            "type": "string"
+          },
+          "nombre": {
+            "description": "nombre de la tabla",
+            "maxLength": 120,
+            "type": "string"
+          },
+          "pagina": {
+            "description": "pagina del PDF, desde 1; omitir: la primera con tabla",
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "anotar_documento",
+      "description": "Anota un PDF, Word o plano del chat donde lo vera el usuario al abrirlo (y en el movil): resaltar, subrayar o tachar un texto; encerrar o marcar (marco) un texto o una zona; poner una nota; dibujar un trazo.",
+      "parameters": {
+        "properties": {
+          "archivo": {
+            "description": "nombre o descripcion del documento (ej. «plano de senalizacion Tahuantinsuyo»); omitir: el adjunto mas reciente del chat",
+            "maxLength": 120,
+            "type": "string"
+          },
+          "color": {
+            "description": "amarillo, rojo, verde, azul... omitir: el de siempre",
+            "maxLength": 120,
+            "type": "string"
+          },
+          "nota": {
+            "description": "lo que dice la nota",
+            "maxLength": 120,
+            "type": "string"
+          },
+          "pagina": {
+            "description": "pagina, desde 1; omitir: donde este el texto",
+            "type": "integer"
+          },
+          "puntos": {
+            "description": "dibujar: [x1, y1, x2, y2, ...] en fracciones 0-1",
+            "items": {
+              "type": "number"
+            },
+            "maxItems": 32,
+            "type": "array"
+          },
+          "texto": {
+            "description": "el texto del documento sobre el que va (se busca)",
+            "maxLength": 120,
+            "type": "string"
+          },
+          "tipo": {
+            "description": "que se hace",
+            "enum": [
+              "resaltar",
+              "subrayar",
+              "tachar",
+              "nota",
+              "encerrar",
+              "marco",
+              "dibujar"
+            ],
+            "type": "string"
+          },
+          "zona": {
+            "description": "[x, y, ancho, alto] en fracciones 0-1 de la pagina o del plano, si no hay texto",
+            "items": {
+              "type": "number"
+            },
+            "maxItems": 32,
+            "type": "array"
+          }
+        },
+        "required": [
+          "tipo"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "buscar_en_documento",
+      "description": "Busca un texto dentro de un plano (DWG/DXF), PDF o Word y abre el visor ahi, ampliado y marcado. Usala para «¿donde dice...?» o «llevame a...».",
+      "parameters": {
+        "properties": {
+          "abrir": {
+            "description": "abrir el visor en lo encontrado",
+            "type": "boolean"
+          },
+          "archivo": {
+            "description": "nombre o descripcion del documento (ej. «plano de senalizacion Tahuantinsuyo»); omitir: el adjunto mas reciente del chat",
+            "maxLength": 120,
+            "type": "string"
+          },
+          "texto": {
+            "description": "lo que se busca, tal cual",
+            "maxLength": 120,
+            "type": "string"
+          }
+        },
+        "required": [
+          "texto"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "abrir_por_nombre",
+      "description": "Abre un documento, plano, Excel o imagen de los chats del usuario por su nombre o de que trata. Si hay varios parecidos te los dice para que preguntes cual.",
+      "parameters": {
+        "properties": {
+          "descripcion": {
+            "description": "el nombre o lo que trata, con las palabras del usuario",
+            "maxLength": 120,
+            "type": "string"
+          }
+        },
+        "required": [
+          "descripcion"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "exportar_documento",
+      "description": "Exporta un documento, plano, Excel o imagen (con lo anotado) en otro formato y lo deja en el chat.",
+      "parameters": {
+        "properties": {
+          "archivo": {
+            "description": "nombre o descripcion del documento (ej. «plano de senalizacion Tahuantinsuyo»); omitir: el adjunto mas reciente del chat",
+            "maxLength": 120,
+            "type": "string"
+          },
+          "formato": {
+            "description": "el formato",
+            "enum": [
+              "pdf",
+              "png",
+              "jpg",
+              "svg",
+              "web",
+              "dxf",
+              "csv",
+              "texto",
+              "md",
+              "original"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "formato"
+        ],
+        "type": "object"
+      }
+    }
+  }
+]
