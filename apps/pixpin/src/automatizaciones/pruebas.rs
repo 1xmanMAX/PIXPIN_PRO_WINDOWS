@@ -604,13 +604,15 @@ fn el_encargo_sin_ventana_pregunta_en_su_burbuja() {
             aparato: "PC01".into(),
         };
         let motor = Arc::new(MotorGuionado::nuevo(vec![
-            Respuesta::de_llamada("borrar_lista", r#"{"codigo":"m-flow"}"#),
+            Respuesta::de_llamada("borrar_lista", r#"{"lista":"m-flow"}"#),
             Respuesta::de_texto("Listo."),
         ]));
         let salidos = Arc::new(Mutex::new(Vec::<String>::new()));
         let s = salidos.clone();
         // El chat «Asistente» antes del hilo (si no, los dos lo crearian a la vez).
         let (proyecto, carpeta) = chat_del_asistente(&raiz, "PC01", 1).unwrap();
+        // La lista que se pide borrar, por su nombre (14-oct).
+        let lista = crate::pedidos::nueva_lista(&raiz, &proyecto, "PC01", "m-flow").unwrap().id;
         let hilo = std::thread::spawn({
             let ent = ent.clone();
             move || {
@@ -655,7 +657,7 @@ fn el_encargo_sin_ventana_pregunta_en_su_burbuja() {
         assert!(salidos.lock().unwrap().is_empty(), "salio antes de contestar");
         assert!(crate::asistente::permiso::contestar(&proyecto, &nota, si));
         let r = hilo.join().unwrap().unwrap();
-        let sale = salidos.lock().unwrap().iter().any(|j| j.contains("m-flow"));
+        let sale = salidos.lock().unwrap().iter().any(|j| j.contains(&lista));
         assert_eq!(sale, si, "{nombre}");
         let marca = if si { "→ ✅ Sí" } else { "→ ✖️ No" };
         assert!(r.texto.contains(marca), "{}", r.texto);

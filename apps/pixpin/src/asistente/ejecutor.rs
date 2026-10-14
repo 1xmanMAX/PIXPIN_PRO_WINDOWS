@@ -49,6 +49,9 @@ pub struct EjecutorDelChat {
     /// Enganches de las acciones de la app (ver `acciones.rs`).
     confirmar: super::acciones::Confirmar,
     mandar: super::acciones::Mandar,
+    /// Donde viven los chats: con ella, las tareas se piden por su nombre
+    /// (`acciones::FuenteDeLaApp`).
+    raiz: Option<std::path::PathBuf>,
     /// Si contesta un modelo de la nube (lo encontrado en los documentos
     /// saldria a internet: ver `documentos::permiso_nube`).
     nube: bool,
@@ -68,9 +71,16 @@ impl EjecutorDelChat {
             destino: None,
             confirmar: super::acciones::decir_que_no(),
             mandar: super::acciones::mandar_a_pixpin(),
+            raiz: None,
             nube: false,
             citas: Default::default(),
         }
+    }
+
+    /// Donde estan los chats (para leer las listas de tareas).
+    pub fn con_raiz(mut self, raiz: Option<std::path::PathBuf>) -> EjecutorDelChat {
+        self.raiz = raiz;
+        self
     }
 
     /// Adonde va lo dibujado si no hay un lienzo abierto.
@@ -277,10 +287,54 @@ impl Ejecutor for EjecutorDelChat {
                     },
                 )
             }
-            Llamada::App(a) => super::acciones::hacer(a, &self.confirmar, &self.mandar),
+            Llamada::App(a) => super::acciones::hacer(a, self.raiz.as_deref(), &self.confirmar, &self.mandar),
             Llamada::Ayuda(pregunta) => Ok(pixpin_ia::conocimiento::responder(pregunta)),
             Llamada::Buscar(p) => self.buscar(p),
         }
+    }
+
+    /// Dos o mas OCR en la misma respuesta (dos PDF adjuntos): **a la vez**,
+    /// cada uno en su hilo con su COM, y el modelo espera solo al mas lento.
+    /// Lo demas (lienzo, pedidos a la app), en su orden, como siempre.
+    fn ejecutar_varias(&mut self, llamadas: &[Llamada]) -> Vec<Result<String, String>> {
+        let ocr: Vec<usize> = (0..llamadas.len()).filter(|&i| matches!(llamadas[i], Llamada::Ocr(_))).collect();
+        if ocr.len() < 2 {
+            return llamadas.iter().map(|l| self.ejecutar(l)).collect();
+        }
+        let adjuntos = &self.adjuntos;
+        let parar = &self.parar;
+        let leidos: Vec<Result<(super::turno::Adjunto, String), String>> = std::thread::scope(|s| {
+            let hilos: Vec<_> = ocr
+                .iter()
+                .map(|&i| {
+                    let Llamada::Ocr(p) = &llamadas[i] else { unreachable!() };
+                    s.spawn(move || {
+                        let _com = pixpin_shell::ComDelHilo::iniciar();
+                        let a = super::ocr::elegir(adjuntos, p.archivo.as_deref())?.clone();
+                        let t = super::ocr::leer(&a.ruta, &p.paginas, parar)?;
+                        Ok((a, t))
+                    })
+                })
+                .collect();
+            hilos
+                .into_iter()
+                .map(|h| h.join().unwrap_or_else(|_| Err("el OCR se detuvo de golpe".into())))
+                .collect()
+        });
+        let mut salida: Vec<Option<Result<String, String>>> = vec![None; llamadas.len()];
+        for (&i, r) in ocr.iter().zip(leidos) {
+            salida[i] = Some(r.map(|(de, texto)| {
+                let para_el_modelo = recortar(&texto, OCR_PARA_EL_MODELO);
+                let _ = self.tx.send(Aviso::TextoLeido { de, texto });
+                para_el_modelo
+            }));
+        }
+        for (i, l) in llamadas.iter().enumerate() {
+            if salida[i].is_none() {
+                salida[i] = Some(self.ejecutar(l));
+            }
+        }
+        salida.into_iter().map(|r| r.unwrap_or_else(|| Err("no se hizo".into()))).collect()
     }
 }
 

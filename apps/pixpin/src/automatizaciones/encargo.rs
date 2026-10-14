@@ -183,7 +183,8 @@ pub fn hacer(
     let confirmar = confirmar_en_la_nota(permiso, vivo.clone(), carpeta.clone(), asistente.clone(), nota.id.clone(), parar.clone());
     let mandar = envolver(mandar, contexto.as_ref().map(|(id, _)| id.clone()), e.bloquear);
     let mut ejecutor = SinVentana {
-        dentro: EjecutorDelChat::nuevo(tx, asistente.clone(), adjuntos.clone(), parar).con_acciones(confirmar, mandar),
+        dentro: EjecutorDelChat::nuevo(tx, asistente.clone(), adjuntos.clone(), parar).con_acciones(confirmar, mandar)
+            .con_raiz(Some(ent.ubicacion.raiz().to_path_buf())),
         ubicacion: ent.ubicacion.clone(),
         proyecto: asistente.clone(),
         adjuntos,

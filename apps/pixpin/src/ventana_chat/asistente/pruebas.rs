@@ -574,18 +574,24 @@ fn mandados_con(trozo: &str) -> usize {
         .count()
 }
 
-fn motor_que_borra(codigo: &str) -> Arc<MotorGuionado> {
-    Arc::new(MotorGuionado::nuevo(vec![
-        Respuesta::de_llamada("borrar_lista", &format!(r#"{{"codigo":"{codigo}"}}"#)),
+/// Una lista «titulo» en el chat y un modelo que pide borrarla por su
+/// nombre (14-oct: las tareas se piden por su nombre). Devuelve tambien el
+/// id de la lista, que es lo que lleva el pedido.
+fn motor_que_borra(raiz: &std::path::Path, proyecto: &str, titulo: &str) -> (Arc<MotorGuionado>, String) {
+    let lista = crate::pedidos::nueva_lista(raiz, proyecto, "PC01", titulo).unwrap();
+    let m = Arc::new(MotorGuionado::nuevo(vec![
+        Respuesta::de_llamada("borrar_lista", &format!(r#"{{"lista":"{titulo}"}}"#)),
         Respuesta::de_texto("Listo."),
-    ]))
+    ]));
+    (m, lista.id)
 }
 
 #[test]
 fn lo_que_borra_pregunta_en_la_burbuja_y_con_si_se_hace() {
     let (u, mut a, raiz) = chat("confirmar-si", true);
     escribir(&u, &mut a, "borra la lista m-si");
-    lanzar(&u, &mut a, motor_que_borra("m-si"), "borra la lista m-si".into()).unwrap();
+    let (motor, id) = motor_que_borra(&raiz, &a.ficha.id.clone(), "m-si");
+    lanzar(&u, &mut a, motor, "borra la lista m-si".into()).unwrap();
     let i = hasta_la_pregunta(&u, &mut a);
     let pregunta = pregunta_pendiente(&a, i).unwrap();
     assert!(pregunta.contains("m-si"), "{pregunta}");
@@ -593,11 +599,11 @@ fn lo_que_borra_pregunta_en_la_burbuja_y_con_si_se_hace() {
     // Mientras espera no sale nada y el turno sigue vivo.
     std::thread::sleep(Duration::from_millis(150));
     latido(&u, Some(&mut a));
-    assert_eq!(mandados_con("m-si"), 0);
+    assert_eq!(mandados_con(&id), 0);
     assert!(ocupado(&a.ficha.id));
     assert!(contestar(&mut a, i, true));
     hasta_el_final(&u, &mut a);
-    assert_eq!(mandados_con("m-si"), 1, "con «Sí» el pedido sale");
+    assert_eq!(mandados_con(&id), 1, "con «Sí» el pedido sale");
     // Queda en el historial, en pantalla y en el disco.
     let t = &respuesta(&a).texto;
     assert!(t.contains("❓") && t.contains("→ ✅ Sí"), "{t}");
@@ -611,14 +617,14 @@ fn lo_que_borra_pregunta_en_la_burbuja_y_con_si_se_hace() {
 fn con_no_no_se_hace_nada_y_el_modelo_lo_sabe() {
     let (u, mut a, raiz) = chat("confirmar-no", true);
     escribir(&u, &mut a, "borra la lista m-no");
-    let motor = motor_que_borra("m-no");
+    let (motor, id) = motor_que_borra(&raiz, &a.ficha.id.clone(), "m-no");
     lanzar(&u, &mut a, motor.clone(), "borra la lista m-no".into()).unwrap();
     let i = hasta_la_pregunta(&u, &mut a);
     assert!(contestar(&mut a, i, false));
     // Contestar dos veces no hace nada (caso negativo).
     assert!(!contestar(&mut a, i, true));
     hasta_el_final(&u, &mut a);
-    assert_eq!(mandados_con("m-no"), 0, "con «No» no sale nada");
+    assert_eq!(mandados_con(&id), 0, "con «No» no sale nada");
     assert!(respuesta(&a).texto.contains("→ ✖️ No"), "{}", respuesta(&a).texto);
     let pedidas = motor.recibido.lock().unwrap();
     let ultimo = pedidas.last().unwrap().mensajes.last().unwrap().texto_entero();
@@ -630,14 +636,15 @@ fn con_no_no_se_hace_nada_y_el_modelo_lo_sabe() {
 fn si_se_cierra_el_chat_la_pregunta_caduca_y_no_se_hace() {
     let (u, mut a, raiz) = chat("confirmar-cierra", true);
     escribir(&u, &mut a, "borra la lista m-cierra");
-    lanzar(&u, &mut a, motor_que_borra("m-cierra"), "borra la lista m-cierra".into()).unwrap();
+    let (motor, lista) = motor_que_borra(&raiz, &a.ficha.id.clone(), "m-cierra");
+    lanzar(&u, &mut a, motor, "borra la lista m-cierra".into()).unwrap();
     let i = hasta_la_pregunta(&u, &mut a);
     let id = a.mensajes[i].id.clone();
     // Cerrar el chat: las sesiones se sueltan (como al morir el hilo de la
     // ventana).
     olvidar_para_pruebas();
     std::thread::sleep(Duration::from_millis(400));
-    assert_eq!(mandados_con("m-cierra"), 0);
+    assert_eq!(mandados_con(&lista), 0);
     let disco = cuaderno::Cuaderno::leer_de(&pixpin_proyecto::almacen::carpeta(&raiz, &a.ficha.id)).unwrap();
     let nota = disco.mensajes.iter().find(|m| m.id == id).unwrap();
     assert!(nota.texto.contains("⌛"), "{}", nota.texto);
@@ -809,10 +816,7 @@ fn chat_a_png(a: &Abierto, ancho: u32, alto: u32, nombre: &str) -> std::path::Pa
 fn muestra_de_la_confirmacion_en_la_burbuja() {
     let (u, mut a, raiz) = chat("muestra-confirmar", true);
     escribir(&u, &mut a, "Borra la lista de la obra, ya no la uso");
-    let motor = Arc::new(MotorGuionado::nuevo(vec![
-        Respuesta::de_llamada("borrar_lista", r#"{"codigo":"obra-calle-9"}"#),
-        Respuesta::de_texto("Hecho."),
-    ]));
+    let (motor, _) = motor_que_borra(&raiz, &a.ficha.id.clone(), "Obra calle 9");
     lanzar(&u, &mut a, motor, "Borra la lista de la obra, ya no la uso".into()).unwrap();
     let i = hasta_la_pregunta(&u, &mut a);
     let ruta = chat_a_png(&a, 900, 620, "asistente-confirmar.png");

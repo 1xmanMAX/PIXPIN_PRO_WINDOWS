@@ -138,6 +138,7 @@ fn el_turno_con_memoria_reescribe_la_hoja_y_manda_el_registro_antes_del_fin() {
         None,
         vec![],
         Some(memoria),
+        None,
     );
     let (vivo, avisos) = hasta_el_final(&mut t);
     assert_eq!(vivo.mostrar(), "Listo, una casa roja.");
@@ -197,6 +198,7 @@ fn un_turno_que_falla_deja_lo_que_falta_en_la_hoja() {
         None,
         vec![],
         Some(memoria),
+        None,
     );
     let (vivo, avisos) = hasta_el_final(&mut t);
     assert!(vivo.acabado, "{}", vivo.mostrar());
@@ -338,6 +340,7 @@ fn de_verdad_conversacion_larga_con_reinicios() {
             ventana,
             reiniciado,
             ampliar: false,
+            ..Default::default()
         };
         let mut t = Turno::lanzar_con_memoria(
             motor.clone(),
@@ -348,6 +351,7 @@ fn de_verdad_conversacion_larga_con_reinicios() {
             None,
             herramientas,
             Some(memoria),
+            None,
         );
         let (vivo, avisos) = hasta_el_final_largo(&mut t);
         let registro: Registro = avisos

@@ -1523,6 +1523,7 @@ pedido-fallo-disco = No se pudo guardar lo que se pidió. Mira el registro de Pi
 pedido-tarea-movida = «{ $tarea }» movida a «{ $lista }».
 pedido-tarea-cambio = La lista cambió mientras se movía la tarea; no se tocó nada. Vuelve a buscarla.
 pedido-tarea-quitada = «{ $tarea }» quitada de su lista.
+pedido-tarea-corregida = Tarea cambiada: «{ $tarea }».
 pedido-lista-borrada = Lista «{ $lista }» borrada de «{ $proyecto }».
 pedido-sin-capturas = Todavía no hay ninguna captura.
 pedido-fuera-de-capturas = Ese fichero no está en la carpeta de capturas; no se toca.

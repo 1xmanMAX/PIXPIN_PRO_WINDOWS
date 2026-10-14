@@ -44,6 +44,11 @@ use crate::asistente::{al_lienzo, motor as ia_motor, nube as ia_nube, pensado as
 /// ve al momento). Un turno de minuto y medio no son cien escrituras.
 const GUARDAR_CADA: Duration = Duration::from_secs(2);
 
+/// Lo que se ve en la burbuja de la respuesta desde el primer instante,
+/// antes de que llegue nada del modelo (regla del usuario: algo visible en
+/// menos de medio segundo).
+pub(super) const ESTADO_INICIAL: &str = "💭 Pensando…";
+
 /// Un turno en marcha y su burbuja.
 struct Sesion {
     proyecto: String,
@@ -136,6 +141,8 @@ thread_local! {
     static TARJETA: RefCell<Tarjeta> = RefCell::new(Tarjeta::default());
     /// El lienzo que se pidio abrir al terminar: (proyecto, referencia).
     static POR_ABRIR: RefCell<Option<(String, String)>> = const { RefCell::new(None) };
+    /// Donde y cuando se precargo el modelo por ultima vez.
+    static PRECARGADO: RefCell<Option<(String, Instant)>> = const { RefCell::new(None) };
     /// La lista de `@`: la opcion marcada, lo pulsable como se pinto, y si
     /// se cerro con Escape para ese `@` (su posicion).
     static MENCIONES: RefCell<Menciones> = RefCell::new(Menciones::default());
@@ -169,6 +176,62 @@ pub(super) fn espera() -> Option<u32> {
     (turnos || al_lienzo::hay_pedidos()).then_some(80).or(bajando.then_some(250))
 }
 
+
+/// Si el mensaje es una orden simple que el camino rapido hace sin modelo
+/// (`pixpin_ia::rapido`).
+fn es_orden_rapida(pregunta: &str) -> bool {
+    let ahora = pixpin_ia::fechas::Momento::de_ms_locales(pixpin_shell::entorno::ahora_local_ms());
+    pixpin_ia::rapido::interpretar(pregunta, ahora).is_some()
+}
+
+/// El «motor» cuando no hay ninguno (sin bajar, sin clave): el camino
+/// rapido no lo necesita, y si hiciera falta, dice por que no hay.
+struct SinMotor(String);
+
+impl Motor for SinMotor {
+    fn completar(
+        &self,
+        _: &pixpin_ia::motor::Peticion,
+        _: &mut dyn FnMut(&pixpin_ia::motor::Trozo) -> pixpin_ia::motor::Seguir,
+    ) -> Result<pixpin_ia::motor::Respuesta, pixpin_ia::ErrorIa> {
+        Err(pixpin_ia::ErrorIa::Nube(self.0.clone()))
+    }
+}
+
+/// Cada cuanto, como mucho, se vuelve a precargar por escribir `@asistente`
+/// en el mismo chat (menos que el reposo de 5 min del motor: si se sigue
+/// escribiendo, sigue cargado).
+const REPRECARGAR: Duration = Duration::from_secs(4 * 60);
+
+/// **La precarga** (14-oct): al abrir el chat «Asistente», o al escribir
+/// `@asistente` en otro, se arranca `llama-server` en segundo plano si el
+/// motor es el local. Nunca bloquea: leer los ajustes es un fichero pequeño
+/// y la carga va en su hilo (`motor::precargar`). Una vez por chat abierto
+/// (y otra si pasan [`REPRECARGAR`] escribiendo): tener el chat abierto sin
+/// usarlo no retiene la memoria mas que el reposo de siempre.
+fn precargar_si_toca(ubicacion: &Ubicacion, a: &Abierto) {
+    let menciona = || pixpin_ia::acciones::normalizar(&a.borrador).contains("@asistente");
+    if !(a.ficha.es_asistente() || menciona()) {
+        return;
+    }
+    let toca = PRECARGADO.with_borrow(|p| match p {
+        Some((proyecto, cuando)) => *proyecto != a.ficha.id || (menciona() && cuando.elapsed() >= REPRECARGAR),
+        None => true,
+    });
+    if !toca {
+        return;
+    }
+    PRECARGADO.with_borrow_mut(|p| *p = Some((a.ficha.id.clone(), Instant::now())));
+    let aj = pixpin_store::cargar(ubicacion).unwrap_or_default();
+    // Solo el local tiene algo que cargar; la nube contesta en frio.
+    if !matches!(ia_nube::eleccion(&aj.asistente), ia_nube::Eleccion::Local) {
+        return;
+    }
+    let modelo = ia_motor::modelo_elegido(Some(aj.asistente.modelo.as_str()).filter(|m| !m.is_empty()));
+    if let Some(m) = ia_motor::raiz().and_then(|raiz| ia_motor::del_proceso(&raiz, &modelo).ok()) {
+        ia_motor::precargar(m);
+    }
+}
 
 /// El motor elegido en Ajustes → Asistente: el local (si esta bajado) o la
 /// nube con su clave, con el local de respaldo si se quiere y esta bajado.
@@ -209,6 +272,9 @@ pub(super) fn al_enviar(ubicacion: &Ubicacion, a: &mut Abierto, textos: &Catalog
     let con_foto = ia_chat::foto_reciente(&a.mensajes).is_some();
     let motor = match motor_de_los_ajustes(ubicacion, textos, &pregunta, con_foto) {
         Ok(m) => m,
+        // Sin modelo (o sin clave) las ordenes simples igual se hacen: van
+        // por el camino rapido y no lo necesitan. Lo demas dira el aviso.
+        Err(aviso) if es_orden_rapida(&pregunta) => Arc::new(SinMotor(aviso)),
         Err(aviso) => return Some(aviso),
     };
     // Pensar y la ventana: el local segun su modelo; la nube piensa por su
@@ -306,7 +372,7 @@ fn lanzar_con(
     // La burbuja de la respuesta nace ya, con el cursor: el usuario ve que
     // se le esta contestando aunque el modelo tarde en cargar.
     let mut vivo = EnVivo::default();
-    vivo.estado = Some("💭 …".into());
+    vivo.estado = Some(ESTADO_INICIAL.into());
     let numero = a.mensajes.iter().map(|m| m.numero).max().unwrap_or(0) + 1;
     // En otro chat la respuesta cuelga de la pregunta, para que se sepa a
     // que contesta entre los mensajes de los demas.
@@ -335,6 +401,7 @@ fn lanzar_con(
         destino,
         herramientas,
         memoria,
+        Some(raiz.clone()),
     );
     SESIONES.with_borrow_mut(|s| {
         s.push(Sesion {
@@ -504,6 +571,12 @@ pub(super) fn pintar_confirmacion(
 pub(super) fn latido(ubicacion: &Ubicacion, mut abierto: Option<&mut Abierto>) -> (bool, Option<String>) {
     let mut cambio = false;
     let mut aviso = None;
+
+    // 0. Precargar el modelo local al abrir el chat «Asistente» o al escribir
+    //    `@asistente` en otro: la primera pregunta ya no espera la carga.
+    if let Some(a) = abierto.as_deref() {
+        precargar_si_toca(ubicacion, a);
+    }
 
     // 1. Lo que hay que meter en un lienzo, si no hay ninguno abierto (si lo
     //    hay, lo atiende su bucle).

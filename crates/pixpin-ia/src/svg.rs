@@ -69,7 +69,7 @@ pub fn herramienta() -> Herramienta {
             "type": "object",
             "required": ["svg"],
             "properties": {
-                "svg": {"type": "string", "description": "el SVG entero, de <svg> a </svg>"},
+                "svg": {"type": "string", "maxLength": MAX_BYTES, "description": "el SVG entero, de <svg> a </svg>"},
                 "caja": {"type": "array", "items": {"type": "number"}, "description": "[x, y, ancho, alto] del lienzo 800x600 donde encajarlo; omitir para el centro"},
                 "trazo": {"type": "string", "enum": ["liso", "a_mano", "lapiz", "grafito"]},
                 "dureza": {"type": "string", "enum": ["4H", "2H", "HB", "2B", "4B", "6B", "8B"]}

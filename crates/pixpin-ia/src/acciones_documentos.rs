@@ -36,6 +36,7 @@ const fn p(nombre: &'static str, tipo: Tipo, obligatorio: bool, descripcion: &'s
         obligatorio,
         descripcion,
         defecto: None,
+        largo: None,
     }
 }
 
@@ -75,6 +76,8 @@ pub const ACCIONES_DOCUMENTOS: &[Accion] = &[
             p("pagina", Tipo::Entero, false, "pagina del PDF, desde 1; omitir: la primera con tabla"),
         ],
         confirmar: None,
+        // Lo hace `documentos_acciones` de la app y su resultado es la respuesta.
+        hecho: "Hecho.",
     },
     Accion {
         herramienta: ANOTAR,
@@ -98,6 +101,8 @@ pub const ACCIONES_DOCUMENTOS: &[Accion] = &[
             p("color", Tipo::Texto, false, "amarillo, rojo, verde, azul... omitir: el de siempre"),
         ],
         confirmar: None,
+        // Lo hace `documentos_acciones` de la app y su resultado es la respuesta.
+        hecho: "Hecho.",
     },
     Accion {
         herramienta: BUSCAR_EN,
@@ -115,6 +120,8 @@ pub const ACCIONES_DOCUMENTOS: &[Accion] = &[
             d("true", p("abrir", Tipo::SiNo, false, "abrir el visor en lo encontrado")),
         ],
         confirmar: None,
+        // Lo hace `documentos_acciones` de la app y su resultado es la respuesta.
+        hecho: "Hecho.",
     },
     Accion {
         herramienta: ABRIR,
@@ -128,6 +135,8 @@ pub const ACCIONES_DOCUMENTOS: &[Accion] = &[
         fijos: "{}",
         params: &[p("descripcion", Tipo::Texto, true, "el nombre o lo que trata, con las palabras del usuario")],
         confirmar: None,
+        // Lo hace `documentos_acciones` de la app y su resultado es la respuesta.
+        hecho: "Hecho.",
     },
     Accion {
         herramienta: EXPORTAR,
@@ -141,6 +150,8 @@ pub const ACCIONES_DOCUMENTOS: &[Accion] = &[
             p("archivo", Tipo::Texto, false, ARCHIVO),
         ],
         confirmar: None,
+        // Lo hace `documentos_acciones` de la app y su resultado es la respuesta.
+        hecho: "Hecho.",
     },
 ];
 

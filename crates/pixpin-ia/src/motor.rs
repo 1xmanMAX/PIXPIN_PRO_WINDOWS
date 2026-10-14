@@ -201,6 +201,9 @@ impl Peticion {
             "top_k": 20,
             "presence_penalty": 1.5,
             "stream": en_vivo,
+            // Que la ranura guarde lo leido: la vuelta siguiente del mismo
+            // turno (y la siguiente pregunta) solo lee lo nuevo.
+            "cache_prompt": true,
             "chat_template_kwargs": {"enable_thinking": self.pensar},
         });
         if en_vivo {
@@ -246,6 +249,12 @@ pub struct Medidas {
     pub tokens_salida: u32,
     pub tokens_por_segundo_lectura: f32,
     pub tokens_por_segundo_escritura: f32,
+    /// Tokens de la entrada que salieron de la cache (Claude
+    /// `cache_read_input_tokens`, DeepSeek `prompt_cache_hit_tokens`,
+    /// llama.cpp `timings.cache_n`): lo que NO hubo que volver a leer.
+    pub tokens_cache_leidos: u32,
+    /// Tokens que se escribieron en la cache en esta peticion (Claude).
+    pub tokens_cache_escritos: u32,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -296,6 +305,11 @@ pub trait Motor: Send + Sync {
     /// Soltar la memoria ya (cerrar el modelo). Se vuelve a cargar solo en la
     /// siguiente peticion.
     fn soltar(&self) {}
+
+    /// Dejarlo listo para contestar sin esperar (cargar el modelo local).
+    /// Bloquea: se llama en un hilo de fondo. Por omision no hace nada (la
+    /// nube no tiene nada que cargar).
+    fn precalentar(&self) {}
 
     /// Si este motor recibe el catalogo ENTERO en cada turno en vez de las
     /// pocas herramientas de `seleccion::para_el_pedido`. Los modelos de la

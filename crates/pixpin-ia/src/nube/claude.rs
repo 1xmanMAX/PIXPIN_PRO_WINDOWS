@@ -160,7 +160,15 @@ pub fn cuerpo(p: &Peticion, memoria: &HashMap<String, Value>, max_tokens: u32) -
         .filter(|m| m.rol == Rol::Sistema)
         .map(Mensaje::texto_entero)
         .unwrap_or_default();
-    let sistema = instrucciones::para(Proveedor::Claude, &base, &p.herramientas);
+    // Dos bloques: lo fijo con su punto de cache (herramientas + reglas, que
+    // no cambian de una pregunta a otra) y lo que cambia cada turno (la hoja
+    // de trabajo, la peticion mejorada) detras, sin punto: si fuera dentro
+    // del mismo bloque, cada pregunta nueva volveria a escribir la cache.
+    let (fijo, variable) = instrucciones::en_dos(Proveedor::Claude, &base, &p.herramientas);
+    let mut sistema = vec![json!({"type": "text", "text": fijo, "cache_control": {"type": "ephemeral"}})];
+    if !variable.is_empty() {
+        sistema.push(json!({"type": "text", "text": variable}));
+    }
     let mut mensajes = mensajes(&p.mensajes, memoria);
     // El punto de cache de la conversacion: el ultimo bloque del ultimo
     // mensaje (que siempre es del usuario).
@@ -174,7 +182,7 @@ pub fn cuerpo(p: &Peticion, memoria: &HashMap<String, Value>, max_tokens: u32) -
         "model": MODELO,
         "max_tokens": max_tokens,
         "stream": true,
-        "system": [{"type": "text", "text": sistema, "cache_control": {"type": "ephemeral"}}],
+        "system": sistema,
         "messages": mensajes,
         "thinking": {"type": "adaptive", "display": "summarized"},
         "output_config": {"effort": ESFUERZO},
@@ -367,6 +375,12 @@ impl Lector {
         let entrada = n("input_tokens") + n("cache_read_input_tokens") + n("cache_creation_input_tokens");
         if entrada > 0 {
             self.medidas.tokens_entrada = entrada;
+        }
+        if n("cache_read_input_tokens") > 0 {
+            self.medidas.tokens_cache_leidos = n("cache_read_input_tokens");
+        }
+        if n("cache_creation_input_tokens") > 0 {
+            self.medidas.tokens_cache_escritos = n("cache_creation_input_tokens");
         }
         if n("output_tokens") > 0 {
             self.medidas.tokens_salida = n("output_tokens");

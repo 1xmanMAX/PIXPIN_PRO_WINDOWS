@@ -50,6 +50,14 @@ const SIN_VENTANA: u32 = 0x0800_0000;
 /// usa para no pedir mas respuesta de la que cabe (`agente::tope_de_tokens`).
 pub const CONTEXTO: u32 = 8192;
 
+/// El `--cache-reuse` de fabrica (ver [`Config::reutilizar`]). Medido el
+/// 14-oct en el banco con el 2B en la MX250, 13 ordenes por el modelo: la
+/// mediana del total bajo de 11,4 a 10,0 s y la del primer trozo de 7,1 a
+/// 6,7 s (y el banco paso de 12/13 a 13/13). Poco, porque las herramientas
+/// de cada turno van delante del sistema en la plantilla de Qwen y cambian;
+/// pero no cuesta nada.
+pub const REUTILIZAR: Option<u32> = Some(256);
+
 /// Donde corre el modelo.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Dispositivo {
@@ -77,6 +85,10 @@ pub struct Config {
     pub arranque_max: Duration,
     /// Donde se escribe lo que dice el servidor (para diagnosticar).
     pub registro: Option<PathBuf>,
+    /// `--cache-reuse N`: reutilizar trozos de N tokens de la peticion
+    /// anterior aunque algo de delante haya cambiado (las herramientas de
+    /// cada turno). `None`: solo el prefijo identico (`cache_prompt`).
+    pub reutilizar: Option<u32>,
 }
 
 impl Config {
@@ -91,6 +103,7 @@ impl Config {
             reposo: Duration::from_secs(5 * 60),
             arranque_max: Duration::from_secs(120),
             registro: Some(std::env::temp_dir().join("pixpin-ia-servidor.log")),
+            reutilizar: REUTILIZAR,
         }
     }
 
@@ -116,6 +129,9 @@ impl Config {
         ];
         if let Some(v) = &self.vision {
             a.extend(["--mmproj".into(), v.display().to_string()]);
+        }
+        if let Some(n) = self.reutilizar {
+            a.extend(["--cache-reuse".into(), n.to_string()]);
         }
         if let Some(h) = self.hilos {
             a.extend(["-t".into(), h.to_string()]);
@@ -316,6 +332,12 @@ impl Drop for MotorLlama {
 }
 
 impl Motor for MotorLlama {
+    fn precalentar(&self) {
+        if let Err(e) = self.precargar() {
+            tracing::warn!(%e, "asistente: no se pudo precargar el modelo");
+        }
+    }
+
     fn completar(&self, peticion: &Peticion, al_trozo: &mut dyn FnMut(&Trozo) -> Seguir) -> Result<Respuesta, ErrorIa> {
         let _turno = self.turno.lock().map_err(|_| ErrorIa::Conexion("candado envenenado".into()))?;
         let (puerto, clave) = self.precargar()?;
@@ -637,6 +659,9 @@ mod pruebas {
         c.dispositivo = Dispositivo::Gpu("Vulkan1".into());
         let a = c.argumentos(1, "k").join(" ");
         assert!(a.contains("-dev Vulkan1 -ngl 99 --no-mmproj-offload"));
+        assert!(a.contains("--cache-reuse 256"), "{a}");
+        c.reutilizar = None;
+        assert!(!c.argumentos(1, "k").join(" ").contains("cache-reuse"));
     }
 
     #[test]

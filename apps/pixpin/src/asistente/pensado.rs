@@ -234,6 +234,8 @@ pub fn preparar_turno(
         ventana,
         reiniciado,
         ampliar: true,
+        // El camino rapido (14-oct).
+        rapido: true,
     };
     (historial, memoria)
 }

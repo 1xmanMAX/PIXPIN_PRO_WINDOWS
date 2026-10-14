@@ -52,6 +52,9 @@
 //! - [`relevo`]: varios modelos locales con un solo `llama-server` cargado a
 //!   la vez (cambiar suelta al otro).
 //! - [`conocimiento`]: el resumen de PixPin y el indice de `ayuda_app`.
+//! - [`rapido`], [`tareas`] y [`fechas`] (14-oct): las ordenes simples sin
+//!   modelo (<100 ms), las tareas por su nombre («la tarea comprar pan»,
+//!   «mañana a las 10») y las consultas («¿que tengo pendiente?»).
 //! - [`documentos`]: `buscar_en_mis_cosas`, un indice BM25 local de los
 //!   documentos, notas y chats del usuario, con el origen de cada trozo.
 //!
@@ -72,6 +75,7 @@ pub mod conocimiento;
 pub mod contexto;
 pub mod cronograma;
 pub mod descarga;
+pub mod fechas;
 pub mod documentos;
 pub mod ecuacion;
 pub mod figuras;
@@ -84,10 +88,12 @@ pub mod motor;
 pub mod nube;
 pub mod relevo;
 pub mod pensar;
+pub mod rapido;
 pub mod seleccion;
 pub mod servidor;
 pub mod tabla_escaneada;
 pub mod sse;
+pub mod tareas;
 pub mod svg;
 
 pub use agente::{Ejecutor, Evento, turno};

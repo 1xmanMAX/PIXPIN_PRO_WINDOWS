@@ -61,6 +61,14 @@ pub trait Ejecutor {
     /// Ejecuta la llamada. `Ok` lleva un resumen corto para el modelo
     /// («dibujadas 4 figuras», o el texto del OCR); `Err`, el motivo.
     fn ejecutar(&mut self, llamada: &Llamada) -> Result<String, String>;
+
+    /// **Varias llamadas de una misma respuesta**, con sus resultados en el
+    /// mismo orden. Por omision, una tras otra; un ejecutor puede hacer a la
+    /// vez las que no dependen entre si (el OCR de dos PDF) para que el
+    /// modelo espere solo a la mas lenta.
+    fn ejecutar_varias(&mut self, llamadas: &[Llamada]) -> Vec<Result<String, String>> {
+        llamadas.iter().map(|l| self.ejecutar(l)).collect()
+    }
 }
 
 /// Como acabo el turno.
@@ -94,6 +102,93 @@ pub struct Opciones<'a> {
     /// vuelta de planear elige entre ellas, y las que nombre se anaden a las
     /// del turno aunque la seleccion por palabras no las diera.
     pub ampliar: Option<&'a [Herramienta]>,
+    /// **El camino rapido** (14-oct): con el «ahora» local, las ordenes
+    /// simples («abre la galería», «apunta comprar pan mañana») se hacen sin
+    /// preguntar al modelo ([`crate::rapido`]). `None`: siempre el modelo.
+    pub rapido: Option<crate::fechas::Momento>,
+}
+
+/// Lo mas largo que se devuelve al modelo de un resultado de herramienta: lo
+/// demas se recorta diciendolo (cada letra se vuelve a leer en cada vuelta).
+pub const RESULTADO_MAXIMO: usize = 4000;
+
+/// Recorta un resultado para el modelo, avisando de que hay mas.
+pub fn recortar_resultado(texto: String) -> String {
+    if texto.chars().count() <= RESULTADO_MAXIMO {
+        return texto;
+    }
+    let mut s: String = texto.chars().take(RESULTADO_MAXIMO).collect();
+    s.push_str("\n[...recortado: el usuario tiene el resultado entero]");
+    s
+}
+
+/// **Intenta el camino rapido**: si la orden es simple, la hace con el
+/// ejecutor y devuelve el final del turno; `None` si no era simple o si no
+/// salio (entonces contesta el modelo, sin que se haya dicho nada).
+fn turno_rapido(
+    historial: &mut Vec<Mensaje>,
+    ejecutor: &mut dyn Ejecutor,
+    ahora: crate::fechas::Momento,
+    al_evento: &mut dyn FnMut(Evento) -> Seguir,
+) -> Option<Final> {
+    let ultimo = historial.last().filter(|m| m.rol == Rol::Usuario && !m.tiene_imagen())?;
+    let orden = crate::rapido::interpretar(&ultimo.texto_entero(), ahora)?;
+    let cruda = crate::motor::LlamadaCruda {
+        id: "rapido-1".into(),
+        nombre: orden.herramienta.into(),
+        argumentos: serde_json::Value::Object(orden.args).to_string(),
+    };
+    let v = validar(&cruda, &crate::herramientas::catalogo()).ok()?;
+    // Lo que pregunta antes nunca va por aqui (no deberia llegar: el
+    // interprete no entiende «borra»), por si acaso.
+    if matches!(&v.llamada, Llamada::App(a) if a.confirmar.is_some()) {
+        return None;
+    }
+    let texto = match ejecutor.ejecutar(&v.llamada) {
+        Ok(t) => t,
+        // La orden se entendio pero no casa con lo que hay (una tarea que no
+        // esta, una fecha que no existe, una lista de otro chat): el motivo
+        // ya es la respuesta, con lo que si hay. Preguntar al modelo solo lo
+        // repetiria mas tarde (medido con el 2B: ademas lo apuntaba en otro
+        // sitio sin decirlo).
+        Err(motivo) if motivo.contains(crate::tareas::NO_HICE_NADA) => {
+            al_evento(Evento::Texto(motivo.clone()));
+            historial.push(Mensaje::texto(Rol::Asistente, motivo.clone()));
+            return Some(Final {
+                texto: motivo,
+                herramientas_hechas: 0,
+                reintentos: 0,
+                cortado: false,
+            });
+        }
+        Err(motivo) => {
+            tracing::info!(%motivo, herramienta = %cruda.nombre, "asistente: el camino rapido no pudo, contesta el modelo");
+            return None;
+        }
+    };
+    al_evento(Evento::Herramienta {
+        llamada: v.llamada.clone(),
+        avisos: Vec::new(),
+    });
+    al_evento(Evento::Resultado {
+        nombre: v.llamada.nombre().to_string(),
+        ok: true,
+        texto: texto.clone(),
+    });
+    let respuesta = if texto.trim().is_empty() || texto.starts_with("hecho") { HECHO.to_string() } else { texto };
+    al_evento(Evento::Texto(respuesta.clone()));
+    // La conversacion queda como si el modelo lo hubiera hecho.
+    let mut m = Mensaje::texto(Rol::Asistente, "");
+    m.llamadas = vec![cruda.clone()];
+    historial.push(m);
+    historial.push(Mensaje::resultado(&cruda.id, respuesta.clone()));
+    historial.push(Mensaje::texto(Rol::Asistente, respuesta.clone()));
+    Some(Final {
+        texto: respuesta,
+        herramientas_hechas: 1,
+        reintentos: 0,
+        cortado: false,
+    })
 }
 
 /// Tope de la vuelta de planear: sin pensar, cinco lineas; pensando, unos
@@ -331,6 +426,12 @@ fn turno_dentro(
     crono: &mut Cronometro,
     al_evento: &mut dyn FnMut(Evento) -> Seguir,
 ) -> Result<Final, ErrorIa> {
+    // Antes que nada (ni plan ni modelo): la orden simple, al instante.
+    if let Some(ahora) = opciones.rapido
+        && let Some(f) = turno_rapido(historial, ejecutor, ahora, al_evento)
+    {
+        return Ok(f);
+    }
     let mut lista = herramientas_base.to_vec();
     if opciones.buscar.is_some() && !lista.iter().any(|h| h.nombre == contexto::BUSCAR_HISTORIAL) {
         lista.push(contexto::herramienta_buscar());
@@ -459,6 +560,11 @@ fn turno_dentro(
             .find(|m| m.rol == Rol::Usuario)
             .map(Mensaje::texto_entero)
             .unwrap_or_default();
+        // Primero se valida todo; luego se hacen juntas las buenas
+        // (`Ejecutor::ejecutar_varias`: las independientes, a la vez); y los
+        // resultados vuelven al modelo en el orden de sus llamadas.
+        let mut huecos: Vec<(String, Option<String>)> = Vec::new();
+        let mut buenas: Vec<(usize, crate::herramientas::Validada)> = Vec::new();
         for cruda in &respuesta.llamadas {
             // `buscar_historial` no es del chat: lo contesta el propio turno.
             if let Some(buscar) = opciones.buscar.filter(|_| cruda.nombre.trim() == contexto::BUSCAR_HISTORIAL) {
@@ -476,7 +582,7 @@ fn turno_dentro(
                     ok,
                     texto: cortar(&texto, 300),
                 });
-                historial.push(Mensaje::resultado(&cruda.id, texto));
+                huecos.push((cruda.id.clone(), Some(recortar_resultado(texto))));
                 continue;
             }
             match validar(&sanear(cruda), herramientas) {
@@ -490,21 +596,8 @@ fn turno_dentro(
                         llamada: v.llamada.clone(),
                         avisos: v.avisos.clone(),
                     });
-                    let (ok, texto) = match ejecutor.ejecutar(&v.llamada) {
-                        Ok(t) => (true, t),
-                        Err(t) => (false, format!("ERROR: {t}")),
-                    };
-                    hechas += usize::from(ok);
-                    al_evento(Evento::Resultado {
-                        nombre: v.llamada.nombre().to_string(),
-                        ok,
-                        texto: texto.clone(),
-                    });
-                    let mut para_el_modelo = texto;
-                    if !v.avisos.is_empty() {
-                        para_el_modelo.push_str(&format!(" (avisos: {})", v.avisos.join("; ")));
-                    }
-                    historial.push(Mensaje::resultado(&cruda.id, para_el_modelo));
+                    buenas.push((huecos.len(), v));
+                    huecos.push((cruda.id.clone(), None));
                 }
                 Err(e) => {
                     alguna_mal = true;
@@ -521,9 +614,34 @@ fn turno_dentro(
                     if al_evento(Evento::Reintento { motivo: motivo.clone() }) == Seguir::Parar {
                         cortado = true;
                     }
-                    historial.push(Mensaje::resultado(&cruda.id, motivo));
+                    huecos.push((cruda.id.clone(), Some(motivo)));
                 }
             }
+        }
+        if !buenas.is_empty() {
+            let llamadas: Vec<Llamada> = buenas.iter().map(|(_, v)| v.llamada.clone()).collect();
+            let mut resultados = ejecutor.ejecutar_varias(&llamadas);
+            resultados.resize_with(llamadas.len(), || Err("no se hizo".into()));
+            for ((i, v), r) in buenas.into_iter().zip(resultados) {
+                let (ok, texto) = match r {
+                    Ok(t) => (true, t),
+                    Err(t) => (false, format!("ERROR: {t}")),
+                };
+                hechas += usize::from(ok);
+                al_evento(Evento::Resultado {
+                    nombre: v.llamada.nombre().to_string(),
+                    ok,
+                    texto: texto.clone(),
+                });
+                let mut para_el_modelo = recortar_resultado(texto);
+                if !v.avisos.is_empty() {
+                    para_el_modelo.push_str(&format!(" (avisos: {})", v.avisos.join("; ")));
+                }
+                huecos[i].1 = Some(para_el_modelo);
+            }
+        }
+        for (id, texto) in huecos {
+            historial.push(Mensaje::resultado(&id, texto.unwrap_or_default()));
         }
         ya_busco |= busco_bien;
         if cortado {
@@ -613,12 +731,12 @@ pub fn con_topes(herramientas: &[Herramienta], tope: u64) -> Vec<Herramienta> {
                 let max = o.get("maxItems").and_then(|m| m.as_u64()).map_or(tope, |m| m.min(tope));
                 o.insert("maxItems".into(), max.into());
             }
-            Some("string") if !o.contains_key("enum") => {
-                let max = o
-                    .get("maxLength")
-                    .and_then(|m| m.as_u64())
-                    .map_or(TOPE_TEXTO, |m| m.min(TOPE_TEXTO));
-                o.insert("maxLength".into(), max.into());
+            // Un texto sin tope propio es una etiqueta o un titulo: [`TOPE_TEXTO`].
+            // Los largos por naturaleza (un SVG, una nota, los pasos de una
+            // automatizacion) traen el suyo en su esquema y se respeta: con 120
+            // para todos, un SVG llegaba cortado a 120 letras (14-oct).
+            Some("string") if !o.contains_key("enum") && !o.contains_key("maxLength") => {
+                o.insert("maxLength".into(), TOPE_TEXTO.into());
             }
             _ => {}
         }
@@ -899,7 +1017,9 @@ mod pruebas {
             p: &Peticion,
             t: &mut dyn FnMut(&Trozo) -> Seguir,
         ) -> Result<Respuesta, ErrorIa> {
-            assert_eq!(p.max_tokens, MAX_TOKENS_CON_HERRAMIENTAS);
+            // El reintento pide lo mismo que cabe (el catalogo entero ya se
+            // come parte de la ventana de 8192: 14-oct).
+            assert_eq!(p.max_tokens, tope_de_tokens(p));
             if !self.0.swap(true, std::sync::atomic::Ordering::SeqCst) {
                 return Err(ErrorIa::Protocolo(
                     "HTTP 500: Failed to parse tool call arguments as JSON: unexpected end of input".into(),
@@ -1406,4 +1526,175 @@ mod pruebas {
         larga.push(Mensaje::usuario("x".repeat(60_000)));
         assert_eq!(tope_de_tokens(&Peticion::nueva(larga)), MIN_TOKENS);
     }
+}
+
+#[cfg(test)]
+mod pruebas_rapidez {
+    use super::*;
+    use crate::herramientas::catalogo;
+    use crate::motor::MotorGuionado;
+
+    /// Apunta lo que le piden; falla si se le dice.
+    struct Apunta(Vec<String>, Option<String>);
+
+    impl Ejecutor for Apunta {
+        fn ejecutar(&mut self, l: &Llamada) -> Result<String, String> {
+            self.0.push(l.nombre().to_string());
+            match &self.1 {
+                Some(e) => Err(e.clone()),
+                None => Ok("Apuntada «comprar pan».".into()),
+            }
+        }
+    }
+
+    fn con_rapido(pedido: &str, ej: &mut Apunta, guion: Vec<Respuesta>) -> (Final, Vec<Evento>, usize) {
+        let motor = MotorGuionado::nuevo(guion);
+        let mut h = vec![Mensaje::sistema(instrucciones()), Mensaje::usuario(pedido)];
+        let o = Opciones {
+            planificar: true,
+            rapido: Some(crate::tareas::pruebas::ahora()),
+            ..Default::default()
+        };
+        let mut eventos = Vec::new();
+        let f = turno_con(&motor, &mut h, &catalogo(), ej, &o, &mut |e| {
+            eventos.push(e);
+            Seguir::Si
+        })
+        .unwrap();
+        let pedidas = motor.recibido.lock().unwrap().len();
+        (f, eventos, pedidas)
+    }
+
+    #[test]
+    fn una_orden_simple_no_pregunta_al_modelo() {
+        let mut ej = Apunta(Vec::new(), None);
+        let t0 = std::time::Instant::now();
+        let (f, eventos, pedidas) = con_rapido("apunta comprar pan", &mut ej, vec![]);
+        assert!(t0.elapsed() < std::time::Duration::from_millis(100), "{:?}", t0.elapsed());
+        assert_eq!(pedidas, 0, "ni plan ni modelo");
+        assert_eq!(ej.0, vec!["anadir_tarea"]);
+        assert_eq!(f.texto, "Apuntada «comprar pan».");
+        assert!(matches!(eventos.last(), Some(Evento::Texto(t)) if t == "Apuntada «comprar pan»."));
+    }
+
+    #[test]
+    fn si_el_camino_rapido_no_puede_contesta_el_modelo() {
+        // Un fallo de la app (no contesta): se pregunta al modelo (con su
+        // plan), sin que la burbuja haya dicho nada antes.
+        let mut ej = Apunta(Vec::new(), Some("PixPin no contesto".into()));
+        let (f, eventos, pedidas) = con_rapido(
+            "tacha pintar la luna",
+            &mut ej,
+            vec![Respuesta::de_texto("ENTIENDO: x\nHARE: y\nHERRAMIENTAS: ninguna\nDATOS: -\nDECIDIDO: -"), Respuesta::de_texto("No la encuentro.")],
+        );
+        assert_eq!(pedidas, 2);
+        assert_eq!(f.texto, "No la encuentro.");
+        assert!(!eventos.iter().any(|e| matches!(e, Evento::Herramienta { .. })));
+        // Y lo que no es simple va directo al modelo.
+        // La tarea no esta: el motivo es la respuesta, sin modelo.
+        let mut ej = Apunta(Vec::new(), Some("No encuentro ninguna tarea «pintar la luna». No hice nada.".into()));
+        let (f, _, pedidas) = con_rapido("tacha pintar la luna", &mut ej, vec![]);
+        assert_eq!(pedidas, 0);
+        assert!(f.texto.starts_with("No encuentro") && f.herramientas_hechas == 0);
+        let mut ej = Apunta(Vec::new(), None);
+        let (_, _, pedidas) = con_rapido("Apunta comprar yeso y dibuja un círculo", &mut ej, vec![
+            Respuesta::de_texto("ENTIENDO: x\nHARE: y\nHERRAMIENTAS: ninguna\nDATOS: -\nDECIDIDO: -"),
+            Respuesta::de_texto("Vale."),
+        ]);
+        assert_eq!(pedidas, 2);
+        assert!(ej.0.is_empty());
+    }
+
+    /// Hace las llamadas de una respuesta de una vez y dice en que orden.
+    struct Juntas(Vec<usize>);
+
+    impl Ejecutor for Juntas {
+        fn ejecutar(&mut self, _: &Llamada) -> Result<String, String> {
+            unreachable!("van todas por ejecutar_varias")
+        }
+        fn ejecutar_varias(&mut self, l: &[Llamada]) -> Vec<Result<String, String>> {
+            self.0.push(l.len());
+            (0..l.len()).map(|i| if i == 1 { Err("roto".into()) } else { Ok(format!("r{i}")) }).collect()
+        }
+    }
+
+    #[test]
+    fn varias_llamadas_se_hacen_juntas_y_vuelven_en_orden() {
+        let motor = MotorGuionado::nuevo(vec![
+            Respuesta {
+                llamadas: vec![
+                    crate::motor::LlamadaCruda { id: "a".into(), nombre: "ocr".into(), argumentos: "{}".into() },
+                    crate::motor::LlamadaCruda { id: "b".into(), nombre: "ocr".into(), argumentos: "{}".into() },
+                    crate::motor::LlamadaCruda { id: "c".into(), nombre: "inventada".into(), argumentos: "{}".into() },
+                    crate::motor::LlamadaCruda { id: "d".into(), nombre: "ayuda_app".into(), argumentos: r#"{"pregunta":"x"}"#.into() },
+                ],
+                ..Respuesta::de_llamada("ocr", "{}")
+            },
+            Respuesta::de_texto("Listo."),
+        ]);
+        let mut h = vec![Mensaje::sistema(instrucciones()), Mensaje::usuario("lee los dos")];
+        let mut ej = Juntas(Vec::new());
+        turno(&motor, &mut h, &catalogo(), &mut ej, &mut |_| Seguir::Si).unwrap();
+        assert_eq!(ej.0, vec![3], "las tres buenas, de una vez");
+        let resultados: Vec<(String, String)> = h
+            .iter()
+            .filter(|m| m.rol == Rol::Herramienta)
+            .map(|m| (m.id_llamada.clone().unwrap_or_default(), m.texto_entero()))
+            .collect();
+        let ids: Vec<&str> = resultados.iter().map(|(i, _)| i.as_str()).collect();
+        assert_eq!(ids, vec!["a", "b", "c", "d"]);
+        assert_eq!(resultados[0].1, "r0");
+        assert_eq!(resultados[1].1, "ERROR: roto");
+        assert!(resultados[2].1.contains("inventada"));
+        assert_eq!(resultados[3].1, "r2");
+    }
+
+    #[test]
+    fn un_resultado_largo_llega_recortado_al_modelo() {
+        let corto = recortar_resultado("hola".into());
+        assert_eq!(corto, "hola");
+        let largo = recortar_resultado("x".repeat(RESULTADO_MAXIMO + 50));
+        assert!(largo.chars().count() < RESULTADO_MAXIMO + 80 && largo.contains("recortado"));
+    }
+}
+
+#[cfg(test)]
+mod pruebas_topes {
+    use super::*;
+    use crate::herramientas::catalogo;
+
+    fn esquema<'a>(hs: &'a [Herramienta], nombre: &str) -> &'a serde_json::Value {
+        &hs.iter().find(|h| h.nombre == nombre).unwrap_or_else(|| panic!("falta {nombre}")).parametros["properties"]
+    }
+
+    /// **El tope de 120 es para etiquetas**; lo largo por naturaleza lleva
+    /// el suyo, que sale del esquema de cada herramienta (hallado el 14-oct:
+    /// un SVG llegaba al modelo local acotado a 120 letras).
+    #[test]
+    fn los_textos_largos_llevan_su_tope_y_las_etiquetas_el_corto() {
+        let hs = con_topes(&catalogo(), TOPE_LISTAS);
+        let largo = |h: &str, campo: &str| esquema(&hs, h)[campo]["maxLength"].as_u64().unwrap();
+        assert_eq!(largo(crate::svg::NOMBRE, "svg"), crate::svg::MAX_BYTES as u64);
+        assert_eq!(largo("nota_nueva", "texto"), crate::acciones::LARGO_LARGO as u64);
+        assert_eq!(largo("escribir_en_chat", "texto"), crate::acciones::LARGO_LARGO as u64);
+        assert_eq!(largo("crear_automatizacion", "pasos"), crate::acciones::LARGO_LARGO as u64);
+        assert_eq!(largo(crate::ecuacion::NOMBRE, "ecuacion"), crate::ecuacion::MAX_LARGO as u64);
+        // Las etiquetas de las figuras, cortas.
+        let fig = &esquema(&hs, DIBUJAR_)["elementos"]["items"]["properties"];
+        assert_eq!(fig["texto"]["maxLength"].as_u64(), Some(TOPE_TEXTO));
+        // Un SVG de 5 KB cabe entero; una etiqueta de 500 no.
+        let svg = format!("<svg>{}</svg>", "<rect width=\"1\" height=\"1\"/>".repeat(180));
+        assert!(svg.len() > 5000 && (svg.len() as u64) < largo(crate::svg::NOMBRE, "svg"));
+        assert!(500 > fig["texto"]["maxLength"].as_u64().unwrap());
+        // Y la validacion de la tabla deja pasar una nota de 5000 letras y
+        // corta una de 9000 a su tope.
+        let a = crate::acciones::por_nombre("nota_nueva").unwrap();
+        let args = |n: usize| serde_json::json!({"texto": "x".repeat(n)}).as_object().unwrap().clone();
+        let v = crate::acciones::validar(a, &args(5000)).unwrap();
+        assert_eq!(v.pedido["texto"].as_str().unwrap().len(), 5000);
+        let v = crate::acciones::validar(a, &args(9000)).unwrap();
+        assert_eq!(v.pedido["texto"].as_str().unwrap().len(), crate::acciones::LARGO_LARGO);
+    }
+
+    const DIBUJAR_: &str = crate::herramientas::DIBUJAR;
 }

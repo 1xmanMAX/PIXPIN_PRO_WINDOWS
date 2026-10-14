@@ -90,8 +90,9 @@ struct Relevado {
     motor: Arc<dyn Motor>,
 }
 
-impl Motor for Relevado {
-    fn completar(&self, p: &Peticion, al_trozo: &mut dyn FnMut(&Trozo) -> Seguir) -> Result<Respuesta, ErrorIa> {
+impl Relevado {
+    /// Hace `f` con el turno cogido: antes suelta al que estuviera cargado.
+    fn con_turno<T>(&self, f: impl FnOnce() -> T) -> T {
         // El turno se tiene hasta acabar: nadie mas carga mientras tanto.
         let mut turno = self.dentro.turno.lock().unwrap_or_else(|e| e.into_inner());
         if turno.as_deref() != Some(self.id.as_str()) {
@@ -112,7 +113,19 @@ impl Motor for Relevado {
             }
             *turno = Some(self.id.clone());
         }
-        self.motor.completar(p, al_trozo)
+        f()
+    }
+}
+
+impl Motor for Relevado {
+    fn completar(&self, p: &Peticion, al_trozo: &mut dyn FnMut(&Trozo) -> Seguir) -> Result<Respuesta, ErrorIa> {
+        self.con_turno(|| self.motor.completar(p, al_trozo))
+    }
+
+    /// La precarga tambien pasa por el relevo (14-oct): suelta al otro
+    /// modelo antes de cargar este, y espera si otro esta contestando.
+    fn precalentar(&self) {
+        self.con_turno(|| self.motor.precalentar())
     }
 
     fn soltar(&self) {
@@ -193,6 +206,22 @@ mod pruebas {
         r.quitar("gemma");
         assert_eq!(r.cuantos(), 1);
         assert_eq!(gemma.soltado.load(Ordering::SeqCst), 2);
+    }
+
+    /// Precargar (al abrir el chat «Asistente») tambien releva: el otro
+    /// modelo se suelta antes de cargar este.
+    #[test]
+    fn precargar_tambien_suelta_al_otro() {
+        let (r, qwen, gemma, _) = par();
+        let (q, g) = (qwen.clone(), gemma.clone());
+        let mq = r.motor("qwen", move || q);
+        let mg = r.motor("gemma", move || g);
+        pedir(&mg);
+        mq.precalentar();
+        assert_eq!(gemma.soltado.load(Ordering::SeqCst), 1);
+        assert_eq!(r.ultimo().as_deref(), Some("qwen"));
+        mq.precalentar();
+        assert_eq!(qwen.soltado.load(Ordering::SeqCst), 0, "precargar el mismo no lo recarga");
     }
 
     #[test]

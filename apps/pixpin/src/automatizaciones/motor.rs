@@ -291,6 +291,7 @@ impl Hacedor for DeVerdad {
     fn accion(&mut self, a: &AccionApp) -> Result<String, String> {
         crate::asistente::acciones::hacer(
             a,
+            Some(self.app.entorno.ubicacion.raiz()),
             &{
                 // Lo que borra o envia pregunta en una burbuja del chat
                 // «Asistente» (13-oct-2026; antes, un cuadro de Windows).
