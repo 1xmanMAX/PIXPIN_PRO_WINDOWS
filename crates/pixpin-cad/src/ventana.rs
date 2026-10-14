@@ -984,7 +984,13 @@ pub struct Letras {
     /// Lee el plano otra vez (con la huella nueva de las letras).
     #[allow(clippy::type_complexity)]
     pub releer: Box<dyn Fn() -> Receiver<Result<Modelo, String>>>,
+    /// La huella de las letras ahora ([`crate::letras::huella`]): si cambia
+    /// con el plano abierto (llegaron de otro aparato), se relee.
+    pub huella: Box<dyn Fn() -> String>,
 }
+
+/// Cada cuanto se mira si cambiaron las letras con el plano abierto.
+const MIRAR_LETRAS_CADA_MS: u32 = 2000;
 
 #[allow(clippy::too_many_arguments)]
 fn menu(hwnd: HWND, t: &TextosUi, acotando: bool, hay_cotas: bool, fijada: bool, marcando: bool, hay_marcos: bool) {
@@ -1148,12 +1154,23 @@ pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo, String>>, textos_ui: 
     // se guardan (viajan con ella, como en Android).
     let mut firma_guardada = firma_de(&acotar.hechas, &marcos);
     let mut aviso_civil_hasta: Option<Instant> = None;
+    // Las letras con que se leyo el plano (su huella) y cuando se miraron:
+    // si cambian sin el boton «Aa» (llegaron de otro aparato propio), el
+    // plano se vuelve a leer sin mover la vista.
+    let mut huella_leida: Option<String> = None;
+    let mut letras_miradas = Instant::now();
     'bucle: loop {
         let animando = camara != destino;
         // SAFETY: bucle de mensajes de este hilo.
         unsafe {
             if !animando && !sucio && !barra_sucia {
-                let espera = if plano.is_none() || releyendo || barra_visible || fuera_desde.is_some() { 50 } else { INFINITE };
+                let espera = if plano.is_none() || releyendo || barra_visible || fuera_desde.is_some() {
+                    50
+                } else if huella_leida.is_some() {
+                    MIRAR_LETRAS_CADA_MS
+                } else {
+                    INFINITE
+                };
                 let _ = MsgWaitForMultipleObjectsEx(None, espera, QS_ALLINPUT, MWMO_INPUTAVAILABLE);
             }
             let mut m = MSG::default();
@@ -1185,6 +1202,10 @@ pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo, String>>, textos_ui: 
                                 enganches = None;
                                 faltan_letras = crate::letras::las_que_faltan(&m.sin_dibujar);
                                 aviso_letras_hasta = (!faltan_letras.is_empty()).then(|| Instant::now() + Duration::from_secs(8));
+                                if huella_leida.is_none() {
+                                    huella_leida = acciones.letras.as_ref().map(|l| (l.huella)());
+                                    letras_miradas = Instant::now();
+                                }
                                 barra_sucia = true;
                                 // Para las pruebas: PIXPIN_CAD_VISTA="x,y,ancho" (coordenadas del plano).
                                 if let Ok(v) = std::env::var("PIXPIN_CAD_VISTA")
@@ -1630,6 +1651,27 @@ pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo, String>>, textos_ui: 
             if cambiadas > 0 {
                 cargando = (l.releer)();
                 releyendo = true;
+                huella_leida = Some((l.huella)());
+                mensaje = textos_ui.releyendo.clone();
+                aviso_ui = None;
+                aviso_letras_hasta = None;
+                sucio = true;
+            }
+        }
+        // **Letras que llegaron de otro aparato propio** (la sincronizacion
+        // las deja en la misma carpeta): mirar de vez en cuando su huella
+        // (leer una carpeta pequeña) y, si cambio, releer como con «Aa».
+        if plano.is_some()
+            && !releyendo
+            && letras_miradas.elapsed() >= Duration::from_millis(MIRAR_LETRAS_CADA_MS as u64)
+            && let (Some(l), Some(antes)) = (&acciones.letras, &huella_leida)
+        {
+            letras_miradas = Instant::now();
+            let ahora = (l.huella)();
+            if ahora != *antes {
+                cargando = (l.releer)();
+                releyendo = true;
+                huella_leida = Some(ahora);
                 mensaje = textos_ui.releyendo.clone();
                 aviso_ui = None;
                 aviso_letras_hasta = None;

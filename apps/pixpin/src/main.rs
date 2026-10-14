@@ -106,6 +106,7 @@ mod lector_pdf;
 mod lector_pdf_proyecto;
 mod lector_tinta;
 mod leer_en_voz;
+mod letras_que_viajan;
 mod llamada;
 mod marco_de_la_tinta;
 mod medir_fotogramas;

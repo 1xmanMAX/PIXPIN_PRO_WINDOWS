@@ -376,6 +376,15 @@ pub fn ruta_real(raiz: &Path, ficha_id: &str, ruta: &str) -> Option<PathBuf> {
     Some(almacen::carpeta(raiz, ficha_id).join(ruta))
 }
 
+/// **Las letras de los planos que viajan** (14-oct-2026): la ruta portatil
+/// de una letra es `pixpin:files/guardados/fuentes-shx/<nombre>`, senalada
+/// por un mensaje ARCHIVO del chat «Asistente» (solo aparatos propios). En
+/// `guardados/` porque es donde los dos aparatos dejan viajar un fichero y
+/// donde borrar el mensaje borra tambien el fichero (`adjuntosFuera`).
+pub const LETRAS_PORTATIL: &str = "guardados/fuentes-shx/";
+/// La carpeta de letras del usuario en la raiz del PC (`pixpin_cad::letras::CARPETA`).
+pub const CARPETA_DE_LETRAS: &str = "fuentes-shx";
+
 /// La clase de un mensaje con una tabla del movil (`Clase.TABLA`).
 pub const CLASE_TABLA: &str = "TABLA";
 
@@ -850,6 +859,15 @@ impl Disco for DiscoPc {
             && let Some((_, f)) = self.mapa().into_iter().find(|(ch, _)| limpio(ch) == c)
         {
             return almacen::carpeta(&self.raiz, &f.id).join(resto);
+        }
+        // Las letras de los planos del chat «Asistente» son la carpeta de
+        // letras del usuario (`<raiz>/fuentes-shx`, el boton «Aa»): asi lo
+        // que llega de otro aparato propio se usa al momento, y lo que se
+        // borra alli se borra aqui. De otro chat, a su carpeta: inerte.
+        if let Some(nombre) = rel.strip_prefix(LETRAS_PORTATIL).filter(|n| !n.is_empty() && !n.contains('/'))
+            && self.ficha_de(chat).is_some_and(|f| f.es_asistente())
+        {
+            return self.raiz.join(CARPETA_DE_LETRAS).join(nombre);
         }
         p.join("android").join(rel)
     }

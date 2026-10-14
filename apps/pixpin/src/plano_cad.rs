@@ -231,6 +231,9 @@ pub fn lanzar(idioma: Idioma, ubicacion: Ubicacion, ruta: &Path) {
     let lanzado = std::thread::Builder::new().name("plano-cad".into()).spawn(move || {
         // El dialogo «Abrir» del boton «Aa» es COM.
         let _com = pixpin_shell::ComDelHilo::iniciar();
+        // Las letras: fuera lo que llego y no lo es, y que viajen las que el
+        // usuario ya tenia. Antes de leer, para leer con lo que queda.
+        crate::letras_que_viajan::al_abrir(&raiz);
         let rx = leer_aparte(&raiz, &ruta);
         let titulo = ruta.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
         // El boton «3D»: el mismo plano en el visor de modelos.
@@ -248,17 +251,21 @@ pub fn lanzar(idioma: Idioma, ubicacion: Ubicacion, ruta: &Path) {
         let capa = anotar::rutas_de_la_capa(&raiz, &ruta);
         let anotador: Box<dyn FnOnce(&pixpin_cad::modelo::Modelo) -> Box<dyn pixpin_cad::anotado::Anotador>> =
             Box::new(move |m| Box::new(anotar::MotorDelPlano::nuevo(capa, m)) as Box<dyn pixpin_cad::anotado::Anotador>);
-        // El boton «Aa»: las letras del usuario, en `<raiz>/fuentes-shx`.
+        // El boton «Aa»: las letras del usuario, en `<raiz>/fuentes-shx`, que
+        // viajan con sus otros aparatos (`letras_que_viajan`).
         let carpeta = pixpin_cad::letras::carpeta_en(&raiz);
-        let (c1, c2, c3, r5, raiz5) = (carpeta.clone(), carpeta.clone(), carpeta, ruta.clone(), raiz.clone());
+        let (c1, c4, r5, raiz5) = (carpeta.clone(), carpeta, ruta.clone(), raiz.clone());
+        let (raiz_a, raiz_q) = (raiz.clone(), raiz.clone());
         let letras = pixpin_cad::ventana::Letras {
             mias: Box::new(move || pixpin_cad::letras::letras_en(&c1).len()),
             anadir: Box::new(move |v| {
                 let elegidas = pixpin_shell::elegir::pedir_ficheros(windows::Win32::Foundation::HWND(v as *mut _));
-                pixpin_cad::letras::anadir(&c2, &elegidas)
+                let ahora = pixpin_shell::entorno::ahora_utc_ms();
+                crate::letras_que_viajan::anadir(&raiz_a, &crate::letras_que_viajan::aparato(&raiz_a), ahora, &elegidas)
             }),
-            quitar: Box::new(move || pixpin_cad::letras::quitar_todas(&c3)),
+            quitar: Box::new(move || crate::letras_que_viajan::quitar_todas(&raiz_q, pixpin_shell::entorno::ahora_utc_ms())),
             releer: Box::new(move || leer_aparte(&raiz5, &r5)),
+            huella: Box::new(move || pixpin_cad::letras::huella(&c4)),
         };
         // Exportar: el componente comun con los formatos del plano.
         let (r6, raiz6, u6) = (ruta.clone(), raiz.clone(), ubicacion.clone());
