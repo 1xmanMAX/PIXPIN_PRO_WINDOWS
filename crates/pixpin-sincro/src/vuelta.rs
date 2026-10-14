@@ -570,8 +570,6 @@ fn con_alcance<D: Disco + ?Sized, F: Read + Write>(
     // antes contesta «No sé» y no pasa nada.
     if solo.is_none() {
         s.compartidos_del_grupo(ahora())?;
-        // Las recetas del asistente (13-oct-2026), igual: solo mis aparatos.
-        s.recetas(ahora())?;
     }
     s.adios();
     if !hecho.saltados.is_empty() {

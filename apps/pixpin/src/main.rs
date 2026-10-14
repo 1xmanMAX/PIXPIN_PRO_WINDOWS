@@ -57,6 +57,9 @@ mod abrir_imagen;
 mod aligerar;
 // El asistente local del chat (modelo pequeno con llama.cpp, `pixpin-ia`).
 mod asistente;
+/// Las automatizaciones del asistente y el asistente sin abrir el chat
+/// (`p ia` de Flow), 13-oct.
+mod automatizaciones;
 mod anotado_del_adjunto;
 mod anotador_al_chat;
 mod audio;
@@ -711,6 +714,16 @@ fn arrancar(
     // del chat porque lo que vencio con el programa cerrado sale de golpe, y
     // asi el primer pin nace con la ventana ya en pie.
     recordatorios::vigilar(ubicacion.raiz(), hwnd.0 as isize);
+    // Las automatizaciones del asistente: su hilo mira la hora y espera a
+    // las capturas y a la sincronizacion (13-oct).
+    automatizaciones::motor::arrancar(automatizaciones::motor::DeLaApp {
+        entorno: automatizaciones::encargo::Entorno {
+            ubicacion: ubicacion.clone(),
+            aparato: identidad_equipo.clone(),
+        },
+        idioma: lengua,
+        opciones: opciones_lienzo,
+    });
 
     // Lo que ensenan los interruptores del panel de la bandeja (v2): lo
     // que dijeron los dos ultimos «alternar» de los pines.
@@ -2539,6 +2552,7 @@ fn ejecutar_accion(
         AccionFinal::Guardar(imagen) => {
             let ruta = ruta_captura_libre(ubicacion)?;
             pixpin_codec::guardar(&imagen, &ruta, pixpin_codec::FormatoImagen::Png)?;
+            automatizaciones::motor::al_capturar(&ruta);
             Ok(Some(ruta))
         }
         AccionFinal::Copiar { .. }

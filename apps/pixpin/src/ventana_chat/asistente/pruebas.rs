@@ -647,7 +647,8 @@ fn si_se_cierra_el_chat_la_pregunta_caduca_y_no_se_hace() {
 #[test]
 fn una_receta_nace_de_una_respuesta_y_se_cambia_desde_su_menu() {
     use super::recetas::{self as rcui, QueReceta};
-    use pixpin_sincro::recetas as rc;
+    use crate::asistente::recetas as rc;
+    let fila_de = |raiz: &std::path::Path| rc::visibles(&crate::automatizaciones::leer(raiz, "PC").unwrap());
     let (u, mut a, raiz) = chat("recetas", true);
     rcui::olvidar_para_pruebas();
     let textos = Catalogo::nuevo(Idioma::Espanol);
@@ -660,50 +661,51 @@ fn una_receta_nace_de_una_respuesta_y_se_cambia_desde_su_menu() {
     let i = a.mensajes.iter().position(|m| m.id == id).unwrap();
     assert!(rcui::se_puede_guardar(&a, i));
     assert_eq!(rcui::pedido_de(&a, i).as_deref(), Some("Resume lo último en 5 puntos"));
-    assert!(matches!(rcui::guardar_desde(&u, &a, i, &textos), Efecto::Aviso(_)));
+    assert!(matches!(rcui::guardar_desde(&u, "PC", &a, i, &textos), Efecto::Aviso(_)));
     assert!(rcui::hay_barra(&a));
-    let todas = rc::visibles(&rc::leer(&raiz).unwrap());
+    let todas = fila_de(&raiz);
     assert_eq!(todas.len(), 1);
     assert_eq!(todas[0].icono, "📝");
     let rid = todas[0].id.clone();
 
     // Cambiar el nombre en la caja: lo escrito antes vuelve al acabar.
     a.borrador = "a medias".into();
-    rcui::cambiar(&u, &mut a, &rid, QueReceta::Renombrar, &textos);
+    rcui::cambiar(&u, "PC", &mut a, &rid, QueReceta::Renombrar, &textos);
     assert!(rcui::editando(&a));
     assert_eq!(a.borrador, todas[0].nombre);
     a.borrador = "Resumir".into();
-    assert!(rcui::tecla(&u, &mut a, VK_ENTRAR));
+    assert!(rcui::tecla(&u, "PC", &mut a, VK_ENTRAR));
     assert!(!rcui::editando(&a));
     assert_eq!(a.borrador, "a medias");
-    assert_eq!(rc::visibles(&rc::leer(&raiz).unwrap())[0].nombre, "Resumir");
+    assert_eq!(fila_de(&raiz)[0].nombre, "Resumir");
     // Escape no guarda; vacio no vale.
-    rcui::cambiar(&u, &mut a, &rid, QueReceta::Editar, &textos);
+    rcui::cambiar(&u, "PC", &mut a, &rid, QueReceta::Editar, &textos);
     a.borrador = "otra cosa".into();
-    assert!(rcui::tecla(&u, &mut a, VK_ESCAPE));
-    assert_eq!(rc::visibles(&rc::leer(&raiz).unwrap())[0].pedido, "Resume lo último en 5 puntos");
-    rcui::cambiar(&u, &mut a, &rid, QueReceta::Editar, &textos);
+    assert!(rcui::tecla(&u, "PC", &mut a, VK_ESCAPE));
+    assert_eq!(fila_de(&raiz)[0].pedido, "Resume lo último en 5 puntos");
+    rcui::cambiar(&u, "PC", &mut a, &rid, QueReceta::Editar, &textos);
     a.borrador = "   ".into();
-    assert!(rcui::tecla(&u, &mut a, VK_ENTRAR));
+    assert!(rcui::tecla(&u, "PC", &mut a, VK_ENTRAR));
     assert!(rcui::editando(&a), "vacio no se guarda: sigue editando");
-    assert!(rcui::tecla(&u, &mut a, VK_ESCAPE));
+    assert!(rcui::tecla(&u, "PC", &mut a, VK_ESCAPE));
     // Una tecla cualquiera no es suya (negativo).
-    assert!(!rcui::tecla(&u, &mut a, 0x41));
+    assert!(!rcui::tecla(&u, "PC", &mut a, 0x41));
     // Icono, otra receta y orden.
-    assert!(matches!(rcui::cambiar(&u, &mut a, &rid, QueReceta::Iconos, &textos), Efecto::Menu(v) if v.len() == 12));
-    rcui::cambiar(&u, &mut a, &rid, QueReceta::Icono("💡".into()), &textos);
-    let mut v = rc::leer(&raiz).unwrap();
-    let otra = rc::anadir(&mut v, "Foto", "🖼️", "¿Qué pone en esta foto?", 5).unwrap();
-    rc::guardar(&raiz, &v).unwrap();
+    assert!(matches!(rcui::cambiar(&u, "PC", &mut a, &rid, QueReceta::Iconos, &textos), Efecto::Menu(v) if v.len() == 12));
+    rcui::cambiar(&u, "PC", &mut a, &rid, QueReceta::Icono("💡".into()), &textos);
+    let otra = crate::automatizaciones::cambiar(&raiz, "PC", 5, |l| {
+        rc::anadir(l, "Foto", "🖼️", "¿Qué pone en esta foto?", 5).map_err(|e| format!("{e:?}"))
+    })
+    .unwrap();
     rcui::olvidar_para_pruebas();
-    rcui::cambiar(&u, &mut a, &otra.id, QueReceta::Izquierda, &textos);
-    let fila = rc::visibles(&rc::leer(&raiz).unwrap());
+    rcui::cambiar(&u, "PC", &mut a, &otra.id, QueReceta::Izquierda, &textos);
+    let fila = fila_de(&raiz);
     assert_eq!(fila[0].id, otra.id);
     assert_eq!(fila[1].icono, "💡");
-    // Borrar deja la lapida (para que viaje) y la quita de la fila.
-    rcui::cambiar(&u, &mut a, &otra.id, QueReceta::Borrar, &textos);
-    assert_eq!(rc::visibles(&rc::leer(&raiz).unwrap()).len(), 1);
-    assert!(rc::leer(&raiz).unwrap().iter().any(|r| r.borrada));
+    // Borrar la quita de la fila y de las automatizaciones (es la misma).
+    rcui::cambiar(&u, "PC", &mut a, &otra.id, QueReceta::Borrar, &textos);
+    assert_eq!(fila_de(&raiz).len(), 1);
+    assert!(crate::automatizaciones::leer(&raiz, "PC").unwrap().buscar(&otra.id).is_none());
     // En otro chat no hay fila (caso negativo).
     let (_u2, b, raiz2) = chat("recetas-otro", false);
     assert!(!rcui::hay_barra(&b));
@@ -829,19 +831,21 @@ fn muestra_de_la_confirmacion_en_la_burbuja() {
 #[test]
 #[ignore = "necesita GPU; genera un PNG para mirarlo"]
 fn muestra_de_las_recetas() {
-    use pixpin_sincro::recetas as rc;
+    use crate::asistente::recetas as rc;
     let (u, mut a, raiz) = chat("muestra-recetas", true);
     super::recetas::olvidar_para_pruebas();
-    let mut v = Vec::new();
-    for (n, ic, p) in [
+    crate::automatizaciones::cambiar(&raiz, "PC", 1, |l| {
+        for (n, ic, p) in [
         ("Resumir", "📝", "Resume lo último en 5 puntos"),
         ("Leer foto", "🖼️", "¿Qué pone en esta foto?"),
         ("Gráfica", "📊", "Hazme una gráfica de barras con estos datos"),
         ("Tarea", "✅", "Apunta esto como tarea para mañana"),
     ] {
-        rc::anadir(&mut v, n, ic, p, 1).unwrap();
-    }
-    rc::guardar(&raiz, &v).unwrap();
+            rc::anadir(l, n, ic, p, 1).map_err(|e| format!("{e:?}"))?;
+        }
+        Ok(())
+    })
+    .unwrap();
     escribir(&u, &mut a, "Resume lo último en 5 puntos");
     let motor = Arc::new(MotorGuionado::nuevo(vec![Respuesta::de_texto(
         "1. Se cerró el plano de la planta baja.\n2. Falta el presupuesto del techo.\n3. Visita el jueves.",

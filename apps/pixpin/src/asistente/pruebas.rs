@@ -43,11 +43,11 @@ fn hasta_el_final(turno: &mut Turno, escena: Option<&mut pixpin_motor2d::Escena>
             match &a {
                 Aviso::Evento(e) => vivo.aplicar(e),
                 Aviso::Fin { resultado } => vivo.acabar(resultado),
-                Aviso::TextoLeido { .. } => {}
                 // Sin nadie que conteste, lo que borra o envia no se hace.
                 Aviso::Confirmar { responder, .. } => {
                     let _ = responder.send(false);
                 }
+                Aviso::TextoLeido { .. } | Aviso::Registro(_) => {}
             }
             todos.push(a);
         }
@@ -903,11 +903,11 @@ fn hasta_el_final_largo(t: &mut Turno, escena: &mut pixpin_motor2d::Escena) -> (
                     vivo.aplicar(e)
                 }
                 Aviso::Fin { resultado } => vivo.acabar(resultado),
-                Aviso::TextoLeido { .. } => {}
                 // Sin nadie que conteste, lo que borra o envia no se hace.
                 Aviso::Confirmar { responder, .. } => {
                     let _ = responder.send(false);
                 }
+                Aviso::TextoLeido { .. } | Aviso::Registro(_) => {}
             }
             todos.push(a);
         }
@@ -935,4 +935,51 @@ pub(super) fn pintar_a_png(escena: &pixpin_motor2d::Escena, ruta: &std::path::Pa
     let img = pixpin_pdf::Documento::abrir(&tmp).unwrap().renderizar(0, 1000).unwrap();
     std::fs::write(ruta, pixpin_codec::imagen::codificar_png(&img).unwrap()).unwrap();
     println!("PNG: {}", ruta.display());
+}
+
+/// **El perrito del usuario** (medido 14-oct): el emoji adjunto y «dibujalo
+/// en el lienzo», con el modelo de verdad, pintado a PNG para mirarlo.
+///
+/// ```text
+/// PIXPIN_IA_MODELOS=%LOCALAPPDATA%\PixPinMax\modelos  PIXPIN_IA_SALIDA=<carpeta con perrito.png>
+/// PIXPIN_IA_DISPOSITIVO=cpu|Vulkan1   PIXPIN_IA_NOMBRE=perrito-en-el-lienzo-2.png
+/// cargo test -p pixpin -- --ignored --nocapture asistente::pruebas::demo_perrito
+/// ```
+#[test]
+#[ignore = "demostracion con el modelo real"]
+fn demo_perrito() {
+    use pixpin_ia::servidor::{Config, Dispositivo, MotorLlama};
+    let m = PathBuf::from(std::env::var("PIXPIN_IA_MODELOS").unwrap());
+    let salida = PathBuf::from(std::env::var("PIXPIN_IA_SALIDA").unwrap());
+    let mut config = Config::nueva(
+        m.join("llama.cpp").join("b11580").join("llama-server.exe"),
+        m.join("qwen3.5-2b").join("Qwen3.5-2B-Q4_K_M.gguf"),
+        Some(m.join("qwen3.5-2b").join("mmproj-F16.gguf")),
+    );
+    config.dispositivo = match std::env::var("PIXPIN_IA_DISPOSITIVO").as_deref() {
+        Ok("cpu") | Err(_) => Dispositivo::Cpu,
+        Ok(d) => Dispositivo::Gpu(d.into()),
+    };
+    let motor: Arc<dyn pixpin_ia::Motor> = Arc::new(MotorLlama::nuevo(config));
+    al_lienzo::vaciar_para_pruebas();
+    let editor = al_lienzo::EditorAbierto::nuevo(1);
+    let mut escena = pixpin_motor2d::Escena::nueva();
+    let t0 = Instant::now();
+    let mut t = Turno::lanzar(
+        motor.clone(),
+        "p".into(),
+        historial("Dibuja este perrito de la imagen adjunta dentro del lienzo."),
+        vec![Adjunto {
+            nombre: "perrito.png".into(),
+            ruta: salida.join("perrito.png"),
+        }],
+        None,
+    );
+    let (vivo, _) = hasta_el_final_largo(&mut t, &mut escena);
+    drop(editor);
+    println!("perrito: {:.1} s, {} elementos\n{}", t0.elapsed().as_secs_f32(), escena.cuantos_visibles(), vivo.mostrar());
+    let nombre = std::env::var("PIXPIN_IA_NOMBRE").unwrap_or_else(|_| "perrito-en-el-lienzo-2.png".into());
+    pintar_a_png(&escena, &salida.join(nombre));
+    motor.soltar();
+    assert!(escena.cuantos_visibles() >= 4, "{}", vivo.mostrar());
 }

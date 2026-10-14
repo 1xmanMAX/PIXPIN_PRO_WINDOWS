@@ -32,8 +32,6 @@
 //!   todos; `copias`, la copia de antes de tocar nada.
 //! - `al_lienzo`: una foto suelta al lienzo abierto del movil (`suelto`).
 //! - `galeria`: la galeria de capturas que viaja, con sus fechas de irse.
-//! - `recetas`: los pedidos guardados del asistente, entre mis aparatos
-//!   (nunca a una persona de un chat compartido).
 //! - `compartidos`, `valla` e `invitacion`: los chats compartidos con otras
 //!   personas (Android v0.122.0): llaves P-256, listas firmadas, la valla de
 //!   archivos, la invitacion `PXI1` y la vuelta entre personas `PXC1`.
@@ -66,7 +64,6 @@ pub mod kotlin;
 pub mod mensajes;
 pub mod mezcla;
 pub mod protocolo;
-pub mod recetas;
 pub mod valla;
 pub mod vuelta;
 

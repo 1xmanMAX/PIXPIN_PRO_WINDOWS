@@ -36,6 +36,10 @@
 //!   por su API, con la clave del usuario cifrada con DPAPI.
 //! - [`agente`]: el bucle de un turno: pedir, validar, ejecutar, devolver el
 //!   resultado al modelo, y reintentar si el modelo se equivoco.
+//! - [`pensar`], [`hoja_trabajo`] y [`contexto`] (13-oct): el pensamiento a
+//!   la vista, la peticion mejorada, la hoja de trabajo que el agente
+//!   reescribe cada turno y el reinicio del contexto al 70 % con
+//!   `buscar_historial` para lo viejo ([`agente::turno_con`]).
 //! - [`calcar`]: copiar una imagen al lienzo con un algoritmo clasico
 //!   (k-medias + marching squares, o Canny + cadenas; RDP y suavizado): el
 //!   modelo solo elige el detalle.
@@ -62,13 +66,16 @@ pub mod agente;
 pub mod base64;
 pub mod calcar;
 pub mod conocimiento;
+pub mod contexto;
 pub mod descarga;
 pub mod herramientas;
+pub mod hoja_trabajo;
 pub mod lienzo;
 pub mod modelos;
 pub mod motor;
 pub mod nube;
 pub mod relevo;
+pub mod pensar;
 pub mod seleccion;
 pub mod servidor;
 pub mod sse;

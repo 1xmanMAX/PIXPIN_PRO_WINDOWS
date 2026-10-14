@@ -85,6 +85,29 @@ pub fn mandar_a_pixpin() -> Mandar {
     Box::new(pixpin_shell::mensajero::enviar_pedido)
 }
 
+fn ultimo_pedido(historial: &[pixpin_ia::Mensaje]) -> String {
+    historial
+        .iter()
+        .rev()
+        .find(|m| m.rol == pixpin_ia::Rol::Usuario)
+        .map(pixpin_ia::Mensaje::texto_entero)
+        .unwrap_or_default()
+}
+
+fn hay_imagen(adjuntos: &[Adjunto], con_foto: bool) -> bool {
+    con_foto || adjuntos.iter().any(|a| super::ocr::es_imagen(&a.ruta))
+}
+
+/// **Si este turno es «copia/dibuja esto» con una imagen**: entonces solo
+/// se ofrece `calcar_imagen`, al modelo local y a los de la nube (medido
+/// 14-oct: con mas herramientas a mano, el 2B dibujaba el perrito adjunto
+/// con 4 triangulos).
+pub fn es_para_calcar(historial: &[pixpin_ia::Mensaje], adjuntos: &[Adjunto], con_foto: bool) -> bool {
+    let q = pixpin_ia::acciones::normalizar(&ultimo_pedido(historial));
+    let palabras: Vec<&str> = q.split(|c: char| !c.is_alphanumeric()).filter(|p| !p.is_empty()).collect();
+    hay_imagen(adjuntos, con_foto) && pixpin_ia::seleccion::pide_la_imagen(&palabras)
+}
+
 /// **Las herramientas de este turno**: las que vienen a cuento del ultimo
 /// mensaje del usuario (`pixpin_ia::seleccion`), y el OCR si hay un PDF o
 /// una imagen adjunta (preguntar «¿que dice?» no lleva palabras clave).
@@ -93,14 +116,11 @@ pub fn herramientas_para(
     adjuntos: &[Adjunto],
     con_foto: bool,
 ) -> Vec<pixpin_ia::Herramienta> {
-    let pedido = historial
-        .iter()
-        .rev()
-        .find(|m| m.rol == pixpin_ia::Rol::Usuario)
-        .map(pixpin_ia::Mensaje::texto_entero)
-        .unwrap_or_default();
-    let hay_imagen = con_foto || adjuntos.iter().any(|a| super::ocr::es_imagen(&a.ruta));
-    let mut h = pixpin_ia::seleccion::para_el_pedido(&pedido, hay_imagen);
+    let pedido = ultimo_pedido(historial);
+    let mut h = pixpin_ia::seleccion::para_el_pedido(&pedido, hay_imagen(adjuntos, con_foto));
+    if es_para_calcar(historial, adjuntos, con_foto) {
+        return h;
+    }
     if !adjuntos.is_empty() && !h.iter().any(|x| x.nombre == pixpin_ia::herramientas::OCR) {
         if let Some(ocr) = pixpin_ia::herramientas::catalogo_base()
             .into_iter()
@@ -114,6 +134,9 @@ pub fn herramientas_para(
 
 /// **Hace una accion de la app**, preguntando antes si hace falta.
 pub fn hacer(a: &AccionApp, confirmar: &Confirmar, mandar: &Mandar) -> Result<String, String> {
+    // Una automatizacion mal hecha se le dice al modelo ya, para que la
+    // arregle, y no despues en un globo (el pedido solo contesta «aceptado»).
+    crate::automatizaciones::revisar_pedido(&a.pedido)?;
     if let Some(pregunta) = &a.confirmar
         && !confirmar(pregunta)
     {
@@ -154,7 +177,9 @@ pub fn imagen_para_calcar<'a>(adjuntos: &'a [Adjunto], nombre: Option<&str>) -> 
     if imagenes.is_empty() {
         return Err("no hay ninguna imagen adjunta que calcar; pide al usuario que adjunte la foto".into());
     }
-    let elegido = super::ocr::elegir(&imagenes, nombre)?;
+    // Un nombre que no esta (el 2B pidio «perro» con «perrito.png» adjunto,
+    // 14-oct) no es motivo para no calcar: la ultima imagen.
+    let elegido = super::ocr::elegir(&imagenes, nombre).or_else(|_| super::ocr::elegir(&imagenes, None))?;
     adjuntos
         .iter()
         .find(|a| a.ruta == elegido.ruta)
@@ -250,6 +275,28 @@ mod pruebas {
     }
 
     #[test]
+    fn el_perrito_adjunto_solo_ofrece_calcar_y_un_circulo_no() {
+        let perrito = vec![Adjunto {
+            nombre: "perrito.png".into(),
+            ruta: PathBuf::from(r"C:\x\perrito.png"),
+        }];
+        let h = |t: &str| vec![pixpin_ia::Mensaje::usuario(t)];
+        let pedido = h("Dibuja este perrito de la imagen adjunta dentro del lienzo.");
+        assert!(es_para_calcar(&pedido, &perrito, false));
+        let n: Vec<String> = herramientas_para(&pedido, &perrito, false).into_iter().map(|x| x.nombre).collect();
+        assert_eq!(n, vec!["calcar_imagen"]);
+        // Con la foto pegada al mensaje, igual.
+        assert!(es_para_calcar(&pedido, &[], true));
+        // Negativo: dibujar otra cosa con la imagen ahi no calca.
+        let circulo = h("Dibuja un círculo");
+        assert!(!es_para_calcar(&circulo, &perrito, false));
+        let n: Vec<String> = herramientas_para(&circulo, &perrito, false).into_iter().map(|x| x.nombre).collect();
+        assert!(n.contains(&"dibujar_en_lienzo".to_string()) && !n.contains(&"calcar_imagen".to_string()), "{n:?}");
+        // Y sin imagen no hay calcado aunque lo pida.
+        assert!(!es_para_calcar(&pedido, &[], false));
+    }
+
+    #[test]
     fn se_calca_la_imagen_adjunta_y_no_un_pdf() {
         let adj = |n: &str| Adjunto {
             nombre: n.into(),
@@ -258,7 +305,7 @@ mod pruebas {
         let lista = vec![adj("foto.png"), adj("tesis.pdf")];
         assert_eq!(imagen_para_calcar(&lista, None).unwrap().nombre, "foto.png");
         assert!(imagen_para_calcar(&[adj("tesis.pdf")], None).is_err());
-        assert!(imagen_para_calcar(&lista, Some("otra.png")).is_err());
+        assert_eq!(imagen_para_calcar(&lista, Some("perro")).unwrap().nombre, "foto.png");
     }
 
     /// **Un calcado de verdad, pintado a PNG** por el camino del PDF
@@ -268,7 +315,10 @@ mod pruebas {
     #[ignore = "pinta PNG para mirarlos"]
     fn calcado_a_png() {
         let salida = PathBuf::from(std::env::var("PIXPIN_IA_SALIDA").unwrap_or_else(|_| std::env::temp_dir().display().to_string()));
-        let entrada = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../crates/pixpin-ia/medir/prueba.png");
+        // `PIXPIN_IA_ENTRADA`: otra imagen (p. ej. un emoji con degradados).
+        let entrada = std::env::var("PIXPIN_IA_ENTRADA").map(PathBuf::from).unwrap_or_else(|_| {
+            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../crates/pixpin-ia/medir/prueba.png")
+        });
         for (nombre, p) in [
             ("calcado-colores", Parametros::default()),
             ("calcado-contornos", Parametros { solo_contornos: true, ..Default::default() }),

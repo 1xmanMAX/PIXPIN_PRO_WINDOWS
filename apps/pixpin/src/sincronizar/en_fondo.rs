@@ -194,6 +194,11 @@ fn arrancar(
                 }
             }
             EN_MARCHA.store(false, Ordering::SeqCst);
+            // Las automatizaciones «al sincronizar» (13-oct): solo si llego
+            // algo del otro lado.
+            if let Some(Fase::Terminado { titulo, trajo: true, .. }) = &fin {
+                crate::automatizaciones::motor::al_sincronizar(titulo);
+            }
             al_acabar(fin);
         });
     if let Err(e) = lanzado {

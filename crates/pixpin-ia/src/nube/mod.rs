@@ -136,7 +136,7 @@ const ESPERA_MAXIMA: Duration = Duration::from_secs(20);
 enum Intento {
     /// Algo pasajero (429, 5xx, red): otra vez tras esperar.
     Reintentar { error: ErrorIa, esperar: Option<Duration> },
-    /// Se cambio un ajuste de la peticion (sin estricto, sin pensar): otra
+    /// Se cambio un ajuste de la peticion (sin pensar): otra
     /// vez ya.
     Cambiar(ErrorIa),
     /// No tiene arreglo aqui.
@@ -189,9 +189,6 @@ pub struct MotorNube {
     /// los bloques de Claude (pensamiento firmado incluido) o el
     /// `reasoning_content` de DeepSeek, por id de la primera llamada.
     memoria: Mutex<HashMap<String, Value>>,
-    /// Herramientas `strict` en Claude. Se apaga si la API rechaza el
-    /// esquema (un catalogo que crezca mas alla de sus limites).
-    estricto: AtomicBool,
     /// Modo pensar de DeepSeek. Se apaga si pide un razonamiento que no hay.
     pensar: AtomicBool,
     esperas: Vec<Duration>,
@@ -215,7 +212,6 @@ impl MotorNube {
             clave: clave.into().trim().to_string(),
             url: proveedor.url().to_string(),
             memoria: Mutex::new(HashMap::new()),
-            estricto: AtomicBool::new(true),
             pensar: AtomicBool::new(true),
             esperas: ESPERAS.to_vec(),
         }
@@ -245,7 +241,7 @@ impl MotorNube {
         // llegan ya en las herramientas de la peticion.
         let max = p.max_tokens.saturating_add(RESERVA_PENSAR).min(self.proveedor.max_tokens());
         match self.proveedor {
-            Proveedor::Claude => claude::cuerpo(p, &memoria, self.estricto.load(Ordering::Relaxed), max),
+            Proveedor::Claude => claude::cuerpo(p, &memoria, max),
             Proveedor::DeepSeek => deepseek::cuerpo(p, &memoria, self.pensar.load(Ordering::Relaxed), max),
         }
     }
@@ -273,6 +269,7 @@ impl MotorNube {
         emitido: &mut bool,
     ) -> Result<Respuesta, Intento> {
         let cuerpo = serde_json::to_vec(&self.cuerpo(p)).map_err(|e| Intento::Fallo(ErrorIa::Protocolo(e.to_string())))?;
+        let mut grabacion = Grabacion::nueva(self.proveedor, &cuerpo);
         let pedido = http::Pedido {
             url: &self.url,
             cabeceras: self.proveedor.cabeceras(&self.clave),
@@ -283,7 +280,7 @@ impl MotorNube {
             Proveedor::Claude => {
                 let mut lector = claude::Lector::nuevo();
                 let mut roto: Option<ErrorIa> = None;
-                let r = http::enviar(&pedido, &mut |b| match lector.meter(b) {
+                let r = http::enviar(&pedido, &mut |b| match lector.meter(grabacion.pasar(b)) {
                     Ok(trozos) => {
                         for t in trozos {
                             *emitido = true;
@@ -352,7 +349,7 @@ impl MotorNube {
             Proveedor::DeepSeek => {
                 let mut acum = Acumulador::nuevo();
                 let mut roto: Option<ErrorIa> = None;
-                let r = http::enviar(&pedido, &mut |b| match acum.meter(b) {
+                let r = http::enviar(&pedido, &mut |b| match acum.meter(grabacion.pasar(b)) {
                     Ok(trozos) => {
                         for t in trozos {
                             *emitido = true;
@@ -405,14 +402,6 @@ impl MotorNube {
             }),
             Err(http::Fallo::Http { codigo, cuerpo, esperar }) => {
                 let bajo = cuerpo.to_lowercase();
-                if codigo == 400
-                    && self.proveedor == Proveedor::Claude
-                    && (bajo.contains("strict") || bajo.contains("schema"))
-                    && self.estricto.swap(false, Ordering::Relaxed)
-                {
-                    tracing::warn!("asistente: {n} rechazo las herramientas estrictas; se sigue sin modo estricto");
-                    return Err(Intento::Cambiar(self.nube(clasificar(self.proveedor, codigo, &cuerpo).0)));
-                }
                 if codigo == 400
                     && self.proveedor == Proveedor::DeepSeek
                     && bajo.contains("reasoning")
@@ -469,6 +458,37 @@ impl Motor for MotorNube {
                 }
             }
         }
+    }
+}
+
+/// **Grabar lo que va y viene**, para diagnosticar: con `PIXPIN_IA_GRABAR=<carpeta>`
+/// cada peticion deja su cuerpo JSON (`*-peticion.json`) y la respuesta SSE
+/// cruda (`*-respuesta.sse`). Las cabeceras (la clave) NUNCA se graban.
+/// Sin la variable no hace nada.
+struct Grabacion {
+    respuesta: Option<std::fs::File>,
+}
+
+impl Grabacion {
+    fn nueva(p: Proveedor, cuerpo: &[u8]) -> Grabacion {
+        let Some(dir) = std::env::var_os("PIXPIN_IA_GRABAR").map(std::path::PathBuf::from) else {
+            return Grabacion { respuesta: None };
+        };
+        let _ = std::fs::create_dir_all(&dir);
+        static N: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+        let n = N.fetch_add(1, Ordering::SeqCst);
+        let base = dir.join(format!("{}-{}-{n:03}", p.id(), std::process::id()));
+        let _ = std::fs::write(base.with_extension("peticion.json"), cuerpo);
+        Grabacion { respuesta: std::fs::File::create(base.with_extension("respuesta.sse")).ok() }
+    }
+
+    /// Apunta `b` y lo devuelve, para leerlo a la vez.
+    fn pasar<'a>(&mut self, b: &'a [u8]) -> &'a [u8] {
+        if let Some(f) = &mut self.respuesta {
+            use std::io::Write;
+            let _ = f.write_all(b);
+        }
+        b
     }
 }
 

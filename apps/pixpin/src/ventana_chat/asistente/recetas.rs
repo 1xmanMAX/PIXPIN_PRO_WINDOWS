@@ -6,18 +6,19 @@
 //! «Guardar como receta» en el menu del mensaje, y con el clic derecho en un
 //! boton se cambia su nombre, su pedido o su icono, se mueve o se borra.
 //!
-//! Los datos y sus reglas viven en `pixpin_sincro::recetas` (el fichero
-//! `asistente-recetas.json` de la raiz de los datos, que viaja solo entre
-//! los aparatos del usuario). Aqui solo la fila de botones y su edicion:
-//! cambiar el nombre o el pedido se hace **en la propia caja de escribir**
-//! (con la barra de encima diciendo que se esta editando), Entrar guarda y
-//! Escape deja la caja como estaba.
+//! Una receta es una **automatizacion `a_mano` con `boton: true`**
+//! (`crate::asistente::recetas`): vive en el `automatizaciones.json` del chat
+//! «Asistente» y viaja con el, solo entre los aparatos del usuario. Aqui solo
+//! la fila de botones y su edicion: cambiar el nombre o el pedido se hace
+//! **en la propia caja de escribir** (con la barra de encima diciendo que se
+//! esta editando), Entrar guarda y Escape deja la caja como estaba.
 
 use std::cell::RefCell;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::time::{Duration, Instant, SystemTime};
 
-use pixpin_sincro::recetas::{self as rc, NoSePuede, Receta};
+use crate::asistente::recetas::{self as rc, NoSePuede, Receta};
+use crate::automatizaciones as auto;
 
 use super::*;
 // `asistente` tiene su propio `Accion` (los botones de la tarjeta de bajar).
@@ -69,30 +70,35 @@ fn ahora() -> i64 {
     pixpin_shell::entorno::ahora_utc_ms()
 }
 
-/// Las recetas a la vista, leidas del disco como mucho una vez por segundo
-/// (y solo si el fichero cambio: lo trae la sincronizacion).
-fn visibles(raiz: &Path) -> Vec<Receta> {
+/// Las recetas del chat abierto (el «Asistente»), leidas del disco como
+/// mucho una vez por segundo (y solo si el fichero cambio: lo trae la
+/// sincronizacion o Ajustes).
+fn visibles(a: &Abierto) -> Vec<Receta> {
+    let carpeta = pixpin_proyecto::almacen::carpeta(&a.raiz, &a.ficha.id);
     CACHE.with_borrow_mut(|c| {
         if let Some(c) = c.as_ref()
-            && c.raiz == raiz
+            && c.raiz == carpeta
             && c.mirado.elapsed() < Duration::from_secs(1)
         {
             return c.visibles.clone();
         }
-        let cambiado = std::fs::metadata(rc::ruta(raiz)).and_then(|m| m.modified()).ok();
+        let cambiado = std::fs::metadata(auto::fichero_en(&carpeta)).and_then(|m| m.modified()).ok();
         if let Some(viejo) = c.as_mut()
-            && viejo.raiz == raiz
+            && viejo.raiz == carpeta
             && viejo.cambiado == cambiado
         {
             viejo.mirado = Instant::now();
             return viejo.visibles.clone();
         }
-        let v = rc::visibles(&rc::leer(raiz).unwrap_or_else(|e| {
-            tracing::warn!(?e, "recetas: el fichero no se entiende");
-            Vec::new()
-        }));
+        let v = match auto::leer_de(&carpeta) {
+            Ok(l) => rc::visibles(&l),
+            Err(e) => {
+                tracing::warn!(%e, "recetas: las automatizaciones no se entienden");
+                Vec::new()
+            }
+        };
         *c = Some(Cache {
-            raiz: raiz.to_path_buf(),
+            raiz: carpeta,
             cambiado,
             mirado: Instant::now(),
             visibles: v.clone(),
@@ -101,18 +107,23 @@ fn visibles(raiz: &Path) -> Vec<Receta> {
     })
 }
 
-/// Cambia las recetas del disco (leidas de nuevo, no de la cache: la
-/// sincronizacion pudo traer algo) y las guarda.
-fn escribir<T>(raiz: &Path, f: impl FnOnce(&mut Vec<Receta>) -> Result<T, NoSePuede>) -> Result<T, NoSePuede> {
-    // Un fichero roto se trata como vacio; `guardar` lo aparta antes.
-    let mut todas = rc::leer(raiz).unwrap_or_default();
-    let r = f(&mut todas)?;
-    if let Err(e) = rc::guardar(raiz, &todas) {
-        tracing::warn!(?e, "recetas: no se pudieron guardar");
-        return Err(NoSePuede::NoEsta);
-    }
+/// Cambia las recetas en el fichero de las automatizaciones (leido de
+/// nuevo, con su cerrojo: Ajustes o la sincronizacion pudieron tocarlo).
+fn escribir<T>(raiz: &std::path::Path, aparato: &str, f: impl FnOnce(&mut auto::Lista) -> Result<T, NoSePuede>) -> Result<T, NoSePuede> {
+    let mut motivo = None;
+    let r = auto::cambiar(raiz, aparato, ahora(), |l| {
+        f(l).map_err(|e| {
+            motivo = Some(e.clone());
+            format!("{e:?}")
+        })
+    });
     CACHE.with_borrow_mut(|c| *c = None);
-    Ok(r)
+    r.map_err(|e| {
+        motivo.unwrap_or_else(|| {
+            tracing::warn!(%e, "recetas: no se pudieron guardar");
+            NoSePuede::NoEsta
+        })
+    })
 }
 
 fn editando_en(a: &Abierto) -> Option<(String, Campo)> {
@@ -131,7 +142,7 @@ pub(in crate::ventana_chat) fn editando(a: &Abierto) -> bool {
 /// **Si va la fila de recetas** encima de la caja: en el chat «Asistente»
 /// con alguna receta, o editando una.
 pub(in crate::ventana_chat) fn hay_barra(a: &Abierto) -> bool {
-    a.ficha.es_asistente() && (editando(a) || !visibles(&a.raiz).is_empty())
+    a.ficha.es_asistente() && (editando(a) || !visibles(a).is_empty())
 }
 
 /// Al empezar a pintar la caja: los botones de antes ya no valen (otra
@@ -160,7 +171,7 @@ pub(in crate::ventana_chat) fn pintar(p: &Pintor, barra: Rect, c: &Pinta, a: &Ab
             },
             tema.enviar,
         );
-        let nombre = visibles(&a.raiz)
+        let nombre = visibles(a)
             .into_iter()
             .find(|r| r.id == id)
             .map(|r| r.nombre)
@@ -184,7 +195,7 @@ pub(in crate::ventana_chat) fn pintar(p: &Pintor, barra: Rect, c: &Pinta, a: &Ab
     let fin = caja.x + caja.ancho;
     BOTONES.with_borrow_mut(|b| {
         b.clear();
-        for r in visibles(&a.raiz) {
+        for r in visibles(a) {
             let rotulo = if r.icono.is_empty() { r.nombre.clone() } else { format!("{} {}", r.icono, r.nombre) };
             let (w, h) = p.medir_texto(&rotulo, tam);
             let ancho = (w + 24.0 * e).min(220.0 * e);
@@ -221,7 +232,7 @@ pub(in crate::ventana_chat) fn pedido_en(a: &Abierto, l: Punto) -> Option<String
         return None;
     }
     let id = boton_en(l)?;
-    visibles(&a.raiz).into_iter().find(|r| r.id == id).map(|r| r.pedido)
+    visibles(a).into_iter().find(|r| r.id == id).map(|r| r.pedido)
 }
 
 /// **Clic derecho en un boton**: su menu.
@@ -230,7 +241,7 @@ pub(in crate::ventana_chat) fn menu_en(a: &Abierto, l: Punto, textos: &Catalogo)
         return None;
     }
     let id = boton_en(l)?;
-    let fila = visibles(&a.raiz);
+    let fila = visibles(a);
     let i = fila.iter().position(|r| r.id == id)?;
     let hacer = |q: QueReceta| AccionChat::Receta(id.clone(), q);
     let mut v = vec![
@@ -283,9 +294,15 @@ pub(in crate::ventana_chat) fn se_puede_guardar(a: &Abierto, i: usize) -> bool {
 
 /// **«Guardar como receta»**: nace al final de la fila con el nombre y el
 /// icono de serie; se cambian con el clic derecho.
-pub(in crate::ventana_chat) fn guardar_desde(ubicacion: &Ubicacion, a: &Abierto, i: usize, textos: &Catalogo) -> Efecto {
+pub(in crate::ventana_chat) fn guardar_desde(
+    ubicacion: &Ubicacion,
+    aparato: &str,
+    a: &Abierto,
+    i: usize,
+    textos: &Catalogo,
+) -> Efecto {
     let Some(pedido) = pedido_de(a, i) else { return Efecto::Nada };
-    match escribir(ubicacion.raiz(), |v| rc::anadir(v, "", "", &pedido, ahora())) {
+    match escribir(ubicacion.raiz(), aparato, |v| rc::anadir(v, "", "", &pedido, ahora())) {
         Ok(r) => {
             let mut args = fluent_bundle::FluentArgs::new();
             args.set("nombre", format!("{} {}", r.icono, r.nombre));
@@ -299,6 +316,7 @@ pub(in crate::ventana_chat) fn guardar_desde(ubicacion: &Ubicacion, a: &Abierto,
 /// **Lo del menu de un boton.**
 pub(in crate::ventana_chat) fn cambiar(
     ubicacion: &Ubicacion,
+    aparato: &str,
     a: &mut Abierto,
     id: &str,
     que: QueReceta,
@@ -307,7 +325,7 @@ pub(in crate::ventana_chat) fn cambiar(
     let raiz = ubicacion.raiz();
     let r = match que {
         QueReceta::Renombrar | QueReceta::Editar => {
-            let Some(rec) = visibles(raiz).into_iter().find(|r| r.id == id) else { return Efecto::Nada };
+            let Some(rec) = visibles(a).into_iter().find(|r| r.id == id) else { return Efecto::Nada };
             let (campo, valor) = if que == QueReceta::Renombrar {
                 (Campo::Nombre, rec.nombre)
             } else {
@@ -323,10 +341,10 @@ pub(in crate::ventana_chat) fn cambiar(
                 .collect();
             return Efecto::Menu(v);
         }
-        QueReceta::Icono(ic) => escribir(raiz, |v| rc::cambiar(v, id, ahora(), |r| r.icono = ic)),
-        QueReceta::Izquierda => escribir(raiz, |v| rc::mover(v, id, -1, ahora())),
-        QueReceta::Derecha => escribir(raiz, |v| rc::mover(v, id, 1, ahora())),
-        QueReceta::Borrar => escribir(raiz, |v| rc::borrar(v, id, ahora())),
+        QueReceta::Icono(ic) => escribir(raiz, aparato, |v| rc::cambiar(v, id, ahora(), |r| r.icono = ic)),
+        QueReceta::Izquierda => escribir(raiz, aparato, |v| rc::mover(v, id, -1, ahora())),
+        QueReceta::Derecha => escribir(raiz, aparato, |v| rc::mover(v, id, 1, ahora())),
+        QueReceta::Borrar => escribir(raiz, aparato, |v| rc::borrar(v, id)),
     };
     match r {
         Ok(()) => Efecto::Nada,
@@ -352,7 +370,7 @@ fn empezar_a_editar(a: &mut Abierto, id: &str, campo: Campo, valor: String) {
 /// **Entrar o Escape mientras se edita** una receta en la caja. `true` si
 /// era suya. Entrar guarda lo escrito (vacio no vale: se queda editando);
 /// Escape no guarda. Las dos devuelven la caja como estaba.
-pub(in crate::ventana_chat) fn tecla(ubicacion: &Ubicacion, a: &mut Abierto, vk: u32) -> bool {
+pub(in crate::ventana_chat) fn tecla(ubicacion: &Ubicacion, aparato: &str, a: &mut Abierto, vk: u32) -> bool {
     let Some((id, campo)) = editando_en(a) else { return false };
     match vk {
         VK_ENTRAR => {
@@ -360,7 +378,7 @@ pub(in crate::ventana_chat) fn tecla(ubicacion: &Ubicacion, a: &mut Abierto, vk:
             if escrito.is_empty() {
                 return true;
             }
-            let r = escribir(ubicacion.raiz(), |v| {
+            let r = escribir(ubicacion.raiz(), aparato, |v| {
                 rc::cambiar(v, &id, ahora(), |r| match campo {
                     Campo::Nombre => r.nombre = escrito.clone(),
                     Campo::Pedido => r.pedido = escrito.clone(),
