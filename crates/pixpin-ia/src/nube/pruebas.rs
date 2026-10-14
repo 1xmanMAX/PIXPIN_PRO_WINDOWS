@@ -276,7 +276,7 @@ fn claude_llama_una_herramienta_y_devuelve_el_pensamiento_intacto() {
     let rec = s.recibidas.lock().unwrap();
     assert_eq!(rec.len(), 2);
     let primera = &rec[0].cuerpo;
-    assert_eq!(primera["tools"][0]["strict"], true);
+    assert!(primera["tools"][0].get("strict").is_none(), "sin strict: con el Haiku dibujaba figuras vacias");
     assert_eq!(primera["tools"][0]["eager_input_streaming"], true);
     let mensajes = rec[1].cuerpo["messages"].as_array().unwrap().clone();
     assert_eq!(mensajes.len(), 3);
@@ -432,21 +432,19 @@ fn claude_saturado_tras_escribir_no_duplica() {
 }
 
 #[test]
-fn claude_esquema_rechazado_sigue_sin_estricto() {
+fn claude_400_de_esquema_no_se_reintenta() {
     let s = servidor(
         "/v1/messages",
         vec![
-            crudo(400, r#"{"type":"error","error":{"type":"invalid_request_error","message":"tools.0.input_schema: too many optional parameters for strict mode"}}"#),
+            crudo(400, r#"{"type":"error","error":{"type":"invalid_request_error","message":"tools.0.input_schema: bad schema"}}"#),
             guion_claude(vec![c_texto(0, &["ok"])], "end_turn"),
         ],
     );
     let mut p = Peticion::nueva(historial("hola"));
     p.herramientas = catalogo();
-    let r = claude(&s.url).completar(&p, &mut |_| Seguir::Si).unwrap();
-    assert_eq!(r.texto, "ok");
-    let rec = s.recibidas.lock().unwrap();
-    assert_eq!(rec[0].cuerpo["tools"][0]["strict"], true);
-    assert!(rec[1].cuerpo["tools"][0].get("strict").is_none());
+    let e = claude(&s.url).completar(&p, &mut |_| Seguir::Si).unwrap_err();
+    assert!(!e.to_string().contains("schema"), "nada tecnico: {e}");
+    assert_eq!(s.recibidas.lock().unwrap().len(), 1);
 }
 
 #[test]
@@ -672,14 +670,13 @@ fn la_nube_recibe_el_catalogo_entero_y_el_respaldo_solo_lo_que_toca() {
 }
 
 #[test]
-fn solo_las_propias_van_estrictas() {
+fn ninguna_va_estricta_y_los_nombres_valen() {
     let mut p = Peticion::nueva(historial("hola"));
     p.herramientas = catalogo();
-    let c = claude::cuerpo(&p, &std::collections::HashMap::new(), true, 100);
+    let c = claude::cuerpo(&p, &std::collections::HashMap::new(), 100);
     let tools = c["tools"].as_array().unwrap();
     assert_eq!(tools.len(), catalogo().len());
-    let estrictas = tools.iter().filter(|t| t["strict"] == true).count();
-    assert_eq!(estrictas, crate::herramientas::catalogo_base().len());
+    assert!(tools.iter().all(|t| t.get("strict").is_none()));
     for t in tools {
         let n = t["name"].as_str().unwrap();
         assert!(n.len() <= 64 && n.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-'), "{n}");
