@@ -1,0 +1,599 @@
+//! **El adaptador de Claude** (Messages API, `claude-haiku-5-5`).
+//!
+//! Traduce la conversacion comun (`motor::Mensaje`, forma OpenAI) a la de
+//! Anthropic y lee su streaming. Decisiones, segun la documentacion de la
+//! API (skill `claude-api`, 13-oct-2026):
+//!
+//! - **Pensar**: `thinking: {type: "adaptive", display: "summarized"}` para
+//!   poder ensenar el resumen del razonamiento (por omision Haiku 5.5 lo
+//!   devuelve vacio). Los bloques `thinking` se devuelven **intactos** (con su
+//!   firma) junto a los resultados de herramientas: se guardan por id de
+//!   llamada en la memoria del motor, porque el `Mensaje` comun no los lleva.
+//! - **Esfuerzo `medium`** (el de fabrica de Haiku 5.5): dibujar es colocar
+//!   decenas de coordenadas con sentido y en `low` la guia avisa de que el
+//!   modelo se salta comprobaciones en prompts de agente; `high` duplica los
+//!   tokens de salida sin ganancia visible en pedidos de chat. Se manda
+//!   explicito para que no cambie si cambia el de fabrica.
+//! - **Sin `temperature`/`top_p`/`top_k`** (400 en Haiku 5.5) y **sin
+//!   prefill**: la conversacion siempre acaba en un turno del usuario.
+//! - **Herramientas propias `strict: true`** con `additionalProperties: false` y sin
+//!   las restricciones que el modo estricto no admite (topes numericos y de
+//!   listas, que se pasan a la descripcion y se siguen validando aqui), y
+//!   `eager_input_streaming: true` porque la peticion va en streaming: la
+//!   entrada llega sin validar del servidor y la valida
+//!   `herramientas::validar` antes de ejecutar nada.
+//! - `tool_choice: auto`. Todos los resultados de una vuelta en **un solo**
+//!   mensaje `user`, con `is_error` en los que fallaron.
+//! - **Cache**: un punto en el ultimo bloque del `system` (cachea herramientas
+//!   y sistema, que no cambian) y otro en el ultimo bloque del ultimo mensaje
+//!   (la conversacion que crece). 2 de los 4 permitidos.
+
+use std::collections::HashMap;
+
+use serde_json::{Map, Value, json};
+
+use crate::ErrorIa;
+use crate::herramientas::Herramienta;
+use crate::motor::{Fin, LlamadaCruda, Medidas, Mensaje, Parte, Peticion, Respuesta, Rol, Trozo};
+
+use super::{Proveedor, instrucciones};
+
+pub const URL: &str = "https://api.anthropic.com/v1/messages";
+pub const MODELO: &str = "claude-haiku-5-5";
+pub const VERSION_API: &str = "2023-06-01";
+pub const ESFUERZO: &str = "medium";
+/// Tope de salida de cada vuelta. El pensamiento cuenta dentro: con 2048
+/// (el del modelo local) un dibujo grande despues de pensar salia cortado.
+pub const MAX_TOKENS: u32 = 16_000;
+
+/// Las palabras del JSON Schema que el modo estricto no admite. Se quitan
+/// del esquema que se manda (y se dicen en la descripcion); la validacion de
+/// `herramientas::validar` las sigue comprobando.
+const NO_ESTRICTAS: &[&str] = &[
+    "minItems",
+    "maxItems",
+    "minimum",
+    "maximum",
+    "exclusiveMinimum",
+    "exclusiveMaximum",
+    "multipleOf",
+    "minLength",
+    "maxLength",
+    "uniqueItems",
+];
+
+/// El esquema en la forma que admite el modo estricto.
+pub fn esquema_estricto(v: &Value) -> Value {
+    match v {
+        Value::Object(o) => {
+            let mut n = Map::new();
+            let mut notas = Vec::new();
+            for (k, x) in o {
+                if NO_ESTRICTAS.contains(&k.as_str()) {
+                    match k.as_str() {
+                        "maxItems" => notas.push(format!("como mucho {x}")),
+                        "minItems" => notas.push(format!("al menos {x}")),
+                        "minimum" => notas.push(format!("minimo {x}")),
+                        "maximum" => notas.push(format!("maximo {x}")),
+                        _ => {}
+                    }
+                    continue;
+                }
+                n.insert(k.clone(), esquema_estricto(x));
+            }
+            let es_objeto = o.get("type").and_then(Value::as_str) == Some("object") || o.contains_key("properties");
+            if es_objeto {
+                n.insert("additionalProperties".into(), Value::Bool(false));
+                if !n.contains_key("properties") {
+                    n.insert("properties".into(), json!({}));
+                }
+            }
+            if !notas.is_empty() {
+                let d = n.get("description").and_then(Value::as_str).unwrap_or("").to_string();
+                let extra = notas.join(", ");
+                n.insert(
+                    "description".into(),
+                    json!(if d.is_empty() { extra } else { format!("{d} ({extra})") }),
+                );
+            }
+            Value::Object(n)
+        }
+        Value::Array(a) => Value::Array(a.iter().map(esquema_estricto).collect()),
+        otro => otro.clone(),
+    }
+}
+
+/// Una herramienta en la forma de Anthropic.
+pub fn herramienta(h: &Herramienta, estricto: bool) -> Value {
+    let mut t = json!({
+        "name": h.nombre,
+        "description": h.descripcion,
+        "input_schema": if estricto { esquema_estricto(&h.parametros) } else { h.parametros.clone() },
+        "eager_input_streaming": true,
+    });
+    if estricto {
+        t["strict"] = json!(true);
+    }
+    t
+}
+
+fn imagen(bytes: &[u8], mime: &str) -> Value {
+    json!({"type": "image", "source": {"type": "base64", "media_type": mime,
+           "data": crate::base64::codificar(bytes)}})
+}
+
+/// Los argumentos de una llamada como objeto (lo que pide `tool_use.input`).
+fn como_objeto(argumentos: &str) -> Value {
+    match crate::herramientas::reparar_json(argumentos) {
+        Some(v @ Value::Object(_)) => v,
+        _ => json!({}),
+    }
+}
+
+/// **Los mensajes** en la forma de Anthropic: roles que se alternan, los
+/// resultados de herramientas juntos en un mensaje `user`, y los bloques de
+/// pensamiento devueltos tal cual (de `memoria`, por id de llamada).
+pub fn mensajes(lista: &[Mensaje], memoria: &HashMap<String, Value>) -> Vec<Value> {
+    let mut salida: Vec<(String, Vec<Value>)> = Vec::new();
+    let mut poner = |rol: &str, bloques: Vec<Value>| {
+        if bloques.is_empty() {
+            return;
+        }
+        match salida.last_mut() {
+            Some((r, b)) if r == rol => b.extend(bloques),
+            _ => salida.push((rol.to_string(), bloques)),
+        }
+    };
+    for (i, m) in lista.iter().enumerate() {
+        match m.rol {
+            // El primero va en `system`; uno a mitad (un aviso de la app) va
+            // como texto del usuario marcado, que admite cualquier modelo.
+            Rol::Sistema if i == 0 => {}
+            Rol::Sistema => poner(
+                "user",
+                vec![json!({"type": "text", "text": format!("<aviso_de_la_app>{}</aviso_de_la_app>", m.texto_entero())})],
+            ),
+            Rol::Usuario => {
+                let mut b = Vec::new();
+                for p in &m.partes {
+                    match p {
+                        Parte::Imagen { bytes, mime } => b.push(imagen(bytes, mime)),
+                        Parte::Texto(t) if !t.trim().is_empty() => b.push(json!({"type": "text", "text": t})),
+                        Parte::Texto(_) => {}
+                    }
+                }
+                poner("user", b);
+            }
+            Rol::Asistente => {
+                let guardado = m.llamadas.first().and_then(|l| memoria.get(&l.id)).and_then(Value::as_array);
+                let bloques = match guardado {
+                    Some(b) => b.clone(),
+                    None => {
+                        let mut b = Vec::new();
+                        let t = m.texto_entero();
+                        if !t.trim().is_empty() {
+                            b.push(json!({"type": "text", "text": t}));
+                        }
+                        for l in &m.llamadas {
+                            b.push(json!({"type": "tool_use", "id": l.id, "name": l.nombre,
+                                          "input": como_objeto(&l.argumentos)}));
+                        }
+                        b
+                    }
+                };
+                poner("assistant", bloques);
+            }
+            Rol::Herramienta => {
+                let texto = m.texto_entero();
+                let error = texto.trim_start().starts_with("ERROR");
+                let mut r = json!({"type": "tool_result",
+                    "tool_use_id": m.id_llamada.clone().unwrap_or_default(),
+                    "content": if texto.is_empty() { "(sin texto)".to_string() } else { texto }});
+                if error {
+                    r["is_error"] = json!(true);
+                }
+                poner("user", vec![r]);
+            }
+        }
+    }
+    // Empieza y acaba con el usuario (sin prefill: Haiku 5.5 da 400).
+    if salida.first().is_some_and(|(r, _)| r == "assistant") {
+        salida.insert(0, ("user".into(), vec![json!({"type": "text", "text": "(sigue la conversacion de antes)"})]));
+    }
+    if salida.last().is_some_and(|(r, _)| r == "assistant") {
+        salida.push(("user".into(), vec![json!({"type": "text", "text": "Sigue."})]));
+    }
+    salida
+        .into_iter()
+        .map(|(rol, content)| json!({"role": rol, "content": content}))
+        .collect()
+}
+
+/// **El cuerpo de la peticion.**
+pub fn cuerpo(p: &Peticion, memoria: &HashMap<String, Value>, estricto: bool, max_tokens: u32) -> Value {
+    let base = p
+        .mensajes
+        .first()
+        .filter(|m| m.rol == Rol::Sistema)
+        .map(Mensaje::texto_entero)
+        .unwrap_or_default();
+    let sistema = instrucciones::para(Proveedor::Claude, &base, &p.herramientas);
+    let mut mensajes = mensajes(&p.mensajes, memoria);
+    // El punto de cache de la conversacion: el ultimo bloque del ultimo
+    // mensaje (que siempre es del usuario).
+    if let Some(ultimo) = mensajes.last_mut()
+        && let Some(Value::Array(b)) = ultimo.get_mut("content")
+        && let Some(Value::Object(bloque)) = b.last_mut()
+    {
+        bloque.insert("cache_control".into(), json!({"type": "ephemeral"}));
+    }
+    let mut c = json!({
+        "model": MODELO,
+        "max_tokens": max_tokens,
+        "stream": true,
+        "system": [{"type": "text", "text": sistema, "cache_control": {"type": "ephemeral"}}],
+        "messages": mensajes,
+        "thinking": {"type": "adaptive", "display": "summarized"},
+        "output_config": {"effort": ESFUERZO},
+    });
+    if !p.herramientas.is_empty() {
+        // Estrictas solo las propias del asistente (dibujar, calcar, grafica…),
+        // donde la forma de los argumentos es lo dificil: el modo estricto
+        // tiene topes de herramientas y de campos opcionales por peticion, y
+        // las acciones de la app son de pocos campos sencillos que valida
+        // `herramientas::validar` igual.
+        let propias: Vec<String> = crate::herramientas::catalogo_base().into_iter().map(|h| h.nombre).collect();
+        c["tools"] = Value::Array(
+            p.herramientas
+                .iter()
+                .map(|h| herramienta(h, estricto && propias.contains(&h.nombre)))
+                .collect(),
+        );
+        c["tool_choice"] = json!({"type": "auto"});
+    }
+    c
+}
+
+/// Las cabeceras (la clave va aqui y en ningun otro sitio).
+pub fn cabeceras(clave: &str) -> Vec<(&'static str, String)> {
+    vec![("x-api-key", clave.to_string()), ("anthropic-version", VERSION_API.to_string())]
+}
+
+/// La peticion minima de «Probar»: sin streaming, sin pensar, 16 tokens.
+pub fn cuerpo_de_prueba() -> Value {
+    json!({
+        "model": MODELO,
+        "max_tokens": 16,
+        "thinking": {"type": "disabled"},
+        "messages": [{"role": "user", "content": "Responde solo: ok"}],
+    })
+}
+
+// ---------------------------------------------------------------------------
+// El streaming
+
+#[derive(Debug, Clone)]
+enum Bloque {
+    Texto(String),
+    Pensando { texto: String, firma: String },
+    /// `redacted_thinking` y lo que no se conozca: se devuelve tal cual.
+    Tal(Value),
+    Herramienta { id: String, nombre: String, json: String },
+}
+
+/// Lo que dejo una respuesta entera.
+#[derive(Debug, Clone)]
+pub struct Salida {
+    pub respuesta: Respuesta,
+    /// Los bloques para devolverlos intactos en la vuelta siguiente.
+    pub bloques: Vec<Value>,
+    /// `stop_reason` tal cual (`end_turn`, `tool_use`, `max_tokens`,
+    /// `refusal`…), si llego.
+    pub motivo: Option<String>,
+    /// `stop_details.category` de un rechazo.
+    pub categoria: Option<String>,
+}
+
+/// Un error que llego dentro del flujo (`event: error`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct ErrorDelFlujo {
+    pub tipo: String,
+    pub mensaje: String,
+}
+
+#[derive(Default)]
+pub struct Lector {
+    pendiente: Vec<u8>,
+    bloques: Vec<Bloque>,
+    motivo: Option<String>,
+    categoria: Option<String>,
+    medidas: Medidas,
+    pub acabado: bool,
+    pub error: Option<ErrorDelFlujo>,
+}
+
+impl Lector {
+    pub fn nuevo() -> Lector {
+        Lector::default()
+    }
+
+    /// Mete bytes y devuelve los trozos nuevos.
+    pub fn meter(&mut self, bytes: &[u8]) -> Result<Vec<Trozo>, ErrorIa> {
+        self.pendiente.extend_from_slice(bytes);
+        let mut trozos = Vec::new();
+        while let Some(fin) = self.pendiente.iter().position(|&b| b == b'\n') {
+            let linea: Vec<u8> = self.pendiente.drain(..=fin).collect();
+            let linea = String::from_utf8_lossy(&linea);
+            let linea = linea.trim_end_matches(['\r', '\n']);
+            // `event:` repite el `type` del JSON: basta con `data:`.
+            if let Some(datos) = linea.strip_prefix("data:") {
+                self.evento(datos.trim(), &mut trozos)?;
+            }
+        }
+        Ok(trozos)
+    }
+
+    fn evento(&mut self, datos: &str, trozos: &mut Vec<Trozo>) -> Result<(), ErrorIa> {
+        if datos.is_empty() {
+            return Ok(());
+        }
+        let v: Value = serde_json::from_str(datos)
+            .map_err(|e| ErrorIa::Protocolo(format!("evento de Claude ilegible ({e})")))?;
+        let tipo = v.get("type").and_then(Value::as_str).unwrap_or("");
+        match tipo {
+            "message_start" => {
+                if let Some(u) = v.pointer("/message/usage") {
+                    self.uso(u);
+                }
+            }
+            "content_block_start" => {
+                let b = v.get("content_block").cloned().unwrap_or(Value::Null);
+                let bloque = match b.get("type").and_then(Value::as_str) {
+                    Some("text") => Bloque::Texto(b.get("text").and_then(Value::as_str).unwrap_or("").to_string()),
+                    Some("thinking") => Bloque::Pensando {
+                        texto: b.get("thinking").and_then(Value::as_str).unwrap_or("").to_string(),
+                        firma: b.get("signature").and_then(Value::as_str).unwrap_or("").to_string(),
+                    },
+                    Some("tool_use") => {
+                        let nombre = b.get("name").and_then(Value::as_str).unwrap_or("").to_string();
+                        trozos.push(Trozo::Llamando { nombre: nombre.clone() });
+                        Bloque::Herramienta {
+                            id: b.get("id").and_then(Value::as_str).unwrap_or("").to_string(),
+                            nombre,
+                            json: String::new(),
+                        }
+                    }
+                    _ => Bloque::Tal(b),
+                };
+                let i = v.get("index").and_then(Value::as_u64).map_or(self.bloques.len(), |i| i as usize);
+                if i > 256 {
+                    return Err(ErrorIa::Protocolo("demasiados bloques en la respuesta".into()));
+                }
+                while self.bloques.len() < i {
+                    self.bloques.push(Bloque::Tal(Value::Null));
+                }
+                if i == self.bloques.len() {
+                    self.bloques.push(bloque);
+                } else {
+                    self.bloques[i] = bloque;
+                }
+            }
+            "content_block_delta" => {
+                let i = v.get("index").and_then(Value::as_u64).unwrap_or(0) as usize;
+                let d = v.get("delta").cloned().unwrap_or(Value::Null);
+                let Some(b) = self.bloques.get_mut(i) else {
+                    return Err(ErrorIa::Protocolo("trozo de un bloque que no empezo".into()));
+                };
+                let s = |k: &str| d.get(k).and_then(Value::as_str).unwrap_or("").to_string();
+                match (d.get("type").and_then(Value::as_str), b) {
+                    (Some("text_delta"), Bloque::Texto(t)) => {
+                        let x = s("text");
+                        if !x.is_empty() {
+                            t.push_str(&x);
+                            trozos.push(Trozo::Texto(x));
+                        }
+                    }
+                    (Some("thinking_delta"), Bloque::Pensando { texto, .. }) => {
+                        let x = s("thinking");
+                        if !x.is_empty() {
+                            texto.push_str(&x);
+                            trozos.push(Trozo::Pensando(x));
+                        }
+                    }
+                    (Some("signature_delta"), Bloque::Pensando { firma, .. }) => firma.push_str(&s("signature")),
+                    (Some("input_json_delta"), Bloque::Herramienta { json, .. }) => json.push_str(&s("partial_json")),
+                    // Citas y lo que venga nuevo: no se usa.
+                    _ => {}
+                }
+            }
+            "message_delta" => {
+                if let Some(m) = v.pointer("/delta/stop_reason").and_then(Value::as_str) {
+                    self.motivo = Some(m.to_string());
+                }
+                if let Some(c) = v.pointer("/delta/stop_details/category").and_then(Value::as_str) {
+                    self.categoria = Some(c.to_string());
+                }
+                if let Some(u) = v.get("usage") {
+                    self.uso(u);
+                }
+            }
+            "message_stop" => self.acabado = true,
+            "error" => {
+                let tipo = v.pointer("/error/type").and_then(Value::as_str).unwrap_or("error").to_string();
+                let mensaje = v.pointer("/error/message").and_then(Value::as_str).unwrap_or("").to_string();
+                self.error = Some(ErrorDelFlujo { tipo, mensaje });
+                self.acabado = true;
+            }
+            // `ping`, `content_block_stop` y lo que se anada: nada que hacer.
+            _ => {}
+        }
+        Ok(())
+    }
+
+    fn uso(&mut self, u: &Value) {
+        let n = |k: &str| u.get(k).and_then(Value::as_u64).unwrap_or(0) as u32;
+        let entrada = n("input_tokens") + n("cache_read_input_tokens") + n("cache_creation_input_tokens");
+        if entrada > 0 {
+            self.medidas.tokens_entrada = entrada;
+        }
+        if n("output_tokens") > 0 {
+            self.medidas.tokens_salida = n("output_tokens");
+        }
+    }
+
+    /// La respuesta entera. `cortado`: el usuario paro.
+    pub fn acabar(self, cortado: bool) -> Salida {
+        let mut texto = String::new();
+        let mut pensamiento = String::new();
+        let mut llamadas = Vec::new();
+        let mut bloques = Vec::new();
+        for b in self.bloques {
+            match b {
+                Bloque::Texto(t) => {
+                    texto.push_str(&t);
+                    if !t.is_empty() {
+                        bloques.push(json!({"type": "text", "text": t}));
+                    }
+                }
+                Bloque::Pensando { texto: t, firma } => {
+                    pensamiento.push_str(&t);
+                    // Se guarda aunque el texto venga vacio: la firma es lo
+                    // que importa.
+                    bloques.push(json!({"type": "thinking", "thinking": t, "signature": firma}));
+                }
+                Bloque::Tal(Value::Null) => {}
+                Bloque::Tal(v) => bloques.push(v),
+                Bloque::Herramienta { id, nombre, json } => {
+                    let argumentos = if json.trim().is_empty() { "{}".to_string() } else { json };
+                    bloques.push(json!({"type": "tool_use", "id": id, "name": nombre, "input": como_objeto(&argumentos)}));
+                    llamadas.push(LlamadaCruda { id, nombre, argumentos });
+                }
+            }
+        }
+        let fin = if cortado {
+            Fin::Cortado
+        } else {
+            match self.motivo.as_deref() {
+                Some("tool_use") => Fin::Herramientas,
+                Some("max_tokens") | Some("model_context_window_exceeded") => Fin::Longitud,
+                _ if !llamadas.is_empty() => Fin::Herramientas,
+                _ => Fin::Natural,
+            }
+        };
+        Salida {
+            respuesta: Respuesta {
+                texto,
+                pensamiento,
+                llamadas,
+                fin,
+                medidas: self.medidas,
+            },
+            bloques,
+            motivo: self.motivo,
+            categoria: self.categoria,
+        }
+    }
+}
+
+#[cfg(test)]
+mod pruebas {
+    use super::*;
+    use crate::herramientas::catalogo;
+
+    fn por_nombre(n: &str) -> Herramienta {
+        catalogo().into_iter().find(|h| h.nombre == n).unwrap()
+    }
+
+    #[test]
+    fn el_esquema_estricto_cierra_los_objetos_y_quita_los_topes() {
+        let h = &por_nombre(crate::herramientas::DIBUJAR);
+        let e = esquema_estricto(&h.parametros);
+        assert_eq!(e["additionalProperties"], false);
+        let elementos = &e["properties"]["elementos"];
+        assert!(elementos.get("maxItems").is_none() && elementos.get("minItems").is_none());
+        assert!(elementos["description"].as_str().unwrap().contains("como mucho 60"));
+        assert_eq!(elementos["items"]["additionalProperties"], false);
+        assert_eq!(elementos["items"]["required"], json!(["tipo"]));
+        // Un objeto sin propiedades (la ocr sin nada obligatorio) tambien.
+        let t = herramienta(&por_nombre(crate::herramientas::OCR), true);
+        assert_eq!(t["strict"], true);
+        assert_eq!(t["eager_input_streaming"], true);
+        assert_eq!(t["input_schema"]["additionalProperties"], false);
+        assert!(herramienta(&por_nombre(crate::herramientas::OCR), false).get("strict").is_none());
+    }
+
+    #[test]
+    fn el_cuerpo_sigue_las_reglas_de_haiku_5_5() {
+        let mut p = Peticion::nueva(vec![Mensaje::sistema("Eres el asistente."), Mensaje::usuario("hola")]);
+        p.herramientas = catalogo();
+        let c = cuerpo(&p, &HashMap::new(), true, MAX_TOKENS);
+        assert_eq!(c["model"], "claude-haiku-5-5");
+        assert_eq!(c["thinking"], json!({"type": "adaptive", "display": "summarized"}));
+        assert_eq!(c["output_config"]["effort"], "medium");
+        assert_eq!(c["tool_choice"], json!({"type": "auto"}));
+        for prohibido in ["temperature", "top_p", "top_k", "chat_template_kwargs", "presence_penalty"] {
+            assert!(c.get(prohibido).is_none(), "{prohibido}");
+        }
+        assert_eq!(c["system"][0]["cache_control"]["type"], "ephemeral");
+        assert!(c["system"][0]["text"].as_str().unwrap().contains("Eres el asistente."));
+        let m = c["messages"].as_array().unwrap();
+        assert_eq!(m.len(), 1, "el sistema no va en messages");
+        assert_eq!(m[0]["content"][0]["cache_control"]["type"], "ephemeral");
+    }
+
+    #[test]
+    fn los_resultados_van_juntos_y_el_pensamiento_vuelve_intacto() {
+        let mut asis = Mensaje::texto(Rol::Asistente, "voy");
+        asis.llamadas = vec![
+            LlamadaCruda { id: "toolu_1".into(), nombre: "ocr".into(), argumentos: "{}".into() },
+            LlamadaCruda { id: "toolu_2".into(), nombre: "grafica".into(), argumentos: "{roto".into() },
+        ];
+        let lista = vec![
+            Mensaje::sistema("s"),
+            Mensaje::usuario("lee y grafica"),
+            asis,
+            Mensaje::resultado("toolu_1", "texto leido"),
+            Mensaje::resultado("toolu_2", "ERROR: los argumentos no son JSON valido."),
+            Mensaje::usuario("y ademas…"),
+        ];
+        // Sin memoria: se rehace con tool_use y la entrada rota pasa a {}.
+        let m = mensajes(&lista, &HashMap::new());
+        assert_eq!(m.len(), 3);
+        assert_eq!(m[1]["content"][1]["input"], json!({}));
+        assert_eq!(m[1]["content"][2]["input"], json!({}));
+        let r = m[2]["content"].as_array().unwrap();
+        assert_eq!(r.len(), 3, "dos resultados y el texto en UN mensaje");
+        assert_eq!(r[0]["type"], "tool_result");
+        assert!(r[0].get("is_error").is_none());
+        assert_eq!(r[1]["is_error"], true);
+        assert_eq!(r[2]["type"], "text");
+        // Con memoria: los bloques guardados, firma incluida.
+        let guardado = json!([{"type": "thinking", "thinking": "", "signature": "FIRMA"},
+                              {"type": "tool_use", "id": "toolu_1", "name": "ocr", "input": {}}]);
+        let memoria = HashMap::from([("toolu_1".to_string(), guardado.clone())]);
+        let m = mensajes(&lista, &memoria);
+        assert_eq!(m[1]["content"], guardado);
+    }
+
+    #[test]
+    fn nunca_acaba_en_el_asistente_ni_empieza_por_el() {
+        let lista = vec![Mensaje::texto(Rol::Asistente, "hola")];
+        let m = mensajes(&lista, &HashMap::new());
+        assert_eq!(m.first().unwrap()["role"], "user");
+        assert_eq!(m.last().unwrap()["role"], "user");
+    }
+
+    #[test]
+    fn la_imagen_va_en_base64_antes_del_texto() {
+        let m = mensajes(&[Mensaje::usuario_con_imagen("dibujala", vec![1, 2, 3], "image/png")], &HashMap::new());
+        assert_eq!(m[0]["content"][0]["source"], json!({"type": "base64", "media_type": "image/png", "data": "AQID"}));
+        assert_eq!(m[0]["content"][1]["text"], "dibujala");
+    }
+
+    #[test]
+    fn la_prueba_de_clave_es_minima() {
+        let c = cuerpo_de_prueba();
+        assert_eq!(c["max_tokens"], 16);
+        assert!(c.get("stream").is_none() && c.get("tools").is_none());
+    }
+}

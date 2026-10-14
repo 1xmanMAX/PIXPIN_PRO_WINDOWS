@@ -279,7 +279,9 @@ fn de_verdad_conversacion_larga_con_reinicios() {
     let t0 = Instant::now();
     for (i, pedido) in pedidos.iter().enumerate() {
         let n = notas.len() as i64;
-        let herramientas = super::acciones::herramientas_para(&[pixpin_ia::Mensaje::usuario(*pedido)], &[], false);
+        // Sin herramientas del chat (aqui no hay ventana que las haga): solo
+        // `buscar_historial`, que es lo que se prueba.
+        let herramientas: Vec<pixpin_ia::Herramienta> = Vec::new();
         let (historial, reiniciado) = pensado::preparar_con_hoja(&mut hoja, &notas, pedido, VENTANA, &herramientas);
         let memoria = Memoria {
             fuentes: pensado::fuentes(&notas, &hoja),
@@ -288,6 +290,7 @@ fn de_verdad_conversacion_larga_con_reinicios() {
             planificar: true,
             ventana: VENTANA,
             reiniciado,
+            ampliar: false,
         };
         let mut t = Turno::lanzar_con_memoria(
             motor.clone(),

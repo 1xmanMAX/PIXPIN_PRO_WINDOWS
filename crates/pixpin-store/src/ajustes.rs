@@ -514,7 +514,7 @@ pub struct Voz {
 
 /// Seccion `[asistente]`: el modelo de lenguaje local del chat
 /// (`crates/pixpin-ia`).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Asistente {
     /// El id del modelo (`qwen3.5-2b`, `qwen3.5-0.8b`). Vacio: el 2B, el
@@ -525,6 +525,25 @@ pub struct Asistente {
     /// pensando va lento.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pensar: Option<bool>,
+    /// Quien contesta (13-oct-2026): vacio o `local` (el modelo de este PC),
+    /// `claude` (Claude Haiku 5.5) o `deepseek` (DeepSeek V4.1 Flash). Las
+    /// claves de la nube NO van aqui: van cifradas en su fichero propio
+    /// (`pixpin_ia::nube::claves`).
+    pub motor: String,
+    /// Si la nube falla (red, clave, saldo), seguir con el modelo local si
+    /// esta bajado.
+    pub respaldo_local: bool,
+}
+
+impl Default for Asistente {
+    fn default() -> Self {
+        Self {
+            modelo: String::new(),
+            motor: String::new(),
+            respaldo_local: true,
+            pensar: None,
+        }
+    }
 }
 
 impl Default for Ajustes {

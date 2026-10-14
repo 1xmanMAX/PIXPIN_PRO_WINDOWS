@@ -386,7 +386,8 @@ impl EnVivo {
             }
             Evento::PensoListo { segundos } => {
                 self.pensando = false;
-                self.segundos = Some(*segundos);
+                // Con la nube piensa en cada vuelta: se suma.
+                *self.segundos.get_or_insert(0.0) += *segundos;
             }
             Evento::Peticion(p) => self.plan = Some(p.clone()),
             Evento::Reinicio { .. } => self.reiniciado = true,

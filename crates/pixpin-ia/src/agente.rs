@@ -96,10 +96,12 @@ pub struct Opciones<'a> {
     pub ampliar: Option<&'a [Herramienta]>,
 }
 
-/// Tope de la vuelta de planear: sin pensar, cinco lineas; pensando, lo que
-/// piense el 2B en una peticion normal.
+/// Tope de la vuelta de planear: sin pensar, cinco lineas; pensando, unos
+/// 40 s del 2B en la MX250 (~15 tok/s). Medido el 13-oct: con 1536 pensaba
+/// 110-125 s en ingles y se quedaba sin sitio para el plan; si se acaba sin
+/// plan, una vuelta corta sin pensar lo escribe con lo pensado.
 pub const TOKENS_PLAN: u32 = 320;
-pub const TOKENS_PLAN_PENSANDO: u32 = 1536;
+pub const TOKENS_PLAN_PENSANDO: u32 = 640;
 
 /// **Un turno.** `historial` ya trae el mensaje nuevo del usuario al final;
 /// al acabar trae tambien todo lo que dijo el asistente (incluidas las
@@ -258,7 +260,37 @@ fn planear(
     if let Some(segundos) = crono.otra_cosa() {
         al_evento(Evento::PensoListo { segundos });
     }
-    let plan = Plan::leer(&plan_texto, herramientas).unwrap_or_else(|| Plan::por_omision(&pedido));
+    let mut plan = Plan::leer(&plan_texto, herramientas);
+    // Penso hasta agotar su tope sin llegar a escribir el plan (medido con
+    // el 2B, 13-oct: 1536 tokens de «Thinking Process…» y ni una linea):
+    // una vuelta corta SIN pensar, con lo que penso, que si lo escribe.
+    if plan.is_none() && crono.penso() {
+        let mut p2 = p.clone();
+        p2.pensar = false;
+        p2.max_tokens = TOKENS_PLAN;
+        if let Some(m) = p2.mensajes.last_mut() {
+            *m = Mensaje::usuario(format!(
+                "{}\n\n## Lo que ya pensaste\n{}\n\nAhora escribe SOLO las cinco lineas.",
+                m.texto_entero(),
+                crate::pensar::resumir(&crono.texto, 900)
+            ));
+        }
+        let mut otro = String::new();
+        let r2 = motor.completar(&p2, &mut |t| match t {
+            Trozo::Texto(s) => {
+                otro.push_str(s);
+                Seguir::Si
+            }
+            _ => Seguir::Si,
+        });
+        if let Ok(r2) = r2 {
+            if otro.trim().is_empty() {
+                otro = r2.texto;
+            }
+            plan = Plan::leer(&separar(&otro).1, herramientas);
+        }
+    }
+    let plan = plan.unwrap_or_else(|| Plan::por_omision(&pedido));
     if al_evento(Evento::Peticion(plan.clone())) == Seguir::Parar {
         return Ok(None);
     }
@@ -663,6 +695,9 @@ pub fn para_el_usuario(e: &ErrorIa) -> String {
         ErrorIa::Conexion(_) => "El asistente dejó de responder. Prueba otra vez.".into(),
         ErrorIa::Protocolo(_) => "Esta vez no me salió la respuesta. Prueba otra vez o pídelo más corto.".into(),
         ErrorIa::Cancelado => "Cancelado.".into(),
+        // La nube ya lo dice en palabras del usuario (sin codigos ni JSON:
+        // ver `nube::clasificar`).
+        ErrorIa::Nube(aviso) => aviso.clone(),
         ErrorIa::Descarga { .. } | ErrorIa::HuellaDistinta { .. } => e.to_string(),
         ErrorIa::Io(_) => "No pude contestar por un fallo del equipo. Prueba otra vez.".into(),
     }
@@ -1115,6 +1150,35 @@ mod pruebas {
         assert!(sistema.contains("Objetivo: Hacer el plano de la casa de Ana"), "{sistema}");
         assert!(sistema.contains("Anadir la puerta"), "{sistema}");
         assert_eq!(actuar.last().unwrap().texto_entero(), "y ahora la puerta");
+    }
+
+    #[test]
+    fn si_piensa_hasta_el_tope_sin_plan_otra_vuelta_corta_lo_escribe() {
+        let mut h = historial();
+        let o = Opciones {
+            planificar: true,
+            pensar: true,
+            ..Default::default()
+        };
+        let (_, eventos, motor) = con_opciones(
+            vec![
+                plan_del_modelo("Thinking Process: 1. The user wants a red house.", ""),
+                Respuesta::de_texto(PLAN_CASA),
+                Respuesta::de_texto("Hecho."),
+            ],
+            &mut h,
+            &o,
+        );
+        let plan = eventos
+            .iter()
+            .find_map(|e| if let Evento::Peticion(p) = e { Some(p.clone()) } else { None })
+            .unwrap();
+        assert!(plan.del_modelo, "el plan salio de la segunda vuelta");
+        assert_eq!(plan.entiendo, "Dibujar una casa roja en el lienzo.");
+        let pedidas = motor.recibido.lock().unwrap();
+        assert_eq!(pedidas.len(), 3);
+        assert!(!pedidas[1].pensar && pedidas[1].max_tokens == TOKENS_PLAN);
+        assert!(pedidas[1].mensajes[1].texto_entero().contains("red house"));
     }
 
     #[test]

@@ -11,6 +11,9 @@
 //! PIXPIN_IA_MOTOR=<carpeta con llama-server.exe>   PIXPIN_IA_MODELO=<.gguf>
 //! PIXPIN_IA_VISION=<mmproj .gguf>   PIXPIN_IA_DISPOSITIVO=cpu|auto|Vulkan1
 //! PIXPIN_IA_SOLO=<texto>  (solo los casos cuyo nombre lo contiene)
+//! PIXPIN_IA_MOTOR=claude|deepseek|local  (con la nube: la clave de
+//!   ANTHROPIC_API_KEY / DEEPSEEK_API_KEY, o la guardada en Ajustes; para el
+//!   local, una carpeta en PIXPIN_IA_MOTOR sigue valiendo como antes)
 //! cargo test -p pixpin-ia --test banco -- --ignored --nocapture
 //! ```
 //!
@@ -469,9 +472,33 @@ impl Ejecutor for Apunta<'_> {
     }
 }
 
-fn motor() -> MotorLlama {
+/// El motor a medir: `PIXPIN_IA_MOTOR=claude|deepseek` usa la nube (mismo
+/// catalogo e instrucciones que la app, traducidos por su adaptador);
+/// `local`, nada o una carpeta, llama.cpp.
+fn motor() -> Box<dyn Motor> {
+    use pixpin_ia::nube::{MotorNube, Proveedor, claves};
+    let eleccion = std::env::var("PIXPIN_IA_MOTOR").unwrap_or_default();
+    if let Some(p) = Proveedor::por_id(&eleccion.to_lowercase()) {
+        let var = match p {
+            Proveedor::Claude => "ANTHROPIC_API_KEY",
+            Proveedor::DeepSeek => "DEEPSEEK_API_KEY",
+        };
+        let clave = std::env::var(var)
+            .ok()
+            .or_else(|| claves::leer(p))
+            .unwrap_or_else(|| panic!("sin clave de {}: pon {var} o guardala en Ajustes", p.nombre()));
+        println!("motor: {} ({})", p.nombre(), p.modelo());
+        return Box::new(MotorNube::nuevo(p, clave));
+    }
+    Box::new(motor_local())
+}
+
+fn motor_local() -> MotorLlama {
     let base = PathBuf::from(std::env::var("LOCALAPPDATA").unwrap()).join("PixPinMax").join("modelos");
     let motor_dir = std::env::var("PIXPIN_IA_MOTOR")
+        .ok()
+        .filter(|m| !m.is_empty() && m != "local")
+        .ok_or(())
         .map(PathBuf::from)
         .unwrap_or_else(|_| base.join("llama.cpp").join("b11580"));
     let modelo = std::env::var("PIXPIN_IA_MODELO")
@@ -511,7 +538,11 @@ fn banco() {
         }
         total += 1;
         let imagen = caso.imagen.map(|f| f());
-        let (mut historial, herramientas) = banco_ia::preparar(caso.pedido, imagen.clone());
+        let (mut historial, mut herramientas) = banco_ia::preparar(caso.pedido, imagen.clone());
+        // Como en la app (`asistente::turno`): la nube recibe el catalogo entero.
+        if motor.catalogo_completo() {
+            herramientas = pixpin_ia::herramientas::catalogo();
+        }
         let mut r = Resultado::default();
         let t0 = Instant::now();
         let mut eventos = Vec::new();
@@ -520,7 +551,7 @@ fn banco() {
                 r: &mut r,
                 imagen: imagen.clone(),
             };
-            agente::turno(&motor, &mut historial, &herramientas, &mut ej, &mut |e| {
+            agente::turno(motor.as_ref(), &mut historial, &herramientas, &mut ej, &mut |e| {
                 if !matches!(e, Evento::Texto(_)) {
                     eventos.push(format!("{e:?}").chars().take(300).collect::<String>());
                 }

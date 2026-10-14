@@ -22,6 +22,8 @@
 //! - [`foto`]: reducir la foto adjunta a ~768 px antes de mandarla.
 //! - [`pensado`]: lo que penso cada respuesta, su peticion mejorada y la
 //!   hoja de trabajo del chat, guardados con la nota (13-oct).
+//! - [`nube`]: contestar con Claude Haiku 5.5 o DeepSeek V4.1 Flash (la
+//!   clave cifrada con DPAPI) y, si fallan, seguir con el local.
 //!
 //! Android todavia no tiene asistente (comprobado el 13-oct con `gh`): aqui
 //! se abre camino y el protocolo (`catalogo_json`, Excalidraw) es el que
@@ -34,6 +36,7 @@ pub mod descarga;
 pub mod ejecutor;
 pub mod foto;
 pub mod motor;
+pub mod nube;
 pub mod ocr;
 pub mod pensado;
 pub mod turno;

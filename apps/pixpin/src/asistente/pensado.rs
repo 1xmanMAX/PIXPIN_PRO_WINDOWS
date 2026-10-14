@@ -191,6 +191,11 @@ pub fn pensar_segun_ajuste(ajuste: Option<bool>, modelo_id: &str) -> bool {
     ajuste.unwrap_or(modelo_id != pixpin_ia::modelos::QWEN35_08B.id)
 }
 
+/// La ventana que se mide con Claude o DeepSeek. Les caben mucho mas
+/// (200k y 128k), pero cada token se paga en cada vuelta: reiniciar al 70 %
+/// de esto deja cada peticion por debajo de ~45k tokens.
+pub const VENTANA_NUBE: u32 = 64_000;
+
 /// La ventana del motor local (`servidor::CONTEXTO`, la que se le pide a
 /// `llama-server`).
 pub fn ventana_local() -> u32 {
@@ -224,6 +229,7 @@ pub fn preparar_turno(
         planificar: true,
         ventana,
         reiniciado,
+        ampliar: true,
     };
     (historial, memoria)
 }

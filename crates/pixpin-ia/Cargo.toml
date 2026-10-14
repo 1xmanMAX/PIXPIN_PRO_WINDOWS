@@ -26,6 +26,11 @@ pixpin-voz = { path = "../pixpin-voz" }
 windows = { version = "0.62.2", features = [
     "Win32_Foundation",
     "Win32_Security",
+    # Las claves de las API de la nube, cifradas con DPAPI (nube/claves.rs).
+    "Win32_Security_Cryptography",
+    # Hablar con Claude y DeepSeek por HTTPS con lo que ya trae Windows
+    # (nube/http.rs), sin un cliente HTTP ni TLS propios en el ejecutable.
+    "Win32_Networking_WinHttp",
     "Win32_System_JobObjects",
     "Win32_System_Threading",
 ] }

@@ -61,6 +61,9 @@ pub struct Memoria {
     pub ventana: u32,
     /// El historial ya llega reiniciado (lo decidio `pensado::preparar_turno`).
     pub reiniciado: bool,
+    /// Que la vuelta de planear pueda anadir herramientas del catalogo entero
+    /// a las de la seleccion (`Opciones::ampliar`).
+    pub ampliar: bool,
 }
 
 /// Lo que se va juntando de los eventos para el registro del turno.
@@ -147,7 +150,13 @@ impl Turno {
         foto: Option<PathBuf>,
         destino: Option<String>,
     ) -> Turno {
-        let herramientas = super::acciones::herramientas_para(&historial, &adjuntos, foto.is_some());
+        // Claude y DeepSeek reciben el catalogo entero (eligen bien y el
+        // prefijo se cachea); el modelo local, solo las que vienen a cuento.
+        let herramientas = if motor.catalogo_completo() {
+            pixpin_ia::herramientas::catalogo()
+        } else {
+            super::acciones::herramientas_para(&historial, &adjuntos, foto.is_some())
+        };
         Turno::lanzar_con(motor, proyecto, historial, adjuntos, foto, destino, herramientas)
     }
 
@@ -205,7 +214,7 @@ impl Turno {
                     hoja: con_memoria.then_some(&memoria.hoja),
                     ventana: memoria.ventana,
                     buscar: if con_memoria { Some(&buscar) } else { None },
-                    ampliar: con_memoria.then_some(&todas[..]),
+                    ampliar: memoria.ampliar.then_some(&todas[..]),
                 };
                 let mut recogido = Recogido::default();
                 let resultado = agente::turno_con(
