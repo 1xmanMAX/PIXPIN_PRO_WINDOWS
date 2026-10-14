@@ -13,7 +13,7 @@
 use std::path::PathBuf;
 
 use pixpin_ia::agente::{Evento, Final};
-use pixpin_ia::herramientas::{DIBUJAR, GRAFICA, OCR};
+use pixpin_ia::herramientas::{AYUDA, CALCAR, DIBUJAR, GRAFICA, OCR};
 use pixpin_proyecto::cuaderno::{Clase, Mensaje as Nota};
 
 use super::turno::Adjunto;
@@ -343,6 +343,8 @@ pub fn rotulo_de(nombre: &str) -> String {
         DIBUJAR => "✏️ dibujando en el lienzo…",
         GRAFICA => "📊 haciendo la gráfica…",
         OCR => "🔎 leyendo el documento…",
+        CALCAR => "🖼️ calcando la imagen…",
+        AYUDA => "📖 mirando la ayuda…",
         _ => "⚙️ trabajando…",
     }
     .to_string()

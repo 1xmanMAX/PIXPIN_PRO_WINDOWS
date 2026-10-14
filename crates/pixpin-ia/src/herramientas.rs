@@ -62,35 +62,68 @@ impl Herramienta {
 pub const DIBUJAR: &str = "dibujar_en_lienzo";
 pub const GRAFICA: &str = "grafica";
 pub const OCR: &str = "ocr";
+pub const CALCAR: &str = "calcar_imagen";
+pub const AYUDA: &str = "ayuda_app";
 
-/// Las herramientas de la primera tanda. Las descripciones son cortas a
-/// proposito: cada token del catalogo se paga en cada vuelta (con las tres,
-/// unos 680 tokens de entrada; medido).
+/// Cuantos numeros como mucho en los `puntos` de una figura.
+pub const MAX_NUMEROS_PUNTOS: usize = 240;
+
+/// **Todas las herramientas**: las propias del asistente ([`catalogo_base`])
+/// y las de la app, generadas de su tabla (`acciones.rs`). Al modelo no se le
+/// ensenan todas a la vez: `seleccion::para_el_pedido` elige las pocas que
+/// vienen a cuento en cada turno (un 2B se pierde con 30).
 pub fn catalogo() -> Vec<Herramienta> {
+    let mut c = catalogo_base();
+    c.extend(crate::acciones::herramientas());
+    c
+}
+
+/// Las propias del asistente. Las descripciones son cortas a proposito: cada
+/// token del catalogo se paga en cada vuelta. La de dibujar lleva dos
+/// ejemplos: con ellos un modelo pequeno acierta la forma de las figuras
+/// compuestas (casa, diagrama) mucho mas que con la sola lista de campos.
+pub fn catalogo_base() -> Vec<Herramienta> {
     vec![
         Herramienta {
             nombre: DIBUJAR.into(),
-            descripcion: "Dibuja figuras en el lienzo de PixPin. Lienzo de 800x600 pixeles, origen arriba a la izquierda. Usa pocas figuras (20 como mucho). Cada elemento lleva su «color» (el que pidio el usuario o el que se ve en la foto) y, si va lleno, su «relleno». Para copiar una imagen, describe sus formas principales con estas figuras.".into(),
+            descripcion: concat!(
+                "Dibuja figuras en el lienzo de PixPin (800x600, origen arriba a la izquierda). ",
+                "Cada elemento lleva su «color» (el que pidio el usuario) y, si va lleno, su «relleno». ",
+                "Tipos: rectangulo, elipse, rombo, triangulo, estrella y onda (con «caja»:[x,y,ancho,alto]; un circulo tambien con «centro»:[x,y] y «radio»); ",
+                "linea, flecha, curva (suave) y poligono (con «puntos»:[x1,y1,x2,y2,...]); texto (con «x», «y» y «texto»). ",
+                "Una figura con «texto» lo lleva escrito dentro (o encima si es flecha). «grupo»: un nombre comun para agrupar varias. ",
+                "Ejemplo, una casa: {\"elementos\":[{\"tipo\":\"rectangulo\",\"caja\":[300,280,200,160],\"color\":\"marron\"},",
+                "{\"tipo\":\"triangulo\",\"caja\":[280,170,240,110],\"color\":\"rojo\",\"relleno\":\"rojo\"},",
+                "{\"tipo\":\"rectangulo\",\"caja\":[380,360,40,80],\"color\":\"azul\",\"relleno\":\"azul\"}]}. ",
+                "Un paso de un diagrama: {\"tipo\":\"rectangulo\",\"caja\":[60,260,160,70],\"texto\":\"Inicio\"},",
+                "{\"tipo\":\"flecha\",\"puntos\":[220,295,320,295]}. ",
+                "Para copiar una foto adjunta usa calcar_imagen."
+            )
+            .into(),
             parametros: json!({
                 "type": "object",
                 "required": ["elementos"],
-                "properties": {"elementos": {"type": "array", "minItems": 1, "maxItems": MAX_ELEMENTOS, "items": {
-                    "type": "object",
-                    "required": ["tipo", "x", "y"],
-                    "properties": {
-                        "tipo": {"type": "string", "enum": ["rectangulo", "elipse", "rombo", "linea", "flecha", "texto"]},
-                        "x": {"type": "number", "description": "izquierda (o inicio de la linea)"},
-                        "y": {"type": "number", "description": "arriba (o inicio de la linea)"},
-                        "ancho": {"type": "number"},
-                        "alto": {"type": "number"},
-                        "x2": {"type": "number", "description": "fin de linea o flecha"},
-                        "y2": {"type": "number", "description": "fin de linea o flecha"},
-                        "color": {"type": "string", "description": "color del trazo: rojo, azul, verde, amarillo, naranja, morado, rosa, gris, marron, negro, blanco o #rrggbb"},
-                        "relleno": {"type": "string", "description": "color de relleno (los mismos nombres); omitir si va vacia"},
-                        "texto": {"type": "string", "description": "obligatorio si tipo es texto"},
-                        "tam_letra": {"type": "number"}
-                    }
-                }}}
+                "properties": {
+                    "elementos": {"type": "array", "minItems": 1, "maxItems": MAX_ELEMENTOS, "items": {
+                        "type": "object",
+                        "required": ["tipo"],
+                        "properties": {
+                            "tipo": {"type": "string", "enum": ["rectangulo", "elipse", "rombo", "triangulo", "estrella", "onda", "linea", "flecha", "curva", "poligono", "texto"]},
+                            "caja": {"type": "array", "items": {"type": "number"}, "description": "[x, y, ancho, alto]"},
+                            "puntos": {"type": "array", "items": {"type": "number"}, "description": "[x1, y1, x2, y2, ...] de linea, flecha, curva o poligono"},
+                            "centro": {"type": "array", "items": {"type": "number"}, "description": "[x, y] de un circulo"},
+                            "radio": {"type": "number"},
+                            "x": {"type": "number"},
+                            "y": {"type": "number"},
+                            "color": {"type": "string", "description": "color del trazo: rojo, azul, verde, amarillo, naranja, morado, rosa, gris, marron, negro, blanco o #rrggbb"},
+                            "relleno": {"type": "string", "description": "color de relleno (los mismos nombres); omitir si va vacia"},
+                            "texto": {"type": "string"},
+                            "tam_letra": {"type": "number"},
+                            "grupo": {"type": "string"}
+                        }
+                    }},
+                    "origen": {"type": "array", "items": {"type": "number"}, "description": "[x, y] que se suma a todas las coordenadas"}
+                }
             }),
         },
         Herramienta {
@@ -119,6 +152,29 @@ pub fn catalogo() -> Vec<Herramienta> {
                 }
             }),
         },
+        Herramienta {
+            nombre: CALCAR.into(),
+            descripcion: "Copia (calca) en el lienzo la imagen o foto adjunta, con sus formas y colores exactos. Usala siempre que pidan copiar, pasar o calcar una imagen al lienzo.".into(),
+            parametros: json!({
+                "type": "object",
+                "properties": {
+                    "detalle": {"type": "string", "enum": ["bajo", "medio", "alto"], "description": "omitir: medio"},
+                    "colores": {"type": "boolean", "description": "omitir; false solo si piden blanco y negro"},
+                    "solo_contornos": {"type": "boolean", "description": "omitir; true solo si piden solo los contornos o bordes"},
+                    "zona": {"type": "array", "items": {"type": "number"}, "description": "[x, y, ancho, alto] en fracciones de 0 a 1, para calcar solo un trozo"},
+                    "imagen": {"type": "string", "description": "nombre del adjunto; omitir para la ultima imagen"}
+                }
+            }),
+        },
+        Herramienta {
+            nombre: AYUDA.into(),
+            descripcion: "Busca en la ayuda de PixPin donde esta algo o como se hace (menus, atajos, ventanas). Usala ante cualquier pregunta sobre la app, antes de contestar.".into(),
+            parametros: json!({
+                "type": "object",
+                "required": ["pregunta"],
+                "properties": {"pregunta": {"type": "string"}}
+            }),
+        },
     ]
 }
 
@@ -137,6 +193,14 @@ pub enum Llamada {
     Dibujar(Vec<Figura>),
     Grafica(Grafica),
     Ocr(PeticionOcr),
+    /// Calcar la imagen adjunta: el ejecutor, que tiene la imagen, llama a
+    /// `calcar::calcar` y pone `lienzo::elementos_de_calcado`.
+    Calcar(crate::calcar::Parametros),
+    /// Una accion de la app: el pedido del protocolo, listo para mandar
+    /// (preguntando antes si lleva `confirmar`).
+    App(crate::acciones::AccionApp),
+    /// Una pregunta sobre la app: se contesta con `conocimiento::responder`.
+    Ayuda(String),
 }
 
 impl Llamada {
@@ -145,6 +209,9 @@ impl Llamada {
             Llamada::Dibujar(_) => DIBUJAR,
             Llamada::Grafica(_) => GRAFICA,
             Llamada::Ocr(_) => OCR,
+            Llamada::Calcar(_) => CALCAR,
+            Llamada::App(a) => a.herramienta,
+            Llamada::Ayuda(_) => AYUDA,
         }
     }
 }
@@ -157,6 +224,10 @@ pub enum TipoFigura {
     Linea,
     Flecha,
     Texto,
+    /// Cerrado; con relleno sale como mancha rellena (`pixpin-region`).
+    Poligono,
+    /// Linea suave que pasa por sus puntos (`line` con `roundness`).
+    Curva,
 }
 
 /// Un color como `#rrggbb`.
@@ -180,6 +251,11 @@ pub struct Figura {
     /// Si el modelo puso algun color (de trazo o de relleno). Sin el, el
     /// color se saca del pedido ([`colores_del_pedido`]).
     pub con_color: bool,
+    /// Lineas, flechas, curvas y poligonos: todos sus puntos (el primero es
+    /// (x, y) y el ultimo (x2, y2)). Vacio en las demas.
+    pub puntos: Vec<(f64, f64)>,
+    /// Las figuras con el mismo grupo se mueven juntas en el lienzo.
+    pub grupo: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -315,6 +391,15 @@ pub fn validar(cruda: &LlamadaCruda, conocidas: &[Herramienta]) -> Result<Valida
         DIBUJAR => Llamada::Dibujar(validar_dibujo(&args, &mut avisos)?),
         GRAFICA => Llamada::Grafica(validar_grafica(&args, &mut avisos)?),
         OCR => Llamada::Ocr(validar_ocr(&args)?),
+        CALCAR => Llamada::Calcar(validar_calcar(&args)?),
+        AYUDA => Llamada::Ayuda(
+            texto_en(&args, "pregunta")
+                .or_else(|| args.values().find_map(|v| v.as_str().map(str::to_string)))
+                .ok_or_else(|| mal("falta «pregunta»"))?,
+        ),
+        otro if crate::acciones::por_nombre(otro).is_some() => {
+            Llamada::App(crate::acciones::validar(crate::acciones::por_nombre(otro).unwrap(), &args)?)
+        }
         // Una herramienta del catalogo que este crate no sabe validar (la
         // anadio el chat): no se ejecuta a ciegas.
         otro => return Err(ErrorHerramienta::Desconocida(otro.to_string())),
@@ -379,19 +464,52 @@ fn validar_dibujo(args: &Map<String, Value>, avisos: &mut Vec<String>) -> Result
             lista.len()
         )));
     }
+    // `origen`: coordenadas relativas, para dibujar una cosa compuesta
+    // pensando desde (0, 0) y ponerla luego donde va.
+    let origen = match args.get("origen") {
+        None | Some(Value::Null) => (0.0, 0.0),
+        Some(v) => match numeros(v).as_deref() {
+            Some([x, y]) => (*x, *y),
+            _ => return Err(mal("«origen» tiene que ser [x, y]")),
+        },
+    };
     lista
         .iter()
         .enumerate()
-        .map(|(i, v)| validar_figura(i, v, avisos))
+        .map(|(i, v)| validar_figura(i, v, origen, avisos))
         .collect()
 }
 
-fn validar_figura(i: usize, v: &Value, avisos: &mut Vec<String>) -> Result<Figura, ErrorHerramienta> {
+/// Una lista de numeros: plana (`[1,2,3,4]`) o de pares (`[[1,2],[3,4]]`).
+fn numeros(v: &Value) -> Option<Vec<f64>> {
+    let Value::Array(l) = v else { return None };
+    let mut out = Vec::with_capacity(l.len() * 2);
+    for e in l {
+        match e {
+            Value::Array(par) => {
+                for n in par {
+                    out.push(numero(n)?);
+                }
+            }
+            otro => out.push(numero(otro)?),
+        }
+    }
+    Some(out)
+}
+
+fn validar_figura(
+    i: usize,
+    v: &Value,
+    (ox, oy): (f64, f64),
+    avisos: &mut Vec<String>,
+) -> Result<Figura, ErrorHerramienta> {
     let donde = format!("elemento {}", i + 1);
     let Value::Object(o) = v else {
         return Err(mal(format!("{donde}: tiene que ser un objeto")));
     };
     let tipo_txt = texto_en(o, "tipo").ok_or_else(|| mal(format!("{donde}: falta «tipo»")))?;
+    // Formas que se generan de su caja (al modelo le cuesta poner sus puntos).
+    let mut forma: Option<&str> = None;
     let tipo = match tipo_txt.to_lowercase().as_str() {
         "rectangulo" | "rectángulo" | "rect" | "rectangle" | "cuadrado" | "square" => TipoFigura::Rectangulo,
         "elipse" | "ellipse" | "circulo" | "círculo" | "circle" | "ovalo" | "óvalo" => TipoFigura::Elipse,
@@ -399,44 +517,187 @@ fn validar_figura(i: usize, v: &Value, avisos: &mut Vec<String>) -> Result<Figur
         "linea" | "línea" | "line" => TipoFigura::Linea,
         "flecha" | "arrow" => TipoFigura::Flecha,
         "texto" | "text" => TipoFigura::Texto,
+        "curva" | "curve" | "spline" => TipoFigura::Curva,
+        "onda" | "wave" | "ondas" => {
+            forma = Some("onda");
+            TipoFigura::Curva
+        }
+        "poligono" | "polígono" | "polygon" => TipoFigura::Poligono,
+        "triangulo" | "triángulo" | "triangle" => {
+            forma = Some("triangulo");
+            TipoFigura::Poligono
+        }
+        "estrella" | "star" => {
+            forma = Some("estrella");
+            TipoFigura::Poligono
+        }
         otro => {
             return Err(mal(format!(
-                "{donde}: «tipo» = «{otro}» no existe; usa rectangulo, elipse, rombo, linea, flecha o texto"
+                "{donde}: «tipo» = «{otro}» no existe; usa rectangulo, elipse, rombo, triangulo, estrella, linea, flecha, curva, poligono o texto"
             )));
         }
     };
-    let x = numero_en(o, "x", &donde, COORD)?.ok_or_else(|| mal(format!("{donde}: falta «x»")))?;
-    let y = numero_en(o, "y", &donde, COORD)?.ok_or_else(|| mal(format!("{donde}: falta «y»")))?;
-    let es_trazo = matches!(tipo, TipoFigura::Linea | TipoFigura::Flecha);
+    // La caja: «caja», o «centro» y «radio», o x, y, ancho, alto.
+    let caja: Option<[f64; 4]> = match o.get("caja").filter(|v| !v.is_null()) {
+        Some(v) => match numeros(v).as_deref() {
+            Some([x, y, w, h]) => Some([*x, *y, *w, *h]),
+            _ => return Err(mal(format!("{donde}: «caja» tiene que ser [x, y, ancho, alto]"))),
+        },
+        None => match o.get("centro").filter(|v| !v.is_null()) {
+            Some(v) => match numeros(v).as_deref() {
+                Some([cx, cy]) => {
+                    let r = numero_en(o, "radio", &donde, MEDIDA)?.unwrap_or(50.0);
+                    Some([cx - r, cy - r, 2.0 * r, 2.0 * r])
+                }
+                _ => return Err(mal(format!("{donde}: «centro» tiene que ser [x, y]"))),
+            },
+            None => None,
+        },
+    };
+    if let Some([x, y, w, h]) = caja {
+        for (n, campo, rango) in [(x, "x", COORD), (y, "y", COORD), (w, "ancho", MEDIDA), (h, "alto", MEDIDA)] {
+            if !(rango.0..=rango.1).contains(&n) {
+                return Err(mal(format!(
+                    "{donde}: «caja» con {campo} = {n} fuera de rango ({} a {})",
+                    rango.0, rango.1
+                )));
+            }
+        }
+    }
+    // Los puntos de lineas, curvas y poligonos.
+    let mut puntos: Vec<(f64, f64)> = match o.get("puntos").filter(|v| !v.is_null()) {
+        Some(v) => {
+            let n = numeros(v).ok_or_else(|| mal(format!("{donde}: «puntos» tiene que ser una lista de numeros")))?;
+            if n.len() % 2 != 0 {
+                return Err(mal(format!(
+                    "{donde}: «puntos» tiene un numero impar de valores (van de dos en dos: x, y)"
+                )));
+            }
+            if n.len() > MAX_NUMEROS_PUNTOS {
+                return Err(mal(format!("{donde}: demasiados puntos (maximo {})", MAX_NUMEROS_PUNTOS / 2)));
+            }
+            if let Some(m) = n.iter().find(|m| !(COORD.0..=COORD.1).contains(*m)) {
+                return Err(mal(format!("{donde}: un punto ({m}) esta fuera de rango")));
+            }
+            n.chunks(2).map(|c| (c[0], c[1])).collect()
+        }
+        None => Vec::new(),
+    };
+    let es_trazo = matches!(
+        tipo,
+        TipoFigura::Linea | TipoFigura::Flecha | TipoFigura::Curva | TipoFigura::Poligono
+    );
     // En una linea el ancho/alto son el desplazamiento y pueden ser negativos.
     let rango_medida = if es_trazo { (-COORDENADA_MAXIMA, COORDENADA_MAXIMA) } else { MEDIDA };
-    let ancho = numero_en(o, "ancho", &donde, rango_medida)?;
-    let alto = numero_en(o, "alto", &donde, rango_medida)?;
-    let x2 = numero_en(o, "x2", &donde, COORD)?;
-    let y2 = numero_en(o, "y2", &donde, COORD)?;
+    let x_ = numero_en(o, "x", &donde, COORD)?;
+    let y_ = numero_en(o, "y", &donde, COORD)?;
+    let ancho_ = numero_en(o, "ancho", &donde, rango_medida)?;
+    let alto_ = numero_en(o, "alto", &donde, rango_medida)?;
+    let x2_ = numero_en(o, "x2", &donde, COORD)?;
+    let y2_ = numero_en(o, "y2", &donde, COORD)?;
     let tam_letra = numero_en(o, "tam_letra", &donde, (6.0, 200.0))?.unwrap_or(24.0);
-    let texto = texto_en(o, "texto").unwrap_or_default();
-    if tipo == TipoFigura::Texto && texto.is_empty() {
-        return Err(mal(format!("{donde}: un «texto» necesita el campo «texto» con lo que se lee")));
-    }
+    // El texto tambien con otro nombre («text», «etiqueta», «contenido»...).
+    let texto = ["texto", "text", "etiqueta", "rotulo", "contenido", "label", "titulo", "valor"]
+        .iter()
+        .find_map(|c| texto_en(o, c))
+        .unwrap_or_default();
+    // Un texto sin texto se acepta aqui: `colores_del_pedido` lo saca de lo
+    // que el usuario puso entre comillas («Plan 2026»), que es lo que el 2B
+    // olvida (medido 13-oct: tres reintentos seguidos sin el campo). Si no
+    // hay de donde sacarlo, el lienzo lo descarta.
     if texto.chars().count() > MAX_TEXTO {
         return Err(mal(format!("{donde}: el texto pasa de {MAX_TEXTO} caracteres")));
     }
-    let (ancho, alto, x2, y2) = if es_trazo {
-        let x2 = x2.or(ancho.map(|a| x + a)).unwrap_or(x + 100.0);
-        let y2 = y2.or(alto.map(|a| y + a)).unwrap_or(y);
-        if x2 == x && y2 == y {
-            return Err(mal(format!("{donde}: la linea empieza y acaba en el mismo punto")));
+    // Una forma con «puntos» de menos (el 2B pone [x, y] sueltos): se ignoran
+    // y vale la caja. En una linea, el (x, y) es su primer punto.
+    if es_trazo && !puntos.is_empty() {
+        let minimo = if tipo == TipoFigura::Poligono { 3 } else { 2 };
+        if puntos.len() < minimo {
+            if forma.is_some() {
+                puntos.clear();
+            } else if let (Some(x), Some(y)) = (x_, y_) {
+                puntos.insert(0, (x, y));
+            }
         }
-        (x2 - x, y2 - y, x2, y2)
-    } else if tipo == TipoFigura::Texto {
-        let a = ancho.unwrap_or(tam_letra * 0.6 * texto.chars().count() as f64);
-        let h = alto.unwrap_or(tam_letra * 1.25);
-        (a, h, x + a, y + h)
+    }
+    // Sin sitio ninguno: en el centro, a un tamano normal. Medido: «dibuja
+    // un triangulo verde en el centro» llegaba como {"tipo":"triangulo",
+    // "color":"verde"} tres veces seguidas; mejor dibujarlo que rendirse.
+    let sin_sitio = caja.is_none() && x_.is_none() && y_.is_none() && puntos.is_empty();
+    let caja = match (caja, forma) {
+        (None, Some("onda")) if sin_sitio => Some([100.0, 220.0, 600.0, 160.0]),
+        (None, _) if sin_sitio && tipo != TipoFigura::Texto => Some([250.0, 150.0, 300.0, 300.0]),
+        (c, _) => c,
+    };
+    if es_trazo && puntos.is_empty() {
+        if let (Some(forma), Some(c)) = (forma, caja) {
+            puntos = forma_de_caja(forma, c);
+        } else if let (Some(forma), Some(x), Some(y)) = (forma, x_, y_) {
+            let a = ancho_.unwrap_or(100.0).abs().max(1.0);
+            puntos = forma_de_caja(forma, [x, y, a, alto_.unwrap_or(a).abs().max(1.0)]);
+        } else if let (TipoFigura::Curva, Some(c)) = (tipo, caja) {
+            puntos = forma_de_caja("onda", c);
+        } else if matches!(tipo, TipoFigura::Linea | TipoFigura::Flecha) {
+            if let Some([x, y, w, h]) = caja.filter(|_| x_.is_none()) {
+                puntos = vec![(x, y + h / 2.0), (x + w, y + h / 2.0)];
+            } else {
+                let x = x_.ok_or_else(|| mal(format!("{donde}: falta «puntos» (o «x», «y», «x2», «y2»)")))?;
+                let y = y_.ok_or_else(|| mal(format!("{donde}: falta «y»")))?;
+                let x2 = x2_.or(ancho_.map(|a| x + a)).unwrap_or(x + 100.0);
+                let y2 = y2_.or(alto_.map(|a| y + a)).unwrap_or(y);
+                puntos = vec![(x, y), (x2, y2)];
+            }
+        } else {
+            return Err(mal(format!("{donde}: falta «puntos»: [x1, y1, x2, y2, ...]")));
+        }
+    }
+    let minimo = match tipo {
+        TipoFigura::Poligono => 3,
+        TipoFigura::Linea | TipoFigura::Flecha | TipoFigura::Curva => 2,
+        _ => 0,
+    };
+    if puntos.len() < minimo {
+        return Err(mal(format!("{donde}: hacen falta al menos {minimo} puntos")));
+    }
+    if es_trazo && puntos.windows(2).all(|p| p[0] == p[1]) {
+        return Err(mal(format!("{donde}: la linea empieza y acaba en el mismo punto")));
+    }
+    for p in &mut puntos {
+        p.0 += ox;
+        p.1 += oy;
+    }
+    let (x, y, ancho, alto, x2, y2) = if es_trazo {
+        let (x, y) = puntos[0];
+        let (x2, y2) = puntos[puntos.len() - 1];
+        (x, y, x2 - x, y2 - y, x2, y2)
     } else {
-        let a = ancho.unwrap_or(100.0);
-        let h = alto.unwrap_or(a);
-        (a, h, x + a, y + h)
+        let [x, y, a, h] = match caja {
+            Some(c) => c,
+            None => {
+                let x = match x_ {
+                    Some(x) => x,
+                    None if tipo == TipoFigura::Texto => 60.0,
+                    None => return Err(mal(format!("{donde}: falta «x» (o «caja»)"))),
+                };
+                let y = match y_ {
+                    Some(y) => y,
+                    None if tipo == TipoFigura::Texto => 40.0,
+                    None => return Err(mal(format!("{donde}: falta «y» (o «caja»)"))),
+                };
+                let (a, h) = if tipo == TipoFigura::Texto {
+                    (
+                        ancho_.unwrap_or(tam_letra * 0.6 * texto.chars().count() as f64),
+                        alto_.unwrap_or(tam_letra * 1.25),
+                    )
+                } else {
+                    let a = ancho_.unwrap_or(100.0);
+                    (a, alto_.unwrap_or(a))
+                };
+                [x, y, a, h]
+            }
+        };
+        let (x, y) = (x + ox, y + oy);
+        (x, y, a, h, x + a, y + h)
     };
     // Los modelos pequenos a veces escriben el color con otro nombre
     // («fill», «stroke», «fondo»): se aceptan los sinonimos.
@@ -467,6 +728,7 @@ fn validar_figura(i: usize, v: &Value, avisos: &mut Vec<String>) -> Result<Figur
             }
         },
     };
+    let grupo = texto_en(o, "grupo").map(|g| g.chars().take(40).collect());
     Ok(Figura {
         tipo,
         x,
@@ -480,6 +742,73 @@ fn validar_figura(i: usize, v: &Value, avisos: &mut Vec<String>) -> Result<Figur
         texto,
         tam_letra,
         con_color,
+        puntos: if es_trazo { puntos } else { Vec::new() },
+        grupo,
+    })
+}
+
+/// Los vertices de una forma dentro de su caja.
+fn forma_de_caja(forma: &str, [x, y, w, h]: [f64; 4]) -> Vec<(f64, f64)> {
+    match forma {
+        "estrella" => {
+            let (cx, cy) = (x + w / 2.0, y + h / 2.0);
+            (0..10)
+                .map(|k| {
+                    let a = -std::f64::consts::FRAC_PI_2 + k as f64 * std::f64::consts::PI / 5.0;
+                    let r = if k % 2 == 0 { 1.0 } else { 0.4 };
+                    (cx + r * w / 2.0 * a.cos(), cy + r * h / 2.0 * a.sin())
+                })
+                .collect()
+        }
+        // Dos ondas de seno a lo ancho de la caja.
+        "onda" => (0..=16)
+            .map(|k| {
+                let t = k as f64 / 16.0;
+                (x + t * w, y + h / 2.0 - h / 2.0 * (t * 4.0 * std::f64::consts::PI).sin())
+            })
+            .collect(),
+        // Triangulo con la punta arriba.
+        _ => vec![(x, y + h), (x + w / 2.0, y), (x + w, y + h)],
+    }
+}
+
+fn validar_calcar(args: &Map<String, Value>) -> Result<crate::calcar::Parametros, ErrorHerramienta> {
+    use crate::calcar::{Detalle, Parametros};
+    let detalle = match texto_en(args, "detalle").map(|t| crate::acciones::normalizar(&t)).as_deref() {
+        None | Some("medio" | "normal" | "medium") => Detalle::Medio,
+        Some("bajo" | "poco" | "low" | "simple") => Detalle::Bajo,
+        Some("alto" | "mucho" | "high" | "maximo") => Detalle::Alto,
+        Some(otro) => return Err(mal(format!("«detalle» = «{otro}» no existe; usa bajo, medio o alto"))),
+    };
+    let si_no = |campo: &str, defecto: bool| -> Result<bool, ErrorHerramienta> {
+        match args.get(campo) {
+            None | Some(Value::Null) => Ok(defecto),
+            Some(Value::Bool(b)) => Ok(*b),
+            Some(Value::String(s)) => match crate::acciones::normalizar(s.trim()).as_str() {
+                "true" | "si" => Ok(true),
+                "false" | "no" => Ok(false),
+                _ => Err(mal(format!("«{campo}» tiene que ser true o false"))),
+            },
+            _ => Err(mal(format!("«{campo}» tiene que ser true o false"))),
+        }
+    };
+    let zona = match args.get("zona").filter(|v| !v.is_null()) {
+        None => None,
+        Some(v) => match numeros(v).as_deref() {
+            Some([x, y, w, h])
+                if [*x, *y, *w, *h].iter().all(|n| (0.0..=1.0).contains(n)) && *w > 0.0 && *h > 0.0 =>
+            {
+                Some([*x, *y, *w, *h])
+            }
+            _ => return Err(mal("«zona» tiene que ser [x, y, ancho, alto] con fracciones de 0 a 1")),
+        },
+    };
+    Ok(Parametros {
+        detalle,
+        colores: si_no("colores", true)?,
+        solo_contornos: si_no("solo_contornos", false)?,
+        zona,
+        imagen: texto_en(args, "imagen"),
     })
 }
 
@@ -506,6 +835,10 @@ pub fn colores_del_pedido(figuras: &mut [Figura], pedido: &str) {
                 TipoFigura::Rectangulo
             }
             "rombo" | "diamante" | "diamond" => TipoFigura::Rombo,
+            "triangulo" | "triángulo" | "estrella" | "poligono" | "polígono" | "techo" | "tejado" | "triangle" | "star" => {
+                TipoFigura::Poligono
+            }
+            "curva" | "onda" | "curve" | "wave" => TipoFigura::Curva,
             "linea" | "línea" | "raya" | "line" => TipoFigura::Linea,
             "flecha" | "arrow" => TipoFigura::Flecha,
             "titulo" | "título" | "texto" | "letrero" | "title" | "text" => TipoFigura::Texto,
@@ -519,7 +852,7 @@ pub fn colores_del_pedido(figuras: &mut [Figura], pedido: &str) {
         let Some(t) = tipo_de(p) else { continue };
         if let Some(c) = palabras[i + 1..]
             .iter()
-            .take(3)
+            .take(4)
             .take_while(|q| tipo_de(q).is_none())
             .find_map(|q| color(q))
         {
@@ -529,12 +862,49 @@ pub fn colores_del_pedido(figuras: &mut [Figura], pedido: &str) {
     for f in figuras.iter_mut().filter(|f| !f.con_color) {
         let Some(i) = pares.iter().position(|(t, _)| *t == f.tipo) else { continue };
         let (_, c) = pares.remove(i);
-        if matches!(f.tipo, TipoFigura::Rectangulo | TipoFigura::Elipse | TipoFigura::Rombo) {
+        if matches!(f.tipo, TipoFigura::Rectangulo | TipoFigura::Elipse | TipoFigura::Rombo | TipoFigura::Poligono) {
             f.relleno = Some(c.clone());
         }
         f.color = c;
         f.con_color = true;
     }
+    // Los textos que el modelo dejo vacios, con lo que el usuario puso entre
+    // comillas, en orden.
+    let mut citas = citas_del_pedido(pedido).into_iter();
+    for f in figuras.iter_mut().filter(|f| f.tipo == TipoFigura::Texto && f.texto.is_empty()) {
+        match citas.next() {
+            Some(c) => f.texto = c,
+            None => break,
+        }
+    }
+}
+
+/// Lo que va entre comillas en el pedido: «…», "…", “…” o '…'.
+pub fn citas_del_pedido(pedido: &str) -> Vec<String> {
+    let mut salida = Vec::new();
+    let car: Vec<char> = pedido.chars().collect();
+    let mut i = 0;
+    while i < car.len() {
+        let cierre = match car[i] {
+            '«' => Some('»'),
+            '"' => Some('"'),
+            '“' => Some('”'),
+            '\'' => Some('\''),
+            _ => None,
+        };
+        if let Some(cierre) = cierre
+            && let Some(fin) = car[i + 1..].iter().position(|c| *c == cierre)
+        {
+            let dentro: String = car[i + 1..i + 1 + fin].iter().collect();
+            if !dentro.trim().is_empty() && dentro.chars().count() <= MAX_TEXTO {
+                salida.push(dentro.trim().to_string());
+            }
+            i += fin + 2;
+            continue;
+        }
+        i += 1;
+    }
+    salida
 }
 
 /// `#rgb`, `#rrggbb` o un nombre en espanol o ingles. Los nombres caen en la
@@ -559,7 +929,23 @@ pub fn color(texto: &str) -> Option<Color> {
         }
         return None;
     }
-    let hex = match t.as_str() {
+    // «roja», «amarillas», «azules»: el femenino y el plural del pedido.
+    let mut candidatos = vec![t.clone()];
+    for sufijo in ["es", "s"] {
+        if let Some(r) = t.strip_suffix(sufijo) {
+            candidatos.push(r.to_string());
+        }
+    }
+    for c in candidatos.clone() {
+        if let Some(r) = c.strip_suffix('a') {
+            candidatos.push(format!("{r}o"));
+        }
+    }
+    candidatos.into_iter().find_map(|c| color_por_nombre(&c)).map(|h| Color(h.into()))
+}
+
+fn color_por_nombre(t: &str) -> Option<&'static str> {
+    let hex = match t {
         "negro" | "black" => "#1e1e1e",
         "blanco" | "white" => "#ffffff",
         "rojo" | "red" => "#e03131",
@@ -574,7 +960,7 @@ pub fn color(texto: &str) -> Option<Color> {
         "celeste" | "cyan" | "cian" => "#0c8599",
         _ => return None,
     };
-    Some(Color(hex.into()))
+    Some(hex)
 }
 
 fn validar_grafica(args: &Map<String, Value>, avisos: &mut Vec<String>) -> Result<Grafica, ErrorHerramienta> {
@@ -771,12 +1157,31 @@ mod pruebas {
     }
 
     #[test]
-    fn un_texto_sin_texto_se_rechaza_para_reintentar() {
-        // Lo que hizo el 0.8B en la medida.
-        let e = validar_(DIBUJAR, r##"{"elementos":[{"y":150,"x":300,"tipo":"texto","color":"#ffffff"}]}"##).unwrap_err();
-        let m = e.para_el_modelo(&catalogo());
-        assert!(m.contains("elemento 1"), "{m}");
-        assert!(m.contains("«texto»"), "{m}");
+    fn un_texto_sin_texto_lo_toma_de_las_comillas_del_pedido() {
+        // Lo que hizo el 0.8B en la medida, y el 2B con «Plan 2026» (13-oct).
+        let mut f = figuras(r##"{"elementos":[{"y":150,"x":300,"tipo":"texto","color":"#ffffff"},{"tipo":"texto"}]}"##);
+        colores_del_pedido(&mut f, "Escribe el titulo «Plan 2026» y debajo \"version 2\"");
+        assert_eq!(f[0].texto, "Plan 2026");
+        assert_eq!(f[1].texto, "version 2");
+        assert_eq!((f[1].x, f[1].y), (60.0, 40.0));
+        // Sin comillas se queda vacio y el lienzo no lo pinta.
+        let mut f = figuras(r#"{"elementos":[{"tipo":"texto","x":1,"y":1}]}"#);
+        colores_del_pedido(&mut f, "pon un titulo");
+        assert!(f[0].texto.is_empty());
+        assert!(crate::lienzo::elementos(&Llamada::Dibujar(f), (0.0, 0.0), 1).is_empty());
+        assert_eq!(citas_del_pedido("a «b» c 'd' “e”"), vec!["b", "d", "e"]);
+        assert!(citas_del_pedido("sin «cerrar").is_empty());
+    }
+
+    #[test]
+    fn una_forma_sin_sitio_va_al_centro_y_los_puntos_de_menos_se_arreglan() {
+        let f = figuras(r#"{"elementos":[{"tipo":"triangulo","color":"verde"},{"tipo":"estrella","puntos":[100,50],"x":200,"y":300},{"tipo":"curva","puntos":[0,50],"x":160,"y":300},{"tipo":"onda"}]}"#);
+        assert_eq!(f[0].puntos, vec![(250.0, 450.0), (400.0, 150.0), (550.0, 450.0)]);
+        assert_eq!(f[1].puntos.len(), 10);
+        assert_eq!(f[2].puntos, vec![(160.0, 300.0), (0.0, 50.0)]);
+        assert_eq!(f[3].puntos.len(), 17);
+        // Un poligono sin nada sigue siendo un error (no hay forma que inventar).
+        assert!(validar_(DIBUJAR, r#"{"elementos":[{"tipo":"poligono","puntos":[1,2]}]}"#).is_err());
     }
 
     #[test]
@@ -828,8 +1233,8 @@ mod pruebas {
 
     #[test]
     fn tipo_inventado_se_rechaza() {
-        let e = validar_(DIBUJAR, r#"{"elementos":[{"tipo":"estrella","x":1,"y":1}]}"#).unwrap_err();
-        assert!(e.to_string().contains("estrella"));
+        let e = validar_(DIBUJAR, r#"{"elementos":[{"tipo":"dragon","x":1,"y":1}]}"#).unwrap_err();
+        assert!(e.to_string().contains("dragon"));
     }
 
     #[test]
@@ -897,10 +1302,102 @@ mod pruebas {
     fn el_catalogo_es_json_de_herramientas_valido() {
         let v: Value = serde_json::from_str(&catalogo_json()).unwrap();
         let lista = v.as_array().unwrap();
-        assert_eq!(lista.len(), 3);
+        assert_eq!(lista.len(), 5 + crate::acciones::ACCIONES.len());
         for h in lista {
             assert_eq!(h["type"], "function");
             assert_eq!(h["function"]["parameters"]["type"], "object");
         }
+    }
+
+    fn figuras(args: &str) -> Vec<Figura> {
+        match validar_(DIBUJAR, args).unwrap().llamada {
+            Llamada::Dibujar(f) => f,
+            otra => panic!("{otra:?}"),
+        }
+    }
+
+    #[test]
+    fn figuras_ricas_con_coordenadas_compactas() {
+        let f = figuras(
+            r#"{"origen":[100,50],"elementos":[
+                {"tipo":"rectangulo","caja":[0,0,200,100],"texto":"Inicio","grupo":"a"},
+                {"tipo":"poligono","puntos":[0,0,50,0,25,40],"relleno":"rojo"},
+                {"tipo":"curva","puntos":[[0,0],[10,20],[20,0],[30,20]],"color":"azul"},
+                {"tipo":"triangulo","caja":[0,0,100,80]},
+                {"tipo":"estrella","centro":[50,50],"radio":40},
+                {"tipo":"elipse","centro":[50,50],"radio":20},
+                {"tipo":"flecha","puntos":[0,0,100,0],"texto":"si"}]}"#,
+        );
+        assert_eq!((f[0].x, f[0].y, f[0].ancho, f[0].alto), (100.0, 50.0, 200.0, 100.0));
+        assert_eq!(f[0].texto, "Inicio");
+        assert_eq!(f[0].grupo.as_deref(), Some("a"));
+        assert_eq!(f[1].tipo, TipoFigura::Poligono);
+        assert_eq!(f[1].puntos, vec![(100.0, 50.0), (150.0, 50.0), (125.0, 90.0)]);
+        assert_eq!(f[1].color.0, "#e03131");
+        assert_eq!(f[2].tipo, TipoFigura::Curva);
+        assert_eq!(f[2].puntos.len(), 4);
+        assert_eq!(f[3].puntos, vec![(100.0, 130.0), (150.0, 50.0), (200.0, 130.0)]);
+        assert_eq!(f[4].puntos.len(), 10);
+        assert_eq!((f[5].x, f[5].ancho), (130.0, 40.0));
+        assert_eq!(f[6].tipo, TipoFigura::Flecha);
+        assert_eq!((f[6].x2, f[6].y2), (200.0, 50.0));
+    }
+
+    #[test]
+    fn puntos_mal_puestos_se_rechazan() {
+        for (args, motivo) in [
+            (r#"{"elementos":[{"tipo":"poligono","puntos":[1,2,3]}]}"#, "impar"),
+            (r#"{"elementos":[{"tipo":"poligono","puntos":[1,2,3,4]}]}"#, "al menos 3"),
+            (r#"{"elementos":[{"tipo":"poligono"}]}"#, "falta «puntos»"),
+            (r#"{"elementos":[{"tipo":"poligono","puntos":[1,2,3,4,99999,1]}]}"#, "fuera de rango"),
+            (r#"{"elementos":[{"tipo":"rectangulo","caja":[1,2,3]}]}"#, "«caja»"),
+            (r#"{"elementos":[{"tipo":"rectangulo","caja":[1,2,-3,4]}]}"#, "fuera de rango"),
+            (r#"{"origen":"aqui","elementos":[{"tipo":"rectangulo","caja":[1,2,3,4]}]}"#, "«origen»"),
+        ] {
+            let e = validar_(DIBUJAR, args).unwrap_err().to_string();
+            assert!(e.contains(motivo), "{args}: {e}");
+        }
+        let muchos: Vec<String> = (0..MAX_NUMEROS_PUNTOS + 2).map(|i| (i % 500).to_string()).collect();
+        let e = validar_(DIBUJAR, &format!(r#"{{"elementos":[{{"tipo":"curva","puntos":[{}]}}]}}"#, muchos.join(",")))
+            .unwrap_err();
+        assert!(e.to_string().contains("demasiados"));
+    }
+
+    #[test]
+    fn colores_en_femenino_y_plural() {
+        assert_eq!(color("roja"), color("rojo"));
+        assert_eq!(color("amarillas"), color("amarillo"));
+        assert_eq!(color("azules"), color("azul"));
+        assert_eq!(color("rosa").unwrap().0, "#c2255c");
+        assert!(color("casa").is_none());
+        let mut f = figuras(r#"{"elementos":[{"tipo":"estrella","caja":[1,1,50,50]}]}"#);
+        colores_del_pedido(&mut f, "Dibuja una estrella de cinco puntas amarilla");
+        assert_eq!(f[0].relleno, color("amarillo"));
+    }
+
+    #[test]
+    fn calcar_y_ayuda_y_acciones_se_validan() {
+        let v = validar_(CALCAR, r#"{"detalle":"alto","solo_contornos":true,"zona":[0,0,0.5,0.5]}"#).unwrap();
+        let Llamada::Calcar(p) = v.llamada else { panic!() };
+        assert_eq!(p.detalle, crate::calcar::Detalle::Alto);
+        assert!(p.solo_contornos && p.colores);
+        assert_eq!(p.zona, Some([0.0, 0.0, 0.5, 0.5]));
+        assert!(validar_(CALCAR, "").is_ok());
+        assert!(validar_(CALCAR, r#"{"zona":[0,0,2,1]}"#).is_err());
+        assert!(validar_(CALCAR, r#"{"detalle":"extremo"}"#).is_err());
+        let v = validar_(AYUDA, r#"{"pregunta":"donde estan los ajustes"}"#).unwrap();
+        assert_eq!(v.llamada, Llamada::Ayuda("donde estan los ajustes".into()));
+        assert!(validar_(AYUDA, "{}").is_err());
+        let v = validar_("anadir_tarea", r#"{"texto":"llamar"}"#).unwrap();
+        assert_eq!(v.llamada.nombre(), "anadir_tarea");
+        let Llamada::App(a) = v.llamada else { panic!() };
+        assert_eq!(a.pedido["accion"], "anadir_tarea");
+        // Una de la app que no se enseno en este turno: no existe para el modelo.
+        let e = validar(
+            &crate::motor::LlamadaCruda { id: "1".into(), nombre: "anadir_tarea".into(), argumentos: "{}".into() },
+            &catalogo_base(),
+        )
+        .unwrap_err();
+        assert_eq!(e, ErrorHerramienta::Desconocida("anadir_tarea".into()));
     }
 }

@@ -38,6 +38,9 @@ pub struct EjecutorDelChat {
     /// El lienzo del chat donde dibujar si no hay uno abierto (la mencion
     /// `@lienzo:`), por su referencia.
     destino: Option<String>,
+    /// Enganches de las acciones de la app (ver `acciones.rs`).
+    confirmar: super::acciones::Confirmar,
+    mandar: super::acciones::Mandar,
 }
 
 impl EjecutorDelChat {
@@ -50,12 +53,27 @@ impl EjecutorDelChat {
             espera: ESPERA_LIENZO,
             llamadas: 0,
             destino: None,
+            confirmar: super::acciones::confirmar_con_cuadro(),
+            mandar: super::acciones::mandar_a_pixpin(),
         }
     }
 
     /// Adonde va lo dibujado si no hay un lienzo abierto.
     pub fn hacia(mut self, destino: Option<String>) -> EjecutorDelChat {
         self.destino = destino;
+        self
+    }
+
+    /// Cambia como se pregunta antes de lo que borra y adonde van los
+    /// pedidos (la UI, o las pruebas para no tocar la PixPin del usuario).
+    #[allow(dead_code)] // el enganche para la UI del chat (el «¿Si?» en la burbuja)
+    pub fn con_acciones(
+        mut self,
+        confirmar: super::acciones::Confirmar,
+        mandar: super::acciones::Mandar,
+    ) -> EjecutorDelChat {
+        self.confirmar = confirmar;
+        self.mandar = mandar;
         self
     }
 
@@ -79,6 +97,10 @@ impl EjecutorDelChat {
     fn al_lienzo(&mut self, llamada: &Llamada) -> Result<String, String> {
         let semilla = self.semilla();
         let elementos = lienzo::elementos(llamada, (0.0, 0.0), semilla);
+        self.al_lienzo_elementos(elementos)
+    }
+
+    fn al_lienzo_elementos(&mut self, elementos: Vec<serde_json::Value>) -> Result<String, String> {
         if elementos.is_empty() {
             return Err("no salio ninguna figura".into());
         }
@@ -123,6 +145,16 @@ impl Ejecutor for EjecutorDelChat {
                 let _ = self.tx.send(Aviso::TextoLeido { de: adjunto, texto });
                 Ok(para_el_modelo)
             }
+            Llamada::Calcar(p) => {
+                let ruta = super::acciones::imagen_para_calcar(&self.adjuntos, p.imagen.as_deref())?
+                    .ruta
+                    .clone();
+                let semilla = self.semilla();
+                let elementos = super::acciones::calcar_fichero(&ruta, p, semilla)?;
+                self.al_lienzo_elementos(elementos)
+            }
+            Llamada::App(a) => super::acciones::hacer(a, &self.confirmar, &self.mandar),
+            Llamada::Ayuda(pregunta) => Ok(pixpin_ia::conocimiento::responder(pregunta)),
         }
     }
 }

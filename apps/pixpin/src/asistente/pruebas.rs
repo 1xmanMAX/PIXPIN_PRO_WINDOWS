@@ -914,7 +914,7 @@ fn hasta_el_final_largo(t: &mut Turno, escena: &mut pixpin_motor2d::Escena) -> (
 
 /// La escena pintada a PNG por el mismo camino que el PDF (exportar → PDF de
 /// vectores → pixeles), para mirarla.
-fn pintar_a_png(escena: &pixpin_motor2d::Escena, ruta: &std::path::Path) {
+pub(super) fn pintar_a_png(escena: &pixpin_motor2d::Escena, ruta: &std::path::Path) {
     let hojas = pixpin_motor2d::exportar::hojas(escena, pixpin_motor2d::exportar::Alcance::Todo, &[], None);
     if hojas.is_empty() {
         return;
