@@ -17,6 +17,20 @@
 //! cargo test -p pixpin-ia --test banco -- --ignored --nocapture
 //! ```
 //!
+//! **Modo grabado** (evaluar a Haiku sin API, con un subagente como cerebro):
+//! `volcar_para_haiku` escribe lo que la app manda a Claude (`sistema.txt`,
+//! `herramientas.json`) y los casos (`casos.json` + PNG); el «cerebro» contesta
+//! en un `respuestas.json` (`{"<caso>": {"texto": "...", "llamadas":
+//! [{"nombre": "...", "entrada": {...}}]}}`) y el banco lo pasa por la misma
+//! validacion y ejecucion que a los otros motores:
+//!
+//! ```text
+//! PIXPIN_IA_VOLCADO=<carpeta>  (opcional; por omision la del scratchpad)
+//! cargo test -p pixpin-ia --test banco -- --ignored --nocapture volcar_para_haiku
+//! PIXPIN_IA_MOTOR=grabado PIXPIN_IA_GRABADO=<respuestas.json>
+//! cargo test -p pixpin-ia --test banco -- --ignored --nocapture --exact banco
+//! ```
+//!
 //! Nada se ejecuta de verdad: lo que el modelo pide se APUNTA (los pedidos a
 //! la app nunca se mandan) y se comprueba lo apuntado.
 
@@ -144,7 +158,39 @@ fn la_casa() -> Vec<u8> {
     imagenes::casa_png()
 }
 
+/// La foto del perrito (fuera del repositorio: el caso `copiar-perrito` solo
+/// entra si esta).
+fn ruta_perrito() -> PathBuf {
+    std::env::var("PIXPIN_IA_PERRITO").map(PathBuf::from).unwrap_or_else(|_| {
+        PathBuf::from(
+            r"C:\Users\MaxBook\AppData\Local\Temp\claude\F--THE-FORGE-PIXPIN-PC-VERSION-MAX\afe461c5-d9fa-4287-b8b5-3ab7961f6cb3\scratchpad\perrito\perrito.png",
+        )
+    })
+}
+
+/// El emoji del perrito: el de verdad si esta, y si no uno de mentira con
+/// los mismos degradados (el caso `calcar-perrito-emoji` corre siempre).
+fn el_perrito() -> Vec<u8> {
+    std::fs::read(ruta_perrito()).unwrap_or_else(|_| imagenes::perrito_png())
+}
+
 fn casos() -> Vec<Caso> {
+    let mut lista = casos_fijos();
+    if ruta_perrito().exists() {
+        lista.push(Caso {
+            nombre: "copiar-perrito",
+            pedido: "Copia este perrito en el lienzo.",
+            imagen: Some(el_perrito),
+            comprobar: |r| {
+                r.llamo(pixpin_ia::herramientas::CALCAR).ok_or("no llamo a calcar_imagen")?;
+                si(r.elementos.len() >= 3, "menos de 3 elementos calcados")
+            },
+        });
+    }
+    lista
+}
+
+fn casos_fijos() -> Vec<Caso> {
     vec![
         // --- Dibujar -------------------------------------------------------
         Caso {
@@ -265,6 +311,19 @@ fn casos() -> Vec<Caso> {
             comprobar: |r| {
                 si(r.elementos.len() >= 4, "menos de 4 elementos")?;
                 si(r.con_color(rojo), "falta el tejado rojo")
+            },
+        },
+        Caso {
+            // Medido el 14-oct por el coordinador: con este pedido y el emoji
+            // del perrito, el 2B dibujaba 4 triangulos en vez de calcarlo.
+            nombre: "calcar-perrito-emoji",
+            pedido: "Dibuja este perrito de la imagen adjunta dentro del lienzo.",
+            imagen: Some(el_perrito),
+            comprobar: |r| {
+                si(r.llamo("calcar_imagen").is_some(), "no lo calco")?;
+                si(r.llamo("dibujar_en_lienzo").is_none(), "lo dibujo a mano")?;
+                si(r.elementos.len() >= 4, "menos de 4 elementos")?;
+                si(r.con_color(|(r, g, b)| r > 180 && g < 110 && b > 90), "falta la lengua rosa")
             },
         },
         // --- Graficas -------------------------------------------------------
@@ -526,7 +585,9 @@ fn motor_local() -> MotorLlama {
 #[test]
 #[ignore = "necesita el motor y el modelo bajados (ver la cabecera)"]
 fn banco() {
-    let motor = motor();
+    // Con `grabado` no hay motor comun: uno por caso, con su respuesta.
+    let grabadas = grabado::respuestas();
+    let comun = grabadas.is_none().then(motor);
     let solo = std::env::var("PIXPIN_IA_SOLO").ok();
     let mut bien = 0;
     let mut total = 0;
@@ -537,6 +598,22 @@ fn banco() {
             continue;
         }
         total += 1;
+        let de_este_caso;
+        let motor: &dyn Motor = match (&grabadas, &comun) {
+            (Some(g), _) => match grabado::MotorGrabado::del_caso(g, caso.nombre) {
+                Ok(m) => {
+                    de_este_caso = m;
+                    &de_este_caso
+                }
+                Err(motivo) => {
+                    println!("MAL  {:<32}   0.0 s    <- {motivo}", caso.nombre);
+                    fallos.push(format!("{}: {motivo}", caso.nombre));
+                    continue;
+                }
+            },
+            (None, Some(m)) => m.as_ref(),
+            (None, None) => unreachable!(),
+        };
         let imagen = caso.imagen.map(|f| f());
         let (mut historial, mut herramientas) = banco_ia::preparar(caso.pedido, imagen.clone());
         // Como en la app (`asistente::turno`): la nube recibe el catalogo entero.
@@ -546,12 +623,16 @@ fn banco() {
         let mut r = Resultado::default();
         let t0 = Instant::now();
         let mut eventos = Vec::new();
+        let mut invalidas = Vec::new();
         let fin = {
             let mut ej = Apunta {
                 r: &mut r,
                 imagen: imagen.clone(),
             };
-            agente::turno(motor.as_ref(), &mut historial, &herramientas, &mut ej, &mut |e| {
+            agente::turno(motor, &mut historial, &herramientas, &mut ej, &mut |e| {
+                if let Evento::Reintento { motivo } = &e {
+                    invalidas.push(motivo.clone());
+                }
                 if !matches!(e, Evento::Texto(_)) {
                     eventos.push(format!("{e:?}").chars().take(300).collect::<String>());
                 }
@@ -562,7 +643,12 @@ fn banco() {
             Ok(f) => r.texto = f.texto,
             Err(e) => r.texto = format!("ERROR DEL MOTOR: {e}"),
         }
-        let veredicto = (caso.comprobar)(&r);
+        let mut veredicto = (caso.comprobar)(&r);
+        // Grabado no hay segunda oportunidad: una llamada que no pasa la
+        // validacion es un fallo de lo grabado, y se dice tal cual.
+        if grabadas.is_some() && !invalidas.is_empty() {
+            veredicto = Err(format!("entrada invalida: {}", invalidas.join(" / ")));
+        }
         let ok = veredicto.is_ok();
         bien += usize::from(ok);
         println!(
@@ -595,7 +681,177 @@ fn banco() {
         bien as f64 * 100.0 / total.max(1) as f64,
         t_total.elapsed().as_secs_f32()
     );
-    motor.soltar();
+    if let Some(m) = comun {
+        m.soltar();
+    }
+}
+
+/// **Volcado para evaluar a Haiku sin API**: lo que `nube::claude` manda de
+/// verdad (sistema y herramientas, sacados de una peticion real del agente
+/// con el catalogo entero) y los casos con sus imagenes.
+#[test]
+#[ignore = "escribe ficheros fuera del repositorio (ver la cabecera)"]
+fn volcar_para_haiku() {
+    use std::collections::HashMap;
+    let dir = std::env::var("PIXPIN_IA_VOLCADO").map(PathBuf::from).unwrap_or_else(|_| {
+        PathBuf::from(
+            r"C:\Users\MaxBook\AppData\Local\Temp\claude\F--THE-FORGE-PIXPIN-PC-VERSION-MAX\afe461c5-d9fa-4287-b8b5-3ab7961f6cb3\scratchpad\eval-haiku",
+        )
+    });
+    std::fs::create_dir_all(&dir).unwrap();
+
+    // La peticion tal cual la arma `agente::turno` (topes incluidos), con el
+    // catalogo entero como en la app con la nube.
+    let captura = grabado::Captura::default();
+    let caso = &casos()[0];
+    let (mut historial, _) = banco_ia::preparar(caso.pedido, None);
+    let herramientas = pixpin_ia::herramientas::catalogo();
+    agente::turno(&captura, &mut historial, &herramientas, &mut grabado::NoEjecuta, &mut |_| Seguir::Si).unwrap();
+    let peticion = captura.primera();
+    let cuerpo = pixpin_ia::nube::claude::cuerpo(&peticion, &HashMap::new(), true, pixpin_ia::nube::claude::MAX_TOKENS);
+    let sistema = cuerpo["system"][0]["text"].as_str().unwrap();
+    std::fs::write(dir.join("sistema.txt"), sistema).unwrap();
+    std::fs::write(dir.join("herramientas.json"), serde_json::to_string_pretty(&cuerpo["tools"]).unwrap()).unwrap();
+
+    let mut lista = Vec::new();
+    for caso in casos() {
+        let imagen = caso.imagen.map(|f| {
+            let ruta = dir.join(format!("{}.png", caso.nombre));
+            std::fs::write(&ruta, f()).unwrap();
+            ruta.display().to_string()
+        });
+        lista.push(serde_json::json!({"nombre": caso.nombre, "pedido": caso.pedido, "imagen": imagen}));
+    }
+    std::fs::write(dir.join("casos.json"), serde_json::to_string_pretty(&lista).unwrap()).unwrap();
+    println!(
+        "volcado en {}: {} casos, {} herramientas, sistema de {} caracteres",
+        dir.display(),
+        lista.len(),
+        cuerpo["tools"].as_array().map_or(0, Vec::len),
+        sistema.chars().count()
+    );
+}
+
+/// El motor que contesta lo grabado por otro «cerebro», y lo que hace falta
+/// para volcar una peticion sin mandarla.
+mod grabado {
+    use std::sync::Mutex;
+
+    use pixpin_ia::agente::Ejecutor;
+    use pixpin_ia::herramientas::Llamada;
+    use pixpin_ia::motor::{Fin, LlamadaCruda, Medidas, Motor, Peticion, Respuesta, Seguir, Trozo};
+    use pixpin_ia::ErrorIa;
+    use serde_json::Value;
+
+    /// `Some` con `PIXPIN_IA_MOTOR=grabado`: el JSON de `PIXPIN_IA_GRABADO`.
+    pub fn respuestas() -> Option<Value> {
+        if !std::env::var("PIXPIN_IA_MOTOR").is_ok_and(|m| m.eq_ignore_ascii_case("grabado")) {
+            return None;
+        }
+        let ruta = std::env::var("PIXPIN_IA_GRABADO").expect("modo grabado sin PIXPIN_IA_GRABADO=<respuestas.json>");
+        let texto = std::fs::read_to_string(&ruta).unwrap_or_else(|e| panic!("no se puede leer {ruta}: {e}"));
+        let v: Value = serde_json::from_str(&texto).unwrap_or_else(|e| panic!("{ruta} no es JSON: {e}"));
+        assert!(v.is_object(), "{ruta}: se espera un objeto {{\"<caso>\": {{...}}}}");
+        println!("motor: grabado ({ruta})");
+        Some(v)
+    }
+
+    /// Primera vuelta: las llamadas grabadas; despues: el texto grabado.
+    pub struct MotorGrabado {
+        texto: String,
+        llamadas: Vec<LlamadaCruda>,
+        vueltas: Mutex<u32>,
+    }
+
+    impl MotorGrabado {
+        pub fn del_caso(todas: &Value, caso: &str) -> Result<MotorGrabado, String> {
+            let r = todas.get(caso).ok_or("sin respuesta grabada para este caso")?;
+            let texto = r.get("texto").and_then(Value::as_str).unwrap_or_default().to_string();
+            let mut llamadas = Vec::new();
+            match r.get("llamadas") {
+                None | Some(Value::Null) => {}
+                Some(Value::Array(a)) => {
+                    for (i, l) in a.iter().enumerate() {
+                        let nombre = l
+                            .get("nombre")
+                            .and_then(Value::as_str)
+                            .ok_or(format!("respuesta grabada mal formada: la llamada {i} no tiene «nombre»"))?;
+                        // Un texto se pasa tal cual (para probar JSON roto).
+                        let argumentos = match l.get("entrada") {
+                            Some(Value::String(s)) => s.clone(),
+                            Some(v) => v.to_string(),
+                            None => "{}".into(),
+                        };
+                        llamadas.push(LlamadaCruda {
+                            id: format!("grabada-{i}"),
+                            nombre: nombre.to_string(),
+                            argumentos,
+                        });
+                    }
+                }
+                Some(_) => return Err("respuesta grabada mal formada: «llamadas» no es una lista".into()),
+            }
+            Ok(MotorGrabado {
+                texto,
+                llamadas,
+                vueltas: Mutex::new(0),
+            })
+        }
+    }
+
+    impl Motor for MotorGrabado {
+        fn completar(&self, _: &Peticion, al_trozo: &mut dyn FnMut(&Trozo) -> Seguir) -> Result<Respuesta, ErrorIa> {
+            let mut n = self.vueltas.lock().unwrap();
+            *n += 1;
+            if *n == 1 && !self.llamadas.is_empty() {
+                for l in &self.llamadas {
+                    al_trozo(&Trozo::Llamando { nombre: l.nombre.clone() });
+                }
+                return Ok(Respuesta {
+                    texto: String::new(),
+                    pensamiento: String::new(),
+                    llamadas: self.llamadas.clone(),
+                    fin: Fin::Herramientas,
+                    medidas: Medidas::default(),
+                });
+            }
+            al_trozo(&Trozo::Texto(self.texto.clone()));
+            Ok(Respuesta::de_texto(self.texto.clone()))
+        }
+
+        /// Como Claude: el catalogo entero.
+        fn catalogo_completo(&self) -> bool {
+            true
+        }
+    }
+
+    /// Apunta la peticion y contesta «ok» sin llamar a nada.
+    #[derive(Default)]
+    pub struct Captura(Mutex<Vec<Peticion>>);
+
+    impl Captura {
+        pub fn primera(&self) -> Peticion {
+            self.0.lock().unwrap().first().cloned().expect("no se pidio nada")
+        }
+    }
+
+    impl Motor for Captura {
+        fn completar(&self, p: &Peticion, _: &mut dyn FnMut(&Trozo) -> Seguir) -> Result<Respuesta, ErrorIa> {
+            self.0.lock().unwrap().push(p.clone());
+            Ok(Respuesta::de_texto("ok"))
+        }
+        fn catalogo_completo(&self) -> bool {
+            true
+        }
+    }
+
+    pub struct NoEjecuta;
+
+    impl Ejecutor for NoEjecuta {
+        fn ejecutar(&mut self, _: &Llamada) -> Result<String, String> {
+            Err("no se ejecuta nada al volcar".into())
+        }
+    }
 }
 
 /// Lo que cambia de una version del asistente a otra: que se le manda al
@@ -650,6 +906,52 @@ mod banco_ia {
 
 /// Imagenes de prueba hechas aqui, para no depender de ficheros.
 mod imagenes {
+    /// Un emoji de perrito con degradados (cara, orejas, hocico, nariz y
+    /// lengua) sobre blanco. 512x512.
+    pub fn perrito_png() -> Vec<u8> {
+        let w = 512u32;
+        let mut px = vec![255u8; (w * w * 3) as usize];
+        let c = w as f64 / 2.0;
+        let elipse = |fx: f64, fy: f64, cx: f64, cy: f64, rx: f64, ry: f64| ((fx - cx) / rx).powi(2) + ((fy - cy) / ry).powi(2);
+        for y in 0..w {
+            for x in 0..w {
+                let (fx, fy) = (x as f64 + 0.5, y as f64 + 0.5);
+                let mut col: Option<[f64; 3]> = None;
+                let d = elipse(fx, fy, c, c + 20.0, 180.0, 170.0);
+                if d <= 1.0 {
+                    col = Some([245.0 - 40.0 * d, 195.0 - 60.0 * d, 150.0 - 60.0 * d]);
+                }
+                for ox in [110.0, 402.0] {
+                    let e = elipse(fx, fy, ox, 190.0, 55.0, 95.0);
+                    if e <= 1.0 {
+                        col = Some([140.0 - 40.0 * e, 95.0 - 30.0 * e, 85.0 - 25.0 * e]);
+                    }
+                }
+                let hocico = elipse(fx, fy, c, 350.0, 110.0, 70.0);
+                if hocico <= 1.0 {
+                    col = Some([250.0 - 15.0 * hocico, 215.0 - 25.0 * hocico, 175.0 - 25.0 * hocico]);
+                }
+                if elipse(fx, fy, c, 310.0, 24.0, 16.0) <= 1.0 {
+                    col = Some([80.0, 50.0, 55.0]);
+                }
+                for ox in [205.0, 307.0] {
+                    if elipse(fx, fy, ox, 240.0, 10.0, 20.0) <= 1.0 {
+                        col = Some([70.0, 45.0, 50.0]);
+                    }
+                }
+                let lengua = elipse(fx, fy, c, 420.0, 40.0, 50.0);
+                if lengua <= 1.0 && fy > 390.0 {
+                    col = Some([215.0, 45.0 + 30.0 * lengua, 125.0]);
+                }
+                if let Some(k) = col {
+                    let i = ((y * w + x) * 3) as usize;
+                    px[i..i + 3].copy_from_slice(&[k[0] as u8, k[1] as u8, k[2] as u8]);
+                }
+            }
+        }
+        png_rgb(w, w, &px)
+    }
+
     /// Una casa de dibujo infantil: cielo blanco, sol amarillo, paredes
     /// marrones, tejado rojo, puerta azul y cesped verde. 512x384.
     pub fn casa_png() -> Vec<u8> {

@@ -67,8 +67,34 @@ fn es_charla(q: &str, palabras: &[&str]) -> bool {
         || q.contains("que tal")
 }
 
+/// Si el pedido habla de la imagen adjunta: «calcala», «copia esta imagen»,
+/// «dibuja este perrito», «pasalo al lienzo». No: «dibuja un circulo».
+pub fn pide_la_imagen(palabras: &[&str]) -> bool {
+    const VERBOS: &[&str] = &[
+        "dibuj", "copi", "calc", "pasa", "pase", "pint", "replic", "pon", "mete", "lleva", "traza", "haz", "reproduc",
+        "imita", "convierte", "vectoriz",
+    ];
+    const ESTO: &[&str] = &[
+        "imagen", "foto", "adjunt", "captura", "este", "esta", "esto", "estos", "estas", "ese", "esa", "eso", "aqui",
+    ];
+    let verbo = |p: &&str| VERBOS.iter().any(|v| p.starts_with(v));
+    let calca = palabras.iter().any(|p| p.starts_with("calc") || p.starts_with("replic") || p.starts_with("vectoriz"));
+    // «dibujalo», «copiala», «pasalos»: el pronombre pegado al verbo.
+    let con_pronombre = palabras
+        .iter()
+        .any(|p| verbo(p) && ["lo", "la", "los", "las"].iter().any(|s| p.ends_with(s)) && p.len() > 5);
+    let objeto = palabras.iter().any(|p| ESTO.iter().any(|e| p == e || (e.len() > 4 && p.starts_with(e))));
+    calca || con_pronombre || (palabras.iter().any(verbo) && objeto)
+}
+
 /// **Las herramientas para este pedido.** `con_imagen`: si el mensaje trae
 /// una foto (para calcarla).
+///
+/// Con una imagen y un pedido que habla de ella, **solo `calcar_imagen`**:
+/// medido el 14-oct, con «Dibuja este perrito de la imagen adjunta» y las
+/// dos ofrecidas, el 2B dibujaba 4 triangulos con `dibujar_en_lienzo` en vez
+/// de calcarlo. Sin hablar de ella («dibuja un circulo» con una foto
+/// cualquiera en el chat), calcar no tiene premio.
 pub fn para_el_pedido(pedido: &str, con_imagen: bool) -> Vec<Herramienta> {
     let base = catalogo_base();
     let de = |n: &str| base.iter().find(|h| h.nombre == n).cloned();
@@ -80,15 +106,15 @@ pub fn para_el_pedido(pedido: &str, con_imagen: bool) -> Vec<Herramienta> {
     if es_pregunta_de_ayuda(&q) {
         return de(AYUDA).into_iter().collect();
     }
-    if !con_imagen && es_charla(&q, &palabras) {
+    if con_imagen && pide_la_imagen(&palabras) {
+        return de(CALCAR).into_iter().collect();
+    }
+    if es_charla(&q, &palabras) {
         return Vec::new();
     }
     let mut puntuadas: Vec<(u32, Herramienta)> = Vec::new();
     for h in &base {
-        let mut s = puntuar(claves_base(&h.nombre), &q, &palabras);
-        if con_imagen && (h.nombre == CALCAR || h.nombre == DIBUJAR) {
-            s += if h.nombre == CALCAR { 20 } else { 10 };
-        }
+        let s = puntuar(claves_base(&h.nombre), &q, &palabras);
         if h.nombre == CALCAR && !con_imagen {
             // Sin imagen no hay nada que calcar.
             continue;
@@ -164,6 +190,32 @@ mod pruebas {
     #[test]
     fn sin_imagen_no_se_ofrece_calcar() {
         assert!(!nombres("copia el circulo", false).contains(&"calcar_imagen".to_string()));
-        assert_eq!(nombres("hola", true)[0], "calcar_imagen");
+        // Un saludo con una foto no es pedir que se calque.
+        assert!(nombres("hola", true).is_empty());
+    }
+
+    #[test]
+    fn con_la_imagen_y_un_pedido_sobre_ella_solo_se_ofrece_calcar() {
+        for pedido in [
+            "Dibuja este perrito de la imagen adjunta dentro del lienzo.",
+            "Copia esta imagen en el lienzo",
+            "Calca solo los contornos",
+            "dibujalo en el lienzo",
+            "Pasa este dibujo al lienzo con sus colores",
+            "pon la foto en el lienzo",
+        ] {
+            assert_eq!(nombres(pedido, true), vec!["calcar_imagen"], "«{pedido}»");
+        }
+    }
+
+    #[test]
+    fn dibujar_otra_cosa_con_una_imagen_en_el_chat_no_calca() {
+        for pedido in ["Dibuja un circulo rojo", "dibuja una casa con un arbol", "haz una grafica de barras: 1, 2, 3"] {
+            let n = nombres(pedido, true);
+            assert!(!n.contains(&"calcar_imagen".to_string()), "«{pedido}» → {n:?}");
+            assert!(!n.is_empty(), "«{pedido}»");
+        }
+        // Sin imagen, aunque hable de «esta imagen», no hay nada que calcar.
+        assert!(!nombres("copia esta imagen", false).contains(&"calcar_imagen".to_string()));
     }
 }

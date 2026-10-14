@@ -35,6 +35,8 @@ use crate::overlay::Recursos;
 /// La caja flotante a la que se sueltan ficheros para un proyecto (2-oct).
 // El asistente local en la conversacion (`crate::asistente`).
 mod asistente;
+// Hablarle al asistente y oir sus respuestas (13-oct).
+mod voz_del_asistente;
 mod caja_de_soltar;
 /// La descripcion de una foto: su `texto`, como en el movil (3-oct).
 mod descripcion;
@@ -1450,6 +1452,12 @@ pub fn abrir(
                                     }
                                     None => abrir_enlace(a, i, textos),
                                 },
+                                Zona::LeerRespuesta(i) => {
+                                    match voz_del_asistente::alternar(ubicacion, a, i, textos) {
+                                        Some(t) => Efecto::Aviso(t),
+                                        None => Efecto::Nada,
+                                    }
+                                }
                                 Zona::Ir(j) => ejecutar(Accion::Ir(j), a, &cx),
                                 Zona::Lecciones => ejecutar(Accion::Lecciones, a, &cx),
                                 Zona::CerrarRespuesta => {
@@ -1905,6 +1913,24 @@ pub fn abrir(
                                 // dicho queda en la caja para repasarlo antes
                                 // de enviarlo, no se envia solo.
                                 a.dictado = None;
+                            } else if voz_del_asistente::grabando_para_el_asistente(a) {
+                                // Se le hablaba al asistente: este clic acaba
+                                // y lo dicho pasa a texto (Whisper).
+                                if let Some(t) = voz_del_asistente::terminar(ubicacion, a, idioma, textos) {
+                                    aviso = Some((t, std::time::Instant::now()));
+                                }
+                            } else if voz_del_asistente::pasando(&a.ficha.id) {
+                                // Pasando a texto, el boton cancela.
+                                voz_del_asistente::cancelar();
+                            } else if voz_del_asistente::microfono_del_asistente(a) {
+                                // El microfono del asistente: hablarle.
+                                if let Err(e) = voz_del_asistente::empezar(ubicacion, a) {
+                                    tracing::warn!(?e, "no se pudo abrir el microfono");
+                                    aviso = Some((
+                                        textos.t(rotulo_de_no_grabar(&e)),
+                                        std::time::Instant::now(),
+                                    ));
+                                }
                             } else if a.grabando.is_some() {
                                 // Ya se estaba grabando: este clic la cierra.
                                 // Una nota de menos de 700 ms no se guarda y
@@ -2506,6 +2532,15 @@ pub fn abrir(
                     }
                 }
                 EventoOverlay::BotonSoltado(p) => {
+                    // Mantener pulsado el microfono del asistente para
+                    // hablar: soltarlo acaba (`voz_del_asistente::MANTENER`).
+                    if let Some(a) = abierto.as_mut().filter(|a| voz_del_asistente::al_soltar(a)) {
+                        if let Some(t) = voz_del_asistente::terminar(ubicacion, a, idioma, textos) {
+                            aviso = Some((t, std::time::Instant::now()));
+                        }
+                        hay_que_pintar = true;
+                        continue;
+                    }
                     // Elegir lo escrito arrastrando termina al soltar: lo
                     // elegido se queda elegido.
                     if let Some(a) = abierto.as_mut().filter(|a| a.eligiendo_texto) {
@@ -3990,7 +4025,34 @@ pub fn abrir(
             );
             hay_que_pintar = true;
         }
-        let hasta_el_asistente = asistente::espera();
+        // La voz del asistente: lo dicho que ya es texto (se envia como si
+        // se pulsara enviar, salvo que se quiera repasar), y lo que suena.
+        let voz_ia = voz_del_asistente::latido(ubicacion, abierto.as_mut(), textos);
+        if voz_ia.cambio {
+            hay_que_pintar = true;
+        }
+        if let Some(t) = voz_ia.aviso {
+            aviso = Some((t, std::time::Instant::now()));
+        }
+        if voz_ia.enviar
+            && let Some(a) = abierto.as_mut()
+        {
+            match guardar_nota(ubicacion, a, &identidad) {
+                Ok(()) => {
+                    a.scroll = None;
+                    if let Some(t) = asistente::al_enviar(ubicacion, a, textos) {
+                        aviso = Some((t, std::time::Instant::now()));
+                    }
+                    if let Some(i) = elegida {
+                        fichas[i].tocado = a.ficha.tocado;
+                        fichas[i].resumen = a.ficha.resumen.clone();
+                    }
+                }
+                Err(e) => tracing::warn!(?e, "no se pudo guardar lo dicho al asistente"),
+            }
+            a.colocado.borrow_mut().ancho = 0;
+        }
+        let hasta_el_asistente = asistente::espera().into_iter().chain(voz_del_asistente::espera()).min();
         // La transcripcion, igual: el hilo deja el texto cuando le toca y
         // nadie va a mover el raton para enterarse. Se mira aqui —una vez
         // por vuelta— y no al pintar, porque escribe en el cuaderno.
@@ -5896,6 +5958,22 @@ fn pintar_historial(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto) {
             x += lado + 3.0 * e;
         }
         p.texto(&hora, x, y_hora, HORA_TAM * e, color_hora);
+        // El altavoz de una respuesta del asistente: leerla en voz alta.
+        if voz_del_asistente::se_puede_leer(a, i) {
+            let ancho_hora = p.medir_texto(&hora, HORA_TAM * e).0;
+            let zona = voz_del_asistente::pintar_altavoz(
+                p,
+                a,
+                i,
+                x + ancho_hora + voz_del_asistente::ALTAVOZ_AIRE * e,
+                y_hora,
+                alto_hora,
+                color_hora,
+                tema.enviar,
+                e,
+            );
+            a.zonas.borrow_mut().push((zona, Zona::LeerRespuesta(i)));
+        }
         // **El punto rojo del movil**: se unio al proyecto y su hoja ya no
         // esta. Dice que en el menu hay «Volver a anadir al proyecto».
         if crate::pdf_en_chat::sin_su_hoja(
@@ -6798,6 +6876,10 @@ fn medir_mensaje(
     }
     if m.fijado {
         renglon += (HORA_TAM + 3.0) * e;
+    }
+    // El altavoz de las respuestas del asistente, detras de la hora.
+    if voz_del_asistente::se_puede_leer(a, indice) {
+        renglon += (voz_del_asistente::ALTAVOZ_AIRE + voz_del_asistente::ALTAVOZ) * e;
     }
     ancho = ancho.max(renglon.min(ancho_max));
     alto += alto_hora + 4.0 * e;
@@ -9848,6 +9930,9 @@ struct Grabando {
     /// Donde escribe la grabadora. Al terminar, el fichero se mete en el
     /// proyecto por el mismo camino que cualquier adjunto y este se borra.
     temporal: std::path::PathBuf,
+    /// Si es para el asistente (`voz_del_asistente`) y desde cuando: lo
+    /// grabado no se guarda como nota, se pasa a texto y se le envia.
+    para_el_asistente: Option<std::time::Instant>,
 }
 
 /// La clave del aviso que explica por que no se pudo empezar a grabar.
@@ -9960,6 +10045,7 @@ fn empezar_a_grabar(
     a.grabando = Some(Grabando {
         grabadora,
         temporal,
+        para_el_asistente: None,
     });
     Ok(())
 }
@@ -13035,6 +13121,9 @@ enum Zona {
     Pensado(usize),
     /// La peticion mejorada de una respuesta del asistente: igual.
     Peticion(usize),
+    /// El altavoz de una respuesta del asistente: la lee o la calla
+    /// (`voz_del_asistente`).
+    LeerRespuesta(usize),
 }
 
 /// La fila de un archivo ya medida.
@@ -14304,7 +14393,24 @@ fn pintar_redaccion(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto, alto_te
     // Un sitio, dos caras: el microfono, o enviar si hay algo escrito. Y el
     // clip se retira al escribir, como en el movil.
     let hay_texto = !a.borrador.trim().is_empty();
-    if !hay_texto && asistente::ocupado(&a.ficha.id) {
+    // El de la voz del asistente: pasando lo dicho a texto, «cancelar»; y
+    // el microfono del asistente, del color de enviar (ver
+    // `voz_del_asistente`), tambien con solo `@asistente` escrito.
+    let pasando_lo_dicho = voz_del_asistente::rotulo_pasando(a, textos);
+    if pasando_lo_dicho.is_some() {
+        icono_centrado(p, &mi::STOP, d.boton_enviar(alto_texto, escala), icono, tema.enviar);
+    } else if voz_del_asistente::microfono_del_asistente(a) {
+        icono_centrado(p, &mi::MIC, d.boton_enviar(alto_texto, escala), icono, tema.enviar);
+        if !hay_texto {
+            icono_centrado(
+                p,
+                &mi::ATTACH_FILE,
+                d.boton_adjuntar(alto_texto, escala),
+                icono,
+                tema.campo_apagado,
+            );
+        }
+    } else if !hay_texto && asistente::ocupado(&a.ficha.id) {
         // El asistente contestando: el boton es «parar».
         icono_centrado(
             p,
@@ -14350,6 +14456,11 @@ fn pintar_redaccion(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto, alto_te
     let zona = d.texto_redaccion(alto_texto, escala);
     let (x, y, ancho) = (zona.x as f32, zona.y as f32, zona.ancho as f32);
     let tam = chat::REDACCION_TAM * e;
+    // Lo dicho al asistente, pasando a texto: en la caja, por donde va.
+    if let Some(rotulo) = pasando_lo_dicho {
+        p.texto_linea(&rotulo, x, y, tam, ancho, tema.campo_apagado);
+        return;
+    }
     // Lo que el dictado va entendiendo se ensena detras de lo escrito; al
     // cerrarse la frase pasa al borrador de verdad (`latido_del_dictado`).
     let provisional = a

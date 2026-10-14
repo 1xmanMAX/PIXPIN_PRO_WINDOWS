@@ -2501,3 +2501,19 @@ asistente-pensando = Pensando…
 asistente-penso = Pensó { $s } s
 asistente-penso-poco = Pensó un momento
 asistente-reiniciado = Contexto renovado: sigo con la hoja de trabajo
+
+## Voz del asistente (13-oct-2026): hablarle y que conteste en voz alta
+ajustes2-g-asistente-voz = Voz del asistente
+ajustes2-asistente-revisar-voz = Ver lo dicho antes de enviarlo
+ajustes2-ayuda-asistente-revisar-voz = Con el micrófono del chat «Asistente»: lo que dices queda escrito en la caja para corregirlo y lo envías tú. Apagado, se envía solo.
+ajustes2-asistente-leer = Leer siempre las respuestas
+ajustes2-ayuda-asistente-leer = Cada respuesta se lee en voz alta al acabar, con la voz de los lectores (la de Microsoft si está encendida). Sin esto, pulsa el altavoz de la burbuja.
+asistente-voz-pasando = Pasando tu voz a texto… { $pct } %
+asistente-voz-bajando = Bajando el reconocedor de voz (una vez, ~160 MB)… { $pct } %
+asistente-voz-nada = No se oyó nada: habla más cerca del micrófono y prueba otra vez.
+asistente-voz-sin-whisper = Este equipo no puede pasar la voz a texto: falta el ONNX Runtime de Windows.
+asistente-voz-fallo = No se pudo pasar tu voz a texto.
+asistente-voz-cancelado = Cancelado: no se envió nada.
+asistente-voz-nada-que-leer = Esta respuesta no tiene texto que leer.
+asistente-voz-leer = Leer en voz alta
+asistente-voz-callar = Dejar de leer

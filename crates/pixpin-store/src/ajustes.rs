@@ -533,6 +533,12 @@ pub struct Asistente {
     /// Si la nube falla (red, clave, saldo), seguir con el modelo local si
     /// esta bajado.
     pub respaldo_local: bool,
+    /// Voz (13-oct-2026): lo dicho al microfono del asistente se deja en la
+    /// caja para repasarlo antes de enviarlo, en vez de enviarse solo.
+    pub revisar_lo_dicho: bool,
+    /// Voz: leer en voz alta cada respuesta al acabar (sin esto, solo con el
+    /// altavoz de la burbuja).
+    pub leer_respuestas: bool,
 }
 
 impl Default for Asistente {
@@ -542,6 +548,8 @@ impl Default for Asistente {
             motor: String::new(),
             respaldo_local: true,
             pensar: None,
+            revisar_lo_dicho: false,
+            leer_respuestas: false,
         }
     }
 }
