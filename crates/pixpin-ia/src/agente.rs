@@ -732,7 +732,7 @@ pub fn instrucciones() -> String {
      Si pide dibujar algo, usa dibujar_en_lienzo, \
      poniendo el color de cada figura. \
      Si pide dibujar, copiar o calcar al lienzo lo de una imagen adjunta (este perro, la foto), usa calcar_imagen. \
-     Si da datos para graficar, usa grafica. \
+     Si da datos para graficar, usa grafica; si da una funcion, graficar_funcion; una ecuacion, escribir_ecuacion; un cronograma, cronograma; una ilustracion con curvas, dibujar_svg. \
      Si quiere el texto de un documento escaneado, usa ocr. \
      Si pide hacer algo en la app (notas, tareas, ventanas, capturas, abrir ficheros), usa su herramienta. \
      Si pregunta donde esta algo o como se hace en PixPin, usa ayuda_app y contesta con lo que diga, sin inventar. \

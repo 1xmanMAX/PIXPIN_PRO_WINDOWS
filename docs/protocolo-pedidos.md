@@ -135,6 +135,24 @@ como un `.leccion`.
 - Una entrada que no se entiende (de una versión más nueva) se guarda tal cual y se lista como
   rota. Al acabar cada vuelta sale el aviso flotante con lo que pasó.
 
+### Biblioteca de figuras (para Android)
+
+Las figuras guardadas del lienzo («Guardar como figura» del panel, o «guarda esto como árbol
+isométrico» al asistente: herramienta `figuras_guardadas`) viven en **el mismo fichero y formato
+que `BibliotecaStore.kt`**: `figuras.json`, lista de `{id, nombre, elementos, propia}` con las
+piezas como elementos de Excalidraw. En el PC está en
+`proyectos/<asistente>/android/pins/draw/figuras.json`, que viaja como
+`pixpin:files/pins/draw/figuras.json` —la ruta de `BibliotecaStore` en el móvil— porque lo
+señala un mensaje ARCHIVO fijo del chat «Asistente» (id `auto-figuras`): **solo va a los aparatos
+propios**, como las automatizaciones; nunca a personas de un chat compartido.
+
+Lo que falta en Android: al guardar o quitar una figura (`BibliotecaStore.guardar`), asegurar en
+el chat «Asistente» el mensaje ARCHIVO con id `auto-figuras` y ruta
+`pixpin:files/pins/draw/figuras.json` (uno solo, no uno por guardado), igual que con
+`auto-automatizaciones`; y releer la lista (`revision++`) cuando la sincronización traiga el
+fichero. El PC escribe las figuras nuevas al principio, conserva los `id` y lee los `type` de
+Excalidraw del móvil (prueba de ida y vuelta: `biblioteca_figuras::pruebas`).
+
 ### Una imagen al lienzo del móvil (`enviar_al_movil`, 6-oct-2026)
 
 ```json

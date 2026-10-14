@@ -22,8 +22,8 @@
 //! que es lo que mira la sincronizacion.
 
 use std::sync::Mutex;
-use std::sync::atomic::{AtomicIsize, Ordering};
-use std::sync::mpsc::Sender;
+use std::sync::atomic::{AtomicBool, AtomicIsize, Ordering};
+use std::sync::mpsc::{Receiver, Sender, channel};
 
 use pixpin_motor2d::Escena;
 use pixpin_motor2d::elemento::Elemento;
@@ -188,6 +188,42 @@ pub fn atender_en_editor(escena: &mut Escena, centro: (f32, f32)) -> bool {
         p.responder(r);
     }
     algo
+}
+
+// ---------------------------------------------------------------------------
+// «Guarda esto como figura»: lo elegido en el lienzo abierto
+// ---------------------------------------------------------------------------
+
+/// Quien espera lo elegido (el turno del asistente). `HAY_PREGUNTA` evita
+/// mirar el candado en cada vuelta del editor.
+static PREGUNTA: Mutex<Option<Sender<Vec<Elemento>>>> = Mutex::new(None);
+static HAY_PREGUNTA: AtomicBool = AtomicBool::new(false);
+
+/// **Pide al lienzo abierto lo que tiene elegido** (vacio si nada). Lo
+/// contesta su bucle en la siguiente vuelta ([`contestar_lo_elegido`]).
+pub fn pedir_lo_elegido() -> Receiver<Vec<Elemento>> {
+    let (tx, rx) = channel();
+    if let Ok(mut p) = PREGUNTA.lock() {
+        *p = Some(tx);
+        HAY_PREGUNTA.store(true, Ordering::SeqCst);
+    }
+    despertar(EDITOR.load(Ordering::SeqCst));
+    rx
+}
+
+/// El bucle del editor contesta, si alguien pregunto, con copias de lo
+/// elegido. Casi siempre no hay pregunta y no cuesta nada.
+pub fn contestar_lo_elegido(escena: &Escena, elegidos: &[u64]) {
+    if !HAY_PREGUNTA.swap(false, Ordering::SeqCst) {
+        return;
+    }
+    let Some(tx) = PREGUNTA.lock().ok().and_then(|mut p| p.take()) else { return };
+    let piezas: Vec<Elemento> = escena
+        .visibles()
+        .filter(|e| elegidos.contains(&e.id))
+        .cloned()
+        .collect();
+    let _ = tx.send(piezas);
 }
 
 #[cfg(test)]

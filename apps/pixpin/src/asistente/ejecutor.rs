@@ -8,7 +8,8 @@
 //! modelo lo sabe y lo dice). El OCR si corre aqui: tarda, y asi la ventana
 //! sigue suelta.
 
-use std::sync::Arc;
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{RecvTimeoutError, Sender, channel};
 use std::time::{Duration, Instant};
@@ -23,6 +24,13 @@ use super::turno::{Adjunto, Aviso};
 /// del bucle del chat (decimas); si la ventana estuviera colgada, mejor
 /// decirselo al modelo que dejar el turno parado para siempre.
 pub const ESPERA_LIENZO: Duration = Duration::from_secs(60);
+
+/// **Lo ultimo que dibujo el asistente en cada conversacion** (el
+/// documento), para «guarda esto como figura» sin nada elegido.
+static ULTIMO_DIBUJO: Mutex<Option<HashMap<String, String>>> = Mutex::new(None);
+
+/// Cuanto se espera a que el lienzo abierto diga que tiene elegido.
+const ESPERA_ELEGIDO: Duration = Duration::from_secs(2);
 
 /// Cuanto texto del OCR se le devuelve al modelo. El contexto es de 8192
 /// tokens; el texto entero va aparte al chat ([`Aviso::TextoLeido`]).
@@ -137,6 +145,9 @@ impl EjecutorDelChat {
             tracing::warn!(%e, "asistente: el lienzo no lee lo dibujado");
             "el lienzo no pudo leer las figuras".to_string()
         })?;
+        if let Ok(mut u) = ULTIMO_DIBUJO.lock() {
+            u.get_or_insert_with(HashMap::new).insert(self.proyecto.clone(), documento.clone());
+        }
         let (responder, rx) = channel();
         super::al_lienzo::pedir(super::al_lienzo::Pedido::nuevo(
             self.proyecto.clone(),
@@ -161,10 +172,74 @@ impl EjecutorDelChat {
     }
 }
 
+impl EjecutorDelChat {
+    /// **La biblioteca de figuras**, la misma del panel del lienzo.
+    fn figuras(&mut self, p: &pixpin_ia::figuras::PedidoFiguras) -> Result<String, String> {
+        use pixpin_ia::figuras::{PedidoFiguras, buscar, lista};
+        use pixpin_motor2d::biblioteca;
+        let ruta = crate::ventana_editor::ruta_biblioteca();
+        match p {
+            PedidoFiguras::Lista => Ok(lista(&biblioteca::cargar(&ruta))),
+            PedidoFiguras::Poner { nombre } => {
+                let todas = biblioteca::cargar(&ruta);
+                let f = buscar(&todas, nombre)
+                    .ok_or_else(|| format!("no hay ninguna figura guardada como «{nombre}» ({})", lista(&todas)))?;
+                let semilla = self.semilla();
+                let r = self.al_lienzo_elementos(lienzo::elementos_de_figura(f, (0.0, 0.0), semilla))?;
+                Ok(format!("{r}: la figura «{}»", f.nombre))
+            }
+            PedidoFiguras::Guardar { nombre } => {
+                let (piezas, de_donde) = self.lo_que_guardar()?;
+                let figura = biblioteca::FiguraGuardada {
+                    id: biblioteca::id_nuevo(),
+                    nombre: nombre.clone(),
+                    elementos: biblioteca::normalizar(&piezas),
+                };
+                if !crate::biblioteca_figuras::anadir(&ruta, figura) {
+                    return Err("no se pudo escribir la biblioteca de figuras".into());
+                }
+                Ok(format!(
+                    "guardada la figura «{nombre}» ({} piezas, {de_donde}); esta en el menu de figuras del lienzo",
+                    piezas.len()
+                ))
+            }
+        }
+    }
+
+    /// Lo elegido en el lienzo abierto; si no hay nada elegido (o ningun
+    /// lienzo abierto), lo ultimo que dibujo el asistente en esta conversacion.
+    fn lo_que_guardar(&self) -> Result<(Vec<pixpin_motor2d::Elemento>, &'static str), String> {
+        if super::al_lienzo::hay_editor() {
+            let rx = super::al_lienzo::pedir_lo_elegido();
+            if let Ok(piezas) = rx.recv_timeout(ESPERA_ELEGIDO)
+                && !piezas.is_empty()
+            {
+                return Ok((piezas, "lo elegido en el lienzo"));
+            }
+        }
+        let ultimo = ULTIMO_DIBUJO
+            .lock()
+            .ok()
+            .and_then(|u| u.as_ref().and_then(|m| m.get(&self.proyecto).cloned()))
+            .ok_or("no hay nada elegido en el lienzo ni nada dibujado antes: elige lo que quieres guardar")?;
+        let piezas = super::al_lienzo::elementos_de(&ultimo)?;
+        Ok((piezas, "lo ultimo que dibuje"))
+    }
+}
+
 impl Ejecutor for EjecutorDelChat {
     fn ejecutar(&mut self, llamada: &Llamada) -> Result<String, String> {
         match llamada {
-            Llamada::Dibujar(_) | Llamada::Grafica(_) => self.al_lienzo(llamada),
+            // Todo lo que se dibuja de la llamada sola (figuras, graficas,
+            // SVG, funciones, ecuaciones, cronogramas): al lienzo.
+            l if l.dibuja() => self.al_lienzo(l),
+            Llamada::Figuras(p) => self.figuras(p),
+            Llamada::Dibujar(_)
+            | Llamada::Grafica(_)
+            | Llamada::Svg(_)
+            | Llamada::Funciones(_)
+            | Llamada::Ecuacion(_)
+            | Llamada::Cronograma(_) => self.al_lienzo(llamada),
             Llamada::Ocr(p) => {
                 let adjunto = super::ocr::elegir(&self.adjuntos, p.archivo.as_deref())?.clone();
                 let texto = super::ocr::leer(&adjunto.ruta, &p.paginas, &self.parar)?;

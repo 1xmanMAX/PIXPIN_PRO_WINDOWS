@@ -6,7 +6,17 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use pixpin_ia::agente::{Evento, Final};
-use pixpin_ia::herramientas::catalogo_base;
+use pixpin_ia::herramientas::catalogo_base as catalogo_entero;
+
+/// Las propias sin las del lienzo (SVG, funciones, ecuacion, cronograma,
+/// figuras): las cuentas de abajo se midieron con este tamano de catalogo.
+fn catalogo_base() -> Vec<pixpin_ia::Herramienta> {
+    use pixpin_ia::herramientas::{CRONOGRAMA, ECUACION, FIGURAS, FUNCION, SVG};
+    catalogo_entero()
+        .into_iter()
+        .filter(|h| ![SVG, FUNCION, ECUACION, CRONOGRAMA, FIGURAS].contains(&h.nombre.as_str()))
+        .collect()
+}
 use pixpin_ia::hoja_trabajo::{HojaDeTrabajo, Registro};
 use pixpin_ia::motor::{MotorGuionado, Respuesta};
 use pixpin_ia::pensar::Plan;
