@@ -41,6 +41,11 @@ pub struct EjecutorDelChat {
     /// Enganches de las acciones de la app (ver `acciones.rs`).
     confirmar: super::acciones::Confirmar,
     mandar: super::acciones::Mandar,
+    /// Si contesta un modelo de la nube (lo encontrado en los documentos
+    /// saldria a internet: ver `documentos::permiso_nube`).
+    nube: bool,
+    /// Lo citado de los documentos en este turno, numerado seguido.
+    citas: pixpin_ia::documentos::Citas,
 }
 
 impl EjecutorDelChat {
@@ -55,6 +60,8 @@ impl EjecutorDelChat {
             destino: None,
             confirmar: super::acciones::decir_que_no(),
             mandar: super::acciones::mandar_a_pixpin(),
+            nube: false,
+            citas: Default::default(),
         }
     }
 
@@ -62,6 +69,26 @@ impl EjecutorDelChat {
     pub fn hacia(mut self, destino: Option<String>) -> EjecutorDelChat {
         self.destino = destino;
         self
+    }
+
+    /// Si el motor es de la nube.
+    pub fn en_la_nube(mut self, nube: bool) -> EjecutorDelChat {
+        self.nube = nube;
+        self
+    }
+
+    /// **Busca en los documentos del usuario** desde este chat. Con la nube,
+    /// solo si el usuario lo permite.
+    fn buscar(&mut self, p: &pixpin_ia::documentos::PeticionBusqueda) -> Result<String, String> {
+        if self.nube && !super::documentos::permiso_nube(&self.confirmar) {
+            return Err(super::documentos::SIN_PERMISO_NUBE.into());
+        }
+        let (hallazgos, aviso) = super::documentos::buscar(p, &self.proyecto)?;
+        let texto = self.citas.anadir(&p.consulta, hallazgos, aviso.as_deref());
+        if !self.citas.lista.is_empty() {
+            let _ = self.tx.send(Aviso::Citas(self.citas.lista.clone()));
+        }
+        Ok(texto)
     }
 
     /// Cambia como se pregunta antes de lo que borra y adonde van los
@@ -154,6 +181,7 @@ impl Ejecutor for EjecutorDelChat {
             }
             Llamada::App(a) => super::acciones::hacer(a, &self.confirmar, &self.mandar),
             Llamada::Ayuda(pregunta) => Ok(pixpin_ia::conocimiento::responder(pregunta)),
+            Llamada::Buscar(p) => self.buscar(p),
         }
     }
 }

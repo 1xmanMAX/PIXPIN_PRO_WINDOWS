@@ -47,6 +47,10 @@ pub enum Aviso {
         pregunta: String,
         responder: std::sync::mpsc::Sender<bool>,
     },
+    /// Lo citado de los documentos del usuario hasta ahora en el turno
+    /// (`buscar_en_mis_cosas`): la respuesta lo guarda y el chat ensena
+    /// la cita como tarjeta que abre el documento.
+    Citas(Vec<pixpin_ia::documentos::Cita>),
     /// Lo que penso, la peticion mejorada y la hoja reescrita, para guardar
     /// con la respuesta (llega justo antes del `Fin`, si el turno tenia
     /// [`Memoria`]).
@@ -213,12 +217,16 @@ impl Turno {
                     .find(|m| m.rol == Rol::Usuario)
                     .map(Mensaje::texto_entero)
                     .unwrap_or_default();
-                // Lo que borra o envia pregunta en la burbuja, no en un
-                // cuadro de Windows (13-oct-2026).
-                let confirmar = super::acciones::confirmar_en_la_burbuja(tx.clone(), parar_hilo.clone());
-                let mut ejecutor = EjecutorDelChat::nuevo(tx.clone(), proyecto, adjuntos, parar_hilo.clone())
-                    .hacia(destino)
-                    .con_acciones(confirmar, super::acciones::mandar_a_pixpin());
+                let mut ejecutor =
+                    EjecutorDelChat::nuevo(tx.clone(), proyecto, adjuntos, parar_hilo.clone())
+                        .hacia(destino)
+                        .en_la_nube(motor.catalogo_completo())
+                        // Lo que borra o envia pregunta en la burbuja, no en un
+                        // cuadro de Windows (13-oct-2026).
+                        .con_acciones(
+                            super::acciones::confirmar_en_la_burbuja(tx.clone(), parar_hilo.clone()),
+                            super::acciones::mandar_a_pixpin(),
+                        );
                 let con_memoria = memoria.is_some();
                 let memoria = memoria.unwrap_or_default();
                 let buscar = |c: &str| contexto::buscar(&memoria.fuentes, c, 3);

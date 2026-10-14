@@ -246,6 +246,56 @@ pub fn lienzo_de_la_respuesta(m: &Nota, mensajes: &[Nota]) -> Option<usize> {
 }
 
 // ---------------------------------------------------------------------------
+// Las fuentes citadas (`buscar_en_mis_cosas`)
+
+/// En la nota de una respuesta, lo que cito de los documentos del usuario:
+/// `[{n, titulo, proyecto, pedido}]` (`documentos::herramienta::cita_a_json`).
+/// Va en `resto`, como `lienzoIa`.
+pub const FUENTES_DE_LA_RESPUESTA: &str = "fuentesIa";
+
+/// Lo que se apunta en la respuesta al acabar: las citas que el modelo
+/// nombro (o la primera, si no nombro ninguna). `None` si no busco nada.
+pub fn fuentes_para_la_nota(citas: &[pixpin_ia::documentos::Cita], respuesta: &str) -> Option<serde_json::Value> {
+    if citas.is_empty() {
+        return None;
+    }
+    let c = pixpin_ia::documentos::Citas { lista: citas.to_vec() };
+    let citadas: Vec<serde_json::Value> = c
+        .citadas(respuesta)
+        .into_iter()
+        .map(pixpin_ia::documentos::herramienta::cita_a_json)
+        .collect();
+    Some(serde_json::Value::Array(citadas))
+}
+
+/// Una fuente citada en una respuesta: como se ensena y el pedido que la
+/// abre.
+#[derive(Debug, Clone, PartialEq)]
+pub struct FuenteCitada {
+    pub titulo: String,
+    pub proyecto: String,
+    pub pedido: serde_json::Value,
+    /// Cuantas mas cito ademas de esta.
+    pub mas: usize,
+}
+
+/// La primera fuente citada de una respuesta del asistente, si la hay: de
+/// ahi sale su tarjeta «Abrir fuente».
+pub fn fuente_de_la_respuesta(m: &Nota) -> Option<FuenteCitada> {
+    if !es_del_asistente(m) {
+        return None;
+    }
+    let lista = m.resto.get(FUENTES_DE_LA_RESPUESTA)?.as_array()?;
+    let f = lista.first()?;
+    Some(FuenteCitada {
+        titulo: f.get("titulo")?.as_str()?.to_string(),
+        proyecto: f.get("proyecto").and_then(|p| p.as_str()).unwrap_or_default().to_string(),
+        pedido: f.get("pedido")?.clone(),
+        mas: lista.len() - 1,
+    })
+}
+
+// ---------------------------------------------------------------------------
 // La lista de `@` mientras se escribe
 
 /// Lo que se puede elegir en la lista de `@`.

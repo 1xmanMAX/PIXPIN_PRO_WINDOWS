@@ -30,8 +30,22 @@ fn claves_base(nombre: &str) -> &'static [&'static str] {
         OCR => &["ocr", "escanead", "texto de", "lee el", "leer el", "extrae", "reconoce"],
         CALCAR => &["calca", "copia", "imagen", "foto", "contorno", "pasa este", "pasa esta", "replica"],
         AYUDA => &["ayuda", "explica", "funciona", "sirve", "donde", "atajo", "menu"],
+        crate::documentos::BUSCAR => &[
+            "busca en mis", "buscame", "mis notas", "mis documentos", "mis archivos", "mis cosas", "mis chats",
+            "mis mensajes", "que dice", "dice la", "dice el", "segun mi", "segun la", "segun el", "tesis", "mande",
+            "envie", "guarde", "apunte", "anote", "documento", "informe", "presupuesto", "plano", "memoria",
+            "expediente", "contrato", "acta", "notas",
+        ],
         _ => &[],
     }
+}
+
+/// Si el pedido es sobre lo que el usuario tiene guardado («¿que dice la
+/// tesis…?», «¿donde mande…?»): entonces un «¿donde…?» no es una pregunta
+/// sobre la app y no se queda solo con la ayuda.
+pub fn es_sobre_sus_documentos(q: &str) -> bool {
+    let palabras: Vec<&str> = q.split(|c: char| !c.is_alphanumeric()).filter(|p| !p.is_empty()).collect();
+    puntuar(claves_base(crate::documentos::BUSCAR), q, &palabras) >= 2
 }
 
 /// Lo que puntua un juego de claves en un pedido normalizado.
@@ -104,6 +118,11 @@ pub fn para_el_pedido(pedido: &str, con_imagen: bool) -> Vec<Herramienta> {
         .filter(|p| !p.is_empty())
         .collect();
     if es_pregunta_de_ayuda(&q) {
+        // «¿Donde mande el plano?» es sobre sus cosas, no sobre la app:
+        // primero buscar, y la ayuda por si acaso.
+        if es_sobre_sus_documentos(&q) {
+            return [crate::documentos::BUSCAR, AYUDA].iter().filter_map(|n| de(n)).collect();
+        }
         return de(AYUDA).into_iter().collect();
     }
     if con_imagen && pide_la_imagen(&palabras) {
@@ -242,6 +261,17 @@ mod pruebas {
         assert!(nombres("Hola, ¿que tal?", false).is_empty());
         assert!(nombres("gracias", false).is_empty());
         assert_eq!(nombres("hazme algo bonito", false), vec!["dibujar_en_lienzo", "grafica", "ayuda_app"]);
+    }
+
+    #[test]
+    fn las_preguntas_sobre_sus_documentos_llevan_buscar() {
+        let b = crate::documentos::BUSCAR;
+        assert_eq!(nombres("¿Qué dice la tesis sobre las cunetas?", false)[0], b);
+        assert_eq!(nombres("busca en mis notas lo del presupuesto", false)[0], b);
+        assert_eq!(nombres("¿Dónde mandé el plano de cunetas?", false), vec![b, "ayuda_app"]);
+        // Lo de la app sigue siendo solo ayuda.
+        assert_eq!(nombres("¿Donde estan los ajustes de PixPin?", false), vec!["ayuda_app"]);
+        assert!(!nombres("Dibuja un circulo rojo", false).contains(&b.to_string()));
     }
 
     #[test]

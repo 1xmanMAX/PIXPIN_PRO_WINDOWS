@@ -305,6 +305,9 @@ enum Clave {
     AsistenteRespaldo,
     /// Gemma 4 E2B para mirar fotos (`[asistente] mejor_vista`).
     AsistenteMejorVista,
+    /// Si lo hallado en los documentos puede ir a la nube
+    /// (`[asistente] documentos_a_la_nube`).
+    AsistenteDocsNube,
     /// Ver lo dicho al microfono del asistente antes de enviarlo
     /// (`[asistente] revisar_lo_dicho`).
     AsistenteRevisarVoz,
@@ -1044,6 +1047,27 @@ fn filas_de_seccion(s: Seccion, a: &Ajustes, cx: &Contexto) -> Vec<(Clave, Fila)
                     crate::asistente::motor::estado_mejor_vista(t),
                     Control::Interruptor(a.asistente.mejor_vista),
                 ),
+                // Lo hallado en los documentos del usuario, ¿a la nube?
+                // (`buscar_en_mis_cosas`; por omision se pregunta la
+                // primera vez).
+                op(
+                    a,
+                    Clave::AsistenteDocsNube,
+                    tt("ajustes2-asistente-docs-nube"),
+                    tt("ajustes2-ayuda-asistente-docs-nube"),
+                    opcion(
+                        vec![
+                            tt("ajustes2-docs-nube-preguntar"),
+                            tt("ajustes2-docs-nube-si"),
+                            tt("ajustes2-docs-nube-no"),
+                        ],
+                        match crate::asistente::documentos::PermisoNube::de(&a.asistente.documentos_a_la_nube) {
+                            crate::asistente::documentos::PermisoNube::Preguntar => 0,
+                            crate::asistente::documentos::PermisoNube::Si => 1,
+                            crate::asistente::documentos::PermisoNube::No => 2,
+                        },
+                    ),
+                ),
                 // La voz: el microfono de la caja (Whisper) y el altavoz de
                 // las respuestas (el lector de voz de la app). Valen igual
                 // con los tres motores.
@@ -1383,6 +1407,7 @@ fn restablecer(clave: Clave, a: &mut Ajustes) {
         Clave::AsistenteMotor => a.asistente.motor = d.asistente.motor.clone(),
         Clave::AsistenteRespaldo => a.asistente.respaldo_local = d.asistente.respaldo_local,
         Clave::AsistenteMejorVista => a.asistente.mejor_vista = d.asistente.mejor_vista,
+        Clave::AsistenteDocsNube => a.asistente.documentos_a_la_nube = d.asistente.documentos_a_la_nube.clone(),
         Clave::AsistenteRevisarVoz => a.asistente.revisar_lo_dicho = d.asistente.revisar_lo_dicho,
         Clave::AsistenteLeerSiempre => a.asistente.leer_respuestas = d.asistente.leer_respuestas,
         Clave::Presencia => a.sincro.presencia = d.sincro.presencia,
@@ -1605,6 +1630,14 @@ fn aplicar_opcion(a: &mut Ajustes, clave: Clave, cual: usize) {
                 .copied()
                 .unwrap_or(crate::asistente::nube::Eleccion::Local);
             a.asistente.motor = crate::asistente::nube::id_de(e).to_string();
+        }
+        Clave::AsistenteDocsNube => {
+            use crate::asistente::documentos::PermisoNube;
+            let p = [PermisoNube::Preguntar, PermisoNube::Si, PermisoNube::No]
+                .get(cual)
+                .copied()
+                .unwrap_or(PermisoNube::Preguntar);
+            a.asistente.documentos_a_la_nube = p.clave().to_string();
         }
         Clave::AsistenteModelo => {
             a.asistente.modelo = if cual == 1 {
@@ -3416,6 +3449,7 @@ mod pruebas {
             Clave::VozModo,
             Clave::AsistenteModelo,
             Clave::AsistenteMejorVista,
+            Clave::AsistenteDocsNube,
             Clave::AsistentePensar,
             Clave::Presencia,
             Clave::LoMioManda,

@@ -61,6 +61,9 @@ struct Sesion {
     lienzo: Option<String>,
     /// Se pidio abrirlo al terminar («…y ábrelo»).
     abrir: bool,
+    /// Lo citado de los documentos del usuario: la respuesta lo apunta
+    /// para su «Abrir fuente».
+    citas: Vec<pixpin_ia::documentos::Cita>,
     /// Donde estan los datos (para dejar escrita una pregunta que caduca al
     /// cerrar el chat).
     raiz: std::path::PathBuf,
@@ -346,6 +349,7 @@ fn lanzar_con(
             abrir,
             raiz,
             responder: None,
+            citas: Vec::new(),
         })
     });
     Ok(())
@@ -367,6 +371,24 @@ pub(super) fn lienzo_por_abrir(a: &Abierto) -> Option<usize> {
 /// El lienzo de «Abrir lienzo» de la respuesta `i`, si lo lleva.
 pub(super) fn lienzo_de(a: &Abierto, i: usize) -> Option<usize> {
     ia_chat::lienzo_de_la_respuesta(a.mensajes.get(i)?, &a.mensajes)
+}
+
+/// La fuente de «Abrir fuente» de la respuesta `i`, si cito alguna.
+pub(super) fn fuente_de(a: &Abierto, i: usize) -> Option<ia_chat::FuenteCitada> {
+    ia_chat::fuente_de_la_respuesta(a.mensajes.get(i)?)
+}
+
+/// **Abre una fuente citada**: su pedido `abrir`, a esta misma PixPin, como
+/// si viniera de Flow Launcher (lo atiende `pedidos.rs` en el bucle
+/// principal). En su hilo: la ventana del chat no espera a nadie.
+pub(super) fn abrir_fuente(f: &ia_chat::FuenteCitada) {
+    let json = f.pedido.to_string();
+    let _ = std::thread::Builder::new().name("abrir-fuente".into()).spawn(move || {
+        let r = pixpin_shell::mensajero::enviar_pedido(&json);
+        if r != 1 {
+            tracing::warn!(respuesta = r, "asistente: no se pudo abrir la fuente citada");
+        }
+    });
 }
 
 /// A que lado va un mensaje: en una conversacion con el asistente (su chat,
@@ -539,6 +561,7 @@ pub(super) fn latido(ubicacion: &Ubicacion, mut abierto: Option<&mut Abierto>) -
                         // Que se vea ya en el disco tambien.
                         s.guardado = Instant::now() - GUARDAR_CADA;
                     }
+                    Aviso::Citas(c) => s.citas = c,
                     Aviso::Registro(r) => s.registro = Some(r),
                     Aviso::Fin { resultado } => {
                         s.vivo.acabar(&resultado);
@@ -562,17 +585,22 @@ pub(super) fn latido(ubicacion: &Ubicacion, mut abierto: Option<&mut Abierto>) -
             }
             let texto = s.vivo.mostrar();
             // Al acabar, la respuesta apunta el lienzo donde dibujo: de ahi
-            // sale su «Abrir lienzo».
+            // sale su «Abrir lienzo». Y lo que cito de los documentos: su
+            // «Abrir fuente».
             let lienzo = s.lienzo.clone().filter(|_| acabo);
+            let fuentes = if acabo { ia_chat::fuentes_para_la_nota(&s.citas, &texto) } else { None };
             let apuntar = |m: &mut cuaderno::Mensaje| {
                 if let Some(r) = &lienzo {
                     m.resto
                         .insert(ia_chat::LIENZO_DE_LA_RESPUESTA.into(), serde_json::Value::String(r.clone()));
                 }
+                if let Some(f) = &fuentes {
+                    m.resto.insert(ia_chat::FUENTES_DE_LA_RESPUESTA.into(), f.clone());
+                }
             };
             if let Some(a) = abierto.as_deref_mut().filter(|a| a.ficha.id == s.proyecto)
                 && let Some(m) = a.mensajes.iter_mut().find(|m| m.id == s.nota)
-                && (m.texto != texto || lienzo.is_some())
+                && (m.texto != texto || lienzo.is_some() || fuentes.is_some())
             {
                 m.texto = texto.clone();
                 apuntar(m);

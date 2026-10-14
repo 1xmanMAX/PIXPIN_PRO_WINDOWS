@@ -537,6 +537,10 @@ pub struct Asistente {
     /// Gemma 4 E2B (opcional, ~4,1 GB que se bajan aparte) cuando se pide
     /// MIRAR una foto: describirla, leer lo que pone. Apagado de fabrica.
     pub mejor_vista: bool,
+    /// Si con un motor de la nube se le pueden mandar trozos de los
+    /// documentos propios (`buscar_en_mis_cosas`): vacio = preguntar la
+    /// primera vez, `si` o `no` (13-oct-2026).
+    pub documentos_a_la_nube: String,
     /// Voz (13-oct-2026): lo dicho al microfono del asistente se deja en la
     /// caja para repasarlo antes de enviarlo, en vez de enviarse solo.
     pub revisar_lo_dicho: bool,
@@ -552,6 +556,7 @@ impl Default for Asistente {
             motor: String::new(),
             respaldo_local: true,
             mejor_vista: false,
+            documentos_a_la_nube: String::new(),
             pensar: None,
             revisar_lo_dicho: false,
             leer_respuestas: false,

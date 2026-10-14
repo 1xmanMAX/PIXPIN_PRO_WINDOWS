@@ -175,6 +175,8 @@ pub fn catalogo_base() -> Vec<Herramienta> {
                 "properties": {"pregunta": {"type": "string"}}
             }),
         },
+        // Buscar en los documentos y chats del usuario (`documentos`).
+        crate::documentos::herramienta::herramienta(),
     ]
 }
 
@@ -201,6 +203,9 @@ pub enum Llamada {
     App(crate::acciones::AccionApp),
     /// Una pregunta sobre la app: se contesta con `conocimiento::responder`.
     Ayuda(String),
+    /// Buscar en los documentos y chats del usuario: el ejecutor busca en
+    /// su indice (`documentos::Indice`) con el alcance del chat.
+    Buscar(crate::documentos::PeticionBusqueda),
 }
 
 impl Llamada {
@@ -212,6 +217,7 @@ impl Llamada {
             Llamada::Calcar(_) => CALCAR,
             Llamada::App(a) => a.herramienta,
             Llamada::Ayuda(_) => AYUDA,
+            Llamada::Buscar(_) => crate::documentos::BUSCAR,
         }
     }
 }
@@ -397,6 +403,7 @@ pub fn validar(cruda: &LlamadaCruda, conocidas: &[Herramienta]) -> Result<Valida
                 .or_else(|| args.values().find_map(|v| v.as_str().map(str::to_string)))
                 .ok_or_else(|| mal("falta «pregunta»"))?,
         ),
+        crate::documentos::BUSCAR => Llamada::Buscar(crate::documentos::herramienta::validar(&args)?),
         otro if crate::acciones::por_nombre(otro).is_some() => {
             Llamada::App(crate::acciones::validar(crate::acciones::por_nombre(otro).unwrap(), &args)?)
         }
@@ -1302,7 +1309,7 @@ mod pruebas {
     fn el_catalogo_es_json_de_herramientas_valido() {
         let v: Value = serde_json::from_str(&catalogo_json()).unwrap();
         let lista = v.as_array().unwrap();
-        assert_eq!(lista.len(), 5 + crate::acciones::ACCIONES.len());
+        assert_eq!(lista.len(), 6 + crate::acciones::ACCIONES.len());
         for h in lista {
             assert_eq!(h["type"], "function");
             assert_eq!(h["function"]["parameters"]["type"], "object");

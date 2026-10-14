@@ -52,6 +52,8 @@
 //! - [`relevo`]: varios modelos locales con un solo `llama-server` cargado a
 //!   la vez (cambiar suelta al otro).
 //! - [`conocimiento`]: el resumen de PixPin y el indice de `ayuda_app`.
+//! - [`documentos`]: `buscar_en_mis_cosas`, un indice BM25 local de los
+//!   documentos, notas y chats del usuario, con el origen de cada trozo.
 //!
 //! ## Puntos de enganche para la UI (otros agentes)
 //!
@@ -68,6 +70,7 @@ pub mod calcar;
 pub mod conocimiento;
 pub mod contexto;
 pub mod descarga;
+pub mod documentos;
 pub mod herramientas;
 pub mod hoja_trabajo;
 pub mod lienzo;

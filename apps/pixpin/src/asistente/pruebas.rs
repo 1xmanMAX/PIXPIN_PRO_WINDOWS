@@ -47,7 +47,7 @@ fn hasta_el_final(turno: &mut Turno, escena: Option<&mut pixpin_motor2d::Escena>
                 Aviso::Confirmar { responder, .. } => {
                     let _ = responder.send(false);
                 }
-                Aviso::TextoLeido { .. } | Aviso::Registro(_) => {}
+                Aviso::TextoLeido { .. } | Aviso::Registro(_) | Aviso::Citas(_) => {}
             }
             todos.push(a);
         }
@@ -907,7 +907,7 @@ fn hasta_el_final_largo(t: &mut Turno, escena: &mut pixpin_motor2d::Escena) -> (
                 Aviso::Confirmar { responder, .. } => {
                     let _ = responder.send(false);
                 }
-                Aviso::TextoLeido { .. } | Aviso::Registro(_) => {}
+                Aviso::TextoLeido { .. } | Aviso::Registro(_) | Aviso::Citas(_) => {}
             }
             todos.push(a);
         }

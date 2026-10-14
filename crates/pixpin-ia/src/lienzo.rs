@@ -160,7 +160,7 @@ pub fn elementos(llamada: &Llamada, origen: (f64, f64), semilla: u64) -> Vec<Val
         // No dibujan nada por si solas: el OCR y la ayuda son texto, la
         // accion de la app es un pedido y el calcado necesita la imagen
         // ([`elementos_de_calcado`]).
-        Llamada::Ocr(_) | Llamada::Calcar(_) | Llamada::App(_) | Llamada::Ayuda(_) => {}
+        Llamada::Ocr(_) | Llamada::Calcar(_) | Llamada::App(_) | Llamada::Ayuda(_) | Llamada::Buscar(_) => {}
     }
     f.salida
 }
