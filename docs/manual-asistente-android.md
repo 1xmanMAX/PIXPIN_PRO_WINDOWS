@@ -684,6 +684,9 @@ y `archivos`. Se junta celda a celda con `Fusion` (ya funciona).
   2. subir `BibliotecaStore.revision` cuando la sincronización traiga el fichero.
 - Prueba del PC: `biblioteca_figuras::pruebas::la_biblioteca_va_al_movil_y_vuelve_por_el_chat_del_asistente`.
 - Gana el tocado más tarde (fichero suelto).
+- **Las letras de los planos** viajan igual por el chat «Asistente», pero con un mensaje `ARCHIVO`
+  por letra (`auto-letra-<nombre>`, ruta `pixpin:files/guardados/fuentes-shx/<nombre>`): ver
+  «Las letras de los planos viajan entre tus aparatos» en `docs/investigacion/2026-10-13-para-android.md`.
 
 ### 3.8 Lo que anota el asistente en documentos y planos
 

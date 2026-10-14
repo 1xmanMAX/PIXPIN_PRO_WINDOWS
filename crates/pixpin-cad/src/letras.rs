@@ -71,6 +71,25 @@ pub fn es_letra(ruta: &Path) -> bool {
     TIPOS_DE_LETRA.contains(&ext.as_str())
 }
 
+/// **Si el fichero es de verdad una letra**: su terminacion y sus primeros
+/// bytes (las SHX empiezan por «AutoCAD-86»; las TrueType, OpenType y
+/// colecciones por su etiqueta). Lo que viaja entre aparatos se mira asi:
+/// un fichero cualquiera rebautizado `.shx` no pasa.
+pub fn parece_letra(ruta: &Path) -> bool {
+    if !es_letra(ruta) {
+        return false;
+    }
+    let mut cabeza = [0u8; 10];
+    let leidos = std::fs::File::open(ruta).and_then(|mut f| {
+        use std::io::Read;
+        f.read(&mut cabeza)
+    });
+    let Ok(n) = leidos else { return false };
+    let c = &cabeza[..n];
+    c.starts_with(b"AutoCAD-86")
+        || [&[0u8, 1, 0, 0][..], b"true", b"typ1", b"OTTO", b"ttcf"].iter().any(|m| c.starts_with(m))
+}
+
 /// **Una huella corta de las letras del usuario** (nombres y pesos, como
 /// `huellaDeLetras` de Android): cambia si se añade o se quita una. Vacia si
 /// no hay ninguna, para que el nombre del plano leido no cambie sin letras.
@@ -329,6 +348,24 @@ mod pruebas_letras_del_usuario {
         assert_eq!(huella(&d), "");
         let _ = std::fs::remove_dir_all(&d);
         let _ = std::fs::remove_dir_all(&fuera);
+    }
+
+    #[test]
+    fn solo_parece_letra_lo_que_lo_es_por_dentro() {
+        let d = carpeta_de_prueba("parece");
+        std::fs::write(d.join("romans.shx"), include_bytes!("../fuentes-shx/romans.shx")).unwrap();
+        std::fs::write(d.join("libre.ttf"), [0u8, 1, 0, 0, 0, 9]).unwrap();
+        std::fs::write(d.join("libre.otf"), b"OTTO\0\x01").unwrap();
+        assert!(parece_letra(&d.join("romans.shx")) && parece_letra(&d.join("libre.ttf")) && parece_letra(&d.join("libre.otf")));
+        // Casos negativos: un programa rebautizado, un fichero vacio, otra
+        // terminacion aunque por dentro sea una SHX, y uno que no esta.
+        std::fs::write(d.join("trampa.shx"), b"MZ\x90\0programa").unwrap();
+        std::fs::write(d.join("vacia.ttf"), b"").unwrap();
+        std::fs::write(d.join("romans.txt"), include_bytes!("../fuentes-shx/romans.shx")).unwrap();
+        for n in ["trampa.shx", "vacia.ttf", "romans.txt", "no-esta.shx"] {
+            assert!(!parece_letra(&d.join(n)), "{n}");
+        }
+        let _ = std::fs::remove_dir_all(&d);
     }
 
     #[test]

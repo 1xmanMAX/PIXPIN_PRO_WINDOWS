@@ -170,3 +170,39 @@ repetido de versión más baja, para que esos dibujos se arreglen solos.
   dibujaron sin `.hoja`, con la unidad y el origen de antes (el centro de la
   caja entera, que en ese plano llega hasta el (0, 0) del mundo); la `.hoja`
   de hoy ya se escribió con el origen nuevo. No se mueven solos.
+
+## Las letras de los planos viajan entre tus aparatos (14-oct)
+
+Para que el móvil no pida letras al abrir planos, las que el usuario **añade él
+mismo** con «Aa» → «Añadir letras…» viajan a sus otros aparatos, **nunca** a
+personas de chats compartidos. PixPin no reparte letras de Autodesk ni de
+Microsoft: solo las que el usuario puso en su carpeta.
+
+- **Un mensaje `ARCHIVO` por letra** en el chat «Asistente», id fijo
+  `auto-letra-<limpio(nombre en minúsculas)>` (`auto-letra-romans.shx`),
+  `nombre` = el del fichero (el plano lo pide por él), `ruta` =
+  `pixpin:files/guardados/fuentes-shx/<nombre>`. Si ya está, no se toca: el
+  fichero cambia y la sincronización lo manda por su resumen.
+- **La carpeta del móvil pasa a ser `files/guardados/fuentes-shx`**
+  (`LectorDePlanos.carpetaShx`), moviendo la de antes (`files/fuentes-shx`) la
+  primera vez. Motivo: `fuentes-shx/` no está en `Disco.CARPETAS` (no viaja) y
+  fuera de `guardados/` borrar el mensaje no se lleva el fichero
+  (`adjuntosFuera`). En el PC esa ruta del chat «Asistente» es su carpeta de
+  siempre, `<raíz>/fuentes-shx` (`vista::LETRAS_PORTATIL`).
+- **Añadir**: copiar y poner el mensaje de cada una que **sea letra por dentro**
+  (SHX empieza por `AutoCAD-86`; TTF `00 01 00 00`/`true`/`typ1`, OTF `OTTO`,
+  TTC `ttcf`) y con nombre sin `/ \ " ' ( ) < >`. Topes: 10 MB por letra y
+  64 MB entre todas; lo que pase se queda solo en ese aparato.
+  Al abrir un plano, señalar también las que ya estaban sin mensaje.
+- **«Quitar las mías»**: borrar ficheros y mensajes **con marca de borrado**;
+  el otro aparato los quita al sincronizar (ya lo hace `adjuntosFuera`).
+- **Rechazar**: un fichero con nombre de letra que no lo es por dentro, o un
+  mensaje `auto-letra-*` que señala otra cosa, se borra con su mensaje (con
+  marca). **Valla**: en Android `files/` es uno solo, así que una persona de un
+  chat compartido no puede escribir en `guardados/fuentes-shx/` (tirarlo en
+  `soloDeEsteChat`); solo cuenta lo que señala el chat «Asistente».
+- **Al llegar letras con el plano abierto**: la huella (`huellaDeLetras`)
+  cambia; releer el plano sin mover la vista, como al añadir con «Aa».
+- Pruebas del PC: `apps/pixpin/src/letras_que_viajan/pruebas.rs` (ida y vuelta
+  con el móvil simulado, borrado en los dos sentidos, chat compartido y
+  fichero falso).
