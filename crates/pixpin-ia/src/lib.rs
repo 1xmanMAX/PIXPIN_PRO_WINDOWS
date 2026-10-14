@@ -47,6 +47,10 @@
 //!   que produce pedidos del protocolo (`docs/protocolo-pedidos.md`); lo
 //!   que borra o sale del PC lleva su pregunta de confirmacion.
 //! - [`seleccion`]: las 6 herramientas que vienen a cuento en cada turno.
+//!   Y si una foto merece el modelo de mejor vista
+//!   ([`seleccion::pide_mejor_vista`], Gemma 4 E2B, opcional).
+//! - [`relevo`]: varios modelos locales con un solo `llama-server` cargado a
+//!   la vez (cambiar suelta al otro).
 //! - [`conocimiento`]: el resumen de PixPin y el indice de `ayuda_app`.
 //! - [`rapido`], [`tareas`] y [`fechas`] (14-oct): las ordenes simples sin
 //!   modelo (<100 ms), las tareas por su nombre («la tarea comprar pan»,
@@ -81,6 +85,7 @@ pub mod lienzo;
 pub mod modelos;
 pub mod motor;
 pub mod nube;
+pub mod relevo;
 pub mod pensar;
 pub mod rapido;
 pub mod seleccion;

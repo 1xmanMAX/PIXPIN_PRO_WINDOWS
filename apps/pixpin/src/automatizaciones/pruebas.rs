@@ -497,7 +497,7 @@ fn los_pasos_encadenados_con_el_motor_de_mentira() {
                     origen: Some("Resumen".into()),
                     bloquear: Some(bloquear),
                 },
-                Box::new(|_| false),
+                encargo::Permiso::Fijo(Box::new(|_| false)),
                 mandar,
             )?;
             if r.bien { Ok(r.texto) } else { Err(r.texto) }
@@ -578,7 +578,7 @@ fn dentro_de_un_paso_el_asistente_tampoco_puede_hacer_bucle() {
             origen: Some("Capturas".into()),
             ..Default::default()
         },
-        Box::new(|_| false),
+        encargo::Permiso::Fijo(Box::new(|_| false)),
         Box::new(move |j| {
             s.lock().unwrap().push(j.to_string());
             1
@@ -589,4 +589,80 @@ fn dentro_de_un_paso_el_asistente_tampoco_puede_hacer_bucle() {
     assert!(!r.bien, "{r:?}");
     assert!(r.texto.contains("No pude capturar."), "{}", r.texto);
     let _ = std::fs::remove_dir_all(&raiz);
+}
+
+/// **Flow y las automatizaciones preguntan en la burbuja** (13-oct-2026, ya
+/// no con un cuadro de Windows): la respuesta del asistente espera con la
+/// pregunta apuntada en `asistente::permiso`, la tarjeta contesta, y con
+/// «Sí» el pedido sale y la nota lo cuenta. Con «No», nada sale.
+#[test]
+fn el_encargo_sin_ventana_pregunta_en_su_burbuja() {
+    for (si, nombre) in [(true, "permiso-si"), (false, "permiso-no")] {
+        let raiz = raiz_de_prueba(nombre);
+        let ent = encargo::Entorno {
+            ubicacion: pixpin_store::Ubicacion::Instalado { raiz: raiz.clone() },
+            aparato: "PC01".into(),
+        };
+        let motor = Arc::new(MotorGuionado::nuevo(vec![
+            Respuesta::de_llamada("borrar_lista", r#"{"lista":"m-flow"}"#),
+            Respuesta::de_texto("Listo."),
+        ]));
+        let salidos = Arc::new(Mutex::new(Vec::<String>::new()));
+        let s = salidos.clone();
+        // El chat «Asistente» antes del hilo (si no, los dos lo crearian a la vez).
+        let (proyecto, carpeta) = chat_del_asistente(&raiz, "PC01", 1).unwrap();
+        // La lista que se pide borrar, por su nombre (14-oct).
+        let lista = crate::pedidos::nueva_lista(&raiz, &proyecto, "PC01", "m-flow").unwrap().id;
+        let hilo = std::thread::spawn({
+            let ent = ent.clone();
+            move || {
+                encargo::hacer(
+                    &ent,
+                    motor,
+                    &encargo::Encargo {
+                        texto: "borra la lista m-flow".into(),
+                        ..Default::default()
+                    },
+                    encargo::Permiso::EnLaBurbuja,
+                    Box::new(move |j| {
+                        s.lock().unwrap().push(j.to_string());
+                        1
+                    }),
+                )
+            }
+        });
+        // Se busca la burbuja que pregunta, como lo haria la ventana.
+        let hasta = std::time::Instant::now() + std::time::Duration::from_secs(20);
+        let nota = loop {
+            if hilo.is_finished() {
+                panic!("acabo sin preguntar: {:?}", hilo.join().unwrap());
+            }
+            let c = cuaderno::Cuaderno::leer_de(&carpeta).unwrap_or_default();
+            assert!(
+                std::time::Instant::now() < hasta,
+                "no pregunto: {:?}",
+                c.mensajes.iter().map(|m| (m.id.clone(), m.texto.clone())).collect::<Vec<_>>()
+            );
+            if let Some(m) = c
+                .mensajes
+                .iter()
+                .find(|m| crate::asistente::permiso::pregunta(&proyecto, &m.id).is_some())
+                // Y la burbuja ya dice que espera (la nota se escribe antes).
+                .filter(|m| m.texto.contains("esperando tu respuesta"))
+            {
+                break m.id.clone();
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        };
+        assert!(salidos.lock().unwrap().is_empty(), "salio antes de contestar");
+        assert!(crate::asistente::permiso::contestar(&proyecto, &nota, si));
+        let r = hilo.join().unwrap().unwrap();
+        let sale = salidos.lock().unwrap().iter().any(|j| j.contains(&lista));
+        assert_eq!(sale, si, "{nombre}");
+        let marca = if si { "→ ✅ Sí" } else { "→ ✖️ No" };
+        assert!(r.texto.contains(marca), "{}", r.texto);
+        let c = cuaderno::Cuaderno::leer_de(&carpeta).unwrap();
+        assert!(c.mensajes.iter().any(|m| m.id == nota && m.texto.contains(marca)));
+        let _ = std::fs::remove_dir_all(&raiz);
+    }
 }

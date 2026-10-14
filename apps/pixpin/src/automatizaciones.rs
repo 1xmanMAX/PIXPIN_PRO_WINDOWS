@@ -34,8 +34,10 @@
 //!   asistente); y aun asi, cada una tiene un tope de veces por hora
 //!   ([`motor::Guardia`]).
 //!
-//! Las recetas de `ia-gemma-recetas` no estaban en `main` el 13-oct: este
-//! formato es el primero y deja sitio (`resto`) para lo que se le anada.
+//! **Las recetas del asistente son automatizaciones** `a_mano` con un solo
+//! paso «pedido al asistente» y, en `resto`, `boton: true`, `icono` y
+//! `orden`: salen como botones encima de la caja del chat «Asistente»
+//! (`asistente::recetas`).
 
 pub mod encargo;
 pub mod motor;

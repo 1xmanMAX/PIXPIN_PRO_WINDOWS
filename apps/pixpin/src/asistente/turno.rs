@@ -39,6 +39,14 @@ pub enum Aviso {
     /// El texto entero que leyo el OCR (al modelo le llega recortado), para
     /// ensenarlo en el chat y ofrecer guardarlo.
     TextoLeido { de: Adjunto, texto: String },
+    /// **Una accion que borra o envia pide permiso**: la burbuja ensena la
+    /// pregunta con «Sí» y «No» y contesta por `responder` (`true`: si).
+    /// El turno espera sin bloquear la ventana; si el chat se cierra, el
+    /// `Sender` muere con el y la pregunta cuenta como «no».
+    Confirmar {
+        pregunta: String,
+        responder: std::sync::mpsc::Sender<bool>,
+    },
     /// Lo citado de los documentos del usuario hasta ahora en el turno
     /// (`buscar_en_mis_cosas`): la respuesta lo guarda y el chat ensena
     /// la cita como tarjeta que abre el documento.
@@ -68,9 +76,6 @@ pub struct Memoria {
     /// Que la vuelta de planear pueda anadir herramientas del catalogo entero
     /// a las de la seleccion (`Opciones::ampliar`).
     pub ampliar: bool,
-    /// Donde viven los chats: con ella, el asistente lee las listas de tareas
-    /// y las pide por su nombre.
-    pub raiz: Option<PathBuf>,
     /// Las ordenes simples sin modelo (`pixpin_ia::rapido`, 14-oct).
     pub rapido: bool,
 }
@@ -181,7 +186,7 @@ impl Turno {
         destino: Option<String>,
         herramientas: Vec<Herramienta>,
     ) -> Turno {
-        Turno::lanzar_con_memoria(motor, proyecto, historial, adjuntos, foto, destino, herramientas, None)
+        Turno::lanzar_con_memoria(motor, proyecto, historial, adjuntos, foto, destino, herramientas, None, None)
     }
 
     /// Lanza el turno con su [`Memoria`]: piensa, planea, reescribe la hoja
@@ -195,6 +200,9 @@ impl Turno {
         destino: Option<String>,
         herramientas: Vec<Herramienta>,
         memoria: Option<Memoria>,
+        // Donde viven los chats: con ella, el asistente lee las listas de
+        // tareas y las pide por su nombre (14-oct).
+        raiz: Option<PathBuf>,
     ) -> Turno {
         let (tx, rx) = channel();
         let parar = Arc::new(AtomicBool::new(false));
@@ -219,7 +227,13 @@ impl Turno {
                 let mut ejecutor = EjecutorDelChat::nuevo(tx.clone(), proyecto, adjuntos, parar_hilo.clone())
                     .hacia(destino)
                     .en_la_nube(motor.catalogo_completo())
-                    .con_raiz(memoria.raiz.clone());
+                    // Lo que borra o envia pregunta en la burbuja, no en un
+                    // cuadro de Windows (13-oct-2026).
+                    .con_acciones(
+                        super::acciones::confirmar_en_la_burbuja(tx.clone(), parar_hilo.clone()),
+                        super::acciones::mandar_a_pixpin(),
+                    )
+                    .con_raiz(raiz);
                 let buscar = |c: &str| contexto::buscar(&memoria.fuentes, c, 3);
                 let todas = pixpin_ia::herramientas::catalogo();
                 let opciones = Opciones {

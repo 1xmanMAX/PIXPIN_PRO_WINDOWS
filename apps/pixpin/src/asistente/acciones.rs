@@ -9,11 +9,17 @@
 //! el asistente no tiene un segundo camino para escribir en los cuadernos.
 //!
 //! Lo que borra o saca algo del PC (`AccionApp::confirmar`) **pregunta
-//! antes**. Por ahora con un cuadro de Windows (con «No» por defecto); el
-//! enganche es [`Confirmar`]: la UI del chat puede cambiarlo por un «¿Sí?»
-//! dentro de la burbuja con [`super::ejecutor::EjecutorDelChat::con_acciones`].
+//! antes**, en una tarjeta dentro de la burbuja del asistente con «Sí» y
+//! «No» (13-oct-2026; antes era un cuadro de Windows que tapaba la
+//! ventana): [`confirmar_en_la_burbuja`]. El turno espera en su hilo; la
+//! ventana sigue suelta. Sin respuesta (chat cerrado, «parar», o
+//! [`super::chat::CADUCA_LA_PREGUNTA`]) es un no.
 
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::mpsc::{RecvTimeoutError, Sender, channel};
+use std::time::Duration;
 
 use pixpin_ia::acciones::AccionApp;
 use pixpin_ia::fechas::Momento;
@@ -22,7 +28,7 @@ use pixpin_ia::calcar::{self, Parametros};
 use pixpin_ia::lienzo;
 use serde_json::Value;
 
-use super::turno::Adjunto;
+use super::turno::{Adjunto, Aviso};
 
 /// Pregunta al usuario; `true` si dice que si.
 pub type Confirmar = Box<dyn Fn(&str) -> bool + Send>;
@@ -30,28 +36,54 @@ pub type Confirmar = Box<dyn Fn(&str) -> bool + Send>;
 /// (`1` aceptado).
 pub type Mandar = Box<dyn Fn(&str) -> isize + Send>;
 
-/// El cuadro de Windows, con «No» por defecto.
-pub fn confirmar_con_cuadro() -> Confirmar {
-    // En las pruebas nunca se abre un cuadro: se dice que no.
-    if cfg!(test) {
-        return Box::new(|_| false);
-    }
-    Box::new(|pregunta| {
-        pixpin_shell::dialogo::confirmar_destructivo(
-            windows::Win32::Foundation::HWND::default(),
-            "PixPin · Asistente",
-            pregunta,
-        )
+/// Sin nadie a quien preguntar: no.
+pub fn decir_que_no() -> Confirmar {
+    Box::new(|_| false)
+}
+
+/// **La pregunta va a la burbuja** por el canal del turno y se espera el
+/// «Sí»/«No» de la tarjeta. Cualquier otra cosa es un no: el chat se cerro
+/// (el `Sender` de la respuesta murio con su sesion), el usuario pulso
+/// parar, o el canal del turno ya no tiene a nadie escuchando.
+pub fn confirmar_en_la_burbuja(tx: Sender<Aviso>, parar: Arc<AtomicBool>) -> Confirmar {
+    Box::new(move |pregunta| {
+        let (responder, rx) = channel();
+        if tx
+            .send(Aviso::Confirmar {
+                pregunta: pregunta.to_string(),
+                responder,
+            })
+            .is_err()
+        {
+            return false;
+        }
+        loop {
+            if parar.load(Ordering::Relaxed) {
+                return false;
+            }
+            match rx.recv_timeout(Duration::from_millis(100)) {
+                Ok(si) => return si,
+                Err(RecvTimeoutError::Disconnected) => return false,
+                Err(RecvTimeoutError::Timeout) => {}
+            }
+        }
     })
 }
+
+/// Lo que las pruebas mandaron a «PixPin» (nunca sale de verdad).
+#[cfg(test)]
+pub static MANDADOS_EN_PRUEBAS: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
 
 /// A la PixPin que corre (esta misma), como el plugin.
 pub fn mandar_a_pixpin() -> Mandar {
     // En las pruebas, nada sale: la PixPin del usuario puede estar abierta y
-    // un pedido le haria cosas de verdad.
-    if cfg!(test) {
-        return Box::new(|_| 0);
-    }
+    // un pedido le haria cosas de verdad. Se apunta para comprobarlo.
+    #[cfg(test)]
+    return Box::new(|j| {
+        MANDADOS_EN_PRUEBAS.lock().unwrap_or_else(|e| e.into_inner()).push(j.to_string());
+        0
+    });
+    #[cfg(not(test))]
     Box::new(pixpin_shell::mensajero::enviar_pedido)
 }
 

@@ -10,8 +10,8 @@
 //!    pedido `chat`), y nace la burbuja de la respuesta (`aparato = "IA"`);
 //! 2. el turno corre con el motor de Ajustes (local, Claude o DeepSeek) y el
 //!    mismo ejecutor del chat (`EjecutorDelChat`): las acciones de la app
-//!    van por el protocolo de pedidos y lo que borra **pregunta antes** (el
-//!    cuadro de siempre). Lo que dibuja, si no hay un lienzo abierto, va al
+//!    van por el protocolo de pedidos y lo que borra **pregunta antes** (en una
+//!    tarjeta de su burbuja con «Sí»/«No», `Permiso`). Lo que dibuja, si no hay un lienzo abierto, va al
 //!    lienzo del asistente en su chat, por el mismo camino que usa el chat
 //!    cerrado (`ventana_chat::sin_ventana`);
 //! 3. la respuesta se guarda en su nota y se ensena en el aviso flotante del
@@ -21,7 +21,7 @@
 //! modelo y lo que cree sin chat (una tarea, una nota) va alli.
 
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::sync::atomic::AtomicBool;
 use std::sync::mpsc::{Receiver, channel};
 use std::time::{Duration, Instant};
@@ -79,13 +79,14 @@ pub struct Respuesta {
 const GUARDAR_CADA: Duration = Duration::from_secs(2);
 
 /// **Hace el encargo** y no vuelve hasta acabar (llamarlo en un hilo).
-/// `confirmar` y `mandar` son los del ejecutor: el cuadro y la PixPin que
+/// `permiso` dice como se pregunta antes de lo que borra (en la burbuja, o
+/// fijo en las pruebas) y `mandar` adonde van los pedidos: la PixPin que
 /// corre, o los de las pruebas.
 pub fn hacer(
     ent: &Entorno,
     motor: Arc<dyn Motor>,
     e: &Encargo,
-    confirmar: Confirmar,
+    permiso: Permiso,
     mandar: Mandar,
 ) -> Result<Respuesta, String> {
     let raiz = ent.ubicacion.raiz().to_path_buf();
@@ -154,13 +155,13 @@ pub fn hacer(
 
     // 2. La burbuja de la respuesta.
     let numero = crate::ventana_chat::siguiente_numero_en(&raiz, &asistente).map_err(|x| x.to_string())?;
-    let mut vivo = EnVivo::default();
-    vivo.estado = Some("💭 …".into());
+    let mut vivo0 = EnVivo::default();
+    vivo0.estado = Some("💭 …".into());
     let nota = crate::ventana_chat::escribir_nota(
         &raiz,
         &asistente,
         ia_chat::APARATO,
-        &vivo.mostrar(),
+        &vivo0.mostrar(),
         pixpin_shell::entorno::ahora_utc_ms().max(ahora + 1),
         numero,
         None,
@@ -176,9 +177,14 @@ pub fn hacer(
     };
     let (tx, rx) = channel();
     let parar = Arc::new(AtomicBool::new(false));
+    // Lo que se ve en la burbuja, compartido con la pregunta de permiso (que
+    // corre dentro del ejecutor, mientras el turno espera).
+    let vivo = Arc::new(Mutex::new(vivo0));
+    let confirmar = confirmar_en_la_nota(permiso, vivo.clone(), carpeta.clone(), asistente.clone(), nota.id.clone(), parar.clone());
     let mandar = envolver(mandar, contexto.as_ref().map(|(id, _)| id.clone()), e.bloquear);
     let mut ejecutor = SinVentana {
-        dentro: EjecutorDelChat::nuevo(tx, asistente.clone(), adjuntos.clone(), parar).con_acciones(confirmar, mandar),
+        dentro: EjecutorDelChat::nuevo(tx, asistente.clone(), adjuntos.clone(), parar).con_acciones(confirmar, mandar)
+            .con_raiz(Some(ent.ubicacion.raiz().to_path_buf())),
         ubicacion: ent.ubicacion.clone(),
         proyecto: asistente.clone(),
         adjuntos,
@@ -190,6 +196,7 @@ pub fn hacer(
     let resultado: Result<Final, String> = {
         let _com = pixpin_shell::ComDelHilo::iniciar();
         agente::turno(motor.as_ref(), &mut historial, &herramientas, &mut ejecutor, &mut |ev: Evento| {
+            let mut vivo = vivo.lock().unwrap_or_else(|x| x.into_inner());
             vivo.aplicar(&ev);
             if guardado.elapsed() >= GUARDAR_CADA {
                 guardado = Instant::now();
@@ -207,6 +214,7 @@ pub fn hacer(
             agente::para_el_usuario(&x)
         })
     };
+    let mut vivo = vivo.lock().unwrap_or_else(|x| x.into_inner());
     vivo.acabar(&resultado);
     let texto = vivo.mostrar();
     let lienzo = ejecutor.lienzo.clone();
@@ -232,6 +240,68 @@ pub fn hacer(
     })
 }
 
+
+/// **Como se pide permiso** para lo que borra o envia (13-oct-2026).
+pub enum Permiso {
+    /// En la burbuja de la respuesta, con «Sí»/«No» (como en el chat): la
+    /// ventana del chat la ve en `asistente::permiso`. Lo de verdad.
+    EnLaBurbuja,
+    /// Lo que diga esta funcion, sin preguntar a nadie (las pruebas).
+    Fijo(Confirmar),
+}
+
+/// **La pregunta en la nota de la respuesta**: la burbuja dice que espera
+/// y, contestada, deja la linea «❓ … → ✅ Sí» en el texto, en el disco.
+fn confirmar_en_la_nota(
+    permiso: Permiso,
+    vivo: Arc<Mutex<EnVivo>>,
+    carpeta: PathBuf,
+    proyecto: String,
+    nota: String,
+    parar: Arc<AtomicBool>,
+) -> Confirmar {
+    let guardar = move |vivo: &Arc<Mutex<EnVivo>>, cambio: &dyn Fn(&mut EnVivo)| {
+        let t = {
+            let mut v = vivo.lock().unwrap_or_else(|x| x.into_inner());
+            cambio(&mut v);
+            v.mostrar()
+        };
+        (t, ())
+    };
+    Box::new(move |pregunta: &str| {
+        let escribir = |t: String| {
+            let _ = cuaderno::cambiar(&carpeta, &nota, |m| {
+                m.texto = t.clone();
+                true
+            });
+            crate::ventana_chat::refrescar();
+        };
+        let (t, ()) = guardar(&vivo, &|v| v.preguntar(pregunta));
+        let c = match &permiso {
+            Permiso::EnLaBurbuja => {
+                // Primero la nota (que se vea que espera), luego la pregunta.
+                escribir(t);
+                let rx = crate::asistente::permiso::registrar(&proyecto, &nota, pregunta);
+                crate::ventana_chat::refrescar();
+                let c = crate::asistente::permiso::esperar(&rx, ia_chat::CADUCA_LA_PREGUNTA, Some(&parar));
+                crate::asistente::permiso::quitar(&proyecto, &nota);
+                c
+            }
+            Permiso::Fijo(f) => {
+                if f(pregunta) {
+                    ia_chat::Contestacion::Si
+                } else {
+                    ia_chat::Contestacion::No
+                }
+            }
+        };
+        let (t, ()) = guardar(&vivo, &|v| {
+            v.contestar(c);
+        });
+        escribir(t);
+        c == ia_chat::Contestacion::Si
+    })
+}
 fn textos_leidos(ubicacion: &Ubicacion, proyecto: &str, rx: &Receiver<Aviso>) {
     while let Ok(a) = rx.try_recv() {
         if let Aviso::TextoLeido { de, texto } = a
@@ -354,7 +424,7 @@ pub fn lanzar(app: DeLaApp, e: Encargo) {
                 &app.entorno,
                 motor,
                 &e,
-                crate::asistente::acciones::confirmar_con_cuadro(),
+                Permiso::EnLaBurbuja,
                 crate::asistente::acciones::mandar_a_pixpin(),
             )
         });

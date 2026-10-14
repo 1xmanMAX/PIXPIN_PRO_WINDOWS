@@ -292,7 +292,15 @@ impl Hacedor for DeVerdad {
         crate::asistente::acciones::hacer(
             a,
             Some(self.app.entorno.ubicacion.raiz()),
-            &crate::asistente::acciones::confirmar_con_cuadro(),
+            &{
+                // Lo que borra o envia pregunta en una burbuja del chat
+                // «Asistente» (13-oct-2026; antes, un cuadro de Windows).
+                let ent = self.app.entorno.clone();
+                let confirmar: crate::asistente::acciones::Confirmar = Box::new(move |p: &str| {
+                    crate::asistente::permiso::preguntar_en_el_chat(&ent.ubicacion, &ent.aparato, "Automatización", p)
+                });
+                confirmar
+            },
             &crate::asistente::acciones::mandar_a_pixpin(),
         )
     }
@@ -310,7 +318,7 @@ impl Hacedor for DeVerdad {
                 origen: Some("Automatización".into()),
                 bloquear: Some(bloquear),
             },
-            crate::asistente::acciones::confirmar_con_cuadro(),
+            encargo::Permiso::EnLaBurbuja,
             crate::asistente::acciones::mandar_a_pixpin(),
         )?;
         self.abrir = Some((r.proyecto.clone(), r.codigo.clone()));
