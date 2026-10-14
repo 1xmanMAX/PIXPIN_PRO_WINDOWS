@@ -939,7 +939,7 @@ fn volcar_para_haiku() {
     let herramientas = pixpin_ia::herramientas::catalogo();
     agente::turno(&captura, &mut historial, &herramientas, &mut grabado::NoEjecuta, &mut |_| Seguir::Si).unwrap();
     let peticion = captura.primera();
-    let cuerpo = pixpin_ia::nube::claude::cuerpo(&peticion, &HashMap::new(), true, pixpin_ia::nube::claude::MAX_TOKENS);
+    let cuerpo = pixpin_ia::nube::claude::cuerpo(&peticion, &HashMap::new(), pixpin_ia::nube::claude::MAX_TOKENS);
     let sistema = cuerpo["system"][0]["text"].as_str().unwrap();
     std::fs::write(dir.join("sistema.txt"), sistema).unwrap();
     std::fs::write(dir.join("herramientas.json"), serde_json::to_string_pretty(&cuerpo["tools"]).unwrap()).unwrap();
@@ -1133,6 +1133,12 @@ mod banco_ia {
             Llamada::Ayuda(q) => (
                 nombre,
                 serde_json::json!({"pregunta": q, "respuesta": pixpin_ia::conocimiento::responder(q)}),
+                Vec::new(),
+            ),
+            // El banco no tiene documentos: se apunta lo pedido.
+            Llamada::Buscar(b) => (
+                nombre,
+                serde_json::json!({"consulta": b.consulta, "proyecto": b.proyecto}),
                 Vec::new(),
             ),
         })

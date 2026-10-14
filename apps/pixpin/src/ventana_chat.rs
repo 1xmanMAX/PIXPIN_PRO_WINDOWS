@@ -35,9 +35,44 @@ use crate::overlay::Recursos;
 /// La caja flotante a la que se sueltan ficheros para un proyecto (2-oct).
 // El asistente local en la conversacion (`crate::asistente`).
 mod asistente;
+/// El aviso flotante del asistente sin el chat (Flow, automatizaciones).
+mod aviso_asistente;
 // Hablarle al asistente y oir sus respuestas (13-oct).
 mod voz_del_asistente;
 mod caja_de_soltar;
+
+/// **El asistente sin la ventana del chat** (`crate::automatizaciones`):
+/// lo que el chat ya sabe hacer con su conversacion cerrada (meter lo
+/// dibujado en el lienzo del asistente, dejar el texto de un OCR, elegir el
+/// motor de Ajustes) y el aviso flotante con «Abrir».
+pub(crate) mod sin_ventana {
+    pub(crate) use super::aviso_asistente::{Aviso, lanzar as avisar};
+    use pixpin_store::{Catalogo, Ubicacion};
+
+    /// Lo dibujado, al lienzo del asistente en el chat `proyecto`: el
+    /// resumen para el modelo y la referencia del lienzo.
+    pub(crate) fn al_lienzo(ubicacion: &Ubicacion, proyecto: &str, documento: &str) -> Result<(String, String), String> {
+        super::asistente::meter_en_el_lienzo_del_chat(ubicacion, None, proyecto, None, documento)
+    }
+
+    /// El texto entero de un OCR, al chat (nota y `.txt`).
+    pub(crate) fn texto_leido(
+        ubicacion: &Ubicacion,
+        proyecto: &str,
+        de: &crate::asistente::turno::Adjunto,
+        texto: &str,
+    ) -> std::io::Result<()> {
+        super::asistente::dejar_texto_leido(ubicacion.raiz(), None, proyecto, de, texto)
+    }
+
+    /// El motor elegido en Ajustes → Asistente.
+    pub(crate) fn motor(
+        ubicacion: &Ubicacion,
+        textos: &Catalogo,
+    ) -> Result<std::sync::Arc<dyn pixpin_ia::motor::Motor>, String> {
+        super::asistente::motor_de_los_ajustes(ubicacion, textos)
+    }
+}
 /// La descripcion de una foto: su `texto`, como en el movil (3-oct).
 mod descripcion;
 /// Donde se guarda cada proyecto (su carpeta elegida o la habitual).
@@ -60,6 +95,9 @@ mod microfono_flotante;
 /// Muestra en PNG de una foto con su descripcion (3-oct).
 #[cfg(test)]
 mod muestra_descripcion;
+/// Muestra en PNG de «Pensando…» en la burbuja del asistente (13-oct).
+#[cfg(test)]
+mod muestra_pensado;
 /// v2-menus: muestras en PNG de los menus nuevos.
 #[cfg(test)]
 mod muestra_menus;
@@ -71,6 +109,8 @@ mod paginas;
 /// La vista previa de un lienzo, con el papel y la tinta del lienzo.
 #[cfg(test)]
 mod papel_de_la_vista;
+/// «Pensando…» y la peticion mejorada encima de la respuesta del asistente.
+mod pensado;
 /// La pantalla de Proyectos del movil y el interruptor Chat / Proyectos.
 mod proyectos;
 /// «Quien llama» en la llamada secreta de una nota de voz (B11, v0.98.6).
@@ -1445,7 +1485,14 @@ pub fn abrir(
                                         abrir_lienzo = Some(j);
                                         Efecto::Nada
                                     }
-                                    None => abrir_enlace(a, i, textos),
+                                    // «Abrir fuente»: el documento citado, en su pagina.
+                                    None => match asistente::fuente_de(a, i) {
+                                        Some(f) => {
+                                            asistente::abrir_fuente(&f);
+                                            Efecto::Nada
+                                        }
+                                        None => abrir_enlace(a, i, textos),
+                                    },
                                 },
                                 Zona::LeerRespuesta(i) => {
                                     match voz_del_asistente::alternar(ubicacion, a, i, textos) {
@@ -1508,6 +1555,12 @@ pub fn abrir(
                                     Some((_, false)) => ejecutar(Accion::Transcribir(i), a, &cx),
                                     None => Efecto::Nada,
                                 },
+                                Zona::Pensado(i) | Zona::Peticion(i) => {
+                                    if let Some(id) = a.mensajes.get(i).map(|m| m.id.clone()) {
+                                        pensado::alternar(&mut a.desplegados, &id, zona == Zona::Pensado(i));
+                                    }
+                                    Efecto::Cambio
+                                }
                                 Zona::Trozo(i, ms) => match saltar_en_el_audio(a, i, ms) {
                                     Ok(()) => Efecto::Nada,
                                     Err(e) => {
@@ -5790,6 +5843,15 @@ fn pintar_historial(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto) {
             y += VIENE_ALTO * e + 2.0 * VIENE_AIRE_Y * e;
         }
 
+        // Lo que penso el asistente y su peticion mejorada (`pensado`).
+        if let Some(pz) = &piezas.ia {
+            let (zp, zq) = pensado::pintar(p, pz, dentro.x as f32, y, dentro.ancho as f32, color_texto, color_hora, e);
+            let mut zonas = a.zonas.borrow_mut();
+            zonas.extend(zp.map(|r| (r, Zona::Pensado(i))));
+            zonas.extend(zq.map(|r| (r, Zona::Peticion(i))));
+            y += pz.alto + hueco;
+        }
+
         // La tarjeta del enlace (`TarjetaDeEnlace`): la barra del acento a la
         // izquierda, el icono del enlace, el dominio en negrita de acento y
         // de que va debajo. Pulsarla abre la direccion fuera.
@@ -6726,6 +6788,7 @@ fn medir_mensaje(
             recibido: None,
             enlace: None,
             buzon: None,
+            ia: None,
         };
         return (entrada, piezas);
     }
@@ -6785,6 +6848,12 @@ fn medir_mensaje(
             alto -= hueco;
         }
     }
+    // Lo que penso el asistente y su peticion mejorada, encima de lo que
+    // contesto (como en Claude).
+    let ia = pensado::medir(p, a, m, ancho_max, textos, e);
+    if let Some(pz) = &ia {
+        sumar(&mut ancho, &mut alto, pz.ancho, pz.alto);
+    }
     // La tarjeta del enlace, ENCIMA del texto como en cualquier mensajeria:
     // lo que se toca es la tarjeta, y al final obligaria a leer la nota
     // entera para llegar a ella. Solo en las notas (`Clase.NOTA`).
@@ -6795,6 +6864,25 @@ fn medir_mensaje(
         url: String::new(),
         donde: textos.t("asistente-abrir-lienzo"),
         de_que: crate::asistente::chat::nombre_de_lienzo(l),
+    });
+    // Si cito los documentos del usuario, «Abrir fuente»: el primero que
+    // nombro, en su pagina o su mensaje (`asistente::fuente_de`).
+    let lienzo_ia = lienzo_ia.or_else(|| {
+        asistente::fuente_de(a, indice).map(|f| {
+            let mut de_que = textos.t("asistente-abrir-fuente");
+            if !f.proyecto.is_empty() {
+                de_que.push_str(&format!(" · {}", f.proyecto));
+            }
+            if f.mas > 0 {
+                de_que.push_str(&format!(" · +{}", f.mas));
+            }
+            tarjetas::Enlace {
+                // No es una direccion: el clic lo lleva `asistente::fuente_de`.
+                url: "pixpin:fuente".into(),
+                donde: f.titulo,
+                de_que,
+            }
+        })
     });
     let enlace = matches!(m.clase, None | Some(pixpin_proyecto::cuaderno::Clase::Nota))
         .then(|| lienzo_ia.or_else(|| tarjetas::primer_enlace(&m.texto)))
@@ -6879,6 +6967,7 @@ fn medir_mensaje(
         recibido,
         enlace,
         buzon,
+        ia,
     };
     (entrada, piezas)
 }
@@ -13088,6 +13177,11 @@ enum Zona {
     Renombrar(usize),
     /// La franja del aviso de lecciones: abre las de este proyecto.
     Lecciones,
+    /// «Penso 12 s» de una respuesta del asistente: pliega y despliega lo
+    /// que penso (`pensado`).
+    Pensado(usize),
+    /// La peticion mejorada de una respuesta del asistente: igual.
+    Peticion(usize),
     /// El altavoz de una respuesta del asistente: la lee o la calla
     /// (`voz_del_asistente`).
     LeerRespuesta(usize),
@@ -13163,6 +13257,8 @@ struct Piezas {
     /// El pie del buzon: «24 sep → 1 oct», las dos fechas por separado
     /// porque la de irse va en rojo.
     buzon: Option<(String, String)>,
+    /// Lo que penso el asistente y su peticion mejorada, encima del texto.
+    ia: Option<pensado::Pieza>,
 }
 
 /// La letra de «Recibido de …» y de la tarjeta del enlace: 11 y 13, las del

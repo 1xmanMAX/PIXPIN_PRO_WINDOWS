@@ -50,6 +50,7 @@ pub mod uia;
 pub mod union;
 pub mod ventana;
 pub mod ventanas_visibles;
+pub mod vigia_carpeta;
 pub mod vista_previa;
 
 pub use abrir::{abrir, abrir_ubicacion};

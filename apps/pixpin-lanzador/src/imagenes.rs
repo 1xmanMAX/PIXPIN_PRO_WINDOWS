@@ -784,6 +784,10 @@ pub fn resultado_pegar(busqueda: &str, ctx: &Contexto) -> Option<Resultado> {
             funcion: Funcion::Sincronizar,
             ..
         } => "lo que mandas al móvil",
+        Modo::Verbo {
+            funcion: Funcion::Asistente,
+            ..
+        } => "lo que le pides al asistente",
         _ => "la tarea",
     };
     let sub = format!("Intro: la imagen del portapapeles va en {en}; sigue escribiendo detrás");

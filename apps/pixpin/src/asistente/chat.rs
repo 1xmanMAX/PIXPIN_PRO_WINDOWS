@@ -66,6 +66,17 @@ pub fn conversacion(anteriores: &[Nota]) -> Vec<(bool, String)> {
         .collect()
 }
 
+/// Lo mismo con el id y el numero de cada nota (`(id, numero, del_usuario,
+/// texto)`): la hoja de trabajo apunta desde que nota se reinicio, y
+/// `buscar_historial` dice de que mensaje sale cada trozo.
+pub fn conversacion_con_ids(anteriores: &[Nota]) -> Vec<(String, i64, bool, String)> {
+    anteriores
+        .iter()
+        .filter(|m| es_nota(m) && !m.texto.trim().is_empty())
+        .map(|m| (m.id.clone(), m.numero, !es_del_asistente(m), m.texto.clone()))
+        .collect()
+}
+
 /// Cuantos mensajes hacia atras se busca la foto de la que se habla.
 pub const FOTO_ATRAS: usize = 4;
 
@@ -235,6 +246,56 @@ pub fn lienzo_de_la_respuesta(m: &Nota, mensajes: &[Nota]) -> Option<usize> {
 }
 
 // ---------------------------------------------------------------------------
+// Las fuentes citadas (`buscar_en_mis_cosas`)
+
+/// En la nota de una respuesta, lo que cito de los documentos del usuario:
+/// `[{n, titulo, proyecto, pedido}]` (`documentos::herramienta::cita_a_json`).
+/// Va en `resto`, como `lienzoIa`.
+pub const FUENTES_DE_LA_RESPUESTA: &str = "fuentesIa";
+
+/// Lo que se apunta en la respuesta al acabar: las citas que el modelo
+/// nombro (o la primera, si no nombro ninguna). `None` si no busco nada.
+pub fn fuentes_para_la_nota(citas: &[pixpin_ia::documentos::Cita], respuesta: &str) -> Option<serde_json::Value> {
+    if citas.is_empty() {
+        return None;
+    }
+    let c = pixpin_ia::documentos::Citas { lista: citas.to_vec() };
+    let citadas: Vec<serde_json::Value> = c
+        .citadas(respuesta)
+        .into_iter()
+        .map(pixpin_ia::documentos::herramienta::cita_a_json)
+        .collect();
+    Some(serde_json::Value::Array(citadas))
+}
+
+/// Una fuente citada en una respuesta: como se ensena y el pedido que la
+/// abre.
+#[derive(Debug, Clone, PartialEq)]
+pub struct FuenteCitada {
+    pub titulo: String,
+    pub proyecto: String,
+    pub pedido: serde_json::Value,
+    /// Cuantas mas cito ademas de esta.
+    pub mas: usize,
+}
+
+/// La primera fuente citada de una respuesta del asistente, si la hay: de
+/// ahi sale su tarjeta «Abrir fuente».
+pub fn fuente_de_la_respuesta(m: &Nota) -> Option<FuenteCitada> {
+    if !es_del_asistente(m) {
+        return None;
+    }
+    let lista = m.resto.get(FUENTES_DE_LA_RESPUESTA)?.as_array()?;
+    let f = lista.first()?;
+    Some(FuenteCitada {
+        titulo: f.get("titulo")?.as_str()?.to_string(),
+        proyecto: f.get("proyecto").and_then(|p| p.as_str()).unwrap_or_default().to_string(),
+        pedido: f.get("pedido")?.clone(),
+        mas: lista.len() - 1,
+    })
+}
+
+// ---------------------------------------------------------------------------
 // La lista de `@` mientras se escribe
 
 /// Lo que se puede elegir en la lista de `@`.
@@ -335,6 +396,16 @@ pub struct EnVivo {
     /// Lo que fue mal por el camino (se dice al final, en una linea).
     pub fallos: Vec<String>,
     pub acabado: bool,
+    /// Lo que va pensando (la seccion plegable «Pensando…»).
+    pub pensamiento: String,
+    /// Pensando ahora mismo.
+    pub pensando: bool,
+    /// Cuanto penso, al acabar de pensar.
+    pub segundos: Option<f32>,
+    /// La peticion mejorada.
+    pub plan: Option<pixpin_ia::pensar::Plan>,
+    /// El turno empezo con el contexto renovado.
+    pub reiniciado: bool,
 }
 
 /// Lo que se ensena mientras se usa cada herramienta.
@@ -343,6 +414,7 @@ pub fn rotulo_de(nombre: &str) -> String {
         DIBUJAR => "✏️ dibujando en el lienzo…",
         GRAFICA => "📊 haciendo la gráfica…",
         OCR => "🔎 leyendo el documento…",
+        pixpin_ia::contexto::BUSCAR_HISTORIAL => "🗂️ buscando en la conversación…",
         CALCAR => "🖼️ calcando la imagen…",
         AYUDA => "📖 mirando la ayuda…",
         _ => "⚙️ trabajando…",
@@ -356,7 +428,19 @@ impl EnVivo {
             Evento::Texto(t) => {
                 self.texto.push_str(t);
                 self.estado = None;
+                self.pensando = false;
             }
+            Evento::Pensando(t) => {
+                self.pensamiento.push_str(t);
+                self.pensando = true;
+            }
+            Evento::PensoListo { segundos } => {
+                self.pensando = false;
+                // Con la nube piensa en cada vuelta: se suma.
+                *self.segundos.get_or_insert(0.0) += *segundos;
+            }
+            Evento::Peticion(p) => self.plan = Some(p.clone()),
+            Evento::Reinicio { .. } => self.reiniciado = true,
             Evento::Llamando(n) => self.estado = Some(rotulo_de(n)),
             Evento::Herramienta { llamada, .. } => {
                 // Lo que diga despues va en su linea, no pegado a lo de antes.
@@ -379,6 +463,15 @@ impl EnVivo {
     pub fn acabar(&mut self, r: &Result<Final, String>) {
         self.acabado = true;
         self.estado = None;
+        self.pensando = false;
+        // Un `</think>` suelto que se colo en el texto (ver `pensar::Separador`).
+        if self.texto.contains("</think>") {
+            let (pensado, texto) = pixpin_ia::pensar::separar(&self.texto);
+            if self.pensamiento.trim().is_empty() {
+                self.pensamiento = pensado;
+            }
+            self.texto = texto;
+        }
         match r {
             Ok(f) => {
                 if self.texto.trim().is_empty() {

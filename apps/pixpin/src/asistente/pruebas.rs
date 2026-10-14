@@ -43,7 +43,7 @@ fn hasta_el_final(turno: &mut Turno, escena: Option<&mut pixpin_motor2d::Escena>
             match &a {
                 Aviso::Evento(e) => vivo.aplicar(e),
                 Aviso::Fin { resultado } => vivo.acabar(resultado),
-                Aviso::TextoLeido { .. } => {}
+                Aviso::TextoLeido { .. } | Aviso::Registro(_) | Aviso::Citas(_) => {}
             }
             todos.push(a);
         }
@@ -899,7 +899,7 @@ fn hasta_el_final_largo(t: &mut Turno, escena: &mut pixpin_motor2d::Escena) -> (
                     vivo.aplicar(e)
                 }
                 Aviso::Fin { resultado } => vivo.acabar(resultado),
-                Aviso::TextoLeido { .. } => {}
+                Aviso::TextoLeido { .. } | Aviso::Registro(_) | Aviso::Citas(_) => {}
             }
             todos.push(a);
         }

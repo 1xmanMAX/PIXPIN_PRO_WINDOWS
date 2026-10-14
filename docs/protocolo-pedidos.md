@@ -36,7 +36,7 @@ el plugin de Flow Launcher (`apps/pixpin-lanzador`), y sirve igual para un scrip
 | `abrir` | `que: {tipo:"mensaje", proyecto, codigo}` | El chat en ese mensaje, resaltado |
 | `abrir` | `que: {tipo:"hoja", proyecto, referencia}` | Ese lienzo u hoja, en el lienzo |
 | `abrir` | `que: {tipo:"nota", proyecto, codigo}` | Esa nota en el editor de notas |
-| `abrir` | `que: {tipo:"fichero", ruta}` | Como «Abrir con PixPin» (lector, editor, pin). Un `.leccion` abre la ficha de esa lección |
+| `abrir` | `que: {tipo:"fichero", ruta, pagina?}` | Como «Abrir con PixPin» (lector, editor, pin). Un `.leccion` abre la ficha de esa lección. Con `pagina` (desde 1), un PDF, Word o PowerPoint se abre en esa página en vez de donde se dejó (las citas del asistente, `buscar_en_mis_cosas`) |
 | `chat` | `texto`, `proyecto?`, `imagenes?`, `archivos?` | Un mensaje de texto nuevo en ese chat. Con `imagenes` (rutas; `[img 01]` en `texto` = `imagenes[0]`), el texto sin sus fichas va primero y cada imagen detras como una foto del chat (un BMP se guarda como PNG). Con `archivos` (ver abajo), cada fichero va detras como un adjunto
 | `nota_nueva` | `texto?`, `proyecto?`, `imagenes?` | Una nota nueva, abierta en el editor. Con `imagenes`, cada `[img NN]` del texto queda como esa imagen dentro de la nota
 | `lienzo_nuevo` | `nombre?`, `proyecto?` | Un lienzo nuevo, abierto |
@@ -62,6 +62,77 @@ el plugin de Flow Launcher (`apps/pixpin-lanzador`), y sirve igual para un scrip
 | `lecciones` | `proyecto?`, `consulta?` | Abre la lista de lecciones (buscador, repaso de hoy, lista de comprobación). Con `proyecto`, primero las suyas y las que hablan de lo mismo; con `consulta`, ya buscando. Una sola ventana: pedirla otra vez la trae delante |
 | `enviar_al_movil` | `aparato`, `imagenes?`, `archivos?` | Manda esas imagenes (rutas absolutas) **al lienzo que el móvil `aparato` tiene abierto** (`aparato` es su `id` en el grupo, `sincro\identidad.json`), sin abrir Sincronizar en ninguno de los dos. Ver abajo. Sin nada que mandar, o con un fichero que no esta, no sale nada y se avisa |
 | `sincronizar` | `aparato` | Sincroniza con ese aparato del grupo (`id`), o con todos si `aparato` es `todos`, **sin abrir la ventana**: lo mismo que «Sincronizar con todos», sin preguntar y con lo elegido la última vez. Avisa al empezar y, al acabar, dice en el globo lo hecho o qué falló. Una sola a la vez. El plugin (`p s`) ensena si cada aparato contesta leyendo `sincroestado.json` (`{"cuando": ms, "responden": {id: bool}}`), que apunta la sonda de fondo. `enviar_al_movil` acepta también `aparato: "todos"` |
+| `asistente` | `texto?`, `proyecto?`, `imagenes?`, `automatizacion?` | **Le pide algo al asistente sin abrir el chat** (`p ia <pedido>` en Flow). Lo hace con el motor elegido en Ajustes → Asistente (local, Claude o DeepSeek), guarda la pregunta y la respuesta en el chat «Asistente» y lo dice en un **aviso flotante propio** (abajo a la derecha, sin robar el foco) con «Abrir». `proyecto`: el chat sobre el que se pide (se le dice al modelo y lo que cree sin chat —una tarea, una nota— va ahí). `imagenes` como en `chat` (`[img NN]` en `texto`): van al chat «Asistente» como fotos y el modelo las ve. Lo que borra o saca algo del PC **pregunta antes**. Sin `texto` ni `imagenes`, abre el chat «Asistente». Con `automatizacion` (su `id`), corre esa automatización ya. Ver abajo |
+| `automatizacion` | `operacion: "crear" \| "activar" \| "desactivar" \| "borrar" \| "ejecutar"`, `id?`, `receta?` | Las automatizaciones del asistente (ver abajo). `crear` lleva `receta` (`nombre`, `disparador: {tipo, hora?, dias?}`, `pasos`); las demás, el `id`. Lo hecho se dice en el globo; una receta que no vale no se guarda y se avisa del motivo. `borrar` no pregunta: quien lo manda ya preguntó |
+
+### El asistente desde fuera (`asistente`, 13-oct-2026)
+
+```json
+{ "pixpin": 1, "accion": "asistente", "texto": "apunta comprar yeso y mañana revisar el encofrado",
+  "proyecto": "pr-1789412424738", "imagenes": [] }
+```
+
+- La app contesta «aceptado» al momento y el turno va **en su hilo** (`automatizaciones::encargo`):
+  escribe la pregunta en el chat «Asistente» (como el pedido `chat`; con `proyecto`, la pregunta
+  lleva `@<nombre>`), hace nacer la burbuja de la respuesta y corre el turno con el mismo ejecutor
+  del chat: las acciones de la app van por este mismo protocolo, y lo dibujado, sin un lienzo
+  abierto, al lienzo del asistente en su chat.
+- Mientras piensa, el aviso dice «💭 …»; al acabar, la respuesta corta y **«Abrir»** (el chat en
+  esa respuesta). Se va solo a los 15 s, salvo con el ratón encima.
+- En el lanzador: `p ia <pedido>` o `p ? <pedido>` (también `asistente`, `ai`); `@proyecto` al
+  final elige el chat; Ctrl+V pega la imagen copiada (`[img 01]`), como en `p s`. `p ia` solo
+  ofrece abrir el chat «Asistente» y las automatizaciones «a mano», para correrlas.
+
+### Automatizaciones (`automatizacion`, 13-oct-2026)
+
+Una automatización es **un disparador y una lista de pasos**. Se crean pidiéndoselo al asistente
+(«cada vez que capture, ponlo en el chat de la obra y hazle OCR»: herramienta
+`crear_automatizacion`, que **pregunta antes**), se encienden, apagan, corren y borran en
+Ajustes → Asistente. El formato (JSON en camelCase, igual en el móvil) vive en
+`proyectos/<asistente>/android/guardados/asistente/automatizaciones.json`, que viaja como
+`pixpin:files/guardados/asistente/automatizaciones.json` porque lo señala un mensaje ARCHIVO fijo
+del chat «Asistente» (id `auto-automatizaciones`): **solo va a los aparatos propios** del grupo,
+como un `.leccion`.
+
+```json
+{ "version": 1,
+  "automatizaciones": [
+    { "id": "auto-1789412424738-0", "nombre": "Capturas a la obra con OCR", "activa": true,
+      "disparador": { "tipo": "al_capturar" },
+      "pasos": [
+        { "tipo": "accion", "herramienta": "escribir_en_chat", "args": { "texto": "Captura {fecha} {hora}" },
+          "proyecto": "Obra", "imagenes": ["{captura}"] },
+        { "tipo": "asistente", "pedido": "Hazle OCR a la captura", "imagenes": ["{captura}"] },
+        { "tipo": "accion", "herramienta": "escribir_en_chat", "args": { "texto": "{resultado}" }, "proyecto": "Obra" }
+      ],
+      "aparato": "K7Q2", "creada": 1789412424738, "tocada": 1789412424738 },
+    { "id": "auto-1789412500000-1", "nombre": "Resumen de pendientes", "activa": true,
+      "disparador": { "tipo": "a_la_hora", "hora": "08:00", "dias": [1, 2, 3, 4, 5] },
+      "pasos": [ { "tipo": "asistente", "pedido": "Resume mis tareas pendientes" } ] }
+  ] }
+```
+
+- `disparador.tipo`: `al_capturar` (al guardarse una captura nueva en la carpeta de capturas),
+  `a_la_hora` (`hora` local `HH:MM`; `dias` 1 lunes … 7 domingo, vacío = todos; si el aparato
+  estaba apagado a esa hora, corre al encenderse si no han pasado 6 h), `al_sincronizar` (al acabar
+  una vuelta de fondo que trajo algo) o `a_mano`.
+- Cada paso es `{"tipo":"accion", herramienta, args?, proyecto?, imagenes?}` —una fila de la tabla
+  del asistente (`crates/pixpin-ia/src/acciones.rs`, el pedido que armaría el asistente; `proyecto`
+  es el nombre o el id del chat)— o `{"tipo":"asistente", pedido, proyecto?, imagenes?}`, un turno
+  del asistente como `asistente` (al capturar, la captura va adjunta aunque no se diga).
+- Variables en cualquier texto: `{captura}`, `{resultado}` (lo que contestó el paso anterior),
+  `{fecha}`, `{hora}`, `{sincro}`, `{nombre}`. Los pasos van en orden y el primero que falla para
+  los demás.
+- `aparato`: el código del aparato que la creó, el único donde corre (que «a las 8» no salga dos
+  veces); sin él, en todos. Lo que ya corrió (`ultimas`) es de cada aparato y no viaja
+  (`<raiz>\asistente\automatizaciones-estado.json`).
+- **Sin bucles**: una `al_capturar` no puede capturar, una `al_sincronizar` no puede sincronizar y
+  ninguna puede crear automatizaciones (se rechaza al crearla y se bloquea al correr, también si lo
+  pide el asistente dentro de un paso); además, cada una corre como mucho 30 veces por hora y no
+  dos veces en 3 s.
+- Lo que borra o saca algo del PC **pregunta siempre**, también desde una automatización.
+- Una entrada que no se entiende (de una versión más nueva) se guarda tal cual y se lista como
+  rota. Al acabar cada vuelta sale el aviso flotante con lo que pasó.
 
 ### Una imagen al lienzo del móvil (`enviar_al_movil`, 6-oct-2026)
 
