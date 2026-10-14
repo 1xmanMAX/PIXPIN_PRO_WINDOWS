@@ -13,7 +13,9 @@
 //! - si nada encaja, las de siempre (dibujar, grafica y ayuda).
 
 use crate::acciones::{ACCIONES, normalizar};
-use crate::herramientas::{AYUDA, CALCAR, DIBUJAR, GRAFICA, Herramienta, OCR, catalogo_base};
+use crate::herramientas::{
+    AYUDA, CALCAR, CRONOGRAMA, DIBUJAR, ECUACION, FIGURAS, FUNCION, GRAFICA, Herramienta, OCR, SVG, catalogo_base,
+};
 
 /// Cuantas herramientas como mucho por turno.
 pub const MAXIMO: usize = 6;
@@ -30,8 +32,42 @@ fn claves_base(nombre: &str) -> &'static [&'static str] {
         OCR => &["ocr", "escanead", "texto de", "lee el", "leer el", "extrae", "reconoce"],
         CALCAR => &["calca", "copia", "imagen", "foto", "contorno", "pasa este", "pasa esta", "replica"],
         AYUDA => &["ayuda", "explica", "funciona", "sirve", "donde", "atajo", "menu"],
+        SVG => &[
+            "ilustra", "svg", "detall", "isometric", "realist", "persona", "animal", "perro", "gato", "arbol", "paisaje",
+            "retrato", "a lapiz", "grafito", "boceto", "logo", "icono", "pajaro", "flor", "coche", "edificio",
+        ],
+        FUNCION => &[
+            "funcion", "funciones", "f(x)", "y=", "y =", "parabola", "seno", "coseno", "plano cartesiano", "dominio",
+            "x^", "x²", "sin(", "cos(", "recta y",
+        ],
+        ECUACION => &[
+            "ecuacion", "ecuaciones", "formula", "latex", "fraccion", "raiz cuadrada", "integral", "teorema", "pitagoras",
+            "cuadratica", "derivada",
+        ],
+        CRONOGRAMA => &[
+            "cronograma", "gantt", "planificacion", "programacion de obra", "hitos", "plazos", "calendario de",
+            "semanas", "fases",
+        ],
+        FIGURAS => &[
+            "guarda esto", "guardalo", "guardala", "como figura", "biblioteca", "figura guardada", "figuras guardadas",
+            "mis figuras", "pon el", "pon la", "inserta el", "inserta la", "estampa", "guarda el", "guarda la",
+        ],
+        crate::documentos::BUSCAR => &[
+            "busca en mis", "buscame", "mis notas", "mis documentos", "mis archivos", "mis cosas", "mis chats",
+            "mis mensajes", "que dice", "dice la", "dice el", "segun mi", "segun la", "segun el", "tesis", "mande",
+            "envie", "guarde", "apunte", "anote", "documento", "informe", "presupuesto", "plano", "memoria",
+            "expediente", "contrato", "acta", "notas",
+        ],
         _ => &[],
     }
+}
+
+/// Si el pedido es sobre lo que el usuario tiene guardado («¿que dice la
+/// tesis…?», «¿donde mande…?»): entonces un «¿donde…?» no es una pregunta
+/// sobre la app y no se queda solo con la ayuda.
+pub fn es_sobre_sus_documentos(q: &str) -> bool {
+    let palabras: Vec<&str> = q.split(|c: char| !c.is_alphanumeric()).filter(|p| !p.is_empty()).collect();
+    puntuar(claves_base(crate::documentos::BUSCAR), q, &palabras) >= 2
 }
 
 /// Lo que puntua un juego de claves en un pedido normalizado.
@@ -87,6 +123,17 @@ pub fn pide_la_imagen(palabras: &[&str]) -> bool {
     calca || con_pronombre || (palabras.iter().any(verbo) && objeto)
 }
 
+/// Si el pedido sobre una imagen quiere una interpretacion (dibujarla con
+/// figuras, a lapiz, con grafito, como boceto) y no una copia exacta.
+pub fn pide_interpretar(q: &str) -> bool {
+    [
+        "con figuras", "con formas", "a lapiz", "con lapiz", "grafito", "boceto", "bosquejo", "interpret", "ilustra",
+        "estilo", "caricatura", "a mano", "dibujo de", "en svg", "isometric",
+    ]
+    .iter()
+    .any(|c| q.contains(c))
+}
+
 /// **Las herramientas para este pedido.** `con_imagen`: si el mensaje trae
 /// una foto (para calcarla).
 ///
@@ -104,9 +151,20 @@ pub fn para_el_pedido(pedido: &str, con_imagen: bool) -> Vec<Herramienta> {
         .filter(|p| !p.is_empty())
         .collect();
     if es_pregunta_de_ayuda(&q) {
+        // «¿Donde mande el plano?» es sobre sus cosas, no sobre la app:
+        // primero buscar, y la ayuda por si acaso.
+        if es_sobre_sus_documentos(&q) {
+            return [crate::documentos::BUSCAR, AYUDA].iter().filter_map(|n| de(n)).collect();
+        }
         return de(AYUDA).into_iter().collect();
     }
     if con_imagen && pide_la_imagen(&palabras) {
+        // «Dibujala con figuras», «a lapiz», «con grafito»: interpretarla,
+        // no calcarla. El modelo la ve y la redibuja con las herramientas
+        // del lienzo (o en SVG, que da curvas).
+        if pide_interpretar(&q) {
+            return [SVG, DIBUJAR].iter().filter_map(|n| de(n)).collect();
+        }
         return de(CALCAR).into_iter().collect();
     }
     if es_charla(&q, &palabras) {
@@ -200,6 +258,17 @@ mod pruebas {
     }
 
     #[test]
+    fn las_preguntas_sobre_sus_documentos_llevan_buscar() {
+        let b = crate::documentos::BUSCAR;
+        assert_eq!(nombres("¿Qué dice la tesis sobre las cunetas?", false)[0], b);
+        assert_eq!(nombres("busca en mis notas lo del presupuesto", false)[0], b);
+        assert_eq!(nombres("¿Dónde mandé el plano de cunetas?", false), vec![b, "ayuda_app"]);
+        // Lo de la app sigue siendo solo ayuda.
+        assert_eq!(nombres("¿Donde estan los ajustes de PixPin?", false), vec!["ayuda_app"]);
+        assert!(!nombres("Dibuja un circulo rojo", false).contains(&b.to_string()));
+    }
+
+    #[test]
     fn sin_imagen_no_se_ofrece_calcar() {
         assert!(!nombres("copia el circulo", false).contains(&"calcar_imagen".to_string()));
         // Un saludo con una foto no es pedir que se calque.
@@ -218,6 +287,35 @@ mod pruebas {
         ] {
             assert_eq!(nombres(pedido, true), vec!["calcar_imagen"], "«{pedido}»");
         }
+    }
+
+    #[test]
+    fn las_herramientas_nuevas_salen_cuando_vienen_a_cuento() {
+        for (pedido, debe) in [
+            ("Dibuja un arbol en isometrico para arquitectura", "dibujar_svg"),
+            ("Grafica la funcion y = x^2 entre -3 y 3", "graficar_funcion"),
+            ("Escribe la formula cuadratica en el lienzo", "escribir_ecuacion"),
+            ("Hazme un cronograma de la obra con sus hitos", "cronograma"),
+            ("Guarda esto como arbol isometrico", "figuras_guardadas"),
+            ("Pon el arbol isometrico en el lienzo", "figuras_guardadas"),
+        ] {
+            let n = nombres(pedido, false);
+            assert!(n.iter().any(|x| x == debe), "«{pedido}» → {n:?}");
+        }
+    }
+
+    #[test]
+    fn una_foto_a_lapiz_o_con_figuras_se_interpreta_no_se_calca() {
+        for pedido in [
+            "Dibuja esta persona con figuras",
+            "dibuja este perro a lapiz",
+            "Haz un boceto con grafito de esta foto",
+        ] {
+            let n = nombres(pedido, true);
+            assert!(!n.contains(&"calcar_imagen".to_string()), "«{pedido}» → {n:?}");
+            assert!(n.contains(&"dibujar_svg".to_string()) && n.contains(&"dibujar_en_lienzo".to_string()), "«{pedido}» → {n:?}");
+        }
+        assert_eq!(nombres("Copia esta imagen en el lienzo", true), vec!["calcar_imagen"]);
     }
 
     #[test]

@@ -35,9 +35,44 @@ use crate::overlay::Recursos;
 /// La caja flotante a la que se sueltan ficheros para un proyecto (2-oct).
 // El asistente local en la conversacion (`crate::asistente`).
 mod asistente;
+/// El aviso flotante del asistente sin el chat (Flow, automatizaciones).
+mod aviso_asistente;
 // Hablarle al asistente y oir sus respuestas (13-oct).
 mod voz_del_asistente;
 mod caja_de_soltar;
+
+/// **El asistente sin la ventana del chat** (`crate::automatizaciones`):
+/// lo que el chat ya sabe hacer con su conversacion cerrada (meter lo
+/// dibujado en el lienzo del asistente, dejar el texto de un OCR, elegir el
+/// motor de Ajustes) y el aviso flotante con «Abrir».
+pub(crate) mod sin_ventana {
+    pub(crate) use super::aviso_asistente::{Aviso, lanzar as avisar};
+    use pixpin_store::{Catalogo, Ubicacion};
+
+    /// Lo dibujado, al lienzo del asistente en el chat `proyecto`: el
+    /// resumen para el modelo y la referencia del lienzo.
+    pub(crate) fn al_lienzo(ubicacion: &Ubicacion, proyecto: &str, documento: &str) -> Result<(String, String), String> {
+        super::asistente::meter_en_el_lienzo_del_chat(ubicacion, None, proyecto, None, documento)
+    }
+
+    /// El texto entero de un OCR, al chat (nota y `.txt`).
+    pub(crate) fn texto_leido(
+        ubicacion: &Ubicacion,
+        proyecto: &str,
+        de: &crate::asistente::turno::Adjunto,
+        texto: &str,
+    ) -> std::io::Result<()> {
+        super::asistente::dejar_texto_leido(ubicacion.raiz(), None, proyecto, de, texto)
+    }
+
+    /// El motor elegido en Ajustes → Asistente.
+    pub(crate) fn motor(
+        ubicacion: &Ubicacion,
+        textos: &Catalogo,
+    ) -> Result<std::sync::Arc<dyn pixpin_ia::motor::Motor>, String> {
+        super::asistente::motor_de_los_ajustes(ubicacion, textos)
+    }
+}
 /// La descripcion de una foto: su `texto`, como en el movil (3-oct).
 mod descripcion;
 /// Donde se guarda cada proyecto (su carpeta elegida o la habitual).
@@ -1450,7 +1485,14 @@ pub fn abrir(
                                         abrir_lienzo = Some(j);
                                         Efecto::Nada
                                     }
-                                    None => abrir_enlace(a, i, textos),
+                                    // «Abrir fuente»: el documento citado, en su pagina.
+                                    None => match asistente::fuente_de(a, i) {
+                                        Some(f) => {
+                                            asistente::abrir_fuente(&f);
+                                            Efecto::Nada
+                                        }
+                                        None => abrir_enlace(a, i, textos),
+                                    },
                                 },
                                 Zona::LeerRespuesta(i) => {
                                     match voz_del_asistente::alternar(ubicacion, a, i, textos) {
@@ -6822,6 +6864,25 @@ fn medir_mensaje(
         url: String::new(),
         donde: textos.t("asistente-abrir-lienzo"),
         de_que: crate::asistente::chat::nombre_de_lienzo(l),
+    });
+    // Si cito los documentos del usuario, «Abrir fuente»: el primero que
+    // nombro, en su pagina o su mensaje (`asistente::fuente_de`).
+    let lienzo_ia = lienzo_ia.or_else(|| {
+        asistente::fuente_de(a, indice).map(|f| {
+            let mut de_que = textos.t("asistente-abrir-fuente");
+            if !f.proyecto.is_empty() {
+                de_que.push_str(&format!(" · {}", f.proyecto));
+            }
+            if f.mas > 0 {
+                de_que.push_str(&format!(" · +{}", f.mas));
+            }
+            tarjetas::Enlace {
+                // No es una direccion: el clic lo lleva `asistente::fuente_de`.
+                url: "pixpin:fuente".into(),
+                donde: f.titulo,
+                de_que,
+            }
+        })
     });
     let enlace = matches!(m.clase, None | Some(pixpin_proyecto::cuaderno::Clase::Nota))
         .then(|| lienzo_ia.or_else(|| tarjetas::primer_enlace(&m.texto)))

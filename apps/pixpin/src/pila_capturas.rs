@@ -273,6 +273,10 @@ impl PilaCapturas {
         std::thread::spawn(move || {
             let hecho = pixpin_codec::guardar(&imagen, &ruta, pixpin_codec::FormatoImagen::Png)
                 .map_err(|e| e.to_string());
+            // Las automatizaciones «al capturar» (13-oct): con el PNG ya escrito.
+            if hecho.is_ok() {
+                crate::automatizaciones::motor::al_capturar(&ruta);
+            }
             let _ = tx.send((ruta, hecho));
             pixpin_shell::despertar(HWND(aviso as *mut _));
         });

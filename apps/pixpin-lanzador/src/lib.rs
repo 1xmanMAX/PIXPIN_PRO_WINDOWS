@@ -19,6 +19,7 @@
 //! que es la unica que escribe sus ficheros.
 
 pub mod al_movil;
+pub mod asistente;
 pub mod capturas;
 pub mod chat;
 pub mod consulta;

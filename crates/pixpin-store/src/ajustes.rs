@@ -533,6 +533,10 @@ pub struct Asistente {
     /// Si la nube falla (red, clave, saldo), seguir con el modelo local si
     /// esta bajado.
     pub respaldo_local: bool,
+    /// Si con un motor de la nube se le pueden mandar trozos de los
+    /// documentos propios (`buscar_en_mis_cosas`): vacio = preguntar la
+    /// primera vez, `si` o `no` (13-oct-2026).
+    pub documentos_a_la_nube: String,
     /// Voz (13-oct-2026): lo dicho al microfono del asistente se deja en la
     /// caja para repasarlo antes de enviarlo, en vez de enviarse solo.
     pub revisar_lo_dicho: bool,
@@ -547,6 +551,7 @@ impl Default for Asistente {
             modelo: String::new(),
             motor: String::new(),
             respaldo_local: true,
+            documentos_a_la_nube: String::new(),
             pensar: None,
             revisar_lo_dicho: false,
             leer_respuestas: false,

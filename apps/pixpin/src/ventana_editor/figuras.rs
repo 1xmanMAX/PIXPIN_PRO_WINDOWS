@@ -99,6 +99,7 @@ pub(super) fn estampar_en_la_vista(
         return false;
     }
     let figura = FiguraGuardada {
+        id: biblioteca::id_nuevo(),
         nombre: nombre.to_string(),
         elementos: biblioteca::normalizar(elementos),
     };
@@ -165,59 +166,20 @@ pub(super) fn pegar_tabla(
 /// Donde viven las figuras guardadas: **un fichero aparte y no dentro de
 /// cada dibujo** (`BibliotecaStore` del movil), para que una figura guardada
 /// en un croquis este puesta al abrir el siguiente.
-pub(super) fn ruta_biblioteca() -> PathBuf {
-    let dir_exe = std::env::current_exe()
-        .ok()
-        .and_then(|p| p.parent().map(std::path::Path::to_path_buf))
-        .unwrap_or_default();
-    let appdata = std::env::var_os("APPDATA")
-        .map(PathBuf::from)
-        .unwrap_or_default();
-    pixpin_store::resolver(&dir_exe, &appdata)
-        .raiz()
-        .join("figuras.json")
+pub(crate) fn ruta_biblioteca() -> PathBuf {
+    // En el chat «Asistente», para que viaje con los aparatos propios.
+    crate::biblioteca_figuras::ruta()
 }
 
-/// Las figuras guardadas, o ninguna. Un fichero ilegible es como si no
-/// hubiera: perderlas es malo, no poder abrir el lienzo por ellas es peor.
-///
-/// Se lee figura a figura y pieza a pieza: una pieza de un tipo que ya no
-/// existe (el cronograma, que se quito) se salta en vez de tirar la lista
-/// entera, que al guardar la siguiente borraria todas las figuras.
+/// Las figuras guardadas, o ninguna (`biblioteca::cargar`: lee el formato
+/// del movil y el viejo del PC, y salta lo que no entiende pieza a pieza).
 pub(super) fn cargar_biblioteca(ruta: &std::path::Path) -> Vec<FiguraGuardada> {
-    let Some(lista) = std::fs::read(ruta)
-        .ok()
-        .and_then(|b| serde_json::from_slice::<Vec<serde_json::Value>>(&b).ok())
-    else {
-        return Vec::new();
-    };
-    lista
-        .into_iter()
-        .filter_map(|mut v| {
-            if let Ok(f) = serde_json::from_value::<FiguraGuardada>(v.clone()) {
-                return Some(f);
-            }
-            let piezas = v.get_mut("elementos")?.as_array_mut()?;
-            piezas.retain(|p| serde_json::from_value::<Elemento>(p.clone()).is_ok());
-            if piezas.is_empty() {
-                return None;
-            }
-            serde_json::from_value::<FiguraGuardada>(v).ok()
-        })
-        .collect()
+    biblioteca::cargar(ruta)
 }
 
-/// Escribe la lista entera, a un temporal y renombrando: un corte a medias
-/// no puede dejar la biblioteca rota.
+/// Escribe la lista entera en el formato del movil (`biblioteca::guardar`).
 pub(super) fn guardar_biblioteca(ruta: &std::path::Path, figuras: &[FiguraGuardada]) -> bool {
-    let Ok(datos) = serde_json::to_vec(figuras) else {
-        return false;
-    };
-    if let Some(dir) = ruta.parent() {
-        let _ = std::fs::create_dir_all(dir);
-    }
-    let temporal = ruta.with_extension("json.tmp");
-    std::fs::write(&temporal, datos).is_ok() && std::fs::rename(&temporal, ruta).is_ok()
+    crate::biblioteca_figuras::guardar(ruta, figuras)
 }
 
 // ---------------------------------------------------------------------------
@@ -2384,6 +2346,7 @@ mod pruebas {
     fn el_menu_ofrece_las_de_fabrica_y_las_propias_y_guardar_solo_con_algo_elegido() {
         let t = catalogo();
         let propia = FiguraGuardada {
+            id: "n".into(),
             nombre: "Norte".into(),
             elementos: vec![Elemento::default()],
         };
@@ -2730,11 +2693,20 @@ mod pruebas {
         let dir = std::env::temp_dir().join(format!("pixpin-figuras-{}", std::process::id()));
         let ruta = dir.join("figuras.json");
         let f = FiguraGuardada {
+            id: "s".into(),
             nombre: "Sello".into(),
-            elementos: vec![Elemento::default()],
+            elementos: vec![Elemento {
+                figura: pixpin_motor2d::elemento::Figura::Rectangulo,
+                ancho: 10.0,
+                alto: 10.0,
+                ..Elemento::default()
+            }],
         };
         assert!(guardar_biblioteca(&ruta, std::slice::from_ref(&f)));
-        assert_eq!(cargar_biblioteca(&ruta), vec![f]);
+        let leidas = cargar_biblioteca(&ruta);
+        assert_eq!(leidas.len(), 1);
+        assert_eq!((leidas[0].id.as_str(), leidas[0].nombre.as_str()), ("s", "Sello"));
+        assert_eq!(leidas[0].tamano(), f.tamano());
         std::fs::write(&ruta, b"{roto").unwrap();
         assert!(cargar_biblioteca(&ruta).is_empty());
         let _ = std::fs::remove_dir_all(&dir);
@@ -2747,6 +2719,7 @@ mod pruebas {
         let dir = std::env::temp_dir().join(format!("pixpin-figuras-cr-{}", std::process::id()));
         let ruta = dir.join("figuras.json");
         let buena = FiguraGuardada {
+            id: "s".into(),
             nombre: "Sello".into(),
             elementos: vec![Elemento::default()],
         };
@@ -2761,7 +2734,8 @@ mod pruebas {
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(&ruta, serde_json::to_vec(&v).unwrap()).unwrap();
         let leidas = cargar_biblioteca(&ruta);
-        assert_eq!(leidas, vec![buena.clone(), buena], "sin el cronograma, lo demas");
+        assert_eq!(leidas.len(), 2, "sin el cronograma, lo demas");
+        assert!(leidas.iter().all(|f| f.nombre == buena.nombre && f.elementos.len() == 1));
         let _ = std::fs::remove_dir_all(&dir);
     }
 

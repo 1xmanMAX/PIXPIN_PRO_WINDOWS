@@ -178,6 +178,25 @@ const VK_MENOS_NUM: u32 = 0x6D;
 const VK_CORCHETE_ABRE: u32 = 0xDB;
 const VK_CORCHETE_CIERRA: u32 = 0xDD;
 
+/// Las paginas pedidas para la proxima vez que se abra cada fichero (la
+/// cita del asistente: `abrir` con `pagina`). Se toman al abrir.
+static PAGINA_AL_ABRIR: std::sync::Mutex<Vec<(std::path::PathBuf, u32)>> = std::sync::Mutex::new(Vec::new());
+
+/// **Que la proxima vez que se abra `ruta` empiece en `pagina`** (desde 0),
+/// en vez de donde se dejo.
+pub fn abrir_en_la_pagina(ruta: &Path, pagina: u32) {
+    let mut v = PAGINA_AL_ABRIR.lock().unwrap_or_else(|e| e.into_inner());
+    v.retain(|(r, _)| r != ruta);
+    v.push((ruta.to_path_buf(), pagina));
+}
+
+/// La pagina pedida para `ruta`, si la hay (y se olvida).
+fn tomar_pagina_al_abrir(ruta: &Path) -> Option<u32> {
+    let mut v = PAGINA_AL_ABRIR.lock().unwrap_or_else(|e| e.into_inner());
+    let i = v.iter().position(|(r, _)| r == ruta)?;
+    Some(v.remove(i).1)
+}
+
 /// Abre el lector con ese PDF, en su propio hilo (como el visor).
 pub fn lanzar(idioma: pixpin_store::Idioma, ubicacion: Ubicacion, ruta: &Path) {
     let ruta = ruta.to_path_buf();
@@ -781,7 +800,11 @@ fn abrir_con(
     };
 
     // Con lo que viaja del chat encima, si es un adjunto (v0.96).
-    let ajustes = crate::anotado_del_adjunto::leer(ruta);
+    let mut ajustes = crate::anotado_del_adjunto::leer(ruta);
+    // Abierto desde una cita del asistente: en esa pagina, arriba.
+    if let Some(p) = tomar_pagina_al_abrir(ruta) {
+        ajustes.pagina = f64::from(p);
+    }
     let mut e = Estado {
         nombre: pixpin_docs::sin_extension(&pixpin_docs::nombre(ruta)),
         marcas: marcas::de_texto(&ajustes.marcas),

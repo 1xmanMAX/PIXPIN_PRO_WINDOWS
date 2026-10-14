@@ -43,7 +43,7 @@ fn hasta_el_final(turno: &mut Turno, escena: Option<&mut pixpin_motor2d::Escena>
             match &a {
                 Aviso::Evento(e) => vivo.aplicar(e),
                 Aviso::Fin { resultado } => vivo.acabar(resultado),
-                Aviso::TextoLeido { .. } | Aviso::Registro(_) => {}
+                Aviso::TextoLeido { .. } | Aviso::Registro(_) | Aviso::Citas(_) => {}
             }
             todos.push(a);
         }
@@ -899,7 +899,7 @@ fn hasta_el_final_largo(t: &mut Turno, escena: &mut pixpin_motor2d::Escena) -> (
                     vivo.aplicar(e)
                 }
                 Aviso::Fin { resultado } => vivo.acabar(resultado),
-                Aviso::TextoLeido { .. } | Aviso::Registro(_) => {}
+                Aviso::TextoLeido { .. } | Aviso::Registro(_) | Aviso::Citas(_) => {}
             }
             todos.push(a);
         }
@@ -974,4 +974,24 @@ fn demo_perrito() {
     pintar_a_png(&escena, &salida.join(nombre));
     motor.soltar();
     assert!(escena.cuantos_visibles() >= 4, "{}", vivo.mostrar());
+}
+
+/// «Guarda esto como figura»: el lienzo abierto contesta con lo elegido, y
+/// solo si alguien pregunto (casos negativos: sin pregunta no contesta; sin
+/// nada elegido, lista vacia).
+#[test]
+fn el_lienzo_abierto_da_lo_elegido_solo_si_se_lo_piden() {
+    let mut escena = pixpin_motor2d::Escena::nueva();
+    let a = escena.anadir(pixpin_motor2d::Elemento { ancho: 10.0, alto: 10.0, ..Default::default() });
+    let _b = escena.anadir(pixpin_motor2d::Elemento { ancho: 5.0, alto: 5.0, ..Default::default() });
+    // Sin pregunta: nada que hacer.
+    al_lienzo::contestar_lo_elegido(&escena, &[a]);
+    let rx = al_lienzo::pedir_lo_elegido();
+    al_lienzo::contestar_lo_elegido(&escena, &[a]);
+    let piezas = rx.recv_timeout(Duration::from_secs(1)).unwrap();
+    assert_eq!(piezas.len(), 1);
+    assert_eq!(piezas[0].ancho, 10.0);
+    let rx = al_lienzo::pedir_lo_elegido();
+    al_lienzo::contestar_lo_elegido(&escena, &[]);
+    assert!(rx.recv_timeout(Duration::from_secs(1)).unwrap().is_empty());
 }

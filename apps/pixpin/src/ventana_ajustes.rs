@@ -303,6 +303,9 @@ enum Clave {
     AsistenteMotor,
     /// Seguir con el local si la nube falla (`[asistente] respaldo_local`).
     AsistenteRespaldo,
+    /// Si lo hallado en los documentos puede ir a la nube
+    /// (`[asistente] documentos_a_la_nube`).
+    AsistenteDocsNube,
     /// Ver lo dicho al microfono del asistente antes de enviarlo
     /// (`[asistente] revisar_lo_dicho`).
     AsistenteRevisarVoz,
@@ -313,6 +316,13 @@ enum Clave {
     ClaveNube(u8),
     /// Borrar la clave guardada de un proveedor.
     BorrarClave(u8),
+    /// Una automatizacion del asistente, por su posicion en la lista: su
+    /// interruptor y su aspa (13-oct). No es un ajuste: vive en su JSON.
+    Automatizacion(u16),
+    /// «Correr ahora» de una automatizacion a mano.
+    CorrerAutomatizacion(u16),
+    /// La fila de «ninguna todavia».
+    SinAutomatizaciones,
     // Sincronizar
     Presencia,
     LoMioManda,
@@ -349,6 +359,9 @@ impl Clave {
                 | Clave::PalabrasFabrica
                 | Clave::ClaveNube(_)
                 | Clave::BorrarClave(_)
+                | Clave::Automatizacion(_)
+                | Clave::CorrerAutomatizacion(_)
+                | Clave::SinAutomatizaciones
         )
     }
 }
@@ -376,6 +389,138 @@ struct Contexto<'a> {
     t: &'a Catalogo,
     /// La carpeta de las capturas, para ensenarla y abrirla.
     carpeta: String,
+    /// Las automatizaciones del asistente, leidas de su JSON al abrir y
+    /// despues de cada cambio (no estan en `Ajustes`).
+    automatizaciones: Vec<crate::automatizaciones::Resumen>,
+}
+
+/// Las automatizaciones de este PC, para la lista. Sin chat «Asistente»
+/// todavia, ninguna (no se crea solo por mirar).
+fn leer_automatizaciones(ubicacion: &Ubicacion) -> Vec<crate::automatizaciones::Resumen> {
+    let raiz = ubicacion.raiz();
+    let indice = pixpin_proyecto::almacen::Indice::leer(raiz);
+    let Some(f) = indice.proyectos.iter().find(|f| f.es_asistente()) else {
+        return Vec::new();
+    };
+    let aparato = codigo_del_equipo(raiz);
+    match crate::automatizaciones::leer_de(&pixpin_proyecto::almacen::carpeta(raiz, &f.id)) {
+        Ok(l) => crate::automatizaciones::resumenes(&l, &aparato),
+        Err(e) => {
+            tracing::warn!(%e, "ajustes: las automatizaciones no se entienden");
+            Vec::new()
+        }
+    }
+}
+
+/// El codigo de este equipo (`K7Q2`), el de las automatizaciones nuevas.
+fn codigo_del_equipo(raiz: &std::path::Path) -> String {
+    let nombre = std::env::var("COMPUTERNAME").unwrap_or_else(|_| "PixPin Max".into());
+    pixpin_proyecto::identidad::Identidad::leer_o_crear(raiz, &nombre)
+        .map(|i| i.yo.codigo())
+        .unwrap_or_default()
+}
+
+/// Las filas de las automatizaciones: cada una con su interruptor y su
+/// aspa; las «a mano», con «Correr ahora» debajo.
+fn filas_de_automatizaciones(cx: &Contexto) -> Vec<(Clave, Fila)> {
+    let t = cx.t;
+    let mut v = vec![(Clave::Grupo, Fila::grupo(t.t("ajustes2-g-automatizaciones")))];
+    if cx.automatizaciones.is_empty() {
+        v.push((
+            Clave::SinAutomatizaciones,
+            Fila {
+                etiqueta: t.t("ajustes2-automatizaciones-vacio"),
+                ayuda: t.t("ajustes2-ayuda-automatizaciones-vacio"),
+                control: Control::Nada,
+                cambiado: false,
+                quitar: false,
+            },
+        ));
+        return v;
+    }
+    for (i, r) in cx.automatizaciones.iter().enumerate() {
+        let i = i as u16;
+        let mut args = FluentArgs::new();
+        let (ayuda, control) = match (&r.rota, &r.otro_aparato) {
+            (Some(m), _) => {
+                args.set("motivo", m.clone());
+                (t.t_args("ajustes2-automatizacion-rota", &args), Control::Nada)
+            }
+            (None, Some(ap)) => {
+                args.set("aparato", ap.clone());
+                (
+                    format!("{} · {}", r.detalle, t.t_args("ajustes2-automatizacion-otro-aparato", &args)),
+                    Control::Interruptor(r.activa),
+                )
+            }
+            (None, None) => (r.detalle.clone(), Control::Interruptor(r.activa)),
+        };
+        v.push((
+            Clave::Automatizacion(i),
+            Fila {
+                etiqueta: r.nombre.clone(),
+                ayuda,
+                control,
+                cambiado: false,
+                quitar: true,
+            },
+        ));
+        if r.a_mano && r.otro_aparato.is_none() && r.rota.is_none() {
+            v.push((
+                Clave::CorrerAutomatizacion(i),
+                Fila {
+                    etiqueta: format!("▶ {}", r.nombre),
+                    ayuda: r.detalle.clone(),
+                    control: Control::Boton(t.t("ajustes2-automatizacion-correr")),
+                    cambiado: false,
+                    quitar: false,
+                },
+            ));
+        }
+    }
+    v
+}
+
+/// **Lo que se toca de una automatizacion** en la lista: encender o apagar
+/// (`Parte::Alternar`), borrarla preguntando (`Parte::Quitar`) o correrla
+/// (`Parte::Pulsar`). Devuelve si cambio la lista (hay que releerla).
+fn tocar_automatizacion(clave: Clave, parte: Parte, cx: &Contexto, ubicacion: &Ubicacion, hwnd: HWND) -> bool {
+    use crate::automatizaciones as au;
+    let (Clave::Automatizacion(i) | Clave::CorrerAutomatizacion(i)) = clave else {
+        return false;
+    };
+    let Some(r) = cx.automatizaciones.get(i as usize) else {
+        return false;
+    };
+    let raiz = ubicacion.raiz();
+    let ahora = pixpin_shell::entorno::ahora_utc_ms();
+    let aparato = codigo_del_equipo(raiz);
+    let hecho = match (clave, parte) {
+        (Clave::Automatizacion(_), Parte::Alternar) if r.rota.is_none() => {
+            au::cambiar(raiz, &aparato, ahora, |l| Ok(l.activar(&r.id, !r.activa, ahora)))
+        }
+        (Clave::Automatizacion(_), Parte::Quitar) => {
+            let mut args = FluentArgs::new();
+            args.set("nombre", r.nombre.clone());
+            let pregunta = cx.t.t_args("ajustes2-automatizacion-borrar", &args);
+            if !pixpin_shell::dialogo::confirmar_destructivo(hwnd, "PixPin · Asistente", &pregunta) {
+                return false;
+            }
+            au::cambiar(raiz, &aparato, ahora, |l| Ok(l.borrar(&r.id)))
+        }
+        (Clave::CorrerAutomatizacion(_), Parte::Pulsar) => {
+            au::motor::a_mano(&r.id);
+            return false;
+        }
+        _ => return false,
+    };
+    match hecho {
+        Ok(cambio) => cambio,
+        Err(e) => {
+            tracing::warn!(%e, "ajustes: no se pudo cambiar la automatizacion");
+            false
+        }
+    }
 }
 
 impl Contexto<'_> {
@@ -890,6 +1035,27 @@ fn filas_de_seccion(s: Seccion, a: &Ajustes, cx: &Contexto) -> Vec<(Clave, Fila)
                     tt("ajustes2-ayuda-asistente-respaldo"),
                     Control::Interruptor(a.asistente.respaldo_local),
                 ),
+                // Lo hallado en los documentos del usuario, ¿a la nube?
+                // (`buscar_en_mis_cosas`; por omision se pregunta la
+                // primera vez).
+                op(
+                    a,
+                    Clave::AsistenteDocsNube,
+                    tt("ajustes2-asistente-docs-nube"),
+                    tt("ajustes2-ayuda-asistente-docs-nube"),
+                    opcion(
+                        vec![
+                            tt("ajustes2-docs-nube-preguntar"),
+                            tt("ajustes2-docs-nube-si"),
+                            tt("ajustes2-docs-nube-no"),
+                        ],
+                        match crate::asistente::documentos::PermisoNube::de(&a.asistente.documentos_a_la_nube) {
+                            crate::asistente::documentos::PermisoNube::Preguntar => 0,
+                            crate::asistente::documentos::PermisoNube::Si => 1,
+                            crate::asistente::documentos::PermisoNube::No => 2,
+                        },
+                    ),
+                ),
                 // La voz: el microfono de la caja (Whisper) y el altavoz de
                 // las respuestas (el lector de voz de la app). Valen igual
                 // con los tres motores.
@@ -933,6 +1099,7 @@ fn filas_de_seccion(s: Seccion, a: &Ajustes, cx: &Contexto) -> Vec<(Clave, Fila)
                     ));
                 }
             }
+            v.extend(filas_de_automatizaciones(cx));
             v
         }
         Seccion::Atajos => {
@@ -1227,6 +1394,7 @@ fn restablecer(clave: Clave, a: &mut Ajustes) {
         Clave::AsistentePensar => a.asistente.pensar = d.asistente.pensar,
         Clave::AsistenteMotor => a.asistente.motor = d.asistente.motor.clone(),
         Clave::AsistenteRespaldo => a.asistente.respaldo_local = d.asistente.respaldo_local,
+        Clave::AsistenteDocsNube => a.asistente.documentos_a_la_nube = d.asistente.documentos_a_la_nube.clone(),
         Clave::AsistenteRevisarVoz => a.asistente.revisar_lo_dicho = d.asistente.revisar_lo_dicho,
         Clave::AsistenteLeerSiempre => a.asistente.leer_respuestas = d.asistente.leer_respuestas,
         Clave::Presencia => a.sincro.presencia = d.sincro.presencia,
@@ -1257,7 +1425,10 @@ fn restablecer(clave: Clave, a: &mut Ajustes) {
         | Clave::Fichero
         | Clave::PalabrasFabrica
         | Clave::ClaveNube(_)
-        | Clave::BorrarClave(_) => {}
+        | Clave::BorrarClave(_)
+        | Clave::Automatizacion(_)
+        | Clave::CorrerAutomatizacion(_)
+        | Clave::SinAutomatizaciones => {}
     }
 }
 
@@ -1439,6 +1610,14 @@ fn aplicar_opcion(a: &mut Ajustes, clave: Clave, cual: usize) {
                 .copied()
                 .unwrap_or(crate::asistente::nube::Eleccion::Local);
             a.asistente.motor = crate::asistente::nube::id_de(e).to_string();
+        }
+        Clave::AsistenteDocsNube => {
+            use crate::asistente::documentos::PermisoNube;
+            let p = [PermisoNube::Preguntar, PermisoNube::Si, PermisoNube::No]
+                .get(cual)
+                .copied()
+                .unwrap_or(PermisoNube::Preguntar);
+            a.asistente.documentos_a_la_nube = p.clave().to_string();
         }
         Clave::AsistenteModelo => {
             a.asistente.modelo = if cual == 1 {
@@ -1822,11 +2001,12 @@ fn abrir(
     // Lo que se entregara para una grabacion vieja no vale para esta.
     let _ = tomar_atajo_entregado();
 
-    let cx = Contexto {
+    let mut cx = Contexto {
         t: textos,
         carpeta: crate::galeria_capturas::carpeta(ubicacion)
             .display()
             .to_string(),
+        automatizaciones: leer_automatizaciones(ubicacion),
     };
     // Copia de trabajo: se toca esta y se guarda al cerrar.
     let mut copia = Copia {
@@ -1990,6 +2170,18 @@ fn abrir(
                         Some(Golpe::Fila(i, parte)) => {
                             if let Some((clave, fila)) = filas.get(i).cloned() {
                                 match parte {
+                                    // Las automatizaciones no son ajustes:
+                                    // se cambian en su JSON al momento.
+                                    Parte::Alternar | Parte::Quitar | Parte::Pulsar
+                                        if matches!(
+                                            clave,
+                                            Clave::Automatizacion(_) | Clave::CorrerAutomatizacion(_)
+                                        ) =>
+                                    {
+                                        if tocar_automatizacion(clave, parte, &cx, ubicacion, ventana.handle()) {
+                                            cx.automatizaciones = leer_automatizaciones(ubicacion);
+                                        }
+                                    }
                                     Parte::Alternar => {
                                         copia.cambiar(|a| aplicar_interruptor(a, clave))
                                     }
@@ -3163,6 +3355,7 @@ mod pruebas {
         Contexto {
             t,
             carpeta: r"C:\Users\Max\AppData\Roaming\PixPinMax\capturas".into(),
+            automatizaciones: Vec::new(),
         }
     }
 
@@ -3235,6 +3428,7 @@ mod pruebas {
             Clave::VozSegundo,
             Clave::VozModo,
             Clave::AsistenteModelo,
+            Clave::AsistenteDocsNube,
             Clave::AsistentePensar,
             Clave::Presencia,
             Clave::LoMioManda,
@@ -3653,5 +3847,113 @@ mod pruebas {
             .expect("png");
             std::fs::write(dir.join(format!("ajustes2-{nombre}.png")), png).expect("escribe");
         }
+    }
+
+    /// Unas automatizaciones de ejemplo, leidas por el mismo camino que el
+    /// fichero de verdad (una de otro aparato y una rota incluidas).
+    fn automatizaciones_de_ejemplo() -> Vec<crate::automatizaciones::Resumen> {
+        let json = r#"{"version":1,"automatizaciones":[
+            {"id":"a1","nombre":"Capturas a la obra con OCR","activa":true,"aparato":"PC01",
+             "disparador":{"tipo":"al_capturar"},
+             "pasos":[{"tipo":"accion","herramienta":"escribir_en_chat","args":{"texto":"Captura {hora}"},"proyecto":"Obra","imagenes":["{captura}"]},
+                      {"tipo":"asistente","pedido":"Hazle OCR a la captura"}]},
+            {"id":"a2","nombre":"Resumen de pendientes","activa":true,"aparato":"PC01",
+             "disparador":{"tipo":"a_la_hora","hora":"08:00","dias":[1,2,3,4,5]},
+             "pasos":[{"tipo":"asistente","pedido":"Resume mis tareas pendientes"}]},
+            {"id":"a3","nombre":"Lo del móvil al Inbox","activa":false,"aparato":"PC01",
+             "disparador":{"tipo":"al_sincronizar"},
+             "pasos":[{"tipo":"accion","herramienta":"anadir_tarea","args":{"texto":"Revisar lo que llegó: {sincro}"}}]},
+            {"id":"a4","nombre":"Informe semanal","activa":true,"aparato":"PC01",
+             "disparador":{"tipo":"a_mano"},
+             "pasos":[{"tipo":"asistente","pedido":"Haz un resumen de la semana"}]},
+            {"id":"a5","nombre":"Recordar fotos","activa":true,"aparato":"TEL9",
+             "disparador":{"tipo":"a_la_hora","hora":"19:30"},
+             "pasos":[{"tipo":"asistente","pedido":"¿Subí las fotos de hoy?"}]},
+            {"id":"a6","nombre":"De una versión nueva","disparador":{"tipo":"al_llegar_correo"},"pasos":[]}
+        ]}"#;
+        let l = crate::automatizaciones::Lista::de_json(json).unwrap();
+        crate::automatizaciones::resumenes(&l, "PC01")
+    }
+
+    #[test]
+    fn las_automatizaciones_salen_en_el_asistente_con_su_interruptor_y_su_aspa() {
+        let t = textos();
+        let a = Ajustes::default();
+        // Sin ninguna, una fila que dice como pedirlas.
+        let filas = filas_de_seccion(Seccion::Asistente, &a, &cx(&t));
+        let (c, f) = filas.last().unwrap();
+        assert_eq!(*c, Clave::SinAutomatizaciones);
+        assert!(f.ayuda.contains("cada vez que capture"), "{}", f.ayuda);
+        let mut cx = cx(&t);
+        cx.automatizaciones = automatizaciones_de_ejemplo();
+        let filas = filas_de_seccion(Seccion::Asistente, &a, &cx);
+        let autos: Vec<&(Clave, Fila)> = filas
+            .iter()
+            .filter(|(c, _)| matches!(c, Clave::Automatizacion(_)))
+            .collect();
+        assert_eq!(autos.len(), 6);
+        assert!(autos.iter().all(|(_, f)| f.quitar && !f.cambiado));
+        assert_eq!(autos[0].1.control, Control::Interruptor(true));
+        assert_eq!(autos[2].1.control, Control::Interruptor(false));
+        assert!(autos[1].1.ayuda.starts_with("lun, mar, mié, jue, vie a las 08:00"), "{}", autos[1].1.ayuda);
+        assert!(autos[4].1.ayuda.contains("corre en TEL9"), "{}", autos[4].1.ayuda);
+        // Caso negativo: la rota no se enciende, dice por que.
+        assert_eq!(autos[5].1.control, Control::Nada);
+        assert!(autos[5].1.ayuda.starts_with("No se entiende"), "{}", autos[5].1.ayuda);
+        // Solo la «a mano» de aqui tiene «Correr ahora».
+        let correr: Vec<_> = filas
+            .iter()
+            .filter(|(c, _)| matches!(c, Clave::CorrerAutomatizacion(_)))
+            .collect();
+        assert_eq!(correr.len(), 1);
+        assert_eq!(correr[0].0, Clave::CorrerAutomatizacion(3));
+        // No son ajustes: restablecer no las toca.
+        assert!(!Clave::Automatizacion(0).restablecible());
+    }
+
+    /// **La lista de automatizaciones, pintada a PNG** (`PIXPIN_MUESTRAS`).
+    #[test]
+    #[ignore = "necesita GPU; se mira la imagen a mano"]
+    fn muestra_de_las_automatizaciones() {
+        let t = textos();
+        let mut cx = cx(&t);
+        cx.automatizaciones = automatizaciones_de_ejemplo();
+        let a = Ajustes::default();
+        let d = pixpin_capture::Dispositivo::nuevo().expect("GPU");
+        let motor = pixpin_render::MotorRender::nuevo(d.d3d()).expect("motor");
+        let destino = pixpin_render::fuera_de_pantalla::FueraDePantalla::nuevo(
+            &motor,
+            d.d3d(),
+            ANCHO as u32,
+            ALTO as u32,
+        )
+        .expect("textura");
+        let dir = std::env::var_os("PIXPIN_MUESTRAS")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(std::env::temp_dir);
+        std::fs::create_dir_all(&dir).expect("carpeta");
+        let mut estado = Estado {
+            seccion: SECCIONES.iter().position(|s| *s == Seccion::Asistente).unwrap(),
+            desplazamiento: 9_999,
+            ..Estado::default()
+        };
+        let filas = filas_actuales(&estado, &a, &cx);
+        let solo: Vec<Fila> = filas.iter().map(|(_, f)| f.clone()).collect();
+        estado.desplazamiento = limitar_desplazamiento(estado.desplazamiento, &solo, contenido(ANCHO, ALTO));
+        let mut cajas = Cajas::default();
+        cajas.traer(&estado);
+        let vista = Vista {
+            ancho: ANCHO,
+            alto: ALTO,
+            filas: &filas,
+            estado: &estado,
+            cajas: &cajas,
+            resaltado: None,
+            hay_deshacer: false,
+        };
+        motor.dibujar(&destino.destino, |p| dibujar(p, 1.0, &vista, &t)).expect("pinta");
+        let (w, h, pixeles) = destino.leer_rgba().expect("lee");
+        let png = pixpin_codec::codificar_png(&pixpin_codec::ImagenRgba { ancho: w, alto: h, pixeles }).expect("png");
+        std::fs::write(dir.join("ajustes2-automatizaciones.png"), png).expect("escribe");
     }
 }

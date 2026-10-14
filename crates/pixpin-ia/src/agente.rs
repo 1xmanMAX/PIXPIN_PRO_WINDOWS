@@ -850,7 +850,7 @@ pub fn instrucciones() -> String {
      Si pide dibujar algo, usa dibujar_en_lienzo, \
      poniendo el color de cada figura. \
      Si pide dibujar, copiar o calcar al lienzo lo de una imagen adjunta (este perro, la foto), usa calcar_imagen. \
-     Si da datos para graficar, usa grafica. \
+     Si da datos para graficar, usa grafica; si da una funcion, graficar_funcion; una ecuacion, escribir_ecuacion; un cronograma, cronograma; una ilustracion con curvas, dibujar_svg. \
      Si quiere el texto de un documento escaneado, usa ocr. \
      Si pide hacer algo en la app (notas, tareas, ventanas, capturas, abrir ficheros), usa su herramienta. \
      Si pregunta donde esta algo o como se hace en PixPin, usa ayuda_app y contesta con lo que diga, sin inventar. \
@@ -1035,15 +1035,22 @@ mod pruebas {
                 Respuesta::de_texto("Listo."),
             ]),
         );
+        // Un catalogo fijo (solo dibujar): con el entero, cada fila nueva de
+        // la tabla de acciones bajaba el tope de tokens y rompia la prueba.
+        let fijo: Vec<_> = crate::herramientas::catalogo_base()
+            .into_iter()
+            .filter(|h| h.nombre == crate::herramientas::DIBUJAR)
+            .collect();
+        assert_eq!(fijo.len(), 1);
         let mut h = historial();
         let mut ej = Apunta::default();
-        let f = turno(&motor, &mut h, &catalogo(), &mut ej, &mut |_| Seguir::Si).unwrap();
+        let f = turno(&motor, &mut h, &fijo, &mut ej, &mut |_| Seguir::Si).unwrap();
         assert_eq!(f.reintentos, 1);
         assert_eq!(f.herramientas_hechas, 1);
         assert!(h.iter().any(|m| m.texto_entero().contains("salio cortada")));
         // Otro error del motor no se reintenta.
         let vacio = MotorGuionado::nuevo(vec![]);
-        assert!(turno(&vacio, &mut historial(), &catalogo(), &mut ej, &mut |_| Seguir::Si).is_err());
+        assert!(turno(&vacio, &mut historial(), &fijo, &mut ej, &mut |_| Seguir::Si).is_err());
     }
 
     // -----------------------------------------------------------------------

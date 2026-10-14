@@ -132,10 +132,10 @@ pub struct Accion {
 }
 
 const RUTA: &str = "ruta absoluta del fichero en este PC";
-const LISTA: &str = "nombre de la lista de tareas (como la llama el usuario); omitir si no la dice";
-const TAREA: &str = "texto de la tarea, o un trozo que la distinga";
-const FECHA: &str = "fecha u hora tal como la dijo el usuario («mañana a las 10», «el viernes», «20/10/2026»); omitir si no dice ninguna";
-const CHAT: &str = "nombre del chat o proyecto de la lista, solo si el usuario lo dice";
+const LISTA: &str = "nombre de la lista; omitir si no la dice";
+const TAREA: &str = "texto de la tarea (o un trozo)";
+const FECHA: &str = "fecha tal como la dijo («mañana a las 10», «el viernes»)";
+const CHAT: &str = "chat de la lista, solo si lo dice";
 
 /// **La tabla.** Una fila por herramienta.
 pub const ACCIONES: &[Accion] = &[
@@ -280,14 +280,14 @@ pub const ACCIONES: &[Accion] = &[
     Accion {
         herramienta: "anadir_tareas",
         accion: "anadir_tarea",
-        descripcion: "Apunta VARIAS tareas de una vez (p. ej. las sacadas de un acta, una foto o un documento), en una lista existente o en una nueva.",
+        descripcion: "Apunta VARIAS tareas (de un acta, foto o documento) en una lista existente o nueva.",
         categoria: Categoria::Tareas,
         claves: &["tareas de", "saca las tareas", "acta", "varias tareas", "estas tareas", "pendientes de"],
         fijos: "{}",
         params: &[
             r(p("tareas", Tipo::Textos, true, "las tareas, una por elemento, cortas y sin numerar")),
             r(p("lista", Tipo::Texto, false, LISTA)),
-            r(p("lista_nueva", Tipo::Texto, false, "titulo de una lista NUEVA donde ponerlas, si el usuario la pide")),
+            r(p("lista_nueva", Tipo::Texto, false, "titulo de una lista NUEVA, si la pide")),
             r(p("chat", Tipo::Texto, false, CHAT)),
         ],
         confirmar: None,
@@ -364,7 +364,7 @@ pub const ACCIONES: &[Accion] = &[
     Accion {
         herramienta: "consultar_tareas",
         accion: CONSULTA,
-        descripcion: "Lee las tareas del usuario y devuelve la lista: lo pendiente, lo hecho o lo vencido, de un periodo, una lista o un chat.",
+        descripcion: "Lee las tareas: pendientes, hechas o vencidas, por periodo, lista o chat.",
         categoria: Categoria::Tareas,
         claves: &["que tengo", "pendientes", "vencid", "venc", "atrasad", "mis tareas", "que tareas", "cuantas tareas", "que me falta"],
         fijos: "{}",
@@ -517,6 +517,45 @@ pub const ACCIONES: &[Accion] = &[
         ],
         confirmar: Some("¿Mando {imagenes} al movil?"),
         hecho: "Enviado al móvil.",
+    },
+    // 13-oct: las automatizaciones («cada vez que capture…», «cada dia a
+    // las 8…»), `apps/pixpin/src/automatizaciones.rs`. Se crean preguntando.
+    Accion {
+        herramienta: "crear_automatizacion",
+        accion: "automatizacion",
+        // Corta a proposito: con el catalogo entero (la nube) cada letra
+        // cuenta en el contexto (`agente::tope_de_tokens`).
+        descripcion: "Crea una automatizacion (se dispara sola y hace pasos).",
+        categoria: Categoria::Tareas,
+        claves: &[
+            "cada vez",
+            "cada dia",
+            "todos los dias",
+            "cada manana",
+            "cada semana",
+            "siempre que",
+            "automatiz",
+            "al capturar",
+            "cuando capture",
+            "cuando sincronice",
+        ],
+        fijos: r#"{"operacion":"crear"}"#,
+        params: &[
+            a("receta.nombre", p("nombre", Tipo::Texto, true, "nombre corto")),
+            a(
+                "receta.disparador.tipo",
+                p(
+                    "disparador",
+                    Tipo::Opciones(&["al_capturar", "a_la_hora", "al_sincronizar", "a_mano"]),
+                    true,
+                    "cuando",
+                ),
+            ),
+            a("receta.disparador.hora", p("hora", Tipo::Texto, false, "HH:MM")),
+            a("receta.pasos", p("pasos", Tipo::Texto, true, "lista JSON: texto para el asistente u {herramienta,args,proyecto}; {captura} {resultado}")),
+        ],
+        confirmar: Some("¿Creo la automatización «{nombre}» ({disparador}) con estos pasos: {pasos}?"),
+        hecho: "Automatización «{nombre}» creada.",
     },
 ];
 

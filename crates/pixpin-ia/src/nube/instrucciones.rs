@@ -27,7 +27,8 @@
 //! 0,1x; DeepSeek, a 1/50).
 
 use crate::herramientas::{
-    ALTO_LIENZO, ANCHO_LIENZO, CALCAR, DIBUJAR, GRAFICA, Herramienta, MAX_DATOS_GRAFICA, MAX_ELEMENTOS,
+    ALTO_LIENZO, ANCHO_LIENZO, CALCAR, CRONOGRAMA, DIBUJAR, FUNCION, GRAFICA, Herramienta, MAX_DATOS_GRAFICA, MAX_ELEMENTOS,
+    SVG,
 };
 
 use super::Proveedor;
@@ -41,7 +42,10 @@ pub const REGLAS: &[(&str, &str)] = &[
     ("*", "Argumentos: un objeto JSON con los campos obligatorios siempre puestos, numeros como numeros (no \"120px\") y los valores de las listas cerradas escritos tal cual. Los ejemplos de las descripciones son la forma correcta: siguelos."),
     (DIBUJAR, "El lienzo mide {ancho}x{alto} pixeles con el origen arriba a la izquierda: deja cada figura dentro. Como mucho {max_figuras} figuras por llamada (mejor 20 o menos)."),
     (GRAFICA, "Una grafica lleva como mucho {max_datos} datos, con tantas etiquetas como valores."),
-    (CALCAR, "Para copiar o calcar al lienzo una foto adjunta usa calcar_imagen; no la redibujes a mano con figuras."),
+    (CALCAR, "Para copiar o calcar al lienzo una foto adjunta usa calcar_imagen; no la redibujes a mano con figuras, salvo que pida dibujarla con figuras, a lapiz o con grafito: eso es interpretarla."),
+    (SVG, "Para ilustraciones con curvas o detalle (personas, animales, arboles, isometricos) escribe un SVG limpio con dibujar_svg: formas cerradas con fill, pocas y bien puestas, viewBox ajustado; para varias vistas o posiciones, un solo SVG con grupos separados."),
+    (FUNCION, "Para graficar funciones usa graficar_funcion con la formula; nunca calcules tu los puntos."),
+    (CRONOGRAMA, "Un cronograma lleva fechas AAAA-MM-DD reales o numeros de periodo, y fin despues de inicio."),
     ("*", "Lo que borra algo o lo saca del PC pide confirmacion al usuario por su cuenta: llama a la herramienta y deja que pregunte."),
     ("*", "Si una herramienta devuelve un texto que empieza por ERROR, lee el motivo, corrige solo eso y vuelve a llamarla una vez. Si vuelve a fallar, dile al usuario en una frase que no se pudo y por que."),
     ("*", "Si varias herramientas no dependen entre si, pidelas en la misma respuesta."),

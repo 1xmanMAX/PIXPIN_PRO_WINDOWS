@@ -185,6 +185,9 @@ pub fn hacer_con(
     confirmar: &Confirmar,
     mandar: &Mandar,
 ) -> Result<String, String> {
+    // Una automatizacion mal hecha se le dice al modelo ya, para que la
+    // arregle, y no despues en un globo (el pedido solo contesta «aceptado»).
+    crate::automatizaciones::revisar_pedido(&a.pedido)?;
     let mut con_hora = false;
     let r = pixpin_ia::tareas::hacer(a, fuente, &|q| confirmar(q), &mut |p| {
         con_hora |= p.get("texto").and_then(Value::as_str).is_some_and(|t| t.contains('⏰'));

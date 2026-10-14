@@ -39,6 +39,10 @@ pub enum Aviso {
     /// El texto entero que leyo el OCR (al modelo le llega recortado), para
     /// ensenarlo en el chat y ofrecer guardarlo.
     TextoLeido { de: Adjunto, texto: String },
+    /// Lo citado de los documentos del usuario hasta ahora en el turno
+    /// (`buscar_en_mis_cosas`): la respuesta lo guarda y el chat ensena
+    /// la cita como tarjeta que abre el documento.
+    Citas(Vec<pixpin_ia::documentos::Cita>),
     /// Lo que penso, la peticion mejorada y la hoja reescrita, para guardar
     /// con la respuesta (llega justo antes del `Fin`, si el turno tenia
     /// [`Memoria`]).
@@ -214,6 +218,7 @@ impl Turno {
                 let memoria = memoria.unwrap_or_default();
                 let mut ejecutor = EjecutorDelChat::nuevo(tx.clone(), proyecto, adjuntos, parar_hilo.clone())
                     .hacia(destino)
+                    .en_la_nube(motor.catalogo_completo())
                     .con_raiz(memoria.raiz.clone());
                 let buscar = |c: &str| contexto::buscar(&memoria.fuentes, c, 3);
                 let todas = pixpin_ia::herramientas::catalogo();

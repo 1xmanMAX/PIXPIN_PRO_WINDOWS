@@ -403,14 +403,19 @@ fn con_parentesis_si_compuesto(n: &Nodo, t: f32, medir: Medir<'_>) -> Caja {
 // ---------------------------------------------------------------------
 // Las cajas
 // ---------------------------------------------------------------------
+//
+// Publicas: el asistente (`pixpin-ia::ecuacion`) compone con ellas las
+// ecuaciones que escribe en LaTeX o a mano, con letras que no son `x`, `y`,
+// `t`. Un solo compositor para las dos entradas, no una copia.
 
-fn menor(t: f32) -> f32 {
+/// El tamano de un exponente o un indice.
+pub fn menor(t: f32) -> f32 {
     (t * ENCOGE).max(MINIMO)
 }
 
 /// Un texto suelto. Su eje esta donde una minuscula tiene la mitad de su
 /// cuerpo.
-fn letra(texto: &str, t: f32, cursiva: bool, medir: Medir<'_>) -> Caja {
+pub fn letra(texto: &str, t: f32, cursiva: bool, medir: Medir<'_>) -> Caja {
     let (ancho, alto) = medir(texto, t);
     Caja {
         ancho,
@@ -428,7 +433,7 @@ fn letra(texto: &str, t: f32, cursiva: bool, medir: Medir<'_>) -> Caja {
     }
 }
 
-fn hueco(ancho: f32) -> Caja {
+pub fn hueco(ancho: f32) -> Caja {
     Caja {
         ancho,
         alto: 0.0,
@@ -438,7 +443,7 @@ fn hueco(ancho: f32) -> Caja {
 }
 
 /// Cajas en fila, alineadas por su eje.
-fn fila(cajas: Vec<Caja>) -> Caja {
+pub fn fila(cajas: Vec<Caja>) -> Caja {
     let arriba = cajas.iter().map(|c| c.eje).fold(0.0f32, f32::max);
     let abajo = cajas.iter().map(|c| c.alto - c.eje).fold(0.0f32, f32::max);
     let mut piezas = Vec::new();
@@ -456,7 +461,7 @@ fn fila(cajas: Vec<Caja>) -> Caja {
 }
 
 /// Cajas en columna, alineadas a la izquierda; el eje en medio.
-fn columna(cajas: Vec<Caja>, separacion: f32) -> Caja {
+pub fn columna(cajas: Vec<Caja>, separacion: f32) -> Caja {
     let ancho = cajas.iter().map(|c| c.ancho).fold(0.0f32, f32::max);
     let alto = cajas.iter().map(|c| c.alto).sum::<f32>()
         + separacion * cajas.len().saturating_sub(1) as f32;
@@ -487,7 +492,7 @@ fn raya(puntos: &[(f32, f32)], t: f32) -> Pieza {
 }
 
 /// Numerador sobre denominador, con la barra en el eje.
-fn fraccion(arriba: Caja, abajo: Caja, t: f32) -> Caja {
+pub fn fraccion(arriba: Caja, abajo: Caja, t: f32) -> Caja {
     let margen = t * 0.15;
     let ancho = arriba.ancho.max(abajo.ancho) + margen * 2.0;
     let hueco = t * 0.18;
@@ -508,7 +513,7 @@ fn fraccion(arriba: Caja, abajo: Caja, t: f32) -> Caja {
 
 /// La base con el exponente pequeno y subido: su pie queda a media altura
 /// de la base.
-fn potencia(base: Caja, exponente: Caja, t: f32) -> Caja {
+pub fn potencia(base: Caja, exponente: Caja, t: f32) -> Caja {
     let pie = base.alto * 0.45;
     let sobresale = (exponente.alto - pie).max(0.0);
     let hueco = t * 0.05;
@@ -523,7 +528,7 @@ fn potencia(base: Caja, exponente: Caja, t: f32) -> Caja {
 }
 
 /// La base con un indice pequeno y bajado.
-fn subindice(base: Caja, indice: Caja, t: f32) -> Caja {
+pub fn subindice(base: Caja, indice: Caja, t: f32) -> Caja {
     let bajada = indice.alto * 0.5;
     let alto = base
         .alto
@@ -540,7 +545,7 @@ fn subindice(base: Caja, indice: Caja, t: f32) -> Caja {
 
 /// El signo de la raiz dibujado con lineas —crece con lo que envuelve— y la
 /// raya encima.
-fn raiz(dentro: Caja, indice: Option<Caja>, t: f32) -> Caja {
+pub fn raiz(dentro: Caja, indice: Option<Caja>, t: f32) -> Caja {
     let margen = t * 0.15;
     let alto_dentro = dentro.alto + margen;
     let ancho_signo = t * 0.6;
@@ -571,7 +576,7 @@ fn raiz(dentro: Caja, indice: Option<Caja>, t: f32) -> Caja {
 
 /// Entre parentesis del alto de lo de dentro: de letra si cabe, y si no
 /// dibujados.
-fn entre_parentesis(dentro: Caja, t: f32, medir: Medir<'_>) -> Caja {
+pub fn entre_parentesis(dentro: Caja, t: f32, medir: Medir<'_>) -> Caja {
     let abre = letra("(", t, false, medir);
     if dentro.alto <= abre.alto * 1.25 {
         return fila(vec![abre, dentro, letra(")", t, false, medir)]);
@@ -593,7 +598,7 @@ fn entre_parentesis(dentro: Caja, t: f32, medir: Medir<'_>) -> Caja {
 }
 
 /// Entre barras verticales: el valor absoluto.
-fn entre_barras(dentro: Caja, t: f32) -> Caja {
+pub fn entre_barras(dentro: Caja, t: f32) -> Caja {
     let margen = t * 0.2;
     let ancho = dentro.ancho + margen * 4.0;
     let h = dentro.alto;
@@ -609,7 +614,7 @@ fn entre_barras(dentro: Caja, t: f32) -> Caja {
 }
 
 /// Una llave de la altura de la columna de partes, dibujada con lineas.
-fn llave(alto: f32, t: f32) -> Caja {
+pub fn llave(alto: f32, t: f32) -> Caja {
     let ancho = t * 0.45;
     let pico = t * 0.25;
     Caja {

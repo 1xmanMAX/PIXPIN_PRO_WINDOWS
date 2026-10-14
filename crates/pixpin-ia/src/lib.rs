@@ -51,6 +51,8 @@
 //! - [`rapido`], [`tareas`] y [`fechas`] (14-oct): las ordenes simples sin
 //!   modelo (<100 ms), las tareas por su nombre («la tarea comprar pan»,
 //!   «mañana a las 10») y las consultas («¿que tengo pendiente?»).
+//! - [`documentos`]: `buscar_en_mis_cosas`, un indice BM25 local de los
+//!   documentos, notas y chats del usuario, con el origen de cada trozo.
 //!
 //! ## Puntos de enganche para la UI (otros agentes)
 //!
@@ -66,8 +68,13 @@ pub mod base64;
 pub mod calcar;
 pub mod conocimiento;
 pub mod contexto;
+pub mod cronograma;
 pub mod descarga;
 pub mod fechas;
+pub mod documentos;
+pub mod ecuacion;
+pub mod figuras;
+pub mod funciones;
 pub mod herramientas;
 pub mod hoja_trabajo;
 pub mod lienzo;
@@ -80,6 +87,7 @@ pub mod seleccion;
 pub mod servidor;
 pub mod sse;
 pub mod tareas;
+pub mod svg;
 
 pub use agente::{Ejecutor, Evento, turno};
 pub use herramientas::{Herramienta, Llamada, catalogo};

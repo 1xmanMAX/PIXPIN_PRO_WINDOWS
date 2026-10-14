@@ -8,7 +8,8 @@
 //!   (`t <texto>` apunta una tarea en el Inbox, `n` nota, `l` lienzo,
 //!   `g` galeria, `c` capturar, `u` ultima captura, `a` «aprendi»: una
 //!   leccion nueva, `s` sincronizar con el movil o mandarle la imagen pegada). Una letra pegada a
-//!   otras («tx», «nota») es lo de siempre;
+//!   otras («tx», «nota») es lo de siempre. `? <pedido>` (o `ia <pedido>`) se
+//!   lo pide al asistente sin abrir el chat;
 //! - `<proyecto> > [texto]`: el chat de ese proyecto, de lo ultimo a lo
 //!   primero (con un verbo delante tambien, si lo de antes de `>` es el
 //!   nombre entero de un proyecto: eso lo mira `resultados`, que conoce los
@@ -45,11 +46,14 @@ pub enum Funcion {
     /// `sincronizar`), o mandarle las imagenes pegadas a su lienzo abierto
     /// (pedido `enviar_al_movil`).
     Sincronizar,
+    /// Pedirle algo al asistente sin abrir el chat (pedido `asistente`,
+    /// 13-oct): `ia <pedido>` o `? <pedido>`.
+    Asistente,
     Abrir,
 }
 
 impl Funcion {
-    pub const TODAS: [Funcion; 15] = [
+    pub const TODAS: [Funcion; 16] = [
         Funcion::Chat,
         Funcion::Tareas,
         Funcion::Lienzo,
@@ -64,6 +68,7 @@ impl Funcion {
         Funcion::Galeria,
         Funcion::Ultima,
         Funcion::Sincronizar,
+        Funcion::Asistente,
         Funcion::Abrir,
     ];
 
@@ -72,7 +77,7 @@ impl Funcion {
     /// encontraba dejaba «Chat» elegido, e Intro lo mandaba a Mensajes
     /// guardados. Escribir en un chat es entrar en el (`<proyecto> > texto`)
     /// o, a proposito, `chat <texto>`.
-    pub const OFRECIDAS: [Funcion; 14] = [
+    pub const OFRECIDAS: [Funcion; 15] = [
         Funcion::Tareas,
         Funcion::Lienzo,
         Funcion::Nota,
@@ -86,6 +91,7 @@ impl Funcion {
         Funcion::Galeria,
         Funcion::Ultima,
         Funcion::Sincronizar,
+        Funcion::Asistente,
         Funcion::Abrir,
     ];
 
@@ -129,6 +135,8 @@ impl Funcion {
                 "phone",
                 "mobile",
             ],
+            // «?» tambien: `p ? <pedido>` (va por `atajo`, es un solo signo).
+            Funcion::Asistente => &["ia", "asistente", "ai", "assistant", "?"],
             Funcion::Abrir => &["pixpin", "abrir", "open"],
         }
     }
@@ -158,6 +166,7 @@ impl Funcion {
             "u" => Funcion::Ultima,
             "a" => Funcion::Leccion,
             "s" => Funcion::Sincronizar,
+            "?" => Funcion::Asistente,
             _ => return None,
         })
     }
@@ -173,6 +182,7 @@ impl Funcion {
             Funcion::Ultima => 'u',
             Funcion::Leccion => 'a',
             Funcion::Sincronizar => 's',
+            Funcion::Asistente => '?',
             _ => return None,
         })
     }
