@@ -122,7 +122,11 @@ pub fn lanzar(idioma: Idioma, ubicacion: Ubicacion, ruta: &Path) {
             let _ = tx.send(cargar(&raiz2, &r2));
         });
         let titulo = ruta.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
-        if let Err(e) = pixpin_cad::ventana3d::ver(&titulo, rx, textos(idioma)) {
+        let extras = pixpin_cad::ventana3d::Extras {
+            exportar: Some(crate::compartir::exportable::al_exportar_3d(idioma, titulo.clone(), Some(ruta.clone()))),
+            ..Default::default()
+        };
+        if let Err(e) = pixpin_cad::ventana3d::ver_con(&titulo, rx, textos(idioma), extras) {
             tracing::warn!(%e, "no se pudo abrir el visor de modelos");
             let _ = pixpin_shell::abrir(&ruta);
         }

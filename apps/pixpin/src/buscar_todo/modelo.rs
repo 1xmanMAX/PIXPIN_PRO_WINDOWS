@@ -6,6 +6,7 @@
 //! que sale al escribir «grie» o «t comprar pan» es lo mismo en Flow (`p`) y
 //! en la app.
 
+use crate::caja_texto::CajaLinea;
 use pixpin_lanzador::resultados::{Accion, Resultado, glifo, pedido};
 use serde_json::{Value, json};
 
@@ -189,7 +190,9 @@ pub struct Menu {
 /// El estado del buscador.
 #[derive(Debug, Clone)]
 pub struct Estado {
-    pub consulta: String,
+    /// La caja de una linea comun de la app (`caja_texto::CajaLinea`): su
+    /// rayita, Ctrl+Retroceso, Mayus+flechas, deshacer...
+    pub consulta: CajaLinea,
     pub pestana: Pestana,
     /// Lo que salio para la consulta (o, con la caja vacia en «Todo», los
     /// abiertos hace poco).
@@ -204,7 +207,7 @@ pub struct Estado {
 impl Default for Estado {
     fn default() -> Self {
         Estado {
-            consulta: String::new(),
+            consulta: CajaLinea::nueva().con_maximo(LARGO_MAXIMO),
             pestana: Pestana::Todo,
             resultados: Vec::new(),
             elegido: 0,
@@ -333,7 +336,7 @@ impl Estado {
     /// Cambia lo escrito entero (una busqueda reciente, una letra rapida,
     /// lo que pide una accion del plugin).
     pub fn poner_consulta(&mut self, c: &str) -> Orden {
-        self.consulta = c.chars().take(LARGO_MAXIMO).collect();
+        self.consulta.poner_texto(c);
         self.menu = None;
         Orden::Buscar
     }
@@ -386,13 +389,23 @@ impl Estado {
     /// **Una tecla.** La flecha derecha la mira la ventana antes (necesita
     /// el menu del plugin): aqui llega solo para cerrar el menu al reves.
     pub fn tecla(&mut self, vk: u32, shift: bool, ctrl: bool, alt: bool) -> Orden {
+        if self.es_de_la_caja(vk, shift, ctrl, alt) {
+            let r = self
+                .consulta
+                .tecla(vk, shift, ctrl, &mut crate::caja_texto::PortapapelesWindows);
+            if r.cambio() {
+                self.menu = None;
+                return Orden::Buscar;
+            }
+            return Orden::Repintar;
+        }
         match vk {
             VK_ESCAPE => {
                 if self.menu.take().is_some() {
                     return Orden::Repintar;
                 }
                 if !self.consulta.is_empty() {
-                    self.consulta.clear();
+                    self.consulta.vaciar();
                     return Orden::Buscar;
                 }
                 Orden::Cerrar
@@ -439,35 +452,42 @@ impl Estado {
         }
     }
 
-    /// **Un caracter tecleado** (WM_CHAR, ya compuesto). Borrar llega aqui
-    /// tambien; Ctrl+Borrar (`0x7f`) quita la ultima palabra.
+    /// Si la tecla es de la caja de escribir y no del buscador. Las de la
+    /// caja son las de siempre (`CajaLinea::es_suya`), menos las que aqui ya
+    /// significan otra cosa cuando la caja no las necesita: Supr borra la
+    /// captura elegida si la rayita esta al final y no hay nada elegido,
+    /// Ctrl+C copia el resultado si no hay texto elegido, Ctrl+V pega
+    /// tambien imagenes (`Orden::Pegar`) y Ctrl+Z deshace el borrado de una
+    /// captura si lo hay. Con el menu abierto, el teclado es suyo.
+    fn es_de_la_caja(&self, vk: u32, shift: bool, ctrl: bool, alt: bool) -> bool {
+        if alt || self.menu.is_some() || !CajaLinea::es_suya(vk, shift, ctrl) {
+            return false;
+        }
+        let elegido = self.consulta.seleccionado().is_some();
+        match vk {
+            VK_DELETE if !ctrl && !shift => elegido || self.consulta.pos() < self.consulta.len(),
+            VK_C if ctrl => elegido,
+            VK_V => false,
+            VK_Z if ctrl => !self.se_puede_deshacer,
+            _ => true,
+        }
+    }
+
+    /// **Un caracter tecleado** (WM_CHAR, ya compuesto). Retroceso y
+    /// Ctrl+Retroceso (`0x08`, `0x7f`) llegan tambien como caracter, pero ya
+    /// los atendio la caja por su tecla: aqui no se escriben.
     pub fn caracter(&mut self, c: char) -> Orden {
-        match c {
-            '\u{8}' => {
-                if self.consulta.pop().is_none() {
-                    return Orden::Nada;
-                }
-            }
-            '\u{7f}' => {
-                if self.consulta.is_empty() {
-                    return Orden::Nada;
-                }
-                let sin_blancos = self.consulta.trim_end().len();
-                self.consulta.truncate(sin_blancos);
-                let corte = self
-                    .consulta
-                    .rfind(char::is_whitespace)
-                    .map_or(0, |i| i + 1);
-                self.consulta.truncate(corte);
-            }
-            // Intro, Tab, Esc y demas de control: ya los atendio la tecla.
-            c if c < ' ' => return Orden::Nada,
-            c => {
-                if self.consulta.chars().count() >= LARGO_MAXIMO {
-                    return Orden::Nada;
-                }
-                self.consulta.push(c);
-            }
+        if !self.consulta.caracter(c) {
+            return Orden::Nada;
+        }
+        self.menu = None;
+        Orden::Buscar
+    }
+
+    /// Pega texto donde esta la rayita, en una linea (Ctrl+V sin imagen).
+    pub fn pegar_texto(&mut self, t: &str) -> Orden {
+        if !self.consulta.pegar_texto(t) {
+            return Orden::Nada;
         }
         self.menu = None;
         Orden::Buscar
@@ -890,8 +910,9 @@ mod pruebas {
             e.tecla(VK_RETURN, false, false, true),
             Orden::AbrirCon("C:\\datos\\capturas\\muro.png".into())
         );
-        // Caso negativo: Ctrl+Z sin nada borrado no hace nada.
-        assert_eq!(e.tecla(VK_Z, false, true, false), Orden::Nada);
+        // Sin captura borrada, Ctrl+Z es de la caja (deshacer lo escrito);
+        // aqui no hay nada escrito: no busca ni deshace nada.
+        assert_eq!(e.tecla(VK_Z, false, true, false), Orden::Repintar);
         e.se_puede_deshacer = true;
         assert_eq!(e.tecla(VK_Z, false, true, false), Orden::Deshacer);
     }
@@ -927,17 +948,27 @@ mod pruebas {
             assert_eq!(e.caracter(c), Orden::Buscar);
         }
         assert_eq!(e.consulta, "t comprar pan");
-        assert_eq!(e.caracter('\u{7f}'), Orden::Buscar);
+        // Ctrl+Retroceso (la tecla; su 0x7F de WM_CHAR no se escribe).
+        assert_eq!(e.tecla(0x08, false, true, false), Orden::Buscar);
+        assert_eq!(e.caracter('\u{7f}'), Orden::Nada);
         assert_eq!(e.consulta, "t comprar ");
-        e.caracter('\u{8}');
+        e.tecla(0x08, false, false, false);
         assert_eq!(e.consulta, "t comprar");
+        // Con la rayita en medio se escribe en medio, y Ctrl+flecha salta
+        // palabras.
+        e.tecla(VK_LEFT, false, true, false);
+        e.caracter('X');
+        assert_eq!(e.consulta, "t Xcomprar");
         // Caso negativo: Intro, Tab y Esc no se escriben; borrar en vacio no
         // busca otra vez.
         assert_eq!(e.caracter('\r'), Orden::Nada);
         assert_eq!(e.caracter('\t'), Orden::Nada);
         assert_eq!(e.caracter('\u{1b}'), Orden::Nada);
-        e.consulta.clear();
+        e.consulta.vaciar();
         assert_eq!(e.caracter('\u{8}'), Orden::Nada);
+        assert_eq!(e.tecla(0x08, false, false, false), Orden::Repintar);
+        // Supr al final, sin nada elegido, sigue siendo borrar la captura.
+        assert!(!e.es_de_la_caja(VK_DELETE, false, false, false));
         for _ in 0..1000 {
             e.caracter('a');
         }

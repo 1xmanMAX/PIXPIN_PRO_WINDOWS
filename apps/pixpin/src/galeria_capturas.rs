@@ -641,7 +641,7 @@ fn coincide(e: &Estado, i: usize, consulta: &str, textos: &Catalogo) -> bool {
 /// filtros: se quitaron con el carril (5-oct), asi que se ven todas.
 fn preparar(e: &mut Estado, ancho_rejilla: f32, escala: f32, textos: &Catalogo) {
     e.ahora = pixpin_shell::entorno::ahora_utc_ms();
-    let consulta = logica::plegar(e.consulta.texto.trim());
+    let consulta = logica::plegar(e.consulta.texto().trim());
     let vista: Vec<usize> = (0..e.lista.len())
         .filter(|&i| coincide(e, i, &consulta, textos))
         .collect();
@@ -826,7 +826,7 @@ fn bucle(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion) -> Resul
                     // El texto ya no se ensena: solo cambia lo que se ve si
                     // hay algo buscado (puede aparecer una que lo contiene).
                     // Sin eso, no se repinta por cada una de cientos.
-                    if !e.consulta.texto.trim().is_empty() {
+                    if !e.consulta.texto().trim().is_empty() {
                         pintar = true;
                     }
                 }
@@ -1082,15 +1082,15 @@ fn tecla(
     }
     if e.escribiendo {
         match vk {
-            ESC if !e.consulta.texto.is_empty() => e.vaciar_busqueda(),
+            ESC if !e.consulta.texto().is_empty() => e.vaciar_busqueda(),
             ESC | INTRO | 0x28 => e.escribiendo = false,
             _ => {
                 // Lo demas es de la caja (Retroceso, Ctrl+Retroceso, Supr,
                 // las flechas, Inicio/Fin, Ctrl+V). Si cambio lo buscado, la
                 // rejilla vuelve arriba: lo de antes ya no es lo mismo.
-                let antes = e.consulta.texto.clone();
+                let antes = e.consulta.texto().to_owned();
                 e.consulta.tecla(vk, ctrl, false, false);
-                if e.consulta.texto != antes {
+                if e.consulta.texto() != antes {
                     e.scroll = 0.0;
                 }
             }
@@ -1123,7 +1123,7 @@ fn tecla(
     let mut vale = |a: Accion, e: &mut Estado| hacer(e, a, false, textos, ubicacion, vivo);
     match vk {
         ESC if e.eligiendo => vale(Accion::SalirEligiendo, e),
-        ESC if !e.consulta.texto.is_empty() => e.vaciar_busqueda(),
+        ESC if !e.consulta.texto().is_empty() => e.vaciar_busqueda(),
         ESC => vale(Accion::Cerrar, e),
         INICIO => mover_a(e, 0),
         FIN => mover_a(e, e.vista.len().saturating_sub(1)),
@@ -1344,6 +1344,7 @@ fn menu_de_captura(
         (2, format!("{}\tCtrl+C", textos.t("galeria-copiar"))),
         (8, textos.t("salida-compartir-menu")),
         (3, textos.t("galeria-guardar-como")),
+        (9, textos.t("compartir-exportar")),
         (4, textos.t("galeria-mostrar-en-carpeta")),
     ];
     if alguna_caduca {
@@ -1364,6 +1365,22 @@ fn menu_de_captura(
             crate::salida::mostrar(rutas, textos.t("salida-titulo"));
         }
         Some(3) => guardar_como(e, &v, ventana, textos),
+        // El «Exportar» comun: PDF, HTML, imagen, .pixpin y original.
+        Some(9) => {
+            let rutas: Vec<PathBuf> = v.iter().filter_map(|&k| e.lista.get(k).map(|x| x.ruta.clone())).collect();
+            let titulo = match rutas.as_slice() {
+                [una] => una.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default(),
+                _ => textos.t("galeria-titulo"),
+            };
+            match (crate::compartir::exportable::de_imagenes(&titulo, &rutas), crate::oscuro::ubicacion()) {
+                (Ok(mut x), Some(u)) => {
+                    x.raiz = Some(u.raiz().to_path_buf());
+                    crate::compartir::ventana::abrir(crate::compartir::idioma_de(&u), u, crate::compartir::Cosa::Visor(x));
+                }
+                (Err(err), _) => e.avisar(fallo(textos, err.to_string())),
+                _ => {}
+            }
+        }
         Some(4) => {
             if let Some(x) = e.lista.get(v[0]) {
                 mostrar_en_carpeta(&x.ruta);
@@ -1760,10 +1777,10 @@ fn pintar_cabecera(e: &mut Estado, p: &Pintor, w: f32, escala: f32, textos: &Cat
         titulo: &titulo,
         subtitulo: &subtitulo,
         buscador: Some(crate::cabecera::Buscador {
-            texto: &e.consulta.texto,
+            texto: &e.consulta.texto(),
             pista: &pista,
             foco: e.escribiendo,
-            cursor: Some(e.consulta.cursor),
+            cursor: Some(e.consulta.pos()),
             enfocar: Accion::Buscar,
             vaciar: Accion::LimpiarBusqueda,
         }),
@@ -1835,7 +1852,7 @@ fn pintar_rejilla(e: &mut Estado, p: &Pintor, z: Zonas, escala: f32, textos: &Ca
             (&mi::PHOTO_LIBRARY, textos.t("galeria-vacia"))
         } else {
             let mut args = fluent_bundle::FluentArgs::new();
-            args.set("texto", e.consulta.texto.trim().to_string());
+            args.set("texto", e.consulta.texto().trim().to_string());
             (&mi::SEARCH, textos.t_args("galeria-sin-resultados", &args))
         };
         d::vacio(p, r, icono, &t, escala);
@@ -2616,22 +2633,22 @@ mod pruebas {
         tecla(&mut e, 0x20, false, z, 1.0, &textos, &ub, &mut vivo);
         assert!(e.eligiendo && e.elegidas.contains(&e.lista[0].ruta));
         assert!(
-            e.consulta.texto.is_empty(),
+            e.consulta.texto().is_empty(),
             "caso negativo: el espacio no se escribe"
         );
         // Una letra enfoca el buscador y se escribe.
         caracter(&mut e, 'm');
         caracter(&mut e, 'i');
         assert!(e.escribiendo);
-        assert_eq!(e.consulta.texto, "mi");
+        assert_eq!(e.consulta.texto(), "mi");
         // Ahi el espacio si se escribe, y Retroceso borra.
         caracter(&mut e, ' ');
         tecla(&mut e, 0x08, false, z, 1.0, &textos, &ub, &mut vivo);
-        assert_eq!(e.consulta.texto, "mi");
+        assert_eq!(e.consulta.texto(), "mi");
         // Esc limpia; otro Esc sale del buscador; otro sale de elegir; y el
         // ultimo cierra.
         tecla(&mut e, 0x1B, false, z, 1.0, &textos, &ub, &mut vivo);
-        assert!(e.consulta.texto.is_empty() && e.escribiendo);
+        assert!(e.consulta.texto().is_empty() && e.escribiendo);
         tecla(&mut e, 0x1B, false, z, 1.0, &textos, &ub, &mut vivo);
         assert!(!e.escribiendo);
         tecla(&mut e, 0x1B, false, z, 1.0, &textos, &ub, &mut vivo);
@@ -2640,7 +2657,7 @@ mod pruebas {
         assert!(!vivo);
         // Caso negativo: Ctrl+C no escribe una «c» (llega como control).
         caracter(&mut e, '\u{3}');
-        assert!(e.consulta.texto.is_empty());
+        assert!(e.consulta.texto().is_empty());
     }
 
     #[test]
@@ -2659,10 +2676,10 @@ mod pruebas {
             tecla(&mut e, 0x25, false, z, 1.0, &textos, &ub, &mut vivo);
         }
         caracter(&mut e, 'X');
-        assert_eq!(e.consulta.texto, "obra Xlima");
+        assert_eq!(e.consulta.texto(), "obra Xlima");
         // Ctrl+Retroceso borra la palabra de antes del cursor, no todo.
         tecla(&mut e, 0x08, true, z, 1.0, &textos, &ub, &mut vivo);
-        assert_eq!(e.consulta.texto, "obra lima");
+        assert_eq!(e.consulta.texto(), "obra lima");
         // Caso negativo: las flechas de la caja no mueven el foco de la
         // rejilla mientras se escribe.
         assert!(e.foco.is_none());
@@ -3057,7 +3074,7 @@ mod pruebas {
         let mut e = estado_de_ejemplo();
         e.escribiendo = true;
         e.consulta = Campo::con("ladrillo");
-        e.consulta.cursor = 3;
+        e.consulta.ir_a(3);
         preparar(&mut e, ancho_rejilla, 1.0, &textos);
         crate::ventanita::muestra("galeria-v2-buscar", 1280, 820, |p, motor| {
             subir_minis(&mut e, motor);

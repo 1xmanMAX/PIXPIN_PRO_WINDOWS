@@ -1968,11 +1968,11 @@ fn barra_de_avance(e: &Estado, p: &Pintor, m: Marco) {
 fn pastilla(e: &Estado, p: &Pintor, m: Marco, botones: &mut Vec<(RectF, Accion)>) {
     let tam = 15.0 * m.e;
     // Escribiendo el nombre (D5) se ensena solo lo escrito, sin la hoja.
-    let hoja = if let Some(t) = &e.renombre.editando {
+    let hoja = if let Some(t) = e.renombre.escrito() {
         if t.is_empty() {
             " ".to_string()
         } else {
-            t.clone()
+            t.to_owned()
         }
     } else if e.hojas.cuantas() > 0 {
         format!(
@@ -1996,29 +1996,11 @@ fn pastilla(e: &Estado, p: &Pintor, m: Marco, botones: &mut Vec<(RectF, Accion)>
         alto: h + 14.0 * m.e,
     };
     p.rellenar_redondeado(caja, caja.alto / 2.0, con_alfa(CRISTAL, 0.94));
-    p.texto(&hoja, caja.x + 14.0 * m.e, caja.y + 7.0 * m.e, tam, TEXTO);
-    if let Some(t) = &e.renombre.editando {
-        // Escribiendo el nombre: subrayado y cursor detras de lo escrito.
-        let (wt, _) = p.medir_texto(t, tam);
-        let x0 = caja.x + 14.0 * m.e;
-        p.rellenar(
-            RectF {
-                x: x0,
-                y: caja.y + caja.alto - 6.0 * m.e,
-                ancho: wt.max(40.0 * m.e),
-                alto: 1.0 * m.e,
-            },
-            DORADO,
-        );
-        p.rellenar(
-            RectF {
-                x: x0 + wt + 1.0,
-                y: caja.y + 8.0 * m.e,
-                ancho: 1.5 * m.e,
-                alto: h - 2.0 * m.e,
-            },
-            DORADO,
-        );
+    // Escribiendo el nombre, la caja de una linea comun (la rayita donde se
+    // escribe y lo elegido) con su subrayado; si no, el nombre.
+    let x0 = caja.x + 14.0 * m.e;
+    if !e.renombre.pintar_escribiendo(p, caja, x0, w, tam, m.e) {
+        p.texto(&hoja, x0, caja.y + 7.0 * m.e, tam, TEXTO);
     }
     if e.renombre.se_puede() {
         botones.push((
@@ -2086,10 +2068,8 @@ fn filas_del_panel(e: &Estado, textos: &Catalogo) -> Vec<(String, Accion)> {
             filas.push((textos.t("lector-modo-lectura"), Accion::ModoLectura));
         }
         filas.push((textos.t("lector-imprimir"), Accion::Imprimir));
-        // Compartir sabe de un Word (su texto); de un PowerPoint aun no.
-        if o.tipo == pixpin_office::Tipo::Word {
-            filas.push((textos.t("compartir-lector"), Accion::Compartir));
-        }
+        // Compartir: un Word con su texto; lo demas, con sus hojas impresas.
+        filas.push((textos.t("compartir-lector"), Accion::Compartir));
         if !e.marcas.is_empty() {
             filas.push((textos.t("visor-quitar-marcadores"), Accion::QuitarMarcas));
         }
@@ -2799,11 +2779,14 @@ fn hacer(
         Accion::Compartir => {
             guardar_capas(e, ruta);
             e.panel = false;
-            crate::compartir::ventana::abrir(
-                crate::compartir::idioma_de(ubicacion),
-                ubicacion.clone(),
-                crate::compartir::Cosa::Documento(ruta.to_path_buf()),
-            );
+            // Un PowerPoint (o lo que no es un Word): sus hojas impresas, con
+            // el «Exportar» comun.
+            let cosa = match e.office.as_ref().map(|o| o.tipo) {
+                Some(t) if t != pixpin_office::Tipo::Word => office::exportable(e, ruta).map(crate::compartir::Cosa::Visor),
+                _ => None,
+            }
+            .unwrap_or_else(|| crate::compartir::Cosa::Documento(ruta.to_path_buf()));
+            crate::compartir::ventana::abrir(crate::compartir::idioma_de(ubicacion), ubicacion.clone(), cosa);
         }
         Accion::AbrirCarpeta => {
             let _ = pixpin_shell::abrir_ubicacion(&ubicacion.raiz().join("exportado"));
@@ -3004,7 +2987,7 @@ fn tecla_de_las_cajas(
     ubicacion: &Ubicacion,
 ) -> (bool, Option<PathBuf>) {
     use crate::renombrar_doc::Tecla;
-    match e.renombre.tecla(vk, ctrl) {
+    match e.renombre.tecla(vk, shift, ctrl) {
         Tecla::Consumida => return (true, None),
         Tecla::Confirmar => {
             // Lo pendiente, al nombre de ahora: si el fichero se mueve, se

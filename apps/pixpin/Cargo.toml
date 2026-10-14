@@ -58,6 +58,8 @@ qrcodegen = "1.8.0"
 # El dialogo de sincronizar viaja en JSON: mismas versiones que pixpin-sincro.
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+# Comprimir el PDF de un plano exportado (`plano_cad::exportar`). Ya esta en el arbol.
+flate2 = "1.1"
 tracing = "0.1.44"
 tracing-appender = "0.2.5"
 tracing-subscriber = "0.3.23"

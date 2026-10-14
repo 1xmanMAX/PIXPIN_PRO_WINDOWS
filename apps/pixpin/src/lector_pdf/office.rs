@@ -698,8 +698,39 @@ pub(super) fn encajar_en_el_papel(pagina: (f32, f32), papel: (f32, f32)) -> (f32
 /// Ctrl+P: el dialogo de imprimir de Windows con todas las hojas y lo
 /// anotado (lo pendiente se guarda antes).
 pub(super) fn imprimir(e: &mut Estado, ventana: isize, ruta: &Path, textos: &Catalogo) {
+    let Some((doc, titulo, apaisada)) = impreso(e, ruta) else { return };
+    let hecho = (|| -> Result<()> {
+        let d = pixpin_capture::Dispositivo::nuevo().context("sin dispositivo para imprimir")?;
+        let motor = pixpin_render::MotorRender::nuevo(d.d3d()).context("sin motor para imprimir")?;
+        let pedido = pixpin_render::imprimir_moderno::Pedido { titulo, apaisada, opcion: None, ppp_previa: 144.0 };
+        pixpin_render::imprimir_moderno::mostrar(windows::Win32::Foundation::HWND(ventana as *mut _), pedido, d.d3d().clone(), motor, Box::new(doc))
+            .context("el dialogo de imprimir no se abrio")
+    })();
+    if let Err(err) = hecho {
+        tracing::warn!(?err, "office: no se pudo imprimir");
+        e.aviso = Some((textos.t("lector-no-imprime"), ahora_ms() + 4000));
+    }
+}
+
+/// **Lo que exporta un Word o un PowerPoint con hoja** (el «Exportar»
+/// comun): sus hojas como se imprimen, con lo anotado, y el original.
+pub(super) fn exportable(e: &mut Estado, ruta: &Path) -> Option<crate::compartir::exportable::Exportable> {
+    let (mut doc, titulo, apaisada) = impreso(e, ruta)?;
+    let papel = if apaisada { (1123.0, 794.0) } else { (794.0, 1123.0) };
+    let hojas = crate::compartir::exportable::hojas_impresas(&mut doc, papel, 2.0, 400)
+        .inspect_err(|err| tracing::warn!(?err, "office: no se pudieron pintar las hojas para exportar"))
+        .ok()?;
+    let mut x = crate::compartir::exportable::Exportable::nuevo(titulo);
+    x.raiz = Some(e.ubicacion.raiz().to_path_buf());
+    x.original = Some(ruta.to_path_buf());
+    x.hojas = hojas;
+    Some(x)
+}
+
+/// Lo que se imprime (y se exporta): las hojas maquetadas y su tinta.
+fn impreso(e: &mut Estado, ruta: &Path) -> Option<(OfficeImpreso, String, bool)> {
     guardar_capas(e, ruta);
-    let Some(o) = e.office.as_mut() else { return };
+    let o = e.office.as_mut()?;
     o.maquetar_todo();
     let paginas = o.paginas.clone();
     let recursos = o.recursos.clone();
@@ -713,17 +744,7 @@ pub(super) fn imprimir(e: &mut Estado, ventana: isize, ruta: &Path, textos: &Cat
     let titulo = pixpin_docs::sin_extension(&pixpin_docs::nombre(ruta));
     let apaisada = paginas.first().is_some_and(|p| p.ancho > p.alto);
     let doc = OfficeImpreso { paginas, recursos, capas, tinta: std::cell::RefCell::new(Tinta::nueva()), pintor: None };
-    let hecho = (|| -> Result<()> {
-        let d = pixpin_capture::Dispositivo::nuevo().context("sin dispositivo para imprimir")?;
-        let motor = pixpin_render::MotorRender::nuevo(d.d3d()).context("sin motor para imprimir")?;
-        let pedido = pixpin_render::imprimir_moderno::Pedido { titulo, apaisada, opcion: None, ppp_previa: 144.0 };
-        pixpin_render::imprimir_moderno::mostrar(windows::Win32::Foundation::HWND(ventana as *mut _), pedido, d.d3d().clone(), motor, Box::new(doc))
-            .context("el dialogo de imprimir no se abrio")
-    })();
-    if let Err(err) = hecho {
-        tracing::warn!(?err, "office: no se pudo imprimir");
-        e.aviso = Some((textos.t("lector-no-imprime"), ahora_ms() + 4000));
-    }
+    Some((doc, titulo, apaisada))
 }
 
 #[cfg(test)]

@@ -233,7 +233,7 @@ fn el_lienzo_del_editor_sale_en_todos_los_formatos_y_con_sus_marcos() {
         "{marcadas:?}"
     );
     let hechos = todos_los_formatos(&p, &dir);
-    assert_eq!(hechos, [WEB, PDF, PNG, JPG, SVG, "excalidraw"]);
+    assert_eq!(hechos, [WEB, PDF, PNG, JPG, SVG, "excalidraw", "pixpin"]);
     // Caso negativo: el PDF de un lienzo no tiene interruptor «Con anotaciones».
     assert!(
         compartible(&p, &textos())
@@ -491,12 +491,13 @@ fn cada_mensaje_solo_ofrece_sus_formatos_y_su_original() {
     let (ficha, mensajes) = proyecto_en_disco(&raiz);
     let t = textos();
     let esperado: [(&str, &[&str]); 5] = [
-        ("m-lienzo", &[WEB, PDF, PNG, JPG, SVG, "excalidraw"]),
-        ("m-foto", &["original", WEB, PDF, PNG, JPG, SVG]),
+        // Y todos, el `.pixpin` de su proyecto (13-oct-2026).
+        ("m-lienzo", &[WEB, PDF, PNG, JPG, SVG, "excalidraw", "pixpin"]),
+        ("m-foto", &["original", "pixpin", WEB, PDF, PNG, JPG, SVG]),
         // Una nota Markdown sola tambien sale como Word (`word`).
-        ("m-nota", &[WEB, PDF, PNG, JPG, SVG, "texto", "word"]),
-        ("m-tabla", &[WEB, PDF, PNG, JPG, SVG, "csv"]),
-        ("m-tareas", &[WEB, PDF, PNG, JPG, SVG, "texto"]),
+        ("m-nota", &[WEB, PDF, PNG, JPG, SVG, "texto", "word", "pixpin"]),
+        ("m-tabla", &[WEB, PDF, PNG, JPG, SVG, "csv", "pixpin"]),
+        ("m-tareas", &[WEB, PDF, PNG, JPG, SVG, "texto", "pixpin"]),
     ];
     for (id, formatos) in esperado {
         let m = mensajes.iter().find(|m| m.id == id).unwrap().clone();
@@ -536,7 +537,7 @@ fn cada_mensaje_solo_ofrece_sus_formatos_y_su_original() {
     let ids: Vec<&str> = c.formatos.iter().map(|f| f.id.as_str()).collect();
     assert_eq!(
         ids,
-        [WEB, PDF, PNG, JPG, SVG, "original"],
+        [WEB, PDF, PNG, JPG, SVG, "original", "pixpin"],
         "un solo fichero detras"
     );
     let web = generar(&p, WEB, &elegidas_para(&c, 0), &dir.join("varios")).unwrap();
@@ -635,7 +636,7 @@ fn un_pdf_anotado_sale_con_su_tinta_y_solo_las_paginas_elegidas() {
         "un PDF se suele mandar tal cual"
     );
     let hechos = todos_los_formatos(&p, &dir.join("salida"));
-    assert_eq!(hechos, ["original", WEB, PDF, PNG, JPG, SVG]);
+    assert_eq!(hechos, ["original", "pixpin", WEB, PDF, PNG, JPG, SVG]);
     // Solo la segunda: un PDF de una pagina, con la tinta.
     let una = generar(
         &p,
@@ -795,7 +796,7 @@ fn un_documento_anotado_sale_como_en_el_lector_partido_en_paginas() {
         "el de abajo en la suya"
     );
     let hechos = todos_los_formatos(&p, &dir.join("salida"));
-    assert_eq!(hechos, ["original", WEB, PDF, PNG, JPG, SVG]);
+    assert_eq!(hechos, ["original", "pixpin", WEB, PDF, PNG, JPG, SVG]);
     if borrar {
         let _ = std::fs::remove_dir_all(dir);
     }

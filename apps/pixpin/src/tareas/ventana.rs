@@ -844,7 +844,7 @@ impl Estado {
 
 
     fn buscando(&self) -> bool {
-        !self.buscar.texto.trim().is_empty()
+        !self.buscar.texto().trim().is_empty()
     }
 
     fn fila(&self, li: usize, fi: usize) -> Option<(&Lista, &Fila)> {
@@ -1148,7 +1148,7 @@ fn letra(e: &mut Estado, c: char) {
         Foco::Tarjeta(..) if c == ' ' || c.is_control() => {}
         Foco::Tarjeta(..) if e.buscando() => {
             e.foco = Foco::Buscar;
-            e.buscar.cursor = e.buscar.texto.len();
+            e.buscar.al_final();
             e.buscar.letra(c);
             e.scroll = 0.0;
         }
@@ -1197,7 +1197,7 @@ fn tecla(
     match (vk, e.foco) {
         (VK_F, _) if ctrl => {
             e.foco = Foco::Buscar;
-            e.buscar.cursor = e.buscar.texto.len();
+            e.buscar.al_final();
         }
         // La vista, con el teclado: Ctrl+L la lista, Ctrl+T las tarjetas
         // (ni las cajas ni las tarjetas usan esas dos).
@@ -1230,7 +1230,7 @@ fn tecla(
                 false,
                 e.foco == Foco::Apuntar,
                 e.campo.texto.is_empty(),
-                e.buscar.texto.is_empty(),
+                e.buscar.texto().is_empty(),
             ) {
                 tarjetas::Escape::Cerrar => return false,
                 tarjetas::Escape::VaciarCaja => e.campo.vaciar(),
@@ -1302,9 +1302,9 @@ fn tecla(
             return hacer(e, Accion::Apuntar, textos, ubicacion, aparato);
         }
         (_, Foco::Buscar) => {
-            let antes = e.buscar.texto.clone();
+            let antes = e.buscar.texto().to_owned();
             e.buscar.tecla(vk, ctrl, shift, false);
-            if e.buscar.texto != antes {
+            if e.buscar.texto() != antes {
                 e.scroll = 0.0;
             }
         }
@@ -1438,7 +1438,7 @@ fn hacer(
                 .and_then(|(_, f)| emoticonos::emoticonos_de(&f.texto).1.get(k).cloned());
             if let Some(emo) = emo {
                 e.buscar.poner(&emo);
-                e.buscar.cursor = e.buscar.texto.len();
+                e.buscar.al_final();
                 e.foco = Foco::Buscar;
                 e.scroll = 0.0;
             }
@@ -1761,7 +1761,7 @@ fn pintar_todo(e: &mut Estado, p: &Pintor, marco: Rect, s: f32, textos: &Catalog
 
     // Lo que sale y donde: agrupar, medir cada tarjeta y colocarlas. Los
     // grupos son los mismos en las dos vistas; solo cambia como se colocan.
-    let palabras = tarjetas::palabras(&e.buscar.texto);
+    let palabras = tarjetas::palabras(&e.buscar.texto());
     let buscando = !palabras.is_empty();
     let grupos = {
         let recien = &e.recien;
@@ -1979,10 +1979,10 @@ fn pintar_todo(e: &mut Estado, p: &Pintor, marco: Rect, s: f32, textos: &Catalog
         titulo: &titulo,
         subtitulo: &resumen,
         buscador: Some(crate::cabecera::Buscador {
-            texto: &e.buscar.texto,
+            texto: &e.buscar.texto(),
             pista: &pista,
             foco: e.foco == Foco::Buscar,
-            cursor: Some(e.buscar.cursor),
+            cursor: Some(e.buscar.pos()),
             enfocar: Accion::EnfocarBuscar,
             vaciar: Accion::VaciarBusqueda,
         }),
@@ -2400,7 +2400,7 @@ fn pintar_sin_resultados(
     textos: &Catalogo,
 ) {
     let mut args = fluent_bundle::FluentArgs::new();
-    args.set("busqueda", ui::corto(e.buscar.texto.trim(), 40));
+    args.set("busqueda", ui::corto(e.buscar.texto().trim(), 40));
     let titulo = textos.t_args("tareas3-sin-resultados", &args);
     let zona = RectF {
         x,
@@ -3928,7 +3928,7 @@ mod pruebas {
     /// Las piezas colocadas como lo haria un fotograma, con tarjetas de alto
     /// fijo: para probar el teclado sin pintar.
     fn colocar(e: &mut Estado) {
-        let palabras = tarjetas::palabras(&e.buscar.texto);
+        let palabras = tarjetas::palabras(&e.buscar.texto());
         let g = tarjetas::agrupar(&e.listas, &palabras, e.hoy, &|_, _| false);
         e.colocadas = tarjetas::disponer(
             &g,
@@ -3962,7 +3962,7 @@ mod pruebas {
             letra(&mut e, c);
         }
         assert_eq!(
-            (e.buscar.texto.as_str(), e.campo.texto.as_str()),
+            (e.buscar.texto(), e.campo.texto.as_str()),
             ("PAN", "")
         );
         colocar(&mut e);
@@ -3970,13 +3970,13 @@ mod pruebas {
         t(&mut e, VK_ABAJO, false);
         assert_eq!(e.foco, Foco::Tarjeta(0, 2), "comprar pan");
         letra(&mut e, ' ');
-        assert_eq!(e.buscar.texto, "PAN");
+        assert_eq!(e.buscar.texto(), "PAN");
         // Arriba de la primera vuelve al buscador (se esta buscando).
         t(&mut e, VK_ARRIBA, false);
         assert_eq!(e.foco, Foco::Buscar);
         // Esc: primero vacia la busqueda, luego cierra.
         assert!(t(&mut e, VK_ESCAPE, false));
-        assert!(e.buscar.texto.is_empty());
+        assert!(e.buscar.texto().is_empty());
         colocar(&mut e);
         // Sin buscar: la caja, y bajando las tarjetas en orden.
         t(&mut e, VK_TAB, false);
@@ -4335,10 +4335,10 @@ mod pruebas {
             .position(|f| f.texto.contains("planos"))
             .unwrap();
         hacer(&mut e, Accion::BuscarEmo(2, fi, 0), &textos, &u, "PC01");
-        assert_eq!((e.buscar.texto.as_str(), e.foco), ("🔥", Foco::Buscar));
+        assert_eq!((e.buscar.texto(), e.foco), ("🔥", Foco::Buscar));
         let g = tarjetas::agrupar(
             &e.listas,
-            &tarjetas::palabras(&e.buscar.texto),
+            &tarjetas::palabras(&e.buscar.texto()),
             e.hoy,
             &|_, _| false,
         );

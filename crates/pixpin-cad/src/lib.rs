@@ -23,5 +23,6 @@ pub mod shx;
 pub mod teselar;
 pub mod texto;
 pub mod ventana;
+pub mod web;
 #[cfg(test)]
 mod pruebas_png;

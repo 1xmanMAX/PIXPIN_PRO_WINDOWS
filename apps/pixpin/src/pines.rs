@@ -1584,6 +1584,7 @@ impl Pines {
             CambioPin::AbrirPedido => self.abrir(id, false),
             CambioPin::AbrirUbicacionPedido => self.abrir(id, true),
             CambioPin::GuardarComoPedido => self.guardar_como(id),
+            CambioPin::ExportarPedido => self.exportar(id),
             CambioPin::AnotarPedido => self.entrar_a_anotar(id),
             // `purgar` los lleva por `procesar_anotacion` en tandas; esto
             // queda para quien atienda un pedido suelto.
@@ -2365,6 +2366,44 @@ impl Pines {
             return pixpin_shell::abrir_ubicacion(&ruta).context("no se pudo abrir la ubicacion");
         }
         pixpin_shell::abrir(&ruta).context("no se pudo abrir el fichero")
+    }
+
+    /// **«Exportar…»**: el componente comun de la app con lo que es el pin
+    /// (una imagen con lo anotado, una nota, un documento o un fichero).
+    fn exportar(&self, id: u64) -> Result<()> {
+        let (tipo, objeto) = {
+            let a = self.almacen.borrow();
+            let e = a.entradas().iter().find(|e| e.id == id).context("la entrada ya no esta en el almacen")?;
+            (e.tipo, a.ruta_objeto(e))
+        };
+        let titulo = objeto.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+        let nombre = pixpin_docs::nombre(&objeto);
+        let cosa = match tipo {
+            TipoEntrada::Imagen => crate::compartir::Cosa::Visor(crate::compartir::exportable::de_imagen(&titulo, &objeto, self.ruta_anotacion(id).as_deref())?),
+            TipoEntrada::Nota => {
+                let texto = std::fs::read_to_string(&objeto).unwrap_or_default();
+                crate::compartir::Cosa::Visor(crate::compartir::exportable::de_texto(&titulo, &texto, Some(&objeto)))
+            }
+            // Un documento que se lee (PDF, Word, libro): con sus paginas y lo anotado.
+            TipoEntrada::Archivo if crate::lector_pdf::se_abre(&nombre) || crate::visor::se_abre(&nombre) => crate::compartir::Cosa::Documento(objeto),
+            TipoEntrada::Archivo if crate::plano_cad::se_abre(&nombre) => {
+                // Un plano, sin abrirlo: lo que se pueda sin su visor (original y .pixpin).
+                let mut x = crate::compartir::exportable::Exportable::nuevo(titulo);
+                x.original = Some(objeto);
+                crate::compartir::Cosa::Visor(x)
+            }
+            TipoEntrada::Archivo => match crate::compartir::exportable::de_imagen(&titulo, &objeto, None) {
+                Ok(x) => crate::compartir::Cosa::Visor(x),
+                Err(_) => {
+                    let mut x = crate::compartir::exportable::Exportable::nuevo(titulo);
+                    x.original = Some(objeto);
+                    crate::compartir::Cosa::Visor(x)
+                }
+            },
+        };
+        let ubicacion = crate::oscuro::ubicacion().context("sin la carpeta de datos")?;
+        crate::compartir::ventana::abrir(crate::compartir::idioma_de(&ubicacion), ubicacion, cosa);
+        Ok(())
     }
 
     /// Guarda una copia del contenido donde el usuario diga.

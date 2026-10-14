@@ -39,9 +39,10 @@ use pixpin_store::ajustes::{
 use pixpin_store::comandos::{CATALOGO, Comando, Enlaces};
 use pixpin_store::herramientas::SITIOS;
 use pixpin_store::{Catalogo, Idioma, Ubicacion};
+use crate::caja_texto::CajaLinea;
 use pixpin_ui::ajustes::{
     Control, Estado, Fila, Foco, Golpe, NAV_ANCHO, Parte, Recta, ancho_de_textos, borrar_busqueda,
-    boton_restablecer_seccion, botones_del_pie, buscador, coincide, contenido, escribir, golpe_en,
+    boton_restablecer_seccion, botones_del_pie, buscador, coincide, contenido, golpe_en,
     limitar_desplazamiento, numero_tras, partes_de_fila, rect_de_fila, rect_de_seccion,
 };
 
@@ -83,6 +84,16 @@ const TENUE: Color = rgb(0x98, 0x98, 0x9D);
 const CHIP_TEXTO: Color = rgb(0xC7, 0xC7, 0xCC);
 const AZUL: Color = rgb(0x0A, 0x84, 0xFF);
 const AZUL_CLARO: Color = rgb(0x64, 0xD2, 0xFF);
+
+/// Los colores de las cajas de escribir de Ajustes (la caja comun).
+fn colores_de_caja() -> crate::caja_texto::Colores {
+    crate::caja_texto::Colores {
+        texto: TINTA,
+        invitacion: TENUE,
+        seleccion: Color { a: 0.35, ..AZUL },
+        rayita: AZUL_CLARO,
+    }
+}
 const VERDE: Color = rgb(0x30, 0xD1, 0x58);
 const ROJO: Color = rgb(0xFF, 0x45, 0x3A);
 const BORDE: Color = blanco(0.10);
@@ -1650,6 +1661,10 @@ fn abrir(
         historial: Vec::new(),
     };
     let mut estado = Estado::default();
+    // Las dos cajas de escribir (el buscador y la de la fila con el foco),
+    // con el componente comun de la app. `Estado` (de `pixpin-ui`) sigue
+    // guardando el texto como `String` para su logica; ver `Cajas`.
+    let mut cajas = Cajas::default();
     let mut resaltado: Option<Golpe> = None;
     let mut pintado: Option<(Estado, Option<Golpe>, u64)> = None;
     let mut version = 0u64;
@@ -1661,6 +1676,9 @@ fn abrir(
         let mut cerrar = false;
 
         for (hwnd, evento) in pixpin_shell::overlay::tomar_eventos_pendientes() {
+            // Lo que la logica cambio por su cuenta (vaciar el buscador,
+            // abrir unas palabras) pasa antes a las cajas.
+            cajas.traer(&estado);
             if hwnd != ventana.handle() {
                 continue;
             }
@@ -1738,6 +1756,20 @@ fn abrir(
                         {
                             estado.entrada = palabras_para_editar(&copia.a, *clave);
                         }
+                    }
+                    // En la caja de escribir con el foco: la rayita donde
+                    // cae el clic (dos, la palabra; tres, todo).
+                    cajas.traer(&estado);
+                    if let Some(caja) = cajas.con_foco(estado.foco) {
+                        caja.pulsar(
+                            Punto {
+                                x: p.x - marco.x,
+                                y: p.y - marco.y,
+                            },
+                            pixpin_shell::modificadores_pulsados().shift,
+                            std::time::Instant::now(),
+                        );
+                        caja.soltar_raton();
                     }
                     match golpe {
                         Some(Golpe::Seccion(i)) => {
@@ -1817,19 +1849,36 @@ fn abrir(
                     version += 1;
                 }
                 EventoOverlay::Caracter(c) => {
-                    let escrito = match estado.foco {
-                        Foco::Buscador if estado.capturando.is_none() => {
-                            estado.desplazamiento = 0;
-                            escribir(&mut estado.busqueda, c)
-                        }
-                        Foco::Entrada(_) if estado.capturando.is_none() => {
-                            escribir(&mut estado.entrada, c)
-                        }
-                        _ => false,
-                    };
+                    // En la caja con el foco (la comun de la app).
+                    let escrito = estado.capturando.is_none()
+                        && cajas.con_foco(estado.foco).is_some_and(|caja| caja.caracter(c));
                     if escrito {
+                        if estado.foco == Foco::Buscador {
+                            estado.desplazamiento = 0;
+                        }
+                        cajas.llevar(&mut estado);
                         version += 1;
                     }
+                }
+                // Las teclas de una caja de texto (flechas, Inicio/Fin,
+                // Retroceso y Supr con o sin Ctrl, Ctrl+A/C/X/V/Z/Y...) son de
+                // la caja con el foco; Escape e Intro siguen abajo.
+                EventoOverlay::Tecla { vk, shift, ctrl, .. }
+                    if estado.capturando.is_none()
+                        && estado.foco != Foco::Nada
+                        && CajaLinea::es_suya(vk, shift, ctrl) =>
+                {
+                    if let Some(caja) = cajas.con_foco(estado.foco)
+                        && caja
+                            .tecla(vk, shift, ctrl, &mut crate::caja_texto::PortapapelesWindows)
+                            .cambio()
+                    {
+                        if estado.foco == Foco::Buscador {
+                            estado.desplazamiento = 0;
+                        }
+                        cajas.llevar(&mut estado);
+                    }
+                    version += 1;
                 }
                 EventoOverlay::Tecla { vk, ctrl, .. } => {
                     if let Some(i) = estado.capturando {
@@ -1878,15 +1927,6 @@ fn abrir(
                                     estado.foco = Foco::Nada;
                                 }
                             }
-                            0x08 => match estado.foco {
-                                Foco::Buscador => {
-                                    estado.busqueda.pop();
-                                }
-                                Foco::Entrada(_) => {
-                                    estado.entrada.pop();
-                                }
-                                Foco::Nada => {}
-                            },
                             0x0D => match estado.foco {
                                 Foco::Entrada(i)
                                     if matches!(filas.get(i), Some((Clave::AnadirIgnorado, _))) =>
@@ -1959,6 +1999,7 @@ fn abrir(
                 alto,
                 filas: &filas,
                 estado: &estado,
+                cajas: &cajas,
                 resaltado,
                 hay_deshacer: !copia.historial.is_empty(),
             };
@@ -1992,6 +2033,59 @@ fn rotulo_restablecer(estado: &Estado, t: &Catalogo) -> String {
     t.t_args("ajustes2-restablecer", &args)
 }
 
+/// **Las cajas de escribir de Ajustes** con el componente comun de la app
+/// (`caja_texto::CajaLinea`): la rayita donde se escribe, Ctrl+Retroceso,
+/// Mayus+flechas, Ctrl+A/C/X/V/Z, el raton... `Estado` vive en `pixpin-ui`
+/// (sin pintor ni portapapeles) y guarda lo escrito como `String` para su
+/// logica; estas cajas son las que se editan y se pintan, y cada cambio se
+/// copia alli. La rayita va quieta: esta ventana solo repinta al cambiar
+/// algo.
+struct Cajas {
+    busqueda: CajaLinea,
+    entrada: CajaLinea,
+}
+
+impl Default for Cajas {
+    fn default() -> Self {
+        let caja = || CajaLinea::nueva().sin_parpadeo().con_maximo(MAXIMO_CAJA);
+        Cajas {
+            busqueda: caja(),
+            entrada: caja(),
+        }
+    }
+}
+
+impl Cajas {
+    /// Lo que la logica de `pixpin-ui` cambio por su cuenta (vaciar el
+    /// buscador, abrir las palabras de una herramienta) pasa a las cajas.
+    fn traer(&mut self, e: &Estado) {
+        for (caja, texto) in [(&mut self.busqueda, &e.busqueda), (&mut self.entrada, &e.entrada)] {
+            if caja.texto() != texto.as_str() {
+                *caja = CajaLinea::nueva().sin_parpadeo().con_maximo(MAXIMO_CAJA);
+                caja.poner_texto(texto);
+            }
+        }
+    }
+
+    /// La caja que tiene el foco, si es una de escribir.
+    fn con_foco(&mut self, foco: Foco) -> Option<&mut CajaLinea> {
+        match foco {
+            Foco::Buscador => Some(&mut self.busqueda),
+            Foco::Entrada(_) => Some(&mut self.entrada),
+            Foco::Nada => None,
+        }
+    }
+
+    /// Lo escrito en las cajas, de vuelta a `Estado`.
+    fn llevar(&self, e: &mut Estado) {
+        e.busqueda = self.busqueda.texto().to_owned();
+        e.entrada = self.entrada.texto().to_owned();
+    }
+}
+
+/// Lo mas largo de una caja de Ajustes (lo de `pixpin_ui::ajustes::escribir`).
+const MAXIMO_CAJA: usize = 120;
+
 // --- El pintado -----------------------------------------------------------------
 
 /// Lo que hace falta para pintar un fotograma.
@@ -2000,6 +2094,7 @@ struct Vista<'a> {
     alto: f32,
     filas: &'a [(Clave, Fila)],
     estado: &'a Estado,
+    cajas: &'a Cajas,
     resaltado: Option<Golpe>,
     hay_deshacer: bool,
 }
@@ -2174,37 +2269,23 @@ fn dibujar_columna(p: &Pintor, e: f32, v: &Vista, t: &Catalogo) {
     );
     let tam = 14.0 * e;
     let x_texto = b.x + 34.0 * e;
-    let (texto, color) = if estado.busqueda.is_empty() {
-        (t.t("ajustes2-buscar"), TENUE)
-    } else {
-        (estado.busqueda.clone(), TINTA)
+    // La caja de una linea comun: la rayita donde se escribe, lo elegido y
+    // el texto corrido si no cabe.
+    let hueco = RectF {
+        x: x_texto,
+        ancho: (b.ancho - 34.0 * e - 44.0 * e).max(1.0),
+        ..b
     };
-    let (w, h) = p.medir_texto(&texto, tam);
-    let y_texto = b.y + (b.alto - h) / 2.0;
-    p.con_recorte(
-        RectF {
-            x: x_texto,
-            ancho: b.ancho - 34.0 * e - 44.0 * e,
-            ..b
-        },
-        |p| p.texto(&texto, x_texto, y_texto, tam, color),
+    v.cajas.busqueda.pintar(
+        p,
+        hueco,
+        hueco,
+        tam,
+        &t.t("ajustes2-buscar"),
+        &colores_de_caja(),
+        enfocado,
+        std::time::Instant::now(),
     );
-    if enfocado {
-        let x_cursor = if estado.busqueda.is_empty() {
-            x_texto
-        } else {
-            x_texto + w + e
-        };
-        p.rellenar(
-            RectF {
-                x: x_cursor,
-                y: y_texto + 2.0 * e,
-                ancho: 1.5 * e,
-                alto: h - 4.0 * e,
-            },
-            AZUL_CLARO,
-        );
-    }
     if estado.buscando() {
         let x = rf(borrar_busqueda(), e);
         if v.resaltado == Some(Golpe::BorrarBusqueda) {
@@ -2767,38 +2848,29 @@ fn dibujar_fila(
                     e,
                 );
                 // Lo escrito, solo en la caja que tiene el foco: hay varias
-                // (programas, palabras) y comparten el mismo hueco.
-                let (texto, color) = if v.estado.entrada.is_empty() || !enfocada {
-                    (marcador.clone(), TENUE)
-                } else {
-                    (v.estado.entrada.clone(), TINTA)
+                // (programas, palabras) y comparten el mismo hueco. Es la
+                // caja de una linea comun, con su rayita donde se escribe.
+                let hueco = RectF {
+                    x: caja.x + 10.0 * e,
+                    ancho: (caja.ancho - 20.0 * e).max(1.0),
+                    ..caja
                 };
-                let (w, h) = p.medir_texto(&texto, 13.0 * e);
-                let xt = caja.x + 10.0 * e;
-                let yt = caja.y + (caja.alto - h) / 2.0;
-                p.con_recorte(
-                    RectF {
-                        x: xt,
-                        ancho: caja.ancho - 20.0 * e,
-                        ..caja
-                    },
-                    |p| p.texto(&texto, xt, yt, 13.0 * e, color),
-                );
                 if enfocada {
-                    let xc = if v.estado.entrada.is_empty() {
-                        xt
-                    } else {
-                        xt + w + e
-                    };
-                    p.rellenar(
-                        RectF {
-                            x: xc,
-                            y: yt + 2.0 * e,
-                            ancho: 1.5 * e,
-                            alto: h - 4.0 * e,
-                        },
-                        AZUL_CLARO,
+                    v.cajas.entrada.pintar(
+                        p,
+                        caja,
+                        hueco,
+                        13.0 * e,
+                        marcador,
+                        &colores_de_caja(),
+                        true,
+                        std::time::Instant::now(),
                     );
+                } else {
+                    let (_, h) = p.medir_texto(marcador, 13.0 * e);
+                    p.con_recorte(hueco, |p| {
+                        p.texto(marcador, hueco.x, caja.y + (caja.alto - h) / 2.0, 13.0 * e, TENUE)
+                    });
                 }
             }
             Parte::Restablecer => {
@@ -3319,11 +3391,14 @@ mod pruebas {
             let solo: Vec<Fila> = filas.iter().map(|(_, f)| f.clone()).collect();
             estado.desplazamiento =
                 limitar_desplazamiento(estado.desplazamiento, &solo, contenido(ANCHO, ALTO));
+            let mut cajas = Cajas::default();
+            cajas.traer(&estado);
             let vista = Vista {
                 ancho: ANCHO,
                 alto: ALTO,
                 filas: &filas,
                 estado: &estado,
+                cajas: &cajas,
                 resaltado,
                 hay_deshacer: true,
             };

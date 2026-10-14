@@ -1377,7 +1377,7 @@ fn pastilla(e: &Estado, p: &Pintor, m: Marco, botones: &mut Vec<(RectF, Accion)>
     // El nombre del mensaje del chat, o el del fichero (la pastilla del
     // movil); escribiendolo, lo escrito.
     let nombre = match &e.nombre.editando {
-        Some(t) => t.clone(),
+        Some(t) => t.texto().to_owned(),
         None if e.nombre.visto.is_empty() => pixpin_docs::sin_extension(&e.doc.titulo),
         None => pixpin_docs::sin_extension(&e.nombre.visto),
     };
@@ -1415,29 +1415,12 @@ fn pastilla(e: &Estado, p: &Pintor, m: Marco, botones: &mut Vec<(RectF, Accion)>
         alto: h + 14.0 * m.e,
     };
     p.rellenar_redondeado(caja, caja.alto / 2.0, con_alfa(CRISTAL, 0.94));
-    p.texto(&nombre, caja.x + 14.0 * m.e, caja.y + 7.0 * m.e, tam, TEXTO);
-    if e.nombre.editando.is_some() {
-        // Escribiendo el nombre: un subrayado y el cursor detras, como el
-        // campo del movil.
-        let x0 = caja.x + 14.0 * m.e;
-        p.rellenar(
-            RectF {
-                x: x0,
-                y: caja.y + caja.alto - 6.0 * m.e,
-                ancho: w.max(40.0 * m.e),
-                alto: 1.0 * m.e,
-            },
-            DORADO,
-        );
-        p.rellenar(
-            RectF {
-                x: x0 + w + 1.0,
-                y: caja.y + 8.0 * m.e,
-                ancho: 1.5 * m.e,
-                alto: h - 2.0 * m.e,
-            },
-            DORADO,
-        );
+    // Escribiendo el nombre, la caja de una linea comun (la rayita donde se
+    // escribe y lo elegido) con su subrayado, como el campo del movil; si
+    // no, el nombre.
+    let x0 = caja.x + 14.0 * m.e;
+    if !e.nombre.pintar_escribiendo(p, caja, x0, w, tam, m.e) {
+        p.texto(&nombre, x0, caja.y + 7.0 * m.e, tam, TEXTO);
     }
     // El nombre se pulsa para cambiarlo (D5), como en el movil.
     if e.nombre.se_puede() {
@@ -2868,7 +2851,7 @@ fn tecla_de_las_cajas(
     ubicacion: &Ubicacion,
 ) -> (bool, Option<PathBuf>) {
     use crate::renombrar_doc::Tecla;
-    match e.nombre.tecla(vk, ctrl) {
+    match e.nombre.tecla(vk, shift, ctrl) {
         Tecla::Consumida => return (true, None),
         Tecla::Confirmar => {
             // Lo pendiente se escribe antes al nombre de ahora: si el

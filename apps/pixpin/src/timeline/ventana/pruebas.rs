@@ -64,7 +64,7 @@ fn esc_va_por_capas_detalle_busqueda_dia_pestana_y_cierra() {
     assert!(tecla_(&mut e, VK_ESCAPE, false, &u));
     assert!(e.detalle.is_none());
     assert!(tecla_(&mut e, VK_ESCAPE, false, &u));
-    assert!(e.busqueda.texto.is_empty());
+    assert!(e.busqueda.texto().is_empty());
     assert!(tecla_(&mut e, VK_ESCAPE, false, &u));
     assert!(e.dia.is_none());
     assert!(tecla_(&mut e, VK_ESCAPE, false, &u));
@@ -123,16 +123,16 @@ fn ctrl_clic_en_estado_elige_el_dia_y_sin_ctrl_lo_abre() {
 fn las_letras_buscan_en_momentos_y_van_a_la_caja_en_hoy() {
     let (mut e, u) = ejemplo("letras");
     letra(&mut e, 'h');
-    assert_eq!(e.campo.texto, "h");
-    assert!(e.busqueda.texto.is_empty());
+    assert_eq!(e.campo.texto(), "h");
+    assert!(e.busqueda.texto().is_empty());
     hacer_(&mut e, Accion::Pestana(Pestana::Momentos), &u);
     letra(&mut e, 'p');
     assert!(e.buscando);
-    assert_eq!(e.busqueda.texto, "p");
+    assert_eq!(e.busqueda.texto(), "p");
     // Caso negativo: con el detalle abierto, las letras no van a ningun sitio.
     e.abrir_detalle(0);
     letra(&mut e, 'x');
-    assert_eq!(e.busqueda.texto, "p");
+    assert_eq!(e.busqueda.texto(), "p");
 }
 
 #[test]

@@ -330,6 +330,10 @@ struct Contexto {
 
 /// Una tecla para el campo de una sub-pantalla.
 enum Tecla {
+    /// Una tecla de caja de texto (flechas, Inicio/Fin, Retroceso y Supr con
+    /// o sin Ctrl, Ctrl+A/C/X/Z...): para los campos que son la caja comun
+    /// de la app (`caja_texto::CajaLinea`).
+    Caja { vk: u32, shift: bool, ctrl: bool },
     Letra(char),
     Borrar,
     Intro,
@@ -662,6 +666,16 @@ pub fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion) -> R
                         c.en_extra = !c.en_extra;
                         hay_que_pintar = true;
                     }
+                }
+                // Las teclas de caja de texto, primero para los campos que son
+                // la caja comun (los chats compartidos); si la pantalla no la
+                // quiere, Retroceso sigue como `Borrar`.
+                EventoOverlay::Tecla { vk, shift, ctrl, .. }
+                    if pantalla.campo.is_none()
+                        && crate::caja_texto::CajaLinea::es_suya(vk, shift, ctrl)
+                        && pantalla.tecla(Tecla::Caja { vk, shift, ctrl }) =>
+                {
+                    hay_que_pintar = true;
                 }
                 EventoOverlay::Tecla { vk: 0x08, .. } => {
                     if let Some(c) = pantalla.campo.as_mut() {

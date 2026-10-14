@@ -24,6 +24,8 @@
 //! formatos se ven y donde cae cada mando, en `pixpin_ui::hoja_compartir`.
 
 pub(crate) mod adjuntos;
+/// El «Exportar» comun de todos los visores (13-oct-2026).
+pub(crate) mod exportable;
 pub(crate) mod enlace;
 pub(crate) mod documento_web;
 mod pdf;
@@ -85,6 +87,9 @@ pub(crate) enum Cosa {
     /// formatos enteros, sin paginas que elegir. La hoja hace lo demas: el
     /// peso, Guardar, Copiar y la Salida para arrastrarlo.
     Hecho { titulo: String, extras: Vec<Extra> },
+    /// **Un visor** (plano, modelo 3D, hoja, pin...): sus hojas, sus formatos
+    /// con la funcion de cada uno y su fichero (ver [`exportable`]).
+    Visor(exportable::Exportable),
 }
 
 /// El idioma de la aplicacion, leido de sus ajustes: el editor y los
@@ -145,6 +150,9 @@ pub(crate) enum Entero {
     /// al pedirlo: puede pesar
     /// mucho y no hay por que hacerlo si no se elige.
     Proyectos(Vec<(PathBuf, String, String)>),
+    /// **Lo que hace el visor**, al pedirlo: escribe sus ficheros en la
+    /// carpeta (ver [`exportable::Propio`]).
+    Funcion(exportable::Hacer),
 }
 
 pub(crate) struct Extra {
@@ -330,15 +338,81 @@ fn preparar_sin_rotulos(cosa: Cosa, t: &Catalogo) -> Result<Preparado> {
             p.original_primero = true;
             Ok(p)
         }
+        Cosa::Visor(x) => Ok(de_visor(x, t)),
         Cosa::Documento(ruta) => {
             let nombre = pixpin_docs::sin_extension(&pixpin_docs::nombre(&ruta));
             let mut p = Preparado::nuevo(nombre);
             anadir_documento(&mut p, &ruta, "doc", t);
-            anadir_original(&mut p, "original", "compartir-original", vec![ruta]);
+            anadir_original(&mut p, "original", "compartir-original", vec![ruta.clone()]);
+            anadir_pixpin(&mut p, ruta);
             p.original_primero = true;
             Ok(p)
         }
     }
+}
+
+/// **Lo de un visor**: sus hojas como paginas, sus formatos propios y,
+/// del fichero que se ve, el original y el `.pixpin` (lo comun).
+fn de_visor(x: exportable::Exportable, t: &Catalogo) -> Preparado {
+    let mut p = Preparado::nuevo(if x.titulo.trim().is_empty() { t.t("compartir-sin-nombre") } else { x.titulo.clone() });
+    let varias = x.hojas.len() > 1;
+    let mut tablas = x.tablas;
+    for (i, h) in x.hojas.into_iter().enumerate() {
+        let imagenes: HashMap<u64, Arc<ImagenRgba>> = h.imagenes.into_iter().map(|(k, v)| (k, Arc::new(v))).collect();
+        let mut hoja = h.hoja;
+        p.traducir(&mut hoja, &mut HashMap::new(), &|id| imagenes.get(&id).cloned().map(FuenteImagen::Cargada));
+        let clave = format!("hoja-{}", i + 1);
+        let nombre = if h.nombre.trim().is_empty() {
+            if varias { format!("{} {}", t.t("compartir-pagina"), i + 1) } else { p.titulo.clone() }
+        } else {
+            h.nombre
+        };
+        p.pieza(pagina(&clave, nombre, "", 0), hoja, h.fondo, false);
+        p.marcar(&clave);
+        if let Some(t) = tablas.remove(&i) {
+            p.tablas.insert(clave, t);
+        }
+    }
+    for propio in x.propios {
+        p.extras.push(Extra { id: propio.id, clave: propio.clave, que: Entero::Funcion(propio.hacer) });
+    }
+    if let Some(o) = x.original {
+        anadir_original(&mut p, exportable::ORIGINAL, "compartir-original", vec![o.clone()]);
+        let (raiz, anotado) = (x.raiz, x.anotado);
+        p.extras.push(Extra {
+            id: exportable::PIXPIN,
+            clave: "compartir-pixpin",
+            que: Entero::Funcion(Arc::new(move |carpeta: &Path| {
+                let (fichero, bytes) = exportable::pixpin_de(raiz.as_deref(), &o, &anotado, pixpin_shell::entorno::ahora_utc_ms())?;
+                let ruta = carpeta.join(fichero);
+                escribir(&ruta, &bytes)?;
+                Ok(vec![ruta])
+            })),
+        });
+    }
+    p
+}
+
+/// El `.pixpin` de un fichero que se lee (ver [`exportable::pixpin_de`]),
+/// con lo anotado que tenga al lado (`<doc>.pixpin-anotado/`).
+fn anadir_pixpin(p: &mut Preparado, ruta: PathBuf) {
+    if !ruta.is_file() {
+        return;
+    }
+    let mut lado = ruta.as_os_str().to_owned();
+    lado.push(".pixpin-anotado");
+    let anotado: Vec<PathBuf> = std::fs::read_dir(PathBuf::from(lado)).map(|d| d.flatten().map(|e| e.path()).filter(|r| r.is_file()).collect()).unwrap_or_default();
+    let raiz = crate::oscuro::ubicacion().map(|u| u.raiz().to_path_buf());
+    p.extras.push(Extra {
+        id: exportable::PIXPIN,
+        clave: "compartir-pixpin",
+        que: Entero::Funcion(Arc::new(move |carpeta: &Path| {
+            let (fichero, bytes) = exportable::pixpin_de(raiz.as_deref(), &ruta, &anotado, pixpin_shell::entorno::ahora_utc_ms())?;
+            let r = carpeta.join(fichero);
+            escribir(&r, &bytes)?;
+            Ok(vec![r])
+        })),
+    });
 }
 
 fn de_lienzo_suelto(l: LienzoSuelto, t: &Catalogo) -> Preparado {
@@ -365,6 +439,22 @@ fn de_lienzo_suelto(l: LienzoSuelto, t: &Catalogo) -> Preparado {
             fichero: format!("{}.excalidraw", nombre_de_fichero(&p.titulo)),
             bytes: json.clone().into_bytes(),
         },
+    });
+    // Y como `.pixpin`: un proyecto con el lienzo dentro, para seguir en
+    // otro PixPin o en el movil.
+    let (titulo, editable) = (p.titulo.clone(), json.clone());
+    p.extras.push(Extra {
+        id: exportable::PIXPIN,
+        clave: "compartir-pixpin",
+        que: Entero::Funcion(Arc::new(move |carpeta: &Path| {
+            let lienzo = carpeta.join(format!("{}.excalidraw", nombre_de_fichero(&titulo)));
+            escribir(&lienzo, editable.as_bytes())?;
+            let (fichero, bytes) = exportable::pixpin_de(None, &lienzo, &[], pixpin_shell::entorno::ahora_utc_ms())?;
+            let _ = std::fs::remove_file(&lienzo);
+            let r = carpeta.join(fichero);
+            escribir(&r, &bytes)?;
+            Ok(vec![r])
+        })),
     });
     p.excalidraw = Some(json);
     p
@@ -889,6 +979,15 @@ fn de_mensajes(
             ("originales", "compartir-originales")
         };
         anadir_original(&mut p, id, clave, rutas);
+    }
+    // El proyecto entero del chat, para abrirlo en otro PixPin o el movil.
+    if pixpin_proyecto::almacen::Indice::leer(raiz).buscar(proyecto).is_some() {
+        let nombre = pixpin_proyecto::almacen::Indice::leer(raiz).buscar(proyecto).map(|f| f.nombre.clone()).unwrap_or_default();
+        p.extras.push(Extra {
+            id: exportable::PIXPIN,
+            clave: "compartir-pixpin",
+            que: Entero::Proyectos(vec![(raiz.to_path_buf(), proyecto.to_string(), format!("{}.pixpin", exportar_html::nombre_de_fichero(&nombre)))]),
+        });
     }
     // Una foto o un fichero solos: lo que se suele querer es mandarlos tal
     // cual.
@@ -1637,6 +1736,9 @@ pub(crate) fn compartible(p: &Preparado, t: &Catalogo) -> Compartible {
     if p.piezas.is_empty() && !p.adjuntos.is_empty() {
         de_paginas.push(formato(WEB, "compartir-web", Cuantas::Ninguna));
     }
+    // Un formato propio de un visor sustituye al de las paginas con su id
+    // (el HTML interactivo de un plano en vez del dibujo de sus hojas).
+    de_paginas.retain(|f| !p.extras.iter().any(|e| e.id == f.id && matches!(e.que, Entero::Funcion(_))));
     let enteros: Vec<Formato> = p
         .extras
         .iter()
@@ -1768,7 +1870,7 @@ fn escala_de(hoja: &Hoja) -> f32 {
 
 /// Un nombre de fichero para un titulo: sin lo que Windows no admite y sin
 /// el punto final de una frase («lunes.» daria `lunes..txt`).
-fn nombre_de_fichero(titulo: &str) -> String {
+pub(crate) fn nombre_de_fichero(titulo: &str) -> String {
     exportar_html::nombre_de_fichero(titulo.trim_end_matches(['.', ' ']))
 }
 
@@ -1811,7 +1913,22 @@ pub(crate) fn generar(
     } else {
         None
     };
+    let propio = p.extras.iter().find_map(|e| match &e.que {
+        Entero::Funcion(f) if e.id == formato => Some(f.clone()),
+        _ => None,
+    });
     let ficheros = match formato {
+        _ if propio.is_some() => {
+            let hacer = propio.context("sin formato")?;
+            let v = hacer(carpeta)?;
+            anyhow::ensure!(!v.is_empty() && v.iter().all(|r| r.is_file()), "el formato no dejo ningun fichero");
+            if matches!(formato, PNG | JPG)
+                && let Some(r) = v.first()
+            {
+                imagen = pixpin_codec::cargar(r).ok();
+            }
+            v
+        }
         WEB | WEB_IMAGEN if piezas.is_empty() && !p.adjuntos.is_empty() => {
             let trozo = adjuntos::html(&p.adjuntos, &p.rotulo_adjuntos);
             let ruta = carpeta.join(format!("{base}.html"));
@@ -1945,6 +2062,7 @@ pub(crate) fn generar(
                         .map_err(|m| anyhow::anyhow!("no se pudo imprimir el PDF: {m}"))?;
                     vec![ruta]
                 }
+                Entero::Funcion(hacer) => hacer(carpeta)?,
                 Entero::Proyectos(paquetes) => {
                     let mut v = Vec::with_capacity(paquetes.len());
                     for (raiz, id, fichero) in paquetes {
