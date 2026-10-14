@@ -303,11 +303,13 @@ const M_ENCIMA: u32 = 6;
 const M_CERRAR: u32 = 7;
 const M_AISLAR: u32 = 8;
 const M_PANEL: u32 = 9;
+const M_EXPORTAR: u32 = 10;
 /// La primera vista guardada; las demas, seguidas.
 const M_VISTA: u32 = 100;
 
 #[allow(clippy::too_many_arguments)]
-fn menu(hwnd: HWND, t: &TextosUi3d, corte: bool, aislado: Option<bool>, panel: bool, aristas: bool, fijada: bool, vistas: &[String]) {
+#[allow(clippy::too_many_arguments)]
+fn menu(hwnd: HWND, t: &TextosUi3d, corte: bool, aislado: Option<bool>, panel: bool, aristas: bool, fijada: bool, vistas: &[String], exportar: Option<&str>) {
     // SAFETY: menu propio que se destruye antes de salir; cadenas vivas.
     unsafe {
         let Ok(m) = CreatePopupMenu() else { return };
@@ -334,6 +336,9 @@ fn menu(hwnd: HWND, t: &TextosUi3d, corte: bool, aislado: Option<bool>, panel: b
             }
         }
         let _ = AppendMenuW(m, MF_SEPARATOR, 0, PCWSTR::null());
+        if let Some(e) = exportar {
+            poner(M_EXPORTAR, e, false);
+        }
         poner(M_ENCIMA, &t.encima, fijada);
         poner(M_CERRAR, &t.cerrar, false);
         let mut p = windows::Win32::Foundation::POINT::default();
@@ -568,6 +573,85 @@ pub struct Extras {
     pub orientacion: Option<(f64, f64)>,
     /// Las vistas congeladas del croquis: en el menu y con las teclas 1 a 9.
     pub vistas: Vec<crate::croquis::Vista3D>,
+    /// «Exportar…» en el menu (y Ctrl+E): quien abre la ventana sabe como.
+    pub exportar: Option<AlExportar>,
+}
+
+/// La foto de lo que se ve: `(ancho, alto, RGBA)`.
+pub type Foto = (u32, u32, Vec<u8>);
+
+/// El «Exportar…» del menu: su rotulo y que hacer con la vista que se ve
+/// (la foto de la ventana, si se pudo leer).
+#[derive(Clone)]
+pub struct AlExportar {
+    pub texto: String,
+    pub hacer: std::sync::Arc<dyn Fn(Option<Foto>) + Send + Sync>,
+}
+
+/// **Lo que se ve en la ventana** (su zona de cliente), leido de la
+/// pantalla: la ventana pinta con la tarjeta y no tiene superficie GDI que
+/// imprimir, asi que la vista se exporta como se ve.
+pub fn foto_de_la_ventana(hwnd: HWND) -> Option<Foto> {
+    use windows::Win32::Foundation::{POINT, RECT};
+    use windows::Win32::Graphics::Gdi::{
+        BI_RGB, BITMAPINFO, BITMAPINFOHEADER, BitBlt, ClientToScreen, CreateCompatibleDC, CreateDIBSection, DIB_RGB_COLORS, DeleteDC, DeleteObject,
+        GetDC, ReleaseDC, SRCCOPY, SelectObject,
+    };
+    use windows::Win32::UI::WindowsAndMessaging::GetClientRect;
+    let mut r = RECT::default();
+    let mut p = POINT::default();
+    // SAFETY: ventana viva de este hilo; estructuras locales.
+    unsafe {
+        GetClientRect(hwnd, &mut r).ok()?;
+        let _ = ClientToScreen(hwnd, &mut p);
+    }
+    let (ancho, alto) = (r.right - r.left, r.bottom - r.top);
+    if ancho <= 0 || alto <= 0 {
+        return None;
+    }
+    let info = BITMAPINFO {
+        bmiHeader: BITMAPINFOHEADER {
+            biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
+            biWidth: ancho,
+            biHeight: -alto,
+            biPlanes: 1,
+            biBitCount: 32,
+            biCompression: BI_RGB.0,
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+    // SAFETY: objetos GDI creados y soltados aqui; `bits` vive hasta el
+    // DeleteObject y mide ancho x alto x 4.
+    unsafe {
+        let pantalla = GetDC(None);
+        let dc = CreateCompatibleDC(Some(pantalla));
+        let mut bits: *mut core::ffi::c_void = std::ptr::null_mut();
+        let Ok(bmp) = CreateDIBSection(Some(dc), &info, DIB_RGB_COLORS, &mut bits, None, 0) else {
+            let _ = DeleteDC(dc);
+            ReleaseDC(None, pantalla);
+            return None;
+        };
+        let viejo = SelectObject(dc, bmp.into());
+        let _ = BitBlt(dc, 0, 0, ancho, alto, Some(pantalla), p.x, p.y, SRCCOPY);
+        let n = (ancho * alto * 4) as usize;
+        let mut px = std::slice::from_raw_parts(bits as *const u8, n).to_vec();
+        SelectObject(dc, viejo);
+        let _ = DeleteObject(bmp.into());
+        let _ = DeleteDC(dc);
+        ReleaseDC(None, pantalla);
+        for c in px.chunks_exact_mut(4) {
+            c.swap(0, 2);
+            c[3] = 255;
+        }
+        Some((ancho as u32, alto as u32, px))
+    }
+}
+
+impl std::fmt::Debug for AlExportar {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AlExportar").field("texto", &self.texto).finish()
+    }
 }
 
 /// **Abre la ventana del modelo** y no vuelve hasta que se cierra.
@@ -877,7 +961,7 @@ pub fn ver_con(titulo: &str, cargando: Receiver<Result<Modelo3d, String>>, ui: T
                         sucio = true;
                     } else if b == 2 {
                         let a = if aislado.is_some() { Some(true) } else { elegido.map(|_| false) };
-                        menu(hwnd, &ui, seccion.is_some(), a, panel, aristas, fijada, &nombres_de_vistas);
+                        menu(hwnd, &ui, seccion.is_some(), a, panel, aristas, fijada, &nombres_de_vistas, extras.exportar.as_ref().map(|x| x.texto.as_str()));
                     } else if b == 0
                         && let Some((_, g)) = &modelo
                     {
@@ -960,6 +1044,11 @@ pub fn ver_con(titulo: &str, cargando: Receiver<Result<Modelo3d, String>>, ui: T
                         sucio = true;
                     }
                     M_PLANTA => planta = true,
+                    M_EXPORTAR => {
+                        if let Some(x) = &extras.exportar {
+                            (x.hacer)(foto_de_la_ventana(hwnd));
+                        }
+                    }
                     M_ENCIMA => cambiar_encima = true,
                     M_CERRAR => break 'bucle,
                     n if (M_VISTA..M_VISTA + extras.vistas.len() as u32).contains(&n) => vista_pedida = Some((n - M_VISTA) as usize),

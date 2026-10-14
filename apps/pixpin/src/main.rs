@@ -2368,6 +2368,7 @@ pub(crate) fn textos_del_pin(textos: &Catalogo) -> pixpin_pin::TextosPin {
     pixpin_pin::TextosPin {
         copiar: textos.t("pin-copiar"),
         guardar_como: textos.t("pin-guardar-como"),
+        exportar: textos.t("compartir-exportar"),
         abrir_ubicacion: textos.t("pin-abrir-ubicacion"),
         tamano_original: textos.t("pin-tamano-original"),
         grupo: textos.t("pin-grupo"),

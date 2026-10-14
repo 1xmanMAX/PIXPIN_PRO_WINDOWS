@@ -115,6 +115,8 @@ pub fn abrir(textos: &Catalogo, ruta: &Path) -> Result<bool> {
                 // Escape no llega aqui; entonces se cierra con la X de la
                 // barra de tareas o con Alt+F4.
                 EventoOverlay::Tecla { vk, .. } if vk == VK_ESCAPE => vivo = false,
+                // Ctrl+E: el «Exportar» comun (HTML, PDF por Edge, .pixpin, original).
+                EventoOverlay::Tecla { vk: 0x45, ctrl: true, alt: false, .. } => exportar(ruta),
                 EventoOverlay::Cerrar => vivo = false,
                 // La ventana nace del tamano del area de trabajo y no se
                 // redimensiona: no hay evento de tamano en `EventoOverlay`, y
@@ -159,6 +161,31 @@ pub fn abrir(textos: &Catalogo, ruta: &Path) -> Result<bool> {
 /// Fichero temporal y renombrado, como Android (`VisorHtmlActivity.kt`
 /// escribe `.tmp` y hace `renameTo`): un corte a mitad de la escritura
 /// dejaria el html del usuario partido, y eso es trabajo suyo.
+/// **Exportar la pagina**: ella misma (HTML), su PDF impreso por Edge, el
+/// original y el `.pixpin`, con el componente comun.
+fn exportar(ruta: &Path) {
+    let Some(u) = crate::oscuro::ubicacion() else { return };
+    let titulo = pixpin_docs::sin_extension(&pixpin_docs::nombre(ruta));
+    let mut x = crate::compartir::exportable::Exportable::nuevo(titulo.clone());
+    x.raiz = Some(u.raiz().to_path_buf());
+    x.original = Some(ruta.to_path_buf());
+    let base = crate::compartir::nombre_de_fichero(&titulo);
+    let (r1, b1) = (ruta.to_path_buf(), base.clone());
+    x.propios.push(crate::compartir::exportable::Propio::nuevo(crate::compartir::WEB, "compartir-web", move |c| {
+        let r = c.join(format!("{b1}.html"));
+        std::fs::copy(&r1, &r)?;
+        Ok(vec![r])
+    }));
+    let r2 = ruta.to_path_buf();
+    x.propios.push(crate::compartir::exportable::Propio::nuevo(crate::compartir::PDF, "compartir-pdf", move |c| {
+        let r = c.join(format!("{base}.pdf"));
+        let html = std::fs::read_to_string(&r2)?;
+        crate::timeline::exportar::a_pdf(&html, &r).map_err(|e| anyhow::anyhow!("no se pudo imprimir el PDF: {e}"))?;
+        Ok(vec![r])
+    }));
+    crate::compartir::ventana::abrir(crate::compartir::idioma_de(&u), u, crate::compartir::Cosa::Visor(x));
+}
+
 fn escribir_encima(ruta: &Path, bytes: &[u8]) -> std::io::Result<()> {
     let temporal = ruta.with_extension("pixpin-tmp");
     std::fs::write(&temporal, bytes)?;

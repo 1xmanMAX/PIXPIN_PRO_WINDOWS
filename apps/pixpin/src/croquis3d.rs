@@ -140,7 +140,8 @@ fn lanzar(idioma: Idioma, titulo: String, leer: Lector) {
                 return;
             }
         };
-        let extras = extras_de(&c);
+        let mut extras = extras_de(&c);
+        extras.exportar = Some(crate::compartir::exportable::al_exportar_3d(idioma, titulo.clone(), None));
         let (tx, rx) = std::sync::mpsc::channel();
         let _ = std::thread::Builder::new().name("croquis-3d-malla".into()).spawn(move || {
             let t = std::time::Instant::now();
@@ -168,6 +169,7 @@ pub fn extras_de(c: &Croquis) -> pixpin_cad::ventana3d::Extras {
         encuadre,
         orientacion: Some((-fabrica.giro - std::f64::consts::FRAC_PI_2, fabrica.inclinacion)),
         vistas: c.vistas.clone(),
+        exportar: None,
     }
 }
 

@@ -18,6 +18,11 @@ use pixpin_store::{Idioma, Ubicacion};
 mod imprimir;
 /// Lo anotado sobre el plano (la capa anot-<uid>).
 mod anotar;
+/// Exportar el plano: HTML por capas, PDF, PNG y DXF (13-oct-2026).
+pub(crate) mod exportar;
+
+/// La orden con que PixPin se llama a si misma para exportar un plano.
+pub const ORDEN_EXPORTAR: &str = exportar::ORDEN;
 
 /// La orden con que PixPin se llama a si misma para leer un plano.
 pub const ORDEN: &str = "--cad-convertir";
@@ -33,6 +38,9 @@ pub fn se_abre(nombre: &str) -> bool {
 /// salir. `None`: es un arranque normal.
 pub fn convertir_si_toca() -> Option<i32> {
     let args: Vec<std::ffi::OsString> = std::env::args_os().collect();
+    if args.get(1).is_some_and(|a| a == ORDEN_EXPORTAR) {
+        return Some(exportar::en_este_proceso(&args[2..]));
+    }
     if args.get(1).is_none_or(|a| a != ORDEN) {
         return None;
     }
@@ -149,6 +157,7 @@ fn textos(idioma: Idioma) -> pixpin_cad::ventana::TextosUi {
             tres: "View in 3D	3".into(),
             marcos: "Frames to print	I".into(),
             imprimir: "Print…	Ctrl+P".into(),
+            exportar: "Export (HTML, PDF, PNG, DXF…)…	Ctrl+E".into(),
             borrar_marcos: "Clear frames".into(),
             pista_marcos: "Drag to frame what is printed · Ctrl+P: print · Del: remove the last one".into(),
             anotar: "Annotate	A".into(),
@@ -217,7 +226,19 @@ pub fn lanzar(idioma: Idioma, ubicacion: Ubicacion, ruta: &Path) {
             quitar: Box::new(move || pixpin_cad::letras::quitar_todas(&c3)),
             releer: Box::new(move || leer_aparte(&raiz5, &r5)),
         };
-        let acciones = pixpin_cad::ventana::Acciones { abrir_3d: Some(abrir_3d), imprimir: Some(imprimir), anotador: Some(anotador), letras: Some(letras) };
+        // Exportar: el componente comun con los formatos del plano.
+        let (r6, raiz6, u6) = (ruta.clone(), raiz.clone(), ubicacion.clone());
+        let exportar: Box<dyn Fn(isize, &pixpin_cad::modelo::Modelo, &[[f64; 4]], &[Vec<[f64; 2]>])> = Box::new(move |_, m, marcos, cotas| {
+            let p = exportar::Plano::nuevo(&raiz6, &r6, m, cotas, marcos);
+            crate::compartir::ventana::abrir(idioma, u6.clone(), crate::compartir::Cosa::Visor(exportar::exportable(p, idioma)));
+        });
+        let acciones = pixpin_cad::ventana::Acciones {
+            abrir_3d: Some(abrir_3d),
+            imprimir: Some(imprimir),
+            anotador: Some(anotador),
+            letras: Some(letras),
+            exportar: Some(exportar),
+        };
         if let Err(e) = pixpin_cad::ventana::ver(&titulo, rx, textos(idioma), acciones) {
             tracing::warn!(%e, "no se pudo abrir el visor de planos");
             let _ = pixpin_shell::abrir(&ruta);

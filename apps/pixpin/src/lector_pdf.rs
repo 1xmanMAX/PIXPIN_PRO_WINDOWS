@@ -2085,10 +2085,8 @@ fn filas_del_panel(e: &Estado, textos: &Catalogo) -> Vec<(String, Accion)> {
             filas.push((textos.t("lector-modo-lectura"), Accion::ModoLectura));
         }
         filas.push((textos.t("lector-imprimir"), Accion::Imprimir));
-        // Compartir sabe de un Word (su texto); de un PowerPoint aun no.
-        if o.tipo == pixpin_office::Tipo::Word {
-            filas.push((textos.t("compartir-lector"), Accion::Compartir));
-        }
+        // Compartir: un Word con su texto; lo demas, con sus hojas impresas.
+        filas.push((textos.t("compartir-lector"), Accion::Compartir));
         if !e.marcas.is_empty() {
             filas.push((textos.t("visor-quitar-marcadores"), Accion::QuitarMarcas));
         }
@@ -2798,11 +2796,14 @@ fn hacer(
         Accion::Compartir => {
             guardar_capas(e, ruta);
             e.panel = false;
-            crate::compartir::ventana::abrir(
-                crate::compartir::idioma_de(ubicacion),
-                ubicacion.clone(),
-                crate::compartir::Cosa::Documento(ruta.to_path_buf()),
-            );
+            // Un PowerPoint (o lo que no es un Word): sus hojas impresas, con
+            // el «Exportar» comun.
+            let cosa = match e.office.as_ref().map(|o| o.tipo) {
+                Some(t) if t != pixpin_office::Tipo::Word => office::exportable(e, ruta).map(crate::compartir::Cosa::Visor),
+                _ => None,
+            }
+            .unwrap_or_else(|| crate::compartir::Cosa::Documento(ruta.to_path_buf()));
+            crate::compartir::ventana::abrir(crate::compartir::idioma_de(ubicacion), ubicacion.clone(), cosa);
         }
         Accion::AbrirCarpeta => {
             let _ = pixpin_shell::abrir_ubicacion(&ubicacion.raiz().join("exportado"));

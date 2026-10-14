@@ -343,7 +343,8 @@ fn preparar_sin_rotulos(cosa: Cosa, t: &Catalogo) -> Result<Preparado> {
             let nombre = pixpin_docs::sin_extension(&pixpin_docs::nombre(&ruta));
             let mut p = Preparado::nuevo(nombre);
             anadir_documento(&mut p, &ruta, "doc", t);
-            anadir_original(&mut p, "original", "compartir-original", vec![ruta]);
+            anadir_original(&mut p, "original", "compartir-original", vec![ruta.clone()]);
+            anadir_pixpin(&mut p, ruta);
             p.original_primero = true;
             Ok(p)
         }
@@ -355,6 +356,7 @@ fn preparar_sin_rotulos(cosa: Cosa, t: &Catalogo) -> Result<Preparado> {
 fn de_visor(x: exportable::Exportable, t: &Catalogo) -> Preparado {
     let mut p = Preparado::nuevo(if x.titulo.trim().is_empty() { t.t("compartir-sin-nombre") } else { x.titulo.clone() });
     let varias = x.hojas.len() > 1;
+    let mut tablas = x.tablas;
     for (i, h) in x.hojas.into_iter().enumerate() {
         let imagenes: HashMap<u64, Arc<ImagenRgba>> = h.imagenes.into_iter().map(|(k, v)| (k, Arc::new(v))).collect();
         let mut hoja = h.hoja;
@@ -367,6 +369,9 @@ fn de_visor(x: exportable::Exportable, t: &Catalogo) -> Preparado {
         };
         p.pieza(pagina(&clave, nombre, "", 0), hoja, h.fondo, false);
         p.marcar(&clave);
+        if let Some(t) = tablas.remove(&i) {
+            p.tablas.insert(clave, t);
+        }
     }
     for propio in x.propios {
         p.extras.push(Extra { id: propio.id, clave: propio.clave, que: Entero::Funcion(propio.hacer) });
@@ -386,6 +391,28 @@ fn de_visor(x: exportable::Exportable, t: &Catalogo) -> Preparado {
         });
     }
     p
+}
+
+/// El `.pixpin` de un fichero que se lee (ver [`exportable::pixpin_de`]),
+/// con lo anotado que tenga al lado (`<doc>.pixpin-anotado/`).
+fn anadir_pixpin(p: &mut Preparado, ruta: PathBuf) {
+    if !ruta.is_file() {
+        return;
+    }
+    let mut lado = ruta.as_os_str().to_owned();
+    lado.push(".pixpin-anotado");
+    let anotado: Vec<PathBuf> = std::fs::read_dir(PathBuf::from(lado)).map(|d| d.flatten().map(|e| e.path()).filter(|r| r.is_file()).collect()).unwrap_or_default();
+    let raiz = crate::oscuro::ubicacion().map(|u| u.raiz().to_path_buf());
+    p.extras.push(Extra {
+        id: exportable::PIXPIN,
+        clave: "compartir-pixpin",
+        que: Entero::Funcion(Arc::new(move |carpeta: &Path| {
+            let (fichero, bytes) = exportable::pixpin_de(raiz.as_deref(), &ruta, &anotado, pixpin_shell::entorno::ahora_utc_ms())?;
+            let r = carpeta.join(fichero);
+            escribir(&r, &bytes)?;
+            Ok(vec![r])
+        })),
+    });
 }
 
 fn de_lienzo_suelto(l: LienzoSuelto, t: &Catalogo) -> Preparado {
@@ -412,6 +439,22 @@ fn de_lienzo_suelto(l: LienzoSuelto, t: &Catalogo) -> Preparado {
             fichero: format!("{}.excalidraw", nombre_de_fichero(&p.titulo)),
             bytes: json.clone().into_bytes(),
         },
+    });
+    // Y como `.pixpin`: un proyecto con el lienzo dentro, para seguir en
+    // otro PixPin o en el movil.
+    let (titulo, editable) = (p.titulo.clone(), json.clone());
+    p.extras.push(Extra {
+        id: exportable::PIXPIN,
+        clave: "compartir-pixpin",
+        que: Entero::Funcion(Arc::new(move |carpeta: &Path| {
+            let lienzo = carpeta.join(format!("{}.excalidraw", nombre_de_fichero(&titulo)));
+            escribir(&lienzo, editable.as_bytes())?;
+            let (fichero, bytes) = exportable::pixpin_de(None, &lienzo, &[], pixpin_shell::entorno::ahora_utc_ms())?;
+            let _ = std::fs::remove_file(&lienzo);
+            let r = carpeta.join(fichero);
+            escribir(&r, &bytes)?;
+            Ok(vec![r])
+        })),
     });
     p.excalidraw = Some(json);
     p
@@ -936,6 +979,15 @@ fn de_mensajes(
             ("originales", "compartir-originales")
         };
         anadir_original(&mut p, id, clave, rutas);
+    }
+    // El proyecto entero del chat, para abrirlo en otro PixPin o el movil.
+    if pixpin_proyecto::almacen::Indice::leer(raiz).buscar(proyecto).is_some() {
+        let nombre = pixpin_proyecto::almacen::Indice::leer(raiz).buscar(proyecto).map(|f| f.nombre.clone()).unwrap_or_default();
+        p.extras.push(Extra {
+            id: exportable::PIXPIN,
+            clave: "compartir-pixpin",
+            que: Entero::Proyectos(vec![(raiz.to_path_buf(), proyecto.to_string(), format!("{}.pixpin", exportar_html::nombre_de_fichero(&nombre)))]),
+        });
     }
     // Una foto o un fichero solos: lo que se suele querer es mandarlos tal
     // cual.

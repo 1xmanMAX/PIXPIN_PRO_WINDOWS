@@ -75,6 +75,8 @@ pub enum CambioPin {
     CopiarPedido,
     /// Menu: guardar el contenido en un fichero elegido por el usuario.
     GuardarComoPedido,
+    /// Menu: «Exportar…», el componente comun de la app.
+    ExportarPedido,
     /// Menu: leer el texto de la imagen y copiarlo (P4.2). Lo resuelve el
     /// gestor y no la ventana: el pin no conoce ni el motor de
     /// reconocimiento ni el portapapeles.
@@ -4017,6 +4019,7 @@ fn abrir_menu(hwnd: HWND, punto: Option<(i32, i32)>) {
             let cambio = match cmd {
                 crate::menu::CMD_COPIAR => Some(CambioPin::CopiarPedido),
                 crate::menu::CMD_GUARDAR_COMO => Some(CambioPin::GuardarComoPedido),
+                crate::menu::CMD_EXPORTAR => Some(CambioPin::ExportarPedido),
                 crate::menu::CMD_TEXTO => Some(CambioPin::TextoPedido),
                 crate::menu::CMD_ABRIR_LIENZO => Some(CambioPin::AbrirLienzoPedido),
                 crate::menu::CMD_CONGELAR => Some(CambioPin::CongelarPedido),

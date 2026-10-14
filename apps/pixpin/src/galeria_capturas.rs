@@ -1344,6 +1344,7 @@ fn menu_de_captura(
         (2, format!("{}\tCtrl+C", textos.t("galeria-copiar"))),
         (8, textos.t("salida-compartir-menu")),
         (3, textos.t("galeria-guardar-como")),
+        (9, textos.t("compartir-exportar")),
         (4, textos.t("galeria-mostrar-en-carpeta")),
     ];
     if alguna_caduca {
@@ -1364,6 +1365,22 @@ fn menu_de_captura(
             crate::salida::mostrar(rutas, textos.t("salida-titulo"));
         }
         Some(3) => guardar_como(e, &v, ventana, textos),
+        // El «Exportar» comun: PDF, HTML, imagen, .pixpin y original.
+        Some(9) => {
+            let rutas: Vec<PathBuf> = v.iter().filter_map(|&k| e.lista.get(k).map(|x| x.ruta.clone())).collect();
+            let titulo = match rutas.as_slice() {
+                [una] => una.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default(),
+                _ => textos.t("galeria-titulo"),
+            };
+            match (crate::compartir::exportable::de_imagenes(&titulo, &rutas), crate::oscuro::ubicacion()) {
+                (Ok(mut x), Some(u)) => {
+                    x.raiz = Some(u.raiz().to_path_buf());
+                    crate::compartir::ventana::abrir(crate::compartir::idioma_de(&u), u, crate::compartir::Cosa::Visor(x));
+                }
+                (Err(err), _) => e.avisar(fallo(textos, err.to_string())),
+                _ => {}
+            }
+        }
         Some(4) => {
             if let Some(x) = e.lista.get(v[0]) {
                 mostrar_en_carpeta(&x.ruta);

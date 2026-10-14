@@ -1596,7 +1596,10 @@ fn ver_en(
                     } else {
                         true
                     };
-                    if al_visor {
+                    // Ctrl+E: el «Exportar» comun (PDF, HTML, .pixpin, imagen, CSV, original).
+                    if al_visor && ctrl && !alt && vk == VK_E {
+                        exportar_libro(ruta);
+                    } else if al_visor {
                         vivo &= tecla_del_visor(&mut est, &mut pin, &mut ventana, (vk, shift, ctrl, alt), textos, motor);
                     }
                     hay_que_pintar = true;
@@ -1739,6 +1742,21 @@ fn botones_de_ver(editable: bool, con_archivo: bool) -> Vec<BotonLector> {
         b.push(BotonLector { id: BOTON_SU_PROGRAMA, icono: &material::OPEN_IN_NEW, encendido: false });
     }
     b
+}
+
+/// **Exportar el libro** con el componente comun (ver
+/// `compartir::exportable::de_libro`). Sin fichero (una tabla del chat) no
+/// hay nada que leer aqui.
+fn exportar_libro(ruta: Option<&Path>) {
+    let (Some(r), Some(u)) = (ruta, crate::oscuro::ubicacion()) else { return };
+    let titulo = pixpin_docs::sin_extension(&pixpin_docs::nombre(r));
+    match crate::compartir::exportable::de_libro(&titulo, r) {
+        Ok(mut x) => {
+            x.raiz = Some(u.raiz().to_path_buf());
+            crate::compartir::ventana::abrir(crate::compartir::idioma_de(&u), u, crate::compartir::Cosa::Visor(x));
+        }
+        Err(e) => tracing::warn!(?e, "no se pudo preparar el libro para exportar"),
+    }
 }
 
 /// F2 o la `E` sola (sin Ctrl ni Alt) pasan a editar.

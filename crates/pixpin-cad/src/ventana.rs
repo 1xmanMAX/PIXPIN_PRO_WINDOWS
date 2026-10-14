@@ -927,6 +927,7 @@ const M_IMPRIMIR: u32 = 9;
 const M_BORRAR_MARCOS: u32 = 10;
 const M_ANOTAR: u32 = 11;
 const M_LETRAS: u32 = 12;
+const M_EXPORTAR: u32 = 13;
 // Las del menu del boton «Aa».
 const M_ANADIR_LETRAS: u32 = 40;
 const M_QUITAR_LETRAS: u32 = 41;
@@ -1008,6 +1009,7 @@ fn menu(hwnd: HWND, t: &TextosUi, acotando: bool, hay_cotas: bool, fijada: bool,
         poner(M_ANOTAR, &t.anotar, false, false);
         poner(M_MARCOS, &t.marcos, marcando, false);
         poner(M_IMPRIMIR, &t.imprimir, false, false);
+        poner(M_EXPORTAR, &t.exportar, false, false);
         poner(M_BORRAR_MARCOS, &t.borrar_marcos, false, !hay_marcos);
         let _ = AppendMenuW(m, MF_SEPARATOR, 0, PCWSTR::null());
         poner(M_ENCIMA, &t.encima, fijada, false);
@@ -1036,6 +1038,9 @@ pub struct Acciones {
     pub anotador: Option<Box<dyn FnOnce(&Modelo) -> Box<dyn crate::anotado::Anotador>>>,
     /// El boton «Aa»: las letras del usuario (ver [`crate::letras`]).
     pub letras: Option<Letras>,
+    /// Exportar (HTML, PDF, PNG, DXF...): lo mismo que imprimir recibe.
+    #[allow(clippy::type_complexity)]
+    pub exportar: Option<Box<dyn Fn(isize, &Modelo, &[[f64; 4]], &[Vec<[f64; 2]>])>>,
 }
 
 /// La firma de las cotas y los marcos (para saber si cambiaron y guardarlos
@@ -1233,6 +1238,7 @@ pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo, String>>, textos_ui: 
         let mut cambiar_marcos = false;
         let mut cambiar_anotar = false;
         let mut imprimir = false;
+        let mut exportar = false;
         let mut ver_letras = false;
         for (de, ev) in eventos {
             // **Anotando, el raton y el teclado son del motor del lienzo**
@@ -1428,6 +1434,7 @@ pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo, String>>, textos_ui: 
                     M_ANOTAR => cambiar_anotar = true,
                     M_LETRAS => ver_letras = true,
                     M_IMPRIMIR => imprimir = true,
+                    M_EXPORTAR => exportar = true,
                     M_BORRAR_MARCOS => {
                         marcos.clear();
                         sucio = true;
@@ -1466,6 +1473,9 @@ pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo, String>>, textos_ui: 
                     // Ctrl+P imprimir, como en cualquier programa; I, los marcos.
                     // SAFETY: lee el estado de la tecla Ctrl.
                     0x50 if unsafe { GetKeyState(VK_CONTROL.0 as i32) } < 0 => imprimir = true,
+                    // Ctrl+E: exportar.
+                    // SAFETY: lee el estado de la tecla Ctrl.
+                    0x45 if unsafe { GetKeyState(VK_CONTROL.0 as i32) } < 0 => exportar = true,
                     0x49 => cambiar_marcos = true,
                     0x41 => cambiar_anotar = true,
                     0x4C => ver_letras = true,
@@ -1528,6 +1538,15 @@ pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo, String>>, textos_ui: 
         if cambiar_acotar && !acotar.activo && marcando {
             marcando = false;
             barra_sucia = true;
+        }
+        if exportar
+            && let (Some(f), Some((m, _))) = (&acciones.exportar, &plano)
+        {
+            let mut cotas = acotar.hechas.clone();
+            if acotar.puntos.len() >= 2 {
+                cotas.push(acotar.puntos.clone());
+            }
+            f(hwnd.0 as isize, m, &marcos, &cotas);
         }
         if imprimir
             && let (Some(f), Some((m, _))) = (&acciones.imprimir, &plano)
@@ -1774,6 +1793,7 @@ pub struct TextosUi {
     pub marcos: String,
     pub anotar: String,
     pub imprimir: String,
+    pub exportar: String,
     pub borrar_marcos: String,
     pub pista_marcos: String,
     /// Con `{n}`: cuantos objetos de Civil 3D vinieron sin su dibujo.
@@ -1809,6 +1829,7 @@ impl Default for TextosUi {
             marcos: "Marcos para imprimir\tI".into(),
             anotar: "Anotar\tA".into(),
             imprimir: "Imprimir…\tCtrl+P".into(),
+            exportar: "Exportar (HTML, PDF, PNG, DXF…)…\tCtrl+E".into(),
             borrar_marcos: "Borrar los marcos".into(),
             pista_marcos: "Arrastra para marcar lo que se imprime · Ctrl+P: imprimir · Supr: quitar el último".into(),
             sin_dibujo_civil: "{n} objetos de Civil 3D se guardaron sin su dibujo: guárdalo con PROXYGRAPHICS = 1 o exporta a LandXML".into(),

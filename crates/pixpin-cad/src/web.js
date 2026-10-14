@@ -223,7 +223,8 @@ function pintar(){
     c.transform(i.u[0] / w, i.u[1] / w, -i.v[0] / h, -i.v[1] / h, i.e[0] + i.v[0], i.e[1] + i.v[1]);
     c.drawImage(x.im, 0, 0);
   });
-  var visibles = D.grupos.filter(function(g){ return capasOn[g.k]; });
+  // Sin los datos aun no se pinta nada: lo guardado de cada tramo saldria vacio.
+  var visibles = F.length ? D.grupos.filter(function(g){ return capasOn[g.k]; }) : [];
   var pasadas = [
     function(g, caja){ tramos(g.T, vista.px, caja, function(p){ rellenos(p).forEach(function(x){ c.fillStyle = P.relleno[x[0]]; c.fill(x[1]); }); }); },
     function(g, caja){ tramos(g.H, vista.px * 2, caja, function(p){ sombreados(p).forEach(function(s){ patron(c, s, p, cl); }); }); },

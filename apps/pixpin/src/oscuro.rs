@@ -37,6 +37,12 @@ pub fn iniciar(ubicacion: &Ubicacion) {
     let _ = UBICACION.set(ubicacion.clone());
 }
 
+/// Donde estan los datos de la app (la que se fijo al arrancar), para
+/// quien no la recibe (el «Exportar…» de un pin).
+pub fn ubicacion() -> Option<Ubicacion> {
+    UBICACION.get().cloned()
+}
+
 /// Si los visores van en oscuro.
 pub fn activo() -> bool {
     ACTIVO.load(Ordering::Relaxed)

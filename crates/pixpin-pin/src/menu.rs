@@ -63,6 +63,8 @@ pub const CMD_INVERTIR: u32 = 22;
 pub const CMD_SIN_PEGATINA: u32 = 23;
 /// Volver a leer seguida una nota que se leia por paginas.
 pub const CMD_NOTA_SEGUIDA: u32 = 24;
+/// «Exportar…»: el componente comun (PDF, HTML, .pixpin, imagen, original).
+pub const CMD_EXPORTAR: u32 = 25;
 pub const CMD_SIN_GRUPO: u32 = 100;
 pub const CMD_COLOR_BASE: u32 = 101;
 /// «Convertir en…» una nota: 200 + el indice en `MiniApp::TODAS`. En el PC
@@ -158,6 +160,7 @@ pub struct TextosV2 {
 pub struct TextosPin {
     pub copiar: String,
     pub guardar_como: String,
+    pub exportar: String,
     pub abrir_ubicacion: String,
     pub tamano_original: String,
     pub grupo: String,
@@ -544,6 +547,9 @@ pub fn entradas_del_menu(
             }
             _ => mas.push(accion(CMD_GUARDAR_COMO, &t.guardar_como, None)),
         }
+        // Exportar a todo (PDF, HTML, .pixpin, imagen, original), con el
+        // componente comun de la app.
+        mas.push(accion(CMD_EXPORTAR, &t.exportar, None));
         // Abrir en el lienzo va con las acciones de la imagen: dibujar sin
         // el borde del pin. El doble clic sigue anotando dentro del pin.
         if matches!(contenido, Contenido::Imagen(_)) {
@@ -704,6 +710,7 @@ pub(crate) mod pruebas {
         TextosPin {
             copiar: "Copiar".into(),
             guardar_como: "Guardar como…".into(),
+            exportar: "Exportar…".into(),
             abrir_ubicacion: "Abrir ubicación".into(),
             tamano_original: "Tamaño original".into(),
             grupo: "Grupo".into(),
