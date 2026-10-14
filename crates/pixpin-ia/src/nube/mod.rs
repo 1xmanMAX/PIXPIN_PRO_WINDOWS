@@ -416,6 +416,10 @@ impl MotorNube {
 }
 
 impl Motor for MotorNube {
+    fn catalogo_completo(&self) -> bool {
+        true
+    }
+
     fn completar(&self, p: &Peticion, al_trozo: &mut dyn FnMut(&Trozo) -> Seguir) -> Result<Respuesta, ErrorIa> {
         if self.clave.is_empty() {
             return Err(ErrorIa::Nube(format!(
@@ -490,6 +494,21 @@ pub fn probar_en(p: Proveedor, clave: &str, url: &str) -> Result<String, String>
     }
 }
 
+/// La peticion para el modelo local cuando hace de respaldo: con las pocas
+/// herramientas que vienen a cuento (`seleccion`), como si lo hubiera
+/// elegido el usuario; con el catalogo entero un 2B se pierde.
+pub fn para_el_local(p: &Peticion) -> Peticion {
+    let mut q = p.clone();
+    if q.herramientas.len() > crate::seleccion::MAXIMO {
+        let ultimo = p.mensajes.iter().rev().find(|m| m.rol == crate::motor::Rol::Usuario);
+        let pedido = ultimo.map(crate::motor::Mensaje::texto_entero).unwrap_or_default();
+        let con_imagen = p.mensajes.iter().any(crate::motor::Mensaje::tiene_imagen);
+        let elegidas = crate::seleccion::para_el_pedido(&pedido, con_imagen);
+        q.herramientas.retain(|h| elegidas.iter().any(|e| e.nombre == h.nombre));
+    }
+    q
+}
+
 /// **La nube con red de seguridad**: si falla antes de decir nada (sin red,
 /// clave mala, sin saldo, saturado) y hay modelo local, sigue con el local
 /// avisandolo en la burbuja. Tras un fallo, los siguientes minutos van
@@ -528,7 +547,7 @@ impl Motor for MotorConRespaldo {
         if let Some(local) = &self.local
             && self.caido()
         {
-            return local.completar(p, al_trozo);
+            return local.completar(&para_el_local(p), al_trozo);
         }
         let mut emitido = false;
         let r = self.nube.completar(p, &mut |t| {
@@ -547,10 +566,14 @@ impl Motor for MotorConRespaldo {
                         ..Respuesta::de_texto("")
                     });
                 }
-                local.completar(p, al_trozo)
+                local.completar(&para_el_local(p), al_trozo)
             }
             (r, _) => r,
         }
+    }
+
+    fn catalogo_completo(&self) -> bool {
+        self.nube.catalogo_completo()
     }
 
     fn soltar(&self) {

@@ -296,6 +296,14 @@ pub trait Motor: Send + Sync {
     /// Soltar la memoria ya (cerrar el modelo). Se vuelve a cargar solo en la
     /// siguiente peticion.
     fn soltar(&self) {}
+
+    /// Si este motor recibe el catalogo ENTERO en cada turno en vez de las
+    /// pocas herramientas de `seleccion::para_el_pedido`. Los modelos de la
+    /// nube eligen bien entre todas, y un catalogo que no cambia de un turno
+    /// a otro es un prefijo que se cachea (ver `nube`). Los locales, no.
+    fn catalogo_completo(&self) -> bool {
+        false
+    }
 }
 
 /// Un motor de mentira que contesta lo que se le dice, en orden. Para las

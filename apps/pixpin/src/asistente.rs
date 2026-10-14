@@ -27,6 +27,7 @@
 //! se abre camino y el protocolo (`catalogo_json`, Excalidraw) es el que
 //! portara el movil.
 
+pub mod acciones;
 pub mod al_lienzo;
 pub mod chat;
 pub mod descarga;

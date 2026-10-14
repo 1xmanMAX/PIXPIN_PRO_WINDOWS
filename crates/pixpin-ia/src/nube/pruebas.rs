@@ -299,8 +299,8 @@ fn claude_entrada_invalida_no_se_ejecuta_y_se_corrige() {
     let s = servidor(
         "/v1/messages",
         vec![
-            // Un texto sin «texto»: el esquema lo exige.
-            guion_claude(vec![c_herramienta(0, "toolu_a", "dibujar_en_lienzo", r#"{"elementos":[{"tipo":"texto","x":1,"y":1}]}"#)], "tool_use"),
+            // Un tipo que no esta en la lista cerrada del esquema.
+            guion_claude(vec![c_herramienta(0, "toolu_a", "dibujar_en_lienzo", r#"{"elementos":[{"tipo":"dragon","x":1,"y":1}]}"#)], "tool_use"),
             // JSON roto (la entrada llega sin validar del servidor).
             guion_claude(vec![c_herramienta(0, "toolu_b", "dibujar_en_lienzo", r#"{"elementos":[{"tipo":"#)], "tool_use"),
             guion_claude(vec![c_herramienta(0, "toolu_c", "dibujar_en_lienzo", DIBUJO)], "tool_use"),
@@ -316,7 +316,7 @@ fn claude_entrada_invalida_no_se_ejecuta_y_se_corrige() {
     let ultimo_de = |i: usize| rec[i].cuerpo["messages"].as_array().unwrap().last().unwrap().clone();
     let r1 = ultimo_de(1);
     assert_eq!(r1["content"][0]["is_error"], true);
-    assert!(r1["content"][0]["content"].as_str().unwrap().contains("«texto»"));
+    assert!(r1["content"][0]["content"].as_str().unwrap().contains("dragon"));
     let r2 = ultimo_de(2);
     assert_eq!(r2["content"][0]["is_error"], true);
     assert!(r2["content"][0]["content"].as_str().unwrap().contains("JSON"));
@@ -649,4 +649,33 @@ fn en_vivo_claude() {
 #[ignore = "en vivo: necesita DEEPSEEK_API_KEY"]
 fn en_vivo_deepseek() {
     en_vivo(Proveedor::DeepSeek, "DEEPSEEK_API_KEY");
+}
+
+#[test]
+fn la_nube_recibe_el_catalogo_entero_y_el_respaldo_solo_lo_que_toca() {
+    assert!(MotorNube::nuevo(Proveedor::Claude, "x").catalogo_completo());
+    assert!(!MotorGuionado::nuevo(vec![]).catalogo_completo());
+    let r = MotorConRespaldo::nuevo(Arc::new(MotorNube::nuevo(Proveedor::DeepSeek, "x")), None, "DeepSeek");
+    assert!(r.catalogo_completo());
+    let mut p = Peticion::nueva(historial("dibuja una estrella roja"));
+    p.herramientas = catalogo();
+    assert!(p.herramientas.len() > crate::seleccion::MAXIMO);
+    let q = para_el_local(&p);
+    assert!(q.herramientas.len() <= crate::seleccion::MAXIMO);
+    assert!(q.herramientas.iter().any(|h| h.nombre == crate::herramientas::DIBUJAR));
+}
+
+#[test]
+fn solo_las_propias_van_estrictas() {
+    let mut p = Peticion::nueva(historial("hola"));
+    p.herramientas = catalogo();
+    let c = claude::cuerpo(&p, &std::collections::HashMap::new(), true, 100);
+    let tools = c["tools"].as_array().unwrap();
+    assert_eq!(tools.len(), catalogo().len());
+    let estrictas = tools.iter().filter(|t| t["strict"] == true).count();
+    assert_eq!(estrictas, crate::herramientas::catalogo_base().len());
+    for t in tools {
+        let n = t["name"].as_str().unwrap();
+        assert!(n.len() <= 64 && n.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-'), "{n}");
+    }
 }

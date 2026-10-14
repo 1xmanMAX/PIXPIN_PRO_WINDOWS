@@ -210,12 +210,16 @@ fn mensaje_del_asistente(r: &Respuesta) -> Mensaje {
 pub fn instrucciones() -> String {
     "Eres el asistente de PixPin, una app de capturas, notas y lienzo. \
      Contesta en el idioma del usuario, breve y claro. \
-     Si pide dibujar algo, o copiar una imagen al lienzo, usa dibujar_en_lienzo, \
+     Si pide dibujar algo, usa dibujar_en_lienzo, \
      poniendo el color de cada figura. \
+     Si pide copiar o calcar al lienzo una imagen adjunta, usa calcar_imagen. \
      Si da datos para graficar, usa grafica. \
      Si quiere el texto de un documento escaneado, usa ocr. \
-     Despues de usar una herramienta, di en una frase lo que hiciste."
+     Si pide hacer algo en la app (notas, tareas, ventanas, capturas, abrir ficheros), usa su herramienta. \
+     Si pregunta donde esta algo o como se hace en PixPin, usa ayuda_app y contesta con lo que diga, sin inventar. \
+     Despues de usar una herramienta, di en una frase lo que hiciste. "
         .to_string()
+        + crate::conocimiento::RESUMEN
 }
 
 #[cfg(test)]
@@ -297,7 +301,7 @@ mod pruebas {
         let mut ej = Apunta::default();
         let (f, eventos, _, motor) = correr(
             vec![
-                Respuesta::de_llamada("dibujar_en_lienzo", r#"{"elementos":[{"tipo":"texto","x":1,"y":1}]}"#),
+                Respuesta::de_llamada("dibujar_en_lienzo", r#"{"elementos":[{"tipo":"dragon","x":1,"y":1}]}"#),
                 Respuesta::de_llamada("dibujar_en_lienzo", r#"{"elementos":[{"tipo":"texto","x":1,"y":1,"texto":"CASA"}]}"#),
                 Respuesta::de_texto("Hecho."),
             ],
@@ -306,7 +310,7 @@ mod pruebas {
         assert_eq!(f.reintentos, 1);
         assert_eq!(f.herramientas_hechas, 1);
         assert_eq!(ej.hechas.len(), 1, "la mala no se ejecuta");
-        assert!(eventos.iter().any(|e| matches!(e, Evento::Reintento { motivo } if motivo.contains("«texto»"))));
+        assert!(eventos.iter().any(|e| matches!(e, Evento::Reintento { motivo } if motivo.contains("dragon"))));
         let pedidas = motor.recibido.lock().unwrap();
         assert!(pedidas[1].mensajes.last().unwrap().texto_entero().starts_with("ERROR:"));
     }

@@ -16,7 +16,7 @@
 //!   explicito para que no cambie si cambia el de fabrica.
 //! - **Sin `temperature`/`top_p`/`top_k`** (400 en Haiku 5.5) y **sin
 //!   prefill**: la conversacion siempre acaba en un turno del usuario.
-//! - **Herramientas `strict: true`** con `additionalProperties: false` y sin
+//! - **Herramientas propias `strict: true`** con `additionalProperties: false` y sin
 //!   las restricciones que el modo estricto no admite (topes numericos y de
 //!   listas, que se pasan a la descripcion y se siguen validando aqui), y
 //!   `eager_input_streaming: true` porque la peticion va en streaming: la
@@ -237,7 +237,18 @@ pub fn cuerpo(p: &Peticion, memoria: &HashMap<String, Value>, estricto: bool, ma
         "output_config": {"effort": ESFUERZO},
     });
     if !p.herramientas.is_empty() {
-        c["tools"] = Value::Array(p.herramientas.iter().map(|h| herramienta(h, estricto)).collect());
+        // Estrictas solo las propias del asistente (dibujar, calcar, grafica…),
+        // donde la forma de los argumentos es lo dificil: el modo estricto
+        // tiene topes de herramientas y de campos opcionales por peticion, y
+        // las acciones de la app son de pocos campos sencillos que valida
+        // `herramientas::validar` igual.
+        let propias: Vec<String> = crate::herramientas::catalogo_base().into_iter().map(|h| h.nombre).collect();
+        c["tools"] = Value::Array(
+            p.herramientas
+                .iter()
+                .map(|h| herramienta(h, estricto && propias.contains(&h.nombre)))
+                .collect(),
+        );
         c["tool_choice"] = json!({"type": "auto"});
     }
     c
@@ -489,22 +500,26 @@ mod pruebas {
     use super::*;
     use crate::herramientas::catalogo;
 
+    fn por_nombre(n: &str) -> Herramienta {
+        catalogo().into_iter().find(|h| h.nombre == n).unwrap()
+    }
+
     #[test]
     fn el_esquema_estricto_cierra_los_objetos_y_quita_los_topes() {
-        let h = &catalogo()[0];
+        let h = &por_nombre(crate::herramientas::DIBUJAR);
         let e = esquema_estricto(&h.parametros);
         assert_eq!(e["additionalProperties"], false);
         let elementos = &e["properties"]["elementos"];
         assert!(elementos.get("maxItems").is_none() && elementos.get("minItems").is_none());
         assert!(elementos["description"].as_str().unwrap().contains("como mucho 60"));
         assert_eq!(elementos["items"]["additionalProperties"], false);
-        assert_eq!(elementos["items"]["required"], json!(["tipo", "x", "y"]));
+        assert_eq!(elementos["items"]["required"], json!(["tipo"]));
         // Un objeto sin propiedades (la ocr sin nada obligatorio) tambien.
-        let t = herramienta(&catalogo()[2], true);
+        let t = herramienta(&por_nombre(crate::herramientas::OCR), true);
         assert_eq!(t["strict"], true);
         assert_eq!(t["eager_input_streaming"], true);
         assert_eq!(t["input_schema"]["additionalProperties"], false);
-        assert!(herramienta(&catalogo()[2], false).get("strict").is_none());
+        assert!(herramienta(&por_nombre(crate::herramientas::OCR), false).get("strict").is_none());
     }
 
     #[test]
