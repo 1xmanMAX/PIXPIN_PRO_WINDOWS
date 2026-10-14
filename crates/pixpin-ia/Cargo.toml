@@ -35,8 +35,23 @@ windows = { version = "0.62.2", features = [
     "Win32_System_Threading",
 ] }
 
-[dev-dependencies]
-# Solo en pruebas: comprobar que lo que se dibuja lo lee de verdad el lienzo.
+# Las piezas que el lienzo ya sabe hacer (grafica de funciones, ecuacion
+# compuesta, instrumento, tabla dibujada, biblioteca de figuras) se piden a
+# su motor y se escriben con su escritor de Excalidraw: un solo componente.
+# Es Rust puro (serde), sin ventanas.
 pixpin-motor2d = { path = "../pixpin-motor2d" }
+# Leer la ecuacion en LaTeX o a mano (`formulas::leer`, el de las notas, el
+# mismo que el de Android): asi el lienzo entiende lo mismo que las notas.
+pixpin-notas = { path = "../pixpin-notas" }
+# Leer el SVG de las ilustraciones (`svg.rs`). Ya esta en el arbol por
+# pixpin-bim; no carga DTD ni entidades (nada de bombas de XML).
+roxmltree = "0.20"
+
+[dev-dependencies]
+# Solo en pruebas: pintar a PNG lo dibujado en el banco, por el mismo camino
+# que el PDF (exportar -> PDF de vectores -> pixeles de Windows).
+pixpin-pdf = { path = "../pixpin-pdf" }
+pixpin-shell = { path = "../pixpin-shell" }
+pixpin-codec = { path = "../pixpin-codec" }
 # Solo en pruebas: leer las imagenes de muestra del banco y del calcado.
 image = { version = "0.25.9", default-features = false, features = ["png", "jpeg"] }

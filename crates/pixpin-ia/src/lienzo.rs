@@ -9,11 +9,16 @@
 //!
 //! Las coordenadas del modelo son de un lienzo de 800x600 ([`ANCHO_LIENZO`]);
 //! aqui solo se desplazan a `origen` (donde mira el usuario).
+//!
+//! Lo que el motor del lienzo ya sabe hacer —la grafica de una funcion, la
+//! ecuacion compuesta, el instrumento, la tabla dibujada— no se rehace aqui:
+//! se piden sus `Elemento` a `pixpin_motor2d` y se escriben con su mismo
+//! escritor de Excalidraw ([`Fabrica::de_motor`]). Un solo componente.
 
 use serde_json::{Value, json};
 
 use crate::herramientas::{
-    ALTO_LIENZO, ANCHO_LIENZO, Figura, Grafica, Llamada, TipoFigura, TipoGrafica,
+    ALTO_LIENZO, ANCHO_LIENZO, EstiloFigura, Figura, Grafica, Llamada, TipoFigura, TipoGrafica,
 };
 
 /// Colores de las series, de la paleta de Excalidraw (la del lienzo).
@@ -21,24 +26,42 @@ const SERIES: [&str; 8] = [
     "#1971c2", "#e03131", "#2f9e44", "#f08c00", "#6741d9", "#0c8599", "#c2255c", "#868e96",
 ];
 
-/// Fabrica de elementos con identificadores unicos y estables.
-struct Fabrica {
-    semilla: u64,
+/// Fabrica de elementos con identificadores unicos y estables. La comparten
+/// todas las herramientas que dibujan (`svg`, `cronograma`, `funciones`...).
+pub(crate) struct Fabrica {
+    pub(crate) semilla: u64,
     n: u64,
-    ox: f64,
-    oy: f64,
-    salida: Vec<Value>,
+    pub(crate) ox: f64,
+    pub(crate) oy: f64,
+    pub(crate) salida: Vec<Value>,
     /// El grupo de lo que se esta fabricando (`groupIds`).
-    grupo: Option<String>,
+    pub(crate) grupo: Option<String>,
 }
 
 impl Fabrica {
-    fn id(&mut self) -> String {
+    pub(crate) fn nueva(origen: (f64, f64), semilla: u64) -> Fabrica {
+        Fabrica {
+            semilla,
+            n: 0,
+            ox: origen.0,
+            oy: origen.1,
+            salida: Vec::new(),
+            grupo: None,
+        }
+    }
+
+    /// Un nombre de grupo unico en esta llamada.
+    pub(crate) fn nombre_de_grupo(&mut self, que: &str) -> String {
+        self.n += 1;
+        format!("ia-{:x}-{que}-{}", self.semilla, self.n)
+    }
+
+    pub(crate) fn id(&mut self) -> String {
         self.n += 1;
         format!("ia-{:x}-{}", self.semilla, self.n)
     }
 
-    fn base(&mut self, tipo: &str, [x, y, ancho, alto]: [f64; 4], trazo: &str, relleno: Option<&str>) -> Value {
+    pub(crate) fn base(&mut self, tipo: &str, [x, y, ancho, alto]: [f64; 4], trazo: &str, relleno: Option<&str>) -> Value {
         let id = self.id();
         json!({
             "id": id,
@@ -65,14 +88,14 @@ impl Fabrica {
         })
     }
 
-    fn caja(&mut self, tipo: &str, caja: [f64; 4], trazo: &str, relleno: Option<&str>) {
+    pub(crate) fn caja(&mut self, tipo: &str, caja: [f64; 4], trazo: &str, relleno: Option<&str>) {
         let e = self.base(tipo, caja, trazo, relleno);
         self.salida.push(e);
     }
 
     /// Una polilinea; `puntos` en coordenadas del modelo. Excalidraw los
     /// quiere relativos al primero.
-    fn trazo(&mut self, tipo: &str, puntos: &[(f64, f64)], color: &str, relleno: Option<&str>) {
+    pub(crate) fn trazo(&mut self, tipo: &str, puntos: &[(f64, f64)], color: &str, relleno: Option<&str>) {
         let (x0, y0) = puntos[0];
         let (mut minx, mut miny, mut maxx, mut maxy) = (x0, y0, x0, y0);
         for &(x, y) in puntos {
@@ -96,7 +119,7 @@ impl Fabrica {
     /// Una mancha rellena con agujeros (`pixpin-region`, la del bote de
     /// pintura): el unico poligono que el lienzo del PC y el del movil
     /// rellenan. Sus puntos y los de los agujeros, relativos al primero.
-    fn region(&mut self, contorno: &[(f64, f64)], huecos: &[Vec<(f64, f64)>], trazo: &str, relleno: &str) {
+    pub(crate) fn region(&mut self, contorno: &[(f64, f64)], huecos: &[Vec<(f64, f64)>], trazo: &str, relleno: &str) {
         if contorno.len() < 3 {
             return;
         }
@@ -117,7 +140,7 @@ impl Fabrica {
         }
     }
 
-    fn texto(&mut self, x: f64, y: f64, texto: &str, tam: f64, color: &str, alinear: &str) {
+    pub(crate) fn texto(&mut self, x: f64, y: f64, texto: &str, tam: f64, color: &str, alinear: &str) {
         let ancho = tam * 0.6 * texto.chars().count().max(1) as f64;
         let alto = tam * 1.25;
         let x = match alinear {
@@ -137,6 +160,99 @@ impl Fabrica {
         e["containerId"] = Value::Null;
         self.salida.push(e);
     }
+
+    /// **Un trazo a mano alzada** (`freedraw`), con la presion simulada como
+    /// el lapiz del lienzo. Con material (grafito con su dureza, tiza...).
+    pub(crate) fn lapiz(&mut self, puntos: &[(f64, f64)], color: &str, material: Option<&str>, dureza: Option<&str>) {
+        if puntos.len() < 2 {
+            return;
+        }
+        self.trazo("freedraw", puntos, color, None);
+        if let Some(e) = self.salida.last_mut() {
+            if let Some(m) = e.as_object_mut() {
+                m.remove("startArrowhead");
+                m.remove("endArrowhead");
+            }
+            e["pressures"] = json!([]);
+            e["simulatePressure"] = json!(true);
+            e["roughness"] = json!(0);
+            if let Some(m) = material {
+                e["material"] = json!(m);
+            }
+            if let Some(d) = dureza.filter(|d| *d != "HB") {
+                e["dureza"] = json!(d);
+            }
+        }
+    }
+
+    /// Pone el estilo pedido en los elementos desde `desde`.
+    pub(crate) fn estilo(&mut self, desde: usize, e: &EstiloFigura) {
+        for v in self.salida.iter_mut().skip(desde) {
+            if let Some(g) = e.grosor {
+                v["strokeWidth"] = json!(g);
+            }
+            if let Some(t) = e.trazo {
+                v["strokeStyle"] = json!(t);
+            }
+            if let Some(o) = e.opacidad {
+                v["opacity"] = json!(o.round());
+            }
+            if let Some(r) = e.relleno {
+                v["fillStyle"] = json!(r);
+            }
+            if let Some(r) = e.rugosidad {
+                v["roughness"] = json!(r);
+            }
+            if v["type"] != "text" {
+                if let Some(m) = e.material {
+                    v["material"] = json!(m);
+                }
+                if let Some(d) = e.dureza.filter(|d| *d != "HB") {
+                    v["dureza"] = json!(d);
+                }
+            }
+        }
+    }
+
+    /// **Elementos del motor del lienzo**, escritos con su propio escritor de
+    /// Excalidraw y traidos a esta llamada: corridos al origen, con ids de
+    /// esta fabrica (los suyos son de una escena de usar y tirar), sus grupos
+    /// renombrados y, si hay, el grupo de lo que se fabrica por fuera.
+    pub(crate) fn de_motor(&mut self, elementos: &[pixpin_motor2d::Elemento]) {
+        let mut grupos: std::collections::HashMap<String, String> = Default::default();
+        for mut v in pixpin_motor2d::excalidraw::elementos_a_json(elementos) {
+            v["id"] = json!(self.id());
+            for k in ["x", "y"] {
+                let d = if k == "x" { self.ox } else { self.oy };
+                v[k] = json!(v[k].as_f64().unwrap_or(0.0) + d);
+            }
+            let mut g: Vec<Value> = v["groupIds"]
+                .as_array()
+                .map(|l| {
+                    l.iter()
+                        .filter_map(Value::as_str)
+                        .map(|g| {
+                            let nuevo = match grupos.get(g) {
+                                Some(n) => n.clone(),
+                                None => {
+                                    let n = format!("ia-{:x}-m{}-{g}", self.semilla, self.n);
+                                    grupos.insert(g.to_string(), n.clone());
+                                    n
+                                }
+                            };
+                            json!(nuevo)
+                        })
+                        .collect()
+                })
+                .unwrap_or_default();
+            if let Some(gr) = &self.grupo {
+                g.push(json!(gr));
+            }
+            v["groupIds"] = Value::Array(g);
+            v["customData"] = json!({"origen": "pixpin-ia"});
+            self.salida.push(v);
+        }
+    }
 }
 
 /// Los elementos de Excalidraw de una llamada. El OCR no dibuja nada: su
@@ -146,22 +262,40 @@ impl Fabrica {
 /// cualquier numero distinto en cada llamada (la hora vale), para que los
 /// identificadores no choquen con los de otra respuesta.
 pub fn elementos(llamada: &Llamada, origen: (f64, f64), semilla: u64) -> Vec<Value> {
-    let mut f = Fabrica {
-        semilla,
-        n: 0,
-        ox: origen.0,
-        oy: origen.1,
-        salida: Vec::new(),
-        grupo: None,
-    };
+    let mut f = Fabrica::nueva(origen, semilla);
     match llamada {
-        Llamada::Dibujar(figuras) => figuras.iter().for_each(|fig| figura(&mut f, fig)),
+        Llamada::Dibujar(figuras) => {
+            // Por capas: las de capa mayor, encima (al final). Estable: a
+            // igual capa, el orden de la lista.
+            let mut orden: Vec<&Figura> = figuras.iter().collect();
+            orden.sort_by_key(|fig| fig.capa);
+            orden.into_iter().for_each(|fig| figura(&mut f, fig));
+        }
         Llamada::Grafica(g) => grafica(&mut f, g),
+        Llamada::Svg(s) => crate::svg::elementos(&mut f, s),
+        Llamada::Funciones(p) => crate::funciones::elementos(&mut f, p),
+        Llamada::Ecuacion(e) => crate::ecuacion::elementos(&mut f, e),
+        Llamada::Cronograma(c) => crate::cronograma::elementos(&mut f, c),
         // No dibujan nada por si solas: el OCR y la ayuda son texto, la
-        // accion de la app es un pedido y el calcado necesita la imagen
-        // ([`elementos_de_calcado`]).
-        Llamada::Ocr(_) | Llamada::Calcar(_) | Llamada::App(_) | Llamada::Ayuda(_) | Llamada::Buscar(_) => {}
+        // accion de la app es un pedido, el calcado necesita la imagen
+        // ([`elementos_de_calcado`]), la biblioteca el fichero
+        // ([`elementos_de_figura`]) y buscar, el indice.
+        Llamada::Ocr(_)
+        | Llamada::Calcar(_)
+        | Llamada::App(_)
+        | Llamada::Ayuda(_)
+        | Llamada::Figuras(_)
+        | Llamada::Buscar(_) => {}
     }
+    f.salida
+}
+
+/// **Una figura de la biblioteca**, lista para el lienzo, agrupada (se
+/// guardo como una cosa y vuelve como una cosa).
+pub fn elementos_de_figura(figura: &pixpin_motor2d::biblioteca::FiguraGuardada, origen: (f64, f64), semilla: u64) -> Vec<Value> {
+    let mut f = Fabrica::nueva(origen, semilla);
+    f.grupo = Some(f.nombre_de_grupo("figura"));
+    f.de_motor(&figura.elementos);
     f.salida
 }
 
@@ -197,8 +331,22 @@ fn figura(f: &mut Fabrica, fig: &Figura) {
     } else {
         fig.puntos.clone()
     };
+    let desde = f.salida.len();
     match fig.tipo {
         TipoFigura::Rectangulo => f.caja("rectangle", caja, trazo, relleno),
+        TipoFigura::Lapiz => f.lapiz(&puntos, trazo, fig.estilo.material, fig.estilo.dureza),
+        TipoFigura::Punto => {
+            f.caja("pixpin-point", [fig.x, fig.y, 0.0, 0.0], trazo, Some(trazo));
+            if let Some(e) = f.salida.last_mut() {
+                e["text"] = json!(fig.texto);
+                e["roughness"] = json!(0);
+            }
+        }
+        TipoFigura::Instrumento => {
+            if let Some(i) = &fig.instrumento {
+                instrumento(f, caja, i, trazo);
+            }
+        }
         TipoFigura::Elipse => f.caja("ellipse", caja, trazo, relleno),
         TipoFigura::Rombo => f.caja("diamond", caja, trazo, relleno),
         TipoFigura::Linea => f.trazo("line", &puntos, trazo, None),
@@ -225,6 +373,8 @@ fn figura(f: &mut Fabrica, fig: &Figura) {
             }
         },
     }
+    f.estilo(desde, &fig.estilo);
+    let con_rotulo = con_rotulo && !matches!(fig.tipo, TipoFigura::Punto | TipoFigura::Instrumento);
     if con_rotulo {
         let negro = "#1e1e1e";
         match fig.tipo {
@@ -245,6 +395,100 @@ fn figura(f: &mut Fabrica, fig: &Figura) {
         }
     }
     f.grupo = None;
+}
+
+/// **El instrumento de graficar con los puntos de su tabla**: el instrumento
+/// del motor (`instrumento::Instrumento`), cada punto de la tabla como un
+/// punto con su letra donde cae en el instrumento (`instrumento::punto`), y
+/// la tabla de coordenadas dibujada al lado (`tabla_dibujada`), todo en un
+/// grupo. Las tablas de la escena (`escena.tablas`) cuentan en pixeles o en
+/// la escala calibrada, no en las unidades del instrumento: por eso los
+/// puntos van como elementos que caen sobre sus rayas.
+fn instrumento(f: &mut Fabrica, [x, y, w, h]: [f64; 4], p: &crate::herramientas::PedidoInstrumento, color: &str) {
+    use pixpin_motor2d::instrumento as ins;
+    let tinta = pixpin_motor2d::excalidraw::color_desde(Some(&json!(color)))
+        .unwrap_or(pixpin_motor2d::ColorRgba::opaco(0.12, 0.12, 0.12));
+    let mut e = ins::elemento_de_fabrica(p.ejes, tinta, 1.5, 1.0);
+    if let pixpin_motor2d::elemento::Figura::Instrumento(i) = &mut e.figura {
+        i.unidad = Some(p.unidad);
+        // Los numeros, que no se amontonen: uno cada 1, 2 o 5 unidades.
+        let paso = ins::paso_util(1.0, p.unidad, 34.0);
+        i.paso_numeros = Some(paso);
+    }
+    e.x = x as f32;
+    e.y = y as f32;
+    e.ancho = w.max(40.0) as f32;
+    e.alto = if p.ejes == 1 { (h.max(ins::ALTO_DE_LA_RECTA as f64)) as f32 } else { h.max(40.0) as f32 };
+    let i = *ins::de(&e).expect("es un instrumento");
+    let mut piezas = vec![e.clone()];
+    let letras = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+    for (k, &(px, py)) in p.tabla.iter().enumerate() {
+        let en = ins::punto(&e, &i, px, py, 0.0);
+        let letra = letras.chars().nth(k % 26).map(String::from).unwrap_or_default();
+        piezas.push(pixpin_motor2d::Elemento {
+            figura: pixpin_motor2d::elemento::Figura::Punto {
+                letra,
+                angulo: -std::f32::consts::FRAC_PI_4,
+                radio: 14.0,
+            },
+            x: en.x,
+            y: en.y,
+            trazo: tinta,
+            relleno: Some(tinta),
+            grosor: 2.0,
+            rugosidad: 0.0,
+            ..Default::default()
+        });
+    }
+    if !p.tabla.is_empty() {
+        let estilo = pixpin_motor2d::ecuacion::Estilo {
+            color: tinta,
+            tam: 16.0,
+            opacidad: 1.0,
+            familia: "Nunito".into(),
+        };
+        let filas: Vec<Vec<String>> = std::iter::once(vec![String::new(), "x".into(), "y".into()])
+            .chain(p.tabla.iter().enumerate().map(|(k, &(px, py))| {
+                vec![
+                    letras.chars().nth(k % 26).map(String::from).unwrap_or_default(),
+                    ins::escrito(px),
+                    ins::escrito(py),
+                ]
+            }))
+            .collect();
+        let origen = pixpin_motor2d::vector::Punto2::nuevo(e.x + e.ancho + 24.0, e.y);
+        piezas.extend(pixpin_motor2d::tabla_dibujada::elementos_de_tabla(&filas, &estilo, origen, &medir, true));
+    }
+    let antes = f.grupo.clone();
+    if f.grupo.is_none() {
+        f.grupo = Some(f.nombre_de_grupo("instrumento"));
+    }
+    // `de_motor` corre al origen; el instrumento ya esta en coordenadas
+    // del modelo, asi que se escribe tal cual y se corre una vez.
+    f.de_motor(&piezas);
+    f.grupo = antes;
+}
+
+/// Lo que mide un texto: DirectWrite si la app puso su medidor, a ojo si no
+/// (las pruebas).
+pub(crate) fn medir(texto: &str, tam: f32) -> (f32, f32) {
+    medir_con(texto, tam, "Nunito")
+}
+
+pub(crate) fn medir_con(texto: &str, tam: f32, familia: &str) -> (f32, f32) {
+    use pixpin_motor2d::texto;
+    if texto::hay_medidor() {
+        return texto::medida(texto, tam, familia, texto::EstiloDeTexto::default());
+    }
+    // Sin DirectWrite (pruebas, banco): los anchos de letra del exportador,
+    // que son los de la letra con la que sale el PDF; la estimacion de a ojo
+    // deja una letra de holgura y separaba las piezas de una ecuacion.
+    let renglones = texto.split('\n').count().max(1) as f32;
+    let ancho = texto
+        .split('\n')
+        .map(|r| pixpin_motor2d::exportar::ancho_de_texto(r, tam))
+        .fold(0.0, f32::max);
+    (ancho, renglones * tam * texto::INTERLINEADO)
 }
 
 /// Si un `#rrggbb` es oscuro (para escribir en blanco encima).
