@@ -2469,3 +2469,23 @@ asistente-sin-modelo = First download the assistant in the «Asistente» chat.
 asistente-fallo = The assistant could not start answering.
 ajustes-asistente-modelo = Assistant model
 ajustes2-ayuda-asistente-modelo = The local model of the «Asistente» chat. The 2B draws and sees better; the 0.8B is smaller and uses less memory. Changing it downloads nothing: the chat offers it.
+
+## Cloud assistant (13-oct-2026)
+ajustes2-sec-asistente = Assistant
+ajustes2-sec-asistente-sub = Who answers in the «Asistente» chat: the model on this PC, Claude or DeepSeek.
+ajustes2-g-asistente = Assistant engine
+ajustes2-asistente-motor = Engine
+ajustes2-ayuda-asistente-motor = Local: offline and free, on this PC. Claude Haiku 5.5 and DeepSeek V4.1 Flash: online with your key, smarter and faster; about a tenth of a US cent per request.
+ajustes2-asistente-local = Local (this PC)
+ajustes2-asistente-respaldo = If the cloud fails, fall back to local
+ajustes2-ayuda-asistente-respaldo = With no network, a bad key or no credit, the local model answers (if downloaded) and says so in the reply.
+ajustes2-g-claves = API keys
+ajustes2-clave-de = { $proveedor } key
+ajustes2-clave-marcador = Paste the key here
+ajustes2-clave-probar = Save and test
+ajustes2-clave-borrar-de = Delete the { $proveedor } key
+ajustes2-ayuda-clave-borrar = It is deleted from this PC. The key stays valid in your account until you revoke it there.
+ajustes2-clave-borrar = Delete
+ajustes2-clave-guardada = Saved and encrypted on this PC:
+ajustes2-clave-falta = No key. Get one at
+ajustes2-clave-probando = testing…

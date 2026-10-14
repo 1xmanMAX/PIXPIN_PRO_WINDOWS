@@ -32,6 +32,8 @@
 //!   que devuelve el modelo.
 //! - [`lienzo`]: de una llamada validada a elementos de **Excalidraw**, el
 //!   formato que ya comparten el lienzo del PC y el de Android.
+//! - [`nube`]: el mismo [`Motor`] con Claude Haiku 5.5 o DeepSeek V4.1 Flash
+//!   por su API, con la clave del usuario cifrada con DPAPI.
 //! - [`agente`]: el bucle de un turno: pedir, validar, ejecutar, devolver el
 //!   resultado al modelo, y reintentar si el modelo se equivoco.
 //!
@@ -50,6 +52,7 @@ pub mod herramientas;
 pub mod lienzo;
 pub mod modelos;
 pub mod motor;
+pub mod nube;
 pub mod servidor;
 pub mod sse;
 
@@ -73,6 +76,10 @@ pub enum ErrorIa {
     Conexion(String),
     #[error("el modelo contesto algo que no se entiende: {0}")]
     Protocolo(String),
+    /// Un fallo de la API de la nube (clave, saldo, red, servidor), ya
+    /// dicho para el usuario: que paso y que hacer.
+    #[error("{0}")]
+    Nube(String),
     #[error("cancelado")]
     Cancelado,
     #[error("{0}")]

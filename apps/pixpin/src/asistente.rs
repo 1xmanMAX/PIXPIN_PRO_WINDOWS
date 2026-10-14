@@ -20,6 +20,8 @@
 //! - [`al_lienzo`]: meter lo dibujado en un lienzo de verdad, centrado en la
 //!   vista y en **un solo paso de deshacer**.
 //! - [`foto`]: reducir la foto adjunta a ~768 px antes de mandarla.
+//! - [`nube`]: contestar con Claude Haiku 5.5 o DeepSeek V4.1 Flash (la
+//!   clave cifrada con DPAPI) y, si fallan, seguir con el local.
 //!
 //! Android todavia no tiene asistente (comprobado el 13-oct con `gh`): aqui
 //! se abre camino y el protocolo (`catalogo_json`, Excalidraw) es el que
@@ -31,6 +33,7 @@ pub mod descarga;
 pub mod ejecutor;
 pub mod foto;
 pub mod motor;
+pub mod nube;
 pub mod ocr;
 pub mod turno;
 

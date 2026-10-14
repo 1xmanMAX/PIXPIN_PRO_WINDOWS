@@ -28,7 +28,7 @@ use super::*;
 use crate::asistente::chat::{self as ia_chat, EnVivo};
 use crate::asistente::descarga::{self as ia_descarga, AvisoDescarga, Descarga};
 use crate::asistente::turno::{Aviso, Turno};
-use crate::asistente::{al_lienzo, motor as ia_motor, turno as ia_turno};
+use crate::asistente::{al_lienzo, motor as ia_motor, nube as ia_nube, turno as ia_turno};
 
 /// Cada cuanto se escribe en el disco lo que va contestando (en memoria se
 /// ve al momento). Un turno de minuto y medio no son cien escrituras.
@@ -98,9 +98,17 @@ pub(super) fn espera() -> Option<u32> {
     (turnos || al_lienzo::hay_pedidos()).then_some(80).or(bajando.then_some(250))
 }
 
-fn modelo_de_los_ajustes(ubicacion: &Ubicacion) -> pixpin_ia::modelos::Modelo {
+
+/// El motor elegido en Ajustes → Asistente: el local (si esta bajado) o la
+/// nube con su clave, con el local de respaldo si se quiere y esta bajado.
+fn motor_de_los_ajustes(ubicacion: &Ubicacion, textos: &Catalogo) -> Result<Arc<dyn Motor>, String> {
     let aj = pixpin_store::cargar(ubicacion).unwrap_or_default();
-    ia_motor::modelo_elegido(Some(aj.asistente.modelo.as_str()).filter(|m| !m.is_empty()))
+    let modelo = ia_motor::modelo_elegido(Some(aj.asistente.modelo.as_str()).filter(|m| !m.is_empty()));
+    let local = || ia_motor::raiz().and_then(|raiz| ia_motor::del_proceso(&raiz, &modelo).ok());
+    match ia_nube::eleccion(&aj.asistente) {
+        ia_nube::Eleccion::Nube(p) => ia_nube::motor(p, if aj.asistente.respaldo_local { local() } else { None }),
+        ia_nube::Eleccion::Local => local().ok_or_else(|| textos.t("asistente-sin-modelo")),
+    }
 }
 
 /// **Despues de guardar una nota**: si era para el asistente, lanza el
@@ -115,13 +123,9 @@ pub(super) fn al_enviar(ubicacion: &Ubicacion, a: &mut Abierto, textos: &Catalog
     if ocupado(&a.ficha.id) {
         return Some(textos.t("asistente-ocupado"));
     }
-    let Some(raiz) = ia_motor::raiz() else {
-        return Some(textos.t("asistente-sin-modelo"));
-    };
-    let modelo = modelo_de_los_ajustes(ubicacion);
-    let motor = match ia_motor::del_proceso(&raiz, &modelo) {
+    let motor = match motor_de_los_ajustes(ubicacion, textos) {
         Ok(m) => m,
-        Err(_) => return Some(textos.t("asistente-sin-modelo")),
+        Err(aviso) => return Some(aviso),
     };
     match lanzar(ubicacion, a, motor, pregunta) {
         Ok(()) => None,
@@ -396,6 +400,10 @@ fn hace_falta_tarjeta(a: &Abierto) -> bool {
     }
     if DESCARGA.with_borrow(|d| d.is_some()) {
         return true;
+    }
+    // Con Claude o DeepSeek no hace falta bajar nada.
+    if ia_nube::eleccion_reciente(&a.raiz) != ia_nube::Eleccion::Local {
+        return false;
     }
     let Some(raiz) = ia_motor::raiz() else { return false };
     TARJETA.with_borrow_mut(|t| {
