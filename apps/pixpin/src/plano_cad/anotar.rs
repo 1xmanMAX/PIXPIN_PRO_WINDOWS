@@ -303,6 +303,11 @@ pub struct MotorDelPlano {
     /// Lo ultimo pintado no quedo nitido (foto estirada, trazos de otra
     /// escala): hace falta otro fotograma.
     falta: bool,
+    /// El tiempo de teselar de un fotograma quieto ([`PRESUPUESTO_DE_TESELAR`]).
+    presupuesto_quieto: std::time::Duration,
+    /// Para medir el antes (`rendimiento.rs`): trazo a trazo y todo de golpe.
+    #[cfg(test)]
+    como_antes: bool,
     /// Para medir (`rendimiento.rs`): el modo del ultimo fotograma y lo que
     /// costo elegirlo (rehacer la foto incluido).
     #[cfg(test)]
@@ -313,6 +318,12 @@ pub struct MotorDelPlano {
 /// escala (ver `Tinta::presupuesto`): con la capa en su foto mientras se
 /// mueve, esto solo cuenta al pararse y al rehacer la foto.
 const PRESUPUESTO_DE_TESELAR: std::time::Duration = std::time::Duration::from_millis(4);
+
+/// El tiempo de teselar de un fotograma: nada moviendose (se pinta con lo
+/// que haya, y nitido al pararse), [`PRESUPUESTO_DE_TESELAR`] quieto.
+fn presupuesto_de(moviendose: bool, quieto: std::time::Duration) -> std::time::Duration {
+    if moviendose { std::time::Duration::ZERO } else { quieto }
+}
 
 /// Cuanto puede estirarse o encogerse la foto mientras se mueve antes de
 /// rehacerla: al doble se ve blanda; a la mitad deja mucho fuera (que se
@@ -388,6 +399,9 @@ impl MotorDelPlano {
             foto: pixpin_render::FotoDeCapa::nueva(),
             ultima_camara: None,
             falta: false,
+            presupuesto_quieto: PRESUPUESTO_DE_TESELAR,
+            #[cfg(test)]
+            como_antes: false,
             #[cfg(test)]
             medida: (Modo::Directo, std::time::Duration::ZERO),
         }
@@ -459,6 +473,12 @@ impl MotorDelPlano {
             // Lo anotado, en las unidades de la capa con la camara del plano.
             p.poner_vista((0.0, 0.0), cam.zoom, (-cam.x * cam.zoom, -cam.y * cam.zoom));
             let vista = (cam.x, cam.y, cam.x + v.ancho as f32 / cam.zoom, cam.y + v.alto as f32 / cam.zoom);
+            // Moviendose, sin teselar nada a la escala nueva: lo vivo va con lo
+            // que ya tiene (solo lo que no tiene nada se tesela); al pararse,
+            // nitido.
+            if modo != Modo::Directo {
+                tinta.presupuesto = Some(presupuesto_de(modo == Modo::Movida, self.presupuesto_quieto));
+            }
             tinta.pintar_capa_parte(p, 0, capa, vista, cam.zoom, papel(v.claro), anotando, parte);
             if tinta.pendientes() > 0 {
                 self.falta = true;
@@ -500,6 +520,11 @@ impl MotorDelPlano {
         if anotando && self.tinta.gesto.elemento_en_curso().is_some() {
             return Modo::Directo;
         }
+        #[cfg(test)]
+        if self.como_antes {
+            self.tinta.presupuesto = None;
+            return Modo::Directo;
+        }
         let cam = camara_de(v);
         let camara = (cam.x, cam.y, cam.zoom);
         let tamano = (v.ancho, v.alto);
@@ -514,6 +539,9 @@ impl MotorDelPlano {
         }
         // La foto de nuevo, con lo anotado a esta camara.
         let ocultas = self.ocultar_cotas(anotando);
+        // Moviendose (la foto se quedo corta), sin parar a teselar: lo que
+        // falte se rehace al pararse.
+        self.tinta.presupuesto = Some(presupuesto_de(moviendose, self.presupuesto_quieto));
         let (capa, tinta) = (&self.capa, &mut self.tinta);
         let vista = (cam.x, cam.y, cam.x + v.ancho as f32 / cam.zoom, cam.y + v.alto as f32 / cam.zoom);
         let hecha = self.foto.hacer(motor, tamano, camara, huella, |p| {
@@ -606,8 +634,10 @@ impl Anotador for MotorDelPlano {
         }
         let clave = d3d.as_raw() as usize;
         if self.motor.as_ref().is_none_or(|(k, _)| *k != clave) {
-            // Otro dispositivo: lo de la foto era del de antes.
+            // Otro dispositivo (u otro Direct2D): la foto y lo teselado eran
+            // del de antes, y mezclarlos falla al pintar (D2DERR_WRONG_FACTORY).
             self.foto.soltar();
+            self.tinta.olvidar_lo_calculado();
             match MotorRender::nuevo(d3d) {
                 Ok(m) => self.motor = Some((clave, m)),
                 Err(e) => {

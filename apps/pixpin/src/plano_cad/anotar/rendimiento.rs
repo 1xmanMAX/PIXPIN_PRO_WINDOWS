@@ -95,16 +95,29 @@ fn resumen(nombre: &str, f: &[Fotograma]) -> (f64, f64) {
     let gpu = f.iter().map(|x| x.gpu).sum::<f64>() / f.len() as f64;
     let real: u64 = f.iter().map(|x| x.realizaciones).sum();
     let lentos = t.iter().filter(|x| **x > 8.0).count();
-    let cuenta = |m: Modo| f.iter().filter(|x| x.modo == Some(m)).count();
-    if f.iter().any(|x| x.modo.is_some()) {
-        println!("  modos: directo {} foto {} movida {}", cuenta(Modo::Directo), cuenta(Modo::Foto), cuenta(Modo::Movida));
-    }
     let quietos: Vec<f64> = f.iter().filter(|x| x.realizaciones == 0).map(|x| x.capa).collect();
     let capa_sin_teselar = quietos.iter().sum::<f64>() / quietos.len().max(1) as f64;
     println!(
-        "MEDIDA {nombre}: {} fotogramas  media {media:.2} ms  p95 {p95:.2}  max {max:.2}  (>8 ms: {lentos})  | capa media {capa:.2} max {capa_max:.2}  presentar {pres:.2}  esperar gpu {gpu:.2}  teselados {real}  capa sin teselar {capa_sin_teselar:.2}",
-        f.len()
+        "MEDIDA {nombre}: {} fotogramas  media {media:.2} ms  mediana {:.2}  p95 {p95:.2}  max {max:.2}  (>8 ms: {lentos})  | capa media {capa:.2} max {capa_max:.2}  presentar {pres:.2}  esperar gpu {gpu:.2}  teselados {real}  capa sin teselar {capa_sin_teselar:.2}",
+        f.len(),
+        t[t.len() / 2]
     );
+    let cuenta = |m: Modo| f.iter().filter(|x| x.modo == Some(m)).count();
+    if f.iter().any(|x| x.modo.is_some()) {
+        println!("  modos: directo {} foto {} movida {}", cuenta(Modo::Directo), cuenta(Modo::Foto), cuenta(Modo::Movida));
+        for m in [Modo::Foto, Modo::Movida] {
+            let mut t: Vec<f64> = f.iter().filter(|x| x.modo == Some(m)).map(|x| x.total).collect();
+            let mut c: Vec<f64> = f.iter().filter(|x| x.modo == Some(m)).map(|x| x.capa).collect();
+            if t.is_empty() {
+                continue;
+            }
+            t.sort_by(f64::total_cmp);
+            c.sort_by(f64::total_cmp);
+            let med = |v: &[f64]| v[v.len() / 2];
+            let p95 = |v: &[f64]| v[(v.len() * 95 / 100).min(v.len() - 1)];
+            println!("  {m:?}: fotograma mediana {:.2} ms p95 {:.2} | capa mediana {:.2} ms p95 {:.2}", med(&t), p95(&t), med(&c), p95(&c));
+        }
+    }
     (p95, max)
 }
 
@@ -132,6 +145,10 @@ fn recorrido(inicio: Cam, punto: [f64; 2]) -> Vec<Cam> {
                 px: (cam.px.ln() + (destino.px.ln() - cam.px.ln()) * k).exp(),
                 centro: [cam.centro[0] + (destino.centro[0] - cam.centro[0]) * k, cam.centro[1] + (destino.centro[1] - cam.centro[1]) * k],
             };
+            // Y llega, como en la ventana: casi en el destino, el destino.
+            if (cam.px - destino.px).abs() < destino.px * 1e-4 && (cam.centro[0] - destino.centro[0]).abs() < destino.px * 0.05 && (cam.centro[1] - destino.centro[1]).abs() < destino.px * 0.05 {
+                cam = destino;
+            }
             cams.push(cam);
         }
     }
@@ -189,7 +206,7 @@ fn pasar(gpu: &mut Gpu, plano: &pixpin_cad::gpu::PlanoGpu, cams: &[Cam], unidad:
             capa: ms(capa.0, capa.1),
             presentar: ms(capa.1, t1),
             gpu: ms(t1, t2),
-            realizaciones: motor.as_ref().map_or(0, |m| m.tinta.realizaciones()) - antes,
+            realizaciones: motor.as_ref().map_or(0, |m| m.tinta.realizaciones()).saturating_sub(antes),
             modo: motor.as_ref().map(|m| m.medida.0),
             foto: motor.as_ref().map_or(0.0, |m| m.medida.1.as_secs_f64() * 1000.0),
             zoom: unidad / c.px,
@@ -253,15 +270,24 @@ fn medir_zoom_del_plano_anotado() {
         estirado(&mut gpu, &plano, &mut motor, inicio, unidad, k);
     }
     motor.motor = None;
+    // Otra vez a punto (cambiar de Direct2D tira lo teselado), como tras abrir.
+    pasar(&mut gpu, &plano, &[inicio; 20], unidad, Some(&mut motor));
 
     let mut sin = Vec::new();
     let mut con = Vec::new();
+    let mut antes = Vec::new();
     for _ in 0..3 {
         sin.extend(pasar(&mut gpu, &plano, &cams, unidad, None));
+        // El antes: la capa trazo a trazo en cada fotograma y, al pasar de
+        // vez y media de zoom, todo teselado de golpe.
+        motor.como_antes = true;
+        antes.extend(pasar(&mut gpu, &plano, &cams, unidad, Some(&mut motor)));
+        motor.como_antes = false;
         con.extend(pasar(&mut gpu, &plano, &cams, unidad, Some(&mut motor)));
     }
     let (p95_sin, _) = resumen("zoom SIN capa", &sin);
-    let (p95_con, max_con) = resumen(&format!("zoom CON capa de {n} trazos"), &con);
+    resumen(&format!("ANTES zoom CON capa de {n} trazos"), &antes);
+    let (p95_con, max_con) = resumen(&format!("AHORA zoom CON capa de {n} trazos"), &con);
     // Los fotogramas mas caros con la capa, para ver de que son.
     let mut peores: Vec<(usize, Fotograma)> = con.iter().copied().enumerate().collect();
     peores.sort_by(|a, b| b.1.total.total_cmp(&a.1.total));

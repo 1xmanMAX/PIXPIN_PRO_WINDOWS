@@ -180,7 +180,7 @@ fn al_cambiar_de_zoom_se_tesela_poco_a_poco_y_acaba_nitido() {
 
     // Casi sin tiempo de teselar: el primer fotograma a otra escala no lo
     // rehace todo (pinta lo de antes) y pide mas.
-    motor.tinta.presupuesto = Some(std::time::Duration::from_nanos(1));
+    motor.presupuesto_quieto = std::time::Duration::from_nanos(1);
     let cerca = vista_en(&m, [0.0, 0.0], PX / 3.0);
     let antes = motor.tinta.realizaciones();
     let px = b.pintar(&mut motor, &cerca);

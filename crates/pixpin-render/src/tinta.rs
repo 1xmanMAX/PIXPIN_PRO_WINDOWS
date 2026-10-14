@@ -701,6 +701,65 @@ pub(crate) mod pruebas {
     }
 
     #[test]
+    fn otra_escala_sin_tiempo_pinta_lo_de_antes_y_con_tiempo_lo_rehace() {
+        let (motor, destino) = motor_y_destino_de_prueba(64, 64);
+        let mut cache = CacheTinta::nueva();
+        let contorno = [(10.0, 10.0), (50.0, 10.0), (50.0, 50.0), (10.0, 50.0)];
+        let pintar = |cache: &mut CacheTinta, clave| {
+            motor
+                .dibujar(&destino, |p| {
+                    if !p.pintar_realizada(cache, clave, Color::NEGRO) {
+                        p.tinta_cacheada(cache, clave, &contorno, Color::NEGRO)
+                    }
+                })
+                .unwrap();
+        };
+        pintar(&mut cache, (7, 1, 0));
+        assert_eq!(cache.realizadas(), 1);
+        // Otra escala, sin tiempo: vale la de antes y queda pendiente.
+        cache.pasar_a_escala(3.0);
+        assert_eq!(cache.cuantas(), 1, "pasar de escala no tira nada");
+        cache.presupuesto(Some(std::time::Duration::ZERO));
+        pintar(&mut cache, (7, 1, 0));
+        assert_eq!(cache.realizadas(), 1, "sin tiempo no se tesela");
+        assert_eq!(cache.pendientes(), 1);
+        // Caso negativo: algo que CAMBIO se rehace aunque no haya tiempo
+        // (si no, se veria lo de antes).
+        pintar(&mut cache, (7, 2, 0));
+        assert_eq!(cache.realizadas(), 2, "lo cambiado no espera");
+        // Con tiempo, lo de otra escala se rehace y deja de estar pendiente.
+        pintar(&mut cache, (8, 1, 0));
+        cache.pasar_a_escala(9.0);
+        cache.presupuesto(Some(std::time::Duration::from_secs(1)));
+        pintar(&mut cache, (8, 1, 0));
+        assert_eq!(cache.realizadas(), 4);
+        assert_eq!(cache.pendientes(), 0);
+        // Y sin presupuesto (lo de siempre) tambien se rehace.
+        cache.pasar_a_escala(1.0);
+        cache.presupuesto(None);
+        pintar(&mut cache, (8, 1, 0));
+        assert_eq!(cache.realizadas(), 5);
+    }
+
+    #[test]
+    fn el_presupuesto_cuenta_lo_gastado() {
+        let mut c = CacheTinta::nueva();
+        assert!(!c.sin_tiempo(), "sin presupuesto nunca falta tiempo");
+        c.gastar(std::time::Duration::from_secs(9));
+        assert!(!c.sin_tiempo());
+        c.presupuesto(Some(std::time::Duration::from_millis(4)));
+        assert!(!c.sin_tiempo(), "poner presupuesto empieza de cero");
+        c.gastar(std::time::Duration::from_millis(3));
+        assert!(!c.sin_tiempo());
+        c.gastar(std::time::Duration::from_millis(1));
+        assert!(c.sin_tiempo());
+        c.apuntar_pendiente();
+        assert_eq!(c.pendientes(), 1);
+        c.presupuesto(Some(std::time::Duration::from_millis(4)));
+        assert_eq!(c.pendientes(), 0, "cada fotograma cuenta los suyos");
+    }
+
+    #[test]
     fn un_contorno_vacio_no_da_ningun_paso() {
         assert!(pasos_de_tinta(&[]).is_empty());
     }
