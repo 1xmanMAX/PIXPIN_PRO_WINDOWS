@@ -121,6 +121,9 @@ impl Proveedor {
     }
 }
 
+/// Lo que se suma al tope de la respuesta para que el modelo pueda pensar.
+pub const RESERVA_PENSAR: u32 = 8_192;
+
 /// Cuanto se espera antes de cada reintento (si el servidor no dice otra
 /// cosa con `retry-after`).
 pub const ESPERAS: [Duration; 2] = [Duration::from_secs(1), Duration::from_secs(4)];
@@ -157,19 +160,22 @@ pub fn clasificar(p: Proveedor, codigo: u32, cuerpo: &str) -> (String, bool) {
     let sin_saldo = codigo == 402 || bajo.contains("credit balance") || bajo.contains("insufficient balance");
     match codigo {
         _ if sin_saldo => (
-            format!("tu cuenta de {n} no tiene saldo ({codigo}). Recargala en su web o vuelve al asistente local en Ajustes → Asistente."),
+            format!("Tu cuenta de {n} no tiene saldo. Recargala en su web o vuelve al asistente local en Ajustes → Asistente."),
             false,
         ),
         401 => (
-            format!("{n} no acepta la clave ({codigo}): esta mal copiada o se revoco. Pega otra en Ajustes → Asistente."),
+            format!("{n} no acepta la clave: esta mal copiada o se revoco. Pega otra en Ajustes → Asistente."),
             false,
         ),
-        403 => (format!("la clave de {n} no tiene permiso para usar {} ({codigo}).", p.modelo()), false),
-        404 => (format!("{n} no encuentra el modelo {} ({codigo}). Actualiza PixPin.", p.modelo()), false),
-        413 => (format!("la peticion es demasiado grande para {n} ({codigo}); prueba con una foto mas pequena."), false),
-        429 => (format!("demasiadas peticiones seguidas a {n} ({codigo}); espera un momento y vuelve a pedirlo."), true),
-        500 | 502 | 503 | 504 | 529 => (format!("{n} esta saturado o fallo ({codigo}); vuelve a intentarlo en un rato."), true),
-        _ => (format!("{n} rechazo la peticion ({codigo}): {detalle}"), false),
+        403 => (format!("La clave de {n} no tiene permiso para usar este modelo. Revisa tu cuenta o usa otra clave."), false),
+        404 => (format!("{n} ya no ofrece el modelo que usa PixPin. Actualiza PixPin."), false),
+        413 => (format!("La peticion es demasiado grande para {n}; prueba con una foto mas pequena."), false),
+        429 => (format!("Demasiadas peticiones seguidas a {n}; espera un momento y vuelve a pedirlo."), true),
+        500 | 502 | 503 | 504 | 529 => (format!("{n} esta saturado o fallo; vuelve a intentarlo en un rato."), true),
+        _ => {
+            tracing::warn!(codigo, %detalle, "asistente: la nube rechazo la peticion");
+            (format!("{n} no acepto la peticion. Prueba a pedirlo de otra forma o vuelve al asistente local en Ajustes → Asistente."), false)
+        }
     }
 }
 
@@ -233,7 +239,11 @@ impl MotorNube {
 
     fn cuerpo(&self, p: &Peticion) -> Value {
         let memoria = self.memoria.lock().map(|m| m.clone()).unwrap_or_default();
-        let max = self.proveedor.max_tokens();
+        // El tope del agente (`agente::tope_de_tokens`) es para la RESPUESTA;
+        // en la nube el pensamiento cuenta dentro del mismo `max_tokens`, asi
+        // que se le suma su reserva. Las listas acotadas (`agente::con_topes`)
+        // llegan ya en las herramientas de la peticion.
+        let max = p.max_tokens.saturating_add(RESERVA_PENSAR).min(self.proveedor.max_tokens());
         match self.proveedor {
             Proveedor::Claude => claude::cuerpo(p, &memoria, self.estricto.load(Ordering::Relaxed), max),
             Proveedor::DeepSeek => deepseek::cuerpo(p, &memoria, self.pensar.load(Ordering::Relaxed), max),
@@ -296,12 +306,13 @@ impl MotorNube {
                     // `overloaded_error` y `api_error` a mitad del flujo son
                     // pasajeros; lo demas, no.
                     let pasajero = matches!(e.tipo.as_str(), "overloaded_error" | "api_error" | "rate_limit_error");
-                    let error = self.nube(format!("{n} fallo a mitad de la respuesta ({}): {}", e.tipo, e.mensaje));
+                    tracing::warn!(tipo = %e.tipo, mensaje = %e.mensaje, "asistente: error a mitad del flujo");
+                    let error = self.nube(format!("{n} fallo a mitad de la respuesta; vuelve a pedirlo."));
                     return Err(if pasajero { Intento::Reintentar { error, esperar: None } } else { Intento::Fallo(error) });
                 }
                 if !cortado && !lector.acabado {
                     return Err(Intento::Reintentar {
-                        error: self.nube(format!("la respuesta de {n} llego cortada; vuelve a pedirlo")),
+                        error: self.nube(format!("La respuesta de {n} llego cortada; vuelve a pedirlo.")),
                         esperar: None,
                     });
                 }
@@ -314,7 +325,7 @@ impl MotorNube {
                         let aviso = format!(
                             "{}{n} no quiso hacer esto{}. Prueba a pedirlo de otra forma.",
                             if r.texto.is_empty() { "" } else { "\n\n" },
-                            salida.categoria.map(|c| format!(" (filtro de seguridad: {c})")).unwrap_or_default()
+                            salida.categoria.map(|_| " (su filtro de seguridad lo paro)".to_string()).unwrap_or_default()
                         );
                         let _ = al_trozo(&Trozo::Texto(aviso.clone()));
                         r.texto.push_str(&aviso);
@@ -358,12 +369,13 @@ impl MotorNube {
                 });
                 let cortado = self.resultado_http(r)?;
                 if let Some(e) = roto {
-                    let error = self.nube(format!("{n} fallo a mitad de la respuesta: {e}"));
+                    tracing::warn!(%e, "asistente: error a mitad del flujo");
+                    let error = self.nube(format!("{n} fallo a mitad de la respuesta; vuelve a pedirlo."));
                     return Err(Intento::Reintentar { error, esperar: None });
                 }
                 if !cortado && !acum.acabado() && !*emitido {
                     return Err(Intento::Reintentar {
-                        error: self.nube(format!("la respuesta de {n} llego vacia; vuelve a pedirlo")),
+                        error: self.nube(format!("La respuesta de {n} llego vacia; vuelve a pedirlo.")),
                         esperar: None,
                     });
                 }
@@ -385,7 +397,10 @@ impl MotorNube {
         match r {
             Ok(cortado) => Ok(cortado),
             Err(http::Fallo::Red(d)) => Err(Intento::Reintentar {
-                error: self.nube(format!("no hay conexion con {n}: {d}")),
+                error: {
+                    tracing::warn!(%d, "asistente: sin conexion con la nube");
+                    self.nube(format!("No hay conexion con {n}. Mira la red o vuelve al asistente local en Ajustes → Asistente."))
+                },
                 esperar: None,
             }),
             Err(http::Fallo::Http { codigo, cuerpo, esperar }) => {
@@ -423,7 +438,7 @@ impl Motor for MotorNube {
     fn completar(&self, p: &Peticion, al_trozo: &mut dyn FnMut(&Trozo) -> Seguir) -> Result<Respuesta, ErrorIa> {
         if self.clave.is_empty() {
             return Err(ErrorIa::Nube(format!(
-                "falta la clave de {}: pegala en Ajustes → Asistente.",
+                "Falta la clave de {}: pegala en Ajustes → Asistente.",
                 self.proveedor.nombre()
             )));
         }
@@ -489,7 +504,10 @@ pub fn probar_en(p: Proveedor, clave: &str, url: &str) -> Result<String, String>
             let modelo = v.get("model").and_then(Value::as_str).unwrap_or(p.modelo());
             Ok(format!("la clave funciona: {} ({modelo}) contesto.", p.nombre()))
         }
-        Err(http::Fallo::Red(d)) => Err(format!("no hay conexion con {}: {d}", p.nombre())),
+        Err(http::Fallo::Red(d)) => {
+            tracing::warn!(%d, "asistente: sin conexion al probar la clave");
+            Err(format!("no hay conexion con {}", p.nombre()))
+        }
         Err(http::Fallo::Http { codigo, cuerpo, .. }) => Err(clasificar(p, codigo, &cuerpo).0),
     }
 }

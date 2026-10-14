@@ -2451,6 +2451,8 @@ ajustes2-palabras-marcador = palabra, otra palabra…
 
 ## Asistente local (13-oct-2026)
 asistente-titulo = Asistente local
+asistente-mencionar = Mencionar: el asistente o dónde dibujar
+asistente-abrir-lienzo = Abrir lienzo
 asistente-explica = Un modelo pequeño que funciona en este PC, sin internet: contesta, dibuja en el lienzo, hace gráficas y lee el texto de PDFs escaneados y fotos. Hay que bajarlo una sola vez; se apaga solo a los 5 minutos sin usarlo y devuelve la memoria.
 asistente-modelo-normal = Qwen3.5 2B (recomendado)
 asistente-modelo-ligero = Qwen3.5 0.8B (ligero)
@@ -2469,14 +2471,14 @@ asistente-ocupado = El asistente todavía está contestando: espera o pulsa para
 asistente-sin-modelo = Primero baja el asistente en el chat «Asistente».
 asistente-fallo = El asistente no pudo empezar a contestar.
 ajustes-asistente-modelo = Modelo del asistente
-ajustes2-ayuda-asistente-modelo = El modelo local del chat «Asistente». El 2B dibuja y ve mejor; el 0.8B pesa menos y gasta menos memoria. Cambiarlo no baja nada: lo ofrece el propio chat.
+ajustes2-ayuda-asistente-modelo = Con motor Local. El 2B dibuja y ve mejor; el 0.8B gasta menos.
 
 ## Asistente con la nube (13-oct-2026)
 ajustes2-sec-asistente = Asistente
 ajustes2-sec-asistente-sub = Quién contesta en el chat «Asistente»: el modelo de este PC, Claude o DeepSeek.
 ajustes2-g-asistente = Motor del asistente
 ajustes2-asistente-motor = Motor
-ajustes2-ayuda-asistente-motor = Local: sin internet y gratis, en este PC. Claude Haiku 5.5 y DeepSeek V4.1 Flash: por internet con tu clave, más listos y rápidos; cuestan alrededor de una décima de céntimo de dólar por pedido.
+ajustes2-ayuda-asistente-motor = Local: gratis y sin red. Nube: con tu clave.
 ajustes2-asistente-local = Local (este PC)
 ajustes2-asistente-respaldo = Si la nube falla, seguir con el local
 ajustes2-ayuda-asistente-respaldo = Sin red, con la clave mal o sin saldo, contesta el modelo local (si está bajado) y te avisa en la respuesta.

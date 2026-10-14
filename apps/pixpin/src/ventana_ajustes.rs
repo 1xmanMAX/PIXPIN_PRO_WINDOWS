@@ -2459,11 +2459,16 @@ fn dibujar_columna(p: &Pintor, e: f32, v: &Vista, t: &Catalogo) {
 
     // Las secciones.
     let (deshacer, listo) = botones_del_pie(v.alto);
+    // Las secciones llegan hasta «Deshacer» (donde las acierta `golpe_en`);
+    // la nota de abajo solo se pinta si queda sitio (con «Asistente» son
+    // once y en 680 de alto no caben las dos cosas).
+    let mut fondo_secciones = 0.0f32;
     for (i, s) in SECCIONES.iter().enumerate() {
         let r = rect_de_seccion(i);
-        if r.y + r.alto > deshacer.y - 50.0 {
+        if r.y + r.alto > deshacer.y - 6.0 {
             break;
         }
+        fondo_secciones = r.y + r.alto;
         let r = rf(r, e);
         let elegida = !estado.buscando() && estado.seccion == i;
         if elegida {
@@ -2507,18 +2512,14 @@ fn dibujar_columna(p: &Pintor, e: f32, v: &Vista, t: &Catalogo) {
     // La nota, el «Deshacer» y el «Listo».
     let tam_nota = 12.0 * e;
     let x_nota = 20.0 * e;
-    let y_nota = (deshacer.y - 44.0) * e;
-    p.texto(&t.t("ajustes2-nota"), x_nota, y_nota, tam_nota, TENUE);
-    let (_, hn) = p.medir_texto("Ag", tam_nota);
-    let y2 = y_nota + hn + 2.0 * e;
-    p.circulo((x_nota + 4.0 * e, y2 + hn / 2.0), 3.5 * e, AZUL);
-    p.texto(
-        &t.t("ajustes2-nota-punto"),
-        x_nota + 12.0 * e,
-        y2,
-        tam_nota,
-        TENUE,
-    );
+    if fondo_secciones <= deshacer.y - 50.0 {
+        let y_nota = (deshacer.y - 44.0) * e;
+        p.texto(&t.t("ajustes2-nota"), x_nota, y_nota, tam_nota, TENUE);
+        let (_, hn) = p.medir_texto("Ag", tam_nota);
+        let y2 = y_nota + hn + 2.0 * e;
+        p.circulo((x_nota + 4.0 * e, y2 + hn / 2.0), 3.5 * e, AZUL);
+        p.texto(&t.t("ajustes2-nota-punto"), x_nota + 12.0 * e, y2, tam_nota, TENUE);
+    }
 
     if v.hay_deshacer {
         let r = rf(deshacer, e);

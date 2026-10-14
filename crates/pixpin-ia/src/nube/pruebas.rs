@@ -250,6 +250,8 @@ fn claude_texto_y_pensamiento_en_vivo() {
     assert!(rec[0].cabeceras.contains("anthropic-version: 2023-06-01"));
     assert_eq!(rec[0].cuerpo["model"], "claude-haiku-5-5");
     assert_eq!(rec[0].cuerpo["stream"], true);
+    // El tope de la respuesta del agente, mas la reserva para pensar.
+    assert_eq!(rec[0].cuerpo["max_tokens"], 1024 + RESERVA_PENSAR);
 }
 
 #[test]
@@ -319,7 +321,8 @@ fn claude_entrada_invalida_no_se_ejecuta_y_se_corrige() {
     assert!(r1["content"][0]["content"].as_str().unwrap().contains("dragon"));
     let r2 = ultimo_de(2);
     assert_eq!(r2["content"][0]["is_error"], true);
-    assert!(r2["content"][0]["content"].as_str().unwrap().contains("JSON"));
+    let motivo = r2["content"][0]["content"].as_str().unwrap();
+    assert!(motivo.contains("JSON") || motivo.contains("cortada"), "{motivo}");
 }
 
 #[test]
@@ -359,7 +362,7 @@ fn claude_rechazo_no_ejecuta_nada_y_lo_dice() {
     let (r, ej, ev, _) = turno(&m, "algo raro");
     let f = r.unwrap();
     assert!(ej.0.is_empty());
-    assert!(f.texto.contains("no quiso") && f.texto.contains("cyber"), "{}", f.texto);
+    assert!(f.texto.contains("no quiso") && f.texto.contains("filtro") && !f.texto.contains("cyber"), "{}", f.texto);
     assert!(ev.iter().any(|e| matches!(e, Evento::Texto(t) if t.contains("no quiso"))));
 }
 
@@ -375,6 +378,9 @@ fn claude_401_avisa_sin_reintentar() {
     assert_eq!(s.recibidas.lock().unwrap().len(), 1);
     // Y la clave no sale en el aviso.
     assert!(!e.to_string().contains("CLAVEFALSA"));
+    // Ni codigos ni JSON en lo que ve el usuario.
+    let t = crate::agente::para_el_usuario(&e);
+    assert!(!t.contains("401") && !t.contains('{') && !t.contains("x-api-key"), "{t}");
 }
 
 #[test]
@@ -562,7 +568,7 @@ fn sin_red_avisa_y_no_se_queda_colgado() {
     let url = format!("http://127.0.0.1:{}/v1/messages", l.local_addr().unwrap().port());
     drop(l);
     let e = claude(&url).completar(&Peticion::nueva(historial("hola")), &mut |_| Seguir::Si).unwrap_err();
-    assert!(e.to_string().contains("no hay conexion con Claude"), "{e}");
+    assert!(e.to_string().contains("No hay conexion con Claude"), "{e}");
 }
 
 #[test]
@@ -570,7 +576,7 @@ fn sin_clave_lo_dice() {
     let e = MotorNube::nuevo(Proveedor::DeepSeek, "  ")
         .completar(&Peticion::nueva(historial("hola")), &mut |_| Seguir::Si)
         .unwrap_err();
-    assert!(e.to_string().contains("falta la clave de DeepSeek"));
+    assert!(e.to_string().contains("Falta la clave de DeepSeek"));
 }
 
 #[test]

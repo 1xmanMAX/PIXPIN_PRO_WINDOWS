@@ -53,12 +53,26 @@ impl Turno {
     /// mensaje nuevo del usuario al final.
     /// `foto`: la imagen que tiene que ver con la pregunta (se reduce y se
     /// pega al ultimo mensaje en el hilo, no en el de la ventana).
+    #[cfg(test)]
     pub fn lanzar(
         motor: Arc<dyn Motor>,
         proyecto: String,
         historial: Vec<Mensaje>,
         adjuntos: Vec<Adjunto>,
         foto: Option<PathBuf>,
+    ) -> Turno {
+        Turno::lanzar_hacia(motor, proyecto, historial, adjuntos, foto, None)
+    }
+
+    /// Lo mismo con el lienzo donde dibujar si no hay uno abierto (la
+    /// mencion `@lienzo:` de la pregunta): su referencia en el chat.
+    pub fn lanzar_hacia(
+        motor: Arc<dyn Motor>,
+        proyecto: String,
+        historial: Vec<Mensaje>,
+        adjuntos: Vec<Adjunto>,
+        foto: Option<PathBuf>,
+        destino: Option<String>,
     ) -> Turno {
         // Claude y DeepSeek reciben el catalogo entero (eligen bien y el
         // prefijo se cachea); el modelo local, solo las que vienen a cuento.
@@ -67,7 +81,7 @@ impl Turno {
         } else {
             super::acciones::herramientas_para(&historial, &adjuntos, foto.is_some())
         };
-        Turno::lanzar_con(motor, proyecto, historial, adjuntos, foto, herramientas)
+        Turno::lanzar_con(motor, proyecto, historial, adjuntos, foto, destino, herramientas)
     }
 
     pub fn lanzar_con(
@@ -76,6 +90,7 @@ impl Turno {
         mut historial: Vec<Mensaje>,
         adjuntos: Vec<Adjunto>,
         foto: Option<PathBuf>,
+        destino: Option<String>,
         herramientas: Vec<Herramienta>,
     ) -> Turno {
         let (tx, rx) = channel();
@@ -90,7 +105,8 @@ impl Turno {
                 if let Some(ruta) = foto {
                     poner_foto(&mut historial, &ruta);
                 }
-                let mut ejecutor = EjecutorDelChat::nuevo(tx.clone(), proyecto, adjuntos, parar_hilo.clone());
+                let mut ejecutor =
+                    EjecutorDelChat::nuevo(tx.clone(), proyecto, adjuntos, parar_hilo.clone()).hacia(destino);
                 let resultado = agente::turno(motor.as_ref(), &mut historial, &herramientas, &mut ejecutor, &mut |e| {
                     let _ = tx.send(Aviso::Evento(e));
                     if parar_hilo.load(Ordering::Relaxed) {
@@ -99,13 +115,18 @@ impl Turno {
                         Seguir::Si
                     }
                 })
-                .map_err(|e| e.to_string());
+                .map_err(|e| {
+                    // Lo tecnico, al registro; a la burbuja, en palabras.
+                    tracing::warn!(error = %e, "asistente: el turno no pudo acabar");
+                    agente::para_el_usuario(&e)
+                });
                 let _ = tx.send(Aviso::Fin { resultado });
             }
         });
         if let Err(e) = lanzado {
+            tracing::warn!(?e, "asistente: no se pudo lanzar el hilo del turno");
             let _ = tx.send(Aviso::Fin {
-                resultado: Err(format!("no se pudo lanzar el hilo del asistente: {e}")),
+                resultado: Err("No pude empezar a contestar. Prueba otra vez.".into()),
             });
         }
         Turno {
