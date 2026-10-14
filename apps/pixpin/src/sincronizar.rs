@@ -43,6 +43,7 @@ use pixpin_sincro::vuelta;
 use pixpin_store::{Catalogo, Ubicacion};
 
 use crate::caja_dibujo::hex;
+use crate::caja_texto::CajaLinea;
 use crate::overlay::Recursos;
 
 mod al_dia;
@@ -364,23 +365,44 @@ enum QueCampo {
     Direccion,
 }
 
+/// Un campo del dialogo. Cada caja es la caja comun de la app
+/// (`caja_texto::CajaLinea`, 14-oct-2026): su rayita donde se escribe,
+/// Ctrl+Retroceso, Mayus+flechas, el raton, Ctrl+A/C/X/V/Z...
 #[derive(Debug, Clone)]
 struct Campo {
     que: QueCampo,
-    texto: String,
+    texto: CajaLinea,
     /// Solo al unirse: el segundo campo, la direccion.
-    extra: String,
+    extra: CajaLinea,
     /// En cual de los dos se escribe.
     en_extra: bool,
 }
 
 impl Campo {
     fn nuevo(que: QueCampo, texto: String) -> Campo {
+        // Los topes son los del movil: 40 para nombre y direccion, 14 para
+        // el codigo (diez signos con guion y algun espacio de mas).
+        let tope = if que == QueCampo::Codigo { 14 } else { 40 };
+        let mut caja = CajaLinea::con_texto(&texto).con_maximo(tope).sin_parpadeo();
+        // Lo que ya estaba (el nombre) va elegido: escribir lo sustituye,
+        // como al renombrar en Windows.
+        if !caja.is_empty() {
+            caja.elegir_todo();
+        }
         Campo {
             que,
-            texto,
-            extra: String::new(),
+            texto: caja,
+            extra: CajaLinea::nueva().con_maximo(40).sin_parpadeo(),
             en_extra: false,
+        }
+    }
+
+    /// La caja donde se escribe.
+    fn activa(&mut self) -> &mut CajaLinea {
+        if self.en_extra {
+            &mut self.extra
+        } else {
+            &mut self.texto
         }
     }
 }
@@ -479,6 +501,73 @@ impl Pantalla {
             Sub::Recibir(r) => r.animando(),
             Sub::Enviar(e) => e.animando(),
         }
+    }
+
+    /// Una tecla de caja de texto: al campo del dialogo si lo hay, si no a
+    /// la pantalla de debajo. Devuelve si era de alguna caja.
+    fn tecla_de_caja(&mut self, vk: u32, shift: bool, ctrl: bool) -> bool {
+        match self.campo.as_mut() {
+            Some(c) => c
+                .activa()
+                .tecla(vk, shift, ctrl, &mut crate::caja_texto::PortapapelesWindows)
+                .atendida(),
+            None => self.tecla(Tecla::Caja { vk, shift, ctrl }),
+        }
+    }
+
+    /// Las cajas de texto que se ven y se pueden tocar con el raton: las del
+    /// dialogo si esta abierto (tapa lo de debajo), si no la de la pantalla.
+    fn cajas_visibles(&mut self) -> Vec<&mut CajaLinea> {
+        if let Some(c) = self.campo.as_mut() {
+            let Campo { que, texto, extra, .. } = c;
+            let mut v = vec![texto];
+            if *que == QueCampo::Codigo {
+                v.push(extra);
+            }
+            return v;
+        }
+        if self.saliendo || self.fase != Fase::Nada {
+            return Vec::new();
+        }
+        let caja = match &mut self.sub {
+            Sub::Recibir(r) => recibir_wifi::caja_visible(r),
+            Sub::Enviar(e) => enviar_wifi::caja_visible(e),
+            Sub::Compartidos(c) => compartidos_ui::caja_visible(c),
+            Sub::Portada | Sub::Elegir(_) | Sub::Copias(_) => None,
+        };
+        caja.into_iter().collect()
+    }
+
+    /// Boton pulsado en `l`: si cae en una caja, la rayita alli (dos clics
+    /// la palabra, tres todo) y empieza a elegir. Devuelve si era de una.
+    fn pulsar_en_caja(&mut self, l: Punto, shift: bool) -> bool {
+        let ahora = std::time::Instant::now();
+        if let Some(c) = self.campo.as_mut() {
+            if c.texto.pulsar(l, shift, ahora) {
+                c.en_extra = false;
+                return true;
+            }
+            if c.que == QueCampo::Codigo && c.extra.pulsar(l, shift, ahora) {
+                c.en_extra = true;
+                return true;
+            }
+            return false;
+        }
+        self.cajas_visibles()
+            .into_iter()
+            .any(|c| c.pulsar(l, shift, ahora))
+    }
+
+    /// El raton se mueve: si se elegia en una caja, hasta alli.
+    fn arrastrar_en_caja(&mut self, l: Punto) -> bool {
+        self.cajas_visibles().into_iter().any(|c| c.arrastrar(l))
+    }
+
+    /// Boton soltado: si se elegia en una caja, se acaba.
+    fn soltar_caja(&mut self) -> bool {
+        self.cajas_visibles()
+            .into_iter()
+            .fold(false, |hubo, c| c.soltar_raton() | hubo)
     }
 
     fn tecla(&mut self, t: Tecla) -> bool {
@@ -650,9 +739,9 @@ pub fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion) -> R
                         pixpin_codec::leer()
                     {
                         if let Some(c) = pantalla.campo.as_mut() {
-                            for ch in t.trim().chars().filter(|c| !c.is_control()) {
-                                escribir(c, ch);
-                            }
+                            // Donde esta la rayita (sobre lo elegido), en una
+                            // linea y hasta el tope de la caja.
+                            c.activa().pegar_texto(t.trim());
                         } else {
                             pantalla.tecla(Tecla::Pegar(t));
                         }
@@ -667,31 +756,23 @@ pub fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion) -> R
                         hay_que_pintar = true;
                     }
                 }
-                // Las teclas de caja de texto, primero para los campos que son
-                // la caja comun (los chats compartidos); si la pantalla no la
-                // quiere, Retroceso sigue como `Borrar`.
+                // Las teclas de caja de texto: todos los campos son la caja
+                // comun (el dialogo, Recibir, Enviar, los chats compartidos);
+                // si nadie la quiere, Retroceso sigue como `Borrar`.
                 EventoOverlay::Tecla { vk, shift, ctrl, .. }
-                    if pantalla.campo.is_none()
-                        && crate::caja_texto::CajaLinea::es_suya(vk, shift, ctrl)
-                        && pantalla.tecla(Tecla::Caja { vk, shift, ctrl }) =>
+                    if CajaLinea::es_suya(vk, shift, ctrl)
+                        && pantalla.tecla_de_caja(vk, shift, ctrl) =>
                 {
                     hay_que_pintar = true;
                 }
                 EventoOverlay::Tecla { vk: 0x08, .. } => {
-                    if let Some(c) = pantalla.campo.as_mut() {
-                        if c.en_extra {
-                            c.extra.pop();
-                        } else {
-                            c.texto.pop();
-                        }
-                        hay_que_pintar = true;
-                    } else if pantalla.tecla(Tecla::Borrar) {
+                    if pantalla.campo.is_none() && pantalla.tecla(Tecla::Borrar) {
                         hay_que_pintar = true;
                     }
                 }
                 EventoOverlay::Caracter(ch) if !ch.is_control() => {
                     if let Some(c) = pantalla.campo.as_mut() {
-                        escribir(c, ch);
+                        c.activa().caracter(ch);
                         hay_que_pintar = true;
                     } else if pantalla.tecla(Tecla::Letra(ch)) {
                         hay_que_pintar = true;
@@ -706,6 +787,18 @@ pub fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion) -> R
                 }
                 EventoOverlay::BotonPulsado(p) => {
                     let (x, y) = ((p.x - marco.x) as f32, (p.y - marco.y) as f32);
+                    // En una caja de texto: la rayita donde cae el clic, y
+                    // arrastrando se elige, como en cualquier caja.
+                    let shift = pixpin_shell::entrada::modificadores_pulsados().shift;
+                    let l = Punto {
+                        x: p.x - marco.x,
+                        y: p.y - marco.y,
+                    };
+                    if pantalla.pulsar_en_caja(l, shift) {
+                        ventana.capturar_raton();
+                        hay_que_pintar = true;
+                        continue;
+                    }
                     let accion = zonas
                         .iter()
                         .rev()
@@ -727,6 +820,12 @@ pub fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion) -> R
                     hay_que_pintar = true;
                 }
                 EventoOverlay::RatonMovido(p) => {
+                    if pantalla.arrastrar_en_caja(Punto {
+                        x: p.x - marco.x,
+                        y: p.y - marco.y,
+                    }) {
+                        hay_que_pintar = true;
+                    }
                     if let Some((desde, antes)) = arrastre {
                         marco = Rect {
                             x: antes.x + p.x - desde.x,
@@ -736,8 +835,10 @@ pub fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion) -> R
                         ventana.mover(marco);
                     }
                 }
-                EventoOverlay::BotonSoltado(_) if arrastre.take().is_some() => {
-                    ventana.soltar_raton();
+                EventoOverlay::BotonSoltado(_) => {
+                    if arrastre.take().is_some() | pantalla.soltar_caja() {
+                        ventana.soltar_raton();
+                    }
                 }
                 _ => {}
             }
@@ -834,20 +935,6 @@ pub fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion) -> R
     // movil tiene que poder seguir encontrando este equipo. Lo unico que se
     // suelta es la suscripcion (`_mirando`), y con ella la sonda se espacia.
     Ok(())
-}
-
-fn escribir(c: &mut Campo, ch: char) {
-    // Los topes son los del movil: 40 para nombre y direccion, 14 para el
-    // codigo (diez signos con guion y algun espacio de mas).
-    let (destino, tope) = if c.en_extra {
-        (&mut c.extra, 40)
-    } else {
-        let tope = if c.que == QueCampo::Codigo { 14 } else { 40 };
-        (&mut c.texto, tope)
-    };
-    if destino.chars().count() < tope {
-        destino.push(ch);
-    }
 }
 
 fn atender(
@@ -2893,7 +2980,7 @@ fn campo(
     l: &mut Lienzo<'_>,
     r: RectF,
     rotulo: &str,
-    texto: &str,
+    texto: &CajaLinea,
     pista: &str,
     activo: bool,
     a: Accion,
@@ -2916,27 +3003,28 @@ fn campo(
             if activo { PRIMARIO } else { SUAVE },
         );
     }
-    let (mostrar, color) = if texto.is_empty() {
-        (pista, SUAVE)
-    } else {
-        (texto, TEXTO)
+    // Lo escrito, con la caja comun: la rayita donde se escribe, lo elegido
+    // y el texto corrido si no cabe.
+    let hueco = RectF {
+        x: r.x + 16.0 * e,
+        ancho: (r.ancho - 32.0 * e).max(1.0),
+        ..r
     };
-    let tam = 16.0 * e;
-    let (wt, ht) = p.medir_texto(mostrar, tam);
-    p.texto(
-        mostrar,
-        r.x + 16.0 * e,
-        r.y + (r.alto - ht) / 2.0,
-        tam,
-        color,
+    texto.pintar(
+        p,
+        r,
+        hueco,
+        16.0 * e,
+        pista,
+        &crate::caja_texto::Colores {
+            texto: TEXTO,
+            invitacion: SUAVE,
+            seleccion: Color { a: 0.35, ..PRIMARIO },
+            rayita: PRIMARIO,
+        },
+        activo,
+        std::time::Instant::now(),
     );
-    if activo {
-        let xc = r.x + 16.0 * e + if texto.is_empty() { 0.0 } else { wt } + e;
-        p.rellenar(
-            rect(xc, r.y + 14.0 * e, 2.0 * e, r.alto - 28.0 * e),
-            PRIMARIO,
-        );
-    }
     l.zonas.push((r, a));
 }
 
@@ -3201,6 +3289,33 @@ mod pruebas {
     fn el_codigo_se_lee_en_dos_mitades_como_en_el_movil() {
         assert_eq!(legible("K7Q2M9XMPA"), "K7Q2M-9XMPA");
         assert_eq!(legible("K7Q2"), "K7Q2");
+    }
+
+    #[test]
+    fn los_campos_del_dialogo_son_la_caja_comun_con_sus_topes() {
+        let pp = &mut crate::caja_texto::PortapapelesWindows;
+        // El nombre ya puesto va elegido: escribir lo sustituye.
+        let mut c = Campo::nuevo(QueCampo::Nombre, "Portatil de obra".into());
+        assert_eq!(c.texto.seleccionado(), Some("Portatil de obra"));
+        c.activa().caracter('X');
+        assert_eq!(c.texto.texto(), "X");
+        // Ctrl+Z lo devuelve.
+        assert!(c.activa().tecla(0x5A, false, true, pp).cambio());
+        assert_eq!(c.texto.texto(), "Portatil de obra");
+        // Fin y Ctrl+Retroceso: la palabra entera.
+        c.activa().tecla(0x23, false, false, pp);
+        c.activa().tecla(0x08, false, true, pp);
+        assert_eq!(c.texto.texto(), "Portatil de ");
+        // Unirse: el codigo no pasa de 14 y la direccion va aparte.
+        let mut u = Campo::nuevo(QueCampo::Codigo, String::new());
+        for ch in "ABCDE-23456-XYZW".chars() {
+            u.activa().caracter(ch);
+        }
+        assert_eq!(u.texto.texto(), "ABCDE-23456-XY", "caso negativo: tope de 14");
+        u.en_extra = true;
+        u.activa().pegar_texto("192.168.1.20:47474\r\n");
+        assert_eq!(u.extra.texto(), "192.168.1.20:47474");
+        assert_eq!(u.texto.texto(), "ABCDE-23456-XY", "el codigo no se toca");
     }
 
     #[test]

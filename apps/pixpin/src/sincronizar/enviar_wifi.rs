@@ -28,6 +28,8 @@ use pixpin_render::icono::material;
 use pixpin_sincro::envio::{self, Elemento, Emisor, Final, Remitente};
 use pixpin_store::Catalogo;
 
+use crate::caja_texto::CajaLinea;
+
 use super::recibir_wifi::{
     ESPERA_LARGA, boton_apagado, buscar_y_conectar, caja_wifi, campo_grande, conectar, hex_blanco,
     nombre_de, nonce, tamano,
@@ -123,7 +125,8 @@ pub(super) struct Enviar {
     aprobaciones: HashMap<u64, mpsc::Sender<bool>>,
     /// Con el campo de «pegar el codigo de quien recibe» abierto.
     pegando: bool,
-    tecleado: String,
+    /// El codigo (o el QR pegado) de quien recibe: la caja comun de la app.
+    tecleado: CajaLinea,
     /// Los codigos ya llamados: pegar dos veces el mismo no manda dos.
     llamados: HashSet<String>,
     /// La carpeta donde se empaqueto un proyecto: se borra al salir.
@@ -159,7 +162,7 @@ impl Enviar {
             destinos: Vec::new(),
             aprobaciones: HashMap::new(),
             pegando: false,
-            tecleado: String::new(),
+            tecleado: CajaLinea::nueva().con_maximo(80).sin_parpadeo(),
             llamados: HashSet::new(),
             temporal: None,
             vivo: Arc::new(AtomicBool::new(true)),
@@ -251,24 +254,35 @@ pub(super) fn tecla(s: &mut Enviar, t: Tecla, cx: &Contexto) -> bool {
     if !s.pegando || !matches!(s.fase, Fase::Esperando { .. }) {
         return false;
     }
+    let pp = &mut crate::caja_texto::PortapapelesWindows;
     match t {
         Tecla::Letra(c) => {
-            if s.tecleado.chars().count() < 80 {
-                s.tecleado.push(c);
-            }
+            s.tecleado.caracter(c);
         }
         Tecla::Borrar => {
-            s.tecleado.pop();
+            s.tecleado.tecla(0x08, false, false, pp);
         }
-        Tecla::Pegar(texto) => s.tecleado = texto.trim().chars().take(80).collect(),
-        // Las teclas de caja de texto (`caja_texto`) aun no son de este campo:
-        // Retroceso le llega como `Borrar`.
-        Tecla::Caja { .. } => return false,
+        // El texto de un QR pegado: donde esta la rayita, sin blancos.
+        Tecla::Pegar(texto) => {
+            s.tecleado.pegar_texto(texto.trim());
+        }
+        Tecla::Caja { vk, shift, ctrl } => {
+            return s.tecleado.tecla(vk, shift, ctrl, pp).atendida();
+        }
         Tecla::Intro => {
             tocar(s, Toque::Mandar, cx, &|| Vec::new());
         }
     }
     true
+}
+
+/// La caja del codigo, si se ve (pegando, mientras se espera): la del raton.
+pub(super) fn caja_visible(s: &mut Enviar) -> Option<&mut CajaLinea> {
+    if s.pegando && matches!(s.fase, Fase::Esperando { .. }) {
+        Some(&mut s.tecleado)
+    } else {
+        None
+    }
 }
 
 /// Un toque. `elegir` abre el dialogo de archivos de Windows. Devuelve
@@ -327,7 +341,7 @@ pub(super) fn tocar(
                 && s.llamados.insert(q.codigo.clone())
             {
                 mandar_a(s, q, cx);
-                s.tecleado.clear();
+                s.tecleado.vaciar();
             }
         }
         Toque::Cerrar => return true,

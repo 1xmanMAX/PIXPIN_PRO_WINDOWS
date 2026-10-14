@@ -22,7 +22,7 @@
 
 mod linea;
 
-pub(crate) use linea::{CajaLinea, Colores, PortapapelesWindows, Respuesta, en_una_linea};
+pub(crate) use linea::{CajaLinea, Colores, Fichas, PortapapelesWindows, Respuesta, en_una_linea};
 
 use std::ops::Range;
 
