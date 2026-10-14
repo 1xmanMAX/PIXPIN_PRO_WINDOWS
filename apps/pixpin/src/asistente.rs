@@ -22,6 +22,9 @@
 //! - [`foto`]: reducir la foto adjunta a ~768 px antes de mandarla.
 //! - [`nube`]: contestar con Claude Haiku 5.5 o DeepSeek V4.1 Flash (la
 //!   clave cifrada con DPAPI) y, si fallan, seguir con el local.
+//! - [`documentos`]: `buscar_en_mis_cosas`: el indice local de los PDF,
+//!   Office, notas y chats del usuario, al dia en segundo plano, y el
+//!   permiso de mandar trozos a la nube.
 //!
 //! Android todavia no tiene asistente (comprobado el 13-oct con `gh`): aqui
 //! se abre camino y el protocolo (`catalogo_json`, Excalidraw) es el que
@@ -31,6 +34,7 @@ pub mod acciones;
 pub mod al_lienzo;
 pub mod chat;
 pub mod descarga;
+pub mod documentos;
 pub mod ejecutor;
 pub mod foto;
 pub mod motor;

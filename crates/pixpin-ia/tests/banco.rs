@@ -644,6 +644,12 @@ mod banco_ia {
                 serde_json::json!({"pregunta": q, "respuesta": pixpin_ia::conocimiento::responder(q)}),
                 Vec::new(),
             ),
+            // El banco no tiene documentos: se apunta lo pedido.
+            Llamada::Buscar(b) => (
+                nombre,
+                serde_json::json!({"consulta": b.consulta, "proyecto": b.proyecto}),
+                Vec::new(),
+            ),
         })
     }
 }

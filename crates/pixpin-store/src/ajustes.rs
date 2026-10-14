@@ -528,6 +528,10 @@ pub struct Asistente {
     /// Si la nube falla (red, clave, saldo), seguir con el modelo local si
     /// esta bajado.
     pub respaldo_local: bool,
+    /// Si con un motor de la nube se le pueden mandar trozos de los
+    /// documentos propios (`buscar_en_mis_cosas`): vacio = preguntar la
+    /// primera vez, `si` o `no` (13-oct-2026).
+    pub documentos_a_la_nube: String,
 }
 
 impl Default for Asistente {
@@ -536,6 +540,7 @@ impl Default for Asistente {
             modelo: String::new(),
             motor: String::new(),
             respaldo_local: true,
+            documentos_a_la_nube: String::new(),
         }
     }
 }

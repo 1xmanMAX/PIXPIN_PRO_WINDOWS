@@ -36,6 +36,10 @@ pub enum Aviso {
     /// El texto entero que leyo el OCR (al modelo le llega recortado), para
     /// ensenarlo en el chat y ofrecer guardarlo.
     TextoLeido { de: Adjunto, texto: String },
+    /// Lo citado de los documentos del usuario hasta ahora en el turno
+    /// (`buscar_en_mis_cosas`): la respuesta lo guarda y el chat ensena
+    /// la cita como tarjeta que abre el documento.
+    Citas(Vec<pixpin_ia::documentos::Cita>),
     /// Se acabo. (La conversacion siguiente se rehace del chat, que es lo
     /// que el usuario ve y puede borrar.)
     Fin { resultado: Result<Final, String> },
@@ -105,8 +109,9 @@ impl Turno {
                 if let Some(ruta) = foto {
                     poner_foto(&mut historial, &ruta);
                 }
-                let mut ejecutor =
-                    EjecutorDelChat::nuevo(tx.clone(), proyecto, adjuntos, parar_hilo.clone()).hacia(destino);
+                let mut ejecutor = EjecutorDelChat::nuevo(tx.clone(), proyecto, adjuntos, parar_hilo.clone())
+                    .hacia(destino)
+                    .en_la_nube(motor.catalogo_completo());
                 let resultado = agente::turno(motor.as_ref(), &mut historial, &herramientas, &mut ejecutor, &mut |e| {
                     let _ = tx.send(Aviso::Evento(e));
                     if parar_hilo.load(Ordering::Relaxed) {

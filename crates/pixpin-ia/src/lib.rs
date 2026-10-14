@@ -44,6 +44,8 @@
 //!   que borra o sale del PC lleva su pregunta de confirmacion.
 //! - [`seleccion`]: las 6 herramientas que vienen a cuento en cada turno.
 //! - [`conocimiento`]: el resumen de PixPin y el indice de `ayuda_app`.
+//! - [`documentos`]: `buscar_en_mis_cosas`, un indice BM25 local de los
+//!   documentos, notas y chats del usuario, con el origen de cada trozo.
 //!
 //! ## Puntos de enganche para la UI (otros agentes)
 //!
@@ -59,6 +61,7 @@ pub mod base64;
 pub mod calcar;
 pub mod conocimiento;
 pub mod descarga;
+pub mod documentos;
 pub mod herramientas;
 pub mod lienzo;
 pub mod modelos;

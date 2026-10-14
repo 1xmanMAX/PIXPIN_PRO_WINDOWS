@@ -36,7 +36,7 @@ el plugin de Flow Launcher (`apps/pixpin-lanzador`), y sirve igual para un scrip
 | `abrir` | `que: {tipo:"mensaje", proyecto, codigo}` | El chat en ese mensaje, resaltado |
 | `abrir` | `que: {tipo:"hoja", proyecto, referencia}` | Ese lienzo u hoja, en el lienzo |
 | `abrir` | `que: {tipo:"nota", proyecto, codigo}` | Esa nota en el editor de notas |
-| `abrir` | `que: {tipo:"fichero", ruta}` | Como «Abrir con PixPin» (lector, editor, pin). Un `.leccion` abre la ficha de esa lección |
+| `abrir` | `que: {tipo:"fichero", ruta, pagina?}` | Como «Abrir con PixPin» (lector, editor, pin). Un `.leccion` abre la ficha de esa lección. Con `pagina` (desde 1), un PDF, Word o PowerPoint se abre en esa página en vez de donde se dejó (las citas del asistente, `buscar_en_mis_cosas`) |
 | `chat` | `texto`, `proyecto?`, `imagenes?`, `archivos?` | Un mensaje de texto nuevo en ese chat. Con `imagenes` (rutas; `[img 01]` en `texto` = `imagenes[0]`), el texto sin sus fichas va primero y cada imagen detras como una foto del chat (un BMP se guarda como PNG). Con `archivos` (ver abajo), cada fichero va detras como un adjunto
 | `nota_nueva` | `texto?`, `proyecto?`, `imagenes?` | Una nota nueva, abierta en el editor. Con `imagenes`, cada `[img NN]` del texto queda como esa imagen dentro de la nota
 | `lienzo_nuevo` | `nombre?`, `proyecto?` | Un lienzo nuevo, abierto |

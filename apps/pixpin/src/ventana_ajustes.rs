@@ -301,6 +301,9 @@ enum Clave {
     AsistenteMotor,
     /// Seguir con el local si la nube falla (`[asistente] respaldo_local`).
     AsistenteRespaldo,
+    /// Si lo hallado en los documentos puede ir a la nube
+    /// (`[asistente] documentos_a_la_nube`).
+    AsistenteDocsNube,
     /// La caja de la clave de un proveedor (indice en `Proveedor::TODOS`).
     /// No es un ajuste: la clave va cifrada a su fichero, nunca al TOML.
     ClaveNube(u8),
@@ -863,6 +866,27 @@ fn filas_de_seccion(s: Seccion, a: &Ajustes, cx: &Contexto) -> Vec<(Clave, Fila)
                     tt("ajustes2-ayuda-asistente-respaldo"),
                     Control::Interruptor(a.asistente.respaldo_local),
                 ),
+                // Lo hallado en los documentos del usuario, ¿a la nube?
+                // (`buscar_en_mis_cosas`; por omision se pregunta la
+                // primera vez).
+                op(
+                    a,
+                    Clave::AsistenteDocsNube,
+                    tt("ajustes2-asistente-docs-nube"),
+                    tt("ajustes2-ayuda-asistente-docs-nube"),
+                    opcion(
+                        vec![
+                            tt("ajustes2-docs-nube-preguntar"),
+                            tt("ajustes2-docs-nube-si"),
+                            tt("ajustes2-docs-nube-no"),
+                        ],
+                        match crate::asistente::documentos::PermisoNube::de(&a.asistente.documentos_a_la_nube) {
+                            crate::asistente::documentos::PermisoNube::Preguntar => 0,
+                            crate::asistente::documentos::PermisoNube::Si => 1,
+                            crate::asistente::documentos::PermisoNube::No => 2,
+                        },
+                    ),
+                ),
                 grupo(t, "ajustes2-g-claves"),
             ];
             for (i, p) in Proveedor::TODOS.into_iter().enumerate() {
@@ -1181,6 +1205,7 @@ fn restablecer(clave: Clave, a: &mut Ajustes) {
         Clave::AsistenteModelo => a.asistente.modelo = d.asistente.modelo.clone(),
         Clave::AsistenteMotor => a.asistente.motor = d.asistente.motor.clone(),
         Clave::AsistenteRespaldo => a.asistente.respaldo_local = d.asistente.respaldo_local,
+        Clave::AsistenteDocsNube => a.asistente.documentos_a_la_nube = d.asistente.documentos_a_la_nube.clone(),
         Clave::Presencia => a.sincro.presencia = d.sincro.presencia,
         Clave::LoMioManda => a.sincro.lo_mio_manda = d.sincro.lo_mio_manda,
         Clave::AbrirCon => a.abrir_con = d.abrir_con,
@@ -1389,6 +1414,14 @@ fn aplicar_opcion(a: &mut Ajustes, clave: Clave, cual: usize) {
                 .copied()
                 .unwrap_or(crate::asistente::nube::Eleccion::Local);
             a.asistente.motor = crate::asistente::nube::id_de(e).to_string();
+        }
+        Clave::AsistenteDocsNube => {
+            use crate::asistente::documentos::PermisoNube;
+            let p = [PermisoNube::Preguntar, PermisoNube::Si, PermisoNube::No]
+                .get(cual)
+                .copied()
+                .unwrap_or(PermisoNube::Preguntar);
+            a.asistente.documentos_a_la_nube = p.clave().to_string();
         }
         Clave::AsistenteModelo => {
             a.asistente.modelo = if cual == 1 {
@@ -3178,6 +3211,7 @@ mod pruebas {
             Clave::VozSegundo,
             Clave::VozModo,
             Clave::AsistenteModelo,
+            Clave::AsistenteDocsNube,
             Clave::Presencia,
             Clave::LoMioManda,
             Clave::AbrirCon,

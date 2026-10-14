@@ -233,6 +233,10 @@ pub enum Que {
     },
     Fichero {
         ruta: PathBuf,
+        /// La pagina (desde 1) donde abrirlo, si es un PDF o un Office de
+        /// paginas: la cita de `buscar_en_mis_cosas` lleva a ella.
+        #[serde(default)]
+        pagina: Option<u32>,
     },
 }
 
@@ -481,9 +485,12 @@ fn hacer(p: Pedido, cx: &Contexto) -> Result<Hecho, Fallo> {
                     },
                 );
             }
-            Que::Fichero { ruta } => {
+            Que::Fichero { ruta, pagina } => {
                 if !ruta.is_file() {
                     return Err(Fallo::SinFichero(ruta));
+                }
+                if let Some(p) = pagina.filter(|p| *p >= 1) {
+                    crate::lector_pdf::abrir_en_la_pagina(&ruta, p - 1);
                 }
                 // Una leccion abre su ficha, no un visor de archivos
                 // (`MensajesActivity.kt`).
@@ -1608,10 +1615,46 @@ mod pruebas {
             f,
             Pedido::Abrir {
                 que: Que::Fichero {
-                    ruta: PathBuf::from(r"C:\a b\ñ.pdf")
+                    ruta: PathBuf::from(r"C:\a b\ñ.pdf"),
+                    pagina: None,
                 }
             }
         );
+        // Con su pagina (la cita del asistente).
+        let f = leer(r#"{"pixpin":1,"accion":"abrir","que":{"tipo":"fichero","ruta":"C:\\t.pdf","pagina":12}}"#)
+            .unwrap();
+        assert_eq!(
+            f,
+            Pedido::Abrir {
+                que: Que::Fichero {
+                    ruta: PathBuf::from(r"C:\t.pdf"),
+                    pagina: Some(12),
+                }
+            }
+        );
+        // Y el pedido que arma el asistente se lee igual.
+        let p = pixpin_ia::documentos::Abrir::Fichero {
+            ruta: PathBuf::from(r"C:\t.pdf"),
+            pagina: Some(3),
+        }
+        .pedido();
+        assert!(matches!(
+            leer(&p.to_string()).unwrap(),
+            Pedido::Abrir {
+                que: Que::Fichero { pagina: Some(3), .. }
+            }
+        ));
+        let p = pixpin_ia::documentos::Abrir::Mensaje {
+            proyecto: None,
+            codigo: "m1".into(),
+        }
+        .pedido();
+        assert!(matches!(
+            leer(&p.to_string()).unwrap(),
+            Pedido::Abrir {
+                que: Que::Mensaje { proyecto: None, .. }
+            }
+        ));
     }
 
     #[test]

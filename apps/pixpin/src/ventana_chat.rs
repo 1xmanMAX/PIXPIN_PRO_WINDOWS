@@ -1443,7 +1443,14 @@ pub fn abrir(
                                         abrir_lienzo = Some(j);
                                         Efecto::Nada
                                     }
-                                    None => abrir_enlace(a, i, textos),
+                                    // «Abrir fuente»: el documento citado, en su pagina.
+                                    None => match asistente::fuente_de(a, i) {
+                                        Some(f) => {
+                                            asistente::abrir_fuente(&f);
+                                            Efecto::Nada
+                                        }
+                                        None => abrir_enlace(a, i, textos),
+                                    },
                                 },
                                 Zona::Ir(j) => ejecutar(Accion::Ir(j), a, &cx),
                                 Zona::Lecciones => ejecutar(Accion::Lecciones, a, &cx),
@@ -6717,6 +6724,25 @@ fn medir_mensaje(
         url: String::new(),
         donde: textos.t("asistente-abrir-lienzo"),
         de_que: crate::asistente::chat::nombre_de_lienzo(l),
+    });
+    // Si cito los documentos del usuario, «Abrir fuente»: el primero que
+    // nombro, en su pagina o su mensaje (`asistente::fuente_de`).
+    let lienzo_ia = lienzo_ia.or_else(|| {
+        asistente::fuente_de(a, indice).map(|f| {
+            let mut de_que = textos.t("asistente-abrir-fuente");
+            if !f.proyecto.is_empty() {
+                de_que.push_str(&format!(" · {}", f.proyecto));
+            }
+            if f.mas > 0 {
+                de_que.push_str(&format!(" · +{}", f.mas));
+            }
+            tarjetas::Enlace {
+                // No es una direccion: el clic lo lleva `asistente::fuente_de`.
+                url: "pixpin:fuente".into(),
+                donde: f.titulo,
+                de_que,
+            }
+        })
     });
     let enlace = matches!(m.clase, None | Some(pixpin_proyecto::cuaderno::Clase::Nota))
         .then(|| lienzo_ia.or_else(|| tarjetas::primer_enlace(&m.texto)))

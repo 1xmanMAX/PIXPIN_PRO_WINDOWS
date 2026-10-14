@@ -391,6 +391,9 @@ fn arrancar(
     // (`caducidad_capturas`).
     caducidad_capturas::fijar_dias(config.capturas.dias_caducidad);
     caducidad_capturas::vigilar(ubicacion.raiz().to_path_buf());
+    // El indice de los documentos para el asistente (`buscar_en_mis_cosas`):
+    // en su hilo de fondo, y solo si el asistente se usa.
+    asistente::documentos::arrancar(ubicacion.clone());
     // Como se siente el lapiz (`[tinta]`). Va por aqui y no como parametro de
     // `ventana_editor::abrir` porque el editor se abre desde cinco sitios
     // distintos (la bandeja, el «abrir con», el chat, las lecciones) y ninguno
