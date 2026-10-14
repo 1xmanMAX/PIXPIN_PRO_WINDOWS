@@ -297,10 +297,17 @@ enum Clave {
     // Asistente (13-oct-2026)
     /// El modelo del asistente local: 2B o 0.8B (`[asistente] modelo`).
     AsistenteModelo,
+    /// Si el asistente piensa antes de contestar (`[asistente] pensar`).
+    AsistentePensar,
     /// Quien contesta: local, Claude o DeepSeek (`[asistente] motor`).
     AsistenteMotor,
     /// Seguir con el local si la nube falla (`[asistente] respaldo_local`).
     AsistenteRespaldo,
+    /// Ver lo dicho al microfono del asistente antes de enviarlo
+    /// (`[asistente] revisar_lo_dicho`).
+    AsistenteRevisarVoz,
+    /// Leer en voz alta cada respuesta (`[asistente] leer_respuestas`).
+    AsistenteLeerSiempre,
     /// La caja de la clave de un proveedor (indice en `Proveedor::TODOS`).
     /// No es un ajuste: la clave va cifrada a su fichero, nunca al TOML.
     ClaveNube(u8),
@@ -998,12 +1005,50 @@ fn filas_de_seccion(s: Seccion, a: &Ajustes, cx: &Contexto) -> Vec<(Clave, Fila)
                         usize::from(a.asistente.modelo == pixpin_ia::modelos::QWEN35_08B.id),
                     ),
                 ),
+                // Que piense antes de contestar: lo que piensa se ve, plegable,
+                // en la burbuja (con Claude y DeepSeek tambien).
+                op(
+                    a,
+                    Clave::AsistentePensar,
+                    tt("ajustes-asistente-pensar"),
+                    tt("ajustes2-ayuda-asistente-pensar"),
+                    opcion(
+                        vec![
+                            tt("asistente-pensar-auto"),
+                            tt("asistente-pensar-si"),
+                            tt("asistente-pensar-no"),
+                        ],
+                        match a.asistente.pensar {
+                            None => 0,
+                            Some(true) => 1,
+                            Some(false) => 2,
+                        },
+                    ),
+                ),
                 op(
                     a,
                     Clave::AsistenteRespaldo,
                     tt("ajustes2-asistente-respaldo"),
                     tt("ajustes2-ayuda-asistente-respaldo"),
                     Control::Interruptor(a.asistente.respaldo_local),
+                ),
+                // La voz: el microfono de la caja (Whisper) y el altavoz de
+                // las respuestas (el lector de voz de la app). Valen igual
+                // con los tres motores.
+                grupo(t, "ajustes2-g-asistente-voz"),
+                op(
+                    a,
+                    Clave::AsistenteRevisarVoz,
+                    tt("ajustes2-asistente-revisar-voz"),
+                    tt("ajustes2-ayuda-asistente-revisar-voz"),
+                    Control::Interruptor(a.asistente.revisar_lo_dicho),
+                ),
+                op(
+                    a,
+                    Clave::AsistenteLeerSiempre,
+                    tt("ajustes2-asistente-leer"),
+                    tt("ajustes2-ayuda-asistente-leer"),
+                    Control::Interruptor(a.asistente.leer_respuestas),
                 ),
                 grupo(t, "ajustes2-g-claves"),
             ];
@@ -1322,8 +1367,11 @@ fn restablecer(clave: Clave, a: &mut Ajustes) {
         Clave::VozSegundo => a.voz.segundo_idioma = d.voz.segundo_idioma,
         Clave::VozModo => a.voz.modo_de_idiomas = d.voz.modo_de_idiomas,
         Clave::AsistenteModelo => a.asistente.modelo = d.asistente.modelo.clone(),
+        Clave::AsistentePensar => a.asistente.pensar = d.asistente.pensar,
         Clave::AsistenteMotor => a.asistente.motor = d.asistente.motor.clone(),
         Clave::AsistenteRespaldo => a.asistente.respaldo_local = d.asistente.respaldo_local,
+        Clave::AsistenteRevisarVoz => a.asistente.revisar_lo_dicho = d.asistente.revisar_lo_dicho,
+        Clave::AsistenteLeerSiempre => a.asistente.leer_respuestas = d.asistente.leer_respuestas,
         Clave::Presencia => a.sincro.presencia = d.sincro.presencia,
         Clave::LoMioManda => a.sincro.lo_mio_manda = d.sincro.lo_mio_manda,
         Clave::AbrirCon => a.abrir_con = d.abrir_con,
@@ -1473,6 +1521,8 @@ fn aplicar_interruptor(a: &mut Ajustes, clave: Clave) {
         Clave::Arranque => a.arranque_con_windows = !a.arranque_con_windows,
         Clave::TemaCosmos => a.tema_cosmos = !a.tema_cosmos,
         Clave::AsistenteRespaldo => a.asistente.respaldo_local = !a.asistente.respaldo_local,
+        Clave::AsistenteRevisarVoz => a.asistente.revisar_lo_dicho = !a.asistente.revisar_lo_dicho,
+        Clave::AsistenteLeerSiempre => a.asistente.leer_respuestas = !a.asistente.leer_respuestas,
         Clave::PdfAligerar => a.pdf.aligerar_al_entrar = !a.pdf.aligerar_al_entrar,
         Clave::Apilar => {
             // Cero apaga la pila; encenderla vuelve a su numero de fabrica
@@ -1544,6 +1594,13 @@ fn aplicar_opcion(a: &mut Ajustes, clave: Clave, cual: usize) {
             };
             // El motor del otro modelo se suelta ya (su memoria vuelve).
             crate::asistente::motor::soltar_todo();
+        }
+        Clave::AsistentePensar => {
+            a.asistente.pensar = match cual {
+                1 => Some(true),
+                2 => Some(false),
+                _ => None,
+            }
         }
         Clave::VozModo => {
             a.voz.modo_de_idiomas = if cual == 1 {
@@ -3338,6 +3395,7 @@ mod pruebas {
             Clave::VozSegundo,
             Clave::VozModo,
             Clave::AsistenteModelo,
+            Clave::AsistentePensar,
             Clave::Presencia,
             Clave::LoMioManda,
             Clave::AbrirCon,

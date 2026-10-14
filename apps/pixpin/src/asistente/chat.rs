@@ -66,6 +66,17 @@ pub fn conversacion(anteriores: &[Nota]) -> Vec<(bool, String)> {
         .collect()
 }
 
+/// Lo mismo con el id y el numero de cada nota (`(id, numero, del_usuario,
+/// texto)`): la hoja de trabajo apunta desde que nota se reinicio, y
+/// `buscar_historial` dice de que mensaje sale cada trozo.
+pub fn conversacion_con_ids(anteriores: &[Nota]) -> Vec<(String, i64, bool, String)> {
+    anteriores
+        .iter()
+        .filter(|m| es_nota(m) && !m.texto.trim().is_empty())
+        .map(|m| (m.id.clone(), m.numero, !es_del_asistente(m), m.texto.clone()))
+        .collect()
+}
+
 /// Cuantos mensajes hacia atras se busca la foto de la que se habla.
 pub const FOTO_ATRAS: usize = 4;
 
@@ -335,6 +346,16 @@ pub struct EnVivo {
     /// Lo que fue mal por el camino (se dice al final, en una linea).
     pub fallos: Vec<String>,
     pub acabado: bool,
+    /// Lo que va pensando (la seccion plegable «Pensando…»).
+    pub pensamiento: String,
+    /// Pensando ahora mismo.
+    pub pensando: bool,
+    /// Cuanto penso, al acabar de pensar.
+    pub segundos: Option<f32>,
+    /// La peticion mejorada.
+    pub plan: Option<pixpin_ia::pensar::Plan>,
+    /// El turno empezo con el contexto renovado.
+    pub reiniciado: bool,
 }
 
 /// Lo que se ensena mientras se usa cada herramienta.
@@ -343,6 +364,7 @@ pub fn rotulo_de(nombre: &str) -> String {
         DIBUJAR => "✏️ dibujando en el lienzo…",
         GRAFICA => "📊 haciendo la gráfica…",
         OCR => "🔎 leyendo el documento…",
+        pixpin_ia::contexto::BUSCAR_HISTORIAL => "🗂️ buscando en la conversación…",
         CALCAR => "🖼️ calcando la imagen…",
         AYUDA => "📖 mirando la ayuda…",
         _ => "⚙️ trabajando…",
@@ -356,7 +378,19 @@ impl EnVivo {
             Evento::Texto(t) => {
                 self.texto.push_str(t);
                 self.estado = None;
+                self.pensando = false;
             }
+            Evento::Pensando(t) => {
+                self.pensamiento.push_str(t);
+                self.pensando = true;
+            }
+            Evento::PensoListo { segundos } => {
+                self.pensando = false;
+                // Con la nube piensa en cada vuelta: se suma.
+                *self.segundos.get_or_insert(0.0) += *segundos;
+            }
+            Evento::Peticion(p) => self.plan = Some(p.clone()),
+            Evento::Reinicio { .. } => self.reiniciado = true,
             Evento::Llamando(n) => self.estado = Some(rotulo_de(n)),
             Evento::Herramienta { llamada, .. } => {
                 // Lo que diga despues va en su linea, no pegado a lo de antes.
@@ -379,6 +413,15 @@ impl EnVivo {
     pub fn acabar(&mut self, r: &Result<Final, String>) {
         self.acabado = true;
         self.estado = None;
+        self.pensando = false;
+        // Un `</think>` suelto que se colo en el texto (ver `pensar::Separador`).
+        if self.texto.contains("</think>") {
+            let (pensado, texto) = pixpin_ia::pensar::separar(&self.texto);
+            if self.pensamiento.trim().is_empty() {
+                self.pensamiento = pensado;
+            }
+            self.texto = texto;
+        }
         match r {
             Ok(f) => {
                 if self.texto.trim().is_empty() {

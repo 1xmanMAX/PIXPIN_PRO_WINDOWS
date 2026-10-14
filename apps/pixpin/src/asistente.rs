@@ -20,6 +20,8 @@
 //! - [`al_lienzo`]: meter lo dibujado en un lienzo de verdad, centrado en la
 //!   vista y en **un solo paso de deshacer**.
 //! - [`foto`]: reducir la foto adjunta a ~768 px antes de mandarla.
+//! - [`pensado`]: lo que penso cada respuesta, su peticion mejorada y la
+//!   hoja de trabajo del chat, guardados con la nota (13-oct).
 //! - [`nube`]: contestar con Claude Haiku 5.5 o DeepSeek V4.1 Flash (la
 //!   clave cifrada con DPAPI) y, si fallan, seguir con el local.
 //!
@@ -36,7 +38,10 @@ pub mod foto;
 pub mod motor;
 pub mod nube;
 pub mod ocr;
+pub mod pensado;
 pub mod turno;
 
 #[cfg(test)]
 mod pruebas;
+#[cfg(test)]
+mod pruebas_pensado;

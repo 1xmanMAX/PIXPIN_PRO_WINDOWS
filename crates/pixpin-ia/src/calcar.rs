@@ -105,6 +105,22 @@ pub struct Parametros {
     pub imagen: Option<String>,
 }
 
+/// **Lo que el modelo eligio sin que se lo pidieran, corregido con el
+/// pedido.** Medido el 14-oct: a «dibuja este perrito de la imagen adjunta»
+/// el 2B pide `solo_contornos` y sin colores, y el perrito sale en seis rayas
+/// negras. Solo contornos si el pedido habla de contornos, bordes, lineas o
+/// silueta; en blanco y negro solo si lo dice.
+pub fn ajustar_al_pedido(p: &mut Parametros, pedido: &str) {
+    let q = crate::acciones::normalizar(pedido);
+    let dice = |raices: &[&str]| raices.iter().any(|r| q.contains(r));
+    if p.solo_contornos && !dice(&["contorno", "borde", "linea", "silueta", "trazo", "perfil", "solo las rayas"]) {
+        p.solo_contornos = false;
+    }
+    if !p.colores && !dice(&["blanco y negro", "sin color", "en negro", "monocrom", "gris"]) {
+        p.colores = true;
+    }
+}
+
 impl Default for Parametros {
     fn default() -> Self {
         Parametros {
@@ -562,8 +578,12 @@ fn manchas(img: &[[f32; 3]], w: usize, h: usize, p: &Parametros) -> Vec<Trazo> {
                 if contorno.len() < 3 {
                     continue;
                 }
+                // Solo se cortan los agujeros por los que asoma el fondo: los
+                // que tapa otra mancha (que se pinta encima, por ser menor)
+                // dejaban rendijas blancas entre los dos colores.
                 let huecos = huecos
                     .iter()
+                    .filter(|hq| hueco_de_fondo(hq, &mascara, bw, bh, |x, y| et[(y + y0) * w + (x + x0)] as usize == fondo))
                     .map(|hq| suavizar(&simplificar_cerrado(&mover(hq), tol), true))
                     .filter(|hq| hq.len() >= 3)
                     .collect();
@@ -707,6 +727,36 @@ pub fn regiones(mascara: &[bool], w: usize, h: usize, area_min: f64) -> Vec<(Vec
         }
     }
     salida
+}
+
+/// Si por un agujero (en coordenadas de la caja de la mancha) asoma el
+/// fondo: se mira la etiqueta de los pixeles de fuera de la mancha que
+/// quedan dentro del agujero; con que la mitad sea fondo, se corta.
+fn hueco_de_fondo(
+    hueco: &[(f64, f64)],
+    mascara: &[bool],
+    bw: usize,
+    bh: usize,
+    es_fondo: impl Fn(usize, usize) -> bool,
+) -> bool {
+    let (mut x0, mut y0, mut x1, mut y1) = (f64::MAX, f64::MAX, f64::MIN, f64::MIN);
+    for &(x, y) in hueco {
+        x0 = x0.min(x);
+        y0 = y0.min(y);
+        x1 = x1.max(x);
+        y1 = y1.max(y);
+    }
+    let (mut fondo, mut total) = (0usize, 0usize);
+    for y in (y0.max(0.0) as usize)..(y1.ceil() as usize).min(bh) {
+        for x in (x0.max(0.0) as usize)..(x1.ceil() as usize).min(bw) {
+            if mascara[y * bw + x] || !dentro(hueco, (x as f64 + 0.5, y as f64 + 0.5)) {
+                continue;
+            }
+            total += 1;
+            fondo += usize::from(es_fondo(x, y));
+        }
+    }
+    total > 0 && fondo * 2 >= total
 }
 
 /// Punto dentro de poligono (rayo hacia la derecha).
@@ -1229,6 +1279,96 @@ mod pruebas {
         let Trazo::Mancha { contorno, .. } = &c.trazos[0] else { panic!() };
         let esquina = a_imagen(&c, contorno[0]);
         assert!(esquina.0 > 200.0, "{esquina:?}");
+    }
+
+    /// Un emoji de perrito de mentira, con degradados como los de verdad:
+    /// cara con degradado radial, orejas oscuras, lengua rosa, fondo
+    /// transparente.
+    fn emoji_con_degradados(w: u32) -> Vec<u8> {
+        let mut px = vec![0u8; (w * w * 4) as usize];
+        let c = w as f64 / 2.0;
+        for y in 0..w {
+            for x in 0..w {
+                let (fx, fy) = (x as f64 + 0.5, y as f64 + 0.5);
+                let i = ((y * w + x) * 4) as usize;
+                let d = ((fx - c).powi(2) + (fy - c).powi(2)).sqrt() / (w as f64 * 0.38);
+                let mut col: Option<[f64; 3]> = None;
+                if d <= 1.0 {
+                    // Del melocoton claro del centro al marron del borde.
+                    col = Some([250.0 - 50.0 * d, 200.0 - 70.0 * d, 160.0 - 70.0 * d]);
+                }
+                for ox in [0.2, 0.8] {
+                    let e = ((fx - ox * w as f64) / (w as f64 * 0.1)).powi(2) + ((fy - 0.3 * w as f64) / (w as f64 * 0.18)).powi(2);
+                    if e <= 1.0 {
+                        col = Some([110.0 - 20.0 * e, 70.0 - 15.0 * e, 60.0 - 10.0 * e]);
+                    }
+                }
+                let lengua = ((fx - c) / (w as f64 * 0.07)).powi(2) + ((fy - 0.75 * w as f64) / (w as f64 * 0.09)).powi(2);
+                if lengua <= 1.0 {
+                    col = Some([215.0, 50.0 + 20.0 * lengua, 120.0]);
+                }
+                if let Some(k) = col {
+                    px[i..i + 4].copy_from_slice(&[k[0] as u8, k[1] as u8, k[2] as u8, 255]);
+                }
+            }
+        }
+        px
+    }
+
+    #[test]
+    fn un_emoji_con_degradados_se_parece() {
+        let w = 384;
+        let px = emoji_con_degradados(w);
+        for detalle in [Detalle::Medio, Detalle::Alto] {
+            let c = calcar(&px, w, w, &Parametros { detalle, ..Default::default() });
+            // El fondo transparente (blanco) no se dibuja.
+            assert!(!c.trazos.iter().any(|t| matches!(t, Trazo::Fondo { .. })));
+            let manchas: Vec<(&Vec<(f64, f64)>, &String)> = c
+                .trazos
+                .iter()
+                .filter_map(|t| match t {
+                    Trazo::Mancha { contorno, color, .. } => Some((contorno, color)),
+                    _ => None,
+                })
+                .collect();
+            // Unas pocas bandas de color, no cientos de manchitas.
+            assert!(manchas.len() >= 4 && manchas.len() <= detalle.tope(), "{detalle:?}: {}", manchas.len());
+            // Lo calcado ocupa lo mismo que el emoji: de la oreja izquierda a
+            // la derecha y de arriba de la cara a abajo.
+            let pts: Vec<(f64, f64)> = manchas
+                .iter()
+                .flat_map(|m| m.0.iter())
+                .map(|p| ((p.0 - c.desplazamiento.0) / c.escala, (p.1 - c.desplazamiento.1) / c.escala))
+                .collect();
+            let caja = pts.iter().fold([f64::MAX, f64::MAX, f64::MIN, f64::MIN], |b, p| [b[0].min(p.0), b[1].min(p.1), b[2].max(p.0), b[3].max(p.1)]);
+            let esperada = [0.1, 0.12, 0.9, 0.88].map(|f| f * w as f64);
+            for (a, b) in caja.iter().zip(esperada) {
+                assert!((a - b).abs() < 0.04 * w as f64, "{detalle:?}: caja {caja:?} y no {esperada:?}");
+            }
+            let rgb = |h: &str| {
+                let v = |i| u8::from_str_radix(&h[i..i + 2], 16).unwrap() as i32;
+                (v(1), v(3), v(5))
+            };
+            assert!(manchas.iter().any(|m| { let (r, g, b) = rgb(m.1); r > 180 && g < 110 && b > 90 }), "sin la lengua rosa");
+            assert!(manchas.iter().any(|m| { let (r, g, b) = rgb(m.1); r < 130 && g < 90 && b < 80 }), "sin las orejas oscuras");
+            // Ningun agujero tapado por otra mancha (dejaria una rendija).
+            for t in &c.trazos {
+                if let Trazo::Mancha { huecos, .. } = t {
+                    assert!(huecos.is_empty(), "{detalle:?}: un agujero sobre otra mancha");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn lo_que_no_se_pidio_se_corrige_con_el_pedido() {
+        let mal = Parametros { solo_contornos: true, colores: false, ..Default::default() };
+        let mut p = mal.clone();
+        ajustar_al_pedido(&mut p, "Dibuja este perrito de la imagen adjunta dentro del lienzo.");
+        assert!(!p.solo_contornos && p.colores);
+        let mut p = mal.clone();
+        ajustar_al_pedido(&mut p, "Calca solo los contornos, en blanco y negro");
+        assert_eq!(p, mal, "lo pedido se respeta");
     }
 
     #[test]
