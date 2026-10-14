@@ -34,6 +34,10 @@
 //!   formato que ya comparten el lienzo del PC y el de Android.
 //! - [`agente`]: el bucle de un turno: pedir, validar, ejecutar, devolver el
 //!   resultado al modelo, y reintentar si el modelo se equivoco.
+//! - [`pensar`], [`hoja_trabajo`] y [`contexto`] (13-oct): el pensamiento a
+//!   la vista, la peticion mejorada, la hoja de trabajo que el agente
+//!   reescribe cada turno y el reinicio del contexto al 70 % con
+//!   `buscar_historial` para lo viejo ([`agente::turno_con`]).
 //!
 //! ## Puntos de enganche para la UI (otros agentes)
 //!
@@ -45,11 +49,14 @@
 
 pub mod agente;
 pub mod base64;
+pub mod contexto;
 pub mod descarga;
 pub mod herramientas;
+pub mod hoja_trabajo;
 pub mod lienzo;
 pub mod modelos;
 pub mod motor;
+pub mod pensar;
 pub mod servidor;
 pub mod sse;
 

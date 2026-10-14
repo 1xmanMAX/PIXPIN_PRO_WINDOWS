@@ -520,6 +520,11 @@ pub struct Asistente {
     /// El id del modelo (`qwen3.5-2b`, `qwen3.5-0.8b`). Vacio: el 2B, el
     /// recomendado.
     pub modelo: String,
+    /// Si piensa antes de contestar (lo que piensa se ve, plegable, en la
+    /// burbuja del chat). `None`: automatico, el 2B si y el 0.8B no, que
+    /// pensando va lento.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pensar: Option<bool>,
 }
 
 impl Default for Ajustes {

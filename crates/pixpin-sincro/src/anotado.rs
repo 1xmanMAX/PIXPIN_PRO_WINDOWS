@@ -25,6 +25,8 @@
 //!   (con el codigo de la hoja) o de un `.md` adjunto. El formato es el de
 //!   `pixpin_docs::md_comentarios`. Viajan con su nota y se van con ella
 //!   ([`lleva_anotado`], [`hojas_quitadas`]).
+//! - `anot-<uid>.asistente.json`: lo que penso el asistente al escribir esa
+//!   nota y su hoja de trabajo (13-oct, [`ASISTENTE`]).
 //!
 //! El PDF de un proyecto lleva su tinta en las hojas (ya viajan); sus
 //! marcadores y espacios van aqui con el codigo **del proyecto**. Y los
@@ -43,7 +45,7 @@ pub const CARPETA: &str = "pins/draw";
 pub const PREFIJO: &str = "anot-";
 
 /// Las terminaciones de lo anotado (`TERMINACIONES`): ni temporales ni otra cosa.
-pub const TERMINACIONES: [&str; 8] = [
+pub const TERMINACIONES: [&str; 9] = [
     ".excalidraw.gz",
     ".marcas",
     ".espacios",
@@ -52,6 +54,7 @@ pub const TERMINACIONES: [&str; 8] = [
     ".sitio",
     ".hoja",
     COMENTARIOS,
+    ASISTENTE,
 ];
 
 /// La terminacion del marco de la tinta ([`MarcoDeLaHoja`]).
@@ -59,6 +62,12 @@ pub const HOJA: &str = ".hoja";
 
 /// La terminacion de los comentarios de una nota (`anot-<uid>.comentarios.json`).
 pub const COMENTARIOS: &str = ".comentarios.json";
+
+/// La terminacion de lo que penso el asistente al escribir una respuesta y
+/// su hoja de trabajo (`anot-<uid>.asistente.json`, 13-oct, solo PC por
+/// ahora: Android aun no tiene asistente). Viaja con su nota como los
+/// comentarios.
+pub const ASISTENTE: &str = ".asistente.json";
 
 /// **Si lo anotado con el codigo de un mensaje es suyo**: viaja con el y se
 /// borra con el. Un adjunto (tiene `ruta`: su tinta, sus marcadores...) y,

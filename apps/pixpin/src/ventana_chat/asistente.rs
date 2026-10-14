@@ -28,7 +28,7 @@ use super::*;
 use crate::asistente::chat::{self as ia_chat, EnVivo};
 use crate::asistente::descarga::{self as ia_descarga, AvisoDescarga, Descarga};
 use crate::asistente::turno::{Aviso, Turno};
-use crate::asistente::{al_lienzo, motor as ia_motor, turno as ia_turno};
+use crate::asistente::{al_lienzo, motor as ia_motor, pensado as ia_pensado, turno as ia_turno};
 
 /// Cada cuanto se escribe en el disco lo que va contestando (en memoria se
 /// ve al momento). Un turno de minuto y medio no son cien escrituras.
@@ -39,9 +39,13 @@ struct Sesion {
     proyecto: String,
     /// El id de la nota de la respuesta.
     nota: String,
+    /// Su codigo unico: con el se nombra lo que penso (`pensado`).
+    codigo: String,
     turno: Turno,
     vivo: EnVivo,
     guardado: Instant,
+    /// Lo que penso y la hoja reescrita, para guardar al acabar.
+    registro: Option<pixpin_ia::hoja_trabajo::Registro>,
 }
 
 /// La tarjeta de la primera vez.
@@ -123,7 +127,9 @@ pub(super) fn al_enviar(ubicacion: &Ubicacion, a: &mut Abierto, textos: &Catalog
         Ok(m) => m,
         Err(_) => return Some(textos.t("asistente-sin-modelo")),
     };
-    match lanzar(ubicacion, a, motor, pregunta) {
+    let ajuste = pixpin_store::cargar(ubicacion).unwrap_or_default().asistente.pensar;
+    let pensar = ia_pensado::pensar_segun_ajuste(ajuste, modelo.id);
+    match lanzar_pensando(ubicacion, a, motor, pregunta, pensar, ia_pensado::ventana_local()) {
         Ok(()) => None,
         Err(e) => {
             tracing::warn!(?e, "asistente: no se pudo empezar a contestar");
@@ -132,22 +138,56 @@ pub(super) fn al_enviar(ubicacion: &Ubicacion, a: &mut Abierto, textos: &Catalog
     }
 }
 
-/// Lanza el turno con este motor (las pruebas le pasan uno de mentira).
+/// Lanza el turno con este motor (las pruebas le pasan uno de mentira), sin
+/// pensar ni hoja de trabajo: el turno de antes del 13-oct.
+#[cfg_attr(not(test), allow(dead_code))]
 pub(super) fn lanzar(
     ubicacion: &Ubicacion,
     a: &mut Abierto,
     motor: Arc<dyn Motor>,
     pregunta: String,
 ) -> std::io::Result<()> {
+    lanzar_con(ubicacion, a, motor, pregunta, None)
+}
+
+/// **Lanza el turno con memoria** (13-oct): piensa si `pensar`, planea la
+/// peticion mejorada, lleva la hoja de trabajo del chat y reinicia el
+/// contexto al pasar del 70 % de `ventana`.
+pub(super) fn lanzar_pensando(
+    ubicacion: &Ubicacion,
+    a: &mut Abierto,
+    motor: Arc<dyn Motor>,
+    pregunta: String,
+    pensar: bool,
+    ventana: u32,
+) -> std::io::Result<()> {
+    lanzar_con(ubicacion, a, motor, pregunta, Some((pensar, ventana)))
+}
+
+fn lanzar_con(
+    ubicacion: &Ubicacion,
+    a: &mut Abierto,
+    motor: Arc<dyn Motor>,
+    pregunta: String,
+    pensando: Option<(bool, u32)>,
+) -> std::io::Result<()> {
     let raiz = ubicacion.raiz().to_path_buf();
     let proyecto = a.ficha.id.clone();
     let n = a.mensajes.len();
     let (anteriores, nueva) = a.mensajes.split_at(n.saturating_sub(1));
     let pregunta_id = nueva.first().map(|m| m.id.clone());
-    let conversacion = ia_chat::conversacion(anteriores);
     let foto = ia_chat::foto_reciente(anteriores).and_then(|m| ruta_del_mensaje(&raiz, &proyecto, m));
     let adjuntos = ia_chat::adjuntos(&a.mensajes, |m| ruta_del_mensaje(&raiz, &proyecto, m).filter(|r| r.is_file()));
-    let historial = ia_turno::historial_para_el_modelo(&conversacion, &pregunta, None);
+    let (historial, memoria) = match pensando {
+        Some((pensar, ventana)) => {
+            let (h, m) = ia_pensado::preparar_turno(&raiz, &proyecto, anteriores, &pregunta, pensar, ventana);
+            (h, Some(m))
+        }
+        None => {
+            let conversacion = ia_chat::conversacion(anteriores);
+            (ia_turno::historial_para_el_modelo(&conversacion, &pregunta, None), None)
+        }
+    };
 
     // La burbuja de la respuesta nace ya, con el cursor: el usuario ve que
     // se le esta contestando aunque el modelo tarde en cargar.
@@ -167,18 +207,29 @@ pub(super) fn lanzar(
         responde_a,
     )?;
     let id = nota.id.clone();
+    let codigo = nota.codigo_unico();
     a.vistas.push(None);
     a.mensajes.push(nota);
     a.colocado.borrow_mut().ancho = 0;
 
-    let turno = Turno::lanzar(motor, proyecto.clone(), historial, adjuntos, foto);
+    let turno = Turno::lanzar_con_memoria(
+        motor,
+        proyecto.clone(),
+        historial,
+        adjuntos,
+        foto,
+        pixpin_ia::herramientas::catalogo(),
+        memoria,
+    );
     SESIONES.with_borrow_mut(|s| {
         s.push(Sesion {
             proyecto,
             nota: id,
+            codigo,
             turno,
             vivo,
             guardado: Instant::now(),
+            registro: None,
         })
     });
     Ok(())
@@ -214,10 +265,25 @@ pub(super) fn latido(ubicacion: &Ubicacion, mut abierto: Option<&mut Abierto>) -
                 match av {
                     Aviso::Evento(e) => s.vivo.aplicar(&e),
                     Aviso::TextoLeido { de, texto } => leidos.push((s.proyecto.clone(), de, texto)),
+                    Aviso::Registro(r) => s.registro = Some(r),
                     Aviso::Fin { resultado } => {
                         s.vivo.acabar(&resultado);
                         acabo = true;
                     }
+                }
+            }
+            // Lo que piensa y la peticion mejorada, encima de la burbuja: si
+            // cambio, la burbuja cambia de alto y hay que volver a medir.
+            if ia_pensado::poner_en_vivo(&s.nota, ia_pensado::Seccion::de_vivo(&s.vivo))
+                && let Some(a) = abierto.as_deref_mut().filter(|a| a.ficha.id == s.proyecto)
+            {
+                a.colocado.borrow_mut().ancho = 0;
+                cambio = true;
+            }
+            if acabo {
+                match s.registro.take() {
+                    Some(r) => ia_pensado::guardar(&raiz, &s.proyecto, &s.nota, &s.codigo, r),
+                    None => ia_pensado::olvidar_en_vivo(&s.nota),
                 }
             }
             let texto = s.vivo.mostrar();
@@ -669,6 +735,7 @@ pub(super) fn olvidar_para_pruebas() {
     SESIONES.with_borrow_mut(Vec::clear);
     DESCARGA.with_borrow_mut(|d| *d = None);
     TARJETA.with_borrow_mut(|t| *t = Tarjeta::default());
+    ia_pensado::olvidar_para_pruebas();
 }
 
 #[cfg(test)]
@@ -678,3 +745,5 @@ pub(super) fn noticia_para_pruebas() -> Option<String> {
 
 #[cfg(test)]
 mod pruebas;
+#[cfg(test)]
+mod pruebas_pensado;

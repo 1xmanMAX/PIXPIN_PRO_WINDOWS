@@ -58,6 +58,9 @@ mod microfono_flotante;
 /// Muestra en PNG de una foto con su descripcion (3-oct).
 #[cfg(test)]
 mod muestra_descripcion;
+/// Muestra en PNG de «Pensando…» en la burbuja del asistente (13-oct).
+#[cfg(test)]
+mod muestra_pensado;
 /// v2-menus: muestras en PNG de los menus nuevos.
 #[cfg(test)]
 mod muestra_menus;
@@ -69,6 +72,8 @@ mod paginas;
 /// La vista previa de un lienzo, con el papel y la tinta del lienzo.
 #[cfg(test)]
 mod papel_de_la_vista;
+/// «Pensando…» y la peticion mejorada encima de la respuesta del asistente.
+mod pensado;
 /// La pantalla de Proyectos del movil y el interruptor Chat / Proyectos.
 mod proyectos;
 /// «Quien llama» en la llamada secreta de una nota de voz (B11, v0.98.6).
@@ -1484,6 +1489,12 @@ pub fn abrir(
                                     Some((_, false)) => ejecutar(Accion::Transcribir(i), a, &cx),
                                     None => Efecto::Nada,
                                 },
+                                Zona::Pensado(i) | Zona::Peticion(i) => {
+                                    if let Some(id) = a.mensajes.get(i).map(|m| m.id.clone()) {
+                                        pensado::alternar(&mut a.desplegados, &id, zona == Zona::Pensado(i));
+                                    }
+                                    Efecto::Cambio
+                                }
                                 Zona::Trozo(i, ms) => match saltar_en_el_audio(a, i, ms) {
                                     Ok(()) => Efecto::Nada,
                                     Err(e) => {
@@ -5649,6 +5660,15 @@ fn pintar_historial(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto) {
             y += VIENE_ALTO * e + 2.0 * VIENE_AIRE_Y * e;
         }
 
+        // Lo que penso el asistente y su peticion mejorada (`pensado`).
+        if let Some(pz) = &piezas.ia {
+            let (zp, zq) = pensado::pintar(p, pz, dentro.x as f32, y, dentro.ancho as f32, color_texto, color_hora, e);
+            let mut zonas = a.zonas.borrow_mut();
+            zonas.extend(zp.map(|r| (r, Zona::Pensado(i))));
+            zonas.extend(zq.map(|r| (r, Zona::Peticion(i))));
+            y += pz.alto + hueco;
+        }
+
         // La tarjeta del enlace (`TarjetaDeEnlace`): la barra del acento a la
         // izquierda, el icono del enlace, el dominio en negrita de acento y
         // de que va debajo. Pulsarla abre la direccion fuera.
@@ -6565,6 +6585,7 @@ fn medir_mensaje(
             recibido: None,
             enlace: None,
             buzon: None,
+            ia: None,
         };
         return (entrada, piezas);
     }
@@ -6623,6 +6644,12 @@ fn medir_mensaje(
         if antes > 0.0 {
             alto -= hueco;
         }
+    }
+    // Lo que penso el asistente y su peticion mejorada, encima de lo que
+    // contesto (como en Claude).
+    let ia = pensado::medir(p, a, m, ancho_max, textos, e);
+    if let Some(pz) = &ia {
+        sumar(&mut ancho, &mut alto, pz.ancho, pz.alto);
     }
     // La tarjeta del enlace, ENCIMA del texto como en cualquier mensajeria:
     // lo que se toca es la tarjeta, y al final obligaria a leer la nota
@@ -6704,6 +6731,7 @@ fn medir_mensaje(
         recibido,
         enlace,
         buzon,
+        ia,
     };
     (entrada, piezas)
 }
@@ -12909,6 +12937,11 @@ enum Zona {
     Renombrar(usize),
     /// La franja del aviso de lecciones: abre las de este proyecto.
     Lecciones,
+    /// «Penso 12 s» de una respuesta del asistente: pliega y despliega lo
+    /// que penso (`pensado`).
+    Pensado(usize),
+    /// La peticion mejorada de una respuesta del asistente: igual.
+    Peticion(usize),
 }
 
 /// La fila de un archivo ya medida.
@@ -12981,6 +13014,8 @@ struct Piezas {
     /// El pie del buzon: «24 sep → 1 oct», las dos fechas por separado
     /// porque la de irse va en rojo.
     buzon: Option<(String, String)>,
+    /// Lo que penso el asistente y su peticion mejorada, encima del texto.
+    ia: Option<pensado::Pieza>,
 }
 
 /// La letra de «Recibido de …» y de la tarjeta del enlace: 11 y 13, las del
