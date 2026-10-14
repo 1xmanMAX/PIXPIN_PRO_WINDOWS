@@ -76,7 +76,10 @@ impl Turno {
     ) -> Turno {
         // Claude y DeepSeek reciben el catalogo entero (eligen bien y el
         // prefijo se cachea); el modelo local, solo las que vienen a cuento.
-        let herramientas = if motor.catalogo_completo() {
+        // «Copia/dibuja esto» con una imagen: solo calcar, en los dos.
+        let herramientas = if motor.catalogo_completo()
+            && !super::acciones::es_para_calcar(&historial, &adjuntos, foto.is_some())
+        {
             pixpin_ia::herramientas::catalogo()
         } else {
             super::acciones::herramientas_para(&historial, &adjuntos, foto.is_some())

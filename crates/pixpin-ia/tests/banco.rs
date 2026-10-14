@@ -144,6 +144,15 @@ fn la_casa() -> Vec<u8> {
     imagenes::casa_png()
 }
 
+/// El emoji del perrito: el de verdad si se da `PIXPIN_IA_PERRITO` (un PNG),
+/// y si no uno de mentira con los mismos degradados.
+fn el_perrito() -> Vec<u8> {
+    match std::env::var("PIXPIN_IA_PERRITO") {
+        Ok(r) => std::fs::read(r).unwrap(),
+        Err(_) => imagenes::perrito_png(),
+    }
+}
+
 fn casos() -> Vec<Caso> {
     vec![
         // --- Dibujar -------------------------------------------------------
@@ -265,6 +274,19 @@ fn casos() -> Vec<Caso> {
             comprobar: |r| {
                 si(r.elementos.len() >= 4, "menos de 4 elementos")?;
                 si(r.con_color(rojo), "falta el tejado rojo")
+            },
+        },
+        Caso {
+            // Medido el 14-oct por el coordinador: con este pedido y el emoji
+            // del perrito, el 2B dibujaba 4 triangulos en vez de calcarlo.
+            nombre: "calcar-perrito-emoji",
+            pedido: "Dibuja este perrito de la imagen adjunta dentro del lienzo.",
+            imagen: Some(el_perrito),
+            comprobar: |r| {
+                si(r.llamo("calcar_imagen").is_some(), "no lo calco")?;
+                si(r.llamo("dibujar_en_lienzo").is_none(), "lo dibujo a mano")?;
+                si(r.elementos.len() >= 4, "menos de 4 elementos")?;
+                si(r.con_color(|(r, g, b)| r > 180 && g < 110 && b > 90), "falta la lengua rosa")
             },
         },
         // --- Graficas -------------------------------------------------------
@@ -650,6 +672,52 @@ mod banco_ia {
 
 /// Imagenes de prueba hechas aqui, para no depender de ficheros.
 mod imagenes {
+    /// Un emoji de perrito con degradados (cara, orejas, hocico, nariz y
+    /// lengua) sobre blanco. 512x512.
+    pub fn perrito_png() -> Vec<u8> {
+        let w = 512u32;
+        let mut px = vec![255u8; (w * w * 3) as usize];
+        let c = w as f64 / 2.0;
+        let elipse = |fx: f64, fy: f64, cx: f64, cy: f64, rx: f64, ry: f64| ((fx - cx) / rx).powi(2) + ((fy - cy) / ry).powi(2);
+        for y in 0..w {
+            for x in 0..w {
+                let (fx, fy) = (x as f64 + 0.5, y as f64 + 0.5);
+                let mut col: Option<[f64; 3]> = None;
+                let d = elipse(fx, fy, c, c + 20.0, 180.0, 170.0);
+                if d <= 1.0 {
+                    col = Some([245.0 - 40.0 * d, 195.0 - 60.0 * d, 150.0 - 60.0 * d]);
+                }
+                for ox in [110.0, 402.0] {
+                    let e = elipse(fx, fy, ox, 190.0, 55.0, 95.0);
+                    if e <= 1.0 {
+                        col = Some([140.0 - 40.0 * e, 95.0 - 30.0 * e, 85.0 - 25.0 * e]);
+                    }
+                }
+                let hocico = elipse(fx, fy, c, 350.0, 110.0, 70.0);
+                if hocico <= 1.0 {
+                    col = Some([250.0 - 15.0 * hocico, 215.0 - 25.0 * hocico, 175.0 - 25.0 * hocico]);
+                }
+                if elipse(fx, fy, c, 310.0, 24.0, 16.0) <= 1.0 {
+                    col = Some([80.0, 50.0, 55.0]);
+                }
+                for ox in [205.0, 307.0] {
+                    if elipse(fx, fy, ox, 240.0, 10.0, 20.0) <= 1.0 {
+                        col = Some([70.0, 45.0, 50.0]);
+                    }
+                }
+                let lengua = elipse(fx, fy, c, 420.0, 40.0, 50.0);
+                if lengua <= 1.0 && fy > 390.0 {
+                    col = Some([215.0, 45.0 + 30.0 * lengua, 125.0]);
+                }
+                if let Some(k) = col {
+                    let i = ((y * w + x) * 3) as usize;
+                    px[i..i + 3].copy_from_slice(&[k[0] as u8, k[1] as u8, k[2] as u8]);
+                }
+            }
+        }
+        png_rgb(w, w, &px)
+    }
+
     /// Una casa de dibujo infantil: cielo blanco, sol amarillo, paredes
     /// marrones, tejado rojo, puerta azul y cesped verde. 512x384.
     pub fn casa_png() -> Vec<u8> {

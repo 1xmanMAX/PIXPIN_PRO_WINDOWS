@@ -143,8 +143,10 @@ pub fn turno(
         for cruda in &respuesta.llamadas {
             match validar(&sanear(cruda), herramientas) {
                 Ok(mut v) => {
-                    if let Llamada::Dibujar(figuras) = &mut v.llamada {
-                        colores_del_pedido(figuras, &pedido);
+                    match &mut v.llamada {
+                        Llamada::Dibujar(figuras) => colores_del_pedido(figuras, &pedido),
+                        Llamada::Calcar(p) => crate::calcar::ajustar_al_pedido(p, &pedido),
+                        _ => {}
                     }
                     al_evento(Evento::Herramienta {
                         llamada: v.llamada.clone(),
@@ -390,7 +392,7 @@ pub fn instrucciones() -> String {
      Contesta en el idioma del usuario, breve y claro. \
      Si pide dibujar algo, usa dibujar_en_lienzo, \
      poniendo el color de cada figura. \
-     Si pide copiar o calcar al lienzo una imagen adjunta, usa calcar_imagen. \
+     Si pide dibujar, copiar o calcar al lienzo lo de una imagen adjunta (este perro, la foto), usa calcar_imagen. \
      Si da datos para graficar, usa grafica. \
      Si quiere el texto de un documento escaneado, usa ocr. \
      Si pide hacer algo en la app (notas, tareas, ventanas, capturas, abrir ficheros), usa su herramienta. \
