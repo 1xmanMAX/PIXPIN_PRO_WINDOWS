@@ -11,11 +11,18 @@
 //! PIXPIN_IA_MOTOR=<carpeta con llama-server.exe>   PIXPIN_IA_MODELO=<.gguf>
 //! PIXPIN_IA_VISION=<mmproj .gguf>   PIXPIN_IA_DISPOSITIVO=cpu|auto|Vulkan1
 //! PIXPIN_IA_SOLO=<texto>  (solo los casos cuyo nombre lo contiene)
-//! PIXPIN_IA_MOTOR=claude|deepseek|local  (con la nube: la clave de
-//!   ANTHROPIC_API_KEY / DEEPSEEK_API_KEY, o la guardada en Ajustes; para el
-//!   local, una carpeta en PIXPIN_IA_MOTOR sigue valiendo como antes)
+//! PIXPIN_IA_MOTOR=local|gemma|claude|deepseek|grabado  (uno, varios
+//!   separados por comas, o `todos` = los cuatro primeros; con la nube: la
+//!   clave de ANTHROPIC_API_KEY / DEEPSEEK_API_KEY, o la guardada en
+//!   Ajustes, y sin clave se SALTA; `gemma` es el de mejor vista, Gemma 4
+//!   E2B, bajado por la app; para el local, una carpeta en PIXPIN_IA_MOTOR
+//!   sigue valiendo como antes)
 //! cargo test -p pixpin-ia --test banco -- --ignored --nocapture
 //! ```
+//!
+//! Con varios motores se pasan uno detras de otro (un solo `llama-server`
+//! cargado a la vez) y al final sale una **tabla comparativa** en Markdown:
+//! cada caso con «✓/✗ y segundos» por motor, el acierto y el tiempo total.
 //!
 //! **Modo grabado** (evaluar a Haiku sin API, con un subagente como cerebro):
 //! `volcar_para_haiku` escribe lo que la app manda a Claude (`sistema.txt`,
@@ -654,76 +661,124 @@ impl Ejecutor for Apunta<'_> {
     }
 }
 
-/// El motor a medir: `PIXPIN_IA_MOTOR=claude|deepseek` usa la nube (mismo
-/// catalogo e instrucciones que la app, traducidos por su adaptador);
-/// `local`, nada o una carpeta, llama.cpp.
-fn motor() -> Box<dyn Motor> {
+/// Los motores que se pueden medir, por su nombre en `PIXPIN_IA_MOTOR`.
+const MOTORES: [&str; 5] = ["local", "gemma", "claude", "deepseek", "grabado"];
+
+/// Los motores pedidos: `PIXPIN_IA_MOTOR=local,gemma` (uno o varios,
+/// separados por comas), `todos`, o nada (el local). Una carpeta sigue
+/// valiendo como antes (el local con ese `llama-server`).
+fn pedidos() -> Vec<String> {
+    let v = std::env::var("PIXPIN_IA_MOTOR").unwrap_or_default();
+    let v = v.trim().to_lowercase();
+    if v.is_empty() {
+        return vec!["local".into()];
+    }
+    if v == "todos" {
+        return MOTORES[..4].iter().map(|s| s.to_string()).collect();
+    }
+    if !v.contains(',') && !MOTORES.contains(&v.as_str()) {
+        // Una carpeta con llama-server.exe: el local de siempre.
+        return vec!["local".into()];
+    }
+    v.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect()
+}
+
+/// **El motor `nombre`**, o por que no se puede medir (y se salta):
+/// - `local`: llama.cpp con Qwen3.5-2B (o `PIXPIN_IA_MODELO`);
+/// - `gemma`: llama.cpp con Gemma 4 E2B, el de mejor vista;
+/// - `claude`/`deepseek`: la nube, solo con su clave en
+///   `ANTHROPIC_API_KEY`/`DEEPSEEK_API_KEY` (o la guardada en Ajustes). No
+///   se pide nunca: sin clave, se salta.
+fn motor(nombre: &str) -> Result<Box<dyn Motor>, String> {
     use pixpin_ia::nube::{MotorNube, Proveedor, claves};
-    let eleccion = std::env::var("PIXPIN_IA_MOTOR").unwrap_or_default();
-    if let Some(p) = Proveedor::por_id(&eleccion.to_lowercase()) {
+    if let Some(p) = Proveedor::por_id(nombre) {
         let var = match p {
             Proveedor::Claude => "ANTHROPIC_API_KEY",
             Proveedor::DeepSeek => "DEEPSEEK_API_KEY",
         };
         let clave = std::env::var(var)
             .ok()
+            .filter(|c| !c.trim().is_empty())
             .or_else(|| claves::leer(p))
-            .unwrap_or_else(|| panic!("sin clave de {}: pon {var} o guardala en Ajustes", p.nombre()));
+            .ok_or_else(|| format!("sin clave de {} (pon {var})", p.nombre()))?;
         println!("motor: {} ({})", p.nombre(), p.modelo());
-        return Box::new(MotorNube::nuevo(p, clave));
+        return Ok(Box::new(MotorNube::nuevo(p, clave)));
     }
-    Box::new(motor_local())
+    match nombre {
+        "local" => motor_local(None).map(|m| Box::new(m) as Box<dyn Motor>),
+        "gemma" => motor_local(Some(pixpin_ia::modelos::GEMMA4_E2B)).map(|m| Box::new(m) as Box<dyn Motor>),
+        otro => Err(format!("motor desconocido «{otro}» (valen: {})", MOTORES.join(", "))),
+    }
 }
 
-fn motor_local() -> MotorLlama {
+/// llama.cpp con el modelo de siempre (o `PIXPIN_IA_MODELO`), o con
+/// `modelo` si se da (Gemma). `Err` si falta algo por bajar.
+fn motor_local(modelo: Option<pixpin_ia::modelos::Modelo>) -> Result<MotorLlama, String> {
     let base = PathBuf::from(std::env::var("LOCALAPPDATA").unwrap()).join("PixPinMax").join("modelos");
     let motor_dir = std::env::var("PIXPIN_IA_MOTOR")
         .ok()
-        .filter(|m| !m.is_empty() && m != "local")
-        .ok_or(())
+        .filter(|m| PathBuf::from(m).join("llama-server.exe").is_file())
         .map(PathBuf::from)
-        .unwrap_or_else(|_| base.join("llama.cpp").join("b11580"));
-    let modelo = std::env::var("PIXPIN_IA_MODELO")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| base.join("qwen3.5-2b").join("Qwen3.5-2B-Q4_K_M.gguf"));
-    let vision = std::env::var("PIXPIN_IA_VISION")
-        .map(PathBuf::from)
-        .ok()
-        .or_else(|| Some(base.join("qwen3.5-2b").join("mmproj-F16.gguf")))
-        .filter(|p| p.exists());
+        .unwrap_or_else(|| base.join("llama.cpp").join("b11580"));
+    let (pesos, vision) = match modelo {
+        Some(m) => {
+            let c = pixpin_ia::descarga::carpeta_modelo(&base, &m);
+            (c.join(m.pesos.nombre), m.vision.map(|v| c.join(v.nombre)))
+        }
+        None => (
+            std::env::var("PIXPIN_IA_MODELO")
+                .map(PathBuf::from)
+                .unwrap_or_else(|_| base.join("qwen3.5-2b").join("Qwen3.5-2B-Q4_K_M.gguf")),
+            std::env::var("PIXPIN_IA_VISION")
+                .map(PathBuf::from)
+                .ok()
+                .or_else(|| Some(base.join("qwen3.5-2b").join("mmproj-F16.gguf"))),
+        ),
+    };
+    let vision = vision.filter(|p| p.exists());
     let servidor = motor_dir.join("llama-server.exe");
-    let mut config = Config::nueva(servidor.clone(), modelo.clone(), vision);
+    if !servidor.is_file() {
+        return Err(format!("falta {}", servidor.display()));
+    }
+    if !pesos.is_file() {
+        return Err(format!("falta {}", pesos.display()));
+    }
+    let mut config = Config::nueva(servidor.clone(), pesos.clone(), vision);
     config.dispositivo = match std::env::var("PIXPIN_IA_DISPOSITIVO").as_deref() {
         Ok("cpu") => Dispositivo::Cpu,
         Ok("auto") | Err(_) => {
-            let bytes = std::fs::metadata(&modelo).map(|m| m.len()).unwrap_or(0);
+            let bytes = std::fs::metadata(&pesos).map(|m| m.len()).unwrap_or(0);
             elegir_dispositivo(&listar_dispositivos(&servidor), bytes)
         }
         Ok(otro) => Dispositivo::Gpu(otro.to_string()),
     };
-    println!("dispositivo: {:?}", config.dispositivo);
-    MotorLlama::nuevo(config)
+    println!("motor: llama.cpp con {} en {:?}", pesos.display(), config.dispositivo);
+    Ok(MotorLlama::nuevo(config))
 }
 
-#[test]
-#[ignore = "necesita el motor y el modelo bajados (ver la cabecera)"]
-fn banco() {
-    // Con `grabado` no hay motor comun: uno por caso, con su respuesta.
-    let grabadas = grabado::respuestas();
-    let comun = grabadas.is_none().then(motor);
+/// De donde salen las respuestas: un motor, o lo grabado caso por caso.
+enum Fuente {
+    Motor(Box<dyn Motor>),
+    Grabado(Value),
+}
+
+/// Lo que dio un caso con un motor: si salio bien y cuanto tardo.
+type Nota = (bool, f32);
+
+/// **Pasa todos los casos por un motor.** Imprime cada uno al momento y
+/// los fallos con su detalle al final.
+fn correr(fuente: &Fuente) -> Vec<(&'static str, Nota)> {
     let solo = std::env::var("PIXPIN_IA_SOLO").ok();
-    let mut bien = 0;
-    let mut total = 0;
+    let mut notas = Vec::new();
     let mut fallos = Vec::new();
-    let t_total = Instant::now();
     for caso in casos() {
         if solo.as_deref().is_some_and(|s| !caso.nombre.contains(s)) {
             continue;
         }
-        total += 1;
+        // Con `grabado` no hay motor comun: uno por caso, con su respuesta.
         let de_este_caso;
-        let motor: &dyn Motor = match (&grabadas, &comun) {
-            (Some(g), _) => match grabado::MotorGrabado::del_caso(g, caso.nombre) {
+        let motor: &dyn Motor = match fuente {
+            Fuente::Grabado(g) => match grabado::MotorGrabado::del_caso(g, caso.nombre) {
                 Ok(m) => {
                     de_este_caso = m;
                     &de_este_caso
@@ -731,11 +786,11 @@ fn banco() {
                 Err(motivo) => {
                     println!("MAL  {:<32}   0.0 s    <- {motivo}", caso.nombre);
                     fallos.push(format!("{}: {motivo}", caso.nombre));
+                    notas.push((caso.nombre, (false, 0.0)));
                     continue;
                 }
             },
-            (None, Some(m)) => m.as_ref(),
-            (None, None) => unreachable!(),
+            Fuente::Motor(m) => m.as_ref(),
         };
         let imagen = caso.imagen.map(|f| f());
         let (mut historial, mut herramientas) = banco_ia::preparar(caso.pedido, imagen.clone());
@@ -780,11 +835,11 @@ fn banco() {
         let mut veredicto = (caso.comprobar)(&r);
         // Grabado no hay segunda oportunidad: una llamada que no pasa la
         // validacion es un fallo de lo grabado, y se dice tal cual.
-        if grabadas.is_some() && !invalidas.is_empty() {
+        if matches!(fuente, Fuente::Grabado(_)) && !invalidas.is_empty() {
             veredicto = Err(format!("entrada invalida: {}", invalidas.join(" / ")));
         }
         let ok = veredicto.is_ok();
-        bien += usize::from(ok);
+        let segundos = t_fin;
         let visible = |t: Option<f32>| t.map_or("  -  ".to_string(), |t| format!("{t:>5.1}"));
         println!(
             "{} {:<32} {:>5.1} s (texto {} s, lienzo {} s, {} elementos)  {}{}",
@@ -812,15 +867,124 @@ fn banco() {
                 r.texto.trim().chars().take(300).collect::<String>()
             ));
         }
+        notas.push((caso.nombre, (ok, segundos)));
     }
     println!("\n--- fallos ---\n{}", fallos.join("\n"));
-    println!(
-        "\nBANCO: {bien}/{total} = {:.0} % en {:.0} s",
-        bien as f64 * 100.0 / total.max(1) as f64,
-        t_total.elapsed().as_secs_f32()
-    );
-    if let Some(m) = comun {
-        m.soltar();
+    notas
+}
+
+/// **La tabla comparativa** (Markdown): una fila por caso, una columna por
+/// motor («✓ 3,2 s» / «✗ 3,2 s»), y abajo el acierto y el tiempo total.
+fn tabla(motores: &[(String, Result<Vec<(&'static str, Nota)>, String>)]) -> String {
+    let mut casos: Vec<&'static str> = Vec::new();
+    for (_, r) in motores {
+        if let Ok(v) = r {
+            for (c, _) in v {
+                if !casos.contains(c) {
+                    casos.push(c);
+                }
+            }
+        }
+    }
+    let mut s = String::new();
+    s.push_str("| caso |");
+    for (n, _) in motores {
+        s.push_str(&format!(" {n} |"));
+    }
+    s.push_str("\n|---|");
+    s.push_str(&"---|".repeat(motores.len()));
+    s.push('\n');
+    let celda = |r: &Result<Vec<(&'static str, Nota)>, String>, caso: &str| match r {
+        Err(_) => "—".to_string(),
+        Ok(v) => match v.iter().find(|(c, _)| *c == caso) {
+            Some((_, (ok, t))) => format!("{} {:.1} s", if *ok { "✓" } else { "✗" }, t),
+            None => "—".into(),
+        },
+    };
+    for caso in &casos {
+        s.push_str(&format!("| {caso} |"));
+        for (_, r) in motores {
+            s.push_str(&format!(" {} |", celda(r, caso)));
+        }
+        s.push('\n');
+    }
+    s.push_str("| **acierto** |");
+    for (_, r) in motores {
+        s.push_str(&match r {
+            Ok(v) => {
+                let bien = v.iter().filter(|(_, (ok, _))| *ok).count();
+                format!(" **{bien}/{} = {:.0} %** |", v.len(), bien as f64 * 100.0 / v.len().max(1) as f64)
+            }
+            Err(e) => format!(" saltado: {e} |"),
+        });
+    }
+    s.push_str("\n| **tiempo** |");
+    for (_, r) in motores {
+        s.push_str(&match r {
+            Ok(v) => format!(" {:.0} s |", v.iter().map(|(_, (_, t))| t).sum::<f32>()),
+            Err(_) => " — |".into(),
+        });
+    }
+    s.push('\n');
+    s
+}
+
+#[test]
+#[ignore = "necesita el motor y el modelo bajados (ver la cabecera)"]
+fn banco() {
+    let mut resultados = Vec::new();
+    for nombre in pedidos() {
+        println!("\n===== {nombre} =====");
+        let fuente = if nombre == "grabado" {
+            grabado::respuestas().map(Fuente::Grabado).ok_or_else(|| "sin respuestas grabadas".to_string())
+        } else {
+            motor(&nombre).map(Fuente::Motor)
+        };
+        let r = fuente.map(|m| {
+            let t = Instant::now();
+            let notas = correr(&m);
+            let bien = notas.iter().filter(|(_, (ok, _))| *ok).count();
+            println!(
+                "\nBANCO {nombre}: {bien}/{} = {:.0} % en {:.0} s",
+                notas.len(),
+                bien as f64 * 100.0 / notas.len().max(1) as f64,
+                t.elapsed().as_secs_f32()
+            );
+            // Un solo llama-server a la vez: el siguiente motor no carga
+            // hasta que este suelta su memoria.
+            if let Fuente::Motor(m) = &m {
+                m.soltar();
+            }
+            notas
+        });
+        if let Err(e) = &r {
+            println!("SALTADO {nombre}: {e}");
+        }
+        resultados.push((nombre, r));
+    }
+    println!("\n{}", tabla(&resultados));
+}
+
+#[test]
+fn la_tabla_compara_y_dice_lo_saltado() {
+    let r = vec![
+        ("local".to_string(), Ok(vec![("a", (true, 1.0)), ("b", (false, 2.5))])),
+        ("gemma".to_string(), Ok(vec![("a", (true, 3.0)), ("b", (true, 4.0))])),
+        ("claude".to_string(), Err("sin clave de Claude".to_string())),
+    ];
+    let t = tabla(&r);
+    assert!(t.starts_with("| caso | local | gemma | claude |"), "{t}");
+    assert!(t.contains("| b | ✗ 2.5 s | ✓ 4.0 s | — |"), "{t}");
+    assert!(t.contains("**1/2 = 50 %**") && t.contains("**2/2 = 100 %**"), "{t}");
+    assert!(t.contains("saltado: sin clave de Claude"), "{t}");
+}
+
+#[test]
+fn un_motor_desconocido_o_sin_clave_se_salta_sin_romper() {
+    assert!(motor("gpt-9").err().unwrap().contains("desconocido"));
+    // Sin la variable ni clave guardada, la nube se salta (no se pide).
+    if std::env::var("DEEPSEEK_API_KEY").is_err() && pixpin_ia::nube::claves::leer(pixpin_ia::nube::Proveedor::DeepSeek).is_none() {
+        assert!(motor("deepseek").err().unwrap().contains("sin clave"));
     }
 }
 

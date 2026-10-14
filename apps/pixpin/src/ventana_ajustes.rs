@@ -303,6 +303,8 @@ enum Clave {
     AsistenteMotor,
     /// Seguir con el local si la nube falla (`[asistente] respaldo_local`).
     AsistenteRespaldo,
+    /// Gemma 4 E2B para mirar fotos (`[asistente] mejor_vista`).
+    AsistenteMejorVista,
     /// Si lo hallado en los documentos puede ir a la nube
     /// (`[asistente] documentos_a_la_nube`).
     AsistenteDocsNube,
@@ -1035,6 +1037,16 @@ fn filas_de_seccion(s: Seccion, a: &Ajustes, cx: &Contexto) -> Vec<(Clave, Fila)
                     tt("ajustes2-ayuda-asistente-respaldo"),
                     Control::Interruptor(a.asistente.respaldo_local),
                 ),
+                // El modelo de mejor vista (Gemma 4 E2B): opcional, se baja
+                // aparte desde el chat «Asistente» y solo se usa para MIRAR
+                // una foto (`seleccion::pide_mejor_vista`).
+                op(
+                    a,
+                    Clave::AsistenteMejorVista,
+                    tt("ajustes2-asistente-mejor-vista"),
+                    crate::asistente::motor::estado_mejor_vista(t),
+                    Control::Interruptor(a.asistente.mejor_vista),
+                ),
                 // Lo hallado en los documentos del usuario, ¿a la nube?
                 // (`buscar_en_mis_cosas`; por omision se pregunta la
                 // primera vez).
@@ -1394,6 +1406,7 @@ fn restablecer(clave: Clave, a: &mut Ajustes) {
         Clave::AsistentePensar => a.asistente.pensar = d.asistente.pensar,
         Clave::AsistenteMotor => a.asistente.motor = d.asistente.motor.clone(),
         Clave::AsistenteRespaldo => a.asistente.respaldo_local = d.asistente.respaldo_local,
+        Clave::AsistenteMejorVista => a.asistente.mejor_vista = d.asistente.mejor_vista,
         Clave::AsistenteDocsNube => a.asistente.documentos_a_la_nube = d.asistente.documentos_a_la_nube.clone(),
         Clave::AsistenteRevisarVoz => a.asistente.revisar_lo_dicho = d.asistente.revisar_lo_dicho,
         Clave::AsistenteLeerSiempre => a.asistente.leer_respuestas = d.asistente.leer_respuestas,
@@ -1546,6 +1559,13 @@ fn aplicar_interruptor(a: &mut Ajustes, clave: Clave) {
         Clave::Arranque => a.arranque_con_windows = !a.arranque_con_windows,
         Clave::TemaCosmos => a.tema_cosmos = !a.tema_cosmos,
         Clave::AsistenteRespaldo => a.asistente.respaldo_local = !a.asistente.respaldo_local,
+        Clave::AsistenteMejorVista => {
+            a.asistente.mejor_vista = !a.asistente.mejor_vista;
+            // Apagado, Gemma no se queda ocupando memoria.
+            if !a.asistente.mejor_vista {
+                crate::asistente::motor::soltar_mejor_vista();
+            }
+        }
         Clave::AsistenteRevisarVoz => a.asistente.revisar_lo_dicho = !a.asistente.revisar_lo_dicho,
         Clave::AsistenteLeerSiempre => a.asistente.leer_respuestas = !a.asistente.leer_respuestas,
         Clave::PdfAligerar => a.pdf.aligerar_al_entrar = !a.pdf.aligerar_al_entrar,
@@ -3428,6 +3448,7 @@ mod pruebas {
             Clave::VozSegundo,
             Clave::VozModo,
             Clave::AsistenteModelo,
+            Clave::AsistenteMejorVista,
             Clave::AsistenteDocsNube,
             Clave::AsistentePensar,
             Clave::Presencia,

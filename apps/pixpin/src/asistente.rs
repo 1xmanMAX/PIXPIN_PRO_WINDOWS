@@ -43,6 +43,8 @@ pub mod foto;
 pub mod motor;
 pub mod nube;
 pub mod ocr;
+pub mod permiso;
+pub mod recetas;
 pub mod pensado;
 pub mod turno;
 

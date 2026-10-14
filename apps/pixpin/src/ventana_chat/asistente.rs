@@ -16,6 +16,12 @@
 //!   escribe ([`pintar_menciones`], [`tecla_de_menciones`]).
 //! - [`lienzo_por_abrir`]: el lienzo que pidio abrir al terminar («…y
 //!   ábrelo»); [`lienzo_de`]: el de «Abrir lienzo» de una respuesta.
+//! - [`pregunta_pendiente`]/[`pintar_confirmacion`]/[`contestar`]: lo que
+//!   borra o envia pide «Sí»/«No» en una tarjeta DENTRO de la burbuja
+//!   (13-oct-2026); el turno espera en su hilo y la ventana sigue suelta.
+//! - [`recetas`]: los pedidos guardados, como botones encima de la caja.
+//! - La tarjeta de bajar tambien ofrece el modelo de mejor vista (Gemma 4
+//!   E2B) si esta encendido en los ajustes y falta.
 //!
 //! Todo vive en el hilo de la ventana (`thread_local`): el bucle del chat es
 //! uno y no hay que compartir nada con otros hilos salvo por los canales.
@@ -31,6 +37,7 @@ use super::*;
 use crate::asistente::chat::{self as ia_chat, EnVivo};
 use crate::asistente::descarga::{self as ia_descarga, AvisoDescarga, Descarga};
 use crate::asistente::turno::{Aviso, Turno};
+use pixpin_ia::modelos::GEMMA4_E2B;
 use crate::asistente::{al_lienzo, motor as ia_motor, nube as ia_nube, pensado as ia_pensado, turno as ia_turno};
 
 /// Cada cuanto se escribe en el disco lo que va contestando (en memoria se
@@ -57,6 +64,38 @@ struct Sesion {
     /// Lo citado de los documentos del usuario: la respuesta lo apunta
     /// para su «Abrir fuente».
     citas: Vec<pixpin_ia::documentos::Cita>,
+    /// Donde estan los datos (para dejar escrita una pregunta que caduca al
+    /// cerrar el chat).
+    raiz: std::path::PathBuf,
+    /// La pregunta de confirmar que espera respuesta: por donde contestar y
+    /// desde cuando espera.
+    responder: Option<(std::sync::mpsc::Sender<bool>, Instant)>,
+}
+
+impl Sesion {
+    /// Contesta la pregunta pendiente (al turno y en la burbuja).
+    fn contestar(&mut self, c: ia_chat::Contestacion) -> bool {
+        if let Some((tx, _)) = self.responder.take() {
+            let _ = tx.send(c == ia_chat::Contestacion::Si);
+        }
+        self.vivo.contestar(c)
+    }
+}
+
+/// **Si el chat se cierra con una pregunta en el aire, caduca**: el turno
+/// recibe un no (su `Sender` muere aqui) y la nota del disco lo cuenta, para
+/// que el historial no se quede con una pregunta sin contestar.
+impl Drop for Sesion {
+    fn drop(&mut self) {
+        if self.contestar(ia_chat::Contestacion::Caducada) {
+            let texto = self.vivo.mostrar();
+            let carpeta = pixpin_proyecto::almacen::carpeta(&self.raiz, &self.proyecto);
+            let _ = cuaderno::cambiar(&carpeta, &self.nota, |m| {
+                m.texto = texto.clone();
+                true
+            });
+        }
+    }
 }
 
 /// La tarjeta de la primera vez.
@@ -70,12 +109,15 @@ struct Tarjeta {
     noticia: Option<String>,
     /// Lo pulsable, como se pinto.
     botones: Vec<(Rect, Accion)>,
-    /// Si el modelo esta listo, mirado hace poco (mirar el disco en cada
+    /// Si cada modelo esta listo, mirado hace poco (mirar el disco en cada
     /// fotograma no).
-    listo: Option<(Instant, &'static str, bool)>,
-    /// El modelo de los ajustes, leido hace poco (el TOML no se lee en cada
-    /// fotograma).
-    ajuste: Option<(Instant, String)>,
+    listo: Vec<(Instant, &'static str, bool)>,
+    /// El modelo de los ajustes y si se quiere la mejor vista, leidos hace
+    /// poco (el TOML no se lee en cada fotograma).
+    ajuste: Option<(Instant, String, bool)>,
+    /// La tarjeta es la del modelo de mejor vista (el de siempre ya esta):
+    /// encendida en los ajustes y sin bajar.
+    vista: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -84,6 +126,8 @@ enum Accion {
     Bajar,
     Confirmar,
     Cancelar,
+    /// «Ahora no» en la tarjeta de la mejor vista: apaga el ajuste.
+    AhoraNo,
 }
 
 thread_local! {
@@ -128,10 +172,21 @@ pub(super) fn espera() -> Option<u32> {
 
 /// El motor elegido en Ajustes → Asistente: el local (si esta bajado) o la
 /// nube con su clave, con el local de respaldo si se quiere y esta bajado.
-pub(super) fn motor_de_los_ajustes(ubicacion: &Ubicacion, textos: &Catalogo) -> Result<Arc<dyn Motor>, String> {
+/// El local de ESTE turno puede ser el de mejor vista si se pide mirar una
+/// foto (`ia_motor::modelo_para_el_turno`).
+pub(super) fn motor_de_los_ajustes(
+    ubicacion: &Ubicacion,
+    textos: &Catalogo,
+    pregunta: &str,
+    con_foto: bool,
+) -> Result<Arc<dyn Motor>, String> {
     let aj = pixpin_store::cargar(ubicacion).unwrap_or_default();
-    let modelo = ia_motor::modelo_elegido(Some(aj.asistente.modelo.as_str()).filter(|m| !m.is_empty()));
-    let local = || ia_motor::raiz().and_then(|raiz| ia_motor::del_proceso(&raiz, &modelo).ok());
+    let local = || {
+        ia_motor::raiz().and_then(|raiz| {
+            let modelo = ia_motor::modelo_para_el_turno(&aj.asistente, &raiz, pregunta, con_foto);
+            ia_motor::del_proceso(&raiz, &modelo).ok()
+        })
+    };
     match ia_nube::eleccion(&aj.asistente) {
         ia_nube::Eleccion::Nube(p) => ia_nube::motor(p, if aj.asistente.respaldo_local { local() } else { None }),
         ia_nube::Eleccion::Local => local().ok_or_else(|| textos.t("asistente-sin-modelo")),
@@ -151,7 +206,8 @@ pub(super) fn al_enviar(ubicacion: &Ubicacion, a: &mut Abierto, textos: &Catalog
     if ocupado(&a.ficha.id) {
         return Some(textos.t("asistente-ocupado"));
     }
-    let motor = match motor_de_los_ajustes(ubicacion, textos) {
+    let con_foto = ia_chat::foto_reciente(&a.mensajes).is_some();
+    let motor = match motor_de_los_ajustes(ubicacion, textos, &pregunta, con_foto) {
         Ok(m) => m,
         Err(aviso) => return Some(aviso),
     };
@@ -291,6 +347,8 @@ fn lanzar_con(
             registro: None,
             lienzo: None,
             abrir,
+            raiz,
+            responder: None,
             citas: Vec::new(),
         })
     });
@@ -346,6 +404,101 @@ pub(super) fn conversacion_con_ia(a: &Abierto) -> bool {
     a.ficha.es_asistente() || a.mensajes.iter().any(ia_chat::es_del_asistente)
 }
 
+// ---------------------------------------------------------------------------
+// La tarjeta de confirmar, dentro de la burbuja (13-oct-2026)
+
+/// La pregunta que espera respuesta en la burbuja del mensaje `i`, si la hay.
+pub(super) fn pregunta_pendiente(a: &Abierto, i: usize) -> Option<String> {
+    let m = a.mensajes.get(i)?;
+    SESIONES.with_borrow(|s| {
+        s.iter()
+            .find(|s| s.proyecto == a.ficha.id && s.nota == m.id && s.responder.is_some())
+            .and_then(|s| s.vivo.pendiente.clone())
+    })
+    // O la de un turno sin ventana (Flow, una automatizacion), que escribe
+    // en este mismo chat desde su hilo.
+    .or_else(|| crate::asistente::permiso::pregunta(&a.ficha.id, &m.id))
+}
+
+/// **«Sí» o «No» en la tarjeta** de la burbuja `i`. La pregunta contestada
+/// queda escrita en la burbuja; el turno sigue en su hilo.
+pub(super) fn contestar(a: &mut Abierto, i: usize, si: bool) -> bool {
+    let Some(id) = a.mensajes.get(i).map(|m| m.id.clone()) else { return false };
+    let texto = SESIONES.with_borrow_mut(|s| {
+        let s = s.iter_mut().find(|s| s.proyecto == a.ficha.id && s.nota == id)?;
+        let c = if si { ia_chat::Contestacion::Si } else { ia_chat::Contestacion::No };
+        s.contestar(c).then(|| s.vivo.mostrar())
+    });
+    let Some(texto) = texto else {
+        // La de un turno sin ventana: contesta alli, y su hilo reescribe la
+        // nota y avisa al chat para que la relea.
+        return crate::asistente::permiso::contestar(&a.ficha.id, &id, si);
+    };
+    if let Some(m) = a.mensajes.get_mut(i) {
+        m.texto = texto;
+    }
+    a.colocado.borrow_mut().ancho = 0;
+    true
+}
+
+/// Medidas de la tarjeta (al 100 %).
+const CONFIRMAR_TAM: f32 = 13.0;
+const CONFIRMAR_AIRE: f32 = 10.0;
+const CONFIRMAR_BOTON: f32 = 30.0;
+/// Lo menos ancha que se hace, para que quepan los dos botones y se lea.
+pub(super) const CONFIRMAR_ANCHO_MIN: f32 = 260.0;
+
+/// Lo que mide la tarjeta de confirmar con ese ancho.
+pub(super) fn alto_confirmacion(p: &Pintor, pregunta: &str, ancho: f32, e: f32) -> f32 {
+    let (_, alto_texto) = p.medir_texto_ajustado(&format!("⚠️ {pregunta}"), CONFIRMAR_TAM * e, ancho - 2.0 * CONFIRMAR_AIRE * e);
+    CONFIRMAR_AIRE * e + alto_texto + 8.0 * e + CONFIRMAR_BOTON * e + CONFIRMAR_AIRE * e
+}
+
+/// **Pinta la tarjeta**: lo que va a hacer y, debajo a la derecha, «No»
+/// (relleno: es lo de por omision, como en el cuadro de antes) y «Sí» (con
+/// solo el borde, en rojo: borra o envia). Apunta sus dos zonas.
+pub(super) fn pintar_confirmacion(
+    p: &Pintor,
+    caja: RectF,
+    pregunta: &str,
+    tema: &Tema,
+    textos: &Catalogo,
+    e: f32,
+) -> Vec<(Rect, bool)> {
+    let rojo = hex(0xe5534b);
+    p.rellenar_redondeado(caja, 10.0 * e, con_alfa(rojo, 0.10));
+    let aire = CONFIRMAR_AIRE * e;
+    let texto = format!("⚠️ {pregunta}");
+    p.texto_ajustado(&texto, caja.x + aire, caja.y + aire, CONFIRMAR_TAM * e, caja.ancho - 2.0 * aire, tema.texto);
+    let tam = CONFIRMAR_TAM * e;
+    let alto_b = CONFIRMAR_BOTON * e;
+    let y = caja.y + caja.alto - aire - alto_b;
+    let no = textos.t("asistente-confirmar-no");
+    let si = textos.t("asistente-confirmar-si");
+    let (wno, hno) = p.medir_texto(&no, tam);
+    let (wsi, _) = p.medir_texto(&si, tam);
+    let b_no = RectF {
+        x: caja.x + caja.ancho - aire - wno - 32.0 * e,
+        y,
+        ancho: wno + 32.0 * e,
+        alto: alto_b,
+    };
+    let b_si = RectF {
+        x: b_no.x - 8.0 * e - wsi - 32.0 * e,
+        y,
+        ancho: wsi + 32.0 * e,
+        alto: alto_b,
+    };
+    p.rellenar_redondeado(b_no, alto_b / 2.0, tema.enviar);
+    p.texto(&no, b_no.x + 16.0 * e, y + (alto_b - hno) / 2.0, tam, hex(0xffffff));
+    // El borde rojo redondeado: el rojo entero y, encima, el fondo un poco mas chico.
+    p.rellenar_redondeado(b_si, alto_b / 2.0, rojo);
+    let filete = (1.5 * e).max(1.0);
+    p.rellenar_redondeado(encoger(b_si, filete), alto_b / 2.0 - filete, tema.burbuja_otra);
+    p.texto(&si, b_si.x + 16.0 * e, y + (alto_b - hno) / 2.0, tam, rojo);
+    vec![(a_rect(b_si), true), (a_rect(b_no), false)]
+}
+
 /// **Una vez por vuelta del bucle.** Devuelve si hay que repintar y un
 /// aviso, si lo hay.
 pub(super) fn latido(ubicacion: &Ubicacion, mut abierto: Option<&mut Abierto>) -> (bool, Option<String>) {
@@ -384,15 +537,30 @@ pub(super) fn latido(ubicacion: &Ubicacion, mut abierto: Option<&mut Abierto>) -
     let mut leidos: Vec<(String, ia_turno::Adjunto, String)> = Vec::new();
     SESIONES.with_borrow_mut(|sesiones| {
         for s in sesiones.iter_mut() {
-            let avisos = s.turno.recibir();
-            if avisos.is_empty() {
+            let mut avisos = s.turno.recibir();
+            // Una pregunta sin contestar a tiempo caduca: es un no.
+            let caduca = s
+                .responder
+                .as_ref()
+                .is_some_and(|(_, desde)| desde.elapsed() >= ia_chat::CADUCA_LA_PREGUNTA);
+            let mut contestada = false;
+            if caduca {
+                contestada = s.contestar(ia_chat::Contestacion::Caducada);
+            }
+            if avisos.is_empty() && !contestada {
                 continue;
             }
             let mut acabo = false;
-            for av in avisos {
+            for av in avisos.drain(..) {
                 match av {
                     Aviso::Evento(e) => s.vivo.aplicar(&e),
                     Aviso::TextoLeido { de, texto } => leidos.push((s.proyecto.clone(), de, texto)),
+                    Aviso::Confirmar { pregunta, responder } => {
+                        s.vivo.preguntar(&pregunta);
+                        s.responder = Some((responder, Instant::now()));
+                        // Que se vea ya en el disco tambien.
+                        s.guardado = Instant::now() - GUARDAR_CADA;
+                    }
                     Aviso::Citas(c) => s.citas = c,
                     Aviso::Registro(r) => s.registro = Some(r),
                     Aviso::Fin { resultado } => {
@@ -484,7 +652,7 @@ pub(super) fn latido(ubicacion: &Ubicacion, mut abierto: Option<&mut Abierto>) -
     });
     if let Some((fin, modelo)) = fin {
         TARJETA.with_borrow_mut(|t| {
-            t.listo = None;
+            t.listo.clear();
             t.confirmando = false;
             t.noticia = match &fin {
                 AvisoDescarga::Cancelada => Some("asistente-cancelada".into()),
@@ -492,7 +660,11 @@ pub(super) fn latido(ubicacion: &Ubicacion, mut abierto: Option<&mut Abierto>) -
                 _ => None,
             };
         });
-        if fin == AvisoDescarga::Lista
+        if fin == AvisoDescarga::Lista && modelo.id == GEMMA4_E2B.id {
+            // El de mejor vista NO se precarga: echaria al de siempre de la
+            // memoria para nada. Se carga con la primera foto que mirar.
+            aviso = Some("asistente-vista-lista".to_string());
+        } else if fin == AvisoDescarga::Lista
             && let Some(raiz_m) = ia_motor::raiz()
             && let Ok(m) = ia_motor::del_proceso(&raiz_m, &modelo)
         {
@@ -630,7 +802,8 @@ fn hace_falta_tarjeta(a: &Abierto) -> bool {
     if !a.ficha.es_asistente() {
         return false;
     }
-    if DESCARGA.with_borrow(|d| d.is_some()) {
+    if let Some(bajando) = DESCARGA.with_borrow(|d| d.as_ref().map(|d| d.modelo)) {
+        TARJETA.with_borrow_mut(|t| t.vista = bajando.id == GEMMA4_E2B.id);
         return true;
     }
     // Con Claude o DeepSeek no hace falta bajar nada.
@@ -639,33 +812,54 @@ fn hace_falta_tarjeta(a: &Abierto) -> bool {
     }
     let Some(raiz) = ia_motor::raiz() else { return false };
     TARJETA.with_borrow_mut(|t| {
+        t.vista = false;
         let modelo = elegido(t, &a.raiz);
-        match t.listo {
-            Some((cuando, id, listo)) if id == modelo.id && cuando.elapsed() < Duration::from_secs(5) => !listo,
-            _ => {
-                let listo = ia_descarga::listo(&raiz, &modelo);
-                t.listo = Some((Instant::now(), modelo.id, listo));
-                !listo
-            }
+        if !mirar_listo(t, &raiz, &modelo) {
+            return true;
         }
+        // El de siempre ya esta: ¿falta el de mejor vista, encendido en los
+        // ajustes?
+        let quiere = t.ajuste.as_ref().is_some_and(|(_, _, v)| *v);
+        if quiere && !mirar_listo(t, &raiz, &GEMMA4_E2B) {
+            t.vista = true;
+            return true;
+        }
+        false
     })
 }
 
-/// El modelo de la tarjeta: lo elegido en ella o, si no, lo de los ajustes;
-/// sin nada, el ligero si el equipo tiene poca memoria.
+/// Si el modelo esta bajado, mirado como mucho cada 5 s.
+fn mirar_listo(t: &mut Tarjeta, raiz: &std::path::Path, m: &pixpin_ia::modelos::Modelo) -> bool {
+    if let Some((_, _, listo)) =
+        t.listo.iter().find(|(cuando, id, _)| *id == m.id && cuando.elapsed() < Duration::from_secs(5))
+    {
+        return *listo;
+    }
+    let listo = ia_descarga::listo(raiz, m);
+    t.listo.retain(|(_, id, _)| *id != m.id);
+    t.listo.push((Instant::now(), m.id, listo));
+    listo
+}
+
+/// El modelo de la tarjeta: el de mejor vista si la tarjeta es la suya; si
+/// no, lo elegido en ella o lo de los ajustes; sin nada, el ligero si el
+/// equipo tiene poca memoria.
 fn elegido(t: &mut Tarjeta, raiz_datos: &std::path::Path) -> pixpin_ia::modelos::Modelo {
     use pixpin_ia::modelos::{QWEN35_08B, QWEN35_2B};
+    let fresco = t.ajuste.as_ref().is_some_and(|(c, _, _)| c.elapsed() < Duration::from_secs(5));
+    if !fresco {
+        let u = Ubicacion::Instalado { raiz: raiz_datos.to_path_buf() };
+        let aj = pixpin_store::cargar(&u).unwrap_or_default();
+        t.ajuste = Some((Instant::now(), aj.asistente.modelo, aj.asistente.mejor_vista));
+    }
+    if t.vista {
+        return GEMMA4_E2B;
+    }
     match t.ligero {
         Some(true) => QWEN35_08B,
         Some(false) => QWEN35_2B,
         None => {
-            let fresco = t.ajuste.as_ref().is_some_and(|(c, _)| c.elapsed() < Duration::from_secs(5));
-            if !fresco {
-                let u = Ubicacion::Instalado { raiz: raiz_datos.to_path_buf() };
-                let aj = pixpin_store::cargar(&u).unwrap_or_default();
-                t.ajuste = Some((Instant::now(), aj.asistente.modelo));
-            }
-            let id = t.ajuste.as_ref().map(|(_, m)| m.as_str()).unwrap_or_default();
+            let id = t.ajuste.as_ref().map(|(_, m, _)| m.as_str()).unwrap_or_default();
             if !id.is_empty() {
                 ia_motor::modelo_elegido(Some(id))
             } else if poca_memoria() {
@@ -702,22 +896,43 @@ pub(super) fn pintar_tarjeta(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto
     TARJETA.with_borrow_mut(|t| {
         t.botones.clear();
         let modelo = elegido(t, &a.raiz);
-        let explica = textos.t("asistente-explica");
+        // La del modelo de mejor vista: su titulo, su explicacion y una sola
+        // fila (no hay nada que elegir).
+        let (titulo, explica) = if t.vista {
+            (textos.t("asistente-vista-titulo"), textos.t("asistente-vista-explica"))
+        } else {
+            (textos.t("asistente-titulo"), textos.t("asistente-explica"))
+        };
+        let filas: Vec<(Option<bool>, pixpin_ia::modelos::Modelo)> = if t.vista {
+            vec![(None, GEMMA4_E2B)]
+        } else {
+            vec![
+                (Some(false), pixpin_ia::modelos::QWEN35_2B),
+                (Some(true), pixpin_ia::modelos::QWEN35_08B),
+            ]
+        };
         let (_, alto_explica) = p.medir_texto_ajustado(&explica, 13.0 * e, dentro);
         let fila = 48.0 * e;
-        let alto = pad + 22.0 * e + alto_explica + 12.0 * e + 2.0 * (fila + 8.0 * e) + 30.0 * e + 36.0 * e + pad;
+        let alto = pad
+            + 22.0 * e
+            + alto_explica
+            + 12.0 * e
+            + filas.len() as f32 * (fila + 8.0 * e)
+            + 30.0 * e
+            + 36.0 * e
+            + pad;
         let caja = RectF { x, y: y0, ancho, alto };
         p.rellenar_redondeado(caja, 16.0 * e, tema.burbuja_otra);
         p.trazar(caja, (1.0 * e).max(1.0), tema.isla_borde);
 
         let mut y = y0 + pad;
-        p.texto(&format!("🤖 {}", textos.t("asistente-titulo")), x + pad, y, 16.0 * e, tema.texto);
+        p.texto(&format!("{} {titulo}", if t.vista { "🔭" } else { "🤖" }), x + pad, y, 16.0 * e, tema.texto);
         y += 22.0 * e;
         p.texto_ajustado(&explica, x + pad, y, 13.0 * e, dentro, tema.apagado);
         y += alto_explica + 12.0 * e;
 
-        // Los dos modelos, para elegir.
-        for (ligero, m) in [(false, pixpin_ia::modelos::QWEN35_2B), (true, pixpin_ia::modelos::QWEN35_08B)] {
+        // Los modelos, para elegir (el de mejor vista va solo).
+        for (ligero, m) in filas {
             let r = RectF { x: x + pad, y, ancho: dentro, alto: fila };
             let es = m.id == modelo.id;
             p.rellenar_redondeado(r, 10.0 * e, if es { con_alfa(tema.enviar, 0.18) } else { tema.campo });
@@ -730,7 +945,11 @@ pub(super) fn pintar_tarjeta(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto
                 p.circulo(centro, 4.0 * e, tema.enviar);
             }
             let falta = raiz_m.as_deref().map_or(m.bytes(), |rz| ia_descarga::falta(rz, &m));
-            let clave = if ligero { "asistente-modelo-ligero" } else { "asistente-modelo-normal" };
+            let (clave, detalle) = match ligero {
+                Some(true) => ("asistente-modelo-ligero", "asistente-detalle-ligero"),
+                Some(false) => ("asistente-modelo-normal", "asistente-detalle-normal"),
+                None => ("asistente-modelo-vista", "asistente-detalle-vista"),
+            };
             p.texto_linea(
                 &format!("{} · {}", textos.t(clave), ia_descarga::tamano(falta)),
                 r.x + 32.0 * e,
@@ -739,9 +958,10 @@ pub(super) fn pintar_tarjeta(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto
                 dentro - 40.0 * e,
                 tema.texto,
             );
-            let detalle = if ligero { "asistente-detalle-ligero" } else { "asistente-detalle-normal" };
             p.texto_linea(&textos.t(detalle), r.x + 32.0 * e, r.y + 27.0 * e, 12.0 * e, dentro - 40.0 * e, tema.apagado);
-            if bajando.is_none() {
+            if bajando.is_none()
+                && let Some(ligero) = ligero
+            {
                 t.botones.push((a_rect(r), Accion::Elegir { ligero }));
             }
             y += fila + 8.0 * e;
@@ -796,7 +1016,8 @@ pub(super) fn pintar_tarjeta(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto
             (
                 format!("{} ({})", textos.t("asistente-bajar"), ia_descarga::tamano(falta)),
                 Accion::Bajar,
-                None,
+                // La mejor vista es opcional: se puede decir que no.
+                t.vista.then(|| (textos.t("asistente-ahora-no"), Accion::AhoraNo)),
             )
         };
         let tam = 13.0 * e;
@@ -856,7 +1077,7 @@ fn cumplir(ubicacion: &Ubicacion, a: &Abierto, accion: Accion) {
                 t.ligero = Some(ligero);
                 t.confirmando = false;
                 t.noticia = None;
-                t.listo = None;
+                t.listo.clear();
                 t.ajuste = None;
             });
             guardar_modelo(ubicacion, id);
@@ -865,9 +1086,24 @@ fn cumplir(ubicacion: &Ubicacion, a: &Abierto, accion: Accion) {
             t.confirmando = true;
             t.noticia = None;
         }),
+        Accion::AhoraNo => {
+            let mut aj = pixpin_store::cargar(ubicacion).unwrap_or_default();
+            aj.asistente.mejor_vista = false;
+            if let Err(e) = pixpin_store::ajustes::guardar_conservando(ubicacion, &aj) {
+                tracing::warn!(?e, "asistente: no se pudo apagar la mejor vista");
+            }
+            TARJETA.with_borrow_mut(|t| {
+                t.ajuste = None;
+                t.confirmando = false;
+                t.vista = false;
+            });
+        }
         Accion::Confirmar => {
             let modelo = TARJETA.with_borrow_mut(|t| elegido(t, &a.raiz));
-            guardar_modelo(ubicacion, modelo.id);
+            // El de mejor vista no es «el de siempre»: no se guarda como tal.
+            if modelo.id != GEMMA4_E2B.id {
+                guardar_modelo(ubicacion, modelo.id);
+            }
             if let Some(raiz) = ia_motor::raiz() {
                 DESCARGA.with_borrow_mut(|d| {
                     if d.is_none() {
@@ -1055,6 +1291,8 @@ pub(super) fn olvidar_para_pruebas() {
 pub(super) fn noticia_para_pruebas() -> Option<String> {
     TARJETA.with_borrow(|t| t.noticia.clone())
 }
+
+pub(super) mod recetas;
 
 #[cfg(test)]
 mod pruebas;

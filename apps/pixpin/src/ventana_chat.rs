@@ -70,7 +70,7 @@ pub(crate) mod sin_ventana {
         ubicacion: &Ubicacion,
         textos: &Catalogo,
     ) -> Result<std::sync::Arc<dyn pixpin_ia::motor::Motor>, String> {
-        super::asistente::motor_de_los_ajustes(ubicacion, textos)
+        super::asistente::motor_de_los_ajustes(ubicacion, textos, "", false)
     }
 }
 /// La descripcion de una foto: su `texto`, como en el movil (3-oct).
@@ -1386,6 +1386,33 @@ pub fn abrir(
                     } else if abierto.as_mut().is_some_and(|a| asistente::tocar_lista(a, l)) {
                         // La lista de `@` esta encima de las burbujas: el clic es suyo.
                         hay_que_pintar = true;
+                    } else if let Some(pedido) = abierto
+                        .as_ref()
+                        .and_then(|a| asistente::recetas::pedido_en(a, l))
+                    {
+                        // Un boton de receta: se manda su pedido como si se
+                        // hubiera escrito, y lo que hubiera en la caja se queda.
+                        if let Some(a) = abierto.as_mut() {
+                            let escrito = std::mem::replace(&mut a.borrador, pedido);
+                            match guardar_nota(ubicacion, a, &identidad) {
+                                Ok(()) => {
+                                    a.scroll = None;
+                                    if let Some(t) = asistente::al_enviar(ubicacion, a, textos) {
+                                        aviso = Some((t, std::time::Instant::now()));
+                                    }
+                                    if let Some(i) = elegida {
+                                        fichas[i].tocado = a.ficha.tocado;
+                                        fichas[i].resumen = a.ficha.resumen.clone();
+                                    }
+                                }
+                                Err(e) => tracing::warn!(?e, "no se pudo mandar la receta"),
+                            }
+                            a.borrador = escrito;
+                            let n = a.borrador.len();
+                            a.cursor.poner(&a.borrador, n, false);
+                            a.colocado.borrow_mut().ancho = 0;
+                        }
+                        hay_que_pintar = true;
                     } else if let Some((r, zona)) = abierto.as_ref().and_then(|a| {
                         a.zonas
                             .borrow()
@@ -1502,6 +1529,10 @@ pub fn abrir(
                                 }
                                 Zona::Ir(j) => ejecutar(Accion::Ir(j), a, &cx),
                                 Zona::Lecciones => ejecutar(Accion::Lecciones, a, &cx),
+                                Zona::ConfirmarIa(i, si) => {
+                                    asistente::contestar(a, i, si);
+                                    Efecto::Nada
+                                }
                                 Zona::CerrarRespuesta => {
                                     a.respondiendo = None;
                                     Efecto::Nada
@@ -2544,6 +2575,15 @@ pub fn abrir(
                         hay_que_pintar = true;
                         continue;
                     }
+                    // Un boton de receta del asistente: su menu.
+                    if let Some(entradas) = abierto
+                        .as_ref()
+                        .and_then(|a| asistente::recetas::menu_en(a, l, textos))
+                    {
+                        menu = Some(MenuAbierto::nuevo(l, entradas));
+                        hay_que_pintar = true;
+                        continue;
+                    }
                     // Sobre una burbuja, el menu del mensaje: el de mantener
                     // pulsado del movil, naciendo donde se pulso. Con varios
                     // elegidos manda la barra de arriba, no este menu.
@@ -3322,6 +3362,18 @@ pub fn abrir(
                     buscando = false;
                     busqueda.vaciar();
                     orden = filtrar(&fichas, &busqueda);
+                    hay_que_pintar = true;
+                }
+                // Editando una receta del asistente en la caja: Entrar guarda
+                // (no envia) y Escape la deja como estaba.
+                EventoOverlay::Tecla { vk, .. }
+                    if !buscando
+                        && (vk == VK_ENTRAR || vk == VK_ESCAPE)
+                        && abierto.as_ref().is_some_and(asistente::recetas::editando) =>
+                {
+                    if let Some(a) = abierto.as_mut() {
+                        asistente::recetas::tecla(ubicacion, &identidad, a, vk);
+                    }
                     hay_que_pintar = true;
                 }
                 // La lista de `@` (el asistente, los lienzos del chat) se
@@ -5927,6 +5979,18 @@ fn pintar_historial(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto) {
         let (_, alto_hora) = p.medir_texto(&hora, HORA_TAM * e);
         let y_hora =
             burbuja.abajo() as f32 - (h::RELLENO_Y - h::HORA_INVADE_Y) as f32 * e - alto_hora;
+        // La tarjeta de confirmar del asistente, pegada encima de la hora.
+        if let Some((pregunta, alto_c)) = &piezas.confirmar {
+            let caja = RectF {
+                x: dentro.x as f32,
+                y: y_hora - 4.0 * e - alto_c,
+                ancho: dentro.ancho as f32,
+                alto: *alto_c,
+            };
+            for (r, si) in asistente::pintar_confirmacion(p, caja, pregunta, tema, textos, e) {
+                a.zonas.borrow_mut().push((r, Zona::ConfirmarIa(i, si)));
+            }
+        }
         let mut x = burbuja.x as f32 + h::RELLENO_X as f32 * e;
         // Lo del buzon: la franja roja a la izquierda dice «esto es temporal»
         // antes de leer nada, y el pie dice cuando llego y cuando se va, la
@@ -6788,6 +6852,7 @@ fn medir_mensaje(
             recibido: None,
             enlace: None,
             buzon: None,
+            confirmar: None,
             ia: None,
         };
         return (entrada, piezas);
@@ -6908,6 +6973,15 @@ fn medir_mensaje(
         };
         sumar(&mut ancho, &mut alto, w, alto_texto);
     }
+    // La tarjeta de confirmar del asistente («¿Borro…?» con «Sí»/«No»),
+    // debajo del texto de su respuesta mientras espera.
+    let confirmar = asistente::pregunta_pendiente(a, indice).map(|pregunta| {
+        let w = (asistente::CONFIRMAR_ANCHO_MIN * e).min(ancho_max);
+        let ancho_tarjeta = ancho.max(w).min(ancho_max);
+        let alto_c = asistente::alto_confirmacion(p, &pregunta, ancho_tarjeta, e);
+        sumar(&mut ancho, &mut alto, ancho_tarjeta, alto_c);
+        (pregunta, alto_c)
+    });
     // El renglon de abajo: la chapa, la etiqueta, la chincheta y la hora.
     let hora = pixpin_ui::chat::etiqueta_hora(pixpin_shell::entorno::a_local(m.cuando), ahora);
     let (ancho_hora, alto_hora) = p.medir_texto(&hora, HORA_TAM * e);
@@ -6967,6 +7041,7 @@ fn medir_mensaje(
         recibido,
         enlace,
         buzon,
+        confirmar,
         ia,
     };
     (entrada, piezas)
@@ -13177,6 +13252,9 @@ enum Zona {
     Renombrar(usize),
     /// La franja del aviso de lecciones: abre las de este proyecto.
     Lecciones,
+    /// «Sí» (`true`) o «No» en la tarjeta de confirmar del asistente dentro
+    /// de la burbuja de ese mensaje.
+    ConfirmarIa(usize, bool),
     /// «Penso 12 s» de una respuesta del asistente: pliega y despliega lo
     /// que penso (`pensado`).
     Pensado(usize),
@@ -13257,6 +13335,9 @@ struct Piezas {
     /// El pie del buzon: «24 sep → 1 oct», las dos fechas por separado
     /// porque la de irse va en rojo.
     buzon: Option<(String, String)>,
+    /// La pregunta de confirmar del asistente que espera «Sí»/«No» en esta
+    /// burbuja, y lo alta que es su tarjeta (`asistente::pintar_confirmacion`).
+    confirmar: Option<(String, f32)>,
     /// Lo que penso el asistente y su peticion mejorada, encima del texto.
     ia: Option<pensado::Pieza>,
 }
@@ -14206,6 +14287,7 @@ fn pintar_hora_a_mano(p: &Pintor, c: &Pinta, a: &Abierto, marco: Rect) {
 fn pintar_redaccion(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto, alto_texto: u32) {
     let (tema, escala, textos) = (c.tema, c.escala, c.textos);
     let e = escala as f32 / 100.0;
+    asistente::recetas::olvidar_botones();
     let isla = d.isla(alto_texto, escala);
     if isla.ancho == 0 || isla.alto == 0 {
         return;
@@ -14391,6 +14473,11 @@ fn pintar_redaccion(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto, alto_te
             (cerrar.x as f32 - x).max(0.0),
             tema.texto,
         );
+    }
+    // Las recetas del asistente (13-oct-2026): la fila de botones encima de
+    // la caja del chat «Asistente», si ninguna otra barra ocupa el sitio.
+    else if asistente::recetas::hay_barra(a) {
+        asistente::recetas::pintar(p, d.encima_de_la_isla(alto_texto, escala), c, a);
     }
 
     // La isla: radio 22 y un filete que la despega del papel.
@@ -14791,6 +14878,10 @@ enum Accion {
     Lecciones,
     /// «Hacer leccion» de ese mensaje: la ficha empieza con su texto.
     HacerLeccion(usize),
+    /// «Guardar como receta» ese mensaje del asistente (o su pregunta).
+    GuardarReceta(usize),
+    /// Lo del menu de un boton de receta (por su id).
+    Receta(String, asistente::recetas::QueReceta),
 }
 
 /// Una linea de menu: icono, nombre, su tecla y lo que hace. Borrar va en
@@ -15829,6 +15920,15 @@ fn menu_de_mensaje(a: &Abierto, i: usize, textos: &Catalogo) -> Vec<EntradaMenu>
         ));
     }
 
+    // Lo que se pide a menudo, como boton encima de la caja del asistente.
+    if asistente::recetas::se_puede_guardar(a, i) {
+        v.push(entrada(
+            Some(&mi::BOOKMARK_BORDER),
+            textos.t("asistente-receta-guardar"),
+            Accion::GuardarReceta(i),
+        ));
+    }
+
     // ── Mandarlo a otro sitio y acordarse ──
     v.push(
         entrada(
@@ -16544,6 +16644,8 @@ fn ejecutar(accion: Accion, a: &mut Abierto, cx: &Contexto) -> Efecto {
             crate::lecciones::lista(cx.ubicacion.clone(), cx.idioma);
             Efecto::Nada
         }
+        Accion::GuardarReceta(i) => asistente::recetas::guardar_desde(cx.ubicacion, cx.identidad, a, i, cx.textos),
+        Accion::Receta(id, que) => asistente::recetas::cambiar(cx.ubicacion, cx.identidad, a, &id, que, cx.textos),
         Accion::HacerLeccion(i) => {
             // Lo que paso suele estar ya en el chat: la leccion sale con su
             // texto (o lo que se dijo, o su nombre) y enlazada a el.
@@ -17181,6 +17283,7 @@ fn disponer(marco: Rect, escala: u32, ancho_lista: u32, abierto: Option<&Abierto
         // no se este ni buscando ni contestando.
         (a.respondiendo.is_some()
             || a.renombrando_mensaje.is_some()
+            || asistente::recetas::hay_barra(a)
             || resultados_de_la_busqueda(a).is_some()
             || crate::audio::hay_algo())
             && a.info.is_none()
