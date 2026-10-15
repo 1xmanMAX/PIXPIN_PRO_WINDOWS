@@ -992,7 +992,10 @@ fn abrir_en_modo(
             let (x0, y0, x1, y1) = efectiva.ventana(ancho_px, alto_px);
             // «Guarda esto como figura»: lo elegido, para el asistente.
             crate::asistente::al_lienzo::contestar_lo_elegido(&escena, gesto.seleccion.ids());
-            if crate::asistente::al_lienzo::atender_en_editor(&mut escena, ((x0 + x1) / 2.0, (y0 + y1) / 2.0)) {
+            // Lo que dibuja, edita o resume el asistente (`pixpin_ia::edicion`):
+            // con lo que se ve, lo elegido y el almacen de imagenes (pegar).
+            let elegidos = gesto.seleccion.ids().to_vec();
+            if crate::asistente::al_lienzo::atender_en_editor_con(&mut escena, (x0, y0, x1, y1), &elegidos, &mut imagenes) {
                 todo_sucio = true;
                 contenido_sucio = true;
                 interfaz_sucia = true;

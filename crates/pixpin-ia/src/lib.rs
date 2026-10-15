@@ -57,6 +57,11 @@
 //!   «mañana a las 10») y las consultas («¿que tengo pendiente?»).
 //! - [`documentos`]: `buscar_en_mis_cosas`, un indice BM25 local de los
 //!   documentos, notas y chats del usuario, con el origen de cada trozo.
+//! - [`edicion`] (14-oct): editar lo que ya hay en el lienzo (elegir por
+//!   descripcion, recortar y pegar fotos, lapiz/grafito/resaltador, rectas y
+//!   circulos exactos, cortar y extender lineas) con las operaciones del
+//!   motor del lienzo, un paso de deshacer por llamada, y el resumen del
+//!   lienzo destino para el modelo.
 //!
 //! ## Puntos de enganche para la UI (otros agentes)
 //!
@@ -77,6 +82,7 @@ pub mod cronograma;
 pub mod descarga;
 pub mod fechas;
 pub mod documentos;
+pub mod edicion;
 pub mod ecuacion;
 pub mod figuras;
 pub mod funciones;
