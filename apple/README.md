@@ -141,17 +141,36 @@ pánico de Rust llega a Swift como error en vez de cerrar la app.
   - [x] Ajustes (⌘,; `app/Sources/PixPinKit/Ajustes/`): tema, atajo de capturar (se graba y
         se vuelve a registrar en Carbon; UserDefaults), dias de la galeria y sincronizacion
         sola (en `pixpinmax.toml`, como Windows), carpeta de datos y «Abrir al iniciar sesion»
-        (`SMAppService.mainApp`). Falta que las capturas caduquen solas en Mac
-        (`caducidad_capturas.rs`).
+        (`SMAppService.mainApp`).
   - [x] Lecciones (`Lecciones/`): lista por paginas, buscar, etiquetas (propuestas ✨),
         repaso y borrar, guardadas como en Windows y Android (`.leccion` + mensaje `ARCHIVO`).
   - [x] Asistente (`Asistente/`): Foundation Models con las herramientas del puente si hay
         macOS 26 (compila fuera con el SDK de macOS 15), si no un `llama-server` propio en
-        127.0.0.1:8080, si no «no hay motor». Sin streaming; el Llavero aun no.
+        127.0.0.1:8080, si no «no hay motor». Con el `llama-server`, **en vivo**: Rust lee el
+        SSE y manda el texto a Swift por un `OyenteIa` (interfaz de UniFFI implementado en
+        Swift) en tandas de ≤60 ms, y «Parar» lo corta (`CorteIa`). Las claves de la nube, en
+        el **Llavero** (`LlaveroDelSistema`: `SecItem*`, servicio `PixPinMax.asistente`),
+        instalado al arrancar por el `LlaveroApp` del puente (`src/llavero.rs`).
   - [x] Galería de capturas (rejilla perezosa, caducidad, conservar, 7 días más, borrar con
         deshacer, Vista Rápida), Timeline (días → momentos), Tareas de todos los chats y Buscar
         en todo (⌘F en Proyectos, espera de 200 ms y cancela la anterior).
-  - [ ] Barrer las capturas caducadas a la Papelera del Mac (`FileManager.trashItem`).
+  - [x] Barrer las capturas caducadas a la Papelera del Mac (`Caducidad/`): al arrancar y
+        luego como mucho cada hora con un solo `NSBackgroundActivityScheduler` tolerante; lo
+        que se va lo decide Rust con las reglas de Windows (`Nucleo::capturas_caducadas`),
+        Swift lo mueve con `FileManager.trashItem` y Rust olvida lo que ya no esta
+        (`olvidar_capturas_ausentes`). El plazo es el de `pixpinmax.toml`.
+  - [x] Buscar → «Abrir en Proyectos» abre el chat en la pagina del mensaje (centrada en el,
+        `Almacen.abrir(chat:en:)`), lo marca y se desplaza hasta el; lo de antes y lo de
+        despues se pide al subir o bajar.
+  - [x] Proyecto de Xcode con extensiones (`apple/xcode/project.yml`, XcodeGen):
+        App Intents en la app (Capturar zona, Nueva nota en proyecto, Buscar en PixPin,
+        Sincronizar ahora; frases en español para Siri, Atajos y Spotlight), extension de
+        **Compartir** (mandar a un proyecto, con su caja de arena y la excepcion para
+        `~/Library/Application Support/PixPinMax/`) y **vista previa de Quick Look** de
+        `.excalidraw` y `.pixpin2d` (el mismo lector y pintor del lienzo). La CI la monta con
+        `herramientas/app.sh xcode` (artefacto «PixPin-mac-extensiones»); `app.sh spm` sigue
+        siendo la app sola de SwiftPM (artefacto «PixPin-mac»). Fuera de `apple/app` para
+        que el paquete local no contenga al proyecto.
 - [ ] `por-adaptar/` → `nucleo/`:
   - [x] `pixpin-codec` (decodificar con `image`; WIC, vista reducida y portapapeles tras
         `#[cfg(windows)]`; ImageIO y `NSPasteboard` desde Swift).
@@ -172,7 +191,7 @@ pánico de Rust llega a Swift como error en vez de cerrar la app.
       (`instalar_llavero`; sin él no se guarda nada, nunca en claro). Las herramientas en JSON
       para cualquier motor (Foundation Models desde Swift): `pixpin_ia::puente`.
   - [ ] Swift: bajar modelos y motor con URLSession (luego `descarga::verificar`), HTTPS de la
-        nube con URLSession, el `Llavero` con Keychain, y Foundation Models con
+        nube con URLSession (el `Llavero` con Keychain ya esta), y Foundation Models con
         `puente::catalogo_para`/`puente::llamar` (llama.cpp con Metal de respaldo; en iPad e
         iPhone enlazado, sin `llama-server`).
   - [ ] Catálogo del motor para Mac: `modelos::LLAMA_CPP` y `descarga` siguen siendo el zip de

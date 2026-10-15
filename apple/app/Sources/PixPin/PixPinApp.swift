@@ -95,6 +95,8 @@ final class EstadoApp: ObservableObject {
     let atajoCaptura: AtajoDeCaptura
     /// Lo de Ajustes (`pixpinmax.toml`, tema, abrir al iniciar sesion).
     let ajustes: ModeloAjustes?
+    /// Lleva las capturas caducadas a la Papelera.
+    private var barrendero: BarrenderoCapturas?
 
     init() {
         let capturador = Capturador()
@@ -151,6 +153,14 @@ final class EstadoApp: ObservableObject {
             ajustes.tema.aplicar()
             Task { await ajustes.cargar() }
         }
+        // Las capturas caducadas, a la Papelera (al arrancar y cada hora).
+        barrendero = almacen.map { BarrenderoCapturas(nucleo: $0.nucleo) }
+        barrendero?.arrancar()
+        // Las claves del asistente, en el Llavero del Mac.
+        LlaveroDelSistema.instalar()
+        // Lo que piden Atajos, Siri y Spotlight (App Intents).
+        AccionesApp.compartidas.registrar(almacen: almacen, sincro: sincro,
+                                          capturar: { capturador.capturar() })
     }
 
     /// Empieza a elegir que grabar o, si ya graba, para.

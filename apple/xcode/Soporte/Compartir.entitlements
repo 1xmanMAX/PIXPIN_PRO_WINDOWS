@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Las extensiones de macOS van siempre en su caja de arena. -->
+	<key>com.apple.security.app-sandbox</key><true/>
+	<!-- Leer lo que se comparte. -->
+	<key>com.apple.security.files.user-selected.read-only</key><true/>
+	<!-- La carpeta de datos de PixPin (fuera de la App Store, plan §7.1). -->
+	<key>com.apple.security.temporary-exception.files.home-relative-path.read-write</key>
+	<array>
+		<string>/Library/Application Support/PixPinMax/</string>
+	</array>
+</dict>
+</plist>

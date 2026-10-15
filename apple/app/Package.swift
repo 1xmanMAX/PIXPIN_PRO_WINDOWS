@@ -7,7 +7,9 @@
 //   almacen, vistas). Las pruebas (`swift test`) corren en la CI de macOS.
 // - `PixPin`: solo el punto de entrada (`@main`).
 //
-// La `.app` la monta `herramientas/app.sh` (Info.plist, firma ad hoc).
+// La `.app` la monta `herramientas/app.sh` (Info.plist, firma ad hoc): con
+// SwiftPM (solo la app) o con Xcode (`apple/xcode/`: la app con sus
+// extensiones, que SwiftPM no sabe compilar).
 import PackageDescription
 
 let package = Package(
@@ -15,6 +17,9 @@ let package = Package(
     platforms: [.macOS(.v15)],
     products: [
         .executable(name: "PixPin", targets: ["PixPin"]),
+        // Para el proyecto de Xcode (`apple/xcode/project.yml`), que monta la
+        // app con sus extensiones: el mismo PixPinKit, sin copiar nada.
+        .library(name: "PixPinKit", targets: ["PixPinKit"]),
     ],
     dependencies: [
         .package(path: "../PixPinCore"),

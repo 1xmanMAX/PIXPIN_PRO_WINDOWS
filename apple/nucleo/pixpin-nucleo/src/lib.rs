@@ -26,6 +26,11 @@
 //! - La galeria de capturas, el timeline y la busqueda tambien van por
 //!   paginas ([`galeria`], [`timeline`], [`buscar`]); las tareas de todos
 //!   los chats saltan sin leer las lineas que no son listas ([`tareas`]).
+//! - Lo que va de Rust a Swift mientras pasa (el texto del asistente en
+//!   vivo) cruza por un interfaz que implementa Swift ([`OyenteIa`]) en
+//!   **tandas**, no palabra a palabra. Las claves de la nube viven en el
+//!   Llavero del Mac por otro interfaz de Swift ([`LlaveroApp`], ver
+//!   [`llavero`]).
 //! - Lo que tarda (sincronizar, leer un lienzo grande) es **bloqueante y sin
 //!   hilos propios**: Swift lo llama desde una `Task` con prioridad
 //!   `.utility`, y el sistema lo manda a los nucleos de eficiencia. Rust no
@@ -52,6 +57,7 @@ pub mod editor;
 pub mod galeria;
 pub mod lecciones;
 pub mod lienzo;
+pub mod llavero;
 pub mod sincro;
 pub mod tareas;
 pub mod timeline;
@@ -61,16 +67,17 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 pub use ajustes::AjustesMac;
-pub use asistente::{HerramientaUsada, MensajeIa, RespuestaIa};
+pub use asistente::{CorteIa, HerramientaUsada, MensajeIa, OyenteIa, RespuestaIa};
 pub use buscar::{Busqueda, ClaseDeResultado, PaginaBusqueda, ResultadoBusqueda};
 pub use chats::{FichaChat, MensajeChat, PaginaMensajes};
 pub use editor::{EditorLienzo, FasePuntero};
-pub use galeria::{CapturaBorrada, CapturaGaleria, PaginaGaleria};
+pub use galeria::{CapturaBorrada, CapturaCaducada, CapturaGaleria, PaginaGaleria};
 pub use lecciones::{
     EtiquetaContada, FichaLeccion, FiltroLecciones, LeccionEditada, NotaRepaso, PaginaLecciones,
     PropuestaLeccion,
 };
 pub use lienzo::{CajaLienzo, ImagenDelLienzo, Lienzo, LienzoPlano};
+pub use llavero::LlaveroApp;
 pub use sincro::{AnuncioBonjour, Atendido, Escucha, ParTxt, ResumenSincro};
 pub use tareas::{ListaTareas, Tarea};
 pub use timeline::{DiaTimeline, MomentoTimeline, PaginaDias, PaginaMomentos};

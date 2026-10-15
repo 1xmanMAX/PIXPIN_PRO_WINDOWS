@@ -147,7 +147,9 @@ impl Lienzo {
         Ok(Arc::new(Lienzo::de_lienzo(&l)))
     }
 
-    /// Un lienzo desde un fichero `.excalidraw`.
+    /// Un lienzo desde un fichero `.excalidraw` o `.pixpin2d` (el dibujo
+    /// propio de PixPin, `pixpin_motor2d::formato`; se mira la extension).
+    /// Lo usa tambien la vista previa de Quick Look.
     #[uniffi::constructor]
     pub fn de_fichero(ruta: String) -> Result<Arc<Lienzo>, ErrorNucleo> {
         leer_fichero(Path::new(&ruta))
@@ -210,7 +212,28 @@ fn leer_fichero(ruta: &Path) -> Result<Arc<Lienzo>, ErrorNucleo> {
         }
         Err(e) => return Err(e.into()),
     };
+    let es_pixpin2d = ruta
+        .extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|e| e.eq_ignore_ascii_case(pixpin_motor2d::formato::EXTENSION));
+    if es_pixpin2d {
+        return Lienzo::de_pixpin2d(&texto);
+    }
     Lienzo::de_json(texto)
+}
+
+impl Lienzo {
+    /// Un `.pixpin2d` (el JSON de la `Escena`, como `formato::cargar`). No
+    /// lleva fotos aparte.
+    fn de_pixpin2d(texto: &str) -> Result<Arc<Lienzo>, ErrorNucleo> {
+        let escena: Escena = serde_json::from_str(texto).map_err(|e| ErrorNucleo::Lienzo {
+            detalle: e.to_string(),
+        })?;
+        Ok(Arc::new(Lienzo {
+            escena,
+            imagenes: Vec::new(),
+        }))
+    }
 }
 
 #[uniffi::export]
@@ -784,5 +807,31 @@ mod pruebas {
         let mut plano = empaquetar(&[], ROJO, None);
         plano.datos[0..4].copy_from_slice(&2f32.to_le_bytes());
         assert!(decodificar(&plano).is_err());
+    }
+
+    #[test]
+    fn un_pixpin2d_se_lee_por_su_extension() {
+        let dir = std::env::temp_dir().join(format!("pixpin-nucleo-p2d-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let l = excalidraw::leer(
+            r#"{"elements":[{"id":"x","type":"rectangle","x":0,"y":0,"width":80,"height":40}]}"#,
+        )
+        .unwrap();
+        let escena = excalidraw::a_escena(&l);
+        let ruta = dir.join("dibujo.pixpin2d");
+        pixpin_motor2d::formato::guardar(&ruta, &escena).unwrap();
+        let leido = Lienzo::de_fichero(ruta.display().to_string()).unwrap();
+        assert_eq!(leido.cuantos_elementos(), 1);
+        assert!(leido.imagenes().is_empty());
+        assert!(decodificar(&leido.plano()).is_ok());
+        // Caso negativo: un .pixpin2d roto da error de lienzo, sin panico.
+        let roto = dir.join("roto.pixpin2d");
+        std::fs::write(&roto, b"{roto").unwrap();
+        assert!(matches!(
+            Lienzo::de_fichero(roto.display().to_string()),
+            Err(ErrorNucleo::Lienzo { .. })
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

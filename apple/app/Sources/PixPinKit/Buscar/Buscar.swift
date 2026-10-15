@@ -9,7 +9,8 @@
 // - los resultados llegan por paginas (`tamPagina`), la siguiente al llegar
 //   al final de la lista;
 // - un mensaje encontrado se ensena con su pagina del chat alrededor (solo
-//   esa pagina), ya desplazada hasta el.
+//   esa pagina), ya desplazada hasta el; «Abrir en Proyectos» abre el chat
+//   en esa misma pagina (`SaltoAMensaje`), no en la ultima.
 
 import AppKit
 import Foundation
@@ -23,6 +24,9 @@ import SwiftUI
 public final class PeticionDeChat: ObservableObject {
     public static let compartida = PeticionDeChat()
     @Published public var chat: String?
+    /// El mensaje al que saltar dentro del chat (lo toma la vista del chat al
+    /// aparecer; ver `Chat/SaltoAMensaje.swift`). Se pone ANTES que `chat`.
+    @Published public var salto: SaltoAMensaje?
 }
 
 @MainActor
@@ -254,6 +258,11 @@ struct DetalleResultado: View {
                 Spacer()
                 if let chat = r.chat {
                     Button("Abrir en Proyectos") {
+                        // Un mensaje o una tarea: el chat se abre en su pagina,
+                        // desplazado hasta el y marcado.
+                        PeticionDeChat.compartida.salto = r.posicion.map {
+                            SaltoAMensaje(chat: chat, mensaje: r.mensaje, posicion: $0)
+                        }
                         PeticionDeChat.compartida.chat = chat
                         abrirVentana(id: IdVentana.proyectos)
                         NSApp.activate()

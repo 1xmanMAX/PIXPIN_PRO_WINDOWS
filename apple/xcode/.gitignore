@@ -1,0 +1,3 @@
+# Lo genera XcodeGen (herramientas/app.sh xcode) y lo compila xcodebuild.
+/PixPin.xcodeproj/
+/build/

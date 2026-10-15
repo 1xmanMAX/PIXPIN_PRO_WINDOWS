@@ -2,7 +2,8 @@ name: Apple
 
 # PixPin para Mac (apple/): compila el nucleo de Rust como xcframework,
 # compila y prueba la app de Swift en un Mac de verdad y deja la app lista
-# para descargar (Actions > esta ejecucion > Artifacts > PixPin-mac).
+# para descargar (Actions > esta ejecucion > Artifacts > PixPin-mac; con
+# sus extensiones, PixPin-mac-extensiones).
 on:
   push:
     branches: [main, "ccr-**"]
@@ -58,12 +59,33 @@ jobs:
       - name: Pruebas de la app (swift test)
         working-directory: apple/app
         run: swift test
-      - name: Montar PixPin.app
-        run: herramientas/app.sh
+      # La app de siempre (SwiftPM): es el artefacto «PixPin-mac» y se sube
+      # antes del montaje con Xcode, para que este aunque aquel falle.
+      - name: Montar PixPin.app (SwiftPM)
+        run: herramientas/app.sh spm
       - name: Subir la app
         uses: actions/upload-artifact@v4
         with:
           name: PixPin-mac
           path: apple/app/dist/PixPin-mac.zip
+          if-no-files-found: error
+          retention-days: 30
+      # La app con sus extensiones (App Intents, Compartir, Quick Look): las
+      # extensiones solo las sabe hacer Xcode, con el proyecto que genera
+      # XcodeGen desde apple/xcode/project.yml. Tiene que pasar tambien.
+      - name: XcodeGen
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: "1"
+          HOMEBREW_NO_INSTALL_CLEANUP: "1"
+        run: |
+          brew install xcodegen
+          xcodegen version
+      - name: Montar PixPin.app con extensiones (Xcode)
+        run: herramientas/app.sh xcode
+      - name: Subir la app con extensiones
+        uses: actions/upload-artifact@v4
+        with:
+          name: PixPin-mac-extensiones
+          path: apple/app/dist-xcode/PixPin-mac.zip
           if-no-files-found: error
           retention-days: 30

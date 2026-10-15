@@ -11,12 +11,21 @@
 //! 2. **Un `llama-server` del usuario** escuchando en `127.0.0.1` (por
 //!    omision el 8080, [`PUERTO_LLAMA`]): [`llama_local_activo`] lo mira y
 //!    [`llama_local_preguntar`] hace un turno entero con el bucle de
-//!    `pixpin_ia::agente` y el cliente HTTP de `pixpin_ia::servidor`. Sin
-//!    streaming: la respuesta llega entera.
+//!    `pixpin_ia::agente` y el cliente HTTP de `pixpin_ia::servidor`. La
+//!    respuesta llega entera, o **en vivo** con
+//!    [`llama_local_preguntar_en_vivo`]: el texto va llegando a Swift por un
+//!    [`OyenteIa`] (un interfaz que implementa Swift) en tandas de como
+//!    mucho [`CADA_TANDA_MS`] (no una llamada por palabra: §4bis.1), y se
+//!    corta con [`CorteIa::cancelar`] (se cierra el enchufe y
+//!    `llama-server` deja de generar).
 //! 3. Si no hay ninguno, Swift dice que no hay motor.
 //!
 //! Todo es bloqueante y sin hilos propios: Swift lo llama desde una `Task`
 //! con prioridad `.utility`.
+
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::{Duration, Instant};
 
 use pixpin_ia::agente::{self, Ejecutor};
 use pixpin_ia::herramientas::Llamada;
@@ -56,6 +65,77 @@ pub struct RespuestaIa {
     /// Lo dibujado en el turno, como un `.excalidraw` entero (el formato
     /// que lee el lienzo), o nada si no se dibujo.
     pub lienzo: Option<String>,
+}
+
+/// Cada cuanto, como mucho, cruza el texto nuevo a Swift mientras llega.
+/// Unas 16 tandas por segundo: se ve fluido y el puente casi no se nota.
+pub const CADA_TANDA_MS: u64 = 60;
+
+/// **Quien escucha la respuesta en vivo**: lo implementa Swift. Se le
+/// llama desde el hilo del turno (no el principal): Swift pasa lo recibido
+/// al hilo de la interfaz.
+#[uniffi::export(foreign)]
+pub trait OyenteIa: Send + Sync {
+    /// Texto nuevo de la respuesta (una tanda; se pega detras de lo de antes).
+    fn texto(&self, trozo: String);
+    /// Se uso una herramienta (con su resultado).
+    fn herramienta(&self, usada: HerramientaUsada);
+}
+
+/// **Para cortar un turno en vivo** desde otro hilo (el boton «Parar»).
+#[derive(Debug, Default, uniffi::Object)]
+pub struct CorteIa {
+    cortado: AtomicBool,
+}
+
+#[uniffi::export]
+impl CorteIa {
+    #[uniffi::constructor]
+    pub fn nuevo() -> Arc<CorteIa> {
+        Arc::new(CorteIa::default())
+    }
+
+    /// Pide parar: el turno acaba en el siguiente trozo que llegue, con lo
+    /// que hubiera hasta ahi.
+    pub fn cancelar(&self) {
+        self.cortado.store(true, Ordering::Relaxed);
+    }
+
+    pub fn cortado(&self) -> bool {
+        self.cortado.load(Ordering::Relaxed)
+    }
+}
+
+/// Junta el texto que llega y lo suelta en tandas.
+struct Tanda {
+    pendiente: String,
+    ultima: Instant,
+    cada: Duration,
+}
+
+impl Tanda {
+    fn nueva(cada: Duration) -> Tanda {
+        Tanda {
+            pendiente: String::new(),
+            ultima: Instant::now(),
+            cada,
+        }
+    }
+
+    /// Mete texto; devuelve la tanda si ya toca soltarla.
+    fn meter(&mut self, texto: &str) -> Option<String> {
+        self.pendiente.push_str(texto);
+        if self.pendiente.is_empty() || self.ultima.elapsed() < self.cada {
+            return None;
+        }
+        self.soltar()
+    }
+
+    /// Lo que quede, toque o no.
+    fn soltar(&mut self) -> Option<String> {
+        self.ultima = Instant::now();
+        (!self.pendiente.is_empty()).then(|| std::mem::take(&mut self.pendiente))
+    }
 }
 
 /// Las instrucciones de sistema del asistente (las mismas que en Windows).
@@ -131,11 +211,99 @@ pub fn llama_local_preguntar(
     turno_con_motor(&motor, historial, &pedido)
 }
 
+/// **Un turno en vivo con el `llama-server` del usuario**: como
+/// [`llama_local_preguntar`], pero el texto va llegando a `oyente` mientras
+/// el modelo escribe (en tandas) y `corte` lo para. Devuelve la respuesta
+/// entera al final (cortada, si se paro: con lo que hubiera).
+#[uniffi::export]
+pub fn llama_local_preguntar_en_vivo(
+    puerto: u16,
+    historial: Vec<MensajeIa>,
+    pedido: String,
+    oyente: Arc<dyn OyenteIa>,
+    corte: Arc<CorteIa>,
+) -> Result<RespuestaIa, ErrorNucleo> {
+    let pedido = pedido.trim().to_string();
+    if pedido.is_empty() {
+        return Err(ErrorNucleo::Argumento {
+            detalle: "el pedido esta vacio".into(),
+        });
+    }
+    let motor = LlamaDelUsuario { puerto };
+    turno_en_vivo(
+        &motor,
+        historial,
+        &pedido,
+        oyente.as_ref(),
+        &corte,
+        Duration::from_millis(CADA_TANDA_MS),
+    )
+}
+
+/// El turno en vivo con cualquier motor (las pruebas usan uno guionado).
+pub(crate) fn turno_en_vivo(
+    motor: &dyn Motor,
+    historial: Vec<MensajeIa>,
+    pedido: &str,
+    oyente: &dyn OyenteIa,
+    corte: &CorteIa,
+    cada: Duration,
+) -> Result<RespuestaIa, ErrorNucleo> {
+    if corte.cortado() {
+        return Ok(RespuestaIa {
+            texto: String::new(),
+            herramientas: Vec::new(),
+            lienzo: None,
+        });
+    }
+    let mut tanda = Tanda::nueva(cada);
+    let r = turno_con_eventos(motor, historial, pedido, &mut |e| {
+        match e {
+            Evento::Texto(t) => {
+                if let Some(t) = tanda.meter(t) {
+                    oyente.texto(t);
+                }
+            }
+            Evento::Resultado { nombre, ok, texto } => {
+                // Lo escrito antes de la herramienta va primero.
+                if let Some(t) = tanda.soltar() {
+                    oyente.texto(t);
+                }
+                oyente.herramienta(HerramientaUsada {
+                    nombre: nombre.clone(),
+                    ok: *ok,
+                    resumen: texto.clone(),
+                });
+            }
+            _ => {}
+        }
+        if corte.cortado() {
+            Seguir::Parar
+        } else {
+            Seguir::Si
+        }
+    });
+    if let Some(t) = tanda.soltar() {
+        oyente.texto(t);
+    }
+    r
+}
+
 /// El turno con cualquier motor (las pruebas usan uno guionado).
 pub(crate) fn turno_con_motor(
     motor: &dyn Motor,
     historial: Vec<MensajeIa>,
     pedido: &str,
+) -> Result<RespuestaIa, ErrorNucleo> {
+    turno_con_eventos(motor, historial, pedido, &mut |_| Seguir::Si)
+}
+
+/// El turno, avisando de cada evento a `al_evento` (que puede parar).
+fn turno_con_eventos(
+    motor: &dyn Motor,
+    historial: Vec<MensajeIa>,
+    pedido: &str,
+    al_evento_fuera: &mut dyn FnMut(&Evento) -> Seguir,
 ) -> Result<RespuestaIa, ErrorNucleo> {
     let mut mensajes = Vec::with_capacity(historial.len() + 2);
     mensajes.push(Mensaje::sistema(agente::instrucciones()));
@@ -155,6 +323,7 @@ pub(crate) fn turno_con_motor(
     let mut ejecutor = EjecutorMac::default();
     let mut usadas: Vec<HerramientaUsada> = Vec::new();
     let mut al_evento = |e: Evento| {
+        let seguir = al_evento_fuera(&e);
         if let Evento::Resultado { nombre, ok, texto } = e {
             usadas.push(HerramientaUsada {
                 nombre,
@@ -162,7 +331,7 @@ pub(crate) fn turno_con_motor(
                 resumen: texto,
             });
         }
-        Seguir::Si
+        seguir
     };
     let fin = agente::turno(
         motor,
@@ -317,6 +486,173 @@ mod pruebas {
         // El historial llego al motor: sistema + 2 + el pedido.
         let recibido = motor.recibido.lock().unwrap();
         assert!(recibido[0].mensajes.len() >= 4);
+    }
+
+    /// Lo que oye Swift, apuntado.
+    #[derive(Default)]
+    struct Apunta {
+        tandas: std::sync::Mutex<Vec<String>>,
+        herramientas: std::sync::Mutex<Vec<HerramientaUsada>>,
+        /// Si se pone, corta al llegar la primera tanda.
+        cortar: Option<Arc<CorteIa>>,
+    }
+
+    impl OyenteIa for Apunta {
+        fn texto(&self, trozo: String) {
+            self.tandas.lock().unwrap().push(trozo);
+            if let Some(c) = &self.cortar {
+                c.cancelar();
+            }
+        }
+        fn herramienta(&self, usada: HerramientaUsada) {
+            self.herramientas.lock().unwrap().push(usada);
+        }
+    }
+
+    #[test]
+    fn en_vivo_el_texto_llega_por_tandas_y_entero() {
+        let motor = MotorGuionado::nuevo(vec![
+            Respuesta::de_llamada(
+                herramientas::DIBUJAR,
+                r#"{"elementos":[{"tipo":"elipse","x":0,"y":0,"ancho":50,"alto":50,"color":"azul"}]}"#,
+            ),
+            Respuesta::de_texto("Listo, ahi tienes un circulo azul."),
+        ]);
+        let oyente = Apunta::default();
+        let corte = CorteIa::nuevo();
+        // Sin espera entre tandas: cada trozo cruza en cuanto llega.
+        let r = turno_en_vivo(
+            &motor,
+            Vec::new(),
+            "dibuja un circulo azul",
+            &oyente,
+            &corte,
+            Duration::ZERO,
+        )
+        .unwrap();
+        let tandas = oyente.tandas.lock().unwrap();
+        assert!(tandas.len() > 1, "llego en varias tandas: {tandas:?}");
+        assert_eq!(
+            tandas.concat(),
+            r.texto,
+            "lo de las tandas es la respuesta entera"
+        );
+        let usadas = oyente.herramientas.lock().unwrap();
+        assert_eq!(usadas.len(), 1);
+        assert!(usadas[0].ok);
+        assert!(r.lienzo.is_some());
+    }
+
+    #[test]
+    fn en_vivo_con_espera_larga_se_junta_en_una_tanda() {
+        let motor = MotorGuionado::nuevo(vec![Respuesta::de_texto("uno dos tres cuatro cinco")]);
+        let oyente = Apunta::default();
+        let r = turno_en_vivo(
+            &motor,
+            Vec::new(),
+            "cuenta",
+            &oyente,
+            &CorteIa::nuevo(),
+            Duration::from_secs(3600),
+        )
+        .unwrap();
+        // Caso negativo: no se cruza el puente por cada palabra.
+        assert_eq!(*oyente.tandas.lock().unwrap(), vec![r.texto.clone()]);
+    }
+
+    #[test]
+    fn en_vivo_se_corta_y_devuelve_lo_que_habia() {
+        let motor = MotorGuionado::nuevo(vec![Respuesta::de_texto(
+            "una respuesta muy larga que nadie quiere leer entera",
+        )]);
+        let corte = CorteIa::nuevo();
+        let oyente = Apunta {
+            cortar: Some(corte.clone()),
+            ..Default::default()
+        };
+        let r =
+            turno_en_vivo(&motor, Vec::new(), "habla", &oyente, &corte, Duration::ZERO).unwrap();
+        assert!(corte.cortado());
+        let oido = oyente.tandas.lock().unwrap().concat();
+        assert!(
+            oido.len() < "una respuesta muy larga que nadie quiere leer entera".len(),
+            "se paro antes del final: {oido:?}"
+        );
+        assert!(!r.texto.contains("entera"), "{:?}", r.texto);
+        // Ya cortado antes de empezar: ni se llama al motor.
+        let otro = MotorGuionado::nuevo(vec![Respuesta::de_texto("hola")]);
+        let r = turno_en_vivo(
+            &otro,
+            Vec::new(),
+            "hola",
+            &Apunta::default(),
+            &corte,
+            Duration::ZERO,
+        )
+        .unwrap();
+        assert!(r.texto.is_empty());
+        assert!(otro.recibido.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn en_vivo_con_un_llama_server_falso_que_habla_por_sse() {
+        use std::io::{Read, Write};
+        let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let puerto = l.local_addr().unwrap().port();
+        let servidor = std::thread::spawn(move || {
+            let (mut s, _) = l.accept().unwrap();
+            // Leer la peticion entera (cabecera y cuerpo): cerrar con bytes
+            // sin leer haria que el sistema cortara la conexion de golpe.
+            let mut buf = [0u8; 65536];
+            let mut leido = Vec::new();
+            loop {
+                if let Some(fin) = leido.windows(4).position(|w| w == b"\r\n\r\n") {
+                    let cabecera = String::from_utf8_lossy(&leido[..fin]).to_lowercase();
+                    let largo: usize = cabecera
+                        .lines()
+                        .find_map(|l| l.strip_prefix("content-length:"))
+                        .and_then(|v| v.trim().parse().ok())
+                        .unwrap_or(0);
+                    if leido.len() >= fin + 4 + largo {
+                        break;
+                    }
+                }
+                let n = s.read(&mut buf).unwrap();
+                if n == 0 {
+                    break;
+                }
+                leido.extend_from_slice(&buf[..n]);
+            }
+            let trozo = |t: &str| {
+                format!(
+                    "data: {{\"choices\":[{{\"index\":0,\"delta\":{{\"content\":\"{t}\"}}}}]}}\n\n"
+                )
+            };
+            let mut cuerpo = String::new();
+            cuerpo.push_str(&trozo("Hola"));
+            cuerpo.push_str(&trozo(", que tal"));
+            cuerpo.push_str(
+                "data: {\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n",
+            );
+            cuerpo.push_str("data: [DONE]\n\n");
+            let respuesta = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{cuerpo}",
+                cuerpo.len()
+            );
+            s.write_all(respuesta.as_bytes()).unwrap();
+        });
+        let oyente = Arc::new(Apunta::default());
+        let r = llama_local_preguntar_en_vivo(
+            puerto,
+            Vec::new(),
+            "saluda".into(),
+            oyente.clone(),
+            CorteIa::nuevo(),
+        )
+        .unwrap();
+        servidor.join().unwrap();
+        assert_eq!(r.texto, "Hola, que tal");
+        assert_eq!(oyente.tandas.lock().unwrap().concat(), "Hola, que tal");
     }
 
     #[test]

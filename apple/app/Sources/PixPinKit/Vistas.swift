@@ -100,6 +100,15 @@ public struct VistaChat: View {
     @State private var soltando = false
     /// El vigia de ⌘V mientras el chat esta en pantalla.
     @State private var vigiaPegar: Any?
+    /// Un salto a un mensaje que pide Buscar (`Chat/SaltoAMensaje.swift`).
+    @ObservedObject private var peticion = PeticionDeChat.compartida
+    /// El mensaje marcado tras un salto, y al que desplazarse.
+    @State private var destacado: String?
+    @State private var irA: String?
+    /// Sube al llegar la pagina del salto: entonces se desplaza.
+    @State private var saltos = 0
+    /// Se esta viendo una pagina del medio: no se baja solo al final.
+    @State private var enSalto = false
 
     public var body: some View {
         VStack(spacing: 0) {
@@ -111,14 +120,30 @@ public struct VistaChat: View {
                                 .task { await almacen.cargarAnteriores(chat: chat) }
                         }
                         ForEach(almacen.mensajes[chat] ?? [], id: \.id) { m in
-                            Burbuja(mensaje: m, chat: chat, almacen: almacen).id(m.id)
+                            Burbuja(mensaje: m, chat: chat, almacen: almacen)
+                                .overlay {
+                                    if m.id == destacado {
+                                        RoundedRectangle(cornerRadius: 10)
+                                            .strokeBorder(Color.accentColor, lineWidth: 2)
+                                    }
+                                }
+                                .id(m.id)
+                        }
+                        if almacen.quedanPosteriores(chat: chat) {
+                            ProgressView().frame(maxWidth: .infinity)
+                                .task { await almacen.cargarPosteriores(chat: chat) }
                         }
                     }
                     .padding()
                 }
                 .defaultScrollAnchor(.bottom)
                 .onChange(of: almacen.mensajes[chat]?.last?.id) { _, ultimo in
-                    if let ultimo { lector.scrollTo(ultimo, anchor: .bottom) }
+                    if let ultimo, !enSalto { lector.scrollTo(ultimo, anchor: .bottom) }
+                }
+                .onChange(of: saltos) { _, _ in
+                    guard let id = irA else { return }
+                    // Una vuelta despues: que la pila perezosa ya tenga la fila.
+                    DispatchQueue.main.async { lector.scrollTo(id, anchor: .center) }
                 }
             }
             Divider()
@@ -136,7 +161,12 @@ public struct VistaChat: View {
             }
             .padding(10)
         }
-        .task { await almacen.abrir(chat: chat) }
+        .task {
+            // Si se vino por un salto, la carga es la suya.
+            if atenderSalto() || enSalto { return }
+            await almacen.abrir(chat: chat)
+        }
+        .onReceive(peticion.$salto) { _ in _ = atenderSalto() }
         // Soltar ficheros o fotos en el chat los adjunta (se copian).
         .onDrop(of: EntradaDeFicheros.tipos, isTargeted: $soltando) { proveedores in
             MainActor.assumeIsolated {
@@ -179,8 +209,25 @@ public struct VistaChat: View {
         vigiaPegar = nil
     }
 
+    /// Toma el salto pedido si es de este chat: carga su pagina, marca el
+    /// mensaje y se desplaza hasta el.
+    private func atenderSalto() -> Bool {
+        guard let s = peticion.salto, s.chat == chat else { return false }
+        peticion.salto = nil
+        enSalto = true
+        destacado = s.mensaje
+        irA = s.mensaje
+        let almacen = self.almacen
+        Task {
+            await almacen.abrir(chat: s.chat, en: s.posicion)
+            saltos += 1
+        }
+        return true
+    }
+
     /// Un lienzo nuevo en este chat, abierto ya para dibujar.
     private func nuevoLienzo() {
+        enSalto = false
         let chat = self.chat
         let almacen = self.almacen
         Task {
@@ -191,6 +238,8 @@ public struct VistaChat: View {
     }
 
     private func enviar() {
+        enSalto = false
+        destacado = nil
         let texto = borrador
         borrador = ""
         Task { await almacen.escribir(nota: texto, en: chat) }

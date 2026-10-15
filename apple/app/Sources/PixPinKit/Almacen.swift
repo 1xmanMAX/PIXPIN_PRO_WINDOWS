@@ -35,6 +35,11 @@ public final class Almacen: ObservableObject {
 
     public let nucleo: Nucleo
     private var desde: [String: UInt64] = [:]
+    /// Cada vez que se carga un chat desde cero (abrirlo o saltar a un
+    /// mensaje) sube su turno: lo que llegue de una carga anterior se tira.
+    private var turnos: [String: Int] = [:]
+    /// Chats pidiendo ya lo de despues (para no pedirlo dos veces).
+    private var cargandoPosteriores: Set<String> = []
     /// Rutas ya resueltas (`chat` + `ruta` del mensaje -> fichero). Pocas
     /// y pequenas; se sueltan al aligerar.
     private var rutas: [String: URL] = [:]
@@ -61,10 +66,12 @@ public final class Almacen: ObservableObject {
     /// La ultima pagina de un chat (lo mas nuevo), sustituyendo lo cargado.
     public func abrir(chat: String) async {
         let nucleo = self.nucleo
+        let turno = nuevoTurno(chat)
         do {
             let pagina = try await Task.detached(priority: .userInitiated) {
                 try nucleo.ultimosMensajes(chat: chat, cuantos: Almacen.tamPagina)
             }.value
+            guard turno == turnos[chat] else { return }
             mensajes[chat] = pagina.mensajes
             totales[chat] = pagina.total
             desde[chat] = pagina.desde
@@ -88,6 +95,8 @@ public final class Almacen: ObservableObject {
             let pagina = try await Task.detached(priority: .userInitiated) {
                 try nucleo.mensajes(chat: chat, desde: pedir, cuantos: cuantos)
             }.value
+            // Si mientras tanto se cargo otra cosa (un salto), no se pega.
+            guard desde[chat] == inicio else { return }
             mensajes[chat] = pagina.mensajes + (mensajes[chat] ?? [])
             desde[chat] = pagina.desde
             totales[chat] = pagina.total
@@ -106,9 +115,13 @@ public final class Almacen: ObservableObject {
             let m = try await Task.detached(priority: .userInitiated) {
                 try nucleo.escribirNota(chat: chat, texto: texto, respondeA: nil)
             }.value
-            mensajes[chat, default: []].append(m)
-            totales[chat, default: 0] += 1
-            NotificationCenter.default.post(name: .pixpinCambioLocal, object: nil)
+            if quedanPosteriores(chat: chat) {
+                // Se veia una pagina del medio (un salto): a la ultima.
+                await abrir(chat: chat)
+                NotificationCenter.default.post(name: .pixpinCambioLocal, object: nil)
+            } else {
+                anadir([m], en: chat)
+            }
             return m
         } catch {
             self.error = "\(error)"
@@ -231,10 +244,76 @@ public final class Almacen: ObservableObject {
 
     func anadir(_ nuevos: [MensajeChat], en chat: String) {
         guard !nuevos.isEmpty else { return }
-        mensajes[chat, default: []].append(contentsOf: nuevos)
-        totales[chat, default: 0] += UInt64(nuevos.count)
+        if quedanPosteriores(chat: chat) {
+            // Se ve una pagina del medio (un salto): lo nuevo va al final
+            // del chat, asi que se vuelve a la ultima pagina.
+            Task { await abrir(chat: chat) }
+        } else {
+            mensajes[chat, default: []].append(contentsOf: nuevos)
+            totales[chat, default: 0] += UInt64(nuevos.count)
+        }
         // La sincronizacion sola cuenta sus 30 s de calma desde aqui.
         NotificationCenter.default.post(name: .pixpinCambioLocal, object: nil)
+    }
+
+    // MARK: Saltar a un mensaje
+
+    private func nuevoTurno(_ chat: String) -> Int {
+        let t = (turnos[chat] ?? 0) &+ 1
+        turnos[chat] = t
+        return t
+    }
+
+    /// Si quedan mensajes mas nuevos que los cargados (tras un salto).
+    public func quedanPosteriores(chat: String) -> Bool {
+        guard let inicio = desde[chat], let total = totales[chat] else { return false }
+        return inicio + UInt64(mensajes[chat]?.count ?? 0) < total
+    }
+
+    /// **Carga la pagina que contiene el mensaje de `posicion`** (0 el mas
+    /// antiguo), con el en medio, sustituyendo lo cargado. Dos cruces del
+    /// puente: el total (la ultima pagina de un mensaje, del indice en
+    /// cache) y la pagina.
+    public func abrir(chat: String, en posicion: UInt64) async {
+        let nucleo = self.nucleo
+        let turno = nuevoTurno(chat)
+        do {
+            let pagina = try await Task.detached(priority: .userInitiated) { () throws -> PaginaMensajes in
+                let total = try nucleo.ultimosMensajes(chat: chat, cuantos: 1).total
+                let v = ventanaDeSalto(posicion: posicion, total: total, tam: UInt64(Almacen.tamPagina))
+                return try nucleo.mensajes(chat: chat, desde: v.desde, cuantos: v.cuantos)
+            }.value
+            guard turno == turnos[chat] else { return }
+            mensajes[chat] = pagina.mensajes
+            totales[chat] = pagina.total
+            desde[chat] = pagina.desde
+        } catch {
+            self.error = "\(error)"
+        }
+    }
+
+    /// La pagina siguiente a lo cargado (al bajar tras un salto).
+    public func cargarPosteriores(chat: String) async {
+        guard quedanPosteriores(chat: chat), !cargandoPosteriores.contains(chat),
+              let inicio = desde[chat], let total = totales[chat] else { return }
+        cargandoPosteriores.insert(chat)
+        defer { cargandoPosteriores.remove(chat) }
+        let hasta = inicio + UInt64(mensajes[chat]?.count ?? 0)
+        let cuantos = UInt32(min(UInt64(Almacen.tamPagina), total - hasta))
+        let turno = turnos[chat]
+        let nucleo = self.nucleo
+        do {
+            let pagina = try await Task.detached(priority: .userInitiated) {
+                try nucleo.mensajes(chat: chat, desde: hasta, cuantos: cuantos)
+            }.value
+            // Solo si lo cargado sigue siendo lo mismo.
+            guard turno == turnos[chat], desde[chat] == inicio,
+                  inicio + UInt64(mensajes[chat]?.count ?? 0) == hasta else { return }
+            mensajes[chat, default: []].append(contentsOf: pagina.mensajes)
+            totales[chat] = pagina.total
+        } catch {
+            self.error = "\(error)"
+        }
     }
 
     /// El fichero de una `ruta` de mensaje (o de una foto de un lienzo) si
@@ -290,6 +369,7 @@ public final class Almacen: ObservableObject {
             _ = lista
             mensajes[chat] = nil
             desde[chat] = nil
+            turnos[chat] = nil
         }
         rutas = [:]
         nucleo.vaciarCaches()
