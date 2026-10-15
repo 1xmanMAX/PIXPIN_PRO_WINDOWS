@@ -10,28 +10,45 @@
 //! privilegio de crearlos (o el modo desarrollador), y una union la puede
 //! crear cualquier usuario sobre sus propias carpetas. La contrapartida es
 //! que una union solo apunta a discos locales; por eso `es_de_red` va aqui.
+//!
+//! **Fuera de Windows** (Mac, Linux) no hay uniones, pero cualquier usuario
+//! puede crear enlaces simbolicos, que hacen lo mismo: misma API, mismas
+//! garantias (quitar solo quita el enlace; uno roto no se repara solo).
 
 use std::io;
-use std::os::windows::ffi::OsStrExt;
-use std::os::windows::fs::{MetadataExt, OpenOptionsExt};
-use std::os::windows::io::AsRawHandle;
 use std::path::{Path, PathBuf};
 
+#[cfg(windows)]
+use std::os::windows::ffi::OsStrExt;
+#[cfg(windows)]
+use std::os::windows::fs::{MetadataExt, OpenOptionsExt};
+#[cfg(windows)]
+use std::os::windows::io::AsRawHandle;
+
+#[cfg(windows)]
 use windows::Win32::Foundation::HANDLE;
+#[cfg(windows)]
 use windows::Win32::Storage::FileSystem::GetDriveTypeW;
+#[cfg(windows)]
 use windows::Win32::System::IO::DeviceIoControl;
+#[cfg(windows)]
 use windows::core::HSTRING;
 
 /// `IO_REPARSE_TAG_MOUNT_POINT`: la etiqueta de una union.
+#[cfg(windows)]
 const ETIQUETA_UNION: u32 = 0xA000_0003;
 /// `FSCTL_SET_REPARSE_POINT`.
+#[cfg(windows)]
 const PONER_REPARSE: u32 = 0x0009_00A4;
 /// `FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_BACKUP_SEMANTICS`: abrir la
 /// carpeta misma y no lo que hubiera detras.
+#[cfg(windows)]
 const ABRIR_LA_CARPETA: u32 = 0x0020_0000 | 0x0200_0000;
 /// `FILE_ATTRIBUTE_REPARSE_POINT`.
+#[cfg(windows)]
 const ATRIBUTO_REPARSE: u32 = 0x400;
 /// `DRIVE_REMOTE` de `GetDriveTypeW`.
+#[cfg(windows)]
 const UNIDAD_DE_RED: u32 = 4;
 
 /// Crea en `enlace` (que no puede existir) una union que apunta a `destino`.
@@ -54,8 +71,13 @@ pub fn crear(enlace: &Path, destino: &Path) -> io::Result<()> {
             "una union no puede apuntar a una unidad de red",
         ));
     }
+    crear_en_el_sistema(enlace, &destino)
+}
+
+#[cfg(windows)]
+fn crear_en_el_sistema(enlace: &Path, destino: &Path) -> io::Result<()> {
     std::fs::create_dir(enlace)?;
-    let hecho = poner_reparse(enlace, &destino);
+    let hecho = poner_reparse(enlace, destino);
     if hecho.is_err() {
         // La carpeta vacia que se creo para colgarle la union no puede
         // quedarse: pasaria por la carpeta del proyecto y se escribiria en
@@ -65,6 +87,22 @@ pub fn crear(enlace: &Path, destino: &Path) -> io::Result<()> {
     hecho
 }
 
+/// Un enlace simbolico: el sistema no deja crearlo si `enlace` ya existe,
+/// igual que la union.
+#[cfg(unix)]
+fn crear_en_el_sistema(enlace: &Path, destino: &Path) -> io::Result<()> {
+    std::os::unix::fs::symlink(destino, enlace)
+}
+
+#[cfg(not(any(windows, unix)))]
+fn crear_en_el_sistema(_enlace: &Path, _destino: &Path) -> io::Result<()> {
+    Err(io::Error::new(
+        io::ErrorKind::Unsupported,
+        "este sistema no tiene uniones ni enlaces",
+    ))
+}
+
+#[cfg(windows)]
 fn poner_reparse(enlace: &Path, destino: &Path) -> io::Result<()> {
     // El nombre de sustitucion es el del gestor de objetos (`\??\C:\...`); el
     // de mostrar, la ruta de siempre. Los dos acaban en su NUL.
@@ -115,10 +153,18 @@ fn poner_reparse(enlace: &Path, destino: &Path) -> io::Result<()> {
 
 /// Si `ruta` es una union (viva o rota). Mira la entrada misma, sin
 /// seguirla.
+#[cfg(windows)]
 pub fn es_union(ruta: &Path) -> bool {
     std::fs::symlink_metadata(ruta)
         .is_ok_and(|m| m.file_attributes() & ATRIBUTO_REPARSE != 0 && m.is_symlink())
         && destino(ruta).is_some()
+}
+
+/// Si `ruta` es un enlace simbolico (vivo o roto). Mira la entrada misma,
+/// sin seguirla.
+#[cfg(not(windows))]
+pub fn es_union(ruta: &Path) -> bool {
+    std::fs::symlink_metadata(ruta).is_ok_and(|m| m.is_symlink()) && destino(ruta).is_some()
 }
 
 /// Adonde apunta la union `ruta`, aunque el destino no exista ahora.
@@ -137,8 +183,19 @@ pub fn quitar(ruta: &Path) -> io::Result<()> {
             "no es una union de directorio",
         ));
     }
-    // `RemoveDirectoryW` sobre un punto de reparse quita el punto: no entra.
+    quitar_en_el_sistema(ruta)
+}
+
+/// `RemoveDirectoryW` sobre un punto de reparse quita el punto: no entra.
+#[cfg(windows)]
+fn quitar_en_el_sistema(ruta: &Path) -> io::Result<()> {
     std::fs::remove_dir(ruta)
+}
+
+/// Un enlace simbolico es un fichero: `unlink` lo quita sin entrar.
+#[cfg(not(windows))]
+fn quitar_en_el_sistema(ruta: &Path) -> io::Result<()> {
+    std::fs::remove_file(ruta)
 }
 
 /// Si `ruta` esta en una unidad de red: `\\servidor\...` o una letra
@@ -160,6 +217,7 @@ pub fn es_de_red(ruta: &Path) -> bool {
     unidad_de_red(&texto)
 }
 
+#[cfg(windows)]
 fn unidad_de_red(texto: &str) -> bool {
     let mut letras = texto.chars();
     let (Some(letra), Some(':')) = (letras.next(), letras.next()) else {
@@ -171,6 +229,13 @@ fn unidad_de_red(texto: &str) -> bool {
     let raiz = HSTRING::from(format!("{letra}:\\"));
     // SAFETY: la cadena vive durante la llamada, que no la retiene.
     unsafe { GetDriveTypeW(&raiz) == UNIDAD_DE_RED }
+}
+
+/// Fuera de Windows no hay letras de unidad: solo cuentan las rutas
+/// `\\servidor` y `//servidor`, que ya se miraron antes.
+#[cfg(not(windows))]
+fn unidad_de_red(_texto: &str) -> bool {
+    false
 }
 
 /// `\\?\C:\x` → `C:\x`. Lo que devuelve `read_link` y `canonicalize` lleva

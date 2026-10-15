@@ -21,7 +21,7 @@
 
 use std::collections::BTreeMap;
 
-use pixpin_shell::Atajo;
+use pixpin_sistema::Atajo;
 use serde::{Deserialize, Serialize};
 
 /// Cada cosa que el programa sabe hacer y se puede atar a un atajo o sacar

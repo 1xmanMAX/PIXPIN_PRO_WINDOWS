@@ -40,6 +40,40 @@ jobs:
       - name: Tests
         run: cargo test --workspace -- --test-threads=1
 
+  # El nucleo que compartira la version de Mac, iPad e iPhone: formato,
+  # sincronizar, lienzo, documentos y la logica de la interfaz. Corre en Linux
+  # para demostrar que no depende de Windows (ver
+  # docs/investigacion/2026-10-15-mac-ipad-iphone.md, fase 0). Si un crate de
+  # esta lista gana una dependencia de Windows, el guardian lo para aqui
+  # antes de que rompa el port.
+  nucleo-portable:
+    runs-on: ubuntu-latest
+    env:
+      PORTABLES: >-
+        pixpin-geom pixpin-model pixpin-nivel pixpin-lecciones pixpin-sistema
+        pixpin-motor2d pixpin-tinta pixpin-timeline pixpin-docs pixpin-hojas
+        pixpin-office pixpin-sincro pdfsqueeze-core pixpin-ui pixpin-store
+        pixpin-proyecto
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Guardian (ningun crate portable depende de Windows)
+        shell: bash
+        run: |
+          mal=0
+          for p in $PORTABLES; do
+            if cargo tree -q -p "$p" -e normal --target x86_64-unknown-linux-gnu --prefix none \
+                | grep -qE '^(windows|webview2)[a-z0-9_-]* v'; then
+              echo "::error::$p depende de Windows y es parte del nucleo portable"
+              mal=1
+            fi
+          done
+          exit $mal
+      - name: Tests del nucleo en Linux
+        shell: bash
+        run: cargo test $(printf -- '-p %s ' $PORTABLES) -- --test-threads=1
+
   licencias:
     runs-on: ubuntu-latest
     steps:

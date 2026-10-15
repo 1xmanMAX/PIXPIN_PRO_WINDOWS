@@ -5,7 +5,7 @@
 //!
 //! `resolver_idioma` recibe el locale como texto en vez de consultarlo al
 //! sistema: este crate tiene `#![forbid(unsafe_code)]` y no puede llamar a
-//! Win32. El ejecutable se lo pasa desde `pixpin_shell::entorno`.
+//! Win32. El ejecutable se lo pasa desde `pixpin_sistema::entorno`.
 
 use fluent_bundle::concurrent::FluentBundle;
 use fluent_bundle::{FluentArgs, FluentResource};

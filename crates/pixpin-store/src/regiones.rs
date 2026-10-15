@@ -13,7 +13,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use pixpin_shell::Atajo;
+use pixpin_sistema::Atajo;
 
 /// El primer identificador de region. Muy por encima del ultimo comando,
 /// para que anadir comandos nunca alcance a las regiones.

@@ -8,6 +8,9 @@ license.workspace = true
 [dependencies]
 pixpin-geom = { version = "0.1.0", path = "../pixpin-geom" }
 pixpin-nivel = { version = "0.1.0", path = "../pixpin-nivel" }
+# Atajos, entorno y uniones: la parte portable, que tambien usan los crates
+# de logica sin arrastrar Win32.
+pixpin-sistema = { version = "0.1.0", path = "../pixpin-sistema" }
 serde = { version = "1.0.229", features = ["derive"] }
 # Los pedidos de otros programas (`mensajero::validar_pedido`) llegan en JSON
 # y se miran por encima antes de contestar.

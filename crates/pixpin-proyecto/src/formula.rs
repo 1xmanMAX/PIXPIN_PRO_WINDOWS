@@ -127,7 +127,7 @@ impl fmt::Display for Valor {
 
 impl Valor {
     /// **Lo que se ensena en la celda**, con el separador decimal del
-    /// usuario (`pixpin_shell::entorno::separador_decimal`): en `es-ES` el
+    /// usuario (`pixpin_sistema::entorno::separador_decimal`): en `es-ES` el
     /// total de `12,5` y `7` es `19,5`, no `19.5`. `Display` sigue con punto,
     /// que es lo que se guarda y se vuelve a leer sin dudas.
     pub fn mostrar(&self, decimal: char) -> String {

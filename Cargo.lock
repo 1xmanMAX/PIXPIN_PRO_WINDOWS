@@ -1782,8 +1782,8 @@ version = "0.1.0"
 dependencies = [
  "flate2",
  "pixpin-motor2d",
- "pixpin-shell",
  "pixpin-sincro",
+ "pixpin-sistema",
  "serde",
  "serde_json",
  "thiserror",
@@ -1823,6 +1823,7 @@ version = "0.1.0"
 dependencies = [
  "pixpin-geom",
  "pixpin-nivel",
+ "pixpin-sistema",
  "serde",
  "serde_json",
  "thiserror",
@@ -1852,12 +1853,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "pixpin-sistema"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "windows",
+]
+
+[[package]]
 name = "pixpin-store"
 version = "0.1.0"
 dependencies = [
  "fluent-bundle",
  "pixpin-motor2d",
- "pixpin-shell",
+ "pixpin-sistema",
  "serde",
  "serde_json",
  "thiserror",

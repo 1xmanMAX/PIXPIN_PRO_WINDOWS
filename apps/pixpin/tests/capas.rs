@@ -16,7 +16,12 @@ fn capa(nombre: &str) -> Option<u8> {
         // `pixpin-lecciones` es la logica de las lecciones aprendidas copiada
         // del movil (JSON, buscador, etiquetador, repaso): solo serde_json, y
         // la usa `pixpin-sincro` para juntar dos versiones de una leccion.
-        "pixpin-geom" | "pixpin-model" | "pixpin-nivel" | "pixpin-lecciones" | "pixpin-timeline" => 0,
+        // `pixpin-sistema` es lo poco que la logica le pregunta al sistema
+        // (hora local, carpeta de datos, atajos, uniones), con version de
+        // Windows y portable: asi `pixpin-store` y `pixpin-proyecto` no
+        // arrastran `pixpin-shell` y compilan tambien en Mac.
+        "pixpin-geom" | "pixpin-model" | "pixpin-nivel" | "pixpin-lecciones"
+        | "pixpin-timeline" | "pixpin-sistema" => 0,
         // `pixpin-sincro` es el cable de WiFi: solo criptografia y JSON, sin
         // depender de ningun crate de PixPin, asi que vive abajo del todo
         // con los demas cimientos.

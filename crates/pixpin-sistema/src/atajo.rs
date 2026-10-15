@@ -1,9 +1,9 @@
 //! Combinaciones de teclas globales.
 //!
-//! Vive en `pixpin-shell` y no en `pixpin-store` por la regla de capas: shell
-//! es L1 y store es L2, asi que el tipo tiene que estar abajo para que ambos
-//! puedan usarlo. `RegisterHotKey` tambien esta aqui, asi que es su sitio
-//! natural.
+//! Vive en `pixpin-sistema` (capa 0) y no en `pixpin-store` por la regla de
+//! capas: lo usan `pixpin-shell` (L1, que llama a `RegisterHotKey`) y
+//! `pixpin-store` (L2, que lo guarda en los ajustes). Es logica pura: el
+//! parseo no necesita Windows y compila en cualquier sistema.
 //!
 //! Se serializa como texto ("Ctrl+Alt+X") en vez de como estructura para que
 //! el fichero TOML sea legible y editable a mano.

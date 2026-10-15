@@ -6,7 +6,7 @@
 //! selecciono se ponga todo en la zona habitual».
 //!
 //! **Como**: el contenido se mueve a la carpeta elegida y `proyectos/<id>`
-//! pasa a ser una union de directorio (`pixpin_shell::union`) que apunta
+//! pasa a ser una union de directorio (`pixpin_sistema::union`) que apunta
 //! alli. Asi los muchos sitios que escriben en `almacen::carpeta` —el
 //! cuaderno, los adjuntos, los lienzos, sincronizar— siguen igual y escriben
 //! donde el usuario quiere sin saberlo. La ruta se apunta tambien en la
@@ -21,7 +21,7 @@
 use std::io;
 use std::path::{Path, PathBuf};
 
-use pixpin_shell::union;
+use pixpin_sistema::union;
 
 use crate::almacen::{self, Indice};
 
@@ -668,6 +668,9 @@ mod pruebas {
         entero(&almacen::carpeta(&raiz, "p1"));
     }
 
+    // Solo Windows: el fallo se provoca abriendo un fichero sin compartir
+    // (`share_mode(0)`), y en Mac/Linux nadie puede impedir que otro lo lea.
+    #[cfg(windows)]
     #[test]
     fn un_fallo_a_mitad_de_copiar_no_pierde_nada_y_no_deja_restos() {
         use std::os::windows::fs::OpenOptionsExt;

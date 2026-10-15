@@ -342,7 +342,7 @@ impl Fecha {
     }
 
     /// El dia de un instante en milisegundos **ya corridos al huso** de
-    /// quien mira (`pixpin_shell::entorno::a_local`).
+    /// quien mira (`pixpin_sistema::entorno::a_local`).
     pub fn de_ms_locales(ms: i64) -> Fecha {
         Fecha::de_dias(ms.div_euclid(86_400_000))
     }

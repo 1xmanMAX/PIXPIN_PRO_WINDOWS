@@ -152,8 +152,8 @@ Sin servidores propios ni cuentas de PixPin (se mantiene la promesa de «sin nub
 podría usar el **contenedor iCloud Drive de la app** como un aparato más del grupo que «nunca
 está apagado»: cada aparato Apple deja ahí sus parches cifrados con la clave del grupo y recoge
 los de los demás. Windows y Android seguirían por Wi‑Fi. Es una decisión de privacidad del
-usuario (el README promete «sin nube»): **queda fuera del plan base** y se propone como Fase 6
-opcional, apagada por defecto.
+usuario (el README promete «sin nube»). **Aprobado como opción apagada por
+defecto** (§7.2).
 
 ---
 
@@ -164,9 +164,12 @@ de Windows y se pueden hacer en Windows/Linux sin un Mac.
 
 ### Fase 0 — Preparar el núcleo (sin Mac; 1–2 semanas)
 
-1. Sacar `entorno` (rutas) y `union` de `pixpin-shell` a un crate L0/L1 neutral
-   (`pixpin-rutas`), con `#[cfg(windows)]` solo en las uniones. Así `pixpin-store` y
-   `pixpin-proyecto` compilan en cualquier plataforma.
+1. ✅ **Hecho:** `atajo`, `entorno` y `union` salen de `pixpin-shell` a un crate nuevo de
+   capa 0, **`pixpin-sistema`**, con versión de Windows (la de siempre) y portable (Mac/Linux:
+   `~/Library/Application Support`, `localtime_r`, enlaces simbólicos en vez de uniones).
+   `pixpin-shell` los reexporta con el mismo nombre, así que el resto del código no cambia.
+   `pixpin-store` y `pixpin-proyecto` ya no dependen de `pixpin-shell` y compilan y pasan sus
+   pruebas en Linux, incluidas las de sincronizar de verdad por socket.
 2. Añadir a la CI un trabajo `ubuntu-latest` (y luego `macos-latest`) que haga
    `cargo test -p` de todos los crates portables. Una prueba guardián (como `capas.rs`) que
    falle si uno de ellos gana una dependencia de `windows`.
@@ -229,9 +232,10 @@ principal de meter cosas; widgets y Live Activity de «sincronizando». Si se de
 algunos **ajustes** comunes (tema, días de caducidad; nunca atajos ni rutas) en un
 `sincro/ajustes.json` «gana el más nuevo por clave», acordado también con Windows y Android.
 
-### Fase 6 — Opcional: buzón en iCloud (§4.4)
+### Fase 6 — Buzón en iCloud (§4.4)
 
-Solo si el usuario lo quiere; apagado por defecto.
+**Aprobado** como opción apagada por defecto (§7.2). Se adelanta: el formato en la Fase 1 y la
+activación en el Mac en la Fase 3.
 
 ### Resumen de esfuerzo
 
@@ -253,16 +257,20 @@ firmar, notarizar y publicar en iOS.
 
 Lo que se puede empezar ya, sin Mac y sin riesgo para la versión de Windows:
 
-1. Fase 0.1: crate `pixpin-rutas` y que `pixpin-store`/`pixpin-proyecto` compilen en Linux.
-2. Fase 0.2: trabajo de CI en Linux para el núcleo portable + guardián de dependencias.
+1. ✅ Fase 0.1: crate `pixpin-sistema`; `pixpin-store`/`pixpin-proyecto` compilan en Linux.
+2. ✅ Fase 0.2: trabajo de CI en Linux para el núcleo portable + guardián de dependencias.
 3. Fase 0.3: normalización NFC en las rutas de la sincronización, con pruebas.
 
-## 7. Preguntas para el usuario
+## 7. Decisiones del usuario (15-oct-2026)
 
-1. ¿Distribución del Mac fuera de la App Store (más libertad, como Windows) o dentro (más fácil
-   de instalar, pero con *sandbox*)? La recomendación es fuera primero.
-2. ¿Se acepta iCloud como buzón opcional entre aparatos Apple (§4.4), o se mantiene «sin nube»
-   estricto?
-3. ¿Qué versión mínima? Recomendación: **macOS 15 / iPadOS 18** para tener ScreenCaptureKit
-   moderno, y funciones de macOS/iOS 26 (SpeechAnalyzer, Foundation Models) cuando estén.
-4. ¿Prioridad Mac primero (recomendado) o iPad primero?
+1. **Distribución:** el Mac se publica **fuera de la App Store** al principio (Developer ID +
+   notarizado + Sparkle). La App Store se valora más adelante.
+2. **iCloud como buzón: sí, como opción apagada por defecto.** Motivo del usuario: alguien que
+   solo tiene Mac (y quizá iPhone/iPad), sin Windows encendido, también tiene que poder
+   sincronizar. Por eso se adelanta: el formato del buzón se diseña en la Fase 1 (para que el
+   núcleo lo soporte desde el principio) y se activa en la app de Mac en la Fase 3, antes del
+   iPad, en vez de quedar como Fase 6. El contenido va cifrado con la clave del grupo: iCloud
+   solo guarda bytes que no puede leer.
+3. **Versión mínima:** **macOS 15**; iPadOS/iOS 18 cuando lleguen. Lo de macOS 26
+   (SpeechAnalyzer, Foundation Models) se usa si está y, si no, el respaldo (Whisper/llama.cpp).
+4. **Orden:** **Mac primero**; iPad y iPhone después.

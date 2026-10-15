@@ -11,7 +11,7 @@
 use std::fs;
 use std::path::PathBuf;
 
-use pixpin_shell::Atajo;
+use pixpin_sistema::Atajo;
 use serde::{Deserialize, Serialize};
 
 use crate::rutas::Ubicacion;

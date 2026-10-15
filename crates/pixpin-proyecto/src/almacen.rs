@@ -1169,7 +1169,7 @@ pub fn borrar_proyectos(
         // la union (renombrar mueve el enlace, no lo que hay detras), y la
         // carpeta del usuario no se toca. Tambien si esta rota —el disco
         // desenchufado—: `is_dir` la da por ausente y se quedaria colgando.
-        if !origen.is_dir() && !pixpin_shell::union::es_union(&origen) {
+        if !origen.is_dir() && !pixpin_sistema::union::es_union(&origen) {
             continue;
         }
         std::fs::create_dir_all(&destino)?;

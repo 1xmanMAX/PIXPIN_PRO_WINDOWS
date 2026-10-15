@@ -9,7 +9,8 @@ pub mod abrir_con;
 pub mod abrir_con_otra;
 pub mod arranque;
 pub mod asociaciones;
-pub mod atajo;
+/// Movido a `pixpin-sistema` (portable); el nombre de siempre sigue valiendo.
+pub use pixpin_sistema::atajo;
 pub mod atajos;
 pub mod aviso;
 pub mod bandeja;
@@ -47,7 +48,8 @@ pub mod regional;
 pub mod reproductor_sistema;
 pub mod subir;
 pub mod uia;
-pub mod union;
+/// Movido a `pixpin-sistema` (portable); el nombre de siempre sigue valiendo.
+pub use pixpin_sistema::union;
 pub mod ventana;
 pub mod ventanas_visibles;
 pub mod vigia_carpeta;

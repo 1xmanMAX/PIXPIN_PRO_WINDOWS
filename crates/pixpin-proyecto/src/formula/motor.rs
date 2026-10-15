@@ -141,7 +141,7 @@ impl Ctx<'_, '_> {
         let ms = *self
             .m
             .ahora_ms
-            .get_or_insert_with(pixpin_shell::entorno::ahora_local_ms);
+            .get_or_insert_with(pixpin_sistema::entorno::ahora_local_ms);
         // 25569 es el serial de 1970-01-01.
         25569.0 + ms as f64 / 86_400_000.0
     }
