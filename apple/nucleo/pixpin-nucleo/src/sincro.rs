@@ -9,9 +9,11 @@
 //! # Lo que falta (fase 2)
 //!
 //! - **Descubrir a los demas** (Bonjour `_pixpin._tcp`, TXT `g`/`id`/`l`/`n`)
-//!   lo hace Swift con `NWBrowser`/`NWListener` de Network.framework: aqui
-//!   se recibe ya el `host` y el `puerto`. [`etiqueta_de_grupo`] da el `g`
-//!   que hay que anunciar y comparar.
+//!   lo hace Swift: busca con `NWBrowser` de Network.framework y anuncia con
+//!   `DNSServiceRegister` sobre el puerto de [`Escucha`]. Aqui se recibe ya
+//!   el `host` y el `puerto`. [`Nucleo::anuncio`] da el anuncio entero tal
+//!   como lo hace Windows (`anunciarse`) y [`etiqueta_de_grupo`] el `g` que
+//!   hay que comparar.
 //! - TODO: un transporte que ponga Swift (un trait de UniFFI con
 //!   `leer`/`escribir` sobre `NWConnection`), para redes donde el socket BSD
 //!   no basta (IPv6 con alcance, interfaces que elige Network.framework).
@@ -132,6 +134,115 @@ pub fn codigo_valido(codigo: String) -> bool {
     grupo::valido(&codigo::limpiar(&codigo))
 }
 
+/// El tipo de servicio de Bonjour para sincronizar, sin el punto final:
+/// `_pixpin._tcp` (como lo piden `NWBrowser` y `DNSServiceRegister`).
+#[uniffi::export]
+pub fn tipo_de_servicio() -> String {
+    pixpin_sincro::SERVICIO.trim_end_matches('.').to_string()
+}
+
+/// El puerto que se intenta primero al escuchar (47474). Si esta tomado se
+/// escucha en otro cualquiera ([`Nucleo::escuchar`] con 0) y se anuncia ese.
+#[uniffi::export]
+pub fn puerto_preferido() -> u16 {
+    pixpin_sincro::PUERTO
+}
+
+/// Una entrada del TXT de Bonjour, en el orden en que se anuncia.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct ParTxt {
+    pub clave: String,
+    pub valor: String,
+}
+
+/// **Lo que este aparato anuncia en la red**, igual que Windows
+/// (`anunciarse`) y Android (`Presencia`): la instancia `PixPin <nombre>`
+/// del tipo `_pixpin._tcp` con el TXT `g` (etiqueta del grupo), `id`, `l`
+/// (letra) y `n` (nombre, 40 letras como mucho). El puerto lo pone quien
+/// anuncia: el de su [`Escucha`].
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct AnuncioBonjour {
+    /// `PixPin Mac de Max`, recortado a 63 bytes (una etiqueta DNS) sin
+    /// partir una letra.
+    pub instancia: String,
+    /// `_pixpin._tcp`.
+    pub tipo: String,
+    /// `g`, `id`, `l`, `n`, en ese orden.
+    pub txt: Vec<ParTxt>,
+    /// La etiqueta del grupo (el valor de `g`), para comparar con lo que
+    /// anuncian los demas.
+    pub etiqueta: String,
+    /// El id de este aparato (el valor de `id`), para no verse a si mismo.
+    pub id: String,
+}
+
+/// Una etiqueta DNS mide como mucho 63 bytes (RFC 1035).
+const MAXIMO_ETIQUETA: usize = 63;
+/// Las letras del nombre que van en el TXT `n` (como Windows).
+const LETRAS_DEL_NOMBRE: usize = 40;
+
+/// Recorta a 63 bytes sin partir una letra (`recortar_etiqueta` de Windows).
+fn recortar_etiqueta(nombre: &str) -> String {
+    if nombre.len() <= MAXIMO_ETIQUETA {
+        return nombre.to_string();
+    }
+    let mut corte = MAXIMO_ETIQUETA;
+    while !nombre.is_char_boundary(corte) {
+        corte -= 1;
+    }
+    nombre[..corte].to_string()
+}
+
+/// El anuncio de una identidad con la etiqueta de su grupo ya calculada.
+/// Logica pura, sin red ni PBKDF2.
+fn anuncio_de(id: &str, nombre: &str, letra: Option<&str>, etiqueta: String) -> AnuncioBonjour {
+    let corto: String = nombre.chars().take(LETRAS_DEL_NOMBRE).collect();
+    let par = |clave: &str, valor: &str| ParTxt {
+        clave: clave.into(),
+        valor: valor.into(),
+    };
+    AnuncioBonjour {
+        instancia: recortar_etiqueta(format!("PixPin {nombre}").trim()),
+        tipo: tipo_de_servicio(),
+        txt: vec![
+            par("g", &etiqueta),
+            par("id", id),
+            par("l", letra.unwrap_or_default()),
+            par("n", &corto),
+        ],
+        etiqueta,
+        id: id.to_string(),
+    }
+}
+
+#[uniffi::export]
+impl Nucleo {
+    /// **El anuncio de Bonjour de este aparato**, o `None` si no esta en
+    /// ningun grupo (sin grupo no se anuncia: nadie sabria que hacer con el).
+    /// Hay que volver a pedirlo al crear un grupo o unirse a uno, que cambian
+    /// la etiqueta y la letra.
+    ///
+    /// La primera vez por codigo cuesta las 60 000 vueltas de PBKDF2 de la
+    /// etiqueta (luego se recuerda): no llamarlo en el hilo de la interfaz.
+    pub fn anuncio(&self) -> Result<Option<AnuncioBonjour>, ErrorNucleo> {
+        let i = self.identidad()?;
+        Ok(i.codigo.map(|codigo| {
+            anuncio_de(
+                &i.yo.id,
+                &i.yo.nombre,
+                i.yo.letra.as_deref(),
+                etiqueta_de_grupo(codigo),
+            )
+        }))
+    }
+
+    /// La etiqueta del grupo de este aparato (el `g` que anuncian los
+    /// suyos), o `None` sin grupo. Cuesta lo mismo que [`Nucleo::anuncio`].
+    pub fn etiqueta(&self) -> Result<Option<String>, ErrorNucleo> {
+        Ok(self.identidad()?.codigo.map(etiqueta_de_grupo))
+    }
+}
+
 #[uniffi::export]
 impl Nucleo {
     /// Crea un grupo nuevo con este aparato dentro (letra `a`) y devuelve su
@@ -237,7 +348,9 @@ impl Nucleo {
     }
 
     /// Escucha en `puerto` (0: el que de el sistema; el de siempre es
-    /// 47474) para que otro aparato sincronice con este o se una a su grupo.
+    /// 47474, [`puerto_preferido`]) para que otro aparato sincronice con
+    /// este o se una a su grupo. Si el puerto pedido esta tomado, falla: quien
+    /// llama vuelve a probar con 0, como Windows.
     pub fn escuchar(&self, puerto: u16) -> Result<Arc<Escucha>, ErrorNucleo> {
         // Por IPv6 con IPv4 incluido si se puede; si no, solo IPv4.
         let escucha = TcpListener::bind(("::", puerto))
@@ -275,12 +388,19 @@ impl Escucha {
     /// alguien que se une al grupo o una vuelta de sincronizar. Devuelve
     /// `false` si se cerro con [`Escucha::cerrar`] en vez de llegar nadie.
     pub fn atender_una(&self) -> Result<bool, ErrorNucleo> {
+        Ok(self.atender()? != Atendido::Cerrada)
+    }
+
+    /// Como [`Escucha::atender_una`], pero dice **a quien** se atendio: una
+    /// sonda (no cambia nada: no hay que releer los chats) o un aparato que
+    /// saludo (sincronizo o se unio: puede haber chats nuevos). Asi Swift no
+    /// relee la lista cada vez que la presencia de Windows pregunta.
+    pub fn atender(&self) -> Result<Atendido, ErrorNucleo> {
         let (flujo, _) = self.escucha.accept()?;
         if self.cerrada.load(Ordering::SeqCst) {
-            return Ok(false);
+            return Ok(Atendido::Cerrada);
         }
-        atender(flujo, &self.raiz, self.puerto)?;
-        Ok(true)
+        atender(flujo, &self.raiz, self.puerto)
     }
 
     /// Deja de escuchar: la `atender_una` que este esperando vuelve con
@@ -295,13 +415,24 @@ impl Escucha {
     }
 }
 
+/// Lo que hizo [`Escucha::atender`].
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Enum)]
+pub enum Atendido {
+    /// Se cerro con [`Escucha::cerrar`]: no llego nadie.
+    Cerrada,
+    /// Una sonda (`PING`): alguien mira si este aparato esta. No cambia nada.
+    Sonda,
+    /// Un aparato saludo y se hablo con el (una vuelta o una union).
+    Aparato { id: String, nombre: String },
+}
+
 /// Atiende una conexion entrante (`responder` de Windows, sin la galeria ni
 /// el `suelto`).
 fn atender(
     mut flujo: TcpStream,
     raiz: &std::path::Path,
     mi_puerto: u16,
-) -> Result<(), ErrorNucleo> {
+) -> Result<Atendido, ErrorNucleo> {
     // Los cuatro primeros dicen a quien se atiende. Se leen con un tope de
     // espera corto: quien llama los manda nada mas conectar.
     flujo.set_read_timeout(Some(Duration::from_secs(5)))?;
@@ -315,7 +446,7 @@ fn atender(
     if n == 4 && &cuatro == pixpin_sincro::SONDA {
         flujo.read_exact(&mut cuatro)?;
         flujo.write_all(pixpin_sincro::SONDA_RESPUESTA)?;
-        return Ok(());
+        return Ok(Atendido::Sonda);
     }
     if n == 4 && &cuatro == pixpin_sincro::canal::MAGIA_DE_PERSONA {
         return Err(ErrorNucleo::Sincro {
@@ -326,14 +457,70 @@ fn atender(
     // sincronizar, aqui no llega nada.
     flujo.set_read_timeout(Some(Duration::from_secs(30 * 60)))?;
     let disco = DiscoPc::nuevo(raiz);
+    let quien: std::cell::RefCell<Option<Aparato>> = std::cell::RefCell::new(None);
     let r = Respondedor {
         disco: &disco,
         estado: &|_| {},
         ahora: &crate::ahora_ms,
         mi_puerto: u32::from(mi_puerto),
-        al_saludar: &|_, _| {},
+        al_saludar: &|otro, _| *quien.borrow_mut() = Some(otro.clone()),
         suelto: None,
     };
     r.atender(flujo, nonce()?)?;
-    Ok(())
+    let otro = quien.into_inner().unwrap_or_default();
+    Ok(Atendido::Aparato {
+        id: otro.id,
+        nombre: otro.nombre,
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn el_anuncio_es_el_de_windows() {
+        let a = anuncio_de(
+            "id-del-mac",
+            "Mac de Max",
+            Some("c"),
+            "0123456789abcdef".into(),
+        );
+        assert_eq!(a.instancia, "PixPin Mac de Max");
+        assert_eq!(a.tipo, "_pixpin._tcp");
+        let txt: Vec<_> = a
+            .txt
+            .iter()
+            .map(|p| (p.clave.as_str(), p.valor.as_str()))
+            .collect();
+        assert_eq!(
+            txt,
+            [
+                ("g", "0123456789abcdef"),
+                ("id", "id-del-mac"),
+                ("l", "c"),
+                ("n", "Mac de Max"),
+            ]
+        );
+        assert_eq!(a.etiqueta, "0123456789abcdef");
+        assert_eq!(a.id, "id-del-mac");
+    }
+
+    #[test]
+    fn sin_letra_va_vacia_y_el_nombre_largo_se_recorta() {
+        let largo = "ñ".repeat(50);
+        let a = anuncio_de("id-del-mac", &largo, None, "e".into());
+        // 63 bytes como mucho y sin partir la ñ (2 bytes): «PixPin » son 7.
+        assert!(a.instancia.len() <= MAXIMO_ETIQUETA);
+        assert_eq!(a.instancia, format!("PixPin {}", "ñ".repeat(28)));
+        let valor = |c: &str| a.txt.iter().find(|p| p.clave == c).unwrap().valor.clone();
+        assert_eq!(valor("l"), "");
+        assert_eq!(valor("n").chars().count(), LETRAS_DEL_NOMBRE);
+    }
+
+    #[test]
+    fn tipo_y_puerto_son_los_de_pixpin_sincro() {
+        assert_eq!(tipo_de_servicio(), "_pixpin._tcp");
+        assert_eq!(puerto_preferido(), 47474);
+    }
 }

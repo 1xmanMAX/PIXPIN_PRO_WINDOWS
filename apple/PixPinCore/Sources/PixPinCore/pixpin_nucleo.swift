@@ -658,6 +658,14 @@ fileprivate struct FfiConverterData: FfiConverterRustBuffer {
 public protocol EscuchaProtocol: AnyObject, Sendable {
     
     /**
+     * Como [`Escucha::atender_una`], pero dice **a quien** se atendio: una
+     * sonda (no cambia nada: no hay que releer los chats) o un aparato que
+     * saludo (sincronizo o se unio: puede haber chats nuevos). Asi Swift no
+     * relee la lista cada vez que la presencia de Windows pregunta.
+     */
+    func atender() throws  -> Atendido
+    
+    /**
      * Espera a que llegue alguien y lo atiende entero: una sonda (`PING`),
      * alguien que se une al grupo o una vuelta de sincronizar. Devuelve
      * `false` si se cerro con [`Escucha::cerrar`] en vez de llegar nadie.
@@ -735,6 +743,21 @@ open class Escucha: EscuchaProtocol, @unchecked Sendable {
 
     
 
+    
+    /**
+     * Como [`Escucha::atender_una`], pero dice **a quien** se atendio: una
+     * sonda (no cambia nada: no hay que releer los chats) o un aparato que
+     * saludo (sincronizo o se unio: puede haber chats nuevos). Asi Swift no
+     * relee la lista cada vez que la presencia de Windows pregunta.
+     */
+open func atender()throws  -> Atendido  {
+    return try  FfiConverterTypeAtendido_lift(try rustCallWithError(FfiConverterTypeErrorNucleo_lift) {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_escucha_atender(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
     
     /**
      * Espera a que llegue alguien y lo atiende entero: una sonda (`PING`),
@@ -1165,6 +1188,17 @@ public protocol NucleoProtocol: AnyObject, Sendable {
     func abrirLienzo(chat: String, dibujo: String) throws  -> Lienzo
     
     /**
+     * **El anuncio de Bonjour de este aparato**, o `None` si no esta en
+     * ningun grupo (sin grupo no se anuncia: nadie sabria que hacer con el).
+     * Hay que volver a pedirlo al crear un grupo o unirse a uno, que cambian
+     * la etiqueta y la letra.
+     *
+     * La primera vez por codigo cuesta las 60 000 vueltas de PBKDF2 de la
+     * etiqueta (luego se recuerda): no llamarlo en el hilo de la interfaz.
+     */
+    func anuncio() throws  -> AnuncioBonjour?
+    
+    /**
      * Crea un grupo nuevo con este aparato dentro (letra `a`) y devuelve su
      * codigo, para ensenarlo y que los demas se unan. Como `crearGrupo` de
      * Android.
@@ -1173,9 +1207,17 @@ public protocol NucleoProtocol: AnyObject, Sendable {
     
     /**
      * Escucha en `puerto` (0: el que de el sistema; el de siempre es
-     * 47474) para que otro aparato sincronice con este o se una a su grupo.
+     * 47474, [`puerto_preferido`]) para que otro aparato sincronice con
+     * este o se una a su grupo. Si el puerto pedido esta tomado, falla: quien
+     * llama vuelve a probar con 0, como Windows.
      */
     func escuchar(puerto: UInt16) throws  -> Escucha
+    
+    /**
+     * La etiqueta del grupo de este aparato (el `g` que anuncian los
+     * suyos), o `None` sin grupo. Cuesta lo mismo que [`Nucleo::anuncio`].
+     */
+    func etiqueta() throws  -> String?
     
     /**
      * **Una vuelta de sincronizar** con el aparato de `host:puerto`, del
@@ -1464,6 +1506,24 @@ open func abrirLienzo(chat: String, dibujo: String)throws  -> Lienzo  {
 }
     
     /**
+     * **El anuncio de Bonjour de este aparato**, o `None` si no esta en
+     * ningun grupo (sin grupo no se anuncia: nadie sabria que hacer con el).
+     * Hay que volver a pedirlo al crear un grupo o unirse a uno, que cambian
+     * la etiqueta y la letra.
+     *
+     * La primera vez por codigo cuesta las 60 000 vueltas de PBKDF2 de la
+     * etiqueta (luego se recuerda): no llamarlo en el hilo de la interfaz.
+     */
+open func anuncio()throws  -> AnuncioBonjour?  {
+    return try  FfiConverterOptionTypeAnuncioBonjour.lift(try rustCallWithError(FfiConverterTypeErrorNucleo_lift) {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_nucleo_anuncio(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
      * Crea un grupo nuevo con este aparato dentro (letra `a`) y devuelve su
      * codigo, para ensenarlo y que los demas se unan. Como `crearGrupo` de
      * Android.
@@ -1479,7 +1539,9 @@ open func crearGrupo()throws  -> String  {
     
     /**
      * Escucha en `puerto` (0: el que de el sistema; el de siempre es
-     * 47474) para que otro aparato sincronice con este o se una a su grupo.
+     * 47474, [`puerto_preferido`]) para que otro aparato sincronice con
+     * este o se una a su grupo. Si el puerto pedido esta tomado, falla: quien
+     * llama vuelve a probar con 0, como Windows.
      */
 open func escuchar(puerto: UInt16)throws  -> Escucha  {
     return try  FfiConverterTypeEscucha_lift(try rustCallWithError(FfiConverterTypeErrorNucleo_lift) {
@@ -1487,6 +1549,19 @@ open func escuchar(puerto: UInt16)throws  -> Escucha  {
     uniffi_pixpin_nucleo_fn_method_nucleo_escuchar(
             self.uniffiCloneHandle(),
         FfiConverterUInt16.lower(puerto),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * La etiqueta del grupo de este aparato (el `g` que anuncian los
+     * suyos), o `None` sin grupo. Cuesta lo mismo que [`Nucleo::anuncio`].
+     */
+open func etiqueta()throws  -> String?  {
+    return try  FfiConverterOptionString.lift(try rustCallWithError(FfiConverterTypeErrorNucleo_lift) {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_nucleo_etiqueta(
+            self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
 }
@@ -1571,6 +1646,113 @@ public func FfiConverterTypeNucleo_lower(_ value: Nucleo) -> UInt64 {
 }
 
 
+
+
+/**
+ * **Lo que este aparato anuncia en la red**, igual que Windows
+ * (`anunciarse`) y Android (`Presencia`): la instancia `PixPin <nombre>`
+ * del tipo `_pixpin._tcp` con el TXT `g` (etiqueta del grupo), `id`, `l`
+ * (letra) y `n` (nombre, 40 letras como mucho). El puerto lo pone quien
+ * anuncia: el de su [`Escucha`].
+ */
+public struct AnuncioBonjour: Equatable, Hashable {
+    /**
+     * `PixPin Mac de Max`, recortado a 63 bytes (una etiqueta DNS) sin
+     * partir una letra.
+     */
+    public var instancia: String
+    /**
+     * `_pixpin._tcp`.
+     */
+    public var tipo: String
+    /**
+     * `g`, `id`, `l`, `n`, en ese orden.
+     */
+    public var txt: [ParTxt]
+    /**
+     * La etiqueta del grupo (el valor de `g`), para comparar con lo que
+     * anuncian los demas.
+     */
+    public var etiqueta: String
+    /**
+     * El id de este aparato (el valor de `id`), para no verse a si mismo.
+     */
+    public var id: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * `PixPin Mac de Max`, recortado a 63 bytes (una etiqueta DNS) sin
+         * partir una letra.
+         */instancia: String, 
+        /**
+         * `_pixpin._tcp`.
+         */tipo: String, 
+        /**
+         * `g`, `id`, `l`, `n`, en ese orden.
+         */txt: [ParTxt], 
+        /**
+         * La etiqueta del grupo (el valor de `g`), para comparar con lo que
+         * anuncian los demas.
+         */etiqueta: String, 
+        /**
+         * El id de este aparato (el valor de `id`), para no verse a si mismo.
+         */id: String) {
+        self.instancia = instancia
+        self.tipo = tipo
+        self.txt = txt
+        self.etiqueta = etiqueta
+        self.id = id
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension AnuncioBonjour: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeAnuncioBonjour: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AnuncioBonjour {
+        return
+            try AnuncioBonjour(
+                instancia: FfiConverterString.read(from: &buf), 
+                tipo: FfiConverterString.read(from: &buf), 
+                txt: FfiConverterSequenceTypeParTxt.read(from: &buf), 
+                etiqueta: FfiConverterString.read(from: &buf), 
+                id: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: AnuncioBonjour, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.instancia, into: &buf)
+        FfiConverterString.write(value.tipo, into: &buf)
+        FfiConverterSequenceTypeParTxt.write(value.txt, into: &buf)
+        FfiConverterString.write(value.etiqueta, into: &buf)
+        FfiConverterString.write(value.id, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAnuncioBonjour_lift(_ buf: RustBuffer) throws -> AnuncioBonjour {
+    return try FfiConverterTypeAnuncioBonjour.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAnuncioBonjour_lower(_ value: AnuncioBonjour) -> RustBuffer {
+    return FfiConverterTypeAnuncioBonjour.lower(value)
+}
 
 
 /**
@@ -2210,6 +2392,63 @@ public func FfiConverterTypePaginaMensajes_lower(_ value: PaginaMensajes) -> Rus
 
 
 /**
+ * Una entrada del TXT de Bonjour, en el orden en que se anuncia.
+ */
+public struct ParTxt: Equatable, Hashable {
+    public var clave: String
+    public var valor: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(clave: String, valor: String) {
+        self.clave = clave
+        self.valor = valor
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension ParTxt: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeParTxt: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ParTxt {
+        return
+            try ParTxt(
+                clave: FfiConverterString.read(from: &buf), 
+                valor: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: ParTxt, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.clave, into: &buf)
+        FfiConverterString.write(value.valor, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeParTxt_lift(_ buf: RustBuffer) throws -> ParTxt {
+    return try FfiConverterTypeParTxt.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeParTxt_lower(_ value: ParTxt) -> RustBuffer {
+    return FfiConverterTypeParTxt.lower(value)
+}
+
+
+/**
  * Lo que salio de una vuelta, para ensenarlo.
  */
 public struct ResumenSincro: Equatable, Hashable {
@@ -2322,6 +2561,95 @@ public func FfiConverterTypeResumenSincro_lift(_ buf: RustBuffer) throws -> Resu
 public func FfiConverterTypeResumenSincro_lower(_ value: ResumenSincro) -> RustBuffer {
     return FfiConverterTypeResumenSincro.lower(value)
 }
+
+
+/**
+ * Lo que hizo [`Escucha::atender`].
+ */
+
+public enum Atendido: Equatable, Hashable {
+    
+    /**
+     * Se cerro con [`Escucha::cerrar`]: no llego nadie.
+     */
+    case cerrada
+    /**
+     * Una sonda (`PING`): alguien mira si este aparato esta. No cambia nada.
+     */
+    case sonda
+    /**
+     * Un aparato saludo y se hablo con el (una vuelta o una union).
+     */
+    case aparato(id: String, nombre: String
+    )
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension Atendido: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeAtendido: FfiConverterRustBuffer {
+    typealias SwiftType = Atendido
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Atendido {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .cerrada
+        
+        case 2: return .sonda
+        
+        case 3: return .aparato(id: try FfiConverterString.read(from: &buf), nombre: try FfiConverterString.read(from: &buf)
+        )
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: Atendido, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .cerrada:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .sonda:
+            writeInt(&buf, Int32(2))
+        
+        
+        case let .aparato(id,nombre):
+            writeInt(&buf, Int32(3))
+            FfiConverterString.write(id, into: &buf)
+            FfiConverterString.write(nombre, into: &buf)
+            
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAtendido_lift(_ buf: RustBuffer) throws -> Atendido {
+    return try FfiConverterTypeAtendido.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAtendido_lower(_ value: Atendido) -> RustBuffer {
+    return FfiConverterTypeAtendido.lower(value)
+}
+
 
 
 /**
@@ -2510,6 +2838,30 @@ fileprivate struct FfiConverterOptionString: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterOptionTypeAnuncioBonjour: FfiConverterRustBuffer {
+    typealias SwiftType = AnuncioBonjour?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeAnuncioBonjour.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeAnuncioBonjour.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterOptionTypeCajaLienzo: FfiConverterRustBuffer {
     typealias SwiftType = CajaLienzo?
 
@@ -2655,6 +3007,31 @@ fileprivate struct FfiConverterSequenceTypeMensajeChat: FfiConverterRustBuffer {
         return seq
     }
 }
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeParTxt: FfiConverterRustBuffer {
+    typealias SwiftType = [ParTxt]
+
+    public static func write(_ value: [ParTxt], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeParTxt.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [ParTxt] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [ParTxt]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeParTxt.read(from: &buf))
+        }
+        return seq
+    }
+}
 /**
  * `K7Q2M-9XMPA`: el codigo como se lee y se dicta.
  */
@@ -2692,6 +3069,28 @@ public func etiquetaDeGrupo(codigo: String) -> String  {
     )
 })
 }
+/**
+ * El puerto que se intenta primero al escuchar (47474). Si esta tomado se
+ * escucha en otro cualquiera ([`Nucleo::escuchar`] con 0) y se anuncia ese.
+ */
+public func puertoPreferido() -> UInt16  {
+    return try!  FfiConverterUInt16.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_func_puerto_preferido(uniffiCallStatus
+    )
+})
+}
+/**
+ * El tipo de servicio de Bonjour para sincronizar, sin el punto final:
+ * `_pixpin._tcp` (como lo piden `NWBrowser` y `DNSServiceRegister`).
+ */
+public func tipoDeServicio() -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_func_tipo_de_servicio(uniffiCallStatus
+    )
+})
+}
 
 private enum InitializationResult {
     case ok
@@ -2715,6 +3114,12 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_pixpin_nucleo_checksum_func_etiqueta_de_grupo() != 12818) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_func_puerto_preferido() != 61456) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_func_tipo_de_servicio() != 57375) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_pixpin_nucleo_checksum_method_nucleo_aparato() != 58843) {
@@ -2756,10 +3161,16 @@ private let initializationResult: InitializationResult = {
     if (uniffi_pixpin_nucleo_checksum_method_nucleo_abrir_lienzo() != 59079) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_pixpin_nucleo_checksum_method_nucleo_anuncio() != 714) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_pixpin_nucleo_checksum_method_nucleo_crear_grupo() != 41949) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_pixpin_nucleo_checksum_method_nucleo_escuchar() != 52568) {
+    if (uniffi_pixpin_nucleo_checksum_method_nucleo_escuchar() != 63454) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_nucleo_etiqueta() != 14370) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_pixpin_nucleo_checksum_method_nucleo_sincronizar_con() != 6940) {
@@ -2781,6 +3192,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_pixpin_nucleo_checksum_method_lienzo_plano_de_vista() != 25153) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_escucha_atender() != 5514) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_pixpin_nucleo_checksum_method_escucha_atender_una() != 60926) {

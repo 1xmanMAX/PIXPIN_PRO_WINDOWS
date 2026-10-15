@@ -50,7 +50,7 @@ use std::sync::{Arc, Mutex};
 
 pub use chats::{FichaChat, MensajeChat, PaginaMensajes};
 pub use lienzo::{CajaLienzo, ImagenDelLienzo, Lienzo, LienzoPlano};
-pub use sincro::{Escucha, ResumenSincro};
+pub use sincro::{AnuncioBonjour, Atendido, Escucha, ParTxt, ResumenSincro};
 
 /// Lo que puede salir mal, tal como lo ve Swift (un `enum` que `throws`).
 ///

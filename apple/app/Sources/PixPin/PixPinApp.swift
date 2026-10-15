@@ -23,6 +23,16 @@ struct PixPinApp: App {
             }
         }
         .defaultSize(width: 980, height: 680)
+        Window("Sincronizar", id: "sincronizar") {
+            if let sincro = estado.sincro {
+                VistaSincro(sincro: sincro)
+            } else {
+                ContentUnavailableView("No se pudo abrir la carpeta de datos",
+                                       systemImage: "exclamationmark.triangle",
+                                       description: Text(estado.error ?? ""))
+            }
+        }
+        .defaultSize(width: 520, height: 600)
     }
 }
 
@@ -31,6 +41,9 @@ struct PixPinApp: App {
 final class EstadoApp: ObservableObject {
     let almacen: Almacen?
     let error: String?
+    /// Sincronizar con los demas aparatos del grupo (escucha, anuncio y
+    /// busqueda viven lo que la app, como la presencia de Windows).
+    let sincro: Sincronizador?
     /// Capturar una zona (Ctrl+Option+X en todo el Mac).
     let capturador: Capturador
     private var atajoCaptura: AtajoGlobal?
@@ -43,6 +56,11 @@ final class EstadoApp: ObservableObject {
         } catch {
             almacen = nil
             self.error = "\(error)"
+        }
+        sincro = almacen.map { Sincronizador(nucleo: $0.nucleo) }
+        if let almacen, let sincro {
+            sincro.alTraerCambios = { [weak almacen] in Task { await almacen?.cargarChats() } }
+            sincro.arrancar()
         }
         let capturador = self.capturador
         // Lo que se hace con la zona elegida: pinearla o sacar su texto.
@@ -87,6 +105,10 @@ struct MenuPrincipal: View {
             NSApp.activate()
         }
         .keyboardShortcut("p", modifiers: [.command, .option])
+        Button("Sincronizar…") {
+            abrirVentana(id: "sincronizar")
+            NSApp.activate()
+        }
         Button("Pinear desde el portapapeles") {
             if !GestorPines.compartido.pinearDesdePortapapeles() { NSSound.beep() }
         }

@@ -436,9 +436,17 @@ fn dos_aparatos_se_unen_y_sincronizan_por_la_red() {
     let obra = mac.crear_chat("Obra".into()).unwrap();
     mac.escribir_nota(obra.id.clone(), "desde el Mac".into(), None)
         .unwrap();
-    let hilo = atender(Arc::clone(&escucha));
+    // (Con `atender`, que dice quien vino: el Mac.)
+    let e = Arc::clone(&escucha);
+    let hilo = std::thread::spawn(move || e.atender());
     let r = mac.sincronizar_con("127.0.0.1".into(), puerto).unwrap();
-    assert!(hilo.join().unwrap().unwrap());
+    assert_eq!(
+        hilo.join().unwrap().unwrap(),
+        pixpin_nucleo::Atendido::Aparato {
+            id: mac.aparato().unwrap().id,
+            nombre: "Mac".into()
+        }
+    );
     assert_eq!(r.otro_nombre, "PC");
     assert!(r.enviados >= 1, "{r:?}");
 
@@ -473,11 +481,36 @@ fn una_sonda_se_contesta_sin_sincronizar() {
     let escucha = pc.escuchar(0).unwrap();
     let puerto = escucha.puerto();
     let e = Arc::clone(&escucha);
-    let hilo = std::thread::spawn(move || e.atender_una());
+    let hilo = std::thread::spawn(move || e.atender());
     let mut s = std::net::TcpStream::connect(("127.0.0.1", puerto)).unwrap();
     s.write_all(pixpin_sincro::SONDA).unwrap();
     let mut r = [0u8; 4];
     s.read_exact(&mut r).unwrap();
     assert_eq!(&r, pixpin_sincro::SONDA_RESPUESTA);
-    assert!(hilo.join().unwrap().unwrap());
+    assert_eq!(
+        hilo.join().unwrap().unwrap(),
+        pixpin_nucleo::Atendido::Sonda
+    );
+}
+
+#[test]
+fn el_anuncio_de_bonjour_sale_con_el_grupo() {
+    let t = Temporal::nueva("anuncio");
+    let pc = t.nucleo("PC de casa");
+    // Sin grupo no se anuncia nada.
+    assert_eq!(pc.anuncio().unwrap(), None);
+    assert_eq!(pc.etiqueta().unwrap(), None);
+
+    let codigo = pc.crear_grupo().unwrap();
+    let a = pc.anuncio().unwrap().expect("con grupo hay anuncio");
+    let yo = pc.aparato().unwrap();
+    assert_eq!(a.instancia, "PixPin PC de casa");
+    assert_eq!(a.tipo, pixpin_nucleo::sincro::tipo_de_servicio());
+    assert_eq!(a.etiqueta, pixpin_nucleo::sincro::etiqueta_de_grupo(codigo));
+    assert_eq!(pc.etiqueta().unwrap().as_deref(), Some(a.etiqueta.as_str()));
+    assert_eq!(a.id, yo.id);
+    let claves: Vec<_> = a.txt.iter().map(|p| p.clave.as_str()).collect();
+    assert_eq!(claves, ["g", "id", "l", "n"]);
+    assert_eq!(a.txt[0].valor, a.etiqueta);
+    assert_eq!(a.txt[2].valor, "a", "quien crea el grupo es la a");
 }

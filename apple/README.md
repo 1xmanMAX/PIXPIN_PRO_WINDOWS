@@ -89,8 +89,15 @@ pánico de Rust llega a Swift como error en vez de cerrar la app.
   - [ ] Ejecutar `xcframework.sh` en un Mac y una app de prueba que lista los proyectos de una
         carpeta copiada de Windows y sincroniza un chat con un PC Windows real.
   - [ ] Lector del búfer del lienzo en Swift (`CGPath` en una pasada).
-  - [ ] Transporte de Swift sobre `NWConnection` (hoy socket BSD de Rust) y descubrimiento con
-        Bonjour (`NWBrowser`); el `suelto`, la galería y los chats con personas.
+  - [x] Descubrimiento con Bonjour (`app/Sources/PixPinKit/Sincro/`): `NWBrowser` busca
+        `_pixpin._tcp` y filtra por el TXT `g`; la sonda `PING`/`PONG` con `NWConnection` da
+        host y puerto; el anuncio es `DNSServiceRegister` sobre el puerto de la `Escucha` de
+        Rust (47474 o el que dé el sistema) con el TXT de `Nucleo::anuncio` (igual que
+        Windows). Sincroniza solo al aparecer un aparato del grupo y 30 s después de un
+        cambio, salvo en modo de bajo consumo.
+  - [ ] Transporte de Swift sobre `NWConnection` (hoy socket BSD de Rust, con IPv4 primero);
+        el `suelto`, la galería y los chats con personas. La `Escucha` atiende una conexión
+        cada vez: mientras dura una vuelta, una sonda de otro espera.
   - [ ] Documentos (`docs`, `hojas`, `office`), timeline y lecciones en la API.
   - [ ] CI: `macos-latest` compila el xcframework.
 - [ ] Fase 2: app de Mac en SwiftUI/AppKit (`apple/app/`).

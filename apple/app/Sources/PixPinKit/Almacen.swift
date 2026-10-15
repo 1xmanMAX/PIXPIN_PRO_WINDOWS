@@ -108,6 +108,7 @@ public final class Almacen: ObservableObject {
             }.value
             mensajes[chat, default: []].append(m)
             totales[chat, default: 0] += 1
+            NotificationCenter.default.post(name: .pixpinCambioLocal, object: nil)
             return m
         } catch {
             self.error = "\(error)"
@@ -120,6 +121,7 @@ public final class Almacen: ObservableObject {
         let nucleo = self.nucleo
         do {
             _ = try await Task.detached(priority: .userInitiated) { try nucleo.crearChat(nombre: nombre) }.value
+            NotificationCenter.default.post(name: .pixpinCambioLocal, object: nil)
             await cargarChats()
         } catch {
             self.error = "\(error)"
@@ -202,6 +204,8 @@ public final class Almacen: ObservableObject {
         guard !nuevos.isEmpty else { return }
         mensajes[chat, default: []].append(contentsOf: nuevos)
         totales[chat, default: 0] += UInt64(nuevos.count)
+        // La sincronizacion sola cuenta sus 30 s de calma desde aqui.
+        NotificationCenter.default.post(name: .pixpinCambioLocal, object: nil)
     }
 
     /// El fichero de una `ruta` de mensaje (o de una foto de un lienzo) si
