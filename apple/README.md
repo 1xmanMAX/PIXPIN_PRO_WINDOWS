@@ -107,7 +107,7 @@ pánico de Rust llega a Swift como error en vez de cerrar la app.
   - [ ] Buscar en todo usa un recorrido propio (`src/buscar.rs`): pasar al de `pixpin-lanzador`
         cuando ese crate compile fuera de Windows.
   - [x] CI: `.github/workflows/apple.yml` (macOS 15, Xcode 16.4) compila el xcframework, pasa
-        `swift test` (48 pruebas, 15-oct) y sube `PixPin.app` universal (19 MB; 8 MB en zip)
+        `swift test` (81 pruebas, 15-oct) y sube `PixPin.app` universal (13 MB en zip)
         como artefacto «PixPin-mac».
 - [ ] Fase 2: app de Mac en SwiftUI/AppKit (`apple/app/`). Hecho y en verde en la CI:
   - [x] Barra de menús, ventana de Proyectos, chat por páginas, notas, crear proyecto.
@@ -117,7 +117,7 @@ pánico de Rust llega a Swift como error en vez de cerrar la app.
   - [x] Pines flotantes (imagen, PDF, vídeo), Live Text y OCR con Vision.
   - [x] Adjuntos en el chat: miniaturas con ImageIO y caché con tope, Quick Look, soltar y ⌘V.
   - [x] Sincronizar por la Wi‑Fi (Bonjour) con Windows y Android.
-  - [ ] Notas de voz (`app/Sources/PixPinKit/Voz/`, escrito; falta verlo en verde en la CI):
+  - [x] Notas de voz (`app/Sources/PixPinKit/Voz/`, en verde en la CI):
         microfono con `AVAudioEngine` → `.m4a` AAC-LC **mono** (el formato de Windows y
         Android; 32 kbps como el movil, 44,1/48 kHz como la tarjeta), `voz_<ms>.m4a` con
         `duracionMs` y `picos` (0–32767, ≤256, uno cada 50 ms) en la misma linea
@@ -125,12 +125,12 @@ pánico de Rust llega a Swift como error en vez de cerrar la app.
         (`requiresOnDeviceRecognition`, es-ES o el del sistema) guardado como Windows
         (`Nucleo::poner_transcripcion`: `[m:ss] ...` en `transcripcion` y `estadoDelTexto`).
         Burbuja `VOZ` con un solo `AVAudioPlayer` para toda la app.
-  - [ ] Grabar la pantalla (`app/Sources/PixPinKit/Grabar/`, escrito; falta la CI):
+  - [x] Grabar la pantalla (`app/Sources/PixPinKit/Grabar/`, en verde en la CI):
         «Grabar pantalla» (⌃⌥R) elige la zona con la captura (Intro o ⌘G graba),
         `SCStream` (YUV 4:2:0, 30 fps) → `AVAssetWriter` H.264 por hardware (sonido del
         sistema opcional, AAC) → `capturas/captura-AAAAMMDD-HHMMSS.mp4`; punto rojo en la
         barra de menus y «Detener grabación». Sin GIF todavia.
-  - [ ] Lienzo editable (escrito, falta verlo en verde en la CI): `EditorLienzo` en
+  - [x] Lienzo editable (en verde en la CI): `EditorLienzo` en
         `pixpin-nucleo/src/editor.rs` (el `Gesto` y la `Escena` del motor, la goma como el
         movil, lo de encima como `dibujo::pintar::ordenes_encima`, guardar con
         `con_escena` + `escribir` igual que Windows) y `app/Sources/PixPinKit/Lienzo/`
