@@ -24,6 +24,7 @@ use super::{
     Accion, Aviso, CONTORNO, Contexto, ERROR, FONDO, Lienzo, PRIMARIO, SUAVE, TEXTO, Tecla,
     VARIANTE, VERDE, caja, menos, rect,
 };
+use crate::caja_texto::CajaLinea;
 use crate::recibir::{Donde, Guardado};
 
 /// Cuanto aguanta un socket de envio sin que llegue nada: quien envia puede
@@ -98,7 +99,8 @@ struct Mio {
 pub(super) struct Recibir {
     pub(super) turno: u64,
     pub(super) estado: Estado,
-    tecleado: String,
+    /// El codigo (o el QR pegado) de quien envia: la caja comun de la app.
+    tecleado: CajaLinea,
     mio: Option<Mio>,
     /// Mientras sea cierto, la escucha de «mi codigo» y su anuncio siguen.
     vivo: Arc<AtomicBool>,
@@ -119,7 +121,7 @@ impl Recibir {
         Recibir {
             turno,
             estado: Estado::Pidiendo,
-            tecleado: String::new(),
+            tecleado: CajaLinea::nueva().con_maximo(80).sin_parpadeo(),
             mio: None,
             vivo: Arc::new(AtomicBool::new(true)),
             ocupado: Arc::new(AtomicBool::new(false)),
@@ -144,24 +146,35 @@ pub(super) fn tecla(r: &mut Recibir, t: Tecla, cx: &Contexto) -> bool {
     if !matches!(r.estado, Estado::Pidiendo) {
         return false;
     }
+    let pp = &mut crate::caja_texto::PortapapelesWindows;
     match t {
         Tecla::Letra(c) => {
-            if r.tecleado.chars().count() < 80 {
-                r.tecleado.push(c);
-            }
+            r.tecleado.caracter(c);
         }
         Tecla::Borrar => {
-            r.tecleado.pop();
+            r.tecleado.tecla(0x08, false, false, pp);
         }
-        Tecla::Pegar(texto) => r.tecleado = texto.trim().chars().take(80).collect(),
-        // Las teclas de caja de texto (`caja_texto`) aun no son de este campo:
-        // Retroceso le llega como `Borrar`.
-        Tecla::Caja { .. } => return false,
+        // El texto de un QR pegado: donde esta la rayita, sin blancos.
+        Tecla::Pegar(texto) => {
+            r.tecleado.pegar_texto(texto.trim());
+        }
+        Tecla::Caja { vk, shift, ctrl } => {
+            return r.tecleado.tecla(vk, shift, ctrl, pp).atendida();
+        }
         Tecla::Intro => {
             tocar(r, Toque::Recibir, cx);
         }
     }
     true
+}
+
+/// La caja del codigo, si se ve (solo mientras se pide): la del raton.
+pub(super) fn caja_visible(r: &mut Recibir) -> Option<&mut CajaLinea> {
+    if matches!(r.estado, Estado::Pidiendo) {
+        Some(&mut r.tecleado)
+    } else {
+        None
+    }
 }
 
 /// Un toque. Devuelve `true` si hay que volver a la portada.
@@ -460,46 +473,23 @@ fn esperar_a_que_me_manden(
 
 // ------------------------------------------------------------------ pintar
 
-/// El `OutlinedTextField` grande del codigo: cifras en grande y centradas.
+/// El `OutlinedTextField` grande del codigo: cifras en grande. Es la caja
+/// comun de la app (como el codigo de un chat compartido): se ve tal como se
+/// escribe, con la rayita donde va.
 pub(super) fn campo_grande(
     l: &mut Lienzo<'_>,
     r: pixpin_render::RectF,
-    texto: &str,
+    texto: &CajaLinea,
     pista: &str,
     a: Accion,
 ) {
     let (p, e) = (l.p, l.e);
     p.rellenar_redondeado(r, 6.0 * e, PRIMARIO);
     p.rellenar_redondeado(menos(r, 2.0 * e), 5.0 * e, FONDO);
-    let (mostrar, color, tam) = if texto.is_empty() {
-        (pista.to_string(), SUAVE, 26.0 * e)
-    } else if texto.chars().all(|c| c.is_ascii_digit() || c == ' ') {
-        (envio::legible(&envio::limpiar(texto)), TEXTO, 26.0 * e)
-    } else {
-        // Un QR pegado es largo: mas pequeno, para que se lea entero.
-        (texto.to_string(), TEXTO, 13.0 * e)
-    };
-    let (w, h) = p.medir_texto(&mostrar, tam);
-    let x = if w <= r.ancho - 24.0 * e {
-        r.x + (r.ancho - w) / 2.0
-    } else {
-        r.x + 12.0 * e
-    };
-    p.texto_linea(
-        &mostrar,
-        x,
-        r.y + (r.alto - h) / 2.0,
-        tam,
-        r.ancho - 24.0 * e,
-        color,
-    );
-    if !texto.is_empty() {
-        let xc = (x + w + 2.0 * e).min(r.x + r.ancho - 10.0 * e);
-        p.rellenar(
-            rect(xc, r.y + 14.0 * e, 2.0 * e, r.alto - 28.0 * e),
-            PRIMARIO,
-        );
-    }
+    // Un QR pegado es largo: mas pequeno, para que se lea mas.
+    let cifras = texto.chars().all(|c| c.is_ascii_digit() || c == ' ');
+    let tam = if cifras { 26.0 } else { 13.0 } * e;
+    super::compartidos_ui::pintar_caja(p, r, texto, pista, tam, true, e);
     l.zonas.push((r, a));
 }
 
@@ -938,6 +928,23 @@ mod pruebas {
         assert!(r.destino().is_none());
         r.tecleado = "48291".into();
         assert!(r.destino().is_none());
+    }
+
+    #[test]
+    fn el_codigo_es_la_caja_comun_y_solo_se_toca_mientras_se_pide() {
+        let mut r = Recibir::nuevo(1);
+        let pp = &mut crate::caja_texto::PortapapelesWindows;
+        for ch in "482913".chars() {
+            r.tecleado.caracter(ch);
+        }
+        // Mayus+Inicio elige todo y una cifra lo sustituye.
+        r.tecleado.tecla(0x24, true, false, pp);
+        r.tecleado.caracter('7');
+        assert_eq!(r.tecleado.texto(), "7");
+        assert!(caja_visible(&mut r).is_some());
+        // Caso negativo: buscando, la caja no se ve y el raton no la toca.
+        r.estado = Estado::Buscando(Busca::Buscando);
+        assert!(caja_visible(&mut r).is_none());
     }
 
     #[test]

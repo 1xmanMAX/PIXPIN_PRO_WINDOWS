@@ -66,6 +66,10 @@ pub(crate) struct Exportable {
     pub raiz: Option<PathBuf>,
     /// El fichero que se ve: da «Original» y «.pixpin».
     pub original: Option<PathBuf>,
+    /// El chat (su ficha, `proyectos/<ficha>`) donde vive lo que se ve, si
+    /// se sabe: su `.pixpin` es ese proyecto entero. Para lo que vive en un
+    /// chat sin ser un adjunto con ruta (una leccion, un croquis 3D).
+    pub proyecto: Option<String>,
     /// Lo anotado que va con el original en un `.pixpin` nuevo (ficheros
     /// que viven al lado o en la cache).
     pub anotado: Vec<PathBuf>,
@@ -78,7 +82,7 @@ pub(crate) struct Exportable {
 
 impl Exportable {
     pub(crate) fn nuevo(titulo: impl Into<String>) -> Exportable {
-        Exportable { titulo: titulo.into(), raiz: None, original: None, anotado: Vec::new(), hojas: Vec::new(), tablas: HashMap::new(), propios: Vec::new() }
+        Exportable { titulo: titulo.into(), raiz: None, original: None, proyecto: None, anotado: Vec::new(), hojas: Vec::new(), tablas: HashMap::new(), propios: Vec::new() }
     }
 
     /// Los ids de los formatos que ofrecera la hoja (para las pruebas y el
@@ -109,13 +113,19 @@ impl Exportable {
 pub(crate) const ORIGINAL: &str = "original";
 pub(crate) const PIXPIN: &str = "pixpin";
 
-/// **El `.pixpin` de un fichero suelto**: si es un adjunto de un chat, el
-/// proyecto entero de ese chat (lo que manda el chat); si no, un proyecto
-/// nuevo con el fichero como mensaje y lo anotado al lado
-/// (`archivos/<nombre>` y `archivos/<nombre>.anotado/...`).
-pub(crate) fn pixpin_de(raiz: Option<&Path>, original: &Path, anotado: &[PathBuf], cuando: i64) -> Result<(String, Vec<u8>)> {
+/// **El `.pixpin` de un fichero suelto**: si se sabe su chat (`proyecto`) o
+/// es un adjunto de un chat, el proyecto entero de ese chat (lo que manda el
+/// chat); si no, un proyecto nuevo con el fichero como mensaje y lo anotado
+/// al lado (`archivos/<nombre>` y `archivos/<nombre>.anotado/...`).
+pub(crate) fn pixpin_de(raiz: Option<&Path>, proyecto: Option<&str>, original: &Path, anotado: &[PathBuf], cuando: i64) -> Result<(String, Vec<u8>)> {
     let nombre = original.file_name().map(|n| n.to_string_lossy().into_owned()).context("el fichero no tiene nombre")?;
     let tronco = pixpin_docs::sin_extension(&nombre);
+    if let (Some(raiz), Some(id)) = (raiz, proyecto)
+        && let Ok(bytes) = pixpin_proyecto::almacen::empaquetar(raiz, id, cuando)
+    {
+        let ficha = pixpin_proyecto::almacen::Indice::leer(raiz).buscar(id).map(|f| f.nombre.clone()).unwrap_or(tronco.clone());
+        return Ok((format!("{}.pixpin", super::nombre_de_fichero(&ficha)), bytes));
+    }
     if let Some(raiz) = raiz
         && let Some(r) = pixpin_proyecto::anotado::raiz_de(original).or_else(|| Some(raiz.to_path_buf()))
         && let Some(x) = pixpin_proyecto::anotado::adjunto_de(&r, original)
@@ -149,6 +159,79 @@ pub(crate) fn pixpin_de(raiz: Option<&Path>, original: &Path, anotado: &[PathBuf
     p.poner_entrada("guardados.jsonl", format!("{linea}\n").into_bytes());
     let bytes = p.a_bytes().map_err(|e| anyhow::anyhow!("{e}"))?;
     Ok((format!("{}.pixpin", super::nombre_de_fichero(&tronco)), bytes))
+}
+
+/// Lo que va como un mensaje en un `.pixpin` nuevo ([`pixpin_nuevo`]): su
+/// texto y sus ficheros (fotos, audios...), cada uno su mensaje.
+#[derive(Debug, Clone)]
+pub(crate) struct Apunte {
+    pub cuando: i64,
+    pub texto: String,
+    pub ficheros: Vec<PathBuf>,
+}
+
+/// **Un `.pixpin` nuevo con unos apuntes** (lo que no vive en un solo chat:
+/// los momentos de la timeline, unas lecciones de varios chats): un proyecto
+/// llamado `titulo` con cada texto como nota y cada fichero como su mensaje
+/// (imagen, voz o archivo), en `archivos/`. Lo que falta del disco se salta.
+pub(crate) fn pixpin_nuevo(titulo: &str, apuntes: &[Apunte], cuando: i64) -> Result<(String, Vec<u8>)> {
+    use pixpin_proyecto::cuaderno::{Clase, Mensaje};
+    anyhow::ensure!(!apuntes.is_empty(), "no hay nada que poner en el .pixpin");
+    let nombre = if titulo.trim().is_empty() { "PixPin".to_string() } else { titulo.trim().to_string() };
+    let proyecto = pixpin_proyecto::Proyecto { id: format!("exportado-{cuando}"), nombre: nombre.clone(), creado: cuando, tocado: cuando, ..Default::default() };
+    let manifiesto = pixpin_proyecto::Manifiesto { escrito: cuando, proyecto: nombre.clone(), ..Default::default() };
+    let mut p = pixpin_proyecto::Paquete::nuevo(manifiesto, proyecto);
+    let mut lineas = String::new();
+    let mut usados = std::collections::HashSet::new();
+    let mut n = 0u32;
+    let mut poner = |m: Mensaje, lineas: &mut String| -> Result<()> {
+        lineas.push_str(&serde_json::to_string(&m).context("el mensaje no se escribe")?);
+        lineas.push('\n');
+        Ok(())
+    };
+    for a in apuntes {
+        if !a.texto.trim().is_empty() {
+            n += 1;
+            let m = Mensaje { id: format!("m-{cuando}-{n}"), cuando: a.cuando, clase: Some(Clase::Nota), texto: a.texto.clone(), ..Default::default() };
+            poner(m, &mut lineas)?;
+        }
+        for f in a.ficheros.iter().filter(|f| f.is_file()) {
+            let Ok(bytes) = std::fs::read(f) else { continue };
+            let base = f.file_name().map(|x| x.to_string_lossy().into_owned()).unwrap_or_else(|| "fichero".into());
+            // Dos ficheros con el mismo nombre no se pisan.
+            let mut fichero = base.clone();
+            let mut k = 1;
+            while !usados.insert(fichero.clone()) {
+                k += 1;
+                fichero = format!("{k}-{base}");
+            }
+            let ext = f.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
+            let clase = match ext.as_str() {
+                "png" | "jpg" | "jpeg" | "webp" | "gif" | "bmp" => Clase::Imagen,
+                "m4a" | "ogg" | "opus" | "wav" | "mp3" | "aac" => Clase::Voz,
+                _ => Clase::Archivo,
+            };
+            let ruta = format!("archivos/{fichero}");
+            n += 1;
+            let m = Mensaje { id: format!("m-{cuando}-{n}"), cuando: a.cuando, clase: Some(clase), ruta: Some(ruta.clone()), nombre: fichero.clone(), bytes: bytes.len() as i64, ..Default::default() };
+            p.poner_entrada(&ruta, bytes);
+            poner(m, &mut lineas)?;
+        }
+    }
+    anyhow::ensure!(!lineas.is_empty(), "no hay nada que poner en el .pixpin");
+    p.poner_entrada("guardados.jsonl", lineas.into_bytes());
+    let bytes = p.a_bytes().map_err(|e| anyhow::anyhow!("{e}"))?;
+    Ok((format!("{}.pixpin", super::nombre_de_fichero(&nombre)), bytes))
+}
+
+/// El `.pixpin` de [`pixpin_nuevo`] como formato propio de un visor.
+pub(crate) fn propio_pixpin(titulo: String, apuntes: Vec<Apunte>) -> Propio {
+    Propio::nuevo(PIXPIN, "compartir-pixpin", move |c| {
+        let (fichero, bytes) = pixpin_nuevo(&titulo, &apuntes, pixpin_shell::entorno::ahora_utc_ms())?;
+        let r = c.join(fichero);
+        std::fs::write(&r, bytes).with_context(|| format!("no se pudo escribir {}", r.display()))?;
+        Ok(vec![r])
+    })
 }
 
 /// **Una imagen con lo dibujado encima** (un pin, una captura, una foto):
@@ -207,8 +290,8 @@ pub(crate) fn hoja_de_imagen(img: ImagenRgba) -> HojaSuelta {
 
 /// **El «Exportar…» de un visor 3D** (modelo BIM, croquis): la vista que se
 /// ve como hoja (PDF, HTML, PNG, JPG, SVG) y, si hay fichero, el original y
-/// el `.pixpin`.
-pub(crate) fn al_exportar_3d(idioma: pixpin_store::Idioma, titulo: String, original: Option<PathBuf>) -> pixpin_cad::ventana3d::AlExportar {
+/// el `.pixpin` (el de su chat, `proyecto`, si se sabe: un croquis).
+pub(crate) fn al_exportar_3d(idioma: pixpin_store::Idioma, titulo: String, original: Option<PathBuf>, proyecto: Option<String>) -> pixpin_cad::ventana3d::AlExportar {
     let texto = pixpin_store::Catalogo::nuevo(idioma).t("compartir-exportar") + "\tCtrl+E";
     pixpin_cad::ventana3d::AlExportar {
         texto,
@@ -217,6 +300,7 @@ pub(crate) fn al_exportar_3d(idioma: pixpin_store::Idioma, titulo: String, origi
             let mut x = Exportable::nuevo(titulo.clone());
             x.raiz = Some(ubicacion.raiz().to_path_buf());
             x.original = original.clone().filter(|o| o.is_file());
+            x.proyecto = proyecto.clone();
             if let Some((ancho, alto, pixeles)) = foto {
                 x.hojas.push(hoja_de_imagen(ImagenRgba { ancho, alto, pixeles }));
             }
@@ -336,7 +420,7 @@ mod pruebas {
         std::fs::write(&f, "0\nEOF\n").unwrap();
         let a = d.join("plano.anot.excalidraw");
         std::fs::write(&a, "{}").unwrap();
-        let (nombre, bytes) = pixpin_de(None, &f, std::slice::from_ref(&a), 1_700_000_000_000).unwrap();
+        let (nombre, bytes) = pixpin_de(None, None, &f, std::slice::from_ref(&a), 1_700_000_000_000).unwrap();
         assert_eq!(nombre, "plano.pixpin");
         let p = pixpin_proyecto::Paquete::desde_bytes(&bytes).unwrap();
         assert_eq!(p.proyecto.nombre, "plano");
@@ -344,7 +428,34 @@ mod pruebas {
         assert!(p.entrada("archivos/plano.dxf.anotado/plano.anot.excalidraw").is_some());
         assert!(String::from_utf8_lossy(p.entrada("guardados.jsonl").unwrap()).contains("archivos/plano.dxf"));
         // Caso negativo: un fichero que no esta.
-        assert!(pixpin_de(None, &d.join("no-esta.dwg"), &[], 1).is_err());
+        assert!(pixpin_de(None, None, &d.join("no-esta.dwg"), &[], 1).is_err());
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn un_pixpin_nuevo_lleva_cada_apunte_y_sus_ficheros() {
+        let d = temporal("nuevo");
+        let foto = d.join("foto.png");
+        std::fs::write(&foto, pixpin_codec::codificar_png(&ImagenRgba { ancho: 2, alto: 2, pixeles: vec![9; 16] }).unwrap()).unwrap();
+        let otra = d.join("sub");
+        std::fs::create_dir_all(&otra).unwrap();
+        std::fs::write(otra.join("foto.png"), b"no es png pero da igual").unwrap();
+        let apuntes = vec![
+            Apunte { cuando: 1, texto: "Vaciado de losa".into(), ficheros: vec![foto.clone(), otra.join("foto.png")] },
+            // Lo que falta del disco se salta.
+            Apunte { cuando: 2, texto: String::new(), ficheros: vec![d.join("no-esta.m4a")] },
+        ];
+        let (nombre, bytes) = pixpin_nuevo("Timeline: hoy", &apuntes, 7).unwrap();
+        assert!(nombre.ends_with(".pixpin"), "{nombre}");
+        let p = pixpin_proyecto::Paquete::desde_bytes(&bytes).unwrap();
+        assert_eq!(p.proyecto.nombre, "Timeline: hoy");
+        assert!(p.entrada("archivos/foto.png").is_some() && p.entrada("archivos/2-foto.png").is_some());
+        let lineas = String::from_utf8_lossy(p.entrada("guardados.jsonl").unwrap()).into_owned();
+        assert_eq!(lineas.lines().count(), 3, "{lineas}");
+        assert!(lineas.contains("Vaciado de losa") && lineas.contains("IMAGEN"));
+        // Casos negativos: sin apuntes, o solo con lo que no esta, no hay .pixpin.
+        assert!(pixpin_nuevo("x", &[], 1).is_err());
+        assert!(pixpin_nuevo("x", &apuntes[1..], 1).is_err());
         let _ = std::fs::remove_dir_all(&d);
     }
 

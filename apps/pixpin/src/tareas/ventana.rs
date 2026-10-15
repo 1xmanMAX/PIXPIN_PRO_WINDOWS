@@ -59,6 +59,7 @@ use pixpin_store::{Catalogo, Idioma, Ubicacion};
 use super::rejilla::{self, Vista};
 use super::{Fila, Lista, emoticonos, tarjetas};
 use crate::caja_dibujo::hex;
+use crate::caja_texto::CajaLinea;
 use crate::lecciones::ui;
 use crate::overlay::Recursos;
 use crate::v2::aviso::Aviso;
@@ -85,6 +86,7 @@ const MINI: f32 = 48.0;
 /// Lado mayor de la vista de una ficha con el raton encima.
 const VISTA: f32 = 160.0;
 
+#[cfg(test)]
 const VK_RETROCESO: u32 = 0x08;
 const VK_TAB: u32 = 0x09;
 const VK_ENTRAR: u32 = 0x0D;
@@ -96,6 +98,7 @@ const VK_IZQUIERDA: u32 = 0x25;
 const VK_ARRIBA: u32 = 0x26;
 const VK_DERECHA: u32 = 0x27;
 const VK_ABAJO: u32 = 0x28;
+const VK_INSERTAR: u32 = 0x2D;
 const VK_SUPRIMIR: u32 = 0x2E;
 const VK_F: u32 = 0x46;
 const VK_L: u32 = 0x4C;
@@ -222,23 +225,27 @@ fn lanzar(idioma: Idioma, ubicacion: Ubicacion, aparato: String) {
 
 // ------------------------------------------------------------ la caja
 
-/// La caja de una linea para apuntar. Minima a proposito: escribir, borrar,
-/// moverse con las flechas, Inicio/Fin y pegar con Ctrl+V; para una tarea no
-/// hace falta mas.
+/// **La caja de una linea para apuntar.** Es la caja comun de la app
+/// (`caja_texto::CajaLinea`, regla del usuario: un solo componente con
+/// variables), asi que tiene todo lo de una caja de Windows: Ctrl+Retroceso
+/// y Ctrl+Supr, Ctrl+flechas, elegir con Mayusculas y con el raton
+/// (arrastrar, doble clic), deshacer, copiar y pegar, y la rayita donde se
+/// escribe. Aqui queda solo lo suyo: las fichas de las imagenes.
 ///
 /// **Ctrl+V con una imagen** (un mapa de bits, o un fichero de imagen
 /// copiado en el Explorador) mete en el cursor una ficha `[img 01]`, como
 /// pegar una imagen en la terminal de Claude Code: se pinta como una chapa
-/// de otro color, Retroceso a su lado la borra entera y con el raton encima
-/// ensena la imagen. Las imagenes se quedan aqui (las pegadas como mapa, en
-/// un PNG temporal) hasta Intro, que las copia al chat del Inbox
-/// (`tareas::apuntar_con`); la ficha que se borro del texto se lleva su
-/// imagen.
-#[derive(Debug, Clone, Default)]
+/// de otro color (`CajaLinea::pintar_con_fichas`), Retroceso a su lado la
+/// borra entera, las flechas la saltan (`CajaLinea::tecla_con_piezas`) y con
+/// el raton encima ensena la imagen. Las imagenes se quedan aqui (las pegadas
+/// como mapa, en un PNG temporal) hasta Intro, que las copia al chat del
+/// Inbox (`tareas::apuntar_con`); la ficha que se borro del texto se lleva
+/// su imagen (y Ctrl+Z la devuelve con ella).
+#[derive(Debug, Clone)]
 struct Campo {
-    texto: String,
-    /// Donde esta el cursor, en bytes (siempre en el borde de una letra).
-    cursor: usize,
+    /// Lo escrito, con su rayita, su deshacer y su raton. Quieta: esta
+    /// ventana no repinta sola.
+    caja: CajaLinea,
     /// Las imagenes pegadas (`v2::pegar`, con su huella: una imagen, un
     /// nombre), cada una con el numero de su ficha.
     pegadas: Vec<(u32, Pegada)>,
@@ -249,44 +256,59 @@ struct Campo {
     aviso_ficha: Option<String>,
 }
 
+impl Default for Campo {
+    fn default() -> Self {
+        Campo {
+            caja: CajaLinea::nueva().sin_parpadeo(),
+            pegadas: Vec::new(),
+            aviso: None,
+            aviso_ficha: None,
+        }
+    }
+}
+
 /// Donde van los PNG de los mapas de bits pegados, hasta Intro.
 fn carpeta_de_pegadas() -> PathBuf {
     std::env::temp_dir().join("pixpin-tareas")
 }
 
 impl Campo {
+    fn texto(&self) -> &str {
+        self.caja.texto()
+    }
+
     fn vaciar(&mut self) {
-        self.texto.clear();
-        self.cursor = 0;
+        self.caja.vaciar();
         for (_, p) in self.pegadas.drain(..) {
             p.soltar();
         }
     }
 
+    /// Pone `t` como si se acabara de abrir la caja (corregir una tarea).
+    fn poner(&mut self, t: &str) {
+        self.vaciar();
+        self.caja.poner_texto(t);
+    }
+
     /// Donde esta cada ficha de una imagen pegada que sigue en el texto (la
     /// primera vez que sale), ordenadas, con su numero y su imagen.
     fn fichas(&self) -> Vec<(std::ops::Range<usize>, u32, &Pegada)> {
+        let texto = self.caja.texto();
         let mut v: Vec<_> = self
             .pegadas
             .iter()
             .filter_map(|(n, p)| {
                 let f = mini::ficha_de_imagen(*n);
-                self.texto.find(&f).map(|i| (i..i + f.len(), *n, p))
+                texto.find(&f).map(|i| (i..i + f.len(), *n, p))
             })
             .collect();
         v.sort_by_key(|(r, _, _)| r.start);
         v
     }
 
-    /// La ficha que acaba justo en el cursor, o la que empieza en el.
-    fn ficha_en(&self, antes: bool) -> Option<std::ops::Range<usize>> {
-        self.fichas().into_iter().map(|(r, _, _)| r).find(|r| {
-            if antes {
-                r.end == self.cursor
-            } else {
-                r.start == self.cursor
-            }
-        })
+    /// Solo donde estan las fichas: las piezas enteras de la caja.
+    fn piezas(&self) -> Vec<std::ops::Range<usize>> {
+        self.fichas().into_iter().map(|(r, _, _)| r).collect()
     }
 
     /// Las imagenes que van con la tarea: las que aun tienen su ficha.
@@ -299,7 +321,7 @@ impl Campo {
 
     /// Lo que dice el aviso de la tarea apuntada: el texto sin las fichas.
     fn lo_que_se_lee(&self) -> String {
-        let mut s = self.texto.clone();
+        let mut s = self.caja.texto().to_string();
         for (r, _, _) in self.fichas().into_iter().rev() {
             s.replace_range(r, " ");
         }
@@ -315,17 +337,19 @@ impl Campo {
     fn meter_imagen(&mut self, pegada: Pegada) {
         let numero = self.pegadas.iter().map(|(n, _)| *n).max().unwrap_or(0) + 1;
         let mut ficha = String::new();
-        if self.texto[..self.cursor]
-            .chars()
-            .next_back()
-            .is_some_and(|c| !c.is_whitespace())
+        let pos = self.caja.pos();
+        let elegido = self.caja.seleccionado().is_some();
+        if !elegido
+            && self.caja.texto()[..pos]
+                .chars()
+                .next_back()
+                .is_some_and(|c| !c.is_whitespace())
         {
             ficha.push(' ');
         }
         ficha.push_str(&mini::ficha_de_imagen(numero));
         ficha.push(' ');
-        self.texto.insert_str(self.cursor, &ficha);
-        self.cursor += ficha.len();
+        self.caja.pegar_texto(&ficha);
         self.pegadas.push((numero, pegada));
     }
 
@@ -385,102 +409,40 @@ impl Campo {
         self.pegar(Some(pixpin_codec::ContenidoPortapapeles::Rutas(rutas)));
     }
 
+    /// Escribe `s` donde esta la rayita (sobre lo elegido). Una tarea es una
+    /// linea: lo pegado con saltos se junta.
     fn escribir(&mut self, s: &str) {
-        // Una tarea es una linea: lo pegado con saltos se junta.
-        let s: String = s
-            .chars()
-            .map(|c| {
-                if c == '\n' || c == '\r' || c == '\t' {
-                    ' '
-                } else {
-                    c
-                }
-            })
-            .filter(|c| !c.is_control())
-            .collect();
-        self.texto.insert_str(self.cursor, &s);
-        self.cursor += s.len();
-    }
-
-    fn anterior(&self) -> usize {
-        self.texto[..self.cursor]
-            .char_indices()
-            .next_back()
-            .map_or(0, |(i, _)| i)
-    }
-
-    fn siguiente(&self) -> usize {
-        self.texto[self.cursor..]
-            .chars()
-            .next()
-            .map_or(self.cursor, |c| self.cursor + c.len_utf8())
+        self.caja.pegar_texto(s);
     }
 
     /// Una letra escrita (`WM_CHAR`). Las de control llegan por [`tecla`].
     fn letra(&mut self, c: char) -> bool {
-        if c.is_control() {
-            return false;
-        }
-        let mut b = [0u8; 4];
-        self.escribir(c.encode_utf8(&mut b));
-        true
+        self.caja.caracter(c)
     }
 
-    /// Atiende una tecla. Devuelve si era suya.
-    fn tecla(&mut self, vk: u32, ctrl: bool) -> bool {
-        match vk {
-            VK_RETROCESO => {
-                if ctrl {
-                    // La palabra de antes entera, como en cualquier caja.
-                    let antes = self.texto[..self.cursor].trim_end();
-                    let corte = antes.rfind(char::is_whitespace).map_or(0, |i| i + 1);
-                    self.texto.replace_range(corte..self.cursor, "");
-                    self.cursor = corte;
-                } else if let Some(r) = self.ficha_en(true) {
-                    // Una ficha se va entera: media ficha no es nada.
-                    self.cursor = r.start;
-                    self.texto.replace_range(r, "");
-                } else if self.cursor > 0 {
-                    let a = self.anterior();
-                    self.texto.replace_range(a..self.cursor, "");
-                    self.cursor = a;
-                }
-                true
-            }
-            VK_SUPRIMIR => {
-                let s = self
-                    .ficha_en(false)
-                    .map_or_else(|| self.siguiente(), |r| r.end);
-                self.texto.replace_range(self.cursor..s, "");
-                true
-            }
-            // Las flechas saltan una ficha de una vez.
-            VK_IZQUIERDA => {
-                self.cursor = self
-                    .ficha_en(true)
-                    .map_or_else(|| self.anterior(), |r| r.start);
-                true
-            }
-            VK_DERECHA => {
-                self.cursor = self
-                    .ficha_en(false)
-                    .map_or_else(|| self.siguiente(), |r| r.end);
-                true
-            }
-            VK_INICIO => {
-                self.cursor = 0;
-                true
-            }
-            VK_FIN => {
-                self.cursor = self.texto.len();
-                true
-            }
-            VK_V if ctrl => {
-                self.pegar(pixpin_codec::portapapeles::leer());
-                true
-            }
-            _ => false,
+    /// Atiende una tecla. Devuelve si era suya. Pegar (Ctrl+V y
+    /// Mayus+Insertar) es de aqui, porque puede traer imagenes; lo demas lo
+    /// hace la caja comun, con las fichas como piezas enteras.
+    fn tecla(&mut self, vk: u32, ctrl: bool, shift: bool) -> bool {
+        if (vk == VK_V && ctrl && !shift) || (vk == VK_INSERTAR && shift && !ctrl) {
+            self.pegar(pixpin_codec::portapapeles::leer());
+            return true;
         }
+        let piezas = self.piezas();
+        self.caja
+            .tecla_con_piezas(vk, shift, ctrl, &mut crate::caja_texto::PortapapelesWindows, &piezas)
+            .atendida()
+    }
+
+    /// Boton pulsado en `l` (coordenadas de la ventana). Devuelve si cayo en
+    /// lo escrito: la rayita va alli (nunca en medio de una ficha).
+    fn pulsar(&mut self, l: pixpin_geom::Punto, shift: bool) -> bool {
+        if !self.caja.pulsar(l, shift, Instant::now()) {
+            return false;
+        }
+        let piezas = self.piezas();
+        self.caja.fuera_de_piezas(&piezas);
+        true
     }
 }
 
@@ -1012,9 +974,34 @@ fn bucle(
                         ventana.mover(marco);
                     }
                     e.botones.raton = local(p, marco);
+                    // Eligiendo lo escrito con el boton pulsado.
+                    if e.campo.caja.eligiendo() {
+                        e.campo.caja.arrastrar(pixpin_geom::Punto {
+                            x: p.x - marco.x,
+                            y: p.y - marco.y,
+                        });
+                    }
                 }
                 EventoOverlay::BotonPulsado(p) => {
                     e.botones.raton = local(p, marco);
+                    // En lo escrito de la caja de apuntar (lo de encima es la
+                    // caja, no un boton suyo ni la eleccion de un grupo): la
+                    // rayita donde cae el clic, dos la palabra, tres todo, y
+                    // arrastrando se elige, como en cualquier caja.
+                    if e.repartiendo.is_none()
+                        && e.botones.bajo_el_raton() == Some(Accion::EnfocarApuntar)
+                    {
+                        let shift = pixpin_shell::entrada::modificadores_pulsados().shift;
+                        let l = pixpin_geom::Punto {
+                            x: p.x - marco.x,
+                            y: p.y - marco.y,
+                        };
+                        if e.campo.pulsar(l, shift) {
+                            e.foco = Foco::Apuntar;
+                            ventana.capturar_raton();
+                            continue;
+                        }
+                    }
                     match e.botones.bajo_el_raton() {
                         Some(Accion::Mover) => {
                             e.moviendo = Some((p, marco));
@@ -1045,7 +1032,7 @@ fn bucle(
                     }
                 }
                 EventoOverlay::BotonSoltado(_) => {
-                    if e.moviendo.take().is_some() {
+                    if e.moviendo.take().is_some() | e.campo.caja.soltar_raton() {
                         ventana.soltar_raton();
                     }
                 }
@@ -1216,9 +1203,14 @@ fn tecla(
             e.soltar_correccion();
             e.foco = Foco::Apuntar;
         }
-        // Ctrl+Z, mientras el aviso lo ofrece, es su «Deshacer»: las cajas
-        // de escribir no tienen deshacer propio que pisar.
-        (VK_Z, _) if ctrl && e.deshacer.is_some() => {
+        // Ctrl+Z, mientras el aviso lo ofrece, es su «Deshacer», salvo que la
+        // caja con el foco tenga algo suyo que deshacer: eso va primero.
+        (VK_Z, f)
+            if ctrl
+                && e.deshacer.is_some()
+                && !(f == Foco::Apuntar && e.campo.caja.hay_deshacer())
+                && !(f == Foco::Buscar && e.buscar.hay_deshacer()) =>
+        {
             return hacer(e, Accion::Deshacer, textos, ubicacion, aparato);
         }
         // Supr sobre la tarjeta con el foco la quita, como su aspa.
@@ -1229,7 +1221,7 @@ fn tecla(
             match tarjetas::escape(
                 false,
                 e.foco == Foco::Apuntar,
-                e.campo.texto.is_empty(),
+                e.campo.texto().is_empty(),
                 e.buscar.texto().is_empty(),
             ) {
                 tarjetas::Escape::Cerrar => return false,
@@ -1309,7 +1301,7 @@ fn tecla(
             }
         }
         (_, Foco::Apuntar) => {
-            e.campo.tecla(vk, ctrl);
+            e.campo.tecla(vk, ctrl, shift);
             avisar_de_la_caja(e, textos);
         }
         _ => {}
@@ -1374,7 +1366,7 @@ fn hacer(
             let Some((lista, fila)) = e.corrigiendo.clone() else {
                 return true;
             };
-            match super::corregir(raiz, &lista, &fila, &e.campo.texto, &e.campo.imagenes()) {
+            match super::corregir(raiz, &lista, &fila, e.campo.texto(), &e.campo.imagenes()) {
                 Ok(true) => {
                     e.decir(textos.t("tareas5-corregida"));
                     e.soltar_correccion();
@@ -1406,8 +1398,7 @@ fn hacer(
             let Some((l, f)) = e.fila(li, fi).map(|(l, f)| (l.clone(), f.clone())) else {
                 return true;
             };
-            e.campo.vaciar();
-            e.campo.escribir(&f.texto);
+            e.campo.poner(&f.texto);
             e.corrigiendo = Some((l, f));
             e.repartiendo = None;
             e.foco = Foco::Apuntar;
@@ -1418,7 +1409,7 @@ fn hacer(
             };
             let rutas = pixpin_shell::elegir::pedir_imagenes(h);
             e.foco = Foco::Apuntar;
-            e.campo.cursor = e.campo.texto.len();
+            e.campo.caja.al_final();
             e.campo.elegidas(rutas);
             avisar_de_la_caja(e, textos);
         }
@@ -1489,12 +1480,12 @@ fn hacer(
             }
         }
         Accion::Apuntar => {
-            if e.campo.texto.trim().is_empty() {
+            if e.campo.texto().trim().is_empty() {
                 return true;
             }
             let hecho = match &e.apuntar_en {
-                Some(l) => super::apuntar_en(raiz, aparato, l, &e.campo.texto, &e.campo.imagenes()),
-                None => super::apuntar_con(raiz, aparato, &e.campo.texto, &e.campo.imagenes()),
+                Some(l) => super::apuntar_en(raiz, aparato, l, e.campo.texto(), &e.campo.imagenes()),
+                None => super::apuntar_con(raiz, aparato, e.campo.texto(), &e.campo.imagenes()),
             };
             match hecho {
                 Ok(lista) => {
@@ -2070,7 +2061,7 @@ fn pintar_caja(e: &mut Estado, p: &Pintor, x: f32, y: f32, ancho: f32, s: f32, t
     let mut fin = imagen.x - 4.0 * s;
 
     // Con algo escrito, el boton de apuntar (o guardar) con su «Intro».
-    if !e.campo.texto.trim().is_empty() {
+    if !e.campo.texto().trim().is_empty() {
         let rotulo = textos.t(if e.corrigiendo.is_some() {
             "tareas5-guardar"
         } else {
@@ -2104,10 +2095,11 @@ fn pintar_caja(e: &mut Estado, p: &Pintor, x: f32, y: f32, ancho: f32, s: f32, t
         ancho: hueco,
         alto: caja.alto,
     };
-    e.fichas_pintadas.clear();
-    if e.campo.texto.is_empty() {
-        // La pista, 3 px a la derecha del cursor: pegada a el parecia que
-        // el cursor era su primera letra.
+    // Lo escrito, con la caja comun: sus fichas como chapas y la rayita
+    // donde se escribe. Vacia, la pista 3 px a la derecha de la rayita:
+    // pegada a ella parecia que la rayita era su primera letra.
+    pintar_texto_de_la_caja(e, p, recorte, tx, hueco, foco, s);
+    if e.campo.texto().is_empty() {
         let pista = match (&e.corrigiendo, &e.apuntar_en) {
             (Some(_), _) => textos.t("tareas5-corregir-pista"),
             (None, Some(l)) => {
@@ -2118,11 +2110,6 @@ fn pintar_caja(e: &mut Estado, p: &Pintor, x: f32, y: f32, ancho: f32, s: f32, t
             (None, None) => textos.t("tareas5-apuntar-pista"),
         };
         p.texto_linea(&pista, tx + 3.0 * s, ty, tam, hueco - 3.0 * s, GRIS);
-        if foco {
-            p.linea((tx, ty), (tx, ty + alto_linea), 1.5 * s, ACENTO);
-        }
-    } else {
-        pintar_texto_de_la_caja(e, p, tx, ty, alto_linea, hueco, recorte, foco, s);
     }
     if sobre_imagen {
         let limite = RectF {
@@ -2135,89 +2122,61 @@ fn pintar_caja(e: &mut Estado, p: &Pintor, x: f32, y: f32, ancho: f32, s: f32, t
     }
 }
 
-/// Lo escrito en la caja: el texto y cada ficha de imagen como una chapa, y
-/// el cursor.
-#[allow(clippy::too_many_arguments)] // estado, pintor, sitio, renglon, hueco, recorte, foco y escala
+/// Lo escrito en la caja (`CajaLinea::pintar_con_fichas`): el texto, cada
+/// ficha de imagen como una chapa, lo elegido y la rayita. Apunta donde quedo
+/// cada chapa, para ensenar su imagen con el raton encima.
+#[allow(clippy::too_many_arguments)] // estado, pintor, recorte, sitio, hueco, foco y escala
 fn pintar_texto_de_la_caja(
     e: &mut Estado,
     p: &Pintor,
-    tx: f32,
-    ty: f32,
-    alto_linea: f32,
-    hueco: f32,
     recorte: RectF,
+    tx: f32,
+    hueco: f32,
     foco: bool,
     s: f32,
 ) {
-    let tam = 15.0 * s;
-    // Donde va el cursor: una marca de ancho cero en su sitio, y la caja que
-    // le da DirectWrite (medir el trozo de antes se comeria los blancos del
-    // final).
-    let mut con_marca = e.campo.texto.clone();
-    con_marca.insert(e.campo.cursor, '\u{200B}');
-    let i = e.campo.texto[..e.campo.cursor].encode_utf16().count() as u32;
-    let cx = p
-        .cajas_de_trozo(&con_marca, tam, 100_000.0, &[], i, 1)
-        .first()
-        .map_or(0.0, |b| b.x);
-    // Si no cabe, se corre a la izquierda lo justo para ver el cursor.
-    let corrido = (cx - (hueco - 4.0 * s)).max(0.0);
-    // El texto a trozos: lo escrito en su color y cada ficha de imagen como
-    // una chapa. Cada trozo se coloca donde lo pone la disposicion del texto
-    // entero, asi no se mueve nada respecto a cuando era un solo texto.
-    let texto = &e.campo.texto;
     let fichas: Vec<(std::ops::Range<usize>, PathBuf)> = e
         .campo
         .fichas()
         .into_iter()
         .map(|(r, _, peg)| (r, peg.ruta.clone()))
         .collect();
-    let caja_de = |p: &Pintor, r: &std::ops::Range<usize>| {
-        let inicio = texto[..r.start].encode_utf16().count() as u32;
-        let largo = texto[r.clone()].encode_utf16().count() as u32;
-        p.cajas_de_trozo(texto, tam, 100_000.0, &[], inicio, largo)
-            .first()
-            .copied()
+    let rangos: Vec<std::ops::Range<usize>> = fichas.iter().map(|(r, _)| r.clone()).collect();
+    // El hueco del texto: un poco de aire a la derecha para que la rayita
+    // al final no quede pegada al boton.
+    let texto = RectF {
+        x: tx,
+        ancho: (hueco - 4.0 * s).max(1.0),
+        ..recorte
     };
-    let mut trozos: Vec<(std::ops::Range<usize>, Option<PathBuf>)> = Vec::new();
-    let mut desde = 0;
-    for (r, ruta) in fichas {
-        trozos.push((desde..r.start, None));
-        desde = r.end;
-        trozos.push((r, Some(ruta)));
-    }
-    trozos.push((desde..texto.len(), None));
-    let mut pintadas = Vec::new();
-    p.con_recorte(recorte, |p| {
-        for (r, ruta) in &trozos {
-            if texto[r.clone()].trim().is_empty() {
-                continue;
-            }
-            let Some(b) = caja_de(p, r) else {
-                continue;
-            };
-            let x0 = tx - corrido + b.x;
-            match ruta {
-                None => p.texto(&texto[r.clone()], x0, ty, tam, TEXTO),
-                Some(ruta) => {
-                    let chapa = RectF {
-                        x: x0 - 3.0 * s,
-                        y: ty - 2.0 * s,
-                        ancho: b.ancho + 6.0 * s,
-                        alto: alto_linea + 4.0 * s,
-                    };
-                    p.rellenar_redondeado(chapa, crate::v2::RADIO_CHAPA * s, FICHA_FONDO);
-                    p.texto(&texto[r.clone()], x0, ty, tam, FICHA_LETRA);
-                    pintadas.push((chapa, ruta.clone()));
-                }
-            }
-        }
-        if foco {
-            let c = tx - corrido + cx;
-            p.linea((c, ty), (c, ty + alto_linea), 1.5 * s, ACENTO);
-        }
-    });
-    e.fichas_pintadas = pintadas;
+    let chapas = e.campo.caja.pintar_con_fichas(
+        p,
+        texto,
+        texto,
+        15.0 * s,
+        "",
+        &crate::caja_texto::Colores {
+            texto: TEXTO,
+            invitacion: GRIS,
+            seleccion: con_alfa(ACENTO, 0.35),
+            rayita: ACENTO,
+        },
+        foco,
+        Instant::now(),
+        Some(&crate::caja_texto::Fichas {
+            rangos: &rangos,
+            fondo: FICHA_FONDO,
+            letra: FICHA_LETRA,
+            radio: crate::v2::RADIO_CHAPA * s,
+        }),
+    );
+    // Solo las chapas que se ven: las corridas fuera no ensenan nada.
+    e.fichas_pintadas = chapas
+        .into_iter()
+        .zip(fichas)
+        .filter(|(c, _)| c.x + c.ancho > recorte.x && c.x < recorte.x + recorte.ancho)
+        .map(|(c, (_, ruta))| (c, ruta))
+        .collect();
 }
 
 /// La imagen de la ficha que tiene el raton encima, en un recuadro debajo
@@ -3665,26 +3624,26 @@ mod pruebas {
         for l in "año".chars() {
             c.letra(l);
         }
-        assert!(c.tecla(VK_IZQUIERDA, false));
-        assert!(c.tecla(VK_IZQUIERDA, false));
+        assert!(c.tecla(VK_IZQUIERDA, false, false));
+        assert!(c.tecla(VK_IZQUIERDA, false, false));
         c.letra('x');
-        assert_eq!(c.texto, "axño");
-        c.tecla(VK_SUPRIMIR, false);
-        assert_eq!(c.texto, "axo");
-        c.tecla(VK_FIN, false);
-        c.tecla(VK_RETROCESO, false);
-        assert_eq!(c.texto, "ax");
+        assert_eq!(c.texto(), "axño");
+        c.tecla(VK_SUPRIMIR, false, false);
+        assert_eq!(c.texto(), "axo");
+        c.tecla(VK_FIN, false, false);
+        c.tecla(VK_RETROCESO, false, false);
+        assert_eq!(c.texto(), "ax");
         // Una tarea es una linea: lo pegado con saltos se junta.
         c.vaciar();
         c.escribir("comprar\r\npan");
-        assert_eq!(c.texto, "comprar  pan");
+        assert_eq!(c.texto(), "comprar pan", "los saltos pasan a un espacio");
         // Ctrl+Retroceso se lleva la palabra.
-        c.tecla(VK_RETROCESO, true);
-        assert_eq!(c.texto, "comprar  ");
+        c.tecla(VK_RETROCESO, true, false);
+        assert_eq!(c.texto(), "comprar ");
         // Caso negativo: una letra de control no se escribe, e Intro no es
         // de la caja (es apuntar).
         assert!(!c.letra('\u{8}'));
-        assert!(!c.tecla(VK_ENTRAR, false));
+        assert!(!c.tecla(VK_ENTRAR, false, false));
     }
 
     /// Una imagen de muestra, de colores para que se vea en el PNG.
@@ -3725,7 +3684,7 @@ mod pruebas {
                 pixeles: vec![1, 2, 3, 255],
             },
         )));
-        assert_eq!(c.texto, "comprar yeso [img 01] ");
+        assert_eq!(c.texto(), "comprar yeso [img 01] ");
         let temporal = c.pegadas[0].1.ruta.clone();
         assert!(
             c.pegadas[0].1.temporal && temporal.is_file(),
@@ -3736,36 +3695,42 @@ mod pruebas {
         c.pegar(Some(pixpin_codec::ContenidoPortapapeles::Rutas(vec![
             a.clone(),
         ])));
-        assert_eq!(c.texto, "comprar yeso [img 01] [img 02] ");
+        assert_eq!(c.texto(), "comprar yeso [img 01] [img 02] ");
         assert_eq!(c.imagenes(), vec![(1, temporal.clone()), (2, a.clone())]);
         // Retroceso tras el blanco borra el blanco; el siguiente, la ficha entera.
-        c.tecla(VK_RETROCESO, false);
-        c.tecla(VK_RETROCESO, false);
-        assert_eq!(c.texto, "comprar yeso [img 01] ");
+        c.tecla(VK_RETROCESO, false, false);
+        c.tecla(VK_RETROCESO, false, false);
+        assert_eq!(c.texto(), "comprar yeso [img 01] ");
         assert_eq!(
             c.imagenes(),
             vec![(1, temporal.clone())],
             "la borrada se lleva su imagen"
         );
+        // Ctrl+Z la devuelve con su imagen (la caja comun tiene deshacer), y
+        // Ctrl+Mayus+Z la vuelve a quitar.
+        assert!(c.tecla(VK_Z, true, false));
+        assert_eq!(c.imagenes().len(), 2, "deshacer devuelve la ficha y su imagen");
+        assert!(c.tecla(VK_Z, true, true));
+        assert_eq!(c.imagenes(), vec![(1, temporal.clone())]);
         // Las flechas la saltan de una vez, y Supr delante la borra.
-        c.tecla(VK_IZQUIERDA, false);
-        c.tecla(VK_IZQUIERDA, false);
-        assert_eq!(c.cursor, "comprar yeso ".len());
-        assert_eq!(c.ficha_en(false), Some(13..21));
+        c.tecla(VK_IZQUIERDA, false, false);
+        c.tecla(VK_IZQUIERDA, false, false);
+        assert_eq!(c.caja.pos(), "comprar yeso ".len());
+        assert!(c.piezas().contains(&(13..21)), "{:?}", c.piezas());
         c.letra('x');
-        assert_eq!(c.texto, "comprar yeso x[img 01] ");
+        assert_eq!(c.texto(), "comprar yeso x[img 01] ");
         // Una imagen nueva no repite el numero de la borrada.
-        c.tecla(VK_FIN, false);
+        c.tecla(VK_FIN, false, false);
         c.pegar(Some(pixpin_codec::ContenidoPortapapeles::Rutas(vec![
             a.clone(),
         ])));
-        assert!(c.texto.ends_with("[img 03] "), "{}", c.texto);
+        assert!(c.texto().ends_with("[img 03] "), "{}", c.texto());
         assert_eq!(c.lo_que_se_lee(), "comprar yeso x");
         // El texto pegado sigue entrando como texto.
         c.pegar(Some(pixpin_codec::ContenidoPortapapeles::Texto(
             "y arena".into(),
         )));
-        assert!(c.texto.ends_with("[img 03] y arena"));
+        assert!(c.texto().ends_with("[img 03] y arena"));
         assert!(c.aviso.is_none());
         // Vaciar borra el PNG temporal, pero no el fichero del Explorador.
         c.vaciar();
@@ -3788,7 +3753,7 @@ mod pruebas {
         c.pegar(mapa());
         assert!(c.aviso.is_none());
         c.pegar(mapa());
-        assert_eq!(c.texto, "[img 01] ", "la misma imagen no es [img 02]");
+        assert_eq!(c.texto(), "[img 01] ", "la misma imagen no es [img 02]");
         assert_eq!(
             (c.aviso, c.aviso_ficha.as_deref()),
             (Some("tareas-pegar-repetida"), Some("[img 01]"))
@@ -3802,7 +3767,7 @@ mod pruebas {
         c.pegar(Some(pixpin_codec::ContenidoPortapapeles::Rutas(vec![
             a.clone(),
         ])));
-        assert_eq!(c.texto, "[img 01] [img 02] ");
+        assert_eq!(c.texto(), "[img 01] [img 02] ");
         assert_eq!(c.aviso_ficha.as_deref(), Some("[img 02]"));
         // Caso negativo: otra imagen distinta si entra, y borrada la ficha
         // la misma imagen vuelve a poder pegarse.
@@ -3815,13 +3780,13 @@ mod pruebas {
             },
         )));
         assert!(
-            c.texto.ends_with("[img 03] ") && c.aviso.is_none(),
+            c.texto().ends_with("[img 03] ") && c.aviso.is_none(),
             "{}",
-            c.texto
+            c.texto()
         );
         c.vaciar();
         c.pegar(mapa());
-        assert_eq!(c.texto, "[img 01] ");
+        assert_eq!(c.texto(), "[img 01] ");
         assert!(c.aviso.is_none());
         c.vaciar();
     }
@@ -3832,15 +3797,15 @@ mod pruebas {
         let txt = std::env::temp_dir().join("pixpin-tareas-pruebas-nota.txt");
         std::fs::write(&txt, "x").unwrap();
         c.pegar(Some(pixpin_codec::ContenidoPortapapeles::Rutas(vec![txt])));
-        assert_eq!(c.texto, "");
+        assert_eq!(c.texto(), "");
         assert_eq!(c.aviso, Some("tareas-pegar-no-imagen"));
         // Una ficha escrita a mano, sin imagen pegada, es texto.
         let mut c = Campo::default();
         c.escribir("[img 01] ");
         assert!(c.imagenes().is_empty());
-        c.tecla(VK_RETROCESO, false);
-        c.tecla(VK_RETROCESO, false);
-        assert_eq!(c.texto, "[img 01", "se borra letra a letra");
+        c.tecla(VK_RETROCESO, false, false);
+        c.tecla(VK_RETROCESO, false, false);
+        assert_eq!(c.texto(), "[img 01", "se borra letra a letra");
         // Un mapa vacio no mete nada.
         c.pegar(Some(pixpin_codec::ContenidoPortapapeles::Imagen(
             pixpin_codec::ImagenRgba {
@@ -3849,7 +3814,7 @@ mod pruebas {
                 pixeles: vec![],
             },
         )));
-        assert_eq!(c.texto, "[img 01");
+        assert_eq!(c.texto(), "[img 01");
     }
 
     fn muestra_estado() -> Estado {
@@ -3962,7 +3927,7 @@ mod pruebas {
             letra(&mut e, c);
         }
         assert_eq!(
-            (e.buscar.texto(), e.campo.texto.as_str()),
+            (e.buscar.texto(), e.campo.texto()),
             ("PAN", "")
         );
         colocar(&mut e);
@@ -4125,6 +4090,22 @@ mod pruebas {
             pintar_todo(&mut e, p, marco, 1.0, &textos)
         });
         e.corrigiendo = None;
+        e.campo.vaciar();
+        // La caja comun: una ficha de imagen como chapa y la rayita en
+        // medio de lo escrito (Ctrl+izquierda), con «arena» elegida.
+        e.foco = Foco::Apuntar;
+        e.campo.escribir("comprar yeso ");
+        e.campo.pegar(Some(pixpin_codec::ContenidoPortapapeles::Rutas(vec![foto(
+            "caja-cursor.png",
+            [200, 120, 40],
+        )])));
+        e.campo.escribir("y arena fina");
+        e.campo.tecla(VK_IZQUIERDA, true, false);
+        e.campo.tecla(VK_IZQUIERDA, true, true);
+        crate::ventanita::muestra("tareas-v5-caja-cursor", w, h, |p, motor| {
+            cargar_minis(&mut e, motor);
+            pintar_todo(&mut e, p, marco, 1.0, &textos)
+        });
         e.campo.vaciar();
         // El raton en el conmutador de la vista: su pista con el atajo.
         e.botones.raton = (w as f32 - 16.0 - 40.0 - 12.0 - 30.0, 32.0);
@@ -4303,11 +4284,11 @@ mod pruebas {
         e.foco = Foco::Tarjeta(1, 0);
         assert!(tecla(&mut e, VK_F2, false, false, &textos, &u, "PC01"));
         assert_eq!(e.foco, Foco::Apuntar);
-        assert_eq!(e.campo.texto, "revisar puntales del segundo piso");
+        assert_eq!(e.campo.texto(), "revisar puntales del segundo piso");
         assert_eq!(e.corrigiendo.as_ref().map(|(_, f)| f.indice), Some(0));
         // Esc suelta la correccion y vacia la caja, sin cerrar la ventana.
         assert!(tecla(&mut e, VK_ESCAPE, false, false, &textos, &u, "PC01"));
-        assert!(e.corrigiendo.is_none() && e.campo.texto.is_empty());
+        assert!(e.corrigiendo.is_none() && e.campo.texto().is_empty());
         // Caso negativo: F2 sin una tarea con el foco no hace nada.
         tecla(&mut e, VK_F2, false, false, &textos, &u, "PC01");
         assert!(e.corrigiendo.is_none());
