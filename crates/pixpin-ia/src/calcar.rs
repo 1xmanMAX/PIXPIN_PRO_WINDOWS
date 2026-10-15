@@ -627,14 +627,14 @@ fn manchas(img: &[[f32; 3]], w: usize, h: usize, p: &Parametros, plano: f64) -> 
             mascara[(i / w - y0) * bw + (i % w - x0)] = true;
         }
         // Por debajo solo de lo que va encima, y sin asomarse al otro lado:
-        // ni junto al fondo ni junto a lo que se pinto antes (que quedaria
+        // ni a SOLAPE pixeles del fondo ni de lo que se pinto antes (que quedaria
         // tapado por el solape en vez de por la de encima).
         let encima = |i: usize| et[i] as usize != fondo && turno[i] > k;
         let debajo = solape(&mascara, bw, bh, |x, y| {
             let (gx, gy) = (x + x0, y + y0);
             encima(gy * w + gx)
-                && (gy.saturating_sub(1)..(gy + 2).min(h)).all(|yy| {
-                    (gx.saturating_sub(1)..(gx + 2).min(w)).all(|xx| {
+                && (gy.saturating_sub(SOLAPE)..(gy + SOLAPE + 1).min(h)).all(|yy| {
+                    (gx.saturating_sub(SOLAPE)..(gx + SOLAPE + 1).min(w)).all(|xx| {
                         let j = yy * w + xx;
                         turno[j] == k || encima(j)
                     })
