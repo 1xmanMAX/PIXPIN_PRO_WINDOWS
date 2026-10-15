@@ -51,8 +51,10 @@ final class LectorLienzoTests: XCTestCase {
     func testUnaOrdenDesconocidaSeSaltaSinRomperNada() throws {
         // Cabecera + una orden de codigo 99 de largo 3 + un poligono.
         var f: [Float] = [1, 12, 2, 1, 1, 1, 1, 0, 0, 10, 10, 0]
-        f += [99, 3, 42]
-        f += [1, 2 + 4 + 1 + 6, 0, 0, 0, 1, 3, 0, 0, 10, 0, 0, 10]
+        let desconocida: [Float] = [99, 3, 42]
+        let poligono: [Float] = [1, 13, 0, 0, 0, 1, 3, 0, 0, 10, 0, 0, 10]
+        f += desconocida
+        f += poligono
         f[11] = Float(f.count)
         let datos = f.withUnsafeBytes { Data($0) }
         let leido = try leerLienzo(LienzoPlano(datos: datos, textos: [], imagenes: []))

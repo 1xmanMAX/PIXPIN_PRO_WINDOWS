@@ -22,7 +22,7 @@ public func carpetaDeDatos() -> URL {
 public final class Almacen: ObservableObject {
     /// Cuantos mensajes trae cada pagina: los que caben en una ventana alta
     /// con margen para desplazarse sin esperar.
-    public static let tamPagina: UInt32 = 60
+    public nonisolated static let tamPagina: UInt32 = 60
 
     @Published public private(set) var chats: [FichaChat] = []
     @Published public private(set) var error: String?
