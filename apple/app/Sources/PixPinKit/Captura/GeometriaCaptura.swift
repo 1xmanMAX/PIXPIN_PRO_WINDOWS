@@ -126,7 +126,7 @@ public enum GeometriaCaptura {
     public static func rutaNueva(en carpeta: URL, fecha: Date, zona: TimeZone = .current,
                                  existe: (URL) -> Bool = { FileManager.default.fileExists(atPath: $0.path) }) -> URL {
         let base = nombreDeCaptura(fecha: fecha, zona: zona)
-        let ocupado = { (nombre: String) in
+        func ocupado(_ nombre: String) -> Bool {
             extensionesDeGaleria.contains { existe(carpeta.appendingPathComponent("\(nombre).\($0)")) }
         }
         var nombre = base

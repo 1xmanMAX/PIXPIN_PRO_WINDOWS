@@ -38,6 +38,9 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: apple
+          # El xcframework tarda ~10 min de cero: que se guarde aunque luego
+          # fallen las pruebas de Swift, que es lo que mas se itera.
+          cache-on-failure: true
       - name: Versiones
         run: |
           sw_vers
