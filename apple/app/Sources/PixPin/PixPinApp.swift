@@ -45,6 +45,18 @@ final class EstadoApp: ObservableObject {
             self.error = "\(error)"
         }
         let capturador = self.capturador
+        // Lo que se hace con la zona elegida: pinearla o sacar su texto.
+        capturador.alPinear = { GestorPines.compartido.pinear(imagen: $0) }
+        capturador.alSacarTexto = { imagen in
+            Task {
+                guard let texto = try? await sacarTexto(de: imagen), !texto.isEmpty else {
+                    NSSound.beep()
+                    return
+                }
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(texto, forType: .string)
+            }
+        }
         atajoCaptura = AtajoGlobal(.capturar) { capturador.capturar() }
     }
 }
