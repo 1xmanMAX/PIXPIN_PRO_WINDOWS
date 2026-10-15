@@ -117,18 +117,40 @@ public final class ModeloAjustes: ObservableObject {
         let d = max(0, min(400, dias))
         guard d != diasCaducidad else { return }
         diasCaducidad = d
-        Task { await guardar() }
+        programarGuardado()
     }
 
     public func fijar(sincroAutomatica s: Bool) {
         guard s != sincroAutomatica else { return }
         sincroAutomatica = s
         sincro?.automatica = s
-        Task { await guardar() }
+        programarGuardado()
     }
 
-    /// Escribe lo de este modelo en `pixpinmax.toml`, conservando lo demas.
+    /// El ultimo guardado en marcha: los guardados van **uno detras de
+    /// otro** (dos escrituras a la vez de `pixpinmax.toml` se pisaban, y
+    /// quien leyera en medio veia el fichero a medias).
+    private var ultimoGuardado: Task<Void, Never>?
+
+    /// Pone un guardado en la cola, ya mismo (en orden con los cambios).
+    @discardableResult
+    private func programarGuardado() -> Task<Void, Never> {
+        let previo = ultimoGuardado
+        let t = Task { [weak self] in
+            await previo?.value
+            await self?.guardarAhora()
+        }
+        ultimoGuardado = t
+        return t
+    }
+
+    /// Escribe lo de este modelo en `pixpinmax.toml`, conservando lo demas
+    /// (despues de los guardados que ya esperaban).
     public func guardar() async {
+        await programarGuardado().value
+    }
+
+    private func guardarAhora() async {
         let nuevos = AjustesMac(diasCaducidad: UInt32(max(0, diasCaducidad)),
                                 sincroAutomatica: sincroAutomatica,
                                 sincroPresencia: leidos?.sincroPresencia ?? true)
