@@ -4,7 +4,8 @@
 //    `MotorApple.swift`.
 // 2. Un `llama-server` del usuario en 127.0.0.1:8080: el nucleo de Rust le
 //    habla con el cliente de `pixpin-ia` y hace el turno entero con sus
-//    herramientas (`llamaLocalPreguntar`). Sin streaming: llega entera.
+//    herramientas (`llamaLocalPreguntarEnVivo`). En vivo: el texto llega
+//    por tandas a un `OyenteIa` y se puede parar (`CorteIa`).
 // 3. Si no hay ninguno, se dice claro que no hay motor y como tener uno.
 //
 // Cada turno va en una `Task.detached` con prioridad `.utility` (§4bis.3):
@@ -101,10 +102,8 @@ public final class ModeloAsistente: ObservableObject {
                 }
                 r = hecha
             case let .llamaLocal(puerto):
-                let lista = Array(historial)
-                r = try await Task.detached(priority: .utility) {
-                    try llamaLocalPreguntar(puerto: puerto, historial: lista, pedido: pedido)
-                }.value
+                await preguntarEnVivo(puerto: puerto, historial: Array(historial), pedido: pedido)
+                return
             case .ninguno:
                 burbujas.append(Burbuja(delUsuario: false, texto: ModeloAsistente.textoSinMotor, esAviso: true))
                 return
@@ -118,6 +117,78 @@ public final class ModeloAsistente: ObservableObject {
     /// Empieza otra conversacion (lo de antes no se manda mas).
     public func nuevaConversacion() {
         burbujas = []
+    }
+
+    // MARK: En vivo (llama-server)
+
+    /// El corte del turno en vivo que esta en marcha.
+    private var corte: CorteIa?
+    /// Las burbujas en vivo que ya tienen su texto final: lo que llegue
+    /// tarde por el oyente no se pega dos veces.
+    private var cerradas: Set<UUID> = []
+
+    /// Si hay un turno en vivo que se puede parar.
+    public var sePuedeParar: Bool { corte != nil }
+
+    /// «Parar»: el modelo deja de escribir y queda lo que llevaba.
+    public func parar() {
+        corte?.cancelar()
+    }
+
+    /// Un turno con el `llama-server` del usuario: la burbuja del asistente
+    /// aparece vacia y se va llenando con las tandas que manda Rust (cada
+    /// ~60 ms como mucho, nunca una llamada por palabra); al acabar se pone
+    /// la respuesta entera, con sus herramientas y lo dibujado.
+    func preguntarEnVivo(puerto: UInt16, historial: [MensajeIa], pedido: String) async {
+        let corte = CorteIa.nuevo()
+        self.corte = corte
+        defer { self.corte = nil }
+        let burbuja = Burbuja(delUsuario: false, texto: "")
+        let id = burbuja.id
+        burbujas.append(burbuja)
+        let oyente = OyenteDelAsistente(
+            alTexto: { [weak self] trozo in
+                DispatchQueue.main.async {
+                    MainActor.assumeIsolated { self?.pegar(trozo, en: id) }
+                }
+            },
+            alHerramienta: { [weak self] usada in
+                DispatchQueue.main.async {
+                    MainActor.assumeIsolated { self?.anadir(usada, en: id) }
+                }
+            })
+        do {
+            let r = try await Task.detached(priority: .utility) {
+                try llamaLocalPreguntarEnVivo(puerto: puerto, historial: historial, pedido: pedido,
+                                              oyente: oyente, corte: corte)
+            }.value
+            cerrar(id) { b in
+                b.texto = r.texto.isEmpty && corte.cortado() ? "(parado)" : r.texto
+                b.herramientas = r.herramientas
+                b.lienzo = r.lienzo
+            }
+        } catch {
+            cerrar(id) { b in
+                b.texto = ModeloAjustes.texto(de: error)
+                b.esAviso = true
+            }
+        }
+    }
+
+    func pegar(_ trozo: String, en id: UUID) {
+        guard !cerradas.contains(id), let i = burbujas.firstIndex(where: { $0.id == id }) else { return }
+        burbujas[i].texto += trozo
+    }
+
+    func anadir(_ usada: HerramientaUsada, en id: UUID) {
+        guard !cerradas.contains(id), let i = burbujas.firstIndex(where: { $0.id == id }) else { return }
+        burbujas[i].herramientas.append(usada)
+    }
+
+    private func cerrar(_ id: UUID, _ cambio: (inout Burbuja) -> Void) {
+        cerradas.insert(id)
+        guard let i = burbujas.firstIndex(where: { $0.id == id }) else { return }
+        cambio(&burbujas[i])
     }
 
     /// Guarda lo dibujado en «Mensajes guardados» como un `.excalidraw`

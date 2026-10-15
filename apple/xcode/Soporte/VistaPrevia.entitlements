@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Las extensiones de macOS van siempre en su caja de arena: la vista
+	     previa solo lee el fichero que le da Quick Look. -->
+	<key>com.apple.security.app-sandbox</key><true/>
+</dict>
+</plist>

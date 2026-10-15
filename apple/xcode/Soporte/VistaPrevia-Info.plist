@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleName</key><string>$(PRODUCT_NAME)</string>
+	<key>CFBundleDisplayName</key><string>PixPin</string>
+	<key>CFBundleIdentifier</key><string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleExecutable</key><string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundlePackageType</key><string>XPC!</string>
+	<key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
+	<key>CFBundleShortVersionString</key><string>$(MARKETING_VERSION)</string>
+	<key>CFBundleVersion</key><string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>CFBundleDevelopmentRegion</key><string>es</string>
+	<key>LSMinimumSystemVersion</key><string>$(MACOSX_DEPLOYMENT_TARGET)</string>
+	<key>NSExtension</key>
+	<dict>
+		<key>NSExtensionAttributes</key>
+		<dict>
+			<!-- Vista previa por datos: se pinta en un contexto (QLPreviewReply). -->
+			<key>QLIsDataBasedPreview</key><true/>
+			<key>QLSupportedContentTypes</key>
+			<array>
+				<string>io.github.1xmanmax.pixpin.dibujo</string>
+				<string>com.excalidraw.excalidraw</string>
+			</array>
+			<key>QLSupportsSearchableItems</key><false/>
+		</dict>
+		<key>NSExtensionPointIdentifier</key><string>com.apple.quicklook.preview</string>
+		<key>NSExtensionPrincipalClass</key><string>ProveedorVistaPrevia</string>
+	</dict>
+</dict>
+</plist>

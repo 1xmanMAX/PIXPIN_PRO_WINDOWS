@@ -460,7 +460,13 @@ fileprivate final class UniffiHandleMap<T>: @unchecked Sendable {
 
 
 // Public interface members begin here.
-
+// Magic number for the Rust proxy to call using the same mechanism as every other method,
+// to free the callback once it's dropped by Rust.
+private let IDX_CALLBACK_FREE: Int32 = 0
+// Callback return codes
+private let UNIFFI_CALLBACK_SUCCESS: Int32 = 0
+private let UNIFFI_CALLBACK_ERROR: Int32 = 1
+private let UNIFFI_CALLBACK_UNEXPECTED_ERROR: Int32 = 2
 
 #if swift(>=5.8)
 @_documentation(visibility: private)
@@ -821,6 +827,155 @@ public func FfiConverterTypeBusqueda_lift(_ handle: UInt64) throws -> Busqueda {
 #endif
 public func FfiConverterTypeBusqueda_lower(_ value: Busqueda) -> UInt64 {
     return FfiConverterTypeBusqueda.lower(value)
+}
+
+
+
+
+
+
+/**
+ * **Para cortar un turno en vivo** desde otro hilo (el boton «Parar»).
+ */
+public protocol CorteIaProtocol: AnyObject, Sendable {
+    
+    /**
+     * Pide parar: el turno acaba en el siguiente trozo que llegue, con lo
+     * que hubiera hasta ahi.
+     */
+    func cancelar() 
+    
+    func cortado()  -> Bool
+    
+}
+/**
+ * **Para cortar un turno en vivo** desde otro hilo (el boton «Parar»).
+ */
+open class CorteIa: CorteIaProtocol, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_pixpin_nucleo_fn_clone_corteia(self.handle, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_pixpin_nucleo_fn_free_corteia(handle, $0) }
+    }
+
+    
+public static func nuevo() -> CorteIa  {
+    return try!  FfiConverterTypeCorteIa_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_constructor_corteia_nuevo(uniffiCallStatus
+    )
+})
+}
+    
+
+    
+    /**
+     * Pide parar: el turno acaba en el siguiente trozo que llegue, con lo
+     * que hubiera hasta ahi.
+     */
+open func cancelar()  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_corteia_cancelar(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+}
+}
+    
+open func cortado() -> Bool  {
+    return try!  FfiConverterBool.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_corteia_cortado(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+
+    
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeCorteIa: FfiConverter {
+    typealias FfiType = UInt64
+    typealias SwiftType = CorteIa
+
+    public static func lift(_ handle: UInt64) throws -> CorteIa {
+        return CorteIa(unsafeFromHandle: handle)
+    }
+
+    public static func lower(_ value: CorteIa) -> UInt64 {
+        return value.uniffiCloneHandle()
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> CorteIa {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: CorteIa, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCorteIa_lift(_ handle: UInt64) throws -> CorteIa {
+    return try FfiConverterTypeCorteIa.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCorteIa_lower(_ value: CorteIa) -> UInt64 {
+    return FfiConverterTypeCorteIa.lower(value)
 }
 
 
@@ -2173,7 +2328,9 @@ open class Lienzo: LienzoProtocol, @unchecked Sendable {
 
     
     /**
-     * Un lienzo desde un fichero `.excalidraw`.
+     * Un lienzo desde un fichero `.excalidraw` o `.pixpin2d` (el dibujo
+     * propio de PixPin, `pixpin_motor2d::formato`; se mira la extension).
+     * Lo usa tambien la vista previa de Quick Look.
      */
 public static func deFichero(ruta: String)throws  -> Lienzo  {
     return try  FfiConverterTypeLienzo_lift(try rustCallWithError(FfiConverterTypeErrorNucleo_lift) {
@@ -2312,6 +2469,317 @@ public func FfiConverterTypeLienzo_lift(_ handle: UInt64) throws -> Lienzo {
 #endif
 public func FfiConverterTypeLienzo_lower(_ value: Lienzo) -> UInt64 {
     return FfiConverterTypeLienzo.lower(value)
+}
+
+
+
+
+
+
+/**
+ * **El Llavero de la app**, implementado en Swift. Cada metodo es una
+ * llamada al sistema (rapida); se llama solo al guardar o al usar una
+ * clave, nunca en bucle.
+ */
+public protocol LlaveroApp: AnyObject, Sendable {
+    
+    /**
+     * Guarda (o sustituye) la clave de `cuenta` en `servicio`.
+     */
+    func guardar(servicio: String, cuenta: String, clave: String) throws 
+    
+    /**
+     * La clave guardada, o `None` si no hay o no se puede leer.
+     */
+    func leer(servicio: String, cuenta: String)  -> String?
+    
+    /**
+     * Borra la clave. Borrar lo que no esta no es un error.
+     */
+    func borrar(servicio: String, cuenta: String) throws 
+    
+}
+/**
+ * **El Llavero de la app**, implementado en Swift. Cada metodo es una
+ * llamada al sistema (rapida); se llama solo al guardar o al usar una
+ * clave, nunca en bucle.
+ */
+open class LlaveroAppImpl: LlaveroApp, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_pixpin_nucleo_fn_clone_llaveroapp(self.handle, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_pixpin_nucleo_fn_free_llaveroapp(handle, $0) }
+    }
+
+    
+
+    
+    /**
+     * Guarda (o sustituye) la clave de `cuenta` en `servicio`.
+     */
+open func guardar(servicio: String, cuenta: String, clave: String)throws   {try rustCallWithError(FfiConverterTypeErrorNucleo_lift) {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_llaveroapp_guardar(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(servicio),
+        FfiConverterString.lower(cuenta),
+        FfiConverterString.lower(clave),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * La clave guardada, o `None` si no hay o no se puede leer.
+     */
+open func leer(servicio: String, cuenta: String) -> String?  {
+    return try!  FfiConverterOptionString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_llaveroapp_leer(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(servicio),
+        FfiConverterString.lower(cuenta),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Borra la clave. Borrar lo que no esta no es un error.
+     */
+open func borrar(servicio: String, cuenta: String)throws   {try rustCallWithError(FfiConverterTypeErrorNucleo_lift) {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_llaveroapp_borrar(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(servicio),
+        FfiConverterString.lower(cuenta),uniffiCallStatus
+    )
+}
+}
+    
+
+    
+}
+
+
+
+// Put the implementation in a struct so we don't pollute the top-level namespace
+fileprivate struct UniffiCallbackInterfaceLlaveroApp {
+
+    // Create the VTable using a series of closures.
+    // Swift automatically converts these into C callback functions.
+    //
+    // Store the vtable directly.
+    static let vtable: UniffiVTableCallbackInterfaceLlaveroApp = UniffiVTableCallbackInterfaceLlaveroApp(
+        uniffiFree: { (uniffiHandle: UInt64) -> () in
+            do {
+                try FfiConverterTypeLlaveroApp.handleMap.remove(handle: uniffiHandle)
+            } catch {
+                print("Uniffi callback interface LlaveroApp: handle missing in uniffiFree")
+            }
+        },
+        uniffiClone: { (uniffiHandle: UInt64) -> UInt64 in
+            do {
+                return try FfiConverterTypeLlaveroApp.handleMap.clone(handle: uniffiHandle)
+            } catch {
+                fatalError("Uniffi callback interface LlaveroApp: handle missing in uniffiClone")
+            }
+        },
+        guardar: { (
+            uniffiHandle: UInt64,
+            servicio: RustBuffer,
+            cuenta: RustBuffer,
+            clave: RustBuffer,
+            uniffiOutReturn: UnsafeMutableRawPointer,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws -> () in
+                guard let uniffiObj = try? FfiConverterTypeLlaveroApp.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return try uniffiObj.guardar(
+                     servicio: try FfiConverterString.lift(servicio),
+                     cuenta: try FfiConverterString.lift(cuenta),
+                     clave: try FfiConverterString.lift(clave)
+                )
+            }
+
+            
+            let writeReturn = { () }
+            uniffiTraitInterfaceCallWithError(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn,
+                lowerError: FfiConverterTypeErrorNucleo_lower
+            )
+        },
+        leer: { (
+            uniffiHandle: UInt64,
+            servicio: RustBuffer,
+            cuenta: RustBuffer,
+            uniffiOutReturn: UnsafeMutablePointer<RustBuffer>,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws -> String? in
+                guard let uniffiObj = try? FfiConverterTypeLlaveroApp.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return uniffiObj.leer(
+                     servicio: try FfiConverterString.lift(servicio),
+                     cuenta: try FfiConverterString.lift(cuenta)
+                )
+            }
+
+            
+            let writeReturn = { uniffiOutReturn.pointee = FfiConverterOptionString.lower($0) }
+            uniffiTraitInterfaceCall(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn
+            )
+        },
+        borrar: { (
+            uniffiHandle: UInt64,
+            servicio: RustBuffer,
+            cuenta: RustBuffer,
+            uniffiOutReturn: UnsafeMutableRawPointer,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws -> () in
+                guard let uniffiObj = try? FfiConverterTypeLlaveroApp.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return try uniffiObj.borrar(
+                     servicio: try FfiConverterString.lift(servicio),
+                     cuenta: try FfiConverterString.lift(cuenta)
+                )
+            }
+
+            
+            let writeReturn = { () }
+            uniffiTraitInterfaceCallWithError(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn,
+                lowerError: FfiConverterTypeErrorNucleo_lower
+            )
+        }
+    )
+
+    // Rust stores this pointer for future callback invocations, so it must live
+    // for the process lifetime (not just for the init function call).
+    //
+    // `nonisolated(unsafe)` is needed under Swift 6 strict concurrency.
+    // This is safe because the pointee is initialized once during static init
+    // and never mutated by either side of the FFI.  Its fields are C function pointers.
+    nonisolated(unsafe) static let vtablePtr: UnsafePointer<UniffiVTableCallbackInterfaceLlaveroApp> = {
+        let ptr = UnsafeMutablePointer<UniffiVTableCallbackInterfaceLlaveroApp>.allocate(capacity: 1)
+        ptr.initialize(to: vtable)
+        return UnsafePointer(ptr)
+    }()
+}
+
+private func uniffiCallbackInitLlaveroApp() {
+    uniffi_pixpin_nucleo_fn_init_callback_vtable_llaveroapp(UniffiCallbackInterfaceLlaveroApp.vtablePtr)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeLlaveroApp: FfiConverter {
+    fileprivate static let handleMap = UniffiHandleMap<LlaveroApp>()
+
+    typealias FfiType = UInt64
+    typealias SwiftType = LlaveroApp
+
+    public static func lift(_ handle: UInt64) throws -> LlaveroApp {
+        if ((handle & 1) == 0) {
+            // Rust-generated handle, construct a new class that uses the handle to implement the
+            // interface
+            return LlaveroAppImpl(unsafeFromHandle: handle)
+        } else {
+            // Swift-generated handle, get the object from the handle map
+            return try handleMap.remove(handle: handle)
+        }
+    }
+
+    public static func lower(_ value: LlaveroApp) -> UInt64 {
+         if let rustImpl = value as? LlaveroAppImpl {
+             // Rust-implemented object.  Clone the handle and return it
+            return rustImpl.uniffiCloneHandle()
+         } else {
+            // Swift object, generate a new vtable handle and return that.
+            return handleMap.insert(obj: value)
+         }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> LlaveroApp {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: LlaveroApp, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLlaveroApp_lift(_ handle: UInt64) throws -> LlaveroApp {
+    return try FfiConverterTypeLlaveroApp.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLlaveroApp_lower(_ value: LlaveroApp) -> UInt64 {
+    return FfiConverterTypeLlaveroApp.lower(value)
 }
 
 
@@ -2567,6 +3035,16 @@ public protocol NucleoProtocol: AnyObject, Sendable {
     func borrarCapturas(nombres: [String]) throws  -> [CapturaBorrada]
     
     /**
+     * **Las capturas que ya caducaron** con el plazo `dias` (el ajuste
+     * `[capturas] dias_caducidad`; 0 = nunca): las mismas reglas que el
+     * barrendero de Windows. No mueve nada: Swift las lleva a la Papelera
+     * del Mac (`FileManager.trashItem`) y luego llama a
+     * [`Nucleo::olvidar_capturas_ausentes`]. La carpeta se lee de la cache
+     * si no cambio.
+     */
+    func capturasCaducadas(dias: Int64)  -> [CapturaCaducada]
+    
+    /**
      * La carpeta de las capturas (`<datos>/capturas`), donde Swift guarda
      * las nuevas y vigila con FSEvents.
      */
@@ -2595,6 +3073,16 @@ public protocol NucleoProtocol: AnyObject, Sendable {
      * mira (para contar los dias que quedan por dias de calendario).
      */
     func galeria(desde: UInt64, cuantos: UInt32, dias: Int64, desfaseMs: Int64) throws  -> PaginaGaleria
+    
+    /**
+     * **Tras barrer**: olvida las conservadas y prorrogadas cuyo fichero
+     * ya no esta (el numero de `captura-NNNN` se reutiliza: una nueva con
+     * el nombre de una conservada que se fue no tiene por que quedarse
+     * para siempre), como el final de `caducidad_capturas::barrer`. Suelta
+     * la lista de la cache. Devuelve cuantos nombres se olvidaron; si no
+     * sobra ninguno, no se escribe el registro.
+     */
+    func olvidarCapturasAusentes() throws  -> UInt32
     
     /**
      * **«Dar 7 dias mas»**: siete dias despues de la fecha que tenia (o de
@@ -3418,6 +3906,24 @@ open func borrarCapturas(nombres: [String])throws  -> [CapturaBorrada]  {
 }
     
     /**
+     * **Las capturas que ya caducaron** con el plazo `dias` (el ajuste
+     * `[capturas] dias_caducidad`; 0 = nunca): las mismas reglas que el
+     * barrendero de Windows. No mueve nada: Swift las lleva a la Papelera
+     * del Mac (`FileManager.trashItem`) y luego llama a
+     * [`Nucleo::olvidar_capturas_ausentes`]. La carpeta se lee de la cache
+     * si no cambio.
+     */
+open func capturasCaducadas(dias: Int64) -> [CapturaCaducada]  {
+    return try!  FfiConverterSequenceTypeCapturaCaducada.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_nucleo_capturas_caducadas(
+            self.uniffiCloneHandle(),
+        FfiConverterInt64.lower(dias),uniffiCallStatus
+    )
+})
+}
+    
+    /**
      * La carpeta de las capturas (`<datos>/capturas`), donde Swift guarda
      * las nuevas y vigila con FSEvents.
      */
@@ -3477,6 +3983,23 @@ open func galeria(desde: UInt64, cuantos: UInt32, dias: Int64, desfaseMs: Int64)
         FfiConverterUInt32.lower(cuantos),
         FfiConverterInt64.lower(dias),
         FfiConverterInt64.lower(desfaseMs),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * **Tras barrer**: olvida las conservadas y prorrogadas cuyo fichero
+     * ya no esta (el numero de `captura-NNNN` se reutiliza: una nueva con
+     * el nombre de una conservada que se fue no tiene por que quedarse
+     * para siempre), como el final de `caducidad_capturas::barrer`. Suelta
+     * la lista de la cache. Devuelve cuantos nombres se olvidaron; si no
+     * sobra ninguno, no se escribe el registro.
+     */
+open func olvidarCapturasAusentes()throws  -> UInt32  {
+    return try  FfiConverterUInt32.lift(try rustCallWithError(FfiConverterTypeErrorNucleo_lift) {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_nucleo_olvidar_capturas_ausentes(
+            self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
 }
@@ -3981,6 +4504,261 @@ public func FfiConverterTypeNucleo_lift(_ handle: UInt64) throws -> Nucleo {
 #endif
 public func FfiConverterTypeNucleo_lower(_ value: Nucleo) -> UInt64 {
     return FfiConverterTypeNucleo.lower(value)
+}
+
+
+
+
+
+
+/**
+ * **Quien escucha la respuesta en vivo**: lo implementa Swift. Se le
+ * llama desde el hilo del turno (no el principal): Swift pasa lo recibido
+ * al hilo de la interfaz.
+ */
+public protocol OyenteIa: AnyObject, Sendable {
+    
+    /**
+     * Texto nuevo de la respuesta (una tanda; se pega detras de lo de antes).
+     */
+    func texto(trozo: String) 
+    
+    /**
+     * Se uso una herramienta (con su resultado).
+     */
+    func herramienta(usada: HerramientaUsada) 
+    
+}
+/**
+ * **Quien escucha la respuesta en vivo**: lo implementa Swift. Se le
+ * llama desde el hilo del turno (no el principal): Swift pasa lo recibido
+ * al hilo de la interfaz.
+ */
+open class OyenteIaImpl: OyenteIa, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_pixpin_nucleo_fn_clone_oyenteia(self.handle, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_pixpin_nucleo_fn_free_oyenteia(handle, $0) }
+    }
+
+    
+
+    
+    /**
+     * Texto nuevo de la respuesta (una tanda; se pega detras de lo de antes).
+     */
+open func texto(trozo: String)  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_oyenteia_texto(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(trozo),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * Se uso una herramienta (con su resultado).
+     */
+open func herramienta(usada: HerramientaUsada)  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_oyenteia_herramienta(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeHerramientaUsada_lower(usada),uniffiCallStatus
+    )
+}
+}
+    
+
+    
+}
+
+
+
+// Put the implementation in a struct so we don't pollute the top-level namespace
+fileprivate struct UniffiCallbackInterfaceOyenteIa {
+
+    // Create the VTable using a series of closures.
+    // Swift automatically converts these into C callback functions.
+    //
+    // Store the vtable directly.
+    static let vtable: UniffiVTableCallbackInterfaceOyenteIa = UniffiVTableCallbackInterfaceOyenteIa(
+        uniffiFree: { (uniffiHandle: UInt64) -> () in
+            do {
+                try FfiConverterTypeOyenteIa.handleMap.remove(handle: uniffiHandle)
+            } catch {
+                print("Uniffi callback interface OyenteIa: handle missing in uniffiFree")
+            }
+        },
+        uniffiClone: { (uniffiHandle: UInt64) -> UInt64 in
+            do {
+                return try FfiConverterTypeOyenteIa.handleMap.clone(handle: uniffiHandle)
+            } catch {
+                fatalError("Uniffi callback interface OyenteIa: handle missing in uniffiClone")
+            }
+        },
+        texto: { (
+            uniffiHandle: UInt64,
+            trozo: RustBuffer,
+            uniffiOutReturn: UnsafeMutableRawPointer,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws -> () in
+                guard let uniffiObj = try? FfiConverterTypeOyenteIa.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return uniffiObj.texto(
+                     trozo: try FfiConverterString.lift(trozo)
+                )
+            }
+
+            
+            let writeReturn = { () }
+            uniffiTraitInterfaceCall(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn
+            )
+        },
+        herramienta: { (
+            uniffiHandle: UInt64,
+            usada: RustBuffer,
+            uniffiOutReturn: UnsafeMutableRawPointer,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws -> () in
+                guard let uniffiObj = try? FfiConverterTypeOyenteIa.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return uniffiObj.herramienta(
+                     usada: try FfiConverterTypeHerramientaUsada_lift(usada)
+                )
+            }
+
+            
+            let writeReturn = { () }
+            uniffiTraitInterfaceCall(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn
+            )
+        }
+    )
+
+    // Rust stores this pointer for future callback invocations, so it must live
+    // for the process lifetime (not just for the init function call).
+    //
+    // `nonisolated(unsafe)` is needed under Swift 6 strict concurrency.
+    // This is safe because the pointee is initialized once during static init
+    // and never mutated by either side of the FFI.  Its fields are C function pointers.
+    nonisolated(unsafe) static let vtablePtr: UnsafePointer<UniffiVTableCallbackInterfaceOyenteIa> = {
+        let ptr = UnsafeMutablePointer<UniffiVTableCallbackInterfaceOyenteIa>.allocate(capacity: 1)
+        ptr.initialize(to: vtable)
+        return UnsafePointer(ptr)
+    }()
+}
+
+private func uniffiCallbackInitOyenteIa() {
+    uniffi_pixpin_nucleo_fn_init_callback_vtable_oyenteia(UniffiCallbackInterfaceOyenteIa.vtablePtr)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeOyenteIa: FfiConverter {
+    fileprivate static let handleMap = UniffiHandleMap<OyenteIa>()
+
+    typealias FfiType = UInt64
+    typealias SwiftType = OyenteIa
+
+    public static func lift(_ handle: UInt64) throws -> OyenteIa {
+        if ((handle & 1) == 0) {
+            // Rust-generated handle, construct a new class that uses the handle to implement the
+            // interface
+            return OyenteIaImpl(unsafeFromHandle: handle)
+        } else {
+            // Swift-generated handle, get the object from the handle map
+            return try handleMap.remove(handle: handle)
+        }
+    }
+
+    public static func lower(_ value: OyenteIa) -> UInt64 {
+         if let rustImpl = value as? OyenteIaImpl {
+             // Rust-implemented object.  Clone the handle and return it
+            return rustImpl.uniffiCloneHandle()
+         } else {
+            // Swift object, generate a new vtable handle and return that.
+            return handleMap.insert(obj: value)
+         }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> OyenteIa {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: OyenteIa, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeOyenteIa_lift(_ handle: UInt64) throws -> OyenteIa {
+    return try FfiConverterTypeOyenteIa.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeOyenteIa_lower(_ value: OyenteIa) -> UInt64 {
+    return FfiConverterTypeOyenteIa.lower(value)
 }
 
 
@@ -4878,6 +5656,79 @@ public func FfiConverterTypeCapturaBorrada_lift(_ buf: RustBuffer) throws -> Cap
 #endif
 public func FfiConverterTypeCapturaBorrada_lower(_ value: CapturaBorrada) -> RustBuffer {
     return FfiConverterTypeCapturaBorrada.lower(value)
+}
+
+
+/**
+ * Una captura que ya caduco: Swift la lleva a la Papelera del Mac.
+ */
+public struct CapturaCaducada: Equatable, Hashable {
+    public var nombre: String
+    /**
+     * Su ruta absoluta en este aparato.
+     */
+    public var ruta: String
+    /**
+     * Cuando tocaba irse, en ms desde 1970.
+     */
+    public var seVa: Int64
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(nombre: String, 
+        /**
+         * Su ruta absoluta en este aparato.
+         */ruta: String, 
+        /**
+         * Cuando tocaba irse, en ms desde 1970.
+         */seVa: Int64) {
+        self.nombre = nombre
+        self.ruta = ruta
+        self.seVa = seVa
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension CapturaCaducada: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeCapturaCaducada: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> CapturaCaducada {
+        return
+            try CapturaCaducada(
+                nombre: FfiConverterString.read(from: &buf), 
+                ruta: FfiConverterString.read(from: &buf), 
+                seVa: FfiConverterInt64.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: CapturaCaducada, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.nombre, into: &buf)
+        FfiConverterString.write(value.ruta, into: &buf)
+        FfiConverterInt64.write(value.seVa, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCapturaCaducada_lift(_ buf: RustBuffer) throws -> CapturaCaducada {
+    return try FfiConverterTypeCapturaCaducada.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCapturaCaducada_lower(_ value: CapturaCaducada) -> RustBuffer {
+    return FfiConverterTypeCapturaCaducada.lower(value)
 }
 
 
@@ -10989,6 +11840,31 @@ fileprivate struct FfiConverterSequenceTypeCapturaBorrada: FfiConverterRustBuffe
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceTypeCapturaCaducada: FfiConverterRustBuffer {
+    typealias SwiftType = [CapturaCaducada]
+
+    public static func write(_ value: [CapturaCaducada], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeCapturaCaducada.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [CapturaCaducada] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [CapturaCaducada]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeCapturaCaducada.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypeCapturaGaleria: FfiConverterRustBuffer {
     typealias SwiftType = [CapturaGaleria]
 
@@ -11578,6 +12454,24 @@ public func llamaLocalPreguntar(puerto: UInt16, historial: [MensajeIa], pedido: 
 })
 }
 /**
+ * **Un turno en vivo con el `llama-server` del usuario**: como
+ * [`llama_local_preguntar`], pero el texto va llegando a `oyente` mientras
+ * el modelo escribe (en tandas) y `corte` lo para. Devuelve la respuesta
+ * entera al final (cortada, si se paro: con lo que hubiera).
+ */
+public func llamaLocalPreguntarEnVivo(puerto: UInt16, historial: [MensajeIa], pedido: String, oyente: OyenteIa, corte: CorteIa)throws  -> RespuestaIa  {
+    return try  FfiConverterTypeRespuestaIa_lift(try rustCallWithError(FfiConverterTypeErrorNucleo_lift) {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_func_llama_local_preguntar_en_vivo(
+        FfiConverterUInt16.lower(puerto),
+        FfiConverterSequenceTypeMensajeIa.lower(historial),
+        FfiConverterString.lower(pedido),
+        FfiConverterTypeOyenteIa_lower(oyente),
+        FfiConverterTypeCorteIa_lower(corte),uniffiCallStatus
+    )
+})
+}
+/**
  * La etiqueta (TXT `g`) de quien invita con ese codigo. PBKDF2: fuera del
  * hilo de la interfaz.
  */
@@ -11691,6 +12585,62 @@ public func tipoDeServicioRecibir() -> String  {
     uniffi_pixpin_nucleo_fn_func_tipo_de_servicio_recibir(uniffiCallStatus
     )
 })
+}
+/**
+ * Borra la clave del proveedor.
+ */
+public func iaBorrarClave(proveedorId: String)throws   {try rustCallWithError(FfiConverterTypeErrorNucleo_lift) {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_func_ia_borrar_clave(
+        FfiConverterString.lower(proveedorId),uniffiCallStatus
+    )
+}
+}
+/**
+ * Lo que se ensena de la clave guardada (`sk-ant-…AbCd`), o `None`.
+ */
+public func iaClaveEnmascarada(proveedorId: String) -> String?  {
+    return try!  FfiConverterOptionString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_func_ia_clave_enmascarada(
+        FfiConverterString.lower(proveedorId),uniffiCallStatus
+    )
+})
+}
+/**
+ * Guarda la clave de un proveedor (`claude`, `deepseek`) en el llavero
+ * instalado. Se recorta; una clave vacia borra la que hubiera. Sin
+ * llavero instalado es un error: nunca se guarda en claro.
+ */
+public func iaGuardarClave(proveedorId: String, clave: String)throws   {try rustCallWithError(FfiConverterTypeErrorNucleo_lift) {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_func_ia_guardar_clave(
+        FfiConverterString.lower(proveedorId),
+        FfiConverterString.lower(clave),uniffiCallStatus
+    )
+}
+}
+/**
+ * Si hay clave guardada para el proveedor.
+ */
+public func iaHayClave(proveedorId: String) -> Bool  {
+    return try!  FfiConverterBool.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_func_ia_hay_clave(
+        FfiConverterString.lower(proveedorId),uniffiCallStatus
+    )
+})
+}
+/**
+ * **Instala el Llavero de la app** (una vez, al arrancar). Instalarlo otra
+ * vez da error de argumento y se queda el primero.
+ */
+public func instalarLlavero(llavero: LlaveroApp)throws   {try rustCallWithError(FfiConverterTypeErrorNucleo_lift) {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_func_instalar_llavero(
+        FfiConverterTypeLlaveroApp_lower(llavero),uniffiCallStatus
+    )
+}
 }
 /**
  * El documento con otro titulo.
@@ -12022,6 +12972,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_pixpin_nucleo_checksum_func_llama_local_preguntar() != 60202) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_pixpin_nucleo_checksum_func_llama_local_preguntar_en_vivo() != 12190) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_pixpin_nucleo_checksum_func_etiqueta_de_invitacion() != 50993) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -12050,6 +13003,21 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_pixpin_nucleo_checksum_func_tipo_de_servicio_recibir() != 11481) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_func_ia_borrar_clave() != 36941) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_func_ia_clave_enmascarada() != 37534) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_func_ia_guardar_clave() != 56536) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_func_ia_hay_clave() != 700) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_func_instalar_llavero() != 25496) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_pixpin_nucleo_checksum_func_mini_con_titulo() != 50031) {
@@ -12235,6 +13203,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_pixpin_nucleo_checksum_method_nucleo_borrar_capturas() != 35273) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_pixpin_nucleo_checksum_method_nucleo_capturas_caducadas() != 10220) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_pixpin_nucleo_checksum_method_nucleo_carpeta_capturas() != 3131) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -12245,6 +13216,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_pixpin_nucleo_checksum_method_nucleo_galeria() != 60309) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_nucleo_olvidar_capturas_ausentes() != 20700) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_pixpin_nucleo_checksum_method_nucleo_prorrogar_captura() != 30433) {
@@ -12326,6 +13300,18 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_pixpin_nucleo_checksum_method_nucleo_poner_transcripcion() != 40062) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_corteia_cancelar() != 6449) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_corteia_cortado() != 18968) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_oyenteia_texto() != 4304) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_oyenteia_herramienta() != 37082) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_pixpin_nucleo_checksum_method_busqueda_cancelada() != 55563) {
@@ -12511,6 +13497,15 @@ private let initializationResult: InitializationResult = {
     if (uniffi_pixpin_nucleo_checksum_method_lienzo_plano_de_vista() != 25153) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_pixpin_nucleo_checksum_method_llaveroapp_guardar() != 59479) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_llaveroapp_leer() != 2054) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_llaveroapp_borrar() != 39892) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_pixpin_nucleo_checksum_method_escucha_atender() != 13245) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -12526,19 +13521,24 @@ private let initializationResult: InitializationResult = {
     if (uniffi_pixpin_nucleo_checksum_constructor_nucleo_abrir() != 47148) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_pixpin_nucleo_checksum_constructor_corteia_nuevo() != 35699) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_pixpin_nucleo_checksum_constructor_busqueda_nueva() != 3141) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_pixpin_nucleo_checksum_constructor_editorlienzo_de_fichero() != 39861) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_pixpin_nucleo_checksum_constructor_lienzo_de_fichero() != 4320) {
+    if (uniffi_pixpin_nucleo_checksum_constructor_lienzo_de_fichero() != 15288) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_pixpin_nucleo_checksum_constructor_lienzo_de_json() != 46678) {
         return InitializationResult.apiChecksumMismatch
     }
 
+    uniffiCallbackInitLlaveroApp()
+    uniffiCallbackInitOyenteIa()
     return InitializationResult.ok
 }()
 

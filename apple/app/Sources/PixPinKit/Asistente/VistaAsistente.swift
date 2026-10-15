@@ -35,7 +35,15 @@ public struct VentanaAsistente: View {
                             .id(b.id)
                         }
                         if modelo.ocupado {
-                            ProgressView().controlSize(.small).padding(.leading, 8).id("pensando")
+                            HStack {
+                                ProgressView().controlSize(.small)
+                                if modelo.sePuedeParar {
+                                    Button("Parar") { modelo.parar() }
+                                        .controlSize(.small)
+                                        .keyboardShortcut(".", modifiers: .command)
+                                }
+                            }
+                            .padding(.leading, 8).id("pensando")
                         }
                     }
                     .padding(12)
@@ -43,6 +51,12 @@ public struct VentanaAsistente: View {
                 .onChange(of: modelo.burbujas.count) { _, _ in
                     if let ultima = modelo.burbujas.last?.id {
                         withAnimation { lector.scrollTo(ultima, anchor: .bottom) }
+                    }
+                }
+                // La respuesta en vivo crece: se sigue su final (sin animar).
+                .onChange(of: modelo.burbujas.last?.texto.count) { _, _ in
+                    if modelo.ocupado, let ultima = modelo.burbujas.last?.id {
+                        lector.scrollTo(ultima, anchor: .bottom)
                     }
                 }
             }
@@ -98,7 +112,7 @@ struct BurbujaAsistente: View {
         HStack {
             if burbuja.delUsuario { Spacer(minLength: 40) }
             VStack(alignment: .leading, spacing: 6) {
-                Text(burbuja.texto).textSelection(.enabled)
+                Text(burbuja.texto.isEmpty ? "…" : burbuja.texto).textSelection(.enabled)
                 ForEach(Array(burbuja.herramientas.enumerated()), id: \.offset) { _, h in
                     Label(h.nombre + ": " + h.resumen, systemImage: h.ok ? "checkmark.circle" : "xmark.circle")
                         .font(.caption)

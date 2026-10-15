@@ -24,8 +24,13 @@
 //!   borrada para los demas) lo decide al sincronizar con `tenia`, igual
 //!   que en Windows: aqui solo se mueve el fichero.
 //!
-//! Lo que Windows hace con la papelera de reciclaje al caducar (barrer) no
-//! esta aqui: en Mac lo hara Swift con `FileManager.trashItem`.
+//! **Barrer** (lo que hace `caducidad_capturas::barrer` en Windows) va
+//! partido en dos: aqui se decide que capturas ya tocan
+//! ([`Nucleo::capturas_caducadas`], las mismas reglas que Windows) y Swift
+//! las lleva a la **Papelera del Mac** con `FileManager.trashItem` (lo que
+//! en Windows es la papelera de reciclaje: se restaura desde ahi). Despues,
+//! [`Nucleo::olvidar_capturas_ausentes`] limpia del registro las
+//! conservadas y prorrogadas cuyo fichero ya no esta, como Windows.
 //!
 //! # Rendimiento
 //!
@@ -101,6 +106,16 @@ pub struct CapturaBorrada {
     pub conservada: bool,
     /// La fecha de su «7 dias mas», si la tenia.
     pub prorroga: Option<i64>,
+}
+
+/// Una captura que ya caduco: Swift la lleva a la Papelera del Mac.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct CapturaCaducada {
+    pub nombre: String,
+    /// Su ruta absoluta en este aparato.
+    pub ruta: String,
+    /// Cuando tocaba irse, en ms desde 1970.
+    pub se_va: i64,
 }
 
 /// Una captura de la carpeta (el `Entrada` de Windows).
@@ -239,6 +254,38 @@ pub fn dias_que_quedan(se_va: Option<i64>, ahora: i64, desfase_ms: i64) -> Optio
     se_va.map(|t| ((t + desfase_ms).div_euclid(DIA) - (ahora + desfase_ms).div_euclid(DIA)).max(0))
 }
 
+/// **Las que ya tocan** (`caducidad_capturas::caducadas` de Windows): las
+/// de `lista` cuya fecha de irse (conservada, fijada con el grupo, regla y
+/// prorroga, por `pixpin_sincro::galeria::se_va_el`) ya llego en `ahora`.
+/// Con `dias` cero o menos no se va ninguna. Cada una con su fecha.
+pub(crate) fn caducadas<'a>(
+    registro: &Caducidad,
+    lista: &'a [Entrada],
+    ahora: i64,
+    dias: i64,
+) -> Vec<(&'a Entrada, i64)> {
+    lista
+        .iter()
+        .filter_map(|e| {
+            let t = reglas::se_va_el(registro, &e.nombre, e.cuando, dias)?;
+            (t <= ahora).then_some((e, t))
+        })
+        .collect()
+}
+
+/// Los nombres apuntados (conservadas y prorrogadas) cuyo fichero ya no
+/// esta en `presentes`.
+fn ausentes(registro: &Caducidad, presentes: &[Entrada]) -> Vec<String> {
+    let hay = |n: &String| presentes.iter().any(|e| &e.nombre == n);
+    registro
+        .conservadas
+        .iter()
+        .chain(registro.prorrogadas.keys())
+        .filter(|n| !hay(n))
+        .cloned()
+        .collect()
+}
+
 /// Lleva `ruta` a `papelera/capturas/`; si ya hay una con ese nombre, la
 /// nueva lleva la hora delante (`galeria_capturas::a_la_papelera`).
 pub(crate) fn a_la_papelera(raiz: &Path, ruta: &Path, ahora: i64) -> std::io::Result<PathBuf> {
@@ -293,6 +340,21 @@ impl Nucleo {
             return Err(ErrorNucleo::NoExiste { que: nombre });
         }
         Ok(ruta)
+    }
+
+    /// [`Nucleo::capturas_caducadas`] a una hora dada (las pruebas).
+    pub(crate) fn caducadas_en(&self, dias: i64, ahora: i64) -> Vec<CapturaCaducada> {
+        let lista = self.lista_de_capturas();
+        let registro = leer_registro(self.ruta(), ahora);
+        let carpeta = self.carpeta_de_capturas();
+        caducadas(&registro, &lista, ahora, dias)
+            .into_iter()
+            .map(|(e, se_va)| CapturaCaducada {
+                nombre: e.nombre.clone(),
+                ruta: carpeta.join(&e.nombre).display().to_string(),
+                se_va,
+            })
+            .collect()
     }
 
     fn cuando_de_captura(ruta: &Path) -> i64 {
@@ -444,6 +506,39 @@ impl Nucleo {
         }
     }
 
+    /// **Las capturas que ya caducaron** con el plazo `dias` (el ajuste
+    /// `[capturas] dias_caducidad`; 0 = nunca): las mismas reglas que el
+    /// barrendero de Windows. No mueve nada: Swift las lleva a la Papelera
+    /// del Mac (`FileManager.trashItem`) y luego llama a
+    /// [`Nucleo::olvidar_capturas_ausentes`]. La carpeta se lee de la cache
+    /// si no cambio.
+    pub fn capturas_caducadas(&self, dias: i64) -> Vec<CapturaCaducada> {
+        self.caducadas_en(dias, crate::ahora_ms())
+    }
+
+    /// **Tras barrer**: olvida las conservadas y prorrogadas cuyo fichero
+    /// ya no esta (el numero de `captura-NNNN` se reutiliza: una nueva con
+    /// el nombre de una conservada que se fue no tiene por que quedarse
+    /// para siempre), como el final de `caducidad_capturas::barrer`. Suelta
+    /// la lista de la cache. Devuelve cuantos nombres se olvidaron; si no
+    /// sobra ninguno, no se escribe el registro.
+    pub fn olvidar_capturas_ausentes(&self) -> Result<u32, ErrorNucleo> {
+        self.galeria_tomada().vaciar();
+        let lista = self.lista_de_capturas();
+        let ahora = crate::ahora_ms();
+        let sobran = ausentes(&leer_registro(self.ruta(), ahora), &lista);
+        if sobran.is_empty() {
+            return Ok(0);
+        }
+        cambiar_registro(self.ruta(), ahora, |r| {
+            for n in &sobran {
+                r.conservadas.remove(n);
+                r.prorrogadas.remove(n);
+            }
+        })?;
+        Ok(sobran.len() as u32)
+    }
+
     /// **Deshace un borrado**: cada una vuelve a `capturas/` (si su nombre
     /// sigue libre) con lo que tenia apuntado. Devuelve cuantas volvieron.
     pub fn devolver_capturas(&self, borradas: Vec<CapturaBorrada>) -> Result<u32, ErrorNucleo> {
@@ -509,6 +604,104 @@ mod pruebas {
             dias_que_quedan(Some(11 * DIA + 3_600_000), 10 * DIA + 3_600_000, lima),
             Some(1)
         );
+    }
+
+    fn entrada(nombre: &str, cuando: i64) -> Entrada {
+        Entrada {
+            nombre: nombre.into(),
+            cuando,
+            bytes: 1,
+        }
+    }
+
+    #[test]
+    fn caducan_las_que_tocan_como_en_windows() {
+        let mut r = Caducidad {
+            desde: 0,
+            ..Default::default()
+        };
+        r.conservadas.insert("guardada.png".into());
+        r.prorrogadas.insert("alargada.png".into(), 30 * DIA);
+        let lista = [
+            entrada("vieja.png", 10 * DIA),
+            entrada("guardada.png", 10 * DIA),
+            entrada("alargada.png", 10 * DIA),
+            entrada("nueva.png", 19 * DIA),
+        ];
+        // Dia 20 con 7 dias: solo la vieja (se iba el 17).
+        let idas = caducadas(&r, &lista, 20 * DIA, 7);
+        assert_eq!(idas.len(), 1);
+        assert_eq!(idas[0].0.nombre, "vieja.png");
+        assert_eq!(idas[0].1, 17 * DIA);
+        // Justo un ms antes de tocar, ninguna.
+        assert!(caducadas(&r, &lista, 17 * DIA - 1, 7).is_empty());
+        // Caso negativo: con el ajuste a cero no se va ninguna.
+        assert!(caducadas(&r, &lista, 1000 * DIA, 0).is_empty());
+        // La prorrogada aguanta hasta su fecha; la conservada, siempre.
+        let todas: Vec<_> = caducadas(&r, &lista, 1000 * DIA, 7)
+            .into_iter()
+            .map(|(e, _)| e.nombre.as_str())
+            .collect();
+        assert_eq!(todas, ["vieja.png", "alargada.png", "nueva.png"]);
+    }
+
+    #[test]
+    fn las_de_antes_del_estreno_no_se_van_de_golpe() {
+        let r = Caducidad {
+            desde: 100 * DIA,
+            ..Default::default()
+        };
+        let lista = [entrada("antigua.png", 3 * DIA)];
+        assert!(caducadas(&r, &lista, 100 * DIA, 7).is_empty());
+        assert_eq!(caducadas(&r, &lista, 107 * DIA, 7).len(), 1);
+    }
+
+    #[test]
+    fn barrer_en_disco_decide_y_luego_olvida_las_que_no_estan() {
+        let raiz =
+            std::env::temp_dir().join(format!("pixpin-nucleo-caducadas-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&raiz);
+        let n = Nucleo::abrir(raiz.display().to_string(), "Mac".into()).unwrap();
+        let dir = raiz.join("capturas");
+        std::fs::create_dir_all(&dir).unwrap();
+        for f in ["vieja.png", "guardada.png", "notas.txt"] {
+            std::fs::write(dir.join(f), b"x").unwrap();
+        }
+        let ahora = crate::ahora_ms();
+        let hace_ocho = SystemTime::now() - std::time::Duration::from_secs(8 * 86_400);
+        for f in ["vieja.png", "guardada.png"] {
+            std::fs::File::options()
+                .write(true)
+                .open(dir.join(f))
+                .unwrap()
+                .set_modified(hace_ocho)
+                .unwrap();
+        }
+        cambiar_registro(&raiz, ahora, |r| {
+            r.desde = 0;
+            r.conservadas.insert("guardada.png".into());
+            r.conservadas.insert("ya-no-esta.png".into());
+            r.prorrogadas.insert("tampoco.png".into(), ahora);
+        })
+        .unwrap();
+        let idas = n.caducadas_en(7, ahora);
+        assert_eq!(idas.len(), 1, "{idas:?}");
+        assert_eq!(idas[0].nombre, "vieja.png");
+        assert!(idas[0].ruta.ends_with("vieja.png"));
+        assert!(idas[0].se_va <= ahora);
+        // Nada se movio: eso lo hace Swift (la Papelera del Mac).
+        assert!(dir.join("vieja.png").exists());
+        // Caso negativo: con el ajuste a cero no se va ninguna.
+        assert!(n.caducadas_en(0, ahora).is_empty());
+        std::fs::remove_file(dir.join("vieja.png")).unwrap();
+        assert_eq!(n.olvidar_capturas_ausentes().unwrap(), 2);
+        let r = leer_registro(&raiz, ahora);
+        assert!(r.conservadas.contains("guardada.png"));
+        assert!(!r.conservadas.contains("ya-no-esta.png"));
+        assert!(r.prorrogadas.is_empty());
+        // Otra vez no sobra nada.
+        assert_eq!(n.olvidar_capturas_ausentes().unwrap(), 0);
+        let _ = std::fs::remove_dir_all(&raiz);
     }
 
     #[test]

@@ -1,0 +1,105 @@
+# PixPin para Mac con sus extensiones, como proyecto de Xcode (XcodeGen).
+#
+# SwiftPM (`apple/app/Package.swift`) compila la app y pasa las pruebas,
+# pero no sabe hacer extensiones de app. Este proyecto monta lo mismo y
+# ademas:
+#
+# - App Intents en la propia app (`App/Intenciones.swift`): Capturar zona,
+#   Nueva nota en proyecto, Buscar en PixPin y Sincronizar ahora, con sus
+#   frases en espanol para Siri, Atajos y Spotlight;
+# - `CompartirPixPin`: la extension de Compartir (mandar a un proyecto
+#   desde cualquier app);
+# - `VistaPreviaPixPin`: la vista previa de Quick Look de `.excalidraw` y
+#   `.pixpin2d`, pintada con el mismo lector y pintor del lienzo.
+#
+# Va en su carpeta, fuera de `apple/app`: asi el paquete local (`../app`,
+# del que sale PixPinKit) no contiene al propio proyecto, que Xcode lleva
+# mal. `swift test` sigue igual en `apple/app`. El `.xcodeproj` no se
+# versiona: lo genera `herramientas/app.sh xcode` (o `xcodegen generate`
+# aqui) cada vez.
+#
+# La app de la CI se firma ad hoc a mano despues de compilar (app.sh): aqui
+# se compila sin firmar.
+name: PixPin
+options:
+  bundleIdPrefix: io.github.1xmanmax
+  developmentLanguage: es
+  deploymentTarget:
+    macOS: "15.0"
+packages:
+  PixPinMac:
+    path: ../app
+  PixPinCore:
+    path: ../PixPinCore
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    MACOSX_DEPLOYMENT_TARGET: "15.0"
+    # Universal: Apple Silicon e Intel (el xcframework ya trae las dos).
+    ARCHS: "arm64 x86_64"
+    ONLY_ACTIVE_ARCH: NO
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    GENERATE_INFOPLIST_FILE: NO
+    CODE_SIGN_STYLE: Manual
+    CODE_SIGN_IDENTITY: "-"
+    DEVELOPMENT_TEAM: ""
+    ENABLE_HARDENED_RUNTIME: YES
+    DEAD_CODE_STRIPPING: YES
+    SWIFT_COMPILATION_MODE: wholemodule
+targets:
+  AppPixPin:
+    type: application
+    platform: macOS
+    sources:
+      - path: ../app/Sources/PixPin
+      - path: App
+    dependencies:
+      - package: PixPinMac
+        product: PixPinKit
+      - target: CompartirPixPin
+      - target: VistaPreviaPixPin
+    settings:
+      base:
+        PRODUCT_NAME: PixPin
+        PRODUCT_MODULE_NAME: PixPinMacApp
+        PRODUCT_BUNDLE_IDENTIFIER: io.github.1xmanmax.pixpin
+        INFOPLIST_FILE: Soporte/App-Info.plist
+        CODE_SIGN_ENTITLEMENTS: ../app/Recursos/PixPin.entitlements
+        LD_RUNPATH_SEARCH_PATHS: "$(inherited) @executable_path/../Frameworks"
+    scheme: {}
+  CompartirPixPin:
+    type: app-extension
+    platform: macOS
+    sources:
+      - path: Compartir
+    dependencies:
+      - package: PixPinCore
+        product: PixPinCore
+    settings:
+      base:
+        PRODUCT_NAME: CompartirPixPin
+        PRODUCT_BUNDLE_IDENTIFIER: io.github.1xmanmax.pixpin.compartir
+        INFOPLIST_FILE: Soporte/Compartir-Info.plist
+        CODE_SIGN_ENTITLEMENTS: Soporte/Compartir.entitlements
+        LD_RUNPATH_SEARCH_PATHS: "$(inherited) @executable_path/../Frameworks @executable_path/../../../../Frameworks"
+  VistaPreviaPixPin:
+    type: app-extension
+    platform: macOS
+    sources:
+      - path: VistaPrevia
+      # El mismo lector y pintor del lienzo que la app (sin el resto de
+      # PixPinKit: la extension solo pinta).
+      - path: ../app/Sources/PixPinKit/LectorLienzo.swift
+      - path: ../app/Sources/PixPinKit/PintorLienzo.swift
+    dependencies:
+      - package: PixPinCore
+        product: PixPinCore
+      - sdk: Quartz.framework
+    settings:
+      base:
+        PRODUCT_NAME: VistaPreviaPixPin
+        PRODUCT_BUNDLE_IDENTIFIER: io.github.1xmanmax.pixpin.vistaprevia
+        INFOPLIST_FILE: Soporte/VistaPrevia-Info.plist
+        CODE_SIGN_ENTITLEMENTS: Soporte/VistaPrevia.entitlements
+        LD_RUNPATH_SEARCH_PATHS: "$(inherited) @executable_path/../Frameworks @executable_path/../../../../Frameworks"
