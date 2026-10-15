@@ -94,6 +94,67 @@ fn un_dibujo_llega_al_lienzo_abierto_centrado_y_en_un_paso() {
     assert!(avisos.iter().any(|a| matches!(a, Aviso::Evento(Evento::Resultado { ok: true, .. }))));
 }
 
+/// Dos rectas que se cruzan: una roja horizontal y una azul diagonal.
+fn cruce() -> pixpin_motor2d::Escena {
+    use pixpin_motor2d::{ColorRgba, Elemento, Punto2, elemento::Figura};
+    let raya = |a: (f32, f32), b: (f32, f32), c: ColorRgba| Elemento {
+        figura: Figura::Linea { puntos: vec![Punto2::nuevo(a.0, a.1), Punto2::nuevo(b.0, b.1)] },
+        x: a.0.min(b.0),
+        y: a.1.min(b.1),
+        trazo: c,
+        ..Default::default()
+    };
+    let mut s = pixpin_motor2d::Escena::nueva();
+    s.anadir(raya((900.0, 1000.0), (1200.0, 1000.0), ColorRgba::opaco(0.88, 0.19, 0.19)));
+    s.anadir(raya((1000.0, 900.0), (1100.0, 1200.0), ColorRgba::opaco(0.10, 0.44, 0.76)));
+    s
+}
+
+#[test]
+fn editar_el_lienzo_abierto_con_su_resumen_y_en_un_paso() {
+    al_lienzo::vaciar_para_pruebas();
+    let _editor = al_lienzo::EditorAbierto::nuevo(1);
+    let motor = Arc::new(MotorGuionado::nuevo(vec![
+        Respuesta::de_llamada("cortar_linea", r#"{"que":"la recta azul","con":"la recta roja","quitar":"fin"}"#),
+        Respuesta::de_texto("Cortada en el cruce."),
+    ]));
+    let mut escena = cruce();
+    let pasos = escena.pasos_cerrados();
+    let mut t = Turno::lanzar(motor.clone(), "p".into(), historial("corta la recta azul en el cruce"), vec![], None);
+    let (vivo, _) = hasta_el_final(&mut t, Some(&mut escena));
+    assert!(vivo.fallos.is_empty(), "{:?}", vivo.fallos);
+    // El modelo recibio el resumen del lienzo con el pedido.
+    let pedidas = motor.recibido.lock().unwrap();
+    let primero = pedidas[0].mensajes.last().unwrap().texto_entero();
+    assert!(primero.contains("Lienzo destino: 2 elementos") && primero.contains("recta azul"), "{primero}");
+    // La azul acaba en la roja (y = 1000) y es un solo paso de deshacer.
+    let azul = escena.visibles().nth(1).unwrap().puntos().unwrap().to_vec();
+    assert!(azul.iter().all(|p| p.y <= 1000.5), "{azul:?}");
+    assert_eq!(escena.pasos_cerrados(), pasos + 1);
+    assert!(pedidas[1].mensajes.last().unwrap().texto_entero().contains("hecho: cortada"));
+}
+
+#[test]
+fn una_edicion_imposible_vuelve_al_modelo_y_no_toca_el_lienzo() {
+    // Casos negativos: un #id que no existe y cortar contra si misma.
+    al_lienzo::vaciar_para_pruebas();
+    let _editor = al_lienzo::EditorAbierto::nuevo(1);
+    let motor = Arc::new(MotorGuionado::nuevo(vec![
+        Respuesta::de_llamada("transformar_elementos", r##"{"que":"#99","accion":"borrar"}"##),
+        Respuesta::de_llamada("cortar_linea", r#"{"que":"la recta roja","con":"la recta roja"}"#),
+        Respuesta::de_texto("No pude."),
+    ]));
+    let mut escena = cruce();
+    let antes = escena.clone();
+    let mut t = Turno::lanzar(motor.clone(), "p".into(), historial("borra el 99 y corta la roja"), vec![], None);
+    let (_, avisos) = hasta_el_final(&mut t, Some(&mut escena));
+    assert_eq!(escena.elementos, antes.elementos);
+    let pedidas = motor.recibido.lock().unwrap();
+    assert!(pedidas[1].mensajes.last().unwrap().texto_entero().contains("no existe #99"));
+    assert!(pedidas[2].mensajes.last().unwrap().texto_entero().contains("misma linea"));
+    assert!(avisos.iter().any(|a| matches!(a, Aviso::Evento(Evento::Resultado { ok: false, .. }))));
+}
+
 #[test]
 fn sin_nadie_que_atienda_el_lienzo_el_modelo_se_entera_del_fallo() {
     al_lienzo::vaciar_para_pruebas();

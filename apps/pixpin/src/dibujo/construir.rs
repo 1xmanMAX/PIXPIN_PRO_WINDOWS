@@ -177,35 +177,9 @@ fn recortar(escena: &mut Escena, p: Punto2, zoom: f32) -> bool {
     let Some(id) = mas_cercano(escena, p, radio, recorte::se_recorta) else {
         return false;
     };
-    let elementos: Vec<Elemento> = escena.elementos.clone();
-    let victima = elementos.iter().find(|e| e.id == id).cloned().unwrap();
-    let otros: Vec<Elemento> = elementos.into_iter().filter(|e| e.id != id).collect();
-    let Some(r) = recorte::recortar_en(&victima, &otros, p) else {
-        return false;
-    };
-
-    escena.abrir_paso();
-    match r.queda {
-        Some(queda) => {
-            escena.apuntar_edicion(id);
-            if let Some(e) = escena.buscar_mut(id) {
-                // El id es suyo y no se toca: sigue siendo la misma raya, mas
-                // corta.
-                let suyo = e.id;
-                *e = queda;
-                e.id = suyo;
-            }
-        }
-        // Nada la cruzaba: el trozo tocado era la raya entera.
-        None => {
-            escena.borrar_apuntando(id);
-        }
-    }
-    if let Some(nace) = r.nace {
-        escena.anadir(nace);
-    }
-    escena.cerrar_paso();
-    true
+    // La geometria y el paso de deshacer viven en el motor: la misma
+    // operacion que usa el asistente (`pixpin_ia::edicion`).
+    recorte::recortar_en_escena(escena, id, p, None)
 }
 
 /// **Extender**: estira la punta que se queda corta hasta lo primero que topa.
@@ -217,22 +191,7 @@ fn extender(escena: &mut Escena, p: Punto2, zoom: f32) -> bool {
     let Some(id) = mas_cercano(escena, p, radio, recorte::es_lineal) else {
         return false;
     };
-    let elementos: Vec<Elemento> = escena.elementos.clone();
-    let victima = elementos.iter().find(|e| e.id == id).cloned().unwrap();
-    let otros: Vec<Elemento> = elementos.into_iter().filter(|e| e.id != id).collect();
-    let Some(estirada) = recorte::extender_en(&victima, &otros, p, ALCANCE_EXTENDER) else {
-        return false;
-    };
-
-    escena.abrir_paso();
-    escena.apuntar_edicion(id);
-    if let Some(e) = escena.buscar_mut(id) {
-        let suyo = e.id;
-        *e = estirada;
-        e.id = suyo;
-    }
-    escena.cerrar_paso();
-    true
+    recorte::extender_en_escena(escena, id, p, None, ALCANCE_EXTENDER)
 }
 
 /// **Remata el punto que acaba de nacer**: lo pega a un sitio notable y le pone

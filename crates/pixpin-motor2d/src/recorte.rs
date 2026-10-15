@@ -634,6 +634,163 @@ fn sin_id(mut e: Elemento) -> Elemento {
     e
 }
 
+// -------------------------------------------------------------------------
+// Sobre la escena: lo que hace la herramienta del editor (y el asistente)
+// -------------------------------------------------------------------------
+
+/// El largo del recorrido de una raya, en el mundo (0 si no lo tiene).
+pub fn largo_del_recorrido(e: &Elemento) -> f32 {
+    largo_de(&trazado_en_el_mundo(e))
+}
+
+/// El punto del recorrido de una raya a `d` de su principio (`None` si no
+/// tiene recorrido). Es como se nombra «el trozo del principio» o «el del
+/// final» sin picar: se pica en medio de ese trozo.
+pub fn punto_del_recorrido(e: &Elemento, d: f32) -> Option<Punto2> {
+    let camino = trazado_en_el_mundo(e);
+    if camino.len() < 2 {
+        return None;
+    }
+    let mut recorrido = 0.0;
+    for par in camino.windows(2) {
+        let largo = par[1].distancia(par[0]);
+        if largo > 0.0 && d <= recorrido + largo {
+            return Some(par[0].hacia(par[1], ((d - recorrido) / largo).clamp(0.0, 1.0)));
+        }
+        recorrido += largo;
+    }
+    camino.last().copied()
+}
+
+/// Las paredes de un recorte en la escena: todo lo demas, o solo `contra`.
+fn victima_y_paredes(escena: &crate::escena::Escena, id: u64, contra: Option<&[u64]>) -> Option<(Elemento, Vec<Elemento>)> {
+    let victima = escena.buscar(id).filter(|e| !e.borrado)?.clone();
+    let otros = escena
+        .elementos
+        .iter()
+        .filter(|e| e.id != id && !e.borrado && contra.is_none_or(|c| c.contains(&e.id)))
+        .cloned()
+        .collect();
+    Some((victima, otros))
+}
+
+/// **Recortar en la escena**: quita el trozo de `id` que contiene `p`, hasta
+/// donde lo cruzan las demas figuras (o solo las de `contra`). Un paso de
+/// deshacer. `false` si no habia nada que recortar ahi.
+///
+/// Si el trozo estaba en medio, la raya se parte en dos y la segunda mitad es
+/// un elemento nuevo —no la de antes: compartir el id las convertiria en la
+/// misma raya dos veces, y borrar una borraria la otra—.
+pub fn recortar_en_escena(escena: &mut crate::escena::Escena, id: u64, p: Punto2, contra: Option<&[u64]>) -> bool {
+    let Some((victima, otros)) = victima_y_paredes(escena, id, contra) else {
+        return false;
+    };
+    let Some(r) = recortar_en(&victima, &otros, p) else {
+        return false;
+    };
+    escena.abrir_paso();
+    match r.queda {
+        Some(queda) => {
+            escena.apuntar_edicion(id);
+            if let Some(e) = escena.buscar_mut(id) {
+                // El id es suyo y no se toca: sigue siendo la misma raya, mas
+                // corta.
+                let suyo = e.id;
+                *e = queda;
+                e.id = suyo;
+            }
+        }
+        // Nada la cruzaba: el trozo tocado era la raya entera.
+        None => {
+            escena.borrar_apuntando(id);
+        }
+    }
+    if let Some(nace) = r.nace {
+        escena.anadir(nace);
+    }
+    escena.cerrar_paso();
+    true
+}
+
+/// **Extender en la escena**: estira la punta de `id` mas cercana a `p` hasta
+/// lo primero que tope (de todo lo demas, o solo de `contra`). Un paso de
+/// deshacer. `false` si no hay nada en su camino: estirar hasta el infinito no
+/// es extender.
+pub fn extender_en_escena(
+    escena: &mut crate::escena::Escena,
+    id: u64,
+    p: Punto2,
+    contra: Option<&[u64]>,
+    alcance: f32,
+) -> bool {
+    let Some((victima, otros)) = victima_y_paredes(escena, id, contra) else {
+        return false;
+    };
+    let Some(estirada) = extender_en(&victima, &otros, p, alcance) else {
+        return false;
+    };
+    escena.abrir_paso();
+    escena.apuntar_edicion(id);
+    if let Some(e) = escena.buscar_mut(id) {
+        let suyo = e.id;
+        *e = estirada;
+        e.id = suyo;
+    }
+    escena.cerrar_paso();
+    true
+}
+
+#[cfg(test)]
+mod pruebas_en_la_escena {
+    use super::*;
+    use crate::escena::Escena;
+
+    fn raya(a: (f32, f32), b: (f32, f32)) -> Elemento {
+        Elemento {
+            figura: Figura::Linea {
+                puntos: vec![Punto2::nuevo(a.0, a.1), Punto2::nuevo(b.0, b.1)],
+            },
+            x: a.0,
+            y: a.1,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn recortar_solo_contra_una_figura_ignora_las_demas() {
+        let mut e = Escena::nueva();
+        let h = e.anadir(raya((0.0, 50.0), (200.0, 50.0)));
+        let v1 = e.anadir(raya((100.0, 0.0), (100.0, 100.0)));
+        let _v2 = e.anadir(raya((150.0, 0.0), (150.0, 100.0)));
+        // Contra la de x=100 solamente: el final se va entero hasta x=100.
+        assert!(recortar_en_escena(&mut e, h, Punto2::nuevo(180.0, 50.0), Some(&[v1])));
+        assert!((largo_del_recorrido(e.buscar(h).unwrap()) - 100.0).abs() < 0.5);
+        assert!(e.deshacer());
+        assert!((largo_del_recorrido(e.buscar(h).unwrap()) - 200.0).abs() < 0.5);
+    }
+
+    #[test]
+    fn extender_sin_nada_delante_no_toca_la_escena() {
+        // Caso negativo.
+        let mut e = Escena::nueva();
+        let h = e.anadir(raya((0.0, 0.0), (10.0, 0.0)));
+        let antes = e.pasos_cerrados();
+        assert!(!extender_en_escena(&mut e, h, Punto2::nuevo(10.0, 0.0), None, ALCANCE_EXTENDER));
+        assert_eq!(e.pasos_cerrados(), antes);
+    }
+
+    #[test]
+    fn el_punto_del_recorrido_va_por_los_dobleces() {
+        let mut l = raya((0.0, 0.0), (10.0, 0.0));
+        if let Figura::Linea { puntos } = &mut l.figura {
+            puntos.push(Punto2::nuevo(10.0, 10.0));
+        }
+        assert_eq!(largo_del_recorrido(&l), 20.0);
+        let p = punto_del_recorrido(&l, 15.0).unwrap();
+        assert!((p.x - 10.0).abs() < 1e-4 && (p.y - 5.0).abs() < 1e-4);
+    }
+}
+
 #[cfg(test)]
 mod pruebas {
     use super::*;

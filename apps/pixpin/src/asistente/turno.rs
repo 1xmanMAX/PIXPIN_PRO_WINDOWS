@@ -234,6 +234,15 @@ impl Turno {
                         super::acciones::mandar_a_pixpin(),
                     )
                     .con_raiz(raiz);
+                // El lienzo destino, resumido (tipos, #id, cajas, colores,
+                // textos) al final del pedido: solo si el pedido es de dibujar
+                // o editar y hay quien conteste (`pixpin_ia::edicion`).
+                if pixpin_ia::edicion::viene_a_cuento(&pedido)
+                    && super::al_lienzo::hay_quien_conteste()
+                    && let Some(r) = ejecutor.resumen_del_lienzo()
+                {
+                    pixpin_ia::edicion::anadir_resumen(&mut historial, &r);
+                }
                 let buscar = |c: &str| contexto::buscar(&memoria.fuentes, c, 3);
                 let todas = pixpin_ia::herramientas::catalogo();
                 let opciones = Opciones {

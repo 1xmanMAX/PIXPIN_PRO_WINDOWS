@@ -49,6 +49,13 @@ pub struct Estado {
     /// palabras por minuto (`auto:ppm` del movil): es del equipo, no del
     /// documento. `None` es la de fabrica (230).
     pub palabras_por_minuto: Option<u32>,
+    /// **El lienzo, a pantalla completa o en ventana** (la ultima eleccion,
+    /// F11 o el boton de la barra): uno para todos los lienzos. `None` es
+    /// «nunca se toco», y entonces a pantalla completa, como siempre.
+    pub lienzo_pantalla_completa: Option<bool>,
+    /// Donde y de que tamano quedo el lienzo en ventana: (x, y, ancho, alto)
+    /// en pixeles fisicos. `None` la primera vez.
+    pub lienzo_ventana: Option<[i32; 4]>,
 }
 
 fn fichero(ubicacion: &Ubicacion) -> PathBuf {
@@ -98,6 +105,8 @@ mod pruebas {
             escala_interfaz: Some(125),
             lectores_oscuros: Some(true),
             palabras_por_minuto: Some(260),
+            lienzo_pantalla_completa: Some(false),
+            lienzo_ventana: Some([-1200, 40, 900, 640]),
         };
         guardar(&u, &e).unwrap();
         assert_eq!(cargar(&u), e);
