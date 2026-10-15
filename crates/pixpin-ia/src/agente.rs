@@ -590,6 +590,7 @@ fn turno_dentro(
                     match &mut v.llamada {
                         Llamada::Dibujar(figuras) => colores_del_pedido(figuras, &pedido),
                         Llamada::Calcar(p) => crate::calcar::ajustar_al_pedido(p, &pedido),
+                        Llamada::Editar(e) => crate::edicion::ajustar_al_pedido(e, &pedido),
                         _ => {}
                     }
                     al_evento(Evento::Herramienta {
@@ -850,6 +851,9 @@ pub fn instrucciones() -> String {
      Si pide dibujar algo, usa dibujar_en_lienzo, \
      poniendo el color de cada figura. \
      Si pide dibujar, copiar o calcar al lienzo lo de una imagen adjunta (este perro, la foto), usa calcar_imagen. \
+     Para cambiar lo que YA esta en el lienzo (el «Lienzo destino» trae sus #id): transformar_elementos (mover, borrar, girar...), cambiar_estilo, \
+     trazar_a_mano (subrayar o resaltar algo, lapiz, grafito), geometria_precisa (rectas, circulos, arcos exactos), cortar_linea, extender_linea, \
+     imagen_en_lienzo (pegar o recortar una foto); cada una devuelve los #id para la siguiente. \
      Si da datos para graficar, usa grafica; si da una funcion, graficar_funcion; una ecuacion, escribir_ecuacion; un cronograma, cronograma; una ilustracion con curvas, dibujar_svg. \
      Para estudiantes: un problema (de una foto o escrito) que pasar en limpio o resolver, problema_en_limpio; un diagrama de fisica (fuerzas, plano inclinado, tiro, circuito, MRU), diagrama_fisica. Las cuentas las hace la app, no tu. \
      Si quiere el texto de un documento escaneado, usa ocr. \

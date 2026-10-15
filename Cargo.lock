@@ -1648,6 +1648,7 @@ version = "0.1.0"
 dependencies = [
  "image",
  "pixpin-codec",
+ "pixpin-geom",
  "pixpin-motor2d",
  "pixpin-notas",
  "pixpin-ocr",

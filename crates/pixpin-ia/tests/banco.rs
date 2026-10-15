@@ -82,9 +82,21 @@ struct Resultado {
     /// lienzo.
     t_texto: Option<f32>,
     t_dibujo: Option<f32>,
+    /// La escena al acabar (con lo dibujado y lo editado): la comprueban
+    /// los casos de editar (`casos_de_edicion`).
+    escena: pixpin_motor2d::Escena,
+    /// Lo que contesto cada herramienta de editar (ok o el motivo).
+    ediciones: Vec<(String, Result<String, String>)>,
 }
 
 impl Resultado {
+    /// Lo visible de la escena final.
+    fn vivos(&self) -> Vec<&pixpin_motor2d::Elemento> {
+        self.escena.visibles().collect()
+    }
+    fn edito_bien(&self, nombre: &str) -> bool {
+        self.ediciones.iter().any(|(n, r)| n == nombre && r.is_ok())
+    }
     fn llamo(&self, nombre: &str) -> Option<&Value> {
         self.llamadas.iter().find(|(n, _)| n == nombre).map(|(_, v)| v)
     }
@@ -233,6 +245,7 @@ fn casos() -> Vec<Caso> {
 fn casos_fijos() -> Vec<Caso> {
     let mut v = casos_del_lienzo();
     v.extend(casos_de_estudiantes());
+    v.extend(casos_de_edicion());
     v.extend(casos_de_antes());
     v
 }
@@ -349,6 +362,231 @@ fn casos_de_estudiantes() -> Vec<Caso> {
                 si(v["tipo"] == "circuito", "no uso la plantilla del circuito")?;
                 si(v["opciones"]["conexion"] == "paralelo", "no esta en paralelo")?;
                 si(v["listas"]["resistencias"].as_array().is_some_and(|l| l.len() == 2), "no son dos resistencias")
+            },
+        },
+    ]
+}
+
+/// **Editar lo que ya hay** (14-oct, `edicion.rs`): crear, elegir y editar
+/// encadenados. Cada caso empieza con su lienzo ([`escena_inicial`]) y el
+/// modelo recibe su resumen, como en la app.
+mod edicion_banco {
+    use pixpin_motor2d::elemento::{ColorRgba, Elemento, Figura};
+    use pixpin_motor2d::{Escena, Punto2};
+
+    pub fn raya(a: (f32, f32), b: (f32, f32), c: ColorRgba) -> Elemento {
+        Elemento {
+            figura: Figura::Linea { puntos: vec![Punto2::nuevo(a.0, a.1), Punto2::nuevo(b.0, b.1)] },
+            x: a.0.min(b.0),
+            y: a.1.min(b.1),
+            ancho: (a.0 - b.0).abs(),
+            alto: (a.1 - b.1).abs(),
+            trazo: c,
+            ..Default::default()
+        }
+    }
+    pub fn texto(t: &str, x: f32, y: f32, tam: f32) -> Elemento {
+        Elemento {
+            figura: Figura::Texto { texto: t.into(), tam, familia: "Segoe UI".into() },
+            x,
+            y,
+            ancho: t.chars().count() as f32 * tam * 0.55,
+            alto: tam * 1.25,
+            trazo: ColorRgba::opaco(0.12, 0.12, 0.12),
+            ..Default::default()
+        }
+    }
+    pub fn ovalo(cx: f32, cy: f32, r: f32, c: ColorRgba) -> Elemento {
+        Elemento { figura: Figura::Elipse, x: cx - r, y: cy - r, ancho: 2.0 * r, alto: 2.0 * r, trazo: c, ..Default::default() }
+    }
+    pub const ROJO: ColorRgba = ColorRgba::opaco(0.88, 0.19, 0.19);
+    pub const AZUL: ColorRgba = ColorRgba::opaco(0.10, 0.44, 0.76);
+    pub const NEGRO: ColorRgba = ColorRgba::opaco(0.12, 0.12, 0.12);
+
+    /// El lienzo con el que empieza cada caso de editar.
+    pub fn escena_inicial(caso: &str) -> Escena {
+        let mut s = Escena::nueva();
+        match caso {
+            "editar-resalta-titulo" => {
+                s.anadir(texto("Informe de obra", 40.0, 20.0, 36.0));
+                s.anadir(texto("Avance: 60 %", 40.0, 90.0, 18.0));
+                s.anadir(texto("Pendiente: encofrado", 40.0, 130.0, 18.0));
+            }
+            "editar-subraya-resultado" => {
+                s.anadir(texto("Ecuacion: 3x + 2 = 14", 40.0, 40.0, 20.0));
+                s.anadir(texto("Resultado: x = 4", 40.0, 90.0, 20.0));
+            }
+            "editar-mover-y-colorear" => {
+                s.anadir(ovalo(150.0, 150.0, 50.0, ROJO));
+                s.anadir(Elemento { x: 300.0, y: 100.0, ancho: 120.0, alto: 80.0, trazo: AZUL, ..Default::default() });
+            }
+            "editar-extender-hasta" => {
+                s.anadir(raya((50.0, 200.0), (150.0, 200.0), NEGRO));
+                s.anadir(raya((400.0, 50.0), (400.0, 350.0), AZUL));
+            }
+            "editar-perpendicular" => {
+                s.anadir(raya((100.0, 300.0), (500.0, 300.0), NEGRO));
+            }
+            "editar-rodear-grafito" => {
+                s.anadir(Elemento { x: 200.0, y: 150.0, ancho: 160.0, alto: 100.0, trazo: NEGRO, ..Default::default() });
+            }
+            "editar-ambiguo" => {
+                s.anadir(ovalo(100.0, 100.0, 30.0, ROJO));
+                s.anadir(ovalo(300.0, 100.0, 30.0, ROJO));
+            }
+            _ => {}
+        }
+        s
+    }
+}
+
+fn casos_de_edicion() -> Vec<Caso> {
+
+    use pixpin_ia::edicion::{CORTAR, IMAGEN, nombre_de_color};
+    use pixpin_motor2d::elemento::Figura;
+    fn rectas(r: &Resultado) -> Vec<(pixpin_motor2d::Punto2, pixpin_motor2d::Punto2)> {
+        r.vivos()
+            .iter()
+            .filter_map(|e| match &e.figura {
+                Figura::Linea { puntos } if puntos.len() >= 2 => Some((puntos[0], puntos[puntos.len() - 1])),
+                _ => None,
+            })
+            .collect()
+    }
+    fn caja_de_texto(r: &Resultado, que: &str) -> Option<(f32, f32, f32, f32)> {
+        r.vivos().iter().find(|e| matches!(&e.figura, Figura::Texto { texto, .. } if texto.contains(que))).map(|e| e.caja())
+    }
+    vec![
+        Caso {
+            nombre: "editar-cortar-en-el-cruce",
+            pedido: "Dibuja dos rectas que se crucen y corta la de abajo en el cruce.",
+            imagen: None,
+            comprobar: |r| {
+                si(r.edito_bien(CORTAR), "no corto con cortar_linea")?;
+                let rs = rectas(r);
+                si(rs.len() >= 2, "menos de dos rectas")?;
+                // Alguna acaba en otra: el corte quedo en el cruce.
+                let toca = rs.iter().enumerate().any(|(i, (a, b))| {
+                    rs.iter().enumerate().any(|(j, (c, d))| {
+                        i != j && [*a, *b].iter().any(|p| pixpin_motor2d::distancia_a_segmento(*p, *c, *d) < 3.0)
+                    })
+                });
+                si(toca, "ninguna recta acaba en el cruce")
+            },
+        },
+        Caso {
+            nombre: "editar-pegar-y-recortar",
+            pedido: "Pega la foto en el lienzo y recorta la mitad izquierda.",
+            imagen: Some(la_casa),
+            comprobar: |r| {
+                si(r.edito_bien(IMAGEN), "no uso imagen_en_lienzo")?;
+                let foto = r.vivos().into_iter().find(|e| matches!(e.figura, Figura::Imagen { .. })).ok_or("no pego la foto")?;
+                let c = foto.extras.recorte.ok_or("la foto no esta recortada")?;
+                si((c.ancho / c.ancho_natural - 0.5).abs() < 0.1, "no quedo la mitad del ancho")?;
+                si(c.alto / c.alto_natural > 0.9, "recorto tambien a lo alto")
+            },
+        },
+        Caso {
+            nombre: "editar-resalta-titulo",
+            pedido: "Resalta el titulo.",
+            imagen: None,
+            comprobar: |r| {
+                let (x0, y0, x1, y1) = caja_de_texto(r, "Informe").ok_or("se perdio el titulo")?;
+                let ok = r.vivos().iter().any(|e| {
+                    let (a0, b0, a1, b1) = e.caja();
+                    matches!(e.figura, Figura::Resaltador { .. })
+                        && b0 < y1 && b1 > y0 && a0 < x0 + 20.0 && a1 > x1 - 20.0 && (b0 + b1) / 2.0 < y1 + 5.0
+                });
+                si(ok, "no hay un resaltado sobre el titulo")
+            },
+        },
+        Caso {
+            nombre: "editar-subraya-resultado",
+            pedido: "Subraya el resultado en rojo.",
+            imagen: None,
+            comprobar: |r| {
+                let (x0, _, x1, y1) = caja_de_texto(r, "Resultado").ok_or("se perdio el resultado")?;
+                let ok = r.vivos().iter().any(|e| {
+                    let (a0, b0, a1, _) = e.caja();
+                    !matches!(e.figura, Figura::Texto { .. })
+                        && nombre_de_color(e.trazo) == "rojo"
+                        && b0 > y1 - 10.0 && b0 < y1 + 25.0 && a0 < x1 && a1 > x0
+                });
+                si(ok, "no hay una raya roja bajo el resultado")
+            },
+        },
+        Caso {
+            nombre: "editar-mover-y-colorear",
+            pedido: "Mueve el circulo rojo 100 px a la derecha y pintalo de verde.",
+            imagen: None,
+            comprobar: |r| {
+                let c = r.vivos().into_iter().find(|e| matches!(e.figura, Figura::Elipse)).ok_or("se perdio el circulo")?;
+                let (x0, _, x1, _) = c.caja();
+                si(((x0 + x1) / 2.0 - 250.0).abs() < 6.0, "no se movio 100 a la derecha")?;
+                si(nombre_de_color(c.trazo) == "verde", "no es verde")
+            },
+        },
+        Caso {
+            nombre: "editar-extender-hasta",
+            pedido: "Alarga la recta negra hasta que toque la azul.",
+            imagen: None,
+            comprobar: |r| {
+                let ok = rectas(r).iter().any(|(a, b)| (a.y - 200.0).abs() < 1.0 && ((b.x - 400.0).abs() < 2.0 || (a.x - 400.0).abs() < 2.0));
+                si(ok, "la negra no llega a la azul")
+            },
+        },
+        Caso {
+            nombre: "editar-perpendicular",
+            pedido: "Traza una perpendicular a la recta por su punto medio, de 200 px de largo.",
+            imagen: None,
+            comprobar: |r| {
+                let ok = rectas(r).iter().any(|(a, b)| {
+                    (a.x - b.x).abs() < 3.0 && (a.x - 300.0).abs() < 4.0 && ((a.y - b.y).abs() - 200.0).abs() < 25.0
+                });
+                si(ok, "no hay una vertical de 200 por x=300")
+            },
+        },
+        Caso {
+            nombre: "editar-circulo-tres-puntos",
+            pedido: "Dibuja un circulo que pase exactamente por los puntos (100,100), (300,100) y (200,200).",
+            imagen: None,
+            comprobar: |r| {
+                let ok = r.vivos().iter().any(|e| {
+                    let (x0, y0, x1, y1) = e.caja();
+                    matches!(e.figura, Figura::Elipse)
+                        && ((x0 + x1) / 2.0 - 200.0).abs() < 4.0
+                        && ((y0 + y1) / 2.0 - 100.0).abs() < 4.0
+                        && ((x1 - x0) / 2.0 - 100.0).abs() < 4.0
+                });
+                si(ok, "no hay un circulo de centro (200,100) y radio 100")
+            },
+        },
+        Caso {
+            nombre: "editar-rodear-grafito",
+            pedido: "Rodea el rectangulo con grafito 8B.",
+            imagen: None,
+            comprobar: |r| {
+                let ok = r.vivos().iter().any(|e| {
+                    let (a0, b0, a1, b1) = e.caja();
+                    matches!(e.figura, Figura::Lapiz { .. })
+                        && e.material.es_grafito()
+                        && e.extras.dureza.map(|d| d.rotulo()) == Some("8B")
+                        && a0 < 205.0 && b0 < 155.0 && a1 > 355.0 && b1 > 245.0
+                });
+                si(ok, "no hay un trazo de grafito 8B alrededor del rectangulo")
+            },
+        },
+        Caso {
+            nombre: "editar-ambiguo",
+            pedido: "Borra el circulo rojo.",
+            imagen: None,
+            comprobar: |r| {
+                // Hay dos rojos: lo correcto es preguntar cual, no borrar uno
+                // al azar (ni los dos).
+                let quedan = r.vivos().iter().filter(|e| matches!(e.figura, Figura::Elipse)).count();
+                si(quedan == 2, "borro sin preguntar cual")?;
+                let t = r.todo_el_texto();
+                si(t.contains('?') || t.contains("cual"), "no pregunto cual")
             },
         },
     ]
@@ -937,10 +1175,59 @@ struct Apunta<'a> {
     r: &'a mut Resultado,
     imagen: Option<Vec<u8>>,
     t0: Instant,
+    /// Lo que sabe el turno del lienzo (marco 0: las coordenadas del modelo
+    /// son las de la escena del banco) y lo ultimo que toco.
+    ctx: pixpin_ia::edicion::Contexto,
+    /// Los pixeles de las fotos pegadas, para pintarlas en el PNG.
+    fotos: std::collections::HashMap<u64, pixpin_pdf::escribir::Pixeles>,
+}
+
+/// Las fotos del banco: la adjunta del caso, decodificada.
+impl pixpin_ia::edicion::Anfitrion for Apunta<'_> {
+    fn imagen_nueva(&mut self, _fuente: &str) -> Result<pixpin_motor2d::Elemento, String> {
+        let bytes = self.imagen.as_deref().ok_or("no hay ninguna imagen adjunta")?;
+        let img = image::load_from_memory(bytes).map_err(|e| e.to_string())?.to_rgba8();
+        let id_objeto = self.fotos.len() as u64 + 1;
+        let (w, h) = (img.width(), img.height());
+        self.fotos.insert(id_objeto, pixpin_pdf::escribir::Pixeles { ancho: w, alto: h, rgba: img.into_raw() });
+        Ok(pixpin_motor2d::Elemento {
+            figura: pixpin_motor2d::elemento::Figura::Imagen { id_objeto },
+            ancho: w as f32,
+            alto: h as f32,
+            trazo: pixpin_motor2d::ColorRgba { r: 0.0, g: 0.0, b: 0.0, a: 0.0 },
+            ..Default::default()
+        })
+    }
+    fn tamano_de(&self, id_objeto: u64) -> Option<(u32, u32)> {
+        self.fotos.get(&id_objeto).map(|p| (p.ancho, p.alto))
+    }
 }
 
 impl Ejecutor for Apunta<'_> {
+    /// Como en la app: lo que dibuja antes que lo que edita.
+    fn ejecutar_varias(&mut self, llamadas: &[Llamada]) -> Vec<Result<String, String>> {
+        pixpin_ia::edicion::en_orden(llamadas, |l| self.ejecutar(l))
+    }
+
     fn ejecutar(&mut self, llamada: &Llamada) -> Result<String, String> {
+        // Editar: sobre la escena del caso, como en la app.
+        if let Llamada::Editar(e) = llamada {
+            let mut escena = std::mem::take(&mut self.r.escena);
+            let ctx = self.ctx.clone();
+            let r = pixpin_ia::edicion::aplicar(&mut escena, e, &ctx, self);
+            self.r.escena = escena;
+            if self.r.t_dibujo.is_none() && r.is_ok() {
+                self.r.t_dibujo = Some(self.t0.elapsed().as_secs_f32());
+            }
+            self.r.llamadas.push((e.herramienta.to_string(), Value::Object(e.args.clone())));
+            self.r.ediciones.push((e.herramienta.to_string(), r.as_ref().map(|h| h.texto.clone()).map_err(Clone::clone)));
+            return r.map(|h| {
+                if !h.ids.is_empty() {
+                    self.ctx.ultimos = h.ids;
+                }
+                h.texto
+            });
+        }
         // Las acciones de la app, por el mismo camino que la app
         // (`tareas::hacer`) con unas listas de ejemplo: lo que se mandaria se
         // apunta; lo que pide permiso se apunta con `__confirmar` y NO se
@@ -985,12 +1272,21 @@ impl Ejecutor for Apunta<'_> {
         if n > 0 && self.r.t_dibujo.is_none() {
             self.r.t_dibujo = Some(self.t0.elapsed().as_secs_f32());
         }
+        // Lo dibujado tambien entra en la escena (donde lo puso el modelo),
+        // con sus #id para encadenar, como en la app.
+        let mut ids = Vec::new();
+        if n > 0
+            && let Ok(l) = pixpin_motor2d::excalidraw::leer(&lienzo::documento(elementos.clone()))
+        {
+            ids = pixpin_motor2d::portapapeles::pegar(&mut self.r.escena, &l.elementos(), 0.0, 0.0);
+            self.ctx.ultimos = ids.clone();
+        }
         self.r.elementos.extend(elementos);
         let respuesta = limpio.get("respuesta").and_then(Value::as_str).map(str::to_string);
         self.r.llamadas.push((nombre, limpio));
         Ok(match respuesta {
             Some(r) => r,
-            None if n > 0 => format!("hecho: {n} elementos en el lienzo"),
+            None if n > 0 => pixpin_ia::edicion::resumen_de_lo_anadido(&self.r.escena, &ids, &self.ctx),
             None => "hecho".into(),
         })
     }
@@ -1140,7 +1436,17 @@ fn correr(fuente: &Fuente) -> Vec<(&'static str, Nota)> {
         if motor.catalogo_completo() {
             herramientas = pixpin_ia::herramientas::catalogo();
         }
-        let mut r = Resultado::default();
+        let mut r = Resultado {
+            escena: edicion_banco::escena_inicial(caso.nombre),
+            ..Default::default()
+        };
+        let inicial = r.escena.clone();
+        let ctx = pixpin_ia::edicion::Contexto::default();
+        // Como en la app: con algo en el lienzo y un pedido de dibujar o
+        // editar, el modelo recibe su resumen.
+        if inicial.cuantos_visibles() > 0 && pixpin_ia::edicion::viene_a_cuento(caso.pedido) {
+            pixpin_ia::edicion::anadir_resumen(&mut historial, &pixpin_ia::edicion::resumen(&inicial, &ctx));
+        }
         let medido = crono::Medido::nuevo(motor);
         // El camino rapido (14-oct), salvo con `PIXPIN_IA_RAPIDO=0` (para medir
         // el modelo solo).
@@ -1159,6 +1465,8 @@ fn correr(fuente: &Fuente) -> Vec<(&'static str, Nota)> {
                 r: &mut r,
                 imagen: imagen.clone(),
                 t0,
+                ctx: ctx.clone(),
+                fotos: Default::default(),
             };
             let mut t_texto = None;
             let fin = agente::turno_con(&medido, &mut historial, &herramientas, &mut ej, &opciones, &mut |e| {
@@ -1177,10 +1485,15 @@ fn correr(fuente: &Fuente) -> Vec<(&'static str, Nota)> {
                 Seguir::Si
             });
             ej.r.t_texto = t_texto;
-            fin
+            (fin, std::mem::take(&mut ej.fotos))
         };
+        let (fin, fotos) = fin;
         let t_fin = t0.elapsed().as_secs_f32();
-        if !r.elementos.is_empty() {
+        if caso.nombre.starts_with("editar-") {
+            // Lo de editar se ve en la escena entera: la de antes y la de
+            // despues (con las fotos pegadas).
+            imagenes_de_edicion(&caso, imagen.as_deref(), &inicial, &r.escena, &fotos);
+        } else if !r.elementos.is_empty() {
             imagenes_del_caso(&caso, imagen.as_deref(), &r.elementos);
         }
         match fin {
@@ -1380,6 +1693,28 @@ fn imagenes_del_caso(caso: &Caso, imagen: Option<&[u8]>, elementos: &[Value]) {
     pintar::elementos_a_png(elementos, &dir.join(format!("{}-resultado.png", caso.nombre)));
 }
 
+/// Los de editar: la entrada es el lienzo de antes (o la foto adjunta, o el
+/// pedido si empezaba vacio) y el resultado, la escena de despues.
+fn imagenes_de_edicion(
+    caso: &Caso,
+    imagen: Option<&[u8]>,
+    antes: &pixpin_motor2d::Escena,
+    despues: &pixpin_motor2d::Escena,
+    fotos: &std::collections::HashMap<u64, pixpin_pdf::escribir::Pixeles>,
+) {
+    let dir = carpeta_de_imagenes().join(nombre_del_motor());
+    let _ = std::fs::create_dir_all(&dir);
+    let entrada = dir.join(format!("{}-entrada.png", caso.nombre));
+    match imagen {
+        Some(b) => {
+            let _ = std::fs::write(&entrada, b);
+        }
+        None if antes.cuantos_visibles() > 0 => pintar::escena_a_png_con(antes, &entrada, fotos),
+        None => pintar::pedido_a_png(caso.pedido, &entrada),
+    }
+    pintar::escena_a_png_con(despues, &dir.join(format!("{}-resultado.png", caso.nombre)), fotos);
+}
+
 /// Pintar a PNG por el camino del PDF del lienzo (exportar → PDF de
 /// vectores → pixeles de Windows): lo mismo que vera el usuario al exportar.
 mod pintar {
@@ -1389,12 +1724,24 @@ mod pintar {
     use serde_json::Value;
 
     pub fn escena_a_png(escena: &Escena, ruta: &Path) {
+        escena_a_png_con(escena, ruta, &Default::default());
+    }
+
+    /// Con los pixeles de las fotos pegadas.
+    pub fn escena_a_png_con(
+        escena: &Escena,
+        ruta: &Path,
+        fotos: &std::collections::HashMap<u64, pixpin_pdf::escribir::Pixeles>,
+    ) {
         let hojas = pixpin_motor2d::exportar::hojas(escena, pixpin_motor2d::exportar::Alcance::Todo, &[], None);
         if hojas.is_empty() {
             return;
         }
         let blanco = pixpin_motor2d::ColorRgba::opaco(1.0, 1.0, 1.0);
-        let Some(pdf) = pixpin_pdf::escribir::de_hojas(&hojas, Some(blanco), &|_| None) else { return };
+        let de = |id: u64| {
+            fotos.get(&id).map(|p| pixpin_pdf::escribir::Pixeles { ancho: p.ancho, alto: p.alto, rgba: p.rgba.clone() })
+        };
+        let Some(pdf) = pixpin_pdf::escribir::de_hojas(&hojas, Some(blanco), &de) else { return };
         let tmp = ruta.with_extension("pdf");
         if std::fs::write(&tmp, pdf).is_err() {
             return;
@@ -1780,6 +2127,8 @@ mod banco_ia {
                 serde_json::json!({"consulta": b.consulta, "proyecto": b.proyecto}),
                 Vec::new(),
             ),
+            // Editar va por la escena del caso (`Apunta::ejecutar`).
+            Llamada::Editar(e) => (nombre, Value::Object(e.args.clone()), Vec::new()),
         })
     }
 }

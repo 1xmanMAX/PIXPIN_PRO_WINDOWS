@@ -287,7 +287,8 @@ pub fn elementos(llamada: &Llamada, origen: (f64, f64), semilla: u64) -> Vec<Val
         | Llamada::App(_)
         | Llamada::Ayuda(_)
         | Llamada::Figuras(_)
-        | Llamada::Buscar(_) => {}
+        | Llamada::Buscar(_)
+        | Llamada::Editar(_) => {}
     }
     f.salida
 }

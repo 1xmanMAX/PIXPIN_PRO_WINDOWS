@@ -29,6 +29,10 @@ pub const ESPERA_LIENZO: Duration = Duration::from_secs(60);
 /// documento), para «guarda esto como figura» sin nada elegido.
 static ULTIMO_DIBUJO: Mutex<Option<HashMap<String, String>>> = Mutex::new(None);
 
+/// Cuanto se espera el resumen del lienzo al empezar el turno: es leer la
+/// escena (microsegundos) en la siguiente vuelta del bucle de quien la tiene.
+const ESPERA_RESUMEN: Duration = Duration::from_secs(3);
+
 /// Cuanto se espera a que el lienzo abierto diga que tiene elegido.
 const ESPERA_ELEGIDO: Duration = Duration::from_secs(2);
 
@@ -57,6 +61,11 @@ pub struct EjecutorDelChat {
     nube: bool,
     /// Lo citado de los documentos en este turno, numerado seguido.
     citas: pixpin_ia::documentos::Citas,
+    /// Lo que el turno sabe del lienzo destino (desde donde mide el modelo,
+    /// lo elegido y lo ultimo que toco): `pixpin_ia::edicion`.
+    ctx: pixpin_ia::edicion::Contexto,
+    /// Si ya se pregunto al lienzo por su resumen (y con el, el marco).
+    con_marco: bool,
 }
 
 impl EjecutorDelChat {
@@ -74,6 +83,8 @@ impl EjecutorDelChat {
             raiz: None,
             nube: false,
             citas: Default::default(),
+            ctx: Default::default(),
+            con_marco: false,
         }
     }
 
@@ -144,6 +155,78 @@ impl EjecutorDelChat {
         self.al_lienzo_elementos(elementos)
     }
 
+    /// **El resumen del lienzo destino** para el modelo, al empezar el turno
+    /// (`pixpin_ia::edicion::resumen`): lo pide a quien tenga el lienzo (el
+    /// editor abierto o el chat) y se queda con el marco y lo elegido. `None`
+    /// si el lienzo esta vacio o no contesta a tiempo (entonces no se dice
+    /// nada: mejor sin resumen que esperar).
+    pub fn resumen_del_lienzo(&mut self) -> Option<String> {
+        let (tx, rx) = channel();
+        super::al_lienzo::pedir(super::al_lienzo::Pedido::de_trabajo(
+            self.proyecto.clone(),
+            self.destino.clone(),
+            super::al_lienzo::Trabajo::Resumir,
+            tx,
+        ));
+        let r = rx.recv_timeout(ESPERA_RESUMEN).ok()?.ok()?;
+        if let Some(ctx) = r.ctx {
+            self.ctx = ctx;
+            self.con_marco = true;
+        }
+        (!r.texto.starts_with("Lienzo destino: vacio")).then_some(r.texto)
+    }
+
+    /// Manda un pedido al lienzo y espera su respuesta (sin colgar el turno
+    /// si la ventana no contesta, y cortando si el usuario para).
+    fn esperar_al_lienzo(&mut self, pedido: super::al_lienzo::Pedido, rx: std::sync::mpsc::Receiver<Result<super::al_lienzo::Respuesta, String>>) -> Result<super::al_lienzo::Respuesta, String> {
+        super::al_lienzo::pedir(pedido);
+        let hasta = Instant::now() + self.espera;
+        loop {
+            if self.parar.load(Ordering::Relaxed) {
+                return Err("el usuario lo paro".into());
+            }
+            match rx.recv_timeout(Duration::from_millis(100)) {
+                Ok(r) => {
+                    // Lo dibujado o editado pasa a ser «lo ultimo».
+                    if let Ok(r) = &r
+                        && !r.ids.is_empty()
+                    {
+                        self.ctx.ultimos = r.ids.clone();
+                    }
+                    return r;
+                }
+                Err(RecvTimeoutError::Disconnected) => return Err("la ventana del chat no contesto".into()),
+                Err(RecvTimeoutError::Timeout) if Instant::now() >= hasta => {
+                    return Err("la ventana del chat no contesto a tiempo".into());
+                }
+                Err(RecvTimeoutError::Timeout) => {}
+            }
+        }
+    }
+
+    /// **Editar lo que ya hay** (`pixpin_ia::edicion`): a quien tenga el
+    /// lienzo, con lo que el turno sabe de el y las imagenes adjuntas.
+    fn editar(&mut self, e: &pixpin_ia::edicion::Edicion) -> Result<String, String> {
+        if !self.con_marco {
+            // Sin resumen al empezar (un pedido que no parecia de lienzo):
+            // se pregunta ahora, para medir desde el mismo sitio.
+            let _ = self.resumen_del_lienzo();
+        }
+        let (tx, rx) = channel();
+        let adjuntos = self.adjuntos.iter().map(|a| (a.nombre.clone(), a.ruta.clone())).collect();
+        let pedido = super::al_lienzo::Pedido::de_trabajo(
+            self.proyecto.clone(),
+            self.destino.clone(),
+            super::al_lienzo::Trabajo::Editar {
+                edicion: Box::new(e.clone()),
+                ctx: self.ctx.clone(),
+                adjuntos,
+            },
+            tx,
+        );
+        self.esperar_al_lienzo(pedido, rx).map(|r| r.texto)
+    }
+
     fn al_lienzo_elementos(&mut self, elementos: Vec<serde_json::Value>) -> Result<String, String> {
         if elementos.is_empty() {
             return Err("no salio ninguna figura".into());
@@ -158,26 +241,9 @@ impl EjecutorDelChat {
             u.get_or_insert_with(HashMap::new).insert(self.proyecto.clone(), documento.clone());
         }
         let (responder, rx) = channel();
-        super::al_lienzo::pedir(super::al_lienzo::Pedido::nuevo(
-            self.proyecto.clone(),
-            self.destino.clone(),
-            documento,
-            responder,
-        ));
-        let hasta = Instant::now() + self.espera;
-        loop {
-            if self.parar.load(Ordering::Relaxed) {
-                return Err("el usuario lo paro".into());
-            }
-            match rx.recv_timeout(Duration::from_millis(100)) {
-                Ok(r) => return r,
-                Err(RecvTimeoutError::Disconnected) => return Err("la ventana del chat no contesto".into()),
-                Err(RecvTimeoutError::Timeout) if Instant::now() >= hasta => {
-                    return Err("la ventana del chat no contesto a tiempo".into());
-                }
-                Err(RecvTimeoutError::Timeout) => {}
-            }
-        }
+        let mut pedido = super::al_lienzo::Pedido::nuevo(self.proyecto.clone(), self.destino.clone(), documento, responder);
+        pedido.marco = self.con_marco.then_some(self.ctx.marco);
+        self.esperar_al_lienzo(pedido, rx).map(|r| r.texto)
     }
 }
 
@@ -242,6 +308,7 @@ impl Ejecutor for EjecutorDelChat {
             // Todo lo que se dibuja de la llamada sola (figuras, graficas,
             // SVG, funciones, ecuaciones, cronogramas): al lienzo.
             l if l.dibuja() => self.al_lienzo(l),
+            Llamada::Editar(e) => self.editar(e),
             Llamada::Figuras(p) => self.figuras(p),
             Llamada::Dibujar(_)
             | Llamada::Grafica(_)
@@ -301,7 +368,8 @@ impl Ejecutor for EjecutorDelChat {
     fn ejecutar_varias(&mut self, llamadas: &[Llamada]) -> Vec<Result<String, String>> {
         let ocr: Vec<usize> = (0..llamadas.len()).filter(|&i| matches!(llamadas[i], Llamada::Ocr(_))).collect();
         if ocr.len() < 2 {
-            return llamadas.iter().map(|l| self.ejecutar(l)).collect();
+            // Lo que dibuja antes que lo que edita (`edicion::en_orden`).
+            return pixpin_ia::edicion::en_orden(llamadas, |l| self.ejecutar(l));
         }
         let adjuntos = &self.adjuntos;
         let parar = &self.parar;
