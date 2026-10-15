@@ -15,6 +15,10 @@ thiserror = "2.0"
 # Buscar las capas cocidas en un PDF de once megas (`cocido`) en el hilo de
 # la interfaz: a mano tardaba 265 ms. Ya esta en el arbol (Cargo.lock).
 memchr = "2"
+
+# Ver paginas con Windows.Data.Pdf y medir letras con DirectWrite: solo en
+# Windows. En Mac/iPad/iPhone las paginas las pinta PDFKit desde Swift.
+[target.'cfg(windows)'.dependencies]
 windows-future = "0.3"
 windows = { version = "0.62.2", features = ["Data_Pdf", "Storage", "Storage_Streams", "Graphics_Imaging", "Foundation", "Win32_Foundation", "Win32_System_Com", "Win32_Graphics_DirectWrite"] }
 

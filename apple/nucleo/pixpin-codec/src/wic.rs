@@ -13,19 +13,30 @@
 //! fotograma → conversor a RGBA de 8 bits recto → pixeles. El conversor
 //! hace la conversion de color y de profundidad (un HEIC de 10 bits o un
 //! RAW de 16 bajan a 8) sin que aqui haya que saber nada del formato.
+//!
+//! Fuera de Windows solo queda lo puro (`camino_de`, `SOLO_WINDOWS`,
+//! `extension_de_la_tienda`): en Mac, iPad e iPhone esos formatos los lee
+//! ImageIO (`CGImageSource`) desde Swift, por hardware donde lo hay, e
+//! `imagen::cargar` devuelve `ErrorCodec::NoSoportadoAqui` en vez de llamar
+//! aqui.
 
 use std::path::Path;
 
+#[cfg(windows)]
 use windows::Win32::Foundation::{GENERIC_READ, RPC_E_CHANGED_MODE};
+#[cfg(windows)]
 use windows::Win32::Graphics::Imaging::{
     CLSID_WICImagingFactory, IWICBitmapFrameDecode, IWICImagingFactory,
     WICDecodeMetadataCacheOnDemand,
 };
+#[cfg(windows)]
 use windows::Win32::System::Com::{
     CLSCTX_INPROC_SERVER, COINIT_MULTITHREADED, CoCreateInstance, CoInitializeEx, CoUninitialize,
 };
+#[cfg(windows)]
 use windows::core::HSTRING;
 
+#[cfg(windows)]
 use crate::imagen::ImagenRgba;
 
 /// Las extensiones que van a Windows directamente, sin probar antes con
@@ -78,8 +89,10 @@ pub fn extension_de_la_tienda(ruta: &Path) -> Option<&'static str> {
 /// COM en este hilo mientras dure: lo inicia si no lo estaba y lo cierra
 /// al soltarse. Si el hilo ya tenia COM en otro modo (el hilo de una
 /// ventana, en STA) se usa el que hay: WIC funciona en los dos.
+#[cfg(windows)]
 pub(crate) struct Com(bool);
 
+#[cfg(windows)]
 impl Com {
     pub(crate) fn iniciar() -> Com {
         // SAFETY: sin punteros; cada exito se empareja con su
@@ -89,6 +102,7 @@ impl Com {
     }
 }
 
+#[cfg(windows)]
 impl Drop for Com {
     fn drop(&mut self) {
         if self.0 {
@@ -98,6 +112,7 @@ impl Drop for Com {
     }
 }
 
+#[cfg(windows)]
 pub(crate) fn primer_fotograma(
     ruta: &Path,
 ) -> windows::core::Result<(IWICImagingFactory, IWICBitmapFrameDecode)> {
@@ -124,6 +139,7 @@ pub(crate) fn primer_fotograma(
 
 /// Cuanto mide, leyendo solo la cabecera (WIC no descomprime hasta que se
 /// le piden los pixeles). Ya girada segun su EXIF, como la da `cargar`.
+#[cfg(windows)]
 pub fn medidas(ruta: &Path) -> windows::core::Result<(u32, u32)> {
     let _com = Com::iniciar();
     let (_, fotograma) = primer_fotograma(ruta)?;
@@ -137,6 +153,7 @@ pub fn medidas(ruta: &Path) -> windows::core::Result<(u32, u32)> {
 /// La imagen entera en RGBA recto de 8 bits, como `imagen::cargar`, y
 /// derecha segun su orientacion EXIF (una foto del movil hecha en vertical
 /// sale en vertical).
+#[cfg(windows)]
 pub fn cargar(ruta: &Path) -> windows::core::Result<ImagenRgba> {
     let _com = Com::iniciar();
     let (fabrica, fotograma) = primer_fotograma(ruta)?;
@@ -191,8 +208,41 @@ mod pruebas {
         }
     }
 
+    /// Fuera de Windows, lo que iria a WIC da un error que dice quien lo
+    /// lee en Apple, con la ruta, y no unos pixeles vacios.
+    #[cfg(not(windows))]
+    #[test]
+    fn fuera_de_windows_un_heic_dice_que_lo_lee_imageio() {
+        let dir = std::env::temp_dir().join("pixpin-codec-wic");
+        let _ = std::fs::create_dir_all(&dir);
+        let ruta = dir.join("foto-del-iphone.heic");
+        std::fs::write(&ruta, b"no importa: no se abre").unwrap();
+        for e in [
+            crate::imagen::cargar(&ruta).unwrap_err(),
+            crate::imagen::medidas(&ruta).unwrap_err(),
+        ] {
+            let t = e.to_string();
+            assert!(
+                t.contains("foto-del-iphone.heic") && t.contains("ImageIO"),
+                "{t}"
+            );
+            // Caso negativo: no manda a la tienda de Microsoft.
+            assert_eq!(e.extension_que_falta(), None, "{e}");
+        }
+        // Caso negativo: lo que `image` no entiende con extension suya da el
+        // error de `image`, no el de ImageIO.
+        let png = dir.join("no-soy-png.png");
+        std::fs::write(&png, b"hola").unwrap();
+        let e = crate::imagen::cargar(&png).unwrap_err();
+        assert!(
+            matches!(e, crate::imagen::ErrorCodec::Lectura { .. }),
+            "{e}"
+        );
+    }
+
     /// Una imagen de verdad de 3x2, azul, escrita por WIC mismo en el
     /// contenedor que se pida: asi no hacen falta ficheros de prueba.
+    #[cfg(windows)]
     fn escribir_con_windows(
         ruta: &Path,
         contenedor: &windows::core::GUID,
@@ -227,6 +277,7 @@ mod pruebas {
         }
     }
 
+    #[cfg(windows)]
     #[test]
     fn windows_lee_un_tiff_que_image_no_sabe_leer() {
         use windows::Win32::Graphics::Imaging::GUID_ContainerFormatTiff;
@@ -247,6 +298,7 @@ mod pruebas {
 
     /// Los codecs de imagen de ESTE Windows: (nombre, extensiones,
     /// contenedor, si es codificador).
+    #[cfg(windows)]
     fn codecs() -> Vec<(String, String, windows::core::GUID, bool)> {
         use windows::Win32::Graphics::Imaging::{
             IWICBitmapCodecInfo, IWICBitmapEncoderInfo, WICComponentEnumerateDefault, WICDecoder,
@@ -292,6 +344,7 @@ mod pruebas {
         v
     }
 
+    #[cfg(windows)]
     #[test]
     fn windows_lee_jxr_y_jpeg_xl_si_el_equipo_lo_trae() {
         use windows::Win32::Graphics::Imaging::GUID_ContainerFormatWmp;
@@ -326,6 +379,7 @@ mod pruebas {
         }
     }
 
+    #[cfg(windows)]
     #[test]
     fn un_gif_que_image_no_sabe_leer_sale_por_windows() {
         // El GIF lo escribe el codificador propio (`crate::gif`): `image` no
@@ -354,6 +408,7 @@ mod pruebas {
     /// Lo que Windows sabe leer y escribir en ESTE equipo (cambia con lo
     /// instalado de la tienda). Diagnostico, no prueba: `cargo test -p
     /// pixpin-codec inventario -- --ignored --nocapture`.
+    #[cfg(windows)]
     #[test]
     #[ignore = "diagnostico: lista los codecs de este equipo"]
     fn inventario_de_codecs() {
@@ -385,6 +440,7 @@ mod pruebas {
         }
     }
 
+    #[cfg(windows)]
     #[test]
     fn un_fichero_que_no_es_imagen_da_error_y_no_pixeles_vacios() {
         // Caso negativo: un texto con extension de foto no se convierte en

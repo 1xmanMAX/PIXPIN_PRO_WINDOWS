@@ -3,6 +3,11 @@
 //! donde tiene que verse. Sin esto, «el PDF abre» seria una promesa: un
 //! xref con un desplazamiento mal contado lo abre un lector tolerante y lo
 //! rechaza otro.
+//!
+//! Todo aqui pinta con `Windows.Data.Pdf`: fuera de Windows no hay pruebas
+//! (en Apple se comprobara con PDFKit). Lo puro de escribir se prueba en
+//! `src/escribir.rs`, `con_anotaciones.rs` y `cota_como_el_movil.rs`.
+#![cfg(windows)]
 
 use pixpin_motor2d::ColorRgba;
 use pixpin_motor2d::exportar::{self, Alcance, Hoja};

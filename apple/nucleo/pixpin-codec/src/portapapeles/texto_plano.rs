@@ -5,13 +5,21 @@
 //! `Rich Text Format` (editores viejos, algun navegador embebido): para que
 //! pegar en el lienzo no se quede en nada, se saca aqui su texto. No se
 //! pretende entender el formato: solo las letras y los saltos de parrafo.
+//!
+//! `texto_de_html` y `texto_de_rtf` son puros y valen en todas partes; leer
+//! del portapapeles es solo de Windows (en Apple, `NSPasteboard` desde Swift).
 
+#[cfg(windows)]
 use windows::Win32::Foundation::HGLOBAL;
+#[cfg(windows)]
 use windows::Win32::System::DataExchange::{GetClipboardData, RegisterClipboardFormatW};
+#[cfg(windows)]
 use windows::Win32::System::Memory::{GlobalLock, GlobalSize, GlobalUnlock};
+#[cfg(windows)]
 use windows::core::w;
 
 /// El texto de lo que haya como HTML o RTF, con el portapapeles ya abierto.
+#[cfg(windows)]
 pub(super) fn leer_con_formato() -> Option<String> {
     let de_html = super::tabla::leer_html()
         .map(|b| texto_de_html(&super::tabla::fragmento_de(&b)))
@@ -24,6 +32,7 @@ pub(super) fn leer_con_formato() -> Option<String> {
 }
 
 /// Los bytes de `Rich Text Format`, con el portapapeles ya abierto.
+#[cfg(windows)]
 fn leer_rtf() -> Option<Vec<u8>> {
     // SAFETY: cadena literal terminada en NUL; la funcion solo la lee.
     let formato = unsafe { RegisterClipboardFormatW(w!("Rich Text Format")) };

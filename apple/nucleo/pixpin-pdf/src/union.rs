@@ -1449,6 +1449,7 @@ mod pruebas {
         assert_eq!(contar_paginas(b"no soy un pdf"), None);
     }
 
+    #[cfg(windows)]
     /// Con PDF de verdad, que es donde se rompen los analizadores: se pasan
     /// en `PIXPIN_PDF_REALES` separados por `;` y se unen de dos en dos.
     #[test]
@@ -1483,6 +1484,7 @@ mod pruebas {
         }
     }
 
+    #[cfg(windows)]
     #[test]
     fn un_pdf_unido_se_deja_dibujar_por_windows() {
         let a = de_imagenes(&[imagen(40, 60, 200)]).unwrap();

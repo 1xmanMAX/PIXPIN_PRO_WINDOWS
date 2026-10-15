@@ -5,8 +5,10 @@
 //!
 //! `cargo run -p pixpin-pdf --release --example medir_hojas_como_imagen -- <pdf> [hojas] [ancho]`
 
+#[cfg(windows)]
 use std::time::Instant;
 
+#[cfg(windows)]
 fn main() {
     let mut args = std::env::args().skip(1);
     let ruta = std::path::PathBuf::from(args.next().expect("falta el PDF"));
@@ -39,4 +41,11 @@ fn main() {
         wl / 1024,
         tw
     );
+}
+
+/// Fuera de Windows no hay `Windows.Data.Pdf` con que pintar: en Mac, iPad
+/// e iPhone esta medida se hace con PDFKit desde Swift.
+#[cfg(not(windows))]
+fn main() {
+    eprintln!("medir_hojas_como_imagen pinta con Windows.Data.Pdf: solo se mide en Windows");
 }

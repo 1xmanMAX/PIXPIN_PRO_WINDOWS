@@ -489,6 +489,7 @@ fn fichero_sfnt(tablas: &BTreeMap<Etiqueta, Vec<u8>>) -> Vec<u8> {
 ///
 /// `None` si la familia no esta o no es TrueType; quien escribe el PDF
 /// vuelve entonces a Helvetica.
+#[cfg(windows)]
 pub fn del_sistema(familia: &str) -> Option<Letra> {
     use windows::Win32::Graphics::DirectWrite::{
         DWRITE_FACTORY_TYPE_SHARED, DWRITE_FONT_STRETCH_NORMAL, DWRITE_FONT_STYLE_NORMAL,
@@ -539,6 +540,17 @@ pub fn del_sistema(familia: &str) -> Option<Letra> {
         };
         Letra::desde_tablas(&familia.replace(' ', ""), &tabla)
     }
+}
+
+/// Fuera de Windows no hay DirectWrite: siempre `None`, y quien escribe el
+/// PDF vuelve a Helvetica y parte los renglones con la medida aproximada de
+/// `pixpin_motor2d::exportar::partir_texto` (pura: no hace falta preguntar al
+/// sistema por ninguna letra). En Mac, iPad e iPhone, Swift busca la
+/// letra con Core Text y pasa sus bytes (o sus tablas, `CTFontCopyTable`) a
+/// [`Letra::desde_fichero`] / [`Letra::desde_tablas`], que son puros.
+#[cfg(not(windows))]
+pub fn del_sistema(_familia: &str) -> Option<Letra> {
+    None
 }
 
 #[cfg(test)]

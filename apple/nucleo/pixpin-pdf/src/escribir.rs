@@ -1260,12 +1260,18 @@ mod pruebas {
         // El emoticono, en UTF-16: la estrella es U+2B50.
         assert!(s.contains("/Title <FEFF2B50002000480"), "{s}");
         assert_eq!(s.matches("/XYZ null").count(), 2);
-        // Y el PDF se sigue abriendo, con sus dos paginas.
-        let ruta = std::env::temp_dir().join(format!("pixpin-indice-{}.pdf", std::process::id()));
-        std::fs::write(&ruta, &bytes).unwrap();
-        let doc = crate::Documento::abrir(&ruta).expect("abre");
-        assert_eq!(doc.paginas(), 2);
-        let _ = std::fs::remove_file(&ruta);
+        // Y el PDF se sigue abriendo, con sus dos paginas (fuera de Windows,
+        // contadas por el lector propio: abrir de verdad es de PDFKit).
+        assert_eq!(crate::union::contar_paginas(&bytes), Some(2));
+        #[cfg(windows)]
+        {
+            let ruta =
+                std::env::temp_dir().join(format!("pixpin-indice-{}.pdf", std::process::id()));
+            std::fs::write(&ruta, &bytes).unwrap();
+            let doc = crate::Documento::abrir(&ruta).expect("abre");
+            assert_eq!(doc.paginas(), 2);
+            let _ = std::fs::remove_file(&ruta);
+        }
         // Sin marcadores, ni indice ni panel.
         let sin = de_hojas(&hojas, None, &|_| None).unwrap();
         assert!(!String::from_utf8_lossy(&sin).contains("/Outlines"));

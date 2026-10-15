@@ -59,8 +59,18 @@
 //!
 //! Cuando nada de eso da fruto, se devuelve [`Resultado::NoSeGanaNada`] con la
 //! razon y **no se escribe ningun fichero**.
+//!
+//! Fuera de Windows compila y se prueba todo el modelo de PDF
+//! (`inspeccionar`, `reescribir`, los anchos de pagina...), pero `aligerar`
+//! se para tras inspeccionar con `ErrorPdf::NoSoportadoAqui`: recodificar y
+//! comprobar dibujando es de WIC y `Windows.Data.Pdf` (en Apple, ImageIO y
+//! PDFKit desde Swift). Por eso, ahi, lo que solo sirve a esa segunda mitad
+//! queda sin usar fuera de las pruebas, y se permite.
+#![cfg_attr(not(windows), allow(dead_code))]
 
-use crate::{Documento, ErrorPdf};
+#[cfg(windows)]
+use crate::Documento;
+use crate::ErrorPdf;
 use std::path::Path;
 
 /// A cuantos puntos por pulgada se bajan las fotos. Es el numero del movil.
@@ -301,12 +311,6 @@ pub fn aligerar(origen: &Path, destino: &Path) -> Result<Resultado, ErrorPdf> {
         return Err(ErrorPdf::NoEsPdf(origen.to_path_buf()));
     }
 
-    // COM del hilo, puesto una vez para todo el trabajo: WIC lo necesita para
-    // recodificar cada foto, y `Documento::abrir` pone y quita el suyo, que
-    // esta anidado dentro de este y por tanto no cierra el apartamento a
-    // media faena.
-    let _com = ComDelHilo::nuevo();
-
     let informe = inspeccionar(&bytes);
     if let Some(e) = informe.estorbos.first() {
         return Ok(Resultado::NoSeGanaNada(Razon::NoSeEntiende(*e)));
@@ -315,6 +319,41 @@ pub fn aligerar(origen: &Path, destino: &Path) -> Result<Resultado, ErrorPdf> {
         return Ok(Resultado::NoSeGanaNada(Razon::SinFotosQueBajar));
     }
 
+    sustituir_por_lo_aligerado(origen, destino, &bytes)
+}
+
+/// Fuera de Windows: lo de arriba (si es un PDF, si hay algo que bajar) vale
+/// igual, pero recodificar las fotos (WIC) y comprobar el resultado
+/// DIBUJANDOLO (`Windows.Data.Pdf`) no hay con que hacerlo en Rust. Sin esa
+/// red no se sustituye nada: en Mac, iPad e iPhone lo hace Swift con ImageIO
+/// y PDFKit (o `pdfsqueeze-core`, que es puro).
+#[cfg(not(windows))]
+fn sustituir_por_lo_aligerado(
+    origen: &Path,
+    _destino: &Path,
+    _bytes: &[u8],
+) -> Result<Resultado, ErrorPdf> {
+    Err(ErrorPdf::NoSoportadoAqui {
+        que: format!("aligerar {}", origen.display()),
+        sustituto: "ImageIO y PDFKit",
+    })
+}
+
+/// Recodifica las fotos, escribe el nuevo al lado, lo comprueba dibujandolo
+/// y solo entonces sustituye (con copia del original). `bytes` es `origen`
+/// ya leido y con `inspeccionar` sin pegas.
+#[cfg(windows)]
+fn sustituir_por_lo_aligerado(
+    origen: &Path,
+    destino: &Path,
+    bytes: &[u8],
+) -> Result<Resultado, ErrorPdf> {
+    // COM del hilo, puesto una vez para todo el trabajo: WIC lo necesita para
+    // recodificar cada foto, y `Documento::abrir` pone y quita el suyo, que
+    // esta anidado dentro de este y por tanto no cierra el apartamento a
+    // media faena.
+    let _com = ComDelHilo::nuevo();
+
     // Se abre el original ANTES de tocar nada: si no se deja abrir, aligerarlo
     // no es el problema del usuario ahora mismo, y ademas hace falta su numero
     // de paginas para comprobar el resultado.
@@ -322,16 +361,16 @@ pub fn aligerar(origen: &Path, destino: &Path) -> Result<Resultado, ErrorPdf> {
 
     // `inspeccionar` ya ha abortado si hubo tramos sin entender, asi que aqui
     // la lista es el fichero entero.
-    let objetos = objetos(&bytes).objetos;
-    let anchos = anchos_de_pagina(&bytes, &objetos);
+    let objetos = objetos(bytes).objetos;
+    let anchos = anchos_de_pagina(bytes, &objetos);
 
     let mut cambios: Vec<(u32, Vec<u8>, u32, u32)> = Vec::new();
     for o in &objetos {
-        if !se_puede_recomprimir(&bytes, o) {
+        if !se_puede_recomprimir(bytes, o) {
             continue;
         }
         let Some((ini, fin)) = o.flujo else { continue };
-        let ancho = entero_de(&bytes, valor(&bytes, o.dic, "Width")).unwrap_or(0) as u32;
+        let ancho = entero_de(bytes, valor(bytes, o.dic, "Width")).unwrap_or(0) as u32;
         if ancho == 0 {
             continue;
         }
@@ -355,7 +394,7 @@ pub fn aligerar(origen: &Path, destino: &Path) -> Result<Resultado, ErrorPdf> {
         return Ok(Resultado::NoSeGanaNada(Razon::YaEstaAlMinimo));
     }
 
-    let Some(nuevo) = reescribir(&bytes, &objetos, &cambios) else {
+    let Some(nuevo) = reescribir(bytes, &objetos, &cambios) else {
         return Ok(Resultado::NoSeGanaNada(Razon::NoSeEntiende(
             Estorbo::SinTrailer,
         )));
@@ -397,6 +436,7 @@ pub fn aligerar(origen: &Path, destino: &Path) -> Result<Resultado, ErrorPdf> {
     Ok(Resultado::Aligerado { antes, despues })
 }
 
+#[cfg(windows)]
 /// Milisegundos desde 1970, para que dos trabajos a la vez no compartan
 /// nombre de fichero.
 fn marca_de_tiempo() -> u128 {
@@ -406,6 +446,7 @@ fn marca_de_tiempo() -> u128 {
         .unwrap_or(0)
 }
 
+#[cfg(windows)]
 /// **El PDF nuevo se abre, tiene las mismas paginas y se deja DIBUJAR.**
 ///
 /// Dibujar es lo que de verdad ejercita las fuentes, los recursos y el arbol
@@ -1163,7 +1204,11 @@ fn trailer_nuevo(b: &[u8], trailer: (usize, usize), tamano: usize) -> Vec<u8> {
 // ---------------------------------------------------------------------------
 // El JPEG, con lo que trae Windows
 // ---------------------------------------------------------------------------
+//
+// Fuera de Windows no hay WIC: `aligerar` se para antes de llegar aqui
+// (`sustituir_por_lo_aligerado`), y en Apple recodifica ImageIO desde Swift.
 
+#[cfg(windows)]
 /// Vuelve a codificar un JPEG con `ancho_objetivo` pixeles de ancho.
 ///
 /// Se usa WIC (`Windows.Graphics.Imaging`), que ya viene puesto y es el mismo
@@ -1216,6 +1261,7 @@ fn recomprimir_jpeg(
     Ok((bytes, nuevo_ancho, nuevo_alto))
 }
 
+#[cfg(windows)]
 /// Pixeles RGBA a JPEG, con la calidad de [`CALIDAD_JPEG`].
 fn codificar_jpeg(pixeles: &[u8], ancho: u32, alto: u32) -> Result<Vec<u8>, windows::core::Error> {
     use windows::Foundation::{PropertyType, PropertyValue};
@@ -1261,6 +1307,7 @@ fn codificar_jpeg(pixeles: &[u8], ancho: u32, alto: u32) -> Result<Vec<u8>, wind
     Ok(bytes)
 }
 
+#[cfg(windows)]
 /// Igual que la de `lib.rs`, repetida aqui porque aquella es privada y en esta
 /// tanda no se toca ese fichero mas que para declarar este modulo.
 fn esperar_operacion<T>(
@@ -1275,6 +1322,7 @@ where
     operacion.GetResults()
 }
 
+#[cfg(windows)]
 fn esperar_accion(accion: &windows_future::IAsyncAction) -> Result<(), windows::core::Error> {
     while accion.Status()? == windows_future::AsyncStatus::Started {
         std::thread::sleep(std::time::Duration::from_millis(1));
@@ -1287,10 +1335,12 @@ fn esperar_accion(accion: &windows_future::IAsyncAction) -> Result<(), windows::
 /// Es la misma guardia que la de `lib.rs`, repetida por la misma razon que las
 /// dos esperas de arriba: alli es privada y este modulo no puede tocar ese
 /// fichero mas que para declararse.
+#[cfg(windows)]
 struct ComDelHilo {
     nuestro: bool,
 }
 
+#[cfg(windows)]
 impl ComDelHilo {
     fn nuevo() -> ComDelHilo {
         use windows::Win32::System::Com::{COINIT_MULTITHREADED, CoInitializeEx};
@@ -1304,6 +1354,7 @@ impl ComDelHilo {
     }
 }
 
+#[cfg(windows)]
 impl Drop for ComDelHilo {
     fn drop(&mut self) {
         if self.nuestro {
@@ -1359,7 +1410,11 @@ mod pruebas {
     /// nada: un patron que cambia en cada pixel obliga al codificador a
     /// guardar detalle. Un relleno liso saldria en cuatro kilobytes y la
     /// prueba no mediria nada.
+    ///
+    /// Fuera de Windows lo hace el codificador JPEG de `image` (via
+    /// `pixpin_codec`): para inspeccionar basta con que sea un JPEG de verdad.
     fn jpeg_de_prueba(ancho: u32, alto: u32) -> Vec<u8> {
+        #[cfg(windows)]
         let _com = ComDelHilo::nuevo();
         let mut pixeles = vec![0u8; (ancho as usize) * (alto as usize) * 4];
         for y in 0..alto as usize {
@@ -1371,7 +1426,18 @@ mod pruebas {
                 pixeles[i + 3] = 255;
             }
         }
-        codificar_jpeg(&pixeles, ancho, alto).expect("WIC deberia codificar un JPEG")
+        #[cfg(windows)]
+        return codificar_jpeg(&pixeles, ancho, alto).expect("WIC deberia codificar un JPEG");
+        #[cfg(not(windows))]
+        pixpin_codec::imagen::codificar_jpg(
+            &pixpin_codec::imagen::ImagenRgba {
+                ancho,
+                alto,
+                pixeles,
+            },
+            75,
+        )
+        .expect("image deberia codificar un JPEG")
     }
 
     /// Un escaneo: un A4 con una sola foto a lo ancho, a los pixeles que se
@@ -1585,6 +1651,7 @@ mod pruebas {
 
     // --- de punta a punta, con Windows de por medio ------------------------
 
+    #[cfg(windows)]
     #[test]
     fn un_escaneo_grande_baja_de_peso_y_se_sigue_leyendo() {
         let d = temporal("escaneo");
@@ -1644,6 +1711,7 @@ mod pruebas {
         let _ = std::fs::remove_dir_all(&d);
     }
 
+    #[cfg(windows)]
     #[test]
     fn un_objeto_que_no_se_entiende_se_cuenta_y_para_el_trabajo() {
         // **El fallo:** `reescribir` solo escribe lo que hay en la lista de
@@ -1685,6 +1753,7 @@ mod pruebas {
         let _ = std::fs::remove_dir_all(&d);
     }
 
+    #[cfg(windows)]
     #[test]
     fn aligerar_encima_del_original_deja_una_copia_al_lado() {
         // **No quedaba copia de nada.** Aligerar es la unica operacion del
@@ -1724,6 +1793,7 @@ mod pruebas {
         let _ = std::fs::remove_dir_all(&d);
     }
 
+    #[cfg(windows)]
     #[test]
     fn un_pdf_que_ya_esta_al_minimo_dice_que_no_puede_quitar_nada_y_no_escribe() {
         let d = temporal("alminimo");
@@ -1763,6 +1833,26 @@ mod pruebas {
             Resultado::NoSeGanaNada(Razon::SinFotosQueBajar)
         );
         assert!(!salida.exists());
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    /// Fuera de Windows: con fotos que bajar, se dice que eso lo hace Swift
+    /// y **no se escribe nada**, ni temporal ni copia.
+    #[cfg(not(windows))]
+    #[test]
+    fn fuera_de_windows_un_escaneo_no_se_toca_y_se_dice_quien_lo_hace() {
+        let d = temporal("fuera");
+        let origen = d.join("escaneo.pdf");
+        std::fs::write(&origen, pdf_escaneado(1200, 1700)).unwrap();
+        let salida = d.join("ligero.pdf");
+        let e = aligerar(&origen, &salida).unwrap_err();
+        assert!(matches!(e, ErrorPdf::NoSoportadoAqui { .. }), "{e}");
+        assert!(e.to_string().contains("PDFKit"), "{e}");
+        assert_eq!(
+            std::fs::read_dir(&d).unwrap().count(),
+            1,
+            "solo el original"
+        );
         let _ = std::fs::remove_dir_all(&d);
     }
 

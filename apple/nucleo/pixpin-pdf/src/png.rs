@@ -224,6 +224,7 @@ mod pruebas {
         assert!(png.starts_with(b"\x89PNG"));
         let ruta = std::env::temp_dir().join(format!("pixpin-png-{}.png", std::process::id()));
         std::fs::write(&ruta, &png).unwrap();
+        #[cfg(windows)]
         let _com = crate::ComDelHilo::nuevo();
         let img = pixpin_codec::imagen::cargar(&ruta).expect("Windows lo lee");
         let _ = std::fs::remove_file(&ruta);
