@@ -22,6 +22,10 @@
 # carpeta, lo copia con plugin.json e Images\ a Plugins\PixPin Max\ (quitando
 # cualquier otra carpeta con el mismo ID: con dos, Flow no carga ninguna) y,
 # si Flow estaba abierto, lo reinicia para que lo cargue.
+#
+# Y el servidor MCP (apps/pixpin-mcp, para Claude Desktop y Claude Code):
+# pixpin-mcp.exe junto a pixpinmax.exe. La configuracion de Claude la pone el
+# usuario (docs/integraciones-mcp.md); este script no la toca.
 
 param([string]$Origen)
 
@@ -262,6 +266,55 @@ function Ofrecer-Predeterminada {
 # El plugin de Flow va aparte de la app: se pone al dia aunque PixPin ya sea
 # la ultima, y un fallo suyo no impide instalar PixPin.
 try { Instalar-PluginFlow } catch { Write-Warning "Plugin de Flow Launcher: $_" }
+
+function Instalar-Mcp {
+    # El servidor MCP para Claude Desktop y Claude Code (apps/pixpin-mcp,
+    # docs/integraciones-mcp.md), junto a pixpinmax.exe. Se compila en la
+    # misma carpeta de compilacion si falta o es mas viejo que sus fuentes.
+    # NO toca la configuracion de Claude: eso lo hace el usuario (ver docs).
+    $mcp = 'pixpin-mcp.exe'
+    $origenMcp = Join-Path $origenDir $mcp
+    $destinoMcp = Join-Path $destinoDir $mcp
+    $fuentesMcp = Get-ChildItem (Join-Path $repo 'apps\pixpin-mcp') -Recurse -File |
+        Sort-Object LastWriteTime -Descending | Select-Object -First 1
+    $viejoMcp = (Test-Path $origenMcp) -and (
+        ((Get-Item $origenMcp).LastWriteTime -lt (Get-Item $Origen).LastWriteTime.AddHours(-1)) -or
+        ($fuentesMcp -and (Get-Item $origenMcp).LastWriteTime -lt $fuentesMcp.LastWriteTime))
+    if (-not (Test-Path $origenMcp) -or $viejoMcp) {
+        Write-Host "Compilando $mcp en $(Split-Path -Parent $origenDir)..."
+        $antes = $env:CARGO_TARGET_DIR
+        try {
+            $env:CARGO_TARGET_DIR = Split-Path -Parent $origenDir
+            $env:PATH = "$env:USERPROFILE\.cargo\bin;$env:PATH"
+            Push-Location $repo
+            & cargo build --release -p pixpin-mcp
+        } catch {
+            Write-Warning "No se pudo compilar ${mcp}: $_"
+        } finally {
+            Pop-Location
+            $env:CARGO_TARGET_DIR = $antes
+        }
+    }
+    if (-not (Test-Path $origenMcp)) { Write-Warning "Falta $origenMcp : no se instala el servidor MCP"; return }
+    if ((Test-Path $destinoMcp) -and ((Get-FileHash $destinoMcp).Hash -eq (Get-FileHash $origenMcp).Hash)) {
+        Write-Host "El servidor MCP ya esta al dia: $destinoMcp"
+        return
+    }
+    # Un cliente (Claude Desktop) puede tenerlo abierto: no guarda nada, se
+    # cierra y el cliente lo vuelve a arrancar al usarlo.
+    Get-Process pixpin-mcp -ErrorAction SilentlyContinue |
+        Where-Object { $_.Path -eq $destinoMcp } | Stop-Process -Force
+    New-Item -ItemType Directory -Force $destinoDir | Out-Null
+    for ($i = 0; $i -lt 20; $i++) {
+        try { Copy-Item $origenMcp $destinoMcp -Force -ErrorAction Stop; break } catch { Start-Sleep -Milliseconds 500 }
+    }
+    if ((Test-Path $destinoMcp) -and ((Get-FileHash $destinoMcp).Hash -eq (Get-FileHash $origenMcp).Hash)) {
+        Write-Host "Servidor MCP instalado: $destinoMcp (ver docs\integraciones-mcp.md)"
+    } else {
+        Write-Warning "No se pudo copiar $destinoMcp (sigue en uso)"
+    }
+}
+try { Instalar-Mcp } catch { Write-Warning "Servidor MCP: $_" }
 
 $corriendo = Get-Process pixpinmax -ErrorAction SilentlyContinue
 $yaEsLaBuena = $igual -and $corriendo -and

@@ -239,6 +239,21 @@ pub enum Pedido {
         #[serde(default, deserialize_with = "como_texto_json")]
         receta: Option<String>,
     },
+    /// **Una herramienta del asistente con sus argumentos** (15-oct, el
+    /// servidor MCP `apps/pixpin-mcp`): la fila `nombre` de
+    /// `pixpin_ia::acciones::todas()`, hecha como la haria el asistente
+    /// (`asistente::externa`), y lo que salio escrito en `respuesta`
+    /// (`{"ok":bool,"texto":"…"}`, solo dentro de `%TEMP%\pixpin-mcp\`).
+    /// `preguntar`: una pregunta que hacer antes, ademas de la de la fila.
+    /// `args` va como texto JSON para que el pedido siga siendo comparable.
+    Herramienta {
+        nombre: String,
+        #[serde(default, deserialize_with = "como_texto_json")]
+        args: Option<String>,
+        respuesta: Option<PathBuf>,
+        preguntar: Option<String>,
+        origen: Option<String>,
+    },
 }
 
 /// Lo que se hace con `automatizacion`.
@@ -1005,6 +1020,29 @@ fn hacer(p: Pedido, cx: &Contexto) -> Result<Hecho, Fallo> {
             id,
             receta,
         } => return automatizacion_pedida(cx, operacion, id, receta),
+        // En su hilo, como `asistente`: puede esperar al permiso del usuario.
+        // Lo que salga se contesta en `respuesta`, no en el globo.
+        Pedido::Herramienta {
+            nombre,
+            args,
+            respuesta,
+            preguntar,
+            origen,
+        } => crate::asistente::externa::lanzar(
+            crate::automatizaciones::encargo::Entorno {
+                ubicacion: cx.ubicacion.clone(),
+                aparato: cx.aparato.to_string(),
+            },
+            cx.idioma,
+            cx.opciones,
+            crate::asistente::externa::Encargo {
+                nombre,
+                args,
+                respuesta,
+                preguntar,
+                origen,
+            },
+        ),
     }
     Ok(Hecho::default())
 }
@@ -1802,7 +1840,11 @@ mod pruebas {
 
     /// Un ejemplo de cada accion, con lo minimo que pide la tabla del
     /// protocolo.
-    const EJEMPLOS: [(&str, &str); 30] = [
+    const EJEMPLOS: [(&str, &str); 31] = [
+        (
+            "herramienta",
+            r#"{"pixpin":1,"accion":"herramienta","nombre":"anadir_tarea","args":{"texto":"pan"},"respuesta":"C:\\t\\pixpin-mcp\\1.json"}"#,
+        ),
         (
             "asistente",
             r#"{"pixpin":1,"accion":"asistente","texto":"apunta comprar yeso","proyecto":"pr-1"}"#,

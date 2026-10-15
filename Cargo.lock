@@ -1682,6 +1682,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "pixpin-mcp"
+version = "0.1.0"
+dependencies = [
+ "pixpin-capture",
+ "pixpin-codec",
+ "pixpin-docs",
+ "pixpin-geom",
+ "pixpin-hojas",
+ "pixpin-ia",
+ "pixpin-ocr",
+ "pixpin-office",
+ "pixpin-pdf",
+ "pixpin-proyecto",
+ "pixpin-shell",
+ "pixpin-store",
+ "serde_json",
+ "windows",
+]
+
+[[package]]
 name = "pixpin-model"
 version = "0.1.0"
 
