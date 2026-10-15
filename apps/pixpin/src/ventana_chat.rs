@@ -98,6 +98,9 @@ mod muestra_descripcion;
 /// Muestra en PNG de «Pensando…» en la burbuja del asistente (13-oct).
 #[cfg(test)]
 mod muestra_pensado;
+/// Los mensajes de sistema (`auto-*`) en su franja y no como burbujas (14-oct).
+#[cfg(test)]
+mod muestra_sistema;
 /// v2-menus: muestras en PNG de los menus nuevos.
 #[cfg(test)]
 mod muestra_menus;
@@ -1534,6 +1537,7 @@ pub fn abrir(
                                 }
                                 Zona::Ir(j) => ejecutar(Accion::Ir(j), a, &cx),
                                 Zona::Lecciones => ejecutar(Accion::Lecciones, a, &cx),
+                                Zona::Sistema => Efecto::Menu(menu_de_sistema(a, textos)),
                                 Zona::ConfirmarIa(i, si) => {
                                     asistente::contestar(a, i, si);
                                     Efecto::Nada
@@ -5290,6 +5294,39 @@ fn pintar_historial(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto) {
             tema.separador,
         );
         a.zonas.borrow_mut().push((barra, Zona::Ir(indice_fijado)));
+    } else if let Some(linea) = linea_de_sistema(a, textos) {
+        // En el chat «Asistente», lo del sistema plegado en una linea
+        // discreta: pulsarla lo lista (`menu_de_sistema`).
+        let barra = d.fijado(escala);
+        p.rellenar(rf(barra), tema.cabecera);
+        let x = barra.x as f32 + chat::FIJADO_MARGEN_X as f32 * e;
+        let ancho = (barra.derecha() as f32 - chat::FIJADO_MARGEN_X as f32 * e - x).max(0.0);
+        p.texto_linea(
+            &textos.t("chat-sistema-titulo"),
+            x,
+            barra.y as f32 + 7.0 * e,
+            chat::CONTADOR_TAM * e,
+            ancho,
+            tema.apagado,
+        );
+        p.texto_linea(
+            &linea,
+            x,
+            barra.y as f32 + 25.0 * e,
+            chat::CABECERA_TAM * e,
+            ancho,
+            tema.apagado,
+        );
+        p.rellenar(
+            RectF {
+                x: barra.x as f32,
+                y: barra.abajo() as f32 - (1.0 * e).max(1.0),
+                ancho: barra.ancho as f32,
+                alto: (1.0 * e).max(1.0),
+            },
+            tema.separador,
+        );
+        a.zonas.borrow_mut().push((barra, Zona::Sistema));
     } else if let Some(aviso) = aviso_de_lecciones(a) {
         // Sin fijado, la franja es del aviso de lecciones: «💡 N lecciones:»
         // y la primera. Tocarla abre las de este proyecto.
@@ -6680,6 +6717,11 @@ fn se_ve(a: &Abierto, m: &pixpin_proyecto::cuaderno::Mensaje) -> bool {
     if crate::lecciones::almacen::es_de_leccion(m) {
         return false;
     }
+    // Los de sistema (`auto-*`: letras, figuras, automatizaciones) viajan
+    // pero no son conversacion: van en la franja de arriba (`linea_de_sistema`).
+    if pixpin_proyecto::cuaderno::es_de_sistema(m) {
+        return false;
+    }
     if let Some(q) = a.busqueda.as_deref().filter(|q| !q.trim().is_empty())
         && !pixpin_ui::chat::casa_la_busqueda(&m.resumen(), &m.nombre, q)
     {
@@ -6710,10 +6752,82 @@ fn aviso_de_lecciones(a: &Abierto) -> Option<crate::lecciones::Aviso> {
     crate::lecciones::aviso(&a.raiz, &a.ficha.id, &a.ficha.nombre)
 }
 
-/// Si hay franja bajo la cabecera: la del fijado o, sin el, la del aviso de
-/// lecciones. Las dos van en el mismo sitio.
+/// **La linea de lo del sistema** del chat «Asistente» (14-oct): los
+/// mensajes `auto-*` no son burbujas ([`cuaderno::es_de_sistema`]); en su
+/// lugar, una franja plegada «⚙️ Letras de planos: N · Figuras ·
+/// Automatizaciones» que al pulsarla los lista. Solo en el chat «Asistente»
+/// (es el unico donde nacen) y solo si hay alguno.
+///
+/// [`cuaderno::es_de_sistema`]: pixpin_proyecto::cuaderno::es_de_sistema
+fn linea_de_sistema(a: &Abierto, textos: &Catalogo) -> Option<String> {
+    if !a.ficha.es_asistente() {
+        return None;
+    }
+    resumen_de_sistema(&a.mensajes, textos)
+}
+
+/// El texto de la franja, de los mensajes de sistema que haya. `None` sin ninguno.
+fn resumen_de_sistema(mensajes: &[pixpin_proyecto::cuaderno::Mensaje], textos: &Catalogo) -> Option<String> {
+    let de_sistema: Vec<&pixpin_proyecto::cuaderno::Mensaje> =
+        mensajes.iter().filter(|m| pixpin_proyecto::cuaderno::es_de_sistema(m)).collect();
+    if de_sistema.is_empty() {
+        return None;
+    }
+    let letras = de_sistema.iter().filter(|m| m.id.starts_with("auto-letra-")).count();
+    let mut partes = Vec::new();
+    if letras > 0 {
+        partes.push(format!("{}: {letras}", textos.t("chat-sistema-letras")));
+    }
+    if de_sistema.iter().any(|m| m.id == crate::biblioteca_figuras::ID_MENSAJE) {
+        partes.push(textos.t("chat-sistema-figuras"));
+    }
+    if de_sistema.iter().any(|m| m.id == crate::automatizaciones::ID_MENSAJE) {
+        partes.push(textos.t("chat-sistema-automatizaciones"));
+    }
+    let otros = de_sistema.len()
+        - letras
+        - de_sistema
+            .iter()
+            .filter(|m| m.id == crate::biblioteca_figuras::ID_MENSAJE || m.id == crate::automatizaciones::ID_MENSAJE)
+            .count();
+    if otros > 0 {
+        partes.push(format!("{}: {otros}", textos.t("chat-sistema-otros")));
+    }
+    Some(format!("⚙️ {}  ▾", partes.join(" · ")))
+}
+
+/// **Lo que lista la franja al pulsarla**: cada letra con «Quitar» (borra
+/// su mensaje, y con el la letra en todos los aparatos, como borrar la
+/// burbuja antes), las figuras y las automatizaciones con donde se usan.
+fn menu_de_sistema(a: &Abierto, textos: &Catalogo) -> Vec<EntradaMenu> {
+    let mut v = Vec::new();
+    for (i, m) in a.mensajes.iter().enumerate().filter(|(_, m)| pixpin_proyecto::cuaderno::es_de_sistema(m)) {
+        if m.id.starts_with("auto-letra-") {
+            let mut e = entrada(
+                Some(&mi::DELETE),
+                format!("{} {}", textos.t("chat-sistema-quitar-letra"), m.nombre),
+                Accion::Borrar(vec![i]),
+            );
+            e.peligro = true;
+            v.push(e);
+        } else if m.id == crate::biblioteca_figuras::ID_MENSAJE {
+            v.push(entrada(None, textos.t("chat-sistema-figuras-menu"), Accion::Aviso("chat-sistema-figuras-aviso")).separada());
+        } else if m.id == crate::automatizaciones::ID_MENSAJE {
+            v.push(entrada(None, textos.t("chat-sistema-automatizaciones-menu"), Accion::Ajustes).separada());
+        } else {
+            v.push(entrada(None, m.nombre.clone(), Accion::Pinear(i)).separada());
+        }
+    }
+    v
+}
+
+/// Si hay franja bajo la cabecera: la del fijado o, sin el, la de lo del
+/// sistema (chat «Asistente») o la del aviso de lecciones. Van en el mismo
+/// sitio.
 fn hay_barra(a: &Abierto) -> bool {
-    a.fijado.is_some() || aviso_de_lecciones(a).is_some()
+    a.fijado.is_some()
+        || (a.ficha.es_asistente() && a.mensajes.iter().any(pixpin_proyecto::cuaderno::es_de_sistema))
+        || aviso_de_lecciones(a).is_some()
 }
 
 /// El area de las burbujas, ya descontada la fila de chips si la hay.
@@ -13257,6 +13371,8 @@ enum Zona {
     Renombrar(usize),
     /// La franja del aviso de lecciones: abre las de este proyecto.
     Lecciones,
+    /// La franja de lo del sistema del chat «Asistente»: la lista.
+    Sistema,
     /// «Sí» (`true`) o «No» en la tarjeta de confirmar del asistente dentro
     /// de la burbuja de ese mensaje.
     ConfirmarIa(usize, bool),

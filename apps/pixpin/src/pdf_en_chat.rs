@@ -759,11 +759,11 @@ pub fn solo_galeria(m: &cuaderno::Mensaje) -> bool {
 
 /// **Lo que dice la cabecera del chat**: cuantos mensajes se ven y cuanto
 /// ocupan. Sin las paginas escondidas: «8 cosas» con dos burbujas a la vista
-/// parecia que faltaban seis.
+/// parecia que faltaban seis. Ni los de sistema (`auto-*`), que van en su franja.
 pub fn cuenta_de_la_cabecera(mensajes: &[cuaderno::Mensaje]) -> (usize, i64) {
     mensajes
         .iter()
-        .filter(|m| !solo_galeria(m))
+        .filter(|m| !solo_galeria(m) && !cuaderno::es_de_sistema(m))
         .fold((0, 0), |(n, b), m| (n + 1, b + m.bytes.max(0)))
 }
 

@@ -194,6 +194,15 @@ chat-ayer = Ayer
 chat-buscar = Buscar
 chat-adjuntar = Adjuntar
 chat-fijado = Mensaje fijado
+chat-sistema-titulo = Del sistema · solo viaja a tus aparatos
+chat-sistema-letras = Letras de planos
+chat-sistema-figuras = Figuras
+chat-sistema-automatizaciones = Automatizaciones
+chat-sistema-otros = Otros
+chat-sistema-quitar-letra = Quitar la letra
+chat-sistema-figuras-menu = Figuras guardadas del lienzo
+chat-sistema-figuras-aviso = Las figuras guardadas se usan desde el menú de figuras del lienzo
+chat-sistema-automatizaciones-menu = Automatizaciones (en Ajustes → Asistente)
 # El chat como el de PixPin Android (guardados/MensajesActivity.kt).
 chat-cosas = { $n ->
     [one] 1 cosa

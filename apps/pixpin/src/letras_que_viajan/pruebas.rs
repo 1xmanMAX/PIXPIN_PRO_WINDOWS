@@ -135,6 +135,8 @@ fn las_letras_van_al_movil_y_vuelven_sin_re_mandar() {
     p.letra_del_movil("greeks.shx", GREEKS);
     p.desde_movil();
     assert_eq!(std::fs::read(p.en_el_pc("greeks.shx")).unwrap(), GREEKS);
+    // La letra que llega no es «lo ultimo» de la lista de chats (es de sistema).
+    assert!(!asistente(&raiz).unwrap().resumen.contains("greeks"));
     assert_ne!(pixpin_cad::letras::huella(&carpeta_en(&raiz)), antes, "el visor abierto relee");
 
     // Otra vuelta: nada que mandar.

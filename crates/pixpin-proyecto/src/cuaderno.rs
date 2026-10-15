@@ -556,6 +556,20 @@ impl Cuaderno {
     }
 }
 
+/// El principio del id de los **mensajes de sistema** (14-oct-2026): los
+/// ARCHIVO fijos del chat «Asistente» que hacen viajar ficheros entre los
+/// aparatos propios (`auto-letra-*`, `auto-figuras`,
+/// `auto-automatizaciones`). Existen y se sincronizan como cualquier otro,
+/// pero no son conversacion: no salen como burbujas, ni en las secciones,
+/// ni en la vista previa de la lista.
+pub const PREFIJO_DE_SISTEMA: &str = "auto-";
+
+/// **El filtro unico de los mensajes de sistema**: por su id, nunca por lo
+/// que dicen (una nota cuyo texto empieza por «auto-» es una nota).
+pub fn es_de_sistema(m: &Mensaje) -> bool {
+    m.id.starts_with(PREFIJO_DE_SISTEMA)
+}
+
 /// QUE mensajes son de una seccion, por su posicion en la lista.
 ///
 /// Va aparte de `Cuaderno::de_seccion` porque quien pinta necesita el numero
@@ -570,6 +584,9 @@ pub fn indices_de_seccion(mensajes: &[Mensaje], seccion: Seccion) -> Vec<usize> 
         .iter()
         .enumerate()
         .filter(|(_, m)| {
+            if es_de_sistema(m) {
+                return false;
+            }
             if m.en_buzon {
                 return seccion == Seccion::Buzon;
             }
@@ -1085,6 +1102,27 @@ mod pruebas {
         let c = Cuaderno::leer(r#"{"id":"d","clase":"DIBUJO","enBuzon":true}"#);
         assert!(c.de_seccion(Seccion::Galeria).is_empty());
         assert_eq!(c.de_seccion(Seccion::Buzon).len(), 1);
+    }
+
+    #[test]
+    fn los_mensajes_de_sistema_no_salen_en_ninguna_seccion() {
+        let c = Cuaderno::leer(concat!(
+            r#"{"id":"auto-letra-romans.shx","clase":"ARCHIVO","nombre":"romans.shx","ruta":"pixpin:files/guardados/fuentes-shx/romans.shx"}"#,
+            "\n",
+            r#"{"id":"auto-figuras","clase":"ARCHIVO","nombre":"figuras.json","fijado":true}"#,
+            "\n",
+            r#"{"id":"n1","clase":"NOTA","texto":"auto-guardado de la obra"}"#,
+            "\n",
+            r#"{"id":"a1","clase":"ARCHIVO","nombre":"auto-plano.dwg"}"#,
+            "\n"
+        ));
+        assert!(es_de_sistema(&c.mensajes[0]) && es_de_sistema(&c.mensajes[1]));
+        // Caso negativo: por el id, nunca por lo que dice o como se llama.
+        assert!(!es_de_sistema(&c.mensajes[2]) && !es_de_sistema(&c.mensajes[3]));
+        let ids = |s: Seccion| -> Vec<&str> { c.de_seccion(s).iter().map(|m| m.id.as_str()).collect() };
+        assert_eq!(ids(Seccion::Todo), ["n1", "a1"]);
+        assert_eq!(ids(Seccion::Archivos), ["a1"]);
+        assert!(ids(Seccion::Fijados).is_empty());
     }
 
     #[test]

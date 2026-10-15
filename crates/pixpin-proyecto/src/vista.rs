@@ -724,7 +724,8 @@ impl Disco for DiscoPc {
                 .filter_map(|m| {
                     let c = kotlin::numero(m, "cuando")?;
                     let v = serde_json::from_str::<crate::cuaderno::Mensaje>(&m.a_texto()).ok()?;
-                    Some((c, v.resumen()))
+                    // Una letra o las figuras que llegan no son «lo ultimo».
+                    (!crate::cuaderno::es_de_sistema(&v)).then(|| (c, v.resumen()))
                 })
                 .max_by_key(|(c, _)| *c);
             if let Some((c, r)) = ultimo {
