@@ -2038,7 +2038,7 @@ mod pruebas {
 
     /// Un ejemplo de cada accion, con lo minimo que pide la tabla del
     /// protocolo.
-    const EJEMPLOS: [(&str, &str); 33] = [
+    const EJEMPLOS: [(&str, &str); 34] = [
         (
             "leer_en_voz",
             r#"{"pixpin":1,"accion":"leer_en_voz","texto":"Hola.\nAdios.","titulo":"Wikipedia"}"#,
