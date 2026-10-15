@@ -298,6 +298,32 @@ fn guardar_png(nombre: &str, img: &pixpin_codec::ImagenRgba) {
 }
 
 #[test]
+fn lo_que_se_ve_se_exporta_por_el_componente_comun() {
+    let (e, carpeta) = ejemplo();
+    let secciones = vec![Seccion {
+        rotulo: "Hoy".into(),
+        momentos: e.momentos.iter().collect(),
+    }];
+    let apuntes = apuntes_de(&e.almacen, &secciones);
+    assert_eq!(apuntes.len(), e.momentos.len());
+    assert!(
+        apuntes.iter().any(|a| a.ficheros.iter().any(|f| f.is_file())),
+        "las fotos van por su ruta en el almacen"
+    );
+    let foto = pixpin_codec::ImagenRgba { ancho: 8, alto: 6, pixeles: vec![120; 8 * 6 * 4] };
+    let x = exportable_de_lo_que_se_ve("timeline-hoy".into(), "<html></html>".into(), apuntes, Some(foto));
+    let f = x.formatos();
+    for id in ["web", "pdf", "png", "jpg", "svg", "pixpin"] {
+        assert!(f.contains(&id), "falta {id}: {f:?}");
+    }
+    assert!(!f.contains(&"original"), "es una vista, no un fichero");
+    // Caso negativo: sin imagen de la vista ni momentos, solo la pagina.
+    let y = exportable_de_lo_que_se_ve("vacio".into(), "<html></html>".into(), Vec::new(), None);
+    assert_eq!(y.formatos(), vec!["web", "pdf"]);
+    let _ = std::fs::remove_dir_all(carpeta);
+}
+
+#[test]
 #[ignore = "necesita GPU; ejecutar con --ignored y mirar el PNG"]
 fn muestra_del_timeline() {
     let (mut e, carpeta) = ejemplo();
@@ -343,6 +369,11 @@ fn muestra_del_timeline() {
     muestra(&g, "timeline-lecciones", &mut e);
     e.abrir_leccion(0);
     muestra(&g, "timeline-historia-leccion", &mut e);
+    // El menu de compartir de una leccion, con su «Exportar…».
+    e.menu_compartir = Some((Item::Leccion("lec-0".into()), (420.0, 260.0)));
+    e.botones.raton = (440.0, 260.0 + 4.0 + 4.5 * 44.0);
+    muestra(&g, "timeline-menu-exportar-leccion", &mut e);
+    e.menu_compartir = None;
     // La tarjeta compartida como imagen: una leccion y un momento.
     let textos = Catalogo::nuevo(Idioma::Espanol);
     for (nombre, item) in [

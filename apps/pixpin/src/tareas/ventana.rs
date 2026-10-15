@@ -4091,6 +4091,22 @@ mod pruebas {
         });
         e.corrigiendo = None;
         e.campo.vaciar();
+        // La caja comun: una ficha de imagen como chapa y la rayita en
+        // medio de lo escrito (Ctrl+izquierda), con «arena» elegida.
+        e.foco = Foco::Apuntar;
+        e.campo.escribir("comprar yeso ");
+        e.campo.pegar(Some(pixpin_codec::ContenidoPortapapeles::Rutas(vec![foto(
+            "caja-cursor.png",
+            [200, 120, 40],
+        )])));
+        e.campo.escribir("y arena fina");
+        e.campo.tecla(VK_IZQUIERDA, true, false);
+        e.campo.tecla(VK_IZQUIERDA, true, true);
+        crate::ventanita::muestra("tareas-v5-caja-cursor", w, h, |p, motor| {
+            cargar_minis(&mut e, motor);
+            pintar_todo(&mut e, p, marco, 1.0, &textos)
+        });
+        e.campo.vaciar();
         // El raton en el conmutador de la vista: su pista con el atajo.
         e.botones.raton = (w as f32 - 16.0 - 40.0 - 12.0 - 30.0, 32.0);
         crate::ventanita::muestra("tareas-v5-conmutador", w, h, |p, motor| {

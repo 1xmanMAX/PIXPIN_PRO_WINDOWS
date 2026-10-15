@@ -155,6 +155,10 @@ pub(super) fn hacer(
         compartir_html(e, &c, textos);
         return;
     }
+    // «Exportar…» lo atiende el bucle (abre la hoja comun).
+    if destino == Destino::Exportar {
+        return;
+    }
     let img = match imagen(e, &c, motor, d3d, textos) {
         Ok(i) => i,
         Err(err) => {
@@ -164,8 +168,8 @@ pub(super) fn hacer(
         }
     };
     match destino {
-        // Atendido arriba, sin pintar la tarjeta: no hace falta.
-        Destino::Html => {}
+        // Atendidos arriba, sin pintar la tarjeta: no hace falta.
+        Destino::Html | Destino::Exportar => {}
         Destino::Copiar => match pixpin_codec::portapapeles::copiar_imagen(&img) {
             Ok(()) => e.decir(textos.t("timeline-imagen-copiada")),
             Err(err) => {
@@ -264,9 +268,20 @@ pub(super) fn imagen(
 
 /// El menu de compartir: copiar o guardar como imagen, junto al clic.
 pub(super) fn pintar_menu(e: &mut Estado, p: &Pintor, w: f32, h: f32, s: f32, textos: &Catalogo) {
-    let Some((_, (mx, my))) = e.menu_compartir.clone() else {
+    let Some((item, (mx, my))) = e.menu_compartir.clone() else {
         return;
     };
+    // Una leccion tambien se exporta (PDF, HTML, .pixpin, imagen y su
+    // `.leccion`), por la hoja comun de toda la app.
+    let mut filas = vec![
+        (Destino::Compartir, &mi::IOS_SHARE, "salida-compartir-menu"),
+        (Destino::Html, &mi::OPEN_IN_NEW, "timeline-compartir-html"),
+        (Destino::Copiar, &mi::CONTENT_COPY, "timeline-copiar-imagen"),
+        (Destino::Guardar, &mi::IMAGE, "timeline-guardar-imagen"),
+    ];
+    if matches!(item, Item::Leccion(_)) {
+        filas.push((Destino::Exportar, &mi::FILE_DOWNLOAD, "compartir-exportar"));
+    }
     e.botones.zona(
         RectF {
             x: 0.0,
@@ -278,7 +293,7 @@ pub(super) fn pintar_menu(e: &mut Estado, p: &Pintor, w: f32, h: f32, s: f32, te
     );
     let ancho = 250.0 * s;
     let fila = 44.0 * s;
-    let alto = 4.0 * fila + 8.0 * s;
+    let alto = filas.len() as f32 * fila + 8.0 * s;
     let caja = RectF {
         x: mx.min(w - ancho - 8.0 * s).max(8.0 * s),
         y: (my + 4.0 * s).min(h - alto - 8.0 * s).max(8.0 * s),
@@ -288,15 +303,7 @@ pub(super) fn pintar_menu(e: &mut Estado, p: &Pintor, w: f32, h: f32, s: f32, te
     p.rellenar_redondeado(caja, 12.0 * s, blanco(0.12));
     p.rellenar_redondeado(encoger(caja, 1.0 * s), 11.0 * s, hex(0x2C2C2E));
     e.botones.zona(caja, Accion::Fondo);
-    for (k, (d, icono, clave)) in [
-        (Destino::Compartir, &mi::IOS_SHARE, "salida-compartir-menu"),
-        (Destino::Html, &mi::OPEN_IN_NEW, "timeline-compartir-html"),
-        (Destino::Copiar, &mi::CONTENT_COPY, "timeline-copiar-imagen"),
-        (Destino::Guardar, &mi::IMAGE, "timeline-guardar-imagen"),
-    ]
-    .into_iter()
-    .enumerate()
-    {
+    for (k, (d, icono, clave)) in filas.into_iter().enumerate() {
         let r = RectF {
             x: caja.x + 4.0 * s,
             y: caja.y + 4.0 * s + k as f32 * fila,

@@ -38,6 +38,9 @@ use super::adjuntos::{Adjuntos, Visible};
 use super::almacen::{self, Donde, Entrada};
 use super::dictar::{Dictado, Salida};
 use super::ui::{self, Campo, PUESTO, VK_ENTRAR, VK_ESCAPE, VK_TAB};
+
+/// La E de «Exportar…» (Ctrl+E), como en los visores.
+const VK_E: u32 = 0x45;
 use crate::caja_dibujo::hex;
 use crate::overlay::Recursos;
 use crate::ventanita::{APAGADO, Botones, CRISTAL, FONDO, ROJO, TEXTO, centrado};
@@ -111,6 +114,8 @@ enum Accion {
     Descartar,
     Guardar,
     Borrar,
+    /// «Exportar…» (Ctrl+E): la leccion guardada, por el componente comun.
+    Exportar,
     Foco(CampoId),
     Tipo(usize),
     Gravedad(i64),
@@ -561,6 +566,7 @@ fn bucle(recursos: &Recursos, pedido: &Pedido) -> Result<()> {
                 } => match (vk, e.foco) {
                     (VK_ESCAPE, _) => fin = Fin::GuardarYSalir,
                     (VK_ENTRAR, _) if ctrl => fin = hacer(&mut e, Accion::Guardar, pedido),
+                    (VK_E, _) if ctrl && !shift => fin = hacer(&mut e, Accion::Exportar, pedido),
                     (VK_ENTRAR, Some(CampoId::Etiqueta)) => e.poner_etiqueta(),
                     (VK_ENTRAR, Some(CampoId::Titulo)) if !shift => {
                         fin = hacer(&mut e, Accion::Guardar, pedido)
@@ -709,6 +715,13 @@ fn hacer(e: &mut Estado, a: Accion, pedido: &Pedido) -> Fin {
                     tracing::warn!(?err, "no se pudo borrar la leccion");
                 }
                 return Fin::Salir;
+            }
+        }
+        Accion::Exportar => {
+            if let Some(x) = &e.existente {
+                // Sale lo guardado (lo que ya viaja al movil); guardar aqui a
+                // medias volveria a meter las fotos nuevas al cerrar.
+                crate::lecciones::exportar::abrir(&pedido.ubicacion, pedido.idioma, &x.leccion.id);
             }
         }
         Accion::Foco(c) => e.foco = Some(c),
@@ -955,6 +968,13 @@ fn pintar_todo(e: &mut Estado, p: &Pintor, marco: Rect, s: f32) {
         };
         e.botones.boton(p, borrar, Accion::Borrar, "", None, s);
         p.icono(&mi::DELETE, ui::encoger(borrar, 8.0 * s), ROJO);
+        // «Exportar…»: PDF, HTML, .pixpin, imagen, su .leccion...
+        let exportar = RectF {
+            x: borrar.x - lado - 8.0 * s,
+            ..cerrar
+        };
+        e.botones.boton(p, exportar, Accion::Exportar, "", None, s);
+        p.icono(&mi::IOS_SHARE, ui::encoger(exportar, 8.0 * s), TEXTO);
     }
 
     // Guardar, siempre a mano.
