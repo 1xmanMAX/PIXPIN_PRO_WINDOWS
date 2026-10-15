@@ -128,6 +128,23 @@ public final class Almacen: ObservableObject {
         }
     }
 
+    /// Un lienzo nuevo en el chat (su `.excalidraw` vacio y su mensaje
+    /// `DIBUJO`, como en Windows), anadido al final de lo cargado.
+    @discardableResult
+    public func crearLienzo(en chat: String) async -> MensajeChat? {
+        let nucleo = self.nucleo
+        do {
+            let m = try await Task.detached(priority: .userInitiated) {
+                try nucleo.crearLienzo(chat: chat, nombre: nil)
+            }.value
+            anadir([m], en: chat)
+            return m
+        } catch {
+            self.error = "\(error)"
+            return nil
+        }
+    }
+
     // MARK: Ficheros en el chat
 
     /// Adjunta ficheros (soltados o pegados) a un chat: cada uno se COPIA

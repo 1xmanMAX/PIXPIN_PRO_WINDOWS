@@ -104,6 +104,8 @@ struct BurbujaDibujo: View {
     @State private var falta = false
     /// Sube cuando llegan las fotos del dibujo, para volver a pintarlo.
     @State private var fotosListas = 0
+    /// Sube cuando el editor guarda este dibujo, para volver a leerlo.
+    @State private var recargas = 0
 
     /// Las fotos de dentro del dibujo se piden al tamano de la burbuja (a
     /// 2x): no hace falta mas para verlas ahi.
@@ -118,6 +120,7 @@ struct BurbujaDibujo: View {
                     VistaLienzo(lienzo: dibujo.lienzo, version: fotosListas) { id in
                         fotos[id].flatMap { Miniaturas.compartidas.enCache($0, lado: pixeles) }
                     }
+                    .alDobleClic(editar)
                 } else if falta {
                     Label(mensaje.nombre.isEmpty ? "Dibujo" : mensaje.nombre,
                           systemImage: "scribble.variable")
@@ -127,11 +130,19 @@ struct BurbujaDibujo: View {
             }
             .frame(width: ladoDeBurbuja, height: ladoDeBurbuja * 0.7)
             .clipShape(RoundedRectangle(cornerRadius: 8))
+            // Doble clic: editarlo en su ventana. Al guardarse alli, se
+            // vuelve a leer aqui.
+            .contentShape(Rectangle())
+            .onTapGesture(count: 2, perform: editar)
             if !mensaje.texto.isEmpty {
                 Text(mensaje.texto).textSelection(.enabled)
             }
         }
-        .task(id: mensaje.id) {
+        .onReceive(NotificationCenter.default.publisher(for: .pixpinLienzoGuardado)) { aviso in
+            guard let referencia = aviso.object as? String, referencia == mensaje.referencia else { return }
+            recargas += 1
+        }
+        .task(id: "\(mensaje.id)#\(recargas)") {
             guard let referencia = mensaje.referencia, !referencia.isEmpty,
                   let leido = await almacen.dibujo(referencia, en: chat)
             else {
@@ -147,6 +158,13 @@ struct BurbujaDibujo: View {
             }
             if alguna { fotosListas += 1 }
         }
+    }
+
+    private func editar() {
+        guard let referencia = mensaje.referencia, !referencia.isEmpty else { return }
+        VentanasDeLienzo.compartidas.abrir(referencia: referencia, en: chat,
+                                           titulo: mensaje.nombre.isEmpty ? "Dibujo" : mensaje.nombre,
+                                           almacen: almacen)
     }
 }
 

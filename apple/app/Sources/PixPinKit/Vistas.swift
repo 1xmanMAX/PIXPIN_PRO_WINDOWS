@@ -113,6 +113,8 @@ public struct VistaChat: View {
                     .lineLimit(1...8)
                     .onSubmit(enviar)
                 BotonVoz(chat: chat, almacen: almacen)
+                Button(action: nuevoLienzo) { Image(systemName: "scribble.variable") }
+                    .help("Lienzo nuevo")
                 Button("Enviar", action: enviar)
                     .keyboardShortcut(.return, modifiers: .command)
                     .disabled(borrador.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
@@ -160,6 +162,17 @@ public struct VistaChat: View {
     private func dejarDeVigilarPegar() {
         if let vigia = vigiaPegar { NSEvent.removeMonitor(vigia) }
         vigiaPegar = nil
+    }
+
+    /// Un lienzo nuevo en este chat, abierto ya para dibujar.
+    private func nuevoLienzo() {
+        let chat = self.chat
+        let almacen = self.almacen
+        Task {
+            guard let m = await almacen.crearLienzo(en: chat), let referencia = m.referencia else { return }
+            VentanasDeLienzo.compartidas.abrir(referencia: referencia, en: chat,
+                                               titulo: "Lienzo nuevo", almacen: almacen)
+        }
     }
 
     private func enviar() {
@@ -218,8 +231,19 @@ struct Burbuja: View {
 public final class VistaLienzoNS: NSView {
     public var lienzo: LienzoLeido? { didSet { needsDisplay = true } }
     public var imagen: (UInt64) -> CGImage? = { _ in nil }
+    /// El doble clic (abrir el dibujo para editarlo). Lo atiende la vista:
+    /// un gesto de SwiftUI no siempre llega a traves de una `NSView`.
+    public var alDobleClic: (() -> Void)?
 
     override public var isFlipped: Bool { true }
+
+    override public func mouseDown(with event: NSEvent) {
+        if event.clickCount == 2, let alDobleClic {
+            alDobleClic()
+        } else {
+            super.mouseDown(with: event)
+        }
+    }
 
     override public func draw(_ dirtyRect: NSRect) {
         guard let lienzo, let ctx = NSGraphicsContext.current?.cgContext else { return }
@@ -254,15 +278,27 @@ public struct VistaLienzo: NSViewRepresentable {
         self.imagen = imagen
     }
 
+    /// Lo que hace el doble clic (ver `VistaLienzoNS.alDobleClic`).
+    var dobleClic: (() -> Void)?
+
+    /// Con doble clic.
+    public func alDobleClic(_ hacer: @escaping () -> Void) -> VistaLienzo {
+        var copia = self
+        copia.dobleClic = hacer
+        return copia
+    }
+
     public func makeNSView(context: Context) -> VistaLienzoNS {
         let v = VistaLienzoNS()
         v.imagen = imagen
+        v.alDobleClic = dobleClic
         v.lienzo = lienzo
         return v
     }
 
     public func updateNSView(_ v: VistaLienzoNS, context: Context) {
         v.imagen = imagen
+        v.alDobleClic = dobleClic
         v.lienzo = lienzo
     }
 }

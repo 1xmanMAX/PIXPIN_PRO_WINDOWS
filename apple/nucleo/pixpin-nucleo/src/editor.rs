@@ -1,0 +1,849 @@
+//! **Editar un lienzo desde Swift**: el `Gesto` y la `Escena` de
+//! `pixpin_motor2d`, los mismos que mueve la ventana de Windows
+//! (`por-traducir/pixpin/src/dibujo/mano.rs`), detras de un objeto de UniFFI.
+//!
+//! No hay logica de dibujo nueva: el puntero se traduce a
+//! [`EventoGesto`] y lo demas lo decide el motor (que nace, que se elige,
+//! que se mueve, deshacer). Lo unico que se hace aqui es lo que en Windows
+//! hace la mano y no el motor: **la goma** (el motor la tiene en su lista
+//! pero no borra nada con ella; se borra con `borrador::alcanzados_con_grupo`,
+//! como el movil) y **lo de encima** (marco de lo elegido, tiradores,
+//! marquesina, cursor del texto), copiado de `dibujo::pintar::ordenes_encima`.
+//!
+//! # Rendimiento (§4bis del plan)
+//!
+//! - El puntero llega en coordenadas del MUNDO, una llamada por aviso del
+//!   sistema (ya agrupados por AppKit). Devuelve la [`EditorLienzo::version`]
+//!   para que Swift sepa si repintar sin una segunda llamada.
+//! - Pintar es **una llamada por fotograma** ([`EditorLienzo::plano_de_vista`]):
+//!   solo lo que cae en pantalla, con la geometria de cada elemento guardada
+//!   en la `cache::Cache` del motor por su version y su octava de aumento.
+//!   Dibujar un trazo recalcula solo ese trazo.
+//! - `version()` y `cambios()` son atomicos: leerlos no espera al cerrojo.
+//! - Guardar ([`EditorLienzo::guardar`]) copia la escena sin su historial con
+//!   el cerrojo tomado y escribe el JSON **sin** el: el hilo principal no
+//!   espera a la serializacion. Swift lo llama fuera del hilo principal.
+//!
+//! # El formato
+//!
+//! Se guarda exactamente como Windows (`ventana_chat::guardar_hoja_dibujada`):
+//! `excalidraw::con_escena` sobre el lienzo tal como se abrio y
+//! `excalidraw::escribir`; lo ajeno sale intacto y en su sitio, a un `.tmp` y
+//! despues se renombra. Siempre contra el lienzo ABIERTO: la escena numera
+//! sus elementos segun ese lienzo y `con_escena` los empareja por ese orden.
+//!
+//! Limite conocido (igual que en Windows, que guarda al cerrar): un elemento
+//! nacido aqui, guardado y despues borrado desaparece del fichero en vez de
+//! quedar con `isDeleted`, porque `con_escena` solo escribe los nuevos que
+//! siguen vivos.
+
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex, MutexGuard};
+
+use pixpin_motor2d::Escena;
+use pixpin_motor2d::borrador::{self, ModoBorrador};
+use pixpin_motor2d::cache::Cache;
+use pixpin_motor2d::camara::Camara;
+use pixpin_motor2d::elemento::{ColorRgba, EstiloTrazo};
+use pixpin_motor2d::excalidraw;
+use pixpin_motor2d::gesto::{EventoGesto, Gesto, Herramienta, Region};
+use pixpin_motor2d::pintado::{self, Orden};
+use pixpin_motor2d::texto::TeclaTexto;
+use pixpin_motor2d::vector::Punto2;
+
+use crate::lienzo::{CajaLienzo, ImagenDelLienzo, LienzoPlano, empaquetar};
+use crate::{ErrorNucleo, Nucleo};
+
+/// En que momento del gesto esta el puntero.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum FasePuntero {
+    /// Boton pulsado, lapiz apoyado.
+    Pulsar,
+    /// Arrastrando con el boton pulsado.
+    Mover,
+    /// Boton soltado.
+    Soltar,
+    /// Se perdio el gesto (la ventana perdio el raton, Escape): se deshace
+    /// lo que iba a medias.
+    Cancelar,
+}
+
+/// Bit de `modificadores`: Mayusculas (angulos redondos, proporcion fija,
+/// anadir a lo elegido).
+pub const MOD_MAYUSCULAS: u32 = 1;
+/// Bit de `modificadores`: Opcion (Alt en Windows: atar la flecha dentro).
+pub const MOD_OPCION: u32 = 2;
+
+/// Lo que dice Swift de una herramienta y la del motor. Nombres en
+/// minusculas y sin tildes; varios nombres para la misma donde se dicen de
+/// dos maneras.
+fn herramienta_de(nombre: &str) -> Option<Herramienta> {
+    Some(match nombre {
+        "seleccion" | "mano" => Herramienta::Mano,
+        "lapiz" | "tinta" => Herramienta::Lapiz,
+        "grafito" => Herramienta::Grafito,
+        "resaltador" => Herramienta::Resaltador,
+        "rectangulo" => Herramienta::Rectangulo,
+        "rombo" => Herramienta::Rombo,
+        "elipse" => Herramienta::Elipse,
+        "flecha" => Herramienta::Flecha,
+        "flecha_codos" => Herramienta::FlechaCodos,
+        "flecha_libre" => Herramienta::FlechaLibre,
+        "linea" => Herramienta::Linea,
+        "texto" => Herramienta::Texto,
+        "borrador" | "goma" => Herramienta::Borrador,
+        _ => return None,
+    })
+}
+
+fn nombre_de(h: Herramienta) -> &'static str {
+    match h {
+        Herramienta::Mano => "seleccion",
+        Herramienta::Lapiz => "lapiz",
+        Herramienta::Grafito => "grafito",
+        Herramienta::Resaltador => "resaltador",
+        Herramienta::Rectangulo => "rectangulo",
+        Herramienta::Rombo => "rombo",
+        Herramienta::Elipse => "elipse",
+        Herramienta::Flecha => "flecha",
+        Herramienta::FlechaCodos => "flecha_codos",
+        Herramienta::FlechaLibre => "flecha_libre",
+        Herramienta::Linea => "linea",
+        Herramienta::Texto => "texto",
+        Herramienta::Borrador => "borrador",
+        _ => "otra",
+    }
+}
+
+/// Lo que se toca con el cerrojo: la escena, el gesto y la cache de
+/// geometria.
+struct Estado {
+    escena: Escena,
+    gesto: Gesto,
+    cache: Cache,
+    /// La goma esta apoyada: borra lo que toca hasta soltar.
+    borrando: bool,
+    /// El aumento del ultimo puntero: las tolerancias del motor son de
+    /// pixeles de pantalla.
+    zoom: f32,
+}
+
+/// Lo que se toca al guardar (un cerrojo aparte: guardar no frena el
+/// puntero).
+struct Disco {
+    /// Lo ultimo escrito (o leido): si sale igual, no se escribe.
+    ultimo: String,
+    /// `cambios` cuando se guardo por ultima vez.
+    guardados: u64,
+}
+
+/// **Un lienzo abierto para editar.** Se usa desde varios hilos: el puntero
+/// y el pintado desde el principal, guardar desde uno de fondo.
+#[derive(uniffi::Object)]
+pub struct EditorLienzo {
+    ruta: PathBuf,
+    /// El lienzo tal como se abrio: contra el se guarda siempre.
+    abierto: excalidraw::Lienzo,
+    imagenes: Vec<ImagenDelLienzo>,
+    estado: Mutex<Estado>,
+    disco: Mutex<Disco>,
+    version: AtomicU64,
+    cambios: AtomicU64,
+}
+
+impl EditorLienzo {
+    fn nuevo(
+        ruta: PathBuf,
+        texto: &str,
+        imagenes: Option<Vec<ImagenDelLienzo>>,
+    ) -> Result<Self, ErrorNucleo> {
+        let abierto = excalidraw::leer(texto).map_err(|e| ErrorNucleo::Lienzo {
+            detalle: e.to_string(),
+        })?;
+        let escena = excalidraw::a_escena(&abierto);
+        let imagenes = imagenes.unwrap_or_else(|| {
+            excalidraw::ficheros(&abierto)
+                .into_iter()
+                .map(|(id_objeto, ruta)| ImagenDelLienzo { id_objeto, ruta })
+                .collect()
+        });
+        let mut gesto = Gesto::nuevo();
+        gesto.tomar_herramienta(Herramienta::Lapiz);
+        Ok(EditorLienzo {
+            ruta,
+            // Lo que hay en el disco, escrito por nosotros: si nadie toca
+            // nada, guardar no escribe (ni cambia la fecha que mira la
+            // sincronizacion).
+            imagenes,
+            estado: Mutex::new(Estado {
+                escena,
+                gesto,
+                cache: Cache::nueva(),
+                borrando: false,
+                zoom: 1.0,
+            }),
+            disco: Mutex::new(Disco {
+                ultimo: excalidraw::escribir(&abierto),
+                guardados: 0,
+            }),
+            abierto,
+            version: AtomicU64::new(1),
+            cambios: AtomicU64::new(0),
+        })
+    }
+
+    /// El estado, aunque un hilo muriera con el tomado: la escena sigue
+    /// siendo valida entre eventos.
+    fn tomar(&self) -> MutexGuard<'_, Estado> {
+        self.estado.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    fn subir_version(&self) -> u64 {
+        self.version.fetch_add(1, Ordering::SeqCst) + 1
+    }
+
+    fn subir_cambios(&self) {
+        self.cambios.fetch_add(1, Ordering::SeqCst);
+    }
+
+    /// La goma en `p`: se lleva lo que toca y su grupo (como el movil), en
+    /// el paso que abrio el pulsar. Devuelve si borro algo.
+    fn borrar_en(st: &mut Estado, p: Punto2) -> bool {
+        let modo = if st.gesto.modo_guia() {
+            ModoBorrador::Guias
+        } else {
+            ModoBorrador::Dibujo
+        };
+        let mundo = st.gesto.mundo(&st.escena);
+        let ids = pixpin_motor2d::impacto::con_mundo(mundo, || {
+            borrador::alcanzados_con_grupo(&st.escena.elementos, p, modo, |e| e.extras.referencia)
+        });
+        let mut hecho = false;
+        for id in ids {
+            hecho |= st.escena.borrar_apuntando(id);
+        }
+        hecho
+    }
+}
+
+/// Una copia de la escena para escribirla, **sin el historial** (que puede
+/// pesar megas y `con_escena` no lo mira).
+fn copia_para_guardar(e: &Escena) -> Escena {
+    let mut c = Escena::nueva();
+    c.version = e.version;
+    c.siguiente_id = e.siguiente_id;
+    c.elementos = e.elementos.clone();
+    c.escala = e.escala.clone();
+    c.fondo = e.fondo;
+    c.alfileres = e.alfileres.clone();
+    c.referencias_visibles = e.referencias_visibles;
+    c.tablas = e.tablas.clone();
+    c.origen_coordenadas = e.origen_coordenadas;
+    c
+}
+
+/// Si dos cajas `(x0, y0, x1, y1)` se tocan.
+fn se_cruzan(a: (f32, f32, f32, f32), b: (f32, f32, f32, f32)) -> bool {
+    a.0 <= b.2 && b.0 <= a.2 && a.1 <= b.3 && b.1 <= a.3
+}
+
+/// **Lo que se pinta encima del dibujo**: el marco de lo elegido, los
+/// tiradores, el cursor del texto, la marquesina, la pista del iman, la
+/// figura a la que se ataria la flecha y los clavos. Es
+/// `dibujo::pintar::ordenes_encima` de Windows sin lo que es de
+/// herramientas que aqui no hay (lazo, laser, construir).
+fn ordenes_encima(gesto: &Gesto, escena: &Escena, zoom: f32) -> Vec<Orden> {
+    let escala = 1.0 / zoom.max(1e-6);
+    let mut v = Vec::new();
+    if gesto.marco_visible() {
+        for id in gesto.seleccion.ids() {
+            if let Some(marco) = pintado::marco_de_seleccion(escena, *id, escala) {
+                v.push(marco);
+            }
+        }
+    }
+    if let Some(tiradores) = gesto.tiradores(escena, escala) {
+        v.extend(tiradores.ordenes(escala));
+    }
+    v.extend(gesto.cursor_de_texto(escena, zoom));
+    if let Some((x0, y0, x1, y1)) = gesto.marquesina() {
+        v.push(Orden::Polilinea {
+            puntos: vec![
+                Punto2::nuevo(x0, y0),
+                Punto2::nuevo(x1, y0),
+                Punto2::nuevo(x1, y1),
+                Punto2::nuevo(x0, y1),
+                Punto2::nuevo(x0, y0),
+            ],
+            color: ColorRgba {
+                r: 0.41,
+                g: 0.40,
+                b: 0.84,
+                a: 0.9,
+            },
+            grosor: escala,
+            estilo: EstiloTrazo::Discontinuo,
+        });
+    }
+    if let Some(a) = gesto.anclaje_activo {
+        v.push(pixpin_motor2d::enganche::pista(&a, zoom));
+    }
+    v.extend(gesto.resaltado_de_union(escena, zoom));
+    if let Some(puntas) = gesto.tiradores_de_punta(escena, escala) {
+        v.extend(puntas.ordenes(escala));
+    }
+    v.extend(pixpin_motor2d::nudos::ordenes_de_clavos(escena, zoom));
+    v
+}
+
+#[uniffi::export]
+impl EditorLienzo {
+    /// Abre un `.excalidraw` suelto para editarlo. Si no existe y `crear`,
+    /// nace vacio (y se escribe ya, como `crear_lienzo` de Windows).
+    #[uniffi::constructor]
+    pub fn de_fichero(ruta: String, crear: bool) -> Result<Arc<EditorLienzo>, ErrorNucleo> {
+        let ruta = PathBuf::from(ruta);
+        let texto = match std::fs::read_to_string(&ruta) {
+            Ok(t) => t,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound && crear => {
+                let t = excalidraw::escribir(&excalidraw::Lienzo::vacio());
+                escribir_seguro(&ruta, &t)?;
+                t
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                return Err(ErrorNucleo::NoExiste {
+                    que: ruta.display().to_string(),
+                });
+            }
+            Err(e) => return Err(e.into()),
+        };
+        Ok(Arc::new(EditorLienzo::nuevo(ruta, &texto, None)?))
+    }
+
+    /// El fichero que edita.
+    pub fn ruta(&self) -> String {
+        self.ruta.display().to_string()
+    }
+
+    /// **Cambia de herramienta**: `seleccion` (o `mano`), `lapiz` (o
+    /// `tinta`), `grafito`, `resaltador`, `rectangulo`, `rombo`, `elipse`,
+    /// `flecha`, `flecha_codos`, `flecha_libre`, `linea`, `texto`,
+    /// `borrador` (o `goma`). Cierra el texto que se estuviera escribiendo.
+    pub fn herramienta(&self, nombre: String) -> Result<(), ErrorNucleo> {
+        let h = herramienta_de(&nombre).ok_or_else(|| ErrorNucleo::Argumento {
+            detalle: format!("herramienta desconocida: {nombre:?}"),
+        })?;
+        let mut guarda = self.tomar();
+        let st = &mut *guarda;
+        if !st.gesto.en_reposo() {
+            // A mitad de un gesto (no deberia pasar: la barra no se pulsa
+            // con el boton apretado en el lienzo): se cancela lo de a medias.
+            st.gesto
+                .evento(EventoGesto::Escape, &mut st.escena, 1.0 / st.zoom.max(1e-6));
+        }
+        if st.gesto.cerrar_texto(&mut st.escena) {
+            self.subir_cambios();
+        }
+        if h != Herramienta::Mano {
+            st.gesto.seleccion.limpiar();
+        }
+        st.gesto.tomar_herramienta(h);
+        drop(guarda);
+        self.subir_version();
+        Ok(())
+    }
+
+    /// La herramienta puesta (los nombres de [`EditorLienzo::herramienta`]).
+    pub fn herramienta_actual(&self) -> String {
+        nombre_de(self.tomar().gesto.herramienta).to_string()
+    }
+
+    /// **Un aviso del puntero**, en coordenadas del MUNDO. `presion` es la
+    /// del lapiz o del Force Touch (0..1), `None` con raton. `modificadores`
+    /// son bits ([`MOD_MAYUSCULAS`], [`MOD_OPCION`]). `zoom`: pixeles por
+    /// unidad del mundo, para las tolerancias del motor (que son de
+    /// pantalla). Devuelve la version: si cambio, hay que repintar.
+    pub fn puntero(
+        &self,
+        fase: FasePuntero,
+        x: f32,
+        y: f32,
+        presion: Option<f32>,
+        modificadores: u32,
+        zoom: f32,
+    ) -> u64 {
+        if !(x.is_finite() && y.is_finite()) {
+            return self.version();
+        }
+        let p = Punto2::nuevo(x, y);
+        let shift = modificadores & MOD_MAYUSCULAS != 0;
+        let alt = modificadores & MOD_OPCION != 0;
+        let presion = presion.filter(|v| v.is_finite()).map(|v| v.clamp(0.0, 1.0));
+        let mut guarda = self.tomar();
+        let st = &mut *guarda;
+        if zoom.is_finite() && zoom > 0.0 {
+            st.zoom = zoom;
+        }
+        let escala = 1.0 / st.zoom;
+
+        // La goma: la lleva quien tiene la escena, como en Windows.
+        if st.gesto.herramienta == Herramienta::Borrador {
+            let (hecho, fin) = match fase {
+                FasePuntero::Pulsar => {
+                    st.borrando = true;
+                    st.escena.abrir_paso();
+                    (Self::borrar_en(st, p), false)
+                }
+                FasePuntero::Mover if st.borrando => (Self::borrar_en(st, p), false),
+                FasePuntero::Mover => (false, false),
+                FasePuntero::Soltar if st.borrando => {
+                    let h = Self::borrar_en(st, p);
+                    st.escena.cerrar_paso();
+                    st.borrando = false;
+                    (h, true)
+                }
+                FasePuntero::Soltar => (false, false),
+                FasePuntero::Cancelar => {
+                    if st.borrando {
+                        st.escena.cancelar_paso();
+                        st.borrando = false;
+                        (true, true)
+                    } else {
+                        (false, false)
+                    }
+                }
+            };
+            if fin {
+                self.subir_cambios();
+            }
+            return if hecho || fin {
+                self.subir_version()
+            } else {
+                self.version()
+            };
+        }
+
+        let ev = match fase {
+            FasePuntero::Pulsar => EventoGesto::Pulsar {
+                p,
+                shift,
+                alt,
+                presion,
+            },
+            FasePuntero::Mover => EventoGesto::Mover {
+                p,
+                shift,
+                alt,
+                presion,
+            },
+            FasePuntero::Soltar => EventoGesto::Soltar { p },
+            FasePuntero::Cancelar => EventoGesto::Escape,
+        };
+        let r = st.gesto.evento(ev, &mut st.escena, escala);
+        // Soltar cierra el paso; pulsar con el texto abre o cierra uno.
+        if matches!(fase, FasePuntero::Soltar | FasePuntero::Cancelar)
+            || (fase == FasePuntero::Pulsar && st.gesto.herramienta == Herramienta::Texto)
+        {
+            self.subir_cambios();
+        }
+        if r.region != Region::Nada || fase != FasePuntero::Mover {
+            self.subir_version()
+        } else {
+            self.version()
+        }
+    }
+
+    /// Deshace el ultimo paso (no a mitad de un gesto).
+    pub fn deshacer(&self) -> bool {
+        self.viajar(true)
+    }
+
+    /// Rehace lo ultimo deshecho.
+    pub fn rehacer(&self) -> bool {
+        self.viajar(false)
+    }
+
+    /// Si hay algo que deshacer (para la barra).
+    pub fn puede_deshacer(&self) -> bool {
+        self.tomar().escena.hay_que_deshacer()
+    }
+
+    /// Borra lo elegido, en un paso. `false` si no habia nada elegido.
+    pub fn borrar_seleccion(&self) -> bool {
+        let mut guarda = self.tomar();
+        let st = &mut *guarda;
+        if !st.gesto.en_reposo()
+            || st.gesto.esta_escribiendo()
+            || st.gesto.seleccion.ids().is_empty()
+        {
+            return false;
+        }
+        let escala = 1.0 / st.zoom;
+        st.gesto
+            .evento(EventoGesto::Suprimir, &mut st.escena, escala);
+        self.subir_cambios();
+        self.subir_version();
+        true
+    }
+
+    /// Elige todo lo que se ve.
+    pub fn seleccionar_todo(&self) {
+        let mut guarda = self.tomar();
+        let st = &mut *guarda;
+        if !st.gesto.en_reposo() {
+            return;
+        }
+        st.gesto.tomar_herramienta(Herramienta::Mano);
+        let escala = 1.0 / st.zoom;
+        st.gesto
+            .evento(EventoGesto::SeleccionarTodo, &mut st.escena, escala);
+        drop(guarda);
+        self.subir_version();
+    }
+
+    /// Si se esta escribiendo un texto: entonces las teclas son del texto
+    /// (Swift se las manda con [`EditorLienzo::teclear`] y
+    /// [`EditorLienzo::tecla`]) y no atajos.
+    pub fn escribiendo(&self) -> bool {
+        self.tomar().gesto.esta_escribiendo()
+    }
+
+    /// Mete texto en el que se esta escribiendo (lo que da `insertText` de
+    /// AppKit, ya compuesto: tildes, emoji). `false` si no se escribia.
+    pub fn teclear(&self, texto: String) -> bool {
+        let mut guarda = self.tomar();
+        let st = &mut *guarda;
+        let mut hecho = false;
+        for c in texto.chars() {
+            hecho |= st.gesto.escribir(c, &mut st.escena);
+        }
+        drop(guarda);
+        if hecho {
+            self.subir_cambios();
+            self.subir_version();
+        }
+        hecho
+    }
+
+    /// Una tecla de edicion del texto: `izquierda`, `derecha`, `inicio`,
+    /// `fin`, `retroceso`, `suprimir`, `entrar`; `escape` termina de
+    /// escribir y deja el texto elegido.
+    pub fn tecla(&self, nombre: String) -> bool {
+        let t = match nombre.as_str() {
+            "izquierda" => TeclaTexto::Izquierda,
+            "derecha" => TeclaTexto::Derecha,
+            "inicio" => TeclaTexto::Inicio,
+            "fin" => TeclaTexto::Fin,
+            "retroceso" => TeclaTexto::Retroceso,
+            "suprimir" => TeclaTexto::Suprimir,
+            "entrar" => TeclaTexto::Entrar,
+            "escape" => {
+                let mut guarda = self.tomar();
+                let st = &mut *guarda;
+                let hecho = st.gesto.cerrar_texto_con_teclado(&mut st.escena);
+                if hecho {
+                    self.subir_cambios();
+                    self.subir_version();
+                }
+                return hecho;
+            }
+            _ => return false,
+        };
+        let mut guarda = self.tomar();
+        let st = &mut *guarda;
+        let hecho = st.gesto.tecla_de_texto(t, &mut st.escena);
+        if hecho {
+            self.subir_cambios();
+            self.subir_version();
+        }
+        hecho
+    }
+
+    /// Termina de escribir (un clic fuera, cerrar la ventana). Un texto
+    /// vacio se quita.
+    pub fn terminar_texto(&self) -> bool {
+        let mut guarda = self.tomar();
+        let st = &mut *guarda;
+        let hecho = st.gesto.cerrar_texto(&mut st.escena);
+        if hecho {
+            self.subir_cambios();
+            self.subir_version();
+        }
+        hecho
+    }
+
+    /// **Sube con todo lo que cambia lo que se ve** (dibujo, lo elegido, el
+    /// cursor del texto). Swift repinta solo si cambio. Atomico: no espera.
+    pub fn version(&self) -> u64 {
+        self.version.load(Ordering::SeqCst)
+    }
+
+    /// Sube con cada cambio del DOCUMENTO (para guardar solo, con calma).
+    pub fn cambios(&self) -> u64 {
+        self.cambios.load(Ordering::SeqCst)
+    }
+
+    /// Si hay cambios sin guardar.
+    pub fn sin_guardar(&self) -> bool {
+        let guardados = self
+            .disco
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .guardados;
+        self.cambios() != guardados
+    }
+
+    /// Todo el dibujo, sin lo de encima (miniatura, exportar, pruebas).
+    pub fn plano(&self) -> LienzoPlano {
+        let st = self.tomar();
+        empaquetar(
+            &pintado::ordenes_de_escena(&st.escena),
+            st.escena.fondo,
+            st.escena.caja(),
+        )
+    }
+
+    /// **Lo que se ve con la camara** en `(x, y)` (el punto del mundo en la
+    /// esquina de arriba a la izquierda), a `zoom` pixeles por unidad, en una
+    /// vista de `ancho_px` x `alto_px`; y encima, lo elegido, los tiradores,
+    /// la marquesina y el cursor del texto. Una llamada por fotograma; la
+    /// geometria de lo que no cambio sale de la cache.
+    pub fn plano_de_vista(
+        &self,
+        x: f32,
+        y: f32,
+        zoom: f32,
+        ancho_px: f32,
+        alto_px: f32,
+    ) -> LienzoPlano {
+        let zoom = if zoom.is_finite() && zoom > 0.0 {
+            zoom
+        } else {
+            1.0
+        };
+        let camara = Camara { x, y, zoom };
+        let ventana = camara.ventana(ancho_px.max(1.0), alto_px.max(1.0));
+        let mut guarda = self.tomar();
+        let st = &mut *guarda;
+        let mut ordenes: Vec<Orden> = Vec::new();
+        for e in st
+            .escena
+            .a_la_vista()
+            .filter(|e| se_cruzan(e.caja(), ventana))
+        {
+            ordenes.extend_from_slice(st.cache.ordenes(e, zoom));
+            ordenes.extend_from_slice(st.cache.medibles(
+                e,
+                st.escena.escala.as_ref(),
+                ',',
+                st.escena.fondo,
+            ));
+        }
+        ordenes.extend(ordenes_encima(&st.gesto, &st.escena, zoom));
+        // La cache no crece con lo borrado o deshecho para siempre.
+        let vivos = st.escena.cuantos_visibles();
+        if st.cache.sobran(vivos) {
+            st.cache.podar(&st.escena);
+        }
+        empaquetar(&ordenes, st.escena.fondo, st.escena.caja())
+    }
+
+    /// La caja de lo dibujado, para encajar la vista. `None` si esta vacio.
+    pub fn caja(&self) -> Option<CajaLienzo> {
+        self.tomar()
+            .escena
+            .caja()
+            .map(|(x0, y0, x1, y1)| CajaLienzo { x0, y0, x1, y1 })
+    }
+
+    /// Cuantos elementos visibles tiene.
+    pub fn cuantos_elementos(&self) -> u64 {
+        self.tomar().escena.a_la_vista().count() as u64
+    }
+
+    /// Las fotos del lienzo (abierto desde un chat: rutas absolutas; desde
+    /// un fichero suelto: las relativas del `.excalidraw`).
+    pub fn imagenes(&self) -> Vec<ImagenDelLienzo> {
+        self.imagenes.clone()
+    }
+
+    /// **Guarda** el `.excalidraw` como Windows y Android (ver la doc del
+    /// modulo). Devuelve si escribio algo: sin cambios, o a mitad de un
+    /// gesto, no escribe. Bloqueante: Swift lo llama fuera del hilo
+    /// principal.
+    pub fn guardar(&self) -> Result<bool, ErrorNucleo> {
+        let mut disco = self.disco.lock().unwrap_or_else(|e| e.into_inner());
+        let cambios = self.cambios();
+        if cambios == disco.guardados {
+            return Ok(false);
+        }
+        let copia = {
+            let st = self.tomar();
+            // A medias no: al soltar sube `cambios` y se guarda entonces.
+            if !st.gesto.en_reposo() || st.borrando {
+                return Ok(false);
+            }
+            copia_para_guardar(&st.escena)
+        };
+        let texto = excalidraw::escribir(&excalidraw::con_escena(&self.abierto, &copia));
+        if texto == disco.ultimo {
+            disco.guardados = cambios;
+            return Ok(false);
+        }
+        escribir_seguro(&self.ruta, &texto)?;
+        disco.ultimo = texto;
+        disco.guardados = cambios;
+        Ok(true)
+    }
+}
+
+impl EditorLienzo {
+    /// Deshacer (`atras`) o rehacer, como `Gesto::evento` con
+    /// `Deshacer`/`Rehacer` pero sabiendo si habia algo.
+    fn viajar(&self, atras: bool) -> bool {
+        let mut guarda = self.tomar();
+        let st = &mut *guarda;
+        if !st.gesto.en_reposo() || st.borrando {
+            return false;
+        }
+        // Escribiendo, deshacer cierra antes el texto (como un clic fuera).
+        let cerrado = st.gesto.cerrar_texto(&mut st.escena);
+        let hecho = if atras {
+            let h = st.escena.deshacer();
+            // Lo elegido puede ya no existir.
+            st.gesto.seleccion.limpiar();
+            h
+        } else {
+            st.escena.rehacer()
+        };
+        drop(guarda);
+        if hecho || cerrado {
+            self.subir_cambios();
+            self.subir_version();
+        }
+        hecho
+    }
+}
+
+/// Escribe a un `.tmp` al lado y lo pone encima: si se va la luz a media
+/// escritura, queda el dibujo viejo entero (igual que Windows).
+fn escribir_seguro(ruta: &Path, texto: &str) -> Result<(), ErrorNucleo> {
+    if let Some(padre) = ruta.parent() {
+        std::fs::create_dir_all(padre)?;
+    }
+    let temporal = ruta.with_extension("excalidraw.tmp");
+    std::fs::write(&temporal, texto)?;
+    std::fs::rename(&temporal, ruta)?;
+    Ok(())
+}
+
+#[uniffi::export]
+impl Nucleo {
+    /// **Abre para editar** el lienzo `dibujo` de un chat (la `referencia`
+    /// de un mensaje `DIBUJO`). Sus fotos salen ya con la ruta absoluta.
+    pub fn editar_lienzo(
+        &self,
+        chat: String,
+        dibujo: String,
+    ) -> Result<Arc<EditorLienzo>, ErrorNucleo> {
+        validar_nombre(&chat)?;
+        validar_nombre(&dibujo)?;
+        let ruta = pixpin_proyecto::almacen::lienzo(self.ruta(), &chat, &dibujo);
+        let texto = match std::fs::read_to_string(&ruta) {
+            Ok(t) => t,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                return Err(ErrorNucleo::NoExiste {
+                    que: ruta.display().to_string(),
+                });
+            }
+            Err(e) => return Err(e.into()),
+        };
+        let leido = excalidraw::leer(&texto).map_err(|e| ErrorNucleo::Lienzo {
+            detalle: e.to_string(),
+        })?;
+        let imagenes = excalidraw::ficheros(&leido)
+            .into_iter()
+            .filter_map(|(id_objeto, rel)| {
+                let r = self.resolver(&chat, &rel)?;
+                Some(ImagenDelLienzo {
+                    id_objeto,
+                    ruta: r.display().to_string(),
+                })
+            })
+            .collect();
+        Ok(Arc::new(EditorLienzo::nuevo(ruta, &texto, Some(imagenes))?))
+    }
+
+    /// **Un lienzo nuevo en un chat**: el `.excalidraw` vacio en
+    /// `lienzos/<codigo>.excalidraw` y su mensaje `DIBUJO` al final del
+    /// cuaderno, como `ventana_chat::escribir_lienzo` de Windows. Se abre
+    /// despues con [`Nucleo::editar_lienzo`] y la `referencia` del mensaje.
+    pub fn crear_lienzo(
+        &self,
+        chat: String,
+        nombre: Option<String>,
+    ) -> Result<crate::MensajeChat, ErrorNucleo> {
+        use pixpin_proyecto::{almacen, cuaderno};
+        crate::chats::validar_chat(&chat)?;
+        let raiz = self.ruta();
+        let mut indice = almacen::Indice::leer_si_esta(raiz)?;
+        if indice.buscar(&chat).is_none() {
+            return Err(ErrorNucleo::NoExiste { que: chat });
+        }
+        let aparato = self.identidad()?.yo.codigo();
+        let id = pixpin_proyecto::codigos::nuevo();
+        let ruta = almacen::lienzo(raiz, &chat, &id);
+        let json = excalidraw::escribir(&excalidraw::Lienzo::vacio());
+        escribir_seguro(&ruta, &json)?;
+
+        let carpeta = almacen::carpeta(raiz, &chat);
+        let fichero_cuaderno = carpeta.join("guardados.jsonl");
+        let mut cache = self.cache_tomada();
+        let numero = cache
+            .indice(&fichero_cuaderno)?
+            .map_or(0, |i| i.mayor_numero)
+            + 1;
+        let cuando = crate::chats::hora_unica();
+        let fichero = format!("{id}.excalidraw");
+        let mut m = cuaderno::Mensaje::adjunto(
+            cuaderno::Clase::Dibujo,
+            &fichero,
+            &format!("lienzos/{fichero}"),
+            json.len() as i64,
+            &cuaderno::Sello {
+                cuando,
+                numero,
+                aparato,
+                proyecto: chat.clone(),
+            },
+        );
+        m.referencia = Some(id);
+        // El mismo tope que al renombrar a mano en Windows.
+        if let Some(n) = nombre.as_deref().map(str::trim).filter(|n| !n.is_empty()) {
+            m.nombre = n.chars().take(80).collect();
+        }
+        if let Err(e) = cuaderno::anadir(&carpeta, &m) {
+            let _ = std::fs::remove_file(&ruta);
+            return Err(e.into());
+        }
+        cache.quitar(&fichero_cuaderno);
+        drop(cache);
+        if let Some(f) = indice.proyectos.iter_mut().find(|f| f.id == chat) {
+            f.tocado = cuando;
+            f.resumen = m.resumen();
+        }
+        indice.guardar(raiz)?;
+        Ok(crate::MensajeChat::from(m))
+    }
+}
+
+/// Un nombre de chat o de dibujo que no puede salir de su carpeta.
+fn validar_nombre(parte: &str) -> Result<(), ErrorNucleo> {
+    if parte.is_empty() || parte == "." || parte == ".." || parte.contains(['/', '\\', '\0']) {
+        return Err(ErrorNucleo::Argumento {
+            detalle: format!("nombre no valido: {parte:?}"),
+        });
+    }
+    Ok(())
+}

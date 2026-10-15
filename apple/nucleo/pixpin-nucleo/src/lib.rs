@@ -42,6 +42,7 @@ uniffi::setup_scaffolding!();
 
 pub mod adjuntos;
 pub mod chats;
+pub mod editor;
 pub mod lienzo;
 pub mod sincro;
 pub mod voz;
@@ -50,6 +51,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 pub use chats::{FichaChat, MensajeChat, PaginaMensajes};
+pub use editor::{EditorLienzo, FasePuntero};
 pub use lienzo::{CajaLienzo, ImagenDelLienzo, Lienzo, LienzoPlano};
 pub use sincro::{AnuncioBonjour, Atendido, Escucha, ParTxt, ResumenSincro};
 pub use voz::SegmentoVoz;
