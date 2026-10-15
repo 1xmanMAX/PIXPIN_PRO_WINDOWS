@@ -64,7 +64,8 @@ el plugin de Flow Launcher (`apps/pixpin-lanzador`), y sirve igual para un scrip
 | `lecciones` | `proyecto?`, `consulta?` | Abre la lista de lecciones (buscador, repaso de hoy, lista de comprobación). Con `proyecto`, primero las suyas y las que hablan de lo mismo; con `consulta`, ya buscando. Una sola ventana: pedirla otra vez la trae delante |
 | `enviar_al_movil` | `aparato`, `imagenes?`, `archivos?` | Manda esas imagenes (rutas absolutas) **al lienzo que el móvil `aparato` tiene abierto** (`aparato` es su `id` en el grupo, `sincro\identidad.json`), sin abrir Sincronizar en ninguno de los dos. Ver abajo. Sin nada que mandar, o con un fichero que no esta, no sale nada y se avisa |
 | `sincronizar` | `aparato` | Sincroniza con ese aparato del grupo (`id`), o con todos si `aparato` es `todos`, **sin abrir la ventana**: lo mismo que «Sincronizar con todos», sin preguntar y con lo elegido la última vez. Avisa al empezar y, al acabar, dice en el globo lo hecho o qué falló. Una sola a la vez. El plugin (`p s`) ensena si cada aparato contesta leyendo `sincroestado.json` (`{"cuando": ms, "responden": {id: bool}}`), que apunta la sonda de fondo. `enviar_al_movil` acepta también `aparato: "todos"` |
-| `asistente` | `texto?`, `proyecto?`, `imagenes?`, `automatizacion?` | **Le pide algo al asistente sin abrir el chat** (`p ia <pedido>` en Flow). Lo hace con el motor elegido en Ajustes → Asistente (local, Claude o DeepSeek), guarda la pregunta y la respuesta en el chat «Asistente» y lo dice en un **aviso flotante propio** (abajo a la derecha, sin robar el foco) con «Abrir». `proyecto`: el chat sobre el que se pide (se le dice al modelo y lo que cree sin chat —una tarea, una nota— va ahí). `imagenes` como en `chat` (`[img NN]` en `texto`): van al chat «Asistente» como fotos y el modelo las ve. Lo que borra o saca algo del PC **pregunta antes**. Sin `texto` ni `imagenes`, abre el chat «Asistente». Con `automatizacion` (su `id`), corre esa automatización ya. Ver abajo |
+| `posponer` | `mensaje`, `proyecto?`, `indice?`, `minutos` | «+10 min» de la notificación de un recordatorio (15-oct): vuelve a sonar dentro de `minutos`. `mensaje` es el id del mensaje con la hora; con `indice`, el de la lista de esa tarea (la hora va en su texto, `⏰ AAAA-MM-DD HH:MM`) |
+| `asistente` | `texto?`, `proyecto?`, `imagenes?`, `automatizacion?`, `encargo?` | **Le encarga algo al asistente sin abrir el chat** (`p asistente <pedido>` en Flow). Va a la **cola de encargos** (15-oct, uno tras otro en segundo plano, `encargo` es su id) y lo hace con el motor elegido en Ajustes → Asistente (local, Claude o DeepSeek), guarda la pregunta y la respuesta en el chat «Asistente» y al acabar lo dice en una **notificación de Windows** con «Abrir» (si no sale, el aviso flotante propio). `proyecto`: el chat sobre el que se pide (se le dice al modelo y lo que cree sin chat —una tarea, una nota— va ahí). `imagenes` como en `chat` (`[img NN]` en `texto`): van al chat «Asistente» como fotos y el modelo las ve. Lo que borra o saca algo del PC **pregunta antes**. Sin `texto` ni `imagenes`, abre el chat «Asistente». Con `automatizacion` (su `id`), corre esa automatización ya. Ver abajo |
 | `automatizacion` | `operacion: "crear" \| "activar" \| "desactivar" \| "borrar" \| "ejecutar"`, `id?`, `receta?` | Las automatizaciones del asistente (ver abajo). `crear` lleva `receta` (`nombre`, `disparador: {tipo, hora?, dias?}`, `pasos`); las demás, el `id`. Lo hecho se dice en el globo; una receta que no vale no se guarda y se avisa del motivo. `borrar` no pregunta: quien lo manda ya preguntó |
 
 ### El asistente desde fuera (`asistente`, 13-oct-2026)
@@ -79,11 +80,33 @@ el plugin de Flow Launcher (`apps/pixpin-lanzador`), y sirve igual para un scrip
   lleva `@<nombre>`), hace nacer la burbuja de la respuesta y corre el turno con el mismo ejecutor
   del chat: las acciones de la app van por este mismo protocolo, y lo dibujado, sin un lienzo
   abierto, al lienzo del asistente en su chat.
-- Mientras piensa, el aviso dice «💭 …»; al acabar, la respuesta corta y **«Abrir»** (el chat en
-  esa respuesta). Se va solo a los 15 s, salvo con el ratón encima.
-- En el lanzador: `p ia <pedido>` o `p ? <pedido>` (también `asistente`, `ai`); `@proyecto` al
-  final elige el chat; Ctrl+V pega la imagen copiada (`[img 01]`), como en `p s`. `p ia` solo
-  ofrece abrir el chat «Asistente» y las automatizaciones «a mano», para correrlas.
+- **Cola de encargos** (15-oct, `automatizaciones::cola`): el pedido solo apunta el encargo; un
+  hilo los hace de uno en uno (con el modelo local solo cabe uno cargado, `pixpin_ia::relevo`).
+  Se guardan en `<raiz>\asistente-encargos.json`
+  (`{"version":1,"encargos":[{id, texto, proyecto?, imagenes, estado: "en_cola"|"haciendo"|"hecha"|"fallo", creado, empezado?, acabado?, resumen, con_fallos?, abrir?: {proyecto, codigo, lienzo?}}]}`):
+  lo que quedó en cola al cerrar PixPin se hace al volver; el que estaba a medias **no se
+  repite** (podría apuntar dos veces lo mismo): queda como fallido y se avisa. Se guardan los
+  10 últimos acabados.
+- Al acabar cada uno, **notificación de Windows** (`pixpin_shell::notificacion`): «✅ Hecho: …» /
+  «⚠️ Hecho a medias: …» / «❌ No se pudo: …», una línea con la respuesta o el motivo y
+  **«Abrir»** (el lienzo si dibujó; si no, la respuesta en el chat «Asistente»). Si Windows no
+  la deja salir, el aviso flotante de siempre. Si el turno pide permiso (algo que borra o
+  envía), sale el aviso flotante con «Sí»/«No» en ese momento.
+- En el lanzador: `p asistente <pedido>` o `p a <pedido>` (también `ia`, `?`, `ai`); `@proyecto`
+  al final elige el chat; Ctrl+V pega la imagen copiada (`[img 01]`), como en `p s`. Intro lo
+  manda y **Flow se queda en `p asistente `** con el encargo ya «en cola»: se mandan varios
+  seguidos. La lista enseña el motor que contesta y los encargos (en cola, haciendo, hecha,
+  falló). `p asistente` a secas ofrece además abrir el chat y las automatizaciones «a mano».
+
+### Notificaciones con botones (15-oct-2026)
+
+Las notificaciones de Windows de PixPin (asistente, recordatorios, capturas que caducan) llevan
+botones; cada botón es **un pedido de este protocolo**. Como PixPin no está empaquetado, Windows
+los devuelve por el protocolo `pixpinmax:` (dado de alta en `HKCU` al arrancar, fuera del modo
+portable): `pixpinmax:pedido?json=<pedido en %-código>` abre `pixpinmax.exe --atajo url "<seña>"`,
+que se lo pasa a la copia que corre como cualquier pedido. Cualquier página puede lanzar esa
+seña, así que por ahí **solo pasan** `abrir`, `asistente` (sin texto: abrir su chat), `ventana`,
+`pinear`, `marcar_tarea`, `posponer` y `conservar_captura`.
 
 ### Automatizaciones (`automatizacion`, 13-oct-2026)
 

@@ -6,10 +6,11 @@
 //! - `tareas <lista> > [texto]`: las tareas de esa lista;
 //! - una letra sola, o una letra y un blanco: el atajo de una funcion
 //!   (`t <texto>` apunta una tarea en el Inbox, `n` nota, `l` lienzo,
-//!   `g` galeria, `c` capturar, `u` ultima captura, `a` «aprendi»: una
-//!   leccion nueva, `s` sincronizar con el movil o mandarle la imagen pegada). Una letra pegada a
-//!   otras («tx», «nota») es lo de siempre. `? <pedido>` (o `ia <pedido>`) se
-//!   lo pide al asistente sin abrir el chat;
+//!   `g` galeria, `c` capturar, `u` ultima captura, `a` el asistente,
+//!   `s` sincronizar con el movil o mandarle la imagen pegada). Una letra pegada a
+//!   otras («tx», «nota») es lo de siempre. `a <pedido>` (o `asistente`,
+//!   `ia`, `?`) se lo encarga al asistente en segundo plano (15-oct: la `a`
+//!   era de «aprendi»; las lecciones nuevas, con `leccion` o `aprendi`);
 //! - `<proyecto> > [texto]`: el chat de ese proyecto, de lo ultimo a lo
 //!   primero (con un verbo delante tambien, si lo de antes de `>` es el
 //!   nombre entero de un proyecto: eso lo mira `resultados`, que conoce los
@@ -150,12 +151,13 @@ impl Funcion {
             Funcion::Galeria => "galería",
             Funcion::Ultima => "última",
             Funcion::Sincronizar => "sincronizar",
+            Funcion::Asistente => "asistente",
             _ => self.alias()[0],
         }
     }
 
     /// La funcion de una letra sola (`t`, `n`, `l`, `g`, `c`, `u`, `a`, `s`). La
-    /// `a` es «aprendi»: apuntar una leccion (la `l` ya era del lienzo).
+    /// `a` es el asistente (15-oct; antes «aprendi», que sigue por su nombre).
     pub fn atajo(letra: &str) -> Option<Funcion> {
         Some(match normalizar(letra).as_str() {
             "t" => Funcion::Tareas,
@@ -164,7 +166,7 @@ impl Funcion {
             "g" => Funcion::Galeria,
             "c" => Funcion::Capturar,
             "u" => Funcion::Ultima,
-            "a" => Funcion::Leccion,
+            "a" => Funcion::Asistente,
             "s" => Funcion::Sincronizar,
             "?" => Funcion::Asistente,
             _ => return None,
@@ -180,9 +182,8 @@ impl Funcion {
             Funcion::Galeria => 'g',
             Funcion::Capturar => 'c',
             Funcion::Ultima => 'u',
-            Funcion::Leccion => 'a',
             Funcion::Sincronizar => 's',
-            Funcion::Asistente => '?',
+            Funcion::Asistente => 'a',
             _ => return None,
         })
     }
@@ -424,12 +425,13 @@ mod pruebas {
         );
         assert_eq!(analizar("galería"), verbo(Funcion::Galeria, "", None));
         assert_eq!(analizar("última"), verbo(Funcion::Ultima, "", None));
-        // La `a` es «aprendi»: una leccion nueva.
+        // La `a` es el asistente (15-oct; antes «aprendi», que sigue por su nombre).
         assert_eq!(
             analizar("a revisar la escala @thesis"),
-            verbo(Funcion::Leccion, "revisar la escala", Some("thesis"))
+            verbo(Funcion::Asistente, "revisar la escala", Some("thesis"))
         );
-        assert_eq!(analizar("a"), verbo(Funcion::Leccion, "", None));
+        assert_eq!(analizar("a"), verbo(Funcion::Asistente, "", None));
+        assert_eq!(analizar("aprendí x"), verbo(Funcion::Leccion, "x", None));
     }
 
     #[test]

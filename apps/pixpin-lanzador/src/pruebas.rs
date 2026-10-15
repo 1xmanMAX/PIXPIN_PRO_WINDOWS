@@ -283,7 +283,7 @@ fn vacio_da_las_funciones_y_los_proyectos_recientes() {
         ]
     );
     assert_eq!(v[0].accion, Accion::Consulta("pp tareas ".into()));
-    assert_eq!(v[5].accion, Accion::Consulta("pp a ".into()));
+    assert_eq!(v[5].accion, Accion::Consulta("pp lección ".into()));
     assert_eq!(v[6].accion, Accion::Consulta("pp lecciones ".into()));
     assert_eq!(v[7].accion, Accion::Consulta("pp repasar ".into()));
     assert_eq!(pedido_de(&v[1])["accion"], "lienzo_nuevo");
@@ -482,11 +482,17 @@ struct DeMentira {
     /// Lo abierto con el programa de Windows.
     lanzados: Vec<String>,
     falla: bool,
+    /// Como la app: apunta el encargo del asistente en esa raiz.
+    encargos_en: Option<std::path::PathBuf>,
 }
 
 impl Mensajero for DeMentira {
     fn enviar(&mut self, json: &str) -> Envio {
         self.pedidos.push(serde_json::from_str(json).unwrap());
+        if let (Some(r), Some(id)) = (&self.encargos_en, self.pedidos.last().and_then(|p| p["encargo"].as_str())) {
+            let e = json!({"encargos": [{"id": id, "texto": "x", "estado": "en_cola", "creado": 1}]});
+            fs::write(r.join(crate::asistente::ENCARGOS), e.to_string()).unwrap();
+        }
         if self.falla {
             Envio::SinApp("prueba".into())
         } else {
@@ -1170,9 +1176,9 @@ fn leccion_con_texto_abre_la_ficha_rellena_y_sin_texto_la_ofrece() {
     assert_eq!(p["texto"], "no cargar el móvil de noche");
     assert!(p.get("imagenes").is_none());
     assert_eq!(pedido_de(v.last().unwrap())["accion"], "lecciones");
-    // «a» es lo mismo que «lección».
+    // «aprendí» es lo mismo que «lección» (la «a» es del asistente desde el 15-oct).
     assert_eq!(
-        buscar(&r, "a no cargar el móvil de noche")[0].titulo,
+        buscar(&r, "aprendí no cargar el móvil de noche")[0].titulo,
         "Nueva lección: no cargar el móvil de noche"
     );
     let v = buscar(&r, "aprendi");
@@ -1468,7 +1474,7 @@ fn una_leccion_nueva_lleva_sus_imagenes_pegadas() {
     fs::write(&img, b"png").unwrap();
     let ahora = crate::datos::ahora_ms();
     assert!(imagenes::apuntar(&r, 1, &img, None, ahora));
-    let v = buscar_con(&r, "a mirar el plano [img 01]", imagenes::SIN_PORTAPAPELES);
+    let v = buscar_con(&r, "lección mirar el plano [img 01]", imagenes::SIN_PORTAPAPELES);
     assert_eq!(v[0].titulo, "Nueva lección: mirar el plano [img 01]");
     let p = pedido_de(&v[0]);
     assert_eq!(p["accion"], "leccion_nueva");
@@ -1485,17 +1491,17 @@ fn una_leccion_nueva_lleva_sus_imagenes_pegadas() {
             .any(|x| x.titulo == "Buscar en lecciones: mirar el plano")
     );
     // Con una imagen copiada se ofrece pegarla, como en las tareas.
-    let v = buscar_con(&r, "a mirar", CON_IMAGEN);
+    let v = buscar_con(&r, "lección mirar", CON_IMAGEN);
     assert_eq!(
         v[0].accion,
         Accion::PegarImagen {
-            consulta: "pp a mirar [img 01] ".into(),
+            consulta: "pp lección mirar [img 01] ".into(),
             numero: 1
         }
     );
     assert!(v[0].subtitulo.contains("la lección"), "{}", v[0].subtitulo);
     // Caso negativo: una ficha que no esta en el borrador se queda como texto.
-    let v = buscar_con(&r, "a mirar [img 05]", imagenes::SIN_PORTAPAPELES);
+    let v = buscar_con(&r, "lección mirar [img 05]", imagenes::SIN_PORTAPAPELES);
     assert!(pedido_de(&v[0]).get("imagenes").is_none());
     assert!(
         v[0].subtitulo.contains("no se encuentra"),
@@ -3115,7 +3121,7 @@ fn sincronizar_sale_en_la_lista_de_funciones() {
 #[test]
 fn ia_y_la_interrogacion_piden_al_asistente_con_su_proyecto() {
     use crate::consulta::{Funcion, Modo, analizar};
-    for q in ["ia apunta pan", "? apunta pan", "asistente apunta pan", "AI apunta pan"] {
+    for q in ["ia apunta pan", "? apunta pan", "asistente apunta pan", "AI apunta pan", "a apunta pan"] {
         assert_eq!(
             analizar(q),
             Modo::Verbo {
@@ -3150,7 +3156,7 @@ fn ia_sin_texto_ofrece_las_automatizaciones_para_correrlas() {
     let r = raiz("ia-autos");
     let v = buscar(&r, "ia");
     assert_eq!(v[0].titulo, "Pídele algo al asistente…");
-    assert_eq!(v[0].accion, Accion::Consulta("pp ia ".into()));
+    assert_eq!(v[0].accion, Accion::Consulta("pp asistente ".into()));
     assert_eq!(v.len(), 2, "sin automatizaciones, solo pedir y abrir el chat");
     // La app las guarda en la carpeta del chat «Asistente».
     let fichero = r.join("proyectos/P3").join(crate::asistente::FICHERO);
@@ -3207,4 +3213,134 @@ fn ia_con_la_imagen_pegada_la_manda_con_el_pedido() {
     // Caso negativo: con la app abierta pega ella; aqui no sale la fila.
     let v = buscar_con(&r, "ia que dice", CON_LA_APP);
     assert!(!matches!(v[0].accion, Accion::PegarImagen { .. }));
+}
+
+// --- Encargos en segundo plano (`p asistente`, 15-oct) -----------------------
+
+fn ctx_con_raiz(r: &Path, ahora: i64) -> Contexto {
+    let mut c = Contexto::con("pp ", ahora);
+    c.raiz = Some(r.to_path_buf());
+    c
+}
+
+fn buscar_en(r: &Path, q: &str, ahora: i64) -> Vec<Resultado> {
+    let mut d = Datos::nuevo(r.to_path_buf());
+    resultados(&d.proyectos(), q, &ctx_con_raiz(r, ahora))
+}
+
+fn escribir_encargos(r: &Path) {
+    let e = json!({"version": 1, "encargos": [
+        {"id": "e1", "texto": "resume mis tareas", "estado": "hecha", "creado": 10, "acabado": 50,
+         "resumen": "Tienes 3 pendientes", "abrir": {"proyecto": "asis", "codigo": "IA-1"}},
+        {"id": "e2", "texto": "dibuja el plano", "estado": "fallo", "creado": 20, "acabado": 60,
+         "resumen": "Falta la clave de Claude"},
+        {"id": "e3", "texto": "apunta pan", "estado": "haciendo", "creado": 30, "empezado": 70},
+        {"id": "e4", "texto": "[img 01]", "estado": "en_cola", "creado": 40},
+        {"id": "e5", "texto": "busca el contrato", "estado": "en_cola", "creado": 41},
+        {"id": "", "texto": "sin id", "estado": "en_cola"},
+        {"id": "e6", "texto": "dibuja una casa", "estado": "hecha", "creado": 5, "acabado": 80,
+         "resumen": "Listo", "con_fallos": true, "abrir": {"proyecto": "asis", "codigo": "IA-2", "lienzo": "L9"}}
+    ]});
+    fs::write(r.join(crate::asistente::ENCARGOS), e.to_string()).unwrap();
+}
+
+#[test]
+fn la_a_y_asistente_mandan_a_la_cola_y_flow_sigue_abierto() {
+    let r = raiz("cola-pedir");
+    let v = buscar_en(&r, "a apunta comprar yeso", 1000);
+    assert_eq!(v[0].titulo, "Pedir al asistente: apunta comprar yeso");
+    let Accion::PedirYSeguir { pedido, consulta } = &v[0].accion else {
+        panic!("{:?}", v[0].accion)
+    };
+    // Intro: el pedido con su id y Flow vuelve a `p asistente `.
+    assert_eq!(consulta, "pp asistente ");
+    assert_eq!(pedido["accion"], "asistente");
+    assert_eq!(pedido["texto"], "apunta comprar yeso");
+    assert_eq!(pedido["encargo"], crate::asistente::id_de("apunta comprar yeso", 1000));
+    assert!(v[0].subtitulo.contains("lo empieza ya"), "{}", v[0].subtitulo);
+    assert!(v[0].subtitulo.contains("notificación"), "{}", v[0].subtitulo);
+    // Con otros delante, lo dice; y los encargos salen debajo.
+    escribir_encargos(&r);
+    let v = buscar_en(&r, "asistente otra cosa", 1000);
+    assert!(v[0].subtitulo.contains("tiene 3 delante"), "{}", v[0].subtitulo);
+    assert!(v[1].titulo.starts_with("⚙️ Haciendo: apunta pan"), "{}", v[1].titulo);
+    // Caso negativo: dos textos distintos no comparten id.
+    assert_ne!(crate::asistente::id_de("a", 1), crate::asistente::id_de("b", 1));
+}
+
+#[test]
+fn los_encargos_salen_con_su_estado_en_orden() {
+    let r = raiz("cola-lista");
+    escribir_encargos(&r);
+    let v = buscar_en(&r, "asistente", 100_000);
+    let t: Vec<&str> = v.iter().map(|x| x.titulo.as_str()).collect();
+    assert_eq!(
+        t,
+        [
+            "Pídele algo al asistente…",
+            "Abrir el chat «Asistente»",
+            "⚙️ Haciendo: apunta pan",
+            "⏳ En cola: la foto",
+            "⏳ En cola: busca el contrato",
+            "⚠️ A medias: dibuja una casa",
+            "❌ Falló: dibuja el plano",
+            "✅ Hecha: resume mis tareas",
+        ]
+    );
+    assert!(v[3].subtitulo.starts_with("Tiene 1 delante"), "{}", v[3].subtitulo);
+    assert!(v[4].subtitulo.starts_with("Tiene 2 delante"), "{}", v[4].subtitulo);
+    assert!(v[6].subtitulo.starts_with("Falta la clave de Claude"), "{}", v[6].subtitulo);
+    // Intro en una acabada abre lo que hizo: el lienzo si dibujo.
+    assert_eq!(
+        pedido_de(&v[5]),
+        &json!({"pixpin": 1, "accion": "abrir", "que": {"tipo": "hoja", "proyecto": "asis", "referencia": "L9"}})
+    );
+    assert_eq!(pedido_de(&v[7])["que"]["codigo"], "IA-1");
+    // En una que falla o se hace, el chat «Asistente».
+    assert_eq!(pedido_de(&v[6]), &json!({"pixpin": 1, "accion": "asistente"}));
+    assert_eq!(pedido_de(&v[2]), &json!({"pixpin": 1, "accion": "asistente"}));
+    // El motor, en la primera fila.
+    assert!(v[0].subtitulo.contains("modelo de este PC"), "{}", v[0].subtitulo);
+    // Caso negativo: un fichero roto no rompe nada.
+    fs::write(r.join(crate::asistente::ENCARGOS), "{roto").unwrap();
+    assert_eq!(buscar_en(&r, "asistente", 1).len(), 2);
+}
+
+#[test]
+fn el_motor_sale_de_los_ajustes() {
+    use crate::asistente::motor_de_toml;
+    assert_eq!(motor_de_toml("[asistente]\nmotor = \"claude\"\n"), "Claude Haiku 5.5");
+    assert_eq!(motor_de_toml("idioma = \"es\"\n[asistente]\nmodelo = \"qwen3.5-0.8b\"\nmotor = \"local\""), "el modelo de este PC (qwen3.5-0.8b)");
+    assert_eq!(motor_de_toml("[asistente]\nmotor = \"deepseek\""), "DeepSeek Flash");
+    // Caso negativo: un `motor` de otra tabla no cuenta.
+    assert_eq!(motor_de_toml("[otra]\nmotor = \"claude\"\n[asistente]\n"), "el modelo de este PC (Qwen 3.5 2B)");
+    let r = raiz("cola-motor");
+    fs::write(r.join("pixpinmax.toml"), "[asistente]\nmotor = \"claude\"\n").unwrap();
+    assert!(buscar_en(&r, "a hola", 1)[0].subtitulo.contains("Claude Haiku 5.5"));
+}
+
+#[test]
+fn intro_espera_a_que_la_app_lo_apunte_y_vuelve_a_la_lista() {
+    let r = raiz("cola-rpc");
+    let mut p = plugin(&r);
+    p.espera_lista = std::time::Duration::from_secs(2);
+    p.mensajero.encargos_en = Some(r.clone());
+    let pedido = json!({ "pixpin": 1, "accion": "asistente", "texto": "apunta pan", "proyecto": null, "encargo": "f1-x" });
+    let t = std::time::Instant::now();
+    p.atender(
+        &json!({ "jsonrpc": "2.0", "id": 1, "method": "pedir_y_seguir", "params": [[pedido, "pp asistente "]] })
+            .to_string(),
+    );
+    let ms = t.elapsed().as_secs_f64() * 1000.0;
+    println!("Intro hasta verlo apuntado (app de mentira): {ms:.1} ms");
+    assert!(ms < 500.0, "{ms} ms");
+    assert_eq!(p.mensajero.pedidos[0]["encargo"], "f1-x");
+    let s = salida(&p);
+    assert!(
+        s.iter().any(|l| l["method"] == "ChangeQuery" && l["params"][0] == "pp asistente "),
+        "{s:?}"
+    );
+    assert!(crate::asistente::apuntado(&r, "f1-x"));
+    // Caso negativo: un id que la app no apunto no esta.
+    assert!(!crate::asistente::apuntado(&r, "otro"));
 }

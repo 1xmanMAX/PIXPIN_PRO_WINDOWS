@@ -111,6 +111,8 @@ mod llamada;
 mod marco_de_la_tinta;
 mod medir_fotogramas;
 mod mini_panel;
+/// Lo que dicen las notificaciones de Windows con botones (15-oct).
+mod notificaciones;
 mod miniaturas;
 mod navegacion;
 mod notas_md;
@@ -731,6 +733,23 @@ fn arrancar(
         idioma: lengua,
         opciones: opciones_lienzo,
     });
+    // La cola de encargos del asistente (`p asistente …` de Flow, 15-oct):
+    // lo que quedo pendiente se hace ya; cada uno avisa al acabar con una
+    // notificacion de Windows, cuya identidad y protocolo («Abrir») se dan
+    // de alta aqui, fuera del modo portable (cero rastro, como «Abrir con»).
+    automatizaciones::cola::arrancar(automatizaciones::encargo::DeLaApp {
+        entorno: automatizaciones::encargo::Entorno {
+            ubicacion: ubicacion.clone(),
+            aparato: identidad_equipo.clone(),
+        },
+        idioma: lengua,
+        opciones: opciones_lienzo,
+    });
+    if !ubicacion.es_portable() {
+        automatizaciones::cola::registrar_notificaciones(ruta_exe.clone(), ubicacion.raiz().to_path_buf());
+    }
+    // Las capturas que se van en las proximas 24 h, con «Conservar».
+    caducidad_capturas::vigilar_avisos(ubicacion.raiz().to_path_buf(), lengua);
 
     // Lo que ensenan los interruptores del panel de la bandeja (v2): lo
     // que dijeron los dos ultimos «alternar» de los pines.
@@ -1883,7 +1902,28 @@ fn atender_recordatorios(
             tracing::warn!("sin monitor donde sacar el pin del recordatorio");
         }
         // La secreta no dice su recado en un globo: eso es lo secreto.
-        if !es_secreta
+        // Lo demas, en una notificacion de Windows con «Hecha» (si es una
+        // tarea), «+10 min» y «Abrir» (15-oct); si no sale, el globo.
+        let proyecto = v.carpeta.as_deref().and_then(notificaciones::proyecto_de);
+        if !es_secreta && let Some(proyecto) = proyecto {
+            let tarea = v
+                .carpeta
+                .as_deref()
+                .and_then(|c| pixpin_proyecto::cuaderno::Cuaderno::leer_de(c).ok())
+                .and_then(|c| tareas::tarea_de_recordatorio(&c, &r.id));
+            let toast = notificaciones::de_recordatorio(
+                textos,
+                &proyecto,
+                &r.id,
+                tarea.as_ref().map(|(l, i)| (l.as_str(), *i)),
+                &r.texto,
+            );
+            let h = hwnd.0 as isize;
+            pixpin_shell::notificacion::mostrar_o(toast, move |t| {
+                let hwnd = windows::Win32::Foundation::HWND(h as *mut _);
+                let _ = pixpin_shell::aviso::Aviso::sobre_la_bandeja(hwnd).mostrar(&t.titulo, &t.texto);
+            });
+        } else if !es_secreta
             && let Err(e) = aviso.mostrar(&textos.t("chat-recordatorio-titulo"), &r.texto)
         {
             tracing::warn!(?e, "no se pudo avisar del recordatorio");

@@ -46,7 +46,7 @@ mod caja_de_soltar;
 /// dibujado en el lienzo del asistente, dejar el texto de un OCR, elegir el
 /// motor de Ajustes) y el aviso flotante con «Abrir».
 pub(crate) mod sin_ventana {
-    pub(crate) use super::aviso_asistente::{Aviso, Chat, lanzar as avisar};
+    pub(crate) use super::aviso_asistente::{Aviso, Chat, Mando, lanzar as avisar};
     use pixpin_store::{Catalogo, Ubicacion};
 
     /// Lo dibujado, al lienzo del asistente en el chat `proyecto`: el

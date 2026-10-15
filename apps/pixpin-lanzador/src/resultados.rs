@@ -540,9 +540,9 @@ fn resultado_funcion(f: Funcion, ctx: &Contexto) -> Resultado {
         ),
         Funcion::Leccion => (
             "Nueva lección",
-            "Apunta lo que aprendiste · «a <texto>»",
+            "Apunta lo que aprendiste · «lección <texto>»",
             glifo::LECCION,
-            Accion::Consulta(ctx.consulta("a ")),
+            Accion::Consulta(ctx.consulta("lección ")),
         ),
         Funcion::Lecciones => (
             "Lecciones aprendidas",
@@ -588,9 +588,9 @@ fn resultado_funcion(f: Funcion, ctx: &Contexto) -> Resultado {
         ),
         Funcion::Asistente => (
             "Asistente",
-            "Pídele algo y lo hace sin abrir el chat · «ia <pedido>» o «? <pedido>»",
+            "Pídele algo: lo hace en segundo plano y te avisa al acabar · «a <pedido>» o «asistente <pedido>»",
             glifo::ASISTENTE,
-            Accion::Consulta(ctx.consulta("ia ")),
+            Accion::Consulta(ctx.consulta("asistente ")),
         ),
         Funcion::Abrir => (
             "Abrir PixPin",

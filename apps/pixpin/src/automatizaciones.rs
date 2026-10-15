@@ -39,6 +39,7 @@
 //! `orden`: salen como botones encima de la caja del chat «Asistente»
 //! (`asistente::recetas`).
 
+pub mod cola;
 pub mod encargo;
 pub mod motor;
 #[cfg(test)]

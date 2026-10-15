@@ -2572,3 +2572,13 @@ asistente-voz-cancelado = Cancelado: no se envió nada.
 asistente-voz-nada-que-leer = Esta respuesta no tiene texto que leer.
 asistente-voz-leer = Leer en voz alta
 asistente-voz-callar = Dejar de leer
+
+# Los botones de las notificaciones de Windows (15-oct).
+notif-hecha = Hecha
+notif-mas-10 = +10 min
+notif-abrir = Abrir
+notif-conservar = Conservar
+notif-ver-galeria = Ver la galería
+notif-captura-se-va = Esta captura se va { $cuando }
+notif-capturas-se-van = { $n } capturas se van en las próximas 24 h
+notif-capturas-titulo = Capturas que caducan
