@@ -274,10 +274,16 @@ fn las_fuentes_de_buscar_historial_son_las_notas_y_lo_pensado() {
     assert!(pixpin_ia::contexto::buscar(&f, "miraflores", 2).starts_with("[T1 pensado]"));
 }
 
-fn pensar_en_local_es_solo_si_se_pide() {
-    assert!(!pensado::pensar_local(None));
-    assert!(pensado::pensar_local(Some(true)));
-    assert!(!pensado::pensar_local(Some(false)));
+#[test]
+fn pensar_en_automatico_es_solo_en_lo_complejo() {
+    // Automatico: lo simple no piensa, lo complejo si.
+    assert!(!pensado::pensar(None, "dibuja un circulo rojo"));
+    assert!(!pensado::pensar(None, "abre la galería"));
+    assert!(pensado::pensar(None, "resuelve x^2 - 4 = 0"));
+    assert!(pensado::pensar(None, "planifica la obra en 12 semanas"));
+    // «Siempre» y «Nunca» mandan.
+    assert!(pensado::pensar(Some(true), "dibuja un circulo rojo"));
+    assert!(!pensado::pensar(Some(false), "resuelve x^2 - 4 = 0"));
     assert_eq!(pensado::ventana_local(), 8192);
 }
 

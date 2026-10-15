@@ -769,3 +769,29 @@ fn deepseek_razona_planea_y_actua_con_la_hoja() {
     let sistema = rec[1].cuerpo["messages"][0]["content"].to_string();
     assert!(sistema.contains("Hacer el logo de Ana") && sistema.contains("Peticion mejorada"), "{sistema}");
 }
+
+/// **Un turno simple no piensa en la nube** (15-oct, `crate::complejidad`):
+/// Claude va con `thinking: disabled` y DeepSeek tambien, sin la reserva de
+/// tokens del pensamiento; uno complejo, como siempre.
+#[test]
+fn un_turno_simple_no_piensa_en_la_nube() {
+    let mut p = crate::motor::Peticion::nueva(vec![Mensaje::usuario("dibuja un circulo")]);
+    p.max_tokens = 1000;
+    for pensar in [false, true] {
+        let c = claude("http://127.0.0.1:1").pensando(pensar).cuerpo(&p);
+        let d = deepseek("http://127.0.0.1:1").pensando(pensar).cuerpo(&p);
+        if pensar {
+            assert_eq!(c["thinking"]["type"], "adaptive");
+            assert_eq!(d["thinking"]["type"], "enabled");
+            assert_eq!(c["max_tokens"], json!(1000 + RESERVA_PENSAR));
+        } else {
+            assert_eq!(c["thinking"]["type"], "disabled");
+            assert_eq!(d["thinking"]["type"], "disabled");
+            assert!(d.get("reasoning_effort").is_none());
+            assert_eq!(c["max_tokens"], json!(1000), "sin reserva para pensar");
+            assert_eq!(d["max_tokens"], json!(1000));
+            // El esfuerzo no baja: eso es `ligero`.
+            assert_ne!(c["output_config"]["effort"], "low");
+        }
+    }
+}
