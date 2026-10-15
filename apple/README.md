@@ -98,7 +98,12 @@ pánico de Rust llega a Swift como error en vez de cerrar la app.
   - [ ] Transporte de Swift sobre `NWConnection` (hoy socket BSD de Rust, con IPv4 primero);
         el `suelto`, la galería y los chats con personas. La `Escucha` atiende una conexión
         cada vez: mientras dura una vuelta, una sonda de otro espera.
-  - [ ] Documentos (`docs`, `hojas`, `office`), timeline y lecciones en la API.
+  - [ ] Documentos (`docs`, `hojas`, `office`) y timeline en la API.
+  - [x] Lecciones en la API (`src/lecciones.rs`, por paginas con cache por fechas), ajustes
+        de `pixpinmax.toml` que valen en los dos sistemas (`src/ajustes.rs`: dias de las
+        capturas, sincronizacion sola y presencia, con `guardar_conservando`) y el asistente
+        (`src/asistente.rs`: `ia_catalogo_para`/`ia_llamar` de `pixpin_ia::puente` y un turno
+        con un `llama-server` del usuario en `127.0.0.1:8080`).
   - [x] CI: `.github/workflows/apple.yml` (macOS 15, Xcode 16.4) compila el xcframework, pasa
         `swift test` (48 pruebas, 15-oct) y sube `PixPin.app` universal (19 MB; 8 MB en zip)
         como artefacto «PixPin-mac».
@@ -131,6 +136,16 @@ pánico de Rust llega a Swift como error en vez de cerrar la app.
         guardado solo 1 s despues del ultimo cambio). Se abre con doble clic en un `DIBUJO`
         o con «Lienzo nuevo» en el chat. Falta: lazo, cotas, imagenes pegadas, el gesto de
         pararse (forma rapida) y las cuatro de construir.
+  - [x] Ajustes (⌘,; `app/Sources/PixPinKit/Ajustes/`): tema, atajo de capturar (se graba y
+        se vuelve a registrar en Carbon; UserDefaults), dias de la galeria y sincronizacion
+        sola (en `pixpinmax.toml`, como Windows), carpeta de datos y «Abrir al iniciar sesion»
+        (`SMAppService.mainApp`). Falta que las capturas caduquen solas en Mac
+        (`caducidad_capturas.rs`).
+  - [x] Lecciones (`Lecciones/`): lista por paginas, buscar, etiquetas (propuestas ✨),
+        repaso y borrar, guardadas como en Windows y Android (`.leccion` + mensaje `ARCHIVO`).
+  - [x] Asistente (`Asistente/`): Foundation Models con las herramientas del puente si hay
+        macOS 26 (compila fuera con el SDK de macOS 15), si no un `llama-server` propio en
+        127.0.0.1:8080, si no «no hay motor». Sin streaming; el Llavero aun no.
 - [ ] `por-adaptar/` → `nucleo/`:
   - [x] `pixpin-codec` (decodificar con `image`; WIC, vista reducida y portapapeles tras
         `#[cfg(windows)]`; ImageIO y `NSPasteboard` desde Swift).

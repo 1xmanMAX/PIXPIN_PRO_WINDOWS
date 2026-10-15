@@ -35,6 +35,32 @@ struct PixPinApp: App {
             }
         }
         .defaultSize(width: 520, height: 600)
+        Window("Lecciones", id: "lecciones") {
+            if let almacen = estado.almacen {
+                VentanaLecciones(nucleo: almacen.nucleo)
+                    .frame(minWidth: 760, minHeight: 480)
+            } else {
+                ContentUnavailableView("No se pudo abrir la carpeta de datos",
+                                       systemImage: "exclamationmark.triangle",
+                                       description: Text(estado.error ?? ""))
+            }
+        }
+        .defaultSize(width: 960, height: 640)
+        Window("Asistente", id: "asistente") {
+            VentanaAsistente(almacen: estado.almacen)
+        }
+        .defaultSize(width: 460, height: 640)
+        // Ajustes (⌘,): lo que vale en Windows y Mac va a `pixpinmax.toml`.
+        Settings {
+            if let ajustes = estado.ajustes {
+                VistaAjustes(modelo: ajustes, atajo: estado.atajoCaptura)
+            } else {
+                ContentUnavailableView("No se pudo abrir la carpeta de datos",
+                                       systemImage: "exclamationmark.triangle",
+                                       description: Text(estado.error ?? ""))
+                    .frame(width: 420, height: 240)
+            }
+        }
     }
 }
 
@@ -48,11 +74,15 @@ final class EstadoApp: ObservableObject {
     let sincro: Sincronizador?
     /// Capturar una zona (Ctrl+Option+X en todo el Mac).
     let capturador: Capturador
-    private var atajoCaptura: AtajoGlobal?
     private var atajoGrabar: AtajoGlobal?
+    /// El atajo de capturar (se cambia en Ajustes).
+    let atajoCaptura: AtajoDeCaptura
+    /// Lo de Ajustes (`pixpinmax.toml`, tema, abrir al iniciar sesion).
+    let ajustes: ModeloAjustes?
 
     init() {
-        capturador = Capturador()
+        let capturador = Capturador()
+        self.capturador = capturador
         do {
             almacen = try Almacen()
             error = nil
@@ -60,12 +90,14 @@ final class EstadoApp: ObservableObject {
             almacen = nil
             self.error = "\(error)"
         }
-        sincro = almacen.map { Sincronizador(nucleo: $0.nucleo) }
+        let sincro = almacen.map { Sincronizador(nucleo: $0.nucleo) }
+        self.sincro = sincro
+        atajoCaptura = AtajoDeCaptura { capturador.capturar() }
+        ajustes = almacen.map { ModeloAjustes(nucleo: $0.nucleo, sincro: sincro) }
         if let almacen, let sincro {
             sincro.alTraerCambios = { [weak almacen] in Task { await almacen?.cargarChats() } }
             sincro.arrancar()
         }
-        let capturador = self.capturador
         // Lo que se hace con la zona elegida: pinearla o sacar su texto.
         capturador.alPinear = { GestorPines.compartido.pinear(imagen: $0) }
         capturador.alSacarTexto = { imagen in
@@ -92,13 +124,17 @@ final class EstadoApp: ObservableObject {
                 }
             }
         }
-        atajoCaptura = AtajoGlobal(.capturar) { capturador.capturar() }
         // Grabar la pantalla: elegir la zona con la misma captura (Intro o
         // ⌘G graba) y parar desde la barra de menus o con el mismo atajo.
         let grabador = GrabadorPantalla.compartido
         capturador.alGrabar = { zona in Task { await grabador.empezar(zona) } }
         grabador.alGuardar = { NSWorkspace.shared.activateFileViewerSelecting([$0]) }
         atajoGrabar = AtajoGlobal(.grabar) { EstadoApp.grabarOParar(capturador) }
+        if let ajustes {
+            // El tema y la sincronizacion sola, como se dejaron.
+            ajustes.tema.aplicar()
+            Task { await ajustes.cargar() }
+        }
     }
 
     /// Empieza a elegir que grabar o, si ya graba, para.
@@ -140,6 +176,7 @@ struct MenuPrincipal: View {
     @ObservedObject var estado: EstadoApp
     @ObservedObject var grabador: GrabadorPantalla
     @Environment(\.openWindow) private var abrirVentana
+    @Environment(\.openSettings) private var abrirAjustes
 
     var body: some View {
         Button("Capturar zona") { estado.capturador.capturar() }
@@ -164,10 +201,23 @@ struct MenuPrincipal: View {
             abrirVentana(id: "sincronizar")
             NSApp.activate()
         }
+        Button("Lecciones…") {
+            abrirVentana(id: "lecciones")
+            NSApp.activate()
+        }
+        Button("Asistente…") {
+            abrirVentana(id: "asistente")
+            NSApp.activate()
+        }
         Button("Pinear desde el portapapeles") {
             if !GestorPines.compartido.pinearDesdePortapapeles() { NSSound.beep() }
         }
         Divider()
+        Button("Ajustes…") {
+            abrirAjustes()
+            NSApp.activate()
+        }
+        .keyboardShortcut(",")
         Button("Salir de PixPin") { NSApp.terminate(nil) }
             .keyboardShortcut("q")
     }

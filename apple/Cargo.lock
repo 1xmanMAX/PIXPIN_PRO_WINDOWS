@@ -1701,10 +1701,13 @@ name = "pixpin-nucleo"
 version = "0.1.0"
 dependencies = [
  "getrandom 0.2.17",
+ "pixpin-ia",
+ "pixpin-lecciones",
  "pixpin-motor2d",
  "pixpin-proyecto",
  "pixpin-sincro",
  "pixpin-sistema",
+ "pixpin-store",
  "serde",
  "serde_json",
  "thiserror",
