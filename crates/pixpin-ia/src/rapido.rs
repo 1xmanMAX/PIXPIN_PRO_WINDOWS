@@ -181,6 +181,13 @@ fn partir_chat(lista: Option<String>) -> (Option<String>, Option<String>) {
 /// **Interpreta una orden simple.** `None`: no es seguro; que conteste el
 /// modelo.
 pub fn interpretar(texto: &str, ahora: Momento) -> Option<Orden> {
+    interpretar_con(texto, ahora, false)
+}
+
+/// [`interpretar`], y con `nube` tambien las ordenes de las herramientas
+/// solo para la nube (`acciones::SOLO_NUBE`, 15-oct): con el modelo local
+/// el camino rapido sigue como estaba («la IA local, no la toques»).
+pub fn interpretar_con(texto: &str, ahora: Momento, nube: bool) -> Option<Orden> {
     let limpio = limpiar(texto);
     if limpio.is_empty() || limpio.chars().count() > LARGO_MAXIMO {
         return None;
@@ -197,17 +204,32 @@ pub fn interpretar(texto: &str, ahora: Momento) -> Option<Orden> {
     if let Some(o) = consulta(q) {
         return Some(o);
     }
-    if let Some(o) = actividad(q) {
+    if nube && let Some(o) = actividad(q) {
         return Some(o);
     }
     if pregunta {
         return None;
     }
 
-    // --- 15-oct: voz, pines, grabar la pantalla, PDF, audio, timeline y
-    // el chat por su nombre.
-    if let Some(o) = herramientas_de_la_app(&f) {
-        return Some(o);
+    // --- 15-oct, solo con la nube: voz, pines, grabar la pantalla, PDF,
+    // audio, timeline, el chat por su nombre y las ventanas nuevas.
+    if nube {
+        if let Some(o) = herramientas_de_la_app(&f) {
+            return Some(o);
+        }
+        for (ventana, nombres) in [
+            ("ajustes", &["ajustes", "configuracion", "preferencias", "ajustes de pixpin"][..]),
+            ("timeline", &["timeline", "linea de tiempo", "mi timeline"][..]),
+            ("buscar", &["buscador", "buscador de pixpin"][..]),
+        ] {
+            for v in ["abre", "abrir", "muestra", "muestrame", "ensename", "ve a", "ir a", "abreme"] {
+                for art in ["", "la ", "las ", "el ", "los ", "mis ", "mi ", "la ventana de ", "la ventana del "] {
+                    if nombres.iter().any(|n| q == format!("{v} {art}{n}")) {
+                        return Some(Orden::nueva("abrir_otra_ventana", json!({"cual": ventana})));
+                    }
+                }
+            }
+        }
     }
 
     // --- Ventanas.
@@ -216,12 +238,9 @@ pub fn interpretar(texto: &str, ahora: Momento) -> Option<Orden> {
         ("tareas", &["tareas", "ventana de tareas", "mis tareas", "lista de tareas"][..]),
         ("lecciones", &["lecciones", "mis lecciones", "lecciones aprendidas"][..]),
         ("sincronizar", &["sincronizar", "sincronizacion", "ventana de sincronizar"][..]),
-        ("ajustes", &["ajustes", "configuracion", "preferencias", "ajustes de pixpin"][..]),
-        ("timeline", &["timeline", "linea de tiempo", "mi timeline"][..]),
-        ("buscar", &["buscador", "buscador de pixpin"][..]),
     ] {
         for v in ["abre", "abrir", "muestra", "muestrame", "ensename", "ve a", "ir a", "abreme"] {
-            for art in ["", "la ", "las ", "el ", "los ", "mis ", "mi ", "la ventana de ", "la ventana de la ", "la ventana de las ", "la ventana del ", "la ventana de los "] {
+            for art in ["", "la ", "las ", "mis ", "la ventana de ", "la ventana de la ", "la ventana de las "] {
                 for n in nombres {
                     let n = n.strip_prefix("mis ").filter(|_| art == "mis ").unwrap_or(n);
                     if q == format!("{v} {art}{n}") {
@@ -386,7 +405,7 @@ fn herramientas_de_la_app(f: &Frase) -> Option<Orden> {
         ("en_vivo", &["pin en vivo", "haz un pin en vivo", "captura en vivo"][..]),
     ] {
         if f.es(frases) {
-            return Some(Orden::nueva("capturar_pantalla", json!({ "modo": modo })));
+            return Some(Orden::nueva("capturar_con_modo", json!({ "modo": modo })));
         }
     }
     // Los pines (cerrarlos todos pregunta: va por el modelo).
@@ -401,6 +420,10 @@ fn herramientas_de_la_app(f: &Frase) -> Option<Orden> {
     }
     // Callar la voz.
     if f.es(&["para de leer", "deja de leer", "callate", "para la lectura", "deten la lectura", "para la voz", "deja de hablar", "silencio"]) {
+        return Some(Orden::nueva("parar_lectura", json!({})));
+    }
+    // «Ya esta bien, deja de leer»: lo de delante es solo el tono.
+    if q.chars().count() <= 40 && ["deja de leer", "para de leer", "callate", "deja de hablar"].iter().any(|f| q.ends_with(f)) {
         return Some(Orden::nueva("parar_lectura", json!({})));
     }
     // Leer en voz alta: «lee esto en voz alta», «lee en voz alta la tesis».
@@ -446,7 +469,10 @@ fn herramientas_de_la_app(f: &Frase) -> Option<Orden> {
         if chat.chars().count() > 60 {
             return None;
         }
-        return Some(Orden::nueva("abrir_chat", args("chat", (!chat.is_empty()).then_some(chat))));
+        if chat.is_empty() {
+            return Some(Orden::nueva("abrir_chat", json!({})));
+        }
+        return Some(Orden::nueva("ir_al_chat", json!({ "chat": chat })));
     }
     None
 }
@@ -715,47 +741,66 @@ mod pruebas {
             // Un filtro que no entiende, o «pasa la tarea» sin fecha (es mover).
             "¿qué tengo pendiente con prisa?",
             "pasa la tarea comprar pan a la lista Compras",
-            "graba la pantalla del vecino con sonido",
+            "graba la pantalla",
             "apunta en el chat que mañana no vengo",
             "crea una lista",
-            // 15-oct: cerrar todos los pines pregunta (al modelo); comprimir
-            // algo que no es un PDF; un resumen con algo raro detras.
-            "cierra todos los pines",
-            "comprime la carpeta de fotos",
-            "¿cuánto hice hoy con el perro?",
         ] {
             assert_eq!(orden(t), None, "«{t}» no deberia ir por el camino rapido");
+        }
+    }
+
+    /// Con la nube (las herramientas de `acciones::SOLO_NUBE`).
+    fn en(t: &str, herramienta: &str, args: Value) {
+        let o = interpretar_con(t, ahora(), true).map(|o| (o.herramienta.to_string(), Value::Object(o.args)));
+        assert_eq!(o, Some((herramienta.to_string(), args)), "«{t}»");
+    }
+
+    /// Con el modelo local el camino rapido sigue como en main, y con la
+    /// nube lo que pregunta o no se entiende va al modelo.
+    #[test]
+    fn las_ordenes_nuevas_son_solo_con_la_nube() {
+        for t in ["Graba la pantalla", "Lee esto en voz alta", "Comprime este PDF", "abre los ajustes", "¿Cuánto hice hoy?", "abre el chat Obra"] {
+            assert_eq!(orden(t), None, "«{t}» con el local");
+            assert!(interpretar_con(t, ahora(), true).is_some(), "«{t}» con la nube");
+        }
+        // Lo de siempre, igual con los dos.
+        for t in ["apunta comprar pan", "abre la galería", "graba"] {
+            assert_eq!(interpretar(t, ahora()), interpretar_con(t, ahora(), true), "«{t}»");
+        }
+        for t in ["cierra todos los pines", "comprime la carpeta de fotos", "¿cuánto hice hoy con el perro?"] {
+            assert_eq!(interpretar_con(t, ahora(), true), None, "«{t}»");
         }
     }
 
     /// 15-oct: las ordenes nuevas de la app, sin modelo.
     #[test]
     fn las_ordenes_de_la_app_salen_sin_modelo() {
-        es("Graba la pantalla", "grabar_pantalla", json!({}));
-        es("haz un gif de la pantalla", "grabar_pantalla", json!({}));
-        es("copia el texto de la pantalla", "capturar_pantalla", json!({"modo": "texto"}));
-        es("haz una captura larga", "capturar_pantalla", json!({"modo": "scroll"}));
-        es("repite la última captura", "capturar_pantalla", json!({"modo": "repetir"}));
-        es("oculta los pines", "manejar_pines", json!({"operacion": "ocultar_mostrar"}));
-        es("devuelve el último pin", "manejar_pines", json!({"operacion": "devolver_ultimo"}));
-        es("Lee esto en voz alta", "leer_en_voz_alta", json!({}));
-        es("léeme en voz alta la tesis", "leer_en_voz_alta", json!({"archivo": "la tesis"}));
-        es("lee el informe de cunetas en voz alta", "leer_en_voz_alta", json!({"archivo": "el informe de cunetas"}));
-        es("para de leer", "parar_lectura", json!({}));
-        es("Comprime este PDF", "comprimir_pdf", json!({}));
-        es("comprime el pdf de la tesis", "comprimir_pdf", json!({"archivo": "la tesis"}));
-        es("transcribe este audio", "transcribir_audio", json!({}));
-        es("pasa a texto la nota de voz de la reunión", "transcribir_audio", json!({"archivo": "la reunión"}));
-        es("Apunta en el timeline que llegó el camión de cemento", "apuntar_en_timeline", json!({"texto": "llegó el camión de cemento"}));
-        es("abre el chat Obra Miraflores", "abrir_chat", json!({"chat": "Obra Miraflores"}));
-        es("abre el chat", "abrir_chat", json!({}));
-        es("abre los ajustes", "abrir_ventana", json!({"cual": "ajustes"}));
-        es("abre el timeline", "abrir_ventana", json!({"cual": "timeline"}));
-        es("¿Cuánto hice hoy?", "resumen_de_actividad", json!({"periodo": "hoy"}));
-        es("resumen de la semana", "resumen_de_actividad", json!({"periodo": "semana"}));
+        en("Graba la pantalla", "grabar_pantalla", json!({}));
+        en("haz un gif de la pantalla", "grabar_pantalla", json!({}));
+        en("copia el texto de la pantalla", "capturar_con_modo", json!({"modo": "texto"}));
+        en("haz una captura larga", "capturar_con_modo", json!({"modo": "scroll"}));
+        en("repite la última captura", "capturar_con_modo", json!({"modo": "repetir"}));
+        en("oculta los pines", "manejar_pines", json!({"operacion": "ocultar_mostrar"}));
+        en("devuelve el último pin", "manejar_pines", json!({"operacion": "devolver_ultimo"}));
+        en("Lee esto en voz alta", "leer_en_voz_alta", json!({}));
+        en("léeme en voz alta la tesis", "leer_en_voz_alta", json!({"archivo": "la tesis"}));
+        en("lee el informe de cunetas en voz alta", "leer_en_voz_alta", json!({"archivo": "el informe de cunetas"}));
+        en("para de leer", "parar_lectura", json!({}));
+        en("Ya está bien, deja de leer.", "parar_lectura", json!({}));
+        en("Comprime este PDF", "comprimir_pdf", json!({}));
+        en("comprime el pdf de la tesis", "comprimir_pdf", json!({"archivo": "la tesis"}));
+        en("transcribe este audio", "transcribir_audio", json!({}));
+        en("pasa a texto la nota de voz de la reunión", "transcribir_audio", json!({"archivo": "la reunión"}));
+        en("Apunta en el timeline que llegó el camión de cemento", "apuntar_en_timeline", json!({"texto": "llegó el camión de cemento"}));
+        en("abre el chat Obra Miraflores", "ir_al_chat", json!({"chat": "Obra Miraflores"}));
+        en("abre el chat", "abrir_chat", json!({}));
+        en("abre los ajustes", "abrir_otra_ventana", json!({"cual": "ajustes"}));
+        en("abre el timeline", "abrir_otra_ventana", json!({"cual": "timeline"}));
+        en("¿Cuánto hice hoy?", "resumen_de_actividad", json!({"periodo": "hoy"}));
+        en("resumen de la semana", "resumen_de_actividad", json!({"periodo": "semana"}));
         // Las de antes no cambian.
-        es("graba", "grabar_voz", json!({"nombre": "Nota de voz"}));
-        es("apunta comprar pan", "anadir_tarea", json!({"texto": "comprar pan"}));
+        en("graba", "grabar_voz", json!({"nombre": "Nota de voz"}));
+        en("apunta comprar pan", "anadir_tarea", json!({"texto": "comprar pan"}));
     }
 
     /// Cada orden rapida es una llamada que la tabla valida (nombre y
@@ -767,7 +812,7 @@ mod pruebas {
             "Comprime este PDF", "transcribe este audio", "Apunta en el timeline que llegó el camión", "abre el chat Obra",
             "abre los ajustes", "¿Cuánto hice hoy?",
         ] {
-            let o = interpretar(t, ahora()).unwrap();
+            let o = interpretar_con(t, ahora(), true).unwrap();
             let fila = crate::acciones::por_nombre(o.herramienta).unwrap_or_else(|| panic!("{t}: {}", o.herramienta));
             let v = crate::acciones::validar(fila, &o.args).unwrap_or_else(|e| panic!("{t}: {e}"));
             assert!(v.confirmar.is_none(), "{t}");

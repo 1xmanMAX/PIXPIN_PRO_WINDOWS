@@ -237,8 +237,11 @@ pub fn para_el_pedido(pedido: &str, con_imagen: bool) -> Vec<Herramienta> {
         puntuadas.push((s, h.clone()));
     }
     // La hoja al lienzo es solo para la nube (decision del usuario, 14-oct):
-    // esta seleccion es la del modelo local.
-    for a in crate::acciones::todas().filter(|a| a.herramienta != crate::hoja::NOMBRE) {
+    // esta seleccion es la del modelo local. Lo mismo las de la app del
+    // 15-oct (`acciones::SOLO_NUBE`: «la IA local, no la toques»).
+    for a in crate::acciones::todas()
+        .filter(|a| a.herramienta != crate::hoja::NOMBRE && !crate::acciones::es_solo_nube(a.herramienta))
+    {
         puntuadas.push((puntuar(a.claves, &q, &palabras), crate::acciones::herramienta(a)));
     }
     // Editar lo que ya hay en el lienzo (tabla de `edicion.rs`).
@@ -391,35 +394,24 @@ mod pruebas {
         }
     }
 
-    /// 15-oct: las herramientas nuevas de la app salen cuando vienen a
-    /// cuento, sin pasar de [`MAXIMO`] (el modelo local no se satura).
+    /// 15-oct: las herramientas de la app solo para la nube no llegan nunca
+    /// al modelo local («la IA local, no la toques»).
     #[test]
-    fn las_herramientas_de_la_app_del_15_oct_salen_a_cuento() {
-        for (pedido, img, debe) in [
-            ("Graba la pantalla mientras hago la demo para el cliente", false, "grabar_pantalla"),
-            ("Haz una captura larga con scroll de la pagina", false, "capturar_pantalla"),
-            ("Cierra todos los pines que tengo abiertos", false, "cerrar_pines"),
-            ("Esconde los pines un momento que voy a compartir pantalla", false, "manejar_pines"),
-            ("Léeme en voz alta el informe de la obra", false, "leer_en_voz_alta"),
-            ("Deja de leer ya, por favor", false, "parar_lectura"),
-            ("Comprime el PDF de la tesis que pesa mucho", false, "comprimir_pdf"),
-            ("Transcribe el audio de la reunión de ayer", false, "transcribir_audio"),
-            ("¿Cuánto suma la columna C del Excel de costos?", false, "leer_excel"),
-            ("Apunta en el timeline que llegó el camión de cemento y faltaban 5 bolsas", false, "apuntar_en_timeline"),
-            ("Dime cuánto hice hoy en PixPin", false, "resumen_de_actividad"),
-            ("Abre los ajustes de PixPin", false, "abrir_ventana"),
-            ("Abre el chat de la obra Miraflores", false, "abrir_chat"),
-            (r"Ve a la pagina 12 de C:\docs\tesis.pdf", false, "abrir_fichero"),
+    fn las_de_solo_la_nube_no_llegan_al_local() {
+        for pedido in [
+            "Graba la pantalla en un gif",
+            "Cierra todos los pines",
+            "Léeme en voz alta el informe",
+            "Comprime el PDF de la tesis que pesa mucho",
+            "Transcribe el audio de la reunión",
+            "¿Cuánto suma la columna C del Excel?",
+            "Apunta en el timeline que llegó el camión",
+            "Dime cuánto hice hoy",
+            "Abre los ajustes",
         ] {
-            let n = nombres(pedido, img);
-            assert!(n.iter().any(|x| x == debe), "«{pedido}» → {n:?}");
-            assert!(n.len() <= MAXIMO, "«{pedido}» → {n:?}");
+            let n = nombres(pedido, false);
+            assert!(!n.iter().any(|x| crate::acciones::es_solo_nube(x)), "«{pedido}» → {n:?}");
         }
-        // Negativos: dibujar sigue siendo dibujar, y una foto de una tabla
-        // sigue yendo a la tabla (no a leer un Excel).
-        assert!(!nombres("Dibuja un circulo rojo", false).iter().any(|x| x == "leer_en_voz_alta" || x == "grabar_pantalla"));
-        let t = nombres("Convierte esta tabla escaneada a Excel", true);
-        assert!(t.contains(&"tabla_de_imagen".to_string()), "{t:?}");
     }
 
     #[test]

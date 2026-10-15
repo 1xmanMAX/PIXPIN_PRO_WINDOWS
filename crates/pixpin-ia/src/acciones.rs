@@ -176,31 +176,24 @@ pub const ACCIONES: &[Accion] = &[
     Accion {
         herramienta: "abrir_chat",
         accion: "ventana_principal",
-        descripcion: "Abre (o trae delante) la ventana del chat, en un chat por su nombre si lo dice.",
+        descripcion: "Abre (o trae delante) la ventana del chat de proyectos.",
         categoria: Categoria::Abrir,
         claves: &["chat", "proyecto", "ventana principal", "conversacion"],
         fijos: "{}",
-        // 15-oct: «abre el chat Obra», por su nombre (`tareas::resolver`).
-        params: &[r(p("chat", Tipo::Texto, false, "nombre del chat; omitir: la lista de chats"))],
+        params: &[],
         confirmar: None,
-        hecho: "Abriendo el chat[ «{chat}»].",
+        hecho: "Abriendo el chat.",
     },
     Accion {
         herramienta: "abrir_fichero",
         accion: "abrir",
-        // 15-oct: con `pagina`/`buscar`, si ya esta abierto en el lector lo
-        // lleva ahi sin abrir otra ventana (`lector_pdf::esta_abierto`).
-        descripcion: "Abre un fichero en PixPin (PDF, Word, Excel, imagen, plano...); con pagina o buscar, lleva ahi (tambien si ya esta abierto).",
+        descripcion: "Abre un fichero en PixPin (PDF, Word, Excel, imagen, plano...), como «Abrir con PixPin».",
         categoria: Categoria::Abrir,
-        claves: &["abre", "abrir", "archivo", "fichero", "documento", "pdf", "docx", "xlsx", "dwg", ":\\", "ve a la pagina", "pagina"],
+        claves: &["abre", "abrir", "archivo", "fichero", "documento", "pdf", "docx", "xlsx", "dwg", ":\\"],
         fijos: r#"{"que":{"tipo":"fichero"}}"#,
-        params: &[
-            a("que.ruta", p("ruta", Tipo::Ruta, true, RUTA)),
-            a("que.pagina", p("pagina", Tipo::Entero, false, "pagina, desde 1 (PDF, Word, PowerPoint)")),
-            a("que.buscar", p("buscar", Tipo::Texto, false, "texto que buscar y marcar")),
-        ],
+        params: &[a("que.ruta", p("ruta", Tipo::Ruta, true, RUTA))],
         confirmar: None,
-        hecho: "Abriendo {ruta}[ en la página {pagina}][ buscando «{buscar}»].",
+        hecho: "Abriendo {ruta}.",
     },
     Accion {
         herramienta: "abrir_mensaje",
@@ -422,13 +415,13 @@ pub const ACCIONES: &[Accion] = &[
     Accion {
         herramienta: "abrir_ventana",
         accion: "ventana",
-        descripcion: "Abre una ventana de PixPin: tareas, galeria (de capturas), lecciones, sincronizar, ajustes, timeline o buscar.",
+        descripcion: "Abre una ventana de PixPin: tareas, galeria (de capturas), lecciones o sincronizar.",
         categoria: Categoria::Abrir,
-        claves: &["ventana", "galeria", "tareas", "lecciones", "sincronizar", "abre", "ensena", "muestra", "ajustes", "configuracion", "timeline", "buscador"],
+        claves: &["ventana", "galeria", "tareas", "lecciones", "sincronizar", "abre", "ensena", "muestra"],
         fijos: "{}",
         params: &[p(
             "cual",
-            Tipo::Opciones(&["tareas", "galeria", "lecciones", "sincronizar", "ajustes", "timeline", "buscar"]),
+            Tipo::Opciones(&["tareas", "galeria", "lecciones", "sincronizar"]),
             true,
             "que ventana",
         )],
@@ -438,14 +431,65 @@ pub const ACCIONES: &[Accion] = &[
     Accion {
         herramienta: "capturar_pantalla",
         accion: "capturar",
-        // 15-oct: todas las capturas de la bandeja, por su `modo`.
-        descripcion: "Empieza una captura de pantalla (el usuario elige la zona). modo: zona (con barra), copiar (directo al portapapeles), pin (dejarla flotando), en_vivo (pin que se actualiza), anotar, texto (copiar el texto que se lea), scroll (captura larga), repetir (la ultima zona, sin elegir), retardo (tras una cuenta atras).",
+        descripcion: "Empieza una captura de una zona de la pantalla (el usuario elige la zona).",
         categoria: Categoria::Capturas,
-        claves: &["captura", "capturar", "pantallazo", "screenshot", "recorta la pantalla", "copia el texto de la pantalla", "captura larga", "con scroll"],
-        fijos: "{}",
-        params: &[d(r#""zona""#, p("modo", Tipo::Opciones(MODOS_DE_CAPTURA), false, "que captura; omitir: zona"))],
+        claves: &["captura", "capturar", "pantallazo", "screenshot", "recorta la pantalla"],
+        fijos: r#"{"modo":"zona"}"#,
+        params: &[],
         confirmar: None,
-        hecho: "Captura en marcha ({modo}): elige la zona.",
+        hecho: "Elige la zona que quieres capturar.",
+    },
+    // --- 15-oct, solo para la nube ([`SOLO_NUBE`]): el modelo local sigue
+    // con las de arriba tal cual (decision del usuario).
+    Accion {
+        herramienta: "capturar_con_modo",
+        accion: "capturar",
+        descripcion: "Empieza una captura de pantalla de otra clase (el usuario elige la zona). modo: copiar (directo al portapapeles), pin (dejarla flotando), en_vivo (pin que se actualiza), anotar, texto (copiar el texto que se lea), scroll (captura larga), repetir (la ultima zona, sin elegir), retardo (tras una cuenta atras), zona (la de siempre, con barra).",
+        categoria: Categoria::Capturas,
+        claves: &["captura", "copia el texto de la pantalla", "captura larga", "con scroll", "zona de la pantalla", "texto que sale"],
+        fijos: "{}",
+        params: &[p("modo", Tipo::Opciones(MODOS_DE_CAPTURA), true, "que captura")],
+        confirmar: None,
+        hecho: "Hecho: captura en marcha ({modo}); el usuario elige la zona.",
+    },
+    Accion {
+        herramienta: "abrir_otra_ventana",
+        accion: "ventana",
+        descripcion: "Abre los ajustes de PixPin, el timeline o el buscador de PixPin.",
+        categoria: Categoria::Abrir,
+        claves: &["ajustes", "configuracion", "timeline", "buscador"],
+        fijos: "{}",
+        params: &[p("cual", Tipo::Opciones(&["ajustes", "timeline", "buscar"]), true, "que ventana")],
+        confirmar: None,
+        hecho: "Abriendo la ventana de {cual}.",
+    },
+    Accion {
+        herramienta: "ir_al_chat",
+        accion: "ventana_principal",
+        descripcion: "Abre la ventana del chat en un chat concreto, por su nombre.",
+        categoria: Categoria::Abrir,
+        claves: &["al chat", "el chat de", "el chat"],
+        fijos: "{}",
+        params: &[r(p("chat", Tipo::Texto, true, "nombre del chat"))],
+        confirmar: None,
+        hecho: "Abriendo el chat «{chat}».",
+    },
+    Accion {
+        herramienta: "ir_a_pagina",
+        accion: "abrir",
+        // Si ya esta abierto en el lector, lo lleva ahi sin abrir otra
+        // ventana (`lector_pdf::esta_abierto`).
+        descripcion: "Lleva un PDF, Word o PowerPoint (por su ruta) a una pagina o a un texto, abierto o no.",
+        categoria: Categoria::Abrir,
+        claves: &["pagina", "ve a la pagina", "llevame a la pagina"],
+        fijos: r#"{"que":{"tipo":"fichero"}}"#,
+        params: &[
+            a("que.ruta", p("ruta", Tipo::Ruta, true, RUTA)),
+            a("que.pagina", p("pagina", Tipo::Entero, false, "pagina, desde 1")),
+            a("que.buscar", p("buscar", Tipo::Texto, false, "texto que buscar y marcar")),
+        ],
+        confirmar: None,
+        hecho: "Llevando {ruta}[ a la página {pagina}][ a «{buscar}»].",
     },
     Accion {
         herramienta: "grabar_pantalla",
@@ -456,14 +500,14 @@ pub const ACCIONES: &[Accion] = &[
         fijos: r#"{"modo":"gif"}"#,
         params: &[],
         confirmar: None,
-        hecho: "Ajusta el marco y pulsa Grabar.",
+        hecho: "Hecho: ya sale el marco de grabar; el usuario lo ajusta y pulsa Grabar.",
     },
     Accion {
         herramienta: "cerrar_pines",
         accion: "pines",
         descripcion: "Cierra todos los pines de la pantalla.",
         categoria: Categoria::Capturas,
-        claves: &["cierra los pines", "cierra todos los pines", "quita los pines", "cerrar pines", "borra los pines"],
+        claves: &["cierra los pines", "cierra todos los pines", "quita los pines", "cerrar pines", "borra los pines", "todos los pines", "los pines que", "quitame", "cierra"],
         fijos: r#"{"operacion":"cerrar"}"#,
         params: &[],
         confirmar: Some("¿Cierro todos los pines de la pantalla?"),
@@ -472,7 +516,7 @@ pub const ACCIONES: &[Accion] = &[
     Accion {
         herramienta: "manejar_pines",
         accion: "pines",
-        descripcion: "Los pines de la pantalla: ocultar_mostrar (esconderlos todos o devolverlos), devolver_ultimo (el ultimo que se cerro), paso_de_clics (que dejen pasar el clic).",
+        descripcion: "Los pines de la pantalla (para cerrarlos: cerrar_pines): ocultar_mostrar (esconderlos todos o devolverlos), devolver_ultimo (el ultimo que se cerro), paso_de_clics (que dejen pasar el clic).",
         categoria: Categoria::Capturas,
         claves: &["oculta los pines", "esconde los pines", "muestra los pines", "devuelve el pin", "ultimo pin", "pines", "paso de clics"],
         fijos: "{}",
@@ -664,7 +708,7 @@ pub const ACCIONES: &[Accion] = &[
     Accion {
         herramienta: "parar_lectura",
         accion: "leer_en_voz",
-        descripcion: "Calla la lectura en voz alta que este sonando.",
+        descripcion: "Calla la lectura en voz alta que este sonando («deja de leer», «callate», «basta»).",
         categoria: Categoria::Audio,
         claves: &["para de leer", "deja de leer", "callate", "deja de hablar", "para la voz", "deten la lectura"],
         fijos: r#"{"parar":true}"#,
@@ -677,7 +721,7 @@ pub const ACCIONES: &[Accion] = &[
         accion: EN_EL_CHAT,
         descripcion: "Comprime (aligera) un PDF y deja la copia ligera en el chat; el original no se toca.",
         categoria: Categoria::Abrir,
-        claves: &["comprime", "comprimir", "aligera", "aligerar", "reduce el pdf", "menos pesado", "pesa mucho", "achica el pdf"],
+        claves: &["comprime", "comprimir", "aligera", "aligerar", "reduce el pdf", "menos pesado", "pesa mucho", "achica el pdf", "ligero", "pesa", "por correo"],
         fijos: "{}",
         params: &[p("archivo", Tipo::Texto, false, "nombre o descripcion del PDF; omitir: el PDF mas reciente del chat")],
         confirmar: None,
@@ -721,6 +765,32 @@ pub const ACCIONES: &[Accion] = &[
         hecho: "Hecho.",
     },
 ];
+
+/// **Las filas del 15-oct, solo para la nube** (Claude, DeepSeek). El
+/// usuario: «con relacion a la IA local, aun dejala ahi, no la toques,
+/// porque primero desarrollaremos la IA en la nube». El modelo local no las
+/// ve (`seleccion`, `ampliar` del turno) y el camino rapido no las usa con el.
+pub const SOLO_NUBE: &[&str] = &[
+    "capturar_con_modo",
+    "abrir_otra_ventana",
+    "ir_al_chat",
+    "ir_a_pagina",
+    "grabar_pantalla",
+    "cerrar_pines",
+    "manejar_pines",
+    "apuntar_en_timeline",
+    "leer_en_voz_alta",
+    "parar_lectura",
+    "comprimir_pdf",
+    "transcribir_audio",
+    "leer_excel",
+    "resumen_de_actividad",
+];
+
+/// Si la herramienta es solo para la nube ([`SOLO_NUBE`]).
+pub fn es_solo_nube(herramienta: &str) -> bool {
+    SOLO_NUBE.contains(&herramienta)
+}
 
 /// Si la herramienta la hace el ejecutor del chat ([`EN_EL_CHAT`]).
 pub fn es_en_el_chat(herramienta: &str) -> bool {
@@ -1131,7 +1201,7 @@ mod pruebas {
     /// solo pregunta lo que cierra algo.
     #[test]
     fn las_filas_del_15_oct_arman_su_pedido() {
-        let a = validar(por_nombre("capturar_pantalla").unwrap(), &args(r#"{"modo":"Scroll"}"#)).unwrap();
+        let a = validar(por_nombre("capturar_con_modo").unwrap(), &args(r#"{"modo":"Scroll"}"#)).unwrap();
         assert_eq!(a.pedido, json!({"pixpin":1,"accion":"capturar","modo":"scroll"}));
         let a = validar(por_nombre("grabar_pantalla").unwrap(), &Map::new()).unwrap();
         assert_eq!(a.pedido, json!({"pixpin":1,"accion":"capturar","modo":"gif"}));
@@ -1144,10 +1214,17 @@ mod pruebas {
         assert_eq!(a.pedido, json!({"pixpin":1,"accion":"leer_en_voz","parar":true}));
         let a = validar(por_nombre("apuntar_en_timeline").unwrap(), &args(r#"{"texto":"Llego el camion"}"#)).unwrap();
         assert_eq!(a.pedido, json!({"pixpin":1,"accion":"timeline","texto":"Llego el camion"}));
-        let a = validar(por_nombre("abrir_fichero").unwrap(), &args(r#"{"ruta":"C:\\t.pdf","pagina":12,"buscar":"cunetas"}"#)).unwrap();
+        let a = validar(por_nombre("ir_a_pagina").unwrap(), &args(r#"{"ruta":"C:\\t.pdf","pagina":12,"buscar":"cunetas"}"#)).unwrap();
         assert_eq!(a.pedido["que"], json!({"tipo":"fichero","ruta":"C:\\t.pdf","pagina":12,"buscar":"cunetas"}));
-        assert_eq!(rellenar(a.fila().hecho, &a.valores()), "Abriendo C:\\t.pdf en la página 12 buscando «cunetas».");
-        let a = validar(por_nombre("abrir_chat").unwrap(), &args(r#"{"chat":"Obra"}"#)).unwrap();
+        assert_eq!(rellenar(a.fila().hecho, &a.valores()), "Llevando C:\\t.pdf a la página 12 a «cunetas».");
+        // Las de antes, para el modelo local, siguen igual que en main.
+        assert!(herramienta(por_nombre("abrir_fichero").unwrap()).parametros["properties"].get("pagina").is_none());
+        assert_eq!(validar(por_nombre("capturar_pantalla").unwrap(), &Map::new()).unwrap().pedido["modo"], "zona");
+        for n in SOLO_NUBE {
+            assert!(por_nombre(n).is_some(), "{n}");
+        }
+        assert!(!es_solo_nube("abrir_ventana"));
+        let a = validar(por_nombre("ir_al_chat").unwrap(), &args(r#"{"chat":"Obra"}"#)).unwrap();
         assert_eq!(a.por_resolver["chat"], "Obra");
         let a = validar(por_nombre("resumen_de_actividad").unwrap(), &Map::new()).unwrap();
         assert_eq!(a.pedido["periodo"], "hoy");
@@ -1157,7 +1234,7 @@ mod pruebas {
         }
         assert!(!es_en_el_chat("abrir_fichero"));
         // Negativos: un modo o una operacion que no existen, un timeline vacio.
-        assert!(validar(por_nombre("capturar_pantalla").unwrap(), &args(r#"{"modo":"pantalla entera"}"#)).is_err());
+        assert!(validar(por_nombre("capturar_con_modo").unwrap(), &args(r#"{"modo":"pantalla entera"}"#)).is_err());
         assert!(validar(por_nombre("manejar_pines").unwrap(), &args(r#"{"operacion":"cerrar"}"#)).is_err());
         assert!(validar(por_nombre("manejar_pines").unwrap(), &Map::new()).is_err());
         assert!(validar(por_nombre("apuntar_en_timeline").unwrap(), &args(r#"{"texto":"  "}"#)).is_err());

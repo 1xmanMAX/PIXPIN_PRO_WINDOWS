@@ -1589,6 +1589,11 @@ fn correr(fuente: &Fuente) -> Vec<(&'static str, Nota)> {
             },
             Fuente::Motor(m) => m.as_ref(),
         };
+        // Las herramientas de la app del 15-oct son solo para la nube: el
+        // banco del local sigue como estaba («la IA local, no la toques»).
+        if caso.nombre.starts_with("app15-") && !motor.catalogo_completo() {
+            continue;
+        }
         let imagen = caso.imagen.map(|f| f());
         let (mut historial, mut herramientas) = banco_ia::preparar(caso.pedido, imagen.clone());
         // Como en la app (`asistente::turno`): la nube recibe el catalogo entero.

@@ -165,7 +165,7 @@ pub mod respuesta {
 /// accion desconocida sin esperar al bucle. La aplicacion tiene una prueba
 /// que comprueba que entiende todas (`pedidos.rs`): si una se anade aqui y
 /// no alli, falla.
-pub const ACCIONES: [&str; 33] = [
+pub const ACCIONES: [&str; 34] = [
     "abrir",
     "chat",
     "nota_nueva",
@@ -202,7 +202,10 @@ pub const ACCIONES: [&str; 33] = [
     // 15-oct: el asistente maneja los pines, el timeline y la voz.
     "pines",
     "timeline",
+    // 15-oct: la extension del navegador (`apps/pixpin-puente`): leer en voz
+    // alta un texto suelto y pasar el texto de una imagen al portapapeles.
     "leer_en_voz",
+    "ocr",
 ];
 
 /// Mira un pedido por encima: lo justo para contestar en el acto.

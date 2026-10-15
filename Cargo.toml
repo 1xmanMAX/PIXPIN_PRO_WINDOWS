@@ -117,3 +117,11 @@ opt-level = 3
 # crate sigue igual de depurable.
 [profile.dev.package.pixpin-proyecto]
 opt-level = 1
+# El puente del navegador (apps/pixpin-puente) tiene que contestar en menos
+# de 50 ms y lo mide su prueba: sin optimizar, decodificar el base64 y el JSON
+# de una captura de pagina de un mega tarda mas de 100 ms y la medida no
+# diria nada del ejecutable de verdad.
+[profile.dev.package.pixpin-puente]
+opt-level = 3
+[profile.dev.package.serde_json]
+opt-level = 3

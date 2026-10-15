@@ -244,7 +244,13 @@ impl Turno {
                     pixpin_ia::edicion::anadir_resumen(&mut historial, &r);
                 }
                 let buscar = |c: &str| contexto::buscar(&memoria.fuentes, c, 3);
-                let todas = pixpin_ia::herramientas::catalogo();
+                // Lo que la vuelta de planear puede anadir: al local, sin las de
+                // solo la nube (`acciones::SOLO_NUBE`, «la IA local, no la toques»).
+                let nube = motor.catalogo_completo();
+                let todas: Vec<_> = pixpin_ia::herramientas::catalogo()
+                    .into_iter()
+                    .filter(|h| nube || !pixpin_ia::acciones::es_solo_nube(&h.nombre))
+                    .collect();
                 let opciones = Opciones {
                     planificar: memoria.planificar,
                     pensar: memoria.pensar,
