@@ -845,9 +845,30 @@ public protocol EditorLienzoProtocol: AnyObject, Sendable {
     func caja()  -> CajaLienzo?
     
     /**
+     * **Donde esta el cursor del texto** que se escribe, en el mundo (una
+     * raya vertical del alto del renglon). Para colocar la ventanita del
+     * metodo de entrada (`firstRect(forCharacterRange:)`). `None` si no se
+     * escribe.
+     */
+    func cajaDelCursor()  -> CajaLienzo?
+    
+    /**
+     * **Calibra**: la raya de `largo_px` (lo que dio
+     * [`PeticionLienzo::Calibrar`]) mide `valor` `unidad` de verdad. Desde
+     * ahora todas las cotas del lienzo hablan en esa unidad. Un paso de
+     * deshacer; `false` si la medida no puede ser cierta (no toca nada).
+     */
+    func calibrar(largoPx: Float, valor: Float, unidad: String)  -> Bool
+    
+    /**
      * Sube con cada cambio del DOCUMENTO (para guardar solo, con calma).
      */
     func cambios()  -> UInt64
+    
+    /**
+     * Cuantos elementos hay elegidos (para la barra y las pruebas).
+     */
+    func cuantosElegidos()  -> UInt64
     
     /**
      * Cuantos elementos visibles tiene.
@@ -860,6 +881,13 @@ public protocol EditorLienzoProtocol: AnyObject, Sendable {
     func deshacer()  -> Bool
     
     /**
+     * **Aplica lo dictado a la cota `id`**: el largo en la unidad de la
+     * escala (o en pixeles sin ella) y el angulo como en un plano (0 a la
+     * derecha, 90 hacia arriba). Un paso de deshacer; `false` si no cambio.
+     */
+    func dictarCota(id: UInt64, largo: Float, grados: Float)  -> Bool
+    
+    /**
      * Si se esta escribiendo un texto: entonces las teclas son del texto
      * (Swift se las manda con [`EditorLienzo::teclear`] y
      * [`EditorLienzo::tecla`]) y no atajos.
@@ -867,10 +895,28 @@ public protocol EditorLienzoProtocol: AnyObject, Sendable {
     func escribiendo()  -> Bool
     
     /**
+     * **Cuanto esperar al gesto de pararse** en el trazo de ahora: el medio
+     * segundo largo del lapiz o el segundo del grafito. `None` si no se
+     * esta trazando a mano (entonces no hay forma rapida). Swift lo pide al
+     * pulsar y programa una sola espera, que reprograma cuando el cursor
+     * se aleja mas que [`forma_rapida_temblor_px`] y cancela al soltar.
+     */
+    func esperaFormaMs()  -> UInt64?
+    
+    /**
+     * **El gesto de pararse**: el trazo a mano quieto con el boton pulsado
+     * se convierte en compas, rectangulo, linea o elipse
+     * (`Gesto::convertir_en_forma`), y lo que se arrastre despues la
+     * ajusta. Lo llama Swift cuando vence su espera. `true` si convirtio.
+     */
+    func formaRapida()  -> Bool
+    
+    /**
      * **Guarda** el `.excalidraw` como Windows y Android (ver la doc del
-     * modulo). Devuelve si escribio algo: sin cambios, o a mitad de un
-     * gesto, no escribe. Bloqueante: Swift lo llama fuera del hilo
-     * principal.
+     * modulo): las imagenes pegadas que se usan, a `imagenes/` con su
+     * entrada en `files`; lo nacido y borrado, con su lapida. Devuelve si
+     * escribio algo: sin cambios, o a mitad de un gesto, no escribe.
+     * Bloqueante: Swift lo llama fuera del hilo principal.
      */
     func guardar() throws  -> Bool
     
@@ -878,7 +924,10 @@ public protocol EditorLienzoProtocol: AnyObject, Sendable {
      * **Cambia de herramienta**: `seleccion` (o `mano`), `lapiz` (o
      * `tinta`), `grafito`, `resaltador`, `rectangulo`, `rombo`, `elipse`,
      * `flecha`, `flecha_codos`, `flecha_libre`, `linea`, `texto`,
-     * `borrador` (o `goma`). Cierra el texto que se estuviera escribiendo.
+     * `borrador` (o `goma`), `lazo`; las de medir `cota`, `escalar` (o
+     * `calibrar`) y `escala_grafica`; y las cuatro de construir `relleno`
+     * (o `bote`), `recortar`, `extender` y `punto`. Cierra el texto que se
+     * estuviera escribiendo.
      */
     func herramienta(nombre: String) throws 
     
@@ -961,10 +1010,46 @@ public protocol EditorLienzoProtocol: AnyObject, Sendable {
     func terminarTexto()  -> Bool
     
     /**
+     * **Lo que hay que preguntar tras soltar**, una vez: el cajetin de
+     * calibrar (`escalar`) o el de la cota recien trazada (`cota`). `None`
+     * si nada. Swift lo mira tras cada soltar con esas herramientas.
+     */
+    func tomarPeticion()  -> PeticionLienzo?
+    
+    /**
+     * Las unidades que se ofrecen al calibrar, de mas a menos uso.
+     */
+    func unidadesDeMedida()  -> [String]
+    
+    /**
      * **Sube con todo lo que cambia lo que se ve** (dibujo, lo elegido, el
      * cursor del texto). Swift repinta solo si cambio. Atomico: no espera.
      */
     func version()  -> UInt64
+    
+    /**
+     * **Un mando de la barra**: queda como el estilo de lo proximo y, si
+     * hay algo elegido que lo admite, se le aplica en un paso de deshacer.
+     * Devuelve si cambio el dibujo (entonces hay que guardar).
+     */
+    func cambiarEstilo(cambio: CambioDeEstilo)  -> Bool
+    
+    /**
+     * **El estilo que ensena la barra**: el de lo elegido (el primero que
+     * siga vivo) o el «actual» con el que nace lo proximo.
+     */
+    func estilo()  -> EstiloLienzo
+    
+    /**
+     * **Pega una imagen** (⌘V o soltarla): `png` son los bytes de un PNG
+     * (Swift lo codifica con ImageIO, con el lado mayor como mucho
+     * [`LADO_MAXIMO`]); entra centrada en `(centro_x, centro_y)` del mundo
+     * y reducida si no cabe en el 80 % de lo visible (`ancho_vista` x
+     * `alto_vista`, en unidades del mundo). Nace en un paso de deshacer,
+     * queda elegida y se pasa a la mano para moverla. Devuelve su
+     * `id_objeto` y el fichero de donde pintarla hasta que se guarde.
+     */
+    func pegarImagen(png: Data, centroX: Float, centroY: Float, anchoVista: Float, altoVista: Float) throws  -> ImagenDelLienzo
     
 }
 /**
@@ -1063,12 +1148,57 @@ open func caja() -> CajaLienzo?  {
 }
     
     /**
+     * **Donde esta el cursor del texto** que se escribe, en el mundo (una
+     * raya vertical del alto del renglon). Para colocar la ventanita del
+     * metodo de entrada (`firstRect(forCharacterRange:)`). `None` si no se
+     * escribe.
+     */
+open func cajaDelCursor() -> CajaLienzo?  {
+    return try!  FfiConverterOptionTypeCajaLienzo.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_editorlienzo_caja_del_cursor(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * **Calibra**: la raya de `largo_px` (lo que dio
+     * [`PeticionLienzo::Calibrar`]) mide `valor` `unidad` de verdad. Desde
+     * ahora todas las cotas del lienzo hablan en esa unidad. Un paso de
+     * deshacer; `false` si la medida no puede ser cierta (no toca nada).
+     */
+open func calibrar(largoPx: Float, valor: Float, unidad: String) -> Bool  {
+    return try!  FfiConverterBool.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_editorlienzo_calibrar(
+            self.uniffiCloneHandle(),
+        FfiConverterFloat.lower(largoPx),
+        FfiConverterFloat.lower(valor),
+        FfiConverterString.lower(unidad),uniffiCallStatus
+    )
+})
+}
+    
+    /**
      * Sube con cada cambio del DOCUMENTO (para guardar solo, con calma).
      */
 open func cambios() -> UInt64  {
     return try!  FfiConverterUInt64.lift(try! rustCall() {
         uniffiCallStatus in
     uniffi_pixpin_nucleo_fn_method_editorlienzo_cambios(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Cuantos elementos hay elegidos (para la barra y las pruebas).
+     */
+open func cuantosElegidos() -> UInt64  {
+    return try!  FfiConverterUInt64.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_editorlienzo_cuantos_elegidos(
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
@@ -1099,6 +1229,23 @@ open func deshacer() -> Bool  {
 }
     
     /**
+     * **Aplica lo dictado a la cota `id`**: el largo en la unidad de la
+     * escala (o en pixeles sin ella) y el angulo como en un plano (0 a la
+     * derecha, 90 hacia arriba). Un paso de deshacer; `false` si no cambio.
+     */
+open func dictarCota(id: UInt64, largo: Float, grados: Float) -> Bool  {
+    return try!  FfiConverterBool.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_editorlienzo_dictar_cota(
+            self.uniffiCloneHandle(),
+        FfiConverterUInt64.lower(id),
+        FfiConverterFloat.lower(largo),
+        FfiConverterFloat.lower(grados),uniffiCallStatus
+    )
+})
+}
+    
+    /**
      * Si se esta escribiendo un texto: entonces las teclas son del texto
      * (Swift se las manda con [`EditorLienzo::teclear`] y
      * [`EditorLienzo::tecla`]) y no atajos.
@@ -1113,10 +1260,42 @@ open func escribiendo() -> Bool  {
 }
     
     /**
+     * **Cuanto esperar al gesto de pararse** en el trazo de ahora: el medio
+     * segundo largo del lapiz o el segundo del grafito. `None` si no se
+     * esta trazando a mano (entonces no hay forma rapida). Swift lo pide al
+     * pulsar y programa una sola espera, que reprograma cuando el cursor
+     * se aleja mas que [`forma_rapida_temblor_px`] y cancela al soltar.
+     */
+open func esperaFormaMs() -> UInt64?  {
+    return try!  FfiConverterOptionUInt64.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_editorlienzo_espera_forma_ms(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * **El gesto de pararse**: el trazo a mano quieto con el boton pulsado
+     * se convierte en compas, rectangulo, linea o elipse
+     * (`Gesto::convertir_en_forma`), y lo que se arrastre despues la
+     * ajusta. Lo llama Swift cuando vence su espera. `true` si convirtio.
+     */
+open func formaRapida() -> Bool  {
+    return try!  FfiConverterBool.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_editorlienzo_forma_rapida(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
      * **Guarda** el `.excalidraw` como Windows y Android (ver la doc del
-     * modulo). Devuelve si escribio algo: sin cambios, o a mitad de un
-     * gesto, no escribe. Bloqueante: Swift lo llama fuera del hilo
-     * principal.
+     * modulo): las imagenes pegadas que se usan, a `imagenes/` con su
+     * entrada en `files`; lo nacido y borrado, con su lapida. Devuelve si
+     * escribio algo: sin cambios, o a mitad de un gesto, no escribe.
+     * Bloqueante: Swift lo llama fuera del hilo principal.
      */
 open func guardar()throws  -> Bool  {
     return try  FfiConverterBool.lift(try rustCallWithError(FfiConverterTypeErrorNucleo_lift) {
@@ -1131,7 +1310,10 @@ open func guardar()throws  -> Bool  {
      * **Cambia de herramienta**: `seleccion` (o `mano`), `lapiz` (o
      * `tinta`), `grafito`, `resaltador`, `rectangulo`, `rombo`, `elipse`,
      * `flecha`, `flecha_codos`, `flecha_libre`, `linea`, `texto`,
-     * `borrador` (o `goma`). Cierra el texto que se estuviera escribiendo.
+     * `borrador` (o `goma`), `lazo`; las de medir `cota`, `escalar` (o
+     * `calibrar`) y `escala_grafica`; y las cuatro de construir `relleno`
+     * (o `bote`), `recortar`, `extender` y `punto`. Cierra el texto que se
+     * estuviera escribiendo.
      */
 open func herramienta(nombre: String)throws   {try rustCallWithError(FfiConverterTypeErrorNucleo_lift) {
         uniffiCallStatus in
@@ -1324,6 +1506,32 @@ open func terminarTexto() -> Bool  {
 }
     
     /**
+     * **Lo que hay que preguntar tras soltar**, una vez: el cajetin de
+     * calibrar (`escalar`) o el de la cota recien trazada (`cota`). `None`
+     * si nada. Swift lo mira tras cada soltar con esas herramientas.
+     */
+open func tomarPeticion() -> PeticionLienzo?  {
+    return try!  FfiConverterOptionTypePeticionLienzo.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_editorlienzo_tomar_peticion(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Las unidades que se ofrecen al calibrar, de mas a menos uso.
+     */
+open func unidadesDeMedida() -> [String]  {
+    return try!  FfiConverterSequenceString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_editorlienzo_unidades_de_medida(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
      * **Sube con todo lo que cambia lo que se ve** (dibujo, lo elegido, el
      * cursor del texto). Swift repinta solo si cambio. Atomico: no espera.
      */
@@ -1332,6 +1540,57 @@ open func version() -> UInt64  {
         uniffiCallStatus in
     uniffi_pixpin_nucleo_fn_method_editorlienzo_version(
             self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * **Un mando de la barra**: queda como el estilo de lo proximo y, si
+     * hay algo elegido que lo admite, se le aplica en un paso de deshacer.
+     * Devuelve si cambio el dibujo (entonces hay que guardar).
+     */
+open func cambiarEstilo(cambio: CambioDeEstilo) -> Bool  {
+    return try!  FfiConverterBool.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_editorlienzo_cambiar_estilo(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeCambioDeEstilo_lower(cambio),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * **El estilo que ensena la barra**: el de lo elegido (el primero que
+     * siga vivo) o el «actual» con el que nace lo proximo.
+     */
+open func estilo() -> EstiloLienzo  {
+    return try!  FfiConverterTypeEstiloLienzo_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_editorlienzo_estilo(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * **Pega una imagen** (⌘V o soltarla): `png` son los bytes de un PNG
+     * (Swift lo codifica con ImageIO, con el lado mayor como mucho
+     * [`LADO_MAXIMO`]); entra centrada en `(centro_x, centro_y)` del mundo
+     * y reducida si no cabe en el 80 % de lo visible (`ancho_vista` x
+     * `alto_vista`, en unidades del mundo). Nace en un paso de deshacer,
+     * queda elegida y se pasa a la mano para moverla. Devuelve su
+     * `id_objeto` y el fichero de donde pintarla hasta que se guarde.
+     */
+open func pegarImagen(png: Data, centroX: Float, centroY: Float, anchoVista: Float, altoVista: Float)throws  -> ImagenDelLienzo  {
+    return try  FfiConverterTypeImagenDelLienzo_lift(try rustCallWithError(FfiConverterTypeErrorNucleo_lift) {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_editorlienzo_pegar_imagen(
+            self.uniffiCloneHandle(),
+        FfiConverterData.lower(png),
+        FfiConverterFloat.lower(centroX),
+        FfiConverterFloat.lower(centroY),
+        FfiConverterFloat.lower(anchoVista),
+        FfiConverterFloat.lower(altoVista),uniffiCallStatus
     )
 })
 }
@@ -3475,6 +3734,71 @@ public func FfiConverterTypeCapturaGaleria_lower(_ value: CapturaGaleria) -> Rus
 
 
 /**
+ * Un color con sus cuatro canales en `0..1`.
+ */
+public struct ColorEstilo: Equatable, Hashable {
+    public var r: Float
+    public var g: Float
+    public var b: Float
+    public var a: Float
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(r: Float, g: Float, b: Float, a: Float) {
+        self.r = r
+        self.g = g
+        self.b = b
+        self.a = a
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension ColorEstilo: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeColorEstilo: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ColorEstilo {
+        return
+            try ColorEstilo(
+                r: FfiConverterFloat.read(from: &buf), 
+                g: FfiConverterFloat.read(from: &buf), 
+                b: FfiConverterFloat.read(from: &buf), 
+                a: FfiConverterFloat.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: ColorEstilo, into buf: inout [UInt8]) {
+        FfiConverterFloat.write(value.r, into: &buf)
+        FfiConverterFloat.write(value.g, into: &buf)
+        FfiConverterFloat.write(value.b, into: &buf)
+        FfiConverterFloat.write(value.a, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeColorEstilo_lift(_ buf: RustBuffer) throws -> ColorEstilo {
+    return try FfiConverterTypeColorEstilo.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeColorEstilo_lower(_ value: ColorEstilo) -> RustBuffer {
+    return FfiConverterTypeColorEstilo.lower(value)
+}
+
+
+/**
  * Un dia con momentos.
  */
 public struct DiaTimeline: Equatable, Hashable {
@@ -3552,6 +3876,102 @@ public func FfiConverterTypeDiaTimeline_lift(_ buf: RustBuffer) throws -> DiaTim
 #endif
 public func FfiConverterTypeDiaTimeline_lower(_ value: DiaTimeline) -> RustBuffer {
     return FfiConverterTypeDiaTimeline.lower(value)
+}
+
+
+/**
+ * Lo que ensena la barra: el estilo de lo elegido (el primero) o, sin
+ * nada elegido, el «actual» con el que nace lo proximo.
+ */
+public struct EstiloLienzo: Equatable, Hashable {
+    public var trazo: ColorEstilo
+    /**
+     * `None`: transparente.
+     */
+    public var fondo: ColorEstilo?
+    public var relleno: RellenoEstilo
+    public var grosor: GrosorEstilo
+    public var linea: LineaEstilo
+    /**
+     * 0 arquitecto, 1 artista, 2 caricaturista.
+     */
+    public var rugosidad: Float
+    /**
+     * 0..1.
+     */
+    public var opacidad: Float
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(trazo: ColorEstilo, 
+        /**
+         * `None`: transparente.
+         */fondo: ColorEstilo?, relleno: RellenoEstilo, grosor: GrosorEstilo, linea: LineaEstilo, 
+        /**
+         * 0 arquitecto, 1 artista, 2 caricaturista.
+         */rugosidad: Float, 
+        /**
+         * 0..1.
+         */opacidad: Float) {
+        self.trazo = trazo
+        self.fondo = fondo
+        self.relleno = relleno
+        self.grosor = grosor
+        self.linea = linea
+        self.rugosidad = rugosidad
+        self.opacidad = opacidad
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension EstiloLienzo: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeEstiloLienzo: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> EstiloLienzo {
+        return
+            try EstiloLienzo(
+                trazo: FfiConverterTypeColorEstilo.read(from: &buf), 
+                fondo: FfiConverterOptionTypeColorEstilo.read(from: &buf), 
+                relleno: FfiConverterTypeRellenoEstilo.read(from: &buf), 
+                grosor: FfiConverterTypeGrosorEstilo.read(from: &buf), 
+                linea: FfiConverterTypeLineaEstilo.read(from: &buf), 
+                rugosidad: FfiConverterFloat.read(from: &buf), 
+                opacidad: FfiConverterFloat.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: EstiloLienzo, into buf: inout [UInt8]) {
+        FfiConverterTypeColorEstilo.write(value.trazo, into: &buf)
+        FfiConverterOptionTypeColorEstilo.write(value.fondo, into: &buf)
+        FfiConverterTypeRellenoEstilo.write(value.relleno, into: &buf)
+        FfiConverterTypeGrosorEstilo.write(value.grosor, into: &buf)
+        FfiConverterTypeLineaEstilo.write(value.linea, into: &buf)
+        FfiConverterFloat.write(value.rugosidad, into: &buf)
+        FfiConverterFloat.write(value.opacidad, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeEstiloLienzo_lift(_ buf: RustBuffer) throws -> EstiloLienzo {
+    return try FfiConverterTypeEstiloLienzo.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeEstiloLienzo_lower(_ value: EstiloLienzo) -> RustBuffer {
+    return FfiConverterTypeEstiloLienzo.lower(value)
 }
 
 
@@ -6096,6 +6516,131 @@ public func FfiConverterTypeAtendido_lower(_ value: Atendido) -> RustBuffer {
 
 
 /**
+ * Un mando de la barra pulsado.
+ */
+
+public enum CambioDeEstilo: Equatable, Hashable {
+    
+    case trazo(color: ColorEstilo
+    )
+    case fondo(color: ColorEstilo?
+    )
+    case relleno(relleno: RellenoEstilo
+    )
+    case grosor(grosor: GrosorEstilo
+    )
+    case linea(linea: LineaEstilo
+    )
+    case rugosidad(valor: Float
+    )
+    case opacidad(valor: Float
+    )
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension CambioDeEstilo: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeCambioDeEstilo: FfiConverterRustBuffer {
+    typealias SwiftType = CambioDeEstilo
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> CambioDeEstilo {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .trazo(color: try FfiConverterTypeColorEstilo.read(from: &buf)
+        )
+        
+        case 2: return .fondo(color: try FfiConverterOptionTypeColorEstilo.read(from: &buf)
+        )
+        
+        case 3: return .relleno(relleno: try FfiConverterTypeRellenoEstilo.read(from: &buf)
+        )
+        
+        case 4: return .grosor(grosor: try FfiConverterTypeGrosorEstilo.read(from: &buf)
+        )
+        
+        case 5: return .linea(linea: try FfiConverterTypeLineaEstilo.read(from: &buf)
+        )
+        
+        case 6: return .rugosidad(valor: try FfiConverterFloat.read(from: &buf)
+        )
+        
+        case 7: return .opacidad(valor: try FfiConverterFloat.read(from: &buf)
+        )
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: CambioDeEstilo, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case let .trazo(color):
+            writeInt(&buf, Int32(1))
+            FfiConverterTypeColorEstilo.write(color, into: &buf)
+            
+        
+        case let .fondo(color):
+            writeInt(&buf, Int32(2))
+            FfiConverterOptionTypeColorEstilo.write(color, into: &buf)
+            
+        
+        case let .relleno(relleno):
+            writeInt(&buf, Int32(3))
+            FfiConverterTypeRellenoEstilo.write(relleno, into: &buf)
+            
+        
+        case let .grosor(grosor):
+            writeInt(&buf, Int32(4))
+            FfiConverterTypeGrosorEstilo.write(grosor, into: &buf)
+            
+        
+        case let .linea(linea):
+            writeInt(&buf, Int32(5))
+            FfiConverterTypeLineaEstilo.write(linea, into: &buf)
+            
+        
+        case let .rugosidad(valor):
+            writeInt(&buf, Int32(6))
+            FfiConverterFloat.write(valor, into: &buf)
+            
+        
+        case let .opacidad(valor):
+            writeInt(&buf, Int32(7))
+            FfiConverterFloat.write(valor, into: &buf)
+            
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCambioDeEstilo_lift(_ buf: RustBuffer) throws -> CambioDeEstilo {
+    return try FfiConverterTypeCambioDeEstilo.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCambioDeEstilo_lower(_ value: CambioDeEstilo) -> RustBuffer {
+    return FfiConverterTypeCambioDeEstilo.lower(value)
+}
+
+
+
+/**
  * Que se encontro.
  */
 
@@ -6450,6 +6995,158 @@ public func FfiConverterTypeFasePuntero_lower(_ value: FasePuntero) -> RustBuffe
 
 
 /**
+ * Los tres grosores de Excalidraw (`strokeWidth` 1, 2 y 4).
+ */
+
+public enum GrosorEstilo: Equatable, Hashable {
+    
+    case fino
+    case medio
+    case grueso
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension GrosorEstilo: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeGrosorEstilo: FfiConverterRustBuffer {
+    typealias SwiftType = GrosorEstilo
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> GrosorEstilo {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .fino
+        
+        case 2: return .medio
+        
+        case 3: return .grueso
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: GrosorEstilo, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .fino:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .medio:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .grueso:
+            writeInt(&buf, Int32(3))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeGrosorEstilo_lift(_ buf: RustBuffer) throws -> GrosorEstilo {
+    return try FfiConverterTypeGrosorEstilo.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeGrosorEstilo_lower(_ value: GrosorEstilo) -> RustBuffer {
+    return FfiConverterTypeGrosorEstilo.lower(value)
+}
+
+
+
+/**
+ * Continua, a trazos o de puntos (`strokeStyle`).
+ */
+
+public enum LineaEstilo: Equatable, Hashable {
+    
+    case continua
+    case discontinua
+    case punteada
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension LineaEstilo: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeLineaEstilo: FfiConverterRustBuffer {
+    typealias SwiftType = LineaEstilo
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> LineaEstilo {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .continua
+        
+        case 2: return .discontinua
+        
+        case 3: return .punteada
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: LineaEstilo, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .continua:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .discontinua:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .punteada:
+            writeInt(&buf, Int32(3))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLineaEstilo_lift(_ buf: RustBuffer) throws -> LineaEstilo {
+    return try FfiConverterTypeLineaEstilo.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLineaEstilo_lower(_ value: LineaEstilo) -> RustBuffer {
+    return FfiConverterTypeLineaEstilo.lower(value)
+}
+
+
+
+/**
  * Como fue el repaso.
  */
 
@@ -6531,6 +7228,193 @@ public func FfiConverterTypeNotaRepaso_lift(_ buf: RustBuffer) throws -> NotaRep
 #endif
 public func FfiConverterTypeNotaRepaso_lower(_ value: NotaRepaso) -> RustBuffer {
     return FfiConverterTypeNotaRepaso.lower(value)
+}
+
+
+
+/**
+ * Lo que el lienzo necesita preguntar al usuario tras soltar (el cajetin
+ * de calibrar y el de la cota de Windows y el movil). Swift lo recoge con
+ * [`EditorLienzo::tomar_peticion`] y contesta con
+ * [`EditorLienzo::calibrar`] o [`EditorLienzo::dictar_cota`]; si se
+ * cancela, no se llama a nada y el lienzo queda como estaba.
+ */
+
+public enum PeticionLienzo: Equatable, Hashable {
+    
+    /**
+     * Cuanto mide de verdad la raya que se acaba de arrastrar con
+     * `escalar` (`largo_px`, en unidades del mundo).
+     */
+    case calibrar(largoPx: Float
+    )
+    /**
+     * El largo y el angulo de la cota `id` recien trazada: lo que mide ya
+     * (en la unidad de la escala, o en pixeles sin ella) para rellenar el
+     * cajetin.
+     */
+    case dictarCota(id: UInt64, largo: Float, grados: Float, 
+        /**
+         * La unidad de la escala del lienzo; vacia si no se ha calibrado.
+         */unidad: String
+    )
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension PeticionLienzo: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypePeticionLienzo: FfiConverterRustBuffer {
+    typealias SwiftType = PeticionLienzo
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> PeticionLienzo {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .calibrar(largoPx: try FfiConverterFloat.read(from: &buf)
+        )
+        
+        case 2: return .dictarCota(id: try FfiConverterUInt64.read(from: &buf), largo: try FfiConverterFloat.read(from: &buf), grados: try FfiConverterFloat.read(from: &buf), unidad: try FfiConverterString.read(from: &buf)
+        )
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: PeticionLienzo, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case let .calibrar(largoPx):
+            writeInt(&buf, Int32(1))
+            FfiConverterFloat.write(largoPx, into: &buf)
+            
+        
+        case let .dictarCota(id,largo,grados,unidad):
+            writeInt(&buf, Int32(2))
+            FfiConverterUInt64.write(id, into: &buf)
+            FfiConverterFloat.write(largo, into: &buf)
+            FfiConverterFloat.write(grados, into: &buf)
+            FfiConverterString.write(unidad, into: &buf)
+            
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePeticionLienzo_lift(_ buf: RustBuffer) throws -> PeticionLienzo {
+    return try FfiConverterTypePeticionLienzo.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePeticionLienzo_lower(_ value: PeticionLienzo) -> RustBuffer {
+    return FfiConverterTypePeticionLienzo.lower(value)
+}
+
+
+
+/**
+ * Como se pinta el fondo (`fillStyle`).
+ */
+
+public enum RellenoEstilo: Equatable, Hashable {
+    
+    case solido
+    case rayado
+    case cruzado
+    case zigzag
+    /**
+     * El rayado limpio propio de PixPin (`lineaspixpin`).
+     */
+    case lineas
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension RellenoEstilo: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeRellenoEstilo: FfiConverterRustBuffer {
+    typealias SwiftType = RellenoEstilo
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> RellenoEstilo {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .solido
+        
+        case 2: return .rayado
+        
+        case 3: return .cruzado
+        
+        case 4: return .zigzag
+        
+        case 5: return .lineas
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: RellenoEstilo, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .solido:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .rayado:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .cruzado:
+            writeInt(&buf, Int32(3))
+        
+        
+        case .zigzag:
+            writeInt(&buf, Int32(4))
+        
+        
+        case .lineas:
+            writeInt(&buf, Int32(5))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeRellenoEstilo_lift(_ buf: RustBuffer) throws -> RellenoEstilo {
+    return try FfiConverterTypeRellenoEstilo.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeRellenoEstilo_lower(_ value: RellenoEstilo) -> RustBuffer {
+    return FfiConverterTypeRellenoEstilo.lower(value)
 }
 
 
@@ -6721,6 +7605,54 @@ fileprivate struct FfiConverterOptionTypeCajaLienzo: FfiConverterRustBuffer {
         switch try readInt(&buf) as Int8 {
         case 0: return nil
         case 1: return try FfiConverterTypeCajaLienzo.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeColorEstilo: FfiConverterRustBuffer {
+    typealias SwiftType = ColorEstilo?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeColorEstilo.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeColorEstilo.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypePeticionLienzo: FfiConverterRustBuffer {
+    typealias SwiftType = PeticionLienzo?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypePeticionLienzo.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypePeticionLienzo.read(from: &buf)
         default: throw UniffiInternalError.unexpectedOptionalTag
         }
     }
@@ -7293,6 +8225,19 @@ public func llamaLocalPreguntar(puerto: UInt16, historial: [MensajeIa], pedido: 
 })
 }
 /**
+ * Lo que se mueve el cursor sin dejar de estar «quieto» para el gesto de
+ * pararse (forma rapida), en pixeles de pantalla: el temblor de la mano
+ * del movil (`forma_rapida::TEMBLOR_PX`). Swift reprograma su espera solo
+ * cuando el cursor se aleja mas que esto.
+ */
+public func formaRapidaTemblorPx() -> Float  {
+    return try!  FfiConverterFloat.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_func_forma_rapida_temblor_px(uniffiCallStatus
+    )
+})
+}
+/**
  * `K7Q2M-9XMPA`: el codigo como se lee y se dicta.
  */
 public func codigoLegible(codigo: String) -> String  {
@@ -7386,6 +8331,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_pixpin_nucleo_checksum_func_llama_local_preguntar() != 60202) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_func_forma_rapida_temblor_px() != 43899) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_pixpin_nucleo_checksum_func_codigo_legible() != 26743) {
@@ -7553,7 +8501,16 @@ private let initializationResult: InitializationResult = {
     if (uniffi_pixpin_nucleo_checksum_method_editorlienzo_caja() != 33292) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_pixpin_nucleo_checksum_method_editorlienzo_caja_del_cursor() != 41848) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_editorlienzo_calibrar() != 24290) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_pixpin_nucleo_checksum_method_editorlienzo_cambios() != 48507) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_editorlienzo_cuantos_elegidos() != 33730) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_pixpin_nucleo_checksum_method_editorlienzo_cuantos_elementos() != 20681) {
@@ -7562,13 +8519,22 @@ private let initializationResult: InitializationResult = {
     if (uniffi_pixpin_nucleo_checksum_method_editorlienzo_deshacer() != 4266) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_pixpin_nucleo_checksum_method_editorlienzo_dictar_cota() != 12534) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_pixpin_nucleo_checksum_method_editorlienzo_escribiendo() != 58833) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_pixpin_nucleo_checksum_method_editorlienzo_guardar() != 58318) {
+    if (uniffi_pixpin_nucleo_checksum_method_editorlienzo_espera_forma_ms() != 54771) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_pixpin_nucleo_checksum_method_editorlienzo_herramienta() != 34360) {
+    if (uniffi_pixpin_nucleo_checksum_method_editorlienzo_forma_rapida() != 32397) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_editorlienzo_guardar() != 35082) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_editorlienzo_herramienta() != 33641) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_pixpin_nucleo_checksum_method_editorlienzo_herramienta_actual() != 7487) {
@@ -7610,7 +8576,22 @@ private let initializationResult: InitializationResult = {
     if (uniffi_pixpin_nucleo_checksum_method_editorlienzo_terminar_texto() != 54099) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_pixpin_nucleo_checksum_method_editorlienzo_tomar_peticion() != 8941) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_editorlienzo_unidades_de_medida() != 53202) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_pixpin_nucleo_checksum_method_editorlienzo_version() != 25970) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_editorlienzo_cambiar_estilo() != 2206) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_editorlienzo_estilo() != 48239) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_editorlienzo_pegar_imagen() != 49698) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_pixpin_nucleo_checksum_method_lienzo_caja() != 1730) {
