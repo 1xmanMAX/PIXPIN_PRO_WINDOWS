@@ -53,9 +53,9 @@ comprimir() {
 # antes. `-x` deja los simbolos globales, que la firma y dyld necesitan.
 adelgazar() {
     local bin="$1" antes despues
-    antes=$(stat -f %z "$bin")
+    antes=$(stat -L -f %z "$bin")
     strip -x "$bin"
-    despues=$(stat -f %z "$bin")
+    despues=$(stat -L -f %z "$bin")
     echo "    $(basename "$bin"): $((antes / 1048576)) MB -> $((despues / 1048576)) MB sin simbolos"
 }
 

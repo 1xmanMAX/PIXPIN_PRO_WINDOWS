@@ -132,7 +132,10 @@ pánico de Rust llega a Swift como error en vez de cerrar la app.
   - [x] CI: `.github/workflows/apple.yml` (macOS 15, Xcode 16.4) compila el xcframework, pasa
         `swift test` (190 pruebas, 15-oct) y sube `PixPin.app` universal como artefacto
         «PixPin-mac» (SwiftPM) y, con XcodeGen, «PixPin-mac-extensiones» (App Intents,
-        Compartir y Quick Look, firmadas de dentro afuera). Los binarios van sin simbolos.
+        Compartir y Quick Look, firmadas de dentro afuera). Los binarios van sin simbolos y el
+        núcleo (`PixPinCore`, dinámico) va **una sola vez** en `Contents/Frameworks` para la
+        app y sus extensiones: 102 MB (42 MB en zip) con todo. La CI abre la app y comprueba
+        que sigue viva a los 6 s.
 - [ ] Fase 2: app de Mac en SwiftUI/AppKit (`apple/app/`). Hecho y en verde en la CI:
   - [x] Barra de menús, ventana de Proyectos, chat por páginas, notas, crear proyecto.
   - [x] Lector del búfer del lienzo y pintor con Core Graphics.
