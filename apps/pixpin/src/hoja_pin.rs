@@ -31,6 +31,14 @@
 //!   (`libro-<mensaje>-<hoja>`, como el movil), asi la sincronizacion con
 //!   Android sigue igual. El archivo original NO cambia, y se dice la
 //!   primera vez. Un libro que solo se mira no deja tablas en el chat.
+//! - **Un solo formato** (el usuario, 15-oct-2026: «las hojas editadas
+//!   tienen UN SOLO formato, el del PC, y Android lee el del PC»): el JSON
+//!   de `pixpin_proyecto::tabla::Tabla` (`TablaDeCalculo` en el movil),
+//!   escrito por `Tabla::escribir` en todos los caminos (este editor, el
+//!   clip, el asistente, pegar, importar). Lo viejo se lee y se migra al
+//!   guardar: estilos-palabra (`Tabla::leer`) y las hojas que el movil
+//!   guardaba solo en `tablas/libro-*.json` (`tablas_viejas_del_libro`).
+//!   Guia para Android: `docs/manual-hojas-android.md`.
 //! - Deshacer y rehacer (Ctrl+Z, Ctrl+Y) con una pila de cambios de celda
 //!   (`editor.rs`).
 
@@ -264,12 +272,15 @@ impl Editable {
 
     /// **Lo que se ve en modo ver.** Un `.xlsx` que nadie edito, el
     /// original: se abre igual de rapido que desde el Explorador. Lo demas,
-    /// sus tablas en un `.xlsx` hecho en memoria.
+    /// sus tablas en un `.xlsx` hecho en memoria. Un libro con hojas viejas
+    /// del movil (`tablas_viejas_del_libro`) y sin mensajes se ve por ellas:
+    /// lo que se edito alli no se esconde.
     pub(crate) fn libro_para_ver(&mut self, regional: Regional) -> Result<Libro, String> {
         self.regional = Some(regional.clone());
-        if let Origen::Libro { ruta, tablas, .. } = &self.origen
+        if let Origen::Libro { mensaje, ruta, tablas } = &self.origen
             && crate::visor_hoja::se_abre_fichero(ruta)
             && !tablas.iter().any(libro::editada)
+            && (!tablas.is_empty() || tablas_viejas_del_libro(self.ubicacion.raiz(), &self.proyecto, mensaje).is_none())
         {
             match Libro::abrir(ruta, regional) {
                 Ok(l) => {
@@ -344,12 +355,20 @@ impl Editable {
                 })
                 .collect::<Result<Vec<_>, String>>()?,
             Origen::Libro { mensaje, ruta, .. } => {
-                let ahora = pixpin_shell::entorno::ahora_utc_ms();
-                pixpin_proyecto::importar_hojas::leer(ruta, &mensaje.nombre, ahora)
-                    .map_err(|e| e.to_string())?
-                    .into_iter()
-                    .map(|h| HojaEditable::nueva(h.nombre, h.tabla, None))
-                    .collect()
+                if let Some(viejas) = tablas_viejas_del_libro(self.ubicacion.raiz(), &self.proyecto, mensaje) {
+                    // Lo que el movil edito antes del 13-oct (solo en
+                    // fichero): se edita eso, no el libro leido de nuevo, y
+                    // al guardar pasa a mensajes como cualquier libro editado.
+                    tracing::info!(hojas = viejas.len(), "hoja del chat: se migran las hojas viejas del movil");
+                    viejas.into_iter().map(|(nombre, t)| HojaEditable::nueva(nombre, t, None)).collect()
+                } else {
+                    let ahora = pixpin_shell::entorno::ahora_utc_ms();
+                    pixpin_proyecto::importar_hojas::leer(ruta, &mensaje.nombre, ahora)
+                        .map_err(|e| e.to_string())?
+                        .into_iter()
+                        .map(|h| HojaEditable::nueva(h.nombre, h.tabla, None))
+                        .collect()
+                }
             }
         };
         tracing::info!(ms = t.elapsed().as_millis() as u64, hojas = hojas.len(), "hoja del chat: tablas listas para editar");
@@ -475,6 +494,29 @@ pub(crate) fn tabla_del_movil(raiz: &std::path::Path, proyecto: &str, m: &Mensaj
     let mut mensaje = m.clone();
     mensaje.texto = texto;
     Some((mensaje, archivo))
+}
+
+/// **Las hojas viejas del movil de un libro** (`tablas/libro-<id>-<hoja>.json`,
+/// ver `vista::tablas_viejas_del_libro`), con su nombre de pestana. Se leen
+/// hasta la primera que no se entienda (como `TablasDelChat.crearLasDelLibro`
+/// del movil); si ni la primera se entiende, `None` y se lee el libro. Los
+/// ficheros no se tocan: uno roto sigue ahi tal cual.
+pub(crate) fn tablas_viejas_del_libro(raiz: &std::path::Path, proyecto: &str, libro_m: &Mensaje) -> Option<Vec<(String, Tabla)>> {
+    let mut hojas = Vec::new();
+    for (i, archivo) in pixpin_proyecto::vista::tablas_viejas_del_libro(raiz, proyecto, &libro_m.id).into_iter().enumerate() {
+        let leida = std::fs::read_to_string(&archivo).map_err(|e| e.to_string()).and_then(|t| Tabla::leer(&t).map_err(|e| e.to_string()));
+        match leida {
+            Ok(t) => {
+                let nombre = if t.nombre.trim().is_empty() { format!("Hoja{}", i + 1) } else { t.nombre.clone() };
+                hojas.push((nombre, t));
+            }
+            Err(e) => {
+                tracing::warn!(%e, hoja = i, "hoja vieja del movil que no se entiende; se deja como esta");
+                break;
+            }
+        }
+    }
+    (!hojas.is_empty()).then_some(hojas)
 }
 
 /// El JSON con que se guarda una tabla del movil, con su `tocado` a la hora

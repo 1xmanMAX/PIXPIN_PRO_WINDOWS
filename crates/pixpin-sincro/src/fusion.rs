@@ -136,6 +136,18 @@ fn juntar(
             return Some(Json::Lista(conjunto(bb, lm, ls)));
         }
     }
+    // **Una tabla del chat se junta celda a celda**, no por parrafos
+    // (`Fusion.tablaJunta` de Android, 13-oct-2026; aqui el 15-oct): la
+    // mini-app `tabla` y las hojas editadas de un Excel llevan el JSON de la
+    // tabla en el `texto` del mensaje. Por parrafos, un cambio en cada
+    // aparato era un choque entero (el movil lo escribe en una linea) o, con
+    // el JSON del PC (una celda por linea), podia salir un JSON roto.
+    if clave == Some("texto")
+        && let (Json::Cadena(tm), Json::Cadena(ts)) = (m, s)
+        && let Some(junta) = tabla_junta(b, tm, ts, gana_mio, c, cuenta)
+    {
+        return Some(Json::Cadena(junta));
+    }
     if clave.is_some_and(|k| PARRAFOS.contains(&k)) {
         if let (Json::Cadena(tm), Json::Cadena(ts)) = (m, s) {
             // Una base que no sea texto cuenta como vacia, igual que en
@@ -146,6 +158,29 @@ fn juntar(
     }
     cuenta.choques += 1;
     Some(if gana_mio { m.clone() } else { s.clone() })
+}
+
+/// El JSON de una tabla (`pixpin_proyecto::tabla::Tabla`) en un texto, o
+/// `None` si no lo es (`Fusion.comoTabla`).
+fn como_tabla(texto: &str) -> Option<Objeto> {
+    let t = texto.trim_start();
+    if !t.starts_with('{') || !t.contains("\"celdas\"") {
+        return None;
+    }
+    match Json::analizar(texto).ok()? {
+        Json::Objeto(o) if matches!(o.obtener("celdas"), Some(Json::Objeto(_))) => Some(o),
+        _ => None,
+    }
+}
+
+/// Dos textos-tabla juntos celda a celda, en JSON compacto
+/// (`Fusion.tablaJunta`). `None` si alguno no es una tabla: entonces va por
+/// parrafos, como cualquier texto.
+fn tabla_junta(b: Option<&Json>, mio: &str, suyo: &str, gana_mio: bool, c: &Criterio, cuenta: &mut Cuenta) -> Option<String> {
+    let m = como_tabla(mio)?;
+    let s = como_tabla(suyo)?;
+    let base = b.and_then(Json::como_cadena).and_then(como_tabla);
+    Some(Json::Objeto(objeto(base.as_ref(), &m, &s, gana_mio, c, cuenta)).a_texto())
 }
 
 /// Un objeto, clave por clave. Si lleva su propia hora (`updated` en una
@@ -940,6 +975,34 @@ mod pruebas {
             .como_objeto()
             .unwrap();
         assert_eq!(campo(celdas, "A1"), "suya");
+    }
+
+    /// **La tabla en el texto de un mensaje** (la mini-app `tabla`, las hojas
+    /// editadas de un Excel) tambien se junta celda a celda, venga escrita
+    /// por el PC (una celda por linea) o por el movil (en una linea).
+    #[test]
+    fn la_tabla_del_texto_de_un_mensaje_se_junta_celda_a_celda() {
+        let msj = |texto: &str| Json::Objeto(Objeto::de(vec![("id".into(), Json::cadena("1")), ("texto".into(), Json::cadena(texto))]));
+        let base = "{\n  \"nombre\": \"T\",\n  \"celdas\": {\n    \"A1\": \"1\",\n    \"B1\": \"2\"\n  },\n  \"tocado\": 10,\n  \"protegida\": true\n}";
+        // El PC cambia A1 y anade A2 (en su JSON con sangria); el movil anade
+        // C1 (compacto). Por parrafos esto era un choque o un JSON roto.
+        let pc = "{\n  \"nombre\": \"T\",\n  \"celdas\": {\n    \"A1\": \"uno\",\n    \"A2\": \"x\",\n    \"B1\": \"2\"\n  },\n  \"tocado\": 20,\n  \"protegida\": true\n}";
+        let movil = r#"{"nombre":"T","celdas":{"A1":"1","B1":"2","C1":"=A1+B1"},"tocado":30,"protegida":true}"#;
+        let mut cuenta = Cuenta::default();
+        let r = json(Some(&msj(base)), Some(&msj(pc)), Some(&msj(movil)), &Criterio::default(), &mut cuenta).unwrap();
+        let texto = r.como_objeto().unwrap().obtener("texto").unwrap().como_cadena().unwrap().to_string();
+        let t = j(&texto);
+        let celdas = t.como_objeto().unwrap().obtener("celdas").unwrap().como_objeto().unwrap();
+        assert_eq!(campo(celdas, "A1"), "uno");
+        assert_eq!(campo(celdas, "A2"), "x");
+        assert_eq!(campo(celdas, "C1"), "=A1+B1");
+        assert_eq!(t.como_objeto().unwrap().obtener("protegida"), Some(&Json::Literal("true".into())), "lo que el PC no conoce sigue");
+        // Caso negativo: un texto que no es una tabla sigue por parrafos.
+        let nota = json(Some(&msj("a\n\nb")), Some(&msj("a2\n\nb")), Some(&msj("a\n\nb2")), &Criterio::default(), &mut Cuenta::default()).unwrap();
+        assert_eq!(nota.como_objeto().unwrap().obtener("texto").unwrap().como_cadena(), Some("a2\n\nb2"));
+        // Ni una tabla rota se toma por tabla.
+        assert!(como_tabla("{\"celdas\": {").is_none());
+        assert!(como_tabla("{\"celdas\": [1]}").is_none());
     }
 
     #[test]
