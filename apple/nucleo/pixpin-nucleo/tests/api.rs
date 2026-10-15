@@ -530,7 +530,7 @@ fn dos_aparatos_se_unen_y_sincronizan_por_la_red() {
         16
     );
 
-    let escucha = pc.escuchar(0).unwrap();
+    let escucha = Arc::clone(&pc).escuchar(0).unwrap();
     let puerto = escucha.puerto();
     let atender = |e: Arc<pixpin_nucleo::Escucha>| std::thread::spawn(move || e.atender_una());
 
@@ -591,7 +591,7 @@ fn una_sonda_se_contesta_sin_sincronizar() {
     use std::io::{Read, Write};
     let t = Temporal::nueva("sonda");
     let pc = t.nucleo("PC");
-    let escucha = pc.escuchar(0).unwrap();
+    let escucha = Arc::clone(&pc).escuchar(0).unwrap();
     let puerto = escucha.puerto();
     let e = Arc::clone(&escucha);
     let hilo = std::thread::spawn(move || e.atender());

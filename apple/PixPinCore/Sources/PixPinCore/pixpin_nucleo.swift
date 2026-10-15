@@ -1646,18 +1646,22 @@ public func FfiConverterTypeEditorLienzo_lower(_ value: EditorLienzo) -> UInt64 
 
 
 /**
- * **Un puerto escuchando.** Swift deja una `Task` esperando en
- * [`Escucha::atender_una`] (bloquea sin gastar nada hasta que alguien
- * llama) y la vuelve a llamar al terminar. Lo publica en Bonjour con
+ * **Un puerto escuchando.** Swift deja unos pocos hilos (4) esperando en
+ * [`Escucha::atender`] (bloquea sin gastar nada hasta que alguien llama) y
+ * cada uno la vuelve a llamar al terminar. Lo publica en Bonjour con
  * [`Escucha::puerto`].
  */
 public protocol EscuchaProtocol: AnyObject, Sendable {
     
     /**
      * Como [`Escucha::atender_una`], pero dice **a quien** se atendio: una
-     * sonda (no cambia nada: no hay que releer los chats) o un aparato que
-     * saludo (sincronizo o se unio: puede haber chats nuevos). Asi Swift no
+     * sonda (no cambia nada: no hay que releer los chats), un aparato que
+     * saludo (sincronizo o se unio: puede haber chats nuevos), una persona
+     * de un chat compartido o archivos sueltos que llegaron. Asi Swift no
      * relee la lista cada vez que la presencia de Windows pregunta.
+     *
+     * Se puede llamar desde varios hilos a la vez sobre la misma
+     * `Escucha`: cada uno atiende una conexion.
      */
     func atender() throws  -> Atendido
     
@@ -1669,9 +1673,10 @@ public protocol EscuchaProtocol: AnyObject, Sendable {
     func atenderUna() throws  -> Bool
     
     /**
-     * Deja de escuchar: la `atender_una` que este esperando vuelve con
-     * `false`. Se despierta conectandose a si mismo, que es lo unico que
-     * saca a un `accept` de su espera sin sondear.
+     * Deja de escuchar: **todas** las `atender` que esten esperando vuelven
+     * con `Cerrada` (o `false`). Se despiertan conectandose a si mismo, una
+     * vez por hilo que espera, que es lo unico que saca a un `accept` de su
+     * espera sin sondear.
      */
     func cerrar() 
     
@@ -1682,9 +1687,9 @@ public protocol EscuchaProtocol: AnyObject, Sendable {
     
 }
 /**
- * **Un puerto escuchando.** Swift deja una `Task` esperando en
- * [`Escucha::atender_una`] (bloquea sin gastar nada hasta que alguien
- * llama) y la vuelve a llamar al terminar. Lo publica en Bonjour con
+ * **Un puerto escuchando.** Swift deja unos pocos hilos (4) esperando en
+ * [`Escucha::atender`] (bloquea sin gastar nada hasta que alguien llama) y
+ * cada uno la vuelve a llamar al terminar. Lo publica en Bonjour con
  * [`Escucha::puerto`].
  */
 open class Escucha: EscuchaProtocol, @unchecked Sendable {
@@ -1742,9 +1747,13 @@ open class Escucha: EscuchaProtocol, @unchecked Sendable {
     
     /**
      * Como [`Escucha::atender_una`], pero dice **a quien** se atendio: una
-     * sonda (no cambia nada: no hay que releer los chats) o un aparato que
-     * saludo (sincronizo o se unio: puede haber chats nuevos). Asi Swift no
+     * sonda (no cambia nada: no hay que releer los chats), un aparato que
+     * saludo (sincronizo o se unio: puede haber chats nuevos), una persona
+     * de un chat compartido o archivos sueltos que llegaron. Asi Swift no
      * relee la lista cada vez que la presencia de Windows pregunta.
+     *
+     * Se puede llamar desde varios hilos a la vez sobre la misma
+     * `Escucha`: cada uno atiende una conexion.
      */
 open func atender()throws  -> Atendido  {
     return try  FfiConverterTypeAtendido_lift(try rustCallWithError(FfiConverterTypeErrorNucleo_lift) {
@@ -1770,9 +1779,10 @@ open func atenderUna()throws  -> Bool  {
 }
     
     /**
-     * Deja de escuchar: la `atender_una` que este esperando vuelve con
-     * `false`. Se despierta conectandose a si mismo, que es lo unico que
-     * saca a un `accept` de su espera sin sondear.
+     * Deja de escuchar: **todas** las `atender` que esten esperando vuelven
+     * con `Cerrada` (o `false`). Se despiertan conectandose a si mismo, una
+     * vez por hilo que espera, que es lo unico que saca a un `accept` de su
+     * espera sin sondear.
      */
 open func cerrar()  {try! rustCall() {
         uniffiCallStatus in
@@ -1837,6 +1847,227 @@ public func FfiConverterTypeEscucha_lift(_ handle: UInt64) throws -> Escucha {
 #endif
 public func FfiConverterTypeEscucha_lower(_ value: Escucha) -> UInt64 {
     return FfiConverterTypeEscucha.lower(value)
+}
+
+
+
+
+
+
+/**
+ * **La puerta de una invitacion** (`invitacion::Puerta` de
+ * `pixpin_sincro`, sin su hilo que sondea cada 100 ms: aqui `accept`
+ * bloquea en un hilo de Swift y se despierta al cerrar). Atiende la
+ * invitacion (`PXI1`) y, detras, la conversacion de persona (`PXC1`) con
+ * la que el otro se trae el chat.
+ */
+public protocol InvitacionProtocol: AnyObject, Sendable {
+    
+    /**
+     * Lo que hay que anunciar en Bonjour: `PixPin <nombre>` del tipo
+     * `_pixpinchat._tcp` con el TXT `g` (como Windows). PBKDF2: fuera del
+     * hilo de la interfaz.
+     */
+    func anuncio(nombre: String)  -> AnuncioBonjour
+    
+    /**
+     * Espera a alguien y lo atiende entero. Se puede llamar desde varios
+     * hilos.
+     */
+    func atender() throws  -> AvisoInvitacion
+    
+    func cerrar() 
+    
+    /**
+     * Los ocho signos (para ensenar: [`invitacion_legible`]).
+     */
+    func codigo()  -> String
+    
+    func puerto()  -> UInt16
+    
+    /**
+     * El texto del QR, `pixpin-chat:1:<codigo>:<ip>:<puerto>`, con la IPv4
+     * de este Mac que da Swift (una IPv6 no cabe: va vacio y el otro busca
+     * en Bonjour).
+     */
+    func textoDelQr(host: String?)  -> String
+    
+}
+/**
+ * **La puerta de una invitacion** (`invitacion::Puerta` de
+ * `pixpin_sincro`, sin su hilo que sondea cada 100 ms: aqui `accept`
+ * bloquea en un hilo de Swift y se despierta al cerrar). Atiende la
+ * invitacion (`PXI1`) y, detras, la conversacion de persona (`PXC1`) con
+ * la que el otro se trae el chat.
+ */
+open class Invitacion: InvitacionProtocol, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_pixpin_nucleo_fn_clone_invitacion(self.handle, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_pixpin_nucleo_fn_free_invitacion(handle, $0) }
+    }
+
+    
+
+    
+    /**
+     * Lo que hay que anunciar en Bonjour: `PixPin <nombre>` del tipo
+     * `_pixpinchat._tcp` con el TXT `g` (como Windows). PBKDF2: fuera del
+     * hilo de la interfaz.
+     */
+open func anuncio(nombre: String) -> AnuncioBonjour  {
+    return try!  FfiConverterTypeAnuncioBonjour_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_invitacion_anuncio(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(nombre),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Espera a alguien y lo atiende entero. Se puede llamar desde varios
+     * hilos.
+     */
+open func atender()throws  -> AvisoInvitacion  {
+    return try  FfiConverterTypeAvisoInvitacion_lift(try rustCallWithError(FfiConverterTypeErrorNucleo_lift) {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_invitacion_atender(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+open func cerrar()  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_invitacion_cerrar(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * Los ocho signos (para ensenar: [`invitacion_legible`]).
+     */
+open func codigo() -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_invitacion_codigo(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+open func puerto() -> UInt16  {
+    return try!  FfiConverterUInt16.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_invitacion_puerto(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * El texto del QR, `pixpin-chat:1:<codigo>:<ip>:<puerto>`, con la IPv4
+     * de este Mac que da Swift (una IPv6 no cabe: va vacio y el otro busca
+     * en Bonjour).
+     */
+open func textoDelQr(host: String?) -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_invitacion_texto_del_qr(
+            self.uniffiCloneHandle(),
+        FfiConverterOptionString.lower(host),uniffiCallStatus
+    )
+})
+}
+    
+
+    
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeInvitacion: FfiConverter {
+    typealias FfiType = UInt64
+    typealias SwiftType = Invitacion
+
+    public static func lift(_ handle: UInt64) throws -> Invitacion {
+        return Invitacion(unsafeFromHandle: handle)
+    }
+
+    public static func lower(_ value: Invitacion) -> UInt64 {
+        return value.uniffiCloneHandle()
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Invitacion {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: Invitacion, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeInvitacion_lift(_ handle: UInt64) throws -> Invitacion {
+    return try FfiConverterTypeInvitacion.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeInvitacion_lower(_ value: Invitacion) -> UInt64 {
+    return FfiConverterTypeInvitacion.lower(value)
 }
 
 
@@ -2203,6 +2434,69 @@ public protocol NucleoProtocol: AnyObject, Sendable {
     func ultimosMensajes(chat: String, cuantos: UInt32) throws  -> PaginaMensajes
     
     /**
+     * El chat compartido de la ficha `ficha` (`FichaChat.id`), si lo esta.
+     */
+    func chatCompartido(ficha: String) throws  -> ChatCompartidoMac?
+    
+    /**
+     * Todos los chats compartidos que conoce este aparato.
+     */
+    func chatsCompartidos() throws  -> [ChatCompartidoMac]
+    
+    /**
+     * **Comparte el chat** de la ficha `ficha` con personas (si ya lo
+     * estaba, no cambia nada).
+     */
+    func compartirChat(ficha: String) throws  -> ChatCompartidoMac
+    
+    /**
+     * **Entra en un chat compartido** con el `codigo` de quien invita, que
+     * escucha en `host:puerto` (del QR, o buscado en Bonjour por la
+     * etiqueta), y **se trae el chat**. Bloquea hasta terminar.
+     */
+    func entrarEnChatCompartido(codigo: String, host: String, puerto: UInt16) throws  -> ChatCompartidoMac
+    
+    /**
+     * Si este aparato esta dentro de algun chat compartido: entonces hay
+     * que escuchar y anunciarse aunque no haya grupo
+     * ([`Nucleo::anuncio_de_presencia`]).
+     */
+    func hayChatsCompartidos() throws  -> Bool
+    
+    /**
+     * **Abre la puerta para invitar** al chat de la ficha `ficha` (que
+     * tiene que estar compartido): un codigo nuevo y un puerto propio
+     * (IPv6 con IPv4 dentro) mientras la ventana este delante.
+     */
+    func invitarAChat(ficha: String) throws  -> Invitacion
+    
+    /**
+     * El nombre con el que me ven en los chats compartidos (el del aparato
+     * si no puse otro).
+     */
+    func nombreEnCompartidos() throws  -> String
+    
+    /**
+     * Pone ese nombre (40 letras como mucho).
+     */
+    func ponerNombreEnCompartidos(nombre: String) throws 
+    
+    /**
+     * **Quita a `id`** del chat compartido `chat` (el id que viaja), o
+     * **sale** si `id` es este aparato. Solo quien lo creo quita a otros.
+     */
+    func quitarDeChatCompartido(chat: String, id: String) throws  -> ChatCompartidoMac
+    
+    /**
+     * **Una vuelta con una persona** que escucha en `host:puerto`: se
+     * juntan las listas de los chats que compartimos y cada chat donde
+     * estamos los dos (nada mas: la valla). `id`, el de su aparato si se
+     * sabe (comprueba que contesta quien debe); `chats`, solo esos (ids que
+     * viajan) o todos los comunes si va vacio.
+     */
+    func sincronizarConPersona(host: String, puerto: UInt16, id: String?, chats: [String]) throws  -> ResumenPersona
+    
+    /**
      * **Un lienzo nuevo en un chat**: el `.excalidraw` vacio en
      * `lienzos/<codigo>.excalidraw` y su mensaje `DIBUJO` al final del
      * cuaderno, como `ventana_chat::escribir_lienzo` de Windows. Se abre
@@ -2215,6 +2509,53 @@ public protocol NucleoProtocol: AnyObject, Sendable {
      * de un mensaje `DIBUJO`). Sus fotos salen ya con la ruta absoluta.
      */
     func editarLienzo(chat: String, dibujo: String) throws  -> EditorLienzo
+    
+    /**
+     * **Abre la puerta para enviar** `rutas` con un codigo nuevo de seis
+     * cifras, en un puerto que da el sistema (IPv6 con IPv4 dentro).
+     */
+    func abrirEnvio(rutas: [String]) throws  -> PuertaEnvio
+    
+    /**
+     * Lo que esta delante, como lo dejo [`Nucleo::poner_al_frente`].
+     */
+    func alFrente()  -> FrenteMac
+    
+    /**
+     * **«Enviar a…» un aparato del grupo**: manda `rutas` (ficheros) a lo
+     * que el aparato de `host:puerto` tenga delante, por el canal del
+     * grupo, uno detras de otro en la misma conexion. Devuelve como quedo
+     * cada uno: uno que el otro no acepta (lienzo delante y no es foto) no
+     * corta los demas; si se corta la red, los que faltan salen con error.
+     */
+    func enviarAAparato(host: String, puerto: UInt16, rutas: [String]) throws  -> [EnvioSuelto]
+    
+    /**
+     * **Espera para recibir** («Recibir por Wi-Fi»): un codigo nuevo de
+     * seis cifras y un puerto; quien envia teclea el codigo (o lo ve en el
+     * QR) y llama. Se atiende desde un hilo de Swift con
+     * [`PuertaRecibir::atender`].
+     */
+    func esperarEnvios() throws  -> PuertaRecibir
+    
+    /**
+     * **Manda `rutas` a quien espera para recibir** en `host:puerto` con su
+     * `codigo` (el que ensena su pantalla). Bloquea hasta terminar.
+     */
+    func mandarAQuienEspera(host: String, puerto: UInt16, codigo: String, rutas: [String]) throws  -> FinEnvio
+    
+    /**
+     * **Lo que esta delante ahora** (lo llama Swift al abrir o cerrar un
+     * chat o un lienzo): a donde va un archivo suelto que llegue.
+     */
+    func ponerAlFrente(frente: FrenteMac) 
+    
+    /**
+     * **Recibe de quien envia y espera** en `host:puerto` con su `codigo`:
+     * trae lo que ofrece y lo pone en su sitio (proyectos a la lista, lo
+     * demas a «Mensajes guardados»). Teclear el codigo es aceptar.
+     */
+    func recibirEnvio(host: String, puerto: UInt16, codigo: String) throws  -> [RecibidoEnvio]
     
     /**
      * **Borra capturas**: a la papelera de PixPin (`papelera/capturas/`),
@@ -2340,6 +2681,16 @@ public protocol NucleoProtocol: AnyObject, Sendable {
     func anuncio() throws  -> AnuncioBonjour?
     
     /**
+     * **Lo que hay que anunciar para dejarse encontrar**, como la presencia
+     * de Windows: con grupo, [`Nucleo::anuncio`]; **sin grupo pero dentro
+     * de algun chat compartido con personas**, el mismo anuncio sin `g` (y
+     * con la etiqueta vacia): las personas de esos chats llaman aqui y
+     * buscan por el `id`, y sin `g` no sale como aparato propio de nadie.
+     * `None` si no hay por que escuchar.
+     */
+    func anuncioDePresencia() throws  -> AnuncioBonjour?
+    
+    /**
      * Crea un grupo nuevo con este aparato dentro (letra `a`) y devuelve su
      * codigo, para ensenarlo y que los demas se unan. Como `crearGrupo` de
      * Android.
@@ -2349,8 +2700,10 @@ public protocol NucleoProtocol: AnyObject, Sendable {
     /**
      * Escucha en `puerto` (0: el que de el sistema; el de siempre es
      * 47474, [`puerto_preferido`]) para que otro aparato sincronice con
-     * este o se una a su grupo. Si el puerto pedido esta tomado, falla: quien
-     * llama vuelve a probar con 0, como Windows.
+     * este, se una a su grupo, le mande un archivo suelto o sea una persona
+     * de un chat compartido. Por IPv6 con IPv4 dentro si se puede; si no,
+     * solo IPv4. Si el puerto pedido esta tomado, falla: quien llama vuelve
+     * a probar con 0, como Windows.
      */
     func escuchar(puerto: UInt16) throws  -> Escucha
     
@@ -2364,7 +2717,10 @@ public protocol NucleoProtocol: AnyObject, Sendable {
      * **Una vuelta de sincronizar** con el aparato de `host:puerto`, del
      * mismo grupo: sin preguntar, con lo elegido la ultima vez con el (o
      * todo la primera), y sin borrar ningun proyecto, como «con todos» de
-     * Windows. Bloquea hasta terminar.
+     * Windows. Lleva tambien **la galeria de capturas** detras de los chats
+     * y respeta «lo mio manda» de `pixpinmax.toml`. `host` puede ser IPv4,
+     * IPv6 (con su interfaz si es de enlace local: `fe80::1%en0`) o un
+     * nombre. Bloquea hasta terminar.
      */
     func sincronizarCon(host: String, puerto: UInt16) throws  -> ResumenSincro
     
@@ -2761,6 +3117,151 @@ open func ultimosMensajes(chat: String, cuantos: UInt32)throws  -> PaginaMensaje
 }
     
     /**
+     * El chat compartido de la ficha `ficha` (`FichaChat.id`), si lo esta.
+     */
+open func chatCompartido(ficha: String)throws  -> ChatCompartidoMac?  {
+    return try  FfiConverterOptionTypeChatCompartidoMac.lift(try rustCallWithError(FfiConverterTypeErrorNucleo_lift) {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_nucleo_chat_compartido(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(ficha),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Todos los chats compartidos que conoce este aparato.
+     */
+open func chatsCompartidos()throws  -> [ChatCompartidoMac]  {
+    return try  FfiConverterSequenceTypeChatCompartidoMac.lift(try rustCallWithError(FfiConverterTypeErrorNucleo_lift) {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_nucleo_chats_compartidos(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * **Comparte el chat** de la ficha `ficha` con personas (si ya lo
+     * estaba, no cambia nada).
+     */
+open func compartirChat(ficha: String)throws  -> ChatCompartidoMac  {
+    return try  FfiConverterTypeChatCompartidoMac_lift(try rustCallWithError(FfiConverterTypeErrorNucleo_lift) {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_nucleo_compartir_chat(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(ficha),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * **Entra en un chat compartido** con el `codigo` de quien invita, que
+     * escucha en `host:puerto` (del QR, o buscado en Bonjour por la
+     * etiqueta), y **se trae el chat**. Bloquea hasta terminar.
+     */
+open func entrarEnChatCompartido(codigo: String, host: String, puerto: UInt16)throws  -> ChatCompartidoMac  {
+    return try  FfiConverterTypeChatCompartidoMac_lift(try rustCallWithError(FfiConverterTypeErrorNucleo_lift) {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_nucleo_entrar_en_chat_compartido(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(codigo),
+        FfiConverterString.lower(host),
+        FfiConverterUInt16.lower(puerto),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Si este aparato esta dentro de algun chat compartido: entonces hay
+     * que escuchar y anunciarse aunque no haya grupo
+     * ([`Nucleo::anuncio_de_presencia`]).
+     */
+open func hayChatsCompartidos()throws  -> Bool  {
+    return try  FfiConverterBool.lift(try rustCallWithError(FfiConverterTypeErrorNucleo_lift) {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_nucleo_hay_chats_compartidos(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * **Abre la puerta para invitar** al chat de la ficha `ficha` (que
+     * tiene que estar compartido): un codigo nuevo y un puerto propio
+     * (IPv6 con IPv4 dentro) mientras la ventana este delante.
+     */
+open func invitarAChat(ficha: String)throws  -> Invitacion  {
+    return try  FfiConverterTypeInvitacion_lift(try rustCallWithError(FfiConverterTypeErrorNucleo_lift) {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_nucleo_invitar_a_chat(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(ficha),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * El nombre con el que me ven en los chats compartidos (el del aparato
+     * si no puse otro).
+     */
+open func nombreEnCompartidos()throws  -> String  {
+    return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeErrorNucleo_lift) {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_nucleo_nombre_en_compartidos(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Pone ese nombre (40 letras como mucho).
+     */
+open func ponerNombreEnCompartidos(nombre: String)throws   {try rustCallWithError(FfiConverterTypeErrorNucleo_lift) {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_nucleo_poner_nombre_en_compartidos(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(nombre),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * **Quita a `id`** del chat compartido `chat` (el id que viaja), o
+     * **sale** si `id` es este aparato. Solo quien lo creo quita a otros.
+     */
+open func quitarDeChatCompartido(chat: String, id: String)throws  -> ChatCompartidoMac  {
+    return try  FfiConverterTypeChatCompartidoMac_lift(try rustCallWithError(FfiConverterTypeErrorNucleo_lift) {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_nucleo_quitar_de_chat_compartido(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(chat),
+        FfiConverterString.lower(id),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * **Una vuelta con una persona** que escucha en `host:puerto`: se
+     * juntan las listas de los chats que compartimos y cada chat donde
+     * estamos los dos (nada mas: la valla). `id`, el de su aparato si se
+     * sabe (comprueba que contesta quien debe); `chats`, solo esos (ids que
+     * viajan) o todos los comunes si va vacio.
+     */
+open func sincronizarConPersona(host: String, puerto: UInt16, id: String?, chats: [String])throws  -> ResumenPersona  {
+    return try  FfiConverterTypeResumenPersona_lift(try rustCallWithError(FfiConverterTypeErrorNucleo_lift) {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_nucleo_sincronizar_con_persona(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(host),
+        FfiConverterUInt16.lower(puerto),
+        FfiConverterOptionString.lower(id),
+        FfiConverterSequenceString.lower(chats),uniffiCallStatus
+    )
+})
+}
+    
+    /**
      * **Un lienzo nuevo en un chat**: el `.excalidraw` vacio en
      * `lienzos/<codigo>.excalidraw` y su mensaje `DIBUJO` al final del
      * cuaderno, como `ventana_chat::escribir_lienzo` de Windows. Se abre
@@ -2788,6 +3289,113 @@ open func editarLienzo(chat: String, dibujo: String)throws  -> EditorLienzo  {
             self.uniffiCloneHandle(),
         FfiConverterString.lower(chat),
         FfiConverterString.lower(dibujo),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * **Abre la puerta para enviar** `rutas` con un codigo nuevo de seis
+     * cifras, en un puerto que da el sistema (IPv6 con IPv4 dentro).
+     */
+open func abrirEnvio(rutas: [String])throws  -> PuertaEnvio  {
+    return try  FfiConverterTypePuertaEnvio_lift(try rustCallWithError(FfiConverterTypeErrorNucleo_lift) {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_nucleo_abrir_envio(
+            self.uniffiCloneHandle(),
+        FfiConverterSequenceString.lower(rutas),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Lo que esta delante, como lo dejo [`Nucleo::poner_al_frente`].
+     */
+open func alFrente() -> FrenteMac  {
+    return try!  FfiConverterTypeFrenteMac_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_nucleo_al_frente(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * **«Enviar a…» un aparato del grupo**: manda `rutas` (ficheros) a lo
+     * que el aparato de `host:puerto` tenga delante, por el canal del
+     * grupo, uno detras de otro en la misma conexion. Devuelve como quedo
+     * cada uno: uno que el otro no acepta (lienzo delante y no es foto) no
+     * corta los demas; si se corta la red, los que faltan salen con error.
+     */
+open func enviarAAparato(host: String, puerto: UInt16, rutas: [String])throws  -> [EnvioSuelto]  {
+    return try  FfiConverterSequenceTypeEnvioSuelto.lift(try rustCallWithError(FfiConverterTypeErrorNucleo_lift) {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_nucleo_enviar_a_aparato(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(host),
+        FfiConverterUInt16.lower(puerto),
+        FfiConverterSequenceString.lower(rutas),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * **Espera para recibir** («Recibir por Wi-Fi»): un codigo nuevo de
+     * seis cifras y un puerto; quien envia teclea el codigo (o lo ve en el
+     * QR) y llama. Se atiende desde un hilo de Swift con
+     * [`PuertaRecibir::atender`].
+     */
+open func esperarEnvios()throws  -> PuertaRecibir  {
+    return try  FfiConverterTypePuertaRecibir_lift(try rustCallWithError(FfiConverterTypeErrorNucleo_lift) {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_nucleo_esperar_envios(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * **Manda `rutas` a quien espera para recibir** en `host:puerto` con su
+     * `codigo` (el que ensena su pantalla). Bloquea hasta terminar.
+     */
+open func mandarAQuienEspera(host: String, puerto: UInt16, codigo: String, rutas: [String])throws  -> FinEnvio  {
+    return try  FfiConverterTypeFinEnvio_lift(try rustCallWithError(FfiConverterTypeErrorNucleo_lift) {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_nucleo_mandar_a_quien_espera(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(host),
+        FfiConverterUInt16.lower(puerto),
+        FfiConverterString.lower(codigo),
+        FfiConverterSequenceString.lower(rutas),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * **Lo que esta delante ahora** (lo llama Swift al abrir o cerrar un
+     * chat o un lienzo): a donde va un archivo suelto que llegue.
+     */
+open func ponerAlFrente(frente: FrenteMac)  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_nucleo_poner_al_frente(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeFrenteMac_lower(frente),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * **Recibe de quien envia y espera** en `host:puerto` con su `codigo`:
+     * trae lo que ofrece y lo pone en su sitio (proyectos a la lista, lo
+     * demas a «Mensajes guardados»). Teclear el codigo es aceptar.
+     */
+open func recibirEnvio(host: String, puerto: UInt16, codigo: String)throws  -> [RecibidoEnvio]  {
+    return try  FfiConverterSequenceTypeRecibidoEnvio.lift(try rustCallWithError(FfiConverterTypeErrorNucleo_lift) {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_nucleo_recibir_envio(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(host),
+        FfiConverterUInt16.lower(puerto),
+        FfiConverterString.lower(codigo),uniffiCallStatus
     )
 })
 }
@@ -3065,6 +3673,23 @@ open func anuncio()throws  -> AnuncioBonjour?  {
 }
     
     /**
+     * **Lo que hay que anunciar para dejarse encontrar**, como la presencia
+     * de Windows: con grupo, [`Nucleo::anuncio`]; **sin grupo pero dentro
+     * de algun chat compartido con personas**, el mismo anuncio sin `g` (y
+     * con la etiqueta vacia): las personas de esos chats llaman aqui y
+     * buscan por el `id`, y sin `g` no sale como aparato propio de nadie.
+     * `None` si no hay por que escuchar.
+     */
+open func anuncioDePresencia()throws  -> AnuncioBonjour?  {
+    return try  FfiConverterOptionTypeAnuncioBonjour.lift(try rustCallWithError(FfiConverterTypeErrorNucleo_lift) {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_nucleo_anuncio_de_presencia(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
      * Crea un grupo nuevo con este aparato dentro (letra `a`) y devuelve su
      * codigo, para ensenarlo y que los demas se unan. Como `crearGrupo` de
      * Android.
@@ -3081,8 +3706,10 @@ open func crearGrupo()throws  -> String  {
     /**
      * Escucha en `puerto` (0: el que de el sistema; el de siempre es
      * 47474, [`puerto_preferido`]) para que otro aparato sincronice con
-     * este o se una a su grupo. Si el puerto pedido esta tomado, falla: quien
-     * llama vuelve a probar con 0, como Windows.
+     * este, se una a su grupo, le mande un archivo suelto o sea una persona
+     * de un chat compartido. Por IPv6 con IPv4 dentro si se puede; si no,
+     * solo IPv4. Si el puerto pedido esta tomado, falla: quien llama vuelve
+     * a probar con 0, como Windows.
      */
 open func escuchar(puerto: UInt16)throws  -> Escucha  {
     return try  FfiConverterTypeEscucha_lift(try rustCallWithError(FfiConverterTypeErrorNucleo_lift) {
@@ -3111,7 +3738,10 @@ open func etiqueta()throws  -> String?  {
      * **Una vuelta de sincronizar** con el aparato de `host:puerto`, del
      * mismo grupo: sin preguntar, con lo elegido la ultima vez con el (o
      * todo la primera), y sin borrar ningun proyecto, como «con todos» de
-     * Windows. Bloquea hasta terminar.
+     * Windows. Lleva tambien **la galeria de capturas** detras de los chats
+     * y respeta «lo mio manda» de `pixpinmax.toml`. `host` puede ser IPv4,
+     * IPv6 (con su interfaz si es de enlace local: `fe80::1%en0`) o un
+     * nombre. Bloquea hasta terminar.
      */
 open func sincronizarCon(host: String, puerto: UInt16)throws  -> ResumenSincro  {
     return try  FfiConverterTypeResumenSincro_lift(try rustCallWithError(FfiConverterTypeErrorNucleo_lift) {
@@ -3356,6 +3986,483 @@ public func FfiConverterTypeNucleo_lower(_ value: Nucleo) -> UInt64 {
 
 
 
+
+
+/**
+ * **La puerta de quien envia** («Enviar por Wi-Fi»): el codigo de seis
+ * cifras, su QR y su anuncio, y cada aparato que llega con el codigo bueno
+ * espera a que se le apruebe. Se atiende desde un hilo de Swift con
+ * [`PuertaEnvio::atender`] y se cuenta por [`PuertaEnvio::siguiente_aviso`].
+ */
+public protocol PuertaEnvioProtocol: AnyObject, Sendable {
+    
+    /**
+     * Lo que hay que anunciar en Bonjour (`_pixpinenvio._tcp`). Cuesta
+     * PBKDF2: fuera del hilo de la interfaz.
+     */
+    func anuncio(nombre: String)  -> AnuncioBonjour
+    
+    /**
+     * La respuesta del usuario a un aviso `Llega`.
+     */
+    func aprobar(llamada: UInt64, si: Bool) 
+    
+    /**
+     * «Aprobar a todos»: los que esperan y los que lleguen.
+     */
+    func aprobarTodos() 
+    
+    /**
+     * **Atiende una llamada**: espera a que llegue alguien, le pide al
+     * usuario que lo apruebe (aviso `Llega`) y, si dice que si, le manda
+     * todo. Varios hilos pueden atender a la vez.
+     */
+    func atender() throws  -> FinEnvio
+    
+    /**
+     * Cierra la puerta: el codigo deja de valer, lo que esperaba
+     * aprobacion es «no» y los hilos que esperan vuelven.
+     */
+    func cerrar() 
+    
+    /**
+     * Las seis cifras.
+     */
+    func codigo()  -> String
+    
+    func puerto()  -> UInt16
+    
+    /**
+     * **El siguiente aviso** (bloquea hasta que haya uno, sin gastar nada).
+     * Tras `Cerrada` no hay mas.
+     */
+    func siguienteAviso()  -> AvisoEnvio
+    
+    /**
+     * El texto del QR (`pixpin-envio:1:<codigo>:<ip>:<puerto>`), con la
+     * IPv4 de este Mac que da Swift; una IPv6 no cabe y va vacio.
+     */
+    func textoDelQr(host: String?)  -> String
+    
+}
+/**
+ * **La puerta de quien envia** («Enviar por Wi-Fi»): el codigo de seis
+ * cifras, su QR y su anuncio, y cada aparato que llega con el codigo bueno
+ * espera a que se le apruebe. Se atiende desde un hilo de Swift con
+ * [`PuertaEnvio::atender`] y se cuenta por [`PuertaEnvio::siguiente_aviso`].
+ */
+open class PuertaEnvio: PuertaEnvioProtocol, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_pixpin_nucleo_fn_clone_puertaenvio(self.handle, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_pixpin_nucleo_fn_free_puertaenvio(handle, $0) }
+    }
+
+    
+
+    
+    /**
+     * Lo que hay que anunciar en Bonjour (`_pixpinenvio._tcp`). Cuesta
+     * PBKDF2: fuera del hilo de la interfaz.
+     */
+open func anuncio(nombre: String) -> AnuncioBonjour  {
+    return try!  FfiConverterTypeAnuncioBonjour_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_puertaenvio_anuncio(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(nombre),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * La respuesta del usuario a un aviso `Llega`.
+     */
+open func aprobar(llamada: UInt64, si: Bool)  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_puertaenvio_aprobar(
+            self.uniffiCloneHandle(),
+        FfiConverterUInt64.lower(llamada),
+        FfiConverterBool.lower(si),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * «Aprobar a todos»: los que esperan y los que lleguen.
+     */
+open func aprobarTodos()  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_puertaenvio_aprobar_todos(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * **Atiende una llamada**: espera a que llegue alguien, le pide al
+     * usuario que lo apruebe (aviso `Llega`) y, si dice que si, le manda
+     * todo. Varios hilos pueden atender a la vez.
+     */
+open func atender()throws  -> FinEnvio  {
+    return try  FfiConverterTypeFinEnvio_lift(try rustCallWithError(FfiConverterTypeErrorNucleo_lift) {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_puertaenvio_atender(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Cierra la puerta: el codigo deja de valer, lo que esperaba
+     * aprobacion es «no» y los hilos que esperan vuelven.
+     */
+open func cerrar()  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_puertaenvio_cerrar(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * Las seis cifras.
+     */
+open func codigo() -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_puertaenvio_codigo(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+open func puerto() -> UInt16  {
+    return try!  FfiConverterUInt16.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_puertaenvio_puerto(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * **El siguiente aviso** (bloquea hasta que haya uno, sin gastar nada).
+     * Tras `Cerrada` no hay mas.
+     */
+open func siguienteAviso() -> AvisoEnvio  {
+    return try!  FfiConverterTypeAvisoEnvio_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_puertaenvio_siguiente_aviso(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * El texto del QR (`pixpin-envio:1:<codigo>:<ip>:<puerto>`), con la
+     * IPv4 de este Mac que da Swift; una IPv6 no cabe y va vacio.
+     */
+open func textoDelQr(host: String?) -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_puertaenvio_texto_del_qr(
+            self.uniffiCloneHandle(),
+        FfiConverterOptionString.lower(host),uniffiCallStatus
+    )
+})
+}
+    
+
+    
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypePuertaEnvio: FfiConverter {
+    typealias FfiType = UInt64
+    typealias SwiftType = PuertaEnvio
+
+    public static func lift(_ handle: UInt64) throws -> PuertaEnvio {
+        return PuertaEnvio(unsafeFromHandle: handle)
+    }
+
+    public static func lower(_ value: PuertaEnvio) -> UInt64 {
+        return value.uniffiCloneHandle()
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> PuertaEnvio {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: PuertaEnvio, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePuertaEnvio_lift(_ handle: UInt64) throws -> PuertaEnvio {
+    return try FfiConverterTypePuertaEnvio.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePuertaEnvio_lower(_ value: PuertaEnvio) -> UInt64 {
+    return FfiConverterTypePuertaEnvio.lower(value)
+}
+
+
+
+
+
+
+/**
+ * **La puerta de quien espera para recibir**: su codigo, su QR y su
+ * anuncio (`_pixpinrecibe._tcp`).
+ */
+public protocol PuertaRecibirProtocol: AnyObject, Sendable {
+    
+    /**
+     * Lo que hay que anunciar en Bonjour (`_pixpinrecibe._tcp`).
+     */
+    func anuncio(nombre: String)  -> AnuncioBonjour
+    
+    /**
+     * Espera a quien envia y recibe todo lo que ofrece.
+     */
+    func atender() throws  -> FinRecibir
+    
+    func cerrar() 
+    
+    func codigo()  -> String
+    
+    func puerto()  -> UInt16
+    
+    /**
+     * `pixpin-recibe:1:<codigo>:<ip>:<puerto>` (IPv4 o vacio).
+     */
+    func textoDelQr(host: String?)  -> String
+    
+}
+/**
+ * **La puerta de quien espera para recibir**: su codigo, su QR y su
+ * anuncio (`_pixpinrecibe._tcp`).
+ */
+open class PuertaRecibir: PuertaRecibirProtocol, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_pixpin_nucleo_fn_clone_puertarecibir(self.handle, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_pixpin_nucleo_fn_free_puertarecibir(handle, $0) }
+    }
+
+    
+
+    
+    /**
+     * Lo que hay que anunciar en Bonjour (`_pixpinrecibe._tcp`).
+     */
+open func anuncio(nombre: String) -> AnuncioBonjour  {
+    return try!  FfiConverterTypeAnuncioBonjour_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_puertarecibir_anuncio(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(nombre),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Espera a quien envia y recibe todo lo que ofrece.
+     */
+open func atender()throws  -> FinRecibir  {
+    return try  FfiConverterTypeFinRecibir_lift(try rustCallWithError(FfiConverterTypeErrorNucleo_lift) {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_puertarecibir_atender(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+open func cerrar()  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_puertarecibir_cerrar(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+}
+}
+    
+open func codigo() -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_puertarecibir_codigo(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+open func puerto() -> UInt16  {
+    return try!  FfiConverterUInt16.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_puertarecibir_puerto(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * `pixpin-recibe:1:<codigo>:<ip>:<puerto>` (IPv4 o vacio).
+     */
+open func textoDelQr(host: String?) -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_puertarecibir_texto_del_qr(
+            self.uniffiCloneHandle(),
+        FfiConverterOptionString.lower(host),uniffiCallStatus
+    )
+})
+}
+    
+
+    
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypePuertaRecibir: FfiConverter {
+    typealias FfiType = UInt64
+    typealias SwiftType = PuertaRecibir
+
+    public static func lift(_ handle: UInt64) throws -> PuertaRecibir {
+        return PuertaRecibir(unsafeFromHandle: handle)
+    }
+
+    public static func lower(_ value: PuertaRecibir) -> UInt64 {
+        return value.uniffiCloneHandle()
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> PuertaRecibir {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: PuertaRecibir, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePuertaRecibir_lift(_ handle: UInt64) throws -> PuertaRecibir {
+    return try FfiConverterTypePuertaRecibir.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePuertaRecibir_lower(_ value: PuertaRecibir) -> UInt64 {
+    return FfiConverterTypePuertaRecibir.lower(value)
+}
+
+
+
+
 /**
  * Lo de `pixpinmax.toml` que se toca desde el Mac.
  */
@@ -3539,6 +4646,95 @@ public func FfiConverterTypeAnuncioBonjour_lift(_ buf: RustBuffer) throws -> Anu
 #endif
 public func FfiConverterTypeAnuncioBonjour_lower(_ value: AnuncioBonjour) -> RustBuffer {
     return FfiConverterTypeAnuncioBonjour.lower(value)
+}
+
+
+/**
+ * Un archivo suelto que llego a este Mac.
+ */
+public struct ArchivoLlegado: Equatable, Hashable {
+    public var nombre: String
+    public var donde: DondeLlego
+    /**
+     * El id del chat donde quedo (o el del lienzo).
+     */
+    public var chat: String
+    /**
+     * El id del mensaje nuevo, si entro en un chat.
+     */
+    public var mensaje: String?
+    /**
+     * La ruta absoluta de la foto que espera a su lienzo
+     * (`sincro/al-lienzo/<ms>-<nombre>`), si fue a un lienzo.
+     */
+    public var ruta: String?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(nombre: String, donde: DondeLlego, 
+        /**
+         * El id del chat donde quedo (o el del lienzo).
+         */chat: String, 
+        /**
+         * El id del mensaje nuevo, si entro en un chat.
+         */mensaje: String?, 
+        /**
+         * La ruta absoluta de la foto que espera a su lienzo
+         * (`sincro/al-lienzo/<ms>-<nombre>`), si fue a un lienzo.
+         */ruta: String?) {
+        self.nombre = nombre
+        self.donde = donde
+        self.chat = chat
+        self.mensaje = mensaje
+        self.ruta = ruta
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension ArchivoLlegado: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeArchivoLlegado: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ArchivoLlegado {
+        return
+            try ArchivoLlegado(
+                nombre: FfiConverterString.read(from: &buf), 
+                donde: FfiConverterTypeDondeLlego.read(from: &buf), 
+                chat: FfiConverterString.read(from: &buf), 
+                mensaje: FfiConverterOptionString.read(from: &buf), 
+                ruta: FfiConverterOptionString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: ArchivoLlegado, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.nombre, into: &buf)
+        FfiConverterTypeDondeLlego.write(value.donde, into: &buf)
+        FfiConverterString.write(value.chat, into: &buf)
+        FfiConverterOptionString.write(value.mensaje, into: &buf)
+        FfiConverterOptionString.write(value.ruta, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeArchivoLlegado_lift(_ buf: RustBuffer) throws -> ArchivoLlegado {
+    return try FfiConverterTypeArchivoLlegado.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeArchivoLlegado_lower(_ value: ArchivoLlegado) -> RustBuffer {
+    return FfiConverterTypeArchivoLlegado.lower(value)
 }
 
 
@@ -3807,6 +5003,267 @@ public func FfiConverterTypeCapturaGaleria_lower(_ value: CapturaGaleria) -> Rus
 
 
 /**
+ * Un chat compartido, para ensenarlo.
+ */
+public struct ChatCompartidoMac: Equatable, Hashable {
+    /**
+     * El id del chat tal como viaja.
+     */
+    public var chat: String
+    /**
+     * La ficha de este aparato (`FichaChat.id`), si ya esta aqui.
+     */
+    public var ficha: String?
+    public var nombre: String
+    /**
+     * El id del aparato que lo creo.
+     */
+    public var creador: String
+    public var creado: Int64
+    public var personas: [PersonaCompartida]
+    /**
+     * Este aparato esta dentro.
+     */
+    public var estoyDentro: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * El id del chat tal como viaja.
+         */chat: String, 
+        /**
+         * La ficha de este aparato (`FichaChat.id`), si ya esta aqui.
+         */ficha: String?, nombre: String, 
+        /**
+         * El id del aparato que lo creo.
+         */creador: String, creado: Int64, personas: [PersonaCompartida], 
+        /**
+         * Este aparato esta dentro.
+         */estoyDentro: Bool) {
+        self.chat = chat
+        self.ficha = ficha
+        self.nombre = nombre
+        self.creador = creador
+        self.creado = creado
+        self.personas = personas
+        self.estoyDentro = estoyDentro
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension ChatCompartidoMac: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeChatCompartidoMac: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ChatCompartidoMac {
+        return
+            try ChatCompartidoMac(
+                chat: FfiConverterString.read(from: &buf), 
+                ficha: FfiConverterOptionString.read(from: &buf), 
+                nombre: FfiConverterString.read(from: &buf), 
+                creador: FfiConverterString.read(from: &buf), 
+                creado: FfiConverterInt64.read(from: &buf), 
+                personas: FfiConverterSequenceTypePersonaCompartida.read(from: &buf), 
+                estoyDentro: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: ChatCompartidoMac, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.chat, into: &buf)
+        FfiConverterOptionString.write(value.ficha, into: &buf)
+        FfiConverterString.write(value.nombre, into: &buf)
+        FfiConverterString.write(value.creador, into: &buf)
+        FfiConverterInt64.write(value.creado, into: &buf)
+        FfiConverterSequenceTypePersonaCompartida.write(value.personas, into: &buf)
+        FfiConverterBool.write(value.estoyDentro, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeChatCompartidoMac_lift(_ buf: RustBuffer) throws -> ChatCompartidoMac {
+    return try FfiConverterTypeChatCompartidoMac.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeChatCompartidoMac_lower(_ value: ChatCompartidoMac) -> RustBuffer {
+    return FfiConverterTypeChatCompartidoMac.lower(value)
+}
+
+
+/**
+ * Lo que se saca de un codigo de envio tecleado o de su QR.
+ */
+public struct CodigoDeEnvio: Equatable, Hashable {
+    /**
+     * Las seis cifras.
+     */
+    public var codigo: String
+    /**
+     * Donde esta el otro, si el QR lo dice (si no, se busca en Bonjour por
+     * la etiqueta: [`etiqueta_de_envio`]).
+     */
+    public var host: String?
+    public var puerto: UInt16
+    /**
+     * Es el QR de quien ESPERA para recibir: a ese se le manda.
+     */
+    public var esperaRecibir: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Las seis cifras.
+         */codigo: String, 
+        /**
+         * Donde esta el otro, si el QR lo dice (si no, se busca en Bonjour por
+         * la etiqueta: [`etiqueta_de_envio`]).
+         */host: String?, puerto: UInt16, 
+        /**
+         * Es el QR de quien ESPERA para recibir: a ese se le manda.
+         */esperaRecibir: Bool) {
+        self.codigo = codigo
+        self.host = host
+        self.puerto = puerto
+        self.esperaRecibir = esperaRecibir
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension CodigoDeEnvio: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeCodigoDeEnvio: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> CodigoDeEnvio {
+        return
+            try CodigoDeEnvio(
+                codigo: FfiConverterString.read(from: &buf), 
+                host: FfiConverterOptionString.read(from: &buf), 
+                puerto: FfiConverterUInt16.read(from: &buf), 
+                esperaRecibir: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: CodigoDeEnvio, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.codigo, into: &buf)
+        FfiConverterOptionString.write(value.host, into: &buf)
+        FfiConverterUInt16.write(value.puerto, into: &buf)
+        FfiConverterBool.write(value.esperaRecibir, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCodigoDeEnvio_lift(_ buf: RustBuffer) throws -> CodigoDeEnvio {
+    return try FfiConverterTypeCodigoDeEnvio.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCodigoDeEnvio_lower(_ value: CodigoDeEnvio) -> RustBuffer {
+    return FfiConverterTypeCodigoDeEnvio.lower(value)
+}
+
+
+/**
+ * Lo que dice un codigo de invitacion tecleado o su QR.
+ */
+public struct CodigoDeInvitacion: Equatable, Hashable {
+    /**
+     * Los ocho signos (`K7Q2M9XP`).
+     */
+    public var codigo: String
+    /**
+     * Donde esta quien invita, si el QR lo dice (si no, se busca en
+     * Bonjour `_pixpinchat._tcp` por [`etiqueta_de_invitacion`]).
+     */
+    public var host: String?
+    public var puerto: UInt16
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Los ocho signos (`K7Q2M9XP`).
+         */codigo: String, 
+        /**
+         * Donde esta quien invita, si el QR lo dice (si no, se busca en
+         * Bonjour `_pixpinchat._tcp` por [`etiqueta_de_invitacion`]).
+         */host: String?, puerto: UInt16) {
+        self.codigo = codigo
+        self.host = host
+        self.puerto = puerto
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension CodigoDeInvitacion: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeCodigoDeInvitacion: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> CodigoDeInvitacion {
+        return
+            try CodigoDeInvitacion(
+                codigo: FfiConverterString.read(from: &buf), 
+                host: FfiConverterOptionString.read(from: &buf), 
+                puerto: FfiConverterUInt16.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: CodigoDeInvitacion, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.codigo, into: &buf)
+        FfiConverterOptionString.write(value.host, into: &buf)
+        FfiConverterUInt16.write(value.puerto, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCodigoDeInvitacion_lift(_ buf: RustBuffer) throws -> CodigoDeInvitacion {
+    return try FfiConverterTypeCodigoDeInvitacion.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCodigoDeInvitacion_lower(_ value: CodigoDeInvitacion) -> RustBuffer {
+    return FfiConverterTypeCodigoDeInvitacion.lower(value)
+}
+
+
+/**
  * Un color con sus cuatro canales en `0..1`.
  */
 public struct ColorEstilo: Equatable, Hashable {
@@ -4006,6 +5463,91 @@ public func FfiConverterTypeDiaTimeline_lift(_ buf: RustBuffer) throws -> DiaTim
 #endif
 public func FfiConverterTypeDiaTimeline_lower(_ value: DiaTimeline) -> RustBuffer {
     return FfiConverterTypeDiaTimeline.lower(value)
+}
+
+
+/**
+ * Como quedo cada archivo mandado con [`Nucleo::enviar_a_aparato`].
+ */
+public struct EnvioSuelto: Equatable, Hashable {
+    public var nombre: String
+    /**
+     * Donde quedo en el otro aparato; `None` si no se mando.
+     */
+    public var donde: DondeLlego?
+    /**
+     * El nombre del chat abierto del otro, si quedo en uno.
+     */
+    public var chat: String?
+    /**
+     * Por que no se mando (el otro tiene un lienzo delante y no es una
+     * foto, es un PixPin de antes, se corto...).
+     */
+    public var error: String?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(nombre: String, 
+        /**
+         * Donde quedo en el otro aparato; `None` si no se mando.
+         */donde: DondeLlego?, 
+        /**
+         * El nombre del chat abierto del otro, si quedo en uno.
+         */chat: String?, 
+        /**
+         * Por que no se mando (el otro tiene un lienzo delante y no es una
+         * foto, es un PixPin de antes, se corto...).
+         */error: String?) {
+        self.nombre = nombre
+        self.donde = donde
+        self.chat = chat
+        self.error = error
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension EnvioSuelto: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeEnvioSuelto: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> EnvioSuelto {
+        return
+            try EnvioSuelto(
+                nombre: FfiConverterString.read(from: &buf), 
+                donde: FfiConverterOptionTypeDondeLlego.read(from: &buf), 
+                chat: FfiConverterOptionString.read(from: &buf), 
+                error: FfiConverterOptionString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: EnvioSuelto, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.nombre, into: &buf)
+        FfiConverterOptionTypeDondeLlego.write(value.donde, into: &buf)
+        FfiConverterOptionString.write(value.chat, into: &buf)
+        FfiConverterOptionString.write(value.error, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeEnvioSuelto_lift(_ buf: RustBuffer) throws -> EnvioSuelto {
+    return try FfiConverterTypeEnvioSuelto.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeEnvioSuelto_lower(_ value: EnvioSuelto) -> RustBuffer {
+    return FfiConverterTypeEnvioSuelto.lower(value)
 }
 
 
@@ -6199,6 +7741,113 @@ public func FfiConverterTypeParTxt_lower(_ value: ParTxt) -> RustBuffer {
 
 
 /**
+ * Una persona (un aparato de una persona) de un chat compartido.
+ */
+public struct PersonaCompartida: Equatable, Hashable {
+    /**
+     * El id de su aparato.
+     */
+    public var id: String
+    public var nombre: String
+    /**
+     * El codigo fijo de su aparato (`K7Q2`), el de sus mensajes.
+     */
+    public var codigo: String
+    public var dentro: Bool
+    /**
+     * Cuando entro (la ultima vez), en ms.
+     */
+    public var desde: Int64
+    /**
+     * Este aparato.
+     */
+    public var soyYo: Bool
+    /**
+     * Si este aparato la puede quitar (o salir, si es uno mismo).
+     */
+    public var puedoQuitar: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * El id de su aparato.
+         */id: String, nombre: String, 
+        /**
+         * El codigo fijo de su aparato (`K7Q2`), el de sus mensajes.
+         */codigo: String, dentro: Bool, 
+        /**
+         * Cuando entro (la ultima vez), en ms.
+         */desde: Int64, 
+        /**
+         * Este aparato.
+         */soyYo: Bool, 
+        /**
+         * Si este aparato la puede quitar (o salir, si es uno mismo).
+         */puedoQuitar: Bool) {
+        self.id = id
+        self.nombre = nombre
+        self.codigo = codigo
+        self.dentro = dentro
+        self.desde = desde
+        self.soyYo = soyYo
+        self.puedoQuitar = puedoQuitar
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension PersonaCompartida: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypePersonaCompartida: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> PersonaCompartida {
+        return
+            try PersonaCompartida(
+                id: FfiConverterString.read(from: &buf), 
+                nombre: FfiConverterString.read(from: &buf), 
+                codigo: FfiConverterString.read(from: &buf), 
+                dentro: FfiConverterBool.read(from: &buf), 
+                desde: FfiConverterInt64.read(from: &buf), 
+                soyYo: FfiConverterBool.read(from: &buf), 
+                puedoQuitar: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: PersonaCompartida, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.id, into: &buf)
+        FfiConverterString.write(value.nombre, into: &buf)
+        FfiConverterString.write(value.codigo, into: &buf)
+        FfiConverterBool.write(value.dentro, into: &buf)
+        FfiConverterInt64.write(value.desde, into: &buf)
+        FfiConverterBool.write(value.soyYo, into: &buf)
+        FfiConverterBool.write(value.puedoQuitar, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePersonaCompartida_lift(_ buf: RustBuffer) throws -> PersonaCompartida {
+    return try FfiConverterTypePersonaCompartida.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePersonaCompartida_lower(_ value: PersonaCompartida) -> RustBuffer {
+    return FfiConverterTypePersonaCompartida.lower(value)
+}
+
+
+/**
  * Lo que el etiquetador propone para un texto.
  */
 public struct PropuestaLeccion: Equatable, Hashable {
@@ -6264,6 +7913,81 @@ public func FfiConverterTypePropuestaLeccion_lift(_ buf: RustBuffer) throws -> P
 #endif
 public func FfiConverterTypePropuestaLeccion_lower(_ value: PropuestaLeccion) -> RustBuffer {
     return FfiConverterTypePropuestaLeccion.lower(value)
+}
+
+
+/**
+ * Algo recibido con un codigo, ya en su sitio.
+ */
+public struct RecibidoEnvio: Equatable, Hashable {
+    public var nombre: String
+    /**
+     * `proyecto` (nuevo en la lista), `proyecto_al_dia` (encima del que ya
+     * habia, con copia antes) o `guardados` («Mensajes guardados»).
+     */
+    public var donde: String
+    /**
+     * El id del chat donde quedo.
+     */
+    public var chat: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(nombre: String, 
+        /**
+         * `proyecto` (nuevo en la lista), `proyecto_al_dia` (encima del que ya
+         * habia, con copia antes) o `guardados` («Mensajes guardados»).
+         */donde: String, 
+        /**
+         * El id del chat donde quedo.
+         */chat: String) {
+        self.nombre = nombre
+        self.donde = donde
+        self.chat = chat
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension RecibidoEnvio: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeRecibidoEnvio: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> RecibidoEnvio {
+        return
+            try RecibidoEnvio(
+                nombre: FfiConverterString.read(from: &buf), 
+                donde: FfiConverterString.read(from: &buf), 
+                chat: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: RecibidoEnvio, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.nombre, into: &buf)
+        FfiConverterString.write(value.donde, into: &buf)
+        FfiConverterString.write(value.chat, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeRecibidoEnvio_lift(_ buf: RustBuffer) throws -> RecibidoEnvio {
+    return try FfiConverterTypeRecibidoEnvio.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeRecibidoEnvio_lower(_ value: RecibidoEnvio) -> RustBuffer {
+    return FfiConverterTypeRecibidoEnvio.lower(value)
 }
 
 
@@ -6573,6 +8297,105 @@ public func FfiConverterTypeResumenMini_lower(_ value: ResumenMini) -> RustBuffe
 
 
 /**
+ * Lo que paso en una vuelta con una persona.
+ */
+public struct ResumenPersona: Equatable, Hashable {
+    public var otroId: String
+    public var otroNombre: String
+    /**
+     * Donde escucha el otro (para recordarlo), o 0.
+     */
+    public var puertoDelOtro: UInt16
+    /**
+     * Los chats que se juntaron (ids de chat tal como viajan).
+     */
+    public var chats: [String]
+    public var traidos: UInt64
+    public var enviados: UInt64
+    public var bytes: UInt64
+    /**
+     * Si llego algo nuevo (hay que releer los chats).
+     */
+    public var trajoAlgo: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(otroId: String, otroNombre: String, 
+        /**
+         * Donde escucha el otro (para recordarlo), o 0.
+         */puertoDelOtro: UInt16, 
+        /**
+         * Los chats que se juntaron (ids de chat tal como viajan).
+         */chats: [String], traidos: UInt64, enviados: UInt64, bytes: UInt64, 
+        /**
+         * Si llego algo nuevo (hay que releer los chats).
+         */trajoAlgo: Bool) {
+        self.otroId = otroId
+        self.otroNombre = otroNombre
+        self.puertoDelOtro = puertoDelOtro
+        self.chats = chats
+        self.traidos = traidos
+        self.enviados = enviados
+        self.bytes = bytes
+        self.trajoAlgo = trajoAlgo
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension ResumenPersona: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeResumenPersona: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ResumenPersona {
+        return
+            try ResumenPersona(
+                otroId: FfiConverterString.read(from: &buf), 
+                otroNombre: FfiConverterString.read(from: &buf), 
+                puertoDelOtro: FfiConverterUInt16.read(from: &buf), 
+                chats: FfiConverterSequenceString.read(from: &buf), 
+                traidos: FfiConverterUInt64.read(from: &buf), 
+                enviados: FfiConverterUInt64.read(from: &buf), 
+                bytes: FfiConverterUInt64.read(from: &buf), 
+                trajoAlgo: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: ResumenPersona, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.otroId, into: &buf)
+        FfiConverterString.write(value.otroNombre, into: &buf)
+        FfiConverterUInt16.write(value.puertoDelOtro, into: &buf)
+        FfiConverterSequenceString.write(value.chats, into: &buf)
+        FfiConverterUInt64.write(value.traidos, into: &buf)
+        FfiConverterUInt64.write(value.enviados, into: &buf)
+        FfiConverterUInt64.write(value.bytes, into: &buf)
+        FfiConverterBool.write(value.trajoAlgo, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeResumenPersona_lift(_ buf: RustBuffer) throws -> ResumenPersona {
+    return try FfiConverterTypeResumenPersona.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeResumenPersona_lower(_ value: ResumenPersona) -> RustBuffer {
+    return FfiConverterTypeResumenPersona.lower(value)
+}
+
+
+/**
  * Lo que salio de una vuelta, para ensenarlo.
  */
 public struct ResumenSincro: Equatable, Hashable {
@@ -6587,6 +8410,12 @@ public struct ResumenSincro: Equatable, Hashable {
     public var traidos: UInt64
     public var enviados: UInt64
     public var archivos: UInt64
+    /**
+     * Capturas de la galeria que pasaron de un aparato a otro, y las que
+     * se quitaron aqui porque se quitaron a mano en el otro.
+     */
+    public var capturas: UInt64
+    public var capturasTiradas: UInt64
     /**
      * Bytes que pasaron por la red.
      */
@@ -6611,6 +8440,10 @@ public struct ResumenSincro: Equatable, Hashable {
          * Mensajes que llegaron y que se mandaron.
          */traidos: UInt64, enviados: UInt64, archivos: UInt64, 
         /**
+         * Capturas de la galeria que pasaron de un aparato a otro, y las que
+         * se quitaron aqui porque se quitaron a mano en el otro.
+         */capturas: UInt64, capturasTiradas: UInt64, 
+        /**
          * Bytes que pasaron por la red.
          */bytes: UInt64, segundos: Double, 
         /**
@@ -6624,6 +8457,8 @@ public struct ResumenSincro: Equatable, Hashable {
         self.traidos = traidos
         self.enviados = enviados
         self.archivos = archivos
+        self.capturas = capturas
+        self.capturasTiradas = capturasTiradas
         self.bytes = bytes
         self.segundos = segundos
         self.texto = texto
@@ -6651,6 +8486,8 @@ public struct FfiConverterTypeResumenSincro: FfiConverterRustBuffer {
                 traidos: FfiConverterUInt64.read(from: &buf), 
                 enviados: FfiConverterUInt64.read(from: &buf), 
                 archivos: FfiConverterUInt64.read(from: &buf), 
+                capturas: FfiConverterUInt64.read(from: &buf), 
+                capturasTiradas: FfiConverterUInt64.read(from: &buf), 
                 bytes: FfiConverterUInt64.read(from: &buf), 
                 segundos: FfiConverterDouble.read(from: &buf), 
                 texto: FfiConverterString.read(from: &buf), 
@@ -6664,6 +8501,8 @@ public struct FfiConverterTypeResumenSincro: FfiConverterRustBuffer {
         FfiConverterUInt64.write(value.traidos, into: &buf)
         FfiConverterUInt64.write(value.enviados, into: &buf)
         FfiConverterUInt64.write(value.archivos, into: &buf)
+        FfiConverterUInt64.write(value.capturas, into: &buf)
+        FfiConverterUInt64.write(value.capturasTiradas, into: &buf)
         FfiConverterUInt64.write(value.bytes, into: &buf)
         FfiConverterDouble.write(value.segundos, into: &buf)
         FfiConverterString.write(value.texto, into: &buf)
@@ -6970,6 +8809,18 @@ public enum Atendido: Equatable, Hashable {
      */
     case aparato(id: String, nombre: String
     )
+    /**
+     * Una persona de un chat compartido se junto con este aparato (`PXC1`):
+     * puede haber mensajes nuevos en esos chats.
+     */
+    case persona(id: String, nombre: String
+    )
+    /**
+     * Un aparato del grupo mando **archivos sueltos** (y quiza sincronizo
+     * en la misma conexion): donde quedo cada uno.
+     */
+    case archivos(id: String, nombre: String, llegadas: [ArchivoLlegado]
+    )
 
 
 
@@ -6998,6 +8849,12 @@ public struct FfiConverterTypeAtendido: FfiConverterRustBuffer {
         case 3: return .aparato(id: try FfiConverterString.read(from: &buf), nombre: try FfiConverterString.read(from: &buf)
         )
         
+        case 4: return .persona(id: try FfiConverterString.read(from: &buf), nombre: try FfiConverterString.read(from: &buf)
+        )
+        
+        case 5: return .archivos(id: try FfiConverterString.read(from: &buf), nombre: try FfiConverterString.read(from: &buf), llegadas: try FfiConverterSequenceTypeArchivoLlegado.read(from: &buf)
+        )
+        
         default: throw UniffiInternalError.unexpectedEnumCase
         }
     }
@@ -7019,6 +8876,19 @@ public struct FfiConverterTypeAtendido: FfiConverterRustBuffer {
             FfiConverterString.write(id, into: &buf)
             FfiConverterString.write(nombre, into: &buf)
             
+        
+        case let .persona(id,nombre):
+            writeInt(&buf, Int32(4))
+            FfiConverterString.write(id, into: &buf)
+            FfiConverterString.write(nombre, into: &buf)
+            
+        
+        case let .archivos(id,nombre,llegadas):
+            writeInt(&buf, Int32(5))
+            FfiConverterString.write(id, into: &buf)
+            FfiConverterString.write(nombre, into: &buf)
+            FfiConverterSequenceTypeArchivoLlegado.write(llegadas, into: &buf)
+            
         }
     }
 }
@@ -7036,6 +8906,244 @@ public func FfiConverterTypeAtendido_lift(_ buf: RustBuffer) throws -> Atendido 
 #endif
 public func FfiConverterTypeAtendido_lower(_ value: Atendido) -> RustBuffer {
     return FfiConverterTypeAtendido.lower(value)
+}
+
+
+
+/**
+ * Lo que va contando una [`PuertaEnvio`] mientras esta abierta.
+ */
+
+public enum AvisoEnvio: Equatable, Hashable {
+    
+    /**
+     * `nombre` llamo con el codigo bueno y **espera que se le apruebe**
+     * ([`PuertaEnvio::aprobar`]).
+     */
+    case llega(llamada: UInt64, nombre: String
+    )
+    /**
+     * Lo que va saliendo hacia esa llamada.
+     */
+    case avance(llamada: UInt64, hechos: UInt64, total: UInt64
+    )
+    /**
+     * Como acabo esa llamada.
+     */
+    case fin(llamada: UInt64, fin: FinEnvio
+    )
+    /**
+     * La puerta se cerro: no habra mas avisos.
+     */
+    case cerrada
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension AvisoEnvio: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeAvisoEnvio: FfiConverterRustBuffer {
+    typealias SwiftType = AvisoEnvio
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AvisoEnvio {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .llega(llamada: try FfiConverterUInt64.read(from: &buf), nombre: try FfiConverterString.read(from: &buf)
+        )
+        
+        case 2: return .avance(llamada: try FfiConverterUInt64.read(from: &buf), hechos: try FfiConverterUInt64.read(from: &buf), total: try FfiConverterUInt64.read(from: &buf)
+        )
+        
+        case 3: return .fin(llamada: try FfiConverterUInt64.read(from: &buf), fin: try FfiConverterTypeFinEnvio.read(from: &buf)
+        )
+        
+        case 4: return .cerrada
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: AvisoEnvio, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case let .llega(llamada,nombre):
+            writeInt(&buf, Int32(1))
+            FfiConverterUInt64.write(llamada, into: &buf)
+            FfiConverterString.write(nombre, into: &buf)
+            
+        
+        case let .avance(llamada,hechos,total):
+            writeInt(&buf, Int32(2))
+            FfiConverterUInt64.write(llamada, into: &buf)
+            FfiConverterUInt64.write(hechos, into: &buf)
+            FfiConverterUInt64.write(total, into: &buf)
+            
+        
+        case let .fin(llamada,fin):
+            writeInt(&buf, Int32(3))
+            FfiConverterUInt64.write(llamada, into: &buf)
+            FfiConverterTypeFinEnvio.write(fin, into: &buf)
+            
+        
+        case .cerrada:
+            writeInt(&buf, Int32(4))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAvisoEnvio_lift(_ buf: RustBuffer) throws -> AvisoEnvio {
+    return try FfiConverterTypeAvisoEnvio.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAvisoEnvio_lower(_ value: AvisoEnvio) -> RustBuffer {
+    return FfiConverterTypeAvisoEnvio.lower(value)
+}
+
+
+
+/**
+ * Lo que paso en una conexion a una [`Invitacion`].
+ */
+
+public enum AvisoInvitacion: Equatable, Hashable {
+    
+    /**
+     * Se cerro: no llego nadie.
+     */
+    case cerrada
+    /**
+     * Alguien entro con el codigo.
+     */
+    case entro(id: String, nombre: String
+    )
+    /**
+     * Una persona se trajo el chat (o lo junto) por esta puerta.
+     */
+    case junto(id: String, nombre: String
+    )
+    /**
+     * Alguien probo otro codigo (`intentos` seguidos).
+     */
+    case codigoMalo(intentos: UInt32
+    )
+    /**
+     * Cinco codigos malos: la invitacion se cerro sola.
+     */
+    case quemada
+    /**
+     * Algo salio mal con esa conexion; la puerta sigue abierta.
+     */
+    case fallo(detalle: String
+    )
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension AvisoInvitacion: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeAvisoInvitacion: FfiConverterRustBuffer {
+    typealias SwiftType = AvisoInvitacion
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AvisoInvitacion {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .cerrada
+        
+        case 2: return .entro(id: try FfiConverterString.read(from: &buf), nombre: try FfiConverterString.read(from: &buf)
+        )
+        
+        case 3: return .junto(id: try FfiConverterString.read(from: &buf), nombre: try FfiConverterString.read(from: &buf)
+        )
+        
+        case 4: return .codigoMalo(intentos: try FfiConverterUInt32.read(from: &buf)
+        )
+        
+        case 5: return .quemada
+        
+        case 6: return .fallo(detalle: try FfiConverterString.read(from: &buf)
+        )
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: AvisoInvitacion, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .cerrada:
+            writeInt(&buf, Int32(1))
+        
+        
+        case let .entro(id,nombre):
+            writeInt(&buf, Int32(2))
+            FfiConverterString.write(id, into: &buf)
+            FfiConverterString.write(nombre, into: &buf)
+            
+        
+        case let .junto(id,nombre):
+            writeInt(&buf, Int32(3))
+            FfiConverterString.write(id, into: &buf)
+            FfiConverterString.write(nombre, into: &buf)
+            
+        
+        case let .codigoMalo(intentos):
+            writeInt(&buf, Int32(4))
+            FfiConverterUInt32.write(intentos, into: &buf)
+            
+        
+        case .quemada:
+            writeInt(&buf, Int32(5))
+        
+        
+        case let .fallo(detalle):
+            writeInt(&buf, Int32(6))
+            FfiConverterString.write(detalle, into: &buf)
+            
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAvisoInvitacion_lift(_ buf: RustBuffer) throws -> AvisoInvitacion {
+    return try FfiConverterTypeAvisoInvitacion.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAvisoInvitacion_lower(_ value: AvisoInvitacion) -> RustBuffer {
+    return FfiConverterTypeAvisoInvitacion.lower(value)
 }
 
 
@@ -7256,6 +9364,91 @@ public func FfiConverterTypeClaseDeResultado_lift(_ buf: RustBuffer) throws -> C
 #endif
 public func FfiConverterTypeClaseDeResultado_lower(_ value: ClaseDeResultado) -> RustBuffer {
     return FfiConverterTypeClaseDeResultado.lower(value)
+}
+
+
+
+/**
+ * Donde quedo un archivo suelto (`al_lienzo::Donde`).
+ */
+
+public enum DondeLlego: Equatable, Hashable {
+    
+    /**
+     * En el lienzo que estaba delante.
+     */
+    case lienzo
+    /**
+     * En el chat que estaba abierto.
+     */
+    case chatAbierto
+    /**
+     * En la conversacion general («Mensajes guardados»).
+     */
+    case chat
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension DondeLlego: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeDondeLlego: FfiConverterRustBuffer {
+    typealias SwiftType = DondeLlego
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> DondeLlego {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .lienzo
+        
+        case 2: return .chatAbierto
+        
+        case 3: return .chat
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: DondeLlego, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .lienzo:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .chatAbierto:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .chat:
+            writeInt(&buf, Int32(3))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeDondeLlego_lift(_ buf: RustBuffer) throws -> DondeLlego {
+    return try FfiConverterTypeDondeLlego.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeDondeLlego_lower(_ value: DondeLlego) -> RustBuffer {
+    return FfiConverterTypeDondeLlego.lower(value)
 }
 
 
@@ -7515,6 +9708,347 @@ public func FfiConverterTypeFasePuntero_lift(_ buf: RustBuffer) throws -> FasePu
 #endif
 public func FfiConverterTypeFasePuntero_lower(_ value: FasePuntero) -> RustBuffer {
     return FfiConverterTypeFasePuntero.lower(value)
+}
+
+
+
+/**
+ * Como acabo una conexion a una puerta de envio, o un envio a quien
+ * espera.
+ */
+
+public enum FinEnvio: Equatable, Hashable {
+    
+    /**
+     * La puerta se cerro: no llego nadie.
+     */
+    case cerrada
+    /**
+     * Se mando todo a `nombre`.
+     */
+    case enviado(nombre: String
+    )
+    /**
+     * `nombre` dijo que no.
+     */
+    case rechazado(nombre: String
+    )
+    /**
+     * Aqui no se aprobo a `nombre`: ni se le ofrecio.
+     */
+    case sinAprobar(nombre: String
+    )
+    /**
+     * Alguien llamo con otro codigo (`intentos` seguidos).
+     */
+    case codigoMalo(intentos: UInt32
+    )
+    /**
+     * Cinco codigos malos: la puerta se cerro sola.
+     */
+    case quemado
+    /**
+     * Se corto a medias.
+     */
+    case fallo(detalle: String
+    )
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension FinEnvio: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeFinEnvio: FfiConverterRustBuffer {
+    typealias SwiftType = FinEnvio
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FinEnvio {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .cerrada
+        
+        case 2: return .enviado(nombre: try FfiConverterString.read(from: &buf)
+        )
+        
+        case 3: return .rechazado(nombre: try FfiConverterString.read(from: &buf)
+        )
+        
+        case 4: return .sinAprobar(nombre: try FfiConverterString.read(from: &buf)
+        )
+        
+        case 5: return .codigoMalo(intentos: try FfiConverterUInt32.read(from: &buf)
+        )
+        
+        case 6: return .quemado
+        
+        case 7: return .fallo(detalle: try FfiConverterString.read(from: &buf)
+        )
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: FinEnvio, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .cerrada:
+            writeInt(&buf, Int32(1))
+        
+        
+        case let .enviado(nombre):
+            writeInt(&buf, Int32(2))
+            FfiConverterString.write(nombre, into: &buf)
+            
+        
+        case let .rechazado(nombre):
+            writeInt(&buf, Int32(3))
+            FfiConverterString.write(nombre, into: &buf)
+            
+        
+        case let .sinAprobar(nombre):
+            writeInt(&buf, Int32(4))
+            FfiConverterString.write(nombre, into: &buf)
+            
+        
+        case let .codigoMalo(intentos):
+            writeInt(&buf, Int32(5))
+            FfiConverterUInt32.write(intentos, into: &buf)
+            
+        
+        case .quemado:
+            writeInt(&buf, Int32(6))
+        
+        
+        case let .fallo(detalle):
+            writeInt(&buf, Int32(7))
+            FfiConverterString.write(detalle, into: &buf)
+            
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFinEnvio_lift(_ buf: RustBuffer) throws -> FinEnvio {
+    return try FfiConverterTypeFinEnvio.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFinEnvio_lower(_ value: FinEnvio) -> RustBuffer {
+    return FfiConverterTypeFinEnvio.lower(value)
+}
+
+
+
+/**
+ * Como acabo una llamada a una [`PuertaRecibir`].
+ */
+
+public enum FinRecibir: Equatable, Hashable {
+    
+    case cerrada
+    /**
+     * Llego todo de `de`, ya en su sitio.
+     */
+    case recibido(de: String, cosas: [RecibidoEnvio]
+    )
+    case codigoMalo(intentos: UInt32
+    )
+    case quemado
+    case fallo(detalle: String
+    )
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension FinRecibir: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeFinRecibir: FfiConverterRustBuffer {
+    typealias SwiftType = FinRecibir
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FinRecibir {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .cerrada
+        
+        case 2: return .recibido(de: try FfiConverterString.read(from: &buf), cosas: try FfiConverterSequenceTypeRecibidoEnvio.read(from: &buf)
+        )
+        
+        case 3: return .codigoMalo(intentos: try FfiConverterUInt32.read(from: &buf)
+        )
+        
+        case 4: return .quemado
+        
+        case 5: return .fallo(detalle: try FfiConverterString.read(from: &buf)
+        )
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: FinRecibir, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .cerrada:
+            writeInt(&buf, Int32(1))
+        
+        
+        case let .recibido(de,cosas):
+            writeInt(&buf, Int32(2))
+            FfiConverterString.write(de, into: &buf)
+            FfiConverterSequenceTypeRecibidoEnvio.write(cosas, into: &buf)
+            
+        
+        case let .codigoMalo(intentos):
+            writeInt(&buf, Int32(3))
+            FfiConverterUInt32.write(intentos, into: &buf)
+            
+        
+        case .quemado:
+            writeInt(&buf, Int32(4))
+        
+        
+        case let .fallo(detalle):
+            writeInt(&buf, Int32(5))
+            FfiConverterString.write(detalle, into: &buf)
+            
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFinRecibir_lift(_ buf: RustBuffer) throws -> FinRecibir {
+    return try FfiConverterTypeFinRecibir.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFinRecibir_lower(_ value: FinRecibir) -> RustBuffer {
+    return FfiConverterTypeFinRecibir.lower(value)
+}
+
+
+
+/**
+ * **Lo que el usuario tiene delante en este Mac** (el `Frente` de
+ * Windows): a donde va un archivo suelto que llega de otro aparato. Gana lo
+ * ultimo que se puso; Swift lo pone al abrir un chat o un lienzo y lo
+ * quita (`Nada`) al cerrar la ventana.
+ */
+
+public enum FrenteMac: Equatable, Hashable {
+    
+    /**
+     * Nada abierto: lo que llega va a «Mensajes guardados».
+     */
+    case nada
+    /**
+     * El chat `id` (`nombre`) esta abierto: recibe cualquier cosa.
+     */
+    case chat(id: String, nombre: String
+    )
+    /**
+     * Un lienzo del chat `chat` esta abierto: solo acepta fotos. La foto
+     * queda en `sincro/al-lienzo/` y Swift la mete en el lienzo
+     * ([`ArchivoLlegado::ruta`]).
+     */
+    case lienzo(chat: String
+    )
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension FrenteMac: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeFrenteMac: FfiConverterRustBuffer {
+    typealias SwiftType = FrenteMac
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FrenteMac {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .nada
+        
+        case 2: return .chat(id: try FfiConverterString.read(from: &buf), nombre: try FfiConverterString.read(from: &buf)
+        )
+        
+        case 3: return .lienzo(chat: try FfiConverterString.read(from: &buf)
+        )
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: FrenteMac, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .nada:
+            writeInt(&buf, Int32(1))
+        
+        
+        case let .chat(id,nombre):
+            writeInt(&buf, Int32(2))
+            FfiConverterString.write(id, into: &buf)
+            FfiConverterString.write(nombre, into: &buf)
+            
+        
+        case let .lienzo(chat):
+            writeInt(&buf, Int32(3))
+            FfiConverterString.write(chat, into: &buf)
+            
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFrenteMac_lift(_ buf: RustBuffer) throws -> FrenteMac {
+    return try FfiConverterTypeFrenteMac.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFrenteMac_lower(_ value: FrenteMac) -> RustBuffer {
+    return FfiConverterTypeFrenteMac.lower(value)
 }
 
 
@@ -8138,6 +10672,78 @@ fileprivate struct FfiConverterOptionTypeCajaLienzo: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterOptionTypeChatCompartidoMac: FfiConverterRustBuffer {
+    typealias SwiftType = ChatCompartidoMac?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeChatCompartidoMac.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeChatCompartidoMac.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeCodigoDeEnvio: FfiConverterRustBuffer {
+    typealias SwiftType = CodigoDeEnvio?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeCodigoDeEnvio.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeCodigoDeEnvio.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeCodigoDeInvitacion: FfiConverterRustBuffer {
+    typealias SwiftType = CodigoDeInvitacion?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeCodigoDeInvitacion.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeCodigoDeInvitacion.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterOptionTypeColorEstilo: FfiConverterRustBuffer {
     typealias SwiftType = ColorEstilo?
 
@@ -8202,6 +10808,30 @@ fileprivate struct FfiConverterOptionTypeResumenMini: FfiConverterRustBuffer {
         switch try readInt(&buf) as Int8 {
         case 0: return nil
         case 1: return try FfiConverterTypeResumenMini.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeDondeLlego: FfiConverterRustBuffer {
+    typealias SwiftType = DondeLlego?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeDondeLlego.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeDondeLlego.read(from: &buf)
         default: throw UniffiInternalError.unexpectedOptionalTag
         }
     }
@@ -8309,6 +10939,31 @@ fileprivate struct FfiConverterSequenceString: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceTypeArchivoLlegado: FfiConverterRustBuffer {
+    typealias SwiftType = [ArchivoLlegado]
+
+    public static func write(_ value: [ArchivoLlegado], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeArchivoLlegado.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [ArchivoLlegado] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [ArchivoLlegado]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeArchivoLlegado.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypeCapturaBorrada: FfiConverterRustBuffer {
     typealias SwiftType = [CapturaBorrada]
 
@@ -8359,6 +11014,31 @@ fileprivate struct FfiConverterSequenceTypeCapturaGaleria: FfiConverterRustBuffe
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceTypeChatCompartidoMac: FfiConverterRustBuffer {
+    typealias SwiftType = [ChatCompartidoMac]
+
+    public static func write(_ value: [ChatCompartidoMac], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeChatCompartidoMac.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [ChatCompartidoMac] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [ChatCompartidoMac]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeChatCompartidoMac.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypeDiaTimeline: FfiConverterRustBuffer {
     typealias SwiftType = [DiaTimeline]
 
@@ -8376,6 +11056,31 @@ fileprivate struct FfiConverterSequenceTypeDiaTimeline: FfiConverterRustBuffer {
         seq.reserveCapacity(Int(len))
         for _ in 0 ..< len {
             seq.append(try FfiConverterTypeDiaTimeline.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeEnvioSuelto: FfiConverterRustBuffer {
+    typealias SwiftType = [EnvioSuelto]
+
+    public static func write(_ value: [EnvioSuelto], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeEnvioSuelto.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [EnvioSuelto] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [EnvioSuelto]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeEnvioSuelto.read(from: &buf))
         }
         return seq
     }
@@ -8659,6 +11364,56 @@ fileprivate struct FfiConverterSequenceTypeParTxt: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceTypePersonaCompartida: FfiConverterRustBuffer {
+    typealias SwiftType = [PersonaCompartida]
+
+    public static func write(_ value: [PersonaCompartida], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypePersonaCompartida.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [PersonaCompartida] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [PersonaCompartida]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypePersonaCompartida.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeRecibidoEnvio: FfiConverterRustBuffer {
+    typealias SwiftType = [RecibidoEnvio]
+
+    public static func write(_ value: [RecibidoEnvio], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeRecibidoEnvio.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [RecibidoEnvio] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [RecibidoEnvio]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeRecibidoEnvio.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypeResultadoBusqueda: FfiConverterRustBuffer {
     typealias SwiftType = [ResultadoBusqueda]
 
@@ -8823,6 +11578,51 @@ public func llamaLocalPreguntar(puerto: UInt16, historial: [MensajeIa], pedido: 
 })
 }
 /**
+ * La etiqueta (TXT `g`) de quien invita con ese codigo. PBKDF2: fuera del
+ * hilo de la interfaz.
+ */
+public func etiquetaDeInvitacion(codigo: String) -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_func_etiqueta_de_invitacion(
+        FfiConverterString.lower(codigo),uniffiCallStatus
+    )
+})
+}
+/**
+ * `K7Q2-M9XP`.
+ */
+public func invitacionLegible(codigo: String) -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_func_invitacion_legible(
+        FfiConverterString.lower(codigo),uniffiCallStatus
+    )
+})
+}
+/**
+ * `que_entrar` de Windows: el texto de un QR de invitacion o el codigo a
+ * secas. Otro QR de PixPin (o cualquier texto con `:`) no es un codigo.
+ */
+public func leerInvitacion(texto: String) -> CodigoDeInvitacion?  {
+    return try!  FfiConverterOptionTypeCodigoDeInvitacion.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_func_leer_invitacion(
+        FfiConverterString.lower(texto),uniffiCallStatus
+    )
+})
+}
+/**
+ * `_pixpinchat._tcp`.
+ */
+public func tipoDeServicioChat() -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_func_tipo_de_servicio_chat(uniffiCallStatus
+    )
+})
+}
+/**
  * Lo que se mueve el cursor sin dejar de estar «quieto» para el gesto de
  * pararse (forma rapida), en pixeles de pantalla: el temblor de la mano
  * del movil (`forma_rapida::TEMBLOR_PX`). Swift reprograma su espera solo
@@ -8832,6 +11632,63 @@ public func formaRapidaTemblorPx() -> Float  {
     return try!  FfiConverterFloat.lift(try! rustCall() {
         uniffiCallStatus in
     uniffi_pixpin_nucleo_fn_func_forma_rapida_temblor_px(uniffiCallStatus
+    )
+})
+}
+/**
+ * `482 913`.
+ */
+public func codigoDeEnvioLegible(codigo: String) -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_func_codigo_de_envio_legible(
+        FfiConverterString.lower(codigo),uniffiCallStatus
+    )
+})
+}
+/**
+ * La etiqueta (TXT `g`) con la que se anuncia quien tiene ese codigo, para
+ * encontrarle en Bonjour sin publicar el codigo. Cuesta PBKDF2: fuera del
+ * hilo de la interfaz.
+ */
+public func etiquetaDeEnvio(codigo: String) -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_func_etiqueta_de_envio(
+        FfiConverterString.lower(codigo),uniffiCallStatus
+    )
+})
+}
+/**
+ * Lee lo tecleado o pegado: el texto entero de un QR (`pixpin-envio:…` o
+ * `pixpin-recibe:…`) o solo las seis cifras. `None` si no es ni una cosa
+ * ni otra.
+ */
+public func leerCodigoDeEnvio(texto: String) -> CodigoDeEnvio?  {
+    return try!  FfiConverterOptionTypeCodigoDeEnvio.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_func_leer_codigo_de_envio(
+        FfiConverterString.lower(texto),uniffiCallStatus
+    )
+})
+}
+/**
+ * `_pixpinenvio._tcp`: quien envia y espera.
+ */
+public func tipoDeServicioEnvio() -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_func_tipo_de_servicio_envio(uniffiCallStatus
+    )
+})
+}
+/**
+ * `_pixpinrecibe._tcp`: quien espera para recibir.
+ */
+public func tipoDeServicioRecibir() -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_func_tipo_de_servicio_recibir(uniffiCallStatus
     )
 })
 }
@@ -9095,6 +11952,18 @@ public func etiquetaDeGrupo(codigo: String) -> String  {
 })
 }
 /**
+ * Los hilos que Swift deja esperando en una [`Escucha`]: los que hacen
+ * falta para que una sonda o un archivo suelto no esperen a una vuelta, y
+ * pocos (cada uno es un hilo dormido en `accept`, que no gasta nada).
+ */
+public func hilosDeEscucha() -> UInt32  {
+    return try!  FfiConverterUInt32.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_func_hilos_de_escucha(uniffiCallStatus
+    )
+})
+}
+/**
  * El puerto que se intenta primero al escuchar (47474). Si esta tomado se
  * escucha en otro cualquiera ([`Nucleo::escuchar`] con 0) y se anuncia ese.
  */
@@ -9153,7 +12022,34 @@ private let initializationResult: InitializationResult = {
     if (uniffi_pixpin_nucleo_checksum_func_llama_local_preguntar() != 60202) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_pixpin_nucleo_checksum_func_etiqueta_de_invitacion() != 50993) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_func_invitacion_legible() != 4770) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_func_leer_invitacion() != 58561) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_func_tipo_de_servicio_chat() != 60202) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_pixpin_nucleo_checksum_func_forma_rapida_temblor_px() != 43899) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_func_codigo_de_envio_legible() != 45463) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_func_etiqueta_de_envio() != 26648) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_func_leer_codigo_de_envio() != 16060) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_func_tipo_de_servicio_envio() != 6110) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_func_tipo_de_servicio_recibir() != 11481) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_pixpin_nucleo_checksum_func_mini_con_titulo() != 50031) {
@@ -9222,6 +12118,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_pixpin_nucleo_checksum_func_etiqueta_de_grupo() != 12818) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_pixpin_nucleo_checksum_func_hilos_de_escucha() != 39017) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_pixpin_nucleo_checksum_func_puerto_preferido() != 61456) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -9276,10 +12175,61 @@ private let initializationResult: InitializationResult = {
     if (uniffi_pixpin_nucleo_checksum_method_nucleo_ultimos_mensajes() != 11441) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_pixpin_nucleo_checksum_method_nucleo_chat_compartido() != 45518) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_nucleo_chats_compartidos() != 57345) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_nucleo_compartir_chat() != 4731) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_nucleo_entrar_en_chat_compartido() != 6737) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_nucleo_hay_chats_compartidos() != 43886) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_nucleo_invitar_a_chat() != 1470) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_nucleo_nombre_en_compartidos() != 54575) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_nucleo_poner_nombre_en_compartidos() != 48418) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_nucleo_quitar_de_chat_compartido() != 23198) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_nucleo_sincronizar_con_persona() != 815) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_pixpin_nucleo_checksum_method_nucleo_crear_lienzo() != 32607) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_pixpin_nucleo_checksum_method_nucleo_editar_lienzo() != 47881) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_nucleo_abrir_envio() != 37400) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_nucleo_al_frente() != 10982) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_nucleo_enviar_a_aparato() != 54758) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_nucleo_esperar_envios() != 60314) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_nucleo_mandar_a_quien_espera() != 58196) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_nucleo_poner_al_frente() != 60487) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_nucleo_recibir_envio() != 225) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_pixpin_nucleo_checksum_method_nucleo_borrar_capturas() != 35273) {
@@ -9333,16 +12283,19 @@ private let initializationResult: InitializationResult = {
     if (uniffi_pixpin_nucleo_checksum_method_nucleo_anuncio() != 714) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_pixpin_nucleo_checksum_method_nucleo_anuncio_de_presencia() != 61613) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_pixpin_nucleo_checksum_method_nucleo_crear_grupo() != 41949) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_pixpin_nucleo_checksum_method_nucleo_escuchar() != 63454) {
+    if (uniffi_pixpin_nucleo_checksum_method_nucleo_escuchar() != 26537) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_pixpin_nucleo_checksum_method_nucleo_etiqueta() != 14370) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_pixpin_nucleo_checksum_method_nucleo_sincronizar_con() != 6940) {
+    if (uniffi_pixpin_nucleo_checksum_method_nucleo_sincronizar_con() != 38049) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_pixpin_nucleo_checksum_method_nucleo_unirse_a_grupo() != 64359) {
@@ -9379,6 +12332,24 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_pixpin_nucleo_checksum_method_busqueda_cancelar() != 5789) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_invitacion_anuncio() != 30446) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_invitacion_atender() != 13124) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_invitacion_cerrar() != 38528) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_invitacion_codigo() != 29909) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_invitacion_puerto() != 2215) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_invitacion_texto_del_qr() != 18028) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_pixpin_nucleo_checksum_method_editorlienzo_borrar_seleccion() != 24837) {
@@ -9480,6 +12451,51 @@ private let initializationResult: InitializationResult = {
     if (uniffi_pixpin_nucleo_checksum_method_editorlienzo_pegar_imagen() != 49698) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_pixpin_nucleo_checksum_method_puertaenvio_anuncio() != 63203) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_puertaenvio_aprobar() != 51093) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_puertaenvio_aprobar_todos() != 62999) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_puertaenvio_atender() != 25293) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_puertaenvio_cerrar() != 48344) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_puertaenvio_codigo() != 53831) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_puertaenvio_puerto() != 61206) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_puertaenvio_siguiente_aviso() != 1450) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_puertaenvio_texto_del_qr() != 32092) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_puertarecibir_anuncio() != 37506) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_puertarecibir_atender() != 44479) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_puertarecibir_cerrar() != 60017) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_puertarecibir_codigo() != 15221) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_puertarecibir_puerto() != 22308) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_puertarecibir_texto_del_qr() != 34867) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_pixpin_nucleo_checksum_method_lienzo_caja() != 1730) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -9495,13 +12511,13 @@ private let initializationResult: InitializationResult = {
     if (uniffi_pixpin_nucleo_checksum_method_lienzo_plano_de_vista() != 25153) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_pixpin_nucleo_checksum_method_escucha_atender() != 5514) {
+    if (uniffi_pixpin_nucleo_checksum_method_escucha_atender() != 13245) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_pixpin_nucleo_checksum_method_escucha_atender_una() != 60926) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_pixpin_nucleo_checksum_method_escucha_cerrar() != 11016) {
+    if (uniffi_pixpin_nucleo_checksum_method_escucha_cerrar() != 35431) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_pixpin_nucleo_checksum_method_escucha_puerto() != 42327) {

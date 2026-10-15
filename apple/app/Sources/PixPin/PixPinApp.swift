@@ -73,10 +73,25 @@ struct PixPinApp: App {
             ConAlmacen(estado.almacen, error: estado.error) { VentanaTareas(almacen: $0) }
         }
         .defaultSize(width: 620, height: 640)
-        Window("Buscar en PixPin", id: IdVentana.buscar) {
-            ConAlmacen(estado.almacen, error: estado.error) { VentanaBuscar(almacen: $0) }
+        // En un `Group`: un `SceneBuilder` admite diez escenas seguidas.
+        Group {
+            Window("Buscar en PixPin", id: IdVentana.buscar) {
+                ConAlmacen(estado.almacen, error: estado.error) { VentanaBuscar(almacen: $0) }
+            }
+            .defaultSize(width: 900, height: 600)
+            // Enviar y recibir con un codigo de seis cifras, y los chats
+            // compartidos con personas (`Sincro/`).
+            Window("Enviar y recibir por Wi-Fi", id: "envio") {
+                ConAlmacen(estado.almacen, error: estado.error) { VistaEnvio(nucleo: $0.nucleo) }
+            }
+            .defaultSize(width: 460, height: 560)
+            Window("Chats compartidos", id: "compartidos") {
+                ConAlmacen(estado.almacen, error: estado.error) {
+                    VistaCompartidos(almacen: $0, sincro: estado.sincro)
+                }
+            }
+            .defaultSize(width: 520, height: 640)
         }
-        .defaultSize(width: 900, height: 600)
     }
 }
 
@@ -241,6 +256,11 @@ struct MenuPrincipal: View {
             abrirVentana(id: "sincronizar")
             NSApp.activate()
         }
+        if let sincro = estado.sincro {
+            MenuEnviarA(sincro: sincro)
+        }
+        Button("Enviar y recibir por Wi-Fi…") { abrir("envio") }
+        Button("Chats compartidos…") { abrir("compartidos") }
         Button("Lecciones…") {
             abrirVentana(id: "lecciones")
             NSApp.activate()

@@ -22,6 +22,9 @@ public extension Notification.Name {
     /// Algo cambio en los chats de este aparato (una nota, un chat nuevo):
     /// la sincronizacion sola cuenta desde aqui sus 30 s de calma.
     static let pixpinCambioLocal = Notification.Name("PixPinCambioLocal")
+    /// Llego de otro aparato una foto para el lienzo que esta delante
+    /// (`FrenteMac.lienzo`). `object` es el `ArchivoLlegado` (su `ruta`).
+    static let pixpinFotoAlLienzo = Notification.Name("PixPinFotoAlLienzo")
 }
 
 @MainActor
@@ -62,6 +65,11 @@ public final class Sincronizador: ObservableObject {
     @Published public var automatica = true {
         didSet { reprogramarQuieto() }
     }
+
+    /// Como va «Enviar a…» con cada aparato (por su id).
+    @Published public private(set) var envios: [String: EstadoEnvioSuelto] = [:]
+    /// Lo ultimo que llego suelto de otro aparato (para ensenarlo).
+    @Published public private(set) var ultimasLlegadas: [ArchivoLlegado] = []
 
     /// Se llama cuando una vuelta trajo algo (para releer la lista de chats).
     public var alTraerCambios: (@MainActor () -> Void)?
@@ -240,6 +248,34 @@ public final class Sincronizador: ObservableObject {
         }
     }
 
+    // MARK: - Enviar a…
+
+    /// **«Enviar a…» un aparato del grupo**: manda `urls` a lo que ese
+    /// aparato tenga delante (su chat abierto, su lienzo si son fotos, o la
+    /// conversacion general), fuera del hilo principal.
+    public func enviar(_ urls: [URL], a id: String) async {
+        guard !urls.isEmpty, let fila = filas.first(where: { $0.id == id }) else { return }
+        var direccion = fila.direccion
+        if direccion == nil, let v = vecinos.todos.first(where: { $0.id == id }) {
+            direccion = await Vecinos.sondear(v.punto)
+        }
+        guard let direccion else {
+            envios[id] = .fallo("\(fila.nombre) no contesta.")
+            return
+        }
+        envios[id] = .enviando(urls.count)
+        let nucleo = self.nucleo
+        let rutas = urls.map(\.path)
+        do {
+            let r = try await Task.detached(priority: .utility) {
+                try nucleo.enviarAAparato(host: direccion.host, puerto: direccion.puerto, rutas: rutas)
+            }.value
+            envios[id] = estadoDeEnvio(r, a: fila.nombre)
+        } catch {
+            envios[id] = .fallo(textoDeError(error))
+        }
+    }
+
     // MARK: - Presencia
 
     /// Relee la identidad y el anuncio (fuera del hilo principal: la
@@ -248,14 +284,16 @@ public final class Sincronizador: ObservableObject {
     public func refrescar() async {
         let nucleo = self.nucleo
         do {
-            let (info, anuncio) = try await Task.detached(priority: .utility) {
-                try (nucleo.aparato(), nucleo.anuncio())
+            let (info, anuncio, presencia) = try await Task.detached(priority: .utility) {
+                try (nucleo.aparato(), nucleo.anuncio(), nucleo.anuncioDePresencia())
             }.value
             aparato = info
             codigoLegible = info.grupo.map { PixPinCore.codigoLegible(codigo: $0) }
             etiqueta = anuncio?.etiqueta
-            if let anuncio {
-                try encender(anuncio)
+            // Con grupo, o sin el pero dentro de un chat compartido con
+            // personas (que llaman aqui): se escucha y se anuncia.
+            if let presencia {
+                try encender(presencia)
             } else {
                 apagar()
             }
@@ -298,6 +336,17 @@ public final class Sincronizador: ObservableObject {
             ultimoResultado = "\(nombre) sincronizó con este Mac."
             alTraerCambios?()
             Task { await refrescar() }
+        case let .success(.persona(_, nombre)):
+            // Una persona de un chat compartido se junto con este Mac.
+            ultimoResultado = "\(nombre) sincronizó un chat compartido con este Mac."
+            alTraerCambios?()
+        case let .success(.archivos(_, nombre, llegadas)):
+            ultimasLlegadas = llegadas
+            ultimoResultado = textoDeLlegadas(llegadas, de: nombre)
+            for l in llegadas where l.donde == .lienzo {
+                NotificationCenter.default.post(name: .pixpinFotoAlLienzo, object: l)
+            }
+            alTraerCambios?()
         case .success:
             break
         case let .failure(e):

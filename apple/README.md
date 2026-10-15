@@ -21,7 +21,7 @@ Y además, el puente con Swift:
 
 | Carpeta | Qué hay |
 |---|---|
-| [`nucleo/pixpin-nucleo`](nucleo/pixpin-nucleo) | La API para Swift con **UniFFI**: abrir una carpeta de datos (`Nucleo`), chats y mensajes **por páginas**, escribir una nota, guardar una nota de voz y su texto (`adjuntar_voz`, `poner_transcripcion`), editar un lienzo (`EditorLienzo`), ajustes, lecciones y el asistente, adjuntar un fichero (`adjuntar`: se copia con `guardar_adjunto` y la clase de `clase_de_nombre`, como al soltarlo en Windows) y resolver su ruta (`ruta_absoluta`, `imagenes_del_lienzo`), el lienzo como **un solo búfer plano** de `f32` (formato en `src/lienzo.rs`), sincronizar por TCP (unirse a un grupo, una vuelta, escuchar), la **galería de capturas** por páginas con su caducidad (conservar, 7 días más, borrar y devolver: los ficheros de Windows), el **timeline** (días y momentos por páginas), las **tareas** de todos los chats (marcar, apuntar en el Inbox) y **buscar en todo** (por páginas y cancelable). |
+| [`nucleo/pixpin-nucleo`](nucleo/pixpin-nucleo) | La API para Swift con **UniFFI**: abrir una carpeta de datos (`Nucleo`), chats y mensajes **por páginas**, escribir una nota, guardar una nota de voz y su texto (`adjuntar_voz`, `poner_transcripcion`), editar un lienzo (`EditorLienzo`), ajustes, lecciones y el asistente, adjuntar un fichero (`adjuntar`: se copia con `guardar_adjunto` y la clase de `clase_de_nombre`, como al soltarlo en Windows) y resolver su ruta (`ruta_absoluta`, `imagenes_del_lienzo`), el lienzo como **un solo búfer plano** de `f32` (formato en `src/lienzo.rs`), sincronizar por TCP con IPv4 e IPv6 (unirse a un grupo, una vuelta con la galería, escuchar con varios hilos, «Enviar a…», envío con código y chats compartidos con personas: [`docs/sincro.md`](docs/sincro.md)), la **galería de capturas** por páginas con su caducidad (conservar, 7 días más, borrar y devolver: los ficheros de Windows), el **timeline** (días y momentos por páginas), las **tareas** de todos los chats (marcar, apuntar en el Inbox) y **buscar en todo** (por páginas y cancelable). |
 | [`PixPinCore/`](PixPinCore) | El paquete Swift (`Package.swift`, macOS 15 / iOS 18): los enlaces generados y el `PixPinCoreFFI.xcframework` (no se versiona). |
 | [`herramientas/xcframework.sh`](herramientas/xcframework.sh) | En un Mac: compila las cuatro plataformas, genera los enlaces y hace el xcframework. |
 
@@ -80,7 +80,10 @@ pánico de Rust llega a Swift como error en vez de cerrar la app.
 
 ## Lo que falta (orden del plan)
 
-- [ ] Fase 0.3: arreglos de sincronizar: tildes NFC ✅ (`almacen::nombre_seguro`), IPv6 y versión del protocolo pendientes.
+- [ ] Fase 0.3: arreglos de sincronizar: tildes NFC ✅ (`almacen::nombre_seguro`), IPv6 ✅ en el Mac
+      (`pixpin-nucleo/src/red.rs`: `IpAddr`, enlace local con `%interfaz`, IPv4 primero). Versión del
+      protocolo: diseño compatible preparado y **apagado** (`src/version.rs`, [`docs/sincro.md`](docs/sincro.md));
+      el cable sigue en 4 estricta hasta cambiar `Hola` a la vez en Windows y Android.
 - [ ] Fase 1: el puente Rust ↔ Swift.
   - [x] Crate `pixpin-nucleo` con UniFFI: carpeta de datos, chats, mensajes por páginas
         (índice de líneas en caché con tope), escribir una nota, lienzo en un búfer plano,
@@ -95,9 +98,17 @@ pánico de Rust llega a Swift como error en vez de cerrar la app.
         Rust (47474 o el que dé el sistema) con el TXT de `Nucleo::anuncio` (igual que
         Windows). Sincroniza solo al aparecer un aparato del grupo y 30 s después de un
         cambio, salvo en modo de bajo consumo.
-  - [ ] Transporte de Swift sobre `NWConnection` (hoy socket BSD de Rust, con IPv4 primero);
-        el `suelto`, la galería y los chats con personas. La `Escucha` atiende una conexión
-        cada vez: mientras dura una vuelta, una sonda de otro espera.
+  - [x] Sincronizar completo (`docs/sincro.md`): la **galería de capturas** en cada vuelta
+        (`galeria_sincro.rs`, como `CapturasDelPc`), **«Enviar a…»** un aparato del grupo
+        (`suelto`: al chat abierto, al lienzo si es foto o a Mensajes guardados; menú en la
+        barra), **enviar y recibir con código** de seis cifras (`envio.rs`, ventana «Enviar y
+        recibir por Wi-Fi»), **chats compartidos con personas** (`compartidos.rs`: compartir,
+        invitar con QR de CoreImage, entrar, sincronizar con la valla, quitar/salir; claves en
+        `sincro/persona.json` como Windows) y la `Escucha` con **4 hilos** (una sonda no espera
+        a una vuelta; una sola vuelta por carpeta con `protocolo::ocupar`).
+  - [ ] Transporte de Swift sobre `NWConnection` (hoy socket BSD de Rust, IPv4 e IPv6).
+  - [ ] El editor del lienzo no mete aún las fotos que llegan con «Enviar a…»
+        (`FrenteMac::Lienzo` está en Rust; la app aún no lo pone).
   - [ ] Documentos (`docs`, `hojas`, `office`) en la API.
   - [x] Lecciones en la API (`src/lecciones.rs`, por paginas con cache por fechas), ajustes
         de `pixpinmax.toml` que valen en los dos sistemas (`src/ajustes.rs`: dias de las

@@ -47,6 +47,7 @@ public struct VentanaProyectos: View {
         }
         .task { await almacen.cargarChats() }
         .onChange(of: elegido) { _, visible in almacen.aligerar(visible: visible) }
+        .onDisappear { almacen.nadaAlFrente() }
         // ⌘F: buscar en todo (chats, notas, tareas, momentos).
         .toolbar {
             Button { abrirVentana(id: IdVentana.buscar) } label: {
