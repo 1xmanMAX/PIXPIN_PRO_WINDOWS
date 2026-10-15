@@ -1538,6 +1538,11 @@ pedido-fuera-de-capturas = That file isn't in the captures folder; it's left alo
 pedido-no-es-imagen = That file isn't an image.
 pedido-imagen-no-se-pudo = The image couldn't be copied: { $motivo }
 pedido-sin-imagen = The image { $ruta } can't be found; the task wasn't added.
+pedido-nada-que-leer = No text arrived to read aloud.
+pedido-ocr-copiado = Text copied ({ $n } characters): “{ $texto }”
+pedido-ocr-sin-texto = No text was found in the image.
+pedido-ocr-no-disponible = Windows OCR is not installed: add a language with text recognition in Settings.
+pedido-ocr-fallo = Couldn't read the text in the image: { $motivo }
 
 ## Capture gallery (2-oct)
 galeria-titulo = Captures
