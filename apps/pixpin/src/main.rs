@@ -133,6 +133,7 @@ mod pines;
 mod pronunciar;
 mod punto_de_proyecto;
 mod recibir;
+mod recibir_de_windows;
 mod recordatorios;
 mod renombrar_doc;
 mod reproductor;
@@ -317,6 +318,11 @@ fn arrancar(
     // instancia no es un fallo: el usuario pulso el icono dos veces. Que
     // `CreateMutexW` falle de verdad si lo es, y confundirlos manda a quien
     // depure a buscar una segunda copia que no existe.
+    // Lo compartido con este arranque (Compartir de Windows con el paquete de
+    // identidad, o `--al-chat <rutas>`): se lee YA, antes de que esta copia
+    // se vaya, porque Windows espera respuesta y la otra app puede borrar
+    // sus temporales en cuanto la tiene.
+    let compartido = recibir_de_windows::pedido_del_arranque();
     let _instancia = match adquirir_instancia_unica() {
         Ok(i) => i,
         Err(pixpin_shell::instancia::ErrorInstanciaUnica::YaHayOtraInstancia) => {
@@ -326,8 +332,10 @@ fn arrancar(
             // esta copia se iria en silencio llevandose la ruta, y el
             // usuario veria que su fichero no se abre.
             let rutas = pixpin_shell::mensajero::rutas_de_los_argumentos();
+            if let Some(pedido) = &compartido {
+                pixpin_shell::mensajero::enviar_pedido(pedido);
             // Un atajo de la Jump List del icono: a la copia que corre, como pedido.
-            if let Some(pedido) = lista_del_icono::pedido_del_arranque() {
+            } else if let Some(pedido) = lista_del_icono::pedido_del_arranque() {
                 pixpin_shell::mensajero::enviar_pedido(&pedido);
             } else if !rutas.is_empty() {
                 pixpin_shell::mensajero::enviar_ficheros(&rutas);
@@ -681,7 +689,11 @@ fn arrancar(
     // comporte IGUAL este PixPin ya abierto o no; con dos caminos, uno de
     // los dos se queda atras en cuanto se cambie algo.
     let del_arranque = pixpin_shell::mensajero::rutas_de_los_argumentos();
-    if !del_arranque.is_empty() {
+    if let Some(pedido) = &compartido {
+        // Lo compartido va al chat; sus rutas no son ficheros que pinear.
+        pixpin_shell::mensajero::enviar_pedido(pedido);
+        pixpin_shell::despertar(ventana.handle());
+    } else if !del_arranque.is_empty() {
         tracing::info!(
             cuantos = del_arranque.len(),
             "ficheros en la linea de mandatos"
@@ -703,6 +715,8 @@ fn arrancar(
         pixpin_shell::despertar(ventana.handle());
     }
     lista_del_icono::poner_al_dia(lengua, ubicacion.clone());
+    // «Imprimir a PixPin»: solo si la impresora esta instalada.
+    recibir_de_windows::iniciar_impresora(&ubicacion);
 
     // El chat de proyectos es la interfaz principal (D141): se abre al
     // arrancar, como la ventana de cualquier aplicacion. Cerrarlo deja

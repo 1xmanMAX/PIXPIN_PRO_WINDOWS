@@ -93,7 +93,9 @@ pub(crate) mod sin_ventana {
         ubicacion: &Ubicacion,
         textos: &Catalogo,
     ) -> Result<std::sync::Arc<dyn pixpin_ia::motor::Motor>, String> {
-        super::asistente::motor_de_los_ajustes(ubicacion, textos, "", false)
+        // Los encargos de las automatizaciones: sin pedido que clasificar,
+        // la nube piensa como antes.
+        super::asistente::motor_de_los_ajustes(ubicacion, textos, "", false, true)
     }
 }
 /// La descripcion de una foto: su `texto`, como en el movil (3-oct).

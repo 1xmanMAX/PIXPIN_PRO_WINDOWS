@@ -2,6 +2,16 @@
 <assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
   <assemblyIdentity type="win32" name="PixPinMax" version="0.1.0.0"/>
 
+  <!-- La identidad del paquete con ubicacion externa (Compartir de Windows,
+       menu contextual de Windows 11): Windows solo le da la identidad a un
+       exe cuyo manifiesto nombra el mismo editor, paquete y aplicacion que
+       herramientas/paquete-identidad/AppxManifest.xml. Sin el paquete
+       registrado esta linea no hace nada (docs/integraciones-windows.md). -->
+  <msix xmlns="urn:schemas-microsoft-com:msix.v1"
+        publisher="CN=PixPin Max Local"
+        packageName="ForgePixPin.PixPinMax"
+        applicationId="PixPinMax"/>
+
   <!-- asInvoker: PixPin Max no necesita privilegios de administrador.
        Pedirlos rompería el arrastrar y soltar hacia aplicaciones normales
        por el aislamiento de privilegios de la interfaz de usuario. -->

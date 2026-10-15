@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>PixPin Max</title>
+<style>
+  :root { color-scheme: light dark; --acento: #2E7BE6; --borde: #8884; --apagado: #888; }
+  body { margin: 0; width: 290px; font: 13px "Segoe UI", system-ui, sans-serif; }
+  header { display: flex; align-items: center; gap: 8px; padding: 10px 12px 6px; font-weight: 600; }
+  header img { width: 18px; height: 18px; }
+  h2 { margin: 8px 12px 2px; font-size: 11px; font-weight: 600; color: var(--apagado); text-transform: uppercase; letter-spacing: .04em; }
+  .vista { margin: 0 12px 4px; color: var(--apagado); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-style: italic; }
+  button { display: flex; width: 100%; align-items: center; gap: 10px; padding: 7px 12px; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+  button:hover, button:focus-visible { background: #2E7BE622; outline: none; }
+  button kbd { min-width: 1.4em; text-align: center; font: 11px Consolas, monospace; border: 1px solid var(--borde); border-radius: 4px; padding: 0 3px; color: var(--apagado); }
+  button:disabled { opacity: .45; cursor: default; }
+  #pregunta { display: none; margin: 2px 12px 6px; width: calc(100% - 24px); box-sizing: border-box; padding: 5px 7px; border: 1px solid var(--borde); border-radius: 6px; font: inherit; background: none; color: inherit; }
+  #estado { min-height: 18px; padding: 6px 12px 10px; color: var(--apagado); }
+  #estado.mal { color: #C62828; }
+</style>
+</head>
+<body>
+<header><img src="iconos/pixpin.png" alt="">PixPin Max</header>
+<h2>Lo seleccionado</h2>
+<div class="vista" id="vista">(nada seleccionado)</div>
+<div id="seleccion"></div>
+<input id="pregunta" placeholder="¿Qué le pregunto al asistente? (Intro)">
+<h2>La página</h2>
+<div id="pagina"></div>
+<div id="estado"></div>
+<script type="module" src="menu.js"></script>
+</body>
+</html>

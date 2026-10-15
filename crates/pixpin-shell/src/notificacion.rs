@@ -233,11 +233,9 @@ pub fn mostrar(t: &Toast) -> windows::core::Result<Mostrado> {
     Ok(Mostrado::Si)
 }
 
-/// Si el proceso corre con identidad de paquete (MSIX). Es lo mismo que
-/// `compartido::tiene_identidad` de la rama del paquete; aqui aparte para no
-/// depender de ella.
+/// Si el proceso corre con identidad de paquete (MSIX): la de `compartido`.
 pub fn tiene_identidad() -> bool {
-    windows::ApplicationModel::Package::Current().is_ok()
+    crate::compartido::tiene_identidad()
 }
 
 /// [`mostrar`] en su hilo; si no sale, `si_no` (el aviso de siempre).

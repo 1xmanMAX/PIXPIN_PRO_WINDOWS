@@ -40,6 +40,9 @@
 //!   la vista, la peticion mejorada, la hoja de trabajo que el agente
 //!   reescribe cada turno y el reinicio del contexto al 70 % con
 //!   `buscar_historial` para lo viejo ([`agente::turno_con`]).
+//! - [`complejidad`] (15-oct): si un turno piensa. En automatico, solo las
+//!   tareas complejas, con unas reglas fijas sobre el pedido (sin modelo) y
+//!   el mismo criterio para el local, Claude y DeepSeek.
 //! - [`calcar`]: copiar una imagen al lienzo con un algoritmo clasico
 //!   (k-medias + marching squares, o Canny + cadenas; RDP y suavizado): el
 //!   modelo solo elige el detalle.
@@ -82,6 +85,7 @@ pub mod base64;
 pub mod calcar;
 pub mod calculo;
 pub mod conocimiento;
+pub mod complejidad;
 pub mod contexto;
 pub mod cronograma;
 pub mod descarga;
