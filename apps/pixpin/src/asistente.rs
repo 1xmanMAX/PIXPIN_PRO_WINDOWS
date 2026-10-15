@@ -44,6 +44,7 @@ pub mod hoja_a_lienzo;
 pub mod motor;
 pub mod nube;
 pub mod ocr;
+pub mod ojos;
 pub mod permiso;
 pub mod recetas;
 pub mod pensado;

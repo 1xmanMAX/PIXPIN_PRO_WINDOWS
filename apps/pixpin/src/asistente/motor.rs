@@ -99,6 +99,11 @@ impl Motor for MotorPerezoso {
             self.motor().precalentar();
         }
     }
+
+    /// Ve si su proyector de vision esta bajado (`ojos.rs`).
+    fn ve_imagenes(&self) -> bool {
+        self.vision.as_ref().is_some_and(|v| v.is_file())
+    }
 }
 
 /// Los motores locales del proceso: **un solo `llama-server` cargado a la

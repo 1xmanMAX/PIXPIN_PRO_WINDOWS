@@ -842,9 +842,11 @@ pub(super) fn trabajar_en_el_lienzo_del_chat(
                         texto: "Lienzo destino: vacio (aun no hay lienzo del asistente en este chat).".into(),
                         ids: Vec::new(),
                         ctx: Some(Default::default()),
+                        ..Default::default()
                     },
                     None,
                 )),
+                al_lienzo::Trabajo::Juntar { .. } => Ok((al_lienzo::Respuesta::default(), None)),
                 _ => Err("todavia no hay ningun lienzo en este chat: dibuja algo primero".into()),
             };
         }
@@ -863,6 +865,20 @@ pub(super) fn trabajar_en_el_lienzo_del_chat(
         .ok_or("no se pudo abrir el lienzo")?;
     let mut escena = hoja.escena;
     let mut lienzo = hoja.lienzo;
+    // Mirarlo (`asistente::ojos`): se copia la zona, con sus fotos por su
+    // fichero; pintar va en el hilo de los ojos, no en el del chat. Juntar
+    // pasos no aplica: cerrado, el lienzo no tiene deshacer.
+    match trabajo {
+        al_lienzo::Trabajo::Ver { mirada, ctx } => {
+            let fotos = &hoja.fotos;
+            let enc = crate::asistente::ojos::encargo_de(&escena, mirada, ctx, |id| {
+                fotos.iter().find(|(i, _)| *i == id).map(|(_, r)| crate::asistente::ojos::Pixeles::Ruta(r.clone()))
+            })?;
+            return Ok((al_lienzo::Respuesta { vista: Some(Box::new(enc)), ..Default::default() }, Some(referencia)));
+        }
+        al_lienzo::Trabajo::Juntar { .. } => return Ok((al_lienzo::Respuesta::default(), Some(referencia))),
+        _ => {}
+    }
     let respuesta = match trabajo {
         al_lienzo::Trabajo::Dibujar if en_hoja.is_some() => {
             let n = al_lienzo::meter_de_hoja(&mut escena, documento, en_hoja.expect("se acaba de mirar"), None)?;

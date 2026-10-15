@@ -237,11 +237,27 @@ impl Turno {
                 // El lienzo destino, resumido (tipos, #id, cajas, colores,
                 // textos) al final del pedido: solo si el pedido es de dibujar
                 // o editar y hay quien conteste (`pixpin_ia::edicion`).
-                if pixpin_ia::edicion::viene_a_cuento(&pedido)
+                let ojos = con_ojos() && motor.ve_imagenes();
+                let mirar = pixpin_ia::ojos::pide_mirar(&pedido);
+                let de_lienzo = pixpin_ia::edicion::viene_a_cuento(&pedido) || mirar;
+                if ojos && de_lienzo {
+                    // La GPU de los ojos, lista antes de la primera vista.
+                    super::ojos::precalentar();
+                }
+                if de_lienzo
                     && super::al_lienzo::hay_quien_conteste()
                     && let Some(r) = ejecutor.resumen_del_lienzo()
                 {
                     pixpin_ia::edicion::anadir_resumen(&mut historial, &r);
+                    // «Corrige», «alinea», «¿que falta?»: depende de lo que
+                    // se ve; ademas del resumen, la vista (15-oct).
+                    if ojos && mirar {
+                        use pixpin_ia::agente::Ejecutor as _;
+                        match ejecutor.ver(&pixpin_ia::ojos::Mirada::default()) {
+                            Ok(v) => poner_vista(&mut historial, &v),
+                            Err(e) => tracing::info!(%e, "asistente: sin vista al empezar"),
+                        }
+                    }
                 }
                 let buscar = |c: &str| contexto::buscar(&memoria.fuentes, c, 3);
                 let todas = pixpin_ia::herramientas::catalogo();
@@ -257,6 +273,8 @@ impl Turno {
                     buscar: (con_memoria && (memoria.reiniciado || memoria.hoja.reinicios > 0)).then_some(&buscar as &dyn Fn(&str) -> String),
                     ampliar: memoria.ampliar.then_some(&todas[..]),
                     rapido: memoria.rapido.then(super::rapido::ahora),
+                    ojos,
+                    revisar: if ojos { revisiones(motor.as_ref()) } else { 0 },
                 };
                 let mut recogido = Recogido::default();
                 let resultado = agente::turno_con(
@@ -368,6 +386,39 @@ pub fn historial_para_el_modelo(
         None => Mensaje::usuario(nuevo),
     });
     h
+}
+
+/// **Los ojos encendidos** (15-oct, `ojos.rs`). Siempre, salvo el banco,
+/// que los apaga para medir sin ellos ([`apagar_ojos`]).
+static SIN_OJOS: AtomicBool = AtomicBool::new(false);
+
+pub fn con_ojos() -> bool {
+    !SIN_OJOS.load(Ordering::Relaxed)
+}
+
+/// Apaga o enciende los ojos de todos los turnos (el banco).
+#[cfg_attr(not(test), allow(dead_code))]
+pub fn apagar_ojos(apagar: bool) {
+    SIN_OJOS.store(apagar, Ordering::Relaxed);
+}
+
+/// **Cuantas rondas de revision**: una con la nube (segundos y ~1000
+/// tokens de vision). El local con vision solo mira si se lo pide el modelo
+/// (`ver_lienzo`): en la CPU de este PC leer una imagen son decenas de
+/// segundos, y revisar cada dibujo duplicaria la espera.
+pub fn revisiones(motor: &dyn Motor) -> usize {
+    if motor.catalogo_completo() { 1 } else { 0 }
+}
+
+/// Pega la vista del lienzo al pedido del usuario (la imagen delante, como
+/// una foto adjunta, y su leyenda detras del texto).
+fn poner_vista(historial: &mut [Mensaje], v: &pixpin_ia::ojos::Vista) {
+    let Some(m) = historial.iter_mut().rev().find(|m| m.rol == Rol::Usuario) else { return };
+    m.partes.insert(0, pixpin_ia::motor::Parte::Imagen { bytes: v.png.clone(), mime: "image/png".into() });
+    m.partes.push(pixpin_ia::motor::Parte::Texto(format!(
+        "\n\n(La imagen adjunta es la vista del lienzo ahora; {})",
+        v.texto.trim_start_matches(pixpin_ia::ojos::MARCA).trim()
+    )));
 }
 
 /// Pega la foto, reducida, al ultimo mensaje (el del usuario). Si no se

@@ -445,6 +445,11 @@ impl Motor for MotorNube {
         true
     }
 
+    /// Claude Haiku 5.5 y DeepSeek V4.1 Flash ven imagenes.
+    fn ve_imagenes(&self) -> bool {
+        true
+    }
+
     fn completar(&self, p: &Peticion, al_trozo: &mut dyn FnMut(&Trozo) -> Seguir) -> Result<Respuesta, ErrorIa> {
         if self.clave.is_empty() {
             return Err(ErrorIa::Nube(format!(
@@ -633,6 +638,10 @@ impl Motor for MotorConRespaldo {
 
     fn catalogo_completo(&self) -> bool {
         self.nube.catalogo_completo()
+    }
+
+    fn ve_imagenes(&self) -> bool {
+        self.nube.ve_imagenes()
     }
 
     fn soltar(&self) {
