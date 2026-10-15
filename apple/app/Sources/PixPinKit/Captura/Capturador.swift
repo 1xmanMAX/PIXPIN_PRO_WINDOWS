@@ -1,5 +1,7 @@
 // Capturar una zona de la pantalla: la foto congelada, elegir la zona y lo
-// que se hace con ella (copiar, pinear, al chat, texto, guardar).
+// que se hace con ella (copiar, pinear, al chat, texto, guardar), anotada
+// encima si se quiere (1-5). Modos `Z V P S G L T`, medidas tecleadas,
+// proporciones, `R` repetir la ultima zona y `C` copiar el color.
 //
 // Lo que no es de la captura lo hacen otros por los ganchos `alPinear`,
 // `alMandarAlChat` y `alSacarTexto`: si un gancho no esta puesto, su boton
@@ -30,14 +32,28 @@ public final class Capturador {
     public var alGrabar: ((ZonaDeGrabacion) -> Void)?
     /// Avisa de que se guardo una captura (por si la galeria esta abierta).
     public var alGuardar: ((URL) -> Void)?
+    /// Copia la imagen (la pila de capturas). Sin el, se copia suelta.
+    public var alCopiar: ((CGImage, CGFloat) -> Void)?
+    /// La captura con scroll de la zona elegida (modo `S`).
+    public var alScroll: ((ZonaDeGrabacion) -> Void)?
+    /// Grabar la zona elegida en GIF (modo `G`).
+    public var alGif: ((ZonaDeGrabacion) -> Void)?
+    /// Pin en vivo de la zona elegida (modo `L`), en coordenadas globales
+    /// de AppKit. Lo pone quien hace los pines en vivo.
+    public var alPinEnVivo: ((CGRect) -> Void)?
 
     /// Donde se guardan las capturas: `capturas/` de los datos, la misma
     /// carpeta que la galeria de Windows (`galeria_capturas::carpeta_en`),
     /// que es la que viaja entre aparatos.
     public var carpetaDeCapturas: URL
 
-    /// El modo que manda en todas las pantallas (`Z` `V` `P` `T`).
+    /// El modo que manda en todas las pantallas (`Z` `V` `P` `S` `G` `L` `T`).
     private(set) var modo: ModoCaptura = .zona
+    /// La proporcion a la que se ata la zona (16:9, 4:3, 1:1 o libre).
+    private(set) var proporcion: ProporcionCaptura = .libre
+    /// Abrir con la pantalla entera elegida y el lapiz en la mano (el
+    /// anotador de pantalla).
+    private var paraAnotar = false
     private var paneles: [PanelCaptura] = []
     /// La vista de la pantalla donde esta el raton o donde se empezo.
     private weak var activa: VistaCaptura?
@@ -57,9 +73,20 @@ public final class Capturador {
     /// pantalla y pone encima la superposicion. Si ya hay una, no hace nada.
     /// Con `paraGrabar`, Intro graba la zona en video en vez de copiarla.
     public func capturar(paraGrabar: Bool = false) {
+        abrirCaptura(paraGrabar: paraGrabar, paraAnotar: false)
+    }
+
+    /// El anotador de pantalla: la captura con la pantalla del raton ya
+    /// elegida y el lapiz cogido (Option + doble clic central).
+    public func anotarPantalla() {
+        abrirCaptura(paraGrabar: false, paraAnotar: true)
+    }
+
+    private func abrirCaptura(paraGrabar: Bool, paraAnotar: Bool) {
         guard !abierta else { return }
         guard PermisoCaptura.asegurar() else { return }
         intro = paraGrabar && alGrabar != nil ? .grabar : .copiar
+        self.paraAnotar = paraAnotar
         abriendo = true
         Task { @MainActor in
             defer { self.abriendo = false }
@@ -79,7 +106,9 @@ public final class Capturador {
         paneles = []
         activa = nil
         modo = .zona
+        proporcion = .libre
         intro = .copiar
+        paraAnotar = false
         for panel in lista {
             vista(de: panel)?.soltar()
             panel.orderOut(nil)
@@ -99,6 +128,11 @@ public final class Capturador {
         if let principal, let vista = vista(de: principal) {
             activa = vista
             vista.seguirRaton(a: vista.convert(principal.convertPoint(fromScreen: raton), from: nil))
+            if paraAnotar {
+                vista.elegirPantalla()
+                vista.tomar(.lapiz)
+                paraAnotar = false
+            }
         }
     }
 
@@ -151,6 +185,12 @@ public final class Capturador {
         }
 
         if conMando {
+            // ⌘Z / ⇧⌘Z: deshacer y rehacer lo anotado.
+            if letra == "z", vista.elegida {
+                let hecho = mods.contains(.shift) ? vista.rehacer() : vista.deshacer()
+                if !hecho { NSSound.beep() }
+                return true
+            }
             guard vista.elegida else { return false }
             let accion: AccionCaptura?
             switch letra {
@@ -168,25 +208,95 @@ public final class Capturador {
         }
 
         guard mods.isDisjoint(with: [.option, .shift]) else { return false }
+        // 1-5: las herramientas de anotar (con zona elegida).
+        if let h = HerramientaAnotar.deTecla(letra) {
+            guard vista.elegida else { return false }
+            vista.tomar(h)
+            return true
+        }
         switch letra {
-        case "z": cambiarModo(.zona)
-        case "v": cambiarModo(.ventana)
-        case "t": cambiarModo(.texto)
-        case "p":
-            cambiarModo(.pantalla)
-            vista.elegirPantalla()
-        case "s", "g", "l":
-            // Con scroll, GIF y pin en vivo: aun no en Mac.
-            NSSound.beep()
+        case "z": cambiarModo(.zona, desde: vista)
+        case "v": cambiarModo(.ventana, desde: vista)
+        case "t": cambiarModo(.texto, desde: vista)
+        case "p": cambiarModo(.pantalla, desde: vista)
+        case "s": cambiarModo(.scroll, desde: vista)
+        case "g": cambiarModo(.gif, desde: vista)
+        case "l": cambiarModo(.pinEnVivo, desde: vista)
+        case "r":
+            if !vista.repetirUltima() { NSSound.beep() }
+        case "c":
+            // El color bajo la lupa, en HEX.
+            guard let c = vista.colorBajoRaton else {
+                NSSound.beep()
+                return true
+            }
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(MedidasCaptura.hex(c.0, c.1, c.2), forType: .string)
         default:
             return false
         }
         return true
     }
 
-    private func cambiarModo(_ nuevo: ModoCaptura) {
+    /// Si un modo tiene a alguien detras (si no, suena y no se cambia).
+    func modoDisponible(_ m: ModoCaptura) -> Bool {
+        switch m {
+        case .zona, .ventana, .pantalla: true
+        case .texto: alSacarTexto != nil
+        case .scroll: alScroll != nil
+        case .gif: alGif != nil
+        case .pinEnVivo: alPinEnVivo != nil
+        }
+    }
+
+    /// Cambia de modo en todas las pantallas. `P` elige ya la pantalla.
+    func cambiarModo(_ nuevo: ModoCaptura, desde vista: VistaCaptura) {
+        guard modoDisponible(nuevo) else {
+            NSSound.beep()
+            for v in vistas { v.actualizarBarraModos() }
+            return
+        }
         modo = nuevo
         for v in vistas where v.elegida { v.reiniciar() }
+        for v in vistas { v.actualizarBarraModos() }
+        if nuevo == .pantalla { vista.elegirPantalla() }
+    }
+
+    /// Cambia la proporcion; la zona ya elegida se ajusta en el sitio.
+    func cambiarProporcion(_ p: ProporcionCaptura, desde vista: VistaCaptura) {
+        proporcion = p
+        for v in vistas { v.actualizarBarraModos() }
+        vista.aplicarProporcion(p)
+    }
+
+    /// Se acaba de elegir una zona en `vista`: los modos que actuan al
+    /// elegir (texto, scroll, GIF, pin en vivo) lo hacen ya.
+    func alElegir(en vista: VistaCaptura) {
+        vista.actualizarBarraModos()
+        guard modo.actuaAlElegir, !paraAnotar else { return }
+        switch modo {
+        case .texto:
+            accion(.texto, en: vista)
+        case .scroll, .gif:
+            guard let zona = vista.zonaDeGrabacion() else { return }
+            recordar(vista)
+            let gancho = modo == .scroll ? alScroll : alGif
+            cerrar()
+            gancho?(zona)
+        case .pinEnVivo:
+            guard let r = vista.zonaGlobal() else { return }
+            recordar(vista)
+            cerrar()
+            alPinEnVivo?(r)
+        case .zona, .ventana, .pantalla:
+            break
+        }
+    }
+
+    /// La zona elegida queda como «la ultima» de su pantalla (`R`).
+    private func recordar(_ vista: VistaCaptura) {
+        guard vista.elegida, let n = vista.numeroDePantalla else { return }
+        UltimaZona().guardar(vista.seleccion, pantalla: n)
     }
 
     /// Hace `accion` con la zona elegida en `vista` y cierra la captura.
@@ -199,6 +309,7 @@ public final class Capturador {
             NSSound.beep()
             return
         }
+        recordar(vista)
         if accion == .grabar {
             guard let zona = vista.zonaDeGrabacion() else { return }
             cerrar()
@@ -207,12 +318,14 @@ public final class Capturador {
         }
         guard let recorte = vista.recorte() else { return }
         let escala = vista.escalaFoto
-        let entera = vista.tamFoto
+        // Anotado, el recorte ya es un mapa de bits aparte: no se vuelve a
+        // copiar (se hace como si fuera la foto entera).
+        let entera = vista.anotada ? CGSize(width: recorte.width, height: recorte.height) : vista.tamFoto
         cerrar()
 
         switch accion {
         case .copiar:
-            Capturador.copiar(recorte, escala: escala)
+            if let alCopiar { alCopiar(recorte, escala) } else { Capturador.copiar(recorte, escala: escala) }
         case .guardar:
             guardar(recorte, escala: escala)
         case .pinear:
@@ -231,7 +344,7 @@ public final class Capturador {
     /// Al portapapeles como PNG y TIFF (los dos que piden las apps de Mac).
     /// Se codifica fuera del hilo principal; el recorte retiene la foto
     /// solo hasta entonces.
-    static func copiar(_ imagen: CGImage, escala: CGFloat) {
+    public static func copiar(_ imagen: CGImage, escala: CGFloat) {
         Task.detached(priority: .userInitiated) {
             let png = Capturador.codificar(imagen, tipo: .png, escala: escala)
             let tiff = Capturador.codificar(imagen, tipo: .tiff, escala: escala)

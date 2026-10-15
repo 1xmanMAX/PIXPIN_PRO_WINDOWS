@@ -113,7 +113,17 @@ pánico de Rust llega a Swift como error en vez de cerrar la app.
   - [x] Barra de menús, ventana de Proyectos, chat por páginas, notas, crear proyecto.
   - [x] Lector del búfer del lienzo y pintor con Core Graphics.
   - [x] Captura (Ctrl+Option+X, ScreenCaptureKit, ventanas, lupa) → copiar, guardar en
-        `capturas/`, pinear, al chat (Mensajes guardados), sacar texto.
+        `capturas/`, pinear, al chat, sacar texto.
+  - [ ] Captura como Windows (`app/Sources/PixPinKit/Captura/`, falta verla en verde en la CI):
+        anotar encima sin otra ventana (1–5 lápiz, flecha, rectángulo, texto y mosaico con
+        `CIPixellate`; colores, grosores, ⌘Z; se quema en la imagen con Core Graphics), barra de
+        modos `Z V P S G L T`, medidas tecleadas, 16:9 · 4:3 · 1:1, `R` repetir la última zona
+        (por pantalla), lupa con HEX/RGB y `C`; con scroll (`CosidoScroll`, la receta de
+        `pixpin-codec/cosido.rs`; baja solo con Accesibilidad), GIF (10 fps, 12 s, sin
+        fotogramas repetidos, ImageIO → `capturas/captura-…gif`), «Al chat» con buscador y
+        teclas 1–6 (`captura-<ms>.png`), pila de capturas (⌘V pega la tanda) y gestos con
+        Option en todo el Mac (apagados de fábrica; `CGEventTap` con Accesibilidad). El pin en
+        vivo (`L`, Option + central) es un gancho (`alPinEnVivo`) para cuando existan.
   - [x] Pines flotantes (imagen, PDF, vídeo), Live Text y OCR con Vision.
   - [x] Adjuntos en el chat: miniaturas con ImageIO y caché con tope, Quick Look, soltar y ⌘V.
   - [x] Sincronizar por la Wi‑Fi (Bonjour) con Windows y Android.
