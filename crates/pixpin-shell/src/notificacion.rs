@@ -223,7 +223,12 @@ pub fn mostrar(t: &Toast) -> windows::core::Result<Mostrado> {
     } else {
         ToastNotificationManager::CreateToastNotifierWithId(&HSTRING::from(AUMID))?
     };
-    if notificador.Setting()? != NotificationSetting::Enabled {
+    // Recien dada de alta la id (el primer arranque), `Setting` puede fallar
+    // con «Element not found» y `Show` funcionar igual (medido 15-oct): solo
+    // un «apagadas» de verdad corta aqui.
+    if let Ok(s) = notificador.Setting()
+        && s != NotificationSetting::Enabled
+    {
         return Ok(Mostrado::Apagadas);
     }
     let toast = ToastNotification::CreateToastNotification(&doc)?;
