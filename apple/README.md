@@ -130,8 +130,9 @@ pánico de Rust llega a Swift como error en vez de cerrar la app.
   - [ ] Buscar en todo usa un recorrido propio (`src/buscar.rs`): pasar al de `pixpin-lanzador`
         cuando ese crate compile fuera de Windows.
   - [x] CI: `.github/workflows/apple.yml` (macOS 15, Xcode 16.4) compila el xcframework, pasa
-        `swift test` (81 pruebas, 15-oct) y sube `PixPin.app` universal (13 MB en zip)
-        como artefacto «PixPin-mac».
+        `swift test` (190 pruebas, 15-oct) y sube `PixPin.app` universal como artefacto
+        «PixPin-mac» (SwiftPM) y, con XcodeGen, «PixPin-mac-extensiones» (App Intents,
+        Compartir y Quick Look, firmadas de dentro afuera). Los binarios van sin simbolos.
 - [ ] Fase 2: app de Mac en SwiftUI/AppKit (`apple/app/`). Hecho y en verde en la CI:
   - [x] Barra de menús, ventana de Proyectos, chat por páginas, notas, crear proyecto.
   - [x] Lector del búfer del lienzo y pintor con Core Graphics.

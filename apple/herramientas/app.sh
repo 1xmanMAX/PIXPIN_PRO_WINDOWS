@@ -48,6 +48,17 @@ comprimir() {
     echo "==> Listo: $dist/PixPin-mac.zip"
 }
 
+# Sin simbolos de depuracion (el nucleo de Rust llega como biblioteca estatica
+# y sus simbolos acaban en el ejecutable): la app pesa mucho menos y carga
+# antes. `-x` deja los simbolos globales, que la firma y dyld necesitan.
+adelgazar() {
+    local bin="$1" antes despues
+    antes=$(stat -f %z "$bin")
+    strip -x "$bin"
+    despues=$(stat -f %z "$bin")
+    echo "    $(basename "$bin"): $((antes / 1048576)) MB -> $((despues / 1048576)) MB sin simbolos"
+}
+
 universal() {
     local bin="$1"
     local archs
@@ -74,6 +85,7 @@ construir_spm() {
     rm -rf "$dist"
     mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
     cp "$bin" "$app/Contents/MacOS/PixPin"
+    adelgazar "$app/Contents/MacOS/PixPin"
     sed -e "s/@VERSION@/$VERSION/g" -e "s/@COMPILACION@/$COMPILACION/g" \
         "$APP_SRC/Recursos/Info.plist" > "$app/Contents/Info.plist"
 
@@ -114,7 +126,9 @@ construir_xcode() {
             exit 1
         fi
         universal "$app/Contents/PlugIns/$ext.appex/Contents/MacOS/$ext"
+        adelgazar "$app/Contents/PlugIns/$ext.appex/Contents/MacOS/$ext"
     done
+    adelgazar "$app/Contents/MacOS/PixPin"
     if [ -d "$app/Contents/Resources/Metadata.appintents" ]; then
         echo "    App Intents: Metadata.appintents"
     else
