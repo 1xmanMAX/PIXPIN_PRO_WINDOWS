@@ -5,8 +5,10 @@
 //!
 //! `cargo run --release -p pixpin-pdf --example medir_plano -- <pdf>...`
 
+#[cfg(windows)]
 use std::time::Instant;
 
+#[cfg(windows)]
 /// **Un plano como los de AutoCAD**, para medir sin depender de uno de
 /// verdad: una A1 apaisada con veinte capas OCG y `tramos` segmentos, cada
 /// uno escrito por separado (`m l S`) como los escribe AutoCAD aunque sigan
@@ -100,6 +102,7 @@ fn generar(ruta: &std::path::Path, tramos: usize) {
     std::fs::write(ruta, s).unwrap();
 }
 
+#[cfg(windows)]
 fn main() {
     let _com = ComDelHilo::nuevo();
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -190,7 +193,9 @@ fn main() {
 }
 
 /// COM en este hilo, para `Windows.Data.Pdf`.
+#[cfg(windows)]
 struct ComDelHilo;
+#[cfg(windows)]
 impl ComDelHilo {
     fn nuevo() -> ComDelHilo {
         // SAFETY: se inicia COM en el hilo principal del ejemplo y se cierra
@@ -204,9 +209,17 @@ impl ComDelHilo {
         ComDelHilo
     }
 }
+#[cfg(windows)]
 impl Drop for ComDelHilo {
     fn drop(&mut self) {
         // SAFETY: empareja el `CoInitializeEx` de `nuevo`.
         unsafe { windows::Win32::System::Com::CoUninitialize() };
     }
+}
+
+/// Fuera de Windows no hay `Windows.Data.Pdf` con que pintar: en Mac, iPad
+/// e iPhone esta medida se hace con PDFKit desde Swift.
+#[cfg(not(windows))]
+fn main() {
+    eprintln!("medir_plano pinta con Windows.Data.Pdf: solo se mide en Windows");
 }

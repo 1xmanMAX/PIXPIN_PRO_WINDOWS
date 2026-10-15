@@ -7,13 +7,19 @@
 //!
 //! `cargo run --release -p pixpin-pdf --example medir_exportar_anotado -- <pdf> <palabra> [espacios]`
 
+#[cfg(windows)]
 use std::collections::HashMap;
+#[cfg(windows)]
 use std::time::Instant;
 
+#[cfg(windows)]
 use pixpin_motor2d::exportar::Hoja;
+#[cfg(windows)]
 use pixpin_motor2d::pintado::{self, Orden};
+#[cfg(windows)]
 use pixpin_pdf::con_anotaciones::{self, Anotaciones, Marcador};
 
+#[cfg(windows)]
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let ruta = std::path::PathBuf::from(&args[0]);
@@ -154,4 +160,11 @@ fn main() {
             t.elapsed()
         );
     }
+}
+
+/// Fuera de Windows no hay `Windows.Data.Pdf` con que pintar: en Mac, iPad
+/// e iPhone esta medida se hace con PDFKit desde Swift.
+#[cfg(not(windows))]
+fn main() {
+    eprintln!("medir_exportar_anotado pinta con Windows.Data.Pdf: solo se mide en Windows");
 }

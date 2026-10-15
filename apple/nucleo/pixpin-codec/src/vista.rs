@@ -20,15 +20,25 @@
 //!
 //! La resolucion completa sigue en el fichero: la pide el pin si se acerca
 //! mas alla de lo leido (`cargar` la da entera y girada igual).
+//!
+//! Fuera de Windows solo queda lo puro (las medidas, la orientacion, cuando
+//! toca vista previa) y el camino de `image` para lo que ya cabe en la caja.
+//! Leer reducido o la miniatura EXIF lo hace en Apple ImageIO desde Swift
+//! (`CGImageSourceCreateThumbnailAtIndex`, que reduce en la propia
+//! descompresion): aqui se devuelve `ErrorCodec::NoSoportadoAqui` en vez de
+//! descomprimir la foto entera para luego reducirla, que es justo lo que este
+//! modulo existe para evitar.
 
 use std::path::Path;
 
+#[cfg(windows)]
 use windows::Win32::Graphics::Imaging::{
     GUID_WICPixelFormat32bppRGBA, IWICBitmapFrameDecode, IWICBitmapSource, WICBitmapDitherTypeNone,
     WICBitmapInterpolationModeFant, WICBitmapPaletteTypeCustom, WICBitmapTransformFlipHorizontal,
     WICBitmapTransformFlipVertical, WICBitmapTransformOptions, WICBitmapTransformRotate0,
     WICBitmapTransformRotate90, WICBitmapTransformRotate180, WICBitmapTransformRotate270,
 };
+#[cfg(windows)]
 use windows::core::Interface;
 
 use crate::imagen::{ErrorCodec, ImagenRgba};
@@ -69,6 +79,7 @@ pub fn medidas_giradas(ancho: u32, alto: u32, orientacion: u16) -> (u32, u32) {
 /// Lo que hay que hacer con los pixeles guardados para verlos derechos,
 /// segun la etiqueta EXIF. Una etiqueta desconocida se trata como «tal
 /// cual»: es lo que hacen todos los visores.
+#[cfg(windows)]
 pub fn transformacion_exif(orientacion: u16) -> WICBitmapTransformOptions {
     let o = |v: i32| WICBitmapTransformOptions(v);
     match orientacion {
@@ -103,6 +114,7 @@ pub fn medida_de_lectura(completo: (u32, u32), caja: (u32, u32)) -> (u32, u32) {
 /// La etiqueta de orientacion de un fotograma (1 si no tiene o no se lee).
 /// `System.Photo.Orientation` es la politica de metadatos de Windows: la
 /// misma pregunta vale para JPEG, TIFF y HEIC.
+#[cfg(windows)]
 pub(crate) fn orientacion_de(fotograma: &IWICBitmapFrameDecode) -> u16 {
     use windows::Win32::System::Com::StructuredStorage::{PROPVARIANT, PropVariantClear};
     use windows::Win32::System::Variant::VT_UI2;
@@ -131,6 +143,7 @@ pub(crate) fn orientacion_de(fotograma: &IWICBitmapFrameDecode) -> u16 {
 /// de sierra) cuando se reduce a menos de la mitad; bilineal, que cuesta un
 /// tercio menos en una PNG grande (`medir_lectura`), cuando se reduce poco,
 /// que es donde no se nota la diferencia.
+#[cfg(windows)]
 pub fn interpolacion_para(
     entera: (u32, u32),
     medida: (u32, u32),
@@ -151,6 +164,7 @@ pub fn interpolacion_para(
 /// (`IWICBitmapSourceTransform`, 1/2, 1/4, 1/8): el escalador de WIC ya lo
 /// hace por dentro. Medido el 4-oct-2026 con una foto de movil 4032x3024 a
 /// 864x648: 91 ms con el escalador solo y 92 pidiendolo a mano.
+#[cfg(windows)]
 pub(crate) fn fuente_derecha(
     fabrica: &windows::Win32::Graphics::Imaging::IWICImagingFactory,
     fotograma: &IWICBitmapFrameDecode,
@@ -210,6 +224,7 @@ pub(crate) fn fuente_derecha(
 }
 
 /// Copia una fuente WIC entera a una `ImagenRgba` (filas compactas).
+#[cfg(windows)]
 pub(crate) fn a_imagen(fuente: &IWICBitmapSource) -> windows::core::Result<ImagenRgba> {
     let (mut ancho, mut alto) = (0u32, 0u32);
     // SAFETY: fuente viva; salidas locales.
@@ -250,7 +265,19 @@ pub fn cargar_para_ver(ruta: &Path, caja: (u32, u32)) -> Result<Vista, ErrorCode
             imagen,
         });
     }
-    leer(ruta, caja).map_err(|e| crate::imagen::error_de_windows(ruta, e))
+    #[cfg(windows)]
+    return leer(ruta, caja).map_err(|e| crate::imagen::error_de_windows(ruta, e));
+    #[cfg(not(windows))]
+    Err(no_soportado_aqui(ruta))
+}
+
+/// Fuera de Windows, leer reducido es cosa de ImageIO desde Swift.
+#[cfg(not(windows))]
+fn no_soportado_aqui(ruta: &Path) -> ErrorCodec {
+    ErrorCodec::NoSoportadoAqui {
+        que: format!("leer reducida {}", ruta.display()),
+        sustituto: "ImageIO (CGImageSourceCreateThumbnailAtIndex)",
+    }
 }
 
 /// Desde cuantos pixeles merece la pena ensenar antes una vista previa: por
@@ -270,12 +297,19 @@ pub fn quiere_vista_previa(entera: (u32, u32)) -> bool {
 /// sale sin descomprimir nada; si no, la foto leida a un cuarto de la medida
 /// a la que se vera, que el JPEG da casi sin hacer la transformada.
 pub fn vista_previa(ruta: &Path, caja: (u32, u32)) -> Result<Option<Vista>, ErrorCodec> {
-    previa(ruta, caja).map_err(|e| crate::imagen::error_de_windows(ruta, e))
+    #[cfg(windows)]
+    return previa(ruta, caja).map_err(|e| crate::imagen::error_de_windows(ruta, e));
+    #[cfg(not(windows))]
+    {
+        let _ = caja;
+        Err(no_soportado_aqui(ruta))
+    }
 }
 
 /// Si el descodificador sabe dar la imagen a la mitad sin descomprimirla
 /// entera (el JPEG si; la PNG dice que si a la pregunta pero devuelve la
 /// medida entera).
+#[cfg(windows)]
 fn se_lee_reducida(fotograma: &IWICBitmapFrameDecode, entera: (u32, u32)) -> bool {
     use windows::Win32::Graphics::Imaging::IWICBitmapSourceTransform;
     let Ok(t) = fotograma.cast::<IWICBitmapSourceTransform>() else {
@@ -286,6 +320,7 @@ fn se_lee_reducida(fotograma: &IWICBitmapFrameDecode, entera: (u32, u32)) -> boo
     unsafe { t.GetClosestSize(&mut ancho, &mut alto) }.is_ok() && ancho < entera.0
 }
 
+#[cfg(windows)]
 fn previa(ruta: &Path, caja: (u32, u32)) -> windows::core::Result<Option<Vista>> {
     use windows::Win32::Graphics::Imaging::WICBitmapCacheOnLoad;
     let _com = crate::wic::Com::iniciar();
@@ -358,6 +393,7 @@ fn previa(ruta: &Path, caja: (u32, u32)) -> windows::core::Result<Option<Vista>>
     }))
 }
 
+#[cfg(windows)]
 fn leer(ruta: &Path, caja: (u32, u32)) -> windows::core::Result<Vista> {
     let _com = crate::wic::Com::iniciar();
     let (fabrica, fotograma) = crate::wic::primer_fotograma(ruta)?;
@@ -400,10 +436,14 @@ mod pruebas {
                 "orientacion {o}"
             );
         }
-        assert_eq!(transformacion_exif(0), WICBitmapTransformRotate0);
-        assert_eq!(transformacion_exif(42), WICBitmapTransformRotate0);
+        #[cfg(windows)]
+        {
+            assert_eq!(transformacion_exif(0), WICBitmapTransformRotate0);
+            assert_eq!(transformacion_exif(42), WICBitmapTransformRotate0);
+        }
     }
 
+    #[cfg(windows)]
     #[test]
     fn cada_etiqueta_tiene_su_giro() {
         assert_eq!(transformacion_exif(1), WICBitmapTransformRotate0);
@@ -421,6 +461,7 @@ mod pruebas {
         assert_eq!(medida_de_lectura((3024, 4032), (1536, 864)), (648, 864));
     }
 
+    #[cfg(windows)]
     #[test]
     fn reducir_a_menos_de_la_mitad_promedia_y_poco_es_bilineal() {
         use windows::Win32::Graphics::Imaging::WICBitmapInterpolationModeLinear;
@@ -454,6 +495,7 @@ mod pruebas {
         dir.join(nombre)
     }
 
+    #[cfg(windows)]
     #[test]
     fn una_png_se_lee_reducida_a_la_caja_y_sabe_su_medida_entera() {
         let ruta = temporal("reducida.png");
@@ -481,6 +523,7 @@ mod pruebas {
     /// Cuanto cuesta cada forma de leer (`PIXPIN_MEDIR_FOTOS`, rutas con
     /// `;`). `cargo test -p pixpin-codec medir_lectura -- --ignored
     /// --nocapture`.
+    #[cfg(windows)]
     #[test]
     #[ignore = "mide con fotos de verdad: PIXPIN_MEDIR_FOTOS"]
     fn medir_lectura() {
@@ -531,6 +574,7 @@ mod pruebas {
     /// Una foto de movil con la etiqueta EXIF de girar 90 (la de
     /// `PIXPIN_FOTO_GIRADA`, guardada tumbada) sale derecha por los tres
     /// caminos: entera con `image`, entera con Windows y a la medida.
+    #[cfg(windows)]
     #[test]
     #[ignore = "necesita una foto con orientacion EXIF 6: PIXPIN_FOTO_GIRADA"]
     fn una_foto_girada_sale_derecha_por_todos_los_caminos() {
@@ -563,6 +607,7 @@ mod pruebas {
         assert!(quiere_vista_previa((2000, 2000)));
     }
 
+    #[cfg(windows)]
     #[test]
     fn caso_negativo_una_imagen_pequena_no_lleva_vista_previa() {
         assert!(!quiere_vista_previa((1920, 1080)));
@@ -577,6 +622,7 @@ mod pruebas {
         assert!(vista_previa(&ruta, (100, 100)).unwrap().is_none());
     }
 
+    #[cfg(windows)]
     #[test]
     fn caso_negativo_una_png_grande_no_lleva_previa_que_costaria_lo_mismo() {
         let ruta = temporal("grande-sin-previa.png");
@@ -589,6 +635,7 @@ mod pruebas {
         assert!(vista_previa(&ruta, (1000, 1000)).unwrap().is_none());
     }
 
+    #[cfg(windows)]
     #[test]
     fn una_foto_grande_sin_miniatura_da_una_previa_a_un_cuarto() {
         let ruta = temporal("grande-con-previa.jpg");
@@ -603,6 +650,27 @@ mod pruebas {
             .expect("es grande");
         assert_eq!((v.ancho_completo, v.alto_completo), (2400, 1800));
         assert_eq!((v.imagen.ancho, v.imagen.alto), (300, 225));
+    }
+
+    /// Fuera de Windows: lo que ya cabe en la caja se lee entero por
+    /// `image`; lo que habria que reducir lo hace ImageIO desde Swift.
+    #[cfg(not(windows))]
+    #[test]
+    fn fuera_de_windows_lo_que_cabe_se_lee_y_lo_demas_es_de_imageio() {
+        let ruta = temporal("cabe-o-no.png");
+        let img = ImagenRgba {
+            ancho: 40,
+            alto: 20,
+            pixeles: [200u8, 30, 30, 255].repeat(40 * 20),
+        };
+        crate::guardar(&img, &ruta, crate::FormatoImagen::Png).unwrap();
+        let v = cargar_para_ver(&ruta, (100, 100)).unwrap();
+        assert!(!v.reducida());
+        assert_eq!(v.imagen, img);
+        // Caso negativo: reducir no descomprime entera para luego encoger.
+        let e = cargar_para_ver(&ruta, (10, 10)).unwrap_err();
+        assert!(e.to_string().contains("ImageIO"), "{e}");
+        assert!(vista_previa(&ruta, (10, 10)).is_err());
     }
 
     #[test]

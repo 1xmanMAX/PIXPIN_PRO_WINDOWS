@@ -8,16 +8,36 @@
 //! cabecera, pero varias aplicaciones antiguas lo ignoran y muestran la imagen
 //! del reves, asi que aqui se invierten las filas al copiar. Es un coste
 //! pequeno y se paga una sola vez.
+//!
+//! Fuera de Windows el portapapeles no es cosa de Rust: en Mac, iPad e
+//! iPhone lo lleva Swift con `NSPasteboard`/`UIPasteboard`. Aqui quedan lo
+//! puro (`ContenidoPortapapeles`, entender un CF_HTML o un RTF en `tabla` y
+//! `texto_plano`) y, con la misma firma, unas funciones de copiar que
+//! devuelven `ErrorCodec::NoSoportadoAqui` y un `leer` que no ve nada.
 
+#[cfg(windows)]
 use windows::Win32::Foundation::{GlobalFree, HANDLE, HGLOBAL, TRUE};
+#[cfg(windows)]
 use windows::Win32::Graphics::Gdi::{BI_RGB, BITMAPINFOHEADER};
+#[cfg(windows)]
 use windows::Win32::System::DataExchange::{
     CloseClipboard, EmptyClipboard, GetClipboardData, OpenClipboard, SetClipboardData,
 };
+#[cfg(windows)]
 use windows::Win32::System::Memory::{GHND, GlobalAlloc, GlobalLock, GlobalSize, GlobalUnlock};
+#[cfg(windows)]
 use windows::Win32::UI::Shell::{DROPFILES, DragQueryFileW, HDROP};
 
-use crate::imagen::{ErrorCodec, ImagenRgba};
+#[cfg(windows)]
+use crate::imagen::ErrorCodec;
+use crate::imagen::ImagenRgba;
+
+#[cfg(not(windows))]
+mod fuera_de_windows;
+#[cfg(not(windows))]
+pub use fuera_de_windows::{
+    copiar_ficheros, copiar_imagen, copiar_imagen_y_ficheros, copiar_texto, leer, secuencia,
+};
 
 /// Las celdas de una tabla: `HTML Format` y texto con tabuladores (J2).
 pub mod tabla;
@@ -26,13 +46,17 @@ pub mod tabla;
 pub mod texto_plano;
 
 /// Formato de portapapeles para un mapa de bits independiente del dispositivo.
+#[cfg(windows)]
 const CF_DIB: u32 = 8;
 /// Texto Unicode.
+#[cfg(windows)]
 const CF_UNICODETEXT: u32 = 13;
 /// Lista de ficheros soltados o copiados desde el Explorador.
+#[cfg(windows)]
 const CF_HDROP: u32 = 15;
 
 /// Copia la imagen al portapapeles como `CF_DIB`.
+#[cfg(windows)]
 pub fn copiar_imagen(imagen: &ImagenRgba) -> Result<(), ErrorCodec> {
     let dib = construir_dib(imagen)?;
     publicar(&[(CF_DIB, &dib)])
@@ -56,6 +80,7 @@ pub fn copiar_imagen(imagen: &ImagenRgba) -> Result<(), ErrorCodec> {
 /// ademas su ruta cambiaria el pegado de siempre (WhatsApp y Word prefieren
 /// el fichero cuando lo hay, y donde antes salia la imagen incrustada
 /// apareceria un adjunto). Quien lo decide es `pixpin_pila::Pila::que_copiar`.
+#[cfg(windows)]
 pub fn copiar_imagen_y_ficheros(
     imagen: &ImagenRgba,
     rutas: &[std::path::PathBuf],
@@ -73,6 +98,7 @@ pub fn copiar_imagen_y_ficheros(
 /// Va aparte del trasiego de Win32 por lo mismo que `construir_hdrop`: asi
 /// los bytes se pueden comprobar en una prueba normal, sin abrir el
 /// portapapeles, que es un recurso global de la sesion.
+#[cfg(windows)]
 fn construir_dib(imagen: &ImagenRgba) -> Result<Vec<u8>, ErrorCodec> {
     if imagen.ancho == 0 || imagen.alto == 0 {
         return Err(ErrorCodec::Vacia {
@@ -129,6 +155,7 @@ fn construir_dib(imagen: &ImagenRgba) -> Result<Vec<u8>, ErrorCodec> {
 /// Es una sola sesion a proposito: abrir, vaciar y volver a abrir para el
 /// segundo formato borraria el primero, que es exactamente el fallo que se
 /// comete al anadir un formato nuevo a una funcion que ya publicaba uno.
+#[cfg(windows)]
 fn publicar(cargas: &[(u32, &[u8])]) -> Result<(), ErrorCodec> {
     if cargas.is_empty() {
         return Err(ErrorCodec::Portapapeles);
@@ -183,6 +210,7 @@ fn publicar(cargas: &[(u32, &[u8])]) -> Result<(), ErrorCodec> {
 
 /// Memoria global movible con una copia de `carga`. El dueno sigue siendo el
 /// llamante hasta que `SetClipboardData` tenga exito.
+#[cfg(windows)]
 fn reservar(carga: &[u8]) -> Result<HGLOBAL, ErrorCodec> {
     // SAFETY: memoria movible del tamano exacto que se va a escribir.
     let bloque = unsafe { GlobalAlloc(GHND, carga.len()).map_err(|_| ErrorCodec::Portapapeles)? };
@@ -206,6 +234,7 @@ fn reservar(carga: &[u8]) -> Result<HGLOBAL, ErrorCodec> {
     Ok(bloque)
 }
 
+#[cfg(windows)]
 fn liberar(bloques: &[(u32, HGLOBAL)]) {
     for (_, b) in bloques {
         // SAFETY: bloques que siguen siendo nuestros porque nunca llegaron a
@@ -227,8 +256,10 @@ pub enum ContenidoPortapapeles {
 /// Cierra el portapapeles al salir del ambito, pase lo que pase. Sin esto,
 /// un retorno temprano dejaria el portapapeles abierto y NINGUNA otra
 /// aplicacion del sistema podria usarlo hasta cerrar PixPin.
+#[cfg(windows)]
 struct GuardiaPortapapeles;
 
+#[cfg(windows)]
 impl Drop for GuardiaPortapapeles {
     fn drop(&mut self) {
         // SAFETY: solo se construye tras un OpenClipboard con exito.
@@ -243,6 +274,7 @@ impl Drop for GuardiaPortapapeles {
 /// Prioridad **archivos > imagen > texto** y no es casual: quien copia
 /// ficheros en el Explorador deja ademas su ruta como texto, y lo que quiso
 /// copiar fue el fichero.
+#[cfg(windows)]
 pub fn leer() -> Option<ContenidoPortapapeles> {
     // SAFETY: si abre, el guardia de mas abajo garantiza el cierre.
     unsafe { OpenClipboard(None) }.ok()?;
@@ -264,6 +296,7 @@ pub fn leer() -> Option<ContenidoPortapapeles> {
 /// **El numero de cambios del portapapeles** (`GetClipboardSequenceNumber`):
 /// sube cada vez que alguien copia algo. Sirve para saber si lo del sistema
 /// es mas nuevo que algo copiado dentro de PixPin, sin abrir el portapapeles.
+#[cfg(windows)]
 pub fn secuencia() -> u32 {
     // SAFETY: sin argumentos; solo lee un contador de la sesion.
     unsafe { windows::Win32::System::DataExchange::GetClipboardSequenceNumber() }
@@ -271,6 +304,7 @@ pub fn secuencia() -> u32 {
 
 /// Copia texto plano como `CF_UNICODETEXT`. La pareja de `copiar_imagen`
 /// para las notas.
+#[cfg(windows)]
 pub fn copiar_texto(texto: &str) -> Result<(), ErrorCodec> {
     // Win32 espera UTF-16 en el orden nativo, que en toda maquina Windows
     // soportada es little endian.
@@ -290,6 +324,7 @@ pub fn copiar_texto(texto: &str) -> Result<(), ErrorCodec> {
 /// lectura es `leer_rutas`.
 ///
 /// Las rutas deben ser absolutas; ver `construir_hdrop` para el porque.
+#[cfg(windows)]
 pub fn copiar_ficheros(rutas: &[std::path::PathBuf]) -> Result<(), ErrorCodec> {
     // Primero se monta la carga entera y solo despues se toca Win32: si algo
     // esta mal, el portapapeles del usuario ni se entera.
@@ -315,6 +350,7 @@ pub fn copiar_ficheros(rutas: &[std::path::PathBuf]) -> Result<(), ErrorCodec> {
 /// dentro de un `STGMEDIUM` en vez de dejarla en el portapapeles: el formato
 /// es el mismo byte a byte, y rehacerlo alli seria rehacer tambien la trampa
 /// de `fWide`.
+#[cfg(windows)]
 pub fn construir_hdrop(rutas: &[std::path::PathBuf]) -> Result<Vec<u8>, ErrorCodec> {
     use std::os::windows::ffi::OsStrExt;
 
@@ -383,6 +419,7 @@ pub fn construir_hdrop(rutas: &[std::path::PathBuf]) -> Result<Vec<u8>, ErrorCod
 }
 
 /// Requiere el portapapeles ya abierto por el llamante.
+#[cfg(windows)]
 fn leer_texto() -> Option<String> {
     // SAFETY: el portapapeles esta abierto; el handle es propiedad del
     // portapapeles y solo se lee mientras dure el bloqueo.
@@ -404,6 +441,7 @@ fn leer_texto() -> Option<String> {
 }
 
 /// Requiere el portapapeles ya abierto por el llamante.
+#[cfg(windows)]
 fn leer_rutas() -> Option<Vec<std::path::PathBuf>> {
     // SAFETY: el portapapeles esta abierto; DragQueryFileW se usa con el
     // patron documentado (primero el numero, luego cada nombre con su
@@ -433,6 +471,7 @@ fn leer_rutas() -> Option<Vec<std::path::PathBuf>> {
 /// Requiere el portapapeles ya abierto por el llamante. Convierte el DIB a
 /// RGBA compacto: filas de abajo arriba y relleno a 4 bytes son cosa del
 /// formato, no del resto del programa.
+#[cfg(windows)]
 fn leer_dib() -> Option<ImagenRgba> {
     // SAFETY: el portapapeles esta abierto. Antes de leer un solo pixel se
     // comprueba que el bloque tiene al menos cabecera + los bytes que la
@@ -454,6 +493,7 @@ fn leer_dib() -> Option<ImagenRgba> {
 /// # Safety
 ///
 /// `base` debe apuntar a `disponible` bytes legibles.
+#[cfg(windows)]
 unsafe fn leer_dib_desde(base: *const u8, disponible: usize) -> Option<ImagenRgba> {
     let cab_tam = size_of::<BITMAPINFOHEADER>();
     if disponible < cab_tam {
@@ -526,7 +566,7 @@ unsafe fn leer_dib_desde(base: *const u8, disponible: usize) -> Option<ImagenRgb
     })
 }
 
-#[cfg(test)]
+#[cfg(all(test, windows))]
 mod pruebas {
     use super::*;
 

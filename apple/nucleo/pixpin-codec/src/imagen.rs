@@ -87,6 +87,7 @@ pub enum ErrorCodec {
         fuente: image::ImageError,
     },
     /// Ni `image` ni Windows (WIC) la saben leer.
+    #[cfg(windows)]
     #[error("Windows no pudo leer {ruta}: {fuente}")]
     LecturaWindows {
         ruta: std::path::PathBuf,
@@ -101,6 +102,18 @@ pub enum ErrorCodec {
         ruta: std::path::PathBuf,
         tienda: &'static str,
     },
+    /// Fuera de Windows: lo que aqui hacia Windows (WIC para HEIC, AVIF,
+    /// TIFF, GIF y RAW; leer a la medida; el portapapeles) no lo hace Rust.
+    /// En Mac, iPad e iPhone lo hace Swift con la herramienta del sistema
+    /// (`sustituto`: ImageIO, NSPasteboard...).
+    #[cfg(not(windows))]
+    #[error(
+        "{que}: fuera de Windows esto no lo hace Rust; en Mac, iPad e iPhone lo hace Swift con {sustituto}"
+    )]
+    NoSoportadoAqui {
+        que: String,
+        sustituto: &'static str,
+    },
 }
 
 impl ErrorCodec {
@@ -113,8 +126,36 @@ impl ErrorCodec {
     }
 }
 
+/// Lo que se dice fuera de Windows cuando una imagen solo la sabria leer el
+/// sistema: en Apple la lee ImageIO (`CGImageSource`) desde Swift.
+#[cfg(not(windows))]
+pub(crate) fn no_soportado_aqui(ruta: &Path) -> ErrorCodec {
+    ErrorCodec::NoSoportadoAqui {
+        que: format!("leer {}", ruta.display()),
+        sustituto: "ImageIO (CGImageSource)",
+    }
+}
+
+/// Leer con el sistema lo que `image` no sabe: WIC en Windows. Fuera de
+/// Windows, el error que dice que eso es cosa de Swift.
+fn cargar_con_el_sistema(ruta: &Path) -> Result<ImagenRgba, ErrorCodec> {
+    #[cfg(windows)]
+    return crate::wic::cargar(ruta).map_err(|e| error_de_windows(ruta, e));
+    #[cfg(not(windows))]
+    Err(no_soportado_aqui(ruta))
+}
+
+/// Las medidas, con el sistema: la pareja de `cargar_con_el_sistema`.
+fn medidas_con_el_sistema(ruta: &Path) -> Result<(u32, u32), ErrorCodec> {
+    #[cfg(windows)]
+    return crate::wic::medidas(ruta).map_err(|e| error_de_windows(ruta, e));
+    #[cfg(not(windows))]
+    Err(no_soportado_aqui(ruta))
+}
+
 /// El fallo de Windows, explicado: si es que no hay codec para un formato
 /// que da una extension de la tienda, se dice cual.
+#[cfg(windows)]
 pub(crate) fn error_de_windows(ruta: &Path, fuente: windows::core::Error) -> ErrorCodec {
     use windows::Win32::Foundation::{
         WINCODEC_ERR_COMPONENTINITIALIZEFAILURE, WINCODEC_ERR_COMPONENTNOTFOUND,
@@ -152,7 +193,7 @@ pub(crate) fn error_de_windows(ruta: &Path, fuente: windows::core::Error) -> Err
 /// mirarla salia de lado (4-oct-2026).
 pub fn cargar(ruta: &Path) -> Result<ImagenRgba, ErrorCodec> {
     if crate::wic::camino_de(ruta) == crate::wic::Camino::SoloWindows {
-        return crate::wic::cargar(ruta).map_err(|e| error_de_windows(ruta, e));
+        return cargar_con_el_sistema(ruta);
     }
     let leida = lector(ruta).and_then(|l| {
         use image::ImageDecoder;
@@ -176,7 +217,7 @@ pub fn cargar(ruta: &Path) -> Result<ImagenRgba, ErrorCodec> {
             if !vale_probar_windows(&fuente) {
                 return Err(error(fuente));
             }
-            return crate::wic::cargar(ruta).map_err(|_| error(fuente));
+            return cargar_con_el_sistema(ruta).map_err(|_| error(fuente));
         }
     };
     // `into` y no `to`: una PNG que ya es RGBA no se copia otra vez.
@@ -197,7 +238,7 @@ pub fn cargar(ruta: &Path) -> Result<ImagenRgba, ErrorCodec> {
 /// megapixeles por burbuja.
 pub fn medidas(ruta: &Path) -> Result<(u32, u32), ErrorCodec> {
     if crate::wic::camino_de(ruta) == crate::wic::Camino::SoloWindows {
-        return crate::wic::medidas(ruta).map_err(|e| error_de_windows(ruta, e));
+        return medidas_con_el_sistema(ruta);
     }
     lector(ruta)
         .and_then(|l| {
@@ -223,7 +264,7 @@ pub fn medidas(ruta: &Path) -> Result<(u32, u32), ErrorCodec> {
             if !vale_probar_windows(&fuente) {
                 return Err(error(fuente));
             }
-            crate::wic::medidas(ruta).map_err(|_| error(fuente))
+            medidas_con_el_sistema(ruta).map_err(|_| error(fuente))
         })
 }
 

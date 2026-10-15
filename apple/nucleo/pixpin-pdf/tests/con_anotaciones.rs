@@ -146,6 +146,7 @@ fn texto_de(bytes: &[u8]) -> String {
     String::from_utf8_lossy(bytes).into_owned()
 }
 
+#[cfg(windows)]
 fn fichero(nombre: &str, bytes: &[u8]) -> std::path::PathBuf {
     let dir = std::env::temp_dir().join(format!("pixpin-con-anotaciones-{}", std::process::id()));
     std::fs::create_dir_all(&dir).expect("carpeta temporal");
@@ -154,6 +155,7 @@ fn fichero(nombre: &str, bytes: &[u8]) -> std::path::PathBuf {
     ruta
 }
 
+#[cfg(windows)]
 fn pixel(img: &pixpin_codec::imagen::ImagenRgba, x: u32, y: u32) -> [u8; 4] {
     let i = ((y * img.ancho + x) * 4) as usize;
     [
@@ -164,6 +166,7 @@ fn pixel(img: &pixpin_codec::imagen::ImagenRgba, x: u32, y: u32) -> [u8; 4] {
     ]
 }
 
+#[cfg(windows)]
 fn es_rojo(p: [u8; 4]) -> bool {
     p[0] > 200 && p[1] < 60 && p[2] < 60
 }
@@ -302,6 +305,7 @@ fn lo_anotado_se_quita_cortando_como_lo_cocido_del_movil() {
     );
 }
 
+#[cfg(windows)]
 #[test]
 fn windows_pinta_la_tinta_donde_se_puso_y_la_hoja_ensanchada() {
     let original = pdf_inventado(1, 0, false);
@@ -341,6 +345,7 @@ fn windows_pinta_la_tinta_donde_se_puso_y_la_hoja_ensanchada() {
     assert!(!es_rojo(pixel(&img, 1050 + 700, 1300)));
 }
 
+#[cfg(windows)]
 #[test]
 fn en_una_hoja_girada_la_tinta_cae_donde_se_ve() {
     let original = pdf_inventado(1, 90, false);
@@ -371,6 +376,7 @@ fn en_una_hoja_girada_la_tinta_cae_donde_se_ve() {
     assert!(!es_rojo(pixel(&img, 200, 900)), "ni abajo");
 }
 
+#[cfg(windows)]
 /// **La tinta, dentro del contenido de la hoja** (Android v0.98.2): la hoja
 /// conserva sus flujos y sus recursos (la letra y la imagen se siguen
 /// pintando) y Windows la pinta sin mirar anotaciones.

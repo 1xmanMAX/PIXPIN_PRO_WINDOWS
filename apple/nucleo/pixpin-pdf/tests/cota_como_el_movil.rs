@@ -8,6 +8,7 @@
 
 use pixpin_motor2d::exportar::{self, Alcance};
 use pixpin_motor2d::pintado::Orden;
+#[cfg(windows)]
 use pixpin_pdf::escribir::de_hojas;
 
 /// Un plano sobre fondo oscuro (la foto), una cota vertical larga de 300 px
@@ -34,6 +35,7 @@ fn escena() -> pixpin_motor2d::Escena {
     pixpin_motor2d::excalidraw::a_escena(&pixpin_motor2d::excalidraw::leer(PLANO).expect("se lee"))
 }
 
+#[cfg(windows)]
 fn carpeta() -> std::path::PathBuf {
     let d = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/muestras-de-cota");
     std::fs::create_dir_all(&d).expect("carpeta de muestras");
@@ -76,6 +78,7 @@ fn las_cotas_del_plano_salen_como_rotulos_girados_con_halo_en_centimetros() {
     assert_eq!(rotulos[0].2, [1.0, 1.0, 1.0]);
 }
 
+#[cfg(windows)]
 #[test]
 fn en_el_pdf_el_numero_lleva_su_halo_trazado_debajo_y_va_girado() {
     let hojas = exportar::hojas(&escena(), Alcance::Todo, &[], None);

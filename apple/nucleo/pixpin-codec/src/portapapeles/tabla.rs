@@ -7,19 +7,30 @@
 //! formulas y la negrita. Aqui solo se leen y se escriben los dos formatos;
 //! entenderlos es de `pixpin_proyecto::portapapeles_tabla`, que es el
 //! `motor/PortapapelesDeTabla.kt` del movil.
+//!
+//! Fuera de Windows quedan `fragmento_de` y `envolver_html`, que son puros
+//! (en Apple, Swift pone y saca el HTML de `NSPasteboard` y estos lo
+//! envuelven o lo desenvuelven si hace falta); leer y copiar no ven nada o
+//! dan `ErrorCodec::NoSoportadoAqui`.
 
+#[cfg(windows)]
 use windows::Win32::Foundation::HGLOBAL;
+#[cfg(windows)]
 use windows::Win32::System::DataExchange::{
     GetClipboardData, OpenClipboard, RegisterClipboardFormatW,
 };
+#[cfg(windows)]
 use windows::Win32::System::Memory::{GlobalLock, GlobalSize, GlobalUnlock};
+#[cfg(windows)]
 use windows::core::w;
 
+#[cfg(windows)]
 use super::{CF_UNICODETEXT, GuardiaPortapapeles, leer_texto, publicar};
 use crate::imagen::ErrorCodec;
 
 /// El numero de `HTML Format` en esta sesion: se registra por nombre y
 /// Windows da siempre el mismo mientras dure.
+#[cfg(windows)]
 fn formato_html() -> u32 {
     // SAFETY: cadena literal terminada en NUL; la funcion solo la lee.
     unsafe { RegisterClipboardFormatW(w!("HTML Format")) }
@@ -27,6 +38,7 @@ fn formato_html() -> u32 {
 
 /// Lo que hay para pegar en una tabla: el fragmento HTML (si lo hay) y el
 /// texto. `None` si el portapapeles no se abre o no trae ninguno de los dos.
+#[cfg(windows)]
 pub fn leer_tabla() -> Option<(Option<String>, Option<String>)> {
     // SAFETY: si abre, el guardia garantiza el cierre.
     unsafe { OpenClipboard(None) }.ok()?;
@@ -42,6 +54,7 @@ pub fn leer_tabla() -> Option<(Option<String>, Option<String>)> {
 /// Como [`leer_tabla`], y ademas **el HTML entero** (fragmento, entero,
 /// texto): Excel pone el estilo de sus celdas en clases cuyo `<style>` va
 /// fuera del fragmento (lo usa el editor de notas para los colores).
+#[cfg(windows)]
 pub fn leer_tabla_con_estilos() -> Option<(Option<String>, Option<String>, Option<String>)> {
     // SAFETY: si abre, el guardia garantiza el cierre.
     unsafe { OpenClipboard(None) }.ok()?;
@@ -57,6 +70,7 @@ pub fn leer_tabla_con_estilos() -> Option<(Option<String>, Option<String>, Optio
 }
 
 /// Los bytes de `HTML Format`, con el portapapeles ya abierto.
+#[cfg(windows)]
 pub(super) fn leer_html() -> Option<Vec<u8>> {
     let formato = formato_html();
     if formato == 0 {
@@ -82,6 +96,7 @@ pub(super) fn leer_html() -> Option<Vec<u8>> {
 
 /// **Deja unas celdas para pegar fuera**: el texto con tabuladores y la
 /// tabla HTML, las dos en una sola sesion del portapapeles.
+#[cfg(windows)]
 pub fn copiar_tabla(tsv: &str, html: &str) -> Result<(), ErrorCodec> {
     let texto: Vec<u8> = tsv
         .encode_utf16()
@@ -94,6 +109,28 @@ pub fn copiar_tabla(tsv: &str, html: &str) -> Result<(), ErrorCodec> {
     }
     let cf_html = envolver_html(html);
     publicar(&[(CF_UNICODETEXT, &texto), (formato, &cf_html)])
+}
+
+/// Fuera de Windows: sin portapapeles que leer (lo lleva Swift).
+#[cfg(not(windows))]
+pub fn leer_tabla() -> Option<(Option<String>, Option<String>)> {
+    None
+}
+
+/// Fuera de Windows: sin portapapeles que leer (lo lleva Swift).
+#[cfg(not(windows))]
+pub fn leer_tabla_con_estilos() -> Option<(Option<String>, Option<String>, Option<String>)> {
+    None
+}
+
+/// Fuera de Windows: `NoSoportadoAqui`; en Apple deja las celdas Swift con
+/// `NSPasteboard` (`envolver_html` sirve igual si se quiere CF_HTML).
+#[cfg(not(windows))]
+pub fn copiar_tabla(_tsv: &str, _html: &str) -> Result<(), ErrorCodec> {
+    Err(ErrorCodec::NoSoportadoAqui {
+        que: "copiar una tabla al portapapeles".to_owned(),
+        sustituto: "NSPasteboard/UIPasteboard",
+    })
 }
 
 /// Lo de dentro de un CF_HTML: entre `StartFragment` y `EndFragment` si la

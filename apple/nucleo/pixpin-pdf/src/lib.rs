@@ -14,6 +14,19 @@
 //! metodo sobre el, no una funcion suelta que reabra el fichero por pagina.
 //! Reabrir cuesta leer y parsear el PDF entero cada vez, y este programa va
 //! dirigido a equipos con pocos recursos.
+//!
+//! **Fuera de Windows** (la copia de `apple/nucleo/` para Mac, iPad e
+//! iPhone) solo se queda fuera lo que necesita el sistema: ver paginas
+//! ([`Documento`], `Windows.Data.Pdf`), aligerar de verdad (`aligerar::aligerar`,
+//! que recodifica las fotos con WIC y comprueba el resultado DIBUJANDOLO) y
+//! las letras instaladas (`letra::del_sistema`, DirectWrite). En Apple las
+//! paginas las pinta **PDFKit** desde Swift (`PDFDocument`/`PDFPage`, con
+//! seleccion de texto y formularios), y las letras se buscan con Core Text.
+//! Todo lo demas es Rust puro y compila y se prueba en todas partes:
+//! escribir (`escribir`, `con_anotaciones`, `cocido`), unir (`union`), sacar
+//! el texto y los enlaces (`texto`, `enlaces`), el plano vectorial (`plano`,
+//! `plano_web`), inspeccionar lo que se podria aligerar
+//! (`aligerar::inspeccionar`) y medir letras incrustadas (`letra::Letra`).
 #![deny(clippy::undocumented_unsafe_blocks)]
 
 pub mod aligerar;
@@ -28,19 +41,29 @@ mod png;
 pub mod texto;
 pub mod union;
 
+#[cfg(windows)]
 use pixpin_codec::imagen::ImagenRgba;
 use std::path::{Path, PathBuf};
+#[cfg(windows)]
 use std::sync::atomic::{AtomicU64, Ordering};
+#[cfg(windows)]
 use windows::Data::Pdf::{PdfDocument, PdfPageRenderOptions};
+#[cfg(windows)]
 use windows::Graphics::Imaging::{
     BitmapAlphaMode, BitmapDecoder, BitmapEncoder, BitmapInterpolationMode, BitmapPixelFormat,
     BitmapTransform, ColorManagementMode, ExifOrientationMode,
 };
+#[cfg(windows)]
 use windows::Storage::StorageFile;
+#[cfg(windows)]
 use windows::Storage::Streams::InMemoryRandomAccessStream;
+#[cfg(windows)]
 use windows::Win32::Foundation::RPC_E_CHANGED_MODE;
+#[cfg(windows)]
 use windows::Win32::System::Com::{COINIT_MULTITHREADED, CoInitializeEx, CoUninitialize};
+#[cfg(windows)]
 use windows::core::HSTRING;
+#[cfg(windows)]
 use windows_future::{AsyncStatus, IAsyncAction, IAsyncOperation};
 
 /// Ancho maximo que se acepta al renderizar.
@@ -58,10 +81,12 @@ pub const ANCHO_MAXIMO: u32 = 16384;
 /// La norma permite basura antes de `%PDF-`, y los lectores de verdad la
 /// buscan dentro del primer kilobyte. Se hace igual para no rechazar ficheros
 /// que Windows si sabe abrir.
+#[cfg_attr(not(windows), allow(dead_code))]
 const CABECERA_MIRADA: usize = 1024;
 
 /// `HRESULT_FROM_WIN32(ERROR_WRONG_PASSWORD)`: lo que devuelve
 /// `Windows.Data.Pdf` cuando el documento esta cifrado y no se dio la clave.
+#[cfg(windows)]
 const HR_CONTRASENA: windows::core::HRESULT = windows::core::HRESULT(0x8007_052Bu32 as i32);
 
 #[derive(Debug, thiserror::Error)]
@@ -77,6 +102,7 @@ pub enum ErrorPdf {
     #[error("{0} esta cifrado y pide contrasena")]
     Cifrado(PathBuf),
     /// Es un PDF por la cabecera, pero Windows no consigue cargarlo.
+    #[cfg(windows)]
     #[error("{ruta} es un PDF danado o incompleto")]
     Corrupto {
         ruta: PathBuf,
@@ -97,10 +123,23 @@ pub enum ErrorPdf {
     /// interpretaria como una pagina en blanco.
     #[error("la pagina {indice} se dibujo vacia")]
     RenderVacio { indice: u32 },
+    #[cfg(windows)]
     #[error("el sistema fallo al trabajar con el PDF: {0}")]
     Sistema(#[source] windows::core::Error),
+    /// Fuera de Windows: lo que aqui hacia el sistema (ver paginas con
+    /// `Windows.Data.Pdf`, recodificar con WIC) no lo hace Rust. En Mac, iPad
+    /// e iPhone lo hace Swift con `sustituto` (PDFKit, ImageIO).
+    #[cfg(not(windows))]
+    #[error(
+        "{que}: fuera de Windows esto no lo hace Rust; en Mac, iPad e iPhone lo hace Swift con {sustituto}"
+    )]
+    NoSoportadoAqui {
+        que: String,
+        sustituto: &'static str,
+    },
 }
 
+#[cfg(windows)]
 impl From<windows::core::Error> for ErrorPdf {
     fn from(e: windows::core::Error) -> Self {
         ErrorPdf::Sistema(e)
@@ -112,6 +151,7 @@ impl From<windows::core::Error> for ErrorPdf {
 /// Mantiene vivo el documento de WinRT: abrirlo es lo caro (leer y parsear el
 /// fichero entero), dibujar una pagina es barato. Un visor que salta de la
 /// pagina 3 a la 4 no vuelve a pagar la apertura.
+#[cfg(windows)]
 pub struct Documento {
     documento: PdfDocument,
     paginas: u32,
@@ -132,6 +172,7 @@ pub struct Documento {
     _mismo_hilo: std::marker::PhantomData<*const ()>,
 }
 
+#[cfg(windows)]
 impl Documento {
     /// Abre el PDF de `ruta`.
     ///
@@ -442,8 +483,10 @@ impl Documento {
 /// Se arranca en 1,0 (suponer que no hay escalado) y se corrige sola. Si el
 /// usuario cambia el escalado con el programa abierto, el primer render que
 /// falle vuelve a medir.
+#[cfg(windows)]
 static ESCALA_MEDIDA: AtomicU64 = AtomicU64::new(1.0f64.to_bits());
 
+#[cfg(windows)]
 /// Cuantas unidades hay que pedirle a WinRT para que salgan `ancho` pixeles.
 ///
 /// Se redondea hacia ARRIBA a proposito: mas vale dibujar uno o dos pixeles de
@@ -455,6 +498,7 @@ fn unidades_para(ancho: u32) -> u32 {
 
 /// La cuenta de [`unidades_para`], separada de la variable global para poder
 /// probarla sin tocarla y sin depender de la pantalla de quien ejecute.
+#[cfg_attr(not(windows), allow(dead_code))]
 fn unidades_con_escala(ancho: u32, escala: f64) -> u32 {
     // Una escala absurda (cero, negativa, infinita, NaN) solo puede venir de
     // una medida imposible; se ignora y se pide el ancho tal cual, que el
@@ -468,11 +512,13 @@ fn unidades_con_escala(ancho: u32, escala: f64) -> u32 {
 
 /// El alto que le toca a `ancho` para conservar la proporcion `de_ancho` x
 /// `de_alto`. Nunca cero: una imagen de alto cero no es una imagen.
+#[cfg_attr(not(windows), allow(dead_code))]
 fn proporcional(ancho: u32, de_ancho: u32, de_alto: u32) -> u32 {
     let alto = (ancho as u64 * de_alto as u64).div_ceil(de_ancho.max(1) as u64);
     (alto as u32).max(1)
 }
 
+#[cfg(windows)]
 /// Dibuja la pagina a un flujo en memoria y devuelve el descodificador listo.
 ///
 /// El flujo sale junto al descodificador porque **tiene que seguir vivo**
@@ -502,6 +548,7 @@ fn dibujar(
     Ok((flujo, descodificador))
 }
 
+#[cfg(windows)]
 impl std::fmt::Debug for Documento {
     /// Se muestran la ruta y las paginas, nada mas. El puntero del objeto de
     /// WinRT no le dice nada a nadie leyendo un mensaje de error, y el `Debug`
@@ -523,10 +570,12 @@ impl std::fmt::Debug for Documento {
 /// `CoInitializeEx` devuelve `RPC_E_CHANGED_MODE` cuando el hilo ya esta en
 /// otro apartamento; en ese caso no incrementa la cuenta, y llamar a
 /// `CoUninitialize` cerraria el COM de otro.
+#[cfg(windows)]
 struct ComDelHilo {
     nuestro: bool,
 }
 
+#[cfg(windows)]
 impl ComDelHilo {
     fn nuevo() -> ComDelHilo {
         // SAFETY: `CoInitializeEx` no tiene precondiciones; es la forma normal
@@ -539,6 +588,7 @@ impl ComDelHilo {
     }
 }
 
+#[cfg(windows)]
 impl Drop for ComDelHilo {
     fn drop(&mut self) {
         if self.nuestro {
@@ -550,6 +600,7 @@ impl Drop for ComDelHilo {
     }
 }
 
+#[cfg(windows)]
 /// Espera a que termine una operacion asincrona de WinRT y recoge su valor.
 ///
 /// Se sondea `Status()` en vez de registrar un `Completed`, igual que en
@@ -569,6 +620,7 @@ where
     operacion.GetResults()
 }
 
+#[cfg(windows)]
 /// Lo mismo para las operaciones que no devuelven nada (el render).
 fn esperar_accion(accion: &IAsyncAction) -> Result<(), windows::core::Error> {
     while accion.Status()? == AsyncStatus::Started {
@@ -582,6 +634,7 @@ fn esperar_accion(accion: &IAsyncAction) -> Result<(), windows::core::Error> {
 /// Devolver vacio en vez de error es deliberado: si el fichero existe pero no
 /// se deja leer, `parece_pdf` dira que no y el usuario recibe "no es un PDF",
 /// que es lo que va a ver de todas formas cuando intente abrirlo.
+#[cfg_attr(not(windows), allow(dead_code))]
 fn leer_cabecera(ruta: &Path) -> Vec<u8> {
     use std::io::Read;
     let mut buffer = vec![0u8; CABECERA_MIRADA];
@@ -596,10 +649,12 @@ fn leer_cabecera(ruta: &Path) -> Vec<u8> {
 }
 
 /// Si estos bytes iniciales llevan la marca de un PDF.
+#[cfg_attr(not(windows), allow(dead_code))]
 fn parece_pdf(cabecera: &[u8]) -> bool {
     cabecera.windows(5).any(|v| v == b"%PDF-")
 }
 
+#[cfg(windows)]
 /// Convierte el fallo de `LoadFromFileAsync` en un error que dice algo.
 ///
 /// Para cuando se llama a esto ya se sabe que la cabecera dice `%PDF-`, asi que
@@ -615,6 +670,7 @@ fn clasificar_fallo_de_carga(ruta: &Path, fuente: windows::core::Error) -> Error
     }
 }
 
+#[cfg(windows)]
 /// La ruta en la forma que acepta `StorageFile::GetFileFromPathAsync`:
 /// absoluta y sin el prefijo extendido `\\?\`.
 fn ruta_para_winrt(ruta: &Path) -> Result<String, ErrorPdf> {
@@ -626,6 +682,7 @@ fn ruta_para_winrt(ruta: &Path) -> Result<String, ErrorPdf> {
 ///
 /// Es la forma que devuelve `std::fs::canonicalize` y la que puede traer una
 /// ruta que venga de otra API de Win32. WinRT la rechaza por sintaxis.
+#[cfg_attr(not(windows), allow(dead_code))]
 fn sin_prefijo_extendido(ruta: &str) -> String {
     if let Some(resto) = ruta.strip_prefix(r"\\?\UNC\") {
         format!(r"\\{resto}")
@@ -639,8 +696,10 @@ fn sin_prefijo_extendido(ruta: &str) -> String {
 #[cfg(test)]
 mod pruebas {
     use super::*;
+    #[cfg(windows)]
     use std::fs;
 
+    #[cfg(windows)]
     /// Directorio de trabajo propio de cada prueba, vaciado al empezar.
     ///
     /// Se vacia al ENTRAR y no solo al salir porque una prueba que falla se va
@@ -653,6 +712,7 @@ mod pruebas {
         dir
     }
 
+    #[cfg(windows)]
     /// Un objeto de flujo con su `/Length` bien puesto.
     fn flujo(contenido: &str) -> String {
         format!(
@@ -661,6 +721,7 @@ mod pruebas {
         )
     }
 
+    #[cfg(windows)]
     /// Un PDF valido de tres paginas, escrito byte a byte.
     ///
     /// No hay ningun PDF en el repositorio y no se va a anadir un binario, asi
@@ -715,6 +776,7 @@ mod pruebas {
         salida
     }
 
+    #[cfg(windows)]
     /// Escribe el PDF de tres paginas y devuelve su ruta.
     fn pdf_en_disco(etiqueta: &str) -> (PathBuf, PathBuf) {
         let dir = temporal(etiqueta);
@@ -723,6 +785,7 @@ mod pruebas {
         (dir, ruta)
     }
 
+    #[cfg(windows)]
     /// Cuantos colores distintos hay en la imagen, hasta un tope.
     ///
     /// Sirve para cazar el render que falla en silencio: una pagina toda
@@ -739,6 +802,7 @@ mod pruebas {
         vistos.len()
     }
 
+    #[cfg(windows)]
     /// Cuantos pixeles oscuros hay en la mitad izquierda y en la derecha.
     ///
     /// Es como se comprueba que el dibujo cayo donde dice el PDF y no en
@@ -766,6 +830,7 @@ mod pruebas {
         (izquierda, derecha)
     }
 
+    #[cfg(windows)]
     #[test]
     fn un_pdf_de_tres_paginas_dice_que_tiene_tres() {
         let (dir, ruta) = pdf_en_disco("cuenta");
@@ -776,6 +841,7 @@ mod pruebas {
         let _ = fs::remove_dir_all(dir);
     }
 
+    #[cfg(windows)]
     #[test]
     fn dos_paginas_del_mismo_tamano_se_dibujan_distintas() {
         // El caso que de verdad prueba que `GetPage` mira el indice: las dos
@@ -816,6 +882,7 @@ mod pruebas {
         let _ = fs::remove_dir_all(dir);
     }
 
+    #[cfg(windows)]
     #[test]
     fn el_ancho_pedido_es_el_que_sale_y_el_alto_sigue_la_proporcion() {
         let (dir, ruta) = pdf_en_disco("proporcion");
@@ -853,6 +920,7 @@ mod pruebas {
         let _ = fs::remove_dir_all(dir);
     }
 
+    #[cfg(windows)]
     #[test]
     fn cualquier_ancho_sale_clavado_aunque_no_sea_redondo() {
         // Con escalado de pantalla hay anchos a los que `DestinationWidth` no
@@ -919,6 +987,7 @@ mod pruebas {
         assert!(proporcional(10, 0, 10) >= 1);
     }
 
+    #[cfg(windows)]
     #[test]
     fn la_pagina_dibujada_tiene_mas_de_un_color() {
         // Un render que falla en silencio devuelve la pagina entera blanca o
@@ -945,6 +1014,7 @@ mod pruebas {
         let _ = fs::remove_dir_all(dir);
     }
 
+    #[cfg(windows)]
     #[test]
     fn un_fichero_que_no_existe_no_se_abre() {
         // Caso negativo. No toca WinRT: se responde con la ruta que fallo, que
@@ -957,6 +1027,7 @@ mod pruebas {
         );
     }
 
+    #[cfg(windows)]
     #[test]
     fn un_fichero_que_no_es_pdf_se_distingue_de_un_pdf_danado() {
         // Caso negativo doble, y el interesante: los dos son "no se puede
@@ -982,6 +1053,7 @@ mod pruebas {
         let _ = fs::remove_dir_all(dir);
     }
 
+    #[cfg(windows)]
     #[test]
     fn una_pagina_fuera_de_rango_da_error_en_vez_de_panico() {
         // Caso negativo. WinRT lanza una excepcion si se le pide una pagina
@@ -1009,6 +1081,7 @@ mod pruebas {
         let _ = fs::remove_dir_all(dir);
     }
 
+    #[cfg(windows)]
     #[test]
     fn un_ancho_de_cero_o_desmedido_se_rechaza() {
         // Caso negativo. Un ancho de cero le sacaria a WinRT una excepcion, y
@@ -1062,6 +1135,7 @@ mod pruebas {
         );
     }
 
+    #[cfg(windows)]
     #[test]
     fn un_pdf_que_pide_contrasena_no_se_confunde_con_uno_roto() {
         // El HRESULT se comprueba sin WinRT: `windows::core::Error` se puede
@@ -1080,11 +1154,13 @@ mod pruebas {
         assert!(matches!(roto, ErrorPdf::Corrupto { .. }), "salio {roto:?}");
     }
 
+    #[cfg(windows)]
     /// La proporcion alto/ancho de una medida.
     fn proporcion((w, h): (f32, f32)) -> f32 {
         h / w
     }
 
+    #[cfg(windows)]
     #[test]
     fn las_medidas_de_las_paginas_tienen_la_proporcion_de_lo_que_se_dibuja() {
         // El lector continuo coloca las hojas con estas medidas ANTES de
@@ -1110,6 +1186,7 @@ mod pruebas {
         let _ = fs::remove_dir_all(dir);
     }
 
+    #[cfg(windows)]
     #[test]
     fn una_pagina_girada_mide_lo_que_se_ve_y_no_lo_que_dice_su_papel() {
         // Papel apaisado (200x100) girado un cuarto de vuelta: en pantalla
@@ -1156,6 +1233,7 @@ mod pruebas {
         let _ = fs::remove_dir_all(dir);
     }
 
+    #[cfg(windows)]
     /// Cuantos pixeles oscuros tiene una imagen.
     fn oscuros(imagen: &ImagenRgba) -> usize {
         imagen
@@ -1165,6 +1243,7 @@ mod pruebas {
             .count()
     }
 
+    #[cfg(windows)]
     #[test]
     fn un_trozo_de_la_pagina_sale_a_la_resolucion_pedida_y_de_su_sitio() {
         // La pagina 0 (200x100) tiene el cuadrado negro a la IZQUIERDA: la
