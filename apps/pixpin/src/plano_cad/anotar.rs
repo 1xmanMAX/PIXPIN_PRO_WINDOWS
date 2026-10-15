@@ -408,6 +408,9 @@ pub struct MotorDelPlano {
     sello: Sello,
     /// Cuando se miro el disco por ultima vez (se mira sin prisa).
     mirado: Option<std::time::Instant>,
+    /// El ultimo aviso del asistente visto: con uno nuevo se mira ya
+    /// (`lector_tinta::turnos`).
+    aviso: u64,
     /// Cuantas veces se releyo la capa del disco: va en la huella de la
     /// foto (lo releido puede traer los mismos ids y versiones).
     leida: u64,
@@ -513,6 +516,7 @@ impl MotorDelPlano {
             base,
             sello,
             mirado: None,
+            aviso: 0,
             leida: 0,
         }
     }
@@ -551,7 +555,8 @@ impl MotorDelPlano {
     /// [`MotorDelPlano::al_dia`], sin mirar el disco mas de una vez cada
     /// [`MIRAR_EL_DISCO`] (se llama al pintar cada fotograma).
     fn mirar_el_disco(&mut self) {
-        if self.mirado.is_some_and(|t| t.elapsed() < MIRAR_EL_DISCO) {
+        let avisado = lector_tinta::turnos::hay_aviso(&mut self.aviso);
+        if !avisado && self.mirado.is_some_and(|t| t.elapsed() < MIRAR_EL_DISCO) {
             return;
         }
         self.mirado = Some(std::time::Instant::now());

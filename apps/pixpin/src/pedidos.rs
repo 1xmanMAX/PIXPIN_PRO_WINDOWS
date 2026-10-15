@@ -296,6 +296,11 @@ pub enum Pedido {
     /// como «Texto» de la captura. Lo que salga se dice en el globo.
     Ocr {
         ruta: PathBuf,
+        /// Mas imagenes detras de `ruta` (15-oct, «Copiar texto (OCR)» del
+        /// Explorador con varias elegidas, `pixpinmax copiar-texto`): el
+        /// texto de todas, en orden, en un solo portapapeles.
+        #[serde(default)]
+        rutas: Vec<PathBuf>,
     },
     /// **Una herramienta del asistente con sus argumentos** (15-oct, el
     /// servidor MCP `apps/pixpin-mcp`): la fila `nombre` de
@@ -1222,14 +1227,17 @@ fn hacer(p: Pedido, cx: &Contexto) -> Result<Hecho, Fallo> {
                 .unwrap_or_else(|| t.t("app-nombre"));
             leer_suelto(cx.idioma, raiz.to_path_buf(), titulo, parrafos, ahora);
         }
-        Pedido::Ocr { ruta } => {
-            if !ruta.is_file() {
-                return Err(Fallo::SinImagen(ruta));
+        Pedido::Ocr { ruta, rutas } => {
+            let todas: Vec<PathBuf> = std::iter::once(ruta).chain(rutas).collect();
+            for ruta in &todas {
+                if !ruta.is_file() {
+                    return Err(Fallo::SinImagen(ruta.clone()));
+                }
+                if !crate::tareas::es_imagen(ruta) {
+                    return Err(Fallo::NoEsImagen(ruta.clone()));
+                }
             }
-            if !crate::tareas::es_imagen(&ruta) {
-                return Err(Fallo::NoEsImagen(ruta));
-            }
-            ocr_al_portapapeles(cx.idioma, ruta);
+            ocr_al_portapapeles(cx.idioma, todas);
         }
         // En su hilo, como `asistente`: puede esperar al permiso del usuario.
         // Lo que salga se contesta en `respuesta`, no en el globo.
@@ -1310,7 +1318,7 @@ fn leer_suelto(
 
 /// El OCR de `ruta` al portapapeles, en un hilo (leer una imagen grande
 /// tarda cientos de ms). Lo que pase va al globo.
-fn ocr_al_portapapeles(idioma: pixpin_store::Idioma, ruta: PathBuf) {
+fn ocr_al_portapapeles(idioma: pixpin_store::Idioma, rutas: Vec<PathBuf>) {
     let _ = std::thread::Builder::new()
         .name("pedido-ocr".into())
         .spawn(move || {
@@ -1319,9 +1327,17 @@ fn ocr_al_portapapeles(idioma: pixpin_store::Idioma, ruta: PathBuf) {
             let aviso = if !pixpin_ocr::disponible() {
                 t.t("pedido-ocr-no-disponible")
             } else {
-                let texto = pixpin_codec::imagen::cargar(&ruta)
-                    .map_err(|e| e.to_string())
-                    .and_then(|img| crate::texto_de_imagen(&img).map_err(|e| e.to_string()));
+                // Una imagen tras otra, con una linea en blanco entre ellas;
+                // la primera que no se lee para todo.
+                let texto = rutas
+                    .iter()
+                    .map(|ruta| {
+                        pixpin_codec::imagen::cargar(ruta)
+                            .map_err(|e| e.to_string())
+                            .and_then(|img| crate::texto_de_imagen(&img).map_err(|e| e.to_string()))
+                    })
+                    .collect::<Result<Vec<String>, String>>()
+                    .map(|v| v.into_iter().filter(|t| !t.trim().is_empty()).collect::<Vec<_>>().join("\n\n"));
                 aviso_del_ocr(&t, texto, |s| {
                     pixpin_codec::copiar_texto(s).map_err(|e| e.to_string())
                 })
@@ -3549,7 +3565,16 @@ mod pruebas {
         assert_eq!(
             leer(r#"{"pixpin":1,"accion":"ocr","ruta":"C:\\a\\b.png"}"#).unwrap(),
             Pedido::Ocr {
-                ruta: PathBuf::from(r"C:\a\b.png")
+                ruta: PathBuf::from(r"C:\a\b.png"),
+                rutas: Vec::new()
+            }
+        );
+        // Varias (el menu del Explorador): la primera y las demas.
+        assert_eq!(
+            leer(r#"{"pixpin":1,"accion":"ocr","ruta":"C:\\a\\b.png","rutas":["C:\\a\\c.png"]}"#).unwrap(),
+            Pedido::Ocr {
+                ruta: PathBuf::from(r"C:\a\b.png"),
+                rutas: vec![PathBuf::from(r"C:\a\c.png")]
             }
         );
         // Caso negativo: un OCR sin ruta no es un pedido que se pueda hacer.

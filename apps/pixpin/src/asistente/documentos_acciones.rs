@@ -112,6 +112,9 @@ pub enum Sirve {
     Documento,
     /// Cualquiera (abrir, exportar).
     Cualquiera,
+    /// Lo que se anota con cabeza (`anotar_inteligente`): PDF, Word,
+    /// PowerPoint, Excel, foto o plano.
+    Anotable,
 }
 
 fn extension(nombre: &str) -> String {
@@ -132,6 +135,7 @@ fn sirve(nombre: &str, s: Sirve) -> bool {
         Sirve::Escaneado => e == "pdf" || super::ocr::es_imagen(Path::new(nombre)),
         Sirve::Documento => e == "pdf" || es_office_de_paginas(nombre) || es_plano(nombre),
         Sirve::Cualquiera => !e.is_empty(),
+        Sirve::Anotable => super::anotar_inteligente::formato_de(Path::new(nombre)).is_some(),
     }
 }
 

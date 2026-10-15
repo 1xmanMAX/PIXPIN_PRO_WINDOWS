@@ -108,10 +108,14 @@ mod pruebas {
     }
 
     /// Cada boton tiene que poder volver por el protocolo, y el pedido tiene
-    /// que entenderlo la app.
+    /// que entenderlo la app. Los botones van firmados (`notificacion::sena`,
+    /// `orden::firma`): pasan todo lo de la lista blanca y, ademas, lo que
+    /// sin firma preguntaria («Abrir» una captura, con su ruta); nunca lo
+    /// prohibido por enlace (una ruta de red).
     fn botones_validos(toast: &Toast) {
+        use pixpin_shell::orden::{Seguridad, seguridad};
         for b in &toast.botones {
-            assert!(permitido(&b.pedido), "{}", b.pedido);
+            assert!(permitido(&b.pedido) || matches!(seguridad(&b.pedido), Seguridad::Confirmar(_)), "{}", b.pedido);
             assert!(crate::pedidos::leer(&b.pedido.to_string()).is_ok(), "{}", b.pedido);
         }
     }

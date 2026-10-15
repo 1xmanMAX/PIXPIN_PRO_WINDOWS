@@ -70,7 +70,7 @@ el plugin de Flow Launcher (`apps/pixpin-lanzador`), y sirve igual para un scrip
 | `pines` | `operacion: "cerrar" \| "ocultar_mostrar" \| "devolver_ultimo" \| "paso_de_clics"` | (15-oct) Los comandos de los pines de la bandeja, por el mismo camino que `capturar` (`WM_COMMAND` a la ventana del bucle): cerrarlos todos, esconderlos o devolverlos, devolver el último que se cerró o que dejen pasar el clic. `cerrar` no pregunta: quien lo manda ya preguntó |
 | `timeline` | `texto?` | (15-oct) Con `texto`, apunta un momento en el timeline con la hora de ahora (la primera frase es el título, como la caja de su ventana) y lo dice en el globo; sin `texto`, abre el timeline |
 | `leer_en_voz` | `texto?`, `ruta?`, `titulo?`, `parar?` | **Lee en voz alta** (15-oct) con la voz de la app (la de Windows o las de Microsoft, como en los lectores), **sin abrir ninguna ventana**; calla lo que sonara antes. Un `texto` suelto (la selección de una página desde la extensión del navegador): un párrafo por renglón. O un fichero (`ruta`, el asistente: PDF, Word, PowerPoint, Excel, nota o texto): su texto se saca en un hilo. Se pausa, salta y para con los mandos de reproductor de Windows y las teclas multimedia, que enseñan `titulo` (sin él, «PixPin Max» o el nombre del fichero). Con `parar: true`, calla lo que suene, sea de quien sea. Sin nada que leer, o un fichero que no está, se avisa |
-| `ocr` | `ruta` | **El texto de esa imagen al portapapeles** (15-oct, «Texto (OCR)» de la extensión del navegador): el OCR de Windows, en orden de lectura, como «Texto» de la captura. En su hilo; el globo dice lo copiado («Texto copiado (120 caracteres): «…»»), que no había texto o que falta el OCR de Windows. Una `ruta` que no está o no es una imagen se rechaza con aviso |
+| `ocr` | `ruta`, `rutas?` | **El texto de esa imagen al portapapeles** (15-oct, «Texto (OCR)» de la extensión del navegador; con `rutas`, más imágenes detrás de `ruta`, todo en un texto con una línea en blanco entre imagen e imagen: «Copiar texto (OCR)» del menú del Explorador con varias elegidas): el OCR de Windows, en orden de lectura, como «Texto» de la captura. En su hilo; el globo dice lo copiado («Texto copiado (120 caracteres): «…»»), que no había texto o que falta el OCR de Windows. Una `ruta` que no está o no es una imagen se rechaza con aviso |
 | `herramienta` | `nombre`, `args?`, `respuesta?`, `preguntar?`, `origen?` | **Hace una herramienta del asistente con esos argumentos y devuelve lo que salió** (15-oct-2026, el servidor MCP `apps/pixpin-mcp`). `nombre` es una fila de `pixpin_ia::acciones::todas()` (`anadir_tarea`, `borrar_lista`, `anotar_documento`…; no `hoja_a_lienzo`), `args` sus argumentos tal como los describe su JSON Schema. Se hace en su hilo por el mismo camino que el asistente: las tareas por su nombre, los documentos por su nombre o ruta, y **lo que la fila manda preguntar se pregunta** (chat «Asistente» y aviso flotante, «Sí»/«No»; sin respuesta en 5 min, no). `preguntar`: otra pregunta que hacer antes (la usa MCP para lo que cambia algo que ya existe). Al acabar escribe `{"ok": bool, "texto": "…"}` en `respuesta`, que tiene que ser un `.json` **nuevo directamente dentro de `%TEMP%\pixpin-mcp\`** (si no, se hace igual pero no se escribe nada). Se escribe al lado (`.parte`) y se renombra: quien espera puede leerlo en cuanto aparece. `origen` («Claude») sale en el aviso y en la pregunta |
 
 ### El asistente desde fuera (`asistente`, 13-oct-2026)
@@ -107,11 +107,12 @@ el plugin de Flow Launcher (`apps/pixpin-lanzador`), y sirve igual para un scrip
 
 Las notificaciones de Windows de PixPin (asistente, recordatorios, capturas que caducan) llevan
 botones; cada botón es **un pedido de este protocolo**. Como PixPin no está empaquetado, Windows
-los devuelve por el protocolo `pixpinmax:` (dado de alta en `HKCU` al arrancar, fuera del modo
-portable): `pixpinmax:pedido?json=<pedido en %-código>` abre `pixpinmax.exe --atajo url "<seña>"`,
-que se lo pasa a la copia que corre como cualquier pedido. Cualquier página puede lanzar esa
-seña, así que por ahí **solo pasan** `abrir`, `asistente` (sin texto: abrir su chat), `ventana`,
-`pinear`, `marcar_tarea`, `posponer` y `conservar_captura`.
+los devuelve por protocolo: `pixpin:pedido?json=<pedido en %-código>` (o `pixpinmax:` si `pixpin:`
+es de otro programa, como el PixPin original; `orden::esquema_de_la_casa`), que abre
+`pixpinmax.exe --url "<seña>"`. Es **el mismo protocolo, traductor y lista blanca** que los enlaces
+de `docs/integraciones.md` (`orden::de_enlace`, `orden::seguridad`); los botones van **firmados**
+(`orden::firma`) y se hacen sin preguntar. `--atajo url "<seña>"` (como se registraba antes) es un
+alias de `--url`.
 
 ### Automatizaciones (`automatizacion`, 13-oct-2026)
 
@@ -288,6 +289,11 @@ es `%APPDATA%\PixPinMax` (o la carpeta del exe si al lado hay un `pixpinmax.toml
   existe dentro de ella. Para cambiar algo, un pedido.
 
 ## Desde la linea de mandatos
+
+Lo normal es el propio `pixpinmax.exe` (15-oct): `pixpinmax --pedido '<json>'`,
+`pixpinmax --pedido-archivo <ruta|->`, los verbos legibles (`pixpinmax tarea "comprar yeso"`) y
+los enlaces `pixpinmax://…` / `pixpin://…`. Todo en **`docs/integraciones.md`**. Desde Rust, la
+función para reutilizar es `pixpin_shell::mensajero::enviar_pedidos_o_arrancar`.
 
 `pixpin-lanzador.exe pedido '<json>'` manda un pedido (arranca PixPin si hace falta) y
 `pixpin-lanzador.exe buscar "<texto>"` escribe los resultados, una linea JSON por resultado.

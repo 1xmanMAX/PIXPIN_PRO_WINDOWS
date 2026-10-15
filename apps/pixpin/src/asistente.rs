@@ -34,6 +34,7 @@
 
 pub mod acciones;
 pub mod al_lienzo;
+pub mod anotar_inteligente;
 pub mod chat;
 pub mod descarga;
 pub mod documentos;

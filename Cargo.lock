@@ -1853,10 +1853,12 @@ dependencies = [
 name = "pixpin-shell"
 version = "0.1.0"
 dependencies = [
+ "hmac",
  "pixpin-geom",
  "pixpin-nivel",
  "serde",
  "serde_json",
+ "sha2 0.10.9",
  "thiserror",
  "tracing",
  "tracing-subscriber",
