@@ -276,6 +276,8 @@ pub fn elementos(llamada: &Llamada, origen: (f64, f64), semilla: u64) -> Vec<Val
         Llamada::Funciones(p) => crate::funciones::elementos(&mut f, p),
         Llamada::Ecuacion(e) => crate::ecuacion::elementos(&mut f, e),
         Llamada::Cronograma(c) => crate::cronograma::elementos(&mut f, c),
+        Llamada::Fisica(d) => crate::fisica::elementos(&mut f, d),
+        Llamada::Problema(p) => crate::problema::elementos(&mut f, p),
         // No dibujan nada por si solas: el OCR y la ayuda son texto, la
         // accion de la app es un pedido, el calcado necesita la imagen
         // ([`elementos_de_calcado`]), la biblioteca el fichero
@@ -313,7 +315,7 @@ pub fn documento(elementos: Vec<Value>) -> String {
     .to_string()
 }
 
-fn figura(f: &mut Fabrica, fig: &Figura) {
+pub(crate) fn figura(f: &mut Fabrica, fig: &Figura) {
     let trazo = fig.color.0.as_str();
     let relleno = fig.relleno.as_ref().map(|c| c.0.as_str());
     let con_rotulo = fig.tipo != TipoFigura::Texto && !fig.texto.is_empty();

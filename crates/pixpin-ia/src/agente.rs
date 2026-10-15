@@ -851,6 +851,7 @@ pub fn instrucciones() -> String {
      poniendo el color de cada figura. \
      Si pide dibujar, copiar o calcar al lienzo lo de una imagen adjunta (este perro, la foto), usa calcar_imagen. \
      Si da datos para graficar, usa grafica; si da una funcion, graficar_funcion; una ecuacion, escribir_ecuacion; un cronograma, cronograma; una ilustracion con curvas, dibujar_svg. \
+     Para estudiantes: un problema (de una foto o escrito) que pasar en limpio o resolver, problema_en_limpio; un diagrama de fisica (fuerzas, plano inclinado, tiro, circuito, MRU), diagrama_fisica. Las cuentas las hace la app, no tu. \
      Si quiere el texto de un documento escaneado, usa ocr. \
      Si pide hacer algo en la app (notas, tareas, ventanas, capturas, abrir ficheros), usa su herramienta. \
      Con sus documentos y planos: una tabla de una foto o un PDF, tabla_de_imagen; resaltar, anotar o encerrar algo, anotar_documento; \
@@ -1277,7 +1278,7 @@ mod pruebas {
             Respuesta::de_texto("Puerta puesta."),
         ]);
         let mut eventos = Vec::new();
-        turno_con(&motor, &mut h, &crate::herramientas::catalogo_base(), &mut Apunta::default(), &o, &mut |e| {
+        turno_con(&motor, &mut h, &crate::seleccion::para_el_pedido("dibuja la puerta en el plano", false), &mut Apunta::default(), &o, &mut |e| {
             eventos.push(e);
             Seguir::Si
         })

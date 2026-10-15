@@ -69,6 +69,10 @@ pub const FUNCION: &str = crate::funciones::NOMBRE;
 pub const ECUACION: &str = crate::ecuacion::NOMBRE;
 pub const CRONOGRAMA: &str = crate::cronograma::NOMBRE;
 pub const FIGURAS: &str = crate::figuras::NOMBRE;
+/// Para estudiantes (14-oct): diagramas de fisica de una tabla de
+/// plantillas y problemas pasados en limpio.
+pub const FISICA: &str = crate::fisica::NOMBRE;
+pub const PROBLEMA: &str = crate::problema::NOMBRE;
 
 /// Cuantos numeros como mucho en los `puntos` de una figura.
 pub const MAX_NUMEROS_PUNTOS: usize = 240;
@@ -163,6 +167,8 @@ pub fn catalogo_base() -> Vec<Herramienta> {
         crate::funciones::herramienta(),
         crate::ecuacion::herramienta(),
         crate::cronograma::herramienta(),
+        crate::fisica::herramienta(),
+        crate::problema::herramienta(),
         crate::figuras::herramienta(),
         Herramienta {
             nombre: OCR.into(),
@@ -235,6 +241,10 @@ pub enum Llamada {
     Ecuacion(crate::ecuacion::Ecuacion),
     /// Un diagrama de Gantt (`cronograma.rs`).
     Cronograma(crate::cronograma::Cronograma),
+    /// Un diagrama de fisica de su plantilla (`fisica.rs`).
+    Fisica(crate::fisica::Diagrama),
+    /// Un problema pasado en limpio (`problema.rs`).
+    Problema(crate::problema::Problema),
     /// Guardar, poner o listar figuras de la biblioteca (`figuras.rs`): la
     /// ejecuta la app, que sabe donde vive la biblioteca y que hay elegido.
     Figuras(crate::figuras::PedidoFiguras),
@@ -256,6 +266,8 @@ impl Llamada {
             Llamada::Funciones(_) => FUNCION,
             Llamada::Ecuacion(_) => ECUACION,
             Llamada::Cronograma(_) => CRONOGRAMA,
+            Llamada::Fisica(_) => FISICA,
+            Llamada::Problema(_) => PROBLEMA,
             Llamada::Figuras(_) => FIGURAS,
             Llamada::Buscar(_) => crate::documentos::BUSCAR,
         }
@@ -273,6 +285,8 @@ impl Llamada {
                 | Llamada::Funciones(_)
                 | Llamada::Ecuacion(_)
                 | Llamada::Cronograma(_)
+                | Llamada::Fisica(_)
+                | Llamada::Problema(_)
         )
     }
 }
@@ -498,6 +512,8 @@ pub fn validar(cruda: &LlamadaCruda, conocidas: &[Herramienta]) -> Result<Valida
         FUNCION => Llamada::Funciones(crate::funciones::validar(&args, &mut avisos)?),
         ECUACION => Llamada::Ecuacion(crate::ecuacion::validar(&args, &mut avisos)?),
         CRONOGRAMA => Llamada::Cronograma(crate::cronograma::validar(&args, &mut avisos)?),
+        FISICA => Llamada::Fisica(crate::fisica::validar(&args, &mut avisos)?),
+        PROBLEMA => Llamada::Problema(crate::problema::validar(&args, &mut avisos)?),
         FIGURAS => Llamada::Figuras(crate::figuras::validar(&args)?),
         OCR => Llamada::Ocr(validar_ocr(&args)?),
         CALCAR => Llamada::Calcar(validar_calcar(&args)?),
@@ -558,7 +574,7 @@ fn texto_en(o: &Map<String, Value>, campo: &str) -> Option<String> {
 const COORD: (f64, f64) = (COORDENADA_MINIMA, COORDENADA_MAXIMA);
 const MEDIDA: (f64, f64) = (1.0, COORDENADA_MAXIMA);
 
-fn validar_dibujo(args: &Map<String, Value>, avisos: &mut Vec<String>) -> Result<Vec<Figura>, ErrorHerramienta> {
+pub(crate) fn validar_dibujo(args: &Map<String, Value>, avisos: &mut Vec<String>) -> Result<Vec<Figura>, ErrorHerramienta> {
     let lista = match args.get("elementos") {
         Some(Value::Array(l)) => l,
         // Un solo elemento suelto, sin la lista: se acepta.
@@ -1548,7 +1564,7 @@ mod pruebas {
     fn el_catalogo_es_json_de_herramientas_valido() {
         let v: Value = serde_json::from_str(&catalogo_json()).unwrap();
         let lista = v.as_array().unwrap();
-        assert_eq!(lista.len(), 11 + crate::acciones::todas().count());
+        assert_eq!(lista.len(), 13 + crate::acciones::todas().count());
         for h in lista {
             assert_eq!(h["type"], "function");
             assert_eq!(h["function"]["parameters"]["type"], "object");

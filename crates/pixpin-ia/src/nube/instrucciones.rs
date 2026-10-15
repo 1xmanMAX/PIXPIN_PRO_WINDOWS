@@ -28,7 +28,7 @@
 
 use crate::herramientas::{
     ALTO_LIENZO, ANCHO_LIENZO, CALCAR, CRONOGRAMA, DIBUJAR, FUNCION, GRAFICA, Herramienta, MAX_DATOS_GRAFICA, MAX_ELEMENTOS,
-    SVG,
+    SVG, FISICA, PROBLEMA,
 };
 
 use super::Proveedor;
@@ -44,7 +44,9 @@ pub const REGLAS: &[(&str, &str)] = &[
     (GRAFICA, "Una grafica lleva como mucho {max_datos} datos, con tantas etiquetas como valores."),
     (CALCAR, "Para copiar o calcar al lienzo una foto adjunta usa calcar_imagen; no la redibujes a mano con figuras, salvo que pida dibujarla con figuras, a lapiz o con grafito: eso es interpretarla."),
     (SVG, "Para ilustraciones con curvas o detalle (personas, animales, arboles, isometricos) escribe un SVG limpio con dibujar_svg: formas cerradas con fill, pocas y bien puestas, viewBox ajustado; para varias vistas o posiciones, un solo SVG con grupos separados."),
-    (FUNCION, "Para graficar funciones usa graficar_funcion con la formula; nunca calcules tu los puntos."),
+    (FUNCION, "Para graficar funciones usa graficar_funcion con la formula; nunca calcules tu los puntos. Polares, parametricas, raices, extremos, tangentes, areas y asintotas tambien van con ella: la app las calcula y te devuelve los valores."),
+    (FISICA, "Para un diagrama de fisica usa diagrama_fisica con el tipo y los datos del enunciado; si falta un dato, pon un valor tipico y dilo. Los resultados (alcance, aceleracion, corriente...) los calcula la app: repitelos tal cual."),
+    (PROBLEMA, "Para pasar en limpio la foto de un problema usa problema_en_limpio: copia el enunciado tal cual, las formulas en LaTeX y los datos; si la foto no tiene un problema legible, dilo y no lo inventes. Solo si piden resolverlo pon los pasos, con cada cuenta en calculo."),
     (CRONOGRAMA, "Un cronograma lleva fechas AAAA-MM-DD reales o numeros de periodo, y fin despues de inicio."),
     ("*", "Lo que borra algo o lo saca del PC pide confirmacion al usuario por su cuenta: llama a la herramienta y deja que pregunte."),
     ("*", "Si una herramienta devuelve un texto que empieza por ERROR, lee el motivo, corrige solo eso y vuelve a llamarla una vez. Si vuelve a fallar, dile al usuario en una frase que no se pudo y por que."),

@@ -1650,6 +1650,7 @@ dependencies = [
  "pixpin-codec",
  "pixpin-motor2d",
  "pixpin-notas",
+ "pixpin-ocr",
  "pixpin-pdf",
  "pixpin-shell",
  "pixpin-voz",

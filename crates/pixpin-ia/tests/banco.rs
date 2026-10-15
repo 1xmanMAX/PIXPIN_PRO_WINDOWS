@@ -232,8 +232,126 @@ fn casos() -> Vec<Caso> {
 
 fn casos_fijos() -> Vec<Caso> {
     let mut v = casos_del_lienzo();
+    v.extend(casos_de_estudiantes());
     v.extend(casos_de_antes());
     v
+}
+
+/// **La foto de un problema** (hecha aqui, sin ficheros): el enunciado y su
+/// ecuacion pintados a PNG por el mismo camino que el PDF del lienzo.
+fn foto_de_problema() -> Vec<u8> {
+    use pixpin_ia::herramientas::{ECUACION, catalogo, validar};
+    use pixpin_ia::motor::LlamadaCruda;
+    let enunciado = "Problema 2. Un proyectil se lanza desde el suelo con una\nvelocidad de 20 m/s y un angulo de 45 grados sobre la\nhorizontal. Calcula la altura maxima y el alcance (g = 9.8 m/s2).";
+    let mut els = vec![serde_json::json!({
+        "id": "enunciado", "type": "text", "x": 20, "y": 20, "width": 640, "height": 90,
+        "text": enunciado, "originalText": enunciado, "fontSize": 20, "fontFamily": 2, "textAlign": "left",
+        "verticalAlign": "top", "lineHeight": 1.25, "strokeColor": "#1e1e1e", "backgroundColor": "transparent",
+        "fillStyle": "solid", "strokeWidth": 1, "roughness": 0, "opacity": 100, "seed": 1, "version": 1,
+        "isDeleted": false, "groupIds": [], "angle": 0
+    })];
+    let ec = r#"{"ecuacion": "R = \\frac{v_0^2 \\sin(2 \\cdot 45)}{g}", "x": 40, "y": 140, "tam_letra": 30}"#;
+    let v = validar(&LlamadaCruda { id: "1".into(), nombre: ECUACION.into(), argumentos: ec.into() }, &catalogo()).unwrap();
+    els.extend(lienzo::elementos(&v.llamada, (0.0, 0.0), 3));
+    let ruta = std::env::temp_dir().join(format!("pixpin-banco-problema-{}.png", std::process::id()));
+    pintar::elementos_a_png(&els, &ruta);
+    let b = std::fs::read(&ruta).expect("no se pinto la foto del problema");
+    let _ = std::fs::remove_file(&ruta);
+    b
+}
+
+/// Los textos de todo lo dibujado (tambien los rotulos de los puntos).
+fn todos_los_textos(r: &Resultado) -> String {
+    r.elementos.iter().filter_map(|e| e["text"].as_str()).collect::<Vec<_>>().join(" | ")
+}
+
+/// **Los casos de estudiantes** (14-oct): la foto de un problema en limpio,
+/// graficas de clase y diagramas de fisica de su plantilla.
+fn casos_de_estudiantes() -> Vec<Caso> {
+    use pixpin_ia::herramientas::{FISICA, FUNCION, PROBLEMA};
+    vec![
+        Caso {
+            nombre: "estudiante-foto-problema",
+            pedido: "Pasa en limpio al lienzo el problema de esta foto.",
+            imagen: Some(foto_de_problema),
+            comprobar: |r| {
+                r.llamo(PROBLEMA).ok_or("no llamo a problema_en_limpio")?;
+                let t = sin_tildes(&todos_los_textos(r).to_lowercase());
+                si(t.contains("proyectil") && t.contains("20"), "el enunciado no esta copiado")?;
+                si(t.contains("solucion"), "sin recuadro de solucion")?;
+                si(r.tipos("line").len() >= 1, "sin la ecuacion compuesta")
+            },
+        },
+        Caso {
+            nombre: "estudiante-foto-sin-texto",
+            pedido: "Pasa en limpio el problema de esta foto.",
+            imagen: Some(la_casa),
+            comprobar: |r| si(r.llamo(PROBLEMA).is_none(), "invento un problema que la foto no tiene"),
+        },
+        Caso {
+            nombre: "estudiante-polar",
+            pedido: "Grafica r = 1 + cos θ",
+            imagen: None,
+            comprobar: |r| {
+                r.llamo(FUNCION).ok_or("no llamo a graficar_funcion")?;
+                si(r.con_puntos(500) >= 1, "sin la cardioide entera")
+            },
+        },
+        Caso {
+            nombre: "estudiante-parametrica-elipse",
+            pedido: "Grafica la paramétrica de una elipse de semiejes 3 y 2.",
+            imagen: None,
+            comprobar: |r| {
+                r.llamo(FUNCION).ok_or("no llamo a graficar_funcion")?;
+                si(r.con_puntos(500) >= 1, "sin la elipse como parametrica")
+            },
+        },
+        Caso {
+            nombre: "estudiante-raices",
+            pedido: "Grafica x²−4 y marca sus raíces.",
+            imagen: None,
+            comprobar: |r| {
+                r.llamo(FUNCION).ok_or("no llamo a graficar_funcion")?;
+                let t = todos_los_textos(r);
+                si(t.contains("(-2, 0)") && t.contains("(2, 0)"), "sin las raices marcadas")
+            },
+        },
+        Caso {
+            nombre: "estudiante-plano-inclinado",
+            pedido: "Haz el diagrama de cuerpo libre de un bloque en un plano inclinado de 30° con rozamiento.",
+            imagen: None,
+            comprobar: |r| {
+                let v = r.llamo(FISICA).ok_or("no llamo a diagrama_fisica")?;
+                si(v["tipo"] == "plano_inclinado", "no uso la plantilla del plano inclinado")?;
+                si(v["numeros"]["angulo"].as_f64() == Some(30.0), "el angulo no es 30")?;
+                si(v["numeros"]["mu"].as_f64().is_some_and(|m| m > 0.0), "sin rozamiento")
+            },
+        },
+        Caso {
+            nombre: "estudiante-tiro-parabolico",
+            pedido: "Dibuja el tiro parabólico de un proyectil lanzado a 20 m/s y 45°.",
+            imagen: None,
+            comprobar: |r| {
+                let v = r.llamo(FISICA).ok_or("no llamo a diagrama_fisica")?;
+                si(v["tipo"] == "tiro_parabolico", "no uso la plantilla del tiro")?;
+                si(v["resultados"].to_string().contains("alcance = 40.816 m"), "el alcance no es 40.816 m")?;
+                // Lo calculado se ve en el lienzo (que el modelo lo repita es aparte:
+                // el 2B no lo hace).
+                si(todos_los_textos(r).contains("40.816"), "el lienzo no ensena el alcance calculado")
+            },
+        },
+        Caso {
+            nombre: "estudiante-circuito-paralelo",
+            pedido: "Dibuja un circuito con dos resistencias en paralelo.",
+            imagen: None,
+            comprobar: |r| {
+                let v = r.llamo(FISICA).ok_or("no llamo a diagrama_fisica")?;
+                si(v["tipo"] == "circuito", "no uso la plantilla del circuito")?;
+                si(v["opciones"]["conexion"] == "paralelo", "no esta en paralelo")?;
+                si(v["listas"]["resistencias"].as_array().is_some_and(|l| l.len() == 2), "no son dos resistencias")
+            },
+        },
+    ]
 }
 
 /// **Los casos de las herramientas nuevas del lienzo** (14-oct): todas las
@@ -1591,10 +1709,30 @@ mod banco_ia {
     pub fn preparar(pedido: &str, imagen: Option<Vec<u8>>) -> (Vec<Mensaje>, Vec<pixpin_ia::Herramienta>) {
         let herramientas = pixpin_ia::seleccion::para_el_pedido(pedido, imagen.is_some());
         let usuario = match imagen {
+            // La foto de un problema: con el OCR pegado, como hace la app
+            // (`asistente::turno::poner_foto`).
+            Some(b) if pixpin_ia::problema::pide_problema(pedido) => {
+                let texto = format!("{pedido}{}", ocr_de(&b));
+                Mensaje::usuario_con_imagen(texto, b, "image/png")
+            }
             Some(b) => Mensaje::usuario_con_imagen(pedido, b, "image/png"),
             None => Mensaje::usuario(pedido),
         };
         (vec![Mensaje::sistema(agente::instrucciones()), usuario], herramientas)
+    }
+
+    /// Lo que el OCR de Windows lee en una imagen, dicho para el modelo.
+    pub fn ocr_de(png: &[u8]) -> String {
+        let _com = pixpin_shell::ComDelHilo::iniciar();
+        let Ok(img) = image::load_from_memory(png) else { return String::new() };
+        let img = img.to_rgba8();
+        if !pixpin_ocr::disponible() {
+            return String::new();
+        }
+        match pixpin_ocr::reconocer(img.width(), img.height(), img.as_raw()) {
+            Ok(l) => pixpin_ia::problema::pista_de_ocr(&l.into_iter().map(|l| l.texto).collect::<Vec<_>>()),
+            Err(_) => String::new(),
+        }
     }
 
     /// (nombre, lo pedido en JSON limpio, elementos que acaban en el lienzo).
@@ -1602,9 +1740,15 @@ mod banco_ia {
         let nombre = llamada.nombre().to_string();
         Ok(match llamada {
             Llamada::Dibujar(_) => (nombre, Value::Null, lienzo::elementos(llamada, (0.0, 0.0), 1)),
-            Llamada::Svg(_) | Llamada::Funciones(_) | Llamada::Ecuacion(_) | Llamada::Cronograma(_) => {
+            Llamada::Svg(_) | Llamada::Funciones(_) | Llamada::Ecuacion(_) | Llamada::Cronograma(_) | Llamada::Problema(_) => {
                 (nombre, Value::Null, lienzo::elementos(llamada, (0.0, 0.0), 1))
             }
+            Llamada::Fisica(d) => (
+                nombre,
+                serde_json::json!({"tipo": d.tipo, "numeros": d.valores.numeros, "listas": d.valores.listas,
+                    "opciones": d.valores.opciones, "resultados": d.resultados}),
+                lienzo::elementos(llamada, (0.0, 0.0), 1),
+            ),
             Llamada::Figuras(p) => (nombre, serde_json::json!({"figuras": format!("{p:?}")}), Vec::new()),
             Llamada::Grafica(g) => (
                 nombre,
@@ -2017,6 +2161,45 @@ fn muestras_del_lienzo() {
             {"tipo":"rectangulo","caja":[560,100,150,100],"relleno":"azul","relleno_estilo":"rayado","trazo":"discontinuo","capa":1},
             {"tipo":"elipse","caja":[600,150,120,120],"relleno":"rojo","opacidad":50,"capa":2}]}"#.into()),
     ];
+    // Estudiantes (14-oct): graficas de clase, fisica y un problema.
+    use pixpin_ia::herramientas::{FISICA, PROBLEMA};
+    let j = |v: serde_json::Value| v.to_string();
+    let mut casos = casos;
+    casos.extend([
+        ("est-polar", FUNCION, j(serde_json::json!({"funciones": ["r = 1 + cos θ"]}))),
+        ("est-elipse", FUNCION, j(serde_json::json!({"funciones": [{"x": "3cos(t)", "y": "2sin(t)"}]}))),
+        ("est-raices", FUNCION, j(serde_json::json!({"funciones": ["x^2-4"], "marcar": ["raices", "extremos"]}))),
+        ("est-area", FUNCION, j(serde_json::json!({"funciones": ["x+2", "x^2"], "x_desde": -3, "x_hasta": 3, "sombrear": {"entre": [0, 1]}, "marcar": ["intersecciones"]}))),
+        ("est-tangente-asintotas", FUNCION, j(serde_json::json!({"funciones": ["(2x+1)/(x-1)", "x^3/10"], "x_desde": -5, "x_hasta": 5, "tangente": {"curva": 1, "x": 2}}))),
+        ("est-puntos", FUNCION, j(serde_json::json!({"funciones": ["2x+0.5"], "puntos": [[0, 0.3], [1, 2.8], [2, 4.4], [3, 6.6]], "nombre_puntos": "medidas", "x_desde": -1, "x_hasta": 4}))),
+        ("fis-plano", FISICA, j(serde_json::json!({"tipo": "plano_inclinado", "parametros": {"angulo": 30, "masa": 5, "mu": 0.2}}))),
+        ("fis-tiro", FISICA, j(serde_json::json!({"tipo": "tiro_parabolico", "parametros": {"v0": 20, "angulo": 45}}))),
+        ("fis-paralelo", FISICA, j(serde_json::json!({"tipo": "circuito", "parametros": {"voltaje": 12, "resistencias": [6, 3], "conexion": "paralelo"}}))),
+        ("fis-serie", FISICA, j(serde_json::json!({"tipo": "circuito", "parametros": {"voltaje": 9, "resistencias": [2, 3, 4], "conexion": "serie"}}))),
+        ("fis-vectores", FISICA, j(serde_json::json!({"tipo": "vectores", "parametros": {"vectores": [{"nombre": "A", "modulo": 3, "angulo": 0}, {"nombre": "B", "modulo": 4, "angulo": 60}]}}))),
+        ("fis-poligono", FISICA, j(serde_json::json!({"tipo": "vectores", "parametros": {"metodo": "poligono", "vectores": [[5, 0], [3, 90], [4, 200]]}}))),
+        ("fis-cuerpo-libre", FISICA, j(serde_json::json!({"tipo": "cuerpo_libre", "parametros": {"masa": 2, "fuerzas": [["N", 19.6, 90], ["P", 19.6, 270], ["F", 10, 30], ["Fr", 4, 180]]}}))),
+        ("fis-mruv", FISICA, j(serde_json::json!({"tipo": "mruv", "titulo": "Un coche que frena", "parametros": {"v0": 20, "a": -4, "t": 6}}))),
+        ("fis-pendulo", FISICA, j(serde_json::json!({"tipo": "pendulo", "parametros": {"longitud": 1.5, "angulo": 25, "masa": 0.5}}))),
+        ("fis-atwood", FISICA, j(serde_json::json!({"tipo": "maquina_atwood", "parametros": {"m1": 3, "m2": 1}}))),
+        ("problema", PROBLEMA, j(serde_json::json!({
+            "titulo": "Problema 3",
+            "enunciado": "Un bloque de 5 kg baja por un plano inclinado de 30° sin rozamiento. Calcula su aceleracion y el tiempo que tarda en recorrer 10 m partiendo del reposo.",
+            "ecuaciones": ["a = g \\sin\\theta", "d = \\frac{1}{2} a t^2"],
+            "datos": ["m = 5\\ kg", "\\theta = 30°", "d = 10\\ m", "v_0 = 0"],
+            "incognitas": ["a", "t"],
+            "figura": [
+                {"tipo": "poligono", "puntos": [10, 250, 290, 250, 290, 90], "color": "negro"},
+                {"tipo": "rectangulo", "x": 140, "y": 150, "ancho": 50, "alto": 40, "color": "azul"},
+                {"tipo": "texto", "x": 60, "y": 225, "texto": "30°", "tam_letra": 18}
+            ],
+            "pasos": [
+                {"texto": "Aceleracion por el plano", "calculo": "9.8*sin(30°)", "unidad": "m/s²"},
+                {"texto": "Tiempo de d = a t²/2", "calculo": "sqrt(2*10/4.9)", "resultado": 2.5, "unidad": "s"}
+            ],
+            "respuesta": "a = 4.9 m/s² y t ≈ 2.02 s"
+        }))),
+    ]);
     for (nombre, herramienta, args) in casos {
         let t0 = Instant::now();
         let v = validar(&LlamadaCruda { id: "1".into(), nombre: herramienta.into(), argumentos: args }, &catalogo())
