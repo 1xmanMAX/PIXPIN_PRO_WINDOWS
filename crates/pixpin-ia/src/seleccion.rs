@@ -197,7 +197,9 @@ pub fn para_el_pedido(pedido: &str, con_imagen: bool) -> Vec<Herramienta> {
         }
         puntuadas.push((s, h.clone()));
     }
-    for a in crate::acciones::todas() {
+    // La hoja al lienzo es solo para la nube (decision del usuario, 14-oct):
+    // esta seleccion es la del modelo local.
+    for a in crate::acciones::todas().filter(|a| a.herramienta != crate::hoja::NOMBRE) {
         puntuadas.push((puntuar(a.claves, &q, &palabras), crate::acciones::herramienta(a)));
     }
     // Estable: a igual puntuacion, el orden del catalogo.

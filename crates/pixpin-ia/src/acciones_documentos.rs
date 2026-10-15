@@ -153,6 +153,24 @@ pub const ACCIONES_DOCUMENTOS: &[Accion] = &[
         // Lo hace `documentos_acciones` de la app y su resultado es la respuesta.
         hecho: "Hecho.",
     },
+    // La hoja al lienzo (14-oct): solo para la nube (`crate::hoja`); la hace
+    // el ejecutor del chat (`asistente/hoja_a_lienzo.rs`), no se manda.
+    Accion {
+        herramienta: crate::hoja::NOMBRE,
+        accion: crate::hoja::NOMBRE,
+        descripcion: "Pasa al lienzo una hoja (foto, escaneo o pagina de un PDF) interpretandola: parrafos y titulos como texto, tablas como tabla, formulas como ecuacion, fotos recortadas y rayas, en su sitio y en orden de lectura. Usala para «pasa esta hoja/foto/pagina al lienzo» o «digitaliza esto» (mejor que calcarla si tiene texto).",
+        categoria: Categoria::Notas,
+        claves: &["digitaliza", "hoja al lienzo", "pagina al lienzo", "escaneo al lienzo", "hoja en el lienzo", "pasa la hoja", "pasa esta hoja"],
+        fijos: "{}",
+        params: &[
+            p("archivo", Tipo::Texto, false, "la foto o el PDF (nombre o descripcion); omitir: la imagen o el PDF mas reciente del chat"),
+            p("pagina", Tipo::Entero, false, "pagina del PDF, desde 1; omitir: la primera"),
+            p("ancho", Tipo::Entero, false, "ancho de la hoja en el lienzo en px; omitir: 1000"),
+            d(r#""editable""#, p("modo", Tipo::Opciones(&["editable", "fiel"]), false, "editable: texto corrido y tablas; fiel: cada renglon en su sitio exacto")),
+        ],
+        confirmar: None,
+        hecho: "Hecho.",
+    },
 ];
 
 /// Si la herramienta es de esta tabla (la hace el ejecutor del chat, no se

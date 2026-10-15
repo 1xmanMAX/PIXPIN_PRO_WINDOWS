@@ -399,6 +399,29 @@ impl Ejecutor for SinVentana {
                 let els = crate::asistente::acciones::calcar_fichero(&ruta, p, s)?;
                 self.al_lienzo(els)
             }
+            // Una hoja al lienzo (solo con la nube): zona a zona, directo.
+            Llamada::App(a) if a.herramienta == pixpin_ia::hoja::NOMBRE => {
+                let s = self.semilla();
+                let mut d = crate::asistente::hoja_a_lienzo::SinVentana {
+                    ubicacion: self.ubicacion.clone(),
+                    proyecto: self.proyecto.clone(),
+                    lienzo: None,
+                };
+                let r = crate::asistente::hoja_a_lienzo::hacer(
+                    &a.pedido,
+                    &self.adjuntos,
+                    crate::asistente::hoja_a_lienzo::motor_de_vision(),
+                    s,
+                    &AtomicBool::new(false),
+                    &mut d,
+                    &mut |_, _| {},
+                );
+                if d.lienzo.is_some() {
+                    self.lienzo = d.lienzo;
+                    crate::ventana_chat::refrescar();
+                }
+                r
+            }
             _ => self.dentro.ejecutar(llamada),
         }
     }

@@ -432,7 +432,16 @@ fn turno_dentro(
     {
         return Ok(f);
     }
+    // La hoja al lienzo solo con la nube (decision del usuario, 14-oct): el
+    // local ni la ve, y si se le pide se contesta sin preguntarle.
+    let local = !motor.catalogo_completo();
+    if local && let Some(f) = crate::hoja::solo_nube(historial, al_evento) {
+        return Ok(f);
+    }
     let mut lista = herramientas_base.to_vec();
+    if local {
+        lista.retain(|h| h.nombre != crate::hoja::NOMBRE);
+    }
     if opciones.buscar.is_some() && !lista.iter().any(|h| h.nombre == contexto::BUSCAR_HISTORIAL) {
         lista.push(contexto::herramienta_buscar());
     }
@@ -443,7 +452,7 @@ fn turno_dentro(
         // ventanas» no dice «dibuja», pero el plan si lo entiende.
         let mut posibles = lista.clone();
         for h in opciones.ampliar.unwrap_or_default() {
-            if !posibles.iter().any(|x| x.nombre == h.nombre) {
+            if !posibles.iter().any(|x| x.nombre == h.nombre) && !(local && h.nombre == crate::hoja::NOMBRE) {
                 posibles.push(h.clone());
             }
         }

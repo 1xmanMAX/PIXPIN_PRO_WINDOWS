@@ -40,6 +40,7 @@ pub mod documentos;
 pub mod documentos_acciones;
 pub mod ejecutor;
 pub mod foto;
+pub mod hoja_a_lienzo;
 pub mod motor;
 pub mod nube;
 pub mod ocr;

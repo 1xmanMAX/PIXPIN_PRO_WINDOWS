@@ -39,6 +39,12 @@ pub struct Pedido {
     /// Un `.excalidraw` hecho por `pixpin_ia::lienzo::documento`.
     pub documento: String,
     responder: Sender<Result<String, String>>,
+    /// Si es una zona de una hoja (`hoja_a_lienzo`): va con las demas de su
+    /// hoja, no centrada por su cuenta.
+    pub hoja: Option<EnHoja>,
+    /// Las imagenes nuevas que usan sus elementos `image` (su `fileId` es
+    /// `pc<hex>` de este id): las fotos de una hoja.
+    pub imagenes: Vec<(u64, pixpin_codec::ImagenRgba)>,
 }
 
 impl Pedido {
@@ -53,13 +59,125 @@ impl Pedido {
             destino,
             documento,
             responder,
+            hoja: None,
+            imagenes: Vec::new(),
         }
+    }
+
+    /// Una zona de una hoja.
+    pub fn en_hoja(mut self, h: EnHoja) -> Pedido {
+        self.hoja = Some(h);
+        self
+    }
+
+    /// Con sus imagenes.
+    pub fn con_imagenes(mut self, v: Vec<(u64, pixpin_codec::ImagenRgba)>) -> Pedido {
+        self.imagenes = v;
+        self
     }
 
     /// Contesta al turno (que esta esperando).
     pub fn responder(self, r: Result<String, String>) {
         let _ = self.responder.send(r);
     }
+}
+
+// ---------------------------------------------------------------------------
+// Las zonas de una hoja (`hoja_a_lienzo`, 14-oct)
+
+/// **Una zona de una hoja.** Todas las de la misma `sesion` caen con el
+/// mismo desplazamiento (la hoja entera centrada en lo que se ve, o a la
+/// derecha de lo que habia si el lienzo esta cerrado), cada una en su sitio
+/// de la hoja. `rehacer` cambia lo que ya puso esa zona (la comprobacion la
+/// rehizo) y `ultima` cierra la hoja: si nadie toco el lienzo entre medias,
+/// todas sus zonas quedan en **un solo paso de deshacer**.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct EnHoja {
+    pub sesion: u64,
+    pub zona: usize,
+    pub rehacer: bool,
+    pub ultima: bool,
+    /// Lo que mide la hoja en el lienzo.
+    pub tam: (f32, f32),
+}
+
+/// Lo que se sabe de una hoja a medio meter.
+struct Sesion {
+    desplazamiento: (f32, f32),
+    /// Los ids de fichero (`pc<hex>` o `ia-...`) de lo que puso cada zona:
+    /// sirven igual en la escena abierta y en una releida del disco.
+    zonas: std::collections::HashMap<usize, Vec<String>>,
+    pasos_al_empezar: u64,
+    pasos: usize,
+}
+
+static SESIONES: Mutex<Option<std::collections::HashMap<u64, Sesion>>> = Mutex::new(None);
+
+/// Las imagenes que el editor abierto tiene que meter en su almacen (las
+/// deja `atender_en_editor`, las recoge su bucle con [`tomar_imagenes`]).
+static IMAGENES_PARA_EL_EDITOR: Mutex<Vec<(u64, pixpin_codec::ImagenRgba)>> = Mutex::new(Vec::new());
+
+/// Las imagenes de lo que acaba de entrar en el editor abierto.
+pub fn tomar_imagenes() -> Vec<(u64, pixpin_codec::ImagenRgba)> {
+    IMAGENES_PARA_EL_EDITOR.lock().map(|mut v| std::mem::take(&mut *v)).unwrap_or_default()
+}
+
+/// **Mete una zona de una hoja.** `centro`: el de lo que se ve (lienzo
+/// abierto); `None`, lienzo cerrado. Un documento vacio con `ultima` solo
+/// cierra la hoja. Devuelve cuantos elementos entraron.
+pub fn meter_de_hoja(escena: &mut Escena, documento: &str, h: &EnHoja, centro: Option<(f32, f32)>) -> Result<usize, String> {
+    let mut g = SESIONES.lock().map_err(|_| "el lienzo esta ocupado")?;
+    let sesiones = g.get_or_insert_with(Default::default);
+    let s = sesiones.entry(h.sesion).or_insert_with(|| {
+        let desplazamiento = match centro {
+            Some((cx, cy)) => (cx - h.tam.0 / 2.0, cy - h.tam.1 / 2.0),
+            None => escena
+                .visibles()
+                .map(Elemento::caja)
+                .reduce(|a, b| (a.0.min(b.0), a.1.min(b.1), a.2.max(b.2), a.3.max(b.3)))
+                .filter(|c| [c.0, c.1, c.2, c.3].iter().all(|v| v.is_finite()))
+                .map_or((0.0, 0.0), |c| (c.2 + HUECO, c.1)),
+        };
+        Sesion { desplazamiento, zonas: Default::default(), pasos_al_empezar: escena.pasos_cerrados(), pasos: 0 }
+    });
+    let mut n = 0;
+    if !documento.is_empty() {
+        let els = elementos_de(documento)?;
+        if h.rehacer
+            && let Some(viejos) = s.zonas.get(&h.zona)
+        {
+            let quitar: Vec<u64> = escena
+                .visibles()
+                .filter(|e| viejos.contains(&pixpin_motor2d::enlace::id_de_texto_de(e)))
+                .map(|e| e.id)
+                .collect();
+            // Quitar lo viejo y poner lo nuevo, en el mismo paso.
+            escena.abrir_paso();
+            for id in quitar {
+                escena.borrar_apuntando(id);
+            }
+        }
+        let (dx, dy) = s.desplazamiento;
+        let ids = pixpin_motor2d::portapapeles::pegar(escena, &els, dx, dy);
+        n = ids.len();
+        s.pasos += 1;
+        let textos = ids.iter().filter_map(|id| escena.buscar(*id)).map(pixpin_motor2d::enlace::id_de_texto_de).collect();
+        s.zonas.insert(h.zona, textos);
+    }
+    if h.ultima {
+        let s = sesiones.remove(&h.sesion).expect("se acaba de usar");
+        // Un solo paso de deshacer, si los ultimos son justo los nuestros.
+        if s.pasos >= 2 && escena.pasos_cerrados().saturating_sub(s.pasos_al_empezar) == s.pasos as u64 {
+            escena.fundir_ultimos_pasos(s.pasos);
+        }
+    }
+    Ok(n)
+}
+
+/// Si la hoja `sesion` sigue a medio meter (pruebas).
+#[cfg(test)]
+pub(crate) fn hay_sesion(sesion: u64) -> bool {
+    SESIONES.lock().is_ok_and(|g| g.as_ref().is_some_and(|m| m.contains_key(&sesion)))
 }
 
 static COLA: Mutex<Vec<Pedido>> = Mutex::new(Vec::new());
@@ -182,8 +300,20 @@ pub fn atender_en_editor(escena: &mut Escena, centro: (f32, f32)) -> bool {
         return false;
     }
     let mut algo = false;
-    for p in tomar() {
-        let r = meter(escena, &p.documento, centro).map(resumen);
+    for mut p in tomar() {
+        let r = match p.hoja {
+            Some(h) => {
+                let r = meter_de_hoja(escena, &p.documento, &h, Some(centro)).map(resumen);
+                if r.is_ok()
+                    && !p.imagenes.is_empty()
+                    && let Ok(mut v) = IMAGENES_PARA_EL_EDITOR.lock()
+                {
+                    v.append(&mut p.imagenes);
+                }
+                r
+            }
+            None => meter(escena, &p.documento, centro).map(resumen),
+        };
         algo |= r.is_ok();
         p.responder(r);
     }

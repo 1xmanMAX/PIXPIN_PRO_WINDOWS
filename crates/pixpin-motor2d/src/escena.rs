@@ -585,6 +585,24 @@ impl Escena {
         self.aplicar_inverso(&paso);
     }
 
+    /// **Junta los `n` ultimos pasos en uno** (la hoja que el asistente pasa
+    /// al lienzo llega zona a zona, pero se deshace de una vez). Solo si no
+    /// hay un gesto a medias y estan los `n`; si no, no toca nada y dice que
+    /// no.
+    pub fn fundir_ultimos_pasos(&mut self, n: usize) -> bool {
+        if n < 2 || self.en_curso.is_some() || self.historia.len() < n {
+            return n == 1 && self.en_curso.is_none() && !self.historia.is_empty();
+        }
+        let desde = self.historia.len() - n;
+        let mut junto = Paso::default();
+        for p in self.historia.drain(desde..) {
+            junto.cambios.extend(p.cambios);
+            junto.editados.extend(p.editados);
+        }
+        self.historia.push(junto);
+        true
+    }
+
     /// Deshace el ultimo gesto. Devuelve si habia algo que deshacer.
     pub fn deshacer(&mut self) -> bool {
         self.viajar_por_historial(true)

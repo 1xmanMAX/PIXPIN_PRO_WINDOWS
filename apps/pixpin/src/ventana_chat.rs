@@ -55,6 +55,18 @@ pub(crate) mod sin_ventana {
         super::asistente::meter_en_el_lienzo_del_chat(ubicacion, None, proyecto, None, documento)
     }
 
+    /// Una zona de una hoja (`hoja_a_lienzo`), con sus fotos, al lienzo del
+    /// asistente en el chat `proyecto`.
+    pub(crate) fn al_lienzo_hoja(
+        ubicacion: &Ubicacion,
+        proyecto: &str,
+        documento: &str,
+        hoja: &crate::asistente::al_lienzo::EnHoja,
+        imagenes: &[(u64, pixpin_codec::ImagenRgba)],
+    ) -> Result<(String, String), String> {
+        super::asistente::meter_con(ubicacion, None, proyecto, None, documento, Some(hoja), imagenes)
+    }
+
     /// El texto entero de un OCR, al chat (nota y `.txt`).
     pub(crate) fn texto_leido(
         ubicacion: &Ubicacion,

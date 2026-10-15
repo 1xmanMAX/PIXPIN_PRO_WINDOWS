@@ -58,6 +58,10 @@
 //! - [`documentos`]: `buscar_en_mis_cosas`, un indice BM25 local de los
 //!   documentos, notas y chats del usuario, con el origen de cada trozo.
 //!
+//! - [`hoja`] (14-oct): una foto o una pagina de una hoja al lienzo,
+//!   interpretada zona a zona (texto, tablas, formulas, fotos, rayas), solo
+//!   con la nube.
+//!
 //! ## Puntos de enganche para la UI (otros agentes)
 //!
 //! - El chat implementa [`agente::Ejecutor`] (que hace cada herramienta de
@@ -81,6 +85,7 @@ pub mod ecuacion;
 pub mod figuras;
 pub mod funciones;
 pub mod herramientas;
+pub mod hoja;
 pub mod hoja_trabajo;
 pub mod lienzo;
 pub mod modelos;

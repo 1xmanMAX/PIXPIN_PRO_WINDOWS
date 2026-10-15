@@ -425,6 +425,13 @@ pub const CADUCA_LA_PREGUNTA: std::time::Duration = std::time::Duration::from_se
 
 /// Lo que se ensena mientras se usa cada herramienta.
 pub fn rotulo_de(nombre: &str) -> String {
+    // La hoja al lienzo cuenta sus zonas: `hoja_a_lienzo:3/9`.
+    if let Some(resto) = nombre.strip_prefix(pixpin_ia::hoja::NOMBRE) {
+        return match resto.strip_prefix(':') {
+            Some(cuenta) => format!("📄 pasando la hoja al lienzo… {cuenta} zonas"),
+            None => "📄 pasando la hoja al lienzo…".to_string(),
+        };
+    }
     match nombre {
         DIBUJAR => "✏️ dibujando en el lienzo…",
         GRAFICA => "📊 haciendo la gráfica…",

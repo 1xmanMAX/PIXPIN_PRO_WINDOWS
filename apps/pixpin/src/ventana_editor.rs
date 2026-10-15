@@ -993,6 +993,11 @@ fn abrir_en_modo(
             // «Guarda esto como figura»: lo elegido, para el asistente.
             crate::asistente::al_lienzo::contestar_lo_elegido(&escena, gesto.seleccion.ids());
             if crate::asistente::al_lienzo::atender_en_editor(&mut escena, ((x0 + x1) / 2.0, (y0 + y1) / 2.0)) {
+                // Las fotos de una hoja del asistente, al almacen (nuevas: se
+                // guardan con el lienzo).
+                for (id, img) in crate::asistente::al_lienzo::tomar_imagenes() {
+                    imagenes.reponer_nueva(id, img);
+                }
                 todo_sucio = true;
                 contenido_sucio = true;
                 interfaz_sucia = true;

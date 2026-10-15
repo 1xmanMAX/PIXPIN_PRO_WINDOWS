@@ -43,6 +43,7 @@ pub const REGLAS: &[(&str, &str)] = &[
     (DIBUJAR, "El lienzo mide {ancho}x{alto} pixeles con el origen arriba a la izquierda: deja cada figura dentro. Como mucho {max_figuras} figuras por llamada (mejor 20 o menos)."),
     (GRAFICA, "Una grafica lleva como mucho {max_datos} datos, con tantas etiquetas como valores."),
     (CALCAR, "Para copiar o calcar al lienzo una foto adjunta usa calcar_imagen; no la redibujes a mano con figuras, salvo que pida dibujarla con figuras, a lapiz o con grafito: eso es interpretarla."),
+    (crate::hoja::NOMBRE, "Si la foto o el PDF es una hoja con texto (apuntes, un articulo, un escaneo, una pagina) y piden pasarla, ponerla o digitalizarla en el lienzo, usa hoja_a_lienzo (la interpreta entera: texto, tablas, formulas, fotos); calcar es solo para dibujos y fotos sin texto."),
     (SVG, "Para ilustraciones con curvas o detalle (personas, animales, arboles, isometricos) escribe un SVG limpio con dibujar_svg: formas cerradas con fill, pocas y bien puestas, viewBox ajustado; para varias vistas o posiciones, un solo SVG con grupos separados."),
     (FUNCION, "Para graficar funciones usa graficar_funcion con la formula; nunca calcules tu los puntos."),
     (CRONOGRAMA, "Un cronograma lleva fechas AAAA-MM-DD reales o numeros de periodo, y fin despues de inicio."),

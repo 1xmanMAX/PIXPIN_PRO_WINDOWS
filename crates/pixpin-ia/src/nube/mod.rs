@@ -192,6 +192,10 @@ pub struct MotorNube {
     /// Modo pensar de DeepSeek. Se apaga si pide un razonamiento que no hay.
     pensar: AtomicBool,
     esperas: Vec<Duration>,
+    /// Sin pensar y con el menor esfuerzo: para preguntas cortas de una
+    /// vuelta (el LaTeX de un recorte, `hoja::vision`), donde pensar solo
+    /// anade segundos.
+    ligero: bool,
 }
 
 impl std::fmt::Debug for MotorNube {
@@ -214,6 +218,7 @@ impl MotorNube {
             memoria: Mutex::new(HashMap::new()),
             pensar: AtomicBool::new(true),
             esperas: ESPERAS.to_vec(),
+            ligero: false,
         }
     }
 
@@ -229,6 +234,13 @@ impl MotorNube {
         self
     }
 
+    /// **Ligero**: sin pensar y con el menor esfuerzo (ver `ligero`).
+    pub fn ligero(mut self) -> MotorNube {
+        self.ligero = true;
+        self.pensar = AtomicBool::new(false);
+        self
+    }
+
     pub fn proveedor(&self) -> Proveedor {
         self.proveedor
     }
@@ -239,8 +251,17 @@ impl MotorNube {
         // en la nube el pensamiento cuenta dentro del mismo `max_tokens`, asi
         // que se le suma su reserva. Las listas acotadas (`agente::con_topes`)
         // llegan ya en las herramientas de la peticion.
-        let max = p.max_tokens.saturating_add(RESERVA_PENSAR).min(self.proveedor.max_tokens());
+        let reserva = if self.ligero { 0 } else { RESERVA_PENSAR };
+        let max = p.max_tokens.saturating_add(reserva).min(self.proveedor.max_tokens());
         match self.proveedor {
+            Proveedor::Claude if self.ligero => {
+                let mut c = claude::cuerpo(p, &memoria, max);
+                if let Some(m) = c.as_object_mut() {
+                    m.remove("thinking");
+                }
+                c["output_config"] = serde_json::json!({"effort": "low"});
+                c
+            }
             Proveedor::Claude => claude::cuerpo(p, &memoria, max),
             Proveedor::DeepSeek => deepseek::cuerpo(p, &memoria, self.pensar.load(Ordering::Relaxed), max),
         }

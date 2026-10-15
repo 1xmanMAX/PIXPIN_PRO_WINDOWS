@@ -57,6 +57,9 @@ pub struct EjecutorDelChat {
     nube: bool,
     /// Lo citado de los documentos en este turno, numerado seguido.
     citas: pixpin_ia::documentos::Citas,
+    /// El modelo con vision de `hoja_a_lienzo` (las pruebas ponen uno; si
+    /// no, el de la nube de Ajustes, `hoja_a_lienzo::motor_de_vision`).
+    vision: Option<Arc<dyn pixpin_ia::Motor>>,
 }
 
 impl EjecutorDelChat {
@@ -74,6 +77,7 @@ impl EjecutorDelChat {
             raiz: None,
             nube: false,
             citas: Default::default(),
+            vision: None,
         }
     }
 
@@ -90,6 +94,13 @@ impl EjecutorDelChat {
     }
 
     /// Si el motor es de la nube.
+    /// El modelo con vision para `hoja_a_lienzo` (pruebas, banco).
+    #[cfg_attr(not(test), allow(dead_code))]
+    pub fn con_vision(mut self, m: Arc<dyn pixpin_ia::Motor>) -> EjecutorDelChat {
+        self.vision = Some(m);
+        self
+    }
+
     pub fn en_la_nube(mut self, nube: bool) -> EjecutorDelChat {
         self.nube = nube;
         self
@@ -182,6 +193,22 @@ impl EjecutorDelChat {
 }
 
 impl EjecutorDelChat {
+    /// **`hoja_a_lienzo`**: solo con la nube; cada zona por la cola del
+    /// lienzo en cuanto esta hecha, y «3/9 zonas» en la burbuja.
+    fn hoja_a_lienzo(&mut self, args: &serde_json::Value) -> Result<String, String> {
+        if !self.nube && self.vision.is_none() {
+            return Err(pixpin_ia::hoja::SOLO_NUBE.into());
+        }
+        let vision = self.vision.clone().or_else(super::hoja_a_lienzo::motor_de_vision);
+        let semilla = self.semilla();
+        let mut destino = super::hoja_a_lienzo::PorLaCola::nuevo(self.proyecto.clone(), self.destino.clone(), self.espera);
+        let tx = self.tx.clone();
+        let mut progreso = |hechas: usize, total: usize| {
+            let _ = tx.send(Aviso::Evento(pixpin_ia::Evento::Llamando(format!("{}:{hechas}/{total}", pixpin_ia::hoja::NOMBRE))));
+        };
+        super::hoja_a_lienzo::hacer(args, &self.adjuntos, vision, semilla, &self.parar, &mut destino, &mut progreso)
+    }
+
     /// **La biblioteca de figuras**, la misma del panel del lienzo.
     fn figuras(&mut self, p: &pixpin_ia::figuras::PedidoFiguras) -> Result<String, String> {
         use pixpin_ia::figuras::{PedidoFiguras, buscar, lista};
@@ -264,6 +291,8 @@ impl Ejecutor for EjecutorDelChat {
                 let elementos = super::acciones::calcar_fichero(&ruta, p, semilla)?;
                 self.al_lienzo_elementos(elementos)
             }
+            // Una hoja al lienzo (solo con la nube).
+            Llamada::App(a) if a.herramienta == pixpin_ia::hoja::NOMBRE => self.hoja_a_lienzo(&a.pedido),
             // Los documentos (tabla escaneada, anotar, buscar dentro, abrir
             // por su nombre, exportar): con los adjuntos de este chat.
             Llamada::App(a) if pixpin_ia::acciones_documentos::es_de_documentos(a.herramienta) => {

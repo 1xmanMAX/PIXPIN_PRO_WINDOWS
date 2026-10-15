@@ -561,12 +561,14 @@ pub(super) fn latido(ubicacion: &Ubicacion, mut abierto: Option<&mut Abierto>) -
     //    hay, lo atiende su bucle).
     if !al_lienzo::hay_editor() {
         for p in al_lienzo::tomar() {
-            let r = meter_en_el_lienzo_del_chat(
+            let r = meter_con(
                 ubicacion,
                 abierto.as_deref_mut(),
                 &p.proyecto,
                 p.destino.as_deref(),
                 &p.documento,
+                p.hoja.as_ref(),
+                &p.imagenes,
             );
             cambio = true;
             let r = match r {
@@ -783,10 +785,24 @@ pub(super) const NOMBRE_LIENZO_PROPIO: &str = "Lienzo del asistente";
 /// el resumen para el modelo y la referencia del lienzo.
 pub(super) fn meter_en_el_lienzo_del_chat(
     ubicacion: &Ubicacion,
+    abierto: Option<&mut Abierto>,
+    proyecto: &str,
+    destino: Option<&str>,
+    documento: &str,
+) -> Result<(String, String), String> {
+    meter_con(ubicacion, abierto, proyecto, destino, documento, None, &[])
+}
+
+/// Lo mismo, y si es una zona de una hoja (`hoja_a_lienzo`), con su sitio en
+/// la hoja y sus fotos (a `imagenes/` del chat, como una imagen pegada).
+pub(super) fn meter_con(
+    ubicacion: &Ubicacion,
     mut abierto: Option<&mut Abierto>,
     proyecto: &str,
     destino: Option<&str>,
     documento: &str,
+    en_hoja: Option<&al_lienzo::EnHoja>,
+    imagenes: &[(u64, pixpin_codec::ImagenRgba)],
 ) -> Result<(String, String), String> {
     let raiz = ubicacion.raiz();
     let es_el_abierto = abierto.as_deref().is_some_and(|a| a.ficha.id == proyecto);
@@ -819,8 +835,27 @@ pub(super) fn meter_en_el_lienzo_del_chat(
     let hoja = preparar_hoja(raiz, proyecto, &mensaje, pixpin_shell::entorno::ahora_utc_ms())
         .ok_or("no se pudo abrir el lienzo")?;
     let mut escena = hoja.escena;
-    let n = al_lienzo::meter_al_lado(&mut escena, documento)?;
-    if !guardar_hoja_dibujada(&hoja.ruta, &hoja.lienzo, &escena) {
+    let n = match en_hoja {
+        Some(h) => al_lienzo::meter_de_hoja(&mut escena, documento, h, None)?,
+        None => al_lienzo::meter_al_lado(&mut escena, documento)?,
+    };
+    if documento.is_empty() {
+        // Solo cerraba la hoja: no hay nada que guardar.
+        return Ok((al_lienzo::resumen(0), referencia));
+    }
+    let lienzo = if imagenes.is_empty() {
+        hoja.lienzo.clone()
+    } else {
+        crate::imagenes_lienzo::guardar_pegadas_en_hoja(
+            &pixpin_proyecto::almacen::carpeta(raiz, proyecto),
+            &hoja.lienzo,
+            &escena,
+            imagenes,
+            pixpin_shell::entorno::ahora_utc_ms(),
+        )
+        .map_err(|e| format!("no se pudieron guardar las fotos: {e}"))?
+    };
+    if !guardar_hoja_dibujada(&hoja.ruta, &lienzo, &escena) {
         return Err("no se pudo guardar el lienzo".into());
     }
     if let Some(a) = abierto.as_deref_mut().filter(|_| es_el_abierto) {
