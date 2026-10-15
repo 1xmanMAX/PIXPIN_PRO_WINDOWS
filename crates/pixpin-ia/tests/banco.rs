@@ -247,7 +247,151 @@ fn casos_fijos() -> Vec<Caso> {
     v.extend(casos_de_estudiantes());
     v.extend(casos_de_edicion());
     v.extend(casos_de_antes());
+    v.extend(casos_de_la_app_15_oct());
     v
+}
+
+/// El argumento `archivo` (o lo que se le parezca) habla de `que`.
+fn archivo_de(v: &Value, que: &str) -> bool {
+    ["archivo", "descripcion", "ruta"]
+        .iter()
+        .filter_map(|k| v.get(*k).and_then(Value::as_str))
+        .any(|a| sin_tildes(&a.to_lowercase()).contains(que))
+}
+
+/// **Las herramientas de la app del 15-oct** («que la gente pueda hacer
+/// TODO con PixPin a traves del asistente»): un caso por herramienta nueva,
+/// dicho como lo diria alguien (no con la frase exacta del camino rapido).
+/// Solo estos: `PIXPIN_IA_SOLO=app15-`.
+fn casos_de_la_app_15_oct() -> Vec<Caso> {
+    vec![
+        Caso {
+            nombre: "app15-grabar-pantalla",
+            pedido: "Graba en un GIF lo que hago en la pantalla para mandárselo al ingeniero.",
+            imagen: None,
+            comprobar: |r| {
+                let p = r.pedido("capturar").ok_or("no pidio capturar")?;
+                si(p["modo"] == "gif", "no es la grabacion (gif)")
+            },
+        },
+        Caso {
+            nombre: "app15-captura-texto",
+            pedido: "Hay un mensaje de error que no me deja seleccionar: cópiame el texto que sale en esa zona de la pantalla.",
+            imagen: None,
+            comprobar: |r| {
+                let p = r.pedido("capturar").ok_or("no pidio capturar")?;
+                si(p["modo"] == "texto", "no es la captura de texto")
+            },
+        },
+        Caso {
+            nombre: "app15-cerrar-pines-pide-permiso",
+            pedido: "Quítame de la pantalla todos los pines que tengo abiertos.",
+            imagen: None,
+            comprobar: |r| {
+                let p = r.llamo("cerrar_pines").ok_or("no llamo a cerrar_pines")?;
+                si(p["__confirmar"] == true, "no pregunto antes")
+            },
+        },
+        Caso {
+            nombre: "app15-ocultar-pines",
+            pedido: "Voy a compartir pantalla en una reunión: esconde un momento los pines sin cerrarlos.",
+            imagen: None,
+            comprobar: |r| {
+                let p = r.pedido("pines").ok_or("no pidio pines")?;
+                si(p["operacion"] == "ocultar_mostrar", "otra operacion")
+            },
+        },
+        Caso {
+            nombre: "app15-leer-en-voz",
+            pedido: "Estoy manejando, ¿me puedes leer en voz alta el informe de la obra?",
+            imagen: None,
+            comprobar: |r| {
+                let p = r.llamo("leer_en_voz_alta").ok_or("no llamo a leer_en_voz_alta")?;
+                si(archivo_de(p, "informe") || p.get("texto").is_some(), "no dice que leer")
+            },
+        },
+        Caso {
+            nombre: "app15-parar-voz",
+            pedido: "Ya está bien, deja de leer.",
+            imagen: None,
+            comprobar: |r| {
+                let p = r.pedido("leer_en_voz").ok_or("no pidio leer_en_voz")?;
+                si(p["parar"] == true, "no la para")
+            },
+        },
+        Caso {
+            nombre: "app15-comprimir-pdf",
+            pedido: "El PDF de la tesis pesa demasiado para mandarlo por correo, hazlo más ligero.",
+            imagen: None,
+            comprobar: |r| {
+                let p = r.llamo("comprimir_pdf").ok_or("no llamo a comprimir_pdf")?;
+                si(archivo_de(p, "tesis") || p.get("archivo").is_none(), "otro archivo")
+            },
+        },
+        Caso {
+            nombre: "app15-transcribir",
+            pedido: "No pude oír el audio de la reunión de ayer, ¿me lo pasas a texto?",
+            imagen: None,
+            comprobar: |r| {
+                let p = r.llamo("transcribir_audio").ok_or("no llamo a transcribir_audio")?;
+                si(p.get("archivo").is_none() || archivo_de(p, "reunion"), "otro audio")
+            },
+        },
+        Caso {
+            nombre: "app15-leer-excel",
+            pedido: "¿Cuánto suma la columna de costos del Excel del presupuesto?",
+            imagen: None,
+            comprobar: |r| {
+                let p = r.llamo("leer_excel").ok_or("no llamo a leer_excel")?;
+                si(p.get("archivo").is_none() || archivo_de(p, "presupuesto"), "otro excel")
+            },
+        },
+        Caso {
+            nombre: "app15-timeline",
+            pedido: "Anota en el timeline: llegó el camión de cemento con 40 bolsas.",
+            imagen: None,
+            comprobar: |r| {
+                let p = r.pedido("timeline").ok_or("no pidio timeline")?;
+                si(p["texto"].as_str().is_some_and(|t| sin_tildes(&t.to_lowercase()).contains("camion")), "sin el texto")
+            },
+        },
+        Caso {
+            nombre: "app15-actividad",
+            pedido: "Dame un resumen de mi actividad de esta semana en PixPin.",
+            imagen: None,
+            comprobar: |r| {
+                let p = r.llamo("resumen_de_actividad").ok_or("no llamo a resumen_de_actividad")?;
+                si(p["periodo"] == "semana", "otro periodo")
+            },
+        },
+        Caso {
+            nombre: "app15-ajustes",
+            pedido: "Quiero cambiar la voz del lector: llévame a la configuración de PixPin.",
+            imagen: None,
+            comprobar: |r| {
+                let p = r.pedido("ventana").ok_or("no pidio ventana")?;
+                si(p["cual"] == "ajustes", "otra ventana")
+            },
+        },
+        Caso {
+            nombre: "app15-chat-por-nombre",
+            pedido: "Llévame al chat de Casa Lima.",
+            imagen: None,
+            comprobar: |r| {
+                let p = r.pedido("ventana_principal").ok_or("no pidio ventana_principal")?;
+                si(p["proyecto"] == "casa", "otro chat")
+            },
+        },
+        Caso {
+            nombre: "app15-ir-a-pagina",
+            pedido: r"Ábreme C:\docs\tesis.pdf por la página 12.",
+            imagen: None,
+            comprobar: |r| {
+                let p = r.pedido("abrir").ok_or("no pidio abrir")?;
+                si(p["que"]["pagina"] == 12, "sin la pagina 12")
+            },
+        },
+    ]
 }
 
 /// **La foto de un problema** (hecha aqui, sin ficheros): el enunciado y su
@@ -1232,6 +1376,21 @@ impl Ejecutor for Apunta<'_> {
         // (`tareas::hacer`) con unas listas de ejemplo: lo que se mandaria se
         // apunta; lo que pide permiso se apunta con `__confirmar` y NO se
         // manda (se contesta que no).
+        // Las que hace el ejecutor del chat (15-oct): se apuntan y contestan
+        // lo que contestaria la app con unos adjuntos de ejemplo.
+        if let Llamada::App(a) = llamada
+            && pixpin_ia::acciones::es_en_el_chat(a.herramienta)
+        {
+            self.r.llamadas.push((a.herramienta.to_string(), a.pedido.clone()));
+            return Ok(match a.herramienta {
+                "leer_en_voz_alta" => "Leyendo en voz alta «Informe de obra.pdf». «Para de leer» la calla.".into(),
+                "comprimir_pdf" => "«Tesis.pdf» aligerado: de 12,3 MB a 2,1 MB (83 % menos), en 4,2 s. La copia ligera esta en el chat; el original no se toco.".into(),
+                "transcribir_audio" => "«reunion.m4a» pasado a texto (95 s de audio):\nQuedamos en vaciar la losa el viernes y pedir 40 bolsas de cemento.".into(),
+                "leer_excel" => "«Presupuesto.xlsx» — Hoja «Costos», A1:B4:\nfila\tA\tB\n1\tPartida\tCosto\n2\tCemento\t1250\n3\tFierro\t3400\n4\tArena\t600\n".into(),
+                "resumen_de_actividad" => "Esta semana: 23 mensajes en 3 chats (Obra 15, Tesis 6, Mensajes guardados 2): 12 notas, 8 fotos, 3 archivos; 9 capturas; 4 momentos en el timeline; 5 tareas nuevas (3 ya hechas); quedan 7 pendientes, 1 vencidas.".into(),
+                otra => format!("{otra}: hecho"),
+            });
+        }
         if let Llamada::App(a) = llamada {
             let fuente = banco_ia::Viva(std::cell::RefCell::new(banco_ia::fuente()));
             let preguntado = std::cell::Cell::new(false);
@@ -1430,6 +1589,11 @@ fn correr(fuente: &Fuente) -> Vec<(&'static str, Nota)> {
             },
             Fuente::Motor(m) => m.as_ref(),
         };
+        // Las herramientas de la app del 15-oct son solo para la nube: el
+        // banco del local sigue como estaba («la IA local, no la toques»).
+        if caso.nombre.starts_with("app15-") && !motor.catalogo_completo() {
+            continue;
+        }
         let imagen = caso.imagen.map(|f| f());
         let (mut historial, mut herramientas) = banco_ia::preparar(caso.pedido, imagen.clone());
         // Como en la app (`asistente::turno`): la nube recibe el catalogo entero.

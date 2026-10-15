@@ -337,6 +337,11 @@ mod pruebas {
                 assert!(pixpin_ia::tareas::consultar(&hecha.por_resolver, &fuente()).is_ok());
                 continue;
             }
+            // Las que hace el ejecutor del chat (`en_el_chat`): sus pedidos
+            // los prueba `en_el_chat_manda_pedidos_que_la_app_entiende`.
+            if a.accion == pixpin_ia::acciones::EN_EL_CHAT {
+                continue;
+            }
             assert!(
                 pixpin_shell::mensajero::ACCIONES.contains(&a.accion),
                 "{}: la ventana no conoce «{}»",

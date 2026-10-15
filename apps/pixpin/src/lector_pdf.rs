@@ -216,6 +216,36 @@ fn tomar_busqueda_al_abrir(ruta: &Path) -> Option<String> {
     Some(v.remove(i).1)
 }
 
+/// Los ficheros con un lector abierto ahora (15-oct, el asistente: «ve a la
+/// pagina 12» con el PDF ya delante). Ese lector mira en cada vuelta si le
+/// piden una pagina o una busqueda ([`abrir_en_la_pagina`],
+/// [`abrir_buscando`]) y va ahi, sin abrir otra ventana.
+static ABIERTOS: std::sync::Mutex<Vec<std::path::PathBuf>> = std::sync::Mutex::new(Vec::new());
+
+/// Si hay un lector abierto con `ruta`.
+pub fn esta_abierto(ruta: &Path) -> bool {
+    ABIERTOS.lock().unwrap_or_else(|e| e.into_inner()).iter().any(|r| r == ruta)
+}
+
+/// Apunta el lector como abierto mientras viva.
+struct Abierto(std::path::PathBuf);
+
+impl Abierto {
+    fn nuevo(ruta: &Path) -> Abierto {
+        ABIERTOS.lock().unwrap_or_else(|e| e.into_inner()).push(ruta.to_path_buf());
+        Abierto(ruta.to_path_buf())
+    }
+}
+
+impl Drop for Abierto {
+    fn drop(&mut self) {
+        let mut v = ABIERTOS.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(i) = v.iter().position(|r| *r == self.0) {
+            v.remove(i);
+        }
+    }
+}
+
 /// Abre el lector con ese PDF, en su propio hilo (como el visor).
 pub fn lanzar(idioma: pixpin_store::Idioma, ubicacion: Ubicacion, ruta: &Path) {
     let ruta = ruta.to_path_buf();
@@ -908,6 +938,8 @@ fn abrir_con(
     // La ruta cambia si se renombra un PDF suelto (D5).
     let mut ruta_viva = ruta.to_path_buf();
     let mut ruta_nueva: Option<PathBuf> = None;
+    // Abierto: el asistente lo lleva a una pagina o un texto sin otra ventana.
+    let _abierto = Abierto::nuevo(ruta);
     while vivo {
         let ruta_de_la_vuelta = ruta_viva.clone();
         let ruta: &Path = &ruta_de_la_vuelta;
@@ -919,6 +951,19 @@ fn abrir_con(
         }
         // La voz: lo siguiente que decir (y empezar si llego el texto).
         if voz::vuelta(&mut e, textos, ruta, marco) {
+            hay_que_pintar = true;
+        }
+        // Lo que pide el asistente con el lector ya abierto (15-oct): ir a
+        // una pagina o buscar un texto, como al abrirlo.
+        if let Some(p) = tomar_pagina_al_abrir(ruta) {
+            office::ir_a(&mut e, p as usize, marco);
+            hay_que_pintar = true;
+        }
+        if let Some(q) = tomar_busqueda_al_abrir(ruta) {
+            e.hallar.caja.buscar_ya(&q);
+            voz::pedir_el_texto(&mut e, ruta);
+            // Con el texto ya leido, busca ahora; si no, al llegar.
+            rebuscar(&mut e);
             hay_que_pintar = true;
         }
         // La pagina que sube sola y el PDF pasado a texto.

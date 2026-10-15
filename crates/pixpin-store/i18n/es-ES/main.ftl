@@ -1534,6 +1534,7 @@ pedido-tarea-cambio = La lista cambió mientras se movía la tarea; no se tocó 
 pedido-tarea-quitada = «{ $tarea }» quitada de su lista.
 pedido-tarea-corregida = Tarea cambiada: «{ $tarea }».
 pedido-lista-borrada = Lista «{ $lista }» borrada de «{ $proyecto }».
+pedido-timeline-apuntado = Apuntado en el timeline: «{ $titulo }».
 pedido-sin-capturas = Todavía no hay ninguna captura.
 pedido-fuera-de-capturas = Ese fichero no está en la carpeta de capturas; no se toca.
 pedido-no-es-imagen = Ese fichero no es una imagen.

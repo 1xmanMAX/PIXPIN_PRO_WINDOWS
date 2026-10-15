@@ -147,10 +147,12 @@ fn turno_rapido(
     historial: &mut Vec<Mensaje>,
     ejecutor: &mut dyn Ejecutor,
     ahora: crate::fechas::Momento,
+    // Con la nube, tambien las ordenes de `acciones::SOLO_NUBE`.
+    nube: bool,
     al_evento: &mut dyn FnMut(Evento) -> Seguir,
 ) -> Option<Final> {
     let ultimo = historial.last().filter(|m| m.rol == Rol::Usuario && !m.tiene_imagen())?;
-    let orden = crate::rapido::interpretar(&ultimo.texto_entero(), ahora)?;
+    let orden = crate::rapido::interpretar_con(&ultimo.texto_entero(), ahora, nube)?;
     let cruda = crate::motor::LlamadaCruda {
         id: "rapido-1".into(),
         nombre: orden.herramienta.into(),
@@ -446,7 +448,7 @@ fn turno_dentro(
 ) -> Result<Final, ErrorIa> {
     // Antes que nada (ni plan ni modelo): la orden simple, al instante.
     if let Some(ahora) = opciones.rapido
-        && let Some(f) = turno_rapido(historial, ejecutor, ahora, al_evento)
+        && let Some(f) = turno_rapido(historial, ejecutor, ahora, motor.catalogo_completo(), al_evento)
     {
         return Ok(f);
     }
