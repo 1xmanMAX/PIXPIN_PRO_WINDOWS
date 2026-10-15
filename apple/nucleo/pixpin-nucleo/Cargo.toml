@@ -35,6 +35,8 @@ pixpin-sistema = { version = "0.1.0", path = "../pixpin-sistema" }
 pixpin-store = { version = "0.1.0", path = "../pixpin-store" }
 pixpin-lecciones = { version = "0.1.0", path = "../pixpin-lecciones" }
 pixpin-ia = { version = "0.1.0", path = "../pixpin-ia" }
+# El timeline (`momentos.jsonl`), el mismo crate que Windows.
+pixpin-timeline = { version = "0.1.0", path = "../pixpin-timeline" }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 thiserror = "2.0"

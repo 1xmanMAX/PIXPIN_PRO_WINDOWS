@@ -61,6 +61,22 @@ struct PixPinApp: App {
                     .frame(width: 420, height: 240)
             }
         }
+        Window("Galería de capturas", id: IdVentana.galeria) {
+            ConAlmacen(estado.almacen, error: estado.error) { VentanaGaleria(almacen: $0) }
+        }
+        .defaultSize(width: 900, height: 640)
+        Window("Timeline", id: IdVentana.timeline) {
+            ConAlmacen(estado.almacen, error: estado.error) { VentanaTimeline(almacen: $0) }
+        }
+        .defaultSize(width: 860, height: 640)
+        Window("Tareas", id: IdVentana.tareas) {
+            ConAlmacen(estado.almacen, error: estado.error) { VentanaTareas(almacen: $0) }
+        }
+        .defaultSize(width: 620, height: 640)
+        Window("Buscar en PixPin", id: IdVentana.buscar) {
+            ConAlmacen(estado.almacen, error: estado.error) { VentanaBuscar(almacen: $0) }
+        }
+        .defaultSize(width: 900, height: 600)
     }
 }
 
@@ -209,6 +225,11 @@ struct MenuPrincipal: View {
             abrirVentana(id: "asistente")
             NSApp.activate()
         }
+        Button("Buscar en PixPin…") { abrir(IdVentana.buscar) }
+            .keyboardShortcut("f", modifiers: [.command, .option])
+        Button("Galería de capturas…") { abrir(IdVentana.galeria) }
+        Button("Timeline…") { abrir(IdVentana.timeline) }
+        Button("Tareas…") { abrir(IdVentana.tareas) }
         Button("Pinear desde el portapapeles") {
             if !GestorPines.compartido.pinearDesdePortapapeles() { NSSound.beep() }
         }
@@ -220,5 +241,10 @@ struct MenuPrincipal: View {
         .keyboardShortcut(",")
         Button("Salir de PixPin") { NSApp.terminate(nil) }
             .keyboardShortcut("q")
+    }
+
+    private func abrir(_ id: String) {
+        abrirVentana(id: id)
+        NSApp.activate()
     }
 }
