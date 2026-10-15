@@ -378,7 +378,8 @@ struct VistaRuletaPin: View {
                         ctx.fill(p, with: .color(VistaRuletaPin.colores[i % VistaRuletaPin.colores.count].opacity(0.8)))
                         let medio = Angle.degrees((Double(i) + 0.5) * porcion - 90)
                         let r = lado * 0.32
-                        let punto = CGPoint(x: centro.x + r * cos(medio.radians), y: centro.y + r * sin(medio.radians))
+                        let a: Double = medio.radians
+                        let punto = CGPoint(x: centro.x + r * CGFloat(Darwin.cos(a)), y: centro.y + r * CGFloat(Darwin.sin(a)))
                         ctx.draw(Text(nombre).font(.caption2).bold(), at: punto)
                     }
                 }
