@@ -99,8 +99,17 @@ pánico de Rust llega a Swift como error en vez de cerrar la app.
         el `suelto`, la galería y los chats con personas. La `Escucha` atiende una conexión
         cada vez: mientras dura una vuelta, una sonda de otro espera.
   - [ ] Documentos (`docs`, `hojas`, `office`), timeline y lecciones en la API.
-  - [ ] CI: `macos-latest` compila el xcframework.
-- [ ] Fase 2: app de Mac en SwiftUI/AppKit (`apple/app/`).
+  - [x] CI: `.github/workflows/apple.yml` (macOS 15, Xcode 16.4) compila el xcframework, pasa
+        `swift test` (48 pruebas, 15-oct) y sube `PixPin.app` universal (19 MB; 8 MB en zip)
+        como artefacto «PixPin-mac».
+- [ ] Fase 2: app de Mac en SwiftUI/AppKit (`apple/app/`). Hecho y en verde en la CI:
+  - [x] Barra de menús, ventana de Proyectos, chat por páginas, notas, crear proyecto.
+  - [x] Lector del búfer del lienzo y pintor con Core Graphics.
+  - [x] Captura (Ctrl+Option+X, ScreenCaptureKit, ventanas, lupa) → copiar, guardar en
+        `capturas/`, pinear, al chat (Mensajes guardados), sacar texto.
+  - [x] Pines flotantes (imagen, PDF, vídeo), Live Text y OCR con Vision.
+  - [x] Adjuntos en el chat: miniaturas con ImageIO y caché con tope, Quick Look, soltar y ⌘V.
+  - [x] Sincronizar por la Wi‑Fi (Bonjour) con Windows y Android.
 - [ ] `por-adaptar/` → `nucleo/`:
   - [x] `pixpin-codec` (decodificar con `image`; WIC, vista reducida y portapapeles tras
         `#[cfg(windows)]`; ImageIO y `NSPasteboard` desde Swift).
