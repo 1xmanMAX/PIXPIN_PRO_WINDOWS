@@ -64,7 +64,18 @@ pub(crate) mod sin_ventana {
         hoja: &crate::asistente::al_lienzo::EnHoja,
         imagenes: &[(u64, pixpin_codec::ImagenRgba)],
     ) -> Result<(String, String), String> {
-        super::asistente::meter_con(ubicacion, None, proyecto, None, documento, Some(hoja), imagenes)
+        let (r, referencia) = super::asistente::trabajar_en_el_lienzo_del_chat(
+            ubicacion,
+            None,
+            proyecto,
+            None,
+            &crate::asistente::al_lienzo::Trabajo::Dibujar,
+            documento,
+            None,
+            Some(hoja),
+            imagenes,
+        )?;
+        Ok((r.texto, referencia.unwrap_or_default()))
     }
 
     /// El texto entero de un OCR, al chat (nota y `.txt`).

@@ -40,6 +40,9 @@ windows = { version = "0.62.2", features = [
 # su motor y se escriben con su escritor de Excalidraw: un solo componente.
 # Es Rust puro (serde), sin ventanas.
 pixpin-motor2d = { path = "../pixpin-motor2d" }
+# Los tiradores del editor (`Tirador`), para escalar con la misma
+# operacion que el raton (`edicion::hacer`). Sin dependencias.
+pixpin-geom = { path = "../pixpin-geom" }
 # Leer la ecuacion en LaTeX o a mano (`formulas::leer`, el de las notas, el
 # mismo que el de Android): asi el lienzo entiende lo mismo que las notas.
 pixpin-notas = { path = "../pixpin-notas" }

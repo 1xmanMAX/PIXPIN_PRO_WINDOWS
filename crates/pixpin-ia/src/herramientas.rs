@@ -79,6 +79,8 @@ pub const MAX_NUMEROS_PUNTOS: usize = 240;
 /// vienen a cuento en cada turno (un 2B se pierde con 30).
 pub fn catalogo() -> Vec<Herramienta> {
     let mut c = catalogo_base();
+    // Editar lo que ya hay en el lienzo (`edicion.rs`, tabla propia).
+    c.extend(crate::edicion::herramientas());
     c.extend(crate::acciones::herramientas());
     c
 }
@@ -241,11 +243,15 @@ pub enum Llamada {
     /// Buscar en los documentos y chats del usuario: el ejecutor busca en
     /// su indice (`documentos::Indice`) con el alcance del chat.
     Buscar(crate::documentos::PeticionBusqueda),
+    /// Editar lo que ya hay en el lienzo (`edicion.rs`): el ejecutor la manda
+    /// a quien tiene la escena, que la aplica con `edicion::aplicar`.
+    Editar(crate::edicion::Edicion),
 }
 
 impl Llamada {
     pub fn nombre(&self) -> &'static str {
         match self {
+            Llamada::Editar(e) => e.herramienta,
             Llamada::Dibujar(_) => DIBUJAR,
             Llamada::Grafica(_) => GRAFICA,
             Llamada::Ocr(_) => OCR,
@@ -507,6 +513,9 @@ pub fn validar(cruda: &LlamadaCruda, conocidas: &[Herramienta]) -> Result<Valida
                 .ok_or_else(|| mal("falta «pregunta»"))?,
         ),
         crate::documentos::BUSCAR => Llamada::Buscar(crate::documentos::herramienta::validar(&args)?),
+        otro if crate::edicion::fila(otro).is_some() => {
+            Llamada::Editar(crate::edicion::validar(crate::edicion::fila(otro).unwrap(), &args)?)
+        }
         otro if crate::acciones::por_nombre(otro).is_some() => {
             Llamada::App(crate::acciones::validar(crate::acciones::por_nombre(otro).unwrap(), &args)?)
         }
@@ -1548,7 +1557,7 @@ mod pruebas {
     fn el_catalogo_es_json_de_herramientas_valido() {
         let v: Value = serde_json::from_str(&catalogo_json()).unwrap();
         let lista = v.as_array().unwrap();
-        assert_eq!(lista.len(), 11 + crate::acciones::todas().count());
+        assert_eq!(lista.len(), 11 + crate::edicion::FILAS.len() + crate::acciones::todas().count());
         for h in lista {
             assert_eq!(h["type"], "function");
             assert_eq!(h["function"]["parameters"]["type"], "object");

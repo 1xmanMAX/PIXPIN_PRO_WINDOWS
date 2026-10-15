@@ -172,7 +172,7 @@ pub struct PorLaCola {
     pub proyecto: String,
     pub destino: Option<String>,
     pub espera: Duration,
-    respuestas: Vec<Receiver<Result<String, String>>>,
+    respuestas: Vec<Receiver<Result<super::al_lienzo::Respuesta, String>>>,
 }
 
 impl PorLaCola {

@@ -132,6 +132,24 @@ pub fn pide_una_tabla(palabras: &[&str]) -> bool {
         .any(|p| p.starts_with("tabla") || p.starts_with("excel") || *p == "xlsx" || p.starts_with("celda"))
 }
 
+/// Si el pedido nombra un documento (PDF, Word, plano, archivo...): entonces
+/// resaltar o subrayar es anotarlo, no el lienzo.
+pub fn habla_de_documentos(palabras: &[&str]) -> bool {
+    palabras.iter().any(|p| {
+        ["pdf", "documento", "plano", "archivo", "fichero", "word", "excel", "pagina", "adjunt", "docx", "informe"]
+            .iter()
+            .any(|r| p.starts_with(r))
+    })
+}
+
+/// Si el pedido es pegar la foto en el lienzo o recortarla («pega la foto y
+/// recorta la mitad izquierda»): eso es `imagen_en_lienzo`, no calcarla.
+pub fn pide_pegar_o_recortar(palabras: &[&str]) -> bool {
+    palabras
+        .iter()
+        .any(|p| p.starts_with("peg") || p.starts_with("recort") || p.starts_with("insert"))
+}
+
 /// Si el pedido sobre una imagen quiere una interpretacion (dibujarla con
 /// figuras, a lapiz, con grafito, como boceto) y no una copia exacta.
 pub fn pide_interpretar(q: &str) -> bool {
@@ -176,7 +194,9 @@ pub fn para_el_pedido(pedido: &str, con_imagen: bool) -> Vec<Herramienta> {
         }
         return de(AYUDA).into_iter().collect();
     }
-    if con_imagen && pide_la_imagen(&palabras) && !pide_una_tabla(&palabras) {
+    // «Pega la foto y recorta la mitad»: es editar el lienzo con ella, no
+    // calcarla (`edicion.rs`).
+    if con_imagen && pide_la_imagen(&palabras) && !pide_una_tabla(&palabras) && !pide_pegar_o_recortar(&palabras) {
         // «Dibujala con figuras», «a lapiz», «con grafito»: interpretarla,
         // no calcarla. El modelo la ve y la redibuja con las herramientas
         // del lienzo (o en SVG, que da curvas).
@@ -202,8 +222,19 @@ pub fn para_el_pedido(pedido: &str, con_imagen: bool) -> Vec<Herramienta> {
     for a in crate::acciones::todas().filter(|a| a.herramienta != crate::hoja::NOMBRE) {
         puntuadas.push((puntuar(a.claves, &q, &palabras), crate::acciones::herramienta(a)));
     }
+    // Editar lo que ya hay en el lienzo (tabla de `edicion.rs`).
+    for f in crate::edicion::filas() {
+        puntuadas.push((puntuar(f.claves, &q, &palabras), crate::edicion::herramienta(f)));
+    }
     // Estable: a igual puntuacion, el orden del catalogo.
     puntuadas.sort_by(|a, b| b.0.cmp(&a.0));
+    // «Resalta el titulo», «subraya el resultado»: sin nombrar un documento,
+    // es el lienzo. Con las dos a mano el 2B anotaba un PDF que no habia
+    // (medido el 14-oct con `anotar_documento`).
+    let edita = puntuadas.iter().any(|(s, h)| *s >= 2 && crate::edicion::fila(&h.nombre).is_some());
+    if edita && !habla_de_documentos(&palabras) {
+        puntuadas.retain(|(_, h)| !crate::acciones_documentos::es_de_documentos(&h.nombre));
+    }
     let mut elegidas: Vec<(u32, Herramienta)> = puntuadas.into_iter().filter(|(s, _)| *s >= 2).take(MAXIMO).collect();
     // «Saca las tareas de esta acta»: con las dos a mano, el 2B las apuntaba
     // una a una en el Inbox y no creaba la lista pedida (medido, 14-oct).
@@ -280,6 +311,30 @@ mod pruebas {
 
     fn nombres(pedido: &str, img: bool) -> Vec<String> {
         para_el_pedido(pedido, img).into_iter().map(|h| h.nombre).collect()
+    }
+
+    #[test]
+    fn los_pedidos_de_editar_llevan_su_herramienta() {
+        use crate::edicion::{CORTAR, EXTENDER, GEOMETRIA, IMAGEN, TRANSFORMAR, TRAZAR};
+        for (pedido, img, debe) in [
+            ("dibuja dos rectas que se crucen y corta la de abajo en el cruce", false, CORTAR),
+            ("pega la foto y recorta la mitad izquierda", true, IMAGEN),
+            ("resalta el titulo", false, TRAZAR),
+            ("subraya el resultado con el lapiz rojo", false, TRAZAR),
+            ("alarga la recta hasta que toque el circulo", false, EXTENDER),
+            ("traza una perpendicular a la recta por su punto medio", false, GEOMETRIA),
+            ("mueve el circulo rojo 50 a la derecha", false, TRANSFORMAR),
+        ] {
+            let n = nombres(pedido, img);
+            assert!(n.iter().any(|x| x == debe), "{pedido}: {n:?}");
+            assert!(n.len() <= MAXIMO);
+        }
+        // Sin nombrar un documento, resaltar es del lienzo; nombrandolo, del
+        // documento.
+        assert!(!nombres("resalta el titulo", false).iter().any(|x| x == "anotar_documento"));
+        assert!(nombres("resalta en el PDF el total", false).iter().any(|x| x == "anotar_documento"));
+        // Negativo: con una foto, «copia esta imagen» sigue siendo calcarla.
+        assert_eq!(nombres("Copia esta imagen en el lienzo", true), vec![CALCAR.to_string()]);
     }
 
     #[test]
