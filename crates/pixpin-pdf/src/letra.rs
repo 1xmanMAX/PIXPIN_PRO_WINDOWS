@@ -25,9 +25,14 @@
 //!   `To`) y aqui cada letra avanza lo suyo. La diferencia es de decimas de
 //!   pixel por par; puede mover una palabra de linea si caia justo en el
 //!   borde.
-//! - **Sin letra de reserva**: lo que Segoe UI no tiene (un ideograma, un
-//!   emoji) DirectWrite lo busca en otra letra; aqui sale el hueco de la
-//!   letra (`.notdef`). Antes salia un `?`.
+//! - **Letras de reserva fijas**: lo que Segoe UI no tiene (una «θ», un
+//!   «≤», un emoji) DirectWrite lo busca en otra letra con sus reglas; aqui
+//!   se busca en una lista fija ([`RESERVAS`]: Segoe UI Symbol, Cambria
+//!   Math, Segoe UI Emoji...) que cubre lo mismo en un Windows normal. Lo
+//!   que no tiene ninguna sale como el hueco de la letra (`.notdef`, un
+//!   cuadrito), nunca como un `?`.
+//! - **Emoji en negro**: de Segoe UI Emoji va el contorno de cada glifo; los
+//!   colores (`COLR`) no los pinta ningun lector de PDF.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -483,21 +488,19 @@ fn fichero_sfnt(tablas: &BTreeMap<Etiqueta, Vec<u8>>) -> Vec<u8> {
     salida
 }
 
-/// **La letra de la pantalla, pedida a DirectWrite**: la normal de la
-/// familia `familia`, la misma que elige `CreateTextFormat` con peso,
-/// anchura y estilo normales.
-///
-/// `None` si la familia no esta o no es TrueType; quien escribe el PDF
-/// vuelve entonces a Helvetica.
-pub fn del_sistema(familia: &str) -> Option<Letra> {
+/// La cara normal de la familia `familia`, la misma que elige
+/// `CreateTextFormat` con peso, anchura y estilo normales. `None` si la
+/// familia no esta instalada.
+fn cara_del_sistema(
+    familia: &str,
+) -> Option<windows::Win32::Graphics::DirectWrite::IDWriteFontFace> {
     use windows::Win32::Graphics::DirectWrite::{
         DWRITE_FACTORY_TYPE_SHARED, DWRITE_FONT_STRETCH_NORMAL, DWRITE_FONT_STYLE_NORMAL,
         DWRITE_FONT_WEIGHT_NORMAL, DWriteCreateFactory, IDWriteFactory,
     };
     use windows::core::{BOOL, HSTRING};
-    // SAFETY: llamadas COM de solo lectura sobre objetos que se crean aqui y
-    // viven hasta el final de la funcion; los punteros de cada tabla se
-    // copian antes de devolverla con `ReleaseFontTable`.
+    // SAFETY: llamadas COM de solo lectura sobre objetos que se crean aqui;
+    // la cara que se devuelve se sostiene sola (cuenta de referencias).
     unsafe {
         let fabrica: IDWriteFactory = DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED).ok()?;
         let mut coleccion = None;
@@ -512,7 +515,7 @@ pub fn del_sistema(familia: &str) -> Option<Letra> {
         if !existe.as_bool() {
             return None;
         }
-        let cara = coleccion
+        coleccion
             .GetFontFamily(indice)
             .ok()?
             .GetFirstMatchingFont(
@@ -522,22 +525,244 @@ pub fn del_sistema(familia: &str) -> Option<Letra> {
             )
             .ok()?
             .CreateFontFace()
+            .ok()
+    }
+}
+
+/// Una tabla de la cara, copiada.
+fn tabla_de_cara(
+    cara: &windows::Win32::Graphics::DirectWrite::IDWriteFontFace,
+    t: &Etiqueta,
+) -> Option<Vec<u8>> {
+    use windows::core::BOOL;
+    // `DWRITE_MAKE_OPENTYPE_TAG`: las cuatro letras al reves.
+    let etiqueta = u32::from_le_bytes(*t);
+    let (mut datos, mut largo, mut contexto, mut hay) =
+        (std::ptr::null_mut(), 0u32, std::ptr::null_mut(), BOOL(0));
+    // SAFETY: el puntero de la tabla vale hasta `ReleaseFontTable`, y se
+    // copia antes.
+    unsafe {
+        cara.TryGetFontTable(etiqueta, &mut datos, &mut largo, &mut contexto, &mut hay)
             .ok()?;
-        let tabla = |t: &Etiqueta| -> Option<Vec<u8>> {
-            // `DWRITE_MAKE_OPENTYPE_TAG`: las cuatro letras al reves.
-            let etiqueta = u32::from_le_bytes(*t);
-            let (mut datos, mut largo, mut contexto, mut hay) =
-                (std::ptr::null_mut(), 0u32, std::ptr::null_mut(), BOOL(0));
-            cara.TryGetFontTable(etiqueta, &mut datos, &mut largo, &mut contexto, &mut hay)
-                .ok()?;
-            if !hay.as_bool() || datos.is_null() {
-                return None;
-            }
-            let copia = std::slice::from_raw_parts(datos as *const u8, largo as usize).to_vec();
-            cara.ReleaseFontTable(contexto);
-            Some(copia)
+        if !hay.as_bool() || datos.is_null() {
+            return None;
+        }
+        let copia = std::slice::from_raw_parts(datos as *const u8, largo as usize).to_vec();
+        cara.ReleaseFontTable(contexto);
+        Some(copia)
+    }
+}
+
+/// **La letra de la pantalla, pedida a DirectWrite**: la normal de la
+/// familia `familia`, la misma que elige `CreateTextFormat` con peso,
+/// anchura y estilo normales.
+///
+/// `None` si la familia no esta o no es TrueType; quien escribe el PDF
+/// vuelve entonces a Helvetica.
+pub fn del_sistema(familia: &str) -> Option<Letra> {
+    let cara = cara_del_sistema(familia)?;
+    Letra::desde_tablas(&familia.replace(' ', ""), &|t| tabla_de_cara(&cara, t))
+}
+
+/// **Lo que deja la licencia de la letra** (`fsType` de su tabla `OS/2`):
+/// si se puede meter en un documento. No se puede si la licencia es
+/// «restringida» (solo el bit 1, sin los de ver e imprimir o editar), si solo
+/// deja meter los mapas de bits (bit 9: aqui se meten los contornos) o si no
+/// deja subconjuntos (bit 8: aqui siempre se mete un subconjunto). Sin tabla
+/// `OS/2` no hay restriccion escrita.
+pub fn licencia_deja_incrustar(os2: Option<&[u8]>) -> bool {
+    let Some(tipo) = os2.and_then(|t| u16_en(t, 8)) else {
+        return true;
+    };
+    let restringida = tipo & 0x000f == 0x0002;
+    !restringida && tipo & 0x0100 == 0 && tipo & 0x0200 == 0
+}
+
+impl Letra {
+    /// Si su licencia deja meterla en el PDF ([`licencia_deja_incrustar`]).
+    pub fn se_puede_incrustar(&self) -> bool {
+        licencia_deja_incrustar(self.tablas.get(b"OS/2").map(Vec::as_slice))
+    }
+}
+
+/// **Las letras de reserva, en el orden en que se prueban**: lo que la letra
+/// del texto no tiene se busca en ellas, como hace DirectWrite al pintar
+/// (simbolos y flechas en Segoe UI Symbol, matematicas en Cambria Math,
+/// emoticonos en Segoe UI Emoji, y las escrituras que no son latinas en la
+/// letra de Windows para cada una). Segoe UI va la primera para cuando el
+/// texto va en Helvetica: lo que WinAnsi no tiene se escribe con ella.
+pub const RESERVAS: &[&str] = &[
+    "Segoe UI",
+    "Segoe UI Symbol",
+    "Cambria Math",
+    "Segoe UI Emoji",
+    "Segoe UI Historic",
+    "Nirmala UI",
+    "Ebrima",
+    "Gadugi",
+    "Leelawadee UI",
+    "Myanmar Text",
+    "Javanese Text",
+    "Microsoft Himalaya",
+    "Mongolian Baiti",
+    "Microsoft Yi Baiti",
+    "Microsoft New Tai Lue",
+    "Microsoft Tai Le",
+    "Sylfaen",
+    "Yu Gothic",
+    "Microsoft YaHei",
+    "Microsoft JhengHei",
+    "Malgun Gothic",
+];
+
+/// Una letra de reserva: sin mirar todavia, mirada (su mapa de caracteres,
+/// que es poco) o leida entera (sus glifos, que puede ser mucho: solo cuando
+/// de verdad hace falta un caracter suyo).
+enum Reserva {
+    SinMirar(String),
+    Nada,
+    Mirada {
+        familia: String,
+        cara: windows::Win32::Graphics::DirectWrite::IDWriteFontFace,
+        mapa: BTreeMap<u32, u16>,
+    },
+    Leida(Box<Letra>),
+}
+
+/// **Las letras de reserva de un documento**, que se van abriendo segun
+/// hacen falta: un plano con solo letras latinas no abre ninguna, y uno con
+/// una «θ» abre la que la tiene y nada mas. Cada una se pregunta por su
+/// licencia antes de usarla ([`licencia_deja_incrustar`]).
+pub struct Reservas {
+    lista: Vec<Reserva>,
+}
+
+impl Reservas {
+    /// Las del sistema ([`RESERVAS`]), menos la familia `menos` (la letra
+    /// del texto, que ya se ha mirado).
+    pub fn del_sistema(menos: Option<&str>) -> Reservas {
+        let llave = |f: &str| f.replace(' ', "").to_lowercase();
+        let menos = menos.map(llave);
+        Reservas {
+            lista: RESERVAS
+                .iter()
+                .filter(|f| Some(llave(f)) != menos)
+                .map(|f| Reserva::SinMirar(f.to_string()))
+                .collect(),
+        }
+    }
+
+    /// Unas reservas ya leidas, en orden: para las pruebas.
+    pub fn de_letras(letras: Vec<Letra>) -> Reservas {
+        Reservas {
+            lista: letras
+                .into_iter()
+                .map(|l| Reserva::Leida(Box::new(l)))
+                .collect(),
+        }
+    }
+
+    /// Ninguna: el texto va solo con su letra.
+    pub fn ninguna() -> Reservas {
+        Reservas { lista: Vec::new() }
+    }
+
+    /// Cuantas hay (abiertas o no).
+    pub fn cuantas(&self) -> usize {
+        self.lista.len()
+    }
+
+    /// La reserva `i`, si ya esta leida.
+    pub fn letra(&self, i: usize) -> Option<&Letra> {
+        match self.lista.get(i)? {
+            Reserva::Leida(l) => Some(l),
+            _ => None,
+        }
+    }
+
+    /// Mira la reserva `i` (su mapa y su licencia) si no se ha mirado.
+    fn mirar(&mut self, i: usize) {
+        let Some(Reserva::SinMirar(familia)) = self.lista.get(i) else {
+            return;
         };
-        Letra::desde_tablas(&familia.replace(' ', ""), &tabla)
+        let familia = familia.clone();
+        let nueva = match cara_del_sistema(&familia) {
+            Some(cara)
+                if licencia_deja_incrustar(tabla_de_cara(&cara, b"OS/2").as_deref()) =>
+            {
+                match tabla_de_cara(&cara, b"cmap").and_then(|c| leer_cmap(&c)) {
+                    Some(mapa) => Reserva::Mirada {
+                        familia,
+                        cara,
+                        mapa,
+                    },
+                    None => Reserva::Nada,
+                }
+            }
+            _ => Reserva::Nada,
+        };
+        self.lista[i] = nueva;
+    }
+
+    /// Lee entera la reserva `i` (la mira antes si hace falta). `false` si
+    /// no se deja: no esta, no es TrueType o su licencia no deja.
+    fn leer(&mut self, i: usize) -> bool {
+        self.mirar(i);
+        let nueva = match &self.lista[i] {
+            Reserva::Leida(_) => return true,
+            Reserva::Nada | Reserva::SinMirar(_) => return false,
+            Reserva::Mirada { familia, cara, .. } => {
+                Letra::desde_tablas(&familia.replace(' ', ""), &|t| tabla_de_cara(cara, t))
+                    .filter(Letra::se_puede_incrustar)
+                    .map_or(Reserva::Nada, |l| Reserva::Leida(Box::new(l)))
+            }
+        };
+        self.lista[i] = nueva;
+        matches!(self.lista[i], Reserva::Leida(_))
+    }
+
+    /// **La primera reserva que tiene `c`**, y su glifo. La lee entera si es
+    /// la primera vez que se usa. `None` si ninguna lo tiene.
+    pub fn para(&mut self, c: char) -> Option<(usize, u16)> {
+        // Los emoji, antes en la letra de emoji: Segoe UI Symbol tambien trae
+        // caritas, pero DirectWrite pinta las de Segoe UI Emoji.
+        let emoji = matches!(c as u32, 0x1f000..=0x1faff);
+        let mut orden: Vec<usize> = (0..self.lista.len()).collect();
+        if emoji {
+            orden.sort_by_key(|&i| !self.es_de_emoji(i));
+        }
+        for i in orden {
+            self.mirar(i);
+            let tiene = match &self.lista[i] {
+                Reserva::Mirada { mapa, .. } => mapa.get(&(c as u32)).is_some_and(|g| *g != 0),
+                Reserva::Leida(l) => l.glifo(c).is_some(),
+                _ => false,
+            };
+            if tiene
+                && self.leer(i)
+                && let Some(g) = self.letra(i).and_then(|l| l.glifo(c))
+            {
+                return Some((i, g));
+            }
+        }
+        None
+    }
+
+    /// Si la reserva `i` es la letra de los emoji.
+    fn es_de_emoji(&self, i: usize) -> bool {
+        let nombre = match &self.lista[i] {
+            Reserva::SinMirar(f) | Reserva::Mirada { familia: f, .. } => f.replace(' ', ""),
+            Reserva::Leida(l) => l.nombre.clone(),
+            Reserva::Nada => return false,
+        };
+        nombre.to_lowercase().contains("emoji")
+    }
+
+    /// **La primera reserva que se deja leer**: de ella sale el hueco
+    /// (`.notdef`) con que se pinta lo que no tiene nadie cuando el texto va
+    /// en Helvetica, que no tiene un hueco que se vea.
+    pub fn primera(&mut self) -> Option<usize> {
+        (0..self.lista.len()).find(|&i| self.leer(i))
     }
 }
 
@@ -606,6 +831,43 @@ mod pruebas {
         assert!(otra.glifo_crudo(x).is_empty());
         // Y el fichero suma lo que dice la norma.
         assert_eq!(suma(&sub), 0xb1b0_afba);
+    }
+
+    #[test]
+    fn la_licencia_de_la_letra_dice_si_se_mete() {
+        let os2 = |tipo: u16| {
+            let mut t = vec![0u8; 96];
+            t[8..10].copy_from_slice(&tipo.to_be_bytes());
+            t
+        };
+        // Instalable, ver e imprimir, editable: si.
+        for tipo in [0x0000, 0x0004, 0x0008, 0x0006] {
+            assert!(licencia_deja_incrustar(Some(&os2(tipo))), "{tipo:#x}");
+        }
+        // Casos negativos: restringida, sin subconjuntos, solo mapas de bits.
+        for tipo in [0x0002, 0x0108, 0x0208] {
+            assert!(!licencia_deja_incrustar(Some(&os2(tipo))), "{tipo:#x}");
+        }
+        assert!(licencia_deja_incrustar(None), "sin OS/2 no hay restriccion");
+        if let Some(l) = segoe() {
+            assert!(l.se_puede_incrustar());
+        }
+    }
+
+    #[test]
+    fn las_reservas_del_sistema_tienen_los_simbolos_y_se_abren_solo_si_hacen_falta() {
+        if segoe().is_none() {
+            return;
+        }
+        let mut r = Reservas::del_sistema(Some("Segoe UI"));
+        assert!(r.cuantas() > 3);
+        assert!((0..r.cuantas()).all(|i| r.letra(i).is_none()), "nada leido aun");
+        for c in ['θ', '≤', '∞', '√', '→', '😀', '♔'] {
+            let (i, g) = r.para(c).unwrap_or_else(|| panic!("nadie tiene {c}"));
+            assert!(g != 0 && r.letra(i).is_some_and(|l| l.glifo(c) == Some(g)));
+        }
+        // Caso negativo: un caracter que no es de nadie.
+        assert_eq!(r.para('\u{10ffff}'), None);
     }
 
     #[test]
