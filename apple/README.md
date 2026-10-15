@@ -125,6 +125,17 @@ pánico de Rust llega a Swift como error en vez de cerrar la app.
         Option en todo el Mac (apagados de fábrica; `CGEventTap` con Accesibilidad). El pin en
         vivo (`L`, Option + central) es un gancho (`alPinEnVivo`) para cuando existan.
   - [x] Pines flotantes (imagen, PDF, vídeo), Live Text y OCR con Vision.
+  - [x] Pines como en Windows (`app/Sources/PixPinKit/Pines/`): **pin en vivo** (tecla `L` al
+        capturar o `GestorPines.pinearEnVivo`; `SCStream` de la zona con `IOSurface` directo a la
+        capa, 30 fps con cambios y 2 fps quieta por `SCFrameStatus.idle`, recuadro azul fuera de
+        las capturas, pausa con doble clic, congelar y manejar a distancia con `CGEvent` si hay
+        permiso de Accesibilidad), **barra común** con chapitas de atajo, panel **«Pines
+        abiertos»** por colores (⌃2 mostrar/ocultar, cerrar todos con deshacer), **guías azules**
+        e imán al soltar, opacidad con Mayús/Opción + rueda, **anotar** (lápiz, flecha,
+        rectángulo, texto, marcador; capa o fijado en la foto) y **pines de herramienta**: nota
+        Markdown y las mini-apps tareas, contador, ruleta y gastos (documento de
+        `pixpin_proyecto::mini` por `pixpin-nucleo/src/miniapps.rs`, guardado en un mensaje
+        `MINIAPP` de «Mensajes guardados»). Faltan cronómetro, temporizador y alarma en pin.
   - [x] Adjuntos en el chat: miniaturas con ImageIO y caché con tope, Quick Look, soltar y ⌘V.
   - [x] Sincronizar por la Wi‑Fi (Bonjour) con Windows y Android.
   - [x] Notas de voz (`app/Sources/PixPinKit/Voz/`, en verde en la CI):

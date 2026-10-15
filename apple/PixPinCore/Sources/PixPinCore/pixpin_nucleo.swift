@@ -2308,6 +2308,27 @@ public protocol NucleoProtocol: AnyObject, Sendable {
     func abrirLienzo(chat: String, dibujo: String) throws  -> Lienzo
     
     /**
+     * **Crea una mini-app en un chat**: un mensaje `MINIAPP` con su
+     * documento de nacer, como el boton «+» del movil (`pedidos::nueva_lista`
+     * en Windows). Sube el chat en la lista.
+     */
+    func crearMiniapp(chat: String, miniapp: String, titulo: String, moneda: String) throws  -> MensajeChat
+    
+    /**
+     * El documento de una mini-app tal como esta ahora en el chat (por si
+     * llego cambiado del movil).
+     */
+    func documentoMiniapp(chat: String, mensaje: String) throws  -> String
+    
+    /**
+     * **Guarda el documento** de una mini-app en su mensaje. `anterior` es
+     * el documento sobre el que se hizo el cambio: si el del chat ya no es
+     * ese (llego otro del movil), no se toca nada y se devuelve `false`
+     * (hay que releer con [`Nucleo::documento_miniapp`]).
+     */
+    func guardarMiniapp(chat: String, mensaje: String, anterior: String, documento: String) throws  -> Bool
+    
+    /**
      * **El anuncio de Bonjour de este aparato**, o `None` si no esta en
      * ningun grupo (sin grupo no se anuncia: nadie sabria que hacer con el).
      * Hay que volver a pedirlo al crear un grupo o unirse a uno, que cambian
@@ -2969,6 +2990,58 @@ open func abrirLienzo(chat: String, dibujo: String)throws  -> Lienzo  {
             self.uniffiCloneHandle(),
         FfiConverterString.lower(chat),
         FfiConverterString.lower(dibujo),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * **Crea una mini-app en un chat**: un mensaje `MINIAPP` con su
+     * documento de nacer, como el boton «+» del movil (`pedidos::nueva_lista`
+     * en Windows). Sube el chat en la lista.
+     */
+open func crearMiniapp(chat: String, miniapp: String, titulo: String, moneda: String)throws  -> MensajeChat  {
+    return try  FfiConverterTypeMensajeChat_lift(try rustCallWithError(FfiConverterTypeErrorNucleo_lift) {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_nucleo_crear_miniapp(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(chat),
+        FfiConverterString.lower(miniapp),
+        FfiConverterString.lower(titulo),
+        FfiConverterString.lower(moneda),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * El documento de una mini-app tal como esta ahora en el chat (por si
+     * llego cambiado del movil).
+     */
+open func documentoMiniapp(chat: String, mensaje: String)throws  -> String  {
+    return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeErrorNucleo_lift) {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_nucleo_documento_miniapp(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(chat),
+        FfiConverterString.lower(mensaje),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * **Guarda el documento** de una mini-app en su mensaje. `anterior` es
+     * el documento sobre el que se hizo el cambio: si el del chat ya no es
+     * ese (llego otro del movil), no se toca nada y se devuelve `false`
+     * (hay que releer con [`Nucleo::documento_miniapp`]).
+     */
+open func guardarMiniapp(chat: String, mensaje: String, anterior: String, documento: String)throws  -> Bool  {
+    return try  FfiConverterBool.lift(try rustCallWithError(FfiConverterTypeErrorNucleo_lift) {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_nucleo_guardar_miniapp(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(chat),
+        FfiConverterString.lower(mensaje),
+        FfiConverterString.lower(anterior),
+        FfiConverterString.lower(documento),uniffiCallStatus
     )
 })
 }
@@ -3799,6 +3872,63 @@ public func FfiConverterTypeColorEstilo_lower(_ value: ColorEstilo) -> RustBuffe
 
 
 /**
+ * Un contador: su numero y cuanto sube cada toque.
+ */
+public struct CuentaMini: Equatable, Hashable {
+    public var valor: Int64
+    public var paso: Int64
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(valor: Int64, paso: Int64) {
+        self.valor = valor
+        self.paso = paso
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension CuentaMini: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeCuentaMini: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> CuentaMini {
+        return
+            try CuentaMini(
+                valor: FfiConverterInt64.read(from: &buf), 
+                paso: FfiConverterInt64.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: CuentaMini, into buf: inout [UInt8]) {
+        FfiConverterInt64.write(value.valor, into: &buf)
+        FfiConverterInt64.write(value.paso, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCuentaMini_lift(_ buf: RustBuffer) throws -> CuentaMini {
+    return try FfiConverterTypeCuentaMini.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCuentaMini_lower(_ value: CuentaMini) -> RustBuffer {
+    return FfiConverterTypeCuentaMini.lower(value)
+}
+
+
+/**
  * Un dia con momentos.
  */
 public struct DiaTimeline: Equatable, Hashable {
@@ -4426,6 +4556,148 @@ public func FfiConverterTypeFiltroLecciones_lower(_ value: FiltroLecciones) -> R
 
 
 /**
+ * Una linea de gastos.
+ */
+public struct GastoMini: Equatable, Hashable {
+    public var concepto: String
+    /**
+     * En unidades menores de la moneda del libro.
+     */
+    public var centimos: Int64
+    /**
+     * Ya escrito para ensenar («12,50 €»).
+     */
+    public var importe: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(concepto: String, 
+        /**
+         * En unidades menores de la moneda del libro.
+         */centimos: Int64, 
+        /**
+         * Ya escrito para ensenar («12,50 €»).
+         */importe: String) {
+        self.concepto = concepto
+        self.centimos = centimos
+        self.importe = importe
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension GastoMini: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeGastoMini: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> GastoMini {
+        return
+            try GastoMini(
+                concepto: FfiConverterString.read(from: &buf), 
+                centimos: FfiConverterInt64.read(from: &buf), 
+                importe: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: GastoMini, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.concepto, into: &buf)
+        FfiConverterInt64.write(value.centimos, into: &buf)
+        FfiConverterString.write(value.importe, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeGastoMini_lift(_ buf: RustBuffer) throws -> GastoMini {
+    return try FfiConverterTypeGastoMini.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeGastoMini_lower(_ value: GastoMini) -> RustBuffer {
+    return FfiConverterTypeGastoMini.lower(value)
+}
+
+
+/**
+ * A quien le toco en la ruleta y donde se para la rueda.
+ */
+public struct GiroRuleta: Equatable, Hashable {
+    public var elegido: UInt32
+    public var nombre: String
+    /**
+     * Grados que gira la rueda (con sus vueltas de adorno) para que la
+     * aguja, arriba y quieta, senale al elegido (`ruleta::angulo_final`).
+     */
+    public var angulo: Float
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(elegido: UInt32, nombre: String, 
+        /**
+         * Grados que gira la rueda (con sus vueltas de adorno) para que la
+         * aguja, arriba y quieta, senale al elegido (`ruleta::angulo_final`).
+         */angulo: Float) {
+        self.elegido = elegido
+        self.nombre = nombre
+        self.angulo = angulo
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension GiroRuleta: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeGiroRuleta: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> GiroRuleta {
+        return
+            try GiroRuleta(
+                elegido: FfiConverterUInt32.read(from: &buf), 
+                nombre: FfiConverterString.read(from: &buf), 
+                angulo: FfiConverterFloat.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: GiroRuleta, into buf: inout [UInt8]) {
+        FfiConverterUInt32.write(value.elegido, into: &buf)
+        FfiConverterString.write(value.nombre, into: &buf)
+        FfiConverterFloat.write(value.angulo, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeGiroRuleta_lift(_ buf: RustBuffer) throws -> GiroRuleta {
+    return try FfiConverterTypeGiroRuleta.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeGiroRuleta_lower(_ value: GiroRuleta) -> RustBuffer {
+    return FfiConverterTypeGiroRuleta.lower(value)
+}
+
+
+/**
  * Una herramienta que se uso en el turno.
  */
 public struct HerramientaUsada: Equatable, Hashable {
@@ -4756,6 +5028,89 @@ public func FfiConverterTypeLeccionEditada_lift(_ buf: RustBuffer) throws -> Lec
 #endif
 public func FfiConverterTypeLeccionEditada_lower(_ value: LeccionEditada) -> RustBuffer {
     return FfiConverterTypeLeccionEditada.lower(value)
+}
+
+
+/**
+ * Unos gastos enteros, leidos.
+ */
+public struct LibroMini: Equatable, Hashable {
+    public var titulo: String
+    /**
+     * El codigo de tres letras (`EUR`).
+     */
+    public var moneda: String
+    public var simbolo: String
+    public var decimales: UInt8
+    public var gastos: [GastoMini]
+    public var total: Int64
+    public var totalTexto: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(titulo: String, 
+        /**
+         * El codigo de tres letras (`EUR`).
+         */moneda: String, simbolo: String, decimales: UInt8, gastos: [GastoMini], total: Int64, totalTexto: String) {
+        self.titulo = titulo
+        self.moneda = moneda
+        self.simbolo = simbolo
+        self.decimales = decimales
+        self.gastos = gastos
+        self.total = total
+        self.totalTexto = totalTexto
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension LibroMini: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeLibroMini: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> LibroMini {
+        return
+            try LibroMini(
+                titulo: FfiConverterString.read(from: &buf), 
+                moneda: FfiConverterString.read(from: &buf), 
+                simbolo: FfiConverterString.read(from: &buf), 
+                decimales: FfiConverterUInt8.read(from: &buf), 
+                gastos: FfiConverterSequenceTypeGastoMini.read(from: &buf), 
+                total: FfiConverterInt64.read(from: &buf), 
+                totalTexto: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: LibroMini, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.titulo, into: &buf)
+        FfiConverterString.write(value.moneda, into: &buf)
+        FfiConverterString.write(value.simbolo, into: &buf)
+        FfiConverterUInt8.write(value.decimales, into: &buf)
+        FfiConverterSequenceTypeGastoMini.write(value.gastos, into: &buf)
+        FfiConverterInt64.write(value.total, into: &buf)
+        FfiConverterString.write(value.totalTexto, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLibroMini_lift(_ buf: RustBuffer) throws -> LibroMini {
+    return try FfiConverterTypeLibroMini.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLibroMini_lower(_ value: LibroMini) -> RustBuffer {
+    return FfiConverterTypeLibroMini.lower(value)
 }
 
 
@@ -6137,6 +6492,87 @@ public func FfiConverterTypeResultadoBusqueda_lower(_ value: ResultadoBusqueda) 
 
 
 /**
+ * Lo que ensena una mini-app sin abrirla (`mini::Resumen`).
+ */
+public struct ResumenMini: Equatable, Hashable {
+    /**
+     * Ya compuesto: «3 de 7», «60,50 €».
+     */
+    public var texto: String
+    public var hechas: UInt32
+    public var de: UInt32
+    /**
+     * De 0 a 1, o nada si no hay avance que ensenar.
+     */
+    public var avance: Float?
+    public var vacia: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Ya compuesto: «3 de 7», «60,50 €».
+         */texto: String, hechas: UInt32, de: UInt32, 
+        /**
+         * De 0 a 1, o nada si no hay avance que ensenar.
+         */avance: Float?, vacia: Bool) {
+        self.texto = texto
+        self.hechas = hechas
+        self.de = de
+        self.avance = avance
+        self.vacia = vacia
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension ResumenMini: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeResumenMini: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ResumenMini {
+        return
+            try ResumenMini(
+                texto: FfiConverterString.read(from: &buf), 
+                hechas: FfiConverterUInt32.read(from: &buf), 
+                de: FfiConverterUInt32.read(from: &buf), 
+                avance: FfiConverterOptionFloat.read(from: &buf), 
+                vacia: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: ResumenMini, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.texto, into: &buf)
+        FfiConverterUInt32.write(value.hechas, into: &buf)
+        FfiConverterUInt32.write(value.de, into: &buf)
+        FfiConverterOptionFloat.write(value.avance, into: &buf)
+        FfiConverterBool.write(value.vacia, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeResumenMini_lift(_ buf: RustBuffer) throws -> ResumenMini {
+    return try FfiConverterTypeResumenMini.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeResumenMini_lower(_ value: ResumenMini) -> RustBuffer {
+    return FfiConverterTypeResumenMini.lower(value)
+}
+
+
+/**
  * Lo que salio de una vuelta, para ensenarlo.
  */
 public struct ResumenSincro: Equatable, Hashable {
@@ -6424,6 +6860,95 @@ public func FfiConverterTypeTarea_lift(_ buf: RustBuffer) throws -> Tarea {
 public func FfiConverterTypeTarea_lower(_ value: Tarea) -> RustBuffer {
     return FfiConverterTypeTarea.lower(value)
 }
+
+
+/**
+ * Lo que se le hace a un contador.
+ */
+
+public enum AccionContador: Equatable, Hashable {
+    
+    case mas
+    case menos
+    case reiniciar
+    /**
+     * Cambiar el paso (minimo 1).
+     */
+    case paso(paso: Int64
+    )
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension AccionContador: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeAccionContador: FfiConverterRustBuffer {
+    typealias SwiftType = AccionContador
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AccionContador {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .mas
+        
+        case 2: return .menos
+        
+        case 3: return .reiniciar
+        
+        case 4: return .paso(paso: try FfiConverterInt64.read(from: &buf)
+        )
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: AccionContador, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .mas:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .menos:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .reiniciar:
+            writeInt(&buf, Int32(3))
+        
+        
+        case let .paso(paso):
+            writeInt(&buf, Int32(4))
+            FfiConverterInt64.write(paso, into: &buf)
+            
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAccionContador_lift(_ buf: RustBuffer) throws -> AccionContador {
+    return try FfiConverterTypeAccionContador.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAccionContador_lower(_ value: AccionContador) -> RustBuffer {
+    return FfiConverterTypeAccionContador.lower(value)
+}
+
 
 
 /**
@@ -7637,6 +8162,54 @@ fileprivate struct FfiConverterOptionTypeColorEstilo: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterOptionTypeGiroRuleta: FfiConverterRustBuffer {
+    typealias SwiftType = GiroRuleta?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeGiroRuleta.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeGiroRuleta.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeResumenMini: FfiConverterRustBuffer {
+    typealias SwiftType = ResumenMini?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeResumenMini.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeResumenMini.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterOptionTypePeticionLienzo: FfiConverterRustBuffer {
     typealias SwiftType = PeticionLienzo?
 
@@ -7878,6 +8451,31 @@ fileprivate struct FfiConverterSequenceTypeFichaLeccion: FfiConverterRustBuffer 
         seq.reserveCapacity(Int(len))
         for _ in 0 ..< len {
             seq.append(try FfiConverterTypeFichaLeccion.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeGastoMini: FfiConverterRustBuffer {
+    typealias SwiftType = [GastoMini]
+
+    public static func write(_ value: [GastoMini], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeGastoMini.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [GastoMini] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [GastoMini]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeGastoMini.read(from: &buf))
         }
         return seq
     }
@@ -8238,6 +8836,228 @@ public func formaRapidaTemblorPx() -> Float  {
 })
 }
 /**
+ * El documento con otro titulo.
+ */
+public func miniConTitulo(miniapp: String, documento: String, titulo: String, moneda: String) -> String?  {
+    return try!  FfiConverterOptionString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_func_mini_con_titulo(
+        FfiConverterString.lower(miniapp),
+        FfiConverterString.lower(documento),
+        FfiConverterString.lower(titulo),
+        FfiConverterString.lower(moneda),uniffiCallStatus
+    )
+})
+}
+/**
+ * El documento tras un toque. Las claves que este aparato no entiende se
+ * devuelven tal cual (`Cuenta::otros`).
+ */
+public func miniContadorCambiar(documento: String, accion: AccionContador) -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_func_mini_contador_cambiar(
+        FfiConverterString.lower(documento),
+        FfiConverterTypeAccionContador_lower(accion),uniffiCallStatus
+    )
+})
+}
+public func miniContadorLeer(documento: String) -> CuentaMini  {
+    return try!  FfiConverterTypeCuentaMini_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_func_mini_contador_leer(
+        FfiConverterString.lower(documento),uniffiCallStatus
+    )
+})
+}
+/**
+ * El documento con el que nace una mini-app, o nada si no se conoce esa
+ * palabra. `moneda` es el codigo del aparato (solo para los gastos).
+ */
+public func miniDocumentoNuevo(miniapp: String, titulo: String, moneda: String) -> String?  {
+    return try!  FfiConverterOptionString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_func_mini_documento_nuevo(
+        FfiConverterString.lower(miniapp),
+        FfiConverterString.lower(titulo),
+        FfiConverterString.lower(moneda),uniffiCallStatus
+    )
+})
+}
+/**
+ * Anade un gasto con el importe tal como se tecleo («12,5», «-3»). Un
+ * importe que no se entiende es un error de argumento (no se apunta cero).
+ */
+public func miniGastosAnadir(documento: String, moneda: String, concepto: String, importe: String)throws  -> String  {
+    return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeErrorNucleo_lift) {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_func_mini_gastos_anadir(
+        FfiConverterString.lower(documento),
+        FfiConverterString.lower(moneda),
+        FfiConverterString.lower(concepto),
+        FfiConverterString.lower(importe),uniffiCallStatus
+    )
+})
+}
+public func miniGastosBorrar(documento: String, moneda: String, indice: UInt32) -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_func_mini_gastos_borrar(
+        FfiConverterString.lower(documento),
+        FfiConverterString.lower(moneda),
+        FfiConverterUInt32.lower(indice),uniffiCallStatus
+    )
+})
+}
+/**
+ * Los gastos de un documento. `moneda` solo vale si el documento no dice
+ * la suya.
+ */
+public func miniGastosLeer(documento: String, moneda: String) -> LibroMini  {
+    return try!  FfiConverterTypeLibroMini_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_func_mini_gastos_leer(
+        FfiConverterString.lower(documento),
+        FfiConverterString.lower(moneda),uniffiCallStatus
+    )
+})
+}
+/**
+ * Lo que ensena la burbuja (o la fila del panel de pines).
+ */
+public func miniResumen(miniapp: String, documento: String, moneda: String) -> ResumenMini?  {
+    return try!  FfiConverterOptionTypeResumenMini.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_func_mini_resumen(
+        FfiConverterString.lower(miniapp),
+        FfiConverterString.lower(documento),
+        FfiConverterString.lower(moneda),uniffiCallStatus
+    )
+})
+}
+public func miniRuletaAnadir(documento: String, texto: String) -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_func_mini_ruleta_anadir(
+        FfiConverterString.lower(documento),
+        FfiConverterString.lower(texto),uniffiCallStatus
+    )
+})
+}
+/**
+ * Gira: `azar` de 0 a 1 lo pone Swift. Nada si no hay a quien elegir.
+ */
+public func miniRuletaGirar(documento: String, azar: Double) -> GiroRuleta?  {
+    return try!  FfiConverterOptionTypeGiroRuleta.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_func_mini_ruleta_girar(
+        FfiConverterString.lower(documento),
+        FfiConverterDouble.lower(azar),uniffiCallStatus
+    )
+})
+}
+public func miniRuletaLeer(documento: String) -> [String]  {
+    return try!  FfiConverterSequenceString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_func_mini_ruleta_leer(
+        FfiConverterString.lower(documento),uniffiCallStatus
+    )
+})
+}
+public func miniRuletaQuitar(documento: String, indice: UInt32) -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_func_mini_ruleta_quitar(
+        FfiConverterString.lower(documento),
+        FfiConverterUInt32.lower(indice),uniffiCallStatus
+    )
+})
+}
+/**
+ * Marca o desmarca la tarea `indice` (la casilla del chat y del movil).
+ */
+public func miniTareasAlternar(documento: String, indice: UInt32) -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_func_mini_tareas_alternar(
+        FfiConverterString.lower(documento),
+        FfiConverterUInt32.lower(indice),uniffiCallStatus
+    )
+})
+}
+/**
+ * Anade una tarea al final con la fecha de hoy (`➕ AAAA-MM-DD`).
+ */
+public func miniTareasAnadir(documento: String, texto: String, desfaseMs: Int64) -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_func_mini_tareas_anadir(
+        FfiConverterString.lower(documento),
+        FfiConverterString.lower(texto),
+        FfiConverterInt64.lower(desfaseMs),uniffiCallStatus
+    )
+})
+}
+/**
+ * Las tareas de un documento, con su fecha y los dias que llevan (sin
+ * imagenes: resolverlas es cosa del chat, `Nucleo::tareas`).
+ */
+public func miniTareasLeer(documento: String, desfaseMs: Int64) -> [Tarea]  {
+    return try!  FfiConverterSequenceTypeTarea.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_func_mini_tareas_leer(
+        FfiConverterString.lower(documento),
+        FfiConverterInt64.lower(desfaseMs),uniffiCallStatus
+    )
+})
+}
+/**
+ * Quita la tarea `indice`.
+ */
+public func miniTareasQuitar(documento: String, indice: UInt32) -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_func_mini_tareas_quitar(
+        FfiConverterString.lower(documento),
+        FfiConverterUInt32.lower(indice),uniffiCallStatus
+    )
+})
+}
+/**
+ * Le cambia el texto a una tarea (conserva su fecha de creacion).
+ */
+public func miniTareasRenombrar(documento: String, indice: UInt32, texto: String) -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_func_mini_tareas_renombrar(
+        FfiConverterString.lower(documento),
+        FfiConverterUInt32.lower(indice),
+        FfiConverterString.lower(texto),uniffiCallStatus
+    )
+})
+}
+/**
+ * El titulo del documento (vacio si no lleva).
+ */
+public func miniTitulo(documento: String) -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_func_mini_titulo(
+        FfiConverterString.lower(documento),uniffiCallStatus
+    )
+})
+}
+/**
+ * Las palabras de las mini-apps, en el orden del movil (`mini::TODAS`).
+ */
+public func miniTodas() -> [String]  {
+    return try!  FfiConverterSequenceString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_func_mini_todas(uniffiCallStatus
+    )
+})
+}
+/**
  * `K7Q2M-9XMPA`: el codigo como se lee y se dicta.
  */
 public func codigoLegible(codigo: String) -> String  {
@@ -8334,6 +9154,63 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_pixpin_nucleo_checksum_func_forma_rapida_temblor_px() != 43899) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_func_mini_con_titulo() != 50031) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_func_mini_contador_cambiar() != 44497) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_func_mini_contador_leer() != 413) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_func_mini_documento_nuevo() != 3849) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_func_mini_gastos_anadir() != 19223) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_func_mini_gastos_borrar() != 53396) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_func_mini_gastos_leer() != 9819) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_func_mini_resumen() != 45048) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_func_mini_ruleta_anadir() != 42945) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_func_mini_ruleta_girar() != 17149) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_func_mini_ruleta_leer() != 62480) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_func_mini_ruleta_quitar() != 14896) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_func_mini_tareas_alternar() != 38885) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_func_mini_tareas_anadir() != 19652) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_func_mini_tareas_leer() != 58759) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_func_mini_tareas_quitar() != 8158) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_func_mini_tareas_renombrar() != 10428) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_func_mini_titulo() != 28928) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_func_mini_todas() != 50586) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_pixpin_nucleo_checksum_func_codigo_legible() != 26743) {
@@ -8442,6 +9319,15 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_pixpin_nucleo_checksum_method_nucleo_abrir_lienzo() != 59079) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_nucleo_crear_miniapp() != 56274) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_nucleo_documento_miniapp() != 3968) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_nucleo_guardar_miniapp() != 14664) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_pixpin_nucleo_checksum_method_nucleo_anuncio() != 714) {

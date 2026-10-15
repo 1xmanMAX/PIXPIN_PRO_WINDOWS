@@ -55,6 +55,7 @@ pub mod editor_imagenes;
 pub mod galeria;
 pub mod lecciones;
 pub mod lienzo;
+pub mod miniapps;
 pub mod sincro;
 pub mod tareas;
 pub mod timeline;
@@ -77,6 +78,7 @@ pub use lecciones::{
     PropuestaLeccion,
 };
 pub use lienzo::{CajaLienzo, ImagenDelLienzo, Lienzo, LienzoPlano};
+pub use miniapps::{AccionContador, CuentaMini, GastoMini, GiroRuleta, LibroMini, ResumenMini};
 pub use sincro::{AnuncioBonjour, Atendido, Escucha, ParTxt, ResumenSincro};
 pub use tareas::{ListaTareas, Tarea};
 pub use timeline::{DiaTimeline, MomentoTimeline, PaginaDias, PaginaMomentos};
