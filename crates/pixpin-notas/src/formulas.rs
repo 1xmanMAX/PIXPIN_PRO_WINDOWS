@@ -32,6 +32,12 @@ pub enum Pieza {
     Raiz { dentro: Box<Pieza>, indice: Option<Box<Pieza>> },
     /// Entre parentesis que crecen con lo de dentro.
     Agrupado { dentro: Box<Pieza>, abre: String, cierra: String },
+    /// **Una matriz o un sistema** (`\begin{bmatrix}`, `pmatrix`,
+    /// `vmatrix`, `cases`, `aligned`...): filas de celdas y lo que la abre y
+    /// la cierra (`[` `]`, `(` `)`, `|` `|`, `{` sin cierre en un sistema, o
+    /// nada). `izquierda`: las celdas pegadas a la izquierda (sistemas y
+    /// alineados), si no centradas (matrices).
+    Tabla { filas: Vec<Vec<Pieza>>, abre: String, cierra: String, izquierda: bool },
 }
 
 fn texto(t: &str) -> Pieza {
@@ -63,12 +69,35 @@ const SIMBOLOS: &[(&str, &str)] = &[
     ("rightarrow", "→"), ("to", "→"), ("leftarrow", "←"),
     ("leftrightarrow", "↔"), ("Rightarrow", "⇒"), ("Leftarrow", "⇐"),
     ("ldots", "…"), ("cdots", "⋯"), ("perp", "⊥"), ("parallel", "∥"),
+    // Lo que tambien escriben los modelos al pasar una hoja (banco del
+    // 15-oct): sin esto salia con su barra.
+    ("dots", "…"), ("dotsc", "…"), ("dotsb", "⋯"), ("vdots", "⋮"), ("ddots", "⋱"),
+    ("circ", "∘"), ("prime", "′"), ("iff", "⇔"), ("implies", "⇒"), ("impliedby", "⇐"),
+    ("mid", "|"), ("vert", "|"), ("lvert", "|"), ("rvert", "|"), ("Vert", "‖"),
+    ("langle", "⟨"), ("rangle", "⟩"), ("setminus", "∖"), ("ell", "ℓ"), ("hbar", "ℏ"),
+    ("therefore", "∴"), ("because", "∵"), ("triangle", "△"), ("square", "□"),
+    ("simeq", "≃"), ("cong", "≅"), ("ll", "≪"), ("gg", "≫"), ("subseteq", "⊆"),
+    ("supseteq", "⊇"), ("varepsilon", "ε"), ("vartheta", "ϑ"), ("varphi", "φ"),
+    ("varrho", "ϱ"), ("varsigma", "ς"), ("mapsto", "↦"), ("longrightarrow", "⟶"),
+    ("uparrow", "↑"), ("downarrow", "↓"), ("bullet", "•"), ("checkmark", "✓"),
+    ("leqslant", "≤"), ("geqslant", "≥"), ("lceil", "⌈"), ("rceil", "⌉"),
+    ("lfloor", "⌊"), ("rfloor", "⌋"), ("aleph", "ℵ"), ("Re", "ℜ"), ("Im", "ℑ"),
 ];
+
+/// Los mandatos que no se ven (tamaños, estilo): se quitan.
+const MUDOS: &[&str] = &[
+    "left", "right", "displaystyle", "textstyle", "scriptstyle", "limits", "nolimits", "big", "Big", "bigg", "Bigg", "bigl", "bigr",
+    "Bigl", "Bigr", "biggl", "biggr", "middle", "hline", "noindent", "centering", "nonumber", "notag",
+];
+
+/// Las letras de pizarra (`\mathbb{R}`).
+const PIZARRA: &[(char, &str)] = &[('R', "ℝ"), ('N', "ℕ"), ('Z', "ℤ"), ('Q', "ℚ"), ('C', "ℂ"), ('P', "ℙ"), ('E', "𝔼")];
 
 /// Las palabras que van derechas y no en cursiva.
 const FUNCIONES: &[&str] = &[
     "sin", "cos", "tan", "cot", "sec", "csc", "arcsin", "arccos", "arctan", "sinh", "cosh", "tanh", "log", "ln", "exp", "lim", "max", "min",
-    "det", "gcd", "mod",
+    "det", "gcd", "mod", "sen", "tg", "ctg", "cosec", "arcsen", "arctg", "lg", "arg", "sup", "Pr", "dim", "ker", "coth", "arcsinh",
+    "arccosh", "arctanh",
 ];
 
 /// Lo que se escribe de forma corriente y significa un simbolo.
@@ -89,7 +118,18 @@ fn simbolo(p: &str) -> Option<&'static str> {
 
 /// **Lee una formula** a su arbol. Nunca falla: lo raro sale tal cual.
 pub fn leer(formula: &str) -> Pieza {
-    Lector { s: formula.chars().collect(), i: 0 }.expresion(None)
+    let mut l = Lector { s: formula.chars().collect(), i: 0 };
+    let mut partes = vec![l.expresion(None)];
+    // Lo que corta la expresion (una coma, un `)` suelto) se escribe y se
+    // sigue: antes se perdia todo lo de detras («x ∈ ℝ, rang(A) = 3» se
+    // quedaba en «x ∈ ℝ»).
+    while l.i < l.s.len() {
+        let c = l.s[l.i];
+        l.i += 1;
+        partes.push(texto(&if c == ',' || c == ';' { format!("{c} ") } else { c.to_string() }));
+        partes.push(l.expresion(None));
+    }
+    if partes.len() == 1 { partes.pop().unwrap() } else { Pieza::Fila(partes) }
 }
 
 struct Lector {
@@ -239,8 +279,15 @@ impl Lector {
             return Pieza::Raiz { dentro: Box::new(self.argumento()), indice: None };
         }
         if FUNCIONES.contains(&minus.as_str()) {
+            // `sin(3t)` conserva sus parentesis (sin ellos salia «sin3·t»);
+            // `sin x` sigue igual.
+            self.saltar_espacios();
+            if self.en(self.i) == Some('(') {
+                let a = self.agrupado('(');
+                return Pieza::Fila(vec![texto(&minus), a]);
+            }
             let a = self.argumento();
-            return Pieza::Fila(vec![texto(&minus), a]);
+            return Pieza::Fila(vec![texto(&minus), texto(" "), a]);
         }
         if let Some(s) = simbolo(&w) {
             return texto(s);
@@ -310,14 +357,72 @@ impl Lector {
                 }
                 Pieza::Raiz { dentro: Box::new(self.grupo()), indice }
             }
-            "left" | "right" => texto(""),
-            p if FUNCIONES.contains(&p) => texto(p),
+            p if MUDOS.contains(&p) => texto(""),
+            // `\ln x` con su hueco (salia «lnx»); `\sin(x)`, `\sin^2` pegados.
+            p if FUNCIONES.contains(&p) => {
+                let mut k = self.i;
+                while self.en(k) == Some(' ') {
+                    k += 1;
+                }
+                match self.en(k) {
+                    Some('(' | '^' | '_') | None => texto(p),
+                    _ => Pieza::Fila(vec![texto(p), texto(" ")]),
+                }
+            }
             p if simbolo(p).is_some() => texto(simbolo(p).unwrap_or_default()),
+            // Texto derecho, con sus espacios: `\text{si } x > 0`.
+            "text" | "textrm" | "textup" | "mbox" | "textnormal" | "mathrm" | "operatorname" | "textbf" | "mathbf" | "boldsymbol"
+            | "bm" | "mathsf" | "texttt" | "mathtt" => {
+                let crudo = self.grupo_crudo();
+                // Lo de dentro de un `\mathbf{x^2}` es formula: se lee; lo
+                // de un `\text{}` es texto tal cual.
+                if matches!(palabra.as_str(), "mathbf" | "boldsymbol" | "bm") && crudo.contains(['^', '_', '\\']) {
+                    return leer(&crudo);
+                }
+                texto(&crudo)
+            }
+            "textit" | "mathit" | "emph" => Pieza::Texto { texto: self.grupo_crudo(), cursiva: true },
+            "mathbb" | "mathcal" | "mathscr" | "mathfrak" => {
+                let crudo = self.grupo_crudo();
+                let t: String = crudo
+                    .chars()
+                    .map(|c| PIZARRA.iter().find(|(k, _)| *k == c).map_or(c.to_string(), |(_, v)| v.to_string()))
+                    .collect();
+                texto(&t)
+            }
+            // Acentos de vector, media...: la marca encima.
+            "vec" | "overrightarrow" | "hat" | "widehat" | "bar" | "overline" | "dot" | "ddot" | "tilde" | "widetilde" => {
+                let base = self.grupo();
+                let marca = match palabra.as_str() {
+                    "vec" | "overrightarrow" => "→",
+                    "hat" | "widehat" => "^",
+                    "bar" | "overline" => "‾",
+                    "dot" => "˙",
+                    "ddot" => "¨",
+                    _ => "~",
+                };
+                Pieza::ConIndices { base: Box::new(base), arriba: Some(Box::new(texto(marca))), abajo: None }
+            }
+            "quad" => texto("  "),
+            "qquad" => texto("    "),
+            "begin" => self.entorno(),
+            "end" => {
+                let _ = self.grupo_crudo();
+                texto("")
+            }
             "" => {
-                // `\{`, `\,`...: el caracter de detras, tal cual.
-                let c = self.en(self.i).map(|c| c.to_string()).unwrap_or_default();
+                // `\{`, `\%`...: el caracter de detras, tal cual; los
+                // espacios de LaTeX (`\,` `\;` `\:` `\ `), un espacio, y `\!`
+                // nada.
+                let c = self.en(self.i).unwrap_or(' ');
                 self.i += 1;
-                texto(&c)
+                match c {
+                    ',' | ';' | ':' | ' ' => texto(" "),
+                    '!' => texto(""),
+                    // Un `\\` suelto (salto de renglon fuera de un entorno).
+                    '\\' => texto(" "),
+                    c => texto(&c.to_string()),
+                }
             }
             // Ni idea: se enseña con su barra.
             p => texto(&format!("\\{p}")),
@@ -338,6 +443,151 @@ impl Lector {
             texto(&abre.to_string())
         }
     }
+
+    /// Lo de dentro de unas llaves, sin leer (`\text{...}`), o el siguiente
+    /// caracter si no hay llaves.
+    fn grupo_crudo(&mut self) -> String {
+        self.saltar_espacios();
+        match self.en(self.i) {
+            Some('{') => {
+                let mut prof = 0;
+                let desde = self.i + 1;
+                while let Some(c) = self.en(self.i) {
+                    self.i += 1;
+                    match c {
+                        '\\' => self.i += 1,
+                        '{' => prof += 1,
+                        '}' => {
+                            prof -= 1;
+                            if prof == 0 {
+                                return self.s[desde..self.i - 1].iter().collect();
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                self.s[desde.min(self.s.len())..].iter().collect()
+            }
+            Some(c) => {
+                self.i += 1;
+                c.to_string()
+            }
+            None => String::new(),
+        }
+    }
+
+    /// **Un entorno** (`\begin{pmatrix} 1 & 2 \\ 3 & 4 \end{pmatrix}`):
+    /// matrices, sistemas (`cases`) y alineados, a una [`Pieza::Tabla`].
+    /// Uno que no se conoce se lee como matriz sin parentesis: sus celdas
+    /// salen en su sitio y no con las barras de LaTeX.
+    fn entorno(&mut self) -> Pieza {
+        let nombre = self.grupo_crudo();
+        let base = nombre.trim_end_matches('*').to_string();
+        if base == "array" || base == "tabular" {
+            // La descripcion de columnas (`{cc|c}`), que no se ve.
+            let _ = self.grupo_crudo();
+        }
+        // El cuerpo, hasta su `\end{nombre}` (con otros iguales dentro).
+        let abre: Vec<char> = format!("\\begin{{{nombre}}}").chars().collect();
+        let cierra: Vec<char> = format!("\\end{{{nombre}}}").chars().collect();
+        let desde = self.i;
+        let mut prof = 1;
+        let mut fin = self.s.len();
+        let mut k = self.i;
+        while k < self.s.len() {
+            if self.s[k..].starts_with(&abre) {
+                prof += 1;
+                k += abre.len();
+            } else if self.s[k..].starts_with(&cierra) {
+                prof -= 1;
+                if prof == 0 {
+                    fin = k;
+                    break;
+                }
+                k += cierra.len();
+            } else {
+                k += 1;
+            }
+        }
+        let cuerpo: String = self.s[desde..fin].iter().collect();
+        self.i = (fin + cierra.len()).min(self.s.len());
+        let (abre, cierra, izquierda) = match base.as_str() {
+            "pmatrix" | "smallmatrix" => ("(", ")", false),
+            "bmatrix" => ("[", "]", false),
+            "Bmatrix" => ("{", "}", false),
+            "vmatrix" => ("|", "|", false),
+            "Vmatrix" => ("‖", "‖", false),
+            "cases" | "dcases" | "rcases" => ("{", "", true),
+            "matrix" | "array" | "tabular" => ("", "", false),
+            _ => ("", "", true),
+        };
+        let alineado = izquierda && abre.is_empty();
+        let filas: Vec<Vec<Pieza>> = partir_tabla(&cuerpo)
+            .into_iter()
+            .map(|celdas| {
+                if alineado {
+                    // `x &= 2`: el renglon entero, sin las marcas.
+                    vec![leer(&celdas.join(" "))]
+                } else {
+                    celdas.iter().map(|c| leer(c)).collect()
+                }
+            })
+            .collect();
+        Pieza::Tabla { filas, abre: abre.into(), cierra: cierra.into(), izquierda }
+    }
+}
+
+/// El cuerpo de un entorno en filas (`\\`) y celdas (`&`), sin mirar dentro
+/// de las llaves. Sin renglones vacios ni `\hline`.
+fn partir_tabla(cuerpo: &str) -> Vec<Vec<String>> {
+    let c: Vec<char> = cuerpo.chars().collect();
+    let mut filas: Vec<Vec<String>> = Vec::new();
+    let mut fila: Vec<String> = Vec::new();
+    let mut celda = String::new();
+    let mut prof = 0i32;
+    let mut i = 0;
+    while i < c.len() {
+        match c[i] {
+            '\\' if prof == 0 && c.get(i + 1) == Some(&'\\') => {
+                fila.push(std::mem::take(&mut celda));
+                filas.push(std::mem::take(&mut fila));
+                i += 2;
+                // `\\[2pt]`: el hueco extra, que no se ve.
+                if c.get(i) == Some(&'[') {
+                    while i < c.len() && c[i] != ']' {
+                        i += 1;
+                    }
+                    i += 1;
+                }
+                continue;
+            }
+            '\\' => {
+                celda.push('\\');
+                if let Some(&d) = c.get(i + 1) {
+                    celda.push(d);
+                }
+                i += 2;
+                continue;
+            }
+            '{' => prof += 1,
+            '}' => prof -= 1,
+            '&' if prof == 0 => {
+                fila.push(std::mem::take(&mut celda));
+                i += 1;
+                continue;
+            }
+            _ => {}
+        }
+        celda.push(c[i]);
+        i += 1;
+    }
+    fila.push(celda);
+    filas.push(fila);
+    filas
+        .into_iter()
+        .map(|f| f.into_iter().map(|c| c.replace("\\hline", "").trim().to_string()).collect::<Vec<_>>())
+        .filter(|f| f.iter().any(|c| !c.is_empty()))
+        .collect()
 }
 
 fn es_de_factor(c: char) -> bool {
@@ -385,6 +635,10 @@ pub fn plano(p: &Pieza) -> String {
         }
         Pieza::Raiz { dentro, .. } => format!("sqrt({})", plano(dentro)),
         Pieza::Agrupado { dentro, abre, cierra } => format!("{abre}{}{cierra}", plano(dentro)),
+        Pieza::Tabla { filas, abre, cierra, .. } => {
+            let f: Vec<String> = filas.iter().map(|f| f.iter().map(plano).collect::<Vec<_>>().join(", ")).collect();
+            format!("{abre}{}{cierra}", f.join("; "))
+        }
     }
 }
 
@@ -703,5 +957,74 @@ mod pruebas {
         assert!(toques("x^{2").is_empty());
         // Las posiciones van en UTF-16 (una letra de dos unidades delante).
         assert_eq!(toques("𝑥^2"), vec![(2, 3, Toque::Oculto), (3, 4, Toque::Arriba)]);
+    }
+
+    // ---- Lo que faltaba (banco del 15-oct): salia con su barra ----
+
+    /// Ningun mandato a la vista en lo leido.
+    fn sin_barras(s: &str) -> String {
+        let p = plano(&l(s));
+        assert!(!p.contains('\\'), "{s} -> {p}");
+        p
+    }
+
+    /// La ultima pieza de una fila (o ella misma).
+    fn ultima(p: Pieza) -> Pieza {
+        match p {
+            Pieza::Fila(mut v) => v.pop().unwrap(),
+            p => p,
+        }
+    }
+
+    #[test]
+    fn el_texto_y_los_nombres_salen_derechos_y_con_sus_espacios() {
+        assert_eq!(sin_barras(r"\text{si } x > 0").replace(' ', ""), "six>0");
+        assert!(matches!(l(r"\mathrm{d}"), Pieza::Texto { cursiva: false, .. }));
+        assert_eq!(sin_barras(r"\operatorname{rang}(A)"), "rang(A)");
+        assert_eq!(sin_barras(r"\mathbf{v}"), "v");
+        assert_eq!(sin_barras(r"\mathbb{R}"), "ℝ");
+        assert!(sin_barras(r"\int_0^{\infty} e^{-x}\,dx").contains('∞'));
+        assert_eq!(t(&l(r"\ln x")), "lnx");
+        assert!(sin_barras(r"\vec{F} = m\vec{a}").contains('→'));
+        assert!(sin_barras(r"\left( \frac{a}{b} \right)").contains("(a/b)"));
+        assert!(!sin_barras(r"a\,b\;c\quad d").contains(','));
+        // Lo de detras de una coma no se pierde.
+        assert!(sin_barras(r"x \in \mathbb{R}, y = 2").contains("y = 2"));
+    }
+
+    #[test]
+    fn las_matrices_salen_como_tabla_con_sus_corchetes() {
+        let p = ultima(l(r"A = \begin{bmatrix} 2 & -1 & 0 \\ 1 & 3 & 2 \\ 0 & 1 & 4 \end{bmatrix}"));
+        let Pieza::Tabla { filas, abre, cierra, izquierda } = &p else { panic!("{p:?}") };
+        assert_eq!((abre.as_str(), cierra.as_str(), *izquierda), ("[", "]", false));
+        assert_eq!(filas.len(), 3);
+        assert!(filas.iter().all(|f| f.len() == 3));
+        assert_eq!(t(&filas[0][1]), "-1");
+        for (env, a, c) in [("pmatrix", "(", ")"), ("vmatrix", "|", "|"), ("matrix", "", "")] {
+            let Pieza::Tabla { abre, cierra, filas, .. } = l(&format!(r"\begin{{{env}}} a & b \\ c & d \end{{{env}}}")) else { panic!() };
+            assert_eq!((abre.as_str(), cierra.as_str(), filas.len()), (a, c, 2), "{env}");
+        }
+    }
+
+    #[test]
+    fn un_sistema_con_cases_lleva_llave_y_va_a_la_izquierda() {
+        let Pieza::Tabla { filas, abre, cierra, izquierda } = l(r"\begin{cases} 2x + y = 5 \\ x - y = 1 \end{cases}") else { panic!() };
+        assert_eq!((abre.as_str(), cierra.as_str(), izquierda), ("{", "", true));
+        assert_eq!(filas.len(), 2);
+        assert_eq!(t(&filas[1][0]), "x-y=1");
+        // Con condiciones: dos celdas por fila.
+        let Pieza::Tabla { filas, .. } = ultima(l(r"f(x) = \begin{cases} x^2 & \text{si } x < 0 \\ x & \text{si } x \ge 0 \end{cases}")) else {
+            panic!()
+        };
+        assert_eq!(filas[0].len(), 2);
+        // Un alineado: cada renglon entero, sin los `&`.
+        let Pieza::Tabla { filas, abre, .. } = l(r"\begin{aligned} x &= 2 \\ y &= 3 \end{aligned}") else { panic!() };
+        assert!(abre.is_empty() && filas.len() == 2 && filas[0].len() == 1);
+        assert_eq!(t(&filas[0][0]), "x=2");
+    }
+
+    #[test]
+    fn las_funciones_con_parentesis_los_conservan() {
+        assert_eq!(t(&l("2 sin(3t)")), "2sin(3t)");
     }
 }

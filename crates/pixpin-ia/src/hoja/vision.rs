@@ -21,10 +21,14 @@ pub const TOKENS: u32 = 400;
 
 const SISTEMA_LATEX: &str = "Eres un transcriptor de formulas. Recibes el recorte de una formula de una hoja escaneada. \
 Responde SOLO con la formula en LaTeX, sin $ ni explicaciones ni bloques de codigo. \
-Si tiene varios renglones, separalos con \\\\. Si no hay ninguna formula, responde NADA.";
+Si tiene varios renglones, separalos con \\\\. Si no hay ninguna formula, responde NADA. \
+Usa SOLO este LaTeX: \\frac{}{}, \\sqrt{} y \\sqrt[n]{}, ^ y _, \\int, \\sum, \\lim, \\infty, griegas, \\cdot, \\pm, \\le, \\ge, \\neq, \\to, \\sin \\cos \\tan \\ln \\log, \
+\\text{} para palabras, \\begin{bmatrix}...\\end{bmatrix} (o pmatrix, vmatrix) para matrices y \\begin{cases}...\\end{cases} para sistemas con llave. \
+Nada de \\displaystyle, \\left/\\right, \\mathrm, \\operatorname ni otros paquetes. \
+Si delante de la formula hay una etiqueta (a), b), 1.), copiala al principio con \\text{a)}.";
 
 const SISTEMA_TIPO: &str = "Clasificas recortes de una hoja escaneada. Responde SOLO una palabra de esta lista: \
-texto, titulo, tabla, foto, grafica, dibujo. Si es una formula, responde FORMULA: y detras la formula en LaTeX (sin $).";
+texto, titulo, tabla, foto, grafica, dibujo. Si es una formula (tambien un sistema de ecuaciones con su llave, una matriz), responde FORMULA: y detras la formula en LaTeX (sin $; un sistema con \\begin{cases}...\\end{cases}, una matriz con \\begin{bmatrix}...\\end{bmatrix}).";
 
 const SISTEMA_GRAFICA: &str = "Recibes el recorte de una grafica de una hoja. Si es la grafica de una o varias funciones y = f(x), \
 responde SOLO un JSON como {\"funciones\":[\"x^2\"],\"x_desde\":-3,\"x_hasta\":3,\"y_desde\":-1,\"y_hasta\":9} \
@@ -105,10 +109,11 @@ pub fn leer_latex(t: &str) -> Option<Vec<String>> {
         Some((antes, despues)) if antes.split_whitespace().count() >= 2 && !antes.contains('\\') && !antes.contains('=') => despues,
         _ => t,
     };
-    let lineas: Vec<String> = t
-        .split("\\\\")
-        .flat_map(|l| l.split('\n'))
-        .map(|l| l.trim().trim_matches('$').trim().to_string())
+    // Los renglones, sin partir las matrices (`\\` dentro de un entorno es
+    // una fila suya, no un renglon).
+    let lineas: Vec<String> = crate::ecuacion::partir_lineas(t)
+        .into_iter()
+        .map(|l| l.trim_matches('$').trim().to_string())
         .filter(|l| !l.is_empty())
         .collect();
     (!lineas.is_empty()).then_some(lineas)

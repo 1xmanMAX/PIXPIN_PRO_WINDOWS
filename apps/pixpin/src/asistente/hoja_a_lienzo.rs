@@ -157,7 +157,9 @@ pub trait Destino {
 /// Los elementos y las imagenes de una zona hecha, como van al lienzo.
 pub fn documento_de(h: Option<&Hecho>) -> (String, Vec<(u64, pixpin_codec::ImagenRgba)>) {
     match h {
-        Some(h) if !h.elementos.is_empty() => (
+        // Vacio tambien va (como documento sin nada): rehacer con nada es
+        // quitar la zona (`al_lienzo::meter_de_hoja`).
+        Some(h) => (
             pixpin_ia::lienzo::documento(h.elementos.clone()),
             h.imagenes
                 .iter()
@@ -235,6 +237,48 @@ enum Pregunta {
     Grafica,
 }
 
+/// Si el LaTeX de una formula ya dice lo que dice `texto` (otra zona que
+/// la pisa): casi todas sus letras y cifras estan en el. «x - y = 1» dentro
+/// de `\begin{cases} 2x+3y=7 \\ x-y=1 \end{cases}`, si; «a)» no.
+pub(crate) fn ya_lo_dice(latex: &str, texto: &str) -> bool {
+    // Sin los mandatos (`\begin`, `\frac`...), que no son letras del papel.
+    let mut limpio = String::new();
+    // Y sin el nombre del entorno (`{cases}` no son letras del papel).
+    let mut sin_entornos = latex.to_string();
+    for m in ["\\begin{", "\\end{"] {
+        while let Some(i) = sin_entornos.find(m) {
+            let fin = sin_entornos[i..].find('}').map_or(sin_entornos.len(), |j| i + j + 1);
+            sin_entornos.replace_range(i..fin, " ");
+        }
+    }
+    let mut c = sin_entornos.chars().peekable();
+    while let Some(ch) = c.next() {
+        if ch == '\\' {
+            while c.peek().is_some_and(|d| d.is_ascii_alphabetic()) {
+                c.next();
+            }
+        } else {
+            limpio.push(ch);
+        }
+    }
+    let mut hay: HashMap<char, usize> = HashMap::new();
+    for ch in limpio.chars().filter(|c| c.is_alphanumeric()) {
+        *hay.entry(ch.to_ascii_lowercase()).or_default() += 1;
+    }
+    let suyas: Vec<char> = texto.chars().filter(|c| c.is_alphanumeric()).map(|c| c.to_ascii_lowercase()).collect();
+    if suyas.is_empty() {
+        return true;
+    }
+    let mut dentro = 0;
+    for ch in &suyas {
+        if let Some(n) = hay.get_mut(ch).filter(|n| **n > 0) {
+            *n -= 1;
+            dentro += 1;
+        }
+    }
+    dentro as f64 >= suyas.len() as f64 * 0.8
+}
+
 /// Que pregunta (si alguna) lleva una zona.
 fn pregunta(z: &hoja::Zona, o: &Opciones, alto_letra: f64) -> Option<Pregunta> {
     match z.tipo {
@@ -244,6 +288,11 @@ fn pregunta(z: &hoja::Zona, o: &Opciones, alto_letra: f64) -> Option<Pregunta> {
         Tipo::Formula => Some(Pregunta::Latex),
         Tipo::Dudosa => Some(Pregunta::Tipo),
         Tipo::Grafica => Some(Pregunta::Grafica),
+        // Un dibujo de tinta (sin fotografia) puede ser una formula que el
+        // seccionado no supo leer (las llaves de un sistema escaneado): se
+        // pregunta siempre, y el calco queda para cuando de verdad es dibujo
+        // (banco del 15-oct: los sistemas salian como calco negro grueso).
+        Tipo::Dibujo if z.caja.w >= alto_letra * 1.5 || z.caja.h >= alto_letra * 1.5 => Some(Pregunta::Tipo),
         Tipo::Foto | Tipo::Dibujo if z.confianza < o.duda => Some(Pregunta::Tipo),
         _ => None,
     }
@@ -360,11 +409,82 @@ pub fn pasar(
         }
     }
     drop(tx);
+    // **Zonas que se pisan** (banco del 15-oct, hojas escaneadas): el OCR
+    // saca un renglon suelto («x - y = 1») dentro de un sistema que es
+    // otra zona, o un trozo del titulo sale tambien como recorte. Los
+    // textos que pisan una zona que espera al modelo se aplazan hasta su
+    // respuesta: si esa zona sale editable (formula, tabla, grafica) los
+    // lleva dentro y el texto sobra; si sale como imagen o calco y los
+    // textos la cubren, sobra la imagen.
+    let esperan: Vec<usize> = preguntas.iter().map(|(id, _)| *id).collect();
+    let pisa = |a: &Caja, b: &Caja| {
+        let c = a.comun(b);
+        c > 0.0 && c >= 0.4 * a.area().min(b.area())
+    };
+    let aplazadas: Vec<usize> = s
+        .zonas
+        .iter()
+        // (Y las rayas: la de una fraccion leida aparte salia doble, gruesa.)
+        .filter(|z| matches!(z.tipo, Tipo::Parrafo | Tipo::Encabezado | Tipo::Linea) && !esperan.contains(&z.id))
+        .filter(|z| esperan.iter().any(|&e| pisa(&z.caja, &s.zonas[e].caja)))
+        .map(|z| z.id)
+        .collect();
+    // Y las que esperan al modelo pero caen dentro de otra mas grande que
+    // tambien espera (un renglon del sistema leido aparte): se retienen
+    // hasta que conteste la grande.
+    let contenidas: Vec<usize> = esperan
+        .iter()
+        .copied()
+        .filter(|&a| {
+            let ca = &s.zonas[a].caja;
+            esperan.iter().any(|&b| b != a && s.zonas[b].caja.area() > ca.area() && ca.dentro_de(&s.zonas[b].caja) >= 0.6)
+        })
+        .collect();
+    let retenidas: std::cell::RefCell<HashMap<usize, Option<Leido>>> = Default::default();
+    let mut sobran: std::collections::HashSet<usize> = Default::default();
     let mut entregar = |id: usize, leido: Option<Leido>, destino: &mut dyn Destino, hechos: &mut Vec<Option<Hecho>>| {
         let z = &s.zonas[id];
+        if sobran.contains(&id) {
+            n_hechas += 1;
+            progreso(n_hechas, total);
+            return;
+        }
         let h = montaje::hacer(&entrada(id), leido.as_ref(), via_base(z));
+        let latex = match &leido {
+            Some(Leido::Latex(l)) => Some(l.join(" ")),
+            _ => None,
+        };
         if let Some(l) = leido {
             leidos.insert(id, l);
+        }
+        let textos: Vec<usize> = aplazadas
+            .iter()
+            .chain(&contenidas)
+            .copied()
+            .filter(|&t| t != id && hechos[t].is_none() && pisa(&s.zonas[t].caja, &z.caja))
+            .collect();
+        if !textos.is_empty() {
+            let como_imagen = h.via == Via::Imagen || h.nota.contains("imagen") || h.nota.contains("calc");
+            let editable = !como_imagen && matches!(h.tipo, Tipo::Formula | Tipo::Tabla | Tipo::Grafica);
+            let cubierto: f64 = textos.iter().map(|&t| s.zonas[t].caja.comun(&z.caja)).sum::<f64>() / z.caja.area().max(1.0);
+            if editable {
+                // Solo sobra lo que la formula ya dice: «a)» delante de un
+                // sistema no esta en su LaTeX y se queda.
+                for t in textos {
+                    let suyo = match retenidas.borrow().get(&t) {
+                        Some(Some(Leido::Latex(l))) => l.join(" "),
+                        _ => s.zonas[t].renglones.iter().map(|r| r.texto.as_str()).collect::<Vec<_>>().join(" "),
+                    };
+                    if latex.as_deref().is_none_or(|l| ya_lo_dice(l, &suyo)) {
+                        sobran.insert(t);
+                    }
+                }
+            } else if como_imagen && cubierto >= 0.5 {
+                tracing::info!(zona = id, "hoja al lienzo: imagen tapada por texto, sobra");
+                n_hechas += 1;
+                progreso(n_hechas, total);
+                return;
+            }
         }
         if let Err(e) = destino.entregar(Some(&h), en(id, false, false)) {
             error_entrega.get_or_insert(e);
@@ -374,9 +494,9 @@ pub fn pasar(
         progreso(n_hechas, total);
         hechos[id] = Some(h);
     };
-    // 2. Lo que no necesita modelo, ya, en orden de lectura.
-    let esperan: Vec<usize> = preguntas.iter().map(|(id, _)| *id).collect();
-    for z in s.zonas.iter().filter(|z| !esperan.contains(&z.id)) {
+    // 2. Lo que no necesita modelo, ya, en orden de lectura (menos los
+    //    textos aplazados).
+    for z in s.zonas.iter().filter(|z| !esperan.contains(&z.id) && !aplazadas.contains(&z.id)) {
         if parar.load(Ordering::Relaxed) {
             break;
         }
@@ -398,7 +518,11 @@ pub fn pasar(
                         None
                     }
                 };
-                entregar(id, leido, destino, &mut hechos);
+                if contenidas.contains(&id) {
+                    retenidas.borrow_mut().insert(id, leido);
+                } else {
+                    entregar(id, leido, destino, &mut hechos);
+                }
             }
             Err(RecvTimeoutError::Timeout) if Instant::now() < plazo => {}
             Err(_) => break,
@@ -410,6 +534,22 @@ pub fn pasar(
             break;
         }
         fallos.push(format!("zona {id}: el modelo no contesto a tiempo"));
+        entregar(id, None, destino, &mut hechos);
+    }
+    // Las retenidas (ya contesto la que las contiene) y los textos
+    // aplazados que no quedaron dentro de otra zona.
+    let mut quedan: Vec<(usize, Option<Leido>)> = retenidas.borrow_mut().drain().collect();
+    quedan.sort_by_key(|(id, _)| *id);
+    for (id, leido) in quedan {
+        if parar.load(Ordering::Relaxed) {
+            break;
+        }
+        entregar(id, leido, destino, &mut hechos);
+    }
+    for &id in &aplazadas {
+        if parar.load(Ordering::Relaxed) {
+            break;
+        }
         entregar(id, None, destino, &mut hechos);
     }
     if parar.load(Ordering::Relaxed) {
@@ -437,7 +577,14 @@ pub fn pasar(
                     let nuestro = imagen::recortar(&pintado.0, pintado.1, pintado.2, &caja);
                     let v = comparar::parecido((&original.0, original.1, original.2), (&nuestro.0, nuestro.1, nuestro.2));
                     parecidos.push((h.zona, v));
-                    if v >= o.rehacer_bajo || matches!(h.tipo, Tipo::Linea | Tipo::Foto) || h.via == Via::Imagen {
+                    // Una formula que la nube leyo y se compuso es mas
+                    // ancha o mas alta que la del papel (otra letra, la llave
+                    // dibujada) y el parecido baja sin que este mal: solo se
+                    // cambia por la imagen si casi no se parece (banco del
+                    // 15-oct: el sistema b) volvia a salir como recorte).
+                    let leida = h.tipo == Tipo::Formula && matches!(leidos.get(&h.zona), Some(Leido::Latex(_)));
+                    let umbral = if leida { o.rehacer_bajo * 0.5 } else { o.rehacer_bajo };
+                    if v >= umbral || matches!(h.tipo, Tipo::Linea | Tipo::Foto) || h.via == Via::Imagen {
                         continue;
                     }
                     let otra = match h.tipo {
@@ -455,6 +602,28 @@ pub fn pasar(
             Err(e) => tracing::warn!(%e, "hoja al lienzo: no se pudo pintar para comprobar"),
         }
     }
+    // 5. Un recorte que tapa un texto que dice lo mismo (el renglon leido
+    //    dos veces: banco del 15-oct, «Indica para que valores...» salia
+    //    como imagen y como texto encima): se quita el recorte.
+    let es_texto = |h: &Hecho| matches!(h.tipo, Tipo::Parrafo | Tipo::Encabezado) && h.via != Via::Imagen;
+    let sobra: Vec<usize> = hechos
+        .iter()
+        .filter(|h| h.via == Via::Imagen || h.nota.contains("imagen"))
+        .filter(|h| !matches!(h.tipo, Tipo::Foto))
+        .filter(|h| {
+            let c = &s.zonas[h.zona].caja;
+            let tapado: f64 = hechos.iter().filter(|o| o.zona != h.zona && es_texto(o)).map(|o| s.zonas[o.zona].caja.comun(c)).sum();
+            tapado >= 0.3 * c.area().max(1.0)
+        })
+        .map(|h| h.zona)
+        .collect();
+    for id in &sobra {
+        let vacio = Hecho { zona: *id, tipo: Tipo::Dudosa, via: Via::Imagen, elementos: Vec::new(), imagenes: Vec::new(), nota: "tapado por un texto: quitado".into() };
+        if destino.entregar(Some(&vacio), en(*id, true, false)).is_ok() {
+            tracing::info!(zona = id, "hoja al lienzo: recorte tapado por texto, quitado");
+        }
+    }
+    hechos.retain(|h| !sobra.contains(&h.zona));
     let ms_comprobar = tc.elapsed().as_millis();
     destino.entregar(None, en(0, false, true))?;
     destino.esperar(parar)?;

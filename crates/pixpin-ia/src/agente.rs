@@ -439,6 +439,11 @@ fn turno_dentro(
         return Ok(f);
     }
     let mut lista = herramientas_base.to_vec();
+    if !local {
+        // Lo que la nube sabe de mas (tabla, paralelogramo, que herramienta
+        // va con cada pedido): el local, con su catalogo de siempre.
+        crate::herramientas::para_la_nube(&mut lista);
+    }
     if local {
         lista.retain(|h| h.nombre != crate::hoja::NOMBRE);
     }

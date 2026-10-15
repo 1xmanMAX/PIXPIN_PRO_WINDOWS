@@ -484,10 +484,14 @@ pub fn piezas(d: &Diagrama) -> Vec<pixpin_motor2d::Elemento> {
     if let Some(p) = plantilla(&d.tipo) {
         let _ = (p.hacer)(&d.valores, Some(&mut pz));
     }
+    // Los rotulos de las fuerzas, ya con todo dibujado: que no pisen el
+    // bloque, el plano ni otra flecha (banco del 15-oct).
+    pz.colocar_rotulos();
     if !d.titulo.is_empty() {
-        // El titulo arriba de todo: lo demas, un poco mas abajo.
+        // El titulo arriba de todo: lo demas, un poco mas abajo. Con μ, θ,
+        // x² y no «mu», «theta», «x^2».
         pz.mover_desde(0, 0.0, 36.0);
-        pz.texto(&d.titulo, 400.0, 0.0, 24.0, pizarra::TINTA, Alinear::Centro);
+        pz.texto(&pizarra::a_pizarra(&d.titulo, false), 400.0, 0.0, 24.0, pizarra::TINTA, Alinear::Centro);
     }
     pz.el
 }
@@ -923,14 +927,24 @@ fn atwood(v: &Valores, pz: Option<&mut Pizarra>) -> Result<Vec<String>, String> 
     let mayor = m1.max(m2);
     for (k, (m, lado)) in [(m1, -1.0), (m2, 1.0)].into_iter().enumerate() {
         let x = c.0 + lado * r;
-        let lado_caja = 40.0 + 30.0 * (m / mayor);
+        let lado_caja = 56.0 + 30.0 * (m / mayor);
         let y = 300.0 + if (m > m1.min(m2)) && m1 != m2 { 60.0 } else { 0.0 };
         pz.linea(&[(x, c.1), (x, y)], pizarra::TINTA, 2.0);
         pz.rectangulo([x - lado_caja / 2.0, y, lado_caja, lado_caja], pizarra::TINTA, Some(pixpin_motor2d::ColorRgba::opaco(0.93, 0.93, 0.95)), 2.0);
-        pz.texto(&format!("m{} = {} kg", k + 1, numero(m)), x, y + lado_caja / 2.0 - 10.0, 14.0, pizarra::TINTA, Alinear::Centro);
-        let abajo = (x + lado * (lado_caja / 2.0 + 18.0), y + lado_caja / 2.0);
-        pz.vector(abajo, 60.0 + 40.0 * m / mayor, 270.0, &format!("P{} = {} N", k + 1, numero(m * g)), pizarra::ROJO, false);
-        pz.vector((abajo.0, y), 60.0 + 40.0 * tension / (mayor * g), 90.0, "T", pizarra::AZUL, false);
+        // El nombre de la masa, que quepa en su caja (salia «m1 = 3 kg»
+        // por los lados): en dos renglones y con la letra que entre.
+        let (nombre, valor) = (format!("m{}", k + 1), format!("{} kg", numero(m)));
+        let mut tam = 14.0f32;
+        while tam > 8.0 && pizarra::medir(&valor, tam).0 as f64 > lado_caja - 10.0 {
+            tam -= 1.0;
+        }
+        pz.texto(&nombre, x, y + lado_caja / 2.0 - tam as f64 * 1.3, tam, pizarra::TINTA, Alinear::Centro);
+        pz.texto(&valor, x, y + lado_caja / 2.0, tam, pizarra::TINTA, Alinear::Centro);
+        // Las fuerzas, saliendo del bloque: el peso desde abajo y la tension
+        // desde arriba, por la cuerda (antes iban sueltas al lado).
+        let _ = lado;
+        pz.vector((x, y + lado_caja), 60.0 + 40.0 * m / mayor, 270.0, &format!("P{} = {} N", k + 1, numero(m * g)), pizarra::ROJO, false);
+        pz.vector((x, y), 60.0 + 40.0 * tension / (mayor * g), 90.0, "T", pizarra::AZUL, false);
     }
     columna(pz, 470.0, 140.0, &resultados);
     Ok(resultados)

@@ -104,6 +104,7 @@ pub mod relevo;
 pub mod pensar;
 pub mod problema;
 pub mod rapido;
+pub mod rotulos;
 pub mod seleccion;
 pub mod servidor;
 pub mod tabla_escaneada;

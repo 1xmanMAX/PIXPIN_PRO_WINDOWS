@@ -91,8 +91,15 @@ impl Entrada<'_> {
     pub fn destino(&self) -> Caja {
         self.mapa.caja(&self.zona.caja)
     }
+    /// **La semilla de ESTA zona**: la de la hoja mezclada con el numero de
+    /// zona. Con la misma semilla en todas, los ids (`ia-<semilla>-<n>`) se
+    /// repetian de una zona a otra y rehacer una (que borra por id) se
+    /// llevaba piezas de las demas (banco del 15-oct, cuadratica 32/65).
+    pub fn semilla_de_zona(&self) -> u64 {
+        id_de_imagen(self.semilla, 1_000_000 + self.zona.id)
+    }
     fn fabrica(&self) -> Fabrica {
-        let mut f = Fabrica::nueva((0.0, 0.0), self.semilla);
+        let mut f = Fabrica::nueva((0.0, 0.0), self.semilla_de_zona());
         f.grupo = Some(f.nombre_de_grupo(&format!("hoja-{}", self.zona.id)));
         f
     }
@@ -114,8 +121,11 @@ fn negro() -> ColorRgba {
 pub fn hacer(e: &Entrada, leido: Option<&Leido>, via: Via) -> Hecho {
     let z = e.zona;
     let tipo = match (z.tipo, leido) {
-        (Tipo::Dudosa, Some(Leido::Tipo(t))) => *t,
-        (Tipo::Dudosa, Some(Leido::Latex(_))) => Tipo::Formula,
+        // Lo que dijo el modelo de una dudosa, o de un dibujo o foto por los
+        // que pregunto la app (antes la respuesta de estos se perdia y un
+        // sistema de ecuaciones escaneado salia calcado).
+        (Tipo::Dudosa | Tipo::Dibujo | Tipo::Foto, Some(Leido::Tipo(t))) => *t,
+        (Tipo::Dudosa | Tipo::Dibujo | Tipo::Foto, Some(Leido::Latex(_))) => Tipo::Formula,
         (t, _) => t,
     };
     let mut imagenes = Vec::new();
@@ -277,6 +287,13 @@ fn texto(e: &Entrada, titulo: bool) -> Vec<Value> {
     let esc = e.mapa.escala;
     let tam = tam_de_letra(&z.renglones, esc, familia, negrita);
     let k = pixpin_motor2d::texto::interlineado_de(familia).unwrap_or(pixpin_motor2d::texto::INTERLINEADO) as f64;
+    // Que el parrafo no pase del alto que tenia en el papel: con la letra
+    // elegida por el ancho, una cursiva estrecha salia mas alta y se montaba
+    // en el parrafo de abajo y en la raya del recuadro (banco del 15-oct,
+    // amor-a-sofia).
+    let alto_papel = e.destino().h;
+    let n = z.renglones.len() as f64;
+    let tam = if n >= 2.0 && alto_papel > 0.0 { tam.min(alto_papel * 1.04 / (n * k)).max(tam * 0.7) } else { tam };
     let paso = {
         let v: Vec<f64> = z.renglones.windows(2).map(|w| (w[1].caja.cy() - w[0].caja.cy()) * esc).filter(|d| *d > 0.0).collect();
         mediana(v)
@@ -451,8 +468,11 @@ fn foto_de_caja(e: &Entrada, caja: &Caja, k: usize, grupo: Option<Value>) -> Opt
     let lado = (d.w.max(d.h) * 2.0).clamp(64.0, LADO_FOTO);
     let (rgba, w, h) = reducir(&rgba, w, h, lado as u32);
     let id = id_de_imagen(e.semilla, e.zona.id * 1000 + k);
+    // Su propio id, que el de una fabrica nueva (`ia-<zona>-2`) es el mismo
+    // que el de la primera pieza de la tabla que lleva este icono.
     let mut f = e.fabrica();
     let mut v = f.base("image", [d.x, d.y, d.w, d.h], "transparent", None);
+    v["id"] = json!(format!("ia-{:x}-foto-{k}", e.semilla_de_zona()));
     v["fileId"] = json!(pixpin_motor2d::enlace::id_de_texto(id));
     v["status"] = json!("saved");
     v["scale"] = json!([1.0, 1.0]);
@@ -536,7 +556,7 @@ fn calco(e: &Entrada) -> Vec<Value> {
     }
     let p = crate::calcar::Parametros { detalle: crate::calcar::Detalle::Medio, ..Default::default() };
     let c = crate::calcar::calcar(&rgba, w, h, &p);
-    calco_en_caja(&c, e.destino(), e.mapa.escala, e.semilla)
+    calco_en_caja(&c, e.destino(), e.mapa.escala, e.semilla_de_zona())
 }
 
 /// **El enganche con el calcado**: sus trazos vienen en el lienzo de 800x600

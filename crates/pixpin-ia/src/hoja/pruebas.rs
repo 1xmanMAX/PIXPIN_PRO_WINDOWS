@@ -340,6 +340,34 @@ fn cada_zona_sale_en_su_sitio_y_el_lienzo_la_lee() {
     }
 }
 
+/// Banco del 15-oct: con la misma semilla en todas las zonas los ids se
+/// repetian y rehacer una se llevaba piezas de otras. Ahora ninguno se
+/// repite en toda la hoja.
+#[test]
+fn los_ids_no_se_repiten_entre_zonas() {
+    let mut p = Papel::nuevo(1000, 1400);
+    p.renglon("Informe", 380.0, 80.0, 44.0);
+    let y = p.parrafo(100.0, 200.0, 800.0, 4, 20.0);
+    tabla(&mut p, 150.0, y + 40.0, 4, true);
+    p.foto(250.0, y + 260.0, 400.0, 300.0);
+    let s = p.seccionar();
+    assert!(s.zonas.len() >= 3);
+    let o = Opciones::default();
+    let mut vistos = std::collections::HashSet::new();
+    for z in &s.zonas {
+        let h = montaje::hacer(&entrada(z, (&p.rgba, p.w, p.h), &o), None, Via::Editable);
+        for v in &h.elementos {
+            let id = v["id"].as_str().unwrap().to_string();
+            assert!(vistos.insert(id.clone()), "{id} repetido ({:?})", z.tipo);
+        }
+    }
+    // Y la misma zona rehecha da los mismos ids (es la misma pieza).
+    let z = &s.zonas[0];
+    let a = montaje::hacer(&entrada(z, (&p.rgba, p.w, p.h), &o), None, Via::Editable);
+    let b = montaje::hacer(&entrada(z, (&p.rgba, p.w, p.h), &o), None, Via::Fiel);
+    assert_eq!(a.elementos[0]["id"], b.elementos[0]["id"]);
+}
+
 #[test]
 fn una_formula_leida_sale_compuesta_y_sin_leer_como_imagen() {
     let mut p = Papel::nuevo(800, 400);
@@ -381,6 +409,14 @@ fn una_dudosa_toma_el_tipo_que_dice_el_modelo() {
     let e = entrada(&z, (&p.rgba, p.w, p.h), &o);
     assert_eq!(montaje::hacer(&e, Some(&Leido::Tipo(Tipo::Dibujo)), Via::Editable).tipo, Tipo::Dibujo);
     assert_eq!(montaje::hacer(&e, None, Via::Editable).imagenes.len(), 1, "sin modelo: imagen");
+    // Un dibujo por el que la app pregunto y que es una formula (el sistema
+    // con llave escaneado, banco del 15-oct): formula, no calco.
+    let mut d = z.clone();
+    d.tipo = Tipo::Dibujo;
+    let e = entrada(&d, (&p.rgba, p.w, p.h), &o);
+    let latex = Leido::Latex(vec![r"\begin{cases} x + y = 1 \\ x - y = 0 \end{cases}".into()]);
+    assert_eq!(montaje::hacer(&e, Some(&latex), Via::Editable).tipo, Tipo::Formula);
+    assert_eq!(montaje::hacer(&e, Some(&Leido::Tipo(Tipo::Dibujo)), Via::Editable).tipo, Tipo::Dibujo);
 }
 
 #[test]

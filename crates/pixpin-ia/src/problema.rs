@@ -255,7 +255,8 @@ pub fn piezas(p: &Problema) -> (Vec<pixpin_motor2d::Elemento>, Option<[f64; 4]>)
     let con_figura = !p.figura.is_empty();
     let ancho_texto = if con_figura { ancho - FIGURA.0 - 24.0 } else { ancho };
     let y_figura = y;
-    y += pz.parrafo(&p.enunciado, x0, y, ancho_texto, 17.0, pizarra::TINTA) + 12.0;
+    // Una ecuacion que va compuesta debajo no se repite cruda en el texto.
+    y += pz.parrafo(&sin_las_ecuaciones(&p.enunciado, &p.ecuaciones), x0, y, ancho_texto, 17.0, pizarra::TINTA) + 12.0;
     for e in &p.ecuaciones {
         let (_, h) = pz.ecuacion(e, x0 + 24.0, y, 24.0, pizarra::TINTA);
         y += h as f64 + 12.0;
@@ -264,24 +265,53 @@ pub fn piezas(p: &Problema) -> (Vec<pixpin_motor2d::Elemento>, Option<[f64; 4]>)
         y += 4.0;
         let (_, h) = pz.texto("Datos", x0, y, 18.0, pizarra::AZUL, Alinear::Izquierda);
         y += h as f64 + 6.0;
-        for d in &p.datos {
+        for d in p.datos.iter().filter(|d| !ya_esta(d, &p.ecuaciones)) {
             pz.texto("•", x0 + 6.0, y, 16.0, pizarra::GRIS, Alinear::Izquierda);
             // El simbolo compuesto (v_0 con su subindice) y el valor con su
-            // unidad como texto: «20 m/s» no es una fraccion.
+            // unidad como texto: «20 m/s» no es una fraccion. Salvo que el
+            // valor sea formula de verdad (una matriz, una raiz...).
             let h = match d.split_once('=') {
                 Some((simbolo, valor)) if !simbolo.trim().is_empty() && simbolo.trim().chars().count() <= 12 => {
                     let (w, h) = pz.ecuacion(simbolo.trim(), x0 + 24.0, y, 18.0, pizarra::TINTA);
-                    let (_, h2) = pz.texto(&format!("= {}", a_texto(valor)), x0 + 30.0 + w as f64, y + 1.0, 17.0, pizarra::TINTA, Alinear::Izquierda);
+                    let x = x0 + 30.0 + w as f64;
+                    let h2 = match valor_como_formula(valor) {
+                        Some(f) => {
+                            let (we, _) = pz.texto("=", x, y + 1.0, 17.0, pizarra::TINTA, Alinear::Izquierda);
+                            pz.ecuacion(&f, x + we as f64 + 6.0, y, 18.0, pizarra::TINTA).1
+                        }
+                        None => pz.texto(&format!("= {}", a_texto(valor)), x, y + 1.0, 17.0, pizarra::TINTA, Alinear::Izquierda).1,
+                    };
                     h.max(h2)
                 }
                 _ => pz.texto(&a_texto(d), x0 + 24.0, y, 17.0, pizarra::TINTA, Alinear::Izquierda).1,
             };
             y += (h as f64).max(20.0) + 6.0;
         }
-        if !p.incognitas.is_empty() {
+        if !p.incognitas.is_empty() && !p.incognitas.iter().any(|i| es_formula(i)) {
+            // Solo palabras: un parrafo, que puede ser largo.
             let (w, _) = pz.texto("Incógnita:", x0, y, 16.0, pizarra::AZUL, Alinear::Izquierda);
-            let (_, h) = pz.texto(&p.incognitas.join(", "), x0 + w as f64 + 10.0, y, 17.0, pizarra::TINTA, Alinear::Izquierda);
-            y += (h as f64).max(20.0) + 6.0;
+            let texto: Vec<String> = p.incognitas.iter().map(|i| a_texto(i)).collect();
+            let alto = pz.parrafo(&texto.join(", "), x0 + w as f64 + 10.0, y, ancho - w as f64 - 10.0, 17.0, pizarra::TINTA);
+            y += alto.max(20.0) + 6.0;
+        } else if !p.incognitas.is_empty() {
+            // Compuestas (A⁻¹ con su exponente), no el LaTeX crudo.
+            let (w, _) = pz.texto("Incógnita:", x0, y, 16.0, pizarra::AZUL, Alinear::Izquierda);
+            let mut x = x0 + w as f64 + 10.0;
+            let mut alto: f64 = 20.0;
+            for (k, inc) in p.incognitas.iter().enumerate() {
+                if k > 0 {
+                    let (wc, _) = pz.texto(",", x, y + 1.0, 17.0, pizarra::TINTA, Alinear::Izquierda);
+                    x += wc as f64 + 8.0;
+                }
+                let (wi, hi) = if es_formula(inc) {
+                    pz.ecuacion(inc, x, y, 18.0, pizarra::TINTA)
+                } else {
+                    pz.texto(&a_texto(inc), x, y + 1.0, 17.0, pizarra::TINTA, Alinear::Izquierda)
+                };
+                x += wi as f64;
+                alto = alto.max(hi as f64);
+            }
+            y += alto + 6.0;
         }
     }
     let caja_figura = con_figura.then(|| {
@@ -320,6 +350,120 @@ pub fn piezas(p: &Problema) -> (Vec<pixpin_motor2d::Elemento>, Option<[f64; 4]>)
     y += 10.0;
     pz.rectangulo([x0, y_caja, ancho, y - y_caja], pizarra::AZUL, None, 2.0);
     (pz.el, caja_figura)
+}
+
+/// Si un texto es formula (lleva LaTeX o exponentes/indices) y se compone.
+pub fn es_formula(s: &str) -> bool {
+    s.contains('\\') || s.contains('^') || s.contains('_')
+}
+
+/// **El valor de un dato, si es formula de verdad**: una matriz escrita como
+/// lista (`[[2,-1,0],[1,3,2]]`, como la manda el modelo) pasa a `bmatrix`, y
+/// lo que lleva fracciones, raices o entornos se compone. Lo demas (`20 m/s`)
+/// sigue como texto.
+pub fn valor_como_formula(valor: &str) -> Option<String> {
+    let v = valor.trim().trim_matches('$').trim();
+    if let Some(m) = matriz_de_lista(v) {
+        return Some(m);
+    }
+    ["\\frac", "\\sqrt", "\\begin", "\\int", "\\sum", "\\lim", "\\vec"].iter().any(|k| v.contains(k)).then(|| v.to_string())
+}
+
+/// `[[2,-1,0],[1,3,2]]` → `\begin{bmatrix} 2 & -1 & 0 \\ 1 & 3 & 2 \end{bmatrix}`.
+pub fn matriz_de_lista(s: &str) -> Option<String> {
+    let t = s.trim();
+    if !t.starts_with("[[") {
+        return None;
+    }
+    let v: Value = serde_json::from_str(t).ok().or_else(|| {
+        // Con letras sueltas (`[[a, b], [c, d]]`): cada celda entre comillas.
+        let mut out = String::new();
+        let mut celda = String::new();
+        for c in t.chars() {
+            if matches!(c, '[' | ']' | ',') {
+                if !celda.trim().is_empty() {
+                    out.push_str(&format!("\"{}\"", celda.trim().replace('"', "")));
+                }
+                celda.clear();
+                out.push(c);
+            } else {
+                celda.push(c);
+            }
+        }
+        serde_json::from_str(&out).ok()
+    })?;
+    let filas: Vec<Vec<String>> = v
+        .as_array()?
+        .iter()
+        .map(|f| {
+            f.as_array().map(|c| {
+                c.iter()
+                    .map(|x| match x {
+                        Value::Number(n) => n.as_f64().map_or_else(|| n.to_string(), numero),
+                        Value::String(s) => s.trim().to_string(),
+                        otro => otro.to_string(),
+                    })
+                    .collect()
+            })
+        })
+        .collect::<Option<_>>()?;
+    if filas.is_empty() || filas.iter().any(Vec::is_empty) {
+        return None;
+    }
+    let cuerpo: Vec<String> = filas.iter().map(|f| f.join(" & ")).collect();
+    Some(format!("\\begin{{bmatrix}} {} \\end{{bmatrix}}", cuerpo.join(" \\\\ ")))
+}
+
+/// Una formula «normalizada» para comparar: sin espacios, `$` ni marcas que
+/// no cambian lo que dice.
+fn normal(s: &str) -> String {
+    s.replace("\\left", "").replace("\\right", "").replace("\\,", "").replace("\\displaystyle", "").chars().filter(|c| !c.is_whitespace() && *c != '$').collect()
+}
+
+/// Si un dato es una de las ecuaciones (el modelo a veces la repite).
+fn ya_esta(d: &str, ecuaciones: &[String]) -> bool {
+    let n = normal(d);
+    !n.is_empty() && ecuaciones.iter().any(|e| normal(e) == n)
+}
+
+/// **El enunciado sin las ecuaciones que van compuestas debajo**: el modelo
+/// las escribia en el texto (crudas, `$x^2 + 3x = 0$`) y otra vez como
+/// ecuacion, y salian dos veces. Se quita cada trozo entre `$` que sea una de
+/// ellas, y cada una que aparezca tal cual; lo demas no se toca.
+pub fn sin_las_ecuaciones(enunciado: &str, ecuaciones: &[String]) -> String {
+    if ecuaciones.is_empty() {
+        return enunciado.to_string();
+    }
+    let normales: Vec<String> = ecuaciones.iter().map(|e| normal(e)).filter(|e| e.chars().count() >= 3).collect();
+    // Los trozos entre `$...$`.
+    let mut t = String::new();
+    let mut resto = enunciado;
+    while let Some(a) = resto.find('$') {
+        let Some(b) = resto[a + 1..].find('$').map(|b| a + 1 + b) else { break };
+        let dentro = &resto[a + 1..b];
+        t.push_str(&resto[..a]);
+        let n = normal(dentro);
+        if !normales.iter().any(|e| *e == n) {
+            t.push_str(&resto[a..=b]);
+        }
+        resto = &resto[b + 1..];
+    }
+    t.push_str(resto);
+    // Y escritas tal cual.
+    for e in ecuaciones {
+        let e = e.trim();
+        if e.chars().count() >= 5 && t.contains(e) {
+            t = t.replacen(e, "", 1);
+        }
+    }
+    // Los huecos que quedan: espacios dobles, renglones vacios, « :» suelto.
+    let renglones: Vec<String> = t
+        .lines()
+        .map(|l| l.split_whitespace().collect::<Vec<_>>().join(" ").replace(" .", ".").replace(" ,", ","))
+        .filter(|l| !l.is_empty())
+        .collect();
+    let limpio = renglones.join("\n");
+    if limpio.chars().filter(|c| c.is_alphabetic()).count() < 4 { enunciado.to_string() } else { limpio }
 }
 
 /// Un trozo de LaTeX de bolsillo como texto llano: `20\ m/s^2` → `20 m/s²`,
@@ -563,6 +707,59 @@ mod pruebas {
             .collect();
         assert!(textos.iter().any(|t| t == "= 20 m/s"), "{textos:?}");
         assert!(textos.iter().any(|t| t == "desde el suelo"), "{textos:?}");
+    }
+
+    fn textos_de(els: &[pixpin_motor2d::Elemento]) -> Vec<String> {
+        els.iter()
+            .filter_map(|e| match &e.figura {
+                F::Texto { texto, .. } => Some(texto.clone()),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// Banco del 15-oct (hoja de la matriz): la matriz salia como lista
+    /// «[[2,-1,0],...]» y las incognitas en LaTeX crudo «A^{-1}».
+    #[test]
+    fn la_matriz_y_las_incognitas_salen_compuestas() {
+        assert_eq!(
+            matriz_de_lista("[[2, -1, 0], [1, 3, 2]]").unwrap(),
+            r"\begin{bmatrix} 2 & -1 & 0 \\ 1 & 3 & 2 \end{bmatrix}"
+        );
+        assert!(matriz_de_lista("[[a, b], [c, d]]").unwrap().contains("a & b"));
+        assert!(matriz_de_lista("[1, 2]").is_none());
+        assert!(valor_como_formula("20 m/s").is_none());
+        let (p, _) = validar_(json!({
+            "enunciado": "Dada la matriz A, calcula su determinante y su inversa.",
+            "datos": ["A = [[2, -1, 0], [1, 3, 2], [0, 1, 4]]"],
+            "incognitas": ["\\det A", "A^{-1}", "A \\cdot A^{-1} = I"]
+        }))
+        .unwrap();
+        let (els, _) = piezas(&p);
+        let t = textos_de(&els);
+        assert!(t.iter().all(|x| !x.contains('[') && !x.contains('\\') && !x.contains('^') && !x.contains('{')), "{t:?}");
+        // Las nueve cifras, sueltas en su celda.
+        assert!(t.iter().filter(|x| ["2", "-1", "0", "1", "3", "4"].contains(&x.trim())).count() >= 9, "{t:?}");
+    }
+
+    /// Banco del 15-oct: la integral se quedaba en «a» (lo de detras del
+    /// «a)» se perdia) y la ecuacion salia en el texto y compuesta.
+    #[test]
+    fn las_ecuaciones_salen_enteras_y_una_sola_vez() {
+        let (p, _) = validar_(json!({
+            "enunciado": "Calcula las integrales: $\\int_0^2 (x^2+1)\\,dx$ y la otra.",
+            "ecuaciones": ["a) \\int_0^2 (x^2+1)\\,dx", "\\int_0^2 (x^2+1)\\,dx"],
+            "datos": ["\\int_0^2 (x^2+1)\\,dx"]
+        }))
+        .unwrap();
+        let (els, _) = piezas(&p);
+        let t = textos_de(&els);
+        assert!(t.iter().any(|x| x.contains('∫')), "la integral entera: {t:?}");
+        assert!(t.iter().all(|x| !x.contains('$') && !x.contains("\\int")), "{t:?}");
+        assert!(t.iter().any(|x| x.contains("Calcula las integrales")), "{t:?}");
+        assert_eq!(sin_las_ecuaciones("Resuelve x^2 - 5x + 6 = 0 por factorizacion.", &["x^2 - 5x + 6 = 0".into()]), "Resuelve por factorizacion.");
+        // Un enunciado que es SOLO la ecuacion se queda como estaba.
+        assert_eq!(sin_las_ecuaciones("x^2 = 4", &["x^2 = 4".into()]), "x^2 = 4");
     }
 
     #[test]

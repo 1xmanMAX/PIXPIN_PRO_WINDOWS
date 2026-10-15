@@ -871,6 +871,37 @@ fn medida(els: &[Elemento]) -> (f32, f32) {
     (x1, y1)
 }
 
+/// Sobre que se dibuja la grafica.
+enum Marco {
+    /// El instrumento plano cartesiano (una unidad, el origen en el centro,
+    /// como `Plano.kt` de Android): editable y medible en el lienzo.
+    Instrumento(Elemento, ins::Instrumento),
+    /// Ejes con una escala por eje y el rango pedido (`pizarra::Ejes`).
+    Ejes(pizarra::Ejes),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum MarcoElegido {
+    Instrumento,
+    Ejes,
+}
+
+/// **Instrumento o ejes.** El instrumento ensena siempre de -a a a con la
+/// misma unidad en los dos ejes; vale cuando la ventana es casi simetrica y
+/// cabe sin quedarse en un hilo. Si no (banco del 15-oct: «sin x entre 0 y
+/// π» salia de -π a π; la tangente de x³ - 3x, en una tira estrecha), los
+/// ejes de la pizarra: el rango pedido tal cual y una escala por eje.
+fn marco_de(p: &Funciones) -> MarcoElegido {
+    let ax = p.x_desde.abs().max(p.x_hasta.abs());
+    let ay = p.y_desde.abs().max(p.y_hasta.abs());
+    let simetrica_x = p.x_desde < 0.0 && p.x_hasta > 0.0 && (p.x_hasta - p.x_desde) >= 1.5 * ax;
+    let simetrica_y = (p.y_hasta - p.y_desde) >= 1.0 * ay;
+    // Con una sola unidad, una y que sube mucho mas que la x deja la grafica
+    // en un hilo (la tangente de x³ - 3x: ±12 frente a ±3).
+    let llena = ay / ax <= 3.5 && ax / ay <= 3.5;
+    if simetrica_x && simetrica_y && llena { MarcoElegido::Instrumento } else { MarcoElegido::Ejes }
+}
+
 /// Las piezas del motor dentro de la caja `(x, y, ancho, alto)` del lienzo
 /// de 800x600.
 pub fn piezas(p: &Funciones, (cx, cy, cw, ch): (f64, f64, f64, f64)) -> Vec<Elemento> {
@@ -897,7 +928,16 @@ pub fn piezas(p: &Funciones, (cx, cy, cw, ch): (f64, f64, f64, f64)) -> Vec<Elem
                     pz.el
                 }
                 // La parametrica, en dos renglones (x arriba, y abajo).
-                otra => pizarra::caja_de_ecuacion(&otra.rotulo().replace(", y = ", "\ny = "), 0.0, 0.0, estilo.tam * 0.9, color).0,
+                // La polar, con θ (la formula la escribe con t) y sin los `*`
+                // de la cuenta: «r = 2 sin(3θ)», no «r = 2·sin3·t».
+                otra => pizarra::caja_de_ecuacion(
+                    &pizarra::para_ver(&otra.rotulo().replace(", y = ", "\ny = "), matches!(otra, Curva::Polar { .. })),
+                    0.0,
+                    0.0,
+                    estilo.tam * 0.9,
+                    color,
+                )
+                .0,
             }
         })
         .collect();
@@ -921,25 +961,64 @@ pub fn piezas(p: &Funciones, (cx, cy, cw, ch): (f64, f64, f64, f64)) -> Vec<Elem
     // La unidad: que quepan el dominio y la ventana de la y.
     let u = (w / (2.0 * ax)).min(h / (2.0 * ay)).clamp(0.05, 400.0);
     let (lado_x, lado_y) = (2.0 * ax * u, 2.0 * ay * u);
-    let mut e = ins::elemento_de_fabrica(2, negro, 1.5, 1.0);
-    if let pixpin_motor2d::elemento::Figura::Instrumento(i) = &mut e.figura {
-        i.unidad = Some(u);
-        // Numeros cada 1, 2, 5, 10...: ni amontonados ni sueltos.
-        let paso = pixpin_motor2d::grafica::paso_bonito(2.0 * ax.max(ay)).max(ins::paso_util(1.0, u, 34.0).min(1e9));
-        i.paso_numeros = Some(paso);
-        i.paso_cuadros = Some(paso / if paso >= 2.0 { 2.0 } else { 1.0 });
-    }
-    e.ancho = lado_x as f32;
-    e.alto = lado_y as f32;
-    e.x = (cx + (w - lado_x) / 2.0) as f32;
-    e.y = (cy + alto_titulo + (h - lado_y) / 2.0) as f32;
-    let i = *ins::de(&e).expect("es un instrumento");
-    let en = |x: f64, y: f64| -> (f64, f64) {
-        let q = ins::punto(&e, &i, x, y, 0.0);
-        (q.x as f64, q.y as f64)
+    let marco = match marco_de(p) {
+        MarcoElegido::Instrumento => {
+            let mut e = ins::elemento_de_fabrica(2, negro, 1.5, 1.0);
+            if let pixpin_motor2d::elemento::Figura::Instrumento(i) = &mut e.figura {
+                i.unidad = Some(u);
+                // Numeros cada 1, 2, 5, 10...: ni amontonados ni sueltos.
+                let paso = pixpin_motor2d::grafica::paso_bonito(2.0 * ax.max(ay)).max(ins::paso_util(1.0, u, 34.0).min(1e9));
+                i.paso_numeros = Some(paso);
+                i.paso_cuadros = Some(paso / if paso >= 2.0 { 2.0 } else { 1.0 });
+            }
+            e.ancho = lado_x as f32;
+            e.alto = lado_y as f32;
+            e.x = (cx + (w - lado_x) / 2.0) as f32;
+            e.y = (cy + alto_titulo + (h - lado_y) / 2.0) as f32;
+            let i = *ins::de(&e).expect("es un instrumento");
+            Marco::Instrumento(e, i)
+        }
+        // El rango pedido tal cual (0 a π no es -π a π) y una escala por eje
+        // (la tangente de x^3 ya no sale en un hilo): los ejes de la pizarra.
+        MarcoElegido::Ejes => Marco::Ejes(pizarra::Ejes {
+            caja: [cx + 34.0, cy + alto_titulo + 14.0, (w - 54.0).max(80.0), (h - 40.0).max(80.0)],
+            x0: p.x_desde,
+            x1: p.x_hasta,
+            y0: p.y_desde,
+            y1: p.y_hasta,
+        }),
     };
-    let dentro = |x: f64, y: f64| x.abs() <= ax + 1e-9 && y >= p.y_desde - 1e-9 && y <= p.y_hasta + 1e-9;
-    let mut salida = vec![e.clone()];
+    let en = |x: f64, y: f64| -> (f64, f64) {
+        match &marco {
+            Marco::Instrumento(e, i) => {
+                let q = ins::punto(e, i, x, y, 0.0);
+                (q.x as f64, q.y as f64)
+            }
+            Marco::Ejes(j) => j.a_lienzo(x, y),
+        }
+    };
+    let pt = |x: f64, y: f64| -> Punto2 {
+        let (a, b) = en(x, y);
+        Punto2::nuevo(a as f32, b as f32)
+    };
+    // Lo que se ve de x.
+    let (xa, xb) = match &marco {
+        Marco::Instrumento(..) => (-ax, ax),
+        Marco::Ejes(_) => (p.x_desde, p.x_hasta),
+    };
+    let caja_marco: [f64; 4] = match &marco {
+        Marco::Instrumento(e, _) => [e.x as f64, e.y as f64, e.ancho as f64, e.alto as f64],
+        Marco::Ejes(j) => j.caja,
+    };
+    let dentro = |x: f64, y: f64| x >= xa - 1e-9 && x <= xb + 1e-9 && y >= p.y_desde - 1e-9 && y <= p.y_hasta + 1e-9;
+    let mut salida = match &marco {
+        Marco::Instrumento(e, _) => vec![e.clone()],
+        Marco::Ejes(j) => {
+            let mut pz = Pizarra::nueva();
+            j.dibujar(&mut pz, "x", "y");
+            pz.el
+        }
+    };
     let mut pz = Pizarra::nueva();
     // El area, debajo de todo.
     if let Some(s) = &p.sombra
@@ -961,12 +1040,12 @@ pub fn piezas(p: &Funciones, (cx, cy, cw, ch): (f64, f64, f64, f64)) -> Vec<Elem
     // Las asintotas, a trazos y grises.
     for a in &p.asintotas {
         match *a {
-            Asintota::Vertical(x) if x.abs() <= ax => {
+            Asintota::Vertical(x) if x >= xa && x <= xb => {
                 pz.discontinua(&[en(x, p.y_desde), en(x, p.y_hasta)], pizarra::GRIS, 1.5);
             }
             Asintota::Recta(m, q) => {
                 let tramo: Vec<(f64, f64)> = (0..=100)
-                    .map(|k| -ax + 2.0 * ax * k as f64 / 100.0)
+                    .map(|k| xa + (xb - xa) * k as f64 / 100.0)
                     .filter(|&x| dentro(x, m * x + q))
                     .map(|x| en(x, m * x + q))
                     .collect();
@@ -1005,7 +1084,7 @@ pub fn piezas(p: &Funciones, (cx, cy, cw, ch): (f64, f64, f64, f64)) -> Vec<Elem
                         }
                     }
                     anterior = Some(y);
-                    rama.push(ins::punto(&e, &i, x, y, 0.0));
+                    rama.push(pt(x, y));
                 }
                 cerrar(&mut rama, &mut salida);
             }
@@ -1023,7 +1102,7 @@ pub fn piezas(p: &Funciones, (cx, cy, cw, ch): (f64, f64, f64, f64)) -> Vec<Elem
             }
             otra => {
                 let mut anterior: Option<(f64, f64)> = None;
-                let (sx, sy) = (2.0 * ax, p.y_hasta - p.y_desde);
+                let (sx, sy) = (xb - xa, p.y_hasta - p.y_desde);
                 for m in muestras_t(otra, p.t_desde, p.t_hasta) {
                     match m {
                         Some((x, y)) if dentro(x, y) => {
@@ -1032,7 +1111,7 @@ pub fn piezas(p: &Funciones, (cx, cy, cw, ch): (f64, f64, f64, f64)) -> Vec<Elem
                                 cerrar(&mut rama, &mut salida);
                             }
                             anterior = Some((x, y));
-                            rama.push(ins::punto(&e, &i, x, y, 0.0));
+                            rama.push(pt(x, y));
                         }
                         _ => {
                             cerrar(&mut rama, &mut salida);
@@ -1048,25 +1127,64 @@ pub fn piezas(p: &Funciones, (cx, cy, cw, ch): (f64, f64, f64, f64)) -> Vec<Elem
     let mut pz = Pizarra::nueva();
     if let Some(t) = &p.tangente {
         let tramo: Vec<(f64, f64)> = (0..=100)
-            .map(|k| -ax + 2.0 * ax * k as f64 / 100.0)
+            .map(|k| xa + (xb - xa) * k as f64 / 100.0)
             .filter(|&x| dentro(x, t.y + t.m * (x - t.x)))
             .map(|x| en(x, t.y + t.m * (x - t.x)))
             .collect();
         pz.linea(&tramo, pizarra::MORADO, 2.0);
-        let (px, py) = en(t.x, t.y);
-        pz.punto(px, py, &format!("({}, {})", numero(t.x), numero(t.y)), pizarra::MORADO);
     }
-    for m in &p.marcas {
-        if !dentro(m.x, m.y) {
-            continue;
+    // Los puntos marcados con sus coordenadas, que no se pisen entre si ni
+    // con las curvas y los ejes (`rotulos::colocar`): antes iban todos
+    // arriba a la derecha y en las raices juntas salian montados.
+    let mut marcados: Vec<((f64, f64), String, ColorRgba)> = Vec::new();
+    if let Some(t) = &p.tangente {
+        marcados.push((en(t.x, t.y), format!("({}, {})", numero(t.x), numero(t.y)), pizarra::MORADO));
+    }
+    for m in p.marcas.iter().filter(|m| dentro(m.x, m.y)) {
+        let rotulo = format!("({}, {})", numero(m.x), numero(m.y));
+        // El mismo punto por dos motivos (raiz y corte con el eje y): una vez.
+        if !marcados.iter().any(|(_, r, _)| *r == rotulo) {
+            marcados.push((en(m.x, m.y), rotulo, pizarra::TINTA));
         }
-        let (px, py) = en(m.x, m.y);
-        pz.punto(px, py, &format!("({}, {})", numero(m.x), numero(m.y)), pizarra::TINTA);
+    }
+    if !marcados.is_empty() {
+        let tam = 13.0f32;
+        let mut ocupado: Vec<crate::rotulos::Caja> = Vec::new();
+        for el in salida.iter().chain(&pz.el) {
+            match &el.figura {
+                pixpin_motor2d::Figura::Linea { puntos } | pixpin_motor2d::Figura::Flecha { puntos, .. } => {
+                    let v: Vec<(f64, f64)> = puntos.iter().map(|q| (q.x as f64, q.y as f64)).collect();
+                    ocupado.extend(crate::rotulos::cajas_de_linea(&v, 5.0));
+                }
+                pixpin_motor2d::Figura::Texto { .. } => {
+                    let (x0, y0, x1, y1) = el.caja();
+                    ocupado.push([x0 as f64, y0 as f64, (x1 - x0) as f64, (y1 - y0) as f64]);
+                }
+                _ => {}
+            }
+        }
+        // Los ejes del instrumento (no son lineas sueltas).
+        if let Marco::Instrumento(..) = &marco {
+            ocupado.extend(crate::rotulos::cajas_de_linea(&[en(xa, 0.0), en(xb, 0.0)], 4.0));
+            ocupado.extend(crate::rotulos::cajas_de_linea(&[en(0.0, p.y_desde), en(0.0, p.y_hasta)], 4.0));
+        }
+        let pedidos: Vec<crate::rotulos::Rotulo> = marcados
+            .iter()
+            .map(|(a, t, _)| {
+                let (w, h) = pizarra::medir(t, tam);
+                crate::rotulos::Rotulo::en(*a, w as f64, h as f64)
+            })
+            .collect();
+        let sitios = crate::rotulos::colocar(&pedidos, &ocupado, Some(caja_marco));
+        for ((ancla, t, color), (x, y)) in marcados.iter().zip(sitios) {
+            pz.punto(ancla.0, ancla.1, "", *color);
+            pz.texto(t, x, y, tam, *color, pizarra::Alinear::Izquierda);
+        }
     }
     salida.append(&mut pz.el);
     // La leyenda, a la derecha, del color de cada curva.
-    let mut y_ley = e.y as f64 + 8.0;
-    let x_ley = (e.x + e.ancho) as f64 + 24.0;
+    let mut y_ley = caja_marco[1] + 8.0;
+    let x_ley = caja_marco[0] + caja_marco[2] + 24.0;
     for l in leyenda {
         let (_, alto) = medida(&l);
         for mut el in l {
@@ -1083,8 +1201,10 @@ pub fn piezas(p: &Funciones, (cx, cy, cw, ch): (f64, f64, f64, f64)) -> Vec<Elem
     salida.append(&mut pz.el);
     if !p.titulo.is_empty() {
         let tam = 26.0;
-        let (aw, ah) = medir(&p.titulo, tam);
-        salida.push(ecuacion::elemento_texto(&p.titulo, (cx + cw / 2.0) as f32 - aw / 2.0, cy as f32, (aw, ah), tam, false, &estilo));
+        // Con x³, π y θ, no «x^3», «pi» ni la t de las polares.
+        let titulo = pizarra::a_pizarra(&p.titulo, p.curvas.iter().any(|c| matches!(c, Curva::Polar { .. })));
+        let (aw, ah) = medir(&titulo, tam);
+        salida.push(ecuacion::elemento_texto(&titulo, (cx + cw / 2.0) as f32 - aw / 2.0, cy as f32, (aw, ah), tam, false, &estilo));
     }
     salida
 }
@@ -1161,14 +1281,73 @@ mod pruebas {
         // El dominio solo: el de siempre, con las raices dentro.
         assert!(p.x_desde <= -3.0 && p.x_hasta >= 3.0, "{} {}", p.x_desde, p.x_hasta);
         let els = piezas(&p, (60.0, 40.0, 680.0, 520.0));
+        // Los rotulos van aparte del punto (colocados sin pisarse).
         let puntos: Vec<String> = els
             .iter()
             .filter_map(|e| match &e.figura {
-                Figura::Punto { letra, .. } => Some(letra.clone()),
+                Figura::Texto { texto, .. } => Some(texto.clone()),
                 _ => None,
             })
             .collect();
         assert!(puntos.contains(&"(-2, 0)".to_string()) && puntos.contains(&"(0, -4)".to_string()), "{puntos:?}");
+    }
+
+    fn caja_de(e: &Elemento) -> crate::rotulos::Caja {
+        let (x0, y0, x1, y1) = e.caja();
+        [x0 as f64, y0 as f64, (x1 - x0) as f64, (y1 - y0) as f64]
+    }
+
+    /// Banco del 15-oct: las coordenadas de las raices de x³ - 3x salian
+    /// unas encima de otras.
+    #[test]
+    fn los_rotulos_de_los_puntos_no_se_pisan() {
+        let p = validar_(json!({"funciones": ["x^3 - 3x"], "x_desde": -3, "x_hasta": 3, "marcar": ["raices", "extremos"], "tangente": {"x": 2}})).unwrap();
+        let els = piezas(&p, (60.0, 40.0, 680.0, 520.0));
+        let rotulos: Vec<crate::rotulos::Caja> = els
+            .iter()
+            .filter(|e| matches!(&e.figura, Figura::Texto { texto, .. } if texto.starts_with('(')))
+            .map(caja_de)
+            .collect();
+        assert_eq!(rotulos.len(), 6, "3 raices, 2 extremos y el punto de la tangente");
+        for i in 0..rotulos.len() {
+            for j in i + 1..rotulos.len() {
+                assert!(crate::rotulos::solape(&rotulos[i], &rotulos[j]) < 1.0, "{:?} pisa {:?}", rotulos[i], rotulos[j]);
+            }
+        }
+    }
+
+    /// Banco del 15-oct: «sin x entre 0 y π» salia de -π a π (el
+    /// instrumento es simetrico) y la tangente de x³ - 3x en una tira.
+    #[test]
+    fn el_rango_pedido_se_respeta_y_la_grafica_no_sale_en_un_hilo() {
+        let p = validar_(json!({"funciones": ["sin(x)"], "x_desde": 0, "x_hasta": "pi", "sombrear": {"entre": [0]}, "titulo": "y = sin x en [0, pi]"})).unwrap();
+        let els = piezas(&p, (60.0, 40.0, 680.0, 520.0));
+        assert!(!els.iter().any(|e| matches!(e.figura, Figura::Instrumento(_))), "con ejes propios");
+        let numeros: Vec<String> = els
+            .iter()
+            .filter_map(|e| match &e.figura {
+                Figura::Texto { texto, .. } => Some(texto.clone()),
+                _ => None,
+            })
+            .collect();
+        // Ninguna marca negativa en el eje x.
+        assert!(!numeros.iter().any(|t| t.parse::<f64>().is_ok_and(|v| v < -0.5)), "{numeros:?}");
+        assert!(numeros.iter().any(|t| t == "y = sin x en [0, π]"), "titulo compuesto: {numeros:?}");
+        // La curva llena casi todo el ancho.
+        let ancho_de = |els: &[Elemento]| {
+            els.iter()
+                .filter(|e| matches!(&e.figura, Figura::Linea { puntos } if puntos.len() > 100))
+                .map(caja_de)
+                .map(|c| c[2])
+                .fold(0.0, f64::max)
+        };
+        assert!(ancho_de(&els) > 400.0, "{}", ancho_de(&els));
+        let p = validar_(json!({"funciones": ["x^3 - 3x"], "x_desde": -3, "x_hasta": 3, "tangente": {"x": 2}})).unwrap();
+        let els = piezas(&p, (60.0, 40.0, 680.0, 520.0));
+        assert!(ancho_de(&els) > 350.0, "la cubica no en un hilo: {}", ancho_de(&els));
+        // Una ventana simetrica sigue en el instrumento.
+        let p = validar_(json!({"funciones": ["x^2", "2x+1"], "x_desde": -3, "x_hasta": 3})).unwrap();
+        assert!(matches!(piezas(&p, (60.0, 40.0, 680.0, 520.0))[0].figura, Figura::Instrumento(_)));
     }
 
     #[test]

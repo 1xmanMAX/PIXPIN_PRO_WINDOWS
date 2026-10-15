@@ -578,17 +578,27 @@ pub fn raiz(dentro: Caja, indice: Option<Caja>, t: f32) -> Caja {
 /// dibujados.
 pub fn entre_parentesis(dentro: Caja, t: f32, medir: Medir<'_>) -> Caja {
     let abre = letra("(", t, false, medir);
-    if dentro.alto <= abre.alto * 1.25 {
+    // Un exponente dentro (`(x^2 + 1)`) apenas lo sube: con la letra
+    // todavia se lee mejor que dibujado.
+    if dentro.alto <= abre.alto * 1.6 {
         return fila(vec![abre, dentro, letra(")", t, false, medir)]);
     }
-    // Altos: dos arcos de tres puntos, que a este tamano se leen igual.
+    // Altos: dos arcos suaves (con tres puntos salian picos, como ⟨ ⟩).
     let ap = t * 0.35;
     let ancho = dentro.ancho + ap * 2.0 + t * 0.2;
     let h = dentro.alto;
     let xd = ancho - ap;
-    let mut piezas = vec![raya(&[(ap, 0.0), (ap * 0.3, h * 0.5), (ap, h)], t)];
+    let arco = |x0: f64, hacia: f64| -> Vec<(f32, f32)> {
+        (0..=10)
+            .map(|k| {
+                let s = k as f64 / 10.0;
+                ((x0 + hacia * (std::f64::consts::PI * s).sin()) as f32, (h as f64 * s) as f32)
+            })
+            .collect()
+    };
+    let mut piezas = vec![raya(&arco(ap as f64, -(ap as f64) * 0.7), t)];
     piezas.extend(dentro.piezas_en(ap + t * 0.1, 0.0));
-    piezas.push(raya(&[(xd, 0.0), (xd + ap * 0.7, h * 0.5), (xd, h)], t));
+    piezas.push(raya(&arco(xd as f64, ap as f64 * 0.7), t));
     Caja {
         ancho,
         alto: dentro.alto,
@@ -609,6 +619,63 @@ pub fn entre_barras(dentro: Caja, t: f32) -> Caja {
         ancho,
         alto: dentro.alto,
         eje: dentro.eje,
+        piezas,
+    }
+}
+
+/// Entre corchetes del alto de lo de dentro, dibujados (una matriz).
+pub fn entre_corchetes(dentro: Caja, t: f32) -> Caja {
+    let m = t * 0.12;
+    let pata = t * 0.22;
+    let ancho = dentro.ancho + (m * 2.0 + pata) * 2.0;
+    let h = dentro.alto;
+    let xd = ancho - m;
+    let mut piezas = vec![raya(&[(m + pata, 0.0), (m, 0.0), (m, h), (m + pata, h)], t)];
+    piezas.extend(dentro.piezas_en(m * 2.0 + pata, 0.0));
+    piezas.push(raya(&[(xd - pata, 0.0), (xd, 0.0), (xd, h), (xd - pata, h)], t));
+    Caja {
+        ancho,
+        alto: h,
+        eje: dentro.eje,
+        piezas,
+    }
+}
+
+/// **Una matriz o un sistema**: las celdas en filas y columnas, cada fila
+/// alineada por su eje y cada columna del ancho de su celda mas ancha
+/// (centradas, o a la izquierda en un sistema). Sin delimitadores: los pone
+/// quien llama (`entre_corchetes`, `entre_parentesis`, `llave`...).
+pub fn matriz(filas: Vec<Vec<Caja>>, t: f32, a_la_izquierda: bool) -> Caja {
+    let columnas = filas.iter().map(Vec::len).max().unwrap_or(0);
+    let mut anchos = vec![0.0f32; columnas];
+    for f in &filas {
+        for (j, c) in f.iter().enumerate() {
+            anchos[j] = anchos[j].max(c.ancho);
+        }
+    }
+    let entre_columnas = t * 0.9;
+    let entre_filas = t * 0.3;
+    let mut piezas = Vec::new();
+    let mut y = 0.0f32;
+    for (i, f) in filas.iter().enumerate() {
+        if i > 0 {
+            y += entre_filas;
+        }
+        let arriba = f.iter().map(|c| c.eje).fold(0.0f32, f32::max);
+        let abajo = f.iter().map(|c| c.alto - c.eje).fold(0.0f32, f32::max);
+        let mut x = 0.0f32;
+        for (j, c) in f.iter().enumerate() {
+            let dx = if a_la_izquierda { 0.0 } else { (anchos[j] - c.ancho) / 2.0 };
+            piezas.extend(c.piezas_en(x + dx, y + arriba - c.eje));
+            x += anchos[j] + entre_columnas;
+        }
+        y += arriba + abajo;
+    }
+    let ancho = anchos.iter().sum::<f32>() + entre_columnas * columnas.saturating_sub(1) as f32;
+    Caja {
+        ancho,
+        alto: y,
+        eje: y / 2.0,
         piezas,
     }
 }

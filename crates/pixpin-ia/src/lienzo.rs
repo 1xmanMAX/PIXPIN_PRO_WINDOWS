@@ -319,7 +319,7 @@ pub fn documento(elementos: Vec<Value>) -> String {
 pub(crate) fn figura(f: &mut Fabrica, fig: &Figura) {
     let trazo = fig.color.0.as_str();
     let relleno = fig.relleno.as_ref().map(|c| c.0.as_str());
-    let con_rotulo = fig.tipo != TipoFigura::Texto && !fig.texto.is_empty();
+    let con_rotulo = !matches!(fig.tipo, TipoFigura::Texto | TipoFigura::Tabla) && !fig.texto.is_empty();
     // El grupo que pidio el modelo; si no, una figura con su rotulo va
     // agrupada con el, para que se muevan juntos.
     f.grupo = match &fig.grupo {
@@ -349,6 +349,27 @@ pub(crate) fn figura(f: &mut Fabrica, fig: &Figura) {
             if let Some(i) = &fig.instrumento {
                 instrumento(f, caja, i, trazo);
             }
+        }
+        TipoFigura::Tabla => {
+            // La tabla dibujada del motor (la de la hoja al lienzo), con la
+            // primera fila de cabecera; las celdas vienen en el texto.
+            let filas: Vec<Vec<String>> = fig.texto.lines().map(|l| l.split('\t').map(str::to_string).collect()).collect();
+            let color = pixpin_motor2d::excalidraw::color_desde(Some(&json!(trazo))).unwrap_or(pixpin_motor2d::elemento::ColorRgba::opaco(0.12, 0.12, 0.12));
+            let tam = fig.tam_letra.clamp(10.0, 28.0).min(20.0) as f32;
+            let estilo = pixpin_motor2d::ecuacion::Estilo { color, tam, opacidad: 1.0, familia: "Segoe UI".into() };
+            let medir_t = |s: &str, t: f32| medir_con(s, t, "Segoe UI");
+            let els = pixpin_motor2d::tabla_dibujada::elementos_de_tabla(
+                &filas,
+                &estilo,
+                pixpin_motor2d::vector::Punto2::nuevo(fig.x as f32, fig.y as f32),
+                &medir_t,
+                filas.len() > 1,
+            );
+            if f.grupo.is_none() {
+                f.grupo = Some(f.nombre_de_grupo("tabla"));
+            }
+            // `de_motor` ya suma el origen de la fabrica.
+            f.de_motor(&els);
         }
         TipoFigura::Elipse => f.caja("ellipse", caja, trazo, relleno),
         TipoFigura::Rombo => f.caja("diamond", caja, trazo, relleno),
@@ -389,9 +410,21 @@ pub(crate) fn figura(f: &mut Fabrica, fig: &Figura) {
             }
             // Dentro, centrado, y que quepa.
             _ => {
+                // La caja de verdad: en un poligono (triangulo,
+                // paralelogramo) la de sus puntos, que su primer y ultimo
+                // punto no son esquinas opuestas.
+                let (x, y, ancho, alto) = if fig.tipo == TipoFigura::Poligono && puntos.len() >= 3 {
+                    let x0 = puntos.iter().map(|p| p.0).fold(f64::MAX, f64::min);
+                    let y0 = puntos.iter().map(|p| p.1).fold(f64::MAX, f64::min);
+                    let x1 = puntos.iter().map(|p| p.0).fold(f64::MIN, f64::max);
+                    let y1 = puntos.iter().map(|p| p.1).fold(f64::MIN, f64::max);
+                    (x0, y0, x1 - x0, y1 - y0)
+                } else {
+                    (fig.x, fig.y, fig.ancho, fig.alto)
+                };
                 let letras = fig.texto.chars().count().max(1) as f64;
-                let tam = fig.tam_letra.min(fig.ancho * 0.9 / (0.6 * letras)).max(8.0);
-                let (cx, cy) = (fig.x + fig.ancho / 2.0, fig.y + fig.alto / 2.0);
+                let tam = fig.tam_letra.min(ancho.abs() * 0.75 / (0.6 * letras)).max(8.0);
+                let (cx, cy) = (x + ancho / 2.0, y + alto / 2.0);
                 let color = if relleno.is_some_and(|r| es_oscuro(r)) { "#ffffff" } else { negro };
                 f.texto(cx, cy - tam * 1.25 / 2.0, &fig.texto, tam, color, "center");
             }
@@ -546,19 +579,29 @@ fn grafica(f: &mut Fabrica, g: &Grafica) {
     let (x0, x1) = (MARGEN + 20.0, ANCHO_LIENZO - MARGEN);
     let (y0, y1) = (arriba, ALTO_LIENZO - MARGEN);
     match g.tipo {
-        TipoGrafica::Pastel => pastel(f, g, (x0 + x1) / 2.0, (y0 + y1) / 2.0, ((y1 - y0) / 2.0).min(220.0)),
+        TipoGrafica::Pastel => pastel(f, g, (x0 + x1) / 2.0, (y0 + y1) / 2.0, ((y1 - y0) / 2.0 - 30.0).clamp(60.0, 200.0)),
         TipoGrafica::Barras | TipoGrafica::Lineas => {
             let min = g.valores.iter().copied().fold(0.0_f64, f64::min);
             let max = g.valores.iter().copied().fold(0.0_f64, f64::max);
+            // Marcas «redondas» en el eje y (1, 2 o 5 por potencia de 10),
+            // no solo el maximo: el eje llega a la marca de encima.
+            let paso = paso_redondo((max - min).max(1e-9) / 5.0);
+            let (min, max) = ((min / paso).floor() * paso, (max / paso).ceil() * paso);
             let rango = if max - min > 0.0 { max - min } else { 1.0 };
             let a_y = |v: f64| y1 - (v - min) / rango * (y1 - y0);
             let cero = a_y(0.0);
             // Ejes.
             f.trazo("line", &[(x0, y0), (x0, y1)], negro, None);
             f.trazo("line", &[(x0, cero), (x1, cero)], negro, None);
-            f.texto(x0 - 8.0, a_y(max) - 10.0, &bonito(max), 16.0, negro, "right");
-            if min < 0.0 {
-                f.texto(x0 - 8.0, a_y(min) - 10.0, &bonito(min), 16.0, negro, "right");
+            let mut v = min;
+            while v <= max + paso * 1e-6 {
+                let y = a_y(v);
+                f.trazo("line", &[(x0 - 5.0, y), (x0, y)], negro, None);
+                if (v).abs() > paso * 1e-6 {
+                    f.trazo("line", &[(x0, y), (x1, y)], "#dee2e6", None);
+                }
+                f.texto(x0 - 8.0, y - 10.0, &bonito((v / paso).round() * paso), 16.0, negro, "right");
+                v += paso;
             }
             let n = g.valores.len() as f64;
             let paso = (x1 - x0) / n;
@@ -601,20 +644,31 @@ fn pastel(f: &mut Fabrica, g: &Grafica, cx: f64, cy: f64, r: f64) {
             let a = angulo + barrido * k as f64 / pasos as f64;
             puntos.push((cx + r * a.cos(), cy + r * a.sin()));
         }
-        puntos.push((cx, cy));
-        f.trazo("line", &puntos, "#ffffff", Some(color));
+        // Como REGION: una `line` cerrada el lienzo del PC no la rellena y
+        // el pastel salia sin porciones, solo con los rotulos (banco 15-oct).
+        f.region(&puntos[..puntos.len() - 1], &[], "#ffffff", color);
         let medio = angulo + barrido / 2.0;
         let porcentaje = v / total * 100.0;
-        f.texto(
-            cx + (r + 30.0) * medio.cos(),
-            cy + (r + 30.0) * medio.sin() - 10.0,
-            &format!("{etiqueta} ({porcentaje:.0}%)"),
-            16.0,
-            "#1e1e1e",
-            "center",
-        );
+        // El modelo a veces ya pone el % en la etiqueta («Otros 5%»): sin
+        // repetirlo («Otros 5% (5%)»).
+        let rotulo = if etiqueta.contains('%') { etiqueta.clone() } else { format!("{etiqueta} ({porcentaje:.0}%)") };
+        // Pegado al borde, hacia fuera: a la derecha del pastel alineado a
+        // la izquierda y al reves, que centrado se metia en las porciones.
+        let (c, s) = (medio.cos(), medio.sin());
+        let lado = if c > 0.25 { "left" } else if c < -0.25 { "right" } else { "center" };
+        f.texto(cx + (r + 14.0) * c, cy + (r + 14.0) * s - 10.0 + 10.0 * s, &rotulo, 16.0, "#1e1e1e", lado);
         angulo += barrido;
     }
+}
+
+/// El paso de marcas «redondo» (1, 2, 2,5 o 5 por potencia de 10) mas cerca
+/// por encima de `bruto`.
+pub(crate) fn paso_redondo(bruto: f64) -> f64 {
+    if !(bruto.is_finite() && bruto > 0.0) {
+        return 1.0;
+    }
+    let p = 10f64.powf(bruto.log10().floor());
+    [1.0, 2.0, 2.5, 5.0, 10.0].into_iter().map(|k| k * p).find(|&s| s >= bruto * 0.999).unwrap_or(10.0 * p)
 }
 
 /// Un numero sin decimales de sobra.
@@ -701,6 +755,76 @@ mod pruebas {
             let lienzo = pixpin_motor2d::excalidraw::leer(&documento(els)).unwrap();
             assert_eq!(lienzo.cuantos_ajenos(), 0, "{args}");
         }
+    }
+
+    /// Banco 15-oct: el pastel salia sin porciones (lineas cerradas que el
+    /// lienzo no rellena) y con «Otros 5% (5%)».
+    #[test]
+    fn el_pastel_tiene_porciones_rellenas_y_un_solo_porcentaje() {
+        let args = r#"{"tipo":"pastel","etiquetas":["Materiales 45%","Otros"],"valores":[45,5]}"#;
+        let els = elementos(&llamada("grafica", args), (0.0, 0.0), 1);
+        let lienzo = pixpin_motor2d::excalidraw::leer(&documento(els)).unwrap();
+        let els = lienzo.elementos();
+        let regiones = els.iter().filter(|e| matches!(e.figura, FiguraLienzo::Region { .. }) && e.relleno.is_some()).count();
+        assert_eq!(regiones, 2);
+        let textos: Vec<String> = els
+            .iter()
+            .filter_map(|e| match &e.figura {
+                FiguraLienzo::Texto { texto, .. } => Some(texto.clone()),
+                _ => None,
+            })
+            .collect();
+        assert!(textos.contains(&"Materiales 45%".to_string()), "{textos:?}");
+        assert!(textos.contains(&"Otros (10%)".to_string()), "{textos:?}");
+    }
+
+    /// Banco 15-oct: «haz una tabla de los planetas» acababa en una nota (no
+    /// habia tabla en el lienzo), y el «Leer N» del flujo era un rectangulo.
+    #[test]
+    fn la_tabla_y_el_paralelogramo_se_dibujan() {
+        let l = llamada(
+            "dibujar_en_lienzo",
+            r#"{"elementos":[
+                {"tipo":"tabla","x":40,"y":40,"filas":[["Planeta","UA","Lunas"],["Mercurio","0.39","0"],["Venus",0.72,0]]},
+                {"tipo":"paralelogramo","caja":[100,300,200,60],"texto":"Leer N"}]}"#,
+        );
+        let els = elementos(&l, (0.0, 0.0), 3);
+        let lienzo = pixpin_motor2d::excalidraw::leer(&documento(els)).unwrap();
+        assert_eq!(lienzo.cuantos_ajenos(), 0);
+        let els = lienzo.elementos();
+        let textos: Vec<String> = els
+            .iter()
+            .filter_map(|e| match &e.figura {
+                FiguraLienzo::Texto { texto, .. } => Some(texto.clone()),
+                _ => None,
+            })
+            .collect();
+        for t in ["Planeta", "Mercurio", "0.72", "Lunas", "Leer N"] {
+            assert!(textos.iter().any(|x| x == t), "{t}: {textos:?}");
+        }
+        // El rotulo del paralelogramo, dentro de su caja.
+        let leer = els.iter().find(|e| matches!(&e.figura, FiguraLienzo::Texto { texto, .. } if texto == "Leer N")).unwrap();
+        let (x0, y0, x1, y1) = leer.caja();
+        assert!(x0 >= 100.0 && x1 <= 300.0 && y0 >= 300.0 && y1 <= 360.0, "{:?}", leer.caja());
+        // Una tabla sin filas se rechaza con el motivo.
+        let e = validar(
+            &LlamadaCruda { id: "1".into(), nombre: "dibujar_en_lienzo".into(), argumentos: r#"{"elementos":[{"tipo":"tabla","x":1,"y":1}]}"#.into() },
+            &catalogo(),
+        )
+        .unwrap_err();
+        assert!(e.to_string().contains("filas"), "{e}");
+    }
+
+    #[test]
+    fn las_barras_llevan_varias_marcas_en_el_eje() {
+        let args = r#"{"tipo":"barras","etiquetas":["Ana","Luis"],"valores":[15,18]}"#;
+        let els = elementos(&llamada("grafica", args), (0.0, 0.0), 1);
+        let marcas: Vec<&str> = els.iter().filter_map(|e| e["text"].as_str()).filter(|t| t.parse::<f64>().is_ok()).collect();
+        for m in ["0", "5", "10", "15", "20"] {
+            assert!(marcas.contains(&m), "{marcas:?}");
+        }
+        assert_eq!(paso_redondo(3.6), 5.0);
+        assert_eq!(paso_redondo(0.18), 0.2);
     }
 
     #[test]

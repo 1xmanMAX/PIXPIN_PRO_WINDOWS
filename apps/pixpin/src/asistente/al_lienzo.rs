@@ -188,7 +188,13 @@ pub fn meter_de_hoja(escena: &mut Escena, documento: &str, h: &EnHoja, centro: O
     });
     let mut n = 0;
     if !documento.is_empty() {
-        let els = elementos_de(documento)?;
+        // Rehacer una zona con nada es quitarla (la tapaba otra que dice
+        // lo mismo: banco del 15-oct, un renglon leido dos veces).
+        let mut els = match elementos_de(documento) {
+            Ok(v) => v,
+            Err(_) if pixpin_motor2d::excalidraw::leer(documento).is_ok() => Vec::new(),
+            Err(e) => return Err(e),
+        };
         if h.rehacer
             && let Some(viejos) = s.zonas.get(&h.zona)
         {
@@ -202,7 +208,15 @@ pub fn meter_de_hoja(escena: &mut Escena, documento: &str, h: &EnHoja, centro: O
             for id in quitar {
                 escena.borrar_apuntando(id);
             }
+            if els.is_empty() {
+                escena.cerrar_paso();
+                s.pasos += 1;
+                s.zonas.insert(h.zona, Vec::new());
+                return Ok(0);
+            }
         }
+        // Ningun id repetido con lo que ya hay: luego se rehace por id.
+        ids_sin_choques(escena, &mut els);
         let (dx, dy) = s.desplazamiento;
         let ids = pixpin_motor2d::portapapeles::pegar(escena, &els, dx, dy);
         n = ids.len();
@@ -218,6 +232,56 @@ pub fn meter_de_hoja(escena: &mut Escena, documento: &str, h: &EnHoja, centro: O
         }
     }
     Ok(n)
+}
+
+/// **Los ids de fichero de lo que entra, sin chocar con los del lienzo**
+/// (ni entre si). Una hoja pasada dos veces, o una zona de otra hoja con la
+/// misma semilla, traeria `ia-...` que ya estan: al rehacer una zona, que
+/// borra por id, se llevaria piezas ajenas. El que choca estrena otro, y
+/// los rotulos y flechas de la misma tanda que lo nombraban le siguen.
+pub(crate) fn ids_sin_choques(escena: &Escena, els: &mut [Elemento]) {
+    use std::collections::{HashMap, HashSet};
+    let mut usados: HashSet<String> = escena.visibles().map(pixpin_motor2d::enlace::id_de_texto_de).collect();
+    let mut cambio: HashMap<String, String> = HashMap::new();
+    for e in els.iter_mut() {
+        let Some(viejo) = e.extras.id_de_fichero.clone() else { continue };
+        if usados.insert(viejo.clone()) {
+            continue;
+        }
+        let mut k = 2;
+        let nuevo = loop {
+            let c = format!("{viejo}-{k}");
+            if !usados.contains(&c) {
+                break c;
+            }
+            k += 1;
+        };
+        usados.insert(nuevo.clone());
+        e.extras.id_de_fichero = Some(nuevo.clone());
+        cambio.insert(viejo, nuevo);
+    }
+    if cambio.is_empty() {
+        return;
+    }
+    let nuevo = |s: &mut String| {
+        if let Some(n) = cambio.get(s.as_str()) {
+            *s = n.clone();
+        }
+    };
+    for e in els.iter_mut() {
+        if let Some(c) = e.extras.contenedor.as_mut() {
+            nuevo(c);
+        }
+        if let Some(g) = e.extras.enganche_inicio.as_mut() {
+            nuevo(&mut g.elemento);
+        }
+        if let Some(g) = e.extras.enganche_fin.as_mut() {
+            nuevo(&mut g.elemento);
+        }
+        for a in e.extras.atados.iter_mut() {
+            nuevo(&mut a.id);
+        }
+    }
 }
 
 /// Si la hoja `sesion` sigue a medio meter (pruebas).

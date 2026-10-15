@@ -281,6 +281,54 @@ fn las_zonas_de_una_hoja_van_juntas_y_rehacer_cambia_solo_la_suya() {
     assert_eq!(e.cuantos_visibles(), 1);
 }
 
+/// Banco del 15-oct (cuadratica 32/65): dos zonas con los MISMOS ids (y
+/// iguales a algo que ya habia en el lienzo). Rehacer una no toca la otra ni
+/// lo de antes.
+#[test]
+fn rehacer_una_zona_no_toca_las_demas_aunque_repitan_ids() {
+    let doc = |x: f64| {
+        pixpin_ia::lienzo::documento(vec![
+            serde_json::json!({
+                "id": "ia-1-1", "type": "rectangle", "x": x, "y": 10.0, "width": 50.0, "height": 20.0,
+                "strokeColor": "#000000", "backgroundColor": "transparent", "groupIds": [],
+                "boundElements": [{"id": "ia-1-2", "type": "text"}]
+            }),
+            serde_json::json!({
+                "id": "ia-1-2", "type": "text", "x": x + 5.0, "y": 12.0, "width": 30.0, "height": 16.0, "text": "a",
+                "fontSize": 14, "fontFamily": 5, "containerId": "ia-1-1",
+                "strokeColor": "#000000", "backgroundColor": "transparent", "groupIds": []
+            }),
+        ])
+    };
+    let mut e = Escena::nueva();
+    pixpin_motor2d::portapapeles::pegar(&mut e, &al_lienzo::elementos_de(&doc(0.0)).unwrap(), 0.0, 0.0);
+    let en = |zona, rehacer, ultima| EnHoja { sesion: 9003, zona, rehacer, ultima, tam: (1000.0, 1400.0) };
+    al_lienzo::meter_de_hoja(&mut e, &doc(100.0), &en(0, false, false), None).unwrap();
+    al_lienzo::meter_de_hoja(&mut e, &doc(300.0), &en(1, false, false), None).unwrap();
+    assert_eq!(e.cuantos_visibles(), 6);
+    let ids: std::collections::HashSet<String> = e.visibles().map(pixpin_motor2d::enlace::id_de_texto_de).collect();
+    assert_eq!(ids.len(), 6, "ningun id repetido: {ids:?}");
+    // Cada rotulo sigue en SU caja (el contenedor se renombro con ella).
+    for t in e.visibles().filter(|x| matches!(x.figura, Figura::Texto { .. })) {
+        let c = t.extras.contenedor.clone().expect("con caja");
+        let caja = e.visibles().find(|x| pixpin_motor2d::enlace::id_de_texto_de(x) == c).expect("su caja existe");
+        assert!((t.x - caja.x - 5.0).abs() < 1e-3, "rotulo en su caja");
+    }
+    let rect_x = |e: &Escena| {
+        let mut v: Vec<f32> = e.visibles().filter(|x| matches!(x.figura, Figura::Rectangulo)).map(|x| x.x).collect();
+        v.sort_by(f32::total_cmp);
+        v
+    };
+    let antes = rect_x(&e);
+    al_lienzo::meter_de_hoja(&mut e, &doc(120.0), &en(0, true, false), None).unwrap();
+    let despues = rect_x(&e);
+    assert_eq!(e.cuantos_visibles(), 6, "{despues:?}");
+    assert_eq!(despues[0], antes[0], "lo de antes sigue");
+    assert_eq!(despues[2], antes[2], "la otra zona sigue");
+    assert!((despues[1] - antes[1] - 20.0).abs() < 1e-3, "la zona rehecha cambio: {antes:?} {despues:?}");
+    al_lienzo::meter_de_hoja(&mut e, "", &en(0, false, true), None).unwrap();
+}
+
 #[test]
 fn si_el_usuario_dibuja_en_medio_cada_zona_se_deshace_por_su_cuenta() {
     let doc = |x: f64| {
@@ -396,4 +444,15 @@ fn si_la_nube_se_cuelga_la_hoja_acaba_al_plazo() {
     assert!(t.elapsed() < std::time::Duration::from_secs(5), "{:?}", t.elapsed());
     assert_eq!(inf.hechos.len(), inf.seccionado.zonas.len());
     assert!(inf.fallos.iter().any(|f| f.contains("a tiempo")), "{:?}", inf.fallos);
+}
+
+/// Banco del 15-oct (sistema escaneado): el renglon que el OCR leyo aparte
+/// sobra dentro del sistema compuesto; la etiqueta «a)» no.
+#[test]
+fn un_texto_que_la_formula_ya_dice_sobra_y_una_etiqueta_no() {
+    let sistema = r"\begin{cases} 2x + 3y = 7 \ x - y = 1 \end{cases}";
+    assert!(ya_lo_dice(sistema, "x- y= 1"));
+    assert!(ya_lo_dice(sistema, "2x + 3y = 7"));
+    assert!(!ya_lo_dice(sistema, "a)"));
+    assert!(!ya_lo_dice(sistema, "Resuelve los sistemas por sustitucion"));
 }

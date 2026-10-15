@@ -61,6 +61,110 @@ pub fn numero(v: f64) -> String {
     s
 }
 
+/// Si en `c[i]` empieza una palabra suelta `w` (sin letras pegadas delante
+/// ni detras).
+fn palabra_suelta(c: &[char], i: usize, w: &str) -> bool {
+    let w: Vec<char> = w.chars().collect();
+    c.len() >= i + w.len()
+        && c[i..i + w.len()] == w[..]
+        && (i == 0 || !c[i - 1].is_alphabetic())
+        && c.get(i + w.len()).is_none_or(|d| !d.is_alphabetic())
+}
+
+/// **Un titulo o rotulo escrito por el modelo, como en la pizarra**: `x^3`
+/// → x³, `x^-1` → x⁻¹, `pi` → π, `theta` → θ, `sqrt` → √, `<=` → ≤, `*` → ·.
+/// `polar`: la `t` suelta es el angulo θ. Para textos (un titulo mezcla
+/// palabras y formula); una formula sola se compone con `caja_de_ecuacion`.
+pub fn a_pizarra(s: &str, polar: bool) -> String {
+    const ARRIBA: [char; 10] = ['⁰', '¹', '²', '³', '⁴', '⁵', '⁶', '⁷', '⁸', '⁹'];
+    let c: Vec<char> = s.chars().collect();
+    let mut out = String::with_capacity(s.len());
+    let mut i = 0;
+    while i < c.len() {
+        if c[i] == '^' {
+            // `^{12}`, `^12`, `^-1`, `^n`.
+            let (mut j, llaves) = if c.get(i + 1) == Some(&'{') { (i + 2, true) } else { (i + 1, false) };
+            let mut sub = String::new();
+            let mut ok = true;
+            while j < c.len() && (llaves && c[j] != '}' || !llaves && (c[j].is_ascii_digit() || (c[j] == '-' && sub.is_empty()))) {
+                match c[j] {
+                    d @ '0'..='9' => sub.push(ARRIBA[d as usize - '0' as usize]),
+                    '-' => sub.push('⁻'),
+                    'n' => sub.push('ⁿ'),
+                    _ => ok = false,
+                }
+                j += 1;
+            }
+            if !llaves && sub.is_empty() && c.get(i + 1) == Some(&'n') {
+                sub.push('ⁿ');
+                j = i + 2;
+            }
+            if ok && !sub.is_empty() {
+                out.push_str(&sub);
+                i = if llaves { j + 1 } else { j };
+                continue;
+            }
+        }
+        let mut cambio = None;
+        for (w, por) in [("pi", "π"), ("theta", "θ"), ("sqrt", "√"), ("alpha", "α"), ("phi", "φ"), ("mu", "μ"), ("omega", "ω"), ("lambda", "λ"), ("Delta", "Δ"), ("infinito", "∞"), ("inf", "∞")] {
+            let con_barra = c[i] == '\\' && palabra_suelta(&c, i + 1, w);
+            if palabra_suelta(&c, i, w) || con_barra {
+                cambio = Some((por, w.chars().count() + usize::from(con_barra)));
+                break;
+            }
+        }
+        if let Some((por, n)) = cambio {
+            out.push_str(por);
+            i += n;
+            continue;
+        }
+        if polar && palabra_suelta(&c, i, "t") {
+            out.push('θ');
+            i += 1;
+            continue;
+        }
+        match (c[i], c.get(i + 1)) {
+            ('<', Some('=')) => {
+                out.push('≤');
+                i += 2;
+                continue;
+            }
+            ('>', Some('=')) => {
+                out.push('≥');
+                i += 2;
+                continue;
+            }
+            ('*', _) => out.push('·'),
+            (ch, _) => out.push(ch),
+        }
+        i += 1;
+    }
+    out
+}
+
+/// **Una formula de la grafica, lista para componer** en la leyenda: sin el
+/// `*` de la cuenta entre un numero y lo que multiplica (`2*sin(3*t)` →
+/// `2sin(3t)`) y, en una polar, con θ por la `t`.
+pub fn para_ver(f: &str, polar: bool) -> String {
+    let c: Vec<char> = f.chars().collect();
+    let mut out = String::with_capacity(f.len());
+    for (i, &ch) in c.iter().enumerate() {
+        if ch == '*' {
+            let antes = c[..i].iter().rev().find(|x| !x.is_whitespace());
+            let despues = c[i + 1..].iter().find(|x| !x.is_whitespace());
+            if antes.is_some_and(|a| a.is_ascii_digit() || *a == ')') && despues.is_some_and(|d| d.is_alphabetic() || *d == '(') {
+                continue;
+            }
+        }
+        if polar && ch == 't' && (i == 0 || !c[i - 1].is_alphabetic()) && c.get(i + 1).is_none_or(|d| !d.is_alphabetic()) {
+            out.push('θ');
+            continue;
+        }
+        out.push(ch);
+    }
+    out
+}
+
 /// Lo que mide un texto en la letra de la pizarra.
 pub fn medir(t: &str, tam: f32) -> (f32, f32) {
     crate::lienzo::medir_con(t, tam, LETRA)
@@ -70,6 +174,20 @@ pub fn medir(t: &str, tam: f32) -> (f32, f32) {
 #[derive(Default)]
 pub struct Pizarra {
     pub el: Vec<Elemento>,
+    /// Los rotulos de las flechas, aun sin poner: se colocan todos juntos
+    /// al final ([`Pizarra::colocar_rotulos`]), cuando ya se sabe que hay
+    /// dibujado y no se pisan ni con el bloque ni con otras flechas.
+    pendientes: Vec<Pendiente>,
+}
+
+/// Un rotulo por poner: su ancla, el sitio de siempre, el texto y su color.
+#[derive(Debug, Clone)]
+struct Pendiente {
+    ancla: (f64, f64),
+    preferida: (f64, f64),
+    texto: String,
+    tam: f32,
+    color: ColorRgba,
 }
 
 fn liso(mut e: Elemento) -> Elemento {
@@ -318,7 +436,42 @@ impl Pizarra {
         let (dx, dy) = (a.cos(), -a.sin());
         let x = punta.0 + dx * 10.0 + if dx < -0.3 { -(w as f64) } else if dx > 0.3 { 0.0 } else { -(w as f64) / 2.0 };
         let y = punta.1 + dy * 10.0 + if dy < -0.3 { -(h as f64) } else if dy > 0.3 { 0.0 } else { -(h as f64) / 2.0 };
-        self.texto(rotulo, x, y, tam, color, Alinear::Izquierda);
+        self.pendientes.push(Pendiente { ancla: punta, preferida: (x, y), texto: rotulo.to_string(), tam, color });
+    }
+
+    /// **Pone los rotulos pendientes sin que se pisen** (`rotulos::colocar`)
+    /// con nada de lo dibujado: lineas, flechas, cajas, otros textos. Cada
+    /// uno prueba primero su sitio de siempre (fuera de la punta).
+    pub fn colocar_rotulos(&mut self) {
+        if self.pendientes.is_empty() {
+            return;
+        }
+        let mut ocupado: Vec<crate::rotulos::Caja> = Vec::new();
+        for e in &self.el {
+            match &e.figura {
+                Figura::Linea { puntos } | Figura::Flecha { puntos, .. } => {
+                    let v: Vec<(f64, f64)> = puntos.iter().map(|q| (q.x as f64, q.y as f64)).collect();
+                    ocupado.extend(crate::rotulos::cajas_de_linea(&v, 6.0));
+                }
+                _ => {
+                    let (x0, y0, x1, y1) = e.caja();
+                    if [x0, y0, x1, y1].iter().all(|v| v.is_finite()) {
+                        ocupado.push([x0 as f64, y0 as f64, (x1 - x0) as f64, (y1 - y0) as f64]);
+                    }
+                }
+            }
+        }
+        let pendientes = std::mem::take(&mut self.pendientes);
+        let pedidos: Vec<crate::rotulos::Rotulo> = pendientes
+            .iter()
+            .map(|p| {
+                let (w, h) = medir(&p.texto, p.tam);
+                crate::rotulos::Rotulo { ancla: p.ancla, ancho: w as f64, alto: h as f64, preferida: Some(p.preferida) }
+            })
+            .collect();
+        for (p, (x, y)) in pendientes.iter().zip(crate::rotulos::colocar(&pedidos, &ocupado, None)) {
+            self.texto(&p.texto, x, y, p.tam, p.color, Alinear::Izquierda);
+        }
     }
 
     /// Mueve todo lo dibujado desde `desde`.
@@ -333,7 +486,7 @@ impl Pizarra {
 pub fn caja_de_ecuacion(texto: &str, x: f64, y: f64, tam: f32, color: ColorRgba) -> (Vec<Elemento>, (f32, f32)) {
     let medir_ec = |t: &str, tam: f32| crate::lienzo::medir_con(t, tam, crate::ecuacion::FAMILIA);
     let estilo = Estilo { color, tam, opacidad: 1.0, familia: crate::ecuacion::FAMILIA.into() };
-    let lineas: Vec<&str> = texto.split("\\\\").flat_map(|l| l.split('\n')).map(str::trim).filter(|l| !l.is_empty()).collect();
+    let lineas: Vec<String> = crate::ecuacion::partir_lineas(texto);
     let cajas: Vec<ecuacion::Caja> = lineas
         .iter()
         .map(|l| crate::ecuacion::componer(&pixpin_notas::formulas::leer(l), tam, &medir_ec))
@@ -468,6 +621,20 @@ mod pruebas {
         assert_eq!(numero(1.41421), "1.414");
         assert_eq!(numero(40.8163), "40.816");
         assert_eq!(numero(f64::NAN), "?");
+    }
+
+    #[test]
+    fn los_titulos_salen_como_en_la_pizarra() {
+        assert_eq!(a_pizarra("f(x) = x^3 - 3x con tangente en x = 2", false), "f(x) = x³ - 3x con tangente en x = 2");
+        assert_eq!(a_pizarra("y = sin x en [0, pi]", false), "y = sin x en [0, π]");
+        assert_eq!(a_pizarra("r = 2 sin(3t)", true), "r = 2 sin(3θ)");
+        assert_eq!(a_pizarra("x^{-1} y x^n, 2*x", false), "x⁻¹ y xⁿ, 2·x");
+        // La t de una palabra no se toca, ni sin polar.
+        assert_eq!(a_pizarra("tangente en t = 1", true), "tangente en θ = 1");
+        assert_eq!(a_pizarra("tiempo t", false), "tiempo t");
+        assert_eq!(a_pizarra("spin", false), "spin");
+        assert_eq!(para_ver("r = 2*sin(3*t)", true), "r = 2sin(3θ)");
+        assert_eq!(para_ver("x = cos(3*t), y = a*b", false), "x = cos(3t), y = a*b");
     }
 
     #[test]
