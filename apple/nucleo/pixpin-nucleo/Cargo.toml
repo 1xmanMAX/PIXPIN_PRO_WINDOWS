@@ -1,0 +1,42 @@
+[package]
+name = "pixpin-nucleo"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "El puente Rust <-> Swift de PixPin para Mac, iPad e iPhone (UniFFI)"
+
+[lib]
+# `staticlib` para el xcframework (lo que enlaza la app de Apple), `cdylib`
+# para que uniffi-bindgen lea los metadatos de la biblioteca en Linux/Mac, y
+# `lib` para las pruebas de Rust.
+crate-type = ["lib", "staticlib", "cdylib"]
+name = "pixpin_nucleo"
+
+[[bin]]
+# El generador de los enlaces de Swift (`herramientas/xcframework.sh`). Solo
+# con la funcion `bindgen`: sin ella, compilar la biblioteca no arrastra el
+# generador entero (clap, askama...).
+name = "uniffi-bindgen"
+path = "src/bin/uniffi-bindgen.rs"
+required-features = ["bindgen"]
+
+[features]
+bindgen = ["uniffi/cli"]
+
+[dependencies]
+pixpin-motor2d = { version = "0.1.0", path = "../pixpin-motor2d" }
+pixpin-proyecto = { version = "0.1.0", path = "../pixpin-proyecto" }
+pixpin-sincro = { version = "0.1.0", path = "../pixpin-sincro" }
+pixpin-sistema = { version = "0.1.0", path = "../pixpin-sistema" }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+thiserror = "2.0"
+# El azar del sistema para el nonce de cada conexion y el codigo de grupo
+# (SecRandomCopyBytes / getentropy en Apple). Ya estaba en el arbol.
+getrandom = "0.2"
+uniffi = "0.32"
+
+[dev-dependencies]
+# El «movil» de las pruebas: un Disco con la carpeta de Android.
+pixpin-sincro = { version = "0.1.0", path = "../pixpin-sincro", features = ["simulador"] }

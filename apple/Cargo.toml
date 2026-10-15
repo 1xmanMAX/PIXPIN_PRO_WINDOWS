@@ -28,6 +28,14 @@ panic = "abort"
 strip = true
 opt-level = 3
 
+# El de `PixPinCore.xcframework` (herramientas/xcframework.sh): el release
+# de arriba, pero con los panicos que se desenrollan. UniFFI envuelve cada
+# llamada de Swift en `catch_unwind`, asi que un panico de Rust llega a la
+# app como error; con `abort` la cerraria de golpe.
+[profile.ffi]
+inherits = "release"
+panic = "unwind"
+
 # La criptografia y el gzip de sincronizar, optimizados tambien sin
 # `--release`: sin optimizar, cifrar un chat de un par de megas tarda decenas
 # de segundos y las pruebas de sincronizar de verdad se eternizan. Solo estos

@@ -17,12 +17,33 @@ aquí: sigue viviendo en `crates/` y `apps/`.
 
 Qué herramienta de Apple sustituye a cada pieza: §3 del plan.
 
+Y además, el puente con Swift:
+
+| Carpeta | Qué hay |
+|---|---|
+| [`nucleo/pixpin-nucleo`](nucleo/pixpin-nucleo) | La API para Swift con **UniFFI**: abrir una carpeta de datos (`Nucleo`), chats y mensajes **por páginas**, escribir una nota, el lienzo como **un solo búfer plano** de `f32` (formato en `src/lienzo.rs`) y sincronizar por TCP (unirse a un grupo, una vuelta, escuchar). |
+| [`PixPinCore/`](PixPinCore) | El paquete Swift (`Package.swift`, macOS 15 / iOS 18): los enlaces generados y el `PixPinCoreFFI.xcframework` (no se versiona). |
+| [`herramientas/xcframework.sh`](herramientas/xcframework.sh) | En un Mac: compila las cuatro plataformas, genera los enlaces y hace el xcframework. |
+
 ## Compilar y probar el núcleo
 
 ```sh
 cd apple
 cargo test --workspace -- --test-threads=1
 ```
+
+El puente para Swift:
+
+```sh
+apple/herramientas/xcframework.sh   # en un Mac con Xcode: deja PixPinCore listo para Xcode
+# en Linux, solo los enlaces (para revisar la API):
+cargo build -p pixpin-nucleo --lib
+cargo run -p pixpin-nucleo --features bindgen --bin uniffi-bindgen -- \
+    generate --library target/debug/libpixpin_nucleo.so --language swift --out-dir target/enlaces
+```
+
+El xcframework se compila con el perfil `ffi` (el `release` con `panic = "unwind"`): así un
+pánico de Rust llega a Swift como error en vez de cerrar la app.
 
 `apple/rust-toolchain.toml` fija el mismo Rust que Windows con los objetivos de Apple
 (`aarch64-apple-darwin`, `x86_64-apple-darwin`, `aarch64-apple-ios`, `aarch64-apple-ios-sim`).
@@ -41,7 +62,18 @@ cargo test --workspace -- --test-threads=1
 ## Lo que falta (orden del plan)
 
 - [ ] Fase 0.3: arreglos de sincronizar (tildes NFC, IPv6, versión del protocolo).
-- [ ] Fase 1: crate `pixpin-nucleo` con UniFFI + `PixPinCore.xcframework` + paquete Swift.
+- [ ] Fase 1: el puente Rust ↔ Swift.
+  - [x] Crate `pixpin-nucleo` con UniFFI: carpeta de datos, chats, mensajes por páginas
+        (índice de líneas en caché con tope), escribir una nota, lienzo en un búfer plano,
+        unirse a un grupo / sincronizar / escuchar por TCP, errores como `enum`.
+  - [x] Enlaces de Swift generados + `PixPinCore/Package.swift` + `herramientas/xcframework.sh`.
+  - [ ] Ejecutar `xcframework.sh` en un Mac y una app de prueba que lista los proyectos de una
+        carpeta copiada de Windows y sincroniza un chat con un PC Windows real.
+  - [ ] Lector del búfer del lienzo en Swift (`CGPath` en una pasada).
+  - [ ] Transporte de Swift sobre `NWConnection` (hoy socket BSD de Rust) y descubrimiento con
+        Bonjour (`NWBrowser`); el `suelto`, la galería y los chats con personas.
+  - [ ] Documentos (`docs`, `hojas`, `office`), timeline y lecciones en la API.
+  - [ ] CI: `macos-latest` compila el xcframework.
 - [ ] Fase 2: app de Mac en SwiftUI/AppKit (`apple/app/`).
 - [ ] `por-adaptar/` → `nucleo/`: `pixpin-codec` (decodificar con `image`; ImageIO desde Swift),
       `pixpin-cad` y `pixpin-bim` (el lector; el 3D a Metal), `pixpin-pdf` (escribir y unir;
