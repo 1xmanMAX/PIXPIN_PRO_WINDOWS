@@ -31,8 +31,12 @@ struct PixPinApp: App {
 final class EstadoApp: ObservableObject {
     let almacen: Almacen?
     let error: String?
+    /// Capturar una zona (Ctrl+Option+X en todo el Mac).
+    let capturador: Capturador
+    private var atajoCaptura: AtajoGlobal?
 
     init() {
+        capturador = Capturador()
         do {
             almacen = try Almacen()
             error = nil
@@ -40,6 +44,8 @@ final class EstadoApp: ObservableObject {
             almacen = nil
             self.error = "\(error)"
         }
+        let capturador = self.capturador
+        atajoCaptura = AtajoGlobal(.capturar) { capturador.capturar() }
     }
 }
 
@@ -48,6 +54,8 @@ struct MenuPrincipal: View {
     @Environment(\.openWindow) private var abrirVentana
 
     var body: some View {
+        Button("Capturar zona") { estado.capturador.capturar() }
+            .keyboardShortcut("x", modifiers: [.control, .option])
         Button("Proyectos…") {
             abrirVentana(id: "proyectos")
             NSApp.activate()
