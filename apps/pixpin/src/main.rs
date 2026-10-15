@@ -114,6 +114,8 @@ mod mini_panel;
 mod miniaturas;
 mod navegacion;
 mod notas_md;
+// La linea de ordenes y los enlaces `pixpin://` (15-oct-2026).
+mod orden;
 mod oscuro;
 mod overlay;
 mod panel_dibujo;
@@ -264,6 +266,12 @@ fn main() -> Result<()> {
     }
     // Lo mismo para un modelo BIM (`modelo_bim`).
     if let Some(codigo) = modelo_bim::convertir_si_toca() {
+        std::process::exit(codigo);
+    }
+    // Una orden de fuera (`pixpinmax tarea "…"`, `--pedido`, un enlace
+    // `pixpin://`): se manda a la copia que corre y se sale, sin cargar nada
+    // de lo de abajo (`orden`).
+    if let Some(codigo) = orden::ejecutar_si_toca() {
         std::process::exit(codigo);
     }
     // Con panic = "abort" y sin consola, un panico moria MUDO: ni log ni

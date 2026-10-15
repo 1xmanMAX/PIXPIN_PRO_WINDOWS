@@ -74,3 +74,39 @@ pub fn preguntar(propietaria: HWND, titulo: &str, mensaje: &str) -> bool {
         ) == IDYES
     }
 }
+
+/// Pregunta de si/no **sin ventana propia y por encima de todo**, con «No»
+/// por defecto: la usa la linea de ordenes cuando un enlace `pixpin://` pide
+/// algo que no esta en la lista blanca (`orden::seguridad`). La copia que
+/// pregunta no tiene ventanas, y sin `MB_TOPMOST`/`MB_SETFOREGROUND` el
+/// cuadro podria nacer detras del navegador que lanzo el enlace.
+pub fn confirmar_al_frente(titulo: &str, mensaje: &str) -> bool {
+    use windows::Win32::UI::WindowsAndMessaging::{
+        IDYES, MB_DEFBUTTON2, MB_ICONWARNING, MB_SETFOREGROUND, MB_TOPMOST, MB_YESNO,
+    };
+    let mensaje = HSTRING::from(mensaje);
+    let titulo = HSTRING::from(titulo);
+    // SAFETY: HSTRING propias vivas durante la llamada; sin propietaria.
+    let r = unsafe {
+        MessageBoxW(
+            None,
+            &mensaje,
+            &titulo,
+            MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2 | MB_TOPMOST | MB_SETFOREGROUND,
+        )
+    };
+    r == IDYES
+}
+
+/// Un aviso de solo «Aceptar», sin ventana propia y por encima de todo:
+/// lo que la linea de ordenes no pudo hacer cuando no hay consola donde
+/// decirlo (un enlace, el menu del Explorador).
+pub fn avisar_al_frente(titulo: &str, mensaje: &str) {
+    use windows::Win32::UI::WindowsAndMessaging::{MB_ICONINFORMATION, MB_SETFOREGROUND, MB_TOPMOST};
+    let mensaje = HSTRING::from(mensaje);
+    let titulo = HSTRING::from(titulo);
+    // SAFETY: HSTRING propias vivas durante la llamada; sin propietaria.
+    unsafe {
+        let _ = MessageBoxW(None, &mensaje, &titulo, MB_OK | MB_ICONINFORMATION | MB_TOPMOST | MB_SETFOREGROUND);
+    }
+}

@@ -239,6 +239,12 @@ pub enum Pedido {
         #[serde(default, deserialize_with = "como_texto_json")]
         receta: Option<String>,
     },
+    /// Leer el texto de unas imagenes y copiarlo al portapapeles, como
+    /// «Copiar texto» del pin (el menu del Explorador y `pixpinmax
+    /// copiar-texto`, 15-oct-2026). En su hilo; el globo dice lo copiado.
+    Ocr {
+        rutas: Vec<PathBuf>,
+    },
 }
 
 /// Lo que se hace con `automatizacion`.
@@ -956,6 +962,22 @@ fn hacer(p: Pedido, cx: &Contexto) -> Result<Hecho, Fallo> {
         Pedido::Sincronizar { aparato } => {
             crate::sincronizar::en_fondo::lanzar(cx.ubicacion, &aparato);
         }
+        // En su hilo: el OCR de Windows tarda de 170 a 670 ms por imagen, y
+        // este bucle no puede pararse tanto. Lo que no esta se dice ya.
+        Pedido::Ocr { rutas } => {
+            if rutas.is_empty() {
+                return Err(Fallo::Roto("ocr sin rutas".into()));
+            }
+            for r in &rutas {
+                if !pixpin_shell::orden::es_imagen(r) {
+                    return Err(Fallo::NoEsImagen(r.clone()));
+                }
+                if !r.is_file() {
+                    return Err(Fallo::SinFichero(r.clone()));
+                }
+            }
+            copiar_texto_de(cx.idioma, rutas);
+        }
         // En su hilo: un turno tarda segundos (o minutos en el local). Lo
         // que conteste sale en el aviso flotante del asistente.
         Pedido::Asistente {
@@ -1151,6 +1173,52 @@ const IMAGENES_A_COPIAR: [&str; 6] = ["png", "jpg", "jpeg", "bmp", "gif", "webp"
 
 /// Si la ruta se puede copiar como imagen: que este y que sea una imagen
 /// por su extension. Leerla es cosa del codec, despues.
+/// El pedido `ocr`, en un hilo: el texto de cada imagen en orden de lectura
+/// (`texto_de_imagen`, el mismo de «Copiar texto» del pin), separadas por
+/// una linea en blanco, al portapapeles; y el globo al acabar, por el mismo
+/// buzon que usan los envios al movil (`al_movil::avisar`).
+fn copiar_texto_de(idioma: pixpin_store::Idioma, rutas: Vec<PathBuf>) {
+    let lanzado = std::thread::Builder::new().name("ocr-pedido".into()).spawn(move || {
+        let t = Catalogo::nuevo(idioma);
+        let mut a = fluent_bundle::FluentArgs::new();
+        let mut trozos = Vec::new();
+        for r in &rutas {
+            let leido = pixpin_codec::imagen::cargar(r)
+                .map_err(|e| e.to_string())
+                .and_then(|img| crate::texto_de_imagen(&img).map_err(|e| format!("{e:#}")));
+            match leido {
+                Ok(x) if !x.trim().is_empty() => trozos.push(x),
+                Ok(_) => {}
+                Err(e) => {
+                    tracing::warn!(ruta = %r.display(), %e, "ocr del pedido");
+                    a.set("motivo", e);
+                    crate::sincronizar::al_movil::avisar(t.t_args("pedido-ocr-fallo", &a));
+                    return;
+                }
+            }
+        }
+        let texto = trozos.join("\n\n");
+        if texto.is_empty() {
+            a.set("cuantas", rutas.len() as i64);
+            crate::sincronizar::al_movil::avisar(t.t_args("pedido-ocr-vacio", &a));
+            return;
+        }
+        match pixpin_codec::portapapeles::copiar_texto(&texto) {
+            Ok(()) => {
+                a.set("letras", texto.chars().count() as i64);
+                crate::sincronizar::al_movil::avisar(t.t_args("pedido-ocr-copiado", &a));
+            }
+            Err(e) => {
+                a.set("motivo", e.to_string());
+                crate::sincronizar::al_movil::avisar(t.t_args("pedido-ocr-fallo", &a));
+            }
+        }
+    });
+    if let Err(e) = lanzado {
+        tracing::warn!(?e, "no se pudo lanzar el hilo del OCR del pedido");
+    }
+}
+
 fn imagen_a_copiar(ruta: &Path) -> Result<(), Fallo> {
     let es_imagen = ruta
         .extension()
@@ -1802,7 +1870,8 @@ mod pruebas {
 
     /// Un ejemplo de cada accion, con lo minimo que pide la tabla del
     /// protocolo.
-    const EJEMPLOS: [(&str, &str); 30] = [
+    const EJEMPLOS: [(&str, &str); 31] = [
+        ("ocr", r#"{"pixpin":1,"accion":"ocr","rutas":["C:\\a\\foto.png"]}"#),
         (
             "asistente",
             r#"{"pixpin":1,"accion":"asistente","texto":"apunta comprar yeso","proyecto":"pr-1"}"#,
@@ -2976,5 +3045,18 @@ mod pruebas {
             Err(Fallo::SinFichero(_))
         ));
         let _ = std::fs::remove_dir_all(&raiz);
+    }
+
+    #[test]
+    fn ocr_se_lee_y_caso_negativo_sin_rutas_o_con_otra_cosa() {
+        assert_eq!(
+            leer(r#"{"pixpin":1,"accion":"ocr","rutas":["C:\\a\\x.png","C:\\a\\y.jpg"]}"#).unwrap(),
+            Pedido::Ocr {
+                rutas: vec![PathBuf::from(r"C:\a\x.png"), PathBuf::from(r"C:\a\y.jpg")]
+            }
+        );
+        // Sin `rutas` no se sabe que leer.
+        assert!(matches!(leer(r#"{"pixpin":1,"accion":"ocr"}"#), Err(Fallo::Roto(_))));
+        assert!(matches!(leer(r#"{"pixpin":1,"accion":"ocr","rutas":"C:\\a\\x.png"}"#), Err(Fallo::Roto(_))));
     }
 }

@@ -1539,6 +1539,36 @@ pedido-fuera-de-capturas = Ese fichero no está en la carpeta de capturas; no se
 pedido-no-es-imagen = Ese fichero no es una imagen.
 pedido-imagen-no-se-pudo = No se pudo copiar la imagen: { $motivo }
 pedido-sin-imagen = No se encuentra la imagen { $ruta }; no se apuntó la tarea.
+pedido-ocr-copiado = Texto copiado ({ $letras } letras).
+pedido-ocr-vacio = No se encontró texto en { $cuantas ->
+    [one] la imagen
+   *[other] las imágenes
+}.
+pedido-ocr-fallo = No se pudo leer el texto: { $motivo }
+
+## Linea de ordenes y enlaces pixpin:// (15-oct)
+orden-titulo = PixPin Max
+orden-confirmar-cabecera = Un enlace le pide a PixPin Max:
+orden-confirmar-pregunta = ¿Hacerlo?
+orden-motivo-ficheros = Abre o manda ficheros de tu disco.
+orden-motivo-asistente = Le pide algo al asistente, que puede hacer cosas en PixPin.
+orden-motivo-microfono = Graba con el micrófono.
+orden-motivo-otros-aparatos = Manda datos a tus otros aparatos.
+orden-motivo-automatizacion = Toca una automatización del asistente.
+orden-motivo-borra = Borra algo.
+orden-motivo-cambia = Cambia datos de PixPin.
+orden-prohibido-ruta-no-local = Un enlace no puede abrir ficheros de red ni rutas que no sean de este equipo. No se hizo nada.
+orden-prohibido-crear-automatizacion = Un enlace no puede crear automatizaciones. No se hizo nada.
+orden-no-se-pudo = PixPin Max no pudo hacerlo: { $motivo }
+orden-sin-app = PixPin Max no está abierta y no se pudo abrir: { $motivo }
+orden-sin-respuesta = PixPin Max no contestó. Si está colgada, ciérrala y vuelve a abrirla.
+orden-version = Esta PixPin Max es más antigua que el pedido: actualízala.
+orden-preguntar-titulo = Preguntar al asistente sobre { $cuantos ->
+    [one] { $nombre }
+   *[other] { $cuantos } archivos
+}
+orden-preguntar-enviar = Preguntar
+orden-preguntar-cancelar = Cancelar
 
 ## Galeria de capturas (2-oct)
 galeria-titulo = Capturas

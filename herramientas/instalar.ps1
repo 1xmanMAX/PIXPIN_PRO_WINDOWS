@@ -23,7 +23,13 @@
 # cualquier otra carpeta con el mismo ID: con dos, Flow no carga ninguna) y,
 # si Flow estaba abierto, lo reinicia para que lo cargue.
 
-param([string]$Origen)
+#
+# Y pone las integraciones con Windows (herramientas\integraciones.ps1, todo
+# en HKCU y sin administrador): el protocolo pixpin://, el menu del
+# Explorador, «Enviar a» y los modulos de PowerShell y AutoHotkey.
+# -SinIntegraciones las salta.
+
+param([string]$Origen, [switch]$SinIntegraciones)
 
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path -Parent $PSScriptRoot
@@ -263,6 +269,17 @@ function Ofrecer-Predeterminada {
 # la ultima, y un fallo suyo no impide instalar PixPin.
 try { Instalar-PluginFlow } catch { Write-Warning "Plugin de Flow Launcher: $_" }
 
+# Las integraciones apuntan a $destino, que no cambia de una version a otra;
+# se ponen en cada instalacion por si se quitaron. Si el exe aun no esta
+# instalado, se ponen al final (abajo), cuando ya lo este.
+function Poner-Integraciones {
+    if ($SinIntegraciones -or $script:integracionesPuestas -or -not (Test-Path $destino)) { return }
+    $script:integracionesPuestas = $true
+    try { & (Join-Path $PSScriptRoot 'integraciones.ps1') -Exe $destino }
+    catch { Write-Warning "Integraciones con Windows: $_" }
+}
+Poner-Integraciones
+
 $corriendo = Get-Process pixpinmax -ErrorAction SilentlyContinue
 $yaEsLaBuena = $igual -and $corriendo -and
     @($corriendo | Where-Object { $_.Path -ne $destino }).Count -eq 0
@@ -298,3 +315,4 @@ Write-Host "Instalada y abierta: $destino"
 if ($origenCompresor) { Write-Host "Con el compresor de PDF: $(Join-Path $destinoDir $compresor)" }
 Crear-Acceso
 Ofrecer-Predeterminada
+Poner-Integraciones

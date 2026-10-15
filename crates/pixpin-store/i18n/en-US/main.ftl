@@ -1538,6 +1538,36 @@ pedido-fuera-de-capturas = That file isn't in the captures folder; it's left alo
 pedido-no-es-imagen = That file isn't an image.
 pedido-imagen-no-se-pudo = The image couldn't be copied: { $motivo }
 pedido-sin-imagen = The image { $ruta } can't be found; the task wasn't added.
+pedido-ocr-copiado = Text copied ({ $letras } characters).
+pedido-ocr-vacio = No text found in { $cuantas ->
+    [one] the image
+   *[other] the images
+}.
+pedido-ocr-fallo = Couldn't read the text: { $motivo }
+
+## Command line and pixpin:// links (Oct 15)
+orden-titulo = PixPin Max
+orden-confirmar-cabecera = A link asks PixPin Max to:
+orden-confirmar-pregunta = Do it?
+orden-motivo-ficheros = It opens or sends files from your disk.
+orden-motivo-asistente = It asks the assistant, which can do things in PixPin.
+orden-motivo-microfono = It records with the microphone.
+orden-motivo-otros-aparatos = It sends data to your other devices.
+orden-motivo-automatizacion = It touches an assistant automation.
+orden-motivo-borra = It deletes something.
+orden-motivo-cambia = It changes PixPin data.
+orden-prohibido-ruta-no-local = A link can't open network files or paths outside this computer. Nothing was done.
+orden-prohibido-crear-automatizacion = A link can't create automations. Nothing was done.
+orden-no-se-pudo = PixPin Max couldn't do it: { $motivo }
+orden-sin-app = PixPin Max isn't open and couldn't be started: { $motivo }
+orden-sin-respuesta = PixPin Max didn't answer. If it's stuck, close it and open it again.
+orden-version = This PixPin Max is older than the request: update it.
+orden-preguntar-titulo = Ask the assistant about { $cuantos ->
+    [one] { $nombre }
+   *[other] { $cuantos } files
+}
+orden-preguntar-enviar = Ask
+orden-preguntar-cancelar = Cancel
 
 ## Capture gallery (2-oct)
 galeria-titulo = Captures

@@ -296,7 +296,7 @@ pub fn tomar_avisos() -> Vec<String> {
         .unwrap_or_default()
 }
 
-pub(super) fn avisar(texto: String) {
+pub(crate) fn avisar(texto: String) {
     if let Ok(mut v) = AVISOS.lock() {
         v.push(texto);
     }
