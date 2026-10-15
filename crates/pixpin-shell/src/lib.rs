@@ -37,6 +37,7 @@ pub mod jump_list;
 pub mod marco_zona;
 pub mod mdns;
 pub mod mensajero;
+pub mod notificacion;
 pub mod overlay;
 pub mod pantalla_de;
 pub mod papelera;

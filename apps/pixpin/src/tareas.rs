@@ -524,6 +524,22 @@ pub fn avisos_del_cuaderno(c: &cuaderno::Cuaderno) -> Vec<crate::recordatorios::
         .collect()
 }
 
+/// **La lista y el numero de la tarea** de un recordatorio (`id` de
+/// [`id_de_recordatorio`]), para los botones «Hecha» y «+10 min» de su
+/// notificacion. Se mira antes de quitarle la hora: es la tarea pendiente
+/// que lleva esa marca. `None` si no es de una tarea o ya no esta.
+pub fn tarea_de_recordatorio(c: &cuaderno::Cuaderno, id: &str) -> Option<(String, usize)> {
+    let (mensaje, local) = id
+        .strip_prefix("tarea:")
+        .and_then(|r| r.rsplit_once(':'))
+        .and_then(|(m, t)| Some((m, t.parse::<i64>().ok()?)))?;
+    let m = c.mensajes.iter().find(|m| m.id == mensaje)?;
+    let i = mini::leer_tareas(&m.texto)
+        .iter()
+        .position(|t| !t.hecha && hora_de_tarea(&t.texto) == Some(local))?;
+    Some((m.id.clone(), i))
+}
+
 /// Quita la marca de la hora que sono (`id` de [`id_de_recordatorio`]).
 /// `Ok(false)` si no es de una tarea o ya no esta.
 pub fn olvidar_hora(carpeta: &Path, id: &str) -> std::io::Result<bool> {
@@ -987,6 +1003,9 @@ mod pruebas {
         let avisos = avisos_del_cuaderno(&c);
         assert_eq!(avisos.len(), 1, "solo la que tiene hora");
         assert!(avisos[0].texto.contains("yeso") && !avisos[0].texto.contains(RELOJ));
+        // La lista y el numero, para «Hecha» y «+10 min» de su notificacion.
+        assert_eq!(tarea_de_recordatorio(&c, &avisos[0].id), Some((m.id.clone(), 0)));
+        assert_eq!(tarea_de_recordatorio(&c, "m-sin-tarea"), None);
         assert!(olvidar_hora(&carpeta, &avisos[0].id).unwrap());
         let c = cuaderno::Cuaderno::leer_de(&carpeta).unwrap();
         assert!(avisos_del_cuaderno(&c).is_empty());

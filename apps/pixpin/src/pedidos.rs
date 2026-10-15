@@ -221,6 +221,11 @@ pub enum Pedido {
     /// como en `chat` (`[img NN]` en `texto`). Sin `texto` ni `imagenes`,
     /// abre el chat «Asistente». Con `automatizacion` (su id), corre esa
     /// automatizacion a mano y no mira lo demas.
+    ///
+    /// 15-oct: con texto va a la **cola de encargos**
+    /// (`automatizaciones::cola`): uno tras otro en segundo plano y una
+    /// notificacion de Windows al acabar cada uno. `encargo` es su id (lo
+    /// pone el plugin, para ver en su lista cuando ya esta apuntado).
     Asistente {
         #[serde(default)]
         texto: String,
@@ -228,6 +233,18 @@ pub enum Pedido {
         #[serde(default)]
         imagenes: Vec<PathBuf>,
         automatizacion: Option<String>,
+        #[serde(default)]
+        encargo: Option<String>,
+    },
+    /// **«+10 min»** de la notificacion de un recordatorio (15-oct): que
+    /// vuelva a sonar dentro de `minutos`. `mensaje` es el id del mensaje con
+    /// la hora o, con `indice`, el de la lista de esa tarea (la hora de una
+    /// tarea va en su texto, `tareas::con_hora`).
+    Posponer {
+        proyecto: Option<String>,
+        mensaje: String,
+        indice: Option<usize>,
+        minutos: u32,
     },
     /// Crear, encender, apagar, borrar o correr una automatizacion
     /// (`crate::automatizaciones`). `receta` (al crear) es lo que arma la
@@ -988,13 +1005,14 @@ fn hacer(p: Pedido, cx: &Contexto) -> Result<Hecho, Fallo> {
         Pedido::Sincronizar { aparato } => {
             crate::sincronizar::en_fondo::lanzar(cx.ubicacion, &aparato);
         }
-        // En su hilo: un turno tarda segundos (o minutos en el local). Lo
-        // que conteste sale en el aviso flotante del asistente.
+        // A la cola de encargos: un turno tarda segundos (o minutos en el
+        // local). Al acabar, una notificacion de Windows (`cola`).
         Pedido::Asistente {
             texto,
             proyecto,
             imagenes,
             automatizacion,
+            encargo,
         } => {
             if let Some(id) = automatizacion {
                 return automatizacion_pedida(cx, Operacion::Ejecutar, Some(id), None);
@@ -1014,7 +1032,7 @@ fn hacer(p: Pedido, cx: &Contexto) -> Result<Hecho, Fallo> {
             if let Some(r) = imagenes.iter().find(|r| !crate::tareas::es_imagen(r)) {
                 return Err(Fallo::NoEsImagen(r.clone()));
             }
-            crate::automatizaciones::encargo::lanzar(
+            crate::automatizaciones::cola::encolar(
                 crate::automatizaciones::encargo::DeLaApp {
                     entorno: crate::automatizaciones::encargo::Entorno {
                         ubicacion: cx.ubicacion.clone(),
@@ -1030,6 +1048,7 @@ fn hacer(p: Pedido, cx: &Contexto) -> Result<Hecho, Fallo> {
                     origen: None,
                     bloquear: None,
                 },
+                encargo,
             );
         }
         Pedido::Automatizacion {
@@ -1037,6 +1056,41 @@ fn hacer(p: Pedido, cx: &Contexto) -> Result<Hecho, Fallo> {
             id,
             receta,
         } => return automatizacion_pedida(cx, operacion, id, receta),
+        Pedido::Posponer {
+            proyecto,
+            mensaje,
+            indice,
+            minutos,
+        } => {
+            let minutos = i64::from(minutos.clamp(1, 7 * 24 * 60));
+            let local = pixpin_shell::entorno::ahora_local_ms() + minutos * 60_000;
+            match indice {
+                // Una tarea: su texto con la hora nueva, como «Recordármelo»
+                // en la ventana de tareas.
+                Some(indice) => {
+                    let lista = lista_pedida(raiz, proyecto.as_deref(), &mensaje, cx.aparato, ahora)?;
+                    let Some(fila) = lista.filas.iter().find(|f| f.indice == indice) else {
+                        return Err(Fallo::SinTarea(indice));
+                    };
+                    let texto = crate::tareas::con_hora(&fila.texto, local);
+                    if !crate::tareas::corregir(raiz, &lista, fila, &texto, &[])? {
+                        return Err(Fallo::TareaCambio);
+                    }
+                    crate::recordatorios::releer(raiz);
+                }
+                None => {
+                    let f = ficha_de(raiz, proyecto.as_deref(), cx.aparato, ahora)?;
+                    let carpeta = almacen::carpeta(raiz, &f.id);
+                    let utc = crate::recordatorios::de_local_a_utc(local);
+                    if !crate::recordatorios::volver_a_poner(&carpeta, &mensaje, utc)? {
+                        return Err(Fallo::SinMensaje(mensaje));
+                    }
+                }
+            }
+            crate::ventana_chat::refrescar();
+            let cuando = crate::recordatorios::cuando_legible(local, pixpin_shell::entorno::ahora_local_ms());
+            return Ok(aviso("tareas-recordare", &[("cuando", cuando)]));
+        }
         // La voz es la respuesta; si no hay con que leer, lo dice el globo
         // desde su hilo.
         Pedido::LeerEnVoz { texto, titulo } => {
@@ -2092,6 +2146,10 @@ mod pruebas {
         (
             "borrar_lista",
             r#"{"pixpin":1,"accion":"borrar_lista","codigo":"1"}"#,
+        ),
+        (
+            "posponer",
+            r#"{"pixpin":1,"accion":"posponer","mensaje":"m1","indice":2,"minutos":10}"#,
         ),
     ];
 

@@ -243,6 +243,53 @@ pub fn vigilar(raiz: PathBuf) {
     }
 }
 
+/// Con cuanto de antelacion se avisa de que una captura se va.
+pub const AVISAR_ANTES_MS: i64 = DIA_MS;
+
+/// **Las que se van en las proximas 24 h** y no se han avisado aun
+/// (`avisadas`, por nombre), con su fecha de irse (UTC). Las ya caducadas
+/// no: se van en este barrido.
+pub fn por_avisar(r: &Registro, lista: &[Entrada], ahora: i64, avisadas: &BTreeSet<String>) -> Vec<(PathBuf, i64)> {
+    lista
+        .iter()
+        .filter(|e| !avisadas.contains(&nombre(&e.ruta)))
+        .filter_map(|e| {
+            let t = se_va_el(r, e)?;
+            (t > ahora && t <= ahora + AVISAR_ANTES_MS).then(|| (e.ruta.clone(), t))
+        })
+        .collect()
+}
+
+/// **El aviso de las que se van** (15-oct): cada hora, una notificacion de
+/// Windows con «Conservar» y «Abrir» (una) o la galeria (varias). Cada
+/// captura se avisa una vez por sesion. Sin notificaciones no se avisa:
+/// la galeria ya ensena cuando se va cada una.
+pub fn vigilar_avisos(raiz: PathBuf, idioma: pixpin_store::Idioma) {
+    let hecho = std::thread::Builder::new().name("caducidad-avisos".into()).spawn(move || {
+        let textos = pixpin_store::Catalogo::nuevo(idioma);
+        let mut avisadas = BTreeSet::new();
+        loop {
+            if dias() > 0 {
+                let ahora = pixpin_shell::entorno::ahora_utc_ms();
+                let lista = galeria_capturas::listar(&galeria_capturas::carpeta_en(&raiz));
+                let se_van = por_avisar(&leer(&raiz, ahora), &lista, ahora, &avisadas);
+                let locales: Vec<_> =
+                    se_van.iter().map(|(r, t)| (r.clone(), pixpin_shell::entorno::a_local(*t))).collect();
+                if let Some(t) = crate::notificaciones::de_capturas(&textos, &locales, pixpin_shell::entorno::ahora_local_ms()) {
+                    if let Err(e) = pixpin_shell::notificacion::mostrar(&t) {
+                        tracing::info!(?e, "sin notificacion de las capturas que se van");
+                    }
+                }
+                avisadas.extend(se_van.iter().map(|(r, _)| nombre(r)));
+            }
+            std::thread::sleep(CADA);
+        }
+    });
+    if let Err(e) = hecho {
+        tracing::warn!(?e, "no se pudo lanzar el aviso de capturas");
+    }
+}
+
 #[cfg(test)]
 mod pruebas {
     use super::*;
@@ -260,6 +307,31 @@ mod pruebas {
             desde,
             ..Default::default()
         }
+    }
+
+    #[test]
+    fn se_avisa_una_vez_de_las_que_se_van_en_un_dia() {
+        fijar_dias(DIAS as u32);
+        let r = registro(0);
+        let ahora = 100 * DIA_MS;
+        let lista = [
+            // Se va en 12 h: se avisa.
+            entrada("pronto.png", ahora - DIAS * DIA_MS + DIA_MS / 2),
+            // Se va en tres dias: todavia no.
+            entrada("luego.png", ahora - DIAS * DIA_MS + 3 * DIA_MS),
+            // Ya caducada: la barre el barrendero, no se avisa.
+            entrada("ida.png", ahora - DIAS * DIA_MS - 1),
+        ];
+        let v = por_avisar(&r, &lista, ahora, &BTreeSet::new());
+        assert_eq!(v.len(), 1);
+        assert!(v[0].0.ends_with("pronto.png"));
+        assert_eq!(v[0].1, ahora + DIA_MS / 2);
+        // Caso negativo: ya avisada, no se repite; conservada, no se va.
+        let ya: BTreeSet<String> = ["pronto.png".to_string()].into();
+        assert!(por_avisar(&r, &lista, ahora, &ya).is_empty());
+        let mut c = registro(0);
+        c.conservadas.insert("pronto.png".into());
+        assert!(por_avisar(&c, &lista, ahora, &BTreeSet::new()).is_empty());
     }
 
     #[test]

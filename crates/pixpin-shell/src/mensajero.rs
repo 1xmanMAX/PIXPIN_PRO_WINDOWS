@@ -199,6 +199,9 @@ pub const ACCIONES: [&str; 33] = [
     "automatizacion",
     // 14-oct: una tabla del chat ya rellena (el asistente, tabla escaneada).
     "tabla_nueva",
+    // 15-oct: «+10 min» de la notificacion de un recordatorio
+    // (`notificacion`).
+    "posponer",
     // 15-oct: la extension del navegador (`apps/pixpin-puente`): leer en voz
     // alta un texto suelto y pasar el texto de una imagen al portapapeles.
     "leer_en_voz",

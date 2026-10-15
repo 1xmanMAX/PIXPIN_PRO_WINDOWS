@@ -2576,3 +2576,13 @@ asistente-voz-cancelado = Cancelled: nothing was sent.
 asistente-voz-nada-que-leer = This answer has no text to read.
 asistente-voz-leer = Read aloud
 asistente-voz-callar = Stop reading
+
+# The buttons of the Windows notifications (15-oct).
+notif-hecha = Done
+notif-mas-10 = +10 min
+notif-abrir = Open
+notif-conservar = Keep
+notif-ver-galeria = Open the gallery
+notif-captura-se-va = This screenshot goes away { $cuando }
+notif-capturas-se-van = { $n } screenshots go away in the next 24 h
+notif-capturas-titulo = Screenshots expiring

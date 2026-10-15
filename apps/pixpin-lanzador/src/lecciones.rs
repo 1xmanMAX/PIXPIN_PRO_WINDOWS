@@ -274,11 +274,11 @@ pub fn lista(
         if todas.is_empty() {
             let mut r = Resultado::nuevo(
                 "Aún no hay lecciones",
-                "Escribe «a <lo que aprendiste>» para apuntar la primera",
+                "Escribe «lección <lo que aprendiste>» para apuntar la primera",
                 glifo::LECCION,
-                Accion::Consulta(ctx.consulta("a ")),
+                Accion::Consulta(ctx.consulta("lección ")),
             );
-            r.autocompletar = Some(ctx.consulta("a "));
+            r.autocompletar = Some(ctx.consulta("lección "));
             v.push(r);
         }
         v.push(resultado_ventana_lecciones());
@@ -356,7 +356,7 @@ pub fn repasar(proyectos: &[Proyecto], ctx: &Contexto) -> Vec<Resultado> {
         let sub = match siguiente {
             Some(s) => format!("La siguiente toca {}", cuando_toca(s, ctx.ahora)),
             None if lecciones.is_empty() => {
-                "Aún no hay lecciones · «a <lo que aprendiste>» apunta una".to_string()
+                "Aún no hay lecciones · «lección <lo que aprendiste>» apunta una".to_string()
             }
             None => String::new(),
         };
