@@ -74,7 +74,7 @@ enum ReglasPin {
         return limitar(opacidad, opacidadMinima, 1)
     }
 
-    /// La opacidad tras Opcion + rueda: un 5 % por muesca, o proporcional al
+    /// La opacidad tras Mayusculas (u Opcion) + rueda: un 5 % por muesca, o proporcional al
     /// gesto en un trackpad. Hacia arriba, mas opaco.
     static func opacidadTrasRueda(_ actual: CGFloat, deltaY: CGFloat, precisa: Bool) -> CGFloat {
         let cambio: CGFloat
@@ -84,6 +84,14 @@ enum ReglasPin {
             cambio = deltaY > 0 ? pasoOpacidad : (deltaY < 0 ? -pasoOpacidad : 0)
         }
         return limitarOpacidad(actual + cambio)
+    }
+
+    /// El giro de la rueda que cuenta para la opacidad. Con Mayusculas, una
+    /// rueda de raton normal manda su giro en X (es el desplazamiento
+    /// horizontal de macOS): se toma el eje que traiga algo.
+    static func deltaDeRueda(x: CGFloat, y: CGFloat) -> CGFloat {
+        if y != 0, y.isFinite { return y }
+        return x.isFinite ? x : 0
     }
 
     /// La opacidad en por ciento (para marcar la del menu).

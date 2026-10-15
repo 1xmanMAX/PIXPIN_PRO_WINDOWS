@@ -30,6 +30,9 @@ public final class Capturador {
     public var alGrabar: ((ZonaDeGrabacion) -> Void)?
     /// Avisa de que se guardo una captura (por si la galeria esta abierta).
     public var alGuardar: ((URL) -> Void)?
+    /// Pin en vivo de la zona elegida (tecla `L`): la zona en coordenadas de
+    /// pantalla de AppKit y su pantalla (`GestorPines.pinearEnVivo`).
+    public var alPinearEnVivo: ((CGRect, NSScreen) -> Void)?
 
     /// Donde se guardan las capturas: `capturas/` de los datos, la misma
     /// carpeta que la galeria de Windows (`galeria_capturas::carpeta_en`),
@@ -175,8 +178,17 @@ public final class Capturador {
         case "p":
             cambiarModo(.pantalla)
             vista.elegirPantalla()
-        case "s", "g", "l":
-            // Con scroll, GIF y pin en vivo: aun no en Mac.
+        case "l":
+            // Pin en vivo de la zona elegida (como el modo `L` de Windows).
+            guard vista.elegida, let pantalla = vista.window?.screen, let alPinearEnVivo else {
+                NSSound.beep()
+                return true
+            }
+            let zona = vista.seleccion.standardized.offsetBy(dx: pantalla.frame.minX, dy: pantalla.frame.minY)
+            cerrar()
+            alPinearEnVivo(zona, pantalla)
+        case "s", "g":
+            // Con scroll y GIF: aun no en Mac.
             NSSound.beep()
         default:
             return false

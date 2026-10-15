@@ -116,6 +116,11 @@ final class EstadoApp: ObservableObject {
         }
         // Lo que se hace con la zona elegida: pinearla o sacar su texto.
         capturador.alPinear = { GestorPines.compartido.pinear(imagen: $0) }
+        // Pines: en vivo (tecla L al capturar), las mini-apps en «Mensajes
+        // guardados» y ⌃2 para mostrar u ocultar todos.
+        capturador.alPinearEnVivo = { GestorPines.compartido.pinearEnVivo(zona: $0, pantalla: $1) }
+        GestorPines.compartido.nucleo = almacen?.nucleo
+        GestorPines.compartido.activarAtajoOcultar()
         capturador.alSacarTexto = { imagen in
             Task {
                 guard let texto = try? await sacarTexto(de: imagen), !texto.isEmpty else {
@@ -233,6 +238,17 @@ struct MenuPrincipal: View {
         Button("Pinear desde el portapapeles") {
             if !GestorPines.compartido.pinearDesdePortapapeles() { NSSound.beep() }
         }
+        Button("Pin en vivo (elige la zona y pulsa L)") { estado.capturador.capturar() }
+        Menu("Nuevo pin") {
+            Button("Nota") { GestorPines.compartido.pinearNota() }
+            Button("Lista de tareas") { GestorPines.compartido.pinearMiniapp("tareas") }
+            Button("Contador") { GestorPines.compartido.pinearMiniapp("contador") }
+            Button("Ruleta") { GestorPines.compartido.pinearMiniapp("ruleta") }
+            Button("Gastos") { GestorPines.compartido.pinearMiniapp("gastos") }
+        }
+        Button("Pines abiertos…") { GestorPines.compartido.mostrarPanelAbiertos() }
+        Button("Mostrar u ocultar los pines") { GestorPines.compartido.alternarTodos() }
+            .keyboardShortcut("2", modifiers: .control)
         Divider()
         Button("Ajustes…") {
             abrirAjustes()
