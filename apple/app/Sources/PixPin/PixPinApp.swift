@@ -57,6 +57,20 @@ final class EstadoApp: ObservableObject {
                 NSPasteboard.general.setString(texto, forType: .string)
             }
         }
+        // Al chat: a «Mensajes guardados», como en Windows sin chat abierto.
+        if let almacen {
+            capturador.alMandarAlChat = { imagen in
+                Task {
+                    guard let png = NSBitmapImageRep(cgImage: imagen).representation(using: .png, properties: [:]),
+                          let guardados = try? almacen.nucleo.chatGuardados(),
+                          await almacen.adjuntar(datos: png, formato: "png", en: guardados.id) != nil
+                    else {
+                        NSSound.beep()
+                        return
+                    }
+                }
+            }
+        }
         atajoCaptura = AtajoGlobal(.capturar) { capturador.capturar() }
     }
 }
