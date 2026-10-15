@@ -166,6 +166,7 @@ pub const VERBOS: &[Verbo] = &[
     Verbo { nombres: &["al-movil", "movil"], uso: "al-movil <fichero>… [--aparato <id>]", ayuda: "Manda los ficheros al movil (a todos si no se dice): imagenes al lienzo, lo demas al chat.", opciones: &["aparato"], por_enlace: false, armar: armar_al_movil },
     Verbo { nombres: &["ocr", "texto"], uso: "ocr <imagen>… [--copiar]", ayuda: "Escribe en la consola el texto de las imagenes (y lo copia con --copiar). No necesita PixPin abierta.", opciones: &[], por_enlace: false, armar: armar_ocr },
     Verbo { nombres: &["copiar-texto"], uso: "copiar-texto <imagen>…", ayuda: "PixPin lee el texto de las imagenes, lo copia y lo dice en su aviso (el menu del Explorador).", opciones: &[], por_enlace: false, armar: armar_copiar_texto },
+    Verbo { nombres: &["leer", "leer-en-voz"], uso: "leer \"<texto>\" [--titulo T]", ayuda: "Lee el texto en voz alta con la voz de PixPin, sin abrir nada (se para con las teclas multimedia).", opciones: &["texto", "titulo"], por_enlace: true, armar: armar_leer },
     Verbo { nombres: &["asistente", "ia", "preguntar"], uso: "asistente [\"pedido\"] [fichero…] [--proyecto P]", ayuda: "Le pide algo al asistente sin abrir el chat. Con ficheros y sin pedido, pregunta que hacer con ellos.", opciones: &["proyecto", "texto"], por_enlace: true, armar: armar_asistente },
     Verbo { nombres: &["abrir", "open"], uso: "abrir <fichero>… [--pagina N] [--buscar T]", ayuda: "Abre cada fichero como «Abrir con PixPin» (lector, editor o pin).", opciones: &["pagina", "buscar", "ruta", "tipo", "proyecto", "codigo", "referencia"], por_enlace: true, armar: armar_abrir },
     Verbo { nombres: &["ventana"], uso: "ventana tareas|galeria|lecciones|sincronizar", ayuda: "Abre esa ventana de la bandeja.", opciones: &["cual"], por_enlace: true, armar: armar_ventana },
@@ -455,11 +456,19 @@ pub fn codificar(t: &str) -> String {
     s
 }
 
-/// Arma un enlace `pixpinmax://<verbo>?campo=valor…` (sin firmar). Con
-/// `pixpinmax:` y no `pixpin:`, que en el PC puede ser del PixPin original
-/// ([`ESQUEMAS`]): los botones de los avisos siempre llegan a esta app.
+/// El esquema con que la app arma sus enlaces ([`enlace`]). `pixpinmax` y
+/// no `pixpin`: en este PC (15-oct) `pixpin://` ya lo tiene registrado el
+/// PixPin original de DepthPixel (`…\Programs\PixPin\PixPin.exe`), y un
+/// boton de aviso con `pixpin://` abriria ese otro programa. Si algun dia
+/// `pixpin://` es nuestro en todos los equipos (`integraciones.ps1
+/// -TomarPixpin`), basta cambiar esto: el traductor y la lista blanca son
+/// los mismos para los dos.
+pub const ESQUEMA_DE_LA_CASA: &str = "pixpinmax";
+
+/// Arma un enlace `pixpinmax://<verbo>?campo=valor…` (sin firmar), con
+/// [`ESQUEMA_DE_LA_CASA`].
 pub fn enlace(verbo: &str, campos: &[(&str, &str)]) -> String {
-    let mut s = format!("pixpinmax://{verbo}");
+    let mut s = format!("{ESQUEMA_DE_LA_CASA}://{verbo}");
     for (i, (k, v)) in campos.iter().enumerate() {
         s.push(if i == 0 { '?' } else { '&' });
         s.push_str(&codificar(k));
@@ -730,7 +739,11 @@ fn armar_chat(e: &Entrada) -> Result<Orden, Fallo> {
     if texto.is_empty() && ficheros.is_empty() {
         return pedidos(vec![pedido("abrir", json!({ "que": { "tipo": "proyecto", "proyecto": e.proyecto() } }))]);
     }
-    let (imagenes, archivos) = partir_imagenes(&ficheros);
+    // Lo que va como foto lo decide la misma regla que `--al-chat` y el
+    // panel Compartir (`compartido::es_foto`): un GIF o un WebP van tal cual.
+    let (fotos, otros): (Vec<PathBuf>, Vec<PathBuf>) = ficheros.into_iter().partition(|p| crate::compartido::es_foto(p));
+    let imagenes: Vec<Value> = fotos.iter().map(|p| ruta_json(p)).collect();
+    let archivos: Vec<Value> = otros.iter().map(|p| ruta_json(p)).collect();
     let mut campos = json!({ "texto": texto, "proyecto": e.proyecto() });
     if !imagenes.is_empty() {
         campos["imagenes"] = Value::Array(imagenes);
@@ -739,6 +752,12 @@ fn armar_chat(e: &Entrada) -> Result<Orden, Fallo> {
         campos["archivos"] = Value::Array(archivos);
     }
     pedidos(vec![pedido("chat", campos)])
+}
+
+/// El pedido `leer_en_voz` de la extension del navegador, desde la consola.
+fn armar_leer(e: &Entrada) -> Result<Orden, Fallo> {
+    let texto = texto_o(e, "texto").ok_or_else(|| Fallo::no_se_entiende("leer: falta el texto"))?;
+    pedidos(vec![pedido("leer_en_voz", json!({ "texto": texto, "titulo": e.campo("titulo") }))])
 }
 
 fn armar_proyecto(e: &Entrada) -> Result<Orden, Fallo> {
@@ -857,8 +876,14 @@ fn armar_ocr(e: &Entrada) -> Result<Orden, Fallo> {
 }
 
 fn armar_copiar_texto(e: &Entrada) -> Result<Orden, Fallo> {
+    // El pedido `ocr` de la extension del navegador: `ruta` y, si hay mas,
+    // `rutas` con las demas (un solo texto al portapapeles).
     let rutas = imagenes_solo(e, "copiar-texto")?;
-    pedidos(vec![pedido("ocr", json!({ "rutas": rutas.iter().map(|p| ruta_json(p)).collect::<Vec<_>>() }))])
+    let mut campos = json!({ "ruta": ruta_json(&rutas[0]) });
+    if rutas.len() > 1 {
+        campos["rutas"] = Value::Array(rutas[1..].iter().map(|p| ruta_json(p)).collect());
+    }
+    pedidos(vec![pedido("ocr", campos)])
 }
 
 fn armar_asistente(e: &Entrada) -> Result<Orden, Fallo> {

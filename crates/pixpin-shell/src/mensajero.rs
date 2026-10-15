@@ -165,7 +165,7 @@ pub mod respuesta {
 /// accion desconocida sin esperar al bucle. La aplicacion tiene una prueba
 /// que comprueba que entiende todas (`pedidos.rs`): si una se anade aqui y
 /// no alli, falla.
-pub const ACCIONES: [&str; 31] = [
+pub const ACCIONES: [&str; 32] = [
     "abrir",
     "chat",
     "nota_nueva",
@@ -199,8 +199,9 @@ pub const ACCIONES: [&str; 31] = [
     "automatizacion",
     // 14-oct: una tabla del chat ya rellena (el asistente, tabla escaneada).
     "tabla_nueva",
-    // 15-oct: leer el texto de unas imagenes y copiarlo (el menu del
-    // Explorador, `pixpinmax copiar-texto`).
+    // 15-oct: la extension del navegador (`apps/pixpin-puente`): leer en voz
+    // alta un texto suelto y pasar el texto de una imagen al portapapeles.
+    "leer_en_voz",
     "ocr",
 ];
 
@@ -329,35 +330,13 @@ pub fn enviar_pedido(json: &str) -> isize {
 /// Lo de [`enviar_pedido`] a una ventana concreta. Aparte para las pruebas,
 /// que mandan a su propia ventana: buscarla por la clase encontraria la de
 /// la PixPin del usuario si esta abierta, y le haria cosas de verdad.
+///
+/// Es el mismo camino que [`enviar_pedido_con_espera`] (un solo
+/// empaquetado y un solo envio para todos los que mandan): con su espera de
+/// [`ESPERA_RESPUESTA_MS`], para que una copia colgada no deje colgado
+/// tambien al que manda. `0` si no contesto.
 pub fn enviar_pedido_a(destino: windows::Win32::Foundation::HWND, json: &str) -> isize {
-    use windows::Win32::UI::WindowsAndMessaging::WM_COPYDATA;
-    // El que manda tambien respeta el tope: mandar algo que se va a
-    // rechazar es copiar megas entre procesos para nada.
-    if json.len() > TOPE_PEDIDO {
-        return respuesta::NO_SE_ENTIENDE;
-    }
-    let paquete = COPYDATASTRUCT {
-        dwData: PEDIDO_JSON,
-        cbData: json.len() as u32,
-        lpData: json.as_ptr() as *mut _,
-    };
-    // SAFETY: SendMessageW es SINCRONO: `json` y `paquete` siguen vivos
-    // durante toda la llamada, que es lo que exige WM_COPYDATA (ver
-    // `enviar_ficheros`). El otro lado solo lee.
-    let r = unsafe {
-        SendMessageW(
-            destino,
-            WM_COPYDATA,
-            Some(WPARAM(0)),
-            Some(LPARAM(&paquete as *const _ as isize)),
-        )
-    };
-    // El toque a la cola, por lo mismo que en `enviar_ficheros`: el pedido
-    // entra directo al procedimiento y el bucle esta dormido.
-    if r.0 != 0 {
-        crate::ventana::despertar(destino);
-    }
-    r.0
+    enviar_pedido_con_espera(destino, json, ESPERA_RESPUESTA_MS).unwrap_or(0)
 }
 
 /// Lo que salio de mandar un pedido desde fuera (la linea de ordenes, los

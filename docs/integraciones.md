@@ -35,7 +35,7 @@ pixpinmax ayuda
 | `pinear` (`pin`) | `pinear <fichero>… \| --codigo <id> [--proyecto P]` | un `pinear` por fichero |
 | `pinear-ultima` | | `pinear_ultima` |
 | `archivo` | `archivo <id del mensaje> [--proyecto P]` | `pinear {codigo}` (el `atajo/archivo` de Android) |
-| `chat` (`mensaje`) | `chat [texto] [fichero…] [--proyecto P]` | `chat` (imágenes como fotos, el resto como adjuntos); sin nada, abre ese chat |
+| `chat` (`mensaje`) | `chat [texto] [fichero…] [--proyecto P]` | `chat` (png/jpg/bmp como fotos, el resto como adjuntos: la regla de `--al-chat`, `compartido::es_foto`); sin nada, abre ese chat |
 | `mensajes` | | `abrir` Mensajes guardados |
 | `proyectos` | | `ventana_principal` |
 | `proyecto` | `proyecto <id\|nombre>` | `abrir {tipo:"proyecto"}` |
@@ -52,7 +52,8 @@ pixpinmax ayuda
 | `sincronizar` (`sync`) | `sincronizar [todos\|<aparato>]` | sin nada, `ventana {cual:"sincronizar"}`; con aparato, `sincronizar` |
 | `al-movil` (`movil`) | `al-movil <fichero>… [--aparato <id>]` | `enviar_al_movil` (a `todos` si no se dice) |
 | `ocr` (`texto`) | `ocr <imagen>… [--copiar]` | **ninguno**: lee el texto aquí mismo y lo escribe en la salida (sin PixPin abierta) |
-| `copiar-texto` | `copiar-texto <imagen>…` | `ocr`: PixPin lo lee, lo copia y lo dice en su globo |
+| `copiar-texto` | `copiar-texto <imagen>…` | `ocr {ruta, rutas}` (el de la extensión del navegador): PixPin lo lee, lo copia y lo dice en su globo |
+| `leer` (`leer-en-voz`) | `leer "<texto>" [--titulo T]` | `leer_en_voz` (el de la extensión del navegador) |
 | `asistente` (`ia`, `preguntar`) | `asistente ["pedido"] [fichero…] [--proyecto P]` | `asistente`; con ficheros y sin pedido, pregunta en una caja qué hacer con ellos |
 | `abrir` (`open`) | `abrir <fichero>… [--pagina N] [--buscar T]` | `abrir {tipo:"fichero"}` |
 | `ventana` | `ventana tareas\|galeria\|lecciones\|sincronizar` | `ventana` |
@@ -109,7 +110,15 @@ enseñar un cuadro). Lo que cuesta es arrancar el proceso: el exe importa estát
 Medido (`apps/pixpin/tests/orden_de_punta_a_punta.rs`, `medir_el_tiempo_hasta_aceptado`,
 compilación de depuración, 15 vueltas, de lanzar el proceso a que sale con «aceptado»):
 
-MEDIDAS
+| Orden | Mínimo | Mediana | Máximo |
+|---|---|---|---|
+| `pixpinmax capturar` → «aceptado» (proceso entero, contra la ventana de prueba) | 60 ms | 88 ms | 172 ms |
+| `pixpinmax ayuda` (arrancar, escribir y salir) | | 107 ms | |
+| `pixpinmax ocr captura.png` (una captura de 228 letras, OCR de Windows incluido) | | 284 ms | |
+
+Con otras compilaciones corriendo a la vez en el equipo; en `release` es menos. Está por debajo
+de los 0,5 s, así que no se ha tocado el enlazado (cargar `d2d1` y compañía en diferido,
+`/DELAYLOAD`, ahorraría unos milisegundos más pero cambia el arranque de toda la app).
 
 ### Para otros programas en Rust
 
@@ -143,7 +152,7 @@ pixpinmax://pedido?json=%7B%22pixpin%22%3A1%2C%22accion%22%3A%22capturar%22%7D
   también el **PixPin original de DepthPixel** si está instalado (en este equipo lo está:
   `…\Programs\PixPin\PixPin.exe`); `integraciones.ps1` **no se lo quita** (rompería sus
   enlaces) y solo lo toma si está libre o ya era nuestro, o con `-TomarPixpin`. Por eso los
-  enlaces que hace el PC (`orden::enlace`) son `pixpinmax://`.
+  enlaces que hace el PC (`orden::enlace`, con `orden::ESQUEMA_DE_LA_CASA`) son `pixpinmax://`. `pixpinmax:pedido?json=…` (sin barras) también vale: pasa por el mismo traductor y la misma lista blanca.
 - Mayúsculas en el esquema o el verbo, `%20` o `+`, una barra final: da igual. Un campo repetido:
   vale el primero. Un `%` mal escrito o UTF-8 roto: 3. Más de 16 KB: 3.
 - Los verbos `ocr`, `al-movil` y `ayuda` no se pueden pedir por enlace (6).

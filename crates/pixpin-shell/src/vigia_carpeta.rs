@@ -52,6 +52,20 @@ impl VigiaCarpeta {
         }
         false
     }
+
+    /// Espera hasta que cambie algo o pase `tope`. `true` si cambio. Para
+    /// un hilo que solo vive para vigilar (la impresora «PixPin»).
+    pub fn esperar(&self, tope: std::time::Duration) -> bool {
+        let ms = u32::try_from(tope.as_millis()).unwrap_or(u32::MAX - 1);
+        // SAFETY: HANDLE vivo de `FindFirstChangeNotificationW`.
+        unsafe {
+            if WaitForSingleObject(self.0, ms) == WAIT_OBJECT_0 {
+                let _ = FindNextChangeNotification(self.0);
+                return true;
+            }
+        }
+        false
+    }
 }
 
 impl Drop for VigiaCarpeta {

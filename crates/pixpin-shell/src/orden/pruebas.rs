@@ -57,6 +57,7 @@ fn los_verbos_dan_el_pedido_del_protocolo() {
         (vec!["lecciones", "encofrado"], json!({"pixpin":1,"accion":"lecciones","consulta":"encofrado","proyecto":null})),
         (vec!["ia", "resume", "mis", "tareas"], json!({"pixpin":1,"accion":"asistente","texto":"resume mis tareas","proyecto":null})),
         (vec!["asistente"], json!({"pixpin":1,"accion":"asistente","texto":"","proyecto":null})),
+        (vec!["leer", "hola", "mundo", "--titulo", "Web"], json!({"pixpin":1,"accion":"leer_en_voz","texto":"hola mundo","titulo":"Web"})),
     ];
     for (a, esperado) in casos {
         let p = pedidos_de(&a);
@@ -81,7 +82,7 @@ fn los_ficheros_van_como_imagenes_o_archivos() {
     let p = pedidos_de(&["abrir", "C:\\a\\libro.pdf", "--pagina", "12", "--buscar", "losa"]);
     assert_eq!(p, vec![json!({"pixpin":1,"accion":"abrir","que":{"tipo":"fichero","ruta":"C:\\a\\libro.pdf","pagina":12,"buscar":"losa"}})]);
     let p = pedidos_de(&["copiar-texto", "C:\\a\\uno.png", "C:\\a\\dos.jpg"]);
-    assert_eq!(p, vec![json!({"pixpin":1,"accion":"ocr","rutas":["C:\\a\\uno.png","C:\\a\\dos.jpg"]})]);
+    assert_eq!(p, vec![json!({"pixpin":1,"accion":"ocr","ruta":"C:\\a\\uno.png","rutas":["C:\\a\\dos.jpg"]})]);
     for x in p {
         valido(&x);
     }

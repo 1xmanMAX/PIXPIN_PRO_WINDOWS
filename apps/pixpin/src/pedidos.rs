@@ -239,10 +239,26 @@ pub enum Pedido {
         #[serde(default, deserialize_with = "como_texto_json")]
         receta: Option<String>,
     },
-    /// Leer el texto de unas imagenes y copiarlo al portapapeles, como
-    /// «Copiar texto» del pin (el menu del Explorador y `pixpinmax
-    /// copiar-texto`, 15-oct-2026). En su hilo; el globo dice lo copiado.
+    /// **Leer en voz alta un texto suelto** (15-oct, la seleccion de una
+    /// pagina desde la extension del navegador) con la voz de la app
+    /// (`leer_en_voz`), sin abrir ningun lector: se para y se pausa con los
+    /// mandos de reproductor de Windows y las teclas multimedia, como un
+    /// documento cuyo lector se cerro. `titulo` es lo que ensenan esos
+    /// mandos; sin el, «PixPin Max».
+    LeerEnVoz {
+        #[serde(default)]
+        texto: String,
+        titulo: Option<String>,
+    },
+    /// **El texto de una imagen al portapapeles** (15-oct, «Texto (OCR)» de
+    /// la extension del navegador): el OCR de Windows, en orden de lectura,
+    /// como «Texto» de la captura. Lo que salga se dice en el globo.
     Ocr {
+        ruta: PathBuf,
+        /// Mas imagenes detras de `ruta` (15-oct, «Copiar texto (OCR)» del
+        /// Explorador con varias elegidas, `pixpinmax copiar-texto`): el
+        /// texto de todas, en orden, en un solo portapapeles.
+        #[serde(default)]
         rutas: Vec<PathBuf>,
     },
 }
@@ -962,22 +978,6 @@ fn hacer(p: Pedido, cx: &Contexto) -> Result<Hecho, Fallo> {
         Pedido::Sincronizar { aparato } => {
             crate::sincronizar::en_fondo::lanzar(cx.ubicacion, &aparato);
         }
-        // En su hilo: el OCR de Windows tarda de 170 a 670 ms por imagen, y
-        // este bucle no puede pararse tanto. Lo que no esta se dice ya.
-        Pedido::Ocr { rutas } => {
-            if rutas.is_empty() {
-                return Err(Fallo::Roto("ocr sin rutas".into()));
-            }
-            for r in &rutas {
-                if !pixpin_shell::orden::es_imagen(r) {
-                    return Err(Fallo::NoEsImagen(r.clone()));
-                }
-                if !r.is_file() {
-                    return Err(Fallo::SinFichero(r.clone()));
-                }
-            }
-            copiar_texto_de(cx.idioma, rutas);
-        }
         // En su hilo: un turno tarda segundos (o minutos en el local). Lo
         // que conteste sale en el aviso flotante del asistente.
         Pedido::Asistente {
@@ -1027,8 +1027,146 @@ fn hacer(p: Pedido, cx: &Contexto) -> Result<Hecho, Fallo> {
             id,
             receta,
         } => return automatizacion_pedida(cx, operacion, id, receta),
+        // La voz es la respuesta; si no hay con que leer, lo dice el globo
+        // desde su hilo.
+        Pedido::LeerEnVoz { texto, titulo } => {
+            let parrafos = parrafos_sueltos(&texto);
+            if parrafos.is_empty() {
+                return Ok(aviso("pedido-nada-que-leer", &[]));
+            }
+            let titulo = titulo
+                .map(|t| t.trim().to_string())
+                .filter(|t| !t.is_empty())
+                .unwrap_or_else(|| t.t("app-nombre"));
+            leer_suelto(cx.idioma, raiz.to_path_buf(), titulo, parrafos, ahora);
+        }
+        Pedido::Ocr { ruta, rutas } => {
+            let todas: Vec<PathBuf> = std::iter::once(ruta).chain(rutas).collect();
+            for ruta in &todas {
+                if !ruta.is_file() {
+                    return Err(Fallo::SinImagen(ruta.clone()));
+                }
+                if !crate::tareas::es_imagen(ruta) {
+                    return Err(Fallo::NoEsImagen(ruta.clone()));
+                }
+            }
+            ocr_al_portapapeles(cx.idioma, todas);
+        }
     }
     Ok(Hecho::default())
+}
+
+/// **Los parrafos de un texto suelto** para leerlos en voz alta: uno por
+/// renglon (la seleccion de una pagina trae un salto por bloque), sin los
+/// vacios y con los blancos juntados. Pura, para probarla.
+pub(crate) fn parrafos_sueltos(texto: &str) -> Vec<String> {
+    texto
+        .lines()
+        .map(|l| l.split_whitespace().collect::<Vec<_>>().join(" "))
+        .filter(|l| !l.is_empty())
+        .collect()
+}
+
+/// Empieza a leer `parrafos` con la voz de la app, en un hilo: preparar la
+/// voz de Windows (SAPI) tarda, y el bucle no puede esperar. El lector se
+/// suelta en cuanto suena: la voz sigue sola, como al cerrar un lector.
+fn leer_suelto(
+    idioma: pixpin_store::Idioma,
+    raiz: PathBuf,
+    titulo: String,
+    parrafos: Vec<String>,
+    ahora: i64,
+) {
+    let _ = std::thread::Builder::new()
+        .name("pedido-leer-en-voz".into())
+        .spawn(move || {
+            let _com = pixpin_shell::ComDelHilo::iniciar();
+            let t = Catalogo::nuevo(idioma);
+            let muestra: String = parrafos.join(" ").chars().take(4000).collect();
+            let de_la_app = crate::leer_en_voz::idioma_de_la_app(&t);
+            let lengua = pixpin_docs::voz_alta::idioma_para_leer(&muestra, "", &de_la_app);
+            // Una clave por pedido: cada seleccion es un documento nuevo.
+            let clave = PathBuf::from(format!("pixpin-pedido/leer-{ahora}"));
+            let doc = crate::leer_en_voz::documento(
+                &t,
+                &raiz,
+                &clave,
+                titulo,
+                parrafos,
+                lengua.clone(),
+                // Un texto suelto no tiene verde que apuntar.
+                Box::new(|_| {}),
+            );
+            match crate::leer_en_voz::LeerEnVoz::arrancar(doc) {
+                Some(mut lector) => lector.leer(0),
+                None => {
+                    crate::sincronizar::al_movil::avisar(crate::leer_en_voz::sin_voz(&t, &lengua))
+                }
+            }
+        });
+}
+
+/// El OCR de `ruta` al portapapeles, en un hilo (leer una imagen grande
+/// tarda cientos de ms). Lo que pase va al globo.
+fn ocr_al_portapapeles(idioma: pixpin_store::Idioma, rutas: Vec<PathBuf>) {
+    let _ = std::thread::Builder::new()
+        .name("pedido-ocr".into())
+        .spawn(move || {
+            let _com = pixpin_shell::ComDelHilo::iniciar();
+            let t = Catalogo::nuevo(idioma);
+            let aviso = if !pixpin_ocr::disponible() {
+                t.t("pedido-ocr-no-disponible")
+            } else {
+                // Una imagen tras otra, con una linea en blanco entre ellas;
+                // la primera que no se lee para todo.
+                let texto = rutas
+                    .iter()
+                    .map(|ruta| {
+                        pixpin_codec::imagen::cargar(ruta)
+                            .map_err(|e| e.to_string())
+                            .and_then(|img| crate::texto_de_imagen(&img).map_err(|e| e.to_string()))
+                    })
+                    .collect::<Result<Vec<String>, String>>()
+                    .map(|v| v.into_iter().filter(|t| !t.trim().is_empty()).collect::<Vec<_>>().join("\n\n"));
+                aviso_del_ocr(&t, texto, |s| {
+                    pixpin_codec::copiar_texto(s).map_err(|e| e.to_string())
+                })
+            };
+            crate::sincronizar::al_movil::avisar(aviso);
+        });
+}
+
+/// Lo que dice el globo tras el OCR, y copiar si hay algo. Aparte y sin
+/// Windows para probarlo.
+fn aviso_del_ocr(
+    t: &Catalogo,
+    texto: Result<String, String>,
+    copiar: impl FnOnce(&str) -> Result<(), String>,
+) -> String {
+    let mut args = fluent_bundle::FluentArgs::new();
+    match texto {
+        Ok(texto) if texto.trim().is_empty() => t.t("pedido-ocr-sin-texto"),
+        Ok(texto) => match copiar(&texto) {
+            Ok(()) => {
+                let seguido = texto.split_whitespace().collect::<Vec<_>>().join(" ");
+                let mut corto: String = seguido.chars().take(60).collect();
+                if corto.len() < seguido.len() {
+                    corto.push('…');
+                }
+                args.set("texto", corto);
+                args.set("n", texto.chars().count() as i64);
+                t.t_args("pedido-ocr-copiado", &args)
+            }
+            Err(motivo) => {
+                args.set("motivo", motivo);
+                t.t_args("pedido-ocr-fallo", &args)
+            }
+        },
+        Err(motivo) => {
+            args.set("motivo", motivo);
+            t.t_args("pedido-ocr-fallo", &args)
+        }
+    }
 }
 
 /// **El pedido `automatizacion`**: lo que se hace con la lista del chat
@@ -1173,52 +1311,6 @@ const IMAGENES_A_COPIAR: [&str; 6] = ["png", "jpg", "jpeg", "bmp", "gif", "webp"
 
 /// Si la ruta se puede copiar como imagen: que este y que sea una imagen
 /// por su extension. Leerla es cosa del codec, despues.
-/// El pedido `ocr`, en un hilo: el texto de cada imagen en orden de lectura
-/// (`texto_de_imagen`, el mismo de «Copiar texto» del pin), separadas por
-/// una linea en blanco, al portapapeles; y el globo al acabar, por el mismo
-/// buzon que usan los envios al movil (`al_movil::avisar`).
-fn copiar_texto_de(idioma: pixpin_store::Idioma, rutas: Vec<PathBuf>) {
-    let lanzado = std::thread::Builder::new().name("ocr-pedido".into()).spawn(move || {
-        let t = Catalogo::nuevo(idioma);
-        let mut a = fluent_bundle::FluentArgs::new();
-        let mut trozos = Vec::new();
-        for r in &rutas {
-            let leido = pixpin_codec::imagen::cargar(r)
-                .map_err(|e| e.to_string())
-                .and_then(|img| crate::texto_de_imagen(&img).map_err(|e| format!("{e:#}")));
-            match leido {
-                Ok(x) if !x.trim().is_empty() => trozos.push(x),
-                Ok(_) => {}
-                Err(e) => {
-                    tracing::warn!(ruta = %r.display(), %e, "ocr del pedido");
-                    a.set("motivo", e);
-                    crate::sincronizar::al_movil::avisar(t.t_args("pedido-ocr-fallo", &a));
-                    return;
-                }
-            }
-        }
-        let texto = trozos.join("\n\n");
-        if texto.is_empty() {
-            a.set("cuantas", rutas.len() as i64);
-            crate::sincronizar::al_movil::avisar(t.t_args("pedido-ocr-vacio", &a));
-            return;
-        }
-        match pixpin_codec::portapapeles::copiar_texto(&texto) {
-            Ok(()) => {
-                a.set("letras", texto.chars().count() as i64);
-                crate::sincronizar::al_movil::avisar(t.t_args("pedido-ocr-copiado", &a));
-            }
-            Err(e) => {
-                a.set("motivo", e.to_string());
-                crate::sincronizar::al_movil::avisar(t.t_args("pedido-ocr-fallo", &a));
-            }
-        }
-    });
-    if let Err(e) = lanzado {
-        tracing::warn!(?e, "no se pudo lanzar el hilo del OCR del pedido");
-    }
-}
-
 fn imagen_a_copiar(ruta: &Path) -> Result<(), Fallo> {
     let es_imagen = ruta
         .extension()
@@ -1870,8 +1962,15 @@ mod pruebas {
 
     /// Un ejemplo de cada accion, con lo minimo que pide la tabla del
     /// protocolo.
-    const EJEMPLOS: [(&str, &str); 31] = [
-        ("ocr", r#"{"pixpin":1,"accion":"ocr","rutas":["C:\\a\\foto.png"]}"#),
+    const EJEMPLOS: [(&str, &str); 32] = [
+        (
+            "leer_en_voz",
+            r#"{"pixpin":1,"accion":"leer_en_voz","texto":"Hola.\nAdios.","titulo":"Wikipedia"}"#,
+        ),
+        (
+            "ocr",
+            r#"{"pixpin":1,"accion":"ocr","ruta":"C:\\a\\foto.png"}"#,
+        ),
         (
             "asistente",
             r#"{"pixpin":1,"accion":"asistente","texto":"apunta comprar yeso","proyecto":"pr-1"}"#,
@@ -3048,15 +3147,116 @@ mod pruebas {
     }
 
     #[test]
-    fn ocr_se_lee_y_caso_negativo_sin_rutas_o_con_otra_cosa() {
+    fn leer_en_voz_y_ocr_se_leen_y_lo_que_falta_es_roto() {
         assert_eq!(
-            leer(r#"{"pixpin":1,"accion":"ocr","rutas":["C:\\a\\x.png","C:\\a\\y.jpg"]}"#).unwrap(),
-            Pedido::Ocr {
-                rutas: vec![PathBuf::from(r"C:\a\x.png"), PathBuf::from(r"C:\a\y.jpg")]
+            leer(r#"{"pixpin":1,"accion":"leer_en_voz","texto":"hola"}"#).unwrap(),
+            Pedido::LeerEnVoz {
+                texto: "hola".into(),
+                titulo: None
             }
         );
-        // Sin `rutas` no se sabe que leer.
-        assert!(matches!(leer(r#"{"pixpin":1,"accion":"ocr"}"#), Err(Fallo::Roto(_))));
-        assert!(matches!(leer(r#"{"pixpin":1,"accion":"ocr","rutas":"C:\\a\\x.png"}"#), Err(Fallo::Roto(_))));
+        assert_eq!(
+            leer(r#"{"pixpin":1,"accion":"ocr","ruta":"C:\\a\\b.png"}"#).unwrap(),
+            Pedido::Ocr {
+                ruta: PathBuf::from(r"C:\a\b.png"),
+                rutas: Vec::new()
+            }
+        );
+        // Varias (el menu del Explorador): la primera y las demas.
+        assert_eq!(
+            leer(r#"{"pixpin":1,"accion":"ocr","ruta":"C:\\a\\b.png","rutas":["C:\\a\\c.png"]}"#).unwrap(),
+            Pedido::Ocr {
+                ruta: PathBuf::from(r"C:\a\b.png"),
+                rutas: vec![PathBuf::from(r"C:\a\c.png")]
+            }
+        );
+        // Caso negativo: un OCR sin ruta no es un pedido que se pueda hacer.
+        assert!(matches!(
+            leer(r#"{"pixpin":1,"accion":"ocr"}"#),
+            Err(Fallo::Roto(_))
+        ));
+    }
+
+    #[test]
+    fn un_texto_suelto_se_lee_por_renglones_sin_vacios() {
+        assert_eq!(
+            parrafos_sueltos("  Primer   parrafo \n\n\t\nSegundo\r\n  "),
+            ["Primer parrafo", "Segundo"]
+        );
+        // Caso negativo: solo blancos no da nada que leer.
+        assert!(parrafos_sueltos(" \n\t \r\n").is_empty());
+    }
+
+    #[test]
+    fn el_globo_del_ocr_dice_lo_copiado_o_por_que_no() {
+        let t = Catalogo::nuevo(pixpin_store::Idioma::Espanol);
+        let mut copiado = String::new();
+        let aviso = aviso_del_ocr(&t, Ok("Jr. Antisuyo\n1 250,50".into()), |s| {
+            copiado = s.to_string();
+            Ok(())
+        });
+        assert_eq!(copiado, "Jr. Antisuyo\n1 250,50");
+        assert!(aviso.contains("Jr. Antisuyo 1 250,50"), "{aviso}");
+        // Un texto largo se recorta en el globo, no en el portapapeles.
+        let largo = "palabra ".repeat(40);
+        let aviso = aviso_del_ocr(&t, Ok(largo.clone()), |s| {
+            assert_eq!(s, largo);
+            Ok(())
+        });
+        assert!(aviso.contains('…'), "{aviso}");
+        // Casos negativos: sin texto no se copia nada; un fallo se dice.
+        let aviso = aviso_del_ocr(&t, Ok("  \n ".into()), |_| panic!("no se copia nada"));
+        assert_eq!(aviso, t.t("pedido-ocr-sin-texto"));
+        let aviso = aviso_del_ocr(&t, Err("imagen rota".into()), |_| panic!("no se copia"));
+        assert!(aviso.contains("imagen rota"), "{aviso}");
+        let aviso = aviso_del_ocr(&t, Ok("x".into()), |_| Err("portapapeles ocupado".into()));
+        assert!(aviso.contains("portapapeles ocupado"), "{aviso}");
+        for clave in [
+            "pedido-nada-que-leer",
+            "pedido-ocr-sin-texto",
+            "pedido-ocr-no-disponible",
+        ] {
+            assert_ne!(t.t(clave), clave, "falta traducir {clave}");
+        }
+    }
+
+    #[test]
+    fn caso_negativo_ocr_de_algo_que_no_esta_o_no_es_imagen_no_arranca() {
+        let (raiz, _) = almacen_de_prueba("ocr-pedido");
+        let texto = raiz.join("nota.txt");
+        std::fs::write(&texto, b"x").unwrap();
+        let t = Catalogo::nuevo(pixpin_store::Idioma::Espanol);
+        let ubicacion = Ubicacion::Instalado { raiz: raiz.clone() };
+        let cx = Contexto {
+            idioma: pixpin_store::Idioma::Espanol,
+            ubicacion: &ubicacion,
+            opciones: crate::ventana_chat::OpcionesLienzo {
+                enganche: Default::default(),
+                nivel: pixpin_nivel::Nivel::Completo,
+                medir_fotogramas: false,
+            },
+            aparato: "PRUE",
+            textos: &t,
+        };
+        for (ruta, clave) in [
+            (raiz.join("no-esta.png"), "pedido-sin-imagen"),
+            (texto, "pedido-no-es-imagen"),
+        ] {
+            let json = serde_json::json!({"pixpin":1,"accion":"ocr","ruta":ruta}).to_string();
+            let hecho = atender(&json, &cx);
+            let esperado = Fallo::aviso(
+                &if clave == "pedido-sin-imagen" {
+                    Fallo::SinImagen(ruta.clone())
+                } else {
+                    Fallo::NoEsImagen(ruta.clone())
+                },
+                &t,
+            );
+            assert_eq!(hecho.aviso.as_deref(), Some(esperado.as_str()), "{clave}");
+        }
+        // Y leer sin texto se dice sin arrancar la voz.
+        let hecho = atender(r#"{"pixpin":1,"accion":"leer_en_voz","texto":"  "}"#, &cx);
+        assert_eq!(hecho.aviso, Some(t.t("pedido-nada-que-leer")));
+        let _ = std::fs::remove_dir_all(&raiz);
     }
 }

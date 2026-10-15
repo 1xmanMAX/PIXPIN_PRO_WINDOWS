@@ -296,6 +296,8 @@ pub fn tomar_avisos() -> Vec<String> {
         .unwrap_or_default()
 }
 
+/// Tambien lo usan los pedidos que acaban en un hilo (`leer_en_voz`, `ocr`):
+/// es la misma cola hacia el globo.
 pub(crate) fn avisar(texto: String) {
     if let Ok(mut v) = AVISOS.lock() {
         v.push(texto);
