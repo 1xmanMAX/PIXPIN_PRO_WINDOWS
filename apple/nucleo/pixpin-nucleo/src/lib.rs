@@ -44,17 +44,23 @@
 uniffi::setup_scaffolding!();
 
 pub mod adjuntos;
+pub mod aligerar;
 pub mod ajustes;
 pub mod asistente;
 pub mod buscar;
 pub mod chats;
+pub mod documentos;
 pub mod editor;
 pub mod galeria;
+pub mod hojas;
 pub mod lecciones;
 pub mod lienzo;
+pub mod notas;
+pub mod office;
 pub mod sincro;
 pub mod tareas;
 pub mod timeline;
+pub mod unidades;
 pub mod voz;
 
 use std::path::{Path, PathBuf};
@@ -64,6 +70,7 @@ pub use ajustes::AjustesMac;
 pub use asistente::{HerramientaUsada, MensajeIa, RespuestaIa};
 pub use buscar::{Busqueda, ClaseDeResultado, PaginaBusqueda, ResultadoBusqueda};
 pub use chats::{FichaChat, MensajeChat, PaginaMensajes};
+pub use documentos::{DondeAnota, LecturaDocumento, MarcaDocumento};
 pub use editor::{EditorLienzo, FasePuntero};
 pub use galeria::{CapturaBorrada, CapturaGaleria, PaginaGaleria};
 pub use lecciones::{

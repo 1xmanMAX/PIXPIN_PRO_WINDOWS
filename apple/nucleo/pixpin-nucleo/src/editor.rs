@@ -150,6 +150,22 @@ pub struct EditorLienzo {
     disco: Mutex<Disco>,
     version: AtomicU64,
     cambios: AtomicU64,
+    /// Si es la tinta de una hoja de un documento (ver
+    /// [`crate::documentos`]): lo que hay que hacer ademas al guardar.
+    hoja: Option<HojaDoc>,
+}
+
+/// **Lo de la tinta de una hoja de un documento** (PDF, Word o PowerPoint
+/// del lector): el marco que se escribe junto a ella al guardar y, en el
+/// PDF de un proyecto, el dibujo que hay que apuntarle a su hoja.
+pub(crate) struct HojaDoc {
+    /// `anot-<uid>-p<n>.hoja` y la hoja en unidades del lector.
+    pub marco: Option<(
+        pixpin_proyecto::anotado::Base,
+        pixpin_sincro::anotado::MarcoDeLaHoja,
+    )>,
+    /// `(raiz, ficha, pagina, huella)` del PDF de un proyecto.
+    pub registrar: Option<(PathBuf, String, u32, String)>,
 }
 
 impl EditorLienzo {
@@ -190,7 +206,45 @@ impl EditorLienzo {
             abierto,
             version: AtomicU64::new(1),
             cambios: AtomicU64::new(0),
+            hoja: None,
         })
+    }
+
+    /// **La tinta de una hoja de un documento**: el fichero `ruta` (que
+    /// puede no existir aun: nace vacio y no se escribe hasta que se anote),
+    /// leido en las unidades `u` y traido a las del lector (1400 de ancho
+    /// desde la esquina de la hoja), con los resaltadores reconocidos, como
+    /// `Capa::leer_en` de Windows.
+    pub(crate) fn de_hoja(
+        ruta: PathBuf,
+        u: crate::unidades::Unidades,
+        hoja: HojaDoc,
+    ) -> Result<Self, ErrorNucleo> {
+        let texto = match std::fs::read_to_string(&ruta) {
+            Ok(t) => t,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                excalidraw::escribir(&excalidraw::Lienzo::vacio())
+            }
+            Err(e) => return Err(e.into()),
+        };
+        // Uno que no se entiende no impide leer el documento (Windows: «capa
+        // de tinta ilegible; se empieza vacia»). Pero tampoco se pisa: sin
+        // ruta valida no se guarda nada encima.
+        let (texto, ruta) = match excalidraw::leer(&texto) {
+            Ok(_) => (texto, ruta),
+            Err(_) => (
+                excalidraw::escribir(&excalidraw::Lienzo::vacio()),
+                ruta.with_extension("excalidraw.ilegible-no-se-pisa"),
+            ),
+        };
+        let mut ed = EditorLienzo::nuevo(ruta, &texto, Some(Vec::new()))?;
+        {
+            let st = ed.estado.get_mut().unwrap_or_else(|e| e.into_inner());
+            crate::unidades::a_las_del_lector(&mut st.escena, u);
+            crate::unidades::con_resaltadores(&mut st.escena);
+        }
+        ed.hoja = Some(hoja);
+        Ok(ed)
     }
 
     /// El estado, aunque un hilo muriera con el tomado: la escena sigue
@@ -441,6 +495,17 @@ impl EditorLienzo {
             FasePuntero::Cancelar => EventoGesto::Escape,
         };
         let r = st.gesto.evento(ev, &mut st.escena, escala);
+        // El resaltador del lector cubre un renglon (`resaltador_de_renglon`
+        // de Windows): se le pone al nacer.
+        if self.hoja.is_some()
+            && fase == FasePuntero::Pulsar
+            && st.gesto.herramienta == Herramienta::Resaltador
+            && let Some(id) = st.gesto.trazo_en_curso()
+            && let Some(e) = st.escena.buscar_mut(id)
+            && matches!(e.figura, pixpin_motor2d::elemento::Figura::Resaltador { .. })
+        {
+            e.grosor = crate::unidades::GROSOR_RESALTADOR;
+        }
         // Soltar cierra el paso; pulsar con el texto abre o cierra uno.
         if matches!(fase, FasePuntero::Soltar | FasePuntero::Cancelar)
             || (fase == FasePuntero::Pulsar && st.gesto.herramienta == Herramienta::Texto)
@@ -691,10 +756,78 @@ impl EditorLienzo {
             disco.guardados = cambios;
             return Ok(false);
         }
+        // El PDF de un proyecto: su hoja recibe el dibujo antes de escribirlo
+        // (`para_escribir` de Windows), o lo guardado no seria de nadie.
+        if let Some((raiz, ficha, pagina, huella)) =
+            self.hoja.as_ref().and_then(|h| h.registrar.as_ref())
+        {
+            pixpin_proyecto::capas_del_pdf::dibujo_de_la_pagina(
+                raiz,
+                ficha,
+                *pagina,
+                huella,
+                true,
+                crate::ahora_ms(),
+            );
+        }
         escribir_seguro(&self.ruta, &texto)?;
+        // Primero la tinta y despues su marco, cada uno por un temporal
+        // (`DondeVa::guardar_capa`): la tinta va siempre en las unidades de
+        // la hoja, y el marco lo dice.
+        if let Some((base, propia)) = self.hoja.as_ref().and_then(|h| h.marco.as_ref()) {
+            base.escribir_marco(propia)?;
+        }
         disco.ultimo = texto;
         disco.guardados = cambios;
         Ok(true)
+    }
+
+    /// **El color de lo que se dibuja a partir de ahora** (0..1), y el de lo
+    /// elegido si hay algo elegido. Para la tinta del lector (lapiz y
+    /// resaltador de colores).
+    pub fn tinta_color(&self, r: f32, g: f32, b: f32, a: f32) {
+        let c = ColorRgba {
+            r: r.clamp(0.0, 1.0),
+            g: g.clamp(0.0, 1.0),
+            b: b.clamp(0.0, 1.0),
+            a: a.clamp(0.0, 1.0),
+        };
+        let mut guarda = self.tomar();
+        let st = &mut *guarda;
+        st.gesto.estilo.trazo = c;
+        let ids: Vec<u64> = st.gesto.seleccion.ids().to_vec();
+        let mut cambio = false;
+        if !ids.is_empty() {
+            st.escena.abrir_paso();
+            for id in ids {
+                if let Some(e) = st.escena.buscar_mut(id) {
+                    e.trazo = c;
+                    e.tocar();
+                    cambio = true;
+                }
+            }
+            st.escena.cerrar_paso();
+        }
+        drop(guarda);
+        if cambio {
+            self.subir_cambios();
+        }
+        self.subir_version();
+    }
+
+    /// **El grosor del lapiz** (`strokeWidth` de Excalidraw: 0,5, 1, 2...).
+    pub fn tinta_grosor(&self, grosor: f32) {
+        if !(grosor.is_finite() && grosor > 0.0) {
+            return;
+        }
+        self.tomar().gesto.grosor_tinta = grosor.min(64.0);
+        self.subir_version();
+    }
+
+    /// Si es la tinta de una hoja de un documento (ver
+    /// [`Nucleo::anotar_hoja`]).
+    pub fn es_de_documento(&self) -> bool {
+        self.hoja.is_some()
     }
 }
 
