@@ -48,23 +48,37 @@ pub mod ajustes;
 pub mod asistente;
 pub mod buscar;
 pub mod chats;
+pub mod compartidos;
 pub mod editor;
+pub mod envio;
 pub mod galeria;
+pub mod galeria_sincro;
 pub mod lecciones;
 pub mod lienzo;
+pub mod red;
 pub mod sincro;
 pub mod tareas;
 pub mod timeline;
+pub mod version;
 pub mod voz;
 
 use std::path::{Path, PathBuf};
+use std::sync::atomic::AtomicU16;
 use std::sync::{Arc, Mutex};
 
 pub use ajustes::AjustesMac;
 pub use asistente::{HerramientaUsada, MensajeIa, RespuestaIa};
 pub use buscar::{Busqueda, ClaseDeResultado, PaginaBusqueda, ResultadoBusqueda};
 pub use chats::{FichaChat, MensajeChat, PaginaMensajes};
+pub use compartidos::{
+    AvisoInvitacion, ChatCompartidoMac, CodigoDeInvitacion, Invitacion, PersonaCompartida,
+    ResumenPersona,
+};
 pub use editor::{EditorLienzo, FasePuntero};
+pub use envio::{
+    ArchivoLlegado, AvisoEnvio, CodigoDeEnvio, DondeLlego, EnvioSuelto, FinEnvio, FinRecibir,
+    FrenteMac, PuertaEnvio, PuertaRecibir, RecibidoEnvio,
+};
 pub use galeria::{CapturaBorrada, CapturaGaleria, PaginaGaleria};
 pub use lecciones::{
     EtiquetaContada, FichaLeccion, FiltroLecciones, LeccionEditada, NotaRepaso, PaginaLecciones,
@@ -151,6 +165,12 @@ pub struct Nucleo {
     pub(crate) cache_galeria: Mutex<galeria::CacheGaleria>,
     /// Los momentos del timeline de la ultima lectura (ver [`timeline`]).
     pub(crate) cache_timeline: Mutex<timeline::CacheTimeline>,
+    /// Lo que el usuario tiene delante, para los archivos sueltos que
+    /// llegan (ver [`envio`]).
+    pub(crate) frente: Mutex<envio::FrenteMac>,
+    /// El puerto de la ultima [`Escucha`] abierta (0 si ninguna): se le dice
+    /// al otro en el saludo, como Windows.
+    pub(crate) puerto_escucha: AtomicU16,
 }
 
 #[uniffi::export]
@@ -171,6 +191,8 @@ impl Nucleo {
             lecciones: Mutex::new(lecciones::Cache::default()),
             cache_galeria: Mutex::new(galeria::CacheGaleria::default()),
             cache_timeline: Mutex::new(timeline::CacheTimeline::default()),
+            frente: Mutex::new(envio::FrenteMac::Nada),
+            puerto_escucha: AtomicU16::new(0),
         }))
     }
 

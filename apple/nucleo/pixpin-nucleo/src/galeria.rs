@@ -149,7 +149,7 @@ fn ms_de(t: SystemTime) -> i64 {
 /// nombre al reves), como `galeria_capturas::listar`. Una carpeta que no
 /// existe es una lista vacia. Un fichero vacio es una captura escribiendose:
 /// no sale.
-fn listar(carpeta: &Path) -> Vec<Entrada> {
+pub(crate) fn listar(carpeta: &Path) -> Vec<Entrada> {
     let Ok(lista) = std::fs::read_dir(carpeta) else {
         return Vec::new();
     };
@@ -241,7 +241,7 @@ pub fn dias_que_quedan(se_va: Option<i64>, ahora: i64, desfase_ms: i64) -> Optio
 
 /// Lleva `ruta` a `papelera/capturas/`; si ya hay una con ese nombre, la
 /// nueva lleva la hora delante (`galeria_capturas::a_la_papelera`).
-fn a_la_papelera(raiz: &Path, ruta: &Path, ahora: i64) -> std::io::Result<PathBuf> {
+pub(crate) fn a_la_papelera(raiz: &Path, ruta: &Path, ahora: i64) -> std::io::Result<PathBuf> {
     let dir = raiz.join("papelera").join("capturas");
     std::fs::create_dir_all(&dir)?;
     let nombre = ruta

@@ -61,6 +61,10 @@ public final class Almacen: ObservableObject {
     /// La ultima pagina de un chat (lo mas nuevo), sustituyendo lo cargado.
     public func abrir(chat: String) async {
         let nucleo = self.nucleo
+        // Lo que llegue suelto de otro aparato («Enviar a…») va a este chat.
+        if let ficha = chats.first(where: { $0.id == chat }) {
+            nucleo.ponerAlFrente(frente: .chat(id: ficha.id, nombre: ficha.nombre))
+        }
         do {
             let pagina = try await Task.detached(priority: .userInitiated) {
                 try nucleo.ultimosMensajes(chat: chat, cuantos: Almacen.tamPagina)
@@ -71,6 +75,12 @@ public final class Almacen: ObservableObject {
         } catch {
             self.error = "\(error)"
         }
+    }
+
+    /// Ya no hay ningun chat delante (se cerro la ventana): lo que llegue
+    /// suelto va a «Mensajes guardados».
+    public func nadaAlFrente() {
+        nucleo.ponerAlFrente(frente: .nada)
     }
 
     /// Si quedan mensajes mas antiguos que los cargados.

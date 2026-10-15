@@ -85,7 +85,7 @@ impl Nucleo {
 }
 
 impl Nucleo {
-    fn ubicacion(&self) -> Ubicacion {
+    pub(crate) fn ubicacion(&self) -> Ubicacion {
         Ubicacion::Instalado {
             raiz: self.ruta().to_path_buf(),
         }
