@@ -136,8 +136,15 @@ pánico de Rust llega a Swift como error en vez de cerrar la app.
         `con_escena` + `escribir` igual que Windows) y `app/Sources/PixPinKit/Lienzo/`
         (`NSView` con pellizco, dos dedos, presion de tableta y Force Touch, ⌘Z/⇧⌘Z, borrar,
         guardado solo 1 s despues del ultimo cambio). Se abre con doble clic en un `DIBUJO`
-        o con «Lienzo nuevo» en el chat. Falta: lazo, cotas, imagenes pegadas, el gesto de
-        pararse (forma rapida) y las cuatro de construir.
+        o con «Lienzo nuevo» en el chat. Con el lazo, las de medir (cota, calibrar con su
+        cajetin, escala grafica), las cuatro de construir (bote, recortar, extender, punto;
+        `editor_construir.rs`), el gesto de pararse (`RelojFormaRapida`: una sola espera de
+        una vez, reprogramada al pasar el temblor y cancelada al soltar), imagenes pegadas o
+        soltadas (PNG por ImageIO → `imagenes/<fileId>` del chat y su entrada en `files`,
+        como Windows y el movil; `editor_imagenes.rs`), la barra de estilo (trazo, fondo,
+        relleno, grosor, linea; `editor_estilo.rs`), la ventanita del metodo de entrada en el
+        cursor del texto y **lapidas** (`isDeleted`) para lo nacido, guardado y borrado, para
+        que la fusion de `pixpin-sincro` no lo resucite.
   - [x] Ajustes (⌘,; `app/Sources/PixPinKit/Ajustes/`): tema, atajo de capturar (se graba y
         se vuelve a registrar en Carbon; UserDefaults), dias de la galeria y sincronizacion
         sola (en `pixpinmax.toml`, como Windows), carpeta de datos y «Abrir al iniciar sesion»

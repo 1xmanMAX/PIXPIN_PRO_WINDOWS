@@ -25,6 +25,15 @@ public extension Notification.Name {
     static let pixpinLienzoGuardado = Notification.Name("PixPinLienzoGuardado")
 }
 
+/// En que parte de la barra va una herramienta: las de dibujar a la vista;
+/// las de medir y las cuatro de construir, en su menu (como los grupos de la
+/// barra de Windows, `dibujo::grupos`).
+public enum GrupoHerramientaLienzo: String {
+    case dibujar
+    case medir
+    case construir
+}
+
 /// Las herramientas de la barra: nombre del motor, titulo y simbolo.
 public struct HerramientaLienzo: Identifiable, Equatable {
     public let id: String
@@ -32,9 +41,20 @@ public struct HerramientaLienzo: Identifiable, Equatable {
     public let simbolo: String
     /// La tecla que la elige (sin modificadores, fuera de un texto).
     public let tecla: Character
+    public let grupo: GrupoHerramientaLienzo
+
+    public init(id: String, titulo: String, simbolo: String, tecla: Character,
+                grupo: GrupoHerramientaLienzo = .dibujar) {
+        self.id = id
+        self.titulo = titulo
+        self.simbolo = simbolo
+        self.tecla = tecla
+        self.grupo = grupo
+    }
 
     public static let todas: [HerramientaLienzo] = [
         .init(id: "seleccion", titulo: "Seleccionar", simbolo: "cursorarrow", tecla: "v"),
+        .init(id: "lazo", titulo: "Lazo", simbolo: "lasso", tecla: "s"),
         .init(id: "lapiz", titulo: "Lápiz", simbolo: "pencil.tip", tecla: "p"),
         .init(id: "resaltador", titulo: "Resaltador", simbolo: "highlighter", tecla: "h"),
         .init(id: "rectangulo", titulo: "Rectángulo", simbolo: "rectangle", tecla: "r"),
@@ -44,7 +64,20 @@ public struct HerramientaLienzo: Identifiable, Equatable {
         .init(id: "linea", titulo: "Línea", simbolo: "line.diagonal", tecla: "l"),
         .init(id: "texto", titulo: "Texto", simbolo: "textformat", tecla: "t"),
         .init(id: "borrador", titulo: "Goma", simbolo: "eraser", tecla: "e"),
+        // Medir (`medida` de Windows y Android).
+        .init(id: "cota", titulo: "Cota", simbolo: "ruler", tecla: "m", grupo: .medir),
+        .init(id: "escalar", titulo: "Calibrar escala", simbolo: "pencil.and.ruler", tecla: "k", grupo: .medir),
+        .init(id: "escala_grafica", titulo: "Escala gráfica", simbolo: "squares.below.rectangle", tecla: "g",
+              grupo: .medir),
+        // Las cuatro de construir (`dibujo::construir` de Windows).
+        .init(id: "relleno", titulo: "Bote de relleno", simbolo: "drop.fill", tecla: "b", grupo: .construir),
+        .init(id: "recortar", titulo: "Recortar", simbolo: "scissors", tecla: "x", grupo: .construir),
+        .init(id: "extender", titulo: "Extender", simbolo: "arrow.right.to.line", tecla: "w", grupo: .construir),
+        .init(id: "punto", titulo: "Punto", simbolo: "smallcircle.filled.circle", tecla: "n", grupo: .construir),
     ]
+
+    /// Las que trazan a mano: solo con ellas hay gesto de pararse.
+    static let aMano: Set<String> = ["lapiz", "resaltador", "grafito"]
 }
 
 /// El estado del editor que ve SwiftUI (la barra) y la vista (el lienzo).
@@ -54,12 +87,15 @@ public final class ModeloEditorLienzo: ObservableObject {
     /// La referencia del dibujo en el chat (para avisar al guardar), si viene
     /// de un chat.
     public let referencia: String?
-    /// La foto de cada `id_objeto`, con su fichero.
-    public let fotos: [UInt64: URL]
+    /// La foto de cada `id_objeto`, con su fichero (las pegadas aqui, desde
+    /// su sitio temporal hasta que se cierre el editor).
+    public private(set) var fotos: [UInt64: URL]
 
     @Published public private(set) var herramienta: String
     @Published public private(set) var puedeDeshacer = false
     @Published public private(set) var error: String?
+    /// Lo que ensena la barra de estilo (lo elegido, o el «actual»).
+    @Published public private(set) var estilo: EstiloLienzo
 
     /// La vista que pinta (la pone ella al nacer).
     weak var vista: VistaEditorLienzoNS?
@@ -76,16 +112,39 @@ public final class ModeloEditorLienzo: ObservableObject {
         herramienta = editor.herramientaActual()
         cambiosVistos = editor.cambios()
         puedeDeshacer = editor.puedeDeshacer()
+        estilo = editor.estilo()
     }
 
     public func elegir(_ nombre: String) {
         do {
             try editor.herramienta(nombre: nombre)
-            herramienta = nombre
+            herramienta = editor.herramientaActual()
+            estilo = editor.estilo()
             vista?.trasCambio()
         } catch {
             self.error = "\(error)"
         }
+    }
+
+    /// Un mando de la barra de estilo: queda para lo proximo y, si hay algo
+    /// elegido, se le aplica (un paso de deshacer).
+    public func cambiarEstilo(_ cambio: CambioDeEstilo) {
+        _ = editor.cambiarEstilo(cambio: cambio)
+        estilo = editor.estilo()
+        vista?.trasCambio()
+    }
+
+    /// Tras algo que pudo cambiar lo elegido o la herramienta desde dentro
+    /// (soltar, pegar): la barra vuelve a mirar al editor.
+    func refrescarBarra() {
+        estilo = editor.estilo()
+        let h = editor.herramientaActual()
+        if h != herramienta { herramienta = h }
+    }
+
+    /// Apunta la foto de una imagen recien pegada.
+    func anadirFoto(_ id: UInt64, _ url: URL) {
+        fotos[id] = url
     }
 
     public func deshacer() {
@@ -177,6 +236,14 @@ public final class VistaEditorLienzoNS: NSView, NSTextInputClient {
     /// Lo que el metodo de entrada esta componiendo (una tilde muerta): no
     /// se escribe hasta que llega el `insertText`.
     private var marcado = ""
+    /// El gesto de pararse: una sola espera de una vez (ver
+    /// `RelojFormaRapida.swift`).
+    let reloj = RelojFormaRapida(temblorPx: CGFloat(formaRapidaTemblorPx()))
+    /// La raya de calibrar mientras se arrastra (no es un elemento: el
+    /// motor no la pinta), en el mundo.
+    private var rayaDeCalibrar: (desde: CGPoint, hasta: CGPoint)?
+    /// Se esta soltando una imagen encima.
+    private var soltandoImagen = false
 
     public init(modelo: ModeloEditorLienzo) {
         self.modelo = modelo
@@ -184,6 +251,11 @@ public final class VistaEditorLienzoNS: NSView, NSTextInputClient {
         modelo.vista = self
         wantsLayer = true
         layerContentsRedrawPolicy = .onSetNeedsDisplay
+        registerForDraggedTypes(ImagenPegadaLienzo.tiposDelTablero)
+        reloj.alPararse = { [weak self] in
+            // Vence en la cola principal (`RelojFormaRapida.conDispatch`).
+            MainActor.assumeIsolated { self?.alPararse() }
+        }
         // Las fotos del lienzo: se cargan reducidas y se repinta una vez.
         let fotos = modelo.fotos
         if !fotos.isEmpty {
@@ -264,16 +336,56 @@ public final class VistaEditorLienzoNS: NSView, NSTextInputClient {
         PintorLienzo(lienzo: leido) { id in
             fotos[id].flatMap { Miniaturas.compartidas.enCache($0, lado: 2048) }
         }.pintar(en: ctx, limites: visible)
+        if let raya = rayaDeCalibrar {
+            // La raya de calibrar: a trazos, del grosor de un punto de pantalla.
+            ctx.setStrokeColor(CGColor(red: 0.20, green: 0.45, blue: 0.90, alpha: 0.95))
+            ctx.setLineWidth(1.5 / zoom)
+            ctx.setLineDash(phase: 0, lengths: [6 / zoom, 4 / zoom])
+            ctx.move(to: raya.desde)
+            ctx.addLine(to: raya.hasta)
+            ctx.strokePath()
+        }
         ctx.restoreGState()
+        if soltandoImagen {
+            ctx.setStrokeColor(NSColor.controlAccentColor.cgColor)
+            ctx.setLineWidth(3)
+            ctx.stroke(bounds.insetBy(dx: 1.5, dy: 1.5))
+        }
     }
 
     /// Tras algo que pudo cambiar el dibujo: repinta si cambio la version y
     /// avisa al modelo (guardar, la barra).
     func trasCambio(version: UInt64? = nil) {
         let v = version ?? editor.version()
-        if v != versionVista { needsDisplay = true }
+        if v != versionVista {
+            needsDisplay = true
+            // Lo elegido pudo cambiar: la barra de estilo lo ensena.
+            modelo.refrescarBarra()
+        }
         window?.invalidateCursorRects(for: self)
         modelo.revisarCambios()
+    }
+
+    /// La espera del gesto de pararse vencio con el boton aun pulsado.
+    private func alPararse() {
+        if editor.formaRapida() { needsDisplay = true }
+    }
+
+    /// Tras soltar con una herramienta de medir: el cajetin que pida.
+    private func atenderPeticion() {
+        guard modelo.herramienta == "escalar" || modelo.herramienta == "cota",
+              let peticion = editor.tomarPeticion() else { return }
+        let editor = self.editor
+        switch peticion {
+        case let .calibrar(largoPx):
+            CajetinMedida.calibrar(unidades: editor.unidadesDeMedida(), en: window) { [weak self] valor, unidad in
+                if editor.calibrar(largoPx: largoPx, valor: valor, unidad: unidad) { self?.trasCambio() }
+            }
+        case let .dictarCota(id, largo, grados, unidad):
+            CajetinMedida.dictarCota(largo: largo, grados: grados, unidad: unidad, en: window) { [weak self] l, g in
+                if editor.dictarCota(id: id, largo: l, grados: g) { self?.trasCambio() }
+            }
+        }
     }
 
     // MARK: Raton y lapiz
@@ -312,13 +424,37 @@ public final class VistaEditorLienzoNS: NSView, NSTextInputClient {
         window?.makeFirstResponder(self)
         presionTrackpad = nil
         mandar(.pulsar, event)
+        let enVista = convert(event.locationInWindow, from: nil)
+        // El gesto de pararse, solo trazando a mano (una pregunta por trazo).
+        if HerramientaLienzo.aMano.contains(modelo.herramienta) {
+            reloj.pulsar(en: enVista, esperaMs: editor.esperaFormaMs())
+        } else {
+            reloj.soltar()
+        }
+        if modelo.herramienta == "escalar" {
+            let p = alMundo(event)
+            rayaDeCalibrar = (p, p)
+        }
     }
 
-    override public func mouseDragged(with event: NSEvent) { mandar(.mover, event) }
+    override public func mouseDragged(with event: NSEvent) {
+        mandar(.mover, event)
+        reloj.mover(a: convert(event.locationInWindow, from: nil))
+        if let raya = rayaDeCalibrar {
+            rayaDeCalibrar = (raya.desde, alMundo(event))
+            needsDisplay = true
+        }
+    }
 
     override public func mouseUp(with event: NSEvent) {
+        reloj.soltar()
         mandar(.soltar, event)
         presionTrackpad = nil
+        if rayaDeCalibrar != nil {
+            rayaDeCalibrar = nil
+            needsDisplay = true
+        }
+        atenderPeticion()
     }
 
     override public func pressureChange(with event: NSEvent) {
@@ -397,6 +533,8 @@ public final class VistaEditorLienzoNS: NSView, NSTextInputClient {
             modelo.borrarSeleccion()
             return
         case 53: // Esc: suelta lo elegido / lo que iba a medias
+            reloj.soltar()
+            rayaDeCalibrar = nil
             let v = editor.puntero(fase: .cancelar, x: 0, y: 0, presion: nil, modificadores: 0,
                                    zoom: Float(zoom))
             trasCambio(version: v)
@@ -414,7 +552,72 @@ public final class VistaEditorLienzoNS: NSView, NSTextInputClient {
             trasCambio()
             return
         }
+        if teclas == .command, event.charactersIgnoringModifiers == "v" {
+            // Si el menu Edicion no se lo llevo antes.
+            paste(nil)
+            return
+        }
         super.keyDown(with: event)
+    }
+
+    // MARK: Pegar y soltar imagenes
+
+    /// ⌘V (Edicion ▸ Pegar): una imagen del portapapeles, en el centro de lo
+    /// que se ve.
+    @objc public func paste(_ sender: Any?) {
+        guard !editor.escribiendo(), let fuente = ImagenPegadaLienzo.origen(en: .general) else {
+            NSSound.beep()
+            return
+        }
+        let centro = CGPoint(x: origen.x + bounds.width / zoom / 2, y: origen.y + bounds.height / zoom / 2)
+        pegar(fuente, en: centro)
+    }
+
+    /// Convierte a PNG fuera del hilo principal y lo pega centrado en
+    /// `centro` (mundo); despues lee su miniatura y repinta.
+    private func pegar(_ fuente: ImagenPegadaLienzo.Origen, en centro: CGPoint) {
+        let editor = self.editor
+        let ancho = Float(bounds.width / zoom), alto = Float(bounds.height / zoom)
+        Task { [weak self] in
+            let hecho = await Task.detached(priority: .userInitiated) { () -> ImagenDelLienzo? in
+                guard let png = ImagenPegadaLienzo.png(de: fuente) else { return nil }
+                return try? editor.pegarImagen(png: png, centroX: Float(centro.x), centroY: Float(centro.y),
+                                               anchoVista: ancho, altoVista: alto)
+            }.value
+            guard let self else { return }
+            guard let foto = hecho else {
+                NSSound.beep()
+                return
+            }
+            let url = URL(fileURLWithPath: foto.ruta)
+            self.modelo.anadirFoto(foto.idObjeto, url)
+            self.trasCambio()
+            if await Miniaturas.compartidas.cargar(url, lado: 2048) != nil {
+                self.clave = nil
+                self.needsDisplay = true
+            }
+        }
+    }
+
+    override public func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
+        guard ImagenPegadaLienzo.origen(en: sender.draggingPasteboard) != nil else { return [] }
+        soltandoImagen = true
+        needsDisplay = true
+        return .copy
+    }
+
+    override public func draggingExited(_ sender: NSDraggingInfo?) {
+        soltandoImagen = false
+        needsDisplay = true
+    }
+
+    override public func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        soltandoImagen = false
+        needsDisplay = true
+        guard let fuente = ImagenPegadaLienzo.origen(en: sender.draggingPasteboard) else { return false }
+        let p = convert(sender.draggingLocation, from: nil)
+        pegar(fuente, en: CGPoint(x: origen.x + p.x / zoom, y: origen.y + p.y / zoom))
+        return true
     }
 
     // NSTextInputClient: solo lo que hace falta para escribir un texto del
@@ -465,10 +668,27 @@ public final class VistaEditorLienzoNS: NSView, NSTextInputClient {
     public func validAttributesForMarkedText() -> [NSAttributedString.Key] { [] }
 
     public func firstRect(forCharacterRange range: NSRange, actualRange: NSRangePointer?) -> NSRect {
-        // Donde se escribe: el centro de la vista basta para colocar la
-        // ventanita del metodo de entrada.
-        let enVentana = convert(NSRect(x: bounds.midX, y: bounds.midY, width: 1, height: 20), to: nil)
+        // La ventanita del metodo de entrada (japones, chino, el acento
+        // mantenido) va JUNTO AL CURSOR del texto, como en cualquier editor:
+        // su raya en el mundo, pasada a la vista y a la pantalla.
+        let enVista = rectanguloDelCursor() ?? NSRect(x: bounds.midX, y: bounds.midY, width: 1, height: 20)
+        let enVentana = convert(enVista, to: nil)
         return window?.convertToScreen(enVentana) ?? .zero
+    }
+
+    /// El cursor del texto en coordenadas de la vista. `nil` si no se escribe.
+    func rectanguloDelCursor() -> NSRect? {
+        guard let c = editor.cajaDelCursor() else { return nil }
+        return VistaEditorLienzoNS.aVista(c, origen: origen, zoom: zoom)
+    }
+
+    /// Una caja del mundo en la vista (volteada, Y hacia abajo), con un
+    /// punto de ancho como minimo.
+    static func aVista(_ c: CajaLienzo, origen: CGPoint, zoom: CGFloat) -> NSRect {
+        let x = (CGFloat(c.x0) - origen.x) * zoom
+        let y = (CGFloat(c.y0) - origen.y) * zoom
+        return NSRect(x: x, y: y, width: max(1, CGFloat(c.x1 - c.x0) * zoom),
+                      height: max(1, CGFloat(c.y1 - c.y0) * zoom))
     }
 
     public func characterIndex(for point: NSPoint) -> Int { NSNotFound }
@@ -502,7 +722,7 @@ public struct EditorLienzoView: View {
     public var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 2) {
-                ForEach(HerramientaLienzo.todas) { h in
+                ForEach(HerramientaLienzo.todas.filter { $0.grupo == .dibujar }) { h in
                     Button {
                         modelo.elegir(h.id)
                     } label: {
@@ -514,6 +734,10 @@ public struct EditorLienzoView: View {
                     .buttonStyle(.plain)
                     .help("\(h.titulo) (\(String(h.tecla).uppercased()))")
                 }
+                menuDeGrupo(.medir, titulo: "Medir", simbolo: "ruler")
+                menuDeGrupo(.construir, titulo: "Construir", simbolo: "compass.drawing")
+                Divider().frame(height: 20).padding(.horizontal, 6)
+                BarraEstiloLienzo(modelo: modelo)
                 Divider().frame(height: 20).padding(.horizontal, 6)
                 Button(action: modelo.deshacer) { Image(systemName: "arrow.uturn.backward") }
                     .keyboardShortcut("z", modifiers: .command)
@@ -532,6 +756,31 @@ public struct EditorLienzoView: View {
             Divider()
             LienzoEditable(modelo: modelo)
         }
+    }
+
+    /// Un grupo de la barra en su menu: el boton ensena la herramienta del
+    /// grupo que este puesta (o el simbolo del grupo) y se resalta con ella.
+    @ViewBuilder
+    private func menuDeGrupo(_ grupo: GrupoHerramientaLienzo, titulo: String, simbolo: String) -> some View {
+        let del = HerramientaLienzo.todas.filter { $0.grupo == grupo }
+        let puesta = del.first { $0.id == modelo.herramienta }
+        Menu {
+            ForEach(del) { h in
+                Button {
+                    modelo.elegir(h.id)
+                } label: {
+                    Label("\(h.titulo) (\(String(h.tecla).uppercased()))", systemImage: h.simbolo)
+                }
+            }
+        } label: {
+            Image(systemName: puesta?.simbolo ?? simbolo)
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+        .padding(.horizontal, 2)
+        .background(puesta != nil ? Color.accentColor.opacity(0.25) : Color.clear,
+                    in: RoundedRectangle(cornerRadius: 5))
+        .help(titulo)
     }
 }
 

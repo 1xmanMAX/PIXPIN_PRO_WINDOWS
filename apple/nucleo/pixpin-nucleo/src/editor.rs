@@ -32,11 +32,20 @@
 //! despues se renombra. Siempre contra el lienzo ABIERTO: la escena numera
 //! sus elementos segun ese lienzo y `con_escena` los empareja por ese orden.
 //!
-//! Limite conocido (igual que en Windows, que guarda al cerrar): un elemento
-//! nacido aqui, guardado y despues borrado desaparece del fichero en vez de
-//! quedar con `isDeleted`, porque `con_escena` solo escribe los nuevos que
-//! siguen vivos.
+//! # Lo borrado deja lapida (`isDeleted`)
+//!
+//! `con_escena` ya marca `isDeleted` en lo que venia en el fichero, pero lo
+//! NACIDO aqui solo lo escribe mientras sigue vivo: un elemento creado,
+//! guardado (y quiza ya sincronizado) y despues borrado desaparecia del
+//! fichero. Sin base comun, la fusion a tres bandas de `pixpin-sincro`
+//! (`fusion::json`, figura por figura) lo resucitaba desde el otro aparato.
+//! Ahora el editor recuerda lo nacido que llego a escribir
+//! ([`Disco::nacidos`]) y, si ya no esta vivo, lo escribe con
+//! `isDeleted: true` y la version subida, como Excalidraw y el movil
+//! ([`anadir_lapidas`]). Lo nacido y borrado entre dos guardados no llego a
+//! ningun otro aparato y no deja nada.
 
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -45,15 +54,48 @@ use pixpin_motor2d::Escena;
 use pixpin_motor2d::borrador::{self, ModoBorrador};
 use pixpin_motor2d::cache::Cache;
 use pixpin_motor2d::camara::Camara;
-use pixpin_motor2d::elemento::{ColorRgba, EstiloTrazo};
-use pixpin_motor2d::excalidraw;
-use pixpin_motor2d::gesto::{EventoGesto, Gesto, Herramienta, Region};
+use pixpin_motor2d::elemento::{ColorRgba, Elemento, EstiloTrazo};
+use pixpin_motor2d::excalidraw::{self, Entrada};
+use pixpin_motor2d::gesto::{EventoGesto, Gesto, Herramienta, Peticion, Region};
+use pixpin_motor2d::lazo::{Lazo, ModoLazo};
 use pixpin_motor2d::pintado::{self, Orden};
 use pixpin_motor2d::texto::TeclaTexto;
 use pixpin_motor2d::vector::Punto2;
 
+use crate::editor_imagenes::{self, Pegada};
 use crate::lienzo::{CajaLienzo, ImagenDelLienzo, LienzoPlano, empaquetar};
 use crate::{ErrorNucleo, Nucleo};
+
+/// Lo que el lienzo necesita preguntar al usuario tras soltar (el cajetin
+/// de calibrar y el de la cota de Windows y el movil). Swift lo recoge con
+/// [`EditorLienzo::tomar_peticion`] y contesta con
+/// [`EditorLienzo::calibrar`] o [`EditorLienzo::dictar_cota`]; si se
+/// cancela, no se llama a nada y el lienzo queda como estaba.
+#[derive(Debug, Clone, PartialEq, uniffi::Enum)]
+pub enum PeticionLienzo {
+    /// Cuanto mide de verdad la raya que se acaba de arrastrar con
+    /// `escalar` (`largo_px`, en unidades del mundo).
+    Calibrar { largo_px: f32 },
+    /// El largo y el angulo de la cota `id` recien trazada: lo que mide ya
+    /// (en la unidad de la escala, o en pixeles sin ella) para rellenar el
+    /// cajetin.
+    DictarCota {
+        id: u64,
+        largo: f32,
+        grados: f32,
+        /// La unidad de la escala del lienzo; vacia si no se ha calibrado.
+        unidad: String,
+    },
+}
+
+/// Lo que se mueve el cursor sin dejar de estar «quieto» para el gesto de
+/// pararse (forma rapida), en pixeles de pantalla: el temblor de la mano
+/// del movil (`forma_rapida::TEMBLOR_PX`). Swift reprograma su espera solo
+/// cuando el cursor se aleja mas que esto.
+#[uniffi::export]
+pub fn forma_rapida_temblor_px() -> f32 {
+    pixpin_motor2d::forma_rapida::TEMBLOR_PX
+}
 
 /// En que momento del gesto esta el puntero.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
@@ -93,6 +135,16 @@ fn herramienta_de(nombre: &str) -> Option<Herramienta> {
         "linea" => Herramienta::Linea,
         "texto" => Herramienta::Texto,
         "borrador" | "goma" => Herramienta::Borrador,
+        "lazo" => Herramienta::Lazo,
+        // Las de medir (`medida` de Windows y Android).
+        "cota" => Herramienta::Cota,
+        "escalar" | "calibrar" => Herramienta::Escalar,
+        "escala_grafica" => Herramienta::EscalaGrafica,
+        // Las cuatro de construir (`dibujo::construir` de Windows).
+        "relleno" | "bote" => Herramienta::Relleno,
+        "recortar" => Herramienta::Recortar,
+        "extender" => Herramienta::Extender,
+        "punto" => Herramienta::Punto,
         _ => return None,
     })
 }
@@ -112,21 +164,38 @@ fn nombre_de(h: Herramienta) -> &'static str {
         Herramienta::Linea => "linea",
         Herramienta::Texto => "texto",
         Herramienta::Borrador => "borrador",
+        Herramienta::Lazo => "lazo",
+        Herramienta::Cota => "cota",
+        Herramienta::Escalar => "escalar",
+        Herramienta::EscalaGrafica => "escala_grafica",
+        Herramienta::Relleno => "relleno",
+        Herramienta::Recortar => "recortar",
+        Herramienta::Extender => "extender",
+        Herramienta::Punto => "punto",
         _ => "otra",
     }
 }
 
 /// Lo que se toca con el cerrojo: la escena, el gesto y la cache de
 /// geometria.
-struct Estado {
-    escena: Escena,
-    gesto: Gesto,
+pub(crate) struct Estado {
+    pub(crate) escena: Escena,
+    pub(crate) gesto: Gesto,
     cache: Cache,
     /// La goma esta apoyada: borra lo que toca hasta soltar.
-    borrando: bool,
+    pub(crate) borrando: bool,
     /// El aumento del ultimo puntero: las tolerancias del motor son de
     /// pixeles de pantalla.
     zoom: f32,
+    /// Lo que el ultimo soltar pide preguntar (calibrar, dictar la cota).
+    pide: Option<Peticion>,
+    /// Donde estaba el puntero en el ultimo aviso (el gesto de pararse
+    /// convierte el trazo con el cursor ahi).
+    ultimo: Punto2,
+    /// Las imagenes pegadas en esta sesion (ver `editor_imagenes`).
+    pub(crate) pegadas: Vec<Pegada>,
+    /// Su carpeta temporal, creada al pegar la primera.
+    pub(crate) temporal: Option<PathBuf>,
 }
 
 /// Lo que se toca al guardar (un cerrojo aparte: guardar no frena el
@@ -136,6 +205,14 @@ struct Disco {
     ultimo: String,
     /// `cambios` cuando se guardo por ultima vez.
     guardados: u64,
+    /// **Lo nacido en esta sesion que llego al disco**, por su id de la
+    /// escena, tal como se escribio la ultima vez (vivo o ya lapida): si deja
+    /// de estar vivo se escribe su lapida (ver la doc del modulo).
+    nacidos: BTreeMap<u64, (Elemento, serde_json::Value)>,
+    /// Las imagenes pegadas que ya tienen su fichero en `imagenes/` y su
+    /// entrada en `files`: `fileId` y cuando nacio. Se quedan aunque se
+    /// borre la figura (su lapida las nombra).
+    ficheros: BTreeMap<String, i64>,
 }
 
 /// **Un lienzo abierto para editar.** Se usa desde varios hilos: el puntero
@@ -143,6 +220,9 @@ struct Disco {
 #[derive(uniffi::Object)]
 pub struct EditorLienzo {
     ruta: PathBuf,
+    /// Contra que carpeta van las rutas relativas de `files`
+    /// (`imagenes/<fileId>`): la del chat, o la del fichero suelto.
+    carpeta: PathBuf,
     /// El lienzo tal como se abrio: contra el se guarda siempre.
     abierto: excalidraw::Lienzo,
     imagenes: Vec<ImagenDelLienzo>,
@@ -152,9 +232,20 @@ pub struct EditorLienzo {
     cambios: AtomicU64,
 }
 
+impl Drop for EditorLienzo {
+    fn drop(&mut self) {
+        // Las pegadas que no se guardaron se van con el editor.
+        let st = self.estado.get_mut().unwrap_or_else(|e| e.into_inner());
+        if let Some(t) = st.temporal.take() {
+            let _ = std::fs::remove_dir_all(t);
+        }
+    }
+}
+
 impl EditorLienzo {
     fn nuevo(
         ruta: PathBuf,
+        carpeta: PathBuf,
         texto: &str,
         imagenes: Option<Vec<ImagenDelLienzo>>,
     ) -> Result<Self, ErrorNucleo> {
@@ -172,6 +263,7 @@ impl EditorLienzo {
         gesto.tomar_herramienta(Herramienta::Lapiz);
         Ok(EditorLienzo {
             ruta,
+            carpeta,
             // Lo que hay en el disco, escrito por nosotros: si nadie toca
             // nada, guardar no escribe (ni cambia la fecha que mira la
             // sincronizacion).
@@ -182,10 +274,16 @@ impl EditorLienzo {
                 cache: Cache::nueva(),
                 borrando: false,
                 zoom: 1.0,
+                pide: None,
+                ultimo: Punto2::nuevo(0.0, 0.0),
+                pegadas: Vec::new(),
+                temporal: None,
             }),
             disco: Mutex::new(Disco {
                 ultimo: excalidraw::escribir(&abierto),
                 guardados: 0,
+                nacidos: BTreeMap::new(),
+                ficheros: BTreeMap::new(),
             }),
             abierto,
             version: AtomicU64::new(1),
@@ -195,16 +293,61 @@ impl EditorLienzo {
 
     /// El estado, aunque un hilo muriera con el tomado: la escena sigue
     /// siendo valida entre eventos.
-    fn tomar(&self) -> MutexGuard<'_, Estado> {
+    pub(crate) fn tomar(&self) -> MutexGuard<'_, Estado> {
         self.estado.lock().unwrap_or_else(|e| e.into_inner())
     }
 
-    fn subir_version(&self) -> u64 {
+    pub(crate) fn subir_version(&self) -> u64 {
         self.version.fetch_add(1, Ordering::SeqCst) + 1
     }
 
-    fn subir_cambios(&self) {
+    pub(crate) fn subir_cambios(&self) {
         self.cambios.fetch_add(1, Ordering::SeqCst);
+    }
+
+    /// Los `id_objeto` de las fotos que ya traia el lienzo.
+    pub(crate) fn imagenes_abiertas(&self) -> impl Iterator<Item = u64> + '_ {
+        self.imagenes.iter().map(|i| i.id_objeto)
+    }
+
+    /// **El lazo** (`dibujo::mano` de Windows): ni el gesto ni construir lo
+    /// tocan; se traza mientras se arrastra y al soltar lo que queda ENTERO
+    /// dentro pasa a ser lo elegido. Un clic suelto no coge nada (como
+    /// pulsar en el aire). Devuelve si hay que repintar.
+    fn lazo(st: &mut Estado, fase: FasePuntero, p: Punto2) -> bool {
+        match fase {
+            FasePuntero::Pulsar => {
+                st.gesto.lazo = Some(Lazo::empezar(p));
+                true
+            }
+            FasePuntero::Mover => st.gesto.lazo.as_mut().is_some_and(|l| l.mover(p)),
+            FasePuntero::Soltar => match st.gesto.lazo.take() {
+                Some(l) => {
+                    let cogidos = l.atrapados(&st.escena.elementos, ModoLazo::Encerrar);
+                    st.gesto.seleccion.poner_todos(cogidos);
+                    true
+                }
+                None => false,
+            },
+            FasePuntero::Cancelar => st.gesto.lazo.take().is_some(),
+        }
+    }
+
+    /// Lo que pide `pide` como lo ve Swift.
+    fn peticion_para_swift(escena: &Escena, pide: Peticion) -> Option<PeticionLienzo> {
+        match pide {
+            Peticion::Calibrar { largo_px } => Some(PeticionLienzo::Calibrar { largo_px }),
+            Peticion::DictarCota { id } => {
+                let e = escena.buscar(id).filter(|e| !e.borrado)?;
+                let escala = escena.escala.as_ref().filter(|e| e.valida());
+                Some(PeticionLienzo::DictarCota {
+                    id,
+                    largo: pixpin_motor2d::medida::largo_en_unidades(e, escala),
+                    grados: pixpin_motor2d::medida::angulo_de(e),
+                    unidad: escala.map(|e| e.unidad.clone()).unwrap_or_default(),
+                })
+            }
+        }
     }
 
     /// La goma en `p`: se lleva lo que toca y su grupo (como el movil), en
@@ -250,9 +393,9 @@ fn se_cruzan(a: (f32, f32, f32, f32), b: (f32, f32, f32, f32)) -> bool {
 
 /// **Lo que se pinta encima del dibujo**: el marco de lo elegido, los
 /// tiradores, el cursor del texto, la marquesina, la pista del iman, la
-/// figura a la que se ataria la flecha y los clavos. Es
-/// `dibujo::pintar::ordenes_encima` de Windows sin lo que es de
-/// herramientas que aqui no hay (lazo, laser, construir).
+/// figura a la que se ataria la flecha, el lazo, los angulos en vivo y los
+/// clavos. Es `dibujo::pintar::ordenes_encima` de Windows sin lo que es de
+/// herramientas que aqui no hay (laser, bolita).
 fn ordenes_encima(gesto: &Gesto, escena: &Escena, zoom: f32) -> Vec<Orden> {
     let escala = 1.0 / zoom.max(1e-6);
     let mut v = Vec::new();
@@ -286,6 +429,12 @@ fn ordenes_encima(gesto: &Gesto, escena: &Escena, zoom: f32) -> Vec<Orden> {
             estilo: EstiloTrazo::Discontinuo,
         });
     }
+    if let Some(l) = &gesto.lazo {
+        if let Some(relleno) = l.relleno() {
+            v.push(relleno);
+        }
+        v.push(l.orden(escala));
+    }
     if let Some(a) = gesto.anclaje_activo {
         v.push(pixpin_motor2d::enganche::pista(&a, zoom));
     }
@@ -293,8 +442,72 @@ fn ordenes_encima(gesto: &Gesto, escena: &Escena, zoom: f32) -> Vec<Orden> {
     if let Some(puntas) = gesto.tiradores_de_punta(escena, escala) {
         v.extend(puntas.ordenes(escala));
     }
+    v.extend(crate::editor_construir::angulos_en_vivo(
+        escena, gesto, zoom,
+    ));
     v.extend(pixpin_motor2d::nudos::ordenes_de_clavos(escena, zoom));
     v
+}
+
+/// **Las lapidas de lo nacido aqui** (ver la doc del modulo). `salida` es lo
+/// que dio `con_escena`: sus primeras `abiertas` entradas son las del
+/// lienzo abierto y las demas, lo nacido aqui que sigue vivo, cuyo
+/// `elemento.id` es el de la escena. Lo que se escribio en otro guardado
+/// (`nacidos`) y ya no esta vivo se anade con `isDeleted` y una version
+/// mayor que la escrita; una lapida ya escrita sale igual. Lo nacido queda
+/// en el orden de sus ids, como lo deja `con_escena`. Devuelve lo nacido tal
+/// como queda escrito ahora (vivo o lapida), para el proximo guardado.
+fn anadir_lapidas(
+    salida: &mut excalidraw::Lienzo,
+    abiertas: usize,
+    copia: &Escena,
+    nacidos: &BTreeMap<u64, (Elemento, serde_json::Value)>,
+) -> BTreeMap<u64, (Elemento, serde_json::Value)> {
+    let vivos: std::collections::HashSet<u64> = salida.entradas
+        [abiertas.min(salida.entradas.len())..]
+        .iter()
+        .filter_map(|en| match en {
+            Entrada::Nuestro { elemento, .. } => Some(elemento.id),
+            Entrada::Ajeno(_) => None,
+        })
+        .collect();
+    for (id, (escrito, original)) in nacidos {
+        if vivos.contains(id) {
+            continue;
+        }
+        let lapida = if escrito.borrado {
+            // Ya era lapida: igual que la ultima vez.
+            escrito.clone()
+        } else {
+            let mut e = copia
+                .buscar(*id)
+                .cloned()
+                .unwrap_or_else(|| escrito.clone());
+            e.borrado = true;
+            // El fichero lo escribio con `max(1, version)`: la lapida tiene
+            // que ser mas nueva para que nadie la tome por la vieja.
+            e.version = e.version.max(escrito.version.max(1).saturating_add(1));
+            e
+        };
+        salida.entradas.push(Entrada::Nuestro {
+            elemento: lapida,
+            original: Box::new(original.clone()),
+        });
+    }
+    let cola = abiertas.min(salida.entradas.len());
+    salida.entradas[cola..].sort_by_key(|en| match en {
+        Entrada::Nuestro { elemento, .. } => elemento.id,
+        Entrada::Ajeno(_) => u64::MAX,
+    });
+    salida.entradas[cola..]
+        .iter()
+        .filter_map(|en| match en {
+            Entrada::Nuestro { elemento, original } => {
+                Some((elemento.id, (elemento.clone(), (**original).clone())))
+            }
+            Entrada::Ajeno(_) => None,
+        })
+        .collect()
 }
 
 #[uniffi::export]
@@ -318,7 +531,12 @@ impl EditorLienzo {
             }
             Err(e) => return Err(e.into()),
         };
-        Ok(Arc::new(EditorLienzo::nuevo(ruta, &texto, None)?))
+        // Sus fotos, al lado: `imagenes/<fileId>` junto al fichero.
+        let carpeta = ruta
+            .parent()
+            .map(Path::to_path_buf)
+            .unwrap_or_else(|| PathBuf::from("."));
+        Ok(Arc::new(EditorLienzo::nuevo(ruta, carpeta, &texto, None)?))
     }
 
     /// El fichero que edita.
@@ -329,7 +547,10 @@ impl EditorLienzo {
     /// **Cambia de herramienta**: `seleccion` (o `mano`), `lapiz` (o
     /// `tinta`), `grafito`, `resaltador`, `rectangulo`, `rombo`, `elipse`,
     /// `flecha`, `flecha_codos`, `flecha_libre`, `linea`, `texto`,
-    /// `borrador` (o `goma`). Cierra el texto que se estuviera escribiendo.
+    /// `borrador` (o `goma`), `lazo`; las de medir `cota`, `escalar` (o
+    /// `calibrar`) y `escala_grafica`; y las cuatro de construir `relleno`
+    /// (o `bote`), `recortar`, `extender` y `punto`. Cierra el texto que se
+    /// estuviera escribiendo.
     pub fn herramienta(&self, nombre: String) -> Result<(), ErrorNucleo> {
         let h = herramienta_de(&nombre).ok_or_else(|| ErrorNucleo::Argumento {
             detalle: format!("herramienta desconocida: {nombre:?}"),
@@ -348,6 +569,8 @@ impl EditorLienzo {
         if h != Herramienta::Mano {
             st.gesto.seleccion.limpiar();
         }
+        st.gesto.lazo = None;
+        st.pide = None;
         st.gesto.tomar_herramienta(h);
         drop(guarda);
         self.subir_version();
@@ -386,6 +609,20 @@ impl EditorLienzo {
             st.zoom = zoom;
         }
         let escala = 1.0 / st.zoom;
+        st.ultimo = p;
+        if fase == FasePuntero::Pulsar {
+            // Lo que no se contesto antes ya no vale.
+            st.pide = None;
+        }
+
+        // El lazo: tampoco pasa por el gesto.
+        if st.gesto.herramienta == Herramienta::Lazo {
+            return if Self::lazo(st, fase, p) {
+                self.subir_version()
+            } else {
+                self.version()
+            };
+        }
 
         // La goma: la lleva quien tiene la escena, como en Windows.
         if st.gesto.herramienta == Herramienta::Borrador {
@@ -441,9 +678,18 @@ impl EditorLienzo {
             FasePuntero::Cancelar => EventoGesto::Escape,
         };
         let r = st.gesto.evento(ev, &mut st.escena, escala);
+        // **Las cuatro de construir**, despues del gesto y solo al pulsar
+        // (`dibujo::mano::al_motor` de Windows): tres cambian lo que ya hay
+        // en su propio paso; la cuarta remata el punto que acaba de nacer.
+        let construido = fase == FasePuntero::Pulsar
+            && crate::editor_construir::al_pulsar(&mut st.escena, &st.gesto, p, st.zoom);
+        if let Some(pide) = r.pide {
+            st.pide = Some(pide);
+        }
         // Soltar cierra el paso; pulsar con el texto abre o cierra uno.
         if matches!(fase, FasePuntero::Soltar | FasePuntero::Cancelar)
             || (fase == FasePuntero::Pulsar && st.gesto.herramienta == Herramienta::Texto)
+            || construido
         {
             self.subir_cambios();
         }
@@ -668,25 +914,181 @@ impl EditorLienzo {
         self.imagenes.clone()
     }
 
+    /// **Lo que hay que preguntar tras soltar**, una vez: el cajetin de
+    /// calibrar (`escalar`) o el de la cota recien trazada (`cota`). `None`
+    /// si nada. Swift lo mira tras cada soltar con esas herramientas.
+    pub fn tomar_peticion(&self) -> Option<PeticionLienzo> {
+        let mut st = self.tomar();
+        let pide = st.pide.take()?;
+        Self::peticion_para_swift(&st.escena, pide)
+    }
+
+    /// **Calibra**: la raya de `largo_px` (lo que dio
+    /// [`PeticionLienzo::Calibrar`]) mide `valor` `unidad` de verdad. Desde
+    /// ahora todas las cotas del lienzo hablan en esa unidad. Un paso de
+    /// deshacer; `false` si la medida no puede ser cierta (no toca nada).
+    pub fn calibrar(&self, largo_px: f32, valor: f32, unidad: String) -> bool {
+        let unidad = unidad.trim();
+        if unidad.is_empty() {
+            return false;
+        }
+        let mut guarda = self.tomar();
+        let st = &mut *guarda;
+        let hecho = st.gesto.calibrar(&mut st.escena, largo_px, valor, unidad);
+        drop(guarda);
+        if hecho {
+            self.subir_cambios();
+            self.subir_version();
+        }
+        hecho
+    }
+
+    /// **Aplica lo dictado a la cota `id`**: el largo en la unidad de la
+    /// escala (o en pixeles sin ella) y el angulo como en un plano (0 a la
+    /// derecha, 90 hacia arriba). Un paso de deshacer; `false` si no cambio.
+    pub fn dictar_cota(&self, id: u64, largo: f32, grados: f32) -> bool {
+        let mut st = self.tomar();
+        let hecho = Gesto::dictar_cota(&mut st.escena, id, largo, grados);
+        drop(st);
+        if hecho {
+            self.subir_cambios();
+            self.subir_version();
+        }
+        hecho
+    }
+
+    /// Las unidades que se ofrecen al calibrar, de mas a menos uso.
+    pub fn unidades_de_medida(&self) -> Vec<String> {
+        pixpin_motor2d::medida::UNIDADES
+            .iter()
+            .map(|u| u.to_string())
+            .collect()
+    }
+
+    /// **Cuanto esperar al gesto de pararse** en el trazo de ahora: el medio
+    /// segundo largo del lapiz o el segundo del grafito. `None` si no se
+    /// esta trazando a mano (entonces no hay forma rapida). Swift lo pide al
+    /// pulsar y programa una sola espera, que reprograma cuando el cursor
+    /// se aleja mas que [`forma_rapida_temblor_px`] y cancela al soltar.
+    pub fn espera_forma_ms(&self) -> Option<u64> {
+        let st = self.tomar();
+        st.gesto.trazo_en_curso()?;
+        Some(st.gesto.espera_de_la_forma_ms())
+    }
+
+    /// **El gesto de pararse**: el trazo a mano quieto con el boton pulsado
+    /// se convierte en compas, rectangulo, linea o elipse
+    /// (`Gesto::convertir_en_forma`), y lo que se arrastre despues la
+    /// ajusta. Lo llama Swift cuando vence su espera. `true` si convirtio.
+    pub fn forma_rapida(&self) -> bool {
+        let mut guarda = self.tomar();
+        let st = &mut *guarda;
+        if st.gesto.trazo_en_curso().is_none() {
+            return false;
+        }
+        let escala = 1.0 / st.zoom.max(1e-6);
+        let hecho = st
+            .gesto
+            .convertir_en_forma(&mut st.escena, st.ultimo, escala)
+            .is_some();
+        drop(guarda);
+        if hecho {
+            self.subir_version();
+        }
+        hecho
+    }
+
+    /// **Donde esta el cursor del texto** que se escribe, en el mundo (una
+    /// raya vertical del alto del renglon). Para colocar la ventanita del
+    /// metodo de entrada (`firstRect(forCharacterRange:)`). `None` si no se
+    /// escribe.
+    pub fn caja_del_cursor(&self) -> Option<CajaLienzo> {
+        let st = self.tomar();
+        let orden = st.gesto.cursor_de_texto(&st.escena, st.zoom)?;
+        let Orden::Polilinea { puntos, .. } = orden else {
+            return None;
+        };
+        let mut caja: Option<CajaLienzo> = None;
+        for p in puntos {
+            caja = Some(match caja {
+                None => CajaLienzo {
+                    x0: p.x,
+                    y0: p.y,
+                    x1: p.x,
+                    y1: p.y,
+                },
+                Some(c) => CajaLienzo {
+                    x0: c.x0.min(p.x),
+                    y0: c.y0.min(p.y),
+                    x1: c.x1.max(p.x),
+                    y1: c.y1.max(p.y),
+                },
+            });
+        }
+        caja
+    }
+
+    /// Cuantos elementos hay elegidos (para la barra y las pruebas).
+    pub fn cuantos_elegidos(&self) -> u64 {
+        self.tomar().gesto.seleccion.ids().len() as u64
+    }
+
     /// **Guarda** el `.excalidraw` como Windows y Android (ver la doc del
-    /// modulo). Devuelve si escribio algo: sin cambios, o a mitad de un
-    /// gesto, no escribe. Bloqueante: Swift lo llama fuera del hilo
-    /// principal.
+    /// modulo): las imagenes pegadas que se usan, a `imagenes/` con su
+    /// entrada en `files`; lo nacido y borrado, con su lapida. Devuelve si
+    /// escribio algo: sin cambios, o a mitad de un gesto, no escribe.
+    /// Bloqueante: Swift lo llama fuera del hilo principal.
     pub fn guardar(&self) -> Result<bool, ErrorNucleo> {
         let mut disco = self.disco.lock().unwrap_or_else(|e| e.into_inner());
         let cambios = self.cambios();
         if cambios == disco.guardados {
             return Ok(false);
         }
-        let copia = {
+        let (copia, pegadas) = {
             let st = self.tomar();
             // A medias no: al soltar sube `cambios` y se guarda entonces.
             if !st.gesto.en_reposo() || st.borrando {
                 return Ok(false);
             }
-            copia_para_guardar(&st.escena)
+            let pegadas: Vec<Pegada> = editor_imagenes::en_uso(&st.escena, &st.pegadas)
+                .into_iter()
+                .cloned()
+                .collect();
+            (copia_para_guardar(&st.escena), pegadas)
         };
-        let texto = excalidraw::escribir(&excalidraw::con_escena(&self.abierto, &copia));
+        // Las fotos pegadas que se usan: su fichero en `imagenes/` (una vez)
+        // y desde entonces su entrada en `files`.
+        for p in &pegadas {
+            let clave = pixpin_motor2d::enlace::id_de_texto(p.id_objeto);
+            if disco.ficheros.contains_key(&clave) {
+                continue;
+            }
+            editor_imagenes::copiar_si_falta(
+                &p.temporal,
+                &self.carpeta.join("imagenes").join(&clave),
+            )?;
+            disco.ficheros.insert(clave, ahora_ms());
+        }
+        let con_ficheros;
+        let base = if disco.ficheros.is_empty() {
+            &self.abierto
+        } else {
+            let mut l = self.abierto.clone();
+            for (clave, creado) in &disco.ficheros {
+                excalidraw::poner_fichero(
+                    &mut l,
+                    clave,
+                    "image/png",
+                    &format!("imagenes/{clave}"),
+                    *creado,
+                );
+            }
+            con_ficheros = l;
+            &con_ficheros
+        };
+        let mut salida = excalidraw::con_escena(base, &copia);
+        let nacidos = anadir_lapidas(&mut salida, base.entradas.len(), &copia, &disco.nacidos);
+        let texto = excalidraw::escribir(&salida);
         if texto == disco.ultimo {
             disco.guardados = cambios;
             return Ok(false);
@@ -694,8 +1096,17 @@ impl EditorLienzo {
         escribir_seguro(&self.ruta, &texto)?;
         disco.ultimo = texto;
         disco.guardados = cambios;
+        disco.nacidos = nacidos;
         Ok(true)
     }
+}
+
+/// Milisegundos desde 1970, como fecha Excalidraw lo suyo.
+fn ahora_ms() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0)
 }
 
 impl EditorLienzo {
@@ -772,7 +1183,13 @@ impl Nucleo {
                 })
             })
             .collect();
-        Ok(Arc::new(EditorLienzo::nuevo(ruta, &texto, Some(imagenes))?))
+        let carpeta = pixpin_proyecto::almacen::carpeta(self.ruta(), &chat);
+        Ok(Arc::new(EditorLienzo::nuevo(
+            ruta,
+            carpeta,
+            &texto,
+            Some(imagenes),
+        )?))
     }
 
     /// **Un lienzo nuevo en un chat**: el `.excalidraw` vacio en

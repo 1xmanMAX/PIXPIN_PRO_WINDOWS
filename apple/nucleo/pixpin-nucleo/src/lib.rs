@@ -49,6 +49,9 @@ pub mod asistente;
 pub mod buscar;
 pub mod chats;
 pub mod editor;
+pub mod editor_construir;
+pub mod editor_estilo;
+pub mod editor_imagenes;
 pub mod galeria;
 pub mod lecciones;
 pub mod lienzo;
@@ -64,7 +67,10 @@ pub use ajustes::AjustesMac;
 pub use asistente::{HerramientaUsada, MensajeIa, RespuestaIa};
 pub use buscar::{Busqueda, ClaseDeResultado, PaginaBusqueda, ResultadoBusqueda};
 pub use chats::{FichaChat, MensajeChat, PaginaMensajes};
-pub use editor::{EditorLienzo, FasePuntero};
+pub use editor::{EditorLienzo, FasePuntero, PeticionLienzo};
+pub use editor_estilo::{
+    CambioDeEstilo, ColorEstilo, EstiloLienzo, GrosorEstilo, LineaEstilo, RellenoEstilo,
+};
 pub use galeria::{CapturaBorrada, CapturaGaleria, PaginaGaleria};
 pub use lecciones::{
     EtiquetaContada, FichaLeccion, FiltroLecciones, LeccionEditada, NotaRepaso, PaginaLecciones,
