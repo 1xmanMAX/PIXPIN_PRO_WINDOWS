@@ -53,6 +53,9 @@ struct MenuPrincipal: View {
             NSApp.activate()
         }
         .keyboardShortcut("p", modifiers: [.command, .option])
+        Button("Pinear desde el portapapeles") {
+            if !GestorPines.compartido.pinearDesdePortapapeles() { NSSound.beep() }
+        }
         Divider()
         Button("Salir de PixPin") { NSApp.terminate(nil) }
             .keyboardShortcut("q")
