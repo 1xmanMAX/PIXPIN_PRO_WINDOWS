@@ -50,10 +50,12 @@ uniffi::setup_scaffolding!();
 
 pub mod adjuntos;
 pub mod ajustes;
+pub mod aligerar;
 pub mod asistente;
 pub mod buscar;
 pub mod chats;
 pub mod compartidos;
+pub mod documentos;
 pub mod editor;
 pub mod editor_construir;
 pub mod editor_estilo;
@@ -61,16 +63,20 @@ pub mod editor_imagenes;
 pub mod envio;
 pub mod galeria;
 pub mod galeria_sincro;
+pub mod hojas;
 pub mod lecciones;
 pub mod lienzo;
 pub mod llavero;
 pub mod miniapps;
 pub mod modelos3d;
+pub mod notas;
+pub mod office;
 pub mod planos;
 pub mod red;
 pub mod sincro;
 pub mod tareas;
 pub mod timeline;
+pub mod unidades;
 pub mod version;
 pub mod voz;
 
@@ -86,6 +92,7 @@ pub use compartidos::{
     AvisoInvitacion, ChatCompartidoMac, CodigoDeInvitacion, Invitacion, PersonaCompartida,
     ResumenPersona,
 };
+pub use documentos::{DondeAnota, LecturaDocumento, MarcaDocumento};
 pub use editor::{EditorLienzo, FasePuntero, PeticionLienzo};
 pub use editor_estilo::{
     CambioDeEstilo, ColorEstilo, EstiloLienzo, GrosorEstilo, LineaEstilo, RellenoEstilo,

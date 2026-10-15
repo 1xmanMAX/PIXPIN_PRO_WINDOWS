@@ -984,6 +984,224 @@ public func FfiConverterTypeCorteIa_lower(_ value: CorteIa) -> UInt64 {
 
 
 /**
+ * **Un Word o un PowerPoint abierto** para leerlo por paginas. Abrir solo
+ * lee el ZIP y los estilos; cada pagina se maqueta cuando se pide (Word, en
+ * orden). Bloqueante: Swift lo usa fuera del hilo principal.
+ */
+public protocol DocumentoOfficeProtocol: AnyObject, Sendable {
+    
+    /**
+     * Si es un PowerPoint (cada diapositiva, una hoja).
+     */
+    func esPresentacion()  -> Bool
+    
+    /**
+     * Los bytes de una imagen de una pagina (PNG, JPEG, EMF... tal cual).
+     */
+    func imagen(id: String)  -> Data?
+    
+    /**
+     * **La pagina `n`** (desde 0), maquetandola si hace falta (en Word, con
+     * las anteriores). `None` si no existe.
+     */
+    func pagina(n: UInt32)  -> PaginaOffice?
+    
+    /**
+     * Si ya se sabe el total exacto.
+     */
+    func terminado()  -> Bool
+    
+    /**
+     * Cuantas paginas hay (Word: la estimacion de Word hasta maquetar todo).
+     */
+    func total()  -> UInt32
+    
+}
+/**
+ * **Un Word o un PowerPoint abierto** para leerlo por paginas. Abrir solo
+ * lee el ZIP y los estilos; cada pagina se maqueta cuando se pide (Word, en
+ * orden). Bloqueante: Swift lo usa fuera del hilo principal.
+ */
+open class DocumentoOffice: DocumentoOfficeProtocol, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_pixpin_nucleo_fn_clone_documentooffice(self.handle, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_pixpin_nucleo_fn_free_documentooffice(handle, $0) }
+    }
+
+    
+    /**
+     * Abre `ruta` (`.docx`, `.pptx` y sus parientes).
+     */
+public static func abrir(ruta: String, medidor: MedidorLetras)throws  -> DocumentoOffice  {
+    return try  FfiConverterTypeDocumentoOffice_lift(try rustCallWithError(FfiConverterTypeErrorNucleo_lift) {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_constructor_documentooffice_abrir(
+        FfiConverterString.lower(ruta),
+        FfiConverterCallbackInterfaceMedidorLetras_lower(medidor),uniffiCallStatus
+    )
+})
+}
+    
+
+    
+    /**
+     * Si es un PowerPoint (cada diapositiva, una hoja).
+     */
+open func esPresentacion() -> Bool  {
+    return try!  FfiConverterBool.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_documentooffice_es_presentacion(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Los bytes de una imagen de una pagina (PNG, JPEG, EMF... tal cual).
+     */
+open func imagen(id: String) -> Data?  {
+    return try!  FfiConverterOptionData.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_documentooffice_imagen(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(id),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * **La pagina `n`** (desde 0), maquetandola si hace falta (en Word, con
+     * las anteriores). `None` si no existe.
+     */
+open func pagina(n: UInt32) -> PaginaOffice?  {
+    return try!  FfiConverterOptionTypePaginaOffice.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_documentooffice_pagina(
+            self.uniffiCloneHandle(),
+        FfiConverterUInt32.lower(n),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Si ya se sabe el total exacto.
+     */
+open func terminado() -> Bool  {
+    return try!  FfiConverterBool.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_documentooffice_terminado(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Cuantas paginas hay (Word: la estimacion de Word hasta maquetar todo).
+     */
+open func total() -> UInt32  {
+    return try!  FfiConverterUInt32.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_documentooffice_total(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+
+    
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeDocumentoOffice: FfiConverter {
+    typealias FfiType = UInt64
+    typealias SwiftType = DocumentoOffice
+
+    public static func lift(_ handle: UInt64) throws -> DocumentoOffice {
+        return DocumentoOffice(unsafeFromHandle: handle)
+    }
+
+    public static func lower(_ value: DocumentoOffice) -> UInt64 {
+        return value.uniffiCloneHandle()
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> DocumentoOffice {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: DocumentoOffice, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeDocumentoOffice_lift(_ handle: UInt64) throws -> DocumentoOffice {
+    return try FfiConverterTypeDocumentoOffice.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeDocumentoOffice_lower(_ value: DocumentoOffice) -> UInt64 {
+    return FfiConverterTypeDocumentoOffice.lower(value)
+}
+
+
+
+
+
+
+/**
  * **Un lienzo abierto para editar.** Se usa desde varios hilos: el puntero
  * y el pintado desde el principal, guardar desde uno de fondo.
  */
@@ -1041,6 +1259,12 @@ public protocol EditorLienzoProtocol: AnyObject, Sendable {
      * derecha, 90 hacia arriba). Un paso de deshacer; `false` si no cambio.
      */
     func dictarCota(id: UInt64, largo: Float, grados: Float)  -> Bool
+    
+    /**
+     * Si es la tinta de una hoja de un documento (ver
+     * [`Nucleo::anotar_hoja`]).
+     */
+    func esDeDocumento()  -> Bool
     
     /**
      * Si se esta escribiendo un texto: entonces las teclas son del texto
@@ -1163,6 +1387,18 @@ public protocol EditorLienzoProtocol: AnyObject, Sendable {
      * vacio se quita.
      */
     func terminarTexto()  -> Bool
+    
+    /**
+     * **El color de lo que se dibuja a partir de ahora** (0..1), y el de lo
+     * elegido si hay algo elegido. Para la tinta del lector (lapiz y
+     * resaltador de colores).
+     */
+    func tintaColor(r: Float, g: Float, b: Float, a: Float) 
+    
+    /**
+     * **El grosor del lapiz** (`strokeWidth` de Excalidraw: 0,5, 1, 2...).
+     */
+    func tintaGrosor(grosor: Float) 
     
     /**
      * **Lo que hay que preguntar tras soltar**, una vez: el cajetin de
@@ -1396,6 +1632,19 @@ open func dictarCota(id: UInt64, largo: Float, grados: Float) -> Bool  {
         FfiConverterUInt64.lower(id),
         FfiConverterFloat.lower(largo),
         FfiConverterFloat.lower(grados),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Si es la tinta de una hoja de un documento (ver
+     * [`Nucleo::anotar_hoja`]).
+     */
+open func esDeDocumento() -> Bool  {
+    return try!  FfiConverterBool.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_editorlienzo_es_de_documento(
+            self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
 }
@@ -1658,6 +1907,35 @@ open func terminarTexto() -> Bool  {
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
+}
+    
+    /**
+     * **El color de lo que se dibuja a partir de ahora** (0..1), y el de lo
+     * elegido si hay algo elegido. Para la tinta del lector (lapiz y
+     * resaltador de colores).
+     */
+open func tintaColor(r: Float, g: Float, b: Float, a: Float)  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_editorlienzo_tinta_color(
+            self.uniffiCloneHandle(),
+        FfiConverterFloat.lower(r),
+        FfiConverterFloat.lower(g),
+        FfiConverterFloat.lower(b),
+        FfiConverterFloat.lower(a),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * **El grosor del lapiz** (`strokeWidth` de Excalidraw: 0,5, 1, 2...).
+     */
+open func tintaGrosor(grosor: Float)  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_editorlienzo_tinta_grosor(
+            self.uniffiCloneHandle(),
+        FfiConverterFloat.lower(grosor),uniffiCallStatus
+    )
+}
 }
     
     /**
@@ -2002,6 +2280,321 @@ public func FfiConverterTypeEscucha_lift(_ handle: UInt64) throws -> Escucha {
 #endif
 public func FfiConverterTypeEscucha_lower(_ value: Escucha) -> UInt64 {
     return FfiConverterTypeEscucha.lower(value)
+}
+
+
+
+
+
+
+/**
+ * **Una hoja de calculo del chat abierta para editar.**
+ */
+public protocol HojaDeCalculoProtocol: AnyObject, Sendable {
+    
+    /**
+     * Los anchos puestos a mano.
+     */
+    func anchos()  -> [AnchoColumna]
+    
+    /**
+     * **Las celdas con algo del rectangulo** `filas x columnas` (desde 0,
+     * fin excluido), calculadas. Las vacias sin formato no vienen.
+     */
+    func celdas(desdeFila: UInt32, hastaFila: UInt32, desdeColumna: UInt32, hastaColumna: UInt32)  -> [CeldaHoja]
+    
+    /**
+     * Lo escrito en una celda.
+     */
+    func contenido(fila: UInt32, columna: UInt32)  -> String
+    
+    /**
+     * El formato de una celda (`None` sin formato).
+     */
+    func estilo(fila: UInt32, columna: UInt32)  -> EstiloCeldaHoja?
+    
+    /**
+     * **Guarda** donde vive la tabla (ver la doc del modulo). Devuelve si
+     * escribio algo. Bloqueante: Swift lo llama fuera del hilo principal.
+     */
+    func guardar() throws  -> Bool
+    
+    func nombre()  -> String
+    
+    /**
+     * **Escribe una celda** (vacio la quita). Devuelve si cambio algo.
+     */
+    func poner(fila: UInt32, columna: UInt32, contenido: String)  -> Bool
+    
+    /**
+     * Pone el ancho de una columna (`None` vuelve al de siempre).
+     */
+    func ponerAncho(columna: UInt32, ancho: UInt32?)  -> Bool
+    
+    /**
+     * **Pone el formato de una celda.** Uno sin nada que se vea (y sin lo
+     * que el Mac no entiende) se quita en vez de guardarse vacio.
+     */
+    func ponerEstilo(fila: UInt32, columna: UInt32, estilo: EstiloCeldaHoja)  -> Bool
+    
+    /**
+     * Hasta donde llega lo escrito: `[columnas, filas]`.
+     */
+    func tamano()  -> [UInt32]
+    
+    /**
+     * Si hay cambios sin guardar.
+     */
+    func tocada()  -> Bool
+    
+}
+/**
+ * **Una hoja de calculo del chat abierta para editar.**
+ */
+open class HojaDeCalculo: HojaDeCalculoProtocol, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_pixpin_nucleo_fn_clone_hojadecalculo(self.handle, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_pixpin_nucleo_fn_free_hojadecalculo(handle, $0) }
+    }
+
+    
+
+    
+    /**
+     * Los anchos puestos a mano.
+     */
+open func anchos() -> [AnchoColumna]  {
+    return try!  FfiConverterSequenceTypeAnchoColumna.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_hojadecalculo_anchos(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * **Las celdas con algo del rectangulo** `filas x columnas` (desde 0,
+     * fin excluido), calculadas. Las vacias sin formato no vienen.
+     */
+open func celdas(desdeFila: UInt32, hastaFila: UInt32, desdeColumna: UInt32, hastaColumna: UInt32) -> [CeldaHoja]  {
+    return try!  FfiConverterSequenceTypeCeldaHoja.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_hojadecalculo_celdas(
+            self.uniffiCloneHandle(),
+        FfiConverterUInt32.lower(desdeFila),
+        FfiConverterUInt32.lower(hastaFila),
+        FfiConverterUInt32.lower(desdeColumna),
+        FfiConverterUInt32.lower(hastaColumna),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Lo escrito en una celda.
+     */
+open func contenido(fila: UInt32, columna: UInt32) -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_hojadecalculo_contenido(
+            self.uniffiCloneHandle(),
+        FfiConverterUInt32.lower(fila),
+        FfiConverterUInt32.lower(columna),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * El formato de una celda (`None` sin formato).
+     */
+open func estilo(fila: UInt32, columna: UInt32) -> EstiloCeldaHoja?  {
+    return try!  FfiConverterOptionTypeEstiloCeldaHoja.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_hojadecalculo_estilo(
+            self.uniffiCloneHandle(),
+        FfiConverterUInt32.lower(fila),
+        FfiConverterUInt32.lower(columna),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * **Guarda** donde vive la tabla (ver la doc del modulo). Devuelve si
+     * escribio algo. Bloqueante: Swift lo llama fuera del hilo principal.
+     */
+open func guardar()throws  -> Bool  {
+    return try  FfiConverterBool.lift(try rustCallWithError(FfiConverterTypeErrorNucleo_lift) {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_hojadecalculo_guardar(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+open func nombre() -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_hojadecalculo_nombre(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * **Escribe una celda** (vacio la quita). Devuelve si cambio algo.
+     */
+open func poner(fila: UInt32, columna: UInt32, contenido: String) -> Bool  {
+    return try!  FfiConverterBool.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_hojadecalculo_poner(
+            self.uniffiCloneHandle(),
+        FfiConverterUInt32.lower(fila),
+        FfiConverterUInt32.lower(columna),
+        FfiConverterString.lower(contenido),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Pone el ancho de una columna (`None` vuelve al de siempre).
+     */
+open func ponerAncho(columna: UInt32, ancho: UInt32?) -> Bool  {
+    return try!  FfiConverterBool.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_hojadecalculo_poner_ancho(
+            self.uniffiCloneHandle(),
+        FfiConverterUInt32.lower(columna),
+        FfiConverterOptionUInt32.lower(ancho),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * **Pone el formato de una celda.** Uno sin nada que se vea (y sin lo
+     * que el Mac no entiende) se quita en vez de guardarse vacio.
+     */
+open func ponerEstilo(fila: UInt32, columna: UInt32, estilo: EstiloCeldaHoja) -> Bool  {
+    return try!  FfiConverterBool.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_hojadecalculo_poner_estilo(
+            self.uniffiCloneHandle(),
+        FfiConverterUInt32.lower(fila),
+        FfiConverterUInt32.lower(columna),
+        FfiConverterTypeEstiloCeldaHoja_lower(estilo),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Hasta donde llega lo escrito: `[columnas, filas]`.
+     */
+open func tamano() -> [UInt32]  {
+    return try!  FfiConverterSequenceUInt32.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_hojadecalculo_tamano(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Si hay cambios sin guardar.
+     */
+open func tocada() -> Bool  {
+    return try!  FfiConverterBool.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_hojadecalculo_tocada(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+
+    
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHojaDeCalculo: FfiConverter {
+    typealias FfiType = UInt64
+    typealias SwiftType = HojaDeCalculo
+
+    public static func lift(_ handle: UInt64) throws -> HojaDeCalculo {
+        return HojaDeCalculo(unsafeFromHandle: handle)
+    }
+
+    public static func lower(_ value: HojaDeCalculo) -> UInt64 {
+        return value.uniffiCloneHandle()
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HojaDeCalculo {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: HojaDeCalculo, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHojaDeCalculo_lift(_ handle: UInt64) throws -> HojaDeCalculo {
+    return try FfiConverterTypeHojaDeCalculo.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHojaDeCalculo_lower(_ value: HojaDeCalculo) -> UInt64 {
+    return FfiConverterTypeHojaDeCalculo.lower(value)
 }
 
 
@@ -3121,6 +3714,23 @@ public protocol NucleoProtocol: AnyObject, Sendable {
     func rutaAjustes()  -> String
     
     /**
+     * Los ajustes `[pdf]` de `pixpinmax.toml`.
+     */
+    func ajustesPdf() throws  -> AjustesPdf
+    
+    /**
+     * **Aligera un PDF del chat en su sitio** (`ruta`: la de
+     * [`Nucleo::ruta_absoluta`]), como Windows. `a_mano`: pedido desde el
+     * menu del mensaje (se repite aunque ya se hubiera pasado). Bloqueante.
+     */
+    func aligerarEnSuSitio(ruta: String, nivel: NivelAligerar, aMano: Bool, avance: AvanceAligerar)  -> DesenlaceAligerar
+    
+    /**
+     * Guarda `[pdf]` sin tocar lo demas del fichero.
+     */
+    func guardarAjustesPdf(nuevos: AjustesPdf) throws 
+    
+    /**
      * **Busca en todo**: primero los chats por su nombre, luego los
      * mensajes y tareas de cada chat (el chat mas reciente primero y,
      * dentro, el mensaje mas nuevo primero) y al final los momentos del
@@ -3232,6 +3842,45 @@ public protocol NucleoProtocol: AnyObject, Sendable {
      * viajan) o todos los comunes si va vacio.
      */
     func sincronizarConPersona(host: String, puerto: UInt16, id: String?, chats: [String]) throws  -> ResumenPersona
+    
+    /**
+     * **Abre la tinta de la hoja `pagina`** (desde 0) de `documento` para
+     * verla y anotarla, en las unidades de la hoja (ver la doc del modulo).
+     * `alto`: el de la hoja en esas unidades (`1400 * alto / ancho` de la
+     * pagina tal como se ve). Si no hay tinta, nace vacia y no se escribe
+     * nada hasta que se anote. Guardar con [`EditorLienzo::guardar`] (fuera
+     * del hilo principal) escribe la tinta y su marco.
+     */
+    func anotarHoja(documento: String, pagina: UInt32, alto: Float) throws  -> EditorLienzo
+    
+    /**
+     * Adonde va lo anotado de `documento`.
+     */
+    func dondeAnota(documento: String)  -> DondeAnota
+    
+    /**
+     * **Guarda lo que se recuerda**: aumento y pagina junto al documento
+     * (de esta pantalla), y marcadores y espacios donde viajan (los del PDF
+     * de un adjunto o de un proyecto). Solo se escribe lo que cambia.
+     *
+     * `altos`: el alto de cada hoja en unidades de la tinta. Si los espacios
+     * cambian, a la tinta del chat que aun no tiene marco se le apunta antes
+     * el de la regla de ahora (`fijar_lo_viejo`), para que no se corra.
+     */
+    func guardarLecturaDeDocumento(documento: String, lectura: LecturaDocumento, altos: [Float]) throws 
+    
+    /**
+     * **Que hojas tienen tinta** de las `paginas` primeras (sin leerlas:
+     * solo si su fichero esta). Para no abrir un editor por hoja vacia.
+     */
+    func hojasConTinta(documento: String, paginas: UInt32)  -> [UInt32]
+    
+    /**
+     * **Lo que se recuerda de un documento** (`documento`: su ruta en este
+     * Mac, la de [`Nucleo::ruta_absoluta`] si es un adjunto): aumento,
+     * pagina, espacios para anotar y marcadores, y adonde va lo anotado.
+     */
+    func lecturaDeDocumento(documento: String)  -> LecturaDocumento
     
     /**
      * **Un lienzo nuevo en un chat**: el `.excalidraw` vacio en
@@ -3362,6 +4011,27 @@ public protocol NucleoProtocol: AnyObject, Sendable {
     func prorrogarCaptura(nombre: String, dias: Int64) throws  -> Int64?
     
     /**
+     * **Abre la hoja de calculo de un mensaje**: una tabla del PC (`MINIAPP`
+     * tabla) o del movil (`TABLA`). `NoExiste` si el mensaje no esta o su
+     * fichero aun no llego (mejor no abrir que abrir en blanco y guardar
+     * encima); `Argumento` si no es una tabla.
+     */
+    func abrirHojaDeCalculo(chat: String, mensaje: String) throws  -> HojaDeCalculo
+    
+    /**
+     * **Una tabla nueva en un chat**: un mensaje `MINIAPP` tabla con la
+     * tabla vacia, como la crea Windows. Se abre despues con
+     * [`Nucleo::abrir_hoja_de_calculo`].
+     */
+    func crearTabla(chat: String, nombre: String) throws  -> MensajeChat
+    
+    /**
+     * Si el mensaje es una hoja de calculo que se abre con
+     * [`Nucleo::abrir_hoja_de_calculo`] (sin leer su tabla).
+     */
+    func esHojaDeCalculo(chat: String, mensaje: String)  -> Bool
+    
+    /**
      * **Borra una leccion** como borra el chat: su mensaje y los de sus
      * fotos y audios salen del cuaderno con su marca de borrado (para que
      * no vuelvan del otro aparato) y sus archivos se van.
@@ -3425,6 +4095,16 @@ public protocol NucleoProtocol: AnyObject, Sendable {
      * (hay que releer con [`Nucleo::documento_miniapp`]).
      */
     func guardarMiniapp(chat: String, mensaje: String, anterior: String, documento: String) throws  -> Bool
+    
+    /**
+     * **Guarda el texto de una nota** (`mensaje`: el id de un `NOTA`) donde
+     * la tenga, como `notas_md::guardar` de Windows: en su linea del
+     * cuaderno (lo demas de la linea queda como estaba) y, si el proyecto
+     * tiene una hoja `nota` con el mismo codigo unico (una nota del movil),
+     * tambien en ella y en su copia `notas/<id>.md`. Sube el `tocado` del
+     * chat. Devuelve el mensaje como quedo. Bloqueante.
+     */
+    func editarNota(chat: String, mensaje: String, texto: String) throws  -> MensajeChat
     
     /**
      * **Abre un plano DWG o DXF** (por capas). Bloquea (un plano grande
@@ -3769,6 +4449,48 @@ open func rutaAjustes() -> String  {
 }
     
     /**
+     * Los ajustes `[pdf]` de `pixpinmax.toml`.
+     */
+open func ajustesPdf()throws  -> AjustesPdf  {
+    return try  FfiConverterTypeAjustesPdf_lift(try rustCallWithError(FfiConverterTypeErrorNucleo_lift) {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_nucleo_ajustes_pdf(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * **Aligera un PDF del chat en su sitio** (`ruta`: la de
+     * [`Nucleo::ruta_absoluta`]), como Windows. `a_mano`: pedido desde el
+     * menu del mensaje (se repite aunque ya se hubiera pasado). Bloqueante.
+     */
+open func aligerarEnSuSitio(ruta: String, nivel: NivelAligerar, aMano: Bool, avance: AvanceAligerar) -> DesenlaceAligerar  {
+    return try!  FfiConverterTypeDesenlaceAligerar_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_nucleo_aligerar_en_su_sitio(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(ruta),
+        FfiConverterTypeNivelAligerar_lower(nivel),
+        FfiConverterBool.lower(aMano),
+        FfiConverterCallbackInterfaceAvanceAligerar_lower(avance),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Guarda `[pdf]` sin tocar lo demas del fichero.
+     */
+open func guardarAjustesPdf(nuevos: AjustesPdf)throws   {try rustCallWithError(FfiConverterTypeErrorNucleo_lift) {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_nucleo_guardar_ajustes_pdf(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeAjustesPdf_lower(nuevos),uniffiCallStatus
+    )
+}
+}
+    
+    /**
      * **Busca en todo**: primero los chats por su nombre, luego los
      * mensajes y tareas de cada chat (el chat mas reciente primero y,
      * dentro, el mensaje mas nuevo primero) y al final los momentos del
@@ -4021,6 +4743,89 @@ open func sincronizarConPersona(host: String, puerto: UInt16, id: String?, chats
         FfiConverterUInt16.lower(puerto),
         FfiConverterOptionString.lower(id),
         FfiConverterSequenceString.lower(chats),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * **Abre la tinta de la hoja `pagina`** (desde 0) de `documento` para
+     * verla y anotarla, en las unidades de la hoja (ver la doc del modulo).
+     * `alto`: el de la hoja en esas unidades (`1400 * alto / ancho` de la
+     * pagina tal como se ve). Si no hay tinta, nace vacia y no se escribe
+     * nada hasta que se anote. Guardar con [`EditorLienzo::guardar`] (fuera
+     * del hilo principal) escribe la tinta y su marco.
+     */
+open func anotarHoja(documento: String, pagina: UInt32, alto: Float)throws  -> EditorLienzo  {
+    return try  FfiConverterTypeEditorLienzo_lift(try rustCallWithError(FfiConverterTypeErrorNucleo_lift) {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_nucleo_anotar_hoja(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(documento),
+        FfiConverterUInt32.lower(pagina),
+        FfiConverterFloat.lower(alto),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Adonde va lo anotado de `documento`.
+     */
+open func dondeAnota(documento: String) -> DondeAnota  {
+    return try!  FfiConverterTypeDondeAnota_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_nucleo_donde_anota(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(documento),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * **Guarda lo que se recuerda**: aumento y pagina junto al documento
+     * (de esta pantalla), y marcadores y espacios donde viajan (los del PDF
+     * de un adjunto o de un proyecto). Solo se escribe lo que cambia.
+     *
+     * `altos`: el alto de cada hoja en unidades de la tinta. Si los espacios
+     * cambian, a la tinta del chat que aun no tiene marco se le apunta antes
+     * el de la regla de ahora (`fijar_lo_viejo`), para que no se corra.
+     */
+open func guardarLecturaDeDocumento(documento: String, lectura: LecturaDocumento, altos: [Float])throws   {try rustCallWithError(FfiConverterTypeErrorNucleo_lift) {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_nucleo_guardar_lectura_de_documento(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(documento),
+        FfiConverterTypeLecturaDocumento_lower(lectura),
+        FfiConverterSequenceFloat.lower(altos),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * **Que hojas tienen tinta** de las `paginas` primeras (sin leerlas:
+     * solo si su fichero esta). Para no abrir un editor por hoja vacia.
+     */
+open func hojasConTinta(documento: String, paginas: UInt32) -> [UInt32]  {
+    return try!  FfiConverterSequenceUInt32.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_nucleo_hojas_con_tinta(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(documento),
+        FfiConverterUInt32.lower(paginas),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * **Lo que se recuerda de un documento** (`documento`: su ruta en este
+     * Mac, la de [`Nucleo::ruta_absoluta`] si es un adjunto): aumento,
+     * pagina, espacios para anotar y marcadores, y adonde va lo anotado.
+     */
+open func lecturaDeDocumento(documento: String) -> LecturaDocumento  {
+    return try!  FfiConverterTypeLecturaDocumento_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_nucleo_lectura_de_documento(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(documento),uniffiCallStatus
     )
 })
 }
@@ -4298,6 +5103,54 @@ open func prorrogarCaptura(nombre: String, dias: Int64)throws  -> Int64?  {
 }
     
     /**
+     * **Abre la hoja de calculo de un mensaje**: una tabla del PC (`MINIAPP`
+     * tabla) o del movil (`TABLA`). `NoExiste` si el mensaje no esta o su
+     * fichero aun no llego (mejor no abrir que abrir en blanco y guardar
+     * encima); `Argumento` si no es una tabla.
+     */
+open func abrirHojaDeCalculo(chat: String, mensaje: String)throws  -> HojaDeCalculo  {
+    return try  FfiConverterTypeHojaDeCalculo_lift(try rustCallWithError(FfiConverterTypeErrorNucleo_lift) {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_nucleo_abrir_hoja_de_calculo(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(chat),
+        FfiConverterString.lower(mensaje),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * **Una tabla nueva en un chat**: un mensaje `MINIAPP` tabla con la
+     * tabla vacia, como la crea Windows. Se abre despues con
+     * [`Nucleo::abrir_hoja_de_calculo`].
+     */
+open func crearTabla(chat: String, nombre: String)throws  -> MensajeChat  {
+    return try  FfiConverterTypeMensajeChat_lift(try rustCallWithError(FfiConverterTypeErrorNucleo_lift) {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_nucleo_crear_tabla(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(chat),
+        FfiConverterString.lower(nombre),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Si el mensaje es una hoja de calculo que se abre con
+     * [`Nucleo::abrir_hoja_de_calculo`] (sin leer su tabla).
+     */
+open func esHojaDeCalculo(chat: String, mensaje: String) -> Bool  {
+    return try!  FfiConverterBool.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_nucleo_es_hoja_de_calculo(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(chat),
+        FfiConverterString.lower(mensaje),uniffiCallStatus
+    )
+})
+}
+    
+    /**
      * **Borra una leccion** como borra el chat: su mensaje y los de sus
      * fotos y audios salen del cuaderno con su marca de borrado (para que
      * no vuelvan del otro aparato) y sus archivos se van.
@@ -4449,6 +5302,26 @@ open func guardarMiniapp(chat: String, mensaje: String, anterior: String, docume
         FfiConverterString.lower(mensaje),
         FfiConverterString.lower(anterior),
         FfiConverterString.lower(documento),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * **Guarda el texto de una nota** (`mensaje`: el id de un `NOTA`) donde
+     * la tenga, como `notas_md::guardar` de Windows: en su linea del
+     * cuaderno (lo demas de la linea queda como estaba) y, si el proyecto
+     * tiene una hoja `nota` con el mismo codigo unico (una nota del movil),
+     * tambien en ella y en su copia `notas/<id>.md`. Sube el `tocado` del
+     * chat. Devuelve el mensaje como quedo. Bloqueante.
+     */
+open func editarNota(chat: String, mensaje: String, texto: String)throws  -> MensajeChat  {
+    return try  FfiConverterTypeMensajeChat_lift(try rustCallWithError(FfiConverterTypeErrorNucleo_lift) {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_nucleo_editar_nota(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(chat),
+        FfiConverterString.lower(mensaje),
+        FfiConverterString.lower(texto),uniffiCallStatus
     )
 })
 }
@@ -5999,6 +6872,134 @@ public func FfiConverterTypeAjustesMac_lower(_ value: AjustesMac) -> RustBuffer 
 
 
 /**
+ * Los ajustes de `[pdf]` de `pixpinmax.toml` (los de Windows).
+ */
+public struct AjustesPdf: Equatable, Hashable {
+    /**
+     * Al entrar un PDF al chat, se aligera despues, en segundo plano.
+     */
+    public var aligerarAlEntrar: Bool
+    /**
+     * Con que nivel (el de «Aligerar el PDF» a mano; al entrar, ver
+     * [`nivel_para_entrar`]).
+     */
+    public var nivel: NivelAligerar
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Al entrar un PDF al chat, se aligera despues, en segundo plano.
+         */aligerarAlEntrar: Bool, 
+        /**
+         * Con que nivel (el de «Aligerar el PDF» a mano; al entrar, ver
+         * [`nivel_para_entrar`]).
+         */nivel: NivelAligerar) {
+        self.aligerarAlEntrar = aligerarAlEntrar
+        self.nivel = nivel
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension AjustesPdf: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeAjustesPdf: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AjustesPdf {
+        return
+            try AjustesPdf(
+                aligerarAlEntrar: FfiConverterBool.read(from: &buf), 
+                nivel: FfiConverterTypeNivelAligerar.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: AjustesPdf, into buf: inout [UInt8]) {
+        FfiConverterBool.write(value.aligerarAlEntrar, into: &buf)
+        FfiConverterTypeNivelAligerar.write(value.nivel, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAjustesPdf_lift(_ buf: RustBuffer) throws -> AjustesPdf {
+    return try FfiConverterTypeAjustesPdf.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAjustesPdf_lower(_ value: AjustesPdf) -> RustBuffer {
+    return FfiConverterTypeAjustesPdf.lower(value)
+}
+
+
+/**
+ * El ancho de una columna puesto a mano, en pixeles.
+ */
+public struct AnchoColumna: Equatable, Hashable {
+    public var columna: UInt32
+    public var ancho: UInt32
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(columna: UInt32, ancho: UInt32) {
+        self.columna = columna
+        self.ancho = ancho
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension AnchoColumna: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeAnchoColumna: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AnchoColumna {
+        return
+            try AnchoColumna(
+                columna: FfiConverterUInt32.read(from: &buf), 
+                ancho: FfiConverterUInt32.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: AnchoColumna, into buf: inout [UInt8]) {
+        FfiConverterUInt32.write(value.columna, into: &buf)
+        FfiConverterUInt32.write(value.ancho, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAnchoColumna_lift(_ buf: RustBuffer) throws -> AnchoColumna {
+    return try FfiConverterTypeAnchoColumna.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAnchoColumna_lower(_ value: AnchoColumna) -> RustBuffer {
+    return FfiConverterTypeAnchoColumna.lower(value)
+}
+
+
+/**
  * Las cotas y los marcos para imprimir de la capa del plano.
  */
 public struct AnotadoPlano: Equatable, Hashable {
@@ -7074,6 +8075,115 @@ public func FfiConverterTypeCategoria3d_lower(_ value: Categoria3d) -> RustBuffe
 
 
 /**
+ * Una celda con algo, tal como se ensena.
+ */
+public struct CeldaHoja: Equatable, Hashable {
+    /**
+     * Desde 0.
+     */
+    public var fila: UInt32
+    public var columna: UInt32
+    /**
+     * Lo escrito (una formula empieza por `=`).
+     */
+    public var contenido: String
+    /**
+     * Lo que se ensena: el resultado de la formula o el valor, con el
+     * separador decimal de este equipo (vista «General»).
+     */
+    public var mostrado: String
+    /**
+     * El numero, si el valor lo es (para aplicarle su formato en Swift).
+     */
+    public var numero: Double?
+    /**
+     * Si el valor es un error de formula (`#¡DIV/0!`...).
+     */
+    public var error: Bool
+    public var estilo: EstiloCeldaHoja?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Desde 0.
+         */fila: UInt32, columna: UInt32, 
+        /**
+         * Lo escrito (una formula empieza por `=`).
+         */contenido: String, 
+        /**
+         * Lo que se ensena: el resultado de la formula o el valor, con el
+         * separador decimal de este equipo (vista «General»).
+         */mostrado: String, 
+        /**
+         * El numero, si el valor lo es (para aplicarle su formato en Swift).
+         */numero: Double?, 
+        /**
+         * Si el valor es un error de formula (`#¡DIV/0!`...).
+         */error: Bool, estilo: EstiloCeldaHoja?) {
+        self.fila = fila
+        self.columna = columna
+        self.contenido = contenido
+        self.mostrado = mostrado
+        self.numero = numero
+        self.error = error
+        self.estilo = estilo
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension CeldaHoja: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeCeldaHoja: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> CeldaHoja {
+        return
+            try CeldaHoja(
+                fila: FfiConverterUInt32.read(from: &buf), 
+                columna: FfiConverterUInt32.read(from: &buf), 
+                contenido: FfiConverterString.read(from: &buf), 
+                mostrado: FfiConverterString.read(from: &buf), 
+                numero: FfiConverterOptionDouble.read(from: &buf), 
+                error: FfiConverterBool.read(from: &buf), 
+                estilo: FfiConverterOptionTypeEstiloCeldaHoja.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: CeldaHoja, into buf: inout [UInt8]) {
+        FfiConverterUInt32.write(value.fila, into: &buf)
+        FfiConverterUInt32.write(value.columna, into: &buf)
+        FfiConverterString.write(value.contenido, into: &buf)
+        FfiConverterString.write(value.mostrado, into: &buf)
+        FfiConverterOptionDouble.write(value.numero, into: &buf)
+        FfiConverterBool.write(value.error, into: &buf)
+        FfiConverterOptionTypeEstiloCeldaHoja.write(value.estilo, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCeldaHoja_lift(_ buf: RustBuffer) throws -> CeldaHoja {
+    return try FfiConverterTypeCeldaHoja.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCeldaHoja_lower(_ value: CeldaHoja) -> RustBuffer {
+    return FfiConverterTypeCeldaHoja.lower(value)
+}
+
+
+/**
  * Un chat compartido, para ensenarlo.
  */
 public struct ChatCompartidoMac: Equatable, Hashable {
@@ -7781,6 +8891,75 @@ public func FfiConverterTypeEnganche_lower(_ value: Enganche) -> RustBuffer {
 
 
 /**
+ * Un hipervinculo de la pagina: su caja en puntos y adonde va.
+ */
+public struct EnlaceOffice: Equatable, Hashable {
+    public var x: Float
+    public var y: Float
+    public var ancho: Float
+    public var alto: Float
+    public var destino: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(x: Float, y: Float, ancho: Float, alto: Float, destino: String) {
+        self.x = x
+        self.y = y
+        self.ancho = ancho
+        self.alto = alto
+        self.destino = destino
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension EnlaceOffice: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeEnlaceOffice: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> EnlaceOffice {
+        return
+            try EnlaceOffice(
+                x: FfiConverterFloat.read(from: &buf), 
+                y: FfiConverterFloat.read(from: &buf), 
+                ancho: FfiConverterFloat.read(from: &buf), 
+                alto: FfiConverterFloat.read(from: &buf), 
+                destino: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: EnlaceOffice, into buf: inout [UInt8]) {
+        FfiConverterFloat.write(value.x, into: &buf)
+        FfiConverterFloat.write(value.y, into: &buf)
+        FfiConverterFloat.write(value.ancho, into: &buf)
+        FfiConverterFloat.write(value.alto, into: &buf)
+        FfiConverterString.write(value.destino, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeEnlaceOffice_lift(_ buf: RustBuffer) throws -> EnlaceOffice {
+    return try FfiConverterTypeEnlaceOffice.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeEnlaceOffice_lower(_ value: EnlaceOffice) -> RustBuffer {
+    return FfiConverterTypeEnlaceOffice.lower(value)
+}
+
+
+/**
  * Como quedo cada archivo mandado con [`Nucleo::enviar_a_aparato`].
  */
 public struct EnvioSuelto: Equatable, Hashable {
@@ -7862,6 +9041,121 @@ public func FfiConverterTypeEnvioSuelto_lift(_ buf: RustBuffer) throws -> EnvioS
 #endif
 public func FfiConverterTypeEnvioSuelto_lower(_ value: EnvioSuelto) -> RustBuffer {
     return FfiConverterTypeEnvioSuelto.lower(value)
+}
+
+
+/**
+ * El formato de una celda, como lo guardan Windows y el movil.
+ */
+public struct EstiloCeldaHoja: Equatable, Hashable {
+    public var negrita: Bool
+    public var cursiva: Bool
+    public var subrayado: Bool
+    public var tachado: Bool
+    /**
+     * `i`, `c`, `d` o nada (la que toque por el valor).
+     */
+    public var alineacion: String?
+    /**
+     * El fondo, `#rrggbb`.
+     */
+    public var fondo: String?
+    /**
+     * El color de la letra, `#rrggbb`.
+     */
+    public var color: String?
+    /**
+     * Ajustar el texto (varias lineas).
+     */
+    public var ajustar: Bool
+    /**
+     * `numero`, `moneda`, `porcentaje`, `fecha` o nada («General»).
+     */
+    public var formatoNumero: String?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(negrita: Bool, cursiva: Bool, subrayado: Bool, tachado: Bool, 
+        /**
+         * `i`, `c`, `d` o nada (la que toque por el valor).
+         */alineacion: String?, 
+        /**
+         * El fondo, `#rrggbb`.
+         */fondo: String?, 
+        /**
+         * El color de la letra, `#rrggbb`.
+         */color: String?, 
+        /**
+         * Ajustar el texto (varias lineas).
+         */ajustar: Bool, 
+        /**
+         * `numero`, `moneda`, `porcentaje`, `fecha` o nada («General»).
+         */formatoNumero: String?) {
+        self.negrita = negrita
+        self.cursiva = cursiva
+        self.subrayado = subrayado
+        self.tachado = tachado
+        self.alineacion = alineacion
+        self.fondo = fondo
+        self.color = color
+        self.ajustar = ajustar
+        self.formatoNumero = formatoNumero
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension EstiloCeldaHoja: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeEstiloCeldaHoja: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> EstiloCeldaHoja {
+        return
+            try EstiloCeldaHoja(
+                negrita: FfiConverterBool.read(from: &buf), 
+                cursiva: FfiConverterBool.read(from: &buf), 
+                subrayado: FfiConverterBool.read(from: &buf), 
+                tachado: FfiConverterBool.read(from: &buf), 
+                alineacion: FfiConverterOptionString.read(from: &buf), 
+                fondo: FfiConverterOptionString.read(from: &buf), 
+                color: FfiConverterOptionString.read(from: &buf), 
+                ajustar: FfiConverterBool.read(from: &buf), 
+                formatoNumero: FfiConverterOptionString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: EstiloCeldaHoja, into buf: inout [UInt8]) {
+        FfiConverterBool.write(value.negrita, into: &buf)
+        FfiConverterBool.write(value.cursiva, into: &buf)
+        FfiConverterBool.write(value.subrayado, into: &buf)
+        FfiConverterBool.write(value.tachado, into: &buf)
+        FfiConverterOptionString.write(value.alineacion, into: &buf)
+        FfiConverterOptionString.write(value.fondo, into: &buf)
+        FfiConverterOptionString.write(value.color, into: &buf)
+        FfiConverterBool.write(value.ajustar, into: &buf)
+        FfiConverterOptionString.write(value.formatoNumero, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeEstiloCeldaHoja_lift(_ buf: RustBuffer) throws -> EstiloCeldaHoja {
+    return try FfiConverterTypeEstiloCeldaHoja.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeEstiloCeldaHoja_lower(_ value: EstiloCeldaHoja) -> RustBuffer {
+    return FfiConverterTypeEstiloCeldaHoja.lower(value)
 }
 
 
@@ -9248,6 +10542,154 @@ public func FfiConverterTypeLeccionEditada_lower(_ value: LeccionEditada) -> Rus
 
 
 /**
+ * Lo que se recuerda de un documento al leerlo.
+ */
+public struct LecturaDocumento: Equatable, Hashable {
+    /**
+     * El aumento propio (1 = la hoja a lo ancho de la ventana).
+     */
+    public var zoom: Float
+    /**
+     * Por donde se iba: la pagina (desde 0) mas la fraccion de su alto.
+     */
+    public var pagina: Double
+    /**
+     * Los espacios para anotar, en bits: 1 izquierda, 2 derecha.
+     */
+    public var espacios: UInt8
+    public var marcas: [MarcaDocumento]
+    public var donde: DondeAnota
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * El aumento propio (1 = la hoja a lo ancho de la ventana).
+         */zoom: Float, 
+        /**
+         * Por donde se iba: la pagina (desde 0) mas la fraccion de su alto.
+         */pagina: Double, 
+        /**
+         * Los espacios para anotar, en bits: 1 izquierda, 2 derecha.
+         */espacios: UInt8, marcas: [MarcaDocumento], donde: DondeAnota) {
+        self.zoom = zoom
+        self.pagina = pagina
+        self.espacios = espacios
+        self.marcas = marcas
+        self.donde = donde
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension LecturaDocumento: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeLecturaDocumento: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> LecturaDocumento {
+        return
+            try LecturaDocumento(
+                zoom: FfiConverterFloat.read(from: &buf), 
+                pagina: FfiConverterDouble.read(from: &buf), 
+                espacios: FfiConverterUInt8.read(from: &buf), 
+                marcas: FfiConverterSequenceTypeMarcaDocumento.read(from: &buf), 
+                donde: FfiConverterTypeDondeAnota.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: LecturaDocumento, into buf: inout [UInt8]) {
+        FfiConverterFloat.write(value.zoom, into: &buf)
+        FfiConverterDouble.write(value.pagina, into: &buf)
+        FfiConverterUInt8.write(value.espacios, into: &buf)
+        FfiConverterSequenceTypeMarcaDocumento.write(value.marcas, into: &buf)
+        FfiConverterTypeDondeAnota.write(value.donde, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLecturaDocumento_lift(_ buf: RustBuffer) throws -> LecturaDocumento {
+    return try FfiConverterTypeLecturaDocumento.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLecturaDocumento_lower(_ value: LecturaDocumento) -> RustBuffer {
+    return FfiConverterTypeLecturaDocumento.lower(value)
+}
+
+
+/**
+ * Una letra de la tabla de [`PaginaOffice`].
+ */
+public struct LetraOffice: Equatable, Hashable {
+    public var familia: String
+    public var negrita: Bool
+    public var cursiva: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(familia: String, negrita: Bool, cursiva: Bool) {
+        self.familia = familia
+        self.negrita = negrita
+        self.cursiva = cursiva
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension LetraOffice: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeLetraOffice: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> LetraOffice {
+        return
+            try LetraOffice(
+                familia: FfiConverterString.read(from: &buf), 
+                negrita: FfiConverterBool.read(from: &buf), 
+                cursiva: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: LetraOffice, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.familia, into: &buf)
+        FfiConverterBool.write(value.negrita, into: &buf)
+        FfiConverterBool.write(value.cursiva, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLetraOffice_lift(_ buf: RustBuffer) throws -> LetraOffice {
+    return try FfiConverterTypeLetraOffice.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLetraOffice_lower(_ value: LetraOffice) -> RustBuffer {
+    return FfiConverterTypeLetraOffice.lower(value)
+}
+
+
+/**
  * Unos gastos enteros, leidos.
  */
 public struct LibroMini: Equatable, Hashable {
@@ -9532,6 +10974,78 @@ public func FfiConverterTypeListaTareas_lower(_ value: ListaTareas) -> RustBuffe
 
 
 /**
+ * Un marcador de un PDF: `x` es la fraccion del ancho de la hoja y `y` la
+ * pagina (desde 0) mas la fraccion de su alto (`marcas::en_la_pagina`).
+ */
+public struct MarcaDocumento: Equatable, Hashable {
+    /**
+     * Cuando se puso, en milisegundos: es su identidad.
+     */
+    public var id: Int64
+    public var x: Double
+    public var y: Double
+    public var emoji: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Cuando se puso, en milisegundos: es su identidad.
+         */id: Int64, x: Double, y: Double, emoji: String) {
+        self.id = id
+        self.x = x
+        self.y = y
+        self.emoji = emoji
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension MarcaDocumento: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeMarcaDocumento: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MarcaDocumento {
+        return
+            try MarcaDocumento(
+                id: FfiConverterInt64.read(from: &buf), 
+                x: FfiConverterDouble.read(from: &buf), 
+                y: FfiConverterDouble.read(from: &buf), 
+                emoji: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: MarcaDocumento, into buf: inout [UInt8]) {
+        FfiConverterInt64.write(value.id, into: &buf)
+        FfiConverterDouble.write(value.x, into: &buf)
+        FfiConverterDouble.write(value.y, into: &buf)
+        FfiConverterString.write(value.emoji, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMarcaDocumento_lift(_ buf: RustBuffer) throws -> MarcaDocumento {
+    return try FfiConverterTypeMarcaDocumento.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMarcaDocumento_lower(_ value: MarcaDocumento) -> RustBuffer {
+    return FfiConverterTypeMarcaDocumento.lower(value)
+}
+
+
+/**
  * Un mensaje, con lo que hace falta para pintar su burbuja.
  */
 public struct MensajeChat: Equatable, Hashable {
@@ -9774,6 +11288,67 @@ public func FfiConverterTypeMensajeIa_lift(_ buf: RustBuffer) throws -> MensajeI
 #endif
 public func FfiConverterTypeMensajeIa_lower(_ value: MensajeIa) -> RustBuffer {
     return FfiConverterTypeMensajeIa.lower(value)
+}
+
+
+/**
+ * Lo vertical de una letra **a tamano 1000**, en puntos.
+ */
+public struct MetricasLetra: Equatable, Hashable {
+    public var ascenso: Float
+    public var descenso: Float
+    public var hueco: Float
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(ascenso: Float, descenso: Float, hueco: Float) {
+        self.ascenso = ascenso
+        self.descenso = descenso
+        self.hueco = hueco
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension MetricasLetra: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeMetricasLetra: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MetricasLetra {
+        return
+            try MetricasLetra(
+                ascenso: FfiConverterFloat.read(from: &buf), 
+                descenso: FfiConverterFloat.read(from: &buf), 
+                hueco: FfiConverterFloat.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: MetricasLetra, into buf: inout [UInt8]) {
+        FfiConverterFloat.write(value.ascenso, into: &buf)
+        FfiConverterFloat.write(value.descenso, into: &buf)
+        FfiConverterFloat.write(value.hueco, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMetricasLetra_lift(_ buf: RustBuffer) throws -> MetricasLetra {
+    return try FfiConverterTypeMetricasLetra.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMetricasLetra_lower(_ value: MetricasLetra) -> RustBuffer {
+    return FfiConverterTypeMetricasLetra.lower(value)
 }
 
 
@@ -10492,6 +12067,125 @@ public func FfiConverterTypePaginaMomentos_lower(_ value: PaginaMomentos) -> Rus
 
 
 /**
+ * **Una pagina maquetada**, lista para pintar (ver la doc del modulo).
+ */
+public struct PaginaOffice: Equatable, Hashable {
+    /**
+     * Desde 0.
+     */
+    public var indice: UInt32
+    /**
+     * En puntos.
+     */
+    public var ancho: Float
+    public var alto: Float
+    /**
+     * El fondo (0..1), si lo tiene.
+     */
+    public var fondo: [Float]?
+    public var datos: Data
+    public var textos: [String]
+    public var letras: [LetraOffice]
+    /**
+     * Los ids de las imagenes (sus bytes con [`DocumentoOffice::imagen`]).
+     */
+    public var imagenes: [String]
+    public var enlaces: [EnlaceOffice]
+    /**
+     * El texto de la pagina en orden de lectura (buscar, copiar, leer).
+     */
+    public var textoPlano: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Desde 0.
+         */indice: UInt32, 
+        /**
+         * En puntos.
+         */ancho: Float, alto: Float, 
+        /**
+         * El fondo (0..1), si lo tiene.
+         */fondo: [Float]?, datos: Data, textos: [String], letras: [LetraOffice], 
+        /**
+         * Los ids de las imagenes (sus bytes con [`DocumentoOffice::imagen`]).
+         */imagenes: [String], enlaces: [EnlaceOffice], 
+        /**
+         * El texto de la pagina en orden de lectura (buscar, copiar, leer).
+         */textoPlano: String) {
+        self.indice = indice
+        self.ancho = ancho
+        self.alto = alto
+        self.fondo = fondo
+        self.datos = datos
+        self.textos = textos
+        self.letras = letras
+        self.imagenes = imagenes
+        self.enlaces = enlaces
+        self.textoPlano = textoPlano
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension PaginaOffice: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypePaginaOffice: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> PaginaOffice {
+        return
+            try PaginaOffice(
+                indice: FfiConverterUInt32.read(from: &buf), 
+                ancho: FfiConverterFloat.read(from: &buf), 
+                alto: FfiConverterFloat.read(from: &buf), 
+                fondo: FfiConverterOptionSequenceFloat.read(from: &buf), 
+                datos: FfiConverterData.read(from: &buf), 
+                textos: FfiConverterSequenceString.read(from: &buf), 
+                letras: FfiConverterSequenceTypeLetraOffice.read(from: &buf), 
+                imagenes: FfiConverterSequenceString.read(from: &buf), 
+                enlaces: FfiConverterSequenceTypeEnlaceOffice.read(from: &buf), 
+                textoPlano: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: PaginaOffice, into buf: inout [UInt8]) {
+        FfiConverterUInt32.write(value.indice, into: &buf)
+        FfiConverterFloat.write(value.ancho, into: &buf)
+        FfiConverterFloat.write(value.alto, into: &buf)
+        FfiConverterOptionSequenceFloat.write(value.fondo, into: &buf)
+        FfiConverterData.write(value.datos, into: &buf)
+        FfiConverterSequenceString.write(value.textos, into: &buf)
+        FfiConverterSequenceTypeLetraOffice.write(value.letras, into: &buf)
+        FfiConverterSequenceString.write(value.imagenes, into: &buf)
+        FfiConverterSequenceTypeEnlaceOffice.write(value.enlaces, into: &buf)
+        FfiConverterString.write(value.textoPlano, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePaginaOffice_lift(_ buf: RustBuffer) throws -> PaginaOffice {
+    return try FfiConverterTypePaginaOffice.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePaginaOffice_lower(_ value: PaginaOffice) -> RustBuffer {
+    return FfiConverterTypePaginaOffice.lower(value)
+}
+
+
+/**
  * Una entrada del TXT de Bonjour, en el orden en que se anuncia.
  */
 public struct ParTxt: Equatable, Hashable {
@@ -11138,6 +12832,77 @@ public func FfiConverterTypeResultadoBusqueda_lift(_ buf: RustBuffer) throws -> 
 #endif
 public func FfiConverterTypeResultadoBusqueda_lower(_ value: ResultadoBusqueda) -> RustBuffer {
     return FfiConverterTypeResultadoBusqueda.lower(value)
+}
+
+
+/**
+ * Lo que hizo [`aligerar_pdf`].
+ */
+public struct ResumenAligerar: Equatable, Hashable {
+    public var antes: UInt64
+    public var despues: UInt64
+    public var paginas: UInt32
+    /**
+     * Si se escribio `destino` (solo si salio mas pequeno).
+     */
+    public var escrito: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(antes: UInt64, despues: UInt64, paginas: UInt32, 
+        /**
+         * Si se escribio `destino` (solo si salio mas pequeno).
+         */escrito: Bool) {
+        self.antes = antes
+        self.despues = despues
+        self.paginas = paginas
+        self.escrito = escrito
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension ResumenAligerar: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeResumenAligerar: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ResumenAligerar {
+        return
+            try ResumenAligerar(
+                antes: FfiConverterUInt64.read(from: &buf), 
+                despues: FfiConverterUInt64.read(from: &buf), 
+                paginas: FfiConverterUInt32.read(from: &buf), 
+                escrito: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: ResumenAligerar, into buf: inout [UInt8]) {
+        FfiConverterUInt64.write(value.antes, into: &buf)
+        FfiConverterUInt64.write(value.despues, into: &buf)
+        FfiConverterUInt32.write(value.paginas, into: &buf)
+        FfiConverterBool.write(value.escrito, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeResumenAligerar_lift(_ buf: RustBuffer) throws -> ResumenAligerar {
+    return try FfiConverterTypeResumenAligerar.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeResumenAligerar_lower(_ value: ResumenAligerar) -> RustBuffer {
+    return FfiConverterTypeResumenAligerar.lower(value)
 }
 
 
@@ -11810,6 +13575,209 @@ public func FfiConverterTypeTarea_lift(_ buf: RustBuffer) throws -> Tarea {
 #endif
 public func FfiConverterTypeTarea_lower(_ value: Tarea) -> RustBuffer {
     return FfiConverterTypeTarea.lower(value)
+}
+
+
+/**
+ * Un texto y lo elegido en el.
+ */
+public struct TextoElegido: Equatable, Hashable {
+    public var texto: String
+    public var desde: UInt32
+    public var hasta: UInt32
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(texto: String, desde: UInt32, hasta: UInt32) {
+        self.texto = texto
+        self.desde = desde
+        self.hasta = hasta
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension TextoElegido: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeTextoElegido: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> TextoElegido {
+        return
+            try TextoElegido(
+                texto: FfiConverterString.read(from: &buf), 
+                desde: FfiConverterUInt32.read(from: &buf), 
+                hasta: FfiConverterUInt32.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: TextoElegido, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.texto, into: &buf)
+        FfiConverterUInt32.write(value.desde, into: &buf)
+        FfiConverterUInt32.write(value.hasta, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeTextoElegido_lift(_ buf: RustBuffer) throws -> TextoElegido {
+    return try FfiConverterTypeTextoElegido.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeTextoElegido_lower(_ value: TextoElegido) -> RustBuffer {
+    return FfiConverterTypeTextoElegido.lower(value)
+}
+
+
+/**
+ * Un toque de una formula, en UTF-16 dentro de la formula sin dolares.
+ */
+public struct TramoFormula: Equatable, Hashable {
+    public var desde: UInt32
+    public var hasta: UInt32
+    public var toque: ToqueFormula
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(desde: UInt32, hasta: UInt32, toque: ToqueFormula) {
+        self.desde = desde
+        self.hasta = hasta
+        self.toque = toque
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension TramoFormula: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeTramoFormula: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> TramoFormula {
+        return
+            try TramoFormula(
+                desde: FfiConverterUInt32.read(from: &buf), 
+                hasta: FfiConverterUInt32.read(from: &buf), 
+                toque: FfiConverterTypeToqueFormula.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: TramoFormula, into buf: inout [UInt8]) {
+        FfiConverterUInt32.write(value.desde, into: &buf)
+        FfiConverterUInt32.write(value.hasta, into: &buf)
+        FfiConverterTypeToqueFormula.write(value.toque, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeTramoFormula_lift(_ buf: RustBuffer) throws -> TramoFormula {
+    return try FfiConverterTypeTramoFormula.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeTramoFormula_lower(_ value: TramoFormula) -> RustBuffer {
+    return FfiConverterTypeTramoFormula.lower(value)
+}
+
+
+/**
+ * Un tramo con formato, en posiciones UTF-16 del texto entero.
+ */
+public struct TramoMd: Equatable, Hashable {
+    public var desde: UInt32
+    public var hasta: UInt32
+    public var estilo: EstiloMd
+    /**
+     * El renglon (desde 0).
+     */
+    public var linea: UInt32
+    /**
+     * La direccion de un enlace o la ruta de una imagen.
+     */
+    public var url: String?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(desde: UInt32, hasta: UInt32, estilo: EstiloMd, 
+        /**
+         * El renglon (desde 0).
+         */linea: UInt32, 
+        /**
+         * La direccion de un enlace o la ruta de una imagen.
+         */url: String?) {
+        self.desde = desde
+        self.hasta = hasta
+        self.estilo = estilo
+        self.linea = linea
+        self.url = url
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension TramoMd: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeTramoMd: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> TramoMd {
+        return
+            try TramoMd(
+                desde: FfiConverterUInt32.read(from: &buf), 
+                hasta: FfiConverterUInt32.read(from: &buf), 
+                estilo: FfiConverterTypeEstiloMd.read(from: &buf), 
+                linea: FfiConverterUInt32.read(from: &buf), 
+                url: FfiConverterOptionString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: TramoMd, into buf: inout [UInt8]) {
+        FfiConverterUInt32.write(value.desde, into: &buf)
+        FfiConverterUInt32.write(value.hasta, into: &buf)
+        FfiConverterTypeEstiloMd.write(value.estilo, into: &buf)
+        FfiConverterUInt32.write(value.linea, into: &buf)
+        FfiConverterOptionString.write(value.url, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeTramoMd_lift(_ buf: RustBuffer) throws -> TramoMd {
+    return try FfiConverterTypeTramoMd.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeTramoMd_lower(_ value: TramoMd) -> RustBuffer {
+    return FfiConverterTypeTramoMd.lower(value)
 }
 
 
@@ -12566,6 +14534,295 @@ public func FfiConverterTypeClaseDeResultado_lower(_ value: ClaseDeResultado) ->
 
 
 /**
+ * Que hacer al pulsar Intro en un renglon (`md_vivo::Continuar`).
+ */
+
+public enum ContinuarMd: Equatable, Hashable {
+    
+    /**
+     * Un salto normal.
+     */
+    case nada
+    /**
+     * Seguir la lista: el renglon nuevo empieza con esto.
+     */
+    case con(prefijo: String
+    )
+    /**
+     * El renglon solo tenia la marca: se quita y se sale de la lista.
+     */
+    case cortar
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension ContinuarMd: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeContinuarMd: FfiConverterRustBuffer {
+    typealias SwiftType = ContinuarMd
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ContinuarMd {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .nada
+        
+        case 2: return .con(prefijo: try FfiConverterString.read(from: &buf)
+        )
+        
+        case 3: return .cortar
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: ContinuarMd, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .nada:
+            writeInt(&buf, Int32(1))
+        
+        
+        case let .con(prefijo):
+            writeInt(&buf, Int32(2))
+            FfiConverterString.write(prefijo, into: &buf)
+            
+        
+        case .cortar:
+            writeInt(&buf, Int32(3))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeContinuarMd_lift(_ buf: RustBuffer) throws -> ContinuarMd {
+    return try FfiConverterTypeContinuarMd.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeContinuarMd_lower(_ value: ContinuarMd) -> RustBuffer {
+    return FfiConverterTypeContinuarMd.lower(value)
+}
+
+
+
+/**
+ * Como acabo [`Nucleo::aligerar_en_su_sitio`].
+ */
+
+public enum DesenlaceAligerar: Equatable, Hashable {
+    
+    /**
+     * Cambiado en su sitio.
+     */
+    case aligerado(antes: UInt64, despues: UInt64
+    )
+    /**
+     * No bajo lo bastante: se queda como estaba.
+     */
+    case sinMejora
+    /**
+     * Ya se habia pasado (por su huella): no se repite.
+     */
+    case yaEstaba
+    /**
+     * Cifrado: no se toca.
+     */
+    case cifrado
+    case cancelado
+    case fallo(detalle: String
+    )
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension DesenlaceAligerar: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeDesenlaceAligerar: FfiConverterRustBuffer {
+    typealias SwiftType = DesenlaceAligerar
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> DesenlaceAligerar {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .aligerado(antes: try FfiConverterUInt64.read(from: &buf), despues: try FfiConverterUInt64.read(from: &buf)
+        )
+        
+        case 2: return .sinMejora
+        
+        case 3: return .yaEstaba
+        
+        case 4: return .cifrado
+        
+        case 5: return .cancelado
+        
+        case 6: return .fallo(detalle: try FfiConverterString.read(from: &buf)
+        )
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: DesenlaceAligerar, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case let .aligerado(antes,despues):
+            writeInt(&buf, Int32(1))
+            FfiConverterUInt64.write(antes, into: &buf)
+            FfiConverterUInt64.write(despues, into: &buf)
+            
+        
+        case .sinMejora:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .yaEstaba:
+            writeInt(&buf, Int32(3))
+        
+        
+        case .cifrado:
+            writeInt(&buf, Int32(4))
+        
+        
+        case .cancelado:
+            writeInt(&buf, Int32(5))
+        
+        
+        case let .fallo(detalle):
+            writeInt(&buf, Int32(6))
+            FfiConverterString.write(detalle, into: &buf)
+            
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeDesenlaceAligerar_lift(_ buf: RustBuffer) throws -> DesenlaceAligerar {
+    return try FfiConverterTypeDesenlaceAligerar.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeDesenlaceAligerar_lower(_ value: DesenlaceAligerar) -> RustBuffer {
+    return FfiConverterTypeDesenlaceAligerar.lower(value)
+}
+
+
+
+/**
+ * Adonde va lo anotado de un documento.
+ */
+
+public enum DondeAnota: Equatable, Hashable {
+    
+    /**
+     * Un adjunto de un chat: viaja con su mensaje (`anot-<uid>…`).
+     */
+    case chat
+    /**
+     * El PDF de un proyecto: la tinta va en las hojas del proyecto.
+     */
+    case proyecto
+    /**
+     * Un documento de fuera del almacen: junto a el, no viaja.
+     */
+    case juntoAlDocumento
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension DondeAnota: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeDondeAnota: FfiConverterRustBuffer {
+    typealias SwiftType = DondeAnota
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> DondeAnota {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .chat
+        
+        case 2: return .proyecto
+        
+        case 3: return .juntoAlDocumento
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: DondeAnota, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .chat:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .proyecto:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .juntoAlDocumento:
+            writeInt(&buf, Int32(3))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeDondeAnota_lift(_ buf: RustBuffer) throws -> DondeAnota {
+    return try FfiConverterTypeDondeAnota.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeDondeAnota_lower(_ value: DondeAnota) -> RustBuffer {
+    return FfiConverterTypeDondeAnota.lower(value)
+}
+
+
+
+/**
  * Donde quedo un archivo suelto (`al_lienzo::Donde`).
  */
 
@@ -12811,6 +15068,201 @@ public func FfiConverterTypeErrorNucleo_lift(_ buf: RustBuffer) throws -> ErrorN
 public func FfiConverterTypeErrorNucleo_lower(_ value: ErrorNucleo) -> RustBuffer {
     return FfiConverterTypeErrorNucleo.lower(value)
 }
+
+
+/**
+ * Que formato lleva un tramo (`md_vivo::Estilo`).
+ */
+
+public enum EstiloMd: Equatable, Hashable {
+    
+    /**
+     * Una marca de Markdown (`#`, `**`, `[`, `](url)`): se esconde.
+     */
+    case marca
+    /**
+     * El texto de un titulo, nivel 1 a 6.
+     */
+    case titulo(nivel: UInt8
+    )
+    case negrita
+    case cursiva
+    case tachado
+    case codigo
+    case bloqueCodigo
+    case cita
+    case enlace
+    /**
+     * La casilla de una tarea (`[ ]` o `[x]`).
+     */
+    case casilla(hecha: Bool
+    )
+    /**
+     * Lo escrito tras una casilla marcada: tachado y apagado.
+     */
+    case hecha
+    case vineta
+    case numero
+    /**
+     * Una formula entre dolares, con sus dolares.
+     */
+    case formula
+    case regla
+    case imagen
+    case cabecera
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension EstiloMd: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeEstiloMd: FfiConverterRustBuffer {
+    typealias SwiftType = EstiloMd
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> EstiloMd {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .marca
+        
+        case 2: return .titulo(nivel: try FfiConverterUInt8.read(from: &buf)
+        )
+        
+        case 3: return .negrita
+        
+        case 4: return .cursiva
+        
+        case 5: return .tachado
+        
+        case 6: return .codigo
+        
+        case 7: return .bloqueCodigo
+        
+        case 8: return .cita
+        
+        case 9: return .enlace
+        
+        case 10: return .casilla(hecha: try FfiConverterBool.read(from: &buf)
+        )
+        
+        case 11: return .hecha
+        
+        case 12: return .vineta
+        
+        case 13: return .numero
+        
+        case 14: return .formula
+        
+        case 15: return .regla
+        
+        case 16: return .imagen
+        
+        case 17: return .cabecera
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: EstiloMd, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .marca:
+            writeInt(&buf, Int32(1))
+        
+        
+        case let .titulo(nivel):
+            writeInt(&buf, Int32(2))
+            FfiConverterUInt8.write(nivel, into: &buf)
+            
+        
+        case .negrita:
+            writeInt(&buf, Int32(3))
+        
+        
+        case .cursiva:
+            writeInt(&buf, Int32(4))
+        
+        
+        case .tachado:
+            writeInt(&buf, Int32(5))
+        
+        
+        case .codigo:
+            writeInt(&buf, Int32(6))
+        
+        
+        case .bloqueCodigo:
+            writeInt(&buf, Int32(7))
+        
+        
+        case .cita:
+            writeInt(&buf, Int32(8))
+        
+        
+        case .enlace:
+            writeInt(&buf, Int32(9))
+        
+        
+        case let .casilla(hecha):
+            writeInt(&buf, Int32(10))
+            FfiConverterBool.write(hecha, into: &buf)
+            
+        
+        case .hecha:
+            writeInt(&buf, Int32(11))
+        
+        
+        case .vineta:
+            writeInt(&buf, Int32(12))
+        
+        
+        case .numero:
+            writeInt(&buf, Int32(13))
+        
+        
+        case .formula:
+            writeInt(&buf, Int32(14))
+        
+        
+        case .regla:
+            writeInt(&buf, Int32(15))
+        
+        
+        case .imagen:
+            writeInt(&buf, Int32(16))
+        
+        
+        case .cabecera:
+            writeInt(&buf, Int32(17))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeEstiloMd_lift(_ buf: RustBuffer) throws -> EstiloMd {
+    return try FfiConverterTypeEstiloMd.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeEstiloMd_lower(_ value: EstiloMd) -> RustBuffer {
+    return FfiConverterTypeEstiloMd.lower(value)
+}
+
 
 
 /**
@@ -13403,6 +15855,101 @@ public func FfiConverterTypeLineaEstilo_lower(_ value: LineaEstilo) -> RustBuffe
 
 
 /**
+ * Los cuatro niveles de PixPin (los perfiles de pdfsqueeze).
+ */
+
+public enum NivelAligerar: Equatable, Hashable {
+    
+    /**
+     * Ni un pixel cambia.
+     */
+    case sinPerdida
+    /**
+     * No se nota a la vista (fotos a 200 ppp).
+     */
+    case equilibrado
+    /**
+     * Para leer en pantalla.
+     */
+    case pequeno
+    /**
+     * Lo minimo que se sigue leyendo.
+     */
+    case extremo
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension NivelAligerar: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeNivelAligerar: FfiConverterRustBuffer {
+    typealias SwiftType = NivelAligerar
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> NivelAligerar {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .sinPerdida
+        
+        case 2: return .equilibrado
+        
+        case 3: return .pequeno
+        
+        case 4: return .extremo
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: NivelAligerar, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .sinPerdida:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .equilibrado:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .pequeno:
+            writeInt(&buf, Int32(3))
+        
+        
+        case .extremo:
+            writeInt(&buf, Int32(4))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNivelAligerar_lift(_ buf: RustBuffer) throws -> NivelAligerar {
+    return try FfiConverterTypeNivelAligerar.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNivelAligerar_lower(_ value: NivelAligerar) -> RustBuffer {
+    return FfiConverterTypeNivelAligerar.lower(value)
+}
+
+
+
+/**
  * Como fue el repaso.
  */
 
@@ -13769,6 +16316,444 @@ public func FfiConverterTypeTipoEnganche_lower(_ value: TipoEnganche) -> RustBuf
 }
 
 
+
+/**
+ * Que se hace con un trozo de una formula (`formulas::Toque`).
+ */
+
+public enum ToqueFormula: Equatable, Hashable {
+    
+    /**
+     * Pequeno y subido (exponente, numerador).
+     */
+    case arriba
+    /**
+     * Pequeno y bajado (subindice, denominador).
+     */
+    case abajo
+    /**
+     * Una marca que no se ve (`^`, `_`, llaves).
+     */
+    case oculto
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension ToqueFormula: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeToqueFormula: FfiConverterRustBuffer {
+    typealias SwiftType = ToqueFormula
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ToqueFormula {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .arriba
+        
+        case 2: return .abajo
+        
+        case 3: return .oculto
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: ToqueFormula, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .arriba:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .abajo:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .oculto:
+            writeInt(&buf, Int32(3))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeToqueFormula_lift(_ buf: RustBuffer) throws -> ToqueFormula {
+    return try FfiConverterTypeToqueFormula.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeToqueFormula_lower(_ value: ToqueFormula) -> RustBuffer {
+    return FfiConverterTypeToqueFormula.lower(value)
+}
+
+
+
+
+
+/**
+ * El avance de un aligerado, desde los hilos de trabajo.
+ */
+public protocol AvanceAligerar: AnyObject, Sendable {
+    
+    /**
+     * `por_ciento` de 0 a 100 (solo cuando cambia). Devolver `false`
+     * cancela.
+     */
+    func avance(porCiento: UInt8)  -> Bool
+    
+}
+
+
+// Put the implementation in a struct so we don't pollute the top-level namespace
+fileprivate struct UniffiCallbackInterfaceAvanceAligerar {
+
+    // Create the VTable using a series of closures.
+    // Swift automatically converts these into C callback functions.
+    //
+    // Store the vtable directly.
+    static let vtable: UniffiVTableCallbackInterfaceAvanceAligerar = UniffiVTableCallbackInterfaceAvanceAligerar(
+        uniffiFree: { (uniffiHandle: UInt64) -> () in
+            do {
+                try FfiConverterCallbackInterfaceAvanceAligerar.handleMap.remove(handle: uniffiHandle)
+            } catch {
+                print("Uniffi callback interface AvanceAligerar: handle missing in uniffiFree")
+            }
+        },
+        uniffiClone: { (uniffiHandle: UInt64) -> UInt64 in
+            do {
+                return try FfiConverterCallbackInterfaceAvanceAligerar.handleMap.clone(handle: uniffiHandle)
+            } catch {
+                fatalError("Uniffi callback interface AvanceAligerar: handle missing in uniffiClone")
+            }
+        },
+        avance: { (
+            uniffiHandle: UInt64,
+            porCiento: UInt8,
+            uniffiOutReturn: UnsafeMutablePointer<Int8>,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws -> Bool in
+                guard let uniffiObj = try? FfiConverterCallbackInterfaceAvanceAligerar.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return uniffiObj.avance(
+                     porCiento: try FfiConverterUInt8.lift(porCiento)
+                )
+            }
+
+            
+            let writeReturn = { uniffiOutReturn.pointee = FfiConverterBool.lower($0) }
+            uniffiTraitInterfaceCall(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn
+            )
+        }
+    )
+
+    // Rust stores this pointer for future callback invocations, so it must live
+    // for the process lifetime (not just for the init function call).
+    //
+    // `nonisolated(unsafe)` is needed under Swift 6 strict concurrency.
+    // This is safe because the pointee is initialized once during static init
+    // and never mutated by either side of the FFI.  Its fields are C function pointers.
+    nonisolated(unsafe) static let vtablePtr: UnsafePointer<UniffiVTableCallbackInterfaceAvanceAligerar> = {
+        let ptr = UnsafeMutablePointer<UniffiVTableCallbackInterfaceAvanceAligerar>.allocate(capacity: 1)
+        ptr.initialize(to: vtable)
+        return UnsafePointer(ptr)
+    }()
+}
+
+private func uniffiCallbackInitAvanceAligerar() {
+    uniffi_pixpin_nucleo_fn_init_callback_vtable_avancealigerar(UniffiCallbackInterfaceAvanceAligerar.vtablePtr)
+}
+
+// FfiConverter protocol for callback interfaces
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterCallbackInterfaceAvanceAligerar {
+    fileprivate static let handleMap = UniffiHandleMap<AvanceAligerar>()
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+extension FfiConverterCallbackInterfaceAvanceAligerar : FfiConverter {
+    typealias SwiftType = AvanceAligerar
+    typealias FfiType = UInt64
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public static func lift(_ handle: UInt64) throws -> SwiftType {
+        try handleMap.get(handle: handle)
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public static func lower(_ v: SwiftType) -> UInt64 {
+        return handleMap.insert(obj: v)
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public static func write(_ v: SwiftType, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(v))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterCallbackInterfaceAvanceAligerar_lift(_ handle: UInt64) throws -> AvanceAligerar {
+    return try FfiConverterCallbackInterfaceAvanceAligerar.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterCallbackInterfaceAvanceAligerar_lower(_ v: AvanceAligerar) -> UInt64 {
+    return FfiConverterCallbackInterfaceAvanceAligerar.lower(v)
+}
+
+
+
+
+/**
+ * **Quien mide las letras**: Core Text desde Swift.
+ */
+public protocol MedidorLetras: AnyObject, Sendable {
+    
+    /**
+     * El avance de cada caracter (escalar Unicode) de `caracteres`, en
+     * puntos **a tamano 1000**, sin interletrado ni ajuste entre pares. Uno
+     * por caracter.
+     */
+    func avances(caracteres: String, familia: String, negrita: Bool, cursiva: Bool)  -> [Float]
+    
+    /**
+     * Ascenso, descenso y hueco a tamano 1000.
+     */
+    func metricas(familia: String, negrita: Bool, cursiva: Bool)  -> MetricasLetra
+    
+    /**
+     * Si la familia esta instalada.
+     */
+    func existe(familia: String)  -> Bool
+    
+}
+
+
+// Put the implementation in a struct so we don't pollute the top-level namespace
+fileprivate struct UniffiCallbackInterfaceMedidorLetras {
+
+    // Create the VTable using a series of closures.
+    // Swift automatically converts these into C callback functions.
+    //
+    // Store the vtable directly.
+    static let vtable: UniffiVTableCallbackInterfaceMedidorLetras = UniffiVTableCallbackInterfaceMedidorLetras(
+        uniffiFree: { (uniffiHandle: UInt64) -> () in
+            do {
+                try FfiConverterCallbackInterfaceMedidorLetras.handleMap.remove(handle: uniffiHandle)
+            } catch {
+                print("Uniffi callback interface MedidorLetras: handle missing in uniffiFree")
+            }
+        },
+        uniffiClone: { (uniffiHandle: UInt64) -> UInt64 in
+            do {
+                return try FfiConverterCallbackInterfaceMedidorLetras.handleMap.clone(handle: uniffiHandle)
+            } catch {
+                fatalError("Uniffi callback interface MedidorLetras: handle missing in uniffiClone")
+            }
+        },
+        avances: { (
+            uniffiHandle: UInt64,
+            caracteres: RustBuffer,
+            familia: RustBuffer,
+            negrita: Int8,
+            cursiva: Int8,
+            uniffiOutReturn: UnsafeMutablePointer<RustBuffer>,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws -> [Float] in
+                guard let uniffiObj = try? FfiConverterCallbackInterfaceMedidorLetras.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return uniffiObj.avances(
+                     caracteres: try FfiConverterString.lift(caracteres),
+                     familia: try FfiConverterString.lift(familia),
+                     negrita: try FfiConverterBool.lift(negrita),
+                     cursiva: try FfiConverterBool.lift(cursiva)
+                )
+            }
+
+            
+            let writeReturn = { uniffiOutReturn.pointee = FfiConverterSequenceFloat.lower($0) }
+            uniffiTraitInterfaceCall(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn
+            )
+        },
+        metricas: { (
+            uniffiHandle: UInt64,
+            familia: RustBuffer,
+            negrita: Int8,
+            cursiva: Int8,
+            uniffiOutReturn: UnsafeMutablePointer<RustBuffer>,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws -> MetricasLetra in
+                guard let uniffiObj = try? FfiConverterCallbackInterfaceMedidorLetras.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return uniffiObj.metricas(
+                     familia: try FfiConverterString.lift(familia),
+                     negrita: try FfiConverterBool.lift(negrita),
+                     cursiva: try FfiConverterBool.lift(cursiva)
+                )
+            }
+
+            
+            let writeReturn = { uniffiOutReturn.pointee = FfiConverterTypeMetricasLetra_lower($0) }
+            uniffiTraitInterfaceCall(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn
+            )
+        },
+        existe: { (
+            uniffiHandle: UInt64,
+            familia: RustBuffer,
+            uniffiOutReturn: UnsafeMutablePointer<Int8>,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws -> Bool in
+                guard let uniffiObj = try? FfiConverterCallbackInterfaceMedidorLetras.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return uniffiObj.existe(
+                     familia: try FfiConverterString.lift(familia)
+                )
+            }
+
+            
+            let writeReturn = { uniffiOutReturn.pointee = FfiConverterBool.lower($0) }
+            uniffiTraitInterfaceCall(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn
+            )
+        }
+    )
+
+    // Rust stores this pointer for future callback invocations, so it must live
+    // for the process lifetime (not just for the init function call).
+    //
+    // `nonisolated(unsafe)` is needed under Swift 6 strict concurrency.
+    // This is safe because the pointee is initialized once during static init
+    // and never mutated by either side of the FFI.  Its fields are C function pointers.
+    nonisolated(unsafe) static let vtablePtr: UnsafePointer<UniffiVTableCallbackInterfaceMedidorLetras> = {
+        let ptr = UnsafeMutablePointer<UniffiVTableCallbackInterfaceMedidorLetras>.allocate(capacity: 1)
+        ptr.initialize(to: vtable)
+        return UnsafePointer(ptr)
+    }()
+}
+
+private func uniffiCallbackInitMedidorLetras() {
+    uniffi_pixpin_nucleo_fn_init_callback_vtable_medidorletras(UniffiCallbackInterfaceMedidorLetras.vtablePtr)
+}
+
+// FfiConverter protocol for callback interfaces
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterCallbackInterfaceMedidorLetras {
+    fileprivate static let handleMap = UniffiHandleMap<MedidorLetras>()
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+extension FfiConverterCallbackInterfaceMedidorLetras : FfiConverter {
+    typealias SwiftType = MedidorLetras
+    typealias FfiType = UInt64
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public static func lift(_ handle: UInt64) throws -> SwiftType {
+        try handleMap.get(handle: handle)
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public static func lower(_ v: SwiftType) -> UInt64 {
+        return handleMap.insert(obj: v)
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public static func write(_ v: SwiftType, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(v))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterCallbackInterfaceMedidorLetras_lift(_ handle: UInt64) throws -> MedidorLetras {
+    return try FfiConverterCallbackInterfaceMedidorLetras.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterCallbackInterfaceMedidorLetras_lower(_ v: MedidorLetras) -> UInt64 {
+    return FfiConverterCallbackInterfaceMedidorLetras.lower(v)
+}
+
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
@@ -13868,6 +16853,30 @@ fileprivate struct FfiConverterOptionFloat: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterOptionDouble: FfiConverterRustBuffer {
+    typealias SwiftType = Double?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterDouble.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterDouble.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterOptionString: FfiConverterRustBuffer {
     typealias SwiftType = String?
 
@@ -13884,6 +16893,30 @@ fileprivate struct FfiConverterOptionString: FfiConverterRustBuffer {
         switch try readInt(&buf) as Int8 {
         case 0: return nil
         case 1: return try FfiConverterString.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionData: FfiConverterRustBuffer {
+    typealias SwiftType = Data?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterData.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterData.read(from: &buf)
         default: throw UniffiInternalError.unexpectedOptionalTag
         }
     }
@@ -14108,6 +17141,30 @@ fileprivate struct FfiConverterOptionTypeEleccion3d: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterOptionTypeEstiloCeldaHoja: FfiConverterRustBuffer {
+    typealias SwiftType = EstiloCeldaHoja?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeEstiloCeldaHoja.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeEstiloCeldaHoja.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterOptionTypeGiroRuleta: FfiConverterRustBuffer {
     typealias SwiftType = GiroRuleta?
 
@@ -14148,6 +17205,30 @@ fileprivate struct FfiConverterOptionTypeInfoElemento3d: FfiConverterRustBuffer 
         switch try readInt(&buf) as Int8 {
         case 0: return nil
         case 1: return try FfiConverterTypeInfoElemento3d.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypePaginaOffice: FfiConverterRustBuffer {
+    typealias SwiftType = PaginaOffice?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypePaginaOffice.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypePaginaOffice.read(from: &buf)
         default: throw UniffiInternalError.unexpectedOptionalTag
         }
     }
@@ -14244,6 +17325,30 @@ fileprivate struct FfiConverterOptionTypePeticionLienzo: FfiConverterRustBuffer 
         switch try readInt(&buf) as Int8 {
         case 0: return nil
         case 1: return try FfiConverterTypePeticionLienzo.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionSequenceFloat: FfiConverterRustBuffer {
+    typealias SwiftType = [Float]?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterSequenceFloat.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterSequenceFloat.read(from: &buf)
         default: throw UniffiInternalError.unexpectedOptionalTag
         }
     }
@@ -14369,6 +17474,31 @@ fileprivate struct FfiConverterSequenceString: FfiConverterRustBuffer {
         seq.reserveCapacity(Int(len))
         for _ in 0 ..< len {
             seq.append(try FfiConverterString.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeAnchoColumna: FfiConverterRustBuffer {
+    typealias SwiftType = [AnchoColumna]
+
+    public static func write(_ value: [AnchoColumna], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeAnchoColumna.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [AnchoColumna] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [AnchoColumna]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeAnchoColumna.read(from: &buf))
         }
         return seq
     }
@@ -14552,6 +17682,31 @@ fileprivate struct FfiConverterSequenceTypeCategoria3d: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceTypeCeldaHoja: FfiConverterRustBuffer {
+    typealias SwiftType = [CeldaHoja]
+
+    public static func write(_ value: [CeldaHoja], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeCeldaHoja.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [CeldaHoja] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [CeldaHoja]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeCeldaHoja.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypeChatCompartidoMac: FfiConverterRustBuffer {
     typealias SwiftType = [ChatCompartidoMac]
 
@@ -14619,6 +17774,31 @@ fileprivate struct FfiConverterSequenceTypeDiaTimeline: FfiConverterRustBuffer {
         seq.reserveCapacity(Int(len))
         for _ in 0 ..< len {
             seq.append(try FfiConverterTypeDiaTimeline.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeEnlaceOffice: FfiConverterRustBuffer {
+    typealias SwiftType = [EnlaceOffice]
+
+    public static func write(_ value: [EnlaceOffice], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeEnlaceOffice.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [EnlaceOffice] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [EnlaceOffice]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeEnlaceOffice.read(from: &buf))
         }
         return seq
     }
@@ -14827,6 +18007,31 @@ fileprivate struct FfiConverterSequenceTypeImagenDelLienzo: FfiConverterRustBuff
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceTypeLetraOffice: FfiConverterRustBuffer {
+    typealias SwiftType = [LetraOffice]
+
+    public static func write(_ value: [LetraOffice], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeLetraOffice.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [LetraOffice] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [LetraOffice]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeLetraOffice.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypeListaTareas: FfiConverterRustBuffer {
     typealias SwiftType = [ListaTareas]
 
@@ -14844,6 +18049,31 @@ fileprivate struct FfiConverterSequenceTypeListaTareas: FfiConverterRustBuffer {
         seq.reserveCapacity(Int(len))
         for _ in 0 ..< len {
             seq.append(try FfiConverterTypeListaTareas.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeMarcaDocumento: FfiConverterRustBuffer {
+    typealias SwiftType = [MarcaDocumento]
+
+    public static func write(_ value: [MarcaDocumento], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeMarcaDocumento.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [MarcaDocumento] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [MarcaDocumento]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeMarcaDocumento.read(from: &buf))
         }
         return seq
     }
@@ -15148,6 +18378,97 @@ fileprivate struct FfiConverterSequenceTypeTarea: FfiConverterRustBuffer {
         return seq
     }
 }
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeTramoFormula: FfiConverterRustBuffer {
+    typealias SwiftType = [TramoFormula]
+
+    public static func write(_ value: [TramoFormula], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeTramoFormula.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [TramoFormula] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [TramoFormula]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeTramoFormula.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeTramoMd: FfiConverterRustBuffer {
+    typealias SwiftType = [TramoMd]
+
+    public static func write(_ value: [TramoMd], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeTramoMd.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [TramoMd] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [TramoMd]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeTramoMd.read(from: &buf))
+        }
+        return seq
+    }
+}
+/**
+ * **Comprime `origen` en `destino`** con el nivel dado. Solo escribe si sale
+ * mas pequeno (`escrito`). Bloqueante.
+ */
+public func aligerarPdf(origen: String, destino: String, nivel: NivelAligerar)throws  -> ResumenAligerar  {
+    return try  FfiConverterTypeResumenAligerar_lift(try rustCallWithError(FfiConverterTypeErrorNucleo_lift) {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_func_aligerar_pdf(
+        FfiConverterString.lower(origen),
+        FfiConverterString.lower(destino),
+        FfiConverterTypeNivelAligerar_lower(nivel),uniffiCallStatus
+    )
+})
+}
+/**
+ * [`aligerar_pdf`] diciendo por donde va (y que se puede cancelar).
+ */
+public func aligerarPdfConAvance(origen: String, destino: String, nivel: NivelAligerar, avance: AvanceAligerar)throws  -> ResumenAligerar  {
+    return try  FfiConverterTypeResumenAligerar_lift(try rustCallWithError(FfiConverterTypeErrorNucleo_lift) {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_func_aligerar_pdf_con_avance(
+        FfiConverterString.lower(origen),
+        FfiConverterString.lower(destino),
+        FfiConverterTypeNivelAligerar_lower(nivel),
+        FfiConverterCallbackInterfaceAvanceAligerar_lower(avance),uniffiCallStatus
+    )
+})
+}
+/**
+ * **El nivel con que se aligera al entrar al chat** (`nivel_para_entrar`):
+ * sin perdida y equilibrado tal cual; los otros dos gastan mucha memoria y
+ * degradan a proposito, asi que al entrar se usa equilibrado.
+ */
+public func nivelParaEntrar(elegido: NivelAligerar) -> NivelAligerar  {
+    return try!  FfiConverterTypeNivelAligerar_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_func_nivel_para_entrar(
+        FfiConverterTypeNivelAligerar_lower(elegido),uniffiCallStatus
+    )
+})
+}
 /**
  * Todas las herramientas, como la lista `tools` de OpenAI (JSON).
  */
@@ -15300,6 +18621,38 @@ public func tipoDeServicioChat() -> String  {
     return try!  FfiConverterString.lift(try! rustCall() {
         uniffiCallStatus in
     uniffi_pixpin_nucleo_fn_func_tipo_de_servicio_chat(uniffiCallStatus
+    )
+})
+}
+/**
+ * El ancho de una hoja en unidades de la tinta (1400).
+ */
+public func anchoDeHoja() -> Float  {
+    return try!  FfiConverterFloat.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_func_ancho_de_hoja(uniffiCallStatus
+    )
+})
+}
+/**
+ * Los emoticonos de los marcadores (`marcas::EMOJIS`, los del movil).
+ */
+public func emojisDeMarcas() -> [String]  {
+    return try!  FfiConverterSequenceString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_func_emojis_de_marcas(uniffiCallStatus
+    )
+})
+}
+/**
+ * Lo que se abre a cada lado con los espacios `espacios`, en unidades de
+ * la hoja (`vista::espacios_del_pdf`: tres cuartos de la hoja por lado).
+ */
+public func espaciosDeHoja(espacios: UInt8) -> [Float]  {
+    return try!  FfiConverterSequenceFloat.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_func_espacios_de_hoja(
+        FfiConverterUInt8.lower(espacios),uniffiCallStatus
     )
 })
 }
@@ -15788,6 +19141,114 @@ public func claseDeModelo(ruta: String) -> ClaseDeModelo  {
 })
 }
 /**
+ * La formula en texto plano (`(a/b)`, `x^2`, `sqrt(x)`): para copiar,
+ * leer en voz alta o la ayuda.
+ */
+public func formulaPlano(formula: String) -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_func_formula_plano(
+        FfiConverterString.lower(formula),uniffiCallStatus
+    )
+})
+}
+/**
+ * **Los toques de una formula** (sin sus dolares): que subir, que bajar y
+ * que esconder para que `x^2` se vea x² fuera del renglon del cursor.
+ */
+public func formulaToques(formula: String) -> [TramoFormula]  {
+    return try!  FfiConverterSequenceTypeTramoFormula.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_func_formula_toques(
+        FfiConverterString.lower(formula),uniffiCallStatus
+    )
+})
+}
+/**
+ * El texto con la casilla del renglon `linea` marcada o desmarcada.
+ */
+public func mdAlternarCasilla(texto: String, linea: UInt32) -> String?  {
+    return try!  FfiConverterOptionString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_func_md_alternar_casilla(
+        FfiConverterString.lower(texto),
+        FfiConverterUInt32.lower(linea),uniffiCallStatus
+    )
+})
+}
+/**
+ * El renglon cuya casilla esta en la posicion `pos` (UTF-16), si hay una.
+ */
+public func mdCasillaEn(texto: String, pos: UInt32) -> UInt32?  {
+    return try!  FfiConverterOptionUInt32.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_func_md_casilla_en(
+        FfiConverterString.lower(texto),
+        FfiConverterUInt32.lower(pos),uniffiCallStatus
+    )
+})
+}
+/**
+ * Con que sigue el renglon de debajo al pulsar Intro en `renglon`.
+ */
+public func mdContinuar(renglon: String) -> ContinuarMd  {
+    return try!  FfiConverterTypeContinuarMd_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_func_md_continuar(
+        FfiConverterString.lower(renglon),uniffiCallStatus
+    )
+})
+}
+/**
+ * Envuelve lo elegido (`desde..hasta`, UTF-16) con `marca` (`**`, `_`,
+ * `~~`, `` ` ``) o se la quita si ya la tenia. Devuelve el texto nuevo y lo
+ * elegido despues: `[texto]` y las dos posiciones en `elegido`.
+ */
+public func mdEnvolver(texto: String, desde: UInt32, hasta: UInt32, marca: String) -> TextoElegido  {
+    return try!  FfiConverterTypeTextoElegido_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_func_md_envolver(
+        FfiConverterString.lower(texto),
+        FfiConverterUInt32.lower(desde),
+        FfiConverterUInt32.lower(hasta),
+        FfiConverterString.lower(marca),uniffiCallStatus
+    )
+})
+}
+/**
+ * El titulo de una nota (su primer renglon con algo, sin marcas).
+ */
+public func mdTitulo(texto: String) -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_func_md_titulo(
+        FfiConverterString.lower(texto),uniffiCallStatus
+    )
+})
+}
+/**
+ * **Todos los tramos con formato** de una nota (`md_vivo::analizar`).
+ */
+public func mdTramos(texto: String) -> [TramoMd]  {
+    return try!  FfiConverterSequenceTypeTramoMd.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_func_md_tramos(
+        FfiConverterString.lower(texto),uniffiCallStatus
+    )
+})
+}
+/**
+ * Si el nombre es de los que se paginan aqui (`.docx`, `.pptx`...).
+ */
+public func esDocumentoOffice(nombre: String) -> Bool  {
+    return try!  FfiConverterBool.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_func_es_documento_office(
+        FfiConverterString.lower(nombre),uniffiCallStatus
+    )
+})
+}
+/**
  * Una medida con sus decimales y su unidad (`$INSUNITS`).
  */
 public func textoDeMedida(distancia: Double, unidades: UInt32) -> String  {
@@ -15886,6 +19347,15 @@ private let initializationResult: InitializationResult = {
     if bindings_contract_version != scaffolding_contract_version {
         return InitializationResult.contractVersionMismatch
     }
+    if (uniffi_pixpin_nucleo_checksum_func_aligerar_pdf() != 20385) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_func_aligerar_pdf_con_avance() != 14217) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_func_nivel_para_entrar() != 52655) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_pixpin_nucleo_checksum_func_ia_catalogo() != 27604) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -15920,6 +19390,15 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_pixpin_nucleo_checksum_func_tipo_de_servicio_chat() != 60202) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_func_ancho_de_hoja() != 58153) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_func_emojis_de_marcas() != 38945) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_func_espacios_de_hoja() != 32145) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_pixpin_nucleo_checksum_func_forma_rapida_temblor_px() != 43899) {
@@ -16042,6 +19521,33 @@ private let initializationResult: InitializationResult = {
     if (uniffi_pixpin_nucleo_checksum_func_clase_de_modelo() != 2579) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_pixpin_nucleo_checksum_func_formula_plano() != 28430) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_func_formula_toques() != 30702) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_func_md_alternar_casilla() != 26704) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_func_md_casilla_en() != 14867) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_func_md_continuar() != 65362) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_func_md_envolver() != 6387) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_func_md_titulo() != 59796) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_func_md_tramos() != 14058) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_func_es_documento_office() != 43696) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_pixpin_nucleo_checksum_func_texto_de_medida() != 14072) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -16088,6 +19594,15 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_pixpin_nucleo_checksum_method_nucleo_ruta_ajustes() != 12786) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_nucleo_ajustes_pdf() != 52171) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_nucleo_aligerar_en_su_sitio() != 54397) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_nucleo_guardar_ajustes_pdf() != 19958) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_pixpin_nucleo_checksum_method_nucleo_buscar() != 14532) {
@@ -16141,6 +19656,21 @@ private let initializationResult: InitializationResult = {
     if (uniffi_pixpin_nucleo_checksum_method_nucleo_sincronizar_con_persona() != 815) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_pixpin_nucleo_checksum_method_nucleo_anotar_hoja() != 37939) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_nucleo_donde_anota() != 16020) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_nucleo_guardar_lectura_de_documento() != 12753) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_nucleo_hojas_con_tinta() != 37399) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_nucleo_lectura_de_documento() != 41757) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_pixpin_nucleo_checksum_method_nucleo_crear_lienzo() != 32607) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -16192,6 +19722,15 @@ private let initializationResult: InitializationResult = {
     if (uniffi_pixpin_nucleo_checksum_method_nucleo_prorrogar_captura() != 30433) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_pixpin_nucleo_checksum_method_nucleo_abrir_hoja_de_calculo() != 65164) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_nucleo_crear_tabla() != 57188) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_nucleo_es_hoja_de_calculo() != 47628) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_pixpin_nucleo_checksum_method_nucleo_borrar_leccion() != 16221) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -16220,6 +19759,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_pixpin_nucleo_checksum_method_nucleo_guardar_miniapp() != 14664) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_nucleo_editar_nota() != 59830) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_pixpin_nucleo_checksum_method_nucleo_abrir_plano() != 5693) {
@@ -16336,6 +19878,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_pixpin_nucleo_checksum_method_editorlienzo_dictar_cota() != 12534) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_pixpin_nucleo_checksum_method_editorlienzo_es_de_documento() != 33015) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_pixpin_nucleo_checksum_method_editorlienzo_escribiendo() != 58833) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -16388,6 +19933,12 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_pixpin_nucleo_checksum_method_editorlienzo_terminar_texto() != 54099) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_editorlienzo_tinta_color() != 40939) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_editorlienzo_tinta_grosor() != 64731) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_pixpin_nucleo_checksum_method_editorlienzo_tomar_peticion() != 8941) {
@@ -16453,6 +20004,39 @@ private let initializationResult: InitializationResult = {
     if (uniffi_pixpin_nucleo_checksum_method_puertarecibir_texto_del_qr() != 34867) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_pixpin_nucleo_checksum_method_hojadecalculo_anchos() != 15869) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_hojadecalculo_celdas() != 62917) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_hojadecalculo_contenido() != 11965) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_hojadecalculo_estilo() != 60117) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_hojadecalculo_guardar() != 17237) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_hojadecalculo_nombre() != 59729) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_hojadecalculo_poner() != 15619) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_hojadecalculo_poner_ancho() != 30595) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_hojadecalculo_poner_estilo() != 279) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_hojadecalculo_tamano() != 17230) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_hojadecalculo_tocada() != 25435) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_pixpin_nucleo_checksum_method_lienzo_caja() != 1730) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -16499,6 +20083,21 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_pixpin_nucleo_checksum_method_modelo3dapple_visibles() != 51453) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_documentooffice_es_presentacion() != 37611) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_documentooffice_imagen() != 25055) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_documentooffice_pagina() != 47936) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_documentooffice_terminado() != 11130) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_documentooffice_total() != 58140) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_pixpin_nucleo_checksum_method_plano_anotado() != 58773) {
@@ -16576,9 +20175,26 @@ private let initializationResult: InitializationResult = {
     if (uniffi_pixpin_nucleo_checksum_constructor_modelo3dapple_abrir() != 7304) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_pixpin_nucleo_checksum_constructor_documentooffice_abrir() != 54506) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_avancealigerar_avance() != 54882) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_medidorletras_avances() != 39083) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_medidorletras_metricas() != 18386) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_medidorletras_existe() != 13979) {
+        return InitializationResult.apiChecksumMismatch
+    }
 
     uniffiCallbackInitLlaveroApp()
     uniffiCallbackInitOyenteIa()
+    uniffiCallbackInitAvanceAligerar()
+    uniffiCallbackInitMedidorLetras()
     return InitializationResult.ok
 }()
 

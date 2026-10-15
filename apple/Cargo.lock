@@ -1701,21 +1701,27 @@ name = "pixpin-nucleo"
 version = "0.1.0"
 dependencies = [
  "getrandom 0.2.17",
+ "pdfsqueeze-core",
  "pixpin-bim",
  "pixpin-cad",
+ "pixpin-docs",
  "pixpin-ia",
  "pixpin-lecciones",
  "pixpin-motor2d",
+ "pixpin-office",
  "pixpin-proyecto",
  "pixpin-sincro",
  "pixpin-sistema",
  "pixpin-store",
  "pixpin-timeline",
+ "rayon",
  "serde",
  "serde_json",
+ "sha2 0.10.9",
  "thiserror",
  "unicode-normalization",
  "uniffi",
+ "zip",
 ]
 
 [[package]]

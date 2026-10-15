@@ -2,25 +2,95 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<!-- El mismo que apple/app/Recursos/Info.plist (el de SwiftPM), con las
-	     variables de Xcode y los tipos de los dibujos (para Quick Look). -->
-	<key>CFBundleName</key><string>PixPin</string>
-	<key>CFBundleDisplayName</key><string>PixPin</string>
-	<key>CFBundleIdentifier</key><string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
-	<key>CFBundleExecutable</key><string>$(EXECUTABLE_NAME)</string>
-	<key>CFBundlePackageType</key><string>APPL</string>
-	<key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
-	<key>CFBundleShortVersionString</key><string>$(MARKETING_VERSION)</string>
-	<key>CFBundleVersion</key><string>$(CURRENT_PROJECT_VERSION)</string>
-	<key>CFBundleDevelopmentRegion</key><string>es</string>
-	<key>LSMinimumSystemVersion</key><string>$(MACOSX_DEPLOYMENT_TARGET)</string>
-	<key>LSApplicationCategoryType</key><string>public.app-category.productivity</string>
-	<!-- Vive en la barra de menus, como la bandeja de Windows: sin icono en el Dock. -->
-	<key>LSUIElement</key><true/>
-	<key>NSHighResolutionCapable</key><true/>
-	<key>NSSupportsAutomaticTermination</key><false/>
-	<key>NSLocalNetworkUsageDescription</key>
-	<string>PixPin busca tus otros aparatos (PC y móvil) en tu Wi-Fi para sincronizar tus proyectos sin pasar por internet.</string>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>es</string>
+	<key>CFBundleDisplayName</key>
+	<string>PixPin</string>
+	<key>CFBundleDocumentTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>PDF</string>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>LSHandlerRank</key>
+			<string>Alternate</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>com.adobe.pdf</string>
+			</array>
+		</dict>
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>Documento de Office</string>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>LSHandlerRank</key>
+			<string>Alternate</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>org.openxmlformats.wordprocessingml.document</string>
+				<string>org.openxmlformats.spreadsheetml.sheet</string>
+				<string>org.openxmlformats.presentationml.presentation</string>
+				<string>com.microsoft.word.doc</string>
+				<string>com.microsoft.excel.xls</string>
+				<string>com.microsoft.powerpoint.ppt</string>
+				<string>org.oasis-open.opendocument.text</string>
+				<string>org.oasis-open.opendocument.spreadsheet</string>
+				<string>org.oasis-open.opendocument.presentation</string>
+				<string>public.rtf</string>
+				<string>public.comma-separated-values-text</string>
+				<string>org.idpf.epub-container</string>
+			</array>
+		</dict>
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>Plano de AutoCAD</string>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>LSHandlerRank</key>
+			<string>Alternate</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>com.autodesk.dwg</string>
+				<string>com.autodesk.dxf</string>
+			</array>
+		</dict>
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>Modelo BIM</string>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>LSHandlerRank</key>
+			<string>Alternate</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>org.buildingsmart.ifc</string>
+				<string>com.autodesk.rvt</string>
+				<string>org.landxml.landxml</string>
+			</array>
+		</dict>
+	</array>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>PixPin</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>$(MARKETING_VERSION)</string>
+	<key>CFBundleVersion</key>
+	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>LSApplicationCategoryType</key>
+	<string>public.app-category.productivity</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>$(MACOSX_DEPLOYMENT_TARGET)</string>
+	<key>LSUIElement</key>
+	<true/>
 	<key>NSBonjourServices</key>
 	<array>
 		<string>_pixpin._tcp</string>
@@ -28,22 +98,29 @@
 		<string>_pixpinrecibe._tcp</string>
 		<string>_pixpinchat._tcp</string>
 	</array>
-	<key>NSScreenCaptureUsageDescription</key>
-	<string>PixPin captura la zona de la pantalla que eliges para copiarla, dejarla flotando o mandarla a un proyecto.</string>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>PixPin busca tus otros aparatos (PC y móvil) en tu Wi-Fi para sincronizar tus proyectos sin pasar por internet.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>PixPin graba notas de voz para tus proyectos.</string>
+	<key>NSScreenCaptureUsageDescription</key>
+	<string>PixPin captura la zona de la pantalla que eliges para copiarla, dejarla flotando o mandarla a un proyecto.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>PixPin pasa tus notas de voz a texto en este Mac, sin enviarlas a internet.</string>
-	<!-- El dibujo propio (.pixpin2d) es de PixPin; el .excalidraw, de Excalidraw. -->
+	<key>NSSupportsAutomaticTermination</key>
+	<false/>
 	<key>UTExportedTypeDeclarations</key>
 	<array>
 		<dict>
-			<key>UTTypeIdentifier</key><string>io.github.1xmanmax.pixpin.dibujo</string>
-			<key>UTTypeDescription</key><string>Dibujo de PixPin</string>
 			<key>UTTypeConformsTo</key>
 			<array>
 				<string>public.json</string>
 			</array>
+			<key>UTTypeDescription</key>
+			<string>Dibujo de PixPin</string>
+			<key>UTTypeIdentifier</key>
+			<string>io.github.1xmanmax.pixpin.dibujo</string>
 			<key>UTTypeTagSpecification</key>
 			<dict>
 				<key>public.filename-extension</key>
@@ -56,12 +133,99 @@
 	<key>UTImportedTypeDeclarations</key>
 	<array>
 		<dict>
-			<key>UTTypeIdentifier</key><string>com.excalidraw.excalidraw</string>
-			<key>UTTypeDescription</key><string>Dibujo de Excalidraw</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeDescription</key>
+			<string>Plano de AutoCAD</string>
+			<key>UTTypeIdentifier</key>
+			<string>com.autodesk.dwg</string>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>dwg</string>
+				</array>
+			</dict>
+		</dict>
+		<dict>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeDescription</key>
+			<string>Plano DXF</string>
+			<key>UTTypeIdentifier</key>
+			<string>com.autodesk.dxf</string>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>dxf</string>
+				</array>
+			</dict>
+		</dict>
+		<dict>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeDescription</key>
+			<string>Modelo IFC</string>
+			<key>UTTypeIdentifier</key>
+			<string>org.buildingsmart.ifc</string>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>ifc</string>
+				</array>
+			</dict>
+		</dict>
+		<dict>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeDescription</key>
+			<string>Modelo de Revit</string>
+			<key>UTTypeIdentifier</key>
+			<string>com.autodesk.rvt</string>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>rvt</string>
+				</array>
+			</dict>
+		</dict>
+		<dict>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.xml</string>
+			</array>
+			<key>UTTypeDescription</key>
+			<string>LandXML de Civil 3D</string>
+			<key>UTTypeIdentifier</key>
+			<string>org.landxml.landxml</string>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>landxml</string>
+				</array>
+			</dict>
+		</dict>
+		<dict>
 			<key>UTTypeConformsTo</key>
 			<array>
 				<string>public.json</string>
 			</array>
+			<key>UTTypeDescription</key>
+			<string>Dibujo de Excalidraw</string>
+			<key>UTTypeIdentifier</key>
+			<string>com.excalidraw.excalidraw</string>
 			<key>UTTypeTagSpecification</key>
 			<dict>
 				<key>public.filename-extension</key>

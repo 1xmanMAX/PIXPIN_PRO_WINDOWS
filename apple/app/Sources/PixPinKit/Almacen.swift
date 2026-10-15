@@ -198,6 +198,12 @@ public final class Almacen: ObservableObject {
         }.value
         anadir(hechos, en: chat)
         error = fallo
+        // Los PDF se aligeran despues, en segundo plano (si esta encendido).
+        for m in hechos where (m.nombre as NSString).pathExtension.lowercased() == "pdf" {
+            if let r = m.ruta, let u = await url(deRuta: r, en: chat) {
+                ColaAligerar.compartida.alEntrar(u, nucleo: nucleo)
+            }
+        }
         return hechos
     }
 

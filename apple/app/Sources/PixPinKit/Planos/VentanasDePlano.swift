@@ -133,11 +133,14 @@ public final class VentanasDePlano: NSObject, NSWindowDelegate {
 }
 
 /// **El delegado de la app para abrir ficheros desde el Finder** («Abrir
-/// con PixPin», soltar en el icono): los planos y modelos van a su visor.
+/// con PixPin», soltar en el icono): los planos y modelos van a su visor y
+/// los documentos (PDF, Word, Excel…) a su lector o pin.
 public final class DelegadoAbrirFicheros: NSObject, NSApplicationDelegate {
     public func application(_ application: NSApplication, open urls: [URL]) {
         MainActor.assumeIsolated {
-            for u in urls where !VentanasDePlano.compartidas.abrirSiEsSuyo(u) {
+            for u in urls {
+                if VentanasDePlano.compartidas.abrirSiEsSuyo(u) { continue }
+                if AbrirDesdeFinder.compartido.abrir(u) { continue }
                 NSSound.beep()
             }
         }
