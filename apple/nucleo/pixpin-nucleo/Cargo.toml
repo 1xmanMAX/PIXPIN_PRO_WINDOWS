@@ -29,6 +29,12 @@ pixpin-motor2d = { version = "0.1.0", path = "../pixpin-motor2d" }
 pixpin-proyecto = { version = "0.1.0", path = "../pixpin-proyecto" }
 pixpin-sincro = { version = "0.1.0", path = "../pixpin-sincro" }
 pixpin-sistema = { version = "0.1.0", path = "../pixpin-sistema" }
+# Los ajustes en el mismo `pixpinmax.toml` que Windows (solo las claves que
+# valen en los dos sistemas), las lecciones aprendidas y el asistente
+# (herramientas en JSON para Foundation Models y el cliente de llama-server).
+pixpin-store = { version = "0.1.0", path = "../pixpin-store" }
+pixpin-lecciones = { version = "0.1.0", path = "../pixpin-lecciones" }
+pixpin-ia = { version = "0.1.0", path = "../pixpin-ia" }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 thiserror = "2.0"

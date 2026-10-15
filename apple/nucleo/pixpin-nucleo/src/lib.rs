@@ -41,14 +41,23 @@
 uniffi::setup_scaffolding!();
 
 pub mod adjuntos;
+pub mod ajustes;
+pub mod asistente;
 pub mod chats;
+pub mod lecciones;
 pub mod lienzo;
 pub mod sincro;
 
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
+pub use ajustes::AjustesMac;
+pub use asistente::{HerramientaUsada, MensajeIa, RespuestaIa};
 pub use chats::{FichaChat, MensajeChat, PaginaMensajes};
+pub use lecciones::{
+    EtiquetaContada, FichaLeccion, FiltroLecciones, LeccionEditada, NotaRepaso, PaginaLecciones,
+    PropuestaLeccion,
+};
 pub use lienzo::{CajaLienzo, ImagenDelLienzo, Lienzo, LienzoPlano};
 pub use sincro::{AnuncioBonjour, Atendido, Escucha, ParTxt, ResumenSincro};
 
@@ -73,6 +82,13 @@ pub enum ErrorNucleo {
     /// Un argumento que no vale (un codigo de grupo mal escrito...).
     #[error("argumento: {detalle}")]
     Argumento { detalle: String },
+    /// `pixpinmax.toml` no se pudo leer o escribir (o no se entiende).
+    #[error("ajustes: {detalle}")]
+    Ajustes { detalle: String },
+    /// El asistente: no hay motor, se corto, o contesto algo que no vale.
+    /// El texto ya va en palabras para el usuario.
+    #[error("{detalle}")]
+    Asistente { detalle: String },
 }
 
 impl From<std::io::Error> for ErrorNucleo {
@@ -114,6 +130,8 @@ pub struct Nucleo {
     /// `Host.current().localizedName` o `UIDevice.current.name`).
     nombre: String,
     pub(crate) cache: Mutex<chats::Cache>,
+    /// Las lecciones ya leidas (ver [`lecciones`]).
+    pub(crate) lecciones: Mutex<lecciones::Cache>,
 }
 
 #[uniffi::export]
@@ -131,6 +149,7 @@ impl Nucleo {
             raiz,
             nombre: nombre_del_aparato,
             cache: Mutex::new(chats::Cache::default()),
+            lecciones: Mutex::new(lecciones::Cache::default()),
         }))
     }
 
@@ -157,6 +176,7 @@ impl Nucleo {
     /// volver a leer.
     pub fn vaciar_caches(&self) {
         self.cache_tomada().vaciar();
+        self.soltar_lecciones();
     }
 }
 

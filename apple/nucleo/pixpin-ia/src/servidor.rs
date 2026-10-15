@@ -495,8 +495,9 @@ fn cola_del_registro(c: &Config) -> String {
 }
 
 /// `GET /health` contesta 200 cuando el modelo ya esta cargado (503 mientras
-/// carga).
-fn salud(puerto: u16) -> bool {
+/// carga). Publica: en Mac tambien sirve para ver si el usuario ya tiene un
+/// `llama-server` suyo escuchando en `127.0.0.1` (`pixpin-nucleo`).
+pub fn salud(puerto: u16) -> bool {
     let Ok(mut s) = TcpStream::connect_timeout(&([127, 0, 0, 1], puerto).into(), Duration::from_millis(300)) else {
         return false;
     };
@@ -514,8 +515,10 @@ fn estado_http(cabecera: &[u8]) -> Option<u16> {
     t.strip_prefix("HTTP/1.")?.get(2..)?.split_whitespace().next()?.parse().ok()
 }
 
-/// La peticion de chat, en vivo.
-fn pedir(puerto: u16, clave: &str, peticion: &Peticion, al_trozo: &mut dyn FnMut(&Trozo) -> Seguir) -> Result<Respuesta, ErrorIa> {
+/// La peticion de chat, en vivo. Publica para hablar con un `llama-server`
+/// que no lanzo PixPin (el del usuario en Mac, sin `--api-key`: entonces la
+/// clave da igual).
+pub fn pedir(puerto: u16, clave: &str, peticion: &Peticion, al_trozo: &mut dyn FnMut(&Trozo) -> Seguir) -> Result<Respuesta, ErrorIa> {
     let cuerpo = peticion.a_json(true).to_string();
     let mut s = TcpStream::connect(("127.0.0.1", puerto)).map_err(|e| ErrorIa::Conexion(e.to_string()))?;
     // Leer una imagen grande en CPU puede tardar; mas de 5 minutos sin un

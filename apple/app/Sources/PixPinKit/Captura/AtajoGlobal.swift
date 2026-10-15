@@ -36,7 +36,7 @@ public final class AtajoGlobal {
     private static var siguiente: UInt32 = 1
     private static var manejador: EventHandlerRef?
 
-    public let combinacion: Combinacion
+    public private(set) var combinacion: Combinacion
     private let numero: UInt32
     private let accion: @MainActor () -> Void
     nonisolated(unsafe) private var registro: EventHotKeyRef?
@@ -49,13 +49,38 @@ public final class AtajoGlobal {
         self.accion = accion
         numero = AtajoGlobal.siguiente
         AtajoGlobal.siguiente += 1
-        var ref: EventHotKeyRef?
-        let estado = RegisterEventHotKey(combinacion.tecla, combinacion.modificadores,
-                                         EventHotKeyID(signature: firmaPixPin, id: numero),
-                                         GetApplicationEventTarget(), 0, &ref)
-        guard estado == OSStatus(noErr), let ref else { return nil }
+        guard let ref = AtajoGlobal.registrar(combinacion, numero: numero) else { return nil }
         registro = ref
         AtajoGlobal.vivos[numero] = Debil(atajo: self)
+    }
+
+    /// **Cambia la combinacion** (la de Ajustes): quita la de antes y
+    /// registra la nueva con el mismo numero. Si el sistema no deja la
+    /// nueva (otra app la tiene), vuelve a poner la de antes y da `false`.
+    @discardableResult
+    public func cambiar(a nueva: Combinacion) -> Bool {
+        if nueva == combinacion, registro != nil { return true }
+        if let registro { UnregisterEventHotKey(registro) }
+        registro = nil
+        if let ref = AtajoGlobal.registrar(nueva, numero: numero) {
+            registro = ref
+            combinacion = nueva
+            AtajoGlobal.vivos[numero] = Debil(atajo: self)
+            return true
+        }
+        registro = AtajoGlobal.registrar(combinacion, numero: numero)
+        if registro != nil { AtajoGlobal.vivos[numero] = Debil(atajo: self) }
+        return false
+    }
+
+    /// Registra una combinacion en Carbon; `nil` si el sistema no la deja.
+    private static func registrar(_ c: Combinacion, numero: UInt32) -> EventHotKeyRef? {
+        var ref: EventHotKeyRef?
+        let estado = RegisterEventHotKey(c.tecla, c.modificadores,
+                                         EventHotKeyID(signature: firmaPixPin, id: numero),
+                                         GetApplicationEventTarget(), 0, &ref)
+        guard estado == OSStatus(noErr) else { return nil }
+        return ref
     }
 
     /// Quita el atajo ya (sin esperar a soltar el objeto).

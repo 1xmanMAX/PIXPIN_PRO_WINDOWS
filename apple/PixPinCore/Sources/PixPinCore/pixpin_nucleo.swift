@@ -1142,6 +1142,21 @@ public protocol NucleoProtocol: AnyObject, Sendable {
     func rutaAbsoluta(chat: String, rutaRelativa: String) throws  -> String
     
     /**
+     * Los ajustes de `pixpinmax.toml` (los de fabrica si no hay fichero).
+     */
+    func ajustes() throws  -> AjustesMac
+    
+    /**
+     * Guarda los ajustes del Mac en `pixpinmax.toml` sin tocar lo demas.
+     */
+    func guardarAjustes(nuevos: AjustesMac) throws 
+    
+    /**
+     * La ruta de `pixpinmax.toml` (para ensenarla).
+     */
+    func rutaAjustes()  -> String
+    
+    /**
      * «Mensajes guardados», creandolo si no esta.
      */
     func chatGuardados() throws  -> FichaChat
@@ -1180,6 +1195,44 @@ public protocol NucleoProtocol: AnyObject, Sendable {
      * `desde` de esta.
      */
     func ultimosMensajes(chat: String, cuantos: UInt32) throws  -> PaginaMensajes
+    
+    /**
+     * **Borra una leccion** como borra el chat: su mensaje y los de sus
+     * fotos y audios salen del cuaderno con su marca de borrado (para que
+     * no vuelvan del otro aparato) y sus archivos se van.
+     */
+    func borrarLeccion(id: String) throws 
+    
+    /**
+     * **Guarda una leccion**: la primera vez crea su archivo y su mensaje
+     * en el chat; las siguientes reescriben el archivo y ponen al dia el
+     * resumen del mensaje. Lo que no se toca aqui (repeticiones, repaso,
+     * adjuntos, campos de una version mas nueva) se conserva.
+     */
+    func guardarLeccion(editada: LeccionEditada) throws  -> FichaLeccion
+    
+    /**
+     * Una leccion por su id.
+     */
+    func leccion(id: String) throws  -> FichaLeccion
+    
+    /**
+     * **Una pagina de lecciones** con el filtro dado: `desde` es la
+     * posicion de la primera y `cuantas` el largo (hasta
+     * [`TOPE_DE_PAGINA`]).
+     */
+    func lecciones(filtro: FiltroLecciones, desde: UInt64, cuantas: UInt32) throws  -> PaginaLecciones
+    
+    /**
+     * Lo que propone el etiquetador para lo escrito (etiquetas, area,
+     * tipo, causas y gravedad), con lo que uno suele etiquetar.
+     */
+    func proponerLeccion(texto: String, quitadas: [String])  -> PropuestaLeccion
+    
+    /**
+     * Apunta como fue el repaso (o que volvio a pasar) y la guarda.
+     */
+    func repasarLeccion(id: String, nota: NotaRepaso) throws  -> FichaLeccion
     
     /**
      * El lienzo `dibujo` de un chat (`proyectos/<chat>/lienzos/<dibujo>.excalidraw`,
@@ -1400,6 +1453,42 @@ open func rutaAbsoluta(chat: String, rutaRelativa: String)throws  -> String  {
 }
     
     /**
+     * Los ajustes de `pixpinmax.toml` (los de fabrica si no hay fichero).
+     */
+open func ajustes()throws  -> AjustesMac  {
+    return try  FfiConverterTypeAjustesMac_lift(try rustCallWithError(FfiConverterTypeErrorNucleo_lift) {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_nucleo_ajustes(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Guarda los ajustes del Mac en `pixpinmax.toml` sin tocar lo demas.
+     */
+open func guardarAjustes(nuevos: AjustesMac)throws   {try rustCallWithError(FfiConverterTypeErrorNucleo_lift) {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_nucleo_guardar_ajustes(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeAjustesMac_lower(nuevos),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * La ruta de `pixpinmax.toml` (para ensenarla).
+     */
+open func rutaAjustes() -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_nucleo_ruta_ajustes(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
      * «Mensajes guardados», creandolo si no esta.
      */
 open func chatGuardados()throws  -> FichaChat  {
@@ -1486,6 +1575,95 @@ open func ultimosMensajes(chat: String, cuantos: UInt32)throws  -> PaginaMensaje
             self.uniffiCloneHandle(),
         FfiConverterString.lower(chat),
         FfiConverterUInt32.lower(cuantos),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * **Borra una leccion** como borra el chat: su mensaje y los de sus
+     * fotos y audios salen del cuaderno con su marca de borrado (para que
+     * no vuelvan del otro aparato) y sus archivos se van.
+     */
+open func borrarLeccion(id: String)throws   {try rustCallWithError(FfiConverterTypeErrorNucleo_lift) {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_nucleo_borrar_leccion(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(id),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * **Guarda una leccion**: la primera vez crea su archivo y su mensaje
+     * en el chat; las siguientes reescriben el archivo y ponen al dia el
+     * resumen del mensaje. Lo que no se toca aqui (repeticiones, repaso,
+     * adjuntos, campos de una version mas nueva) se conserva.
+     */
+open func guardarLeccion(editada: LeccionEditada)throws  -> FichaLeccion  {
+    return try  FfiConverterTypeFichaLeccion_lift(try rustCallWithError(FfiConverterTypeErrorNucleo_lift) {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_nucleo_guardar_leccion(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeLeccionEditada_lower(editada),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Una leccion por su id.
+     */
+open func leccion(id: String)throws  -> FichaLeccion  {
+    return try  FfiConverterTypeFichaLeccion_lift(try rustCallWithError(FfiConverterTypeErrorNucleo_lift) {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_nucleo_leccion(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(id),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * **Una pagina de lecciones** con el filtro dado: `desde` es la
+     * posicion de la primera y `cuantas` el largo (hasta
+     * [`TOPE_DE_PAGINA`]).
+     */
+open func lecciones(filtro: FiltroLecciones, desde: UInt64, cuantas: UInt32)throws  -> PaginaLecciones  {
+    return try  FfiConverterTypePaginaLecciones_lift(try rustCallWithError(FfiConverterTypeErrorNucleo_lift) {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_nucleo_lecciones(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeFiltroLecciones_lower(filtro),
+        FfiConverterUInt64.lower(desde),
+        FfiConverterUInt32.lower(cuantas),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Lo que propone el etiquetador para lo escrito (etiquetas, area,
+     * tipo, causas y gravedad), con lo que uno suele etiquetar.
+     */
+open func proponerLeccion(texto: String, quitadas: [String]) -> PropuestaLeccion  {
+    return try!  FfiConverterTypePropuestaLeccion_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_nucleo_proponer_leccion(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(texto),
+        FfiConverterSequenceString.lower(quitadas),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Apunta como fue el repaso (o que volvio a pasar) y la guarda.
+     */
+open func repasarLeccion(id: String, nota: NotaRepaso)throws  -> FichaLeccion  {
+    return try  FfiConverterTypeFichaLeccion_lift(try rustCallWithError(FfiConverterTypeErrorNucleo_lift) {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_nucleo_repasar_leccion(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(id),
+        FfiConverterTypeNotaRepaso_lower(nota),uniffiCallStatus
     )
 })
 }
@@ -1646,6 +1824,85 @@ public func FfiConverterTypeNucleo_lower(_ value: Nucleo) -> UInt64 {
 }
 
 
+
+
+/**
+ * Lo de `pixpinmax.toml` que se toca desde el Mac.
+ */
+public struct AjustesMac: Equatable, Hashable {
+    /**
+     * Dias que aguanta una captura antes de irse sola (0 = nunca).
+     */
+    public var diasCaducidad: UInt32
+    /**
+     * Sincronizar solo con los aparatos del grupo que contesten.
+     */
+    public var sincroAutomatica: Bool
+    /**
+     * Dejarse encontrar en la red local (escuchar y anunciarse).
+     */
+    public var sincroPresencia: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Dias que aguanta una captura antes de irse sola (0 = nunca).
+         */diasCaducidad: UInt32, 
+        /**
+         * Sincronizar solo con los aparatos del grupo que contesten.
+         */sincroAutomatica: Bool, 
+        /**
+         * Dejarse encontrar en la red local (escuchar y anunciarse).
+         */sincroPresencia: Bool) {
+        self.diasCaducidad = diasCaducidad
+        self.sincroAutomatica = sincroAutomatica
+        self.sincroPresencia = sincroPresencia
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension AjustesMac: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeAjustesMac: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AjustesMac {
+        return
+            try AjustesMac(
+                diasCaducidad: FfiConverterUInt32.read(from: &buf), 
+                sincroAutomatica: FfiConverterBool.read(from: &buf), 
+                sincroPresencia: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: AjustesMac, into buf: inout [UInt8]) {
+        FfiConverterUInt32.write(value.diasCaducidad, into: &buf)
+        FfiConverterBool.write(value.sincroAutomatica, into: &buf)
+        FfiConverterBool.write(value.sincroPresencia, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAjustesMac_lift(_ buf: RustBuffer) throws -> AjustesMac {
+    return try FfiConverterTypeAjustesMac.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAjustesMac_lower(_ value: AjustesMac) -> RustBuffer {
+    return FfiConverterTypeAjustesMac.lower(value)
+}
 
 
 /**
@@ -1821,6 +2078,63 @@ public func FfiConverterTypeCajaLienzo_lower(_ value: CajaLienzo) -> RustBuffer 
 
 
 /**
+ * Una etiqueta y en cuantas lecciones sale.
+ */
+public struct EtiquetaContada: Equatable, Hashable {
+    public var etiqueta: String
+    public var cuantas: UInt32
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(etiqueta: String, cuantas: UInt32) {
+        self.etiqueta = etiqueta
+        self.cuantas = cuantas
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension EtiquetaContada: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeEtiquetaContada: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> EtiquetaContada {
+        return
+            try EtiquetaContada(
+                etiqueta: FfiConverterString.read(from: &buf), 
+                cuantas: FfiConverterUInt32.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: EtiquetaContada, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.etiqueta, into: &buf)
+        FfiConverterUInt32.write(value.cuantas, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeEtiquetaContada_lift(_ buf: RustBuffer) throws -> EtiquetaContada {
+    return try FfiConverterTypeEtiquetaContada.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeEtiquetaContada_lower(_ value: EtiquetaContada) -> RustBuffer {
+    return FfiConverterTypeEtiquetaContada.lower(value)
+}
+
+
+/**
  * Un chat en la lista.
  */
 public struct FichaChat: Equatable, Hashable {
@@ -1926,6 +2240,357 @@ public func FfiConverterTypeFichaChat_lift(_ buf: RustBuffer) throws -> FichaCha
 #endif
 public func FfiConverterTypeFichaChat_lower(_ value: FichaChat) -> RustBuffer {
     return FfiConverterTypeFichaChat.lower(value)
+}
+
+
+/**
+ * Una leccion en la lista o en la ficha.
+ */
+public struct FichaLeccion: Equatable, Hashable {
+    public var id: String
+    public var titulo: String
+    public var quePaso: String
+    public var porQue: String
+    public var proxima: String
+    /**
+     * `leccion`, `error` o `acierto`.
+     */
+    public var tipo: String
+    public var area: String
+    /**
+     * 1 leve, 2 importante, 3 grave.
+     */
+    public var gravedad: Int64
+    /**
+     * Las puestas a mano (o aceptadas).
+     */
+    public var etiquetas: [String]
+    /**
+     * Las que propuso el etiquetador y siguen ahi (se ensenan con ✨).
+     */
+    public var etiquetasAuto: [String]
+    /**
+     * Las automaticas que se quitaron: no vuelven a proponerse.
+     */
+    public var quitadas: [String]
+    public var causas: [String]
+    /**
+     * Cuantas veces paso (1 + repeticiones).
+     */
+    public var veces: UInt32
+    /**
+     * La caja del repaso (0..=6) y cuando toca, en ms desde 1970.
+     */
+    public var caja: Int64
+    public var repasar: Int64
+    public var creada: Int64
+    public var tocada: Int64
+    public var enLista: Bool
+    /**
+     * El chat donde vive su mensaje.
+     */
+    public var chat: String
+    /**
+     * Si ya toca repasarla.
+     */
+    public var tocaRepasar: Bool
+    /**
+     * 💡, ⚠️ o ✅.
+     */
+    public var icono: String
+    /**
+     * El resumen de varias lineas (el texto de su mensaje).
+     */
+    public var resumen: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(id: String, titulo: String, quePaso: String, porQue: String, proxima: String, 
+        /**
+         * `leccion`, `error` o `acierto`.
+         */tipo: String, area: String, 
+        /**
+         * 1 leve, 2 importante, 3 grave.
+         */gravedad: Int64, 
+        /**
+         * Las puestas a mano (o aceptadas).
+         */etiquetas: [String], 
+        /**
+         * Las que propuso el etiquetador y siguen ahi (se ensenan con ✨).
+         */etiquetasAuto: [String], 
+        /**
+         * Las automaticas que se quitaron: no vuelven a proponerse.
+         */quitadas: [String], causas: [String], 
+        /**
+         * Cuantas veces paso (1 + repeticiones).
+         */veces: UInt32, 
+        /**
+         * La caja del repaso (0..=6) y cuando toca, en ms desde 1970.
+         */caja: Int64, repasar: Int64, creada: Int64, tocada: Int64, enLista: Bool, 
+        /**
+         * El chat donde vive su mensaje.
+         */chat: String, 
+        /**
+         * Si ya toca repasarla.
+         */tocaRepasar: Bool, 
+        /**
+         * 💡, ⚠️ o ✅.
+         */icono: String, 
+        /**
+         * El resumen de varias lineas (el texto de su mensaje).
+         */resumen: String) {
+        self.id = id
+        self.titulo = titulo
+        self.quePaso = quePaso
+        self.porQue = porQue
+        self.proxima = proxima
+        self.tipo = tipo
+        self.area = area
+        self.gravedad = gravedad
+        self.etiquetas = etiquetas
+        self.etiquetasAuto = etiquetasAuto
+        self.quitadas = quitadas
+        self.causas = causas
+        self.veces = veces
+        self.caja = caja
+        self.repasar = repasar
+        self.creada = creada
+        self.tocada = tocada
+        self.enLista = enLista
+        self.chat = chat
+        self.tocaRepasar = tocaRepasar
+        self.icono = icono
+        self.resumen = resumen
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension FichaLeccion: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeFichaLeccion: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FichaLeccion {
+        return
+            try FichaLeccion(
+                id: FfiConverterString.read(from: &buf), 
+                titulo: FfiConverterString.read(from: &buf), 
+                quePaso: FfiConverterString.read(from: &buf), 
+                porQue: FfiConverterString.read(from: &buf), 
+                proxima: FfiConverterString.read(from: &buf), 
+                tipo: FfiConverterString.read(from: &buf), 
+                area: FfiConverterString.read(from: &buf), 
+                gravedad: FfiConverterInt64.read(from: &buf), 
+                etiquetas: FfiConverterSequenceString.read(from: &buf), 
+                etiquetasAuto: FfiConverterSequenceString.read(from: &buf), 
+                quitadas: FfiConverterSequenceString.read(from: &buf), 
+                causas: FfiConverterSequenceString.read(from: &buf), 
+                veces: FfiConverterUInt32.read(from: &buf), 
+                caja: FfiConverterInt64.read(from: &buf), 
+                repasar: FfiConverterInt64.read(from: &buf), 
+                creada: FfiConverterInt64.read(from: &buf), 
+                tocada: FfiConverterInt64.read(from: &buf), 
+                enLista: FfiConverterBool.read(from: &buf), 
+                chat: FfiConverterString.read(from: &buf), 
+                tocaRepasar: FfiConverterBool.read(from: &buf), 
+                icono: FfiConverterString.read(from: &buf), 
+                resumen: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: FichaLeccion, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.id, into: &buf)
+        FfiConverterString.write(value.titulo, into: &buf)
+        FfiConverterString.write(value.quePaso, into: &buf)
+        FfiConverterString.write(value.porQue, into: &buf)
+        FfiConverterString.write(value.proxima, into: &buf)
+        FfiConverterString.write(value.tipo, into: &buf)
+        FfiConverterString.write(value.area, into: &buf)
+        FfiConverterInt64.write(value.gravedad, into: &buf)
+        FfiConverterSequenceString.write(value.etiquetas, into: &buf)
+        FfiConverterSequenceString.write(value.etiquetasAuto, into: &buf)
+        FfiConverterSequenceString.write(value.quitadas, into: &buf)
+        FfiConverterSequenceString.write(value.causas, into: &buf)
+        FfiConverterUInt32.write(value.veces, into: &buf)
+        FfiConverterInt64.write(value.caja, into: &buf)
+        FfiConverterInt64.write(value.repasar, into: &buf)
+        FfiConverterInt64.write(value.creada, into: &buf)
+        FfiConverterInt64.write(value.tocada, into: &buf)
+        FfiConverterBool.write(value.enLista, into: &buf)
+        FfiConverterString.write(value.chat, into: &buf)
+        FfiConverterBool.write(value.tocaRepasar, into: &buf)
+        FfiConverterString.write(value.icono, into: &buf)
+        FfiConverterString.write(value.resumen, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFichaLeccion_lift(_ buf: RustBuffer) throws -> FichaLeccion {
+    return try FfiConverterTypeFichaLeccion.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFichaLeccion_lower(_ value: FichaLeccion) -> RustBuffer {
+    return FfiConverterTypeFichaLeccion.lower(value)
+}
+
+
+/**
+ * Que lecciones se quieren ver.
+ */
+public struct FiltroLecciones: Equatable, Hashable {
+    /**
+     * Palabras a buscar (sin acentos, erratas perdonadas). Vacio: todas,
+     * de la mas tocada a la menos.
+     */
+    public var texto: String
+    /**
+     * Solo las que llevan esta etiqueta (puesta o automatica).
+     */
+    public var etiqueta: String?
+    /**
+     * Solo las que toca repasar, primero las graves y las que se repiten.
+     */
+    public var soloParaRepasar: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Palabras a buscar (sin acentos, erratas perdonadas). Vacio: todas,
+         * de la mas tocada a la menos.
+         */texto: String, 
+        /**
+         * Solo las que llevan esta etiqueta (puesta o automatica).
+         */etiqueta: String?, 
+        /**
+         * Solo las que toca repasar, primero las graves y las que se repiten.
+         */soloParaRepasar: Bool) {
+        self.texto = texto
+        self.etiqueta = etiqueta
+        self.soloParaRepasar = soloParaRepasar
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension FiltroLecciones: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeFiltroLecciones: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FiltroLecciones {
+        return
+            try FiltroLecciones(
+                texto: FfiConverterString.read(from: &buf), 
+                etiqueta: FfiConverterOptionString.read(from: &buf), 
+                soloParaRepasar: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: FiltroLecciones, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.texto, into: &buf)
+        FfiConverterOptionString.write(value.etiqueta, into: &buf)
+        FfiConverterBool.write(value.soloParaRepasar, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFiltroLecciones_lift(_ buf: RustBuffer) throws -> FiltroLecciones {
+    return try FfiConverterTypeFiltroLecciones.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFiltroLecciones_lower(_ value: FiltroLecciones) -> RustBuffer {
+    return FfiConverterTypeFiltroLecciones.lower(value)
+}
+
+
+/**
+ * Una herramienta que se uso en el turno.
+ */
+public struct HerramientaUsada: Equatable, Hashable {
+    public var nombre: String
+    public var ok: Bool
+    /**
+     * Lo que se le devolvio al modelo («dibujadas 4 figuras», el motivo).
+     */
+    public var resumen: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(nombre: String, ok: Bool, 
+        /**
+         * Lo que se le devolvio al modelo («dibujadas 4 figuras», el motivo).
+         */resumen: String) {
+        self.nombre = nombre
+        self.ok = ok
+        self.resumen = resumen
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension HerramientaUsada: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHerramientaUsada: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HerramientaUsada {
+        return
+            try HerramientaUsada(
+                nombre: FfiConverterString.read(from: &buf), 
+                ok: FfiConverterBool.read(from: &buf), 
+                resumen: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: HerramientaUsada, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.nombre, into: &buf)
+        FfiConverterBool.write(value.ok, into: &buf)
+        FfiConverterString.write(value.resumen, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHerramientaUsada_lift(_ buf: RustBuffer) throws -> HerramientaUsada {
+    return try FfiConverterTypeHerramientaUsada.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHerramientaUsada_lower(_ value: HerramientaUsada) -> RustBuffer {
+    return FfiConverterTypeHerramientaUsada.lower(value)
 }
 
 
@@ -2078,6 +2743,121 @@ public func FfiConverterTypeInfoAparato_lift(_ buf: RustBuffer) throws -> InfoAp
 #endif
 public func FfiConverterTypeInfoAparato_lower(_ value: InfoAparato) -> RustBuffer {
     return FfiConverterTypeInfoAparato.lower(value)
+}
+
+
+/**
+ * Lo que se escribe en la ficha. `id` vacio: una nueva.
+ */
+public struct LeccionEditada: Equatable, Hashable {
+    public var id: String?
+    public var titulo: String
+    public var quePaso: String
+    public var porQue: String
+    public var proxima: String
+    public var tipo: String
+    public var area: String
+    public var gravedad: Int64
+    public var etiquetas: [String]
+    public var etiquetasAuto: [String]
+    /**
+     * Automaticas que se quitaron ahora (se anaden a las de antes).
+     */
+    public var quitadas: [String]
+    public var causas: [String]
+    /**
+     * El chat de una nueva (ninguno: «Mensajes guardados»). En una que ya
+     * existe no se mira: no se cambia de chat.
+     */
+    public var chat: String?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(id: String?, titulo: String, quePaso: String, porQue: String, proxima: String, tipo: String, area: String, gravedad: Int64, etiquetas: [String], etiquetasAuto: [String], 
+        /**
+         * Automaticas que se quitaron ahora (se anaden a las de antes).
+         */quitadas: [String], causas: [String], 
+        /**
+         * El chat de una nueva (ninguno: «Mensajes guardados»). En una que ya
+         * existe no se mira: no se cambia de chat.
+         */chat: String?) {
+        self.id = id
+        self.titulo = titulo
+        self.quePaso = quePaso
+        self.porQue = porQue
+        self.proxima = proxima
+        self.tipo = tipo
+        self.area = area
+        self.gravedad = gravedad
+        self.etiquetas = etiquetas
+        self.etiquetasAuto = etiquetasAuto
+        self.quitadas = quitadas
+        self.causas = causas
+        self.chat = chat
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension LeccionEditada: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeLeccionEditada: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> LeccionEditada {
+        return
+            try LeccionEditada(
+                id: FfiConverterOptionString.read(from: &buf), 
+                titulo: FfiConverterString.read(from: &buf), 
+                quePaso: FfiConverterString.read(from: &buf), 
+                porQue: FfiConverterString.read(from: &buf), 
+                proxima: FfiConverterString.read(from: &buf), 
+                tipo: FfiConverterString.read(from: &buf), 
+                area: FfiConverterString.read(from: &buf), 
+                gravedad: FfiConverterInt64.read(from: &buf), 
+                etiquetas: FfiConverterSequenceString.read(from: &buf), 
+                etiquetasAuto: FfiConverterSequenceString.read(from: &buf), 
+                quitadas: FfiConverterSequenceString.read(from: &buf), 
+                causas: FfiConverterSequenceString.read(from: &buf), 
+                chat: FfiConverterOptionString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: LeccionEditada, into buf: inout [UInt8]) {
+        FfiConverterOptionString.write(value.id, into: &buf)
+        FfiConverterString.write(value.titulo, into: &buf)
+        FfiConverterString.write(value.quePaso, into: &buf)
+        FfiConverterString.write(value.porQue, into: &buf)
+        FfiConverterString.write(value.proxima, into: &buf)
+        FfiConverterString.write(value.tipo, into: &buf)
+        FfiConverterString.write(value.area, into: &buf)
+        FfiConverterInt64.write(value.gravedad, into: &buf)
+        FfiConverterSequenceString.write(value.etiquetas, into: &buf)
+        FfiConverterSequenceString.write(value.etiquetasAuto, into: &buf)
+        FfiConverterSequenceString.write(value.quitadas, into: &buf)
+        FfiConverterSequenceString.write(value.causas, into: &buf)
+        FfiConverterOptionString.write(value.chat, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLeccionEditada_lift(_ buf: RustBuffer) throws -> LeccionEditada {
+    return try FfiConverterTypeLeccionEditada.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLeccionEditada_lower(_ value: LeccionEditada) -> RustBuffer {
+    return FfiConverterTypeLeccionEditada.lower(value)
 }
 
 
@@ -2307,6 +3087,158 @@ public func FfiConverterTypeMensajeChat_lower(_ value: MensajeChat) -> RustBuffe
 
 
 /**
+ * Un mensaje de la conversacion que guarda Swift, para la vuelta
+ * siguiente. Solo texto: las llamadas a herramientas de turnos pasados no
+ * se vuelven a mandar (un modelo pequeno se lia con ellas).
+ */
+public struct MensajeIa: Equatable, Hashable {
+    /**
+     * `true` si lo escribio el usuario; `false`, el asistente.
+     */
+    public var delUsuario: Bool
+    public var texto: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * `true` si lo escribio el usuario; `false`, el asistente.
+         */delUsuario: Bool, texto: String) {
+        self.delUsuario = delUsuario
+        self.texto = texto
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension MensajeIa: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeMensajeIa: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MensajeIa {
+        return
+            try MensajeIa(
+                delUsuario: FfiConverterBool.read(from: &buf), 
+                texto: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: MensajeIa, into buf: inout [UInt8]) {
+        FfiConverterBool.write(value.delUsuario, into: &buf)
+        FfiConverterString.write(value.texto, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMensajeIa_lift(_ buf: RustBuffer) throws -> MensajeIa {
+    return try FfiConverterTypeMensajeIa.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMensajeIa_lower(_ value: MensajeIa) -> RustBuffer {
+    return FfiConverterTypeMensajeIa.lower(value)
+}
+
+
+/**
+ * Una pagina de la lista.
+ */
+public struct PaginaLecciones: Equatable, Hashable {
+    public var lecciones: [FichaLeccion]
+    public var desde: UInt64
+    /**
+     * Cuantas cumplen el filtro.
+     */
+    public var total: UInt64
+    /**
+     * Cuantas toca repasar hoy (de todas, no solo del filtro).
+     */
+    public var paraRepasar: UInt64
+    /**
+     * Todas las etiquetas, de la mas usada a la menos.
+     */
+    public var etiquetas: [EtiquetaContada]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(lecciones: [FichaLeccion], desde: UInt64, 
+        /**
+         * Cuantas cumplen el filtro.
+         */total: UInt64, 
+        /**
+         * Cuantas toca repasar hoy (de todas, no solo del filtro).
+         */paraRepasar: UInt64, 
+        /**
+         * Todas las etiquetas, de la mas usada a la menos.
+         */etiquetas: [EtiquetaContada]) {
+        self.lecciones = lecciones
+        self.desde = desde
+        self.total = total
+        self.paraRepasar = paraRepasar
+        self.etiquetas = etiquetas
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension PaginaLecciones: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypePaginaLecciones: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> PaginaLecciones {
+        return
+            try PaginaLecciones(
+                lecciones: FfiConverterSequenceTypeFichaLeccion.read(from: &buf), 
+                desde: FfiConverterUInt64.read(from: &buf), 
+                total: FfiConverterUInt64.read(from: &buf), 
+                paraRepasar: FfiConverterUInt64.read(from: &buf), 
+                etiquetas: FfiConverterSequenceTypeEtiquetaContada.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: PaginaLecciones, into buf: inout [UInt8]) {
+        FfiConverterSequenceTypeFichaLeccion.write(value.lecciones, into: &buf)
+        FfiConverterUInt64.write(value.desde, into: &buf)
+        FfiConverterUInt64.write(value.total, into: &buf)
+        FfiConverterUInt64.write(value.paraRepasar, into: &buf)
+        FfiConverterSequenceTypeEtiquetaContada.write(value.etiquetas, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePaginaLecciones_lift(_ buf: RustBuffer) throws -> PaginaLecciones {
+    return try FfiConverterTypePaginaLecciones.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePaginaLecciones_lower(_ value: PaginaLecciones) -> RustBuffer {
+    return FfiConverterTypePaginaLecciones.lower(value)
+}
+
+
+/**
  * Una pagina de mensajes, del mas antiguo al mas nuevo.
  */
 public struct PaginaMensajes: Equatable, Hashable {
@@ -2445,6 +3377,144 @@ public func FfiConverterTypeParTxt_lift(_ buf: RustBuffer) throws -> ParTxt {
 #endif
 public func FfiConverterTypeParTxt_lower(_ value: ParTxt) -> RustBuffer {
     return FfiConverterTypeParTxt.lower(value)
+}
+
+
+/**
+ * Lo que el etiquetador propone para un texto.
+ */
+public struct PropuestaLeccion: Equatable, Hashable {
+    public var etiquetas: [String]
+    public var area: String?
+    public var tipo: String?
+    public var causas: [String]
+    public var gravedad: Int64
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(etiquetas: [String], area: String?, tipo: String?, causas: [String], gravedad: Int64) {
+        self.etiquetas = etiquetas
+        self.area = area
+        self.tipo = tipo
+        self.causas = causas
+        self.gravedad = gravedad
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension PropuestaLeccion: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypePropuestaLeccion: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> PropuestaLeccion {
+        return
+            try PropuestaLeccion(
+                etiquetas: FfiConverterSequenceString.read(from: &buf), 
+                area: FfiConverterOptionString.read(from: &buf), 
+                tipo: FfiConverterOptionString.read(from: &buf), 
+                causas: FfiConverterSequenceString.read(from: &buf), 
+                gravedad: FfiConverterInt64.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: PropuestaLeccion, into buf: inout [UInt8]) {
+        FfiConverterSequenceString.write(value.etiquetas, into: &buf)
+        FfiConverterOptionString.write(value.area, into: &buf)
+        FfiConverterOptionString.write(value.tipo, into: &buf)
+        FfiConverterSequenceString.write(value.causas, into: &buf)
+        FfiConverterInt64.write(value.gravedad, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePropuestaLeccion_lift(_ buf: RustBuffer) throws -> PropuestaLeccion {
+    return try FfiConverterTypePropuestaLeccion.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePropuestaLeccion_lower(_ value: PropuestaLeccion) -> RustBuffer {
+    return FfiConverterTypePropuestaLeccion.lower(value)
+}
+
+
+/**
+ * Lo que contesto el motor local en un turno.
+ */
+public struct RespuestaIa: Equatable, Hashable {
+    public var texto: String
+    public var herramientas: [HerramientaUsada]
+    /**
+     * Lo dibujado en el turno, como un `.excalidraw` entero (el formato
+     * que lee el lienzo), o nada si no se dibujo.
+     */
+    public var lienzo: String?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(texto: String, herramientas: [HerramientaUsada], 
+        /**
+         * Lo dibujado en el turno, como un `.excalidraw` entero (el formato
+         * que lee el lienzo), o nada si no se dibujo.
+         */lienzo: String?) {
+        self.texto = texto
+        self.herramientas = herramientas
+        self.lienzo = lienzo
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension RespuestaIa: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeRespuestaIa: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> RespuestaIa {
+        return
+            try RespuestaIa(
+                texto: FfiConverterString.read(from: &buf), 
+                herramientas: FfiConverterSequenceTypeHerramientaUsada.read(from: &buf), 
+                lienzo: FfiConverterOptionString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: RespuestaIa, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.texto, into: &buf)
+        FfiConverterSequenceTypeHerramientaUsada.write(value.herramientas, into: &buf)
+        FfiConverterOptionString.write(value.lienzo, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeRespuestaIa_lift(_ buf: RustBuffer) throws -> RespuestaIa {
+    return try FfiConverterTypeRespuestaIa.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeRespuestaIa_lower(_ value: RespuestaIa) -> RustBuffer {
+    return FfiConverterTypeRespuestaIa.lower(value)
 }
 
 
@@ -2688,6 +3758,17 @@ enum ErrorNucleo: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
      */
     case Argumento(detalle: String
     )
+    /**
+     * `pixpinmax.toml` no se pudo leer o escribir (o no se entiende).
+     */
+    case Ajustes(detalle: String
+    )
+    /**
+     * El asistente: no hay motor, se corto, o contesto algo que no vale.
+     * El texto ya va en palabras para el usuario.
+     */
+    case Asistente(detalle: String
+    )
 
     
 
@@ -2732,6 +3813,12 @@ public struct FfiConverterTypeErrorNucleo: FfiConverterRustBuffer {
         case 5: return .Argumento(
             detalle: try FfiConverterString.read(from: &buf)
             )
+        case 6: return .Ajustes(
+            detalle: try FfiConverterString.read(from: &buf)
+            )
+        case 7: return .Asistente(
+            detalle: try FfiConverterString.read(from: &buf)
+            )
 
          default: throw UniffiInternalError.unexpectedEnumCase
         }
@@ -2768,6 +3855,16 @@ public struct FfiConverterTypeErrorNucleo: FfiConverterRustBuffer {
             writeInt(&buf, Int32(5))
             FfiConverterString.write(detalle, into: &buf)
             
+        
+        case let .Ajustes(detalle):
+            writeInt(&buf, Int32(6))
+            FfiConverterString.write(detalle, into: &buf)
+            
+        
+        case let .Asistente(detalle):
+            writeInt(&buf, Int32(7))
+            FfiConverterString.write(detalle, into: &buf)
+            
         }
     }
 }
@@ -2786,6 +3883,92 @@ public func FfiConverterTypeErrorNucleo_lift(_ buf: RustBuffer) throws -> ErrorN
 public func FfiConverterTypeErrorNucleo_lower(_ value: ErrorNucleo) -> RustBuffer {
     return FfiConverterTypeErrorNucleo.lower(value)
 }
+
+
+/**
+ * Como fue el repaso.
+ */
+
+public enum NotaRepaso: Equatable, Hashable {
+    
+    case recordaba
+    case aMedias
+    case olvide
+    /**
+     * Volvio a pasar: se apunta la vez y sube la gravedad.
+     */
+    case repetida
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension NotaRepaso: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeNotaRepaso: FfiConverterRustBuffer {
+    typealias SwiftType = NotaRepaso
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> NotaRepaso {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .recordaba
+        
+        case 2: return .aMedias
+        
+        case 3: return .olvide
+        
+        case 4: return .repetida
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: NotaRepaso, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .recordaba:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .aMedias:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .olvide:
+            writeInt(&buf, Int32(3))
+        
+        
+        case .repetida:
+            writeInt(&buf, Int32(4))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNotaRepaso_lift(_ buf: RustBuffer) throws -> NotaRepaso {
+    return try FfiConverterTypeNotaRepaso.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNotaRepaso_lower(_ value: NotaRepaso) -> RustBuffer {
+    return FfiConverterTypeNotaRepaso.lower(value)
+}
+
 
 #if swift(>=5.8)
 @_documentation(visibility: private)
@@ -2936,6 +4119,31 @@ fileprivate struct FfiConverterSequenceString: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceTypeEtiquetaContada: FfiConverterRustBuffer {
+    typealias SwiftType = [EtiquetaContada]
+
+    public static func write(_ value: [EtiquetaContada], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeEtiquetaContada.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [EtiquetaContada] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [EtiquetaContada]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeEtiquetaContada.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypeFichaChat: FfiConverterRustBuffer {
     typealias SwiftType = [FichaChat]
 
@@ -2953,6 +4161,56 @@ fileprivate struct FfiConverterSequenceTypeFichaChat: FfiConverterRustBuffer {
         seq.reserveCapacity(Int(len))
         for _ in 0 ..< len {
             seq.append(try FfiConverterTypeFichaChat.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeFichaLeccion: FfiConverterRustBuffer {
+    typealias SwiftType = [FichaLeccion]
+
+    public static func write(_ value: [FichaLeccion], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeFichaLeccion.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [FichaLeccion] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [FichaLeccion]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeFichaLeccion.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeHerramientaUsada: FfiConverterRustBuffer {
+    typealias SwiftType = [HerramientaUsada]
+
+    public static func write(_ value: [HerramientaUsada], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeHerramientaUsada.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [HerramientaUsada] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [HerramientaUsada]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeHerramientaUsada.read(from: &buf))
         }
         return seq
     }
@@ -3011,6 +4269,31 @@ fileprivate struct FfiConverterSequenceTypeMensajeChat: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceTypeMensajeIa: FfiConverterRustBuffer {
+    typealias SwiftType = [MensajeIa]
+
+    public static func write(_ value: [MensajeIa], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeMensajeIa.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [MensajeIa] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [MensajeIa]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeMensajeIa.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypeParTxt: FfiConverterRustBuffer {
     typealias SwiftType = [ParTxt]
 
@@ -3031,6 +4314,98 @@ fileprivate struct FfiConverterSequenceTypeParTxt: FfiConverterRustBuffer {
         }
         return seq
     }
+}
+/**
+ * Todas las herramientas, como la lista `tools` de OpenAI (JSON).
+ */
+public func iaCatalogo() -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_func_ia_catalogo(uniffiCallStatus
+    )
+})
+}
+/**
+ * Las pocas herramientas que vienen a cuento para `pedido` (JSON, lista
+ * `tools` de OpenAI): un modelo pequeno se pierde con el catalogo entero.
+ */
+public func iaCatalogoPara(pedido: String, conImagen: Bool) -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_func_ia_catalogo_para(
+        FfiConverterString.lower(pedido),
+        FfiConverterBool.lower(conImagen),uniffiCallStatus
+    )
+})
+}
+/**
+ * Las instrucciones de sistema del asistente (las mismas que en Windows).
+ */
+public func iaInstrucciones() -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_func_ia_instrucciones(uniffiCallStatus
+    )
+})
+}
+/**
+ * Un `.excalidraw` entero con los `elementos` (texto JSON de una lista,
+ * los que van juntando las llamadas de [`ia_llamar`]). Lo que no es una
+ * lista da un lienzo vacio.
+ */
+public func iaLienzoDe(elementos: String) -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_func_ia_lienzo_de(
+        FfiConverterString.lower(elementos),uniffiCallStatus
+    )
+})
+}
+/**
+ * Una llamada del modelo, de cualquier motor (ver
+ * `pixpin_ia::puente::llamar`): devuelve el objeto JSON con `ok`,
+ * `elementos`, `argumentos`... o `para_el_modelo` si estaba mal.
+ */
+public func iaLlamar(nombre: String, argumentos: String, origenX: Double, origenY: Double, semilla: UInt64) -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_func_ia_llamar(
+        FfiConverterString.lower(nombre),
+        FfiConverterString.lower(argumentos),
+        FfiConverterDouble.lower(origenX),
+        FfiConverterDouble.lower(origenY),
+        FfiConverterUInt64.lower(semilla),uniffiCallStatus
+    )
+})
+}
+/**
+ * Si hay un `llama-server` con el modelo cargado en `127.0.0.1:puerto`
+ * (`GET /health` da 200). Tarda como mucho unos 300 ms si no hay nadie.
+ */
+public func llamaLocalActivo(puerto: UInt16) -> Bool  {
+    return try!  FfiConverterBool.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_func_llama_local_activo(
+        FfiConverterUInt16.lower(puerto),uniffiCallStatus
+    )
+})
+}
+/**
+ * **Un turno con el `llama-server` del usuario**: `historial` es lo dicho
+ * antes (del mas antiguo al mas nuevo) y `pedido` lo nuevo. Usa las
+ * herramientas que vienen a cuento; las que dibujan se juntan en
+ * [`RespuestaIa::lienzo`] y las que la app del Mac aun no sabe hacer
+ * vuelven al modelo como fallo, para que lo diga.
+ */
+public func llamaLocalPreguntar(puerto: UInt16, historial: [MensajeIa], pedido: String)throws  -> RespuestaIa  {
+    return try  FfiConverterTypeRespuestaIa_lift(try rustCallWithError(FfiConverterTypeErrorNucleo_lift) {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_func_llama_local_preguntar(
+        FfiConverterUInt16.lower(puerto),
+        FfiConverterSequenceTypeMensajeIa.lower(historial),
+        FfiConverterString.lower(pedido),uniffiCallStatus
+    )
+})
 }
 /**
  * `K7Q2M-9XMPA`: el codigo como se lee y se dicta.
@@ -3107,6 +4482,27 @@ private let initializationResult: InitializationResult = {
     if bindings_contract_version != scaffolding_contract_version {
         return InitializationResult.contractVersionMismatch
     }
+    if (uniffi_pixpin_nucleo_checksum_func_ia_catalogo() != 27604) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_func_ia_catalogo_para() != 10355) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_func_ia_instrucciones() != 31339) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_func_ia_lienzo_de() != 19193) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_func_ia_llamar() != 11425) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_func_llama_local_activo() != 1000) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_func_llama_local_preguntar() != 60202) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_pixpin_nucleo_checksum_func_codigo_legible() != 26743) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -3140,6 +4536,15 @@ private let initializationResult: InitializationResult = {
     if (uniffi_pixpin_nucleo_checksum_method_nucleo_ruta_absoluta() != 15898) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_pixpin_nucleo_checksum_method_nucleo_ajustes() != 19676) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_nucleo_guardar_ajustes() != 21013) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_nucleo_ruta_ajustes() != 12786) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_pixpin_nucleo_checksum_method_nucleo_chat_guardados() != 17735) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -3156,6 +4561,24 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_pixpin_nucleo_checksum_method_nucleo_ultimos_mensajes() != 11441) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_nucleo_borrar_leccion() != 16221) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_nucleo_guardar_leccion() != 61674) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_nucleo_leccion() != 40308) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_nucleo_lecciones() != 61206) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_nucleo_proponer_leccion() != 39416) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_nucleo_repasar_leccion() != 26609) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_pixpin_nucleo_checksum_method_nucleo_abrir_lienzo() != 59079) {
