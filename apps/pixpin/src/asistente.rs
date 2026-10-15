@@ -39,6 +39,7 @@ pub mod descarga;
 pub mod documentos;
 pub mod documentos_acciones;
 pub mod ejecutor;
+pub mod externa;
 pub mod foto;
 pub mod hoja_a_lienzo;
 pub mod motor;
