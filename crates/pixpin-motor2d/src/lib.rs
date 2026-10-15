@@ -65,6 +65,7 @@ pub mod portapapeles;
 pub mod puntero_laser;
 pub mod puntos_etiquetados;
 pub mod recorte;
+pub mod recorte_imagen;
 pub mod regiones;
 pub mod relleno;
 pub mod rough;
