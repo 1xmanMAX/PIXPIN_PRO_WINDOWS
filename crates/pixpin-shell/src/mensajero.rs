@@ -339,35 +339,220 @@ pub fn enviar_pedido(json: &str) -> isize {
 /// Lo de [`enviar_pedido`] a una ventana concreta. Aparte para las pruebas,
 /// que mandan a su propia ventana: buscarla por la clase encontraria la de
 /// la PixPin del usuario si esta abierta, y le haria cosas de verdad.
+///
+/// Es el mismo camino que [`enviar_pedido_con_espera`] (un solo
+/// empaquetado y un solo envio para todos los que mandan): con su espera de
+/// [`ESPERA_RESPUESTA_MS`], para que una copia colgada no deje colgado
+/// tambien al que manda. `0` si no contesto.
 pub fn enviar_pedido_a(destino: windows::Win32::Foundation::HWND, json: &str) -> isize {
-    use windows::Win32::UI::WindowsAndMessaging::WM_COPYDATA;
-    // El que manda tambien respeta el tope: mandar algo que se va a
-    // rechazar es copiar megas entre procesos para nada.
+    enviar_pedido_con_espera(destino, json, ESPERA_RESPUESTA_MS).unwrap_or(0)
+}
+
+/// Lo que salio de mandar un pedido desde fuera (la linea de ordenes, los
+/// enlaces, el menu del Explorador, y quien quiera reutilizarlo: el servidor
+/// MCP, el puente del navegador). Los codigos son los de
+/// `pixpin-lanzador pedido` y los de `orden::codigo`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Envio {
+    /// `1`: en la cola de la app.
+    Aceptado,
+    /// `2`: version del protocolo que esta copia no conoce.
+    VersionNo,
+    /// `3`: JSON roto o accion desconocida.
+    NoSeEntiende,
+    /// No hay PixPin abierta y no se pudo (o no se quiso) abrir.
+    SinApp(String),
+    /// No contesto a tiempo, o contesto algo que no es del protocolo.
+    SinRespuesta(isize),
+}
+
+impl Envio {
+    /// El codigo con que sale la orden.
+    pub fn codigo_de_salida(&self) -> i32 {
+        match self {
+            Envio::Aceptado => 0,
+            Envio::VersionNo => 2,
+            Envio::NoSeEntiende => 3,
+            Envio::SinApp(_) => 4,
+            Envio::SinRespuesta(_) => 5,
+        }
+    }
+
+    /// De la respuesta de la ventana.
+    pub fn de_respuesta(r: isize) -> Envio {
+        match r {
+            respuesta::ACEPTADO => Envio::Aceptado,
+            respuesta::VERSION_NO => Envio::VersionNo,
+            respuesta::NO_SE_ENTIENDE => Envio::NoSeEntiende,
+            otra => Envio::SinRespuesta(otra),
+        }
+    }
+}
+
+/// Cuanto se espera a que aparezca la ventana de una PixPin recien abierta
+/// (lo mismo que el plugin de Flow).
+pub const ESPERA_ARRANQUE: std::time::Duration = std::time::Duration::from_secs(8);
+
+/// Cuanto se espera, como mucho, a que la app conteste un pedido. La
+/// ventana contesta en el acto (solo mira el JSON por encima); si tarda
+/// mas, esta colgada y no tiene sentido quedarse esperando con ella.
+pub const ESPERA_RESPUESTA_MS: u32 = 5000;
+
+/// **Solo para pruebas**: con esta variable, los pedidos de fuera buscan la
+/// ventana de esa clase en vez de la de PixPin, y nunca abren la app. Asi
+/// una prueba de punta a punta (`pixpinmax tarea …` contra una ventana de
+/// mentira) no puede tocar la PixPin del usuario.
+pub const VARIABLE_CLASE_DE_PRUEBA: &str = "PIXPIN_PEDIDOS_VENTANA";
+
+fn clase_de_prueba() -> Option<String> {
+    std::env::var(VARIABLE_CLASE_DE_PRUEBA).ok().map(|c| c.trim().to_string()).filter(|c| !c.is_empty())
+}
+
+fn ventana_para_pedidos() -> Option<windows::Win32::Foundation::HWND> {
+    let Some(clase) = clase_de_prueba() else {
+        return ventana_de_la_copia();
+    };
+    use windows::Win32::UI::WindowsAndMessaging::{FindWindowExW, HWND_MESSAGE};
+    let clase = windows::core::HSTRING::from(clase);
+    // SAFETY: la clase es una HSTRING viva durante las llamadas; una ventana
+    // nula es que no hay.
+    unsafe {
+        if let Ok(h) = FindWindowW(&clase, None)
+            && !h.0.is_null()
+        {
+            return Some(h);
+        }
+        FindWindowExW(Some(HWND_MESSAGE), None, &clase, None).ok().filter(|h| !h.0.is_null())
+    }
+}
+
+/// Manda un pedido a una ventana sin quedarse colgado si no contesta
+/// (`SendMessageTimeoutW`). `None`: no contesto a tiempo.
+pub fn enviar_pedido_con_espera(
+    destino: windows::Win32::Foundation::HWND,
+    json: &str,
+    espera_ms: u32,
+) -> Option<isize> {
+    use windows::Win32::UI::WindowsAndMessaging::{
+        SMTO_ABORTIFHUNG, SMTO_BLOCK, SendMessageTimeoutW, WM_COPYDATA,
+    };
     if json.len() > TOPE_PEDIDO {
-        return respuesta::NO_SE_ENTIENDE;
+        return Some(respuesta::NO_SE_ENTIENDE);
     }
     let paquete = COPYDATASTRUCT {
         dwData: PEDIDO_JSON,
         cbData: json.len() as u32,
         lpData: json.as_ptr() as *mut _,
     };
-    // SAFETY: SendMessageW es SINCRONO: `json` y `paquete` siguen vivos
-    // durante toda la llamada, que es lo que exige WM_COPYDATA (ver
-    // `enviar_ficheros`). El otro lado solo lee.
-    let r = unsafe {
-        SendMessageW(
+    let mut r: usize = 0;
+    // SAFETY: SendMessageTimeoutW es sincrono: `json` y `paquete` viven
+    // durante toda la llamada, que es lo que exige WM_COPYDATA.
+    let hecho = unsafe {
+        SendMessageTimeoutW(
             destino,
             WM_COPYDATA,
-            Some(WPARAM(0)),
-            Some(LPARAM(&paquete as *const _ as isize)),
+            WPARAM(0),
+            LPARAM(&paquete as *const _ as isize),
+            SMTO_ABORTIFHUNG | SMTO_BLOCK,
+            espera_ms,
+            Some(&mut r),
         )
     };
-    // El toque a la cola, por lo mismo que en `enviar_ficheros`: el pedido
-    // entra directo al procedimiento y el bucle esta dormido.
-    if r.0 != 0 {
+    if hecho.0 == 0 {
+        return None;
+    }
+    // El toque a la cola, como en `enviar_pedido_a`.
+    if r != 0 {
         crate::ventana::despertar(destino);
     }
-    r.0
+    Some(r as isize)
+}
+
+/// Abre `exe` sin ventana de consola y fuera del Job de quien nos lanzo (si
+/// no, cerrar el lanzador se llevaria PixPin por delante).
+fn abrir_la_app(exe: &std::path::Path) -> Result<(), String> {
+    use std::os::windows::process::CommandExt;
+    use std::process::{Command, Stdio};
+    const CREATE_BREAKAWAY_FROM_JOB: u32 = 0x0100_0000;
+    const DETACHED_PROCESS: u32 = 0x0000_0008;
+    if !exe.is_file() {
+        return Err(format!("no esta {}", exe.display()));
+    }
+    let mut ultimo = String::new();
+    // Si el Job no deja salirse, CreateProcess falla con la bandera: se
+    // reintenta sin ella.
+    for banderas in [CREATE_BREAKAWAY_FROM_JOB | DETACHED_PROCESS, DETACHED_PROCESS] {
+        let mut c = Command::new(exe);
+        c.stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).creation_flags(banderas);
+        if let Some(d) = exe.parent() {
+            c.current_dir(d);
+        }
+        match c.spawn() {
+            Ok(_) => return Ok(()),
+            Err(e) => ultimo = e.to_string(),
+        }
+    }
+    Err(ultimo)
+}
+
+/// **Manda pedidos a la PixPin que corre, y si no hay ninguna, la abre**
+/// (`exe`) y la espera (hasta [`ESPERA_ARRANQUE`]). Es la funcion para
+/// reutilizar desde fuera: la usan la linea de ordenes, los enlaces
+/// `pixpin://` y el menu del Explorador, y es la que deberian usar el
+/// servidor MCP o el puente del navegador.
+///
+/// - `exe` `None`: no abrir nada (si no esta, `SinApp`).
+/// - Se mandan en orden y se para en el primero que no se acepte.
+/// - Antes de mandar se le da permiso a la app para pasar al frente
+///   (`AllowSetForegroundWindow`): quien nos lanzo (el Explorador, un
+///   Stream Deck) tiene el foco, y sin el permiso la ventana que abra PixPin
+///   se quedaria detras parpadeando.
+pub fn enviar_pedidos_o_arrancar(pedidos: &[String], exe: Option<&std::path::Path>) -> Envio {
+    use windows::Win32::UI::WindowsAndMessaging::{ASFW_ANY, AllowSetForegroundWindow};
+    if pedidos.is_empty() || pedidos.iter().any(|p| p.len() > TOPE_PEDIDO) {
+        return Envio::NoSeEntiende;
+    }
+    // SAFETY: sin punteros; falla sin efecto si no se puede dar.
+    let _ = unsafe { AllowSetForegroundWindow(ASFW_ANY) };
+    let mut espera = ESPERA_RESPUESTA_MS;
+    let destino = match ventana_para_pedidos() {
+        Some(h) => h,
+        None => {
+            // Con la ventana de prueba nunca se abre la app de verdad.
+            let Some(exe) = exe.filter(|_| clase_de_prueba().is_none()) else {
+                return Envio::SinApp("PixPin no esta abierta".into());
+            };
+            if let Err(e) = abrir_la_app(exe) {
+                return Envio::SinApp(e);
+            }
+            let inicio = std::time::Instant::now();
+            loop {
+                std::thread::sleep(std::time::Duration::from_millis(50));
+                if let Some(h) = ventana_para_pedidos() {
+                    // Recien abierta, su bucle aun no corre: la ventana
+                    // existe, pero contesta cuando acabe de arrancar.
+                    espera = 15_000;
+                    break h;
+                }
+                if inicio.elapsed() > ESPERA_ARRANQUE {
+                    return Envio::SinApp("PixPin no aparecio en 8 s".into());
+                }
+            }
+        }
+    };
+    for p in pedidos {
+        match enviar_pedido_con_espera(destino, p, espera) {
+            Some(respuesta::ACEPTADO) => {}
+            Some(r) => return Envio::de_respuesta(r),
+            None => return Envio::SinRespuesta(0),
+        }
+    }
+    Envio::Aceptado
+}
+
+/// [`enviar_pedidos_o_arrancar`] de un solo pedido.
+pub fn enviar_pedido_o_arrancar(json: &str, exe: Option<&std::path::Path>) -> Envio {
+    enviar_pedidos_o_arrancar(&[json.to_string()], exe)
 }
 
 /// Lee las rutas de un `WM_COPYDATA` recibido.

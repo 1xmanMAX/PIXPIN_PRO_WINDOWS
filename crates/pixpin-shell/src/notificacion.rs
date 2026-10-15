@@ -28,17 +28,18 @@
 //!
 //! Un programa sin empaquetar no recibe la activacion normal de un toast
 //! (haria falta un servidor COM registrado). La de **protocolo** si: cada
-//! boton lleva `pixpinmax:pedido?json=<pedido>`, que Windows abre con
-//! `"pixpinmax.exe" --atajo url "%1"`; esa copia hace lo de los atajos de la
-//! Jump List (`jump_list::pedido_de_atajo`): saca el pedido
-//! (`{"pixpin":1,"accion":…}`, `docs/protocolo-pedidos.md`, el mismo de Flow
-//! y de `--pedido`) y se lo manda a la que corre. Si no corria, lo hace ella
-//! al arrancar.
+//! boton lleva `<esquema>:pedido?json=<pedido>` (`pixpin:` si es nuestro,
+//! si no `pixpinmax:`: `orden::esquema_de_la_casa`), que Windows abre con
+//! `"pixpinmax.exe" --url "%1"`. Es **el mismo protocolo** que el de la
+//! linea de ordenes y los enlaces (`orden`, `docs/integraciones.md`): un
+//! solo traductor (`orden::de_enlace`) y una sola lista blanca
+//! (`orden::seguridad`, `orden::SEGURAS`). `--atajo url "%1"`, como se
+//! registraba antes, es un alias de `--url`.
 //!
-//! Cualquier pagina web puede lanzar un `pixpinmax:`, asi que por esa via
-//! solo pasan las acciones de [`DESDE_FUERA`]: abrir y ver cosas, y las de
-//! los botones (marcar una tarea, posponer un recordatorio, conservar una
-//! captura). Nada que borre, envie o escriba texto nuevo.
+//! Cualquier pagina web puede lanzar el enlace, asi que solo pasa directo lo
+//! de la lista blanca: abrir y ver cosas, escribir, y lo de los botones
+//! (marcar una tarea, posponer un recordatorio, conservar una captura). Lo
+//! demas pregunta con un cuadro; una ruta de red, nunca.
 //!
 //! Lo puro (el XML, las entradas del registro, la seña) se prueba sin
 //! Windows; [`mostrar`] es lo unico que saca un toast de verdad.
@@ -49,19 +50,9 @@ use std::path::{Path, PathBuf};
 pub const AUMID: &str = "PixPinMax.App";
 /// El nombre que sale en la notificacion.
 pub const NOMBRE: &str = "PixPin Max";
-/// El esquema del protocolo de los botones.
+/// El esquema que siempre es nuestro y que se registra al arrancar
+/// (`pixpin:` solo si esta libre: [`registrar`]).
 pub const ESQUEMA: &str = "pixpinmax";
-
-/// Las acciones que un boton (o cualquiera, por el protocolo) puede pedir.
-pub const DESDE_FUERA: [&str; 7] = [
-    "abrir",
-    "asistente",
-    "ventana",
-    "pinear",
-    "marcar_tarea",
-    "posponer",
-    "conservar_captura",
-];
 
 /// Un boton: su rotulo y el pedido que manda.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -155,30 +146,37 @@ pub fn xml(t: &Toast) -> String {
 /// Lo que se escribe en `HKCU`, como (clave, valor, texto): la identidad y
 /// el protocolo. `icono`: un PNG para la notificacion, si hay.
 pub fn entradas(exe: &Path, icono: Option<&Path>) -> Vec<(String, String, String)> {
+    entradas_con(exe, icono, &[ESQUEMA])
+}
+
+/// [`entradas`] con los esquemas que se registran. La orden es la misma de
+/// `herramientas/integraciones.ps1`: `--url "%1"`.
+pub fn entradas_con(exe: &Path, icono: Option<&Path>, esquemas: &[&str]) -> Vec<(String, String, String)> {
     let exe = exe.display().to_string();
     let id = format!(r"Software\Classes\AppUserModelId\{AUMID}");
     let mut v = vec![(id.clone(), "DisplayName".to_string(), NOMBRE.to_string())];
     if let Some(i) = icono {
         v.push((id, "IconUri".into(), i.display().to_string()));
     }
-    let p = format!(r"Software\Classes\{ESQUEMA}");
-    v.push((p.clone(), String::new(), format!("URL:{NOMBRE}")));
-    v.push((p.clone(), "URL Protocol".into(), String::new()));
-    v.push((format!(r"{p}\DefaultIcon"), String::new(), format!("\"{exe}\",0")));
-    v.push((
-        format!(r"{p}\shell\open\command"),
-        String::new(),
-        format!("\"{exe}\" {} {} \"%1\"", crate::jump_list::ORDEN, crate::jump_list::URL),
-    ));
+    for esquema in esquemas {
+        let p = format!(r"Software\Classes\{esquema}");
+        v.push((p.clone(), String::new(), format!("URL:{NOMBRE}")));
+        v.push((p.clone(), "URL Protocol".into(), String::new()));
+        v.push((format!(r"{p}\DefaultIcon"), String::new(), format!("\"{exe}\",0")));
+        v.push((format!(r"{p}\shell\open\command"), String::new(), format!("\"{exe}\" --url \"%1\"")));
+    }
     v
 }
 
 /// **Da de alta la identidad y el protocolo** (idempotente: se llama en
-/// cada arranque, y si el exe se movio deja la ruta nueva).
+/// cada arranque, y si el exe se movio deja la ruta nueva). `pixpinmax:`
+/// siempre; `pixpin:` solo si esta libre o ya es nuestro
+/// (`orden::pixpin_es_nuestro_o_libre`): no se le quita al PixPin original.
 pub fn registrar(exe: &Path, icono: Option<&Path>) -> windows::core::Result<()> {
     use windows::Win32::System::Registry::{HKEY_CURRENT_USER, REG_SZ, RegSetKeyValueW};
     use windows::core::HSTRING;
-    for (clave, nombre, texto) in entradas(exe, icono) {
+    let esquemas: &[&str] = if crate::orden::pixpin_es_nuestro_o_libre() { &[ESQUEMA, "pixpin"] } else { &[ESQUEMA] };
+    for (clave, nombre, texto) in entradas_con(exe, icono, esquemas) {
         let v = HSTRING::from(texto.as_str());
         let bytes = (v.len() + 1) * 2;
         // SAFETY: las cadenas son HSTRING vivas durante la llamada, con su
@@ -254,79 +252,45 @@ pub fn mostrar_o(t: Toast, si_no: impl FnOnce(&Toast) + Send + 'static) {
 
 // --- La seña de los botones -------------------------------------------------
 
-/// Codifica un trozo de la seña (todo lo que no sea letra, cifra o `-_.~`).
-fn codificar(t: &str) -> String {
-    let mut s = String::new();
-    for b in t.bytes() {
-        if b.is_ascii_alphanumeric() || b"-_.~".contains(&b) {
-            s.push(b as char);
-        } else {
-            s.push_str(&format!("%{b:02X}"));
-        }
-    }
-    s
-}
-
-fn decodificar(t: &str) -> Option<String> {
-    let b = t.as_bytes();
-    let mut v = Vec::with_capacity(b.len());
-    let mut i = 0;
-    while i < b.len() {
-        if b[i] == b'%' {
-            let h = std::str::from_utf8(b.get(i + 1..i + 3)?).ok()?;
-            v.push(u8::from_str_radix(h, 16).ok()?);
-            i += 3;
-        } else {
-            v.push(if b[i] == b'+' { b' ' } else { b[i] });
-            i += 1;
-        }
-    }
-    String::from_utf8(v).ok()
-}
-
-/// La seña de un pedido: `pixpinmax:pedido?json=…`.
+/// La seña de un pedido: `<esquema de la casa>:pedido?json=…` (el mismo
+/// enlace que `pixpin://pedido?json=…` de la linea de ordenes).
+///
+/// **Firmada** (`orden::firma`): un boton lo hizo la propia app, asi que se
+/// hace sin preguntar aunque lleve una ruta («Abrir» una captura). En las
+/// pruebas, sin firmar: no se toca la clave del equipo.
 pub fn sena(pedido: &serde_json::Value) -> String {
-    format!("{ESQUEMA}:pedido?json={}", codificar(&pedido.to_string()))
+    let s = sena_con(crate::orden::esquema_de_la_casa(), pedido);
+    if cfg!(test) {
+        return s;
+    }
+    crate::orden::firma::firmar(&s).unwrap_or(s)
 }
 
-/// Si un pedido puede llegar por el protocolo ([`DESDE_FUERA`]). El del
-/// asistente, solo para abrir su chat (sin texto, fotos ni automatizacion).
+/// [`sena`] con un esquema dado (las pruebas, que no deben depender de lo
+/// que haya en el registro de este equipo).
+pub fn sena_con(esquema: &str, pedido: &serde_json::Value) -> String {
+    format!("{esquema}:pedido?json={}", crate::orden::codificar(&pedido.to_string()))
+}
+
+/// Si un pedido puede llegar por el protocolo sin preguntar: la lista blanca
+/// de los enlaces (`orden::seguridad`), que es una sola.
 pub fn permitido(p: &serde_json::Value) -> bool {
-    let Some(accion) = p.get("accion").and_then(|a| a.as_str()) else {
-        return false;
-    };
-    if p.get("pixpin").and_then(|v| v.as_u64()) != Some(crate::mensajero::VERSION_PEDIDO) {
-        return false;
-    }
-    if !DESDE_FUERA.contains(&accion) {
-        return false;
-    }
-    if accion == "asistente" {
-        let vacio = |k: &str| p.get(k).is_none_or(|v| v.is_null() || v.as_str() == Some("") || v.as_array().is_some_and(|a| a.is_empty()));
-        return vacio("texto") && vacio("imagenes") && vacio("automatizacion");
-    }
-    true
+    p.is_object()
+        && p.get("pixpin").and_then(|v| v.as_u64()) == Some(crate::mensajero::VERSION_PEDIDO)
+        && crate::orden::seguridad(p) == crate::orden::Seguridad::Directa
 }
 
-/// El pedido de una seña, si es uno de los permitidos. Lo que no se entiende
-/// es `None` (llega de fuera: cualquier pagina puede lanzarla).
+/// El pedido de una seña, si pasa sin preguntar (o va firmada por la app,
+/// `orden::firma`). Lo que no se entiende o pide confirmar es `None`: quien
+/// quiera el cuadro de confirmar usa la linea de ordenes (`--url`), que es
+/// lo que registra el protocolo.
 pub fn pedido_de(sena: &str) -> Option<String> {
-    let s = sena.trim();
-    let (esquema, resto) = s.split_once(':')?;
-    if !esquema.eq_ignore_ascii_case(ESQUEMA) {
-        return None;
-    }
-    let resto = resto.trim_start_matches('/');
-    let (que, consulta) = resto.split_once('?')?;
-    if que.trim_end_matches('/') != "pedido" {
-        return None;
-    }
-    let json = consulta
-        .split('&')
-        .find_map(|par| par.strip_prefix("json="))
-        .and_then(decodificar)?;
-    let v: serde_json::Value = serde_json::from_str(&json).ok()?;
-    (v.is_object() && permitido(&v)).then(|| v.to_string())
+    let l = crate::orden::de_enlace(sena).ok()?;
+    let crate::orden::Orden::Pedidos(v) = l.orden else { return None };
+    let [p] = v.as_slice() else { return None };
+    let firmado = matches!(l.origen, crate::orden::Origen::Enlace { firmado: true });
+    let vale = permitido(p) || (firmado && !matches!(crate::orden::seguridad(p), crate::orden::Seguridad::Prohibida(_)));
+    vale.then(|| p.to_string())
 }
 
 #[cfg(test)]
@@ -358,7 +322,7 @@ mod pruebas {
         assert!(x.starts_with(&format!("<toast activationType=\"protocol\" launch=\"{}\">", sena(&abrir()))), "{x}");
         assert!(x.contains("<text>Hecho: apunta &lt;yeso&gt; &amp; cal</text>"));
         assert!(x.contains("<text>Apunté &quot;comprar yeso&quot; en Inbox</text>"));
-        assert!(x.contains("<action content=\"Hecha\" activationType=\"protocol\" arguments=\"pixpinmax:pedido?json=%7B%22"), "{x}");
+        assert!(x.contains(&format!("<action content=\"Hecha\" activationType=\"protocol\" arguments=\"{}:pedido?json=%7B%22", crate::orden::esquema_de_la_casa())), "{x}");
         assert_eq!(x.matches("<action ").count(), 2);
         // La seña no lleva nada que haya que escapar en XML.
         assert!(!sena(&abrir()).contains(['&', '"', '<']));
@@ -396,7 +360,7 @@ mod pruebas {
             assert_eq!(pedido_de(&sena(&p)), Some(p.to_string()), "{}", sena(&p));
         }
         // Lo que dejan los navegadores (`pixpinmax://pedido/?json=`) vale igual.
-        let s = sena(&abrir()).replace("pixpinmax:pedido", "pixpinmax://pedido/");
+        let s = sena_con("pixpinmax", &abrir()).replace("pixpinmax:pedido", "pixpinmax://pedido/");
         assert_eq!(pedido_de(&s), Some(abrir().to_string()));
     }
 
@@ -411,9 +375,9 @@ mod pruebas {
             json!({"accion": "abrir"}),
             json!(["abrir"]),
         ] {
-            assert_eq!(pedido_de(&sena(&p)), None, "{p}");
+            assert_eq!(pedido_de(&sena_con("pixpinmax", &p)), None, "{p}");
         }
-        for s in ["", "http:pedido?json=%7B%7D", "pixpinmax:asistente", "pixpinmax:pedido?json=%ZZ", "pixpinmax:pedido?x=1", "pixpinmax:pedido"] {
+        for s in ["", "http:pedido?json=%7B%7D", "pixpinmax:borrar_todo", "pixpinmax:pedido?json=%ZZ", "pixpinmax:pedido?x=1", "pixpinmax:pedido"] {
             assert_eq!(pedido_de(s), None, "{s}");
         }
     }
@@ -439,7 +403,7 @@ mod pruebas {
         assert_eq!(valor(r"Software\Classes\pixpinmax", "URL Protocol").as_deref(), Some(""));
         assert_eq!(
             valor(r"Software\Classes\pixpinmax\shell\open\command", "").as_deref(),
-            Some(r#""C:\P\pixpinmax.exe" --atajo url "%1""#)
+            Some(r#""C:\P\pixpinmax.exe" --url "%1""#)
         );
         // Sin icono, no se escribe IconUri.
         assert!(!entradas(Path::new("x.exe"), None).iter().any(|e| e.1 == "IconUri"));
