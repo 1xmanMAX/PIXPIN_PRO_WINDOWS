@@ -224,8 +224,21 @@ fn preparar_el_turno_reinicia_al_70_y_apunta_desde_donde() {
         objetivo: "Planear la fiesta de Lucia".into(),
         ..Default::default()
     };
+    // La ventana, a partir de lo fijo (instrucciones + catalogo), que crece
+    // con cada herramienta nueva: con 8192 a pelo, desde que el catalogo y
+    // `agente::instrucciones()` pasaron de ~5 000 tokens, lo fijo solo ya
+    // rozaba el 70 % y el turno de despues volvia a reiniciar (la prueba
+    // fallaba sin que el calculo estuviera mal). Cabe lo fijo, dos notas
+    // largas, dos cortas y la respuesta; no caben las doce largas.
+    let fijo = {
+        let mut h = catalogo_base();
+        h.push(pixpin_ia::contexto::herramienta_buscar());
+        pixpin_ia::contexto::estimar(&[pixpin_ia::motor::Mensaje::sistema(&pixpin_ia::agente::instrucciones())], &h)
+    };
+    let una_larga = pixpin_ia::contexto::tokens_de_texto(&largo(1));
+    let ventana = ((fijo + 2 * una_larga + 800 + pixpin_ia::contexto::RESERVA_RESPUESTA) as f32 / pixpin_ia::contexto::UMBRAL) as u32;
     let (h, reiniciado) =
-        pensado::preparar_con_hoja(&mut hoja, &notas, "¿y la hora?", 8192, &catalogo_base());
+        pensado::preparar_con_hoja(&mut hoja, &notas, "¿y la hora?", ventana, &catalogo_base());
     assert!(reiniciado);
     assert_eq!(h.len(), 4, "sistema + 2 + el nuevo");
     assert!(
@@ -240,7 +253,7 @@ fn preparar_el_turno_reinicia_al_70_y_apunta_desde_donde() {
     mas.push(nota(21, false, "¿y la hora?"));
     mas.push(nota(22, true, "A las 17:00."));
     let (h, reiniciado) =
-        pensado::preparar_con_hoja(&mut hoja, &mas, "gracias", 8192, &catalogo_base());
+        pensado::preparar_con_hoja(&mut hoja, &mas, "gracias", ventana, &catalogo_base());
     assert!(!reiniciado);
     assert_eq!(h.len(), 6, "sistema + las 4 desde el reinicio + el nuevo");
     assert!(h[0].texto_entero().contains("buscar_historial"));
