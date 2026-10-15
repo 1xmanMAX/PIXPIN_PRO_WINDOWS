@@ -163,7 +163,7 @@ pub(crate) struct IndiceCuaderno {
     lineas: Vec<(u64, u32)>,
     /// El mayor `numero` de todos (tambien los de sistema): el siguiente
     /// mensaje lleva este mas uno (`Cuaderno::siguiente_numero`).
-    mayor_numero: i64,
+    pub(crate) mayor_numero: i64,
     lineas_rotas: u64,
 }
 
@@ -211,7 +211,7 @@ impl Cache {
         self.cuadernos = Vec::new();
     }
 
-    fn quitar(&mut self, fichero: &Path) {
+    pub(crate) fn quitar(&mut self, fichero: &Path) {
         self.cuadernos.retain(|(r, _)| r != fichero);
     }
 
@@ -221,7 +221,10 @@ impl Cache {
     }
 
     /// El indice de `fichero`, rehecho si cambio. `None` si no existe.
-    fn indice(&mut self, fichero: &Path) -> std::io::Result<Option<Arc<IndiceCuaderno>>> {
+    pub(crate) fn indice(
+        &mut self,
+        fichero: &Path,
+    ) -> std::io::Result<Option<Arc<IndiceCuaderno>>> {
         let meta = match std::fs::metadata(fichero) {
             Ok(m) => m,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
@@ -258,7 +261,7 @@ impl Cache {
 
 /// Un id de chat que no puede salir de `proyectos/`: viene de Swift, y un
 /// `../` no puede decidir donde se lee o se escribe.
-fn validar_chat(chat: &str) -> Result<(), ErrorNucleo> {
+pub(crate) fn validar_chat(chat: &str) -> Result<(), ErrorNucleo> {
     if chat.is_empty() || chat == "." || chat == ".." || chat.contains(['/', '\\', '\0']) {
         return Err(ErrorNucleo::Argumento {
             detalle: format!("id de chat no valido: {chat:?}"),
@@ -298,7 +301,7 @@ fn leer_tramo(
 /// La hora de un mensaje nuevo: la de ahora, pero siempre mayor que la del
 /// anterior de este proceso. El id de una nota ES su hora en milisegundos
 /// (`Mensaje::nota`), y dos notas en el mismo milisegundo chocarian.
-fn hora_unica() -> i64 {
+pub(crate) fn hora_unica() -> i64 {
     static ULTIMA: AtomicI64 = AtomicI64::new(0);
     let ahora = crate::ahora_ms();
     let mut previa = ULTIMA.load(Ordering::SeqCst);

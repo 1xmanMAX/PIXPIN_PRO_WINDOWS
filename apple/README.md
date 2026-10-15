@@ -21,7 +21,7 @@ Y además, el puente con Swift:
 
 | Carpeta | Qué hay |
 |---|---|
-| [`nucleo/pixpin-nucleo`](nucleo/pixpin-nucleo) | La API para Swift con **UniFFI**: abrir una carpeta de datos (`Nucleo`), chats y mensajes **por páginas**, escribir una nota, el lienzo como **un solo búfer plano** de `f32` (formato en `src/lienzo.rs`) y sincronizar por TCP (unirse a un grupo, una vuelta, escuchar). |
+| [`nucleo/pixpin-nucleo`](nucleo/pixpin-nucleo) | La API para Swift con **UniFFI**: abrir una carpeta de datos (`Nucleo`), chats y mensajes **por páginas**, escribir una nota, adjuntar un fichero (`adjuntar`: se copia con `guardar_adjunto` y la clase de `clase_de_nombre`, como al soltarlo en Windows) y resolver su ruta (`ruta_absoluta`, `imagenes_del_lienzo`), el lienzo como **un solo búfer plano** de `f32` (formato en `src/lienzo.rs`) y sincronizar por TCP (unirse a un grupo, una vuelta, escuchar). |
 | [`PixPinCore/`](PixPinCore) | El paquete Swift (`Package.swift`, macOS 15 / iOS 18): los enlaces generados y el `PixPinCoreFFI.xcframework` (no se versiona). |
 | [`herramientas/xcframework.sh`](herramientas/xcframework.sh) | En un Mac: compila las cuatro plataformas, genera los enlaces y hace el xcframework. |
 
