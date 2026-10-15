@@ -112,6 +112,7 @@ public struct VistaChat: View {
                     .textFieldStyle(.plain)
                     .lineLimit(1...8)
                     .onSubmit(enviar)
+                BotonVoz(chat: chat, almacen: almacen)
                 Button("Enviar", action: enviar)
                     .keyboardShortcut(.return, modifiers: .command)
                     .disabled(borrador.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
@@ -181,7 +182,9 @@ struct Burbuja: View {
                 Text(mensaje.texto).textSelection(.enabled)
             case "IMAGEN" where mensaje.ruta != nil:
                 BurbujaImagen(mensaje: mensaje, chat: chat, almacen: almacen)
-            case "ARCHIVO" where mensaje.ruta != nil, "VOZ" where mensaje.ruta != nil:
+            case "VOZ" where mensaje.ruta != nil:
+                BurbujaVoz(mensaje: mensaje, chat: chat, almacen: almacen)
+            case "ARCHIVO" where mensaje.ruta != nil:
                 BurbujaArchivo(mensaje: mensaje, chat: chat, almacen: almacen)
             case "DIBUJO" where mensaje.referencia != nil:
                 BurbujaDibujo(mensaje: mensaje, chat: chat, almacen: almacen)

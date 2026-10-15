@@ -497,6 +497,22 @@ fileprivate struct FfiConverterUInt32: FfiConverterPrimitive {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterInt32: FfiConverterPrimitive {
+    typealias FfiType = Int32
+    typealias SwiftType = Int32
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Int32 {
+        return try lift(readInt(&buf))
+    }
+
+    public static func write(_ value: Int32, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterUInt64: FfiConverterPrimitive {
     typealias FfiType = UInt64
     typealias SwiftType = UInt64
@@ -1234,6 +1250,24 @@ public protocol NucleoProtocol: AnyObject, Sendable {
      */
     func unirseAGrupo(host: String, puerto: UInt16, codigo: String) throws  -> InfoAparato
     
+    /**
+     * **Guarda una nota de voz grabada aqui** en un chat: copia el `.m4a`
+     * de `ruta_origen` dentro del proyecto como `voz_<hora>.m4a` (clase
+     * `VOZ`) y escribe su linea con `duracionMs` y `picos`, como Windows
+     * (`guardar_la_voz`). Bloqueante: Swift lo llama fuera del hilo
+     * principal. El fichero de origen no se toca (lo borra quien lo grabo).
+     */
+    func adjuntarVoz(chat: String, rutaOrigen: String, duracionMs: Int64, picos: [Int32]) throws  -> MensajeChat
+    
+    /**
+     * **Escribe el texto de una nota de voz** (`mensaje` es su id) en su
+     * linea del cuaderno: `transcripcion` con sus minutos y
+     * `estadoDelTexto`, igual que `voz::aplicar` de Windows. Lo demas de la
+     * linea (tambien lo que solo entiende el movil) queda como estaba.
+     * Devuelve el mensaje como quedo. Bloqueante (reescribe el cuaderno).
+     */
+    func ponerTranscripcion(chat: String, mensaje: String, segmentos: [SegmentoVoz]) throws  -> MensajeChat
+    
 }
 /**
  * **Una carpeta de datos de PixPin abierta**: el objeto con el que trabaja
@@ -1596,6 +1630,45 @@ open func unirseAGrupo(host: String, puerto: UInt16, codigo: String)throws  -> I
         FfiConverterString.lower(host),
         FfiConverterUInt16.lower(puerto),
         FfiConverterString.lower(codigo),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * **Guarda una nota de voz grabada aqui** en un chat: copia el `.m4a`
+     * de `ruta_origen` dentro del proyecto como `voz_<hora>.m4a` (clase
+     * `VOZ`) y escribe su linea con `duracionMs` y `picos`, como Windows
+     * (`guardar_la_voz`). Bloqueante: Swift lo llama fuera del hilo
+     * principal. El fichero de origen no se toca (lo borra quien lo grabo).
+     */
+open func adjuntarVoz(chat: String, rutaOrigen: String, duracionMs: Int64, picos: [Int32])throws  -> MensajeChat  {
+    return try  FfiConverterTypeMensajeChat_lift(try rustCallWithError(FfiConverterTypeErrorNucleo_lift) {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_nucleo_adjuntar_voz(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(chat),
+        FfiConverterString.lower(rutaOrigen),
+        FfiConverterInt64.lower(duracionMs),
+        FfiConverterSequenceInt32.lower(picos),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * **Escribe el texto de una nota de voz** (`mensaje` es su id) en su
+     * linea del cuaderno: `transcripcion` con sus minutos y
+     * `estadoDelTexto`, igual que `voz::aplicar` de Windows. Lo demas de la
+     * linea (tambien lo que solo entiende el movil) queda como estaba.
+     * Devuelve el mensaje como quedo. Bloqueante (reescribe el cuaderno).
+     */
+open func ponerTranscripcion(chat: String, mensaje: String, segmentos: [SegmentoVoz])throws  -> MensajeChat  {
+    return try  FfiConverterTypeMensajeChat_lift(try rustCallWithError(FfiConverterTypeErrorNucleo_lift) {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_nucleo_poner_transcripcion(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(chat),
+        FfiConverterString.lower(mensaje),
+        FfiConverterSequenceTypeSegmentoVoz.lower(segmentos),uniffiCallStatus
     )
 })
 }
@@ -2199,6 +2272,21 @@ public struct MensajeChat: Equatable, Hashable {
      */
     public var referencia: String?
     public var pagina: UInt32?
+    /**
+     * Lo que dura el audio de una nota de voz, en milisegundos (0 si no es
+     * una o no se sabe).
+     */
+    public var duracionMs: Int64
+    /**
+     * El texto de una nota de voz con sus minutos (`[0:05] lo dicho`), si
+     * ya se paso a texto. Ver [`crate::voz`].
+     */
+    public var transcripcion: String?
+    /**
+     * Los picos de la onda de una nota de voz: enteros de 0 a 32767, como
+     * mucho 256 (el campo `picos` del movil). Vacio si no los trae.
+     */
+    public var picos: [Int32]
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -2222,7 +2310,19 @@ public struct MensajeChat: Equatable, Hashable {
          */codigoChat: String?, respondeA: String?, emoji: String?, fijado: Bool, 
         /**
          * El dibujo o la hoja a la que apunta (un `DIBUJO`, una `PAGINA`).
-         */referencia: String?, pagina: UInt32?) {
+         */referencia: String?, pagina: UInt32?, 
+        /**
+         * Lo que dura el audio de una nota de voz, en milisegundos (0 si no es
+         * una o no se sabe).
+         */duracionMs: Int64, 
+        /**
+         * El texto de una nota de voz con sus minutos (`[0:05] lo dicho`), si
+         * ya se paso a texto. Ver [`crate::voz`].
+         */transcripcion: String?, 
+        /**
+         * Los picos de la onda de una nota de voz: enteros de 0 a 32767, como
+         * mucho 256 (el campo `picos` del movil). Vacio si no los trae.
+         */picos: [Int32]) {
         self.id = id
         self.cuando = cuando
         self.clase = clase
@@ -2237,6 +2337,9 @@ public struct MensajeChat: Equatable, Hashable {
         self.fijado = fijado
         self.referencia = referencia
         self.pagina = pagina
+        self.duracionMs = duracionMs
+        self.transcripcion = transcripcion
+        self.picos = picos
     }
 
     
@@ -2268,7 +2371,10 @@ public struct FfiConverterTypeMensajeChat: FfiConverterRustBuffer {
                 emoji: FfiConverterOptionString.read(from: &buf), 
                 fijado: FfiConverterBool.read(from: &buf), 
                 referencia: FfiConverterOptionString.read(from: &buf), 
-                pagina: FfiConverterOptionUInt32.read(from: &buf)
+                pagina: FfiConverterOptionUInt32.read(from: &buf), 
+                duracionMs: FfiConverterInt64.read(from: &buf), 
+                transcripcion: FfiConverterOptionString.read(from: &buf), 
+                picos: FfiConverterSequenceInt32.read(from: &buf)
         )
     }
 
@@ -2287,6 +2393,9 @@ public struct FfiConverterTypeMensajeChat: FfiConverterRustBuffer {
         FfiConverterBool.write(value.fijado, into: &buf)
         FfiConverterOptionString.write(value.referencia, into: &buf)
         FfiConverterOptionUInt32.write(value.pagina, into: &buf)
+        FfiConverterInt64.write(value.duracionMs, into: &buf)
+        FfiConverterOptionString.write(value.transcripcion, into: &buf)
+        FfiConverterSequenceInt32.write(value.picos, into: &buf)
     }
 }
 
@@ -2560,6 +2669,64 @@ public func FfiConverterTypeResumenSincro_lift(_ buf: RustBuffer) throws -> Resu
 #endif
 public func FfiConverterTypeResumenSincro_lower(_ value: ResumenSincro) -> RustBuffer {
     return FfiConverterTypeResumenSincro.lower(value)
+}
+
+
+/**
+ * Un trozo de lo reconocido y en que milisegundo del audio empieza (el
+ * `Segmento` de `pixpin-voz`; Swift lo saca de `SFTranscriptionSegment`).
+ */
+public struct SegmentoVoz: Equatable, Hashable {
+    public var desdeMs: Int64
+    public var texto: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(desdeMs: Int64, texto: String) {
+        self.desdeMs = desdeMs
+        self.texto = texto
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension SegmentoVoz: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeSegmentoVoz: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SegmentoVoz {
+        return
+            try SegmentoVoz(
+                desdeMs: FfiConverterInt64.read(from: &buf), 
+                texto: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: SegmentoVoz, into buf: inout [UInt8]) {
+        FfiConverterInt64.write(value.desdeMs, into: &buf)
+        FfiConverterString.write(value.texto, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSegmentoVoz_lift(_ buf: RustBuffer) throws -> SegmentoVoz {
+    return try FfiConverterTypeSegmentoVoz.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSegmentoVoz_lower(_ value: SegmentoVoz) -> RustBuffer {
+    return FfiConverterTypeSegmentoVoz.lower(value)
 }
 
 
@@ -2886,6 +3053,31 @@ fileprivate struct FfiConverterOptionTypeCajaLienzo: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceInt32: FfiConverterRustBuffer {
+    typealias SwiftType = [Int32]
+
+    public static func write(_ value: [Int32], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterInt32.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [Int32] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [Int32]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterInt32.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceUInt64: FfiConverterRustBuffer {
     typealias SwiftType = [UInt64]
 
@@ -3028,6 +3220,31 @@ fileprivate struct FfiConverterSequenceTypeParTxt: FfiConverterRustBuffer {
         seq.reserveCapacity(Int(len))
         for _ in 0 ..< len {
             seq.append(try FfiConverterTypeParTxt.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeSegmentoVoz: FfiConverterRustBuffer {
+    typealias SwiftType = [SegmentoVoz]
+
+    public static func write(_ value: [SegmentoVoz], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeSegmentoVoz.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [SegmentoVoz] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [SegmentoVoz]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeSegmentoVoz.read(from: &buf))
         }
         return seq
     }
@@ -3177,6 +3394,12 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_pixpin_nucleo_checksum_method_nucleo_unirse_a_grupo() != 64359) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_nucleo_adjuntar_voz() != 38808) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_nucleo_poner_transcripcion() != 40062) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_pixpin_nucleo_checksum_method_lienzo_caja() != 1730) {

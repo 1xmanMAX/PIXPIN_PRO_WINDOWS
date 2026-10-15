@@ -25,7 +25,7 @@ enum ModoCaptura {
 
 /// Lo que se hace con la zona elegida (la barra y sus atajos).
 enum AccionCaptura: Int, CaseIterable {
-    case copiar, pinear, alChat, texto, guardar, cerrar
+    case copiar, pinear, alChat, texto, guardar, grabar, cerrar
 
     var titulo: String {
         switch self {
@@ -34,6 +34,7 @@ enum AccionCaptura: Int, CaseIterable {
         case .alChat: "Al chat"
         case .texto: "Texto"
         case .guardar: "Guardar"
+        case .grabar: "Grabar"
         case .cerrar: "Cerrar"
         }
     }
@@ -45,6 +46,7 @@ enum AccionCaptura: Int, CaseIterable {
         case .alChat: "bubble.left"
         case .texto: "text.viewfinder"
         case .guardar: "square.and.arrow.down"
+        case .grabar: "record.circle"
         case .cerrar: "xmark"
         }
     }
@@ -56,6 +58,7 @@ enum AccionCaptura: Int, CaseIterable {
         case .alChat: "⌃M o ⌘M"
         case .texto: "⌃T o ⌘T"
         case .guardar: "⌃S o ⌘S"
+        case .grabar: "⌃G o ⌘G"
         case .cerrar: "Esc"
         }
     }
@@ -300,6 +303,14 @@ final class VistaCaptura: NSView {
         return foto.cropping(to: px)
     }
 
+    /// La zona elegida para grabarla en video (`Grabar/`): su pantalla y la
+    /// zona en puntos con el origen arriba, como la pide ScreenCaptureKit.
+    func zonaDeGrabacion() -> ZonaDeGrabacion? {
+        guard elegida, let numero = window?.screen?.numeroDePantalla else { return nil }
+        let rect = GeometriaGrabacion.desdeVista(seleccion, altoPantalla: bounds.height)
+        return ZonaDeGrabacion(pantalla: numero, rect: rect, escala: escalaFoto)
+    }
+
     /// Pixeles por punto de la foto (para el PPP del PNG).
     var escalaFoto: CGFloat {
         guard let foto, bounds.width > 0 else { return escalaPantalla }
@@ -460,7 +471,7 @@ final class VistaCaptura: NSView {
             boton.toolTip = "\(accion.titulo) (\(accion.atajo))"
             boton.refusesFirstResponder = true
             boton.isEnabled = disponible(accion)
-            if accion == .copiar { boton.bezelColor = .controlAccentColor }
+            if accion == (destino.capturador?.accionIntro ?? .copiar) { boton.bezelColor = .controlAccentColor }
             return boton
         }
         let pila = NSStackView(views: botones)

@@ -21,7 +21,7 @@ Y además, el puente con Swift:
 
 | Carpeta | Qué hay |
 |---|---|
-| [`nucleo/pixpin-nucleo`](nucleo/pixpin-nucleo) | La API para Swift con **UniFFI**: abrir una carpeta de datos (`Nucleo`), chats y mensajes **por páginas**, escribir una nota, adjuntar un fichero (`adjuntar`: se copia con `guardar_adjunto` y la clase de `clase_de_nombre`, como al soltarlo en Windows) y resolver su ruta (`ruta_absoluta`, `imagenes_del_lienzo`), el lienzo como **un solo búfer plano** de `f32` (formato en `src/lienzo.rs`) y sincronizar por TCP (unirse a un grupo, una vuelta, escuchar). |
+| [`nucleo/pixpin-nucleo`](nucleo/pixpin-nucleo) | La API para Swift con **UniFFI**: abrir una carpeta de datos (`Nucleo`), chats y mensajes **por páginas**, escribir una nota, guardar una nota de voz y su texto (`adjuntar_voz`, `poner_transcripcion`), adjuntar un fichero (`adjuntar`: se copia con `guardar_adjunto` y la clase de `clase_de_nombre`, como al soltarlo en Windows) y resolver su ruta (`ruta_absoluta`, `imagenes_del_lienzo`), el lienzo como **un solo búfer plano** de `f32` (formato en `src/lienzo.rs`) y sincronizar por TCP (unirse a un grupo, una vuelta, escuchar). |
 | [`PixPinCore/`](PixPinCore) | El paquete Swift (`Package.swift`, macOS 15 / iOS 18): los enlaces generados y el `PixPinCoreFFI.xcframework` (no se versiona). |
 | [`herramientas/xcframework.sh`](herramientas/xcframework.sh) | En un Mac: compila las cuatro plataformas, genera los enlaces y hace el xcframework. |
 
@@ -110,6 +110,19 @@ pánico de Rust llega a Swift como error en vez de cerrar la app.
   - [x] Pines flotantes (imagen, PDF, vídeo), Live Text y OCR con Vision.
   - [x] Adjuntos en el chat: miniaturas con ImageIO y caché con tope, Quick Look, soltar y ⌘V.
   - [x] Sincronizar por la Wi‑Fi (Bonjour) con Windows y Android.
+  - [ ] Notas de voz (`app/Sources/PixPinKit/Voz/`, escrito; falta verlo en verde en la CI):
+        microfono con `AVAudioEngine` → `.m4a` AAC-LC **mono** (el formato de Windows y
+        Android; 32 kbps como el movil, 44,1/48 kHz como la tarjeta), `voz_<ms>.m4a` con
+        `duracionMs` y `picos` (0–32767, ≤256, uno cada 50 ms) en la misma linea
+        (`Nucleo::adjuntar_voz`); el texto en el aparato con `SFSpeechRecognizer`
+        (`requiresOnDeviceRecognition`, es-ES o el del sistema) guardado como Windows
+        (`Nucleo::poner_transcripcion`: `[m:ss] ...` en `transcripcion` y `estadoDelTexto`).
+        Burbuja `VOZ` con un solo `AVAudioPlayer` para toda la app.
+  - [ ] Grabar la pantalla (`app/Sources/PixPinKit/Grabar/`, escrito; falta la CI):
+        «Grabar pantalla» (⌃⌥R) elige la zona con la captura (Intro o ⌘G graba),
+        `SCStream` (YUV 4:2:0, 30 fps) → `AVAssetWriter` H.264 por hardware (sonido del
+        sistema opcional, AAC) → `capturas/captura-AAAAMMDD-HHMMSS.mp4`; punto rojo en la
+        barra de menus y «Detener grabación». Sin GIF todavia.
 - [ ] `por-adaptar/` → `nucleo/`:
   - [x] `pixpin-codec` (decodificar con `image`; WIC, vista reducida y portapapeles tras
         `#[cfg(windows)]`; ImageIO y `NSPasteboard` desde Swift).

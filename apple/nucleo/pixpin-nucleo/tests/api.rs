@@ -373,6 +373,119 @@ fn adjuntar_copia_el_fichero_y_escribe_su_mensaje_como_windows() {
 }
 
 #[test]
+fn una_nota_de_voz_se_guarda_y_se_pasa_a_texto_como_en_windows() {
+    let t = Temporal::nueva("voz");
+    let n = t.nucleo("Mac");
+    let raiz = PathBuf::from(n.raiz());
+    let obra = n.crear_chat("Obra".into()).unwrap();
+    let fuera = t.0.join("fuera");
+    std::fs::create_dir_all(&fuera).unwrap();
+    let audio = fuera.join("grabando.m4a");
+    std::fs::write(&audio, b"no es audio de verdad").unwrap();
+
+    // Mas picos de la cuenta y fuera de rango: se acotan como en el movil.
+    let picos: Vec<i32> = (0..600).map(|i| if i == 0 { -5 } else { 40_000 }).collect();
+    let m = n
+        .adjuntar_voz(obra.id.clone(), audio.display().to_string(), 4200, picos)
+        .unwrap();
+    assert_eq!(m.clase, "VOZ");
+    assert!(
+        m.nombre.starts_with("voz_") && m.nombre.ends_with(".m4a"),
+        "{}",
+        m.nombre
+    );
+    assert_eq!(
+        m.ruta.as_deref(),
+        Some(format!("archivos/{}", m.nombre).as_str())
+    );
+    assert_eq!(m.duracion_ms, 4200);
+    assert!(m.picos.len() <= 256 && !m.picos.is_empty());
+    assert!(m.picos.iter().all(|p| (0..=32767).contains(p)));
+    assert_eq!(m.transcripcion, None);
+    // El origen se queda donde estaba (lo borra quien grabo).
+    assert!(audio.exists());
+
+    // En el disco: una sola linea, con `duracionMs` y `picos` del movil.
+    let carpeta = almacen::carpeta(&raiz, &obra.id);
+    let texto = std::fs::read_to_string(carpeta.join("guardados.jsonl")).unwrap();
+    assert_eq!(texto.lines().count(), 1);
+    let linea: serde_json::Value = serde_json::from_str(texto.lines().next().unwrap()).unwrap();
+    assert_eq!(linea["clase"], "VOZ");
+    assert_eq!(linea["duracionMs"], 4200);
+    assert!(linea["picos"].as_array().unwrap().len() <= 256);
+
+    // El texto: con sus minutos y su estado, sin tocar lo demas de la linea.
+    let hecho = n
+        .poner_transcripcion(
+            obra.id.clone(),
+            m.id.clone(),
+            vec![
+                pixpin_nucleo::SegmentoVoz {
+                    desde_ms: 0,
+                    texto: "llamar al".into(),
+                },
+                pixpin_nucleo::SegmentoVoz {
+                    desde_ms: 600,
+                    texto: "aparejador".into(),
+                },
+                pixpin_nucleo::SegmentoVoz {
+                    desde_ms: 83_000,
+                    texto: "por los niveles".into(),
+                },
+            ],
+        )
+        .unwrap();
+    assert_eq!(
+        hecho.transcripcion.as_deref(),
+        Some("[0:00] llamar al aparejador\n\n[1:23] por los niveles")
+    );
+    assert_eq!(hecho.resumen, hecho.transcripcion.clone().unwrap());
+    assert_eq!(hecho.duracion_ms, 4200);
+    assert_eq!(hecho.picos, m.picos);
+    let leido = cuaderno::Cuaderno::leer_de(&carpeta).unwrap();
+    let guardado = &leido.mensajes[0];
+    assert_eq!(guardado.transcripcion, hecho.transcripcion);
+    assert_eq!(
+        guardado.resto.get("estadoDelTexto"),
+        Some(&serde_json::json!("bien"))
+    );
+    assert!(guardado.resto.contains_key("picos"));
+    // La pagina lo trae ya con su texto (la cache se rehizo).
+    let pagina = n.ultimos_mensajes(obra.id.clone(), 10).unwrap();
+    assert_eq!(pagina.mensajes, vec![hecho.clone()]);
+
+    // Sin nada reconocido: texto vacio y `mal`, como Windows.
+    let vacio = n
+        .poner_transcripcion(obra.id.clone(), m.id.clone(), Vec::new())
+        .unwrap();
+    assert_eq!(vacio.transcripcion.as_deref(), Some(""));
+    let leido = cuaderno::Cuaderno::leer_de(&carpeta).unwrap();
+    assert_eq!(
+        leido.mensajes[0].resto.get("estadoDelTexto"),
+        Some(&serde_json::json!("mal"))
+    );
+
+    // Lo que no vale: un mensaje que no esta, uno que no es de voz, un
+    // chat sin cuaderno.
+    assert!(matches!(
+        n.poner_transcripcion(obra.id.clone(), "no-esta".into(), Vec::new()),
+        Err(ErrorNucleo::NoExiste { .. })
+    ));
+    let nota = n
+        .escribir_nota(obra.id.clone(), "texto".into(), None)
+        .unwrap();
+    assert!(matches!(
+        n.poner_transcripcion(obra.id.clone(), nota.id.clone(), Vec::new()),
+        Err(ErrorNucleo::Argumento { .. })
+    ));
+    let otro = n.crear_chat("Vacio".into()).unwrap();
+    assert!(matches!(
+        n.poner_transcripcion(otro.id, m.id, Vec::new()),
+        Err(ErrorNucleo::NoExiste { .. })
+    ));
+}
+
+#[test]
 fn las_fotos_de_un_lienzo_salen_con_su_ruta_absoluta() {
     let t = Temporal::nueva("fotos-lienzo");
     let n = t.nucleo("Mac");

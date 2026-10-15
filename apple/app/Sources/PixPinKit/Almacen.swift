@@ -200,7 +200,19 @@ public final class Almacen: ObservableObject {
         }
     }
 
-    private func anadir(_ nuevos: [MensajeChat], en chat: String) {
+    /// Un mensaje que cambio (el texto de una nota de voz) en lo cargado.
+    func sustituir(_ m: MensajeChat, en chat: String) {
+        guard let i = mensajes[chat]?.firstIndex(where: { $0.id == m.id }) else { return }
+        mensajes[chat]?[i] = m
+        NotificationCenter.default.post(name: .pixpinCambioLocal, object: nil)
+    }
+
+    /// Para las extensiones de otros ficheros (voz): dice o borra el error.
+    func ponerError(_ texto: String?) {
+        error = texto
+    }
+
+    func anadir(_ nuevos: [MensajeChat], en chat: String) {
         guard !nuevos.isEmpty else { return }
         mensajes[chat, default: []].append(contentsOf: nuevos)
         totales[chat, default: 0] += UInt64(nuevos.count)

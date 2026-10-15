@@ -83,6 +83,15 @@ pub struct MensajeChat {
     /// El dibujo o la hoja a la que apunta (un `DIBUJO`, una `PAGINA`).
     pub referencia: Option<String>,
     pub pagina: Option<u32>,
+    /// Lo que dura el audio de una nota de voz, en milisegundos (0 si no es
+    /// una o no se sabe).
+    pub duracion_ms: i64,
+    /// El texto de una nota de voz con sus minutos (`[0:05] lo dicho`), si
+    /// ya se paso a texto. Ver [`crate::voz`].
+    pub transcripcion: Option<String>,
+    /// Los picos de la onda de una nota de voz: enteros de 0 a 32767, como
+    /// mucho 256 (el campo `picos` del movil). Vacio si no los trae.
+    pub picos: Vec<i32>,
 }
 
 /// Una pagina de mensajes, del mas antiguo al mas nuevo.
@@ -126,9 +135,13 @@ impl From<Mensaje> for MensajeChat {
             .and_then(|c| serde_json::to_value(c).ok())
             .and_then(|v| v.as_str().map(str::to_string))
             .unwrap_or_default();
+        let picos = crate::voz::picos_de(&m);
         MensajeChat {
             resumen: m.resumen(),
             codigo_chat: m.codigo_chat(),
+            duracion_ms: m.duracion_ms,
+            transcripcion: m.transcripcion,
+            picos,
             id: m.id,
             cuando: m.cuando,
             clase,

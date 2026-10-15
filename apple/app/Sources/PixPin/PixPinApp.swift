@@ -9,8 +9,10 @@ struct PixPinApp: App {
     @StateObject private var estado = EstadoApp()
 
     var body: some Scene {
-        MenuBarExtra("PixPin", systemImage: "pin.fill") {
-            MenuPrincipal(estado: estado)
+        MenuBarExtra {
+            MenuPrincipal(estado: estado, grabador: GrabadorPantalla.compartido)
+        } label: {
+            EtiquetaBarra(grabador: GrabadorPantalla.compartido)
         }
         Window("Proyectos", id: "proyectos") {
             if let almacen = estado.almacen {
@@ -47,6 +49,7 @@ final class EstadoApp: ObservableObject {
     /// Capturar una zona (Ctrl+Option+X en todo el Mac).
     let capturador: Capturador
     private var atajoCaptura: AtajoGlobal?
+    private var atajoGrabar: AtajoGlobal?
 
     init() {
         capturador = Capturador()
@@ -90,16 +93,68 @@ final class EstadoApp: ObservableObject {
             }
         }
         atajoCaptura = AtajoGlobal(.capturar) { capturador.capturar() }
+        // Grabar la pantalla: elegir la zona con la misma captura (Intro o
+        // ⌘G graba) y parar desde la barra de menus o con el mismo atajo.
+        let grabador = GrabadorPantalla.compartido
+        capturador.alGrabar = { zona in Task { await grabador.empezar(zona) } }
+        grabador.alGuardar = { NSWorkspace.shared.activateFileViewerSelecting([$0]) }
+        atajoGrabar = AtajoGlobal(.grabar) { EstadoApp.grabarOParar(capturador) }
     }
+
+    /// Empieza a elegir que grabar o, si ya graba, para.
+    static func grabarOParar(_ capturador: Capturador) {
+        let grabador = GrabadorPantalla.compartido
+        if grabador.grabando {
+            Task { await grabador.parar() }
+        } else {
+            capturador.capturar(paraGrabar: true)
+        }
+    }
+}
+
+/// El icono de la barra de menus: el pin, o un punto rojo mientras graba.
+struct EtiquetaBarra: View {
+    @ObservedObject var grabador: GrabadorPantalla
+
+    var body: some View {
+        if grabador.grabando {
+            Image(nsImage: EtiquetaBarra.puntoRojo)
+        } else {
+            Image(systemName: "pin.fill")
+        }
+    }
+
+    /// En color (no plantilla): la barra de menus pinta las plantillas en
+    /// blanco o negro, y el rojo es justo lo que tiene que verse.
+    static let puntoRojo: NSImage = {
+        let config = NSImage.SymbolConfiguration(pointSize: 14, weight: .regular)
+            .applying(NSImage.SymbolConfiguration(paletteColors: [.white, .systemRed]))
+        let imagen = NSImage(systemSymbolName: "record.circle.fill", accessibilityDescription: "Grabando")?
+            .withSymbolConfiguration(config) ?? NSImage()
+        imagen.isTemplate = false
+        return imagen
+    }()
 }
 
 struct MenuPrincipal: View {
     @ObservedObject var estado: EstadoApp
+    @ObservedObject var grabador: GrabadorPantalla
     @Environment(\.openWindow) private var abrirVentana
 
     var body: some View {
         Button("Capturar zona") { estado.capturador.capturar() }
             .keyboardShortcut("x", modifiers: [.control, .option])
+        if grabador.grabando {
+            Button("Detener grabación") { Task { await grabador.parar() } }
+                .keyboardShortcut("r", modifiers: [.control, .option])
+        } else {
+            Button("Grabar pantalla") { EstadoApp.grabarOParar(estado.capturador) }
+                .keyboardShortcut("r", modifiers: [.control, .option])
+        }
+        Toggle("Grabar con el sonido del sistema", isOn: Binding(
+            get: { grabador.conSonido },
+            set: { grabador.conSonido = $0 }))
+            .disabled(grabador.grabando)
         Button("Proyectos…") {
             abrirVentana(id: "proyectos")
             NSApp.activate()

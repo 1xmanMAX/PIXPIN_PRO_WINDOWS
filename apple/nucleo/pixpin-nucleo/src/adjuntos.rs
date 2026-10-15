@@ -74,6 +74,59 @@ impl Nucleo {
         ruta_origen: String,
         nombre: Option<String>,
     ) -> Result<MensajeChat, ErrorNucleo> {
+        self.adjuntar_con(chat, ruta_origen, nombre, |_| {})
+    }
+
+    /// La ruta absoluta del fichero de un mensaje (su `ruta`) o de una foto
+    /// de un lienzo, para ensenarlo o abrirlo. No comprueba que exista:
+    /// para eso basta mirar el disco desde Swift.
+    pub fn ruta_absoluta(
+        &self,
+        chat: String,
+        ruta_relativa: String,
+    ) -> Result<String, ErrorNucleo> {
+        validar_chat(&chat)?;
+        self.resolver(&chat, &ruta_relativa)
+            .map(|r| r.display().to_string())
+            .ok_or(ErrorNucleo::Argumento {
+                detalle: format!("ruta que no se resuelve en este aparato: {ruta_relativa:?}"),
+            })
+    }
+
+    /// Las fotos de un lienzo del chat con su ruta **absoluta**, todas en
+    /// una llamada (no una por foto). Las que no se pueden resolver en este
+    /// aparato no salen.
+    pub fn imagenes_del_lienzo(
+        &self,
+        chat: String,
+        lienzo: Arc<Lienzo>,
+    ) -> Result<Vec<ImagenDelLienzo>, ErrorNucleo> {
+        validar_chat(&chat)?;
+        Ok(lienzo
+            .imagenes()
+            .into_iter()
+            .filter_map(|i| {
+                let r = self.resolver(&chat, &i.ruta)?;
+                Some(ImagenDelLienzo {
+                    id_objeto: i.id_objeto,
+                    ruta: r.display().to_string(),
+                })
+            })
+            .collect())
+    }
+}
+
+impl Nucleo {
+    /// Lo de [`Nucleo::adjuntar`], con un `retoque` del mensaje ANTES de
+    /// escribir su linea (la duracion y los picos de una nota de voz): asi
+    /// se escribe una sola linea y no una que luego se reescribe.
+    pub(crate) fn adjuntar_con(
+        &self,
+        chat: String,
+        ruta_origen: String,
+        nombre: Option<String>,
+        retoque: impl FnOnce(&mut Mensaje),
+    ) -> Result<MensajeChat, ErrorNucleo> {
         use unicode_normalization::UnicodeNormalization;
         validar_chat(&chat)?;
         let origen = Path::new(&ruta_origen);
@@ -126,7 +179,7 @@ impl Nucleo {
             .map_or(0, |i| i.mayor_numero)
             + 1;
         let cuando = hora_unica();
-        let m = Mensaje::adjunto(
+        let mut m = Mensaje::adjunto(
             cuaderno::clase_de_nombre(&nombre),
             &nombre,
             &relativa,
@@ -138,6 +191,7 @@ impl Nucleo {
                 proyecto: chat.clone(),
             },
         );
+        retoque(&mut m);
         if let Err(e) = cuaderno::anadir(&carpeta, &m) {
             // Sin mensaje, el fichero copiado no lo veria nadie.
             let _ = std::fs::remove_file(&destino);
@@ -151,44 +205,6 @@ impl Nucleo {
         }
         indice.guardar(raiz)?;
         Ok(MensajeChat::from(m))
-    }
-
-    /// La ruta absoluta del fichero de un mensaje (su `ruta`) o de una foto
-    /// de un lienzo, para ensenarlo o abrirlo. No comprueba que exista:
-    /// para eso basta mirar el disco desde Swift.
-    pub fn ruta_absoluta(
-        &self,
-        chat: String,
-        ruta_relativa: String,
-    ) -> Result<String, ErrorNucleo> {
-        validar_chat(&chat)?;
-        self.resolver(&chat, &ruta_relativa)
-            .map(|r| r.display().to_string())
-            .ok_or(ErrorNucleo::Argumento {
-                detalle: format!("ruta que no se resuelve en este aparato: {ruta_relativa:?}"),
-            })
-    }
-
-    /// Las fotos de un lienzo del chat con su ruta **absoluta**, todas en
-    /// una llamada (no una por foto). Las que no se pueden resolver en este
-    /// aparato no salen.
-    pub fn imagenes_del_lienzo(
-        &self,
-        chat: String,
-        lienzo: Arc<Lienzo>,
-    ) -> Result<Vec<ImagenDelLienzo>, ErrorNucleo> {
-        validar_chat(&chat)?;
-        Ok(lienzo
-            .imagenes()
-            .into_iter()
-            .filter_map(|i| {
-                let r = self.resolver(&chat, &i.ruta)?;
-                Some(ImagenDelLienzo {
-                    id_objeto: i.id_objeto,
-                    ruta: r.display().to_string(),
-                })
-            })
-            .collect())
     }
 }
 

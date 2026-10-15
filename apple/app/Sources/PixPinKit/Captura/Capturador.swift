@@ -26,6 +26,8 @@ public final class Capturador {
     public var alMandarAlChat: ((CGImage) -> Void)?
     /// Saca el texto de la imagen (OCR con Vision).
     public var alSacarTexto: ((CGImage) -> Void)?
+    /// Graba en video la zona elegida (`Grabar/GrabadorPantalla`).
+    public var alGrabar: ((ZonaDeGrabacion) -> Void)?
     /// Avisa de que se guardo una captura (por si la galeria esta abierta).
     public var alGuardar: ((URL) -> Void)?
 
@@ -40,6 +42,9 @@ public final class Capturador {
     /// La vista de la pantalla donde esta el raton o donde se empezo.
     private weak var activa: VistaCaptura?
     private var abriendo = false
+    /// Lo que hace Intro: copiar, o grabar si se abrio para grabar.
+    private var intro: AccionCaptura = .copiar
+    var accionIntro: AccionCaptura { intro }
 
     public init(carpetaDeCapturas: URL = carpetaDeDatos().appendingPathComponent("capturas", isDirectory: true)) {
         self.carpetaDeCapturas = carpetaDeCapturas
@@ -50,9 +55,11 @@ public final class Capturador {
 
     /// Empieza una captura: comprueba el permiso, hace la foto de cada
     /// pantalla y pone encima la superposicion. Si ya hay una, no hace nada.
-    public func capturar() {
+    /// Con `paraGrabar`, Intro graba la zona en video en vez de copiarla.
+    public func capturar(paraGrabar: Bool = false) {
         guard !abierta else { return }
         guard PermisoCaptura.asegurar() else { return }
+        intro = paraGrabar && alGrabar != nil ? .grabar : .copiar
         abriendo = true
         Task { @MainActor in
             defer { self.abriendo = false }
@@ -72,6 +79,7 @@ public final class Capturador {
         paneles = []
         activa = nil
         modo = .zona
+        intro = .copiar
         for panel in lista {
             vista(de: panel)?.soltar()
             panel.orderOut(nil)
@@ -109,6 +117,7 @@ public final class Capturador {
         case .pinear: alPinear != nil
         case .alChat: alMandarAlChat != nil
         case .texto: alSacarTexto != nil
+        case .grabar: alGrabar != nil
         }
     }
 
@@ -135,7 +144,7 @@ public final class Capturador {
             cerrar()
             return true
         case 36, 76: // Intro y el Intro del teclado numerico
-            if vista.elegida { accion(.copiar, en: vista) }
+            if vista.elegida { accion(intro, en: vista) }
             return true
         default:
             break
@@ -150,6 +159,7 @@ public final class Capturador {
             case "m": accion = .alChat
             case "t": accion = .texto
             case "s": accion = .guardar
+            case "g": accion = .grabar
             default: accion = nil
             }
             guard let accion else { return false }
@@ -189,6 +199,12 @@ public final class Capturador {
             NSSound.beep()
             return
         }
+        if accion == .grabar {
+            guard let zona = vista.zonaDeGrabacion() else { return }
+            cerrar()
+            alGrabar?(zona)
+            return
+        }
         guard let recorte = vista.recorte() else { return }
         let escala = vista.escalaFoto
         let entera = vista.tamFoto
@@ -205,7 +221,7 @@ public final class Capturador {
             alMandarAlChat?(Capturador.suelto(recorte, entera: entera))
         case .texto:
             alSacarTexto?(Capturador.suelto(recorte, entera: entera))
-        case .cerrar:
+        case .grabar, .cerrar:
             break
         }
     }

@@ -44,6 +44,7 @@ pub mod adjuntos;
 pub mod chats;
 pub mod lienzo;
 pub mod sincro;
+pub mod voz;
 
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -51,6 +52,7 @@ use std::sync::{Arc, Mutex};
 pub use chats::{FichaChat, MensajeChat, PaginaMensajes};
 pub use lienzo::{CajaLienzo, ImagenDelLienzo, Lienzo, LienzoPlano};
 pub use sincro::{AnuncioBonjour, Atendido, Escucha, ParTxt, ResumenSincro};
+pub use voz::SegmentoVoz;
 
 /// Lo que puede salir mal, tal como lo ve Swift (un `enum` que `throws`).
 ///
