@@ -13,12 +13,22 @@
 //! `http://` solo se acepta hacia `127.0.0.1`/`localhost`: es para el
 //! servidor falso de las pruebas. Una clave nunca sale sin cifrar a la red.
 //!
-//! Este modulo habla con el sistema operativo: cada `unsafe` lleva su
+//! Lo de WinHTTP habla con el sistema operativo: cada `unsafe` lleva su
 //! `// SAFETY:`.
+//!
+//! **Fuera de Windows** solo se habla `http://` con este mismo equipo, con
+//! un cliente HTTP/1.1 minimo sobre `TcpStream` (el mismo lector que
+//! `llama-server`, [`crate::servidor::LectorHttp`]): sirve para las pruebas
+//! con el servidor falso y para cualquier motor local. `https://` devuelve
+//! un [`Fallo::Red`] claro: en Apple la nube la habla URLSession desde Swift
+//! (TLS, proxy y certificados del sistema), sin meter un TLS propio en el
+//! ejecutable (§4bis del plan de Apple).
 
+#[cfg(windows)]
 use std::ffi::c_void;
 use std::time::Duration;
 
+#[cfg(windows)]
 use windows::Win32::Networking::WinHttp::{
     WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY, WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
     WINHTTP_ACCESS_TYPE_NO_PROXY, WINHTTP_FLAG_SECURE, WINHTTP_OPEN_REQUEST_FLAGS,
@@ -26,13 +36,16 @@ use windows::Win32::Networking::WinHttp::{
     WinHttpCloseHandle, WinHttpConnect, WinHttpOpen, WinHttpOpenRequest, WinHttpQueryHeaders,
     WinHttpReadData, WinHttpReceiveResponse, WinHttpSendRequest, WinHttpSetTimeouts,
 };
+#[cfg(windows)]
 use windows::core::{HSTRING, PCWSTR, w};
 
 use crate::motor::Seguir;
 
 /// Un asa de WinHTTP que se cierra sola.
+#[cfg(windows)]
 struct Asa(*mut c_void);
 
+#[cfg(windows)]
 impl Drop for Asa {
     fn drop(&mut self) {
         if !self.0.is_null() {
@@ -107,6 +120,7 @@ pub fn partir(url: &str) -> Option<Direccion> {
 
 /// **Manda el POST** y entrega la respuesta a trozos. Bloquea: llamarlo
 /// desde un hilo de fondo. Devuelve `Ok(true)` si `al_trozo` pidio parar.
+#[cfg(windows)]
 pub fn enviar(p: &Pedido, al_trozo: &mut dyn FnMut(&[u8]) -> Seguir) -> Result<bool, Fallo> {
     let d = partir(p.url).ok_or_else(|| Fallo::Red(format!("direccion no valida: {}", p.url)))?;
     let mut cabeceras = String::from("Content-Type: application/json\r\nAccept: text/event-stream\r\n");
@@ -229,6 +243,7 @@ pub fn enviar(p: &Pedido, al_trozo: &mut dyn FnMut(&[u8]) -> Seguir) -> Result<b
 /// # Safety
 /// `peticion` tiene que ser un asa de peticion de WinHTTP viva que ya
 /// recibio la respuesta.
+#[cfg(windows)]
 unsafe fn cabecera(peticion: *mut c_void, nombre: &str) -> Option<String> {
     let nombre = HSTRING::from(nombre);
     let mut buf = vec![0u16; 256];
@@ -248,6 +263,94 @@ unsafe fn cabecera(peticion: *mut c_void, nombre: &str) -> Option<String> {
     }
     let n = (largo as usize / 2).min(buf.len());
     Some(String::from_utf16_lossy(&buf[..n]))
+}
+
+/// **Manda el POST** (fuera de Windows): solo `http://` hacia este equipo.
+/// Mismo contrato que el de WinHTTP: bloquea, entrega la respuesta a
+/// trozos y devuelve `Ok(true)` si `al_trozo` pidio parar.
+#[cfg(not(windows))]
+pub fn enviar(p: &Pedido, al_trozo: &mut dyn FnMut(&[u8]) -> Seguir) -> Result<bool, Fallo> {
+    use std::io::{Read, Write};
+    use std::net::{TcpStream, ToSocketAddrs};
+
+    use crate::servidor::LectorHttp;
+
+    let d = partir(p.url).ok_or_else(|| Fallo::Red(format!("direccion no valida: {}", p.url)))?;
+    if d.segura {
+        return Err(Fallo::Red(
+            "en este sistema el HTTPS lo hace la app (en Apple, URLSession desde Swift), no el nucleo".into(),
+        ));
+    }
+    let red = |que: &str, e: std::io::Error| Fallo::Red(format!("{que}: {e}"));
+    let direccion = (d.servidor.as_str(), d.puerto)
+        .to_socket_addrs()
+        .map_err(|e| red("no se pudo conectar", e))?
+        .next()
+        .ok_or_else(|| Fallo::Red(format!("no se pudo conectar: {} sin direccion", d.servidor)))?;
+    // Los mismos plazos que con WinHTTP: 20 s para conectar y mandar, hasta
+    // 3 min sin recibir nada.
+    let mut s = TcpStream::connect_timeout(&direccion, Duration::from_secs(20)).map_err(|e| red("no se pudo conectar", e))?;
+    let _ = s.set_write_timeout(Some(Duration::from_secs(20)));
+    let _ = s.set_read_timeout(Some(Duration::from_secs(180)));
+    let mut cabeza = format!(
+        "POST {} HTTP/1.1\r\nHost: {}:{}\r\nContent-Type: application/json\r\nAccept: text/event-stream\r\n\
+         Content-Length: {}\r\nConnection: close\r\n",
+        d.ruta,
+        d.servidor,
+        d.puerto,
+        p.cuerpo.len()
+    );
+    for (k, v) in &p.cabeceras {
+        cabeza.push_str(k);
+        cabeza.push_str(": ");
+        cabeza.push_str(v);
+        cabeza.push_str("\r\n");
+    }
+    cabeza.push_str("\r\n");
+    s.write_all(cabeza.as_bytes()).map_err(|e| red("no se pudo mandar", e))?;
+    s.write_all(p.cuerpo).map_err(|e| red("no se pudo mandar", e))?;
+
+    let mut lector = LectorHttp::nuevo();
+    let mut buf = vec![0u8; 16 * 1024];
+    let mut error: Option<Vec<u8>> = None;
+    loop {
+        let n = s.read(&mut buf).map_err(|e| red("se corto la respuesta", e))?;
+        if n == 0 {
+            break;
+        }
+        let cuerpo = lector.meter(&buf[..n]).map_err(|e| Fallo::Red(e.to_string()))?;
+        let Some(codigo) = lector.estado else { continue };
+        if !(200..300).contains(&codigo) {
+            let e = error.get_or_insert_with(Vec::new);
+            e.extend_from_slice(&cuerpo);
+            if e.len() > 64 * 1024 || lector.terminado {
+                break;
+            }
+            continue;
+        }
+        if !cuerpo.is_empty() && al_trozo(&cuerpo) == Seguir::Parar {
+            return Ok(true);
+        }
+        if lector.terminado {
+            break;
+        }
+    }
+    let Some(codigo) = lector.estado else {
+        return Err(Fallo::Red("el servidor no contesto".into()));
+    };
+    if let Some(cuerpo) = error {
+        let esperar = lector
+            .cabecera("retry-after")
+            .and_then(|s| s.trim().parse::<f64>().ok())
+            .filter(|s| s.is_finite() && *s >= 0.0)
+            .map(|s| Duration::from_secs_f64(s.min(120.0)));
+        return Err(Fallo::Http {
+            codigo: u32::from(codigo),
+            cuerpo: String::from_utf8_lossy(&cuerpo).into_owned(),
+            esperar,
+        });
+    }
+    Ok(false)
 }
 
 #[cfg(test)]

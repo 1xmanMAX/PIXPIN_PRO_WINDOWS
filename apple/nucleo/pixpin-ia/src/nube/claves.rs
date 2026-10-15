@@ -14,29 +14,118 @@
 //! - Ni la clave ni un trozo de ella pasan por `tracing`: para ensenarla se
 //!   usa [`enmascarar`], que deja ver solo el final.
 //!
-//! Este modulo habla con el sistema operativo: cada `unsafe` lleva su
+//! Lo de DPAPI habla con el sistema operativo: cada `unsafe` lleva su
 //! `// SAFETY:`.
+//!
+//! ## Fuera de Windows: un [`Llavero`] que pone la app
+//!
+//! DPAPI solo existe en Windows, y en Apple el sitio de una clave es el
+//! **Llavero** (Keychain, que ademas puede viajar por iCloud Keychain).
+//! El nucleo no lo llama: define el trait [`Llavero`] y la app de Swift
+//! instala el suyo al arrancar con [`instalar_llavero`] (por el puente de
+//! UniFFI, fase 1). Sin llavero instalado, [`guardar`] da un error y
+//! [`leer`] da `None`: **nunca se escribe una clave en claro** como apano.
+//! En Windows, si nadie instala otro, sigue DPAPI como siempre.
 
+#[cfg(windows)]
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 
+#[cfg(windows)]
 use windows::Win32::Foundation::{HLOCAL, LocalFree};
+#[cfg(windows)]
 use windows::Win32::Security::Cryptography::{
     CRYPT_INTEGER_BLOB, CRYPTPROTECT_UI_FORBIDDEN, CryptProtectData, CryptUnprotectData,
 };
+#[cfg(windows)]
 use windows::core::w;
 
 use super::Proveedor;
 
+/// **Donde viven las claves**, cifradas por el sistema. En Apple lo
+/// implementa la app con el Llavero (`SecItemAdd`/`SecItemCopyMatching`,
+/// servicio `PixPinMax.asistente`, cuenta = [`Proveedor::id`]). Las claves
+/// que llegan ya vienen recortadas y no vacias.
+pub trait Llavero: Send + Sync {
+    fn guardar(&self, p: Proveedor, clave: &str) -> Result<(), String>;
+    /// `None` si no hay o no se puede leer: se pide otra vez.
+    fn leer(&self, p: Proveedor) -> Option<String>;
+    /// Borrar lo que no esta no es un error.
+    fn borrar(&self, p: Proveedor) -> Result<(), String>;
+    /// ¿Hay clave guardada? (Sin descifrarla, si el sistema lo permite.)
+    fn hay(&self, p: Proveedor) -> bool {
+        self.leer(p).is_some()
+    }
+}
+
+static LLAVERO: OnceLock<Box<dyn Llavero>> = OnceLock::new();
+
+/// **Instala el llavero de la app** (una vez, al arrancar). `Err` si ya
+/// habia uno.
+pub fn instalar_llavero(l: Box<dyn Llavero>) -> Result<(), String> {
+    LLAVERO.set(l).map_err(|_| "ya habia un llavero instalado".to_string())
+}
+
+/// El llavero en uso: el instalado o, en Windows, DPAPI.
+fn llavero() -> Option<&'static dyn Llavero> {
+    if let Some(l) = LLAVERO.get() {
+        return Some(l.as_ref());
+    }
+    #[cfg(windows)]
+    {
+        Some(&Dpapi)
+    }
+    #[cfg(not(windows))]
+    {
+        None
+    }
+}
+
+/// Guardar con un llavero dado: recorta, y una clave vacia la borra.
+pub fn guardar_con(l: &dyn Llavero, p: Proveedor, clave: &str) -> Result<(), String> {
+    let clave = clave.trim();
+    if clave.is_empty() { l.borrar(p) } else { l.guardar(p, clave) }
+}
+
+/// Leer con un llavero dado: una clave en blanco cuenta como ninguna.
+pub fn leer_con(l: &dyn Llavero, p: Proveedor) -> Option<String> {
+    l.leer(p).filter(|c| !c.trim().is_empty())
+}
+
 /// Mezclada con la clave al cifrar: sin ella no se descifra.
+#[cfg(windows)]
 const ENTROPIA: &[u8] = b"PixPinMax/asistente/nube/v1";
 
+/// El llavero de Windows: DPAPI del usuario, un fichero por proveedor en
+/// [`carpeta`].
+#[cfg(windows)]
+struct Dpapi;
+
+#[cfg(windows)]
+impl Llavero for Dpapi {
+    fn guardar(&self, p: Proveedor, clave: &str) -> Result<(), String> {
+        guardar_en(&carpeta().ok_or("no se encuentra LOCALAPPDATA")?, p, clave)
+    }
+    fn leer(&self, p: Proveedor) -> Option<String> {
+        leer_de(&carpeta()?, p)
+    }
+    fn borrar(&self, p: Proveedor) -> Result<(), String> {
+        borrar_en(&carpeta().ok_or("no se encuentra LOCALAPPDATA")?, p)
+    }
+    fn hay(&self, p: Proveedor) -> bool {
+        carpeta().is_some_and(|c| fichero(&c, p).is_file())
+    }
+}
+
 /// `%LOCALAPPDATA%\PixPinMax\claves`.
+#[cfg(windows)]
 pub fn carpeta() -> Option<PathBuf> {
     let local = std::env::var_os("LOCALAPPDATA")?;
     Some(PathBuf::from(local).join("PixPinMax").join("claves"))
 }
 
 /// El fichero de la clave de un proveedor.
+#[cfg(windows)]
 pub fn fichero(carpeta: &Path, p: Proveedor) -> PathBuf {
     carpeta.join(format!("{}.clave", p.id()))
 }
@@ -67,6 +156,7 @@ pub fn parece_clave(clave: &str) -> bool {
 }
 
 /// **Cifra** con DPAPI del usuario.
+#[cfg(windows)]
 pub fn cifrar(claro: &[u8]) -> Result<Vec<u8>, String> {
     let entrada = blob(claro);
     let entropia = blob(ENTROPIA);
@@ -90,6 +180,7 @@ pub fn cifrar(claro: &[u8]) -> Result<Vec<u8>, String> {
 }
 
 /// **Descifra** lo cifrado por [`cifrar`] en esta misma cuenta.
+#[cfg(windows)]
 pub fn descifrar(cifrado: &[u8]) -> Result<Vec<u8>, String> {
     let entrada = blob(cifrado);
     let entropia = blob(ENTROPIA);
@@ -110,6 +201,7 @@ pub fn descifrar(cifrado: &[u8]) -> Result<Vec<u8>, String> {
     }
 }
 
+#[cfg(windows)]
 fn blob(b: &[u8]) -> CRYPT_INTEGER_BLOB {
     CRYPT_INTEGER_BLOB {
         cbData: b.len() as u32,
@@ -119,6 +211,7 @@ fn blob(b: &[u8]) -> CRYPT_INTEGER_BLOB {
 
 /// # Safety
 /// `b` lo tiene que haber llenado DPAPI (memoria de `LocalAlloc`).
+#[cfg(windows)]
 unsafe fn copiar_y_soltar(b: CRYPT_INTEGER_BLOB) -> Vec<u8> {
     if b.pbData.is_null() {
         return Vec::new();
@@ -134,6 +227,7 @@ unsafe fn copiar_y_soltar(b: CRYPT_INTEGER_BLOB) -> Vec<u8> {
 }
 
 /// **Guarda** la clave de un proveedor (cifrada). Una clave vacia la borra.
+#[cfg(windows)]
 pub fn guardar_en(carpeta: &Path, p: Proveedor, clave: &str) -> Result<(), String> {
     let clave = clave.trim();
     let ruta = fichero(carpeta, p);
@@ -154,12 +248,14 @@ pub fn guardar_en(carpeta: &Path, p: Proveedor, clave: &str) -> Result<(), Strin
 
 /// **Lee** la clave guardada. `None` si no hay o si no se puede descifrar
 /// (otra cuenta, fichero danado): se pide otra vez.
+#[cfg(windows)]
 pub fn leer_de(carpeta: &Path, p: Proveedor) -> Option<String> {
     let cifrado = std::fs::read(fichero(carpeta, p)).ok()?;
     let claro = descifrar(&cifrado).ok()?;
     String::from_utf8(claro).ok().filter(|c| !c.trim().is_empty())
 }
 
+#[cfg(windows)]
 pub fn borrar_en(carpeta: &Path, p: Proveedor) -> Result<(), String> {
     match std::fs::remove_file(fichero(carpeta, p)) {
         Ok(()) => Ok(()),
@@ -168,23 +264,68 @@ pub fn borrar_en(carpeta: &Path, p: Proveedor) -> Result<(), String> {
     }
 }
 
-/// Atajos sobre la carpeta de siempre.
+/// Lo que dice [`guardar`] si la app no instalo su llavero.
+pub const SIN_LLAVERO: &str = "no hay donde guardar la clave cifrada en este sistema (la app tiene que instalar su llavero)";
+
+/// **Guarda** la clave en el llavero en uso (vacia: la borra).
 pub fn guardar(p: Proveedor, clave: &str) -> Result<(), String> {
-    guardar_en(&carpeta().ok_or("no se encuentra LOCALAPPDATA")?, p, clave)
+    guardar_con(llavero().ok_or(SIN_LLAVERO)?, p, clave)
 }
 
+/// **Lee** la clave del llavero en uso. `None` sin llavero o sin clave.
 pub fn leer(p: Proveedor) -> Option<String> {
-    leer_de(&carpeta()?, p)
+    leer_con(llavero()?, p)
 }
 
 pub fn hay(p: Proveedor) -> bool {
-    carpeta().is_some_and(|c| fichero(&c, p).is_file())
+    llavero().is_some_and(|l| l.hay(p))
 }
 
 #[cfg(test)]
 mod pruebas {
     use super::*;
+    use std::collections::HashMap;
+    use std::sync::Mutex;
 
+    /// Un llavero en memoria, como el que pondra Swift con el Llavero.
+    #[derive(Default)]
+    struct EnMemoria(Mutex<HashMap<&'static str, String>>);
+
+    impl Llavero for EnMemoria {
+        fn guardar(&self, p: Proveedor, clave: &str) -> Result<(), String> {
+            self.0.lock().unwrap().insert(p.id(), clave.to_string());
+            Ok(())
+        }
+        fn leer(&self, p: Proveedor) -> Option<String> {
+            self.0.lock().unwrap().get(p.id()).cloned()
+        }
+        fn borrar(&self, p: Proveedor) -> Result<(), String> {
+            self.0.lock().unwrap().remove(p.id());
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn un_llavero_de_la_app_guarda_recortado_y_vacia_borra() {
+        let l = EnMemoria::default();
+        guardar_con(&l, Proveedor::Claude, "  sk-ant-api03-abc0123456789  ").unwrap();
+        assert_eq!(leer_con(&l, Proveedor::Claude).as_deref(), Some("sk-ant-api03-abc0123456789"));
+        assert!(l.hay(Proveedor::Claude));
+        assert!(leer_con(&l, Proveedor::DeepSeek).is_none());
+        guardar_con(&l, Proveedor::Claude, "   ").unwrap();
+        assert!(leer_con(&l, Proveedor::Claude).is_none());
+    }
+
+    #[cfg(not(windows))]
+    #[test]
+    fn sin_llavero_no_se_guarda_nada_en_claro() {
+        // Nadie instalo llavero en las pruebas: ni se guarda ni se inventa.
+        assert_eq!(guardar(Proveedor::DeepSeek, "clave-de-prueba-0123456789").unwrap_err(), SIN_LLAVERO);
+        assert!(leer(Proveedor::DeepSeek).is_none());
+        assert!(!hay(Proveedor::DeepSeek));
+    }
+
+    #[cfg(windows)]
     fn carpeta_de_prueba(nombre: &str) -> PathBuf {
         let c = std::env::temp_dir().join(format!("pixpin-claves-{nombre}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&c);
@@ -193,6 +334,7 @@ mod pruebas {
 
     const CLAVE: &str = "sk-ant-api03-PRUEBAxyzzy0123456789abcdefghijklmnopqrstuvwxyzQWERTY";
 
+    #[cfg(windows)]
     #[test]
     fn se_guarda_cifrada_y_se_lee_igual() {
         let c = carpeta_de_prueba("ida");
@@ -203,6 +345,7 @@ mod pruebas {
         let _ = std::fs::remove_dir_all(&c);
     }
 
+    #[cfg(windows)]
     #[test]
     fn la_clave_no_aparece_en_claro_en_ningun_fichero() {
         let c = carpeta_de_prueba("claro");
@@ -223,6 +366,7 @@ mod pruebas {
         let _ = std::fs::remove_dir_all(&c);
     }
 
+    #[cfg(windows)]
     #[test]
     fn un_fichero_danado_no_da_clave_y_vacia_borra() {
         let c = carpeta_de_prueba("danado");
@@ -236,6 +380,7 @@ mod pruebas {
         let _ = std::fs::remove_dir_all(&c);
     }
 
+    #[cfg(windows)]
     #[test]
     fn sin_la_entropia_de_pixpin_no_se_descifra() {
         let cifrado = cifrar(b"secreto").unwrap();

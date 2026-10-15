@@ -116,7 +116,8 @@ pub fn validar(args: &Map<String, Value>, avisos: &mut Vec<String>) -> Result<Fu
         (Some(a), Some(b)) => (a, b),
         _ => return Err(mal("pon los dos limites del dominio: «x_desde» y «x_hasta»")),
     };
-    if !(x_desde < x_hasta) {
+    // `partial_cmp`: un NaN tambien es un dominio al reves.
+    if x_desde.partial_cmp(&x_hasta) != Some(std::cmp::Ordering::Less) {
         return Err(mal(format!("el dominio esta al reves o vacio: x_desde = {x_desde} tiene que ser menor que x_hasta = {x_hasta}")));
     }
     if x_desde.abs() > LIMITE || x_hasta.abs() > LIMITE || x_hasta - x_desde < 1e-9 {
@@ -368,7 +369,7 @@ mod pruebas {
         let p = validar(&m, &mut avisos).unwrap();
         assert!(p.y_hasta <= 40.0 + 1e-9, "{}", p.y_hasta);
         assert_eq!(avisos.len(), 1);
-        let p = validar_(json!({"funciones": ["sin(x)"], "x_desde": -6.28, "x_hasta": 6.28})).unwrap();
+        let p = validar_(json!({"funciones": ["sin(x)"], "x_desde": -6.3, "x_hasta": 6.3})).unwrap();
         assert!(p.y_desde < -0.9 && p.y_hasta > 0.9 && p.y_hasta < 2.0);
     }
 }

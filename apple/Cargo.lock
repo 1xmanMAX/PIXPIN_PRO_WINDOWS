@@ -1009,6 +1009,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "pixpin-ia"
+version = "0.1.0"
+dependencies = [
+ "image",
+ "pixpin-docs",
+ "pixpin-motor2d",
+ "pixpin-voz",
+ "roxmltree",
+ "serde_json",
+ "sha2",
+ "thiserror",
+ "tracing",
+ "windows",
+ "zip",
+]
+
+[[package]]
 name = "pixpin-lecciones"
 version = "0.1.0"
 dependencies = [
@@ -1149,6 +1166,17 @@ version = "0.1.0"
 dependencies = [
  "pixpin-geom",
  "pixpin-motor2d",
+]
+
+[[package]]
+name = "pixpin-voz"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "sha2",
+ "thiserror",
+ "tracing",
+ "windows",
 ]
 
 [[package]]
@@ -1298,6 +1326,12 @@ dependencies = [
  "hmac",
  "subtle",
 ]
+
+[[package]]
+name = "roxmltree"
+version = "0.20.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6c20b6793b5c2fa6553b250154b78d6d0db37e72700ae35fad9387a46f487c97"
 
 [[package]]
 name = "rustc-hash"

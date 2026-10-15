@@ -4,7 +4,7 @@
 //!
 //! No hay un compositor nuevo: se juntan los dos que ya hay.
 //!
-//! - **Leer**: `pixpin_notas::formulas::leer`, el de las formulas de las
+//! - **Leer**: `pixpin_docs::formulas::leer`, el de las formulas de las
 //!   notas (el `Formulas.kt` de Android): entiende el LaTeX de bolsillo
 //!   (`\frac`, `\sqrt[3]{}`, `\pm`, griegas, `x^2_i`) y la escritura corriente
 //!   (`1/2`, `sqrt(x)`, `pi`, `<=`). Lo que no entiende sale tal cual.
@@ -16,7 +16,7 @@ use serde_json::{Map, Value, json};
 
 use pixpin_motor2d::ecuacion::{self as caja, Caja, Estilo};
 use pixpin_motor2d::elemento::{ColorRgba, Elemento};
-use pixpin_notas::formulas::{self, Pieza};
+use pixpin_docs::formulas::{self, Pieza};
 
 use crate::herramientas::{ErrorHerramienta, Herramienta};
 use crate::lienzo::Fabrica;

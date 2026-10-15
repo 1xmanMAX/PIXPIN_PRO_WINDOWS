@@ -15,6 +15,12 @@
 //! cancelar), se le comprueba la **huella SHA-256** y solo entonces toma su
 //! nombre. Al lado queda `<fichero>.ok` con la huella: las siguientes veces
 //! basta con mirar el tamano, sin volver a leer 2 GB.
+//!
+//! **Solo Windows baja desde aqui** (WinHTTP). En Mac, iPad e iPhone baja
+//! URLSession desde Swift a la carpeta que elija la app (Application
+//! Support, no `LOCALAPPDATA`: [`carpeta_base`] da `None`) y despues usa
+//! [`verificar`], [`fichero_listo`] y [`modelo_listo`], que son portables.
+//! Pedir a [`asegurar`] algo que falte devuelve un error claro.
 
 use std::fs::File;
 use std::io::{BufReader, Read};
@@ -117,6 +123,8 @@ impl Progreso {
     }
 }
 
+/// Baja `url` a `destino` con el WinHTTP de la voz.
+#[cfg(windows)]
 fn bajar(url: &str, destino: &Path, base: u64, total: u64, avance: &mut dyn FnMut(Progreso), cancelado: &AtomicBool) -> Result<(), ErrorIa> {
     let nombre = destino.file_name().unwrap_or_default().to_string_lossy().into_owned();
     pixpin_voz::whisper::bajar::bajar(
@@ -139,6 +147,19 @@ fn bajar(url: &str, destino: &Path, base: u64, total: u64, avance: &mut dyn FnMu
             que: nombre.clone(),
             detalle: otro.to_string(),
         },
+    })
+}
+
+/// Fuera de Windows no se baja nada desde Rust: en Apple lo hace URLSession
+/// desde Swift (con el proxy, los certificados y las descargas en segundo
+/// plano del sistema), que deja cada fichero en su sitio y luego llama a
+/// [`verificar`] (huella y marca `.ok`) o a [`extraer`]. Asi el ejecutable
+/// no lleva un cliente HTTPS ni TLS propios (§4bis del plan de Apple).
+#[cfg(not(windows))]
+fn bajar(url: &str, destino: &Path, _base: u64, _total: u64, _avance: &mut dyn FnMut(Progreso), _cancelado: &AtomicBool) -> Result<(), ErrorIa> {
+    Err(ErrorIa::Descarga {
+        que: destino.file_name().unwrap_or_default().to_string_lossy().into_owned(),
+        detalle: format!("en este sistema la descarga ({url}) la hace la app (en Apple, URLSession desde Swift), no el nucleo"),
     })
 }
 

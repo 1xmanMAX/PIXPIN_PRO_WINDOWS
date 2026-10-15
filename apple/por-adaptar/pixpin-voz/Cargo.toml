@@ -1,9 +1,12 @@
 [package]
 name = "pixpin-voz"
-version.workspace = true
-edition.workspace = true
-rust-version.workspace = true
-license.workspace = true
+# Valores escritos a mano y no heredados: `por-adaptar/` esta fuera del
+# espacio de trabajo de apple/, y `pixpin-ia` (en nucleo/) carga este
+# manifiesto para su dependencia de Windows.
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+license = "MIT"
 
 [dependencies]
 thiserror = "2.0.20"

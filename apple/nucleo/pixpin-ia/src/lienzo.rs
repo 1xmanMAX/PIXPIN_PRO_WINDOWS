@@ -389,7 +389,7 @@ fn figura(f: &mut Fabrica, fig: &Figura) {
                 let letras = fig.texto.chars().count().max(1) as f64;
                 let tam = fig.tam_letra.min(fig.ancho * 0.9 / (0.6 * letras)).max(8.0);
                 let (cx, cy) = (fig.x + fig.ancho / 2.0, fig.y + fig.alto / 2.0);
-                let color = if relleno.is_some_and(|r| es_oscuro(r)) { "#ffffff" } else { negro };
+                let color = if relleno.is_some_and(es_oscuro) { "#ffffff" } else { negro };
                 f.texto(cx, cy - tam * 1.25 / 2.0, &fig.texto, tam, color, "center");
             }
         }
