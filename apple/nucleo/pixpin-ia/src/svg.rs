@@ -670,6 +670,7 @@ fn declaraciones(s: &str) -> Vec<(String, String)> {
 
 /// Las reglas de los `<style>`, en orden y con su peso (tipo 1, clase 10,
 /// id 100), para aplicarlas de menos a mas.
+#[allow(clippy::type_complexity)] // (orden, selector, declaraciones)
 struct Hojas {
     reglas: Vec<(u32, Selector, Vec<(String, String)>)>,
 }
@@ -1190,7 +1191,7 @@ fn camino(d: &str, m: Matriz, detalle: f64) -> Vec<(Vec<(f64, f64)>, bool)> {
                 None => ok = false,
             },
             b'C' | b'S' => {
-                let c1 = if cmd.to_ascii_uppercase() == b'C' {
+                let c1 = if cmd.eq_ignore_ascii_case(&b'C') {
                     match (l.numero(), l.numero()) {
                         (Some(a), Some(b)) => Some((bx + a, by + b)),
                         _ => None,
@@ -1222,7 +1223,7 @@ fn camino(d: &str, m: Matriz, detalle: f64) -> Vec<(Vec<(f64, f64)>, bool)> {
                 }
             }
             b'Q' | b'T' => {
-                let c1 = if cmd.to_ascii_uppercase() == b'Q' {
+                let c1 = if cmd.eq_ignore_ascii_case(&b'Q') {
                     match (l.numero(), l.numero()) {
                         (Some(a), Some(b)) => Some((bx + a, by + b)),
                         _ => None,

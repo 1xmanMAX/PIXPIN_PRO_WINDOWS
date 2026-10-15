@@ -33,7 +33,8 @@
 //! - [`lienzo`]: de una llamada validada a elementos de **Excalidraw**, el
 //!   formato que ya comparten el lienzo del PC y el de Android.
 //! - [`nube`]: el mismo [`Motor`] con Claude Haiku 5.5 o DeepSeek V4.1 Flash
-//!   por su API, con la clave del usuario cifrada con DPAPI.
+//!   por su API, con la clave del usuario cifrada con DPAPI (en Apple, en
+//!   el Llavero: [`nube::claves::Llavero`]).
 //! - [`agente`]: el bucle de un turno: pedir, validar, ejecutar, devolver el
 //!   resultado al modelo, y reintentar si el modelo se equivoco.
 //! - [`pensar`], [`hoja_trabajo`] y [`contexto`] (13-oct): el pensamiento a
@@ -57,6 +58,35 @@
 //!   «mañana a las 10») y las consultas («¿que tengo pendiente?»).
 //! - [`documentos`]: `buscar_en_mis_cosas`, un indice BM25 local de los
 //!   documentos, notas y chats del usuario, con el origen de cada trozo.
+//! - [`puente`]: las herramientas en JSON de ida y vuelta, para cualquier
+//!   motor (Foundation Models desde Swift, Android...).
+//!
+//! ## Fuera de Windows (Mac, iPad, iPhone)
+//!
+//! Esta copia vive en `apple/nucleo/` y compila sin Windows. Lo que en
+//! Windows hace el sistema va aparte:
+//!
+//! - **Bajar** el motor y los modelos por HTTPS: en Windows con WinHTTP
+//!   ([`descarga`]); en Apple con URLSession desde Swift, que despues usa
+//!   [`descarga::verificar`] para la huella.
+//! - **La nube** (Claude, DeepSeek): en Windows por WinHTTP
+//!   ([`nube::http`]); fuera, el nucleo solo habla `http://` con este
+//!   equipo y el HTTPS lo pone Swift. Ningun TLS propio en el ejecutable.
+//! - **`llama-server`**: en Windows dentro de un trabajo que lo mata si
+//!   PixPin muere; en Mac en su grupo de procesos y muerto al soltarlo
+//!   ([`servidor`]). En iPad e iPhone no hay procesos: llama.cpp con Metal
+//!   iria enlazado desde Swift.
+//! - **Las claves**: DPAPI en Windows; en Apple el Llavero, que Swift
+//!   instala con [`nube::claves::instalar_llavero`].
+//!
+//! **El asistente por omision en Apple es Foundation Models** (el modelo
+//! del sistema, gratis y en el aparato) y llama.cpp con Metal el respaldo
+//! (el mismo GGUF que en Windows y Android). Para que los dos hagan lo
+//! mismo, las herramientas no dependen del motor: el catalogo, la
+//! validacion y el paso al lienzo son funciones puras de JSON a JSON
+//! ([`puente::catalogo_para`], [`puente::llamar`]) que Swift llama desde el
+//! *tool calling* de Foundation Models igual que [`agente`] las usa con
+//! llama.cpp.
 //!
 //! ## Puntos de enganche para la UI (otros agentes)
 //!
@@ -88,6 +118,7 @@ pub mod motor;
 pub mod nube;
 pub mod relevo;
 pub mod pensar;
+pub mod puente;
 pub mod rapido;
 pub mod seleccion;
 pub mod servidor;

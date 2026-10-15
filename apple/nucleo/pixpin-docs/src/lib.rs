@@ -26,6 +26,9 @@ pub mod docx;
 pub mod epub;
 /// Una nota Markdown exportada a Word (H12, 1-oct).
 pub mod exportar_docx;
+/// Las formulas `$…$` de las notas entendidas (`Formulas.kt` de Android):
+/// las usan el editor de notas y el asistente (`pixpin-ia::ecuacion`).
+pub mod formulas;
 pub mod html;
 pub mod indice;
 pub mod lectura;

@@ -886,7 +886,7 @@ mod pruebas {
         let n = nombres.len();
         nombres.dedup();
         assert_eq!(nombres.len(), n);
-        let protocolo = include_str!("../../../docs/protocolo-pedidos.md");
+        let protocolo = include_str!("../../../../docs/protocolo-pedidos.md");
         for a in ACCIONES {
             assert!(
                 a.accion == CONSULTA || protocolo.contains(&format!("| `{}` |", a.accion)),

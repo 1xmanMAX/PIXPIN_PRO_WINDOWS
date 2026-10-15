@@ -8,8 +8,10 @@
 pub mod barra_flotante;
 pub mod disposicion;
 pub mod editor;
-/// Las formulas `$…$` entendidas (`Formulas.kt` de Android).
-pub mod formulas;
+/// Las formulas `$…$` entendidas (`Formulas.kt` de Android). Es logica
+/// pura: vive en `pixpin-docs` (nucleo) para que la usen tambien el
+/// asistente (`pixpin-ia`) y la version de Apple.
+pub use pixpin_docs::formulas;
 mod imagenes;
 pub mod incrustados;
 pub mod integracion;

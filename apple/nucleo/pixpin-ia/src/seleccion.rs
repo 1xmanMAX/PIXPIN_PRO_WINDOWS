@@ -201,7 +201,7 @@ pub fn para_el_pedido(pedido: &str, con_imagen: bool) -> Vec<Herramienta> {
         puntuadas.push((puntuar(a.claves, &q, &palabras), crate::acciones::herramienta(a)));
     }
     // Estable: a igual puntuacion, el orden del catalogo.
-    puntuadas.sort_by(|a, b| b.0.cmp(&a.0));
+    puntuadas.sort_by_key(|p| std::cmp::Reverse(p.0));
     let mut elegidas: Vec<(u32, Herramienta)> = puntuadas.into_iter().filter(|(s, _)| *s >= 2).take(MAXIMO).collect();
     // «Saca las tareas de esta acta»: con las dos a mano, el 2B las apuntaba
     // una a una en el Inbox y no creaba la lista pedida (medido, 14-oct).

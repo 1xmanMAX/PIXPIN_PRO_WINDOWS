@@ -14,26 +14,40 @@
 //! - **Un fallo del motor no tumba PixPin**: si `llama-server` revienta (sin
 //!   memoria de video, un modelo raro), el chat dice que fallo y ya.
 //! - Va dentro de un **trabajo de Windows** con «matar al cerrar»: si PixPin
-//!   muere de golpe, el modelo no se queda huerfano comiendo memoria.
+//!   muere de golpe, el modelo no se queda huerfano comiendo memoria. En
+//!   Mac y Linux va en su **propio grupo de procesos** y se mata al soltar
+//!   el motor (`Drop`); si PixPin muere de golpe (un `kill -9`) no hay un
+//!   equivalente sin `unsafe` y se queda hasta que se cierre a mano (en
+//!   macOS lo puede vigilar la app desde Swift). En iPad e iPhone no se
+//!   pueden lanzar procesos: alli llama.cpp va enlazado (Metal) desde Swift
+//!   y este modulo no se usa, pero si el protocolo ([`LectorHttp`] y la
+//!   peticion de [`crate::motor`]).
 //!
 //! El servidor escucha solo en `127.0.0.1`, en un puerto libre al azar y con
 //! una clave nueva en cada arranque (`--api-key`): ni otra maquina ni una
 //! pagina web abierta en el navegador pueden usarlo.
 //!
-//! Este modulo habla con el sistema operativo: cada `unsafe` lleva su
-//! `// SAFETY:`.
+//! Lo de Windows habla con el sistema operativo: cada `unsafe` lleva su
+//! `// SAFETY:`. Lo demas (argumentos, elegir dispositivo, el cliente
+//! HTTP/1.1 sobre `TcpStream` hacia `127.0.0.1`) es portable.
 
 use std::fs::File;
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
+#[cfg(unix)]
+use std::os::unix::process::CommandExt;
+#[cfg(windows)]
 use std::os::windows::io::AsRawHandle;
+#[cfg(windows)]
 use std::os::windows::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::{Arc, Mutex, Weak};
 use std::time::{Duration, Instant};
 
+#[cfg(windows)]
 use windows::Win32::Foundation::{CloseHandle, HANDLE};
+#[cfg(windows)]
 use windows::Win32::System::JobObjects::{
     AssignProcessToJobObject, CreateJobObjectW, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
     JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JobObjectExtendedLimitInformation, SetInformationJobObject,
@@ -44,7 +58,19 @@ use crate::motor::{Motor, Peticion, Respuesta, Seguir, Trozo};
 use crate::sse::Acumulador;
 
 /// `CREATE_NO_WINDOW`: que no asome una consola negra.
+#[cfg(windows)]
 const SIN_VENTANA: u32 = 0x0800_0000;
+
+/// Lo que cada sistema necesita al lanzar el motor: en Windows, sin
+/// consola; en Mac y Linux, en su propio grupo de procesos (un Ctrl+C en
+/// la terminal de PixPin no le llega a medias y se mata entero al soltarlo).
+fn en_segundo_plano(orden: &mut Command) -> &mut Command {
+    #[cfg(windows)]
+    orden.creation_flags(SIN_VENTANA);
+    #[cfg(unix)]
+    orden.process_group(0);
+    orden
+}
 
 /// Los tokens de contexto con los que se arranca el modelo. El agente los
 /// usa para no pedir mas respuesta de la que cabe (`agente::tope_de_tokens`).
@@ -188,9 +214,8 @@ pub fn elegir_dispositivo(listado: &str, bytes_modelo: u64) -> Dispositivo {
 
 /// Pregunta al servidor que tarjetas ve (tarda ~1 s).
 pub fn listar_dispositivos(servidor: &Path) -> String {
-    Command::new(servidor)
+    en_segundo_plano(&mut Command::new(servidor))
         .arg("--list-devices")
-        .creation_flags(SIN_VENTANA)
         .stdin(Stdio::null())
         .output()
         .map(|o| format!("{}{}", String::from_utf8_lossy(&o.stdout), String::from_utf8_lossy(&o.stderr)))
@@ -198,11 +223,26 @@ pub fn listar_dispositivos(servidor: &Path) -> String {
 }
 
 /// Un trabajo de Windows que mata a su proceso al cerrarse.
+#[cfg(windows)]
 struct Trabajo(HANDLE);
 
+/// Fuera de Windows no hay trabajos: el proceso va en su grupo y lo mata el
+/// `Drop` de [`Proceso`].
+#[cfg(not(windows))]
+struct Trabajo;
+
+#[cfg(not(windows))]
+impl Trabajo {
+    fn para(_hijo: &Child) -> Option<Trabajo> {
+        None
+    }
+}
+
 // SAFETY: un HANDLE de trabajo se puede usar y cerrar desde cualquier hilo.
+#[cfg(windows)]
 unsafe impl Send for Trabajo {}
 
+#[cfg(windows)]
 impl Trabajo {
     fn para(hijo: &Child) -> Option<Trabajo> {
         // SAFETY: se crea un trabajo anonimo; la estructura de limites vive en
@@ -226,6 +266,7 @@ impl Trabajo {
     }
 }
 
+#[cfg(windows)]
 impl Drop for Trabajo {
     fn drop(&mut self) {
         // SAFETY: el asa la creo `CreateJobObjectW`, es de este `Trabajo` y no
@@ -408,10 +449,9 @@ fn arrancar(c: &Config) -> Result<Proceso, ErrorIa> {
     let puerto = puerto_libre()?;
     let clave = clave_nueva();
     let mut orden = Command::new(&c.servidor);
-    orden
+    en_segundo_plano(&mut orden)
         .args(c.argumentos(puerto, &clave))
         .current_dir(c.servidor.parent().unwrap_or(Path::new(".")))
-        .creation_flags(SIN_VENTANA)
         .stdin(Stdio::null())
         .stdout(Stdio::null());
     match c.registro.as_ref().and_then(|r| File::create(r).ok()) {
@@ -533,6 +573,8 @@ fn pedir(puerto: u16, clave: &str, peticion: &Peticion, al_trozo: &mut dyn FnMut
 pub struct LectorHttp {
     pendiente: Vec<u8>,
     pub estado: Option<u16>,
+    /// La cabecera de la respuesta tal cual (sin la linea en blanco final).
+    pub cabeceras: String,
     troceado: bool,
     en_cuerpo: bool,
     /// Bytes que faltan del trozo actual (troceado).
@@ -547,6 +589,7 @@ impl LectorHttp {
         LectorHttp {
             pendiente: Vec::new(),
             estado: None,
+            cabeceras: String::new(),
             troceado: false,
             en_cuerpo: false,
             falta: 0,
@@ -575,6 +618,7 @@ impl LectorHttp {
                 .lines()
                 .any(|l| l.to_ascii_lowercase().starts_with("transfer-encoding:") && l.to_ascii_lowercase().contains("chunked"));
             self.en_cuerpo = true;
+            self.cabeceras = cabecera;
         }
         if !self.troceado {
             return Ok(std::mem::take(&mut self.pendiente));
@@ -615,6 +659,16 @@ impl LectorHttp {
             self.falta = tam;
         }
         Ok(salida)
+    }
+}
+
+impl LectorHttp {
+    /// El valor de una cabecera de la respuesta (sin distinguir mayusculas).
+    pub fn cabecera(&self, nombre: &str) -> Option<&str> {
+        self.cabeceras.lines().skip(1).find_map(|l| {
+            let (k, v) = l.split_once(':')?;
+            k.trim().eq_ignore_ascii_case(nombre).then(|| v.trim())
+        })
     }
 }
 
@@ -685,6 +739,8 @@ mod pruebas {
         let c = l.meter(b"HTTP/1.1 401 Unauthorized\r\nContent-Length: 3\r\n\r\nno!").unwrap();
         assert_eq!(c, b"no!");
         assert_eq!(l.estado, Some(401));
+        assert_eq!(l.cabecera("content-length"), Some("3"));
+        assert_eq!(l.cabecera("retry-after"), None);
     }
 
     #[test]

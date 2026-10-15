@@ -1117,6 +1117,7 @@ fn correr(fuente: &Fuente) -> Vec<(&'static str, Nota)> {
 
 /// **La tabla comparativa** (Markdown): una fila por caso, una columna por
 /// motor («✓ 3,2 s» / «✗ 3,2 s»), y abajo el acierto y el tiempo total.
+#[allow(clippy::type_complexity)] // (motor, casos con su nota o por que se salto)
 fn tabla(motores: &[(String, Result<Vec<(&'static str, Nota)>, String>)]) -> String {
     let mut casos: Vec<&'static str> = Vec::new();
     for (_, r) in motores {
@@ -1264,6 +1265,10 @@ fn imagenes_del_caso(caso: &Caso, imagen: Option<&[u8]>, elementos: &[Value]) {
 
 /// Pintar a PNG por el camino del PDF del lienzo (exportar → PDF de
 /// vectores → pixeles de Windows): lo mismo que vera el usuario al exportar.
+///
+/// En el espacio de trabajo de Apple no estan pixpin-pdf, pixpin-shell ni
+/// pixpin-codec (ver `Cargo.toml`): aqui no se pinta nada y el banco solo
+/// dice que se salta. Las imagenes se sacan con la copia de Windows.
 mod pintar {
     use std::path::Path;
 
@@ -1272,22 +1277,9 @@ mod pintar {
 
     pub fn escena_a_png(escena: &Escena, ruta: &Path) {
         let hojas = pixpin_motor2d::exportar::hojas(escena, pixpin_motor2d::exportar::Alcance::Todo, &[], None);
-        if hojas.is_empty() {
-            return;
+        if !hojas.is_empty() {
+            eprintln!("banco: sin pintor de PDF en este sistema, no se guarda {}", ruta.display());
         }
-        let blanco = pixpin_motor2d::ColorRgba::opaco(1.0, 1.0, 1.0);
-        let Some(pdf) = pixpin_pdf::escribir::de_hojas(&hojas, Some(blanco), &|_| None) else { return };
-        let tmp = ruta.with_extension("pdf");
-        if std::fs::write(&tmp, pdf).is_err() {
-            return;
-        }
-        let _com = pixpin_shell::ComDelHilo::iniciar();
-        if let Ok(img) = pixpin_pdf::Documento::abrir(&tmp).and_then(|d| d.renderizar(0, 1100)) {
-            if let Ok(png) = pixpin_codec::imagen::codificar_png(&img) {
-                let _ = std::fs::write(ruta, png);
-            }
-        }
-        let _ = std::fs::remove_file(&tmp);
     }
 
     pub fn elementos_a_png(elementos: &[Value], ruta: &Path) {
@@ -1777,7 +1769,7 @@ mod imagenes {
                     pon(x, y, [150, 100, 60], &mut px);
                 }
                 // Tejado: triangulo de (100,180) (350,180) (225,80).
-                let dentro = y <= 180 && y >= 80 && (x - 225).abs() as f32 <= (y - 80) as f32 * 1.25;
+                let dentro = (80..=180).contains(&y) && (x - 225).abs() as f32 <= (y - 80) as f32 * 1.25;
                 if dentro {
                     pon(x, y, [210, 30, 30], &mut px);
                 }
@@ -1958,8 +1950,7 @@ fn cache_entre_preguntas() {
         .into_iter()
         .enumerate()
     {
-        let mut hoja = HojaDeTrabajo::default();
-        hoja.objetivo = objetivo.into();
+        let hoja = HojaDeTrabajo { objetivo: objetivo.into(), ..Default::default() };
         let mut sistema = pixpin_ia::contexto::sistema_con_hoja(&base, &hoja, None);
         // `PIXPIN_IA_SIN_PARTIR=1`: como antes del 14-oct (la hoja dentro del
         // mismo bloque que lo fijo), para comparar.

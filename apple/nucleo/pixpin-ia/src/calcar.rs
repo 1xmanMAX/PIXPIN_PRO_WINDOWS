@@ -486,6 +486,7 @@ fn fusionar_mezclas(centros: &[[f32; 3]], et: &mut [u8], w: usize, h: usize) {
 
 /// Las manchas conexas (4-vecindad) de la etiqueta `l`: sus pixeles y su
 /// caja `(x0, y0, x1, y1)` (x1, y1 incluidos).
+#[allow(clippy::type_complexity)] // (pixeles, caja): solo se usa aqui al lado
 fn componentes(et: &[u8], w: usize, h: usize, l: u8) -> Vec<(Vec<usize>, (usize, usize, usize, usize))> {
     let mut visto = vec![false; w * h];
     let mut salida = Vec::new();
@@ -608,6 +609,7 @@ fn manchas(img: &[[f32; 3]], w: usize, h: usize, p: &Parametros) -> Vec<Trazo> {
 /// borde exterior de una mancha o el de uno de sus agujeros. Devuelve
 /// (contorno, agujeros) de las manchas de al menos `area_min` pixeles, en
 /// coordenadas continuas (el pixel (x, y) ocupa [x, x+1] x [y, y+1]).
+#[allow(clippy::type_complexity)] // (contorno, agujeros), como lo pide el lienzo
 pub fn regiones(mascara: &[bool], w: usize, h: usize, area_min: f64) -> Vec<(Vec<(f64, f64)>, Vec<Vec<(f64, f64)>>)> {
     let en = |x: i64, y: i64| x >= 0 && y >= 0 && (x as usize) < w && (y as usize) < h && mascara[y as usize * w + x as usize];
     // Puntos con coordenadas dobladas (enteras): el centro del pixel (x, y)
