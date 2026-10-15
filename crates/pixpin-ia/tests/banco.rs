@@ -2559,3 +2559,370 @@ fn muestras_del_lienzo() {
         println!("{nombre}: {} elementos en {:?} (PNG en {:?})", els.len(), t_hecho, t0.elapsed());
     }
 }
+
+/// **¿Contesta la nube?** (15-oct) Una peticion minima a cada proveedor con
+/// clave guardada (o en la variable): codigo HTTP y milisegundos. La clave
+/// se lee en memoria y nunca se escribe.
+#[test]
+#[ignore = "con la nube de verdad"]
+fn probar_nube_minima() {
+    use pixpin_ia::nube::{Proveedor, claves, http};
+    for p in [Proveedor::DeepSeek, Proveedor::Claude] {
+        let var = match p {
+            Proveedor::Claude => "ANTHROPIC_API_KEY",
+            Proveedor::DeepSeek => "DEEPSEEK_API_KEY",
+        };
+        let Some(clave) = std::env::var(var).ok().filter(|c| !c.trim().is_empty()).or_else(|| claves::leer(p)) else {
+            println!("{}: sin clave guardada", p.nombre());
+            continue;
+        };
+        let cuerpo = match p {
+            Proveedor::Claude => pixpin_ia::nube::claude::cuerpo_de_prueba(),
+            Proveedor::DeepSeek => pixpin_ia::nube::deepseek::cuerpo_de_prueba(),
+        };
+        let cuerpo = serde_json::to_vec(&cuerpo).unwrap();
+        let cab = match p {
+            Proveedor::Claude => pixpin_ia::nube::claude::cabeceras(clave.trim()),
+            Proveedor::DeepSeek => pixpin_ia::nube::deepseek::cabeceras(clave.trim()),
+        };
+        let t = Instant::now();
+        let (tx, rx) = std::sync::mpsc::channel();
+        let url = p.url();
+        std::thread::spawn(move || {
+            let pedido = http::Pedido { url, cabeceras: cab, cuerpo: &cuerpo };
+            let mut resp = Vec::new();
+            let r = http::enviar(&pedido, &mut |b| {
+                resp.extend_from_slice(b);
+                Seguir::Si
+            });
+            let _ = tx.send((r, String::from_utf8_lossy(&resp).chars().take(300).collect::<String>()));
+        });
+        let tapar = |s: &str| {
+            let k = clave.trim();
+            if k.len() > 6 { s.replace(k, "sk-…") } else { s.to_string() }
+        };
+        match rx.recv_timeout(std::time::Duration::from_secs(60)) {
+            Ok((Ok(_), cuerpo)) => println!("{}: 200 en {} ms · {}", p.nombre(), t.elapsed().as_millis(), tapar(&cuerpo)),
+            Ok((Err(http::Fallo::Http { codigo, cuerpo, .. }), _)) => {
+                println!("{}: HTTP {codigo} en {} ms · {}", p.nombre(), t.elapsed().as_millis(), tapar(&cuerpo))
+            }
+            Ok((Err(http::Fallo::Red(d)), _)) => println!("{}: sin red en {} ms · {}", p.nombre(), t.elapsed().as_millis(), tapar(&d)),
+            Err(_) => println!("{}: colgado, sin respuesta en 60 s", p.nombre()),
+        }
+    }
+}
+
+/// **Banco del 15-oct: hojas y estudiantes**, para calificar a ojo. Un caso
+/// por imagen: `PIXPIN_BANCO_15\<motor>\<caso>.png` con SOLO lo que quedo en
+/// el lienzo y una franja arriba con el pedido, el motor y los tiempos (1º
+/// visible / total). Las hojas de entrada las pinta antes el banco de la app
+/// (`hoja_a_lienzo::banco::banco_15_oct`) en `PIXPIN_BANCO_15\entradas`.
+///
+/// ```text
+/// PIXPIN_IA_MOTOR=deepseek[,claude]  PIXPIN_IA_SOLO=<trozo|trozo>
+/// cargo test -p pixpin-ia --test banco -- --ignored --nocapture --exact banco_15_oct
+/// ```
+mod banco15 {
+    use super::*;
+
+    pub struct Caso15 {
+        pub nombre: &'static str,
+        pub pedido: &'static str,
+        /// La imagen adjunta, relativa a la carpeta del scratchpad.
+        pub imagen: Option<&'static str>,
+    }
+
+    const fn c(nombre: &'static str, pedido: &'static str, imagen: Option<&'static str>) -> Caso15 {
+        Caso15 { nombre, pedido, imagen }
+    }
+
+    pub const LIMPIO: &str = "Pasa en limpio al lienzo el problema de esta foto.";
+
+    pub fn casos() -> Vec<Caso15> {
+        vec![
+            // Hojas con formulas -> problema_en_limpio.
+            c("hoja-integrales-problema_en_limpio", LIMPIO, Some(r"banco-15-oct\entradas\hoja-integrales.png")),
+            c("hoja-fracciones-escaneada-problema_en_limpio", LIMPIO, Some(r"banco-15-oct\entradas\hoja-fracciones-escaneada.png")),
+            c("hoja-matriz-problema_en_limpio", LIMPIO, Some(r"banco-15-oct\entradas\hoja-matriz.png")),
+            c("hoja-sistema-escaneada-problema_en_limpio", LIMPIO, Some(r"banco-15-oct\entradas\hoja-sistema-escaneada.png")),
+            c("hoja-cuadratica-grafica-problema_en_limpio", LIMPIO, Some(r"banco-imagenes\hoja-2-sintetica.png")),
+            c("hoja-real-amor-a-sofia-agente", "Pasa esta hoja al lienzo.", Some(r"hoja-real\amor-a-sofia.png")),
+            // Graficas.
+            c("grafica-tangente", "Grafica f(x) = x^3 - 3x entre -3 y 3 y traza la recta tangente en x = 2.", None),
+            c("grafica-area", "Grafica y = sin x entre 0 y π y sombrea el área bajo la curva.", None),
+            c("grafica-raices-cubica", "Grafica y = x^3 - x y marca sus raíces.", None),
+            c("grafica-parametrica-lissajous", "Grafica la curva paramétrica x = cos(3t), y = sin(2t) para t entre 0 y 2π.", None),
+            c("grafica-polar-rosa", "Grafica la rosa polar r = 2 sin(3θ).", None),
+            c("grafica-barras-notas", "Haz una gráfica de barras con las notas del examen: Ana 15, Luis 12, Rosa 18, Juan 10, Marta 16.", None),
+            c("grafica-lineas-temperatura", "Haz una gráfica de líneas con la temperatura de la semana: lunes 18, martes 20, miércoles 17, jueves 22, viernes 24 °C.", None),
+            c("grafica-pastel-presupuesto", "Haz una gráfica de pastel del presupuesto de la obra: materiales 45 %, mano de obra 35 %, equipos 15 %, otros 5 %.", None),
+            // Geometria.
+            c("geometria-triangulo-alturas", "Dibuja el triángulo de vértices A(0,0), B(6,0) y C(2,4) con sus tres alturas y marca el ortocentro.", None),
+            c("geometria-circunferencia-inscrita", "Dibuja un triángulo rectángulo de catetos 3 y 4 con su circunferencia inscrita, marcando el incentro.", None),
+            c("geometria-perpendicular-paralela", "Dibuja una recta horizontal, un punto P encima de ella, la perpendicular a la recta por P y la paralela a la recta por P.", None),
+            c("geometria-rectangulo-cotas", "Dibuja un rectángulo de 8 m por 5 m con sus cotas, como en un plano.", None),
+            // Fisica.
+            c("fisica-plano-inclinado", "Haz el diagrama de cuerpo libre de un bloque de 5 kg en un plano inclinado de 37° con coeficiente de rozamiento 0,2.", None),
+            c("fisica-circuito-serie", "Dibuja un circuito con una batería de 12 V y tres resistencias en serie de 2, 4 y 6 Ω, y calcula la corriente.", None),
+            c("fisica-tiro-parabolico", "Dibuja el tiro parabólico de un proyectil lanzado a 30 m/s con 60° de elevación.", None),
+            c("fisica-poleas-atwood", "Dibuja una máquina de Atwood con masas de 3 kg y 5 kg colgando de una polea.", None),
+            // Otros.
+            c("tabla-planetas", "Haz una tabla con los planetas interiores: nombre, distancia al Sol en UA y número de lunas.", None),
+            c("diagrama-flujo-par-impar", "Dibuja un diagrama de flujo que lea un número y diga si es par o impar.", None),
+            c("croquis-casa", "Dibuja un croquis de la fachada de una casa de un piso con puerta, dos ventanas y techo a dos aguas.", None),
+            c(
+                "cronograma-tesis",
+                "Hazme un cronograma de mi tesis: revisión bibliográfica del 2 al 13 de noviembre de 2026, encuestas del 16 al 27 de noviembre después de la revisión, análisis del 30 de noviembre al 11 de diciembre después de las encuestas, redacción del 7 al 18 de diciembre, y la entrega el 21 de diciembre.",
+                None,
+            ),
+        ]
+    }
+
+    pub fn scratch() -> PathBuf {
+        carpeta_de_imagenes().parent().unwrap().to_path_buf()
+    }
+
+    pub fn salida() -> PathBuf {
+        std::env::var("PIXPIN_BANCO_15").map(PathBuf::from).unwrap_or_else(|_| scratch().join("banco-15-oct"))
+    }
+
+    pub struct Hecho15 {
+        pub r: Resultado,
+        pub fotos: std::collections::HashMap<u64, pixpin_pdf::escribir::Pixeles>,
+        pub primero: f32,
+        pub total: f32,
+        pub vueltas: String,
+        pub eventos: Vec<String>,
+    }
+
+    /// Un caso por el agente, como en la app (camino rapido incluido).
+    pub fn correr_uno(motor: &dyn Motor, pedido: &str, imagen: Option<Vec<u8>>) -> Hecho15 {
+        let (mut historial, mut herramientas) = banco_ia::preparar(pedido, imagen.clone());
+        if motor.catalogo_completo() {
+            herramientas = pixpin_ia::herramientas::catalogo();
+        }
+        let mut r = Resultado::default();
+        let ctx = pixpin_ia::edicion::Contexto::default();
+        let medido = crono::Medido::nuevo(motor);
+        let opciones = agente::Opciones { rapido: Some(banco_ia::ahora()), ..Default::default() };
+        let t0 = Instant::now();
+        let mut primero: Option<f32> = None;
+        let mut eventos = Vec::new();
+        let (fin, fotos) = {
+            let mut ej = Apunta { r: &mut r, imagen, t0, ctx, fotos: Default::default() };
+            let fin = agente::turno_con(&medido, &mut historial, &herramientas, &mut ej, &opciones, &mut |e| {
+                if primero.is_none() && crono::se_ve(&e) {
+                    primero = Some(t0.elapsed().as_secs_f32());
+                }
+                if !matches!(e, Evento::Texto(_) | Evento::Pensando(_)) {
+                    eventos.push(format!("{e:?}").chars().take(200).collect::<String>());
+                }
+                Seguir::Si
+            });
+            (fin, std::mem::take(&mut ej.fotos))
+        };
+        let total = t0.elapsed().as_secs_f32();
+        match fin {
+            Ok(f) => r.texto = f.texto,
+            Err(e) => r.texto = format!("ERROR DEL MOTOR: {e}"),
+        }
+        Hecho15 { r, fotos, primero: primero.unwrap_or(total), total, vueltas: medido.resumen(), eventos }
+    }
+
+    fn letra() -> Option<&'static pixpin_pdf::letra::Letra> {
+        static L: std::sync::OnceLock<Option<pixpin_pdf::letra::Letra>> = std::sync::OnceLock::new();
+        L.get_or_init(|| pixpin_pdf::letra::del_sistema("Segoe UI")).as_ref()
+    }
+
+    /// La escena a pixeles por el camino del PDF del lienzo: `caja` fija (en
+    /// puntos) o recortada a lo dibujado.
+    pub fn a_imagen(
+        escena: &pixpin_motor2d::Escena,
+        fotos: &std::collections::HashMap<u64, pixpin_pdf::escribir::Pixeles>,
+        caja: Option<(f32, f32, f32, f32)>,
+        ancho: u32,
+    ) -> Option<pixpin_codec::ImagenRgba> {
+        let mut hojas = pixpin_motor2d::exportar::hojas(escena, pixpin_motor2d::exportar::Alcance::Todo, &[], None);
+        if hojas.is_empty() {
+            return None;
+        }
+        hojas.truncate(1);
+        // Un margen blanco alrededor de lo dibujado.
+        let c = caja.unwrap_or({
+            let c = hojas[0].caja;
+            (c.0 - 20.0, c.1 - 20.0, c.2 + 20.0, c.3 + 20.0)
+        });
+        hojas[0].caja = c;
+        let tam = (c.2 - c.0, c.3 - c.1);
+        let de = |id: u64| fotos.get(&id).map(|p| pixpin_pdf::escribir::Pixeles { ancho: p.ancho, alto: p.alto, rgba: p.rgba.clone() });
+        let pdf = pixpin_pdf::escribir::de_hojas_a_medida(&hojas, &[tam], &de, letra())?;
+        static N: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let ruta = std::env::temp_dir().join(format!("pixpin-banco15-ia-{}-{}.pdf", std::process::id(), N.fetch_add(1, std::sync::atomic::Ordering::SeqCst)));
+        std::fs::write(&ruta, pdf).ok()?;
+        let _com = pixpin_shell::ComDelHilo::iniciar();
+        let img = pixpin_pdf::Documento::abrir(&ruta).and_then(|d| d.renderizar(0, ancho)).ok();
+        let _ = std::fs::remove_file(&ruta);
+        img
+    }
+
+    /// Los renglones partidos a `n` letras.
+    fn partir(t: &str, n: usize) -> Vec<String> {
+        let mut v = Vec::new();
+        let mut actual = String::new();
+        for p in t.split_whitespace() {
+            if actual.chars().count() + p.chars().count() + 1 > n && !actual.is_empty() {
+                v.push(std::mem::take(&mut actual));
+            }
+            if !actual.is_empty() {
+                actual.push(' ');
+            }
+            actual.push_str(p);
+        }
+        if !actual.is_empty() {
+            v.push(actual);
+        }
+        v
+    }
+
+    /// La franja de arriba, a `ancho` px: el pedido y el motor con tiempos.
+    pub fn franja(pedido: &str, linea_motor: &str, ancho: u32) -> pixpin_codec::ImagenRgba {
+        use pixpin_motor2d::elemento::{ColorRgba, Elemento, Figura};
+        let (w, tam) = (1000.0f32, 17.0f32);
+        let mut renglones = partir(&format!("Pedido: «{pedido}»"), 100);
+        renglones.push(linea_motor.to_string());
+        let h = 14.0 + renglones.len() as f32 * tam * 1.45 + 8.0;
+        let mut s = pixpin_motor2d::Escena::nueva();
+        s.anadir(Elemento {
+            x: 0.0,
+            y: 0.0,
+            ancho: w,
+            alto: h,
+            trazo: ColorRgba::opaco(0.80, 0.82, 0.86),
+            relleno: Some(ColorRgba::opaco(0.93, 0.94, 0.97)),
+            estilo_relleno: pixpin_motor2d::EstiloRelleno::Solido,
+            grosor: 1.0,
+            rugosidad: 0.0,
+            ..Default::default()
+        });
+        let n = renglones.len();
+        for (i, r) in renglones.into_iter().enumerate() {
+            let ancho_t = pixpin_motor2d::exportar::ancho_de_texto(&r, tam);
+            s.anadir(Elemento {
+                figura: Figura::Texto { texto: r, tam, familia: "Segoe UI".into() },
+                x: 14.0,
+                y: 10.0 + i as f32 * tam * 1.45,
+                ancho: ancho_t,
+                alto: tam * 1.25,
+                trazo: if i + 1 == n { ColorRgba::opaco(0.05, 0.30, 0.60) } else { ColorRgba::opaco(0.10, 0.12, 0.18) },
+                ..Default::default()
+            });
+        }
+        a_imagen(&s, &Default::default(), Some((0.0, 0.0, w, h)), ancho).expect("no salio la franja")
+    }
+
+    pub fn apilar(arriba: &pixpin_codec::ImagenRgba, abajo: &pixpin_codec::ImagenRgba) -> pixpin_codec::ImagenRgba {
+        let w = arriba.ancho.max(abajo.ancho);
+        let margen = 16u32;
+        let h = arriba.alto + margen + abajo.alto;
+        let mut px = vec![255u8; (w * h * 4) as usize];
+        let mut poner = |img: &pixpin_codec::ImagenRgba, oy: u32| {
+            for y in 0..img.alto {
+                let d = ((oy + y) * w * 4) as usize;
+                let o = (y * img.ancho * 4) as usize;
+                px[d..d + (img.ancho * 4) as usize].copy_from_slice(&img.pixeles[o..o + (img.ancho * 4) as usize]);
+            }
+        };
+        poner(arriba, 0);
+        poner(abajo, arriba.alto + margen);
+        pixpin_codec::ImagenRgba { ancho: w, alto: h, pixeles: px }
+    }
+}
+
+#[test]
+#[ignore = "con la nube de verdad (ver banco15)"]
+fn banco_15_oct() {
+    let solo = std::env::var("PIXPIN_IA_SOLO").ok();
+    let mut filas = Vec::new();
+    let pedidos_ = std::env::var("PIXPIN_IA_MOTOR").map(|_| pedidos()).unwrap_or_else(|_| vec!["deepseek".into(), "claude".into()]);
+    for nombre in pedidos_ {
+        let m = match motor(&nombre) {
+            Ok(m) => m,
+            Err(e) => {
+                println!("SALTADO {nombre}: {e}");
+                continue;
+            }
+        };
+        let dir = banco15::salida().join(&nombre);
+        std::fs::create_dir_all(&dir).unwrap();
+        for caso in banco15::casos() {
+            if solo.as_deref().is_some_and(|s| !s.split('|').any(|x| caso.nombre.contains(x))) {
+                continue;
+            }
+            let imagen = match caso.imagen {
+                Some(r) => match std::fs::read(banco15::scratch().join(r)) {
+                    Ok(b) => Some(b),
+                    Err(_) => {
+                        println!("{nombre} {}: falta la imagen {r}", caso.nombre);
+                        continue;
+                    }
+                },
+                None => None,
+            };
+            let h = banco15::correr_uno(m.as_ref(), caso.pedido, imagen);
+            let herramientas: Vec<&str> = h.r.llamadas.iter().map(|(n, _)| n.as_str()).collect();
+            let linea = format!(
+                "Motor: {nombre} · 1º visible {:.1} s · total {:.1} s · {} · {}",
+                h.primero,
+                h.total,
+                h.vueltas,
+                if herramientas.is_empty() { "sin herramientas".to_string() } else { herramientas.join(", ") }
+            );
+            let dibujo = banco15::a_imagen(&h.r.escena, &h.fotos, None, 1400);
+            match &dibujo {
+                Some(img) => {
+                    let fr = banco15::franja(caso.pedido, &linea, img.ancho);
+                    let todo = banco15::apilar(&fr, img);
+                    std::fs::write(dir.join(format!("{}.png", caso.nombre)), pixpin_codec::imagen::codificar_png(&todo).unwrap()).unwrap();
+                }
+                None => {
+                    let _ = std::fs::remove_file(dir.join(format!("{}.png", caso.nombre)));
+                }
+            }
+            println!(
+                "{} {:<46} {:>5.1}s {:>6.1}s  {:<14} {} el. [{}]",
+                nombre,
+                caso.nombre,
+                h.primero,
+                h.total,
+                h.vueltas,
+                h.r.escena.cuantos_visibles(),
+                herramientas.join(",")
+            );
+            println!("    texto: «{}»", h.r.texto.trim().chars().take(400).collect::<String>().replace('\n', " ⏎ "));
+            for (n, v) in &h.r.llamadas {
+                println!("    llamo {n}: {}", v.to_string().chars().take(400).collect::<String>());
+            }
+            for (n, e) in &h.r.ediciones {
+                if let Err(e) = e {
+                    println!("    edicion {n} fallo: {e}");
+                }
+            }
+            if dibujo.is_none() {
+                println!("    (lienzo vacio) eventos: {}", h.eventos.join(" / ").chars().take(600).collect::<String>());
+            }
+            filas.push(format!(
+                "| {} | {nombre} | {:.1} s | {:.1} s | {} | {} |",
+                caso.nombre,
+                h.primero,
+                h.total,
+                h.vueltas,
+                if herramientas.is_empty() { "—".to_string() } else { herramientas.join(", ") }
+            ));
+        }
+        m.soltar();
+    }
+    println!("\n| caso | motor | 1º visible | total | vueltas | herramientas |\n|---|---|---|---|---|---|");
+    for f in &filas {
+        println!("{f}");
+    }
+}

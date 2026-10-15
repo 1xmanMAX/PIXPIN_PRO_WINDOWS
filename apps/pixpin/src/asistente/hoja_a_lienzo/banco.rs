@@ -405,3 +405,338 @@ fn una_formula_por_motor() {
         println!("{n}: {:?} en {} ms", r, t.elapsed().as_millis());
     }
 }
+
+// ---------------------------------------------------------------------------
+// Banco del 15-oct: hojas de estudiantes (formulas) al lienzo, una imagen
+// por caso con SOLO el resultado y una franja arriba con el pedido, el motor
+// y los tiempos. Las entradas quedan en `<salida>\entradas\` para que el
+// banco del asistente (`pixpin-ia`, `banco_15_oct`) las use con
+// `problema_en_limpio`.
+//
+// ```text
+// PIXPIN_BANCO_15=<carpeta>  (por omision scratchpad\banco-15-oct)
+// cargo test -p pixpin -- --ignored --nocapture --test-threads=1 hoja_a_lienzo::banco::banco_15_oct
+// ```
+
+fn salida_15() -> PathBuf {
+    std::env::var_os("PIXPIN_BANCO_15").map(PathBuf::from).unwrap_or_else(|| {
+        PathBuf::from(r"C:\Users\MaxBook\AppData\Local\Temp\claude\F--THE-FORGE-PIXPIN-PC-VERSION-MAX\afe461c5-d9fa-4287-b8b5-3ab7961f6cb3\scratchpad\banco-15-oct")
+    })
+}
+
+fn texto_de(t: &str, x: f32, y: f32, tam: f32, negrita: bool, familia: &str) -> Elemento {
+    let mut e = texto(t, x, y, tam, negrita);
+    if let pixpin_motor2d::Figura::Texto { familia: f, .. } = &mut e.figura {
+        *f = familia.into();
+    }
+    e
+}
+
+/// La formula a la izquierda (en `x`), no centrada.
+fn formula_en(v: &mut Vec<Elemento>, latex: &str, x: f32, y: f32, tam: f32) -> f32 {
+    let mut args = serde_json::Map::new();
+    args.insert("ecuacion".into(), serde_json::json!(latex));
+    let mut e = pixpin_ia::ecuacion::validar(&args, &mut Vec::new()).unwrap();
+    e.tam = tam as f64;
+    e.color = "#141414".into();
+    e.donde = Some((x as f64, y as f64));
+    let (piezas, (_, h)) = pixpin_ia::ecuacion::piezas(&e);
+    v.extend(piezas);
+    y + h
+}
+
+/// Una matriz 3x3 a mano: corchetes de rayas y los numeros en rejilla.
+fn matriz(v: &mut Vec<Elemento>, m: [[&str; 3]; 3], x: f32, y: f32, tam: f32) -> f32 {
+    let (cw, rh) = (tam * 2.4, tam * 1.6);
+    let (w, h) = (cw * 3.0 + 12.0, rh * 3.0 + 6.0);
+    for (i, fila) in m.iter().enumerate() {
+        for (j, c) in fila.iter().enumerate() {
+            let tw = medir(c, tam).0;
+            v.push(texto_de(c, x + 10.0 + j as f32 * cw + (cw - tw) / 2.0, y + 4.0 + i as f32 * rh, tam, false, "Cambria Math"));
+        }
+    }
+    v.push(raya(x, y, x, y + h, 1.6));
+    v.push(raya(x, y, x + 8.0, y, 1.6));
+    v.push(raya(x, y + h, x + 8.0, y + h, 1.6));
+    v.push(raya(x + w, y, x + w, y + h, 1.6));
+    v.push(raya(x + w - 8.0, y, x + w, y, 1.6));
+    v.push(raya(x + w - 8.0, y + h, x + w, y + h, 1.6));
+    y + h
+}
+
+const H15: f32 = 720.0;
+
+/// Integrales impresas, limpias.
+fn hoja_integrales() -> Vec<Elemento> {
+    let mut v = Vec::new();
+    v.push(texto_de("Ejercicio 3 - Calculo integral", 60.0, 50.0, 24.0, true, "Segoe UI"));
+    let y = parrafo(&mut v, "Calcula las siguientes integrales. Muestra el procedimiento y simplifica el resultado.", 60.0, 100.0, 720.0, 13.0);
+    v.push(texto_de("a)", 70.0, y + 40.0, 15.0, false, "Segoe UI"));
+    let y = formula_en(&mut v, "\\int_0^{2} (x^2 + 1) dx", 110.0, y + 26.0, 26.0);
+    v.push(texto_de("b)", 70.0, y + 44.0, 15.0, false, "Segoe UI"));
+    let y = formula_en(&mut v, "\\int \\frac{dx}{\\sqrt{1 - x^2}}", 110.0, y + 26.0, 26.0);
+    v.push(texto_de("c)", 70.0, y + 44.0, 15.0, false, "Segoe UI"));
+    let y = formula_en(&mut v, "\\int_1^{e} \\frac{\\ln x}{x} dx", 110.0, y + 26.0, 26.0);
+    parrafo(&mut v, "Respuesta: a) ______   b) ______   c) ______", 60.0, y + 50.0, 720.0, 13.0);
+    v
+}
+
+/// Fracciones y raices para simplificar (va escaneada e inclinada).
+fn hoja_fracciones() -> Vec<Elemento> {
+    let mut v = Vec::new();
+    v.push(texto_de("Practica 2: simplifica las expresiones", 60.0, 50.0, 22.0, true, "Segoe UI"));
+    v.push(texto_de("1.", 70.0, 140.0, 15.0, false, "Segoe UI"));
+    let y = formula_en(&mut v, "\\frac{\\sqrt{x + 1} - 1}{x}", 110.0, 118.0, 26.0);
+    v.push(texto_de("2.", 70.0, y + 50.0, 15.0, false, "Segoe UI"));
+    let y = formula_en(&mut v, "\\frac{\\frac{1}{a} + \\frac{1}{b}}{a + b}", 110.0, y + 26.0, 26.0);
+    v.push(texto_de("3.", 70.0, y + 46.0, 15.0, false, "Segoe UI"));
+    let y = formula_en(&mut v, "\\sqrt[3]{27 x^6 y^3}", 110.0, y + 26.0, 26.0);
+    parrafo(&mut v, "Indica para que valores de x, a y b tiene sentido cada expresion.", 60.0, y + 40.0, 720.0, 13.0);
+    v
+}
+
+/// Una matriz y su determinante.
+fn hoja_matriz() -> Vec<Elemento> {
+    let mut v = Vec::new();
+    v.push(texto_de("Algebra lineal - Tarea 5", 60.0, 50.0, 22.0, true, "Segoe UI"));
+    let y = parrafo(&mut v, "Dada la matriz A, calcula su determinante y, si existe, su inversa. Comprueba que A por su inversa es la identidad.", 60.0, 100.0, 720.0, 13.0);
+    v.push(texto_de("A =", 70.0, y + 70.0, 22.0, false, "Cambria Math"));
+    let y = matriz(&mut v, [["2", "-1", "0"], ["1", "3", "2"], ["0", "1", "4"]], 130.0, y + 30.0, 20.0);
+    let y = formula_en(&mut v, "det(A) = a_{11} C_{11} + a_{12} C_{12} + a_{13} C_{13}", 70.0, y + 40.0, 20.0);
+    formula_en(&mut v, "A^{-1} = \\frac{1}{det(A)} adj(A)", 70.0, y + 30.0, 20.0);
+    v
+}
+
+/// Un sistema de ecuaciones con su llave (va escaneado e inclinado).
+fn hoja_sistema() -> Vec<Elemento> {
+    let mut v = Vec::new();
+    v.push(texto_de("Resuelve los sistemas por sustitucion", 60.0, 50.0, 22.0, true, "Segoe UI"));
+    v.push(texto_de("a)", 70.0, 140.0, 15.0, false, "Segoe UI"));
+    v.push(texto_de("{", 105.0, 112.0, 64.0, false, "Cambria Math"));
+    v.push(texto_de("2x + 3y = 7", 140.0, 122.0, 22.0, false, "Cambria Math"));
+    v.push(texto_de("x - y = 1", 140.0, 160.0, 22.0, false, "Cambria Math"));
+    v.push(texto_de("b)", 70.0, 290.0, 15.0, false, "Segoe UI"));
+    v.push(texto_de("{", 105.0, 248.0, 92.0, false, "Cambria Math"));
+    v.push(texto_de("x + y + z = 6", 150.0, 250.0, 22.0, false, "Cambria Math"));
+    v.push(texto_de("2x - y + z = 3", 150.0, 288.0, 22.0, false, "Cambria Math"));
+    v.push(texto_de("x + 2y - z = 2", 150.0, 326.0, 22.0, false, "Cambria Math"));
+    parrafo(&mut v, "Comprueba cada solucion sustituyendo en todas las ecuaciones.", 60.0, 400.0, 720.0, 13.0);
+    v
+}
+
+/// Gira la imagen `grados` (bilineal), con papel gris en lo que sobra.
+fn inclinar(img: &pixpin_codec::ImagenRgba, grados: f32) -> pixpin_codec::ImagenRgba {
+    let (w, h) = (img.ancho as i64, img.alto as i64);
+    let (s, c) = grados.to_radians().sin_cos();
+    let (cx, cy) = (w as f32 / 2.0, h as f32 / 2.0);
+    let mut px = vec![0u8; img.pixeles.len()];
+    for y in 0..h {
+        for x in 0..w {
+            let (dx, dy) = (x as f32 - cx, y as f32 - cy);
+            let (sx, sy) = (c * dx + s * dy + cx, -s * dx + c * dy + cy);
+            let (x0, y0) = (sx.floor() as i64, sy.floor() as i64);
+            let (fx, fy) = (sx - x0 as f32, sy - y0 as f32);
+            let i = ((y * w + x) * 4) as usize;
+            for k in 0..3 {
+                let p = |xx: i64, yy: i64| {
+                    if xx < 0 || yy < 0 || xx >= w || yy >= h { 228.0 } else { img.pixeles[((yy * w + xx) * 4) as usize + k] as f32 }
+                };
+                let v = p(x0, y0) * (1.0 - fx) * (1.0 - fy) + p(x0 + 1, y0) * fx * (1.0 - fy) + p(x0, y0 + 1) * (1.0 - fx) * fy + p(x0 + 1, y0 + 1) * fx * fy;
+                px[i + k] = v as u8;
+            }
+            px[i + 3] = 255;
+        }
+    }
+    pixpin_codec::ImagenRgba { ancho: img.ancho, alto: img.alto, pixeles: px }
+}
+
+/// Elementos pintados a `ancho` px: en una hoja de `w x h` puntos con
+/// `caja`, o recortados a lo dibujado si `caja` es `None`.
+fn pintar_medida(els: Vec<Elemento>, fotos: &HashMap<u64, pixpin_codec::ImagenRgba>, (w, h): (f32, f32), caja: Option<(f32, f32, f32, f32)>, ancho: u32) -> Option<pixpin_codec::ImagenRgba> {
+    let mut escena = pixpin_motor2d::Escena::nueva();
+    for e in els {
+        escena.anadir(e);
+    }
+    let mut hojas = pixpin_motor2d::exportar::hojas(&escena, pixpin_motor2d::exportar::Alcance::Todo, &[], None);
+    if hojas.is_empty() {
+        return None;
+    }
+    hojas.truncate(1);
+    let c = caja.unwrap_or(hojas[0].caja);
+    hojas[0].caja = c;
+    let tam = if caja.is_some() { (w, h) } else { (c.2 - c.0, c.3 - c.1) };
+    let resolver = |id: u64| fotos.get(&id).map(|i| pixpin_pdf::escribir::Pixeles { ancho: i.ancho, alto: i.alto, rgba: i.pixeles.clone() });
+    let pdf = pixpin_pdf::escribir::de_hojas_a_medida(&hojas, &[tam], &resolver, super::letra_segoe())?;
+    static N: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let ruta = std::env::temp_dir().join(format!("pixpin-banco15-{}-{}.pdf", std::process::id(), N.fetch_add(1, std::sync::atomic::Ordering::SeqCst)));
+    std::fs::write(&ruta, pdf).ok()?;
+    let img = pixpin_pdf::Documento::abrir(&ruta).and_then(|d| d.renderizar(0, ancho)).ok();
+    let _ = std::fs::remove_file(&ruta);
+    img
+}
+
+/// La franja de arriba: renglones sobre gris claro, a `ancho` px.
+fn franja(renglones: &[String], ancho: u32) -> pixpin_codec::ImagenRgba {
+    let (w, tam) = (1000.0f32, 17.0f32);
+    let h = 14.0 + renglones.len() as f32 * tam * 1.45 + 8.0;
+    let mut v = vec![Elemento {
+        x: 0.0,
+        y: 0.0,
+        ancho: w,
+        alto: h,
+        trazo: ColorRgba::opaco(0.80, 0.82, 0.86),
+        relleno: Some(ColorRgba::opaco(0.93, 0.94, 0.97)),
+        estilo_relleno: pixpin_motor2d::relleno::EstiloRelleno::Solido,
+        grosor: 1.0,
+        rugosidad: 0.0,
+        ..Default::default()
+    }];
+    for (i, r) in renglones.iter().enumerate() {
+        let mut e = texto_de(r, 14.0, 10.0 + i as f32 * tam * 1.45, tam, i == 0, "Segoe UI");
+        e.trazo = ColorRgba::opaco(0.10, 0.12, 0.18);
+        v.push(e);
+    }
+    pintar_medida(v, &HashMap::new(), (w, h), Some((0.0, 0.0, w, h)), ancho).unwrap()
+}
+
+/// La franja encima del resultado (con margen blanco).
+fn apilar(arriba: &pixpin_codec::ImagenRgba, abajo: &pixpin_codec::ImagenRgba) -> pixpin_codec::ImagenRgba {
+    let w = arriba.ancho.max(abajo.ancho);
+    let margen = 16u32;
+    let h = arriba.alto + margen + abajo.alto;
+    let mut px = vec![255u8; (w * h * 4) as usize];
+    let mut poner = |img: &pixpin_codec::ImagenRgba, oy: u32| {
+        for y in 0..img.alto {
+            let d = ((oy + y) * w * 4) as usize;
+            let o = (y * img.ancho * 4) as usize;
+            px[d..d + (img.ancho * 4) as usize].copy_from_slice(&img.pixeles[o..o + (img.ancho * 4) as usize]);
+        }
+    };
+    poner(arriba, 0);
+    poner(abajo, arriba.alto + margen);
+    pixpin_codec::ImagenRgba { ancho: w, alto: h, pixeles: px }
+}
+
+#[test]
+#[ignore = "banco con la nube de verdad"]
+fn banco_15_oct() {
+    let _com = pixpin_shell::ComDelHilo::iniciar();
+    let base = salida_15();
+    let dir_entradas = base.join("entradas");
+    std::fs::create_dir_all(&dir_entradas).unwrap();
+    // (caso, elementos, inclinacion en grados si va «escaneada»)
+    let hojas: Vec<(&str, Vec<Elemento>, Option<f32>)> = vec![
+        ("hoja-integrales", hoja_integrales(), None),
+        ("hoja-fracciones-escaneada", hoja_fracciones(), Some(1.6)),
+        ("hoja-matriz", hoja_matriz(), None),
+        ("hoja-sistema-escaneada", hoja_sistema(), Some(-2.2)),
+    ];
+    let mut entradas: Vec<(String, PathBuf)> = Vec::new();
+    for (nombre, els, inclinada) in hojas {
+        let mut img = pintar_medida(els, &HashMap::new(), (W, H15), Some((0.0, 0.0, W, H15)), 1700).unwrap();
+        if let Some(g) = inclinada {
+            escanear(&mut img);
+            img = inclinar(&img, g);
+        }
+        let ruta = dir_entradas.join(format!("{nombre}.png"));
+        std::fs::write(&ruta, pixpin_codec::imagen::codificar_png(&img).unwrap()).unwrap();
+        entradas.push((nombre.to_string(), ruta));
+    }
+    if std::env::var("PIXPIN_BANCO_SOLO_ENTRADAS").is_ok() {
+        return;
+    }
+    let scratch = base.parent().unwrap().to_path_buf();
+    for (n, r) in [("hoja-cuadratica-grafica", scratch.join("banco-imagenes").join("hoja-2-sintetica.png")), ("hoja-real-amor-a-sofia", scratch.join("hoja-real").join("amor-a-sofia.png"))] {
+        if r.is_file() {
+            entradas.push((n.into(), r));
+        }
+    }
+    let mut filas = Vec::new();
+    for (motor_nombre, motor) in motores() {
+        let carpeta = base.join(motor_nombre);
+        std::fs::create_dir_all(&carpeta).unwrap();
+        for (nombre, ruta) in &entradas {
+            if let Ok(h) = std::env::var("PIXPIN_HOJA_SOLO")
+                && !nombre.contains(h.as_str())
+            {
+                continue;
+            }
+            eprintln!("[banco15] {motor_nombre} {nombre}");
+            let p = match leer(ruta, None) {
+                Ok(p) => p,
+                Err(e) => {
+                    println!("{motor_nombre} {nombre}: no se pudo leer: {e}");
+                    continue;
+                }
+            };
+            let mut d = EnEscena::nueva();
+            let o = Opciones { comprobar: std::env::var("PIXPIN_BANCO_SIN_COMPROBAR").is_err(), ..Default::default() };
+            let caso = format!("{nombre}-hoja_a_lienzo");
+            let r = pasar(&p, Some(motor.clone()), &o, false, 9000 + filas.len() as u64, &AtomicBool::new(false), &mut d, &mut |_, _| {});
+            let inf = match r {
+                Ok(i) => i,
+                Err(e) => {
+                    println!("{motor_nombre} {nombre}: fallo: {e}");
+                    filas.push(format!("| {motor_nombre} | {caso} | fallo: {e} | | | |"));
+                    continue;
+                }
+            };
+            let primero = inf.ms_primera.unwrap_or(inf.ms_total) + p.ms_leer;
+            let total = inf.ms_total + p.ms_leer;
+            // Lo que quedo en el lienzo (la escena, con sus fotos).
+            let els: Vec<Elemento> = d.escena.visibles().cloned().collect();
+            let n_hechos: usize = inf.hechos.iter().map(|h| h.elementos.len()).sum();
+            let mut ids: Vec<String> = inf.hechos.iter().flat_map(|h| h.elementos.iter().filter_map(|e| e["id"].as_str().map(str::to_string))).collect();
+            let todos = ids.len();
+            ids.sort();
+            ids.dedup();
+            println!("    en el lienzo {} elementos; hechos {} elementos ({} ids repetidos); rehechas {}", els.len(), n_hechos, todos - ids.len(), inf.rehechas);
+            // Para comparar: lo hecho zona a zona, sin pasar por el lienzo.
+            if std::env::var("PIXPIN_BANCO_HECHOS").is_ok() {
+                let s = &inf.seccionado;
+                let (hw, hh) = pixpin_ia::hoja::Mapa::para(s, &o).hoja(s);
+                if let Ok((px, w, h)) = pintar(&inf.hechos, (hw as f32, hh as f32), 1400) {
+                    let dir = base.join("comparar").join(motor_nombre);
+                    let _ = std::fs::create_dir_all(&dir);
+                    let img = pixpin_codec::ImagenRgba { ancho: w, alto: h, pixeles: px };
+                    let _ = std::fs::write(dir.join(format!("{caso}-segun-hechos.png")), pixpin_codec::imagen::codificar_png(&img).unwrap());
+                }
+            }
+            let Some(res) = pintar_medida(els, &d.imagenes, (0.0, 0.0), None, 1400) else {
+                println!("{motor_nombre} {nombre}: el lienzo quedo vacio");
+                continue;
+            };
+            let fr = franja(
+                &[
+                    format!("Pedido: «Pasa esta hoja al lienzo» (hoja_a_lienzo) · entrada: {nombre}"),
+                    format!(
+                        "Motor: {motor_nombre} · 1º visible {:.1} s · total {:.1} s · {} zonas, {} peticiones, {} fallos",
+                        primero as f32 / 1000.0,
+                        total as f32 / 1000.0,
+                        inf.seccionado.zonas.len(),
+                        inf.peticiones,
+                        inf.fallos.len()
+                    ),
+                ],
+                res.ancho,
+            );
+            let img = apilar(&fr, &res);
+            std::fs::write(carpeta.join(format!("{caso}.png")), pixpin_codec::imagen::codificar_png(&img).unwrap()).unwrap();
+            for f in &inf.fallos {
+                println!("    FALLO {f}");
+            }
+            for h in &inf.hechos {
+                let z = &inf.seccionado.zonas[h.zona];
+                let t: String = z.texto().chars().take(50).collect::<String>().replace('\n', " | ");
+                println!("    zona {:>2} {:<10} {} {t}", h.zona, h.tipo.nombre(), h.nota);
+            }
+            let fila = format!("| {motor_nombre} | {caso} | {:.1} s | {:.1} s | {} | {} |", primero as f32 / 1000.0, total as f32 / 1000.0, inf.peticiones, inf.fallos.len());
+            println!("{fila}");
+            filas.push(fila);
+        }
+    }
+    println!("\n| motor | caso | 1º visible | total | peticiones | fallos |\n|---|---|---|---|---|---|");
+    for f in &filas {
+        println!("{f}");
+    }
+}
