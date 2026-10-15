@@ -111,6 +111,8 @@ mod llamada;
 mod marco_de_la_tinta;
 mod medir_fotogramas;
 mod mini_panel;
+/// Lo que dicen las notificaciones de Windows con botones (15-oct).
+mod notificaciones;
 mod miniaturas;
 mod navegacion;
 mod notas_md;
@@ -131,6 +133,7 @@ mod pines;
 mod pronunciar;
 mod punto_de_proyecto;
 mod recibir;
+mod recibir_de_windows;
 mod recordatorios;
 mod renombrar_doc;
 mod reproductor;
@@ -315,6 +318,11 @@ fn arrancar(
     // instancia no es un fallo: el usuario pulso el icono dos veces. Que
     // `CreateMutexW` falle de verdad si lo es, y confundirlos manda a quien
     // depure a buscar una segunda copia que no existe.
+    // Lo compartido con este arranque (Compartir de Windows con el paquete de
+    // identidad, o `--al-chat <rutas>`): se lee YA, antes de que esta copia
+    // se vaya, porque Windows espera respuesta y la otra app puede borrar
+    // sus temporales en cuanto la tiene.
+    let compartido = recibir_de_windows::pedido_del_arranque();
     let _instancia = match adquirir_instancia_unica() {
         Ok(i) => i,
         Err(pixpin_shell::instancia::ErrorInstanciaUnica::YaHayOtraInstancia) => {
@@ -324,8 +332,10 @@ fn arrancar(
             // esta copia se iria en silencio llevandose la ruta, y el
             // usuario veria que su fichero no se abre.
             let rutas = pixpin_shell::mensajero::rutas_de_los_argumentos();
+            if let Some(pedido) = &compartido {
+                pixpin_shell::mensajero::enviar_pedido(pedido);
             // Un atajo de la Jump List del icono: a la copia que corre, como pedido.
-            if let Some(pedido) = lista_del_icono::pedido_del_arranque() {
+            } else if let Some(pedido) = lista_del_icono::pedido_del_arranque() {
                 pixpin_shell::mensajero::enviar_pedido(&pedido);
             } else if !rutas.is_empty() {
                 pixpin_shell::mensajero::enviar_ficheros(&rutas);
@@ -679,7 +689,11 @@ fn arrancar(
     // comporte IGUAL este PixPin ya abierto o no; con dos caminos, uno de
     // los dos se queda atras en cuanto se cambie algo.
     let del_arranque = pixpin_shell::mensajero::rutas_de_los_argumentos();
-    if !del_arranque.is_empty() {
+    if let Some(pedido) = &compartido {
+        // Lo compartido va al chat; sus rutas no son ficheros que pinear.
+        pixpin_shell::mensajero::enviar_pedido(pedido);
+        pixpin_shell::despertar(ventana.handle());
+    } else if !del_arranque.is_empty() {
         tracing::info!(
             cuantos = del_arranque.len(),
             "ficheros en la linea de mandatos"
@@ -701,6 +715,8 @@ fn arrancar(
         pixpin_shell::despertar(ventana.handle());
     }
     lista_del_icono::poner_al_dia(lengua, ubicacion.clone());
+    // «Imprimir a PixPin»: solo si la impresora esta instalada.
+    recibir_de_windows::iniciar_impresora(&ubicacion);
 
     // El chat de proyectos es la interfaz principal (D141): se abre al
     // arrancar, como la ventana de cualquier aplicacion. Cerrarlo deja
@@ -731,6 +747,23 @@ fn arrancar(
         idioma: lengua,
         opciones: opciones_lienzo,
     });
+    // La cola de encargos del asistente (`p asistente …` de Flow, 15-oct):
+    // lo que quedo pendiente se hace ya; cada uno avisa al acabar con una
+    // notificacion de Windows, cuya identidad y protocolo («Abrir») se dan
+    // de alta aqui, fuera del modo portable (cero rastro, como «Abrir con»).
+    automatizaciones::cola::arrancar(automatizaciones::encargo::DeLaApp {
+        entorno: automatizaciones::encargo::Entorno {
+            ubicacion: ubicacion.clone(),
+            aparato: identidad_equipo.clone(),
+        },
+        idioma: lengua,
+        opciones: opciones_lienzo,
+    });
+    if !ubicacion.es_portable() {
+        automatizaciones::cola::registrar_notificaciones(ruta_exe.clone(), ubicacion.raiz().to_path_buf());
+    }
+    // Las capturas que se van en las proximas 24 h, con «Conservar».
+    caducidad_capturas::vigilar_avisos(ubicacion.raiz().to_path_buf(), lengua);
 
     // Lo que ensenan los interruptores del panel de la bandeja (v2): lo
     // que dijeron los dos ultimos «alternar» de los pines.
@@ -1883,7 +1916,28 @@ fn atender_recordatorios(
             tracing::warn!("sin monitor donde sacar el pin del recordatorio");
         }
         // La secreta no dice su recado en un globo: eso es lo secreto.
-        if !es_secreta
+        // Lo demas, en una notificacion de Windows con «Hecha» (si es una
+        // tarea), «+10 min» y «Abrir» (15-oct); si no sale, el globo.
+        let proyecto = v.carpeta.as_deref().and_then(notificaciones::proyecto_de);
+        if !es_secreta && let Some(proyecto) = proyecto {
+            let tarea = v
+                .carpeta
+                .as_deref()
+                .and_then(|c| pixpin_proyecto::cuaderno::Cuaderno::leer_de(c).ok())
+                .and_then(|c| tareas::tarea_de_recordatorio(&c, &r.id));
+            let toast = notificaciones::de_recordatorio(
+                textos,
+                &proyecto,
+                &r.id,
+                tarea.as_ref().map(|(l, i)| (l.as_str(), *i)),
+                &r.texto,
+            );
+            let h = hwnd.0 as isize;
+            pixpin_shell::notificacion::mostrar_o(toast, move |t| {
+                let hwnd = windows::Win32::Foundation::HWND(h as *mut _);
+                let _ = pixpin_shell::aviso::Aviso::sobre_la_bandeja(hwnd).mostrar(&t.titulo, &t.texto);
+            });
+        } else if !es_secreta
             && let Err(e) = aviso.mostrar(&textos.t("chat-recordatorio-titulo"), &r.texto)
         {
             tracing::warn!(?e, "no se pudo avisar del recordatorio");

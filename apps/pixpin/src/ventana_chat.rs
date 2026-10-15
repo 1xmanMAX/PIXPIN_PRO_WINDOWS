@@ -46,7 +46,7 @@ mod caja_de_soltar;
 /// dibujado en el lienzo del asistente, dejar el texto de un OCR, elegir el
 /// motor de Ajustes) y el aviso flotante con «Abrir».
 pub(crate) mod sin_ventana {
-    pub(crate) use super::aviso_asistente::{Aviso, Chat, lanzar as avisar};
+    pub(crate) use super::aviso_asistente::{Aviso, Chat, Mando, lanzar as avisar};
     use pixpin_store::{Catalogo, Ubicacion};
 
     /// Lo dibujado, al lienzo del asistente en el chat `proyecto`: el
@@ -93,7 +93,9 @@ pub(crate) mod sin_ventana {
         ubicacion: &Ubicacion,
         textos: &Catalogo,
     ) -> Result<std::sync::Arc<dyn pixpin_ia::motor::Motor>, String> {
-        super::asistente::motor_de_los_ajustes(ubicacion, textos, "", false)
+        // Los encargos de las automatizaciones: sin pedido que clasificar,
+        // la nube piensa como antes.
+        super::asistente::motor_de_los_ajustes(ubicacion, textos, "", false, true)
     }
 }
 /// La descripcion de una foto: su `texto`, como en el movil (3-oct).

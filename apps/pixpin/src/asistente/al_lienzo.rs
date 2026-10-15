@@ -45,6 +45,13 @@ pub enum Trabajo {
     },
     /// El resumen del lienzo destino, al empezar el turno.
     Resumir,
+    /// **Mirarlo** (15-oct, `ojos.rs`): quien tiene la escena copia la zona
+    /// y sus imagenes ([`Respuesta::vista`]); se pinta en el hilo de los ojos.
+    Ver { mirada: pixpin_ia::ojos::Mirada, ctx: Contexto },
+    /// Lo que hizo un turno en el lienzo abierto, un solo paso de deshacer:
+    /// si desde `desde` se cerraron justo `esperados` pasos (los del turno),
+    /// se juntan; si el usuario hizo algo entre medias, no.
+    Juntar { desde: u64, esperados: u64 },
 }
 
 /// Lo que contesta el lienzo: el texto para el modelo, los ids que toco
@@ -54,6 +61,11 @@ pub struct Respuesta {
     pub texto: String,
     pub ids: Vec<u64>,
     pub ctx: Option<Contexto>,
+    /// Al mirar ([`Trabajo::Ver`]): lo copiado para pintarlo.
+    pub vista: Option<Box<super::ojos::Encargo>>,
+    /// En el lienzo abierto, los pasos de deshacer cerrados antes y despues
+    /// de dibujar o editar (para [`Trabajo::Juntar`]).
+    pub pasos: Option<(u64, u64)>,
 }
 
 /// Un pedido al lienzo.
@@ -368,6 +380,7 @@ pub fn trabajar(
                 texto: pixpin_ia::edicion::resumen(escena, &ctx),
                 ids: Vec::new(),
                 ctx: Some(ctx),
+                ..Default::default()
             })
         }
         Trabajo::Editar { edicion, ctx, adjuntos } => {
@@ -379,8 +392,21 @@ pub fn trabajar(
             Ok(Respuesta {
                 texto: h.texto,
                 ids: h.ids,
-                ctx: None,
+                ..Default::default()
             })
+        }
+        Trabajo::Ver { mirada, ctx } => {
+            let mut ctx = ctx.clone();
+            ctx.elegidos = elegidos.to_vec();
+            let imagenes = &*imagenes;
+            let enc = super::ojos::encargo_de(escena, mirada, &ctx, |id| imagenes.rgba(id).cloned().map(super::ojos::Pixeles::Rgba))?;
+            Ok(Respuesta { vista: Some(Box::new(enc)), ..Default::default() })
+        }
+        Trabajo::Juntar { desde, esperados } => {
+            if *esperados >= 2 && escena.pasos_cerrados().saturating_sub(*desde) == *esperados {
+                escena.juntar_pasos(*desde);
+            }
+            Ok(Respuesta::default())
         }
         Trabajo::Dibujar => Err("eso no es un trabajo de editar".into()),
     }
@@ -524,7 +550,7 @@ pub fn resumen_con_ids(escena: &Escena, ids: Vec<u64>, marco: Option<(f32, f32)>
     Respuesta {
         texto: pixpin_ia::edicion::resumen_de_lo_anadido(escena, &ids, &ctx),
         ids,
-        ctx: None,
+        ..Default::default()
     }
 }
 
@@ -565,12 +591,22 @@ pub fn atender_en_editor_con(
                 }
                 r
             }
-            Trabajo::Dibujar => meter_ids(escena, &p.documento, centro).map(|ids| resumen_con_ids(escena, ids, p.marco)),
+            Trabajo::Dibujar => {
+                let antes = escena.pasos_cerrados();
+                meter_ids(escena, &p.documento, centro).map(|ids| Respuesta {
+                    pasos: Some((antes, escena.pasos_cerrados())),
+                    ..resumen_con_ids(escena, ids, p.marco)
+                })
+            }
             t => {
                 let antes = escena.pasos_cerrados();
                 let r = trabajar(escena, t, elegidos, (vista.0.floor(), vista.1.floor()), imagenes);
                 algo |= escena.pasos_cerrados() != antes;
-                r
+                // Lo que edito, para juntarlo al acabar el turno.
+                r.map(|r| match t {
+                    Trabajo::Editar { .. } => Respuesta { pasos: Some((antes, escena.pasos_cerrados())), ..r },
+                    _ => r,
+                })
             }
         };
         algo |= r.is_ok() && matches!(p.trabajo, Trabajo::Dibujar);

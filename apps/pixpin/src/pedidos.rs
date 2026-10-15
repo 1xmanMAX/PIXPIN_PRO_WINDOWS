@@ -100,9 +100,13 @@ pub enum Pedido {
         indice: usize,
         hecha: bool,
     },
-    /// Con llaves y sin campos, no como variante unitaria: asi se aceptan
-    /// los campos de mas (`pixpin`) igual que en las demas.
-    VentanaPrincipal {},
+    /// Con llaves, no como variante unitaria: asi se aceptan los campos de
+    /// mas (`pixpin`) igual que en las demas. Con `proyecto` (15-oct, el
+    /// asistente: «abre el chat Obra»), en ese chat.
+    VentanaPrincipal {
+        #[serde(default)]
+        proyecto: Option<String>,
+    },
     /// Sacar a la pantalla un fichero (`ruta`) o el de un mensaje
     /// (`proyecto?`, `codigo`), como «Sacar a la pantalla» del chat.
     Pinear {
@@ -221,6 +225,11 @@ pub enum Pedido {
     /// como en `chat` (`[img NN]` en `texto`). Sin `texto` ni `imagenes`,
     /// abre el chat «Asistente». Con `automatizacion` (su id), corre esa
     /// automatizacion a mano y no mira lo demas.
+    ///
+    /// 15-oct: con texto va a la **cola de encargos**
+    /// (`automatizaciones::cola`): uno tras otro en segundo plano y una
+    /// notificacion de Windows al acabar cada uno. `encargo` es su id (lo
+    /// pone el plugin, para ver en su lista cuando ya esta apuntado).
     Asistente {
         #[serde(default)]
         texto: String,
@@ -228,6 +237,49 @@ pub enum Pedido {
         #[serde(default)]
         imagenes: Vec<PathBuf>,
         automatizacion: Option<String>,
+        #[serde(default)]
+        encargo: Option<String>,
+    },
+    /// **«+10 min»** de la notificacion de un recordatorio (15-oct): que
+    /// vuelva a sonar dentro de `minutos`. `mensaje` es el id del mensaje con
+    /// la hora o, con `indice`, el de la lista de esa tarea (la hora de una
+    /// tarea va en su texto, `tareas::con_hora`).
+    Posponer {
+        proyecto: Option<String>,
+        mensaje: String,
+        indice: Option<usize>,
+        minutos: u32,
+    },
+    /// **Los pines de la pantalla** (15-oct, el asistente): los comandos de
+    /// la bandeja (`Comando::CerrarTodosLosPines`, `AlternarPines`...), por
+    /// el mismo camino que `capturar`.
+    Pines {
+        operacion: OperacionPines,
+    },
+    /// **Un momento en el timeline** (15-oct): con `texto`, se apunta (su
+    /// primera frase es el titulo, `pixpin_timeline::frases::partir`); sin
+    /// el, se abre la ventana.
+    Timeline {
+        #[serde(default)]
+        texto: Option<String>,
+    },
+    /// **Leer en voz alta** (15-oct) con la voz de la app (`leer_en_voz`),
+    /// sin abrir ningun lector: se para y se pausa con los mandos de
+    /// reproductor de Windows y las teclas multimedia, como un documento
+    /// cuyo lector se cerro. Un `texto` suelto (la seleccion de una pagina
+    /// desde la extension del navegador: un parrafo por renglon) o un
+    /// fichero (`ruta`: PDF, Word, PowerPoint, Excel, nota; el asistente).
+    /// `titulo` es lo que ensenan los mandos; sin el, «PixPin Max» o el
+    /// nombre del fichero. Con `parar`, calla lo que suene.
+    LeerEnVoz {
+        #[serde(default)]
+        texto: Option<String>,
+        #[serde(default)]
+        ruta: Option<PathBuf>,
+        #[serde(default)]
+        titulo: Option<String>,
+        #[serde(default)]
+        parar: bool,
     },
     /// Crear, encender, apagar, borrar o correr una automatizacion
     /// (`crate::automatizaciones`). `receta` (al crear) es lo que arma la
@@ -238,6 +290,27 @@ pub enum Pedido {
         id: Option<String>,
         #[serde(default, deserialize_with = "como_texto_json")]
         receta: Option<String>,
+    },
+    /// **El texto de una imagen al portapapeles** (15-oct, «Texto (OCR)» de
+    /// la extension del navegador): el OCR de Windows, en orden de lectura,
+    /// como «Texto» de la captura. Lo que salga se dice en el globo.
+    Ocr {
+        ruta: PathBuf,
+    },
+    /// **Una herramienta del asistente con sus argumentos** (15-oct, el
+    /// servidor MCP `apps/pixpin-mcp`): la fila `nombre` de
+    /// `pixpin_ia::acciones::todas()`, hecha como la haria el asistente
+    /// (`asistente::externa`), y lo que salio escrito en `respuesta`
+    /// (`{"ok":bool,"texto":"…"}`, solo dentro de `%TEMP%\pixpin-mcp\`).
+    /// `preguntar`: una pregunta que hacer antes, ademas de la de la fila.
+    /// `args` va como texto JSON para que el pedido siga siendo comparable.
+    Herramienta {
+        nombre: String,
+        #[serde(default, deserialize_with = "como_texto_json")]
+        args: Option<String>,
+        respuesta: Option<PathBuf>,
+        preguntar: Option<String>,
+        origen: Option<String>,
     },
 }
 
@@ -267,14 +340,82 @@ pub enum Cual {
     Lecciones,
     /// Sincronizar: el plugin la ofrece cuando este PC aun no tiene grupo.
     Sincronizar,
+    /// 15-oct (el asistente): los ajustes, el timeline y buscar en PixPin.
+    Ajustes,
+    Timeline,
+    Buscar,
 }
 
-/// Que captura hace `capturar`. Solo la de zona, por ahora: la del atajo
-/// general (`Comando::CapturarRegion`).
+/// Que captura hace `capturar`: cada una es un comando de la bandeja
+/// (`pixpin_store::comandos`), por el mismo camino que el atajo. Sin
+/// `modo`, la de zona con la barra (`Comando::CapturarRegion`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
-#[serde(rename_all = "lowercase")]
+#[serde(rename_all = "snake_case")]
 pub enum ModoCaptura {
     Zona,
+    /// Directa al portapapeles.
+    Copiar,
+    /// Recortar y dejarla flotando como pin.
+    Pin,
+    /// Un pin que se actualiza solo.
+    EnVivo,
+    /// Capturar y ponerse a anotar.
+    Anotar,
+    /// Copiar el texto que se lea en la zona.
+    Texto,
+    /// Captura larga con desplazamiento.
+    Scroll,
+    /// La ultima zona otra vez, sin elegir.
+    Repetir,
+    /// Tras una cuenta atras.
+    Retardo,
+    /// Grabar la zona como GIF.
+    Gif,
+}
+
+impl ModoCaptura {
+    /// El comando de la bandeja que la hace.
+    pub fn comando(self) -> pixpin_store::comandos::Comando {
+        use pixpin_store::comandos::Comando;
+        match self {
+            ModoCaptura::Zona => Comando::CapturarRegion,
+            ModoCaptura::Copiar => Comando::CapturarYCopiar,
+            ModoCaptura::Pin => Comando::Pinear,
+            ModoCaptura::EnVivo => Comando::PinearEnVivo,
+            ModoCaptura::Anotar => Comando::CapturarYAnotar,
+            ModoCaptura::Texto => Comando::CopiarTexto,
+            ModoCaptura::Scroll => Comando::CapturarConScroll,
+            ModoCaptura::Repetir => Comando::CapturarUltimaRegion,
+            ModoCaptura::Retardo => Comando::CapturarConRetardo,
+            ModoCaptura::Gif => Comando::GrabarGif,
+        }
+    }
+}
+
+/// Que se hace con `pines`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum OperacionPines {
+    /// Cerrarlos todos (se puede devolver el ultimo).
+    Cerrar,
+    /// Esconderlos todos, o devolverlos si ya estaban escondidos.
+    OcultarMostrar,
+    /// Devolver el ultimo que se cerro.
+    DevolverUltimo,
+    /// Que dejen pasar el clic a lo de debajo, o que vuelvan a tomarlo.
+    PasoDeClics,
+}
+
+impl OperacionPines {
+    pub fn comando(self) -> pixpin_store::comandos::Comando {
+        use pixpin_store::comandos::Comando;
+        match self {
+            OperacionPines::Cerrar => Comando::CerrarTodosLosPines,
+            OperacionPines::OcultarMostrar => Comando::AlternarPines,
+            OperacionPines::DevolverUltimo => Comando::RestaurarUltimoPin,
+            OperacionPines::PasoDeClics => Comando::AlternarPasoDeClics,
+        }
+    }
 }
 
 /// Que se abre con `abrir`.
@@ -574,11 +715,17 @@ fn hacer(p: Pedido, cx: &Contexto) -> Result<Hecho, Fallo> {
                 if !ruta.is_file() {
                     return Err(Fallo::SinFichero(ruta));
                 }
+                let ir = pagina.is_some_and(|p| p >= 1) || buscar.as_deref().is_some_and(|q| !q.trim().is_empty());
                 if let Some(p) = pagina.filter(|p| *p >= 1) {
                     crate::lector_pdf::abrir_en_la_pagina(&ruta, p - 1);
                 }
                 if let Some(q) = buscar.as_deref().map(str::trim).filter(|q| !q.is_empty()) {
                     crate::lector_pdf::abrir_buscando(&ruta, q);
+                }
+                // Ya abierto en el lector (15-oct, «ve a la pagina 12»): lo
+                // lleva ahi el que esta abierto, sin abrir otra ventana.
+                if ir && crate::lector_pdf::esta_abierto(&ruta) {
+                    return Ok(Hecho::default());
                 }
                 if let Some(Zona(z)) = zona
                     && crate::plano_cad::se_abre(&ruta.to_string_lossy())
@@ -877,17 +1024,36 @@ fn hacer(p: Pedido, cx: &Contexto) -> Result<Hecho, Fallo> {
                 &[("lista", nombre_de_lista(&m)), ("proyecto", f.nombre)],
             ));
         }
-        Pedido::VentanaPrincipal {} => {
-            crate::ventana_chat::lanzar(cx.idioma, cx.ubicacion.clone(), cx.opciones);
-        }
+        Pedido::VentanaPrincipal { proyecto } => match proyecto.as_deref().map(str::trim).filter(|p| !p.is_empty()) {
+            // En ese chat (si no esta, se avisa y no se abre otro).
+            Some(p) => {
+                let f = ficha_de(raiz, Some(p), cx.aparato, ahora)?;
+                ir_al_chat(f.id, None);
+            }
+            None => crate::ventana_chat::lanzar(cx.idioma, cx.ubicacion.clone(), cx.opciones),
+        },
         // Las mismas entradas que la bandeja: su ventana es la respuesta.
         Pedido::Ventana { cual } => match cual {
             Cual::Tareas => crate::tareas::abrir(cx.idioma, cx.ubicacion.clone(), cx.aparato),
             Cual::Galeria => crate::galeria_capturas::abrir(cx.idioma, cx.ubicacion.clone()),
             Cual::Lecciones => crate::timeline::abrir_lecciones(cx.idioma, cx.ubicacion.clone()),
             Cual::Sincronizar => crate::sincronizar::lanzar(cx.idioma, cx.ubicacion.clone()),
+            Cual::Timeline => crate::timeline::abrir(cx.idioma, cx.ubicacion.clone()),
+            // Los ajustes y el buscador necesitan lo que tiene el bucle
+            // (los ajustes cargados, su ventana): por su comando.
+            Cual::Ajustes => comando_por_la_ventana(pixpin_store::comandos::Comando::AbrirAjustes, std::time::Duration::ZERO),
+            Cual::Buscar => comando_por_la_ventana(pixpin_store::comandos::Comando::Buscar, std::time::Duration::ZERO),
         },
         Pedido::Capturar { modo } => capturar(modo.unwrap_or(ModoCaptura::Zona)),
+        Pedido::Pines { operacion } => comando_por_la_ventana(operacion.comando(), std::time::Duration::ZERO),
+        Pedido::Timeline { texto } => match texto.as_deref().map(str::trim).filter(|t| !t.is_empty()) {
+            Some(t) => {
+                let titulo = apuntar_en_timeline(raiz, t, ahora)?;
+                return Ok(aviso("pedido-timeline-apuntado", &[("titulo", titulo)]));
+            }
+            None => crate::timeline::abrir(cx.idioma, cx.ubicacion.clone()),
+        },
+        Pedido::LeerEnVoz { parar: true, .. } => crate::leer_en_voz::callar_lo_que_suene(),
         Pedido::PinearUltima {} => {
             let ruta = ultima_captura(&crate::galeria_capturas::carpeta(cx.ubicacion))?;
             // Como `pinear` con una ruta: al `main`, que tiene los pines.
@@ -956,13 +1122,14 @@ fn hacer(p: Pedido, cx: &Contexto) -> Result<Hecho, Fallo> {
         Pedido::Sincronizar { aparato } => {
             crate::sincronizar::en_fondo::lanzar(cx.ubicacion, &aparato);
         }
-        // En su hilo: un turno tarda segundos (o minutos en el local). Lo
-        // que conteste sale en el aviso flotante del asistente.
+        // A la cola de encargos: un turno tarda segundos (o minutos en el
+        // local). Al acabar, una notificacion de Windows (`cola`).
         Pedido::Asistente {
             texto,
             proyecto,
             imagenes,
             automatizacion,
+            encargo,
         } => {
             if let Some(id) = automatizacion {
                 return automatizacion_pedida(cx, Operacion::Ejecutar, Some(id), None);
@@ -982,7 +1149,7 @@ fn hacer(p: Pedido, cx: &Contexto) -> Result<Hecho, Fallo> {
             if let Some(r) = imagenes.iter().find(|r| !crate::tareas::es_imagen(r)) {
                 return Err(Fallo::NoEsImagen(r.clone()));
             }
-            crate::automatizaciones::encargo::lanzar(
+            crate::automatizaciones::cola::encolar(
                 crate::automatizaciones::encargo::DeLaApp {
                     entorno: crate::automatizaciones::encargo::Entorno {
                         ubicacion: cx.ubicacion.clone(),
@@ -998,6 +1165,7 @@ fn hacer(p: Pedido, cx: &Contexto) -> Result<Hecho, Fallo> {
                     origen: None,
                     bloquear: None,
                 },
+                encargo,
             );
         }
         Pedido::Automatizacion {
@@ -1005,8 +1173,194 @@ fn hacer(p: Pedido, cx: &Contexto) -> Result<Hecho, Fallo> {
             id,
             receta,
         } => return automatizacion_pedida(cx, operacion, id, receta),
+        Pedido::Posponer {
+            proyecto,
+            mensaje,
+            indice,
+            minutos,
+        } => {
+            let minutos = i64::from(minutos.clamp(1, 7 * 24 * 60));
+            let local = pixpin_shell::entorno::ahora_local_ms() + minutos * 60_000;
+            match indice {
+                // Una tarea: su texto con la hora nueva, como «Recordármelo»
+                // en la ventana de tareas.
+                Some(indice) => {
+                    let lista = lista_pedida(raiz, proyecto.as_deref(), &mensaje, cx.aparato, ahora)?;
+                    let Some(fila) = lista.filas.iter().find(|f| f.indice == indice) else {
+                        return Err(Fallo::SinTarea(indice));
+                    };
+                    let texto = crate::tareas::con_hora(&fila.texto, local);
+                    if !crate::tareas::corregir(raiz, &lista, fila, &texto, &[])? {
+                        return Err(Fallo::TareaCambio);
+                    }
+                    crate::recordatorios::releer(raiz);
+                }
+                None => {
+                    let f = ficha_de(raiz, proyecto.as_deref(), cx.aparato, ahora)?;
+                    let carpeta = almacen::carpeta(raiz, &f.id);
+                    let utc = crate::recordatorios::de_local_a_utc(local);
+                    if !crate::recordatorios::volver_a_poner(&carpeta, &mensaje, utc)? {
+                        return Err(Fallo::SinMensaje(mensaje));
+                    }
+                }
+            }
+            crate::ventana_chat::refrescar();
+            let cuando = crate::recordatorios::cuando_legible(local, pixpin_shell::entorno::ahora_local_ms());
+            return Ok(aviso("tareas-recordare", &[("cuando", cuando)]));
+        }
+        // La voz es la respuesta; si no hay con que leer, lo dice el globo
+        // desde su hilo.
+        Pedido::LeerEnVoz { ruta: Some(ruta), titulo, .. } => leer_fichero_en_voz(cx, ruta, titulo)?,
+        Pedido::LeerEnVoz { texto, titulo, .. } => {
+            let parrafos = parrafos_sueltos(texto.as_deref().unwrap_or(""));
+            if parrafos.is_empty() {
+                return Ok(aviso("pedido-nada-que-leer", &[]));
+            }
+            let titulo = titulo
+                .map(|t| t.trim().to_string())
+                .filter(|t| !t.is_empty())
+                .unwrap_or_else(|| t.t("app-nombre"));
+            leer_suelto(cx.idioma, raiz.to_path_buf(), titulo, parrafos, ahora);
+        }
+        Pedido::Ocr { ruta } => {
+            if !ruta.is_file() {
+                return Err(Fallo::SinImagen(ruta));
+            }
+            if !crate::tareas::es_imagen(&ruta) {
+                return Err(Fallo::NoEsImagen(ruta));
+            }
+            ocr_al_portapapeles(cx.idioma, ruta);
+        }
+        // En su hilo, como `asistente`: puede esperar al permiso del usuario.
+        // Lo que salga se contesta en `respuesta`, no en el globo.
+        Pedido::Herramienta {
+            nombre,
+            args,
+            respuesta,
+            preguntar,
+            origen,
+        } => crate::asistente::externa::lanzar(
+            crate::automatizaciones::encargo::Entorno {
+                ubicacion: cx.ubicacion.clone(),
+                aparato: cx.aparato.to_string(),
+            },
+            cx.idioma,
+            cx.opciones,
+            crate::asistente::externa::Encargo {
+                nombre,
+                args,
+                respuesta,
+                preguntar,
+                origen,
+            },
+        ),
     }
     Ok(Hecho::default())
+}
+
+/// **Los parrafos de un texto suelto** para leerlos en voz alta: uno por
+/// renglon (la seleccion de una pagina trae un salto por bloque), sin los
+/// vacios y con los blancos juntados. Pura, para probarla.
+pub(crate) fn parrafos_sueltos(texto: &str) -> Vec<String> {
+    texto
+        .lines()
+        .map(|l| l.split_whitespace().collect::<Vec<_>>().join(" "))
+        .filter(|l| !l.is_empty())
+        .collect()
+}
+
+/// Empieza a leer `parrafos` con la voz de la app, en un hilo: preparar la
+/// voz de Windows (SAPI) tarda, y el bucle no puede esperar. El lector se
+/// suelta en cuanto suena: la voz sigue sola, como al cerrar un lector.
+fn leer_suelto(
+    idioma: pixpin_store::Idioma,
+    raiz: PathBuf,
+    titulo: String,
+    parrafos: Vec<String>,
+    ahora: i64,
+) {
+    let _ = std::thread::Builder::new()
+        .name("pedido-leer-en-voz".into())
+        .spawn(move || {
+            let _com = pixpin_shell::ComDelHilo::iniciar();
+            let t = Catalogo::nuevo(idioma);
+            let muestra: String = parrafos.join(" ").chars().take(4000).collect();
+            let de_la_app = crate::leer_en_voz::idioma_de_la_app(&t);
+            let lengua = pixpin_docs::voz_alta::idioma_para_leer(&muestra, "", &de_la_app);
+            // Una clave por pedido: cada seleccion es un documento nuevo.
+            let clave = PathBuf::from(format!("pixpin-pedido/leer-{ahora}"));
+            let doc = crate::leer_en_voz::documento(
+                &t,
+                &raiz,
+                &clave,
+                titulo,
+                parrafos,
+                lengua.clone(),
+                // Un texto suelto no tiene verde que apuntar.
+                Box::new(|_| {}),
+            );
+            match crate::leer_en_voz::LeerEnVoz::arrancar(doc) {
+                Some(mut lector) => lector.leer(0),
+                None => {
+                    crate::sincronizar::al_movil::avisar(crate::leer_en_voz::sin_voz(&t, &lengua))
+                }
+            }
+        });
+}
+
+/// El OCR de `ruta` al portapapeles, en un hilo (leer una imagen grande
+/// tarda cientos de ms). Lo que pase va al globo.
+fn ocr_al_portapapeles(idioma: pixpin_store::Idioma, ruta: PathBuf) {
+    let _ = std::thread::Builder::new()
+        .name("pedido-ocr".into())
+        .spawn(move || {
+            let _com = pixpin_shell::ComDelHilo::iniciar();
+            let t = Catalogo::nuevo(idioma);
+            let aviso = if !pixpin_ocr::disponible() {
+                t.t("pedido-ocr-no-disponible")
+            } else {
+                let texto = pixpin_codec::imagen::cargar(&ruta)
+                    .map_err(|e| e.to_string())
+                    .and_then(|img| crate::texto_de_imagen(&img).map_err(|e| e.to_string()));
+                aviso_del_ocr(&t, texto, |s| {
+                    pixpin_codec::copiar_texto(s).map_err(|e| e.to_string())
+                })
+            };
+            crate::sincronizar::al_movil::avisar(aviso);
+        });
+}
+
+/// Lo que dice el globo tras el OCR, y copiar si hay algo. Aparte y sin
+/// Windows para probarlo.
+fn aviso_del_ocr(
+    t: &Catalogo,
+    texto: Result<String, String>,
+    copiar: impl FnOnce(&str) -> Result<(), String>,
+) -> String {
+    let mut args = fluent_bundle::FluentArgs::new();
+    match texto {
+        Ok(texto) if texto.trim().is_empty() => t.t("pedido-ocr-sin-texto"),
+        Ok(texto) => match copiar(&texto) {
+            Ok(()) => {
+                let seguido = texto.split_whitespace().collect::<Vec<_>>().join(" ");
+                let mut corto: String = seguido.chars().take(60).collect();
+                if corto.len() < seguido.len() {
+                    corto.push('…');
+                }
+                args.set("texto", corto);
+                args.set("n", texto.chars().count() as i64);
+                t.t_args("pedido-ocr-copiado", &args)
+            }
+            Err(motivo) => {
+                args.set("motivo", motivo);
+                t.t_args("pedido-ocr-fallo", &args)
+            }
+        },
+        Err(motivo) => {
+            args.set("motivo", motivo);
+            t.t_args("pedido-ocr-fallo", &args)
+        }
+    }
 }
 
 /// **El pedido `automatizacion`**: lo que se hace con la lista del chat
@@ -1095,20 +1449,115 @@ const ESPERA_ANTES_DE_CAPTURAR: std::time::Duration = std::time::Duration::from_
 /// se hubiera elegido en el menu. Asi no hay un segundo camino a la captura
 /// que se quede atras. Desde un hilo aparte para no dormir el bucle.
 fn capturar(modo: ModoCaptura) {
-    let comando = match modo {
-        ModoCaptura::Zona => pixpin_store::comandos::Comando::CapturarRegion,
-    };
-    let lanzado = std::thread::Builder::new()
-        .name("captura-del-pedido".into())
-        .spawn(move || {
-            std::thread::sleep(ESPERA_ANTES_DE_CAPTURAR);
-            if !pixpin_shell::mensajero::pedir_ventana_principal(comando.id()) {
-                tracing::warn!("la captura del pedido no llego a la ventana");
-            }
-        });
-    if let Err(e) = lanzado {
-        tracing::warn!(?e, "no se pudo lanzar el hilo de la captura del pedido");
+    comando_por_la_ventana(modo.comando(), ESPERA_ANTES_DE_CAPTURAR);
+}
+
+/// Lo que las pruebas mandaron a la ventana del bucle (nunca sale: la
+/// PixPin del usuario puede estar abierta y capturaria o cerraria sus pines).
+#[cfg(test)]
+pub static COMANDOS_EN_PRUEBAS: std::sync::Mutex<Vec<pixpin_store::comandos::Comando>> =
+    std::sync::Mutex::new(Vec::new());
+
+/// **Un comando de la bandeja** (capturar, grabar, los pines...) como si se
+/// hubiera elegido en el menu: su `WM_COMMAND` a la ventana del bucle, tras
+/// `espera`, desde un hilo para no dormir este.
+fn comando_por_la_ventana(comando: pixpin_store::comandos::Comando, espera: std::time::Duration) {
+    #[cfg(test)]
+    {
+        let _ = espera;
+        COMANDOS_EN_PRUEBAS.lock().unwrap_or_else(|e| e.into_inner()).push(comando);
     }
+    #[cfg(not(test))]
+    {
+        let lanzado = std::thread::Builder::new()
+            .name("comando-del-pedido".into())
+            .spawn(move || {
+                std::thread::sleep(espera);
+                if !pixpin_shell::mensajero::pedir_ventana_principal(comando.id()) {
+                    tracing::warn!(?comando, "el comando del pedido no llego a la ventana");
+                }
+            });
+        if let Err(e) = lanzado {
+            tracing::warn!(?e, "no se pudo lanzar el hilo del comando del pedido");
+        }
+    }
+}
+
+/// **Apunta un momento en el timeline** como la caja de su ventana: la
+/// primera frase es el titulo y lo demas la descripcion. La ventana, si esta
+/// abierta, lo ve al cambiar el fichero (`Almacen::huella`).
+pub(crate) fn apuntar_en_timeline(raiz: &Path, texto: &str, cuando: i64) -> Result<String, Fallo> {
+    let (mut titulo, descripcion) = pixpin_timeline::frases::partir(texto.trim());
+    if titulo.trim().is_empty() {
+        titulo = texto.trim().chars().take(90).collect();
+    }
+    if titulo.trim().is_empty() {
+        return Err(Fallo::Roto("timeline sin texto".into()));
+    }
+    static CUENTA: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let n = CUENTA.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+    let id = pixpin_timeline::momento::id_nuevo(cuando, n as _);
+    let m = pixpin_timeline::Momento::nuevo(id, cuando, titulo.clone(), descripcion);
+    pixpin_timeline::almacen::Almacen::en(raiz).anadir(&m)?;
+    Ok(titulo)
+}
+
+/// Los parrafos que se leen de un fichero: los de su texto (PDF, Word,
+/// PowerPoint, Excel, nota), sin lineas en blanco.
+fn parrafos_de_fichero(ruta: &Path) -> Result<Vec<String>, String> {
+    let unidades = crate::asistente::documentos::leer_fichero(ruta)?;
+    let mut v = Vec::new();
+    for u in unidades {
+        v.extend(parrafos_de_texto(&u.texto));
+    }
+    Ok(v)
+}
+
+/// Un texto en parrafos (por renglones en blanco, o por renglones si no
+/// hay ninguno), sin vacios.
+pub(crate) fn parrafos_de_texto(texto: &str) -> Vec<String> {
+    let por_blancos: Vec<String> = texto
+        .split("\n\n")
+        .map(|p| p.split_whitespace().collect::<Vec<_>>().join(" "))
+        .filter(|p| !p.is_empty())
+        .collect();
+    if por_blancos.len() > 1 {
+        return por_blancos;
+    }
+    texto
+        .lines()
+        .map(|l| l.split_whitespace().collect::<Vec<_>>().join(" "))
+        .filter(|l| !l.is_empty())
+        .collect()
+}
+
+/// **Lee en voz alta un fichero** (el asistente: «leeme el informe»): su
+/// texto se saca en un hilo (un PDF grande tarda) y suena por el mismo
+/// camino que un texto suelto ([`leer_suelto`]). Lo que no se pueda se dice
+/// en el globo.
+fn leer_fichero_en_voz(cx: &Contexto, ruta: PathBuf, titulo: Option<String>) -> Result<(), Fallo> {
+    if !ruta.is_file() {
+        return Err(Fallo::SinFichero(ruta));
+    }
+    let raiz = cx.ubicacion.raiz().to_path_buf();
+    let idioma = cx.idioma;
+    let ahora = pixpin_shell::entorno::ahora_utc_ms();
+    let lanzado = std::thread::Builder::new().name("voz-de-un-fichero".into()).spawn(move || {
+        let _com = pixpin_shell::ComDelHilo::iniciar();
+        let titulo = titulo.filter(|t| !t.trim().is_empty()).unwrap_or_else(|| pixpin_docs::nombre(&ruta));
+        match parrafos_de_fichero(&ruta) {
+            Ok(p) if !p.is_empty() => leer_suelto(idioma, raiz, titulo, p, ahora),
+            Ok(_) => crate::sincronizar::al_movil::avisar(Catalogo::nuevo(idioma).t("pedido-nada-que-leer")),
+            Err(e) => {
+                tracing::warn!(%e, ruta = %ruta.display(), "leer en voz: no se saca el texto");
+                crate::sincronizar::al_movil::avisar(Catalogo::nuevo(idioma).t("pedido-nada-que-leer"));
+            }
+        }
+    });
+    if let Err(e) = lanzado {
+        tracing::warn!(?e, "no se pudo lanzar el hilo de leer en voz");
+    }
+    Ok(())
 }
 
 /// La captura mas reciente de la carpeta, la que ensena la galeria la
@@ -1802,7 +2251,21 @@ mod pruebas {
 
     /// Un ejemplo de cada accion, con lo minimo que pide la tabla del
     /// protocolo.
-    const EJEMPLOS: [(&str, &str); 30] = [
+    const EJEMPLOS: [(&str, &str); 36] = [
+        ("pines", r#"{"pixpin":1,"accion":"pines","operacion":"ocultar_mostrar"}"#),
+        ("timeline", r#"{"pixpin":1,"accion":"timeline","texto":"Llego el camion"}"#),
+        (
+            "leer_en_voz",
+            r#"{"pixpin":1,"accion":"leer_en_voz","texto":"Hola.\nAdios.","titulo":"Wikipedia"}"#,
+        ),
+        (
+            "ocr",
+            r#"{"pixpin":1,"accion":"ocr","ruta":"C:\\a\\foto.png"}"#,
+        ),
+        (
+            "herramienta",
+            r#"{"pixpin":1,"accion":"herramienta","nombre":"anadir_tarea","args":{"texto":"pan"},"respuesta":"C:\\t\\pixpin-mcp\\1.json"}"#,
+        ),
         (
             "asistente",
             r#"{"pixpin":1,"accion":"asistente","texto":"apunta comprar yeso","proyecto":"pr-1"}"#,
@@ -1898,6 +2361,10 @@ mod pruebas {
         (
             "borrar_lista",
             r#"{"pixpin":1,"accion":"borrar_lista","codigo":"1"}"#,
+        ),
+        (
+            "posponer",
+            r#"{"pixpin":1,"accion":"posponer","mensaje":"m1","indice":2,"minutos":10}"#,
         ),
     ];
 
@@ -2975,6 +3442,203 @@ mod pruebas {
             ficheros_al_movil(vec![foto], vec![raiz.join("no.pdf")]),
             Err(Fallo::SinFichero(_))
         ));
+        let _ = std::fs::remove_dir_all(&raiz);
+    }
+
+    /// 15-oct (el asistente): los pedidos nuevos y los campos nuevos se leen.
+    #[test]
+    fn los_pedidos_del_asistente_del_15_oct_se_leen() {
+        for (modo, debe) in [
+            ("zona", ModoCaptura::Zona),
+            ("copiar", ModoCaptura::Copiar),
+            ("en_vivo", ModoCaptura::EnVivo),
+            ("texto", ModoCaptura::Texto),
+            ("scroll", ModoCaptura::Scroll),
+            ("repetir", ModoCaptura::Repetir),
+            ("gif", ModoCaptura::Gif),
+        ] {
+            let p = leer(&format!(r#"{{"pixpin":1,"accion":"capturar","modo":"{modo}"}}"#)).unwrap();
+            assert_eq!(p, Pedido::Capturar { modo: Some(debe) }, "{modo}");
+        }
+        assert_eq!(ModoCaptura::Gif.comando(), pixpin_store::comandos::Comando::GrabarGif);
+        assert_eq!(ModoCaptura::Texto.comando(), pixpin_store::comandos::Comando::CopiarTexto);
+        assert_eq!(
+            leer(r#"{"pixpin":1,"accion":"ventana","cual":"ajustes"}"#).unwrap(),
+            Pedido::Ventana { cual: Cual::Ajustes }
+        );
+        assert_eq!(
+            leer(r#"{"pixpin":1,"accion":"ventana_principal","proyecto":"pr-1"}"#).unwrap(),
+            Pedido::VentanaPrincipal { proyecto: Some("pr-1".into()) }
+        );
+        assert_eq!(leer(r#"{"pixpin":1,"accion":"ventana_principal"}"#).unwrap(), Pedido::VentanaPrincipal { proyecto: None });
+        assert_eq!(
+            leer(r#"{"pixpin":1,"accion":"pines","operacion":"cerrar"}"#).unwrap(),
+            Pedido::Pines { operacion: OperacionPines::Cerrar }
+        );
+        assert_eq!(
+            leer(r#"{"pixpin":1,"accion":"leer_en_voz","parar":true}"#).unwrap(),
+            Pedido::LeerEnVoz { texto: None, ruta: None, titulo: None, parar: true }
+        );
+        assert_eq!(leer(r#"{"pixpin":1,"accion":"timeline"}"#).unwrap(), Pedido::Timeline { texto: None });
+        // Casos negativos: un modo, una ventana o una operacion que no existen.
+        assert!(matches!(leer(r#"{"pixpin":1,"accion":"capturar","modo":"pantalla_entera"}"#), Err(Fallo::Roto(_))));
+        assert!(matches!(leer(r#"{"pixpin":1,"accion":"ventana","cual":"cocina"}"#), Err(Fallo::Roto(_))));
+        assert!(matches!(leer(r#"{"pixpin":1,"accion":"pines","operacion":"borrar_todo"}"#), Err(Fallo::Roto(_))));
+        assert!(matches!(leer(r#"{"pixpin":1,"accion":"pines"}"#), Err(Fallo::Roto(_))));
+    }
+
+    /// Los pedidos nuevos hechos de verdad sobre un almacen de prueba: el
+    /// timeline se escribe, los comandos (capturar, pines) se apuntan sin
+    /// salir, y lo que falta se avisa.
+    #[test]
+    fn los_pedidos_del_asistente_del_15_oct_se_hacen() {
+        let (raiz, ficha) = almacen_de_prueba("asistente-15-oct");
+        let u = Ubicacion::Portable { raiz: raiz.clone() };
+        let textos = Catalogo::nuevo(pixpin_store::Idioma::Espanol);
+        let cx = Contexto {
+            idioma: pixpin_store::Idioma::Espanol,
+            ubicacion: &u,
+            opciones: crate::ventana_chat::OpcionesLienzo {
+                enganche: Default::default(),
+                nivel: pixpin_nivel::Nivel::Ligero,
+                medir_fotogramas: false,
+            },
+            aparato: "PC01",
+            textos: &textos,
+        };
+        let h = atender(r#"{"pixpin":1,"accion":"timeline","texto":"Llegó el camión de cemento. Eran 40 bolsas."}"#, &cx);
+        assert_eq!(h.aviso.as_deref(), Some("Apuntado en el timeline: «Llegó el camión de cemento»."));
+        let momentos = pixpin_timeline::almacen::Almacen::en(&raiz).leer();
+        assert_eq!(momentos.len(), 1);
+        assert_eq!(momentos[0].titulo, "Llegó el camión de cemento");
+        assert!(momentos[0].descripcion.contains("40 bolsas"), "{:?}", momentos[0]);
+        COMANDOS_EN_PRUEBAS.lock().unwrap().clear();
+        atender(r#"{"pixpin":1,"accion":"capturar","modo":"gif"}"#, &cx);
+        atender(r#"{"pixpin":1,"accion":"pines","operacion":"cerrar"}"#, &cx);
+        atender(r#"{"pixpin":1,"accion":"ventana","cual":"ajustes"}"#, &cx);
+        {
+            use pixpin_store::comandos::Comando;
+            let c = COMANDOS_EN_PRUEBAS.lock().unwrap().clone();
+            for debe in [Comando::GrabarGif, Comando::CerrarTodosLosPines, Comando::AbrirAjustes] {
+                assert!(c.contains(&debe), "{c:?}");
+            }
+        }
+        // Negativos: un chat que no esta, leer un fichero que no esta.
+        let h = atender(r#"{"pixpin":1,"accion":"ventana_principal","proyecto":"no-esta"}"#, &cx);
+        assert!(h.aviso.is_some());
+        let h = atender(r#"{"pixpin":1,"accion":"leer_en_voz","ruta":"C:\no\esta.pdf"}"#, &cx);
+        assert!(h.aviso.is_some());
+        let h = atender(r#"{"pixpin":1,"accion":"leer_en_voz"}"#, &cx);
+        assert!(h.aviso.is_some(), "sin texto ni ruta no hay nada que leer");
+        let _ = ficha;
+        let _ = std::fs::remove_dir_all(&raiz);
+    }
+
+    #[test]
+    fn los_parrafos_de_un_texto_salen_limpios() {
+        assert_eq!(parrafos_de_texto("Uno\ndos.\n\nTres"), vec!["Uno dos.", "Tres"]);
+        assert_eq!(parrafos_de_texto("a\nb"), vec!["a", "b"]);
+        assert!(parrafos_de_texto("  \n ").is_empty());
+    }
+    #[test]
+    fn leer_en_voz_y_ocr_se_leen_y_lo_que_falta_es_roto() {
+        assert_eq!(
+            leer(r#"{"pixpin":1,"accion":"leer_en_voz","texto":"hola"}"#).unwrap(),
+            Pedido::LeerEnVoz { texto: Some("hola".into()), ruta: None, titulo: None, parar: false }
+        );
+        assert_eq!(
+            leer(r#"{"pixpin":1,"accion":"ocr","ruta":"C:\\a\\b.png"}"#).unwrap(),
+            Pedido::Ocr {
+                ruta: PathBuf::from(r"C:\a\b.png")
+            }
+        );
+        // Caso negativo: un OCR sin ruta no es un pedido que se pueda hacer.
+        assert!(matches!(
+            leer(r#"{"pixpin":1,"accion":"ocr"}"#),
+            Err(Fallo::Roto(_))
+        ));
+    }
+
+    #[test]
+    fn un_texto_suelto_se_lee_por_renglones_sin_vacios() {
+        assert_eq!(
+            parrafos_sueltos("  Primer   parrafo \n\n\t\nSegundo\r\n  "),
+            ["Primer parrafo", "Segundo"]
+        );
+        // Caso negativo: solo blancos no da nada que leer.
+        assert!(parrafos_sueltos(" \n\t \r\n").is_empty());
+    }
+
+    #[test]
+    fn el_globo_del_ocr_dice_lo_copiado_o_por_que_no() {
+        let t = Catalogo::nuevo(pixpin_store::Idioma::Espanol);
+        let mut copiado = String::new();
+        let aviso = aviso_del_ocr(&t, Ok("Jr. Antisuyo\n1 250,50".into()), |s| {
+            copiado = s.to_string();
+            Ok(())
+        });
+        assert_eq!(copiado, "Jr. Antisuyo\n1 250,50");
+        assert!(aviso.contains("Jr. Antisuyo 1 250,50"), "{aviso}");
+        // Un texto largo se recorta en el globo, no en el portapapeles.
+        let largo = "palabra ".repeat(40);
+        let aviso = aviso_del_ocr(&t, Ok(largo.clone()), |s| {
+            assert_eq!(s, largo);
+            Ok(())
+        });
+        assert!(aviso.contains('…'), "{aviso}");
+        // Casos negativos: sin texto no se copia nada; un fallo se dice.
+        let aviso = aviso_del_ocr(&t, Ok("  \n ".into()), |_| panic!("no se copia nada"));
+        assert_eq!(aviso, t.t("pedido-ocr-sin-texto"));
+        let aviso = aviso_del_ocr(&t, Err("imagen rota".into()), |_| panic!("no se copia"));
+        assert!(aviso.contains("imagen rota"), "{aviso}");
+        let aviso = aviso_del_ocr(&t, Ok("x".into()), |_| Err("portapapeles ocupado".into()));
+        assert!(aviso.contains("portapapeles ocupado"), "{aviso}");
+        for clave in [
+            "pedido-nada-que-leer",
+            "pedido-ocr-sin-texto",
+            "pedido-ocr-no-disponible",
+        ] {
+            assert_ne!(t.t(clave), clave, "falta traducir {clave}");
+        }
+    }
+
+    #[test]
+    fn caso_negativo_ocr_de_algo_que_no_esta_o_no_es_imagen_no_arranca() {
+        let (raiz, _) = almacen_de_prueba("ocr-pedido");
+        let texto = raiz.join("nota.txt");
+        std::fs::write(&texto, b"x").unwrap();
+        let t = Catalogo::nuevo(pixpin_store::Idioma::Espanol);
+        let ubicacion = Ubicacion::Instalado { raiz: raiz.clone() };
+        let cx = Contexto {
+            idioma: pixpin_store::Idioma::Espanol,
+            ubicacion: &ubicacion,
+            opciones: crate::ventana_chat::OpcionesLienzo {
+                enganche: Default::default(),
+                nivel: pixpin_nivel::Nivel::Completo,
+                medir_fotogramas: false,
+            },
+            aparato: "PRUE",
+            textos: &t,
+        };
+        for (ruta, clave) in [
+            (raiz.join("no-esta.png"), "pedido-sin-imagen"),
+            (texto, "pedido-no-es-imagen"),
+        ] {
+            let json = serde_json::json!({"pixpin":1,"accion":"ocr","ruta":ruta}).to_string();
+            let hecho = atender(&json, &cx);
+            let esperado = Fallo::aviso(
+                &if clave == "pedido-sin-imagen" {
+                    Fallo::SinImagen(ruta.clone())
+                } else {
+                    Fallo::NoEsImagen(ruta.clone())
+                },
+                &t,
+            );
+            assert_eq!(hecho.aviso.as_deref(), Some(esperado.as_str()), "{clave}");
+        }
+        // Y leer sin texto se dice sin arrancar la voz.
+        let hecho = atender(r#"{"pixpin":1,"accion":"leer_en_voz","texto":"  "}"#, &cx);
+        assert_eq!(hecho.aviso, Some(t.t("pedido-nada-que-leer")));
         let _ = std::fs::remove_dir_all(&raiz);
     }
 }

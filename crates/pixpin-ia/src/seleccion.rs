@@ -237,8 +237,11 @@ pub fn para_el_pedido(pedido: &str, con_imagen: bool) -> Vec<Herramienta> {
         puntuadas.push((s, h.clone()));
     }
     // La hoja al lienzo es solo para la nube (decision del usuario, 14-oct):
-    // esta seleccion es la del modelo local.
-    for a in crate::acciones::todas().filter(|a| a.herramienta != crate::hoja::NOMBRE) {
+    // esta seleccion es la del modelo local. Lo mismo las de la app del
+    // 15-oct (`acciones::SOLO_NUBE`: «la IA local, no la toques»).
+    for a in crate::acciones::todas()
+        .filter(|a| a.herramienta != crate::hoja::NOMBRE && !crate::acciones::es_solo_nube(a.herramienta))
+    {
         puntuadas.push((puntuar(a.claves, &q, &palabras), crate::acciones::herramienta(a)));
     }
     // Editar lo que ya hay en el lienzo (tabla de `edicion.rs`).
@@ -388,6 +391,26 @@ mod pruebas {
             let n = nombres(pedido, img);
             assert!(n.iter().any(|x| x == debe), "«{pedido}» → {n:?}");
             assert!(n.len() <= MAXIMO, "«{pedido}» → {n:?}");
+        }
+    }
+
+    /// 15-oct: las herramientas de la app solo para la nube no llegan nunca
+    /// al modelo local («la IA local, no la toques»).
+    #[test]
+    fn las_de_solo_la_nube_no_llegan_al_local() {
+        for pedido in [
+            "Graba la pantalla en un gif",
+            "Cierra todos los pines",
+            "Léeme en voz alta el informe",
+            "Comprime el PDF de la tesis que pesa mucho",
+            "Transcribe el audio de la reunión",
+            "¿Cuánto suma la columna C del Excel?",
+            "Apunta en el timeline que llegó el camión",
+            "Dime cuánto hice hoy",
+            "Abre los ajustes",
+        ] {
+            let n = nombres(pedido, false);
+            assert!(!n.iter().any(|x| crate::acciones::es_solo_nube(x)), "«{pedido}» → {n:?}");
         }
     }
 

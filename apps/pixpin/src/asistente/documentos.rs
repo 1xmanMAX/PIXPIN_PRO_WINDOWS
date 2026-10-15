@@ -227,20 +227,27 @@ impl Lector for LectorDeLaApp {
         if f.tipo == Tipo::Chat {
             return leer_chat(f);
         }
-        if !f.ruta.is_file() {
-            return Err("el fichero ya no esta".into());
-        }
-        let nombre = pixpin_docs::nombre(&f.ruta);
-        // Por la extension del fichero de verdad (el `.txt` del OCR cuenta
-        // como PDF para el usuario, pero se lee como texto).
-        match tipo_de(&nombre) {
-            Some(Tipo::Pdf) => leer_pdf(&f.ruta),
-            Some(Tipo::Word) => leer_word(&f.ruta),
-            Some(Tipo::PowerPoint) => leer_powerpoint(&f.ruta),
-            Some(Tipo::Excel) => leer_excel(&f.ruta),
-            Some(Tipo::Nota) | Some(Tipo::Texto) => leer_texto(&f.ruta),
-            _ => Err(format!("PixPin no sabe leer «{nombre}»")),
-        }
+        leer_fichero(&f.ruta)
+    }
+}
+
+/// **El texto de un fichero** (PDF, Word, PowerPoint, Excel, nota, texto),
+/// por unidades: lo que indexa la busqueda y lo que lee en voz alta el
+/// asistente (`pedidos::leer_en_voz`, 15-oct).
+pub fn leer_fichero(ruta: &Path) -> Result<Vec<Unidad>, String> {
+    if !ruta.is_file() {
+        return Err("el fichero ya no esta".into());
+    }
+    let nombre = pixpin_docs::nombre(ruta);
+    // Por la extension del fichero de verdad (el `.txt` del OCR cuenta
+    // como PDF para el usuario, pero se lee como texto).
+    match tipo_de(&nombre) {
+        Some(Tipo::Pdf) => leer_pdf(ruta),
+        Some(Tipo::Word) => leer_word(ruta),
+        Some(Tipo::PowerPoint) => leer_powerpoint(ruta),
+        Some(Tipo::Excel) => leer_excel(ruta),
+        Some(Tipo::Nota) | Some(Tipo::Texto) => leer_texto(ruta),
+        _ => Err(format!("PixPin no sabe leer «{nombre}»")),
     }
 }
 

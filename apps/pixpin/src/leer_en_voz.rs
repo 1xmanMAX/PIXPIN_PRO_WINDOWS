@@ -249,6 +249,15 @@ pub fn apagar() {
     }
 }
 
+/// **Calla lo que suene, sea de quien sea** (15-oct, el asistente: «para
+/// de leer»): como la X de la barra del lector que lo puso a leer.
+pub fn callar_lo_que_suene() {
+    if LADO.get().is_some() {
+        let vuelta = comun().vuelta;
+        mandar(Orden::De(vuelta, Que::Soltar));
+    }
+}
+
 /// Si lo que suena (o esta en pausa) es este documento.
 pub fn suena(clave: &Path) -> bool {
     LADO.get().is_some() && {

@@ -189,7 +189,9 @@ pub struct MotorNube {
     /// los bloques de Claude (pensamiento firmado incluido) o el
     /// `reasoning_content` de DeepSeek, por id de la primera llamada.
     memoria: Mutex<HashMap<String, Value>>,
-    /// Modo pensar de DeepSeek. Se apaga si pide un razonamiento que no hay.
+    /// Si piensa (Claude adaptativo, DeepSeek `thinking`). Lo apaga un turno
+    /// simple ([`MotorNube::pensando`]) y, en DeepSeek, que pida un
+    /// razonamiento que no hay.
     pensar: AtomicBool,
     esperas: Vec<Duration>,
     /// Sin pensar y con el menor esfuerzo: para preguntas cortas de una
@@ -234,6 +236,16 @@ impl MotorNube {
         self
     }
 
+    /// **Sin pensar** este turno (`crate::complejidad`: la tarea es simple),
+    /// con el esfuerzo de siempre. `pensar: false` es eso; `true` lo deja
+    /// como esta.
+    pub fn pensando(self, pensar: bool) -> MotorNube {
+        if !pensar {
+            self.pensar.store(false, Ordering::Relaxed);
+        }
+        self
+    }
+
     /// **Ligero**: sin pensar y con el menor esfuerzo (ver `ligero`).
     pub fn ligero(mut self) -> MotorNube {
         self.ligero = true;
@@ -251,7 +263,9 @@ impl MotorNube {
         // en la nube el pensamiento cuenta dentro del mismo `max_tokens`, asi
         // que se le suma su reserva. Las listas acotadas (`agente::con_topes`)
         // llegan ya en las herramientas de la peticion.
-        let reserva = if self.ligero { 0 } else { RESERVA_PENSAR };
+        // Sin pensar no hace falta sitio para el pensamiento.
+        let pensar = self.pensar.load(Ordering::Relaxed);
+        let reserva = if self.ligero || !pensar { 0 } else { RESERVA_PENSAR };
         let max = p.max_tokens.saturating_add(reserva).min(self.proveedor.max_tokens());
         match self.proveedor {
             Proveedor::Claude if self.ligero => {
@@ -262,8 +276,13 @@ impl MotorNube {
                 c["output_config"] = serde_json::json!({"effort": "low"});
                 c
             }
+            Proveedor::Claude if !pensar => {
+                let mut c = claude::cuerpo(p, &memoria, max);
+                c["thinking"] = serde_json::json!({"type": "disabled"});
+                c
+            }
             Proveedor::Claude => claude::cuerpo(p, &memoria, max),
-            Proveedor::DeepSeek => deepseek::cuerpo(p, &memoria, self.pensar.load(Ordering::Relaxed), max),
+            Proveedor::DeepSeek => deepseek::cuerpo(p, &memoria, pensar, max),
         }
     }
 
@@ -442,6 +461,11 @@ impl MotorNube {
 
 impl Motor for MotorNube {
     fn catalogo_completo(&self) -> bool {
+        true
+    }
+
+    /// Claude Haiku 5.5 y DeepSeek V4.1 Flash ven imagenes.
+    fn ve_imagenes(&self) -> bool {
         true
     }
 
@@ -633,6 +657,10 @@ impl Motor for MotorConRespaldo {
 
     fn catalogo_completo(&self) -> bool {
         self.nube.catalogo_completo()
+    }
+
+    fn ve_imagenes(&self) -> bool {
+        self.nube.ve_imagenes()
     }
 
     fn soltar(&self) {
