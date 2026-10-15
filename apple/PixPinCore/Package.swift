@@ -18,7 +18,10 @@ let package = Package(
         .iOS(.v18),
     ],
     products: [
-        .library(name: "PixPinCore", targets: ["PixPinCore"]),
+        // Dinamica: la app y sus extensiones (Compartir, Quick Look) cargan
+        // UN solo nucleo de `Contents/Frameworks` en vez de llevar cada una
+        // su copia (~50 MB por copia).
+        .library(name: "PixPinCore", type: .dynamic, targets: ["PixPinCore"]),
     ],
     targets: [
         .binaryTarget(
