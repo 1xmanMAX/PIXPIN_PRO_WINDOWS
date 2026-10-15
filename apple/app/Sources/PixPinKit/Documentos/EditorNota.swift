@@ -138,17 +138,22 @@ public enum EstiloDeNota {
             .flatMap { NSFont(descriptor: $0, size: tamBase) } ?? letraBase
         let letra = NSFontManager.shared.convert(serif, toHaveTrait: .italicFontMask)
         s.addAttribute(.font, value: letra, range: r)
-        guard fueraDelCursor, r.length >= 2 else { return }
+        guard fueraDelCursor, r.length > 0 else { return }
+        // `md_tramos` da la formula sin sus dolares (son tramos `marca`);
+        // si vinieran dentro, se esconden aqui.
+        var dentroR = r
         let texto = (s.string as NSString).substring(with: r)
-        guard texto.hasPrefix("$"), texto.hasSuffix("$") else { return }
-        esconder(s, NSRange(location: r.location, length: 1))
-        esconder(s, NSRange(location: r.location + r.length - 1, length: 1))
-        let dentro = String(texto.dropFirst().dropLast())
+        if r.length >= 2, texto.hasPrefix("$"), texto.hasSuffix("$") {
+            esconder(s, NSRange(location: r.location, length: 1))
+            esconder(s, NSRange(location: r.location + r.length - 1, length: 1))
+            dentroR = NSRange(location: r.location + 1, length: r.length - 2)
+        }
+        let dentro = (s.string as NSString).substring(with: dentroR)
         let pequena = NSFont(descriptor: letra.fontDescriptor, size: tamBase * 0.7) ?? letra
         for t in formulaToques(formula: dentro) {
-            let a = r.location + 1 + Int(t.desde)
+            let a = dentroR.location + Int(t.desde)
             let largo = Int(t.hasta) - Int(t.desde)
-            guard largo > 0, a + largo <= r.location + r.length - 1 else { continue }
+            guard largo > 0, a + largo <= dentroR.location + dentroR.length else { continue }
             let sub = NSRange(location: a, length: largo)
             switch t.toque {
             case .arriba:
