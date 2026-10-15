@@ -650,6 +650,564 @@ fileprivate struct FfiConverterData: FfiConverterRustBuffer {
 
 
 /**
+ * **Un lienzo abierto para editar.** Se usa desde varios hilos: el puntero
+ * y el pintado desde el principal, guardar desde uno de fondo.
+ */
+public protocol EditorLienzoProtocol: AnyObject, Sendable {
+    
+    /**
+     * Borra lo elegido, en un paso. `false` si no habia nada elegido.
+     */
+    func borrarSeleccion()  -> Bool
+    
+    /**
+     * La caja de lo dibujado, para encajar la vista. `None` si esta vacio.
+     */
+    func caja()  -> CajaLienzo?
+    
+    /**
+     * Sube con cada cambio del DOCUMENTO (para guardar solo, con calma).
+     */
+    func cambios()  -> UInt64
+    
+    /**
+     * Cuantos elementos visibles tiene.
+     */
+    func cuantosElementos()  -> UInt64
+    
+    /**
+     * Deshace el ultimo paso (no a mitad de un gesto).
+     */
+    func deshacer()  -> Bool
+    
+    /**
+     * Si se esta escribiendo un texto: entonces las teclas son del texto
+     * (Swift se las manda con [`EditorLienzo::teclear`] y
+     * [`EditorLienzo::tecla`]) y no atajos.
+     */
+    func escribiendo()  -> Bool
+    
+    /**
+     * **Guarda** el `.excalidraw` como Windows y Android (ver la doc del
+     * modulo). Devuelve si escribio algo: sin cambios, o a mitad de un
+     * gesto, no escribe. Bloqueante: Swift lo llama fuera del hilo
+     * principal.
+     */
+    func guardar() throws  -> Bool
+    
+    /**
+     * **Cambia de herramienta**: `seleccion` (o `mano`), `lapiz` (o
+     * `tinta`), `grafito`, `resaltador`, `rectangulo`, `rombo`, `elipse`,
+     * `flecha`, `flecha_codos`, `flecha_libre`, `linea`, `texto`,
+     * `borrador` (o `goma`). Cierra el texto que se estuviera escribiendo.
+     */
+    func herramienta(nombre: String) throws 
+    
+    /**
+     * La herramienta puesta (los nombres de [`EditorLienzo::herramienta`]).
+     */
+    func herramientaActual()  -> String
+    
+    /**
+     * Las fotos del lienzo (abierto desde un chat: rutas absolutas; desde
+     * un fichero suelto: las relativas del `.excalidraw`).
+     */
+    func imagenes()  -> [ImagenDelLienzo]
+    
+    /**
+     * Todo el dibujo, sin lo de encima (miniatura, exportar, pruebas).
+     */
+    func plano()  -> LienzoPlano
+    
+    /**
+     * **Lo que se ve con la camara** en `(x, y)` (el punto del mundo en la
+     * esquina de arriba a la izquierda), a `zoom` pixeles por unidad, en una
+     * vista de `ancho_px` x `alto_px`; y encima, lo elegido, los tiradores,
+     * la marquesina y el cursor del texto. Una llamada por fotograma; la
+     * geometria de lo que no cambio sale de la cache.
+     */
+    func planoDeVista(x: Float, y: Float, zoom: Float, anchoPx: Float, altoPx: Float)  -> LienzoPlano
+    
+    /**
+     * Si hay algo que deshacer (para la barra).
+     */
+    func puedeDeshacer()  -> Bool
+    
+    /**
+     * **Un aviso del puntero**, en coordenadas del MUNDO. `presion` es la
+     * del lapiz o del Force Touch (0..1), `None` con raton. `modificadores`
+     * son bits ([`MOD_MAYUSCULAS`], [`MOD_OPCION`]). `zoom`: pixeles por
+     * unidad del mundo, para las tolerancias del motor (que son de
+     * pantalla). Devuelve la version: si cambio, hay que repintar.
+     */
+    func puntero(fase: FasePuntero, x: Float, y: Float, presion: Float?, modificadores: UInt32, zoom: Float)  -> UInt64
+    
+    /**
+     * Rehace lo ultimo deshecho.
+     */
+    func rehacer()  -> Bool
+    
+    /**
+     * El fichero que edita.
+     */
+    func ruta()  -> String
+    
+    /**
+     * Elige todo lo que se ve.
+     */
+    func seleccionarTodo() 
+    
+    /**
+     * Si hay cambios sin guardar.
+     */
+    func sinGuardar()  -> Bool
+    
+    /**
+     * Una tecla de edicion del texto: `izquierda`, `derecha`, `inicio`,
+     * `fin`, `retroceso`, `suprimir`, `entrar`; `escape` termina de
+     * escribir y deja el texto elegido.
+     */
+    func tecla(nombre: String)  -> Bool
+    
+    /**
+     * Mete texto en el que se esta escribiendo (lo que da `insertText` de
+     * AppKit, ya compuesto: tildes, emoji). `false` si no se escribia.
+     */
+    func teclear(texto: String)  -> Bool
+    
+    /**
+     * Termina de escribir (un clic fuera, cerrar la ventana). Un texto
+     * vacio se quita.
+     */
+    func terminarTexto()  -> Bool
+    
+    /**
+     * **Sube con todo lo que cambia lo que se ve** (dibujo, lo elegido, el
+     * cursor del texto). Swift repinta solo si cambio. Atomico: no espera.
+     */
+    func version()  -> UInt64
+    
+}
+/**
+ * **Un lienzo abierto para editar.** Se usa desde varios hilos: el puntero
+ * y el pintado desde el principal, guardar desde uno de fondo.
+ */
+open class EditorLienzo: EditorLienzoProtocol, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_pixpin_nucleo_fn_clone_editorlienzo(self.handle, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_pixpin_nucleo_fn_free_editorlienzo(handle, $0) }
+    }
+
+    
+    /**
+     * Abre un `.excalidraw` suelto para editarlo. Si no existe y `crear`,
+     * nace vacio (y se escribe ya, como `crear_lienzo` de Windows).
+     */
+public static func deFichero(ruta: String, crear: Bool)throws  -> EditorLienzo  {
+    return try  FfiConverterTypeEditorLienzo_lift(try rustCallWithError(FfiConverterTypeErrorNucleo_lift) {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_constructor_editorlienzo_de_fichero(
+        FfiConverterString.lower(ruta),
+        FfiConverterBool.lower(crear),uniffiCallStatus
+    )
+})
+}
+    
+
+    
+    /**
+     * Borra lo elegido, en un paso. `false` si no habia nada elegido.
+     */
+open func borrarSeleccion() -> Bool  {
+    return try!  FfiConverterBool.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_editorlienzo_borrar_seleccion(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * La caja de lo dibujado, para encajar la vista. `None` si esta vacio.
+     */
+open func caja() -> CajaLienzo?  {
+    return try!  FfiConverterOptionTypeCajaLienzo.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_editorlienzo_caja(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Sube con cada cambio del DOCUMENTO (para guardar solo, con calma).
+     */
+open func cambios() -> UInt64  {
+    return try!  FfiConverterUInt64.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_editorlienzo_cambios(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Cuantos elementos visibles tiene.
+     */
+open func cuantosElementos() -> UInt64  {
+    return try!  FfiConverterUInt64.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_editorlienzo_cuantos_elementos(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Deshace el ultimo paso (no a mitad de un gesto).
+     */
+open func deshacer() -> Bool  {
+    return try!  FfiConverterBool.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_editorlienzo_deshacer(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Si se esta escribiendo un texto: entonces las teclas son del texto
+     * (Swift se las manda con [`EditorLienzo::teclear`] y
+     * [`EditorLienzo::tecla`]) y no atajos.
+     */
+open func escribiendo() -> Bool  {
+    return try!  FfiConverterBool.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_editorlienzo_escribiendo(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * **Guarda** el `.excalidraw` como Windows y Android (ver la doc del
+     * modulo). Devuelve si escribio algo: sin cambios, o a mitad de un
+     * gesto, no escribe. Bloqueante: Swift lo llama fuera del hilo
+     * principal.
+     */
+open func guardar()throws  -> Bool  {
+    return try  FfiConverterBool.lift(try rustCallWithError(FfiConverterTypeErrorNucleo_lift) {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_editorlienzo_guardar(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * **Cambia de herramienta**: `seleccion` (o `mano`), `lapiz` (o
+     * `tinta`), `grafito`, `resaltador`, `rectangulo`, `rombo`, `elipse`,
+     * `flecha`, `flecha_codos`, `flecha_libre`, `linea`, `texto`,
+     * `borrador` (o `goma`). Cierra el texto que se estuviera escribiendo.
+     */
+open func herramienta(nombre: String)throws   {try rustCallWithError(FfiConverterTypeErrorNucleo_lift) {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_editorlienzo_herramienta(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(nombre),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * La herramienta puesta (los nombres de [`EditorLienzo::herramienta`]).
+     */
+open func herramientaActual() -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_editorlienzo_herramienta_actual(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Las fotos del lienzo (abierto desde un chat: rutas absolutas; desde
+     * un fichero suelto: las relativas del `.excalidraw`).
+     */
+open func imagenes() -> [ImagenDelLienzo]  {
+    return try!  FfiConverterSequenceTypeImagenDelLienzo.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_editorlienzo_imagenes(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Todo el dibujo, sin lo de encima (miniatura, exportar, pruebas).
+     */
+open func plano() -> LienzoPlano  {
+    return try!  FfiConverterTypeLienzoPlano_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_editorlienzo_plano(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * **Lo que se ve con la camara** en `(x, y)` (el punto del mundo en la
+     * esquina de arriba a la izquierda), a `zoom` pixeles por unidad, en una
+     * vista de `ancho_px` x `alto_px`; y encima, lo elegido, los tiradores,
+     * la marquesina y el cursor del texto. Una llamada por fotograma; la
+     * geometria de lo que no cambio sale de la cache.
+     */
+open func planoDeVista(x: Float, y: Float, zoom: Float, anchoPx: Float, altoPx: Float) -> LienzoPlano  {
+    return try!  FfiConverterTypeLienzoPlano_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_editorlienzo_plano_de_vista(
+            self.uniffiCloneHandle(),
+        FfiConverterFloat.lower(x),
+        FfiConverterFloat.lower(y),
+        FfiConverterFloat.lower(zoom),
+        FfiConverterFloat.lower(anchoPx),
+        FfiConverterFloat.lower(altoPx),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Si hay algo que deshacer (para la barra).
+     */
+open func puedeDeshacer() -> Bool  {
+    return try!  FfiConverterBool.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_editorlienzo_puede_deshacer(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * **Un aviso del puntero**, en coordenadas del MUNDO. `presion` es la
+     * del lapiz o del Force Touch (0..1), `None` con raton. `modificadores`
+     * son bits ([`MOD_MAYUSCULAS`], [`MOD_OPCION`]). `zoom`: pixeles por
+     * unidad del mundo, para las tolerancias del motor (que son de
+     * pantalla). Devuelve la version: si cambio, hay que repintar.
+     */
+open func puntero(fase: FasePuntero, x: Float, y: Float, presion: Float?, modificadores: UInt32, zoom: Float) -> UInt64  {
+    return try!  FfiConverterUInt64.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_editorlienzo_puntero(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeFasePuntero_lower(fase),
+        FfiConverterFloat.lower(x),
+        FfiConverterFloat.lower(y),
+        FfiConverterOptionFloat.lower(presion),
+        FfiConverterUInt32.lower(modificadores),
+        FfiConverterFloat.lower(zoom),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Rehace lo ultimo deshecho.
+     */
+open func rehacer() -> Bool  {
+    return try!  FfiConverterBool.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_editorlienzo_rehacer(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * El fichero que edita.
+     */
+open func ruta() -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_editorlienzo_ruta(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Elige todo lo que se ve.
+     */
+open func seleccionarTodo()  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_editorlienzo_seleccionar_todo(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * Si hay cambios sin guardar.
+     */
+open func sinGuardar() -> Bool  {
+    return try!  FfiConverterBool.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_editorlienzo_sin_guardar(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Una tecla de edicion del texto: `izquierda`, `derecha`, `inicio`,
+     * `fin`, `retroceso`, `suprimir`, `entrar`; `escape` termina de
+     * escribir y deja el texto elegido.
+     */
+open func tecla(nombre: String) -> Bool  {
+    return try!  FfiConverterBool.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_editorlienzo_tecla(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(nombre),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Mete texto en el que se esta escribiendo (lo que da `insertText` de
+     * AppKit, ya compuesto: tildes, emoji). `false` si no se escribia.
+     */
+open func teclear(texto: String) -> Bool  {
+    return try!  FfiConverterBool.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_editorlienzo_teclear(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(texto),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Termina de escribir (un clic fuera, cerrar la ventana). Un texto
+     * vacio se quita.
+     */
+open func terminarTexto() -> Bool  {
+    return try!  FfiConverterBool.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_editorlienzo_terminar_texto(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * **Sube con todo lo que cambia lo que se ve** (dibujo, lo elegido, el
+     * cursor del texto). Swift repinta solo si cambio. Atomico: no espera.
+     */
+open func version() -> UInt64  {
+    return try!  FfiConverterUInt64.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_editorlienzo_version(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+
+    
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeEditorLienzo: FfiConverter {
+    typealias FfiType = UInt64
+    typealias SwiftType = EditorLienzo
+
+    public static func lift(_ handle: UInt64) throws -> EditorLienzo {
+        return EditorLienzo(unsafeFromHandle: handle)
+    }
+
+    public static func lower(_ value: EditorLienzo) -> UInt64 {
+        return value.uniffiCloneHandle()
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> EditorLienzo {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: EditorLienzo, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeEditorLienzo_lift(_ handle: UInt64) throws -> EditorLienzo {
+    return try FfiConverterTypeEditorLienzo.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeEditorLienzo_lower(_ value: EditorLienzo) -> UInt64 {
+    return FfiConverterTypeEditorLienzo.lower(value)
+}
+
+
+
+
+
+
+/**
  * **Un puerto escuchando.** Swift deja una `Task` esperando en
  * [`Escucha::atender_una`] (bloquea sin gastar nada hasta que alguien
  * llama) y la vuelve a llamar al terminar. Lo publica en Bonjour con
@@ -1182,6 +1740,20 @@ public protocol NucleoProtocol: AnyObject, Sendable {
     func ultimosMensajes(chat: String, cuantos: UInt32) throws  -> PaginaMensajes
     
     /**
+     * **Un lienzo nuevo en un chat**: el `.excalidraw` vacio en
+     * `lienzos/<codigo>.excalidraw` y su mensaje `DIBUJO` al final del
+     * cuaderno, como `ventana_chat::escribir_lienzo` de Windows. Se abre
+     * despues con [`Nucleo::editar_lienzo`] y la `referencia` del mensaje.
+     */
+    func crearLienzo(chat: String, nombre: String?) throws  -> MensajeChat
+    
+    /**
+     * **Abre para editar** el lienzo `dibujo` de un chat (la `referencia`
+     * de un mensaje `DIBUJO`). Sus fotos salen ya con la ruta absoluta.
+     */
+    func editarLienzo(chat: String, dibujo: String) throws  -> EditorLienzo
+    
+    /**
      * El lienzo `dibujo` de un chat (`proyectos/<chat>/lienzos/<dibujo>.excalidraw`,
      * lo que apunta la `referencia` de un mensaje `DIBUJO`).
      */
@@ -1486,6 +2058,38 @@ open func ultimosMensajes(chat: String, cuantos: UInt32)throws  -> PaginaMensaje
             self.uniffiCloneHandle(),
         FfiConverterString.lower(chat),
         FfiConverterUInt32.lower(cuantos),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * **Un lienzo nuevo en un chat**: el `.excalidraw` vacio en
+     * `lienzos/<codigo>.excalidraw` y su mensaje `DIBUJO` al final del
+     * cuaderno, como `ventana_chat::escribir_lienzo` de Windows. Se abre
+     * despues con [`Nucleo::editar_lienzo`] y la `referencia` del mensaje.
+     */
+open func crearLienzo(chat: String, nombre: String?)throws  -> MensajeChat  {
+    return try  FfiConverterTypeMensajeChat_lift(try rustCallWithError(FfiConverterTypeErrorNucleo_lift) {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_nucleo_crear_lienzo(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(chat),
+        FfiConverterOptionString.lower(nombre),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * **Abre para editar** el lienzo `dibujo` de un chat (la `referencia`
+     * de un mensaje `DIBUJO`). Sus fotos salen ya con la ruta absoluta.
+     */
+open func editarLienzo(chat: String, dibujo: String)throws  -> EditorLienzo  {
+    return try  FfiConverterTypeEditorLienzo_lift(try rustCallWithError(FfiConverterTypeErrorNucleo_lift) {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_nucleo_editar_lienzo(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(chat),
+        FfiConverterString.lower(dibujo),uniffiCallStatus
     )
 })
 }
@@ -2787,6 +3391,102 @@ public func FfiConverterTypeErrorNucleo_lower(_ value: ErrorNucleo) -> RustBuffe
     return FfiConverterTypeErrorNucleo.lower(value)
 }
 
+
+/**
+ * En que momento del gesto esta el puntero.
+ */
+
+public enum FasePuntero: Equatable, Hashable {
+    
+    /**
+     * Boton pulsado, lapiz apoyado.
+     */
+    case pulsar
+    /**
+     * Arrastrando con el boton pulsado.
+     */
+    case mover
+    /**
+     * Boton soltado.
+     */
+    case soltar
+    /**
+     * Se perdio el gesto (la ventana perdio el raton, Escape): se deshace
+     * lo que iba a medias.
+     */
+    case cancelar
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension FasePuntero: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeFasePuntero: FfiConverterRustBuffer {
+    typealias SwiftType = FasePuntero
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FasePuntero {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .pulsar
+        
+        case 2: return .mover
+        
+        case 3: return .soltar
+        
+        case 4: return .cancelar
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: FasePuntero, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .pulsar:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .mover:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .soltar:
+            writeInt(&buf, Int32(3))
+        
+        
+        case .cancelar:
+            writeInt(&buf, Int32(4))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFasePuntero_lift(_ buf: RustBuffer) throws -> FasePuntero {
+    return try FfiConverterTypeFasePuntero.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFasePuntero_lower(_ value: FasePuntero) -> RustBuffer {
+    return FfiConverterTypeFasePuntero.lower(value)
+}
+
+
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
@@ -2806,6 +3506,30 @@ fileprivate struct FfiConverterOptionUInt32: FfiConverterRustBuffer {
         switch try readInt(&buf) as Int8 {
         case 0: return nil
         case 1: return try FfiConverterUInt32.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionFloat: FfiConverterRustBuffer {
+    typealias SwiftType = Float?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterFloat.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterFloat.read(from: &buf)
         default: throw UniffiInternalError.unexpectedOptionalTag
         }
     }
@@ -3158,6 +3882,12 @@ private let initializationResult: InitializationResult = {
     if (uniffi_pixpin_nucleo_checksum_method_nucleo_ultimos_mensajes() != 11441) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_pixpin_nucleo_checksum_method_nucleo_crear_lienzo() != 32607) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_nucleo_editar_lienzo() != 47881) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_pixpin_nucleo_checksum_method_nucleo_abrir_lienzo() != 59079) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -3177,6 +3907,72 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_pixpin_nucleo_checksum_method_nucleo_unirse_a_grupo() != 64359) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_editorlienzo_borrar_seleccion() != 24837) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_editorlienzo_caja() != 33292) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_editorlienzo_cambios() != 48507) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_editorlienzo_cuantos_elementos() != 20681) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_editorlienzo_deshacer() != 4266) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_editorlienzo_escribiendo() != 58833) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_editorlienzo_guardar() != 58318) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_editorlienzo_herramienta() != 34360) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_editorlienzo_herramienta_actual() != 7487) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_editorlienzo_imagenes() != 29336) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_editorlienzo_plano() != 32657) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_editorlienzo_plano_de_vista() != 17813) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_editorlienzo_puede_deshacer() != 15378) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_editorlienzo_puntero() != 64575) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_editorlienzo_rehacer() != 33391) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_editorlienzo_ruta() != 39575) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_editorlienzo_seleccionar_todo() != 58984) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_editorlienzo_sin_guardar() != 40664) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_editorlienzo_tecla() != 39302) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_editorlienzo_teclear() != 33140) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_editorlienzo_terminar_texto() != 54099) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_editorlienzo_version() != 25970) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_pixpin_nucleo_checksum_method_lienzo_caja() != 1730) {
@@ -3207,6 +4003,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_pixpin_nucleo_checksum_constructor_nucleo_abrir() != 47148) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_constructor_editorlienzo_de_fichero() != 39861) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_pixpin_nucleo_checksum_constructor_lienzo_de_fichero() != 4320) {

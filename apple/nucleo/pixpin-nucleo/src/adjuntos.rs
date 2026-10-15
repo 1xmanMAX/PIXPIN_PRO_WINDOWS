@@ -51,7 +51,7 @@ impl Nucleo {
     /// relativo cuelga de la carpeta del chat y lo `pixpin:files/...` que
     /// llego del movil, de donde lo dejo la sincronizacion. `None` si no se
     /// puede resolver en este aparato (una ruta absoluta de otro disco).
-    fn resolver(&self, chat: &str, ruta: &str) -> Option<std::path::PathBuf> {
+    pub(crate) fn resolver(&self, chat: &str, ruta: &str) -> Option<std::path::PathBuf> {
         if !ruta_valida(ruta) {
             return None;
         }

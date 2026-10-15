@@ -110,6 +110,14 @@ pánico de Rust llega a Swift como error en vez de cerrar la app.
   - [x] Pines flotantes (imagen, PDF, vídeo), Live Text y OCR con Vision.
   - [x] Adjuntos en el chat: miniaturas con ImageIO y caché con tope, Quick Look, soltar y ⌘V.
   - [x] Sincronizar por la Wi‑Fi (Bonjour) con Windows y Android.
+  - [ ] Lienzo editable (escrito, falta verlo en verde en la CI): `EditorLienzo` en
+        `pixpin-nucleo/src/editor.rs` (el `Gesto` y la `Escena` del motor, la goma como el
+        movil, lo de encima como `dibujo::pintar::ordenes_encima`, guardar con
+        `con_escena` + `escribir` igual que Windows) y `app/Sources/PixPinKit/Lienzo/`
+        (`NSView` con pellizco, dos dedos, presion de tableta y Force Touch, ⌘Z/⇧⌘Z, borrar,
+        guardado solo 1 s despues del ultimo cambio). Se abre con doble clic en un `DIBUJO`
+        o con «Lienzo nuevo» en el chat. Falta: lazo, cotas, imagenes pegadas, el gesto de
+        pararse (forma rapida) y las cuatro de construir.
 - [ ] `por-adaptar/` → `nucleo/`:
   - [x] `pixpin-codec` (decodificar con `image`; WIC, vista reducida y portapapeles tras
         `#[cfg(windows)]`; ImageIO y `NSPasteboard` desde Swift).
