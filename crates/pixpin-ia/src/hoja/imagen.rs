@@ -424,3 +424,81 @@ pub fn recortar(rgba: &[u8], ancho: u32, alto: u32, c: &Caja) -> (Vec<u8>, u32, 
     }
     (out, w as u32, h as u32)
 }
+
+/// **El color de la tinta** dentro de una caja (una palabra): la media de
+/// sus pixeles oscuros, sin el papel ni el borde suavizado. `None` si es
+/// negro o gris oscuro (lo normal) o si no hay tinta.
+pub fn color_de_tinta(rgba: &[u8], ancho: u32, alto: u32, c: &Caja, umbral: u8) -> Option<[u8; 3]> {
+    let c = c.dentro(ancho as f64, alto as f64);
+    let (x0, y0, x1, y1) = (c.x as usize, c.y as usize, (c.x1() as usize).min(ancho as usize), (c.y1() as usize).min(alto as usize));
+    let (mut s, mut n) = ([0u64; 3], 0u64);
+    // El nucleo del trazo: bastante mas oscuro que el umbral (el borde es
+    // mezcla con el papel).
+    let limite = (umbral as u32 * 85 / 100).max(40);
+    for y in y0..y1 {
+        for x in x0..x1 {
+            let i = (y * ancho as usize + x) * 4;
+            let (r, g, b) = (rgba[i] as u32, rgba[i + 1] as u32, rgba[i + 2] as u32);
+            let lum = (r * 299 + g * 587 + b * 114) / 1000;
+            if lum < limite {
+                s[0] += r as u64;
+                s[1] += g as u64;
+                s[2] += b as u64;
+                n += 1;
+            }
+        }
+    }
+    if n < 4 {
+        return None;
+    }
+    let m = [(s[0] / n) as u8, (s[1] / n) as u8, (s[2] / n) as u8];
+    let (max, min) = (*m.iter().max().unwrap_or(&0), *m.iter().min().unwrap_or(&0));
+    // Sin croma: negro o gris (el de siempre).
+    if max.saturating_sub(min) < 45 {
+        return None;
+    }
+    Some(m)
+}
+
+/// El color como lo escribe Excalidraw.
+pub fn hex(c: [u8; 3]) -> String {
+    format!("#{:02x}{:02x}{:02x}", c[0], c[1], c[2])
+}
+
+/// **Los fondos de color**: zonas grandes algo mas oscuras que el papel (un
+/// logo en su recuadro gris, un recuadro sombreado). Quien llama decide: con
+/// casi nada de texto dentro es una imagen; con texto, un recuadro.
+pub fn fondos(a: &Analisis, minimo: f64) -> Vec<Caja> {
+    let cs = 10usize;
+    let (cw, ch) = (a.w.div_ceil(cs), a.h.div_ceil(cs));
+    let mut es = vec![false; cw * ch];
+    let tope = a.fondo.saturating_sub(5) as u32;
+    for cy in 0..ch {
+        for cx in 0..cw {
+            let (x0, y0, x1, y1) = (cx * cs, cy * cs, ((cx + 1) * cs).min(a.w), ((cy + 1) * cs).min(a.h));
+            let (mut s, mut n, mut t, mut lo, mut hi) = (0u32, 0u32, 0u32, 255u8, 0u8);
+            for y in y0..y1 {
+                for x in x0..x1 {
+                    let g = a.gris[y * a.w + x];
+                    s += g as u32;
+                    n += 1;
+                    t += a.tinta[y * a.w + x] as u32;
+                    lo = lo.min(g);
+                    hi = hi.max(g);
+                }
+            }
+            // Una raya gris fina en la celda no es un fondo: el fondo es liso.
+            let liso = hi.saturating_sub(lo) < 30;
+            // Liso: algo mas oscuro que el papel y sin tinta (el texto, de
+            // media, tambien es mas oscuro que el papel).
+            es[cy * cw + cx] = n > 0 && liso && s / n < tope && t * 50 < n;
+        }
+    }
+    let cerrado = dilatar(&es, cw, ch, 1);
+    componentes(&cerrado, cw, ch)
+        .into_iter()
+        .filter(|&(_, _, _, _, n)| n >= 6)
+        .map(|(x0, y0, x1, y1, _)| a.a_pagina(x0 * cs, y0 * cs, ((x1 + 1) * cs).min(a.w), ((y1 + 1) * cs).min(a.h)))
+        .filter(|c| c.w >= minimo && c.h >= minimo)
+        .collect()
+}

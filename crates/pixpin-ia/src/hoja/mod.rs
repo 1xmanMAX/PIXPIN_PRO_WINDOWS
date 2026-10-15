@@ -144,11 +144,14 @@ pub struct PalabraHoja {
     pub caja: Caja,
     /// La capa de texto del PDF lo sabe; el OCR no (se estima por la tinta).
     pub negrita: bool,
+    /// El color de su tinta (rojo, morado, el azul de un enlace), medido en
+    /// la imagen. `None`: no se sabe (negro).
+    pub color: Option<[u8; 3]>,
 }
 
 impl PalabraHoja {
     pub fn nueva(texto: &str, x: f64, y: f64, w: f64, h: f64) -> PalabraHoja {
-        PalabraHoja { texto: texto.to_string(), caja: Caja::nueva(x, y, w, h), negrita: false }
+        PalabraHoja { texto: texto.to_string(), caja: Caja::nueva(x, y, w, h), negrita: false, color: None }
     }
 }
 
@@ -206,6 +209,8 @@ pub struct Renglon {
     /// Las cajas de sus palabras (para colocarlas tal cual al rehacer).
     pub palabras: Vec<PalabraHoja>,
     pub negrita: bool,
+    /// El color de su tinta (el de la mayoria de sus letras).
+    pub color: Option<[u8; 3]>,
 }
 
 impl Renglon {
@@ -242,6 +247,9 @@ pub struct Zona {
     /// Las rayas de dentro (de una tabla rayada; o la propia raya), en
     /// pixeles de la pagina: `(x0, y0, x1, y1, grosor)`.
     pub rayas: Vec<[f64; 5]>,
+    /// Imagenes dentro de la zona (los iconos de las celdas de una tabla),
+    /// en pixeles de la pagina: van recortadas encima.
+    pub dentro: Vec<Caja>,
 }
 
 impl Zona {
@@ -287,6 +295,9 @@ pub struct Opciones {
     pub rehacer_bajo: f64,
     /// Comprobar al final (pintar y comparar).
     pub comprobar: bool,
+    /// Lo mas que se espera a la nube: lo que no llegue sale sin modelo (una
+    /// formula como imagen). Una red colgada no deja la hoja a medias.
+    pub plazo_nube: std::time::Duration,
 }
 
 impl Default for Opciones {
@@ -299,6 +310,7 @@ impl Default for Opciones {
             concurrencia: 4,
             rehacer_bajo: 0.35,
             comprobar: true,
+            plazo_nube: std::time::Duration::from_secs(40),
         }
     }
 }

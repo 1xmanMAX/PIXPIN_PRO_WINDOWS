@@ -376,3 +376,24 @@ fn depurar_renglones() {
         println!("R {:.0},{:.0} {:.0}x{:.0} {}", r.caja.x, r.caja.y, r.caja.w, r.caja.h, r.texto);
     }
 }
+
+/// Un modelo que no contesta nunca (la red colgada, medido con DeepSeek el
+/// 14-oct): la hoja acaba igual, al plazo, con las formulas como imagen.
+#[test]
+fn si_la_nube_se_cuelga_la_hoja_acaba_al_plazo() {
+    struct Colgado;
+    impl pixpin_ia::Motor for Colgado {
+        fn completar(&self, _: &pixpin_ia::Peticion, _: &mut dyn FnMut(&pixpin_ia::motor::Trozo) -> pixpin_ia::motor::Seguir) -> Result<Respuesta, pixpin_ia::ErrorIa> {
+            std::thread::sleep(std::time::Duration::from_secs(20));
+            Err(pixpin_ia::ErrorIa::Cancelado)
+        }
+    }
+    let papel = hoja_completa();
+    let mut d = EnEscena::nueva();
+    let o = Opciones { comprobar: false, plazo_nube: std::time::Duration::from_millis(400), ..Default::default() };
+    let t = std::time::Instant::now();
+    let inf = pasar(&papel.pagina(), Some(Arc::new(Colgado)), &o, false, 48, &AtomicBool::new(false), &mut d, &mut |_, _| {}).unwrap();
+    assert!(t.elapsed() < std::time::Duration::from_secs(5), "{:?}", t.elapsed());
+    assert_eq!(inf.hechos.len(), inf.seccionado.zonas.len());
+    assert!(inf.fallos.iter().any(|f| f.contains("a tiempo")), "{:?}", inf.fallos);
+}

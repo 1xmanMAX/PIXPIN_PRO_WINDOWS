@@ -139,7 +139,7 @@ fn pintar_hoja(els: Vec<Elemento>, fotos: &HashMap<u64, pixpin_codec::ImagenRgba
     hojas.truncate(1);
     hojas[0].caja = (0.0, 0.0, W, H);
     let resolver = |id: u64| fotos.get(&id).map(|i| pixpin_pdf::escribir::Pixeles { ancho: i.ancho, alto: i.alto, rgba: i.pixeles.clone() });
-    let pdf = pixpin_pdf::escribir::de_hojas_a_medida(&hojas, &[(W, H)], &resolver, None).unwrap();
+    let pdf = pixpin_pdf::escribir::de_hojas_a_medida(&hojas, &[(W, H)], &resolver, super::letra_segoe()).unwrap();
     let ruta = std::env::temp_dir().join(format!("pixpin-banco-hoja-{}.pdf", std::process::id()));
     std::fs::write(&ruta, pdf).unwrap();
     let img = pixpin_pdf::Documento::abrir(&ruta).unwrap().renderizar(0, ancho).unwrap();
@@ -271,6 +271,7 @@ fn banco() {
         ("hoja-3", hoja_a(false, false), true),
     ];
     for (nombre, (els, fotos), escaneo) in hojas {
+        eprintln!("[banco] pintando {nombre}");
         let mut img = pintar_hoja(els, &fotos, 1700);
         if escaneo {
             escanear(&mut img);
@@ -284,6 +285,15 @@ fn banco() {
     if let Some(m) = &muestra {
         entradas.push(("hoja-4-real".into(), m.clone()));
     }
+    // Hojas reales que paso el usuario (PIXPIN_HOJA_REALES: carpeta con PNG o JPG).
+    if let Some(dir) = std::env::var_os("PIXPIN_HOJA_REALES").map(PathBuf::from) {
+        let mut v: Vec<PathBuf> = std::fs::read_dir(&dir).map(|l| l.flatten().map(|e| e.path()).filter(|r| super::super::ocr::es_imagen(r)).collect()).unwrap_or_default();
+        v.sort();
+        for r in v {
+            let n = r.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
+            entradas.push((format!("hoja-real-{n}"), r));
+        }
+    }
     let mut filas = Vec::new();
     for (motor_nombre, motor) in motores() {
         let carpeta = base.join(motor_nombre);
@@ -295,6 +305,7 @@ fn banco() {
                 continue;
             }
             let pagina = if super::super::ocr::es_pdf(ruta) { Some(pagina_muestra) } else { None };
+            eprintln!("[banco] {motor_nombre} {nombre}: leyendo");
             let p = match leer(ruta, pagina) {
                 Ok(p) => p,
                 Err(e) => {
@@ -306,6 +317,7 @@ fn banco() {
             std::fs::write(carpeta.join(format!("{nombre}-entrada.png")), pixpin_codec::imagen::codificar_png(&entrada).unwrap()).unwrap();
             let mut d = EnEscena::nueva();
             let o = Opciones::default();
+            eprintln!("[banco] {motor_nombre} {nombre}: pasando ({} palabras)", p.palabras.len());
             let r = pasar(&p, Some(motor.clone()), &o, false, 5000 + filas.len() as u64, &AtomicBool::new(false), &mut d, &mut |_, _| {});
             let inf = match r {
                 Ok(i) => i,
@@ -360,4 +372,36 @@ fn banco() {
         println!("{f}");
     }
     println!("imagenes en {}", base.display());
+}
+
+/// Una sola pregunta de LaTeX a cada motor, para medir y depurar.
+#[test]
+#[ignore = "con la nube de verdad"]
+fn una_formula_por_motor() {
+    let base = salida();
+    let img = pixpin_codec::imagen::cargar(&base.join("hoja-1-sintetica.png")).unwrap();
+    let c = pixpin_ia::hoja::Caja::nueva(1120.0, 480.0, 260.0, 120.0);
+    let (rgba, w, h) = pixpin_ia::hoja::imagen::recortar(&img.pixeles, img.ancho, img.alto, &c);
+    let png = pixpin_codec::imagen::codificar_png(&pixpin_codec::ImagenRgba { ancho: w, alto: h, pixeles: rgba }).unwrap();
+    let mut todos = motores();
+    if let Some(k) = pixpin_ia::nube::claves::leer(Proveedor::DeepSeek) {
+        let t = std::time::Instant::now();
+        let k2 = k.clone();
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let _ = tx.send(pixpin_ia::nube::probar(Proveedor::DeepSeek, &k2));
+        });
+        println!("deepseek probar (solo texto): {:?} en {} ms", rx.recv_timeout(std::time::Duration::from_secs(60)), t.elapsed().as_millis());
+        todos.push(("deepseek-pensando", Arc::new(MotorNube::nuevo(Proveedor::DeepSeek, k))));
+    }
+    for (n, m) in todos {
+        let t = std::time::Instant::now();
+        let (tx, rx) = std::sync::mpsc::channel();
+        let png = png.clone();
+        std::thread::spawn(move || {
+            let _ = tx.send(pixpin_ia::hoja::vision::pedir_latex(m.as_ref(), png));
+        });
+        let r = rx.recv_timeout(std::time::Duration::from_secs(90));
+        println!("{n}: {:?} en {} ms", r, t.elapsed().as_millis());
+    }
 }

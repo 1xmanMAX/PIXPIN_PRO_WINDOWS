@@ -126,6 +126,19 @@ pub fn hacer(e: &Entrada, leido: Option<&Leido>, via: Via) -> Hecho {
             (els, "imagen recortada".to_string())
         }
         (_, Tipo::Linea) => (linea(e), "recta".into()),
+        // Una tabla con iconos en sus celdas: cada cosa en su sitio y los
+        // iconos recortados encima (la tabla dibujada no lleva imagenes).
+        (_, Tipo::Tabla) if !z.dentro.is_empty() => {
+            let mut els = fiel(e);
+            for (k, c) in z.dentro.iter().enumerate() {
+                let grupo = els.first().map(|v| v["groupIds"].clone());
+                if let Some((v, img)) = foto_de_caja(e, c, k + 1, grupo) {
+                    els.push(v);
+                    imagenes.push(img);
+                }
+            }
+            (els, format!("tabla en su sitio con {} imagen(es)", z.dentro.len()))
+        }
         (Via::Fiel, Tipo::Parrafo | Tipo::Encabezado | Tipo::Tabla) => (fiel(e), "renglones en su sitio".into()),
         (_, Tipo::Parrafo | Tipo::Encabezado) => (texto(e, tipo == Tipo::Encabezado), "texto".into()),
         (_, Tipo::Tabla) => match tabla(e) {
@@ -222,16 +235,37 @@ fn alineacion_motor(a: Alineacion) -> AlineacionTexto {
     }
 }
 
-fn un_texto(t: &str, x: f64, y: f64, tam: f64, familia: &str, negrita: bool, al: Alineacion) -> Elemento {
-    let estilo = Estilo { color: negro(), tam: tam as f32, opacidad: 1.0, familia: familia.to_string() };
+/// El enlace de un texto (una direccion que empieza por `http`, `www.` o
+/// tiene un dominio con barra), sin la puntuacion de alrededor.
+pub fn enlace_de(t: &str) -> Option<String> {
+    let w = t.split_whitespace().find(|w| {
+        let w = w.to_lowercase();
+        w.starts_with("http") || w.starts_with("www.") || [".com/", ".nz/", ".org/", ".net/", ".pe/", ".es/"].iter().any(|d| w.contains(d))
+    })?;
+    let w = w.trim_matches(|c: char| matches!(c, '(' | ')' | '«' | '»' | '"' | ',' | ';'));
+    Some(if w.to_lowercase().starts_with("http") { w.to_string() } else { format!("https://{w}") })
+}
+
+fn color_motor(c: Option<[u8; 3]>) -> ColorRgba {
+    match c {
+        Some([r, g, b]) => ColorRgba::opaco(r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0),
+        None => negro(),
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn un_texto(t: &str, x: f64, y: f64, tam: f64, familia: &str, negrita: bool, al: Alineacion, color: Option<[u8; 3]>) -> Elemento {
+    let estilo = Estilo { color: color_motor(color), tam: tam as f32, opacidad: 1.0, familia: familia.to_string() };
     let medida = medir(t, tam as f32, familia, negrita);
     let mut el = elemento_texto(t, x as f32, y as f32, medida, tam as f32, false, &estilo);
     el.extras.negrita = negrita;
     el.extras.alineacion = Some(alineacion_motor(al));
+    // Un enlace sigue siendo un enlace: el lienzo lo abre con Ctrl+clic.
+    el.enlace = enlace_de(t);
     el
 }
 
-/// **Un parrafo o un encabezado.**
+/// **Un parrafo o un encabezado** (con su marco, si estaba en un recuadro).
 fn texto(e: &Entrada, titulo: bool) -> Vec<Value> {
     let z = e.zona;
     if z.renglones.is_empty() {
@@ -247,13 +281,17 @@ fn texto(e: &Entrada, titulo: bool) -> Vec<Value> {
         let v: Vec<f64> = z.renglones.windows(2).map(|w| (w[1].caja.cy() - w[0].caja.cy()) * esc).filter(|d| *d > 0.0).collect();
         mediana(v)
     };
-    let suelto = paso.is_some_and(|p| (p / (tam * k) - 1.0).abs() > 0.15);
+    let color = super::seccion::color_mayoritario(z.renglones.iter().map(|r| (r.color, r.texto.chars().count())));
+    // Renglones de varios enlaces: cada uno suelto, para que cada uno abra
+    // el suyo.
+    let enlaces = z.renglones.iter().filter(|r| enlace_de(&r.texto).is_some()).count();
+    let suelto = enlaces > 1 || paso.is_some_and(|p| (p / (tam * k) - 1.0).abs() > 0.15);
     let mut f = e.fabrica();
     let mut piezas = Vec::new();
     if suelto {
         for r in &z.renglones {
             let d = e.mapa.caja(&r.caja);
-            piezas.push(un_texto(&r.texto, d.x, d.cy() - tam * k / 2.0, tam, familia, negrita, Alineacion::Izquierda));
+            piezas.push(un_texto(&r.texto, d.x, d.cy() - tam * k / 2.0, tam, familia, negrita || r.negrita, Alineacion::Izquierda, r.color.or(color)));
         }
     } else {
         let todo = z.renglones.iter().map(|r| r.texto.as_str()).collect::<Vec<_>>().join("\n");
@@ -266,9 +304,14 @@ fn texto(e: &Entrada, titulo: bool) -> Vec<Value> {
             Alineacion::Derecha => d.x1() - w as f64,
             _ => z.renglones.iter().map(|r| e.mapa.caja(&r.caja).x).fold(f64::MAX, f64::min),
         };
-        piezas.push(un_texto(&todo, x, y, tam, familia, negrita, z.alineacion));
+        piezas.push(un_texto(&todo, x, y, tam, familia, negrita, z.alineacion, color));
     }
     f.de_motor(&piezas);
+    // El marco de un recuadro.
+    for r in &z.rayas {
+        let (a, b) = (e.mapa.punto(r[0], r[1]), e.mapa.punto(r[2], r[3]));
+        recta(&mut f, a, b, r[4] * esc);
+    }
     f.salida
 }
 
@@ -282,7 +325,7 @@ fn fiel(e: &Entrada) -> Vec<Value> {
     for r in &z.renglones {
         let tam = tam_de_letra(std::slice::from_ref(r), esc, familia, r.negrita);
         let d = e.mapa.caja(&r.caja);
-        piezas.push(un_texto(&r.texto, d.x, d.cy() - tam * k / 2.0, tam, familia, r.negrita, Alineacion::Izquierda));
+        piezas.push(un_texto(&r.texto, d.x, d.cy() - tam * k / 2.0, tam, familia, r.negrita, Alineacion::Izquierda, r.color));
     }
     let mut f = e.fabrica();
     f.de_motor(&piezas);
@@ -324,8 +367,9 @@ fn tabla(e: &Entrada) -> Option<Vec<Value>> {
     let d = e.destino();
     let medir_t = |s: &str, tam: f32| crate::lienzo::medir_con(s, tam, &familia);
     let cabecera = t.parece_cabecera();
+    let color = super::seccion::color_mayoritario(e.zona.renglones.iter().map(|r| (r.color, r.texto.chars().count())));
     let hacer = |tam: f64| {
-        let estilo = Estilo { color: negro(), tam: tam as f32, opacidad: 1.0, familia: familia.clone() };
+        let estilo = Estilo { color: color_motor(color), tam: tam as f32, opacidad: 1.0, familia: familia.clone() };
         pixpin_motor2d::tabla_dibujada::elementos_de_tabla(&t.filas, &estilo, Punto2::nuevo(d.x as f32, d.y as f32), &medir_t, cabecera)
     };
     let caja_de = |els: &[Elemento]| {
@@ -353,6 +397,17 @@ fn tabla(e: &Entrada) -> Option<Vec<Value>> {
     if els.is_empty() {
         return None;
     }
+    // Los enlaces de las celdas, abribles y de su color.
+    for el in &mut els {
+        if let pixpin_motor2d::Figura::Texto { texto, .. } = &el.figura
+            && let Some(url) = enlace_de(texto)
+        {
+            if let Some(c) = e.zona.renglones.iter().find(|r| r.texto.contains(texto.as_str()) || texto.contains(r.texto.as_str())).and_then(|r| r.color) {
+                el.trazo = color_motor(Some(c));
+            }
+            el.enlace = Some(url);
+        }
+    }
     let mut f = e.fabrica();
     f.de_motor(&els);
     Some(f.salida)
@@ -378,14 +433,24 @@ pub fn id_de_imagen(semilla: u64, zona: usize) -> u64 {
 
 /// **El recorte, como imagen del lienzo.**
 fn foto(e: &Entrada) -> (Vec<Value>, Vec<ImagenNueva>) {
-    let (rgba, w, h) = e.recorte();
-    if w == 0 || h == 0 {
-        return (Vec::new(), Vec::new());
+    match foto_de_caja(e, &e.zona.caja, 0, None) {
+        Some((v, img)) => (vec![v], vec![img]),
+        None => (Vec::new(), Vec::new()),
     }
-    let d = e.destino();
+}
+
+/// **Un trozo de la hoja como imagen del lienzo** (la foto de la zona, o el
+/// icono `k` de una celda), en su sitio. `grupo`: el de la zona, si ya hay.
+fn foto_de_caja(e: &Entrada, caja: &Caja, k: usize, grupo: Option<Value>) -> Option<(Value, ImagenNueva)> {
+    let (rgba, w, h) = e.pagina;
+    let (rgba, w, h) = imagen::recortar(rgba, w, h, caja);
+    if w == 0 || h == 0 {
+        return None;
+    }
+    let d = e.mapa.caja(caja);
     let lado = (d.w.max(d.h) * 2.0).clamp(64.0, LADO_FOTO);
     let (rgba, w, h) = reducir(&rgba, w, h, lado as u32);
-    let id = id_de_imagen(e.semilla, e.zona.id);
+    let id = id_de_imagen(e.semilla, e.zona.id * 1000 + k);
     let mut f = e.fabrica();
     let mut v = f.base("image", [d.x, d.y, d.w, d.h], "transparent", None);
     v["fileId"] = json!(pixpin_motor2d::enlace::id_de_texto(id));
@@ -393,8 +458,10 @@ fn foto(e: &Entrada) -> (Vec<Value>, Vec<ImagenNueva>) {
     v["scale"] = json!([1.0, 1.0]);
     v["roughness"] = json!(0);
     v["strokeWidth"] = json!(0);
-    f.salida.push(v);
-    (f.salida, vec![ImagenNueva { id, rgba, ancho: w, alto: h }])
+    if let Some(g) = grupo {
+        v["groupIds"] = g;
+    }
+    Some((v, ImagenNueva { id, rgba, ancho: w, alto: h }))
 }
 
 /// Reduce (promediando) si el lado mayor pasa de `lado`.

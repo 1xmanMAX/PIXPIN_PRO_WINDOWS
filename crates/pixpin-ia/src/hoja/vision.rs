@@ -65,7 +65,8 @@ pub fn leer_dudosa(t: &str) -> Option<Leido> {
         }
         return Some(Leido::Tipo(Tipo::Formula));
     }
-    leer_tipo(s).map(Leido::Tipo)
+    // Con una frase delante: la primera palabra de la lista que salga.
+    leer_tipo(s).or_else(|| s.split(|c: char| !c.is_alphanumeric()).find_map(leer_tipo)).map(Leido::Tipo)
 }
 
 /// **Si una grafica es de funciones**: sus argumentos de `graficar_funcion`,

@@ -39,8 +39,13 @@ pub const PASILLO: f64 = 1.2;
 /// **Secciona la hoja.** `rgba` es la imagen de la pagina y `palabras` lo
 /// que leyo el OCR (o la capa de texto del PDF), en pixeles de esa imagen.
 /// Nunca falla: una hoja en blanco da cero zonas.
-pub fn seccionar(rgba: &[u8], ancho: u32, alto: u32, palabras: Vec<PalabraHoja>) -> Seccionado {
+pub fn seccionar(rgba: &[u8], ancho: u32, alto: u32, mut palabras: Vec<PalabraHoja>) -> Seccionado {
     let a = imagen::analizar(rgba, ancho, alto);
+    for p in &mut palabras {
+        if p.color.is_none() {
+            p.color = imagen::color_de_tinta(rgba, ancho, alto, &p.caja, a.umbral);
+        }
+    }
     seccionar_con(&a, ancho, alto, palabras)
 }
 
@@ -58,21 +63,32 @@ pub fn seccionar_con(a: &Analisis, ancho: u32, alto: u32, palabras: Vec<PalabraH
     let hm = mediana(palabras.iter().map(|p| p.caja.h).collect()).unwrap_or(ph * 0.012).max(4.0);
 
     // 1. Fotos, y lo que el OCR leyo dentro de ellas fuera.
-    let fotos = imagen::fotos(a, 4.0 * hm);
+    let mut fotos = imagen::fotos(a, 4.0 * hm);
+    // Un fondo de color casi sin texto (un logo en su recuadro gris) tambien
+    // es una imagen; con texto, o cruzado por rayas (la cabecera gris de una
+    // tabla), no.
+    let brutas = imagen::rayas(a, 0.05);
+    for f in imagen::fondos(a, 4.0 * hm) {
+        let texto: f64 = palabras.iter().filter(|p| f.contiene(p.caja.cx(), p.caja.cy())).map(|p| p.caja.area()).sum();
+        let rayado = brutas.iter().any(|r| r.caja().comun(&f.crecer(2.0)) > 0.0);
+        if texto < f.area() * 0.25 && !rayado && !fotos.iter().any(|x| x.comun(&f) > 0.0) {
+            fotos.push(f);
+        }
+    }
     palabras.retain(|p| !fotos.iter().any(|f| p.caja.dentro_de(f) > 0.5));
     // Negrita de las palabras del OCR: mas tinta por area que las demas.
     let densidades: Vec<f64> = palabras.iter().map(|p| a.densidad(&p.caja)).collect();
     let dens_media = mediana(densidades.clone()).unwrap_or(0.0);
     if dens_media > 0.0 {
         for (p, d) in palabras.iter_mut().zip(&densidades) {
-            if !p.negrita && *d > dens_media * 1.38 && p.caja.h < hm * 1.6 {
+            if !p.negrita && *d > dens_media * 1.38  {
                 p.negrita = true;
             }
         }
     }
 
     // 2. Rayas, sin las de dentro de las fotos ni las que tachan texto.
-    let mut rayas: Vec<Raya> = imagen::rayas(a, 0.05)
+    let mut rayas: Vec<Raya> = brutas
         .into_iter()
         .filter(|r| !fotos.iter().any(|f| r.caja().crecer(1.0).dentro_de(f) > 0.5))
         .filter(|r| {
@@ -92,6 +108,17 @@ pub fn seccionar_con(a: &Analisis, ancho: u32, alto: u32, palabras: Vec<PalabraH
         })
         .collect();
     rayas.sort_by(|a, b| a.y0.partial_cmp(&b.y0).unwrap_or(std::cmp::Ordering::Equal));
+    // El adorno de un separador («———※———»): el OCR lo lee como «x» o «•x»;
+    // es un simbolo entre dos rayas, no texto (sale como imagen).
+    palabras.retain(|p| {
+        let corto = p.texto.trim().chars().count() <= 2;
+        let entre = |izq: bool| {
+            rayas.iter().any(|r| {
+                !r.vertical && (r.y0 - p.caja.cy()).abs() < hm && if izq { (p.caja.x - r.x1).abs() < hm * 2.0 } else { (r.x0 - p.caja.x1()).abs() < hm * 2.0 }
+            })
+        };
+        !(corto && entre(true) && entre(false))
+    });
 
     // 3. Tablas rayadas y graficas (ejes) de las rayas que se tocan.
     let (tablas_r, graficas, sueltas) = agrupar_rayas(&rayas, &palabras, hm);
@@ -105,17 +132,22 @@ pub fn seccionar_con(a: &Analisis, ancho: u32, alto: u32, palabras: Vec<PalabraH
     for g in &graficas {
         figuras.push(Figura { tipo: Tipo::Grafica, caja: g.0, confianza: 0.7, rayas: g.1.clone() });
     }
-    let mut tablas: Vec<(Caja, Vec<[f64; 5]>, Vec<PalabraHoja>)> = Vec::new();
-    for t in &tablas_r {
-        tablas.push((t.0, t.1.clone(), Vec::new()));
-    }
+    let mut tablas: Vec<TablaR> = tablas_r.iter().map(|t| TablaR { caja: t.0, rayas: t.1.clone(), palabras: Vec::new(), iconos: Vec::new() }).collect();
+    // Una foto dentro de una tabla es un icono de una celda.
+    figuras.retain(|f| match tablas.iter_mut().find(|t| t.caja.contiene(f.caja.cx(), f.caja.cy())) {
+        Some(t) => {
+            t.iconos.push(f.caja);
+            false
+        }
+        None => true,
+    });
     for (i, f) in figuras.iter().enumerate() {
         ocupado.push((f.caja, i));
     }
     let mut libres: Vec<PalabraHoja> = Vec::new();
     for p in palabras {
-        if let Some(t) = tablas.iter_mut().find(|t| t.0.crecer(hm * 0.3).contiene(p.caja.cx(), p.caja.cy())) {
-            t.2.push(p);
+        if let Some(t) = tablas.iter_mut().find(|t| t.caja.crecer(hm * 0.3).contiene(p.caja.cx(), p.caja.cy())) {
+            t.palabras.push(p);
         } else if ocupado.iter().any(|(c, _)| c.crecer(hm).contiene(p.caja.cx(), p.caja.cy())) {
             // Los rotulos de una grafica van con ella.
         } else {
@@ -126,7 +158,7 @@ pub fn seccionar_con(a: &Analisis, ancho: u32, alto: u32, palabras: Vec<PalabraH
     // 4. Manchas de tinta sin texto.
     let mut quitar: Vec<Caja> = libres.iter().map(|p| p.caja.crecer(hm * 0.15)).collect();
     quitar.extend(fotos.iter().copied());
-    quitar.extend(tablas.iter().map(|t| t.0.crecer(2.0)));
+    quitar.extend(tablas.iter().flat_map(|t| t.palabras.iter().map(|p| p.caja.crecer(hm * 0.15))));
     quitar.extend(figuras.iter().filter(|f| f.tipo == Tipo::Grafica).map(|f| f.caja));
     let manchas = imagen::manchas(a, &quitar, &rayas, hm * 0.8);
     let mut restos: Vec<Caja> = Vec::new();
@@ -134,6 +166,13 @@ pub fn seccionar_con(a: &Analisis, ancho: u32, alto: u32, palabras: Vec<PalabraH
         let c = m.caja;
         if c.w < hm * 0.5 && c.h < hm * 0.5 {
             continue; // grano, un punto
+        }
+        // Dentro de una tabla: un icono de una celda (o grano).
+        if let Some(t) = tablas.iter_mut().find(|t| t.caja.contiene(c.cx(), c.cy())) {
+            if c.w >= hm * 0.8 && c.h >= hm * 0.8 {
+                t.iconos.push(c);
+            }
+            continue;
         }
         if c.w >= hm * 5.0 && c.h >= hm * 3.5 {
             figuras.push(figura_de_mancha(&m, hm));
@@ -169,7 +208,7 @@ pub fn seccionar_con(a: &Analisis, ancho: u32, alto: u32, palabras: Vec<PalabraH
         atomos.push(Atomo { caja: f.caja, clase: Clase::Figura(i) });
     }
     for (i, t) in tablas.iter().enumerate() {
-        atomos.push(Atomo { caja: t.0, clase: Clase::Tabla(i) });
+        atomos.push(Atomo { caja: t.caja, clase: Clase::Tabla(i) });
     }
     for (i, r) in restos.iter().enumerate() {
         atomos.push(Atomo { caja: *r, clase: Clase::Resto(i) });
@@ -180,7 +219,9 @@ pub fn seccionar_con(a: &Analisis, ancho: u32, alto: u32, palabras: Vec<PalabraH
     cx.cortar(&ids, 0, 0, &mut hojas);
 
     // 7. Cada bloque a sus zonas.
-    let alto_cuerpo = mediana(renglones.iter().map(Renglon::alto).collect()).unwrap_or(hm);
+    // El alto de letra del cuerpo: el de la palabra mediana (los renglones
+    // de los titulos, aunque sean muchos, no lo mueven).
+    let alto_cuerpo = hm;
     let n_columnas = hojas.iter().map(|h| h.columna + 1).max().unwrap_or(1);
     let mut zonas: Vec<Zona> = Vec::new();
     for hoja in &hojas {
@@ -204,6 +245,7 @@ pub fn seccionar_con(a: &Analisis, ancho: u32, alto: u32, palabras: Vec<PalabraH
             alineacion: Alineacion::Izquierda,
             tabla: None,
             rayas: vec![[l.x0, l.y0, l.x1, l.y1, l.grosor]],
+            dentro: Vec::new(),
         });
     }
     for (i, z) in zonas.iter_mut().enumerate() {
@@ -232,6 +274,10 @@ fn figura_de_mancha(m: &Mancha, _hm: f64) -> Figura {
     let e = m.est;
     if e.parece_foto() {
         Figura { tipo: Tipo::Foto, caja: m.caja, confianza: (0.55 + e.medios as f32).min(0.9), rayas: Vec::new() }
+    } else if e.tinta < 0.01 {
+        // Sin tinta de verdad, solo grises claros (una marca de agua, un
+        // sombreado): calcarlo lo oscureceria; va como imagen.
+        Figura { tipo: Tipo::Foto, caja: m.caja, confianza: 0.6, rayas: Vec::new() }
     } else if e.tinta < 0.22 && e.medios < 0.12 {
         // Trazos finos sobre papel: un dibujo de lineas.
         Figura { tipo: Tipo::Dibujo, caja: m.caja, confianza: 0.6, rayas: Vec::new() }
@@ -295,10 +341,13 @@ fn agrupar_rayas(rayas: &[Raya], palabras: &[PalabraHoja], hm: f64) -> (Vec<ConR
     }
     // Tablas «de libro»: horizontales del mismo largo, una bajo otra, sin
     // verticales.
+    // Las que ya tocan una vertical son de una tabla rayada (o un recuadro):
+    // esas no se juntan por su largo.
+    let con_vertical: Vec<bool> = (0..n).map(|i| !rayas[i].vertical && (0..n).any(|j| rayas[j].vertical && tocan(&rayas[i], &rayas[j]))).collect();
     for i in 0..n {
         for j in i + 1..n {
             let (a, b) = (&rayas[i], &rayas[j]);
-            if a.vertical || b.vertical {
+            if a.vertical || b.vertical || con_vertical[i] || con_vertical[j] {
                 continue;
             }
             let mismo = (a.x0 - b.x0).abs() < hm * 1.5 && (a.x1 - b.x1).abs() < hm * 1.5;
@@ -405,7 +454,27 @@ fn renglon_de(ps: &[&PalabraHoja]) -> Renglon {
         caja,
         palabras: ps.iter().map(|p| (*p).clone()).collect(),
         negrita: negritas * 2 > ps.len(),
+        color: color_mayoritario(ps.iter().map(|p| (p.color, p.texto.chars().count()))),
     }
+}
+
+/// El color de la mayoria de las letras (por numero de letras).
+pub fn color_mayoritario(v: impl Iterator<Item = (Option<[u8; 3]>, usize)>) -> Option<[u8; 3]> {
+    let mut grupos: Vec<([u8; 3], usize)> = Vec::new();
+    for (c, n) in v {
+        let Some(c) = c else { continue };
+        match grupos.iter_mut().find(|(g, _)| distancia_color(*g, c) < 60.0) {
+            Some(g) => g.1 += n,
+            None => grupos.push((c, n)),
+        }
+    }
+    grupos.into_iter().max_by_key(|g| g.1).map(|g| g.0)
+}
+
+/// Lo que se parecen dos colores (distancia en RGB). Sin color es negro.
+pub fn distancia_color(a: [u8; 3], b: [u8; 3]) -> f64 {
+    let d = |i: usize| a[i] as f64 - b[i] as f64;
+    (d(0) * d(0) + d(1) * d(1) + d(2) * d(2)).sqrt()
 }
 
 // ---------------------------------------------------------------------------
@@ -542,7 +611,12 @@ impl Corte<'_> {
             partes[k].push(i);
         }
         partes.retain(|p| !p.is_empty());
-        (partes.len() >= 2).then_some(partes)
+        // «q =» a la izquierda de su fraccion: un trozo de formula suelto no
+        // es una columna.
+        let trozo_de_formula = partes.iter().any(|p| {
+            p.len() == 1 && matches!(self.atomos[p[0]].clase, Clase::Texto(r) if { let t = self.renglones[r].texto.trim(); t.ends_with('=') || t.starts_with('=') })
+        });
+        (partes.len() >= 2 && !trozo_de_formula).then_some(partes)
     }
 
     /// Columnas de trozos cortos y alineados en filas: una tabla sin rayas,
@@ -682,7 +756,7 @@ struct Bloque<'a> {
     atomos: &'a [Atomo],
     renglones: &'a [Renglon],
     figuras: &'a [Figura],
-    tablas: &'a [(Caja, Vec<[f64; 5]>, Vec<PalabraHoja>)],
+    tablas: &'a [TablaR],
     restos: &'a [Caja],
     hm: f64,
 }
@@ -800,13 +874,23 @@ impl Bloque<'_> {
                 }
                 Clase::Tabla(t) => {
                     cerrar(&mut actual, &mut restos_actual, tipo_actual, &mut out);
-                    let (caja, rayas, palabras) = &self.tablas[t];
+                    let TablaR { caja, rayas, palabras, iconos } = &self.tablas[t];
                     let ps: Vec<tabla_escaneada::Palabra> = palabras
                         .iter()
                         .map(|p| tabla_escaneada::Palabra::nueva(&p.texto, p.caja.x, p.caja.y, p.caja.w, p.caja.h))
                         .collect();
                     let rs = renglones(palabras, &[], self.hm);
-                    out.push(zona(Tipo::Tabla, *caja, 0.85, rs, Some(tabla_escaneada::reconstruir(&ps)), rayas.clone()));
+                    let leida = tabla_escaneada::reconstruir(&ps);
+                    if leida.filas.len() <= 1 && iconos.is_empty() {
+                        // Un recuadro con un renglon dentro: texto con su marco.
+                        let mut z = zona(Tipo::Parrafo, *caja, 0.8, rs, None, rayas.clone());
+                        z.alineacion = alineacion(&z.renglones, caja, self.hm);
+                        out.push(z);
+                    } else {
+                        let mut z = zona(Tipo::Tabla, *caja, 0.85, rs, Some(leida), rayas.clone());
+                        z.dentro = iconos.clone();
+                        out.push(z);
+                    }
                     ultimo = None;
                 }
                 Clase::Resto(k) => {
@@ -862,6 +946,7 @@ impl Bloque<'_> {
             }
         }
         cerrar(&mut actual, &mut restos_actual, tipo_actual, &mut out);
+        juntar_formulas(&mut out, self.hm);
         out
     }
 
@@ -880,6 +965,11 @@ impl Bloque<'_> {
 
     /// Si `r` sigue el bloque que acaba en `u`.
     fn continua(&self, u: &Renglon, r: &Renglon, parece: Parece, tipo: Parece, paso: f64, bloque: &Caja) -> bool {
+        // Otro color (un renglon rojo tras uno negro) es otro bloque.
+        let negro = [30, 30, 30];
+        if distancia_color(u.color.unwrap_or(negro), r.color.unwrap_or(negro)) > 70.0 {
+            return false;
+        }
         let hueco = r.caja.y - u.caja.y1();
         let de_arriba = r.caja.y - u.caja.y;
         match tipo {
@@ -907,7 +997,7 @@ impl Bloque<'_> {
 }
 
 fn zona(tipo: Tipo, caja: Caja, confianza: f32, renglones: Vec<Renglon>, tabla: Option<tabla_escaneada::TablaLeida>, rayas: Vec<[f64; 5]>) -> Zona {
-    Zona { id: 0, tipo, caja, orden: 0, columna: 0, confianza, renglones, alineacion: Alineacion::Izquierda, tabla, rayas }
+    Zona { id: 0, tipo, caja, orden: 0, columna: 0, confianza, renglones, alineacion: Alineacion::Izquierda, tabla, rayas, dentro: Vec::new() }
 }
 
 /// Como van los renglones dentro del bloque.
@@ -929,4 +1019,52 @@ fn alineacion(rs: &[Renglon], bloque: &Caja, hm: f64) -> Alineacion {
         return Alineacion::Justificada;
     }
     Alineacion::Izquierda
+}
+
+/// Una tabla rayada antes de ser zona: su caja, sus rayas, sus palabras y
+/// las imagenes de sus celdas (iconos).
+#[derive(Debug, Clone)]
+struct TablaR {
+    caja: Caja,
+    rayas: Vec<[f64; 5]>,
+    palabras: Vec<PalabraHoja>,
+    iconos: Vec<Caja>,
+}
+
+/// **Los trozos de una misma formula, juntos**: el numerador que parecio un
+/// titulo, el «q =» que el OCR no leyo (una mancha) y el denominador acaban
+/// a veces en zonas distintas. Una formula se come lo que la toca si es
+/// otra formula, una zona dudosa o un renglon corto.
+fn juntar_formulas(zonas: &mut Vec<Zona>, hm: f64) {
+    let pequena = |z: &Zona| match z.tipo {
+        Tipo::Formula | Tipo::Dudosa => true,
+        Tipo::Encabezado | Tipo::Parrafo => z.renglones.len() == 1 && z.renglones[0].n_palabras() <= 4,
+        _ => false,
+    };
+    loop {
+        let mut junto = false;
+        'fuera: for i in 0..zonas.len() {
+            for j in 0..zonas.len() {
+                if i == j || zonas[i].tipo != Tipo::Formula || !pequena(&zonas[j]) {
+                    continue;
+                }
+                if zonas[i].caja.crecer(hm * 1.6).comun(&zonas[j].caja) <= 0.0 {
+                    continue;
+                }
+                let b = zonas.remove(j);
+                let i = if j < i { i - 1 } else { i };
+                let a = &mut zonas[i];
+                a.caja = a.caja.union(&b.caja);
+                a.renglones.extend(b.renglones);
+                a.renglones.sort_by(|x, y| x.caja.y.partial_cmp(&y.caja.y).unwrap_or(std::cmp::Ordering::Equal));
+                a.rayas.extend(b.rayas);
+                a.confianza = a.confianza.max(b.confianza);
+                junto = true;
+                break 'fuera;
+            }
+        }
+        if !junto {
+            break;
+        }
+    }
 }

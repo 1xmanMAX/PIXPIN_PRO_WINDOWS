@@ -375,6 +375,7 @@ fn una_dudosa_toma_el_tipo_que_dice_el_modelo() {
         alineacion: Alineacion::Izquierda,
         tabla: None,
         rayas: Vec::new(),
+        dentro: Vec::new(),
     };
     let o = Opciones::default();
     let e = entrada(&z, (&p.rgba, p.w, p.h), &o);
@@ -493,4 +494,27 @@ fn el_mapa_lleva_la_hoja_al_ancho_pedido() {
     assert_eq!((p.pagina, p.fiel, p.ancho), (Some(2), true, Some(1200.0)));
     let p = Pedido::de(&serde_json::json!({"pagina": 0, "ancho": 5}));
     assert_eq!((p.pagina, p.ancho), (None, None));
+}
+
+#[test]
+fn los_enlaces_y_los_colores_se_conservan() {
+    assert_eq!(montaje::enlace_de("Clic en https://mega.nz/folder/abc ya").as_deref(), Some("https://mega.nz/folder/abc"));
+    assert_eq!(montaje::enlace_de("visita www.pixpin.pe").as_deref(), Some("https://www.pixpin.pe"));
+    assert!(montaje::enlace_de("un texto sin enlace").is_none());
+    // Tinta roja: se mide; negra: nada (es la de siempre).
+    let mut p = Papel::nuevo(100, 40);
+    for y in 10..30 {
+        for x in 10..40 {
+            let i = ((y * 100 + x) * 4) as usize;
+            p.rgba[i..i + 3].copy_from_slice(&[220, 20, 30]);
+        }
+        for x in 60..90 {
+            let i = ((y * 100 + x) * 4) as usize;
+            p.rgba[i..i + 3].copy_from_slice(&[25, 25, 25]);
+        }
+    }
+    let rojo = imagen::color_de_tinta(&p.rgba, 100, 40, &Caja::nueva(5.0, 5.0, 40.0, 30.0), 158).unwrap();
+    assert!(rojo[0] > 200 && rojo[1] < 60, "{rojo:?}");
+    assert!(imagen::color_de_tinta(&p.rgba, 100, 40, &Caja::nueva(55.0, 5.0, 40.0, 30.0), 158).is_none());
+    assert_eq!(imagen::hex([255, 0, 16]), "#ff0010");
 }

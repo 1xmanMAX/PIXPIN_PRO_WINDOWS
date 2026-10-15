@@ -91,7 +91,10 @@ pub fn leer(ruta: &Path, pagina: Option<usize>) -> Result<Pagina, String> {
         return Err(format!("el PDF tiene {} paginas", doc.paginas()));
     }
     let img = doc.renderizar(p as u32, ANCHO_PAGINA).map_err(|e| e.to_string())?;
-    let ancho_pt = doc.medidas().get(p).map_or(0.0, |m| m.0);
+    // `medidas` da la hoja en DIP (1/96 de pulgada, la `Size` de Windows) y
+    // la capa de texto va en puntos (1/72): medido con la tesis, sin pasar
+    // de una a otra el texto quedaba en tres cuartos de la hoja.
+    let ancho_pt = doc.medidas().get(p).map_or(0.0, |m| m.0 * 72.0 / 96.0);
     let trozos = pixpin_pdf::texto::trozos_de_fichero(ruta).ok().and_then(|t| t.get(p).cloned()).unwrap_or_default();
     let palabras = if trozos.len() >= 4 && ancho_pt > 0.0 {
         palabras_de_trozos(&trozos, img.ancho as f64 / ancho_pt as f64)
@@ -233,8 +236,11 @@ enum Pregunta {
 }
 
 /// Que pregunta (si alguna) lleva una zona.
-fn pregunta(z: &hoja::Zona, o: &Opciones) -> Option<Pregunta> {
+fn pregunta(z: &hoja::Zona, o: &Opciones, alto_letra: f64) -> Option<Pregunta> {
     match z.tipo {
+        // Un simbolo suelto (el adorno de un separador): como imagen, sin
+        // preguntar (el modelo no sabria que decir de tan poco).
+        Tipo::Dudosa if z.caja.w < alto_letra * 3.0 && z.caja.h < alto_letra * 3.0 => None,
         Tipo::Formula => Some(Pregunta::Latex),
         Tipo::Dudosa => Some(Pregunta::Tipo),
         Tipo::Grafica => Some(Pregunta::Grafica),
@@ -310,7 +316,7 @@ pub fn pasar(
     let entrada = |id: usize| Entrada { zona: &s.zonas[id], mapa, opciones: o, pagina: (&p.rgba, p.ancho, p.alto), alto_letra: s.alto_letra, semilla };
     let via_base = |z: &hoja::Zona| if fiel && matches!(z.tipo, Tipo::Parrafo | Tipo::Encabezado | Tipo::Tabla) { Via::Fiel } else { Via::Editable };
     let preguntas: Vec<(usize, Pregunta)> = match &vision {
-        Some(_) => s.zonas.iter().filter_map(|z| pregunta(z, o).map(|q| (z.id, q))).collect(),
+        Some(_) => s.zonas.iter().filter_map(|z| pregunta(z, o, s.alto_letra).map(|q| (z.id, q))).collect(),
         None => Vec::new(),
     };
     let total = s.zonas.len();
@@ -321,81 +327,91 @@ pub fn pasar(
     let mut error_entrega: Option<String> = None;
     let mut n_hechas = 0;
     let (tx, rx) = channel::<(usize, Result<Option<Leido>, String>)>();
-    std::thread::scope(|sc| {
-        // 1. La nube primero: es lo que mas tarda.
-        if let Some(motor) = &vision
-            && !preguntas.is_empty()
-        {
-            let cola = Arc::new(Mutex::new(VecDeque::from(preguntas.clone())));
-            for _ in 0..o.concurrencia.clamp(1, 8).min(preguntas.len()) {
-                let (cola, tx, motor) = (cola.clone(), tx.clone(), motor.clone());
-                let zonas = &s.zonas;
-                sc.spawn(move || {
-                    loop {
-                        if parar.load(Ordering::Relaxed) {
-                            break;
+    // 1. La nube primero: es lo que mas tarda. Hilos sueltos (no de un
+    //    `scope`): si la red se cuelga, el pool no deja colgada la hoja; al
+    //    pasar el plazo lo que falte sale como imagen.
+    if let Some(motor) = &vision
+        && !preguntas.is_empty()
+    {
+        let trabajos: VecDeque<(usize, Pregunta, Result<Vec<u8>, String>)> =
+            preguntas.iter().map(|&(id, q)| (id, q, png_del_recorte(p, &s.zonas[id].caja))).collect();
+        let cola = Arc::new(Mutex::new(trabajos));
+        for _ in 0..o.concurrencia.clamp(1, 8).min(preguntas.len()) {
+            let (cola, tx, motor) = (cola.clone(), tx.clone(), motor.clone());
+            let lanzado = std::thread::Builder::new().name("hoja-al-lienzo-nube".into()).spawn(move || {
+                loop {
+                    let Some((id, q, png)) = cola.lock().ok().and_then(|mut c| c.pop_front()) else { break };
+                    let r = png.and_then(|png| match preguntar(motor.as_ref(), png.clone(), q) {
+                        // Un 429 que el motor ya reintento: una vez mas, con calma.
+                        Err(e) if e.contains("Demasiadas peticiones") => {
+                            std::thread::sleep(Duration::from_secs(3));
+                            preguntar(motor.as_ref(), png, q)
                         }
-                        let Some((id, q)) = cola.lock().ok().and_then(|mut c| c.pop_front()) else { break };
-                        let r = png_del_recorte(p, &zonas[id].caja).and_then(|png| {
-                            match preguntar(motor.as_ref(), png.clone(), q) {
-                                // Un 429 que el motor ya reintento: una vez mas, con calma.
-                                Err(e) if e.contains("Demasiadas peticiones") => {
-                                    std::thread::sleep(Duration::from_secs(3));
-                                    preguntar(motor.as_ref(), png, q)
-                                }
-                                r => r,
-                            }
-                        });
-                        if tx.send((id, r)).is_err() {
-                            break;
-                        }
+                        r => r,
+                    });
+                    if tx.send((id, r)).is_err() {
+                        break;
                     }
-                });
-            }
-        }
-        drop(tx);
-        // 2. Lo que no necesita modelo, ya, en orden de lectura.
-        let esperan: Vec<usize> = preguntas.iter().map(|(id, _)| *id).collect();
-        for z in s.zonas.iter().filter(|z| !esperan.contains(&z.id)) {
-            if parar.load(Ordering::Relaxed) {
-                return;
-            }
-            let h = montaje::hacer(&entrada(z.id), None, via_base(z));
-            if let Err(e) = destino.entregar(Some(&h), en(z.id, false, false)) {
-                error_entrega.get_or_insert(e);
-            }
-            ms_primera.get_or_insert(t0.elapsed().as_millis());
-            n_hechas += 1;
-            progreso(n_hechas, total);
-            hechos[z.id] = Some(h);
-        }
-        // 3. Lo del modelo, segun llega.
-        for (id, r) in rx.iter() {
-            if parar.load(Ordering::Relaxed) {
-                return;
-            }
-            let leido = match r {
-                Ok(l) => l,
-                Err(e) => {
-                    tracing::warn!(%e, zona = id, "hoja al lienzo: el modelo no pudo con una zona");
-                    fallos.push(format!("zona {id}: {e}"));
-                    None
                 }
-            };
-            let z = &s.zonas[id];
-            let h = montaje::hacer(&entrada(z.id), leido.as_ref(), via_base(z));
-            if let Some(l) = leido {
-                leidos.insert(id, l);
+            });
+            if lanzado.is_err() {
+                tracing::warn!("hoja al lienzo: no se pudo lanzar un hilo para la nube");
             }
-            if let Err(e) = destino.entregar(Some(&h), en(id, false, false)) {
-                error_entrega.get_or_insert(e);
-            }
-            ms_primera.get_or_insert(t0.elapsed().as_millis());
-            n_hechas += 1;
-            progreso(n_hechas, total);
-            hechos[id] = Some(h);
         }
-    });
+    }
+    drop(tx);
+    let mut entregar = |id: usize, leido: Option<Leido>, destino: &mut dyn Destino, hechos: &mut Vec<Option<Hecho>>| {
+        let z = &s.zonas[id];
+        let h = montaje::hacer(&entrada(id), leido.as_ref(), via_base(z));
+        if let Some(l) = leido {
+            leidos.insert(id, l);
+        }
+        if let Err(e) = destino.entregar(Some(&h), en(id, false, false)) {
+            error_entrega.get_or_insert(e);
+        }
+        ms_primera.get_or_insert(t0.elapsed().as_millis());
+        n_hechas += 1;
+        progreso(n_hechas, total);
+        hechos[id] = Some(h);
+    };
+    // 2. Lo que no necesita modelo, ya, en orden de lectura.
+    let esperan: Vec<usize> = preguntas.iter().map(|(id, _)| *id).collect();
+    for z in s.zonas.iter().filter(|z| !esperan.contains(&z.id)) {
+        if parar.load(Ordering::Relaxed) {
+            break;
+        }
+        entregar(z.id, None, destino, &mut hechos);
+    }
+    // 3. Lo del modelo, segun llega, hasta el plazo.
+    let plazo = Instant::now() + o.plazo_nube;
+    let mut pendientes: Vec<usize> = esperan.clone();
+    while !pendientes.is_empty() && !parar.load(Ordering::Relaxed) {
+        let queda = plazo.saturating_duration_since(Instant::now());
+        match rx.recv_timeout(queda.min(Duration::from_millis(200))) {
+            Ok((id, r)) => {
+                pendientes.retain(|x| *x != id);
+                let leido = match r {
+                    Ok(l) => l,
+                    Err(e) => {
+                        tracing::warn!(%e, zona = id, "hoja al lienzo: el modelo no pudo con una zona");
+                        fallos.push(format!("zona {id}: {e}"));
+                        None
+                    }
+                };
+                entregar(id, leido, destino, &mut hechos);
+            }
+            Err(RecvTimeoutError::Timeout) if Instant::now() < plazo => {}
+            Err(_) => break,
+        }
+    }
+    // Lo que no llego a tiempo (la red colgada): sin modelo.
+    for id in pendientes {
+        if parar.load(Ordering::Relaxed) {
+            break;
+        }
+        fallos.push(format!("zona {id}: el modelo no contesto a tiempo"));
+        entregar(id, None, destino, &mut hechos);
+    }
     if parar.load(Ordering::Relaxed) {
         let _ = destino.entregar(None, en(0, false, true));
         return Err("el usuario lo paro".into());
@@ -476,7 +492,7 @@ pub fn pintar(hechos: &[Hecho], tam: (f32, f32), ancho: u32) -> Result<(Vec<u8>,
     hojas.truncate(1);
     hojas[0].caja = (0.0, 0.0, tam.0, tam.1);
     let resolver = |id: u64| imagenes.get(&id).map(|i| pixpin_pdf::escribir::Pixeles { ancho: i.ancho, alto: i.alto, rgba: i.rgba.clone() });
-    let pdf = pixpin_pdf::escribir::de_hojas_a_medida(&hojas, &[tam], &resolver, None).ok_or("no salio el PDF")?;
+    let pdf = pixpin_pdf::escribir::de_hojas_a_medida(&hojas, &[tam], &resolver, letra_segoe()).ok_or("no salio el PDF")?;
     static N: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
     let ruta = std::env::temp_dir().join(format!("pixpin-hoja-{}-{}.pdf", std::process::id(), N.fetch_add(1, Ordering::SeqCst)));
     std::fs::write(&ruta, pdf).map_err(|e| e.to_string())?;
@@ -569,4 +585,11 @@ impl Destino for SinVentana {
         self.lienzo = Some(referencia);
         Ok(())
     }
+}
+
+/// La letra de la pantalla para el PDF con que se comprueba (con sus
+/// letras de reserva, las ecuaciones no salen con huecos). Se lee una vez.
+pub fn letra_segoe() -> Option<&'static pixpin_pdf::letra::Letra> {
+    static LETRA: std::sync::OnceLock<Option<pixpin_pdf::letra::Letra>> = std::sync::OnceLock::new();
+    LETRA.get_or_init(|| pixpin_pdf::letra::del_sistema("Segoe UI")).as_ref()
 }
