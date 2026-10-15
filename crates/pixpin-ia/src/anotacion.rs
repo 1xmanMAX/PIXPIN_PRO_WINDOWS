@@ -185,8 +185,9 @@ pub struct Pagina {
     /// espacio para anotar del lector, el lienzo alrededor de una foto o de
     /// un plano); 0, nada.
     pub fuera: f32,
-    /// Solo se puede salir por la derecha (una hoja de calculo: a la
-    /// izquierda de la columna A no hay nada).
+    /// Una hoja de calculo: las notas solo a la derecha de lo usado (a la
+    /// izquierda de la columna A no hay nada, y dentro todo son celdas),
+    /// y pueden bajar mas alla de la ultima fila.
     pub solo_derecha: bool,
 }
 
@@ -228,10 +229,12 @@ impl Pagina {
         let mut v = Vec::new();
         let izq = [self.caja[0] + aire, col[0] - aire];
         let der = [col[2] + aire, self.caja[2] - aire];
-        if izq[1] - izq[0] >= minimo {
+        // En una hoja de calculo no hay margenes: lo que no se leyo (fuera del
+        // rango pedido) tambien son celdas.
+        if !self.solo_derecha && izq[1] - izq[0] >= minimo {
             v.push(colocar::Franja { x0: izq[0], x1: izq[1], y0, y1, lado: colocar::Lado::Izquierda, fuera: false });
         }
-        if der[1] - der[0] >= minimo {
+        if !self.solo_derecha && der[1] - der[0] >= minimo {
             v.push(colocar::Franja { x0: der[0], x1: der[1], y0, y1, lado: colocar::Lado::Derecha, fuera: false });
         }
         if self.fuera >= minimo {

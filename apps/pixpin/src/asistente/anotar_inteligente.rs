@@ -475,7 +475,8 @@ fn leer_libro(ruta: &Path, args: &Value) -> Result<Lectura, String> {
     }
     // Las notas, a la derecha de TODO lo usado de la hoja (no solo del rango
     // mirado): si no, taparian columnas con datos.
-    let caja = [0.0, 0.0, rejilla.x(max_c.max(hoja.max_col) + 1) as f32, rejilla.y(max_f + 1) as f32];
+    let usado = rejilla.tamano_usado(&hoja).0.max(rejilla.x(max_c + 1));
+    let caja = [0.0, 0.0, usado as f32, rejilla.y(max_f + 1) as f32];
     let letra = 12.0;
     // Las notas, a la derecha de lo usado (a la izquierda no hay hoja).
     let pagina = Pagina { numero: 0, caja, renglones, letra, fuera: letra * 22.0, solo_derecha: true };

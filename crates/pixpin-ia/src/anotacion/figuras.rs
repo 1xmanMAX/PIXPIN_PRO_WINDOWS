@@ -282,7 +282,9 @@ fn tapa(camino: &[(f32, f32)], palabras: &[[f32; 4]], paso: f32) -> bool {
 /// **La linea guia** de la nota (`caja`) a lo senalado (`marca`): el
 /// primer camino que no tapa texto, y un punto donde llega.
 fn guia(a: &Anclaje, marca: [f32; 4], caja: [f32; 4], lado: Lado, pag: &Pagina, b: &Elemento, l: f32) -> Vec<Elemento> {
-    let col = pag.columna().unwrap_or(marca);
+    // En una hoja de calculo la «columna» es todo lo usado: lo de fuera del
+    // rango leido tambien son celdas con numeros que la guia no puede tachar.
+    let col = if pag.solo_derecha { pag.caja } else { pag.columna().unwrap_or(marca) };
     // Las palabras que no son de lo senalado.
     let palabras: Vec<[f32; 4]> = pag
         .renglones
@@ -309,13 +311,19 @@ fn guia(a: &Anclaje, marca: [f32; 4], caja: [f32; 4], lado: Lado, pag: &Pagina, 
     let hueco_arriba = if techo == f32::MIN { Some(marca[1] - l * 0.4) } else { (marca[1] - techo >= l * 0.12).then(|| (marca[1] + techo) / 2.0) };
     let hueco_abajo = if suelo == f32::MAX { Some(marca[3] + l * 0.4) } else { (suelo - marca[3] >= l * 0.12).then(|| (marca[3] + suelo) / 2.0) };
     let entrada_x = if derecha { borde - l * 0.6 } else { borde + l * 0.6 };
-    let mut caminos: Vec<Vec<(f32, f32)>> = vec![vec![s, (borde, ay)]];
-    caminos.push(vec![s, (borde_col, sy), (borde_col, ay), (borde, ay)]);
+    let mut caminos: Vec<Vec<(f32, f32)>> = if pag.solo_derecha { Vec::new() } else { vec![vec![s, (borde, ay)]] };
+    if !pag.solo_derecha {
+        caminos.push(vec![s, (borde_col, sy), (borde_col, ay), (borde, ay)]);
+    }
     if let Some(y) = hueco_arriba {
         caminos.push(vec![s, (borde_col, sy), (borde_col, y), (entrada_x, y), (entrada_x, marca[1])]);
     }
     if let Some(y) = hueco_abajo {
         caminos.push(vec![s, (borde_col, sy), (borde_col, y), (entrada_x, y), (entrada_x, marca[3])]);
+    }
+    if pag.solo_derecha {
+        // Hasta el borde de lo usado, a la altura de su celda (abajo).
+        caminos.clear();
     }
     let paso = l / 3.0;
     let (camino, llega) = caminos
