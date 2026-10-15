@@ -69,7 +69,7 @@ public enum TranscriptorVoz {
         pedido.addsPunctuation = true
         pedido.taskHint = .dictation
 
-        let unaVez = UnaVez()
+        let unaVez = UnaVezTranscripcion()
         return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { (c: CheckedContinuation<[SegmentoVoz], Error>) in
                 unaVez.poner(c)
@@ -104,7 +104,7 @@ public enum TranscriptorVoz {
 
 /// La continuacion se resuelve una sola vez aunque el reconocedor llame
 /// varias (resultado final y luego error, o cancelar a la vez).
-private final class UnaVez: @unchecked Sendable {
+private final class UnaVezTranscripcion: @unchecked Sendable {
     private let cerrojo = NSLock()
     private var continuacion: CheckedContinuation<[SegmentoVoz], Error>?
     private var _tarea: SFSpeechRecognitionTask?

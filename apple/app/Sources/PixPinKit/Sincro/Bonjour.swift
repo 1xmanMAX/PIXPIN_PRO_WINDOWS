@@ -224,6 +224,8 @@ public func textoDeError(_ error: Error) -> String {
         case let .Lienzo(detalle): return "Lienzo: \(detalle)"
         case let .Sincro(detalle): return detalle
         case let .Argumento(detalle): return detalle
+        case let .Ajustes(detalle): return "Ajustes: \(detalle)"
+        case let .Asistente(detalle): return "Asistente: \(detalle)"
         }
     }
     return error.localizedDescription
