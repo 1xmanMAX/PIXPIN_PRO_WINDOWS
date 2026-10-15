@@ -83,10 +83,6 @@ pub(crate) enum Cosa {
     /// Un documento que se esta leyendo (PDF, Word, libro...), con lo
     /// anotado que tenga al lado.
     Documento(PathBuf),
-    /// **Algo ya hecho fuera de la hoja** (el timeline, 8-oct-2026): sus
-    /// formatos enteros, sin paginas que elegir. La hoja hace lo demas: el
-    /// peso, Guardar, Copiar y la Salida para arrastrarlo.
-    Hecho { titulo: String, extras: Vec<Extra> },
     /// **Un visor** (plano, modelo 3D, hoja, pin...): sus hojas, sus formatos
     /// con la funcion de cada uno y su fichero (ver [`exportable`]).
     Visor(exportable::Exportable),
@@ -143,9 +139,6 @@ pub(crate) enum Entero {
     Ficheros(Vec<PathBuf>),
     /// Un fichero que se escribe con estos bytes.
     Escrito { fichero: String, bytes: Vec<u8> },
-    /// Un PDF impreso por Edge desde una pagina web (la del timeline): se
-    /// imprime al pedirlo, porque tarda un par de segundos.
-    PdfDeHtml { fichero: String, html: String },
     /// El `.pixpin` de unos proyectos `(raiz, id, fichero)`, que se empaqueta
     /// al pedirlo: puede pesar
     /// mucho y no hay por que hacerlo si no se elige.
@@ -332,12 +325,6 @@ fn preparar_sin_rotulos(cosa: Cosa, t: &Catalogo) -> Result<Preparado> {
             mensajes,
         } => Ok(de_mensajes(&raiz, &proyecto, &titulo, &mensajes, t)),
         Cosa::Proyectos { raiz, ids } => de_proyectos(&raiz, &ids, t),
-        Cosa::Hecho { titulo, extras } => {
-            let mut p = Preparado::nuevo(titulo);
-            p.extras = extras;
-            p.original_primero = true;
-            Ok(p)
-        }
         Cosa::Visor(x) => Ok(de_visor(x, t)),
         Cosa::Documento(ruta) => {
             let nombre = pixpin_docs::sin_extension(&pixpin_docs::nombre(&ruta));
@@ -378,12 +365,12 @@ fn de_visor(x: exportable::Exportable, t: &Catalogo) -> Preparado {
     }
     if let Some(o) = x.original {
         anadir_original(&mut p, exportable::ORIGINAL, "compartir-original", vec![o.clone()]);
-        let (raiz, anotado) = (x.raiz, x.anotado);
+        let (raiz, proyecto, anotado) = (x.raiz, x.proyecto, x.anotado);
         p.extras.push(Extra {
             id: exportable::PIXPIN,
             clave: "compartir-pixpin",
             que: Entero::Funcion(Arc::new(move |carpeta: &Path| {
-                let (fichero, bytes) = exportable::pixpin_de(raiz.as_deref(), &o, &anotado, pixpin_shell::entorno::ahora_utc_ms())?;
+                let (fichero, bytes) = exportable::pixpin_de(raiz.as_deref(), proyecto.as_deref(), &o, &anotado, pixpin_shell::entorno::ahora_utc_ms())?;
                 let ruta = carpeta.join(fichero);
                 escribir(&ruta, &bytes)?;
                 Ok(vec![ruta])
@@ -407,7 +394,7 @@ fn anadir_pixpin(p: &mut Preparado, ruta: PathBuf) {
         id: exportable::PIXPIN,
         clave: "compartir-pixpin",
         que: Entero::Funcion(Arc::new(move |carpeta: &Path| {
-            let (fichero, bytes) = exportable::pixpin_de(raiz.as_deref(), &ruta, &anotado, pixpin_shell::entorno::ahora_utc_ms())?;
+            let (fichero, bytes) = exportable::pixpin_de(raiz.as_deref(), None, &ruta, &anotado, pixpin_shell::entorno::ahora_utc_ms())?;
             let r = carpeta.join(fichero);
             escribir(&r, &bytes)?;
             Ok(vec![r])
@@ -449,7 +436,7 @@ fn de_lienzo_suelto(l: LienzoSuelto, t: &Catalogo) -> Preparado {
         que: Entero::Funcion(Arc::new(move |carpeta: &Path| {
             let lienzo = carpeta.join(format!("{}.excalidraw", nombre_de_fichero(&titulo)));
             escribir(&lienzo, editable.as_bytes())?;
-            let (fichero, bytes) = exportable::pixpin_de(None, &lienzo, &[], pixpin_shell::entorno::ahora_utc_ms())?;
+            let (fichero, bytes) = exportable::pixpin_de(None, None, &lienzo, &[], pixpin_shell::entorno::ahora_utc_ms())?;
             let _ = std::fs::remove_file(&lienzo);
             let r = carpeta.join(fichero);
             escribir(&r, &bytes)?;
@@ -2054,12 +2041,6 @@ pub(crate) fn generar(
                 Entero::Escrito { fichero, bytes } => {
                     let ruta = carpeta.join(fichero);
                     escribir(&ruta, bytes)?;
-                    vec![ruta]
-                }
-                Entero::PdfDeHtml { fichero, html } => {
-                    let ruta = carpeta.join(fichero);
-                    crate::timeline::exportar::a_pdf(html, &ruta)
-                        .map_err(|m| anyhow::anyhow!("no se pudo imprimir el PDF: {m}"))?;
                     vec![ruta]
                 }
                 Entero::Funcion(hacer) => hacer(carpeta)?,

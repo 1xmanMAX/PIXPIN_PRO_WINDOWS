@@ -69,6 +69,9 @@ fn titulo_de(texto: Option<&str>, id: &str) -> String {
 /// Abre el `.croquis.gz` de un proyecto. Sus fotos (`pixpin:files/…`) se
 /// buscan como las de cualquier mensaje del proyecto.
 pub fn abrir_fichero(idioma: Idioma, raiz: PathBuf, ficha_id: String, ruta: PathBuf, titulo: String) {
+    // Su fichero y su chat van al «Exportar…»: Original es el
+    // `.croquis.gz` y el `.pixpin`, el proyecto donde vive.
+    let origen = Origen { ruta: ruta.clone(), proyecto: ficha_id.clone() };
     let leer = move || -> Result<(Croquis, Box<dyn Fn(&str) -> Option<Foto> + Send>), String> {
         let bytes = std::fs::read(&ruta).map_err(|e| e.to_string())?;
         let c = croquis::leer(&bytes)?;
@@ -76,7 +79,15 @@ pub fn abrir_fichero(idioma: Idioma, raiz: PathBuf, ficha_id: String, ruta: Path
         let fotos = move |r: &str| foto_de_disco(pixpin_proyecto::vista::ruta_real(&raiz, &ficha, r)?.as_path());
         Ok((c, Box::new(fotos)))
     };
-    lanzar(idioma, titulo, Box::new(leer));
+    lanzar(idioma, titulo, Some(origen), Box::new(leer));
+}
+
+/// De donde se abrio un croquis: su `.croquis.gz` y la ficha de su chat.
+/// Uno de dentro de un `.pixpin` no tiene (no esta en el disco).
+#[derive(Debug, Clone)]
+struct Origen {
+    ruta: PathBuf,
+    proyecto: String,
 }
 
 /// Abre el croquis de dentro de un `.pixpin` (`croquis/<id>.json`). Sus
@@ -105,7 +116,7 @@ pub fn abrir_de_paquete(idioma: Idioma, paquete: &pixpin_proyecto::Paquete, id: 
         };
         Ok((c, Box::new(fotos)))
     };
-    lanzar(idioma, titulo.to_string(), Box::new(leer));
+    lanzar(idioma, titulo.to_string(), None, Box::new(leer));
     true
 }
 
@@ -126,7 +137,7 @@ fn foto_de_bytes(b: &[u8]) -> Option<Foto> {
 type Lector = Box<dyn FnOnce() -> Result<(Croquis, Box<dyn Fn(&str) -> Option<Foto> + Send>), String> + Send>;
 
 /// La ventana, en su hilo; lo pesado (leer y hacer la malla), en otro.
-fn lanzar(idioma: Idioma, titulo: String, leer: Lector) {
+fn lanzar(idioma: Idioma, titulo: String, origen: Option<Origen>, leer: Lector) {
     let lanzado = std::thread::Builder::new().name("croquis-3d".into()).spawn(move || {
         // Lo que la ventana necesita saber antes que la malla: se lee aqui
         // (es un JSON, rapido) y la malla se hace aparte.
@@ -141,7 +152,8 @@ fn lanzar(idioma: Idioma, titulo: String, leer: Lector) {
             }
         };
         let mut extras = extras_de(&c);
-        extras.exportar = Some(crate::compartir::exportable::al_exportar_3d(idioma, titulo.clone(), None));
+        let (ruta, proyecto) = origen.map(|o| (o.ruta, o.proyecto)).unzip();
+        extras.exportar = Some(crate::compartir::exportable::al_exportar_3d(idioma, titulo.clone(), ruta, proyecto));
         let (tx, rx) = std::sync::mpsc::channel();
         let _ = std::thread::Builder::new().name("croquis-3d-malla".into()).spawn(move || {
             let t = std::time::Instant::now();

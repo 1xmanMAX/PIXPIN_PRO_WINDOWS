@@ -34,6 +34,10 @@
 //! (`en_varias_lineas`: Mayus+Intro parte el renglon, arriba/abajo van de
 //! renglon en renglon y el texto se ajusta al ancho), que es la caja de las
 //! lecciones, la timeline, la galeria y las tareas (`lecciones::ui::Campo`).
+//! Y **las piezas enteras** ([`CajaLinea::tecla_con_piezas`],
+//! [`CajaLinea::pintar_con_fichas`]): trozos del texto que se borran y se
+//! saltan de una vez y se pintan como una chapa, como la ficha `[img 01]` de
+//! una imagen pegada en la caja de apuntar tareas.
 //!
 //! La usan (14-oct-2026): en el chat, el buscador de la lista, la lupa de la
 //! conversacion y la del panel, el nombre del proyecto (tambien en la
@@ -42,7 +46,10 @@
 //! hoja del «+»; fuera, Buscar todo, los dos buscadores de Ajustes, el
 //! codigo y el nombre de los chats compartidos, la caja de buscar de los
 //! lectores (`buscador`), el nombre que se cambia con F2 en ellos
-//! (`renombrar_doc`) y `lecciones::ui::Campo`.
+//! (`renombrar_doc`) y `lecciones::ui::Campo`. Desde el 14-oct-2026 tambien
+//! la caja de apuntar tareas (`tareas::ventana::Campo`, con sus fichas) y los
+//! campos de Sincronizar: el nombre, unirse (codigo y direccion), la
+//! direccion, y el codigo de Recibir y Enviar por wifi.
 
 use std::cell::RefCell;
 use std::time::{Duration, Instant};
@@ -159,6 +166,17 @@ pub(crate) struct Colores {
     pub invitacion: Color,
     pub seleccion: Color,
     pub rayita: Color,
+}
+
+/// **Las fichas**: trozos del texto que se pintan como una chapa de otro
+/// color (la `[img 01]` de una imagen pegada). Son una variable del pintado:
+/// quien las usa dice donde estan cada vez, porque solo el sabe que son.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct Fichas<'a> {
+    pub rangos: &'a [std::ops::Range<usize>],
+    pub fondo: Color,
+    pub letra: Color,
+    pub radio: f32,
 }
 
 /// Lo que deja apuntado el pintado para el raton: las cajas de las letras
@@ -405,6 +423,65 @@ impl CajaLinea {
     pub(crate) fn elegir_todo(&mut self) {
         self.cursor.todo(&self.texto);
         self.despertar();
+    }
+
+    /// Si hay algo que deshacer: la ventana que tiene su propio Ctrl+Z (el
+    /// «Deshacer» de un aviso) se lo deja a la caja cuando lo hay.
+    pub(crate) fn hay_deshacer(&self) -> bool {
+        !self.deshacer.is_empty()
+    }
+
+    /// **Una tecla con piezas enteras** (`piezas`, rangos del texto que no se
+    /// parten: la ficha `[img 01]` de una imagen pegada). Retroceso al final
+    /// de una y Supr al principio la borran entera (con Ctrl tambien: media
+    /// ficha no es nada), y las flechas la saltan de una vez (con Mayusculas,
+    /// eligiendola entera). Lo demas, como [`Self::tecla`].
+    pub(crate) fn tecla_con_piezas(
+        &mut self,
+        vk: u32,
+        shift: bool,
+        ctrl: bool,
+        pp: &mut dyn Portapapeles,
+        piezas: &[std::ops::Range<usize>],
+    ) -> Respuesta {
+        let p = self.pos();
+        let sin_eleccion = self.cursor.seleccion(&self.texto).is_none();
+        let antes = piezas.iter().find(|r| r.start < r.end && r.end == p).cloned();
+        let despues = piezas.iter().find(|r| r.start < r.end && r.start == p).cloned();
+        match (vk, antes, despues) {
+            (VK_RETROCESO, Some(r), _) if sin_eleccion => {
+                self.cursor.elegir(&self.texto, r);
+                return self.tecla(VK_RETROCESO, false, false, pp);
+            }
+            (VK_SUPR, _, Some(r)) if sin_eleccion && !shift => {
+                self.cursor.elegir(&self.texto, r);
+                return self.tecla(VK_SUPR, false, false, pp);
+            }
+            // Sin Mayusculas y con algo elegido, la flecha solo lo suelta
+            // (lo de siempre): no se salta nada.
+            (VK_IZQUIERDA, Some(r), _) if shift || sin_eleccion => {
+                self.cursor.poner(&self.texto, r.start, shift);
+            }
+            (VK_DERECHA, _, Some(r)) if shift || sin_eleccion => {
+                self.cursor.poner(&self.texto, r.end, shift);
+            }
+            _ => return self.tecla(vk, shift, ctrl, pp),
+        }
+        self.ultima = None;
+        self.despertar();
+        Respuesta::Movida
+    }
+
+    /// Si la rayita quedo dentro de una pieza (un clic encima), al final de
+    /// ella: lo que se escriba no la parte.
+    pub(crate) fn fuera_de_piezas(&mut self, piezas: &[std::ops::Range<usize>]) {
+        if self.cursor.seleccion(&self.texto).is_some() {
+            return;
+        }
+        let p = self.pos();
+        if let Some(r) = piezas.iter().find(|r| r.start < p && p < r.end) {
+            self.cursor.poner(&self.texto, r.end, false);
+        }
     }
 
 
@@ -790,6 +867,27 @@ impl CajaLinea {
         enfocada: bool,
         ahora: Instant,
     ) {
+        self.pintar_con_fichas(p, zona, hueco, tam, invitacion, colores, enfocada, ahora, None);
+    }
+
+    /// Como [`Self::pintar`], con **fichas**: cada una como una chapa de su
+    /// color detras de sus letras. Devuelve donde quedo la chapa de cada una
+    /// (en el orden de `fichas.rangos`; la que no tiene letras, fuera de la
+    /// ventana), para ensenar lo que es con el raton encima.
+    #[allow(clippy::too_many_arguments)] // lo de `pintar` y las fichas
+    pub(crate) fn pintar_con_fichas(
+        &self,
+        p: &Pintor,
+        zona: RectF,
+        hueco: RectF,
+        tam: f32,
+        invitacion: &str,
+        colores: &Colores,
+        enfocada: bool,
+        ahora: Instant,
+        fichas: Option<&Fichas<'_>>,
+    ) -> Vec<RectF> {
+        let mut chapas = Vec::new();
         let mut pin = self.pintado.borrow_mut();
         // En una linea no se parte nunca (ancho sin fin) y el texto se corre;
         // en varias se ajusta al ancho del hueco, como lo pinta DirectWrite.
@@ -835,6 +933,26 @@ impl CajaLinea {
                 p.texto_linea(invitacion, hueco.x, y, tam, hueco.ancho, colores.invitacion);
             }
         } else {
+            // Las chapas de las fichas, detras de todo.
+            if let Some(f) = fichas {
+                let (mx, my) = (tam * 0.2, tam * 0.13);
+                for r in f.rangos {
+                    let mut letras = pin.cajas.iter().filter(|(i, _)| r.contains(i));
+                    let Some((_, a)) = letras.next() else {
+                        chapas.push(RectF { x: -1.0e6, y: -1.0e6, ancho: 0.0, alto: 0.0 });
+                        continue;
+                    };
+                    let b = letras.last().map_or(*a, |(_, b)| *b);
+                    let chapa = RectF {
+                        x: ox + a.x - mx,
+                        y: y + a.y - my,
+                        ancho: b.x + b.ancho - a.x + 2.0 * mx,
+                        alto: a.alto.max(b.alto) + 2.0 * my,
+                    };
+                    p.rellenar_redondeado(chapa, f.radio, f.fondo);
+                    chapas.push(chapa);
+                }
+            }
             if enfocada && let Some(r) = self.cursor.seleccion(&self.texto) {
                 for (_, b) in pin.cajas.iter().filter(|(i, _)| r.contains(i)) {
                     p.rellenar(
@@ -850,10 +968,37 @@ impl CajaLinea {
                     );
                 }
             }
-            if self.varias {
-                p.texto_ajustado(&self.texto, ox, y, tam, ancho_disp, colores.texto);
-            } else {
-                p.texto(&self.texto, ox, y, tam, colores.texto);
+            match fichas.filter(|f| !f.rangos.is_empty() && !self.varias) {
+                // Con fichas, a trozos: lo escrito en su color y cada ficha
+                // en el suyo, cada trozo donde lo pone la disposicion entera.
+                Some(f) => {
+                    let mut rangos: Vec<_> = f.rangos.to_vec();
+                    rangos.sort_by_key(|r| r.start);
+                    let mut trozos: Vec<(std::ops::Range<usize>, Color)> = Vec::new();
+                    let mut desde = 0;
+                    for r in rangos.into_iter().filter(|r| r.end <= self.texto.len()) {
+                        if r.start < desde {
+                            continue;
+                        }
+                        trozos.push((desde..r.start, colores.texto));
+                        desde = r.end;
+                        trozos.push((r, f.letra));
+                    }
+                    trozos.push((desde..self.texto.len(), colores.texto));
+                    for (r, color) in trozos {
+                        let trozo = &self.texto[r.clone()];
+                        if trozo.trim().is_empty() {
+                            continue;
+                        }
+                        if let Some((_, b)) = pin.cajas.iter().find(|(i, _)| *i == r.start) {
+                            p.texto(trozo, ox + b.x, y, tam, color);
+                        }
+                    }
+                }
+                None if self.varias => {
+                    p.texto_ajustado(&self.texto, ox, y, tam, ancho_disp, colores.texto)
+                }
+                None => p.texto(&self.texto, ox, y, tam, colores.texto),
             }
         }
         if enfocada && self.rayita_visible(ahora) {
@@ -868,6 +1013,7 @@ impl CajaLinea {
             );
         }
         p.soltar_recorte();
+        chapas
     }
 
     /// Donde esta la rayita en la ventana, tal como se pinto: ahi se pone
@@ -1397,6 +1543,58 @@ mod pruebas {
     /// cargo test -p pixpin --bin pixpinmax muestra_de_la_caja_de_una_linea -- --ignored --nocapture
     /// ```
     /// Deja el PNG en `PIXPIN_MUESTRAS` o en `%TEMP%/pixpin-muestras-caja`.
+    #[test]
+    fn las_piezas_se_borran_y_se_saltan_enteras() {
+        let mut c = caja("regar [img 01] hoy");
+        let ficha = 6..14;
+        let piezas = std::slice::from_ref(&ficha);
+        let mut pp = Pp::default();
+        // Al final de la ficha: la flecha la salta de una vez.
+        c.ir_a(14);
+        assert_eq!(c.tecla_con_piezas(VK_IZQUIERDA, false, false, &mut pp, piezas), Respuesta::Movida);
+        assert_eq!(c.pos(), 6);
+        assert_eq!(c.tecla_con_piezas(VK_DERECHA, false, false, &mut pp, piezas), Respuesta::Movida);
+        assert_eq!(c.pos(), 14);
+        // Con Mayusculas la elige entera.
+        c.tecla_con_piezas(VK_IZQUIERDA, true, false, &mut pp, piezas);
+        assert_eq!(c.seleccionado(), Some("[img 01]"));
+        c.tecla_con_piezas(VK_DERECHA, false, false, &mut pp, piezas);
+        assert_eq!(c.pos(), 14, "sin Mayusculas la flecha suelta lo elegido");
+        // Retroceso (y Ctrl+Retroceso) se la llevan entera, y se deshace.
+        assert_eq!(c.tecla_con_piezas(VK_RETROCESO, false, true, &mut pp, piezas), Respuesta::Cambiada);
+        assert_eq!(c.texto(), "regar  hoy");
+        assert_eq!(c.pos(), 6);
+        assert!(c.hay_deshacer());
+        tecla(&mut c, VK_Z, false, true);
+        assert_eq!(c.texto(), "regar [img 01] hoy");
+        // Supr al principio de la ficha, igual.
+        c.ir_a(6);
+        assert_eq!(c.tecla_con_piezas(VK_SUPR, false, false, &mut pp, piezas), Respuesta::Cambiada);
+        assert_eq!(c.texto(), "regar  hoy");
+        // Caso negativo: lejos de la ficha, una letra y nada mas.
+        let mut d = caja("regar [img 01] hoy");
+        assert_eq!(d.tecla_con_piezas(VK_RETROCESO, false, false, &mut pp, piezas), Respuesta::Cambiada);
+        assert_eq!(d.texto(), "regar [img 01] ho");
+        // Y sin piezas es la tecla de siempre: Ctrl+Retroceso parte la ficha.
+        let mut e = caja("regar [img 01]");
+        e.tecla_con_piezas(VK_RETROCESO, false, true, &mut pp, &[]);
+        assert_eq!(e.texto(), "regar [img 01");
+    }
+
+    #[test]
+    fn un_clic_dentro_de_una_pieza_deja_la_rayita_al_final() {
+        let mut c = pintada("ver [img 01] ya");
+        assert!(c.pulsar(en(100 + 7 * 10 + 2), false, Instant::now()));
+        assert_eq!(c.pos(), 7, "el clic cae dentro de la ficha");
+        c.soltar_raton();
+        c.fuera_de_piezas(&[4..12]);
+        assert_eq!(c.pos(), 12);
+        // Caso negativo: fuera de la ficha no se mueve.
+        c.ir_a(2);
+        c.fuera_de_piezas(&[4..12]);
+        assert_eq!(c.pos(), 2);
+    }
+
     #[test]
     #[ignore = "necesita GPU; genera un PNG para mirarlo"]
     fn muestra_de_la_caja_de_una_linea() {

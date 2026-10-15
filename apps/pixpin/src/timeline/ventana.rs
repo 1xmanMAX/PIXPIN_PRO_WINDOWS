@@ -291,6 +291,9 @@ enum Destino {
     /// Como pagina web (8-oct-2026): el momento con sus fotos y su nota de
     /// voz dentro, a la Salida.
     Html,
+    /// «Exportar…» de una leccion (14-oct-2026): la hoja comun de exportar
+    /// con PDF, HTML, .pixpin, imagen y su `.leccion`.
+    Exportar,
 }
 
 /// Algo que se abre en el detalle o se comparte: un momento o una leccion,
@@ -375,6 +378,12 @@ struct Estado {
     /// La pagina hecha para compartir (en vez de guardarla): la recoge
     /// `hacer`, que tiene con que abrir la hoja de compartir.
     para_compartir: Option<(String, String)>,
+    /// Lo que va en el `.pixpin` de lo exportado: cada momento (o leccion)
+    /// con sus fotos y su audio. Se apunta junto con la pagina.
+    para_compartir_apuntes: Vec<crate::compartir::exportable::Apunte>,
+    /// La pagina y sus apuntes, ya hechos, esperando al bucle: alli esta el
+    /// motor para pintar la vista como imagen.
+    exportar_pendiente: Option<(String, String, Vec<crate::compartir::exportable::Apunte>)>,
     /// Mientras se hace la pagina para compartir.
     compartiendo: bool,
     /// El menu de compartir como imagen: de que y donde.
@@ -448,6 +457,8 @@ impl Estado {
             exportado: None,
             menu: false,
             para_compartir: None,
+            para_compartir_apuntes: Vec::new(),
+            exportar_pendiente: None,
             compartiendo: false,
             menu_compartir: None,
             compartir: None,
@@ -1037,7 +1048,26 @@ fn bucle(
         }
 
         if let Some((item, destino)) = e.compartir.take() {
-            compartir::hacer(&mut e, &item, destino, &motor, &recursos.d3d(), textos);
+            match (&item, destino) {
+                (Item::Leccion(id), Destino::Exportar) => {
+                    crate::lecciones::exportar::abrir(ubicacion, idioma, id);
+                }
+                (_, Destino::Exportar) => {}
+                _ => compartir::hacer(&mut e, &item, destino, &motor, &recursos.d3d(), textos),
+            }
+            pintar = true;
+        }
+        // «Exportar…» de lo que se ve: con la vista pintada como imagen.
+        if let Some((nombre, pagina, apuntes)) = e.exportar_pendiente.take() {
+            let foto = match vista_en_imagen(&mut e, marco, escala, &motor, &recursos.d3d(), textos) {
+                Ok(f) => Some(f),
+                Err(err) => {
+                    tracing::warn!(?err, "timeline: la vista no se pudo pintar para exportar");
+                    None
+                }
+            };
+            let x = exportable_de_lo_que_se_ve(nombre, pagina, apuntes, foto);
+            crate::compartir::ventana::abrir(idioma, ubicacion.clone(), crate::compartir::Cosa::Visor(x));
             pintar = true;
         }
         if mirado.elapsed() >= Duration::from_secs(1) {
@@ -1411,38 +1441,18 @@ fn hacer(
         // El boton de arriba comparte (8-oct-2026, el usuario: el
         // «compartir unificado» de toda la app y no un «descargar»): la
         // pagina de lo que se ve, a la hoja de compartir con HTML y PDF.
+        // Desde el 14-oct-2026 por el componente comun de exportar
+        // (`Cosa::Visor`): la pagina (HTML, y el PDF impreso por Edge), la
+        // vista como imagen (PNG, JPG, SVG) y el `.pixpin` con lo que se ve.
+        // La imagen la pinta el bucle, que tiene el motor.
         Accion::Exportar => {
             e.menu = false;
             e.compartiendo = true;
             exportar_lo_que_se_ve(e, Formato::Html, textos);
             e.compartiendo = false;
+            let apuntes = std::mem::take(&mut e.para_compartir_apuntes);
             if let Some((nombre, pagina)) = e.para_compartir.take() {
-                let extras = vec![
-                    crate::compartir::Extra {
-                        id: "html",
-                        clave: "compartir-web",
-                        que: crate::compartir::Entero::Escrito {
-                            fichero: format!("{nombre}.html"),
-                            bytes: pagina.clone().into_bytes(),
-                        },
-                    },
-                    crate::compartir::Extra {
-                        id: "pdf-timeline",
-                        clave: "compartir-pdf",
-                        que: crate::compartir::Entero::PdfDeHtml {
-                            fichero: format!("{nombre}.pdf"),
-                            html: pagina,
-                        },
-                    },
-                ];
-                crate::compartir::ventana::abrir(
-                    idioma,
-                    ubicacion.clone(),
-                    crate::compartir::Cosa::Hecho {
-                        titulo: nombre,
-                        extras,
-                    },
-                );
+                e.exportar_pendiente = Some((nombre, pagina, apuntes));
             }
         }
         Accion::Formato(f) => {
@@ -1748,7 +1758,94 @@ fn exportar_lo_que_se_ve(e: &mut Estado, f: Formato, textos: &Catalogo) {
     }
     let op = opciones(e, textos, textos.t("timeline-titulo"), subtitulo);
     let pagina = exportar::pagina(&e.almacen, &op, &secciones);
+    let apuntes = if e.compartiendo {
+        apuntes_de(&e.almacen, &secciones)
+    } else {
+        Vec::new()
+    };
     guardar_pagina(e, f, &nombre, pagina, textos);
+    e.para_compartir_apuntes = apuntes;
+}
+
+/// Lo que va en el `.pixpin` de lo exportado: cada momento con su titulo y
+/// su texto, y sus fotos y su audio (los de una leccion ya van con su ruta
+/// entera: `Path::join` con una ruta entera la deja como esta).
+fn apuntes_de(almacen: &Almacen, secciones: &[Seccion<'_>]) -> Vec<crate::compartir::exportable::Apunte> {
+    secciones
+        .iter()
+        .flat_map(|s| s.momentos.iter())
+        .map(|m| {
+            let mut texto = m.titulo.trim().to_string();
+            if !m.descripcion.trim().is_empty() {
+                if !texto.is_empty() {
+                    texto.push_str("\n\n");
+                }
+                texto.push_str(m.descripcion.trim());
+            }
+            let ficheros = m
+                .fotos
+                .iter()
+                .chain(m.audio.iter())
+                .map(|f| almacen.ruta(f))
+                .collect();
+            crate::compartir::exportable::Apunte { cuando: m.cuando, texto, ficheros }
+        })
+        .collect()
+}
+
+/// **Lo que se ve, para el «Exportar…» comun**: la pagina de la timeline
+/// como HTML y como PDF (impreso por Edge, al pedirlo), la vista de la
+/// ventana como hoja (PNG, JPG, SVG) y el `.pixpin` nuevo con los momentos.
+/// Original no hay: es una vista de varios momentos, no un fichero.
+fn exportable_de_lo_que_se_ve(
+    nombre: String,
+    pagina: String,
+    apuntes: Vec<crate::compartir::exportable::Apunte>,
+    foto: Option<pixpin_codec::ImagenRgba>,
+) -> crate::compartir::exportable::Exportable {
+    use crate::compartir::exportable::{self as ex, Propio};
+    let mut x = ex::Exportable::nuevo(nombre.clone());
+    if let Some(f) = foto {
+        x.hojas.push(ex::hoja_de_imagen(f));
+    }
+    let (n, html) = (nombre.clone(), pagina.clone());
+    x.propios.push(Propio::nuevo(crate::compartir::WEB, "compartir-web", move |c| {
+        let r = c.join(format!("{n}.html"));
+        std::fs::write(&r, &html).with_context(|| format!("no se pudo escribir {}", r.display()))?;
+        Ok(vec![r])
+    }));
+    let n = nombre.clone();
+    x.propios.push(Propio::nuevo(crate::compartir::PDF, "compartir-pdf", move |c| {
+        let r = c.join(format!("{n}.pdf"));
+        exportar::a_pdf(&pagina, &r).map_err(|m| anyhow::anyhow!("no se pudo imprimir el PDF: {m}"))?;
+        Ok(vec![r])
+    }));
+    if !apuntes.is_empty() {
+        x.propios.push(ex::propio_pixpin(nombre, apuntes));
+    }
+    x
+}
+
+/// **La vista de la ventana como imagen**, tal como se ve (sin menus), para
+/// la hoja de exportar: se pinta otra vez fuera de pantalla con el mismo
+/// motor, asi las miniaturas ya cargadas valen tal cual.
+fn vista_en_imagen(
+    e: &mut Estado,
+    marco: Rect,
+    escala: f32,
+    motor: &pixpin_render::MotorRender,
+    d3d: &windows::Win32::Graphics::Direct3D11::ID3D11Device,
+    textos: &Catalogo,
+) -> Result<pixpin_codec::ImagenRgba> {
+    let (w, h) = (marco.ancho.max(1) as u32, marco.alto.max(1) as u32);
+    let fuera = pixpin_render::fuera_de_pantalla::FueraDePantalla::nuevo(motor, d3d, w, h)
+        .context("sin superficie")?;
+    motor
+        .dibujar(&fuera.destino, |p| pintar_todo(e, p, marco, escala, textos))
+        .context("no se pudo pintar")?;
+    fuera.esperar_gpu().context("la GPU no acabo")?;
+    let (ancho, alto, pixeles) = fuera.leer_rgba().context("no se pudo leer")?;
+    Ok(pixpin_codec::ImagenRgba { ancho, alto, pixeles })
 }
 
 /// Las opciones de la pagina exportada.
@@ -1826,8 +1923,14 @@ fn exportar_lecciones(e: &mut Estado, f: Formato, textos: &Catalogo) {
         Some(pixpin_timeline::html::data_uri(ruta, &bytes))
     };
     let pagina = pixpin_timeline::html::pagina(&op, &secciones, &dentro, &dentro);
+    let apuntes = if e.compartiendo {
+        apuntes_de(&e.almacen, &secciones)
+    } else {
+        Vec::new()
+    };
     let nombre = format!("lecciones-{}", e.hoy().iso());
     guardar_pagina(e, f, &nombre, pagina, textos);
+    e.para_compartir_apuntes = apuntes;
 }
 
 /// Pide donde y guarda la pagina en HTML, o la imprime a PDF en un hilo.

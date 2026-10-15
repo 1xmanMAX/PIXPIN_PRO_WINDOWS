@@ -123,7 +123,7 @@ pub fn lanzar(idioma: Idioma, ubicacion: Ubicacion, ruta: &Path) {
         });
         let titulo = ruta.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
         let extras = pixpin_cad::ventana3d::Extras {
-            exportar: Some(crate::compartir::exportable::al_exportar_3d(idioma, titulo.clone(), Some(ruta.clone()))),
+            exportar: Some(crate::compartir::exportable::al_exportar_3d(idioma, titulo.clone(), Some(ruta.clone()), None)),
             ..Default::default()
         };
         if let Err(e) = pixpin_cad::ventana3d::ver_con(&titulo, rx, textos(idioma), extras) {

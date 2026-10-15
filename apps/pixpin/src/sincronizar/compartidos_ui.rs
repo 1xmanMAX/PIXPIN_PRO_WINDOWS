@@ -218,6 +218,19 @@ pub(super) fn novedad(p: &mut Personas, n: Novedad, cx: &Contexto) {
     p.releer(cx);
 }
 
+/// La caja donde se escribe ahora (el codigo o mi nombre), si se ve: la del
+/// raton. La otra no se toca hasta que se pulsa (su zona la activa).
+pub(super) fn caja_visible(p: &mut Personas) -> Option<&mut CajaLinea> {
+    let en_codigo = p.chat.is_none() && !p.en_nombre && p.dentro_de.is_none();
+    if en_codigo {
+        Some(&mut p.tecleado)
+    } else if p.en_nombre {
+        Some(&mut p.nombre_escrito)
+    } else {
+        None
+    }
+}
+
 /// Lo que se escribe. Devuelve si cambio algo. Los dos campos (el codigo y
 /// mi nombre) son la caja de una linea comun de la app: su rayita donde se
 /// escribe, Ctrl+Retroceso, Mayus+flechas, Ctrl+A/C/X/V/Z...
@@ -729,7 +742,7 @@ fn campo_linea(
 /// Lo escrito en un campo: la caja de una linea comun de la app, con su
 /// rayita donde se escribe (no siempre al final), lo elegido y el texto
 /// corrido si no cabe.
-fn pintar_caja(
+pub(super) fn pintar_caja(
     p: &pixpin_render::Pintor,
     r: pixpin_render::RectF,
     caja: &CajaLinea,
