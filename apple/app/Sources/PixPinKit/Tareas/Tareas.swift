@@ -114,16 +114,23 @@ public final class ModeloTareas: ObservableObject {
     public func marcar(_ t: TareaConLista, hecha: Bool) async {
         let nucleo = self.nucleo
         let (chat, mensaje, indice, crudo) = (t.lista.chat, t.lista.mensaje, t.tarea.indice, t.tarea.crudo)
+        // El aviso se pone DESPUES de releer: `cargar` limpia el error al
+        // leer bien, y el usuario tiene que saber que su clic no se aplico.
+        var aviso: String?
         do {
             let hecho = try await Task.detached(priority: .userInitiated) {
                 try nucleo.marcarTarea(chat: chat, mensaje: mensaje, indice: indice, crudo: crudo, hecha: hecha)
             }.value
-            error = hecho ? nil : "La lista cambió: se ha vuelto a leer"
-            if hecho { NotificationCenter.default.post(name: .pixpinCambioLocal, object: nil) }
+            if hecho {
+                NotificationCenter.default.post(name: .pixpinCambioLocal, object: nil)
+            } else {
+                aviso = "La lista cambió: se ha vuelto a leer"
+            }
         } catch {
-            self.error = "\(error)"
+            aviso = "\(error)"
         }
         await cargar()
+        if let aviso { error = aviso }
     }
 
     /// Apunta una tarea en el Inbox de «Mensajes guardados».
