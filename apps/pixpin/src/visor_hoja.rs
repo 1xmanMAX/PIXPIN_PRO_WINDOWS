@@ -34,6 +34,7 @@
 //! Un libro que no se puede leer (un `.xls` renombrado, uno roto, uno
 //! binario) se abre con su programa, como antes.
 
+mod capa;
 mod logica;
 
 use std::path::Path;
@@ -92,6 +93,8 @@ const BOTON_EDITAR: u8 = 3;
 /// F2, como en Excel, y la `E` de «Editar».
 const VK_F2: u32 = 0x71;
 const VK_E: u32 = 0x45;
+const VK_Y: u32 = 0x59;
+const VK_Z: u32 = 0x5A;
 
 /// **La ventana del pin**, que sigue siendo la misma al pasar de ver a
 /// editar y de vuelta: su superficie, la barra del pin y donde esta.
@@ -306,6 +309,8 @@ struct Estado<'l> {
     comentario_bajo: Option<(u32, u32)>,
     aviso: Option<(String, Instant)>,
     hwnd: isize,
+    /// Lo que anoto el asistente en la hoja abierta (`capa`).
+    anotado: capa::Anotado,
 }
 
 fn zonas(ancho: f32, alto: f32, e: f32) -> Zonas {
@@ -1389,6 +1394,7 @@ fn ver_en(
         comentario_bajo: None,
         aviso: None,
         hwnd: ventana.handle().0 as isize,
+        anotado: Default::default(),
     };
     let activa = est.activa;
     est.abrir_hoja(activa, motor);
@@ -1600,6 +1606,14 @@ fn ver_en(
                         true
                     };
                     // Ctrl+E: el «Exportar» comun (PDF, HTML, .pixpin, imagen, CSV, original).
+                    // Ctrl+Z / Ctrl+Y viendo: lo ultimo que anoto el asistente.
+                    if al_visor && !est.editando && ctrl && !alt && (vk == VK_Z || vk == VK_Y) {
+                        let hecho = if vk == VK_Z && !shift { est.anotado.deshacer() } else { est.anotado.rehacer() };
+                        hay_que_pintar |= hecho;
+                        if hecho {
+                            continue;
+                        }
+                    }
                     if al_visor && ctrl && !alt && vk == VK_E {
                         exportar_libro(ruta);
                     } else if al_visor {
@@ -1612,6 +1626,10 @@ fn ver_en(
         }
         if !vivo {
             break;
+        }
+        // Lo que anoto el asistente en esta hoja, a la vista.
+        if est.anotado.mirar(ruta, est.activa) {
+            hay_que_pintar = true;
         }
         if est.recibir() {
             hay_que_pintar = true;
@@ -1842,7 +1860,7 @@ fn pintar(p: &Pintor, est: &mut Estado, textos: &Catalogo) {
     // la barra de formulas, y lo tecleado tambien encima de su celda.
     let editando = est.editando;
     let en_la_barra = est.editor().filter(|_| editando).map(|ed| (ed.en_la_barra().to_string(), ed.edicion.clone()));
-    let Estado { libro, hojas, activa, cache, desde_pestana, encima_de, pestanas, aviso, bajo_raton, .. } = est;
+    let Estado { libro, hojas, activa, cache, desde_pestana, encima_de, pestanas, aviso, bajo_raton, anotado, .. } = est;
     let libro: &Libro = libro;
     let activa = *activa;
     let Some(ab) = hojas[activa].as_ref() else { return };
@@ -1851,6 +1869,8 @@ fn pintar(p: &Pintor, est: &mut Estado, textos: &Catalogo) {
     let (v, celdas) = vista_de(ab, z.hoja);
     let op = OpcionesHoja { encabezados: true, seleccion: Some(ab.sel.rango()), activa: Some(ab.sel.activa), bajo_raton: *bajo_raton, oscuro };
     hoja_office::pintar_hoja(p, cache, libro, &ab.hoja, &ab.rejilla, &v, z.hoja, &op);
+    // Lo anotado (el asistente), encima de las celdas.
+    anotado.pintar(p, libro, &ab.hoja, &ab.rejilla, &v, celdas, oscuro);
     if let Some(celda) = con_nota {
         tarjeta_de_comentario(p, ab, &v, celdas, z.hoja, celda, e);
     }

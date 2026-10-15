@@ -38,6 +38,7 @@ fn estado<'l>(libro: &'l mut Libro, e: f32, ancho: u32, alto: u32) -> Estado<'l>
         comentario_bajo: None,
         aviso: None,
         hwnd: 0,
+        anotado: Default::default(),
     }
 }
 

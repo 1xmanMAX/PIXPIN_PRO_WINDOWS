@@ -78,6 +78,7 @@
 pub mod acciones;
 pub mod acciones_documentos;
 pub mod agente;
+pub mod anotacion;
 pub mod base64;
 pub mod calcar;
 pub mod calculo;

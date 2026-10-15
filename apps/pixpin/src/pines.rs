@@ -3198,7 +3198,10 @@ pub(crate) fn escena_para_lienzo(
     ruta: &Path,
 ) -> Result<(Escena, bool), pixpin_motor2d::ErrorFormato> {
     let habia = ruta.is_file();
-    let escena = pixpin_motor2d::cargar(ruta)?;
+    let mut escena = pixpin_motor2d::cargar(ruta)?;
+    // Lo ultimo que anoto el asistente en esta foto, en un solo Ctrl+Z
+    // (`lector_tinta::turnos`).
+    let _ = crate::lector_tinta::turnos::marcar(ruta, &mut escena);
     Ok((escena, habia))
 }
 

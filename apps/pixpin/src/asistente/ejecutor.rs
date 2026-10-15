@@ -275,6 +275,30 @@ impl EjecutorDelChat {
         super::hoja_a_lienzo::hacer(args, &self.adjuntos, vision, semilla, &self.parar, &mut destino, &mut progreso)
     }
 
+    /// **`anotar_inteligente`**: con el modelo de la nube (el de Ajustes, o
+    /// el que pongan las pruebas); con el local solo, se dice por que no.
+    fn anotar_inteligente(&mut self, args: &serde_json::Value) -> Result<String, String> {
+        let motor = if self.nube || self.vision.is_some() {
+            self.vision.clone().or_else(super::anotar_inteligente::motor_de_la_nube)
+        } else {
+            None
+        };
+        let ubicacion = crate::oscuro::ubicacion();
+        let raiz = super::documentos::raiz()
+            .or_else(|| ubicacion.as_ref().map(|u| u.raiz().to_path_buf()))
+            .ok_or("no se sabe donde estan los datos de PixPin")?;
+        let idioma = ubicacion.as_ref().map(crate::compartir::idioma_de).unwrap_or(pixpin_store::Idioma::Espanol);
+        let cx = super::documentos_acciones::Contexto {
+            raiz: &raiz,
+            proyecto: &self.proyecto,
+            adjuntos: &self.adjuntos,
+            mandar: &self.mandar,
+            parar: &self.parar,
+            idioma,
+        };
+        super::anotar_inteligente::hacer(args, &cx, motor)
+    }
+
     /// **La biblioteca de figuras**, la misma del panel del lienzo.
     fn figuras(&mut self, p: &pixpin_ia::figuras::PedidoFiguras) -> Result<String, String> {
         use pixpin_ia::figuras::{PedidoFiguras, buscar, lista};
@@ -362,6 +386,8 @@ impl Ejecutor for EjecutorDelChat {
             }
             // Una hoja al lienzo (solo con la nube).
             Llamada::App(a) if a.herramienta == pixpin_ia::hoja::NOMBRE => self.hoja_a_lienzo(&a.pedido),
+            // Anotar con cabeza un documento (con el modelo de la nube).
+            Llamada::App(a) if a.herramienta == pixpin_ia::anotacion::NOMBRE => self.anotar_inteligente(&a.pedido),
             // Los documentos (tabla escaneada, anotar, buscar dentro, abrir
             // por su nombre, exportar): con los adjuntos de este chat.
             Llamada::App(a) if pixpin_ia::acciones_documentos::es_de_documentos(a.herramienta) => {

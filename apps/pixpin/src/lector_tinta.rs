@@ -80,6 +80,9 @@ pub struct Capa {
     /// siempre deja el mismo numero, y un numero cambiado es un elemento
     /// cambiado que viajaria sin que nadie lo tocara.
     corrida: (Unidades, Vec<(Elemento, Elemento)>),
+    /// Lo que puso el ultimo turno del asistente, si al leer la capa estaba
+    /// a la vista: un paso de deshacer (ver [`turnos`]).
+    pub turno: Option<turnos::Marcado>,
 }
 
 impl Default for Capa {
@@ -89,7 +92,104 @@ impl Default for Capa {
             lienzo: excalidraw::Lienzo::vacio(),
             sucia: false,
             corrida: (Unidades::DEL_PC, Vec::new()),
+            turno: None,
         }
+    }
+}
+
+/// **Lo que escribe el asistente en una capa: a la vista enseguida y con un
+/// solo Ctrl+Z** (15-oct-2026, `asistente::anotar_inteligente`).
+///
+/// El asistente escribe en el fichero de la capa (el lector, el visor de
+/// planos o el de hojas pueden estar abiertos o no) y los visores lo releen
+/// del disco. Dos cosas que el disco solo no da:
+///
+/// - **Enseguida**: los visores miran el disco como mucho cada 0,7 s; el
+///   asistente [`avisar`] al escribir y el visor que lo note
+///   ([`hay_aviso`]) mira ya, sin esperar su turno.
+/// - **Deshacer**: releer del disco empieza la historia de cero. El
+///   asistente apunta que grupo puso el ultimo turno en cada fichero
+///   ([`apuntar`]); al leer esa capa ([`Capa::leer`]) lo de ese grupo entra
+///   como un paso de deshacer, y un Ctrl+Z lo quita entero. Con varias hojas
+///   (un PDF), el lector deshace el turno en todas a la vez (ver
+///   `lector_pdf::deshacer`).
+pub mod turnos {
+    use std::path::{Path, PathBuf};
+    use std::sync::Mutex;
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    use pixpin_motor2d::Escena;
+
+    static AVISOS: AtomicU64 = AtomicU64::new(0);
+    /// Fichero de la capa → grupo del ultimo turno que escribio en el.
+    static TURNOS: Mutex<Vec<(PathBuf, String)>> = Mutex::new(Vec::new());
+    /// Cuantos ficheros se recuerdan (los ultimos).
+    const RECORDADOS: usize = 64;
+
+    /// El asistente escribio en una capa: que los visores miren ya.
+    pub fn avisar() {
+        AVISOS.fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// Si hubo un aviso desde la ultima vez que este visor miro (`visto`).
+    pub fn hay_aviso(visto: &mut u64) -> bool {
+        let a = AVISOS.load(Ordering::Relaxed);
+        let hay = a != *visto;
+        *visto = a;
+        hay
+    }
+
+    /// Apunta que el turno `grupo` escribio en el fichero `capa`.
+    pub fn apuntar(capa: &Path, grupo: &str) {
+        let mut t = TURNOS.lock().unwrap_or_else(|e| e.into_inner());
+        t.retain(|(r, _)| r != capa);
+        t.push((capa.to_path_buf(), grupo.to_string()));
+        if t.len() > RECORDADOS {
+            t.remove(0);
+        }
+    }
+
+    fn grupo_de(capa: &Path) -> Option<String> {
+        let t = TURNOS.lock().unwrap_or_else(|e| e.into_inner());
+        t.iter().rev().find(|(r, _)| r == capa).map(|(_, g)| g.clone())
+    }
+
+    /// Lo marcado al leer una capa: el grupo del turno y como estaba la
+    /// historia justo despues (para saber si su paso sigue arriba).
+    #[derive(Debug, Clone, PartialEq)]
+    pub struct Marcado {
+        pub grupo: String,
+        cerrados: u64,
+        deshacer: usize,
+        /// El visor aun no lo apunto en su orden de deshacer.
+        pub sin_apuntar: bool,
+    }
+
+    impl Marcado {
+        /// El paso del turno es lo ultimo hecho en la escena (Ctrl+Z lo
+        /// quitaria).
+        pub fn arriba(&self, escena: &Escena) -> bool {
+            escena.pasos_cerrados() == self.cerrados && escena.pasos_en_historial().0 == self.deshacer
+        }
+
+        /// El paso del turno se acaba de deshacer (Ctrl+Y lo devolveria).
+        pub fn deshecho(&self, escena: &Escena) -> bool {
+            let (d, r) = escena.pasos_en_historial();
+            escena.pasos_cerrados() == self.cerrados && d + 1 == self.deshacer && r >= 1
+        }
+    }
+
+    /// **Lo del ultimo turno en `escena`, en un paso de deshacer**, si
+    /// `capa` es un fichero donde escribio el asistente y lo suyo sigue a la
+    /// vista.
+    pub fn marcar(capa: &Path, escena: &mut Escena) -> Option<Marcado> {
+        let grupo = grupo_de(capa)?;
+        let ids: Vec<u64> = escena.visibles().filter(|e| e.grupos.iter().any(|g| *g == grupo)).map(|e| e.id).collect();
+        if ids.is_empty() {
+            return None;
+        }
+        escena.apuntar_anadidos(&ids);
+        Some(Marcado { grupo, cerrados: escena.pasos_cerrados(), deshacer: escena.pasos_en_historial().0, sin_apuntar: true })
     }
 }
 
@@ -325,11 +425,12 @@ impl Capa {
             return Capa::default();
         };
         match excalidraw::leer(&texto) {
-            Ok(lienzo) => Capa {
-                escena: con_resaltadores(excalidraw::a_escena(&lienzo)),
-                lienzo,
-                ..Capa::default()
-            },
+            Ok(lienzo) => {
+                let mut escena = con_resaltadores(excalidraw::a_escena(&lienzo));
+                // Lo ultimo del asistente, en un paso de deshacer.
+                let turno = turnos::marcar(ruta, &mut escena);
+                Capa { escena, lienzo, turno, ..Capa::default() }
+            }
             Err(e) => {
                 tracing::warn!(?e, ruta = %ruta.display(), "capa de tinta ilegible; se empieza vacia");
                 Capa::default()

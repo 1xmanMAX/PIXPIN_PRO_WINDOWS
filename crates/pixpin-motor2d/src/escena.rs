@@ -740,6 +740,28 @@ impl Escena {
         !self.historia.is_empty()
     }
 
+    /// Cuantos pasos hay para deshacer y para rehacer ahora mismo.
+    pub fn pasos_en_historial(&self) -> (usize, usize) {
+        (self.historia.len(), self.rehacer.len())
+    }
+
+    /// **Apunta como un solo paso nuevo que se anadieron `ids`**, que ya
+    /// estan en la escena. Es lo que llego de fuera de una vez (lo que el
+    /// asistente escribio en la capa de un documento, releida del disco):
+    /// un `Ctrl+Z` lo quita entero, como si se hubiera dibujado aqui. Los
+    /// que no esten se ignoran; sin ninguno no hay paso.
+    pub fn apuntar_anadidos(&mut self, ids: &[u64]) {
+        let ids: Vec<u64> = ids.iter().copied().filter(|id| self.buscar(*id).is_some()).collect();
+        if ids.is_empty() {
+            return;
+        }
+        self.abrir_paso();
+        for id in ids {
+            self.apuntar_anadido(id);
+        }
+        self.cerrar_paso();
+    }
+
     /// Sube el elemento al frente sin cambiar el resto del orden.
     pub fn traer_al_frente(&mut self, id: u64) {
         if let Some(i) = self.elementos.iter().position(|e| e.id == id) {

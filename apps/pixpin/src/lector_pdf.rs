@@ -210,6 +210,27 @@ pub fn abrir_buscando(ruta: &Path, texto: &str) {
     v.push((ruta.to_path_buf(), texto.to_string()));
 }
 
+/// Los espacios para anotar que pidio el asistente (`ESPACIO_IZQUIERDA` o
+/// `ESPACIO_DERECHA`), por fichero: el lector abierto los abre en su
+/// siguiente vuelta; cerrado, ya estan en su `.pixpin-lectura`.
+static ESPACIOS_PEDIDOS: std::sync::Mutex<Vec<(std::path::PathBuf, u8)>> = std::sync::Mutex::new(Vec::new());
+
+/// **Que el lector de `ruta` tenga abierto el espacio `lado`** (no lo
+/// cierra si ya lo estaba).
+pub fn pedir_espacio(ruta: &Path, lado: u8) {
+    let mut v = ESPACIOS_PEDIDOS.lock().unwrap_or_else(|e| e.into_inner());
+    v.push((ruta.to_path_buf(), lado));
+    if v.len() > 32 {
+        v.remove(0);
+    }
+}
+
+fn tomar_espacio_pedido(ruta: &Path) -> Option<u8> {
+    let mut v = ESPACIOS_PEDIDOS.lock().unwrap_or_else(|e| e.into_inner());
+    let i = v.iter().position(|(r, _)| r == ruta)?;
+    Some(v.remove(i).1)
+}
+
 fn tomar_busqueda_al_abrir(ruta: &Path) -> Option<String> {
     let mut v = BUSQUEDA_AL_ABRIR.lock().unwrap_or_else(|e| e.into_inner());
     let i = v.iter().position(|(r, _)| r == ruta)?;
@@ -1256,6 +1277,14 @@ fn abrir_con(
         if al_dia::mirar(&mut e, ruta) {
             hay_que_pintar = true;
         }
+        // El asistente puso sus notas fuera de la hoja: el espacio para
+        // anotar de ese lado, abierto.
+        if let Some(lado) = tomar_espacio_pedido(ruta)
+            && e.ajustes.espacios & lado == 0
+        {
+            alternar_espacio(&mut e, lado, ruta);
+            hay_que_pintar = true;
+        }
         let sucias = e.capas.values().any(|c| c.sucia) && !e.tinta.trazando();
         if sucias && ahora > e.ultimo_trazo + MS_PARA_GUARDAR {
             guardar_capas(&mut e, ruta);
@@ -1269,6 +1298,7 @@ fn abrir_con(
             }
             cargar_capas_visibles(&mut e, ruta, marco);
             al_dia::apuntar(&mut e, ruta);
+            al_dia::apuntar_turnos(&mut e);
             if let Ok(destino) = superficie.empezar(&motor) {
                 let t = std::time::Instant::now();
                 let dibujado = motor.dibujar(&destino, |p: &Pintor| pintar(&mut e, p, marco, textos));
@@ -2706,8 +2736,43 @@ fn ir_a_la_marca(e: &mut Estado, i: usize) {
     }
 }
 
+/// Las hojas cuyo ultimo paso (o el recien deshecho, `deshecho`) es el
+/// turno del asistente que tenga la hoja `i` en esa misma situacion.
+fn hojas_del_turno(e: &Estado, i: usize, deshecho: bool) -> Vec<usize> {
+    let esta = |c: &crate::lector_tinta::Capa| {
+        c.turno.as_ref().filter(|t| if deshecho { t.deshecho(&c.escena) } else { t.arriba(&c.escena) }).map(|t| t.grupo.clone())
+    };
+    let Some(grupo) = e.capas.get(&i).and_then(esta) else { return Vec::new() };
+    let mut v: Vec<usize> = e.capas.iter().filter(|(_, c)| esta(c).as_deref() == Some(grupo.as_str())).map(|(k, _)| *k).collect();
+    v.sort_unstable();
+    v
+}
+
+/// Quita de `pila` la ultima vez que sale cada hoja de `hojas`.
+fn quitar_ultimas(pila: &mut Vec<usize>, hojas: &[usize]) {
+    for h in hojas {
+        if let Some(k) = pila.iter().rposition(|x| x == h) {
+            pila.remove(k);
+        }
+    }
+}
+
 fn deshacer(e: &mut Estado) {
     while let Some(i) = e.hechos.pop() {
+        // Lo que puso el asistente en un turno se quita entero, en todas las
+        // hojas que toco, con un solo Ctrl+Z (`lector_tinta::turnos`).
+        let turno = hojas_del_turno(e, i, false);
+        if !turno.is_empty() {
+            let otras: Vec<usize> = turno.iter().copied().filter(|k| *k != i).collect();
+            quitar_ultimas(&mut e.hechos, &otras);
+            for k in turno {
+                if e.capas.get_mut(&k).is_some_and(|c| c.deshacer()) {
+                    e.deshechos.push(k);
+                }
+            }
+            e.ultimo_trazo = ahora_ms();
+            return;
+        }
         if e.capas.get_mut(&i).is_some_and(|c| c.deshacer()) {
             e.deshechos.push(i);
             e.ultimo_trazo = ahora_ms();
@@ -2718,6 +2783,18 @@ fn deshacer(e: &mut Estado) {
 
 fn rehacer(e: &mut Estado) {
     while let Some(i) = e.deshechos.pop() {
+        let turno = hojas_del_turno(e, i, true);
+        if !turno.is_empty() {
+            let otras: Vec<usize> = turno.iter().copied().filter(|k| *k != i).collect();
+            quitar_ultimas(&mut e.deshechos, &otras);
+            for k in turno {
+                if e.capas.get_mut(&k).is_some_and(|c| c.rehacer()) {
+                    e.hechos.push(k);
+                }
+            }
+            e.ultimo_trazo = ahora_ms();
+            return;
+        }
         if e.capas.get_mut(&i).is_some_and(|c| c.rehacer()) {
             e.hechos.push(i);
             e.ultimo_trazo = ahora_ms();
