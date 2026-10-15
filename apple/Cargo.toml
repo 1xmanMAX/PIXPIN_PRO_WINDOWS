@@ -36,6 +36,14 @@ opt-level = 3
 inherits = "release"
 panic = "unwind"
 
+# El de la CI (`PIXPIN_PERFIL=ffi-rapido`): el mismo codigo, con LTO fino y en
+# paralelo. Optimiza casi igual y compila en una fraccion del tiempo; lo que
+# se publica sigue saliendo con `ffi`.
+[profile.ffi-rapido]
+inherits = "ffi"
+lto = "thin"
+codegen-units = 16
+
 # La criptografia y el gzip de sincronizar, optimizados tambien sin
 # `--release`: sin optimizar, cifrar un chat de un par de megas tarda decenas
 # de segundos y las pruebas de sincronizar de verdad se eternizan. Solo estos

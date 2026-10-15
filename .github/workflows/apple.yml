@@ -49,6 +49,12 @@ jobs:
           swift --version
           rustup show active-toolchain || true
       - name: Nucleo de Rust -> PixPinCoreFFI.xcframework
+        # Solo el Mac (Apple Silicon e Intel) y con el perfil rapido: la app
+        # de iPad/iPhone aun no existe y el LTO grueso de 4 plataformas
+        # pasaba de media hora.
+        env:
+          PIXPIN_PERFIL: ffi-rapido
+          PIXPIN_OBJETIVOS: aarch64-apple-darwin x86_64-apple-darwin
         run: herramientas/xcframework.sh
       - name: Los enlaces de Swift versionados siguen al dia
         run: |

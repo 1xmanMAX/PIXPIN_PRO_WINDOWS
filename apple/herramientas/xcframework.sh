@@ -26,7 +26,11 @@ set -euo pipefail
 APPLE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$APPLE"
 
-PERFIL=ffi
+# `PIXPIN_PERFIL` y `PIXPIN_OBJETIVOS` cambian lo de siempre para la CI:
+# alli se compila solo el Mac y con el perfil `ffi-rapido` (LTO fino, en
+# paralelo), que tarda una fraccion y sirve igual para probar. Lo que se
+# publica sale con los valores de fabrica.
+PERFIL="${PIXPIN_PERFIL:-ffi}"
 CRATE=pixpin-nucleo
 LIB=libpixpin_nucleo.a
 MODULO=pixpin_nucleoFFI
@@ -39,7 +43,8 @@ XCF="$PAQUETE/PixPinCoreFFI.xcframework"
 export MACOSX_DEPLOYMENT_TARGET=15.0
 export IPHONEOS_DEPLOYMENT_TARGET=18.0
 
-OBJETIVOS=(aarch64-apple-darwin x86_64-apple-darwin aarch64-apple-ios aarch64-apple-ios-sim)
+read -r -a OBJETIVOS <<< "${PIXPIN_OBJETIVOS:-aarch64-apple-darwin x86_64-apple-darwin aarch64-apple-ios aarch64-apple-ios-sim}"
+tiene() { [[ " ${OBJETIVOS[*]} " == *" $1 "* ]]; }
 
 echo "==> Objetivos de Rust"
 rustup target add "${OBJETIVOS[@]}" >/dev/null
@@ -57,8 +62,8 @@ lipo -create \
     "target/aarch64-apple-darwin/$PERFIL/$LIB" \
     "target/x86_64-apple-darwin/$PERFIL/$LIB" \
     -output "$SALIDA/macos/$LIB"
-cp "target/aarch64-apple-ios/$PERFIL/$LIB" "$SALIDA/ios/$LIB"
-cp "target/aarch64-apple-ios-sim/$PERFIL/$LIB" "$SALIDA/ios-sim/$LIB"
+if tiene aarch64-apple-ios; then cp "target/aarch64-apple-ios/$PERFIL/$LIB" "$SALIDA/ios/$LIB"; fi
+if tiene aarch64-apple-ios-sim; then cp "target/aarch64-apple-ios-sim/$PERFIL/$LIB" "$SALIDA/ios-sim/$LIB"; fi
 
 echo "==> Enlaces de Swift (uniffi-bindgen)"
 # Se leen de una biblioteca dinamica SIN quitar simbolos (la de depuracion
@@ -83,11 +88,10 @@ cp "$ENLACES/pixpin_nucleo.swift" "$PAQUETE/Sources/PixPinCore/pixpin_nucleo.swi
 
 echo "==> xcodebuild -create-xcframework"
 rm -rf "$XCF"
-xcodebuild -create-xcframework \
-    -library "$SALIDA/macos/$LIB" -headers "$CABECERAS" \
-    -library "$SALIDA/ios/$LIB" -headers "$CABECERAS" \
-    -library "$SALIDA/ios-sim/$LIB" -headers "$CABECERAS" \
-    -output "$XCF"
+BIBLIOTECAS=(-library "$SALIDA/macos/$LIB" -headers "$CABECERAS")
+if tiene aarch64-apple-ios; then BIBLIOTECAS+=(-library "$SALIDA/ios/$LIB" -headers "$CABECERAS"); fi
+if tiene aarch64-apple-ios-sim; then BIBLIOTECAS+=(-library "$SALIDA/ios-sim/$LIB" -headers "$CABECERAS"); fi
+xcodebuild -create-xcframework "${BIBLIOTECAS[@]}" -output "$XCF"
 
 echo "==> Listo: $XCF"
 du -sh "$XCF"/*/ 2>/dev/null || true
