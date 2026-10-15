@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleName</key><string>PixPin</string>
+	<key>CFBundleDisplayName</key><string>PixPin</string>
+	<key>CFBundleIdentifier</key><string>io.github.1xmanmax.pixpin</string>
+	<key>CFBundleExecutable</key><string>PixPin</string>
+	<key>CFBundlePackageType</key><string>APPL</string>
+	<key>CFBundleShortVersionString</key><string>@VERSION@</string>
+	<key>CFBundleVersion</key><string>@COMPILACION@</string>
+	<key>CFBundleDevelopmentRegion</key><string>es</string>
+	<key>LSMinimumSystemVersion</key><string>15.0</string>
+	<key>LSApplicationCategoryType</key><string>public.app-category.productivity</string>
+	<!-- Vive en la barra de menus, como la bandeja de Windows: sin icono en el Dock. -->
+	<key>LSUIElement</key><true/>
+	<key>NSHighResolutionCapable</key><true/>
+	<key>NSSupportsAutomaticTermination</key><false/>
+	<!-- Sincronizar por Wi-Fi con Windows y Android (Bonjour, los mismos servicios). -->
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>PixPin busca tus otros aparatos (PC y móvil) en tu Wi-Fi para sincronizar tus proyectos sin pasar por internet.</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_pixpin._tcp</string>
+		<string>_pixpinenvio._tcp</string>
+		<string>_pixpinrecibe._tcp</string>
+		<string>_pixpinchat._tcp</string>
+	</array>
+	<key>NSScreenCaptureUsageDescription</key>
+	<string>PixPin captura la zona de la pantalla que eliges para copiarla, dejarla flotando o mandarla a un proyecto.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>PixPin graba notas de voz para tus proyectos.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>PixPin pasa tus notas de voz a texto en este Mac, sin enviarlas a internet.</string>
+</dict>
+</plist>

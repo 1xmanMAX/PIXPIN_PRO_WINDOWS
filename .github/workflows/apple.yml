@@ -1,0 +1,66 @@
+name: Apple
+
+# PixPin para Mac (apple/): compila el nucleo de Rust como xcframework,
+# compila y prueba la app de Swift en un Mac de verdad y deja la app lista
+# para descargar (Actions > esta ejecucion > Artifacts > PixPin-mac).
+on:
+  push:
+    branches: [main, "ccr-**"]
+    paths:
+      - "apple/**"
+      - ".github/workflows/apple.yml"
+  pull_request:
+    paths:
+      - "apple/**"
+      - ".github/workflows/apple.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: apple-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  # La CI compila de cero en cada maquina: sin incremental ni informacion
+  # de depuracion va mas rapido y ocupa menos.
+  CARGO_INCREMENTAL: "0"
+  CARGO_PROFILE_DEV_DEBUG: "0"
+
+jobs:
+  mac:
+    runs-on: macos-15
+    timeout-minutes: 90
+    defaults:
+      run:
+        working-directory: apple
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apple
+      - name: Versiones
+        run: |
+          sw_vers
+          xcodebuild -version
+          swift --version
+          rustup show active-toolchain || true
+      - name: Nucleo de Rust -> PixPinCoreFFI.xcframework
+        run: herramientas/xcframework.sh
+      - name: Los enlaces de Swift versionados siguen al dia
+        run: |
+          if ! git diff --quiet -- PixPinCore/Sources; then
+            echo "::warning::Los enlaces de Swift cambiaron al regenerarlos; hay que versionar PixPinCore/Sources/PixPinCore/pixpin_nucleo.swift"
+            git diff --stat -- PixPinCore/Sources
+          fi
+      - name: Pruebas de la app (swift test)
+        working-directory: apple/app
+        run: swift test
+      - name: Montar PixPin.app
+        run: herramientas/app.sh
+      - name: Subir la app
+        uses: actions/upload-artifact@v4
+        with:
+          name: PixPin-mac
+          path: apple/app/dist/PixPin-mac.zip
+          if-no-files-found: error
+          retention-days: 30
