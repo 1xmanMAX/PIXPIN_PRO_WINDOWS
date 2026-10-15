@@ -1651,6 +1651,7 @@ dependencies = [
  "pixpin-geom",
  "pixpin-motor2d",
  "pixpin-notas",
+ "pixpin-ocr",
  "pixpin-pdf",
  "pixpin-shell",
  "pixpin-voz",

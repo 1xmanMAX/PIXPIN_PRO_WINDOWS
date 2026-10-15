@@ -375,8 +375,32 @@ pub fn historial_para_el_modelo(
 /// contestar.
 fn poner_foto(historial: &mut [Mensaje], ruta: &std::path::Path) {
     let Some(ultimo) = historial.last_mut() else { return };
+    let mut texto = ultimo.texto_entero();
+    // La foto de un problema (14-oct): el OCR de Windows, a toda resolucion,
+    // pegado al mensaje; el modelo lee las formulas de la imagen y el texto
+    // menudo del OCR (`problema::pista_de_ocr`).
+    if pixpin_ia::problema::pide_problema(&texto) {
+        texto.push_str(&ocr_de_la_foto(ruta));
+    }
     match super::foto::preparar_fichero(ruta) {
-        Ok((bytes, mime)) => *ultimo = Mensaje::usuario_con_imagen(ultimo.texto_entero(), bytes, mime),
+        Ok((bytes, mime)) => *ultimo = Mensaje::usuario_con_imagen(texto, bytes, mime),
         Err(e) => tracing::warn!(%e, "asistente: la foto no se pudo preparar"),
+    }
+}
+
+/// Lo que el OCR de Windows lee en la foto, ya dicho para el modelo; vacio
+/// si no hay OCR en este Windows o la foto no se abre (el modelo la mira
+/// igual).
+fn ocr_de_la_foto(ruta: &std::path::Path) -> String {
+    if !pixpin_ocr::disponible() {
+        return String::new();
+    }
+    let Ok(img) = pixpin_codec::imagen::cargar(ruta) else { return String::new() };
+    match pixpin_ocr::reconocer(img.ancho, img.alto, &img.pixeles) {
+        Ok(lineas) => pixpin_ia::problema::pista_de_ocr(&lineas.into_iter().map(|l| l.texto).collect::<Vec<_>>()),
+        Err(e) => {
+            tracing::warn!(?e, "asistente: el OCR de la foto del problema fallo");
+            String::new()
+        }
     }
 }

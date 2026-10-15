@@ -14,7 +14,8 @@
 
 use crate::acciones::normalizar;
 use crate::herramientas::{
-    AYUDA, CALCAR, CRONOGRAMA, DIBUJAR, ECUACION, FIGURAS, FUNCION, GRAFICA, Herramienta, OCR, SVG, catalogo_base,
+    AYUDA, CALCAR, CRONOGRAMA, DIBUJAR, ECUACION, FIGURAS, FISICA, FUNCION, GRAFICA, Herramienta, OCR, PROBLEMA, SVG,
+    catalogo_base,
 };
 
 /// Cuantas herramientas como mucho por turno.
@@ -39,6 +40,9 @@ fn claves_base(nombre: &str) -> &'static [&'static str] {
         FUNCION => &[
             "funcion", "funciones", "f(x)", "y=", "y =", "parabola", "seno", "coseno", "plano cartesiano", "dominio",
             "x^", "x²", "sin(", "cos(", "recta y",
+            // Estudiantes (14-oct): polares, parametricas y lo que se marca.
+            "polar", "parametric", "cardioide", "elipse", "raices", "tangente", "asintota", "theta", "θ",
+            "r =", "area entre", "extremos", "maximos", "minimos", "interseccion",
         ],
         ECUACION => &[
             "ecuacion", "ecuaciones", "formula", "latex", "fraccion", "raiz cuadrada", "integral", "teorema", "pitagoras",
@@ -47,6 +51,15 @@ fn claves_base(nombre: &str) -> &'static [&'static str] {
         CRONOGRAMA => &[
             "cronograma", "gantt", "planificacion", "programacion de obra", "hitos", "plazos", "calendario de",
             "semanas", "fases",
+        ],
+        FISICA => &[
+            "fisica", "fuerza", "cuerpo libre", "plano inclinado", "inclinado", "tiro", "parabolic", "proyectil", "lanzad",
+            "circuito", "resistencia", "paralelo", "vector", "pendulo", "atwood", "polea", "mru", "mruv", "mrua",
+            "velocidad", "aceleracion", "rozamiento", "friccion", "voltaje", "voltio", "ohm", "newton", "bloque",
+        ],
+        PROBLEMA => &[
+            "problema", "ejercicio", "enunciado", "en limpio", "a limpio", "reescrib", "transcrib", "resuelv", "resolver",
+            "examen",
         ],
         FIGURAS => &[
             "guarda esto", "guardalo", "guardala", "como figura", "biblioteca", "figura guardada", "figuras guardadas",
@@ -177,6 +190,12 @@ pub fn para_el_pedido(pedido: &str, con_imagen: bool) -> Vec<Herramienta> {
         .split(|c: char| !c.is_alphanumeric())
         .filter(|p| !p.is_empty())
         .collect();
+    // La foto de un problema («pasalo en limpio», «resuelve este
+    // ejercicio»): no es calcarla ni una pregunta sobre la app; se pasa en
+    // limpio, y por si su figura es de fisica o una grafica, esas dos.
+    if con_imagen && crate::problema::pide_problema(pedido) {
+        return [PROBLEMA, FISICA, FUNCION].iter().filter_map(|n| de(n)).collect();
+    }
     if es_pregunta_de_ayuda(&q) {
         // «¿Donde dice JR. ANTISUYO en el plano?» es buscar DENTRO de un
         // documento y llevar ahi (`acciones_documentos`), no la ayuda.
@@ -238,6 +257,12 @@ pub fn para_el_pedido(pedido: &str, con_imagen: bool) -> Vec<Herramienta> {
     // una a una en el Inbox y no creaba la lista pedida (medido, 14-oct).
     if let Some(varias) = elegidas.iter().find(|(_, h)| h.nombre == "anadir_tareas").map(|x| x.0) {
         elegidas.retain(|(s, h)| !(h.nombre == "anadir_tarea" && *s <= varias));
+    }
+    // «Dibuja el tiro parabolico...»: con dibujar a mano, el 2B dibujaba
+    // cajas con rotulos en vez de la plantilla (medido, 14-oct). Si una de
+    // estudiantes encaja de lleno, la de dibujar a mano sobra.
+    if elegidas.iter().any(|(s, h)| *s >= 4 && [FISICA, FUNCION, PROBLEMA].contains(&h.nombre.as_str())) {
+        elegidas.retain(|(s, h)| !(h.nombre == DIBUJAR && *s <= 2));
     }
     let elegidas: Vec<Herramienta> = elegidas.into_iter().map(|(_, h)| h).collect();
     if elegidas.is_empty() {
@@ -432,6 +457,34 @@ mod pruebas {
             let n = nombres(pedido, false);
             assert!(n.iter().any(|x| x == debe), "«{pedido}» → {n:?}");
         }
+    }
+
+    /// Estudiantes (14-oct): graficas de clase, fisica y la foto de un
+    /// problema.
+    #[test]
+    fn los_pedidos_de_estudiantes_traen_su_herramienta() {
+        for (pedido, img, debe) in [
+            ("Grafica r = 1 + cos θ", false, "graficar_funcion"),
+            ("Grafica la parametrica de una elipse", false, "graficar_funcion"),
+            ("Grafica x²-4 y marca sus raices", false, "graficar_funcion"),
+            ("Diagrama de cuerpo libre de un bloque en un plano inclinado de 30° con rozamiento", false, "diagrama_fisica"),
+            ("Tiro parabolico a 20 m/s y 45°", false, "diagrama_fisica"),
+            ("Dibuja un circuito con dos resistencias en paralelo", false, "diagrama_fisica"),
+            ("Pasa en limpio este problema", true, "problema_en_limpio"),
+            ("¿Como resuelvo este ejercicio?", true, "problema_en_limpio"),
+            ("Resuelve el problema: un tren sale a 60 km/h...", false, "problema_en_limpio"),
+        ] {
+            let n = nombres(pedido, img);
+            assert!(n.iter().any(|x| x == debe), "«{pedido}» → {n:?}");
+            assert!(!n.contains(&"calcar_imagen".to_string()), "«{pedido}» → {n:?}");
+        }
+        // Con la plantilla de lleno, dibujar a mano sobra (el 2B la elegia).
+        let n = nombres("Dibuja el tiro parabolico de un proyectil lanzado a 20 m/s y 45°", false);
+        assert!(!n.contains(&"dibujar_en_lienzo".to_string()), "{n:?}");
+        // Pero dibujar algo cualquiera sigue siendo dibujar.
+        assert!(nombres("Dibuja una casa con un arbol", false).contains(&"dibujar_en_lienzo".to_string()));
+        // Negativo: copiar una foto sigue siendo calcarla.
+        assert_eq!(nombres("Copia esta imagen en el lienzo", true), vec!["calcar_imagen"]);
     }
 
     #[test]
