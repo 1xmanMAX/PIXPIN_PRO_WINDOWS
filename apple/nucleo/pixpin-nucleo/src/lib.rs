@@ -15,6 +15,10 @@
 //! - Nada de un objeto por figura ni por mensaje. El lienzo cruza como **un
 //!   solo bufer plano** de `f32` (ver [`lienzo`]): una llamada por escena o
 //!   por fotograma, y Swift construye sus `CGPath` en una pasada.
+//! - Un fichero entra al chat con [`Nucleo::adjuntar`] (se copia, no se
+//!   lee entero en memoria) y su ruta en el disco sale de
+//!   [`Nucleo::ruta_absoluta`]; las fotos de un lienzo, todas juntas, de
+//!   [`Nucleo::imagenes_del_lienzo`] (ver [`adjuntos`]).
 //! - Los chats se leen **por paginas** ([`Nucleo::mensajes`]): nunca el chat
 //!   entero. El indice de lineas de cada cuaderno se guarda en una cache con
 //!   tope ([`chats`]) y se vacia con el aviso de memoria del sistema
@@ -36,6 +40,7 @@
 
 uniffi::setup_scaffolding!();
 
+pub mod adjuntos;
 pub mod chats;
 pub mod lienzo;
 pub mod sincro;

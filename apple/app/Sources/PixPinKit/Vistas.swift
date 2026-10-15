@@ -2,7 +2,9 @@
 // derecha, como en Windows y en el movil.
 //
 // El chat es una `LazyVStack`: solo existen las filas que se ven, y la
-// pagina anterior se pide al llegar arriba (§4bis.2 del plan).
+// pagina anterior se pide al llegar arriba (§4bis.2 del plan). Las burbujas
+// con fichero (fotos por su miniatura, archivos, dibujos) y lo que entra al
+// soltar o pegar estan en `Chat/Adjuntos.swift`.
 
 import AppKit
 import PixPinCore
@@ -79,6 +81,10 @@ public struct VistaChat: View {
     @ObservedObject var almacen: Almacen
     let chat: String
     @State private var borrador = ""
+    /// Algo arrastrado encima del chat (para marcarlo).
+    @State private var soltando = false
+    /// El vigia de ⌘V mientras el chat esta en pantalla.
+    @State private var vigiaPegar: Any?
 
     public var body: some View {
         VStack(spacing: 0) {
@@ -90,7 +96,7 @@ public struct VistaChat: View {
                                 .task { await almacen.cargarAnteriores(chat: chat) }
                         }
                         ForEach(almacen.mensajes[chat] ?? [], id: \.id) { m in
-                            Burbuja(mensaje: m).id(m.id)
+                            Burbuja(mensaje: m, chat: chat, almacen: almacen).id(m.id)
                         }
                     }
                     .padding()
@@ -113,6 +119,46 @@ public struct VistaChat: View {
             .padding(10)
         }
         .task { await almacen.abrir(chat: chat) }
+        // Soltar ficheros o fotos en el chat los adjunta (se copian).
+        .onDrop(of: EntradaDeFicheros.tipos, isTargeted: $soltando) { proveedores in
+            MainActor.assumeIsolated {
+                EntradaDeFicheros.soltar(proveedores, en: chat, almacen: almacen)
+            }
+            return true
+        }
+        .overlay {
+            if soltando {
+                RoundedRectangle(cornerRadius: 10)
+                    .strokeBorder(Color.accentColor, style: StrokeStyle(lineWidth: 3, dash: [8, 5]))
+                    .padding(4)
+                    .allowsHitTesting(false)
+            }
+        }
+        .onAppear(perform: vigilarPegar)
+        .onDisappear(perform: dejarDeVigilarPegar)
+    }
+
+    /// ⌘V con ficheros o una imagen en el portapapeles los adjunta, aunque
+    /// la caja de escribir tenga el foco (ella solo sabe pegar texto). Con
+    /// texto, el ⌘V sigue su camino de siempre.
+    private func vigilarPegar() {
+        guard vigiaPegar == nil else { return }
+        let chat = self.chat
+        let almacen = self.almacen
+        vigiaPegar = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { evento in
+            let teclas = evento.modifierFlags.intersection(.deviceIndependentFlagsMask)
+            guard teclas == .command, evento.charactersIgnoringModifiers == "v",
+                  evento.window != nil, !(evento.window is NSPanel) else { return evento }
+            let tomado = MainActor.assumeIsolated {
+                EntradaDeFicheros.pegar(en: chat, almacen: almacen)
+            }
+            return tomado ? nil : evento
+        }
+    }
+
+    private func dejarDeVigilarPegar() {
+        if let vigia = vigiaPegar { NSEvent.removeMonitor(vigia) }
+        vigiaPegar = nil
     }
 
     private func enviar() {
@@ -124,11 +170,21 @@ public struct VistaChat: View {
 
 struct Burbuja: View {
     let mensaje: MensajeChat
+    let chat: String
+    /// Sin observar: una burbuja no se repinta por cada cambio del almacen.
+    let almacen: Almacen
+
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
             switch mensaje.clase {
             case "NOTA":
                 Text(mensaje.texto).textSelection(.enabled)
+            case "IMAGEN" where mensaje.ruta != nil:
+                BurbujaImagen(mensaje: mensaje, chat: chat, almacen: almacen)
+            case "ARCHIVO" where mensaje.ruta != nil, "VOZ" where mensaje.ruta != nil:
+                BurbujaArchivo(mensaje: mensaje, chat: chat, almacen: almacen)
+            case "DIBUJO" where mensaje.referencia != nil:
+                BurbujaDibujo(mensaje: mensaje, chat: chat, almacen: almacen)
             default:
                 Label(mensaje.resumen.isEmpty ? mensaje.nombre : mensaje.resumen,
                       systemImage: Burbuja.icono(mensaje.clase))
@@ -182,11 +238,28 @@ public final class VistaLienzoNS: NSView {
 
 public struct VistaLienzo: NSViewRepresentable {
     public let lienzo: LienzoLeido
-    public init(lienzo: LienzoLeido) { self.lienzo = lienzo }
+    /// Cambiarla vuelve a pintar (p. ej. al llegar las fotos del lienzo).
+    public var version: Int
+    /// La foto de cada `id_objeto`, ya decodificada (una cache: nunca lee
+    /// del disco al pintar).
+    public var imagen: (UInt64) -> CGImage?
+
+    public init(lienzo: LienzoLeido, version: Int = 0,
+                imagen: @escaping (UInt64) -> CGImage? = { _ in nil }) {
+        self.lienzo = lienzo
+        self.version = version
+        self.imagen = imagen
+    }
+
     public func makeNSView(context: Context) -> VistaLienzoNS {
         let v = VistaLienzoNS()
+        v.imagen = imagen
         v.lienzo = lienzo
         return v
     }
-    public func updateNSView(_ v: VistaLienzoNS, context: Context) { v.lienzo = lienzo }
+
+    public func updateNSView(_ v: VistaLienzoNS, context: Context) {
+        v.imagen = imagen
+        v.lienzo = lienzo
+    }
 }

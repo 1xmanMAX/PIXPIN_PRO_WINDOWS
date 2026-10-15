@@ -8,6 +8,7 @@
 // - ante presion de memoria se sueltan las paginas que no se ven y se
 //   vacian las caches del nucleo.
 
+import AppKit
 import Foundation
 import PixPinCore
 
@@ -34,6 +35,9 @@ public final class Almacen: ObservableObject {
 
     public let nucleo: Nucleo
     private var desde: [String: UInt64] = [:]
+    /// Rutas ya resueltas (`chat` + `ruta` del mensaje -> fichero). Pocas
+    /// y pequenas; se sueltan al aligerar.
+    private var rutas: [String: URL] = [:]
     private var vigiaMemoria: DispatchSourceMemoryPressure?
 
     public init(raiz: URL = carpetaDeDatos(), nombreDelAparato: String = Host.current().localizedName ?? "Mac") throws {
@@ -122,6 +126,130 @@ public final class Almacen: ObservableObject {
         }
     }
 
+    // MARK: Ficheros en el chat
+
+    /// Adjunta ficheros (soltados o pegados) a un chat: cada uno se COPIA
+    /// dentro del proyecto con su mensaje (`IMAGEN`, `VOZ` o `ARCHIVO`, como
+    /// en Windows) y se anade al final de lo cargado. La copia va fuera del
+    /// hilo principal. Uno que falle no se lleva los demas: se dice en
+    /// `error` y siguen. Las carpetas no se adjuntan.
+    @discardableResult
+    public func adjuntar(urls: [URL], en chat: String) async -> [MensajeChat] {
+        let origenes = urls.compactMap { u -> String? in
+            // Un `file:///.file/id=...` (referencia) pasa a ruta de verdad.
+            let url = (u as NSURL).filePathURL ?? u
+            return url.isFileURL ? url.path : nil
+        }
+        guard !origenes.isEmpty else { return [] }
+        let nucleo = self.nucleo
+        let (hechos, fallo) = await Task.detached(priority: .userInitiated) { () -> ([MensajeChat], String?) in
+            var hechos: [MensajeChat] = []
+            var fallo: String?
+            for ruta in origenes {
+                do {
+                    hechos.append(try nucleo.adjuntar(chat: chat, rutaOrigen: ruta, nombre: nil))
+                } catch {
+                    fallo = "\((ruta as NSString).lastPathComponent): \(error)"
+                }
+            }
+            return (hechos, fallo)
+        }.value
+        anadir(hechos, en: chat)
+        error = fallo
+        return hechos
+    }
+
+    /// Adjunta una imagen que no es un fichero (pegada o soltada desde otra
+    /// app). Se llama `pegado-<hora>.<ext>` como en Windows; un TIFF (lo
+    /// que suele dejar el portapapeles del Mac) se guarda como PNG, que es
+    /// lo que entienden Windows y Android. Todo fuera del hilo principal.
+    @discardableResult
+    public func adjuntar(datos: Data, formato: String, en chat: String) async -> MensajeChat? {
+        let nucleo = self.nucleo
+        let resultado = await Task.detached(priority: .userInitiated) { () -> Result<MensajeChat, Error> in
+            var bytes = datos
+            var ext = formato.lowercased()
+            if ext == "tif" || ext == "tiff" || ext.isEmpty,
+               let png = NSBitmapImageRep(data: bytes)?.representation(using: .png, properties: [:]) {
+                bytes = png
+                ext = "png"
+            }
+            let cuando = Int64(Date().timeIntervalSince1970 * 1000)
+            let carpeta = FileManager.default.temporaryDirectory
+                .appendingPathComponent("pixpin-pegado-\(UUID().uuidString)", isDirectory: true)
+            defer { try? FileManager.default.removeItem(at: carpeta) }
+            do {
+                try FileManager.default.createDirectory(at: carpeta, withIntermediateDirectories: true)
+                let fichero = carpeta.appendingPathComponent("pegado-\(cuando).\(ext)")
+                try bytes.write(to: fichero)
+                return .success(try nucleo.adjuntar(chat: chat, rutaOrigen: fichero.path, nombre: nil))
+            } catch {
+                return .failure(error)
+            }
+        }.value
+        switch resultado {
+        case let .success(m):
+            anadir([m], en: chat)
+            error = nil
+            return m
+        case let .failure(e):
+            error = "\(e)"
+            return nil
+        }
+    }
+
+    private func anadir(_ nuevos: [MensajeChat], en chat: String) {
+        guard !nuevos.isEmpty else { return }
+        mensajes[chat, default: []].append(contentsOf: nuevos)
+        totales[chat, default: 0] += UInt64(nuevos.count)
+    }
+
+    /// El fichero de una `ruta` de mensaje (o de una foto de un lienzo) si
+    /// ya se resolvio antes. No cruza el puente.
+    public func urlResuelta(deRuta ruta: String, en chat: String) -> URL? {
+        rutas[chat + "\u{0}" + ruta]
+    }
+
+    /// El fichero de una `ruta` de mensaje en este Mac (`Nucleo.rutaAbsoluta`,
+    /// fuera del hilo principal la primera vez). `nil` si no se puede
+    /// resolver aqui (una ruta de otro aparato). No mira si existe.
+    public func url(deRuta ruta: String, en chat: String) async -> URL? {
+        let clave = chat + "\u{0}" + ruta
+        if let hecha = rutas[clave] { return hecha }
+        let nucleo = self.nucleo
+        let absoluta = await Task.detached(priority: .userInitiated) {
+            try? nucleo.rutaAbsoluta(chat: chat, rutaRelativa: ruta)
+        }.value
+        guard let absoluta else { return nil }
+        let url = URL(fileURLWithPath: absoluta)
+        rutas[clave] = url
+        return url
+    }
+
+    /// Un dibujo del chat (la `referencia` de un `DIBUJO`) listo para pintar
+    /// y sus fotos con su fichero: leer el JSON, el bufer y las rutas va
+    /// todo junto fuera del hilo principal, en tres cruces del puente.
+    public func dibujo(_ referencia: String, en chat: String) async -> DibujoDelChat? {
+        let nucleo = self.nucleo
+        let hecho = await Task.detached(priority: .userInitiated) { () -> Result<DibujoDelChat, Error> in
+            do {
+                let lienzo = try nucleo.abrirLienzo(chat: chat, dibujo: referencia)
+                let leido = try leerLienzo(lienzo.plano())
+                var fotos: [UInt64: URL] = [:]
+                for f in try nucleo.imagenesDelLienzo(chat: chat, lienzo: lienzo) {
+                    fotos[f.idObjeto] = URL(fileURLWithPath: f.ruta)
+                }
+                return .success(DibujoDelChat(lienzo: leido, fotos: fotos))
+            } catch {
+                return .failure(error)
+            }
+        }.value
+        switch hecho {
+        case let .success(d): return d
+        case .failure: return nil
+        }
+    }
+
     /// Suelta lo que no se ve: deja solo la ultima pagina del chat
     /// `visible` y vacia las caches del nucleo.
     public func aligerar(visible: String?) {
@@ -130,6 +258,7 @@ public final class Almacen: ObservableObject {
             mensajes[chat] = nil
             desde[chat] = nil
         }
+        rutas = [:]
         nucleo.vaciarCaches()
     }
 
@@ -138,8 +267,16 @@ public final class Almacen: ObservableObject {
         let fuente = DispatchSource.makeMemoryPressureSource(eventMask: [.warning, .critical], queue: .main)
         fuente.setEventHandler { [weak self] in
             MainActor.assumeIsolated { self?.aligerar(visible: nil) }
+            Miniaturas.compartidas.vaciar()
         }
         fuente.resume()
         vigiaMemoria = fuente
     }
+}
+
+/// Un dibujo del chat leido: el lienzo y el fichero de cada foto por su
+/// `id_objeto` (el de las ordenes del bufer).
+public struct DibujoDelChat {
+    public var lienzo: LienzoLeido
+    public var fotos: [UInt64: URL]
 }

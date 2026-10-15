@@ -1094,6 +1094,31 @@ public protocol NucleoProtocol: AnyObject, Sendable {
     func vaciarCaches() 
     
     /**
+     * **Adjunta un fichero a un chat**: lo copia dentro del proyecto y
+     * escribe su mensaje (`IMAGEN` si es una foto, `VOZ` si es audio,
+     * `ARCHIVO` lo demas), como al soltarlo en el chat de Windows.
+     *
+     * `nombre` es el que se ensena y con el que se guarda; sin el, el del
+     * fichero de origen. Es bloqueante (copia el fichero): Swift lo llama
+     * fuera del hilo principal.
+     */
+    func adjuntar(chat: String, rutaOrigen: String, nombre: String?) throws  -> MensajeChat
+    
+    /**
+     * Las fotos de un lienzo del chat con su ruta **absoluta**, todas en
+     * una llamada (no una por foto). Las que no se pueden resolver en este
+     * aparato no salen.
+     */
+    func imagenesDelLienzo(chat: String, lienzo: Lienzo) throws  -> [ImagenDelLienzo]
+    
+    /**
+     * La ruta absoluta del fichero de un mensaje (su `ruta`) o de una foto
+     * de un lienzo, para ensenarlo o abrirlo. No comprueba que exista:
+     * para eso basta mirar el disco desde Swift.
+     */
+    func rutaAbsoluta(chat: String, rutaRelativa: String) throws  -> String
+    
+    /**
      * «Mensajes guardados», creandolo si no esta.
      */
     func chatGuardados() throws  -> FichaChat
@@ -1277,6 +1302,59 @@ open func vaciarCaches()  {try! rustCall() {
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 }
+}
+    
+    /**
+     * **Adjunta un fichero a un chat**: lo copia dentro del proyecto y
+     * escribe su mensaje (`IMAGEN` si es una foto, `VOZ` si es audio,
+     * `ARCHIVO` lo demas), como al soltarlo en el chat de Windows.
+     *
+     * `nombre` es el que se ensena y con el que se guarda; sin el, el del
+     * fichero de origen. Es bloqueante (copia el fichero): Swift lo llama
+     * fuera del hilo principal.
+     */
+open func adjuntar(chat: String, rutaOrigen: String, nombre: String?)throws  -> MensajeChat  {
+    return try  FfiConverterTypeMensajeChat_lift(try rustCallWithError(FfiConverterTypeErrorNucleo_lift) {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_nucleo_adjuntar(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(chat),
+        FfiConverterString.lower(rutaOrigen),
+        FfiConverterOptionString.lower(nombre),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Las fotos de un lienzo del chat con su ruta **absoluta**, todas en
+     * una llamada (no una por foto). Las que no se pueden resolver en este
+     * aparato no salen.
+     */
+open func imagenesDelLienzo(chat: String, lienzo: Lienzo)throws  -> [ImagenDelLienzo]  {
+    return try  FfiConverterSequenceTypeImagenDelLienzo.lift(try rustCallWithError(FfiConverterTypeErrorNucleo_lift) {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_nucleo_imagenes_del_lienzo(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(chat),
+        FfiConverterTypeLienzo_lower(lienzo),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * La ruta absoluta del fichero de un mensaje (su `ruta`) o de una foto
+     * de un lienzo, para ensenarlo o abrirlo. No comprueba que exista:
+     * para eso basta mirar el disco desde Swift.
+     */
+open func rutaAbsoluta(chat: String, rutaRelativa: String)throws  -> String  {
+    return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeErrorNucleo_lift) {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_nucleo_ruta_absoluta(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(chat),
+        FfiConverterString.lower(rutaRelativa),uniffiCallStatus
+    )
+})
 }
     
     /**
@@ -2646,6 +2724,15 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_pixpin_nucleo_checksum_method_nucleo_vaciar_caches() != 26235) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_nucleo_adjuntar() != 27442) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_nucleo_imagenes_del_lienzo() != 30542) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_nucleo_ruta_absoluta() != 15898) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_pixpin_nucleo_checksum_method_nucleo_chat_guardados() != 17735) {

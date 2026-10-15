@@ -256,6 +256,151 @@ fn el_lienzo_cruza_en_un_bufer_y_vuelve_igual() {
 }
 
 #[test]
+fn adjuntar_copia_el_fichero_y_escribe_su_mensaje_como_windows() {
+    let t = Temporal::nueva("adjuntar");
+    let n = t.nucleo("Mac");
+    let raiz = PathBuf::from(n.raiz());
+    let obra = n.crear_chat("Obra".into()).unwrap();
+    n.escribir_nota(obra.id.clone(), "antes".into(), None)
+        .unwrap();
+
+    // Una foto con el nombre en NFD, como lo da el Finder.
+    let fuera = t.0.join("fuera");
+    std::fs::create_dir_all(&fuera).unwrap();
+    let foto = fuera.join("fachada n\u{303}.PNG");
+    std::fs::write(&foto, b"\x89PNG\r\n\x1a\nfalso").unwrap();
+    let m = n
+        .adjuntar(obra.id.clone(), foto.display().to_string(), None)
+        .unwrap();
+    assert_eq!(m.clase, "IMAGEN");
+    assert_eq!(m.nombre, "fachada \u{f1}.PNG", "el nombre en NFC");
+    assert_eq!(m.ruta.as_deref(), Some("archivos/fachada \u{f1}.PNG"));
+    assert_eq!(m.bytes, 13);
+    let codigo = n.aparato().unwrap().codigo;
+    assert_eq!(m.codigo_chat, Some(format!("2\u{b7}{codigo}")));
+    // El fichero copiado, donde dice la ruta y con lo mismo dentro.
+    let absoluta = n
+        .ruta_absoluta(obra.id.clone(), m.ruta.clone().unwrap())
+        .unwrap();
+    assert_eq!(
+        PathBuf::from(&absoluta),
+        almacen::carpeta(&raiz, &obra.id).join("archivos/fachada \u{f1}.PNG")
+    );
+    assert_eq!(
+        std::fs::read(&absoluta).unwrap(),
+        std::fs::read(&foto).unwrap()
+    );
+
+    // Otro con el mismo nombre no pisa el primero; con nombre propio, ese.
+    let otra = n
+        .adjuntar(obra.id.clone(), foto.display().to_string(), None)
+        .unwrap();
+    assert_eq!(
+        otra.ruta.as_deref(),
+        Some("archivos/fachada \u{f1} (1).PNG")
+    );
+    let doc = fuera.join("x.bin");
+    std::fs::write(&doc, b"hola").unwrap();
+    let a = n
+        .adjuntar(
+            obra.id.clone(),
+            doc.display().to_string(),
+            Some("plano: v2.pdf".into()),
+        )
+        .unwrap();
+    assert_eq!(a.clase, "ARCHIVO");
+    assert_eq!(a.nombre, "plano: v2.pdf");
+    assert_eq!(
+        a.ruta.as_deref(),
+        Some("archivos/plano_ v2.pdf"),
+        "nombre_seguro"
+    );
+
+    // En el cuaderno, como cualquier mensaje: la pagina lo trae y el chat sube.
+    let pagina = n.ultimos_mensajes(obra.id.clone(), 10).unwrap();
+    assert_eq!(pagina.total, 4);
+    assert_eq!(pagina.mensajes[1], m);
+    let en_disco = cuaderno::Cuaderno::leer_de(&almacen::carpeta(&raiz, &obra.id)).unwrap();
+    let linea: &Mensaje = &en_disco.mensajes[1];
+    assert_eq!(linea.clase, Some(cuaderno::Clase::Imagen));
+    assert_eq!(linea.ruta.as_deref(), Some("archivos/fachada \u{f1}.PNG"));
+    let ficha = n
+        .chats()
+        .unwrap()
+        .into_iter()
+        .find(|f| f.id == obra.id)
+        .unwrap();
+    assert_eq!(ficha.resumen, "plano: v2.pdf");
+
+    // Lo que no vale: un chat que no esta (sin dejar fichero), un origen
+    // que no esta o que es una carpeta, rutas con `..`.
+    assert!(matches!(
+        n.adjuntar("no-esta".into(), foto.display().to_string(), None),
+        Err(ErrorNucleo::NoExiste { .. })
+    ));
+    assert!(!almacen::carpeta(&raiz, "no-esta").exists());
+    assert!(matches!(
+        n.adjuntar(
+            obra.id.clone(),
+            fuera.join("nada").display().to_string(),
+            None
+        ),
+        Err(ErrorNucleo::NoExiste { .. })
+    ));
+    assert!(matches!(
+        n.adjuntar(obra.id.clone(), fuera.display().to_string(), None),
+        Err(ErrorNucleo::Argumento { .. })
+    ));
+    assert!(matches!(
+        n.adjuntar("../x".into(), foto.display().to_string(), None),
+        Err(ErrorNucleo::Argumento { .. })
+    ));
+    for mala in [
+        "",
+        "../otro/guardados.jsonl",
+        "archivos/../../x",
+        "/etc/passwd",
+        "C:\\x",
+    ] {
+        assert!(
+            matches!(
+                n.ruta_absoluta(obra.id.clone(), mala.into()),
+                Err(ErrorNucleo::Argumento { .. })
+            ),
+            "{mala:?}"
+        );
+    }
+}
+
+#[test]
+fn las_fotos_de_un_lienzo_salen_con_su_ruta_absoluta() {
+    let t = Temporal::nueva("fotos-lienzo");
+    let n = t.nucleo("Mac");
+    let raiz = PathBuf::from(n.raiz());
+    let fichero = almacen::lienzo(&raiz, "p1", "d1");
+    std::fs::create_dir_all(fichero.parent().unwrap()).unwrap();
+    std::fs::write(&fichero, LIENZO).unwrap();
+    let l = n.abrir_lienzo("p1".into(), "d1".into()).unwrap();
+    let fotos = n.imagenes_del_lienzo("p1".into(), Arc::clone(&l)).unwrap();
+    assert_eq!(fotos.len(), 1);
+    assert_eq!(fotos[0].id_objeto, l.imagenes()[0].id_objeto);
+    assert_eq!(
+        PathBuf::from(&fotos[0].ruta),
+        almacen::carpeta(&raiz, "p1").join("imagenes/7xJoKC")
+    );
+    // Es lo mismo que resolver la relativa a mano.
+    assert_eq!(
+        n.ruta_absoluta("p1".into(), "imagenes/7xJoKC".into())
+            .unwrap(),
+        fotos[0].ruta
+    );
+    // Una foto con una ruta de otro disco no sale.
+    let ajena = LIENZO.replace("imagenes/7xJoKC", "/sdcard/x.png");
+    let l2 = Lienzo::de_json(ajena).unwrap();
+    assert!(n.imagenes_del_lienzo("p1".into(), l2).unwrap().is_empty());
+}
+
+#[test]
 fn dos_aparatos_se_unen_y_sincronizan_por_la_red() {
     let t = Temporal::nueva("sincro");
     let pc = t.nucleo("PC");
