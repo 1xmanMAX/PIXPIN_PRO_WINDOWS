@@ -157,6 +157,36 @@ defecto** (§7.2).
 
 ---
 
+## 4bis. Principio rector: máximo rendimiento con mínimos recursos
+
+Pedido del usuario (15-oct): una app **súper optimizada que no sacrifica nada**: gran
+rendimiento, poca RAM y poco consumo, con optimizaciones inteligentes. Es la misma regla de la
+versión de Windows (la máquina suelo es un Core i3 de 3.ª generación con 4 GB). En Apple se
+traduce en reglas concretas que todo el trabajo debe seguir:
+
+1. **Cruzar el puente Rust↔Swift pocas veces y con mucho dentro.** Nada de una llamada por
+   figura o por mensaje: lotes. El lienzo cruza como **un solo búfer plano** de números
+   (`Vec<f32>` con las órdenes de `motor2d::pintado` empaquetadas) que Swift recorre para
+   construir sus `CGPath`; los chats, por páginas.
+2. **Nada en memoria que no se vea.** Listas y chats paginados y perezosos (`LazyVStack`,
+   miniaturas con `CGImageSourceCreateThumbnailAtIndex` en vez de decodificar la foto
+   entera), cachés con tope y que se vacían con el aviso de memoria del sistema
+   (`didReceiveMemoryWarning` / `DispatchSource.makeMemoryPressureSource`).
+3. **El trabajo pesado, fuera del hilo de la interfaz y con prioridad baja** (`QoS .utility` /
+   `.background`): sincronizar, indexar, OCR, transcribir. En portátiles y en iPhone, el
+   sistema lo manda a los núcleos de eficiencia.
+4. **Lo que hace el hardware, que lo haga el hardware:** vídeo y HEIC por VideoToolbox/ImageIO,
+   OCR y recortes por el Neural Engine (Vision), dibujo por Metal/Core Animation. Sin
+   decodificadores en software si hay uno en silicio.
+5. **Cero copias cuando se pueda:** ficheros con `mmap` (`Data(contentsOf:options:.alwaysMapped)`
+   en Swift, `memmap` en Rust para PDFs y planos grandes), imágenes como `IOSurface`
+   compartidas entre la captura y el pin.
+6. **Nada corriendo sin motivo:** sin temporizadores sondeando; Bonjour y FSEvents avisan.
+   La sincronización automática espera a que el usuario se quede quieto (como `QUIETO` en
+   Windows) y respeta el modo de bajo consumo (`ProcessInfo.isLowPowerModeEnabled`).
+7. **Se mide, no se supone:** cada fase trae sus cifras (RAM en reposo, tiempo de arranque,
+   fotogramas al dibujar) con Instruments, y una cifra que empeora se trata como un fallo.
+
 ## 5. Plan de implementación
 
 Cada fase deja algo que funciona y se puede probar. Las fases 0 y 1 mejoran también la versión

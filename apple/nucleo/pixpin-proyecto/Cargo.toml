@@ -16,6 +16,9 @@ pixpin-sistema = { version = "0.1.0", path = "../pixpin-sistema" }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0"
 thiserror = "2.0"
+# Nombres de fichero siempre en NFC (`almacen::nombre_seguro`): el Mac los da
+# en NFD y la sincronizacion compara rutas byte a byte.
+unicode-normalization = "0.1.25"
 # Solo `deflate`: un `.pixpin` no lleva cifrado ni formatos raros, y cada
 # metodo de compresion de mas es codigo que hay que arrastrar sin usarlo.
 zip = { version = "2.2", default-features = false, features = ["deflate"] }

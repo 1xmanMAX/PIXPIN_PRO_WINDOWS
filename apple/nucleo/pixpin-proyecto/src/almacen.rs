@@ -143,10 +143,16 @@ pub fn lienzo(raiz: &Path, id: &str, dibujo: &str) -> PathBuf {
 /// disco: sin separadores, sin los signos que Windows prohibe y sin los
 /// nombres reservados. Un nombre que venga de fuera no puede decidir donde
 /// se escribe.
+///
+/// Y siempre en **NFC** («ñ» como un solo signo): el Finder del Mac entrega
+/// los nombres en NFD («n» + «~»), Windows y Android en NFC, y la
+/// sincronizacion compara rutas byte a byte. Sin esto, la misma foto
+/// arrastrada en el Mac y en el PC serian dos ficheros distintos.
 pub fn nombre_seguro(nombre: &str) -> String {
+    use unicode_normalization::UnicodeNormalization;
     const PROHIBIDOS: &[char] = &['<', '>', ':', '"', '/', '\\', '|', '?', '*'];
     let limpio: String = nombre
-        .chars()
+        .nfc()
         .map(|c| {
             if PROHIBIDOS.contains(&c) || (c as u32) < 0x20 {
                 '_'
@@ -1860,6 +1866,19 @@ mod pruebas {
         assert_eq!(nombre_seguro("   "), "archivo");
         // Y uno normal se queda como esta, acentos incluidos.
         assert_eq!(nombre_seguro("Plano fachada ñ.pdf"), "Plano fachada ñ.pdf");
+    }
+
+    #[test]
+    fn un_nombre_del_finder_en_nfd_queda_igual_que_el_de_windows() {
+        // «Diseño ó.pdf» escrito como lo da el Finder: n + virgulilla
+        // combinable, o + tilde combinable.
+        let nfd = "Disen\u{303}o o\u{301}.pdf";
+        let nfc = "Diseño ó.pdf";
+        assert_ne!(nfd.as_bytes(), nfc.as_bytes());
+        assert_eq!(nombre_seguro(nfd), nfc);
+        assert_eq!(nombre_seguro(nfc), nfc);
+        // Caso negativo: lo que ya era ASCII no cambia ni un byte.
+        assert_eq!(nombre_seguro("plano-2026_v3.dwg"), "plano-2026_v3.dwg");
     }
 
     #[test]
