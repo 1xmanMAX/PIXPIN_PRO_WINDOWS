@@ -208,6 +208,13 @@ pub fn de_argumentos(args: &[String], es_fichero: &dyn Fn(&Path) -> bool) -> Opt
             Some(u) => de_enlace(u).map(|l| Llamada { sin_arrancar, ..l }),
             None => Err(Fallo::no_se_entiende("falta el enlace detras de --url")),
         },
+        // `--atajo url "<enlace>"`: como registraban el protocolo los avisos
+        // con botones (`notificacion`, 15-oct) antes de unirse aqui. Es un
+        // alias de `--url`: el mismo traductor y la misma lista blanca.
+        "--atajo" if resto.first().map(String::as_str) == Some(crate::jump_list::URL) => match resto.get(1) {
+            Some(u) => de_enlace(u).map(|l| Llamada { sin_arrancar, ..l }),
+            None => Err(Fallo::no_se_entiende("falta el enlace detras de --atajo url")),
+        },
         "--ayuda" | "--help" | "-h" | "-?" | "/?" => Ok(Llamada { orden: Orden::Ayuda, origen: Origen::Consola, sin_arrancar }),
         u if es_enlace(u) => de_enlace(u).map(|l| Llamada { sin_arrancar, ..l }),
         // Las ordenes internas de la app no son nuestras.
@@ -456,19 +463,53 @@ pub fn codificar(t: &str) -> String {
     s
 }
 
-/// El esquema con que la app arma sus enlaces ([`enlace`]). `pixpinmax` y
-/// no `pixpin`: en este PC (15-oct) `pixpin://` ya lo tiene registrado el
-/// PixPin original de DepthPixel (`…\Programs\PixPin\PixPin.exe`), y un
-/// boton de aviso con `pixpin://` abriria ese otro programa. Si algun dia
-/// `pixpin://` es nuestro en todos los equipos (`integraciones.ps1
-/// -TomarPixpin`), basta cambiar esto: el traductor y la lista blanca son
-/// los mismos para los dos.
-pub const ESQUEMA_DE_LA_CASA: &str = "pixpinmax";
+/// **El esquema de la casa**: con el que la app arma sus enlaces
+/// ([`enlace`], los botones de los avisos de `notificacion`). Es `pixpin`
+/// (el de Android) cuando `pixpin://` es nuestro o esta libre; si lo tiene
+/// otro programa —en este PC (15-oct) lo registra el PixPin original de
+/// DepthPixel, `…\Programs\PixPin\PixPin.exe`—, `pixpinmax`, que siempre es
+/// nuestro: un boton con `pixpin://` abriria ese otro programa. Los dos
+/// pasan por el mismo traductor ([`de_enlace`]) y la misma lista blanca
+/// ([`seguridad`]). Se mira el registro una vez por proceso.
+pub fn esquema_de_la_casa() -> &'static str {
+    static ESQUEMA: std::sync::OnceLock<&'static str> = std::sync::OnceLock::new();
+    ESQUEMA.get_or_init(|| if pixpin_es_nuestro_o_libre() { "pixpin" } else { "pixpinmax" })
+}
 
-/// Arma un enlace `pixpinmax://<verbo>?campo=valor…` (sin firmar), con
-/// [`ESQUEMA_DE_LA_CASA`].
+/// Si `pixpin://` esta libre o lo abre un `pixpinmax.exe` (lo mismo que
+/// mira `herramientas/integraciones.ps1` antes de tomarlo).
+pub fn pixpin_es_nuestro_o_libre() -> bool {
+    match orden_del_protocolo("pixpin") {
+        None => true,
+        Some(o) => o.to_lowercase().contains("pixpinmax.exe"),
+    }
+}
+
+/// La orden con que Windows abre un protocolo (`HKCU`/`HKLM` combinados,
+/// `HKEY_CLASSES_ROOT`), si hay.
+pub fn orden_del_protocolo(esquema: &str) -> Option<String> {
+    use windows::Win32::System::Registry::{HKEY_CLASSES_ROOT, RRF_RT_REG_SZ, RegGetValueW};
+    let clave = windows::core::HSTRING::from(format!(r"{esquema}\shell\open\command"));
+    let mut bytes = 0u32;
+    // SAFETY: primero se pregunta el tamano (sin buffer); la clave es una
+    // HSTRING viva durante las llamadas.
+    unsafe { RegGetValueW(HKEY_CLASSES_ROOT, &clave, None, RRF_RT_REG_SZ, None, None, Some(&mut bytes)) }.ok().ok()?;
+    let mut buf = vec![0u16; (bytes as usize).div_ceil(2).max(1)];
+    // SAFETY: `buf` mide lo que dijo Windows y vive durante la llamada.
+    unsafe { RegGetValueW(HKEY_CLASSES_ROOT, &clave, None, RRF_RT_REG_SZ, None, Some(buf.as_mut_ptr() as *mut _), Some(&mut bytes)) }.ok().ok()?;
+    let fin = buf.iter().position(|c| *c == 0).unwrap_or(buf.len());
+    Some(String::from_utf16_lossy(&buf[..fin]))
+}
+
+/// Arma un enlace `<esquema de la casa>://<verbo>?campo=valor…` (sin
+/// firmar).
 pub fn enlace(verbo: &str, campos: &[(&str, &str)]) -> String {
-    let mut s = format!("{ESQUEMA_DE_LA_CASA}://{verbo}");
+    enlace_con(esquema_de_la_casa(), verbo, campos)
+}
+
+/// [`enlace`] con un esquema dado (las pruebas).
+pub fn enlace_con(esquema: &str, verbo: &str, campos: &[(&str, &str)]) -> String {
+    let mut s = format!("{esquema}://{verbo}");
     for (i, (k, v)) in campos.iter().enumerate() {
         s.push(if i == 0 { '?' } else { '&' });
         s.push_str(&codificar(k));
@@ -499,7 +540,13 @@ pub enum Seguridad {
 /// **La lista blanca** de lo que un enlace sin firmar puede pedir sin
 /// preguntar. Nada borra, nada corre automatizaciones, nada sincroniza ni
 /// manda al movil, nada graba el microfono y nada abre una ruta del disco.
-pub const SEGURAS: [&str; 14] = [
+///
+/// Es **la unica** lista: la de los botones de los avisos
+/// (`notificacion::permitido`, la Jump List) es esta misma. De ellos vienen
+/// las tres ultimas: marcar una tarea, posponer un recordatorio y conservar
+/// una captura (que la app solo hace con una ruta de su carpeta de capturas,
+/// `pedidos::captura_de`; una de red sigue sin pasar).
+pub const SEGURAS: [&str; 17] = [
     "abrir",
     "chat",
     "nota_nueva",
@@ -514,6 +561,9 @@ pub const SEGURAS: [&str; 14] = [
     "soltar",
     "pinear",
     "pinear_ultima",
+    "marcar_tarea",
+    "posponer",
+    "conservar_captura",
 ];
 
 /// **Cuanto se fia uno de un pedido llegado por enlace.** Se mira el pedido
@@ -532,7 +582,7 @@ pub fn seguridad(pedido: &Value) -> Seguridad {
     if accion == "automatizacion" && pedido.get("operacion").and_then(Value::as_str) == Some("crear") {
         return Seguridad::Prohibida("crear-automatizacion".into());
     }
-    if !rutas.is_empty() {
+    if !rutas.is_empty() && accion != "conservar_captura" {
         return Seguridad::Confirmar("ficheros".into());
     }
     let vacio = |c: &str| pedido.get(c).is_none_or(|v| v.is_null() || v.as_str().is_some_and(|s| s.trim().is_empty()) || v.as_array().is_some_and(|a| a.is_empty()));

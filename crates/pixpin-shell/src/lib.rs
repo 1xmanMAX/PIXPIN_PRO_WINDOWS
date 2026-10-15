@@ -40,6 +40,7 @@ pub mod marco_zona;
 pub mod mdns;
 pub mod mensajero;
 pub mod orden;
+pub mod notificacion;
 pub mod overlay;
 pub mod pantalla_de;
 pub mod papelera;

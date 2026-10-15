@@ -103,6 +103,7 @@ pub mod lienzo;
 pub mod modelos;
 pub mod motor;
 pub mod nube;
+pub mod ojos;
 pub mod pizarra;
 pub mod relevo;
 pub mod pensar;

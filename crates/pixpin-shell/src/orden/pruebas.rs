@@ -351,7 +351,7 @@ fn codificar_y_descodificar_van_y_vuelven() {
     for t in ["comprar yeso", "año ñu — 2 kg", "a&b=c?d/e%f+g", "C:\\obra\\plano.pdf"] {
         assert_eq!(descodificar(&codificar(t), true).unwrap(), t);
     }
-    assert_eq!(enlace("tarea", &[("texto", "a b&c")]), "pixpinmax://tarea?texto=a%20b%26c");
+    assert_eq!(enlace_con("pixpinmax", "tarea", &[("texto", "a b&c")]), "pixpinmax://tarea?texto=a%20b%26c");
     assert_eq!(pedidos_del_enlace(&enlace("tarea", &[("texto", "a b&c")]))[0]["texto"], json!("a b&c"));
 }
 
@@ -367,4 +367,30 @@ fn pixpinmax_y_pixpin_son_el_mismo_enlace() {
         assert!(!es_enlace(u) || u.starts_with("pixpinmaxi"), "{u}");
     }
     assert_eq!(de_enlace("pixpinmaxi://capturar").unwrap_err().codigo, codigo::NO_SE_ENTIENDE);
+}
+
+#[test]
+fn una_sola_lista_blanca_para_enlaces_y_botones_de_avisos() {
+    // Lo de los botones de los avisos (`notificacion`) pasa directo...
+    for p in [
+        json!({"pixpin":1,"accion":"marcar_tarea","codigo":"L","indice":0,"hecha":true}),
+        json!({"pixpin":1,"accion":"posponer","proyecto":"p","mensaje":"m","minutos":10}),
+        json!({"pixpin":1,"accion":"conservar_captura","ruta":r"C:\c\captura-1.png"}),
+    ] {
+        assert_eq!(seguridad(&p), Seguridad::Directa, "{p}");
+        assert!(crate::notificacion::permitido(&p), "{p}");
+    }
+    // ...pero conservar una captura de red, no.
+    let red = json!({"pixpin":1,"accion":"conservar_captura","ruta":r"\\srv\c.png"});
+    assert!(matches!(seguridad(&red), Seguridad::Prohibida(_)));
+    assert!(!crate::notificacion::permitido(&red));
+    // `pixpinmax:pedido?json=` (la sena de los avisos) es un alias del mismo
+    // traductor, tambien por `--atajo url`.
+    let sena = crate::notificacion::sena_con("pixpinmax", &json!({"pixpin":1,"accion":"capturar"}));
+    assert_eq!(pedidos_del_enlace(&sena), vec![json!({"pixpin":1,"accion":"capturar"})]);
+    let l = orden(&["--atajo", "url", &sena]).unwrap();
+    assert_eq!(l.orden, Orden::Pedidos(vec![json!({"pixpin":1,"accion":"capturar"})]));
+    assert!(matches!(l.origen, Origen::Enlace { .. }));
+    // `--atajo capturar` (la Jump List) sigue siendo cosa del arranque.
+    assert!(de_argumentos(&args(&["--atajo", "capturar"]), &existe).is_none());
 }

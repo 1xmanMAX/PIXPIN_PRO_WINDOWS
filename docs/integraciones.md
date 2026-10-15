@@ -152,7 +152,7 @@ pixpinmax://pedido?json=%7B%22pixpin%22%3A1%2C%22accion%22%3A%22capturar%22%7D
   también el **PixPin original de DepthPixel** si está instalado (en este equipo lo está:
   `…\Programs\PixPin\PixPin.exe`); `integraciones.ps1` **no se lo quita** (rompería sus
   enlaces) y solo lo toma si está libre o ya era nuestro, o con `-TomarPixpin`. Por eso los
-  enlaces que hace el PC (`orden::enlace`, con `orden::ESQUEMA_DE_LA_CASA`) son `pixpinmax://`. `pixpinmax:pedido?json=…` (sin barras) también vale: pasa por el mismo traductor y la misma lista blanca.
+  enlaces que hace el PC (`orden::enlace`, los botones de los avisos: `notificacion::sena`) usan `orden::esquema_de_la_casa()`: `pixpin://` si es nuestro o está libre, `pixpinmax://` si no (en este equipo, `pixpinmax://`). La app, al arrancar (`notificacion::registrar`), da de alta `pixpinmax://` y también `pixpin://` con la misma regla. `pixpinmax:pedido?json=…` (sin barras) también vale: pasa por el mismo traductor y la misma lista blanca.
 - Mayúsculas en el esquema o el verbo, `%20` o `+`, una barra final: da igual. Un campo repetido:
   vale el primero. Un `%` mal escrito o UTF-8 roto: 3. Más de 16 KB: 3.
 - Los verbos `ocr`, `al-movil` y `ayuda` no se pueden pedir por enlace (6).
@@ -165,12 +165,16 @@ Un enlace lo puede lanzar cualquier página web (el navegador pregunta antes, pe
 
 | | Qué | Cómo |
 |---|---|---|
-| **Directa** | `abrir` (proyecto, mensaje, hoja, nota), `chat`, `nota_nueva`, `lienzo_nuevo`, `lista_nueva`, `anadir_tarea`, `ventana_principal`, `ventana`, `capturar`, `lecciones`, `leccion_nueva`, `soltar`, `pinear` de un mensaje del chat, `pinear_ultima`, `asistente` sin pedido (abre su chat) | Se hace sin preguntar |
+| **Directa** | `abrir` (proyecto, mensaje, hoja, nota), `chat`, `nota_nueva`, `lienzo_nuevo`, `lista_nueva`, `anadir_tarea`, `ventana_principal`, `ventana`, `capturar`, `lecciones`, `leccion_nueva`, `soltar`, `pinear` de un mensaje del chat, `pinear_ultima`, `marcar_tarea`, `posponer`, `conservar_captura` (los botones de los avisos), `asistente` sin pedido (abre su chat) | Se hace sin preguntar |
 | **Pregunta** | Todo lo que lleva una ruta del disco (`abrir` un fichero, `pinear` una ruta, imágenes…), `asistente` con un pedido (puede hacer cosas), `grabar` (el micrófono), `sincronizar` y `enviar_al_movil`, `automatizacion` (activar, apagar, correr, borrar), lo que borra o quita, y cualquier acción que no esté en la lista | Un cuadro por encima de todo con lo que se pide, por qué pregunta y «No» por defecto |
 | **Nunca** | Una ruta que no es de una unidad de este equipo (`\\servidor\…`, `//…`, `\\?\…`, `file:`, relativa): Windows le daría las credenciales del usuario al servidor solo por mirarla. Crear una automatización | Un cuadro que dice que no se hizo nada (6) |
 
 Una acción nueva del protocolo **pregunta** hasta que alguien la ponga a propósito en
 `orden::SEGURAS` (lo comprueba `toda_accion_del_protocolo_tiene_su_seguridad`).
+
+### Una sola lista blanca
+
+Los avisos con botones (`notificacion`, rama flow-asistente) usan este mismo protocolo: sus botones (`marcar_tarea`, `posponer`, `conservar_captura` de una captura de la carpeta de capturas) están en `orden::SEGURAS`, `notificacion::permitido` y `pedido_de` llaman a `orden::seguridad` y `orden::de_enlace`, y `--atajo url` es un alias de `--url`.
 
 ### Los enlaces firmados (para los avisos con botones)
 

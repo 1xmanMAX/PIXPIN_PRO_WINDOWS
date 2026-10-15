@@ -1,0 +1,51 @@
+# El servidor MCP de PixPin Max (`pixpin-mcp.exe`), en su propio ejecutable.
+#
+# Claude Desktop, Claude Code y cualquier cliente MCP lo arrancan y le hablan
+# JSON-RPC 2.0 por stdin/stdout (una linea por mensaje). Va aparte de
+# pixpinmax.exe para no costar nada cuando nadie lo usa: solo vive mientras el
+# cliente lo tiene abierto. Ver docs/integraciones-mcp.md.
+#
+# Sin SDK de MCP: el de Rust (rmcp) trae tokio y macros para algo que aqui son
+# cuatro metodos (`initialize`, `ping`, `tools/list`, `tools/call`) sobre
+# serde_json. Lo que escribe en PixPin va por el protocolo de pedidos
+# (pixpin-shell::mensajero) y lo que lee, con los crates de siempre.
+[package]
+name = "pixpin-mcp"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "pixpin-mcp"
+path = "src/main.rs"
+
+[dependencies]
+serde_json = "1.0"
+# La tabla de herramientas del asistente (un solo origen), las tareas, el
+# indice de documentos y el base64.
+pixpin-ia = { path = "../../crates/pixpin-ia" }
+# Los pedidos por WM_COPYDATA, la hora local, las ventanas que se ven y COM.
+pixpin-shell = { workspace = true }
+# Donde estan los datos (portable o %APPDATA%\PixPinMax).
+pixpin-store = { workspace = true }
+# Leer (solo leer) chats, listas de tareas y notas.
+pixpin-proyecto = { path = "../../crates/pixpin-proyecto" }
+# OCR de Windows y la captura por GPU, como la app.
+pixpin-ocr = { workspace = true }
+pixpin-capture = { workspace = true }
+pixpin-codec = { workspace = true }
+pixpin-geom = { workspace = true }
+# El texto de los documentos.
+pixpin-pdf = { workspace = true }
+pixpin-docs = { workspace = true }
+pixpin-office = { workspace = true }
+pixpin-hojas = { workspace = true }
+windows = { version = "0.62.2", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging", "Win32_UI_HiDpi"] }
+
+[dev-dependencies]
+# La ventana de mentira de las pruebas, que hace de PixPin.
+windows = { version = "0.62.2", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging", "Win32_System_DataExchange", "Win32_System_LibraryLoader"] }
