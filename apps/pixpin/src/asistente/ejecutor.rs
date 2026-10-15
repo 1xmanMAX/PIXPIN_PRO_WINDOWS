@@ -342,7 +342,9 @@ impl Ejecutor for EjecutorDelChat {
             | Llamada::Svg(_)
             | Llamada::Funciones(_)
             | Llamada::Ecuacion(_)
-            | Llamada::Cronograma(_) => self.al_lienzo(llamada),
+            | Llamada::Cronograma(_)
+            | Llamada::Fisica(_)
+            | Llamada::Problema(_) => self.al_lienzo(llamada),
             Llamada::Ocr(p) => {
                 let adjunto = super::ocr::elegir(&self.adjuntos, p.archivo.as_deref())?.clone();
                 let texto = super::ocr::leer(&adjunto.ruta, &p.paginas, &self.parar)?;
