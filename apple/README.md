@@ -98,7 +98,15 @@ pánico de Rust llega a Swift como error en vez de cerrar la app.
   - [ ] Transporte de Swift sobre `NWConnection` (hoy socket BSD de Rust, con IPv4 primero);
         el `suelto`, la galería y los chats con personas. La `Escucha` atiende una conexión
         cada vez: mientras dura una vuelta, una sonda de otro espera.
-  - [ ] Documentos (`docs`, `hojas`, `office`) en la API.
+  - [x] Documentos en la API (15-oct): `src/documentos.rs` (la tinta de cada hoja de un PDF,
+        Word o PowerPoint con `Nucleo::anotar_hoja` como un `EditorLienzo` en las unidades de
+        la hoja, guardada como Windows y Android: `anot-<uid>-p<n>` y su marco `.hoja`;
+        marcadores y espacios en `anot-<uid>.marcas`/`.espacios`; aumento y pagina en
+        `<doc>.pixpin-lectura`, que no viaja), `src/notas.rs` (`editar_nota`, el Markdown vivo
+        de `md_vivo` y las formulas `$…$`), `src/hojas.rs` (`HojaDeCalculo`: mini-app `tabla` y
+        `tablas/<ref>.json` del movil, formulas de `pixpin-proyecto`), `src/office.rs` (Word y
+        PowerPoint paginados por `pixpin-office`, midiendo con Core Text por `MedidorLetras`) y
+        `src/aligerar.rs` (pdfsqueeze: `aligerar_pdf` y `aligerar_en_su_sitio` como Windows).
   - [x] Lecciones en la API (`src/lecciones.rs`, por paginas con cache por fechas), ajustes
         de `pixpinmax.toml` que valen en los dos sistemas (`src/ajustes.rs`: dias de las
         capturas, sincronizacion sola y presencia, con `guardar_conservando`) y el asistente
@@ -152,6 +160,16 @@ pánico de Rust llega a Swift como error en vez de cerrar la app.
         deshacer, Vista Rápida), Timeline (días → momentos), Tareas de todos los chats y Buscar
         en todo (⌘F en Proyectos, espera de 200 ms y cancela la anterior).
   - [ ] Barrer las capturas caducadas a la Papelera del Mac (`FileManager.trashItem`).
+  - [x] Documentos (`app/Sources/PixPinKit/Documentos/`, falta verlo en verde en la CI):
+        Word, Excel, PowerPoint, ODF, RTF, CSV y EPUB al instante en un pin de Vista Rapida
+        (`QLPreviewView`); el lector como pin (PDFKit) con lapiz, resaltador, goma, marcadores,
+        espacios para anotar y pantalla completa (⌃⌘F o F11), tambien para Word y PowerPoint
+        paginados como Office; el editor de notas Markdown (`NSTextView`, formulas compuestas);
+        el de hojas de calculo (`NSTableView`, formato de celdas); aligerar PDF (menu del
+        mensaje y al entrar al chat, ajuste `[pdf]`) y «Abrir con PixPin» desde el Finder.
+        Falta: la tinta de un EPUB (en Windows va por columna reflujada, `anot-<uid>` con su
+        `.maqueta`), elegir texto de las hojas de Office con su enlace, y juntar la tinta si
+        cambia en el disco con el lector abierto (`lector_pdf/al_dia.rs`).
 - [ ] `por-adaptar/` → `nucleo/`:
   - [x] `pixpin-codec` (decodificar con `image`; WIC, vista reducida y portapapeles tras
         `#[cfg(windows)]`; ImageIO y `NSPasteboard` desde Swift).

@@ -208,6 +208,9 @@ struct Burbuja: View {
             switch mensaje.clase {
             case "NOTA":
                 Text(mensaje.texto).textSelection(.enabled)
+                    .modifier(AccionesDeNota(mensaje: mensaje, chat: chat, almacen: almacen))
+            case "TABLA", "MINIAPP" where BurbujaTabla.esTabla(mensaje):
+                BurbujaTabla(mensaje: mensaje, chat: chat, almacen: almacen)
             case "IMAGEN" where mensaje.ruta != nil:
                 BurbujaImagen(mensaje: mensaje, chat: chat, almacen: almacen)
             case "VOZ" where mensaje.ruta != nil:

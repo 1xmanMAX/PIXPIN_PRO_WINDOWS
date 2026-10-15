@@ -71,7 +71,11 @@ struct BurbujaArchivo: View {
             }
             .frame(maxWidth: 320, alignment: .leading)
             .contentShape(Rectangle())
-            .modifier(AccionesSiHay(url: url, nombre: mensaje.nombre))
+            .modifier(AccionesSiHay(url: url, nombre: mensaje.nombre, nucleo: almacen.nucleo))
+            // Un PDF que se esta aligerando (o como acabo).
+            if let url, TiposDeDocumento.clase(de: url) == .pdf {
+                EstadoAligerado(url: url)
+            }
             // El pie, o lo que se dijo en una nota de voz.
             if !mensaje.texto.isEmpty {
                 Text(mensaje.texto).textSelection(.enabled)
@@ -184,12 +188,16 @@ private func resolver(_ m: MensajeChat, _ chat: String, _ almacen: Almacen) asyn
 struct AccionesDeFichero: ViewModifier {
     let url: URL
     let nombre: String
+    /// Con el nucleo, los documentos se abren en el lector o en un pin
+    /// (`Documentos/`); sin el, con Vista Rapida.
+    var nucleo: Nucleo?
     @State private var vistaRapida: URL?
 
     func body(content: Content) -> some View {
         content
             .onTapGesture(count: 2) { abrir() }
             .contextMenu {
+                if let nucleo { MenuDeDocumento(url: url, nucleo: nucleo) }
                 Button("Vista rápida") { vistaRapida = url }
                 Button("Abrir") { NSWorkspace.shared.open(url) }
                 Button("Mostrar en el Finder") { NSWorkspace.shared.activateFileViewerSelecting([url]) }
@@ -208,6 +216,10 @@ struct AccionesDeFichero: ViewModifier {
         // Lo que Quick Look no sabe ensenar (un .dwg sin extension de vista
         // previa) lo abre su app.
         if FileManager.default.fileExists(atPath: url.path) {
+            // Un PDF, al lector con tinta; Word, Excel, PowerPoint..., a un pin.
+            if let nucleo, AbrirDocumento.abrir(url, nucleo: nucleo, titulo: nombre.isEmpty ? nil : nombre) {
+                return
+            }
             vistaRapida = url
         } else {
             NSSound.beep()
@@ -219,10 +231,11 @@ struct AccionesDeFichero: ViewModifier {
 struct AccionesSiHay: ViewModifier {
     let url: URL?
     let nombre: String
+    var nucleo: Nucleo?
     @ViewBuilder
     func body(content: Content) -> some View {
         if let url {
-            content.modifier(AccionesDeFichero(url: url, nombre: nombre))
+            content.modifier(AccionesDeFichero(url: url, nombre: nombre, nucleo: nucleo))
         } else {
             content
         }

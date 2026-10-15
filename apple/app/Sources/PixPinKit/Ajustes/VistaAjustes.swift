@@ -55,6 +55,7 @@ public struct VistaAjustes: View {
                 Text("Al aparecer un aparato del grupo en la Wi‑Fi y 30 s después de un cambio. Se pausa en modo de bajo consumo.")
                     .font(.caption).foregroundStyle(.secondary)
             }
+            SeccionAjustesPdf(nucleo: modelo.nucleo)
             Section("Datos") {
                 LabeledContent("Carpeta de datos") {
                     Text(modelo.carpetaDatos.path)

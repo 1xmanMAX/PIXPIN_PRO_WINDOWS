@@ -30,6 +30,39 @@
 	<string>PixPin captura la zona de la pantalla que eliges para copiarla, dejarla flotando o mandarla a un proyecto.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>PixPin graba notas de voz para tus proyectos.</string>
+	<!-- «Abrir con PixPin»: PDF al lector con tinta; Word, Excel, PowerPoint
+	     y compania, al instante en un pin de Vista Rapida. Sin quitarle el
+	     sitio a la app de cada tipo (Alternate). -->
+	<key>CFBundleDocumentTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeName</key><string>PDF</string>
+			<key>CFBundleTypeRole</key><string>Viewer</string>
+			<key>LSHandlerRank</key><string>Alternate</string>
+			<key>LSItemContentTypes</key>
+			<array><string>com.adobe.pdf</string></array>
+		</dict>
+		<dict>
+			<key>CFBundleTypeName</key><string>Documento de Office</string>
+			<key>CFBundleTypeRole</key><string>Viewer</string>
+			<key>LSHandlerRank</key><string>Alternate</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>org.openxmlformats.wordprocessingml.document</string>
+				<string>org.openxmlformats.spreadsheetml.sheet</string>
+				<string>org.openxmlformats.presentationml.presentation</string>
+				<string>com.microsoft.word.doc</string>
+				<string>com.microsoft.excel.xls</string>
+				<string>com.microsoft.powerpoint.ppt</string>
+				<string>org.oasis-open.opendocument.text</string>
+				<string>org.oasis-open.opendocument.spreadsheet</string>
+				<string>org.oasis-open.opendocument.presentation</string>
+				<string>public.rtf</string>
+				<string>public.comma-separated-values-text</string>
+				<string>org.idpf.epub-container</string>
+			</array>
+		</dict>
+	</array>
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>PixPin pasa tus notas de voz a texto en este Mac, sin enviarlas a internet.</string>
 </dict>

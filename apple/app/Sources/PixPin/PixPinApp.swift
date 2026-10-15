@@ -106,6 +106,8 @@ final class EstadoApp: ObservableObject {
             almacen = nil
             self.error = "\(error)"
         }
+        // «Abrir con PixPin» desde el Finder: PDF al lector, Office a un pin.
+        if let almacen { AbrirDesdeFinder.compartido.instalar(nucleo: almacen.nucleo) }
         let sincro = almacen.map { Sincronizador(nucleo: $0.nucleo) }
         self.sincro = sincro
         atajoCaptura = AtajoDeCaptura { capturador.capturar() }

@@ -29,8 +29,9 @@
 //! ([`Nucleo::hojas_con_tinta`] dice cuales tienen, sin leerlas) y cada
 //! editor pinta solo lo que cae en pantalla.
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use pixpin_docs::lectura;
 use pixpin_motor2d::marcas;
@@ -111,13 +112,43 @@ pub(crate) struct Donde {
     huella: String,
 }
 
+/// Cuanto vale lo ya mirado de si un PDF es de un proyecto: mirarlo lee el
+/// `proyecto.json` de cada chat, y el lector lo pregunta al abrir cada hoja.
+const VIGENCIA_DEL_PROYECTO: std::time::Duration = std::time::Duration::from_secs(30);
+
+type CacheProyectos = HashMap<PathBuf, (std::time::Instant, Option<String>)>;
+
+fn proyectos_vistos() -> &'static Mutex<CacheProyectos> {
+    static C: std::sync::OnceLock<Mutex<CacheProyectos>> = std::sync::OnceLock::new();
+    C.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+/// La ficha del proyecto de este PDF (`capas_del_pdf::de_este_pdf`), con
+/// lo mirado hace poco guardado (tope de 64 documentos).
+fn proyecto_de(raiz: &Path, doc: &Path) -> Option<String> {
+    let clave = doc.to_path_buf();
+    if let Ok(c) = proyectos_vistos().lock()
+        && let Some((cuando, ficha)) = c.get(&clave)
+        && cuando.elapsed() < VIGENCIA_DEL_PROYECTO
+    {
+        return ficha.clone();
+    }
+    let ficha = capas_del_pdf::de_este_pdf(raiz, doc).map(|p| p.ficha);
+    if let Ok(mut c) = proyectos_vistos().lock() {
+        if c.len() >= 64 {
+            c.retain(|_, (cuando, _)| cuando.elapsed() < VIGENCIA_DEL_PROYECTO);
+            if c.len() >= 64 {
+                c.clear();
+            }
+        }
+        c.insert(clave, (std::time::Instant::now(), ficha.clone()));
+    }
+    ficha
+}
+
 impl Donde {
     pub(crate) fn de(raiz: &Path, doc: &Path) -> Donde {
-        let proyecto = if es_pdf(doc) {
-            capas_del_pdf::de_este_pdf(raiz, doc).map(|p| p.ficha)
-        } else {
-            None
-        };
+        let proyecto = if es_pdf(doc) { proyecto_de(raiz, doc) } else { None };
         let adjunto = if proyecto.is_none() {
             an::adjunto_de(raiz, doc)
         } else {
