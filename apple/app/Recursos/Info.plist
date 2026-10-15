@@ -32,5 +32,60 @@
 	<string>PixPin graba notas de voz para tus proyectos.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>PixPin pasa tus notas de voz a texto en este Mac, sin enviarlas a internet.</string>
+	<!-- Planos (DWG, DXF) y modelos 3D (IFC, Revit, LandXML) con «Abrir con» desde el Finder:
+	     van al visor de Metal (Sources/PixPinKit/Planos). Solo como visor alternativo. -->
+	<key>UTImportedTypeDeclarations</key>
+	<array>
+		<dict>
+			<key>UTTypeIdentifier</key><string>com.autodesk.dwg</string>
+			<key>UTTypeDescription</key><string>Plano de AutoCAD</string>
+			<key>UTTypeConformsTo</key><array><string>public.data</string></array>
+			<key>UTTypeTagSpecification</key>
+			<dict><key>public.filename-extension</key><array><string>dwg</string></array></dict>
+		</dict>
+		<dict>
+			<key>UTTypeIdentifier</key><string>com.autodesk.dxf</string>
+			<key>UTTypeDescription</key><string>Plano DXF</string>
+			<key>UTTypeConformsTo</key><array><string>public.data</string></array>
+			<key>UTTypeTagSpecification</key>
+			<dict><key>public.filename-extension</key><array><string>dxf</string></array></dict>
+		</dict>
+		<dict>
+			<key>UTTypeIdentifier</key><string>org.buildingsmart.ifc</string>
+			<key>UTTypeDescription</key><string>Modelo IFC</string>
+			<key>UTTypeConformsTo</key><array><string>public.data</string></array>
+			<key>UTTypeTagSpecification</key>
+			<dict><key>public.filename-extension</key><array><string>ifc</string></array></dict>
+		</dict>
+		<dict>
+			<key>UTTypeIdentifier</key><string>com.autodesk.rvt</string>
+			<key>UTTypeDescription</key><string>Modelo de Revit</string>
+			<key>UTTypeConformsTo</key><array><string>public.data</string></array>
+			<key>UTTypeTagSpecification</key>
+			<dict><key>public.filename-extension</key><array><string>rvt</string></array></dict>
+		</dict>
+		<dict>
+			<key>UTTypeIdentifier</key><string>org.landxml.landxml</string>
+			<key>UTTypeDescription</key><string>LandXML de Civil 3D</string>
+			<key>UTTypeConformsTo</key><array><string>public.xml</string></array>
+			<key>UTTypeTagSpecification</key>
+			<dict><key>public.filename-extension</key><array><string>landxml</string></array></dict>
+		</dict>
+	</array>
+	<key>CFBundleDocumentTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeName</key><string>Plano de AutoCAD</string>
+			<key>CFBundleTypeRole</key><string>Viewer</string>
+			<key>LSHandlerRank</key><string>Alternate</string>
+			<key>LSItemContentTypes</key><array><string>com.autodesk.dwg</string><string>com.autodesk.dxf</string></array>
+		</dict>
+		<dict>
+			<key>CFBundleTypeName</key><string>Modelo BIM</string>
+			<key>CFBundleTypeRole</key><string>Viewer</string>
+			<key>LSHandlerRank</key><string>Alternate</string>
+			<key>LSItemContentTypes</key><array><string>org.buildingsmart.ifc</string><string>com.autodesk.rvt</string><string>org.landxml.landxml</string></array>
+		</dict>
+	</array>
 </dict>
 </plist>

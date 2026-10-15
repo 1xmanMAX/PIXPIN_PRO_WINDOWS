@@ -21,7 +21,7 @@ Y además, el puente con Swift:
 
 | Carpeta | Qué hay |
 |---|---|
-| [`nucleo/pixpin-nucleo`](nucleo/pixpin-nucleo) | La API para Swift con **UniFFI**: abrir una carpeta de datos (`Nucleo`), chats y mensajes **por páginas**, escribir una nota, guardar una nota de voz y su texto (`adjuntar_voz`, `poner_transcripcion`), editar un lienzo (`EditorLienzo`), ajustes, lecciones y el asistente, adjuntar un fichero (`adjuntar`: se copia con `guardar_adjunto` y la clase de `clase_de_nombre`, como al soltarlo en Windows) y resolver su ruta (`ruta_absoluta`, `imagenes_del_lienzo`), el lienzo como **un solo búfer plano** de `f32` (formato en `src/lienzo.rs`), sincronizar por TCP (unirse a un grupo, una vuelta, escuchar), la **galería de capturas** por páginas con su caducidad (conservar, 7 días más, borrar y devolver: los ficheros de Windows), el **timeline** (días y momentos por páginas), las **tareas** de todos los chats (marcar, apuntar en el Inbox) y **buscar en todo** (por páginas y cancelable). |
+| [`nucleo/pixpin-nucleo`](nucleo/pixpin-nucleo) | La API para Swift con **UniFFI**: abrir una carpeta de datos (`Nucleo`), chats y mensajes **por páginas**, escribir una nota, guardar una nota de voz y su texto (`adjuntar_voz`, `poner_transcripcion`), editar un lienzo (`EditorLienzo`), ajustes, lecciones y el asistente, adjuntar un fichero (`adjuntar`: se copia con `guardar_adjunto` y la clase de `clase_de_nombre`, como al soltarlo en Windows) y resolver su ruta (`ruta_absoluta`, `imagenes_del_lienzo`), el lienzo como **un solo búfer plano** de `f32` (formato en `src/lienzo.rs`), sincronizar por TCP (unirse a un grupo, una vuelta, escuchar), la **galería de capturas** por páginas con su caducidad (conservar, 7 días más, borrar y devolver: los ficheros de Windows), el **timeline** (días y momentos por páginas), las **tareas** de todos los chats (marcar, apuntar en el Inbox), **buscar en todo** (por páginas y cancelable) y los **planos y modelos 3D** para Metal (`Nucleo::abrir_plano` → `Plano` por capas, `Modelo3dApple`, la cámara `camara_*`: búferes de bytes con la disposición `#[repr(C)]` de `pixpin-cad`, documentada en `src/planos.rs` y `src/modelos3d.rs`). |
 | [`PixPinCore/`](PixPinCore) | El paquete Swift (`Package.swift`, macOS 15 / iOS 18): los enlaces generados y el `PixPinCoreFFI.xcframework` (no se versiona). |
 | [`herramientas/xcframework.sh`](herramientas/xcframework.sh) | En un Mac: compila las cuatro plataformas, genera los enlaces y hace el xcframework. |
 
@@ -145,6 +145,15 @@ pánico de Rust llega a Swift como error en vez de cerrar la app.
         (`caducidad_capturas.rs`).
   - [x] Lecciones (`Lecciones/`): lista por paginas, buscar, etiquetas (propuestas ✨),
         repaso y borrar, guardadas como en Windows y Android (`.leccion` + mensaje `ARCHIVO`).
+  - [ ] Planos y BIM (`Planos/`, a falta de probarlo en un Mac de verdad): visor de DWG/DXF en
+        Metal (los HLSL de Windows en MSL, compilados al vuelo con `makeLibrary(source:)` y las
+        tuberías guardadas), parado hasta que algo cambia; trackpad, capas, regla con enganche
+        (`Plano::enganchar`), cotas y marcos en la capa `anot-<uid>` + `.hoja` como Windows y
+        Android, imprimir en vectores (`NSPrintOperation`). Visor 3D (IFC, Revit, LandXML, puntos,
+        DWG en 3D) con la cámara de Rust, niveles, categorías, caja de sección con tapas y
+        elegir con un rayo en Rust. Se abren con doble clic en el chat y con «Abrir con» del
+        Finder. Falta: anotar a mano (la tinta de la capa solo se ve), la caché `.pxcad` de
+        Windows (aquí se lee por capas, sin caché) y las vistas guardadas del 3D.
   - [x] Asistente (`Asistente/`): Foundation Models con las herramientas del puente si hay
         macOS 26 (compila fuera con el SDK de macOS 15), si no un `llama-server` propio en
         127.0.0.1:8080, si no «no hay motor». Sin streaming; el Llavero aun no.
