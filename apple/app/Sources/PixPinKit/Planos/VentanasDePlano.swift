@@ -27,11 +27,11 @@ public final class VentanasDePlano: NSObject, NSWindowDelegate {
     private var memoria: DispatchSourceMemoryPressure?
 
     /// Las extensiones que pueden ser de un visor (las demas ni se miran).
-    static let extensiones: Set<String> = ["dwg", "dxf", "ifc", "rvt", "xml", "landxml",
+    nonisolated static let extensiones: Set<String> = ["dwg", "dxf", "ifc", "rvt", "xml", "landxml",
                                            "csv", "txt", "xyz", "pts", "pnezd", "penzd"]
 
     /// Que visor abre `url` (lee como mucho 8 KB para un `.xml` o `.csv`).
-    public static func clase(de url: URL) -> ClaseDeModelo {
+    nonisolated public static func clase(de url: URL) -> ClaseDeModelo {
         guard url.isFileURL, extensiones.contains(url.pathExtension.lowercased()) else { return .ninguna }
         return claseDeModelo(ruta: url.path)
     }

@@ -194,7 +194,7 @@ final class SincroCompletaTests: XCTestCase {
         dir.sin6_addr = in6addr_loopback
         let enlazado = withUnsafePointer(to: &dir) {
             $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
-                bind(s, $0, socklen_t(MemoryLayout<sockaddr_in6>.size))
+                Darwin.bind(s, $0, socklen_t(MemoryLayout<sockaddr_in6>.size))
             }
         }
         close(s)
