@@ -2788,6 +2788,275 @@ public func FfiConverterTypeLlaveroApp_lower(_ value: LlaveroApp) -> UInt64 {
 
 
 /**
+ * **Un modelo 3D abierto**, listo para Metal.
+ */
+public protocol Modelo3dAppleProtocol: AnyObject, Sendable {
+    
+    /**
+     * Las categorias, por su nombre en espanol.
+     */
+    func categorias()  -> [Categoria3d]
+    
+    /**
+     * **Lo que hay bajo el raton**: el triangulo mas cercano que corta el
+     * rayo desde `origen` hacia `direccion` (respecto al origen del modelo;
+     * ver [`camara_ojo`] y [`camara_rayo`]), entre lo que se ve con
+     * `filtro` y, con caja de seccion, solo dentro de ella.
+     */
+    func elegir(origen: Punto3d, direccion: Punto3d, filtro: Filtro3d, corte: Caja3d?)  -> Eleccion3d?
+    
+    /**
+     * Lo que se cuenta del elemento `id` (el `elemento` de sus vertices).
+     */
+    func elemento(id: UInt32)  -> InfoElemento3d?
+    
+    /**
+     * Todos los indices.
+     */
+    func indices()  -> Indices3d
+    
+    /**
+     * Los niveles, de abajo arriba (vacio si el modelo no los tiene).
+     */
+    func niveles()  -> [Nivel3d]
+    
+    func resumen()  -> ResumenModelo3d
+    
+    /**
+     * Los vertices (24 bytes cada uno). Se suben una vez.
+     */
+    func vertices()  -> Data
+    
+    /**
+     * Los indices de lo que se ve con `filtro`.
+     */
+    func visibles(filtro: Filtro3d)  -> Indices3d
+    
+}
+/**
+ * **Un modelo 3D abierto**, listo para Metal.
+ */
+open class Modelo3dApple: Modelo3dAppleProtocol, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_pixpin_nucleo_fn_clone_modelo3dapple(self.handle, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_pixpin_nucleo_fn_free_modelo3dapple(handle, $0) }
+    }
+
+    
+    /**
+     * **Abre un modelo 3D**: IFC, Revit, LandXML, puntos, o un DWG/DXF en
+     * 3D. Bloquea (un IFC grande tarda): Swift lo llama desde una `Task`.
+     * Leer un IFC usa un hilo aparte con pila grande (sus booleanas
+     * recurren hondo), que termina al terminar de leer.
+     */
+public static func abrir(ruta: String)throws  -> Modelo3dApple  {
+    return try  FfiConverterTypeModelo3dApple_lift(try rustCallWithError(FfiConverterTypeErrorNucleo_lift) {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_constructor_modelo3dapple_abrir(
+        FfiConverterString.lower(ruta),uniffiCallStatus
+    )
+})
+}
+    
+
+    
+    /**
+     * Las categorias, por su nombre en espanol.
+     */
+open func categorias() -> [Categoria3d]  {
+    return try!  FfiConverterSequenceTypeCategoria3d.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_modelo3dapple_categorias(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * **Lo que hay bajo el raton**: el triangulo mas cercano que corta el
+     * rayo desde `origen` hacia `direccion` (respecto al origen del modelo;
+     * ver [`camara_ojo`] y [`camara_rayo`]), entre lo que se ve con
+     * `filtro` y, con caja de seccion, solo dentro de ella.
+     */
+open func elegir(origen: Punto3d, direccion: Punto3d, filtro: Filtro3d, corte: Caja3d?) -> Eleccion3d?  {
+    return try!  FfiConverterOptionTypeEleccion3d.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_modelo3dapple_elegir(
+            self.uniffiCloneHandle(),
+        FfiConverterTypePunto3d_lower(origen),
+        FfiConverterTypePunto3d_lower(direccion),
+        FfiConverterTypeFiltro3d_lower(filtro),
+        FfiConverterOptionTypeCaja3d.lower(corte),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Lo que se cuenta del elemento `id` (el `elemento` de sus vertices).
+     */
+open func elemento(id: UInt32) -> InfoElemento3d?  {
+    return try!  FfiConverterOptionTypeInfoElemento3d.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_modelo3dapple_elemento(
+            self.uniffiCloneHandle(),
+        FfiConverterUInt32.lower(id),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Todos los indices.
+     */
+open func indices() -> Indices3d  {
+    return try!  FfiConverterTypeIndices3d_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_modelo3dapple_indices(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Los niveles, de abajo arriba (vacio si el modelo no los tiene).
+     */
+open func niveles() -> [Nivel3d]  {
+    return try!  FfiConverterSequenceTypeNivel3d.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_modelo3dapple_niveles(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+open func resumen() -> ResumenModelo3d  {
+    return try!  FfiConverterTypeResumenModelo3d_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_modelo3dapple_resumen(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Los vertices (24 bytes cada uno). Se suben una vez.
+     */
+open func vertices() -> Data  {
+    return try!  FfiConverterData.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_modelo3dapple_vertices(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Los indices de lo que se ve con `filtro`.
+     */
+open func visibles(filtro: Filtro3d) -> Indices3d  {
+    return try!  FfiConverterTypeIndices3d_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_modelo3dapple_visibles(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeFiltro3d_lower(filtro),uniffiCallStatus
+    )
+})
+}
+    
+
+    
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeModelo3dApple: FfiConverter {
+    typealias FfiType = UInt64
+    typealias SwiftType = Modelo3dApple
+
+    public static func lift(_ handle: UInt64) throws -> Modelo3dApple {
+        return Modelo3dApple(unsafeFromHandle: handle)
+    }
+
+    public static func lower(_ value: Modelo3dApple) -> UInt64 {
+        return value.uniffiCloneHandle()
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Modelo3dApple {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: Modelo3dApple, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeModelo3dApple_lift(_ handle: UInt64) throws -> Modelo3dApple {
+    return try FfiConverterTypeModelo3dApple.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeModelo3dApple_lower(_ value: Modelo3dApple) -> UInt64 {
+    return FfiConverterTypeModelo3dApple.lower(value)
+}
+
+
+
+
+
+
+/**
  * **Una carpeta de datos de PixPin abierta**: el objeto con el que trabaja
  * Swift. Es barato de crear y se puede usar desde varios hilos.
  */
@@ -3156,6 +3425,13 @@ public protocol NucleoProtocol: AnyObject, Sendable {
      * (hay que releer con [`Nucleo::documento_miniapp`]).
      */
     func guardarMiniapp(chat: String, mensaje: String, anterior: String, documento: String) throws  -> Bool
+    
+    /**
+     * **Abre un plano DWG o DXF** (por capas). Bloquea (un plano grande
+     * tarda segundos): Swift lo llama desde una `Task` de prioridad
+     * `.userInitiated`.
+     */
+    func abrirPlano(ruta: String) throws  -> Plano
     
     /**
      * **El anuncio de Bonjour de este aparato**, o `None` si no esta en
@@ -4178,6 +4454,21 @@ open func guardarMiniapp(chat: String, mensaje: String, anterior: String, docume
 }
     
     /**
+     * **Abre un plano DWG o DXF** (por capas). Bloquea (un plano grande
+     * tarda segundos): Swift lo llama desde una `Task` de prioridad
+     * `.userInitiated`.
+     */
+open func abrirPlano(ruta: String)throws  -> Plano  {
+    return try  FfiConverterTypePlano_lift(try rustCallWithError(FfiConverterTypeErrorNucleo_lift) {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_nucleo_abrir_plano(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(ruta),uniffiCallStatus
+    )
+})
+}
+    
+    /**
      * **El anuncio de Bonjour de este aparato**, o `None` si no esta en
      * ningun grupo (sin grupo no se anuncia: nadie sabria que hacer con el).
      * Hay que volver a pedirlo al crear un grupo o unirse a uno, que cambian
@@ -4767,6 +5058,393 @@ public func FfiConverterTypeOyenteIa_lower(_ value: OyenteIa) -> UInt64 {
 
 
 /**
+ * **Un plano DWG o DXF abierto**, listo para Metal. Se lee una vez
+ * ([`Nucleo::abrir_plano`]); despues todo son consultas baratas.
+ */
+public protocol PlanoProtocol: AnyObject, Sendable {
+    
+    /**
+     * **Las cotas y los marcos guardados en la capa** (los de Windows y
+     * Android), en el dibujo. Sin capa, nada.
+     */
+    func anotado()  -> AnotadoPlano
+    
+    /**
+     * Los buferes del grupo `indice` (ver la doc del modulo). Se piden una
+     * vez: ya en la tarjeta, [`Plano::soltar_dibujo`].
+     */
+    func buferes(indice: UInt32) throws  -> BuferesGrupo
+    
+    /**
+     * Las capas, por nombre (sin distinguir mayusculas), una vez cada una.
+     */
+    func capas()  -> [CapaPlano]
+    
+    /**
+     * Como cae esa capa en el dibujo (la cuenta de su `.hoja`).
+     */
+    func encaje()  -> EncajePlano
+    
+    /**
+     * **Donde cae la mira de la regla** en `(x, y)` (dibujo), a menos de
+     * `radio` (unidades del dibujo; Swift pasa unos pixeles por lo que mide
+     * un pixel), con el punto anterior `desde` (para la perpendicular). El
+     * orden, como AutoCAD (`regla::Rayas::ajustar`): un punto, la
+     * perpendicular, el punto mas cercano de una raya; si nada, libre. Solo
+     * mira lo que se ve.
+     */
+    func enganchar(x: Double, y: Double, radio: Double, desde: PuntoPlano?)  -> Enganche
+    
+    /**
+     * Los grupos, en orden de dibujo (por capa y grosor).
+     */
+    func grupos()  -> [GrupoPlano]
+    
+    /**
+     * Los grupos que se ven ahora.
+     */
+    func gruposVisibles()  -> [UInt32]
+    
+    /**
+     * **Guarda en la capa estas cotas y estos marcos** (los de ahora en el
+     * visor), como `CapaDelPlano.con`: lo que ya estaba igual se queda, lo
+     * nuevo entra y lo que ya no esta se marca borrado (y viaja como
+     * borrado). Primero la `.hoja` y luego la capa; un plano sin nada hecho
+     * no deja ficheros. Dice si cambio algo.
+     */
+    func guardarAnotado(anotado: AnotadoPlano) throws  -> Bool
+    
+    /**
+     * Enciende o apaga una capa. Dice si cambio algo.
+     */
+    func ponerCapa(nombre: String, encendida: Bool)  -> Bool
+    
+    /**
+     * Lo que se sabe del plano: cajas, unidades, cuantos grupos.
+     */
+    func resumen()  -> ResumenPlano
+    
+    /**
+     * La capa de tinta del plano (`.excalidraw`, la del motor del lienzo)
+     * para pintarla encima con `Lienzo::de_fichero`. Puede no existir.
+     */
+    func rutaDeLaCapa()  -> String
+    
+    /**
+     * Suelta en Rust lo que solo sirve para dibujar (rellenos, sombreados
+     * y letras) cuando ya esta en la tarjeta. La regla sigue funcionando.
+     */
+    func soltarDibujo() 
+    
+    /**
+     * Una medida del plano con sus decimales y su unidad (`12.346 m`).
+     */
+    func textoDeMedida(distancia: Double)  -> String
+    
+    /**
+     * Suelta los indices de la regla (el aviso de memoria del sistema); se
+     * rehacen al volver a medir.
+     */
+    func vaciarCaches() 
+    
+}
+/**
+ * **Un plano DWG o DXF abierto**, listo para Metal. Se lee una vez
+ * ([`Nucleo::abrir_plano`]); despues todo son consultas baratas.
+ */
+open class Plano: PlanoProtocol, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_pixpin_nucleo_fn_clone_plano(self.handle, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_pixpin_nucleo_fn_free_plano(handle, $0) }
+    }
+
+    
+
+    
+    /**
+     * **Las cotas y los marcos guardados en la capa** (los de Windows y
+     * Android), en el dibujo. Sin capa, nada.
+     */
+open func anotado() -> AnotadoPlano  {
+    return try!  FfiConverterTypeAnotadoPlano_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_plano_anotado(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Los buferes del grupo `indice` (ver la doc del modulo). Se piden una
+     * vez: ya en la tarjeta, [`Plano::soltar_dibujo`].
+     */
+open func buferes(indice: UInt32)throws  -> BuferesGrupo  {
+    return try  FfiConverterTypeBuferesGrupo_lift(try rustCallWithError(FfiConverterTypeErrorNucleo_lift) {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_plano_buferes(
+            self.uniffiCloneHandle(),
+        FfiConverterUInt32.lower(indice),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Las capas, por nombre (sin distinguir mayusculas), una vez cada una.
+     */
+open func capas() -> [CapaPlano]  {
+    return try!  FfiConverterSequenceTypeCapaPlano.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_plano_capas(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Como cae esa capa en el dibujo (la cuenta de su `.hoja`).
+     */
+open func encaje() -> EncajePlano  {
+    return try!  FfiConverterTypeEncajePlano_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_plano_encaje(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * **Donde cae la mira de la regla** en `(x, y)` (dibujo), a menos de
+     * `radio` (unidades del dibujo; Swift pasa unos pixeles por lo que mide
+     * un pixel), con el punto anterior `desde` (para la perpendicular). El
+     * orden, como AutoCAD (`regla::Rayas::ajustar`): un punto, la
+     * perpendicular, el punto mas cercano de una raya; si nada, libre. Solo
+     * mira lo que se ve.
+     */
+open func enganchar(x: Double, y: Double, radio: Double, desde: PuntoPlano?) -> Enganche  {
+    return try!  FfiConverterTypeEnganche_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_plano_enganchar(
+            self.uniffiCloneHandle(),
+        FfiConverterDouble.lower(x),
+        FfiConverterDouble.lower(y),
+        FfiConverterDouble.lower(radio),
+        FfiConverterOptionTypePuntoPlano.lower(desde),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Los grupos, en orden de dibujo (por capa y grosor).
+     */
+open func grupos() -> [GrupoPlano]  {
+    return try!  FfiConverterSequenceTypeGrupoPlano.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_plano_grupos(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Los grupos que se ven ahora.
+     */
+open func gruposVisibles() -> [UInt32]  {
+    return try!  FfiConverterSequenceUInt32.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_plano_grupos_visibles(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * **Guarda en la capa estas cotas y estos marcos** (los de ahora en el
+     * visor), como `CapaDelPlano.con`: lo que ya estaba igual se queda, lo
+     * nuevo entra y lo que ya no esta se marca borrado (y viaja como
+     * borrado). Primero la `.hoja` y luego la capa; un plano sin nada hecho
+     * no deja ficheros. Dice si cambio algo.
+     */
+open func guardarAnotado(anotado: AnotadoPlano)throws  -> Bool  {
+    return try  FfiConverterBool.lift(try rustCallWithError(FfiConverterTypeErrorNucleo_lift) {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_plano_guardar_anotado(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeAnotadoPlano_lower(anotado),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Enciende o apaga una capa. Dice si cambio algo.
+     */
+open func ponerCapa(nombre: String, encendida: Bool) -> Bool  {
+    return try!  FfiConverterBool.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_plano_poner_capa(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(nombre),
+        FfiConverterBool.lower(encendida),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Lo que se sabe del plano: cajas, unidades, cuantos grupos.
+     */
+open func resumen() -> ResumenPlano  {
+    return try!  FfiConverterTypeResumenPlano_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_plano_resumen(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * La capa de tinta del plano (`.excalidraw`, la del motor del lienzo)
+     * para pintarla encima con `Lienzo::de_fichero`. Puede no existir.
+     */
+open func rutaDeLaCapa() -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_plano_ruta_de_la_capa(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Suelta en Rust lo que solo sirve para dibujar (rellenos, sombreados
+     * y letras) cuando ya esta en la tarjeta. La regla sigue funcionando.
+     */
+open func soltarDibujo()  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_plano_soltar_dibujo(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * Una medida del plano con sus decimales y su unidad (`12.346 m`).
+     */
+open func textoDeMedida(distancia: Double) -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_plano_texto_de_medida(
+            self.uniffiCloneHandle(),
+        FfiConverterDouble.lower(distancia),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Suelta los indices de la regla (el aviso de memoria del sistema); se
+     * rehacen al volver a medir.
+     */
+open func vaciarCaches()  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_method_plano_vaciar_caches(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+}
+}
+    
+
+    
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypePlano: FfiConverter {
+    typealias FfiType = UInt64
+    typealias SwiftType = Plano
+
+    public static func lift(_ handle: UInt64) throws -> Plano {
+        return Plano(unsafeFromHandle: handle)
+    }
+
+    public static func lower(_ value: Plano) -> UInt64 {
+        return value.uniffiCloneHandle()
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Plano {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: Plano, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePlano_lift(_ handle: UInt64) throws -> Plano {
+    return try FfiConverterTypePlano.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePlano_lower(_ value: Plano) -> UInt64 {
+    return FfiConverterTypePlano.lower(value)
+}
+
+
+
+
+
+
+/**
  * **La puerta de quien envia** («Enviar por Wi-Fi»): el codigo de seis
  * cifras, su QR y su anuncio, y cada aparato que llega con el codigo bueno
  * espera a que se le apruebe. Se atiende desde un hilo de Swift con
@@ -5321,6 +5999,63 @@ public func FfiConverterTypeAjustesMac_lower(_ value: AjustesMac) -> RustBuffer 
 
 
 /**
+ * Las cotas y los marcos para imprimir de la capa del plano.
+ */
+public struct AnotadoPlano: Equatable, Hashable {
+    public var cotas: [CotaPlano]
+    public var marcos: [CajaPlano]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(cotas: [CotaPlano], marcos: [CajaPlano]) {
+        self.cotas = cotas
+        self.marcos = marcos
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension AnotadoPlano: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeAnotadoPlano: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AnotadoPlano {
+        return
+            try AnotadoPlano(
+                cotas: FfiConverterSequenceTypeCotaPlano.read(from: &buf), 
+                marcos: FfiConverterSequenceTypeCajaPlano.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: AnotadoPlano, into buf: inout [UInt8]) {
+        FfiConverterSequenceTypeCotaPlano.write(value.cotas, into: &buf)
+        FfiConverterSequenceTypeCajaPlano.write(value.marcos, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAnotadoPlano_lift(_ buf: RustBuffer) throws -> AnotadoPlano {
+    return try FfiConverterTypeAnotadoPlano.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAnotadoPlano_lower(_ value: AnotadoPlano) -> RustBuffer {
+    return FfiConverterTypeAnotadoPlano.lower(value)
+}
+
+
+/**
  * **Lo que este aparato anuncia en la red**, igual que Windows
  * (`anunciarse`) y Android (`Presencia`): la instancia `PixPin <nombre>`
  * del tipo `_pixpin._tcp` con el TXT `g` (etiqueta del grupo), `id`, `l`
@@ -5517,6 +6252,193 @@ public func FfiConverterTypeArchivoLlegado_lower(_ value: ArchivoLlegado) -> Rus
 
 
 /**
+ * Los buferes de un grupo, tal como van a la tarjeta (ver la doc del
+ * modulo).
+ */
+public struct BuferesGrupo: Equatable, Hashable {
+    public var vertices: Data
+    public var lineas: Data
+    public var triangulos: Data
+    public var verticesTrama: Data
+    public var triangulosTrama: Data
+    public var tramas: Data
+    public var familias: Data
+    public var mallaLetras: Data
+    public var glifos: Data
+    public var letras: Data
+    public var arcos: Data
+    public var tramosLineas: Data
+    public var tramosTriangulos: Data
+    public var tramosTrama: Data
+    public var tramosLetras: Data
+    public var tramosArcos: Data
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(vertices: Data, lineas: Data, triangulos: Data, verticesTrama: Data, triangulosTrama: Data, tramas: Data, familias: Data, mallaLetras: Data, glifos: Data, letras: Data, arcos: Data, tramosLineas: Data, tramosTriangulos: Data, tramosTrama: Data, tramosLetras: Data, tramosArcos: Data) {
+        self.vertices = vertices
+        self.lineas = lineas
+        self.triangulos = triangulos
+        self.verticesTrama = verticesTrama
+        self.triangulosTrama = triangulosTrama
+        self.tramas = tramas
+        self.familias = familias
+        self.mallaLetras = mallaLetras
+        self.glifos = glifos
+        self.letras = letras
+        self.arcos = arcos
+        self.tramosLineas = tramosLineas
+        self.tramosTriangulos = tramosTriangulos
+        self.tramosTrama = tramosTrama
+        self.tramosLetras = tramosLetras
+        self.tramosArcos = tramosArcos
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension BuferesGrupo: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeBuferesGrupo: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> BuferesGrupo {
+        return
+            try BuferesGrupo(
+                vertices: FfiConverterData.read(from: &buf), 
+                lineas: FfiConverterData.read(from: &buf), 
+                triangulos: FfiConverterData.read(from: &buf), 
+                verticesTrama: FfiConverterData.read(from: &buf), 
+                triangulosTrama: FfiConverterData.read(from: &buf), 
+                tramas: FfiConverterData.read(from: &buf), 
+                familias: FfiConverterData.read(from: &buf), 
+                mallaLetras: FfiConverterData.read(from: &buf), 
+                glifos: FfiConverterData.read(from: &buf), 
+                letras: FfiConverterData.read(from: &buf), 
+                arcos: FfiConverterData.read(from: &buf), 
+                tramosLineas: FfiConverterData.read(from: &buf), 
+                tramosTriangulos: FfiConverterData.read(from: &buf), 
+                tramosTrama: FfiConverterData.read(from: &buf), 
+                tramosLetras: FfiConverterData.read(from: &buf), 
+                tramosArcos: FfiConverterData.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: BuferesGrupo, into buf: inout [UInt8]) {
+        FfiConverterData.write(value.vertices, into: &buf)
+        FfiConverterData.write(value.lineas, into: &buf)
+        FfiConverterData.write(value.triangulos, into: &buf)
+        FfiConverterData.write(value.verticesTrama, into: &buf)
+        FfiConverterData.write(value.triangulosTrama, into: &buf)
+        FfiConverterData.write(value.tramas, into: &buf)
+        FfiConverterData.write(value.familias, into: &buf)
+        FfiConverterData.write(value.mallaLetras, into: &buf)
+        FfiConverterData.write(value.glifos, into: &buf)
+        FfiConverterData.write(value.letras, into: &buf)
+        FfiConverterData.write(value.arcos, into: &buf)
+        FfiConverterData.write(value.tramosLineas, into: &buf)
+        FfiConverterData.write(value.tramosTriangulos, into: &buf)
+        FfiConverterData.write(value.tramosTrama, into: &buf)
+        FfiConverterData.write(value.tramosLetras, into: &buf)
+        FfiConverterData.write(value.tramosArcos, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeBuferesGrupo_lift(_ buf: RustBuffer) throws -> BuferesGrupo {
+    return try FfiConverterTypeBuferesGrupo.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeBuferesGrupo_lower(_ value: BuferesGrupo) -> RustBuffer {
+    return FfiConverterTypeBuferesGrupo.lower(value)
+}
+
+
+/**
+ * Una caja, respecto al origen del modelo.
+ */
+public struct Caja3d: Equatable, Hashable {
+    public var x0: Float
+    public var y0: Float
+    public var z0: Float
+    public var x1: Float
+    public var y1: Float
+    public var z1: Float
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(x0: Float, y0: Float, z0: Float, x1: Float, y1: Float, z1: Float) {
+        self.x0 = x0
+        self.y0 = y0
+        self.z0 = z0
+        self.x1 = x1
+        self.y1 = y1
+        self.z1 = z1
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension Caja3d: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeCaja3d: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Caja3d {
+        return
+            try Caja3d(
+                x0: FfiConverterFloat.read(from: &buf), 
+                y0: FfiConverterFloat.read(from: &buf), 
+                z0: FfiConverterFloat.read(from: &buf), 
+                x1: FfiConverterFloat.read(from: &buf), 
+                y1: FfiConverterFloat.read(from: &buf), 
+                z1: FfiConverterFloat.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: Caja3d, into buf: inout [UInt8]) {
+        FfiConverterFloat.write(value.x0, into: &buf)
+        FfiConverterFloat.write(value.y0, into: &buf)
+        FfiConverterFloat.write(value.z0, into: &buf)
+        FfiConverterFloat.write(value.x1, into: &buf)
+        FfiConverterFloat.write(value.y1, into: &buf)
+        FfiConverterFloat.write(value.z1, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCaja3d_lift(_ buf: RustBuffer) throws -> Caja3d {
+    return try FfiConverterTypeCaja3d.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCaja3d_lower(_ value: Caja3d) -> RustBuffer {
+    return FfiConverterTypeCaja3d.lower(value)
+}
+
+
+/**
  * La caja que abarca lo dibujado, en unidades del mundo.
  */
 public struct CajaLienzo: Equatable, Hashable {
@@ -5578,6 +6500,231 @@ public func FfiConverterTypeCajaLienzo_lift(_ buf: RustBuffer) throws -> CajaLie
 #endif
 public func FfiConverterTypeCajaLienzo_lower(_ value: CajaLienzo) -> RustBuffer {
     return FfiConverterTypeCajaLienzo.lower(value)
+}
+
+
+/**
+ * Una caja en coordenadas del dibujo.
+ */
+public struct CajaPlano: Equatable, Hashable {
+    public var x0: Double
+    public var y0: Double
+    public var x1: Double
+    public var y1: Double
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(x0: Double, y0: Double, x1: Double, y1: Double) {
+        self.x0 = x0
+        self.y0 = y0
+        self.x1 = x1
+        self.y1 = y1
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension CajaPlano: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeCajaPlano: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> CajaPlano {
+        return
+            try CajaPlano(
+                x0: FfiConverterDouble.read(from: &buf), 
+                y0: FfiConverterDouble.read(from: &buf), 
+                x1: FfiConverterDouble.read(from: &buf), 
+                y1: FfiConverterDouble.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: CajaPlano, into buf: inout [UInt8]) {
+        FfiConverterDouble.write(value.x0, into: &buf)
+        FfiConverterDouble.write(value.y0, into: &buf)
+        FfiConverterDouble.write(value.x1, into: &buf)
+        FfiConverterDouble.write(value.y1, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCajaPlano_lift(_ buf: RustBuffer) throws -> CajaPlano {
+    return try FfiConverterTypeCajaPlano.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCajaPlano_lower(_ value: CajaPlano) -> RustBuffer {
+    return FfiConverterTypeCajaPlano.lower(value)
+}
+
+
+/**
+ * La camara del visor 3D (`pixpin_cad::orbita::Orbita`).
+ */
+public struct Camara3d: Equatable, Hashable {
+    public var objetivo: Punto3d
+    /**
+     * Alrededor de Z, en radianes.
+     */
+    public var rumbo: Double
+    /**
+     * Sobre el horizonte, en radianes.
+     */
+    public var altura: Double
+    public var dist: Double
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(objetivo: Punto3d, 
+        /**
+         * Alrededor de Z, en radianes.
+         */rumbo: Double, 
+        /**
+         * Sobre el horizonte, en radianes.
+         */altura: Double, dist: Double) {
+        self.objetivo = objetivo
+        self.rumbo = rumbo
+        self.altura = altura
+        self.dist = dist
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension Camara3d: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeCamara3d: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Camara3d {
+        return
+            try Camara3d(
+                objetivo: FfiConverterTypePunto3d.read(from: &buf), 
+                rumbo: FfiConverterDouble.read(from: &buf), 
+                altura: FfiConverterDouble.read(from: &buf), 
+                dist: FfiConverterDouble.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: Camara3d, into buf: inout [UInt8]) {
+        FfiConverterTypePunto3d.write(value.objetivo, into: &buf)
+        FfiConverterDouble.write(value.rumbo, into: &buf)
+        FfiConverterDouble.write(value.altura, into: &buf)
+        FfiConverterDouble.write(value.dist, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCamara3d_lift(_ buf: RustBuffer) throws -> Camara3d {
+    return try FfiConverterTypeCamara3d.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCamara3d_lower(_ value: Camara3d) -> RustBuffer {
+    return FfiConverterTypeCamara3d.lower(value)
+}
+
+
+/**
+ * Una capa del plano.
+ */
+public struct CapaPlano: Equatable, Hashable {
+    public var nombre: String
+    /**
+     * Si se ve ahora.
+     */
+    public var encendida: Bool
+    /**
+     * Si estaba encendida en el fichero.
+     */
+    public var enElPlano: Bool
+    /**
+     * Cuantos grupos (grosores) tiene.
+     */
+    public var grupos: UInt32
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(nombre: String, 
+        /**
+         * Si se ve ahora.
+         */encendida: Bool, 
+        /**
+         * Si estaba encendida en el fichero.
+         */enElPlano: Bool, 
+        /**
+         * Cuantos grupos (grosores) tiene.
+         */grupos: UInt32) {
+        self.nombre = nombre
+        self.encendida = encendida
+        self.enElPlano = enElPlano
+        self.grupos = grupos
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension CapaPlano: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeCapaPlano: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> CapaPlano {
+        return
+            try CapaPlano(
+                nombre: FfiConverterString.read(from: &buf), 
+                encendida: FfiConverterBool.read(from: &buf), 
+                enElPlano: FfiConverterBool.read(from: &buf), 
+                grupos: FfiConverterUInt32.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: CapaPlano, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.nombre, into: &buf)
+        FfiConverterBool.write(value.encendida, into: &buf)
+        FfiConverterBool.write(value.enElPlano, into: &buf)
+        FfiConverterUInt32.write(value.grupos, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCapaPlano_lift(_ buf: RustBuffer) throws -> CapaPlano {
+    return try FfiConverterTypeCapaPlano.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCapaPlano_lower(_ value: CapaPlano) -> RustBuffer {
+    return FfiConverterTypeCapaPlano.lower(value)
 }
 
 
@@ -5850,6 +6997,79 @@ public func FfiConverterTypeCapturaGaleria_lift(_ buf: RustBuffer) throws -> Cap
 #endif
 public func FfiConverterTypeCapturaGaleria_lower(_ value: CapturaGaleria) -> RustBuffer {
     return FfiConverterTypeCapturaGaleria.lower(value)
+}
+
+
+/**
+ * Una categoria: los elementos de una clase (`IfcWall`, «Curvas de nivel»).
+ */
+public struct Categoria3d: Equatable, Hashable {
+    /**
+     * La clase tal cual: lo que se pasa en [`Filtro3d::tipos_ocultos`].
+     */
+    public var tipo: String
+    /**
+     * En espanol (`Muro`).
+     */
+    public var nombre: String
+    public var elementos: UInt32
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * La clase tal cual: lo que se pasa en [`Filtro3d::tipos_ocultos`].
+         */tipo: String, 
+        /**
+         * En espanol (`Muro`).
+         */nombre: String, elementos: UInt32) {
+        self.tipo = tipo
+        self.nombre = nombre
+        self.elementos = elementos
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension Categoria3d: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeCategoria3d: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Categoria3d {
+        return
+            try Categoria3d(
+                tipo: FfiConverterString.read(from: &buf), 
+                nombre: FfiConverterString.read(from: &buf), 
+                elementos: FfiConverterUInt32.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: Categoria3d, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.tipo, into: &buf)
+        FfiConverterString.write(value.nombre, into: &buf)
+        FfiConverterUInt32.write(value.elementos, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCategoria3d_lift(_ buf: RustBuffer) throws -> Categoria3d {
+    return try FfiConverterTypeCategoria3d.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCategoria3d_lower(_ value: Categoria3d) -> RustBuffer {
+    return FfiConverterTypeCategoria3d.lower(value)
 }
 
 
@@ -6180,6 +7400,59 @@ public func FfiConverterTypeColorEstilo_lower(_ value: ColorEstilo) -> RustBuffe
 
 
 /**
+ * Una cota guardada en la capa: sus puntos, en el dibujo.
+ */
+public struct CotaPlano: Equatable, Hashable {
+    public var puntos: [PuntoPlano]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(puntos: [PuntoPlano]) {
+        self.puntos = puntos
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension CotaPlano: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeCotaPlano: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> CotaPlano {
+        return
+            try CotaPlano(
+                puntos: FfiConverterSequenceTypePuntoPlano.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: CotaPlano, into buf: inout [UInt8]) {
+        FfiConverterSequenceTypePuntoPlano.write(value.puntos, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCotaPlano_lift(_ buf: RustBuffer) throws -> CotaPlano {
+    return try FfiConverterTypeCotaPlano.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCotaPlano_lower(_ value: CotaPlano) -> RustBuffer {
+    return FfiConverterTypeCotaPlano.lower(value)
+}
+
+
+/**
  * Un contador: su numero y cuanto sube cada toque.
  */
 public struct CuentaMini: Equatable, Hashable {
@@ -6314,6 +7587,196 @@ public func FfiConverterTypeDiaTimeline_lift(_ buf: RustBuffer) throws -> DiaTim
 #endif
 public func FfiConverterTypeDiaTimeline_lower(_ value: DiaTimeline) -> RustBuffer {
     return FfiConverterTypeDiaTimeline.lower(value)
+}
+
+
+/**
+ * Lo que hay bajo el raton.
+ */
+public struct Eleccion3d: Equatable, Hashable {
+    public var elemento: UInt32
+    /**
+     * El punto tocado, respecto al origen del modelo.
+     */
+    public var punto: Punto3d
+    public var distancia: Double
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(elemento: UInt32, 
+        /**
+         * El punto tocado, respecto al origen del modelo.
+         */punto: Punto3d, distancia: Double) {
+        self.elemento = elemento
+        self.punto = punto
+        self.distancia = distancia
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension Eleccion3d: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeEleccion3d: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Eleccion3d {
+        return
+            try Eleccion3d(
+                elemento: FfiConverterUInt32.read(from: &buf), 
+                punto: FfiConverterTypePunto3d.read(from: &buf), 
+                distancia: FfiConverterDouble.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: Eleccion3d, into buf: inout [UInt8]) {
+        FfiConverterUInt32.write(value.elemento, into: &buf)
+        FfiConverterTypePunto3d.write(value.punto, into: &buf)
+        FfiConverterDouble.write(value.distancia, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeEleccion3d_lift(_ buf: RustBuffer) throws -> Eleccion3d {
+    return try FfiConverterTypeEleccion3d.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeEleccion3d_lower(_ value: Eleccion3d) -> RustBuffer {
+    return FfiConverterTypeEleccion3d.lower(value)
+}
+
+
+/**
+ * Como cae la capa de tinta del plano en el dibujo:
+ * `x = cero_x + x_capa * u`, `y = cero_y - y_capa * u` (la y de la capa baja).
+ */
+public struct EncajePlano: Equatable, Hashable {
+    public var u: Double
+    public var ceroX: Double
+    public var ceroY: Double
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(u: Double, ceroX: Double, ceroY: Double) {
+        self.u = u
+        self.ceroX = ceroX
+        self.ceroY = ceroY
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension EncajePlano: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeEncajePlano: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> EncajePlano {
+        return
+            try EncajePlano(
+                u: FfiConverterDouble.read(from: &buf), 
+                ceroX: FfiConverterDouble.read(from: &buf), 
+                ceroY: FfiConverterDouble.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: EncajePlano, into buf: inout [UInt8]) {
+        FfiConverterDouble.write(value.u, into: &buf)
+        FfiConverterDouble.write(value.ceroX, into: &buf)
+        FfiConverterDouble.write(value.ceroY, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeEncajePlano_lift(_ buf: RustBuffer) throws -> EncajePlano {
+    return try FfiConverterTypeEncajePlano.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeEncajePlano_lower(_ value: EncajePlano) -> RustBuffer {
+    return FfiConverterTypeEncajePlano.lower(value)
+}
+
+
+/**
+ * Donde cae la mira de la regla.
+ */
+public struct Enganche: Equatable, Hashable {
+    public var x: Double
+    public var y: Double
+    public var tipo: TipoEnganche
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(x: Double, y: Double, tipo: TipoEnganche) {
+        self.x = x
+        self.y = y
+        self.tipo = tipo
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension Enganche: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeEnganche: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Enganche {
+        return
+            try Enganche(
+                x: FfiConverterDouble.read(from: &buf), 
+                y: FfiConverterDouble.read(from: &buf), 
+                tipo: FfiConverterTypeTipoEnganche.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: Enganche, into buf: inout [UInt8]) {
+        FfiConverterDouble.write(value.x, into: &buf)
+        FfiConverterDouble.write(value.y, into: &buf)
+        FfiConverterTypeTipoEnganche.write(value.tipo, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeEnganche_lift(_ buf: RustBuffer) throws -> Enganche {
+    return try FfiConverterTypeEnganche.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeEnganche_lower(_ value: Enganche) -> RustBuffer {
+    return FfiConverterTypeEnganche.lower(value)
 }
 
 
@@ -6868,6 +8331,85 @@ public func FfiConverterTypeFichaLeccion_lower(_ value: FichaLeccion) -> RustBuf
 
 
 /**
+ * Lo que no se ve.
+ */
+public struct Filtro3d: Equatable, Hashable {
+    /**
+     * Los niveles ocultos (su indice).
+     */
+    public var nivelesOcultos: [UInt32]
+    /**
+     * Las clases ocultas ([`Categoria3d::tipo`]).
+     */
+    public var tiposOcultos: [String]
+    /**
+     * Si hay uno aislado: solo se ve ese.
+     */
+    public var aislado: UInt32?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Los niveles ocultos (su indice).
+         */nivelesOcultos: [UInt32], 
+        /**
+         * Las clases ocultas ([`Categoria3d::tipo`]).
+         */tiposOcultos: [String], 
+        /**
+         * Si hay uno aislado: solo se ve ese.
+         */aislado: UInt32?) {
+        self.nivelesOcultos = nivelesOcultos
+        self.tiposOcultos = tiposOcultos
+        self.aislado = aislado
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension Filtro3d: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeFiltro3d: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Filtro3d {
+        return
+            try Filtro3d(
+                nivelesOcultos: FfiConverterSequenceUInt32.read(from: &buf), 
+                tiposOcultos: FfiConverterSequenceString.read(from: &buf), 
+                aislado: FfiConverterOptionUInt32.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: Filtro3d, into buf: inout [UInt8]) {
+        FfiConverterSequenceUInt32.write(value.nivelesOcultos, into: &buf)
+        FfiConverterSequenceString.write(value.tiposOcultos, into: &buf)
+        FfiConverterOptionUInt32.write(value.aislado, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFiltro3d_lift(_ buf: RustBuffer) throws -> Filtro3d {
+    return try FfiConverterTypeFiltro3d.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFiltro3d_lower(_ value: Filtro3d) -> RustBuffer {
+    return FfiConverterTypeFiltro3d.lower(value)
+}
+
+
+/**
  * Que lecciones se quieren ver.
  */
 public struct FiltroLecciones: Equatable, Hashable {
@@ -7091,6 +8633,117 @@ public func FfiConverterTypeGiroRuleta_lower(_ value: GiroRuleta) -> RustBuffer 
 
 
 /**
+ * Un grupo del plano: lo de una capa con un grosor.
+ */
+public struct GrupoPlano: Equatable, Hashable {
+    public var indice: UInt32
+    public var capa: String
+    /**
+     * Centesimas de milimetro (`-` o el de por defecto: el normal).
+     */
+    public var grosor: Int32
+    /**
+     * Si se ve ahora (su capa encendida).
+     */
+    public var encendido: Bool
+    /**
+     * El origen de sus coordenadas `f32`, en el dibujo.
+     */
+    public var origenX: Double
+    public var origenY: Double
+    /**
+     * Su caja, en el dibujo.
+     */
+    public var caja: CajaPlano
+    /**
+     * Lo que ocupara en la tarjeta (aproximado).
+     */
+    public var bytes: UInt64
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(indice: UInt32, capa: String, 
+        /**
+         * Centesimas de milimetro (`-` o el de por defecto: el normal).
+         */grosor: Int32, 
+        /**
+         * Si se ve ahora (su capa encendida).
+         */encendido: Bool, 
+        /**
+         * El origen de sus coordenadas `f32`, en el dibujo.
+         */origenX: Double, origenY: Double, 
+        /**
+         * Su caja, en el dibujo.
+         */caja: CajaPlano, 
+        /**
+         * Lo que ocupara en la tarjeta (aproximado).
+         */bytes: UInt64) {
+        self.indice = indice
+        self.capa = capa
+        self.grosor = grosor
+        self.encendido = encendido
+        self.origenX = origenX
+        self.origenY = origenY
+        self.caja = caja
+        self.bytes = bytes
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension GrupoPlano: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeGrupoPlano: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> GrupoPlano {
+        return
+            try GrupoPlano(
+                indice: FfiConverterUInt32.read(from: &buf), 
+                capa: FfiConverterString.read(from: &buf), 
+                grosor: FfiConverterInt32.read(from: &buf), 
+                encendido: FfiConverterBool.read(from: &buf), 
+                origenX: FfiConverterDouble.read(from: &buf), 
+                origenY: FfiConverterDouble.read(from: &buf), 
+                caja: FfiConverterTypeCajaPlano.read(from: &buf), 
+                bytes: FfiConverterUInt64.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: GrupoPlano, into buf: inout [UInt8]) {
+        FfiConverterUInt32.write(value.indice, into: &buf)
+        FfiConverterString.write(value.capa, into: &buf)
+        FfiConverterInt32.write(value.grosor, into: &buf)
+        FfiConverterBool.write(value.encendido, into: &buf)
+        FfiConverterDouble.write(value.origenX, into: &buf)
+        FfiConverterDouble.write(value.origenY, into: &buf)
+        FfiConverterTypeCajaPlano.write(value.caja, into: &buf)
+        FfiConverterUInt64.write(value.bytes, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeGrupoPlano_lift(_ buf: RustBuffer) throws -> GrupoPlano {
+    return try FfiConverterTypeGrupoPlano.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeGrupoPlano_lower(_ value: GrupoPlano) -> RustBuffer {
+    return FfiConverterTypeGrupoPlano.lower(value)
+}
+
+
+/**
  * Una herramienta que se uso en el turno.
  */
 public struct HerramientaUsada: Equatable, Hashable {
@@ -7217,6 +8870,75 @@ public func FfiConverterTypeImagenDelLienzo_lower(_ value: ImagenDelLienzo) -> R
 
 
 /**
+ * Los indices de lo que se ve (ver la doc del modulo).
+ */
+public struct Indices3d: Equatable, Hashable {
+    public var opacos: Data
+    public var transparentes: Data
+    public var aristas: Data
+    public var lineas: Data
+    public var puntos: Data
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(opacos: Data, transparentes: Data, aristas: Data, lineas: Data, puntos: Data) {
+        self.opacos = opacos
+        self.transparentes = transparentes
+        self.aristas = aristas
+        self.lineas = lineas
+        self.puntos = puntos
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension Indices3d: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeIndices3d: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Indices3d {
+        return
+            try Indices3d(
+                opacos: FfiConverterData.read(from: &buf), 
+                transparentes: FfiConverterData.read(from: &buf), 
+                aristas: FfiConverterData.read(from: &buf), 
+                lineas: FfiConverterData.read(from: &buf), 
+                puntos: FfiConverterData.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: Indices3d, into buf: inout [UInt8]) {
+        FfiConverterData.write(value.opacos, into: &buf)
+        FfiConverterData.write(value.transparentes, into: &buf)
+        FfiConverterData.write(value.aristas, into: &buf)
+        FfiConverterData.write(value.lineas, into: &buf)
+        FfiConverterData.write(value.puntos, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeIndices3d_lift(_ buf: RustBuffer) throws -> Indices3d {
+    return try FfiConverterTypeIndices3d.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeIndices3d_lower(_ value: Indices3d) -> RustBuffer {
+    return FfiConverterTypeIndices3d.lower(value)
+}
+
+
+/**
  * Quien es este aparato.
  */
 public struct InfoAparato: Equatable, Hashable {
@@ -7306,6 +9028,107 @@ public func FfiConverterTypeInfoAparato_lift(_ buf: RustBuffer) throws -> InfoAp
 #endif
 public func FfiConverterTypeInfoAparato_lower(_ value: InfoAparato) -> RustBuffer {
     return FfiConverterTypeInfoAparato.lower(value)
+}
+
+
+/**
+ * Lo que se cuenta de un elemento al tocarlo.
+ */
+public struct InfoElemento3d: Equatable, Hashable {
+    public var id: UInt32
+    public var tipo: String
+    public var categoria: String
+    public var nombre: String
+    public var nivel: String?
+    /**
+     * Lo que mide, de su malla (en las unidades del modelo).
+     */
+    public var volumen: Float
+    public var planta: Float
+    public var alzado: Float
+    public var superficie: Float
+    /**
+     * Si la malla es cerrada: solo entonces el volumen es exacto.
+     */
+    public var cerrado: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(id: UInt32, tipo: String, categoria: String, nombre: String, nivel: String?, 
+        /**
+         * Lo que mide, de su malla (en las unidades del modelo).
+         */volumen: Float, planta: Float, alzado: Float, superficie: Float, 
+        /**
+         * Si la malla es cerrada: solo entonces el volumen es exacto.
+         */cerrado: Bool) {
+        self.id = id
+        self.tipo = tipo
+        self.categoria = categoria
+        self.nombre = nombre
+        self.nivel = nivel
+        self.volumen = volumen
+        self.planta = planta
+        self.alzado = alzado
+        self.superficie = superficie
+        self.cerrado = cerrado
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension InfoElemento3d: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeInfoElemento3d: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> InfoElemento3d {
+        return
+            try InfoElemento3d(
+                id: FfiConverterUInt32.read(from: &buf), 
+                tipo: FfiConverterString.read(from: &buf), 
+                categoria: FfiConverterString.read(from: &buf), 
+                nombre: FfiConverterString.read(from: &buf), 
+                nivel: FfiConverterOptionString.read(from: &buf), 
+                volumen: FfiConverterFloat.read(from: &buf), 
+                planta: FfiConverterFloat.read(from: &buf), 
+                alzado: FfiConverterFloat.read(from: &buf), 
+                superficie: FfiConverterFloat.read(from: &buf), 
+                cerrado: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: InfoElemento3d, into buf: inout [UInt8]) {
+        FfiConverterUInt32.write(value.id, into: &buf)
+        FfiConverterString.write(value.tipo, into: &buf)
+        FfiConverterString.write(value.categoria, into: &buf)
+        FfiConverterString.write(value.nombre, into: &buf)
+        FfiConverterOptionString.write(value.nivel, into: &buf)
+        FfiConverterFloat.write(value.volumen, into: &buf)
+        FfiConverterFloat.write(value.planta, into: &buf)
+        FfiConverterFloat.write(value.alzado, into: &buf)
+        FfiConverterFloat.write(value.superficie, into: &buf)
+        FfiConverterBool.write(value.cerrado, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeInfoElemento3d_lift(_ buf: RustBuffer) throws -> InfoElemento3d {
+    return try FfiConverterTypeInfoElemento3d.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeInfoElemento3d_lower(_ value: InfoElemento3d) -> RustBuffer {
+    return FfiConverterTypeInfoElemento3d.lower(value)
 }
 
 
@@ -8080,6 +9903,140 @@ public func FfiConverterTypeMomentoTimeline_lower(_ value: MomentoTimeline) -> R
 
 
 /**
+ * Un nivel (planta) del edificio.
+ */
+public struct Nivel3d: Equatable, Hashable {
+    public var indice: UInt32
+    public var nombre: String
+    /**
+     * La cota, en metros.
+     */
+    public var cota: Double
+    /**
+     * Cuantos elementos tiene.
+     */
+    public var elementos: UInt32
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(indice: UInt32, nombre: String, 
+        /**
+         * La cota, en metros.
+         */cota: Double, 
+        /**
+         * Cuantos elementos tiene.
+         */elementos: UInt32) {
+        self.indice = indice
+        self.nombre = nombre
+        self.cota = cota
+        self.elementos = elementos
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension Nivel3d: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeNivel3d: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Nivel3d {
+        return
+            try Nivel3d(
+                indice: FfiConverterUInt32.read(from: &buf), 
+                nombre: FfiConverterString.read(from: &buf), 
+                cota: FfiConverterDouble.read(from: &buf), 
+                elementos: FfiConverterUInt32.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: Nivel3d, into buf: inout [UInt8]) {
+        FfiConverterUInt32.write(value.indice, into: &buf)
+        FfiConverterString.write(value.nombre, into: &buf)
+        FfiConverterDouble.write(value.cota, into: &buf)
+        FfiConverterUInt32.write(value.elementos, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNivel3d_lift(_ buf: RustBuffer) throws -> Nivel3d {
+    return try FfiConverterTypeNivel3d.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNivel3d_lower(_ value: Nivel3d) -> RustBuffer {
+    return FfiConverterTypeNivel3d.lower(value)
+}
+
+
+/**
+ * Lo que no se pudo dibujar, por tipo (para decirlo, no para fallar).
+ */
+public struct NoDibujado: Equatable, Hashable {
+    public var tipo: String
+    public var cuantos: UInt32
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(tipo: String, cuantos: UInt32) {
+        self.tipo = tipo
+        self.cuantos = cuantos
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension NoDibujado: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeNoDibujado: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> NoDibujado {
+        return
+            try NoDibujado(
+                tipo: FfiConverterString.read(from: &buf), 
+                cuantos: FfiConverterUInt32.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: NoDibujado, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.tipo, into: &buf)
+        FfiConverterUInt32.write(value.cuantos, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNoDibujado_lift(_ buf: RustBuffer) throws -> NoDibujado {
+    return try FfiConverterTypeNoDibujado.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNoDibujado_lower(_ value: NoDibujado) -> RustBuffer {
+    return FfiConverterTypeNoDibujado.lower(value)
+}
+
+
+/**
  * Una pagina de resultados.
  */
 public struct PaginaBusqueda: Equatable, Hashable {
@@ -8768,6 +10725,124 @@ public func FfiConverterTypePropuestaLeccion_lower(_ value: PropuestaLeccion) ->
 
 
 /**
+ * Un punto (o una direccion) del modelo, respecto a su origen.
+ */
+public struct Punto3d: Equatable, Hashable {
+    public var x: Double
+    public var y: Double
+    public var z: Double
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(x: Double, y: Double, z: Double) {
+        self.x = x
+        self.y = y
+        self.z = z
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension Punto3d: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypePunto3d: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Punto3d {
+        return
+            try Punto3d(
+                x: FfiConverterDouble.read(from: &buf), 
+                y: FfiConverterDouble.read(from: &buf), 
+                z: FfiConverterDouble.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: Punto3d, into buf: inout [UInt8]) {
+        FfiConverterDouble.write(value.x, into: &buf)
+        FfiConverterDouble.write(value.y, into: &buf)
+        FfiConverterDouble.write(value.z, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePunto3d_lift(_ buf: RustBuffer) throws -> Punto3d {
+    return try FfiConverterTypePunto3d.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePunto3d_lower(_ value: Punto3d) -> RustBuffer {
+    return FfiConverterTypePunto3d.lower(value)
+}
+
+
+/**
+ * Un punto del dibujo.
+ */
+public struct PuntoPlano: Equatable, Hashable {
+    public var x: Double
+    public var y: Double
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(x: Double, y: Double) {
+        self.x = x
+        self.y = y
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension PuntoPlano: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypePuntoPlano: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> PuntoPlano {
+        return
+            try PuntoPlano(
+                x: FfiConverterDouble.read(from: &buf), 
+                y: FfiConverterDouble.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: PuntoPlano, into buf: inout [UInt8]) {
+        FfiConverterDouble.write(value.x, into: &buf)
+        FfiConverterDouble.write(value.y, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePuntoPlano_lift(_ buf: RustBuffer) throws -> PuntoPlano {
+    return try FfiConverterTypePuntoPlano.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePuntoPlano_lower(_ value: PuntoPlano) -> RustBuffer {
+    return FfiConverterTypePuntoPlano.lower(value)
+}
+
+
+/**
  * Algo recibido con un codigo, ya en su sitio.
  */
 public struct RecibidoEnvio: Equatable, Hashable {
@@ -9148,6 +11223,101 @@ public func FfiConverterTypeResumenMini_lower(_ value: ResumenMini) -> RustBuffe
 
 
 /**
+ * Lo que se sabe del modelo al abrirlo.
+ */
+public struct ResumenModelo3d: Equatable, Hashable {
+    /**
+     * El origen de las coordenadas `f32` (en el mundo del fichero).
+     */
+    public var origen: Punto3d
+    public var caja: Caja3d
+    /**
+     * Sin los pocos puntos sueltos muy lejos: para encuadrar.
+     */
+    public var cajaUtil: Caja3d
+    /**
+     * 1 si las medidas estan en metros.
+     */
+    public var metros: Float
+    public var vertices: UInt64
+    public var elementos: UInt32
+    public var vacio: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * El origen de las coordenadas `f32` (en el mundo del fichero).
+         */origen: Punto3d, caja: Caja3d, 
+        /**
+         * Sin los pocos puntos sueltos muy lejos: para encuadrar.
+         */cajaUtil: Caja3d, 
+        /**
+         * 1 si las medidas estan en metros.
+         */metros: Float, vertices: UInt64, elementos: UInt32, vacio: Bool) {
+        self.origen = origen
+        self.caja = caja
+        self.cajaUtil = cajaUtil
+        self.metros = metros
+        self.vertices = vertices
+        self.elementos = elementos
+        self.vacio = vacio
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension ResumenModelo3d: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeResumenModelo3d: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ResumenModelo3d {
+        return
+            try ResumenModelo3d(
+                origen: FfiConverterTypePunto3d.read(from: &buf), 
+                caja: FfiConverterTypeCaja3d.read(from: &buf), 
+                cajaUtil: FfiConverterTypeCaja3d.read(from: &buf), 
+                metros: FfiConverterFloat.read(from: &buf), 
+                vertices: FfiConverterUInt64.read(from: &buf), 
+                elementos: FfiConverterUInt32.read(from: &buf), 
+                vacio: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: ResumenModelo3d, into buf: inout [UInt8]) {
+        FfiConverterTypePunto3d.write(value.origen, into: &buf)
+        FfiConverterTypeCaja3d.write(value.caja, into: &buf)
+        FfiConverterTypeCaja3d.write(value.cajaUtil, into: &buf)
+        FfiConverterFloat.write(value.metros, into: &buf)
+        FfiConverterUInt64.write(value.vertices, into: &buf)
+        FfiConverterUInt32.write(value.elementos, into: &buf)
+        FfiConverterBool.write(value.vacio, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeResumenModelo3d_lift(_ buf: RustBuffer) throws -> ResumenModelo3d {
+    return try FfiConverterTypeResumenModelo3d.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeResumenModelo3d_lower(_ value: ResumenModelo3d) -> RustBuffer {
+    return FfiConverterTypeResumenModelo3d.lower(value)
+}
+
+
+/**
  * Lo que paso en una vuelta con una persona.
  */
 public struct ResumenPersona: Equatable, Hashable {
@@ -9243,6 +11413,97 @@ public func FfiConverterTypeResumenPersona_lift(_ buf: RustBuffer) throws -> Res
 #endif
 public func FfiConverterTypeResumenPersona_lower(_ value: ResumenPersona) -> RustBuffer {
     return FfiConverterTypeResumenPersona.lower(value)
+}
+
+
+/**
+ * Lo que se sabe del plano al abrirlo.
+ */
+public struct ResumenPlano: Equatable, Hashable {
+    /**
+     * La caja de lo que se ve al abrir (las capas encendidas).
+     */
+    public var caja: CajaPlano
+    /**
+     * La caja para encuadrar: sin los pocos puntos sueltos muy lejos.
+     */
+    public var cajaUtil: CajaPlano
+    /**
+     * `$INSUNITS`: 4 mm, 5 cm, 6 m… (0 sin decir).
+     */
+    public var unidades: UInt32
+    public var grupos: UInt32
+    public var bytes: UInt64
+    public var sinDibujar: [NoDibujado]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * La caja de lo que se ve al abrir (las capas encendidas).
+         */caja: CajaPlano, 
+        /**
+         * La caja para encuadrar: sin los pocos puntos sueltos muy lejos.
+         */cajaUtil: CajaPlano, 
+        /**
+         * `$INSUNITS`: 4 mm, 5 cm, 6 m… (0 sin decir).
+         */unidades: UInt32, grupos: UInt32, bytes: UInt64, sinDibujar: [NoDibujado]) {
+        self.caja = caja
+        self.cajaUtil = cajaUtil
+        self.unidades = unidades
+        self.grupos = grupos
+        self.bytes = bytes
+        self.sinDibujar = sinDibujar
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension ResumenPlano: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeResumenPlano: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ResumenPlano {
+        return
+            try ResumenPlano(
+                caja: FfiConverterTypeCajaPlano.read(from: &buf), 
+                cajaUtil: FfiConverterTypeCajaPlano.read(from: &buf), 
+                unidades: FfiConverterUInt32.read(from: &buf), 
+                grupos: FfiConverterUInt32.read(from: &buf), 
+                bytes: FfiConverterUInt64.read(from: &buf), 
+                sinDibujar: FfiConverterSequenceTypeNoDibujado.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: ResumenPlano, into buf: inout [UInt8]) {
+        FfiConverterTypeCajaPlano.write(value.caja, into: &buf)
+        FfiConverterTypeCajaPlano.write(value.cajaUtil, into: &buf)
+        FfiConverterUInt32.write(value.unidades, into: &buf)
+        FfiConverterUInt32.write(value.grupos, into: &buf)
+        FfiConverterUInt64.write(value.bytes, into: &buf)
+        FfiConverterSequenceTypeNoDibujado.write(value.sinDibujar, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeResumenPlano_lift(_ buf: RustBuffer) throws -> ResumenPlano {
+    return try FfiConverterTypeResumenPlano.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeResumenPlano_lower(_ value: ResumenPlano) -> RustBuffer {
+    return FfiConverterTypeResumenPlano.lower(value)
 }
 
 
@@ -10120,6 +12381,91 @@ public func FfiConverterTypeCambioDeEstilo_lift(_ buf: RustBuffer) throws -> Cam
 #endif
 public func FfiConverterTypeCambioDeEstilo_lower(_ value: CambioDeEstilo) -> RustBuffer {
     return FfiConverterTypeCambioDeEstilo.lower(value)
+}
+
+
+
+/**
+ * Lo que se abre como modelo 3D o como plano (para el chat y el Finder).
+ */
+
+public enum ClaseDeModelo: Equatable, Hashable {
+    
+    /**
+     * Un DWG o un DXF: el visor de planos.
+     */
+    case plano
+    /**
+     * IFC, Revit, LandXML o un fichero de puntos: el visor 3D.
+     */
+    case modelo3d
+    /**
+     * Otra cosa.
+     */
+    case ninguna
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension ClaseDeModelo: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeClaseDeModelo: FfiConverterRustBuffer {
+    typealias SwiftType = ClaseDeModelo
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ClaseDeModelo {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .plano
+        
+        case 2: return .modelo3d
+        
+        case 3: return .ninguna
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: ClaseDeModelo, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .plano:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .modelo3d:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .ninguna:
+            writeInt(&buf, Int32(3))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeClaseDeModelo_lift(_ buf: RustBuffer) throws -> ClaseDeModelo {
+    return try FfiConverterTypeClaseDeModelo.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeClaseDeModelo_lower(_ value: ClaseDeModelo) -> RustBuffer {
+    return FfiConverterTypeClaseDeModelo.lower(value)
 }
 
 
@@ -11328,6 +13674,101 @@ public func FfiConverterTypeRellenoEstilo_lower(_ value: RellenoEstilo) -> RustB
 }
 
 
+
+/**
+ * De que clase es un enganche (cambia la marca que se ve).
+ */
+
+public enum TipoEnganche: Equatable, Hashable {
+    
+    /**
+     * Un vertice, un extremo o un centro.
+     */
+    case punto
+    /**
+     * El pie de la perpendicular desde el punto anterior.
+     */
+    case perpendicular
+    /**
+     * El punto mas cercano de una raya o un arco.
+     */
+    case enLaRaya
+    /**
+     * Nada cerca.
+     */
+    case libre
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension TipoEnganche: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeTipoEnganche: FfiConverterRustBuffer {
+    typealias SwiftType = TipoEnganche
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> TipoEnganche {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .punto
+        
+        case 2: return .perpendicular
+        
+        case 3: return .enLaRaya
+        
+        case 4: return .libre
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: TipoEnganche, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .punto:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .perpendicular:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .enLaRaya:
+            writeInt(&buf, Int32(3))
+        
+        
+        case .libre:
+            writeInt(&buf, Int32(4))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeTipoEnganche_lift(_ buf: RustBuffer) throws -> TipoEnganche {
+    return try FfiConverterTypeTipoEnganche.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeTipoEnganche_lower(_ value: TipoEnganche) -> RustBuffer {
+    return FfiConverterTypeTipoEnganche.lower(value)
+}
+
+
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
@@ -11499,6 +13940,30 @@ fileprivate struct FfiConverterOptionTypeAnuncioBonjour: FfiConverterRustBuffer 
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterOptionTypeCaja3d: FfiConverterRustBuffer {
+    typealias SwiftType = Caja3d?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeCaja3d.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeCaja3d.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterOptionTypeCajaLienzo: FfiConverterRustBuffer {
     typealias SwiftType = CajaLienzo?
 
@@ -11619,6 +14084,30 @@ fileprivate struct FfiConverterOptionTypeColorEstilo: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterOptionTypeEleccion3d: FfiConverterRustBuffer {
+    typealias SwiftType = Eleccion3d?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeEleccion3d.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeEleccion3d.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterOptionTypeGiroRuleta: FfiConverterRustBuffer {
     typealias SwiftType = GiroRuleta?
 
@@ -11635,6 +14124,54 @@ fileprivate struct FfiConverterOptionTypeGiroRuleta: FfiConverterRustBuffer {
         switch try readInt(&buf) as Int8 {
         case 0: return nil
         case 1: return try FfiConverterTypeGiroRuleta.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeInfoElemento3d: FfiConverterRustBuffer {
+    typealias SwiftType = InfoElemento3d?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeInfoElemento3d.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeInfoElemento3d.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypePuntoPlano: FfiConverterRustBuffer {
+    typealias SwiftType = PuntoPlano?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypePuntoPlano.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypePuntoPlano.read(from: &buf)
         default: throw UniffiInternalError.unexpectedOptionalTag
         }
     }
@@ -11715,6 +14252,31 @@ fileprivate struct FfiConverterOptionTypePeticionLienzo: FfiConverterRustBuffer 
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceUInt32: FfiConverterRustBuffer {
+    typealias SwiftType = [UInt32]
+
+    public static func write(_ value: [UInt32], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterUInt32.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [UInt32] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [UInt32]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterUInt32.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceInt32: FfiConverterRustBuffer {
     typealias SwiftType = [Int32]
 
@@ -11765,6 +14327,31 @@ fileprivate struct FfiConverterSequenceUInt64: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceFloat: FfiConverterRustBuffer {
+    typealias SwiftType = [Float]
+
+    public static func write(_ value: [Float], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterFloat.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [Float] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [Float]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterFloat.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceString: FfiConverterRustBuffer {
     typealias SwiftType = [String]
 
@@ -11807,6 +14394,56 @@ fileprivate struct FfiConverterSequenceTypeArchivoLlegado: FfiConverterRustBuffe
         seq.reserveCapacity(Int(len))
         for _ in 0 ..< len {
             seq.append(try FfiConverterTypeArchivoLlegado.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeCajaPlano: FfiConverterRustBuffer {
+    typealias SwiftType = [CajaPlano]
+
+    public static func write(_ value: [CajaPlano], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeCajaPlano.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [CajaPlano] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [CajaPlano]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeCajaPlano.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeCapaPlano: FfiConverterRustBuffer {
+    typealias SwiftType = [CapaPlano]
+
+    public static func write(_ value: [CapaPlano], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeCapaPlano.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [CapaPlano] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [CapaPlano]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeCapaPlano.read(from: &buf))
         }
         return seq
     }
@@ -11890,6 +14527,31 @@ fileprivate struct FfiConverterSequenceTypeCapturaGaleria: FfiConverterRustBuffe
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceTypeCategoria3d: FfiConverterRustBuffer {
+    typealias SwiftType = [Categoria3d]
+
+    public static func write(_ value: [Categoria3d], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeCategoria3d.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [Categoria3d] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [Categoria3d]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeCategoria3d.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypeChatCompartidoMac: FfiConverterRustBuffer {
     typealias SwiftType = [ChatCompartidoMac]
 
@@ -11907,6 +14569,31 @@ fileprivate struct FfiConverterSequenceTypeChatCompartidoMac: FfiConverterRustBu
         seq.reserveCapacity(Int(len))
         for _ in 0 ..< len {
             seq.append(try FfiConverterTypeChatCompartidoMac.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeCotaPlano: FfiConverterRustBuffer {
+    typealias SwiftType = [CotaPlano]
+
+    public static func write(_ value: [CotaPlano], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeCotaPlano.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [CotaPlano] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [CotaPlano]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeCotaPlano.read(from: &buf))
         }
         return seq
     }
@@ -12065,6 +14752,31 @@ fileprivate struct FfiConverterSequenceTypeGastoMini: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceTypeGrupoPlano: FfiConverterRustBuffer {
+    typealias SwiftType = [GrupoPlano]
+
+    public static func write(_ value: [GrupoPlano], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeGrupoPlano.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [GrupoPlano] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [GrupoPlano]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeGrupoPlano.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypeHerramientaUsada: FfiConverterRustBuffer {
     typealias SwiftType = [HerramientaUsada]
 
@@ -12215,6 +14927,56 @@ fileprivate struct FfiConverterSequenceTypeMomentoTimeline: FfiConverterRustBuff
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceTypeNivel3d: FfiConverterRustBuffer {
+    typealias SwiftType = [Nivel3d]
+
+    public static func write(_ value: [Nivel3d], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeNivel3d.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [Nivel3d] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [Nivel3d]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeNivel3d.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeNoDibujado: FfiConverterRustBuffer {
+    typealias SwiftType = [NoDibujado]
+
+    public static func write(_ value: [NoDibujado], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeNoDibujado.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [NoDibujado] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [NoDibujado]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeNoDibujado.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypeParTxt: FfiConverterRustBuffer {
     typealias SwiftType = [ParTxt]
 
@@ -12257,6 +15019,31 @@ fileprivate struct FfiConverterSequenceTypePersonaCompartida: FfiConverterRustBu
         seq.reserveCapacity(Int(len))
         for _ in 0 ..< len {
             seq.append(try FfiConverterTypePersonaCompartida.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypePuntoPlano: FfiConverterRustBuffer {
+    typealias SwiftType = [PuntoPlano]
+
+    public static func write(_ value: [PuntoPlano], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypePuntoPlano.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [PuntoPlano] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [PuntoPlano]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypePuntoPlano.read(from: &buf))
         }
         return seq
     }
@@ -12865,6 +15652,154 @@ public func miniTodas() -> [String]  {
 })
 }
 /**
+ * Si ya casi se llego (para acabar la animacion).
+ */
+public func camaraCercaDe(camara: Camara3d, destino: Camara3d) -> Bool  {
+    return try!  FfiConverterBool.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_func_camara_cerca_de(
+        FfiConverterTypeCamara3d_lower(camara),
+        FfiConverterTypeCamara3d_lower(destino),uniffiCallStatus
+    )
+})
+}
+/**
+ * La caja entera en la ventana, vista desde el sureste y algo de arriba.
+ */
+public func camaraEncuadrar(caja: Caja3d, ancho: UInt32, alto: UInt32) -> Camara3d  {
+    return try!  FfiConverterTypeCamara3d_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_func_camara_encuadrar(
+        FfiConverterTypeCaja3d_lower(caja),
+        FfiConverterUInt32.lower(ancho),
+        FfiConverterUInt32.lower(alto),uniffiCallStatus
+    )
+})
+}
+/**
+ * Girar alrededor de `pivote` (rumbo y altura en radianes).
+ */
+public func camaraGirar(camara: Camara3d, dRumbo: Double, dAltura: Double, pivote: Punto3d) -> Camara3d  {
+    return try!  FfiConverterTypeCamara3d_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_func_camara_girar(
+        FfiConverterTypeCamara3d_lower(camara),
+        FfiConverterDouble.lower(dRumbo),
+        FfiConverterDouble.lower(dAltura),
+        FfiConverterTypePunto3d_lower(pivote),uniffiCallStatus
+    )
+})
+}
+/**
+ * Un paso de la animacion hacia `destino` (`k` de 0 a 1).
+ */
+public func camaraHacia(camara: Camara3d, destino: Camara3d, k: Double) -> Camara3d  {
+    return try!  FfiConverterTypeCamara3d_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_func_camara_hacia(
+        FfiConverterTypeCamara3d_lower(camara),
+        FfiConverterTypeCamara3d_lower(destino),
+        FfiConverterDouble.lower(k),uniffiCallStatus
+    )
+})
+}
+/**
+ * De mundo (respecto al origen del modelo) a recorte: 16 `f32` **por
+ * filas** (`p * M`, el convenio de D3D). Cargados tal cual en un
+ * `float4x4` de Metal (que va por columnas), `mvp * float4(p, 1)` da lo
+ * mismo. La profundidad va de 0 a 1, como en Metal.
+ */
+public func camaraMatriz(camara: Camara3d, ancho: UInt32, alto: UInt32, radio: Double) -> [Float]  {
+    return try!  FfiConverterSequenceFloat.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_func_camara_matriz(
+        FfiConverterTypeCamara3d_lower(camara),
+        FfiConverterUInt32.lower(ancho),
+        FfiConverterUInt32.lower(alto),
+        FfiConverterDouble.lower(radio),uniffiCallStatus
+    )
+})
+}
+/**
+ * Mover la camara `dx`, `dy` pixeles (el modelo sigue al dedo).
+ */
+public func camaraMover(camara: Camara3d, dx: Double, dy: Double, alto: UInt32) -> Camara3d  {
+    return try!  FfiConverterTypeCamara3d_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_func_camara_mover(
+        FfiConverterTypeCamara3d_lower(camara),
+        FfiConverterDouble.lower(dx),
+        FfiConverterDouble.lower(dy),
+        FfiConverterUInt32.lower(alto),uniffiCallStatus
+    )
+})
+}
+/**
+ * Donde esta el ojo.
+ */
+public func camaraOjo(camara: Camara3d) -> Punto3d  {
+    return try!  FfiConverterTypePunto3d_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_func_camara_ojo(
+        FfiConverterTypeCamara3d_lower(camara),uniffiCallStatus
+    )
+})
+}
+/**
+ * La direccion (unitaria) del rayo que sale del ojo por el pixel (x, y)
+ * (desde arriba a la izquierda).
+ */
+public func camaraRayo(camara: Camara3d, x: Double, y: Double, ancho: UInt32, alto: UInt32) -> Punto3d  {
+    return try!  FfiConverterTypePunto3d_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_func_camara_rayo(
+        FfiConverterTypeCamara3d_lower(camara),
+        FfiConverterDouble.lower(x),
+        FfiConverterDouble.lower(y),
+        FfiConverterUInt32.lower(ancho),
+        FfiConverterUInt32.lower(alto),uniffiCallStatus
+    )
+})
+}
+/**
+ * Acercar `factor` (<1 acerca) dejando quieto `fijo` en la pantalla.
+ */
+public func camaraZoom(camara: Camara3d, factor: Double, fijo: Punto3d) -> Camara3d  {
+    return try!  FfiConverterTypeCamara3d_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_func_camara_zoom(
+        FfiConverterTypeCamara3d_lower(camara),
+        FfiConverterDouble.lower(factor),
+        FfiConverterTypePunto3d_lower(fijo),uniffiCallStatus
+    )
+})
+}
+/**
+ * **Que visor abre este fichero**: por la extension (DWG, DXF, IFC, RVT)
+ * o, para un `.xml`, `.csv` o `.txt`, mirando el principio del contenido
+ * (un LandXML, coordenadas de puntos). Lee como mucho 8 KB.
+ */
+public func claseDeModelo(ruta: String) -> ClaseDeModelo  {
+    return try!  FfiConverterTypeClaseDeModelo_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_func_clase_de_modelo(
+        FfiConverterString.lower(ruta),uniffiCallStatus
+    )
+})
+}
+/**
+ * Una medida con sus decimales y su unidad (`$INSUNITS`).
+ */
+public func textoDeMedida(distancia: Double, unidades: UInt32) -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pixpin_nucleo_fn_func_texto_de_medida(
+        FfiConverterDouble.lower(distancia),
+        FfiConverterUInt32.lower(unidades),uniffiCallStatus
+    )
+})
+}
+/**
  * `K7Q2M-9XMPA`: el codigo como se lee y se dicta.
  */
 public func codigoLegible(codigo: String) -> String  {
@@ -13077,6 +16012,39 @@ private let initializationResult: InitializationResult = {
     if (uniffi_pixpin_nucleo_checksum_func_mini_todas() != 50586) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_pixpin_nucleo_checksum_func_camara_cerca_de() != 59670) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_func_camara_encuadrar() != 16526) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_func_camara_girar() != 35658) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_func_camara_hacia() != 50059) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_func_camara_matriz() != 14335) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_func_camara_mover() != 42625) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_func_camara_ojo() != 40282) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_func_camara_rayo() != 15187) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_func_camara_zoom() != 10797) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_func_clase_de_modelo() != 2579) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_func_texto_de_medida() != 14072) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_pixpin_nucleo_checksum_func_codigo_legible() != 26743) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -13252,6 +16220,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_pixpin_nucleo_checksum_method_nucleo_guardar_miniapp() != 14664) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_nucleo_abrir_plano() != 5693) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_pixpin_nucleo_checksum_method_nucleo_anuncio() != 714) {
@@ -13506,6 +16477,72 @@ private let initializationResult: InitializationResult = {
     if (uniffi_pixpin_nucleo_checksum_method_llaveroapp_borrar() != 39892) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_pixpin_nucleo_checksum_method_modelo3dapple_categorias() != 20369) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_modelo3dapple_elegir() != 14479) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_modelo3dapple_elemento() != 31572) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_modelo3dapple_indices() != 4408) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_modelo3dapple_niveles() != 24353) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_modelo3dapple_resumen() != 13181) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_modelo3dapple_vertices() != 21956) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_modelo3dapple_visibles() != 51453) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_plano_anotado() != 58773) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_plano_buferes() != 11866) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_plano_capas() != 949) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_plano_encaje() != 23853) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_plano_enganchar() != 55217) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_plano_grupos() != 30531) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_plano_grupos_visibles() != 13533) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_plano_guardar_anotado() != 41810) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_plano_poner_capa() != 3829) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_plano_resumen() != 35805) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_plano_ruta_de_la_capa() != 62854) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_plano_soltar_dibujo() != 24529) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_plano_texto_de_medida() != 35824) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_method_plano_vaciar_caches() != 62725) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_pixpin_nucleo_checksum_method_escucha_atender() != 13245) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -13534,6 +16571,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_pixpin_nucleo_checksum_constructor_lienzo_de_json() != 46678) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pixpin_nucleo_checksum_constructor_modelo3dapple_abrir() != 7304) {
         return InitializationResult.apiChecksumMismatch
     }
 

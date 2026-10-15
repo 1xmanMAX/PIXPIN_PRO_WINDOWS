@@ -7,6 +7,8 @@ import SwiftUI
 @main
 struct PixPinApp: App {
     @StateObject private var estado = EstadoApp()
+    /// Abrir planos y modelos 3D desde el Finder.
+    @NSApplicationDelegateAdaptor(DelegadoAbrirFicheros.self) private var delegado
 
     var body: some Scene {
         MenuBarExtra {
@@ -124,6 +126,7 @@ final class EstadoApp: ObservableObject {
             self.error = "\(error)"
         }
         let sincro = almacen.map { Sincronizador(nucleo: $0.nucleo) }
+        VentanasDePlano.compartidas.nucleo = almacen?.nucleo
         self.sincro = sincro
         atajoCaptura = AtajoDeCaptura { capturador.capturar() }
         ajustes = almacen.map { ModeloAjustes(nucleo: $0.nucleo, sincro: sincro) }

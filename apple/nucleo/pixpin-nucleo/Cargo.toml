@@ -37,6 +37,10 @@ pixpin-lecciones = { version = "0.1.0", path = "../pixpin-lecciones" }
 pixpin-ia = { version = "0.1.0", path = "../pixpin-ia" }
 # El timeline (`momentos.jsonl`), el mismo crate que Windows.
 pixpin-timeline = { version = "0.1.0", path = "../pixpin-timeline" }
+# Los planos DWG/DXF y los modelos 3D (IFC, Revit, Civil 3D) para el visor de
+# Metal: los mismos crates que el visor de Windows, sin su D3D11.
+pixpin-cad = { version = "0.1.0", path = "../pixpin-cad" }
+pixpin-bim = { version = "0.1.0", path = "../pixpin-bim" }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 thiserror = "2.0"

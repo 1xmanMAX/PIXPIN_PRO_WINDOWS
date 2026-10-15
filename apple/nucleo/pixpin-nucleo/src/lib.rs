@@ -65,6 +65,8 @@ pub mod lecciones;
 pub mod lienzo;
 pub mod llavero;
 pub mod miniapps;
+pub mod modelos3d;
+pub mod planos;
 pub mod red;
 pub mod sincro;
 pub mod tareas;
@@ -100,6 +102,14 @@ pub use lecciones::{
 pub use lienzo::{CajaLienzo, ImagenDelLienzo, Lienzo, LienzoPlano};
 pub use llavero::LlaveroApp;
 pub use miniapps::{AccionContador, CuentaMini, GastoMini, GiroRuleta, LibroMini, ResumenMini};
+pub use modelos3d::{
+    Caja3d, Camara3d, Categoria3d, ClaseDeModelo, Eleccion3d, Filtro3d, Indices3d, InfoElemento3d,
+    Modelo3dApple, Nivel3d, Punto3d, ResumenModelo3d,
+};
+pub use planos::{
+    AnotadoPlano, BuferesGrupo, CajaPlano, CapaPlano, CotaPlano, EncajePlano, Enganche, GrupoPlano,
+    NoDibujado, Plano, PuntoPlano, ResumenPlano, TipoEnganche,
+};
 pub use sincro::{AnuncioBonjour, Atendido, Escucha, ParTxt, ResumenSincro};
 pub use tareas::{ListaTareas, Tarea};
 pub use timeline::{DiaTimeline, MomentoTimeline, PaginaDias, PaginaMomentos};

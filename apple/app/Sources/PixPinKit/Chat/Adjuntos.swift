@@ -205,6 +205,11 @@ struct AccionesDeFichero: ViewModifier {
     }
 
     private func abrir() {
+        // Un plano o un modelo 3D va a su visor (Metal).
+        if FileManager.default.fileExists(atPath: url.path),
+           VentanasDePlano.compartidas.abrirSiEsSuyo(url, titulo: nombre) {
+            return
+        }
         // Lo que Quick Look no sabe ensenar (un .dwg sin extension de vista
         // previa) lo abre su app.
         if FileManager.default.fileExists(atPath: url.path) {
