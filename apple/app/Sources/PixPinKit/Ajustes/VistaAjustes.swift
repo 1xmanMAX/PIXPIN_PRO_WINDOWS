@@ -47,6 +47,7 @@ public struct VistaAjustes: View {
                 Text("0 = no se va ninguna. Se guarda en pixpinmax.toml, igual que en Windows.")
                     .font(.caption).foregroundStyle(.secondary)
             }
+            SeccionGestosYPila()
             Section("Sincronizar") {
                 Toggle("Sincronizar sola con los aparatos del grupo", isOn: Binding(
                     get: { modelo.sincroAutomatica },

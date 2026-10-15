@@ -126,20 +126,29 @@ final class EstadoApp: ObservableObject {
                 NSPasteboard.general.setString(texto, forType: .string)
             }
         }
-        // Al chat: a «Mensajes guardados», como en Windows sin chat abierto.
+        // Al chat: el proyecto se elige en un paso (buscador y teclas 1-6).
         if let almacen {
-            capturador.alMandarAlChat = { imagen in
-                Task {
-                    guard let png = NSBitmapImageRep(cgImage: imagen).representation(using: .png, properties: [:]),
-                          let guardados = try? almacen.nucleo.chatGuardados(),
-                          await almacen.adjuntar(datos: png, formato: "png", en: guardados.id) != nil
-                    else {
-                        NSSound.beep()
-                        return
-                    }
-                }
-            }
+            let selector = SelectorProyecto()
+            capturador.alMandarAlChat = { selector.elegir(para: $0, almacen: almacen) }
         }
+        // Copiar apila (⌘V pega la tanda); scroll y GIF de la zona elegida.
+        let pila = PilaCapturas.compartida
+        capturador.alCopiar = { pila.copiar($0, escala: $1) }
+        let scroll = CapturaConScroll.compartida
+        scroll.alTerminar = { imagen, escala in
+            Capturador.copiar(imagen, escala: escala)
+            GestorPines.compartido.pinear(imagen: imagen)
+        }
+        capturador.alScroll = { zona in Task { await scroll.empezar(zona) } }
+        let gif = GrabadorGif.compartido
+        gif.alGuardar = { NSWorkspace.shared.activateFileViewerSelecting([$0]) }
+        capturador.alGif = { zona in Task { await gif.empezar(zona) } }
+        // Los gestos con Option en todo el Mac (apagados de fabrica).
+        let gestos = GestosAlt.compartido
+        gestos.alCopiar = { pila.copiar($0, escala: $1) }
+        gestos.alPinear = { GestorPines.compartido.pinear(imagen: $0, marco: $1) }
+        gestos.alAnotarPantalla = { capturador.anotarPantalla() }
+        gestos.arrancarSiToca()
         // Grabar la pantalla: elegir la zona con la misma captura (Intro o
         // ⌘G graba) y parar desde la barra de menus o con el mismo atajo.
         let grabador = GrabadorPantalla.compartido
@@ -156,7 +165,9 @@ final class EstadoApp: ObservableObject {
     /// Empieza a elegir que grabar o, si ya graba, para.
     static func grabarOParar(_ capturador: Capturador) {
         let grabador = GrabadorPantalla.compartido
-        if grabador.grabando {
+        if GrabadorGif.compartido.grabando {
+            Task { await GrabadorGif.compartido.parar() }
+        } else if grabador.grabando {
             Task { await grabador.parar() }
         } else {
             capturador.capturar(paraGrabar: true)
