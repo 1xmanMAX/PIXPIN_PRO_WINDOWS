@@ -21,7 +21,7 @@ Y además, el puente con Swift:
 
 | Carpeta | Qué hay |
 |---|---|
-| [`nucleo/pixpin-nucleo`](nucleo/pixpin-nucleo) | La API para Swift con **UniFFI**: abrir una carpeta de datos (`Nucleo`), chats y mensajes **por páginas**, escribir una nota, adjuntar un fichero (`adjuntar`: se copia con `guardar_adjunto` y la clase de `clase_de_nombre`, como al soltarlo en Windows) y resolver su ruta (`ruta_absoluta`, `imagenes_del_lienzo`), el lienzo como **un solo búfer plano** de `f32` (formato en `src/lienzo.rs`) y sincronizar por TCP (unirse a un grupo, una vuelta, escuchar). |
+| [`nucleo/pixpin-nucleo`](nucleo/pixpin-nucleo) | La API para Swift con **UniFFI**: abrir una carpeta de datos (`Nucleo`), chats y mensajes **por páginas**, escribir una nota, adjuntar un fichero (`adjuntar`: se copia con `guardar_adjunto` y la clase de `clase_de_nombre`, como al soltarlo en Windows) y resolver su ruta (`ruta_absoluta`, `imagenes_del_lienzo`), el lienzo como **un solo búfer plano** de `f32` (formato en `src/lienzo.rs`), sincronizar por TCP (unirse a un grupo, una vuelta, escuchar), la **galería de capturas** por páginas con su caducidad (conservar, 7 días más, borrar y devolver: los ficheros de Windows), el **timeline** (días y momentos por páginas), las **tareas** de todos los chats (marcar, apuntar en el Inbox) y **buscar en todo** (por páginas y cancelable). |
 | [`PixPinCore/`](PixPinCore) | El paquete Swift (`Package.swift`, macOS 15 / iOS 18): los enlaces generados y el `PixPinCoreFFI.xcframework` (no se versiona). |
 | [`herramientas/xcframework.sh`](herramientas/xcframework.sh) | En un Mac: compila las cuatro plataformas, genera los enlaces y hace el xcframework. |
 
@@ -98,7 +98,9 @@ pánico de Rust llega a Swift como error en vez de cerrar la app.
   - [ ] Transporte de Swift sobre `NWConnection` (hoy socket BSD de Rust, con IPv4 primero);
         el `suelto`, la galería y los chats con personas. La `Escucha` atiende una conexión
         cada vez: mientras dura una vuelta, una sonda de otro espera.
-  - [ ] Documentos (`docs`, `hojas`, `office`), timeline y lecciones en la API.
+  - [ ] Documentos (`docs`, `hojas`, `office`) y lecciones en la API (el timeline ya está).
+  - [ ] Buscar en todo usa un recorrido propio (`src/buscar.rs`): pasar al de `pixpin-lanzador`
+        cuando ese crate compile fuera de Windows.
   - [x] CI: `.github/workflows/apple.yml` (macOS 15, Xcode 16.4) compila el xcframework, pasa
         `swift test` (48 pruebas, 15-oct) y sube `PixPin.app` universal (19 MB; 8 MB en zip)
         como artefacto «PixPin-mac».
@@ -110,6 +112,10 @@ pánico de Rust llega a Swift como error en vez de cerrar la app.
   - [x] Pines flotantes (imagen, PDF, vídeo), Live Text y OCR con Vision.
   - [x] Adjuntos en el chat: miniaturas con ImageIO y caché con tope, Quick Look, soltar y ⌘V.
   - [x] Sincronizar por la Wi‑Fi (Bonjour) con Windows y Android.
+  - [x] Galería de capturas (rejilla perezosa, caducidad, conservar, 7 días más, borrar con
+        deshacer, Vista Rápida), Timeline (días → momentos), Tareas de todos los chats y Buscar
+        en todo (⌘F en Proyectos, espera de 200 ms y cancela la anterior).
+  - [ ] Barrer las capturas caducadas a la Papelera del Mac (`FileManager.trashItem`).
 - [ ] `por-adaptar/` → `nucleo/`:
   - [x] `pixpin-codec` (decodificar con `image`; WIC, vista reducida y portapapeles tras
         `#[cfg(windows)]`; ImageIO y `NSPasteboard` desde Swift).

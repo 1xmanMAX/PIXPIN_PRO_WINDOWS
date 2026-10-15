@@ -14,6 +14,9 @@ public struct VentanaProyectos: View {
     @ObservedObject var almacen: Almacen
     @State private var elegido: String?
     @State private var nuevo = ""
+    /// Un chat que pide abrir Buscar (ver `Buscar/Buscar.swift`).
+    @ObservedObject private var peticion = PeticionDeChat.compartida
+    @Environment(\.openWindow) private var abrirVentana
 
     public init(almacen: Almacen) { self.almacen = almacen }
 
@@ -44,6 +47,18 @@ public struct VentanaProyectos: View {
         }
         .task { await almacen.cargarChats() }
         .onChange(of: elegido) { _, visible in almacen.aligerar(visible: visible) }
+        // ⌘F: buscar en todo (chats, notas, tareas, momentos).
+        .toolbar {
+            Button { abrirVentana(id: IdVentana.buscar) } label: {
+                Label("Buscar", systemImage: "magnifyingglass")
+            }
+            .keyboardShortcut("f")
+        }
+        .onReceive(peticion.$chat) { pedido in
+            guard let pedido else { return }
+            elegido = pedido
+            peticion.chat = nil
+        }
         .overlay(alignment: .bottom) {
             if let error = almacen.error {
                 Text(error).font(.caption).padding(6)

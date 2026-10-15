@@ -29,6 +29,8 @@ pixpin-motor2d = { version = "0.1.0", path = "../pixpin-motor2d" }
 pixpin-proyecto = { version = "0.1.0", path = "../pixpin-proyecto" }
 pixpin-sincro = { version = "0.1.0", path = "../pixpin-sincro" }
 pixpin-sistema = { version = "0.1.0", path = "../pixpin-sistema" }
+# El timeline (`momentos.jsonl`), el mismo crate que Windows.
+pixpin-timeline = { version = "0.1.0", path = "../pixpin-timeline" }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 thiserror = "2.0"

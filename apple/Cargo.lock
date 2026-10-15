@@ -1705,6 +1705,7 @@ dependencies = [
  "pixpin-proyecto",
  "pixpin-sincro",
  "pixpin-sistema",
+ "pixpin-timeline",
  "serde",
  "serde_json",
  "thiserror",

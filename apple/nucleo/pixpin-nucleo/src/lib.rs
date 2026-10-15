@@ -23,6 +23,9 @@
 //!   entero. El indice de lineas de cada cuaderno se guarda en una cache con
 //!   tope ([`chats`]) y se vacia con el aviso de memoria del sistema
 //!   ([`Nucleo::vaciar_caches`]).
+//! - La galeria de capturas, el timeline y la busqueda tambien van por
+//!   paginas ([`galeria`], [`timeline`], [`buscar`]); las tareas de todos
+//!   los chats saltan sin leer las lineas que no son listas ([`tareas`]).
 //! - Lo que tarda (sincronizar, leer un lienzo grande) es **bloqueante y sin
 //!   hilos propios**: Swift lo llama desde una `Task` con prioridad
 //!   `.utility`, y el sistema lo manda a los nucleos de eficiencia. Rust no
@@ -41,16 +44,24 @@
 uniffi::setup_scaffolding!();
 
 pub mod adjuntos;
+pub mod buscar;
 pub mod chats;
+pub mod galeria;
 pub mod lienzo;
 pub mod sincro;
+pub mod tareas;
+pub mod timeline;
 
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
+pub use buscar::{Busqueda, ClaseDeResultado, PaginaBusqueda, ResultadoBusqueda};
 pub use chats::{FichaChat, MensajeChat, PaginaMensajes};
+pub use galeria::{CapturaBorrada, CapturaGaleria, PaginaGaleria};
 pub use lienzo::{CajaLienzo, ImagenDelLienzo, Lienzo, LienzoPlano};
 pub use sincro::{AnuncioBonjour, Atendido, Escucha, ParTxt, ResumenSincro};
+pub use tareas::{ListaTareas, Tarea};
+pub use timeline::{DiaTimeline, MomentoTimeline, PaginaDias, PaginaMomentos};
 
 /// Lo que puede salir mal, tal como lo ve Swift (un `enum` que `throws`).
 ///
@@ -114,6 +125,10 @@ pub struct Nucleo {
     /// `Host.current().localizedName` o `UIDevice.current.name`).
     nombre: String,
     pub(crate) cache: Mutex<chats::Cache>,
+    /// La lista de `capturas/` de la ultima lectura (ver [`galeria`]).
+    pub(crate) cache_galeria: Mutex<galeria::CacheGaleria>,
+    /// Los momentos del timeline de la ultima lectura (ver [`timeline`]).
+    pub(crate) cache_timeline: Mutex<timeline::CacheTimeline>,
 }
 
 #[uniffi::export]
@@ -131,6 +146,8 @@ impl Nucleo {
             raiz,
             nombre: nombre_del_aparato,
             cache: Mutex::new(chats::Cache::default()),
+            cache_galeria: Mutex::new(galeria::CacheGaleria::default()),
+            cache_timeline: Mutex::new(timeline::CacheTimeline::default()),
         }))
     }
 
@@ -157,6 +174,8 @@ impl Nucleo {
     /// volver a leer.
     pub fn vaciar_caches(&self) {
         self.cache_tomada().vaciar();
+        self.galeria_tomada().vaciar();
+        self.timeline_tomada().vaciar();
     }
 }
 
@@ -180,6 +199,16 @@ impl Nucleo {
     /// La cache, aunque un hilo muriera con ella tomada: es solo una cache.
     pub(crate) fn cache_tomada(&self) -> std::sync::MutexGuard<'_, chats::Cache> {
         self.cache.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    pub(crate) fn galeria_tomada(&self) -> std::sync::MutexGuard<'_, galeria::CacheGaleria> {
+        self.cache_galeria.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    pub(crate) fn timeline_tomada(&self) -> std::sync::MutexGuard<'_, timeline::CacheTimeline> {
+        self.cache_timeline
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
     }
 }
 
