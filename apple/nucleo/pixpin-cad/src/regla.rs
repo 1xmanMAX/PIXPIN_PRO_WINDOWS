@@ -10,7 +10,7 @@
 //! perpendicular, el punto mas cercano de una raya o un arco; si nada, libre.
 
 use crate::modelo::{CORTE, Modelo};
-use crate::ventana::Enganches;
+use crate::enganche::Enganches;
 
 const LADO: usize = 256;
 const TOPE_DE_CELDAS: usize = 64;
@@ -159,6 +159,7 @@ impl Rayas {
     }
 
     /// El punto de circulo o arco mas cercano a `p` a menos de `radio`.
+    #[allow(clippy::approx_constant)]
     pub fn en_arco(&self, p: [f64; 2], radio: f64) -> Option<[f64; 2]> {
         let mut mejor = None;
         let mut dm = radio;

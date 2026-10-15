@@ -591,7 +591,7 @@ fn suelo(o: &mut Obra, c: &Croquis, centro: Pt3, escena: f64) {
     }
 }
 
-/// **El croquis en triangulos y rayas**, listo para [`crate::ventana3d`].
+/// **El croquis en triangulos y rayas**, listo para `ventana3d`.
 /// `fotos` da la foto de una ruta de [`Imagen3D`] (la resuelve quien abre:
 /// aqui no se sabe donde vive cada `pixpin:files/…`).
 pub fn a_modelo(c: &Croquis, fotos: &dyn Fn(&str) -> Option<Foto>) -> Modelo3d {
@@ -678,6 +678,7 @@ pub fn abre_claro(c: &Croquis) -> bool {
 /// en nada y su direccion baila: la banda se retorcia en un pico. Ahi se
 /// sigue con el lado de la muestra anterior, y nunca se da la vuelta de
 /// golpe (un lado al reves pliega la banda sobre si misma).
+#[allow(clippy::needless_range_loop)]
 pub(crate) fn lados_de_la_banda(tg: &[Pt3], normales: Option<&[Pt3]>, de_pie: bool) -> Vec<Pt3> {
     let mut v: Vec<Pt3> = Vec::with_capacity(tg.len());
     for i in 0..tg.len() {

@@ -660,7 +660,7 @@ impl<'d> Convertidor<'d> {
                     pc.imagenes.push(ImagenDelPlano { capa: capa.to_string(), ruta: im.file_path.clone(), esquina: o, u, v });
                 }
             }
-            otro => self.c.no_dibujado(&otro.as_entity().entity_type().to_string()),
+            otro => self.c.no_dibujado(otro.as_entity().entity_type()),
         }
     }
 

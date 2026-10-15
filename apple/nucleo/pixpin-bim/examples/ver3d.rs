@@ -1,4 +1,5 @@
 //! Prueba a mano: `cargo run -p pixpin-bim --release --example ver3d -- <modelo.ifc|.px3d> [segundos]`.
+#[cfg(windows)]
 fn main() {
     let ruta = std::path::PathBuf::from(std::env::args().nth(1).expect("falta el modelo"));
     let segundos: u64 = std::env::args().nth(2).and_then(|s| s.parse().ok()).unwrap_or(0);
@@ -22,4 +23,11 @@ fn main() {
     if let Err(e) = pixpin_cad::ventana3d::ver(&titulo, rx, Default::default()) {
         eprintln!("error: {e}");
     }
+}
+
+/// La ventana (`pixpin_cad::ventana3d`) es de Windows: en Mac, iPad e iPhone el
+/// visor es de Swift y Metal.
+#[cfg(not(windows))]
+fn main() {
+    eprintln!("este ejemplo abre una ventana de Windows");
 }

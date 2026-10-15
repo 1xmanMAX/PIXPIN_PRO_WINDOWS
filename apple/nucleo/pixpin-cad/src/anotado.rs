@@ -28,6 +28,7 @@
 //! [`Encaje`]): asi la capa cae en su sitio en cualquier aparato aunque cada
 //! uno use otra unidad, como la de antes en lo ya anotado.
 
+#[cfg(windows)]
 use windows::Win32::Graphics::Direct3D11::{ID3D11Device, ID3D11Texture2D};
 
 use crate::modelo::Modelo;
@@ -229,7 +230,9 @@ pub trait Anotador {
     fn evento(&mut self, ev: EventoPlano, vista: &VistaPlano) -> Respuesta;
     /// Pinta lo anotado (siempre) y, si `anotando`, la barra y el panel del
     /// motor, encima del fotograma ya hecho (`destino`, el bufer de la
-    /// ventana) y antes de presentarlo.
+    /// ventana) y antes de presentarlo. Solo en Windows (D3D11): en Mac,
+    /// iPad e iPhone la tinta la pinta Swift encima de la capa de Metal.
+    #[cfg(windows)]
     fn pintar(&mut self, dispositivo: &ID3D11Device, destino: &ID3D11Texture2D, vista: &VistaPlano, anotando: bool);
     /// Si lo ultimo pintado no quedo nitido (lo anotado iba en su foto
     /// estirada mientras se movia la camara, o con trazos aun sin rehacer a

@@ -145,7 +145,9 @@ pub fn quitar_todas(carpeta: &Path) -> usize {
 }
 
 /// El fichero `nombre` (sin mirar mayusculas) en las carpetas del usuario.
-/// Una ruta entera no se busca: esa ya dice donde esta.
+/// Una ruta entera no se busca: esa ya dice donde esta. (Fuera de Windows,
+/// una ruta de Windows como `C:\Fuentes\x.shx` no es entera: se busca
+/// `x.shx`.)
 pub fn del_usuario(nombre: &str) -> Option<PathBuf> {
     let base = nombre.rsplit(['/', '\\']).next().unwrap_or(nombre).trim();
     if base.is_empty() || Path::new(nombre).is_absolute() {
@@ -312,7 +314,15 @@ mod pruebas_letras_del_usuario {
         poner_carpeta(Some(d.clone()));
         assert_eq!(del_usuario("ROMANS.SHX"), Some(d.join("romans.shx")));
         // Una ruta entera dice ya donde esta; un nombre vacio no es nada.
+        #[cfg(windows)]
         assert_eq!(del_usuario("C:\\Fuentes\\romans.shx"), None);
+        #[cfg(not(windows))]
+        {
+            assert_eq!(del_usuario("/Library/Fonts/romans.shx"), None);
+            // Fuera de Windows, la ruta de Windows que trae el plano no
+            // existe: la letra se busca por su nombre en las del usuario.
+            assert_eq!(del_usuario("C:\\Fuentes\\romans.shx"), Some(d.join("romans.shx")));
+        }
         assert_eq!(del_usuario("  "), None);
         // Un estilo sin SHX («Standard») no cuenta como letra que falta; un
         // .ttf pedido como «ttf:<ruta>» tampoco (ese ya se resolvio).

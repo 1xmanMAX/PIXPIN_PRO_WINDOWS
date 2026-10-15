@@ -1,7 +1,8 @@
 //! **Un modelo 3D (BIM) listo para la tarjeta**: triangulos con su normal,
 //! su color y el elemento del que salen, mas las aristas vivas (las que
 //! marcan la forma) para dibujarlas encima como rayas finas. Lo llena
-//! `pixpin-bim` al leer un IFC (o un Revit) y lo dibuja [`crate::ventana3d`].
+//! `pixpin-bim` al leer un IFC (o un Revit) y lo dibuja `ventana3d` (D3D11, en
+//! Windows) o Metal desde Swift (Mac, iPad e iPhone).
 //!
 //! Los puntos van relativos a [`Modelo3d::origen`]: un modelo
 //! georreferenciado esta a cientos de kilometros del cero y en `f32` sus
@@ -20,6 +21,30 @@ pub struct V3 {
     pub color: u32,
     /// El indice del elemento en [`Modelo3d::elementos`].
     pub elemento: u32,
+}
+
+// El vertice tal cual lo leen el sombreador de D3D11 y, en Apple, el
+// `MTLVertexDescriptor` de Metal (§4bis, reglas 1 y 5): 24 bytes, la
+// posicion en 0, la normal en 12, el color en 16 y el elemento en 20.
+// `Modelo3d::vertices` se pasa entero, sin copiar ni reordenar.
+const _: () = {
+    use std::mem::{offset_of, size_of};
+    assert!(size_of::<V3>() == 24);
+    assert!(offset_of!(V3, normal) == 12 && offset_of!(V3, color) == 16 && offset_of!(V3, elemento) == 20);
+};
+
+/// **Los indices de lo que se ve**: los de [`Modelo3d`] quitando los
+/// elementos ocultos (niveles, categorias, aislar uno). Los vertices no
+/// cambian: solo se rehacen estos cinco buferes de indices, en el mismo
+/// orden y con el mismo paso (3, 3, 2, 2 y 6). Lo usan D3D11 en Windows y
+/// Metal en Apple.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Visibles {
+    pub opacos: Vec<u32>,
+    pub transparentes: Vec<u32>,
+    pub aristas: Vec<u32>,
+    pub lineas: Vec<u32>,
+    pub puntos: Vec<u32>,
 }
 
 /// De que es cada parte: para nombrarla al tocarla.
@@ -125,6 +150,7 @@ impl Constructor3d {
 
     /// Una malla: `puntos` del mundo, `normales` (pueden faltar: se calculan
     /// por cara), `indices` de a tres y su color RGBA (0..1).
+    #[allow(clippy::needless_range_loop)]
     pub fn malla(&mut self, elemento: u32, puntos: &[[f64; 3]], normales: Option<&[[f32; 3]]>, indices: &[u32], color: [f32; 4]) {
         if puntos.is_empty() || indices.len() < 3 {
             return;
@@ -177,6 +203,7 @@ impl Constructor3d {
         }
     }
 
+    #[allow(clippy::needless_range_loop)]
     fn local(&mut self, p: [f64; 3]) -> [f32; 3] {
         let o = *self.origen.get_or_insert(p);
         for k in 0..3 {
@@ -361,6 +388,7 @@ fn unitario(a: [f32; 3]) -> Option<[f32; 3]> {
 /// Las aristas que marcan la forma: entre dos caras que doblan mas de
 /// `grados`, o el borde de una cara suelta. Los puntos repetidos (la misma
 /// esquina en dos caras) se juntan por posicion.
+#[allow(clippy::type_complexity)]
 pub fn aristas_vivas(puntos: &[[f32; 3]], indices: &[u32], grados: f32) -> Vec<u32> {
     let mut lado = 0f32;
     for p in puntos {
@@ -419,6 +447,21 @@ pub fn aristas_vivas(puntos: &[[f32; 3]], indices: &[u32], grados: f32) -> Vec<u
 const MAGIA: &[u8; 8] = b"PX3D\0\0\0\x03";
 
 impl Modelo3d {
+    /// Lo que se ve: solo los elementos para los que `ver` dice que si
+    /// (ver [`Visibles`]).
+    pub fn visibles(&self, ver: &dyn Fn(u32) -> bool) -> Visibles {
+        let f = |l: &[u32], paso: usize| -> Vec<u32> {
+            l.chunks_exact(paso).filter(|t| self.vertices.get(t[0] as usize).is_some_and(|v| ver(v.elemento))).flatten().copied().collect()
+        };
+        Visibles {
+            opacos: f(&self.opacos, 3),
+            transparentes: f(&self.transparentes, 3),
+            aristas: f(&self.aristas, 2),
+            lineas: f(&self.lineas, 2),
+            puntos: f(&self.puntos, 6),
+        }
+    }
+
     /// La caja de lo que importa: sin los pocos puntos sueltos muy lejos
     /// (una raya con una cota absurda en un plano) que harian ver el resto
     /// diminuto. Del 0,5 % al 99,5 % en cada eje, con un margen.

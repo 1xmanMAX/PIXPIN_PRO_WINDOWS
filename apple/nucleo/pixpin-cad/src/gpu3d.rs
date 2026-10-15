@@ -445,10 +445,7 @@ impl Gpu {
     /// Lo que se ve, de nuevo: solo los elementos para los que `ver` dice
     /// que si (los indices se rehacen; los vertices se quedan).
     pub fn filtrar_3d(&self, g: &mut ModeloGpu, m: &Modelo3d, ver: &dyn Fn(u32) -> bool) -> windows::core::Result<()> {
-        let f = |l: &[u32], paso: usize| -> Vec<u32> {
-            l.chunks_exact(paso).filter(|t| m.vertices.get(t[0] as usize).is_some_and(|v| ver(v.elemento))).flatten().copied().collect()
-        };
-        let (o, t, a, l, p) = (f(&m.opacos, 3), f(&m.transparentes, 3), f(&m.aristas, 2), f(&m.lineas, 2), f(&m.puntos, 6));
+        let crate::modelo3d::Visibles { opacos: o, transparentes: t, aristas: a, lineas: l, puntos: p } = m.visibles(ver);
         g.opacos = self.buffer(bytes_de(&o), D3D11_BIND_INDEX_BUFFER, 0)?;
         g.transparentes = self.buffer(bytes_de(&t), D3D11_BIND_INDEX_BUFFER, 0)?;
         g.aristas = self.buffer(bytes_de(&a), D3D11_BIND_INDEX_BUFFER, 0)?;
