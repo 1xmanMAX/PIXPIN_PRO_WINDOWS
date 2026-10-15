@@ -69,6 +69,12 @@ pub struct EjecutorDelChat {
     ctx: pixpin_ia::edicion::Contexto,
     /// Si ya se pregunto al lienzo por su resumen (y con el, el marco).
     con_marco: bool,
+    /// Todo lo que dibujo o toco este turno (la revision de los ojos lo
+    /// mira: `Zona::Turno`).
+    del_turno: Vec<u64>,
+    /// En el lienzo abierto: el primer paso de deshacer antes del turno y
+    /// cuantos cerro el turno (para juntarlos en uno al acabar).
+    pasos: Option<(u64, u64)>,
 }
 
 impl EjecutorDelChat {
@@ -89,6 +95,8 @@ impl EjecutorDelChat {
             vision: None,
             ctx: Default::default(),
             con_marco: false,
+            del_turno: Vec::new(),
+            pasos: None,
         }
     }
 
@@ -203,6 +211,16 @@ impl EjecutorDelChat {
                         && !r.ids.is_empty()
                     {
                         self.ctx.ultimos = r.ids.clone();
+                        for id in &r.ids {
+                            if !self.del_turno.contains(id) {
+                                self.del_turno.push(*id);
+                            }
+                        }
+                    }
+                    // Los pasos de deshacer que cerro (lienzo abierto).
+                    if let Ok(super::al_lienzo::Respuesta { pasos: Some((a, b)), .. }) = &r {
+                        let (desde, n) = self.pasos.unwrap_or((*a, 0));
+                        self.pasos = Some((desde.min(*a), n + b.saturating_sub(*a)));
                     }
                     return r;
                 }
@@ -329,7 +347,104 @@ impl EjecutorDelChat {
     }
 }
 
+impl EjecutorDelChat {
+    /// **Mirar el lienzo** (`ojos.rs`): quien tiene la escena copia la zona
+    /// y el hilo de los ojos la pinta.
+    fn ver_lienzo(&mut self, m: &pixpin_ia::ojos::Mirada) -> Result<pixpin_ia::ojos::Vista, String> {
+        if !self.con_marco {
+            // Que la rejilla mida desde donde mide el resumen.
+            let _ = self.resumen_del_lienzo();
+        }
+        let mut ctx = self.ctx.clone();
+        if m.zona == pixpin_ia::ojos::Zona::Turno {
+            ctx.ultimos = self.del_turno.clone();
+        }
+        let (tx, rx) = channel();
+        let pedido = super::al_lienzo::Pedido::de_trabajo(
+            self.proyecto.clone(),
+            self.destino.clone(),
+            super::al_lienzo::Trabajo::Ver { mirada: m.clone(), ctx },
+            tx,
+        );
+        let r = self.esperar_al_lienzo(pedido, rx)?;
+        let enc = r.vista.ok_or("el lienzo no devolvio nada que ver")?;
+        super::ojos::pintar(*enc)
+    }
+
+    /// **La hoja anotada con lo anotado encima**: la pagina del PDF pintada
+    /// debajo de su capa (la misma que lee el lector), con lo de alrededor.
+    fn ver_documento(&mut self, m: &pixpin_ia::ojos::Mirada) -> Result<pixpin_ia::ojos::Vista, String> {
+        use super::documentos_acciones::{ANCHO_DE_LA_HOJA, ultimo_anotado};
+        let u = ultimo_anotado().ok_or("no has anotado ningun documento todavia")?;
+        let hoja = u.hoja.ok_or("ver un plano anotado aun no se puede: ya esta abierto en el visor")?;
+        if !super::ocr::es_pdf(&u.ruta) {
+            return Err("solo se puede ver la hoja anotada de un PDF".into());
+        }
+        let raiz = super::documentos::raiz()
+            .or_else(|| crate::oscuro::ubicacion().map(|x| x.raiz().to_path_buf()))
+            .ok_or("no se sabe donde estan los datos de PixPin")?;
+        let d = crate::lector_pdf_proyecto::DondeVa::de(&raiz, &u.ruta, pixpin_shell::entorno::ahora_utc_ms());
+        let capa = d.leer_capa(&u.ruta, hoja, crate::anotado_del_adjunto::espacios_de_ahora(&u.ruta), u.alto);
+        let pagina = (0.0, 0.0, ANCHO_DE_LA_HOJA, u.alto);
+        let caja = match u.cajas.iter().copied().reduce(|a, b| (a.0.min(b.0), a.1.min(b.1), a.2.max(b.2), a.3.max(b.3))) {
+            // Lo anotado con bastante de alrededor para ver si cae donde
+            // debe; nunca fuera de la hoja.
+            Some(c) => {
+                let aire = (c.2 - c.0).max(c.3 - c.1).max(ANCHO_DE_LA_HOJA * 0.12);
+                (
+                    (c.0 - aire).max(0.0),
+                    (c.1 - aire).max(0.0),
+                    (c.2 + aire).min(ANCHO_DE_LA_HOJA),
+                    (c.3 + aire).min(u.alto),
+                )
+            }
+            None => pagina,
+        };
+        let (_, _, s) = pixpin_ia::ojos::tamano(caja, pixpin_ia::ojos::LADO_MAXIMO);
+        let ancho_px = ((ANCHO_DE_LA_HOJA * s).ceil() as u32).clamp(256, 4096);
+        let img = pixpin_pdf::Documento::abrir(&u.ruta)
+            .and_then(|doc| doc.renderizar(hoja as u32, ancho_px))
+            .map_err(|e| format!("no se pudo pintar la hoja: {e}"))?;
+        let mut enc = super::ojos::copiar(&capa.escena, caja, (0.0, 0.0), m.marcas, |_| None);
+        enc.fondo = Some((img, pagina));
+        let mut v = super::ojos::pintar(enc)?;
+        v.texto.push_str(&format!(
+            " Es la hoja {} de «{}» con lo anotado encima; sus coordenadas van en unidades de la hoja (ancho {}, alto {}): en anotar_documento, una «zona» va en fracciones 0-1 (x/{}, y/{}).",
+            hoja + 1,
+            pixpin_docs::nombre(&u.ruta),
+            ANCHO_DE_LA_HOJA.round(),
+            u.alto.round(),
+            ANCHO_DE_LA_HOJA.round(),
+            u.alto.round()
+        ));
+        Ok(v)
+    }
+}
+
 impl Ejecutor for EjecutorDelChat {
+    fn ver(&mut self, m: &pixpin_ia::ojos::Mirada) -> Result<pixpin_ia::ojos::Vista, String> {
+        match m.zona {
+            pixpin_ia::ojos::Zona::Documento => self.ver_documento(m),
+            _ => self.ver_lienzo(m),
+        }
+    }
+
+    /// Lo que hizo el turno en el lienzo abierto, un solo Ctrl+Z.
+    fn cerrar_turno(&mut self) {
+        let Some((desde, esperados)) = self.pasos.take().filter(|(_, n)| *n >= 2) else { return };
+        if !super::al_lienzo::hay_editor() {
+            return;
+        }
+        let (tx, rx) = channel();
+        super::al_lienzo::pedir(super::al_lienzo::Pedido::de_trabajo(
+            self.proyecto.clone(),
+            self.destino.clone(),
+            super::al_lienzo::Trabajo::Juntar { desde, esperados },
+            tx,
+        ));
+        let _ = rx.recv_timeout(ESPERA_RESUMEN);
+    }
+
     fn ejecutar(&mut self, llamada: &Llamada) -> Result<String, String> {
         match llamada {
             // Todo lo que se dibuja de la llamada sola (figuras, graficas,
