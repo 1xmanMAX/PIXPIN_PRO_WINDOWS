@@ -55,10 +55,22 @@ pub struct Textos {
     fuentes: HashMap<String, Option<Fuente>>,
 }
 
+/// La carpeta de las fuentes del sistema. Fuera de Windows no hay Segoe UI
+/// ni Arial Narrow: en el Mac se busca Arial en las de macOS (con APFS sin
+/// distinguir mayusculas, «arial.ttf» encuentra «Arial.ttf»); en iPad e
+/// iPhone y en Linux solo quedan las del usuario y las SHX de Hershey de
+/// PixPin. Lo que no tenga letra no se rellena aqui: en Apple los textos
+/// los escribe Swift con Core Text.
+#[cfg(windows)]
 const CARPETA_FUENTES: &str = "C:\\Windows\\Fonts";
+#[cfg(target_os = "macos")]
+const CARPETA_FUENTES: &str = "/System/Library/Fonts/Supplemental";
+#[cfg(not(any(windows, target_os = "macos")))]
+const CARPETA_FUENTES: &str = "/usr/share/fonts/truetype/msttcorefonts";
 
 /// Las fuentes instaladas en Windows por su nombre de familia (el del
 /// registro: «agency fb», «agency fb bold»…) y su fichero. Se lee una vez.
+#[cfg(windows)]
 pub fn fuentes_instaladas() -> &'static HashMap<String, std::path::PathBuf> {
     static F: std::sync::OnceLock<HashMap<String, std::path::PathBuf>> = std::sync::OnceLock::new();
     F.get_or_init(|| {
@@ -98,6 +110,14 @@ pub fn fuentes_instaladas() -> &'static HashMap<String, std::path::PathBuf> {
         }
         mapa
     })
+}
+
+/// Fuera de Windows no hay registro de fuentes: ninguna instalada (mandan
+/// las del usuario; ver `CARPETA_FUENTES`).
+#[cfg(not(windows))]
+pub fn fuentes_instaladas() -> &'static HashMap<String, std::path::PathBuf> {
+    static F: std::sync::OnceLock<HashMap<String, std::path::PathBuf>> = std::sync::OnceLock::new();
+    F.get_or_init(HashMap::new)
 }
 
 /// La clave de fuente (para [`Textos`]) de una familia de Windows, con
@@ -218,6 +238,17 @@ impl Textos {
             }
             if let Some(f) = f.as_mut() {
                 f.shx = shx;
+            } else if let Some(shx) = shx {
+                // Sin ninguna TrueType (fuera de Windows puede pasar): la SHX
+                // sola, y lo que ella no tenga se queda sin dibujar.
+                f = Some(Fuente {
+                    id: self.fuentes.len() as u32,
+                    shx: Some(shx),
+                    datos: Arc::new(Vec::new()),
+                    letras: HashMap::new(),
+                    alto_mayuscula: 1.0,
+                    escala_ttf: 1.0,
+                });
             }
             self.fuentes.insert(clave.clone(), f);
         }

@@ -8,7 +8,7 @@ use std::f64::consts::PI;
 use super::malla::{CONTRASTE, Foto, SIN_LUZ, a_modelo, abre_claro, caja_de_lo_dibujado};
 use super::*;
 use crate::modelo3d::Modelo3d;
-use crate::ventana3d::Orbita;
+use crate::orbita::Orbita;
 
 const ANCHO: f64 = 1000.0;
 const ALTO: f64 = 2000.0;
@@ -144,7 +144,7 @@ fn una_vista_guardada_se_ve_desde_el_mismo_sitio() {
     assert!(largo(menos(adelante, vista.camara.adelante())) < 1e-9);
     assert_eq!(o.objetivo, [-10.0, 0.0, 0.0]);
     // Lo que se ve de alto en el objetivo: 600 dp a aumento 2 = 300 del mundo.
-    let visto = 2.0 * o.dist * (crate::ventana3d::FOV / 2.0).tan();
+    let visto = 2.0 * o.dist * (crate::orbita::FOV / 2.0).tan();
     assert!((visto - 300.0).abs() < 1e-6);
     // Caso negativo: con un recorte de nada, la vista es la de siempre.
     let toque = Vista3D { recorte: Some(Recorte { x0: 0.5, y0: 0.5, x1: 0.51, y1: 0.51 }), ..vista.clone() };

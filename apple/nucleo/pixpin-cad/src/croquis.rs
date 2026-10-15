@@ -12,7 +12,7 @@
 //! viejo abra igual que alli), la camara del movil (`Camara3D.kt`, para las
 //! vistas guardadas y sus pruebas) y el pulso del trazo (`PulsoDelMundo.kt`).
 //! De ahi a triangulos lo hace [`malla`], y lo ensena la ventana del visor 3D
-//! ([`crate::ventana3d`]), que ya sabe girar, mover, acercar y cortar. Nada
+//! (`ventana3d`), que ya sabe girar, mover, acercar y cortar. Nada
 //! de lo que hay aqui escribe en el fichero: editar el croquis (C2) necesita
 //! antes la fusion trazo a trazo en `pixpin-sincro`.
 
@@ -785,15 +785,15 @@ impl Camara3D {
 /// PC mira en perspectiva (45 grados) y sin balanceo; una vista con lente se
 /// ve con la del PC. `origen` es el del modelo (los vertices van relativos),
 /// y `escala` los pixeles por `dp` de la ventana.
-pub fn orbita_de(vista: &Vista3D, origen: [f64; 3], ancho_px: u32, alto_px: u32, escala: f64) -> crate::ventana3d::Orbita {
+pub fn orbita_de(vista: &Vista3D, origen: [f64; 3], ancho_px: u32, alto_px: u32, escala: f64) -> crate::orbita::Orbita {
     let (ancho, alto) = (ancho_px.max(1) as f64 / escala, alto_px.max(1) as f64 / escala);
     let c = vista.camara.encuadrada(vista.recorte.as_ref(), ancho, alto);
     // Lo que se ve de alto en el centro: `alto / zoom` del mundo.
-    let dist = alto / c.zoom.max(1e-9) / (2.0 * (crate::ventana3d::FOV / 2.0).tan());
-    crate::ventana3d::Orbita {
+    let dist = alto / c.zoom.max(1e-9) / (2.0 * (crate::orbita::FOV / 2.0).tan());
+    crate::orbita::Orbita {
         objetivo: [c.centro.x - origen[0], c.centro.y - origen[1], c.centro.z - origen[2]],
         rumbo: -c.giro - PI / 2.0,
-        altura: c.inclinacion.clamp(-crate::ventana3d::ALTURA_MAX, crate::ventana3d::ALTURA_MAX),
+        altura: c.inclinacion.clamp(-crate::orbita::ALTURA_MAX, crate::orbita::ALTURA_MAX),
         dist: dist.max(1e-4),
     }
 }

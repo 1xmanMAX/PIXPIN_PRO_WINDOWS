@@ -111,6 +111,7 @@ pub fn elipse(c: [f64; 2], mayor: [f64; 2], razon: f64, t0: f64, t1: f64) -> Vec
 
 /// Una B-spline (racional si hay pesos), evaluada con de Boor en
 /// `muestras` puntos repartidos por su dominio.
+#[allow(clippy::needless_range_loop)]
 pub fn spline(grado: usize, nudos: &[f64], control: &[[f64; 3]], pesos: &[f64]) -> Vec<[f64; 2]> {
     let n = control.len();
     if n < 2 {

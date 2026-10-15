@@ -1,4 +1,5 @@
 //! Prueba a mano del visor: `cargo run -p pixpin-cad --release --example ver -- <plano.dwg> [segundos]`.
+#[cfg(windows)]
 fn main() {
     let _ = tracing_subscriber::fmt().with_writer(std::io::stderr).try_init();
     let ruta = std::path::PathBuf::from(std::env::args().nth(1).expect("falta el plano"));
@@ -21,4 +22,11 @@ fn main() {
     if let Err(e) = pixpin_cad::ventana::ver(&titulo, rx, Default::default(), Default::default()) {
         eprintln!("error: {e}");
     }
+}
+
+/// La ventana (`pixpin_cad::ventana`) es de Windows: en Mac, iPad e iPhone el
+/// visor es de Swift y Metal.
+#[cfg(not(windows))]
+fn main() {
+    eprintln!("este ejemplo abre una ventana de Windows");
 }

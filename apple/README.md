@@ -11,8 +11,8 @@ aquí: sigue viviendo en `crates/` y `apps/`.
 
 | Carpeta | Qué hay | Qué se hace con ello |
 |---|---|---|
-| [`nucleo/`](nucleo) | Los 19 crates que **compilan sin Windows**: formato de proyectos, sincronizar, lienzo, Word/Excel/PowerPoint/EPUB, timeline, lecciones, la lógica de la interfaz, imagen (`pixpin-codec`), PDF (`pixpin-pdf`), el asistente (`pixpin-ia`) y el puente con Swift (`pixpin-nucleo`) | **Se usa tal cual.** Es un espacio de trabajo de Rust propio (`apple/Cargo.toml`) que compila y pasa sus pruebas fuera de Windows. Será `PixPinCore.xcframework` para Swift (fase 1). |
-| [`por-adaptar/`](por-adaptar) | Crates **casi** puros, con una parte de Windows: `pixpin-cad` (lector DWG/DXF + 3D en D3D11), `pixpin-bim`, `pixpin-voz` (SAPI, ONNX de System32), `pixpin-pila`, `pixpin-lanzador`, `pixpin-aligerar` | **Se queda en Rust**: separar la parte pura con `#[cfg(windows)]` o quitándola, y pasar cada crate a `nucleo/` cuando compile sin Windows. No compila todavía (fuera del espacio de trabajo). |
+| [`nucleo/`](nucleo) | Los 22 crates que **compilan sin Windows**: formato de proyectos, sincronizar, lienzo, Word/Excel/PowerPoint/EPUB, timeline, lecciones, la lógica de la interfaz, imagen (`pixpin-codec`), PDF (`pixpin-pdf`), planos DWG/DXF y BIM (`pixpin-cad`, `pixpin-bim`), el asistente (`pixpin-ia`) y el puente con Swift (`pixpin-nucleo`) | **Se usa tal cual.** Es un espacio de trabajo de Rust propio (`apple/Cargo.toml`) que compila y pasa sus pruebas fuera de Windows. Será `PixPinCore.xcframework` para Swift (fase 1). |
+| [`por-adaptar/`](por-adaptar) | Crates **casi** puros, con una parte de Windows: `pixpin-voz` (SAPI, ONNX de System32), `pixpin-pila`, `pixpin-lanzador`, `pixpin-aligerar` | **Se queda en Rust**: separar la parte pura con `#[cfg(windows)]` o quitándola, y pasar cada crate a `nucleo/` cuando compile sin Windows. No compila todavía (fuera del espacio de trabajo). |
 | [`por-traducir/`](por-traducir) | Lo atado a Windows: `pixpin-shell` (Win32), `pixpin-render` (Direct2D), `pixpin-capture`, `pixpin-record`, `pixpin-ocr`, `pixpin-audio`, `pixpin-web` (WebView2), `pixpin-pin`, `pixpin-notas` (RichEdit; sus fórmulas `$…$`, que son lógica pura, ya viven en `nucleo/pixpin-docs/src/formulas.rs`) y la app `pixpin` | **Referencia para escribir la versión en Swift** con las herramientas de Apple (ScreenCaptureKit, Vision, PDFKit, AVFoundation, `NSPanel`…). No compila ni se compilará: se lee y se traduce pieza a pieza. |
 
 Qué herramienta de Apple sustituye a cada pieza: §3 del plan.
@@ -99,7 +99,7 @@ pánico de Rust llega a Swift como error en vez de cerrar la app.
         `#[cfg(windows)]`; ImageIO y `NSPasteboard` desde Swift).
   - [x] `pixpin-pdf` (escribir, unir, texto, plano; ver con `Windows.Data.Pdf` y aligerar tras
         `#[cfg(windows)]`; PDFKit desde Swift).
-  - [ ] `pixpin-cad` y `pixpin-bim` (el lector; el 3D a Metal).
+  - [x] `pixpin-cad` y `pixpin-bim` (ver abajo).
   - [ ] `pixpin-voz`, `pixpin-pila`, `pixpin-lanzador`, `pixpin-aligerar`.
 - [ ] CI: el trabajo `apple-nucleo` ya prueba `pixpin-codec` y `pixpin-pdf` (usa
       `--workspace`). Falta un paso que haga
@@ -121,3 +121,14 @@ pánico de Rust llega a Swift como error en vez de cerrar la app.
         Windows (`llama-server.exe`).
   - [ ] Si PixPin muere de golpe en Mac, `llama-server` queda huérfano (no hay Job Objects).
   - [ ] El banco (`tests/banco.rs`) no guarda PNG aquí (pintaba con `pixpin-pdf`/`pixpin-shell`).
+- [x] `por-adaptar/` → `nucleo/`: `pixpin-cad` y `pixpin-bim`. Lo de Windows (`gpu`, `gpu3d`:
+      D3D11 + HLSL; `ventana`, `ventana3d`: Win32; el registro de fuentes de `texto`; el
+      `pintar` de `anotado::Anotador`) va con `#[cfg(windows)]`, intacto. Lo demás es puro:
+      leer DWG/DXF/IFC/Revit/LandXML, medir, anotar, la página web y los búferes de la tarjeta
+      (`Modelo` y `Modelo3d`: `Vec` planos de tipos `#[repr(C)]` con su tamaño comprobado al
+      compilar, para Metal sin copias), la cámara 3D (`orbita`) y lo visible por elementos
+      (`Modelo3d::visibles`). Fuera de Windows no hay Segoe UI ni Arial Narrow: los textos en
+      geometría salen con Arial del Mac, las letras del usuario o las SHX de Hershey; lo demás
+      lo escribe Swift con Core Text.
+- [ ] Fase 2/3: visor de planos y de modelos 3D en Swift con Metal (traducir los sombreadores
+      HLSL de `gpu.rs` y `gpu3d.rs` a MSL).

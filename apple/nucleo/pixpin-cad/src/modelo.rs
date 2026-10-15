@@ -107,8 +107,25 @@ pub struct Arco {
 /// rayas (una fuente SHX: pares de puntos, `LINELIST`) y no de triangulos.
 pub const GLIFO_DE_RAYAS: u32 = 0x8000_0000;
 
-/// El indice que corta una tira de lineas (`strip cut` de D3D11).
+/// El indice que corta una tira de lineas (`strip cut` de D3D11). En Metal
+/// es el mismo: con indices de 32 bits, `0xFFFFFFFF` reinicia la tira.
 pub const CORTE: u32 = u32::MAX;
+
+// **Lo que va a la tarjeta, tal cual en memoria** (§4bis del plan de Apple,
+// reglas 1 y 5): cada `Vec` de estos tipos es un bufer plano que D3D11 sube
+// sin tocar y que en Mac, iPad e iPhone Metal puede usar sin copiarlo
+// (`makeBuffer(bytesNoCopy:)` sobre su puntero, o una copia de una vez). Si
+// cambia un tamano o un orden, cambian los sombreadores de los dos lados:
+// por eso se comprueba al compilar.
+const _: () = {
+    use std::mem::{offset_of, size_of};
+    assert!(size_of::<Vertice>() == 12 && offset_of!(Vertice, color) == 8);
+    assert!(size_of::<VerticeTrama>() == 16 && offset_of!(VerticeTrama, trama) == 12);
+    assert!(size_of::<Trama>() == 36 && offset_of!(Trama, desde) == 28);
+    assert!(size_of::<Familia>() == 64 && offset_of!(Familia, trazos) == 32);
+    assert!(size_of::<Letra>() == 32 && offset_of!(Letra, glifo) == 28);
+    assert!(size_of::<Arco>() == 32 && offset_of!(Arco, relleno) == 24);
+};
 
 /// Un trozo seguido que se dibuja de una vez.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -223,6 +240,7 @@ pub struct FamiliaPlano {
 /// Junta lo dibujado (en coordenadas del plano, `f64`) y al final lo ordena
 /// en un [`Modelo`].
 #[derive(Default)]
+#[allow(clippy::type_complexity)]
 pub struct Constructor {
     puntos: Vec<([f64; 2], u32)>,
     lineas: Vec<u32>,

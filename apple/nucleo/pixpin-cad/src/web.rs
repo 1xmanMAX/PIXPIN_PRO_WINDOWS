@@ -574,7 +574,7 @@ pub fn pagina(grupos: &[Grupo], o: &OpcionesWeb) -> String {
         ),
         None => "null".into(),
     };
-    let sufijo = crate::ventana::sufijo(o.unidades).trim();
+    let sufijo = crate::enganche::sufijo(o.unidades).trim();
     let datos = format!(
         r#"{{"titulo":{},"vista":[{},{},{},{}],"claro":{},"unidad":{},"capas":[{}],"grupos":[{}],"colores":[{}],"cotas":[{}],"marcos":[{}],"imagenes":[{}],"anotado":{},"normal":{},"t":{{"todas":{},"ninguna":{},"sin":{}}}}}"#,
         texto_json(&o.titulo),

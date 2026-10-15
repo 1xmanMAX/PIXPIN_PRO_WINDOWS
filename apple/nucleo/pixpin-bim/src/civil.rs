@@ -42,7 +42,7 @@ pub fn es_fichero_de_puntos(ruta: &Path) -> bool {
 }
 
 fn trocear(l: &str) -> Vec<&str> {
-    l.split(|c: char| c == ',' || c == ';' || c == '\t' || c == ' ').map(str::trim).filter(|s| !s.is_empty()).collect()
+    l.split([',', ';', '\t', ' ']).map(str::trim).filter(|s| !s.is_empty()).collect()
 }
 
 /// Los numeros del principio de una linea.
@@ -155,6 +155,8 @@ fn color_cota(k: f64) -> [f32; 4] {
 
 /// Un paso de curvas «redondo» (1, 2, 5 por potencia de 10) que de unas 25
 /// curvas en `rango`.
+// `!(rango > 0.0)` a proposito: tambien descarta NaN.
+#[allow(clippy::neg_cmp_op_on_partial_ord)]
 pub fn paso_de_curvas(rango: f64) -> f64 {
     if !(rango > 0.0) {
         return 1.0;

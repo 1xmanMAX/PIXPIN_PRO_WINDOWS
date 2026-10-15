@@ -1,7 +1,7 @@
 //! **Un plano DWG o DXF en 3D**: lo que tiene cota (curvas de nivel a su
 //! altura, polilineas 3D de un trazado, puntos de un levantamiento, caras 3D
 //! y mallas de un terreno, el dibujo de reserva de los objetos de Civil 3D)
-//! como modelo 3D para girarlo en [`crate::ventana3d`]. Los textos y
+//! como modelo 3D para girarlo en `ventana3d`. Los textos y
 //! sombreados se quedan en la vista en planta.
 //!
 //! Las caras de una misma capa y color se juntan en una malla: asi un
