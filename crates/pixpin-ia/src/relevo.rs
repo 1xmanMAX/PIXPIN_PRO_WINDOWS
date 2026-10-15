@@ -135,10 +135,6 @@ impl Motor for Relevado {
     fn catalogo_completo(&self) -> bool {
         self.motor.catalogo_completo()
     }
-
-    fn ve_imagenes(&self) -> bool {
-        self.motor.ve_imagenes()
-    }
 }
 
 #[cfg(test)]

@@ -332,11 +332,6 @@ impl Drop for MotorLlama {
 }
 
 impl Motor for MotorLlama {
-    /// Con su proyector de vision (`mmproj`), el local tambien ve.
-    fn ve_imagenes(&self) -> bool {
-        self.config.vision.is_some()
-    }
-
     fn precalentar(&self) {
         if let Err(e) = self.precargar() {
             tracing::warn!(%e, "asistente: no se pudo precargar el modelo");

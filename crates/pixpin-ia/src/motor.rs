@@ -320,8 +320,9 @@ pub trait Motor: Send + Sync {
     }
 
     /// **Si ve imagenes** (15-oct, los ojos del lienzo: `ojos.rs`). Claude
-    /// y DeepSeek si; el local, si tiene su `mmproj`. Sin vision, el turno
-    /// no ofrece `ver_lienzo` ni revisa lo dibujado.
+    /// y DeepSeek si; el local, por ahora no (el usuario, 15-oct: primero la
+    /// nube, el local no se toca). Sin vision, el turno no ofrece
+    /// `ver_lienzo` ni revisa lo dibujado.
     fn ve_imagenes(&self) -> bool {
         false
     }

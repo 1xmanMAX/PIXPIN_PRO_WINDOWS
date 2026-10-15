@@ -403,9 +403,8 @@ pub fn apagar_ojos(apagar: bool) {
 }
 
 /// **Cuantas rondas de revision**: una con la nube (segundos y ~1000
-/// tokens de vision). El local con vision solo mira si se lo pide el modelo
-/// (`ver_lienzo`): en la CPU de este PC leer una imagen son decenas de
-/// segundos, y revisar cada dibujo duplicaria la espera.
+/// tokens de vision). El local ni mira ni revisa: el usuario pidio el
+/// 15-oct desarrollar primero la nube y no tocar el local.
 pub fn revisiones(motor: &dyn Motor) -> usize {
     if motor.catalogo_completo() { 1 } else { 0 }
 }
