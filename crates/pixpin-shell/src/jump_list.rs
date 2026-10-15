@@ -27,6 +27,8 @@ pub const MENSAJES: &str = "mensajes";
 pub const PROYECTOS: &str = "proyectos";
 pub const SINCRONIZAR: &str = "sincronizar";
 pub const PROYECTO: &str = "proyecto";
+/// La seña de un protocolo `pixpinmax:` (el «Abrir» de una notificacion).
+pub const URL: &str = "url";
 
 /// Cuantos proyectos recientes (los de Android: «con tres, asoman sin echar
 /// a nadie»).
@@ -167,6 +169,11 @@ pub fn armar(proyectos: &[Reciente], t: &Textos, guardados: &str) -> Lista {
 pub fn pedido_de_atajo(args: &[String]) -> Option<String> {
     let i = args.iter().position(|a| a == ORDEN)?;
     let que = args.get(i + 1)?.as_str();
+    // `--atajo url "pixpinmax:…"`: el «Abrir» de una notificacion
+    // (`notificacion`), que solo puede abrir cosas.
+    if que == URL {
+        return crate::notificacion::pedido_de(args.get(i + 2)?);
+    }
     let json = match que {
         CAPTURAR => serde_json::json!({ "pixpin": 1, "accion": "capturar" }),
         MENSAJES => serde_json::json!({ "pixpin": 1, "accion": "abrir", "que": { "tipo": "proyecto", "proyecto": null } }),

@@ -318,6 +318,14 @@ pub trait Motor: Send + Sync {
     fn catalogo_completo(&self) -> bool {
         false
     }
+
+    /// **Si ve imagenes** (15-oct, los ojos del lienzo: `ojos.rs`). Claude
+    /// y DeepSeek si; el local, por ahora no (el usuario, 15-oct: primero la
+    /// nube, el local no se toca). Sin vision, el turno no ofrece
+    /// `ver_lienzo` ni revisa lo dibujado.
+    fn ve_imagenes(&self) -> bool {
+        false
+    }
 }
 
 /// Un motor de mentira que contesta lo que se le dice, en orden. Para las
@@ -326,6 +334,8 @@ pub struct MotorGuionado {
     guion: Mutex<VecDeque<Respuesta>>,
     /// Lo que se le fue pidiendo, para comprobarlo despues.
     pub recibido: Mutex<Vec<Peticion>>,
+    /// Si dice que ve imagenes ([`Motor::ve_imagenes`]).
+    pub vision: bool,
 }
 
 impl MotorGuionado {
@@ -333,11 +343,22 @@ impl MotorGuionado {
         MotorGuionado {
             guion: Mutex::new(guion.into()),
             recibido: Mutex::new(Vec::new()),
+            vision: false,
         }
+    }
+
+    /// El mismo, diciendo que ve imagenes.
+    pub fn con_vision(mut self) -> MotorGuionado {
+        self.vision = true;
+        self
     }
 }
 
 impl Motor for MotorGuionado {
+    fn ve_imagenes(&self) -> bool {
+        self.vision
+    }
+
     fn completar(
         &self,
         peticion: &Peticion,

@@ -542,11 +542,35 @@ pub fn abrir_pantalla(
 const VK_F11: u32 = 0x7A;
 const VK_ESCAPE: u32 = 0x1B;
 
-/// Si Escape cierra el lienzo. En el anotador de pantalla no (tiene su regla,
-/// `pantalla::tecla`), ni presentando (Escape deja de presentar), ni a mitad
-/// de un arrastre (Escape lo cancela, como en Excalidraw).
-fn escape_cierra(es_lienzo: bool, sin_presentar: bool, gesto_en_reposo: bool) -> bool {
-    es_lienzo && sin_presentar && gesto_en_reposo
+/// Lo que hace Escape en el lienzo cuando nada de la interfaz se lo quedo
+/// (el texto a medias y las hermanas de un grupo los cierra antes `mano`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum AlEscape {
+    /// Nada del lienzo: lo atiende otro (el motor cancela el arrastre,
+    /// presentar deja de presentar, el anotador de pantalla tiene su regla).
+    Seguir,
+    /// A pantalla completa: pasa a ventana, sin cerrar ni perder nada.
+    AVentana,
+    /// En ventana: cierra el lienzo guardando, como Salir.
+    Cerrar,
+}
+
+/// **Escape, de dentro afuera** (15-oct-2026, el usuario: «un Esc que salga
+/// de pantalla completa y lo ponga en ventana, y un segundo Esc que cierre
+/// la ventana»). Lo que esta a medias manda: en el anotador de pantalla no
+/// (tiene su regla, `pantalla::tecla`), presentando tampoco (Escape deja de
+/// presentar) ni a mitad de un arrastre (lo cancela, como en Excalidraw).
+/// Sin nada que soltar, a pantalla completa vuelve a ventana y en ventana
+/// cierra: es el `BackHandler` del editor de Android, que sale primero de
+/// «solo el dibujo» (su pantalla completa) y solo despues cierra.
+fn al_escape(es_lienzo: bool, sin_presentar: bool, gesto_en_reposo: bool, pantalla_completa: bool) -> AlEscape {
+    if !(es_lienzo && sin_presentar && gesto_en_reposo) {
+        AlEscape::Seguir
+    } else if pantalla_completa {
+        AlEscape::AVentana
+    } else {
+        AlEscape::Cerrar
+    }
 }
 
 /// F5: presentar (G5), como en PowerPoint.
@@ -1704,18 +1728,26 @@ fn abrir_en_modo(
             if hecho.consumido && !imprimir_de_la_barra {
                 continue;
             }
-            // Escape cierra el lienzo (guardando, como Salir), que es lo que
-            // espera el usuario de una ventana sin marco. Lo que esta a medias
-            // manda antes: el texto lo cerro ya `mano` (y se consumio) y un
-            // arrastre lo cancela el motor, abajo.
-            if let EventoOverlay::Tecla { vk: VK_ESCAPE, .. } = ev
-                && escape_cierra(
+            // Escape (`al_escape`): a pantalla completa vuelve a ventana, y
+            // en ventana cierra el lienzo (guardando, como Salir), que es lo
+            // que espera el usuario de una ventana sin marco. Lo que esta a
+            // medias manda antes: el texto lo cerro ya `mano` (y se consumio)
+            // y un arrastre lo cancela el motor, abajo. Volver a ventana se
+            // recuerda como con F11: va por el mismo `alternar_modo`.
+            if let EventoOverlay::Tecla { vk: VK_ESCAPE, .. } = ev {
+                match al_escape(
                     pantalla.is_none(),
                     presentacion.is_none(),
                     gesto.en_reposo(),
-                )
-            {
-                break 'bucle;
+                    pin.as_ref().is_some_and(|p| p.pantalla_completa),
+                ) {
+                    AlEscape::Cerrar => break 'bucle,
+                    AlEscape::AVentana => {
+                        alternar_modo = true;
+                        continue;
+                    }
+                    AlEscape::Seguir => {}
+                }
             }
 
             if let EventoOverlay::Tecla { vk: VK_F11, .. } = ev
@@ -5399,19 +5431,57 @@ mod pruebas {
 
     #[test]
     fn escape_cierra_el_lienzo_en_reposo_y_no_a_medias_ni_fuera_del_lienzo() {
-        assert!(escape_cierra(true, true, true));
+        // En ventana, Escape cierra.
+        assert_eq!(al_escape(true, true, true, false), AlEscape::Cerrar);
         // A mitad de un arrastre, Escape lo cancela y el lienzo sigue.
-        assert!(!escape_cierra(true, true, false));
+        assert_eq!(al_escape(true, true, false, false), AlEscape::Seguir);
         // Presentando, Escape solo deja de presentar.
-        assert!(!escape_cierra(true, false, true));
+        assert_eq!(al_escape(true, false, true, false), AlEscape::Seguir);
         // El anotador de pantalla tiene su propia regla.
-        assert!(!escape_cierra(false, true, true));
-        // Recien abierto, el gesto esta en reposo: una pulsacion basta.
-        assert!(escape_cierra(
-            true,
-            true,
-            gesto_inicial(Default::default()).en_reposo()
-        ));
+        assert_eq!(al_escape(false, true, true, false), AlEscape::Seguir);
+        // Recien abierto en ventana, el gesto esta en reposo: una basta.
+        assert_eq!(
+            al_escape(true, true, gesto_inicial(Default::default()).en_reposo(), false),
+            AlEscape::Cerrar
+        );
+    }
+
+    #[test]
+    fn escape_a_pantalla_completa_pasa_a_ventana_y_el_segundo_cierra() {
+        // La secuencia del usuario: a pantalla completa, el primer Escape
+        // pasa a ventana (lo hace `alternar_modo`, que la deja en ventana)
+        // y el segundo cierra.
+        let mut pantalla_completa = true;
+        let mut pasos = Vec::new();
+        for _ in 0..2 {
+            let a = al_escape(true, true, true, pantalla_completa);
+            if a == AlEscape::AVentana {
+                pantalla_completa = false;
+            }
+            pasos.push(a);
+        }
+        assert_eq!(pasos, [AlEscape::AVentana, AlEscape::Cerrar]);
+        // Caso negativo: con la herramienta a medias (un rectangulo
+        // arrastrandose) Escape no cierra ni cambia de modo, a pantalla
+        // completa ni en ventana: lo cancela el motor.
+        let mut gesto = gesto_inicial(Default::default());
+        let mut escena = Escena::nueva();
+        crate::dibujo::teclas::elegir_herramienta(&mut gesto, Herramienta::Rectangulo);
+        let p = |x, y| pixpin_motor2d::vector::Punto2::nuevo(x, y);
+        gesto.evento(EventoGesto::Pulsar { p: p(10.0, 10.0), shift: false, alt: false, presion: None }, &mut escena, 1.0);
+        gesto.evento(EventoGesto::Mover { p: p(80.0, 60.0), shift: false, alt: false, presion: None }, &mut escena, 1.0);
+        assert!(!gesto.en_reposo(), "arrastrando un rectangulo");
+        assert_eq!(al_escape(true, true, gesto.en_reposo(), true), AlEscape::Seguir);
+        assert_eq!(al_escape(true, true, gesto.en_reposo(), false), AlEscape::Seguir);
+        // Cancelado por el motor, ya en reposo: el siguiente Escape vale.
+        gesto.evento(EventoGesto::Escape, &mut escena, 1.0);
+        assert!(gesto.en_reposo());
+        assert_eq!(al_escape(true, true, gesto.en_reposo(), true), AlEscape::AVentana);
+        // Presentando a pantalla completa, Escape deja de presentar y nada mas.
+        assert_eq!(al_escape(true, false, true, true), AlEscape::Seguir);
+        // El anotador de pantalla ocupa la pantalla, pero no es un lienzo en
+        // ventana: Escape sigue su regla.
+        assert_eq!(al_escape(false, true, true, true), AlEscape::Seguir);
     }
 
     #[test]

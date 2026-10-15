@@ -72,6 +72,9 @@ pub struct Respuesta {
     /// Lo que dijo, tal como quedo en la nota.
     pub texto: String,
     pub bien: bool,
+    /// El lienzo donde dibujo (su referencia), si dibujo: el «Abrir» de la
+    /// notificacion lleva alli (`cola`).
+    pub lienzo: Option<String>,
 }
 
 /// Cada cuanto se escribe en el disco lo que va contestando (si el chat
@@ -243,6 +246,7 @@ pub fn hacer(
         codigo: nota.codigo_unico(),
         texto,
         bien: resultado.is_ok() && vivo.fallos.is_empty(),
+        lienzo,
     })
 }
 
@@ -254,6 +258,10 @@ pub enum Permiso {
     EnLaBurbuja,
     /// Lo que diga esta funcion, sin preguntar a nadie (las pruebas).
     Fijo(Confirmar),
+    /// En la burbuja, y antes llama a esto con la pregunta: la cola de
+    /// encargos (`cola`) trabaja sin tarjeta a la vista y la saca entonces,
+    /// para que la pregunta se vea y se pueda contestar.
+    EnLaBurbujaAvisando(Box<dyn Fn(&str) + Send>),
 }
 
 /// **La pregunta en la nota de la respuesta**: la burbuja dice que espera
@@ -284,7 +292,10 @@ fn confirmar_en_la_nota(
         };
         let (t, ()) = guardar(&vivo, &|v| v.preguntar(pregunta));
         let c = match &permiso {
-            Permiso::EnLaBurbuja => {
+            Permiso::EnLaBurbuja | Permiso::EnLaBurbujaAvisando(_) => {
+                if let Permiso::EnLaBurbujaAvisando(avisar) = &permiso {
+                    avisar(pregunta);
+                }
                 // Primero la nota (que se vea que espera), luego la pregunta.
                 escribir(t);
                 let rx = crate::asistente::permiso::registrar(&proyecto, &nota, pregunta);

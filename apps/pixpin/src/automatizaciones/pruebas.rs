@@ -437,6 +437,7 @@ fn el_pedido_asistente_se_lee_y_lo_que_falta_se_dice() {
             proyecto: Some("pr-1".into()),
             imagenes: vec![PathBuf::from(r"C:\a\x.png")],
             automatizacion: None,
+            encargo: None,
         }
     );
     assert!(leer_pedido(r#"{"pixpin":1,"accion":"asistente"}"#).is_ok(), "sin nada: abrir el chat");

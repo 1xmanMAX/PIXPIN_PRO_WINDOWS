@@ -1539,6 +1539,11 @@ pedido-fuera-de-capturas = Ese fichero no está en la carpeta de capturas; no se
 pedido-no-es-imagen = Ese fichero no es una imagen.
 pedido-imagen-no-se-pudo = No se pudo copiar la imagen: { $motivo }
 pedido-sin-imagen = No se encuentra la imagen { $ruta }; no se apuntó la tarea.
+pedido-nada-que-leer = No llegó ningún texto que leer en voz alta.
+pedido-ocr-copiado = Texto copiado ({ $n } caracteres): «{ $texto }»
+pedido-ocr-sin-texto = No se encontró texto en la imagen.
+pedido-ocr-no-disponible = El OCR de Windows no está instalado: añade un idioma con reconocimiento de texto en Configuración.
+pedido-ocr-fallo = No se pudo leer el texto de la imagen: { $motivo }
 
 ## Galeria de capturas (2-oct)
 galeria-titulo = Capturas
@@ -2548,8 +2553,8 @@ ajustes2-automatizacion-otro-aparato = corre en { $aparato }
 ajustes2-automatizacion-rota = No se entiende: { $motivo }
 ajustes2-automatizacion-borrar = ¿Borro la automatización «{ $nombre }»? No se puede deshacer.
 ajustes-asistente-pensar = Pensar antes de contestar
-ajustes2-ayuda-asistente-pensar = Antes de actuar, el asistente piensa y escribe lo que entendió; lo que piensa se ve, plegable, encima de su respuesta. Con el modelo de este PC pensar tarda varios minutos más: en automático solo piensan Claude y DeepSeek.
-asistente-pensar-auto = Automático (la nube sí; este PC no)
+ajustes2-ayuda-asistente-pensar = Antes de actuar, el asistente piensa y escribe lo que entendió; lo que piensa se ve, plegable, encima de su respuesta. Pensar tarda (con el modelo de este PC, minutos): en automático solo piensa en las tareas complejas, como resolver un problema, planificar o varios pasos seguidos, o si se lo pides («piénsalo», «paso a paso»).
+asistente-pensar-auto = Automático (solo en tareas complejas)
 asistente-pensar-si = Siempre
 asistente-pensar-no = Nunca
 asistente-pensando = Pensando…
@@ -2572,3 +2577,13 @@ asistente-voz-cancelado = Cancelado: no se envió nada.
 asistente-voz-nada-que-leer = Esta respuesta no tiene texto que leer.
 asistente-voz-leer = Leer en voz alta
 asistente-voz-callar = Dejar de leer
+
+# Los botones de las notificaciones de Windows (15-oct).
+notif-hecha = Hecha
+notif-mas-10 = +10 min
+notif-abrir = Abrir
+notif-conservar = Conservar
+notif-ver-galeria = Ver la galería
+notif-captura-se-va = Esta captura se va { $cuando }
+notif-capturas-se-van = { $n } capturas se van en las próximas 24 h
+notif-capturas-titulo = Capturas que caducan

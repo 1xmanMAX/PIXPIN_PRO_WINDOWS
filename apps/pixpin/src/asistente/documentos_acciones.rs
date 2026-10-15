@@ -778,6 +778,35 @@ pub struct Anotado {
     pub vista: Option<[f64; 3]>,
 }
 
+/// **Lo ultimo anotado en este hilo** (el del turno), para que la revision
+/// de los ojos mire la hoja con lo anotado encima (`asistente::ojos`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct UltimoAnotado {
+    pub ruta: PathBuf,
+    /// La hoja (desde 0) de un PDF o Word; `None` en un plano.
+    pub hoja: Option<usize>,
+    /// Lo que mide la hoja en unidades de la capa (ancho [`ANCHO_HOJA`]).
+    pub alto: f32,
+    /// Las cajas de lo que se acaba de anotar, en esas unidades.
+    pub cajas: Vec<(f32, f32, f32, f32)>,
+}
+
+thread_local! {
+    static ULTIMO_ANOTADO: std::cell::RefCell<Option<UltimoAnotado>> = const { std::cell::RefCell::new(None) };
+}
+
+fn apuntar_anotado(u: Option<UltimoAnotado>) {
+    ULTIMO_ANOTADO.with_borrow_mut(|x| *x = u);
+}
+
+/// Lo ultimo anotado en este hilo, si hay.
+pub fn ultimo_anotado() -> Option<UltimoAnotado> {
+    ULTIMO_ANOTADO.with_borrow(Clone::clone)
+}
+
+/// El ancho de la hoja de la capa (para pintarla).
+pub const ANCHO_DE_LA_HOJA: f32 = ANCHO_HOJA;
+
 /// **Anota sin mandar nada** (el banco lo llama asi).
 pub fn anotar_en(raiz: &Path, ruta: &Path, args: &Value, parar: &AtomicBool) -> Result<Anotado, String> {
     let como = texto_de(args, "tipo").and_then(ComoAnotar::de).ok_or("falta «tipo»")?;
@@ -791,7 +820,11 @@ pub fn anotar_en(raiz: &Path, ruta: &Path, args: &Value, parar: &AtomicBool) -> 
         return Err("di sobre que texto del documento va («texto») o una «zona»".into());
     }
     if es_plano(&pixpin_docs::nombre(ruta)) {
-        return anotar_plano(raiz, ruta, como, texto, &zona, &puntos, color, nota);
+        let r = anotar_plano(raiz, ruta, como, texto, &zona, &puntos, color, nota);
+        if r.is_ok() {
+            apuntar_anotado(Some(UltimoAnotado { ruta: ruta.to_path_buf(), hoja: None, alto: 0.0, cajas: Vec::new() }));
+        }
+        return r;
     }
     let p = paginas(ruta, parar)?;
     // Donde: el texto (todas sus apariciones en la hoja elegida o en la
@@ -827,7 +860,9 @@ pub fn anotar_en(raiz: &Path, ruta: &Path, args: &Value, parar: &AtomicBool) -> 
         return Err("no salio ninguna figura (¿una nota sin texto?)".into());
     }
     let n = nuevas.len();
+    let cajas_nuevas: Vec<(f32, f32, f32, f32)> = nuevas.iter().map(Elemento::caja).collect();
     escribir_en_la_hoja(raiz, ruta, hoja, alto, nuevas)?;
+    apuntar_anotado(Some(UltimoAnotado { ruta: ruta.to_path_buf(), hoja: Some(hoja), alto, cajas: cajas_nuevas }));
     Ok(Anotado { pagina: Some(hoja), figuras: n, sitios, hallados, vista: None })
 }
 

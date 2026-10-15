@@ -186,12 +186,18 @@ pub fn fuentes(notas: &[Nota], hoja: &HojaDeTrabajo) -> Vec<Fuente> {
     v
 }
 
-/// **Si piensa el modelo local**: lo de los ajustes o, en automatico, no.
-/// Medido el 14-oct con el 2B en este PC: pensar le costaba 100-240 s mas
-/// por turno (pensaba en ingles hasta el tope), y el 0.8B se enreda. Con
-/// «Siempre» piensa igual; la nube piensa en automatico (ver el chat).
-pub fn pensar_local(ajuste: Option<bool>) -> bool {
-    ajuste.unwrap_or(false)
+/// **Si piensa este turno**, el modelo local o la nube: lo de los ajustes
+/// («Siempre», «Nunca») o, en automatico, solo si la tarea es compleja
+/// (`pixpin_ia::complejidad`, 15-oct: «que este apagado por defecto pero
+/// que piense en tareas complejas»). Medido el 14-oct con el 2B en este PC:
+/// pensar le costaba 100-240 s mas por turno, y en la nube son segundos y
+/// tokens de pago: para dibujar una figura no compensa.
+pub fn pensar(ajuste: Option<bool>, pedido: &str) -> bool {
+    let si = pixpin_ia::complejidad::decidir(ajuste, pedido);
+    if ajuste.is_none() {
+        tracing::debug!(si, motivo = ?pixpin_ia::complejidad::clasificar(pedido), "asistente: pensar en automatico");
+    }
+    si
 }
 
 /// La ventana que se mide con Claude o DeepSeek. Les caben mucho mas

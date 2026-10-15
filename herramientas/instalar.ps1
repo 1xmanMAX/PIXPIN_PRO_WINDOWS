@@ -22,6 +22,13 @@
 # carpeta, lo copia con plugin.json e Images\ a Plugins\PixPin Max\ (quitando
 # cualquier otra carpeta con el mismo ID: con dos, Flow no carga ninguna) y,
 # si Flow estaba abierto, lo reinicia para que lo cargue.
+#
+# Y el puente de la extension del navegador (apps\pixpin-puente): se copia
+# junto a pixpinmax.exe y se registra para Chrome y Edge en HKCU
+# (herramientas\registrar-navegador.ps1; ver docs\integraciones-navegador.md).
+# Y el servidor MCP (apps/pixpin-mcp, para Claude Desktop y Claude Code):
+# pixpin-mcp.exe junto a pixpinmax.exe. La configuracion de Claude la pone el
+# usuario (docs/integraciones-mcp.md); este script no la toca.
 
 param([string]$Origen)
 
@@ -70,6 +77,44 @@ if (-not (Test-Path $origenCompresor) -or $viejo) {
 if (-not (Test-Path $origenCompresor)) {
     Write-Warning "Falta $origenCompresor : se instala pixpinmax.exe solo y los PDF se aligeran con el plan B"
     $origenCompresor = $null
+}
+
+# El puente de la extension del navegador (apps/pixpin-puente), igual que el
+# compresor: de la misma carpeta de compilacion, compilado si falta o es
+# viejo. Se instala junto a pixpinmax.exe y se registra en HKCU para Chrome y
+# Edge (herramientas\registrar-navegador.ps1). La extension se carga a mano:
+# docs\integraciones-navegador.md.
+$puente = 'pixpin-puente.exe'
+$origenPuente = Join-Path $origenDir $puente
+$viejoPuente = (Test-Path $origenPuente) -and
+    ((Get-Item $origenPuente).LastWriteTime -lt (Get-Item $Origen).LastWriteTime.AddHours(-1))
+if (-not (Test-Path $origenPuente) -or $viejoPuente) {
+    Write-Host "Compilando $puente en $(Split-Path -Parent $origenDir)..."
+    $antes = $env:CARGO_TARGET_DIR
+    try {
+        $env:CARGO_TARGET_DIR = Split-Path -Parent $origenDir
+        $env:PATH = "$env:USERPROFILE\.cargo\bin;$env:PATH"
+        Push-Location $repo
+        & cargo build --release -p pixpin-puente
+    } catch {
+        Write-Warning "No se pudo compilar ${puente}: $_"
+    } finally {
+        Pop-Location
+        $env:CARGO_TARGET_DIR = $antes
+    }
+}
+if (-not (Test-Path $origenPuente)) {
+    Write-Warning "Falta $origenPuente : la extension del navegador no podra hablar con PixPin"
+    $origenPuente = $null
+}
+
+function Registrar-Navegador {
+    if (-not $origenPuente) { return }
+    try {
+        & (Join-Path $PSScriptRoot 'registrar-navegador.ps1') -Puente (Join-Path $destinoDir $puente)
+    } catch {
+        Write-Warning "No se pudo registrar el puente del navegador: $_"
+    }
 }
 
 # El plugin de Flow Launcher, de la MISMA carpeta de compilacion. Se compila
@@ -168,6 +213,7 @@ function Instalar-PluginFlow {
 # Pares origen -> destino que hay que copiar.
 $ficheros = @(@{ De = $Origen; A = $destino })
 if ($origenCompresor) { $ficheros += @{ De = $origenCompresor; A = (Join-Path $destinoDir $compresor) } }
+if ($origenPuente) { $ficheros += @{ De = $origenPuente; A = (Join-Path $destinoDir $puente) } }
 
 $igual = $true
 foreach ($f in $ficheros) {
@@ -263,12 +309,62 @@ function Ofrecer-Predeterminada {
 # la ultima, y un fallo suyo no impide instalar PixPin.
 try { Instalar-PluginFlow } catch { Write-Warning "Plugin de Flow Launcher: $_" }
 
+function Instalar-Mcp {
+    # El servidor MCP para Claude Desktop y Claude Code (apps/pixpin-mcp,
+    # docs/integraciones-mcp.md), junto a pixpinmax.exe. Se compila en la
+    # misma carpeta de compilacion si falta o es mas viejo que sus fuentes.
+    # NO toca la configuracion de Claude: eso lo hace el usuario (ver docs).
+    $mcp = 'pixpin-mcp.exe'
+    $origenMcp = Join-Path $origenDir $mcp
+    $destinoMcp = Join-Path $destinoDir $mcp
+    $fuentesMcp = Get-ChildItem (Join-Path $repo 'apps\pixpin-mcp') -Recurse -File |
+        Sort-Object LastWriteTime -Descending | Select-Object -First 1
+    $viejoMcp = (Test-Path $origenMcp) -and (
+        ((Get-Item $origenMcp).LastWriteTime -lt (Get-Item $Origen).LastWriteTime.AddHours(-1)) -or
+        ($fuentesMcp -and (Get-Item $origenMcp).LastWriteTime -lt $fuentesMcp.LastWriteTime))
+    if (-not (Test-Path $origenMcp) -or $viejoMcp) {
+        Write-Host "Compilando $mcp en $(Split-Path -Parent $origenDir)..."
+        $antes = $env:CARGO_TARGET_DIR
+        try {
+            $env:CARGO_TARGET_DIR = Split-Path -Parent $origenDir
+            $env:PATH = "$env:USERPROFILE\.cargo\bin;$env:PATH"
+            Push-Location $repo
+            & cargo build --release -p pixpin-mcp
+        } catch {
+            Write-Warning "No se pudo compilar ${mcp}: $_"
+        } finally {
+            Pop-Location
+            $env:CARGO_TARGET_DIR = $antes
+        }
+    }
+    if (-not (Test-Path $origenMcp)) { Write-Warning "Falta $origenMcp : no se instala el servidor MCP"; return }
+    if ((Test-Path $destinoMcp) -and ((Get-FileHash $destinoMcp).Hash -eq (Get-FileHash $origenMcp).Hash)) {
+        Write-Host "El servidor MCP ya esta al dia: $destinoMcp"
+        return
+    }
+    # Un cliente (Claude Desktop) puede tenerlo abierto: no guarda nada, se
+    # cierra y el cliente lo vuelve a arrancar al usarlo.
+    Get-Process pixpin-mcp -ErrorAction SilentlyContinue |
+        Where-Object { $_.Path -eq $destinoMcp } | Stop-Process -Force
+    New-Item -ItemType Directory -Force $destinoDir | Out-Null
+    for ($i = 0; $i -lt 20; $i++) {
+        try { Copy-Item $origenMcp $destinoMcp -Force -ErrorAction Stop; break } catch { Start-Sleep -Milliseconds 500 }
+    }
+    if ((Test-Path $destinoMcp) -and ((Get-FileHash $destinoMcp).Hash -eq (Get-FileHash $origenMcp).Hash)) {
+        Write-Host "Servidor MCP instalado: $destinoMcp (ver docs\integraciones-mcp.md)"
+    } else {
+        Write-Warning "No se pudo copiar $destinoMcp (sigue en uso)"
+    }
+}
+try { Instalar-Mcp } catch { Write-Warning "Servidor MCP: $_" }
+
 $corriendo = Get-Process pixpinmax -ErrorAction SilentlyContinue
 $yaEsLaBuena = $igual -and $corriendo -and
     @($corriendo | Where-Object { $_.Path -ne $destino }).Count -eq 0
 if ($yaEsLaBuena) {
     Write-Host "Ya corre la ultima version desde $destino"
     Crear-Acceso
+    Registrar-Navegador
     Ofrecer-Predeterminada
     exit 0
 }
@@ -296,5 +392,6 @@ if (-not $igual) {
 Start-Process $destino
 Write-Host "Instalada y abierta: $destino"
 if ($origenCompresor) { Write-Host "Con el compresor de PDF: $(Join-Path $destinoDir $compresor)" }
+Registrar-Navegador
 Crear-Acceso
 Ofrecer-Predeterminada

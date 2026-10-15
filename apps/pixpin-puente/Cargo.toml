@@ -1,0 +1,30 @@
+# El puente de la extension del navegador (Chrome y Edge) con PixPin Max.
+#
+# Es el "host" de la mensajeria nativa: el navegador lo arranca en cada clic
+# del menu de la extension, le pasa UN mensaje por la entrada estandar (4
+# bytes de largo + JSON), y el puente lo convierte en un pedido de
+# `docs/protocolo-pedidos.md` que manda a la PixPin abierta por
+# `WM_COPYDATA` (`pixpin_shell::mensajero`), contesta y se va. Tiene que
+# tardar menos de 50 ms: nada de cargar la app, solo leer, escribir una imagen
+# en la cache si la trae y mandar el pedido. Ver docs/integraciones-navegador.md.
+[package]
+name = "pixpin-puente"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "pixpin-puente"
+path = "src/main.rs"
+
+[dependencies]
+# El mismo mensajero que la app: el identificador, el tope y la tabla de
+# acciones salen de un solo sitio. Solo se enlaza lo que se usa.
+pixpin-shell = { workspace = true }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+windows = { version = "0.62.2", features = ["Win32_UI_WindowsAndMessaging"] }

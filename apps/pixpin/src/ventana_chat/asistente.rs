@@ -215,12 +215,14 @@ fn precargar_si_toca(ubicacion: &Ubicacion, a: &Abierto) {
 /// El motor elegido en Ajustes → Asistente: el local (si esta bajado) o la
 /// nube con su clave, con el local de respaldo si se quiere y esta bajado.
 /// El local de ESTE turno puede ser el de mejor vista si se pide mirar una
-/// foto (`ia_motor::modelo_para_el_turno`).
+/// foto (`ia_motor::modelo_para_el_turno`). `pensar`: si la nube piensa
+/// este turno (`ia_pensado::pensar`); el local lo recibe en la peticion.
 pub(super) fn motor_de_los_ajustes(
     ubicacion: &Ubicacion,
     textos: &Catalogo,
     pregunta: &str,
     con_foto: bool,
+    pensar: bool,
 ) -> Result<Arc<dyn Motor>, String> {
     let aj = pixpin_store::cargar(ubicacion).unwrap_or_default();
     let local = || {
@@ -230,7 +232,7 @@ pub(super) fn motor_de_los_ajustes(
         })
     };
     match ia_nube::eleccion(&aj.asistente) {
-        ia_nube::Eleccion::Nube(p) => ia_nube::motor(p, if aj.asistente.respaldo_local { local() } else { None }),
+        ia_nube::Eleccion::Nube(p) => ia_nube::motor(p, if aj.asistente.respaldo_local { local() } else { None }, pensar),
         ia_nube::Eleccion::Local => local().ok_or_else(|| textos.t("asistente-sin-modelo")),
     }
 }
@@ -249,20 +251,22 @@ pub(super) fn al_enviar(ubicacion: &Ubicacion, a: &mut Abierto, textos: &Catalog
         return Some(textos.t("asistente-ocupado"));
     }
     let con_foto = ia_chat::foto_reciente(&a.mensajes).is_some();
+    // Pensar (15-oct): «Siempre», «Nunca» o, en automatico, solo si la
+    // tarea es compleja, con el mismo criterio para el local y la nube
+    // (`pixpin_ia::complejidad`). La ventana: el local segun su modelo; la
+    // nube tiene de sobra, pero la hoja y el reinicio valen igual.
+    let aj = pixpin_store::cargar(ubicacion).unwrap_or_default().asistente;
+    let pensar = ia_pensado::pensar(aj.pensar, &pregunta);
+    let ventana = match ia_nube::eleccion(&aj) {
+        ia_nube::Eleccion::Nube(_) => ia_pensado::VENTANA_NUBE,
+        ia_nube::Eleccion::Local => ia_pensado::ventana_local(),
+    };
     // Sin modelo (o sin clave) las ordenes simples igual se hacen: van por
     // el camino rapido (`asistente::rapido`, el mismo que Flow Launcher y las
     // automatizaciones). Lo demas dira el aviso.
-    let motor = match crate::asistente::rapido::motor_o_sin(motor_de_los_ajustes(ubicacion, textos, &pregunta, con_foto), &pregunta) {
+    let motor = match crate::asistente::rapido::motor_o_sin(motor_de_los_ajustes(ubicacion, textos, &pregunta, con_foto, pensar), &pregunta) {
         Ok(m) => m,
         Err(aviso) => return Some(aviso),
-    };
-    // Pensar y la ventana: el local segun su modelo; la nube piensa por su
-    // cuenta (Claude resumido, DeepSeek `reasoning_content`) y tiene
-    // ventana de sobra, pero la hoja y el reinicio valen igual.
-    let aj = pixpin_store::cargar(ubicacion).unwrap_or_default().asistente;
-    let (pensar, ventana) = match ia_nube::eleccion(&aj) {
-        ia_nube::Eleccion::Nube(_) => (aj.pensar.unwrap_or(true), ia_pensado::VENTANA_NUBE),
-        ia_nube::Eleccion::Local => (ia_pensado::pensar_local(aj.pensar), ia_pensado::ventana_local()),
     };
     match lanzar_pensando(ubicacion, a, motor, pregunta, pensar, ventana) {
         Ok(()) => None,
@@ -842,9 +846,11 @@ pub(super) fn trabajar_en_el_lienzo_del_chat(
                         texto: "Lienzo destino: vacio (aun no hay lienzo del asistente en este chat).".into(),
                         ids: Vec::new(),
                         ctx: Some(Default::default()),
+                        ..Default::default()
                     },
                     None,
                 )),
+                al_lienzo::Trabajo::Juntar { .. } => Ok((al_lienzo::Respuesta::default(), None)),
                 _ => Err("todavia no hay ningun lienzo en este chat: dibuja algo primero".into()),
             };
         }
@@ -863,6 +869,20 @@ pub(super) fn trabajar_en_el_lienzo_del_chat(
         .ok_or("no se pudo abrir el lienzo")?;
     let mut escena = hoja.escena;
     let mut lienzo = hoja.lienzo;
+    // Mirarlo (`asistente::ojos`): se copia la zona, con sus fotos por su
+    // fichero; pintar va en el hilo de los ojos, no en el del chat. Juntar
+    // pasos no aplica: cerrado, el lienzo no tiene deshacer.
+    match trabajo {
+        al_lienzo::Trabajo::Ver { mirada, ctx } => {
+            let fotos = &hoja.fotos;
+            let enc = crate::asistente::ojos::encargo_de(&escena, mirada, ctx, |id| {
+                fotos.iter().find(|(i, _)| *i == id).map(|(_, r)| crate::asistente::ojos::Pixeles::Ruta(r.clone()))
+            })?;
+            return Ok((al_lienzo::Respuesta { vista: Some(Box::new(enc)), ..Default::default() }, Some(referencia)));
+        }
+        al_lienzo::Trabajo::Juntar { .. } => return Ok((al_lienzo::Respuesta::default(), Some(referencia))),
+        _ => {}
+    }
     let respuesta = match trabajo {
         al_lienzo::Trabajo::Dibujar if en_hoja.is_some() => {
             let n = al_lienzo::meter_de_hoja(&mut escena, documento, en_hoja.expect("se acaba de mirar"), None)?;

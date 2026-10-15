@@ -62,12 +62,13 @@ pub fn eleccion_reciente(raiz_datos: &Path) -> Eleccion {
 
 /// **El motor de la nube** con la clave guardada. `local`: el respaldo si
 /// la nube falla (ya filtrado por el ajuste y por estar bajado). `Err`: el
-/// aviso para el usuario (falta la clave).
-pub fn motor(p: Proveedor, local: Option<Arc<dyn Motor>>) -> Result<Arc<dyn Motor>, String> {
+/// aviso para el usuario (falta la clave). `pensar`: si piensa este turno
+/// (`pixpin_ia::complejidad`); el respaldo local lo recibe en la peticion.
+pub fn motor(p: Proveedor, local: Option<Arc<dyn Motor>>, pensar: bool) -> Result<Arc<dyn Motor>, String> {
     let clave = claves::leer(p).ok_or_else(|| {
         format!("Falta la clave de {}: pégala en Ajustes → Asistente (se saca en {}).", p.nombre(), p.pagina_de_claves())
     })?;
-    let nube: Arc<dyn Motor> = Arc::new(MotorNube::nuevo(p, clave));
+    let nube: Arc<dyn Motor> = Arc::new(MotorNube::nuevo(p, clave).pensando(pensar));
     Ok(Arc::new(MotorConRespaldo::nuevo(nube, local, p.nombre())))
 }
 

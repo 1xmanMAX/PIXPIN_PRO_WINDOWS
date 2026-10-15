@@ -436,6 +436,7 @@ pub fn rotulo_de(nombre: &str) -> String {
         DIBUJAR => "✏️ dibujando en el lienzo…",
         GRAFICA => "📊 haciendo la gráfica…",
         OCR => "🔎 leyendo el documento…",
+        pixpin_ia::ojos::NOMBRE => "👀 mirando el lienzo…",
         pixpin_ia::contexto::BUSCAR_HISTORIAL => "🗂️ buscando en la conversación…",
         CALCAR => "🖼️ calcando la imagen…",
         AYUDA => "📖 mirando la ayuda…",
