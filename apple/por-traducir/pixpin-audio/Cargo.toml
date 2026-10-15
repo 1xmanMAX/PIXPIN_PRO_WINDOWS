@@ -1,0 +1,29 @@
+[package]
+name = "pixpin-audio"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+thiserror = "2.0.20"
+tracing = "0.1.44"
+# El `#[implement]` del callback de Media Foundation se expande a
+# `windows_core::...`, asi que el crate tiene que estar por su nombre, igual
+# que en `pixpin-pin`.
+windows-core = "0.62.2"
+windows = { version = "0.62.2", features = [
+    "Win32_Foundation",
+    "Win32_Media_Audio",
+    "Win32_Media_KernelStreaming",
+    "Win32_Media_MediaFoundation",
+    # `PROPVARIANT`, que aparece en la firma de `IMMDevice::Activate`, y el
+    # `VARIANT` del que cuelga. Los dos hacen falta aunque se pase `None`.
+    "Win32_System_Com_StructuredStorage",
+    "Win32_System_Variant",
+    "Win32_System_Com",
+    # `CreateEventW` esta detras de `Win32_Security` por el descriptor de
+    # seguridad de su primer parametro, que aqui va nulo.
+    "Win32_Security",
+    "Win32_System_Threading",
+] }

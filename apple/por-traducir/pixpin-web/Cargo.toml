@@ -1,0 +1,27 @@
+[package]
+name = "pixpin-web"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+pixpin-geom = { version = "0.1.0", path = "../pixpin-geom" }
+thiserror = "2.0"
+tracing = "0.1"
+# `webview2-com` 0.39 pide `windows = "0.62"`, que casa con el 0.62.2 del
+# workspace: no hace falta darle una version aparte a este crate.
+webview2-com = "0.39"
+windows = { version = "0.62.2", features = [
+    "Win32_Foundation",
+    "Win32_System_Com",
+    "Win32_UI_WindowsAndMessaging",
+    # La ventana propia de `pagina`: barra oscura, icono, area de trabajo y
+    # la pagina servida desde memoria.
+    "Win32_Graphics_Dwm",
+    "Win32_Graphics_Gdi",
+    "Win32_System_LibraryLoader",
+    "Win32_UI_Shell",
+    "Win32_UI_Controls",
+    "Win32_UI_Input_KeyboardAndMouse",
+] }

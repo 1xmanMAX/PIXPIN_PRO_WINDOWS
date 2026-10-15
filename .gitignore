@@ -1,5 +1,6 @@
 # Rust
 /target/
+/apple/target/
 **/*.rs.bk
 *.pdb
 

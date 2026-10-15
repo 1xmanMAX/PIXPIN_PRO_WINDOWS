@@ -1,0 +1,9 @@
+//! pixpin-record — ver docs/superpowers/specs/2026-08-09-pixpin-pc-master-design.md
+//!
+//! Este crate habla con el sistema operativo o con librerias C. El `unsafe`
+//! esta permitido, pero cada bloque lleva su comentario `// SAFETY:`.
+#![deny(clippy::undocumented_unsafe_blocks)]
+
+mod mp4;
+
+pub use mp4::{ErrorMp4, OpcionesMp4, codificar_mp4};

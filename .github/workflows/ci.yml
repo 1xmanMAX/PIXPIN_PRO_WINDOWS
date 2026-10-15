@@ -74,6 +74,22 @@ jobs:
         shell: bash
         run: cargo test $(printf -- '-p %s ' $PORTABLES) -- --test-threads=1
 
+  # La copia del nucleo para la version de Apple (apple/nucleo, su propio
+  # espacio de trabajo). En macOS, que es donde vivira.
+  apple-nucleo:
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: apple
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apple
+      - name: Tests del nucleo en macOS
+        run: cargo test --workspace -- --test-threads=1
+
   licencias:
     runs-on: ubuntu-latest
     steps:

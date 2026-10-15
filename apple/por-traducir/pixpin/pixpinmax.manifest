@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
+  <assemblyIdentity type="win32" name="PixPinMax" version="0.1.0.0"/>
+
+  <!-- asInvoker: PixPin Max no necesita privilegios de administrador.
+       Pedirlos rompería el arrastrar y soltar hacia aplicaciones normales
+       por el aislamiento de privilegios de la interfaz de usuario. -->
+  <trustInfo xmlns="urn:schemas-microsoft-com:asm.v3">
+    <security>
+      <requestedPrivileges>
+        <requestedExecutionLevel level="asInvoker" uiAccess="false"/>
+      </requestedPrivileges>
+    </security>
+  </trustInfo>
+
+  <!-- PerMonitorV2 es imprescindible: sin esto, en un equipo con el portatil
+       al 150% y un monitor externo al 100%, Windows escalaría nuestras
+       ventanas y la lupa mostraría píxeles interpolados en vez de reales. -->
+  <application xmlns="urn:schemas-microsoft-com:asm.v3">
+    <windowsSettings>
+      <dpiAwareness xmlns="http://schemas.microsoft.com/SMI/2016/WindowsSettings">PerMonitorV2</dpiAwareness>
+      <longPathAware xmlns="http://schemas.microsoft.com/SMI/2016/WindowsSettings">true</longPathAware>
+    </windowsSettings>
+  </application>
+
+  <!-- Declarar compatibilidad con Windows 10 evita que el sistema aplique
+       capas de compatibilidad heredadas que falsean las APIs de versión. -->
+  <compatibility xmlns="urn:schemas-microsoft-com:compatibility.v1">
+    <application>
+      <supportedOS Id="{8e0f7a12-bfb3-4fe8-b9a5-48fd50a15a9a}"/>
+    </application>
+  </compatibility>
+</assembly>
