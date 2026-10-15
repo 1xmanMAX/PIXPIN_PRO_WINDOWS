@@ -1539,6 +1539,11 @@ pedido-fuera-de-capturas = Ese fichero no está en la carpeta de capturas; no se
 pedido-no-es-imagen = Ese fichero no es una imagen.
 pedido-imagen-no-se-pudo = No se pudo copiar la imagen: { $motivo }
 pedido-sin-imagen = No se encuentra la imagen { $ruta }; no se apuntó la tarea.
+pedido-nada-que-leer = No llegó ningún texto que leer en voz alta.
+pedido-ocr-copiado = Texto copiado ({ $n } caracteres): «{ $texto }»
+pedido-ocr-sin-texto = No se encontró texto en la imagen.
+pedido-ocr-no-disponible = El OCR de Windows no está instalado: añade un idioma con reconocimiento de texto en Configuración.
+pedido-ocr-fallo = No se pudo leer el texto de la imagen: { $motivo }
 
 ## Galeria de capturas (2-oct)
 galeria-titulo = Capturas
