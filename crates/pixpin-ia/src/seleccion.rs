@@ -391,6 +391,37 @@ mod pruebas {
         }
     }
 
+    /// 15-oct: las herramientas nuevas de la app salen cuando vienen a
+    /// cuento, sin pasar de [`MAXIMO`] (el modelo local no se satura).
+    #[test]
+    fn las_herramientas_de_la_app_del_15_oct_salen_a_cuento() {
+        for (pedido, img, debe) in [
+            ("Graba la pantalla mientras hago la demo para el cliente", false, "grabar_pantalla"),
+            ("Haz una captura larga con scroll de la pagina", false, "capturar_pantalla"),
+            ("Cierra todos los pines que tengo abiertos", false, "cerrar_pines"),
+            ("Esconde los pines un momento que voy a compartir pantalla", false, "manejar_pines"),
+            ("Léeme en voz alta el informe de la obra", false, "leer_en_voz_alta"),
+            ("Deja de leer ya, por favor", false, "parar_lectura"),
+            ("Comprime el PDF de la tesis que pesa mucho", false, "comprimir_pdf"),
+            ("Transcribe el audio de la reunión de ayer", false, "transcribir_audio"),
+            ("¿Cuánto suma la columna C del Excel de costos?", false, "leer_excel"),
+            ("Apunta en el timeline que llegó el camión de cemento y faltaban 5 bolsas", false, "apuntar_en_timeline"),
+            ("Dime cuánto hice hoy en PixPin", false, "resumen_de_actividad"),
+            ("Abre los ajustes de PixPin", false, "abrir_ventana"),
+            ("Abre el chat de la obra Miraflores", false, "abrir_chat"),
+            (r"Ve a la pagina 12 de C:\docs\tesis.pdf", false, "abrir_fichero"),
+        ] {
+            let n = nombres(pedido, img);
+            assert!(n.iter().any(|x| x == debe), "«{pedido}» → {n:?}");
+            assert!(n.len() <= MAXIMO, "«{pedido}» → {n:?}");
+        }
+        // Negativos: dibujar sigue siendo dibujar, y una foto de una tabla
+        // sigue yendo a la tabla (no a leer un Excel).
+        assert!(!nombres("Dibuja un circulo rojo", false).iter().any(|x| x == "leer_en_voz_alta" || x == "grabar_pantalla"));
+        let t = nombres("Convierte esta tabla escaneada a Excel", true);
+        assert!(t.contains(&"tabla_de_imagen".to_string()), "{t:?}");
+    }
+
     #[test]
     fn sacar_las_tareas_de_un_acta_no_ofrece_apuntarlas_de_una_en_una() {
         let n = nombres("Saca las tareas de esta acta y ponlas en una lista nueva llamada Acta", false);

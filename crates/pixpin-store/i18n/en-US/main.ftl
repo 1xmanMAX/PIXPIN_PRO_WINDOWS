@@ -1533,6 +1533,7 @@ pedido-tarea-cambio = The list changed while the task was being moved; nothing w
 pedido-tarea-quitada = “{ $tarea }” removed from its list.
 pedido-tarea-corregida = Task changed: “{ $tarea }”.
 pedido-lista-borrada = List “{ $lista }” deleted from “{ $proyecto }”.
+pedido-timeline-apuntado = Added to the timeline: “{ $titulo }”.
 pedido-sin-capturas = There are no captures yet.
 pedido-fuera-de-capturas = That file isn't in the captures folder; it's left alone.
 pedido-no-es-imagen = That file isn't an image.

@@ -368,6 +368,62 @@ pub fn a_mano(raiz: &Path, ficha: &str, mensaje: &str, ruta: &Path) -> bool {
     })
 }
 
+/// Como acaba [`copia_ligera`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Copia {
+    /// Escrita en `salida`: los bytes de antes y de despues.
+    Hecha { antes: u64, despues: u64 },
+    /// No se gana lo bastante (o esta cifrado): no se escribe nada.
+    SinMejora,
+}
+
+/// **Una copia ligera de un PDF en `salida`, sin tocar el original** (15-oct,
+/// el asistente: «comprime este PDF»). El mismo compresor, con el nivel de
+/// «Aligerar el PDF» del menu, el mismo plan B y la misma comprobacion de
+/// que se abre igual que la cola; corre en el hilo que la pide (el del
+/// turno), con el turno pesado como la cola. `parar` mata el compresor.
+pub fn copia_ligera(entrada: &Path, salida: &Path, parar: &AtomicBool) -> Result<Copia, String> {
+    let original = std::fs::read(entrada).map_err(|e| format!("no se lee: {e}"))?;
+    if !parece_pdf(&original) {
+        return Err("no es un PDF".into());
+    }
+    let nivel = nivel_a_mano();
+    let _turno = crate::turno_pesado::tomar("aligerar PDF");
+    let hijo = Mutex::new(None);
+    let hecho = comprimir(entrada, salida, nivel, true, parar, &hijo, &|_| {});
+    if parar.load(Ordering::Acquire) || matches!(hecho, Salida::Cancelado) {
+        let _ = std::fs::remove_file(salida);
+        return Err("el usuario lo paro".into());
+    }
+    if matches!(hecho, Salida::Cifrado) {
+        let _ = std::fs::remove_file(salida);
+        return Ok(Copia::SinMejora);
+    }
+    let tope = (original.len() as f64 * lo_que_puede_quedar(nivel)) as u64;
+    let cabe = |r: &Path| std::fs::metadata(r).is_ok_and(|m| m.len() > 0 && m.len() <= tope);
+    let mut vale = matches!(hecho, Salida::Menor) && cabe(salida);
+    if !vale && nivel != NivelPdf::SinPerdida {
+        let _ = std::fs::remove_file(salida);
+        vale = matches!(
+            pixpin_pdf::aligerar::aligerar(entrada, salida),
+            Ok(pixpin_pdf::aligerar::Resultado::Aligerado { .. })
+        ) && cabe(salida);
+    }
+    let paginas_antes = pixpin_pdf::Documento::abrir(entrada).ok().map(|d| d.paginas());
+    if !vale || !se_abre_y_se_dibuja(salida, paginas_antes) {
+        let _ = std::fs::remove_file(salida);
+        return match hecho {
+            Salida::Fallo(e) if !vale => Err(e),
+            _ => Ok(Copia::SinMejora),
+        };
+    }
+    let despues = std::fs::metadata(salida).map(|m| m.len()).unwrap_or(0);
+    Ok(Copia::Hecha {
+        antes: original.len() as u64,
+        despues,
+    })
+}
+
 /// **Tras unir un PDF al proyecto como su documento.** Si el adjunto ya se
 /// aligero, el documento es copia del ligero y la huella lo dice: el
 /// trabajador lo salta sin comprimir. Si no (un adjunto de antes de esto, o
