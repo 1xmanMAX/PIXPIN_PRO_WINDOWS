@@ -393,6 +393,8 @@ impl EjecutorDelChat {
                 idioma: pixpin_store::Idioma::Espanol,
             },
             escala,
+            // La lectura de la nube corrige lo que el OCR leyo mal.
+            self.vision.clone().or_else(super::hoja_a_lienzo::motor_de_vision).as_deref(),
         )?;
         let semilla = self.semilla();
         let json: Vec<serde_json::Value> = pixpin_motor2d::excalidraw::elementos_a_json(&els)
@@ -403,8 +405,11 @@ impl EjecutorDelChat {
                 v
             })
             .collect();
-        let r = self.al_lienzo_elementos(json)?;
-        Ok(format!("{dicho}. {r}"))
+        // Cae a la vista en su sitio libre, como todo lo dibujado; al modelo
+        // no se le cuentan las coordenadas de dentro (16-oct: hablaba de
+        // «coordenadas negativas» y de revisar si se veia).
+        self.al_lienzo_elementos(json)?;
+        Ok(dicho)
     }
 
     fn anotar_inteligente(&mut self, args: &serde_json::Value) -> Result<String, String> {

@@ -681,7 +681,8 @@ fn medir_tablas() {
         };
         let leida = super::documentos_acciones::leer_tabla(&ruta, None).unwrap();
         println!(
-            "{doc} ({ancho} px, {} ms): letra {:.1} px, {} x {} rayas (tabla {} x {}), cuadra {}, borde {:?}, aire {:?}, texto {:?}\n  anchos {:?}\n  fondos fila 0 {:?}",
+            "{doc} ({ancho} px, {} ms): letra {:.1} px, {} x {} rayas (tabla {} x {}), cuadra {}, borde {:?}, aire {:?}, texto {:?}\n  anchos {:?}\n  fondos fila 0 {:?}
+  fuera {:?}",
             t.elapsed().as_millis(),
             m.tam_letra,
             m.filas.len(),
@@ -693,7 +694,8 @@ fn medir_tablas() {
             m.aire,
             m.texto,
             m.anchos(),
-            m.fondos.first()
+            m.fondos.first(),
+            m.fuera
         );
         let raiz = dir.join("raiz");
         std::fs::create_dir_all(&raiz).unwrap();
@@ -701,7 +703,7 @@ fn medir_tablas() {
         let parar = std::sync::atomic::AtomicBool::new(false);
         let adj = vec![Adjunto { nombre: doc.into(), ruta: ruta.clone() }];
         let cx = super::documentos_acciones::Contexto { raiz: &raiz, proyecto: "p", adjuntos: &adj, mandar: &mandar, parar: &parar, idioma: pixpin_store::Idioma::Espanol };
-        let (els, dicho) = super::documentos_acciones::tabla_para_el_lienzo(&json!({}), &cx, None).unwrap();
+        let (els, dicho) = super::documentos_acciones::tabla_para_el_lienzo(&json!({}), &cx, None, None).unwrap();
         println!("  {dicho}");
         let mut escena = pixpin_motor2d::Escena::nueva();
         for e in els {

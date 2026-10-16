@@ -823,13 +823,25 @@ fn con_filas(leida: TablaLeida, filas: Vec<Vec<String>>) -> TablaLeida {
 /// del lienzo por pixel de la imagen (`None`: el pixel de la foto, o la
 /// escala del PDF a 1400 de ancho). Devuelve los elementos y lo que se le
 /// cuenta al modelo.
-pub fn tabla_para_el_lienzo(args: &Value, cx: &Contexto, escala: Option<f32>) -> Result<(Vec<Elemento>, String), String> {
+pub fn tabla_para_el_lienzo(
+    args: &Value,
+    cx: &Contexto,
+    escala: Option<f32>,
+    corregir: Option<&dyn pixpin_ia::Motor>,
+) -> Result<(Vec<Elemento>, String), String> {
     use pixpin_motor2d::tabla_dibujada::{Aspecto, Celda, elementos_de_tabla_con_aspecto};
     let c = elegir(cx, texto_de(args, "archivo"), Sirve::Escaneado)?;
     let pagina = args.get("pagina").and_then(Value::as_u64).filter(|p| *p >= 1).map(|p| p as usize - 1);
     let leida = leer_tabla(&c.ruta, pagina)?;
     let cabecera = args.get("cabecera").and_then(Value::as_bool).unwrap_or_else(|| leida.parece_cabecera());
-    let (m, ancho_img) = aspecto_de_tabla(&c.ruta, pagina).ok_or("no se pudo medir la tabla en la imagen")?;
+    let (mut m, ancho_img) = aspecto_de_tabla(&c.ruta, pagina).ok_or("no se pudo medir la tabla en la imagen")?;
+    // Lo que el OCR leyo mal (tildes, «°»): con la vista de la nube, si la hay.
+    let mut corregidas = 0;
+    if let Some(motor) = corregir
+        && !m.celdas.is_empty()
+    {
+        corregidas = corregir_con_la_nube(motor, &c.ruta, pagina, &mut m);
+    }
     let filas = filas_de(&leida, &m, &c.ruta);
     let leida = con_filas(leida, filas);
     let k = escala.unwrap_or(if super::ocr::es_imagen(&c.ruta) { 1.0 } else { 1400.0 / ancho_img as f32 });
@@ -856,20 +868,135 @@ pub fn tabla_para_el_lienzo(args: &Value, cx: &Contexto, escala: Option<f32>) ->
     if els.is_empty() {
         return Err("no salio ninguna celda que dibujar".into());
     }
+    // El texto de alrededor (un titulo, una nota): en su sitio respecto de
+    // la tabla, con su letra (16-oct: faltaba el titulo).
+    if cuadra {
+        let (x0, y0) = (m.columnas[0], m.filas[0]);
+        for r in &m.fuera {
+            let t = (r.tam as f32 * k).clamp(6.0, 160.0);
+            let (w, h) = medir(&r.texto, t);
+            els.push(pixpin_motor2d::ecuacion::elemento_texto(&r.texto, ((r.x - x0) as f32) * k, ((r.y - y0) as f32) * k, (w, h), t, false, &estilo));
+        }
+    }
     let grupo = format!("tabla-foto-{}", pixpin_shell::entorno::ahora_utc_ms());
     for e in &mut els {
         e.grupos = vec![grupo.clone()];
     }
     let fondos = m.fondos.iter().flatten().filter(|f| f.is_some()).count();
+    let fuera = if cuadra { m.fuera.len() } else { 0 };
     Ok((
         els,
         format!(
-            "tabla de «{}» en el lienzo como en la foto: {filas} filas x {columnas} columnas, letra {tam:.0} px{}{}; ya esta dibujada, no la dibujes otra vez",
+            "hecho: la tabla de «{}» ya esta en el lienzo, a la vista y como en la foto ({filas} filas x {columnas} columnas{}{}{}{}). No la dibujes otra vez ni la muevas",
             c.nombre,
-            if cuadra { ", anchos y altos medidos" } else { " (sin rejilla medible: anchos calculados)" },
-            if fondos > 0 { format!(", {fondos} celdas con fondo") } else { String::new() }
+            if cuadra { ", con su letra, anchos y altos" } else { "" },
+            if fondos > 0 { ", con los colores de fondo" } else { "" },
+            if fuera > 0 { format!(", y {fuera} renglon(es) de texto de alrededor") } else { String::new() },
+            if corregidas > 0 { format!(", {corregidas} lectura(s) del OCR corregidas mirando la foto") } else { String::new() }
         ),
     ))
+}
+
+/// Lo que se parecen dos lecturas sin tildes ni signos: la correccion de la
+/// nube solo puede arreglar letras, no inventar celdas.
+fn se_parece(a: &str, b: &str) -> bool {
+    let plano = |s: &str| -> Vec<char> { normalizar(s).chars().filter(|c| c.is_alphanumeric()).collect() };
+    let (a, b) = (plano(a), plano(b));
+    let mut d: Vec<usize> = (0..=b.len()).collect();
+    for i in 1..=a.len() {
+        let mut antes = d[0];
+        d[0] = i;
+        for j in 1..=b.len() {
+            let t = d[j];
+            d[j] = (d[j] + 1).min(d[j - 1] + 1).min(antes + usize::from(a[i - 1] != b[j - 1]));
+            antes = t;
+        }
+    }
+    d[b.len()] <= (a.len().max(b.len()) / 5).max(2)
+}
+
+/// **La pasada de la nube**: la foto de la tabla (recortada a ella y a su
+/// texto, enderezada si hacia falta) y lo leido en JSON; vuelve lo mismo con
+/// las letras corregidas. Solo se acepta lo que se parece a lo leido.
+/// Devuelve cuantas lecturas cambio.
+fn corregir_con_la_nube(motor: &dyn pixpin_ia::Motor, ruta: &Path, pagina: Option<usize>, m: &mut pixpin_ia::tabla_aspecto::Medida) -> usize {
+    use pixpin_ia::motor::{Mensaje, Peticion, Seguir};
+    let img = if super::ocr::es_imagen(ruta) {
+        pixpin_codec::imagen::cargar(ruta).ok()
+    } else {
+        pixpin_pdf::Documento::abrir(ruta).ok().and_then(|d| d.renderizar(pagina.unwrap_or(0) as u32, ANCHO_OCR).ok())
+    };
+    let Some(mut img) = img else { return 0 };
+    if m.inclinacion != 0.0 {
+        img.pixeles = pixpin_ia::tabla_aspecto::enderezar(&img.pixeles, img.ancho, img.alto, m.inclinacion);
+    }
+    // Recortada a la tabla y a lo que la rodea, con aire.
+    let mut caja = [m.columnas[0], m.filas[0], *m.columnas.last().unwrap_or(&0.0), *m.filas.last().unwrap_or(&0.0)];
+    for r in &m.fuera {
+        caja = [caja[0].min(r.x), caja[1].min(r.y), caja[2].max(r.x + r.tam * r.texto.chars().count() as f64 * 0.6), caja[3].max(r.y + r.tam * 1.3)];
+    }
+    let (x0, y0) = ((caja[0] - 10.0).max(0.0) as u32, (caja[1] - 10.0).max(0.0) as u32);
+    let (x1, y1) = (((caja[2] + 10.0) as u32).min(img.ancho), ((caja[3] + 10.0) as u32).min(img.alto));
+    if x1 <= x0 + 8 || y1 <= y0 + 8 {
+        return 0;
+    }
+    let (w, h) = (x1 - x0, y1 - y0);
+    let mut px = Vec::with_capacity((w * h * 4) as usize);
+    for y in y0..y1 {
+        let i = ((y * img.ancho + x0) * 4) as usize;
+        px.extend_from_slice(&img.pixeles[i..i + (w * 4) as usize]);
+    }
+    let mut recorte = pixpin_codec::ImagenRgba { ancho: w, alto: h, pixeles: px };
+    if w > 1500 {
+        match pixpin_codec::imagen::redimensionar(recorte, 1500, (h * 1500 / w).max(1)) {
+            Ok(r) => recorte = r,
+            Err(_) => return 0,
+        }
+    }
+    let Ok(jpg) = pixpin_codec::imagen::codificar_jpg(&recorte, 88) else { return 0 };
+    let leido = json!({"celdas": m.celdas, "fuera": m.fuera.iter().map(|r| r.texto.clone()).collect::<Vec<_>>()});
+    let pedido = format!(
+        "Esta es la foto de una tabla y, en JSON, lo que leyo el OCR. Corrige SOLO las letras mal leidas mirando la foto \
+         (tildes, eñe, grados, simbolos, mayusculas, 0 por O): no cambies, anadas, quites ni muevas celdas ni palabras. \
+         Contesta solo el JSON con la misma forma.\n{leido}"
+    );
+    let mut p = Peticion::nueva(vec![Mensaje::usuario_con_imagen(pedido, jpg, "image/jpeg")]);
+    p.max_tokens = 3000;
+    p.temperatura = 0.0;
+    let Ok(r) = motor.completar(&p, &mut |_| Seguir::Si) else { return 0 };
+    let (Some(a), Some(b)) = (r.texto.find('{'), r.texto.rfind('}')) else { return 0 };
+    let Ok(v) = serde_json::from_str::<Value>(&r.texto[a..=b]) else { return 0 };
+    let mut cambios = 0;
+    if let Some(filas) = v["celdas"].as_array()
+        && filas.len() == m.celdas.len()
+    {
+        for (f, fila) in filas.iter().enumerate() {
+            let Some(fila) = fila.as_array().filter(|x| x.len() == m.celdas[f].len()) else { continue };
+            for (c, nuevo) in fila.iter().enumerate() {
+                if let Some(n) = nuevo.as_str().map(str::trim)
+                    && n != m.celdas[f][c]
+                    && se_parece(n, &m.celdas[f][c])
+                {
+                    m.celdas[f][c] = n.to_string();
+                    cambios += 1;
+                }
+            }
+        }
+    }
+    if let Some(fuera) = v["fuera"].as_array()
+        && fuera.len() == m.fuera.len()
+    {
+        for (r, nuevo) in m.fuera.iter_mut().zip(fuera) {
+            if let Some(n) = nuevo.as_str().map(str::trim)
+                && n != r.texto
+                && se_parece(n, &r.texto)
+            {
+                r.texto = n.to_string();
+                cambios += 1;
+            }
+        }
+    }
+    cambios
 }
 
 /// Lo que se le cuenta al modelo: el tamano y las primeras filas.
