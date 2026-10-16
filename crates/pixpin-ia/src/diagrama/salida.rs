@@ -5,6 +5,7 @@
 
 use pixpin_motor2d::elemento::{ColorRgba, Elemento, EstiloTrazo, Figura};
 use pixpin_motor2d::formas::TipoPunta;
+use pixpin_motor2d::geometria_exacta as ge;
 use pixpin_motor2d::vector::Punto2;
 
 use super::{Diagrama, Estilo};
@@ -60,11 +61,32 @@ pub(crate) fn elementos(d: &Diagrama, origen: (f64, f64), escala: f64, f: &mut F
     }
     let mut piezas: Vec<Elemento> = Vec::new();
     let base = |c: [u8; 3], g: f64| Elemento { trazo: color(limpio(c)), grosor: grosor(g, escala), rugosidad: 0.0, ..Default::default() };
+    // Con lo que estila un trazo del diagrama (color, grosor, sin temblor).
+    let estilar = |mut e: Elemento, c: [u8; 3], g: f64| {
+        let b = base(c, g);
+        e.trazo = b.trazo;
+        e.grosor = b.grosor;
+        e.rugosidad = 0.0;
+        e
+    };
+    // Las marcas de angulo: el sector del motor comun (`geometria_exacta`),
+    // relleno de su color y con su arquito.
+    for mk in &d.marcas {
+        let v = ap(mk.v);
+        let r = (mk.r * escala) as f32;
+        let p1 = ge::en_la_circunferencia(v, r, mk.inicio as f32);
+        let p2 = ge::en_la_circunferencia(v, r, (mk.inicio + mk.barrido) as f32);
+        let mut e = estilar(ge::marca_de_angulo(v, p1, p2, r, 1), oscuro(mk.color), 1.0);
+        e.relleno = Some(color(mk.color));
+        e.estilo_relleno = pixpin_motor2d::relleno::EstiloRelleno::Solido;
+        piezas.push(e);
+    }
+    // Circunferencias y arcos: las constructoras del motor comun.
     for arco in &d.arcos {
-        let (cx, cy) = a(arco.c);
+        let c = ap(arco.c);
         let r = (arco.r * escala) as f32;
-        let barrido = if arco.entera() { None } else { Some(arco.barrido as f32) };
-        let mut e = figura_de_arco((cx as f32, cy as f32), r, arco.inicio as f32, barrido, base(arco.color, arco.grosor));
+        let e = if arco.entera() { ge::circunferencia(c, r) } else { ge::arco(c, r, arco.inicio as f32, arco.barrido as f32) };
+        let mut e = estilar(e, arco.color, arco.grosor);
         e.estilo = estilo(arco.estilo);
         piezas.push(e);
     }
@@ -149,19 +171,8 @@ pub fn a_elementos(d: &Diagrama, origen: (f64, f64), escala: f64, semilla: u64, 
     f.salida
 }
 
-/// **La capa fina del arco** (15-oct): una circunferencia (`barrido`
-/// `None`) o el arco de centro `c` y radio `r` que empieza en `inicio` y
-/// barre `barrido` (radianes de pantalla), con lo que hay hoy en el motor
-/// comun (`Figura::Elipse` y `Figura::Arco`, «circulo + recorte»). Si el
-/// motor gana una figura de arco/sector propia, se cambia solo aqui.
-pub(crate) fn figura_de_arco(c: (f32, f32), r: f32, inicio: f32, barrido: Option<f32>, mut e: Elemento) -> Elemento {
-    e.x = c.0 - r;
-    e.y = c.1 - r;
-    e.ancho = 2.0 * r;
-    e.alto = 2.0 * r;
-    e.figura = match barrido {
-        None => Figura::Elipse,
-        Some(b) => Figura::Arco { inicio, barrido: Some(b) },
-    };
-    e
+
+/// El borde de una marca: su color, mas oscuro.
+fn oscuro(c: [u8; 3]) -> [u8; 3] {
+    [(c[0] as f32 * 0.7) as u8, (c[1] as f32 * 0.7) as u8, (c[2] as f32 * 0.7) as u8]
 }

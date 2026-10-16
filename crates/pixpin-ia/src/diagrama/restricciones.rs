@@ -560,6 +560,70 @@ fn aplicar_en_figura(d: &mut Diagrama, fig: &Figura, hechos: &[Hecho], hm: f64) 
         letra_usada[li] = true;
         f.nudos[n].nombre = Some(letras[li].0);
     }
+    // 3. Las vueltas de restricciones, con un seguro: si mueven algo mucho
+    // (mas del 4 % de la figura), los hechos no eran de esta figura o una
+    // letra cayo donde no era (DeepSeek, 15-oct: «A» puesta en otro sitio
+    // arrastro la circunferencia): otra vez sin los hechos, y si aun asi,
+    // la figura se queda como se midio.
+    let antes = (f.nudos.clone(), f.circulos.clone());
+    let limite = (0.04 * escala).max(1.5 * hm);
+    let movido = |f: &Figurado| {
+        let n = f.nudos.iter().zip(&antes.0).map(|(a, b)| dist(a.p, b.p)).fold(0.0, f64::max);
+        let c = f.circulos.iter().zip(&antes.1).map(|(a, b)| dist(a.c, b.c).max((a.r - b.r).abs())).fold(0.0, f64::max);
+        n.max(c)
+    };
+    vueltas(&mut f, d, hechos, hm);
+    if movido(&f) > limite {
+        f.nudos = antes.0.clone();
+        f.circulos = antes.1.clone();
+        vueltas(&mut f, d, &[], hm);
+        if movido(&f) > limite {
+            return;
+        }
+    }
+
+    // 4. De vuelta al diagrama.
+    for &(i, a, b) in &f.segs {
+        let s = &mut d.segmentos[i];
+        // Una punta de flecha se queda donde esta (su nudo es la punta).
+        s.a = f.nudos[a].p;
+        s.b = f.nudos[b].p;
+    }
+    for &(i, n) in &f.puntos {
+        d.puntos[i].c = f.nudos[n].p;
+    }
+    for c in &f.circulos {
+        for &ai in &c.arcos {
+            let a = &mut d.arcos[ai];
+            let viejo = a.clone();
+            a.c = c.c;
+            a.r = c.r;
+            if a.entera() {
+                continue;
+            }
+            let Some(&(_, Some(ni), Some(nf))) = f.arcos.iter().find(|x| x.0 == ai) else { continue };
+            let (pi, pf) = (f.nudos[ni].p, f.nudos[nf].p);
+            let ini = angulo(c.c, pi);
+            let fin = angulo(c.c, pf);
+            // El mismo sentido que tenia, y el barrido mas parecido.
+            let mut barrido = (fin - ini).rem_euclid(TAU);
+            if barrido < 1e-6 {
+                barrido = viejo.barrido;
+            }
+            if (barrido - viejo.barrido).abs() > PI * 0.75 {
+                continue;
+            }
+            a.inicio = ini.rem_euclid(TAU);
+            a.barrido = barrido;
+        }
+    }
+    // (Un vertice nombrado SIN punto en el papel —la P donde se cruzan el
+    // arco y la recta, la X de un angulo— se queda sin punto: anadirlo
+    // inventaba puntos que el original no tiene.)
+}
+
+/// **Las vueltas de restricciones** de una figura (ver la cabecera).
+fn vueltas(f: &mut Figurado, d: &Diagrama, hechos: &[Hecho], hm: f64) {
     let nombrado = |f: &Figurado, l: char| f.nudos.iter().position(|n| n.nombre == Some(l));
 
     // 3. Las vueltas de restricciones.
@@ -645,9 +709,9 @@ fn aplicar_en_figura(d: &mut Diagrama, fig: &Figura, hechos: &[Hecho], hm: f64) 
         // c. Hechos de cuadrante con letras: O centro, OA = OB, recto.
         for h in hechos {
             if let Hecho::CuadranteDe { o, a, b } = *h
-                && let (Some(no), Some(na), Some(nb)) = (nombrado(&f, o), nombrado(&f, a), nombrado(&f, b))
+                && let (Some(no), Some(na), Some(nb)) = (nombrado(f, o), nombrado(f, a), nombrado(f, b))
             {
-                cuadrante(&mut f, no, na, nb);
+                cuadrante(f, no, na, nb);
             }
         }
         // d. Arcos: semicircunferencias y cuadrantes.
@@ -669,7 +733,7 @@ fn aplicar_en_figura(d: &mut Diagrama, fig: &Figura, hechos: &[Hecho], hm: f64) 
             } else if (barrido - FRAC_PI_2).abs() <= cuad_tol.to_radians()
                 && let Some(nc) = f.circulos[k].centro
             {
-                cuadrante(&mut f, nc, ni, nf);
+                cuadrante(f, nc, ni, nf);
                 let o = f.nudos[nc].p;
                 f.circulos[k].c = o;
                 f.circulos[k].r = dist(o, f.nudos[ni].p);
@@ -679,7 +743,7 @@ fn aplicar_en_figura(d: &mut Diagrama, fig: &Figura, hechos: &[Hecho], hm: f64) 
         for h in hechos {
             match *h {
                 Hecho::Diametro(a, b) => {
-                    let (Some(na), Some(nb)) = (nombrado(&f, a), nombrado(&f, b)) else { continue };
+                    let (Some(na), Some(nb)) = (nombrado(f, a), nombrado(f, b)) else { continue };
                     let (pa, pb) = (f.nudos[na].p, f.nudos[nb].p);
                     // La circunferencia que pasa (mas o menos) por los dos.
                     let k = (0..f.circulos.len())
@@ -701,7 +765,7 @@ fn aplicar_en_figura(d: &mut Diagrama, fig: &Figura, hechos: &[Hecho], hm: f64) 
                     }
                 }
                 Hecho::Centro(o) => {
-                    let Some(no) = nombrado(&f, o) else { continue };
+                    let Some(no) = nombrado(f, o) else { continue };
                     let p = f.nudos[no].p;
                     if let Some(k) = (0..f.circulos.len()).filter(|&k| dist(f.circulos[k].c, p) <= 0.12 * f.circulos[k].r + 3.0).min_by(|&x, &y| dist(f.circulos[x].c, p).total_cmp(&dist(f.circulos[y].c, p))) {
                         f.circulos[k].centro = Some(no);
@@ -769,45 +833,6 @@ fn aplicar_en_figura(d: &mut Diagrama, fig: &Figura, hechos: &[Hecho], hm: f64) 
             }
         }
     }
-
-    // 4. De vuelta al diagrama.
-    for &(i, a, b) in &f.segs {
-        let s = &mut d.segmentos[i];
-        // Una punta de flecha se queda donde esta (su nudo es la punta).
-        s.a = f.nudos[a].p;
-        s.b = f.nudos[b].p;
-    }
-    for &(i, n) in &f.puntos {
-        d.puntos[i].c = f.nudos[n].p;
-    }
-    for c in &f.circulos {
-        for &ai in &c.arcos {
-            let a = &mut d.arcos[ai];
-            let viejo = a.clone();
-            a.c = c.c;
-            a.r = c.r;
-            if a.entera() {
-                continue;
-            }
-            let Some(&(_, Some(ni), Some(nf))) = f.arcos.iter().find(|x| x.0 == ai) else { continue };
-            let (pi, pf) = (f.nudos[ni].p, f.nudos[nf].p);
-            let ini = angulo(c.c, pi);
-            let fin = angulo(c.c, pf);
-            // El mismo sentido que tenia, y el barrido mas parecido.
-            let mut barrido = (fin - ini).rem_euclid(TAU);
-            if barrido < 1e-6 {
-                barrido = viejo.barrido;
-            }
-            if (barrido - viejo.barrido).abs() > PI * 0.75 {
-                continue;
-            }
-            a.inicio = ini.rem_euclid(TAU);
-            a.barrido = barrido;
-        }
-    }
-    // (Un vertice nombrado SIN punto en el papel —la P donde se cruzan el
-    // arco y la recta, la X de un angulo— se queda sin punto: anadirlo
-    // inventaba puntos que el original no tiene.)
 }
 
 /// **Un cuadrante**: OA = OB (la media) y el angulo AOB recto, girando lo
@@ -897,19 +922,21 @@ fn marcas_de_angulo(d: &mut Diagrama, hm: f64) {
         }
     }
     vertices.retain(|v| v.1.len() >= 2);
-    let mut sectores: Vec<(P, f64)> = Vec::new();
-    for reg in d.regiones.iter_mut() {
-        if reg.contorno.len() < 3 || reg.area > PI * max_r * max_r * 0.5 {
+    // Las marcas de antes (otra vuelta de la geometria exacta) cuentan para
+    // limpiar lo de alrededor.
+    let mut sectores: Vec<(P, f64)> = d.marcas.iter().map(|m| (m.v, m.r)).collect();
+    let mut quedan = Vec::with_capacity(d.regiones.len());
+    for reg in std::mem::take(&mut d.regiones) {
+        if reg.contorno.len() >= 3 && reg.area <= PI * max_r * max_r * 0.5
+            && let Some((v, r, inicio, barrido)) = sector_de(&reg, &vertices, max_r)
+        {
+            sectores.push((v, r));
+            d.marcas.push(super::Marca { v, r, inicio, barrido, color: reg.color });
             continue;
         }
-        if let Some(sector) = sector_de(reg, &vertices, max_r) {
-            let r = dist(sector[0], sector[1]);
-            sectores.push((sector[0], r));
-            reg.contorno = sector;
-            reg.huecos.clear();
-            reg.area = crate::calcar::area(&reg.contorno).abs();
-        }
+        quedan.push(reg);
     }
+    d.regiones = quedan;
     if sectores.is_empty() {
         return;
     }
@@ -926,7 +953,7 @@ fn marcas_de_angulo(d: &mut Diagrama, hm: f64) {
     d.segmentos.retain(|s| !(s.largo() < 0.9 * r_max && dentro(s.a) && dentro(s.b)));
 }
 
-fn sector_de(reg: &Region, vertices: &[(P, Vec<f64>)], max_r: f64) -> Option<Vec<P>> {
+fn sector_de(reg: &Region, vertices: &[(P, Vec<f64>)], max_r: f64) -> Option<(P, f64, f64, f64)> {
     // El vertice: el que esta en el borde de la mancha (o dentro), con la
     // mancha entera a menos de `max_r`.
     let mut mejor: Option<(usize, f64)> = None;
@@ -975,12 +1002,7 @@ fn sector_de(reg: &Region, vertices: &[(P, Vec<f64>)], max_r: f64) -> Option<Vec
     if barrido <= 0.05 {
         return None;
     }
-    let n = ((barrido / 3f64.to_radians()).ceil() as usize).max(4);
-    let mut v = vec![*o];
-    for i in 0..=n {
-        v.push(en(*o, r, a0 + barrido * i as f64 / n as f64));
-    }
-    Some(v)
+    Some((*o, r, a0, barrido))
 }
 
 /// **Los bordes de las regiones**, pegados a lo que las cierra: cada punto

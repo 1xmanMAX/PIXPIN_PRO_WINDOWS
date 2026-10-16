@@ -704,8 +704,11 @@ pub fn pasar(
                     // cambia por la imagen si casi no se parece (banco del
                     // 15-oct: el sistema b) volvia a salir como recorte).
                     let leida = h.tipo == Tipo::Formula && matches!(leidos.get(&h.zona), Some(Leido::Latex(_)));
-                    let umbral = if leida { o.rehacer_bajo * 0.5 } else { o.rehacer_bajo };
-                    if v >= umbral || matches!(h.tipo, Tipo::Linea | Tipo::Foto | Tipo::Diagrama) || h.via == Via::Imagen {
+                    // Un diagrama (la revision con ojos de cada figura, 15-oct): si su
+                    // dibujo exacto casi no se parece al papel, se pone el recorte
+                    // de la imagen (mejor el original que una figura equivocada).
+                    let umbral = if leida { o.rehacer_bajo * 0.5 } else if h.tipo == Tipo::Diagrama { o.rehacer_bajo * 0.6 } else { o.rehacer_bajo };
+                    if v >= umbral || matches!(h.tipo, Tipo::Linea | Tipo::Foto) || h.via == Via::Imagen {
                         continue;
                     }
                     let otra = match h.tipo {

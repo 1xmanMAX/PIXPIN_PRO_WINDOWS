@@ -190,11 +190,25 @@ pub fn hacer(e: &Entrada, leido: Option<&Leido>, via: Via) -> Hecho {
         (_, Tipo::Grafica) => match leido {
             Some(Leido::Funciones(args)) => match grafica(e, args) {
                 Some(els) => (els, "grafica de funciones".into()),
-                None => (calco(e), "grafica calcada".into()),
+                None => {
+                    let (els, img) = foto(e);
+                    imagenes.extend(img);
+                    (els, "grafica que no se dibuja: recorte de la imagen".into())
+                }
             },
-            _ => diagrama(e, leido).unwrap_or_else(|| (calco(e), "grafica calcada".into())),
+            _ => diagrama(e, leido).unwrap_or_else(|| {
+                let (els, img) = foto(e);
+                imagenes.extend(img);
+                (els, "grafica que no se dibuja: recorte de la imagen".into())
+            }),
         },
-        (_, Tipo::Dibujo | Tipo::Diagrama) => diagrama(e, leido).unwrap_or_else(|| (calco(e), "dibujo calcado".into())),
+        // Lo que no es diagrama (una foto, un dibujo realista, un logo) no se
+        // calca a lapiz: el recorte de la imagen, en su sitio (15-oct).
+        (_, Tipo::Dibujo | Tipo::Diagrama) => diagrama(e, leido).unwrap_or_else(|| {
+            let (els, img) = foto(e);
+            imagenes.extend(img);
+            (els, "dibujo que no se dibuja: recorte de la imagen".into())
+        }),
         (_, Tipo::Dudosa) => {
             // Sin modelo que lo diga: como imagen, que es lo que menos
             // inventa.
@@ -472,13 +486,51 @@ pub fn id_de_imagen(semilla: u64, zona: usize) -> u64 {
     (h & 0x0000_ffff_ffff_ffff).max(2)
 }
 
-/// **El recorte, como imagen del lienzo.**
+/// **Lo que no se dibuja** (una foto, un dibujo realista, un logo
+/// detallado): el trozo de la hoja original en su sitio y a su escala, con
+/// el recorte del propio lienzo (`crop` de la imagen, `RecorteImagen`): la
+/// hoja entera va una sola vez al almacen (el mismo id en todas las zonas)
+/// y cada zona la ensena recortada, con 2 px de aire.
 fn foto(e: &Entrada) -> (Vec<Value>, Vec<ImagenNueva>) {
-    match foto_de_caja(e, &e.zona.caja, 0, None) {
+    match foto_recortada(e, &e.zona.caja.crecer(2.0)) {
         Some((v, img)) => (vec![v], vec![img]),
         None => (Vec::new(), Vec::new()),
     }
 }
+
+/// El lado mayor de la hoja que va al almacen para los recortes.
+const LADO_HOJA: u32 = 2400;
+
+/// El elemento imagen de `caja` (pixeles de la pagina) recortado de la hoja.
+pub fn foto_recortada(e: &Entrada, caja: &Caja) -> Option<(Value, ImagenNueva)> {
+    let (rgba, w, h) = e.pagina;
+    let caja = caja.dentro(w as f64, h as f64);
+    if caja.w < 1.0 || caja.h < 1.0 || w == 0 || h == 0 {
+        return None;
+    }
+    let (hoja, hw, hh) = reducir(rgba, w, h, LADO_HOJA);
+    let k = hw as f64 / w as f64;
+    let id = id_de_imagen(e.semilla, 999_999_999);
+    let d = e.mapa.caja(&caja);
+    let mut f = e.fabrica();
+    let mut v = f.base("image", [d.x, d.y, d.w, d.h], "transparent", None);
+    v["id"] = json!(format!("ia-{:x}-foto-0", e.semilla_de_zona()));
+    v["fileId"] = json!(pixpin_motor2d::enlace::id_de_texto(id));
+    v["status"] = json!("saved");
+    v["scale"] = json!([1.0, 1.0]);
+    v["roughness"] = json!(0);
+    v["strokeWidth"] = json!(0);
+    v["crop"] = json!({
+        "x": caja.x * k,
+        "y": caja.y * k,
+        "width": caja.w * k,
+        "height": caja.h * k,
+        "naturalWidth": hw,
+        "naturalHeight": hh,
+    });
+    Some((v, ImagenNueva { id, rgba: hoja, ancho: hw, alto: hh }))
+}
+
 
 /// **Un trozo de la hoja como imagen del lienzo** (la foto de la zona, o el
 /// icono `k` de una celda), en su sitio. `grupo`: el de la zona, si ya hay.
@@ -551,11 +603,45 @@ pub fn reducir(rgba: &[u8], w: u32, h: u32, lado: u32) -> (Vec<u8>, u32, u32) {
 /// por aqui.
 fn formula(e: &Entrada, latex: &[String]) -> Option<Vec<Value>> {
     let mut args = Map::new();
-    let lineas: Vec<String> = latex.iter().map(|l| latex_para_el_motor(l)).collect();
+    // Los renglones de verdad (una respuesta trae a veces varios con `\` en uno).
+    let lineas: Vec<String> = latex.iter().flat_map(|l| crate::ecuacion::partir_lineas(&latex_para_el_motor(l))).collect();
     args.insert("ecuacion".into(), json!(lineas.join("\n")));
     let mut avisos = Vec::new();
     let mut ec = crate::ecuacion::validar(&args, &mut avisos).ok()?;
     let d = e.destino();
+    // **Varias lineas (la columna de una resolucion)**: texto rico del
+    // lienzo, cada linea con su formula en linea y el color de su tinta, en
+    // el sitio de su renglon si el OCR leyo tantos renglones como lineas.
+    if lineas.len() >= 2 {
+        let mut f = e.fabrica();
+        let rs = &e.zona.renglones;
+        let por_renglon = rs.len() == lineas.len();
+        let color_zona = color_de_la_zona(e.zona);
+        let hex = |c: [u8; 3]| format!("#{:02x}{:02x}{:02x}", c[0], c[1], c[2]);
+        let de_color = |c: Option<[u8; 3]>| c.filter(|c| (*c.iter().max().unwrap() as i32 - *c.iter().min().unwrap() as i32) >= 40);
+        let fuente_de = |l: &str, c: Option<[u8; 3]>| {
+            let l = pixpin_motor2d::texto_rico::sin_barras_dobles(l);
+            match de_color(c) {
+                Some(c) => format!("$\\color{{{}}}{{{l}}}$", hex(c)),
+                None => format!("${l}$"),
+            }
+        };
+        let tam_base = (e.alto_letra * e.mapa.escala * 1.1).clamp(8.0, 96.0);
+        let mut piezas = Vec::new();
+        if por_renglon {
+            for (l, r) in lineas.iter().zip(rs) {
+                let c = e.mapa.caja(&r.caja);
+                let tam = (c.h * 0.95).clamp(8.0, 96.0);
+                piezas.push(un_texto(&fuente_de(l, r.color.or(color_zona)), c.x, c.y, tam, &e.opciones.familia, r.negrita, Alineacion::Izquierda, None));
+            }
+        } else {
+            let fuente: Vec<String> = lineas.iter().map(|l| fuente_de(l, color_zona)).collect();
+            piezas.push(un_texto(&fuente.join("\n"), d.x, d.y, tam_base, &e.opciones.familia, false, Alineacion::Izquierda, None));
+        }
+        f.de_motor(&piezas);
+        marco(e, &mut f);
+        return Some(f.salida);
+    }
     ec.color = color_de_la_zona(e.zona).map_or_else(|| NEGRO.to_string(), |c| format!("#{:02x}{:02x}{:02x}", c[0], c[1], c[2]));
     ec.tam = (e.alto_letra * e.mapa.escala * 1.1).clamp(8.0, 96.0);
     ec.donde = Some((d.x, d.y));
@@ -566,7 +652,8 @@ fn formula(e: &Entrada, latex: &[String]) -> Option<Vec<Value>> {
     let k = (d.h / h as f64).min(d.w * 1.15 / w as f64).clamp(0.5, 1.3);
     ec.tam = (ec.tam * k).clamp(8.0, 120.0);
     // Un renglon: del alto de su letra en el papel (salia diminuta).
-    if lineas.len() == 1 {
+    // (Solo si es plano: con fracciones el alto de la zona no es el de la letra.)
+    if lineas.len() == 1 && (h as f64) < 1.6 * ec.tam / k.max(1e-6) && e.zona.renglones.len() <= 1 {
         ec.tam = ec.tam.max(0.85 * d.h).min(120.0);
     }
     let (_, (w, h)) = crate::ecuacion::piezas(&ec);
@@ -624,17 +711,6 @@ fn marco(e: &Entrada, f: &mut Fabrica) {
 
 // ---------------------------------------------------------------------------
 // Calco y grafica
-
-/// **El calco del recorte**, recolocado en la caja destino.
-fn calco(e: &Entrada) -> Vec<Value> {
-    let (rgba, w, h) = e.recorte();
-    if w == 0 || h == 0 {
-        return Vec::new();
-    }
-    let p = crate::calcar::Parametros { detalle: crate::calcar::Detalle::Medio, ..Default::default() };
-    let c = crate::calcar::calcar(&rgba, w, h, &p);
-    calco_en_caja(&c, e.destino(), e.mapa.escala, e.semilla_de_zona())
-}
 
 /// **El enganche con el calcado**: sus trazos vienen en el lienzo de 800x600
 /// (`lienzo = original * escala + desplazamiento`); aqui vuelven a pixeles
@@ -748,36 +824,32 @@ pub fn es_diagrama(e: &Entrada) -> bool {
     crate::diagrama::vectorizar(&rgba, w, h, &[], &o, None).es_diagrama()
 }
 
-/// **El LaTeX de la nube, en lo que entiende el motor de formulas comun**
-/// (sin tocarlo): el angulo `\measuredangle` es el signo ∢ y el arco sobre
-/// letras (`\overset{\frown}{AC}`, `\overarc`, `\wideparen`) la marca de
-/// arco de `\widehat`. Lo que no se sabe pasar se queda (y el motor avisa).
+/// **El LaTeX de la nube, limpio para el motor de formulas comun**: lo que
+/// la nube escribe por error (`\gets` por el angulo, medido con DeepSeek el
+/// 15-oct: salia «m\getsCOD») pasa a lo que quiso decir. Lo demas
+/// (`\measuredangle`, `\overset{\frown}{AC}`) ya lo entiende el motor.
 pub fn latex_para_el_motor(l: &str) -> String {
-    let mut s = l.to_string();
-    for (de, a) in [
-        (r"\measuredangle", r"∢"),
-        (r"\sphericalangle", r"∢"),
-        (r"\angle", r"∠"),
-        (r"\overset{\frown}", r"\widehat"),
-        (r"\overset{\smile}", r"\widehat"),
-        (r"\overarc", r"\widehat"),
-        (r"\wideparen", r"\widehat"),
-        (r"\gets", r"∢"),
-    ] {
-        // Con un espacio detras si lo que sigue es una letra (`\angle COD`
-        // -> `∢COD`; `\angleCOD` tambien).
-        s = s.replace(&format!("{de} "), a).replace(de, a);
-    }
-    s
+    l.replace(r"\gets ", r"\sphericalangle ").replace(r"\gets", r"\sphericalangle ")
 }
 
 #[cfg(test)]
 mod pruebas_latex {
     #[test]
-    fn el_angulo_y_el_arco_de_la_nube_se_pasan_al_motor() {
-        assert_eq!(super::latex_para_el_motor(r"m\measuredangle COD = X"), "m∢COD = X");
-        assert_eq!(super::latex_para_el_motor(r"m\overset{\frown}{AC}=2a"), r"m\widehat{AC}=2a");
-        assert_eq!(super::latex_para_el_motor(r"m\getsCOD"), "m∢COD");
-        assert_eq!(super::latex_para_el_motor(r"\frac{a}{b}"), r"\frac{a}{b}");
+    fn el_angulo_mal_escrito_por_la_nube_se_arregla() {
+        assert_eq!(super::latex_para_el_motor(r"m\getsCOD"), r"m\sphericalangle COD");
+        assert_eq!(super::latex_para_el_motor(r"m\gets COD"), r"m\sphericalangle COD");
+        assert_eq!(super::latex_para_el_motor(r"m\overset{\frown}{AC}=2a"), r"m\overset{\frown}{AC}=2a");
+    }
+}
+
+#[cfg(test)]
+mod pruebas_rico {
+    #[test]
+    fn una_linea_de_resolucion_sale_como_texto_rico() {
+        let e = super::un_texto(r"$\color{#c04040}{m\measuredangle AOB=90^{\circ}}$", 0.0, 0.0, 20.0, "Work Sans", false, super::Alineacion::Izquierda, None);
+        let pixpin_motor2d::elemento::Figura::Texto { texto, .. } = &e.figura else { panic!() };
+        eprintln!("texto {texto:?} rico {:?}", e.extras.rico);
+        assert!(!texto.contains(char::from(92)), "{texto}");
+        assert!(e.extras.rico.is_some());
     }
 }

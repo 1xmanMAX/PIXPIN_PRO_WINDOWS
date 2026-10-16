@@ -415,6 +415,9 @@ fn banco_diagramas() {
             for f in &inf.fallos {
                 println!("    FALLO {f}");
             }
+            for (z, v) in &inf.parecidos {
+                println!("    parecido zona {z}: {v:.2}");
+            }
             let els: Vec<Elemento> = d.escena.visibles().cloned().collect();
             let ancho = (p.ancho * 2).clamp(1200, 2400);
             let Some(res) = pintar_medida(els, &d.imagenes, (0.0, 0.0), None, ancho) else {
@@ -491,4 +494,81 @@ fn depurar_recuadro() {
             println!("  rec {r:?}");
         }
     }
+}
+
+// ---------------------------------------------------------------------------
+// Pagina mixta (15-oct): foto + texto + formula. Lo que no se dibuja (la
+// foto) va recortado de la hoja con el recorte del lienzo; lo demas, editable.
+
+/// Una «foto» (un atardecer con montes y grano): muchos tonos y textura,
+/// nada que se pueda dibujar con rectas y arcos.
+fn pintar_foto(img: &mut pixpin_codec::ImagenRgba, x0: u32, y0: u32, w: u32, h: u32) {
+    let mut s: u32 = 987_654;
+    for y in y0..(y0 + h).min(img.alto) {
+        for x in x0..(x0 + w).min(img.ancho) {
+            let (u, v) = ((x - x0) as f32 / w as f32, (y - y0) as f32 / h as f32);
+            s = s.wrapping_mul(1_103_515_245).wrapping_add(12_345);
+            let grano = ((s >> 16) % 30) as f32 - 15.0;
+            let monte = 0.6 + 0.12 * (u * 9.0).sin() + 0.06 * (u * 23.0).cos();
+            let (r, g, b) = if v > monte {
+                (40.0 + 60.0 * u, 90.0 + 40.0 * (1.0 - v), 50.0)
+            } else {
+                (250.0 - 60.0 * v, 140.0 + 80.0 * v * u, 90.0 + 120.0 * v)
+            };
+            let i = ((y * img.ancho + x) * 4) as usize;
+            img.pixeles[i] = (r + grano).clamp(0.0, 255.0) as u8;
+            img.pixeles[i + 1] = (g + grano).clamp(0.0, 255.0) as u8;
+            img.pixeles[i + 2] = (b + grano).clamp(0.0, 255.0) as u8;
+            img.pixeles[i + 3] = 255;
+        }
+    }
+}
+
+pub(crate) fn pagina_mixta() -> Pagina {
+    let mut v = vec![
+        txt("Excursion al valle", 40.0, 24.0, 30.0, NEGRO),
+        txt("El grupo salio a las ocho y llego al mirador a mediodia.", 40.0, 90.0, 18.0, NEGRO),
+        txt("La pendiente media del camino se calcula asi:", 40.0, 120.0, 18.0, NEGRO),
+    ];
+    let ec = pixpin_ia::ecuacion::Ecuacion { lineas: vec![r"m = \frac{\Delta y}{\Delta x} = \frac{480 - 120}{6}".into()], donde: Some((60.0, 160.0)), tam: 26.0, color: "#1e1e1e".into() };
+    v.extend(pixpin_ia::ecuacion::piezas(&ec).0);
+    v.push(txt("Foto del mirador:", 40.0, 270.0, 18.0, NEGRO));
+    let mut img = pintar_a(v, (700.0, 620.0), 1400);
+    // La foto, en pixeles de la hoja (al doble).
+    pintar_foto(&mut img, 80, 600, 900, 560);
+    pagina_de(img)
+}
+
+/// **De punta a punta, con Haiku**: la pagina mixta. La foto sale como el
+/// recorte de la hoja (con su `crop`) en su sitio; el texto y la formula,
+/// editables. Guarda el resultado y la comparacion en
+/// `banco-geometria\recortes\`.
+#[test]
+#[ignore = "con la nube de verdad"]
+fn mixta_con_haiku() {
+    let _com = pixpin_shell::ComDelHilo::iniciar();
+    let base = salida().join("recortes");
+    let p = pagina_mixta();
+    let original = pixpin_codec::ImagenRgba { ancho: p.ancho, alto: p.alto, pixeles: p.rgba.clone() };
+    guardar(&original, &base.join("mixta-entrada.png"));
+    let motor = motores().into_iter().find(|(n, _)| *n == "claude").map(|(_, m)| m).expect("la clave de Claude");
+    let mut d = EnEscena::nueva();
+    let o = Opciones { ancho: p.ancho as f64, ..Default::default() };
+    let t0 = std::time::Instant::now();
+    let inf = pasar(&p, Some(motor), &o, false, 9100, &AtomicBool::new(false), &mut d, &mut |_, _| {}).unwrap();
+    for h in &inf.hechos {
+        println!("  zona {:>2} {:<10} {}", h.zona, h.tipo.nombre(), h.nota);
+    }
+    println!("{} zonas, {} peticiones ({} a la vez), 1o visible {:?} ms, total {} ms", inf.seccionado.zonas.len(), inf.peticiones, inf.a_la_vez, inf.ms_primera, t0.elapsed().as_millis());
+    let fotos: Vec<&pixpin_ia::hoja::montaje::Hecho> = inf.hechos.iter().filter(|h| h.elementos.iter().any(|v| v["type"] == "image")).collect();
+    assert!(!fotos.is_empty(), "la foto, recortada");
+    assert!(fotos.iter().all(|h| h.elementos.iter().filter(|v| v["type"] == "image").all(|v| v["crop"].is_object())), "con el recorte del lienzo");
+    // El texto y la formula, editables (no imagen).
+    let textos = inf.hechos.iter().filter(|h| matches!(h.tipo, pixpin_ia::hoja::Tipo::Parrafo | pixpin_ia::hoja::Tipo::Encabezado)).count();
+    assert!(textos >= 2, "los parrafos, como texto");
+    assert!(inf.hechos.iter().any(|h| h.nota.starts_with("ecuacion")), "la formula, compuesta");
+    let els: Vec<Elemento> = d.escena.visibles().cloned().collect();
+    let res = pintar_medida(els, &d.imagenes, (0.0, 0.0), None, 1400).expect("el lienzo");
+    guardar(&res, &base.join("mixta-resultado.png"));
+    guardar(&lado_a_lado(&a_ancho(&original, res.ancho), &res), &base.join("mixta-comparar.png"));
 }

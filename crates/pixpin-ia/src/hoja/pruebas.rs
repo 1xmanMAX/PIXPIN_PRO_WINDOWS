@@ -555,3 +555,76 @@ fn los_enlaces_y_los_colores_se_conservan() {
     assert!(imagen::color_de_tinta(&p.rgba, 100, 40, &Caja::nueva(55.0, 5.0, 40.0, 30.0), 158).is_none());
     assert_eq!(imagen::hex([255, 0, 16]), "#ff0010");
 }
+
+// ---------------------------------------------------------------------------
+// Lo que no se dibuja, recortado (15-oct)
+
+impl Papel {
+    /// Una circunferencia con un diametro (un diagrama sencillo), a mano
+    /// pixel a pixel con algo de antialias.
+    fn diagrama(&mut self, cx: f64, cy: f64, r: f64) {
+        for y in (cy - r - 4.0) as i64..(cy + r + 4.0) as i64 {
+            for x in (cx - r - 4.0) as i64..(cx + r + 4.0) as i64 {
+                let d = ((x as f64 + 0.5 - cx).powi(2) + (y as f64 + 0.5 - cy).powi(2)).sqrt();
+                let en_arco = (d - r).abs();
+                let en_diametro = if (x as f64 - cx).abs() <= r { (y as f64 + 0.5 - cy).abs() } else { 99.0 };
+                // Y un triangulo inscrito (de los extremos del diametro a lo alto).
+                let tope = (cx, cy - r);
+                let lado = |a: (f64, f64), b: (f64, f64)| crate::diagrama::ajuste::dist_a_segmento((x as f64 + 0.5, y as f64 + 0.5), a, b);
+                let en_diametro = en_diametro.min(lado((cx - r, cy), tope)).min(lado(tope, (cx + r, cy)));
+                let t = en_arco.min(en_diametro);
+                if t < 1.6 {
+                    let g = (20.0 + 200.0 * (t / 1.6)).min(255.0) as u8;
+                    self.pixel(x, y, g);
+                }
+            }
+        }
+    }
+}
+
+/// **La clasificacion**: una foto (textura con muchos tonos) no se dibuja,
+/// va recortada de la hoja con el recorte del lienzo (`crop`), en su sitio y
+/// a su escala. Caso negativo: un diagrama sencillo NO se recorta, sale con
+/// figuras exactas.
+#[test]
+fn lo_que_no_se_dibuja_va_recortado_y_un_diagrama_no() {
+    let o = Opciones::default();
+    // La foto.
+    let mut p = Papel::nuevo(900, 700);
+    p.foto(120.0, 100.0, 420.0, 300.0);
+    let s = p.seccionar();
+    let z = s.zonas.iter().find(|z| matches!(z.tipo, Tipo::Foto | Tipo::Dibujo)).expect("la zona de la foto");
+    let e = entrada(z, (&p.rgba, p.w, p.h), &o);
+    let h = montaje::hacer(&e, None, Via::Editable);
+    assert_eq!(h.imagenes.len(), 1, "{}", h.nota);
+    let v = &h.elementos[0];
+    assert_eq!(v["type"], "image");
+    let crop = &v["crop"];
+    assert!(crop.is_object(), "con el recorte del lienzo: {v}");
+    // El recorte es la zona (con 2 px de aire) sobre la hoja entera.
+    let img = &h.imagenes[0];
+    let k = img.ancho as f64 / p.w as f64;
+    assert!((crop["x"].as_f64().unwrap() / k - (z.caja.x - 2.0)).abs() < 1.5, "{crop}");
+    assert!((crop["width"].as_f64().unwrap() / k - (z.caja.w + 4.0)).abs() < 2.5, "{crop}");
+    assert_eq!(crop["naturalWidth"].as_u64().unwrap(), img.ancho as u64);
+    // Y en su sitio y a su escala (la del mapa).
+    let d = e.mapa.caja(&z.caja.crecer(2.0));
+    assert!((v["x"].as_f64().unwrap() - d.x).abs() < 0.5 && (v["width"].as_f64().unwrap() - d.w).abs() < 0.5, "{v}");
+    let els = leer(&h.elementos);
+    assert!(matches!(&els[0].figura, pixpin_motor2d::Figura::Imagen { .. }));
+    assert!(els[0].extras.recorte.is_some(), "el lienzo lee el recorte");
+
+    // Un diagrama sencillo: figuras exactas, sin recorte.
+    let mut p = Papel::nuevo(900, 700);
+    p.diagrama(450.0, 380.0, 200.0);
+    let s = p.seccionar();
+    let z = s.zonas.iter().filter(|z| matches!(z.tipo, Tipo::Dibujo | Tipo::Grafica | Tipo::Foto)).max_by(|a, b| a.caja.area().total_cmp(&b.caja.area())).expect("la zona del dibujo");
+    let h = montaje::hacer(&entrada(z, (&p.rgba, p.w, p.h), &o), None, Via::Editable);
+    {
+        let (rgba, w, h) = super::imagen::recortar(&p.rgba, p.w, p.h, &z.caja.crecer(12.0));
+        let d = crate::diagrama::vectorizar(&rgba, w, h, &[], &crate::diagrama::Opciones { alto_letra: 18.0, ..Default::default() }, None);
+        eprintln!("zona {:?} {:?}: {}", z.tipo, z.caja, d.resumen());
+    }
+    assert_eq!(h.tipo, Tipo::Diagrama, "{}", h.nota);
+    assert!(h.imagenes.is_empty(), "un diagrama no se recorta: {}", h.nota);
+}

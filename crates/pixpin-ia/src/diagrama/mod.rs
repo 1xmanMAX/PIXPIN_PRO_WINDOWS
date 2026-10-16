@@ -124,6 +124,17 @@ pub struct Region {
     pub area: f64,
 }
 
+/// **Una marca de angulo**: el sector relleno de vertice `v` entre sus dos
+/// rayas (de `inicio`, barriendo `barrido`, radianes de pantalla).
+#[derive(Debug, Clone, PartialEq)]
+pub struct Marca {
+    pub v: P,
+    pub r: f64,
+    pub inicio: f64,
+    pub barrido: f64,
+    pub color: [u8; 3],
+}
+
 /// Un rectangulo de cuatro segmentos.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Recuadro {
@@ -168,6 +179,8 @@ pub struct Diagrama {
     pub puntos: Vec<Punto>,
     pub regiones: Vec<Region>,
     pub recuadros: Vec<Recuadro>,
+    /// Las marcas de angulo (sectores rellenos en un vertice).
+    pub marcas: Vec<Marca>,
     pub rotulos: Vec<Rotulo>,
     pub glifos: Vec<Glifo>,
     /// Que parte de la tinta (sin el texto) explican las figuras (0-1): un
@@ -189,7 +202,7 @@ pub struct Diagrama {
 impl Diagrama {
     /// Cuantas figuras salieron (sin los rotulos).
     pub fn figuras(&self) -> usize {
-        self.segmentos.len() + self.arcos.len() + self.puntos.len() + self.regiones.len() + self.recuadros.len()
+        self.segmentos.len() + self.arcos.len() + self.puntos.len() + self.regiones.len() + self.recuadros.len() + self.marcas.len()
     }
     /// **Si esto es de verdad un diagrama** (y no una ilustracion o una
     /// foto): la geometria explica casi toda la tinta, y hay geometria.

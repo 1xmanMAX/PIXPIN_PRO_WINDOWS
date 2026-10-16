@@ -2385,7 +2385,7 @@ fn puntas_de_discontinuas(d: &mut Diagrama, hm: f64) {
 /// una circunferencia mayor ya encontrada es de ella (con sus angulos); y
 /// los arcos de una misma circunferencia, del mismo color y grosor, que se
 /// tocan o tienen entre medias un hueco con tinta (cruces, un punto), uno.
-pub(super) fn consolidar_arcos(m: &Mapas, d: &mut Diagrama, hm: f64) {
+fn consolidar_arcos(m: &Mapas, d: &mut Diagrama, hm: f64) {
     if d.arcos.len() < 2 {
         return;
     }
@@ -2534,7 +2534,7 @@ pub(super) fn consolidar_arcos(m: &Mapas, d: &mut Diagrama, hm: f64) {
 /// grosor (el AB del cuadrante, repasado, y su prolongacion fina hasta el
 /// punto de la izquierda): el grosor de cada tramo de 3 grados, y donde
 /// cambia de verdad (vez y media, al menos 12 grados seguidos), dos arcos.
-pub(super) fn partir_por_grosor(m: &Mapas, d: &mut Diagrama) {
+fn partir_por_grosor(m: &Mapas, d: &mut Diagrama) {
     let mut nuevos: Vec<Arco> = Vec::new();
     for a in std::mem::take(&mut d.arcos) {
         if a.r * a.barrido < 40.0 {
