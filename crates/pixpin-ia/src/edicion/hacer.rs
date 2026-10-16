@@ -73,6 +73,7 @@ fn trazo_de(t: &str) -> EstiloTrazo {
     match t {
         "discontinuo" => EstiloTrazo::Discontinuo,
         "punteado" => EstiloTrazo::Punteado,
+        "raya_punto" | "rayapunto" => EstiloTrazo::RayaPunto,
         _ => EstiloTrazo::Solido,
     }
 }
@@ -619,6 +620,15 @@ fn geometria(escena: &mut Escena, e: &Edicion, ctx: &Contexto) -> Result<Hecho, 
             };
             circulo(escena, Mano::Elipse, c, r)?
         }
+        "arco" if e.numeros("puntos").is_some_and(|v| v.len() >= 6) => {
+            let v = puntos_de(&e.numeros("puntos").unwrap_or_default(), ctx);
+            let a = pixpin_motor2d::geometria_exacta::arco_por_tres_puntos(v[0], v[1], v[2])
+                .ok_or("los tres puntos estan en linea: no hay arco que pase por ellos")?;
+            escena.abrir_paso();
+            let id = escena.anadir(a);
+            escena.cerrar_paso();
+            id
+        }
         "arco" => {
             let c = punto(e, "centro", ctx).ok_or("el arco necesita «centro»")?;
             let r = e.numero("radio").ok_or("el arco necesita «radio»")? as f32;
@@ -635,7 +645,7 @@ fn geometria(escena: &mut Escena, e: &Edicion, ctx: &Contexto) -> Result<Hecho, 
                 // horario del ovalo.
                 x.figura = Figura::Arco {
                     inicio: -desde.to_radians(),
-                    barrido: Some(-(hasta - desde).to_radians()),
+                    barrido: Some(barrido_de(e, desde as f64, hasta as f64)),
                 };
                 x.tocar();
             }
@@ -668,10 +678,195 @@ fn geometria(escena: &mut Escena, e: &Edicion, ctx: &Contexto) -> Result<Hecho, 
                 recta(escena, a.sumar(desplazar), b.sumar(desplazar))?
             }
         }
+        "semicircunferencia" | "cuadrante" | "sector" | "segmento" | "marca_angulo" | "angulo_recto" | "punto" => {
+            let nuevo = de_lamina(escena, figura, e, ctx)?;
+            escena.abrir_paso();
+            let id = escena.anadir(nuevo);
+            escena.cerrar_paso();
+            id
+        }
         otra => return Err(format!("figura desconocida «{otra}»")),
     };
     rematar_estilo(escena, id, e)?;
+    rematar_lamina(escena, id, e)?;
     Ok(hecho(escena, &format!("{figura} trazada"), vec![id], ctx))
+}
+
+/// Grados de matematicas (0 a la derecha, 90 arriba, antihorario) a radianes
+/// de pantalla (la y baja: el signo cambia).
+fn a_pantalla(grados: f64) -> f32 {
+    -(grados as f32).to_radians()
+}
+
+/// El barrido en pantalla de `inicio` a `fin` (grados de matematicas): con
+/// «sentido», la vuelta que toca; sin el, la resta tal cual (negativa =
+/// horario), como siempre.
+fn barrido_de(e: &Edicion, inicio: f64, fin: f64) -> f32 {
+    let d = match e.texto("sentido") {
+        Some("horario") => -(inicio - fin).rem_euclid(360.0),
+        Some(_) => (fin - inicio).rem_euclid(360.0),
+        None => fin - inicio,
+    };
+    let d = if d == 0.0 && e.texto("sentido").is_some() { 360.0 } else { d };
+    -(d as f32).to_radians()
+}
+
+/// **Las figuras de lamina** con las piezas del motor
+/// (`pixpin_motor2d::geometria_exacta`), las mismas que la herramienta Arco y
+/// la marca de angulo del lienzo.
+fn de_lamina(escena: &Escena, figura: &str, e: &Edicion, ctx: &Contexto) -> Result<Elemento, String> {
+    use pixpin_motor2d::geometria_exacta as ge;
+    let puntos = e.numeros("puntos").map(|v| puntos_de(&v, ctx)).unwrap_or_default();
+    Ok(match figura {
+        "semicircunferencia" => {
+            let (Some(&a), Some(&b)) = (puntos.first(), puntos.get(1)) else {
+                return Err("la semicircunferencia necesita «puntos» [x1, y1, x2, y2] del diametro".into());
+            };
+            if a.distancia(b) < 1.0 {
+                return Err("el diametro no puede medir 0".into());
+            }
+            let medio = |s: &Elemento| {
+                let (c, r) = ge::centro_y_radio(s).unwrap_or((a, 0.0));
+                let Figura::Arco { inicio, barrido: Some(b) } = s.figura else { return c };
+                ge::en_la_circunferencia(c, r, inicio + b / 2.0)
+            };
+            let (h, ah) = (ge::semicircunferencia(a, b, true), ge::semicircunferencia(a, b, false));
+            match punto(e, "lado", ctx) {
+                Some(l) if medio(&ah).distancia(l) < medio(&h).distancia(l) => ah,
+                Some(_) => h,
+                // Sin decir, la de arriba (la y de pantalla mas pequena).
+                None if medio(&ah).y < medio(&h).y => ah,
+                None => h,
+            }
+        }
+        "cuadrante" | "sector" | "segmento" => {
+            let c = punto(e, "centro", ctx).ok_or_else(|| format!("el {figura} necesita «centro»"))?;
+            let cierre = if figura == "segmento" { ge::CierreArco::Segmento } else { ge::CierreArco::Sector };
+            if puntos.len() >= 2 {
+                // Por las puntas de sus dos radios: el angulo menor entre ellos.
+                let (inicio, barrido) = ge::angulo_menor(c, puntos[0], puntos[1]);
+                ge::arco_cerrado(c, c.distancia(puntos[0]), inicio, barrido, cierre)
+            } else {
+                let r = e.numero("radio").ok_or_else(|| format!("el {figura} necesita «radio» (o «puntos»)"))? as f32;
+                if r <= 0.5 {
+                    return Err("el radio tiene que ser mayor que 0".into());
+                }
+                let inicio = e.numero("inicio").unwrap_or(0.0);
+                let barrido = if figura == "cuadrante" {
+                    let s: f32 = if e.texto("sentido") == Some("horario") { -1.0 } else { 1.0 };
+                    -s * std::f32::consts::FRAC_PI_2
+                } else {
+                    let fin = e.numero("fin").ok_or_else(|| format!("el {figura} necesita «fin»"))?;
+                    barrido_de(e, inicio, fin)
+                };
+                ge::arco_cerrado(c, r, a_pantalla(inicio), barrido, cierre)
+            }
+        }
+        "marca_angulo" | "angulo_recto" => {
+            let v = punto(e, "vertice", ctx).ok_or("la marca necesita «vertice» [x, y]")?;
+            if puntos.len() < 2 {
+                return Err("la marca necesita «puntos» [x1, y1, x2, y2]: un punto de cada lado".into());
+            }
+            let (p1, p2) = (puntos[0], puntos[1]);
+            if p1.distancia(v) < 0.5 || p2.distancia(v) < 0.5 {
+                return Err("los puntos de los lados no pueden ser el vertice".into());
+            }
+            let mut m = if figura == "angulo_recto" {
+                ge::marca_de_angulo_recto(v, p1, p2, e.numero("radio").unwrap_or(14.0) as f32)
+            } else {
+                let arcos = e.numero("arcos").unwrap_or(1.0).clamp(1.0, 3.0) as u8;
+                ge::marca_de_angulo(v, p1, p2, e.numero("radio").unwrap_or(ge::RADIO_MARCA as f64) as f32, arcos)
+            };
+            if let Some(marca) = m.extras.marca_angulo.as_mut() {
+                marca.valor = e.texto("valor").filter(|s| !s.trim().is_empty()).map(str::to_string);
+            }
+            m
+        }
+        "punto" => {
+            let p = punto(e, "centro", ctx)
+                .or_else(|| puntos.first().copied())
+                .ok_or("el punto necesita «puntos» [x, y] (o «centro»)")?;
+            let angulo = match e.texto("letra_hacia") {
+                Some(lado) => {
+                    let g: f32 = match lado {
+                        "derecha" => 0.0,
+                        "abajo_derecha" => 45.0,
+                        "abajo" => 90.0,
+                        "abajo_izquierda" => 135.0,
+                        "izquierda" => 180.0,
+                        "arriba_izquierda" => 225.0,
+                        "arriba" => 270.0,
+                        _ => 315.0,
+                    };
+                    g.to_radians()
+                }
+                None => pixpin_motor2d::puntos_etiquetados::angulo_libre(p, &escena.elementos, 40.0),
+            };
+            ge::punto_con_letra(p, e.texto("letra").unwrap_or(""), angulo)
+        }
+        otra => return Err(format!("figura desconocida «{otra}»")),
+    })
+}
+
+/// Lo de lamina que se pone despues del estilo: relleno (translucido en la
+/// marca), degradado, puntas de flecha y tamano de letra.
+fn rematar_lamina(escena: &mut Escena, id: u64, e: &Edicion) -> Result<(), String> {
+    let relleno = e
+        .texto("relleno")
+        .filter(|t| !matches!(*t, "ninguno" | "no" | ""))
+        .map(color_rgba)
+        .transpose()?;
+    let hasta = e.texto("relleno_hasta").map(color_rgba).transpose()?;
+    let degradado = e.texto("degradado").and_then(pixpin_motor2d::geometria_exacta::TipoDegradado::desde_palabra);
+    let flecha = e.texto("flecha").filter(|f| *f != "ninguna");
+    let tam = e.numero("tam_letra").map(|t| (t as f32).clamp(6.0, 120.0));
+    let es_marca = escena.buscar(id).is_some_and(|x| x.extras.marca_angulo.is_some());
+    if relleno.is_none() && degradado.is_none() && flecha.is_none() && tam.is_none() && !es_marca {
+        return Ok(());
+    }
+    escena.abrir_paso();
+    escena.apuntar_edicion(id);
+    if let Some(x) = escena.buscar_mut(id) {
+        if es_marca {
+            // La marca lleva su relleno translucido, del color pedido o del
+            // de su trazo.
+            let base = relleno.unwrap_or(x.trazo);
+            x.relleno = Some(ColorRgba { a: base.a.min(0.35), ..base });
+        } else if let Some(r) = relleno {
+            x.relleno = Some(r);
+            x.estilo_relleno = pixpin_motor2d::relleno::EstiloRelleno::Solido;
+        }
+        if let Some(t) = degradado {
+            let desde = x.relleno.unwrap_or(x.trazo);
+            let mut d = pixpin_motor2d::geometria_exacta::Degradado::desde_relleno(t, desde);
+            if let Some(h) = hasta {
+                d.hasta = h;
+            }
+            x.extras.degradado = Some(d);
+        }
+        if let Some(f) = flecha {
+            let tipo = if e.texto("punta") == Some("abierta") {
+                pixpin_motor2d::formas::TipoPunta::Flecha
+            } else {
+                pixpin_motor2d::formas::TipoPunta::Triangulo
+            };
+            if let Figura::Linea { puntos } = &x.figura {
+                let puntos = puntos.clone();
+                x.figura = Figura::Flecha {
+                    puntos,
+                    punta_inicio: if matches!(f, "inicio" | "ambas") { tipo } else { Default::default() },
+                    punta_fin: if matches!(f, "fin" | "ambas") { tipo } else { Default::default() },
+                    codos: false,
+                };
+            }
+        }
+        if let Some(t) = tam {
+            x.extras.tam_letra = Some(t);
+        }
+        x.tocar();
+    }
+    escena.cerrar_paso();
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------

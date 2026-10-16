@@ -785,6 +785,10 @@ pub(crate) fn pintar_encima(
     if let Some(orden) = gesto.bolita.orden(zoom) {
         dibujar_orden(p, &orden, vista, None, imagenes, zoom, None);
     }
+    // Los clics ya puestos del arco exacto (centro, inicio...).
+    for orden in gesto.ordenes_de_arco_en_curso(zoom) {
+        dibujar_orden(p, &orden, vista, None, imagenes, zoom, None);
+    }
     // La pista del iman: encima de todo, porque es lo que dice donde va a
     // caer el punto.
     if let Some(a) = gesto.anclaje_activo {
@@ -872,6 +876,7 @@ pub(crate) fn ordenes_encima(
     }
     v.extend(gesto.laser.ordenes(zoom));
     v.extend(gesto.bolita.orden(zoom));
+    v.extend(gesto.ordenes_de_arco_en_curso(zoom));
     if let Some(a) = gesto.anclaje_activo {
         v.push(pixpin_motor2d::enganche::pista(&a, zoom));
     }

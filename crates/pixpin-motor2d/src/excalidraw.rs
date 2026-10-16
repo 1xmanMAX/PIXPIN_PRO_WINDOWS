@@ -939,6 +939,9 @@ fn elemento_desde(v: &Value) -> Option<Elemento> {
             .unwrap_or_default(),
         grosor: num_o(v, "strokeWidth", 2.0),
         estilo: match v.get("strokeStyle").and_then(|s| s.as_str()) {
+            Some("dashed") if v.get("trazoRayaPunto").and_then(Value::as_bool) == Some(true) => {
+                EstiloTrazo::RayaPunto
+            }
             Some("dashed") => EstiloTrazo::Discontinuo,
             Some("dotted") => EstiloTrazo::Punteado,
             _ => EstiloTrazo::Solido,
@@ -1089,7 +1092,16 @@ fn extras_desde(v: &Value) -> Extras {
         // de los instrumentos (`e.fontSize ?: TAM_DE_LA_CIFRA` en `drawPlano`).
         tam_letra: matches!(
             v.get("type").and_then(Value::as_str),
-            Some("pixpin-measure" | "pixpin-axes" | "pixpin-number-line" | "pixpin-space")
+            Some(
+                "pixpin-measure"
+                    | "pixpin-axes"
+                    | "pixpin-number-line"
+                    | "pixpin-space"
+                    // La letra del punto (`e.fontSize ?: 20` de `Puntos.kt`) y
+                    // el valor de una marca de angulo.
+                    | "pixpin-point"
+                    | "pixpin-arc"
+            )
         )
         .then(|| num(v, "fontSize"))
         .flatten()
@@ -1101,6 +1113,9 @@ fn extras_desde(v: &Value) -> Extras {
             .get("dureza")
             .and_then(Value::as_str)
             .and_then(crate::tinta::grafito::Dureza::desde_rotulo),
+        cierre: crate::geometria_exacta::cierre_desde(v),
+        marca_angulo: crate::geometria_exacta::marca_desde(v),
+        degradado: crate::geometria_exacta::degradado_desde(v),
     }
 }
 
@@ -1519,6 +1534,7 @@ fn elemento_hacia(e: &Elemento, original: &Value, objetos: bool) -> Value {
         );
     }
     dureza_hacia(&mut mapa, e.extras.dureza);
+    crate::geometria_exacta::laminas_hacia(&mut mapa, e);
     // **La guia que nace aqui** (modo guia): sin la clave el movil la leeria
     // como dibujo. Se escribe si lo es o si el original ya la traia (una que
     // deja de serlo tiene que decirlo); en lo demas, nada nuevo.
@@ -1533,6 +1549,9 @@ fn elemento_hacia(e: &Elemento, original: &Value, objetos: bool) -> Value {
                 EstiloTrazo::Solido => "solid",
                 EstiloTrazo::Discontinuo => "dashed",
                 EstiloTrazo::Punteado => "dotted",
+                // El movil no lo conoce: lo mas parecido que si entiende, y
+                // la verdad en `trazoRayaPunto` (abajo).
+                EstiloTrazo::RayaPunto => "dashed",
             }
             .into(),
         ),
@@ -1774,6 +1793,9 @@ fn elemento_hacia(e: &Elemento, original: &Value, objetos: bool) -> Value {
             // En radianes, como lo lee `Puntos.sitioDeLaEtiqueta`.
             mapa.insert("etiquetaAngulo".into(), Value::from(*angulo as f64));
             mapa.insert("etiquetaRadio".into(), Value::from(*radio as f64));
+            if let Some(t) = e.extras.tam_letra {
+                mapa.insert("fontSize".into(), Value::from(t as f64));
+            }
         }
         // **`mosaicBlur` se leia y no se escribia.** Un mosaico nacido en el
         // escritorio llegaba al movil sin decir con que tapa, y uno suyo al

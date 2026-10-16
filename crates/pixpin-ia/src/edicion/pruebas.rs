@@ -506,3 +506,67 @@ fn una_caja_copiada_del_resumen_o_un_numero_de_orden_tambien_eligen() {
     // Negativo: cuatro numeros que no encierran nada siguen siendo ids que no existen.
     assert!(referencia::resolver(&s, "#900 #900 #5 #5", &ctx, None).unwrap_err().contains("no existe"));
 }
+
+#[test]
+fn geometria_de_lamina_con_las_piezas_del_motor() {
+    use pixpin_motor2d::geometria_exacta::CierreArco;
+    use std::f32::consts::{FRAC_PI_2, PI};
+    let mut s = Escena::nueva();
+    let ctx = Contexto::default();
+    let tramo = |s: &Escena, id: u64| match s.buscar(id).unwrap().figura {
+        Figura::Arco { inicio, barrido } => (inicio, barrido.unwrap()),
+        ref otra => panic!("{otra:?}"),
+    };
+    // Semicircunferencia sobre el diametro (0,100)-(200,100): la de arriba.
+    let h = un_paso(&mut s, &ctx, GEOMETRIA, json!({"figura": "semicircunferencia", "puntos": [0, 100, 200, 100]}));
+    let (i, b) = tramo(&s, h.ids[0]);
+    let medio = Punto2::nuevo(100.0 + 100.0 * (i + b / 2.0).cos(), 100.0 + 100.0 * (i + b / 2.0).sin());
+    assert!((b.abs() - PI).abs() < 1e-3 && medio.y < 1.0, "arriba: {medio:?}");
+    // Y la de abajo, con «lado».
+    let h = un_paso(&mut s, &ctx, GEOMETRIA, json!({"figura": "semicircunferencia", "puntos": [0, 100, 200, 100], "lado": [100, 180]}));
+    let (i, b) = tramo(&s, h.ids[0]);
+    assert!((100.0 + 100.0 * (i + b / 2.0).sin()) > 199.0);
+    // Cuadrante por las puntas de sus radios, relleno con degradado radial.
+    let h = un_paso(
+        &mut s,
+        &ctx,
+        GEOMETRIA,
+        json!({"figura": "cuadrante", "centro": [0, 300], "puntos": [0, 100, 200, 300], "relleno": "naranja", "degradado": "radial", "color": "rojo"}),
+    );
+    let q = s.buscar(h.ids[0]).unwrap();
+    assert_eq!(q.extras.cierre, Some(CierreArco::Sector));
+    assert!((tramo(&s, h.ids[0]).1.abs() - FRAC_PI_2).abs() < 1e-3);
+    assert!(q.extras.degradado.is_some() && q.relleno.is_some());
+    // Sector de 0 a 60 grados (antihorario: hacia arriba en pantalla).
+    let h = un_paso(&mut s, &ctx, GEOMETRIA, json!({"figura": "sector", "centro": [0, 0], "radio": 50, "inicio": 0, "fin": 60, "sentido": "antihorario"}));
+    assert!((tramo(&s, h.ids[0]).1 + 60f32.to_radians()).abs() < 1e-3);
+    // Marca de angulo con dos arquitos y su valor; y la del recto.
+    let h = un_paso(
+        &mut s,
+        &ctx,
+        GEOMETRIA,
+        json!({"figura": "marca_angulo", "vertice": [0, 0], "puntos": [100, 0, 70, -70], "arcos": 2, "valor": "45°", "color": "verde"}),
+    );
+    let m = s.buscar(h.ids[0]).unwrap();
+    let marca = m.extras.marca_angulo.as_ref().unwrap();
+    assert_eq!((marca.arcos, marca.valor.as_deref()), (2, Some("45°")));
+    assert!(m.relleno.is_some_and(|c| c.a < 0.5), "relleno translucido");
+    let h = un_paso(&mut s, &ctx, GEOMETRIA, json!({"figura": "angulo_recto", "vertice": [0, 0], "puntos": [100, 0, 0, 100]}));
+    assert!(s.buscar(h.ids[0]).unwrap().extras.marca_angulo.as_ref().unwrap().recto);
+    // Punto con su letra.
+    let h = un_paso(&mut s, &ctx, GEOMETRIA, json!({"figura": "punto", "puntos": [40, 40], "letra": "P", "letra_hacia": "arriba"}));
+    assert!(matches!(&s.buscar(h.ids[0]).unwrap().figura, Figura::Punto { letra, .. } if letra == "P"));
+    // Recta punteada con flecha al final, y raya-punto.
+    let h = un_paso(&mut s, &ctx, GEOMETRIA, json!({"figura": "recta", "puntos": [0, 0, 100, 0], "trazo": "discontinuo", "flecha": "fin"}));
+    assert!(matches!(s.buscar(h.ids[0]).unwrap().figura, Figura::Flecha { .. }));
+    let h = un_paso(&mut s, &ctx, GEOMETRIA, json!({"figura": "recta", "puntos": [0, 0, 100, 0], "trazo": "raya_punto"}));
+    assert_eq!(s.buscar(h.ids[0]).unwrap().estilo, pixpin_motor2d::EstiloTrazo::RayaPunto);
+    // Arco por tres puntos.
+    let h = un_paso(&mut s, &ctx, GEOMETRIA, json!({"figura": "arco", "puntos": [100, 0, 0, 100, -100, 0]}));
+    assert!((tramo(&s, h.ids[0]).1 - PI).abs() < 1e-3);
+    // Negativos: la marca sin lados, la semicircunferencia sin diametro.
+    let e = llamar(&mut s, &ctx, GEOMETRIA, json!({"figura": "marca_angulo", "vertice": [0, 0]})).unwrap_err();
+    assert!(e.contains("lado"), "{e}");
+    let e = llamar(&mut s, &ctx, GEOMETRIA, json!({"figura": "semicircunferencia"})).unwrap_err();
+    assert!(e.contains("diametro"), "{e}");
+}

@@ -48,6 +48,7 @@ pub const NOMBRES: &[&str] = &[
     "lupa",
     "mosaico",
     "arco",
+    "angulo",
     "serie",
     "punto",
     "cota",

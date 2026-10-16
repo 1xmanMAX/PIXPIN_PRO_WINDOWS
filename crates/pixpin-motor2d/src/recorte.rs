@@ -310,7 +310,11 @@ fn recortar_arco(e: &Elemento, otros: &[Elemento], p: Punto2) -> Option<Recorte>
 
     // El camino contra el que cruzar: los contornos ya vienen muestreados **y
     // girados** (ver `perimetros`), que es donde estan las paredes.
-    let camino = contornos_de(e, PASO_PERIMETRO).into_iter().next()?.puntos;
+    // Del sector o la marca solo cuenta su arco: sus radios no son camino.
+    let mut solo_arco = e.clone();
+    solo_arco.extras.cierre = None;
+    solo_arco.extras.marca_angulo = None;
+    let camino = contornos_de(&solo_arco, PASO_PERIMETRO).into_iter().next()?.puntos;
     if camino.len() < 2 {
         return None;
     }
@@ -353,8 +357,11 @@ fn recortar_arco(e: &Elemento, otros: &[Elemento], p: Punto2) -> Option<Recorte>
             inicio: inicio + signo * desde_t,
             barrido: Some(signo * barre),
         };
-        // Un trozo de ovalo ya no encierra nada: el fondo se va con el resto.
+        // Un trozo de ovalo ya no encierra nada: el fondo se va con el resto
+        // (y con el, el cierre de sector y el degradado).
         nuevo.relleno = None;
+        nuevo.extras.cierre = None;
+        nuevo.extras.degradado = None;
         nuevo.tocar();
         Some(nuevo)
     };
@@ -422,6 +429,11 @@ fn angulo_en_el_ovalo(e: &Elemento, p: Punto2) -> f32 {
 /// en una polilinea con dobleces lo que se estira es el tramo del final, que es
 /// lo que uno ve como «la punta».
 pub fn extender_en(e: &Elemento, otros: &[Elemento], p: Punto2, alcance: f32) -> Option<Elemento> {
+    // **El arco se extiende por su circunferencia**, no en recta: alargar un
+    // arco es seguir girando el compas (`geometria_exacta::extender_arco`).
+    if matches!(e.figura, Figura::Arco { barrido: Some(_), .. }) {
+        return crate::geometria_exacta::extender_arco(e, otros, p);
+    }
     let camino = trazado_en_el_mundo(e);
     if camino.len() < 2 {
         return None;

@@ -165,7 +165,8 @@ pub fn catalogo_base() -> Vec<Herramienta> {
                 "Un paso de un diagrama: {\"tipo\":\"rectangulo\",\"caja\":[60,260,160,70],\"texto\":\"Inicio\"},",
                 "{\"tipo\":\"flecha\",\"puntos\":[220,295,320,295]}. ",
                 "Para copiar exacta una foto adjunta usa calcar_imagen; para dibujarla con figuras o a lapiz, interpretala con estas figuras. ",
-                "Para ilustraciones con curvas o mucho detalle, mejor dibujar_svg."
+                "Para ilustraciones con curvas o mucho detalle, mejor dibujar_svg. ",
+                "Para geometria exacta de lamina (arcos, semicircunferencias, cuadrantes, sectores, marcas de angulo, angulo recto, puntos con letra, degradados, raya-punto) usa geometria_precisa."
             )
             .into(),
             parametros: json!({
