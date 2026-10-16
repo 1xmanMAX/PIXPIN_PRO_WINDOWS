@@ -16,17 +16,24 @@ struct PixPinApp: App {
         } label: {
             EtiquetaBarra(grabador: GrabadorPantalla.compartido)
         }
+        // Al abrir PixPin se ve la ventana de Proyectos (si no, solo estaria
+        // el icono de la barra de menus, que tras la muesca ni se ve), y al
+        // abrirla otra vez con la app ya abierta, vuelve a salir.
         Window("Proyectos", id: "proyectos") {
-            if let almacen = estado.almacen {
-                VentanaProyectos(almacen: almacen)
-                    .frame(minWidth: 720, minHeight: 480)
-            } else {
-                ContentUnavailableView("No se pudo abrir la carpeta de datos",
-                                       systemImage: "exclamationmark.triangle",
-                                       description: Text(estado.error ?? ""))
+            Group {
+                if let almacen = estado.almacen {
+                    VentanaProyectos(almacen: almacen)
+                        .frame(minWidth: 720, minHeight: 480)
+                } else {
+                    ContentUnavailableView("No se pudo abrir la carpeta de datos",
+                                           systemImage: "exclamationmark.triangle",
+                                           description: Text(estado.error ?? ""))
+                }
             }
+            .modifier(AlReabrirSaleProyectos())
         }
         .defaultSize(width: 980, height: 680)
+        .defaultLaunchBehavior(.presented)
         Window("Sincronizar", id: "sincronizar") {
             if let sincro = estado.sincro {
                 VistaSincro(sincro: sincro)
@@ -240,6 +247,23 @@ struct EtiquetaBarra: View {
         imagen.isTemplate = false
         return imagen
     }()
+}
+
+/// Guarda como abrir la ventana de Proyectos para cuando se abre PixPin
+/// otra vez (`DelegadoAbrirFicheros.alReabrir`) y la trae al frente.
+struct AlReabrirSaleProyectos: ViewModifier {
+    @Environment(\.openWindow) private var abrirVentana
+
+    func body(content: Content) -> some View {
+        content.onAppear {
+            let abrir = abrirVentana
+            DelegadoAbrirFicheros.alReabrir = {
+                abrir(id: "proyectos")
+                NSApp.activate()
+            }
+            NSApp.activate()
+        }
+    }
 }
 
 struct MenuPrincipal: View {

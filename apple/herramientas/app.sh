@@ -79,6 +79,23 @@ arranca() {
     local pid=$!
     sleep 6
     if kill -0 "$pid" 2>/dev/null; then
+        # Que se vea una ventana (la de Proyectos) y no solo el icono de la
+        # barra de menus: ventanas normales (capa 0) de ese proceso.
+        local cuenta="$APPLE/app/.build/ventanas.swift"
+        mkdir -p "$(dirname "$cuenta")"
+        cat >"$cuenta" <<'SWIFT'
+import CoreGraphics
+let pid = Int32(CommandLine.arguments[1])!
+let lista = CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID) as? [[String: Any]] ?? []
+let suyas = lista.filter { ($0[kCGWindowOwnerPID as String] as? Int32) == pid && ($0[kCGWindowLayer as String] as? Int) == 0 }
+print(suyas.count)
+SWIFT
+        local ventanas
+        ventanas="$(swift "$cuenta" "$pid" 2>/dev/null || echo "?")"
+        if [ "$ventanas" = "0" ]; then
+            echo "::warning::PixPin arranco sin ninguna ventana a la vista"
+        fi
+        echo "    ventanas a la vista: $ventanas"
         kill "$pid" 2>/dev/null || true
         wait "$pid" 2>/dev/null || true
         echo "    arranca: sigue viva a los 6 s"

@@ -136,6 +136,16 @@ public final class VentanasDePlano: NSObject, NSWindowDelegate {
 /// con PixPin», soltar en el icono): los planos y modelos van a su visor y
 /// los documentos (PDF, Word, Excel…) a su lector o pin.
 public final class DelegadoAbrirFicheros: NSObject, NSApplicationDelegate {
+    /// Que hacer al abrir PixPin otra vez (doble clic en el Finder o en el
+    /// Launchpad con la app ya abierta): la app vive en la barra de menus y,
+    /// sin esto, no se veria nada.
+    @MainActor public static var alReabrir: (() -> Void)?
+
+    public func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        MainActor.assumeIsolated { DelegadoAbrirFicheros.alReabrir?() }
+        return true
+    }
+
     public func application(_ application: NSApplication, open urls: [URL]) {
         MainActor.assumeIsolated {
             for u in urls {
