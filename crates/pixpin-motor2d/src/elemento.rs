@@ -481,6 +481,12 @@ pub struct Extras {
     /// de fabrica no la estrena. Ver `tinta::grafito::Dureza`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub dureza: Option<crate::tinta::grafito::Dureza>,
+    /// **La fuente rica de un texto** (`textoRico`, 15-oct-2026): tramos de
+    /// color, negrita, formulas en linea `$...$`... (`texto_rico`). `None`: un
+    /// texto de los de siempre. Cuando la lleva, `Figura::Texto::texto` es su
+    /// version plana (`texto_rico::plano`), la que lee quien no la entiende.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rico: Option<String>,
     /// **Como se cierra un arco** (`cierreArco`): sector o segmento. Sin la
     /// clave, abierto. Ver `geometria_exacta`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -493,12 +499,6 @@ pub struct Extras {
     /// `geometria_exacta`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub degradado: Option<crate::geometria_exacta::Degradado>,
-    /// **La fuente rica de un texto** (`textoRico`, 15-oct-2026): tramos de
-    /// color, negrita, formulas en linea `$...$`... (`texto_rico`). `None`: un
-    /// texto de los de siempre. Cuando la lleva, `Figura::Texto::texto` es su
-    /// version plana (`texto_rico::plano`), la que lee quien no la entiende.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub rico: Option<String>,
 }
 
 /// **El recorte de una imagen** (`crop` de Excalidraw).
@@ -579,13 +579,13 @@ impl Extras {
             tam_letra: None,
             // Ni la dureza: viaja en su propia clave (`dureza`).
             dureza: None,
+            // Ni la fuente rica: viaja en su propia clave (`textoRico`).
+            rico: None,
             // Ni lo de las laminas de geometria: cada uno en su clave
             // (`cierreArco`, `marcaAngulo`, `degradado`).
             cierre: None,
             marca_angulo: None,
             degradado: None,
-            // Ni la fuente rica: viaja en su propia clave (`textoRico`).
-            rico: None,
             ..self.clone()
         } == Extras::default()
     }
