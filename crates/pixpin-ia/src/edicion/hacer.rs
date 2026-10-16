@@ -277,8 +277,35 @@ fn cambiar_estilo(escena: &mut Escena, e: &Edicion, ctx: &Contexto) -> Result<He
         cambios.push(C::Dureza(d));
     }
     let grosor = e.numero("grosor").map(|g| (g as f32).clamp(0.5, 40.0));
-    if cambios.is_empty() && grosor.is_none() {
+    let tam = e.numero("tam_letra").map(|t| (t as f32).clamp(6.0, 200.0));
+    if cambios.is_empty() && grosor.is_none() && tam.is_none() {
         return Err("no se pidio ningun cambio: di «color», «relleno», «grosor», «trazo», «opacidad», «material» o «dureza»".into());
+    }
+    if let Some(t) = tam {
+        let textos: Vec<u64> = ids.iter().copied().filter(|id| escena.buscar(*id).is_some_and(|x| matches!(x.figura, Figura::Texto { .. }))).collect();
+        if textos.is_empty() && cambios.is_empty() && grosor.is_none() {
+            return Err("«tam_letra» solo cambia textos y en lo elegido no hay ninguno".into());
+        }
+        escena.abrir_paso();
+        for id in &textos {
+            escena.apuntar_edicion(*id);
+            if let Some(x) = escena.buscar_mut(*id) {
+                // El tamano y la caja que le toca, por el mismo camino que
+                // el editor al salir de la caja (texto rico o llano).
+                let fuente = x.extras.rico.clone().or_else(|| match &x.figura {
+                    Figura::Texto { texto, .. } => Some(texto.clone()),
+                    _ => None,
+                });
+                if let Figura::Texto { tam, .. } = &mut x.figura {
+                    *tam = t;
+                }
+                if let Some(f) = fuente {
+                    pixpin_motor2d::texto_rico::poner_fuente(x, &f);
+                }
+                x.tocar();
+            }
+        }
+        escena.cerrar_paso();
     }
     // Cada cambio, por la misma puerta que el panel lateral.
     for c in cambios {

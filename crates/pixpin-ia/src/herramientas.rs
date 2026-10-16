@@ -97,6 +97,7 @@ pub fn catalogo() -> Vec<Herramienta> {
 /// Fijo para la misma entrada, que el catalogo es prefijo de la cache.
 pub fn para_la_nube(lista: &mut [Herramienta]) {
     for h in lista.iter_mut() {
+        crate::edicion::para_la_nube(h);
         let extra = match h.nombre.as_str() {
             DIBUJAR => {
                 if let Some(t) = h.parametros.pointer_mut("/properties/elementos/items/properties/tipo/enum").and_then(Value::as_array_mut) {
@@ -133,7 +134,23 @@ pub fn para_la_nube(lista: &mut [Herramienta]) {
                  necesario (triangulo, circuito, plano inclinado), nunca para integrales, matrices o ecuaciones."
             }
             "nota_nueva" => "Solo si piden una nota o un apunte: una tabla, un diagrama o una grafica van al lienzo.",
-            crate::hoja::NOMBRE => "NO para pasar en limpio o resolver un problema o ejercicio: eso es problema_en_limpio.",
+            crate::hoja::NOMBRE => "Tambien es la de «calca/pasa esta pagina al lienzo» con un PDF adjunto (calcar_imagen solo calca fotos). \
+                                    NO para pasar en limpio o resolver un problema o ejercicio: eso es problema_en_limpio.",
+            // Banco de documentos (15-oct): «convierte estas formulas a LaTeX»
+            // acababa dibujado en el lienzo sin una linea de LaTeX en la respuesta.
+            ECUACION => "Solo si piden las formulas EN EL LIENZO. Si piden el LaTeX («pasame en LaTeX», «convierte a LaTeX»), \
+                         contesta el codigo en el texto, una formula por renglon entre $$...$$, sin herramienta.",
+            // «Anota en la imagen los pasos» acababa en una tarea pendiente.
+            "anadir_tarea" => "NO para «anota/marca/señala en el documento, la foto o el PDF»: eso es anotar_inteligente o anotar_documento.",
+            crate::edicion::ESTILO => "Con «tam_letra» cambia el tamano de la letra de los textos (y los de una tabla).",
+            crate::acciones_documentos::ANOTAR => "Solo PDF, Word, PowerPoint o plano, y para un texto concreto que dice el usuario. \
+                                                   NUNCA para «lo importante», resumir o explicar al margen, ni varias notas a mano: eso es anotar_inteligente, en UNA llamada.",
+            crate::anotacion::NOMBRE => "Es LA herramienta para «señala/marca lo importante», «resume cada seccion al margen», «explica paso a paso» o «marca los errores» \
+                                         en un documento, foto o Excel del chat: lee y coloca ella sola, en una llamada (no escribas tu las notas con anotar_documento).",
+            // «Haz esta tabla en el lienzo» acababa como tabla del chat.
+            crate::acciones_documentos::TABLA => "Si piden la tabla EN EL LIENZO, despues dibujala con dibujar_en_lienzo (tipo tabla, con sus filas): esta no dibuja.",
+            // «Marca los errores del Excel» acababa contestado en el chat.
+            "leer_excel" => "Para MARCAR o explicar algo EN el Excel (errores, lo importante), anotar_inteligente: lee las celdas por su cuenta.",
             _ => continue,
         };
         if !h.descripcion.ends_with(extra) {
@@ -1835,6 +1852,12 @@ mod pruebas {
         assert!(dn.parametros.to_string().contains("\"paralelogramo\""));
         assert!(de(&nube, PROBLEMA).descripcion.contains("no hoja_a_lienzo"));
         assert!(!de(&local, PROBLEMA).descripcion.contains("no hoja_a_lienzo"));
+        // Banco de documentos (15-oct): el LaTeX en el texto, la tabla al
+        // lienzo y el tamano de letra; el local, igual que antes.
+        assert!(de(&nube, ECUACION).descripcion.contains("LaTeX"));
+        assert!(!de(&local, ECUACION).descripcion.contains("sin herramienta"));
+        assert!(de(&nube, crate::edicion::ESTILO).parametros["properties"].get("tam_letra").is_some());
+        assert!(de(&local, crate::edicion::ESTILO).parametros["properties"].get("tam_letra").is_none());
         // Dos veces da lo mismo (es prefijo de la cache).
         let mut otra = nube.clone();
         para_la_nube(&mut otra);

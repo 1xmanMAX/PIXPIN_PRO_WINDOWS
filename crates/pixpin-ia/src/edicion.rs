@@ -321,6 +321,28 @@ pub fn herramientas() -> Vec<Herramienta> {
     FILAS.iter().map(herramienta).collect()
 }
 
+/// **Los campos que solo ve la nube** (banco de documentos, 15-oct: tras
+/// pasar una tabla al lienzo, «el texto se sale de las celdas» y no habia
+/// como cambiar el tamano de letra). Son de la misma fila: misma validacion
+/// y mismo `hacer`; el esquema del local no cambia.
+pub const CAMPOS_NUBE: &[(&str, Campo)] = &[(ESTILO, c("tam_letra", Tipo::Numero, false, "tamano de la letra de los textos, en px (14 normal, 24 titulo)"))];
+
+/// Pone en el esquema de la nube sus [`CAMPOS_NUBE`] (lo llama
+/// `herramientas::para_la_nube`).
+pub fn para_la_nube(h: &mut Herramienta) {
+    for (_, campo) in CAMPOS_NUBE.iter().filter(|(n, _)| *n == h.nombre) {
+        let Some(p) = h.parametros.pointer_mut("/properties").and_then(Value::as_object_mut) else { continue };
+        if p.contains_key(campo.nombre) {
+            continue;
+        }
+        let tipo = match campo.tipo {
+            Tipo::Numero => "number",
+            _ => "string",
+        };
+        p.insert(campo.nombre.into(), json!({"type": tipo, "description": campo.descripcion}));
+    }
+}
+
 /// Una llamada de editar ya validada: su fila y sus argumentos limpios.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Edicion {
@@ -361,7 +383,10 @@ fn como_numero(v: &Value) -> Option<f64> {
 /// opciones. Lo que no esta en la fila se ignora (los modelos anaden campos).
 pub fn validar(f: &'static Fila, args: &Map<String, Value>) -> Result<Edicion, ErrorHerramienta> {
     let mut limpio = Map::new();
-    for campo in f.campos {
+    // Los campos de la nube ([`CAMPOS_NUBE`]) se validan igual; el local no
+    // los ve en su esquema y no los manda.
+    let de_la_nube = CAMPOS_NUBE.iter().filter(|(h, _)| *h == f.nombre).map(|(_, c)| c);
+    for campo in f.campos.iter().chain(de_la_nube) {
         let Some(v) = args.get(campo.nombre).filter(|v| !v.is_null()) else {
             if campo.obligatorio {
                 return Err(mal(format!("falta «{}»", campo.nombre)));

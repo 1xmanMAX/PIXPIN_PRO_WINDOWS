@@ -80,6 +80,11 @@ pub struct Memoria {
     pub rapido: bool,
 }
 
+/// El modelo de vision de los turnos de las pruebas (en la app sale de
+/// Ajustes: `hoja_a_lienzo::motor_de_vision`).
+#[cfg(test)]
+pub static VISION_EN_PRUEBAS: std::sync::Mutex<Option<Arc<dyn Motor>>> = std::sync::Mutex::new(None);
+
 /// Lo que se va juntando de los eventos para el registro del turno.
 #[derive(Default)]
 struct Recogido {
@@ -224,6 +229,16 @@ impl Turno {
                     .find(|m| m.rol == Rol::Usuario)
                     .map(Mensaje::texto_entero)
                     .unwrap_or_default();
+                // Con la nube, que archivos tiene este chat (banco de
+                // documentos, 15-oct: sin esto pedia que se los pegaran).
+                // Despues de leer el pedido: lo que decide herramientas mira
+                // lo que escribio el usuario, no esta nota.
+                if motor.catalogo_completo()
+                    && let Some(nota) = raiz.as_deref().and_then(|r| super::en_el_chat::nota_de_archivos(r, &proyecto))
+                    && let Some(m) = historial.iter_mut().rev().find(|m| m.rol == Rol::Usuario)
+                {
+                    m.partes.push(pixpin_ia::motor::Parte::Texto(nota));
+                }
                 let con_memoria = memoria.is_some();
                 let memoria = memoria.unwrap_or_default();
                 let mut ejecutor = EjecutorDelChat::nuevo(tx.clone(), proyecto, adjuntos, parar_hilo.clone())
@@ -236,6 +251,12 @@ impl Turno {
                         super::acciones::mandar_a_pixpin(),
                     )
                     .con_raiz(raiz);
+                // Las pruebas no tienen Ajustes: el banco dice con que modelo
+                // de vision trabajan hoja_a_lienzo y anotar_inteligente.
+                #[cfg(test)]
+                if let Some(v) = VISION_EN_PRUEBAS.lock().unwrap_or_else(|e| e.into_inner()).clone() {
+                    ejecutor = ejecutor.con_vision(v);
+                }
                 // «Calca esto» con la imagen pegada EN EL LIENZO y nada adjunto
                 // (15-oct: contestaba «no hay imagen adjunta»): la del lienzo
                 // (la elegida o la ultima) entra como adjunto y el modelo la ve.

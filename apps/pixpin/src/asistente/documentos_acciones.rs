@@ -139,6 +139,39 @@ fn sirve(nombre: &str, s: Sirve) -> bool {
     }
 }
 
+/// **Por que no hay archivo que sirva**, dicho para que el modelo elija
+/// bien (banco de documentos, 15-oct: con un Excel adjunto, anotar_documento
+/// contestaba «no hay ningun archivo» y el modelo pedia al usuario que lo
+/// adjuntara otra vez). Dice que formatos sirven, que hay en el chat y que
+/// herramienta va con eso.
+fn no_sirve(cx: &Contexto, s: Sirve) -> String {
+    let que = match s {
+        Sirve::Escaneado => "una foto o un PDF",
+        Sirve::Documento => "un PDF, Word, PowerPoint o plano",
+        Sirve::Cualquiera => "ningun archivo",
+        Sirve::Anotable => "un PDF, Word, PowerPoint, Excel, foto o plano",
+    };
+    let mut hay: Vec<Candidato> = candidatos(cx.raiz).into_iter().filter(|c| c.proyecto == cx.proyecto).collect();
+    let de_turno: Vec<Candidato> = cx
+        .adjuntos
+        .iter()
+        .filter(|a| !hay.iter().any(|c| c.ruta == a.ruta))
+        .map(|a| Candidato { nombre: a.nombre.clone(), ruta: a.ruta.clone(), proyecto: cx.proyecto.to_string(), proyecto_nombre: String::new(), cuando: 0 })
+        .collect();
+    hay.extend(de_turno);
+    if hay.is_empty() {
+        return format!("en este chat no hay {que}; pregunta al usuario cual (por su nombre)");
+    }
+    hay.sort_by_key(|c| std::cmp::Reverse(c.cuando));
+    let nombres: Vec<String> = hay.iter().take(6).map(|c| format!("«{}»", c.nombre)).collect();
+    let consejo = match s {
+        Sirve::Documento => "; para marcar o explicar algo en un Excel o una foto usa anotar_inteligente, y para leer un Excel leer_excel",
+        Sirve::Escaneado => "; un Excel ya es una tabla (leer_excel), y un Word o PowerPoint se lee con leer_documento",
+        _ => "",
+    };
+    format!("esta herramienta necesita {que} y en este chat solo hay {}{consejo}", nombres.join(", "))
+}
+
 /// **Los archivos de todos los chats** (los adjuntos que estan en este PC),
 /// sin el chat del asistente.
 pub fn candidatos(raiz: &Path) -> Vec<Candidato> {
@@ -243,7 +276,7 @@ pub fn elegir(cx: &Contexto, archivo: Option<&str>, s: Sirve) -> Result<Candidat
             .filter(|c| c.proyecto == cx.proyecto)
             .max_by_key(|c| c.cuando)
             .cloned()
-            .ok_or_else(|| "en este chat no hay ningun archivo que sirva; pregunta al usuario cual (por su nombre)".into());
+            .ok_or_else(|| no_sirve(cx, s));
     };
     // Una ruta escrita tal cual.
     let como_ruta = PathBuf::from(descripcion.trim_matches(['"', '\'', '«', '»']));
@@ -1094,7 +1127,7 @@ fn exportar(args: &Value, cx: &Contexto) -> Result<String, String> {
 }
 
 #[cfg(test)]
-mod pruebas;
+pub(crate) mod pruebas;
 
 #[cfg(test)]
 mod banco;

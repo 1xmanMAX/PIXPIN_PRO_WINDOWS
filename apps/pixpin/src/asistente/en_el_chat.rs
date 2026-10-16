@@ -68,6 +68,7 @@ pub fn hacer(a: &AccionApp, cx: &Contexto) -> Result<String, String> {
         "transcribir_audio" => transcribir_audio(args, cx),
         "leer_excel" => leer_excel(args, cx),
         "resumen_de_actividad" => resumen_de_actividad(args, cx),
+        "leer_documento" => leer_documento(args, cx),
         otra => Err(format!("la herramienta «{otra}» no la hace el chat")),
     }
 }
@@ -94,6 +95,9 @@ pub enum Clase2 {
     Pdf,
     Audio,
     Excel,
+    /// Lo que lee `leer_documento`: lo de [`Clase2::ConTexto`] y las fotos
+    /// (por el OCR).
+    Legible,
 }
 
 impl Clase2 {
@@ -104,6 +108,7 @@ impl Clase2 {
             Clase2::Pdf => e == "pdf",
             Clase2::Audio => matches!(e.as_str(), "m4a" | "mp3" | "wav" | "ogg" | "opus" | "aac" | "flac" | "wma" | "amr"),
             Clase2::Excel => matches!(e.as_str(), "xlsx" | "xlsm" | "xls"),
+            Clase2::Legible => Clase2::ConTexto.sirve(nombre) || super::ocr::es_imagen(Path::new(nombre)),
         }
     }
 
@@ -113,6 +118,7 @@ impl Clase2 {
             Clase2::Pdf => "un PDF",
             Clase2::Audio => "un audio",
             Clase2::Excel => "un Excel",
+            Clase2::Legible => "un documento (PDF, Word, PowerPoint, Excel, nota o foto)",
         }
     }
 }
@@ -467,6 +473,105 @@ fn leer_excel(args: &Value, cx: &Contexto) -> Result<String, String> {
 }
 
 // ---------------------------------------------------------------------------
+// Leer un documento entero (banco de documentos, 15-oct)
+
+/// Cuanto texto de un documento se le da al modelo de la nube (unas 6000
+/// palabras: un informe o un capitulo enteros; lo demas, por paginas).
+pub const LETRAS_DOCUMENTO: usize = 40_000;
+
+/// Las paginas pedidas, «3», «2-5» o «1,3-4» (desde 1); vacio: todas.
+pub fn rangos_de_paginas(t: Option<&str>) -> Vec<(u32, u32)> {
+    let Some(t) = t else { return Vec::new() };
+    t.split([',', ';', ' '])
+        .filter_map(|p| {
+            let p = p.trim();
+            let (a, b) = p.split_once(['-', '–']).unwrap_or((p, p));
+            let (a, b) = (a.trim().parse::<u32>().ok()?, b.trim().parse::<u32>().ok()?);
+            (a >= 1 && b >= a).then_some((a, b))
+        })
+        .collect()
+}
+
+/// **El texto de un documento, pagina a pagina**: un PDF o una foto por el
+/// OCR del asistente (la capa de texto si la hay, si no Windows.Media.Ocr);
+/// lo demas con el lector de la busqueda y la voz
+/// (`documentos::leer_fichero`): un solo lector por formato.
+pub fn texto_del_documento(ruta: &Path, paginas: &[(u32, u32)], parar: &AtomicBool) -> Result<String, String> {
+    if super::ocr::es_pdf(ruta) || super::ocr::es_imagen(ruta) {
+        return super::ocr::leer(ruta, paginas, parar);
+    }
+    let unidades = super::documentos::leer_fichero(ruta)?;
+    let dentro = |n: u32| paginas.is_empty() || paginas.iter().any(|&(a, b)| (a..=b).contains(&n));
+    let que = match pixpin_docs::extension(&pixpin_docs::nombre(ruta)).as_str() {
+        "pptx" | "pptm" | "ppsx" | "ppsm" | "potx" | "potm" => "Diapositiva",
+        _ => "Hoja",
+    };
+    let mut s = String::new();
+    for (i, u) in unidades.iter().enumerate() {
+        let n = u.pagina.unwrap_or(i as u32 + 1);
+        if !dentro(n) {
+            continue;
+        }
+        match (&u.seccion, u.pagina) {
+            // Un apartado del Word ya empieza por su titulo.
+            (Some(sec), _) if u.texto.trim_start().starts_with(sec.as_str()) => {}
+            (Some(sec), _) => s.push_str(&format!("--- {sec} ---\n")),
+            (None, Some(p)) => s.push_str(&format!("--- {que} {p} ---\n")),
+            (None, None) => {}
+        }
+        s.push_str(u.texto.trim());
+        s.push_str("\n\n");
+    }
+    let s = s.trim_end().to_string();
+    if s.is_empty() {
+        return Err(if paginas.is_empty() { "el documento no tiene texto que leer".into() } else { "esas paginas no tienen texto (o no existen)".into() });
+    }
+    Ok(s)
+}
+
+fn leer_documento(args: &Value, cx: &Contexto) -> Result<String, String> {
+    let e = elegir(cx, texto_de(args, "archivo"), Clase2::Legible)?;
+    let paginas = rangos_de_paginas(texto_de(args, "paginas"));
+    let texto = texto_del_documento(&e.c.ruta, &paginas, cx.parar)?;
+    let letras = texto.chars().count();
+    let mut s: String = texto.chars().take(LETRAS_DOCUMENTO).collect();
+    if letras > LETRAS_DOCUMENTO {
+        s.push_str("\n[...sigue: pide las paginas siguientes con «paginas»]");
+    }
+    Ok(format!("«{}» ({letras} letras):\n{s}", e.c.nombre))
+}
+
+/// **Los archivos de este chat, para el modelo de la nube** (banco de
+/// documentos, 15-oct): sin esto no sabia que el usuario habia adjuntado el
+/// comunicado («no veo ningun archivo, ¿me lo pegas?») o lanzaba una captura
+/// para «pasa esta pagina al lienzo». Los mas recientes primero, como
+/// mucho 6; `None` si no hay ninguno.
+pub fn nota_de_archivos(raiz: &Path, proyecto: &str) -> Option<String> {
+    // Solo el cuaderno de este chat (un fichero): el turno no espera.
+    let c = Cuaderno::leer_de(&almacen::carpeta(raiz, proyecto)).ok()?;
+    let mut hay: Vec<(i64, String)> = c
+        .mensajes
+        .iter()
+        .filter(|m| matches!(m.clase, Some(Clase::Archivo) | Some(Clase::Imagen)) && !m.en_buzon)
+        .filter_map(|m| {
+            let nombre = m.nombre.trim();
+            let nombre = if nombre.is_empty() { m.ruta.as_deref()?.rsplit(['/', '\\']).next()?.to_string() } else { nombre.to_string() };
+            Some((m.cuando, nombre))
+        })
+        .collect();
+    if hay.is_empty() {
+        return None;
+    }
+    hay.sort_by_key(|(cuando, _)| std::cmp::Reverse(*cuando));
+    let nombres: Vec<String> = hay.iter().take(6).map(|(_, n)| format!("«{n}»")).collect();
+    Some(format!(
+        "\n\n(Archivos adjuntos en este chat, el mas reciente primero: {}. «Esto», «el documento» o «esta pagina» es el primero. \
+         Para leerlo entero: leer_documento; un Excel: leer_excel; una pagina de PDF o una foto al lienzo: hoja_a_lienzo.)",
+        nombres.join(", ")
+    ))
+}
+
+// ---------------------------------------------------------------------------
 // Lo hecho hoy
 
 /// Lo contado en un periodo.
@@ -740,6 +845,46 @@ mod pruebas {
         assert!(llamar("comprimir_pdf", "{}").unwrap_err().contains("un PDF"));
         assert!(llamar("transcribir_audio", "{}").unwrap_err().contains("un audio"));
         assert!(llamar("leer_excel", r#"{"archivo":"cronograma de vaciados"}"#).is_err());
+        let _ = std::fs::remove_dir_all(&raiz);
+    }
+
+    #[test]
+    fn leer_documento_da_el_texto_entero_por_paginas_y_la_nota_dice_los_adjuntos() {
+        use pixpin_ia::acciones::{por_nombre, validar};
+        let (raiz, f) = mundo("leer-documento");
+        let u = Ubicacion::Portable { raiz: raiz.clone() };
+        // Un Word de verdad, por el escritor de la app, adjunto al chat.
+        let md = "# Informe de drenaje\n\nEl caudal de diseno es 0,85 m3/s.\n\n## Costo\n\nLa obra cuesta S/ 184 500.";
+        let docx = pixpin_docs::exportar_docx::exportar(&pixpin_docs::exportar_docx::Nota {
+            markdown: md,
+            titulo: "",
+            letra: Default::default(),
+            comentarios: None,
+            imagen: &|_| None,
+            autor: "",
+            ahora_ms: 0,
+        })
+        .unwrap();
+        let rel = almacen::guardar_adjunto(&raiz, &f.id, "informe.docx", &docx).unwrap();
+        let sello = pixpin_proyecto::cuaderno::Sello { cuando: 1_000, numero: 1, aparato: "PC01".into(), proyecto: f.id.clone() };
+        let m = pixpin_proyecto::cuaderno::Mensaje::adjunto(Clase::Archivo, "informe.docx", &rel, docx.len() as i64, &sello);
+        pixpin_proyecto::cuaderno::anadir(&almacen::carpeta(&raiz, &f.id), &m).unwrap();
+        let mandar: Mandar = Box::new(|_| 1);
+        let parar = AtomicBool::new(false);
+        let cx = Contexto { ubicacion: &u, proyecto: &f.id, adjuntos: &[], mandar: &mandar, parar: &parar, idioma: pixpin_store::Idioma::Espanol, tx: None };
+        let llamar = |args: &str| hacer(&validar(por_nombre("leer_documento").unwrap(), &serde_json::from_str(args).unwrap()).unwrap(), &cx);
+        // Sin decir cual: el del chat, entero (los dos apartados).
+        let r = llamar("{}").unwrap();
+        assert!(r.contains("informe.docx") && r.contains("0,85") && r.contains("184 500"), "{r}");
+        // La nota para la nube nombra el adjunto.
+        let nota = nota_de_archivos(&raiz, &f.id).unwrap();
+        assert!(nota.contains("«informe.docx»") && nota.contains("leer_documento"), "{nota}");
+        assert_eq!(rangos_de_paginas(Some("2-4, 7")), vec![(2, 4), (7, 7)]);
+        assert!(rangos_de_paginas(Some("cero")).is_empty());
+        // Negativos: un archivo que no esta; un chat sin adjuntos no tiene nota.
+        assert!(llamar(r#"{"archivo":"cronograma de vaciados"}"#).is_err());
+        let otro = almacen::Ficha::nueva("Vacio", 2, "PC01");
+        assert!(nota_de_archivos(&raiz, &otro.id).is_none());
         let _ = std::fs::remove_dir_all(&raiz);
     }
 
