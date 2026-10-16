@@ -469,7 +469,27 @@ pub fn celdas_de_excel(ruta: &Path, hoja: Option<&str>, rango: Option<&str>) -> 
 fn leer_excel(args: &Value, cx: &Contexto) -> Result<String, String> {
     let e = elegir(cx, texto_de(args, "archivo"), Clase2::Excel)?;
     let tabla = celdas_de_excel(&e.c.ruta, texto_de(args, "hoja"), texto_de(args, "rango"))?;
-    Ok(format!("«{}» — {tabla}", e.c.nombre))
+    // Las cuentas, comprobadas aqui (16-oct): el modelo no las rehace, y si
+    // el usuario pidio marcar, sabe que herramienta va.
+    let cuentas = match pixpin_ia::revision_tabla::para_el_modelo(&filas_de_celdas(&tabla)) {
+        Some(c) if c.contains("no las rehagas") => {
+            format!("\n{c}\nSi el usuario pidio MARCAR o señalar los errores en el Excel, llama ahora a anotar_inteligente con modo «errores».")
+        }
+        Some(c) => format!("\n{c}"),
+        None => String::new(),
+    };
+    Ok(format!("«{}» — {tabla}{cuentas}", e.c.nombre))
+}
+
+/// Las filas de lo que da [`celdas_de_excel`] (sin la linea de la hoja, la
+/// de las letras ni el numero de fila).
+pub fn filas_de_celdas(tabla: &str) -> Vec<Vec<String>> {
+    tabla
+        .lines()
+        .skip(2)
+        .filter(|l| !l.starts_with('['))
+        .map(|l| l.split('\t').skip(1).map(str::to_string).collect())
+        .collect()
 }
 
 // ---------------------------------------------------------------------------

@@ -617,7 +617,18 @@ pub fn anotar_en(
         con_ocr: leido.con_ocr,
         ..Default::default()
     };
-    let texto = anotacion::mensaje(&pedido_de(args), &leido.paginas, anotacion::MAX_LETRAS);
+    let mut texto = anotacion::mensaje(&pedido_de(args), &leido.paginas, anotacion::MAX_LETRAS);
+    // Un Excel: las cuentas comprobadas en Rust (16-oct: el anotador ligero
+    // marco como error una fila que estaba bien y no vio la que no).
+    if leido.formato == Formato::Libro
+        && let Ok(celdas) = super::en_el_chat::celdas_de_excel(ruta, texto_de(args, "hoja"), texto_de(args, "celdas"))
+        && let Some(c) = pixpin_ia::revision_tabla::para_el_modelo(&super::en_el_chat::filas_de_celdas(&celdas))
+    {
+        texto.push_str(&format!(
+            "\n\n{c} Si piden errores de calculo, marca EXACTAMENTE estos (anclados en la celda con el valor que esta mal, \
+             con su correccion) y ninguno mas de calculo."
+        ));
+    }
     // Una foto, con la foto (banco de documentos, 15-oct): el OCR leyo
     // «mdAC = 350» por «m∢BAC = 35°» y el anotador corrigio un error que no
     // estaba. Con la imagen delante entiende la hoja; ancla igual por el

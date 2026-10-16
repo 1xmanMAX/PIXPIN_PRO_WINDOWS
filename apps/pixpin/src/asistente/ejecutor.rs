@@ -369,6 +369,44 @@ impl EjecutorDelChat {
 
     /// **`anotar_inteligente`**: con el modelo de la nube (el de Ajustes, o
     /// el que pongan las pruebas); con el local solo, se dice por que no.
+    /// **`tabla_de_imagen` con destino lienzo**: las celdas y su aspecto
+    /// medido (`documentos_acciones::tabla_para_el_lienzo`), a la escala de
+    /// la imagen del lienzo si de ella sale, y por la cola como lo demas.
+    fn tabla_al_lienzo(&mut self, args: &serde_json::Value) -> Result<String, String> {
+        let raiz = super::documentos::raiz()
+            .or_else(|| crate::oscuro::ubicacion().map(|u| u.raiz().to_path_buf()))
+            .ok_or("no se sabe donde estan los datos de PixPin")?;
+        // La imagen del lienzo: a su misma escala (unidades por pixel).
+        let escala = self.fuente.and_then(|c| {
+            let a = self.adjuntos.iter().rev().find(|a| a.nombre == "imagen del lienzo")?;
+            let (w, _) = pixpin_codec::imagen::medidas(&a.ruta).ok()?;
+            Some((c.2 - c.0) / w.max(1) as f32)
+        });
+        let (els, dicho) = super::documentos_acciones::tabla_para_el_lienzo(
+            args,
+            &super::documentos_acciones::Contexto {
+                raiz: &raiz,
+                proyecto: &self.proyecto,
+                adjuntos: &self.adjuntos,
+                mandar: &self.mandar,
+                parar: &self.parar,
+                idioma: pixpin_store::Idioma::Espanol,
+            },
+            escala,
+        )?;
+        let semilla = self.semilla();
+        let json: Vec<serde_json::Value> = pixpin_motor2d::excalidraw::elementos_a_json(&els)
+            .into_iter()
+            .enumerate()
+            .map(|(i, mut v)| {
+                v["id"] = serde_json::json!(format!("tabla-{semilla:x}-{i}"));
+                v
+            })
+            .collect();
+        let r = self.al_lienzo_elementos(json)?;
+        Ok(format!("{dicho}. {r}"))
+    }
+
     fn anotar_inteligente(&mut self, args: &serde_json::Value) -> Result<String, String> {
         let motor = if self.nube || self.vision.is_some() {
             self.vision.clone().or_else(super::anotar_inteligente::motor_de_la_nube)
@@ -586,6 +624,10 @@ impl Ejecutor for EjecutorDelChat {
             Llamada::App(a) if a.herramienta == pixpin_ia::hoja::NOMBRE => self.hoja_a_lienzo(&a.pedido),
             // Anotar con cabeza un documento (con el modelo de la nube).
             Llamada::App(a) if a.herramienta == pixpin_ia::anotacion::NOMBRE => self.anotar_inteligente(&a.pedido),
+            // La tabla de una foto al lienzo, como en la foto (16-oct, nube).
+            Llamada::App(a) if a.herramienta == pixpin_ia::acciones_documentos::TABLA && a.pedido["destino"] == "lienzo" => {
+                self.tabla_al_lienzo(&a.pedido)
+            }
             // Los documentos (tabla escaneada, anotar, buscar dentro, abrir
             // por su nombre, exportar): con los adjuntos de este chat.
             Llamada::App(a) if pixpin_ia::acciones_documentos::es_de_documentos(a.herramienta) => {

@@ -160,6 +160,21 @@ fn filas_del_excel(x: &Path) -> Vec<String> {
     super::en_el_chat::celdas_de_excel(x, None, None).unwrap_or_default().lines().skip(2).map(str::to_string).collect()
 }
 
+/// El Excel lleva el fondo azul claro de la cabecera de la foto (un relleno
+/// solido de color, no el gris de siempre).
+fn excel_con_fondo(h: &Hecho) -> Result<(), String> {
+    let x = h.excel().ok_or("no dejo ningun .xlsx en el chat")?;
+    let mut p = pixpin_docs::Paquete::abrir(&x).map_err(|e| e.to_string())?;
+    let estilos = p.texto("xl/styles.xml", 1 << 20).unwrap_or_default();
+    let colores: Vec<&str> = estilos.match_indices("rgb=\"").map(|(i, _)| &estilos[i + 5..(i + 13).min(estilos.len())]).collect();
+    let azulado = colores.iter().any(|c| {
+        let v = |k: usize| u8::from_str_radix(c.get(k..k + 2).unwrap_or("00"), 16).unwrap_or(0) as i32;
+        let (r, g, b) = (v(2), v(4), v(6));
+        b > r + 10 && b > 150 && r > 120
+    });
+    if azulado { Ok(()) } else { Err(format!("el Excel no lleva el fondo de la cabecera (colores {colores:?})")) }
+}
+
 fn excel_con(h: &Hecho, minimo: usize, contiene: &[&str]) -> Result<(), String> {
     let x = h.excel().ok_or("no dejo ningun .xlsx en el chat")?;
     let filas = filas_del_excel(&x);
@@ -218,14 +233,21 @@ fn casos() -> Vec<Caso> {
         // 06: tabla en PDF
         c("06-excel", "06-notas-curso.pdf", A, "tabla", "Pasa la tabla de notas de este PDF a un Excel.", |h| {
             excel_con(h, 9, &["Mendoza", "Ticona"])?;
+            excel_con_fondo(h)?;
             let n = filas_del_excel(&h.excel().unwrap()).len();
             if n > 10 { return Err(format!("el Excel lleva {n} filas: se colo el texto de la pagina")); }
             Ok(())
         }),
         c("06-pregunta", "06-notas-curso.pdf", A, "pregunta", "En el registro de notas, ¿quién tiene el promedio más alto y quiénes desaprobaron?", |h| h.dice(&["mendoza|elena", "flores|jorge", "laura|pedro"])),
         // 07: tabla en foto
-        c("07-excel", "07-stock-materiales.png", F, "tabla", "Extrae la tabla de esta foto a un Excel.", |h| excel_con(h, 7, &["Yura", "Magollo"])),
-        c("07-tabla-lienzo", "07-stock-materiales.png", F, "calcar", "Haz esta tabla en el lienzo.", |h| h.lienzo(6, &["yura", "cemento"])),
+        c("07-excel", "07-stock-materiales.png", F, "tabla", "Extrae la tabla de esta foto a un Excel.", |h| excel_con(h, 7, &["Yura", "Magollo"]).and_then(|_| excel_con_fondo(h))),
+        c("07-tabla-lienzo", "07-stock-materiales.png", F, "calcar", "Haz esta tabla en el lienzo.", |h| {
+            h.lienzo(6, &["yura", "cemento"])?;
+            if !h.resultados.iter().any(|(n, ok, t)| n == "tabla_de_imagen" && *ok && t.contains("como en la foto")) {
+                return Err("no la paso con su aspecto medido (tabla_de_imagen al lienzo)".into());
+            }
+            Ok(())
+        }),
         // 08: texto con fotos (Word)
         c("08-resumir", "08-articulo-con-fotos.docx", A, "resumir", "Resume el artículo de Tacna.", |h| h.dice(&["olivo|aceituna", "malecon|playa"])),
         c("08-anotar", "08-articulo-con-fotos.docx", A, "anotar", "En el artículo de Tacna, resume cada sección al margen.", |h| h.anoto()),
@@ -271,7 +293,13 @@ fn casos() -> Vec<Caso> {
             }
             Ok(())
         }),
-        c("13-excel", "13-guia-escaneada.png", F, "tabla", "Pasa la tabla de resultados de esta hoja escaneada a un Excel.", |h| excel_con(h, 5, &["P-03", "246"])),
+        c("13-excel", "13-guia-escaneada.png", F, "tabla", "Pasa la tabla de resultados de esta hoja escaneada a un Excel.", |h| {
+            excel_con(h, 5, &["P-03", "246"])?;
+            excel_con_fondo(h)?;
+            let n = filas_del_excel(&h.excel().unwrap()).len();
+            if n > 6 { return Err(format!("el Excel lleva {n} filas: se colo el texto de la hoja")); }
+            Ok(())
+        }),
         c("13-pregunta", "13-guia-escaneada.png", F, "pregunta", "Según esta guía escaneada, ¿qué resistencia media dieron las probetas a 28 días?", |h| h.dice(&["242"])),
         c("13-resumir", "13-guia-escaneada.png", F, "resumir", "Resume esta hoja escaneada.", |h| h.dice(&["compresion", "28"])),
         // 14: PowerPoint
@@ -633,6 +661,58 @@ fn leer_corpus() {
             Ok(s) => println!("{:<34} {ms:>5} ms {:>6} letras  {}", d.nombre, s.chars().count(), s.chars().take(160).collect::<String>().replace('\n', " ⏎ ")),
             Err(e) => println!("{:<34} {ms:>5} ms ERROR {e}", d.nombre),
         }
+    }
+}
+
+/// **Sin modelo**: el aspecto medido de las tablas del corpus y la tabla
+/// dibujada con el, junto al original (`banco-documentos\referencia`).
+#[test]
+#[ignore = "lee el corpus de F:\\pixpin-banco-docs y escribe PNG"]
+fn medir_tablas() {
+    let _com = pixpin_shell::ComDelHilo::iniciar();
+    let dir = base().join("referencia");
+    std::fs::create_dir_all(&dir).unwrap();
+    for doc in ["07-stock-materiales.png", "06-notas-curso.pdf", "13-guia-escaneada.png"] {
+        let ruta = corpus::ruta(doc);
+        let t = Instant::now();
+        let Some((m, ancho)) = super::documentos_acciones::aspecto_de_tabla(&ruta, None) else {
+            println!("{doc}: sin medida");
+            continue;
+        };
+        let leida = super::documentos_acciones::leer_tabla(&ruta, None).unwrap();
+        println!(
+            "{doc} ({ancho} px, {} ms): letra {:.1} px, {} x {} rayas (tabla {} x {}), cuadra {}, borde {:?}, aire {:?}, texto {:?}\n  anchos {:?}\n  fondos fila 0 {:?}",
+            t.elapsed().as_millis(),
+            m.tam_letra,
+            m.filas.len(),
+            m.columnas.len(),
+            leida.filas.len(),
+            leida.columnas(),
+            m.cuadra(leida.filas.len(), leida.columnas()),
+            m.borde,
+            m.aire,
+            m.texto,
+            m.anchos(),
+            m.fondos.first()
+        );
+        let raiz = dir.join("raiz");
+        std::fs::create_dir_all(&raiz).unwrap();
+        let mandar: super::acciones::Mandar = Box::new(|_| 1);
+        let parar = std::sync::atomic::AtomicBool::new(false);
+        let adj = vec![Adjunto { nombre: doc.into(), ruta: ruta.clone() }];
+        let cx = super::documentos_acciones::Contexto { raiz: &raiz, proyecto: "p", adjuntos: &adj, mandar: &mandar, parar: &parar, idioma: pixpin_store::Idioma::Espanol };
+        let (els, dicho) = super::documentos_acciones::tabla_para_el_lienzo(&json!({}), &cx, None).unwrap();
+        println!("  {dicho}");
+        let mut escena = pixpin_motor2d::Escena::nueva();
+        for e in els {
+            escena.anadir(e);
+        }
+        let imagenes = crate::imagenes_lienzo::ImagenesLienzo::nuevo(16_384);
+        let res = escena_a_png(&escena, &imagenes, 1200).unwrap();
+        let ori = corpus::vista_previa(doc, 1200).unwrap();
+        let png = dir.join(format!("tabla-{doc}.png"));
+        std::fs::write(&png, pixpin_codec::imagen::codificar_png(&lado_a_lado(&escalar(ori, 1100, 1300), &escalar(res, 1100, 1300))).unwrap()).unwrap();
+        println!("  PNG {}", png.display());
     }
 }
 

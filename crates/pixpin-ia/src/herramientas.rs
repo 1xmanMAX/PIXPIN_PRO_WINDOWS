@@ -98,6 +98,7 @@ pub fn catalogo() -> Vec<Herramienta> {
 pub fn para_la_nube(lista: &mut [Herramienta]) {
     for h in lista.iter_mut() {
         crate::edicion::para_la_nube(h);
+        crate::acciones::para_la_nube(h);
         let extra = match h.nombre.as_str() {
             DIBUJAR => {
                 if let Some(t) = h.parametros.pointer_mut("/properties/elementos/items/properties/tipo/enum").and_then(Value::as_array_mut) {
@@ -148,7 +149,8 @@ pub fn para_la_nube(lista: &mut [Herramienta]) {
             crate::anotacion::NOMBRE => "Es LA herramienta para «señala/marca lo importante», «resume cada seccion al margen», «explica paso a paso» o «marca los errores» \
                                          en un documento, foto o Excel del chat: lee y coloca ella sola, en una llamada (no escribas tu las notas con anotar_documento).",
             // «Haz esta tabla en el lienzo» acababa como tabla del chat.
-            crate::acciones_documentos::TABLA => "Si piden la tabla EN EL LIENZO, despues dibujala con dibujar_en_lienzo (tipo tabla, con sus filas): esta no dibuja.",
+            crate::acciones_documentos::TABLA => "Con «destino»:«lienzo» la dibuja en el lienzo IGUAL que en la foto (letra, anchos, colores de fondo y borde medidos): \
+                                                  es LA forma de «haz/pasa/copia esta tabla en el lienzo», no la dibujes tu.",
             // «Marca los errores del Excel» acababa contestado en el chat.
             "leer_excel" => "Para MARCAR o explicar algo EN el Excel (errores, lo importante), anotar_inteligente: lee las celdas por su cuenta.",
             _ => continue,

@@ -367,3 +367,29 @@ fn lo_que_resalta_el_asistente_en_un_pdf_viaja_y_vuelve() {
     // Caso negativo: lo que no esta en el PDF no se anota.
     assert!(anotar_en(&p.raiz(), &pdf, &json!({"tipo": "subrayar", "texto": "zxqwv inexistente"}), &parar).is_err());
 }
+
+#[test]
+fn el_excel_de_una_foto_lleva_su_fondo_de_cabecera_y_sus_anchos() {
+    let filas: Vec<Vec<String>> = [["Material", "Cantidad"], ["Cemento", "350"], ["Arena", "18"]]
+        .iter()
+        .map(|f| f.iter().map(|c| c.to_string()).collect())
+        .collect();
+    let azul = [224u8, 232, 245];
+    let m = pixpin_ia::tabla_aspecto::Medida {
+        columnas: vec![0.0, 300.0, 400.0],
+        filas: vec![0.0, 40.0, 80.0, 120.0],
+        fondos: vec![vec![Some(azul), Some(azul)], vec![None, None], vec![None, None]],
+        tam_letra: 25.0,
+        ..Default::default()
+    };
+    let x = escribir_excel_con("stock", &filas, true, Some(&m)).unwrap();
+    let mut p = pixpin_docs::Paquete::abrir(&x).unwrap();
+    let estilos = p.texto("xl/styles.xml", 1 << 20).unwrap();
+    assert!(estilos.to_uppercase().contains("FFE0E8F5"), "{estilos}");
+    // Negativo: una medida que no cuadra con la tabla no pone nada.
+    let mal = pixpin_ia::tabla_aspecto::Medida { filas: vec![0.0, 40.0], ..m.clone() };
+    let x = escribir_excel_con("stock", &filas, true, Some(&mal)).unwrap();
+    let estilos = pixpin_docs::Paquete::abrir(&x).unwrap().texto("xl/styles.xml", 1 << 20).unwrap();
+    assert!(!estilos.to_uppercase().contains("FFE0E8F5"));
+    let _ = std::fs::remove_file(&x);
+}
