@@ -295,6 +295,11 @@ pub struct Opciones {
     pub duda: f32,
     /// Cuantas peticiones a la nube a la vez.
     pub concurrencia: usize,
+    /// **Texto rico de la nube** (15-oct): los bloques de texto y formulas
+    /// (la columna «RESOLUCION» de una lamina) se le piden a la nube en texto
+    /// rico, con sus formulas en linea, colores y cursiva. Para las laminas
+    /// que se calcan; una hoja de texto corriente se queda con el OCR.
+    pub rico: bool,
     /// Por debajo de este parecido (0-1) una zona se rehace una vez.
     pub rehacer_bajo: f64,
     /// Comprobar al final (pintar y comparar).
@@ -312,6 +317,7 @@ impl Default for Opciones {
             familia_titulos: "Work Sans".into(),
             duda: 0.55,
             concurrencia: 4,
+            rico: false,
             rehacer_bajo: 0.35,
             comprobar: true,
             plazo_nube: std::time::Duration::from_secs(40),

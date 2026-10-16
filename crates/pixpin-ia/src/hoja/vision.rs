@@ -160,6 +160,74 @@ Despues, en la misma lista, los HECHOS geometricos que se ven o que dice el text
 {\"h\":\"semicircunferencia AB\"}, {\"h\":\"AB es diametro\"}, {\"h\":\"AOB es un cuadrante\"}, {\"h\":\"centro O\"}, {\"h\":\"m∢APB=90°\"} \
 (angulos con ∢ y tres letras, vertice en medio). Sin explicaciones.";
 
+const SISTEMA_RICO: &str = "Recibes el recorte de un bloque de texto de una lamina o una hoja (puede llevar formulas). \
+Transcribelo EXACTO, renglon a renglon, en este formato de texto rico: \
+formulas en linea entre $...$ con LaTeX (\\sphericalangle para el angulo ∢, \\overline{AB} para la raya, \\overset{\\frown}{AC} para el arco, \\frac{a}{b}, 90^\\circ, \\therefore); \
+*cursiva*, **negrita**, <u>subrayado</u>; el color de un tramo que no es negro con \\color{rojo}{...} (rojo, verde, azul, naranja, morado, gris o #rrggbb), tambien dentro de una formula; \
+un renglon centrado empieza con \\centro (sin llaves, seguido del texto); las vinetas con •. \
+MUY IMPORTANTE: los colores. Mira el color de cada letra: lo rojo va con \\color{rojo}{...}, lo verde con \\color{verde}{...}, lo azul con \\color{azul}{...} (dentro de una formula tambien: $X=90^\\circ - \\color{rojo}{(a+b)}$). \
+Los renglones que en el papel van centrados o sangrados bajo una vineta (las formulas de debajo) empiezan con \\centro. \
+Fuera de $...$ no uses otros mandatos (ni \\text ni \\boxed: los recuadros ya estan dibujados). \
+Copia las letras tal cual (con sus tildes), sin corregir ni resumir. \
+Responde SOLO el texto, sin explicaciones ni bloques de codigo.";
+
+/// **Un bloque de texto en texto rico del lienzo** (`pixpin_motor2d::texto_rico`):
+/// la columna «RESOLUCION» de una lamina con sus formulas en linea, sus
+/// colores por tramo, su cursiva y su subrayado. El OCR de Windows leia
+/// «Äb» por «AB» con su raya y «m<COD» por «m∢COD».
+pub fn pedir_rico(motor: &dyn Motor, png: Vec<u8>, pista: &str) -> Result<Leido, String> {
+    // Con lo que el OCR vio de color (Haiku se olvidaba de los colores).
+    let pregunta = if pista.is_empty() { "Transcribe este bloque.".to_string() } else { format!("Transcribe este bloque. Colores que se ven (del OCR, puede leer mal las letras): {pista}") };
+    let t = preguntar_con(motor, SISTEMA_RICO, png, &pregunta, 3000)?;
+    leer_rico(&t).map(Leido::Rico).ok_or_else(|| format!("el modelo no dio el texto: «{}»", corto(&t)))
+}
+
+/// Lee la transcripcion: sin bloque de codigo, sin barras dobles de mas,
+/// sin renglones vacios al principio y al final. `None` si no hay nada.
+pub fn leer_rico(t: &str) -> Option<String> {
+    let t = sin_bloque(t);
+    let t = pixpin_motor2d::texto_rico::sin_barras_dobles(&t);
+    let mut t = t.trim_matches(|c: char| c == '\n' || c == '\r' || c == ' ').replace("\r\n", "\n");
+    // Un renglon en blanco entre parrafos se queda (es el aire del papel);
+    // mas de uno, no.
+    while t.contains("\n\n\n") {
+        t = t.replace("\n\n\n", "\n\n");
+    }
+    // Un renglon con LaTeX y sin `$` («θ=90^\circ»): es una formula entera.
+    // Y un `$` que no se cerro (la respuesta cortada), se cierra.
+    let t = t
+        .split('\n')
+        .map(|l| {
+            let (pre, resto) = match l.strip_prefix("\\centro") {
+                Some(r) => ("\\centro ", r.trim_start()),
+                None => ("", l),
+            };
+            let n = resto.matches('$').count();
+            if n == 0 && (resto.contains('\\') || resto.contains('^')) {
+                format!("{pre}${resto}$")
+            } else if n % 2 == 1 {
+                format!("{pre}{resto}$")
+            } else {
+                l.to_string()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    (!t.is_empty() && !t.eq_ignore_ascii_case("nada")).then_some(t)
+}
+
+#[cfg(test)]
+mod pruebas_rico {
+    #[test]
+    fn el_texto_rico_de_la_nube_se_arregla() {
+        assert_eq!(super::leer_rico("θ=90^\\circ").unwrap(), "$θ=90^\\circ$");
+        assert_eq!(super::leer_rico("\\centro X=90^\\circ").unwrap(), "\\centro $X=90^\\circ$");
+        assert_eq!(super::leer_rico("Por ∢ interior:\n$45^\\circ=\\frac{2a").unwrap(), "Por ∢ interior:\n$45^\\circ=\\frac{2a$");
+        assert_eq!(super::leer_rico("```\nNos piden $X$\n\n\n\nY\n```").unwrap(), "Nos piden $X$\n\nY");
+        assert!(super::leer_rico("NADA").is_none());
+    }
+}
+
 /// **Los rotulos de una figura** (letras de los puntos, medidas, angulos)
 /// con su centro en fracciones del recorte: la nube corrige al OCR en lo
 /// que lee mal o no ve (una letra suelta, una griega).

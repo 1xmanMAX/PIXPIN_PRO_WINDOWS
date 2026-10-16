@@ -426,7 +426,7 @@ impl SinVentana {
             proyecto: self.proyecto.clone(),
             lienzo: None,
         };
-        let o = pixpin_ia::hoja::Opciones { ancho: (pagina.ancho as f64).clamp(200.0, 4000.0), ..Default::default() };
+        let o = pixpin_ia::hoja::Opciones { ancho: (pagina.ancho as f64).clamp(200.0, 4000.0), rico: true, ..Default::default() };
         let inf = crate::asistente::hoja_a_lienzo::pasar(pagina, self.vision.clone(), &o, false, s, &AtomicBool::new(false), &mut d, &mut |_, _| {})?;
         if d.lienzo.is_some() {
             self.lienzo = d.lienzo;

@@ -574,3 +574,31 @@ fn una_curva_libre_no_se_fuerza_a_arco() {
     let largo_curva: f64 = pts.windows(2).map(|w| dist(w[0], w[1])).sum();
     assert!(d.arcos.iter().all(|a| a.r * a.barrido < 0.6 * largo_curva), "{:?}", d.arcos);
 }
+
+#[test]
+fn una_marca_de_angulo_palida_sale_como_sector() {
+    let mut l = Lamina::nueva(460, 360);
+    let v = (80.0, 300.0);
+    let a = -(45f64.to_radians());
+    // Primero la marca (verde palida, translucida) y encima las dos rayas.
+    let mut sector = vec![v];
+    for k in 0..=12 {
+        let t = a * k as f64 / 12.0;
+        sector.push((v.0 + 34.0 * t.cos(), v.1 + 34.0 * t.sin()));
+    }
+    l.poligono(&sector, [185, 232, 195]);
+    l.raya(v, (420.0, 300.0), 2.0, NEGRO);
+    l.raya(v, (v.0 + 330.0 * a.cos(), v.1 + 330.0 * a.sin()), 2.0, NEGRO);
+    let d = l.medir();
+    eprintln!("{:?}", d.marcas);
+    assert_eq!(d.marcas.len(), 1, "{:?} {:?}", d.marcas, d.regiones);
+    let m = &d.marcas[0];
+    assert!(cerca(m.v, v, 3.0), "{m:?}");
+    assert!((m.barrido - 45f64.to_radians()).abs() < 3f64.to_radians(), "{m:?}");
+    assert!((m.r - 34.0).abs() < 6.0, "{m:?}");
+    // Caso negativo: sin marca, ninguna.
+    let mut l = Lamina::nueva(460, 360);
+    l.raya(v, (420.0, 300.0), 2.0, NEGRO);
+    l.raya(v, (v.0 + 330.0 * a.cos(), v.1 + 330.0 * a.sin()), 2.0, NEGRO);
+    assert!(l.medir().marcas.is_empty());
+}

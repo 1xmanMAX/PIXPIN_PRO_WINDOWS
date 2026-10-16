@@ -121,21 +121,9 @@ pub(crate) fn elementos(d: &Diagrama, origen: (f64, f64), escala: f64, f: &mut F
         };
         piezas.push(e);
     }
-    // Las letras que nadie leyo: sus trazos, alisados.
-    for g in &d.glifos {
-        for t in &g.trazos {
-            let lisa = crate::calcar::curva(t, false, 0.5, 0.25);
-            if lisa.len() < 2 {
-                continue;
-            }
-            let mut e = base(g.color, g.grosor);
-            let puntos: Vec<Punto2> = lisa.iter().map(|&p| ap(p)).collect();
-            e.x = puntos[0].x;
-            e.y = puntos[0].y;
-            e.figura = Figura::Linea { puntos };
-            piezas.push(e);
-        }
-    }
+    // Las letras que nadie leyo NO se pintan a lapiz (15-oct, el usuario:
+    // «nada de letras sueltas inventadas»: salian garabatos junto a la O
+    // del centro y la X). Una letra se pone como texto o no se pone.
     for p in &d.puntos {
         let (x, y) = a(p.c);
         let mut e = base(p.color, (p.r / 1.6).max(1.0));

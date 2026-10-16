@@ -346,6 +346,8 @@ impl EjecutorDelChat {
             let _ = tx.send(Aviso::Evento(pixpin_ia::Evento::Llamando(format!("{}:{hechas}/{total}", pixpin_ia::hoja::NOMBRE))));
         };
         let mut o = pixpin_ia::hoja::Opciones::default();
+        // Una lamina: sus bloques de texto, en texto rico de la nube.
+        o.rico = true;
         // Del tamano de la imagen (la del lienzo, o la original).
         o.ancho = match self.fuente {
             Some(f) => (f.2 - f.0) as f64,

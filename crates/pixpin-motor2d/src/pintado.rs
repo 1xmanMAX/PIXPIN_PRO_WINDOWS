@@ -504,12 +504,16 @@ fn anillo_con_huecos(contorno: &[Punto2], huecos: &[Vec<Punto2>]) -> Vec<Punto2>
 /// tramos: dos verdades sobre por donde pasa un arco significan que se pica
 /// donde no se ve, porque `impacto.rs` usa esta y el reajuste usa la otra.
 pub(crate) fn arco_muestreado(e: &Elemento, inicio: f32, barrido: Option<f32>) -> Vec<Punto2> {
-    crate::arco::puntos_del_arco(
-        (e.x, e.y, e.ancho, e.alto),
-        inicio,
-        barrido,
-        crate::arco::PASOS_DEL_ARCO,
-    )
+    crate::arco::puntos_del_arco((e.x, e.y, e.ancho, e.alto), inicio, barrido, pasos_del_arco(e.ancho.max(e.alto) / 2.0))
+}
+
+/// **Cuantos tramos por vuelta** para un arco de radio `r`: los 72 del movil
+/// como minimo y, en uno grande, los que hagan falta para que ningun tramo
+/// pase de 3 unidades (una semicircunferencia de 700 se veia a facetas,
+/// 15-oct). Con tope: un arco enorme no gasta por gastar.
+pub(crate) fn pasos_del_arco(r: f32) -> usize {
+    let por_largo = (std::f32::consts::TAU * r.abs() / 3.0).ceil();
+    (por_largo as usize).clamp(crate::arco::PASOS_DEL_ARCO, 1440)
 }
 
 /// Las ordenes de dibujo de un elemento, en orden de pintado.
@@ -3054,5 +3058,17 @@ mod imagen_girada {
         );
         assert_eq!((ancho, alto), (20.0, 10.0));
         assert!((angulo - (0.1 + std::f32::consts::PI)).abs() < 1e-5);
+    }
+}
+
+#[cfg(test)]
+mod pruebas_pasos_del_arco {
+    #[test]
+    fn un_arco_grande_lleva_mas_tramos_y_ninguno_largo() {
+        assert_eq!(super::pasos_del_arco(20.0), crate::arco::PASOS_DEL_ARCO);
+        let n = super::pasos_del_arco(700.0);
+        assert!(n > 1000, "{n}");
+        assert!(std::f32::consts::TAU * 700.0 / n as f32 <= 3.1);
+        assert_eq!(super::pasos_del_arco(1.0e6), 1440);
     }
 }

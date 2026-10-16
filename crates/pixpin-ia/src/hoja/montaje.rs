@@ -53,6 +53,8 @@ pub enum Leido {
     Funciones(Map<String, Value>),
     /// Los rotulos de una figura (texto y centro en fracciones del recorte).
     Rotulos(Vec<(String, f64, f64)>, Vec<String>),
+    /// Un bloque de texto en texto rico del lienzo (`$...$`, colores, cursiva).
+    Rico(String),
 }
 
 /// Una imagen que nace con la zona: va al almacen del lienzo con este id
@@ -144,6 +146,13 @@ pub fn hacer(e: &Entrada, leido: Option<&Leido>, via: Via) -> Hecho {
         (t, _) => t,
     };
     let mut imagenes = Vec::new();
+    // Un bloque que la nube paso a texto rico: un solo texto, en su sitio.
+    if let Some(Leido::Rico(fuente)) = leido {
+        let elementos = bloque_rico(e, fuente);
+        if !elementos.is_empty() {
+            return Hecho { zona: z.id, tipo: Tipo::Parrafo, via, elementos, imagenes: Vec::new(), nota: format!("texto rico: {}", fuente.chars().take(60).collect::<String>()) };
+        }
+    }
     let (elementos, nota) = match (via, tipo) {
         (Via::Imagen, _) | (_, Tipo::Foto) => {
             let (els, img) = foto(e);
@@ -801,6 +810,10 @@ fn diagrama(e: &Entrada, leido: Option<&Leido>) -> Option<(Vec<Value>, String)> 
         // Sus fracciones, pasadas a este recorte.
         let v: Vec<(String, f64, f64)> = v.iter().map(|(t, fx, fy)| (t.clone(), (de_la_nube.x + fx * de_la_nube.w - caja.x) / w as f64, (de_la_nube.y + fy * de_la_nube.h - caja.y) / h as f64)).collect();
         crate::diagrama::corregir_rotulos(&mut d, &v, e.alto_letra, Some((&rgba, w, h)));
+        // Lo que la nube leyo encima del texto de OTRA zona (el «θ=90°» de la
+        // formula de debajo, que asoma en el recorte) no es un rotulo de aqui.
+        let ajenas: Vec<Caja> = o.tapar.iter().map(|c| c.crecer(e.alto_letra)).collect();
+        d.rotulos.retain(|r| !ajenas.iter().any(|c| c.contiene(r.caja.cx(), r.caja.cy())));
         // Con las letras y los hechos de la nube, otra vuelta de geometria
         // exacta (lo ya exacto no se mueve).
         let mut pistas = o.pistas.clone();
@@ -852,4 +865,52 @@ mod pruebas_rico {
         assert!(!texto.contains(char::from(92)), "{texto}");
         assert!(e.extras.rico.is_some());
     }
+}
+
+/// **Un bloque de texto rico** (lo que transcribio la nube) como UN texto del
+/// lienzo: arriba a la izquierda de la zona, con la letra medida en el papel
+/// (el alto de sus renglones) y, si al componerlo se sale mucho de su caja,
+/// encogido hasta caber.
+fn bloque_rico(e: &Entrada, fuente: &str) -> Vec<Value> {
+    let d = e.destino();
+    let familia = &e.opciones.familia;
+    // La letra, medida en los renglones de texto (los de una formula leidos
+    // por el OCR miden mal: «2a+2b» encima de su raya).
+    let de_texto: Vec<Renglon> = e
+        .zona
+        .renglones
+        .iter()
+        .filter(|r| {
+            let n = r.texto.chars().count().max(1);
+            r.texto.chars().filter(|c| c.is_alphabetic() || *c == ' ').count() * 10 >= n * 7 && n >= 6
+        })
+        .cloned()
+        .collect();
+    let rs = if de_texto.is_empty() { e.zona.renglones.clone() } else { de_texto };
+    let mut tam = if rs.is_empty() { (e.alto_letra * e.mapa.escala * 1.05).max(6.0) } else { tam_de_letra(&rs, e.mapa.escala, familia, false) };
+    // Una zona sola lleva su alineacion (un titulo centrado); un bloque, la
+    // de cada renglon (`\centro`).
+    let al = if fuente.contains('\n') { Alineacion::Izquierda } else { e.zona.alineacion };
+    let mut el = un_texto(fuente, d.x, d.y, tam, familia, false, al, None);
+    for _ in 0..3 {
+        let k = (d.w * 1.3 / el.ancho.max(1.0) as f64).min(d.h * 1.5 / el.alto.max(1.0) as f64);
+        if k >= 1.0 {
+            break;
+        }
+        tam = (tam * k.max(0.6)).max(6.0);
+        el = un_texto(fuente, d.x, d.y, tam, familia, false, al, None);
+    }
+    let mut f = e.fabrica();
+    f.de_motor(&[el]);
+    // Su recuadro de formula (el verde de «θ=90°»), si lo tiene.
+    if !fuente.contains(char::from(10)) {
+        marco(e, &mut f);
+    }
+    // El marco de un recuadro (el titulo en su caja).
+    let esc = e.mapa.escala;
+    for r in &e.zona.rayas {
+        let (a, b) = (e.mapa.punto(r[0], r[1]), e.mapa.punto(r[2], r[3]));
+        recta(&mut f, a, b, r[4] * esc);
+    }
+    f.salida
 }

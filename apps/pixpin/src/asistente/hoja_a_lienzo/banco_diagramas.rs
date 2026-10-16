@@ -362,6 +362,7 @@ fn lamina_plano_inclinado() -> Pagina {
 #[ignore = "banco con la nube de verdad"]
 fn banco_diagramas() {
     let _com = pixpin_shell::ComDelHilo::iniciar();
+    pixpin_motor2d::texto::instalar_medidor(crate::dibujo::pintar::medir_para_el_motor);
     let base = salida();
     let mut casos: Vec<(String, Pagina)> = Vec::new();
     match leer(&lamina(), None) {
@@ -397,7 +398,7 @@ fn banco_diagramas() {
             let lamina_si = es_lamina(p);
             let ms_decidir = t0.elapsed().as_millis();
             let mut d = EnEscena::nueva();
-            let o = Opciones { ancho: p.ancho as f64, ..Default::default() };
+            let o = Opciones { ancho: p.ancho as f64, rico: true, ..Default::default() };
             let r = pasar(p, motor.clone(), &o, false, 7000 + filas.len() as u64, &AtomicBool::new(false), &mut d, &mut |_, _| {});
             let inf = match r {
                 Ok(i) => i,
@@ -420,7 +421,7 @@ fn banco_diagramas() {
             }
             let els: Vec<Elemento> = d.escena.visibles().cloned().collect();
             let ancho = (p.ancho * 2).clamp(1200, 2400);
-            let Some(res) = pintar_medida(els, &d.imagenes, (0.0, 0.0), None, ancho) else {
+            let Some(res) = pintar_gpu(els, &d.imagenes, ancho) else {
                 println!("{motor_nombre} {nombre}: el lienzo quedo vacio");
                 continue;
             };
@@ -546,6 +547,7 @@ pub(crate) fn pagina_mixta() -> Pagina {
 #[test]
 #[ignore = "con la nube de verdad"]
 fn mixta_con_haiku() {
+    pixpin_motor2d::texto::instalar_medidor(crate::dibujo::pintar::medir_para_el_motor);
     let _com = pixpin_shell::ComDelHilo::iniciar();
     let base = salida().join("recortes");
     let p = pagina_mixta();
@@ -553,7 +555,7 @@ fn mixta_con_haiku() {
     guardar(&original, &base.join("mixta-entrada.png"));
     let motor = motores().into_iter().find(|(n, _)| *n == "claude").map(|(_, m)| m).expect("la clave de Claude");
     let mut d = EnEscena::nueva();
-    let o = Opciones { ancho: p.ancho as f64, ..Default::default() };
+    let o = Opciones { ancho: p.ancho as f64, rico: true, ..Default::default() };
     let t0 = std::time::Instant::now();
     let inf = pasar(&p, Some(motor), &o, false, 9100, &AtomicBool::new(false), &mut d, &mut |_, _| {}).unwrap();
     for h in &inf.hechos {
@@ -566,9 +568,50 @@ fn mixta_con_haiku() {
     // El texto y la formula, editables (no imagen).
     let textos = inf.hechos.iter().filter(|h| matches!(h.tipo, pixpin_ia::hoja::Tipo::Parrafo | pixpin_ia::hoja::Tipo::Encabezado)).count();
     assert!(textos >= 2, "los parrafos, como texto");
-    assert!(inf.hechos.iter().any(|h| h.nota.starts_with("ecuacion")), "la formula, compuesta");
+    // La formula, compuesta: sola, o dentro del bloque de texto rico (`$...$`).
+    let compuesta = |h: &&pixpin_ia::hoja::montaje::Hecho| h.nota.starts_with("ecuacion") || h.elementos.iter().any(|v| v["textoRico"].as_str().is_some_and(|t| t.contains("\frac")));
+    assert!(inf.hechos.iter().any(|h| compuesta(&h)), "la formula, compuesta");
     let els: Vec<Elemento> = d.escena.visibles().cloned().collect();
-    let res = pintar_medida(els, &d.imagenes, (0.0, 0.0), None, 1400).expect("el lienzo");
+    let res = pintar_gpu(els, &d.imagenes, 1400).expect("el lienzo");
     guardar(&res, &base.join("mixta-resultado.png"));
     guardar(&lado_a_lado(&a_ancho(&original, res.ancho), &res), &base.join("mixta-comparar.png"));
+}
+
+/// **Lo hecho, pintado como en el lienzo** (Direct2D, por el mismo camino
+/// que «Exportar a PNG» del editor): el texto rico sale compuesto, con sus
+/// colores y su cursiva (el camino del PDF del banco no los pinta).
+fn pintar_gpu(els: Vec<Elemento>, fotos: &HashMap<u64, pixpin_codec::ImagenRgba>, ancho: u32) -> Option<pixpin_codec::ImagenRgba> {
+    let mut escena = pixpin_motor2d::Escena::nueva();
+    escena.fondo = pixpin_motor2d::elemento::ColorRgba::opaco(1.0, 1.0, 1.0);
+    for e in els {
+        escena.anadir(e);
+    }
+    let hojas = pixpin_motor2d::exportar::hojas(&escena, pixpin_motor2d::exportar::Alcance::Todo, &[], None);
+    let hoja = hojas.first()?;
+    let w = (hoja.caja.2 - hoja.caja.0).max(1.0);
+    let ver = |id: u64| fotos.get(&id);
+    let lienzo = crate::ventana_editor::exportar::Lienzo { escena: &escena, seleccion: &[], papel: None, fotos: &ver, nombre: "banco".into() };
+    crate::ventana_editor::exportar::a_imagen(hoja, ancho as f32 / w, Some(escena.fondo), &lienzo).ok()
+}
+
+/// **Los bloques de texto rico**: los renglones de un parrafo y la formula de
+/// debajo, en la misma columna, son UN bloque; el titulo (letra mayor) va
+/// por su cuenta, y la foto no entra.
+#[test]
+fn el_parrafo_y_su_formula_son_un_bloque_y_el_titulo_no() {
+    let _com = pixpin_shell::ComDelHilo::iniciar();
+    let p = pagina_mixta();
+    let s = pixpin_ia::hoja::seccion::seccionar(&p.rgba, p.ancho, p.alto, p.palabras.clone());
+    let bloques = super::bloques_de_texto(&s);
+    for b in &bloques {
+        println!("bloque {} {:?}: {:?}", b.0, b.1, b.2.renglones.iter().map(|r| r.texto.clone()).collect::<Vec<_>>());
+    }
+    let con = |t: &str| bloques.iter().find(|b| b.2.renglones.iter().any(|r| r.texto.contains(t)));
+    let parrafo = con("pendiente").expect("el bloque del parrafo");
+    assert!(parrafo.2.renglones.iter().any(|r| r.texto.contains("grupo")), "los dos renglones juntos");
+    assert!(parrafo.1.len() >= 2, "{:?}", parrafo.1);
+    let titulo = con("Excursion").expect("el titulo");
+    assert!(!titulo.2.renglones.iter().any(|r| r.texto.contains("grupo")), "el titulo, solo");
+    // La foto no es texto.
+    assert!(bloques.iter().all(|b| b.1.iter().all(|&k| s.zonas[k].tipo != pixpin_ia::hoja::Tipo::Foto)));
 }

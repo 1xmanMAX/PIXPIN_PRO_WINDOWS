@@ -282,6 +282,7 @@ pub fn vectorizar(rgba: &[u8], ancho: u32, alto: u32, palabras: &[PalabraHoja], 
     }
     if o.exacta {
         exacta(&mut d, &o.pistas, o.alto_letra);
+        geometria::marcas_por_color(&img, &mut d, o.alto_letra.max(6.0));
     }
     d.ms = t0.elapsed().as_millis();
     d
@@ -294,6 +295,9 @@ pub fn exacta(d: &mut Diagrama, pistas: &[String], alto_letra: f64) {
     textos.extend(d.rotulos.iter().map(|r| r.texto.clone()));
     let hechos = restricciones::hechos_de_texto(&textos);
     restricciones::aplicar(d, &hechos, alto_letra.max(6.0));
+    quitar_arquitos_sueltos(d, alto_letra.max(6.0));
+    pulir_rotulos(d);
+    texto_de_recuadros(d);
 }
 
 /// Los rotulos que dijo la nube (texto y su centro en fracciones 0-1 del
@@ -303,4 +307,95 @@ pub fn exacta(d: &mut Diagrama, pistas: &[String], alto_letra: f64) {
 pub fn corregir_rotulos(d: &mut Diagrama, de_la_nube: &[(String, f64, f64)], alto_letra: f64, recorte: Option<(&[u8], u32, u32)>) {
     let img = recorte.filter(|r| r.0.len() >= (r.1 * r.2 * 4) as usize).map(|r| Img::de_rgba(r.0, r.1 as usize, r.2 as usize));
     geometria::corregir_rotulos(d, de_la_nube, alto_letra, img.as_ref());
+}
+
+/// **Los rotulos, limpios y de su tamano** (15-oct): un «∢» o un «<» solo no
+/// es un rotulo (lo que el OCR saco de un signo dentro de «θ=45°»), y uno
+/// cortito mas pequeno que los demas («45°», la O del centro, que el OCR
+/// leyo en minuscula) se pone del alto de las otras letras.
+fn pulir_rotulos(d: &mut Diagrama) {
+    d.rotulos.retain(|r| r.texto.chars().any(|c| c.is_alphanumeric()));
+    // «θ=<45°»: el signo de angulo que el OCR ve en el trazo del 4 sobra.
+    for r in d.rotulos.iter_mut() {
+        for (de, a) in [("=∢", "="), ("=<", "="), ("= ∢", "= "), ("= <", "= ")] {
+            r.texto = r.texto.replace(de, a);
+        }
+    }
+    // El alto de mayuscula de cada rotulo corto.
+    let mayuscula = |r: &Rotulo| if r.letra_suelta { r.caja.h } else { r.caja.h * 0.72 };
+    let mut altos: Vec<f64> = d.rotulos.iter().filter(|r| r.texto.chars().count() <= 4).map(mayuscula).collect();
+    if altos.len() < 3 {
+        return;
+    }
+    altos.sort_by(f64::total_cmp);
+    let m = altos[altos.len() / 2];
+    for r in d.rotulos.iter_mut().filter(|r| r.texto.chars().count() <= 4) {
+        let c = mayuscula(r);
+        if c > 0.0 && c < 0.75 * m {
+            let k = m / c;
+            let (cx, cy) = (r.caja.cx(), r.caja.cy());
+            r.caja = Caja::nueva(cx - r.caja.w * k / 2.0, cy - r.caja.h * k / 2.0, r.caja.w * k, r.caja.h * k);
+        }
+    }
+}
+
+/// **El texto de un recuadro, uno**: dentro del marco verde de «θ=45°» el
+/// OCR leia «e», «∢» y la nube anadia «θ=45°» al lado: queda el mas largo,
+/// centrado en el recuadro y de su alto.
+fn texto_de_recuadros(d: &mut Diagrama) {
+    for q in &d.recuadros {
+        let caja = Caja::de_esquinas(q.x0, q.y0, q.x1, q.y1);
+        let dentro: Vec<usize> = (0..d.rotulos.len()).filter(|&k| caja.crecer(2.0).contiene(d.rotulos[k].caja.cx(), d.rotulos[k].caja.cy())).collect();
+        // (Un recuadro que lleva letras sueltas de una figura, como el de «a» y
+        // «b» en O, no: el texto tiene que llenarlo.)
+        let lleno: f64 = dentro.iter().map(|&k| d.rotulos[k].caja.area()).sum();
+        if dentro.is_empty() || lleno < 0.2 * caja.area() {
+            continue;
+        }
+        let Some(&mejor) = dentro.iter().max_by_key(|&&k| d.rotulos[k].texto.chars().count()) else { continue };
+        let mut r = d.rotulos[mejor].clone();
+        let h = (caja.h * 0.55).max(r.caja.h);
+        let w = (h * 0.6 * r.texto.chars().count() as f64).min(caja.w * 0.9);
+        r.caja = Caja::nueva(caja.cx() - w / 2.0, caja.cy() - h / 2.0, w, h);
+        r.letra_suelta = false;
+        let mut k = 0;
+        d.rotulos.retain(|_| {
+            k += 1;
+            !dentro.contains(&(k - 1))
+        });
+        d.rotulos.push(r);
+        // Y las rayitas de dentro (trozos de las letras del recuadro).
+        let interior = caja.crecer(-2.0);
+        d.segmentos.retain(|s| !(interior.contiene(s.a.0, s.a.1) && interior.contiene(s.b.0, s.b.1)));
+        d.arcos.retain(|a| {
+            let (p, q) = a.extremos();
+            a.entera() || !(interior.contiene(p.0, p.1) && interior.contiene(q.0, q.1) && a.r < caja.h)
+        });
+    }
+}
+
+/// **Los arquitos sueltos** (15-oct): un arco pequeno que no toca nada por
+/// ninguno de sus dos extremos es el trozo de una letra (la «a» y la «b»
+/// rojas junto a O salian como dos parentesis), no geometria.
+fn quitar_arquitos_sueltos(d: &mut Diagrama, hm: f64) {
+    let toca = |p: P, d: &Diagrama, yo: usize| {
+        d.segmentos.iter().any(|s| ajuste::dist_a_segmento(p, s.a, s.b) <= 3.0 + s.grosor / 2.0)
+            || d.puntos.iter().any(|q| ajuste::dist(p, q.c) <= q.r + 3.0)
+            || d.arcos.iter().enumerate().any(|(j, a)| j != yo && (ajuste::dist(p, a.c) - a.r).abs() <= 3.0 + a.grosor / 2.0)
+    };
+    let mut quitar = Vec::new();
+    for (i, a) in d.arcos.iter().enumerate() {
+        if a.entera() || a.r > 1.5 * hm || a.barrido > 1.2 * std::f64::consts::PI {
+            continue;
+        }
+        let (p, q) = a.extremos();
+        if !toca(p, d, i) && !toca(q, d, i) {
+            quitar.push(i);
+        }
+    }
+    let mut k = 0;
+    d.arcos.retain(|_| {
+        k += 1;
+        !quitar.contains(&(k - 1))
+    });
 }

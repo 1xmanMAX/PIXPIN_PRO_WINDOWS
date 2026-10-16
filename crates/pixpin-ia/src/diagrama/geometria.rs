@@ -1581,7 +1581,7 @@ fn regiones(m: &Mapas, region: &[bool], hm: f64) -> Vec<Region> {
                 })
                 .map(|hq| crate::calcar::curva(&hq, true, 0.6, 0.3))
                 // El agujero de una letra (la X sobre el relleno) no: la letra va encima.
-                .filter(|hq| hq.len() >= 3 && crate::calcar::area(hq).abs() >= 4.0 * hm * hm)
+                .filter(|hq| hq.len() >= 3 && crate::calcar::area(hq).abs() >= 9.0 * hm * hm)
                 .collect();
             let area = crate::calcar::area(&contorno).abs();
             // Casi del color del papel (el borde blanco de un degradado): nada.
@@ -1912,7 +1912,9 @@ pub(super) fn vivo(c: [u8; 3], fondo: [u8; 3]) -> [u8; 3] {
     if let (Some(tc), Some(tf)) = (tono(c), tono(fondo)) {
         let dt = (tc - tf).rem_euclid(360.0);
         let lum = |x: [u8; 3]| 0.3 * x[0] as f64 + 0.59 * x[1] as f64 + 0.11 * x[2] as f64;
-        if dt.min(360.0 - dt) < 20.0 && lum(c) < 0.7 * lum(fondo) {
+        // (Solo lo oscuro: una raya roja fina sobre el amarillo tambien tira a
+        // su tono, pero es mas clara.)
+        if dt.min(360.0 - dt) < 20.0 && lum(c) < 0.5 * lum(fondo) {
             let g = (255.0 * lum(c) / lum(fondo).max(1.0)).round().clamp(0.0, 255.0) as u8;
             return [g, g, g];
         }
@@ -2617,4 +2619,145 @@ fn partir_por_grosor(m: &Mapas, d: &mut Diagrama) {
         }
     }
     d.arcos = nuevos;
+}
+
+/// **Las marcas de angulo palidas** (15-oct, la verde de 45° en P): una
+/// marca translucida y fina no aguanta la erosion de los rellenos y no sale
+/// como region. Se busca directamente: en cada vertice (donde se cruzan o
+/// acaban las rayas largas), en cada hueco entre dos rayas, el anillo de
+/// color que no es papel ni el relleno grande de alrededor. Si lo hay, el
+/// sector exacto con ese color y el radio hasta donde llega.
+pub(super) fn marcas_por_color(img: &Img, d: &mut Diagrama, hm: f64) {
+    let papel = mascara::fondo(img);
+    let r_max = (2.5 * hm).clamp(12.0, 60.0);
+    let largas: Vec<(P, P)> = d.segmentos.iter().filter(|s| s.largo() >= 2.0 * r_max).map(|s| (s.a, s.b)).collect();
+    // Los vertices: extremos y cruces de las rayas largas.
+    let mut vertices: Vec<P> = Vec::new();
+    let mut anadir = |p: P, v: &mut Vec<P>| {
+        if !v.iter().any(|q| dist(*q, p) <= 3.0) {
+            v.push(p);
+        }
+    };
+    for (i, &(a, b)) in largas.iter().enumerate() {
+        anadir(a, &mut vertices);
+        anadir(b, &mut vertices);
+        for &(c, e) in &largas[i + 1..] {
+            if let Some(x) = cruce((a, b), (c, e))
+                && ajuste::dist_a_segmento(x, a, b) <= 1.5
+                && ajuste::dist_a_segmento(x, c, e) <= 1.5
+            {
+                anadir(x, &mut vertices);
+            }
+        }
+    }
+    // Los colores de los rellenos grandes (una marca no es del color del cuadrante).
+    let grandes: Vec<[f32; 3]> = d.regiones.iter().filter(|r| r.area > 4.0 * r_max * r_max).map(|r| [r.color[0] as f32, r.color[1] as f32, r.color[2] as f32]).collect();
+    let saturado = |c: [f32; 3]| {
+        let (mx, mn) = (c[0].max(c[1]).max(c[2]), c[0].min(c[1]).min(c[2]));
+        mx > 1.0 && (mx - mn) / mx >= 0.12
+    };
+    let mut nuevas: Vec<super::Marca> = Vec::new();
+    for &v in &vertices {
+        // Sus rayas: hacia los extremos de las que acaban o pasan por el.
+        let mut dirs: Vec<f64> = Vec::new();
+        for &(a, b) in &largas {
+            if ajuste::dist_a_segmento(v, a, b) > 1.5 {
+                continue;
+            }
+            for e in [a, b] {
+                if dist(e, v) > r_max {
+                    let t = (e.1 - v.1).atan2(e.0 - v.0);
+                    if !dirs.iter().any(|&x| ((x - t + PI).rem_euclid(TAU) - PI).abs() < 0.05) {
+                        dirs.push(t);
+                    }
+                }
+            }
+        }
+        if dirs.len() < 2 {
+            continue;
+        }
+        dirs.sort_by(f64::total_cmp);
+        for k in 0..dirs.len() {
+            let a0 = dirs[k];
+            let a1 = if k + 1 < dirs.len() { dirs[k + 1] } else { dirs[0] + TAU };
+            let barrido = a1 - a0;
+            if !(15f64.to_radians()..=150f64.to_radians()).contains(&barrido) {
+                continue;
+            }
+            // Ya hay marca en ese hueco.
+            let medio = a0 + barrido / 2.0;
+            if d.marcas.iter().chain(nuevas.iter()).any(|m| dist(m.v, v) <= 4.0 && ((m.inicio + m.barrido / 2.0 - medio + PI).rem_euclid(TAU) - PI).abs() < barrido / 2.0) {
+                continue;
+            }
+            // Anillo a anillo: lo teñido (de color, no papel, no el relleno grande).
+            let margen = 6f64.to_radians().min(barrido / 4.0);
+            let anillo = |r: f64| -> Vec<[f32; 3]> {
+                let n = ((barrido - 2.0 * margen) * r / 1.5).ceil().max(3.0) as usize;
+                (0..=n)
+                    .filter_map(|q| {
+                        let t = a0 + margen + (barrido - 2.0 * margen) * q as f64 / n as f64;
+                        img.en((v.0 + r * t.cos()).floor() as i64, (v.1 + r * t.sin()).floor() as i64)
+                    })
+                    .collect()
+            };
+            // (De otro tono que el relleno grande: el degradado naranja del cuadrante amarillo no es una marca.)
+            let otro_tono = |c: [f32; 3], g: [f32; 3]| match (tono_de(c), tono_de(g)) {
+                (Some(x), Some(y)) => { let dt = (x - y).rem_euclid(360.0); dt.min(360.0 - dt) >= 25.0 }
+                _ => true,
+            };
+            let tenido = |c: [f32; 3]| saturado(c) && mascara::dist_color(c, papel) >= 25.0 && grandes.iter().all(|g| mascara::dist_color(c, *g) >= 35.0 && otro_tono(c, *g));
+            let mut color_ref: Option<[f32; 3]> = None;
+            let mut radio = 0.0;
+            let mut seguidos = 0;
+            let mut r = 5.0;
+            while r <= r_max {
+                let px = anillo(r);
+                let ten: Vec<[f32; 3]> = px.iter().copied().filter(|&c| tenido(c)).collect();
+                let frac = ten.len() as f64 / px.len().max(1) as f64;
+                if color_ref.is_none() && frac >= 0.6 {
+                    color_ref = Some(mascara::media(ten.iter().copied()));
+                }
+                let parecido = color_ref.is_some_and(|cr| frac >= 0.55 && mascara::dist_color(mascara::media(ten.iter().copied()), cr) < 45.0);
+                if parecido {
+                    seguidos += 1;
+                    radio = r;
+                } else if color_ref.is_some() {
+                    break;
+                }
+                r += 1.5;
+            }
+            let Some(color) = color_ref else { continue };
+            if seguidos < 4 || radio < 8.0 {
+                continue;
+            }
+            nuevas.push(super::Marca { v, r: radio + 1.0, inicio: a0.rem_euclid(TAU), barrido, color: a_u8(color) });
+        }
+    }
+    if nuevas.is_empty() {
+        return;
+    }
+    // Lo que quedaba del borde de la marca y de su numero: rayitas cortas
+    // dentro de ella.
+    for m in &nuevas {
+        let r = m.r;
+        d.segmentos.retain(|s| !(s.largo() < 1.2 * r && dist(s.a, m.v) <= 1.4 * r && dist(s.b, m.v) <= 1.4 * r && dist(s.a, m.v) > 2.0));
+    }
+    d.marcas.extend(nuevas);
+}
+
+/// El tono (0-360) de un color con algo de color; `None` si es gris.
+fn tono_de(c: [f32; 3]) -> Option<f32> {
+    let (r, g, b) = (c[0], c[1], c[2]);
+    let (mx, mn) = (r.max(g).max(b), r.min(g).min(b));
+    if mx < 1.0 || (mx - mn) / mx < 0.1 {
+        return None;
+    }
+    let h = if mx == r {
+        ((g - b) / (mx - mn)).rem_euclid(6.0)
+    } else if mx == g {
+        (b - r) / (mx - mn) + 2.0
+    } else {
+        (r - g) / (mx - mn) + 4.0
+    };
+    Some(h * 60.0)
 }
