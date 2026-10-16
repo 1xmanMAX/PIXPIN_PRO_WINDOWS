@@ -33,6 +33,9 @@ use windows::Win32::Graphics::Direct2D::ID2D1Bitmap1;
 mod imprimir;
 /// F18: los mosaicos salen pixelados en todo lo exportado, como en el movil.
 pub(crate) mod tapado;
+/// La columna de una lamina rehecha con texto rico, a PNG (muestra a ojo).
+#[cfg(test)]
+mod muestra_texto_rico;
 
 /// Lo que se pide desde un atajo o un menu.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

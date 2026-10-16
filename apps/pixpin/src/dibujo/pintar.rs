@@ -750,6 +750,10 @@ pub(crate) fn pintar_encima(
             }
         }
     }
+    // Lo elegido del texto que se escribe (Mayus+flechas), debajo del cursor.
+    for orden in gesto.seleccion_de_texto(escena) {
+        dibujar_orden(p, &orden, vista, None, imagenes, zoom, None);
+    }
     if let Some(cursor) = gesto.cursor_de_texto(escena, zoom) {
         dibujar_orden(p, &cursor, vista, None, imagenes, zoom, None);
     }
@@ -839,6 +843,7 @@ pub(crate) fn ordenes_encima(
     if let Some(tiradores) = gesto.tiradores(escena, escala) {
         v.extend(tiradores.ordenes(escala));
     }
+    v.extend(gesto.seleccion_de_texto(escena));
     v.extend(gesto.cursor_de_texto(escena, zoom));
     if let Some((x0, y0, x1, y1)) = gesto.marquesina() {
         v.push(Orden::Polilinea {

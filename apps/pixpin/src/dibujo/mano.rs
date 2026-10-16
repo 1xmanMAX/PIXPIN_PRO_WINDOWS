@@ -430,6 +430,18 @@ impl Mano {
                         .is_some(),
                     _ => false,
                 },
+                // **Los atajos del texto** (`texto::atajo_de_tecla`, la misma
+                // tabla que el anotador): Ctrl+Z/Y dentro del texto, elegir
+                // con Mayus, negrita, color del tramo elegido, formula.
+                EventoOverlay::Tecla {
+                    vk,
+                    ctrl,
+                    shift,
+                    alt,
+                } if pixpin_motor2d::texto::atajo_de_tecla(vk, ctrl, shift, alt).is_some() => {
+                    pixpin_motor2d::texto::atajo_de_tecla(vk, ctrl, shift, alt)
+                        .is_some_and(|a| gesto.atajo_de_texto(a, escena))
+                }
                 // Los mandos llegan tambien como caracter; se atienden por
                 // tecla, que es donde se distinguen bien.
                 EventoOverlay::Caracter(c) if c >= ' ' => gesto.escribir(c, escena),

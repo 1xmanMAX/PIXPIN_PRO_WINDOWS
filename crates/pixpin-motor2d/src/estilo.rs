@@ -510,6 +510,11 @@ fn remedir_texto_suelto(e: &mut crate::elemento::Elemento) {
     if !crate::texto::hay_medidor() || e.extras.contenedor.is_some() {
         return;
     }
+    if let Some((ancho, alto)) = crate::texto_rico::medida_del_elemento(e) {
+        e.ancho = ancho;
+        e.alto = alto;
+        return;
+    }
     let estilo = crate::texto::EstiloDeTexto {
         negrita: e.extras.negrita,
         cursiva: e.extras.cursiva,
