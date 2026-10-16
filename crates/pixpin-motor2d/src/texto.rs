@@ -552,14 +552,40 @@ pub enum TeclaTexto {
     Entrar,
 }
 
-/// Una cadena que se esta escribiendo, con su cursor.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+/// Una cadena que se esta escribiendo, con su cursor, lo elegido con
+/// Mayus y su propio deshacer (15-oct-2026: el texto rico pide elegir un
+/// tramo para darle color, y Ctrl+Z dentro del texto deshace lo escrito,
+/// no el dibujo).
+#[derive(Debug, Clone, Default)]
 pub struct EdicionTexto {
     texto: String,
     /// En CARACTERES, nunca en bytes (ve la cabecera del modulo). Invariante:
     /// nunca pasa de `texto.chars().count()`.
     cursor: usize,
+    /// El otro extremo de lo elegido (Mayus+flechas), en caracteres.
+    ancla: Option<usize>,
+    /// Los estados de antes, para Ctrl+Z: `(texto, cursor)`.
+    atras: Vec<(String, usize)>,
+    /// Lo deshecho, para Ctrl+Y.
+    adelante: Vec<(String, usize)>,
+    /// Si lo ultimo fue escribir letras: se juntan en un solo paso de
+    /// deshacer hasta un blanco (como Word), no uno por letra.
+    escribiendo_letras: bool,
 }
+
+/// Dos ediciones son iguales si dicen lo mismo y tienen el cursor y lo
+/// elegido en el mismo sitio; su historia no cuenta.
+impl PartialEq for EdicionTexto {
+    fn eq(&self, o: &Self) -> bool {
+        self.texto == o.texto && self.cursor == o.cursor && self.seleccion() == o.seleccion()
+    }
+}
+
+impl Eq for EdicionTexto {}
+
+/// Cuantos pasos de deshacer guarda un texto: de sobra para escribir, y
+/// un texto pegado enorme no se queda cien veces en memoria.
+const PASOS_DE_DESHACER: usize = 200;
 
 impl EdicionTexto {
     /// Abre un texto que ya existia, con el cursor al final: es donde lo pone
@@ -567,7 +593,7 @@ impl EdicionTexto {
     pub fn nueva(texto: impl Into<String>) -> Self {
         let texto = texto.into();
         let cursor = texto.chars().count();
-        Self { texto, cursor }
+        Self { texto, cursor, ..Default::default() }
     }
 
     pub fn vacia() -> Self {
@@ -592,6 +618,28 @@ impl EdicionTexto {
         self.texto.is_empty()
     }
 
+    /// Lo elegido, de menor a mayor, en caracteres. `None` si no hay nada.
+    pub fn seleccion(&self) -> Option<(usize, usize)> {
+        let a = self.ancla?;
+        (a != self.cursor).then(|| (a.min(self.cursor), a.max(self.cursor)))
+    }
+
+    /// El texto elegido ("" si no hay).
+    pub fn texto_elegido(&self) -> &str {
+        match self.seleccion() {
+            Some((a, b)) => &self.texto[self.byte_de(a)..self.byte_de(b)],
+            None => "",
+        }
+    }
+
+    /// Elige todo (Ctrl+A).
+    pub fn elegir_todo(&mut self) -> bool {
+        self.ancla = Some(0);
+        self.cursor = self.largo();
+        self.escribiendo_letras = false;
+        !self.texto.is_empty()
+    }
+
     /// El indice de BYTE donde empieza el caracter numero `caracteres`.
     ///
     /// Es el unico sitio del fichero que convierte de uno a otro, y sale
@@ -605,8 +653,40 @@ impl EdicionTexto {
             .map_or(self.texto.len(), |(i, _)| i)
     }
 
-    /// Mete un caracter donde esta el cursor y lo deja detras de el.
+    /// Guarda el estado de ahora para poder volver (y olvida lo rehecho).
+    fn apuntar(&mut self) {
+        if self.atras.last().is_some_and(|(t, _)| *t == self.texto) {
+            return;
+        }
+        self.atras.push((self.texto.clone(), self.cursor));
+        if self.atras.len() > PASOS_DE_DESHACER {
+            self.atras.remove(0);
+        }
+        self.adelante.clear();
+    }
+
+    /// Quita lo elegido, si hay algo, y deja el cursor donde estaba.
+    fn borrar_eleccion(&mut self) -> bool {
+        let Some((a, b)) = self.seleccion() else {
+            self.ancla = None;
+            return false;
+        };
+        let (ba, bb) = (self.byte_de(a), self.byte_de(b));
+        self.texto.replace_range(ba..bb, "");
+        self.cursor = a;
+        self.ancla = None;
+        true
+    }
+
+    /// Mete un caracter donde esta el cursor y lo deja detras de el. Si
+    /// habia algo elegido, lo sustituye.
     pub fn insertar(&mut self, c: char) {
+        let letra = !c.is_whitespace();
+        if !(letra && self.escribiendo_letras) || self.seleccion().is_some() {
+            self.apuntar();
+        }
+        self.escribiendo_letras = letra;
+        self.borrar_eleccion();
         let b = self.byte_de(self.cursor);
         self.texto.insert(b, c);
         self.cursor += 1;
@@ -618,21 +698,76 @@ impl EdicionTexto {
         if s.is_empty() {
             return false;
         }
+        self.apuntar();
+        self.escribiendo_letras = false;
+        self.borrar_eleccion();
         let b = self.byte_de(self.cursor);
         self.texto.insert_str(b, s);
         self.cursor += s.chars().count();
         true
     }
 
-    /// Aplica una tecla. Devuelve si cambio algo: con `false` no hay nada que
-    /// repintar, y una tecla en el borde (Retroceso al principio) no puede
-    /// hacer creer a la ventana que el texto se movio.
-    pub fn tecla(&mut self, t: TeclaTexto) -> bool {
+    /// **Envuelve lo elegido** entre `antes` y `despues` (Ctrl+B pone `**`,
+    /// un color pone `\color{rojo}{` y `}`) y lo deja elegido, ya envuelto
+    /// por dentro, para encadenar otro. Sin nada elegido, pone los dos y
+    /// deja el cursor en medio para escribir. Devuelve si cambio algo.
+    pub fn envolver(&mut self, antes: &str, despues: &str) -> bool {
+        self.apuntar();
+        self.escribiendo_letras = false;
+        let (a, b) = self.seleccion().unwrap_or((self.cursor, self.cursor));
+        let (ba, bb) = (self.byte_de(a), self.byte_de(b));
+        self.texto.insert_str(bb, despues);
+        self.texto.insert_str(ba, antes);
+        let n = antes.chars().count();
+        if a == b {
+            self.ancla = None;
+            self.cursor = a + n;
+        } else {
+            self.ancla = Some(a + n);
+            self.cursor = b + n;
+        }
+        true
+    }
+
+    /// Ctrl+Z dentro del texto. Devuelve si habia algo que deshacer.
+    pub fn deshacer(&mut self) -> bool {
+        let Some((t, c)) = self.atras.pop() else {
+            return false;
+        };
+        self.adelante.push((std::mem::replace(&mut self.texto, t), self.cursor));
+        self.cursor = c.min(self.largo());
+        self.ancla = None;
+        self.escribiendo_letras = false;
+        true
+    }
+
+    /// Ctrl+Y (o Ctrl+Mayus+Z) dentro del texto.
+    pub fn rehacer(&mut self) -> bool {
+        let Some((t, c)) = self.adelante.pop() else {
+            return false;
+        };
+        self.atras.push((std::mem::replace(&mut self.texto, t), self.cursor));
+        self.cursor = c.min(self.largo());
+        self.ancla = None;
+        self.escribiendo_letras = false;
+        true
+    }
+
+    /// Una flecha, Inicio o Fin **con Mayus**: mueve el cursor y deja
+    /// elegido lo recorrido. Las demas teclas van como sin Mayus.
+    pub fn tecla_con_mayus(&mut self, t: TeclaTexto) -> bool {
+        if !matches!(t, TeclaTexto::Izquierda | TeclaTexto::Derecha | TeclaTexto::Inicio | TeclaTexto::Fin) {
+            return self.tecla(t);
+        }
+        let ancla = self.ancla.unwrap_or(self.cursor);
+        let movio = self.mover(t);
+        self.ancla = Some(ancla);
+        movio
+    }
+
+    fn mover(&mut self, t: TeclaTexto) -> bool {
+        self.escribiendo_letras = false;
         match t {
-            TeclaTexto::Entrar => {
-                self.insertar('\n');
-                true
-            }
             TeclaTexto::Izquierda => {
                 if self.cursor == 0 {
                     return false;
@@ -659,20 +794,63 @@ impl EdicionTexto {
                 self.cursor = fin;
                 cambia
             }
+            _ => false,
+        }
+    }
+
+    /// Aplica una tecla. Devuelve si cambio algo: con `false` no hay nada que
+    /// repintar, y una tecla en el borde (Retroceso al principio) no puede
+    /// hacer creer a la ventana que el texto se movio.
+    pub fn tecla(&mut self, t: TeclaTexto) -> bool {
+        match t {
+            TeclaTexto::Entrar => {
+                self.insertar('\n');
+                true
+            }
+            TeclaTexto::Izquierda | TeclaTexto::Derecha => {
+                // Con algo elegido, la flecha va al borde de lo elegido.
+                if let Some((a, b)) = self.seleccion() {
+                    self.cursor = if t == TeclaTexto::Izquierda { a } else { b };
+                    self.ancla = None;
+                    return true;
+                }
+                self.ancla = None;
+                self.mover(t)
+            }
+            TeclaTexto::Inicio | TeclaTexto::Fin => {
+                let habia = self.ancla.take().is_some_and(|a| a != self.cursor);
+                self.mover(t) || habia
+            }
             TeclaTexto::Retroceso => {
+                if self.seleccion().is_some() {
+                    self.apuntar();
+                    self.escribiendo_letras = false;
+                    return self.borrar_eleccion();
+                }
+                self.ancla = None;
                 if self.cursor == 0 {
                     return false;
                 }
+                self.apuntar();
+                self.escribiendo_letras = false;
                 self.cursor -= 1;
                 let b = self.byte_de(self.cursor);
                 self.texto.remove(b);
                 true
             }
             TeclaTexto::Suprimir => {
+                if self.seleccion().is_some() {
+                    self.apuntar();
+                    self.escribiendo_letras = false;
+                    return self.borrar_eleccion();
+                }
+                self.ancla = None;
                 let b = self.byte_de(self.cursor);
                 if b >= self.texto.len() {
                     return false;
                 }
+                self.apuntar();
+                self.escribiendo_letras = false;
                 self.texto.remove(b);
                 true
             }
@@ -681,11 +859,18 @@ impl EdicionTexto {
 
     /// En que renglon esta el cursor, contando desde cero.
     pub fn fila(&self) -> usize {
-        self.texto
-            .chars()
-            .take(self.cursor)
-            .filter(|c| *c == '\n')
-            .count()
+        self.fila_de(self.cursor)
+    }
+
+    /// En que renglon cae la posicion `pos` (en caracteres).
+    pub fn fila_de(&self, pos: usize) -> usize {
+        self.texto.chars().take(pos).filter(|c| *c == '\n').count()
+    }
+
+    /// Lo que va delante de `pos` en su renglon (para medir donde cae).
+    pub fn prefijo_de(&self, pos: usize) -> &str {
+        let inicio = self.texto.chars().take(pos).enumerate().filter(|(_, c)| *c == '\n').map(|(i, _)| i + 1).last().unwrap_or(0);
+        &self.texto[self.byte_de(inicio)..self.byte_de(pos)]
     }
 
     /// Lo que va delante del cursor en SU renglon. Quien pinta lo mide con
@@ -717,6 +902,84 @@ impl EdicionTexto {
             }
         }
         (inicio, fin)
+    }
+}
+
+/// **Lo que se pide con el teclado mientras se escribe**, mas alla de las
+/// letras y las flechas: elegir, deshacer y dar formato al tramo elegido.
+/// Lo traducen igual el lienzo (`dibujo/mano.rs`) y el anotador de capturas
+/// (`captura2/anotar.rs`) con [`atajo_de_tecla`]: una sola tabla.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AtajoTexto {
+    Deshacer,
+    Rehacer,
+    ElegirTodo,
+    /// Mayus + una flecha, Inicio o Fin.
+    Elegir(TeclaTexto),
+    Negrita,
+    Cursiva,
+    Subrayado,
+    Tachado,
+    /// Ctrl+M: lo elegido como formula (`$...$`).
+    Formula,
+    /// Ctrl+Mayus+1..6: el tramo de un color; 0 es el del texto.
+    Color(&'static str),
+}
+
+/// Los colores de Ctrl+Mayus+1..6, en el orden de las laminas (rojo para la
+/// incognita, azul y verde para los datos).
+pub const COLORES_DE_ATAJO: [&str; 6] = ["rojo", "azul", "verde", "naranja", "morado", "gris"];
+
+/// **La tecla (codigo virtual de Windows) a su atajo de texto**. Los de
+/// Word en ingles y en espanol: Ctrl+B o Ctrl+N negrita, Ctrl+I o Ctrl+K
+/// cursiva, Ctrl+U subrayado (Ctrl+S es guardar), Ctrl+Mayus+X tachado.
+pub fn atajo_de_tecla(vk: u32, ctrl: bool, shift: bool, alt: bool) -> Option<AtajoTexto> {
+    if alt {
+        return None;
+    }
+    if !ctrl {
+        if !shift {
+            return None;
+        }
+        return Some(AtajoTexto::Elegir(match vk {
+            0x25 => TeclaTexto::Izquierda,
+            0x27 => TeclaTexto::Derecha,
+            0x24 => TeclaTexto::Inicio,
+            0x23 => TeclaTexto::Fin,
+            _ => return None,
+        }));
+    }
+    let letra = char::from_u32(vk).filter(|c| c.is_ascii_alphanumeric());
+    Some(match (letra, shift) {
+        (Some('Z'), false) => AtajoTexto::Deshacer,
+        (Some('Z'), true) | (Some('Y'), false) => AtajoTexto::Rehacer,
+        (Some('A'), false) => AtajoTexto::ElegirTodo,
+        (Some('B' | 'N'), false) => AtajoTexto::Negrita,
+        (Some('I' | 'K'), false) => AtajoTexto::Cursiva,
+        (Some('U'), false) => AtajoTexto::Subrayado,
+        (Some('X'), true) => AtajoTexto::Tachado,
+        (Some('M'), false) => AtajoTexto::Formula,
+        (Some(d @ '1'..='6'), true) => AtajoTexto::Color(COLORES_DE_ATAJO[d as usize - '1' as usize]),
+        (Some('0'), true) => AtajoTexto::Color("negro"),
+        _ => return None,
+    })
+}
+
+impl EdicionTexto {
+    /// Aplica un atajo de texto. Devuelve si cambio algo.
+    pub fn atajo(&mut self, a: AtajoTexto) -> bool {
+        match a {
+            AtajoTexto::Deshacer => self.deshacer(),
+            AtajoTexto::Rehacer => self.rehacer(),
+            AtajoTexto::ElegirTodo => self.elegir_todo(),
+            AtajoTexto::Elegir(t) => self.tecla_con_mayus(t),
+            AtajoTexto::Negrita => self.envolver("**", "**"),
+            AtajoTexto::Cursiva => self.envolver("*", "*"),
+            AtajoTexto::Subrayado => self.envolver("<u>", "</u>"),
+            AtajoTexto::Tachado => self.envolver("~~", "~~"),
+            AtajoTexto::Formula => self.envolver("$", "$"),
+            AtajoTexto::Color(c) => self.envolver(&format!("\\color{{{c}}}{{"), "}"),
+        }
     }
 }
 

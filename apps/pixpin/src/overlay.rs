@@ -1454,7 +1454,7 @@ fn tecla(
     if let Some(a) = sesion.anotacion.as_mut().filter(|a| a.escribiendo()) {
         if vk == VK_ESCAPE {
             a.cerrar_texto();
-        } else {
+        } else if !a.atajo_de_texto(vk, ctrl, shift, false) {
             a.tecla_de_texto(vk);
         }
         return Continuar::Si;

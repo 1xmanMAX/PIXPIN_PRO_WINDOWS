@@ -4611,6 +4611,9 @@ fn pintar_zona(
             }
         }
     }
+    for orden in gesto.seleccion_de_texto(escena) {
+        dibujar_orden(p, &orden, vista, None, imagenes, camara.zoom, None);
+    }
     if let Some(cursor) = gesto.cursor_de_texto(escena, camara.zoom) {
         dibujar_orden(p, &cursor, vista, None, imagenes, camara.zoom, None);
     }

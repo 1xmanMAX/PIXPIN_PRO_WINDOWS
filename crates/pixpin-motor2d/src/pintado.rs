@@ -861,6 +861,39 @@ pub fn ordenes(e: &Elemento) -> Vec<Orden> {
             e.grosor,
         )),
 
+        // **El texto rico** (`texto_rico`): tramos de color y formulas en
+        // linea, compuestos en ordenes de las de siempre (textos y rayas),
+        // asi que sale igual en pantalla, PNG, SVG y PDF.
+        Figura::Texto { tam, familia, .. } if e.extras.rico.is_some() => {
+            let estilo = crate::texto::EstiloDeTexto {
+                negrita: e.extras.negrita,
+                cursiva: e.extras.cursiva,
+                tachado: e.extras.tachado,
+            };
+            let ancho_max = if e.extras.contenedor.is_none() {
+                crate::texto::SIN_PARTIR
+            } else {
+                e.ancho.max(1.0)
+            };
+            let m = crate::texto_rico::componer(
+                e.extras.rico.as_deref().unwrap_or_default(),
+                &crate::texto_rico::Opciones {
+                    tam: *tam,
+                    familia,
+                    estilo,
+                    alineacion: e.extras.alineacion,
+                    ancho_max,
+                },
+            );
+            // Centrado o a la derecha, el bloque dentro de su caja (si la
+            // caja es mas ancha que lo escrito).
+            let dx = e
+                .extras
+                .alineacion
+                .map_or(0.0, |a| ((e.ancho - m.ancho) * a.fraccion()).max(0.0));
+            salida.extend(crate::texto_rico::ordenes(&m, e.x + dx, e.y, familia, color));
+        }
+
         Figura::Texto {
             texto,
             tam,

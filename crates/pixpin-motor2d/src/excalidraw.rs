@@ -1052,6 +1052,19 @@ fn extras_desde(v: &Value) -> Extras {
             .filter(|s| !s.is_empty())
             .map(str::to_string),
         recorte: v.get("crop").and_then(recorte_desde),
+        // **La fuente rica** (`textoRico`), solo si sigue diciendo lo mismo
+        // que el texto plano: si alguien que no la entiende (el movil de
+        // hoy, Excalidraw) cambio el `text`, la fuente esta vieja y gana lo
+        // que se escribio alli.
+        rico: v
+            .get("textoRico")
+            .and_then(Value::as_str)
+            .filter(|r| !r.is_empty())
+            .filter(|r| {
+                let text = v.get("text").and_then(Value::as_str).unwrap_or_default();
+                crate::texto_rico::plano(r) == text
+            })
+            .map(str::to_string),
         // Una palabra que no conocemos se lee como «no lo dice» y **se
         // conserva**: la rama del texto de `elemento_hacia` no la pisa
         // mientras aqui no se elija otra. La regla del `fillStyle`.
@@ -1692,6 +1705,17 @@ fn elemento_hacia(e: &Elemento, original: &Value, objetos: bool) -> Value {
             }
             if let Some(v) = e.extras.alineacion_vertical {
                 mapa.insert("verticalAlign".into(), Value::String(v.palabra().into()));
+            }
+            // La fuente rica junto al texto plano de reserva
+            // (`docs/texto-rico-del-lienzo.md`). Si se quito aqui, se
+            // quita tambien del original.
+            match &e.extras.rico {
+                Some(r) => {
+                    mapa.insert("textoRico".into(), Value::String(r.clone()));
+                }
+                None => {
+                    mapa.remove("textoRico");
+                }
             }
         }
         Figura::Emoji { caracter } => {

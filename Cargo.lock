@@ -1725,6 +1725,7 @@ version = "0.1.0"
 dependencies = [
  "pixpin-codec",
  "pixpin-docs",
+ "pixpin-motor2d",
  "pixpin-render",
  "pixpin-shell",
  "pixpin-ui",

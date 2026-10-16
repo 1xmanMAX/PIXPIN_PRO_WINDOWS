@@ -493,6 +493,12 @@ pub struct Extras {
     /// `geometria_exacta`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub degradado: Option<crate::geometria_exacta::Degradado>,
+    /// **La fuente rica de un texto** (`textoRico`, 15-oct-2026): tramos de
+    /// color, negrita, formulas en linea `$...$`... (`texto_rico`). `None`: un
+    /// texto de los de siempre. Cuando la lleva, `Figura::Texto::texto` es su
+    /// version plana (`texto_rico::plano`), la que lee quien no la entiende.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rico: Option<String>,
 }
 
 /// **El recorte de una imagen** (`crop` de Excalidraw).
@@ -578,6 +584,8 @@ impl Extras {
             cierre: None,
             marca_angulo: None,
             degradado: None,
+            // Ni la fuente rica: viaja en su propia clave (`textoRico`).
+            rico: None,
             ..self.clone()
         } == Extras::default()
     }
@@ -586,6 +594,7 @@ impl Extras {
     /// punteros. Lo usa `Elemento::bytes`.
     pub fn bytes(&self) -> usize {
         self.contenedor.as_ref().map_or(0, String::len)
+            + self.rico.as_ref().map_or(0, String::len)
             + self.id_de_fichero.as_ref().map_or(0, String::len)
             + self
                 .enganche_inicio
