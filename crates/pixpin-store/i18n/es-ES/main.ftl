@@ -2612,3 +2612,21 @@ notif-ver-galeria = Ver la galería
 notif-captura-se-va = Esta captura se va { $cuando }
 notif-capturas-se-van = { $n } capturas se van en las próximas 24 h
 notif-capturas-titulo = Capturas que caducan
+
+# Laminas de geometria (arco exacto, marca de angulo, degradado)
+herramientas-angulo = Marca de ángulo
+lienzo-pista-arco = Arco (con la guía: repasa un óvalo de referencia; o por centro y dos puntos, o por tres puntos, en el panel)
+lienzo-pista-angulo = Ángulo: clic dentro del ángulo, cerca de donde se juntan dos rectas
+lienzo-panel-degradado = Relleno degradado
+lienzo-panel-cierre-arco = Cierre del arco
+lienzo-panel-modo-arco = Trazar el arco
+lienzo-panel-arcos-angulo = Arquitos
+lienzo-degradado-liso = Liso
+lienzo-degradado-lineal = Lineal
+lienzo-degradado-radial = Radial
+lienzo-cierre-abierto = Abierto
+lienzo-cierre-sector = Sector
+lienzo-cierre-segmento = Segmento
+lienzo-arco-modo-guia = Guía
+lienzo-arco-modo-centro = Centro
+lienzo-arco-modo-tres = 3 puntos

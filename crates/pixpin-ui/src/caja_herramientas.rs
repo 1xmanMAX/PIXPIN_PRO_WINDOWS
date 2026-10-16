@@ -123,7 +123,7 @@ pub const BOTONES: [BotonCaja; 14] = [
 /// cada anfitrion se queda con lo suyo (`dibujo::permitidas`) y
 /// `barra_superior` lo agrupa con [`BARRA_AGRUPADA`]. Con cuarenta botones
 /// sueltos no cabia en una fila ni a 120 % en 1080 p.
-pub const BOTONES_EDITOR: [BotonCaja; 39] = [
+pub const BOTONES_EDITOR: [BotonCaja; 40] = [
     BotonCaja::Elegir(Herramienta::Mano),
     BotonCaja::Elegir(Herramienta::Lazo),
     // La bolita, junto al lazo: las dos eligen sin marquesina (`Tool.BOLITA`).
@@ -148,6 +148,8 @@ pub const BOTONES_EDITOR: [BotonCaja; 39] = [
     BotonCaja::Elegir(Herramienta::Lupa),
     BotonCaja::Elegir(Herramienta::Mosaico),
     BotonCaja::Elegir(Herramienta::Arco),
+    // La marca de angulo, junto al arco: las dos de las laminas de geometria.
+    BotonCaja::Elegir(Herramienta::Angulo),
     BotonCaja::Elegir(Herramienta::Serie),
     BotonCaja::Elegir(Herramienta::Punto),
     BotonCaja::Elegir(Herramienta::Cota),
@@ -239,7 +241,7 @@ impl GrupoBarra {
         match self {
             GrupoBarra::Elegir => &[E(H::Lazo), E(H::Bolita), E(H::Zona)],
             GrupoBarra::Trazar => &[E(H::Grafito), E(H::Resaltador), E(H::Relleno)],
-            GrupoBarra::Formas => &[E(H::Rectangulo), E(H::Elipse), E(H::Rombo), E(H::Arco)],
+            GrupoBarra::Formas => &[E(H::Rectangulo), E(H::Elipse), E(H::Rombo), E(H::Arco), E(H::Angulo)],
             GrupoBarra::Flechas => &[
                 E(H::Flecha),
                 E(H::FlechaLibre),
@@ -974,8 +976,9 @@ mod pruebas {
             .count();
         // 28 desde que entro el grafito, junto al lapiz; 31 con la zona, el
         // laser y el cronograma (F8, F14, F12); 32 con soldar vertices, 33 con
-        // la bolita y 32 otra vez al quitar el cronograma.
-        assert_eq!(herramientas, 32, "faltan o sobran herramientas en la caja");
+        // la bolita y 32 otra vez al quitar el cronograma; 33 con la marca de
+        // angulo (laminas de geometria).
+        assert_eq!(herramientas, 33, "faltan o sobran herramientas en la caja");
         assert!(BOTONES_EDITOR.contains(&BotonCaja::Imagen));
         assert!(BOTONES_EDITOR.contains(&BotonCaja::Figuras));
         assert!(BOTONES_EDITOR.contains(&BotonCaja::Elegir(Herramienta::Grafito)));
@@ -1261,7 +1264,8 @@ mod pruebas {
             (m.marco.x - boton.x).abs() <= 10,
             "bajo su boton: {m:?} {boton:?}"
         );
-        assert_eq!(m.filas.len(), 4);
+        // Rectangulo, ovalo, rombo, arco y la marca de angulo.
+        assert_eq!(m.filas.len(), 5);
         for (h, r) in &m.filas {
             assert!(m.marco.contiene(Punto { x: r.x, y: r.y }));
             assert_eq!(b.destino(centro(*r)), DestinoClic::Boton(*h));

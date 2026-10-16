@@ -144,6 +144,9 @@ pub enum Herramienta {
     Extender,
     /// Un punto con su letra, para un croquis de geometria (grupo C).
     Punto,
+    /// **La marca de un angulo** (laminas de geometria): un clic dentro del
+    /// angulo, cerca de donde se juntan dos rayas. Ver `gesto/geometria.rs`.
+    Angulo,
     /// Copia el estilo de una figura y lo pega en otra (grupo B). Es
     /// invencion de escritorio: en el movil no existe.
     CopiarEstilo,
@@ -182,6 +185,8 @@ impl Herramienta {
                 // que arrastrar y el numero de serie tampoco.
                 | Herramienta::Serie
                 | Herramienta::Punto
+                // La marca de angulo se pone de un clic.
+                | Herramienta::Angulo
         )
     }
 
@@ -216,6 +221,9 @@ impl Herramienta {
                 | Herramienta::Nudo
                 // Selecciona, como el lazo.
                 | Herramienta::Bolita
+                // La marca la pone el gesto entera al pulsar
+                // (`gesto/geometria.rs`): no nace arrastrando.
+                | Herramienta::Angulo
         )
     }
 }
@@ -336,6 +344,11 @@ pub struct Gesto {
     /// pinte la pista. Se apaga al soltar y al cancelar: una marca que
     /// sobrevive al gesto es una marca mintiendo.
     pub anclaje_activo: Option<crate::enganche::Anclaje>,
+    /// **Los anclajes finos del iman** (cruces, cantos, tangentes). De
+    /// fabrica apagados: cuestan reservas de memoria en cada movimiento del
+    /// raton y quien los quiere —la ventana del editor— los enciende a
+    /// sabiendas (ver `enganche::sitio`). El `desde` lo pone el gesto.
+    pub finos: crate::enganche::AjustesFinos,
     /// El `strokeWidth` de Excalidraw para el lapiz: 0,5 / 1 / 2.
     pub grosor_tinta: f32,
     /// Pluma variable o constante para los trazos nuevos.
@@ -438,7 +451,14 @@ pub struct Gesto {
     /// eligen y se borran guias; fuera, solo dibujo. Se cambia con
     /// [`Gesto::poner_modo_guia`], que suelta lo elegido.
     modo_guia: bool,
+    /// Los clics que lleva la herramienta Arco en sus modos de clics.
+    clics_arco: geometria::ClicsDeArco,
+    /// Repasando una guia: el angulo del cursor la ultima vez.
+    arqueando: Option<f32>,
 }
+
+mod geometria;
+pub use geometria::ModoArco;
 
 impl Default for Gesto {
     fn default() -> Self {
@@ -446,9 +466,12 @@ impl Default for Gesto {
             estado: Estado::Reposo,
             seleccion: Seleccion::nueva(),
             herramienta: Herramienta::Lapiz,
+            clics_arco: Default::default(),
+            arqueando: None,
             trazo: Vec::with_capacity(PUNTOS_RESERVADOS),
             enganche: crate::enganche::Ajustes::default(),
             anclaje_activo: None,
+            finos: crate::enganche::AjustesFinos::NINGUNO,
             grosor_tinta: crate::tinta::GROSOR_MEDIO,
             variabilidad: crate::tinta::Variabilidad::Variable,
             estilo: crate::estilo::EstiloDibujo::default(),
@@ -500,6 +523,10 @@ impl Gesto {
             Herramienta::Grafito => self.grafito_en_la_mano = true,
             Herramienta::Lapiz | Herramienta::Resaltador => self.grafito_en_la_mano = false,
             _ => {}
+        }
+        // Una secuencia de clics del arco no sobrevive a cambiar de mano.
+        if h != self.herramienta {
+            self.clics_arco = Default::default();
         }
         self.herramienta = h;
     }
@@ -852,6 +879,7 @@ impl Gesto {
             }
             EventoGesto::Escape => {
                 escena.cancelar_paso();
+                self.cancelar_geometria(escena);
                 self.estado = Estado::Reposo;
                 self.seleccion.limpiar();
                 self.anclaje_activo = None;
@@ -988,8 +1016,27 @@ impl Gesto {
         };
         let moviendo = matches!(self.estado, Estado::Moviendo { .. });
         let excluye = |id: u64| dibujando == Some(id) || (moviendo && seleccion.contiene(id));
-        let encontrado =
-            crate::enganche::sitio_con(&escena.elementos, p, zoom, faena, &self.enganche, &excluye);
+        // La raya que se esta trazando sale de su primer punto: desde ahi se
+        // buscan las tangentes.
+        let desde = dibujando.and_then(|id| escena.buscar(id)).and_then(|e| match &e.figura {
+            Figura::Linea { puntos } | Figura::Flecha { puntos, .. } | Figura::Cota { puntos } => {
+                puntos.first().copied()
+            }
+            _ => None,
+        });
+        let finos = crate::enganche::AjustesFinos {
+            desde,
+            ..self.finos
+        };
+        let encontrado = crate::enganche::sitio_fino_con(
+            &escena.elementos,
+            p,
+            zoom,
+            faena,
+            &self.enganche,
+            &finos,
+            &excluye,
+        );
         // Los puntos de las tablas de coordenadas y su eje tambien imantan.
         let encontrado = if escena.origen_coordenadas.is_some() {
             let tecleados = crate::instrumento::tabla::anclajes(
@@ -1242,6 +1289,24 @@ impl Gesto {
                 Default::default()
             },
         };
+        // El cierre del arco y el degradado del panel (laminas de geometria).
+        if matches!(self.herramienta, Herramienta::Arco) {
+            e.extras.cierre = self.estilo.cierre_arco;
+        }
+        if let (Some(t), true) = (
+            self.estilo.degradado,
+            matches!(
+                self.herramienta,
+                Herramienta::Rectangulo
+                    | Herramienta::Elipse
+                    | Herramienta::Rombo
+                    | Herramienta::Arco
+                    | Herramienta::Relleno
+            ),
+        ) {
+            let base = e.relleno.unwrap_or(self.estilo.trazo);
+            e.extras.degradado = Some(crate::geometria_exacta::Degradado::desde_relleno(t, base));
+        }
         // Lo que se traza con el modo guia puesto es guia, sea con lo que sea.
         e.extras.referencia = self.modo_guia;
         // **El grafito nace con la dureza elegida** (`dureza =
@@ -1303,6 +1368,11 @@ impl Gesto {
         // El punto llega crudo y todas las cribas de abajo lo usan crudo.
         // La pista de un gesto anterior no puede sobrevivir a este clic.
         self.anclaje_activo = None;
+        // El arco exacto, el repasado de una guia y la marca de angulo
+        // (`gesto/geometria.rs`): si son ellos, ya esta.
+        if let Some(r) = self.pulsar_geometria(p, escena, escala) {
+            return r;
+        }
         self.arrastrado = false;
         self.seguidoras.limpiar();
         self.con_clavos = !escena.alfileres.is_empty();
@@ -1618,6 +1688,9 @@ impl Gesto {
         escena: &mut Escena,
         escala: f32,
     ) -> Respuesta {
+        if let Some(r) = self.mover_geometria(p, escena) {
+            return r;
+        }
         match self.estado {
             Estado::Reposo => Respuesta {
                 region: Region::Nada,
@@ -2028,6 +2101,8 @@ impl Gesto {
             escena.cancelar_paso();
         }
         self.forma_por_gesto = false;
+        // Un arco repasado de nada no deja nada (`gesto/geometria.rs`).
+        self.soltar_geometria(escena);
         self.soltar_flechas(escena, escala);
         // Un paso sin cambios no entra en el historial, asi que hacer clic
         // sin arrastrar no consume un Ctrl+Z. De eso se encarga cerrar_paso.

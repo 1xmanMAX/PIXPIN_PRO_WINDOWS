@@ -69,6 +69,14 @@ pub enum TipoAnclaje {
     /// Va el ultimo en prioridad **y ademas fuera de la puja por cercania**:
     /// ver la nota de [`sitio_fino`].
     Borde,
+
+    /// **Donde la recta que se esta trazando roza una circunferencia**: el
+    /// punto de tangencia desde donde empezo el trazo (`AjustesFinos::desde`).
+    ///
+    /// Es el de las laminas de geometria —«la tangente desde P»— y a pulso es
+    /// imposible: el punto no esta marcado en ningun sitio y unos pocos
+    /// pixeles de mas o de menos convierten la tangente en secante.
+    Tangente,
 }
 
 /// Un punto al que merece la pena pegarse.
@@ -161,7 +169,7 @@ fn prioridad(t: TipoAnclaje) -> u8 {
         // Un vertice es lo mas intencionado que hay en un dibujo. El eje va
         // con ellos: es igual de intencionado.
         TipoAnclaje::Esquina | TipoAnclaje::Extremo | TipoAnclaje::Eje => 1,
-        TipoAnclaje::Medio => 2,
+        TipoAnclaje::Medio | TipoAnclaje::Tangente => 2,
         // El centro de una caja grande esta lejos de todo, y engancharse a
         // el por sorpresa desconcierta mas de lo que ayuda.
         TipoAnclaje::Centro => 3,
@@ -200,6 +208,11 @@ pub struct AjustesFinos {
     /// la pasa por aqui; mientras nadie lo haga, no hay eje y no se ofrece
     /// ningun ancla que el usuario no vea dibujada.
     pub origen: Option<Punto2>,
+    /// Los puntos de tangencia a las circunferencias desde [`Self::desde`].
+    pub tangentes: bool,
+    /// De donde sale la raya que se esta trazando, si se esta trazando una:
+    /// lo pone el gesto. Sin el no hay tangentes que ofrecer.
+    pub desde: Option<Punto2>,
 }
 
 impl Default for AjustesFinos {
@@ -208,6 +221,8 @@ impl Default for AjustesFinos {
             intersecciones: true,
             bordes: true,
             origen: None,
+            tangentes: true,
+            desde: None,
         }
     }
 }
@@ -218,6 +233,8 @@ impl AjustesFinos {
         intersecciones: false,
         bordes: false,
         origen: None,
+        tangentes: false,
+        desde: None,
     };
 }
 
@@ -409,7 +426,8 @@ pub fn con_coordenadas(
     mejor
 }
 
-fn sitio_fino_con(
+/// Como [`sitio_fino`], preguntando a `excluye` (lo que usa el gesto).
+pub fn sitio_fino_con(
     elementos: &[Elemento],
     p: Punto2,
     zoom: f32,
@@ -490,6 +508,41 @@ fn sitio_fino_con(
                 &mut mejor,
                 &mut mejor_d,
             );
+        }
+    }
+
+    // Las tangentes desde donde salio la raya, a las circunferencias que
+    // pasan cerca del cursor (y, en un arco, solo si caen en su tramo).
+    if let Some(desde) = finos.desde.filter(|_| finos.tangentes) {
+        for e in elementos {
+            if e.borrado || excluye(e.id) || e.extras.marca_angulo.is_some() {
+                continue;
+            }
+            let Some((c, r)) = crate::geometria_exacta::centro_y_radio(e) else {
+                continue;
+            };
+            if (p.distancia(c) - r).abs() > radio {
+                continue;
+            }
+            let Some(ts) = crate::geometria_exacta::tangentes_desde(desde, c, r) else {
+                continue;
+            };
+            let (inicio, barrido) =
+                crate::geometria_exacta::tramo_de(e).unwrap_or((0.0, std::f32::consts::TAU));
+            for t in ts {
+                let a = crate::geometria_exacta::angulo_de(c, t) - e.angulo;
+                if crate::geometria_exacta::dentro_del_barrido(a, inicio, barrido) {
+                    considerar(
+                        Anclaje {
+                            punto: t,
+                            tipo: TipoAnclaje::Tangente,
+                            id: e.id,
+                        },
+                        &mut mejor,
+                        &mut mejor_d,
+                    );
+                }
+            }
         }
     }
 
@@ -649,6 +702,29 @@ fn por_cada_anclaje(e: &Elemento, ajustes: &Ajustes, mut f: impl FnMut(Punto2, T
             }
         }
 
+        // **El arco**: sus dos puntas, su punto de en medio y el centro de su
+        // circunferencia. Las esquinas de su caja no estan en ningun sitio
+        // del dibujo (y la caja es la del trozo, ni siquiera la del ovalo).
+        Figura::Arco {
+            inicio,
+            barrido: Some(barrido),
+        } => {
+            let (rx, ry) = (e.ancho / 2.0, e.alto / 2.0);
+            let (cx, cy) = (e.x + rx, e.y + ry);
+            let en = |t: f32| Punto2::nuevo(cx + rx * t.cos(), cy + ry * t.sin());
+            let marca = e.extras.marca_angulo.is_some();
+            if ajustes.esquinas && !marca {
+                f(en(*inicio), TipoAnclaje::Extremo);
+                f(en(inicio + barrido), TipoAnclaje::Extremo);
+            }
+            if ajustes.medios && !marca {
+                f(en(inicio + barrido / 2.0), TipoAnclaje::Medio);
+            }
+            if ajustes.centros {
+                f(Punto2::nuevo(cx, cy), TipoAnclaje::Centro);
+            }
+        }
+
         _ => {
             let (x0, y0, x1, y1) = e.caja();
             let (cx, cy) = ((x0 + x1) / 2.0, (y0 + y1) / 2.0);
@@ -751,6 +827,21 @@ pub fn pista(a: &Anclaje, zoom: f32) -> Orden {
             Punto2::nuevo(cx - r, cy),
             Punto2::nuevo(cx, cy - r),
         ],
+        // La tangente: el circulito con la raya que lo roza por arriba.
+        TipoAnclaje::Tangente => {
+            let mut p = Vec::with_capacity(LADOS_DEL_CIRCULO + 4);
+            for i in 0..=LADOS_DEL_CIRCULO {
+                let t = std::f32::consts::FRAC_PI_2
+                    + i as f32 / LADOS_DEL_CIRCULO as f32 * std::f32::consts::TAU;
+                p.push(Punto2::nuevo(
+                    cx + r * 0.7 * t.cos(),
+                    cy + r * 0.7 * t.sin(),
+                ));
+            }
+            p.push(Punto2::nuevo(cx - r * 1.3, cy + r * 0.7));
+            p.push(Punto2::nuevo(cx + r * 1.3, cy + r * 0.7));
+            p
+        }
         // El centro: un circulo, porque de lo que suele ser centro -una
         // elipse- es justo el centro de su circunferencia.
         TipoAnclaje::Centro => {

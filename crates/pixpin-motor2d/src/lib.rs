@@ -45,6 +45,7 @@ pub mod forma_rapida;
 pub mod formas;
 pub mod formato;
 pub mod formula;
+pub mod geometria_exacta;
 pub mod gesto;
 pub mod grafica;
 pub mod hojita;

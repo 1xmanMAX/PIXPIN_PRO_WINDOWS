@@ -81,7 +81,7 @@ pub fn de_figura(f: &Figura) -> &'static [Propiedad] {
         Figura::Emoji { .. } => &[Opacidad],
         // El arco es una raya curva: lo mismo que la linea. Su relleno no se
         // ofrece porque un trozo de ovalo no encierra nada.
-        Figura::Arco { .. } => &[ColorTrazo, Grosor, Estilo, Rugosidad, Opacidad],
+        Figura::Arco { .. } => &[ColorTrazo, Relleno, Grosor, Estilo, Rugosidad, Opacidad],
         // El numero de serie, como el del movil (`propiedadesDeTipo(SERIAL)`:
         // TRAZO, FUENTE, OPACIDAD): el color del disco, la letra del numero
         // (pedida por el usuario) y su tamano, que es el del circulo.
@@ -139,7 +139,11 @@ pub fn de_herramienta(h: Herramienta) -> &'static [Propiedad] {
             Rugosidad,
             Opacidad,
         ],
-        Herramienta::Arco => &[ColorTrazo, Grosor, Estilo, Rugosidad, Opacidad],
+        // El arco puede ser sector o segmento: con relleno (liso o degradado).
+        Herramienta::Arco => &[ColorTrazo, Relleno, Grosor, Estilo, Rugosidad, Opacidad],
+        // La marca de angulo: su color, el de su relleno translucido, su
+        // trazo y la letra de su valor.
+        Herramienta::Angulo => &[ColorTrazo, Relleno, Grosor, Estilo, Opacidad, Fuente],
         Herramienta::FlechaCodos | Herramienta::FlechaLibre => {
             &[ColorTrazo, Grosor, Estilo, Rugosidad, Opacidad, PuntaFlecha]
         }
