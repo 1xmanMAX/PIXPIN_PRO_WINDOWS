@@ -50,6 +50,19 @@ pub struct Medida {
     pub celdas: Vec<Vec<String>>,
     /// Los grados que estaba torcida la foto (0: derecha).
     pub inclinacion: f64,
+    /// El texto de la imagen fuera de la tabla (el titulo, una nota), por
+    /// renglones, donde esta.
+    pub fuera: Vec<Renglon>,
+}
+
+/// Un renglon de texto de fuera de la tabla: su esquina y su letra, en
+/// pixeles de la imagen (de la enderezada, si estaba torcida).
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct Renglon {
+    pub texto: String,
+    pub x: f64,
+    pub y: f64,
+    pub tam: f64,
 }
 
 impl Medida {
@@ -63,6 +76,61 @@ impl Medida {
     pub fn altos(&self) -> Vec<f64> {
         self.filas.windows(2).map(|w| w[1] - w[0]).collect()
     }
+}
+
+/// Palabras que el OCR de Windows deja sin su tilde, con la buena. Las de
+/// obra, de clase y de oficina que salen en tablas; sin las que cambian de
+/// sentido sin tilde («esta», «el», «solo», «area» de «áreas»…).
+const SIN_TILDE: &[(&str, &str)] = &[
+    ("ferreteria", "ferretería"), ("dias", "días"), ("guia", "guía"), ("practica", "práctica"), ("compresion", "compresión"),
+    ("tecnologia", "tecnología"), ("ubicacion", "ubicación"), ("metodo", "método"), ("numero", "número"), ("codigo", "código"),
+    ("telefono", "teléfono"), ("direccion", "dirección"), ("descripcion", "descripción"), ("observacion", "observación"),
+    ("informacion", "información"), ("almacen", "almacén"), ("construccion", "construcción"), ("revision", "revisión"),
+    ("seccion", "sección"), ("conclusion", "conclusión"), ("calculo", "cálculo"), ("tecnico", "técnico"), ("tecnica", "técnica"),
+    ("analisis", "análisis"), ("ingenieria", "ingeniería"), ("energia", "energía"), ("electrico", "eléctrico"), ("electrica", "eléctrica"),
+    ("mecanica", "mecánica"), ("grafica", "gráfica"), ("basico", "básico"), ("unico", "único"), ("minimo", "mínimo"), ("maximo", "máximo"),
+    ("latex", "látex"), ("metrico", "métrico"), ("cubico", "cúbico"), ("camion", "camión"),
+    ("excavacion", "excavación"), ("instalacion", "instalación"),
+    ("tuberia", "tubería"), ("via", "vía"), ("pais", "país"), ("razon", "razón"), ("region", "región"), ("periodo", "período"),
+    ("fisica", "física"), ("quimica", "química"), ("matematica", "matemática"), ("geometria", "geometría"), ("biologia", "biología"),
+];
+
+/// **Una pasada de correccion del OCR**, sin modelo: las tildes que se pierden
+/// (`SIN_TILDE`, con su mayuscula) y el «N.°» que sale «N.0» o «N.o».
+pub fn corregir_ocr(t: &str) -> String {
+    let mut s = String::with_capacity(t.len());
+    let palabras: Vec<&str> = t.split(' ').collect();
+    for (i, p) in palabras.iter().enumerate() {
+        if i > 0 {
+            s.push(' ');
+        }
+        // «N.0 16», «N.o 16», «Nro» no: solo el ordinal del numero.
+        if matches!(*p, "N.0" | "N.o" | "N°" | "N.º" | "n.0" | "n.o") {
+            s.push_str(if p.starts_with('n') { "n.°" } else { "N.°" });
+            continue;
+        }
+        let (cuerpo, cola) = p.split_at(p.trim_end_matches(|c: char| !c.is_alphanumeric()).len());
+        let (cabeza, cuerpo) = cuerpo.split_at(cuerpo.len() - cuerpo.trim_start_matches(|c: char| !c.is_alphanumeric()).len());
+        let bajo = cuerpo.to_lowercase();
+        match SIN_TILDE.iter().find(|(sin, _)| *sin == bajo) {
+            Some((_, con)) => {
+                let mut bueno: String = if cuerpo.chars().all(|c| !c.is_lowercase()) && cuerpo.chars().count() > 1 {
+                    con.to_uppercase()
+                } else {
+                    con.to_string()
+                };
+                if cuerpo.chars().next().is_some_and(char::is_uppercase) && !bueno.chars().all(|c| !c.is_lowercase()) {
+                    let mut cs = bueno.chars();
+                    bueno = cs.next().map(|c| c.to_uppercase().collect::<String>() + cs.as_str()).unwrap_or_default();
+                }
+                s.push_str(cabeza);
+                s.push_str(&bueno);
+                s.push_str(cola);
+            }
+            None => s.push_str(p),
+        }
+    }
+    s
 }
 
 /// `#rrggbb`.
@@ -172,14 +240,60 @@ pub fn medir(rgba: &[u8], ancho: u32, alto: u32, palabras: &[Palabra]) -> Option
 fn con_celdas(mut m: Medida, palabras: &[Palabra]) -> Medida {
     let (nf, nc) = (m.filas.len().saturating_sub(1), m.columnas.len().saturating_sub(1));
     let mut celdas: Vec<Vec<Vec<&Palabra>>> = vec![vec![Vec::new(); nc]; nf];
+    let mut fuera: Vec<&Palabra> = Vec::new();
     for p in palabras {
         let (x, y) = (p.x + p.ancho / 2.0, p.y + p.alto / 2.0);
         let f = (0..nf).find(|&f| y >= m.filas[f] && y < m.filas[f + 1]);
         let c = (0..nc).find(|&c| x >= m.columnas[c] && x < m.columnas[c + 1]);
         if let (Some(f), Some(c)) = (f, c) {
             celdas[f][c].push(p);
+        } else {
+            fuera.push(p);
         }
     }
+    // Lo de fuera de la tabla (un titulo, una nota al pie), por renglones:
+    // palabras seguidas en la misma altura y sin un hueco de mas de dos
+    // letras entre ellas (dos columnas de texto no se juntan; un guion que el OCR se come deja un hueco de dos).
+    // Primero las bandas de altura (un renglon de la hoja) y, dentro, de
+    // izquierda a derecha, partiendo donde hay un hueco grande.
+    fuera.sort_by(|a, b| (a.y + a.alto / 2.0).total_cmp(&(b.y + b.alto / 2.0)));
+    let mut bandas: Vec<Vec<&Palabra>> = Vec::new();
+    for p in fuera {
+        let centro = p.y + p.alto / 2.0;
+        match bandas.last_mut() {
+            Some(b) if (centro - mediana(b.iter().map(|q| q.y + q.alto / 2.0).collect()).unwrap_or(centro)).abs() < p.alto.max(b[0].alto) * 0.5 => b.push(p),
+            _ => bandas.push(vec![p]),
+        }
+    }
+    let mut renglones: Vec<Vec<&Palabra>> = Vec::new();
+    for mut b in bandas {
+        b.sort_by(|a, c| a.x.total_cmp(&c.x));
+        let mut actual: Vec<&Palabra> = Vec::new();
+        for p in b {
+            if let Some(u) = actual.last()
+                && p.x - (u.x + u.ancho) > 3.0 * u.alto.max(p.alto)
+            {
+                renglones.push(std::mem::take(&mut actual));
+            }
+            actual.push(p);
+        }
+        if !actual.is_empty() {
+            renglones.push(actual);
+        }
+    }
+    // La letra: la de casi todos los renglones (una palabra con letras altas
+    // no es un renglon mas grande); un titulo de verdad, la suya.
+    let comun = mediana(renglones.iter().flatten().map(|p| p.alto).collect()).unwrap_or(10.0);
+    m.fuera = renglones
+        .into_iter()
+        .map(|r| {
+            let x = r.iter().map(|p| p.x).fold(f64::MAX, f64::min);
+            let y = r.iter().map(|p| p.y).fold(f64::MAX, f64::min);
+            let alto = mediana(r.iter().map(|p| p.alto).collect()).unwrap_or(comun);
+            let alto = if (alto - comun).abs() < comun * 0.25 { comun } else { alto };
+            Renglon { texto: corregir_ocr(&r.iter().map(|p| p.texto.trim()).collect::<Vec<_>>().join(" ")), x, y, tam: alto * ALTO_A_TAM }
+        })
+        .collect();
     m.celdas = celdas
         .into_iter()
         .map(|fila| {
@@ -197,7 +311,7 @@ fn con_celdas(mut m: Medida, palabras: &[Palabra]) -> Medida {
                             _ => renglones.push(vec![p]),
                         }
                     }
-                    renglones
+                    corregir_ocr(&renglones
                         .into_iter()
                         .flat_map(|mut r| {
                             r.sort_by(|a, b| a.x.total_cmp(&b.x));
@@ -205,6 +319,7 @@ fn con_celdas(mut m: Medida, palabras: &[Palabra]) -> Medida {
                         })
                         .collect::<Vec<_>>()
                         .join(" ")
+                    )
                 })
                 .collect()
         })
@@ -456,6 +571,33 @@ mod pruebas {
         assert!(distancia(borde, [90, 90, 96]) < 20.0 && (grosor - 2.0).abs() < 0.6, "{borde:?} {grosor}");
         assert!((m.aire.unwrap() - 8.0).abs() < 2.0);
         assert!((m.tam_letra - 18.0 * ALTO_A_TAM).abs() < 0.1);
+    }
+
+    #[test]
+    fn la_pasada_de_correccion_pone_tildes_y_el_ordinal() {
+        assert_eq!(corregir_ocr("Ferreteria El Sol"), "Ferretería El Sol");
+        assert_eq!(corregir_ocr("Alambre negro N.0 16"), "Alambre negro N.° 16");
+        assert_eq!(corregir_ocr("Edad (dias)"), "Edad (días)");
+        assert_eq!(corregir_ocr("GUIA DE PRACTICA"), "GUÍA DE PRÁCTICA");
+        // Negativo: lo que ya esta bien, o no esta en la lista, no se toca.
+        assert_eq!(corregir_ocr("Cemento Portland tipo I 350"), "Cemento Portland tipo I 350");
+        assert_eq!(corregir_ocr("esta solo el area"), "esta solo el area");
+    }
+
+    #[test]
+    fn el_titulo_de_fuera_de_la_tabla_sale_como_renglon() {
+        let (px, w, h) = pintada();
+        let palabras = vec![
+            Palabra::nueva("Almacen", 20.0, 2.0, 60.0, 14.0),
+            Palabra::nueva("de", 84.0, 2.0, 16.0, 14.0),
+            Palabra::nueva("obra", 104.0, 2.0, 30.0, 14.0),
+            Palabra::nueva("350", 148.0, 70.0, 30.0, 18.0),
+        ];
+        let m = medir(&px, w, h, &palabras).unwrap();
+        assert_eq!(m.fuera.len(), 1, "{:?}", m.fuera);
+        assert_eq!(m.fuera[0].texto, "Almacén de obra");
+        assert!((m.fuera[0].x - 20.0).abs() < 0.1 && (m.fuera[0].y - 2.0).abs() < 0.1);
+        assert_eq!(m.celdas[1][1], "350");
     }
 
     #[test]
